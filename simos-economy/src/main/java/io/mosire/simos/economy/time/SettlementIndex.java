@@ -9,14 +9,17 @@ import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.ProductionOrganization;
 import io.mosire.simos.economy.model.ProductionUnit;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -77,6 +80,10 @@ final class SettlementIndex {
   private final Map<String, List<IndustryId>> industriesByHex;
   private final Map<HouseholdId, List<DebtContract>> debtsByDebtor;
 
+  // ── E4c/P2：主体 → 相关生产 unit / 生产组织（只读；见 {@link DebtPartyResolver}）────────
+  private final Map<ActorRef, List<ProductionUnitId>> unitsByParty;
+  private final Map<ActorRef, List<ProductionOrganization>> organizationsByActor;
+
   private SettlementIndex(
       Map<ProductionUnitId, Map<AssetKind, Long>> usableAssetsByUnit,
       Map<ProductionUnitId, Long> capacityScaleByUnit,
@@ -93,7 +100,9 @@ final class SettlementIndex {
       Map<String, List<ProductionUnitId>> unitsByHex,
       Map<ProductionUnitId, String> hexByUnit,
       Map<String, List<IndustryId>> industriesByHex,
-      Map<HouseholdId, List<DebtContract>> debtsByDebtor) {
+      Map<HouseholdId, List<DebtContract>> debtsByDebtor,
+      Map<ActorRef, List<ProductionUnitId>> unitsByParty,
+      Map<ActorRef, List<ProductionOrganization>> organizationsByActor) {
     this.usableAssetsByUnit = usableAssetsByUnit;
     this.capacityScaleByUnit = capacityScaleByUnit;
     this.assetShareIdsByUnit = assetShareIdsByUnit;
@@ -110,6 +119,8 @@ final class SettlementIndex {
     this.hexByUnit = hexByUnit;
     this.industriesByHex = industriesByHex;
     this.debtsByDebtor = debtsByDebtor;
+    this.unitsByParty = unitsByParty;
+    this.organizationsByActor = organizationsByActor;
   }
 
   /**
@@ -126,12 +137,29 @@ final class SettlementIndex {
       Map<HouseholdId, ClassRow> rows,
       Map<DebtContractId, DebtContract> debts,
       Map<ProductionUnitId, ProductionRelation> relations) {
+    return build(units, industries, assetShares, allocations, rows, debts, relations, Map.of());
+  }
+
+  /**
+   * ★★ <b>P2：带生产组织只读视图的构建重载</b>。旧调用点（不关心组织的主体解析）继续走上面的重载， 行为逐值不变；日结算入口传 {@code
+   * session.sheet().productionOrganizations()}，让今天的 E2 组织也能被 {@link DebtPartyResolver} 看见。
+   */
+  static SettlementIndex build(
+      Map<ProductionUnitId, ProductionUnit> units,
+      Map<IndustryId, Industry> industries,
+      Map<AssetShareId, AssetShare> assetShares,
+      Map<LaborAllocationId, LaborAllocation> allocations,
+      Map<HouseholdId, ClassRow> rows,
+      Map<DebtContractId, DebtContract> debts,
+      Map<ProductionUnitId, ProductionRelation> relations,
+      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(industries, "industries");
     Objects.requireNonNull(assetShares, "assetShares");
     Objects.requireNonNull(allocations, "allocations");
     Objects.requireNonNull(rows, "rows");
     Objects.requireNonNull(relations, "relations");
+    Objects.requireNonNull(organizations, "organizations");
 
     Map<ProductionUnitId, Map<AssetKind, Long>> usable = usableAssets(units, assetShares);
     Map<ProductionUnitId, Long> capacity = capacityScale(units, industries, usable);
@@ -153,7 +181,9 @@ final class SettlementIndex {
         unitsByHex(units),
         hexByUnit(units),
         industriesByHex(industries),
-        debtsByDebtor(debts));
+        debtsByDebtor(debts),
+        unitsByParty(units, relations, assetShares, shareIds),
+        organizationsByActor(organizations, units));
   }
 
   /** ★ 劳动配额被改写之后的阶段边界视图：共享资产/格/产业/债务，只重建配额侧派生量。 */
@@ -180,7 +210,9 @@ final class SettlementIndex {
         unitsByHex,
         hexByUnit,
         industriesByHex,
-        debtsByDebtor);
+        debtsByDebtor,
+        unitsByParty,
+        organizationsByActor);
   }
 
   /** ★ 债务被改写之后的阶段边界视图：共享资产/劳动/格/产业，只重建债务人索引。 */
@@ -202,7 +234,9 @@ final class SettlementIndex {
         unitsByHex,
         hexByUnit,
         industriesByHex,
-        debtsByDebtor(debts));
+        debtsByDebtor(debts),
+        unitsByParty,
+        organizationsByActor);
   }
 
   // ── 读口（一律 O(1) 查表；缺项返回空/0，与旧“无份额/无配额”口径同侧）────────────────────
@@ -262,6 +296,24 @@ final class SettlementIndex {
 
   Map<ActorRef, HouseholdId> householdByActor() {
     return householdByActor;
+  }
+
+  /**
+   * ★★ <b>P2：某个主体关联到的生产 unit 列表</b>（operator / relation.operator / relation.residualOwner /
+   * relation.inputSupplier(ToActor) / 份额 owner / 份额 operator 六路命中；序 = unit 表首次出现序）。
+   *
+   * <p>只读查询；空白主体（不在任何 unit 里）⇒ 空表。调用方用它回答"这个 actor 在哪些 unit 里出现"。
+   */
+  List<ProductionUnitId> unitsRelatedTo(ActorRef actor) {
+    return unitsByParty.getOrDefault(actor, List.of());
+  }
+
+  /**
+   * ★★ <b>P2：某个主体关联到的生产组织列表</b>（{@code organizer == actor} 或对应 unit 的 {@code operator == actor}；序 =
+   * 组织表首次出现序）。只读查询；空白 ⇒ 空表。
+   */
+  List<ProductionOrganization> organizationsOf(ActorRef actor) {
+    return organizationsByActor.getOrDefault(actor, List.of());
   }
 
   List<ProductionUnitId> unitsInHex(String hexKey) {
@@ -585,5 +637,92 @@ final class SettlementIndex {
       frozen.put(entry.getKey(), List.copyOf(entry.getValue()));
     }
     return Collections.unmodifiableMap(frozen);
+  }
+
+  /**
+   * ★★ <b>P2：主体 → 它在哪些 unit 里出现</b>（只读派生）。
+   *
+   * <p>命中集合固定为：{@code unit.operator}、{@code relation.operator}、{@code relation.residualOwner}、
+   * {@code relation.inputSupplier(ToActor)}、该 unit 名下 AssetShare 的 {@code owner} / {@code
+   * operator}。 一条 unit 对同一 actor 只记一次；最终 List 的序 = unit 表首次出现序（可复现）。
+   *
+   * <p>★ 为什么把份额 owner/operator 也收进来：E1 的解析顺序里份额是第③档，而 {@code AssetShare} 的归属判据是 {@code (industry,
+   * operator)} 作用域 —— 同一作用域下的每个 unit 拿到同一串份额，故这里逐 unit 展开， 与 {@link #assetShareIdsByUnit} 的口径保持一致。
+   */
+  private static Map<ActorRef, List<ProductionUnitId>> unitsByParty(
+      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionRelation> relations,
+      Map<AssetShareId, AssetShare> assetShares,
+      Map<ProductionUnitId, List<AssetShareId>> shareIdsByUnit) {
+    Map<ActorRef, LinkedHashSet<ProductionUnitId>> raw = new LinkedHashMap<>();
+    for (ProductionUnit unit : units.values()) {
+      addPartyUnit(raw, unit.operator(), unit.id());
+      ProductionRelation relation = relations.get(unit.id());
+      if (relation != null) {
+        addPartyUnit(raw, relation.operator(), unit.id());
+        addPartyUnit(raw, relation.residualOwner(), unit.id());
+        if (relation.inputSupplier() instanceof Recipient.ToActor toActor) {
+          addPartyUnit(raw, toActor.actor(), unit.id());
+        }
+      }
+      for (AssetShareId shareId : shareIdsByUnit.getOrDefault(unit.id(), List.of())) {
+        AssetShare share = assetShares.get(shareId);
+        if (share == null) {
+          continue;
+        }
+        addPartyUnit(raw, share.owner(), unit.id());
+        addPartyUnit(raw, share.operator(), unit.id());
+      }
+    }
+    Map<ActorRef, List<ProductionUnitId>> frozen = new LinkedHashMap<>();
+    for (Map.Entry<ActorRef, LinkedHashSet<ProductionUnitId>> entry : raw.entrySet()) {
+      frozen.put(entry.getKey(), List.copyOf(entry.getValue()));
+    }
+    return Collections.unmodifiableMap(frozen);
+  }
+
+  /** 同一 (actor, unit) 只记一次（保序）。 */
+  private static void addPartyUnit(
+      Map<ActorRef, LinkedHashSet<ProductionUnitId>> raw, ActorRef actor, ProductionUnitId unit) {
+    if (actor == null || unit == null) {
+      return;
+    }
+    raw.computeIfAbsent(actor, ignored -> new LinkedHashSet<>()).add(unit);
+  }
+
+  /**
+   * ★★ <b>P2：主体 → 关联生产组织</b>（{@code organizer == actor} 或组织对应 unit 的 {@code operator == actor}；同一
+   * actor 只记一次，序 = 组织表首次出现序）。
+   *
+   * <p>它服务 {@link DebtPartyResolver} 的聚合主体解析：优先用 E2 自动组织登记的 {@code laborSources} / 家户归属，
+   * 而不是直接按阶层人口猜。
+   */
+  private static Map<ActorRef, List<ProductionOrganization>> organizationsByActor(
+      Map<ProductionOrganizationId, ProductionOrganization> organizations,
+      Map<ProductionUnitId, ProductionUnit> units) {
+    Map<ActorRef, LinkedHashSet<ProductionOrganization>> raw = new LinkedHashMap<>();
+    for (ProductionOrganization organization : organizations.values()) {
+      addOrganizationActor(raw, organization.organizer(), organization);
+      organization
+          .unitId()
+          .map(units::get)
+          .ifPresent(unit -> addOrganizationActor(raw, unit.operator(), organization));
+    }
+    Map<ActorRef, List<ProductionOrganization>> frozen = new LinkedHashMap<>();
+    for (Map.Entry<ActorRef, LinkedHashSet<ProductionOrganization>> entry : raw.entrySet()) {
+      frozen.put(entry.getKey(), List.copyOf(entry.getValue()));
+    }
+    return Collections.unmodifiableMap(frozen);
+  }
+
+  /** 同一 (actor, 组织) 只记一次（保序）。 */
+  private static void addOrganizationActor(
+      Map<ActorRef, LinkedHashSet<ProductionOrganization>> raw,
+      ActorRef actor,
+      ProductionOrganization organization) {
+    if (actor == null || organization == null) {
+      return;
+    }
+    raw.computeIfAbsent(actor, ignored -> new LinkedHashSet<>()).add(organization);
   }
 }

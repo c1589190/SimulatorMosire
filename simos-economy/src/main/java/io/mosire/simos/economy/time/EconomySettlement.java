@@ -701,7 +701,15 @@ public final class EconomySettlement {
     //     日结算内始终有效。LaborAllocation 会在劳动再分配后被改写 ⇒ 那之后用 withLabor(...) 换一次配额侧视图；
     //     DebtContract 会在借粮/偿还/计息后被改写 ⇒ 状态机之前用 withDebtContracts(...) 换一次债务视图。
     SettlementIndex settlementIndex =
-        SettlementIndex.build(units, industries, assetShares, allocations, rows, debts, relations);
+        SettlementIndex.build(
+            units,
+            industries,
+            assetShares,
+            allocations,
+            rows,
+            debts,
+            relations,
+            session.sheet().productionOrganizations());
 
     // ★★ **H1 的第一条守卫：家户账必须覆盖每一个"要吃粮的家户"**（fail-closed；裁定 K1 / D3-C）——
     //   放在任何公式之前（与 E14 的"在任何数量计算之前"同款）：副本缺键时若继续跑，缺的那一家会被当成"库存 0"
@@ -767,7 +775,14 @@ public final class EconomySettlement {
           relations = session.sheet().relationsOrBase();
           settlementIndex =
               SettlementIndex.build(
-                  units, industries, assetShares, allocations, rows, debts, relations);
+                  units,
+                  industries,
+                  assetShares,
+                  allocations,
+                  rows,
+                  debts,
+                  relations,
+                  session.sheet().productionOrganizations());
         }
       }
       entryOutcomes = outcomes;
@@ -853,12 +868,21 @@ public final class EconomySettlement {
               householdGoods,
               markets,
               session.sheet().productionOrganizations());
-      if (!organizationOutcome.createdUnitIds().isEmpty()) {
-        // unit/关系/份额/配额都变了 ⇒ 换一份索引再进现有日结算（与 0-entry 的执行后重建同款）。
+      if (organizationOutcome.changed()) {
+        // unit/关系/份额/配额/组织任一变了 ⇒ 换一份索引再进现有日结算（与 0-entry 的执行后重建同款）。
+        // ★ P2：条件从"新建了 unit"放宽到 changed()，确保今天新落的 SHORTAGE/ACTIVE 组织也进
+        //   DebtPartyResolver 的组织视图（只有组织变化、没有新 unit 时旧索引会漏掉它们）。
         relations = session.sheet().relationsOrBase();
         settlementIndex =
             SettlementIndex.build(
-                units, industries, assetShares, allocations, rows, debts, relations);
+                units,
+                industries,
+                assetShares,
+                allocations,
+                rows,
+                debts,
+                relations,
+                session.sheet().productionOrganizations());
         // ★ 今天由组织阶段新建的 unit 加进"刚进入"豁免集：不得让它触发/参与同格既有周期的重排
         //   （与 R4-E2b 的 enteredToday 同一条口径；下一个日结算日它自然成为普通 unit）。
         Set<ProductionUnitId> withOrganized = new LinkedHashSet<>(enteredToday);
@@ -1043,11 +1067,12 @@ public final class EconomySettlement {
     // ── 3b. ★★ E4c：欠租/欠薪资本化（生产/租金阶段之后）─────────────────────────────────────
     //   ★★ 只对**本日 ledger 的 Arrear 读数**（owed > 0）执行：把"制度规定未付"落成连续合同债权；
     //     **不移动任何商品/货币库存**（欠款本来就是未付），也**不清零 Arrear 读数**（读数仍是制度事实）。
-    //   ★★ 端点必须解析到 HouseholdId（经 householdOfActor）；解析不到 ⇒ 具名跳过（不伪造）。
+    //   ★★ P2：端点解析改走 {@link DebtPartyResolver}（唯一解析点）：家户 actor 直取；聚合主体先查
+    //     E2 生产组织，再按 ESTATE/WORKSHOP 的人口成分回退；多户按人口最大余数拆分。解析不到 ⇒ 具名跳过（不伪造）。
     //   ★ 位置在**借粮/偿还之前**：新增的既有债因此同日进入 DebtCapacity（借粮额度）与偿还排序；
     //     但不在当日起始本金快照里 ⇒ 当天不计息（与借粮同口径，见 principalAtDayStart）。
     capitalizeArrears(
-        ledger, rows, debts, householdOfActor, capitalizedArrearsToday, day, dueCycle);
+        base, settlementIndex, ledger, rows, debts, capitalizedArrearsToday, day, dueCycle);
 
     // ── 4. 区域市场清算（M2.3/M2.4：每 5 天一轮 + 低库存追加轮；区内即时 / 跨区 ETA）────────────
     //   ★★ 调度只依赖**绝对世界日 + 当前状态**（M0.1）：两条推进路径在同一天必然同轮。
@@ -1276,7 +1301,14 @@ public final class EconomySettlement {
         //   这是**退出日的一次重建**（O(unit + 份额 + 配额)），不是逐查询重扫；退出本身是低频事件。
         settlementIndex =
             SettlementIndex.build(
-                units, industries, assetShares, allocations, rows, debts, relations);
+                units,
+                industries,
+                assetShares,
+                allocations,
+                rows,
+                debts,
+                relations,
+                session.sheet().productionOrganizations());
       }
     }
 
@@ -4407,7 +4439,9 @@ public final class EconomySettlement {
    *          —— E4c 的默认条款来源在 {@code DebtCapitalization.termsSource} 里显式标成
    *          {@value #CAPITALIZATION_TERMS_SOURCE}，不把未知条款静默并进默认条
    * amount = owed；day = 当日；dueCycle = 当前周期 + 1
-   * 端点   = householdOfActor.get(payer/payee) ∈ 家户行；任一解析不到 ⇒ 具名 unresolved，跳过，不伪造端点
+   * 端点   = P2：{@link DebtPartyResolver} 唯一解析点到责任家户；多户按人口最大余数拆 owed，
+   *          再对每个 debtor × creditor 组合经 {@link DebtPartyResolver#splitDebtAmounts} 守恒拆分。
+   *          任一端解析不到 ⇒ 具名 unresolved，跳过，不伪造端点；同户自债显式净额（不落合同）。
    * 库存   = **不动**：资本化只写债权本金；不铸转移、不扣库存/货币，也不清零 Arrear 读数
    * </pre>
    *
@@ -4417,20 +4451,27 @@ public final class EconomySettlement {
    * 600}； 粮库存一分不动（H1 与 H2 的账都保持原值）。同一日如果又读到一条完全相同的 600 欠款读数（同 activity/rule）， 去重后只写一次、金额
    * 1,200（{@code eventCount = 2}）。
    *
+   * <p>★★ <b>多户 × 多户的金额守恒</b>：{@code owed} 先按债务人份额、再逐债务人按债权人份额走最大余数法；每个组合金额 {@code > 0} 才落合同，Σ合同金额
+   * + 自债净额 == owed 由 {@link DebtPartyResolver#splitDebtAmounts} 用 {@code Math.addExact} 当场核对。组合数超过
+   * {@link DebtPartyResolver#MAX_PARTY_COMBINATIONS} 时具名拒绝 （整笔进 unresolved，不静默丢）。
+   *
+   * @param data 结算前的不可变状态（读 classes / classPositions / classStandings /
+   *     productionOrganizations）；不得为 null
+   * @param index 当日只读派生索引（主体↔unit / 主体↔组织 / 家户 actor）；不得为 null
    * @param ledger 当日累加器（读 {@code arrears()}、写资本化/跳过审计）；不得为 null
    * @param rows 家户行工作表（解析债务人后补派生引用）；不得为 null
    * @param debts 债务工作表（唯一写口 {@link DebtContractBook#upsert}）；不得为 null
-   * @param householdOfActor actor → 家户的当日反查表（E4c 身份解析的唯一来源）；不得为 null
    * @param capitalizedByHousehold 本日逐户逐 unit 的资本化累加器（就地更新 ⇒ 进 {@code FlowRow.capitalizedArrears}）；
    *     不得为 null
    * @param day 资本化发生日（进新合同 {@code openedDay}）；不得为负
    * @param dueCycle 资本化合同的到期周期（当前周期 + 1）
    */
   private static void capitalizeArrears(
+      EconomyData data,
+      SettlementIndex index,
       ProductionLedger.Accumulator ledger,
       Map<HouseholdId, ClassRow> rows,
       Map<DebtContractId, DebtContract> debts,
-      Map<ActorRef, HouseholdId> householdOfActor,
       LinkedHashMap<HouseholdId, Map<String, Long>> capitalizedByHousehold,
       long day,
       long dueCycle) {
@@ -4452,19 +4493,20 @@ public final class EconomySettlement {
       sampleByEvent.putIfAbsent(key, arrear);
       countByEvent.merge(key, 1, Integer::sum);
     }
-    // ★★ 第二步：逐事件解析端点 → upsert → 补派生引用 → 记审计。
+    // ★★ 第二步：逐事件解析两端 → 守恒拆金额 → 逐组合 upsert → 补派生引用 → 记审计。
     for (Map.Entry<CapitalizationEventKey, Long> entry : owedByEvent.entrySet()) {
       CapitalizationEventKey key = entry.getKey();
       ProductionSettlement.Arrear sample = sampleByEvent.get(key);
       long owed = entry.getValue();
       DebtUnit unit = unitOf(sample);
-      HouseholdId debtor = householdOfActor.get(key.payer());
-      HouseholdId creditor = householdOfActor.get(key.payee());
-      if (debtor == null || creditor == null) {
-        String reason =
-            debtor == null && creditor == null
-                ? "payer-and-payee-not-household"
-                : debtor == null ? "payer-not-household" : "payee-not-household";
+      Optional<ProductionUnitId> activity = Optional.of(sample.activity());
+      DebtPartyResolver.Resolution debtorShares =
+          DebtPartyResolver.resolveActor(data, index, sample.payer(), null, activity);
+      DebtPartyResolver.Resolution creditorShares =
+          DebtPartyResolver.resolveRecipient(
+              data, index, sample.rule().recipient(), null, activity);
+      if (!debtorShares.isResolved() || !creditorShares.isResolved()) {
+        String reason = unresolvedDebtCapitalizationReason(debtorShares, creditorShares);
         ledger.addUnresolvedDebtCapitalization(
             new ProductionLedger.UnresolvedDebtCapitalization(
                 sample.payer(),
@@ -4477,38 +4519,94 @@ public final class EconomySettlement {
                 reason));
         continue;
       }
-      DebtTerms terms = DebtTerms.legacyDefault();
-      DebtContract contract =
-          DebtContractBook.upsert(
-              debts, debtor, creditor, unit, terms, owed, day, OptionalLong.of(dueCycle));
-      ClassRow row = rows.get(debtor);
-      if (row == null) {
-        // 端点来自 householdOfActor（同源于 rows），解析到却查不到行 = 状态已被改坏，fail-closed。
-        throw new IllegalStateException(
-            "资本化解出的债务人不在 rows 里（householdOfActor 与 rows 漂开）: " + debtor);
+      DebtPartyResolver.DebtSplit split =
+          DebtPartyResolver.splitDebtAmounts(owed, debtorShares.shares(), creditorShares.shares());
+      if (split.rejected()) {
+        ledger.addUnresolvedDebtCapitalization(
+            new ProductionLedger.UnresolvedDebtCapitalization(
+                sample.payer(),
+                sample.payee(),
+                sample.activity(),
+                sample.rule(),
+                sample.commodity(),
+                sample.currency(),
+                owed,
+                "split-rejected:" + split.rejectionReason()));
+        continue;
       }
-      rows.put(debtor, DebtContractBook.withDebtReference(row, contract.id()));
-      ledger.addDebtCapitalization(
-          new ProductionLedger.DebtCapitalization(
-              sample.payer(),
-              sample.payee(),
-              sample.activity(),
-              sample.rule(),
-              debtor,
-              creditor,
-              contract.id(),
-              unit,
-              owed,
-              day,
-              dueCycle,
-              terms,
-              CAPITALIZATION_TERMS_SOURCE,
-              contract.principal(),
-              countByEvent.get(key)));
-      capitalizedByHousehold
-          .computeIfAbsent(debtor, ignored -> new LinkedHashMap<>())
-          .merge(unit.key(), owed, Math::addExact);
+      if (split.selfNettedAmount() > 0L) {
+        // ★ 同户自债没有可落合同的真实债权；金额仍守恒（split 内已核），这里显式记审计、不伪造对方。
+        ledger.addUnresolvedDebtCapitalization(
+            new ProductionLedger.UnresolvedDebtCapitalization(
+                sample.payer(),
+                sample.payee(),
+                sample.activity(),
+                sample.rule(),
+                sample.commodity(),
+                sample.currency(),
+                split.selfNettedAmount(),
+                "self-party-netted:" + split.selfHouseholds().size() + "-households"));
+      }
+      DebtTerms terms = DebtTerms.legacyDefault();
+      for (DebtPartyResolver.DebtAmount amount : split.amounts()) {
+        DebtContract contract =
+            DebtContractBook.upsert(
+                debts,
+                amount.debtor(),
+                amount.creditor(),
+                unit,
+                terms,
+                amount.amount(),
+                day,
+                OptionalLong.of(dueCycle));
+        ClassRow debtorRow = rows.get(amount.debtor());
+        if (debtorRow == null) {
+          // 端点来自 DebtPartyResolver（同源于 data.classes），解析到却查不到行 = 状态已被改坏，fail-closed。
+          throw new IllegalStateException(
+              "资本化解出的债务人不在 rows 里（DebtPartyResolver 与 rows 漂开）: " + amount.debtor());
+        }
+        if (!rows.containsKey(amount.creditor())) {
+          throw new IllegalStateException(
+              "资本化解出的债权人不在 rows 里（DebtPartyResolver 与 rows 漂开）: " + amount.creditor());
+        }
+        rows.put(amount.debtor(), DebtContractBook.withDebtReference(debtorRow, contract.id()));
+        ledger.addDebtCapitalization(
+            new ProductionLedger.DebtCapitalization(
+                sample.payer(),
+                sample.payee(),
+                sample.activity(),
+                sample.rule(),
+                amount.debtor(),
+                amount.creditor(),
+                contract.id(),
+                unit,
+                amount.amount(),
+                day,
+                dueCycle,
+                terms,
+                CAPITALIZATION_TERMS_SOURCE,
+                contract.principal(),
+                countByEvent.get(key)));
+        capitalizedByHousehold
+            .computeIfAbsent(amount.debtor(), ignored -> new LinkedHashMap<>())
+            .merge(unit.key(), amount.amount(), Math::addExact);
+      }
     }
+  }
+
+  /** ★★ P2：未解析端点的具名 reason（payer / payee 各自带解析器内部原因，便于逐跳诊断）。 */
+  private static String unresolvedDebtCapitalizationReason(
+      DebtPartyResolver.Resolution debtors, DebtPartyResolver.Resolution creditors) {
+    if (!debtors.isResolved() && !creditors.isResolved()) {
+      return "payer-not-resolvable:"
+          + debtors.reason()
+          + ";payee-not-resolvable:"
+          + creditors.reason();
+    }
+    if (!debtors.isResolved()) {
+      return "payer-not-resolvable:" + debtors.reason();
+    }
+    return "payee-not-resolvable:" + creditors.reason();
   }
 
   /** ★ E4c：Arrear 的显式 unit（与 {@code RuleSettlement} 的"commodity/currency 恰其一"同源；坏数据 ⇒ 具名抛）。 */
