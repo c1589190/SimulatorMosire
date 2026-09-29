@@ -20,7 +20,9 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtUnit;
+import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -62,6 +64,7 @@ import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionCandidate;
+import io.mosire.simos.economy.model.ProductionOrganization;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.time.ClassTransition;
 import io.mosire.simos.economy.time.ClassTransitionFeed;
@@ -143,6 +146,7 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * JSON 视图装配（M5 T8）：把领域类型转成 GUI 直读的 {@link Map} / {@link List} 树，**只读、无副作用**。
@@ -683,8 +687,11 @@ public final class ApiViews {
     view.put("moneyLayers", moneyLayers(actorMoneyTotal));
     // ★★ E3：发行/回笼/流通量与 actor kind / 家户阶层聚合（世界级时点口径；见方法注释）。
     view.put("moneyIssuance", moneyIssuanceView(data, moneyTotals(actors)));
-    view.put("moneyByActorKind", moneyByActorKind(actors));
-    view.put("moneyByHouseholdClass", moneyByHouseholdClass(data, actors));
+    // ★★ E6c：这两栏同时进 dashboard.stocks ⇒ 只调用一次 E3 的唯一聚合算法，两处共用同一份。
+    Map<String, Map<String, Long>> moneyByKind = moneyByActorKind(actors);
+    Map<String, Map<String, Long>> moneyByClass = moneyByHouseholdClass(data, actors);
+    view.put("moneyByActorKind", moneyByKind);
+    view.put("moneyByHouseholdClass", moneyByClass);
     // ★★ H4：**本格的市场**（M1-A：单一计价货币 + 固定价表）；★ 该格没有市场 ⇒ {@code null}（**合法状态**：
     //   "这一格没有市场"与"这一格读不到数据"是两件事，前者要能在界面上看见）。★ 视图只**读**，不重算价表。
     view.put("market", marketView(data.markets().get(coord)));
@@ -769,7 +776,9 @@ public final class ApiViews {
               "debtCapacity",
               debtCapacityView(classKeys.get(i), debtCapacities.get(classKeys.get(i))));
     }
-    view.put("debtCapacity", debtCapacityBlockView(classKeys, debtCapacities));
+    // ★★ E6c：同一份 E4b 块视图（唯一算法只算一次）同时挂顶层旧键与 dashboard.derived.creditPosition。
+    Map<String, Object> debtCapacityBlock = debtCapacityBlockView(classKeys, debtCapacities);
+    view.put("debtCapacity", debtCapacityBlock);
     // ★ 索引一次、逐户 O(1)：读口一格里通常 4 行，但分类要扫 UsesRight/配额/租规则，不能每户各扫一遍。
     HouseholdClassRule.Index classIndex = HouseholdClassRule.Index.of(data);
     List<Map<String, Object>> householdConditions = new ArrayList<>();
@@ -859,6 +868,22 @@ public final class ApiViews {
     view.put(
         "grainDiagnosis",
         grainDiagnosis(coord, data, actors, grainStock, goods, actorMoneyTotal, report));
+    // ★★ E6c：统一 dashboard（stocks/flows/derived/crisis/windows）——只新增这一个键，旧键名与形状不变。
+    //   ★ GUI 与 MCP 共用本函数（ToolSupport.economyHex = ApiViews.economyHex），不新开路由/工具。
+    view.put(
+        "dashboard",
+        economyDashboard(
+            coord,
+            data,
+            actors,
+            moneyByKind,
+            moneyByClass,
+            classKeys,
+            debtCapacities,
+            debtCapacityBlock,
+            report,
+            tick,
+            readoutUnavailable));
     return view;
   }
 
@@ -1000,6 +1025,1168 @@ public final class ApiViews {
         "clothValueInGrain",
         price == null || price <= 0L || clothPrice == null ? null : cloth * clothPrice / price);
     return view;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────────────────────
+  // ★★ E6c：统一经济 dashboard（只读聚合；GUI 与 MCP 共用同一份，不新增路由/工具）
+  //
+  // 字段树（每个字段的窗口与来源见 {@link #economyDashboard} 的类注与同一响应里的 windows 块）：
+  //   stocks  —— 时点存量：债务本金（按 unit，逐户+合计）/ 资产份额（按 AssetKind）/ 货币分布 /
+  //              人口阶层分布
+  //   flows   —— 本期流量：本格家户 FlowRow 的逐字段合计（本周期至今；关账日读到的即整周期）
+  //   derived —— 本期派生：F/headroom（复用 E4b 唯一算法）/ 债务对产出 / 利息对 F / 基本需求缺口 /
+  //              下一轮投入缺口 + SHORTAGE 具名汇总
+  //   crisis  —— 本格 crisisSignals（复用 E5a 唯一来源）
+  //   windows —— 逐字段组窗口 + 缺库存/缺价格/缺数据的具名 unavailable
+  //
+  // ★★ 只读：全部从 EconomyData / ActorData 的**现值**与既有唯一算法现算，不写任何状态、不落新组件。
+  // ★★ 旧键保持：dashboard 只是 economyHex / economyOwnership 的新增键，旧键名与形状一字不动。
+  // ─────────────────────────────────────────────────────────────────────────────────────────────
+
+  /** ★★ E6c：dashboard 缺 FlowRow 的具名原因（唯一拼写点；缺失不是 0，也不拿别的行顶替）。 */
+  private static final String DASHBOARD_FLOW_ROW_MISSING =
+      "该家户在本 EconomyData.flows 里没有 FlowRow（29 组件空表/旧档缺键，或该户尚未结算）⇒ " + "它未计入任何流量合计；缺失不是 0，也不拿别的行顶替";
+
+  /** ★★ E6c：货币单位没有「本周期产出」口径的具名原因（唯一拼写点）。 */
+  private static final String DASHBOARD_MONEY_OUTPUT_UNAVAILABLE =
+      "money 单位没有本周期货币产出口径：FlowRow.income 只有商品（没有货币收入字段）；"
+          + "进程内 MarketReport 只有最近一轮开市的成交，不是本周期累计 ⇒ 债务/产出的 money 分母具名缺失，"
+          + "不拿单轮成交当周期量、不硬折成粮";
+
+  /** ★★ E6c：economy 切片没有国家维的具名原因（唯一拼写点）。 */
+  private static final String DASHBOARD_NATION_SCOPE_UNAVAILABLE =
+      "economy 切片没有国家/政区维（Nation 在 map/sd 侧；economyHex/economyOwnership 的入参不含 map/SD）"
+          + "⇒ 债务/产出不能按「本国」汇总；本读口给 hex 与 world 两档，world 是全 EconomyData，不是某个国家";
+
+  /** ★★ E6c：非粮商品没有同窗口自然需求分母的具名原因（唯一拼写点）。 */
+  private static final String DASHBOARD_NON_GRAIN_NEED_DENOMINATOR =
+      "ClassRow.cycleNaturalNeedMilli 只累计自然口粮（grain）需要；该商品的 ClassRow.naturalNeeds 是"
+          + "最近一次结算日的日口径、不是本周期累计 ⇒ 相对缺口没有同窗口分母，只报绝对 unmetNeed，不硬折";
+
+  /** ★★ E6c：无有效价格/不硬折的具名原因（唯一拼写点；E4b 的 NO_UNIT_PRICES 同侧）。 */
+  private static final String DASHBOARD_PRICE_UNAVAILABLE =
+      "非粮/货币债务折成粮需要有效价格；E4b 起 DebtCapacityBook 的唯一价格钩子仍是 NO_UNIT_PRICES"
+          + "（E5 的价格源未落地）⇒ 不硬折：债务只按 unit 分栏，unpriced 部分见 debtCapacity.unpricedDebt*";
+
+  /** ★★ E6c：资产市值没有可信口径的具名原因（唯一拼写点）。 */
+  private static final String DASHBOARD_ASSET_MARKET_VALUE_UNAVAILABLE =
+      "资产市值/非粮折粮没有可信价格口径（Market 只服务商品现货、LiquidationPolicy 的政策价不是市值）" + "⇒ dashboard 只报实物数量，不折算成粮/钱";
+
+  /** ★★ E6c：ClassRow.debts 引用悬空的具名原因（唯一拼写点）。 */
+  private static final String DASHBOARD_DEBT_REF_DANGLING =
+      "ClassRow.debts 引用的 DebtContractId 不在 debtContracts 表中（状态不完整）⇒ 这些合同未计入"
+          + "逐户/合计本金与条数；缺失不是 0，不用别的债顶替";
+
+  /** ★★ E6c：进程内 MarketReport 不可得时的具名原因（唯一拼写点）。 */
+  private static final String DASHBOARD_MARKET_REPORT_UNAVAILABLE =
+      "进程内 MarketReport 不可得（economyOwnership 与 economyHex 的 3 参重载没有 SimulationState；"
+          + "或重启/换进程/本轮没开市）⇒ 最近一轮市场成交参考口径具名缺失；它不是本周期货币产出";
+
+  /** ★★ E6c：比值分母为 0 的具名原因（F=0 / 自然需要=0 / 产出=0；唯一拼写点）。 */
+  private static final String DASHBOARD_DENOMINATOR_ZERO =
+      "分母合计 = 0 ⇒ 比值无定义；给 null + 本具名原因，绝不除零、也不填 0 冒充";
+
+  /** ★★ E6c：比值数值超出安全范围的具名原因（避免乘 1000 溢出时抛异常/给错值）。 */
+  private static final String DASHBOARD_RATIO_OVERFLOW =
+      "比值超出 long 安全范围（分子 > Long.MAX_VALUE/1000）⇒ 给 null + 本具名原因，不抛、不截断";
+
+  /** ★★ E6c：economyOwnership 入口没有 SimulationState 上下文的具名原因（唯一拼写点）。 */
+  private static final String ECONOMY_OWNERSHIP_NO_STATE =
+      "economyOwnership（3 参）没有 SimulationState 上下文（与 economyHex 的 3 参重载同款）⇒ tick 与进程内"
+          + " MarketReport/readout 不可得；dashboard 的时点/本周期字段仍从 EconomyData 现算，只有"
+          + "「最近一轮市场成交」等进程内参考口径具名缺失";
+
+  // dashboard.windows 的逐字段组窗口字符串（唯一拼写点）。
+  private static final String DASHBOARD_STOCK_DEBT_WINDOW =
+      "时点：当前 revision 的 ClassRow.debts + debtContracts；逐 DebtUnit.key()（commodity:<id>/money:<id>）分栏，粮与钱不合并、不硬折";
+  private static final String DASHBOARD_STOCK_ASSET_WINDOW =
+      "时点：当前 revision 的 assetShares（industry 的格键 = 本格）；数量单位随 AssetKind（LAND 千分亩、其余件）";
+  private static final String DASHBOARD_STOCK_MONEY_WINDOW =
+      "时点：当前 revision 的 actor GoodsAccount.money；世界级（复用 moneyByActorKind / moneyByHouseholdClass 的唯一算法），逐币种不跨币种求和";
+  private static final String DASHBOARD_STOCK_POPULATION_WINDOW =
+      "时点：ClassRow.population / ClassStanding.currentPositionId；无 ClassStanding 的旧档按 ClassRow.view.stratum 投影";
+  private static final String DASHBOARD_FLOW_WINDOW =
+      "本周期至今：FlowRow 逐字段（新周期第一天清零）；关账日读到的就是整周期（上周期读数归档在关账那一支 revision 里）";
+  private static final String DASHBOARD_DERIVED_CREDIT_WINDOW =
+      "F/headroom：混合窗口（income/taxPaid=本周期、basicRation=本周期累计、nextRoundNecessaryInput=读口时点配方、"
+          + "grainStock=读口时点）；逐字段口径见 debtCapacity.window（E4b 唯一算法 DebtCapacityBook）";
+  private static final String DASHBOARD_DERIVED_DEBT_OUTPUT_WINDOW =
+      "债务本金=时点；commodity 产出=本周期至今（FlowRow.income[commodity]）；money 产出=具名缺失；跨窗口结构比只作趋势诊断";
+  private static final String DASHBOARD_DERIVED_INTEREST_F_WINDOW =
+      "interestDue=本周期至今（FlowRow.interestDue 合计）；F=混合窗口（同 DebtCapacity）";
+  private static final String DASHBOARD_DERIVED_NEED_GAP_WINDOW =
+      "unmetNeed=本周期至今（FlowRow.unmetNeed 合计）；cycleNaturalNeedMilli=本周期累计（逐日日初人口累加；仅粮）";
+  private static final String DASHBOARD_DERIVED_NEXT_INPUT_WINDOW =
+      "nextRoundNecessaryInput=读口时点配方口径；source=NON_RATION_CONSUMED_PROXY 时是本周期实际非口粮投入的代理，"
+          + "不是真实下一轮投入；SHORTAGE=时点（ProductionOrganization.statusReason 具名）";
+  private static final String DASHBOARD_CRISIS_WINDOW =
+      "时点：EconomyData.crisisSignals（本格；signal.day 是发生日）；空列表 = 本格没有信号，不是读不到";
+
+  /**
+   * ★★ <b>E6c：统一经济 dashboard</b>（GUI / MCP 共用的唯一装配点；只读、无副作用）。
+   *
+   * <pre>
+   * dashboard
+   * ├─ scope                    本格坐标 / 家户数 / 经济激活 / 各分组口径范围
+   * ├─ stocks                   【时点存量】
+   * │  ├─ debtPrincipal         按 unit：principal / contractCount / defaultedCount / delinquentCount；
+   * │  │                        逐户 + 合计（债务人侧；复用 ClassRow.debts 权威引用，按 id 去重）
+   * │  ├─ assetSharesByKind     按 AssetKind：totalQuantity / ownershipByActor / operationByActor /
+   * │  │                        selfOperatedQuantity / ownerNotOperatorQuantity / tenancy* / kind*
+   * │  ├─ moneyByActorKind      复用 {@link #moneyByActorKind(ActorData)}
+   * │  ├─ moneyByHouseholdClass 复用 {@link #moneyByHouseholdClass(EconomyData, ActorData)}
+   * │  └─ populationByClassPosition 按 ClassStanding.currentPositionId（无 standing 用 view.stratum 投影）
+   * ├─ flows                   【本周期流量】FlowRow 的 income/consumed/taxPaid/interestDue/newBorrowing/
+   * │                          repaid/repaidMoney/capitalizedArrears/netSurplus/unmetNeed 合计
+   * ├─ derived                 【本期派生】
+   * │  ├─ creditPosition       复用 DebtCapacityBook（E4b 唯一 F/headroom 算法）的同一份块视图
+   * │  ├─ debtToOutput         按 unit 的债务本金与 FlowRow.income[commodity]；money unit 具名缺失
+   * │  ├─ interestToF          interestDue 合计 ÷ F 合计（F=0 ⇒ null + 具名 reason）
+   * │  ├─ basicNeedGap         unmetNeed 逐商品；粮对 cycleNaturalNeedMilli，非粮具名缺失
+   * │  └─ nextRoundInputGap    DebtCapacity.nextRoundNecessaryInput + source；SHORTAGE 具名按原因汇总
+   * ├─ crisis                  本格 crisisSignals（复用 {@link #crisisSignalViews(EconomyData, HexCoord)}）
+   * └─ windows                 逐字段组窗口 + 缺库存/缺价格/缺数据的具名 unavailable
+   * </pre>
+   *
+   * <p>★★ <b>唯一算法/唯一拼写点</b>：本方法只做「按键求和 + 组织视图」，不复制任何 economy 公式—— F/headroom 走 {@link
+   * DebtCapacityBook} 与 {@link DebtCapacity}；货币聚合走 {@link #moneyByActorKind}/{@link
+   * #moneyByHouseholdClass}；危机信号走 {@link #crisisSignalViews}； 流量的逐字段 shape 与 {@link #flowView}
+   * 同源（窗口字符串亦同源）。新增的聚合 helper 都住本文件： {@link #hexDebtStock}/{@link #UnitDebtAggregate}/{@link
+   * #AssetKindAggregate}/ {@link #ClassPositionAggregate}/{@link #HexFlowAggregate}。
+   *
+   * <p>★★ <b>缺数据纪律</b>：29 个组件空表/缺键时，数组为空、比值为 null，并给出具名 reason；绝不填 0 冒充 「没有发生」「没有缺口」「没有信用」。库存读不到时沿用
+   * E4b 的 {@link #DEBT_CAPACITY_STOCK_UNREADABLE}。
+   */
+  private static Map<String, Object> economyDashboard(
+      HexCoord coord,
+      EconomyData data,
+      ActorData actors,
+      Map<String, Map<String, Long>> moneyByKind,
+      Map<String, Map<String, Long>> moneyByClass,
+      List<HouseholdId> householdKeys,
+      Map<HouseholdId, DebtCapacity> debtCapacities,
+      Map<String, Object> debtCapacityBlock,
+      Optional<MarketReport> report,
+      long tick,
+      String readoutUnavailable) {
+    Map<String, Object> dashboard = new LinkedHashMap<>();
+    Map<String, Object> scope = new LinkedHashMap<>();
+    scope.put("hex", hexCoord(coord));
+    scope.put("householdCount", householdKeys.size());
+    scope.put("economyActivated", data.meta().isPresent());
+    scope.put("tick", tick < 0L ? null : tick);
+    scope.put("stockScope", "债务/资产/人口 = 本格家户（ClassRow.view.hex == 本格）；货币分布 = 世界级（唯一算法不按格过滤）");
+    scope.put("flowScope", "本格家户（ClassRow.view.hex == 本格）");
+    scope.put("derivedScope", "F/headroom/nextRoundInput = 本格家户；债务/产出另给 world 档（economy 无国家维）");
+    dashboard.put("scope", scope);
+
+    HexDebtStock hexDebt = hexDebtStock(data, householdKeys);
+    HexFlowAggregate hexFlows = hexFlowAggregate(data, householdKeys);
+    dashboard.put(
+        "stocks", dashboardStocks(data, coord, moneyByKind, moneyByClass, householdKeys, hexDebt));
+    dashboard.put("flows", hexFlows.view());
+    dashboard.put(
+        "derived",
+        dashboardDerived(
+            data,
+            actors,
+            coord,
+            householdKeys,
+            debtCapacities,
+            debtCapacityBlock,
+            hexDebt,
+            hexFlows,
+            report));
+    Map<String, Object> crisis = new LinkedHashMap<>();
+    crisis.put("scope", "本格");
+    crisis.put("source", "EconomyData.crisisSignals（E5a 唯一来源；空列表 = 本格没有信号，不是读不到）");
+    crisis.put("signals", crisisSignalViews(data, coord));
+    crisis.put("unavailable", null);
+    dashboard.put("crisis", crisis);
+    dashboard.put("windows", dashboardWindows(report, tick, readoutUnavailable));
+    return dashboard;
+  }
+
+  /** dashboard 的 stocks 分组（时点存量；只读聚合）。 */
+  private static Map<String, Object> dashboardStocks(
+      EconomyData data,
+      HexCoord coord,
+      Map<String, Map<String, Long>> moneyByKind,
+      Map<String, Map<String, Long>> moneyByClass,
+      List<HouseholdId> householdKeys,
+      HexDebtStock hexDebt) {
+    Map<String, Object> stocks = new LinkedHashMap<>();
+    stocks.put("debtPrincipal", debtPrincipalStockView(hexDebt));
+    stocks.put("assetSharesByKind", assetSharesByKindStockView(data, coord));
+    stocks.put(
+        "assetSharesNote",
+        "assetSharesByKind 只统计 industry 格键 = 本格的份额；ownershipByActor/operationByActor 的 Σ 都等于"
+            + " totalQuantity（资产守恒的读侧证据）；TENANCY 数量单列，不把租佃份额混进所有权");
+    // ★★ 复用 E3 的唯一算法：传入的正是顶层 moneyByActorKind/moneyByHouseholdClass 的同一份结果。
+    stocks.put("moneyByActorKind", moneyByKind);
+    stocks.put("moneyByHouseholdClass", moneyByClass);
+    stocks.put("moneyWindow", DASHBOARD_STOCK_MONEY_WINDOW);
+    stocks.put("moneyNote", "逐币种表，不跨币种求和；发行/回笼/流通量见顶层 moneyIssuance（同一状态源，不重复发）");
+    stocks.put(
+        "populationByClassPosition", populationByClassPositionStockView(data, householdKeys));
+    return stocks;
+  }
+
+  /**
+   * ★★ E6c：本格家户的债务存量读数（一次聚合，stocks 与 debtToOutput 共用）。
+   *
+   * <p>方向：债务人侧 = {@link ClassRow#debts()}（放贷时写下的权威清单；按 id 去重，避免同一引用重复计数）。 债权人侧不在本块重复：旧键 {@code
+   * creditCount}/{@code creditPrincipal} 与逐行 {@code credits} 已发出。
+   */
+  private static HexDebtStock hexDebtStock(EconomyData data, List<HouseholdId> householdKeys) {
+    HexDebtStock stock = new HexDebtStock();
+    for (HouseholdId key : householdKeys) {
+      ClassRow row = data.classes().get(key);
+      if (row == null) {
+        Map<String, Object> missing = new LinkedHashMap<>();
+        missing.put("household", key.value());
+        missing.put("byUnit", new TreeMap<>());
+        missing.put("unavailable", "该家户在 EconomyData.classes 里没有行（状态不完整）⇒ 债务存量不算，不填 0");
+        stock.households.add(missing);
+        continue;
+      }
+      Map<String, UnitDebtAggregate> byUnit = new TreeMap<>();
+      int dangling = 0;
+      for (DebtContractId debtId : new LinkedHashSet<>(row.debts())) {
+        DebtContract debt = data.debtContracts().get(debtId);
+        if (debt == null) {
+          dangling++;
+          continue;
+        }
+        String unitKey = debt.unit().key();
+        byUnit.computeIfAbsent(unitKey, ignored -> new UnitDebtAggregate(debt.unit())).add(debt);
+        stock
+            .totalByUnit
+            .computeIfAbsent(unitKey, ignored -> new UnitDebtAggregate(debt.unit()))
+            .add(debt);
+      }
+      stock.unresolvedReferences += dangling;
+      stock.households.add(householdDebtStockView(key, byUnit, dangling));
+    }
+    return stock;
+  }
+
+  /** 一个家户的债务存量视图（byUnit + 逐 unit 的合同条数/违约条数）。 */
+  private static Map<String, Object> householdDebtStockView(
+      HouseholdId key, Map<String, UnitDebtAggregate> byUnit, int dangling) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("household", key.value());
+    Map<String, Object> units = new TreeMap<>();
+    long contracts = 0L;
+    long defaulted = 0L;
+    long delinquent = 0L;
+    for (Map.Entry<String, UnitDebtAggregate> entry : byUnit.entrySet()) {
+      units.put(entry.getKey(), entry.getValue().view());
+      contracts += entry.getValue().contractCount;
+      defaulted += entry.getValue().defaultedCount;
+      delinquent += entry.getValue().delinquentCount;
+    }
+    view.put("byUnit", units);
+    view.put("principalNote", "本金不跨 unit 合计（粮/钱/其它商品各自计量）；逐 unit 本金见 byUnit");
+    view.put("contractCount", contracts);
+    view.put("defaultedCount", defaulted);
+    view.put("delinquentCount", delinquent);
+    view.put("unresolvedDebtReferenceCount", dangling);
+    view.put("unresolvedDebtReferenceReason", dangling > 0 ? DASHBOARD_DEBT_REF_DANGLING : null);
+    return view;
+  }
+
+  /** 本格家户债务人侧的债务存量块：逐户 + 按 unit 合计 + 总条数/违约条数。 */
+  private static Map<String, Object> debtPrincipalStockView(HexDebtStock stock) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put(
+        "scope",
+        "本格家户（ClassRow.view.hex == 本格）的债务人侧；逐条引用 ClassRow.debts（按 id 去重）；"
+            + "债权人侧见顶层 creditCount/creditPrincipal 与逐行 credits");
+    view.put("window", DASHBOARD_STOCK_DEBT_WINDOW);
+    Map<String, Object> byUnit = new TreeMap<>();
+    long contracts = 0L;
+    long defaulted = 0L;
+    long delinquent = 0L;
+    Map<String, Long> statusCounts = new TreeMap<>();
+    for (Map.Entry<String, UnitDebtAggregate> entry : stock.totalByUnit.entrySet()) {
+      UnitDebtAggregate aggregate = entry.getValue();
+      byUnit.put(entry.getKey(), aggregate.view());
+      contracts += aggregate.contractCount;
+      defaulted += aggregate.defaultedCount;
+      delinquent += aggregate.delinquentCount;
+      for (Map.Entry<String, Long> status : aggregate.statusCounts.entrySet()) {
+        statusCounts.merge(status.getKey(), status.getValue(), Long::sum);
+      }
+    }
+    Map<String, Object> total = new LinkedHashMap<>();
+    total.put("principalNote", "本金不跨 unit 合计（粮与钱不硬折、不同商品不硬折）；逐 unit 本金见 byUnit");
+    total.put("contractCount", contracts);
+    total.put("defaultedCount", defaulted);
+    total.put("delinquentCount", delinquent);
+    total.put("statusCounts", statusCounts);
+    view.put("byUnit", byUnit);
+    view.put("total", total);
+    // ★ 便于直读的顶层合计（与 total 同一份来源；本金不跨 unit 合计，故顶层不发 principal）。
+    view.put("contractCount", contracts);
+    view.put("defaultedCount", defaulted);
+    view.put("delinquentCount", delinquent);
+    view.put("households", stock.households);
+    view.put("householdCount", stock.households.size());
+    view.put("unresolvedDebtReferenceCount", stock.unresolvedReferences);
+    view.put(
+        "unresolvedDebtReferenceReason",
+        stock.unresolvedReferences > 0 ? DASHBOARD_DEBT_REF_DANGLING : null);
+    view.put("unitNote", "每个 unit key 各自计量；不把 money 折成粮、也不把粮折成钱（跨 unit 求和无意义）");
+    return view;
+  }
+
+  /**
+   * ★★ E6c：按 {@link AssetKind} 的本格资产份额聚合。
+   *
+   * <p>ownershipByActor = 按 {@code owner} 求和；operationByActor = 按 {@code operator} 求和； 两者各自的 Σ 都等于
+   * totalQuantity（产权/经营数量来自同一批份额）。TENANCY 数量单列； selfOperatedQuantity = owner ==
+   * operator，ownerNotOperatorQuantity = owner != operator。
+   */
+  private static List<Map<String, Object>> assetSharesByKindStockView(
+      EconomyData data, HexCoord coord) {
+    String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
+    Map<AssetKind, AssetKindAggregate> byKind = new TreeMap<>();
+    for (AssetShare share : data.assetShares().values()) {
+      if (IndustryHexKeys.hexKeyOf(share.industry()).filter(hexKey::equals).isEmpty()) {
+        continue;
+      }
+      byKind
+          .computeIfAbsent(share.asset(), ignored -> new AssetKindAggregate(share.asset()))
+          .add(share);
+    }
+    List<Map<String, Object>> out = new ArrayList<>(byKind.size());
+    for (AssetKindAggregate aggregate : byKind.values()) {
+      out.add(aggregate.view());
+    }
+    return out;
+  }
+
+  /** 单个 AssetKind 的聚合中间量（读口私有；只在本文件的 dashboard 聚合里用）。 */
+  private static final class AssetKindAggregate {
+    private final AssetKind asset;
+    private final Map<String, Long> kindQuantity = new TreeMap<>();
+    private final Map<String, Long> kindCount = new TreeMap<>();
+    private final Map<String, Long> ownershipByActor = new TreeMap<>();
+    private final Map<String, Long> operationByActor = new TreeMap<>();
+    private final Map<String, ActorRef> actorRefs = new LinkedHashMap<>();
+    private long totalQuantity;
+    private long shareCount;
+    private long selfOperatedQuantity;
+    private long ownerNotOperatorQuantity;
+    private long tenancyQuantity;
+    private long tenancyShareCount;
+
+    private AssetKindAggregate(AssetKind asset) {
+      this.asset = asset;
+    }
+
+    private void add(AssetShare share) {
+      long quantity = share.quantity();
+      totalQuantity += quantity;
+      shareCount++;
+      kindQuantity.merge(share.kind().name(), quantity, Long::sum);
+      kindCount.merge(share.kind().name(), 1L, Long::sum);
+      actorRefs.putIfAbsent(share.owner().toString(), share.owner());
+      actorRefs.putIfAbsent(share.operator().toString(), share.operator());
+      ownershipByActor.merge(share.owner().toString(), quantity, Long::sum);
+      operationByActor.merge(share.operator().toString(), quantity, Long::sum);
+      if (share.owner().equals(share.operator())) {
+        selfOperatedQuantity += quantity;
+      } else {
+        ownerNotOperatorQuantity += quantity;
+      }
+      if (share.kind() == AssetShare.RightKind.TENANCY) {
+        tenancyQuantity += quantity;
+        tenancyShareCount++;
+      }
+    }
+
+    private Map<String, Object> view() {
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("asset", asset.name());
+      view.put("totalQuantity", totalQuantity);
+      view.put("shareCount", shareCount);
+      view.put("selfOperatedQuantity", selfOperatedQuantity);
+      view.put("ownerNotOperatorQuantity", ownerNotOperatorQuantity);
+      view.put("tenancyQuantity", tenancyQuantity);
+      view.put("tenancyShareCount", tenancyShareCount);
+      view.put("ownershipByActor", actorQuantityViews(ownershipByActor, actorRefs));
+      view.put("operationByActor", actorQuantityViews(operationByActor, actorRefs));
+      view.put("kindQuantity", new TreeMap<>(kindQuantity));
+      view.put("kindCount", new TreeMap<>(kindCount));
+      return view;
+    }
+  }
+
+  /** 把「actor 规范串 → 数量」展开成保序（字典序）的读侧形；同一份 actor 引用表服务 ownership/operation。 */
+  private static List<Map<String, Object>> actorQuantityViews(
+      Map<String, Long> quantities, Map<String, ActorRef> actorRefs) {
+    List<Map<String, Object>> out = new ArrayList<>(quantities.size());
+    for (Map.Entry<String, Long> entry : quantities.entrySet()) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("actor", actorRefView(actorRefs.get(entry.getKey())));
+      item.put("quantity", entry.getValue());
+      out.add(item);
+    }
+    return out;
+  }
+
+  /**
+   * ★★ E6c：本格人口的阶层分布（时点）。
+   *
+   * <p>位置来源：有 {@link ClassStanding} ⇒ {@code currentPositionId}；无 standing 的旧档 ⇒ {@code "legacy:" +
+   * ClassRow.view.stratum}（显式投影，不改写状态、不伪造默认 position）。
+   */
+  private static Map<String, Object> populationByClassPositionStockView(
+      EconomyData data, List<HouseholdId> householdKeys) {
+    Map<String, ClassPositionAggregate> groups = new TreeMap<>();
+    int standingHouseholds = 0;
+    int legacyFallbackHouseholds = 0;
+    for (HouseholdId key : householdKeys) {
+      ClassRow row = data.classes().get(key);
+      if (row == null) {
+        continue;
+      }
+      ClassStanding standing = data.classStandings().get(key);
+      String classPosition;
+      boolean fromStanding;
+      if (standing != null) {
+        // ★ 位置键就是 currentPositionId（不与 legacy 投影共享命名空间前缀）。
+        classPosition = standing.currentPositionId().value();
+        fromStanding = true;
+        standingHouseholds++;
+      } else {
+        // ★ 旧档兼容：把 view.stratum 直接投影成位置键；来源由每条 source 字段标明。
+        classPosition = row.view().stratum().value();
+        fromStanding = false;
+        legacyFallbackHouseholds++;
+      }
+      groups
+          .computeIfAbsent(classPosition, ignored -> new ClassPositionAggregate())
+          .add(row, fromStanding);
+    }
+    List<Map<String, Object>> out = new ArrayList<>(groups.size());
+    for (Map.Entry<String, ClassPositionAggregate> entry : groups.entrySet()) {
+      out.add(entry.getValue().view(entry.getKey()));
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("scope", "本格家户（ClassRow.view.hex == 本格）；按当前阶层位置聚合人口/家户数");
+    view.put("window", DASHBOARD_STOCK_POPULATION_WINDOW);
+    view.put("standingHouseholds", standingHouseholds);
+    view.put("legacyFallbackHouseholds", legacyFallbackHouseholds);
+    view.put(
+        "legacyFallbackNote",
+        "位置键取 ClassStanding.currentPositionId；无 ClassStanding 的旧档把 ClassRow.view.stratum 直接投影成位置键"
+            + "（source=ClassRow.view.stratum）。同一键同时来自两种来源时 source=mixed，并给出 standing/legacy 两栏户数，"
+            + "不静默二选一");
+    view.put("groupCount", out.size());
+    view.put("groups", out);
+    return view;
+  }
+
+  /** 一个阶层位置组的聚合中间量（读口私有）。 */
+  private static final class ClassPositionAggregate {
+    private long population;
+    private long householdCount;
+    private long laborMilli;
+    private long participationAdjustedLaborMilli;
+    private long standingHouseholds;
+    private long legacyFallbackHouseholds;
+
+    private void add(ClassRow row, boolean fromStanding) {
+      population += row.population();
+      householdCount++;
+      laborMilli += row.laborMilli();
+      participationAdjustedLaborMilli += row.participationAdjustedLaborMilli();
+      if (fromStanding) {
+        standingHouseholds++;
+      } else {
+        legacyFallbackHouseholds++;
+      }
+    }
+
+    /** 来源标记（短稳定串：三条来源各恰一个值；解释见块级 legacyFallbackNote）。 */
+    private String source() {
+      if (standingHouseholds > 0L && legacyFallbackHouseholds > 0L) {
+        return "mixed";
+      }
+      return standingHouseholds > 0L ? "ClassStanding.currentPositionId" : "ClassRow.view.stratum";
+    }
+
+    private Map<String, Object> view(String classPosition) {
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("classPosition", classPosition);
+      view.put("source", source());
+      view.put("population", population);
+      view.put("householdCount", householdCount);
+      view.put("laborMilli", laborMilli);
+      view.put("participationAdjustedLaborMilli", participationAdjustedLaborMilli);
+      view.put("standingHouseholds", standingHouseholds);
+      view.put("legacyFallbackHouseholds", legacyFallbackHouseholds);
+      return view;
+    }
+  }
+
+  /** 本格家户 FlowRow 的一次合计（stocks 之外唯一一处流量聚合；flows 与 derived 共用）。 */
+  private static HexFlowAggregate hexFlowAggregate(
+      EconomyData data, List<HouseholdId> householdKeys) {
+    HexFlowAggregate aggregate = new HexFlowAggregate();
+    for (HouseholdId key : householdKeys) {
+      FlowRow flow = data.flows().get(key);
+      if (flow == null) {
+        aggregate.missingFlowHouseholds++;
+        continue;
+      }
+      aggregate.add(flow);
+    }
+    return aggregate;
+  }
+
+  /** FlowRow 的本格合计中间量（读口私有；逐字段口径与 {@link FlowRow} 类注同源）。 */
+  private static final class HexFlowAggregate {
+    private final Map<String, Long> income = new TreeMap<>();
+    private final Map<String, Long> consumed = new TreeMap<>();
+    private final Map<String, Long> unmetNeed = new TreeMap<>();
+    private final Map<String, Long> repaidMoney = new TreeMap<>();
+    private final Map<String, Long> capitalizedArrears = new TreeMap<>();
+    private long taxPaid;
+    private long interestDue;
+    private long newBorrowing;
+    private long repaid;
+    private long netSurplus;
+    private int flowRowHouseholds;
+    private int missingFlowHouseholds;
+
+    private void add(FlowRow flow) {
+      flowRowHouseholds++;
+      mergeInto(income, flow.income());
+      mergeInto(consumed, flow.consumed());
+      mergeInto(unmetNeed, flow.unmetNeed());
+      mergeMoneyInto(repaidMoney, flow.repaidMoney());
+      mergeStringLong(capitalizedArrears, flow.capitalizedArrears());
+      taxPaid += flow.taxPaid();
+      interestDue += flow.interestDue();
+      newBorrowing += flow.newBorrowing();
+      repaid += flow.repaid();
+      netSurplus += flow.netSurplus();
+    }
+
+    private Map<String, Object> view() {
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("scope", "本格家户（ClassRow.view.hex == 本格）");
+      view.put("window", DASHBOARD_FLOW_WINDOW);
+      view.put("householdCount", flowRowHouseholds + missingFlowHouseholds);
+      view.put("flowRowHouseholds", flowRowHouseholds);
+      view.put("missingFlowHouseholds", missingFlowHouseholds);
+      view.put("missingFlowReason", missingFlowHouseholds > 0 ? DASHBOARD_FLOW_ROW_MISSING : null);
+      view.put("income", new TreeMap<>(income));
+      view.put("consumed", new TreeMap<>(consumed));
+      view.put("taxPaid", taxPaid);
+      view.put("interestDue", interestDue);
+      view.put("newBorrowing", newBorrowing);
+      view.put("repaid", repaid);
+      view.put("repaidMoney", new TreeMap<>(repaidMoney));
+      view.put("capitalizedArrears", new TreeMap<>(capitalizedArrears));
+      view.put("netSurplus", netSurplus);
+      view.put("unmetNeed", new TreeMap<>(unmetNeed));
+      view.put(
+          "netSurplusNote",
+          "netSurplus 是**粮口径标量**（income[grain]−consumed[grain]−taxPaid−interestDue），"
+              + "不是跨商品折算；其余商品的净额在 income/consumed 两张表里分开读");
+      view.put("capitalizedArrearsNote", "值单位 = 各 DebtUnit.key() 的最小计量单位；资本化只把制度未付落成债权，不搬库存/货币");
+      return view;
+    }
+  }
+
+  /** 把一个 String→Long 表并入目标 TreeMap（{@code capitalizedArrears} 的 DebtUnit.key() 分组；唯一拼写点）。 */
+  private static void mergeStringLong(Map<String, Long> target, Map<String, Long> source) {
+    for (Map.Entry<String, Long> entry : source.entrySet()) {
+      target.merge(entry.getKey(), entry.getValue(), Long::sum);
+    }
+  }
+
+  /** dashboard 的 derived 分组（只读派生；F/headroom 复用 E4b 块视图，不重算公式）。 */
+  private static Map<String, Object> dashboardDerived(
+      EconomyData data,
+      ActorData actors,
+      HexCoord coord,
+      List<HouseholdId> householdKeys,
+      Map<HouseholdId, DebtCapacity> debtCapacities,
+      Map<String, Object> debtCapacityBlock,
+      HexDebtStock hexDebt,
+      HexFlowAggregate hexFlows,
+      Optional<MarketReport> report) {
+    Map<String, Object> derived = new LinkedHashMap<>();
+    derived.put("creditPosition", creditPositionDerivedView(debtCapacityBlock));
+    derived.put(
+        "debtToOutput", debtToOutputDerivedView(data, householdKeys, hexDebt, report, coord));
+    derived.put("interestToF", interestToFDerivedView(householdKeys, debtCapacities, hexFlows));
+    derived.put("basicNeedGap", basicNeedGapDerivedView(data, householdKeys, hexFlows));
+    derived.put(
+        "nextRoundInputGap",
+        nextRoundInputGapDerivedView(data, actors, coord, householdKeys, debtCapacities));
+    return derived;
+  }
+
+  /** F/headroom/信用头寸：直接嵌 E4b 的同一份块视图（唯一算法已经算好，不在这里做第二份代数）。 */
+  private static Map<String, Object> creditPositionDerivedView(
+      Map<String, Object> debtCapacityBlock) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put(
+        "source",
+        "DebtCapacityBook.capacitiesForState（E4b 唯一 F/headroom 算法；与顶层 debtCapacity 同一份对象、同一份窗口）");
+    view.put("window", DASHBOARD_DERIVED_CREDIT_WINDOW);
+    view.put("readout", debtCapacityBlock);
+    return view;
+  }
+
+  /**
+   * ★★ E6c：债务/产出（按 unit；债务=时点本金，产出=本周期已实现所得）。
+   *
+   * <p>commodity unit 的分母 = {@code Σ FlowRow.income[commodity]}（粮即 income[grain]）；money unit
+   * 没有本周期货币产出口径 ⇒ 具名缺失（见 {@link #DASHBOARD_MONEY_OUTPUT_UNAVAILABLE}）。 「本国」口径因 economy
+   * 切片无国家维而具名缺失；world 档是整份 EconomyData，不是某个国家。
+   */
+  private static Map<String, Object> debtToOutputDerivedView(
+      EconomyData data,
+      List<HouseholdId> householdKeys,
+      HexDebtStock hexDebt,
+      Optional<MarketReport> report,
+      HexCoord coord) {
+    List<Map<String, Object>> entries = new ArrayList<>();
+    entries.addAll(
+        debtToOutputEntries(
+            "hex", hexDebt.totalByUnit, incomeTotalsForHouseholds(data, householdKeys)));
+    entries.addAll(debtToOutputEntries("world", debtTotalsWorld(data), incomeTotalsWorld(data)));
+    entries.sort(
+        Comparator.comparing((Map<String, Object> entry) -> (String) entry.get("scope"))
+            .thenComparing(entry -> (String) entry.get("unitKey")));
+    Map<String, Object> nation = new LinkedHashMap<>();
+    nation.put("scope", "nation");
+    nation.put("debtPrincipalByUnit", null);
+    nation.put("output", null);
+    nation.put("debtToOutputPerMille", null);
+    nation.put("unavailable", DASHBOARD_NATION_SCOPE_UNAVAILABLE);
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("window", DASHBOARD_DERIVED_DEBT_OUTPUT_WINDOW);
+    view.put("entries", entries);
+    // ★ 「本国」口径在 economy 切片无国家维 ⇒ 具名缺失；同时给 nationUnavailable 这个直白键名。
+    view.put("nation", nation);
+    view.put("nationUnavailable", nation);
+    view.put("moneyOutputReference", marketTurnoverReferenceView(report, coord));
+    view.put(
+        "caveat",
+        "债务本金是时点、产出是本周期流量 ⇒ 该比值是跨窗口结构比，只作趋势诊断，不得与其他窗口的量并排比较；"
+            + "commodity 单位各自用自己的 income；money 单位不硬折成粮");
+    return view;
+  }
+
+  /** 一个 scope 的「逐 unit 债务对产出」条目（commodity 用同商品 income；money 具名缺失）。 */
+  private static List<Map<String, Object>> debtToOutputEntries(
+      String scope, Map<String, UnitDebtAggregate> totals, Map<String, Long> incomeByCommodity) {
+    List<Map<String, Object>> entries = new ArrayList<>(totals.size());
+    for (Map.Entry<String, UnitDebtAggregate> entry : totals.entrySet()) {
+      UnitDebtAggregate aggregate = entry.getValue();
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("scope", scope);
+      item.put("unitKey", entry.getKey());
+      item.put("debtPrincipal", aggregate.principal);
+      item.put("debtContractCount", aggregate.contractCount);
+      item.put("numeratorWindow", "时点：当前 revision 的债务本金合计（逐 unit；全部状态）");
+      if (aggregate.unit instanceof DebtUnit.Commodity commodity) {
+        String commodityId = commodity.commodity().value();
+        long output = incomeByCommodity.getOrDefault(commodityId, 0L);
+        item.put("unitKind", "commodity");
+        item.put("commodity", commodityId);
+        item.put("currency", null);
+        item.put("output", output);
+        item.put("outputMeasure", "本周期已实现所得 Σ FlowRow.income[" + commodityId + "]");
+        item.put("denominatorWindow", "本周期至今：Σ FlowRow.income[" + commodityId + "]（新周期第一天清零）");
+        OptionalLong perMille = perMilleOrEmpty(aggregate.principal, output);
+        if (perMille.isPresent()) {
+          item.put("debtToOutputPerMille", perMille.getAsLong());
+          item.put("unavailable", null);
+        } else {
+          item.put("debtToOutputPerMille", null);
+          item.put(
+              "unavailable",
+              output <= 0L
+                  ? "本周期产出 Σ FlowRow.income["
+                      + commodityId
+                      + "] = 0 ⇒ "
+                      + DASHBOARD_DENOMINATOR_ZERO
+                  : DASHBOARD_RATIO_OVERFLOW);
+        }
+      } else {
+        DebtUnit.Money money = (DebtUnit.Money) aggregate.unit;
+        item.put("unitKind", "money");
+        item.put("currency", money.currency().value());
+        item.put("commodity", null);
+        item.put("output", null);
+        item.put("outputMeasure", null);
+        item.put("denominatorWindow", null);
+        item.put("debtToOutputPerMille", null);
+        item.put("unavailable", DASHBOARD_MONEY_OUTPUT_UNAVAILABLE);
+      }
+      entries.add(item);
+    }
+    return entries;
+  }
+
+  /** 整份 EconomyData 的逐 unit 债务本金合计（world 档；只读）。 */
+  private static Map<String, UnitDebtAggregate> debtTotalsWorld(EconomyData data) {
+    Map<String, UnitDebtAggregate> totals = new TreeMap<>();
+    for (DebtContract debt : data.debtContracts().values()) {
+      totals
+          .computeIfAbsent(debt.unit().key(), ignored -> new UnitDebtAggregate(debt.unit()))
+          .add(debt);
+    }
+    return totals;
+  }
+
+  /** 本格家户的本周期 income（商品 id → 合计；即债务/产出的 commodity 分母来源）。 */
+  private static Map<String, Long> incomeTotalsForHouseholds(
+      EconomyData data, List<HouseholdId> householdKeys) {
+    Map<String, Long> totals = new TreeMap<>();
+    for (HouseholdId key : householdKeys) {
+      FlowRow flow = data.flows().get(key);
+      if (flow != null) {
+        mergeInto(totals, flow.income());
+      }
+    }
+    return totals;
+  }
+
+  /** 整份 EconomyData 的本周期 income（world 档；只读）。 */
+  private static Map<String, Long> incomeTotalsWorld(EconomyData data) {
+    Map<String, Long> totals = new TreeMap<>();
+    for (FlowRow flow : data.flows().values()) {
+      mergeInto(totals, flow.income());
+    }
+    return totals;
+  }
+
+  /** money 产出的参考口径：最近一轮市场成交（进程内；**明确不是**债务/产出的分母）。 */
+  private static Map<String, Object> marketTurnoverReferenceView(
+      Optional<MarketReport> report, HexCoord coord) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("window", "最近一轮市场开市（进程内 MarketReport；不落盘、重启即失；不是本周期累计）");
+    if (report.isEmpty()) {
+      view.put("hexTurnoverMilli", null);
+      view.put("worldTurnoverMilli", null);
+      view.put("unavailable", DASHBOARD_MARKET_REPORT_UNAVAILABLE);
+      return view;
+    }
+    MarketReport marketReport = report.orElseThrow();
+    long hexTurnover = 0L;
+    long hexFills = 0L;
+    long worldTurnover = 0L;
+    for (MarketReport.Fill fill : marketReport.fills()) {
+      worldTurnover += fill.goodsPaymentMilli();
+      if (fill.from().equals(coord) || fill.to().equals(coord)) {
+        hexTurnover += fill.goodsPaymentMilli();
+        hexFills++;
+      }
+    }
+    view.put("hexTurnoverMilli", hexTurnover);
+    view.put("hexFillCount", hexFills);
+    view.put("worldTurnoverMilli", worldTurnover);
+    view.put("worldFillCount", marketReport.fills().size());
+    view.put("unavailable", null);
+    view.put("note", "只作参考：money 债务/产出不拿它当分母（单轮成交 ≠ 本周期货币产出；禁止混窗口比较）");
+    return view;
+  }
+
+  /** 利息/F：interestDue 合计 ÷ F 合计；F=0 或溢出 ⇒ null + 具名 reason（不除零）。 */
+  private static Map<String, Object> interestToFDerivedView(
+      List<HouseholdId> householdKeys,
+      Map<HouseholdId, DebtCapacity> debtCapacities,
+      HexFlowAggregate hexFlows) {
+    long fTotal = 0L;
+    int unavailableHouseholds = 0;
+    List<Map<String, Object>> households = new ArrayList<>(householdKeys.size());
+    for (HouseholdId key : householdKeys) {
+      DebtCapacity capacity = debtCapacities.get(key);
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("household", key.value());
+      if (capacity == null) {
+        item.put("F", null);
+        item.put("nextRoundNecessaryInputSource", null);
+        item.put("unavailable", "该家户没有 DebtCapacity（ClassRow 缺失或容量算法未覆盖）⇒ F 不计入合计，不填 0");
+        unavailableHouseholds++;
+      } else {
+        item.put("F", capacity.F());
+        item.put("nextRoundNecessaryInputSource", capacity.nextRoundNecessaryInputSource().name());
+        item.put("unavailable", null);
+        fTotal += capacity.F();
+      }
+      households.add(item);
+    }
+    OptionalLong ratio = perMilleOrEmpty(hexFlows.interestDue, fTotal);
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("scope", "本格家户（interestDue = FlowRow 合计；F = DebtCapacity 合计）");
+    view.put("window", DASHBOARD_DERIVED_INTEREST_F_WINDOW);
+    view.put("interestDue", hexFlows.interestDue);
+    view.put("F", fTotal);
+    view.put("interestToFPerMille", ratio.isPresent() ? ratio.getAsLong() : null);
+    view.put(
+        "unavailable",
+        ratio.isPresent()
+            ? null
+            : (fTotal > 0L ? DASHBOARD_RATIO_OVERFLOW : DASHBOARD_DENOMINATOR_ZERO));
+    view.put("unavailableFHouseholds", unavailableHouseholds);
+    view.put(
+        "partialTotalNote",
+        unavailableHouseholds > 0 ? "F 合计只含可算行；缺失行数见 unavailableFHouseholds" : null);
+    view.put("households", households);
+    view.put("note", "利息/F = 本周期应付利息 ÷ F；F=0 时比值无定义（null + reason），绝不给 0 或除零");
+    return view;
+  }
+
+  /**
+   * 基本需求缺口：{@link FlowRow#unmetNeed()}（逐商品、本周期至今）对 {@link
+   * ClassRow#cycleNaturalNeedMilli()}（本周期累计、仅粮）。
+   */
+  private static Map<String, Object> basicNeedGapDerivedView(
+      EconomyData data, List<HouseholdId> householdKeys, HexFlowAggregate hexFlows) {
+    long naturalNeedGrain = 0L;
+    for (HouseholdId key : householdKeys) {
+      ClassRow row = data.classes().get(key);
+      if (row != null) {
+        naturalNeedGrain += row.cycleNaturalNeedMilli();
+      }
+    }
+    Set<String> commodities = new TreeSet<>(hexFlows.unmetNeed.keySet());
+    if (naturalNeedGrain > 0L) {
+      commodities.add(GRAIN.value());
+    }
+    List<Map<String, Object>> byCommodity = new ArrayList<>(commodities.size());
+    for (String commodity : commodities) {
+      long unmet = hexFlows.unmetNeed.getOrDefault(commodity, 0L);
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("commodity", commodity);
+      item.put("unmetNeed", unmet);
+      if (GRAIN.value().equals(commodity)) {
+        item.put("naturalNeed", naturalNeedGrain);
+        item.put("naturalNeedWindow", "本周期累计（ClassRow.cycleNaturalNeedMilli；逐日按日初人口累加，新周期第一天重置）");
+        OptionalLong gap = perMilleOrEmpty(unmet, naturalNeedGrain);
+        item.put("gapPerMille", gap.isPresent() ? gap.getAsLong() : null);
+        item.put(
+            "unavailable",
+            gap.isPresent()
+                ? null
+                : (naturalNeedGrain > 0L ? DASHBOARD_RATIO_OVERFLOW : DASHBOARD_DENOMINATOR_ZERO));
+      } else {
+        item.put("naturalNeed", null);
+        item.put("naturalNeedWindow", null);
+        item.put("gapPerMille", null);
+        item.put("unavailable", DASHBOARD_NON_GRAIN_NEED_DENOMINATOR);
+      }
+      byCommodity.add(item);
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("scope", "本格家户；unmetNeed 与 cycleNaturalNeedMilli 是同窗口（本周期）");
+    view.put("window", DASHBOARD_DERIVED_NEED_GAP_WINDOW);
+    view.put("unmetNeed", new TreeMap<>(hexFlows.unmetNeed));
+    view.put("naturalNeedGrain", naturalNeedGrain);
+    view.put("byCommodity", byCommodity);
+    view.put("missingFlowHouseholds", hexFlows.missingFlowHouseholds);
+    view.put(
+        "missingFlowReason",
+        hexFlows.missingFlowHouseholds > 0 ? DASHBOARD_FLOW_ROW_MISSING : null);
+    if (byCommodity.isEmpty()) {
+      view.put("note", "本格没有 FlowRow.unmetNeed 且本周期自然需要为 0（空表/旧档合法态）⇒ 无可聚合缺口");
+    }
+    return view;
+  }
+
+  /**
+   * 下一轮投入缺口：复用 E4b 的 {@link DebtCapacity#nextRoundNecessaryInput()} 与 {@link
+   * DebtCapacity#nextRoundNecessaryInputSource()}；另附本格相关 {@link
+   * ProductionOrganization.Status#SHORTAGE} 的具名 statusReason 汇总。
+   */
+  private static Map<String, Object> nextRoundInputGapDerivedView(
+      EconomyData data,
+      ActorData actors,
+      HexCoord coord,
+      List<HouseholdId> householdKeys,
+      Map<HouseholdId, DebtCapacity> debtCapacities) {
+    long total = 0L;
+    long proxyHouseholds = 0L;
+    int unavailableHouseholds = 0;
+    Map<String, Long> sourceCounts = new TreeMap<>();
+    List<Map<String, Object>> households = new ArrayList<>(householdKeys.size());
+    for (HouseholdId key : householdKeys) {
+      DebtCapacity capacity = debtCapacities.get(key);
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("household", key.value());
+      if (capacity == null) {
+        item.put("nextRoundNecessaryInput", null);
+        item.put("nextRoundNecessaryInputSource", null);
+        item.put("nextRoundNecessaryInputIsProxy", null);
+        item.put("unavailable", "该家户没有 DebtCapacity（ClassRow 缺失或容量算法未覆盖）⇒ 投入缺口不算，不填 0");
+        unavailableHouseholds++;
+      } else {
+        item.put("nextRoundNecessaryInput", capacity.nextRoundNecessaryInput());
+        item.put("nextRoundNecessaryInputSource", capacity.nextRoundNecessaryInputSource().name());
+        item.put("nextRoundNecessaryInputIsProxy", capacity.nextRoundNecessaryInputIsProxy());
+        item.put("unavailable", null);
+        total += capacity.nextRoundNecessaryInput();
+        sourceCounts.merge(capacity.nextRoundNecessaryInputSource().name(), 1L, Long::sum);
+        if (capacity.nextRoundNecessaryInputIsProxy()) {
+          proxyHouseholds++;
+        }
+      }
+      households.add(item);
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("scope", "本格家户；SHORTAGE 另按本格相关组织汇总");
+    view.put("window", DASHBOARD_DERIVED_NEXT_INPUT_WINDOW);
+    view.put("total", total);
+    view.put("sourceCounts", sourceCounts);
+    view.put("proxyHouseholds", proxyHouseholds);
+    view.put(
+        "proxyNote",
+        proxyHouseholds > 0
+            ? "source=NON_RATION_CONSUMED_PROXY 的行用的是本周期实际非口粮投入的代理，不是真实下一轮投入"
+            : null);
+    view.put("unavailableHouseholds", unavailableHouseholds);
+    view.put("households", households);
+    view.put("shortageOrganizations", shortageOrganizationSummary(data, actors, coord));
+    return view;
+  }
+
+  /**
+   * ★★ E6c：本格相关的 {@link ProductionOrganization.Status#SHORTAGE} 汇总（同时给 world 总数）。
+   *
+   * <p>「本格相关」唯一判据（唯一拼写点，见 {@link #productionOrganizationTouchesHex}）：unit 产业格 = 本格，或 organizer
+   * 的账户在本格，或 laborSource 家户住在该格，或 assetSource 份额登记在本格；四者任一命中。 无 unit 且四路线索都不在本格的组织不冒名计入本格，但仍进 world
+   * 汇总。
+   */
+  private static Map<String, Object> shortageOrganizationSummary(
+      EconomyData data, ActorData actors, HexCoord coord) {
+    String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
+    Set<ActorRef> organizersAtHex = new LinkedHashSet<>();
+    for (GoodsAccount account : accountsAt(actors, coord)) {
+      organizersAtHex.add(account.key().owner());
+    }
+    List<ProductionOrganization> organizations =
+        new ArrayList<>(data.productionOrganizations().values());
+    organizations.sort(Comparator.comparing(organization -> organization.id().value()));
+    List<Map<String, Object>> local = new ArrayList<>();
+    Map<String, Long> localByReason = new TreeMap<>();
+    Map<String, Long> worldByReason = new TreeMap<>();
+    long worldTotal = 0L;
+    for (ProductionOrganization organization : organizations) {
+      if (organization.status() != ProductionOrganization.Status.SHORTAGE) {
+        continue;
+      }
+      worldTotal++;
+      worldByReason.merge(organization.statusReason(), 1L, Long::sum);
+      if (!productionOrganizationTouchesHex(data, organization, coord, organizersAtHex)) {
+        continue;
+      }
+      localByReason.merge(organization.statusReason(), 1L, Long::sum);
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("id", organization.id().value());
+      item.put("modeId", organization.modeId().value());
+      item.put("classPositionId", organization.classPositionId().value());
+      item.put("unitId", organization.unitId().map(unitId -> unitId.value()).orElse(null));
+      item.put("organizer", actorRefView(organization.organizer()));
+      item.put("status", organization.status().name());
+      item.put("statusReason", organization.statusReason());
+      local.add(item);
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("scope", "本格相关（unit 产业格/organizer 账户/laborSources 家户/assetSources 份额任一命中）");
+    view.put("window", "时点：ProductionOrganization 现值（status=SHORTAGE；statusReason 由模型保证非空白）");
+    view.put("total", local.size());
+    view.put("byReason", reasonCountViews(localByReason));
+    view.put("organizations", local);
+    view.put("worldTotal", worldTotal);
+    view.put("worldByReason", reasonCountViews(worldByReason));
+    return view;
+  }
+
+  /** ProductionOrganization 是否与本格相关（见 {@link #shortageOrganizationSummary} 的四路判据）。 */
+  private static boolean productionOrganizationTouchesHex(
+      EconomyData data,
+      ProductionOrganization organization,
+      HexCoord coord,
+      Set<ActorRef> organizersAtHex) {
+    String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
+    if (organization.unitId().isPresent()) {
+      ProductionUnit unit = data.units().get(organization.unitId().get());
+      if (unit != null
+          && IndustryHexKeys.hexKeyOf(unit.industry()).filter(hexKey::equals).isPresent()) {
+        return true;
+      }
+    }
+    if (organizersAtHex.contains(organization.organizer())) {
+      return true;
+    }
+    for (HouseholdId household : organization.laborSources()) {
+      ClassRow row = data.classes().get(household);
+      if (row != null && row.view().hex().equals(coord)) {
+        return true;
+      }
+    }
+    for (AssetShareId shareId : organization.assetSources()) {
+      AssetShare share = data.assetShares().get(shareId);
+      if (share != null
+          && IndustryHexKeys.hexKeyOf(share.industry()).filter(hexKey::equals).isPresent()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 「原因 → 条数」按原因字典序展开（稳定序）。 */
+  private static List<Map<String, Object>> reasonCountViews(Map<String, Long> counts) {
+    List<Map<String, Object>> out = new ArrayList<>(counts.size());
+    for (Map.Entry<String, Long> entry : counts.entrySet()) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("statusReason", entry.getKey());
+      item.put("count", entry.getValue());
+      out.add(item);
+    }
+    return out;
+  }
+
+  /** dashboard 的 windows 块：逐字段组窗口 + 具名 unavailable（时点/本周期/累计不许混读）。 */
+  private static Map<String, Object> dashboardWindows(
+      Optional<MarketReport> report, long tick, String readoutUnavailable) {
+    Map<String, Object> windows = new LinkedHashMap<>();
+    windows.put("stocks.debtPrincipal", DASHBOARD_STOCK_DEBT_WINDOW);
+    windows.put("stocks.assetSharesByKind", DASHBOARD_STOCK_ASSET_WINDOW);
+    windows.put("stocks.moneyByActorKind", DASHBOARD_STOCK_MONEY_WINDOW);
+    windows.put("stocks.moneyByHouseholdClass", DASHBOARD_STOCK_MONEY_WINDOW);
+    windows.put("stocks.populationByClassPosition", DASHBOARD_STOCK_POPULATION_WINDOW);
+    windows.put("flows", DASHBOARD_FLOW_WINDOW);
+    windows.put("flows.income", DASHBOARD_FLOW_WINDOW + "；逐商品，值单位 = 该商品最小计量单位");
+    windows.put("flows.consumed", DASHBOARD_FLOW_WINDOW + "；逐商品（不含生产损耗）");
+    windows.put("flows.taxPaid", DASHBOARD_FLOW_WINDOW + "；粮口径（毫粮）");
+    windows.put("flows.interestDue", DASHBOARD_FLOW_WINDOW + "；粮口径（毫粮；计息只增本金）");
+    windows.put("flows.newBorrowing", DASHBOARD_FLOW_WINDOW + "；粮口径（毫粮）");
+    windows.put("flows.repaid", DASHBOARD_FLOW_WINDOW + "；**只含粮债本金**（毫粮）");
+    windows.put("flows.repaidMoney", DASHBOARD_FLOW_WINDOW + "；逐币种、最小币值；只含货币债本金");
+    windows.put(
+        "flows.capitalizedArrears",
+        DASHBOARD_FLOW_WINDOW + "；键 = DebtUnit.key()，值单位 = 该 unit 最小计量单位");
+    windows.put("flows.netSurplus", DASHBOARD_FLOW_WINDOW + "；粮口径标量（可为负）");
+    windows.put("flows.unmetNeed", DASHBOARD_FLOW_WINDOW + "；逐商品（需求 − 实得的逐日累加）");
+    windows.put("derived.creditPosition", DASHBOARD_DERIVED_CREDIT_WINDOW);
+    windows.put("derived.debtToOutput", DASHBOARD_DERIVED_DEBT_OUTPUT_WINDOW);
+    windows.put("derived.interestToF", DASHBOARD_DERIVED_INTEREST_F_WINDOW);
+    windows.put("derived.basicNeedGap", DASHBOARD_DERIVED_NEED_GAP_WINDOW);
+    windows.put("derived.nextRoundInputGap", DASHBOARD_DERIVED_NEXT_INPUT_WINDOW);
+    windows.put("crisis.signals", DASHBOARD_CRISIS_WINDOW);
+    windows.put(
+        "reference.moneyIssuance",
+        "累计（EconomyMeta.activatedDay 至当前 revision）；发行/回笼/流通量见顶层 moneyIssuance"
+            + "（dashboard 不重复发，避免同一事实两处读）");
+    Map<String, Object> unavailable = new TreeMap<>();
+    unavailable.put("inventory", DEBT_CAPACITY_STOCK_UNREADABLE);
+    unavailable.put("unitPrice", DASHBOARD_PRICE_UNAVAILABLE);
+    unavailable.put("assetMarketValue", DASHBOARD_ASSET_MARKET_VALUE_UNAVAILABLE);
+    unavailable.put("moneyOutput", DASHBOARD_MONEY_OUTPUT_UNAVAILABLE);
+    unavailable.put("nonGrainNaturalNeed", DASHBOARD_NON_GRAIN_NEED_DENOMINATOR);
+    unavailable.put("nationScope", DASHBOARD_NATION_SCOPE_UNAVAILABLE);
+    unavailable.put("danglingDebtReferences", DASHBOARD_DEBT_REF_DANGLING);
+    if (report.isPresent()) {
+      unavailable.put("marketReport", null);
+    } else {
+      unavailable.put(
+          "marketReport",
+          readoutUnavailable == null || readoutUnavailable.isEmpty()
+              ? DASHBOARD_MARKET_REPORT_UNAVAILABLE
+              : readoutUnavailable);
+    }
+    windows.put("unavailable", unavailable);
+    windows.put(
+        "clock",
+        "tick="
+            + (tick < 0L ? "null（本入口没有 SimulationState 上下文）" : Long.toString(tick))
+            + "；时点 = 当前 revision；本周期 = FlowRow 自新周期第一天起的累计（关账日即整周期）");
+    return windows;
+  }
+
+  /**
+   * ★★ E6c：整数千分比 numerator/denominator（向下取整）。
+   *
+   * <p>denominator ≤ 0 或 numerator > Long.MAX_VALUE/1000 ⇒ {@link OptionalLong#empty()}， 由调用方给具名
+   * reason（不除零、不抛、不截断成错值）。
+   */
+  private static OptionalLong perMilleOrEmpty(long numerator, long denominator) {
+    if (denominator <= 0L || numerator > Long.MAX_VALUE / 1000L) {
+      return OptionalLong.empty();
+    }
+    return OptionalLong.of(numerator * 1000L / denominator);
+  }
+
+  /** 本格家户债务存量的一次聚合结果（读口私有；stocks 与 debtToOutput 共用）。 */
+  private static final class HexDebtStock {
+    private final Map<String, UnitDebtAggregate> totalByUnit = new TreeMap<>();
+    private final List<Map<String, Object>> households = new ArrayList<>();
+    private int unresolvedReferences;
+  }
+
+  /** 单个 DebtUnit.key() 的债务聚合中间量（读口私有；principal/条数/违约条数/状态分布）。 */
+  private static final class UnitDebtAggregate {
+    private final DebtUnit unit;
+    private final Map<String, Long> statusCounts = new TreeMap<>();
+    private final Set<HouseholdId> households = new LinkedHashSet<>();
+    private long principal;
+    private long contractCount;
+    private long defaultedCount;
+    private long delinquentCount;
+
+    private UnitDebtAggregate(DebtUnit unit) {
+      this.unit = unit;
+    }
+
+    private void add(DebtContract debt) {
+      principal += debt.principal();
+      contractCount++;
+      statusCounts.merge(debt.status().name(), 1L, Long::sum);
+      if (debt.status() == DebtStatus.DEFAULTED) {
+        defaultedCount++;
+      }
+      if (debt.status() == DebtStatus.DELINQUENT) {
+        delinquentCount++;
+      }
+      households.add(debt.debtor());
+    }
+
+    private Map<String, Object> view() {
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("unitKey", unit.key());
+      switch (unit) {
+        case DebtUnit.Commodity commodity -> {
+          view.put("unitKind", "commodity");
+          view.put("commodity", commodity.commodity().value());
+          view.put("currency", null);
+        }
+        case DebtUnit.Money money -> {
+          view.put("unitKind", "money");
+          view.put("commodity", null);
+          view.put("currency", money.currency().value());
+        }
+      }
+      view.put("principal", principal);
+      view.put("contractCount", contractCount);
+      view.put("defaultedCount", defaultedCount);
+      view.put("delinquentCount", delinquentCount);
+      view.put("householdCount", households.size());
+      view.put("statusCounts", new TreeMap<>(statusCounts));
+      return view;
+    }
   }
 
   /**
@@ -1518,11 +2705,32 @@ public final class ApiViews {
     view.put("moneyLayers", moneyLayers(actorMoneyTotal));
     // ★★ E3：发行/回笼/流通量与 actor kind / 家户阶层聚合（世界级时点口径；见方法注释）。
     view.put("moneyIssuance", moneyIssuanceView(economy, moneyTotals(actors)));
-    view.put("moneyByActorKind", moneyByActorKind(actors));
-    view.put("moneyByHouseholdClass", moneyByHouseholdClass(economy, actors));
+    Map<String, Map<String, Long>> moneyByKind = moneyByActorKind(actors);
+    Map<String, Map<String, Long>> moneyByClass = moneyByHouseholdClass(economy, actors);
+    view.put("moneyByActorKind", moneyByKind);
+    view.put("moneyByHouseholdClass", moneyByClass);
     // ★★ E4b：本格每户/合计 debtCapacity（与 economyHex 同一份读数与窗口；见 DebtCapacityBlock）。
-    view.put("debtCapacity", debtCapacityBlock(economy, actors, coord));
+    //   ★★ E6c：容量与块视图一次算好，dashboard.derived.creditPosition 复用同一份（不重跑 F/headroom 算法）。
+    List<HouseholdId> householdKeys = cohortKeysAt(economy, coord);
+    DebtCapacityReadout capacityReadout =
+        debtCapacityReadout(economy, actors, coord, householdKeys);
+    view.put("debtCapacity", capacityReadout.block());
     view.put("rowGoodsTotal", rowGoodsTotal);
+    // ★★ E6c：统一 dashboard（本入口没有 SimulationState ⇒ 进程内参考口径具名缺失；其余仍从现值现算）。
+    view.put(
+        "dashboard",
+        economyDashboard(
+            coord,
+            economy,
+            actors,
+            moneyByKind,
+            moneyByClass,
+            householdKeys,
+            capacityReadout.capacities(),
+            capacityReadout.block(),
+            Optional.empty(),
+            -1L,
+            ECONOMY_OWNERSHIP_NO_STATE));
     return view;
   }
 
@@ -1951,12 +3159,16 @@ public final class ApiViews {
   }
 
   /**
-   * ★★ E4b：{@link #economyOwnership} 用的 debtCapacity 块（与 {@link #economyHex} 同一份逐户读数与窗口标注；
-   * 那里另有一份可挂进各 class 行的逐户 map，故不重复构建视图）。
+   * ★★ E4b/E6c：{@link #economyOwnership} 的 debtCapacity 一次性读数（容量 + 块视图）。
+   *
+   * <p>与 {@link #economyHex} 同一份逐户读数与窗口标注；E6c 的 dashboard 复用同一份 capacities， 不在这里重跑 E4b 的 F/headroom
+   * 公式。
    */
-  private static Map<String, Object> debtCapacityBlock(
-      EconomyData data, ActorData actors, HexCoord coord) {
-    List<HouseholdId> householdKeys = cohortKeysAt(data, coord);
+  private record DebtCapacityReadout(
+      Map<HouseholdId, DebtCapacity> capacities, Map<String, Object> block) {}
+
+  private static DebtCapacityReadout debtCapacityReadout(
+      EconomyData data, ActorData actors, HexCoord coord, List<HouseholdId> householdKeys) {
     Map<ActorRef, HouseholdId> householdOfActorAtHex = new LinkedHashMap<>();
     for (HouseholdId key : householdKeys) {
       householdOfActorAtHex.put(HouseholdActors.of(key), key);
@@ -1977,7 +3189,7 @@ public final class ApiViews {
                 grainStockByHousehold.containsKey(key)
                     ? OptionalLong.of(grainStockByHousehold.get(key))
                     : OptionalLong.empty());
-    return debtCapacityBlockView(householdKeys, capacities);
+    return new DebtCapacityReadout(capacities, debtCapacityBlockView(householdKeys, capacities));
   }
 
   /**

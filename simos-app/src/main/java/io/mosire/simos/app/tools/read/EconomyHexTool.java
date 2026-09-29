@@ -58,10 +58,15 @@ public final class EconomyHexTool implements AgentTool {
 
   @Override
   public String description() {
-    return "查某格的经济读数：人口 / 有效劳动 / 土地（千分亩）/ 粮库存（actor 侧账本合计）/ 货币"
+    return "查某格的经济读数（统一经济读口）：人口 / 有效劳动 / 土地（千分亩）/ 粮库存（actor 侧账本合计）/ 货币"
         + "（actorMoneyTotal，逐币种）/ 本格市场（计价货币 + 商品价格表）/ 负债 / 各产业制度与周期进度"
         + "（按产业 id、槽位 id 字典序发；未激活或该格无产业 ⇒ activated=false、industries 为空；"
-        + "该格没有市场 ⇒ market=null，那是合法状态）";
+        + "该格没有市场 ⇒ market=null，那是合法状态）。响应新增统一 dashboard 块："
+        + "stocks（时点存量：按 DebtUnit 分离的债务本金/条数/违约条数、按 AssetKind 的资产份额、"
+        + "复用唯一算法的货币分布、按 ClassStanding 的人口阶层分布）/ flows（本周期 FlowRow 逐项合计）/ "
+        + "derived（复用 E4b 的 F/headroom、债务产出、利息/F、基本需求缺口、下一轮投入与 SHORTAGE 具名汇总）/ "
+        + "crisis（本格危机信号）/ windows（逐字段窗口与缺库存/缺价格/缺数据具名 unavailable）；"
+        + "旧 economyHex 键名与形状不变，dashboard 只是新增键";
   }
 
   @Override
@@ -69,7 +74,12 @@ public final class EconomyHexTool implements AgentTool {
     Map<String, Object> props = ToolSupport.targetProps();
     props.put("q", ToolSupport.prop("integer", "六角列坐标 q"));
     props.put("r", ToolSupport.prop("integer", "六角行坐标 r"));
-    return ToolSupport.schema(props, List.of("q", "r"));
+    Map<String, Object> schema = ToolSupport.schema(props, List.of("q", "r"));
+    schema.put(
+        "description",
+        "响应体含统一 dashboard 块（stocks/flows/derived/crisis/windows）；旧 economyHex 键形状不变；"
+            + "缺库存/缺价格/缺数据在 windows.unavailable 里具名，不填 0");
+    return schema;
   }
 
   @Override

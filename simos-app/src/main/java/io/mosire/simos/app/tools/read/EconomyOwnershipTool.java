@@ -67,7 +67,9 @@ public final class EconomyOwnershipTool implements AgentTool, GmOnlyRead {
   public String description() {
     return "查某格的产权读数：actor 侧每本账（谁在这格持有什么：goods + money）+ actor 侧商品合计 +"
         + " **actor 侧货币合计（actorMoneyTotal，逐币种）** + **行侧家户库存合计**"
-        + "（两个合计并排 ⇒ 不会把其中一本账读成「全系统」；钱与货同住一本 GoodsAccount，裁定 M2）";
+        + "（两个合计并排 ⇒ 不会把其中一本账读成「全系统」；钱与货同住一本 GoodsAccount，裁定 M2）。"
+        + "响应另含统一 dashboard 块（stocks/flows/derived/crisis/windows），与 simos.economy.hex 共用同一份装配；"
+        + "本入口没有 SimulationState ⇒ tick 与进程内 MarketReport 等参考口径在 windows.unavailable 具名缺失";
   }
 
   @Override
@@ -75,7 +77,12 @@ public final class EconomyOwnershipTool implements AgentTool, GmOnlyRead {
     Map<String, Object> props = ToolSupport.targetProps();
     props.put("q", ToolSupport.prop("integer", "六角列坐标 q"));
     props.put("r", ToolSupport.prop("integer", "六角行坐标 r"));
-    return ToolSupport.schema(props, List.of("q", "r"));
+    Map<String, Object> schema = ToolSupport.schema(props, List.of("q", "r"));
+    schema.put(
+        "description",
+        "响应体含统一 dashboard 块（stocks/flows/derived/crisis/windows，与 simos.economy.hex 同装配）；"
+            + "本入口无 SimulationState ⇒ tick/进程内 MarketReport 参考口径在 windows.unavailable 具名缺失");
+    return schema;
   }
 
   @Override

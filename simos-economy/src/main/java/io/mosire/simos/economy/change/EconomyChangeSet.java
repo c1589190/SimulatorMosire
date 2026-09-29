@@ -74,6 +74,13 @@ import java.util.function.Function;
  *
  * <p>铁律 5：变更集从完整状态类型派生，由 {@code EconomyRoundTripTest} 的**反射枚举**把守——新增状态组件若不进 变更集，那个测试自动红。
  *
+ * <p>★★ **E1–E6 追加组件与 {@link EconomyData} 逐条对应**：E1 {@code
+ * modes/classStructures/classPositions/classStandings}； E2 {@code
+ * productionOrganizations/assetRules}；E3 {@code governments/moneyIssuances}；E4 {@code
+ * debtContracts} （替换旧 {@code debts} 槽）/{@code pledges}；E5 {@code
+ * liquidationPolicies/crisisSignals}；E6 {@code modeTransitions/classShares}。E6b（GM 经济调整命令）与 E6c（统一
+ * dashboard 读口）都只读写既有组件， **零新状态组件**，故当前仍是 **29 个组件**（上面那份逐条清单就是全表）。
+ *
  * <p>★ **差异与重建的语义不在这里**：一律委托 {@link FieldDelta#diff} / {@link FieldDelta#rebuild}（与 {@code
  * MapChangeSet} / {@code SocialChangeSet} / {@code UnitChangeSet} / {@code SdChangeSet} / {@code
  * LedgerChangeSet} 共用同一份机制，R1 守卫把守"全仓恰一份"）。
