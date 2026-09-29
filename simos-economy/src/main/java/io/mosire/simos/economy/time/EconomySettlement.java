@@ -806,6 +806,7 @@ public final class EconomySettlement {
               base,
               rows,
               industries,
+              base.pledges(),
               units,
               session.sheet().relations(),
               assetShares,
@@ -4087,6 +4088,12 @@ public final class EconomySettlement {
    * <p>★★ <b>五条硬边界</b>：① 债务只处置解析出的家户债务人（聚合主体的债不在 economy 会话里，不能凭空给它销债）；② 还不起的部分**只标 {@code
    * defaulted}**，不从表里删、不由结算“核销”； ③ 剩余库存/货币留在原主体账上（没有“没收”规则，不凭空造也不删）；④ 资产份额**只改
    * operator**，owner/quantity/kind 与 id 不变； ⑤ 每个 unit 只在本列表里处置一次（状态机被判 EXITED 后不再自转）。
+   *
+   * <p>★★ <b>E5a 如实边界：本方法仍是份额表的直接写入点，不委托 {@link AssetShareBook}</b>。理由：它做的是 <b>id 保持不变的 operator
+   * 回主</b>（份额身份编码了 operator；{@code AssetShareBook.transfer} 会按新 tuple 生成新 id，与本方法的契约「id
+   * 不变」冲突）。这是对"资产份额转移只走唯一写口"的<b>显式记为遗留的例外</b>，不是新增写路径； E5b 清算新增的转移/拆分一律只走 {@link
+   * AssetShareBook}。若要收口，应由 Book 提供一个批量、原子、id 保持的 operator 重指派口（E5a 未做，避免在无测试保护的阶段改这条低频处置路径的 id
+   * 语义）。
    */
   private static void settleOperatorExits(
       List<OperatorSettlement.Exit> exits,

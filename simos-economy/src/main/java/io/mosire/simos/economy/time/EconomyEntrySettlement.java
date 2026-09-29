@@ -841,6 +841,10 @@ final class EconomyEntrySettlement {
   /**
    * 把一条意向落到工作副本：先做<b>全量前置校验</b>（份额仍在/够、unit id 空闲、批次余量仍够），任一失败 ⇒ 返回具名原因且一个字不改；
    * 全过之后才写产业模板/unit/relation/condition/份额/配额。返回 {@link Optional#empty()} = 成功。
+   *
+   * <p>★★ <b>E5a 如实边界</b>：本方法里的份额写是**跨产业重新登记**（把 assetSource 的空闲份额改挂到候选的新
+   * industryId，再交给本户经营），不是纯所有权/经营权转移 ⇒ 不委托 {@link AssetShareBook}（Book 的守恒式是逐 {@code (industry,
+   * asset)} 的，改产业不在它语义内）。这是记为遗留的显式例外，不是新增写路径；E5b 清算的转移/拆分只走 Book。
    */
   private static Optional<String> applyIntent(EntryIntent intent, EntryContext context) {
     Tables tables = context.tables;
@@ -997,7 +1001,13 @@ final class EconomyEntrySettlement {
     return Optional.empty();
   }
 
-  /** 资产份额 id 的下一个空闲序号：同 tuple 从 0 起试（确定性；不覆盖已有行）。 */
+  /**
+   * ★★ <b>E5a 如实边界：本方法仍是份额表的直接写入点，不委托 {@link AssetShareBook}</b>。理由：进入动作要把 assetSource
+   * 的空闲份额<b>改登记到候选的新产业</b>（{@code intent.industryId()}）后交给本户经营，这样新 unit 才 通过 {@code
+   * ProductionUnitBook.usableAssets} 的 {@code industry==unit.industry} 判据看见它；而 Book 的守恒式是 逐 {@code
+   * (industry, asset)} 的，跨产业的重新登记不在它的语义内。这是记为遗留的显式例外，不是新增写路径； E5b 清算新增的转移/拆分一律只走 {@link
+   * AssetShareBook}。
+   */
   private static AssetShareId nextShareId(
       Tables tables,
       IndustryId industry,

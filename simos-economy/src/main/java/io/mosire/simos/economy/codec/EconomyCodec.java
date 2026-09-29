@@ -25,6 +25,7 @@ import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
@@ -186,6 +187,9 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     // ★★ E3：governments / moneyIssuances 两张新表的键（opaque 裸值，与各自 parse 互为逆，只需读侧）。
     module.addKeyDeserializer(GovernmentId.class, keyDeserializer(GovernmentId::parse));
     module.addKeyDeserializer(MoneyIssuanceId.class, keyDeserializer(MoneyIssuanceId::parse));
+    // ★★ E5a：crisisSignals 的键 = CrisisSignalId（{@code crisis-<q>_<r>-<KIND>}，与 parse 互为逆，只需读侧）。
+    //   liquidationPolicies 的键 = AssetRuleId，上面 E2 已注册。
+    module.addKeyDeserializer(CrisisSignalId.class, keyDeserializer(CrisisSignalId::parse));
     return module;
   }
 

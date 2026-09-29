@@ -12,6 +12,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
@@ -35,6 +36,7 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
+import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionOrganization;
 import io.mosire.simos.economy.model.ProductionOrganization.Status;
@@ -98,7 +100,7 @@ import java.util.Set;
  * </ol>
  *
  * <p>★★ <b>确定性</b>：全程无随机、无时钟、无 UUID；所有遍历序都按稳定 id 排序或来自不可变表的保序迭代；同一入参在同一 状态上重放恒得同一批组织/unit/份额 id（份额
- * id 的 sequence 由"表里已有 id"确定性推出，见 {@link #nextShareId}）。
+ * id 的 sequence 由 {@link AssetShareBook} 按"同 tuple 已有 id"确定性推出）。
  * 本类是纯协调器单线程阶段：只写调用方交给它的工作副本，不发布、不并行、不跨日持有状态。
  *
  * <p>★ <b>本阶段不做</b>（如实边界）：不做完整 mode 产业模板体系（复用现有 industry）；不发明 Industry 模板；不做独立的市场
@@ -212,9 +214,10 @@ final class EconomyOrganizationSettlement {
    * ★★ <b>本阶段入口</b>：{@code modes} 为空时<b>第一行就返回</b>（旧路径逐值不变的全部保证在这里）。
    *
    * @param base 结算前的不可变状态（读
-   *     modes/classStructures/classPositions/classStandings/assetRules/industries）
+   *     modes/classStructures/classPositions/classStandings/assetRules/industries/pledges）
    * @param rows 家户工作副本（只读本阶段；键 = 稳定身份）
    * @param industries 产业模板（只读；本阶段不新建模板）
+   * @param pledges 质押表（只读；E5a 起作为 {@code AssetShareBook} 的活跃质押上界来源；空表 = 不判）
    * @param units 生产单元工作副本（可能被 upsert）
    * @param relations 生产关系工作副本（可能被 upsert）
    * @param assetShares 实物资产份额工作副本（可能被租佃拆分：只改 operator/kind，总量不变）
@@ -230,6 +233,7 @@ final class EconomyOrganizationSettlement {
       EconomyData base,
       Map<HouseholdId, ClassRow> rows,
       Map<IndustryId, Industry> industries,
+      Map<PledgeId, Pledge> pledges,
       LinkedHashMap<ProductionUnitId, ProductionUnit> units,
       LinkedHashMap<ProductionUnitId, ProductionRelation> relations,
       LinkedHashMap<AssetShareId, AssetShare> assetShares,
@@ -245,6 +249,7 @@ final class EconomyOrganizationSettlement {
     }
     Objects.requireNonNull(rows, "rows");
     Objects.requireNonNull(industries, "industries");
+    Objects.requireNonNull(pledges, "pledges");
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(relations, "relations");
     Objects.requireNonNull(assetShares, "assetShares");
@@ -322,6 +327,7 @@ final class EconomyOrganizationSettlement {
                     orgId,
                     rows,
                     industries,
+                    pledges,
                     units,
                     relations,
                     assetShares,
@@ -373,6 +379,7 @@ final class EconomyOrganizationSettlement {
       ProductionOrganizationId orgId,
       Map<HouseholdId, ClassRow> rows,
       Map<IndustryId, Industry> industries,
+      Map<PledgeId, Pledge> pledges,
       LinkedHashMap<ProductionUnitId, ProductionUnit> units,
       LinkedHashMap<ProductionUnitId, ProductionRelation> relations,
       LinkedHashMap<AssetShareId, AssetShare> assetShares,
@@ -606,7 +613,7 @@ final class EconomyOrganizationSettlement {
     }
 
     // ── apply：全部可失败判断已在上面做完，这里只落工作副本（不重置/不覆盖既有 unit）──────────
-    applyGrants(grants, organizer, industryId, assetShares);
+    applyGrants(grants, organizer, industries, pledges, assetShares);
     units.put(unitId, new ProductionUnit(unitId, industryId, organizer, modeKey, 0L, 0L, Map.of()));
     relations.put(unitId, relation);
     allocation.ifPresent(
@@ -882,54 +889,31 @@ final class EconomyOrganizationSettlement {
     return sources;
   }
 
-  /** 把 grants 落到份额工作副本：源份额减量/删行，新建 owner 不变、operator=组织者、kind=TENANCY 的份额（总量不变）。 */
+  /**
+   * 把 grants 落到份额工作副本：<b>委托 {@link AssetShareBook#apply}</b> —— 源份额减量/删行，新建 owner 不变、
+   * operator=组织者、kind=TENANCY 的份额（Σ 逐 {@code (industry, asset)} 守恒）。★ E5a 起不再在本类直接 {@code
+   * put}/{@code remove} 份额：新 id 的确定性序号、源数量上界、industry/质押守卫全部收在唯一写口，且失败时工作副本一字不动。
+   */
   private static void applyGrants(
       List<AssetGrant> grants,
       ActorRef organizer,
-      IndustryId industryId,
+      Map<IndustryId, Industry> industries,
+      Map<PledgeId, Pledge> pledges,
       LinkedHashMap<AssetShareId, AssetShare> assetShares) {
+    if (grants.isEmpty()) {
+      return;
+    }
+    List<AssetShareBook.Move> moves = new ArrayList<>(grants.size());
     for (AssetGrant grant : grants) {
-      AssetShare source = assetShares.get(grant.source());
-      if (source == null) {
-        throw new IllegalStateException("租佃计划的源份额在执行期消失（plan/apply 之间不该有写者）: " + grant.source());
-      }
-      if (source.quantity() < grant.quantity()) {
-        throw new IllegalStateException(
-            "租佃计划的源份额在执行期不足（plan/apply 之间不该有写者）: "
-                + grant.source()
-                + " have="
-                + source.quantity()
-                + " need="
-                + grant.quantity());
-      }
-      long left = source.quantity() - grant.quantity();
-      if (left == 0L) {
-        assetShares.remove(grant.source());
-      } else {
-        assetShares.put(
-            source.id(),
-            new AssetShare(
-                source.id(),
-                source.industry(),
-                source.asset(),
-                source.owner(),
-                source.operator(),
-                left,
-                source.kind()));
-      }
-      AssetShareId newId =
-          nextShareId(assetShares, industryId, grant.asset(), grant.owner(), organizer);
-      assetShares.put(
-          newId,
-          new AssetShare(
-              newId,
-              industryId,
-              grant.asset(),
+      moves.add(
+          new AssetShareBook.Move(
+              grant.source(),
+              grant.quantity(),
               grant.owner(),
               organizer,
-              grant.quantity(),
               AssetShare.RightKind.TENANCY));
     }
+    AssetShareBook.apply(assetShares, industries, pledges, moves);
   }
 
   /** 租佃拆分后的产能规模（与 {@code ProductionUnitBook} 同式的只读预估；grants 尚未落盘）。 */
@@ -1007,23 +991,6 @@ final class EconomyOrganizationSettlement {
       rules.add(rule);
     }
     return rules;
-  }
-
-  /** 份额 id 的确定性 sequence：从 0 起找第一个未被占用的 id（重放恒得同一 id）。 */
-  private static AssetShareId nextShareId(
-      Map<AssetShareId, AssetShare> assetShares,
-      IndustryId industryId,
-      AssetKind assetKind,
-      ActorRef owner,
-      ActorRef organizer) {
-    for (long sequence = 0L; ; sequence++) {
-      AssetShareId candidate =
-          AssetShare.idOf(
-              industryId, assetKind, owner, organizer, AssetShare.RightKind.TENANCY, sequence);
-      if (!assetShares.containsKey(candidate)) {
-        return candidate;
-      }
-    }
   }
 
   // ── 关系生成 ─────────────────────────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
+import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
@@ -44,8 +45,10 @@ import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
+import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
@@ -75,7 +78,7 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **二十五个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的二十五个组件一一对应**（铁律 5）：
+ * <p>★ **二十七个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的二十七个组件一一对应**（铁律 5）：
  * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **跨表同键不变式**（§6.2 的身份部分）：{@code classes} 的每个键必须等于其 {@link ClassRow#key()}；{@code flows}
@@ -108,7 +111,7 @@ import java.util.Set;
  * 时一律收成空表 / 未激活，**此处不抛** —— 抛了等于"旧档全部读不回来"。方向是 fail-closed： 缺键 ⇒
  * 没有产业/没有阶层/没有债务/没有流水/没有劳动供给与配额/没有生产关系/<b>没有市场</b>/未激活。
  *
- * <p>★ **二十五张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
+ * <p>★ **二十七张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**——它的迭代序不是内容的纯函数（字节级往返因此不成立）。冻结那一步**写在字段赋值处** （SpotBugs 的 {@code EI_EXPOSE_REP}
  * 不做跨过程分析，只认它看得见的包装）。
  *
@@ -167,6 +170,11 @@ import java.util.Set;
  * terms)} 跨周期同一条合同，不新开条；旧 {@code debt-cN-...} 的周期聚合条由 {@code EconomyCodec} 的旧档迁移按四元组合并（principal 用
  * {@code Math.addExact} 求和）。{@code pledges} 是质押基础形状（E4a 只落形状/Codec/守卫，清算行为留 E5）；两表为空时旧路径逐值不变。
  *
+ * <p>★★ **E5a 追加第 26/27 个组件**（{@code liquidationPolicies} / {@code crisisSignals}）：前者按 {@link
+ * AssetRuleId} 键清算制度参数（{@code assetRules} 已提供时被引用规则必须存在），后者按 {@link CrisisSignalId} 键 hex 危机信号（键 ==
+ * 由 {@code (hex, kind)} 确定性派生；同 hex 同 kind 覆盖即更新）。 ★ 两张表为空 = 旧行为逐值不变，E5a
+ * 不产生任何清算/信号；跨表守卫同样按“对侧已提供”分段，保证 {@code with*} 能逐组件构造。
+ *
  * <p>★ <b>守卫**不**检查 cohort 侧的行是否存在</b>（有意不加，同 {@code ActorData}「表与表之间没有引用完整性约束」的口径）： 逐组件增量落盘 ⇒
  * **关系先到、行后到是合法写序**；而 cohort 解析不到行在结算里是**正常状态**（人口为 0 的那些 cohort 就是如此，那一笔留在 {@code
  * residualOwner}）——把它判成非法会让"人口尚未种入"的世界构造不出来。
@@ -196,12 +204,16 @@ public record EconomyData(
     Map<AssetRuleId, AssetRule> assetRules,
     Map<GovernmentId, Government> governments,
     Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances,
-    Map<PledgeId, Pledge> pledges) {
+    Map<PledgeId, Pledge> pledges,
+    Map<AssetRuleId, LiquidationPolicy> liquidationPolicies,
+    Map<CrisisSignalId, HexCrisisSignal> crisisSignals) {
 
-  /** 往返用例的起点：未激活 + 二十五张空表。 */
+  /** 往返用例的起点：未激活 + 二十七张空表。 */
   public static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
+        Map.of(),
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),
@@ -308,6 +320,14 @@ public record EconomyData(
     //   “Σ活跃质押 ≤ share.quantity”守卫整体 no-op，不改变任何旧路径。
     if (pledges == null) {
       pledges = Map.of();
+    }
+    // ★★ E5a 的第 26/27 个组件（清算政策 / hex 危机信号）：旧档缺键 ⇒ 空表（同上面每一条的口径）。
+    //   空表 = 没有清算制度参数、没有危机信号 ⇒ 旧结算路径逐值不变（E5a 不产生任何信号/清算）。
+    if (liquidationPolicies == null) {
+      liquidationPolicies = Map.of();
+    }
+    if (crisisSignals == null) {
+      crisisSignals = Map.of();
     }
     // ★ 第 8 个组件（S1 阶段 4+5 Task 2）：同一口径（缺键 ⇒ 空表，见类注释）。★ 迁移器要读它，故提到迁移之前。
     if (relations == null) {
@@ -1315,6 +1335,64 @@ public record EconomyData(
       }
     }
     pledges = Collections.unmodifiableMap(pledgesCopy); // ★ 冻在赋值处
+    // ── E5a 第 26 个组件：清算政策（键 == 值内 ruleId；assetRules 已提供时被引用规则必须存在）──────────
+    //   ★ 守卫按“对侧已提供”分段：assetRules 为空 = 规则侧尚未提供 ⇒ 只判键身份与形状；非空 ⇒ 引用完整性 fail-closed。
+    Map<AssetRuleId, LiquidationPolicy> liquidationPoliciesCopy = new LinkedHashMap<>();
+    for (Map.Entry<AssetRuleId, LiquidationPolicy> entry : liquidationPolicies.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("liquidationPolicies 的键与值都不得为 null: " + entry.getKey());
+      }
+      LiquidationPolicy policy = entry.getValue();
+      if (!entry.getKey().equals(policy.ruleId())) {
+        throw new IllegalArgumentException(
+            "liquidationPolicies 的键必须与 LiquidationPolicy.ruleId 一致：键="
+                + entry.getKey()
+                + "，行内 ruleId="
+                + policy.ruleId());
+      }
+      if (!assetRulesCopy.isEmpty() && !assetRulesCopy.containsKey(policy.ruleId())) {
+        throw new IllegalArgumentException(
+            "清算政策指名的生产资料规则不存在：政策=" + entry.getKey() + "，assetRules 里没有该规则");
+      }
+      liquidationPoliciesCopy.put(entry.getKey(), policy);
+    }
+    liquidationPolicies = Collections.unmodifiableMap(liquidationPoliciesCopy); // ★ 冻在赋值处
+    // ── E5a 第 27 个组件：hex 危机信号（键 == 值内 id == CrisisSignalId.idOf(hex, kind)）────────────
+    //   ★ 键由 (hex, kind) 确定性派生 ⇒ 同 hex 同 kind 只保留最新一条（写口 put 即覆盖；本表不追加历史）。
+    //   ★ 家户表已提供时，信号点名的 households 必须存在（fail-closed）；classes 是 SocialClassId 词表身份，
+    //     economy 侧没有以它为键的第二张表，不在构造期另造真相。
+    Map<CrisisSignalId, HexCrisisSignal> crisisSignalsCopy = new LinkedHashMap<>();
+    for (Map.Entry<CrisisSignalId, HexCrisisSignal> entry : crisisSignals.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("crisisSignals 的键与值都不得为 null: " + entry.getKey());
+      }
+      HexCrisisSignal signal = entry.getValue();
+      if (!entry.getKey().equals(signal.id())) {
+        throw new IllegalArgumentException(
+            "crisisSignals 的键必须与 HexCrisisSignal.id 一致：键="
+                + entry.getKey()
+                + "，行内 id="
+                + signal.id());
+      }
+      CrisisSignalId derived = CrisisSignalId.idOf(signal.hex(), signal.kind().name());
+      if (!entry.getKey().equals(derived)) {
+        throw new IllegalArgumentException(
+            "crisisSignals 的键必须由 (hex, kind) 确定性派生（同 hex 同 kind 只保留最新一条）：键="
+                + entry.getKey()
+                + "，派生="
+                + derived);
+      }
+      if (!classesCopy.isEmpty()) {
+        for (HouseholdId household : signal.households()) {
+          if (!classesCopy.containsKey(household)) {
+            throw new IllegalArgumentException(
+                "危机信号点名的家户不存在（家户表已提供 ⇒ fail-closed）：信号=" + entry.getKey() + "，家户=" + household);
+          }
+        }
+      }
+      crisisSignalsCopy.put(entry.getKey(), signal);
+    }
+    crisisSignals = Collections.unmodifiableMap(crisisSignalsCopy); // ★ 冻在赋值处
   }
 
   /**
@@ -1398,7 +1476,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1428,7 +1508,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1458,7 +1540,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /**
@@ -1491,7 +1575,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1521,7 +1607,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** 一个组件一个 with（R2：劳动供给表）；其余十九个组件原样带过。 */
@@ -1551,7 +1639,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** 一个组件一个 with（R2：劳动分配表）；其余十九个组件原样带过。 */
@@ -1581,7 +1671,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余十九个组件原样带过。 */
@@ -1611,7 +1703,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /**
@@ -1646,7 +1740,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /**
@@ -1680,7 +1776,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** 一个组件一个 with（S1：成员份额表）；其余十九个组件原样带过。 */
@@ -1710,7 +1808,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** 一个组件一个 with（R3B.1：实物资产份额表）；其余十九个组件原样带过。 */
@@ -1740,7 +1840,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余十九个组件原样带过。 */
@@ -1770,7 +1872,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** ★★ R3B.2：生产单元表（第 14 个组件）；其余十九个组件原样带过。 */
@@ -1800,7 +1904,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** ★★ R4-E2：需求账本（第 15 个组件）；其余十九个组件原样带过（GM 命令的唯一写入口）。 */
@@ -1830,7 +1936,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** ★★ R4-E2：候选预设表（第 16 个组件）；其余十九个组件原样带过（GM 命令的唯一写入口）。 */
@@ -1860,7 +1968,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** ★★ E1：生产方式表（第 17 个组件）；其余十九个组件原样带过。 */
@@ -1890,7 +2000,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** ★★ E1：阶层结构表（第 18 个组件）；其余十九个组件原样带过。 */
@@ -1920,7 +2032,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余十九个组件原样带过。 */
@@ -1950,7 +2064,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余十九个组件原样带过。 */
@@ -1980,7 +2096,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** ★★ E2：生产组织表（第 21 个组件）；其余二十一个组件原样带过。 */
@@ -2011,7 +2129,9 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** ★★ E2：生产资料规则表（第 22 个组件）；其余二十一个组件原样带过。 */
@@ -2041,7 +2161,9 @@ public record EconomyData(
         value,
         governments,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** ★★ E3：政府表（第 23 个组件）；其余二十三个组件原样带过。 */
@@ -2071,7 +2193,9 @@ public record EconomyData(
         assetRules,
         value,
         moneyIssuances,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /** ★★ E3：货币发行审计表（第 24 个组件）；其余二十三个组件原样带过。 */
@@ -2101,7 +2225,9 @@ public record EconomyData(
         assetRules,
         governments,
         value,
-        pledges);
+        pledges,
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /**
@@ -2135,6 +2261,82 @@ public record EconomyData(
         assetRules,
         governments,
         moneyIssuances,
+        value,
+        liquidationPolicies,
+        crisisSignals);
+  }
+
+  /**
+   * ★★ E5a：清算政策表（第 26 个组件）；其余二十六个组件原样带过。
+   *
+   * <p>★ 键 == 值内 {@code ruleId}；{@code assetRules} 非空时被引用规则必须存在 —— 两条守卫都由规范构造器 fail-closed。 空表 =
+   * 没有清算制度参数，旧行为逐值不变。
+   */
+  public EconomyData withLiquidationPolicies(Map<AssetRuleId, LiquidationPolicy> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        value,
+        crisisSignals);
+  }
+
+  /**
+   * ★★ E5a：hex 危机信号表（第 27 个组件，追加在末尾）；其余二十六个组件原样带过。
+   *
+   * <p>★ 键 == 值内 id == {@code CrisisSignalId.idOf(hex, kind)}；同 hex 同 kind 覆盖即更新（不追加历史）。 空表 =
+   * 没有信号；E5a 不产生任何信号。
+   */
+  public EconomyData withCrisisSignals(Map<CrisisSignalId, HexCrisisSignal> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
         value);
   }
 

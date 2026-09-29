@@ -7,6 +7,7 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
+import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
@@ -37,7 +38,9 @@ import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
+import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
@@ -55,13 +58,14 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 25 个：{@code meta} / {@code industries} /
+ * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 27 个：{@code meta} / {@code industries} /
  * {@code classes} / {@code debtContracts} / {@code flows} / {@code laborSupply} / {@code
  * allocations} / {@code relations} / {@code markets} / {@code shipments} / {@code memberships} /
  * {@code assetShares} / {@code operatorConditions} / {@code units} / {@code demands} / {@code
  * candidates} / {@code modes} / {@code classStructures} / {@code classPositions} / {@code
  * classStandings} / {@code productionOrganizations} / {@code assetRules} + E3 的 {@code governments}
- * / {@code moneyIssuances} + E4a 的 {@code debtContracts} / {@code pledges}）。
+ * / {@code moneyIssuances} + E4a 的 {@code debtContracts} / {@code pledges} + E5a 的 {@code
+ * liquidationPolicies} / {@code crisisSignals}）。
  *
  * <p>铁律 5：变更集从完整状态类型派生，由 {@code EconomyRoundTripTest} 的**反射枚举**把守——新增状态组件若不进 变更集，那个测试自动红。
  *
@@ -110,7 +114,9 @@ public record EconomyChangeSet(
     FieldDelta<AssetRule> assetRules,
     FieldDelta<Government> governments,
     FieldDelta<MoneyIssuanceRecord> moneyIssuances,
-    FieldDelta<Pledge> pledges)
+    FieldDelta<Pledge> pledges,
+    FieldDelta<LiquidationPolicy> liquidationPolicies,
+    FieldDelta<HexCrisisSignal> crisisSignals)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -206,6 +212,13 @@ public record EconomyChangeSet(
     if (pledges == null) {
       pledges = new FieldDelta.Unchanged<>();
     }
+    // ★★ E5a 第 26/27 个组件：同一口径（旧变更集没提该组件，就是没动它）。
+    if (liquidationPolicies == null) {
+      liquidationPolicies = new FieldDelta.Unchanged<>();
+    }
+    if (crisisSignals == null) {
+      crisisSignals = new FieldDelta.Unchanged<>();
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ **全 Unchanged**（不是空对象）。 */
@@ -237,7 +250,9 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.assetRules(), target.assetRules()),
         FieldDelta.diff(base.governments(), target.governments()),
         FieldDelta.diff(base.moneyIssuances(), target.moneyIssuances()),
-        FieldDelta.diff(base.pledges(), target.pledges()));
+        FieldDelta.diff(base.pledges(), target.pledges()),
+        FieldDelta.diff(base.liquidationPolicies(), target.liquidationPolicies()),
+        FieldDelta.diff(base.crisisSignals(), target.crisisSignals()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -274,7 +289,10 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(base.assetRules(), cs.assetRules(), AssetRuleId::parse),
         FieldDelta.rebuild(base.governments(), cs.governments(), GovernmentId::parse),
         FieldDelta.rebuild(base.moneyIssuances(), cs.moneyIssuances(), MoneyIssuanceId::parse),
-        FieldDelta.rebuild(base.pledges(), cs.pledges(), PledgeId::parse));
+        FieldDelta.rebuild(base.pledges(), cs.pledges(), PledgeId::parse),
+        FieldDelta.rebuild(
+            base.liquidationPolicies(), cs.liquidationPolicies(), AssetRuleId::parse),
+        FieldDelta.rebuild(base.crisisSignals(), cs.crisisSignals(), CrisisSignalId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -303,7 +321,9 @@ public record EconomyChangeSet(
         || assetRules.changed()
         || governments.changed()
         || moneyIssuances.changed()
-        || pledges.changed());
+        || pledges.changed()
+        || liquidationPolicies.changed()
+        || crisisSignals.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

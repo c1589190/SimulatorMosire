@@ -105,6 +105,7 @@ public final class ClassPositionResolver {
               positionId, // original = 旧档当前所属
               positionId, // current  = 同一位置（播种不是一次阶层变迁）
               Map.of(), // ★ 没有模式变迁 ⇒ 无保留比例记录（理由见类注释）
+              0L, // ★ E5a：连续债务压力周期从 0 起（旧档/创世没有压力历史；递增/清零在 E5b）
               0L, // ★ 创世/旧档种子没有迁移日
               LegacyClassStructure.SEED_REASON));
     }

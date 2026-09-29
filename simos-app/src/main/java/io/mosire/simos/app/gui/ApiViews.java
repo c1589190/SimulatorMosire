@@ -21,6 +21,7 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtUnit;
+import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
@@ -45,13 +46,16 @@ import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
+import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.DebtCapacity;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DebtIndex;
 import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionCandidate;
@@ -636,6 +640,12 @@ public final class ApiViews {
       }
       Map<String, Object> classView =
           classRowView(key, row, data.flows().get(key), actors, credits, data.debtContracts());
+      // ★★ E5a：该户的阶层归属读数（含 consecutiveDebtStressCycles）。没有 ClassStanding ⇒ null + 具名原因，
+      //   不伪造一个默认归属、也不填 0 冒充（旧路径以 ClassRow.view 为准；E5a 不产生任何阶层变动）。
+      ClassStanding standing = data.classStandings().get(key);
+      classView.put("classStanding", standing == null ? null : classStandingView(standing));
+      classView.put(
+          "classStandingUnavailable", standing == null ? CLASS_STANDING_UNAVAILABLE : null);
       classes.add(classView);
       classKeys.add(key);
     }
@@ -680,6 +690,11 @@ public final class ApiViews {
     view.put("demands", demandViews(data, coord, tick));
     // ★★ R4-E2：**候选预设**只读视图（世界级、与格无关 ⇒ 全量发；按 id 值排序 ⇒ 响应字节是内容的纯函数）。
     view.put("candidates", candidateViews(data));
+    // ★★ E5a：**清算政策**（世界级、与格无关 ⇒ 全量发；按 ruleId 排序 ⇒ 响应字节是内容的纯函数）与
+    //   **本格 hex 危机信号**（按 (hex, kind) 派生的 id 排序）。两张表都是持久状态：空表 = 没有登记，
+    //   不是"读不到"；E5a 不产生任何信号/清算（生成留 E5b），这里只如实反映为空。
+    view.put("liquidationPolicies", liquidationPolicyViews(data));
+    view.put("crisisSignals", crisisSignalViews(data, coord));
     // ★★ R4-E2b：**本格的实物资产份额**只读视图（逐条 id/industry/asset/owner/operator/quantity/kind）——
     //   份额的 owner/operator 是"谁拥有/谁经营"的唯一实物总账，进入动作的拆分必须在这里逐条可见（守恒靠它核对）。
     view.put("assetShares", assetShareViews(data, coord));
@@ -1364,6 +1379,11 @@ public final class ApiViews {
   private static final String ENTRY_OUTCOMES_PROCESS_ONLY =
       "候选进入评估结果是进程内瞬态（EntryOutcomeFeed；不落盘、不新增 EconomyData 组件）：重启/换进程/还没结算时"
           + "读不到\"哪些户被评估、为什么没进\"；unit 与份额的真值仍在 units[] 与 assetShares[] 两栏";
+
+  /** ★ E1/E5a：某家户没有 ClassStanding 时的具名原因（唯一拼写点；不是 0，也不是伪造一个默认归属）。 */
+  private static final String CLASS_STANDING_UNAVAILABLE =
+      "该家户没有 ClassStanding 记录（economy.classStandings 为空或未覆盖此户）：E1 起新状态为空时旧路径仍以 "
+          + "ClassRow.view 为准；E5a 不产生任何阶层变动，不伪造 current/original/consecutiveDebtStressCycles";
 
   /** ① 生产自给率报不出来的原因（唯一拼写点：主函数与类注引同一句）。 */
   private static final String PRODUCTION_NEEDS_LEDGER =
@@ -2429,6 +2449,84 @@ public final class ApiViews {
       out.add(view);
     }
     return out;
+  }
+
+  /**
+   * ★★ <b>E5a：清算政策只读视图</b>（世界级；按 {@code ruleId} 排序 ⇒ 响应字节是内容的纯函数）。它只<b>读</b> {@code
+   * EconomyData.liquidationPolicies()}：E5a 不执行清算，空列表 = 没有登记政策（不是"读不到"）。
+   */
+  private static List<Map<String, Object>> liquidationPolicyViews(EconomyData data) {
+    List<LiquidationPolicy> policies = new ArrayList<>(data.liquidationPolicies().values());
+    policies.sort(Comparator.comparing(policy -> policy.ruleId().value()));
+    List<Map<String, Object>> out = new ArrayList<>(policies.size());
+    for (LiquidationPolicy policy : policies) {
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("ruleId", policy.ruleId().value());
+      view.put("maxLiquidatePerMille", policy.maxLiquidatePerMille());
+      view.put("protectedReserve", policy.protectedReserve());
+      view.put("priceSource", policy.priceSource().name());
+      view.put("policyValuePerUnitMilli", policy.policyValuePerUnitMilli());
+      view.put("recipientRule", policy.recipientRule().name());
+      out.add(view);
+    }
+    return out;
+  }
+
+  /**
+   * ★★ <b>E5a：本格 hex 危机信号只读视图</b>（按 id 排序；空列表 = 本格没有信号，不是"读不到"）。★ {@code evidence} 按
+   * 原始量发出（<b>可为负</b>；负值不等于无证据，见 {@code HexCrisisSignal} 类注），视图不折算、不填 0。
+   */
+  private static List<Map<String, Object>> crisisSignalViews(EconomyData data, HexCoord coord) {
+    List<HexCrisisSignal> signals = new ArrayList<>();
+    for (HexCrisisSignal signal : data.crisisSignals().values()) {
+      if (signal.hex().equals(coord)) {
+        signals.add(signal);
+      }
+    }
+    signals.sort(Comparator.comparing(signal -> signal.id().value()));
+    List<Map<String, Object>> out = new ArrayList<>(signals.size());
+    for (HexCrisisSignal signal : signals) {
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("id", signal.id().value());
+      view.put("hex", hexCoord(signal.hex()));
+      view.put("kind", signal.kind().name());
+      view.put("severity", signal.severity());
+      view.put("day", signal.day());
+      view.put("evidence", new TreeMap<>(signal.evidence()));
+      List<String> households = new ArrayList<>(signal.households().size());
+      for (HouseholdId household : signal.households()) {
+        households.add(household.value());
+      }
+      view.put("households", households);
+      List<String> classes = new ArrayList<>(signal.classes().size());
+      for (SocialClassId socialClass : signal.classes()) {
+        classes.add(socialClass.value());
+      }
+      view.put("classes", classes);
+      view.put("reason", signal.reason());
+      out.add(view);
+    }
+    return out;
+  }
+
+  /**
+   * ★★ <b>E5a：家户阶层归属只读视图</b>：把 {@code ClassStanding} 的每个字段（含 {@code
+   * consecutiveDebtStressCycles}）逐值发出；视图不解释、不重算，也不改旧路径权威。
+   */
+  private static Map<String, Object> classStandingView(ClassStanding standing) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("householdId", standing.householdId().value());
+    view.put("originalPositionId", standing.originalPositionId().value());
+    view.put("currentPositionId", standing.currentPositionId().value());
+    Map<String, Long> retained = new TreeMap<>();
+    for (Map.Entry<ClassPositionId, Long> entry : standing.retainedShares().entrySet()) {
+      retained.put(entry.getKey().value(), entry.getValue());
+    }
+    view.put("retainedShares", retained);
+    view.put("consecutiveDebtStressCycles", standing.consecutiveDebtStressCycles());
+    view.put("lastTransitionDay", standing.lastTransitionDay());
+    view.put("reason", standing.reason());
+    return view;
   }
 
   /**

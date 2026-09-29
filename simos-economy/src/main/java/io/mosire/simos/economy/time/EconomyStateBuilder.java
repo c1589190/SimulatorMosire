@@ -1,7 +1,9 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
+import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.HouseholdId;
@@ -25,7 +27,9 @@ import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
+import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
@@ -74,6 +78,8 @@ public final class EconomyStateBuilder {
   private LinkedHashMap<ShipmentId, ShipmentBatch> shipments;
   private LinkedHashMap<GovernmentId, Government> governments;
   private LinkedHashMap<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances;
+  private LinkedHashMap<AssetRuleId, LiquidationPolicy> liquidationPolicies;
+  private LinkedHashMap<CrisisSignalId, HexCrisisSignal> crisisSignals;
   private Optional<EconomyMeta> meta;
 
   public EconomyStateBuilder(EconomyData base) {
@@ -223,6 +229,26 @@ public final class EconomyStateBuilder {
     return moneyIssuances;
   }
 
+  /**
+   * ★★ E5a：清算政策表工作副本（E5a 只落地基；E5b 的清算阶段在结算会话里读它、并按需写回覆盖）。
+   *
+   * <p>★ 与其余组件同款：未物化 ⇒ {@link #build} 直接复用 base 的不可变表，空表基线不产生任何拷贝。
+   */
+  public LinkedHashMap<AssetRuleId, LiquidationPolicy> liquidationPolicies() {
+    if (liquidationPolicies == null) {
+      liquidationPolicies = new LinkedHashMap<>(base.liquidationPolicies());
+    }
+    return liquidationPolicies;
+  }
+
+  /** ★★ E5a：hex 危机信号表工作副本（E5a 只落地基；E5b 的危机阶段按 {@code (hex, kind)} 覆盖写最新一条）。 */
+  public LinkedHashMap<CrisisSignalId, HexCrisisSignal> crisisSignals() {
+    if (crisisSignals == null) {
+      crisisSignals = new LinkedHashMap<>(base.crisisSignals());
+    }
+    return crisisSignals;
+  }
+
   /** 元信息（未写 ⇒ base 的原值）。 */
   public Optional<EconomyMeta> meta() {
     return meta == null ? base.meta() : meta;
@@ -266,6 +292,8 @@ public final class EconomyStateBuilder {
         base.assetRules(),
         governments == null ? base.governments() : governments,
         moneyIssuances == null ? base.moneyIssuances() : moneyIssuances,
-        pledges == null ? base.pledges() : pledges);
+        pledges == null ? base.pledges() : pledges,
+        liquidationPolicies == null ? base.liquidationPolicies() : liquidationPolicies,
+        crisisSignals == null ? base.crisisSignals() : crisisSignals);
   }
 }

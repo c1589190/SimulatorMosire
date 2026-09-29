@@ -17,8 +17,10 @@ import io.mosire.simos.economy.api.debt.DefaultRemedy;
 import io.mosire.simos.economy.api.debt.InterestTiming;
 import io.mosire.simos.economy.api.debt.MonetaryConversion;
 import io.mosire.simos.economy.api.debt.RepaymentRule;
+import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.GovernmentId;
@@ -52,8 +54,10 @@ import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Government;
+import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.Pledge;
@@ -215,6 +219,9 @@ import java.util.Set;
  * 给了就按对象数组解析（结构与条款在载荷层判形状，id 派生/引用完整性在 {@link EconomyData} 构造期判）。 ★★ <b>配套责任</b>：economy <b>不自动搬
  * actor 库存</b>；声明初始债务的 seed 必须在 app 的 actor.Seed 协调器里给 debtor/creditor
  * 备好对应库存/货币/权利，否则就是凭空种出的无对价债权名册。 旧类行 {@code debts} 键仍可读（它只是派生引用；进入构造期后由合同表权威重建）。
+ *
+ * <p>★ <b>E5a：创世载荷可解析可选初始清算政策/危机信号</b>：顶层 {@code liquidationPolicies} / {@code crisisSignals}
+ * 键可缺席（= 空表）；结构与取值范围在载荷层判，键身份/规则与家户引用完整性在 {@link EconomyData} 构造期判。两者为空时旧载荷逐值不变；E5a 不产生任何信号。
  */
 final class EconomyPayloads {
 
@@ -501,6 +508,9 @@ final class EconomyPayloads {
     //     里给 debtor/creditor 备好相应余额（见 EconomyPayloads 类注与 EconomySeeder 的说明）。
     Map<DebtContractId, DebtContract> debtContracts = debtContracts(payload);
     Map<PledgeId, Pledge> pledges = pledges(payload);
+    // ★★ E5a：可选初始清算政策 / hex 危机信号（缺键 ⇒ 空表；结构在本层判，引用完整性走 EconomyData 构造期守卫）。
+    Map<AssetRuleId, LiquidationPolicy> liquidationPolicies = liquidationPolicies(payload);
+    Map<CrisisSignalId, HexCrisisSignal> crisisSignals = crisisSignals(payload);
     return new EconomyData(
         Optional.of(meta),
         industries,
@@ -534,7 +544,10 @@ final class EconomyPayloads {
         governments,
         moneyIssuances,
         // ★★ E4c：质押表（可选；引用/数量上界由 EconomyData 构造期守卫按"对侧已提供"分段判）。
-        pledges);
+        pledges,
+        // ★★ E5a：清算政策 / 危机信号（可选；键身份/引用完整性由 EconomyData 构造期守卫判）。
+        liquidationPolicies,
+        crisisSignals);
   }
 
   /**
@@ -1475,6 +1488,137 @@ final class EconomyPayloads {
       }
     }
     return pledges;
+  }
+
+  /**
+   * ★★ E5a：顶层可选 {@code liquidationPolicies} 数组（缺键 ⇒ 空表）。每项：
+   *
+   * <pre>{@code
+   * {"ruleId":"asset-rule-<mode>-<ASSET>","maxLiquidatePerMille":1000,"protectedReserve":0,
+   *  "priceSource":"POLICY","policyValuePerUnitMilli":0,"recipientRule":"CREDITOR_FIRST"}
+   * }</pre>
+   *
+   * <p>★ 取值范围由 {@link LiquidationPolicy} 构造期判死；{@code ruleId} 是否指向已存在的 {@code AssetRule} 由 {@code
+   * EconomyData} 构造期守卫按"对侧已提供"分段判。同一份载荷里 {@code ruleId} 重复 ⇒ 抛（政策不是信号，不做覆盖）。
+   */
+  private static Map<AssetRuleId, LiquidationPolicy> liquidationPolicies(JsonNode payload) {
+    Map<AssetRuleId, LiquidationPolicy> policies = new LinkedHashMap<>();
+    for (JsonNode node : optionalArray(payload, "liquidationPolicies")) {
+      if (!node.isObject()) {
+        throw new IllegalArgumentException("liquidationPolicies 的每项必须是对象: " + node);
+      }
+      AssetRuleId ruleId = AssetRuleId.parse(requireText(node, "ruleId"));
+      int maxLiquidatePerMille = requireInt(node, "maxLiquidatePerMille");
+      long protectedReserve = requireLong(node, "protectedReserve");
+      LiquidationPolicy.PriceSource priceSource =
+          enumValue(
+              LiquidationPolicy.PriceSource.class,
+              requireText(node, "priceSource"),
+              "liquidationPolicies[].priceSource");
+      long policyValuePerUnitMilli = requireLong(node, "policyValuePerUnitMilli");
+      LiquidationPolicy.RecipientRule recipientRule =
+          enumValue(
+              LiquidationPolicy.RecipientRule.class,
+              requireText(node, "recipientRule"),
+              "liquidationPolicies[].recipientRule");
+      LiquidationPolicy policy =
+          new LiquidationPolicy(
+              ruleId,
+              maxLiquidatePerMille,
+              protectedReserve,
+              priceSource,
+              policyValuePerUnitMilli,
+              recipientRule);
+      if (policies.putIfAbsent(ruleId, policy) != null) {
+        throw new IllegalArgumentException("同一份载荷里清算政策的 ruleId 重复: " + ruleId);
+      }
+    }
+    return policies;
+  }
+
+  /**
+   * ★★ E5a：顶层可选 {@code crisisSignals} 数组（缺键 ⇒ 空表）。每项：
+   *
+   * <pre>{@code
+   * {"hex":"0_0","kind":"FOOD","severity":1,"day":120,
+   *  "evidence":{"grainGap":-3},"households":["hh-…"],"classes":["poor_peasant"],"reason":"…"}
+   * }</pre>
+   *
+   * <p>★ {@code id} 是可选键：给了必须与 {@link CrisisSignalId#idOf(HexCoord, String)} 一致（不一致 ⇒ 抛）； 不给就由
+   * {@code (hex, kind)} 派生。★ {@code evidence} 的值为原始触发量（<b>可为负</b>，见 {@code HexCrisisSignal}
+   * 类注）；{@code households}/{@code classes}/{@code evidence} 缺键 ⇒ 空表。 ★★ <b>同 hex 同 kind
+   * 只保留最新一条</b>： 数组中后出现的项直接覆盖先前的项（覆盖即更新；本层不追加、不报重复）。
+   */
+  private static Map<CrisisSignalId, HexCrisisSignal> crisisSignals(JsonNode payload) {
+    Map<CrisisSignalId, HexCrisisSignal> signals = new LinkedHashMap<>();
+    for (JsonNode node : optionalArray(payload, "crisisSignals")) {
+      if (!node.isObject()) {
+        throw new IllegalArgumentException("crisisSignals 的每项必须是对象: " + node);
+      }
+      HexCoord hex = HexCoord.parse(requireText(node, "hex"));
+      HexCrisisSignal.Kind kind =
+          enumValue(HexCrisisSignal.Kind.class, requireText(node, "kind"), "crisisSignals[].kind");
+      CrisisSignalId derived = CrisisSignalId.idOf(hex, kind.name());
+      optionalText(node, "id")
+          .ifPresent(
+              id -> {
+                if (!derived.equals(CrisisSignalId.parse(id))) {
+                  throw new IllegalArgumentException(
+                      "crisisSignals[].id 必须与 (hex, kind) 派生值一致: id=" + id + "，派生=" + derived);
+                }
+              });
+      int severity = requireInt(node, "severity");
+      long day = requireLong(node, "day");
+      Map<String, Long> evidence = evidence(node);
+      List<HouseholdId> households = new ArrayList<>();
+      for (JsonNode household : optionalArray(node, "households")) {
+        if (!household.isTextual() || household.asText().isBlank()) {
+          throw new IllegalArgumentException("crisisSignals[].households 的每项必须是非空字符串: " + node);
+        }
+        households.add(HouseholdId.parse(household.asText()));
+      }
+      List<SocialClassId> classes = new ArrayList<>();
+      for (JsonNode socialClass : optionalArray(node, "classes")) {
+        if (!socialClass.isTextual() || socialClass.asText().isBlank()) {
+          throw new IllegalArgumentException("crisisSignals[].classes 的每项必须是非空字符串: " + node);
+        }
+        classes.add(SocialClassId.parse(socialClass.asText()));
+      }
+      HexCrisisSignal signal =
+          new HexCrisisSignal(
+              derived,
+              hex,
+              kind,
+              severity,
+              day,
+              evidence,
+              List.copyOf(households),
+              List.copyOf(classes),
+              requireText(node, "reason"));
+      // ★ 同 hex 同 kind 只保留最新一条：后出现者覆盖先出现者（覆盖即更新，见方法注释与 EconomyData 守卫）。
+      signals.put(derived, signal);
+    }
+    return signals;
+  }
+
+  /** ★ E5a：{@code crisisSignals[].evidence} —— 可选对象；键非空白、值为 long（可为负）。缺键 ⇒ 空表。 */
+  private static Map<String, Long> evidence(JsonNode node) {
+    JsonNode evidence = optionalObject(node, "evidence");
+    Map<String, Long> values = new LinkedHashMap<>();
+    if (evidence == null) {
+      return values;
+    }
+    evidence
+        .fields()
+        .forEachRemaining(
+            field -> {
+              if (field.getKey() == null || field.getKey().isBlank()) {
+                throw new IllegalArgumentException("crisisSignals[].evidence 的键不得空白: " + evidence);
+              }
+              values.put(
+                  field.getKey(), requireIntegral(field.getValue(), "evidence." + field.getKey()));
+            });
+    return values;
   }
 
   /** ★ E4c：可空整数键（缺席/null ⇒ 空；给了非整数 ⇒ 具名抛）。 */

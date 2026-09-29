@@ -128,7 +128,12 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             merge(base.governments(), seeded.governments()),
             merge(base.moneyIssuances(), seeded.moneyIssuances()),
             // ★★ E4a 的第 25 个组件：质押按同一套“该格已被占用 ⇒ 上面就拒”的口径追加（空表播种 ⇒ 逐值带过已有状态）。
-            merge(base.pledges(), seeded.pledges()));
+            merge(base.pledges(), seeded.pledges()),
+            // ★★ E5a 的第 26/27 个组件：清算政策/危机信号也按同一套 append 口径合并 —— 漏了它们 =
+            //   已播国家的清算制度参数与 hex 危机信号在后续国家 seed 时静默消失（账面上看不出是谁弄丢的）。
+            //   ★ 危机信号键 = (hex, kind)，同键以后播的载荷为准（覆盖即更新，见 HexCrisisSignal 类注）。
+            merge(base.liquidationPolicies(), seeded.liquidationPolicies()),
+            merge(base.crisisSignals(), seeded.crisisSignals()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 
