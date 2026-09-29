@@ -10,6 +10,7 @@ import io.mosire.simos.app.world.PopulationEconomyFixture.Fixture;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
@@ -288,10 +289,11 @@ class PopulationR4Test {
    */
   private static long weaveClothIncome(EconomyData economy) {
     long total = 0L;
-    for (Map.Entry<CohortKey, ClassRow> entry : economy.classes().entrySet()) {
-      CohortKey key = entry.getKey();
-      if (!key.hex().equals(PopulationEconomyFixture.PLAINS)
-          || key.residence() != ResidenceKind.RURAL) {
+    for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
+      HouseholdId key = entry.getKey();
+      CohortKey view = entry.getValue().view();
+      if (!view.hex().equals(PopulationEconomyFixture.PLAINS)
+          || view.residence() != ResidenceKind.RURAL) {
         continue;
       }
       var flow = economy.flows().get(key);

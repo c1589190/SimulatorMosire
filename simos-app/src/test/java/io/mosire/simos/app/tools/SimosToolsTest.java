@@ -167,9 +167,9 @@ class SimosToolsTest {
   private static final String TEST_INITIATOR = "agent:t5-test";
 
   /**
-   * **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 22 读 + 52 写 = 74（**7 非窄写**：3 通用写 + {@code
+   * **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 22 读 + 53 写 = 76（**7 非窄写**：3 通用写 + {@code
    * sd.AdjudicateTick} + {@code sd.RejectDirective} + {@code sd.VoidAdjudication} + {@code
-   * simos.worldgen.initialize}，**都不是**命令类型；+ **45 窄写**：18 sd + 7 map + 20 unit）。
+   * simos.worldgen.initialize}，**都不是**命令类型；+ **46 窄写**：1 economy.adjust + 18 sd + 7 map + 20 unit）。
    */
   private static final List<String> GM_TOOL_NAMES =
       List.of(
@@ -204,6 +204,7 @@ class SimosToolsTest {
           "simos.advance",
           "simos.fork",
           "simos.worldgen.initialize",
+          "simos.economy.adjust",
           "sd.IssueDirective",
           "sd.SubmitVerdict",
           "sd.SetDecisionMakerAccess",
@@ -325,10 +326,11 @@ class SimosToolsTest {
           "simos.worldgen.initialize",
           "sd.AdjudicateTick",
           "sd.RejectDirective",
-          "sd.VoidAdjudication");
+          "sd.VoidAdjudication",
+          "simos.economy.adjust");
 
   /**
-   * 写工具全集（52 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的**补集**。
+   * 写工具全集（53 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的**补集**。
    *
    * <p>★★ **它是写闸的判据对象**：写闸覆盖集必须 == 本名单，而不是"名单的某一段下标"。M1 之前写闸用 {@code subList(9, 16)}——名单加了 7 条 map
    * 写之后切片仍合法，于是新工具**完全不被写闸覆盖**，且没有任何症状 （本仓「把没发生伪装成没发生」那一族）。
@@ -495,7 +497,15 @@ class SimosToolsTest {
           "social.CreateCity",
           "social.UpdateCity",
           "social.SeedGroups",
+          "economy.AddDemand",
+          "economy.CancelDemand",
+          "economy.GmAdjust",
+          "economy.MigrateHousehold",
+          "economy.RegisterCandidate",
           "economy.Seed",
+          "economy.SetMarketPrice",
+          "economy.SwitchMode",
+          "economy.TransferAssetShare",
           // ★ S1 阶段 2：actor 播种（第六个切片）。
           "actor.Seed");
 
@@ -692,9 +702,8 @@ class SimosToolsTest {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
         .as(
-            "扫描必须恰为 52 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱；R1 起 +1 = social.SeedGroups；"
-                + "S1 阶段 2 起 +1 = actor.Seed）")
-        .hasSize(52);
+            "扫描必须恰为 60 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler）")
+        .hasSize(60);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -730,8 +739,9 @@ class SimosToolsTest {
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .as("★ H0.6：GM 桶 = 22 读 + 52 写 = 74（新增 simos.economy.ownership 这条 GM-only 读口）")
-        .hasSize(75);
+        .as(
+            "★ H0.6/E6b：GM 桶 = 22 读 + 53 写 = 76（新增 simos.economy.ownership GM-only 读口 + simos.economy.adjust GM 窄写）")
+        .hasSize(76);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -797,16 +807,29 @@ class SimosToolsTest {
             Paths.get("..", "simos-economy", "src", "main", "java"),
             // ★ S1 阶段 2：actor 同款（actor.Seed）——不同步加进来，本强判据会把它读成"多出来的"。
             Paths.get("..", "simos-actor", "src", "main", "java"));
-    Pattern typeReturn =
-        Pattern.compile("public String type\\(\\)\\s*\\{\\s*return\\s*\"([^\"]+)\"");
+    Pattern typeReturn = Pattern.compile("public String type\\(\\)\\s*\\{\\s*return\\s*([^;]+);");
+    Pattern literalConstant = Pattern.compile("\\bString\\s+([A-Z_]+)\\s*=\\s*\"([^\"]+)\"");
     Set<String> types = new LinkedHashSet<>();
     for (Path root : roots) {
       try (Stream<Path> files = Files.walk(root)) {
         for (Path file :
             files.filter(path -> path.getFileName().toString().endsWith("Handler.java")).toList()) {
-          Matcher matcher = typeReturn.matcher(Files.readString(file));
-          if (matcher.find()) {
-            types.add(matcher.group(1));
+          String source = Files.readString(file);
+          Matcher matcher = typeReturn.matcher(source);
+          if (!matcher.find()) {
+            continue;
+          }
+          String expression = matcher.group(1).trim();
+          if (expression.startsWith("\"") && expression.endsWith("\"")) {
+            types.add(expression.substring(1, expression.length() - 1));
+            continue;
+          }
+          Matcher constant = literalConstant.matcher(source);
+          while (constant.find()) {
+            if (constant.group(1).equals(expression)) {
+              types.add(constant.group(2));
+              break;
+            }
           }
         }
       }

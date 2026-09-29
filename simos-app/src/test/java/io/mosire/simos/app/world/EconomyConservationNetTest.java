@@ -15,17 +15,25 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtStatus;
+import io.mosire.simos.economy.api.debt.DebtTerms;
+import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.DebtContractId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.codec.EconomyCodec;
-import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.ProductionLedger;
@@ -40,6 +48,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -58,7 +67,8 @@ import org.junit.jupiter.api.io.TempDir;
  *       净产</b>（operator 自留 = 净产 − 转出，余额归 {@code residualOwner}）；
  *   <li><b>市场守恒</b>：逐笔 {@code MARKET_TRADE} 成交 <b>货腿钱腿成对</b>（货腿在前、钱腿紧随、买卖双方同向同格）， 货款 == {@code ⌈数量
  *       × 价 ÷ 1000⌉}；★ 且<b>逐日全账货币总额恒定</b>（钱只在账间搬，绝不生灭）；
- *   <li><b>债务守恒</b>：{@code ΔΣ本金 == Σ新借 + Σ计息 − Σ偿还}（逐日、世界级），且逐笔本金只按<b>计息那一条规则</b>增长。
+ *   <li><b>债务守恒</b>：{@code ΔΣ本金 == Σ新借 + Σ资本化(欠租/欠薪) + Σ计息 − Σ偿还}（逐日、世界级），且逐笔本金只按三条具名写口 （借入 / 资本化 /
+ *       计息并入）增长 —— 每一条都能在当天的 ledger 里找到凭据。
  * </ol>
  *
  * <p>★★ <b>为什么驱动 {@link EconomyDayStepper} 而不是 {@code CoreSimos}</b>：判据要的原始事实（毛产 / 损耗 / 产出计提 /
@@ -66,14 +76,56 @@ import org.junit.jupiter.api.io.TempDir;
  * EconomyOwnershipTimeParticipant} 的路子自己走一遍日循环（载入 → step → 落账），把每天的账接住。
  *
  * <p>★ <b>窗口 = 恰好一个周期（120 天）</b>：跨周期末会让 {@code FlowRow} 的"本期"读数归零（口径陷阱，见 master plan
- * M0.2），而债务那条要的"一个周期内一条债只记一次"也正是在这个窗口里成立。
+ * M0.2），而债务那条要的"一个周期内一条债只记一次"也正是在这个窗口里成立。★ 例外：{@link
+ * #assertDebtInterestBranchIsCoveredWithoutMarkets} 跑两个周期 —— 它不读 {@code FlowRow}，理由见该方法的注释。
  */
 class EconomyConservationNetTest {
 
   private static final BranchId MAIN = new BranchId("main");
   private static final int CHECKPOINT_INTERVAL = 100;
   private static final long ONE_CYCLE_DAYS = 120L;
+
+  /** ★★ 计息覆盖窗口 = 两个周期（见 {@link #assertDebtInterestBranchIsCoveredWithoutMarkets} 的口径注释）。 */
+  private static final long INTEREST_COVERAGE_DAYS = 2L * ONE_CYCLE_DAYS;
+
   private static final CommodityId GRAIN = new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID);
+
+  /** E4b 夹具：本世界在信用线下不产生新借入 ⇒ 显式种一条既有粮债，让本金/计息/偿还链仍有被保护的对象。 */
+  private static final HouseholdId SEED_DEBTOR =
+      HouseholdId.ofLegacy(
+          new CohortKey(
+              new HexCoord(0, 0),
+              ResidenceKind.RURAL,
+              new SocialClassId(EconomySeeder.CLASS_IDS[0])));
+
+  private static final HouseholdId SEED_CREDITOR =
+      HouseholdId.ofLegacy(
+          new CohortKey(
+              new HexCoord(0, 0),
+              ResidenceKind.RURAL,
+              new SocialClassId(EconomySeeder.CLASS_IDS[3])));
+
+  private static final DebtTerms SEED_DEBT_TERMS = DebtTerms.legacyDefault();
+
+  private static final DebtContractId SEED_DEBT =
+      DebtContractId.idOf(SEED_DEBTOR, SEED_CREDITOR, DebtUnit.commodity(GRAIN), SEED_DEBT_TERMS);
+
+  /** 给夹具种入一条连续粮债（只改债务/引用，不搬任何库存/货币 —— 利息与偿还是真结算写口）。 */
+  private static EconomyData withSeedDebt(EconomyData data) {
+    DebtContract contract =
+        new DebtContract(
+            SEED_DEBT,
+            SEED_DEBTOR,
+            SEED_CREDITOR,
+            DebtUnit.commodity(GRAIN),
+            SEED_DEBT_TERMS,
+            1_000_000L,
+            0L,
+            OptionalLong.empty(),
+            OptionalLong.empty(),
+            DebtStatus.NORMAL);
+    return data.withDebtContracts(Map.of(SEED_DEBT, contract));
+  }
 
   @TempDir Path tempDir;
 
@@ -81,20 +133,15 @@ class EconomyConservationNetTest {
   @Test
   void oneCycleKeepsRelationsMarketAndDebtConserved() {
     try (CoreSimos core = freshCore()) {
-      EconomyData base = economy(core);
+      EconomyData base = withSeedDebt(economy(core));
       ActorData books = actor(core);
       long genesisMoney = totalMoney(books);
 
-      Map<CohortKey, Map<CommodityId, Long>> householdGoods =
-          OwnershipBooks.loadHouseholdGoods(base, books);
-      Map<CohortKey, Map<CurrencyId, Long>> householdMoney =
-          OwnershipBooks.loadHouseholdMoney(base, books);
-      Map<ActorRef, Map<CommodityId, Long>> operatorGoods =
-          OwnershipBooks.loadOperatorGoods(base, books);
-      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney =
-          OwnershipBooks.loadOperatorMoney(base, books);
+      // ★★ S1：账户只剩**一个会话**（家户 + 经营者；商品 + 货币 + 冻结一次载入）—— 旧的四张
+      //   {@code loadHouseholdGoods/loadHouseholdMoney/loadOperatorGoods/loadOperatorMoney} 已删除。
+      AccountSession accounts = OwnershipBooks.loadAccountSession(base, books);
 
-      Set<DebtId> debtIdsSeen = new LinkedHashSet<>();
+      Set<DebtContractId> debtIdsSeen = new LinkedHashSet<>();
       long marketPairs = 0L;
       long relationTransfers = 0L;
       long loanTransfers = 0L;
@@ -105,9 +152,9 @@ class EconomyConservationNetTest {
       Map<CommodityId, Long> inputTotal = new LinkedHashMap<>();
       long principalAtStart = sumPrincipal(base);
       long maxPrincipalDuringCycle = principalAtStart;
+      boolean capitalisedDuringCycle = false;
 
-      EconomyDayStepper stepper =
-          new EconomyDayStepper(base, householdGoods, householdMoney, operatorGoods, operatorMoney);
+      EconomyDayStepper stepper = new EconomyDayStepper(base, accounts);
       // ★★ **窗口对齐：`before` 取上一步之后的终态、`ledger` 与 `after` 同属这一步** ——
       //   写成 `before = stepper.data(); ledger = step(); after = stepper.data()` 会**错开一格**：
       //   `after` 里已经含着这一步算出的债/本金，而 `ledger` 是这一步的凭据 —— 但 `before` 是**上一步之后**的态，
@@ -146,15 +193,15 @@ class EconomyConservationNetTest {
 
         // ② 市场守恒（成交对 + 货款算式 + 全账货币总额恒定）。
         marketPairs += countAndAssertMarketTrades(afterDay, ledger);
-        ActorData landed = landAll(afterDay, books, stepper);
+        ActorData landed = landAll(books, stepper);
         assertThat(totalMoney(landed))
             .as("第 %d 天：全账货币总额 == 创世禀赋（钱只在账间搬、绝不生灭）", day)
             .isEqualTo(genesisMoney);
         books = landed;
 
         // ③ 债务守恒（逐笔：本金变化必有凭据；计息按利率自算）。
-        debtIdsSeen.addAll(afterDay.debts().keySet());
-        assertDebtConservation(day, beforeDay, afterDay, ledger);
+        debtIdsSeen.addAll(afterDay.debtContracts().keySet());
+        capitalisedDuringCycle |= assertDebtConservation(day, beforeDay, afterDay, ledger);
         loanTransfers += countLoanTransfers(ledger);
         maxPrincipalDuringCycle = Math.max(maxPrincipalDuringCycle, sumPrincipal(afterDay));
         beforeDay = afterDay; // ★ 下一格的"昨"
@@ -174,16 +221,16 @@ class EconomyConservationNetTest {
       assertThat(marketPairs).as("★ 一个周期里真的发生了市场成交（否则市场守恒恒真）").isPositive();
       assertThat(relationTransfers).as("★ 关系实付真的发生了（否则关系守恒恒真）").isPositive();
       assertThat(relationPaidByCommodity).as("★ 关系实付真的分了粮（不是只有空表）").containsKey(GRAIN);
-      assertThat(debtIdsSeen).as("★ 真的借出了债（否则债务守恒恒真）").isNotEmpty();
-      assertThat(loanTransfers).as("★ 真的放出了粮（否则'新债必有凭据'恒真）").isPositive();
+      // ★★ E4b 后的语义：本夹具的缺粮行 headroom == 0、operator 又不是可解析家户 ⇒ 一个周期内**不产生新借入**
+      //   （见 T2 决策），故用显式种入的既有合同守住"本金/计息/偿还链不是空转"。
+      assertThat(debtIdsSeen).as("★ 债务表非空（显式种入的连续合同仍在，且每天都在被核）").isNotEmpty();
+      assertThat(capitalisedDuringCycle).as("★ 周期末真的走了一次计息并本（否则利率/本金守恒链仍可能空转）").isTrue();
       assertThat(maxPrincipalDuringCycle)
-          .as(
-              "★ 周期内债务本金真的变大过（期初 %d → 峰值 %d；M2 市场让借款可在周期内还清 ⇒ 期末回到 0 不再是失败）",
-              principalAtStart, maxPrincipalDuringCycle)
-          .isGreaterThan(principalAtStart);
+          .as("★ 本金在周期内从未低于期初（期初 %d，观测峰值 %d；同日计息+偿还可轧平）", principalAtStart, maxPrincipalDuringCycle)
+          .isGreaterThanOrEqualTo(principalAtStart);
       assertThat(grossTotal).as("★ 真的产出了东西（否则全局守恒恒真）").isNotEmpty();
-      // ★★ M2 实测（收尾轮 probe）：带市场世界里第一周期的债在计息日前就还清（峰值本金 8,333、期末 0）
-      //   ⇒ 利息并本那一支**在本世界不再发生**。不写替代性的恒真断言：该分支的覆盖由**无市场世界**跑补回。
+      // ★★ 带市场世界（主跑）已由上面的 {@code capitalisedDuringCycle} 断言覆盖计息并本；下面再用无市场世界跑一个
+      //   两周期窗口，确保同一分支在第二个夹具（无市场）也被真的走到 —— 拿不到覆盖就红，不写替代性的恒真断言。
       assertDebtInterestBranchIsCoveredWithoutMarkets();
     }
   }
@@ -191,30 +238,31 @@ class EconomyConservationNetTest {
   /**
    * ★★ 债务链"计息并本"分支的覆盖（M2 收尾补回，覆盖不放低）。
    *
-   * <p>带市场世界（上面的主跑）已走不到 {@code chargeInterest} 那一支；本助手用 {@link
-   * EconomyTestWorld#genesisWithoutMarkets()}（同一份五格夹具、其余逐字段相同）再跑一个周期：逐日核债务守恒， 并要求计息并本真的发生 ——
-   * 拿不到覆盖就红，**不写恒真断言**。
+   * <p>带市场世界（上面的主跑）已由主断言核过一次；本助手用 {@link EconomyTestWorld#genesisWithoutMarkets()}（同一份五格夹具、其余逐字段相同）
+   * 再跑**两个周期**：逐日核债务守恒，并要求计息并本真的发生 —— 拿不到覆盖就红，**不写恒真断言**。
+   *
+   * <p>★★ <b>覆盖办法（E4b 下不再依赖"真的借出新债"）</b>：本夹具经 {@link #withSeedDebt} 显式种入一条从第 0 天就存在的 连续粮债，故首个关账日（第
+   * 120 天）就会走 {@code chargeInterest}；窗口取**两个周期（240 天）**，让同一条合同跨两个
+   * 关账日被连续核两次，并同时守住"当日新借/新资本化的条当天不计息"这条口径。没有覆盖就红，**不写恒真断言**。
    */
   private void assertDebtInterestBranchIsCoveredWithoutMarkets() {
     SimulationState state = EconomyTestWorld.genesisWithoutMarkets();
-    EconomyData base = ((EconomySnapshot) state.module("economy").orElseThrow()).data();
+    EconomyData base =
+        withSeedDebt(((EconomySnapshot) state.module("economy").orElseThrow()).data());
     ActorData books = ((ActorSnapshot) state.module("actor").orElseThrow()).data();
     EconomyDayStepper stepper =
-        new EconomyDayStepper(
-            base,
-            OwnershipBooks.loadHouseholdGoods(base, books),
-            OwnershipBooks.loadHouseholdMoney(base, books),
-            OwnershipBooks.loadOperatorGoods(base, books),
-            OwnershipBooks.loadOperatorMoney(base, books));
+        new EconomyDayStepper(base, OwnershipBooks.loadAccountSession(base, books));
     EconomyData beforeDay = stepper.data();
     boolean capitalised = false;
-    for (long day = 1L; day <= ONE_CYCLE_DAYS; day++) {
+    for (long day = 1L; day <= INTEREST_COVERAGE_DAYS; day++) {
       ProductionLedger ledger = stepper.step(day);
       EconomyData afterDay = stepper.data();
       capitalised |= assertDebtConservation(day, beforeDay, afterDay, ledger);
       beforeDay = afterDay;
     }
-    assertThat(stepper.finish().debts()).as("★ 无市场世界真的借出了债（否则下面的覆盖是空的）").isNotEmpty();
+    assertThat(stepper.finish().debtContracts())
+        .as("★ 无市场世界有合同可核（显式种入的连续粮债仍在，否则下面的覆盖是空的）")
+        .isNotEmpty();
     assertThat(capitalised).as("★ 周期末真的把利息并入了本金（带市场世界已不再走到这一支，见上面主跑的注释）").isTrue();
   }
 
@@ -240,7 +288,7 @@ class EconomyConservationNetTest {
       Map<CommodityId, Long> grossTotal,
       Map<CommodityId, Long> lossTotal,
       Map<CommodityId, Long> inputTotal,
-      Map<CohortKey, FlowRow> flows) {
+      Map<HouseholdId, FlowRow> flows) {
     Map<CommodityId, Long> opening = goodsTotalOf(openingGoods);
     // ★ 期末：家户副本 + 经营者副本（两族都在会话里，见 EconomyDayStepper 的类注）。
     Map<CommodityId, Long> closing = goodsTotalOf(GoodsView.of(stepper));
@@ -286,19 +334,27 @@ class EconomyConservationNetTest {
     return total;
   }
 
-  /** ★ 两族账本（家户 + 经营者）在某一步的**只读快照**（关系守恒的"期末−期初"读它）。 */
+  /** ★ 两族账本（家户 + 经营者）在某一步的**只读快照**（关系守恒的"期末−期初"读它；家户键 = 稳定身份 {@link HouseholdId}）。 */
   private record GoodsView(
-      Map<CohortKey, Map<CommodityId, Long>> households,
+      Map<HouseholdId, Map<CommodityId, Long>> households,
       Map<ActorRef, Map<CommodityId, Long>> operators) {
 
+    /**
+     * 从推进会话的**唯一账户表**取两族快照。
+     *
+     * <p>★★ S1：家户/经营者副本不再由调用方各拿四张地图传入，而是从 {@code stepper.accounts()} 的协调器视图读（{@code
+     * householdGoods()/operatorGoods()} 在 {@link AccountSession} 上是 public，在 {@code
+     * EconomyDayStepper} 上只是包内视图）。
+     */
     static GoodsView of(EconomyDayStepper stepper) {
-      Map<CohortKey, Map<CommodityId, Long>> households = new LinkedHashMap<>();
-      for (Map.Entry<CohortKey, Map<CommodityId, Long>> entry :
-          stepper.householdGoods().entrySet()) {
+      Map<HouseholdId, Map<CommodityId, Long>> households = new LinkedHashMap<>();
+      for (Map.Entry<HouseholdId, Map<CommodityId, Long>> entry :
+          stepper.accounts().householdGoods().entrySet()) {
         households.put(entry.getKey(), new LinkedHashMap<>(entry.getValue()));
       }
       Map<ActorRef, Map<CommodityId, Long>> operators = new LinkedHashMap<>();
-      for (Map.Entry<ActorRef, Map<CommodityId, Long>> entry : stepper.operatorGoods().entrySet()) {
+      for (Map.Entry<ActorRef, Map<CommodityId, Long>> entry :
+          stepper.accounts().operatorGoods().entrySet()) {
         operators.put(entry.getKey(), new LinkedHashMap<>(entry.getValue()));
       }
       return new GoodsView(households, operators);
@@ -307,12 +363,13 @@ class EconomyConservationNetTest {
     /**
      * 某主体在某商品上的余额（**先查家户副本，再查经营者副本**）。
      *
-     * <p>★ <b>不能拿 {@link HouseholdActors#cohortOf(ActorRef)} 当"是不是家户"的判据</b>：它对非 {@code HOUSEHOLD}
-     * <b>宁抛不静默</b>。而 {@code HOUSEHOLD} 这个种类里**不只有家户**（家庭纺织的经营主体 {@code weave@0_0} 也是它， 见 {@code
-     * OwnershipBooks.loadHouseholdGoods} 的类注）⇒ 这里按"哪本副本里有键"取，找不到就是 0。
+     * <p>★ <b>不能"按 actor 种类是不是 HOUSEHOLD"判家户</b>：{@code HOUSEHOLD} 这个种类里**不只有家户**（家庭纺织的经营主体 {@code
+     * weave@0_0} 也是它）⇒ 这里按"哪本副本里有键"取，找不到就是 0。★ 家户那一侧用 {@link HouseholdActors#of(HouseholdId)} 拼
+     * actor（唯一拼写点）；**不从 {@link HouseholdId} 反推视图**（新档 {@code hh-…} id 反推不出格/居住，视图在 {@code
+     * ClassRow.view()} 上）。
      */
     long goodsOf(ActorRef actor, CommodityId commodity) {
-      for (Map.Entry<CohortKey, Map<CommodityId, Long>> entry : households.entrySet()) {
+      for (Map.Entry<HouseholdId, Map<CommodityId, Long>> entry : households.entrySet()) {
         if (HouseholdActors.of(entry.getKey()).equals(actor)) {
           return entry.getValue().getOrDefault(commodity, 0L);
         }
@@ -324,7 +381,7 @@ class EconomyConservationNetTest {
   /** 世界债务本金合计（毫粮）。 */
   private static long sumPrincipal(EconomyData data) {
     long sum = 0L;
-    for (Debt debt : data.debts().values()) {
+    for (DebtContract debt : data.debtContracts().values()) {
       sum += debt.principal();
     }
     return sum;
@@ -357,7 +414,7 @@ class EconomyConservationNetTest {
   private static void assertRelationConservation(EconomyData data, ProductionLedger ledger) {
     for (Map.Entry<IndustryId, Map<CommodityId, Long>> entry : ledger.gross().entrySet()) {
       IndustryId industry = entry.getKey();
-      ActorRef operator = data.industries().get(industry).operator();
+      ActorRef operator = operatorOf(data, industry);
       HexCoord location = hexOf(industry);
       for (CommodityId commodity : entry.getValue().keySet()) {
         long net = ledger.grossOf(industry, commodity) - ledger.lossOf(industry, commodity);
@@ -371,6 +428,37 @@ class EconomyConservationNetTest {
             .isBetween(0L, net);
       }
     }
+  }
+
+  /**
+   * 产业的**实际经营者**（投入/产出/关系/账户都归它）。
+   *
+   * <p>★★ B.2 起真值在 {@link ProductionUnit#operator()}：{@code Industry.operator()} 只剩**旧档反序列化兼容位**
+   * （新档 12 参模板恒 {@code null}，生产路径禁读）⇒ 谁再读它，新档世界里会直接 NPE。本夹具每个产业一个 unit（旧档兼容位归一化时按 {@code
+   * RegimeOperators.defaultOperator} 合成，见 {@code EconomyData} 的构造期归一化）。
+   */
+  private static ActorRef operatorOf(EconomyData data, IndustryId industry) {
+    ProductionUnit found = null;
+    for (ProductionUnit unit : data.units().values()) {
+      if (!unit.industry().equals(industry)) {
+        continue;
+      }
+      if (found != null) {
+        throw new IllegalStateException(
+            "本夹具假定一个产业一个 unit（多 unit 的逐经营者判据另写）："
+                + industry
+                + " → "
+                + found.id()
+                + " / "
+                + unit.id());
+      }
+      found = unit;
+    }
+    if (found == null) {
+      throw new IllegalStateException(
+          "产业没有 ProductionUnit（产出/计提的经营者只在 unit 上，不在 Industry 兼容位上）：" + industry);
+    }
+    return found.operator();
   }
 
   /** 产业所在格（账户 = {@code (actor, location)}；{@code IndustryHexKeys} 是"产业 id 里的格"的唯一拼写点）。 */
@@ -472,21 +560,25 @@ class EconomyConservationNetTest {
   // ── 判据 ③：债务守恒 ────────────────────────────────────────────────────────────────
 
   /**
-   * ★★ <b>债务守恒</b>（逐笔，日级）：本金的变化<b>只能</b>由两件事解释 —— **今日放出/偿还的本金**（凭据在当天的 ledger 里）与**周期末计息**（按昨日本金 ×
-   * 率 ÷ 1000，向下取整）。
+   * ★★ <b>债务守恒</b>（逐笔，日级）：本金的变化<b>只能</b>由三件具名事实解释 —— **今日放出/偿还的本金**（凭据在当天 ledger 的 {@code
+   * LOAN_PRINCIPAL}/{@code LOAN_REPAYMENT} 转移里）、**今日资本化的欠租/欠薪**（凭据在 ledger 的 {@code
+   * debtCapitalizations()} 里；只记债权、不搬粮/钱）与**周期末计息**（按当日起始本金 × 率 ÷ 1000，向下取整并入本金）。
    *
    * <pre>
-   * 计息前： 本金_今 == 本金_昨 + 今日放出 − 今日偿还                     // 非关账日恒成立
-   * 计息后： 本金_今 == 本金_昨 + 今日放出 − 今日偿还 + 计息               // 关账日（利息并入本金）
+   * 计息前： 本金_今 == 本金_昨 + 今日放出 + 今日资本化 − 今日偿还      // 非关账日恒成立
+   * 计息后： 本金_今 == 上式 + 计息                                    // 关账日（利息并入本金）
    * </pre>
    *
-   * <p>★★ <b>两条等式里"计息那一笔"是自算的、不是抄来的</b>：{@code 息 = ⌊本金_昨 × 率 ÷ 1000⌋}。⇒ 若实现多记/少记
-   * 一分（或把计息漏在某个分支外），两条都不成立、当场红。★ 今日放出/偿还取 <b>ledger 的转移</b>（钱的凭据）， 不取债务表自己的差 —— 那样这条就退化成"表等于它自己"。
+   * <p>★★ <b>两条等式里"计息那一笔"是自算的、不是抄来的</b>：{@code 息 = ⌊当日起始本金 × 率 ÷ 1000⌋}（{@code chargeInterest}
+   * 的基数就是"当日起始本金"；当日新借/新资本化的条不在起始快照里 ⇒ 当日不计息）。⇒ 若实现多记/少记一分（或把计息漏在某个分支外）， 两条都不成立、当场红。★ 今日放出/偿还取
+   * <b>ledger 的转移</b>（钱的凭据）、资本化取 ledger 的资本化明细， 都不取债务表自己的差 —— 那样这条就退化成"表等于它自己"。
    *
-   * <p>★★ <b>本批实测的形状（写进判据，免得后来者以为是恒等式）</b>：本夹具（5 格、周期 120 天）里 <b>第 1~119 天全部走"计息前"那条</b>，第 120
-   * 天走"计息后"那条 —— 即 {@code chargeInterest} 只在 "今天有产业关账"那天发生（{@code settleOneDay} 的第 5 步）。逐日 dump
-   * 的实测（见台账 M0.5 节）： 第 1~6 天本金 4166 / 8333 / 12500 / 16666 / 20833 / 25000，与当天 {@code
-   * LOAN_PRINCIPAL} 的粮腿**逐值相等**。
+   * <p>★ <b>标的（unit）参与口径</b>：合同可能是实物债（粮/其它商品）或货币债 ⇒ 逐条按 {@link DebtContract#unit()} 取对应腿 （{@code
+   * goods[commodity]} / {@code money[currency]}），不把货币债的腿当粮读。
+   *
+   * <p>★ <b>E4a/E4c 的新语义</b>：合同是**连续欠账**（同一 {@code (debtor, creditor, unit, terms)} 跨周期一条）；{@code
+   * dueCycle} 是可滚动的"当前约定"，**只在新增债权（借入/资本化）时**被改写（计息与偿还一字不改）；{@code status} 与 {@code
+   * lastInterestDay} 分别是合同状态与最近一次"真的并入利息"的日。
    *
    * @param ledger 当天的发生额（{@link EconomyDayStepper#step(long)} 的返回值 —— 债务凭据只在里面）
    * @return 本日是否真的把利息并入了本金（"反空洞"用）
@@ -494,42 +586,65 @@ class EconomyConservationNetTest {
   private static boolean assertDebtConservation(
       long day, EconomyData before, EconomyData after, ProductionLedger ledger) {
     boolean capitalised = false;
-    for (Map.Entry<DebtId, Debt> entry : after.debts().entrySet()) {
-      Debt now = entry.getValue();
-      Debt was = before.debts().get(entry.getKey());
+    for (Map.Entry<DebtContractId, DebtContract> entry : after.debtContracts().entrySet()) {
+      DebtContractId id = entry.getKey();
+      DebtContract now = entry.getValue();
+      assertThat(now.id()).as("债务守恒：键 == 值内 id（合同表的唯一索引）").isEqualTo(id);
+      assertThat(now.idMatchesIdentity())
+          .as("债务守恒：%s 的 id 是 (debtor, creditor, unit, terms) 的确定性派生", id.value())
+          .isTrue();
       assertThat(now.debtor()).as("债务守恒：债务人 ≠ 债权人（自债是坏数据）").isNotEqualTo(now.creditor());
+      long lent = principalMoved(ledger, now, LoanFlow.PRINCIPAL);
+      long repaid = principalMoved(ledger, now, LoanFlow.REPAYMENT);
+      long capitalisedToday = capitalisedPrincipalOf(ledger, id);
+      DebtContract was = before.debtContracts().get(id);
       if (was == null) {
-        // ★ 今日新建的债条：本金 == 今日放出的本金（借一笔就记一条，账与凭据同源）。
+        // ★ 今日新建的债条：本金 == 今日放出 + 今日资本化（欠租/欠薪转债权）− 今日偿还（借一笔/资本化一笔就记一条，账与凭据同源）。
+        //   ★ 当日新建的条不在"当日起始本金"快照里 ⇒ 今天不计息（chargeInterest 自己挡掉）。
         assertThat(now.principal())
             .as(
-                "债务守恒（第%d天）：新债 %s 的本金(%d) == 今日放出的本金(%d)",
-                day,
-                entry.getKey().value(),
-                now.principal(),
-                principalMoved(ledger, now.debtor(), now.creditor(), LoanFlow.PRINCIPAL))
-            .isEqualTo(principalMoved(ledger, now.debtor(), now.creditor(), LoanFlow.PRINCIPAL));
+                "债务守恒（第%d天）：新债 %s 的本金(%d) == 今日放出(%d) + 今日资本化(%d) − 今日偿还(%d)",
+                day, id.value(), now.principal(), lent, capitalisedToday, repaid)
+            .isEqualTo(lent + capitalisedToday - repaid);
         continue;
       }
-      long lent = principalMoved(ledger, now.debtor(), now.creditor(), LoanFlow.PRINCIPAL);
-      long repaid = principalMoved(ledger, now.debtor(), now.creditor(), LoanFlow.REPAYMENT);
-      long interest = was.principal() * now.ratePerMillePerCycle() / 1000L;
-      long withoutInterest = was.principal() + lent - repaid;
+      long interest = was.principal() * now.terms().interestRatePerMillePerCycle() / 1000L;
+      long withoutInterest = was.principal() + lent + capitalisedToday - repaid;
       if (now.principal() != withoutInterest) {
-        // ★ 差额必须是那一笔计息（一分不多、一分不少）—— 这里同时钉住"利息只并入本金、且按昨日本金算"。
+        // ★ 差额必须是那一笔计息（一分不多、一分不少）—— 这里同时钉住"利息只并入本金、且按当日起始本金算"。
         assertThat(now.principal())
             .as(
-                "债务守恒（第%d天）：%s 的差额 == 计息 ⌊昨 %d × %d‰⌋=%d（今日放出 %d、偿还 %d）",
+                "债务守恒（第%d天）：%s 的差额 == 计息 ⌊昨 %d × %d‰⌋=%d（今日放出 %d、资本化 %d、偿还 %d）",
                 day,
-                entry.getKey().value(),
+                id.value(),
                 was.principal(),
-                now.ratePerMillePerCycle(),
+                now.terms().interestRatePerMillePerCycle(),
                 interest,
                 lent,
+                capitalisedToday,
                 repaid)
             .isEqualTo(withoutInterest + interest);
-        capitalised |= interest > 0L;
+        if (interest > 0L) {
+          capitalised = true;
+          assertThat(now.lastInterestDay())
+              .as("债务守恒（第%d天）：%s 真的并入了利息 ⇒ lastInterestDay 写成当日", day, id.value())
+              .hasValue(day);
+        }
       }
-      assertThat(now.dueCycle()).as("债务守恒：到期周期不因计息/偿还而变（它记的是'哪一周期借的'）").isEqualTo(was.dueCycle());
+      // ★ E4a 新语义：dueCycle 只在"新增债权"（借入/资本化）时滚动；计息/偿还都不许改它（资本化也走 upsert，带新到期周期）。
+      if (lent == 0L && capitalisedToday == 0L) {
+        assertThat(now.dueCycle())
+            .as("债务守恒（第%d天）：%s 的到期周期不因计息/偿还而变", day, id.value())
+            .isEqualTo(was.dueCycle());
+      }
+      // ★ 结构不变量（DebtContractBook 的写口守卫）：本金 > 0 的合同不得同时是"已结清/已减免"。
+      if (now.principal() > 0L) {
+        assertThat(now.status())
+            .as(
+                "债务守恒（第%d天）：%s 本金(%d) > 0 ⇒ 状态不得是 SETTLED/FORGIVEN（实际 %s）",
+                day, id.value(), now.principal(), now.status())
+            .isNotIn(DebtStatus.SETTLED, DebtStatus.FORGIVEN);
+      }
     }
     return capitalised;
   }
@@ -549,15 +664,16 @@ class EconomyConservationNetTest {
   }
 
   /**
-   * ledger 里某一族贷款转移中、某一对债务关系的粮腿之和（毫粮）。
+   * ledger 里某一族贷款转移中、**这条合同标的腿**之和（毫单位）。
    *
-   * <p>★★ <b>方向由 {@link LoanFlow} 说死，调用方只给"债务人、债权人"</b> —— 本判据在这里栽过一次： 早先的签名是 {@code (from,
-   * to)}，调用处把两个 actor 的顺序写反，于是"放贷"那条**恒读到 0**， 而"恒 0"看起来就像"今天没放贷"（判据静默失效）。
+   * <p>★★ <b>方向由 {@link LoanFlow} 说死，调用方只给合同</b> —— 本判据在这里栽过一次： 早先的签名是 {@code (from, to)}，调用处把两个
+   * actor 的顺序写反，于是"放贷"那条**恒读到 0**， 而"恒 0"看起来就像"今天没放贷"（判据静默失效）。★ E4a 起债务端点是稳定身份 {@link
+   * HouseholdId}（不是 {@code CohortKey} 视图）： actor 由 {@link HouseholdActors#of(HouseholdId)} 拼 ——
+   * 拿旧视图当端点会**恒读不到**。
    */
-  private static long principalMoved(
-      ProductionLedger ledger, CohortKey debtor, CohortKey creditor, LoanFlow flow) {
-    ActorRef from = HouseholdActors.of(flow.creditorPays ? creditor : debtor);
-    ActorRef to = HouseholdActors.of(flow.creditorPays ? debtor : creditor);
+  private static long principalMoved(ProductionLedger ledger, DebtContract debt, LoanFlow flow) {
+    ActorRef from = HouseholdActors.of(flow.creditorPays ? debt.creditor() : debt.debtor());
+    ActorRef to = HouseholdActors.of(flow.creditorPays ? debt.debtor() : debt.creditor());
     long sum = 0L;
     for (Transfer transfer : ledger.transfers()) {
       if (transfer.reason() != flow.reason
@@ -565,7 +681,31 @@ class EconomyConservationNetTest {
           || !transfer.to().equals(to)) {
         continue;
       }
-      sum += transfer.goods().getOrDefault(GRAIN, 0L);
+      sum += debtLeg(transfer, debt.unit());
+    }
+    return sum;
+  }
+
+  /** 一条转移里该合同标的的量（实物债 ⇒ {@code goods[商品]}；货币债 ⇒ {@code money[币种]}；别的腿不属于这条债）。 */
+  private static long debtLeg(Transfer transfer, DebtUnit unit) {
+    return switch (unit) {
+      case DebtUnit.Commodity commodity -> transfer.goods().getOrDefault(commodity.commodity(), 0L);
+      case DebtUnit.Money money -> transfer.money().getOrDefault(money.currency(), 0L);
+    };
+  }
+
+  /**
+   * 当天 ledger 里指名给这条合同的资本化本金（欠租/欠薪 → 债权）。
+   *
+   * <p>★ 资本化**不是**库存/货币流动（只写本金，见 {@code EconomySettlement.capitalizeArrears}）——把它漏在债务守恒式外，
+   * 一次资本化就会把这条判据打成红。
+   */
+  private static long capitalisedPrincipalOf(ProductionLedger ledger, DebtContractId id) {
+    long sum = 0L;
+    for (ProductionLedger.DebtCapitalization capitalisation : ledger.debtCapitalizations()) {
+      if (capitalisation.contractId().equals(id)) {
+        sum += capitalisation.amount();
+      }
     }
     return sum;
   }
@@ -668,12 +808,15 @@ class EconomyConservationNetTest {
     }
   }
 
-  /** 把四份会话副本按协调器的**同一顺序**落回 actor 切片（商品在前、货币在后，顺序不能反）。 */
-  private static ActorData landAll(EconomyData data, ActorData books, EconomyDayStepper stepper) {
-    ActorData landed = OwnershipBooks.landHouseholdGoods(books, stepper.householdGoods());
-    landed = OwnershipBooks.landHouseholdMoney(landed, stepper.householdMoney());
-    landed = OwnershipBooks.landOperatorGoods(data, landed, stepper.operatorGoods());
-    return OwnershipBooks.landOperatorMoney(data, landed, stepper.operatorMoney());
+  /**
+   * 把推进会话里的**全部账户**（家户 + 经营者；商品 + 货币 + 冻结）按绝对值一次落回 actor 切片。
+   *
+   * <p>★★ S1：旧的 {@code landHouseholdGoods/landHouseholdMoney/landOperatorGoods/landOperatorMoney}
+   * 四步（以及"商品在前、货币在后"的顺序约定）已删除——{@link OwnershipBooks#landAccountSession(ActorData, AccountSession)}
+   * 每本账**一次写全**，没有第二处落账路径、也没有顺序可错。
+   */
+  private static ActorData landAll(ActorData books, EconomyDayStepper stepper) {
+    return OwnershipBooks.landAccountSession(books, stepper.accounts());
   }
 
   private static EconomyData economy(CoreSimos core) {

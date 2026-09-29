@@ -777,7 +777,7 @@ class EconomySowingTest {
     // ★★ R3 续修信用线：可观察偿付基础 = 本期已实现粮所得 + 本户可自用余粮；贫农两者皆 0
     //   ⇒ 借不到粮、不产生债务。旧用例的"借粮聚合"叙事在本口径下不成立（这是有意的行为变更，
     //   对应 R3 决策单"不再凭未来推断发信用卡"；债务聚合改由 EconomyDebtTest/后续 V 用例另建收入场景覆盖）。
-    assertThat(next.debts()).as("缸空且本期无所得 ⇒ 借不到粮，债务表为空").isEmpty();
+    assertThat(next.debtContracts()).as("缸空且本期无所得 ⇒ 借不到粮，债务表为空").isEmpty();
     assertThat(EconomyFixtures.flowOf(next, PEASANT_KEY).unmetNeed().getOrDefault(GRAIN, 0L))
         .as("缺口照记（R4 起 unmetNeed 逐商品；本条只读粮那一维）")
         .isEqualTo(rationOver(CYCLE_DAYS));

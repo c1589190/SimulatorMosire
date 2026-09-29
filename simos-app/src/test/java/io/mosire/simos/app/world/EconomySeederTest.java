@@ -6,12 +6,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.actor.api.actor.ActorKind;
-import io.mosire.simos.economy.api.cohort.CohortKey;
-import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
-import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.gen.PlannedCity;
@@ -27,12 +27,12 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@link EconomySeeder} 的纯函数用例（R2a；R1 起人口来源改为 {@link PopulationSeeder} 造的批次列表）：**3 个格**（平原纯农村 /
- * 低丘农村+城市 / 平原只有城市）——逐值断言 人口守恒、土地守恒（H0.3 起 = 农业产业的产能）、日耗 = 人口 × 83 毫粮。
+ * 低丘农村+城市 / 平原只有城市）——逐值断言 人口守恒、土地守恒（H0.3 起 = 农业产业的产能）、日耗 = 第 1 天口粮（每人每 120 天 10 粮）。
  *
- * <p>★★ <b>H0.2/H0.3（2026-09-27）后的载荷形状</b>：行 = <b>家户</b>，键 = {@code (格, 居住类型, 阶层)} ⇒ 每格
+ * <p>★★ <b>H0.2/H0.3 + R3B.2 + R4-B.3a 后的载荷形状</b>：行 = <b>家户</b>，载荷行带 {@code householdId}（稳定身份）⇒ 每格
  * <b>两组四行</b>（农村 4 + 城镇 4）挂在 <b>entry 级</b>的 {@code classes} 上（产业节点里没有 {@code classes} 了）；
- * 亩/织机/作坊这些<b>产能</b>搬到该格对应产业的 {@code capacity}（旧版散在各行的 {@code meansOfProduction}）。 旧版的第三组行（{@code
- * weave} 那四行，人口恒 0）<b>不再存在</b>：它的纤维并入农村四行、织机成为纺织产业的产能。
+ * 亩/织机/作坊这些<b>产能</b>落在该格对应产业各 unit 的 {@code assetShares} 上（K3 从行上搬走、R3B.2 落到 unit；R4-B.3a 再拆主/副
+ * unit，Σ 份额 == 原产能）。旧版的第三组行（{@code weave} 那四行，人口恒 0）<b>不再存在</b>：它的纤维并入农村四行、 织机成为纺织产业的产能。
  *
  * <p>★ R1（T4）：播种器的输入是 {@code List<PopulationGroup>}，故夹具先经 {@code PopulationSeeder.groups(plan, 0)}
  * 把计划翻成 批次 —— **这正是生产路径的走法**（同一个方法在 {@code WorldgenInitializeTool} 里同时喂给 social.SeedGroups 与
@@ -129,47 +129,48 @@ class EconomySeederTest {
   }
 
   /**
-   * ★★ <b>H1：同一条 plan 交出的家户创世库存</b>（键 = 家户身份）。
+   * ★★ <b>H1/S1：同一条 plan 交出的家户创世库存</b>（键 = 家户稳定身份 {@link HouseholdId}；视图不再进键）。
    *
    * <p>★★ 载荷里的阶层行**不再带 {@code goods}**（裁定 D3-C/K1：商品库存的唯一真源是 actor 侧的 {@code GoodsAccount}）——
    * 故"开缸余额"的断言改读这里，而它正是 {@link HouseholdSeeder} 拿去建账本的那一份 （{@code plan(...).householdStocks()}，与
    * {@code economy.Seed} 同一个 plan）。
    */
-  private static Map<CohortKey, Map<CommodityId, Long>> stocks() throws Exception {
+  private static Map<HouseholdId, Map<CommodityId, Long>> stocks() throws Exception {
     return EconomySeeder.plan("Map1", PopulationSeeder.groups(plan(), 0L), TERRAIN::get)
         .householdStocks();
   }
 
-  /** 某格某居住类型那一组家户的某商品库存合计（H1：从上面那份账本读，逐格 = 该 entry 的 (q,r)）。 */
+  /**
+   * 某格某居住类型那一组家户的某商品库存合计（H1/S1：账本键是 {@code HouseholdId}；行→身份的对应从**同一份载荷的行** 读 {@code
+   * householdId}，不从 id 反推视图）。
+   */
   private static long sumStock(
-      Map<CohortKey, Map<CommodityId, Long>> stocks,
+      Map<HouseholdId, Map<CommodityId, Long>> stocks,
       JsonNode entry,
       String residence,
       CommodityId commodity) {
     long total = 0L;
-    for (Map.Entry<CohortKey, Map<CommodityId, Long>> household : stocks.entrySet()) {
-      CohortKey key = household.getKey();
-      if (key.hex().equals(new HexCoord(entry.get("q").asInt(), entry.get("r").asInt()))
-          && key.residence().value().equals(residence)) {
-        total += household.getValue().getOrDefault(commodity, 0L);
-      }
+    for (JsonNode row : cohortRows(entry, residence)) {
+      HouseholdId id = HouseholdId.parse(row.get("householdId").asText());
+      total += stocks.getOrDefault(id, Map.of()).getOrDefault(commodity, 0L);
     }
     return total;
   }
 
-  /** 某一本家户账上某商品的余额（{@code slot} = 阶层 id；缺席 ⇒ 0）。 */
+  /** 某一本家户账上某商品的余额（{@code slot} = 阶层 id；缺席 ⇒ 0）。视图→身份走载荷行（S1：不能从 id 反推视图）。 */
   private static long stockOf(
-      Map<CohortKey, Map<CommodityId, Long>> stocks,
+      Map<HouseholdId, Map<CommodityId, Long>> stocks,
       JsonNode entry,
       String residence,
       String slot,
       CommodityId commodity) {
-    CohortKey key =
-        new CohortKey(
-            new HexCoord(entry.get("q").asInt(), entry.get("r").asInt()),
-            ResidenceKind.parse(residence),
-            new SocialClassId(slot));
-    return stocks.getOrDefault(key, Map.of()).getOrDefault(commodity, 0L);
+    for (JsonNode row : cohortRows(entry, residence)) {
+      if (row.get("slot").asText().equals(slot)) {
+        HouseholdId id = HouseholdId.parse(row.get("householdId").asText());
+        return stocks.getOrDefault(id, Map.of()).getOrDefault(commodity, 0L);
+      }
+    }
+    throw new AssertionError("载荷里没有家户行 " + residence + ":" + slot);
   }
 
   /** Σ 各行某个**嵌套表**里的某键（如 {@code naturalNeeds.grain}）。 */
@@ -185,18 +186,67 @@ class EconomySeederTest {
   }
 
   /**
-   * 某产业在本格的**产能总量**（H0.3/K3：旧版散在各行的 {@code meansOfProduction} 里、靠 Σ 还原；现在只有一个数）。 缺键 ⇒ 0（该生产资料本格没有）。
+   * 某产业在本格的**产能总量**（R3B.2/K3：产能落在该产业各 unit 的 {@code assetShares} 上；R4-B.3a 拆出主/副 unit 后 Σ 份额仍 ==
+   * 原产能）。缺项 ⇒ 0（该生产资料本格没有）。
    */
   private static long capacity(JsonNode entry, String industryId, String asset) {
-    JsonNode capacity = industry(entry, industryId).get("capacity");
-    return capacity != null && capacity.has(asset) ? capacity.get(asset).asLong() : 0L;
+    long total = 0L;
+    for (JsonNode share : toList(entry.get("assetShares"))) {
+      if (share.get("industry").asText().equals(industryId)
+          && share.get("asset").asText().equals(asset)) {
+        total += share.get("quantity").asLong();
+      }
+    }
+    return total;
   }
 
-  /** Σ 收劳动的主体等于 {@code actorId} 的那些配额的 {@code laborMilli}（R3：一个池的配额现在分给多个产业）。 */
-  private static long sumForActor(List<JsonNode> allocations, String actorId) {
+  /** 该产业在本格是否登记了某个资产的份额（**含 0 值登记**：0 产能是合法形态，见 {@code assetSharesOf}）。 */
+  private static boolean hasAssetShare(JsonNode entry, String industryId, String asset) {
+    for (JsonNode share : toList(entry.get("assetShares"))) {
+      if (share.get("industry").asText().equals(industryId)
+          && share.get("asset").asText().equals(asset)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 一条配额喂哪个产业（R3B.2：{@code activity} = 生产单元 id，形状 {@code unit-<产业>-<经营者 kind>-<经营者 id>}； 产业 id 形如
+   * {@code farm@0_0}、不含 {@code '-'}）。
+   */
+  private static String industryOfActivity(String unit) {
+    int firstDash = unit.indexOf('-');
+    int secondDash = unit.indexOf('-', firstDash + 1);
+    if (firstDash < 0 || secondDash < 0) {
+      throw new IllegalArgumentException("activity 不是生产单元 id: " + unit);
+    }
+    return unit.substring(firstDash + 1, secondDash);
+  }
+
+  /** 一条配额的产业（主 unit 与 R4-B.3a 副 unit 都按 unit id 里的产业段归类）。 */
+  private static String industryOf(JsonNode allocation) {
+    return industryOfActivity(allocation.get("activity").asText());
+  }
+
+  /** Σ 该产业全部 unit（主 + R4-B.3a 副 unit）的配额 laborMilli（拆 unit 只搬不增，故合计 == 拆前发值）。 */
+  private static long sumForIndustry(List<JsonNode> allocations, String industryId) {
     long total = 0L;
     for (JsonNode allocation : allocations) {
-      if (allocation.get("actor").get("id").asText().equals(actorId)) {
+      if (industryOf(allocation).equals(industryId)) {
+        total += allocation.get("laborMilli").asLong();
+      }
+    }
+    return total;
+  }
+
+  /** 某批次在某个产业上的配额合计（跨该产业的四个家户与主/副 unit —— 拆行只搬不增）。 */
+  private static long sumForBatchAndIndustry(
+      List<JsonNode> allocations, String group, String industryId) {
+    long total = 0L;
+    for (JsonNode allocation : allocations) {
+      if (allocation.get("group").asText().equals(group)
+          && industryOf(allocation).equals(industryId)) {
         total += allocation.get("laborMilli").asLong();
       }
     }
@@ -273,14 +323,15 @@ class EconomySeederTest {
    *
    * <ul>
    *   <li>"织机总数 = 农村人口 ÷ {@link EconomySeeder#RURAL_CAPITA_PER_LOOM}（残差按最大余数法分派 ⇒ Σ 一分不丢）" ⇒
-   *       现在由**一个数**直接成立（{@code weave@hex} 的 {@code capacity[TOOL]}），不再需要"四行 Σ"那一步；
+   *       现在由**一个合计**直接成立（{@code weave@hex} 各 unit 的 {@code assetShares[TOOL]} 之和；R3B.2 产能落在 unit
+   *       上）， 不再需要"四行 Σ"那一步；
    *   <li>"初始纤维 = 本格农田**一个周期**的纤维副产" ⇒ 同一份量、现在落在**农村四行**（同一批人的同一本账）；
    *   <li>"那四行不带人口" ⇒ **不再是四行**：农村人口只有一本账（{@code (格,RURAL,阶层)}）， 而织布仍靠**劳动配额**（900‰ 农业 + 100‰
    *       纺织）支撑，不是第二份人口。
    * </ul>
    *
-   * <p>★ 判别力：把 {@code capacity[TOOL]} 去掉 ⇒ 纺织规模恒 0 ⇒ 真档里织不出布（{@code EconomyRealScaleClothTest} 红）；
-   * 把纤维从农村行删掉 ⇒ 织机没有原料。
+   * <p>★ 判别力：把 {@code assetShares} 里 weave 的 TOOL 去掉 ⇒ 纺织规模恒 0 ⇒ 真档里织不出布（{@code
+   * EconomyRealScaleClothTest} 红）；把纤维从农村行删掉 ⇒ 织机没有原料。
    */
   @Test
   void weavingCapacityAndFiberLiveOnTheIndustryAndTheRuralRows() throws Exception {
@@ -347,7 +398,7 @@ class EconomySeederTest {
     assertThat(capacity(entry(payload, 2, 0), "farm@2_0", "LAND"))
         .as("农业人口为 0 的格：土地整份照旧在（地不因没人种而消失）——旧版「整份记在第一槽」那条特例随切分一起消失")
         .isEqualTo(plainsLand);
-    assertThat(industry(entry(payload, 1, 0), "craft@1_0").get("capacity").has("LAND"))
+    assertThat(hasAssetShare(entry(payload, 1, 0), "craft@1_0", "LAND"))
         .as("手工业**不占地**（土地全归农业）；R3 起它持有的是**作坊**而不是土地")
         .isFalse();
     assertThat(capacity(entry(payload, 1, 0), "craft@1_0", "WORKSHOP"))
@@ -373,7 +424,7 @@ class EconomySeederTest {
   @Test
   void theSeededDailyNeedIsTheFirstDaysRationAndStockFollowsTheClassDayTable() throws Exception {
     JsonNode payload = payload();
-    Map<CohortKey, Map<CommodityId, Long>> stocks = stocks();
+    Map<HouseholdId, Map<CommodityId, Long>> stocks = stocks();
 
     JsonNode plainsRural = entry(payload, 0, 0);
     List<JsonNode> farm = cohortRows(plainsRural, "rural");
@@ -468,26 +519,48 @@ class EconomySeederTest {
    *
    * <p>★ 判别力：把预算改回毛额 ⇒ 男青壮的农业份额不再撞额（255,420 > 236,500）⇒ 本条逐值红； 漏乘 860‰ 或漏掉逐批封顶 ⇒ 总和/逐值红。★
    * 性别权重本身的判别力（男织非零）由 {@link #sexWeightsTiltFarmToMenAndWeavingToWomen} 用**不撞预算**的直调补回。
+   *
+   * <p>★★ <b>R4-B.3a 后行数不再等于 6</b>：每条 (批次, 产业) 配额先按 {@code CLASS_SHARE_PER_MILLE} 拆到四个家户、再把 {@code
+   * SECONDARY_PER_MILLE} 那份拆给家户副 unit ⇒ 载荷里是 48 行；本用例改钉**逐 (批次, 产业) 合计**——拆行只搬不增， 它逐值等于 {@code
+   * appendAllocation} 的发值。
    */
   @Test
   void perIndustryQuotasAreCappedByTheParticipationAdjustedBatchBudget() throws Exception {
     JsonNode entry = entry(payload(), 0, 0);
     List<JsonNode> allocations = toList(entry.get("allocations"));
 
-    assertThat(allocations).as("纯农村格：6 条配额（农业 4 + 纺织 2；纺织的男青壮/男老年份额被预算压成 0 ⇒ 不发）").hasSize(6);
-    assertThat(allocations)
-        .extracting(node -> node.get("laborMilli").asLong())
-        .as("逐值如上表（农业 4 条 + 纺织女 2 条，按载荷里的发生序）")
-        .containsExactly(236_500L, 12_900L, 170_280L, 9_288L, 37_840L, 2_064L);
+    assertThat(allocations).as("纯农村格：6 条 (批次, 产业) 配额拆到家户与主/副 unit ⇒ 行数远多于 6").isNotEmpty();
+    assertThat(sumForBatchAndIndustry(allocations, "rural:0_0:MALE:1", "weave@0_0"))
+        .as("纺织的男青壮/男老年份额被预算压成 0 ⇒ 一条也不发")
+        .isZero();
+    assertThat(sumForBatchAndIndustry(allocations, "rural:0_0:MALE:2", "weave@0_0")).isZero();
+
+    assertThat(sumForBatchAndIndustry(allocations, "rural:0_0:MALE:1", "farm@0_0"))
+        .as("农业男青壮：按权重该拿 255,420，撞 236,500 的折算预算 ⇒ 压到 236,500")
+        .isEqualTo(236_500L);
+    assertThat(sumForBatchAndIndustry(allocations, "rural:0_0:MALE:2", "farm@0_0"))
+        .as("农业男老年：13,932 ⇒ 压到 12,900")
+        .isEqualTo(12_900L);
+    assertThat(sumForBatchAndIndustry(allocations, "rural:0_0:FEMALE:1", "farm@0_0"))
+        .isEqualTo(170_280L);
+    assertThat(sumForBatchAndIndustry(allocations, "rural:0_0:FEMALE:2", "farm@0_0"))
+        .isEqualTo(9_288L);
+    assertThat(sumForBatchAndIndustry(allocations, "rural:0_0:FEMALE:1", "weave@0_0"))
+        .as("纺织女青壮 37,840（不撞预算）")
+        .isEqualTo(37_840L);
+    assertThat(sumForBatchAndIndustry(allocations, "rural:0_0:FEMALE:2", "weave@0_0"))
+        .as("纺织女老年 2,064（不撞预算）")
+        .isEqualTo(2_064L);
+
     assertThat(sumOf(allocations, "laborMilli"))
         .as("Σ 两条活动实发 = 468,872 = 498,800（折算后日劳动）− 29,928（逐批封顶留下的缺口）")
         .isEqualTo(468_872L)
         .isLessThan(498_800L);
-    assertThat(sumForActor(allocations, "weave@0_0"))
+    assertThat(sumForIndustry(allocations, "weave@0_0"))
         .as("★ 纺织实发 39,904（> 0 ⇒ 织机有活干；比 100‰ 的 49,880 少 9,976 —— 预算封顶的后果）")
         .isEqualTo(39_904L)
         .isPositive();
-    assertThat(sumForActor(allocations, "farm@0_0"))
+    assertThat(sumForIndustry(allocations, "farm@0_0"))
         .as("农业实发 428,968（比 448,920 少 19,952 —— 男青壮/男老年批次撞了折算后的预算）")
         .isEqualTo(428_968L);
   }
@@ -525,7 +598,7 @@ class EconomySeederTest {
                 .toList();
         long quotaSum = 0L;
         for (String id : ids) {
-          quotaSum += sumForActor(toList(entry.get("allocations")), id);
+          quotaSum += sumForIndustry(toList(entry.get("allocations")), id);
         }
         long poolRows = rowBasedDailyLabor(entry, pool);
         assertThat(quotaSum)
@@ -659,28 +732,35 @@ class EconomySeederTest {
     assertThat(poolDaily).as("该池的当日劳动（各行按参与率折算后的和）").isEqualTo(498_800L);
 
     List<Map<String, Object>> allocations = new ArrayList<>();
+    ActorRef farmOperator = new ActorRef(ActorKind.ESTATE, "farm@0_0");
     EconomySeeder.appendAllocation(
         allocations,
         EconomySeeder.laborBudget(pool),
         pool,
-        new IndustryId("farm@0_0"),
-        ActorKind.ESTATE,
+        PLAINS_RURAL,
+        ProductionUnitId.idOf(new IndustryId("farm@0_0"), farmOperator),
+        farmOperator,
         EconomySeeder.FARM,
         poolDaily); // ★ 刻意**照满额**发：这正是"农业 1000‰"那种配置
 
     long total = 0L;
+    // ★ R4-B.3a：载荷把每条批次配额拆到四个家户；"逐批次封顶"的关系必须在**家户拆行之前**的批次合计上判
+    //   （单看某一行会因 450/350/150/50 的四分之一拆分而失去判别力）。
+    Map<String, Long> byGroup = new LinkedHashMap<>();
     for (Map<String, Object> allocation : allocations) {
       long share = ((Number) allocation.get("laborMilli")).longValue();
       total += share;
-      String groupId = (String) allocation.get("group");
+      byGroup.merge((String) allocation.get("group"), share, Long::sum);
+    }
+    for (Map.Entry<String, Long> groupTotal : byGroup.entrySet()) {
       long available =
           pool.stream()
-              .filter(g -> g.id().value().equals(groupId))
+              .filter(g -> g.id().value().equals(groupTotal.getKey()))
               .mapToLong(EconomySeeder::participationAdjustedLaborMilli)
               .findFirst()
               .orElseThrow();
-      assertThat(share)
-          .as("★ 批次 %s 的配额不得超过它**折算后的可用劳动**（构造性成立，不靠「默认权重恰好不越界」）", groupId)
+      assertThat(groupTotal.getValue())
+          .as("★ 批次 %s 的配额合计不得超过它**折算后的可用劳动**（构造性成立，不靠「默认权重恰好不越界」）", groupTotal.getKey())
           .isLessThanOrEqualTo(available);
     }
     assertThat(total)
@@ -689,32 +769,55 @@ class EconomySeederTest {
         .isEqualTo(448_920L);
   }
 
-  /** ★ 创世的初始配额是"该批次 1000‰ 归它的乡土产业"：农村 → 农业（庄园）、城镇 → 手工业（作坊）。 */
+  /**
+   * ★ 创世的初始配额是"该批次 1000‰ 归它的乡土产业"：农村 → 农业（庄园/佃耕 unit）、城镇 → 手工业（作坊/匠户 unit）。
+   *
+   * <p>★ R3B.2 起 {@code activity} 是**生产单元 id**（{@code unit-<产业>-<经营者 kind>-<经营者 id>}），actor 列 = 该
+   * unit 的经营者 —— 两者必须同源（{@link ProductionUnitId#idOf} 的逆构造在这里当场对拍）。R4-B.3a 后同一产业有主 unit 与家户副 unit，故
+   * kind 允许"产业主"或"家户"两档。
+   */
   @Test
   void genesisQuotasGoToTheHomeIndustryOfEachPool() throws Exception {
     JsonNode payload = payload();
 
     for (JsonNode entry : payload.get("entries")) {
+      String hex = entry.get("q").asInt() + "_" + entry.get("r").asInt();
       for (JsonNode allocation : toList(entry.get("allocations"))) {
         String group = allocation.get("group").asText();
         String actor = allocation.get("actor").get("id").asText();
         String kind = allocation.get("actor").get("kind").asText();
-        String activity = allocation.get("activity").asText();
-        String hex = entry.get("q").asInt() + "_" + entry.get("r").asInt();
+        String industry = industryOf(allocation);
+        String household = allocation.get("household").asText();
         boolean rural = group.startsWith("rural:");
         if (rural) {
-          // ★★ R3（T4）：农村批次发**两条** —— 农业（庄园）900‰ + 家庭纺织（家户）100‰。
-          assertThat(actor)
+          // ★★ R3（T4）：农村批次只供农业与家庭纺织（同一批人农闲织布：spec §四 的压力测试）。
+          assertThat(industry)
               .as("农村批次只供给农业与家庭纺织（同一批人农闲织布：spec §四 的压力测试）")
               .isIn("farm@" + hex, "weave@" + hex);
-          assertThat(kind + "|" + activity)
-              .as("农业 = 庄园/farm、家庭纺织 = 家户/weave（act 与 kind 一一对应）")
-              .isIn("ESTATE|farm", "HOUSEHOLD|weave");
+          if (industry.startsWith("farm@")) {
+            assertThat(kind)
+                .as("农业 = 庄园主 unit（ESTATE）或 R4-B.3a 的佃耕家户副 unit（HOUSEHOLD）")
+                .isIn("ESTATE", "HOUSEHOLD");
+          } else {
+            assertThat(kind).as("家庭纺织 = 家户").isEqualTo("HOUSEHOLD");
+          }
         } else {
-          assertThat(actor).as("城镇批次 → 手工业（作坊）").isEqualTo("craft@" + hex);
-          assertThat(kind).as("城镇批次 = 作坊").isEqualTo("WORKSHOP");
-          assertThat(activity).as("城镇批次的活动").isEqualTo("craft");
+          assertThat(industry).as("城镇批次 → 手工业（作坊）").isEqualTo("craft@" + hex);
+          assertThat(kind)
+              .as("城镇批次 = 作坊主 unit（WORKSHOP）或匠户副 unit（HOUSEHOLD）")
+              .isIn("WORKSHOP", "HOUSEHOLD");
         }
+        // ★ activity = ProductionUnitId.idOf(产业, 收劳动主体)：与 actor 列同一处拼写。
+        assertThat(allocation.get("activity").asText())
+            .as("★ activity 是生产单元 id（R3B.2），由 (产业, actor) 唯一给出")
+            .isEqualTo(
+                ProductionUnitId.idOf(
+                        new IndustryId(industry), new ActorRef(ActorKind.valueOf(kind), actor))
+                    .value());
+        // ★ S1：主 unit 的经营者 id = 产业；家户副 unit 的经营者 id = 该配额的家户。两者恰是 actor 的全部合法取值。
+        assertThat(actor)
+            .as("actor id ∈ {产业 id（主 unit）, 该配额的家户 id（家户副 unit）}")
+            .isIn(industry, household);
         assertThat(allocation.get("period").asLong()).isEqualTo(EconomySeeder.FIRST_PERIOD);
       }
     }
@@ -736,8 +839,7 @@ class EconomySeederTest {
     assertThat(toList(entry.get("allocations")))
         .as("农业没有配额；只有城市批次供 craft")
         .isNotEmpty()
-        .allSatisfy(
-            node -> assertThat(node.get("actor").get("id").asText()).isEqualTo("craft@2_0"));
+        .allSatisfy(node -> assertThat(industryOf(node)).isEqualTo("craft@2_0"));
   }
 
   // ── 形状与可复现 ─────────────────────────────────────────────────────────────────────
@@ -894,7 +996,8 @@ class EconomySeederTest {
    */
   @Test
   void theSeederConfiguresTheDecidedSeedRate() throws Exception {
-    JsonNode farm = entry(payload(), 0, 0).get("industries").get(0);
+    JsonNode entry = entry(payload(), 0, 0);
+    JsonNode farm = entry.get("industries").get(0);
 
     assertThat(EconomySeeder.SEED_MILLI_PER_MU).as("定案：8 粮/亩（单位毫粮/亩）").isEqualTo(8_000L);
     assertThat(farm.get("cycleInputPerUnit")).as("★ 只有 LAND 一档（其余五种 AssetKind「声明但不启用」）").hasSize(1);
@@ -902,7 +1005,17 @@ class EconomySeederTest {
     assertThat(farm.get("cycleInputPerUnit").get("LAND").get("grain").asLong())
         .as("真档播种器写进 cycleInputPerUnit[LAND][grain] 的每亩需种")
         .isEqualTo(EconomySeeder.SEED_MILLI_PER_MU);
-    assertThat(farm.get("cycleInputUsedMilli")).as("创世时尚未投入任何原料").isEmpty();
+    // ★ R3B.2：周期投入状态是 **unit** 的字段（模板上没有）⇒ 农业各 unit（主 + R4-B.3a 副 unit）创世都为空。
+    List<JsonNode> farmUnits = new ArrayList<>();
+    for (JsonNode unit : toList(entry.get("units"))) {
+      if (unit.get("industry").asText().equals("farm@0_0")) {
+        farmUnits.add(unit);
+      }
+    }
+    assertThat(farmUnits).as("农业 unit（主 + 家户副 unit）").isNotEmpty();
+    assertThat(farmUnits)
+        .as("创世时尚未投入任何原料")
+        .allSatisfy(unit -> assertThat(unit.get("cycleInputUsedMilli")).isEmpty());
     assertThat(EconomySeeder.MU_PER_HEX * EconomySeeder.SEED_MILLI_PER_MU)
         .as("满种种子量（毫粮/格/周期）= 3,100 亩 × 8,000")
         .isEqualTo(24_800_000L);
@@ -914,7 +1027,7 @@ class EconomySeederTest {
    * <pre>
    * 农业     容量 {LAND: 1000}  劳动/亩 143   产出 {grain: 67, fiber: 6}   投入 {LAND: {grain: 8000}}
    * 家庭纺织 容量 {TOOL: 1}     劳动/台 1000  产出 {cloth: 30}             投入 {TOOL: {fiber: 30000}}
-   * 城市作坊 容量 {WORKSHOP: 1} 劳动/座 1000  产出 {cloth: 60, tool: 5}    投入 {WORKSHOP: {fiber: 60000, iron: 10000}}
+   * 城市作坊 容量 {WORKSHOP: 1} 劳动/座 1000  产出 {cloth: 60, tool: 5}    投入 {WORKSHOP: {fiber: 60000, tool: 2000}}
    * </pre>
    *
    * <p>★ 判别力：把"每亩"退回隐式约定（删掉 {@code capacityPerUnit}）⇒ 真档的规模算不出来（构造期就拒）； 把纤维从农业产出里删掉 ⇒
@@ -926,11 +1039,12 @@ class EconomySeederTest {
     JsonNode farm = entry.get("industries").get(0);
     JsonNode weave = entry.get("industries").get(1);
 
-    // ★★ H0.3（K3）：**产能总量**（旧版散在各行的 meansOfProduction 里）—— "每单位什么" × 产能 ⇒ 本格规模上限。
-    assertThat(farm.get("capacity").get("LAND").asLong())
+    // ★★ H0.3（K3）+ R3B.2：**产能总量**（旧版散在各行的 meansOfProduction 里）落在该产业各 unit 的 assetShares 上
+    // （主 unit + R4-B.3a 家户副 unit 的 Σ）；"每单位什么" × 产能 ⇒ 本格规模上限。
+    assertThat(capacity(entry, "farm@0_0", "LAND"))
         .as("农业：本格产能 = 3,100 亩（千分亩）")
         .isEqualTo(EconomySeeder.MU_PER_HEX * 1_000L);
-    assertThat(weave.get("capacity").get("TOOL").asLong())
+    assertThat(capacity(entry, "weave@0_0", "TOOL"))
         .as("纺织：本格产能 = 1,000 ÷ 20 = 50 台织机")
         .isEqualTo(1000L / EconomySeeder.RURAL_CAPITA_PER_LOOM);
     assertThat(farm.get("capacityPerUnit").get("LAND").asLong())
@@ -960,8 +1074,9 @@ class EconomySeederTest {
         .as("家户自给（不是庄园、也不是作坊）")
         .isEqualTo(EconomySeeder.REGIME_HOUSEHOLD);
 
-    JsonNode craft = entry(payload(), 1, 0).get("industries").get(2);
-    assertThat(craft.get("capacity").get("WORKSHOP").asLong())
+    JsonNode craftEntry = entry(payload(), 1, 0);
+    JsonNode craft = craftEntry.get("industries").get(2);
+    assertThat(capacity(craftEntry, "craft@1_0", "WORKSHOP"))
         .as("作坊：本格产能 = 200 ÷ 50 = 4 座")
         .isEqualTo(200L / EconomySeeder.URBAN_CAPITA_PER_WORKSHOP);
     assertThat(craft.get("capacityPerUnit").get("WORKSHOP").asLong())
@@ -1006,7 +1121,7 @@ class EconomySeederTest {
     long femaleWeave = 0L;
     for (JsonNode node : allocations) {
       boolean male = node.get("group").asText().contains(":MALE:");
-      boolean weaving = "weave".equals(node.get("activity").asText());
+      boolean weaving = industryOf(node).startsWith(EconomySeeder.WEAVE + "@");
       long labor = node.get("laborMilli").asLong();
       if (weaving) {
         if (male) {
@@ -1033,21 +1148,27 @@ class EconomySeederTest {
     long poolDaily = EconomySeeder.industryDailyLabor(pool);
     long weaveQuota = poolDaily * EconomySeeder.WEAVE_SHARE_PER_MILLE / 1000L;
     // ★ 预算 = 每批次**毛额**（≥ 折算后可用 ≥ 任何份额）⇒ 逐批封顶不会咬合，量到的是纯性别权重。
+    ActorRef farmOperator = new ActorRef(ActorKind.ESTATE, "farm@0_0");
+    ActorRef weaveOperator = new ActorRef(ActorKind.HOUSEHOLD, "weave@0_0");
+    ProductionUnitId farmUnit = ProductionUnitId.idOf(new IndustryId("farm@0_0"), farmOperator);
+    ProductionUnitId weaveUnit = ProductionUnitId.idOf(new IndustryId("weave@0_0"), weaveOperator);
     List<Map<String, Object>> weightsOnly = new ArrayList<>();
     EconomySeeder.appendAllocation(
         weightsOnly,
         grossBudget(pool),
         pool,
-        new IndustryId("farm@0_0"),
-        ActorKind.ESTATE,
+        PLAINS_RURAL,
+        farmUnit,
+        farmOperator,
         EconomySeeder.FARM,
         poolDaily - weaveQuota);
     EconomySeeder.appendAllocation(
         weightsOnly,
         grossBudget(pool),
         pool,
-        new IndustryId("weave@0_0"),
-        ActorKind.HOUSEHOLD,
+        PLAINS_RURAL,
+        weaveUnit,
+        weaveOperator,
         EconomySeeder.WEAVE,
         weaveQuota);
 
@@ -1057,7 +1178,7 @@ class EconomySeederTest {
     long femaleWeaveWeighted = 0L;
     for (Map<String, Object> allocation : weightsOnly) {
       boolean male = ((String) allocation.get("group")).contains(":MALE:");
-      boolean weaving = EconomySeeder.WEAVE.equals(allocation.get("activity"));
+      boolean weaving = weaveUnit.value().equals(allocation.get("activity"));
       long labor = ((Number) allocation.get("laborMilli")).longValue();
       if (weaving) {
         if (male) {

@@ -479,7 +479,7 @@ class EconomySeedHandlerTest {
     assertThat(row.debts()).as("本轮无债务").isEmpty();
     assertThat(row.naturalNeeds()).containsEntry(new CommodityId("grain"), 37_350L);
     assertThat(row.effectiveDemand()).isEmpty();
-    assertThat(after.debts()).as("债务表本轮恒空").isEmpty();
+    assertThat(after.debtContracts()).as("债务合同表本轮恒空").isEmpty();
     assertThat(after.flows()).as("周期流水留待 R3a").isEmpty();
     // 缺省字段（地主行没给 debts/naturalNeeds/effectiveDemand/money）⇒ 空表 / 0，不是 null。
     ClassRow landlord = after.classes().get(LANDLORD_HOUSEHOLD);
@@ -609,15 +609,20 @@ class EconomySeedHandlerTest {
     assertThat(((HandlerOutcome.Rejected) outcome).reason()).contains("population");
   }
 
-  /** 非空债务数组 ⇒ 拒（§十 明确"不做债务"；免得落下一批指向空债务表的悬空引用）。 */
+  /**
+   * 类行 {@code debts} 是**派生引用**：E4 起合同表是唯一权威，构造期 {@code DebtReferenceReconciler} 从合同表重建引用 ⇒
+   * 指向不存在合同的旧引用会被重建成空表（不是命令拒绝，也不再留下悬空引用）。
+   */
   @Test
-  void rejectsDebtsBecauseThisRoundDoesNotModelThem() {
+  void classRowDebtRefsAreRebuiltFromContractTable() {
     String payload = PAYLOAD.replace("\"debts\":[]", "\"debts\":[\"debt-1\"]");
 
-    HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
+    EconomyData after = apply(payload, EconomyData.empty(), T7);
 
-    assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
-    assertThat(((HandlerOutcome.Rejected) outcome).reason()).contains("债务");
+    assertThat(after.debtContracts()).as("载荷没有合同 ⇒ 合同表为空").isEmpty();
+    assertThat(after.classes().values())
+        .as("旧类行引用只是派生索引：悬空引用被合同表权威重建为空")
+        .allSatisfy(row -> assertThat(row.debts()).isEmpty());
   }
 
   /** 环载荷（不是 JSON / 不是对象）⇒ 拒，不抛到命令边界之外。 */

@@ -10,9 +10,10 @@ import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.time.OwnershipBooks;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.map.hex.HexCoord;
@@ -29,8 +30,10 @@ import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -38,25 +41,28 @@ import org.junit.jupiter.api.Test;
 /**
  * ★★★ <b>H6：app 侧"钱"的两条真档判据 —— Σ货币恒定 + 逐本落盘一致</b>。
  *
- * <p>★★ <b>为什么需要本文件</b>（H5 收口时如实记下的缺口）：经济侧 H0–H5 六批改造之后，货币是<b>创世禀赋</b>、世界上<b>没有发行路径</b> （{@code
- * MoneyAuthority} 只有接口、零实现者）⇒ <b>逐币种总量恒定</b>是硬判据；而 app 侧两次落账的唯一入口是 {@link OwnershipBooks}（{@code
- * loadHouseholdMoney} / {@code landHouseholdMoney} / {@code loadOperatorMoney} / {@code
- * landOperatorMoney}），协调器是 {@code PopulationEconomyTimeParticipant} / {@code
+ * <p>★★ <b>为什么需要本文件</b>（H5 收口时如实记下的缺口；E1–E6 的新组件不改本夹具这条钱路径）：经济侧 H0–H5
+ * 六批改造之后，货币是<b>创世禀赋</b>、世界上<b>没有发行路径</b> （{@code MoneyAuthority} 只有接口、零实现者；E3 起发行/回笼改由显式 {@code
+ * MoneyIssuanceRecord} 审计，但本夹具不执行任何发行/回笼命令）⇒ 本世界账户里的 <b>逐币种总量恒定</b>是硬判据；而 app 侧两次落账的唯一入口是 {@link
+ * OwnershipBooks}（{@code loadAccountSession} / {@code landAccountSession} —— S1 起家户与经营者共用同一个 {@code
+ * AccountSession}），协调器是 {@code PopulationEconomyTimeParticipant} / {@code
  * EconomyOwnershipTimeParticipant}。此前"钱"只由**一次性探针**核过，真档夹具**不量钱** —— 本文件把那条判据变成常驻护栏。
  *
  * <p>★★ <b>为什么必须是真档规模</b>（同 {@link EconomyRealScaleClothTest} 的理由）：织机数、作坊数、口粮、货币禀赋全都按人口派生 ⇒ 5
  * 格小夹具上的钱证明不了真档的任何事。本文件用**真播种器载荷**（{@link EconomySeeder#payload} → 真 {@link EconomySeedHandler}）造一格
  * 14,806 人的平原格 + 一座 1,777 人的城，家户账与经营者账都从**同一份 plan** 建（★ {@link HouseholdSeeder#books(Map, Map,
- * List)} 那个**三参**重载 —— 两参重载不播经营者账），再用**真协调器**（{@link EconomyOwnershipFixture#advance}）推 3 个周期（360
- * 天）。
+ * Map, List)} 那个**四参**重载 —— 不带 operators 的重载不播经营者账），再用**真协调器**（{@link
+ * EconomyOwnershipFixture#advance}）推 3 个周期（360 天）。★ 家户 id 是 seeder 的 {@code hh-…}（真实 seeder 的 id
+ * <b>不能</b>反推视图）⇒ 取格/居住一律走 {@link ClassRow#view()}。
  *
  * <p>★★ <b>判据一览（逐条对着一种"真的会坏"的实现）</b>：
  *
  * <ol>
  *   <li><b>Σ货币恒定</b>（逐币种、逐周期）：创世 Σ == 每个周期末的 Σ。判别力 = 任何"凭空铸钱"或"静默抹钱"的落账 （例如用 {@code GoodsAccount}
  *       的两参构造器写回、把货币表清零；或漏掉经营者那一侧的落回）；<b>非平凡</b>由"创世量 = 人口 × 每人出厂值 + 经营者钱包"这一条独立算式钉住（不是"0 == 0"）。
- *   <li><b>逐本落盘一致</b>：账本**一本不多、一本不少**（键集 == 家户行集 ∪ 经营者集 —— "落错键"会当场冒出一本幻影账）；没有任何一本账为负；
- *       家户侧与经营者侧的**总和**与"跨侧唯一那条腿"逐值相符（见下），且两侧之和 == 创世总量 ⇒ "落回"没有丢、也没有凭空加。
+ *   <li><b>逐本落盘一致</b>：账本**一本不多、一本不少**（键集 == 家户行集 ∪ 经营者 unit 的 operator 集 ——
+ *       "落错键"会当场冒出一本幻影账）；没有任何一本账为负； 家户账与**经营者专属账**的总和与"跨侧唯一那条腿"逐值相符（见下），且两侧之和 == 创世总量 ⇒
+ *       "落回"没有丢、也没有凭空加。
  *   <li><b>钱真的动了</b>：真档世界有 {@code markets} 载荷；3 个周期后 Σ 恒定，且**至少有一本家户账 ≠ 它的创世值**（买方付出 / 卖方收进 /
  *       城镇家户领到工钱）。
  *   <li><b>计价货币自洽</b>：格级 {@code market.numeraire} 必须出现在该格钱的币种集合里（{@code ApiViews.economyHex} 的
@@ -67,6 +73,10 @@ import org.junit.jupiter.api.Test;
  * FIXED_MONEY_WAGE} 把工钱从**经营者**搬到**家户**（{@code Transfer.from = relation.operator()}）⇒ 家户侧 Σ 上浮、经营者侧
  * Σ 下沉， 而**两者之和**逐币种恒定。故本文件的断言是：① 两侧之和 == 创世总量；② 经营者侧只减不增、家户侧只增不减（本世界没有反向的货币腿：市场那两条腿是 **家户 ↔
  * 家户**）；③ 家户侧多出来的那部分**逐值等于**经营者侧少掉的那部分（"落回"丢一笔或多一笔，这三条当场红）。
+ *
+ * <p>★★ <b>R4-B.3a 起"经营者 unit"不等于"经营者专属账"</b>：{@code splitIndustry} 会把一部分产业拆给家户副 unit， 这些 unit 的
+ * {@link io.mosire.simos.actor.api.actor.ActorRef} 就是家户 actor，unit 的 operator 位置指向的正是那本家户账。⇒
+ * 本节所谓"经营者侧"只数 {@code operatorLocations} 里**不与家户账键重合**的那些账；否则同一本账会被家户侧和经营者侧各算一遍，守恒式自己就会红。
  */
 class EconomyMoneyInvariantTest {
 
@@ -138,12 +148,15 @@ class EconomyMoneyInvariantTest {
             (EconomyChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), EconomyData.empty());
 
     // ★★ H1/H4/H5：家户账 + 经营者账都由**同一份 plan** 建（真路径里这是同批的第二条命令 actor.Seed）。
-    //   ★★ 必须用**三参**重载（带 operators）：两参重载播出的世界里经营者一本账都没有 ⇒ "经营者侧"整条判据会退化成 0 == 0。
+    //   ★★ 必须用**四参**重载（带 householdLocations 与 operators）：三参重载不播经营者账 ⇒ "经营者侧"整条判据会退化成 0 == 0。
     EconomySeeder.Seed seeding =
         EconomySeeder.plan(MAP_ID, PopulationSeeder.groups(plan, 0L), at -> "plains");
     genesisBooks =
         HouseholdSeeder.books(
-            seeding.householdStocks(), seeding.householdMoney(), seeding.operators());
+            seeding.householdLocations(),
+            seeding.householdStocks(),
+            seeding.householdMoney(),
+            seeding.operators());
 
     long people = POPULATION_PER_HEX + CITY_POPULATION;
     genesisHouseholdSilver = people * EconomySeeder.genesisMoneyMilliPerCapita();
@@ -184,8 +197,9 @@ class EconomyMoneyInvariantTest {
   private static void probe(String when, EconomyData economy, ActorData books) {
     List<String> down = new ArrayList<>();
     List<String> up = new ArrayList<>();
-    for (CohortKey cohort : economy.classes().keySet()) {
-      GoodsAccountKey key = OwnershipBooks.accountKeyOf(cohort);
+    for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
+      GoodsAccountKey key =
+          OwnershipBooks.accountKeyOf(entry.getKey(), entry.getValue().view().hex());
       GoodsAccount account = books.accounts().get(key);
       GoodsAccount opening = genesisBooks.accounts().get(key);
       if (account == null || opening == null) {
@@ -194,9 +208,9 @@ class EconomyMoneyInvariantTest {
       long now = account.money().getOrDefault(SILVER, 0L);
       long was = opening.money().getOrDefault(SILVER, 0L);
       if (now < was) {
-        down.add(cohort + "=" + now + "(创世 " + was + ")");
+        down.add(entry.getKey() + "=" + now + "(创世 " + was + ")");
       } else if (now > was) {
-        up.add(cohort + "=" + now + "(创世 " + was + ")");
+        up.add(entry.getKey() + "=" + now + "(创世 " + was + ")");
       }
     }
     System.out.println(
@@ -243,7 +257,7 @@ class EconomyMoneyInvariantTest {
    * ★★ <b>逐币种总量恒定</b>：{@code Σ(所有 GoodsAccount.money[C])} 在创世与 3 个周期末**逐值相同**。
    *
    * <p>判别力：任何"造钱 / 抹钱"的落账都会当场红 —— 例如用两参 {@code GoodsAccount} 写回（钱清零）、只落家户那一侧、或把工钱的货币腿
-   * 既折成条目又按绝对值落一遍。★ 本批没有发行人（{@code MoneyAuthority} 零实现者）⇒ 这条是硬判据，不是"最好如此"。
+   * 既折成条目又按绝对值落一遍。★ 本夹具不执行任何 E3 发行 / 回笼命令 ⇒ 账户总量在推进前后逐值恒定，这条是硬判据，不是"最好如此"。
    */
   @Test
   void moneyTotalPerCurrencyIsConstantThroughAllThreeCycles() {
@@ -257,12 +271,12 @@ class EconomyMoneyInvariantTest {
   // ── ② 逐本落盘一致 ─────────────────────────────────────────────────────────────────
 
   /**
-   * ★★ <b>逐本落盘一致</b>：3 个周期之后，账本**一本不多、一本不少**、没有一本为负，且家户侧 / 经营者侧的总和与"跨侧唯一那条腿"逐值相符。
+   * ★★ <b>逐本落盘一致</b>：3 个周期之后，账本**一本不多、一本不少**、没有一本为负，且家户账 / 经营者专属账的总和与"跨侧唯一那条腿"逐值相符。
    *
    * <p>★★ <b>为什么断言的是"两侧之和"而不是"两侧各自恒定"</b>（实测口径）：{@code handicraft} 的 {@code FIXED_MONEY_WAGE}
    * 把工钱从经营者搬到受方 cohort（{@code Transfer.from = relation.operator()}）⇒
    * 家户侧**上浮**、经营者侧**下沉**。故"分别守恒"的准确形态是： ① 两侧之和 == 创世总量（落回没丢、没凭空加）；② 方向只能是 经营者 → 家户（本世界没有反向货币腿：市场是家户
-   * ↔ 家户）；③ 家户多出来的 == 经营者少掉的。
+   * ↔ 家户）；③ 家户多出来的 == 经营者少掉的。★ 经营者侧只数**专属账**（见类注：家户副 unit 的 operator 就是家户账本身， 再算一遍会让同一笔余额同时进两侧）。
    */
   @Test
   void everyBookLandsItsOwnMoneyWithoutLosingOrMintingAny() {
@@ -274,7 +288,7 @@ class EconomyMoneyInvariantTest {
 
       // ① 账本**一本不多、一本不少**：落错键会冒出一本幻影账（原账还留着创世值），落漏一本会少一本。
       assertThat(books.accounts().keySet())
-          .as("★ 账本键集 == 家户行集 ∪ 经营者集（没有幻影账、也没有掉的账）")
+          .as("★ 账本键集 == 家户行集 ∪ 经营者 unit 的 operator 集（没有幻影账、也没有掉的账）")
           .containsExactlyInAnyOrderElementsOf(expectedAccountKeys(economy));
 
       // ② 没有任何一本账出现负数（家户 + 经营者，**逐本**查，不看总和）。
@@ -282,28 +296,28 @@ class EconomyMoneyInvariantTest {
           .as("★ 逐本非负：透支是信用，不是库存/货币（%d 本账）", books.accounts().size())
           .isEmpty();
 
-      // ③ 两侧的总和逐值相符（落回没有丢、也没有凭空加）。
+      // ③ 两侧的总和逐值相符（落回没有丢、也没有凭空加；经营者侧只数专属账，见类注）。
       long householdSide = silverOf(households);
       long operatorSide = silverOf(operators);
       assertThat(householdSide + operatorSide)
-          .as("★ 家户侧 + 经营者侧 == 创世总量（逐币种守恒落到每一侧）")
+          .as("★ 家户账 + 经营者专属账 == 创世总量（逐币种守恒落到每一侧）")
           .isEqualTo(genesisHouseholdSilver + genesisOperatorSilver);
       assertThat(operatorSide)
-          .as("★ 经营者侧只减不增（唯一跨侧的腿是工钱，方向 经营者 → 家户）")
+          .as("★ 经营者专属账只减不增（唯一跨侧的腿是工钱，方向 经营者 → 家户）")
           .isBetween(0L, genesisOperatorSilver);
       assertThat(householdSide)
-          .as("★ 家户侧只增不减（市场那两条腿是家户 ↔ 家户 ⇒ 侧内相消）")
+          .as("★ 家户账只增不减（市场那两条腿是家户 ↔ 家户 ⇒ 侧内相消）")
           .isGreaterThanOrEqualTo(genesisHouseholdSilver);
       assertThat(householdSide - genesisHouseholdSilver)
-          .as("★ 家户侧多出来的那部分**逐值等于**经营者侧少掉的那部分（丢一笔/多一笔 ⇒ 当场红）")
+          .as("★ 家户账多出来的那部分**逐值等于**经营者专属账少掉的那部分（丢一笔/多一笔 ⇒ 当场红）")
           .isEqualTo(genesisOperatorSilver - operatorSide);
     }
 
     // ④ 非平凡：至少有一本账**真的变了**（否则"市场没成交"会让上面三条假绿）。
-    List<CohortKey> changedHouseholds = changedHouseholds(cycle3.economy(), cycle3.actor());
+    List<HouseholdId> changedHouseholds = changedHouseholds(cycle3.economy(), cycle3.actor());
     assertThat(changedHouseholds).as("★ 至少一本家户账的钱 ≠ 创世值（本判据的判别力全靠它）").isNotEmpty();
     assertThat(operatorChanged(cycle3.economy(), cycle3.actor()))
-        .as("★ 经营者那一侧也真的动过（工钱付出去了 —— 否则'经营者侧只减不增'是空转）")
+        .as("★ 经营者专属账也真的动过（工钱付出去了 —— 否则'经营者侧只减不增'是空转）")
         .isTrue();
   }
 
@@ -322,17 +336,19 @@ class EconomyMoneyInvariantTest {
         .containsKey(HEX);
     assertThat(genesisEconomy.markets().get(HEX).numeraire()).isEqualTo(SILVER);
 
-    List<CohortKey> down = new ArrayList<>();
-    List<CohortKey> up = new ArrayList<>();
-    for (CohortKey cohort : cycle3.economy().classes().keySet()) {
-      GoodsAccount before = genesisBooks.accounts().get(OwnershipBooks.accountKeyOf(cohort));
-      GoodsAccount after = cycle3.actor().accounts().get(OwnershipBooks.accountKeyOf(cohort));
+    List<HouseholdId> down = new ArrayList<>();
+    List<HouseholdId> up = new ArrayList<>();
+    for (Map.Entry<HouseholdId, ClassRow> entry : cycle3.economy().classes().entrySet()) {
+      GoodsAccountKey key =
+          OwnershipBooks.accountKeyOf(entry.getKey(), entry.getValue().view().hex());
+      GoodsAccount before = genesisBooks.accounts().get(key);
+      GoodsAccount after = cycle3.actor().accounts().get(key);
       long was = before == null ? 0L : before.money().getOrDefault(SILVER, 0L);
       long now = after == null ? 0L : after.money().getOrDefault(SILVER, 0L);
       if (now < was) {
-        down.add(cohort);
+        down.add(entry.getKey());
       } else if (now > was) {
-        up.add(cohort);
+        up.add(entry.getKey());
       }
     }
     assertThat(down).as("★ 至少一本家户账**少了钱**（有人真的掏了货款 —— '钱动了'的付方那一半）").isNotEmpty();
@@ -359,7 +375,8 @@ class EconomyMoneyInvariantTest {
     Map<String, Object> view = ApiViews.economyHex(HEX, cycle3.economy(), cycle3.actor());
     assertThat(view.containsKey("money"))
         .as(
-            "★★ H6：格级那个读 {@code Σ ClassRow.money()}（结构性 0）的旧栏**已删** —— 钱的真值是逐币种的 {@code actorMoneyTotal}")
+            "★★ H6：格级那个读 {@code Σ ClassRow.money()}（结构性 0）的旧栏**已删** —— 钱的真值是逐币种的 {@code"
+                + " actorMoneyTotal}")
         .isFalse();
     Object raw = view.get("actorMoneyTotal");
     assertThat(raw).as("★ 真值那一栏在场（删旧栏不是把钱的读数删掉）").isInstanceOf(Map.class);
@@ -407,12 +424,26 @@ class EconomyMoneyInvariantTest {
     return totals;
   }
 
-  /** 账本的**期望键集**：家户行集（经 {@link OwnershipBooks#accountKeyOf}，不复述 key 的形状）∪ 经营者集。 */
-  private static List<GoodsAccountKey> expectedAccountKeys(EconomyData economy) {
-    List<GoodsAccountKey> keys = new ArrayList<>();
-    for (CohortKey cohort : economy.classes().keySet()) {
-      keys.add(OwnershipBooks.accountKeyOf(cohort));
+  /**
+   * 家户账键集（唯一拼写点 = {@link OwnershipBooks#accountKeyOf(HouseholdId, HexCoord)}）。
+   *
+   * <p>★ 真实 seeder 的 id 是 {@code hh-…}，视图只在 {@link ClassRow#view()} 里，不能从 id 反推。
+   */
+  private static Set<GoodsAccountKey> householdAccountKeys(EconomyData economy) {
+    Set<GoodsAccountKey> keys = new LinkedHashSet<>();
+    for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
+      keys.add(OwnershipBooks.accountKeyOf(entry.getKey(), entry.getValue().view().hex()));
     }
+    return keys;
+  }
+
+  /**
+   * 账本的**期望键集**：家户行集（经 {@link OwnershipBooks#accountKeyOf}，不复述 key 的形状）∪ 经营者 unit 的 operator 集。
+   *
+   * <p>★ 用 {@link LinkedHashSet} 收敛：R4-B.3a 起家户副 unit 的 operator 就是家户 actor，两边的键会重合；真实键集本来就只有一本账。
+   */
+  private static Set<GoodsAccountKey> expectedAccountKeys(EconomyData economy) {
+    Set<GoodsAccountKey> keys = new LinkedHashSet<>(householdAccountKeys(economy));
     for (Map.Entry<ActorRef, HexCoord> entry :
         OwnershipBooks.operatorLocations(economy).entrySet()) {
       keys.add(new GoodsAccountKey(entry.getKey(), entry.getValue()));
@@ -420,12 +451,11 @@ class EconomyMoneyInvariantTest {
     return keys;
   }
 
-  /** 该格**家户侧**的账本（键 = 家户身份；缺失 ⇒ 当场红 —— 家户账是日结算的唯一读口，缺了不能当 0）。 */
+  /** 该格**家户账**（键 = {@code (家户 actor, 视图格)}；缺失 ⇒ 当场红 —— 家户账是日结算的唯一读口，缺了不能当 0）。 */
   private static Map<GoodsAccountKey, GoodsAccount> householdAccounts(
       EconomyData economy, ActorData books) {
     Map<GoodsAccountKey, GoodsAccount> out = new LinkedHashMap<>();
-    for (CohortKey cohort : economy.classes().keySet()) {
-      GoodsAccountKey key = OwnershipBooks.accountKeyOf(cohort);
+    for (GoodsAccountKey key : householdAccountKeys(economy)) {
       GoodsAccount account = books.accounts().get(key);
       assertThat(account).as("家户账一本都不能少：%s", key).isNotNull();
       out.put(key, account);
@@ -433,15 +463,24 @@ class EconomyMoneyInvariantTest {
     return out;
   }
 
-  /** 该格**经营者侧**的账本（驱动集 = 产业 → operator，唯一的拼写点是 {@link OwnershipBooks#operatorLocations}）。 */
+  /**
+   * 该格**经营者专属账**（驱动集 = {@link OwnershipBooks#operatorLocations}，再剔掉与家户账重合的副 unit operator）。
+   *
+   * <p>★★ 为什么必须剔：家户副 unit 的 operator 就是家户 actor，它的账就是 {@code householdAccounts} 里那一本。不剔 ⇒ 同一笔余额
+   * 同时进"家户侧"与"经营者侧"，守恒式自己就会红（R4-B.3a 的实测口径）。
+   */
   private static Map<GoodsAccountKey, GoodsAccount> operatorAccounts(
       EconomyData economy, ActorData books) {
     Map<GoodsAccountKey, GoodsAccount> out = new LinkedHashMap<>();
+    Set<GoodsAccountKey> householdKeys = householdAccountKeys(economy);
     for (Map.Entry<ActorRef, HexCoord> entry :
         OwnershipBooks.operatorLocations(economy).entrySet()) {
       GoodsAccountKey key = new GoodsAccountKey(entry.getKey(), entry.getValue());
+      if (householdKeys.contains(key)) {
+        continue; // 家户副 unit：这本账已经在家户侧，不能再算一遍
+      }
       GoodsAccount account = books.accounts().get(key);
-      assertThat(account).as("经营者账一本都不能少：%s", key).isNotNull();
+      assertThat(account).as("经营者专属账一本都不能少：%s", key).isNotNull();
       out.put(key, account);
     }
     return out;
@@ -470,25 +509,25 @@ class EconomyMoneyInvariantTest {
   }
 
   /** 3 个周期后钱与创世值不同的家户（判据 ②/③ 的"非平凡"那一半）。 */
-  private static List<CohortKey> changedHouseholds(EconomyData economy, ActorData books) {
-    List<CohortKey> changed = new ArrayList<>();
-    for (CohortKey cohort : economy.classes().keySet()) {
-      GoodsAccount before = genesisBooks.accounts().get(OwnershipBooks.accountKeyOf(cohort));
-      GoodsAccount after = books.accounts().get(OwnershipBooks.accountKeyOf(cohort));
+  private static List<HouseholdId> changedHouseholds(EconomyData economy, ActorData books) {
+    List<HouseholdId> changed = new ArrayList<>();
+    for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
+      GoodsAccountKey key =
+          OwnershipBooks.accountKeyOf(entry.getKey(), entry.getValue().view().hex());
+      GoodsAccount before = genesisBooks.accounts().get(key);
+      GoodsAccount after = books.accounts().get(key);
       long was = before == null ? 0L : before.money().getOrDefault(SILVER, 0L);
       long now = after == null ? 0L : after.money().getOrDefault(SILVER, 0L);
       if (now != was) {
-        changed.add(cohort);
+        changed.add(entry.getKey());
       }
     }
     return changed;
   }
 
-  /** 经营者那一侧有没有动过（工钱真的付出去了）。 */
+  /** 经营者**专属账**有没有动过（工钱真的付出去了）。 */
   private static boolean operatorChanged(EconomyData economy, ActorData books) {
-    for (Map.Entry<ActorRef, HexCoord> entry :
-        OwnershipBooks.operatorLocations(economy).entrySet()) {
-      GoodsAccountKey key = new GoodsAccountKey(entry.getKey(), entry.getValue());
+    for (GoodsAccountKey key : operatorAccounts(economy, books).keySet()) {
       GoodsAccount before = genesisBooks.accounts().get(key);
       GoodsAccount after = books.accounts().get(key);
       long was = before == null ? 0L : before.money().getOrDefault(SILVER, 0L);

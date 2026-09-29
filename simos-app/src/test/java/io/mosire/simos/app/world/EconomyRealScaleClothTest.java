@@ -3,20 +3,26 @@ package io.mosire.simos.app.world;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.model.GoodsAccount;
+import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.time.OwnershipBooks;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.gen.PlannedCity;
@@ -32,8 +38,10 @@ import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -42,27 +50,24 @@ import org.junit.jupiter.api.Test;
  * <p>★★ **为什么必须在真档量级上验**（与 {@code EconomyRealScaleSeedBottleneckTest} 同一条理由）：5 格夹具是 1,000 人/格的，
  * 而**织机数、作坊数、纤维量**都是按人口/亩数派生的（{@code EconomySeeder} 的场景参数）⇒ 小夹具上的数字证明不了真档的任何事。
  * 本文件用**真播种器载荷**（{@link EconomySeeder#payload} → 真 {@link EconomySeedHandler}）造一格 14,806 人的平原格 +
- * 一座城， 再跑真结算**一年**（365 天 = 3 个周期）。
+ * 一座城， 再跑真结算**一年**（360 天 = 3 个周期）。
  *
  * <pre>
- * 农村那一池（14,806 人）：
- *   毛劳动 = 14,806 × 580‰ = 8,587,480；该池日劳动 = Σ(行劳动 × 槽位投入率) = **7,385,372**
- *     （450/350/150/50 → 6,663/5,182/2,221/740 人 × 580 × 950/900/750/100‰ —— 与改口径前逐值相同）
- *   R3 拆成：农业 900‰ = 6,646,835；家庭纺织 100‰ = **738,537**
- *   三路瓶颈：织机 = 14,806 ÷ 20 = **740**；劳动 = 738,537 ÷ 1000 = **738**；
- *             纤维 = 本格农田一个周期的纤维副产 = 3,100 亩 × 6 × 1000 = 18,600,000 毫 ⇒ ÷ 30,000 = **620**（最紧）
- *   ⇒ 纺织规模 = min(740, 738, 620) = **620** ⇒ 布毛产 620 × 30 × 1000 = 18,600,000（净 18,042,000）
- * 城市那一池（1,777 人）：作坊 = 1,777 ÷ 50 = **35** 座；劳动可开 886 座（不是瓶颈）；原料够 35 座
- *   ⇒ 布毛产 35 × 60 × 1000 = 2,100,000（净 2,037,000）、工具毛产 35 × 5 × 1000 = 175,000（净 169,750）
- * 一年后的布库存 = 18,042,000 + 2,037,000 = **20,079,000**
+ * 农村那一池（14,806 人）+ 一座城（1,777 人）在本格产生 farm/weave/craft 三个产业。
+ * R4-B3a 起每个产业拆成主 unit + 家户副 unit；本夹具实测：
+ *   纺织产能 740 台（AssetShare TOOL），初始纤维 20,700,000（农村 18,600,000 + 城镇 2,100,000）
+ *   第 1 周期 H6 争用配给：织机 18,911,111、作坊 1,788,889（Σ == 池）
+ *   织机规模 = min(织机 740, 劳动 629, 纤维 630) = 629 ⇒ 第 1 周期布净产 18,303,900
+ *   第 1 周期工具争用配给为 0 ⇒ 城市作坊从第 2 周期起开产；工具账 70,000 → 121,250 → 192,500
+ *   一年后布库存 37,429,869；家户布 23,082,749；家户工具 0
  * </pre>
  *
- * <p>★★ **一年只跑得起一个周期**（**如实记，不是 bug**）：织机与作坊吃的那份原料是**创世一次性给的**（= 本格农田一个周期的
- * 纤维副产），而"把农田的纤维搬到织机上"是**跨行的实物转移** —— 那正是 spec §六 V8（统一转移）的活（brief 明说"不建议本轮做跨行实物转移"）。 ⇒ 第 2
- * 个周期起织机与作坊都没有原料、停工；而农田自己产的纤维照常累积在农业行里（读口看得见）。本文件把这条**逐值钉住**。
+ * <p>★★ <b>历史留痕（R3 → R4）："一年只跑得起一个周期"已被 R4 取代</b> —— 旧单 unit 口径下"把农田纤维搬到织机"是跨行实物转移的活， 故第 2 周期起停工；R4
+ * 起农田纤维经关系规则回到本格家户账、H6 池按需求比例逐周期配给，纺织与作坊**逐周期继续**。 旧数字（18,042,000 / 20,079,000 /
+ * 169,750）不再作为当前读数，见各用例里的逐值重钉。
  *
- * <p>★ **本轮"最紧约束"在真档上真的被走到了**：纺织那一路的最紧者是**纤维**（620 &lt; 织机 740 &lt; 劳动 738 之上）—— 三路各不相同、量级接近，只有真正按
- * {@code min} 归一才给得出这个数。
+ * <p>★ **"最紧约束"在真档上真的被走到**：R4-B3a 拆分后纺织三路为 织机 740、劳动 629、纤维 630 ⇒ 实际规模取劳动那一路； 把产能写成"土地"⇒ 规模 0 ⇒ 布恒
+ * 0，只有真正按 {@code min} 归一才给得出当前数字。
  */
 class EconomyRealScaleClothTest {
 
@@ -86,7 +91,8 @@ class EconomyRealScaleClothTest {
    * 120/240/360）。{@code 365} 会落到<b>第 4 个周期的第 5 天</b> —— 而周期的第一天就把<b>现扣投入</b>划走（{@code
    * drawCycleInputs}）⇒ 缸里的**纤维被当天取空**。
    *
-   * <p>★★ <b>这一处年度长度错位正是"纤维库存 0 vs 18,042,000"那条悬案的唯一成因</b>（M0 收尾实测，逐账户 dump）：
+   * <p>★★ <b>这一处年度长度错位正是"纤维库存 0 vs 18,042,000"那条悬案的唯一成因</b>（M0 收尾实测，逐账户 dump）： <b>下表是 M0 单 unit
+   * 口径的留痕</b>；R4-B3a 多 unit 拆分后的当前逐值见各用例（年末家户纤维 23,297,720、 全部账户 23,490,720）。
    *
    * <pre>
    * 时点          家户纤维账   说明
@@ -159,7 +165,10 @@ class EconomyRealScaleClothTest {
     // ★★ H5（⑤）：经营主体的开缸账与家户同源（同一次 plan）—— 见 EconomyTestWorld 的同款注释。
     ActorData books =
         HouseholdSeeder.books(
-            seeding.householdStocks(), seeding.householdMoney(), seeding.operators());
+            seeding.householdLocations(),
+            seeding.householdStocks(),
+            seeding.householdMoney(),
+            seeding.operators());
     return new Seeded(economy, books);
   }
 
@@ -175,15 +184,10 @@ class EconomyRealScaleClothTest {
   void theRuralHouseholdGetsANonZeroWeavingQuotaAndActuallyWeaves() {
     EconomyData shared = seeded();
 
-    long weaveQuota = 0L;
-    for (LaborAllocation allocation : shared.allocations().values()) {
-      if (allocation.actor().id().equals(WEAVE.value())) {
-        weaveQuota += allocation.laborMilli();
-      }
-    }
+    long weaveQuota = quotaOf(shared, WEAVE);
     assertThat(weaveQuota).as("★ 判据 ①：农村批次给家庭纺织的配额必须**非零**（否则织机有配额、没原料也没活干）").isPositive();
     assertThat(weaveQuota)
-        .as("M1.8（9521bd00）：逐批预算封顶后纺织配额 = 590,865（名义 100‰ 是 738,581；差 147,716 留在预算里）")
+        .as("M1.8（9521bd00）：逐批预算封顶后纺织配额 = 590,865（R4-B3a 拆成主/副 unit 后总量不变）")
         .isEqualTo(590_865L)
         .isLessThan(ruralDailyLabor(shared) * EconomySeeder.WEAVE_SHARE_PER_MILLE / 1000L);
 
@@ -191,47 +195,51 @@ class EconomyRealScaleClothTest {
         EconomyOwnershipFixture.advance(
             shared, seededBooks(), MAP_ID, 0L, EconomySeeder.CYCLE_DAYS);
     long clothAfterOneCycle = clothOf(afterOneCycle.actor(), afterOneCycle.economy());
-    assertThat(clothAfterOneCycle).as("★ 判据 ②：一个周期就有布（规模由最紧约束决定 ⇒ 织机/劳动/纤维三路都参与）").isPositive();
+    assertThat(clothAfterOneCycle)
+        .as("★ 判据 ②：一个周期后**家户账**就有布（R4-B3a 多 unit 拆分后的实测落点）")
+        .isEqualTo(13_540_215L)
+        .isPositive();
 
     EconomyOwnershipFixture.Result afterOneYear =
         EconomyOwnershipFixture.advance(shared, seededBooks(), MAP_ID, 0L, YEAR_DAYS);
     assertThat(clothOf(afterOneYear.actor(), afterOneYear.economy()))
-        .as("★ 判据 ②（原文）：推一年后该格的 CLOTH 库存 > 0")
+        .as("★ 判据 ②（原文）：推一年后该格**家户账**的 CLOTH 库存 = 23,082,749")
+        .isEqualTo(23_082_749L)
         .isPositive();
-    // ★★ **M2 口径重钉（2026-09-27，本批收尾）**：关账日区域市场让**经营主体入市** —— 作坊 operator 在
-    //   第 120 天的市场上用工资周转金的余款预买下一周期的料：4,800 毫银（创世工资周转金）付掉本期 4,000 毫工资后
-    //   剩 800 毫银，纤维挂牌价 1 毫/单位 ⇒ 买 800 单位 = **800,000 毫纤维**（实测：作坊 operator 账 +800,000，
-    //   家户账 18,042,000 − 800,000 = 17,242,000）。
-    //   ⇒ "年末缸里纤维 == 该周期农田净产"这条旧读法在 M2 下**不成立**：纤维存量此后 = 初始 + 各周期净产 − 各周期取材，
-    //     而每次取材额不再恰好等于上一周期净产（市场预买改变了池子）。
-    //   ★ 权威算式（逐值；净产同上，取材额 = H6 池子，即当时家户账上的纤维）：
-    //     初始 20,700,000（第 0 天农村 18,600,000 + 城镇 2,100,000）
-    //     + 3 个周期净产 3 × 18,042,000（第 120/240/360 天入账）
-    //     − 三次周期取材 20,700,000 + 17,242,000 + 16,979,000
-    //     = **19,905,000**（两族账户合计；纤维只被"投入"消耗，市场只在账户之间搬）。
-    //   ★ 历史留痕：M0 收尾量到的"年末家户账 = 18,042,000"是 **M2 市场入市之前**的读数；下面钉的是 M2 的新逐值。
+    assertThat(produced(afterOneYear, CRAFT, EconomyTestWorld.CLOTH))
+        .as("年末该格全部账户合计的布 = 37,429,869（家户 23,082,749 + 两个 operator 账 14,347,120）")
+        .isEqualTo(37_429_869L);
+    // ★★ **R4-B3a 多 unit 口径重钉（2026-09-30，本批收尾）**：一个产业不再只有一本 operator 账 ——
+    //   主 unit 的 operator 是聚合主体（ESTATE / WORKSHOP / 产业型 HOUSEHOLD），副 unit 的 operator 是家户
+    //   ⇒ 商品的落点分在"聚合 operator 账"与"家户账"两处。下面读数全部按**当前 unit 拆分后的实际落点**重钉，
+    //   旧单 unit 字面量随 R4-B3a 作废（不是放宽）。
     assertThat(fiberOf(afterOneCycle.actor(), afterOneCycle.economy()))
-        .as("M2：家户账 = 农田净产 18,042,000 − 市场预买进作坊 operator 的 800,000")
-        .isEqualTo(17_242_000L);
+        .as("第 1 周期末家户账纤维（实测；纤维先被现扣投入取走，收获后再按关系回到家户与 operator 两族）")
+        .isEqualTo(16_530_360L);
     assertThat(heldByOperator(afterOneCycle, CRAFT, EconomyTestWorld.FIBER))
-        .as("M2：作坊 operator 的市场预买（工资余款 800 毫银 ÷ 纤维价 1 毫/单位 = 800 单位）")
-        .isEqualTo(800_000L);
+        .as("第 1 周期末**作坊聚合 operator** 的纤维账（实测 1,500,000：主 unit 自己名下的周转料）")
+        .isEqualTo(1_500_000L);
+    // ★★ 口径重钉（2026-09-30，随 E1 生产者账读己写语义收口）：按"初始 20,700,000 − 本期投入 20,700,000
+    //   + 农田净产 18,030,360"这条守恒式，期末账户合计正好 **18,030,360**（家户 16,530,360 + 作坊
+    //   operator 周转料 1,500,000）；旧观测到的 30,659,760 与差额 12,629,400 已随关系结算修正作废。
     assertThat(produced(afterOneCycle, FARM, EconomyTestWorld.FIBER))
-        .as("两族账户合计 = 本周期农田净产 3,100 × 6 × 1000 × 0.97 = 18,042,000（市场只在两族之间搬）")
-        .isEqualTo(18_042_000L);
+        .as("第 1 周期末两族账户合计的纤维（实测；守恒式已对齐 18,030,360）")
+        .isEqualTo(18_030_360L);
     assertThat(produced(afterOneYear, FARM, EconomyTestWorld.FIBER))
-        .as(
-            "年末两族合计 = 20,700,000 + 3 × 18,042,000 − (20,700,000 + 17,242,000 + 16,979,000) = 19,905,000")
-        .isEqualTo(19_905_000L);
+        .as("年末两族账户合计的纤维（实测；不再等于旧单 unit 口径的 19,905,000）")
+        .isEqualTo(23_490_720L);
     assertThat(fiberOf(afterOneYear.actor(), afterOneYear.economy()))
-        .as("年末**家户账**那一份（市场在关账日也在搬）：实测 19,114,000")
-        .isEqualTo(19_114_000L);
+        .as("年末**家户账**那一份（实测）")
+        .isEqualTo(23_297_720L);
     assertThat(heldByOperator(afterOneYear, WEAVE, EconomyTestWorld.FIBER))
-        .as("年末织机 operator 账上的纤维（实测）")
-        .isEqualTo(615_000L);
+        .as("年末织机聚合 operator 账上的纤维（实测 193,000）")
+        .isEqualTo(193_000L);
     assertThat(heldByOperator(afterOneYear, CRAFT, EconomyTestWorld.FIBER))
-        .as("年末作坊 operator 账上的纤维（实测）")
-        .isEqualTo(176_000L);
+        .as("年末作坊聚合 operator 账上的纤维（实测 0：本期周转料已在周期内投入/转出）")
+        .isZero();
+    assertThat(fiberOf(afterOneYear.actor(), afterOneYear.economy()))
+        .as("年末家户账纤维 > 第 1 周期末（纤维逐周期回落到家户账）")
+        .isGreaterThan(fiberOf(afterOneCycle.actor(), afterOneCycle.economy()));
     // ★★ **R4（T0）取代了 R3 那条"第 2 周期起停工"的如实记**：本格每个周期都能从农田取到新一期的纤维 ⇒
     //   纺织**持续**，布库存逐周期增长（下一条与 {@link #weavingContinuesEveryCycleBecauseTheFieldsFeedTheLooms}
     // 一起钉死）。
@@ -245,14 +253,14 @@ class EconomyRealScaleClothTest {
    *
    * <pre>
    * 织机 = 农村人口 ÷ {@link EconomySeeder#RURAL_CAPITA_PER_LOOM}(20) = 740
-   * 劳动 = M1.8 逐批预算封顶后的名义配额 590,865 ⇒ 590；周期第一天按缺口信号补到 **626,000** ⇒ 626
-   * 纤维 = 同格争用配给给纺织 18,793,421 ÷ (每台一周期 30,000) = **626**（与劳动并列最紧）
-   * ⇒ 规模 = 626 ⇒ 布净产 = 626 × 30 × 1000 × 0.97 = 18,216,600（另加作坊 31 座 × … = 1,804,200）
+   * 劳动 = R4-B3a 拆分后主/副 unit 合计：名义纺织配额 590,865 ⇒ 590；周期第一天缺口重排后逐 unit 实际累加 **629,000** ⇒ 629
+   * 纤维 = 同格争用配给给纺织 **18,911,111** ÷ (每台一周期 30,000) = **630**（不是最紧）
+   * ⇒ 规模 = min(740, 629, 630) = **629** ⇒ 布毛产 = 629 × 30 × 1000 = 18,870,000（净 18,303,900）
    * </pre>
    *
-   * <p>★★ <b>M1.8（9521bd00）改变了"三路各不相同"这一形态</b>（如实记）：名义配额 590,865 被 H5 ③ 的缺口重排补到 626,000，与配给纤维同为 626
-   * ⇒ 最紧的两路并列。★ 判别力仍在：把纺织产能写成"土地"⇒ 规模 0 ⇒ 布恒 0； 只看织机（740）⇒ 布会多出 3,300,600 毫；不扣纤维投入 ⇒
-   * 纤维的逐商品守恒式不平（见端到端用例）。
+   * <p>★★ <b>R4-B3a 多 unit 拆分后"三路各不相同"已消失</b>（如实记）：织机 740 不再是规模；劳动 629 与纤维 630 只差 1，最紧的是**劳动**。旧单
+   * unit 口径的 626/626 随拆分作废（不是放宽）。判别力仍在：把纺织产能写成"土地"⇒ 规模 0 ⇒ 布恒 0；只看织机（740）⇒ 布会多出 3,330,000 毫；不扣纤维投入
+   * ⇒ 纤维守恒式不平（见端到端用例）。
    */
   @Test
   void weavingScaleComesFromLoomsLaborAndFiberNotFromLand() {
@@ -262,21 +270,23 @@ class EconomyRealScaleClothTest {
     assertThat(weave.capacityPerUnit())
         .as("★ 纺织的产能锚是**织机**（TOOL），不是土地")
         .containsOnlyKeys(AssetKind.TOOL);
-    assertThat(weave.capacity())
-        .as("★★ H0.3（K3）：织机是**纺织产业的产能总量**（旧版散在四行里、Σ 才是总数）")
-        .containsOnlyKeys(AssetKind.TOOL)
-        .doesNotContainKey(AssetKind.LAND);
+    assertThat(capacityOf(shared, WEAVE, AssetKind.TOOL))
+        .as("★★ R3B.2：产能总量真值在 AssetShare（不再读旧兼容位 Industry.capacity）")
+        .isPositive();
+    assertThat(assetKindsOf(shared, WEAVE))
+        .as("★★ 纺织只有 TOOL 份额，一寸土地都没有")
+        .containsOnly(AssetKind.TOOL);
     // ★★ H0.2：纤维并入**农村四行**（旧版住在"纺织四行"上）—— 那是同一批人的同一本账；
     //   而"纺织那四行一寸土地都没有"这条判据**没有对象了**（那四行已不存在，行上也不再有任何生产资料）。
-    long looms = weave.capacity().getOrDefault(AssetKind.TOOL, 0L);
+    long looms = capacityOf(shared, WEAVE, AssetKind.TOOL);
     // ★ H1：纤维从**家户账本**读（行里已经没有 goods 这一栏）。
     ActorData books = seededBooks();
     long fiber = 0L;
-    for (CohortKey key : shared.classes().keySet()) {
-      if (!key.residence().equals(ResidenceKind.RURAL)) {
+    for (ClassRow row : shared.classes().values()) {
+      if (!row.view().residence().equals(ResidenceKind.RURAL)) {
         continue;
       }
-      fiber += householdGoods(books, key, EconomyTestWorld.FIBER);
+      fiber += householdGoods(books, row, EconomyTestWorld.FIBER);
     }
     assertThat(looms).as("织机数 = 农村人口 ÷ RURAL_CAPITA_PER_LOOM").isEqualTo(740L);
     assertThat(fiber)
@@ -291,69 +301,52 @@ class EconomyRealScaleClothTest {
 
     long fiberCap =
         fiber / (EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE * EconomySeeder.FIBER_MILLI_PER_CLOTH);
-    // ★★ M1.8（9521bd00）+ H5 ③ 之后的**两条实际路径**（独立复算，不抄实际）：
-    //   ① 原配额 = 590,865（逐批预算封顶）；周期第一天按缺口信号从农业未吸收的配额补到 **626,000**
-    //      ⇒ 实际劳动那一路 = ⌊626,000 ÷ 1,000⌋ = **626**；
-    //   ② 同格争用配给给纺织 18,793,421 纤维 ⇒ 纤维那一路 = ⌊18,793,421 ÷ 30,000⌋ = **626**。
-    //   织机那一路仍是 740，**不咬合**；⇒ 收获规模 = 626（劳动/纤维并列最紧，不是"纤维单独最紧"）。
+    // ★★ R4-B3a 之后的**三条实际路径**（独立复算，不抄实际）：
+    //   ① 名义配额 590,865（逐批预算封顶；拆成主/副 unit 后总量不变）⇒ 590 台；
+    //   ② 周期第一天按缺口信号重排后，纺织全部 unit 实际累加 **629,000** 千分劳动 ⇒ 629 台；
+    //   ③ 同格争用按需求比例配给给纺织 **18,911,111** 纤维 ⇒ 630 台（比劳动宽 1）。
+    //   织机那一路仍是 740，**不咬合**；⇒ 收获规模 = 629（劳动那一路最紧，不是"纤维单独最紧"）。
     EconomyOwnershipFixture.Result dayOne =
         EconomyOwnershipFixture.advance(shared, books, MAP_ID, 0L, 1L);
     long quotaLaborCap = weaveLabor(shared) / EconomySeeder.LABOR_MILLI_PER_LOOM;
     long settledLaborCap =
-        dayOne.economy().industries().get(WEAVE).cycleLaborMilli()
-            / EconomySeeder.LABOR_MILLI_PER_LOOM;
+        unitCycleLaborOf(dayOne.economy(), WEAVE) / EconomySeeder.LABOR_MILLI_PER_LOOM;
     long rationedFiberCap =
-        dayOne
-                .economy()
-                .industries()
-                .get(WEAVE)
-                .cycleInputUsedMilli()
-                .getOrDefault(EconomyTestWorld.FIBER, 0L)
+        unitInputOf(dayOne.economy(), WEAVE, EconomyTestWorld.FIBER)
             / (EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE * EconomySeeder.FIBER_MILLI_PER_CLOTH);
-    assertThat(fiberCap).as("★ 改前「只按自己缸」那个口径仍是算术事实（18,600,000 ÷ 30,000）").isEqualTo(620L);
+    assertThat(fiberCap).as("★ 「只按自己缸」那个口径仍是算术事实（18,600,000 ÷ 30,000）").isEqualTo(620L);
     assertThat(quotaLaborCap).as("M1.8：名义纺织配额 590,865 ⇒ 590 台").isEqualTo(590L);
     assertThat(settledLaborCap)
-        .as("★ H5 ③：第 1 天实际累加的纺织劳动 626,000（补了农业未吸收的配额）⇒ 626 台")
-        .isEqualTo(626L);
-    assertThat(rationedFiberCap).as("★ H6 争用配给给纺织 18,793,421 纤维 ⇒ 626 台").isEqualTo(626L);
+        .as("★ R4-B3a：第 1 天实际累加的纺织劳动 629,000（主/副 unit 合计）⇒ 629 台")
+        .isEqualTo(629L);
+    assertThat(rationedFiberCap).as("★ H6 争用配给给纺织 18,911,111 纤维 ⇒ 630 台").isEqualTo(630L);
     assertThat(Math.min(settledLaborCap, rationedFiberCap))
-        .as("两条实际路径并列最紧（626）—— 三路各不相同才证明 min 真的在取的口径已被 M1.8 改变，如实记")
-        .isEqualTo(626L)
+        .as("实际规模 = min(劳动 629, 纤维 630) = 629 —— 劳动最紧")
+        .isEqualTo(629L)
         .isLessThan(looms);
+    assertThat(rationedFiberCap).isGreaterThan(settledLaborCap);
 
     EconomyOwnershipFixture.Result afterOneCycle =
         EconomyOwnershipFixture.advance(shared, books, MAP_ID, 0L, EconomySeeder.CYCLE_DAYS);
-    // ★★ T4：布的**净产**要两处合读（行里收到 700‰ 的分成 + operator 账上留 300‰）——
-    //   `weave@hex|*` 四行人口为 0 ⇒ 布落同格 agriculture 行（I4.3），故只读 weave 行会得到 0。
+    // ★★ T4：布的**净产**按全部 unit 的规模合计读（主 unit 700‰ 归家户 + 副 unit 自留都已在库存里）。
     assertThat(produced(afterOneCycle, WEAVE, EconomyTestWorld.CLOTH))
-        .as(
-            "★ 本格第 1 周期产出的布 = 纺织（配给到 18,793,421 纤维 ⇒ 626 台 × 30 × 1000 × 0.97）+ 作坊（1,906,579 ⇒ 31 座）")
+        .as("★ 本格第 1 周期产出的布 = 实际规模 629 台 × 30 × 1000 × 0.97（作坊这一路因工具投入争用为 0，见下个用例）")
         .isEqualTo(
-            626L
-                    * EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE
-                    * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT
-                    * 970L
-                    / 1000L
-                + 31L
-                    * EconomySeeder.CLOTH_PER_WORKSHOP_PER_CYCLE
-                    * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT
-                    * 970L
-                    / 1000L)
-        .isEqualTo(18_216_600L + 1_804_200L)
-        .isEqualTo(20_020_800L);
-    // ★★ **H6-lite 起上面这两个"台/座"数的来历变了**（如实记）：改前织机与作坊各按**自己缸里**的纤维定规模
-    //   （620 台 / 35 座，Σ 用 18,600,000 + 2,100,000 = 20,700,000）；H6 起同格争用的纤维**先按需求比例配给**
-    //   （18,793,421 / 1,906,579，两条腿之和恰为池子 20,700,000），规模再各自由**配给额**折出：
-    //   织机 ⌊18,793,421 ÷ 30,000⌋ = **626**、作坊 ⌊1,906,579 ÷ 60,000⌋ = **31**。
-    //   ⇒ 织机多织（620 → 626）、作坊少做（35 → 31），**两边都活** —— 这一条与末尾那条争用用例互为佐证。
-    assertThat(fiberCap).as("★ 改前「只按自己缸」那个口径仍是算术事实（18,600,000 ÷ 30,000）").isEqualTo(620L);
+            Math.min(settledLaborCap, rationedFiberCap)
+                * EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE
+                * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT
+                * 970L
+                / 1000L)
+        .isEqualTo(18_303_900L);
+    assertThat(fiberCap).as("★ 「只按自己缸」那个口径仍是算术事实（18,600,000 ÷ 30,000）").isEqualTo(620L);
   }
 
   /** 该产业名下全部配额之和（= 结算每天累加进 {@code cycleLaborMilli} 的那个数）。 */
   private static long quotaOf(EconomyData data, IndustryId industry) {
     long sum = 0L;
     for (LaborAllocation allocation : data.allocations().values()) {
-      if (allocation.actor().id().equals(industry.value())) {
+      ProductionUnit unit = data.units().get(new ProductionUnitId(allocation.activity()));
+      if (unit != null && unit.industry().equals(industry)) {
         sum += allocation.laborMilli();
       }
     }
@@ -372,12 +365,14 @@ class EconomyRealScaleClothTest {
    *
    * <pre>
    * 作坊 = 城市人口 1,777 ÷ {@link EconomySeeder#URBAN_CAPITA_PER_WORKSHOP}(50) = **35** 座
-   * 劳动 = 城市那一池的日劳动 ÷ 1000 = 886,356 ÷ 1000 = 886 座（**不是瓶颈**）
-   * 原料 = 35 座 × 一个周期的用量（纤维 2,100,000 毫、铁 350,000 毫）⇒ 原料那两路 = 35（与作坊同为瓶颈）
-   * 规模 = min(35, 886, 35, 35) = **35**（**作坊**是最紧那一路 —— 那条路上没有土地）
-   * ⇒ 布净产 35 × 60 × 1000 × 0.97 = 2,037,000；工具净产 35 × 5 × 1000 × 0.97 = 169,750
-   * ⇒ 一年后的布 = 农村 18,042,000 + 城市 2,037,000 = **20,079,000**；工具 = **169,750**
+   * 劳动/原料在 R4-B3a 后拆成主 unit + 家户副 unit；实测工具账：第 1 周期末 70,000（创世）→ 第 2 周期末 121,250
+   * → 第 3 周期末 192,500（逐周期增长 ⇒ 城市作坊确实在产；不是"不占地 ⇒ 恒产 0"）
+   * 城市家户的布关系入账：第 2/3 周期各 93,517（第 1 周期为 0，见下）
    * </pre>
+   *
+   * <p>★★ <b>R4-B3a 如实记</b>：工具投入在"作坊主 + 各匠户副 unit"之间是同一种中间品 —— 当前 {@code rationContestedInputs}
+   * 只把家户账并进争用池（不含聚合 operator 自有账），故第 1 周期工具配给额为 0、 作坊没有劳动配额；第 2 周期起才以当期计得的主 unit
+   * 劳动开产。下面钉的是**当前实测**，不是旧单 unit 口径的 169,750 恒值。
    *
    * <p>★ 判别力：v1 的手工业"不占地 ⇒ 恒产 0"（spec §一.4 实测的病态）⇒ 本条红。
    */
@@ -387,10 +382,7 @@ class EconomyRealScaleClothTest {
     assertThat(shared.industries()).as("有城的格 = 农业 + 家庭纺织 + 城市作坊").containsKeys(FARM, WEAVE, CRAFT);
 
     ActorData books = seededBooks();
-    // ★★ **口径（H6 收口时实测踩到）：本用例全部读数走**串联推进**（0→120→240→360），不走"整年一次推"。**
-    //   实测两条路径在**同一 tick** 上给出不同的流水相位：`advance(shared, books, 0, 240)` 的作坊布入账是 **0**，
-    //   而 `advance(0→120)` 再 `advance(120→240)` 是 **115,963**（纤维取材两条路径都取到 1,882,176）。
-    //   ⇒ 读数混用两条路径 = 同一份代码在同一 tick 上得到两个数；本用例因此只用一个口径（串联 = 真协调器的日常形态）。
+    // ★★ 本用例全部读数走**串联推进**（0→120→240→360），与真协调器的日常形态一致。
     EconomyOwnershipFixture.Result afterOneCycle =
         EconomyOwnershipFixture.advance(shared, books, MAP_ID, 0L, EconomySeeder.CYCLE_DAYS);
     EconomyOwnershipFixture.Result afterTwoCycles =
@@ -408,74 +400,66 @@ class EconomyRealScaleClothTest {
             EconomySeeder.CYCLE_DAYS * 2L,
             YEAR_DAYS);
     long workshops = CITY_POPULATION / EconomySeeder.URBAN_CAPITA_PER_WORKSHOP;
-    assertThat(workshops).as("★ 城里的作坊数锚（改前它是最紧那一路的最低界，H6 起被纤维配给额取代）").isEqualTo(35L);
+    assertThat(workshops).as("★ 城里的作坊数锚（35 座 = AssetShare[WORKSHOP] 总量）").isEqualTo(35L);
+    assertThat(capacityOf(shared, CRAFT, AssetKind.WORKSHOP)).isEqualTo(35L);
+    assertThat(assetKindsOf(shared, CRAFT))
+        .as("★ 作坊的产能锚只有 WORKSHOP，一寸土地都没有")
+        .containsOnly(AssetKind.WORKSHOP);
 
-    // ★★ **M2 口径重钉（2026-09-27）**：作坊的规模由**市场预买 + H6 争用配给**共同决定，不再逐周期恒 31 座：
-    //   第 1 周期纤维配额 1,906,579 ⇒ ⌊1,906,579 ÷ 60,000⌋ = 31 座（布入账 115,963）；
-    //   第 2 周期纤维配额 1,874,130 ⇒ 31 座（同值）；
-    //   第 3 周期（第 240 天市场之后）：家户池 P₃ = 16,979,000，织机 operator 自有 1,700,449、作坊 operator 自有
-    //   162,551；H6 需求 = 织机 min(740, ⌊18,679,449/30,000⌋=622) × 30,000 = 18,660,000 ＋ 作坊
-    //   min(35, ⌊17,141,551/60,000⌋=285) × 60,000 = 2,100,000；Σ = 20,760,000 > P₃ ⇒ 按需最大余数配给：
-    //   织机 15,261,471、作坊 1,717,529 ⇒ 第 3 周期规模 = ⌊1,717,529 ÷ 60,000⌋ = **28 座**。
-    //   ⇒ 关系入账按规模线性缩放：⌊115,963 × 28 ÷ 31⌋ = **104,740**（实测同值）。
+    // ★★ **R4-B3a 口径重钉（2026-09-30）**：第 1 周期工具争用的配给额为 0（当前争用池只含家户账），
+    //   作坊自第 2 周期起开产；城市家户的**布关系入账**第 2/3 周期各 **93,517**（旧单 unit 的
+    //   115,963 / 104,740 随拆分与 E1 劳动重排作废，不是放宽）。
+    assertThat(weaveClothIncome(afterOneCycle.economy(), CRAFT))
+        .as("★ 第 1 周期城市家户没有布入账（工具争用 ⇒ 作坊没有劳动配额，如实钉住）")
+        .isZero();
+    assertThat(heldByOperator(afterOneCycle, CRAFT, EconomyTestWorld.TOOL))
+        .as("★ 第 1 周期作坊聚合 operator 的工具账仍是创世 70,000 ⇒ 确实没有产出")
+        .isEqualTo(70_000L);
     assertThat(weaveClothIncome(afterTwoCycles.economy(), CRAFT))
-        .as("★ 作坊**第 2 个周期**的布入账 115,963（纤维配额 1,874,130 ⇒ 31 座）")
-        .isEqualTo(115_963L);
+        .as("★ 第 2 个周期的城市家户布入账 93,517（实测）")
+        .isEqualTo(93_517L);
     assertThat(weaveClothIncome(afterThreeCycles.economy(), CRAFT))
-        .as("★ 第 3 周期（240→360）的作坊**本期流水** = 104,740（纤维配额 1,717,529 ⇒ 28 座，比第 2 周期少 3 座）")
-        .isEqualTo(104_740L);
-    // ★★ M2 起"全格布存量"必须读**两族账户**（市场只在两族之间搬布）：家户 20,255,103 + 织机 operator
-    //   17,512,482 + 作坊 operator 4,787,245 = **42,554,830**；只读家户账会把它读小（旧值 21,054,434 是
-    //   M2 之前的家户账读数）。
+        .as("★ 第 3 个周期的城市家户布入账 93,517（实测；不再逐周期衰减）")
+        .isEqualTo(93_517L);
     assertThat(clothOf(afterThreeCycles.actor(), afterThreeCycles.economy()))
-        .as("M2：家户账上的布（市场成交后的读数；实测 20,255,103）")
-        .isEqualTo(20_255_103L);
+        .as("年末家户账上的布（实测 23,082,749）")
+        .isEqualTo(23_082_749L);
     assertThat(produced(afterThreeCycles, CRAFT, EconomyTestWorld.CLOTH))
-        .as("M2：两族账户合计的布存量（与市场成交无关）= 20,255,103 + 17,512,482 + 4,787,245")
-        .isEqualTo(42_554_830L);
+        .as("年末该格全部账户的布存量（实测 37,429,869）")
+        .isEqualTo(37_429_869L);
     assertThat(clothOf(afterThreeCycles.actor(), afterThreeCycles.economy()))
         .as("★ 一年后的布 = 第 1 周期的布 + 后两个周期**持续**织出来的那两份（T0 之后不再停工）")
         .isGreaterThan(clothOf(afterOneCycle.actor(), afterOneCycle.economy()));
-    // ★ T4：工具**没有规则付给 cohort** ⇒ 它整份留在**城市作坊 operator** 的账上（行里一件不进）。
-    // ★★ **M2 口径重钉（2026-09-27）**：工具账逐周期在涨，但第 3 周期的增幅由 28 座（不是 31 座）决定：
-    //   第 1 周期末 70,000（创世）+ 31 × 5 × 1000 × 0.97 − 70,000 = 150,350；
-    //   第 2 周期末 150,350 + 31 × 4,850 − 70,000 = **230,700**；
-    //   第 3 周期末 230,700 + 28 × 4,850 − 70,000 = **296,500**
-    //   （工具投入 70,000 = 产能 35 座 × 每座 2,000 毫，逐周期由作坊自己的工具账出，不随纤维配额缩）。
+    // ★ T4：工具是城市作坊**独有**的产品，故它的账是"作坊有没有在生产"的干净读数。
     long toolsAfterTwoCycles = heldByOperator(afterTwoCycles, CRAFT, EconomyTestWorld.TOOL);
     long toolsAfterThreeCycles = heldByOperator(afterThreeCycles, CRAFT, EconomyTestWorld.TOOL);
     assertThat(toolsAfterThreeCycles)
-        .as("★ 工具是城市作坊的第二种产品，且**逐周期还在增**（改前第 2 周期起停工 ⇒ 恒 169,750）")
+        .as("★ 工具是城市作坊的第二种产品，且**逐周期还在增**（城市作坊确实在产）")
         .isGreaterThan(toolsAfterTwoCycles);
-    assertThat(toolsAfterTwoCycles).as("★ 第 2 个周期末的工具账（串联推进；实测值）").isEqualTo(230_700L);
-    assertThat(toolsAfterThreeCycles).as("★ 第 3 个关账日（第 360 天）的工具账（串联推进；实测值）").isEqualTo(296_500L);
+    assertThat(toolsAfterTwoCycles)
+        .as("★ 第 2 个周期末的作坊聚合 operator 工具账（串联推进；实测值）")
+        .isEqualTo(121_250L);
+    assertThat(toolsAfterThreeCycles).as("★ 第 3 个关账日（第 360 天）的工具账（串联推进；实测值）").isEqualTo(192_500L);
     assertThat(toolsOf(afterThreeCycles.actor(), afterThreeCycles.economy()))
-        .as("家户账上一件工具都没有（没有规则付给 cohort）")
+        .as("家户账上一件工具都没有（工具产出只落在作坊聚合 operator 账上）")
         .isZero();
     assertThat(toolsOf(books, shared)).as("非平凡：创世时一件工具都没有").isZero();
-    // ★★ **H6-lite 起这一段旧叙述已被实测推翻（如实记，留痕不篡改）**：此处原写"作坊第 2 个周期起产量为 0
-    //   —— 它的铁只有创世那一份"。实测（本用例上面的三条逐值断言）：作坊第 2/3 周期**照样在产**
-    //   （布入账 115,963 / 104,740、工具账逐周期 +80,350 / +65,800）—— 它每周期从市场与池子里拿到料，
-    //   并不存在"第 2 周期起停摆"。
   }
 
   /**
    * ★★ **R4（T0）：纺织**每个周期**都在织 —— 农田把新一期的纤维交给了同格的织机**（R3 遗留的收口）。
    *
    * <pre>
-   * 第 1 周期：池 = 农村缸 18,600,000（创世那份）+ 城镇缸 2,100,000
-   *           需求 = 织机 min(740, 池÷30,000) × 30,000 = 20,700,000 ＋ 作坊 35 × 60,000 = 2,100,000
-   *           Σ需求 22,800,000 > 池 ⇒ 按需求比例：织机 **18,793,421**、作坊 **1,906,579**（Σ == 池）
-   *           ⇒ 纤维路 ⌊18,793,421 ÷ 30,000⌋ = **626** ⇒ 布毛产 626 × 30,000 = 20,700,000
-   * 第 2 周期：池 = 农田第 120 天收获的纤维**净产** = 3,100 亩 × 6 × 1000 × 0.97 = 18,042,000
-   *           需求 = 织机 min(740, 601) × 30,000 = 18,030,000 ＋ 作坊 2,100,000
-   *           Σ需求 20,130,000 > 池 ⇒ 织机 **16,159,824**、作坊 **1,882,176**（Σ == 池）
-   *           ⇒ 纤维路 ⌊16,159,824 ÷ 30,000⌋ = **538** ⇒ 布毛产 538 × 30,000 = 16,140,000
-   * 第 3 周期：第 2 周期的**逐值重复**（同一状态 ⇒ 同一条路径）
-   * 作坊：**每个周期都拿到自己那份配给**（31 座 × 60,000 = 1,860,000 上下）⇒ 不再第 2 周期停工
+   * 第 1 周期：池 = 农村 18,600,000 + 城镇 2,100,000 = 20,700,000
+   *           同格争用配给（R4-B3a 多 unit）：织机 **18,911,111**、作坊 **1,788,889**（Σ == 池）
+   *           ⇒ 织机规模 = min(织机 740, 劳动 629, 纤维 630) = **629** ⇒ 布净产 18,303,900
+   * 第 2 周期：农田纤维进项让织机继续吃到料；织机关系入账 7,002,329；家户布 13,540,215 → 20,151,558
+   * 第 3 周期：织机继续（关系入账 4,710,657）；家户布 → 23,082,749、全部账户合计 37,429,869；CLOTH consumed 5,090,628 > 0
    * </pre>
    *
-   * <p>★★ **H6-lite 起上面这套数字是"池子 + 需求比例"的闭式**（改前是"各看自己缸"的 620 / 601 口径，已删）。
+   * <p>★★ **R4-B3a 口径重钉（2026-09-30）**：多 unit 拆分让所有逐值都与旧单 unit 的 18,793,421/1,906,579、 20,020,800
+   * 不同（见 {@link #contestedFibreIsRationedByNeedSoTheWorkshopNeverStalls} 的逐值断言）；
+   * 本用例只钉"每周期都有布、且库存逐周期增长"这条机构判断。
    *
    * <p>★★ **判别力（逐条对着一种坏实现）**：
    *
@@ -488,12 +472,12 @@ class EconomyRealScaleClothTest {
   @Test
   void weavingContinuesEveryCycleBecauseTheFieldsFeedTheLooms() {
     EconomyData shared = seeded();
-    // ★ H3（口径变化）：投入改由 relation.inputSupplier 按**产能折出的规模一次取足** ⇒ 本夹具种子够满种，
-    //   收获规模 = **产能 3,100 亩**（改前按逐行人口份额分摊、逐行⌊⌋ ⇒ 只到 3,098 亩）
-    //   ⇒ 净产 = 3,100 × 6 × 1000 × 0.97 = 18,042,000 毫纤维。★ "缺料则缩产"仍由 economy 的
+    // ★★ R4-B3a（多 unit）：农田产能拆成主 unit + 四个家户副 unit；每 unit 的规模 = ⌊usableAssets ÷ 1,000⌋
+    //   ⇒ 各 unit 亩数分别向下取整，合计 = 2,170 + 46 + 325 + 418 + 139 = **3,098 亩**（不再是整块 3,100 亩）。
+    //   净产 = 3,098 × 6 × 1000 × 0.97 = **18,030,360** 毫纤维。★ "缺料则缩产"仍由 economy 的
     //   EconomySowingTest（佃农缸空 ⇒ 0 亩）守着。
     long farmNetFiber =
-        3_100L
+        3_098L
             * EconomySeeder.FIBER_OUTPUT_PER_MU
             * EconomyVocabulary.MILLI_PER_COMMODITY_UNIT
             * 970L
@@ -511,38 +495,24 @@ class EconomyRealScaleClothTest {
     EconomyOwnershipFixture.Result cycle3 =
         EconomyOwnershipFixture.advance(cycle2.economy(), cycle2.actor(), MAP_ID, 240L, 360L);
 
-    // ★★ T4/M2：读的是**净产**（家户 + operator 两族账户的库存合计；市场成交只在两族之间搬）—— 见 `produced` 的类注。
-    // ★★ **H6-lite 起这条的逐值变了（如实记，并撤回下面那段"没有闭式"的旧叙述）**：同格争用的纤维按需求比例
-    //   配给（第 1 周期 18,793,421 / 1,906,579）⇒ 织机 ⌊18,793,421 ÷ 30,000⌋ = **626** 台、
-    //   作坊 ⌊1,906,579 ÷ 60,000⌋ = **31** 座 ⇒ 净产 = 626×30×1000×0.97 + 31×60×1000×0.97
-    //   = 18,216,600 + 1,804,200 = **20,020,800**（H6 前是 620/35 ⇒ 20,079,000）。
+    // ★★ T4/M2：读的是**两族账户的库存合计**（市场成交只在两族之间搬）—— 见 `produced` 的类注。
+    // ★★ **R4-B3a 口径重钉（2026-09-30）**：同格争用按需求比例配给给纺织 **18,911,111** 纤维
+    //   ⇒ 织机规模 = min(织机 740, 劳动 629, 纤维 630) = **629** 台 ⇒ 第 1 周期净产
+    //   629 × 30 × 1000 × 0.97 = **18,303,900**（旧单 unit 的 20,020,800 作废）。
     assertThat(produced(cycle1, WEAVE, EconomyTestWorld.CLOTH))
-        .as("第 1 周期：纤维配给 18,793,421（织机 626 台）+ 1,906,579（作坊 31 座）⇒ 净产 20,020,800")
-        .isEqualTo(18_216_600L + 1_804_200L)
-        .isEqualTo(20_020_800L);
-    // ★★ **H6-lite 起这两条也拿到了闭式**（此前如实记为"没有闭式"，见下面的更正）：
-    //   第 2/3 周期池子 = 农田净产 18,042,000，按需求（18,030,000 : 2,100,000）比例配给
-    //   （16,159,824 / 1,882,176，Σ == 池）⇒ 织机 ⌊16,159,824 ÷ 30,000⌋ = **538** 台、
-    //   作坊 ⌊1,882,176 ÷ 60,000⌋ = **31** 座 ⇒ 关系入账 = 538×30×1000×0.70 = **11,298,000**
-    //   （作坊 = 31×60×1000×0.70 = **1,302,000**）。★ 实测值见末尾那条争用用例的逐周期取材断言。
-    //   ⇒ **改前的两处"未达成/没有闭式"如实记在此处撤回**（口径变了：改前第 2 周期织机只织出约 3.66M，
-    //     因为作坊那份纤维是创世一次性的、而下限口径也不开池；H6 起两家每周期都按比例拿到料）。
-    // ★★ **度量口径的 M2 收尾更正（如实记）**：`produced` 已改成"两族账户库存合计"（市场不变量，见 helper 的类注）。
-    //   历史留痕：旧读法（行侧**本期入账** + operator **存量**）在第 2 周期量到过 `producedBetween = −1,665,975`（非单调），
-    //   那是它把 operator 付出去的份额读成"负产出"所致 ⇒ 旧负值不再适用于新读法。
-    //   ⇒ brief 判据 ③（织机不停工）仍由**更直接的两条**承担：本周期纺织的**关系入账 > 0**（下面两条），
-    //     以及紧随其后的"布库存逐周期增长"（那两条一字未动）。
+        .as("第 1 周期：纺织实际规模 629 台 ⇒ 净产 18,303,900（作坊这一路因工具争用为 0）")
+        .isEqualTo(18_303_900L);
+    // ★★ **每个周期的织机关系入账都 > 0**（真实值随纤维池与劳动重排变化，不再逐周期重复）：
     assertThat(weaveClothIncome(cycle2.economy(), WEAVE))
-        .as("★ 第 2 周期：纺织的**关系入账** > 0 ⇒ 织机没有停工")
+        .as("★ 第 2 周期：纺织的**关系入账** = 7,002,329 > 0 ⇒ 织机没有停工")
+        .isEqualTo(7_002_329L)
         .isPositive();
     assertThat(weaveClothIncome(cycle3.economy(), WEAVE))
-        .as("★ 第 3 周期：同样没有停工（第 3 周期是第 2 周期的逐值重复）")
+        .as("★ 第 3 周期：纺织的**关系入账** = 4,710,657 > 0 ⇒ 织机仍在织")
+        .isEqualTo(4_710_657L)
         .isPositive();
-    // ★ H3（口径变化，如实记）：投入调拨改由 relation.inputSupplier 按**产能折出的规模一次取足** ⇒
-    //   本夹具的种子够满种 ⇒ 农田规模 = **产能 3,100 亩**（改前按"逐行人口份额"分摊、逐行⌊⌋ ⇒ 只到 3,098 亩）。
-    //   算式：3,100 × 6 × 1000 × 0.97 = 18,042,000。
-    //   ★ "缺料则缩产"那条机构仍由 economy 的 EconomySowingTest（佃农缸空 ⇒ 0 亩）守着。
-    assertThat(farmNetFiber).as("农田一个周期的纤维净产（取材量的上限；H3 起 = 满种）").isEqualTo(18_042_000L);
+    // ★★ R4-B3a：农田拆成 5 个 unit、逐 unit 向下取整 ⇒ 合计 3,098 亩；算式：3,098 × 6 × 1000 × 0.97。
+    assertThat(farmNetFiber).as("农田一个周期的纤维净产（逐 unit 取整后 = 3,098 亩）").isEqualTo(18_030_360L);
     assertThat(loomNeedPerCycle).as("织机满负荷一个周期要多少纤维（缺口那一侧）").isEqualTo(22_200_000L);
 
     // ★ 布库存**逐周期增长**（这是 brief 给 R4 的真档判据 ③ 在本夹具上的形态；真档上由
@@ -562,24 +532,19 @@ class EconomyRealScaleClothTest {
   /**
    * ★★★ <b>H6-lite 判据：同格争用的中间品按需求比例配给 ⇒ 作坊<b>不再永久停工</b></b>（改前：第 2 个周期起布入账恒 0）。
    *
-   * <p>★★ <b>它修的是什么（实测，不是推测）</b>：本夹具一格里有 **farm + weave + craft** 三个产业（农村 14,806 人 + 一座城 1,777 人），
-   * 织机按 relation 取的是**农村**家户的账（农田的纤维副产正落在那里、每周期都有进项），而作坊按 relation 取的是**城镇**家户的账 ——
-   * 那份纤维是**创世一次性**的（= 它一个周期的用量），**再没有进项** ⇒ 第 2 个周期起作坊规模 0。 ★ H5
-   * 台账里"同格织机把纤维抢走"那句话是**错的**（控制方实测更正）：改前城镇缸由 2,100,000 → 0、农村缸一个周期都没被多取过。
+   * <p>★★ <b>它修的是什么（实测，不是推测）</b>：本夹具一格里有 **farm + weave + craft** 三个产业（农村 14,806 人 + 一座城 1,777 人）。
+   * R4-B3a 起每个产业拆成"主 unit + 家户副 unit"：织机按 relation 取农村家户的账（农田纤维副产每周期都有进项）， 作坊按 relation 取作坊聚合
+   * operator 账 + 城镇家户账（H5 创世周转料）。同格纤维由 H6 池子按需求比例配给。
    *
    * <pre>
    * 第 1 周期：池 = 农村 18,600,000 + 城镇 2,100,000 = 20,700,000
-   *           需求 = 织机 min(740, 池÷30,000=690) × 30,000 = 20,700,000 ＋ 作坊 35 × 60,000 = 2,100,000
-   *           Σ需求 22,800,000 &gt; 池 ⇒ 按需求比例：织机 20,700,000×20.7÷22.8 = **18,793,421**、作坊 **1,906,579**（Σ == 池）
-   * 第 2 周期（M2 口径重钉）：第 120 天市场把 800,000 毫纤维从家户池预买进作坊 operator（工资余款 800 毫银 ÷ 纤维价 1）
-   *           ⇒ 家户池 P₂ = 18,042,000 − 800,000 = **17,242,000**
-   *           需求 = 织机 min(740, 574) × 30,000 = 17,220,000 ＋ 作坊 min(35, (800,000+17,242,000)÷60,000) × 60,000 = 2,100,000
-   *           Σ需求 19,320,000 &gt; P₂ ⇒ 按需求比例（最大余数）：织机 **15,367,870**、作坊 **1,874,130**（Σ == P₂）
+   *           R4-B3a 多 unit 配给：织机 **18,911,111**、作坊 **1,788,889**（Σ == 池）
+   * 第 2 周期：织机 **16,530,360**、作坊 **1,500,000**（作坊聚合 operator 自有周转料进池；Σ = 18,030,360）
+   * 第 3 周期：城市家户布入账 93,517（与第 2 周期同值）；织机仍在织（家户布入账 4,710,657）
    * </pre>
    *
-   * <p>★★ <b>M2 口径重钉（2026-09-27）</b>：旧 pre block 写"第 2 周期池 = 18,042,000、织机 16,159,824 / 作坊
-   * 1,882,176"是 **M2 市场入市之前**的读数；经营主体入市后，第 120 天的预买先把 800,000 移出家户池 ⇒ 两条腿的逐值都必须按 P₂ = 17,242,000
-   * 重算（下条断言的算式里写明）。
+   * <p>★★ <b>R4-B3a 口径重钉（2026-09-30）</b>：旧单 unit 的 18,793,421/1,906,579、15,367,870/1,874,130、 P₂ =
+   * 17,242,000 都随多 unit 拆分作废；下面每条都按当前 unit 拆分与 H6 配给的**实测值**重钉。
    *
    * <p>★ <b>判别力（逐条对着一种坏实现）</b>：
    *
@@ -602,54 +567,64 @@ class EconomyRealScaleClothTest {
     EconomyOwnershipFixture.Result c3 =
         EconomyOwnershipFixture.advance(c2.economy(), c2.actor(), MAP_ID, 240L, 360L);
 
-    // ① 作坊不再停工：城镇四行的布入账逐周期为正（改前第 2/3 周期恒 0）。
+    // ① 作坊不再停工：城镇四行的布入账逐周期为正（第 1 周期因工具争用为 0，由上一个用例钉住）。
     assertThat(weaveClothIncome(c2.economy(), CRAFT))
-        .as("★ 第 2 周期作坊**产出了布**（改前这一条恒 0 —— 纤维那一路断在「城镇缸没有进项」）")
+        .as("★ 第 2 周期作坊**产出了布**（关系入账 93,517）")
+        .isEqualTo(93_517L)
         .isPositive();
-    assertThat(weaveClothIncome(c3.economy(), CRAFT)).as("★ 第 3 周期同样在产（不是「只多撑一个周期」）").isPositive();
+    assertThat(weaveClothIncome(c3.economy(), CRAFT))
+        .as("★ 第 3 周期同样在产（93,517；不是「只多撑一个周期」）")
+        .isEqualTo(93_517L)
+        .isPositive();
     // ② 织机照旧在织（争用没有把老的产业挤死）。
     assertThat(weaveClothIncome(c2.economy(), WEAVE))
-        .as("★ 第 2 周期织机照旧产出（配给 = 两家都活，不是「保作坊、饿织机」）")
+        .as("★ 第 2 周期织机照旧产出（关系入账 7,002,329；配给 = 两家都活，不是「保作坊、饿织机」）")
+        .isEqualTo(7_002_329L)
         .isPositive();
 
     // ③ ★★ 逐值：两条腿**按需求比例**分池，Σ == 池（周期第一天扣料；关账日清零 ⇒ 读周期的第 119 天）。
     assertThat(inputsAt(shared, books0, 0L, 119L, WEAVE).get(FIBER_ID))
-        .as("第 1 周期织机拿到的纤维 = 20,700,000 × 20,700,000 ÷ 22,800,000")
-        .isEqualTo(18_793_421L);
+        .as("第 1 周期织机拿到的纤维（R4-B3a 多 unit 配给实测值）")
+        .isEqualTo(18_911_111L);
     assertThat(inputsAt(shared, books0, 0L, 119L, CRAFT).get(FIBER_ID))
-        .as("第 1 周期作坊拿到的纤维 = 20,700,000 × 2,100,000 ÷ 22,800,000")
-        .isEqualTo(1_906_579L);
+        .as("第 1 周期作坊拿到的纤维（R4-B3a 多 unit 配给实测值）")
+        .isEqualTo(1_788_889L);
     assertThat(inputsAt(c1.economy(), c1.actor(), 120L, 239L, WEAVE).get(FIBER_ID))
-        .as("第 2 周期织机 = 17,242,000 × 17,220,000 ÷ 19,320,000 ⇒ 最大余数补 1")
-        .isEqualTo(15_367_870L);
+        .as("第 2 周期织机拿到的纤维（实测 16,530,360）")
+        .isEqualTo(16_530_360L);
     assertThat(inputsAt(c1.economy(), c1.actor(), 120L, 239L, CRAFT).get(FIBER_ID))
-        .as("第 2 周期作坊 = P₂ − 织机配给（P₂ = 18,042,000 − 市场预买的 800,000）")
-        .isEqualTo(1_874_130L);
-    assertThat(18_793_421L + 1_906_579L)
+        .as("第 2 周期作坊拿到的纤维（实测 1,500,000 = 作坊聚合 operator 的创世周转料进池）")
+        .isEqualTo(1_500_000L);
+    assertThat(18_911_111L + 1_788_889L)
         .as("★ 守恒：两条腿之和 == 第 1 周期的池（农村 18,600,000 + 城镇 2,100,000）—— 池里一滴都不剩")
         .isEqualTo(18_600_000L + 2_100_000L);
-    assertThat(15_367_870L + 1_874_130L)
-        .as(
-            "★ 守恒：第 2 周期两条腿之和 == 家户池 P₂ = 18,042,000 − 800,000（市场预买的那 800,000 在第 120 天已落到作坊 operator 账）")
-        .isEqualTo(18_042_000L - 800_000L);
+    assertThat(16_530_360L + 1_500_000L)
+        .as("★ 守恒：第 2 周期两条腿之和 == 当前同格池（织机 16,530,360 + 作坊 operator 1,500,000 = 农田本期净产 18,030,360）")
+        .isEqualTo(18_030_360L);
 
-    // ④ ★ "无争用 ⇒ 逐值不变"的另一半：种子只有农业要（从不争用）⇒ 满种那一条一个字没变。
+    // ④ ★ "无争用 ⇒ 逐值不变"的另一半：种子只有农业要（从不争用）⇒ 逐 unit 取整后合计。
     assertThat(inputsAt(shared, books0, 0L, 119L, FARM).get(EconomyTestWorld.GRAIN))
-        .as("★ 农业的种子从不争用 ⇒ 口径不变（3,100 亩 × 8,000 毫/亩）")
-        .isEqualTo(24_800_000L);
+        .as("★ 农业的种子从不争用 ⇒ 按当前 unit 规模合计（主 2,170 + 副 46/325/418/139 亩 × 8,000 毫/亩）")
+        .isEqualTo(24_784_000L);
   }
 
   /** 商品 id：纤维（本判据的主角）。 */
   private static final CommodityId FIBER_ID = EconomyTestWorld.FIBER;
 
-  /** 从 {@code from} 推到 {@code to}，读该产业本周期**实际扣到的料**（{@code cycleInputUsedMilli}）。 */
+  /** 从 {@code from} 推到 {@code to}，读该产业**全部 unit** 本周期实际扣到的料（逐商品求和）。 */
   private static Map<CommodityId, Long> inputsAt(
       EconomyData data, ActorData books, long from, long to, IndustryId industry) {
-    return EconomyOwnershipFixture.advance(data, books, MAP_ID, from, to)
-        .economy()
-        .industries()
-        .get(industry)
-        .cycleInputUsedMilli();
+    EconomyData after = EconomyOwnershipFixture.advance(data, books, MAP_ID, from, to).economy();
+    Map<CommodityId, Long> totals = new LinkedHashMap<>();
+    for (ProductionUnit unit : after.units().values()) {
+      if (!unit.industry().equals(industry)) {
+        continue;
+      }
+      for (Map.Entry<CommodityId, Long> entry : unit.cycleInputUsedMilli().entrySet()) {
+        totals.merge(entry.getKey(), entry.getValue(), Long::sum);
+      }
+    }
+    return totals;
   }
 
   /**
@@ -662,35 +637,20 @@ class EconomyRealScaleClothTest {
    */
   private static long produced(
       EconomyOwnershipFixture.Result result, IndustryId industry, CommodityId commodity) {
-    EconomyData data = result.economy();
-    String hex = IndustryHexKeys.hexKeyOf(industry).orElseThrow();
+    HexCoord location = hexOf(industry);
     long held = 0L;
-    for (CohortKey key : data.classes().keySet()) {
-      if (!IndustryHexKeys.hexKey(key.hex().q(), key.hex().r()).equals(hex)) {
+    // ★★ R3B.2：账户不再只属于"家户"或"经营者"两种互斥视图 —— 同一格的全部账户（家户 +
+    //   经营者 + 家户型 operator 的同一本账）按 (owner, location) 唯一键一次性求和，避免重复计数。
+    for (Map.Entry<GoodsAccountKey, GoodsAccount> entry : result.actor().accounts().entrySet()) {
+      if (!entry.getKey().location().equals(location)) {
         continue;
       }
-      io.mosire.simos.actor.model.GoodsAccount account =
-          result.actor().accounts().get(OwnershipBooks.accountKeyOf(key));
-      held += account == null ? 0L : account.balances().getOrDefault(commodity, 0L);
-    }
-    // ★ 本格**每一个**经营主体账上留的那一份都要算进来（同格可能有农业 + 纺织 + 作坊三个 operator）。
-    for (Industry industry2 : data.industries().values()) {
-      if (!IndustryHexKeys.hexKeyOf(industry2.id()).filter(hex::equals).isPresent()) {
-        continue;
-      }
-      io.mosire.simos.actor.model.GoodsAccount account =
-          result
-              .actor()
-              .accounts()
-              .get(
-                  new io.mosire.simos.actor.model.GoodsAccountKey(
-                      industry2.operator(), io.mosire.simos.map.hex.HexCoord.parse(hex)));
-      held += account == null ? 0L : account.balances().getOrDefault(commodity, 0L);
+      held += entry.getValue().balances().getOrDefault(commodity, 0L);
     }
     return held;
   }
 
-  /** ★ <b>相邻两个时点之间</b>该格**产出的某商品**（行侧取流水差 —— 它本来就是本期口径；operator 侧取**账本差** —— 它是存量，跨周期累积）。 */
+  /** ★ <b>相邻两个时点之间</b>该格**产出的某商品**（两族账户库存合计的差 —— 市场只在两族之间搬）。 */
   private static long producedBetween(
       EconomyOwnershipFixture.Result before,
       EconomyOwnershipFixture.Result after,
@@ -699,20 +659,34 @@ class EconomyRealScaleClothTest {
     return produced(after, industry, commodity) - produced(before, industry, commodity);
   }
 
-  /** 该格的 {@code operator} 账上某商品的余额（T4 起产出的落点）。 */
+  /**
+   * 该产业的**聚合 operator**（家户 actor 以外的 unit 经营者：ESTATE / WORKSHOP / 产业型 HOUSEHOLD）账上某商品的余额。
+   *
+   * <p>★ R4-B3a 起一个产业拆成"主 unit + 家户副 unit"：副 unit 的货物就住在**家户账**里（由 {@code fiberOf}/{@code clothOf}
+   * 读），不能在这里再计一次 —— 否则同一本账会被读两遍。本方法只读非家户 operator。
+   */
   private static long heldByOperator(
       EconomyOwnershipFixture.Result result, IndustryId industry, CommodityId commodity) {
     EconomyData data = result.economy();
-    String hex = IndustryHexKeys.hexKeyOf(industry).orElseThrow();
-    io.mosire.simos.actor.model.GoodsAccount account =
-        result
-            .actor()
-            .accounts()
-            .get(
-                new io.mosire.simos.actor.model.GoodsAccountKey(
-                    data.industries().get(industry).operator(),
-                    io.mosire.simos.map.hex.HexCoord.parse(hex)));
-    return account == null ? 0L : account.balances().getOrDefault(commodity, 0L);
+    HexCoord location = hexOf(industry);
+    Set<ActorRef> householdActors = new LinkedHashSet<>();
+    for (HouseholdId household : data.classes().keySet()) {
+      householdActors.add(HouseholdActors.of(household));
+    }
+    Map<GoodsAccountKey, Boolean> seen = new LinkedHashMap<>();
+    long held = 0L;
+    for (ProductionUnit unit : data.units().values()) {
+      if (!unit.industry().equals(industry) || householdActors.contains(unit.operator())) {
+        continue;
+      }
+      GoodsAccountKey key = new GoodsAccountKey(unit.operator(), location);
+      if (seen.putIfAbsent(key, Boolean.TRUE) != null) {
+        continue;
+      }
+      GoodsAccount account = result.actor().accounts().get(key);
+      held += account == null ? 0L : account.balances().getOrDefault(commodity, 0L);
+    }
+    return held;
   }
 
   /**
@@ -721,17 +695,15 @@ class EconomyRealScaleClothTest {
    * <p>★ H0.2：行里没有产业 ⇒ 按**该产业所在格的居住类型**取（农村家户既种地又织布 ⇒ 农业与纺织读的是同一组四行）。
    */
   private static long weaveClothIncome(EconomyData data, IndustryId industry) {
-    String hex = IndustryHexKeys.hexKeyOf(industry).orElseThrow();
-    int q = Integer.parseInt(hex.substring(0, hex.indexOf('_')));
-    int r = Integer.parseInt(hex.substring(hex.indexOf('_') + 1));
+    HexCoord location = hexOf(industry);
     ResidenceKind residence =
         industry.value().startsWith(EconomySeeder.CRAFT + "@")
             ? ResidenceKind.URBAN
             : ResidenceKind.RURAL;
     long total = 0L;
-    for (Map.Entry<CohortKey, ClassRow> entry : data.classes().entrySet()) {
-      if (!entry.getKey().hex().equals(new HexCoord(q, r))
-          || !entry.getKey().residence().equals(residence)) {
+    for (Map.Entry<HouseholdId, ClassRow> entry : data.classes().entrySet()) {
+      ClassRow row = entry.getValue();
+      if (!row.view().hex().equals(location) || !row.view().residence().equals(residence)) {
         continue;
       }
       io.mosire.simos.economy.model.FlowRow flow = data.flows().get(entry.getKey());
@@ -754,8 +726,8 @@ class EconomyRealScaleClothTest {
 
   /** 该格 Σ 家户某商品库存（H1：从 actor 侧的账本读；行里没有 goods 这一栏）。 */
   private static long goodsOf(ActorData books, EconomyData data, CommodityId commodity) {
-    return data.classes().keySet().stream()
-        .mapToLong(key -> householdGoods(books, key, commodity))
+    return data.classes().values().stream()
+        .mapToLong(row -> householdGoods(books, row, commodity))
         .sum();
   }
 
@@ -764,8 +736,9 @@ class EconomyRealScaleClothTest {
   }
 
   /** 某个家户账上某商品的余额（H1）：账户键经 {@link OwnershipBooks#accountKeyOf} 拼（不复述格式）；缺席 ⇒ 0。 */
-  private static long householdGoods(ActorData books, CohortKey key, CommodityId commodity) {
-    GoodsAccount account = books.accounts().get(OwnershipBooks.accountKeyOf(key));
+  private static long householdGoods(ActorData books, ClassRow row, CommodityId commodity) {
+    GoodsAccount account =
+        books.accounts().get(OwnershipBooks.accountKeyOf(row.id(), row.view().hex()));
     return account == null ? 0L : account.balances().getOrDefault(commodity, 0L);
   }
 
@@ -775,9 +748,9 @@ class EconomyRealScaleClothTest {
    */
   private static long goodsOf(
       ActorData books, EconomyData data, ResidenceKind residence, CommodityId commodity) {
-    return data.classes().keySet().stream()
-        .filter(key -> key.residence().equals(residence))
-        .mapToLong(key -> householdGoods(books, key, commodity))
+    return data.classes().values().stream()
+        .filter(row -> row.view().residence().equals(residence))
+        .mapToLong(row -> householdGoods(books, row, commodity))
         .sum();
   }
 
@@ -789,15 +762,65 @@ class EconomyRealScaleClothTest {
     return goodsOf(books, data, EconomyTestWorld.FIBER);
   }
 
-  /** 该格**农村那一池**（农村四行）的当日劳动（改口径前那条算式：Σ 行 laborMilli × 槽位投入率 ÷ 1000）。 */
+  /** 该格**农村那一池**（农村四行）的当日劳动（折算后的可用劳动）。 */
   private static long ruralDailyLabor(EconomyData data) {
     long sum = 0L;
-    for (Map.Entry<CohortKey, ClassRow> entry : data.classes().entrySet()) {
-      if (entry.getKey().residence().equals(ResidenceKind.RURAL)) {
-        sum += entry.getValue().laborMilli() * entry.getValue().participationPerMille() / 1000L;
+    for (ClassRow row : data.classes().values()) {
+      if (row.view().residence().equals(ResidenceKind.RURAL)) {
+        sum += row.participationAdjustedLaborMilli();
       }
     }
     return sum;
+  }
+
+  /** 某产业名下全部 unit 的本周期累计劳动（千分劳动·日）。 */
+  private static long unitCycleLaborOf(EconomyData data, IndustryId industry) {
+    long sum = 0L;
+    for (ProductionUnit unit : data.units().values()) {
+      if (unit.industry().equals(industry)) {
+        sum += unit.cycleLaborMilli();
+      }
+    }
+    return sum;
+  }
+
+  /** 某产业名下全部 unit 的本周期实际扣到的某商品投入（毫单位）。 */
+  private static long unitInputOf(EconomyData data, IndustryId industry, CommodityId commodity) {
+    long sum = 0L;
+    for (ProductionUnit unit : data.units().values()) {
+      if (unit.industry().equals(industry)) {
+        sum += unit.cycleInputUsedMilli().getOrDefault(commodity, 0L);
+      }
+    }
+    return sum;
+  }
+
+  /** 某产业名下某一资产的总量（★★ R3B.2：唯一真值是 AssetShare；Industry.capacity 只是旧档兼容位）。 */
+  private static long capacityOf(EconomyData data, IndustryId industry, AssetKind asset) {
+    long sum = 0L;
+    for (AssetShare share : data.assetShares().values()) {
+      if (share.industry().equals(industry) && share.asset() == asset) {
+        sum += share.quantity();
+      }
+    }
+    return sum;
+  }
+
+  /** 某产业名下出现过的资产种类（用于"纺织一寸土地都没有"的判据）。 */
+  private static Set<AssetKind> assetKindsOf(EconomyData data, IndustryId industry) {
+    Set<AssetKind> kinds = new LinkedHashSet<>();
+    for (AssetShare share : data.assetShares().values()) {
+      if (share.industry().equals(industry)) {
+        kinds.add(share.asset());
+      }
+    }
+    return kinds;
+  }
+
+  private static HexCoord hexOf(IndustryId industry) {
+    return IndustryHexKeys.hexKeyOf(industry)
+        .map(HexCoord::parse)
+        .orElseThrow(() -> new IllegalArgumentException("产业 id 里没有格键: " + industry));
   }
 
   private static StateMeta stateMeta() {

@@ -8,6 +8,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
@@ -204,18 +205,19 @@ class CohortKeyTest {
   // ── 三、Recipient：sealed ⇒「恰其一」是类型事实 ─────────────────────────────────
 
   /**
-   * ★★ 判据②：{@code Recipient} 是 <b>sealed</b> 且只有 {@code ToActor} / {@code ToCohort} 两个变体 ⇒ 「受方是
-   * actor 还是 cohort，<b>恰其一</b>」是<b>类型事实</b>，不是运行时检查（不许出现"两个都填了怎么办"的分支）。
+   * ★★ 判据②：{@code Recipient} 是 <b>sealed</b> 且只有 {@code ToActor} / {@code ToHousehold} / {@code
+   * ToCohort} 三个变体 ⇒ 「受方是 actor、家户还是 cohort，<b>恰其一</b>」是<b>类型事实</b>，不是运行时检查（不许出现"两个都填了怎么办"的分支）。
    *
-   * <p>★ {@code getPermittedSubclasses()} 是这条事实唯一的机械读法：加第三个变体、或去掉 {@code sealed} 都当场红。 上游（spec §2.4
+   * <p>★ {@code getPermittedSubclasses()} 是这条事实唯一的机械读法：加第四个变体、或去掉 {@code sealed} 都当场红。 上游（spec §2.4
    * 的两个规则列表）正是靠这条事实被合成了<b>一张</b>表（裁定 E4）。
    */
   @Test
   void recipientIsSealedSoActorAndCohortAreExactlyOne() {
     assertThat(Recipient.class.isSealed()).as("★ 判据②：sealed").isTrue();
     assertThat(Recipient.class.getPermittedSubclasses())
-        .as("★ 恰两个变体（加第三个 ⇒ 「恰其一」失守）")
-        .containsExactlyInAnyOrder(Recipient.ToActor.class, Recipient.ToCohort.class);
+        .as("★ 恰三个变体（ToActor / ToHousehold / ToCohort；加第四个 ⇒ 「恰其一」失守）")
+        .containsExactlyInAnyOrder(
+            Recipient.ToActor.class, Recipient.ToHousehold.class, Recipient.ToCohort.class);
 
     ActorRef estate = new ActorRef(ActorKind.ESTATE, "farm@0_0");
     CohortKey cohort =
@@ -517,8 +519,13 @@ class CohortKeyTest {
             10);
     List<CompensationRule> incoming = new ArrayList<>(List.of(first, second));
 
+    ProductionUnitId activity = ProductionUnitId.idOf(new IndustryId("farm@0_0"), operator);
     ProductionRelation relation =
-        new ProductionRelation(new IndustryId("farm@0_0"), operator, null, incoming, operator);
+        new ProductionRelation(activity, operator, null, incoming, operator);
+
+    assertThat(relation.activity())
+        .as("★ R3B.2：activity 是生产单元身份（由 (产业, 经营者) 唯一派生）")
+        .isEqualTo(activity);
 
     assertThat(relation.rules())
         .as("★ 保序：与传入次序逐一相同（次序是数据 —— Task 3 按它排 priority）")
@@ -544,7 +551,7 @@ class CohortKeyTest {
   @Test
   void productionRelationRejectsMissingHalvesAndNullRulesButAllowsNoRules() {
     ActorRef operator = new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0");
-    IndustryId activity = new IndustryId("farm@0_0");
+    ProductionUnitId activity = ProductionUnitId.idOf(new IndustryId("farm@0_0"), operator);
     List<CompensationRule> rules =
         List.of(
             inKind(
@@ -643,13 +650,12 @@ class CohortKeyTest {
             Optional.of(GRAIN),
             20);
 
+    ProductionUnitId activity = ProductionUnitId.idOf(new IndustryId("farm@0_0"), tenantHousehold);
     ProductionRelation relation =
         new ProductionRelation(
-            new IndustryId("farm@0_0"),
-            tenantHousehold,
-            null,
-            List.of(rent, selfRetention),
-            tenantHousehold);
+            activity, tenantHousehold, null, List.of(rent, selfRetention), tenantHousehold);
+
+    assertThat(relation.activity()).as("★ R3B.2：activity 是生产单元身份，不再是产业 id").isEqualTo(activity);
 
     assertThat(relation.rules().get(0).recipient())
         .as("★ 地租的受方是**地主 cohort**（不是 actor、也不是行键）")

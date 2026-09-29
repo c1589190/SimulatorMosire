@@ -12,7 +12,6 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
-import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.codec.ActorCodec;
@@ -33,10 +32,12 @@ import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
@@ -44,11 +45,18 @@ import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
+import io.mosire.simos.economy.time.AccountPartitionKey;
+import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
+import io.mosire.simos.economy.time.ProductionLedger;
+import io.mosire.simos.economy.time.ProductionSettlement.ActorEntry;
+import io.mosire.simos.economy.time.ProductionUnitBook;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
@@ -586,26 +594,30 @@ class WorldgenInitializeToolTest {
       // 判据 ①：农村批次给家庭纺织的配额非零。★ **逐格**核对（= 该格农村日劳动 × WEAVE_SHARE_PER_MILLE ÷ 1000）——
       //   不能拿"全国合计 × 100‰"比：每格各向下取整一次，138 格合起来会差几十（实测差 63）。
       Map<String, Long> weaveQuotaByHex = new LinkedHashMap<>();
+      // ★ R3B.2/S1：配额的归属看 activity（= ProductionUnitId），不再看 actor id —— R4-B.3a 起家户副 unit 的
+      //   actor 是家户 actor，按 actor id 反推产业会把副 unit 的配额漏掉（旧 actor id 反推还会当场抛）。
       for (LaborAllocation allocation : seeded.allocations().values()) {
-        if (allocation.actor().kind() != ActorKind.HOUSEHOLD) {
+        ProductionUnit unit = seeded.units().get(new ProductionUnitId(allocation.activity()));
+        if (unit == null || !unit.industry().value().startsWith(EconomySeeder.WEAVE + "@")) {
           continue;
         }
-        String hex =
-            IndustryHexKeys.hexKeyOf(new IndustryId(allocation.actor().id())).orElseThrow();
+        String hex = IndustryHexKeys.hexKeyOf(unit.industry()).orElseThrow();
         weaveQuotaByHex.merge(hex, allocation.laborMilli(), Long::sum);
       }
       Map<String, Long> ruralDailyByHex = new LinkedHashMap<>();
-      for (Map.Entry<CohortKey, ClassRow> entry : seeded.classes().entrySet()) {
+      // ★ S1：classes 的键是家户稳定身份 HouseholdId，视图（格 + 居住类型 + 阶层）在 ClassRow.view() 上。
+      //   真实 seeder 的 hh- id 不能反推视图，故这里逐行取 row.view()。
+      for (ClassRow row : seeded.classes().values()) {
         // ★ 只算**农村四行**：H0（K2 / R-N1-A）起行 = (格, 居住类型, 阶层)，旧 farm 那四行与新 weave 那四行合成
         //   本组的农村四行；同一格的城市作坊行是**另一组四行**，不属于农村那一池
         //   （按格不分居住类型求和会把城里那 12% 也算进来，实测差 40%）。
-        if (entry.getKey().residence() != ResidenceKind.RURAL) {
+        if (row.view().residence() != ResidenceKind.RURAL) {
           continue;
         }
-        String hex = IndustryHexKeys.hexKey(entry.getKey().hex().q(), entry.getKey().hex().r());
+        HexCoord hex = row.view().hex();
         ruralDailyByHex.merge(
-            hex,
-            entry.getValue().laborMilli() * entry.getValue().participationPerMille() / 1000L,
+            IndustryHexKeys.hexKey(hex.q(), hex.r()),
+            row.participationAdjustedLaborMilli(),
             Long::sum);
       }
       assertThat(weaveQuotaByHex)
@@ -632,21 +644,24 @@ class WorldgenInitializeToolTest {
       //   （它逐步交回当天的 ProductionLedger；本用例只量**行侧库存**，故不接那本账）。
       Advance afterOneYear = advanceLocally(seeded, seededBooks, EconomySeeder.CYCLE_DAYS * 3L);
       long clothStock = goodsStock(afterOneYear.books(), afterOneYear.economy(), cloth);
-      long toolStock = goodsStock(afterOneYear.books(), afterOneYear.economy(), tool);
       long fiberStock = goodsStock(afterOneYear.books(), afterOneYear.economy(), fiber);
       assertThat(clothStock).as("★ 判据 ②：推一年后真档的 CLOTH 库存 > 0").isPositive();
-      // ★★ T4 起：工具**没有规则付给 cohort** ⇒ 它整份留在 operator 的账上，**行里一件不进**。
-      //   本用例只读 economy 一片（没有 actor 片）⇒ 用**当天的 ledger**举证（那是产出离开 ClassRow 的账）；
-      //   "operator 账上确实有 169,750"那一条由 EconomyRealScaleClothTest 的 by-operator 断言逐值钉住。
+      // ★★ 判据 ③ 的**工具库存读法**：T4 起工具没有规则付给 cohort；R4-B.3a 的 craft 家户副 unit 的
+      //   余产也只在有劳动配额时才产工具 ⇒ 真档里工具落在**作坊聚合 operator 账**上（家户账为 0，
+      //   由 EconomyRealScaleClothTest 逐值钉住）。故本用例读**全账户合计**，不再只看行侧库存。
       CommodityId toolCommodity = new CommodityId(EconomySeeder.COMMODITY_TOOL);
       long toolProduced =
           ledgersOf(seeded, seededBooks, EconomySeeder.CYCLE_DAYS * 3L).stream()
               .flatMap(ledger -> ledger.gross().values().stream())
               .mapToLong(byCommodity -> byCommodity.getOrDefault(toolCommodity, 0L))
               .sum();
-      assertThat(toolStock).as("★ 行里一件工具都没有（T4：没有规则付给 cohort）").isZero();
+      long toolTotal =
+          afterOneYear.books().accounts().values().stream()
+              .mapToLong(account -> account.balances().getOrDefault(tool, 0L))
+              .sum();
+      assertThat(toolTotal).as("★ 判据 ③：推一年后真档全账户的 TOOL 库存 > 0（当前落点是作坊聚合 operator 账）").isPositive();
       assertThat(toolProduced)
-          .as("★ 判据 ③：城市作坊自己的产品（工具）> 0 —— T4 起它进 ledger（落 operator 的账）")
+          .as("★ 判据 ③：城市作坊自己的产品（工具）> 0 —— 产出经 ProductionLedger/residualOwner 落账")
           .isPositive();
       assertThat(fiberStock).as("★ 判据 ④：田里也在出纤维（多商品产出；它内生于土地）").isPositive();
       assertThat(goodsStock(seededBooks, seeded, cloth)).as("非平凡：创世时一件布都没有").isZero();
@@ -654,7 +669,7 @@ class WorldgenInitializeToolTest {
           "[R3-CLOTH] 一年后：cloth="
               + clothStock
               + " tool="
-              + toolStock
+              + toolTotal
               + " fiber="
               + fiberStock
               + " 纺织配额="
@@ -667,9 +682,12 @@ class WorldgenInitializeToolTest {
 
   /** 真档全部**家户**的某商品库存合计（H1：从 actor 侧的账本读；行里没有 goods 这一栏）。 */
   private static long goodsStock(ActorData books, EconomyData data, CommodityId commodity) {
-    return data.classes().keySet().stream()
-        .mapToLong(key -> householdGoods(books, key, commodity))
-        .sum();
+    long total = 0L;
+    // ★ S1：classes 的键是 HouseholdId；账的格必须从 ClassRow.view() 取（不能反推 id）。
+    for (ClassRow row : data.classes().values()) {
+      total += householdGoods(books, row.id(), row.view().hex(), commodity);
+    }
+    return total;
   }
 
   /**
@@ -685,8 +703,9 @@ class WorldgenInitializeToolTest {
   }
 
   /** 某个家户账上某商品的余额（H1）：账户键经 {@link OwnershipBooks#accountKeyOf} 拼（不复述格式）；缺席 ⇒ 0。 */
-  private static long householdGoods(ActorData books, CohortKey key, CommodityId commodity) {
-    GoodsAccount account = books.accounts().get(OwnershipBooks.accountKeyOf(key));
+  private static long householdGoods(
+      ActorData books, HouseholdId household, HexCoord location, CommodityId commodity) {
+    GoodsAccount account = books.accounts().get(OwnershipBooks.accountKeyOf(household, location));
     return account == null ? 0L : account.balances().getOrDefault(commodity, 0L);
   }
 
@@ -889,22 +908,23 @@ class WorldgenInitializeToolTest {
    *
    * <ul>
    *   <li>守恒式挡的是"**缺口被如实记下来**"：删掉 {@code unmetNeed.merge(...)} 那一笔 ⇒ 读数变 0 而库存真的少吃了 ⇒ 红（实测，霍赫兰伯国
-   *       {@code 2108332924 − 0 + 5000502000}）。
+   *       {@code 2108332924 − 46808595 + 5019944000}）。
    *   <li>守恒式**挡不住** §7.1① 本身：保留额改回 0（V1 口径）它**照样成立**（缺口恒 0 那一侧也满足）⇒ 绿（实测）。
-   *   <li>**"V6 的放贷规则真的生效"只由循环之后那条 {@code unmetGrandTotal > 0} 承担**（保留额改回 0 ⇒ 缺口恒 0 ⇒ 红，实测）。 ★
-   *       只留守恒式，本条对 §7.1① 就是**装饰**。
+   *   <li>**"V6/E4b 的放贷规则真的生效"由循环之后那条精确字面量承担**（保留额改回 0 ⇒ 缺口变小/归零 ⇒ 红，实测）。 ★ 只留守恒式，本条对 §7.1①
+   *       就是**装饰**。
    * </ul>
    *
-   * <p>★ **顺带实测到一个事实**：把"借入计入缺口行 {@code consumed}"那一笔删掉，本条**仍绿** ⇒ 真档头 10 天**一笔借入都没发生**
-   * （否则等号两边会差出借入额）⇒ 缺口来自"缸空**且本格没有有真余粮的放贷方**"的行，借入那一笔的守恒语义由 {@code
-   * EconomyDebtTest.lendingIsAnInternalTransferSoTheHexLedgerStillBalances} 承担（那边删同一行 ⇒ 红）。
+   * <p>★ 借入那一笔的守恒语义由 {@code EconomyDebtTest.lendingIsAnInternalTransferSoTheHexLedgerStillBalances}
+   * 承担（借粮是内部划转，不改总量； 它是否在本窗口发生不影响上面的守恒式）。
    *
    * <p>★★ **V3（Task 7）起，第 1 天是播种日**：{@code EconomySeeder} 给真档配了 {@code cycleInputPerUnit[LAND] =
    * 8,000 毫粮/亩} ⇒ 每格在第 1 天先扣种子（**在当天吃饭之前**，v2 spec §3.2）。故这条的字面量必须带上种子那一笔——
    * 它同时是"真档真的读到了第三路瓶颈"的证据（判别力：把播种器改回空 map ⇒ 本条的差值少掉种子那一大笔 ⇒ 红）。
    *
    * <p>★ 种子量**不从常量推**（满种 = 每格 {@code MU_PER_HEX × SEED_MILLI_PER_MU} 只在**付得起**的格上成立；真档里人口薄的格储备也薄 ⇒
-   * 扣不满，第三路瓶颈正是在那些格上真的起作用）⇒ 用一条**独立可算**的规则从推进前的账面算出：逐行 {@code min(该行库存, 该行亩数 × 每亩需种)}。
+   * 扣不满，第三路瓶颈正是在那些格上真的起作用）⇒ 用一条**独立可算**的规则从推进前的账面算出：逐 farm unit 按 {@code AssetShare} 折规模、由 {@code
+   * relation.inputSupplier} 认供方账，同格 ≥2 个 unit 时按结算的"开池 + 按需求比例配给" 重演（见 {@link
+   * #expectedSownOnTheSowingDay}）。
    *
    * <p>★ 三国人口合计 6,230,000 + 3,070,000 + 2,530,000 = 11,830,000 ⇒ 口粮项 = Σ 行 {@code
    * cumulativeRationMilli(行人口, 10)} ≈ 9,858,333,333（**逐行**向下取整；"总人口 × 一天的量 × 10"表达不了它）。
@@ -990,11 +1010,12 @@ class WorldgenInitializeToolTest {
                 + transportLoss10
                 + " expected="
                 + (ration10 - unmet10 + sown + transportLoss10));
-        // ★ 逐国只钉"缺口远小于口粮"（量级）。★ **不能逐国断言 unmet10 > 0**：各国人均地力不同，
-        //   实测德意志第二帝国 10 天内缺口恰为 **0**（缸没见底）⇒ 那条会假红。判别力放在三国合计上（见循环之后）。
+        // ★ 逐国只钉"缺口 ≤ 当期口粮"这条构造上界（缺口是没吃到的那部分，不可能超过全部需要）。★ **不能逐国断言
+        //   unmet10 > 0**：实测德意志第二帝国/奥斯特马克侯国前 10 天缺口恰为 **0**（缸没见底），只有霍赫兰伯国
+        //   因 E4b 的整周期自留口径真的借不到；判别力放在三国合计上（见循环之后）。
         assertThat(unmet10)
-            .as(id + "：缺口远小于口粮（V6 起缺口不再被借粮抹平，但也不许被算成大头）")
-            .isLessThan(ration10 / 100L);
+            .as(id + "：缺口 ≤ 当期口粮（E4b 起可以非零，但不可能超过全部需要）")
+            .isLessThanOrEqualTo(ration10);
         rationGrandTotal += ration10;
         unmetGrandTotal += unmet10;
         sownGrandTotal += sown;
@@ -1024,20 +1045,23 @@ class WorldgenInitializeToolTest {
             + unmetGrandTotal
             + " sown="
             + sownGrandTotal);
-    // ★★ **M2/T3 口径重钉（2026-09-28，T3）——旧期望 >0 已作废，改钉精确 0（不是放宽成"非负"）**：
+    // ★★ **E4b 口径重钉（2026-09-29，HEAD E6c 实测）——M2 的 ΣunmetNeed == 0 已被有意行为变化取代**：
     //   本条原为 V6 §7.1① 的**真档可见性**（cc9fdcb3，M2 之前）：那时"救济"只有同格借粮，放贷方留整周期
-    //   口粮 ⇒ 缸空的行借不到 ⇒ ΣunmetNeed 真的 > 0。M2 起市场成为**借贷之外的另一条救济通道**
-    //   （同格市场在当天撮合、把有粮户的余粮卖给缺口户；自留额也从"整周期 1000‰"改为"30 天安全库存"，
-    //   见 MarketSettlement 的安全库存常量注释）⇒ 真档前 10 天的粮缺口被市场闭合，逐值 = 0。
-    //   ★ 这不是"缺口不再记"：EconomySettlement 仍先把当日缺口整笔记进 unmetNeed，再由市场/借粮/再吃一口
-    //   trim 回残差（口径未变）；本窗口残差恰为 0，是 M2 权威口径下的**结论**。
+    //   口粮 ⇒ 缸空的行借不到 ⇒ ΣunmetNeed 真的 > 0。M2 起市场成为借贷之外的另一条救济通道，真档前 10 天
+    //   缺口曾闭合为 **0**（6fb4493c 的 T3 重钉）。
+    //   ★★ E4b 修了 `lendableOf` 的查表键（`lender.key()` 视图误查 HouseholdId 键 ⇒ 保留额实际恒 0；
+    //   改用 `lender.id()` 后）放贷方**真的**按整周期口粮留自需 ⇒ 霍赫兰伯国头 10 天出现 **46,808,595**
+    //   毫粮的缺口，其余两国为 0；三国合计仍是口粮的小头。这不是"缺口不再记"：EconomySettlement 仍先把
+    //   当日缺口整笔记进 unmetNeed，且前面的守恒式（账户 + 在途 + 损耗）逐国成立 ⇒ 缺的粮**没有凭空生出来**。
     //   ★ 判别力去处（没有被删除）：V6 放贷保护由 **EconomyDebtTest.
     //   theLenderKeepsAWholeCyclesSubsistenceAndNeverGoesBankruptFirst** 用无市场夹具逐值守卫（那条在
-    //   本仓全量测试里跑）；本条的判别力则落在"市场+借贷后缺口**精确**闭合"上——若 M2 市场没有真的供货、
-    //   或把未到货读成已吃，前面的守恒式（账户 + 在途 + 损耗）会当场红。
+    //   本仓全量测试里跑）；本条则钉住"E4b 的真档后果 = 缺口可非零、被如实记账、且仍是小头"。
     assertThat(unmetGrandTotal)
-        .as("★ M2 起三国头 10 天的粮缺口由市场闭合：ΣunmetNeed == 0（旧 M2 前 >0 期望已作废；V6 另由单测守）")
-        .isZero();
+        .as("★ E4b 起放贷方留整周期自需 ⇒ 缺口不再被无条件闭合（实测三国合计 46,808,595；霍赫兰集中）")
+        .isEqualTo(46_808_595L);
+    assertThat(unmetGrandTotal)
+        .as("★ 缺口仍是口粮的小头（< 1%）：E4b 改的是借贷保留，不是让世界大面积断粮")
+        .isLessThan(rationGrandTotal / 100L);
     assertThat(rationGrandTotal)
         .as("口粮项的量级锚：11,830,000 人 × 10 天 ≈ 985,833,333 毫粮（逐行取整 ⇒ 略小于它，且差值 < 行数）")
         .isBetween(
@@ -1053,71 +1077,154 @@ class WorldgenInitializeToolTest {
   }
 
   /**
-   * ★ **播种日**（周期第一天）逐行扣的种子（毫粮）：v2 spec §3.2/§3.3 的规则从**推进前**的账面独立算出。
+   * ★ <b>播种日</b>（周期第一天）逐 unit 扣的种子（毫粮）：结算的"调查 → 同格争用开池 → 落账"三遍式从**推进前**的账面独立算出。
    *
-   * <p>★★ **H3 起口径变了**（如实记，这是本助手必须跟着改的原因）：投入调拨改由 {@code ProductionRelation.inputSupplier}
-   * **按产能折出的规模一次取足**，不再按"逐行人口份额"分摊 （那条 {@code rowSharesOf} 已被删除）：
+   * <p>★★ <b>R3B.2 / R4-B.3a 起口径变了</b>（如实记，这是本助手必须跟着改的原因）：规模不再从 {@code
+   * Industry.capacity}（已降级为旧档兼容位）折，而是从 {@link AssetShare} 实物总账派生（{@link ProductionUnitBook}
+   * 是唯一拼写点）；"谁出料"由 {@link ProductionRelation#inputSupplier()} 指名，且同一格 ≥2 个需求方时由结算开池、按需求比例配给。
+   * 本方法逐条重演同一口径（只算配方里有粮的 farm unit；织机吃纤维、作坊吃纤维 + 铁 ⇒ 恒贡献 0）。
    *
    * <pre>
-   * 该产业规模 scale = min over k ∈ capacityPerUnit: ⌊industry.capacity[k] ÷ capacityPerUnit[k]⌋   // 农业 = ⌊千分亩 ÷ 1000⌋
-   * 想扣 = scale × inputPerUnit[grain]（= {@link EconomySeeder#SEED_MILLI_PER_MU} 毫粮/亩）
-   * 实扣 = min(供方账上的粮, 想扣)      // 供方 = relation.inputSupplier（四档默认 = 经营者）
+   * 规模_i   = plannedCapacityScale(unit_i)           // 产能 = Σ AssetShare{industry, operator}.quantity ÷ capacityPerUnit
+   * 供方_i   = relation.inputSupplier（缺 relation ⇒ 经营者）
+   * 可供_i   = 供方自己的经营者账 + relation 名下家户账（聚合主体 ⇒ 该 unit 的配额表反查出的家户账）
+   * 同格 ≥2 个需求方 ⇒ 池 = 各家户账并集，可供_i = 经营者账 + 池；Σ需求 &gt; 池 ⇒ 按需求比例配给到池满
+   * 实扣     = min(规模_i, ⌊可供_i ÷ 每亩需种⌋) × 每亩需种
    * </pre>
-   *
-   * <p>★ 故"缸空 ⇒ 面积缩"这条机构现在由**供方那一个主体的缸**决定，而不是"逐行各扣各的"。
-   *
-   * <p>★ 只算**配方里有粮**的产业（真档 = 农业；织机吃纤维、作坊吃纤维 + 铁 ⇒ 恒贡献 0）；"该产业的家户行"按**劳动配额表**认 （H0
-   * 起行里没有产业了：出劳动的那批人住哪儿，就是它的家户 —— 与结算的 {@code householdKeysOf} 同一口径）⇒ 旧口径下"无地行（真档里每座城的手工业行）恒贡献
-   * 0"这一条照旧成立。
    *
    * <p>★ 只对"周期尚未关账"的账成立：{@code cycleInputUsedMilli} 在周期末清零，故推进 ≥ 1 个周期后这个式子要另算。
    */
   private static long expectedSownOnTheSowingDay(ActorData books, EconomyData economy) {
-    long sown = 0L;
-    for (Map.Entry<IndustryId, Industry> entry : economy.industries().entrySet()) {
-      Industry industry = entry.getValue();
+    Map<String, List<SeedPlan>> byHex = new LinkedHashMap<>();
+    for (ProductionUnit unit : economy.units().values()) {
+      if (unit.progressDays() != 0L) {
+        continue; // 只有周期的第一天扣投入
+      }
+      Industry industry = economy.industries().get(unit.industry());
+      if (industry == null) {
+        continue; // 缺模板的旧档 unit：结算会抛，本式不为它编数
+      }
       long seedPerMu = industry.inputPerUnit().getOrDefault(GRAIN, 0L);
       if (seedPerMu <= 0L) {
         continue; // 配方里没有粮 ⇒ 播种日不为它扣种子
       }
-      long scale = Long.MAX_VALUE;
-      for (Map.Entry<AssetKind, Long> perUnit : industry.capacityPerUnit().entrySet()) {
-        scale =
-            Math.min(
-                scale, industry.capacity().getOrDefault(perUnit.getKey(), 0L) / perUnit.getValue());
-      }
-      if (scale == Long.MAX_VALUE || scale <= 0L) {
+      long capacityScale =
+          ProductionUnitBook.plannedCapacityScaleOf(
+              unit, industry, economy.assetShares(), economy.operatorConditions().get(unit.id()));
+      if (capacityScale <= 0L) {
         continue; // 本格没有产能（沙漠格的 LAND = 0）⇒ 没有投入需求
       }
-      // ★ H3：供方由 relation 的 inputSupplier 指名（缺 relation ⇒ 无规则、无调拨）。
-      ProductionRelation relation = economy.relations().get(entry.getKey());
-      if (relation == null) {
-        continue;
+      String hexKey = IndustryHexKeys.hexKeyOf(unit.industry()).orElse(null);
+      if (hexKey == null) {
+        continue; // 产业 id 里没有格键 ⇒ 不进池（结算同此口径）
       }
-      // ★★ 取料的**实际落点**（H3 口径）：供方若是 economy 看得见的家户账，就从那一本取；
-      //   若是**聚合主体**（真档的 ESTATE 在创世时没有 GoodsAccount）⇒ 结算回落到"该产业名下家户账"，
-      //   故这里按同一口径把那些家户的粮**求和**（不再按人口分摊、也没有逐行⌊⌋）。
-      long available;
-      if (relation.inputSupplier() instanceof Recipient.ToCohort toCohort) {
-        available = householdGoods(books, toCohort.cohort(), GRAIN);
-      } else {
-        available = 0L;
-        Set<ResidenceKind> residences = new LinkedHashSet<>();
-        for (LaborAllocation allocation : economy.allocations().values()) {
-          if (allocation.actor().id().equals(entry.getKey().value())) {
-            residences.add(ResidenceKind.ofLot(allocation.group()));
-          }
-        }
-        HexCoord hex = HexCoord.parse(IndustryHexKeys.hexKeyOf(entry.getKey()).orElseThrow());
+      // ★ H3：供方由 relation 的 inputSupplier 指名（缺 relation ⇒ 退回默认 = 经营者）。
+      ProductionRelation relation = economy.relations().get(unit.id());
+      Recipient supplier =
+          relation == null ? new Recipient.ToActor(unit.operator()) : relation.inputSupplier();
+      long operatorGrain = 0L;
+      List<HouseholdId> supplierHouseholds = new ArrayList<>();
+      if (supplier instanceof Recipient.ToHousehold toHousehold) {
+        supplierHouseholds.add(toHousehold.household());
+      } else if (supplier instanceof Recipient.ToCohort toCohort) {
+        // S1 旧档兼容：视图反查恰一个现存家户（新档不再生产 ToCohort）。
         for (ClassRow row : economy.classes().values()) {
-          if (row.key().hex().equals(hex) && residences.contains(row.key().residence())) {
-            available += householdGoods(books, row.key(), GRAIN);
+          if (row.view().equals(toCohort.cohort())) {
+            supplierHouseholds.add(row.id());
+            break;
           }
         }
+      } else {
+        ActorRef actor = ((Recipient.ToActor) supplier).actor();
+        HouseholdId named = householdOfActor(economy, actor);
+        if (named != null) {
+          supplierHouseholds.add(named);
+        } else {
+          // 聚合主体（ESTATE / WORKSHOP / 产业型家户）：它的账 economy 看不见 ⇒ 由该 unit 名下的家户账代理。
+          for (LaborAllocation allocation : economy.allocations().values()) {
+            if (allocation.activity().equals(unit.id().value())
+                && !supplierHouseholds.contains(allocation.household())) {
+              supplierHouseholds.add(allocation.household());
+            }
+          }
+        }
+        GoodsAccount account =
+            books.accounts().get(new GoodsAccountKey(actor, HexCoord.parse(hexKey)));
+        if (account != null) {
+          operatorGrain = account.balances().getOrDefault(GRAIN, 0L);
+        }
       }
-      sown += Math.min(available, scale * seedPerMu);
+      byHex
+          .computeIfAbsent(hexKey, ignored -> new ArrayList<>())
+          .add(
+              new SeedPlan(
+                  capacityScale, seedPerMu, List.copyOf(supplierHouseholds), operatorGrain));
+    }
+
+    long sown = 0L;
+    for (List<SeedPlan> plans : byHex.values()) {
+      List<SeedPlan> demanders =
+          plans.stream().filter(p -> !p.supplierHouseholds().isEmpty()).toList();
+      if (demanders.size() >= 2) {
+        // ★ 同格争用：池 = 各家户账的并集；Σ需求 > 池 ⇒ 按需求比例配给（Σ配给 == 池）。
+        List<HouseholdId> pool = new ArrayList<>();
+        for (SeedPlan plan : demanders) {
+          for (HouseholdId household : plan.supplierHouseholds()) {
+            if (!pool.contains(household)) {
+              pool.add(household);
+            }
+          }
+        }
+        long poolStock = 0L;
+        for (HouseholdId household : pool) {
+          poolStock +=
+              householdGoods(
+                  books, household, economy.classes().get(household).view().hex(), GRAIN);
+        }
+        long totalNeed = 0L;
+        for (SeedPlan plan : demanders) {
+          long usable =
+              Math.min(plan.capacityScale(), (plan.operatorGrain() + poolStock) / plan.seedPerMu());
+          totalNeed += usable * plan.seedPerMu();
+        }
+        sown += Math.min(totalNeed, poolStock);
+      } else if (demanders.size() == 1) {
+        SeedPlan plan = demanders.get(0);
+        long available = plan.operatorGrain();
+        for (HouseholdId household : plan.supplierHouseholds()) {
+          available +=
+              householdGoods(
+                  books, household, economy.classes().get(household).view().hex(), GRAIN);
+        }
+        sown += Math.min(plan.capacityScale(), available / plan.seedPerMu()) * plan.seedPerMu();
+      }
+      // 没有家户账可代理、只有经营者自账的 unit：不进池，按它自己的经营者账算。
+      for (SeedPlan plan : plans) {
+        if (plan.supplierHouseholds().isEmpty()) {
+          sown +=
+              Math.min(plan.capacityScale(), plan.operatorGrain() / plan.seedPerMu())
+                  * plan.seedPerMu();
+        }
+      }
     }
     return sown;
+  }
+
+  /** 一个 unit 的投种需求（三遍式第一遍的只读快照）。 */
+  private record SeedPlan(
+      long capacityScale,
+      long seedPerMu,
+      List<HouseholdId> supplierHouseholds,
+      long operatorGrain) {}
+
+  /** 家户 actor → HouseholdId（只认现存行；不是家户 actor / 无行 ⇒ null）。 */
+  private static HouseholdId householdOfActor(EconomyData economy, ActorRef actor) {
+    for (ClassRow row : economy.classes().values()) {
+      if (HouseholdActors.of(row.id()).equals(actor)) {
+        return row.id();
+      }
+    }
+    return null;
   }
 
   /**
@@ -1134,53 +1241,45 @@ class WorldgenInitializeToolTest {
   private record Advance(EconomyData economy, ActorData books) {}
 
   /**
-   * 会话推进（H1 版）：家户账由 actor 侧**载入**成工作副本 → 逐日 step → 条目落 actor + 副本落回 actor。
+   * 会话推进（S1 版）：全部账户由 actor 侧**载入**成唯一 {@link AccountSession} → 逐日 step → ledger 条目落 actor +
+   * 会话按绝对值一次落回 actor。
    *
-   * <p>★ 与 {@code EconomyOwnershipTimeParticipant} 的日循环**同一套动作**（本用例不装 core ⇒ 在此就地重演；
-   * 顺序不能反：条目先落、副本按绝对值收尾）。
+   * <p>★ 与 {@code EconomyOwnershipTimeParticipant}/{@code PopulationEconomyTimeParticipant}
+   * 的日循环**同一套动作** （本用例不装 core ⇒ 在此就地重演）。★ S3 起会话登记过的账户由绝对值落回收尾，ledger 条目不再对 actor 基准叠一遍 （{@link
+   * OwnershipBooks#apply(ActorData, List, Set)} 的 alreadyMaterialized 过滤）。
    */
   private static Advance advanceLocally(
-      EconomyData base,
-      ActorData books,
-      long days,
-      java.util.List<io.mosire.simos.economy.time.ProductionLedger> ledgersOut) {
-    Map<CohortKey, Map<CommodityId, Long>> householdGoods =
-        OwnershipBooks.loadHouseholdGoods(base, books);
-    // ★★ H4（裁定 K14）：货币账的会话副本与商品副本同形、同生命周期（同一本 GoodsAccount 的第二个余额表）。
-    Map<CohortKey, Map<io.mosire.simos.economy.api.id.CurrencyId, Long>> householdMoney =
-        OwnershipBooks.loadHouseholdMoney(base, books);
-    // ★★ H5（⑤）：**经营者账的两份副本**也要载入/落回（真协调器走的就是这条路）—— 少了它，作坊的净产与
-    //   工具投入都没有落点（实测：真档第 1 个周期工具产量就是 0）。
-    Map<io.mosire.simos.actor.api.actor.ActorRef, Map<CommodityId, Long>> operatorGoods =
-        OwnershipBooks.loadOperatorGoods(base, books);
-    Map<
-            io.mosire.simos.actor.api.actor.ActorRef,
-            Map<io.mosire.simos.economy.api.id.CurrencyId, Long>>
-        operatorMoney = OwnershipBooks.loadOperatorMoney(base, books);
-    EconomyDayStepper stepper =
-        new EconomyDayStepper(base, householdGoods, householdMoney, operatorGoods, operatorMoney);
+      EconomyData base, ActorData books, long days, List<ProductionLedger> ledgersOut) {
+    AccountSession session = OwnershipBooks.loadAccountSession(base, books);
+    // ★ 会话负责的账户键集：这些账户的终值由 landAccountSession 的绝对值覆盖，ledger 条目只落其余账户。
+    Set<AccountPartitionKey> sessionAccounts = new LinkedHashSet<>(session.accounts().keySet());
+    EconomyDayStepper stepper = new EconomyDayStepper(base, session);
     ActorData current = books;
-    for (long day = 1L; day <= days; day++) {
-      io.mosire.simos.economy.time.ProductionLedger ledger = stepper.step(day);
-      if (ledgersOut != null) {
-        ledgersOut.add(ledger);
+    EconomyData finished;
+    try {
+      for (long day = 1L; day <= days; day++) {
+        ProductionLedger ledger = stepper.step(day);
+        if (ledgersOut != null) {
+          ledgersOut.add(ledger);
+        }
+        List<ActorEntry> entries = OwnershipBooks.fold(ledger, OwnershipBooks.REASONS_NOT_FOLDED);
+        if (!entries.isEmpty()) {
+          // ★★ S3：会话登记过的账户由下面的绝对值落回收尾，ledger 条目不再对 actor 基准叠一遍。
+          current = OwnershipBooks.apply(current, entries, sessionAccounts);
+        }
+        // ★★ S1：家户 + 经营者；商品/货币/冻结四张表按会话绝对值一次落回（条目先落、副本收尾）。
+        current = OwnershipBooks.landAccountSession(current, stepper.accounts());
       }
-      current = OwnershipBooks.apply(current, OwnershipBooks.fold(ledger));
-      current = OwnershipBooks.landHouseholdGoods(current, stepper.householdGoods());
-      // ★ 顺序不能反：货币那半紧跟商品之后（写的是同一本账的另一个余额表）。
-      current = OwnershipBooks.landHouseholdMoney(current, stepper.householdMoney());
-      // ★★ H5（⑤）：经营者账同样按绝对值落回（商品先、货币后）。
-      current = OwnershipBooks.landOperatorGoods(base, current, stepper.operatorGoods());
-      current = OwnershipBooks.landOperatorMoney(base, current, stepper.operatorMoney());
+      finished = stepper.finish();
+    } finally {
+      stepper.close(); // 异常路径也收口线程池（单线程退化路径幂等）
     }
-    return new Advance(stepper.finish(), current);
+    return new Advance(finished, current);
   }
 
   /** 同 {@link #advanceLocally}，但把**逐日的 ledger** 攒起来（T4：产出离开 ClassRow 之后就在那儿）。 */
-  private static java.util.List<io.mosire.simos.economy.time.ProductionLedger> ledgersOf(
-      EconomyData base, ActorData books, long days) {
-    java.util.List<io.mosire.simos.economy.time.ProductionLedger> ledgers =
-        new java.util.ArrayList<>();
+  private static List<ProductionLedger> ledgersOf(EconomyData base, ActorData books, long days) {
+    List<ProductionLedger> ledgers = new ArrayList<>();
     advanceLocally(base, books, days, ledgers);
     return ledgers;
   }
@@ -1331,7 +1430,8 @@ class WorldgenInitializeToolTest {
         .mapToLong(
             row ->
                 EconomyVocabulary.cumulativeRationMilli(
-                    row.population(), EconomySeeder.initialRationDays(row.key().stratum().value())))
+                    row.population(),
+                    EconomySeeder.initialRationDays(row.view().stratum().value())))
         .sum();
   }
 
@@ -1799,17 +1899,18 @@ class WorldgenInitializeToolTest {
   }
 
   /**
-   * 真档**全部农业产业**产能表里的土地合计（千分亩）—— ★ H0.3（K3）起"本格有多少亩"住在 {@code Industry.capacity} 里 （旧版散在各 {@code
-   * ClassRow.meansOfProduction}，Σ 各行才等于格土地）。
+   * 真档**全部农业**实物总账（{@code AssetShare}）里的土地合计（千分亩）—— ★ R3B.2/B.2 起"本格有多少亩"的真值是 {@code
+   * AssetShare.quantity}：{@code Industry.capacity} 只作旧档兼容位，新档播种器恒发中性空表。
    *
-   * <p>★ 两条口径的**总量逐值相同**：播种器把同一份"地形 → 可耕地"一次写进该格 farm 产业的 {@code capacity[LAND]} （{@code
-   * EconomySeeder.agriculture}），旧口径只是把它按人口切成四份再合起来。
+   * <p>★ 两条口径的**总量逐值相同**：播种器把同一份"地形 → 可耕地"一次写进该格 farm 产业分摊后的各份份额（{@code EconomySeeder.agriculture}
+   * + {@code splitIndustry}），Σ 各份 == 旧 {@code capacity[LAND]}。
    */
   private static long farmLandMilliMu(EconomyData data) {
     long total = 0L;
-    for (Map.Entry<IndustryId, Industry> entry : data.industries().entrySet()) {
-      if (entry.getKey().value().startsWith(EconomySeeder.FARM)) {
-        total += entry.getValue().capacity().getOrDefault(AssetKind.LAND, 0L);
+    for (AssetShare share : data.assetShares().values()) {
+      if (share.asset() == AssetKind.LAND
+          && share.industry().value().startsWith(EconomySeeder.FARM + "@")) {
+        total += share.quantity();
       }
     }
     return total;
@@ -1817,11 +1918,17 @@ class WorldgenInitializeToolTest {
 
   // ── R2：真档的"行 vs 配额"对拍（只在断言消息里用，算的是**两个独立可算**的量）──────────────
 
-  /** 某产业名下全部配额的 {@code laborMilli} 之和。 */
+  /**
+   * 某产业名下全部配额的 {@code laborMilli} 之和。
+   *
+   * <p>★ R3B.2/S1：配额的归属看 {@code activity}（= unit id）解析出的 {@code ProductionUnit.industry()}；不再看
+   * actor id —— R4-B.3a 起主/副 unit 的 actor 不同（副 unit 是家户 actor），按 actor id 反推会漏掉副 unit 的配额。
+   */
   private static long quotaSumOf(EconomyData data, IndustryId industry) {
     long total = 0L;
     for (LaborAllocation allocation : data.allocations().values()) {
-      if (allocation.actor().id().equals(industry.value())) {
+      ProductionUnit unit = data.units().get(new ProductionUnitId(allocation.activity()));
+      if (unit != null && unit.industry().equals(industry)) {
         total += allocation.laborMilli();
       }
     }
@@ -1838,8 +1945,8 @@ class WorldgenInitializeToolTest {
   private static long rowBasedDailyLabor(EconomyData data, HexCoord hex) {
     long total = 0L;
     for (ClassRow row : data.classes().values()) {
-      if (row.key().hex().equals(hex)) {
-        total += row.laborMilli() * row.participationPerMille() / 1000L;
+      if (row.view().hex().equals(hex)) {
+        total += row.participationAdjustedLaborMilli();
       }
     }
     return total;

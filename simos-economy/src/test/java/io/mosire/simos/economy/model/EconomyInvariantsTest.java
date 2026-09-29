@@ -9,8 +9,11 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtStatus;
+import io.mosire.simos.economy.api.debt.DebtTerms;
+import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -27,6 +30,7 @@ import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.map.hex.HexCoord;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,7 +60,19 @@ class EconomyInvariantsTest {
 
   private static final HouseholdId LANDLORD_HOUSE = HouseholdId.ofLegacy(LANDLORD_KEY);
   private static final CommodityId GRAIN = new CommodityId("grain");
-  private static final DebtId D1 = new DebtId("debt-1");
+
+  /** ★ E4a：粮债的默认条款与两个不同条款的连续合同身份（D1/D2 供“债务表是权威”的对照用例）。 */
+  private static final DebtTerms GRAIN_TERMS = DebtTerms.legacyDefault();
+
+  private static final DebtTerms GRAIN_SECOND_TERMS =
+      DebtTerms.legacyDefault(DebtTerms.LEGACY_INTEREST_RATE_PER_MILLE_PER_CYCLE + 1);
+
+  private static final DebtContractId D1 =
+      DebtContractId.idOf(PEASANT_HOUSE, LANDLORD_HOUSE, DebtUnit.commodity(GRAIN), GRAIN_TERMS);
+
+  private static final DebtContractId D2 =
+      DebtContractId.idOf(
+          PEASANT_HOUSE, LANDLORD_HOUSE, DebtUnit.commodity(GRAIN), GRAIN_SECOND_TERMS);
 
   /** R4：经营主体住在 {@code ProductionUnit}（不再是 {@code Industry} 的模板字段）。 */
   private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "estate-7");
@@ -155,7 +171,20 @@ class EconomyInvariantsTest {
   @Test
   void rejectsFlowsKeyNotMatchingRowKey() {
     FlowRow row =
-        new FlowRow(LANDLORD_HOUSE, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 10L, Map.of(), 0L, 0L);
+        new FlowRow(
+            LANDLORD_HOUSE,
+            Map.of(),
+            Map.of(),
+            0L,
+            0L,
+            0L,
+            0L,
+            10L,
+            Map.of(),
+            0L,
+            0L,
+            Map.of(),
+            Map.of());
     assertThatThrownBy(
             () ->
                 EconomyData.empty()
@@ -185,19 +214,45 @@ class EconomyInvariantsTest {
                     0L,
                     Map.of(GRAIN, -1L),
                     0L,
-                    0L))
+                    0L,
+                    Map.of(),
+                    Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unmetNeed");
     assertThatThrownBy(
             () ->
                 new FlowRow(
-                    PEASANT_HOUSE, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), -1L, 0L))
+                    PEASANT_HOUSE,
+                    Map.of(),
+                    Map.of(),
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    Map.of(),
+                    -1L,
+                    0L,
+                    Map.of(),
+                    Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("deaths");
     assertThatThrownBy(
             () ->
                 new FlowRow(
-                    PEASANT_HOUSE, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), 0L, -1L))
+                    PEASANT_HOUSE,
+                    Map.of(),
+                    Map.of(),
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    Map.of(),
+                    0L,
+                    -1L,
+                    Map.of(),
+                    Map.of()))
         .as("★ R4：出生与死亡对称 ⇒ 两侧都不许为负")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("births");
@@ -223,11 +278,27 @@ class EconomyInvariantsTest {
                     0L,
                     Map.of(),
                     0L,
-                    0L))
+                    0L,
+                    Map.of(),
+                    Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("income");
     assertThatThrownBy(
-            () -> new FlowRow(PEASANT_HOUSE, null, Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), 0L, 0L))
+            () ->
+                new FlowRow(
+                    PEASANT_HOUSE,
+                    null,
+                    Map.of(),
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    0L,
+                    Map.of(),
+                    0L,
+                    0L,
+                    Map.of(),
+                    Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("income");
   }
@@ -377,8 +448,7 @@ class EconomyInvariantsTest {
   /** ★ 债务的 creditor 指向一个不在 `classes` 里的家户 ⇒ 必须构造期拒（v1 只查 null）。 */
   @Test
   void debtEndpointsMustExistInClasses() {
-    Debt dangling =
-        new Debt(D1, PEASANT_HOUSE, LANDLORD_HOUSE, Optional.of(GRAIN), 100L, 20, 3L, false);
+    DebtContract dangling = grainContract(D1, GRAIN_TERMS, 100L);
     assertThatThrownBy(
             () ->
                 EconomyData.empty()
@@ -386,7 +456,7 @@ class EconomyInvariantsTest {
                     .withClasses(
                         Map.of(PEASANT_HOUSE, classRowWithoutDebts(PEASANT_HOUSE, PEASANT_KEY)))
                     // ★ classes 里没有 LANDLORD_HOUSE ⇒ creditor 悬空
-                    .withDebts(Map.of(D1, dangling)))
+                    .withDebtContracts(Map.of(D1, dangling)))
         .as("债务的 debtor/creditor 必须在 classes 里存在（v2 spec §八.2）")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("债务");
@@ -394,28 +464,26 @@ class EconomyInvariantsTest {
 
   /**
    * ★★ B.3b 起契约改写（原 {@code classRowDebtRefsMustExistInDebts}）：{@code ClassRow.debts} 是**派生索引**， 以
-   * debts 表为唯一权威逐行重建（陈旧引用被清掉、缺失引用被补上），不再逐条"悬空即抛"。
+   * 债务合同表为唯一权威逐行重建（陈旧引用被清掉、缺失引用被补上），不再逐条"悬空即抛"。
    *
-   * <p>见 {@code DebtReferenceReconciler}（唯一实现；调用点 = {@code EconomyData} 构造期，R4-B.3b）。 判别力：① 债务表为空 ⇒
-   * 行内陈旧的 D1 被删除；② 表里两条债（故意反序放入）⇒ 行内引用被补全为 {@link DebtId} 规范串升序。
+   * <p>见 {@code DebtReferenceReconciler}（唯一实现；调用点 = {@code EconomyData} 构造期，R4-B.3b）。 判别力：① 合同表为空 ⇒
+   * 行内陈旧的 D1 被删除；② 表里两条合同（故意反序放入）⇒ 行内引用被补全为 {@link DebtContractId} 规范串升序。 ★ E4a 语义变化：同一四元组只有一条连续合同
+   * ⇒ 第二条合同必须用**不同 terms**（D2）才存在。
    */
   @Test
-  void classRowDebtRefsAreReconciledFromTheDebtsTable() {
+  void classRowDebtRefsAreReconciledFromTheDebtContractsTable() {
     EconomyData staleRefs =
         EconomyData.empty()
             .withMeta(Optional.of(meta()))
             .withClasses(Map.of(PEASANT_HOUSE, classRowWithDebtRef(D1)));
     assertThat(staleRefs.classes().get(PEASANT_HOUSE).debts())
-        .as("债务表为空 ⇒ 行内陈旧的 D1 引用被对账清掉（不再抛）")
+        .as("合同表为空 ⇒ 行内陈旧的 D1 引用被对账清掉（不再抛）")
         .isEmpty();
 
-    DebtId debt2Id = new DebtId("debt-2");
-    Debt debt1 =
-        new Debt(D1, PEASANT_HOUSE, LANDLORD_HOUSE, Optional.of(GRAIN), 100L, 20, 3L, false);
-    Debt debt2 =
-        new Debt(debt2Id, PEASANT_HOUSE, LANDLORD_HOUSE, Optional.of(GRAIN), 50L, 10, 4L, false);
-    Map<DebtId, Debt> debts = new LinkedHashMap<>();
-    debts.put(debt2Id, debt2); // 故意反序，钉住对账后的规范序
+    DebtContract debt1 = grainContract(D1, GRAIN_TERMS, 100L);
+    DebtContract debt2 = grainContract(D2, GRAIN_SECOND_TERMS, 50L);
+    Map<DebtContractId, DebtContract> debts = new LinkedHashMap<>();
+    debts.put(D2, debt2); // 故意反序，钉住对账后的规范序
     debts.put(D1, debt1);
     EconomyData rebuilt =
         EconomyData.empty()
@@ -424,18 +492,18 @@ class EconomyInvariantsTest {
                 Map.of(
                     PEASANT_HOUSE, classRowWithoutDebts(PEASANT_HOUSE, PEASANT_KEY),
                     LANDLORD_HOUSE, classRowWithoutDebts(LANDLORD_HOUSE, LANDLORD_KEY)))
-            .withDebts(debts);
+            .withDebtContracts(debts);
 
     assertThat(rebuilt.classes().get(PEASANT_HOUSE).debts())
-        .as("债务表是权威 ⇒ 缺失的引用被补上，且按 DebtId 规范串升序")
-        .containsExactly(D1, debt2Id);
+        .as("合同表是权威 ⇒ 缺失的引用被补上，且按 DebtContractId 规范串升序")
+        .containsExactlyInAnyOrder(D1, D2)
+        .isSortedAccordingTo(Comparator.comparing(DebtContractId::value));
   }
 
   /** 对照：两端都在 ⇒ 必须放行（否则上面两条可能只是"一律拒"）。 */
   @Test
   void aWellFormedDebtIsAccepted() {
-    Debt debt =
-        new Debt(D1, PEASANT_HOUSE, LANDLORD_HOUSE, Optional.of(GRAIN), 100L, 20, 3L, false);
+    DebtContract debt = grainContract(D1, GRAIN_TERMS, 100L);
     EconomyData data =
         EconomyData.empty()
             .withMeta(Optional.of(meta()))
@@ -443,11 +511,11 @@ class EconomyInvariantsTest {
                 Map.of(
                     PEASANT_HOUSE, classRowWithDebtRef(D1),
                     LANDLORD_HOUSE, classRowWithoutDebts(LANDLORD_HOUSE, LANDLORD_KEY)))
-            .withDebts(Map.of(D1, debt));
+            .withDebtContracts(Map.of(D1, debt));
 
-    assertThat(data.debts()).as("两端都在的债务必须放行").hasSize(1);
+    assertThat(data.debtContracts()).as("两端都在的合同必须放行").hasSize(1);
     assertThat(data.classes().get(PEASANT_HOUSE).debts())
-        .as("行的债务引用由债务表重建（逐值）")
+        .as("行的债务引用由合同表重建（逐值）")
         .containsExactly(D1);
   }
 
@@ -789,7 +857,7 @@ class EconomyInvariantsTest {
   }
 
   /** 行内引用一份债务（其两端由调用方保证）。 */
-  private static ClassRow classRowWithDebtRef(DebtId debtId) {
+  private static ClassRow classRowWithDebtRef(DebtContractId debtId) {
     return new ClassRow(
         PEASANT_HOUSE,
         PEASANT_KEY,
@@ -904,9 +972,23 @@ class EconomyInvariantsTest {
   // ★★ 2026-09-27（H1/K1）：改前这里有一个 classRowWithGoods(Map) 助手，喂给上面那条"负数库存被拒"。
   //   被喂的那个字段已整个删除 ⇒ 助手一并删除（留一个没人调用的助手 = 本仓反对的"看起来在、其实没人读"）。
 
-  private static Debt debtWithPrincipal(long principal) {
-    return new Debt(
-        D1, PEASANT_HOUSE, LANDLORD_HOUSE, Optional.of(GRAIN), principal, 20, 3L, false);
+  private static DebtContract debtWithPrincipal(long principal) {
+    return grainContract(D1, GRAIN_TERMS, principal);
+  }
+
+  /** 贫农→地主的连续粮债夹具：身份 key == 值内 id 由 {@code DebtContractId.idOf} 两处共用同一输入。 */
+  private static DebtContract grainContract(DebtContractId id, DebtTerms terms, long principal) {
+    return new DebtContract(
+        id,
+        PEASANT_HOUSE,
+        LANDLORD_HOUSE,
+        DebtUnit.commodity(GRAIN),
+        terms,
+        principal,
+        0L,
+        OptionalLong.empty(),
+        OptionalLong.empty(),
+        DebtStatus.NORMAL);
   }
 
   // ── R2：劳动供给与配额的三条结构判据（第三阶段设计稿 §四）────────────────────────────

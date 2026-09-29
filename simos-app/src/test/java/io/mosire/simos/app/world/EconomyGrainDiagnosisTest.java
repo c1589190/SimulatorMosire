@@ -13,7 +13,7 @@ import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.FlowRow;
@@ -175,15 +175,18 @@ class EconomyGrainDiagnosisTest {
         .isEqualTo(new CommandResult.Committed(new StateRef(MAIN, new RevisionId(head + 1))));
   }
 
-  private static List<CohortKey> keysAt(EconomyData data) {
-    return data.classes().keySet().stream().filter(key -> key.hex().equals(PLAINS)).toList();
+  private static List<HouseholdId> keysAt(EconomyData data) {
+    return data.classes().entrySet().stream()
+        .filter(entry -> entry.getValue().view().hex().equals(PLAINS))
+        .map(Map.Entry::getKey)
+        .toList();
   }
 
   private static long cycleNeedAt(EconomyData data) {
     // ★★ M2.7/丙条：周期需求分母 = ClassRow 的逐日累加器 cycleNaturalNeedMilli（日初人口），
     //   不再用"读口时刻人口 × 整周期配额"现算（两者口径不可比，M0.3 的旧分母已退休）。
     long total = 0L;
-    for (CohortKey key : keysAt(data)) {
+    for (HouseholdId key : keysAt(data)) {
       ClassRow row = data.classes().get(key);
       total += row.cycleNaturalNeedMilli();
     }
@@ -192,7 +195,7 @@ class EconomyGrainDiagnosisTest {
 
   private static long unmetAt(EconomyData data) {
     long total = 0L;
-    for (CohortKey key : keysAt(data)) {
+    for (HouseholdId key : keysAt(data)) {
       FlowRow flow = data.flows().get(key);
       if (flow != null) {
         total += flow.unmetNeed().getOrDefault(EconomyTestWorld.GRAIN, 0L);

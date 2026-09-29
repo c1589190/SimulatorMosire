@@ -129,8 +129,8 @@ class McpPortTopologyTest {
           "unit.ApplyCasualties");
 
   /**
-   * GM 窄写（M1 起 11 条、M2 起 31 条、M3 起 43 条、T11C 起 44 条、**会话重置起 45 条**）：18 条 sd 窄写 + 7 条 map 窄写 + 20 条
-   * unit 窄写；**都不是**通用写。
+   * GM 窄写（M1 起 11 条、M2 起 31 条、M3 起 43 条、T11C 起 44 条、会话重置起 45 条、**E6b 起 46 条**）： 1 条 economy GM 调整 +
+   * 18 条 sd 窄写 + 7 条 map 窄写 + 20 条 unit 窄写；**都不是**通用写。
    */
   private static final List<String> GM_NARROW_WRITES =
       concat(
@@ -152,7 +152,8 @@ class McpPortTopologyTest {
               "sd.RecordCasualties",
               "sd.RegisterEffect",
               "sd.CancelEffect",
-              "sd.SetDecisionMakerProvider"),
+              "sd.SetDecisionMakerProvider",
+              "simos.economy.adjust"),
           MAP_WRITES,
           UNIT_WRITES);
 
@@ -182,7 +183,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（22 读 + 7 非窄写 + 45 窄写 = 74）")
+          .as("J1：唯一口 = GM 组（22 读 + 7 非窄写 + 46 窄写 = 75）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }

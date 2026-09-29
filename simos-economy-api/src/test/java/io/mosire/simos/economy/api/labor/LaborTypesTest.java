@@ -5,8 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -19,6 +22,11 @@ import org.junit.jupiter.api.Test;
 class LaborTypesTest {
 
   private static final PeopleLotId GROUP = new PeopleLotId("rural:0_0:MALE:1");
+  private static final HouseholdId HOUSEHOLD = new HouseholdId("hh-0_0-rural-poor_peasant");
+  private static final ActorRef ACTOR = new ActorRef(ActorKind.ESTATE, "farm@0_0");
+  private static final ProductionUnitId UNIT =
+      ProductionUnitId.idOf(new IndustryId("farm@0_0"), ACTOR);
+  private static final String ACTIVITY = UNIT.value();
 
   // ── LaborSupply：那条公式 ────────────────────────────────────────────────────────────
 
@@ -68,51 +76,58 @@ class LaborTypesTest {
 
   // ── LaborAllocation：一次分配 ────────────────────────────────────────────────────────
 
-  /** 一条配额的四件事都在：谁出的（group）、谁收的（actor）、干什么（activity）、多少（laborMilli）+ 发放周期。 */
+  /** 一条配额的各方都在：谁出的（group + household）、谁收的（actor）、干什么（activity）、多少（laborMilli）+ 发放周期。 */
   @Test
   void allocationCarriesBothEndsOfTheRelationAndTheAmount() {
     LaborAllocation allocation =
         new LaborAllocation(
-            new LaborAllocationId("alloc-0-farm@0_0"),
+            LaborAllocation.idOf(UNIT, GROUP, HOUSEHOLD),
             GROUP,
-            new ActorRef(ActorKind.ESTATE, "farm@0_0"),
-            "farm",
+            HOUSEHOLD,
+            ACTOR,
+            ACTIVITY,
             464_000L,
             1L);
 
+    assertThat(allocation.id())
+        .as("★ S1 起 id = alloc-<unit>-<group>-<household>（家户是分配身份的一部分）")
+        .isEqualTo(LaborAllocation.idOf(UNIT, GROUP, HOUSEHOLD));
     assertThat(allocation.group()).as("出劳动的那批人").isEqualTo(GROUP);
-    assertThat(allocation.actor())
-        .as("收劳动的主体（产业 = 庄园）")
-        .isEqualTo(new ActorRef(ActorKind.ESTATE, "farm@0_0"));
-    assertThat(allocation.activity()).isEqualTo("farm");
+    assertThat(allocation.household()).as("★ S1 起这份劳动有明确的家户归属").isEqualTo(HOUSEHOLD);
+    assertThat(allocation.actor()).as("收劳动的主体（产业 = 庄园）").isEqualTo(ACTOR);
+    assertThat(allocation.activity())
+        .as("★ R3B.2 起 activity = ProductionUnitId.value()，不是旧产业标签")
+        .isEqualTo(UNIT.value());
     assertThat(allocation.laborMilli()).isEqualTo(464_000L);
     assertThat(allocation.period()).isEqualTo(1L);
   }
 
   @Test
   void allocationRejectsMissingOrientationOrNegativeAmounts() {
-    ActorRef actor = new ActorRef(ActorKind.ESTATE, "farm@0_0");
-    assertThatThrownBy(() -> new LaborAllocation(null, GROUP, actor, "farm", 1L, 1L))
+    assertThatThrownBy(() -> new LaborAllocation(null, GROUP, HOUSEHOLD, ACTOR, ACTIVITY, 1L, 1L))
         .as("id 不得为 null")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new LaborAllocation(id(), null, actor, "farm", 1L, 1L))
+    assertThatThrownBy(() -> new LaborAllocation(id(), null, HOUSEHOLD, ACTOR, ACTIVITY, 1L, 1L))
         .as("group 不得为 null（这笔劳动必须有人出）")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new LaborAllocation(id(), GROUP, null, "farm", 1L, 1L))
+    assertThatThrownBy(() -> new LaborAllocation(id(), GROUP, null, ACTOR, ACTIVITY, 1L, 1L))
+        .as("★ S1：household 不得为 null（这份劳动必须属于一个家户）")
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new LaborAllocation(id(), GROUP, HOUSEHOLD, null, ACTIVITY, 1L, 1L))
         .as("actor 不得为 null（这笔劳动必须有人收）")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new LaborAllocation(id(), GROUP, actor, "", 1L, 1L))
+    assertThatThrownBy(() -> new LaborAllocation(id(), GROUP, HOUSEHOLD, ACTOR, "", 1L, 1L))
         .as("activity 不得为空白")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new LaborAllocation(id(), GROUP, actor, "farm", -1L, 1L))
+    assertThatThrownBy(() -> new LaborAllocation(id(), GROUP, HOUSEHOLD, ACTOR, ACTIVITY, -1L, 1L))
         .as("劳动量不得为负")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new LaborAllocation(id(), GROUP, actor, "farm", 1L, -1L))
+    assertThatThrownBy(() -> new LaborAllocation(id(), GROUP, HOUSEHOLD, ACTOR, ACTIVITY, 1L, -1L))
         .as("周期不得为负")
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   private static LaborAllocationId id() {
-    return new LaborAllocationId("alloc-0-farm@0_0");
+    return LaborAllocation.idOf(UNIT, GROUP, HOUSEHOLD);
   }
 }

@@ -49,7 +49,8 @@ class ActorCodecTest {
   private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "farm@0_0");
 
   /** ★ 人口批次型主体：{@code id} 里**自带两个冒号**（批次的 id 就是这个形状）—— 键的规范串逆靠它取得判别力。 */
-  private static final ActorRef HOUSEHOLD = new ActorRef(ActorKind.HOUSEHOLD, "rural:0_0:MALE:1");
+  private static final ActorRef HOUSEHOLD =
+      new ActorRef(ActorKind.HOUSEHOLD, "legacy-rural:0_0:MALE:1");
 
   private static final ActorMeta META = new ActorMeta("levant", 7L, "rules-r1");
 
@@ -399,7 +400,9 @@ class ActorCodecTest {
     String json = CODEC.encodeSnapshot(snapshotOf(fullData(), TS));
 
     assertThat(json).as("ActorRef 作键").contains("\"" + ESTATE + "\"");
-    assertThat(json).as("GoodsAccountKey 作键（两段）").contains("\"HOUSEHOLD:rural:0_0:MALE:1|1_0\"");
+    assertThat(json)
+        .as("GoodsAccountKey 作键（两段）")
+        .contains("\"HOUSEHOLD:legacy-rural:0_0:MALE:1|1_0\"");
   }
 
   /**

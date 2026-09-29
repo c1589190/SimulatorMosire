@@ -104,7 +104,10 @@ public final class PopulationEconomyFixture {
                     actorSnap(
                         // ★★ H5（⑤）：经营主体的开缸账（与家户同一次 plan）—— 少了它作坊开不起来。
                         HouseholdSeeder.books(
-                            seeded.householdStocks(), seeded.householdMoney(), seeded.operators()),
+                            seeded.householdLocations(),
+                            seeded.householdStocks(),
+                            seeded.householdMoney(),
+                            seeded.operators()),
                         0L)),
             InMemoryInfoSystem.empty());
     HandlerOutcome outcome = new EconomySeedHandler().handle(empty, payload);
@@ -118,7 +121,10 @@ public final class PopulationEconomyFixture {
         social,
         economy,
         HouseholdSeeder.books(
-            seeded.householdStocks(), seeded.householdMoney(), seeded.operators()),
+            seeded.householdLocations(),
+            seeded.householdStocks(),
+            seeded.householdMoney(),
+            seeded.operators()),
         0L);
   }
 

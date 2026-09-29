@@ -9,17 +9,31 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtStatus;
+import io.mosire.simos.economy.api.debt.DebtTerms;
+import io.mosire.simos.economy.api.debt.DebtUnit;
+import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
+import io.mosire.simos.economy.api.id.ClassPositionId;
+import io.mosire.simos.economy.api.id.ClassShareId;
+import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
+import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
+import io.mosire.simos.economy.api.id.ModeTransitionId;
+import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.PledgeId;
+import io.mosire.simos.economy.api.id.ProductionModeId;
+import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.ShipmentId;
@@ -30,6 +44,8 @@ import io.mosire.simos.economy.api.market.LossBearer;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.market.TradeRoute;
+import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
+import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Pool;
@@ -38,20 +54,33 @@ import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.model.AllocationRule;
+import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.ClassPosition;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassSlot;
-import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.ClassStructure;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.Government;
+import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
+import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionCandidate;
+import io.mosire.simos.economy.model.ProductionMode;
+import io.mosire.simos.economy.model.ProductionOrganization;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.economy.model.TransferRule;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
@@ -74,9 +103,10 @@ import org.junit.jupiter.api.Test;
  * <p>★ **它也是本轮"变异自证"的落点**：把 {@code EconomyChangeSet.between} 里任一分量改成恒 {@code Unchanged}，
  * "该组件参与"那条断言当场红。
  *
- * <p>★★ <b>S1/R3B.2/R4 的 API 漂移已在这里就位</b>：{@code classes}/{@code flows} 的键 = {@link HouseholdId}
- * （旧视图用 {@code HouseholdId.ofLegacy}）；{@code relations} 挂 {@link ProductionUnitId}；operator /
- * 周期进度住在 {@link ProductionUnit} 上（不是 {@code Industry} 的旧档兼容位）；{@code EconomyData} 是 16 组件记录。
+ * <p>★★ <b>S1/R3B.2/R4/E1–E6 的 API 漂移已在这里就位</b>：{@code classes}/{@code flows} 的键 = {@link
+ * HouseholdId}（旧视图用 {@code HouseholdId.ofLegacy}）；{@code relations} 挂 {@link ProductionUnitId}；
+ * operator / 周期进度住在 {@link ProductionUnit} 上（不是 {@code Industry} 的旧档兼容位）；{@code EconomyData} 是 29
+ * 组件记录（E1–E6 追加组件全在 {@link EconomyChangeSet} 里逐一对齐）。
  */
 class EconomyRoundTripTest {
 
@@ -92,7 +122,6 @@ class EconomyRoundTripTest {
   private static final HouseholdId KEY_HH = HouseholdId.ofLegacy(KEY);
 
   private static final HouseholdId OTHER_HH = HouseholdId.ofLegacy(OTHER_KEY);
-  private static final DebtId D1 = new DebtId("debt-1");
   private static final CommodityId GRAIN = new CommodityId("grain");
 
   /** ★ R3：第二种商品（"所得逐商品"的那一维在往返里要真的被带上，只有一个商品的夹具挡不住"退回标量"）。 */
@@ -109,6 +138,27 @@ class EconomyRoundTripTest {
 
   /** ★ M2.4：在途批次的夹具身份（键 = 批次 id；值里带路线/商品/发运到达日/逐票分配）。 */
   private static final ShipmentId SHIPMENT = new ShipmentId("shipment-1");
+
+  // ── E1–E6 追加组件的夹具身份（RoundTrip 必须为每个组件都能造出 target） ───────────────────
+
+  /** ★ E4a：连续粮债的稳定身份（key == 值内 id，且 id 由四元组派生）。 */
+  private static final DebtContractId D1 =
+      DebtContractId.idOf(KEY_HH, OTHER_HH, DebtUnit.commodity(GRAIN), DebtTerms.legacyDefault());
+
+  private static final ProductionModeId MODE = new ProductionModeId("mode-1");
+  private static final ProductionModeId MODE_TARGET = new ProductionModeId("mode-2");
+  private static final ClassStructureId STRUCTURE = new ClassStructureId("structure-1");
+  private static final ClassPositionId POSITION = new ClassPositionId("position-1");
+  private static final ProductionOrganizationId ORGANIZATION =
+      new ProductionOrganizationId("organization-1");
+  private static final AssetRuleId ASSET_RULE = AssetRuleId.idOf(MODE, AssetKind.CATTLE);
+  private static final GovernmentId GOVERNMENT = new GovernmentId("government-1");
+  private static final MoneyIssuanceId ISSUANCE = new MoneyIssuanceId("issuance-1");
+  private static final PledgeId PLEDGE = new PledgeId("pledge-1");
+  private static final CrisisSignalId CRISIS = CrisisSignalId.idOf(KEY.hex(), "FOOD");
+  private static final ModeTransitionId TRANSITION =
+      ModeTransitionId.idOf(ORGANIZATION, MODE_TARGET, 10L);
+  private static final ClassShareId CLASS_SHARE = ClassShareId.idOf(TRANSITION, KEY_HH, POSITION);
 
   /**
    * ★★ T2/D9 的 operator 夹具：**非派生值**（`HOUSEHOLD:house-7`；本文件 `industry` 的 regime 是 `tenant`， 推导值 =
@@ -218,17 +268,18 @@ class EconomyRoundTripTest {
   }
 
   /**
-   * ★★ <b>组件计数（R4 = 16）</b>：{@code meta} / {@code industries} / {@code classes} / {@code debts} /
-   * {@code flows} / {@code laborSupply} / {@code allocations} / {@code relations} / {@code markets}
-   * / {@code shipments} / {@code memberships} / {@code assetShares} / {@code operatorConditions} /
-   * {@code units} / {@code demands} / {@code candidates}。
+   * ★★ <b>组件计数（E6 = 29）</b>：{@code meta} / {@code industries} / {@code classes} / {@code
+   * debtContracts} / {@code flows} / {@code laborSupply} / {@code allocations} / {@code relations}
+   * / {@code markets} / {@code shipments} / {@code memberships} / {@code assetShares} / {@code
+   * operatorConditions} / {@code units} / {@code demands} / {@code candidates} / E1 的四个 / E2 的两个 /
+   * E3 的两个 / E4 的 {@code pledges} / E5 的两个 / E6 的两个。
    *
-   * <p>★ 这个名字里的数字**故意写死**（H4 从 {@code Eight} 改成 {@code Nine}，M2.4 改成 {@code Ten}，本批再改成 {@code
-   * Sixteen}）：它就是"又加了一个状态组件"这件事 在编译/测试面上的**唯一提醒**——新增组件却只改了 {@code EconomyData} 而没进变更集时，本用例当场红。
+   * <p>★ 这个名字里的数字**故意写死**（R4 16 → E3 24 → E4 25 → E5 27 → E6 29）：它就是"又加了一个状态组件"这件事
+   * 在编译/测试面上的**唯一提醒**——新增组件却只改了 {@code EconomyData} 而没进变更集时，本用例当场红。
    */
   @Test
-  void changeSetHasExactlySixteenComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(16);
+  void changeSetHasExactlyTwentyNineComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(29);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -256,15 +307,15 @@ class EconomyRoundTripTest {
           base.withMeta(Optional.of(meta()))
               .withIndustries(Map.of(FARM, industry(FARM)))
               .withClasses(Map.of(KEY_HH, classRow(KEY_HH, KEY)));
-      case "debts" ->
-          // ★ 债务的两端必须在 classes 里（v2 spec §八.2）⇒ 这个变异体必须**自带支撑的 classes**：
-          //   从 EconomyData.empty() 只改 debts 的旧形态在新不变量下无法自洽（本用例只断言
+      case "debtContracts" ->
+          // ★ E4a：债务的两端必须在 classes 里（v2 spec §八.2）⇒ 这个变异体必须**自带支撑的 classes**：
+          //   从 EconomyData.empty() 只改债务表的旧形态在新不变量下无法自洽（本用例只断言
           //   "目标组件进了变更集 + 往返相等"，多带支撑组件不破坏任何断言）。
           base.withMeta(Optional.of(meta()))
               .withIndustries(Map.of(FARM, industry(FARM)))
               .withClasses(
                   Map.of(KEY_HH, classRow(KEY_HH, KEY), OTHER_HH, classRow(OTHER_HH, OTHER_KEY)))
-              .withDebts(Map.of(D1, debt()));
+              .withDebtContracts(Map.of(D1, debt()));
       case "flows" ->
           base.withMeta(Optional.of(meta()))
               .withIndustries(Map.of(FARM, industry(FARM)))
@@ -322,6 +373,25 @@ class EconomyRoundTripTest {
           base.withMarkets(Map.of(KEY.hex(), market())).withDemands(Map.of(DEMAND, demand()));
       // ★ R4-E2 的第 16 个组件：候选预设自带已登记的 regime 与自洽的 output/outputPerUnit。
       case "candidates" -> base.withCandidates(Map.of(CANDIDATE, candidate()));
+      // ★★ E1–E6 的追加组件：每个都自带一个最小自洽实例（引用完整性按"对侧是否提供"分段，
+      //   故单组件 target 合法；moneyIssuances 是唯一需要连带 government 支撑的一组）。
+      case "modes" -> base.withModes(Map.of(MODE, productionMode()));
+      case "classStructures" -> base.withClassStructures(Map.of(STRUCTURE, classStructure()));
+      case "classPositions" -> base.withClassPositions(Map.of(POSITION, classPosition()));
+      case "classStandings" -> base.withClassStandings(Map.of(KEY_HH, classStanding()));
+      case "productionOrganizations" ->
+          base.withProductionOrganizations(Map.of(ORGANIZATION, productionOrganization()));
+      case "assetRules" -> base.withAssetRules(Map.of(ASSET_RULE, assetRule()));
+      case "governments" -> base.withGovernments(Map.of(GOVERNMENT, government()));
+      case "moneyIssuances" ->
+          base.withGovernments(Map.of(GOVERNMENT, government()))
+              .withMoneyIssuances(Map.of(ISSUANCE, moneyIssuance()));
+      case "pledges" -> base.withPledges(Map.of(PLEDGE, pledge()));
+      case "liquidationPolicies" ->
+          base.withLiquidationPolicies(Map.of(ASSET_RULE, liquidationPolicy()));
+      case "crisisSignals" -> base.withCrisisSignals(Map.of(CRISIS, crisisSignal()));
+      case "modeTransitions" -> base.withModeTransitions(Map.of(TRANSITION, modeTransition()));
+      case "classShares" -> base.withClassShares(Map.of(CLASS_SHARE, classShare()));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -331,7 +401,7 @@ class EconomyRoundTripTest {
       case "meta" -> cs.meta().changed();
       case "industries" -> cs.industries().changed();
       case "classes" -> cs.classes().changed();
-      case "debts" -> cs.debts().changed();
+      case "debtContracts" -> cs.debtContracts().changed();
       case "flows" -> cs.flows().changed();
       case "laborSupply" -> cs.laborSupply().changed();
       case "allocations" -> cs.allocations().changed();
@@ -344,6 +414,19 @@ class EconomyRoundTripTest {
       case "units" -> cs.units().changed();
       case "demands" -> cs.demands().changed();
       case "candidates" -> cs.candidates().changed();
+      case "modes" -> cs.modes().changed();
+      case "classStructures" -> cs.classStructures().changed();
+      case "classPositions" -> cs.classPositions().changed();
+      case "classStandings" -> cs.classStandings().changed();
+      case "productionOrganizations" -> cs.productionOrganizations().changed();
+      case "assetRules" -> cs.assetRules().changed();
+      case "governments" -> cs.governments().changed();
+      case "moneyIssuances" -> cs.moneyIssuances().changed();
+      case "pledges" -> cs.pledges().changed();
+      case "liquidationPolicies" -> cs.liquidationPolicies().changed();
+      case "crisisSignals" -> cs.crisisSignals().changed();
+      case "modeTransitions" -> cs.modeTransitions().changed();
+      case "classShares" -> cs.classShares().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -414,8 +497,18 @@ class EconomyRoundTripTest {
         id, view, 120L, 60000L, 800, 50L, List.of(), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
   }
 
-  static Debt debt() {
-    return new Debt(D1, KEY_HH, OTHER_HH, Optional.of(GRAIN), 100L, 20, 3L, false);
+  static DebtContract debt() {
+    return new DebtContract(
+        D1,
+        KEY_HH,
+        OTHER_HH,
+        DebtUnit.commodity(GRAIN),
+        DebtTerms.legacyDefault(),
+        100L,
+        0L,
+        OptionalLong.empty(),
+        OptionalLong.empty(),
+        DebtStatus.NORMAL);
   }
 
   static FlowRow flowRow(HouseholdId id) {
@@ -432,7 +525,9 @@ class EconomyRoundTripTest {
         65L,
         Map.of(GRAIN, 7L, CLOTH, 2L),
         3L,
-        4L);
+        4L,
+        Map.of(SILVER, 9L),
+        Map.of(DebtUnit.commodity(GRAIN).key(), 5L));
   }
 
   /**
@@ -562,6 +657,112 @@ class EconomyRoundTripTest {
         Set.of(AssetShare.RightKind.OWNED),
         Optional.empty(),
         "候选-粮");
+  }
+
+  // ── E1–E6 追加组件的最小自洽夹具（单组件 target 合法；跨表引用按“对侧已提供”分段生效） ──
+
+  static ProductionMode productionMode() {
+    return new ProductionMode(MODE, "生产方式", 1, STRUCTURE);
+  }
+
+  static ClassStructure classStructure() {
+    return new ClassStructure(STRUCTURE, MODE, Map.of(), Map.of());
+  }
+
+  static ClassPosition classPosition() {
+    return new ClassPosition(
+        POSITION,
+        MODE,
+        "阶层位置",
+        ClassPosition.RelationToMeans.DIRECT_LABORER,
+        ClassPosition.LaborRole.PROVIDER,
+        ClassPosition.SurplusRole.WAGE_EARNER);
+  }
+
+  static ClassStanding classStanding() {
+    return new ClassStanding(KEY_HH, POSITION, POSITION, Map.of(), 0L, 0L, "");
+  }
+
+  static ProductionOrganization productionOrganization() {
+    return new ProductionOrganization(
+        ORGANIZATION,
+        MODE,
+        POSITION,
+        Optional.empty(),
+        NON_DEFAULT_OPERATOR,
+        List.of(),
+        List.of(),
+        List.of(),
+        new Recipient.ToActor(NON_DEFAULT_OPERATOR),
+        Optional.empty(),
+        ProductionOrganization.Status.SHORTAGE,
+        "缺资产");
+  }
+
+  static AssetRule assetRule() {
+    return new AssetRule(
+        ASSET_RULE,
+        MODE,
+        AssetKind.CATTLE,
+        true,
+        true,
+        10,
+        Optional.empty(),
+        new TransferRule(true, true, false));
+  }
+
+  static Government government() {
+    return new Government(
+        GOVERNMENT, "world", new ActorRef(ActorKind.GOVERNMENT, "treasury"), Set.of());
+  }
+
+  static MoneyIssuanceRecord moneyIssuance() {
+    return new MoneyIssuanceRecord(
+        ISSUANCE, GOVERNMENT, 0L, 1L, SILVER, 100L, MoneyIssuanceKind.INITIAL_ENDOWMENT, "fixture");
+  }
+
+  static Pledge pledge() {
+    return new Pledge(PLEDGE, D1, FARM_SHARE, 1L, MODE, 10, Pledge.Status.ACTIVE);
+  }
+
+  static LiquidationPolicy liquidationPolicy() {
+    return new LiquidationPolicy(
+        ASSET_RULE,
+        1_000,
+        0L,
+        LiquidationPolicy.PriceSource.POLICY,
+        3L,
+        LiquidationPolicy.RecipientRule.CREDITOR_FIRST);
+  }
+
+  static HexCrisisSignal crisisSignal() {
+    return new HexCrisisSignal(
+        CRISIS,
+        KEY.hex(),
+        HexCrisisSignal.Kind.FOOD,
+        1,
+        0L,
+        Map.of("grain", 1L),
+        List.of(),
+        List.of(),
+        "fixture");
+  }
+
+  static ModeTransition modeTransition() {
+    return new ModeTransition(
+        TRANSITION,
+        ORGANIZATION,
+        MODE,
+        MODE_TARGET,
+        1_000,
+        0L,
+        10L,
+        ModeTransition.Status.PENDING,
+        "fixture");
+  }
+
+  static ClassShare classShare() {
+    return new ClassShare(CLASS_SHARE, TRANSITION, KEY_HH, POSITION, 1_000L);
   }
 
   /**

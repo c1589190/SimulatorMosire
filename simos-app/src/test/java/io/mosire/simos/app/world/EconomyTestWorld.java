@@ -12,9 +12,11 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
@@ -181,7 +183,12 @@ public final class EconomyTestWorld {
     // ★★ H5（⑤）：**经营主体的开缸账也要播**（真创世那条路：`EconomySeeder.plan` 的 `Seed.operators()` →
     //   `HouseholdSeeder.books/​payload`）—— 少了它，作坊的投入（工具）没有来处、净产也落不进它的账：
     //   实测（本夹具）：作坊第 1 个周期就开不起来（工具可用 0 ⇒ usableScale 0）、工具产量 0。
-    ActorData books = HouseholdSeeder.books(openingStocks(), openingMoney(), operators());
+    Map<HouseholdId, HexCoord> locations = new LinkedHashMap<>();
+    for (ClassRow row : data().classes().values()) {
+      locations.put(row.id(), row.view().hex());
+    }
+    ActorData books =
+        HouseholdSeeder.books(locations, openingStocks(), openingMoney(), operators());
     return books.withMeta(Optional.of(new ActorMeta(MAP_ID, 0L, HouseholdSeeder.RULES_VERSION)));
   }
 
@@ -195,7 +202,8 @@ public final class EconomyTestWorld {
    */
   public static List<EconomySeeder.OperatorSeed> operators() {
     List<EconomySeeder.OperatorSeed> seeds = new ArrayList<>();
-    for (Map.Entry<IndustryId, Industry> entry : data().industries().entrySet()) {
+    EconomyData economy = data();
+    for (Map.Entry<IndustryId, Industry> entry : economy.industries().entrySet()) {
       IndustryId id = entry.getKey();
       Industry industry = entry.getValue();
       HexCoord hex =
@@ -203,8 +211,15 @@ public final class EconomyTestWorld {
               .map(HexCoord::parse)
               .orElseThrow(() -> new IllegalStateException("产业 id 里没有格键: " + id));
       Map<CommodityId, Long> goods = new LinkedHashMap<>();
-      if (industry.operator().kind() == ActorKind.WORKSHOP) {
-        long workshops = industry.capacity().getOrDefault(AssetKind.WORKSHOP, 0L);
+      ActorRef operator = RegimeOperators.defaultOperator(industry.regime(), id);
+      if (operator.kind() == ActorKind.WORKSHOP) {
+        // ★ K3/H0.3 起产能已归一化进 AssetShare；旧兼容位 Industry.capacity 在构造期清成中性。
+        long workshops =
+            economy.assetShares().values().stream()
+                .filter(share -> share.industry().equals(id))
+                .filter(share -> share.asset() == AssetKind.WORKSHOP)
+                .mapToLong(share -> share.quantity())
+                .sum();
         if (workshops > 0L) {
           goods.put(
               new CommodityId(EconomySeeder.COMMODITY_TOOL),
@@ -221,8 +236,8 @@ public final class EconomyTestWorld {
    *
    * <p>★ 它由 {@link #data(Map)} **同一条构造**顺手记下 ⇒ "行"与"账"逐格同源（不可能漂开）。
    */
-  public static Map<CohortKey, Map<CommodityId, Long>> openingStocks() {
-    Map<CohortKey, Map<CommodityId, Long>> stocks = new LinkedHashMap<>();
+  public static Map<HouseholdId, Map<CommodityId, Long>> openingStocks() {
+    Map<HouseholdId, Map<CommodityId, Long>> stocks = new LinkedHashMap<>();
     data(stocks, new LinkedHashMap<>());
     return stocks;
   }
@@ -233,8 +248,8 @@ public final class EconomyTestWorld {
    *
    * <p>★ 本夹具不另拍一个数：改口径时它与真档**一起**变（"手搭的世界"与"命令播出来的世界"在钱上也不许漂）。
    */
-  public static Map<CohortKey, Map<CurrencyId, Long>> openingMoney() {
-    Map<CohortKey, Map<CurrencyId, Long>> money = new LinkedHashMap<>();
+  public static Map<HouseholdId, Map<CurrencyId, Long>> openingMoney() {
+    Map<HouseholdId, Map<CurrencyId, Long>> money = new LinkedHashMap<>();
     data(new LinkedHashMap<>(), money);
     return money;
   }
@@ -244,9 +259,9 @@ public final class EconomyTestWorld {
    *
    * <p>★ 每个用例各取一份：副本会被日结算**就地更新** ⇒ 共享同一份会让用例之间互相污染。
    */
-  public static Map<CohortKey, Map<CommodityId, Long>> householdGoods() {
-    Map<CohortKey, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
-    for (Map.Entry<CohortKey, Map<CommodityId, Long>> entry : openingStocks().entrySet()) {
+  public static Map<HouseholdId, Map<CommodityId, Long>> householdGoods() {
+    Map<HouseholdId, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, Map<CommodityId, Long>> entry : openingStocks().entrySet()) {
       copy.put(entry.getKey(), new LinkedHashMap<>(entry.getValue()));
     }
     return copy;
@@ -263,16 +278,17 @@ public final class EconomyTestWorld {
    * <p>★ 只有一处构造：{@link #data()} 给一张丢弃的表、{@link #openingStocks()} 收下它 ⇒ 两条路不可能漂开。
    */
   private static EconomyData data(
-      Map<CohortKey, Map<CommodityId, Long>> stocks, Map<CohortKey, Map<CurrencyId, Long>> money) {
+      Map<HouseholdId, Map<CommodityId, Long>> stocks,
+      Map<HouseholdId, Map<CurrencyId, Long>> money) {
     return data(stocks, money, true);
   }
 
   private static EconomyData data(
-      Map<CohortKey, Map<CommodityId, Long>> stocks,
-      Map<CohortKey, Map<CurrencyId, Long>> money,
+      Map<HouseholdId, Map<CommodityId, Long>> stocks,
+      Map<HouseholdId, Map<CurrencyId, Long>> money,
       boolean withMarkets) {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
-    Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
+    Map<HouseholdId, ClassRow> classes = new LinkedHashMap<>();
     Map<PeopleLotId, LaborSupply> supply = new LinkedHashMap<>();
     Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
     // (0,0) 平原 1000 人 / (1,0) 低丘 500 人 / (2,0) 只有城市 300 人。
@@ -351,10 +367,10 @@ public final class EconomyTestWorld {
           CohortKey key =
               new CohortKey(
                   new HexCoord(q, 0), residence, new SocialClassId(EconomySeeder.CLASS_IDS[i]));
-          classes.putIfAbsent(key, emptyRow(key, i));
+          classes.putIfAbsent(HouseholdId.ofLegacy(key), emptyRow(key, i));
           // ★★ H1：**空账也要有账本**（与真播种器同口径：每格两组四行各一本，余额可以全 0）——
           //   少了它，日结算在 load 阶段就抛（"这个家户在这一格没有账"与"它的账是空的"是两件事）。
-          stocks.putIfAbsent(key, new LinkedHashMap<>());
+          stocks.putIfAbsent(HouseholdId.ofLegacy(key), new LinkedHashMap<>());
         }
       }
     }
@@ -363,37 +379,43 @@ public final class EconomyTestWorld {
             MAP_ID, 0L, OptionalLong.empty(), EconomySeeder.RULES_VERSION, Optional.empty());
     // ★★ H4：**创世货币禀赋**（毫银）—— 与行由**同一次构造**产出（人口 → 钱），口径照真播种器
     //   （{@link EconomySeeder#genesisMoney(long)} 是唯一拼写点）；★ 空账（人口 0）⇒ 空钱包。
-    for (Map.Entry<CohortKey, ClassRow> row : classes.entrySet()) {
+    for (Map.Entry<HouseholdId, ClassRow> row : classes.entrySet()) {
       money.put(row.getKey(), EconomySeeder.genesisMoney(row.getValue().population()));
     }
-    return new EconomyData(
-        Optional.of(meta),
-        industries,
-        classes,
-        Map.of(),
-        Map.of(),
-        supply,
-        allocations,
-        // ★★ T4/T5：第 8 个组件（生产关系表）**非空** —— harvest 已经真的读它了。
-        //   本夹具按**每个产业自己的 regime** 推默认关系（{@link RegimeRelations#defaultRelation}），
-        //   与真播种器载荷走的是**同一条推导**（{@code EconomyPayloads.relation}）⇒ 夹具与真档不漂。
-        //   ★ 产出自此不再写进阶层行：行里的实物只经"cohort 入账"回来（R5 ③）。
-        relations(industries),
-        // ★★ H4：第 9 个组件（市场表）—— 本夹具**逐格给一个市场**（与真播种器的"每格一个"同口径），
-        //   计价货币与价表取真装载器的出厂值 {@link EconomySeeder#MARKET_FACTORY}（唯一拼写点）。
-        //   ★ M2 收尾：{@link #genesisWithoutMarkets()} 走 withMarkets=false ⇒ 空表（该用例组的闭式期望按无市场推）。
-        withMarkets ? markets(classes) : Map.of(),
-        Map.of());
+    // ★ E1–E6 + S1：用 withX 搭当前 29 组件形状；临时挂 pre-modern-v1 抑制
+    //   "classes 非空但 memberships 尚未挂上"的中间态自动迁移；allocations 的 pending household
+    //   由 LegacyHouseholdMigration 按人口权重拆成真实家户（这正是旧聚合夹具的迁移路径）。
+    EconomyMeta legacyMeta =
+        new EconomyMeta(
+            MAP_ID,
+            0L,
+            OptionalLong.empty(),
+            EconomyMeta.RULES_VERSION_PRE_MODERN_V1,
+            Optional.empty());
+    EconomyData current =
+        EconomyData.empty()
+            .withMeta(Optional.of(legacyMeta))
+            .withIndustries(industries)
+            .withClasses(classes)
+            .withLaborSupply(supply)
+            // ★★ T4/T5：第 8 个组件（生产关系表）**非空** —— harvest 已经真的读它了。
+            //   本夹具按**每个产业自己的 regime** 推默认关系（{@link RegimeRelations#defaultRelation}），
+            //   与真播种器载荷走的是**同一条推导**（{@code EconomyPayloads.relation}）⇒ 夹具与真档不漂。
+            .withRelations(relations(industries));
+    // pending 配额在这一步触发迁移：拆成真实家户 + activity/actor 对齐到 unit + 补 memberships/assetShares。
+    current = current.withAllocations(allocations);
+    current = current.withMarkets(withMarkets ? markets(classes) : Map.of());
+    return current.withMeta(Optional.of(meta));
   }
 
   /**
    * ★★ <b>H4：逐格市场表</b>（{@code EconomyData.markets} 的第 9 个组件）：本夹具的**每一格**一个市场， 值取真播种器的出厂市场（{@link
    * EconomySeeder#MARKET_FACTORY}）—— 夹具**不另拍价表**， 否则"夹具里的价"与"真档的价"会在两次改动之间静默漂开。
    */
-  private static Map<HexCoord, Market> markets(Map<CohortKey, ClassRow> classes) {
+  private static Map<HexCoord, Market> markets(Map<HouseholdId, ClassRow> classes) {
     Map<HexCoord, Market> markets = new LinkedHashMap<>();
-    for (CohortKey key : classes.keySet()) {
-      markets.putIfAbsent(key.hex(), EconomySeeder.MARKET_FACTORY);
+    for (ClassRow row : classes.values()) {
+      markets.putIfAbsent(row.view().hex(), EconomySeeder.MARKET_FACTORY);
     }
     return markets;
   }
@@ -405,14 +427,16 @@ public final class EconomyTestWorld {
    * ResidenceKind#ofLot}，唯一拼写点）—— 真档由 {@code EconomyPayloads} 在载荷边缘算， 本夹具按同一个判据从**合成的批次 id**
    * 取（{@link #syntheticLot}）。
    */
-  private static Map<IndustryId, ProductionRelation> relations(
+  private static Map<ProductionUnitId, ProductionRelation> relations(
       Map<IndustryId, Industry> industries) {
-    Map<IndustryId, ProductionRelation> relations = new LinkedHashMap<>();
+    Map<ProductionUnitId, ProductionRelation> relations = new LinkedHashMap<>();
     for (Industry industry : industries.values()) {
+      ProductionUnitId unit = ProductionUnitId.idOf(industry.id(), industry.operator());
       relations.put(
-          industry.id(),
+          unit,
           RegimeRelations.defaultRelation(
               industry.regime(),
+              unit,
               industry.id(),
               industry.operator(),
               Set.of(ResidenceKind.ofLot(syntheticLot(industry.id())))));
@@ -431,7 +455,7 @@ public final class EconomyTestWorld {
 
   private static void farm(
       Map<IndustryId, Industry> industries,
-      Map<CohortKey, ClassRow> classes,
+      Map<HouseholdId, ClassRow> classes,
       Map<PeopleLotId, LaborSupply> supply,
       Map<LaborAllocationId, LaborAllocation> allocations,
       int q,
@@ -439,7 +463,7 @@ public final class EconomyTestWorld {
       long population,
       long landMilliMu,
       Stock stock,
-      Map<CohortKey, Map<CommodityId, Long>> stocks) {
+      Map<HouseholdId, Map<CommodityId, Long>> stocks) {
     IndustryId id = IndustryHexKeys.id(EconomySeeder.FARM, q, r);
     long[] people = EconomySeeder.splitByShares(population, EconomySeeder.CLASS_SHARE_PER_MILLE);
     industries.put(
@@ -491,6 +515,7 @@ public final class EconomyTestWorld {
   /** 一本**空账**（该格那一组家户在本夹具里没有人）：人口/劳动全 0、库存空、需求 = 那条 0 的粮 —— ★ 与真播种器对"人口为 0 的那一组"写下的形状逐字同形（H0.2）。 */
   private static ClassRow emptyRow(CohortKey key, int index) {
     return new ClassRow(
+        HouseholdId.ofLegacy(key),
         key,
         0L,
         0L,
@@ -525,13 +550,13 @@ public final class EconomyTestWorld {
    */
   private static void craft(
       Map<IndustryId, Industry> industries,
-      Map<CohortKey, ClassRow> classes,
+      Map<HouseholdId, ClassRow> classes,
       Map<PeopleLotId, LaborSupply> supply,
       Map<LaborAllocationId, LaborAllocation> allocations,
       int q,
       int r,
       long population,
-      Map<CohortKey, Map<CommodityId, Long>> stocks) {
+      Map<HouseholdId, Map<CommodityId, Long>> stocks) {
     IndustryId id = IndustryHexKeys.id(EconomySeeder.CRAFT, q, r);
     long[] people = EconomySeeder.splitByShares(population, EconomySeeder.CLASS_SHARE_PER_MILLE);
     long workshops = population / EconomySeeder.URBAN_CAPITA_PER_WORKSHOP;
@@ -591,11 +616,11 @@ public final class EconomyTestWorld {
    */
   private static void weaving(
       Map<IndustryId, Industry> industries,
-      Map<CohortKey, ClassRow> classes,
+      Map<HouseholdId, ClassRow> classes,
       int q,
       int r,
       long ruralPopulation,
-      Map<CohortKey, Map<CommodityId, Long>> stocks) {
+      Map<HouseholdId, Map<CommodityId, Long>> stocks) {
     IndustryId id = IndustryHexKeys.id(EconomySeeder.WEAVE, q, r);
     long looms = ruralPopulation / EconomySeeder.RURAL_CAPITA_PER_LOOM;
     long[] loomByClass = EconomySeeder.splitByShares(looms, EconomySeeder.CLASS_SHARE_PER_MILLE);
@@ -622,14 +647,14 @@ public final class EconomyTestWorld {
 
   /** 把一份商品并进已有家户的**账本**（H0.2 的"纤维并入农村行"用它；键不存在 ⇒ 抛，不静默新建一本账）。 */
   private static void mergeStock(
-      Map<CohortKey, Map<CommodityId, Long>> stocks,
+      Map<HouseholdId, Map<CommodityId, Long>> stocks,
       CohortKey key,
       CommodityId commodity,
       long amount) {
     if (amount <= 0L) {
       return;
     }
-    Map<CommodityId, Long> stock = stocks.get(key);
+    Map<CommodityId, Long> stock = stocks.get(HouseholdId.ofLegacy(key));
     if (stock == null) {
       throw new IllegalStateException("家户账本不存在，无法并入库存: " + key);
     }
@@ -681,9 +706,14 @@ public final class EconomyTestWorld {
 
   private static LaborAllocation allocation(
       IndustryId industry, ActorKind kind, String activity, PeopleLotId lot, long laborMilli) {
+    // ★ S1 旧档迁移路径：household 先用 pending 占位（构造器允许），构造期迁移按人口权重替换成真实家户；
+    //   actor/activity 保持旧产业口径，迁移器会一起对齐到 unit.operator / unit id。
+    HouseholdId pendingHousehold =
+        HouseholdId.parse(HouseholdId.PENDING_LEGACY_PREFIX + industry.value());
     return new LaborAllocation(
         allocationId(industry),
         lot,
+        pendingHousehold,
         new ActorRef(kind, industry.value()),
         activity,
         laborMilli,
@@ -712,13 +742,13 @@ public final class EconomyTestWorld {
    * EconomySeeder#rationMilli}；{@code extraGoods} = 该家户的其它商品（纤维 / 铁）。
    */
   private static void addRow(
-      Map<CohortKey, ClassRow> classes,
+      Map<HouseholdId, ClassRow> classes,
       CohortKey key,
       int index,
       long population,
       Stock stock,
       Map<CommodityId, Long> extraGoods,
-      Map<CohortKey, Map<CommodityId, Long>> stocks) {
+      Map<HouseholdId, Map<CommodityId, Long>> stocks) {
     String slot = EconomySeeder.CLASS_IDS[index];
     // ★★ **第 1 天**的需求（逐日差分；不是"每人每日的量 × 人口"）—— 这一格从第 1 天起就是"恰好"形态。
     long firstDayNeed = EconomyVocabulary.dailyRationMilli(population, 1L);
@@ -752,10 +782,11 @@ public final class EconomyTestWorld {
         openingStock.put(entry.getKey(), entry.getValue());
       }
     }
-    stocks.put(key, openingStock);
+    stocks.put(HouseholdId.ofLegacy(key), openingStock);
     classes.put(
-        key,
+        HouseholdId.ofLegacy(key),
         new ClassRow(
+            HouseholdId.ofLegacy(key),
             key,
             population,
             EconomySeeder.laborMilli(population),
@@ -788,14 +819,14 @@ public final class EconomyTestWorld {
               EconomySeeder.CLASS_NAMES[i],
               EconomySeeder.CLASS_LABOR_PER_MILLE[i]));
     }
+    // ★ 旧 17 参形状：operator/capacity 是兼容位，构造期归一化据此合成 unit + AssetShare
+    //   （夹具因此与真档同一套换算；新的 12 参模板会把这两个事实留在外面）。
     return new Industry(
         id,
         name,
         new RegimeId(regime),
         CYCLE_DAYS,
-        0L,
         capacityPerUnit,
-        capacity,
         Map.of(),
         0L,
         laborPerUnit,
@@ -803,10 +834,10 @@ public final class EconomyTestWorld {
         cycleInputPerUnit,
         slots,
         rule,
+        RegimeOperators.defaultOperator(new RegimeId(regime), id),
         0L,
-        Map.of(),
-        // ★ operator = **派生**，按**它自己的 regime 参数**（8 个调用点传的是三个已登记的 `EconomySeeder.REGIME_*`
-        //   ⇒ **不改本方法的 8 参签名**、8 个调用点零改动；默认值只有一处拼写点）。
-        RegimeOperators.defaultOperator(new RegimeId(regime), id));
+        capacity,
+        0L,
+        Map.of());
   }
 }

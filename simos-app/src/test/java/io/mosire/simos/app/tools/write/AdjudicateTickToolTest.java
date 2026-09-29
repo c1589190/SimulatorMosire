@@ -519,23 +519,29 @@ class AdjudicateTickToolTest {
     AdjudicateTickTool tool = tool();
     Map<String, CommandTargets> targets = tool.commandTargets();
 
-    // ① 4 条缺口必须**恰好**是这 4 条（少一条 ⇒ 有人悄悄补上了却没登记；多一条 ⇒ 白名单里多了没人管的类型）。
+    // ① 10 条缺口必须**恰好**是这 10 条（少一条 ⇒ 有人悄悄补上了却没登记；多一条 ⇒ 白名单里多了没人管的类型）。
     Set<String> missing = new LinkedHashSet<>(tool.allowedCommandTypes());
     missing.removeAll(targets.keySet());
     assertThat(missing)
-        .as("★ 有意无目标的 4 条（语义对象不是资源命名空间）——缺口在册可查，不静默")
+        .as("★ 有意无目标的 10 条（语义对象不是资源命名空间；E1–E6 的 6 条 economy 命令同族）——缺口在册可查，不静默")
         .containsExactlyInAnyOrder(
             "unit.CreateCommandChain",
             "unit.UpdateCommandChain",
             "map.SetEdge",
-            "map.RegisterPathwayGroup");
+            "map.RegisterPathwayGroup",
+            "economy.AddDemand",
+            "economy.CancelDemand",
+            "economy.MigrateHousehold",
+            "economy.RegisterCandidate",
+            "economy.SetMarketPrice",
+            "economy.TransferAssetShare");
     assertThat(tool.allowedCommandTypes())
         .as(
-            "白名单 = unit 20 + map 7 + social 4（R1 起 +1 = social.SeedGroups）+ economy 1"
-                + " + actor 1（S1 阶段 2 起 = actor.Seed）")
-        .hasSize(33);
+            "白名单 = unit 20 + map 7 + social 4（R1 起 +1 = social.SeedGroups）+ economy 7"
+                + " + actor 1（S1 阶段 2 起 = actor.Seed）⇒ 39")
+        .hasSize(39);
 
-    // ② 其余 26 条：逐条给真载荷、钉死输出路径。
+    // ② 其余 29 条白名单类型 + 2 条 GM-only 空目标 = 31 条样本：逐条给真载荷、钉死输出路径。
     Map<String, List<String>> samples = new LinkedHashMap<>();
     samples.put("unit.RenameUnit", List.of("{\"id\":\"u-1\",\"name\":\"x\"}", "u-1"));
     samples.put(
@@ -624,6 +630,19 @@ class AdjudicateTickToolTest {
         List.of(
             "{\"mapId\":\"Map1\",\"rulesVersion\":\"v\",\"entries\":[{\"q\":1,\"r\":1,\"actors\":[]}]}",
             "1_1"));
+    // E6b 的 2 条 GM-only：实现 CommandTargets 但**有意返回空目标**（不进入决策人令），
+    // 故也在 samples 表面登记为"无路径"（空列表的另一半判据）。
+    samples.put(
+        "economy.SwitchMode",
+        List.of(
+            "{\"organizationId\":\"org-missing\",\"toModeId\":\"mode-missing\","
+                + "\"retainOriginalPerMille\":1000,\"effectiveDay\":7,\"reason\":\"coverage\"}"));
+    samples.put(
+        "economy.GmAdjust",
+        List.of(
+            "{\"adjustment\":\"forgiveDebt\","
+                + "\"parameters\":{\"debtContractId\":\"missing-debt\"},"
+                + "\"reason\":\"coverage\"}"));
 
     for (Map.Entry<String, List<String>> sample : samples.entrySet()) {
       List<String> expected = sample.getValue();
@@ -635,9 +654,9 @@ class AdjudicateTickToolTest {
     }
     assertThat(samples.keySet())
         .as(
-            "29 条有目标声明的类型一条不漏（少一条 ⇒ 上面那条断言根本不会跑；R1 起 +1 = social.SeedGroups；"
+            "31 条样本一条不漏（29 条白名单目标 + 2 条 E6b GM-only 空目标；少一条 ⇒ 上面那条断言根本不会跑；"
                 + "S1 阶段 2 起 +1 = actor.Seed）")
-        .hasSize(29);
+        .hasSize(31);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());

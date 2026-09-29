@@ -7,7 +7,7 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -27,7 +27,7 @@ import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
-import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
@@ -262,7 +262,7 @@ final class EconomyFixtures {
       long laborMilli,
       int participationPerMille,
       long money,
-      List<DebtId> debts,
+      List<DebtContractId> debts,
       Map<CommodityId, Long> naturalNeeds,
       Map<CommodityId, Long> effectiveDemand,
       long cycleNaturalNeedMilli) {
@@ -291,14 +291,14 @@ final class EconomyFixtures {
   }
 
   /**
-   * ★ <b>旧 10 参 EconomyData</b>（R2 之前形状）→ 当前 16 参；classes/flows 的视图键转稳定身份， relations 的产业键转 unit
-   * 键。新增的 6 个组件留空，交给 {@link EconomyData} 的旧档迁移/归一化补齐。
+   * ★ <b>旧 10 参 EconomyData</b>（R2 之前形状）→ 当前 29 组件；classes/flows 的视图键转稳定身份，relations 的产业键转 unit
+   * 键。新增组件全部留空（走 {@link EconomyData#empty()} + {@code withX}，避免 record arity 漂移）。债务参数按 E4a 起的新形状传入。
    */
   static EconomyData data(
       Optional<EconomyMeta> meta,
       Map<IndustryId, Industry> industries,
       Map<CohortKey, ClassRow> classesByView,
-      Map<DebtId, Debt> debts,
+      Map<DebtContractId, DebtContract> debtContracts,
       Map<CohortKey, FlowRow> flowsByView,
       Map<PeopleLotId, LaborSupply> laborSupply,
       Map<LaborAllocationId, LaborAllocation> allocations,
@@ -341,7 +341,9 @@ final class EconomyFixtures {
               flow.netSurplus(),
               flow.unmetNeed(),
               flow.deaths(),
-              flow.births()));
+              flow.births(),
+              flow.repaidMoney(),
+              flow.capitalizedArrears()));
     }
     LinkedHashMap<ProductionUnitId, ProductionRelation> relations = new LinkedHashMap<>();
     for (Map.Entry<?, ProductionRelation> entry : relationsByIndustry.entrySet()) {
@@ -374,23 +376,17 @@ final class EconomyFixtures {
               relation.residualOwner(),
               relation.laborSource()));
     }
-    return new EconomyData(
-        meta,
-        industries,
-        classes,
-        debts,
-        flows,
-        laborSupply,
-        allocations,
-        relations,
-        markets,
-        shipments,
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of());
+    return EconomyData.empty()
+        .withMeta(meta)
+        .withIndustries(industries)
+        .withClasses(classes)
+        .withDebtContracts(debtContracts)
+        .withFlows(flows)
+        .withLaborSupply(laborSupply)
+        .withAllocations(allocations)
+        .withRelations(relations)
+        .withMarkets(markets)
+        .withShipments(shipments);
   }
 
   /**

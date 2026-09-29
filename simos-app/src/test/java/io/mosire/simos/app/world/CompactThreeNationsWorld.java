@@ -18,7 +18,7 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
@@ -317,14 +317,14 @@ public final class CompactThreeNationsWorld {
   }
 
   /** 地形带：按已排序的格序铺连续带（平原在中心、沙漠/山地在边缘）。 */
-  private record Band(String terrain, int count) {}
+  private record Band(String terrainKey, int count) {}
 
   private static void assignBandedTerrain(
       Map<HexCoord, String> out, List<HexCoord> ordered, Band... bands) {
     int index = 0;
     for (Band band : bands) {
       for (int i = 0; i < band.count(); i++) {
-        out.put(ordered.get(index++), band.terrain());
+        out.put(ordered.get(index++), band.terrainKey());
       }
     }
     if (index != ordered.size()) {
@@ -500,7 +500,7 @@ public final class CompactThreeNationsWorld {
     out.put("markets", (long) economy.markets().size());
     out.put("commodities", (long) commodities.size());
     out.put("commodityIds", List.copyOf(commodities));
-    out.put("debts", (long) economy.debts().size());
+    out.put("debts", (long) economy.debtContracts().size());
     out.put("shipments", (long) economy.shipments().size());
     out.put("units", (long) unitOf(state).units().size());
     out.put("commandChains", (long) unitOf(state).commandChains().size());
@@ -658,7 +658,7 @@ public final class CompactThreeNationsWorld {
         unmet += sum(flow.unmetNeed());
       }
       long debts = 0L;
-      for (Debt debt : economy.debts().values()) {
+      for (DebtContract debt : economy.debtContracts().values()) {
         ClassRow row = economy.classes().get(debt.debtor());
         if (row != null && area.contains(row.view().hex())) {
           debts++;

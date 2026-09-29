@@ -10,10 +10,13 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtStatus;
+import io.mosire.simos.economy.api.debt.DebtTerms;
+import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -35,7 +38,7 @@ import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
-import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
@@ -62,10 +65,10 @@ import org.junit.jupiter.api.Test;
  * <p>★ 覆盖：{@code Optional<EconomyMeta>} 两侧向（未激活 / 已激活）、{@code OptionalLong}（{@code lastClosedCycle}
  * 两侧向）、{@code Optional<String>}/{@code Optional<CommodityId>}、自定义键（{@code IndustryId} / {@code
  * HouseholdId}（S1 起 classes/flows 的键；旧档 {@code CohortKey} 串由 codec 映射成 {@code ofLegacy}）/ {@code
- * DebtId} / {@code CommodityId} + R2 的 {@code PeopleLotId} / {@code LaborAllocationId} + S1 的
- * {@code MembershipId} / {@code AssetShareId} + R3B.2 的 {@code ProductionUnitId}）、{@code AssetKind}
- * 的**枚举键**、 {@code AllocationRule} 的 **sealed 多态**（{@code Split}/{@code WageFirst} 各一）、{@code
- * FieldDelta} 四变体、 单值组件的投影往返、**字节级**往返（含"派生判断 {@code empty} 不进线格式"的观察点），以及旧档缺键的兼容。
+ * DebtContractId} / {@code CommodityId} + R2 的 {@code PeopleLotId} / {@code LaborAllocationId} + S1
+ * 的 {@code MembershipId} / {@code AssetShareId} + R3B.2 的 {@code ProductionUnitId}）、{@code
+ * AssetKind} 的**枚举键**、 {@code AllocationRule} 的 **sealed 多态**（{@code Split}/{@code WageFirst}
+ * 各一）、{@code FieldDelta} 四变体、 单值组件的投影往返、**字节级**往返（含"派生判断 {@code empty} 不进线格式"的观察点），以及旧档缺键的兼容。
  *
  * <p>★ T2 补第 8 个组件（{@code relations}）：它的值里嵌着**第二个 sealed 多态**（{@code Recipient}）与 {@code
  * CompensationRule} 的 {@code Optional<CommodityId>} —— 见 {@code
@@ -92,8 +95,7 @@ class EconomyCodecTest {
   private static final HouseholdId FARM_HH = HouseholdId.ofLegacy(PEASANT_KEY);
 
   private static final HouseholdId LANDLORD_HH = HouseholdId.ofLegacy(LANDLORD_KEY);
-  private static final DebtId D1 = new DebtId("debt-1");
-  private static final DebtId D2 = new DebtId("debt-2");
+  private static final DebtTerms GRAIN_TERMS = DebtTerms.legacyDefault();
   private static final CommodityId GRAIN = new CommodityId("grain");
 
   /**
@@ -101,6 +103,14 @@ class EconomyCodecTest {
    * "期望值不许从被测物派生"，引用生产的出厂值会让"币种真的过了线格式"这条断言变成自证。
    */
   private static final CurrencyId CURRENCY = new CurrencyId("silver");
+
+  /** ★ E4a：连续合同身份（key == 值内 id，且 id 由四元组派生；故必须在 FARM_HH/LANDLORD_HH/GRAIN/CURRENCY 之后）。 */
+  private static final DebtContractId D1 =
+      DebtContractId.idOf(FARM_HH, LANDLORD_HH, DebtUnit.commodity(GRAIN), GRAIN_TERMS);
+
+  private static final DebtContractId D2 =
+      DebtContractId.idOf(
+          LANDLORD_HH, FARM_HH, DebtUnit.money(CURRENCY), DebtTerms.legacyDefault());
 
   private static final CommodityId CLOTH = new CommodityId("cloth");
 
@@ -470,7 +480,7 @@ class EconomyCodecTest {
 
     assertThat(back.data().industries()).isEmpty();
     assertThat(back.data().classes()).as("旧档没提阶层 ⇒ 空表，不抛").isEmpty();
-    assertThat(back.data().debts()).as("旧档没提债务 ⇒ 空表，不抛").isEmpty();
+    assertThat(back.data().debtContracts()).as("旧档没提债务 ⇒ 空表，不抛").isEmpty();
     assertThat(back.data().flows()).as("旧档没提流水 ⇒ 空表，不抛").isEmpty();
     assertThat(back.data().meta()).as("旧档没提元信息 ⇒ 未激活，不抛").isEmpty();
     // ★ R2 起的新组件同款：缺键 ⇒ 空表（fail-closed 方向）
@@ -494,7 +504,7 @@ class EconomyCodecTest {
     assertThat(back.meta()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.industries()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.classes()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.debts()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.debtContracts()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.flows()).isInstanceOf(FieldDelta.Unchanged.class);
     // ★ R2：两张劳动表也是同款（旧档里没有这两个键 ⇒ Unchanged，不是 null）
     assertThat(back.laborSupply()).isInstanceOf(FieldDelta.Unchanged.class);
@@ -509,7 +519,7 @@ class EconomyCodecTest {
     assertThat(back.units()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.demands()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.candidates()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.isEmpty()).as("十六个组件都未变 ⇒ 这份旧变更集是空的").isTrue();
+    assertThat(back.isEmpty()).as("二十九个组件都未变 ⇒ 这份旧变更集是空的").isTrue();
     assertThat(EconomyChangeSet.apply(back, EconomyData.empty())).isEqualTo(EconomyData.empty());
   }
 
@@ -539,7 +549,7 @@ class EconomyCodecTest {
     Map<HouseholdId, ClassRow> classes = new LinkedHashMap<>();
     classes.put(FARM_HH, classRow(FARM_HH, PEASANT_KEY, 120L));
     classes.put(LANDLORD_HH, classRow(LANDLORD_HH, LANDLORD_KEY, 8L));
-    Map<DebtId, Debt> debts = new LinkedHashMap<>();
+    Map<DebtContractId, DebtContract> debts = new LinkedHashMap<>();
     debts.put(D1, grainDebt());
     debts.put(D2, moneyDebt());
     Map<HouseholdId, FlowRow> flows = new LinkedHashMap<>();
@@ -577,23 +587,21 @@ class EconomyCodecTest {
             FARM_OPERATOR,
             1000L,
             AssetShare.RightKind.OWNED));
-    return new EconomyData(
-        Optional.of(meta()),
-        industries,
-        classes,
-        debts,
-        flows,
-        laborSupply,
-        allocations,
-        relations,
-        Map.of(), // markets
-        Map.of(), // shipments
-        memberships,
-        assetShares,
-        Map.of(), // operatorConditions（S3.2 起空表缺省）
-        units,
-        Map.of(), // demands（R4-E2 起空表缺省）
-        Map.of()); // candidates（R4-E2 起空表缺省）
+    // ★ E1–E6：用 withX 逐组件搭（避免 29 参 record arity 漂移）。先挂 pre-modern-v1 迁移标记，
+    //   防止“classes 非空但 memberships 尚未挂上”的中间态触发自动旧档迁移；尾步再换回本用例的 meta。
+    return EconomyData.empty()
+        .withMeta(Optional.of(metaPreModern()))
+        .withIndustries(industries)
+        .withClasses(classes)
+        .withMemberships(memberships)
+        .withAssetShares(assetShares)
+        .withUnits(units)
+        .withDebtContracts(debts)
+        .withFlows(flows)
+        .withLaborSupply(laborSupply)
+        .withAllocations(allocations)
+        .withRelations(relations)
+        .withMeta(Optional.of(meta()));
   }
 
   private static EconomyData dataWithIndustries(Map<IndustryId, Industry> industries) {
@@ -620,6 +628,16 @@ class EconomyCodecTest {
   private static EconomyMeta meta() {
     return new EconomyMeta(
         "m1", 7L, OptionalLong.of(2L), "rules-2026-09", Optional.of("worlds/v17levant.json"));
+  }
+
+  /** 构造 fullData 期间的迁移抑制标记；尾步换回 {@link #meta()}。 */
+  private static EconomyMeta metaPreModern() {
+    return new EconomyMeta(
+        "m1",
+        7L,
+        OptionalLong.of(2L),
+        EconomyMeta.RULES_VERSION_PRE_MODERN_V1,
+        Optional.of("worlds/v17levant.json"));
   }
 
   private static EconomyMeta metaClosed() {
@@ -746,12 +764,32 @@ class EconomyCodecTest {
         0L);
   }
 
-  private static Debt grainDebt() {
-    return new Debt(D1, FARM_HH, LANDLORD_HH, Optional.of(GRAIN), 100L, 20, 3L, false);
+  private static DebtContract grainDebt() {
+    return new DebtContract(
+        D1,
+        FARM_HH,
+        LANDLORD_HH,
+        DebtUnit.commodity(GRAIN),
+        GRAIN_TERMS,
+        100L,
+        0L,
+        OptionalLong.empty(),
+        OptionalLong.of(3L),
+        DebtStatus.NORMAL);
   }
 
-  private static Debt moneyDebt() {
-    return new Debt(D2, LANDLORD_HH, FARM_HH, Optional.empty(), 700L, 5, 5L, true);
+  private static DebtContract moneyDebt() {
+    return new DebtContract(
+        D2,
+        LANDLORD_HH,
+        FARM_HH,
+        DebtUnit.money(CURRENCY),
+        DebtTerms.legacyDefault(),
+        700L,
+        0L,
+        OptionalLong.empty(),
+        OptionalLong.of(5L),
+        DebtStatus.DEFAULTED);
   }
 
   private static FlowRow flowRow(HouseholdId id) {
@@ -768,6 +806,8 @@ class EconomyCodecTest {
         65L,
         Map.of(GRAIN, 7L, CLOTH, 3L),
         3L,
-        4L);
+        4L,
+        Map.of(CURRENCY, 5L),
+        Map.of(DebtUnit.commodity(GRAIN).key(), 7L));
   }
 }

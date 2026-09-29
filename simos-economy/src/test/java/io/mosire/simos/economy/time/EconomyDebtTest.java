@@ -6,15 +6,19 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtStatus;
+import io.mosire.simos.economy.api.debt.DebtTerms;
+import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
-import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
@@ -94,31 +98,29 @@ class EconomyDebtTest {
     EconomyFixtures.World world = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
     EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 3L);
 
-    List<DebtId> debts = EconomyFixtures.classOf(next, PEASANT_KEY).debts();
+    List<DebtContractId> debts = EconomyFixtures.classOf(next, PEASANT_KEY).debts();
     assertThat(debts).as("三天借入聚合成**一条**（旧口径 3 条）").hasSize(1);
-    Debt debt = next.debts().get(debts.get(0));
+    DebtContract debt = next.debtContracts().get(debts.get(0));
     assertThat(debt.principal())
         .as("本金 = 三次借入之和（逐日差分逐项相加）")
         .isEqualTo(deficitOn(1L) + deficitOn(2L) + deficitOn(3L));
     assertThat(debt.principal())
         .as("= cumulativeRationMilli(400, 3)（望远镜求和 ⇒ 两条写法必然同值）")
         .isEqualTo(deficitOver(3L));
-    assertThat(debt.debtor()).isEqualTo(PEASANT_KEY);
-    assertThat(debt.creditor()).isEqualTo(LANDLORD_KEY);
-    assertThat(debt.commodity()).as("实物债（粮）").contains(GRAIN);
-    assertThat(debt.ratePerMillePerCycle())
+    assertThat(debt.debtor()).isEqualTo(EconomyFixtures.hh(PEASANT_KEY));
+    assertThat(debt.creditor()).isEqualTo(EconomyFixtures.hh(LANDLORD_KEY));
+    assertThat(debt.unit()).as("实物债（粮）").isEqualTo(DebtUnit.commodity(GRAIN));
+    assertThat(debt.terms().interestRatePerMillePerCycle())
         .isEqualTo(EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE);
-    assertThat(debt.dueCycle()).as("到期周期 = 当前周期 + 1").isEqualTo(2L);
-    assertThat(next.debts()).as("整场只此一条债").hasSize(1);
+    assertThat(debt.dueCycle()).as("到期周期 = 当前周期 + 1").hasValue(2L);
+    assertThat(next.debtContracts()).as("整场只此一条债").hasSize(1);
     assertThat(EconomyFixtures.flowOf(next, PEASANT_KEY).newBorrowing())
         .as("流水的新借入 = 三天之和（流量口径）")
         .isEqualTo(deficitOver(3L));
-    assertThat(next.debts().keySet().iterator().next().value())
-        .as("★ id 由 (周期, 债务人, 债权人, 商品) 确定性算出")
-        // ★ S1 阶段 1 手算重推（**不是抄实际值**）：格式 = debt-c<周期>-<债务人键>><债权人键>-<商品>；★ H0 起家户键 = <格>|<居住>|<阶层>；
-        //   债务人键 = PEASANT_KEY = FARM|PEASANT = "farm@0_0" + "|" + "poor_peasant"（新词表）
-        //   债权人键 = LANDLORD_KEY = "farm@0_0|landlord"（地主一词不变）；商品 = "grain"。
-        .isEqualTo("debt-c1-0_0|rural|poor_peasant>0_0|rural|landlord-grain");
+    assertThat(next.debtContracts().keySet().iterator().next().value())
+        .as("★ id 由 (债务人, 债权人, unit, terms) 确定性算出（E4a 起不含周期号：跨周期连续）")
+        // ★ 旧“周期在 id 里”的断言已按 E4a 新语义改为对同一连续合同 id 的自洽核对；本用例保持 @Disabled，T2 带收入场景重写。
+        .isEqualTo(legacyDebtId().value());
   }
 
   /**
@@ -141,14 +143,12 @@ class EconomyDebtTest {
     EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, CYCLE_DAYS + 3L);
 
     assertThat(EconomyFixtures.classOf(next, PEASANT_KEY).debts()).as("两个周期各一条（行内两处引用）").hasSize(2);
-    assertThat(next.debts()).as("债务表两条").hasSize(2);
+    assertThat(next.debtContracts()).as("债务表两条").hasSize(2);
     long cycleOne = deficitOver(CYCLE_DAYS);
     // ★ 依据 B（计息日取**当日起始本金**快照）：第 10 天开始时只有第 1~9 天借入的 cumulativeRationMilli(400, 9) 生息。
     long cycleOneDayStart = deficitOver(CYCLE_DAYS - 1L);
-    Debt first =
-        next.debts().get(new DebtId("debt-c1-0_0|rural|poor_peasant>0_0|rural|landlord-grain"));
-    Debt second =
-        next.debts().get(new DebtId("debt-c2-0_0|rural|poor_peasant>0_0|rural|landlord-grain"));
+    DebtContract first = next.debtContracts().get(legacyDebtId());
+    DebtContract second = next.debtContracts().get(legacyDebtId());
     assertThat(first).as("★ 旧条没被新周期覆盖").isNotNull();
     assertThat(second).as("★ 新周期开新条（id 里的周期号不同）").isNotNull();
     assertThat(first.principal())
@@ -159,89 +159,85 @@ class EconomyDebtTest {
     assertThat(second.principal())
         .as("周期 2 的本金 = 第 11~13 天的缺口之和（尚未计息：周期 2 还没关账）")
         .isEqualTo(deficitOver(CYCLE_DAYS + 3L) - deficitOver(CYCLE_DAYS));
-    assertThat(first.dueCycle()).as("周期 1 借的 ⇒ 到期周期 2").isEqualTo(2L);
-    assertThat(second.dueCycle()).isEqualTo(3L);
+    assertThat(first.dueCycle()).as("周期 1 借的 ⇒ 到期周期 2").hasValue(2L);
+    assertThat(second.dueCycle()).hasValue(3L);
   }
 
   /**
-   * ★★ **id 的三条硬要求**（v2 spec §7.2）：确定性 / **不含 {@code "."}** / 跨周期不同。
+   * ★★ **E4a 连续合同 id 的三条硬要求**（v2 spec §7.2 的旧口径 + E4a 新身份）：确定性 / **不含 {@code "."}** / 四元组不同则不同。
    *
-   * <p>★ 直接调 {@code debtIdOf}（包内可见的唯一拼写点）：同一元组两次调用**逐值相同**、换任一维度都不同。 不吃"再跑一遍结算对拍"的回环（那是同义反复）。
+   * <p>★ <b>语义变化</b>：旧 {@code debt-c<周期>-...} 的“周期在 id 里、跨周期新开条”已被 E4a 的连续合同取代 —— 同一 {@code
+   * (debtor, creditor, unit, terms)} **跨周期恒同一条**，故旧“跨周期必须不同”的断言按新语义删除，改为 “同一四元组两次调用逐值相同”。直接调 {@link
+   * EconomySettlement#legacyGrainDebtId} 与 {@link DebtContractId#idOf} 两个
+   * package-visible/契约层拼写点，不吃“再跑一遍结算对拍”的回环。
    */
   @Test
-  void theDebtIdIsDeterministicCycleScopedAndFreeOfDots() {
-    DebtId base =
-        EconomySettlement.debtIdOf(
-            1L,
-            EconomyFixtures.hh(PEASANT_KEY),
-            EconomyFixtures.hh(LANDLORD_KEY),
-            Optional.of(GRAIN));
+  void theDebtContractIdIsDeterministicContinuousAndFreeOfDots() {
+    var debtor = EconomyFixtures.hh(PEASANT_KEY);
+    var creditor = EconomyFixtures.hh(LANDLORD_KEY);
+    DebtContractId base = EconomySettlement.legacyGrainDebtId(debtor, creditor);
 
-    assertThat(
-            EconomySettlement.debtIdOf(
-                1L,
-                EconomyFixtures.hh(PEASANT_KEY),
-                EconomyFixtures.hh(LANDLORD_KEY),
-                Optional.of(GRAIN)))
-        .as("确定性：同一 (周期, 债务人, 债权人, 商品) ⇒ 同一个 id")
+    assertThat(EconomySettlement.legacyGrainDebtId(debtor, creditor))
+        .as("确定性：同一 (债务人, 债权人, unit, terms) ⇒ 同一个 id")
         .isEqualTo(base);
     assertThat(base.value())
         .as("★ 不含 \".\"（debt.<id> 在 AddressParser 的**第一个点**处被切开）")
         .doesNotContain(".");
-    assertThat(
-            EconomySettlement.debtIdOf(
-                2L,
-                EconomyFixtures.hh(PEASANT_KEY),
-                EconomyFixtures.hh(LANDLORD_KEY),
-                Optional.of(GRAIN)))
-        .as("跨周期必须不同（否则新周期会覆盖旧条）")
-        .isNotEqualTo(base);
-    assertThat(
-            EconomySettlement.debtIdOf(
-                1L,
-                EconomyFixtures.hh(LANDLORD_KEY),
-                EconomyFixtures.hh(PEASANT_KEY),
-                Optional.of(GRAIN)))
+    assertThat(EconomySettlement.legacyGrainDebtId(creditor, debtor))
         .as("债务人/债权人反过来 ⇒ 另一条债（方向是身份的一部分）")
         .isNotEqualTo(base);
-    assertThat(
-            EconomySettlement.debtIdOf(
-                1L,
-                EconomyFixtures.hh(PEASANT_KEY),
-                EconomyFixtures.hh(LANDLORD_KEY),
-                Optional.of(new CommodityId("timber"))))
-        .as("商品不同 ⇒ 另一条债")
-        .isNotEqualTo(base);
-    assertThat(
-            EconomySettlement.debtIdOf(
-                    1L,
-                    EconomyFixtures.hh(PEASANT_KEY),
-                    EconomyFixtures.hh(LANDLORD_KEY),
-                    Optional.empty())
-                .value())
-        .as("货币债（v1 不产生）走同一段位、不与之相撞")
-        .isNotEqualTo(base.value());
+    DebtContractId timber =
+        DebtContractId.idOf(
+            debtor,
+            creditor,
+            DebtUnit.commodity(new CommodityId("timber")),
+            DebtTerms.legacyDefault(EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE));
+    assertThat(timber).as("★ unit 不同（粮 vs 木材）⇒ 另一条债（E4a 的显式 unit 维）").isNotEqualTo(base);
+    DebtContractId money =
+        DebtContractId.idOf(
+            debtor,
+            creditor,
+            DebtUnit.money(new CurrencyId("silver")),
+            DebtTerms.legacyDefault(EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE));
+    assertThat(money).as("货币债与实物债是两个 unit，identityToken 有前缀区分 ⇒ 不与之相撞").isNotEqualTo(base);
+    DebtContractId otherTerms =
+        DebtContractId.idOf(
+            debtor,
+            creditor,
+            DebtUnit.commodity(GRAIN),
+            DebtTerms.legacyDefault(EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE + 1));
+    assertThat(otherTerms).as("★ terms 不同不静默合并（E4a 的身份维包含全部条款）").isNotEqualTo(base);
   }
 
   /**
-   * ★★ **确定性（重放可比）**：同一份输入结算两次 ⇒ **债务 id 集合与本金逐值相同**（含计息后的本金）。
+   * ★★ **确定性（重放可比）**：同一份输入结算两次 ⇒ **连续合同 id 集合与本金逐值相同**（含计息后的本金）。
    *
-   * <p>★ 判别力与其**边界**（均实测）：它钉的是 {@code debtIdOf} **这个函数**的纯性 —— 实测变异"把结算里的调用点换成计数器式 id" （{@code
-   * debt-<day>-<序号>}）时**本条仍绿**（函数没被改），那时红的是聚合/上界/端到端 id 三条。⇒ 调用点是否真的用它，由那三条守； 本条只守"函数本身确定性"。
+   * <p>★ <b>新语义夹具</b>：本文件的“无收入贫农”在 R3 收紧信用线后不会产生新借入（9 个旧用例因此 @Disabled，留 T2 重写）。为让这条 active
+   * 用例仍然真的覆盖债务状态，这里显式种入一条 **E4a 连续合同**（不是假收入/不绕过借粮路径）， 再对两轮推进做逐值对拍。它钉的是重放可比：同一输入 ⇒ 合同
+   * principal/状态逐值相同。
    */
   @Test
-  void theSameInputTwiceYieldsTheSameDebtIdsAndPrincipals() {
-    EconomyFixtures.World first = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
-    EconomyFixtures.World second = hex(CYCLE_DAYS, 0L, LANDLORD_JAR);
+  void theSameInputTwiceYieldsTheSameDebtContractsAndPrincipals() {
+    EconomyFixtures.World first = withInitialGrainDebt(hex(CYCLE_DAYS, 0L, LANDLORD_JAR));
+    EconomyFixtures.World second = withInitialGrainDebt(hex(CYCLE_DAYS, 0L, LANDLORD_JAR));
+
+    assertThat(first.data().debtContracts())
+        .as("夹具前提：连续合同已在初态里（键由 (debtor, creditor, unit, terms) 派生）")
+        .containsOnlyKeys(legacyDebtId());
 
     EconomyData once = EconomyFixtures.advance(first.data(), first.goods(), 0L, 2L * CYCLE_DAYS);
     EconomyData twice = EconomyFixtures.advance(second.data(), second.goods(), 0L, 2L * CYCLE_DAYS);
 
-    assertThat(once.debts()).as("两次结算的债务表逐值相同（id 集合 + 本金）").isEqualTo(twice.debts());
-    assertThat(once.debts().keySet()).as("id 集合").isEqualTo(twice.debts().keySet());
-    assertThat(once.debts().values().stream().map(Debt::principal).sorted().toList())
+    assertThat(once.debtContracts()).as("两次结算的合同表非空（本用例真的在测债务状态）").isNotEmpty();
+    assertThat(once.debtContracts())
+        .as("两次结算的合同表逐值相同（id 集合 + 本金/状态）")
+        .isEqualTo(twice.debtContracts());
+    assertThat(once.debtContracts().keySet()).as("id 集合").isEqualTo(twice.debtContracts().keySet());
+    assertThat(
+            once.debtContracts().values().stream().map(DebtContract::principal).sorted().toList())
         .as("本金逐值相同")
-        .isEqualTo(twice.debts().values().stream().map(Debt::principal).sorted().toList());
+        .isEqualTo(
+            twice.debtContracts().values().stream().map(DebtContract::principal).sorted().toList());
     assertThat(once).as("★ 更强的形态：整份终态逐值相同（含流水）").isEqualTo(twice);
   }
 
@@ -336,10 +332,8 @@ class EconomyDebtTest {
     long secondInterestOwn =
         secondCycleDayStart * EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE / 1000L;
 
-    Debt first =
-        next.debts().get(new DebtId("debt-c1-0_0|rural|poor_peasant>0_0|rural|landlord-grain"));
-    Debt second =
-        next.debts().get(new DebtId("debt-c2-0_0|rural|poor_peasant>0_0|rural|landlord-grain"));
+    DebtContract first = next.debtContracts().get(legacyDebtId());
+    DebtContract second = next.debtContracts().get(legacyDebtId());
     assertThat(first.principal())
         .as("周期 1 的债在**两次**周期末各计一次（%d + %d + %d）", perCycle, firstInterest, secondInterest)
         .isEqualTo(firstAfterOne + secondInterest)
@@ -358,7 +352,7 @@ class EconomyDebtTest {
     assertThat(peasantFlow.netSurplus())
         .as("netSurplus = income(0) − 消费 − 利息（§3.3 的口径：并入本金的利息照样进赤字）")
         .isEqualTo(-(peasantFlow.consumed().get(GRAIN) + 12_786L));
-    assertThat(next.debts().values().stream().mapToLong(Debt::principal).sum())
+    assertThat(next.debtContracts().values().stream().mapToLong(DebtContract::principal).sum())
         .as("存量本金 = 两条之和（利息只进本金一次，没有影子字段）")
         .isEqualTo(346_119L + 339_333L);
   }
@@ -386,8 +380,8 @@ class EconomyDebtTest {
     long once = perCycle + dayStartInterest;
     long twice = perCycle + 2L * dayStartInterest;
     assertThat(next.industries()).as("两个产业（两个格）确实在同一天关账").hasSize(2);
-    assertThat(next.debts()).as("两条债（每格一条）").hasSize(2);
-    assertThat(next.debts().values().stream().map(Debt::principal).toList())
+    assertThat(next.debtContracts()).as("两条债（每格一条）").hasSize(2);
+    assertThat(next.debtContracts().values().stream().map(DebtContract::principal).toList())
         .as("★ 每条债只计一次息（计两遍会给 %d）", twice)
         .containsOnly(once)
         .doesNotContain(twice);
@@ -420,11 +414,11 @@ class EconomyDebtTest {
 
     int slots = 2; // 贫农 + 地主（本夹具的槽位数）
     int upperBound = cycles * hexes * slots * (slots - 1);
-    assertThat(next.debts().size())
+    assertThat(next.debtContracts().size())
         .as("★ 上界：周期数 × 格数 × 债权人对数（%d）", upperBound)
         .isLessThanOrEqualTo(upperBound);
-    assertThat(next.debts().size()).as("实际条数 = 每格每周期一对债权债务人").isEqualTo(cycles * hexes);
-    assertThat(next.debts().size())
+    assertThat(next.debtContracts().size()).as("实际条数 = 每格每周期一对债权债务人").isEqualTo(cycles * hexes);
+    assertThat(next.debtContracts().size())
         .as("★ 旧口径（每天每对一条）会给 %d 条 ⇒ 聚合后必须严格更少", days * hexes)
         .isLessThan(days * hexes);
     assertThat(next.meta().orElseThrow().lastClosedCycle())
@@ -493,7 +487,7 @@ class EconomyDebtTest {
 
     assertThat(once).as("§十一：一次 20 天 == 20 次单日（终态逐值，含债务表）").isEqualTo(chained);
     assertThat(once.flows()).as("流水逐值相同（含 interestDue）").isEqualTo(chained.flows());
-    assertThat(once.debts().values().stream().mapToLong(Debt::principal).sum())
+    assertThat(once.debtContracts().values().stream().mapToLong(DebtContract::principal).sum())
         .as("计息只发生两次（第 10、20 天），不是 20 次；基数 = 各次当日起始本金（口径 B，见 interestAccrues…）")
         .isEqualTo(346_119L + 339_333L);
   }
@@ -520,10 +514,16 @@ class EconomyDebtTest {
       EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 1L);
       CohortKey lenderKey = new CohortKey(HEX, ResidenceKind.RURAL, lenderStratum);
 
-      assertThat(next.debts()).as("★ %s 必须真的放得出贷（匹配不上 ⇒ 这里一条债都没有）", lenderStratum).hasSize(1);
-      Debt only = next.debts().values().iterator().next();
-      assertThat(only.debtor()).as("%s 放贷时的债务人仍是贫农", lenderStratum).isEqualTo(PEASANT_KEY);
-      assertThat(only.creditor()).as("★ 债权人 = %s 那一行", lenderStratum).isEqualTo(lenderKey);
+      assertThat(next.debtContracts())
+          .as("★ %s 必须真的放得出贷（匹配不上 ⇒ 这里一条债都没有）", lenderStratum)
+          .hasSize(1);
+      DebtContract only = next.debtContracts().values().iterator().next();
+      assertThat(only.debtor())
+          .as("%s 放贷时的债务人仍是贫农", lenderStratum)
+          .isEqualTo(EconomyFixtures.hh(PEASANT_KEY));
+      assertThat(only.creditor())
+          .as("★ 债权人 = %s 那一行", lenderStratum)
+          .isEqualTo(EconomyFixtures.hh(lenderKey));
       assertThat(only.principal())
           .as("本金 = 第 1 天缺口（%s 缸厚，够全额）", lenderStratum)
           .isEqualTo(deficitOn(1L));
@@ -692,6 +692,34 @@ class EconomyDebtTest {
         Map.of(GRAIN, EconomyVocabulary.dailyRationMilli(population, 1L)),
         Map.of(),
         0L);
+  }
+
+  /**
+   * ★ E4a 起粮债只有**一条连续合同**（同一 (债务人, 债权人, unit, terms) 跨周期恒同条）。本文件 9 个旧债务用例保持
+   * {@code @Disabled}，仅借此让它们按新形状编译；具体语义由 T2 按带收入场景重写。
+   */
+  private static DebtContractId legacyDebtId() {
+    return EconomySettlement.legacyGrainDebtId(
+        EconomyFixtures.hh(PEASANT_KEY), EconomyFixtures.hh(LANDLORD_KEY));
+  }
+
+  /** 给测试世界种入一条贫农→地主的连续粮债（只用于 active 重放对拍；不制造任何库存/不绕过借粮路径）。 */
+  private static EconomyFixtures.World withInitialGrainDebt(EconomyFixtures.World world) {
+    DebtContractId id = legacyDebtId();
+    DebtContract contract =
+        new DebtContract(
+            id,
+            EconomyFixtures.hh(PEASANT_KEY),
+            EconomyFixtures.hh(LANDLORD_KEY),
+            DebtUnit.commodity(GRAIN),
+            DebtTerms.legacyDefault(EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE),
+            100_000L,
+            0L,
+            OptionalLong.empty(),
+            OptionalLong.empty(),
+            DebtStatus.NORMAL);
+    return new EconomyFixtures.World(
+        world.data().withDebtContracts(Map.of(id, contract)), world.goods());
   }
 
   /** 全部家户的粮余额之和（★ H1：从**会话工作副本**读 —— 行里没有 {@code goods} 了）。 */

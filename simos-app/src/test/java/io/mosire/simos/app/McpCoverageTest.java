@@ -10,6 +10,7 @@ import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTranspor
 import io.modelcontextprotocol.spec.McpSchema;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.core.CoreSimos;
@@ -21,11 +22,16 @@ import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.id.AssetShareId;
+import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -164,19 +170,41 @@ class McpCoverageTest {
           "social.UpdateCity",
           // ★ R1（T3）：人口批次的创世入口。
           "social.SeedGroups",
-          // ★ R2a：经济播种（一次种一格；放最后 ⇒ 不移动前面各命令的 revision 号）。
+          // ★ R2a/E1–E6：经济命令（一次种一格 + 后续窄命令；放最后 ⇒ 不移动前面各命令的 revision 号）。
+          "economy.AddDemand",
+          "economy.CancelDemand",
+          "economy.GmAdjust",
+          "economy.MigrateHousehold",
+          "economy.RegisterCandidate",
           "economy.Seed",
+          "economy.SetMarketPrice",
+          "economy.SwitchMode",
+          "economy.TransferAssetShare",
           // ★ S1 阶段 2：actor 播种（同 economy，放最后 ⇒ 不移动前面各命令的 revision 号）。
           "actor.Seed");
 
   /**
-   * ★★ H1：{@code economy.Seed} 那条最小载荷在 (1,1) 落的那个家户 —— id 由 {@link HouseholdActors} 拼 （家户 id
-   * 的**唯一拼写点**；本文件不手写 {@code <hex>:<residence>:<stratum>} 那个格式）。
+   * ★★ H1：{@code economy.Seed} 那条最小载荷在 (1,1) 落的那个家户 —— id 由 {@link HouseholdId#ofSeed} 拼 （家户 id
+   * 的**唯一拼写点**；actor id 再由 {@link HouseholdActors#idOf(HouseholdId)} 拼，本文件不手写格式）。
    */
-  private static final String HOUSEHOLD_ID =
-      HouseholdActors.idOf(
-          new CohortKey(
-              new HexCoord(1, 1), ResidenceKind.RURAL, new SocialClassId("poor_peasant")));
+  private static final HouseholdId SEEDED_HOUSEHOLD =
+      HouseholdId.ofSeed(H11, ResidenceKind.RURAL, new SocialClassId("poor_peasant"));
+
+  private static final String HOUSEHOLD_ID = HouseholdActors.idOf(SEEDED_HOUSEHOLD);
+
+  /** E6b：GM-only 命令在本夹具没有前置组织/合同，无法提交成功；单独断言其具名拒绝。 */
+  private static final Set<String> GM_ONLY_PRECONDITION_TYPES =
+      Set.of("economy.SwitchMode", "economy.GmAdjust");
+
+  /** 真实播种归一化出的农地份额身份（{@code (farm@1_1, LAND, ESTATE:farm@1_1, OWNED, 0)}）。 */
+  private static final AssetShareId SEEDED_LAND_SHARE =
+      AssetShare.idOf(
+          new IndustryId("farm@1_1"),
+          AssetKind.LAND,
+          RegimeOperators.defaultOperator(new RegimeId("feudal"), new IndustryId("farm@1_1")),
+          RegimeOperators.defaultOperator(new RegimeId("feudal"), new IndustryId("farm@1_1")),
+          AssetShare.RightKind.OWNED,
+          0L);
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
   private static final Map<String, String> MINIMAL_PAYLOADS = new LinkedHashMap<>();
@@ -342,8 +370,8 @@ class McpCoverageTest {
             + "\"laborWeightPerMille\":300},"
             + "\"slots\":[{\"id\":\"poor_peasant\",\"name\":\"贫农\","
             + "\"laborParticipationPerMille\":950}]}],"
-            + "\"classes\":[{\"residence\":\"rural\",\"slot\":\"poor_peasant\",\"population\":100,"
-            + "\"laborMilli\":58000,\"participationPerMille\":950}]}]}");
+            + "\"classes\":[{\"residence\":\"rural\",\"slot\":\"poor_peasant\",\"population\":1000,"
+            + "\"laborMilli\":580000,\"participationPerMille\":950}]}]}");
     // ★ S1 阶段 2（2026-09-26）：actor 播种。放最后 ⇒ 不移动前面各命令的 revision 号；
     //   一格一主体 + 一本库存（必须产生**非空**变更集）。
     //   ★★ H0.5（2026-09-27，裁定 S3）：产权行 `holdings[]` 随 `AssetHolding` **整块退役**
@@ -369,6 +397,32 @@ class McpCoverageTest {
             + HOUSEHOLD_ID
             + "\"},"
             + "\"location\":{\"q\":1,\"r\":1},\"balances\":{\"grain\":2241000}}]}]}");
+
+    // ── E1–E6 的 economy 窄命令：追加在最后（不移动既有 revision 号）；每条都备最小合法载荷。──
+    MINIMAL_PAYLOADS.put(
+        "economy.SetMarketPrice", "{\"q\":1,\"r\":2,\"commodity\":\"grain\",\"price\":2}");
+    MINIMAL_PAYLOADS.put(
+        "economy.AddDemand",
+        "{\"id\":\"demand-coverage\",\"scope\":\"HEX\",\"hex\":{\"q\":1,\"r\":2},"
+            + "\"commodity\":\"grain\",\"kind\":\"RECURRING\",\"unit\":\"TOTAL\","
+            + "\"quantityPerCycle\":1}");
+    MINIMAL_PAYLOADS.put("economy.CancelDemand", "{\"demand\":\"demand-coverage\"}");
+    MINIMAL_PAYLOADS.put(
+        "economy.RegisterCandidate",
+        "{\"id\":\"candidate-coverage\",\"version\":1,\"output\":\"grain\","
+            + "\"outputPerUnit\":{\"grain\":1},\"inputPerUnit\":{},"
+            + "\"requiredAssets\":{\"LAND\":1},\"laborPerUnit\":1,\"buildDays\":0,"
+            + "\"cycleDays\":120,\"regime\":\"feudal\",\"laborSource\":\"SELF\","
+            + "\"acceptedRightKinds\":[\"OWNED\"],\"name\":\"覆盖候选\"}");
+    MINIMAL_PAYLOADS.put(
+        "economy.MigrateHousehold",
+        "{\"household\":\"" + SEEDED_HOUSEHOLD.value() + "\",\"toHex\":\"1_2\"}");
+    MINIMAL_PAYLOADS.put(
+        "economy.TransferAssetShare",
+        "{\"share\":\""
+            + SEEDED_LAND_SHARE.value()
+            + "\",\"quantity\":1,\"toOwner\":{\"kind\":\"HOUSEHOLD\",\"id\":\"house-7\"},"
+            + "\"toOperator\":{\"kind\":\"HOUSEHOLD\",\"id\":\"house-7\"}}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -420,11 +474,13 @@ class McpCoverageTest {
     // 1. catalog 经 MCP 读回，与注册面一致（R5 的载体）。
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
-        .as("catalog 列出的 type 与 Shell 注册的 50 个 handler 同源")
+        .as("catalog 列出的 type 与 Shell 注册的 60 个 handler 同源（R4/E6 后含 economy 全族）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
+    List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
+    committableCatalogTypes.removeAll(GM_ONLY_PRECONDITION_TYPES);
     assertThat(MINIMAL_PAYLOADS.keySet())
-        .as("用例为每个 catalog type 都备了载荷（漏一个就会在这里红）")
-        .containsExactlyInAnyOrderElementsOf(catalogTypes);
+        .as("除 2 条需要前置状态的 GM-only 命令外，每个 catalog type 都备了载荷（%s）", GM_ONLY_PRECONDITION_TYPES)
+        .containsExactlyInAnyOrderElementsOf(committableCatalogTypes);
 
     // 2. 逐类经 MCP 提交（每条都过审批 APPROVE_ONCE），断言全部 commit 且 head 逐条前进。
     List<String> coverage = new ArrayList<>();
@@ -451,9 +507,48 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as(
-            "52 条命令各推一格（R1 起 +1 = social.SeedGroups；R2a 起 +1 = economy.Seed；S1 阶段 2 起 +1 = actor.Seed）")
-        .isEqualTo(53L);
+        .as("每条可提交命令各推一格；GM-only 两条留在下一段验证具名拒绝")
+        .isEqualTo(1L + MINIMAL_PAYLOADS.size());
+
+    // 2a. MigrateHousehold 在上面的覆盖里把家户迁到了 (1,2)，但 actor 账仍在 (1,1)
+    //     ⇒ 后续 simos.advance 会 fail-closed（家户账 location 对不上）。这里再迁回 (1,1)：
+    //     仍走真 MCP + 真命令，作为覆盖序列之后的**恢复步**（不是额外类型覆盖）。
+    long headBeforeRestore = shell.coreSimos().head(main()).orElseThrow().value();
+    McpSchema.CallToolResult restore =
+        submitViaMcp(
+            "economy.MigrateHousehold",
+            "{\"household\":\"" + SEEDED_HOUSEHOLD.value() + "\",\"toHex\":\"1_1\"}",
+            headBeforeRestore);
+    assertThat(restore.isError()).as(wireText(restore)).isFalse();
+    assertThat(JSON.readTree(wireText(restore)).get("result").asText()).isEqualTo("committed");
+
+    // 2b. GM-only（economy.SwitchMode / economy.GmAdjust）：在本夹具没有可满足的前置状态
+    //     （组织 / 债务合同）⇒ 必须经 MCP 可提交但被**具名拒绝**，且不推 revision。
+    for (String gmOnlyType : GM_ONLY_PRECONDITION_TYPES) {
+      long headBeforeGmOnly = shell.coreSimos().head(main()).orElseThrow().value();
+      McpSchema.CallToolResult rejected =
+          submitViaMcp(
+              gmOnlyType,
+              gmOnlyType.equals("economy.SwitchMode")
+                  ? "{\"organizationId\":\"org-missing\",\"toModeId\":\"mode-missing\","
+                      + "\"retainOriginalPerMille\":1000,\"effectiveDay\":7,\"reason\":\"coverage\"}"
+                  : "{\"adjustment\":\"forgiveDebt\","
+                      + "\"parameters\":{\"debtContractId\":\"missing-debt\"},"
+                      + "\"reason\":\"coverage\"}",
+              headBeforeGmOnly);
+      assertThat(rejected.isError())
+          .as("%s 在缺前置状态时必须是具名拒绝: %s", gmOnlyType, wireText(rejected))
+          .isTrue();
+      String wire = wireText(rejected);
+      assertThat(wire).startsWith("[mosire:code=REJECTED]");
+      JsonNode body = JSON.readTree(wire.substring("[mosire:code=REJECTED]".length()));
+      assertThat(body.get("result").asText()).isEqualTo("rejected");
+      assertThat(body.get("reason").asText()).as("%s 的拒绝原因", gmOnlyType).isNotBlank();
+      assertThat(shell.coreSimos().head(main()).orElseThrow().value())
+          .as("%s 被拒不得推 revision", gmOnlyType)
+          .isEqualTo(headBeforeGmOnly);
+      System.out.println("[T11-COVERAGE] type=" + gmOnlyType + " result=rejected");
+    }
 
     // 3. 世界真的变了（不是"没报错"）：u-1 被解散；CreateUnit 建的 u-2 与三条编制命令的
     //    u-3/u-4/u-5 都还在（T9 新增：编制命令各挂在不同单位上，避免同一时刻对同一条段序列重复落段）。

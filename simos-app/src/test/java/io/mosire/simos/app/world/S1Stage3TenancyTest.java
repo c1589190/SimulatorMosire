@@ -15,6 +15,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.map.hex.HexCoord;
@@ -110,12 +111,12 @@ class S1Stage3TenancyTest {
   /** ★★ I3.2：租佃档<b>存在</b>（登记在推导表里），且默认经营主体是<b>佃农家户</b>、不是地主。 */
   @Test
   void theTenancyRegimeIsRegisteredAndDefaultsToTheTenantHousehold() {
-    Industry industry = seededIndustry(RegimeOperators.TENANT);
+    ProductionUnit unit = seededUnit(RegimeOperators.TENANT);
 
-    assertThat(industry.operator().kind())
+    assertThat(unit.operator().kind())
         .as("★ 佃农家户经营（spec §六 第四行）—— 不是 ESTATE")
         .isEqualTo(ActorKind.HOUSEHOLD);
-    assertThat(industry.operator()).isNotEqualTo(ESTATE);
+    assertThat(unit.operator()).isNotEqualTo(ESTATE);
   }
 
   /**
@@ -129,7 +130,9 @@ class S1Stage3TenancyTest {
    */
   @Test
   void theAssetOwnerIsNotTheOperator() {
-    Industry industry = seededIndustry(RegimeOperators.TENANT, OPERATOR_FIELD);
+    EconomyData seeded = seededEconomy(RegimeOperators.TENANT, OPERATOR_FIELD);
+    Industry industry = seeded.industries().get(FARM);
+    ProductionUnit unit = unitOf(seeded);
     ActorData data =
         ActorData.empty()
             .withActor(new Actor(ESTATE, "庄园"))
@@ -142,8 +145,8 @@ class S1Stage3TenancyTest {
     assertThat(TENANT_HOUSEHOLD)
         .as("★ 前置：夹具必须**非派生** —— operator 不得等于该档的推导值（否则「显式绑定被重新推导覆盖」的变异体存活）")
         .isNotEqualTo(RegimeOperators.defaultOperator(new RegimeId(RegimeOperators.TENANT), FARM));
-    assertThat(industry.operator())
-        .as("★ 前置：载荷里显式写的那个 operator 逐值活到 Industry（没有被边缘换成别的）")
+    assertThat(unit.operator())
+        .as("★ 前置：载荷里显式写的那个 operator 逐值活到 ProductionUnit（没有被边缘换成别的）")
         .isEqualTo(TENANT_HOUSEHOLD);
     assertThat(data.accounts())
         .as("★ 前置：这本账真的在模型里 —— 否则下面的 allMatch / noneMatch 在空集上恒真，空断言不是证据")
@@ -157,17 +160,23 @@ class S1Stage3TenancyTest {
     // ── 两个方向：经营那条记录（**反向**）──────────────────────────────────────────────
     assertThat(data.accounts().keySet())
         .as("★★ 反向：经营者名下**一条记录都没有** ⇒ 两个事实互不牵连")
-        .noneMatch(key -> key.owner().equals(industry.operator()));
-    assertThat(industry.operator())
-        .as("★★ 同一格：账是庄园的、活是佃农家户干的（spec §2.3 的原文形状）")
-        .isNotEqualTo(ESTATE);
+        .noneMatch(key -> key.owner().equals(unit.operator()));
+    assertThat(unit.operator()).as("★★ 同一格：账是庄园的、活是佃农家户干的（spec §2.3 的原文形状）").isNotEqualTo(ESTATE);
   }
 
   // ── 夹具：真载荷 → 真 handler → 变更集重建（照 EconomyRealScaleSeedBottleneckTest 的 REF / snapshots 写法）──
 
   /** 真载荷，<b>不带</b> {@code operator} 键 ⇒ 走载荷边缘的 regime 推导（{@code RegimeOperators}）。 */
-  private static Industry seededIndustry(String regime) {
-    return seededIndustry(regime, "");
+  private static ProductionUnit seededUnit(String regime) {
+    return unitOf(seededEconomy(regime, ""));
+  }
+
+  /** 该载荷重建后本产业对应的 unit（operator/进度/产量的真值落点）。 */
+  private static ProductionUnit unitOf(EconomyData data) {
+    return data.units().values().stream()
+        .filter(unit -> unit.industry().equals(FARM))
+        .findFirst()
+        .orElseThrow(() -> new IllegalStateException("载荷未造出 " + FARM + " 的 unit"));
   }
 
   /**
@@ -184,7 +193,7 @@ class S1Stage3TenancyTest {
    *
    * @param operatorField {@code industries[]} 里的整段可选键（含前导逗号）；空串 = 该键<b>整段缺席</b>
    */
-  private static Industry seededIndustry(String regime, String operatorField) {
+  private static EconomyData seededEconomy(String regime, String operatorField) {
     String payload =
         "{\"mapId\":\"tenancy\",\"rulesVersion\":\"aggregate-v1\",\"entries\":[{\"q\":0,\"r\":0,"
             + "\"industries\":[{\"id\":\""
@@ -207,9 +216,7 @@ class S1Stage3TenancyTest {
         .as("真载荷必须被真 handler 接受：%s", outcome)
         .isInstanceOf(HandlerOutcome.Applied.class);
     return EconomyChangeSet.apply(
-            (EconomyChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), EconomyData.empty())
-        .industries()
-        .get(FARM);
+        (EconomyChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), EconomyData.empty());
   }
 
   private static Map<String, Snapshot> snapshots(EconomyData data) {
