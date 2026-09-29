@@ -45,6 +45,7 @@ import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
+import io.mosire.simos.economy.model.DebtCapacity;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DebtIndex;
 import io.mosire.simos.economy.model.DemandEntry;
@@ -57,6 +58,7 @@ import io.mosire.simos.economy.model.ProductionCandidate;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.time.ClassTransition;
 import io.mosire.simos.economy.time.ClassTransitionFeed;
+import io.mosire.simos.economy.time.DebtCapacityBook;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.EntryOutcome;
 import io.mosire.simos.economy.time.EntryOutcomeFeed;
@@ -607,6 +609,7 @@ public final class ApiViews {
     Map<HouseholdId, List<DebtContractId>> creditsByCohort =
         DebtIndex.byCreditor(data.debtContracts());
     List<Map<String, Object>> classes = new ArrayList<>();
+    List<HouseholdId> classKeys = new ArrayList<>();
     for (HouseholdId key : cohortKeysAt(data, coord)) {
       ClassRow row = data.classes().get(key);
       population += row.population();
@@ -631,8 +634,10 @@ public final class ApiViews {
           creditPrincipal += debt.principal();
         }
       }
-      classes.add(
-          classRowView(key, row, data.flows().get(key), actors, credits, data.debtContracts()));
+      Map<String, Object> classView =
+          classRowView(key, row, data.flows().get(key), actors, credits, data.debtContracts());
+      classes.add(classView);
+      classKeys.add(key);
     }
     view.put("population", population);
     view.put("laborMilli", laborMilli);
@@ -721,6 +726,25 @@ public final class ApiViews {
       }
       grainStockByHousehold.merge(key, account.balances().getOrDefault(GRAIN, 0L), Long::sum);
     }
+    // ★★ E4b：逐户 debtCapacity（F 四项 / 可质押余粮 / 既有债 / unpriced / headroom；唯一算法在
+    //   {@link DebtCapacityBook}）。库存从 actor 侧账本现取：账缺席 ⇒ 该行的 pledgeable/headroom 记 null +
+    //   具名原因（{@link #DEBT_CAPACITY_STOCK_UNREADABLE}），不填 0 冒充。
+    Map<HouseholdId, DebtCapacity> debtCapacities =
+        DebtCapacityBook.capacitiesForState(
+            data,
+            classKeys,
+            key ->
+                grainStockByHousehold.containsKey(key)
+                    ? OptionalLong.of(grainStockByHousehold.get(key))
+                    : OptionalLong.empty());
+    for (int i = 0; i < classKeys.size(); i++) {
+      classes
+          .get(i)
+          .put(
+              "debtCapacity",
+              debtCapacityView(classKeys.get(i), debtCapacities.get(classKeys.get(i))));
+    }
+    view.put("debtCapacity", debtCapacityBlockView(classKeys, debtCapacities));
     // ★ 索引一次、逐户 O(1)：读口一格里通常 4 行，但分类要扫 UsesRight/配额/租规则，不能每户各扫一遍。
     HouseholdClassRule.Index classIndex = HouseholdClassRule.Index.of(data);
     List<Map<String, Object>> householdConditions = new ArrayList<>();
@@ -1343,6 +1367,8 @@ public final class ApiViews {
     view.put("moneyIssuance", moneyIssuanceView(economy, moneyTotals(actors)));
     view.put("moneyByActorKind", moneyByActorKind(actors));
     view.put("moneyByHouseholdClass", moneyByHouseholdClass(economy, actors));
+    // ★★ E4b：本格每户/合计 debtCapacity（与 economyHex 同一份读数与窗口；见 DebtCapacityBlock）。
+    view.put("debtCapacity", debtCapacityBlock(economy, actors, coord));
     view.put("rowGoodsTotal", rowGoodsTotal);
     return view;
   }
@@ -1628,6 +1654,177 @@ public final class ApiViews {
     view.put("effectiveDemand", sortedCommodities(row.effectiveDemand()));
     view.put("flow", flowView(flow));
     return view;
+  }
+
+  /** ★★ E4b：粮库存读不到时 headroom/可质押余粮的具名缺失（唯一拼写点；绝不填 0 冒充）。 */
+  private static final String DEBT_CAPACITY_STOCK_UNREADABLE =
+      "该家户在本格 ActorData 里没有 GoodsAccount（粮库存读不到）⇒ 可质押余粮/可质押真实资产价值/headroom"
+          + "记 null；缺失不是 0，也不拿别的账本顶替";
+
+  /** ★★ E4b：三个流量与库存的窗口标注（挂在 debtCapacity 块上；逐字段口径与 {@link DebtCapacity} 类注同源）。 */
+  private static Map<String, Object> debtCapacityWindowView() {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("afterAllocationGrainIncome", "本周期已实现（FlowRow.income[grain]；逐日累加，新周期第一天清零；没有 = 0）");
+    view.put("basicRation", "本周期累计（ClassRow.cycleNaturalNeedMilli；逐日按日初人口累加，新周期第一天重置为当天那一份）");
+    view.put(
+        "nextRoundNecessaryInput",
+        "下一周期配方口径（读口时点的 unit/资产/状态）；nextRoundNecessaryInputSource=NON_RATION_CONSUMED_PROXY 时"
+            + "是本周期实际非口粮投入的代理，不是真实下一轮投入");
+    view.put("taxPaid", "本周期已缴（FlowRow.taxPaid；当前生产路径恒 0，照实读）");
+    view.put("pledgeableGrainSurplusValue", "时点：max(0, 粮库存 − 本周期自需)，与放贷方余粮同一算式、同一保留额；库存读不到 ⇒ null");
+    view.put(
+        "pledgeableAssetPolicyValue", "时点：E4b 的显式钩子恒 0（E5 的 LiquidationPolicy/价格源未落地）；单独列出，不静默省略");
+    view.put("existingDebt", "时点：该家户名下同 unit（粮）的债务本金合计；只减这一部分");
+    view.put("unpricedDebtAmount", "时点：非粮 unit 且不能折算的债务本金原始和（各债各自计量单位；仅审计，不参与 headroom）");
+    view.put("headroom", "时点：max(0, κ×F÷1000 + 可质押真实资产价值 − existingDebt)");
+    return view;
+  }
+
+  /** ★★ E4b：一个家户的 debtCapacity 读数（F 四项、headroom、既有债、unpriced 部分）。 */
+  private static Map<String, Object> debtCapacityView(HouseholdId key, DebtCapacity capacity) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("household", key.value());
+    if (capacity == null) {
+      view.put("unavailable", "该家户在 EconomyData.classes 里没有行（状态不完整）⇒ F/headroom 一律不计算，不填 0");
+      return view;
+    }
+    view.put("afterAllocationGrainIncome", capacity.afterAllocationGrainIncome());
+    view.put("basicRation", capacity.basicRation());
+    view.put("nextRoundNecessaryInput", capacity.nextRoundNecessaryInput());
+    view.put("nextRoundNecessaryInputSource", capacity.nextRoundNecessaryInputSource().name());
+    view.put("nextRoundNecessaryInputIsProxy", capacity.nextRoundNecessaryInputIsProxy());
+    view.put("taxPaid", capacity.taxPaid());
+    view.put("F", capacity.F());
+    // ★ 空 = 库存读不到（具名缺失）；≠ 0（0 是一个真实结论：库存够吃但一点余粮都没有）。
+    boolean stockReadable = capacity.pledgeableGrainSurplusValue().isPresent();
+    view.put("grainStockUnavailable", stockReadable ? null : DEBT_CAPACITY_STOCK_UNREADABLE);
+    view.put(
+        "pledgeableGrainSurplusValue",
+        stockReadable ? capacity.pledgeableGrainSurplusValue().getAsLong() : null);
+    view.put("pledgeableAssetPolicyValue", capacity.pledgeableAssetPolicyValue());
+    view.put(
+        "pledgeableRealAssetValue",
+        capacity.pledgeableRealAssetValue().isPresent()
+            ? capacity.pledgeableRealAssetValue().getAsLong()
+            : null);
+    view.put("existingDebt", capacity.existingDebt());
+    view.put("unpricedDebtAmount", capacity.unpricedDebtAmount());
+    view.put("unpricedDebtCount", capacity.unpricedDebtCount());
+    view.put("unpricedDebtNote", "非粮 unit 不能折算的那部分本金只在这里列出：不硬折、不进 existingDebt、不参与 headroom");
+    view.put("headroom", capacity.headroom().isPresent() ? capacity.headroom().getAsLong() : null);
+    view.put("unit", capacity.unitNote());
+    return view;
+  }
+
+  /**
+   * ★★ E4b：一格（本格家户）的 debtCapacity 块 —— 逐户读数 + 已知行合计 + 读不到的行数。
+   *
+   * <p>★ 合计只累加"读得到"的行；{@code headroomUnavailableHouseholds} 与具名原因并排发出来，读的人不会把 "有几行没算"漏成 0。缺行（{@code
+   * classes} 里没有）同样计入 unavailable。
+   */
+  private static Map<String, Object> debtCapacityBlockView(
+      List<HouseholdId> householdKeys, Map<HouseholdId, DebtCapacity> capacities) {
+    List<Map<String, Object>> households = new ArrayList<>(householdKeys.size());
+    long afterAllocationGrainIncome = 0L;
+    long basicRation = 0L;
+    long nextRoundNecessaryInput = 0L;
+    long taxPaid = 0L;
+    long totalF = 0L;
+    long pledgeableGrainSurplusValue = 0L;
+    long pledgeableAssetPolicyValue = 0L;
+    long pledgeableRealAssetValue = 0L;
+    long existingDebt = 0L;
+    long unpricedDebtAmount = 0L;
+    long unpricedDebtCount = 0L;
+    long headroom = 0L;
+    int unavailable = 0;
+    for (HouseholdId key : householdKeys) {
+      DebtCapacity capacity = capacities.get(key);
+      households.add(debtCapacityView(key, capacity));
+      if (capacity == null) {
+        unavailable++;
+        continue;
+      }
+      afterAllocationGrainIncome += capacity.afterAllocationGrainIncome();
+      basicRation += capacity.basicRation();
+      nextRoundNecessaryInput += capacity.nextRoundNecessaryInput();
+      taxPaid += capacity.taxPaid();
+      totalF += capacity.F();
+      if (capacity.pledgeableGrainSurplusValue().isPresent()) {
+        pledgeableGrainSurplusValue += capacity.pledgeableGrainSurplusValue().getAsLong();
+      }
+      pledgeableAssetPolicyValue += capacity.pledgeableAssetPolicyValue();
+      if (capacity.pledgeableRealAssetValue().isPresent()) {
+        pledgeableRealAssetValue += capacity.pledgeableRealAssetValue().getAsLong();
+      }
+      existingDebt += capacity.existingDebt();
+      unpricedDebtAmount += capacity.unpricedDebtAmount();
+      unpricedDebtCount += capacity.unpricedDebtCount();
+      if (capacity.headroom().isPresent()) {
+        headroom += capacity.headroom().getAsLong();
+      } else {
+        unavailable++;
+      }
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("unit", DebtCapacity.UNIT_NOTE);
+    view.put("window", debtCapacityWindowView());
+    view.put("households", households);
+    Map<String, Object> total = new LinkedHashMap<>();
+    total.put("householdCount", householdKeys.size());
+    total.put("afterAllocationGrainIncome", afterAllocationGrainIncome);
+    total.put("basicRation", basicRation);
+    total.put("nextRoundNecessaryInput", nextRoundNecessaryInput);
+    total.put("taxPaid", taxPaid);
+    total.put("F", totalF);
+    total.put("pledgeableGrainSurplusValue", pledgeableGrainSurplusValue);
+    total.put("pledgeableAssetPolicyValue", pledgeableAssetPolicyValue);
+    total.put("pledgeableRealAssetValue", pledgeableRealAssetValue);
+    total.put("existingDebt", existingDebt);
+    total.put("unpricedDebtAmount", unpricedDebtAmount);
+    total.put("unpricedDebtCount", unpricedDebtCount);
+    total.put("headroom", headroom);
+    total.put("headroomUnavailableHouseholds", unavailable);
+    total.put("headroomUnavailableNote", unavailable == 0 ? null : DEBT_CAPACITY_STOCK_UNREADABLE);
+    total.put("totalsPartial", unavailable > 0);
+    total.put(
+        "totalsPartialNote",
+        unavailable == 0
+            ? null
+            : "pledgeableGrainSurplusValue/pledgeableRealAssetValue/headroom 三项合计只含库存读得到的行；"
+                + "F 与四个输入项仍是全量合计");
+    view.put("total", total);
+    return view;
+  }
+
+  /**
+   * ★★ E4b：{@link #economyOwnership} 用的 debtCapacity 块（与 {@link #economyHex} 同一份逐户读数与窗口标注；
+   * 那里另有一份可挂进各 class 行的逐户 map，故不重复构建视图）。
+   */
+  private static Map<String, Object> debtCapacityBlock(
+      EconomyData data, ActorData actors, HexCoord coord) {
+    List<HouseholdId> householdKeys = cohortKeysAt(data, coord);
+    Map<ActorRef, HouseholdId> householdOfActorAtHex = new LinkedHashMap<>();
+    for (HouseholdId key : householdKeys) {
+      householdOfActorAtHex.put(HouseholdActors.of(key), key);
+    }
+    Map<HouseholdId, Long> grainStockByHousehold = new LinkedHashMap<>();
+    for (GoodsAccount account : accountsAt(actors, coord)) {
+      HouseholdId key = householdOfActorAtHex.get(account.key().owner());
+      if (key == null) {
+        continue;
+      }
+      grainStockByHousehold.merge(key, account.balances().getOrDefault(GRAIN, 0L), Long::sum);
+    }
+    Map<HouseholdId, DebtCapacity> capacities =
+        DebtCapacityBook.capacitiesForState(
+            data,
+            householdKeys,
+            key ->
+                grainStockByHousehold.containsKey(key)
+                    ? OptionalLong.of(grainStockByHousehold.get(key))
+                    : OptionalLong.empty());
+    return debtCapacityBlockView(householdKeys, capacities);
   }
 
   /**
