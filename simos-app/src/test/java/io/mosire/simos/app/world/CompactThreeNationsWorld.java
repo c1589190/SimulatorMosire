@@ -412,9 +412,11 @@ public final class CompactThreeNationsWorld {
   }
 
   /**
-   * ★★ 用真工具 {@code simos.worldgen.initialize} 依次初始化三国（{@code dryRun=false, army=true}），返回三国摘要 JSON。
+   * ★★ 用真工具 {@code simos.worldgen.initialize} 依次初始化三国（{@code dryRun=false, army=true,
+   * economyProfile=complete}），返回三国摘要 JSON。
    *
-   * <p>★ 顺序 = {@link #NATION_REGIONS} 的顺序；每次调用落一条 revision。任一失败即抛（不把失败折叠成"跳过"）。
+   * <p>★ 顺序 = {@link #NATION_REGIONS} 的顺序；每次调用落一条 revision。任一失败即抛（不把失败折叠成"跳过"）。 ★ P1：本夹具显式选
+   * COMPLETE 经济地基（E1 mode/结构/位置/归属 + E2 资产规则/清算政策）， 让 E2 自动组织阶段在紧凑世界里真正可执行。
    */
   public static List<JsonNode> initializeNations(CoreSimos core) throws IOException {
     Objects.requireNonNull(core, "core");
@@ -422,7 +424,10 @@ public final class CompactThreeNationsWorld {
     List<JsonNode> summaries = new ArrayList<>(NATION_REGIONS.size());
     for (RegionId region : NATION_REGIONS) {
       ToolResult result =
-          tool.execute(context(tool, Map.of("nation", region.value(), "dryRun", false)));
+          tool.execute(
+              context(
+                  tool,
+                  Map.of("nation", region.value(), "dryRun", false, "economyProfile", "complete")));
       if (!result.success()) {
         throw new IllegalStateException(
             "worldgen 初始化 " + region.value() + " 失败: " + result.code() + " " + result.message());
@@ -497,6 +502,29 @@ public final class CompactThreeNationsWorld {
     out.put("flowRows", (long) economy.flows().size());
     out.put("industries", (long) economy.industries().size());
     out.put("productionUnits", (long) economy.units().size());
+    // ★ P1 地基/自动组织读数（不参与旧断言；只把"完整世界真的种下了什么"打印出来）。
+    out.put("modes", (long) economy.modes().size());
+    out.put("classStructures", (long) economy.classStructures().size());
+    out.put("classPositions", (long) economy.classPositions().size());
+    out.put("classStandings", (long) economy.classStandings().size());
+    out.put("assetRules", (long) economy.assetRules().size());
+    out.put("liquidationPolicies", (long) economy.liquidationPolicies().size());
+    out.put("productionOrganizations", (long) economy.productionOrganizations().size());
+    out.put(
+        "orgActive",
+        economy.productionOrganizations().values().stream()
+            .filter(org -> "ACTIVE".equals(org.status().name()))
+            .count());
+    out.put(
+        "orgShortage",
+        economy.productionOrganizations().values().stream()
+            .filter(org -> "SHORTAGE".equals(org.status().name()))
+            .count());
+    out.put(
+        "orgWithUnit",
+        economy.productionOrganizations().values().stream()
+            .filter(org -> org.unitId().isPresent())
+            .count());
     out.put("markets", (long) economy.markets().size());
     out.put("commodities", (long) commodities.size());
     out.put("commodityIds", List.copyOf(commodities));
