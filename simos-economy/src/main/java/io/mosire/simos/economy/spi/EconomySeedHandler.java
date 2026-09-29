@@ -64,7 +64,10 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
     try {
       payload = EconomyPayloads.parse(payloadJson);
       seeded = EconomyPayloads.toData(payload, state.meta().timestamp());
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException | IllegalStateException e) {
+      // ★ 旧形状载荷（缺 household/memberships）会在 EconomyData 构造期的 LegacyHouseholdMigration 里
+      //   以 IllegalStateException fail-closed（"无法定位产业格"等）—— 它同样是**载荷语义错误**，
+      //   必须在命令边界成为 Rejected，不允许穿出去变成整条推进/revision 失败（类注的"失败都以 Rejected 出面"）。
       return new HandlerOutcome.Rejected(e.getMessage());
     }
     if (base.meta().isEmpty()) {

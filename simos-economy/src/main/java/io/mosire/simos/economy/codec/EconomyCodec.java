@@ -49,8 +49,10 @@ import io.mosire.simos.util.state.StateMeta;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -81,6 +83,9 @@ import java.util.function.Function;
  * 的同款兜底。两条都<b>不新增迁移代码</b>：缺键的方向本来就是 fail-closed 的 0。
  */
 public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
+
+  /** {@link ProductionUnitId#idOf} 生成的新档 unit id 前缀；只用于**旧档变更集整形**的幂等判别。 */
+  private static final String PRODUCTION_UNIT_ID_PREFIX = "unit-";
 
   /**
    * ★★ <b>"纯绑定" mapper</b>：只带键反序列化器（含旧 {@code CohortKey} 键 → {@link HouseholdId} 的识别），
@@ -690,6 +695,13 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     }
     ObjectNode relations = deltaEntries(root.get("relations"));
     if (relations != null) {
+      // ★★ 幂等判别（与 snapshot 路径的 {@code rewriteRelationKeys} 同义）：关系键若已经是 unit 身份，
+      //   不得再按"旧 industry 串"包一层 —— 否则 `unit-farm-…` 会被二次拼成 `unit-unit-farm-…`。
+      Set<String> knownUnitIds = new LinkedHashSet<>(deltaUnits.keySet());
+      ObjectNode unitsInDelta = deltaEntries(root.get("units"));
+      if (unitsInDelta != null) {
+        unitsInDelta.fieldNames().forEachRemaining(knownUnitIds::add);
+      }
       List<String> keys = new ArrayList<>();
       relations.fieldNames().forEachRemaining(keys::add);
       for (String key : keys) {
@@ -700,6 +712,13 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
         JsonNode operatorNode = relation.get("operator");
         if (operatorNode == null || !operatorNode.isObject()) {
           continue; // 拿不到 operator：留给构造期迁移器按 actor/唯一 unit 对齐
+        }
+        // 键已在同批 units 增量里 ⇒ 已是 unit 口径；或键与 activity 逐字相等且形如 {@code unit-…}
+        // （新档 unit id 的唯一拼写点见 {@link ProductionUnitId#idOf}）⇒ 已是 unit 口径。
+        String activity = textOfId(relation.get("activity"));
+        if (knownUnitIds.contains(key)
+            || (key.equals(activity) && key.startsWith(PRODUCTION_UNIT_ID_PREFIX))) {
+          continue;
         }
         ActorRef operator = actorOf(operatorNode);
         try {
