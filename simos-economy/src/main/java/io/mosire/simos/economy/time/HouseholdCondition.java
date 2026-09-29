@@ -191,8 +191,9 @@ public record HouseholdCondition(
       }
       wageArrears = OptionalLong.of(wage);
     }
-    // ★ 租实付（本户作为付方）在本读数里**读不到**：RuleSettlement 只带规则、不带 operator 归属，
-    //   猜一个付方就是编数。故 rentPaidMilli 保持 empty（"读不到"），由将来的逐关系落账读数补。
+    // ★ E4c 起 RuleSettlement/Arrear 已带 payer actor（付方归属**可解析**），但本读数（本户作为付方的租实付）
+    //   的接线不在 E4c 范围：为了避免在没接线前拿一半数据冒充，rentPaid 仍保持 empty（"读不到"），
+    //   由后续阶段的逐关系落账读数补。
     OptionalLong rentPaid = OptionalLong.empty();
     OptionalLong grainCoverage = grainCoveragePerMille(row, cycleDays, grainStockMilli);
     LivelihoodStatus status = livelihoodOf(data, household, laborSold, grainCoverage);

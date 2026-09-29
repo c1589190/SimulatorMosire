@@ -10,6 +10,13 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtStatus;
+import io.mosire.simos.economy.api.debt.DebtTerms;
+import io.mosire.simos.economy.api.debt.DebtUnit;
+import io.mosire.simos.economy.api.debt.DefaultRemedy;
+import io.mosire.simos.economy.api.debt.InterestTiming;
+import io.mosire.simos.economy.api.debt.MonetaryConversion;
+import io.mosire.simos.economy.api.debt.RepaymentRule;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -21,6 +28,8 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.PledgeId;
+import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -40,12 +49,14 @@ import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
+import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
@@ -200,8 +211,10 @@ import java.util.Set;
  * 0、槽位必须在该产业的 {@code slots} 里、{@code progressDays ≤ cycleDays}）交给 §3 的领域类型与 {@link EconomyData}
  * 构造期守卫——**不重复实现**，一处真相。
  *
- * <p>★ **E4a：创世载荷不种初始债务/质押**：顶层 {@code debtContracts} / {@code pledges} 键可缺席，出现则只接受空数组；旧类行 {@code
- * debts} 键（若还有人写）也只接受空数组 —— 债务只能由 runtime 借粮路径产生。
+ * <p>★ <b>E4c：创世载荷可解析非空初始债务/质押</b>：顶层 {@code debtContracts} / {@code pledges} 键可缺席（= 空表），
+ * 给了就按对象数组解析（结构与条款在载荷层判形状，id 派生/引用完整性在 {@link EconomyData} 构造期判）。 ★★ <b>配套责任</b>：economy <b>不自动搬
+ * actor 库存</b>；声明初始债务的 seed 必须在 app 的 actor.Seed 协调器里给 debtor/creditor
+ * 备好对应库存/货币/权利，否则就是凭空种出的无对价债权名册。 旧类行 {@code debts} 键仍可读（它只是派生引用；进入构造期后由合同表权威重建）。
  */
 final class EconomyPayloads {
 
@@ -249,10 +262,8 @@ final class EconomyPayloads {
    */
   static EconomyData toData(JsonNode payload, SimosTimestamp at) {
     Objects.requireNonNull(at, "at");
-    // ★★ E4a：`debtContracts` / `pledges` 是**新键**；本阶段不种初始债务/质押 ⇒ 键可缺席，
-    //   但给了就必须是空数组（“看起来在记、其实被静默丢掉”在本仓是禁止的；E4b 再接真实 seed）。
-    requireEmptyOptionalArray(payload, "debtContracts");
-    requireEmptyOptionalArray(payload, "pledges");
+    // ★★ E4c：`debtContracts` / `pledges` 从"只接受空数组"放开为可解析；结构与引用完整性走 EconomyData 构造期守卫
+    //   （id 四元组派生、debtor/creditor 行存在、ClassRow.debts 引用存在、质押引用与 Σ活跃质押上界）。
     String mapId = requireText(payload, "mapId");
     String rulesVersion = requireText(payload, "rulesVersion");
     JsonNode entries = requireArray(payload, "entries");
@@ -485,11 +496,16 @@ final class EconomyPayloads {
     }
     EconomyMeta meta =
         new EconomyMeta(mapId, at.tick(), OptionalLong.empty(), rulesVersion, Optional.empty());
+    // ★★ E4c：非空初始债务/质押可以解析（结构/条款/引用校验交给 EconomyData 构造期守卫；不在载荷层重复实现）。
+    //   ★ 初始债务的"配套库存/货币/权利"不在这里搬：economy 不自动改 actor 账 —— app 协调器必须在 actor.Seed
+    //     里给 debtor/creditor 备好相应余额（见 EconomyPayloads 类注与 EconomySeeder 的说明）。
+    Map<DebtContractId, DebtContract> debtContracts = debtContracts(payload);
+    Map<PledgeId, Pledge> pledges = pledges(payload);
     return new EconomyData(
         Optional.of(meta),
         industries,
         classes,
-        Map.of(),
+        debtContracts,
         Map.of(),
         laborSupply,
         allocations,
@@ -517,8 +533,8 @@ final class EconomyPayloads {
         // ★★ E3：政府 / 货币发行审计（创世载荷可选声明；缺键 ⇒ 空表 = 零登记、无发行）。
         governments,
         moneyIssuances,
-        // ★★ E4a：质押表（创世载荷暂不种质押；`pledges` 键给了也只接受空数组，见 toData 开头的守卫）。
-        Map.of());
+        // ★★ E4c：质押表（可选；引用/数量上界由 EconomyData 构造期守卫按"对侧已提供"分段判）。
+        pledges);
   }
 
   /**
@@ -1188,17 +1204,6 @@ final class EconomyPayloads {
    * <p>★★ <b>M2.7 的 {@code cycleNaturalNeedMilli} 是可选键</b>（旧档缺键 ⇒ 0，照本类 {@code money} 的同款先例）：
    * 它是**结算逐日累加的读数**（本周期累计自然口粮需要），创世载荷通常不写它；旧载荷读成 0 = "还没开始累计"，不是"没有需要"。
    */
-  /** ★ E4a：可选新键若出现则只接受空数组（缺键 = 没有；非空 = 本阶段不种，具名拒）。 */
-  private static void requireEmptyOptionalArray(JsonNode payload, String field) {
-    JsonNode node = payload.get(field);
-    if (node == null || node.isNull()) {
-      return;
-    }
-    if (!node.isArray() || !node.isEmpty()) {
-      throw new IllegalArgumentException("E4a 创世载荷的 " + field + " 只接受空数组（本阶段不种初始债务/质押）: " + node);
-    }
-  }
-
   private static ClassRow classRow(HexCoord hex, JsonNode node) {
     ResidenceKind residence = ResidenceKind.parse(requireText(node, "residence"));
     SocialClassId slot = SocialClassId.parse(requireText(node, "slot"));
@@ -1220,8 +1225,12 @@ final class EconomyPayloads {
     long cycleNaturalNeedMilli = optionalLong(node, "cycleNaturalNeedMilli", 0L);
     List<DebtContractId> debts = new ArrayList<>();
     for (JsonNode debt : optionalArray(node, "debts")) {
-      // ★ §十：本轮"不做债务"⇒ 只接受空数组（拒绝非空，免得落下一批指向空债务表的悬空引用）。
-      throw new IllegalArgumentException("创世载荷的 debts 引用只接受空数组（债务由 runtime 借粮路径产生）: " + debt);
+      if (!debt.isTextual() || debt.asText().isBlank()) {
+        throw new IllegalArgumentException("classes[].debts 的每项必须是非空 DebtContractId 字符串: " + debt);
+      }
+      // ★★ E4c：允许非空引用；它是**派生索引**（进入 EconomyData 后由 DebtReferenceReconciler 以合同表为权威重建）。
+      //   指不到合同/端点不存在仍会在构造期具名抛，不会留下悬空引用。
+      debts.add(DebtContractId.parse(debt.asText()));
     }
     Map<CommodityId, Long> needs =
         commodityMap(optionalObject(node, "naturalNeeds"), "naturalNeeds");
@@ -1317,6 +1326,184 @@ final class EconomyPayloads {
   }
 
   // ── E3：政府与货币发行审计的载荷解析 ─────────────────────────────────────────────────
+
+  // ── E4c：债务合同与质押的载荷解析 ───────────────────────────────────────────────────
+
+  /**
+   * ★★ <b>E4c：顶层可选 {@code debtContracts} 数组（放开非空）</b>。
+   *
+   * <pre>
+   * {"debtContracts":[
+   *   {"debtor":"h-0_0-rural-poor_peasant","creditor":"h-0_0-rural-landlord",
+   *    "unit":{"kind":"commodity","commodity":"grain"},
+   *    "terms":{"interestRatePerMillePerCycle":20,"interestTiming":"AFTER_REPAYMENT_ON_CLOSE",
+   *             "repaymentRule":"AVAILABLE_SURPLUS_SHARE","monetaryConversion":"NOT_ALLOWED",
+   *             "defaultRemedy":"MARK_DEFAULTED"},
+   *    "principal":1000,"openedDay":0,"lastInterestDay":null,"dueCycle":1,"status":"NORMAL"}]}
+   * </pre>
+   *
+   * <ul>
+   *   <li>{@code id} 可省：由 {@code (debtor, creditor, unit, terms)} 经 {@link DebtContractId#idOf} 派生；
+   *       给了就必须与派生值逐字相同（否则构造期守卫拒绝，不许手写第二份身份）；
+   *   <li>★★ {@code terms} <b>必填</b>（不是"省略 ⇒ legacyDefault"）：种子必须把 {@code
+   *       interestRatePerMillePerCycle / interestTiming / repaymentRule / monetaryConversion /
+   *       defaultRemedy} 五个键给全 —— 缺键 fail-closed，不把漏写静默补成默认档（资本化路径的 `legacyDefault` 只在结算层显式使用，并由
+   *       {@code termsSource} 标注）；
+   *   <li>{@code openedDay} 缺省 = 0；{@code lastInterestDay}/{@code dueCycle} 缺省 = 空；{@code status}
+   *       缺省 = NORMAL；
+   *   <li>单位：{@code commodity} ⇒ {@code {"kind":"commodity","commodity":"grain"}}；货币 ⇒ {@code
+   *       {"kind":"money","currency":"silver"}}（恰其一，由单位类型表达）。
+   * </ul>
+   *
+   * <p>★★ <b>结构/引用/条款校验不在这里重复实现</b>：{@link DebtContract} 与 {@code EconomyData} 的构造期守卫会判 id
+   * 派生、debtor/creditor 行存在、{@code ClassRow.debts} 引用存在。
+   *
+   * <p>★★ <b>初始债务的配套责任（必须写清）</b>：本方法只把债权记进 economy 状态；它<b>不搬任何 actor 库存/货币/权利</b>。 如果 seed 声明"H1 欠
+   * H2 1000 粮"，app 侧的 actor.Seed 协调器必须已经在 H1/H2 的账户里备好对应的真实粮/钱 （否则这条债没有对价，是凭空造出的债权名册）。economy 不自动搬
+   * actor 库存，也不为演示凭空补配套。
+   */
+  private static Map<DebtContractId, DebtContract> debtContracts(JsonNode payload) {
+    Map<DebtContractId, DebtContract> contracts = new LinkedHashMap<>();
+    for (JsonNode node : optionalArray(payload, "debtContracts")) {
+      if (!node.isObject()) {
+        throw new IllegalArgumentException("debtContracts 的每项必须是对象: " + node);
+      }
+      HouseholdId debtor = HouseholdId.parse(requireText(node, "debtor"));
+      HouseholdId creditor = HouseholdId.parse(requireText(node, "creditor"));
+      DebtUnit unit = debtUnit(requireObject(node, "unit"));
+      DebtTerms terms = debtTerms(requireObject(node, "terms"));
+      long principal = requireLong(node, "principal");
+      long openedDay = optionalLong(node, "openedDay", 0L);
+      OptionalLong lastInterestDay = optionalOptionalLong(node, "lastInterestDay");
+      OptionalLong dueCycle = optionalOptionalLong(node, "dueCycle");
+      DebtStatus status =
+          node.hasNonNull("status") ? debtStatus(requireText(node, "status")) : DebtStatus.NORMAL;
+      DebtContractId derived = DebtContractId.idOf(debtor, creditor, unit, terms);
+      if (node.hasNonNull("id")) {
+        DebtContractId declared = DebtContractId.parse(requireText(node, "id"));
+        if (!declared.equals(derived)) {
+          throw new IllegalArgumentException(
+              "debtContracts[].id 必须与四元组派生值一致（不许手写第二份身份）：声明=" + declared + " 派生=" + derived);
+        }
+      }
+      DebtContract contract =
+          new DebtContract(
+              derived,
+              debtor,
+              creditor,
+              unit,
+              terms,
+              principal,
+              openedDay,
+              lastInterestDay,
+              dueCycle,
+              status);
+      if (contracts.putIfAbsent(derived, contract) != null) {
+        throw new IllegalArgumentException("同一份载荷里债务合同 id 重复: " + derived);
+      }
+    }
+    return contracts;
+  }
+
+  /** ★ E4c：债务单位节点（{@code kind=commodity|money}；另一维必须给且只给一个）。 */
+  private static DebtUnit debtUnit(JsonNode node) {
+    String kind = requireText(node, "kind");
+    return switch (kind) {
+      case "commodity" -> {
+        if (node.hasNonNull("currency")) {
+          throw new IllegalArgumentException(
+              "debtContracts[].unit.kind=commodity 不得同时给 currency（空要省略）: " + node);
+        }
+        yield DebtUnit.commodity(CommodityId.parse(requireText(node, "commodity")));
+      }
+      case "money" -> {
+        if (node.hasNonNull("commodity")) {
+          throw new IllegalArgumentException(
+              "debtContracts[].unit.kind=money 不得同时给 commodity（空要省略）: " + node);
+        }
+        yield DebtUnit.money(CurrencyId.parse(requireText(node, "currency")));
+      }
+      default ->
+          throw new IllegalArgumentException(
+              "debtContracts[].unit.kind 必须是 commodity 或 money: " + kind);
+    };
+  }
+
+  /** ★ E4c：条款节点（五维必填；{@code dueCycle}/{@code dueDay} 可空；缺键 fail-closed，不静默补 0）。 */
+  private static DebtTerms debtTerms(JsonNode node) {
+    int rate = requireInt(node, "interestRatePerMillePerCycle");
+    InterestTiming timing =
+        enumValue(InterestTiming.class, requireText(node, "interestTiming"), "interestTiming");
+    RepaymentRule repayment =
+        enumValue(RepaymentRule.class, requireText(node, "repaymentRule"), "repaymentRule");
+    MonetaryConversion conversion =
+        enumValue(
+            MonetaryConversion.class,
+            requireText(node, "monetaryConversion"),
+            "monetaryConversion");
+    DefaultRemedy remedy =
+        enumValue(DefaultRemedy.class, requireText(node, "defaultRemedy"), "defaultRemedy");
+    OptionalLong dueCycle = optionalOptionalLong(node, "dueCycle");
+    OptionalLong dueDay = optionalOptionalLong(node, "dueDay");
+    return new DebtTerms(rate, timing, repayment, conversion, remedy, dueCycle, dueDay);
+  }
+
+  /** ★ E4c：状态词（词表外具名抛）。 */
+  private static DebtStatus debtStatus(String text) {
+    return enumValue(DebtStatus.class, text, "status");
+  }
+
+  /** ★ E4c：顶层可选 {@code pledges} 数组；引用与 Σ活跃质押上界由 EconomyData 构造期守卫判。 */
+  private static Map<PledgeId, Pledge> pledges(JsonNode payload) {
+    Map<PledgeId, Pledge> pledges = new LinkedHashMap<>();
+    for (JsonNode node : optionalArray(payload, "pledges")) {
+      if (!node.isObject()) {
+        throw new IllegalArgumentException("pledges 的每项必须是对象: " + node);
+      }
+      PledgeId id = PledgeId.parse(requireText(node, "id"));
+      DebtContractId debtContractId = DebtContractId.parse(requireText(node, "debtContractId"));
+      AssetShareId assetShareId = AssetShareId.parse(requireText(node, "assetShareId"));
+      long quantity = requireLong(node, "quantity");
+      ProductionModeId modeId = ProductionModeId.parse(requireText(node, "modeId"));
+      int priority = requireInt(node, "priority");
+      Pledge.Status status =
+          enumValue(Pledge.Status.class, requireText(node, "status"), "pledges[].status");
+      Pledge pledge =
+          new Pledge(id, debtContractId, assetShareId, quantity, modeId, priority, status);
+      if (pledges.putIfAbsent(id, pledge) != null) {
+        throw new IllegalArgumentException("同一份载荷里质押 id 重复: " + id);
+      }
+    }
+    return pledges;
+  }
+
+  /** ★ E4c：可空整数键（缺席/null ⇒ 空；给了非整数 ⇒ 具名抛）。 */
+  private static OptionalLong optionalOptionalLong(JsonNode node, String field) {
+    JsonNode value = node.get(field);
+    if (value == null || value.isNull()) {
+      return OptionalLong.empty();
+    }
+    if (!value.isIntegralNumber()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是整数或 null: " + value);
+    }
+    return OptionalLong.of(value.asLong());
+  }
+
+  /** ★ E4c：枚举词表解析（未知值 ⇒ 列出合法值，不 silent fallback）。 */
+  private static <E extends Enum<E>> E enumValue(Class<E> type, String text, String field) {
+    try {
+      return Enum.valueOf(type, text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "未知的 "
+              + field
+              + ": "
+              + text
+              + "；合法值: "
+              + java.util.Arrays.toString(type.getEnumConstants()),
+          e);
+    }
+  }
 
   /**
    * 顶层可选 {@code governments}：{@code [{id,nationRef,treasury:{kind,id},issuable:[币种…]}]}。

@@ -833,7 +833,9 @@ public final class EconomySeeder {
     payload.put(
         "moneyIssuances",
         issuanceNodes(mapId, entries, genesisEndowment, genesisMoneyMilliPerCapita));
-    // ★★ E4a：新键的空语义 —— 本阶段不种初始债务/质押（E4b 再接真实库存/权利配套的 seed）。
+    // ★★ E4c：新键的空语义 —— 本 seeder 仍不种初始债务/质押（发空表 = 世界从零债开始，合法）。
+    //   载荷层已放开非空；若将来要种初始债，**必须**先在本 seeder / actor.Seed 协调器里给 debtor/creditor
+    //   备好对应的真实库存/货币/权利（economy 不会替 actor 搬账），否则就是凭空种出无对价的债权名册。
     payload.put("debtContracts", List.of());
     payload.put("pledges", List.of());
     return ToolSupport.json(payload);

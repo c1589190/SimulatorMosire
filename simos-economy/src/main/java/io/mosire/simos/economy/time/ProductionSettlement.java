@@ -5,6 +5,7 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.TransferId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Pool;
@@ -68,7 +69,9 @@ import java.util.OptionalLong;
  *
  * <p>★★ <b>H2：应付/实付/欠三数分别报出来</b>（裁定 S4）——每条<b>非货币</b>规则一条 {@link RuleSettlement} 读数 （{@code
  * 应付}、{@code 实付}、{@code 欠 = 应付 − 实付}），<b>连实付 0 的那些也报</b> （否则"制度规定 30%、实付 0"这件最要紧的事 恰好看不见）。★
- * 这些读数<b>只读</b>：本批<b>不落债权</b>（"记欠"开关未定，见 {@code target-economic-cycle-design} §七-4）， 也不影响任何守恒式。
+ * 这些读数<b>只读</b>：本类<b>不写任何状态</b>（不落债权）。★★ E4c 起 {@code EconomySettlement} 会在生产/租金阶段之后 消费 {@link
+ * Outcome#arrears()} 并<b>显式资本化</b>成 {@code DebtContract}（见 {@code
+ * EconomySettlement#capitalizeArrears}）；那是结算层的写口，不是本纯函数的一部分。读数本身也不影响任何守恒式。
  *
  * <p>★★ <b>两条落点（H1 起；裁定 D1-A 的红利：所有受方都是 actor）</b>：
  *
@@ -178,21 +181,31 @@ public final class ProductionSettlement {
    * <p>★★ <b>为什么三个数都要报</b>：只报实付，"制度规定 30%、实付 17%"与"制度规定 17%"在账上<b>完全一样</b> ——
    * 而这两件事的含义相反（前者是付款上限/产出不够咬合，后者是制度本身如此）。★ <b>实付 0 的那些也报</b>：那正是最该被看见的一条。
    *
-   * <p>★★ <b>它只是读数，不是债权</b>（本批）：{@link #owed()} <b>不落</b>任何索取权（"欠款按规则开关落成债权"的开关 默认值未定，见 {@code
-   * target-economic-cycle-design} §七-4）—— 本类既不产生 {@code Debt}、也不产生 {@code Claim}， 不改任何守恒式。
+   * <p>★★ <b>它本身只是读数，不是债权</b>：本类不写任何索取权。★★ E4c 起 {@code EconomySettlement.capitalizeArrears}
+   * 在这些读数（{@code owed > 0}）之后显式落成 {@code DebtContract}；资本化不改本读数，也不清零它。
    *
    * @param rule 这一条规则（付款次序里的那一条）；不得为 null
    * @param commodity 这条规则的**实物**商品（货币档为空）；与 {@code currency} <b>恰其一</b>
    * @param currency 这条规则的**货币**币种（实物档为空；H4 起货币档也有读数）；与 {@code commodity} 互为反相
    * @param dueAmount 应付（毫单位；{@code ≥ 0}）
    * @param paidNow 实付（毫单位；{@code ∈ [0, 应付]} —— 上限是 R6 的"本周期可用"：实物 = 本周期产出、货币 = 付方可见的余额）
+   * @param payer ★★ <b>E4c：付款人 actor</b>（恒为 {@code relation.operator()}；不得为 null）。欠款资本化要解析到家户
+   *     {@code HouseholdId}，<b>不能靠猜</b> —— 解析不到（聚合主体/外部主体）就具名跳过，不伪造端点。
+   * @param payee ★★ <b>E4c：受款人 actor</b>（规则受方；{@code ToHousehold}/{@code ToCohort} 经 {@code
+   *     HouseholdActors.of} 归一，{@code ToActor} 原样）；不得为 null。语义同上。
+   * @param activity ★★ <b>E4c：这条欠款所属的生产单元/活动</b>（{@code ProductionRelation.activity()}）；不得为 null。
+   *     它是同一天内"同一付款人 × 同一受款人 × 同一 unit × 同一规则"的两笔事件<b>不被误合成一笔</b>的事件维； {@code DebtContractId}
+   *     只含四元组，事件维不参与合同身份（同四元组仍是同一条连续欠账）。
    */
   public record RuleSettlement(
       CompensationRule rule,
       Optional<CommodityId> commodity,
       Optional<CurrencyId> currency,
       long dueAmount,
-      long paidNow) {
+      long paidNow,
+      ActorRef payer,
+      ActorRef payee,
+      ProductionUnitId activity) {
 
     public RuleSettlement {
       if (rule == null) {
@@ -220,6 +233,10 @@ public final class ProductionSettlement {
                 + dueAmount
                 + " 实付="
                 + paidNow);
+      }
+      if (payer == null || payee == null || activity == null) {
+        throw new IllegalArgumentException(
+            "RuleSettlement 的 payer/payee/activity 都不得为 null（E4c 的身份维，不许靠猜补）");
       }
     }
 
@@ -293,11 +310,14 @@ public final class ProductionSettlement {
 
   /**
    * ★★ <b>S3：具名欠款（WageArrears / RentArrears / SubsistenceArrears）</b>—— 由 {@link RuleSettlement} 里
-   * {@code owed > 0} 的那些派生；<b>不是新状态、不是债权</b>（本批不把欠款自动落成 {@code Debt}，见类注的裁定），
-   * 但它是"制度规定要付、实际付不出"的<b>具名可读聚合</b>：不把欠款静默当 0。
+   * {@code owed > 0} 的那些派生；<b>不是新状态、本身也不是债权</b>（E4c 起由 {@code EconomySettlement.capitalizeArrears}
+   * 显式落成合同债权）， 但它是"制度规定要付、实际付不出"的<b>具名可读聚合</b>：不把欠款静默当 0。
    *
    * <p>★ 它的名字按规则类型分档：{@link RuleType#FIXED_MONEY_WAGE} ⇒ {@link Kind#WAGE}（WageArrears）； 两类固定租 ⇒
    * {@link Kind#RENT}（RentArrears）；给养/实物劳动报酬 ⇒ {@link Kind#SUBSISTENCE}。
+   *
+   * <p>★★ <b>E4c：身份维随读数一起发出</b>（{@code payer}/{@code payee}/{@code activity}）—— 资本化必须解析出 {@code
+   * HouseholdId} 两端；解析不到就具名跳过。<b>不许</b>在这里按图层/规则反推付款人（那会伪造端点）。
    */
   public record Arrear(
       CompensationRule rule,
@@ -306,7 +326,10 @@ public final class ProductionSettlement {
       Optional<CurrencyId> currency,
       long dueAmount,
       long paidNow,
-      long owed) {
+      long owed,
+      ActorRef payer,
+      ActorRef payee,
+      ProductionUnitId activity) {
 
     /** 欠款名目（具名，不合成一个"总欠款"）。 */
     public enum Kind {
@@ -331,9 +354,13 @@ public final class ProductionSettlement {
         throw new IllegalArgumentException(
             "Arrear.owed 必须逐值等于 应付 − 实付: " + owed + " != " + (dueAmount - paidNow));
       }
+      if (payer == null || payee == null || activity == null) {
+        throw new IllegalArgumentException(
+            "Arrear 的 payer/payee/activity 都不得为 null（E4c 的身份维，不许靠猜补）");
+      }
     }
 
-    /** 从一条逐规则读数派生（{@code owed == 0} ⇒ 调用方应过滤）。 */
+    /** 从一条逐规则读数派生（{@code owed == 0} ⇒ 调用方应过滤）；身份维逐值带过。 */
     public static Arrear of(RuleSettlement reading) {
       Objects.requireNonNull(reading, "reading");
       return new Arrear(
@@ -343,7 +370,10 @@ public final class ProductionSettlement {
           reading.currency(),
           reading.dueAmount(),
           reading.paidNow(),
-          reading.owed());
+          reading.owed(),
+          reading.payer(),
+          reading.payee(),
+          reading.activity());
     }
 
     /** 规则的欠款名目（唯一分档点）。 */
@@ -466,7 +496,14 @@ public final class ProductionSettlement {
       // ★★ S4：读数**先记**（连实付 0 的那些）—— 只报实付会让"制度要得多、实际付不出"这件事在账上消失。
       readings.add(
           new RuleSettlement(
-              rule, Optional.of(commodity), Optional.empty(), due.getAsLong(), paidNow));
+              rule,
+              Optional.of(commodity),
+              Optional.empty(),
+              due.getAsLong(),
+              paidNow,
+              relation.operator(),
+              recipientOf(rule),
+              relation.activity()));
       if (paidNow <= 0L) {
         continue; // 归零 ⇒ 不产生转移（自留的 0、付不出的 0、受方不在账里的 0 都走这一支）
       }
@@ -582,7 +619,16 @@ public final class ProductionSettlement {
                 - paidMoney.getOrDefault(currency, 0L));
     long paidNow = Math.min(due, available);
     // ★★ S4：读数**先记**（连实付 0 的那些）—— "制度规定了货币工资、实际一分没付"必须看得见。
-    readings.add(new RuleSettlement(rule, Optional.empty(), Optional.of(currency), due, paidNow));
+    readings.add(
+        new RuleSettlement(
+            rule,
+            Optional.empty(),
+            Optional.of(currency),
+            due,
+            paidNow,
+            relation.operator(),
+            recipientOf(rule),
+            relation.activity()));
     if (paidNow <= 0L) {
       return; // 归零 ⇒ 不铸转移（同商品档的"实付 0 不产生转移"）
     }

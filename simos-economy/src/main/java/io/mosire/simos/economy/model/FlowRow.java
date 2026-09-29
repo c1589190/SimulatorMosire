@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.model;
 
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -58,7 +59,9 @@ import java.util.Map;
  * @param taxPaid 本期纳税；不得为负
  * @param interestDue 本期应付利息；不得为负
  * @param newBorrowing 本期新借入；不得为负
- * @param repaid 本期偿还；不得为负
+ * @param repaid 本期偿还的**粮债本金**（毫粮；不得为负）—— ★ 口径**只有粮**：其它实物债与货币债的本金偿还 <b>不许塞进这个标量</b>冒充粮。货币债偿还见
+ *     {@link #repaidMoney()}；其它商品债的偿还只能从对应合同的 {@code principal} 下降读出（本窗口不发按商品的偿还表，缺失是具名的）。窗口与
+ *     {@code income} 同：本周期累计、新周期第一天归零。
  * @param netSurplus 本期净盈余（**粮口径**：income[grain] − consumed[grain] − 税 − 利息；**可为负 = 赤字**）
  * @param unmetNeed 本期未满足的需求（**逐商品**：{@code 需求 − 实得} 的逐日累加，毫单位）；键值非空、逐值 ≥ 0；**新周期第一天归零**。 ★★ **R4
  *     起是逐商品的表**（原来是一个标量，口径只有粮）：spec §七 原文"粮食不足与衣物不足对死亡的时间尺度显然不能一样" ⇒
@@ -71,6 +74,13 @@ import java.util.Map;
  *     <p>★ <b>它不是饿死数</b>：默认致死率 0‰ ⇒ 缺粮本身不产生 {@code deaths}（M0.2 的口径澄清）。报"饿死多少人"必须写清用的是哪条通道。
  * @param births 本期出生的人口（人）；不得为负；与 {@code deaths} **对称**（R4 起人口两头都会动，只记死亡会让 "年末人口 − 创世人口 == 出生 −
  *     死亡"写不出来）
+ * @param repaidMoney ★★ <b>E4c：本期偿还的货币债本金（逐币种，最小币值）</b>—— 键值非空、逐值 ≥ 0。 <b>不塞进 {@link
+ *     #repaid()}</b>（那个标量是粮口径；把钱记成粮 = 篡改单位）。窗口与 {@code income}/消费同：
+ *     本周期累计、新周期第一天归零。本窗口<b>只记货币债</b>；贷方收到的钱由 actor 账户与合同本金下降读，两处同值。
+ * @param capitalizedArrears ★★ <b>E4c：本期资本化的欠租/欠薪（按 {@code DebtUnit.key()} 分组，例如 {@code
+ *     "commodity:grain"} / {@code "money:silver"}）</b>—— 键为稳定 unit 串、值为本金增量（该 unit 的最小计量单位）。
+ *     它<b>不是</b>库存/货币流动（资本化只记债权，不搬粮/钱），故<b>不</b>进 {@code newBorrowing}（借入才是那个字段）；
+ *     它记的是"制度规定未付"转成合同债权的额度。窗口同上：本周期累计、新周期第一天归零； 读不到（旧档缺键）⇒ 空表 = 本周期没有资本化发生，而不是"没记账"。
  */
 public record FlowRow(
     HouseholdId id,
@@ -83,7 +93,9 @@ public record FlowRow(
     long netSurplus,
     Map<CommodityId, Long> unmetNeed,
     long deaths,
-    long births) {
+    long births,
+    Map<CurrencyId, Long> repaidMoney,
+    Map<String, Long> capitalizedArrears) {
 
   public FlowRow {
     if (id == null) {
@@ -116,6 +128,38 @@ public record FlowRow(
     if (births < 0) {
       throw new IllegalArgumentException("FlowRow.births 不得为负: " + births);
     }
+    // ★ E4c：旧档/手写 JSON 缺键时 Jackson 会把追加的两个 Map 绑成 null ⇒ 统一收成空表（"这一期没有这笔发生额"）。
+    if (repaidMoney == null) {
+      repaidMoney = Map.of();
+    }
+    if (capitalizedArrears == null) {
+      capitalizedArrears = Map.of();
+    }
+    Map<CurrencyId, Long> repaidMoneyCopy = new LinkedHashMap<>();
+    for (Map.Entry<CurrencyId, Long> entry : repaidMoney.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("FlowRow.repaidMoney 的键与值都不得为 null: " + entry.getKey());
+      }
+      if (entry.getValue() < 0L) {
+        throw new IllegalArgumentException(
+            "FlowRow.repaidMoney 的数量不得为负：" + entry.getKey() + " = " + entry.getValue());
+      }
+      repaidMoneyCopy.put(entry.getKey(), entry.getValue());
+    }
+    repaidMoney = Collections.unmodifiableMap(repaidMoneyCopy); // ★ 冻在赋值处
+    Map<String, Long> capitalizedCopy = new LinkedHashMap<>();
+    for (Map.Entry<String, Long> entry : capitalizedArrears.entrySet()) {
+      if (entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null) {
+        throw new IllegalArgumentException(
+            "FlowRow.capitalizedArrears 的键（DebtUnit.key()）与值都不得为 null/空白: " + entry.getKey());
+      }
+      if (entry.getValue() < 0L) {
+        throw new IllegalArgumentException(
+            "FlowRow.capitalizedArrears 的数量不得为负：" + entry.getKey() + " = " + entry.getValue());
+      }
+      capitalizedCopy.put(entry.getKey(), entry.getValue());
+    }
+    capitalizedArrears = Collections.unmodifiableMap(capitalizedCopy); // ★ 冻在赋值处
     Map<CommodityId, Long> unmetCopy = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> entry : unmetNeed.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {

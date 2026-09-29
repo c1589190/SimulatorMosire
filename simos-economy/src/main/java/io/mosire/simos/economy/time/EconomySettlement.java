@@ -9,6 +9,7 @@ import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.debt.InterestTiming;
+import io.mosire.simos.economy.api.debt.MonetaryConversion;
 import io.mosire.simos.economy.api.debt.RepaymentRule;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -41,6 +42,7 @@ import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.DebtCapacity;
 import io.mosire.simos.economy.model.DebtContract;
+import io.mosire.simos.economy.model.DebtIndex;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
@@ -122,8 +124,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *       classRowsOfCohort}）<b>整个删除</b>；"哪些行属于这个产业"改由**劳动配额表**推（{@link #householdKeysOf}）。
  *   <li>**计息**（v2 spec §7.1 第三处 + §四 周期结算第 6 步；V6 落地）：全部债务按 {@code principal × ratePerMillePerCycle
  *       ÷ 1000} 计**一次**、**并入本金**（纯数学：不搬运粮、**不动任何库存**），同额记入**债务人**本行流水的 {@code interestDue} —— 见
- *       {@link #chargeInterest}。★ **偿还在计息之前**（关账日、所得到账后）：按该家户**可用粮**（库存 − 一日最低口粮） 先还本，见 {@link
- *       #repayDebts}；不足部分顺延到下一周期，不静默减记。
+ *       {@link #chargeInterest}。★ **偿还在计息之前**（关账日、所得到账后）：E4c 起按 **粮债 → 其它商品债 → 货币债** 的稳定序逐条偿还 （见
+ *       {@link #repayDebts}；粮另扣一日口粮保留，货币只扣本币种可用余额、不越过冻结，无价格源不做货币折偿）； 不足部分顺延到下一周期，不静默减记。
  *   <li>**饿死判据**（2026-09-25 用户点名；**默认不致命**）：按本周期累加的 {@code unmetNeed} 折出"饿满整周期"的人口比例，在这一比例里按 {@code
  *       famineMortalityPerMille}（**默认 {@link #FAMINE_MORTALITY_PER_MILLE} = 0‰**）致死；人口减少、有效劳动同比例缩，
  *       死亡数记入 {@link FlowRow#deaths()}。**顺序**：在收获/分配**之后**（本期产出照分给幸存者，死亡不回溯产量），同一次结算内完成。
@@ -283,6 +285,17 @@ public final class EconomySettlement {
   /** 同格借粮的每周期利率（千分数）：20‰；字面量的唯一拼写点在 {@link DebtTerms}（旧公开常量为兼容别名）。 */
   public static final int BORROW_RATE_PER_MILLE_PER_CYCLE =
       DebtTerms.LEGACY_INTEREST_RATE_PER_MILLE_PER_CYCLE;
+
+  /**
+   * ★★ <b>E4c：欠租/欠薪资本化所用条款的来源名</b>——{@code "E4c_LEGACY_DEFAULT"}。
+   *
+   * <p>★★ E4c 的资本化条款明确取 {@link DebtTerms#legacyDefault()}（利率 {@code
+   * DebtTerms.LEGACY_INTEREST_RATE_PER_MILLE_PER_CYCLE}‰/周期、关账日偿还后计息、NOT_ALLOWED、期限空）。
+   * 这不是"未知条款静默并入默认档"：欠款读数 {@code Arrear} 本身不携带条款，E4c 只有这一条资本化路径； 该来源名随 {@code
+   * ProductionLedger.DebtCapitalization.termsSource} 一起进读口，将来出现按规则/合同定条款的
+   * 资本化时，必须新开一条带来源的路径，不得改这里悄悄换语义。
+   */
+  public static final String CAPITALIZATION_TERMS_SOURCE = "E4c_LEGACY_DEFAULT";
 
   /**
    * ★★ <b>借粮的信用倍数 κ（千分数；E4b 起已迁到 {@link DebtCapacity#CREDIT_F_MULTIPLE_PER_MILLE}）</b>。
@@ -771,6 +784,10 @@ public final class EconomySettlement {
     LinkedHashMap<HouseholdId, Long> interestToday = new LinkedHashMap<>(); // 周期末计息那一笔（§7.1③）
     // ★★ **H5：周期末偿还的那一笔**（{@code FlowRow.repaid} 的第一个写入点 —— 改前它恒 0）。
     LinkedHashMap<HouseholdId, Long> repaidToday = new LinkedHashMap<>();
+    // ★★ E4c：货币债偿还的逐币种读数（**不塞进粮口径的 repaidToday**；见 FlowRow.repaidMoney）。
+    LinkedHashMap<HouseholdId, Map<CurrencyId, Long>> repaidMoneyToday = new LinkedHashMap<>();
+    // ★★ E4c：本日资本化的欠租/欠薪（按 unit.key() 分组；资本化不搬库存/货币，故只进 FlowRow.capitalizedArrears）。
+    LinkedHashMap<HouseholdId, Map<String, Long>> capitalizedArrearsToday = new LinkedHashMap<>();
     // ★★ **H5：当日的缺口**（"今天这一顿没吃上多少"）—— 它先被记下、**不在吃饭那一步就借**
     //   （借是最后手段：自产/分配 → 市场 → 救济(留位) → 借；见 {@link #lendDeficitsInHex}）。
     LinkedHashMap<HouseholdId, Long> deficitToday = new LinkedHashMap<>();
@@ -985,6 +1002,15 @@ public final class EconomySettlement {
         day,
         parallelism);
 
+    // ── 3b. ★★ E4c：欠租/欠薪资本化（生产/租金阶段之后）─────────────────────────────────────
+    //   ★★ 只对**本日 ledger 的 Arrear 读数**（owed > 0）执行：把"制度规定未付"落成连续合同债权；
+    //     **不移动任何商品/货币库存**（欠款本来就是未付），也**不清零 Arrear 读数**（读数仍是制度事实）。
+    //   ★★ 端点必须解析到 HouseholdId（经 householdOfActor）；解析不到 ⇒ 具名跳过（不伪造）。
+    //   ★ 位置在**借粮/偿还之前**：新增的既有债因此同日进入 DebtCapacity（借粮额度）与偿还排序；
+    //     但不在当日起始本金快照里 ⇒ 当天不计息（与借粮同口径，见 principalAtDayStart）。
+    capitalizeArrears(
+        ledger, rows, debts, householdOfActor, capitalizedArrearsToday, day, dueCycle);
+
     // ── 4. 区域市场清算（M2.3/M2.4：每 5 天一轮 + 低库存追加轮；区内即时 / 跨区 ETA）────────────
     //   ★★ 调度只依赖**绝对世界日 + 当前状态**（M0.1）：两条推进路径在同一天必然同轮。
     //   ★ 它读 base.markets()（价格是数据）：缺格的格没有市场 ⇒ 不触发（不造默认价）。
@@ -1079,10 +1105,11 @@ public final class EconomySettlement {
           parallelism);
     }
 
-    // ── 4c. 偿还（★ R3 续修：所得到账后、计息前，按可用粮先还本）──────────────────────────
+    // ── 4c. 偿还（★ R3 续修：所得到账后、计息前，按可用粮先还本；E4c 扩成粮→其它商品→货币）──────
     //   ★★ 它挂在"今天有产业关账"上（利息／市场的同一处日级事实）：所得是**整周期**结算出来的
     //     （收获与分配在本步之前刚发生）⇒ 还债的时点就是所得到手的那一刻。
-    //   ★ 上限 = 本户**可用粮**（库存 − 一日最低口粮；余额扣不成负 —— 与唯一 applier 的守卫同一条口径，
+    //   ★ E4c 的上限：粮债 = max(0, 粮库存 − 冻结 − 一日口粮)；其它商品 = max(0, 该商品库存 − 冻结)；
+    //     货币债 = max(0, 该币种余额 − 冻结)。全部**不得越过冻结**，且余额扣不成负（与唯一 applier 同口径，
     //     见 {@link #repayDebts}）。
     if (anyCycleClosed) {
       repayDebts(
@@ -1090,9 +1117,14 @@ public final class EconomySettlement {
           debts,
           householdGoods,
           householdMoney,
+          householdFrozenGoods,
+          householdFrozenMoney,
           operatorGoods,
           operatorMoney,
+          operatorFrozenGoods,
+          operatorFrozenMoney,
           repaidToday,
+          repaidMoneyToday,
           householdOfActor,
           ledger,
           issuanceJournal);
@@ -1273,6 +1305,9 @@ public final class EconomySettlement {
       Map<CommodityId, Long> dayUnmet = unmetToday.getOrDefault(key, Map.of());
       long dayDeaths = deathsToday.getOrDefault(key, 0L);
       long dayBirths = birthsToday.getOrDefault(key, 0L);
+      // ★★ E4c：货币债偿还与资本化读数的当日量（与其余字段同窗口：本周期累加、新周期第一天归零）。
+      Map<CurrencyId, Long> dayRepaidMoney = repaidMoneyToday.getOrDefault(key, Map.of());
+      Map<String, Long> dayCapitalized = capitalizedArrearsToday.getOrDefault(key, Map.of());
       // ★ 多日推进（§十一）：当天的流水**累加**进本期流水，不能覆盖（否则"推进 100 天"只显示最后一天）。
       //   ★★ **本期口径（§八.5）**：新周期的第一天（progressDays == 0，含创世）该行**整行从 0 重记** ——
       //      上周期末的读数在**关账那一支的 revision 里**读得到（归档），次日才归零（清零）。
@@ -1293,7 +1328,9 @@ public final class EconomySettlement {
               (acc == null ? 0L : acc.netSurplus()) + netSurplus,
               mergeGoods(acc == null ? null : acc.unmetNeed(), dayUnmet),
               (acc == null ? 0L : acc.deaths()) + dayDeaths,
-              (acc == null ? 0L : acc.births()) + dayBirths));
+              (acc == null ? 0L : acc.births()) + dayBirths,
+              mergeMoney(acc == null ? null : acc.repaidMoney(), dayRepaidMoney),
+              mergeNamedQuantities(acc == null ? null : acc.capitalizedArrears(), dayCapitalized)));
     }
 
     OptionalLong lastClosed =
@@ -2036,12 +2073,10 @@ public final class EconomySettlement {
                 }
               }
               // ★ 债务条按 debtor 归属本分区 —— 读的是“快照 + 本分区本地写”的一致性副本。
-              LinkedHashMap<DebtContractId, DebtContract> localDebts = new LinkedHashMap<>();
-              for (Map.Entry<DebtContractId, DebtContract> entry : debts.entrySet()) {
-                if (keys.contains(entry.getValue().debtor())) {
-                  localDebts.put(entry.getKey(), entry.getValue());
-                }
-              }
+              // ★★ E4c：复制口也收在 DebtContractBook（本方法不再直接对债务表 put）；worker 的写走 upsert，
+              //   协调器用 absorb 落回。
+              LinkedHashMap<DebtContractId, DebtContract> localDebts =
+                  DebtContractBook.subset(debts, contract -> keys.contains(contract.debtor()));
               LinkedHashMap<HouseholdId, ClassRow> rowUpdates = new LinkedHashMap<>();
               LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumed = new LinkedHashMap<>();
               LinkedHashMap<HouseholdId, Long> localBorrowing = new LinkedHashMap<>();
@@ -2096,7 +2131,7 @@ public final class EconomySettlement {
     }
     accounts.commit(intents);
     for (LendingPartition partition : partitions) {
-      debts.putAll(partition.debts());
+      DebtContractBook.absorb(debts, partition.debts());
       rows.putAll(partition.rowUpdates());
       mergeGoodsInto(consumedGoods, partition.consumed());
       for (Map.Entry<HouseholdId, Long> entry : partition.borrowing().entrySet()) {
@@ -2429,7 +2464,8 @@ public final class EconomySettlement {
   private static FlowRow withLifecycle(FlowRow flow, HouseholdId key, long births, long deaths) {
     FlowRow base =
         flow == null
-            ? new FlowRow(key, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), 0L, 0L)
+            ? new FlowRow(
+                key, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), 0L, 0L, Map.of(), Map.of())
             : flow;
     return new FlowRow(
         base.key(),
@@ -2442,7 +2478,9 @@ public final class EconomySettlement {
         base.netSurplus(),
         base.unmetNeed(),
         base.deaths() + deaths,
-        base.births() + births);
+        base.births() + births,
+        base.repaidMoney(),
+        base.capitalizedArrears());
   }
 
   /**
@@ -3862,39 +3900,21 @@ public final class EconomySettlement {
           trimUnmet(unmetNeed, debtor, GRAIN, lent);
           // ★★ E4a 连续身份：id 是 (债务人, 债权人, unit, terms) 的**纯函数** ⇒ 同一对主体跨周期命中同一条，
           //   本金递增；terms 不同（利率/规则/期限维）必然分开，不允许静默合并。
-          DebtContractId debtId = legacyGrainDebtId(debtor, lender);
-          DebtContract standing = debts.get(debtId);
+          // ★★ E4c：唯一写口 —— 新条/续借/再借激活/到期覆盖全部在 DebtContractBook.upsert 里；本方法不再碰债务表。
+          DebtContract contract =
+              DebtContractBook.upsert(
+                  debts,
+                  debtor,
+                  lender,
+                  DebtUnit.commodity(GRAIN),
+                  DebtTerms.legacyDefault(BORROW_RATE_PER_MILLE_PER_CYCLE),
+                  lent,
+                  day,
+                  OptionalLong.of(dueCycle));
           ClassRow currentRow = rowUpdates.getOrDefault(debtor, rows.get(debtor));
-          if (standing == null) {
-            debts.put(
-                debtId,
-                new DebtContract(
-                    debtId,
-                    debtor,
-                    lender,
-                    DebtUnit.commodity(GRAIN),
-                    DebtTerms.legacyDefault(BORROW_RATE_PER_MILLE_PER_CYCLE),
-                    lent,
-                    day,
-                    OptionalLong.empty(),
-                    OptionalLong.of(dueCycle),
-                    DebtStatus.NORMAL));
-          } else {
-            // ★ 旧行为：同一周期重复借入本金递增；新合同把“哪一周期借的”折成滚动 dueCycle：
-            //   每次借入刷新为 currentCycle + 1（最新一笔的到期），本金连续。
-            debts.put(
-                debtId,
-                standing
-                    .withPrincipal(Math.addExact(standing.principal(), lent))
-                    .withDueCycle(OptionalLong.of(dueCycle))
-                    .withStatus(
-                        standing.status() == DebtStatus.SETTLED
-                            ? DebtStatus.NORMAL
-                            : standing.status()));
-          }
-          if (!currentRow.debts().contains(debtId)) {
-            rowUpdates.put(debtor, withExtraDebt(currentRow, debtId)); // 行里的引用只加一次（幂等）
-          }
+          rowUpdates.put(
+              debtor,
+              DebtContractBook.withDebtReference(currentRow, contract.id())); // 派生引用只加一次（幂等）
           // ★ 借到的粮当日吃掉 ⇒ 已在上面（转移之后）计入当日消费 —— 那里是**唯一**写这一笔的地方。
           borrowing.merge(debtor, lent, Long::sum);
           remaining -= lent;
@@ -4166,7 +4186,7 @@ public final class EconomySettlement {
           long paid = Math.min(debt.principal(), Math.max(0L, available));
           if (paid <= 0L) {
             if (debt.principal() > 0L) {
-              debts.put(debt.id(), debt.withStatus(DebtStatus.DEFAULTED));
+              DebtContractBook.markStatus(debts, debt.id(), DebtStatus.DEFAULTED);
               debtDefaultedMilli += debt.principal();
               debtDefaultedItems++;
             }
@@ -4200,11 +4220,10 @@ public final class EconomySettlement {
               repayment,
               issuanceJournal);
           long remaining = debt.principal() - paid;
-          // ★ 不足才违约；还清 = SETTLED、本金 0（历史留痕，不从表里删）。
-          debts.put(
-              debt.id(),
-              debt.withPrincipal(remaining)
-                  .withStatus(remaining > 0L ? DebtStatus.DEFAULTED : DebtStatus.SETTLED));
+          // ★ 不足才违约；还清 = SETTLED、本金 0（历史留痕，不从表里删）。E4c：写口收在 DebtContractBook。
+          DebtContractBook.reduce(debts, debt.id(), paid);
+          DebtContractBook.markStatus(
+              debts, debt.id(), remaining > 0L ? DebtStatus.DEFAULTED : DebtStatus.SETTLED);
           debtPaidMilli += paid;
           if (remaining > 0L) {
             debtDefaultedMilli += remaining;
@@ -4263,113 +4282,383 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ <b>周期末偿还（H5 ②；{@code FlowRow.repaid} 的第一个写入点；R3 续修改为"按可用粮"）</b>。
+   * ★★ <b>E4c：同一天内资本化事件的稳定去重键</b>——{@code (payer, payee, unit, activity, rule)}。
+   *
+   * <p>★ 合同身份仍是 {@code DebtContractId} 的四元组 {@code (debtor, creditor, unit, terms)}；这里多出的 {@code
+   * activity} / {@code rule} 只用于<b>同一份日账本内</b>识别"两笔读数是不是同一次事件"： 同一 unit +
+   * 同一规则只有同一次事件才会重复，重复则累加、只写一次合同。跨周期同四元组照旧连续累加（E4a 语义不变）。
+   */
+  private record CapitalizationEventKey(
+      ActorRef payer,
+      ActorRef payee,
+      String unitKey,
+      ProductionUnitId activity,
+      CompensationRule rule) {}
+
+  /**
+   * ★★ <b>E4c：欠租/欠薪资本化</b>（生产/租金阶段之后；见 {@code settleOneDayInto} 的 3b）。
    *
    * <pre>
-   * 逐债务人（行序）：
-   *   reserve = 当日自然口粮需要_h × {@link #DEBTOR_SUBSISTENCE_RESERVE_DAYS}   // 只留一天，不抢"今天吃完明天"的口粮
-   *   budget  = max(0, 当前粮库存_h − reserve) × {@link #DEBT_REPAYMENT_SHARE_PER_MILLE} ÷ 1000
-   *   逐条债（该行 {@code debts} 的引用序）：还 = min(budget, 本金)；铸 LOAN_REPAYMENT 转移（债务人 → 债权人）；
-   *                                  本金 −还；{@code repaid} += 还；budget −还
+   * 输入   = 本日 ProductionLedger 的 Arrear 读数（owed = 应付 − 实付 > 0）
+   * 去重   = 同一天内 (payer, payee, unit.key(), activity, rule) 相同 ⇒ 读数额相加、只 upsert 一次
+   * unit   = Arrear.currency 有值 ⇒ DebtUnit.Money(currency)；否则 DebtUnit.Commodity(commodity)
+   * terms  = DebtTerms.legacyDefault()（20‰/周期、关账日偿还后计息、NOT_ALLOWED、期限空）
+   *          —— E4c 的默认条款来源在 {@code DebtCapitalization.termsSource} 里显式标成
+   *          {@value #CAPITALIZATION_TERMS_SOURCE}，不把未知条款静默并进默认条
+   * amount = owed；day = 当日；dueCycle = 当前周期 + 1
+   * 端点   = householdOfActor.get(payer/payee) ∈ 家户行；任一解析不到 ⇒ 具名 unresolved，跳过，不伪造端点
+   * 库存   = **不动**：资本化只写债权本金；不铸转移、不扣库存/货币，也不清零 Arrear 读数
    * </pre>
    *
-   * <p>★★ <b>R3 续修改了什么、为什么</b>：旧公式是 {@code min(本日粮所得 × 200‰, 库存)} —— 真档债务人是城镇粮缺口户， 它们的关系产出只有布/货币 ⇒
-   * {@code income[grain]} 恒 0 ⇒ 预算恒 0，{@code repaid} 永远接近 0。现在读取<strong>关账日已经到帐</strong>的粮库存
-   * （收获/分配/市场都已在会话工作副本里），先扣一日最低口粮，其余先还本、顺延到计息之前；这条路径对"有粮但没粮所得"的家户也成立。
+   * <p>★★ <b>手算例子</b>：某作坊 operator（家户 H1）本周期应付实物工资 1,000 毫粮、实付 400 ⇒ Arrear{@code owed = 600}。资本化后
+   * {@code DebtContractId.idOf(H1, H2, Commodity(grain), legacyDefault)} 这条合同的本金 +600、 状态
+   * NORMAL、{@code dueCycle = 当前周期 + 1}；H1 的行流水 {@code capitalizedArrears["commodity:grain"] +=
+   * 600}； 粮库存一分不动（H1 与 H2 的账都保持原值）。同一日如果又读到一条完全相同的 600 欠款读数（同 activity/rule）， 去重后只写一次、金额
+   * 1,200（{@code eventCount = 2}）。
    *
-   * <p>★★ <b>为什么还款是"一条转移"而不是"把本金改小"</b>：粮**真的从债务人的缸里进了债权人的缸** ——
-   * 这正是"任何库存变动必有对应转移记录"那条不变量要钉的东西（改前那笔只有债务表里的一行数字在动，账上无从对账）。 {@code reason = }{@link
-   * TransferReason#LOAN_REPAYMENT}（★ H5 给这一档的**第一个写者**）。
+   * @param ledger 当日累加器（读 {@code arrears()}、写资本化/跳过审计）；不得为 null
+   * @param rows 家户行工作表（解析债务人后补派生引用）；不得为 null
+   * @param debts 债务工作表（唯一写口 {@link DebtContractBook#upsert}）；不得为 null
+   * @param householdOfActor actor → 家户的当日反查表（E4c 身份解析的唯一来源）；不得为 null
+   * @param capitalizedByHousehold 本日逐户逐 unit 的资本化累加器（就地更新 ⇒ 进 {@code FlowRow.capitalizedArrears}）；
+   *     不得为 null
+   * @param day 资本化发生日（进新合同 {@code openedDay}）；不得为负
+   * @param dueCycle 资本化合同的到期周期（当前周期 + 1）
+   */
+  private static void capitalizeArrears(
+      ProductionLedger.Accumulator ledger,
+      Map<HouseholdId, ClassRow> rows,
+      Map<DebtContractId, DebtContract> debts,
+      Map<ActorRef, HouseholdId> householdOfActor,
+      LinkedHashMap<HouseholdId, Map<String, Long>> capitalizedByHousehold,
+      long day,
+      long dueCycle) {
+    List<ProductionSettlement.Arrear> arrears = ledger.arrears();
+    if (arrears.isEmpty()) {
+      return; // 没有欠款读数 ⇒ 连去重表都不建（旧路径逐值不变）
+    }
+    // ★★ 第一步：按事件键稳定去重并累加（键序 = 读数在当日账本里的出现序 ⇒ 可复现）。
+    LinkedHashMap<CapitalizationEventKey, Long> owedByEvent = new LinkedHashMap<>();
+    LinkedHashMap<CapitalizationEventKey, ProductionSettlement.Arrear> sampleByEvent =
+        new LinkedHashMap<>();
+    LinkedHashMap<CapitalizationEventKey, Integer> countByEvent = new LinkedHashMap<>();
+    for (ProductionSettlement.Arrear arrear : arrears) {
+      DebtUnit unit = unitOf(arrear);
+      CapitalizationEventKey key =
+          new CapitalizationEventKey(
+              arrear.payer(), arrear.payee(), unit.key(), arrear.activity(), arrear.rule());
+      owedByEvent.merge(key, arrear.owed(), Math::addExact);
+      sampleByEvent.putIfAbsent(key, arrear);
+      countByEvent.merge(key, 1, Integer::sum);
+    }
+    // ★★ 第二步：逐事件解析端点 → upsert → 补派生引用 → 记审计。
+    for (Map.Entry<CapitalizationEventKey, Long> entry : owedByEvent.entrySet()) {
+      CapitalizationEventKey key = entry.getKey();
+      ProductionSettlement.Arrear sample = sampleByEvent.get(key);
+      long owed = entry.getValue();
+      DebtUnit unit = unitOf(sample);
+      HouseholdId debtor = householdOfActor.get(key.payer());
+      HouseholdId creditor = householdOfActor.get(key.payee());
+      if (debtor == null || creditor == null) {
+        String reason =
+            debtor == null && creditor == null
+                ? "payer-and-payee-not-household"
+                : debtor == null ? "payer-not-household" : "payee-not-household";
+        ledger.addUnresolvedDebtCapitalization(
+            new ProductionLedger.UnresolvedDebtCapitalization(
+                sample.payer(),
+                sample.payee(),
+                sample.activity(),
+                sample.rule(),
+                sample.commodity(),
+                sample.currency(),
+                owed,
+                reason));
+        continue;
+      }
+      DebtTerms terms = DebtTerms.legacyDefault();
+      DebtContract contract =
+          DebtContractBook.upsert(
+              debts, debtor, creditor, unit, terms, owed, day, OptionalLong.of(dueCycle));
+      ClassRow row = rows.get(debtor);
+      if (row == null) {
+        // 端点来自 householdOfActor（同源于 rows），解析到却查不到行 = 状态已被改坏，fail-closed。
+        throw new IllegalStateException(
+            "资本化解出的债务人不在 rows 里（householdOfActor 与 rows 漂开）: " + debtor);
+      }
+      rows.put(debtor, DebtContractBook.withDebtReference(row, contract.id()));
+      ledger.addDebtCapitalization(
+          new ProductionLedger.DebtCapitalization(
+              sample.payer(),
+              sample.payee(),
+              sample.activity(),
+              sample.rule(),
+              debtor,
+              creditor,
+              contract.id(),
+              unit,
+              owed,
+              day,
+              dueCycle,
+              terms,
+              CAPITALIZATION_TERMS_SOURCE,
+              contract.principal(),
+              countByEvent.get(key)));
+      capitalizedByHousehold
+          .computeIfAbsent(debtor, ignored -> new LinkedHashMap<>())
+          .merge(unit.key(), owed, Math::addExact);
+    }
+  }
+
+  /** ★ E4c：Arrear 的显式 unit（与 {@code RuleSettlement} 的"commodity/currency 恰其一"同源；坏数据 ⇒ 具名抛）。 */
+  private static DebtUnit unitOf(ProductionSettlement.Arrear arrear) {
+    if (arrear.currency().isPresent()) {
+      return DebtUnit.money(arrear.currency().orElseThrow());
+    }
+    if (arrear.commodity().isPresent()) {
+      return DebtUnit.commodity(arrear.commodity().orElseThrow());
+    }
+    throw new IllegalStateException("Arrear 既没有 currency 也没有 commodity（构造期应已判死）: " + arrear);
+  }
+
+  /**
+   * ★★ <b>周期末偿还（E4c：粮优先 + 其它商品 + 货币；唯一本金写口 {@link DebtContractBook#reduce}）</b>。
+   *
+   * <pre>
+   * 债务人序 = HouseholdId.value 升序（稳定）
+   * 合同序   = 粮 unit → 其它商品 unit → 货币 unit；同档 dueCycle（空 = 最后）→ DebtContractId.value
+   * 条款闸   = 只走 RepaymentRule.AVAILABLE_SURPLUS_SHARE + InterestTiming.AFTER_REPAYMENT_ON_CLOSE
+   *            其它组合 fail-closed 具名抛（不静默当默认档）
+   * 预算     = 粮：max(0, 粮库存 − 冻结 − 当日口粮 × DEBTOR_SUBSISTENCE_RESERVE_DAYS) × 本常量 ÷ 1000
+   *            其它商品：max(0, 该商品库存 − 冻结)；货币：max(0, 该币种余额 − 冻结)
+   * 每笔     = min(预算, 本金) → 铸 LOAN_REPAYMENT 转移 → applyTransfer（带冻结）→ 本金 −还 → 预算 −还
+   * 读数     = 粮进 FlowRow.repaid；货币进 FlowRow.repaidMoney（逐币种）；其它商品只从合同本金下降读
+   * 不硬折   = 实物债条款允许货币折偿但没有稳定价格源 ⇒ 本金不动、记 DebtRepaymentSkip(unpriced…)
+   * </pre>
+   *
+   * <p>★★ <b>为什么还款是"一条转移"而不是"把本金改小"</b>：粮/钱**真的从债务人的账上进了债权人的账** ——
+   * 这正是"任何库存变动必有对应转移记录"那条不变量要钉的东西。{@code reason = }{@link TransferReason#LOAN_REPAYMENT}。
+   *
+   * <p>★★ <b>货币债不得用粮硬折</b>：货币腿只扣该合同自己的币种余额；粮预算只服务粮债（以及粮债优先的排序），
+   * 不会因为"货币债还不上"就去动粮。其它商品的实物债用该商品自己的库存偿还，也不拿粮顶。
    *
    * <p>★★ <b>{@code Transfer.settles} 仍恒为 {@code Optional.empty()}</b>：借粮/偿还产生的是 {@link
-   * DebtContractId}，而 {@code settles} 的类型是 {@code ClaimId} —— 硬塞会编造一条本批不存在的 claim 体系（裁定见 {@code
-   * Transfer} 的类注）。
+   * DebtContractId}，而 {@code settles} 的类型是 {@code ClaimId} —— 硬塞会编造一条本批不存在的 claim 体系。
    *
-   * <p>★★ <b>本金还清 ⇒ 那条 {@link DebtContract} 留在表里、本金为 0</b>：它是一条**已结清**的历史事实（"哪一周期借的、
-   * 跟谁借的、还了多少"都还在），删掉它等于把发生过的事从账上抹去。★ 计息读本金 ⇒ 0 本金的条不再生息（{@link #chargeInterest} 自己挡掉）。
+   * <p>★★ <b>本金还清 ⇒ 那条 {@link DebtContract} 留在表里、本金为 0</b>：它是一条**已结清**的历史事实；删掉它等于把发生过的事从账上抹去。 计息读本金
+   * ⇒ 0 本金的条不再生息（{@link #chargeInterest} 自己挡掉）。
    *
-   * <p>★ <b>上限两路取小</b>见 {@link #DEBT_REPAYMENT_SHARE_PER_MILLE}：可用粮（库存 − 一日口粮）× 比例 → 剩余本金。★
-   * 库存上限取自**循环开始前**的余额，而每一笔偿还都会经唯一 applier 扣掉它 ⇒ 当轮之和结构性 ≤ 可用粮、扣不成负。
-   *
-   * @param repaid 本日偿还的逐行累加器（**就地更新** ⇒ 进 {@code FlowRow.repaid}）
+   * @param repaid 本日**粮债**偿还的逐行累加器（就地更新 ⇒ 进 {@code FlowRow.repaid}）；不得为 null
+   * @param repaidMoney 本日**货币债**偿还的逐户逐币种累加器（就地更新 ⇒ 进 {@code FlowRow.repaidMoney}）；不得为 null
    */
   private static void repayDebts(
       LinkedHashMap<HouseholdId, ClassRow> rows,
       LinkedHashMap<DebtContractId, DebtContract> debts,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+      Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
       Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
       Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
+      Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
+      Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
       LinkedHashMap<HouseholdId, Long> repaid,
+      LinkedHashMap<HouseholdId, Map<CurrencyId, Long>> repaidMoney,
       Map<ActorRef, HouseholdId> householdOfActor,
-      ProductionSettlement.TransferMint mint,
+      ProductionLedger.Accumulator ledger,
       MoneyIssuanceJournal issuanceJournal) {
-    for (HouseholdId debtor : new ArrayList<>(rows.keySet())) {
+    Map<HouseholdId, List<DebtContractId>> debtsByDebtor = DebtIndex.byDebtor(debts);
+    List<HouseholdId> debtors = new ArrayList<>(rows.keySet());
+    debtors.sort(Comparator.comparing(HouseholdId::value)); // 稳定债务人序（不沿用 Map 插入序）
+    for (HouseholdId debtor : debtors) {
       ClassRow row = rows.get(debtor);
-      if (row.debts().isEmpty()) {
+      if (row == null) {
         continue;
       }
-      long stock = grainOf(householdGoods, debtor);
-      long dailyNeed = row.naturalNeeds().getOrDefault(GRAIN, 0L);
-      long reserve = dailyNeed * DEBTOR_SUBSISTENCE_RESERVE_DAYS;
-      long available = Math.max(0L, stock - reserve);
-      long budget = available * DEBT_REPAYMENT_SHARE_PER_MILLE / 1000L;
-      if (budget <= 0L) {
-        continue;
-      }
-      for (DebtContractId debtId : row.debts()) {
-        if (budget <= 0L) {
-          break;
-        }
+      List<DebtContract> owed = new ArrayList<>();
+      for (DebtContractId debtId : debtsByDebtor.getOrDefault(debtor, List.of())) {
         DebtContract debt = debts.get(debtId);
-        if (debt == null || debt.principal() <= 0L) {
-          continue;
+        if (debt != null && debt.principal() > 0L) {
+          owed.add(debt);
         }
-        if (debt.terms().repaymentRule() != RepaymentRule.AVAILABLE_SURPLUS_SHARE) {
-          throw new IllegalStateException(
-              "E4a 尚未接线非 legacy 偿还规则：合同="
-                  + debtId
-                  + " rule="
-                  + debt.terms().repaymentRule()
-                  + "（E4b 接线；此处 fail-closed，不静默当成默认档）");
+      }
+      if (owed.isEmpty()) {
+        continue;
+      }
+      owed.sort(repaymentOrder());
+      // ★ 预算一律"库存/余额 − 冻结 − 保留"：粮另扣一日口粮；其它商品没有口粮保留（粮保留仍是粮）。
+      long grainBudget = -1L; // 懒算：该户没有粮债时不去读粮库存
+      Map<CommodityId, Long> commodityBudgetLeft = new LinkedHashMap<>();
+      Map<CurrencyId, Long> moneyBudgetLeft = new LinkedHashMap<>();
+      for (DebtContract debt : owed) {
+        requireRepayableTerms(debt);
+        switch (debt.unit()) {
+          case DebtUnit.Commodity commodity -> {
+            CommodityId commodityId = commodity.commodity();
+            boolean grain = commodityId.equals(GRAIN);
+            long budget;
+            if (grain) {
+              if (grainBudget < 0L) {
+                long dailyNeed = row.naturalNeeds().getOrDefault(GRAIN, 0L);
+                long reserve = dailyNeed * DEBTOR_SUBSISTENCE_RESERVE_DAYS;
+                long available =
+                    Math.max(
+                        0L,
+                        stockOf(householdGoods, debtor, GRAIN)
+                            - frozenGoodsOf(householdFrozenGoods, debtor, GRAIN)
+                            - reserve);
+                grainBudget = available * DEBT_REPAYMENT_SHARE_PER_MILLE / 1000L;
+              }
+              budget = grainBudget;
+            } else {
+              long stock = stockOf(householdGoods, debtor, commodityId);
+              long frozen = frozenGoodsOf(householdFrozenGoods, debtor, commodityId);
+              budget =
+                  commodityBudgetLeft.computeIfAbsent(
+                      commodityId, ignored -> Math.max(0L, stock - frozen));
+            }
+            long paid = Math.min(budget, debt.principal());
+            if (paid > 0L) {
+              Transfer repayment =
+                  ledger.mint(
+                      HouseholdActors.of(debtor),
+                      HouseholdActors.of(debt.creditor()),
+                      row.view().hex(),
+                      Map.of(commodityId, paid),
+                      Map.of(),
+                      TransferReason.LOAN_REPAYMENT);
+              applyTransfer(
+                  householdGoods,
+                  householdMoney,
+                  operatorGoods,
+                  operatorMoney,
+                  householdFrozenGoods,
+                  householdFrozenMoney,
+                  operatorFrozenGoods,
+                  operatorFrozenMoney,
+                  householdOfActor,
+                  repayment,
+                  issuanceJournal);
+              DebtContractBook.reduce(debts, debt.id(), paid);
+              if (grain) {
+                grainBudget -= paid;
+                repaid.merge(debtor, paid, Long::sum); // FlowRow.repaid 只记粮（其它 unit 不塞进这个标量）
+              } else {
+                commodityBudgetLeft.put(commodityId, budget - paid);
+              }
+            }
+            // ★ 不硬折：条款允许货币折偿、但没有稳定价格源 ⇒ 具名跳过；实物腿已经尽力（可能部分/全额）。
+            recordUnpricedConversionSkipIfNeeded(ledger, debtor, debt, debt.principal() - paid);
+          }
+          case DebtUnit.Money money -> {
+            CurrencyId currency = money.currency();
+            long free =
+                Math.max(
+                    0L,
+                    moneyOf(householdMoney, debtor, currency)
+                        - frozenMoneyOf(householdFrozenMoney, debtor, currency));
+            long budget = moneyBudgetLeft.computeIfAbsent(currency, ignored -> free);
+            long paid = Math.min(budget, debt.principal());
+            if (paid <= 0L) {
+              continue; // 该币种没有可用余额（或前面几条已用完）⇒ 不铸 0 转移
+            }
+            Transfer repayment =
+                ledger.mint(
+                    HouseholdActors.of(debtor),
+                    HouseholdActors.of(debt.creditor()),
+                    row.view().hex(),
+                    Map.of(),
+                    Map.of(currency, paid),
+                    TransferReason.LOAN_REPAYMENT);
+            applyTransfer(
+                householdGoods,
+                householdMoney,
+                operatorGoods,
+                operatorMoney,
+                householdFrozenGoods,
+                householdFrozenMoney,
+                operatorFrozenGoods,
+                operatorFrozenMoney,
+                householdOfActor,
+                repayment,
+                issuanceJournal);
+            DebtContractBook.reduce(debts, debt.id(), paid);
+            moneyBudgetLeft.put(currency, budget - paid);
+            repaidMoney
+                .computeIfAbsent(debtor, ignored -> new LinkedHashMap<>())
+                .merge(currency, paid, Long::sum);
+          }
         }
-        if (!(debt.unit() instanceof DebtUnit.Commodity commodity)
-            || !commodity.commodity().equals(GRAIN)) {
-          // ★ E4a 只把既有**粮债**偿还路径接进合同；货币折偿 / 其它商品的实物偿还属 E4b（粮优先）。
-          continue;
-        }
-        long paid = Math.min(budget, debt.principal());
-        if (paid <= 0L) {
-          continue;
-        }
-        Transfer repayment =
-            mint.mint(
-                HouseholdActors.of(debtor),
-                HouseholdActors.of(debt.creditor()),
-                rows.get(debtor).view().hex(),
-                Map.of(GRAIN, paid),
-                TransferReason.LOAN_REPAYMENT);
-        applyTransfer(
-            householdGoods,
-            householdMoney,
-            operatorGoods,
-            operatorMoney,
-            householdOfActor,
-            repayment,
-            issuanceJournal);
-        long remaining = debt.principal() - paid;
-        // ★ legacy 路径不把违约标记洗掉；本金还清且未违约 ⇒ SETTLED（旧 false 的逐值投影）。
-        debts.put(
-            debtId,
-            debt.withPrincipal(remaining)
-                .withStatus(
-                    remaining == 0L && debt.status() != DebtStatus.DEFAULTED
-                        ? DebtStatus.SETTLED
-                        : debt.status()));
-        repaid.merge(debtor, paid, Long::sum);
-        budget -= paid;
       }
     }
+  }
+
+  /**
+   * ★★ <b>E4c 的偿还顺序</b>：先粮 unit、再其它商品、再货币；同档按 {@code dueCycle}（空 = 最后）再按 {@link
+   * DebtContractId#value()} 稳定排序。
+   *
+   * <p>★ {@code dueCycle} 是合同当前的滚动到期周期（借入刷新）；空 = 没有写死期限 ⇒ 排在所有有期限的后面。
+   */
+  private static Comparator<DebtContract> repaymentOrder() {
+    return Comparator.comparingInt((DebtContract debt) -> repaymentTier(debt.unit()))
+        .thenComparingLong(debt -> debt.dueCycle().orElse(Long.MAX_VALUE))
+        .thenComparing(debt -> debt.id().value());
+  }
+
+  /** 0 = 粮；1 = 其它商品；2 = 货币（顺序的单一拼写点）。 */
+  private static int repaymentTier(DebtUnit unit) {
+    return switch (unit) {
+      case DebtUnit.Commodity commodity -> commodity.commodity().equals(GRAIN) ? 0 : 1;
+      case DebtUnit.Money ignored -> 2;
+    };
+  }
+
+  /**
+   * ★★ <b>E4c：只对已接线的 legacy 条款走现有语义</b>——{@link RepaymentRule#AVAILABLE_SURPLUS_SHARE} + {@link
+   * InterestTiming#AFTER_REPAYMENT_ON_CLOSE}。任何其它组合当场具名抛（fail-closed），不静默当默认档。
+   */
+  private static void requireRepayableTerms(DebtContract debt) {
+    if (debt.terms().repaymentRule() != RepaymentRule.AVAILABLE_SURPLUS_SHARE) {
+      throw new IllegalStateException(
+          "E4c 尚未接线非 legacy 偿还规则：合同="
+              + debt.id()
+              + " rule="
+              + debt.terms().repaymentRule()
+              + "（fail-closed，不静默当成默认档）");
+    }
+    if (debt.terms().interestTiming() != InterestTiming.AFTER_REPAYMENT_ON_CLOSE) {
+      throw new IllegalStateException(
+          "E4c 尚未接线非 legacy 计息时点：合同="
+              + debt.id()
+              + " timing="
+              + debt.terms().interestTiming()
+              + "（fail-closed，不静默当成默认档）");
+    }
+  }
+
+  /** ★ E4c：无稳定价格源时货币折偿的具名原因（唯一拼写点）。 */
+  static final String UNPRICED_MONETARY_CONVERSION_REASON =
+      "unpriced-monetary-conversion-not-landed";
+
+  /**
+   * ★★ <b>E4c：不做硬折</b>——实物债条款允许货币折偿（{@code monetaryConversion != NOT_ALLOWED}）时，若还有未偿本金， 记一条具名
+   * {@link ProductionLedger.DebtRepaymentSkip}：E4c 没有稳定市场价/合同价源，折偿路径未接线；
+   * 实物腿该还的已经还了，剩余本金继续挂账。<b>绝不</b>拿粮价、旧价格或拍脑袋的汇率把实物折成钱。
+   */
+  private static void recordUnpricedConversionSkipIfNeeded(
+      ProductionLedger.Accumulator ledger, HouseholdId debtor, DebtContract debt, long remaining) {
+    if (remaining <= 0L) {
+      return;
+    }
+    if (!(debt.unit() instanceof DebtUnit.Commodity)) {
+      return; // 货币债本身没有"折成货币"这一步
+    }
+    if (debt.terms().monetaryConversion() == MonetaryConversion.NOT_ALLOWED) {
+      return; // 合同本来就不允许折偿 ⇒ 不记"未定价"（那是合同事实，不是价格缺失）
+    }
+    ledger.addDebtRepaymentSkip(
+        new ProductionLedger.DebtRepaymentSkip(
+            debtor, debt.id(), debt.unit(), remaining, UNPRICED_MONETARY_CONVERSION_REASON));
   }
 
   /**
@@ -4636,11 +4925,6 @@ public final class EconomySettlement {
         creditor,
         DebtUnit.commodity(GRAIN),
         DebtTerms.legacyDefault(BORROW_RATE_PER_MILLE_PER_CYCLE));
-  }
-
-  /** 换本金（借入递增 / 偿还减少 / 计息并入共用；其余字段逐值保留）。 */
-  private static DebtContract withPrincipal(DebtContract debt, long principal) {
-    return debt.withPrincipal(principal);
   }
 
   // ── 周期收获与制度分配 ─────────────────────────────────────────────────────────────
@@ -5704,9 +5988,8 @@ public final class EconomySettlement {
       if (charged <= 0L) {
         continue; // 本金小到算不出 1 毫粮（或利率 0）⇒ 本轮不记：不写"看起来在记、其实永远是 0"的流水
       }
-      debts.put(
-          id,
-          debt.withPrincipal(debt.principal() + charged).withLastInterestDay(OptionalLong.of(day)));
+      // ★★ E4c：利息并入本金也走唯一写口（唯一额外语义：写 lastInterestDay）。
+      DebtContractBook.compoundInterest(debts, id, charged, day);
       interest.merge(debt.debtor(), charged, Long::sum);
     }
   }
@@ -5728,6 +6011,35 @@ public final class EconomySettlement {
     }
     if (second != null) {
       for (Map.Entry<CommodityId, Long> entry : second.entrySet()) {
+        merged.merge(entry.getKey(), entry.getValue(), Long::sum);
+      }
+    }
+    return merged;
+  }
+
+  /** ★ E4c：逐币种偿还表相加（与 {@link #mergeGoods} 同一条"空表进空表出、同 key 相加"口径）。 */
+  private static Map<CurrencyId, Long> mergeMoney(
+      Map<CurrencyId, Long> first, Map<CurrencyId, Long> second) {
+    return mergeLongMaps(first, second);
+  }
+
+  /** ★ E4c：按稳定 unit 串分组的资本化读数相加（键 = {@code DebtUnit.key()}，如 {@code "money:silver"}）。 */
+  private static Map<String, Long> mergeNamedQuantities(
+      Map<String, Long> first, Map<String, Long> second) {
+    return mergeLongMaps(first, second);
+  }
+
+  /** 任意键 → long 的发生额表相加（整数加法；两份都保序；空表进空表出）。 */
+  private static <K> Map<K, Long> mergeLongMaps(Map<K, Long> first, Map<K, Long> second) {
+    if ((first == null || first.isEmpty()) && (second == null || second.isEmpty())) {
+      return Map.of();
+    }
+    LinkedHashMap<K, Long> merged = new LinkedHashMap<>();
+    if (first != null) {
+      merged.putAll(first);
+    }
+    if (second != null) {
+      for (Map.Entry<K, Long> entry : second.entrySet()) {
         merged.merge(entry.getKey(), entry.getValue(), Long::sum);
       }
     }
@@ -5846,6 +6158,15 @@ public final class EconomySettlement {
     return stockOf(householdGoods, key, GRAIN);
   }
 
+  /** ★ E4c：某家户在某商品上的冻结量（没有键 ⇒ 0）—— 偿还预算不得越过冻结。 */
+  private static long frozenGoodsOf(
+      Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
+      HouseholdId key,
+      CommodityId commodity) {
+    Map<CommodityId, Long> frozen = householdFrozenGoods.get(key);
+    return frozen == null ? 0L : frozen.getOrDefault(commodity, 0L);
+  }
+
   /**
    * 把某家户在某商品上的余额**换成** {@code amount}（{@code ≤ 0} ⇒ 去掉该键）。
    *
@@ -5892,6 +6213,15 @@ public final class EconomySettlement {
       HouseholdId key,
       CurrencyId currency) {
     return householdMoney.getOrDefault(key, Map.of()).getOrDefault(currency, 0L);
+  }
+
+  /** ★ E4c：某家户在某币种上的冻结量（没有键 ⇒ 0）—— 货币债偿还预算不得越过冻结。 */
+  private static long frozenMoneyOf(
+      Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
+      HouseholdId key,
+      CurrencyId currency) {
+    Map<CurrencyId, Long> frozen = householdFrozenMoney.get(key);
+    return frozen == null ? 0L : frozen.getOrDefault(currency, 0L);
   }
 
   /** 把某家户在某币种上的余额**换成** {@code amount}（{@code ≤ 0} ⇒ 去掉该币种键）。 */

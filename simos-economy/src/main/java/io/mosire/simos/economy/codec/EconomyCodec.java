@@ -25,6 +25,7 @@ import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
@@ -150,6 +151,8 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(DebtContractId.class, keyDeserializer(DebtContractId::parse));
     module.addKeyDeserializer(PledgeId.class, keyDeserializer(PledgeId::parse));
     module.addKeyDeserializer(CommodityId.class, keyDeserializer(CommodityId::parse));
+    // ★★ E4c：FlowRow.repaidMoney 的键 = CurrencyId（逐币种偿还读数）—— 与 CommodityId 同形，只需读侧。
+    module.addKeyDeserializer(CurrencyId.class, keyDeserializer(CurrencyId::parse));
     // ★ R2 起是两张新表的键：laborSupply（PeopleLotId → LaborSupply）与 allocations（LaborAllocationId
     //   → LaborAllocation）。两者都重写了 toString()（= 裸值）并与各自的 parse 互为逆，故只需读侧。
     module.addKeyDeserializer(PeopleLotId.class, keyDeserializer(PeopleLotId::parse));

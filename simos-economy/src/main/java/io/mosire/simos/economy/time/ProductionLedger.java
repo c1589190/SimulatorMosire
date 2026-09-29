@@ -1,9 +1,14 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.api.debt.DebtTerms;
+import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.DebtContractId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.TransferId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.transfer.Transfer;
@@ -47,13 +52,14 @@ import java.util.Optional;
  *   <li>{@link #ruleSettlements()} <b>逐规则的实得读数</b>（应付 / 实付 / 欠；裁定 S4）。★ <b>只读</b>：不影响守恒、不落债权；
  *   <li>{@link #deferredMoney()} ★ <b>留档字段</b>（H4 起<b>恒为空表</b>）：H2/H3 装的是"只定义、不结算"的货币规则； H4
  *       起货币档真的结算（进 {@link #transfers()} 与 {@link #ruleSettlements()}）⇒ 它再没有内容 —— 保留的理由见 {@code
- *       ProductionSettlement.Outcome} 的 {@code deferredMoney} 注释。
+ *       ProductionSettlement.Outcome} 的 {@code deferredMoney} 注释；
+ *   <li>★★ {@link #debtCapitalizations()} <b>E4c：本日"欠租/欠薪 → 合同债权"的资本化明细</b>（逐事件；只记本金增量，
+ *       <b>不搬粮/钱</b>）。它是 {@link #ruleSettlements()} 的 owed 那一侧真的落成债权之后的具名审计；
+ *   <li>★★ {@link #unresolvedDebtCapitalizations()} <b>E4c：资本化跳过的具名原因</b>——付款人/受款人 actor 解析不到 家户
+ *       {@code HouseholdId} 时，<b>不伪造端点</b>，把 owed 与原因留在这里（欠款读数本身仍留在 {@code ruleSettlements}）；
+ *   <li>★★ {@link #debtRepaymentSkips()} <b>E4c：偿还跳过的具名原因</b>——目前只有一条：实物债条款允许货币折偿、 但 E4c 没有稳定价格源 ⇒
+ *       <b>不硬折</b>，把剩余本金与 {@code unpriced-monetary-conversion-not-landed} 记在这里。
  * </ul>
- *
- * <p>★★ <b>{@link #hasOutput()} 是 fail-closed 的判据</b>（E7/R4）：{@link EconomySettlement#settle} 那类
- * <b>没有产权落账口</b>的入口，一旦某一天交出的账里有产出（毛产或产出计提）就<b>当场抛</b> —— 否则产出会<b>在账上静默消失</b>。 ★ 判据刻意<b>不含 {@code
- * inputs}</b>（投入扣在家户账侧、账是完整的）、也<b>不含 {@code transfers}</b>（借粮与取材不是产出； 且那个入口可达的状态里它们恒空 —— 全零人口 ⇒
- * 没有份额、没有缺口、没有关账）。
  *
  * <p>★ <b>三张表都保序不可变</b>：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，<b>绝不用 {@code
  * Map.copyOf}</b> —— 它的迭代序不是内容的纯函数。
@@ -65,7 +71,10 @@ public record ProductionLedger(
     List<ProductionSettlement.ActorEntry> outputAccruals,
     List<Transfer> transfers,
     List<ProductionSettlement.RuleSettlement> ruleSettlements,
-    List<CompensationRule> deferredMoney) {
+    List<CompensationRule> deferredMoney,
+    List<DebtCapitalization> debtCapitalizations,
+    List<UnresolvedDebtCapitalization> unresolvedDebtCapitalizations,
+    List<DebtRepaymentSkip> debtRepaymentSkips) {
 
   public ProductionLedger {
     // ★ 缺键按空处理（同 EconomyData 的旧档兼容口径：这里只服务"当天什么都没发生"这一形态）。
@@ -78,12 +87,149 @@ public record ProductionLedger(
     transfers = transfers == null ? List.of() : List.copyOf(transfers);
     ruleSettlements = ruleSettlements == null ? List.of() : List.copyOf(ruleSettlements);
     deferredMoney = deferredMoney == null ? List.of() : List.copyOf(deferredMoney);
+    debtCapitalizations =
+        debtCapitalizations == null ? List.of() : List.copyOf(debtCapitalizations);
+    unresolvedDebtCapitalizations =
+        unresolvedDebtCapitalizations == null
+            ? List.of()
+            : List.copyOf(unresolvedDebtCapitalizations);
+    debtRepaymentSkips = debtRepaymentSkips == null ? List.of() : List.copyOf(debtRepaymentSkips);
   }
 
   /** 一天什么都没有发生（既没关账、也没有任何转移）。 */
   public static ProductionLedger empty() {
     return new ProductionLedger(
-        Map.of(), Map.of(), Map.of(), List.of(), List.of(), List.of(), List.of());
+        Map.of(), Map.of(), Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+        List.of(), List.of());
+  }
+
+  /**
+   * ★★ <b>E4c：一条欠租/欠薪资本化的审计条目</b>（逐事件合并后的一次合同写）。
+   *
+   * <p>★★ {@code eventCount} 是本次写入合并的 {@code Arrear} 读数条数：同一天内 {@code (payer, payee, unit,
+   * activity, rule)} 相同的读数按 {@link DebtContractId} 的四元组本就是同一条连续欠账， 故按该键<b>稳定去重并累加</b>；{@code
+   * principalAfter} 是写后的合同本金（读口据此与合同表对账）。
+   *
+   * <p>★ {@code termsSource} = {@code "E4c_LEGACY_DEFAULT"}：E4c 的资本化条款明确取 {@link
+   * DebtTerms#legacyDefault()}；这不是"未知条款静默并入默认档"——Arrear 读数本身不携带条款， E4c
+   * 也没有第二条带条款的资本化路径。将来若要按规则/合同给不同条款，必须先让 {@code Arrear} 携带条款再新开分支。
+   */
+  public record DebtCapitalization(
+      ActorRef payer,
+      ActorRef payee,
+      ProductionUnitId activity,
+      CompensationRule rule,
+      HouseholdId debtor,
+      HouseholdId creditor,
+      DebtContractId contractId,
+      DebtUnit unit,
+      long amount,
+      long day,
+      long dueCycle,
+      DebtTerms terms,
+      String termsSource,
+      long principalAfter,
+      int eventCount) {
+
+    public DebtCapitalization {
+      if (payer == null || payee == null || activity == null || rule == null) {
+        throw new IllegalArgumentException(
+            "DebtCapitalization 的 payer/payee/activity/rule 不得为 null");
+      }
+      if (debtor == null
+          || creditor == null
+          || contractId == null
+          || unit == null
+          || terms == null) {
+        throw new IllegalArgumentException(
+            "DebtCapitalization 的 debtor/creditor/contractId/unit/terms 不得为 null");
+      }
+      if (amount <= 0L || eventCount <= 0) {
+        throw new IllegalArgumentException(
+            "DebtCapitalization 的 amount/eventCount 必须 > 0: " + amount + "/" + eventCount);
+      }
+      if (day < 0L || dueCycle < 0L || principalAfter < amount) {
+        throw new IllegalArgumentException(
+            "DebtCapitalization 的 day/dueCycle/principalAfter 非法: "
+                + day
+                + "/"
+                + dueCycle
+                + "/"
+                + principalAfter
+                + " amount="
+                + amount);
+      }
+      if (termsSource == null || termsSource.isBlank()) {
+        throw new IllegalArgumentException("DebtCapitalization.termsSource 不得空白");
+      }
+    }
+  }
+
+  /**
+   * ★★ <b>E4c：资本化被跳过的具名条目</b>——欠款读数仍然有效（制度规定未付），只是无法解析出合同的债务人/债权人端。 {@code reason} 是唯一可读的原因串（如
+   * {@code payer-not-household} / {@code payee-not-household}）；不许伪造端点。
+   */
+  public record UnresolvedDebtCapitalization(
+      ActorRef payer,
+      ActorRef payee,
+      ProductionUnitId activity,
+      CompensationRule rule,
+      Optional<CommodityId> commodity,
+      Optional<CurrencyId> currency,
+      long owed,
+      String reason) {
+
+    public UnresolvedDebtCapitalization {
+      if (payer == null || payee == null || activity == null || rule == null) {
+        throw new IllegalArgumentException(
+            "UnresolvedDebtCapitalization 的 payer/payee/activity/rule 不得为 null");
+      }
+      if (commodity == null || currency == null) {
+        throw new IllegalArgumentException(
+            "UnresolvedDebtCapitalization 的 commodity/currency 不得为 null（空用 Optional.empty()）");
+      }
+      if (commodity.isPresent() == currency.isPresent()) {
+        throw new IllegalArgumentException(
+            "UnresolvedDebtCapitalization 必须恰给 commodity 或 currency 之一: "
+                + commodity
+                + " / "
+                + currency);
+      }
+      if (owed <= 0L) {
+        throw new IllegalArgumentException("UnresolvedDebtCapitalization.owed 必须 > 0: " + owed);
+      }
+      if (reason == null || reason.isBlank()) {
+        throw new IllegalArgumentException("UnresolvedDebtCapitalization.reason 不得空白");
+      }
+    }
+  }
+
+  /**
+   * ★★ <b>E4c：一条偿还被具名跳过的条目</b>——目前唯一的来源是"实物债条款允许货币折偿、但 E4c 没有稳定价格源"： 按 §5.3
+   * 的<b>不硬折</b>，合同本金保持不动（实物腿仍可按库存偿还）；此处把剩余本金与原因发出来。
+   *
+   * <p>★ {@code reason} 的 E4c 取值：{@code "unpriced-monetary-conversion-not-landed"}（没有稳定市场价/合同价 ⇒
+   * 折偿路径未接线、也不许拿别的价硬折）。
+   */
+  public record DebtRepaymentSkip(
+      HouseholdId debtor,
+      DebtContractId contractId,
+      DebtUnit unit,
+      long principalOutstanding,
+      String reason) {
+
+    public DebtRepaymentSkip {
+      if (debtor == null || contractId == null || unit == null) {
+        throw new IllegalArgumentException("DebtRepaymentSkip 的 debtor/contractId/unit 不得为 null");
+      }
+      if (principalOutstanding <= 0L) {
+        throw new IllegalArgumentException(
+            "DebtRepaymentSkip.principalOutstanding 必须 > 0: " + principalOutstanding);
+      }
+      if (reason == null || reason.isBlank()) {
+        throw new IllegalArgumentException("DebtRepaymentSkip.reason 不得空白");
+      }
+    }
   }
 
   /**
@@ -116,8 +262,14 @@ public record ProductionLedger(
 
   /** ★★ <b>S3：本日全部具名欠款</b>（由 {@code ruleSettlements} 的 {@code owed>0} 派生；不新增状态组件）。 */
   public List<ProductionSettlement.Arrear> arrears() {
+    return arrearsOf(ruleSettlements);
+  }
+
+  /** 欠款派生的唯一实现（record 与 Accumulator 共用；见 {@link #arrears()}）。 */
+  private static List<ProductionSettlement.Arrear> arrearsOf(
+      List<ProductionSettlement.RuleSettlement> readings) {
     List<ProductionSettlement.Arrear> result = new ArrayList<>();
-    for (ProductionSettlement.RuleSettlement reading : ruleSettlements) {
+    for (ProductionSettlement.RuleSettlement reading : readings) {
       if (reading.owed() > 0L) {
         result.add(ProductionSettlement.Arrear.of(reading));
       }
@@ -167,6 +319,10 @@ public record ProductionLedger(
     private final List<Transfer> transfers = new ArrayList<>();
     private final List<ProductionSettlement.RuleSettlement> ruleSettlements = new ArrayList<>();
     private final List<CompensationRule> deferredMoney = new ArrayList<>();
+    private final List<DebtCapitalization> debtCapitalizations = new ArrayList<>();
+    private final List<UnresolvedDebtCapitalization> unresolvedDebtCapitalizations =
+        new ArrayList<>();
+    private final List<DebtRepaymentSkip> debtRepaymentSkips = new ArrayList<>();
 
     /** ★ M2.3/M2.4：当天区域市场的只读报告（瞬态；不进 {@link ProductionLedger}，由 stepper 交给 L3 读数）。 */
     private MarketReport marketReport;
@@ -272,6 +428,9 @@ public record ProductionLedger(
       transfers.addAll(partitionLedger.transfers);
       ruleSettlements.addAll(partitionLedger.ruleSettlements);
       deferredMoney.addAll(partitionLedger.deferredMoney);
+      debtCapitalizations.addAll(partitionLedger.debtCapitalizations);
+      unresolvedDebtCapitalizations.addAll(partitionLedger.unresolvedDebtCapitalizations);
+      debtRepaymentSkips.addAll(partitionLedger.debtRepaymentSkips);
       if (marketReport == null && partitionLedger.marketReport != null) {
         marketReport = partitionLedger.marketReport;
       }
@@ -303,6 +462,26 @@ public record ProductionLedger(
       deferredMoney.add(rule);
     }
 
+    /** ★★ E4c：记一条"欠租/欠薪 → 债权"的资本化审计（逐事件合并后的一次合同写）。 */
+    void addDebtCapitalization(DebtCapitalization capitalization) {
+      debtCapitalizations.add(Objects.requireNonNull(capitalization, "capitalization"));
+    }
+
+    /** ★★ E4c：记一条资本化跳过的具名原因（端点解析不到；不伪造）。 */
+    void addUnresolvedDebtCapitalization(UnresolvedDebtCapitalization unresolved) {
+      unresolvedDebtCapitalizations.add(Objects.requireNonNull(unresolved, "unresolved"));
+    }
+
+    /** ★★ E4c：记一条偿还跳过的具名原因（目前唯一来源 = 无价格源的货币折偿）。 */
+    void addDebtRepaymentSkip(DebtRepaymentSkip skip) {
+      debtRepaymentSkips.add(Objects.requireNonNull(skip, "skip"));
+    }
+
+    /** ★★ E4c：本日全部具名欠款（与 {@link ProductionLedger#arrears()} 同一派生实现）。 */
+    List<ProductionSettlement.Arrear> arrears() {
+      return arrearsOf(ruleSettlements);
+    }
+
     /**
      * ★ 记下当天的区域市场报告（M2.3/M2.4；瞬态，不进落盘的 {@link ProductionLedger}）—— {@code
      * EconomyDayStepper.lastMarketReport()} 读它。
@@ -318,7 +497,16 @@ public record ProductionLedger(
 
     ProductionLedger toLedger() {
       return new ProductionLedger(
-          gross, losses, inputs, outputAccruals, transfers, ruleSettlements, deferredMoney);
+          gross,
+          losses,
+          inputs,
+          outputAccruals,
+          transfers,
+          ruleSettlements,
+          deferredMoney,
+          debtCapitalizations,
+          unresolvedDebtCapitalizations,
+          debtRepaymentSkips);
     }
 
     private static void addQuantities(

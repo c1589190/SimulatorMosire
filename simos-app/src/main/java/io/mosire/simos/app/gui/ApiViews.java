@@ -798,11 +798,21 @@ public final class ApiViews {
     }
     // ★★ S3：当日欠款（WageArrears / RentArrears / SubsistenceArrears；进程内瞬态，读不到 ⇒ null + 具名原因）。
     if (dayLedger.isPresent()) {
-      view.put("arrears", arrearsView(dayLedger.orElseThrow()));
+      ProductionLedger ledger = dayLedger.orElseThrow();
+      view.put("arrears", arrearsView(ledger));
       view.put("arrearsUnavailable", null);
+      // ★★ E4c：资本化明细/具名跳过与偿还跳过（同一份当日 ledger；不新增路由/工具）。
+      view.put("debtCapitalizations", debtCapitalizationView(ledger));
+      view.put("debtCapitalizationsUnavailable", null);
+      view.put("debtRepaymentSkips", debtRepaymentSkipView(ledger));
+      view.put("debtRepaymentSkipsUnavailable", null);
     } else {
       view.put("arrears", null);
       view.put("arrearsUnavailable", ARREARS_PROCESS_ONLY);
+      view.put("debtCapitalizations", null);
+      view.put("debtCapitalizationsUnavailable", ARREARS_PROCESS_ONLY);
+      view.put("debtRepaymentSkips", null);
+      view.put("debtRepaymentSkipsUnavailable", ARREARS_PROCESS_ONLY);
     }
     // ★★ M2.7：**焦点区的逐区逐商品市场读数**（与 MCP / GUI 共用同一份视图；进程内报告缺失时 match=null 且具名）。
     //   ★ 挂进同一个 economyHex 而不新开路由/工具：GUI 与 MCP 的读口数量不变（工具面测试不需要改名单）。
@@ -1213,6 +1223,10 @@ public final class ApiViews {
       item.put("kind", arrear.kind().name().toLowerCase(java.util.Locale.ROOT));
       item.put("ruleType", arrear.rule().type().name());
       item.put("recipient", arrear.rule().recipient().toString());
+      // ★★ E4c：付款人/受款人 actor 与活动身份随读数发出（资本化解析端点的唯一依据；不靠猜）。
+      item.put("payer", actorRefView(arrear.payer()));
+      item.put("payee", actorRefView(arrear.payee()));
+      item.put("activity", arrear.activity().value());
       item.put("commodity", arrear.commodity().map(CommodityId::value).orElse(null));
       item.put("currency", arrear.currency().map(CurrencyId::value).orElse(null));
       item.put("dueAmount", arrear.dueAmount());
@@ -1235,7 +1249,105 @@ public final class ApiViews {
     view.put("subsistenceArrearsMilli", subsistenceOwed);
     view.put(
         "provenance",
-        "来自本日 ProductionLedger 的逐规则读数（进程内瞬态；重启即失；不落债权，见 ProductionSettlement.Arrear 类注）");
+        "来自本日 ProductionLedger 的逐规则读数（进程内瞬态；重启即失）。★ E4c 起 owed 会走资本化落成债权，"
+            + "但读数本身仍原样保留（制度规定未付的事实）；是否真的落成债权看同视图的 debtCapitalizations（含 unresolvedItems）");
+    return view;
+  }
+
+  /**
+   * ★★ <b>E4c：本日欠租/欠薪资本化的明细与具名跳过</b>（进程内瞬态；数据来自当日 {@link ProductionLedger}）。
+   *
+   * <p>★ {@code items} 是合同写口的审计（contractId/unit/amount/principalAfter/termsSource/eventCount）；
+   * {@code unresolvedItems} 是端点解析不到家户时<b>不伪造端点</b>的具名记录。资本化<b>不搬任何库存/货币</b>。
+   */
+  private static Map<String, Object> debtCapitalizationView(ProductionLedger ledger) {
+    List<Map<String, Object>> items = new ArrayList<>();
+    Map<String, Long> capitalizedByUnit = new TreeMap<>();
+    for (ProductionLedger.DebtCapitalization capitalization : ledger.debtCapitalizations()) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("contractId", capitalization.contractId().value());
+      item.put("payer", actorRefView(capitalization.payer()));
+      item.put("payee", actorRefView(capitalization.payee()));
+      item.put("activity", capitalization.activity().value());
+      item.put("debtor", capitalization.debtor().value());
+      item.put("creditor", capitalization.creditor().value());
+      item.put("ruleType", capitalization.rule().type().name());
+      switch (capitalization.unit()) {
+        case DebtUnit.Commodity commodity -> {
+          item.put("unitKind", "commodity");
+          item.put("commodity", commodity.commodity().value());
+          item.put("currency", null);
+        }
+        case DebtUnit.Money money -> {
+          item.put("unitKind", "money");
+          item.put("commodity", null);
+          item.put("currency", money.currency().value());
+        }
+      }
+      item.put("amount", capitalization.amount());
+      item.put("day", capitalization.day());
+      item.put("dueCycle", capitalization.dueCycle());
+      item.put("terms", capitalization.terms().stableKey());
+      item.put("termsSource", capitalization.termsSource());
+      item.put("principalAfter", capitalization.principalAfter());
+      item.put("eventCount", capitalization.eventCount());
+      items.add(item);
+      // ★ 按 unit.key() 分组：粮/布/银各自一个键，绝不把它们加成同一个"总价值"。
+      capitalizedByUnit.merge(capitalization.unit().key(), capitalization.amount(), Long::sum);
+    }
+    List<Map<String, Object>> unresolved = new ArrayList<>();
+    for (ProductionLedger.UnresolvedDebtCapitalization skipped :
+        ledger.unresolvedDebtCapitalizations()) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("payer", actorRefView(skipped.payer()));
+      item.put("payee", actorRefView(skipped.payee()));
+      item.put("activity", skipped.activity().value());
+      item.put("ruleType", skipped.rule().type().name());
+      item.put("commodity", skipped.commodity().map(CommodityId::value).orElse(null));
+      item.put("currency", skipped.currency().map(CurrencyId::value).orElse(null));
+      item.put("owed", skipped.owed());
+      item.put("reason", skipped.reason());
+      unresolved.add(item);
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("items", items);
+    view.put("unresolvedItems", unresolved);
+    // ★ 按 DebtUnit.key() 分组（如 commodity:grain / money:silver）：不同 unit 绝不混加成一个"总价值"。
+    view.put("capitalizedByUnit", capitalizedByUnit);
+    view.put(
+        "note",
+        "资本化 = 把制度规定未付（Arrear.owed）落成连续债务合同本金；不移动任何商品/货币库存；"
+            + "termsSource=E4c_LEGACY_DEFAULT 表示本阶段统一用 DebtTerms.legacyDefault()；"
+            + "unresolvedItems 里的 owed 保持读数、不伪造债务人/债权人端点；capitalizedByUnit 的键是 DebtUnit.key()，"
+            + "值单位是该 unit 的最小计量单位（不同键之间不可相加）");
+    return view;
+  }
+
+  /** ★★ E4c：本日偿还被具名跳过的条目（目前唯一来源 = 无价格源的货币折偿；不硬折）。 */
+  private static Map<String, Object> debtRepaymentSkipView(ProductionLedger ledger) {
+    List<Map<String, Object>> items = new ArrayList<>();
+    for (ProductionLedger.DebtRepaymentSkip skip : ledger.debtRepaymentSkips()) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("debtor", skip.debtor().value());
+      item.put("contractId", skip.contractId().value());
+      switch (skip.unit()) {
+        case DebtUnit.Commodity commodity -> {
+          item.put("unitKind", "commodity");
+          item.put("commodity", commodity.commodity().value());
+          item.put("currency", null);
+        }
+        case DebtUnit.Money money -> {
+          item.put("unitKind", "money");
+          item.put("commodity", null);
+          item.put("currency", money.currency().value());
+        }
+      }
+      item.put("principalOutstanding", skip.principalOutstanding());
+      item.put("reason", skip.reason());
+      items.add(item);
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("items", items);
     return view;
   }
 
@@ -1854,6 +1966,7 @@ public final class ApiViews {
         view.put("currency", money.currency().value());
       }
     }
+    view.put("unitKey", debt.unit().key());
     view.put("principal", debt.principal());
     view.put("ratePerMillePerCycle", debt.terms().interestRatePerMillePerCycle());
     view.put("dueCycle", debt.dueCycle().isPresent() ? debt.dueCycle().getAsLong() : null);
@@ -1863,7 +1976,27 @@ public final class ApiViews {
     view.put(
         "lastInterestDay",
         debt.lastInterestDay().isPresent() ? debt.lastInterestDay().getAsLong() : null);
+    // ★ 旧键形状保持 = 规范串；另发 termsDetail 把每个条款维展开（读的人不用解析规范串）。
     view.put("terms", debt.terms().stableKey());
+    view.put("termsDetail", termsDetailView(debt));
+    return view;
+  }
+
+  /** ★★ E4c：债务条款的逐维读口（单位与 E4c 资本化读数的 {@code termsSource} 并排可核）。 */
+  private static Map<String, Object> termsDetailView(DebtContract debt) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("stableKey", debt.terms().stableKey());
+    view.put("interestRatePerMillePerCycle", debt.terms().interestRatePerMillePerCycle());
+    view.put("interestTiming", debt.terms().interestTiming().name());
+    view.put("repaymentRule", debt.terms().repaymentRule().name());
+    view.put("monetaryConversion", debt.terms().monetaryConversion().name());
+    view.put("defaultRemedy", debt.terms().defaultRemedy().name());
+    view.put(
+        "termsDueCycle",
+        debt.terms().dueCycle().isPresent() ? debt.terms().dueCycle().getAsLong() : null);
+    view.put(
+        "termsDueDay",
+        debt.terms().dueDay().isPresent() ? debt.terms().dueDay().getAsLong() : null);
     return view;
   }
 
@@ -1887,7 +2020,18 @@ public final class ApiViews {
     view.put("taxPaid", flow == null ? 0L : flow.taxPaid());
     view.put("interestDue", flow == null ? 0L : flow.interestDue());
     view.put("newBorrowing", flow == null ? 0L : flow.newBorrowing());
+    // ★★ E4c：{@code repaid} 仍是**粮债**口径；货币债偿还另发逐币种表（不把钱塞进粮标量冒充粮）。
     view.put("repaid", flow == null ? 0L : flow.repaid());
+    view.put("repaidMoney", flow == null ? Map.of() : sortedCurrencies(flow.repaidMoney()));
+    // ★★ E4c：本周期资本化的欠租/欠薪（按 DebtUnit.key() 分组；资本化只记债权，不搬粮/钱）。
+    view.put(
+        "capitalizedArrears", flow == null ? Map.of() : new TreeMap<>(flow.capitalizedArrears()));
+    // ★ 两个新读数的窗口/单位写清楚（与 FlowRow 类注同源；读的人不用回代码猜）。
+    view.put(
+        "repaidMoneyWindow", "最小币值；本周期累计（新周期第一天归零）；只记货币债本金偿还（粮债在 repaid，其它商品债只从合同 principal 下降读）");
+    view.put(
+        "capitalizedArrearsWindow",
+        "值单位 = 各 DebtUnit.key() 对应的最小计量单位；本周期累计（新周期第一天归零）；资本化只把制度未付落成债权，不移动库存/货币");
     view.put("netSurplus", flow == null ? 0L : flow.netSurplus());
     // ★★ **R4：{@code unmetNeed} 也逐商品**（spec §七："粮食不足与衣物不足对死亡的时间尺度显然不能一样"）
     //   ⇒ 读口必须把两种缺口**各自发出来**（加成一个数就再也分不开了）。键序同样走 sortedCommodities。
