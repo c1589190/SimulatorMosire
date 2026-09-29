@@ -10,18 +10,28 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.app.tools.write.WorldgenInitializeTool;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.debt.DebtTerms;
+import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.DebtContractId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.RegimeId;
+import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.migrate.LegacyClassStructure;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -67,6 +77,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -157,6 +168,74 @@ public final class CompactThreeNationsWorld {
   private static final BranchId MAIN = new BranchId("main");
 
   private static final ObjectMapper JSON = SimosObjectMapper.create();
+
+  /** ★★ P3 典型测试条件的目标国（粮仓平原国）—— 债务/拆分/质押都落在它的中心格 {@link #TYPICAL_CONDITIONS_HEX}。 */
+  public static final RegionId TYPICAL_CONDITIONS_NATION = GRANARY;
+
+  /** ★★ P3 典型测试条件的目标格（粮仓国的几何中心；中心格在平原带上 ⇒ 农业 LAND 产能非零）。 */
+  public static final HexCoord TYPICAL_CONDITIONS_HEX = GRANARY_CENTER;
+
+  /** ★ 典型条件的债务人 = 粮仓国中心格的农村贫农（自有粮最少、最可能见底的那一档）。 */
+  public static final HouseholdId TYPICAL_DEBTOR =
+      HouseholdId.ofSeed(
+          TYPICAL_CONDITIONS_HEX, ResidenceKind.RURAL, new SocialClassId("poor_peasant"));
+
+  /** ★ 典型条件的债权人 = 同一格的农村地主（开缸口粮最厚、同格主要债权人）。 */
+  public static final HouseholdId TYPICAL_CREDITOR =
+      HouseholdId.ofSeed(
+          TYPICAL_CONDITIONS_HEX, ResidenceKind.RURAL, new SocialClassId("landlord"));
+
+  /**
+   * ★★ <b>P3 的"典型条件"</b>（P4 备用）：粮仓国中心格上"地主借粮给贫农 + 庄园拆一块 LAND 给贫农 + 一条质押"， 并给贫农一笔具名外部粮注入（只加开缸库存，走
+   * {@code test-condition:external-endowment} 报告）。
+   *
+   * <pre>
+   * 债务    : 地主 → 贫农，1,000,000 毫粮（= 1,000 粮），真实转账（moveInventory=true），legacy 条款
+   * 资产拆分: farm@0_0 的 ESTATE 自有 LAND 份额拆 1,000,000 毫亩（= 1,000 亩）给贫农（OWNED）
+   * 质押    : 上述债务 × 贫农新得的 LAND 份额 500,000 毫亩（mode = legacy，priority = 10）
+   * 外部注入: 贫农 +1,000,000 毫粮（报告键 conditionInjectedGoods）
+   * </pre>
+   *
+   * <p>★ 质押的目标份额 id 由 {@code TestConditions.ownedShareIdForHousehold(..., 0)} 预测（贫农在 {@code
+   * farm@0_0} 此前没有同键 OWNED 份额 ⇒ 新份额序号必为 0）；若世界结构变了，播种器会 fail-closed （"质押份额 owner/不存在"），不会静默错挂。
+   */
+  public static TestConditions typicalConditions() {
+    IndustryId farm =
+        IndustryHexKeys.id(
+            EconomySeeder.FARM, TYPICAL_CONDITIONS_HEX.q(), TYPICAL_CONDITIONS_HEX.r());
+    CommodityId grain = new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID);
+    DebtUnit unit = DebtUnit.commodity(grain);
+    DebtTerms terms = DebtTerms.legacyDefault();
+    long principalMilli = 1_000_000L;
+    long landSplitMilliMu = 1_000_000L;
+    long pledgeMilliMu = 500_000L;
+    long extraGrainMilli = 1_000_000L;
+    return new TestConditions(
+        List.of(
+            TestConditions.InitialDebt.moving(
+                TYPICAL_DEBTOR,
+                TYPICAL_CREDITOR,
+                unit,
+                principalMilli,
+                terms,
+                OptionalLong.empty())),
+        List.of(
+            new TestConditions.InitialPledge(
+                DebtContractId.idOf(TYPICAL_DEBTOR, TYPICAL_CREDITOR, unit, terms),
+                TestConditions.ownedShareIdForHousehold(farm, AssetKind.LAND, TYPICAL_DEBTOR, 0L),
+                pledgeMilliMu,
+                LegacyClassStructure.defaultModeId(),
+                10)),
+        List.of(
+            TestConditions.AssetSplit.byQuery(
+                farm,
+                AssetKind.LAND,
+                RegimeOperators.defaultOperator(new RegimeId(EconomySeeder.REGIME_FEUDAL), farm),
+                TYPICAL_DEBTOR,
+                landSplitMilliMu)),
+        Map.of(TYPICAL_DEBTOR, Map.of(grain, extraGrainMilli)),
+        Map.of());
+  }
 
   private CompactThreeNationsWorld() {}
 
@@ -419,23 +498,63 @@ public final class CompactThreeNationsWorld {
    * COMPLETE 经济地基（E1 mode/结构/位置/归属 + E2 资产规则/清算政策）， 让 E2 自动组织阶段在紧凑世界里真正可执行。
    */
   public static List<JsonNode> initializeNations(CoreSimos core) throws IOException {
+    return initializeNations(core, TestConditions.EMPTY, TYPICAL_CONDITIONS_NATION);
+  }
+
+  /**
+   * ★★ <b>P3：带测试条件初始化三国</b>（条件只交给 {@code conditionsNation} 那一国的 worldgen 调用；其余两国走 P1 的无条件路径）。条件经
+   * {@link TestConditions#toJson()} 变成真工具参数 {@code economyTestConditions} ⇒ 与"外部 GM 传
+   * JSON"走**同一条**解析/校验/应用路径，夹具不做旁路。
+   *
+   * <p>★ 条件里的家户/份额必须落在 {@code conditionsNation} 的格集内（跨国引用没有对侧，播种器 fail-closed）。
+   */
+  public static List<JsonNode> initializeNations(
+      CoreSimos core, TestConditions conditions, RegionId conditionsNation) throws IOException {
     Objects.requireNonNull(core, "core");
+    TestConditions effective = conditions == null ? TestConditions.EMPTY : conditions;
+    lastConditionReport = TestConditions.Report.EMPTY;
     AgentTool tool = new WorldgenInitializeTool(core, INITIATOR, MAP_ID, configFile());
     List<JsonNode> summaries = new ArrayList<>(NATION_REGIONS.size());
     for (RegionId region : NATION_REGIONS) {
-      ToolResult result =
-          tool.execute(
-              context(
-                  tool,
-                  Map.of("nation", region.value(), "dryRun", false, "economyProfile", "complete")));
+      Map<String, Object> args = new LinkedHashMap<>();
+      args.put("nation", region.value());
+      args.put("dryRun", false);
+      args.put("economyProfile", "complete");
+      if (!effective.isEmpty() && region.equals(conditionsNation)) {
+        args.put("economyTestConditions", effective.toJson());
+      }
+      ToolResult result = tool.execute(context(tool, args));
       if (!result.success()) {
         throw new IllegalStateException(
             "worldgen 初始化 " + region.value() + " 失败: " + result.code() + " " + result.message());
       }
       summaries.add(JSON.readTree(result.message()));
     }
+    // ★ 三批都成功后才把条件报告挂上（诊断读数用；apply 失败会抛在上面 ⇒ 不会留下"报成功其实没应用"的读数）。
+    lastConditionReport = effective.report();
     return List.copyOf(summaries);
   }
+
+  /** ★ P3：条件 JSON 文本入口（解析失败抛具名 {@code IllegalArgumentException}）。 */
+  public static List<JsonNode> initializeNations(CoreSimos core, String conditionsJson)
+      throws IOException {
+    return initializeNations(
+        core,
+        conditionsJson == null ? TestConditions.EMPTY : TestConditions.parseJson(conditionsJson));
+  }
+
+  /** ★ P3：条件对象入口（默认作用于 {@link #TYPICAL_CONDITIONS_NATION}）。 */
+  public static List<JsonNode> initializeNations(CoreSimos core, TestConditions conditions)
+      throws IOException {
+    return initializeNations(core, conditions, TYPICAL_CONDITIONS_NATION);
+  }
+
+  /** 最近一次 {@link #initializeNations(CoreSimos, TestConditions, RegionId)} 的条件报告（诊断用）。 */
+  public static TestConditions.Report lastConditionReport() {
+    return lastConditionReport;
+  }
+
+  private static volatile TestConditions.Report lastConditionReport = TestConditions.Report.EMPTY;
 
   private static ToolContext context(AgentTool tool, Map<String, Object> args) {
     return new ToolContext(AccessToken.SYSTEM, AgentPermissionSet.system(), Map.of(), args)
@@ -537,6 +656,24 @@ public final class CompactThreeNationsWorld {
     out.put("commodities", (long) commodities.size());
     out.put("commodityIds", List.copyOf(commodities));
     out.put("debts", (long) economy.debtContracts().size());
+    // ★★ P3：初始条件相关读数（不改旧键语义）——
+    //   · pledges/assetShares/initialDebts 直接来自 economy 状态（真实表）；
+    //   · condition* 来自本夹具**最近一次** initializeNations 传入的条件报告（诊断口径，见 lastConditionReport）。
+    out.put("pledges", (long) economy.pledges().size());
+    out.put("assetShares", (long) economy.assetShares().size());
+    long initialDebts = 0L;
+    for (DebtContract debt : economy.debtContracts().values()) {
+      if (debt.openedDay() == 0L) {
+        initialDebts++;
+      }
+    }
+    out.put("initialDebts", initialDebts);
+    TestConditions.Report report = lastConditionReport;
+    out.put("conditionDebtContracts", (long) report.debtContractCount());
+    out.put("conditionPledges", (long) report.pledgeCount());
+    out.put("conditionSplitShares", (long) report.splitShareCount());
+    out.put("conditionInjectedGoods", sumValues(report.injectedGoods()));
+    out.put("conditionInjectedMoney", sumValues(report.injectedMoney()));
     out.put("shipments", (long) economy.shipments().size());
     out.put("units", (long) unitOf(state).units().size());
     out.put("commandChains", (long) unitOf(state).commandChains().size());
@@ -566,6 +703,11 @@ public final class CompactThreeNationsWorld {
   }
 
   private static long sum(Map<CommodityId, Long> values) {
+    return sumValues(values);
+  }
+
+  /** 任意键的 long 值表求和（条件报告的两个注入表共用一处）。 */
+  private static long sumValues(Map<?, Long> values) {
     long total = 0L;
     for (long value : values.values()) {
       total += value;
