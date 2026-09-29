@@ -6,6 +6,8 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
+import io.mosire.simos.economy.api.id.ClassPositionId;
+import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.HouseholdId;
@@ -13,6 +15,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
@@ -24,7 +27,10 @@ import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.migrate.DebtReferenceReconciler;
 import io.mosire.simos.economy.migrate.LegacyHouseholdMigration;
 import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.ClassPosition;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -35,6 +41,7 @@ import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionCandidate;
+import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
@@ -57,7 +64,7 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **十六个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的十六个组件一一对应**（铁律 5）：
+ * <p>★ **二十个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的二十个组件一一对应**（铁律 5）：
  * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **跨表同键不变式**（§6.2 的身份部分）：{@code classes} 的每个键必须等于其 {@link ClassRow#key()}；{@code flows}
@@ -90,7 +97,7 @@ import java.util.Set;
  * 时一律收成空表 / 未激活，**此处不抛** —— 抛了等于"旧档全部读不回来"。方向是 fail-closed： 缺键 ⇒
  * 没有产业/没有阶层/没有债务/没有流水/没有劳动供给与配额/没有生产关系/<b>没有市场</b>/未激活。
  *
- * <p>★ **十六张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
+ * <p>★ **二十张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**——它的迭代序不是内容的纯函数（字节级往返因此不成立）。冻结那一步**写在字段赋值处** （SpotBugs 的 {@code EI_EXPOSE_REP}
  * 不做跨过程分析，只认它看得见的包装）。
  *
@@ -130,6 +137,11 @@ import java.util.Set;
  * 把技术模板与实物账本绑死的上界守卫）。★ 第 13 个组件 {@code operatorConditions}（{@link OperatorCondition}；S3.2 的经营者状态机）由
  * S1 一次性补齐，本阶段空表缺省。
  *
+ * <p>★★ **E1 追加第 17–20 个组件**（{@code modes} / {@code classStructures} / {@code classPositions} /
+ * {@code classStandings}）：它们建立"生产方式 → 阶层结构 → 阶层位置 → 家户归属"的权威状态。★ **E1 不接线结算**： 这四张表为空时，旧 {@code
+ * HouseholdClassRule}、旧 {@code settle*} 路径与旧档行为逐值不变；有值时也只做状态与读口， 旧路径仍以 {@code ClassRow.view} 为准（见
+ * {@code ClassStanding} 的类注）。★ 跨表守卫按"对侧是否已提供"分段生效， 以便 {@code with*} 能逐组件构造；两侧都非空时引用完整性 fail-closed。
+ *
  * <p>★ <b>守卫**不**检查 cohort 侧的行是否存在</b>（有意不加，同 {@code ActorData}「表与表之间没有引用完整性约束」的口径）： 逐组件增量落盘 ⇒
  * **关系先到、行后到是合法写序**；而 cohort 解析不到行在结算里是**正常状态**（人口为 0 的那些 cohort 就是如此，那一笔留在 {@code
  * residualOwner}）——把它判成非法会让"人口尚未种入"的世界构造不出来。
@@ -150,12 +162,20 @@ public record EconomyData(
     Map<ProductionUnitId, OperatorCondition> operatorConditions,
     Map<ProductionUnitId, ProductionUnit> units,
     Map<DemandId, DemandEntry> demands,
-    Map<CandidateId, ProductionCandidate> candidates) {
+    Map<CandidateId, ProductionCandidate> candidates,
+    Map<ProductionModeId, ProductionMode> modes,
+    Map<ClassStructureId, ClassStructure> classStructures,
+    Map<ClassPositionId, ClassPosition> classPositions,
+    Map<HouseholdId, ClassStanding> classStandings) {
 
-  /** 往返用例的起点：未激活 + 十六张空表。 */
+  /** 往返用例的起点：未激活 + 二十张空表。 */
   public static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),
@@ -219,6 +239,20 @@ public record EconomyData(
     }
     if (candidates == null) {
       candidates = Map.of();
+    }
+    // ★★ E1 的四个新组件（生产方式/阶层结构/阶层位置/家户阶层归属）：旧档缺键 ⇒ 空表（同一条旧档兼容口径；
+    //   新状态为空时旧结算路径逐值不变）。空表不是"坏数据"，是"这个档还没有新地基"。
+    if (modes == null) {
+      modes = Map.of();
+    }
+    if (classStructures == null) {
+      classStructures = Map.of();
+    }
+    if (classPositions == null) {
+      classPositions = Map.of();
+    }
+    if (classStandings == null) {
+      classStandings = Map.of();
     }
     // ★ 第 8 个组件（S1 阶段 4+5 Task 2）：同一口径（缺键 ⇒ 空表，见类注释）。★ 迁移器要读它，故提到迁移之前。
     if (relations == null) {
@@ -840,6 +874,158 @@ public record EconomyData(
       candidatesCopy.put(entry.getKey(), candidate);
     }
     candidates = Collections.unmodifiableMap(candidatesCopy); // ★ 冻在赋值处
+    // ── E1 第 17–20 个组件：生产方式 / 阶层结构 / 阶层位置 / 家户阶层归属 ────────────────────
+    //   ★ 缺键 ⇒ 空表（上面已归一）；**新状态为空时本段整体 no-op**，旧档逐值行为不受影响。
+    //   ★ 引用完整性是 fail-closed 的，但按"对侧是否已提供"分段生效：`with*` 是逐组件写口，
+    //     四个组件之间有两处循环引用（mode ↔ structure）与层次引用（position → mode、standing → household/position）；
+    //     若每一段都无条件要求完整闭环，单项 `with*` 永远构造不出中间态。空表在这里读作"这一侧还没提供"，
+    //     一旦对侧非空，键身份、引用与的位置形状就必须逐值自洽 —— 最终完整状态因此仍是 fail-closed 的。
+    Map<ProductionModeId, ProductionMode> modesCopy = new LinkedHashMap<>();
+    for (Map.Entry<ProductionModeId, ProductionMode> entry : modes.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("modes 的键与值都不得为 null: " + entry.getKey());
+      }
+      if (!entry.getKey().equals(entry.getValue().id())) {
+        throw new IllegalArgumentException(
+            "modes 的键必须与 ProductionMode.id 一致：键="
+                + entry.getKey()
+                + "，行内 id="
+                + entry.getValue().id());
+      }
+      modesCopy.put(entry.getKey(), entry.getValue());
+    }
+    modes = Collections.unmodifiableMap(modesCopy); // ★ 冻在赋值处
+    Map<ClassStructureId, ClassStructure> structuresCopy = new LinkedHashMap<>();
+    for (Map.Entry<ClassStructureId, ClassStructure> entry : classStructures.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("classStructures 的键与值都不得为 null: " + entry.getKey());
+      }
+      ClassStructure structure = entry.getValue();
+      if (!entry.getKey().equals(structure.id())) {
+        throw new IllegalArgumentException(
+            "classStructures 的键必须与 ClassStructure.id 一致：键="
+                + entry.getKey()
+                + "，行内 id="
+                + structure.id());
+      }
+      if (!modesCopy.isEmpty() && !modesCopy.containsKey(structure.modeId())) {
+        throw new IllegalArgumentException(
+            "classStructures 的 modeId 必须是已存在的生产方式：结构="
+                + entry.getKey()
+                + "，modeId="
+                + structure.modeId());
+      }
+      structuresCopy.put(entry.getKey(), structure);
+    }
+    classStructures = Collections.unmodifiableMap(structuresCopy); // ★ 冻在赋值处
+    for (ProductionMode mode : modesCopy.values()) {
+      if (!structuresCopy.isEmpty() && !structuresCopy.containsKey(mode.classStructureId())) {
+        throw new IllegalArgumentException(
+            "ProductionMode.classStructureId 必须是已存在的阶层结构：mode="
+                + mode.id()
+                + "，classStructureId="
+                + mode.classStructureId());
+      }
+    }
+    Map<ClassPositionId, ClassPosition> positionsCopy = new LinkedHashMap<>();
+    for (Map.Entry<ClassPositionId, ClassPosition> entry : classPositions.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("classPositions 的键与值都不得为 null: " + entry.getKey());
+      }
+      ClassPosition position = entry.getValue();
+      if (!entry.getKey().equals(position.id())) {
+        throw new IllegalArgumentException(
+            "classPositions 的键必须与 ClassPosition.id 一致：键="
+                + entry.getKey()
+                + "，行内 id="
+                + position.id());
+      }
+      if (!modesCopy.isEmpty() && !modesCopy.containsKey(position.modeId())) {
+        throw new IllegalArgumentException(
+            "classPositions 的 modeId 必须是已存在的生产方式：位置="
+                + entry.getKey()
+                + "，modeId="
+                + position.modeId());
+      }
+      positionsCopy.put(entry.getKey(), position);
+    }
+    // ★★ 结构内的位置必须与全局位置表逐值相等；全局表也不得残留不属于任何结构的孤儿位置。
+    //   同一身份只有一处权威形状，避免"结构里写一套、全局表里另写一套"（对侧为空 = 该侧尚未提供，见段首口径）。
+    if (!positionsCopy.isEmpty()) {
+      for (ClassStructure structure : structuresCopy.values()) {
+        for (Map.Entry<ClassPositionId, ClassPosition> entry : structure.positions().entrySet()) {
+          ClassPosition flat = positionsCopy.get(entry.getKey());
+          if (flat == null || !flat.equals(entry.getValue())) {
+            throw new IllegalArgumentException(
+                "classStructures.positions 的位置必须与 classPositions 逐值一致：结构="
+                    + structure.id()
+                    + "，位置="
+                    + entry.getKey());
+          }
+        }
+      }
+    }
+    if (!structuresCopy.isEmpty()) {
+      for (ClassPosition position : positionsCopy.values()) {
+        boolean registered = false;
+        for (ClassStructure structure : structuresCopy.values()) {
+          if (position.equals(structure.positions().get(position.id()))) {
+            registered = true;
+            break;
+          }
+        }
+        if (!registered) {
+          throw new IllegalArgumentException(
+              "classPositions 中的位置必须至少属于一个 ClassStructure：位置=" + position.id());
+        }
+      }
+    }
+    classPositions = Collections.unmodifiableMap(positionsCopy); // ★ 冻在赋值处
+    Map<HouseholdId, ClassStanding> standingsCopy = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, ClassStanding> entry : classStandings.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("classStandings 的键与值都不得为 null: " + entry.getKey());
+      }
+      ClassStanding standing = entry.getValue();
+      if (!entry.getKey().equals(standing.householdId())) {
+        throw new IllegalArgumentException(
+            "classStandings 的键必须与 ClassStanding.householdId 一致：键="
+                + entry.getKey()
+                + "，行内 householdId="
+                + standing.householdId());
+      }
+      if (!classesCopy.isEmpty() && !classesCopy.containsKey(entry.getKey())) {
+        throw new IllegalArgumentException(
+            "classStandings 的家户必须是已存在的家户（S1 起身份与视图分离）：" + entry.getKey());
+      }
+      if (!positionsCopy.isEmpty()) {
+        if (!positionsCopy.containsKey(standing.currentPositionId())) {
+          throw new IllegalArgumentException(
+              "ClassStanding.currentPositionId 必须是已存在的阶层位置：家户="
+                  + entry.getKey()
+                  + "，当前位置="
+                  + standing.currentPositionId());
+        }
+        if (!positionsCopy.containsKey(standing.originalPositionId())) {
+          throw new IllegalArgumentException(
+              "ClassStanding.originalPositionId 必须是已存在的阶层位置：家户="
+                  + entry.getKey()
+                  + "，原所属="
+                  + standing.originalPositionId());
+        }
+        for (ClassPositionId retained : standing.retainedShares().keySet()) {
+          if (!positionsCopy.containsKey(retained)) {
+            throw new IllegalArgumentException(
+                "ClassStanding.retainedShares 的键必须是已存在的阶层位置：家户="
+                    + entry.getKey()
+                    + "，保留位置="
+                    + retained);
+          }
+        }
+      }
+      standingsCopy.put(entry.getKey(), standing);
+    }
+    classStandings = Collections.unmodifiableMap(standingsCopy); // ★ 冻在赋值处
   }
 
   /**
@@ -914,7 +1100,11 @@ public record EconomyData(
         operatorConditions,
         units,
         demands,
-        candidates);
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -935,7 +1125,11 @@ public record EconomyData(
         operatorConditions,
         units,
         demands,
-        candidates);
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -956,7 +1150,11 @@ public record EconomyData(
         operatorConditions,
         units,
         demands,
-        candidates);
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -977,7 +1175,11 @@ public record EconomyData(
         operatorConditions,
         units,
         demands,
-        candidates);
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -998,10 +1200,14 @@ public record EconomyData(
         operatorConditions,
         units,
         demands,
-        candidates);
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
   }
 
-  /** 一个组件一个 with（R2：劳动供给表）；其余十二个组件原样带过。 */
+  /** 一个组件一个 with（R2：劳动供给表）；其余十九个组件原样带过。 */
   public EconomyData withLaborSupply(Map<PeopleLotId, LaborSupply> value) {
     return new EconomyData(
         meta,
@@ -1019,10 +1225,14 @@ public record EconomyData(
         operatorConditions,
         units,
         demands,
-        candidates);
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
   }
 
-  /** 一个组件一个 with（R2：劳动分配表）；其余十二个组件原样带过。 */
+  /** 一个组件一个 with（R2：劳动分配表）；其余十九个组件原样带过。 */
   public EconomyData withAllocations(Map<LaborAllocationId, LaborAllocation> value) {
     return new EconomyData(
         meta,
@@ -1040,10 +1250,14 @@ public record EconomyData(
         operatorConditions,
         units,
         demands,
-        candidates);
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
   }
 
-  /** 一个组件一个 with（T2：生产关系表）；其余十二个组件原样带过。 */
+  /** 一个组件一个 with（T2：生产关系表）；其余十九个组件原样带过。 */
   public EconomyData withRelations(Map<ProductionUnitId, ProductionRelation> value) {
     return new EconomyData(
         meta,
@@ -1061,11 +1275,15 @@ public record EconomyData(
         operatorConditions,
         units,
         demands,
-        candidates);
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
   }
 
   /**
-   * 一个组件一个 with（H4：市场表）；其余十二个组件原样带过。
+   * 一个组件一个 with（H4：市场表）；其余十九个组件原样带过。
    *
    * <p>★ <b>它是"GM 定价格"的唯一写入口</b>（铁律 2：所有修改最终表示为 Command → ChangeSet → Revision）——
    * 本批还没有"设价"命令，故它现在只被载荷（创世播种）与用例用到；命令留待 GM 参数目录落地。
@@ -1087,11 +1305,15 @@ public record EconomyData(
         operatorConditions,
         units,
         demands,
-        candidates);
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
   }
 
   /**
-   * ★★ <b>第 10 个组件（M2.4）：在途批次表</b>；其余十二个组件原样带过。
+   * ★★ <b>第 10 个组件（M2.4）：在途批次表</b>；其余十九个组件原样带过。
    *
    * <p>★ 与 {@link #withMarkets} 同款：它是"跨 tick 状态"的唯一写入口（在日循环的到货销账与发运建账里被调用）， 不是 GM 命令面。
    */
@@ -1112,10 +1334,14 @@ public record EconomyData(
         operatorConditions,
         units,
         demands,
-        candidates);
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
   }
 
-  /** 一个组件一个 with（S1：成员份额表）；其余十二个组件原样带过。 */
+  /** 一个组件一个 with（S1：成员份额表）；其余十九个组件原样带过。 */
   public EconomyData withMemberships(Map<MembershipId, Membership> value) {
     return new EconomyData(
         meta,
@@ -1133,10 +1359,14 @@ public record EconomyData(
         operatorConditions,
         units,
         demands,
-        candidates);
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
   }
 
-  /** 一个组件一个 with（R3B.1：实物资产份额表）；其余十二个组件原样带过。 */
+  /** 一个组件一个 with（R3B.1：实物资产份额表）；其余十九个组件原样带过。 */
   public EconomyData withAssetShares(Map<AssetShareId, AssetShare> value) {
     return new EconomyData(
         meta,
@@ -1154,10 +1384,14 @@ public record EconomyData(
         operatorConditions,
         units,
         demands,
-        candidates);
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
   }
 
-  /** 一个组件一个 with（S3.2：经营者状态表）；其余十二个组件原样带过。 */
+  /** 一个组件一个 with（S3.2：经营者状态表）；其余十九个组件原样带过。 */
   public EconomyData withOperatorConditions(Map<ProductionUnitId, OperatorCondition> value) {
     return new EconomyData(
         meta,
@@ -1175,10 +1409,14 @@ public record EconomyData(
         value,
         units,
         demands,
-        candidates);
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
   }
 
-  /** ★★ R3B.2：生产单元表（第 14 个组件）；其余十四个组件原样带过。 */
+  /** ★★ R3B.2：生产单元表（第 14 个组件）；其余十九个组件原样带过。 */
   public EconomyData withUnits(Map<ProductionUnitId, ProductionUnit> value) {
     return new EconomyData(
         meta,
@@ -1196,10 +1434,14 @@ public record EconomyData(
         operatorConditions,
         value,
         demands,
-        candidates);
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
   }
 
-  /** ★★ R4-E2：需求账本（第 15 个组件）；其余十五个组件原样带过（GM 命令的唯一写入口）。 */
+  /** ★★ R4-E2：需求账本（第 15 个组件）；其余十九个组件原样带过（GM 命令的唯一写入口）。 */
   public EconomyData withDemands(Map<DemandId, DemandEntry> value) {
     return new EconomyData(
         meta,
@@ -1217,10 +1459,14 @@ public record EconomyData(
         operatorConditions,
         units,
         value,
-        candidates);
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
   }
 
-  /** ★★ R4-E2：候选预设表（第 16 个组件）；其余十五个组件原样带过（GM 命令的唯一写入口）。 */
+  /** ★★ R4-E2：候选预设表（第 16 个组件）；其余十九个组件原样带过（GM 命令的唯一写入口）。 */
   public EconomyData withCandidates(Map<CandidateId, ProductionCandidate> value) {
     return new EconomyData(
         meta,
@@ -1238,6 +1484,110 @@ public record EconomyData(
         operatorConditions,
         units,
         demands,
+        value,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings);
+  }
+
+  /** ★★ E1：生产方式表（第 17 个组件）；其余十九个组件原样带过。 */
+  public EconomyData withModes(Map<ProductionModeId, ProductionMode> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        value,
+        classStructures,
+        classPositions,
+        classStandings);
+  }
+
+  /** ★★ E1：阶层结构表（第 18 个组件）；其余十九个组件原样带过。 */
+  public EconomyData withClassStructures(Map<ClassStructureId, ClassStructure> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        value,
+        classPositions,
+        classStandings);
+  }
+
+  /** ★★ E1：阶层位置表（第 19 个组件）；其余十九个组件原样带过。 */
+  public EconomyData withClassPositions(Map<ClassPositionId, ClassPosition> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        value,
+        classStandings);
+  }
+
+  /** ★★ E1：家户阶层归属表（第 20 个组件）；其余十九个组件原样带过。 */
+  public EconomyData withClassStandings(Map<HouseholdId, ClassStanding> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
         value);
   }
 

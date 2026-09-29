@@ -490,6 +490,12 @@ final class EconomyPayloads {
         units,
         // ★★ R4-E2：创世载荷不声明 GM 需求/候选预设（空表 = 由 economy.AddDemand/RegisterCandidate 注入）。
         Map.of(),
+        Map.of(),
+        // ★★ E1：创世载荷暂不声明生产方式/阶层结构/阶层位置/家户阶层归属；四条空表 = 旧路径继续跑，
+        //   新地基由后续阶段的命令/迁移器显式注入（E1 不接线结算，也不猜默认 mode）。
+        Map.of(),
+        Map.of(),
+        Map.of(),
         Map.of());
   }
 

@@ -207,6 +207,12 @@ public final class EconomyStateBuilder {
         units == null ? base.units() : units,
         // ★★ R4-E2：需求/候选不参与日结算写回 —— 原样带过 base 的表（写入口只有 GM 命令）。
         base.demands(),
-        base.candidates());
+        base.candidates(),
+        // ★★ E1：生产方式/阶层结构/阶层位置/家户阶层归属不参与旧日结算写回 —— 原样带过 base 的表；
+        //   E2+ 若要让结算改写它们，应像上面各组件一样增加显式工作副本，而不是在这里另造语义。
+        base.modes(),
+        base.classStructures(),
+        base.classPositions(),
+        base.classStandings());
   }
 }

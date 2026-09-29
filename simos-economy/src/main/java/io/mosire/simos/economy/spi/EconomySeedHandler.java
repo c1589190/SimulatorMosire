@@ -112,7 +112,13 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             // ★★ R4-E2 第 15/16 个组件：播种载荷不含需求/候选预设 ⇒ 原样带过已有状态（漏了它 = 再播一国时
             //   把 GM 注入的需求/预设静默抹掉）。
             base.demands(),
-            base.candidates());
+            base.candidates(),
+            // ★★ E1 第 17–20 个组件：播种载荷暂不声明新地基 ⇒ 逐值带过已有状态（漏了它 = 后续命令写入的
+            //   mode/作业/归属静默消失；E1 不接线结算，但新状态必须能被后续阶段安全地跨命令保留）。
+            merge(base.modes(), seeded.modes()),
+            merge(base.classStructures(), seeded.classStructures()),
+            merge(base.classPositions(), seeded.classPositions()),
+            merge(base.classStandings(), seeded.classStandings()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 

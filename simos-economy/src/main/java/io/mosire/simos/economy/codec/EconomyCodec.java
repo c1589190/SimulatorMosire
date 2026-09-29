@@ -18,6 +18,8 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
+import io.mosire.simos.economy.api.id.ClassPositionId;
+import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.DemandId;
@@ -26,6 +28,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.ShipmentId;
@@ -67,7 +70,11 @@ import java.util.function.Function;
  * AssetShareId#parse(String)} opaque 原样读入）、{@code HexCoord}（{@code markets}， 住在 {@code
  * simos-map}）、{@code ShipmentId}（{@code shipments}）。★ 它们都重写了 {@code toString()} 并与 各自的 {@code
  * parse} 互为逆，故只需读侧；键反序列化器照裁定 16 在**本模块**注册，不进共享基座。★ 漏注册的症状是"读档时键 解析不出来"（Jackson 会去调构造器或报 {@code no
- * String-argument constructor}）。
+ * String-argument constructor}）。★★ E1 追加 {@code ProductionModeId}（{@code modes}）、{@code
+ * ClassStructureId}（{@code classStructures}）与 {@code ClassPositionId}（{@code classPositions}，以及
+ * {@code ClassStructure.positions} / {@code ClassStructure.defaultSharesPerMille} / {@code
+ * ClassStanding.retainedShares} 三个嵌套键表）；{@code classStandings} 的键仍是上面已注册的 {@code HouseholdId}。
+ * 旧档缺这四个键 ⇒ 快照侧收成空表、变更集侧收成 {@code Unchanged}，见各自的构造器兜底。
  *
  * <p>★ {@code AssetKind} 作键（{@code dailyInputPerUnit}/{@code capacity}）走 Jackson **默认的枚举键** 绑定（按
  * {@code name()}），无需自定义；其余 ID/键类型都重写了 {@code toString()}（= 裸值）并与各自的 {@code parse} 互为逆，故只需读侧。
@@ -148,6 +155,12 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     // ★★ R4-E2：demands / candidates 两张新表的键（opaque 裸值，与各自 parse 互为逆，只需读侧）。
     module.addKeyDeserializer(DemandId.class, keyDeserializer(DemandId::parse));
     module.addKeyDeserializer(CandidateId.class, keyDeserializer(CandidateId::parse));
+    // ★★ E1：modes / classStructures / classPositions / classStandings（键 = HouseholdId）四张新表，
+    //   以及 ClassStructure.positions / defaultSharesPerMille 与 ClassStanding.retainedShares
+    //   三个**嵌套** ClassPositionId 键表 —— 都必须在这里注册键反序列化器（写侧走各自 toString）。
+    module.addKeyDeserializer(ProductionModeId.class, keyDeserializer(ProductionModeId::parse));
+    module.addKeyDeserializer(ClassStructureId.class, keyDeserializer(ClassStructureId::parse));
+    module.addKeyDeserializer(ClassPositionId.class, keyDeserializer(ClassPositionId::parse));
     return module;
   }
 
