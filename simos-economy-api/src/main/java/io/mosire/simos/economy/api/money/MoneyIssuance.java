@@ -14,13 +14,13 @@ import java.util.Set;
 /**
  * ★★ <b>「钱从哪来」的唯一闸门</b>（H4；E3 起可登记，但零登记行为逐字保留）。
  *
- * <p>★★ <b>登记表是进程内静态的，不是世界状态</b>：权威世界状态在 {@code EconomyData.governments}（可持久、可回放、可分支）。
- * 日结算开始时从当前世界的 {@code governments} 调 {@link #syncAuthorities(Collection)} 重建登记表；世界没有政府/没有发行人时
- * 登记表为空，{@link #requireIssuerOf(CurrencyId)} 的旧 fail-closed 行为<b>逐字保留</b>。
+ * <p>★★ <b>登记表是进程内静态的，不是世界状态</b>：权威世界状态在 {@code EconomyData.governments}（可持久、可回放、可分支）。 日结算开始时从当前世界的
+ * {@code governments} 调 {@link #syncAuthorities(Collection)} 重建登记表；世界没有政府/没有发行人时 登记表为空，{@link
+ * #requireIssuerOf(CurrencyId)} 的旧 fail-closed 行为<b>逐字保留</b>。
  *
- * <p>★★ <b>跨世界隔离（如实记）</b>：静态表仍是进程级的；同步按当前世界重建后，前一个世界的登记不会静默留下。直接调用
- * {@code register}/{@code deregister} 的调用方必须自己保证成对使用；做不到时用 {@link #clear()}。累计发行/回笼的权威记录在
- * {@code EconomyData.moneyIssuances}（可重放），不在这里再存一份。
+ * <p>★★ <b>跨世界隔离（如实记）</b>：静态表仍是进程级的；同步按当前世界重建后，前一个世界的登记不会静默留下。直接调用 {@code register}/{@code
+ * deregister} 的调用方必须自己保证成对使用；做不到时用 {@link #clear()}。累计发行/回笼的权威记录在 {@code
+ * EconomyData.moneyIssuances}（可重放），不在这里再存一份。
  *
  * <p>★ <b>唯一注册点是这里</b>：任何"谁是发行人"的答案都从本类出去；调用方不得另存一份发行主体映射。
  */
@@ -78,9 +78,7 @@ public final class MoneyIssuance {
     REGISTERED = List.copyOf(next);
   }
 
-  /**
-   * 撤销一个已登记发行人（按 {@link Object#equals(Object)} 匹配；没登记过 ⇒ 返回 {@code false}，不抛）。
-   */
+  /** 撤销一个已登记发行人（按 {@link Object#equals(Object)} 匹配；没登记过 ⇒ 返回 {@code false}，不抛）。 */
   public static synchronized boolean deregister(MoneyAuthority authority) {
     Objects.requireNonNull(authority, "MoneyIssuance.deregister 的 authority 不得为 null");
     List<MoneyAuthority> next = new ArrayList<>(REGISTERED.size());
@@ -131,12 +129,7 @@ public final class MoneyIssuance {
         ActorRef existing = issuers.putIfAbsent(currency, issuer);
         if (existing != null && !existing.equals(issuer)) {
           throw new IllegalStateException(
-              "同一币种出现两个发行主体（当前世界状态冲突）：币种="
-                  + currency
-                  + "，发行主体="
-                  + existing
-                  + " vs "
-                  + issuer);
+              "同一币种出现两个发行主体（当前世界状态冲突）：币种=" + currency + "，发行主体=" + existing + " vs " + issuer);
         }
       }
       effective.add(authority);

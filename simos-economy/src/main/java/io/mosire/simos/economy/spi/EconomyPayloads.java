@@ -13,8 +13,8 @@ import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.GovernmentId;
-import io.mosire.simos.economy.api.id.DebtId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -26,6 +26,8 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
+import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
@@ -43,8 +45,6 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
-import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
@@ -79,7 +79,7 @@ import java.util.Set;
  *      "allocation":{"@class":"split","meansWeightPerMille":700,"laborWeightPerMille":300},
  *      "slots":[{"id":"poor_peasant","name":"贫农","laborParticipationPerMille":950}]}],
  *    "classes":[{"residence":"rural","slot":"poor_peasant","population":450,"laborMilli":261000,
- *                "participationPerMille":950,"money":0,"debts":[],
+ *                "participationPerMille":950,"money":0,
  *                "naturalNeeds":{"grain":37350},"effectiveDemand":{}}],
  *    "laborSupply":[{"group":"rural:0_0:MALE:1","period":1,"grossLaborMilli":261000,
  *                    "servedLaborMilli":0,"committedLaborMilli":0}],
@@ -200,7 +200,8 @@ import java.util.Set;
  * 0、槽位必须在该产业的 {@code slots} 里、{@code progressDays ≤ cycleDays}）交给 §3 的领域类型与 {@link EconomyData}
  * 构造期守卫——**不重复实现**，一处真相。
  *
- * <p>★ **{@code debts} 本轮只接受空数组**（§十 明确"不做债务"）：给出非空债务 ⇒ 拒，免得落下一批指向空债务表的悬空引用。
+ * <p>★ **E4a：创世载荷不种初始债务/质押**：顶层 {@code debtContracts} / {@code pledges} 键可缺席，出现则只接受空数组；旧类行 {@code
+ * debts} 键（若还有人写）也只接受空数组 —— 债务只能由 runtime 借粮路径产生。
  */
 final class EconomyPayloads {
 
@@ -248,6 +249,10 @@ final class EconomyPayloads {
    */
   static EconomyData toData(JsonNode payload, SimosTimestamp at) {
     Objects.requireNonNull(at, "at");
+    // ★★ E4a：`debtContracts` / `pledges` 是**新键**；本阶段不种初始债务/质押 ⇒ 键可缺席，
+    //   但给了就必须是空数组（“看起来在记、其实被静默丢掉”在本仓是禁止的；E4b 再接真实 seed）。
+    requireEmptyOptionalArray(payload, "debtContracts");
+    requireEmptyOptionalArray(payload, "pledges");
     String mapId = requireText(payload, "mapId");
     String rulesVersion = requireText(payload, "rulesVersion");
     JsonNode entries = requireArray(payload, "entries");
@@ -511,7 +516,9 @@ final class EconomyPayloads {
         Map.of(),
         // ★★ E3：政府 / 货币发行审计（创世载荷可选声明；缺键 ⇒ 空表 = 零登记、无发行）。
         governments,
-        moneyIssuances);
+        moneyIssuances,
+        // ★★ E4a：质押表（创世载荷暂不种质押；`pledges` 键给了也只接受空数组，见 toData 开头的守卫）。
+        Map.of());
   }
 
   /**
@@ -1162,7 +1169,7 @@ final class EconomyPayloads {
 
   /**
    * ★★ <b>一条家户行</b>（H0：键 = 该 entry 的格 + 行上显式声明的 {@code residence} + {@code slot}）： {@code
-   * {residence, slot, population, laborMilli, participationPerMille, money, debts, naturalNeeds,
+   * {residence, slot, population, laborMilli, participationPerMille, money, naturalNeeds,
    * effectiveDemand, cycleNaturalNeedMilli?}}。
    *
    * <p>★★ <b>三条 fail-closed（{@code goods} 那条是 H1 新增的）</b>：
@@ -1181,6 +1188,17 @@ final class EconomyPayloads {
    * <p>★★ <b>M2.7 的 {@code cycleNaturalNeedMilli} 是可选键</b>（旧档缺键 ⇒ 0，照本类 {@code money} 的同款先例）：
    * 它是**结算逐日累加的读数**（本周期累计自然口粮需要），创世载荷通常不写它；旧载荷读成 0 = "还没开始累计"，不是"没有需要"。
    */
+  /** ★ E4a：可选新键若出现则只接受空数组（缺键 = 没有；非空 = 本阶段不种，具名拒）。 */
+  private static void requireEmptyOptionalArray(JsonNode payload, String field) {
+    JsonNode node = payload.get(field);
+    if (node == null || node.isNull()) {
+      return;
+    }
+    if (!node.isArray() || !node.isEmpty()) {
+      throw new IllegalArgumentException("E4a 创世载荷的 " + field + " 只接受空数组（本阶段不种初始债务/质押）: " + node);
+    }
+  }
+
   private static ClassRow classRow(HexCoord hex, JsonNode node) {
     ResidenceKind residence = ResidenceKind.parse(requireText(node, "residence"));
     SocialClassId slot = SocialClassId.parse(requireText(node, "slot"));
@@ -1200,10 +1218,10 @@ final class EconomyPayloads {
     }
     long money = optionalLong(node, "money", 0L);
     long cycleNaturalNeedMilli = optionalLong(node, "cycleNaturalNeedMilli", 0L);
-    List<DebtId> debts = new ArrayList<>();
+    List<DebtContractId> debts = new ArrayList<>();
     for (JsonNode debt : optionalArray(node, "debts")) {
       // ★ §十：本轮"不做债务"⇒ 只接受空数组（拒绝非空，免得落下一批指向空债务表的悬空引用）。
-      throw new IllegalArgumentException("本轮不支持债务（debts 只接受空数组）: " + debt);
+      throw new IllegalArgumentException("创世载荷的 debts 引用只接受空数组（债务由 runtime 借粮路径产生）: " + debt);
     }
     Map<CommodityId, Long> needs =
         commodityMap(optionalObject(node, "naturalNeeds"), "naturalNeeds");
@@ -1302,8 +1320,8 @@ final class EconomyPayloads {
 
   /**
    * 顶层可选 {@code governments}：{@code [{id,nationRef,treasury:{kind,id},issuable:[币种…]}]}。
-   * <p>缺键 ⇒ 空表（旧载荷没有政府 ⇒ 零登记，旧 fail-closed 行为逐字不变）；一个币种只能有一个发行主体由
-   * {@code EconomyData} 的构造期守卫判死。
+   *
+   * <p>缺键 ⇒ 空表（旧载荷没有政府 ⇒ 零登记，旧 fail-closed 行为逐字不变）；一个币种只能有一个发行主体由 {@code EconomyData} 的构造期守卫判死。
    */
   private static Map<GovernmentId, Government> governments(JsonNode payload) {
     Map<GovernmentId, Government> governments = new LinkedHashMap<>();
@@ -1318,8 +1336,7 @@ final class EconomyPayloads {
       Set<CurrencyId> issuable = new LinkedHashSet<>();
       for (JsonNode currencyNode : optionalArray(node, "issuable")) {
         if (!currencyNode.isTextual() || currencyNode.asText().isBlank()) {
-          throw new IllegalArgumentException(
-              "governments[].issuable 的每项必须是非空币种字符串: " + node);
+          throw new IllegalArgumentException("governments[].issuable 的每项必须是非空币种字符串: " + node);
         }
         issuable.add(CurrencyId.parse(currencyNode.asText()));
       }
@@ -1332,9 +1349,11 @@ final class EconomyPayloads {
   }
 
   /**
-   * 顶层可选 {@code moneyIssuances}：{@code [{id,governmentId,day?,period?,currency,amount,kind,reason}]}。
-   * <p>缺 {@code day} ⇒ 取命令锚点 {@code at.tick()}；缺 {@code period} ⇒ 1（创世周期，与
-   * {@code EconomySeeder.FIRST_PERIOD} 同值，但载荷边缘不复用 app 常量）；缺键 ⇒ 空表。
+   * 顶层可选 {@code moneyIssuances}：{@code
+   * [{id,governmentId,day?,period?,currency,amount,kind,reason}]}。
+   *
+   * <p>缺 {@code day} ⇒ 取命令锚点 {@code at.tick()}；缺 {@code period} ⇒ 1（创世周期，与 {@code
+   * EconomySeeder.FIRST_PERIOD} 同值，但载荷边缘不复用 app 常量）；缺键 ⇒ 空表。
    */
   private static Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances(
       JsonNode payload, SimosTimestamp at, Map<GovernmentId, Government> governments) {
@@ -1369,7 +1388,11 @@ final class EconomyPayloads {
       return MoneyIssuanceKind.valueOf(text);
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException(
-          "未知的 MoneyIssuanceKind: " + text + "；合法值: " + java.util.Arrays.toString(MoneyIssuanceKind.values()), e);
+          "未知的 MoneyIssuanceKind: "
+              + text
+              + "；合法值: "
+              + java.util.Arrays.toString(MoneyIssuanceKind.values()),
+          e);
     }
   }
 

@@ -7,7 +7,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
-import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -22,7 +22,7 @@ import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.ProductionUnit;
 import java.math.BigInteger;
@@ -155,7 +155,7 @@ public final class HouseholdClassRule {
       Map<IndustryId, Industry> industries,
       Map<ProductionUnitId, ProductionRelation> relations,
       Map<HouseholdId, ClassRow> classes,
-      Map<DebtId, Debt> debts,
+      Map<DebtContractId, DebtContract> debts,
       HouseholdId household,
       Optional<ProductionLedger> ledger) {
     return Index.of(assetShares, allocations, units, industries, relations, classes, debts)
@@ -265,7 +265,7 @@ public final class HouseholdClassRule {
         Map<ProductionUnitId, ProductionUnit> units,
         Map<ProductionUnitId, ProductionRelation> relations,
         Map<HouseholdId, ClassRow> classes,
-        Map<DebtId, Debt> debts,
+        Map<DebtContractId, DebtContract> debts,
         SettlementIndex settlementIndex) {
       this.settlementIndex = settlementIndex;
       this.classes = new LinkedHashMap<>(classes);
@@ -468,7 +468,7 @@ public final class HouseholdClassRule {
       }
 
       // ④ 债务：本金合计（分类只用"本金 ÷ 资产数量"这一个比值）。
-      for (Debt debt : debts.values()) {
+      for (DebtContract debt : debts.values()) {
         debtPrincipal.merge(debt.debtor(), debt.principal(), Math::addExact);
       }
     }
@@ -482,7 +482,7 @@ public final class HouseholdClassRule {
           data.industries(),
           data.relations(),
           data.classes(),
-          data.debts());
+          data.debtContracts());
     }
 
     public static Index of(
@@ -492,7 +492,7 @@ public final class HouseholdClassRule {
         Map<IndustryId, Industry> industries,
         Map<ProductionUnitId, ProductionRelation> relations,
         Map<HouseholdId, ClassRow> classes,
-        Map<DebtId, Debt> debts) {
+        Map<DebtContractId, DebtContract> debts) {
       Objects.requireNonNull(assetShares, "assetShares");
       Objects.requireNonNull(allocations, "allocations");
       Objects.requireNonNull(units, "units");
@@ -515,7 +515,7 @@ public final class HouseholdClassRule {
         Map<IndustryId, Industry> industries,
         Map<ProductionUnitId, ProductionRelation> relations,
         Map<HouseholdId, ClassRow> classes,
-        Map<DebtId, Debt> debts,
+        Map<DebtContractId, DebtContract> debts,
         SettlementIndex settlementIndex) {
       Objects.requireNonNull(assetShares, "assetShares");
       Objects.requireNonNull(allocations, "allocations");

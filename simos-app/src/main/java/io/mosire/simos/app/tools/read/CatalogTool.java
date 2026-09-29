@@ -107,7 +107,7 @@ public final class CatalogTool implements AgentTool {
                   + "(★ R3B.2 起 Industry 只留模板：operator/capacity/progress/cycle 改由 units 与 assetShares 承担),"
                   + "units[{id?,industry,operator?{kind,id},modeKey?,progressDays?,cycleLaborMilli?,cycleInputUsedMilli?}],"
                   + "classes[{residence(rural|urban),slot,population,laborMilli,participationPerMille,goods?,"
-                  + "money?,debts?(本轮只接受空数组),naturalNeeds?,effectiveDemand?}],"
+                  + "money?,naturalNeeds?,effectiveDemand?}],debtContracts?(E4a 只接受空数组),pledges?(同上),"
                   + "allocations[{id,group,household?,actor{kind,id},activity(= unit id),laborMilli,period}],"
                   + "assetShares[{industry,owner{kind,id},operator{kind,id},asset,quantity,kind}]?}]"
                   + "（★ 旧形状 industry 的 operator/capacity/progressDays/cycleLaborMilli/cycleInputUsedMilli 仍可读："

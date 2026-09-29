@@ -2,7 +2,7 @@ package io.mosire.simos.economy.resolve;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.util.address.Address;
@@ -103,8 +103,8 @@ public final class EconomyResolver implements Resolver {
   }
 
   private static QueryResult resolveDebt(EconomyData data, String mapId, String name) {
-    DebtId id = DebtId.parse(name);
-    if (!data.debts().containsKey(id)) {
+    DebtContractId id = DebtContractId.parse(name);
+    if (!data.debtContracts().containsKey(id)) {
       return empty();
     }
     return single(

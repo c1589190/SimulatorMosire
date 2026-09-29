@@ -12,7 +12,7 @@ import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
@@ -25,9 +25,9 @@ import java.util.OptionalLong;
 
 /**
  * ★★ <b>S3.3 劳动家户状态读数（派生、不落盘）</b>—— 计划允许"并入 {@code ClassRow} 的派生读数或独立组件"；本类选择 <b>读时派生</b>：不新增
- * {@code EconomyData} 组件、不改变更集/codec 形状，字段由 {@code FlowRow + LaborAllocation + AssetShare + Debt +
- * ProductionLedger(瞬态)} 逐值复算；E1 的 {@code grainCoveragePerMille} 另由调用方传入库存粮（库存真源在 actor 侧，economy
- * 不另存一本账）。
+ * {@code EconomyData} 组件、不改变更集/codec 形状，字段由 {@code FlowRow + LaborAllocation + AssetShare +
+ * DebtContract + ProductionLedger(瞬态)} 逐值复算；E1 的 {@code grainCoveragePerMille} 另由调用方传入库存粮（库存真源在
+ * actor 侧，economy 不另存一本账）。
  *
  * <pre>
  * unmetNeedMilliGrain/Cloth = 本周期累计未满足（FlowRow.unmetNeed；与"本周期"同窗口）
@@ -136,7 +136,7 @@ public record HouseholdCondition(
     long unmetCloth =
         flow == null ? 0L : flow.unmetNeed().getOrDefault(EconomySettlement.CLOTH, 0L);
     long principal = 0L;
-    for (Debt debt : data.debts().values()) {
+    for (DebtContract debt : data.debtContracts().values()) {
       if (debt.debtor().equals(household)) {
         principal += debt.principal();
       }

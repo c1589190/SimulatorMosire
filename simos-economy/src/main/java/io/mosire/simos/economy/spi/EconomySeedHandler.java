@@ -86,7 +86,7 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             base.meta(), // ★ 不覆盖：保留首次的 activatedDay / rulesVersion
             merge(base.industries(), seeded.industries()),
             merge(base.classes(), seeded.classes()),
-            base.debts(),
+            merge(base.debtContracts(), seeded.debtContracts()),
             base.flows(),
             // ★ R2：劳动供给与配额**按格追加**（与产业/阶层行同一套判重口径：该格已被占用 ⇒ 上面就拒了），
             //   故这里按表合并即可 —— 各国的批次 id 互不相同（含格/城的 id 段）。
@@ -126,7 +126,9 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             //   发行记录按 id 追加（每个 seed 一条 INITIAL_ENDOWMENT 聚合记录；id 含该 seed 的格集指纹）。
             //   ★ 漏了这两项 = 已播国家的政府/发行记录在后续国家 seed 时静默消失（账面上看不出是谁弄丢的）。
             merge(base.governments(), seeded.governments()),
-            merge(base.moneyIssuances(), seeded.moneyIssuances()));
+            merge(base.moneyIssuances(), seeded.moneyIssuances()),
+            // ★★ E4a 的第 25 个组件：质押按同一套“该格已被占用 ⇒ 上面就拒”的口径追加（空表播种 ⇒ 逐值带过已有状态）。
+            merge(base.pledges(), seeded.pledges()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 

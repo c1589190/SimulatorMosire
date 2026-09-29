@@ -4,7 +4,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
-import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -14,7 +14,7 @@ import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.ProductionUnit;
@@ -45,8 +45,8 @@ import java.util.Set;
  *
  * <p>★★ <b>与状态变更的关系</b>：{@code AssetShare}/{@code Industry}/{@code ProductionUnit}
  * 的身份与份额在一天内不被本切片修改，故 资产/产能/格索引一次构建即可；{@code LaborAllocation} 会在劳动再分配与饿死缩放中被改写，故 {@link #withLabor}
- * 在改写的 阶段边界重建“配额侧”的视图；{@code Debt} 会在借粮/偿还/计息中被改写，故 {@link #withDebts} 在债务阶段边界重建债务视图。
- * 这两次重建都仍是“每阶段一次”，不是逐查询一次 —— 语义由 {@link #build} 中逐字保留的旧遍历序保证。
+ * 在改写的 阶段边界重建“配额侧”的视图；{@code DebtContract} 会在借粮/偿还/计息中被改写，故 {@link #withDebtContracts}
+ * 在债务阶段边界重建债务视图。 这两次重建都仍是“每阶段一次”，不是逐查询一次 —— 语义由 {@link #build} 中逐字保留的旧遍历序保证。
  */
 final class SettlementIndex {
 
@@ -75,7 +75,7 @@ final class SettlementIndex {
   private final Map<String, List<ProductionUnitId>> unitsByHex;
   private final Map<ProductionUnitId, String> hexByUnit;
   private final Map<String, List<IndustryId>> industriesByHex;
-  private final Map<HouseholdId, List<Debt>> debtsByDebtor;
+  private final Map<HouseholdId, List<DebtContract>> debtsByDebtor;
 
   private SettlementIndex(
       Map<ProductionUnitId, Map<AssetKind, Long>> usableAssetsByUnit,
@@ -93,7 +93,7 @@ final class SettlementIndex {
       Map<String, List<ProductionUnitId>> unitsByHex,
       Map<ProductionUnitId, String> hexByUnit,
       Map<String, List<IndustryId>> industriesByHex,
-      Map<HouseholdId, List<Debt>> debtsByDebtor) {
+      Map<HouseholdId, List<DebtContract>> debtsByDebtor) {
     this.usableAssetsByUnit = usableAssetsByUnit;
     this.capacityScaleByUnit = capacityScaleByUnit;
     this.assetShareIdsByUnit = assetShareIdsByUnit;
@@ -124,7 +124,7 @@ final class SettlementIndex {
       Map<AssetShareId, AssetShare> assetShares,
       Map<LaborAllocationId, LaborAllocation> allocations,
       Map<HouseholdId, ClassRow> rows,
-      Map<DebtId, Debt> debts,
+      Map<DebtContractId, DebtContract> debts,
       Map<ProductionUnitId, ProductionRelation> relations) {
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(industries, "industries");
@@ -184,7 +184,7 @@ final class SettlementIndex {
   }
 
   /** ★ 债务被改写之后的阶段边界视图：共享资产/劳动/格/产业，只重建债务人索引。 */
-  SettlementIndex withDebts(Map<DebtId, Debt> debts) {
+  SettlementIndex withDebtContracts(Map<DebtContractId, DebtContract> debts) {
     Objects.requireNonNull(debts, "debts");
     return new SettlementIndex(
         usableAssetsByUnit,
@@ -276,7 +276,7 @@ final class SettlementIndex {
     return industriesByHex;
   }
 
-  Map<HouseholdId, List<Debt>> debtsByDebtor() {
+  Map<HouseholdId, List<DebtContract>> debtsByDebtor() {
     return debtsByDebtor;
   }
 
@@ -571,16 +571,17 @@ final class SettlementIndex {
   }
 
   /** 债务人 → 债务（序 = 债务表序；{@code OperatorSettlement.advance} 的旧过滤序同此）。 */
-  private static Map<HouseholdId, List<Debt>> debtsByDebtor(Map<DebtId, Debt> debts) {
+  private static Map<HouseholdId, List<DebtContract>> debtsByDebtor(
+      Map<DebtContractId, DebtContract> debts) {
     if (debts == null || debts.isEmpty()) {
       return Map.of();
     }
-    Map<HouseholdId, List<Debt>> raw = new LinkedHashMap<>();
-    for (Debt debt : debts.values()) {
+    Map<HouseholdId, List<DebtContract>> raw = new LinkedHashMap<>();
+    for (DebtContract debt : debts.values()) {
       raw.computeIfAbsent(debt.debtor(), ignored -> new ArrayList<>()).add(debt);
     }
-    Map<HouseholdId, List<Debt>> frozen = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, List<Debt>> entry : raw.entrySet()) {
+    Map<HouseholdId, List<DebtContract>> frozen = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, List<DebtContract>> entry : raw.entrySet()) {
       frozen.put(entry.getKey(), List.copyOf(entry.getValue()));
     }
     return Collections.unmodifiableMap(frozen);

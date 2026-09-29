@@ -2,7 +2,7 @@ package io.mosire.simos.economy.model;
 
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -67,7 +67,7 @@ public record ClassRow(
     long laborMilli,
     int participationPerMille,
     long money,
-    List<DebtId> debts,
+    List<DebtContractId> debts,
     Map<CommodityId, Long> naturalNeeds,
     Map<CommodityId, Long> effectiveDemand,
     long cycleNaturalNeedMilli) {
@@ -131,8 +131,8 @@ public record ClassRow(
       demandCopy.put(entry.getKey(), entry.getValue());
     }
     effectiveDemand = Collections.unmodifiableMap(demandCopy); // ★ 冻在赋值处
-    List<DebtId> debtsCopy = new ArrayList<>();
-    for (DebtId debt : debts) {
+    List<DebtContractId> debtsCopy = new ArrayList<>();
+    for (DebtContractId debt : debts) {
       if (debt == null) {
         throw new IllegalArgumentException("ClassRow.debts 不得含 null");
       }

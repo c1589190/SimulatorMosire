@@ -6,8 +6,8 @@ import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import java.util.Objects;
 
 /**
- * ★★ <b>货币发行/回笼的持久审计记录</b>（E3；设计稿 §2.6 的 {@code MoneyIssuance}）。它是
- * {@code EconomyData.moneyIssuances} 的值，进 ChangeSet/Codec，可持久、可回放。
+ * ★★ <b>货币发行/回笼的持久审计记录</b>（E3；设计稿 §2.6 的 {@code MoneyIssuance}）。它是 {@code
+ * EconomyData.moneyIssuances} 的值，进 ChangeSet/Codec，可持久、可回放。
  *
  * <p>★★ <b>它和账户余额的关系</b>：记录是<b>事实的账</b>，不是余额的第二本账。读口按窗口求和：
  *
@@ -17,8 +17,8 @@ import java.util.Objects;
  * 流通量   = Σ 全部账户余额（逐币种）
  * </pre>
  *
- * <p>发行腿的单边差额（发行主体余额不足时，收方仍足额到账）必须写一条 {@link MoneyIssuanceKind#FISCAL_ISSUE}
- * 记录；创世钱包必须写 {@link MoneyIssuanceKind#INITIAL_ENDOWMENT} 记录。金额为正、方向由 kind 表达。
+ * <p>发行腿的单边差额（发行主体余额不足时，收方仍足额到账）必须写一条 {@link MoneyIssuanceKind#FISCAL_ISSUE} 记录；创世钱包必须写 {@link
+ * MoneyIssuanceKind#INITIAL_ENDOWMENT} 记录。金额为正、方向由 kind 表达。
  *
  * @param id 稳定身份；不得为 null
  * @param governmentId 发行主体（必须存在于 {@code EconomyData.governments}）；不得为 null
@@ -58,8 +58,7 @@ public record MoneyIssuanceRecord(
       throw new IllegalArgumentException("MoneyIssuanceRecord.reason 不得为空白");
     }
     if (id.value().indexOf('|') >= 0) {
-      throw new IllegalArgumentException(
-          "MoneyIssuanceId 不得含 '|'（它同时是账户/编码分段符）: " + id.value());
+      throw new IllegalArgumentException("MoneyIssuanceId 不得含 '|'（它同时是账户/编码分段符）: " + id.value());
     }
   }
 }

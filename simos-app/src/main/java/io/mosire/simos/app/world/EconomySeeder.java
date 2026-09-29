@@ -4,7 +4,6 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
-import io.mosire.simos.economy.api.money.GovernmentActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -17,6 +16,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.money.GovernmentActors;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Pool;
@@ -533,8 +533,8 @@ public final class EconomySeeder {
   public static final String RULES_VERSION = "aggregate-v1";
 
   /**
-   * ★★ E3：创世发行政府的稳定 id（世界级最小政府；唯一拼写点）。当前市场单一计价货币 {@code silver}，
-   * 因此全世界只有一个发行主体声称 silver —— 不静默让三国各自主张同一币种。
+   * ★★ E3：创世发行政府的稳定 id（世界级最小政府；唯一拼写点）。当前市场单一计价货币 {@code silver}， 因此全世界只有一个发行主体声称 silver ——
+   * 不静默让三国各自主张同一币种。
    */
   public static final GovernmentId GENESIS_GOVERNMENT_ID = new GovernmentId("world-silver");
 
@@ -564,11 +564,11 @@ public final class EconomySeeder {
    * List, GameMap)} 取 {@link #entries()} 与 {@link #markets()}，{@link HouseholdSeeder} 取 {@link
    * #householdStocks()} 与 {@link #householdMoney()}（**同一份**：命令播出来的世界与夹具手搭的世界逐字段同形）。
    *
-   * <p>★★ <b>H4/E3 的货币口径</b>：{@link #householdMoney()} 由 {@link #genesisMoney(long, long)} 按人口一次算出、写进
-   * {@code actor.Seed} 的账本；E3 起它不是"天上掉的钱"，而是**显式 INITIAL_ENDOWMENT 发行记录**（
-   * {@link #genesisEndowment()} 与钱包同一份表，总量含经营者工资周转金；由 {@code economy.Seed} 的
-   * {@code moneyIssuances} 载荷落进 {@code EconomyData}）。逐币种守恒式因此可核：
-   * {@code Σ账户余额 = Σ INITIAL_ENDOWMENT + Σ FISCAL_ISSUE − Σ WITHDRAWAL}，普通账户不得为负。
+   * <p>★★ <b>H4/E3 的货币口径</b>：{@link #householdMoney()} 由 {@link #genesisMoney(long, long)}
+   * 按人口一次算出、写进 {@code actor.Seed} 的账本；E3 起它不是"天上掉的钱"，而是**显式 INITIAL_ENDOWMENT 发行记录**（ {@link
+   * #genesisEndowment()} 与钱包同一份表，总量含经营者工资周转金；由 {@code economy.Seed} 的 {@code moneyIssuances} 载荷落进
+   * {@code EconomyData}）。逐币种守恒式因此可核： {@code Σ账户余额 = Σ INITIAL_ENDOWMENT + Σ FISCAL_ISSUE − Σ
+   * WITHDRAWAL}，普通账户不得为负。
    *
    * <p>★ <b>键序是内容的纯函数</b>：entry/市场按 {@code (q,r)} 字典序（{@code hexes.sort}）、每组按 {@code RURAL →
    * URBAN}、每个阶层按 {@link #CLASS_IDS} 序 —— 同一份输入两次调用逐字段相同。★ <b>账本为空的家户也在表里</b>（人口 0 的行：余额可能全 0）—— 见
@@ -630,7 +630,8 @@ public final class EconomySeeder {
       // ★★ E3：创世发行政府（当前 = 世界级最小政府）与初始发行总量（逐币种；家户钱包 + 经营者钱包）。
       //   两张表都冻结在赋值处；发行总量是"钱包口径"的纯和，绝不另算一遍人口。
       governments =
-          Collections.unmodifiableMap(new LinkedHashMap<>(governments == null ? Map.of() : governments));
+          Collections.unmodifiableMap(
+              new LinkedHashMap<>(governments == null ? Map.of() : governments));
       genesisEndowment =
           Collections.unmodifiableMap(
               new LinkedHashMap<>(genesisEndowment == null ? Map.of() : genesisEndowment));
@@ -645,7 +646,8 @@ public final class EconomySeeder {
      * markets} 都在顶层）。
      */
     public String economyPayload() {
-      return jsonOf(mapId, entries, markets, governments, genesisEndowment, genesisMoneyMilliPerCapita);
+      return jsonOf(
+          mapId, entries, markets, governments, genesisEndowment, genesisMoneyMilliPerCapita);
     }
   }
 
@@ -764,7 +766,10 @@ public final class EconomySeeder {
     return plan(mapId, groups, terrainOf).economyPayload();
   }
 
-  /** 真地图重载（{@code terrainIndex()} 一次物化后 O(1) 查）—— 见 {@link #payload(String, List, GameMap)}；初始禀赋取默认值。 */
+  /**
+   * 真地图重载（{@code terrainIndex()} 一次物化后 O(1) 查）—— 见 {@link #payload(String, List,
+   * GameMap)}；初始禀赋取默认值。
+   */
   public static Seed plan(String mapId, List<PopulationGroup> groups, GameMap map) {
     return plan(mapId, groups, map, genesisMoneyMilliPerCapita());
   }
@@ -825,7 +830,12 @@ public final class EconomySeeder {
     payload.put("markets", marketNodes);
     // ★★ E3：政府与 INITIAL_ENDOWMENT 发行记录（缺省长（ENDOWMENT=零）时只有 governments；旧载荷缺这两个键 ⇒ 空表）。
     payload.put("governments", governmentNodes(governments));
-    payload.put("moneyIssuances", issuanceNodes(mapId, entries, genesisEndowment, genesisMoneyMilliPerCapita));
+    payload.put(
+        "moneyIssuances",
+        issuanceNodes(mapId, entries, genesisEndowment, genesisMoneyMilliPerCapita));
+    // ★★ E4a：新键的空语义 —— 本阶段不种初始债务/质押（E4b 再接真实库存/权利配套的 seed）。
+    payload.put("debtContracts", List.of());
+    payload.put("pledges", List.of());
     return ToolSupport.json(payload);
   }
 
@@ -851,8 +861,8 @@ public final class EconomySeeder {
   }
 
   /**
-   * E3：{@code INITIAL_ENDOWMENT} 的逐币种聚合记录（id 含本 seed 的格集锚点 ⇒ 多国 seed 各自一条、不互相覆盖）。
-   * 记录总量 = 家户钱包 + 经营者钱包（同一次 {@link #plan} 的同一份表）。
+   * E3：{@code INITIAL_ENDOWMENT} 的逐币种聚合记录（id 含本 seed 的格集锚点 ⇒ 多国 seed 各自一条、不互相覆盖）。 记录总量 = 家户钱包 +
+   * 经营者钱包（同一次 {@link #plan} 的同一份表）。
    */
   static List<Map<String, Object>> issuanceNodes(
       String mapId,
@@ -868,8 +878,7 @@ public final class EconomySeeder {
       Map<String, Object> node = new LinkedHashMap<>();
       node.put(
           "id",
-          new MoneyIssuanceId(
-                  "endowment-" + mapId + "-" + anchor + "-" + amount.getKey().value())
+          new MoneyIssuanceId("endowment-" + mapId + "-" + anchor + "-" + amount.getKey().value())
               .value());
       node.put("governmentId", GENESIS_GOVERNMENT_ID.value());
       node.put("currency", amount.getKey().value());
@@ -877,7 +886,9 @@ public final class EconomySeeder {
       node.put("kind", "INITIAL_ENDOWMENT");
       node.put(
           "reason",
-          "GM 代 GOV 创世初始禀赋：" + genesisMoneyMilliPerCapita + " 毫/人（含经营者工资周转金；"
+          "GM 代 GOV 创世初始禀赋："
+              + genesisMoneyMilliPerCapita
+              + " 毫/人（含经营者工资周转金；"
               + "总量按 actor.Seed 的家户+经营者钱包逐值汇总）");
       nodes.add(node);
     }
@@ -936,8 +947,8 @@ public final class EconomySeeder {
   }
 
   /**
-   * ★★ E3：纯函数主入口 + 初始禀赋参数（{@code genesisMoneyMilliPerCapita}，毫/人；≥ 0）。
-   * 初始发行记录的总量按**家户钱包 + 经营者钱包**逐币种汇总，与 actor.Seed 同一份表。
+   * ★★ E3：纯函数主入口 + 初始禀赋参数（{@code genesisMoneyMilliPerCapita}，毫/人；≥ 0）。 初始发行记录的总量按**家户钱包 +
+   * 经营者钱包**逐币种汇总，与 actor.Seed 同一份表。
    */
   static Seed plan(
       String mapId,
@@ -945,8 +956,7 @@ public final class EconomySeeder {
       Function<HexCoord, String> terrainOf,
       long genesisMoneyMilliPerCapita) {
     if (genesisMoneyMilliPerCapita < 0L) {
-      throw new IllegalArgumentException(
-          "初始禀赋（毫/人）不得为负: " + genesisMoneyMilliPerCapita);
+      throw new IllegalArgumentException("初始禀赋（毫/人）不得为负: " + genesisMoneyMilliPerCapita);
     }
     Map<HexCoord, List<PopulationGroup>> ruralByHex = new LinkedHashMap<>();
     Map<HexCoord, List<PopulationGroup>> urbanByHex = new LinkedHashMap<>();
@@ -1168,10 +1178,8 @@ public final class EconomySeeder {
     }
     // ★★ S1.4 出口自检：tick0 seed 是"人工造份额"的唯一入口 ⇒ 这里逐 lot 对账，不等就播不出去（fail-closed）。
     requireMembershipConservation(groups, allMemberships);
-    Map<GovernmentId, Government> governments =
-        Map.of(GENESIS_GOVERNMENT_ID, genesisGovernment());
-    Map<CurrencyId, Long> genesisEndowment =
-        genesisEndowmentOf(householdMoney, operators);
+    Map<GovernmentId, Government> governments = Map.of(GENESIS_GOVERNMENT_ID, genesisGovernment());
+    Map<CurrencyId, Long> genesisEndowment = genesisEndowmentOf(householdMoney, operators);
     return new Seed(
         mapId,
         entries,
@@ -1237,9 +1245,9 @@ public final class EconomySeeder {
    * EconomyVocabulary#RATION_MILLI_PER_PERSON}（与 {@code EconomySettlement} 每日需求同一个常量）， 价格换算的 {@code
    * ÷ 1000} 与 {@code Market} 的货款公式**逐字同式**，不是本类另拍的数。
    *
-   * <p>★★ <b>E3：初始禀赋就是一次显式 INITIAL_ENDOWMENT 发行</b>（GM 代 GOV，发行主体 = 世界级最小政府）。本方法仍只算
-   * <b>每人金额</b>；总量由 {@link #genesisEndowmentOf(Map, List)} 对同一份钱包表求和，绝不另算一遍人口。默认值不变，
-   * 参数化入口见 {@link #genesisMoney(long, long)} 与 {@code plan(..., long)}。
+   * <p>★★ <b>E3：初始禀赋就是一次显式 INITIAL_ENDOWMENT 发行</b>（GM 代 GOV，发行主体 = 世界级最小政府）。本方法仍只算 <b>每人金额</b>；总量由
+   * {@link #genesisEndowmentOf(Map, List)} 对同一份钱包表求和，绝不另算一遍人口。默认值不变， 参数化入口见 {@link
+   * #genesisMoney(long, long)} 与 {@code plan(..., long)}。
    */
   public static long genesisMoneyMilliPerCapita() {
     return EconomyVocabulary.RATION_MILLI_PER_PERSON
@@ -1262,11 +1270,9 @@ public final class EconomySeeder {
     return genesisMoney(population, genesisMoneyMilliPerCapita());
   }
 
-  /**
-   * ★★ E3：一个家户的创世钱包（毫计价货币），每人金额可注入。金额 &lt; 0 或乘法溢出 ⇒ 当场抛；
-   * 金额 0 ⇒ 空钱包（与旧"只落正的量"逐值相同）。
-   */
-  public static Map<CurrencyId, Long> genesisMoney(long population, long genesisMoneyMilliPerCapita) {
+  /** ★★ E3：一个家户的创世钱包（毫计价货币），每人金额可注入。金额 &lt; 0 或乘法溢出 ⇒ 当场抛； 金额 0 ⇒ 空钱包（与旧"只落正的量"逐值相同）。 */
+  public static Map<CurrencyId, Long> genesisMoney(
+      long population, long genesisMoneyMilliPerCapita) {
     if (population < 0L) {
       throw new IllegalArgumentException("population 不得为负: " + population);
     }
@@ -1292,8 +1298,7 @@ public final class EconomySeeder {
   }
 
   /**
-   * E3：创世初始发行总量 = 家户钱包 + 经营者钱包的逐币种纯和（与 {@code actor.Seed} 的同一份表）。
-   * 只保留正数键；0 不造记录（"没有发行"与"发行 0"是两件事）。
+   * E3：创世初始发行总量 = 家户钱包 + 经营者钱包的逐币种纯和（与 {@code actor.Seed} 的同一份表）。 只保留正数键；0 不造记录（"没有发行"与"发行 0"是两件事）。
    */
   static Map<CurrencyId, Long> genesisEndowmentOf(
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney, List<OperatorSeed> operators) {
@@ -2029,7 +2034,15 @@ public final class EconomySeeder {
     Map<String, long[]> goods = new LinkedHashMap<>();
     goods.put(COMMODITY_FIBER, splitByShares(fiberStockMilli(landMilliMu), CLASS_SHARE_PER_MILLE));
     return cohortGroup(
-        hex, ResidenceKind.RURAL, pool, goods, locations, stocks, money, memberships, genesisMoneyMilliPerCapita);
+        hex,
+        ResidenceKind.RURAL,
+        pool,
+        goods,
+        locations,
+        stocks,
+        money,
+        memberships,
+        genesisMoneyMilliPerCapita);
   }
 
   /**
@@ -2061,7 +2074,15 @@ public final class EconomySeeder {
     goods.put(COMMODITY_FIBER, fiber);
     goods.put(COMMODITY_IRON, iron);
     return cohortGroup(
-        hex, ResidenceKind.URBAN, pool, goods, locations, stocks, money, memberships, genesisMoneyMilliPerCapita);
+        hex,
+        ResidenceKind.URBAN,
+        pool,
+        goods,
+        locations,
+        stocks,
+        money,
+        memberships,
+        genesisMoneyMilliPerCapita);
   }
 
   /**
@@ -2469,7 +2490,7 @@ public final class EconomySeeder {
     //   {@code GoodsAccount}，开缸余额由 {@link #openingStock} 一次算好、经 {@link HouseholdSeeder} 落成那本账。
     //   ★ 载荷里再写一份 = 同一事实的第二处拼写点，而且它会静默漂开（economy 侧已不再读它）。
     row.put("money", 0);
-    row.put("debts", List.of());
+    // ★★ E4a：行里的债务引用不再由 seed 写（欠债只能由 runtime 借粮路径产生；空引用 = 缺键）。
     row.put("naturalNeeds", Map.of(COMMODITY_GRAIN, firstDayRationMilli(population)));
     row.put("effectiveDemand", Map.of());
     return row;

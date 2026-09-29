@@ -353,7 +353,8 @@ public final class WorldgenInitializeTool implements AgentTool {
       // ★★ E3：初始禀赋是 GM 可传参数（毫/人；缺省 = EconomySeeder 的出厂值）。不用 System property。
       Long genesisMoneyArg = ToolSupport.optionalLong(args, "genesisMoneyMilliPerCapita");
       if (genesisMoneyArg != null && genesisMoneyArg < 0L) {
-        return ToolResult.error("BAD_REQUEST", "genesisMoneyMilliPerCapita 不得为负: " + genesisMoneyArg);
+        return ToolResult.error(
+            "BAD_REQUEST", "genesisMoneyMilliPerCapita 不得为负: " + genesisMoneyArg);
       }
       long genesisMoneyMilliPerCapita =
           genesisMoneyArg == null ? EconomySeeder.genesisMoneyMilliPerCapita() : genesisMoneyArg;
@@ -549,8 +550,8 @@ public final class WorldgenInitializeTool implements AgentTool {
   }
 
   /**
-   * ★★ E3：同上一支 + **初始禀赋参数**（毫/人）。缺省重载逐值等于 E3 之前；本重载把参数透传给
-   * {@link EconomySeeder#plan(String, List, GameMap, long)}，只改 INITIAL_ENDOWMENT 的每人金额。
+   * ★★ E3：同上一支 + **初始禀赋参数**（毫/人）。缺省重载逐值等于 E3 之前；本重载把参数透传给 {@link EconomySeeder#plan(String, List,
+   * GameMap, long)}，只改 INITIAL_ENDOWMENT 的每人金额。
    */
   static List<CommandEnvelope> buildBatch(
       String batchId,
@@ -596,8 +597,7 @@ public final class WorldgenInitializeTool implements AgentTool {
     //   {@code economy.Seed} 的 entries + markets 与家户的开缸库存 + **创世货币禀赋**（后两者进
     //   {@code actor.Seed} 的同一本账）："一次算出、同一份喂两条命令"，两处各算一遍必然漂开
     //   （本仓明令禁止的"同一事实两处拼写点"）。
-    EconomySeeder.Seed seeding =
-        EconomySeeder.plan(mapId, groups, map, genesisMoneyMilliPerCapita);
+    EconomySeeder.Seed seeding = EconomySeeder.plan(mapId, groups, map, genesisMoneyMilliPerCapita);
     batch.add(
         envelope(
             batchId,

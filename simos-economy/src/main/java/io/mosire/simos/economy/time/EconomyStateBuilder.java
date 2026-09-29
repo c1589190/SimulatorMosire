@@ -2,32 +2,34 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.AssetShareId;
-import io.mosire.simos.economy.api.id.DebtId;
-import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.GovernmentId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
+import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionOrganization;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.map.hex.HexCoord;
@@ -58,7 +60,8 @@ public final class EconomyStateBuilder {
 
   private LinkedHashMap<IndustryId, Industry> industries;
   private LinkedHashMap<HouseholdId, ClassRow> rows;
-  private LinkedHashMap<DebtId, Debt> debts;
+  private LinkedHashMap<DebtContractId, DebtContract> debtContracts;
+  private LinkedHashMap<PledgeId, Pledge> pledges;
   private LinkedHashMap<LaborAllocationId, LaborAllocation> allocations;
   private LinkedHashMap<PeopleLotId, LaborSupply> laborSupply;
   private LinkedHashMap<MembershipId, Membership> memberships;
@@ -97,12 +100,20 @@ public final class EconomyStateBuilder {
     return rows;
   }
 
-  /** 债务表工作副本。 */
-  public LinkedHashMap<DebtId, Debt> debts() {
-    if (debts == null) {
-      debts = new LinkedHashMap<>(base.debts());
+  /** ★★ E4a：债务**合同**表工作副本（键 = 稳定合同 id）。 */
+  public LinkedHashMap<DebtContractId, DebtContract> debtContracts() {
+    if (debtContracts == null) {
+      debtContracts = new LinkedHashMap<>(base.debtContracts());
     }
-    return debts;
+    return debtContracts;
+  }
+
+  /** ★★ E4a：质押表工作副本（E4a 只落形状，日结算暂不写；工作副本留给 E5）。 */
+  public LinkedHashMap<PledgeId, Pledge> pledges() {
+    if (pledges == null) {
+      pledges = new LinkedHashMap<>(base.pledges());
+    }
+    return pledges;
   }
 
   /** 劳动配额表工作副本。 */
@@ -229,7 +240,7 @@ public final class EconomyStateBuilder {
         meta(),
         industries == null ? base.industries() : industries,
         rows == null ? base.classes() : rows,
-        debts == null ? base.debts() : debts,
+        debtContracts == null ? base.debtContracts() : debtContracts,
         flows,
         laborSupply == null ? base.laborSupply() : laborSupply,
         allocations == null ? base.allocations() : allocations,
@@ -254,6 +265,7 @@ public final class EconomyStateBuilder {
         productionOrganizations == null ? base.productionOrganizations() : productionOrganizations,
         base.assetRules(),
         governments == null ? base.governments() : governments,
-        moneyIssuances == null ? base.moneyIssuances() : moneyIssuances);
+        moneyIssuances == null ? base.moneyIssuances() : moneyIssuances,
+        pledges == null ? base.pledges() : pledges);
   }
 }

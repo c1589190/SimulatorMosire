@@ -2,6 +2,7 @@ package io.mosire.simos.app.gui;
 
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.model.AvailableStock;
@@ -15,16 +16,14 @@ import io.mosire.simos.app.time.EconomyDayFeed;
 import io.mosire.simos.app.time.MarketReadoutAssembly;
 import io.mosire.simos.app.time.OwnershipBooks;
 import io.mosire.simos.core.timeline.RevisionRow;
-import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
-import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
-import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -36,6 +35,8 @@ import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.money.CurrencyDef;
 import io.mosire.simos.economy.api.money.InstrumentKind;
 import io.mosire.simos.economy.api.money.MoneyInstrument;
+import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
+import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
@@ -44,7 +45,7 @@ import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
-import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DebtIndex;
 import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.FlowRow;
@@ -157,10 +158,11 @@ import java.util.TreeMap;
  * Σ该工具的持有账户 = 创世 + 累计发行 − 累计注销
  * </pre>
  *
- * 发行/注销会让总量变 ⇒ {@code MoneyIssuance.REGISTERED} 为空、{@code moneyIssuances} 为空时它才退化成 "逐币种 Σ持有恒定"。读口因此给 {@code
- * moneyLayers} 三栏（私人流通 / 全部基础货币 /（将来）银行存款）： 它们读的是<b>账户事实</b>，不是发行量。E3 起发行/回笼的权威记录是
- * {@code EconomyData.moneyIssuances}，本类另发 {@code moneyIssuance} 一栏（initialEndowment / fiscalIssue /
- * cumulativeIssuance / cumulativeWithdrawal / circulation / netIssuance）—— 只从状态求和，不另存一份。
+ * 发行/注销会让总量变 ⇒ {@code MoneyIssuance.REGISTERED} 为空、{@code moneyIssuances} 为空时它才退化成 "逐币种
+ * Σ持有恒定"。读口因此给 {@code moneyLayers} 三栏（私人流通 / 全部基础货币 /（将来）银行存款）： 它们读的是<b>账户事实</b>，不是发行量。E3
+ * 起发行/回笼的权威记录是 {@code EconomyData.moneyIssuances}，本类另发 {@code moneyIssuance} 一栏（initialEndowment /
+ * fiscalIssue / cumulativeIssuance / cumulativeWithdrawal / circulation / netIssuance）——
+ * 只从状态求和，不另存一份。
  */
 public final class ApiViews {
 
@@ -602,7 +604,8 @@ public final class ApiViews {
     }
     // ★★ H0.2：**家户行挂在格上**（键 = {@code (格, 居住类型, 阶层)}），不再属于任何产业 ⇒ 视图里它们是该格的一个数组。
     // ★★ M1.5：债权人侧索引**一次派生、整格复用**（{@link DebtIndex#byCreditor}；不在每一行里 O(债务) 重扫）。
-    Map<HouseholdId, List<DebtId>> creditsByCohort = DebtIndex.byCreditor(data.debts());
+    Map<HouseholdId, List<DebtContractId>> creditsByCohort =
+        DebtIndex.byCreditor(data.debtContracts());
     List<Map<String, Object>> classes = new ArrayList<>();
     for (HouseholdId key : cohortKeysAt(data, coord)) {
       ClassRow row = data.classes().get(key);
@@ -612,23 +615,24 @@ public final class ApiViews {
       grainDailyConsumption += row.naturalNeeds().getOrDefault(GRAIN, 0L);
       cycleNaturalNeedMilli += row.cycleNaturalNeedMilli();
       // 债务人侧：仍按行里的引用清点（它是放贷时写下的权威清单）。
-      for (DebtId debtId : row.debts()) {
-        Debt debt = data.debts().get(debtId);
+      for (DebtContractId debtId : row.debts()) {
+        DebtContract debt = data.debtContracts().get(debtId);
         if (debt != null) {
           debtCount++;
           debtPrincipal += debt.principal();
         }
       }
       // ★★ M1.5：债权人侧——"这一格的家户应收多少"以前完全读不到；逐条走同一张债务表（方向只是挂给谁）。
-      List<DebtId> credits = creditsByCohort.getOrDefault(key, List.of());
-      for (DebtId debtId : credits) {
-        Debt debt = data.debts().get(debtId);
+      List<DebtContractId> credits = creditsByCohort.getOrDefault(key, List.of());
+      for (DebtContractId debtId : credits) {
+        DebtContract debt = data.debtContracts().get(debtId);
         if (debt != null) {
           creditCount++;
           creditPrincipal += debt.principal();
         }
       }
-      classes.add(classRowView(key, row, data.flows().get(key), actors, credits, data.debts()));
+      classes.add(
+          classRowView(key, row, data.flows().get(key), actors, credits, data.debtContracts()));
     }
     view.put("population", population);
     view.put("laborMilli", laborMilli);
@@ -1550,23 +1554,23 @@ public final class ApiViews {
    *
    * <p>★★ <b>M1.5 起债务双向可查</b>：{@code debts}（我欠谁，保持旧形状 = id 字符串数组）、{@code credits}
    * （谁欠我，新增）两个方向并列；{@code debtDetails} 给每一条债的**明细**（含此前零读口的 {@code dueCycle}）， 一条债在两个方向上读到的本金 / 利率
-   * / 到期周期逐值相同（它们回的是同一条 {@link Debt} 记录）。
+   * / 到期周期逐值相同（它们回的是同一条 {@link DebtContract} 记录）。
    *
    * <p>★★ <b>M1.8：劳动口径可逐值核对</b>：{@code laborMilli}（未折算的每日毛劳动）+ {@code participationPerMille} 旁边发
    * {@code participationAdjustedLaborMilli}（{@link ClassRow#participationAdjustedLaborMilli()}
    * 的**唯一算法**）与两个"人均" 读数（千分/人）—— 改前四阶层 {@code labor/pop} 全部相同（真档 562.0‰）；改后参与率 950‰ 的贫农与 100‰
    * 的地主的人均有效劳动相差 **9.5 倍**（如 534.0‰ vs 56.2‰）。 ★ 两个"人均"都是本层派生量（行里不存第二份），分母为 0 ⇒ 0（不做除零、也不臆造）。
    *
-   * @param credits 该行的债权人侧 {@link DebtId}（由 {@link DebtIndex#byCreditor} 一次派生、整格复用；可为空表）
-   * @param debtBook 该切片的债务表（{@code EconomyData.debts()}；只读，不在本层改）
+   * @param credits 该行的债权人侧 {@link DebtContractId}（由 {@link DebtIndex#byCreditor} 一次派生、整格复用；可为空表）
+   * @param debtBook 该切片的债务表（{@code EconomyData.debtContracts()}；只读，不在本层改）
    */
   private static Map<String, Object> classRowView(
       HouseholdId key,
       ClassRow row,
       FlowRow flow,
       ActorData actors,
-      List<DebtId> credits,
-      Map<DebtId, Debt> debtBook) {
+      List<DebtContractId> credits,
+      Map<DebtContractId, DebtContract> debtBook) {
     Map<String, Object> view = new LinkedHashMap<>();
     // ★★ H0.2：**居住类型随行一起发出来**（农村贫农与城镇贫农是两本账，读口必须分得开）；
     //   ★ 字面量取自契约的 {@code ResidenceKind#value()} 的产物（{@code key.toString()} 的那一段），本层不写第二份词表。
@@ -1593,26 +1597,26 @@ public final class ApiViews {
     view.put("money", row.money());
     // 债务人方向：旧形状保持不变（id 字符串数组），另在 debtDetails 里补明细。
     List<String> debts = new ArrayList<>(row.debts().size());
-    for (DebtId debt : row.debts()) {
+    for (DebtContractId debt : row.debts()) {
       debts.add(debt.value());
     }
     view.put("debts", debts);
     // ★★ M1.5：债权人方向（此前完全读不到）——"谁欠我"。
     List<String> creditsView = new ArrayList<>(credits.size());
-    for (DebtId credit : credits) {
+    for (DebtContractId credit : credits) {
       creditsView.add(credit.value());
     }
     view.put("credits", creditsView);
     // ★★ M1.5：同一批债务的明细（两个方向同源；dueCycle 由此接入读口，它此前零 reader）。
     List<Map<String, Object>> debtDetails = new ArrayList<>(row.debts().size() + credits.size());
-    for (DebtId debtId : row.debts()) {
-      Debt debt = debtBook.get(debtId);
+    for (DebtContractId debtId : row.debts()) {
+      DebtContract debt = debtBook.get(debtId);
       if (debt != null) {
         debtDetails.add(debtDetailView(debt, false));
       }
     }
-    for (DebtId debtId : credits) {
-      Debt debt = debtBook.get(debtId);
+    for (DebtContractId debtId : credits) {
+      DebtContract debt = debtBook.get(debtId);
       if (debt != null) {
         debtDetails.add(debtDetailView(debt, true));
       }
@@ -1627,7 +1631,7 @@ public final class ApiViews {
   }
 
   /**
-   * ★★ <b>一条债的双向明细</b>（M1.5）：两个方向读的是<b>同一条</b> {@link Debt} 记录 ⇒ {@code principal} / {@code
+   * ★★ <b>一条债的双向明细</b>（M1.5）：两个方向读的是<b>同一条</b> {@link DebtContract} 记录 ⇒ {@code principal} / {@code
    * ratePerMillePerCycle} / {@code dueCycle} / {@code defaulted} <b>逐值相同</b>，不同的只有 {@code
    * direction} 与 {@code counterparty}。
    *
@@ -1635,16 +1639,34 @@ public final class ApiViews {
    * principal} 已含周期末并入的利息（{@code chargeInterest} 只增本金、不自动增可花余额 —— 债权人侧的"应收"<b>不进</b> {@code
    * FlowRow.income}，那是粮口径；见 {@code chargeInterest} 的类注）。
    */
-  private static Map<String, Object> debtDetailView(Debt debt, boolean creditorSide) {
+  private static Map<String, Object> debtDetailView(DebtContract debt, boolean creditorSide) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", debt.id().value());
     view.put("direction", creditorSide ? "receivable" : "payable");
     view.put("counterparty", (creditorSide ? debt.debtor() : debt.creditor()).toString());
-    view.put("commodity", debt.commodity().map(CommodityId::value).orElse(null));
+    // ★ 旧键形状保持：实物债发商品名、货币债发 null（不是“读不到”）；另补 unitKind/currency 两栏把显式 unit 发出来。
+    switch (debt.unit()) {
+      case DebtUnit.Commodity commodity -> {
+        view.put("commodity", commodity.commodity().value());
+        view.put("unitKind", "commodity");
+        view.put("currency", null);
+      }
+      case DebtUnit.Money money -> {
+        view.put("commodity", null);
+        view.put("unitKind", "money");
+        view.put("currency", money.currency().value());
+      }
+    }
     view.put("principal", debt.principal());
-    view.put("ratePerMillePerCycle", debt.ratePerMillePerCycle());
-    view.put("dueCycle", debt.dueCycle());
+    view.put("ratePerMillePerCycle", debt.terms().interestRatePerMillePerCycle());
+    view.put("dueCycle", debt.dueCycle().isPresent() ? debt.dueCycle().getAsLong() : null);
     view.put("defaulted", debt.defaulted());
+    view.put("status", debt.status().name());
+    view.put("openedDay", debt.openedDay());
+    view.put(
+        "lastInterestDay",
+        debt.lastInterestDay().isPresent() ? debt.lastInterestDay().getAsLong() : null);
+    view.put("terms", debt.terms().stableKey());
     return view;
   }
 
@@ -1725,8 +1747,8 @@ public final class ApiViews {
    *
    * <p>★★ <b>为什么必须明写"没有全世界总量永远不变这条总不变量"</b>（master plan M1.6 的否定判据）： 可成立的是<b>逐工具</b>的 {@code
    * Σ该工具的持有账户 = 创世 + 累计发行 − 累计注销}；发行/注销会让总量变。 {@code MoneyIssuance.REGISTERED} 为空、发行记录为空 ⇒
-   * 数值上退化成"逐币种 Σ持有恒定"。★ E3 起累计发行/回笼的权威记录在 {@code EconomyData.moneyIssuances}，
-   * {@link #moneyIssuanceView(EconomyData, Map)} 只读它求和，本层不另存一份。
+   * 数值上退化成"逐币种 Σ持有恒定"。★ E3 起累计发行/回笼的权威记录在 {@code EconomyData.moneyIssuances}， {@link
+   * #moneyIssuanceView(EconomyData, Map)} 只读它求和，本层不另存一份。
    *
    * <p>★ <b>为什么按币种而不是按工具分</b>：账户余额的键是 {@code CurrencyId}（M1.1 明文不动它）⇒ 同一币种登记了
    * 多种工具时，账户层<b>分不出</b>"这张钱是哪种工具"。本栏不假装能分：既含基础档又含存款档的币种落进 {@code
@@ -1790,8 +1812,8 @@ public final class ApiViews {
    * netIssuance            = cumulativeIssuance − cumulativeWithdrawal（逐币种）
    * </pre>
    *
-   * <p>★ 记录来自 {@code EconomyData.moneyIssuances}（可持久/回放），本层只求和、不伪造缺失字段；发行腿的实时差额由
-   * {@code FISCAL_ISSUE} 记录，创世钱包由 {@code INITIAL_ENDOWMENT} 记录。
+   * <p>★ 记录来自 {@code EconomyData.moneyIssuances}（可持久/回放），本层只求和、不伪造缺失字段；发行腿的实时差额由 {@code
+   * FISCAL_ISSUE} 记录，创世钱包由 {@code INITIAL_ENDOWMENT} 记录。
    */
   private static Map<String, Object> moneyIssuanceView(
       EconomyData data, Map<String, Long> circulation) {
@@ -1844,9 +1866,8 @@ public final class ApiViews {
   }
 
   /**
-   * ★★ E3：家户货币余额按 {@code ClassRow.view.stratum} 聚合（逐币种；世界级时点）。
-   * 只认 {@code ActorKind.HOUSEHOLD} 且能在 economy 行集里定位的家户；定位不到的家户不静默塞进某一阶层，而是记进
-   * {@code "__unmapped__"}。
+   * ★★ E3：家户货币余额按 {@code ClassRow.view.stratum} 聚合（逐币种；世界级时点）。 只认 {@code ActorKind.HOUSEHOLD} 且能在
+   * economy 行集里定位的家户；定位不到的家户不静默塞进某一阶层，而是记进 {@code "__unmapped__"}。
    */
   private static Map<String, Map<String, Long>> moneyByHouseholdClass(
       EconomyData data, ActorData actors) {
@@ -1858,8 +1879,7 @@ public final class ApiViews {
       HouseholdId household = HouseholdActors.householdOf(account.key().owner());
       ClassRow row = data.classes().get(household);
       String stratum = row == null ? "__unmapped__" : row.view().stratum().value();
-      mergeMoneyInto(
-          byClass.computeIfAbsent(stratum, ignored -> new TreeMap<>()), account.money());
+      mergeMoneyInto(byClass.computeIfAbsent(stratum, ignored -> new TreeMap<>()), account.money());
     }
     return byClass;
   }

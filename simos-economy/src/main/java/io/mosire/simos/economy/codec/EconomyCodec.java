@@ -16,13 +16,16 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.debt.DebtStatus;
+import io.mosire.simos.economy.api.debt.DebtTerms;
+import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.HouseholdId;
@@ -31,18 +34,21 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
@@ -59,6 +65,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -68,8 +75,10 @@ import java.util.function.Function;
  * <p>★ <b>树里的自定义键（读侧注册；写侧靠各自的 {@code toString()}）</b>：{@code IndustryId}（{@code industries} /
  * {@code relations} / {@code operatorConditions}）、{@code HouseholdId}（{@code classes} / {@code
  * flows}；旧档的 {@code CohortKey} 规范串由 {@code HouseholdIdDeserializer} 识别并映射成 {@code ofLegacy}）、{@code
- * DebtId} （{@code debts}）、{@code CommodityId}（产业产出/投入、行需求、流水与规则里的商品键）、{@code PeopleLotId} （{@code
- * laborSupply}）、{@code LaborAllocationId}（{@code allocations}）、{@code MembershipId} （{@code
+ * DebtContractId} （{@code debtContracts}；旧键 {@code debts} 由 {@link
+ * #migrateLegacyDebtSnapshotComponent} / {@link #migrateLegacyDebtChangeSetComponent} 手工迁移）、{@code
+ * PledgeId} （{@code pledges}）、{@code CommodityId}（产业产出/投入、行需求、流水与规则里的商品键）、{@code PeopleLotId}
+ * （{@code laborSupply}）、{@code LaborAllocationId}（{@code allocations}）、{@code MembershipId} （{@code
  * memberships}）、{@code AssetShareId}（{@code assetShares}；旧档的 {@code use-…} 键字符串由 {@link
  * AssetShareId#parse(String)} opaque 原样读入）、{@code HexCoord}（{@code markets}， 住在 {@code
  * simos-map}）、{@code ShipmentId}（{@code shipments}）。★ 它们都重写了 {@code toString()} 并与 各自的 {@code
@@ -133,11 +142,13 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     SimpleModule module = new SimpleModule("economy-json-keys");
     module.addKeyDeserializer(IndustryId.class, keyDeserializer(IndustryId::parse));
     // ★★ S1：classes/flows 的键 = HouseholdId。旧档的键是 CohortKey 规范串 ⇒ 这里做一次"旧视图 → ofLegacy"
-    //   识别（新档 id 的 parse 是恒等）。识别器同时注册为**值**反序列化器（Debt.debtor/creditor、ClassRow.id）。
+    //   识别（新档 id 的 parse 是恒等）。识别器同时注册为**值**反序列化器（ClassRow.id；旧 Debt.debtor/creditor 由旧档迁移层手工解析）。
     module.addKeyDeserializer(
         HouseholdId.class, keyDeserializer(EconomyCodec::legacyAwareHouseholdId));
     module.addDeserializer(HouseholdId.class, new HouseholdIdDeserializer());
-    module.addKeyDeserializer(DebtId.class, keyDeserializer(DebtId::parse));
+    // ★★ E4a：债务合同表 / 质押表的新键（toString/parse 互逆，只需读侧）。
+    module.addKeyDeserializer(DebtContractId.class, keyDeserializer(DebtContractId::parse));
+    module.addKeyDeserializer(PledgeId.class, keyDeserializer(PledgeId::parse));
     module.addKeyDeserializer(CommodityId.class, keyDeserializer(CommodityId::parse));
     // ★ R2 起是两张新表的键：laborSupply（PeopleLotId → LaborSupply）与 allocations（LaborAllocationId
     //   → LaborAllocation）。两者都重写了 toString()（= 裸值）并与各自的 parse 互为逆，故只需读侧。
@@ -484,6 +495,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       }
       node = migrateLegacyAssetShareComponent(node);
       node = migrateLegacyProductionComponents(node);
+      node = migrateLegacyDebtSnapshotComponent(node);
       try {
         return PLAIN.treeToValue(node, EconomyData.class);
       } catch (JsonProcessingException e) {
@@ -511,12 +523,378 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       }
       node = migrateLegacyAssetShareComponent(node);
       node = migrateLegacyProductionChangeSetComponents(node);
+      node = migrateLegacyDebtChangeSetComponent(node);
       try {
         return PLAIN.treeToValue(node, EconomyChangeSet.class);
       } catch (JsonProcessingException e) {
         throw new IllegalStateException("EconomyChangeSet 解码失败: " + node, e);
       }
     }
+  }
+
+  // ── E4a：旧 `debts` 节点 → `debtContracts`（snapshot 与 changeset 两版）──────────────────
+
+  /**
+   * ★★ <b>E4a snapshot 迁移：旧 {@code debts} 表 → 新 {@code debtContracts} 表</b>。
+   *
+   * <p>迁移是**手工 JsonNode 整形**（旧 {@code Debt} 已不在生产状态，若为了反序列化把它复活会在状态树里留下 第二个债务形状；这里只在 codec 边缘按旧
+   * JSON 字段读值）：
+   *
+   * <ol>
+   *   <li>逐旧条构造 {@link DebtContract}：{@code (debtor, creditor, unit, terms)} 派生稳定 id；旧 {@code
+   *       commodity} 空 ⇒ 银币货币债；旧 {@code ratePerMillePerCycle} 进 legacy terms； {@code dueCycle}
+   *       落在合同滚动字段（取被合并条的最大值）；旧 {@code defaulted = true} ⇒ {@link DebtStatus#DEFAULTED}，否则本金 0 ⇒
+   *       {@code SETTLED}、本金 &gt; 0 ⇒ {@code NORMAL}；
+   *   <li>同新 id 的旧条**合并**：{@code principal = Math.addExact(a, b)}（逐值守恒）；status 取 {@code DEFAULTED}
+   *       优先，否则按合并后本金给 {@code NORMAL/SETTLED}；{@code dueCycle} 取最大；
+   *   <li>旧 {@code ClassRow.debts} 里的旧 id 引用改写成新合同 id（去重、保序）——这一步只是把派生索引 搬到新键；最终权威仍由 {@code
+   *       EconomyData} 构造期的 {@code DebtReferenceReconciler} 从新表重建；
+   *   <li>同时出现 {@code debts} 与 {@code debtContracts} ⇒ 抛（同一件事两处拼写）。
+   * </ol>
+   *
+   * <p>★ <b>幂等</b>：新形状再跑一遍时没有 {@code debts} 键 ⇒ 原样返回。
+   */
+  private static ObjectNode migrateLegacyDebtSnapshotComponent(ObjectNode node) {
+    boolean hasOld = node.has("debts");
+    boolean hasNew = node.has("debtContracts");
+    if (hasOld && hasNew) {
+      throw new IllegalStateException(
+          "经济状态不得同时给 debts 与 debtContracts（E4a 起新键是 debtContracts，旧档键是 debts）: " + node);
+    }
+    if (!hasOld) {
+      return node;
+    }
+    JsonNode legacy = node.remove("debts");
+    ObjectNode newTable = JsonNodeFactory.instance.objectNode();
+    node.set("debtContracts", newTable);
+    if (legacy == null || legacy.isNull()) {
+      rewriteLegacyClassRowDebtReferences(node, Map.of());
+      return node;
+    }
+    if (!(legacy instanceof ObjectNode oldTable)) {
+      throw new IllegalStateException("旧 debts 必须是 {旧债务id: Debt} 对象: " + legacy);
+    }
+    Map<String, DebtContract> merged = new LinkedHashMap<>();
+    Map<String, String> oldToNew = new LinkedHashMap<>();
+    for (Map.Entry<String, JsonNode> entry : iterableFields(oldTable)) {
+      DebtContract contract = legacyDebtContract(entry.getKey(), entry.getValue());
+      oldToNew.put(entry.getKey(), contract.id().value());
+      merged.merge(contract.id().value(), contract, EconomyCodec::mergeDebtContracts);
+    }
+    for (Map.Entry<String, DebtContract> entry : merged.entrySet()) {
+      newTable.set(entry.getKey(), MAPPER.valueToTree(entry.getValue()));
+    }
+    rewriteLegacyClassRowDebtReferences(node, oldToNew);
+    return node;
+  }
+
+  /**
+   * ★★ E4a changeset 迁移：旧 {@code debts} 的 {@code FieldDelta} → 新 {@code debtContracts} 的 {@code
+   * FieldDelta}。
+   *
+   * <p>四个变体逐档翻译：{@code unchanged} 原样换名；{@code upsert} 的每个旧值按 snapshot 同一套 {@link
+   * #legacyDebtContract} 翻译并按新 id 合并（{@code principal} 用 {@code Math.addExact} 求和， 本金逐值守恒）；{@code
+   * remove} 的旧键按旧格式解析出四元组后换新 id；{@code patch} 两侧分别翻译。
+   *
+   * <p>★★ <b>如实记的边界</b>：旧变更集里 {@code upsert.entries} 的值是<b>完整新值</b>（FieldDelta 语义）， 而迁移后同一新 id
+   * 是跨旧周期合并的余额；因此“把旧 revision 链从新 checkpoint 继续重放”在
+   * 同一四元组于旧基态已有多条周期合同、且中间变更集只更新其中一条时，无法只靠本方法恢复被合并条的明细 （那需要旧基态的逐条本金，旧线格式里没有）。本阶段按“变更集节点 principal
+   * 守恒”实现，并把该重放边界 记入交付报告的已知缺口；最终回放必须用同一 revision 的完整 snapshot，或等 E4b 的显式债务 breakdown。
+   *
+   * <p>★ <b>幂等</b>：新形状再跑一遍时没有 {@code debts} 键 ⇒ 原样返回。
+   */
+  private static ObjectNode migrateLegacyDebtChangeSetComponent(ObjectNode root) {
+    JsonNode legacy = root.get("debts");
+    boolean hasNew = root.has("debtContracts");
+    if (legacy != null && hasNew) {
+      throw new IllegalStateException(
+          "经济变更集不得同时给 debts 与 debtContracts（E4a 起新键是 debtContracts，旧档键是 debts）: " + root);
+    }
+    if (legacy == null) {
+      return root;
+    }
+    root.remove("debts");
+    if (legacy.isNull()) {
+      root.set("debtContracts", unchangedDeltaNode());
+      return root;
+    }
+    if (!(legacy instanceof ObjectNode delta)) {
+      throw new IllegalStateException("旧 debts 变更集必须是 FieldDelta 对象: " + legacy);
+    }
+    root.set("debtContracts", legacyDebtDelta(delta));
+    return root;
+  }
+
+  /** 旧 debts 的一个 {@link FieldDelta} 变体 → 新 debtContracts 的同变体（键/值都换新）。 */
+  private static ObjectNode legacyDebtDelta(ObjectNode delta) {
+    String kind = delta.path("@class").asText("");
+    switch (kind) {
+      case "", "unchanged":
+        return unchangedDeltaNode();
+      case "upsert":
+        return legacyDebtUpsert(deltaEntries(delta));
+      case "remove":
+        return legacyDebtRemove(delta.get("keys"));
+      case "patch":
+        JsonNode upserts = delta.get("upserts");
+        JsonNode removals = delta.get("removals");
+        if (!(upserts instanceof ObjectNode upsertsObject)
+            || !(removals instanceof ObjectNode removalsObject)) {
+          throw new IllegalStateException("旧 debts patch 必须同时有 upserts 与 removals 对象: " + delta);
+        }
+        ObjectNode patch = JsonNodeFactory.instance.objectNode();
+        patch.put("@class", "patch");
+        patch.set("upserts", legacyDebtDelta(upsertsObject));
+        patch.set("removals", legacyDebtDelta(removalsObject));
+        return patch;
+      default:
+        throw new IllegalStateException("旧 debts 变更集的 FieldDelta 变体不认识: " + kind);
+    }
+  }
+
+  /**
+   * 旧 debts 的 {@code upsert.entries} → 新 debtContracts 的 {@code upsert.entries}（同新 id 合并
+   * principal）。
+   */
+  private static ObjectNode legacyDebtUpsert(ObjectNode entries) {
+    if (entries == null) {
+      throw new IllegalStateException("旧 debts upsert 缺 entries 对象");
+    }
+    Map<String, DebtContract> merged = new LinkedHashMap<>();
+    for (Map.Entry<String, JsonNode> entry : iterableFields(entries)) {
+      DebtContract contract = legacyDebtContract(entry.getKey(), entry.getValue());
+      merged.merge(contract.id().value(), contract, EconomyCodec::mergeDebtContracts);
+    }
+    ObjectNode newEntries = JsonNodeFactory.instance.objectNode();
+    for (Map.Entry<String, DebtContract> entry : merged.entrySet()) {
+      newEntries.set(entry.getKey(), MAPPER.valueToTree(entry.getValue()));
+    }
+    ObjectNode upsert = JsonNodeFactory.instance.objectNode();
+    upsert.put("@class", "upsert");
+    upsert.set("entries", newEntries);
+    return upsert;
+  }
+
+  /** 旧 debts 的 {@code remove.keys} → 新 debtContracts 的 {@code remove.keys}（旧键解析四元组后换新 id）。 */
+  private static ObjectNode legacyDebtRemove(JsonNode keys) {
+    if (keys == null || !keys.isArray()) {
+      throw new IllegalStateException("旧 debts remove 缺 keys 数组: " + keys);
+    }
+    Set<String> newKeys = new LinkedHashSet<>();
+    for (JsonNode key : keys) {
+      String oldId = key.isTextual() ? key.asText() : textOfId(key);
+      if (oldId == null) {
+        throw new IllegalStateException("旧 debts remove 的 key 不是字符串/{\"value\":…}: " + key);
+      }
+      newKeys.add(legacyDebtContractIdFromOldKey(oldId).value());
+    }
+    var array = JsonNodeFactory.instance.arrayNode();
+    for (String newKey : newKeys) {
+      array.add(newKey);
+    }
+    ObjectNode remove = JsonNodeFactory.instance.objectNode();
+    remove.put("@class", "remove");
+    remove.set("keys", array);
+    return remove;
+  }
+
+  /** 旧 {@code Debt} 节点 → 新 {@link DebtContract}（缺字段/坏形状 fail-closed，不猜）。 */
+  private static DebtContract legacyDebtContract(String oldId, JsonNode value) {
+    if (!(value instanceof ObjectNode debt)) {
+      throw new IllegalStateException("旧债务值必须是对象: " + value);
+    }
+    String declaredId = textOfId(debt.get("id"));
+    if (declaredId != null && !declaredId.equals(oldId)) {
+      throw new IllegalStateException("旧债务的键与值内 id 不一致：键=" + oldId + "，值内 id=" + declaredId);
+    }
+    String debtorText = textOfId(debt.get("debtor"));
+    String creditorText = textOfId(debt.get("creditor"));
+    if (debtorText == null || creditorText == null) {
+      throw new IllegalStateException("旧债务必须给 debtor/creditor: " + debt);
+    }
+    JsonNode rateNode = debt.get("ratePerMillePerCycle");
+    if (rateNode == null || !rateNode.isNumber()) {
+      throw new IllegalStateException("旧债务必须给数字 ratePerMillePerCycle: " + debt);
+    }
+    int rate = rateNode.intValue();
+    if (rate < 0) {
+      throw new IllegalStateException("旧债务 ratePerMillePerCycle 不得为负: " + debt);
+    }
+    JsonNode principalNode = debt.get("principal");
+    if (principalNode == null || !principalNode.isNumber()) {
+      throw new IllegalStateException("旧债务必须给数字 principal: " + debt);
+    }
+    long principal = principalNode.longValue();
+    if (principal < 0L) {
+      throw new IllegalStateException("旧债务 principal 不得为负: " + debt);
+    }
+    OptionalLong dueCycle = OptionalLong.empty();
+    JsonNode dueNode = debt.get("dueCycle");
+    if (dueNode != null && dueNode.isNumber()) {
+      long due = dueNode.longValue();
+      if (due < 0L) {
+        throw new IllegalStateException("旧债务 dueCycle 不得为负: " + debt);
+      }
+      dueCycle = OptionalLong.of(due);
+    }
+    boolean defaulted = debt.path("defaulted").asBoolean(false);
+    DebtStatus status =
+        defaulted
+            ? DebtStatus.DEFAULTED
+            : (principal == 0L ? DebtStatus.SETTLED : DebtStatus.NORMAL);
+    HouseholdId debtor = HouseholdId.parse(debtorText);
+    HouseholdId creditor = HouseholdId.parse(creditorText);
+    DebtUnit unit = legacyDebtUnit(debt.get("commodity"));
+    DebtTerms terms = DebtTerms.legacyDefault(rate);
+    return new DebtContract(
+        DebtContractId.idOf(debtor, creditor, unit, terms),
+        debtor,
+        creditor,
+        unit,
+        terms,
+        principal,
+        0L,
+        OptionalLong.empty(),
+        dueCycle,
+        status);
+  }
+
+  /** 旧 {@code commodity} 空 ⇒ 银币货币债；有值 ⇒ 实物商品债（旧 Optional 线格式的两种形态都收）。 */
+  private static DebtUnit legacyDebtUnit(JsonNode commodityNode) {
+    if (commodityNode == null || commodityNode.isNull()) {
+      return DebtUnit.money(MoneyVocabulary.SILVER_CURRENCY);
+    }
+    String commodity = textOfId(commodityNode);
+    if (commodity == null || commodity.isBlank()) {
+      throw new IllegalStateException("旧债务 commodity 形状不可识别: " + commodityNode);
+    }
+    return DebtUnit.commodity(new CommodityId(commodity));
+  }
+
+  /** 同新 id 的旧条合并：principal 逐值相加、status/defaulted 优先、dueCycle 取最大、openedDay 取最早。 */
+  private static DebtContract mergeDebtContracts(DebtContract first, DebtContract second) {
+    if (!first.id().equals(second.id())) {
+      throw new IllegalStateException("合并旧债务时新合同 id 不一致: " + first.id() + " vs " + second.id());
+    }
+    long principal = Math.addExact(first.principal(), second.principal());
+    DebtStatus status =
+        (first.status() == DebtStatus.DEFAULTED || second.status() == DebtStatus.DEFAULTED)
+            ? DebtStatus.DEFAULTED
+            : (principal > 0L ? DebtStatus.NORMAL : DebtStatus.SETTLED);
+    return new DebtContract(
+        first.id(),
+        first.debtor(),
+        first.creditor(),
+        first.unit(),
+        first.terms(),
+        principal,
+        Math.min(first.openedDay(), second.openedDay()),
+        maxOptionalLong(first.lastInterestDay(), second.lastInterestDay()),
+        maxOptionalLong(first.dueCycle(), second.dueCycle()),
+        status);
+  }
+
+  private static OptionalLong maxOptionalLong(OptionalLong first, OptionalLong second) {
+    if (first.isEmpty()) {
+      return second;
+    }
+    if (second.isEmpty()) {
+      return first;
+    }
+    return OptionalLong.of(Math.max(first.getAsLong(), second.getAsLong()));
+  }
+
+  /** 把旧 {@code ClassRow.debts} 数组里的旧债务 id 换成迁移后的新合同 id（去重、保序）。 */
+  private static void rewriteLegacyClassRowDebtReferences(
+      ObjectNode node, Map<String, String> oldToNew) {
+    ObjectNode classes = objectField(node, "classes");
+    if (classes == null) {
+      return;
+    }
+    for (Map.Entry<String, JsonNode> entry : iterableFields(classes)) {
+      if (!(entry.getValue() instanceof ObjectNode row)) {
+        continue;
+      }
+      JsonNode refs = row.get("debts");
+      if (refs == null || refs.isNull()) {
+        continue;
+      }
+      if (!refs.isArray()) {
+        throw new IllegalStateException("ClassRow.debts 必须是数组: " + row);
+      }
+      var rewritten = JsonNodeFactory.instance.arrayNode();
+      Set<String> seen = new LinkedHashSet<>();
+      for (JsonNode ref : refs) {
+        String oldId = textOfId(ref);
+        if (oldId == null) {
+          throw new IllegalStateException("ClassRow.debts 的元素必须是旧债务 id: " + ref);
+        }
+        String newId = oldToNew.get(oldId);
+        if (newId == null) {
+          throw new IllegalStateException("ClassRow.debts 引用了旧 debts 表里不存在的债务: " + oldId);
+        }
+        if (seen.add(newId)) {
+          rewritten.add(newId);
+        }
+      }
+      row.set("debts", rewritten);
+    }
+  }
+
+  /**
+   * 旧 {@code remove} 键解析：{@code debt-c<周期>-<债务人>><债权人>-<商品>} ⇒ 新合同 id。
+   *
+   * <p>★ <b>边界如实记</b>：旧格式没有转义，商品名/主体 id 含 {@code "-"}/{@code ">"} 时没有唯一解析； 本方法只覆盖既有生产格式（商品段取最后一个
+   * {@code "-"}、主体按 {@code ">>"} 分）。旧生产路径从不删除 债务（还清只把本金写成 0），故该分支主要服务手工/外部变更集。
+   */
+  private static DebtContractId legacyDebtContractIdFromOldKey(String oldId) {
+    String prefix = "debt-c";
+    if (!oldId.startsWith(prefix)) {
+      throw new IllegalStateException("旧 debts remove 键不是已知格式: " + oldId);
+    }
+    int cycleEnd = oldId.indexOf('-', prefix.length());
+    if (cycleEnd < 0) {
+      throw new IllegalStateException("旧 debts remove 键缺周期段: " + oldId);
+    }
+    String cycleText = oldId.substring(prefix.length(), cycleEnd);
+    if (cycleText.isEmpty()) {
+      throw new IllegalStateException("旧 debts remove 键周期段为空: " + oldId);
+    }
+    try {
+      Long.parseLong(cycleText);
+    } catch (NumberFormatException e) {
+      throw new IllegalStateException("旧 debts remove 键周期段不是数字: " + oldId, e);
+    }
+    String rest = oldId.substring(cycleEnd + 1);
+    int sides = rest.indexOf(">>");
+    if (sides < 0) {
+      throw new IllegalStateException("旧 debts remove 键缺债务人与债权人的 >> 分隔: " + oldId);
+    }
+    int commodityDash = rest.lastIndexOf('-');
+    if (commodityDash <= sides) {
+      throw new IllegalStateException("旧 debts remove 键缺商品段: " + oldId);
+    }
+    String debtorText = rest.substring(0, sides);
+    String creditorText = rest.substring(sides + 2, commodityDash);
+    String commodityText = rest.substring(commodityDash + 1);
+    if (debtorText.isBlank() || creditorText.isBlank() || commodityText.isBlank()) {
+      throw new IllegalStateException("旧 debts remove 键有空白段: " + oldId);
+    }
+    DebtUnit unit =
+        "money".equals(commodityText)
+            ? DebtUnit.money(MoneyVocabulary.SILVER_CURRENCY)
+            : DebtUnit.commodity(new CommodityId(commodityText));
+    return DebtContractId.idOf(
+        HouseholdId.parse(debtorText),
+        HouseholdId.parse(creditorText),
+        unit,
+        DebtTerms.legacyDefault());
+  }
+
+  private static ObjectNode unchangedDeltaNode() {
+    ObjectNode unchanged = JsonNodeFactory.instance.objectNode();
+    unchanged.put("@class", "unchanged");
+    return unchanged;
   }
 
   /**

@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.HouseholdId;
@@ -9,7 +10,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.Debt;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
@@ -41,7 +42,7 @@ import java.util.Set;
  * {@code recovered:self_provision}），{@code SUSPENDED} 永不因停业够久退出（最多有限重开）。解析不到家户的 ESTATE / WORKSHOP /
  * 聚合 weave 仍可缩产、停业、退出，只是不会凭空产生家户债务压力。
  *
- * <p>★★ <b>本类只判"状态怎么变 + 谁该退出"</b>；退出时的库存/货币偿债与 {@code Debt.defaulted} 处置由 {@code
+ * <p>★★ <b>本类只判"状态怎么变 + 谁该退出"</b>；退出时的库存/货币偿债与 {@code DebtContract.status} 处置由 {@code
  * EconomySettlement.settleOperatorExits} 落账（那里才有唯一写口 {@code applyTransfer}）。缩产只乘进"计划规模系数"，
  * <b>不销毁</b> {@code AssetShare}。
  *
@@ -238,19 +239,24 @@ final class OperatorSettlement {
       boolean debtStress = false;
       if (household != null) {
         // ★ R4-B.3a-perf：debtor → debts 在日结算入口/债务阶段边界建好，只查本户的债，不再每次扫全表。
-        for (Debt debt : index.debtsByDebtor().getOrDefault(household, List.of())) {
-          long due = debt.principal() + debt.principal() * debt.ratePerMillePerCycle() / 1_000L;
+        for (DebtContract debt : index.debtsByDebtor().getOrDefault(household, List.of())) {
+          long due =
+              debt.principal()
+                  + debt.principal() * debt.terms().interestRatePerMillePerCycle() / 1_000L;
           debtPrincipal += debt.principal();
           debtServiceDue += due;
           long available =
-              debt.commodity().isPresent()
-                  ? stockOf(
-                      household,
-                      unit.operator(),
-                      debt.commodity().get(),
-                      householdGoods,
-                      operatorGoods)
-                  : cashOf(household, unit.operator(), householdMoney, operatorMoney);
+              switch (debt.unit()) {
+                case DebtUnit.Commodity commodity ->
+                    stockOf(
+                        household,
+                        unit.operator(),
+                        commodity.commodity(),
+                        householdGoods,
+                        operatorGoods);
+                case DebtUnit.Money ignored ->
+                    cashOf(household, unit.operator(), householdMoney, operatorMoney);
+              };
           if (due > available) {
             debtStress = true;
           }
