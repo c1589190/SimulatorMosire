@@ -10,15 +10,17 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.Pledge;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * ★★ <b>E5a：资产份额的唯一写口</b>（计划 §4 硬约束 2：「资产份额转移只走抽出的 {@code AssetShareBook.transfer}」）。
  *
  * <pre>
- * transfer(...)   一次整条/部分转移：source 减量（减到 0 删行）并新建一条 (toOwner,toOperator,kind) 份额
+ * transfer(...)   一次整条/部分转移：source 减量（减到 0 时**无任何质押引用**才删行；有引用则留 quantity=0 行，见 apply 的 E5b 注）
  * split(...)      严格部分拆分：source 必留行（0 &lt; quantity &lt; source.quantity），返回新份额 id
  * apply(...)      批写口：多条 Move 一次校验/一次提交（E2 租佃拆分的多腿、E5b 清算的多样转移都用它）
  * </pre>
@@ -82,7 +84,8 @@ public final class AssetShareBook {
   }
 
   /**
-   * ★★ <b>整条或部分转移</b>（{@code quantity} 可等于源数量；等于 = 整条转移，旧 id 删除并返回新 id）。
+   * ★★ <b>整条或部分转移</b>（{@code quantity} 可等于源数量；等于 = 整条转移，旧 id 删除并返回新 id；★ 但被任何质押引用时保留 quantity=0 行，见
+   * {@link #apply} 的 E5b 注）。
    *
    * @return 新份额的稳定 id
    */
@@ -138,9 +141,14 @@ public final class AssetShareBook {
   /**
    * ★★ <b>批写口</b>：按给定顺序校验全部 Move 并生成新 id；全过之后原子提交（校验失败时输入表一字不动）。
    *
+   * <p>★★ <b>E5b：整条转移时的"零行保留"</b>——某个源份额被本批移空、但 {@code pledges} 里仍有<b>任何状态</b>（含
+   * RELEASED/EXECUTED）的质押指名它时，<b>不删行</b>而是保留一条 {@code quantity = 0} 的同 id 行。理由：{@code EconomyData}
+   * 的质押跨表守卫要求"质押指名的资产份额必须存在"（不分状态），删行会让已执行/已释放的质押把状态树变成构造失败； 而 {@code AssetShare.quantity == 0}
+   * 是文档允许的合法状态。没有质押引用该 id 时仍按旧行为删行（旧路径逐值不变）。
+   *
    * @param shares 可写资产份额表（成功时就地更新；键 == 值内 id）；不得为 null
    * @param industries 产业模板（只读；空表 = 对侧尚未提供 ⇒ 不判 industry 存在）；可为 null（按空处理）
-   * @param pledges 质押表（只读；空表/null = 不判质押上界）；ACTIVE 之外的质押不占额度
+   * @param pledges 质押表（只读；空表/null = 不判质押上界；ACTIVE 之外的质押不占额度，但影响"移空是否保留零行"）
    * @param moves 移动列表；不得为 null、不得含 null；空列表 = no-op
    * @return 本次新建的份额 id（按 Move 顺序；与传入 {@code moves} 等长）
    */
@@ -225,6 +233,19 @@ public final class AssetShareBook {
       }
     }
     requirePledgeBounds(shares, remaining, knownPledges);
+    // ── E5b：被本批移空的源份额是否仍被任何质押（含 RELEASED/EXECUTED）指名 ⇒ 保留 quantity=0 行 ─────────
+    Set<AssetShareId> keepZeroRow = new LinkedHashSet<>();
+    if (!knownPledges.isEmpty()) {
+      Set<AssetShareId> movedSources = new LinkedHashSet<>();
+      for (Move move : moves) {
+        movedSources.add(move.source());
+      }
+      for (Pledge pledge : knownPledges.values()) {
+        if (pledge != null && movedSources.contains(pledge.assetShareId())) {
+          keepZeroRow.add(pledge.assetShareId());
+        }
+      }
+    }
     // ── 全部校验通过：提交（只改受影响行；可写表上不会失败）────────────────────────────────
     for (Move move : moves) {
       AssetShare current = shares.get(move.source());
@@ -233,8 +254,8 @@ public final class AssetShareBook {
         throw new IllegalStateException("AssetShareBook 提交时源份额消失（表被并发修改？）: " + move.source());
       }
       long left = current.quantity() - move.quantity();
-      if (left == 0L) {
-        shares.remove(move.source()); // 整条转移：旧 id 不再存在
+      if (left == 0L && !keepZeroRow.contains(move.source())) {
+        shares.remove(move.source()); // 整条转移且无任何质押引用：旧 id 不再存在
       } else {
         shares.put(
             move.source(),

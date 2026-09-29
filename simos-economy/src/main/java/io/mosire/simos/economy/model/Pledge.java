@@ -65,4 +65,23 @@ public record Pledge(
       throw new IllegalArgumentException("Pledge.priority 不得为负: " + priority);
     }
   }
+
+  /**
+   * ★★ <b>E5b：换质押数量</b>（清算处置后减量；其余字段逐值保留）。
+   *
+   * <p>★ 构造期守卫照旧：{@code newQuantity} 不得为负（0 = 已执行/释放前的过渡态；置 {@link Status#EXECUTED} 或 {@link
+   * Status#RELEASED} 由调用方在同一写入里显式给出）。
+   */
+  public Pledge withQuantity(long newQuantity) {
+    if (newQuantity < 0L) {
+      throw new IllegalArgumentException("Pledge.withQuantity 不得为负: " + newQuantity);
+    }
+    return new Pledge(id, debtContractId, assetShareId, newQuantity, modeId, priority, status);
+  }
+
+  /** ★★ <b>E5b：换质押状态</b>（清算置 {@code EXECUTED}、余债结清置 {@code RELEASED}；数量与其余字段不动）。 */
+  public Pledge withStatus(Status newStatus) {
+    Objects.requireNonNull(newStatus, "Pledge.withStatus 的 newStatus 不得为 null");
+    return new Pledge(id, debtContractId, assetShareId, quantity, modeId, priority, newStatus);
+  }
 }

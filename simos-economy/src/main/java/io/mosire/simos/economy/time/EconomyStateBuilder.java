@@ -23,6 +23,7 @@ import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
@@ -80,6 +81,7 @@ public final class EconomyStateBuilder {
   private LinkedHashMap<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances;
   private LinkedHashMap<AssetRuleId, LiquidationPolicy> liquidationPolicies;
   private LinkedHashMap<CrisisSignalId, HexCrisisSignal> crisisSignals;
+  private LinkedHashMap<HouseholdId, ClassStanding> classStandings;
   private Optional<EconomyMeta> meta;
 
   public EconomyStateBuilder(EconomyData base) {
@@ -249,6 +251,22 @@ public final class EconomyStateBuilder {
     return crisisSignals;
   }
 
+  /**
+   * ★★ <b>E5b：家户阶层归属的工作副本</b>（第 19 个组件）—— 债务压力计数器、阶层下滑与 5c 的 standing 权威投影会写它； 未物化时 {@link
+   * #classStandingsOrBase()} 直接复用 base 的不可变表（旧档空表因此不产生任何拷贝）。
+   */
+  public LinkedHashMap<HouseholdId, ClassStanding> classStandings() {
+    if (classStandings == null) {
+      classStandings = new LinkedHashMap<>(base.classStandings());
+    }
+    return classStandings;
+  }
+
+  /** ★ <b>阶层归属表的只读选择</b>：已物化工作副本则读它，否则读 base 的表（5c 的投影因此每次构造都读同一份）。 */
+  public Map<HouseholdId, ClassStanding> classStandingsOrBase() {
+    return classStandings == null ? base.classStandings() : classStandings;
+  }
+
   /** 元信息（未写 ⇒ base 的原值）。 */
   public Optional<EconomyMeta> meta() {
     return meta == null ? base.meta() : meta;
@@ -281,12 +299,13 @@ public final class EconomyStateBuilder {
         // ★★ R4-E2：需求/候选不参与日结算写回 —— 原样带过 base 的表（写入口只有 GM 命令）。
         base.demands(),
         base.candidates(),
-        // ★★ E1：生产方式/阶层结构/阶层位置/家户阶层归属不参与旧日结算写回 —— 原样带过 base 的表；
+        // ★★ E1：生产方式/阶层结构/阶层位置不参与旧日结算写回 —— 原样带过 base 的表；
         //   E2+ 若要让结算改写它们，应像上面各组件一样增加显式工作副本，而不是在这里另造语义。
         base.modes(),
         base.classStructures(),
         base.classPositions(),
-        base.classStandings(),
+        // ★★ E5b：家户阶层归属是结算工作副本（债务压力计数器/阶层下滑写它；未物化 ⇒ 原样复用 base）。
+        classStandingsOrBase(),
         // ★★ E2：生产组织由自动组织阶段 upsert（显式工作副本）；生产资料规则只读 —— 原样带过 base 的表。
         productionOrganizations == null ? base.productionOrganizations() : productionOrganizations,
         base.assetRules(),

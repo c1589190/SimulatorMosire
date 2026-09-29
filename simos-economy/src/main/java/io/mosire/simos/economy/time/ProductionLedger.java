@@ -3,11 +3,13 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
+import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.TransferId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
@@ -74,7 +76,8 @@ public record ProductionLedger(
     List<CompensationRule> deferredMoney,
     List<DebtCapitalization> debtCapitalizations,
     List<UnresolvedDebtCapitalization> unresolvedDebtCapitalizations,
-    List<DebtRepaymentSkip> debtRepaymentSkips) {
+    List<DebtRepaymentSkip> debtRepaymentSkips,
+    List<LiquidationAudit> liquidationAudits) {
 
   public ProductionLedger {
     // ★ 缺键按空处理（同 EconomyData 的旧档兼容口径：这里只服务"当天什么都没发生"这一形态）。
@@ -94,13 +97,14 @@ public record ProductionLedger(
             ? List.of()
             : List.copyOf(unresolvedDebtCapitalizations);
     debtRepaymentSkips = debtRepaymentSkips == null ? List.of() : List.copyOf(debtRepaymentSkips);
+    liquidationAudits = liquidationAudits == null ? List.of() : List.copyOf(liquidationAudits);
   }
 
   /** 一天什么都没有发生（既没关账、也没有任何转移）。 */
   public static ProductionLedger empty() {
     return new ProductionLedger(
         Map.of(), Map.of(), Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
-        List.of(), List.of());
+        List.of(), List.of(), List.of());
   }
 
   /**
@@ -233,6 +237,96 @@ public record ProductionLedger(
   }
 
   /**
+   * ★★ <b>E5b：清算阶段的瞬态审计条目</b>（只活在当天的 {@link ProductionLedger} 里，不落盘；持久真值仍是 {@code EconomyData} 的
+   * assetShares/debtContracts/pledges/classStandings/crisisSignals）。
+   *
+   * <p>★★ <b>为什么需要它</b>：清算选路里有一批"<b>处置不了</b>"的具名原因（无价格源、无政策、租佃份额、保护量吃满、无市场 acteur
+   * …）——它们不改任何状态，如果不在这里留名，读口只能看到"什么都没发生"，分不清"没触发"与"触发了但处置不了"。{@code action} 是稳定的动作词：
+   *
+   * <ul>
+   *   <li>{@code disposed}：真的执行了一条资产转移（{@code sourceAssetShareId} → {@code createdAssetShareId}）；
+   *   <li>{@code skipped}：处置被具名跳过（{@code reason} 是唯一可读原因）；
+   *   <li>{@code degraded-rule-selection}：政策按 assetKind 退化为 id 最小的一条（仍可能继续处置）；
+   *   <li>{@code class-decline} / {@code debt-explosion}：阶层下滑与债务爆炸信号同样落一条审计（信号本体进 {@code
+   *       crisisSignals}）；
+   *   <li>{@code class-projection-fallback}：5c 发现 {@code ClassStanding.currentPositionId} 投影不回旧
+   *       {@code ClassRow.view.stratum}，保留旧 view 并具名报告。
+   * </ul>
+   *
+   * <p>★ <b>窗口/单位</b>：{@code day} = 本次结算日；{@code quantity} 与 AssetShare 同单位；{@code *Milli}
+   * 均为"毫值"（粮债口径 = 毫粮）；F 读不到的条目在 evidence 里用 {@code FUnavailable=1} 标注，<b>不填 0</b> 冒充。
+   *
+   * <p>★ 可选引用一律用 {@link Optional} 表达"这一条没有这个对象"，不用 null 冒充。
+   */
+  public record LiquidationAudit(
+      long day,
+      String action,
+      Optional<HouseholdId> household,
+      Optional<DebtContractId> contractId,
+      Optional<PledgeId> pledgeId,
+      Optional<AssetShareId> sourceAssetShareId,
+      Optional<AssetShareId> createdAssetShareId,
+      long quantity,
+      long pricePerUnitMilli,
+      long debtReductionMilli,
+      long debtPrincipalAfter,
+      long pledgeQuantityAfter,
+      String reason,
+      Map<String, Long> evidence) {
+
+    public LiquidationAudit {
+      if (day < 0L) {
+        throw new IllegalArgumentException("LiquidationAudit.day 不得为负: " + day);
+      }
+      if (action == null || action.isBlank()) {
+        throw new IllegalArgumentException("LiquidationAudit.action 不得空白");
+      }
+      if (reason == null || reason.isBlank()) {
+        throw new IllegalArgumentException("LiquidationAudit.reason 不得空白");
+      }
+      if (quantity < 0L
+          || pricePerUnitMilli < 0L
+          || debtReductionMilli < 0L
+          || debtPrincipalAfter < 0L
+          || pledgeQuantityAfter < 0L) {
+        throw new IllegalArgumentException(
+            "LiquidationAudit 的数量/价格/减额不得为负: "
+                + quantity
+                + "/"
+                + pricePerUnitMilli
+                + "/"
+                + debtReductionMilli
+                + "/"
+                + debtPrincipalAfter
+                + "/"
+                + pledgeQuantityAfter);
+      }
+      if (household == null
+          || contractId == null
+          || pledgeId == null
+          || sourceAssetShareId == null
+          || createdAssetShareId == null) {
+        throw new IllegalArgumentException("LiquidationAudit 的可选引用不得为 null（没有给 Optional.empty()）");
+      }
+      if (evidence == null) {
+        throw new IllegalArgumentException("LiquidationAudit.evidence 不得为 null（没有给空表）");
+      }
+      Map<String, Long> copy = new LinkedHashMap<>();
+      for (Map.Entry<String, Long> entry : evidence.entrySet()) {
+        if (entry.getKey() == null || entry.getKey().isBlank()) {
+          throw new IllegalArgumentException("LiquidationAudit.evidence 的键不得空白");
+        }
+        if (entry.getValue() == null) {
+          throw new IllegalArgumentException(
+              "LiquidationAudit.evidence 的值不得为 null（未知用具名键标注）: " + entry.getKey());
+        }
+        copy.put(entry.getKey(), entry.getValue());
+      }
+      evidence = Collections.unmodifiableMap(copy); // ★ 冻在赋值处
+    }
+  }
+
+  /**
    * ★★ <b>这一天有没有"产出"</b>（E7/R4 的 fail-closed 判据）：有毛产、或有产出计提。
    *
    * <p>★ 为什么这两样：它们正是<b>离开 {@code ClassRow} 的部分</b> —— 没有产权落账口的入口拿它们<b>无处可放</b>。 ★ 为什么不含 {@link
@@ -323,6 +417,7 @@ public record ProductionLedger(
     private final List<UnresolvedDebtCapitalization> unresolvedDebtCapitalizations =
         new ArrayList<>();
     private final List<DebtRepaymentSkip> debtRepaymentSkips = new ArrayList<>();
+    private final List<LiquidationAudit> liquidationAudits = new ArrayList<>();
 
     /** ★ M2.3/M2.4：当天区域市场的只读报告（瞬态；不进 {@link ProductionLedger}，由 stepper 交给 L3 读数）。 */
     private MarketReport marketReport;
@@ -431,6 +526,7 @@ public record ProductionLedger(
       debtCapitalizations.addAll(partitionLedger.debtCapitalizations);
       unresolvedDebtCapitalizations.addAll(partitionLedger.unresolvedDebtCapitalizations);
       debtRepaymentSkips.addAll(partitionLedger.debtRepaymentSkips);
+      liquidationAudits.addAll(partitionLedger.liquidationAudits);
       if (marketReport == null && partitionLedger.marketReport != null) {
         marketReport = partitionLedger.marketReport;
       }
@@ -477,6 +573,11 @@ public record ProductionLedger(
       debtRepaymentSkips.add(Objects.requireNonNull(skip, "skip"));
     }
 
+    /** ★★ E5b：记一条清算阶段的瞬态审计（处置/跳过/退化选择/阶层下滑/债务爆炸/投影回退）。 */
+    void addLiquidationAudit(LiquidationAudit audit) {
+      liquidationAudits.add(Objects.requireNonNull(audit, "audit"));
+    }
+
     /** ★★ E4c：本日全部具名欠款（与 {@link ProductionLedger#arrears()} 同一派生实现）。 */
     List<ProductionSettlement.Arrear> arrears() {
       return arrearsOf(ruleSettlements);
@@ -506,7 +607,8 @@ public record ProductionLedger(
           deferredMoney,
           debtCapitalizations,
           unresolvedDebtCapitalizations,
-          debtRepaymentSkips);
+          debtRepaymentSkips,
+          liquidationAudits);
     }
 
     private static void addQuantities(

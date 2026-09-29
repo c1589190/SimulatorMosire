@@ -58,6 +58,7 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionCandidate;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.time.ClassTransition;
@@ -695,6 +696,8 @@ public final class ApiViews {
     //   不是"读不到"；E5a 不产生任何信号/清算（生成留 E5b），这里只如实反映为空。
     view.put("liquidationPolicies", liquidationPolicyViews(data));
     view.put("crisisSignals", crisisSignalViews(data, coord));
+    // ★★ E5b：本格质押只读视图（清算的输入侧；状态真值 = EconomyData.pledges）。
+    view.put("pledges", pledgeViews(data, coord));
     // ★★ R4-E2b：**本格的实物资产份额**只读视图（逐条 id/industry/asset/owner/operator/quantity/kind）——
     //   份额的 owner/operator 是"谁拥有/谁经营"的唯一实物总账，进入动作的拆分必须在这里逐条可见（守恒靠它核对）。
     view.put("assetShares", assetShareViews(data, coord));
@@ -821,6 +824,9 @@ public final class ApiViews {
       view.put("debtCapitalizationsUnavailable", null);
       view.put("debtRepaymentSkips", debtRepaymentSkipView(ledger));
       view.put("debtRepaymentSkipsUnavailable", null);
+      // ★★ E5b：本日清算/阶层下滑/投影回退的瞬态审计（与上面同一份当日 ledger；读不到 ⇒ null + 具名原因）。
+      view.put("liquidationAudits", liquidationAuditView(ledger, data, coord));
+      view.put("liquidationAuditsUnavailable", null);
     } else {
       view.put("arrears", null);
       view.put("arrearsUnavailable", ARREARS_PROCESS_ONLY);
@@ -828,6 +834,8 @@ public final class ApiViews {
       view.put("debtCapitalizationsUnavailable", ARREARS_PROCESS_ONLY);
       view.put("debtRepaymentSkips", null);
       view.put("debtRepaymentSkipsUnavailable", ARREARS_PROCESS_ONLY);
+      view.put("liquidationAudits", null);
+      view.put("liquidationAuditsUnavailable", LIQUIDATION_AUDIT_PROCESS_ONLY);
     }
     // ★★ M2.7：**焦点区的逐区逐商品市场读数**（与 MCP / GUI 共用同一份视图；进程内报告缺失时 match=null 且具名）。
     //   ★ 挂进同一个 economyHex 而不新开路由/工具：GUI 与 MCP 的读口数量不变（工具面测试不需要改名单）。
@@ -1384,6 +1392,12 @@ public final class ApiViews {
   private static final String CLASS_STANDING_UNAVAILABLE =
       "该家户没有 ClassStanding 记录（economy.classStandings 为空或未覆盖此户）：E1 起新状态为空时旧路径仍以 "
           + "ClassRow.view 为准；E5a 不产生任何阶层变动，不伪造 current/original/consecutiveDebtStressCycles";
+
+  /** ★★ E5b：清算审计读不到的具名原因（唯一拼写点；不落盘、只在同一 tick 的当日 ledger 里可读）。 */
+  private static final String LIQUIDATION_AUDIT_PROCESS_ONLY =
+      "清算/阶层下滑审计是进程内瞬态（当日 ProductionLedger.liquidationAudits；不落盘）：重启/换进程/"
+          + "本轮推进没跨关账日时读不到\"处置了什么、跳过了什么\"；状态真值仍在 assetShares/pledges/debtContracts/"
+          + "classStandings/crisisSignals 五栏";
 
   /** ① 生产自给率报不出来的原因（唯一拼写点：主函数与类注引同一句）。 */
   private static final String PRODUCTION_NEEDS_LEDGER =
@@ -2507,6 +2521,115 @@ public final class ApiViews {
       out.add(view);
     }
     return out;
+  }
+
+  /**
+   * ★★ <b>E5b：本格质押只读视图</b>（按 {@code pledgeId} 排序 ⇒ 响应字节是内容的纯函数）。★ 只列份额登记在本格的质押；
+   * 份额在别的格的质押请查那一格。{@code quantity} 与 AssetShare 同单位；{@code status} 是 ACTIVE/RELEASED/EXECUTED。
+   */
+  private static List<Map<String, Object>> pledgeViews(EconomyData data, HexCoord coord) {
+    String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
+    List<Pledge> pledges = new ArrayList<>();
+    for (Pledge pledge : data.pledges().values()) {
+      AssetShare share = data.assetShares().get(pledge.assetShareId());
+      if (share == null) {
+        continue; // 份额缺失 = 坏状态；逐条具名留给 ownership/资产读数，不在这里伪造
+      }
+      if (IndustryHexKeys.hexKeyOf(share.industry()).filter(hexKey::equals).isPresent()) {
+        pledges.add(pledge);
+      }
+    }
+    pledges.sort(Comparator.comparing(pledge -> pledge.id().value()));
+    List<Map<String, Object>> out = new ArrayList<>(pledges.size());
+    for (Pledge pledge : pledges) {
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("id", pledge.id().value());
+      view.put("debtContractId", pledge.debtContractId().value());
+      view.put("assetShareId", pledge.assetShareId().value());
+      view.put("quantity", pledge.quantity());
+      view.put("modeId", pledge.modeId().value());
+      view.put("priority", pledge.priority());
+      view.put("status", pledge.status().name());
+      out.add(view);
+    }
+    return out;
+  }
+
+  /**
+   * ★★ <b>E5b：本日清算/阶层下滑/投影回退的瞬态审计</b>（{@code ProductionLedger.liquidationAudits}；只列与本格相关的条目）。
+   *
+   * <p>★ <b>窗口</b>：只在读数 tick 与最近一次结算 tick 相同时可读（{@link EconomyDayFeed}）；不落盘。 ★ <b>单位</b>：{@code
+   * quantity} 与 AssetShare 同单位；{@code *Milli} 为毫值（粮债口径 = 毫粮）。 ★ <b>读不到</b>：上层返回 null + {@link
+   * #LIQUIDATION_AUDIT_PROCESS_ONLY}，<b>不填空数组</b>冒充"当天没有清算"。
+   */
+  private static Map<String, Object> liquidationAuditView(
+      ProductionLedger ledger, EconomyData data, HexCoord coord) {
+    List<ProductionLedger.LiquidationAudit> audits = new ArrayList<>();
+    for (ProductionLedger.LiquidationAudit audit : ledger.liquidationAudits()) {
+      if (liquidationAuditBelongsToHex(audit, data, coord)) {
+        audits.add(audit);
+      }
+    }
+    List<Map<String, Object>> items = new ArrayList<>(audits.size());
+    for (ProductionLedger.LiquidationAudit audit : audits) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("day", audit.day());
+      item.put("action", audit.action());
+      item.put("household", audit.household().map(HouseholdId::value).orElse(null));
+      item.put("contractId", audit.contractId().map(DebtContractId::value).orElse(null));
+      item.put("pledgeId", audit.pledgeId().map(pledgeId -> pledgeId.value()).orElse(null));
+      item.put(
+          "sourceAssetShareId",
+          audit.sourceAssetShareId().map(assetShareId -> assetShareId.value()).orElse(null));
+      item.put(
+          "createdAssetShareId",
+          audit.createdAssetShareId().map(assetShareId -> assetShareId.value()).orElse(null));
+      item.put("quantity", audit.quantity());
+      item.put("pricePerUnitMilli", audit.pricePerUnitMilli());
+      item.put("debtReductionMilli", audit.debtReductionMilli());
+      item.put("debtPrincipalAfter", audit.debtPrincipalAfter());
+      item.put("pledgeQuantityAfter", audit.pledgeQuantityAfter());
+      item.put("reason", audit.reason());
+      item.put("evidence", new TreeMap<>(audit.evidence()));
+      items.add(item);
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("items", items);
+    view.put(
+        "provenance",
+        "来自本日 ProductionLedger.liquidationAudits（进程内瞬态；不落盘）。quantity 与 AssetShare 同单位；"
+            + "*Milli 为毫值（粮债口径 = 毫粮）；action/reason 是具名动作与跳过原因；"
+            + "createdAssetShareId 是本次转移新建的接收方份额 id");
+    return view;
+  }
+
+  /** 审计是否与本格相关：家户本格 / 合同债务人本格 / 被处置份额的产业本格，三者任一命中。 */
+  private static boolean liquidationAuditBelongsToHex(
+      ProductionLedger.LiquidationAudit audit, EconomyData data, HexCoord coord) {
+    String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
+    if (audit.household().isPresent()) {
+      ClassRow row = data.classes().get(audit.household().get());
+      if (row != null && row.view().hex().equals(coord)) {
+        return true;
+      }
+    }
+    if (audit.contractId().isPresent()) {
+      DebtContract contract = data.debtContracts().get(audit.contractId().get());
+      if (contract != null) {
+        ClassRow debtorRow = data.classes().get(contract.debtor());
+        if (debtorRow != null && debtorRow.view().hex().equals(coord)) {
+          return true;
+        }
+      }
+    }
+    if (audit.sourceAssetShareId().isPresent()) {
+      AssetShare share = data.assetShares().get(audit.sourceAssetShareId().get());
+      if (share != null
+          && IndustryHexKeys.hexKeyOf(share.industry()).filter(hexKey::equals).isPresent()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

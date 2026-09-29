@@ -38,8 +38,10 @@ import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
+import io.mosire.simos.economy.migrate.LegacyClassStructure;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.DebtCapacity;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DebtIndex;
@@ -786,6 +788,8 @@ public final class EconomySettlement {
     LinkedHashMap<HouseholdId, Long> repaidToday = new LinkedHashMap<>();
     // ★★ E4c：货币债偿还的逐币种读数（**不塞进粮口径的 repaidToday**；见 FlowRow.repaidMoney）。
     LinkedHashMap<HouseholdId, Map<CurrencyId, Long>> repaidMoneyToday = new LinkedHashMap<>();
+    // ★★ E5b：E4c 本日逐合同的本金偿还读数（压力判定"本金未下降"的具名证据；只进审计，不改状态身份）。
+    LinkedHashMap<DebtContractId, Long> repaidPrincipalByDebt = new LinkedHashMap<>();
     // ★★ E4c：本日资本化的欠租/欠薪（按 unit.key() 分组；资本化不搬库存/货币，故只进 FlowRow.capitalizedArrears）。
     LinkedHashMap<HouseholdId, Map<String, Long>> capitalizedArrearsToday = new LinkedHashMap<>();
     // ★★ **H5：当日的缺口**（"今天这一顿没吃上多少"）—— 它先被记下、**不在吃饭那一步就借**
@@ -1126,6 +1130,7 @@ public final class EconomySettlement {
           operatorFrozenMoney,
           repaidToday,
           repaidMoneyToday,
+          repaidPrincipalByDebt,
           householdOfActor,
           ledger,
           issuanceJournal);
@@ -1242,12 +1247,52 @@ public final class EconomySettlement {
       }
     }
 
+    // ── 5b.5. ★★ E5b：清算 + 阶层下滑 + hex 危机信号（关账日、退出处置之后、阶层写回之前）────────
+    //   ★ 位置理由：债务结算（4c 偿还 / 5 计息 / 5b 退出处置）已经结束 ⇒ 这里只对"此刻本金 > 0"的合同选路；
+    //     5b 已结清的合同本金为 0，天然不会被二次处置（去重口径见 EconomyLiquidationSettlement 类注）。
+    //   ★ 只在关账日推进（与 5 计息、5c 阶层写回同窗口）；新表全空 = 旧档 ⇒ 整段 no-op，旧路径逐值不变。
+    //   ★ F/headroom 用 E4b 的唯一算法（DebtCapacityBook）；容量按**当刻债务终态**重算
+    //     （4b 的容量是借粮/偿还之前的口径，不能用它判"本期利息超 F"）。
+    if (anyCycleClosed && EconomyLiquidationSettlement.isActive(base)) {
+      Map<HouseholdId, DebtCapacity> closeDebtCapacities =
+          debtCapacitiesForDay(
+              rows,
+              flows,
+              newCycleHouseholds,
+              income,
+              consumedGoods,
+              householdGoods,
+              cycleDaysByHousehold,
+              debts,
+              units,
+              industries,
+              assetShares,
+              operatorConditions);
+      EconomyLiquidationSettlement.settle(
+          session,
+          day,
+          currentCycle,
+          rows,
+          assetShares,
+          session.sheet().pledges(),
+          debts,
+          principalAtDayStart,
+          repaidPrincipalByDebt,
+          closeDebtCapacities,
+          industries,
+          ledger);
+    }
+
     // ── 5c. S3 阶层写回（关账日、经营者状态机之后）────────────────────────────────────────
     //   ★ 只改 ClassRow.view：稳定 HouseholdId、actor/账户/债务/劳动配额/人口/成员份额一字不动（withView 的方法承诺）。
+    //   ★ E5b：有 ClassStanding 的家户以 standing 为权威 —— 把 currentPositionId 投影回 view.stratum；
+    //     投影不到的非 legacy 位置保留旧 view 并写具名审计，**不**把该户再交给 HouseholdClassRule（禁止双真相）。
+    //   ★ 没有 standing 的旧档才继续走 HouseholdClassRule（投影不到 = 有显式归属但表达不了，不是"退回旧分类器"）。
     //   ★ 分类用本日 ledger（关账日 = 本周期收获/分配的结算账本，租金实付是整周期口径）；读不到时不填 0。
     //   ★ 原四档允许跳变；这里不新增人口、不改任何守恒量。
     if (anyCycleClosed) {
       ProductionLedger classLedger = ledger.toLedger();
+      Map<HouseholdId, ClassStanding> classStandings = session.sheet().classStandingsOrBase();
       HouseholdClassRule.Index classIndex =
           HouseholdClassRule.Index.of(
               assetShares, allocations, units, industries, relations, rows, debts, settlementIndex);
@@ -1257,14 +1302,30 @@ public final class EconomySettlement {
         if (row == null) {
           continue;
         }
-        HouseholdClassRule.Classification classification =
-            classIndex.classify(key, Optional.of(classLedger));
-        SocialClassId derived = classification.stratum();
+        ClassStanding standing = classStandings.get(key);
+        SocialClassId derived;
+        String reason;
+        if (standing != null) {
+          Optional<SocialClassId> projected =
+              LegacyClassStructure.socialClassOf(standing.currentPositionId());
+          if (projected.isEmpty()) {
+            EconomyLiquidationSettlement.recordClassProjectionFallback(
+                ledger, day, key, standing.currentPositionId(), row.view().stratum());
+            continue; // ★ 保留旧 view，不改旧权威也不另造一个投影
+          }
+          derived = projected.get();
+          reason = "classStanding-authority:" + standing.currentPositionId().value();
+        } else {
+          HouseholdClassRule.Classification classification =
+              classIndex.classify(key, Optional.of(classLedger));
+          derived = classification.stratum();
+          reason = classification.reason();
+        }
         if (derived.equals(row.view().stratum())) {
           continue;
         }
         ClassTransition transition =
-            new ClassTransition(day, key, row.view().stratum(), derived, classification.reason());
+            new ClassTransition(day, key, row.view().stratum(), derived, reason);
         rows.put(
             key, row.withView(new CohortKey(row.view().hex(), row.view().residence(), derived)));
         classTransitions.add(transition);
@@ -4471,6 +4532,7 @@ public final class EconomySettlement {
       Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
       LinkedHashMap<HouseholdId, Long> repaid,
       LinkedHashMap<HouseholdId, Map<CurrencyId, Long>> repaidMoney,
+      LinkedHashMap<DebtContractId, Long> repaidPrincipalByDebt,
       Map<ActorRef, HouseholdId> householdOfActor,
       ProductionLedger.Accumulator ledger,
       MoneyIssuanceJournal issuanceJournal) {
@@ -4547,6 +4609,7 @@ public final class EconomySettlement {
                   repayment,
                   issuanceJournal);
               DebtContractBook.reduce(debts, debt.id(), paid);
+              repaidPrincipalByDebt.merge(debt.id(), paid, Long::sum);
               if (grain) {
                 grainBudget -= paid;
                 repaid.merge(debtor, paid, Long::sum); // FlowRow.repaid 只记粮（其它 unit 不塞进这个标量）
@@ -4590,6 +4653,7 @@ public final class EconomySettlement {
                 repayment,
                 issuanceJournal);
             DebtContractBook.reduce(debts, debt.id(), paid);
+            repaidPrincipalByDebt.merge(debt.id(), paid, Long::sum);
             moneyBudgetLeft.put(currency, budget - paid);
             repaidMoney
                 .computeIfAbsent(debtor, ignored -> new LinkedHashMap<>())
