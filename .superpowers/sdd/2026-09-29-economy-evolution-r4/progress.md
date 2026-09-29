@@ -282,3 +282,40 @@ E2：GM 注入需求（AddDemand/SetMarketPrice/RegisterCandidate）→ 订单�
 
 ### 下一步
 E2b：候选预设实际采用（合条件家户形成 TRIALING unit、buildDays 前无产出、无可行预设保持未满足、旧经营者不自动 ROI 切换）。
+
+---
+
+## E2b 候选预设实际采用 —— 已完成
+
+### 实现了什么
+- 新 `EconomyEntrySettlement`（两段式 `planEntries` 只读意向/具名拒绝 + `execute` 重新评估后写工作副本）、`EntryOutcome`（进程内审计行）、
+  `EntryOutcomeFeed`（进程内按 mapId+day 投递，读口用）；`EconomyStateBuilder.relationsOrBase()`（relation 工作副本）；
+  `settleOneDay` 在现扣投入/劳动再分配之前执行进入，执行后重建 `SettlementIndex`；`ApiViews.economyHex` 增 `assetShares[]`/`entryOutcomes[]`。
+- 可行性：同 (household,candidate) 幂等；资产=自有份额或从 candidate.assetSource 拆分（owner 不变、operator=家户、kind 按 acceptedRightKinds，
+  Σ 份额不变）；requiredAssets 空/全 0 本片判不可行；劳动/投入/生计/可观察价/score 全部用实际读数；trialScale 取 min。
+- 执行：建 `<candidateId>@q_r` Industry 模板 + ProductionUnit(modeKey=candidate@version) + 空 rules 关系（residual 家户）+ TRIALING condition +
+  份额拆分 + 新劳动配额；缺价/不可行不建 unit，需求维持未满足；旧经营者默认延续、不自动 ROI 切换。
+
+### 收尾代理在原部分实现上修掉的缺陷
+1. `assess` 评分量纲（收益/投入/口粮三项相差 10³–10⁶ 倍）与缺价口径（改为主产出/正投入/给养粮缺价一律 PRICE_MISSING 拒绝）。
+2. `reallocateLaborPartitioned` 触发语义被上一代理收紧成“全部 unit 第一天”；恢复旧口径，并用 `isPresetOrigin` 只让候选 unit 自己的周期边界不触发整格重排。
+3. 人口回写 `applyPopulationChangeInto` 改读 `session.sheet().relationsOrBase()`，不漏刚进入 unit 的 relation。
+4. `OperatorSettlement.advance` 补首次收获 `TRIALING→ACTIVE`（`trial_complete:firstHarvest`），负证据分支优先。
+
+### 领域验收
+- 空表 A/B：B.3a 世界 0→10、0→120 与 HEAD 42/42 组件 **0 差异**；旧 B.2 形状 store 0→10 也 0 差异。
+- 成功采用：tick1 出现 2 个 TRIALING unit（真实家户、`cand-wool@1`、LAND=10,000、owner=ESTATE/operator=家户/TENANCY）；
+  day1/5/29 无产出，day30 净产 wool 34,920,000 并转 ACTIVE；份额行 15→17、Σ 2,286,937,777 逐值不变；货币不变；`max(Σalloc−available)=0`；多日不重复建 unit。
+- 不可行：无 candidate/资产/劳动/投入/权利不足/score<0/需求窗口太短 ⇒ 0 unit + 具名 `entryOutcomes`。
+- 确定性：同初态同命令 1 vs 8 线程 42/42 组件 0 差异。
+- 性能：空表 0→120 36.248 s（HEAD 35.571 s，+1.9%，VmHWM 1.57 GB）；带进入 37.627 s。
+
+### 与计划的差异 / 剩余阻断
+1. 家户自有份额只认“候选产业 id 名下”的份额；跨产业再登记未实现（本批全部走 assetSource 拆分）。
+2. `buildDays` 只进需求/投入 horizon 门槛，不推迟 progress 与收获（进入日即开始进度）。
+3. `EntryOutcomeFeed` 进程内瞬态、重启即失；`TRIAL_ABORTED` 完整回滚未做（失败走既有 inputShortfall 状态机）。
+4. 因前一轮 /tmp 清理，Probe2/3/5 未重跑，用三组全状态 A/B 替代（报告已如实写）。
+5. 未跑 test/verify。
+
+### 下一步
+E3：实际生产实践的经验积累（挂稳定 HouseholdId × modeKey；实劳实产才计提；纯收租 0；阶层变化不丢；地区规模有界渐近）。

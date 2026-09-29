@@ -657,6 +657,9 @@ public final class EconomySettlement {
     //   自适应打开时 {@code MarketSettlement} 返回更新后的价格表，本方法把**这一份**交给终态 ⇒ 改价只经
     //   "状态 → 变更集（markets 是既有 FieldDelta 组件）"这一条路，没有第二处改价。
     LinkedHashMap<HexCoord, Market> markets = session.sheet().markets();
+    // ★★ R4-E2b：生产关系表视图 —— 默认直接读 base 的不可变表；只有 E2b 进入执行真的新建 relation 时才物化工作副本
+    //   （空表基线因此不产生任何拷贝）。下游所有日结算读取点统一走这个局部量，不再各处写 session.base().relations()。
+    Map<ProductionUnitId, ProductionRelation> relations = session.sheet().relationsOrBase();
 
     // ★★ R4-B.3a-perf：日结算的只读派生索引 —— **每天入口构建一次**。它把“unit 可用资产/产能、unit↔家户、
     //   格↔unit/产业、债务人↔债务”这些一天内不变的问题一次算好，串行热路径与并行 worker 都只查表。
@@ -664,8 +667,7 @@ public final class EconomySettlement {
     //     日结算内始终有效。LaborAllocation 会在劳动再分配后被改写 ⇒ 那之后用 withLabor(...) 换一次配额侧视图；
     //     Debt 会在借粮/偿还/计息后被改写 ⇒ 状态机之前用 withDebts(...) 换一次债务视图。
     SettlementIndex settlementIndex =
-        SettlementIndex.build(
-            units, industries, assetShares, allocations, rows, debts, base.relations());
+        SettlementIndex.build(units, industries, assetShares, allocations, rows, debts, relations);
 
     // ★★ **H1 的第一条守卫：家户账必须覆盖每一个"要吃粮的家户"**（fail-closed；裁定 K1 / D3-C）——
     //   放在任何公式之前（与 E14 的"在任何数量计算之前"同款）：副本缺键时若继续跑，缺的那一家会被当成"库存 0"
@@ -675,6 +677,68 @@ public final class EconomySettlement {
     //   缺键时若继续跑，那一家的可花余额会被当成 0 —— 它当天的有效需求因此是 0、市场买不到粮、
     //   而账面（缺口只多不少）看起来完全正常。⇒ 缺键 ⇒ 当场抛（"没有账"与"账是空的"是两件事）。
     requireHouseholdMoney(rows, householdMoney);
+
+    // ── 0-entry. ★★ R4-E2b：候选预设的实际采用（GM 预设 → 合条件家户 → TRIALING 试产）──────────────
+    //   ★ 位置：**在现扣周期投入与劳动再分配之前**（下面 `if (plantingDrawsFirst)` / `else` 两支都会在
+    //     当天各自的第一阶段扣投入并重排劳动）—— 新 unit 因此当天就能进入本周期：progressDays=0 ⇒ 当天
+    //     drawCycleInputs 会为它扣一次投入，随后 reallocateLabor 按它的 need 保留配额。
+    //   ★ 两段式：planEntries 只读评估并产出意向/具名拒绝；execute 对意向**重新评估**后写工作副本。
+    //   ★ 触发门槛：demands/candidates 任一为空 ⇒ 连评估都不做（空表基线逐值不变），只投递空审计。
+    //   ★ 新 unit 触发 reallocateLabor 的例外集见下面的 `enteredToday`：只建了它的那个 hex 不再因它
+    //     "看起来像周期第一天"而重排一个本已跑了一半的周期（既有 unit 的配额因此不被进入动作改写）。
+    Set<ProductionUnitId> enteredToday = Set.of();
+    List<EntryOutcome> entryOutcomes = List.of();
+    if (!base.demands().isEmpty() && !base.candidates().isEmpty()) {
+      EconomyEntrySettlement.Plan entryPlan =
+          EconomyEntrySettlement.planEntries(
+              base.demands(),
+              base.candidates(),
+              industries,
+              settlementIndex,
+              markets,
+              rows,
+              householdGoods,
+              householdMoney,
+              memberships,
+              laborSupply,
+              units,
+              assetShares,
+              allocations,
+              operatorConditions,
+              relations,
+              day);
+      List<EntryOutcome> outcomes = new ArrayList<>(entryPlan.outcomes());
+      if (!entryPlan.intents().isEmpty()) {
+        EconomyEntrySettlement.Execution execution =
+            EconomyEntrySettlement.execute(
+                entryPlan.intents(),
+                base.demands(),
+                industries,
+                units,
+                assetShares,
+                allocations,
+                operatorConditions,
+                session.sheet().relations(),
+                rows,
+                householdGoods,
+                householdMoney,
+                memberships,
+                laborSupply,
+                markets,
+                day);
+        outcomes.addAll(execution.outcomes());
+        enteredToday = execution.enteredUnitIds();
+        if (execution.changed()) {
+          // unit/relation/份额/配额都变了 ⇒ 换一份索引再进现有日结算（进入日是低频事件，一次 O(状态) 重建）。
+          relations = session.sheet().relationsOrBase();
+          settlementIndex =
+              SettlementIndex.build(
+                  units, industries, assetShares, allocations, rows, debts, relations);
+        }
+      }
+      entryOutcomes = outcomes;
+    }
+    EntryOutcomeFeed.publish(meta.mapId(), day, entryOutcomes);
 
     // 逐行当日发生额（流水的事后组装）。★ R3 起两张实物表都是**逐商品**的（{@link FlowRow#income()} 由标量改成 Map）。
     LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumedGoods = new LinkedHashMap<>();
@@ -725,7 +789,8 @@ public final class EconomySettlement {
           parallelism,
           settlementIndex);
       // ★ R2：劳动再分配已按 hex 并行（配额键含产业 id ⇒ 跨 hex 无冲突；同一批次跨 hex 的全局协调留给 R3）。
-      reallocateLaborPartitioned(session, parallelism, settlementIndex);
+      // ★★ R4-E2b：今天刚进入的 unit 不触发"本周期是第一天"的重排判定（它今天确实是 0，但它不属于既有周期的重排对象）。
+      reallocateLaborPartitioned(session, parallelism, settlementIndex, enteredToday);
       // ★ 配额被改写 ⇒ 换一份“配额侧”视图，后续（unit 家户归属/市场参与者/人口回写）继续 O(1) 查表。
       settlementIndex = settlementIndex.withLabor(units, rows, allocations);
     }
@@ -748,7 +813,7 @@ public final class EconomySettlement {
           day,
           parallelism,
           settlementIndex);
-      reallocateLaborPartitioned(session, parallelism, settlementIndex);
+      reallocateLaborPartitioned(session, parallelism, settlementIndex, enteredToday);
       // ★ 配额被改写 ⇒ 换一份“配额侧”视图（与 plantingDrawsFirst 分支同一条阶段边界）。
       settlementIndex = settlementIndex.withLabor(units, rows, allocations);
     }
@@ -854,7 +919,7 @@ public final class EconomySettlement {
         harvestWorks,
         rows,
         settlementIndex,
-        base.relations(),
+        relations,
         householdOfActor,
         accounts,
         income,
@@ -888,7 +953,7 @@ public final class EconomySettlement {
             industries,
             units,
             assetShares,
-            base.relations(),
+            relations,
             allocations,
             shipments,
             ledger,
@@ -1036,7 +1101,7 @@ public final class EconomySettlement {
               operatorConditions,
               units,
               industries,
-              base.relations(),
+              relations,
               rows,
               stateIndex,
               householdGoods,
@@ -1066,7 +1131,7 @@ public final class EconomySettlement {
         //   这是**退出日的一次重建**（O(unit + 份额 + 配额)），不是逐查询重扫；退出本身是低频事件。
         settlementIndex =
             SettlementIndex.build(
-                units, industries, assetShares, allocations, rows, debts, base.relations());
+                units, industries, assetShares, allocations, rows, debts, relations);
       }
     }
 
@@ -1078,14 +1143,7 @@ public final class EconomySettlement {
       ProductionLedger classLedger = ledger.toLedger();
       HouseholdClassRule.Index classIndex =
           HouseholdClassRule.Index.of(
-              assetShares,
-              allocations,
-              units,
-              industries,
-              base.relations(),
-              rows,
-              debts,
-              settlementIndex);
+              assetShares, allocations, units, industries, relations, rows, debts, settlementIndex);
       List<ClassTransition> classTransitions = new ArrayList<>();
       for (HouseholdId key : new ArrayList<>(rows.keySet())) {
         ClassRow row = rows.get(key);
@@ -1511,7 +1569,8 @@ public final class EconomySettlement {
     // ★★ R3B.2：产业表只读（模板；日结算不再改它）。
     Map<IndustryId, Industry> industries = session.sheet().industries();
     LinkedHashMap<HouseholdId, ClassRow> rows = session.sheet().rows();
-    Map<ProductionUnitId, ProductionRelation> relations = session.base().relations();
+    // ★★ R4-E2b：走 relation 的**工作副本选择**（进入执行可能刚插入新 unit 的 relation；未物化时等于 base）。
+    Map<ProductionUnitId, ProductionRelation> relations = session.sheet().relationsOrBase();
     // ★ S3：缩产/停业后的"计划规模"要进投入调查（条件缺失 ⇒ 系数 1000‰ ⇒ 旧行为逐值相同）。
     Map<ProductionUnitId, OperatorCondition> operatorConditions =
         session.sheet().operatorConditions();
@@ -1618,9 +1677,41 @@ public final class EconomySettlement {
   private record LaborPartition(
       Map<LaborAllocationId, LaborAllocation> allocations, Set<LaborAllocationId> seededKeys) {}
 
-  /** ★★ <b>劳动再分配按 hex 并行</b>（{@link #reallocateLabor} 的并行外壳；R3B.2 起键 = unit id）。 */
+  /**
+   * ★★ <b>R4-E2b：这个 unit 是否由候选预设进入</b>——旧档/主副 unit 的 {@code modeKey == industry.id()}（世界播种与
+   * 旧档迁移的不变式），候选 unit 的 {@code modeKey == candidateId@version}（见 {@code ProductionUnit} 类注）。 候选
+   * unit 的 {@code cycleDays} 可以与同格旧产业不同，故它自己的周期边界不应当触发整格重排。
+   */
+  private static boolean isPresetOrigin(ProductionUnit unit) {
+    return !unit.modeKey().equals(unit.industry().value());
+  }
+
+  /**
+   * ★★ <b>劳动再分配按 hex 并行</b>（{@link #reallocateLabor} 的并行外壳；R3B.2 起键 = unit id）。
+   *
+   * <p>★ <b>R4-E2b：{@code cycleStartExempt}</b> = 今天刚由 E2b 进入执行新建的 unit。它们 {@code progressDays==0}
+   * 是事实，但本步<b>整条把它们排除在本次重排之外</b>：既不让它们单独触发"这一格本周期第一天"的判定，也不让它们进 本格的再分配集合。理由两条：
+   *
+   * <ol>
+   *   <li>一个进入动作不得把同格<b>既有 unit</b> 从半周期/周期初重新排一次劳动 —— 既有 unit 看到的重排结果必须与"没有进入动作"
+   *       的世界逐值相同（进入的代价只应落在新 unit 自己与显式 grant 的 assetSource 份额上）；
+   *   <li>新 unit 自己的配额就是试产计划的 {@code trialScale × laborPerUnit}（由 E2b 显式发放），也不需要参与 pool 再分配 —— 它若被
+   *       reallocation 按"投入缩过后的 need"削一刀，反而让试产口径多一个隐藏写者。
+   * </ol>
+   *
+   * <p>★ <b>触发条件</b>：本格任一<b>旧档/主副 unit</b>（{@code modeKey == industry.id()}，见 {@link
+   * #isPresetOrigin}） 在周期第一天（{@code progressDays == 0}）就重排 —— 这是既有口径。★ <b>E2b 候选 unit 不单独触发重排</b>：
+   * 它们可以有与既有产业不同的 {@code cycleDays}，若让"试产 unit 自己的周期边界"触发，就会把同格既有 unit 从半周期里
+   * 重排一次（违反"旧经营者延续"）。它们仍会在**本格因旧 unit 触发而进入重排**时作为普通 unit 参与（need 照算）。
+   *
+   * <p>★★ <b>与"空集逐值等价旧路径"的关系</b>：豁免集为空、且世界里没有候选 unit（{@code isPresetOrigin} 全为 false）时，
+   * 本方法逐字等于旧路径（触发条件、单位集合、分配顺序都不变）。候选 unit 只由 R4-E2b 新建，故旧档/空表基线不受影响。
+   */
   private static void reallocateLaborPartitioned(
-      EconomySession session, EconomyParallelism parallelism, SettlementIndex index) {
+      EconomySession session,
+      EconomyParallelism parallelism,
+      SettlementIndex index,
+      Set<ProductionUnitId> cycleStartExempt) {
     LinkedHashMap<ProductionUnitId, ProductionUnit> units = session.sheet().units();
     Map<IndustryId, Industry> industries = session.sheet().industries();
     LinkedHashMap<HouseholdId, ClassRow> rows = session.sheet().rows();
@@ -1629,15 +1720,19 @@ public final class EconomySettlement {
         session.sheet().operatorConditions();
     TreeMap<String, List<ProductionUnitId>> unitsByHex = new TreeMap<>();
     for (ProductionUnit unit : units.values()) {
+      if (cycleStartExempt.contains(unit.id())) {
+        continue; // ★ 今天刚进入的试产 unit：不触发重排、不进本格再分配集合（见方法注释）
+      }
       IndustryHexKeys.hexKeyOf(unit.industry())
           .ifPresent(
               hex -> unitsByHex.computeIfAbsent(hex, ignored -> new ArrayList<>()).add(unit.id()));
     }
     TreeMap<String, List<ProductionUnitId>> active = new TreeMap<>();
     for (Map.Entry<String, List<ProductionUnitId>> entry : unitsByHex.entrySet()) {
+      // ★ 触发者只认旧档/主副 unit（既有口径）；候选 unit 自己翻篇不触发本格重排（见方法注释）。
       for (ProductionUnitId id : entry.getValue()) {
         ProductionUnit unit = units.get(id);
-        if (unit != null && unit.progressDays() == 0L) {
+        if (unit != null && unit.progressDays() == 0L && !isPresetOrigin(unit)) {
           active.put(entry.getKey(), entry.getValue());
           break;
         }
@@ -2008,7 +2103,9 @@ public final class EconomySettlement {
             allocations,
             rows,
             null,
-            base.relations());
+            // ★★ R4-E2b：同一会话里 settleOneDayInto 可能刚由进入执行插入新 unit 的 relation ⇒ 读工作副本选择，
+            //   不再直读 base.relations()（否则这一次人口回写的经济家户索引会漏掉刚建的 unit）。
+            session.sheet().relationsOrBase());
     // 批次 → 它供给的 unit（保序、去重；只认 activity 命中现存 unit 的配额）。
     Map<ProductionUnitId, ProductionUnit> units = session.sheet().units();
     Map<PeopleLotId, List<ProductionUnitId>> unitsOf = index.unitsByGroup();

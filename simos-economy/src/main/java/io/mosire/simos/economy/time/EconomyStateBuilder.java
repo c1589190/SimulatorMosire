@@ -13,6 +13,7 @@ import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Debt;
@@ -58,6 +59,7 @@ public final class EconomyStateBuilder {
   private LinkedHashMap<AssetShareId, AssetShare> assetShares;
   private LinkedHashMap<ProductionUnitId, OperatorCondition> operatorConditions;
   private LinkedHashMap<ProductionUnitId, ProductionUnit> units;
+  private LinkedHashMap<ProductionUnitId, ProductionRelation> relations;
   private LinkedHashMap<HexCoord, Market> markets;
   private LinkedHashMap<ShipmentId, ShipmentBatch> shipments;
   private Optional<EconomyMeta> meta;
@@ -142,6 +144,22 @@ public final class EconomyStateBuilder {
     return units;
   }
 
+  /**
+   * ★★ <b>R4-E2b：生产关系表工作副本</b>（第 8 个组件）—— E2b 的进入执行会为新建 unit 插入一条 relation； 未物化时由 {@link
+   * #relationsOrBase()} 直接复用 base 的不可变表（空表基线不产生任何拷贝）。
+   */
+  public LinkedHashMap<ProductionUnitId, ProductionRelation> relations() {
+    if (relations == null) {
+      relations = new LinkedHashMap<>(base.relations());
+    }
+    return relations;
+  }
+
+  /** ★ <b>relation 表的只读选择</b>：已物化工作副本则读它，否则读 base 的表 —— 日结算的每个读取点都走这里， 避免"空表也先拷一份"。 */
+  public Map<ProductionUnitId, ProductionRelation> relationsOrBase() {
+    return relations == null ? base.relations() : relations;
+  }
+
   /** 市场表工作副本。 */
   public LinkedHashMap<HexCoord, Market> markets() {
     if (markets == null) {
@@ -179,7 +197,8 @@ public final class EconomyStateBuilder {
         flows,
         laborSupply == null ? base.laborSupply() : laborSupply,
         allocations == null ? base.allocations() : allocations,
-        base.relations(),
+        // ★★ R4-E2b：relations 也成了可选工作副本（进入执行会插入新 relation；未物化 ⇒ 原样复用 base）。
+        relationsOrBase(),
         markets == null ? base.markets() : markets,
         shipments == null ? base.shipments() : shipments,
         memberships == null ? base.memberships() : memberships,

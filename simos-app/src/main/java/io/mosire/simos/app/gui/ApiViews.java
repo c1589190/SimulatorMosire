@@ -54,6 +54,8 @@ import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.time.ClassTransition;
 import io.mosire.simos.economy.time.ClassTransitionFeed;
 import io.mosire.simos.economy.time.EconomySettlement;
+import io.mosire.simos.economy.time.EntryOutcome;
+import io.mosire.simos.economy.time.EntryOutcomeFeed;
 import io.mosire.simos.economy.time.HouseholdClassRule;
 import io.mosire.simos.economy.time.HouseholdCondition;
 import io.mosire.simos.economy.time.MarketReadout;
@@ -661,6 +663,9 @@ public final class ApiViews {
     view.put("demands", demandViews(data, coord, tick));
     // ★★ R4-E2：**候选预设**只读视图（世界级、与格无关 ⇒ 全量发；按 id 值排序 ⇒ 响应字节是内容的纯函数）。
     view.put("candidates", candidateViews(data));
+    // ★★ R4-E2b：**本格的实物资产份额**只读视图（逐条 id/industry/asset/owner/operator/quantity/kind）——
+    //   份额的 owner/operator 是"谁拥有/谁经营"的唯一实物总账，进入动作的拆分必须在这里逐条可见（守恒靠它核对）。
+    view.put("assetShares", assetShareViews(data, coord));
     view.put("debtCount", debtCount);
     view.put("debtPrincipal", debtPrincipal);
     // ★★ M1.5：同一条事实的另一半（债权人侧）。两个方向来自同一张债务表 ⇒ 逐条本金一致。
@@ -740,6 +745,20 @@ public final class ApiViews {
     } else {
       view.put("classTransitions", null);
       view.put("classTransitionsUnavailable", CLASS_TRANSITIONS_PROCESS_ONLY);
+    }
+    // ★★ R4-E2b：**候选进入评估结果**（进程内瞬态；本格相关项）。读不到时 null + 具名原因，不填假空数组。
+    if (tick >= 0L && mapId != null) {
+      Optional<EntryOutcomeFeed.Snapshot> entryOutcomes = EntryOutcomeFeed.last(mapId, tick);
+      if (entryOutcomes.isPresent()) {
+        view.put("entryOutcomes", entryOutcomeView(entryOutcomes.orElseThrow(), coord));
+        view.put("entryOutcomesUnavailable", null);
+      } else {
+        view.put("entryOutcomes", null);
+        view.put("entryOutcomesUnavailable", ENTRY_OUTCOMES_PROCESS_ONLY);
+      }
+    } else {
+      view.put("entryOutcomes", null);
+      view.put("entryOutcomesUnavailable", ENTRY_OUTCOMES_PROCESS_ONLY);
     }
     // ★★ S3：当日欠款（WageArrears / RentArrears / SubsistenceArrears；进程内瞬态，读不到 ⇒ null + 具名原因）。
     if (dayLedger.isPresent()) {
@@ -1192,6 +1211,11 @@ public final class ApiViews {
   private static final String CLASS_TRANSITIONS_PROCESS_ONLY =
       "阶层写回的审计是进程内瞬态（ClassTransitionFeed；不落盘）：重启/换进程/本轮推进没跨关账日时"
           + "读不到\"从哪一档跳来\"；当前阶层真值仍在 classes[].slot 与 classifications[] 两栏";
+
+  /** ★ R4-E2b：候选进入评估结果读不到的具名原因（唯一拼写点）。 */
+  private static final String ENTRY_OUTCOMES_PROCESS_ONLY =
+      "候选进入评估结果是进程内瞬态（EntryOutcomeFeed；不落盘、不新增 EconomyData 组件）：重启/换进程/还没结算时"
+          + "读不到\"哪些户被评估、为什么没进\"；unit 与份额的真值仍在 units[] 与 assetShares[] 两栏";
 
   /** ① 生产自给率报不出来的原因（唯一拼写点：主函数与类注引同一句）。 */
   private static final String PRODUCTION_NEEDS_LEDGER =
@@ -1907,6 +1931,78 @@ public final class ApiViews {
       out.add(view);
     }
     return out;
+  }
+
+  /**
+   * ★★ <b>R4-E2b：本格的实物资产份额只读视图</b>（{@code id/industry/asset/owner/operator/quantity/kind}）—— 进入动作只拆
+   * {@code assetSource} 名下的份额：owner 不变、operator 改本户、kind 按 acceptedRightKinds，总量不变。
+   * 这一栏是那条守恒的逐条证据（{@code EconomyData.assetShares()} 的唯一真源，视图不重算）。
+   */
+  private static List<Map<String, Object>> assetShareViews(EconomyData data, HexCoord coord) {
+    String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
+    List<AssetShare> shares = new ArrayList<>();
+    for (AssetShare share : data.assetShares().values()) {
+      if (IndustryHexKeys.hexKeyOf(share.industry()).filter(hexKey::equals).isPresent()) {
+        shares.add(share);
+      }
+    }
+    shares.sort(Comparator.comparing(share -> share.id().value()));
+    List<Map<String, Object>> out = new ArrayList<>(shares.size());
+    for (AssetShare share : shares) {
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("id", share.id().value());
+      view.put("industry", share.industry().value());
+      view.put("asset", share.asset().name());
+      view.put("owner", actorRefView(share.owner()));
+      view.put("operator", actorRefView(share.operator()));
+      view.put("quantity", share.quantity());
+      view.put("kind", share.kind().name());
+      out.add(view);
+    }
+    return out;
+  }
+
+  /**
+   * ★★ <b>R4-E2b：候选进入评估结果的本格切片</b>—— 只读 {@link EntryOutcomeFeed} 的进程内审计，<b>不重算</b>； {@code
+   * accepted=false} 的 {@code reason} 是具名拒绝码（缺资产/缺劳动/缺投入/需求窗口太短/无价…）， 让"需求有买单但没有新 unit"在读口可解释。
+   */
+  private static Map<String, Object> entryOutcomeView(
+      EntryOutcomeFeed.Snapshot snapshot, HexCoord coord) {
+    String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
+    List<EntryOutcome> outcomes = new ArrayList<>();
+    for (EntryOutcome outcome : snapshot.outcomes()) {
+      if (outcome.hexKey().equals(hexKey)) {
+        outcomes.add(outcome);
+      }
+    }
+    outcomes.sort(
+        Comparator.comparing((EntryOutcome outcome) -> outcome.household().value())
+            .thenComparing(outcome -> outcome.candidateId().value())
+            .thenComparingInt(EntryOutcome::version));
+    List<Map<String, Object>> items = new ArrayList<>(outcomes.size());
+    for (EntryOutcome outcome : outcomes) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("household", outcome.household().value());
+      item.put("candidateId", outcome.candidateId().value());
+      item.put("version", outcome.version());
+      item.put("modeKey", outcome.modeKey());
+      item.put("industry", outcome.industryId().value());
+      item.put("accepted", outcome.accepted());
+      item.put("reason", outcome.reason());
+      item.put("trialScale", outcome.trialScale());
+      item.put("expectedDay", outcome.expectedDay());
+      item.put("inputPlan", new TreeMap<>(outcome.inputPlan()));
+      item.put("laborMilli", outcome.laborMilli());
+      items.add(item);
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("day", snapshot.day());
+    view.put("items", items);
+    view.put(
+        "provenance",
+        "EntryOutcomeFeed：进程内瞬态（不落盘、不新增 EconomyData 组件）；day = 最近一次不晚于当前 tick 的日结算日；"
+            + "unit/份额的真值看 units[] 与 assetShares[]");
+    return view;
   }
 
   /**

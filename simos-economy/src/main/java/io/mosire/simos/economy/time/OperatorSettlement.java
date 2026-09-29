@@ -367,6 +367,13 @@ final class OperatorSettlement {
           // ★ 已退出/弃置：状态不再自转；恢复只能走显式重开（本批没有该命令）。
         }
       }
+      // ★★ R4-E2b：试产单位在**首次关账**（= 第一次实际收获）时转正 —— 上面两条负证据分支优先
+      //   （滞销/投入不足照旧转 OVERSUPPLIED / CONTRACTING），只有它们都没触发才落到这里。
+      //   ★ TRIALING 只由 E2b 新建单位持有；旧档/E1 世界里没有它，因此本行不改变既有状态机语义。
+      if (status == IndustryStatus.TRIALING) {
+        status = IndustryStatus.ACTIVE;
+        reason = "trial_complete:firstHarvest";
+      }
       long plannedScale = ProductionUnitBook.plannedCapacityScaleOf(unit, industry, index, prev);
       long costEstimate = 0L;
       HexCoord hex = IndustryHexKeys.hexKeyOf(industry.id()).map(HexCoord::parse).orElse(null);
