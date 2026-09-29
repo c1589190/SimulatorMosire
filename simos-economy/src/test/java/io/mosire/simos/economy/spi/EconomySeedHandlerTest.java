@@ -12,23 +12,27 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
@@ -45,6 +49,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -59,11 +64,31 @@ class EconomySeedHandlerTest {
   private static final StateRef REF = new StateRef(new BranchId("main"), new RevisionId(1));
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
 
-  /** 本夹具的格（H0：家户键 = 格 + 居住类型 + 阶层）。 */
+  /** 本夹具的格（S1：家户键 = 稳定 {@link HouseholdId}；视图仍是 格 + 居住类型 + 阶层）。 */
   private static final HexCoord HEX = new HexCoord(0, 0);
 
   private static final IndustryId FARM = new IndustryId("farm@0_0");
   private static final IndustryId FARM2 = new IndustryId("farm@1_0");
+
+  /** 旧载荷的 default operator（regime=feudal ⇒ ESTATE:farm@0_0，见 {@link RegimeOperators}）。 */
+  private static final ActorRef ESTATE_FARM = new ActorRef(ActorKind.ESTATE, "farm@0_0");
+
+  /**
+   * ★★ R3B.2：关系表的键与值内 {@code activity} 都是 {@link ProductionUnitId}（唯一拼写点 {@link
+   * ProductionUnitId#idOf}）。旧夹具把它写成 {@code IndustryId} —— 关系的身份不再是"产业"而是"生产单元"。
+   */
+  private static final ProductionUnitId FARM_UNIT = ProductionUnitId.idOf(FARM, ESTATE_FARM);
+
+  /**
+   * ★★ S1：{@code classes}/{@code flows} 的键是稳定家户身份 {@link HouseholdId}，不再是视图 {@code CohortKey}。 载荷没有
+   * {@code householdId} 键时，{@code EconomyPayloads.classRow} 用 {@link HouseholdId#ofSeed} 生成新档 id
+   * （唯一拼写点）—— 本夹具与它逐值一致，故这里也走 {@code ofSeed}。
+   */
+  private static final HouseholdId PEASANT_HOUSEHOLD =
+      HouseholdId.ofSeed(HEX, ResidenceKind.RURAL, SocialClassId.POOR_PEASANT);
+
+  private static final HouseholdId LANDLORD_HOUSEHOLD =
+      HouseholdId.ofSeed(HEX, ResidenceKind.RURAL, SocialClassId.LANDLORD);
 
   /** R3 的商品词（与载荷里的字面量同字面量；用途见 {@code parsesCycleInputWithCommodityDimension…}）。 */
   private static final CommodityId GRAIN = new CommodityId("grain");
@@ -153,7 +178,18 @@ class EconomySeedHandlerTest {
 
   // ── R2：劳动供给与配额（第三阶段设计稿 §四）────────────────────────────────────────
 
-  /** ★ 正例：两张新表**逐值**落盘（供给的毛额/两项扣除、配额的 actor/活动/量/周期）。 */
+  /**
+   * ★ 正例：供给逐值落盘；配额**逐家户**落盘（S1 起键 = {@code HouseholdId}）。
+   *
+   * <p>★★ <b>S1 自动迁移（本用例必须点名，否则期望值无从解释）</b>：载荷的配额没有 {@code household} 键 ⇒ {@code
+   * EconomyPayloads.allocation} 造旧档 pending 占位，{@code EconomyData} 构造期自动跑 {@code
+   * LegacyHouseholdMigration.migrate}，**按本格该居住类型的两行人口（450 : 50）把一条配额拆成两条真实家户配额** （225,000 /
+   * 25,000）。出处：{@code EconomyData} 构造期注释（"旧 LaborAllocation 没有 household … 在这里一次性补齐"， 约 326-361 行）与
+   * {@code LegacyHouseholdMigration.migrate} 的 {@code candidateRows} 分支。
+   *
+   * <p>★ 旧断言"只剩一条配额、id 是 {@code alloc-farm@0_0-rural:0_0:MALE:1}"随 S1 身份迁移**已被生产代码删除**： 现在每条配额 id 由
+   * {@link LaborAllocation#idOf(IndustryId, PeopleLotId, HouseholdId)} 唯一拼写（含家户段）。
+   */
   @Test
   void seedsLaborSupplyAndAllocationsValueForValue() {
     EconomyData after = apply(PAYLOAD_WITH_LABOR, EconomyData.empty(), T7);
@@ -167,14 +203,27 @@ class EconomySeedHandlerTest {
     assertThat(supply.committedLaborMilli()).isZero();
     assertThat(supply.availableLabor()).as("毛额 − 已服役 − 已承诺").isEqualTo(290_000L);
 
-    assertThat(after.allocations()).hasSize(1);
-    LaborAllocation allocation =
-        after.allocations().get(new LaborAllocationId("alloc-farm@0_0-rural:0_0:MALE:1"));
-    assertThat(allocation.group()).isEqualTo(lot);
-    assertThat(allocation.actor()).isEqualTo(new ActorRef(ActorKind.ESTATE, "farm@0_0"));
-    assertThat(allocation.activity()).isEqualTo("farm");
-    assertThat(allocation.laborMilli()).isEqualTo(250_000L);
-    assertThat(allocation.period()).isEqualTo(1L);
+    assertThat(after.allocations()).as("旧配额缺 household ⇒ S1 迁移按两行人口拆成两条").hasSize(2);
+    LaborAllocation peasant =
+        after.allocations().get(LaborAllocation.idOf(FARM, lot, PEASANT_HOUSEHOLD));
+    assertThat(peasant).as("id 的唯一拼写点 = alloc-<产业>-<批次>-<家户>").isNotNull();
+    assertThat(peasant.household()).as("家户是迁移按格与居住类型定位出来的真实家户").isEqualTo(PEASANT_HOUSEHOLD);
+    assertThat(peasant.group()).isEqualTo(lot);
+    assertThat(peasant.actor()).isEqualTo(ESTATE_FARM);
+    assertThat(peasant.activity())
+        .as("R3B.2：activity 对齐到 unit id（不再喂 farm 这个旧标签）")
+        .isEqualTo(FARM_UNIT.value());
+    assertThat(peasant.laborMilli()).as("250,000 × 450 ÷ 500").isEqualTo(225_000L);
+    assertThat(peasant.period()).isEqualTo(1L);
+
+    LaborAllocation landlord =
+        after.allocations().get(LaborAllocation.idOf(FARM, lot, LANDLORD_HOUSEHOLD));
+    assertThat(landlord).as("第二条拆给地主行").isNotNull();
+    assertThat(landlord.household()).isEqualTo(LANDLORD_HOUSEHOLD);
+    assertThat(landlord.actor()).isEqualTo(ESTATE_FARM);
+    assertThat(landlord.activity()).isEqualTo(FARM_UNIT.value());
+    assertThat(landlord.laborMilli()).as("250,000 × 50 ÷ 500").isEqualTo(25_000L);
+    assertThat(landlord.period()).isEqualTo(1L);
   }
 
   /**
@@ -194,9 +243,14 @@ class EconomySeedHandlerTest {
         .isEqualTo("{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"}");
 
     // ① 载荷 → 领域类型：kind 与 id 逐值还原
+    //   ★ S1：旧配额缺 household ⇒ 迁移按家户拆成两条，id 随之取 canonical 拼写（alloc-<产业>-<批次>-<家户>）；
+    //     取拆给贫农家户的那一条即可（两条的 actor 是同一串，见上一条用例）。
     EconomyData after = apply(PAYLOAD_WITH_LABOR, EconomyData.empty(), T7);
     ActorRef actor =
-        after.allocations().get(new LaborAllocationId("alloc-farm@0_0-rural:0_0:MALE:1")).actor();
+        after
+            .allocations()
+            .get(LaborAllocation.idOf(FARM, new PeopleLotId("rural:0_0:MALE:1"), PEASANT_HOUSEHOLD))
+            .actor();
     assertThat(actor.kind()).as("kind 逐值还原").isEqualTo(ActorKind.ESTATE);
     assertThat(actor.id()).as("id 逐值还原").isEqualTo("farm@0_0");
 
@@ -267,19 +321,71 @@ class EconomySeedHandlerTest {
         .contains("ESTATE");
   }
 
-  /** ★ actor 的 id 不是已存在的产业 ⇒ 构造期拒（拼错产业 id 会让当日劳动静默变 0）。 */
+  /**
+   * ★ actor 的 id 不是已存在的产业 ⇒ 构造期拒（拼错产业 id 会让当日劳动静默变 0）。
+   *
+   * <p>★★ <b>S1 适配（必须点名）</b>：旧夹具只有一条无 {@code household} 的配额 ⇒ {@code EconomyData} 构造期会先跑 {@code
+   * LegacyHouseholdMigration}，而它在"配额 actor 定位不到产业格、又要重建 memberships"时抛 {@code
+   * IllegalStateException}（它不是 {@code IllegalArgumentException}，会**穿出命令边界**）—— 于是本用例就测不到 {@code
+   * EconomyData} 那条"actor ↔ 产业对应关系不成立"的守卫了（它才是本用例的主语）。 ⇒ 夹具改成**当前形状**：配额显式给 {@code household} +
+   * 载荷显式给 memberships（两个触发条件都消掉），把主语还给状态构造期守卫。 出处：{@code EconomyData} 构造期守卫（约 515-522 行）与 {@code
+   * LegacyHouseholdMigration.migrate} 的 pending 分支。
+   */
   @Test
   void rejectsAnActorThatIsNotAnExistingIndustry() {
-    String payload = PAYLOAD_WITH_LABOR.replace("\"id\":\"farm@0_0\"}", "\"id\":\"farm@0_1\"}");
+    String payload =
+        PAYLOAD_WITH_LABOR
+            // 当前形状①：配额显式归属一个家户（不再走 pending 拆分）。
+            .replace(
+                "\"activity\":\"farm\",",
+                "\"activity\":\"farm\",\"household\":\"hh-0_0-rural-poor_peasant\",")
+            // 拼错的主体 id：farm@0_1 不是已登记的产业。
+            .replace(
+                "\"actor\":{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"}",
+                "\"actor\":{\"kind\":\"ESTATE\",\"id\":\"farm@0_1\"}")
+            // 当前形状②：显式 memberships（否则 classes 非空 + memberships 空仍会触发 S1 自动迁移）。
+            .replace(
+                "\"laborSupply\":[",
+                "\"memberships\":["
+                    + "{\"lot\":\"rural:0_0:MALE:1\",\"household\":\"hh-0_0-rural-poor_peasant\",\"count\":450},"
+                    + "{\"lot\":\"rural:0_0:MALE:1\",\"household\":\"hh-0_0-rural-landlord\",\"count\":50}],"
+                    + "\"laborSupply\":[");
+    assertThat(payload).as("两个替换必须都真的发生").isNotEqualTo(PAYLOAD_WITH_LABOR);
+
+    HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
+
+    assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) outcome).reason())
+        .as("产业型主体（ESTATE/WORKSHOP）必须指名一个已存在的产业")
+        .contains("对应关系不成立");
+  }
+
+  /**
+   * ★★ <b>旧形状载荷的迁移失败必须留在命令边界</b>：缺 {@code household}/{@code memberships} 的旧载荷会让 {@code EconomyData}
+   * 构造期先跑 {@code LegacyHouseholdMigration}；配额 actor 定位不到产业格时它抛 {@link IllegalStateException}。该失败与
+   * {@code IllegalArgumentException} 一样是**载荷语义错误**， 必须成为 {@code Rejected}，不得穿出命令边界。
+   */
+  @Test
+  void oldShapePayloadWithAnUnknownIndustryIsRejectedInsteadOfLeakingMigrationFailure() {
+    String payload =
+        PAYLOAD_WITH_LABOR.replace(
+            "\"actor\":{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\"}",
+            "\"actor\":{\"kind\":\"ESTATE\",\"id\":\"farm@0_1\"}");
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD_WITH_LABOR);
 
     HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
 
     assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
-    assertThat(((HandlerOutcome.Rejected) outcome).reason()).contains("对应关系不成立");
+    assertThat(((HandlerOutcome.Rejected) outcome).reason())
+        .as("拒因来自旧档迁移的 fail-closed（而不是把异常穿出命令边界）")
+        .contains("旧档迁移失败");
   }
 
-  /** ★ 追加第二国时，两张新表**按格一并追加**（与产业/阶层行同一套判重口径）。 */
+  /**
+   * ★ 追加第二国时，两张新表**按格一并追加**（与产业/阶层行同一套判重口径）。
+   *
+   * <p>★ S1 起每国的旧配额会被自动迁移按本格两行人口拆成 2 条 ⇒ 两国合计 4 条；供给仍是每国 1 条。
+   */
   @Test
   void appendsTheLaterNationsLaborTables() {
     EconomyData first = apply(PAYLOAD_WITH_LABOR, EconomyData.empty(), T7);
@@ -292,31 +398,44 @@ class EconomySeedHandlerTest {
 
     EconomyData both = apply(later, first, SimosTimestamp.of(9));
 
-    assertThat(both.allocations()).as("两国的配额都在").hasSize(2);
+    assertThat(both.allocations()).as("S1 迁移后每国 2 条（两行家户各一）⇒ 两国 4 条").hasSize(4);
     assertThat(both.laborSupply()).as("两国的供给都在").hasSize(2);
     assertThat(both.industries()).hasSize(2);
+    assertThat(both.allocations().values().stream().mapToLong(LaborAllocation::laborMilli).sum())
+        .as("两国的承诺劳动合计 = 每国 250,000（拆分行人口不改变总量）")
+        .isEqualTo(500_000L);
   }
 
-  /** 正例：与 §3 的 record 字段**逐值**对应（元信息 / 产业 / 阶层行）。 */
+  /** 正例：与 §3 的 record 字段**逐值**对应（元信息 / 产业模板 / 生产单元 / 阶层行）。 */
   @Test
   void seedsEveryFieldValueForValue() {
     EconomyData after = apply(PAYLOAD, EconomyData.empty(), T7);
 
     EconomyMeta meta = after.meta().orElseThrow();
     assertThat(meta.mapId()).isEqualTo("Map1");
-    assertThat(meta.rulesVersion()).isEqualTo("aggregate-v1");
     assertThat(meta.activatedDay()).as("激活日 = 世界当前 tick").isEqualTo(7L);
     assertThat(meta.lastClosedCycle()).isEqualTo(OptionalLong.empty());
-    assertThat(meta.migrationSource()).isEqualTo(Optional.empty());
+    // ★★ S1 自动迁移（必须点名，否则期望值无从解释）：载荷的 classes 非空而缺 memberships 键 ⇒
+    //   EconomyData 构造期跑 LegacyHouseholdMigration，并把 meta 升到 pre-modern-v1 / 打上迁移来源。
+    //   出处：EconomyData 构造期注释（约 326-361 行）与 LegacyHouseholdMigration.migrateMeta。
+    //   ★ 旧断言是 rulesVersion="aggregate-v1" 且 migrationSource=empty —— 那条不变量已被自动迁移取代。
+    assertThat(meta.rulesVersion()).as("S1 自动迁移的落款").isEqualTo("pre-modern-v1");
+    assertThat(meta.migrationSource()).contains("legacy-pre-modern-v1");
 
     Industry industry = after.industries().get(FARM);
     assertThat(after.industries()).hasSize(1);
     assertThat(industry.name()).isEqualTo("农业");
     assertThat(industry.regime().value()).isEqualTo("feudal");
-    // ★★ I3.3：既有 PAYLOAD **没有** operator 键 ⇒ 走 regime 推导（载荷边缘的缺省；Industry 自己不做推导）。
-    assertThat(industry.operator())
-        .as("缺 operator 的旧载荷按 regime 补默认值（载荷边缘）")
-        .isEqualTo(new ActorRef(ActorKind.ESTATE, "farm@0_0"));
+    // ★★ R3B.2：Industry 现在是**纯技术模板**，operator 搬到 ProductionUnit。旧载荷缺 operator 键 ⇒
+    //   载荷边缘按 regime 推到 unit.operator（唯一拼写点仍是 RegimeOperators.defaultOperator）。
+    //   出处：Industry 类注的"三件事各归各位"与 ProductionUnit 类注。
+    ProductionUnit unit = after.units().get(FARM_UNIT);
+    assertThat(unit).as("旧载荷的 operator/capacity 兼容位合成一个默认 unit").isNotNull();
+    assertThat(unit.industry()).isEqualTo(FARM);
+    assertThat(unit.operator())
+        .as("缺 operator 的旧载荷按 regime 补默认值（落点是 unit，不再是 Industry）")
+        .isEqualTo(ESTATE_FARM);
+    assertThat(industry.operator()).as("Industry 端的旧兼容位保持中性").isNull();
     assertThat(industry.cycleDays()).isEqualTo(120L);
     assertThat(industry.progressDays()).isZero();
     assertThat(industry.outputPerUnit()).containsEntry(new CommodityId("grain"), 7L);
@@ -326,17 +445,31 @@ class EconomySeedHandlerTest {
         .extracting(slot -> slot.id().value())
         .containsExactly("poor_peasant", "landlord");
 
-    CohortKey peasant = new CohortKey(HEX, ResidenceKind.RURAL, new SocialClassId("poor_peasant"));
-    ClassRow row = after.classes().get(peasant);
+    ClassRow row = after.classes().get(PEASANT_HOUSEHOLD);
     assertThat(after.classes()).hasSize(2);
+    assertThat(row).as("S1：classes 的键 = 稳定家户身份（不再是视图 CohortKey）").isNotNull();
+    assertThat(row.id()).isEqualTo(PEASANT_HOUSEHOLD);
+    assertThat(row.view())
+        .as("视图仍是载荷声明的（格 + 居住类型 + 阶层），只是不再兼任身份")
+        .isEqualTo(new CohortKey(HEX, ResidenceKind.RURAL, SocialClassId.POOR_PEASANT));
     assertThat(row.population()).isEqualTo(450L);
     assertThat(row.laborMilli()).isEqualTo(261_000L);
     assertThat(row.participationPerMille()).isEqualTo(950);
-    // ★★ 2026-09-27（H0/K3）：改前这里断言"行的 meansOfProduction 有 900,000 千分亩"。
-    //   那个字段已删（产能搬到产业）⇒ 断言**指向搬到的那一处**（载荷的 capacity 键 → Industry.capacity）：
-    //   量到的仍是同一件事（载荷声明的本格产能总量进了状态），只是落点换了。
-    //   量到的仍是同一件事（两行的 900,000 + 100,000 = 1,000,000 千分亩进来了），只是落点换了。
-    assertThat(after.industries().get(FARM).capacity()).containsEntry(AssetKind.LAND, 1_000_000L);
+    // ★★ 2026-09-27（H0/K3）→ R3B.1/B.2：改前断言"行的 meansOfProduction 有 900,000 千分亩"，后来搬到
+    //   Industry.capacity；B.2 起 Industry.capacity 也只是旧档兼容位（生产模型不再读它）⇒ **实物产能的唯一真源是
+    //   AssetShare 的 quantity**。出处：EconomyData 构造期注释（约 582-604 行"AssetShare 是独立的实物资产总账"）
+    //   与 ProductionUnit 类注"AssetShare —— 实物总账：唯一的 quantity 真相"。
+    //   量到的仍是同一件事（两行的 900,000 + 100,000 = 1,000,000 千分亩进来了），只是落点又换了一次。
+    assertThat(industry.capacity()).as("Industry 端的兼容位已被构造期归一化清成中性").isEmpty();
+    AssetShare land =
+        after.assetShares().values().stream()
+            .filter(share -> share.industry().equals(FARM) && share.asset() == AssetKind.LAND)
+            .findFirst()
+            .orElseThrow();
+    assertThat(land.quantity()).as("900,000 + 100,000 千分亩").isEqualTo(1_000_000L);
+    assertThat(land.owner()).as("旧载荷的默认 operator 也是这份实物份额的 owner").isEqualTo(ESTATE_FARM);
+    assertThat(land.operator()).isEqualTo(ESTATE_FARM);
+    assertThat(land.kind()).isEqualTo(AssetShare.RightKind.OWNED);
     // ★★ 2026-09-27（H1/K1）：改前这里断言"行里有 2,241,000 毫粮"（载荷的 goods 键 → ClassRow.goods）。
     //   那个字段已按裁定 D3-C/K1 **整个删除**（家户的商品库存住在 actor 切片的 GoodsAccount 上），
     //   而载荷里也不再接受 goods 键（给了即抛）⇒ 这条断言的**主语不存在了**：整条删除（不是放宽），如实记在 H1 的变更说明里。
@@ -349,8 +482,10 @@ class EconomySeedHandlerTest {
     assertThat(after.debts()).as("债务表本轮恒空").isEmpty();
     assertThat(after.flows()).as("周期流水留待 R3a").isEmpty();
     // 缺省字段（地主行没给 debts/naturalNeeds/effectiveDemand/money）⇒ 空表 / 0，不是 null。
-    ClassRow landlord =
-        after.classes().get(new CohortKey(HEX, ResidenceKind.RURAL, new SocialClassId("landlord")));
+    ClassRow landlord = after.classes().get(LANDLORD_HOUSEHOLD);
+    assertThat(landlord).isNotNull();
+    assertThat(landlord.id()).isEqualTo(LANDLORD_HOUSEHOLD);
+    assertThat(landlord.view().stratum()).isEqualTo(SocialClassId.LANDLORD);
     assertThat(landlord.money()).isZero();
     assertThat(landlord.debts()).isEmpty();
     assertThat(landlord.naturalNeeds()).isEmpty();
@@ -371,12 +506,18 @@ class EconomySeedHandlerTest {
             "\"regime\":\"feudal\",\"operator\":{\"kind\":\"HOUSEHOLD\",\"id\":\"house-7\"},");
     assertThat(payload).as("替换必须真的发生（否则本用例测的是缺键那条路）").isNotEqualTo(PAYLOAD);
 
-    Industry industry = apply(payload, EconomyData.empty(), T7).industries().get(FARM);
+    EconomyData after = apply(payload, EconomyData.empty(), T7);
+    ActorRef explicit = new ActorRef(ActorKind.HOUSEHOLD, "house-7");
+    // ★ R3B.2：显式 operator 决定 unit 的身份（id 的唯一拼写点 idOf(FARM, explicit)）与值内 operator。
+    ProductionUnitId unitId = ProductionUnitId.idOf(FARM, explicit);
+    ProductionUnit unit = after.units().get(unitId);
 
-    assertThat(industry.operator())
-        .as("显式写下的主体逐值落盘")
-        .isEqualTo(new ActorRef(ActorKind.HOUSEHOLD, "house-7"));
-    assertThat(industry.operator())
+    assertThat(unit).as("显式 operator ⇒ 按 (产业, 经营者) 合成的 unit").isNotNull();
+    assertThat(unit.operator()).as("显式写下的主体逐值落到 unit.operator").isEqualTo(explicit);
+    assertThat(after.relations().get(unitId).operator())
+        .as("跨表：关系的 operator 与 unit.operator 逐值一致")
+        .isEqualTo(explicit);
+    assertThat(unit.operator())
         .as("★ 判别力：它**不等于** regime 推导值（feudal ⇒ ESTATE:farm@0_0）")
         .isNotEqualTo(RegimeOperators.defaultOperator(new RegimeId("feudal"), FARM));
   }
@@ -412,22 +553,30 @@ class EconomySeedHandlerTest {
   }
 
   /**
-   * ★ 悬空阶层：阶层行引用了该产业 {@code slots} 里没有的**阶层** ⇒ 拒（{@code EconomyData} 的构造期守卫）。
+   * ★★ **R4-B.4：{@code view} 不再受 {@code Industry.slots} 约束**（旧守卫已被生产代码删除）—— 本用例从 "悬空槽位 ⇒
+   * 拒"**改判**为"照常落盘、并以稳定家户身份可寻址"。
    *
-   * <p>★★ **夹具换过词（S1 阶段 1）**：原先是 {@code "slot":"ghost"}。换了全局词表之后 {@code ghost} **根本构造不出来** ——
-   * `SocialClassId` 在解析期就抛"词表外的社会阶层"，命令**还没走到**引用完整性那一步， 于是本用例会变成在测词表校验（拒因里没有"槽位"），**名不副实**。 ⇒ 改用
-   * {@code middle_peasant}：它在**全局词表内**、但**不在本产业声明的 slots**（只有 poor_peasant / landlord）里 ——
-   * 这才是"悬空引用"本身。★ 断言一字未改（仍要求拒因含"槽位"），改的是**夹具**。
+   * <p>出处（逐字）：{@code EconomyData} 构造期注释"R4-B.4（R3 决策单 §0.1/§1.5，R3B.4）：**view 不再受 Industry.slots
+   * 约束**。旧守卫（view 必须命中该格产业的 slots 且 participationPerMille ≤ 该 slot 的
+   * laborParticipationPerMille）已删除；Industry.slots / ClassSlot 只作为生产方式内部的角色/劳动配置。 ClassRow 自己的
+   * [0,1000] 参与率守卫仍在"。
+   *
+   * <p>★ 判别力：{@code middle_peasant} 在全局词表内、但**不在**本产业声明的 slots（只有 poor_peasant / landlord）里 ——
+   * 若那条旧守卫被加回来，本用例会抛 ⇒ 红。
    */
   @Test
-  void rejectsClassRowForASlotTheIndustryDoesNotAllow() {
+  void classRowOutsideTheIndustrySlotsIsAcceptedUnderTheCurrentContract() {
     String payload = PAYLOAD.replace("\"slot\":\"landlord\"", "\"slot\":\"middle_peasant\"");
-    assertThat(payload).as("替换必须真的发生（否则本用例测的是正例那条路）").isNotEqualTo(PAYLOAD);
+    assertThat(payload).as("替换必须真的发生（否则本用例测的是 landlord 那条正例）").isNotEqualTo(PAYLOAD);
 
-    HandlerOutcome outcome = HANDLER.handle(state(EconomyData.empty(), T7), payload);
+    EconomyData after = apply(payload, EconomyData.empty(), T7);
 
-    assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
-    assertThat(((HandlerOutcome.Rejected) outcome).reason()).contains("槽位");
+    HouseholdId middlePeasantHousehold =
+        HouseholdId.ofSeed(HEX, ResidenceKind.RURAL, SocialClassId.MIDDLE_PEASANT);
+    assertThat(after.classes()).containsKey(middlePeasantHousehold);
+    assertThat(after.classes().get(middlePeasantHousehold).view())
+        .as("阶层照进视图；slots 不再是白名单")
+        .isEqualTo(new CohortKey(HEX, ResidenceKind.RURAL, SocialClassId.MIDDLE_PEASANT));
   }
 
   /**
@@ -490,20 +639,25 @@ class EconomySeedHandlerTest {
     assertThat(HANDLER.targetPaths("Map1", twoEntries)).containsExactly("1_2", "-3_4");
   }
 
-  // ── 一次性投入槽与种子累加器（v2 spec §3.3）────────────────────────────────────────
+  // ── 一次性投入槽与投入累加器（v2 spec §3.3；R3B.2 起累加器住 unit）────────────────────
 
-  /** ★★ 缺键 ⇒ 空 map / 0（旧载荷兼容：命令路径不许因为多了一个字段就把老生成器挡在门外）。 */
+  /** ★★ 缺键 ⇒ 空 map（旧载荷兼容：命令路径不许因为多了一个字段就把老生成器挡在门外）。 */
   @Test
-  void legacyPayloadWithoutCycleInputStillSeedsEmptyAndZero() {
+  void legacyPayloadWithoutCycleInputStillSeedsEmptyAccumulator() {
     EconomyData after = apply(PAYLOAD, EconomyData.empty(), T7);
 
     Industry industry = after.industries().get(FARM);
     assertThat(industry.cycleInputPerUnit()).as("旧载荷没提一次性投入 ⇒ 空 map（不是 null、不拒）").isEmpty();
-    assertThat(industry.cycleSeedUsedMilli()).as("旧载荷没提种子累加器 ⇒ 0").isZero();
+    // ★ R3B.2：本周期实际扣到的投入（按商品）住在 unit；旧载荷没提 ⇒ 空表。
+    //   出处：ProductionUnit 类注"cycleInputUsedMilli = 本周期实际扣到的投入（毫单位，按商品）"。
+    //   ★ 旧读口 Industry.cycleSeedUsedMilli()（粮上的标量投影）已被生产代码删除，本断言随之换主语。
+    assertThat(after.units().get(FARM_UNIT).cycleInputUsedMilli()).as("旧载荷没提投入累加器 ⇒ 空表").isEmpty();
+    assertThat(industry.cycleInputUsedMilli()).as("Industry 端的旧兼容位已被构造期归一化清成中性").isEmpty();
   }
 
   /**
-   * ★★ **R3 换型后的两个字段逐值过载荷**：投入表的值侧带**商品维度**（`{"LAND":{"grain":1200,"wood":3}}`）， 累加器是**按商品**的表。
+   * ★★ **R3 换型后的两个字段逐值过载荷**：投入表的值侧带**商品维度**（`{"LAND":{"grain":1200,"wood":3}}`）， 累加器是**按商品**的表 ——
+   * R3B.2 起累加器落在 unit 上。
    *
    * <p>判别力：把值侧退回标量（`{"LAND":1200}`）⇒ 载荷解析当场拒（"必须是商品表"）⇒ 本用例红。
    */
@@ -521,7 +675,8 @@ class EconomySeedHandlerTest {
                     + "\"cycleInputUsedMilli\":{\"grain\":5000,\"fiber\":7}");
     assertThat(payload).as("替换必须真的发生（否则本用例测的是缺键那条路）").isNotEqualTo(PAYLOAD);
 
-    Industry industry = apply(payload, EconomyData.empty(), T7).industries().get(FARM);
+    EconomyData after = apply(payload, EconomyData.empty(), T7);
+    Industry industry = after.industries().get(FARM);
 
     assertThat(industry.cycleInputPerUnit())
         .as("每种生产资料一路，值为**商品表**（R3 换型的那一维）")
@@ -532,10 +687,13 @@ class EconomySeedHandlerTest {
     assertThat(industry.inputPerUnit())
         .as("★ 每 1 单位规模的投入 = 各路的合计（派生视图）")
         .containsExactlyInAnyOrderEntriesOf(Map.of(GRAIN, 1201L, WOOD_COMMODITY, 3L));
-    assertThat(industry.cycleInputUsedMilli())
+    // ★ R3B.2：累加器住 unit（按商品），Industry 端只留中性的旧兼容位。
+    //   旧断言 "industry.cycleSeedUsedMilli() == 5000（种子只是粮上的投影）" 随该读口一并删除（生产代码只保留
+    //   unit.cycleInputUsedMilli 这一份逐商品真相）。
+    assertThat(after.units().get(FARM_UNIT).cycleInputUsedMilli())
         .as("★ 本周期实际扣到的投入（按商品）")
         .containsExactlyInAnyOrderEntriesOf(Map.of(GRAIN, 5_000L, FIBER_COMMODITY, 7L));
-    assertThat(industry.cycleSeedUsedMilli()).as("种子只是它在粮上的投影").isEqualTo(5_000L);
+    assertThat(industry.cycleInputUsedMilli()).as("Industry 端的旧兼容位保持中性").isEmpty();
   }
 
   /** ★ 逐值校验：负的一次性投入 ⇒ 拒（`Industry` 的构造期守卫，经 handler 的 catch 折成 Rejected）。 */
@@ -573,20 +731,24 @@ class EconomySeedHandlerTest {
 
     EconomyData after = apply(payload, EconomyData.empty(), T7);
 
-    assertThat(after.relations()).as("每个产业一条关系（缺键 ⇒ 推导）").hasSize(1);
-    assertThat(after.relations().get(FARM))
-        .as("★ 租佃档逐值：一条固定实物租（20,000 粮/周期）给 (0_0, landlord) cohort")
+    // tenant 档的默认经营者 = HOUSEHOLD:farm@0_0（RegimeOperators）；R3B.2 起关系挂在 (产业, 经营者) 合成的 unit 上。
+    ActorRef tenant = new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0");
+    ProductionUnitId unitId = ProductionUnitId.idOf(FARM, tenant);
+
+    assertThat(after.relations()).as("每个 unit 一条关系（缺键 ⇒ 推导）").hasSize(1);
+    assertThat(after.relations().get(unitId))
+        .as("★ 租佃档逐值：一条固定实物租（20,000,000 粮/周期）给 landlord 家户")
         .isEqualTo(
             new ProductionRelation(
-                FARM,
-                new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0"),
+                unitId,
+                tenant,
                 null,
                 List.of(
                     new CompensationRule(
                         RuleType.FIXED_IN_KIND_RENT,
-                        new Recipient.ToCohort(
-                            new CohortKey(
-                                new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.LANDLORD)),
+                        // ★ S1：默认规则的 cohort 视图在 {@code EconomyData} 构造期被一对一归一到
+                        //   Recipient.ToHousehold（本夹具该视图恰有一行 ⇒ 唯一），见 normalizeRecipients。
+                        new Recipient.ToHousehold(LANDLORD_HOUSEHOLD),
                         Pool.FIXED_AMOUNT,
                         Weight.NONE,
                         0,
@@ -594,23 +756,27 @@ class EconomySeedHandlerTest {
                         Optional.of(GRAIN),
                         Optional.empty(),
                         10)),
-                new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0")));
-    // ★ 跨表一致性：关系里的 operator 与产业的 operator 是**同一个值**（两处拼写必须一致，构造期守卫判死）
-    assertThat(after.relations().get(FARM).operator())
-        .isEqualTo(after.industries().get(FARM).operator());
+                tenant,
+                LaborSource.TENANT));
+    // ★ 跨表一致性：关系里的 operator 与 unit.operator 是**同一个值**（两处拼写必须一致，构造期守卫判死）
+    assertThat(after.relations().get(unitId).operator())
+        .isEqualTo(after.units().get(unitId).operator());
   }
 
   /**
-   * ★★ **给了 {@code relation} 但 {@code operator} 与产业的不一致 ⇒ 命令边界拒**（计划 R3 的第 2 条： "谁经营"不许有两处拼写）。
+   * ★★ **给了 {@code relation} 但 {@code operator} 与 unit 的不一致 ⇒ 命令边界拒**（计划 R3 的第 2 条： "谁经营"不许有两处拼写）。
    *
    * <p>★★ <b>为什么拒因里必须点名 {@code relation.operator}</b>（"拒了"这一条断言是不够的）：同一条事实有**两层** 守卫 —— 载荷边缘（{@code
    * EconomyPayloads}）与状态构造期（{@code EconomyData}）。删掉其中任一层，这个载荷 <b>照样</b>被拒（另一层接住）⇒
    * "抛了"这句话<b>分不出</b>是哪一层在守。故本用例钉<b>载荷边缘那一层</b>的消息 （它开头是 {@code relation.operator}，而状态层那句开头是 {@code
    * 关系的 operator}）。 ★★ 这不是推演：**变异体实测**（M4）发现——把载荷那层删掉后本用例曾<b>照样绿</b>（RED 缺席），补上这条判别子串后才当场红。 ★
    * 两层都在是<b>有意</b>的：载荷层给"写错就当场拒"的可读理由，状态层兜住一切别的写入口（命令、旧档、夹具）。
+   *
+   * <p>★ R3B.2 起一致性比较的另一端是 {@code ProductionUnit.operator}（不再是 {@code Industry.operator}，
+   * 后者已退成纯模板的旧兼容位）。
    */
   @Test
-  void rejectsARelationWhoseOperatorDisagreesWithTheIndustry() {
+  void rejectsARelationWhoseOperatorDisagreesWithTheUnit() {
     String payload =
         PAYLOAD.replace(
             "\"regime\":\"feudal\",",
@@ -647,14 +813,15 @@ class EconomySeedHandlerTest {
                 + "\"commodity\":\"grain\",\"priority\":3}]},");
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
 
-    ProductionRelation relation = apply(payload, EconomyData.empty(), T7).relations().get(FARM);
+    ProductionRelation relation =
+        apply(payload, EconomyData.empty(), T7).relations().get(FARM_UNIT);
 
     assertThat(relation)
         .as("★ 逐值落盘（含显式 operator / residualOwner / 一条 550‰ 的规则）")
         .isEqualTo(
             new ProductionRelation(
-                FARM,
-                new ActorRef(ActorKind.ESTATE, "farm@0_0"),
+                FARM_UNIT,
+                ESTATE_FARM,
                 null,
                 List.of(
                     new CompensationRule(
@@ -663,7 +830,7 @@ class EconomySeedHandlerTest {
                             new CohortKey(
                                 new HexCoord(0, 0),
                                 ResidenceKind.RURAL,
-                                new SocialClassId("middle_peasant"))),
+                                SocialClassId.MIDDLE_PEASANT)),
                         Pool.GROSS_OUTPUT,
                         Weight.NONE,
                         550,
@@ -671,33 +838,31 @@ class EconomySeedHandlerTest {
                         Optional.of(GRAIN),
                         Optional.empty(),
                         3)),
-                new ActorRef(ActorKind.ESTATE, "farm@0_0")));
+                ESTATE_FARM));
     assertThat(relation)
         .as("★ 前置：夹具确实**不是** feudal 档的推导值（否则本用例测不出「读没读这个键」）")
         .isNotEqualTo(
             RegimeRelations.defaultRelation(
-                new RegimeId("feudal"),
-                FARM,
-                new ActorRef(ActorKind.ESTATE, "farm@0_0"),
-                java.util.Set.of(ResidenceKind.RURAL)));
+                new RegimeId("feudal"), FARM_UNIT, FARM, ESTATE_FARM, Set.of()));
   }
 
   /**
-   * ★ 关系对象里的两个可选键：**缺 {@code operator} ⇒ 取产业的那个**（于是两处必然一致）、 **缺 {@code residualOwner} ⇒ 取
-   * operator**（自留是缺省）；{@code rules} 缺省 ⇒ 空表（全归 residualOwner，E9）。
+   * ★ 关系对象里的两个可选键：**缺 {@code operator} ⇒ 取 unit 的 operator**（于是两处必然一致）、 **缺 {@code residualOwner} ⇒
+   * 取 operator**（自留是缺省）；{@code rules} 缺省 ⇒ 空表（全归 residualOwner，E9）。
    */
   @Test
-  void relationOperatorAndResidualOwnerDefaultToTheIndustrysOperator() {
+  void relationOperatorAndResidualOwnerDefaultToTheUnitsOperator() {
     String payload =
         PAYLOAD.replace(
             "\"regime\":\"feudal\",", "\"regime\":\"feudal\",\"relation\":{\"rules\":[]},");
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
 
-    ProductionRelation relation = apply(payload, EconomyData.empty(), T7).relations().get(FARM);
+    ProductionRelation relation =
+        apply(payload, EconomyData.empty(), T7).relations().get(FARM_UNIT);
 
     assertThat(relation.operator())
-        .as("缺 operator ⇒ 产业的（feudal 的推导值）")
-        .isEqualTo(new ActorRef(ActorKind.ESTATE, "farm@0_0"));
+        .as("缺 operator ⇒ unit 的 operator（feudal 的推导值）")
+        .isEqualTo(ESTATE_FARM);
     assertThat(relation.residualOwner())
         .as("缺 residualOwner ⇒ operator（自留是缺省）")
         .isEqualTo(relation.operator());

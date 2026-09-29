@@ -10,12 +10,16 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
+import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
@@ -28,12 +32,15 @@ import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AllocationRule;
+import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.Debt;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.Membership;
+import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
@@ -53,15 +60,17 @@ import org.junit.jupiter.api.Test;
  * economy 模块的 JSON 往返守卫（照 {@code LedgerCodecTest} 同制，夹具是 economy 自己的）。
  *
  * <p>★ 覆盖：{@code Optional<EconomyMeta>} 两侧向（未激活 / 已激活）、{@code OptionalLong}（{@code lastClosedCycle}
- * 两侧向）、{@code Optional<String>}/{@code Optional<CommodityId>}、**六个**自定义键（{@code IndustryId}/{@code
- * CohortKey}/{@code DebtId}/{@code CommodityId} + R2 的 {@code PeopleLotId}/{@code
- * LaborAllocationId}）、{@code AssetKind} 的**枚举键**、{@code AllocationRule} 的 **sealed 多态**（{@code
- * Split}/{@code WageFirst} 各一）、{@code FieldDelta} 四变体、 单值组件的投影往返、**字节级**往返（含"派生判断 {@code empty}
- * 不进线格式"的观察点），以及旧档缺键的兼容。
+ * 两侧向）、{@code Optional<String>}/{@code Optional<CommodityId>}、自定义键（{@code IndustryId} / {@code
+ * HouseholdId}（S1 起 classes/flows 的键；旧档 {@code CohortKey} 串由 codec 映射成 {@code ofLegacy}）/ {@code
+ * DebtId} / {@code CommodityId} + R2 的 {@code PeopleLotId} / {@code LaborAllocationId} + S1 的
+ * {@code MembershipId} / {@code AssetShareId} + R3B.2 的 {@code ProductionUnitId}）、{@code AssetKind}
+ * 的**枚举键**、 {@code AllocationRule} 的 **sealed 多态**（{@code Split}/{@code WageFirst} 各一）、{@code
+ * FieldDelta} 四变体、 单值组件的投影往返、**字节级**往返（含"派生判断 {@code empty} 不进线格式"的观察点），以及旧档缺键的兼容。
  *
  * <p>★ T2 补第 8 个组件（{@code relations}）：它的值里嵌着**第二个 sealed 多态**（{@code Recipient}）与 {@code
  * CompensationRule} 的 {@code Optional<CommodityId>} —— 见 {@code
- * relationCarriesTheSealedRecipientAndTheMoneyRuleOverTheWire}。
+ * relationCarriesTheSealedRecipientAndTheMoneyRuleOverTheWire}。★ R3B.2 起它的键 / {@code activity} 都是
+ * {@link ProductionUnitId}（关系挂在 unit 上，不再是 {@code IndustryId}），故夹具必须先有同 operator 的 unit。
  */
 class EconomyCodecTest {
 
@@ -74,6 +83,15 @@ class EconomyCodecTest {
       new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, PEASANT);
   private static final CohortKey LANDLORD_KEY =
       new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, LANDLORD);
+
+  /**
+   * ★ S1 起 {@code classes}/{@code flows} 的键 = **稳定家户身份** {@link HouseholdId}（视图住在 {@code
+   * ClassRow.view}）；旧档的 {@link CohortKey} 由 {@code EconomyCodec} 读入时映射成 {@code ofLegacy}。本测试的夹具
+   * 直接按旧视图造 id，等价于"旧档读入后的新形状"。
+   */
+  private static final HouseholdId FARM_HH = HouseholdId.ofLegacy(PEASANT_KEY);
+
+  private static final HouseholdId LANDLORD_HH = HouseholdId.ofLegacy(LANDLORD_KEY);
   private static final DebtId D1 = new DebtId("debt-1");
   private static final DebtId D2 = new DebtId("debt-2");
   private static final CommodityId GRAIN = new CommodityId("grain");
@@ -92,6 +110,29 @@ class EconomyCodecTest {
   private static final LaborAllocationId ALLOCATION =
       new LaborAllocationId("alloc-farm-rural:0_0:MALE:1");
 
+  /**
+   * ★★ **非派生**经营主体（S1 阶段 3 的 D9 纪律）：{@code tenant} 的推导值是 {@code HOUSEHOLD:farm}，这里显式给 {@code
+   * ESTATE:farm}（kind 与推导值不同）⇒ "operator 真的过了线"这条断言不可能被任何推导满足。
+   *
+   * <p>★ 为什么 id 取 {@code farm} 而不是 {@code farm@0_0}：{@code EconomyData} 的守卫要求产业型
+   * actor（ESTATE/WORKSHOP） 的 id **必须命中一个已存在的产业 id**（劳动结算按 actor id 归属）；本夹具的产业 id 是 {@code
+   * farm}，故这里是唯一自洽的字面量。
+   */
+  private static final ActorRef FARM_OPERATOR = new ActorRef(ActorKind.ESTATE, FARM.value());
+
+  /** ★ R3B.2：劳动与关系都挂在生产单元上；unit id 的唯一拼写点 = {@link ProductionUnitId#idOf}。 */
+  private static final ProductionUnitId FARM_UNIT = ProductionUnitId.idOf(FARM, FARM_OPERATOR);
+
+  /** ★ S1：成员份额（键 == 值内 id；Σcount 必须等于 Σ行人口）。 */
+  private static final MembershipId PEASANT_MEMBERSHIP = Membership.idOf(LOT, FARM_HH);
+
+  private static final MembershipId LANDLORD_MEMBERSHIP = Membership.idOf(LOT, LANDLORD_HH);
+
+  /** ★ R3B.1：实物资产份额（键 == 值内 id；industry 必须存在）。 */
+  private static final AssetShareId FARM_LAND_SHARE =
+      AssetShare.idOf(
+          FARM, AssetKind.LAND, FARM_OPERATOR, FARM_OPERATOR, AssetShare.RightKind.OWNED, 0L);
+
   private static final EconomyCodec CODEC = new EconomyCodec();
 
   @Test
@@ -99,7 +140,7 @@ class EconomyCodecTest {
     assertThat(CODEC.namespace()).isEqualTo("economy");
   }
 
-  /** 非平凡快照往返：带历注 + 四张表都非空 + 两层自定义键 + 各 Optional 的有值侧 + 两种 AllocationRule。 */
+  /** 非平凡快照往返：带历注 + 多张表都非空 + 两层自定义键 + 各 Optional 的有值侧 + 两种 AllocationRule。 */
   @Test
   void snapshotRoundTripsWithLabeledTimestamp() {
     EconomySnapshot snapshot = snapshotOf(fullData(), SimosTimestamp.of(10, "弘光元年"));
@@ -119,7 +160,7 @@ class EconomyCodecTest {
     assertThat(back).isEqualTo(snapshot);
   }
 
-  /** ★ **未激活**：{@code meta} 为空 {@code Optional}，且四张实体表为空——"空切片 ≠ 已激活"（§6.6）。 */
+  /** ★ **未激活**：{@code meta} 为空 {@code Optional}，且实体表为空——"空切片 ≠ 已激活"（§6.6）。 */
   @Test
   void snapshotRoundTripsWithUnactivatedEconomyMeta() {
     EconomySnapshot snapshot = snapshotOf(EconomyData.empty(), SimosTimestamp.of(12, "弘光元年"));
@@ -134,7 +175,8 @@ class EconomyCodecTest {
   @Test
   void changeSetRoundTripsWithAllFourDeltaVariants() {
     EconomyData full = fullData();
-    EconomyData base = dataWithIndustries(industriesFrom(industry(FARM, 0L), industry(MILL, 0L)));
+    // ★ 第二个实参是模板里的 laborPerUnit（旧 API 用进度位制造差异；R3B.2 起进度已移出 Industry）。
+    EconomyData base = dataWithIndustries(industriesFrom(industry(FARM, 143L), industry(MILL, 0L)));
     EconomyData moved =
         dataWithIndustries(industriesFrom(industry(FARM, 5L), industry(WORKSHOP, 0L)));
 
@@ -172,7 +214,7 @@ class EconomyCodecTest {
                     EconomyChangeSet.between(
                         EconomyData.empty(),
                         dataWithIndustries(
-                            industriesFrom(industry(FARM, 0L), workshopIndustry())))));
+                            industriesFrom(industry(FARM, 143L), workshopIndustry())))));
 
     FieldDelta.Upsert<Industry> upsert = (FieldDelta.Upsert<Industry>) back.industries();
     Industry farm = upsert.entries().get("farm");
@@ -190,21 +232,53 @@ class EconomyCodecTest {
         .as("★ 新字段必须真的过线：空 map 与「字段没进线格式」在值层面不可区分")
         .containsOnlyKeys(AssetKind.LAND);
     assertThat(farm.cycleInputPerUnit().get(AssetKind.LAND)).containsEntry(GRAIN, 1200L);
-    assertThat(farm.cycleInputUsedMilli())
-        .as("★ R3：本周期实际扣到的投入（按商品）必须过线")
-        .containsEntry(GRAIN, 400L);
-    // ★★ 夹具是**非默认**值（`tenant` 的推导值是 HOUSEHOLD:farm，见 {@link #industry} 的第 16 个实参）
-    //   ⇒ 这一句只有"值真的过了线"才能满足：把 operator 从线格式里丢掉、或解码时按 regime 重新推导，
-    //   读到的都会是 `HOUSEHOLD:farm` ⇒ 当场红。
-    assertThat(farm.operator())
-        .as("★ S1 阶段 3：经营主体必须真的过线（缺它 ⇒ 往返后 operator 没了）")
-        .isEqualTo(new ActorRef(ActorKind.ESTATE, "farm@0_0"));
-    // ★★ 夹具是**非默认**值（`tenant` 的推导值是 HOUSEHOLD:farm，见 {@link #industry} 的第 16 个实参）
-    //   ⇒ 这一句只有"值真的过了线"才能满足：把 operator 从线格式里丢掉、或解码时按 regime 重新推导，
-    //   读到的都会是 `HOUSEHOLD:farm` ⇒ 当场红。
     assertThat(workshop.allocation()).isInstanceOf(AllocationRule.WageFirst.class);
     AllocationRule.WageFirst wageFirst = (AllocationRule.WageFirst) workshop.allocation();
     assertThat(wageFirst.ownerResidual()).containsOnlyKeys(GRAIN, CLOTH);
+  }
+
+  /**
+   * ★★ <b>R3B.2：operator / 周期状态的真值搬进了 {@link ProductionUnit}</b> —— 旧用例在 {@code Industry} 上断言
+   * {@code operator()} / {@code cycleInputUsedMilli()}（那两个字段现在只是旧档兼容位，新代码一律走 12 参模板、恒中性），
+   * 故这里把**同一条判别力** 迁到 unit 上：
+   *
+   * <ul>
+   *   <li>{@code operator} 取**非派生值**（{@code ESTATE:farm}；{@code tenant} 的推导值是 {@code
+   *       HOUSEHOLD:farm}） ⇒ 把 operator 从线格式里丢掉、或解码时按 regime 重新推导，读到的都会是推导值 ⇒ 当场红；
+   *   <li>{@code progressDays} / {@code cycleLaborMilli} / {@code cycleInputUsedMilli} 取**非零 /
+   *       非空**值 ⇒ "字段没进线格式"在值层面不可区分，只有真过线才能满足。
+   * </ul>
+   */
+  @Test
+  void unitOperatorAndCycleStateSurviveAsProductionUnit() {
+    ProductionUnit unit =
+        new ProductionUnit(
+            FARM_UNIT, FARM, FARM_OPERATOR, FARM.value(), 7L, 1234L, Map.of(GRAIN, 400L));
+    EconomyData target =
+        EconomyData.empty()
+            .withIndustries(Map.of(FARM, industry(FARM, 143L)))
+            .withUnits(Map.of(FARM_UNIT, unit));
+
+    EconomyChangeSet back =
+        (EconomyChangeSet)
+            CODEC.decodeChangeSet(
+                CODEC.encodeChangeSet(EconomyChangeSet.between(EconomyData.empty(), target)));
+
+    assertThat(back.units()).isInstanceOf(FieldDelta.Upsert.class);
+    FieldDelta.Upsert<ProductionUnit> upsert = (FieldDelta.Upsert<ProductionUnit>) back.units();
+    ProductionUnit read = upsert.entries().get(FARM_UNIT.value());
+
+    assertThat(read).isNotNull();
+    assertThat(read.operator())
+        .as("★ S1/R3B.2：经营主体必须真的过线（缺它 ⇒ 往返后 operator 没了）")
+        .isEqualTo(FARM_OPERATOR);
+    assertThat(read.modeKey()).as("生产方式键必须过线").isEqualTo(FARM.value());
+    assertThat(read.progressDays()).as("本周期进度必须过线").isEqualTo(7L);
+    assertThat(read.cycleLaborMilli()).as("本周期累计劳动必须过线").isEqualTo(1234L);
+    assertThat(read.cycleInputUsedMilli())
+        .as("★ R3：本周期实际扣到的投入（按商品）必须过线")
+        .containsEntry(GRAIN, 400L);
+    assertThat(EconomyChangeSet.apply(back, EconomyData.empty())).isEqualTo(target);
   }
 
   /**
@@ -219,14 +293,17 @@ class EconomyCodecTest {
    *
    * <p>★ 判别力（两条）：把 {@code Recipient} 的注解去掉 ⇒ 解码当场抛（{@code no Creators / abstract types}）⇒ 红； 把
    * {@code compensations} 的 {@code Optional} 换成裸引用 ⇒ 空侧那条红（读回是 null 或抛）。
+   *
+   * <p>★ R3B.2：关系挂在 unit 上 ⇒ 夹具必须先建同 operator 的 unit（键 = unit id，值内 activity 逐字相等）。
    */
   @Test
   void relationCarriesTheSealedRecipientAndTheMoneyRuleOverTheWire() {
-    ActorRef operator = new ActorRef(ActorKind.ESTATE, FARM.value() + "@0_0");
+    ActorRef operator = FARM_OPERATOR;
     EconomyData target =
         EconomyData.empty()
-            .withIndustries(Map.of(FARM, industry(FARM, 0L)))
-            .withRelations(Map.of(FARM, relation(FARM, operator)));
+            .withIndustries(Map.of(FARM, industry(FARM, 143L)))
+            .withUnits(Map.of(FARM_UNIT, farmUnit()))
+            .withRelations(Map.of(FARM_UNIT, relation(FARM_UNIT, operator)));
 
     EconomyChangeSet back =
         (EconomyChangeSet)
@@ -236,8 +313,8 @@ class EconomyCodecTest {
     assertThat(back.relations()).isInstanceOf(FieldDelta.Upsert.class);
     FieldDelta.Upsert<ProductionRelation> upsert =
         (FieldDelta.Upsert<ProductionRelation>) back.relations();
-    ProductionRelation relation = upsert.entries().get("farm");
-    assertThat(relation.activity()).as("activity 过线（身份 = 它结算的那个产业）").isEqualTo(FARM);
+    ProductionRelation relation = upsert.entries().get(FARM_UNIT.value());
+    assertThat(relation.activity()).as("activity 过线（身份 = 它结算的那个生产单元）").isEqualTo(FARM_UNIT);
     assertThat(relation.operator()).isEqualTo(operator);
     assertThat(relation.residualOwner())
         .as("residualOwner 与 operator 是**两件事**，各自过线")
@@ -379,8 +456,8 @@ class EconomyCodecTest {
   /**
    * ★★ **旧档兼容：缺键的快照必须读得回来**（§11 的口径，照 {@code LedgerCodecTest}）。
    *
-   * <p>字节刻意只留 {@code industries}：{@code classes}/{@code debts}/{@code flows}/{@code meta}
-   * 四个键**缺席**。 若让构造器对 null 抛，等于"这个世界打不开"。缺省方向是 fail-closed：缺 ⇒ 空表 / 未激活。
+   * <p>字节刻意只留 {@code industries}：其余组件键**缺席**。 若让构造器对 null 抛，等于"这个世界打不开"。缺省方向是 fail-closed：缺 ⇒ 空表 /
+   * 未激活。
    */
   @Test
   void legacySnapshotWithoutEconomyKeysDecodesToUnactivatedEmptyTables() {
@@ -396,6 +473,12 @@ class EconomyCodecTest {
     assertThat(back.data().debts()).as("旧档没提债务 ⇒ 空表，不抛").isEmpty();
     assertThat(back.data().flows()).as("旧档没提流水 ⇒ 空表，不抛").isEmpty();
     assertThat(back.data().meta()).as("旧档没提元信息 ⇒ 未激活，不抛").isEmpty();
+    // ★ R2 起的新组件同款：缺键 ⇒ 空表（fail-closed 方向）
+    assertThat(back.data().laborSupply()).isEmpty();
+    assertThat(back.data().allocations()).isEmpty();
+    assertThat(back.data().relations()).isEmpty();
+    assertThat(back.data().memberships()).isEmpty();
+    assertThat(back.data().units()).isEmpty();
   }
 
   /**
@@ -409,13 +492,24 @@ class EconomyCodecTest {
     EconomyChangeSet back = (EconomyChangeSet) CODEC.decodeChangeSet(legacy);
 
     assertThat(back.meta()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.industries()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.classes()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.debts()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.flows()).isInstanceOf(FieldDelta.Unchanged.class);
     // ★ R2：两张劳动表也是同款（旧档里没有这两个键 ⇒ Unchanged，不是 null）
     assertThat(back.laborSupply()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.allocations()).isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.isEmpty()).as("七个组件都未变 ⇒ 这份旧变更集是空的").isTrue();
+    // ★ T2/H4/M2.4/S1/S3/R3B/R4-E2 依次补齐的组件同款。
+    assertThat(back.relations()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.markets()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.shipments()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.memberships()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.assetShares()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.operatorConditions()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.units()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.demands()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.candidates()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.isEmpty()).as("十六个组件都未变 ⇒ 这份旧变更集是空的").isTrue();
     assertThat(EconomyChangeSet.apply(back, EconomyData.empty())).isEqualTo(EconomyData.empty());
   }
 
@@ -430,20 +524,27 @@ class EconomyCodecTest {
 
   // ── 夹具 ──
 
-  /** 非平凡数据：**八张表都非空**、两层自定义键、各 Optional 的有值侧至少出现一次、两种 AllocationRule 都在。 */
+  /**
+   * 非平凡数据：产业 / 阶层 / 债务 / 流水 / 劳动供给 / 劳动分配 / 生产关系 / 成员份额 / 资产份额 / 生产单元**都非空**，两层自定义键、 各 Optional
+   * 的有值侧至少出现一次、两种 AllocationRule 都在；市场 / 在途 / 经营者状态 / 需求 / 候选留空（追加在尾部的中性值）。
+   *
+   * <p>★ 夹具必须是**当前形状且自洽**：{@code classes} 带 memberships（否则构造期会自动跑 {@code LegacyHouseholdMigration}
+   * 反推成员份额）、{@code allocations} 的 activity 指到 unit 且 actor == unit.operator、 {@code relations} 键 ==
+   * unit id —— 于是构造期迁移是 no-op，往返量的就是本夹具本身。
+   */
   private static EconomyData fullData() {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
-    industries.put(FARM, industry(FARM, 0L));
+    industries.put(FARM, industry(FARM, 143L));
     industries.put(WORKSHOP, workshopIndustry());
-    Map<CohortKey, ClassRow> classes = new LinkedHashMap<>();
-    classes.put(PEASANT_KEY, classRow(PEASANT_KEY, 120L));
-    classes.put(LANDLORD_KEY, classRow(LANDLORD_KEY, 8L));
+    Map<HouseholdId, ClassRow> classes = new LinkedHashMap<>();
+    classes.put(FARM_HH, classRow(FARM_HH, PEASANT_KEY, 120L));
+    classes.put(LANDLORD_HH, classRow(LANDLORD_HH, LANDLORD_KEY, 8L));
     Map<DebtId, Debt> debts = new LinkedHashMap<>();
     debts.put(D1, grainDebt());
     debts.put(D2, moneyDebt());
-    Map<CohortKey, FlowRow> flows = new LinkedHashMap<>();
-    flows.put(PEASANT_KEY, flowRow(PEASANT_KEY));
-    flows.put(LANDLORD_KEY, flowRow(LANDLORD_KEY));
+    Map<HouseholdId, FlowRow> flows = new LinkedHashMap<>();
+    flows.put(FARM_HH, flowRow(FARM_HH));
+    flows.put(LANDLORD_HH, flowRow(LANDLORD_HH));
     // ★★ R2：两张劳动表也**非空** —— 它们各有**一个自定义键类型**（PeopleLotId / LaborAllocationId）要过
     //   JSON 的键反序列化器；空表会让那两个注册项**永远不被走到**（"注册了却测不到"= 假覆盖）。
     Map<PeopleLotId, LaborSupply> laborSupply = new LinkedHashMap<>();
@@ -452,12 +553,30 @@ class EconomyCodecTest {
     allocations.put(
         ALLOCATION,
         new LaborAllocation(
-            ALLOCATION, LOT, new ActorRef(ActorKind.ESTATE, FARM.value()), "farm", 58_000L, 1L));
-    // ★★ T2：第 8 个组件也**非空** —— 它的值里嵌着**一个 sealed 多态类型**（{@code Recipient}）与**一条货币规则**
+            ALLOCATION, LOT, FARM_HH, FARM_OPERATOR, FARM_UNIT.value(), 58_000L, 1L));
+    // ★★ T2/R3B.2：第 8 个组件也**非空** —— 它的值里嵌着**一个 sealed 多态类型**（{@code Recipient}）与**一条货币规则**
     //   （{@code commodity} 空 = `Optional` 的空侧）；空表会让那两处**永远不被走到**（"注册了却测不到"= 假覆盖）。
-    //   ★ operator 与 {@link #industry(IndustryId, long)} 的显式值**逐字相同**（跨表守卫要求两处拼写一致）。
-    Map<IndustryId, ProductionRelation> relations = new LinkedHashMap<>();
-    relations.put(FARM, relation(FARM, new ActorRef(ActorKind.ESTATE, FARM.value() + "@0_0")));
+    //   ★ 键 / activity = unit id，operator 与 unit.operator 逐字相同（跨表守卫要求两处拼写一致）。
+    Map<ProductionUnitId, ProductionRelation> relations = new LinkedHashMap<>();
+    relations.put(FARM_UNIT, relation(FARM_UNIT, FARM_OPERATOR));
+    Map<ProductionUnitId, ProductionUnit> units = new LinkedHashMap<>();
+    units.put(FARM_UNIT, farmUnit());
+    // ★ S1：成员份额非空 + Σcount == Σ行人口（120 + 8）⇒ 构造期不再自动迁移、也不再是"只有行没有成员"的半态。
+    Map<MembershipId, Membership> memberships = new LinkedHashMap<>();
+    memberships.put(PEASANT_MEMBERSHIP, new Membership(PEASANT_MEMBERSHIP, LOT, FARM_HH, 120L));
+    memberships.put(LANDLORD_MEMBERSHIP, new Membership(LANDLORD_MEMBERSHIP, LOT, LANDLORD_HH, 8L));
+    // ★ R3B.1：实物资产份额非空 —— AssetShareId 是另一处自定义键反序列化注册项。
+    Map<AssetShareId, AssetShare> assetShares = new LinkedHashMap<>();
+    assetShares.put(
+        FARM_LAND_SHARE,
+        new AssetShare(
+            FARM_LAND_SHARE,
+            FARM,
+            AssetKind.LAND,
+            FARM_OPERATOR,
+            FARM_OPERATOR,
+            1000L,
+            AssetShare.RightKind.OWNED));
     return new EconomyData(
         Optional.of(meta()),
         industries,
@@ -467,26 +586,22 @@ class EconomyCodecTest {
         laborSupply,
         allocations,
         relations,
-        Map.of(),
-        Map.of());
+        Map.of(), // markets
+        Map.of(), // shipments
+        memberships,
+        assetShares,
+        Map.of(), // operatorConditions（S3.2 起空表缺省）
+        units,
+        Map.of(), // demands（R4-E2 起空表缺省）
+        Map.of()); // candidates（R4-E2 起空表缺省）
   }
 
   private static EconomyData dataWithIndustries(Map<IndustryId, Industry> industries) {
-    return new EconomyData(
-        Optional.of(meta()),
-        industries,
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of());
+    return EconomyData.empty().withMeta(Optional.of(meta())).withIndustries(industries);
   }
 
   private static Map<IndustryId, Industry> oneIndustry() {
-    return Map.of(FARM, industry(FARM, 0L));
+    return Map.of(FARM, industry(FARM, 143L));
   }
 
   private static Map<IndustryId, Industry> industriesFrom(Industry... industries) {
@@ -511,11 +626,20 @@ class EconomyCodecTest {
     return new EconomyMeta("m1", 7L, OptionalLong.of(3L), "rules-2026-10", Optional.empty());
   }
 
+  /** 本夹具共用的生产单元：{@link #FARM_UNIT} + 显式 operator + 中性周期状态。 */
+  private static ProductionUnit farmUnit() {
+    return new ProductionUnit(FARM_UNIT, FARM, FARM_OPERATOR, FARM.value(), 0L, 0L, Map.of());
+  }
+
   /**
-   * 一个合规矩的产业：两个槽位各持**劳动投入率上限**（R1.1 起不再是"人口占比"，故**不必合计 1000‰**）， {@code Split(700,300)}。上限须 ≥ 行里的
-   * {@code participationPerMille}（此处 800）= v2 spec §八.1 的不变量。
+   * 一个合规矩的产业（R3B.2 起是**纯技术模板**的 12 参构造；operator / 周期状态在 {@link ProductionUnit} 上）：两个槽位各持**劳动投入率上限**
+   * （R1.1 起不再是"人口占比"，故**不必合计 1000‰**），{@code Split(700,300)}。{@code capacityPerUnit}
+   * 非空且为正（"单位规模"的锚）， 各表的值侧都带商品维度。
+   *
+   * @param laborPerUnit 每 1 单位规模需要的劳动（千分劳动）；顺带当 {@code changeSetRoundTripsWithAllFourDeltaVariants}
+   *     制造"同键不同值"的差异维
    */
-  private static Industry industry(IndustryId id, long progress) {
+  private static Industry industry(IndustryId id, long laborPerUnit) {
     List<ClassSlot> slots =
         List.of(new ClassSlot(PEASANT, "贫农", 950), new ClassSlot(LANDLORD, "地主", 900));
     return new Industry(
@@ -523,28 +647,17 @@ class EconomyCodecTest {
         "农业",
         new RegimeId("tenant"),
         120L,
-        progress,
         // ★ R3（V7）：产能那一路（"单位规模"的锚）—— non-null、非空、逐值为正。
         Map.of(AssetKind.LAND, 1000L),
-        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
-        Map.of(AssetKind.LAND, 2700L),
         // ★ 非空：空 map 与"字段没进线格式"在值层面不可区分（R3 起值侧再带一层商品维度）。
         Map.of(AssetKind.CATTLE, Map.of(GRAIN, 1L)),
         500L,
-        143L,
+        laborPerUnit,
         Map.of(GRAIN, 7L),
         // ★ 非空：空 map 与"字段没进线格式"在值层面不可区分（R3 换型后是"生产资料 → 商品表"）。
         Map.of(AssetKind.LAND, Map.of(GRAIN, 1200L)),
         slots,
-        new AllocationRule.Split(700, 300),
-        0L,
-        Map.of(GRAIN, 400L),
-        // ★★ **非默认值**（S1 阶段 3 的 D9 纪律：往返夹具**不许**用派生值）——
-        //   本夹具的 regime 是 `tenant` ⇒ 推导值 = defaultOperator(tenant, id) = `HOUSEHOLD:<产业 id>`；
-        //   这里显式给的是 `ESTATE:<产业 id>@0_0`：**kind 与推导值不同**（ESTATE ≠ HOUSEHOLD）
-        //   ⇒ 往返后读到它**只可能来自线格式**，不可能来自任何推导（`id = FARM` ⇒ `ESTATE:farm@0_0`，
-        //   即 `deltaValuesSurviveAsIndustryWithCommodityKeys` 里那条过线断言期望的字面量）。
-        new ActorRef(ActorKind.ESTATE, id.value() + "@0_0"));
+        new AllocationRule.Split(700, 300));
   }
 
   /**
@@ -552,10 +665,12 @@ class EconomyCodecTest {
    *
    * <p>★ 三条规则刻意把三个"线格式上的难点"各占一条：{@code ToActor}（变体一）、{@code ToCohort}（变体二 + {@code CohortKey}
    * 的规范串）、货币档（{@code commodity} 的**空侧**）。
+   *
+   * <p>★ R3B.2：键 / {@code activity} = 生产单元 id（不再是 {@code IndustryId}）。
    */
-  private static ProductionRelation relation(IndustryId id, ActorRef operator) {
+  private static ProductionRelation relation(ProductionUnitId activity, ActorRef operator) {
     return new ProductionRelation(
-        id,
+        activity,
         operator,
         null,
         List.of(
@@ -605,43 +720,45 @@ class EconomyCodecTest {
         "工坊",
         new RegimeId("capitalist"),
         30L,
-        0L,
-        Map.of(AssetKind.WORKSHOP, 1L),
-        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
-        Map.of(AssetKind.WORKSHOP, 0L), // ★ 产能锚：规模单位 = 1 座工坊
+        Map.of(AssetKind.WORKSHOP, 1L), // ★ 产能锚：规模单位 = 1 座工坊
         Map.of(AssetKind.TOOL, Map.of(GRAIN, 2L)),
         300L,
         1000L,
         Map.of(CLOTH, 5L),
         Map.of(), // ★ WageFirst 多态夹具：未配一次性投入（空 map 是合法形状）
         slots,
-        new AllocationRule.WageFirst(4L, residual),
-        0L,
-        Map.of(),
-        // ★★ **必须显式给**：`capitalist` **未登记**在推导表里（裁定 R1 的 fail-closed）⇒ 不许猜。
-        //   值取"经营这座工坊的那个作坊"（`WORKSHOP:<产业 id>`），与劳动侧的 actor 同字面。
-        new ActorRef(ActorKind.WORKSHOP, WORKSHOP.value()));
+        new AllocationRule.WageFirst(4L, residual));
   }
 
-  private static ClassRow classRow(CohortKey key, long population) {
+  private static ClassRow classRow(HouseholdId id, CohortKey view, long population) {
     // ★★ H1（K1）：行里没有 goods 了（家户的商品库存住在 actor 切片的 GoodsAccount / 经济侧的会话工作副本里）。
+    // ★ S1：键 = 家户稳定身份，视图住在 view；id 与 view 是两件事（本夹具按旧视图造 id）。
     return new ClassRow(
-        key, population, 60000L, 800, 50L, List.of(D1), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
+        id,
+        view,
+        population,
+        60000L,
+        800,
+        50L,
+        List.of(D1),
+        Map.of(GRAIN, 40L),
+        Map.of(GRAIN, 30L),
+        0L);
   }
 
   private static Debt grainDebt() {
-    return new Debt(D1, PEASANT_KEY, LANDLORD_KEY, Optional.of(GRAIN), 100L, 20, 3L, false);
+    return new Debt(D1, FARM_HH, LANDLORD_HH, Optional.of(GRAIN), 100L, 20, 3L, false);
   }
 
   private static Debt moneyDebt() {
-    return new Debt(D2, LANDLORD_KEY, PEASANT_KEY, Optional.empty(), 700L, 5, 5L, true);
+    return new Debt(D2, LANDLORD_HH, FARM_HH, Optional.empty(), 700L, 5, 5L, true);
   }
 
-  private static FlowRow flowRow(CohortKey key) {
+  private static FlowRow flowRow(HouseholdId id) {
     // ★ R3：income 是**逐商品**的表（两种商品，故"退回标量"的实现过不了这一条）。
     // ★ R4：unmetNeed 也逐商品、并多一个 births（与 deaths 对称）。
     return new FlowRow(
-        key,
+        id,
         Map.of(GRAIN, 200L, CLOTH, 15L),
         Map.of(GRAIN, 120L),
         10L,

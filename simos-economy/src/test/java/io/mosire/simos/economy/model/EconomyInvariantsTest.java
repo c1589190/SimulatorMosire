@@ -11,9 +11,11 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
@@ -30,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -47,8 +50,19 @@ class EconomyInvariantsTest {
   private static final SocialClassId LANDLORD = new SocialClassId("landlord");
   private static final CohortKey PEASANT_KEY = new CohortKey(HEX, ResidenceKind.RURAL, PEASANT);
   private static final CohortKey LANDLORD_KEY = new CohortKey(HEX, ResidenceKind.RURAL, LANDLORD);
+
+  /** ★ S1：{@code classes}/{@code flows} 的键 = 家户稳定身份（旧 {@link CohortKey} 由 ofLegacy 迁移）。 */
+  private static final HouseholdId PEASANT_HOUSE = HouseholdId.ofLegacy(PEASANT_KEY);
+
+  private static final HouseholdId LANDLORD_HOUSE = HouseholdId.ofLegacy(LANDLORD_KEY);
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final DebtId D1 = new DebtId("debt-1");
+
+  /** R4：经营主体住在 {@code ProductionUnit}（不再是 {@code Industry} 的模板字段）。 */
+  private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "estate-7");
+
+  /** R3B.2：{@code ProductionUnitId.idOf(industry, operator)} 是 unit 身份的唯一拼写点。 */
+  private static final ProductionUnitId UNIT = ProductionUnitId.idOf(FARM, ESTATE);
 
   /** ★ 不变量 1（§6.3 的槽位侧，2026-09-25 修正后）：劳动投入率必须 ∈ [0, 1000]（0 = 不劳动者，允许）。 */
   @Test
@@ -87,88 +101,68 @@ class EconomyInvariantsTest {
         .isInstanceOf(UnsupportedOperationException.class);
   }
 
-  /** ★ 引用完整性（修正后新增）：阶层行不得悬空——产业必须存在。 */
+  /**
+   * ★★ R4-B.4 改写（原 {@code rejectsClassRowForAnUnknownIndustry}）：**classes 行不再要求该格登记过产业**。
+   *
+   * <p>R4-B.4 起该守卫已删除，见 B4-report §1.2/§1.3（{@code EconomyData} 在 classes 侧的 {@code
+   * requireStratumAllowed} 调用随"view 必须命中 Industry.slots"整体退场）。当前契约：classes 是独立的家户账，
+   * 关系/行可以比产业先到（逐组件增量落盘）；本用例钉住"没有产业也放行"这一新契约 —— 谁把旧守卫加回来，这里当场红。
+   */
   @Test
-  void rejectsClassRowForAnUnknownIndustry() {
-    assertThatThrownBy(
-            () ->
-                new EconomyData(
-                    Optional.of(meta()),
-                    Map.of(),
-                    Map.of(PEASANT_KEY, classRow(PEASANT_KEY)),
-                    Map.of(),
-                    Map.of(),
-                    // ★ R2 / T2 的新组件：本用例只谈阶层行的引用完整性 ⇒ 三条新表留空（合法状态）。
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of()))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("不存在的产业");
+  void classRowWithoutAnyRegisteredIndustryIsAccepted() {
+    EconomyData data =
+        EconomyData.empty()
+            .withMeta(Optional.of(meta()))
+            .withClasses(Map.of(PEASANT_HOUSE, classRow(PEASANT_HOUSE, PEASANT_KEY)));
+
+    assertThat(data.classes()).containsOnlyKeys(PEASANT_HOUSE);
   }
 
-  /** ★ 引用完整性（修正后新增）：阶层行的槽位必须在该产业的 slots 里（"凭空生成地主"的守卫）。 */
+  /**
+   * ★★ R4-B.4 改写（原 {@code rejectsClassRowWhoseSlotIsNotInItsIndustry}）：**{@code ClassRow.view} 不再受
+   * {@code Industry.slots} 约束**（旧守卫：view 必须命中 slots 且 {@code participationPerMille ≤ slot 上限}）。
+   *
+   * <p>R4-B.4 起该守卫已删除，见 B4-report §1.3 的"删掉的守卫"第 1/2 条。当前契约：{@code Industry.slots} 只作
+   * 生产方式内部的角色/劳动配置，家户阶层由 {@code HouseholdClassRule} 纯派生。本用例让地主 view 落在一个只有贫农槽位的 产业上，必须构造得出来 ——
+   * 旧守卫一旦回来，这里当场红。
+   */
   @Test
-  void rejectsClassRowWhoseSlotIsNotInItsIndustry() {
-    assertThatThrownBy(
-            () ->
-                new EconomyData(
-                    Optional.of(meta()),
-                    Map.of(FARM, industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)))),
-                    Map.of(LANDLORD_KEY, classRow(LANDLORD_KEY)),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of()))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("未允许的阶层槽位");
+  void classRowViewIsNoLongerConstrainedByIndustrySlots() {
+    EconomyData data =
+        EconomyData.empty()
+            .withMeta(Optional.of(meta()))
+            .withIndustries(
+                Map.of(FARM, industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)))))
+            .withClasses(Map.of(LANDLORD_HOUSE, classRow(LANDLORD_HOUSE, LANDLORD_KEY)));
+
+    assertThat(data.classes()).containsOnlyKeys(LANDLORD_HOUSE);
   }
 
-  /** ★ 不变量 3（§3.2）：{@code classes} 的键必须与 {@code ClassRow.key} 一致。 */
+  /** ★ 不变量 3（§3.2）：{@code classes} 的键必须与 {@code ClassRow.id} 一致（S1 起键 = 稳定家户身份）。 */
   @Test
   void rejectsClassesKeyNotMatchingRowKey() {
-    ClassRow row = classRow(LANDLORD_KEY);
+    ClassRow row = classRow(LANDLORD_HOUSE, LANDLORD_KEY);
     assertThatThrownBy(
             () ->
-                new EconomyData(
-                    Optional.of(meta()),
-                    Map.of(),
-                    Map.of(PEASANT_KEY, row),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of()))
+                EconomyData.empty()
+                    .withMeta(Optional.of(meta()))
+                    .withClasses(Map.of(PEASANT_HOUSE, row)))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("ClassRow.key");
+        .hasMessageContaining("ClassRow.id");
   }
 
-  /** ★ 不变量 3 的流水侧（§3.3）：{@code flows} 的键必须与 {@code FlowRow.key} 一致。 */
+  /** ★ 不变量 3 的流水侧（§3.3）：{@code flows} 的键必须与 {@code FlowRow.id} 一致。 */
   @Test
   void rejectsFlowsKeyNotMatchingRowKey() {
     FlowRow row =
-        new FlowRow(LANDLORD_KEY, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 10L, Map.of(), 0L, 0L);
+        new FlowRow(LANDLORD_HOUSE, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 10L, Map.of(), 0L, 0L);
     assertThatThrownBy(
             () ->
-                new EconomyData(
-                    Optional.of(meta()),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(PEASANT_KEY, row),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of()))
+                EconomyData.empty()
+                    .withMeta(Optional.of(meta()))
+                    .withFlows(Map.of(PEASANT_HOUSE, row)))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("FlowRow.key");
+        .hasMessageContaining("FlowRow.id");
   }
 
   /**
@@ -181,7 +175,7 @@ class EconomyInvariantsTest {
     assertThatThrownBy(
             () ->
                 new FlowRow(
-                    PEASANT_KEY,
+                    PEASANT_HOUSE,
                     Map.of(),
                     Map.of(),
                     0L,
@@ -196,12 +190,14 @@ class EconomyInvariantsTest {
         .hasMessageContaining("unmetNeed");
     assertThatThrownBy(
             () ->
-                new FlowRow(PEASANT_KEY, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), -1L, 0L))
+                new FlowRow(
+                    PEASANT_HOUSE, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), -1L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("deaths");
     assertThatThrownBy(
             () ->
-                new FlowRow(PEASANT_KEY, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), 0L, -1L))
+                new FlowRow(
+                    PEASANT_HOUSE, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), 0L, -1L))
         .as("★ R4：出生与死亡对称 ⇒ 两侧都不许为负")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("births");
@@ -217,7 +213,7 @@ class EconomyInvariantsTest {
     assertThatThrownBy(
             () ->
                 new FlowRow(
-                    PEASANT_KEY,
+                    PEASANT_HOUSE,
                     Map.of(GRAIN, -1L),
                     Map.of(),
                     0L,
@@ -231,7 +227,7 @@ class EconomyInvariantsTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("income");
     assertThatThrownBy(
-            () -> new FlowRow(PEASANT_KEY, null, Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), 0L, 0L))
+            () -> new FlowRow(PEASANT_HOUSE, null, Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("income");
   }
@@ -287,14 +283,40 @@ class EconomyInvariantsTest {
         .hasMessageContaining("WeightPerMille");
   }
 
-  /** §3.1"当前进度 0..cycleDays"：进度越界与零长周期都即抛。 */
+  /**
+   * §3.1"当前进度 0..cycleDays"（★ R3B.2 起进度/周期住在不同记录）：
+   *
+   * <ul>
+   *   <li>{@code Industry.cycleDays ≥ 1}（零长周期即抛）；
+   *   <li>{@code ProductionUnit.progressDays ≥ 0}（负进度即抛）；
+   *   <li>跨表上界 {@code unit.progressDays ≤ industry.cycleDays} 由 {@code EconomyData} 判（本类型看不见模板）。
+   * </ul>
+   */
   @Test
-  void rejectsIndustryProgressOrCycleOutOfRange() {
-    assertThatThrownBy(() -> industryWithProgress(121L, 120L))
+  void rejectsProgressOrCycleOutOfRange() {
+    assertThatThrownBy(() -> industryWithCycleDays(0L))
+        .as("零长周期不是合法生产周期")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("cycleDays");
+    assertThatThrownBy(
+            () -> new ProductionUnit(UNIT, FARM, ESTATE, FARM.value(), -1L, 0L, Map.of()))
+        .as("R3B.2：进度已移到 ProductionUnit，负进度即抛")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("progressDays");
-    assertThatThrownBy(() -> industryWithProgress(0L, 0L))
+    assertThatThrownBy(
+            () ->
+                EconomyData.empty()
+                    .withMeta(Optional.of(meta()))
+                    .withIndustries(
+                        Map.of(FARM, industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)))))
+                    .withUnits(
+                        Map.of(
+                            UNIT,
+                            new ProductionUnit(
+                                UNIT, FARM, ESTATE, FARM.value(), 121L, 0L, Map.of()))))
+        .as("跨表上界：unit.progressDays ≤ industry.cycleDays（121 > 120）")
         .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("ProductionUnit.progressDays")
         .hasMessageContaining("cycleDays");
   }
 
@@ -309,34 +331,32 @@ class EconomyInvariantsTest {
         .hasMessageContaining("ownerResidual");
   }
 
-  // ── 参与率上限（v2 spec §八.1）────────────────────────────────────────────────────
+  // ── 参与率不再受槽位上限约束（R4-B.4 改写）────────────────────────────────────────
 
   /**
-   * ★ 参与率 1000‰ 的行 + 上限 950‰ 的槽位 ⇒ 必须构造期拒。
+   * ★★ R4-B.4 改写（原 {@code participationPerMilleMustNotExceedItsSlotCeiling} + {@code
+   * participationPerMilleAtTheSlotCeilingIsAccepted} 两条）：**参与率不再被 {@code Industry.slots} 的上限约束**。
    *
-   * <p>病灶：v1 只守了 `[0, 1000]` 两头，**中间那条 `≤ 槽位上限` 无人守** ⇒ 凭空造劳动。
+   * <p>R4-B.4 起该跨对象守卫已删除，见 B4-report §1.3 的"删掉的守卫"第 2 条（{@code participationPerMille ≤ min(命中 slot
+   * 的 laborParticipationPerMille)}）。当前契约：{@code ClassRow} 自己的参与率仍守 `[0,1000]`（见 {@link
+   * #rejectsClassRowParticipationOutsideZeroToThousand}），但槽位上限那一层没有了 ⇒ 1000‰ 的行 + 950‰ 的槽位
+   * 必须放行。谁把旧守卫加回来，这里当场红。
    */
   @Test
-  void participationPerMilleMustNotExceedItsSlotCeiling() {
-    assertThatThrownBy(() -> economyWithParticipation(1000))
-        .as("参与率超槽位上限必须在构造期拒（v2 spec §八.1）")
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("participationPerMille")
-        .hasMessageContaining("槽位");
-  }
+  void participationPerMilleIsNoLongerCappedByIndustrySlots() {
+    EconomyData data = economyWithParticipation(1000);
 
-  /** ★ 边界值：恰好等于上限 ⇒ 必须放行（把 `≤` 写成 `<` 同样是 bug）。 */
-  @Test
-  void participationPerMilleAtTheSlotCeilingIsAccepted() {
-    assertThat(economyWithParticipation(950)).isNotNull();
+    assertThat(data.classes().get(PEASANT_HOUSE).participationPerMille())
+        .as("R4-B.4：1000‰ 不再被 950‰ 的槽位上限截断")
+        .isEqualTo(1000);
   }
 
   /** 一个产业的槽位上限 950‰；行里放 `participationPerMille` ⇒ 造一份最小 {@link EconomyData}。 */
   private static EconomyData economyWithParticipation(int participationPerMille) {
     Industry industry = industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)));
-    // ★ 行内 debts 置空：引用完整性守卫（v2 spec §八.2）上线后，悬空的 D1 会让这个夹具本身非法。
     ClassRow row =
         new ClassRow(
+            PEASANT_HOUSE,
             PEASANT_KEY,
             120L,
             60000L,
@@ -346,176 +366,193 @@ class EconomyInvariantsTest {
             Map.of(GRAIN, 40L),
             Map.of(GRAIN, 30L),
             0L);
-    return new EconomyData(
-        Optional.of(meta()),
-        Map.of(FARM, industry),
-        Map.of(PEASANT_KEY, row),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of());
+    return EconomyData.empty()
+        .withMeta(Optional.of(meta()))
+        .withIndustries(Map.of(FARM, industry))
+        .withClasses(Map.of(PEASANT_HOUSE, row));
   }
 
   // ── 债务引用两端（v2 spec §八.2）────────────────────────────────────────────────────
 
-  /** ★ 债务的 creditor 指向一个不在 `classes` 里的阶层行 ⇒ 必须构造期拒（v1 只查 null）。 */
+  /** ★ 债务的 creditor 指向一个不在 `classes` 里的家户 ⇒ 必须构造期拒（v1 只查 null）。 */
   @Test
   void debtEndpointsMustExistInClasses() {
     Debt dangling =
-        new Debt(D1, PEASANT_KEY, LANDLORD_KEY, Optional.of(GRAIN), 100L, 20, 3L, false);
+        new Debt(D1, PEASANT_HOUSE, LANDLORD_HOUSE, Optional.of(GRAIN), 100L, 20, 3L, false);
     assertThatThrownBy(
             () ->
-                new EconomyData(
-                    Optional.of(meta()),
-                    Map.of(FARM, industryWithTwoSlots()),
-                    Map.of(PEASANT_KEY, classRowWithoutDebts(PEASANT_KEY)),
-                    Map.of(D1, dangling), // ★ classes 里没有 LANDLORD_KEY ⇒ creditor 悬空
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of()))
+                EconomyData.empty()
+                    .withMeta(Optional.of(meta()))
+                    .withClasses(
+                        Map.of(PEASANT_HOUSE, classRowWithoutDebts(PEASANT_HOUSE, PEASANT_KEY)))
+                    // ★ classes 里没有 LANDLORD_HOUSE ⇒ creditor 悬空
+                    .withDebts(Map.of(D1, dangling)))
         .as("债务的 debtor/creditor 必须在 classes 里存在（v2 spec §八.2）")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("债务");
   }
 
-  /** ★ 反向：`ClassRow.debts` 里的 id 指向不存在的债务 ⇒ 必须构造期拒。 */
+  /**
+   * ★★ B.3b 起契约改写（原 {@code classRowDebtRefsMustExistInDebts}）：{@code ClassRow.debts} 是**派生索引**， 以
+   * debts 表为唯一权威逐行重建（陈旧引用被清掉、缺失引用被补上），不再逐条"悬空即抛"。
+   *
+   * <p>见 {@code DebtReferenceReconciler}（唯一实现；调用点 = {@code EconomyData} 构造期，R4-B.3b）。 判别力：① 债务表为空 ⇒
+   * 行内陈旧的 D1 被删除；② 表里两条债（故意反序放入）⇒ 行内引用被补全为 {@link DebtId} 规范串升序。
+   */
   @Test
-  void classRowDebtRefsMustExistInDebts() {
-    assertThatThrownBy(
-            () ->
-                new EconomyData(
-                    Optional.of(meta()),
-                    Map.of(FARM, industryWithTwoSlots()),
-                    Map.of(PEASANT_KEY, classRowWithDebtRef(D1)),
-                    Map.of(), // ★ 债务表为空 ⇒ 行内引用的 D1 悬空
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of()))
-        .as("ClassRow.debts 的每个 id 必须在 debts 表里存在（v2 spec §八.2）")
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("债务");
+  void classRowDebtRefsAreReconciledFromTheDebtsTable() {
+    EconomyData staleRefs =
+        EconomyData.empty()
+            .withMeta(Optional.of(meta()))
+            .withClasses(Map.of(PEASANT_HOUSE, classRowWithDebtRef(D1)));
+    assertThat(staleRefs.classes().get(PEASANT_HOUSE).debts())
+        .as("债务表为空 ⇒ 行内陈旧的 D1 引用被对账清掉（不再抛）")
+        .isEmpty();
+
+    DebtId debt2Id = new DebtId("debt-2");
+    Debt debt1 =
+        new Debt(D1, PEASANT_HOUSE, LANDLORD_HOUSE, Optional.of(GRAIN), 100L, 20, 3L, false);
+    Debt debt2 =
+        new Debt(debt2Id, PEASANT_HOUSE, LANDLORD_HOUSE, Optional.of(GRAIN), 50L, 10, 4L, false);
+    Map<DebtId, Debt> debts = new LinkedHashMap<>();
+    debts.put(debt2Id, debt2); // 故意反序，钉住对账后的规范序
+    debts.put(D1, debt1);
+    EconomyData rebuilt =
+        EconomyData.empty()
+            .withMeta(Optional.of(meta()))
+            .withClasses(
+                Map.of(
+                    PEASANT_HOUSE, classRowWithoutDebts(PEASANT_HOUSE, PEASANT_KEY),
+                    LANDLORD_HOUSE, classRowWithoutDebts(LANDLORD_HOUSE, LANDLORD_KEY)))
+            .withDebts(debts);
+
+    assertThat(rebuilt.classes().get(PEASANT_HOUSE).debts())
+        .as("债务表是权威 ⇒ 缺失的引用被补上，且按 DebtId 规范串升序")
+        .containsExactly(D1, debt2Id);
   }
 
   /** 对照：两端都在 ⇒ 必须放行（否则上面两条可能只是"一律拒"）。 */
   @Test
   void aWellFormedDebtIsAccepted() {
-    Debt debt = new Debt(D1, PEASANT_KEY, LANDLORD_KEY, Optional.of(GRAIN), 100L, 20, 3L, false);
+    Debt debt =
+        new Debt(D1, PEASANT_HOUSE, LANDLORD_HOUSE, Optional.of(GRAIN), 100L, 20, 3L, false);
     EconomyData data =
-        new EconomyData(
-            Optional.of(meta()),
-            Map.of(FARM, industryWithTwoSlots()),
-            Map.of(
-                PEASANT_KEY,
-                classRowWithDebtRef(D1),
-                LANDLORD_KEY,
-                classRowWithoutDebts(LANDLORD_KEY)),
-            Map.of(D1, debt),
-            Map.of(),
-            Map.of(),
-            Map.of(),
-            Map.of(),
-            Map.of(),
-            Map.of());
+        EconomyData.empty()
+            .withMeta(Optional.of(meta()))
+            .withClasses(
+                Map.of(
+                    PEASANT_HOUSE, classRowWithDebtRef(D1),
+                    LANDLORD_HOUSE, classRowWithoutDebts(LANDLORD_HOUSE, LANDLORD_KEY)))
+            .withDebts(Map.of(D1, debt));
+
     assertThat(data.debts()).as("两端都在的债务必须放行").hasSize(1);
+    assertThat(data.classes().get(PEASANT_HOUSE).debts())
+        .as("行的债务引用由债务表重建（逐值）")
+        .containsExactly(D1);
   }
 
-  // ── 经营主体 operator（S1 阶段 3 spec §2.1 + 裁定 R4）──────────────────────────────
+  // ── 经营主体 operator（R4：从 Industry 模板搬到 ProductionUnit）────────────────────
 
   /**
-   * ★★ 第 16 个组件与**其余 15 个同口径**：null 即抛。
+   * ★★ R4 改写（原第 16 个组件 {@code Industry.operator} 的 null 守卫）：**经营主体的 null 守卫现在住在 {@code
+   * ProductionUnit}**。
    *
-   * <p>★ 判别力：把紧凑构造器里那条守卫删掉（或在 `Industry` 里做 `null ⇒ 按 regime 推导`）⇒ 本用例红。 **缺省推导只允许发生在载荷边缘**（裁定
-   * D1）：那样 25 处构造点里任一处漏传都会**静默换成默认值、不崩**， 正是本仓最反对的形态。
+   * <p>R4/R3B.2 起 {@code Industry.operator} 只是旧档兼容位（允许 null，缺省推导只发生在载荷/迁移边缘）， 真正的经营主体是 {@code
+   * ProductionUnit.operator}（{@code Objects.requireNonNull}）。判别力：把 {@code ProductionUnit} 的
+   * operator null 守卫删掉 ⇒ 本用例红。
    */
   @Test
   void rejectsNullOperator() {
-    assertThatThrownBy(() -> industryWithOperator(null))
-        .isInstanceOf(IllegalArgumentException.class)
+    assertThatThrownBy(() -> new ProductionUnit(UNIT, FARM, null, FARM.value(), 0L, 0L, Map.of()))
+        .isInstanceOf(NullPointerException.class)
         .hasMessageContaining("operator");
   }
 
   /**
    * ★★ **裁定 R4：`regime` 与 `operator` 之间没有不变量** —— "operator 不是标签"的结构性证据。
    *
-   * <p>★ 依据 spec §2.4 原文：「同一个 `feudal` 可以有 A 格地租 30% / B 格五五分成 / C 格领主直营 ——
-   * 制度可以渐变而不用先改产业类型」。加任何"一致性守卫"都会让那些差异**不可表达**，本条当场红。
+   * <p>依据 spec §2.4 原文：「同一个 `feudal` 可以有 A 格地租 30% / B 格五五分成 / C 格领主直营 —— 制度可以渐变而不用先改产业类型」。R4 起
+   * operator 是 {@code ProductionUnit}/关系表里的**显式数据**，制度只给默认值； 加任何"regime ⇒ operator
+   * 重推"都会让显式值被静默覆盖，本条当场红。
    */
   @Test
   void theRegimeDoesNotConstrainTheOperator() {
-    Industry industry = industryWithOperator(new ActorRef(ActorKind.ESTATE, "estate-7"));
+    // ★ 关系必须有地点 ⇒ 这一条用带格键的产业 id（本文件通用的 FARM="farm" 没有格键，不做关系推导）。
+    IndustryId farmAtHex = new IndustryId("farm@0_0");
+    ProductionUnitId activity = ProductionUnitId.idOf(farmAtHex, ESTATE);
+    ProductionUnit unit =
+        new ProductionUnit(activity, farmAtHex, ESTATE, farmAtHex.value(), 0L, 0L, Map.of());
+    ProductionRelation relation =
+        RegimeRelations.defaultRelation(
+            new RegimeId("tenant"),
+            unit.id(),
+            farmAtHex,
+            unit.operator(),
+            Set.of(ResidenceKind.RURAL));
 
-    assertThat(industry.operator().kind()).as("制度是租佃、经营主体是庄园 ⇒ 照常构造").isEqualTo(ActorKind.ESTATE);
-    assertThat(industry.operator())
+    assertThat(unit.operator())
         .as("★ 显式值原样留下（逐值），没有被 regime 重新推导")
-        .isEqualTo(new ActorRef(ActorKind.ESTATE, "estate-7"));
-    assertThat(industry.operator())
-        .as("★ 判别力：它**不等于** tenant 档的默认值（HOUSEHOLD:farm）—— 否则「显式给了却仍按 regime 推」会假绿")
-        .isNotEqualTo(tenantOperator());
+        .isEqualTo(ESTATE)
+        .isNotEqualTo(RegimeOperators.defaultOperator(new RegimeId("tenant"), farmAtHex));
+    assertThat(relation.operator())
+        .as("★ 制度只给缺省：显式传入的庄园 operator 原样留在关系里，不被 tenant 档的家户默认值替换")
+        .isEqualTo(ESTATE);
+    assertThat(relation.residualOwner()).as("E9：余额归显式 operator").isEqualTo(ESTATE);
   }
 
-  // ── 生产关系表 relations（S1 阶段 4+5 Task 2；计划 R3）────────────────────────────
+  // ── 生产关系表 relations（R3B.2 起键/activity = ProductionUnitId）────────────────────
 
   /**
-   * ★★ **两条跨表守卫逐条**（计划 R3）：键必须是已存在的产业、{@code operator} **必须**与产业的 {@code operator}
-   * 一致（"谁经营"不许有两处拼写）、键必须等于 {@code ProductionRelation.activity()}。
+   * ★★ **两条跨表守卫逐条**（R3B.2 改口径）：关系必须挂在一个**已存在的 unit** 上、{@code operator} 必须与 {@code unit.operator}
+   * 一致（"谁经营"不许两处拼写）、键必须等于 {@code ProductionRelation.activity()}。
    *
-   * <p>★ <b>判别力（各自哪条断言会红）</b>：
-   *
-   * <ul>
-   *   <li>把守卫放宽成"只查键在不在"（去掉 operator 相等那一句）⇒ 第二条转绿 ⇒ 红（★ 它就是 brief 的变异体①）；
-   *   <li>把"键 ∈ industries"那一句删掉 ⇒ 第一条转绿 ⇒ 红；
-   *   <li>对照条（第四条）保证前三条不是"一律拒"：一份**operator 与产业一致**的关系必须放行。
-   * </ul>
+   * <p>★ 判别力：① unit 不存在 ⇒ 抛"关系指名的生产单元…不存在"；② operator 不一致 ⇒ fail-closed 拒（构造期的旧键对齐 迁移先看到它，见 {@code
+   * LegacyHouseholdMigration.canonicalizeRelations}）；③ 键 ≠ 值内 activity ⇒ 抛； ④ 对照条保证前三条不是"一律拒"。
    */
   @Test
-  void relationsMustPointAtAnExistingIndustryAndAgreeWithItsOperator() {
+  void relationsMustPointAtAnExistingUnitAndAgreeWithItsOperator() {
     Industry industry = industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)));
+    ActorRef otherOperator = new ActorRef(ActorKind.HOUSEHOLD, "house-7");
+    ProductionUnitId ghostA = new ProductionUnitId("unit-ghost-a");
+    ProductionUnitId ghostB = new ProductionUnitId("unit-ghost-b");
 
-    // ① 键不是已存在的产业 ⇒ 抛（结算时按 id 取不到产业）
+    // ① 关系指名的 unit 不存在 ⇒ 抛（结算时按 id 取不到生产活动）
+    assertThatThrownBy(
+            () ->
+                economyWithRelations(
+                    Map.of(FARM, industry), Map.of(), Map.of(ghostA, relation(ghostA, ESTATE))))
+        .as("关系指名的生产单元不存在 ⇒ 构造期拒")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("生产单元")
+        .hasMessageContaining("不存在");
+
+    // ② ★★ 两处拼写不一致：unit.operator 是 ESTATE、关系里写的是另一个 ⇒ fail-closed
+    ProductionUnit unit = unitWithOperator(ESTATE);
     assertThatThrownBy(
             () ->
                 economyWithRelations(
                     Map.of(FARM, industry),
-                    Map.of(OTHER_FARM, relation(OTHER_FARM, tenantOperator()))))
-        .as("关系指名的产业不存在 ⇒ 构造期拒")
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("关系指名的产业不存在");
-
-    // ② ★★ 两处拼写不一致：产业的 operator 是 house-7、关系里写的是另一个 ⇒ 抛（守卫的主判据）
-    assertThatThrownBy(
-            () ->
-                economyWithRelations(
-                    Map.of(
-                        FARM, industryWithOperator(new ActorRef(ActorKind.HOUSEHOLD, "house-7"))),
-                    Map.of(FARM, relation(FARM, tenantOperator()))))
-        .as("★ relations[k].operator() 必须等于 industries[k].operator()（同一件事不许两处拼写）")
-        .isInstanceOf(IllegalArgumentException.class)
+                    Map.of(UNIT, unit),
+                    Map.of(UNIT, relation(UNIT, otherOperator))))
+        .as("★ relations[k].operator() 必须等于 unit.operator()（同一件事不许两处拼写）")
+        .isInstanceOf(RuntimeException.class)
         .hasMessageContaining("operator");
 
     // ③ 键 ≠ 值内的 activity ⇒ 抛（"键 == 值内 key"与 classes/flows 同款）
     assertThatThrownBy(
             () ->
                 economyWithRelations(
-                    Map.of(FARM, industry), Map.of(FARM, relation(OTHER_FARM, tenantOperator()))))
+                    Map.of(FARM, industry), Map.of(), Map.of(ghostA, relation(ghostB, ESTATE))))
         .as("relations 的键必须与 ProductionRelation.activity 一致")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("activity");
 
-    // ④ 对照：键在、operator 一致、activity 一致 ⇒ **必须放行**（否则上面三条可能只是"一律拒"）
+    // ④ 对照：unit 在、operator 一致、activity 一致 ⇒ **必须放行**（否则上面三条可能只是"一律拒"）
     EconomyData data =
         economyWithRelations(
-            Map.of(FARM, industry), Map.of(FARM, relation(FARM, tenantOperator())));
+            Map.of(FARM, industry), Map.of(UNIT, unit), Map.of(UNIT, relation(UNIT, ESTATE)));
     assertThat(data.relations()).as("合规矩的关系必须能入库").hasSize(1);
-    assertThat(data.relations().get(FARM).rules()).as("逐值（空表/缺条都会在这里红）").hasSize(1);
+    assertThat(data.relations().get(UNIT).rules()).as("逐值（空表/缺条都会在这里红）").hasSize(1);
   }
 
   /**
@@ -526,40 +563,36 @@ class EconomyInvariantsTest {
   void anEmptyRelationsTableIsAValidState() {
     assertThat(EconomyData.empty().relations()).isEmpty();
     assertThat(
-            new EconomyData(
-                    Optional.of(meta()),
-                    Map.of(FARM, industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)))),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of(),
-                    Map.of())
+            EconomyData.empty()
+                .withMeta(Optional.of(meta()))
+                .withIndustries(
+                    Map.of(FARM, industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)))))
+                .withRelations(null)
                 .relations())
-        .as("null ⇒ 空表（缺键 = 空，同其余七个组件）")
+        .as("null ⇒ 空表（缺键 = 空，同其余组件）")
         .isEmpty();
   }
 
-  /** 一份最小的经济：一个产业 + 一张关系表（其余组件留空）。 */
+  /** 一份最小的经济：产业 + unit + 关系表（其余组件留空）。 */
   private static EconomyData economyWithRelations(
-      Map<IndustryId, Industry> industries, Map<IndustryId, ProductionRelation> relations) {
-    return new EconomyData(
-        Optional.of(meta()),
-        industries,
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        relations,
-        Map.of(),
-        Map.of());
+      Map<IndustryId, Industry> industries,
+      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionRelation> relations) {
+    return EconomyData.empty()
+        .withMeta(Optional.of(meta()))
+        .withIndustries(industries)
+        .withUnits(units)
+        .withRelations(relations);
+  }
+
+  /** 一个 action 与 operator 自洽的 unit（identity 走唯一拼写点）。 */
+  private static ProductionUnit unitWithOperator(ActorRef operator) {
+    return new ProductionUnit(
+        ProductionUnitId.idOf(FARM, operator), FARM, operator, FARM.value(), 0L, 0L, Map.of());
   }
 
   /** 一条**非派生**的关系（规则内容与任何 regime 的推导值都不同：777‰ + 一条货币规则）。 */
-  private static ProductionRelation relation(IndustryId activity, ActorRef operator) {
+  private static ProductionRelation relation(ProductionUnitId activity, ActorRef operator) {
     return new ProductionRelation(
         activity,
         operator,
@@ -629,20 +662,14 @@ class EconomyInvariantsTest {
             "农业",
             new RegimeId("tenant"),
             120L,
-            0L,
             Map.of(AssetKind.LAND, 1000L),
-            // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
-            Map.of(AssetKind.LAND, 2700L),
             Map.of(),
             0L,
             0L,
             Map.of(GRAIN, 7L),
             Map.of(AssetKind.SHIP, Map.of(GRAIN, 1L)), // ★ SHIP 不是产能约束，只是分类
             List.of(new ClassSlot(PEASANT, "贫农", 1000)),
-            new AllocationRule.Split(700, 300),
-            0L,
-            Map.of(),
-            tenantOperator());
+            new AllocationRule.Split(700, 300));
 
     assertThat(industry.inputPerUnit()).as("每 1 单位规模的投入 = 各分类的合计").containsEntry(GRAIN, 1L);
   }
@@ -657,9 +684,6 @@ class EconomyInvariantsTest {
                     "农业",
                     new RegimeId("tenant"),
                     120L,
-                    0L,
-                    Map.of(),
-                    // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
                     Map.of(),
                     Map.of(),
                     0L,
@@ -667,10 +691,7 @@ class EconomyInvariantsTest {
                     Map.of(GRAIN, 7L),
                     Map.of(),
                     List.of(new ClassSlot(PEASANT, "贫农", 1000)),
-                    new AllocationRule.Split(700, 300),
-                    0L,
-                    Map.of(),
-                    tenantOperator()))
+                    new AllocationRule.Split(700, 300)))
         .as("capacityPerUnit 不得为空")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("capacityPerUnit");
@@ -686,20 +707,14 @@ class EconomyInvariantsTest {
                     "农业",
                     new RegimeId("tenant"),
                     120L,
-                    0L,
                     Map.of(AssetKind.LAND, 0L),
-                    // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
-                    Map.of(),
                     Map.of(),
                     0L,
                     0L,
                     Map.of(GRAIN, 7L),
                     Map.of(),
                     List.of(new ClassSlot(PEASANT, "贫农", 1000)),
-                    new AllocationRule.Split(700, 300),
-                    0L,
-                    Map.of(),
-                    tenantOperator()))
+                    new AllocationRule.Split(700, 300)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("capacityPerUnit");
   }
@@ -723,27 +738,26 @@ class EconomyInvariantsTest {
         .isInstanceOf(UnsupportedOperationException.class);
   }
 
-  /** ★ `cycleInputUsedMilli` 形制同 `cycleLaborMilli`：逐商品、不得为负。 */
+  /**
+   * ★★ R3B.2 改写（原 Industry 旧档兼容位 {@code cycleInputUsedMilli} 的负值守卫）：本周期累计投入现在住在 {@code
+   * ProductionUnit.cycleInputUsedMilli}（逐商品、不得为负）。判别力：把 unit 的逐商品非负守卫删掉 ⇒ 本用例红。
+   */
   @Test
   void rejectsNegativeCycleInputAccumulator() {
-    assertThatThrownBy(() -> industryWithCycleState(Map.of(), Map.of(GRAIN, -1L)))
+    assertThatThrownBy(
+            () -> new ProductionUnit(UNIT, FARM, ESTATE, FARM.value(), 0L, 0L, Map.of(GRAIN, -1L)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("cycleInputUsedMilli");
   }
 
   /**
-   * 一个产业的槽位上限 1000‰、`cycleInputPerUnit = cycleInput`、`cycleInputUsedMilli = 累加器`。
+   * 槽位上限 1000‰ 的产业，{@code cycleInputPerUnit = cycleInput}。
    *
-   * <p>★ **产能表按投入表的键现推**（每键 1）：{@code cycleInputPerUnit} 的键必须落在 {@code capacityPerUnit} 里（构造期守卫），
-   * 而本夹具测的是"投入表本身的形状"，故让产能表跟着它走 —— 不另写一份会漂的键集。
+   * <p>★ **产能表按投入表的键现推**（每键 1）：本夹具测的是"投入表本身的形状" ⇒ 让产能表跟着它走， 不另写一份会漂的键集；{@code cycleInput == null}
+   * 时给一个 LAND 键，好让它先过"capacityPerUnit 不得为空"的 守卫、再由 cycleInputPerUnit 的 null 守卫当场抛。
    */
   private static Industry industryWithCycleInput(
       Map<AssetKind, Map<CommodityId, Long>> cycleInput) {
-    return industryWithCycleState(cycleInput, Map.of());
-  }
-
-  private static Industry industryWithCycleState(
-      Map<AssetKind, Map<CommodityId, Long>> cycleInput, Map<CommodityId, Long> cycleInputUsed) {
     Map<AssetKind, Long> capacity = new LinkedHashMap<>();
     if (cycleInput != null) {
       for (AssetKind kind : cycleInput.keySet()) {
@@ -753,62 +767,31 @@ class EconomyInvariantsTest {
     if (capacity.isEmpty()) {
       capacity.put(AssetKind.LAND, 1L); // capacityPerUnit 不得为空（R3 的构造期守卫）
     }
-    if (cycleInput == null) {
-      return new Industry(
-          FARM,
-          "农业",
-          new RegimeId("tenant"),
-          120L,
-          0L,
-          capacity,
-          // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
-          Map.of(),
-          Map.of(),
-          500L,
-          0L,
-          Map.of(GRAIN, 7L),
-          null, // ★ 本用例测的就是"null ⇒ 拒"
-          List.of(new ClassSlot(PEASANT, "贫农", 1000)),
-          new AllocationRule.Split(700, 300),
-          0L,
-          cycleInputUsed,
-          tenantOperator());
-    }
     return new Industry(
         FARM,
         "农业",
         new RegimeId("tenant"),
         120L,
-        0L,
         capacity,
-        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
         Map.of(),
-        Map.of(),
-        500L,
+        0L,
         0L,
         Map.of(GRAIN, 7L),
-        cycleInput,
+        cycleInput, // ★ null 由 rejectsNullCycleInputMap 用来测"null ⇒ 拒"
         List.of(new ClassSlot(PEASANT, "贫农", 1000)),
-        new AllocationRule.Split(700, 300),
-        0L,
-        cycleInputUsed,
-        tenantOperator());
+        new AllocationRule.Split(700, 300));
   }
 
-  private static Industry industryWithTwoSlots() {
-    return industryWithSlots(
-        List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 1000)));
-  }
-
-  /** 无债务的阶层行（参与率 800 在其槽位上限之内）；`key` 必须与它在 `classes` 里的键一致。 */
-  private static ClassRow classRowWithoutDebts(CohortKey key) {
+  /** 无债务的阶层行（参与率 800）；`id` 必须与它在 `classes` 里的键一致。 */
+  private static ClassRow classRowWithoutDebts(HouseholdId id, CohortKey view) {
     return new ClassRow(
-        key, 120L, 60000L, 800, 50L, List.of(), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
+        id, view, 120L, 60000L, 800, 50L, List.of(), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
   }
 
   /** 行内引用一份债务（其两端由调用方保证）。 */
   private static ClassRow classRowWithDebtRef(DebtId debtId) {
     return new ClassRow(
+        PEASANT_HOUSE,
         PEASANT_KEY,
         120L,
         60000L,
@@ -822,99 +805,49 @@ class EconomyInvariantsTest {
 
   // ── 夹具 ──
 
+  /**
+   * ★ 已迁移的 meta：{@code rulesVersion = pre-modern-v1}（{@link
+   * EconomyMeta#RULES_VERSION_PRE_MODERN_V1}）⇒ {@code EconomyData} 构造期不会对"classes 非空 + memberships
+   * 空"的构造不变量夹具跑自动旧档迁移 （{@code LegacyHouseholdMigration.needed} 的第一条）。本文件测的是**构造期守卫**，不是迁移器；不这样标注的话，
+   * 迁移器会先补出 memberships/relations，守卫还没走到夹具形状就被改写。
+   */
   private static EconomyMeta meta() {
-    return new EconomyMeta("m1", 0L, OptionalLong.empty(), "rules-r1", Optional.empty());
-  }
-
-  /**
-   * 一个 {@code tenant} 档的产业（其余字段照 {@link #industryWithSlots}），**第 16 个实参由调用方给**。
-   *
-   * <p>★ 与 {@link #tenantOperator()} 分成两个入口是**故意的**：判据用例（{@link
-   * #theRegimeDoesNotConstrainTheOperator}）由此能塞进**非默认**的 operator，而通用夹具一律走派生值 —— "漏传 ⇒
-   * 重新推导"的变异体只在判据用例上现形。
-   */
-  private static Industry industryWithOperator(ActorRef operator) {
-    return new Industry(
-        FARM,
-        "农业",
-        new RegimeId("tenant"),
-        120L,
-        0L,
-        Map.of(AssetKind.LAND, 1000L),
-        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
-        Map.of(AssetKind.LAND, 2700L),
-        Map.of(),
-        500L,
-        0L,
-        Map.of(GRAIN, 7L),
-        Map.of(),
-        List.of(new ClassSlot(PEASANT, "贫农", 1000)),
-        new AllocationRule.Split(700, 300),
-        0L,
-        Map.of(),
-        operator);
-  }
-
-  /**
-   * 通用夹具的 operator：**派生**（{@code tenant} ⇒ {@code HOUSEHOLD:farm}，regime 与 id 都取自本文件的 tenant 夹具）。
-   *
-   * <p>★ 走 {@link RegimeOperators#defaultOperator} 而不是在每处写字面量：默认值只有**一处拼写点**（裁定 R1/D3）。
-   */
-  private static ActorRef tenantOperator() {
-    return RegimeOperators.defaultOperator(new RegimeId("tenant"), FARM);
+    return new EconomyMeta(
+        "m1", 0L, OptionalLong.empty(), EconomyMeta.RULES_VERSION_PRE_MODERN_V1, Optional.empty());
   }
 
   private static Industry industryWithSlots(List<ClassSlot> slots) {
-    return new Industry(
-        FARM,
-        "农业",
-        new RegimeId("tenant"),
-        120L,
-        0L,
-        Map.of(AssetKind.LAND, 1000L),
-        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
-        Map.of(AssetKind.LAND, 2700L),
-        Map.of(),
-        500L,
-        0L,
-        Map.of(GRAIN, 7L),
-        Map.of(),
-        slots,
-        new AllocationRule.Split(700, 300),
-        0L,
-        Map.of(),
-        tenantOperator());
+    return industryWithCycleDays(120L, slots);
   }
 
-  private static Industry industryWithProgress(long progress, long cycleDays) {
+  private static Industry industryWithCycleDays(long cycleDays) {
+    return industryWithCycleDays(cycleDays, List.of(new ClassSlot(PEASANT, "贫农", 1000)));
+  }
+
+  private static Industry industryWithCycleDays(long cycleDays, List<ClassSlot> slots) {
     return new Industry(
         FARM,
         "农业",
         new RegimeId("tenant"),
         cycleDays,
-        progress,
         Map.of(AssetKind.LAND, 1000L),
-        // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
-        Map.of(AssetKind.LAND, 2700L),
         Map.of(),
-        500L,
+        0L,
         0L,
         Map.of(GRAIN, 7L),
         Map.of(),
-        List.of(new ClassSlot(PEASANT, "贫农", 1000)),
-        new AllocationRule.Split(700, 300),
-        0L,
-        Map.of(),
-        tenantOperator());
+        slots,
+        new AllocationRule.Split(700, 300));
   }
 
-  private static ClassRow classRow(CohortKey key) {
+  private static ClassRow classRow(HouseholdId id, CohortKey view) {
     return new ClassRow(
-        key, 120L, 60000L, 800, 50L, List.of(D1), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
+        id, view, 120L, 60000L, 800, 50L, List.of(D1), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
   }
 
   private static ClassRow classRowWithParticipation(int participationPerMille) {
     return new ClassRow(
+        PEASANT_HOUSE,
         PEASANT_KEY,
         120L,
         60000L,
@@ -928,6 +861,7 @@ class EconomyInvariantsTest {
 
   private static ClassRow classRowWithPopulation(long population) {
     return new ClassRow(
+        PEASANT_HOUSE,
         PEASANT_KEY,
         population,
         60000L,
@@ -941,6 +875,7 @@ class EconomyInvariantsTest {
 
   private static ClassRow classRowWithLabor(long laborMilli) {
     return new ClassRow(
+        PEASANT_HOUSE,
         PEASANT_KEY,
         120L,
         laborMilli,
@@ -954,6 +889,7 @@ class EconomyInvariantsTest {
 
   private static ClassRow classRowWithMoney(long money) {
     return new ClassRow(
+        PEASANT_HOUSE,
         PEASANT_KEY,
         120L,
         60000L,
@@ -969,7 +905,8 @@ class EconomyInvariantsTest {
   //   被喂的那个字段已整个删除 ⇒ 助手一并删除（留一个没人调用的助手 = 本仓反对的"看起来在、其实没人读"）。
 
   private static Debt debtWithPrincipal(long principal) {
-    return new Debt(D1, PEASANT_KEY, LANDLORD_KEY, Optional.of(GRAIN), principal, 20, 3L, false);
+    return new Debt(
+        D1, PEASANT_HOUSE, LANDLORD_HOUSE, Optional.of(GRAIN), principal, 20, 3L, false);
   }
 
   // ── R2：劳动供给与配额的三条结构判据（第三阶段设计稿 §四）────────────────────────────
@@ -1156,25 +1093,26 @@ class EconomyInvariantsTest {
   private static final LaborAllocationId ALLOC_B = new LaborAllocationId("alloc-b");
   private static final IndustryId OTHER_FARM = new IndustryId("farm@0_0");
 
-  /** 一份最小的经济：两个产业（{@code farm} 与 {@code farm@0_0}）+ 给定的两张劳动表。 */
+  /**
+   * 一份最小的经济：两个产业（{@code farm} 与 {@code farm@0_0}）+ 一个家户行 + 给定的两张劳动表。
+   *
+   * <p>★ 家户行是必需的：S1 起配额必须属于一个已存在的家户；{@code meta} 走已迁移档 ⇒ 构造期不会先跑 {@code LegacyHouseholdMigration}
+   * 改写夹具。
+   */
   private static EconomyData economyWith(
       Map<PeopleLotId, LaborSupply> laborSupply,
       Map<LaborAllocationId, LaborAllocation> allocations) {
-    return new EconomyData(
-        Optional.of(meta()),
-        Map.of(
-            FARM,
-            industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950))),
-            OTHER_FARM,
-            industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)))),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        laborSupply,
-        allocations,
-        Map.of(),
-        Map.of(),
-        Map.of());
+    return EconomyData.empty()
+        .withMeta(Optional.of(meta()))
+        .withIndustries(
+            Map.of(
+                FARM,
+                industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950))),
+                OTHER_FARM,
+                industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)))))
+        .withClasses(Map.of(PEASANT_HOUSE, classRowWithoutDebts(PEASANT_HOUSE, PEASANT_KEY)))
+        .withLaborSupply(laborSupply)
+        .withAllocations(allocations);
   }
 
   private static Map<PeopleLotId, LaborSupply> laborSupply(
@@ -1182,9 +1120,10 @@ class EconomyInvariantsTest {
     return Map.of(group, new LaborSupply(group, 1L, gross, served, committed));
   }
 
-  /** 一条配额（第 1 周期、活动名 {@code farm}）。 */
+  /** 一条配额（第 1 周期、家户 = 本夹具的 {@code PEASANT_HOUSE}、活动名 {@code farm}）。 */
   private static LaborAllocation allocation(
       LaborAllocationId id, PeopleLotId group, String actorId, ActorKind kind, long laborMilli) {
-    return new LaborAllocation(id, group, new ActorRef(kind, actorId), "farm", laborMilli, 1L);
+    return new LaborAllocation(
+        id, group, PEASANT_HOUSE, new ActorRef(kind, actorId), "farm", laborMilli, 1L);
   }
 }

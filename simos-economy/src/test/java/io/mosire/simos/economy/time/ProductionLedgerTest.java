@@ -112,7 +112,9 @@ class ProductionLedgerTest {
         .isGreaterThan(83_000L - 25_000L);
     // 地主：8,300 − ⌊10 × 10,000 × 3 ÷ 120⌋ = 5,800（本夹具没有规则付给它）
     assertThat(grainOf(world.goods(), LANDLORD_KEY)).as("地主：期初 − 周期口粮").isEqualTo(8_300L - 2_500L);
-    assertThat(after.classes().get(PEASANT_KEY).population()).as("人口不变（这只是账的搬移）").isEqualTo(100L);
+    assertThat(EconomyFixtures.classOf(after, PEASANT_KEY).population())
+        .as("人口不变（这只是账的搬移）")
+        .isEqualTo(100L);
   }
 
   /**
@@ -126,11 +128,13 @@ class ProductionLedgerTest {
   void theRowIncomeIsTheInKindIntakeNotAGrossShare() {
     EconomyData after = advance(fixture(), CYCLE_DAYS);
 
-    assertThat(after.flows().get(PEASANT_KEY).income())
+    assertThat(EconomyFixtures.flowOf(after, PEASANT_KEY).income())
         .as("★ 行侧所得 = 关系实付（实物入账）= 净产全额（上限 6,790 咬合）")
         .containsEntry(GRAIN, 6_790L);
-    assertThat(after.flows().get(LANDLORD_KEY).income()).as("没有规则付给地主 ⇒ 所得为空").isEmpty();
-    assertThat(after.flows().get(PEASANT_KEY).income().get(GRAIN))
+    assertThat(EconomyFixtures.flowOf(after, LANDLORD_KEY).income())
+        .as("没有规则付给地主 ⇒ 所得为空")
+        .isEmpty();
+    assertThat(EconomyFixtures.flowOf(after, PEASANT_KEY).income().get(GRAIN))
         .as("★ 6,790 ≠ 毛产 7,000 ⇒ 上面那条不可能是「毛产分成」的旧口径（损耗不再进 income）")
         .isNotEqualTo(7_000L);
   }
@@ -148,7 +152,7 @@ class ProductionLedgerTest {
   @Test
   void theClosingDayLedgerCarriesGrossLossTheTwoEntriesAndTheIntake() {
     EconomyFixtures.World world = fixture();
-    EconomyDayStepper stepper = new EconomyDayStepper(world.data(), world.goods());
+    EconomyDayStepper stepper = EconomyFixtures.stepper(world.data(), world.goods());
     List<ProductionLedger> ledgers = new ArrayList<>();
     for (long day = 1L; day <= CYCLE_DAYS; day++) {
       ledgers.add(stepper.step(day));
@@ -172,10 +176,11 @@ class ProductionLedgerTest {
         .as("★ 实付恰一条转移：from=operator、to=该格贫农家户、原因 = 关系实付、金额 = 实付 6,790")
         .containsExactly(
             new Transfer(
-                new TransferId("tr-3-1"),
+                new TransferId("tr-3-p1-1"),
                 3L,
                 OPERATOR,
-                HouseholdActors.of(new CohortKey(HEX, ResidenceKind.RURAL, PEASANT)),
+                HouseholdActors.of(
+                    EconomyFixtures.hh(new CohortKey(HEX, ResidenceKind.RURAL, PEASANT))),
                 HEX,
                 Map.of(GRAIN, 6_790L),
                 Map.of(),
@@ -256,11 +261,7 @@ class ProductionLedgerTest {
    * <p>★ H1：家户账是**会话状态**（裁定 K1）⇒ 入参是成对的 {@link EconomyFixtures.World}（状态 + 工作副本）。
    */
   static EconomyData advance(EconomyFixtures.World world, long days) {
-    EconomyDayStepper stepper = new EconomyDayStepper(world.data(), world.goods());
-    for (long day = 1L; day <= days; day++) {
-      stepper.step(day);
-    }
-    return stepper.finish();
+    return EconomyFixtures.advance(world.data(), world.goods(), 0L, days);
   }
 
   // ── 夹具 ───────────────────────────────────────────────────────────────────────────
@@ -274,7 +275,7 @@ class ProductionLedgerTest {
     List<ClassSlot> slots =
         List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 0));
     Industry farm =
-        new Industry(
+        EconomyFixtures.industry(
             FARM,
             "农业",
             new RegimeId("feudal"),
@@ -314,13 +315,13 @@ class ProductionLedgerTest {
             10);
     Map<IndustryId, ProductionRelation> relations = new LinkedHashMap<>();
     relations.put(
-        FARM, new ProductionRelation(FARM, OPERATOR, null, List.of(subsistence), OPERATOR));
+        FARM, EconomyFixtures.relation(FARM, OPERATOR, null, List.of(subsistence), OPERATOR));
     // ★★ H1（K1）：期初库存进**会话工作副本** —— 与状态成对交出（唯一拼写点在这里）。
     Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
     EconomyFixtures.hold(goods, PEASANT_KEY, GRAIN, 83_000L);
     EconomyFixtures.hold(goods, LANDLORD_KEY, GRAIN, 8_300L);
     return new EconomyFixtures.World(
-        new EconomyData(
+        EconomyFixtures.data(
             Optional.of(meta),
             industries,
             classes,
@@ -329,7 +330,14 @@ class ProductionLedgerTest {
             Map.of(LOT, new LaborSupply(LOT, 1L, PEASANT_LABOR_MILLI, 0L, 0L)),
             Map.of(
                 ALLOCATION,
-                new LaborAllocation(ALLOCATION, LOT, OPERATOR, "farm", PEASANT_LABOR_MILLI, 1L)),
+                new LaborAllocation(
+                    ALLOCATION,
+                    LOT,
+                    EconomyFixtures.hh(PEASANT_KEY),
+                    OPERATOR,
+                    "farm",
+                    PEASANT_LABOR_MILLI,
+                    1L)),
             relations,
             Map.of(),
             Map.of()),
@@ -338,7 +346,7 @@ class ProductionLedgerTest {
 
   private static ClassRow row(CohortKey key, long population, long laborMilli, int participation) {
     // ★★ H1：行里**没有** goods 了（裁定 K1）—— 期初库存见上面那份会话工作副本。
-    return new ClassRow(
+    return EconomyFixtures.classRow(
         key,
         population,
         laborMilli,

@@ -9,6 +9,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
@@ -83,10 +84,10 @@ class EconomyLaborAllocationTest {
     EconomyFixtures.World world = fixture();
     EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 1L);
 
-    assertThat(next.industries().get(FARM).cycleLaborMilli())
+    assertThat(EconomyFixtures.cycleLaborOf(next, FARM))
         .as("farm 的配额之和 = 40,000（**不是**行算的 58,000）")
         .isEqualTo(40_000L);
-    assertThat(next.industries().get(CRAFT).cycleLaborMilli())
+    assertThat(EconomyFixtures.cycleLaborOf(next, CRAFT))
         .as("craft 的配额之和 = 10,000（批次 A）+ 55,000（批次 B）—— '每批次只看第一条' 会读到 55,000")
         .isEqualTo(65_000L);
   }
@@ -97,12 +98,8 @@ class EconomyLaborAllocationTest {
     EconomyFixtures.World world = fixture();
     EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 3L);
 
-    assertThat(next.industries().get(FARM).cycleLaborMilli())
-        .as("3 天 × 40,000")
-        .isEqualTo(120_000L);
-    assertThat(next.industries().get(CRAFT).cycleLaborMilli())
-        .as("3 天 × 65,000")
-        .isEqualTo(195_000L);
+    assertThat(EconomyFixtures.cycleLaborOf(next, FARM)).as("3 天 × 40,000").isEqualTo(120_000L);
+    assertThat(EconomyFixtures.cycleLaborOf(next, CRAFT)).as("3 天 × 65,000").isEqualTo(195_000L);
   }
 
   /** ★ **配额表不被结算改动**（它是命令层发的）：结算前后逐值相同（守恒之外的一条"只读"判据）。 */
@@ -127,8 +124,7 @@ class EconomyLaborAllocationTest {
     EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 1L);
 
     long industryLabor =
-        next.industries().get(FARM).cycleLaborMilli()
-            + next.industries().get(CRAFT).cycleLaborMilli();
+        EconomyFixtures.cycleLaborOf(next, FARM) + EconomyFixtures.cycleLaborOf(next, CRAFT);
     long allocatedTotal =
         next.allocations().values().stream().mapToLong(LaborAllocation::laborMilli).sum();
 
@@ -162,21 +158,29 @@ class EconomyLaborAllocationTest {
     supply.put(RURAL, new LaborSupply(RURAL, FIRST_PERIOD, 100_000L, 0L, 0L));
     supply.put(URBAN, new LaborSupply(URBAN, FIRST_PERIOD, 60_000L, 0L, 0L));
 
+    HouseholdId ruralHousehold =
+        EconomyFixtures.hh(new CohortKey(HEX, ResidenceKind.RURAL, PEASANT));
+    HouseholdId urbanHousehold =
+        EconomyFixtures.hh(new CohortKey(HEX, ResidenceKind.URBAN, LANDLORD));
     Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
-    allocations.put(A_FARM, allocation(A_FARM, RURAL, FARM, ActorKind.ESTATE, "farm", 40_000L));
     allocations.put(
-        A_CRAFT, allocation(A_CRAFT, RURAL, CRAFT, ActorKind.WORKSHOP, "craft", 10_000L));
+        A_FARM, allocation(A_FARM, RURAL, ruralHousehold, FARM, ActorKind.ESTATE, "farm", 40_000L));
+    allocations.put(
+        A_CRAFT,
+        allocation(A_CRAFT, RURAL, ruralHousehold, CRAFT, ActorKind.WORKSHOP, "craft", 10_000L));
     allocations.put(
         A_HOUSEHOLD,
-        new LaborAllocation(
+        allocation(
             A_HOUSEHOLD,
             RURAL,
-            new ActorRef(ActorKind.HOUSEHOLD, HOUSEHOLD),
+            ruralHousehold,
+            new IndustryId("household@0_0"),
+            ActorKind.HOUSEHOLD,
             "weaving",
-            20_000L,
-            FIRST_PERIOD));
+            20_000L));
     allocations.put(
-        B_CRAFT, allocation(B_CRAFT, URBAN, CRAFT, ActorKind.WORKSHOP, "craft", 55_000L));
+        B_CRAFT,
+        allocation(B_CRAFT, URBAN, urbanHousehold, CRAFT, ActorKind.WORKSHOP, "craft", 55_000L));
 
     // ★★ H1（K1）：家户的商品库存在**会话工作副本**里 —— 本夹具不量库存，但两个家户都有人口
     //   ⇒ 必须各给一张（空）账，否则日结算的 fail-closed 守卫当场抛（"有人口却没有账"）。
@@ -186,7 +190,7 @@ class EconomyLaborAllocationTest {
     EconomyFixtures.hold(
         goods, new CohortKey(HEX, ResidenceKind.URBAN, LANDLORD), EconomySettlement.GRAIN, 0L);
     return new EconomyFixtures.World(
-        new EconomyData(
+        EconomyFixtures.data(
             Optional.of(
                 new EconomyMeta("m1", 0L, OptionalLong.empty(), "aggregate-v1", Optional.empty())),
             industries,
@@ -204,16 +208,23 @@ class EconomyLaborAllocationTest {
   private static LaborAllocation allocation(
       LaborAllocationId id,
       PeopleLotId group,
+      HouseholdId household,
       IndustryId industry,
       ActorKind kind,
       String activity,
       long laborMilli) {
     return new LaborAllocation(
-        id, group, new ActorRef(kind, industry.value()), activity, laborMilli, FIRST_PERIOD);
+        id,
+        group,
+        household,
+        new ActorRef(kind, industry.value()),
+        activity,
+        laborMilli,
+        FIRST_PERIOD);
   }
 
   private static ClassRow row(CohortKey key, long population, long laborMilli, int participation) {
-    return new ClassRow(
+    return EconomyFixtures.classRow(
         key,
         population,
         laborMilli,
@@ -226,7 +237,7 @@ class EconomyLaborAllocationTest {
   }
 
   private static Industry industry(IndustryId id, String name, String regime, AllocationRule rule) {
-    return new Industry(
+    return EconomyFixtures.industry(
         id,
         name,
         new RegimeId(regime),
@@ -235,7 +246,8 @@ class EconomyLaborAllocationTest {
         // ★ R3：产能锚非空即可（本类只谈"投入了多少劳动"，规模与产出都不是判据）。
         Map.of(AssetKind.LAND, 1_000L),
         // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
-        Map.of(AssetKind.LAND, 0L),
+        //   ★ 正数才能让 EconomyData 归一化出 ProductionUnit；结算的周期劳动累计挂在 unit 上。
+        Map.of(AssetKind.LAND, 1_000L),
         Map.of(),
         0L,
         0L,

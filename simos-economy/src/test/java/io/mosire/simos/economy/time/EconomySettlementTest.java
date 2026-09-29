@@ -95,12 +95,12 @@ class EconomySettlementTest {
         .isEqualTo(83_000L - rationOn(PEASANT_POPULATION, 1L));
     assertThat(grainOf(world.goods(), LANDLORD_KEY))
         .isEqualTo(8_300L - rationOn(LANDLORD_POPULATION, 1L));
-    assertThat(next.industries().get(FARM).progressDays()).as("progressDays +1").isEqualTo(1L);
-    assertThat(next.industries().get(FARM).cycleLaborMilli())
+    assertThat(EconomyFixtures.progressDaysOf(next, FARM)).as("progressDays +1").isEqualTo(1L);
+    assertThat(EconomyFixtures.cycleLaborOf(next, FARM))
         .as("当日实际劳动 = 贫农 58000 × 1000‰ + 地主 5800 × 0‰ = 58000")
         .isEqualTo(58_000L);
 
-    FlowRow peasantFlow = next.flows().get(PEASANT_KEY);
+    FlowRow peasantFlow = EconomyFixtures.flowOf(next, PEASANT_KEY);
     assertThat(peasantFlow.consumed().get(GRAIN))
         .as("本期消费 = 第 1 天口粮")
         .isEqualTo(rationOn(PEASANT_POPULATION, 1L));
@@ -108,7 +108,7 @@ class EconomySettlementTest {
     assertThat(peasantFlow.netSurplus())
         .as("净盈余 = 0 − 第 1 天口粮")
         .isEqualTo(-rationOn(PEASANT_POPULATION, 1L));
-    assertThat(next.classes().get(PEASANT_KEY).naturalNeeds().get(GRAIN))
+    assertThat(EconomyFixtures.classOf(next, PEASANT_KEY).naturalNeeds().get(GRAIN))
         .as("★ §八.8：结算把**当日需求**写进 naturalNeeds ⇒ 读口与结算同源")
         .isEqualTo(rationOn(PEASANT_POPULATION, 1L));
     assertThat(peasantFlow.taxPaid()).as("v1 不收税").isZero();
@@ -145,10 +145,10 @@ class EconomySettlementTest {
             91_300L
                 - (rationOver(PEASANT_POPULATION, 3L) + rationOver(LANDLORD_POPULATION, 3L))
                 + 6_790L);
-    assertThat(next.industries().get(FARM).progressDays())
+    assertThat(EconomyFixtures.progressDaysOf(next, FARM))
         .as("第 3 天是周期末 ⇒ progressDays 归零")
         .isZero();
-    assertThat(next.industries().get(FARM).cycleLaborMilli()).as("周期累计清零").isZero();
+    assertThat(EconomyFixtures.cycleLaborOf(next, FARM)).as("周期累计清零").isZero();
     assertThat(next.meta().orElseThrow().lastClosedCycle()).as("关账周期序号 1").hasValue(1L);
 
     // ★ 等价性（§十一）：一次 3 天 == 3 次单日（同一份终态）。
@@ -195,8 +195,8 @@ class EconomySettlementTest {
     EconomyFixtures.World world = fixture();
     EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 3L);
 
-    FlowRow peasant = next.flows().get(PEASANT_KEY);
-    FlowRow landlord = next.flows().get(LANDLORD_KEY);
+    FlowRow peasant = EconomyFixtures.flowOf(next, PEASANT_KEY);
+    FlowRow landlord = EconomyFixtures.flowOf(next, LANDLORD_KEY);
     assertThat(peasant.consumed().get(GRAIN))
         .as("头 3 天口粮之和（★ 生产损耗不在 consumed 里了 —— 它只进 ledger.losses）")
         .isEqualTo(rationOver(PEASANT_POPULATION, 3L));
@@ -236,8 +236,8 @@ class EconomySettlementTest {
     EconomyFixtures.World world = famineFixture(rationOn(100L, 1L));
     EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 3L, 200);
 
-    ClassRow row = next.classes().get(PEASANT_KEY);
-    FlowRow flow = next.flows().get(PEASANT_KEY);
+    ClassRow row = EconomyFixtures.classOf(next, PEASANT_KEY);
+    FlowRow flow = EconomyFixtures.flowOf(next, PEASANT_KEY);
 
     assertThat(flow.unmetNeed().getOrDefault(GRAIN, 0L))
         .as("缺口 = 缺的那两天 = 25,000 − 8,333（★ R4 起 unmetNeed 逐商品，本条只说**粮**那一维）")
@@ -267,8 +267,8 @@ class EconomySettlementTest {
     EconomyData next =
         EconomyFixtures.advance(world.data(), world.goods(), 0L, 3L); // 公开入口：致死率 = 默认 0‰
 
-    ClassRow row = next.classes().get(PEASANT_KEY);
-    FlowRow flow = next.flows().get(PEASANT_KEY);
+    ClassRow row = EconomyFixtures.classOf(next, PEASANT_KEY);
+    FlowRow flow = EconomyFixtures.flowOf(next, PEASANT_KEY);
     assertThat(flow.unmetNeed().getOrDefault(GRAIN, 0L))
         .as("缺口照记（= 后两天没吃到的那部分；★ R4 起 unmetNeed 逐商品，本条只说粮那一维）")
         .isEqualTo(rationOver(100L, 3L) - rationOn(100L, 1L));
@@ -287,8 +287,8 @@ class EconomySettlementTest {
     EconomyFixtures.World world = famineFixture(rationOver(100L, 3L));
     EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 3L, 200);
 
-    ClassRow row = next.classes().get(PEASANT_KEY);
-    FlowRow flow = next.flows().get(PEASANT_KEY);
+    ClassRow row = EconomyFixtures.classOf(next, PEASANT_KEY);
+    FlowRow flow = EconomyFixtures.flowOf(next, PEASANT_KEY);
 
     assertThat(flow.unmetNeed().getOrDefault(GRAIN, 0L)).as("一天不缺").isZero();
     assertThat(flow.unmetNeed())
@@ -315,8 +315,8 @@ class EconomySettlementTest {
     EconomyFixtures.World world = famineFixture(rationOn(100L, 1L));
     EconomyData next = EconomyFixtures.advance(world.data(), world.goods(), 0L, 6L, 200);
 
-    ClassRow row = next.classes().get(PEASANT_KEY);
-    FlowRow flow = next.flows().get(PEASANT_KEY);
+    ClassRow row = EconomyFixtures.classOf(next, PEASANT_KEY);
+    FlowRow flow = EconomyFixtures.flowOf(next, PEASANT_KEY);
 
     assertThat(flow.unmetNeed().getOrDefault(GRAIN, 0L))
         .as("第 2 周期缺口 = 累计(87,6) − 累计(87,3)（**不含**第 1 周期的 16,667；★ R4 起只读粮那一维）")
@@ -412,17 +412,17 @@ class EconomySettlementTest {
 
     EconomyFixtures.World world = fixtureWithOperator(household);
     EconomyData afterOneDay = EconomyFixtures.advance(world.data(), world.goods(), 0L, 1L);
-    assertThat(afterOneDay.industries().get(FARM).operator())
+    assertThat(EconomyFixtures.operatorOf(afterOneDay, FARM))
         .as("★ 一日结算不得改写经营主体（defaultOperator 会给 ESTATE:farm@0_0 ⇒ 那样当场红）")
         .isEqualTo(household);
 
     // ★★ 再跑到周期末（第 3 天关账）：关账那一支把 progressDays / cycleLaborMilli 归零、cycleInputUsedMilli 清空，
     //   是同一次重建里"换的字段更多"的形状 —— 它照样不许碰 operator。
     EconomyData afterOneCycle = EconomyFixtures.advance(afterOneDay, world.goods(), 1L, 3L);
-    assertThat(afterOneCycle.industries().get(FARM).progressDays())
+    assertThat(EconomyFixtures.progressDaysOf(afterOneCycle, FARM))
         .as("前置：第 3 天真的是周期末（关账分支被走到）")
         .isZero();
-    assertThat(afterOneCycle.industries().get(FARM).operator())
+    assertThat(EconomyFixtures.operatorOf(afterOneCycle, FARM))
         .as("★ 关账重建同样不得改写经营主体")
         .isEqualTo(household)
         .isNotEqualTo(RegimeOperators.defaultOperator(new RegimeId("feudal"), FARM));
@@ -434,7 +434,7 @@ class EconomySettlementTest {
     List<ClassSlot> slots =
         List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 0));
     Industry farm =
-        new Industry(
+        EconomyFixtures.industry(
             FARM,
             "农业",
             new RegimeId("feudal"),
@@ -470,7 +470,7 @@ class EconomySettlementTest {
     EconomyFixtures.hold(goods, PEASANT_KEY, GRAIN, 83_000L);
     EconomyFixtures.hold(goods, LANDLORD_KEY, GRAIN, 8_300L);
     return new EconomyFixtures.World(
-        new EconomyData(
+        EconomyFixtures.data(
             Optional.of(meta),
             industries,
             classes,
@@ -510,7 +510,7 @@ class EconomySettlementTest {
     List<ClassSlot> slots =
         List.of(new ClassSlot(PEASANT, "贫农", 1000), new ClassSlot(LANDLORD, "地主", 0));
     Industry farm =
-        new Industry(
+        EconomyFixtures.industry(
             FARM,
             "农业",
             new RegimeId("feudal"),
@@ -544,7 +544,7 @@ class EconomySettlementTest {
     EconomyFixtures.hold(goods, PEASANT_KEY, GRAIN, 83_000L);
     EconomyFixtures.hold(goods, LANDLORD_KEY, GRAIN, 8_300L);
     return new EconomyFixtures.World(
-        new EconomyData(
+        EconomyFixtures.data(
             Optional.of(meta),
             industries,
             classes,
@@ -573,12 +573,18 @@ class EconomySettlementTest {
   static LaborAllocation allocation(
       LaborAllocationId id, PeopleLotId group, IndustryId industry, long laborMilli) {
     return new LaborAllocation(
-        id, group, new ActorRef(ActorKind.ESTATE, industry.value()), "farm", laborMilli, 1L);
+        id,
+        group,
+        EconomyFixtures.hh(PEASANT_KEY),
+        new ActorRef(ActorKind.ESTATE, industry.value()),
+        "farm",
+        laborMilli,
+        1L);
   }
 
   private static ClassRow row(CohortKey key, long population, long laborMilli, int participation) {
     // ★★ H1：行里**没有** goods 了（裁定 K1）—— 期初库存由夹具成对交出的**会话工作副本**承载（见 EconomyFixtures.World）。
-    return new ClassRow(
+    return EconomyFixtures.classRow(
         key,
         population,
         laborMilli,
@@ -597,7 +603,7 @@ class EconomySettlementTest {
   private static EconomyFixtures.World famineFixture(long stock) {
     List<ClassSlot> slots = List.of(new ClassSlot(PEASANT, "贫农", 1000));
     Industry farm =
-        new Industry(
+        EconomyFixtures.industry(
             FARM,
             "农业",
             new RegimeId("feudal"),
@@ -605,11 +611,13 @@ class EconomySettlementTest {
             0L,
             Map.of(AssetKind.LAND, 1_000L),
             // ★★ K3：本格该产业的产能总量（改前 = Σ各行的 meansOfProduction）
-            Map.of(),
+            //   ★ R3B.2：必须为正才会归一化出 ProductionUnit；否则周期末没有 unit 可关账，饿死判据根本不会跑。
+            Map.of(AssetKind.LAND, 1_300L),
             Map.of(),
             0L,
             0L,
-            Map.of(GRAIN, 7L),
+            // ★ 产出为空：本夹具的收获恒 0，饿死是唯一变量（旧注释的"不占地"换成"有 unit 但无产出"）。
+            Map.of(),
             Map.of(), // ★ 一个都不配种子（同 {@link #fixture()}）
             slots,
             new AllocationRule.Split(700, 300),
@@ -620,7 +628,7 @@ class EconomySettlementTest {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, farm);
     ClassRow row =
-        new ClassRow(
+        EconomyFixtures.classRow(
             PEASANT_KEY,
             100L,
             58_000L,
@@ -641,7 +649,7 @@ class EconomySettlementTest {
     Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
     EconomyFixtures.hold(goods, PEASANT_KEY, GRAIN, stock);
     return new EconomyFixtures.World(
-        new EconomyData(
+        EconomyFixtures.data(
             Optional.of(meta),
             industries,
             classes,

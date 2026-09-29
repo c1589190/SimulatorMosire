@@ -113,7 +113,7 @@ class EconomyFlowCycleTest {
     EconomyData closeOfCycleOne =
         EconomyFixtures.advance(world.data(), world.goods(), 0L, CYCLE_DAYS);
 
-    FlowRow flow = closeOfCycleOne.flows().get(PEASANT_KEY);
+    FlowRow flow = EconomyFixtures.flowOf(closeOfCycleOne, PEASANT_KEY);
     assertThat(flow.income().get(EconomySettlement.GRAIN))
         .as("关账日 = 一个周期的实物入账（= 关系实付 = 净产）")
         .isEqualTo(CYCLE_NET);
@@ -123,13 +123,13 @@ class EconomyFlowCycleTest {
     assertThat(flow.consumed().get(EconomySettlement.GRAIN))
         .as("★ T4：本期消费**只有口粮**（生产损耗不再进 consumed —— 它不是「谁消费了」，是蒸发了）")
         .isEqualTo(CYCLE_RATION);
-    assertThat(closeOfCycleOne.industries().get(FARM).progressDays()).as("关账后进度归零").isZero();
+    assertThat(EconomyFixtures.progressDaysOf(closeOfCycleOne, FARM)).as("关账后进度归零").isZero();
     assertThat(closeOfCycleOne.meta().orElseThrow().lastClosedCycle()).hasValue(1L);
 
     EconomyData closeOfCycleTwo =
         EconomyFixtures.advance(closeOfCycleOne, world.goods(), CYCLE_DAYS, 2L * CYCLE_DAYS);
 
-    FlowRow second = closeOfCycleTwo.flows().get(PEASANT_KEY);
+    FlowRow second = EconomyFixtures.flowOf(closeOfCycleTwo, PEASANT_KEY);
     assertThat(second.income().get(EconomySettlement.GRAIN))
         .as("★ 第 2 个关账日仍是**一个**周期的量（不是两个周期的累计）")
         .isEqualTo(CYCLE_NET);
@@ -144,11 +144,11 @@ class EconomyFlowCycleTest {
     EconomyData nextDay =
         EconomyFixtures.advance(closed, world.goods(), CYCLE_DAYS, CYCLE_DAYS + 1L);
 
-    FlowRow flow = nextDay.flows().get(PEASANT_KEY);
-    assertThat(nextDay.industries().get(FARM).progressDays())
+    FlowRow flow = EconomyFixtures.flowOf(nextDay, PEASANT_KEY);
+    assertThat(EconomyFixtures.progressDaysOf(nextDay, FARM))
         .as("第 121 天推进完 ⇒ 进度 1（进入新周期；进入时它是 0，故该行流水在**这一天之内**已被清零）")
         .isEqualTo(1L);
-    assertThat(nextDay.industries().get(FARM).cycleLaborMilli())
+    assertThat(EconomyFixtures.cycleLaborOf(nextDay, FARM))
         .as("新周期的劳动累计从这一天的 58,000 起（上周期那 6,960,000 已清零）")
         .isEqualTo(58_000L);
     assertThat(flow.income().getOrDefault(EconomySettlement.GRAIN, 0L))
@@ -182,7 +182,8 @@ class EconomyFlowCycleTest {
     EconomyData closed = EconomyFixtures.advance(world.data(), world.goods(), 0L, CYCLE_DAYS);
 
     // ★ T4：`consumed` 里**只剩口粮**（生产损耗改挂 `ProductionLedger.losses()`）⇒ 不必再减那一份
-    long ration = closed.flows().get(PEASANT_KEY).consumed().get(EconomySettlement.GRAIN);
+    long ration =
+        EconomyFixtures.flowOf(closed, PEASANT_KEY).consumed().get(EconomySettlement.GRAIN);
     assertThat(ration)
         .as("一周期 Σ 日耗 == 人口 × 10,000 毫粮（精确；旧的 83 口径会给出 9,960 × 人口）")
         .isEqualTo(POPULATION * 10_000L);
@@ -198,17 +199,20 @@ class EconomyFlowCycleTest {
     EconomyData day1 = EconomyFixtures.advance(world.data(), world.goods(), 0L, 1L);
     EconomyData day2 = EconomyFixtures.advance(day1, world.goods(), 1L, 2L);
 
-    assertThat(day1.classes().get(PEASANT_KEY).naturalNeeds().get(EconomySettlement.GRAIN))
+    assertThat(
+            EconomyFixtures.classOf(day1, PEASANT_KEY).naturalNeeds().get(EconomySettlement.GRAIN))
         .as("第 1 天的需求")
         .isEqualTo(EconomyVocabulary.dailyRationMilli(POPULATION, 1L));
-    assertThat(day2.classes().get(PEASANT_KEY).naturalNeeds().get(EconomySettlement.GRAIN))
+    assertThat(
+            EconomyFixtures.classOf(day2, PEASANT_KEY).naturalNeeds().get(EconomySettlement.GRAIN))
         .as("★ 第 2 天的需求（与第 1 天**不同**：累计差分在第 2 天给出另一个数 ⇒ 这条有内容，不是恒真）")
         .isEqualTo(EconomyVocabulary.dailyRationMilli(POPULATION, 2L));
     assertThat(EconomyVocabulary.dailyRationMilli(POPULATION, 2L))
         .as("前两天口粮相等（10,000 ÷ 120 = 83.33 ⇒ 第 1、2 天各 83）⇒ 用第 3 天验'逐日不同'")
         .isEqualTo(EconomyVocabulary.dailyRationMilli(POPULATION, 1L));
     EconomyData day3 = EconomyFixtures.advance(day2, world.goods(), 2L, 3L);
-    assertThat(day3.classes().get(PEASANT_KEY).naturalNeeds().get(EconomySettlement.GRAIN))
+    assertThat(
+            EconomyFixtures.classOf(day3, PEASANT_KEY).naturalNeeds().get(EconomySettlement.GRAIN))
         .as("第 3 天的需求（= 25,000 − 16,666 = 8,334，比前两天多 1）")
         .isEqualTo(EconomyVocabulary.dailyRationMilli(POPULATION, 3L));
     assertThat(EconomyVocabulary.dailyRationMilli(POPULATION, 3L))
@@ -239,7 +243,7 @@ class EconomyFlowCycleTest {
 
     assertThat(once).as("§十一：一次 240 天的终态 == 240 次单日").isEqualTo(daily);
     assertThat(once.flows()).as("流水也逐值相同（含两次周期清零）").isEqualTo(daily.flows());
-    assertThat(once.flows().get(PEASANT_KEY).income().get(EconomySettlement.GRAIN))
+    assertThat(EconomyFixtures.flowOf(once, PEASANT_KEY).income().get(EconomySettlement.GRAIN))
         .as("非平凡：终态落在一个周期末 ⇒ 入账是一个周期的量（不是 0，也不是 240 天的全部）")
         .isEqualTo(CYCLE_NET);
     assertThat(world.goods())
@@ -250,7 +254,7 @@ class EconomyFlowCycleTest {
   /** 一份经济状态：一格、一个农业产业（周期 {@value #CYCLE_DAYS} 天）、一行贫农（缸 {@value #JAR}、**不配种子**）。 */
   private static EconomyFixtures.World fixture() {
     Industry farm =
-        new Industry(
+        EconomyFixtures.industry(
             FARM,
             "农业",
             new RegimeId("feudal"),
@@ -272,7 +276,7 @@ class EconomyFlowCycleTest {
             // ★ 通用夹具的 operator = **派生**（`feudal` ⇒ `ESTATE:farm@0_0`）。
             RegimeOperators.defaultOperator(new RegimeId("feudal"), FARM));
     ClassRow row =
-        new ClassRow(
+        EconomyFixtures.classRow(
             PEASANT_KEY,
             POPULATION,
             LABOR_MILLI,
@@ -295,7 +299,7 @@ class EconomyFlowCycleTest {
     Map<CohortKey, Map<CommodityId, Long>> goods = EconomyFixtures.householdGoods();
     EconomyFixtures.hold(goods, PEASANT_KEY, EconomySettlement.GRAIN, JAR);
     return new EconomyFixtures.World(
-        new EconomyData(
+        EconomyFixtures.data(
             Optional.of(meta),
             industries,
             classes,
@@ -307,6 +311,7 @@ class EconomyFlowCycleTest {
                 new LaborAllocation(
                     ALLOCATION,
                     LOT,
+                    EconomyFixtures.hh(PEASANT_KEY),
                     new ActorRef(ActorKind.ESTATE, FARM.value()),
                     "farm",
                     LABOR_MILLI,
