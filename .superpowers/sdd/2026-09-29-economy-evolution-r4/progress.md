@@ -371,3 +371,21 @@ E3：实际生产实践的经验积累（挂稳定 HouseholdId × modeKey；实�
 2. E3 恢复时直接按 `docs/superpowers/plans/2026-09-29-economy-evolution-r4-plan.md` §E3 执行：新 `experiences` 组件挂稳定 HouseholdId×modeKey、
    收获日按实际劳动/实际产出计提、纯收租 0、有界渐近、阶层视图只读聚合、旧档缺键空表。
 3. 最后统一 V：测试适配、1/4/8、全年 360+峰值内存、10k 格、场景清单、SpotBugs；再决定是否补 `CloseProductionUnit` 与 S1 前旧档兼容。
+
+---
+
+## GOV 前置调查（只读，设计待冻结）—— 2026-09-29
+
+- 报告：`docs/superpowers/reports/2026-09-29-gov-pre-implementation-investigation.md`。
+- 结论：G1 可直接上；5 个硬缺口必须先定型：政府主体账户开立路径（`actor.Seed` 不能给已占格追加）、税基采集时点
+  （`FlowRow.income` 现成但经营者直营所得不在 FlowRow）、仓储物理真相（只能落 actor `GoodsAccount`）、Unit 承载官署方式
+  （Unit 无 kind/role，建议只做层级、GOV 存 Office 状态）、管辖权显式状态（Region/NationTag/HexOwner 可解析，但 hex 可多归属）。
+- 调查覆盖：生产分配/所得（ProductionSettlement/FlowRow）、账户与仓储（ActorKind.GOVERNMENT/GoodsAccount/ActorSeedHandler/applyTransfer）、
+  市场与在途（participantsFor/ShipmentBatch）、地域/国家（Region/RegionMeta/NationTag/HexOwner/NationScope/Nation.adminBudgetPerTick）、
+  Unit 层级（Unit/Create/Reparent/Attach；Army 归属范式）、决策/命令权限（DecisionMaker/Directive/Effect/DirectiveWhitelist/SdCommandDrain/
+  AdjudicateTickTool/Trigger 词表/CommandTargets）。
+- 设计定型建议：D1 GovTaxDecree/Office/Assessment/Payment/Transfer 组件；D2 粮只在 actor GoodsAccount + 新增 actor.OpenAccount；
+  D3 分配后实际所得按受方各征一次（地租/留成分别计税），欠税不得凭空造粮；D4 office 显式 jurisdiction，adminBudgetPerTick 作行政动作预算；
+  D5 Unit 只承载层级；D6 G3 先 GM 令、后 GOV 策略轮；D7 读口与 G1/G2/G3 验收。
+- 待用户裁定的实质点见报告 §5（Q1 模块位置、Q2 是否保护基本口粮、Q3 生效时点、Q4 应税主体、Q5 欠税形状、Q6 转运实现、Q7 辖区重叠、
+  Q8 行政能力语义、Q9 自动规则、Q10 official 阶层）。**冻结前不写 GOV 生产代码。**
