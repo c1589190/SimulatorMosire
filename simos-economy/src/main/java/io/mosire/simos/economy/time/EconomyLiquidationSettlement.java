@@ -105,6 +105,9 @@ public final class EconomyLiquidationSettlement {
   static final String ACTION_DEBT_EXPLOSION = "debt-explosion";
   static final String ACTION_PROJECTION_FALLBACK = "class-projection-fallback";
 
+  /** ★ 无 ACTIVE 质押时自动挂质押的确定性 id 前缀（不含 {@code "."}/{@code "|"}）。 */
+  private static final String AUTO_PLEDGE_ID_PREFIX = "autopledge-";
+
   private EconomyLiquidationSettlement() {}
 
   /** ★ 本阶段是否接线：新表（mode/位置/归属/质押/政策/资产规则）任一非空即启用；全空 = 旧档 ⇒ 整段 no-op，旧路径逐值不变。 */
@@ -275,7 +278,8 @@ public final class EconomyLiquidationSettlement {
       List<PledgeUpdate> pledgeUpdates,
       List<AuditEntry> audits,
       List<ClassDeclinePlan> declines,
-      List<DebtExplosionPlan> explosions) {}
+      List<DebtExplosionPlan> explosions,
+      List<DebtContractId> autoDefaults) {}
 
   /** 规则/政策选路结果；{@code failureReason != null} = 不处置（具名）。 */
   private record RulePolicySelection(
@@ -289,6 +293,9 @@ public final class EconomyLiquidationSettlement {
       LiquidationPolicy policy,
       String degradedFrom,
       String failureReason) {}
+
+  /** 自动挂质押的候选（折后可用量的自有份额 + 可质押规则）。 */
+  private record AutoPledgeCandidate(AssetShare share, AssetRule rule, long availableQuantity) {}
 
   /** 价格选路结果：{@code pricePerUnitMilli} 与政策一起返回，保证"价"与"保护线/比例"同源。 */
   private record SelectedPrice(long pricePerUnitMilli, LiquidationPolicy policy) {}
@@ -307,6 +314,9 @@ public final class EconomyLiquidationSettlement {
     Map<HouseholdId, List<DebtContract>> debtsByDebtor = indexDebtsByDebtor(context.debts());
     Map<DebtContractId, List<Pledge>> pledgesByDebt = indexActivePledgesByDebt(context.pledges());
     List<HouseholdId> households = sortedHouseholds(context.rows());
+    // ★★ 到期即默认：先用有效状态参与本轮的应力/触发判定，需落状态的在 apply 统一 markStatus。
+    List<DebtContractId> autoDefaults = new ArrayList<>();
+    Map<DebtContractId, DebtStatus> effectiveStatuses = effectiveStatuses(context, autoDefaults);
 
     // ── 1. 压力判定 + 连续计数器（逐户，稳定 HouseholdId 序）──────────────────────────────
     Map<HouseholdId, Long> nextCounts = new LinkedHashMap<>();
@@ -333,23 +343,20 @@ public final class EconomyLiquidationSettlement {
         long currentPrincipal = debt.principal();
         long cycleInterest = perMille(startPrincipal, debt.terms().interestRatePerMillePerCycle());
         // 到期口径：合同滚动 dueCycle 优先（借入/资本化会刷新它）；没有滚动值时读 terms 的固定期限维。
-        long effectiveDueCycle =
-            debt.dueCycle().isPresent()
-                ? debt.dueCycle().getAsLong()
-                : debt.terms().dueCycle().orElse(Long.MAX_VALUE);
-        boolean overdue = effectiveDueCycle <= context.currentCycle;
+        boolean overdue = contractDueCycle(debt) <= context.currentCycle;
         long required = overdue ? Math.max(cycleInterest, currentPrincipal) : cycleInterest;
         boolean principalDeclined = currentPrincipal < startPrincipal;
         // ★ F 是粮口径（E4b 只对粮 unit 算 F；非粮债进 unpriced 不硬折）⇒ 只有粮债能用
         //   "F < 本期利息/到期应还"这一路；非粮债只走 DEFAULTED/到期两路，避免跨 unit 比较。
         boolean shortOfRequired =
             isGrainDebt(debt) && capacity != null && capacity.F() < required && !principalDeclined;
-        boolean stressed = contractStressed(debt, overdue, shortOfRequired);
+        DebtStatus effectiveStatus = effectiveStatuses.getOrDefault(debt.id(), debt.status());
+        boolean stressed = contractStressed(effectiveStatus, overdue, shortOfRequired);
         if (stressed) {
           anyStress = true;
           stressedContracts.add(debt.id());
         }
-        if (debt.status() == DebtStatus.DEFAULTED) {
+        if (effectiveStatus == DebtStatus.DEFAULTED) {
           defaultedContracts++;
         }
         if (overdue) {
@@ -429,7 +436,8 @@ public final class EconomyLiquidationSettlement {
       Set<DebtContractId> stressedContracts =
           stressedContractsByHousehold.getOrDefault(household, Set.of());
       for (DebtContract debt : activeDebts(debtsByDebtor.getOrDefault(household, List.of()))) {
-        if (debt.status() == DebtStatus.DEFAULTED
+        DebtStatus effectiveStatus = effectiveStatuses.getOrDefault(debt.id(), debt.status());
+        if (effectiveStatus == DebtStatus.DEFAULTED
             || (thresholdReached && stressedContracts.contains(debt.id()))) {
           triggered.add(debt);
         }
@@ -437,10 +445,28 @@ public final class EconomyLiquidationSettlement {
     }
     triggered.sort(Comparator.comparing(debt -> debt.id().value()));
 
-    // ── 3. 逐合同选路（planner 只读；availableQuantity 覆盖层保证同一份额不被超卖）────────────
+    // ── 3. 无 ACTIVE 质押的触发债务先自动挂质押（同一 pledgeUpdates apply 路径；planner 立即读它）──
+    Map<AssetShareId, Long> activePledgeQuantity = activePledgeQuantityByShare(context.pledges());
+    List<PledgeUpdate> autoPledgeUpdates = new ArrayList<>();
+    for (DebtContract debt : triggered) {
+      List<Pledge> active = pledgesByDebt.get(debt.id());
+      if (active != null && !active.isEmpty()) {
+        continue;
+      }
+      Optional<Pledge> autoPledge = autoPledgeFor(context, debt, activePledgeQuantity);
+      if (autoPledge.isPresent()) {
+        Pledge pledge = autoPledge.get();
+        pledgesByDebt.computeIfAbsent(debt.id(), ignored -> new ArrayList<>()).add(pledge);
+        activePledgeQuantity.merge(
+            pledge.assetShareId(), pledge.quantity(), EconomyLiquidationSettlement::saturatedAdd);
+        autoPledgeUpdates.add(new PledgeUpdate(pledge.id(), pledge));
+      }
+    }
+
+    // ── 3b. 逐合同选路（planner 只读；availableQuantity 覆盖层保证同一份额不被超卖）───────────
     Map<AssetShareId, Long> availableQuantity = new LinkedHashMap<>();
     List<DebtReductionPlan> reductions = new ArrayList<>();
-    List<PledgeUpdate> pledgeUpdates = new ArrayList<>();
+    List<PledgeUpdate> pledgeUpdates = new ArrayList<>(autoPledgeUpdates);
     for (DebtContract debt : triggered) {
       DebtReductionPlan reduction =
           planDebtReduction(
@@ -466,7 +492,8 @@ public final class EconomyLiquidationSettlement {
       long count = nextCounts.getOrDefault(household, 0L);
       boolean defaultedAtThreshold = false;
       for (DebtContract debt : activeDebts(debtsByDebtor.getOrDefault(household, List.of()))) {
-        if (debt.status() == DebtStatus.DEFAULTED && count >= DEBT_STRESS_CYCLES_THRESHOLD) {
+        DebtStatus effectiveStatus = effectiveStatuses.getOrDefault(debt.id(), debt.status());
+        if (effectiveStatus == DebtStatus.DEFAULTED && count >= DEBT_STRESS_CYCLES_THRESHOLD) {
           defaultedAtThreshold = true;
           break;
         }
@@ -630,7 +657,8 @@ public final class EconomyLiquidationSettlement {
               evidence));
     }
 
-    return new Plan(stressUpdates, reductions, pledgeUpdates, audits, declines, explosions);
+    return new Plan(
+        stressUpdates, reductions, pledgeUpdates, audits, declines, explosions, autoDefaults);
   }
 
   // ── 逐合同选路 ───────────────────────────────────────────────────────────────────────────
@@ -992,6 +1020,10 @@ public final class EconomyLiquidationSettlement {
   // ── apply：照单执行（资产份额唯一写口 → 债务唯一写口 → 阶层/信号 → 审计）──────────────────
 
   private static void apply(Context context, Plan plan) {
+    // ★ 到期即默认：先落状态，后续 reduce/结清仍按既有唯一写口语义（DEFAULTED + 本金 0 ⇒ SETTLED）。
+    for (DebtContractId debtId : plan.autoDefaults()) {
+      DebtContractBook.markStatus(context.debts(), debtId, DebtStatus.DEFAULTED);
+    }
     List<AssetShareBook.Move> moves = new ArrayList<>();
     for (DebtReductionPlan reduction : plan.debtReductions()) {
       for (PlannedMove move : reduction.moves()) {
@@ -1304,10 +1336,10 @@ public final class EconomyLiquidationSettlement {
         && commodity.commodity().equals(EconomySettlement.GRAIN);
   }
 
-  /** 合同压力：{@code DEFAULTED} 或 到期未偿 或 {@code F < 本期利息/到期应还 且本金未下降}。 */
+  /** 合同压力：有效状态 {@code DEFAULTED} 或 到期未偿 或 {@code F < 本期利息/到期应还 且本金未下降}。 */
   private static boolean contractStressed(
-      DebtContract debt, boolean overdue, boolean shortOfRequired) {
-    return debt.status() == DebtStatus.DEFAULTED || overdue || shortOfRequired;
+      DebtStatus effectiveStatus, boolean overdue, boolean shortOfRequired) {
+    return effectiveStatus == DebtStatus.DEFAULTED || overdue || shortOfRequired;
   }
 
   /**
@@ -1458,6 +1490,122 @@ public final class EconomyLiquidationSettlement {
         count,
         standing.lastTransitionDay(),
         standing.reason());
+  }
+
+  /**
+   * ★★ 到期即默认的有效状态：{@code principal > 0}、{@link #contractDueCycle(DebtContract)} 已到（合同滚动字段优先， 否则
+   * terms 固定期限；legacy 两者都空 ⇒ 不触发）、且当前状态既非 {@code DEFAULTED}/{@code SETTLED}/{@code FORGIVEN} ⇒ 本轮视为
+   * {@code DEFAULTED}，并由 {@code autoDefaults} 收集需在 apply 落状态的合同（稳定 id 序）。
+   */
+  private static Map<DebtContractId, DebtStatus> effectiveStatuses(
+      Context context, List<DebtContractId> autoDefaults) {
+    Map<DebtContractId, DebtStatus> statuses = new LinkedHashMap<>();
+    for (DebtContract debt : context.debts().values()) {
+      DebtStatus status = debt.status();
+      boolean terminal =
+          status == DebtStatus.DEFAULTED
+              || status == DebtStatus.SETTLED
+              || status == DebtStatus.FORGIVEN;
+      if (debt.principal() > 0L && !terminal && contractDueCycle(debt) <= context.currentCycle()) {
+        statuses.put(debt.id(), DebtStatus.DEFAULTED);
+        autoDefaults.add(debt.id());
+      } else {
+        statuses.put(debt.id(), status);
+      }
+    }
+    autoDefaults.sort(Comparator.comparing(DebtContractId::value));
+    return statuses;
+  }
+
+  /** 现有 overdue 判定：合同滚动 dueCycle 优先，否则 terms 固定期限；两者都空 = 无到期（{@code Long.MAX_VALUE}）。 */
+  private static long contractDueCycle(DebtContract debt) {
+    return debt.dueCycle().isPresent()
+        ? debt.dueCycle().getAsLong()
+        : debt.terms().dueCycle().orElse(Long.MAX_VALUE);
+  }
+
+  /** ACTIVE 且 quantity &gt; 0 的质押按份额求和（自动挂质押算"剩余可用量"的输入）。 */
+  private static Map<AssetShareId, Long> activePledgeQuantityByShare(
+      Map<PledgeId, Pledge> pledges) {
+    Map<AssetShareId, Long> quantities = new LinkedHashMap<>();
+    List<Pledge> sorted = new ArrayList<>(pledges.values());
+    sorted.sort(Comparator.comparing(pledge -> pledge.id().value()));
+    for (Pledge pledge : sorted) {
+      if (pledge.status() == Pledge.Status.ACTIVE && pledge.quantity() > 0L) {
+        quantities.merge(
+            pledge.assetShareId(), pledge.quantity(), EconomyLiquidationSettlement::saturatedAdd);
+      }
+    }
+    return quantities;
+  }
+
+  /**
+   * ★★ 无 ACTIVE 质押的触发债务：按债务人自有份额自动挂一笔 ACTIVE 质押。份额条件 = {@code owner ==
+   * HouseholdActors.of(debtor)}、{@code kind == OWNED}、同 assetKind 存在 {@code pledgeable} 规则、扣除已有
+   * ACTIVE 质押后可用量 &gt; 0；候选按 {@code isCoreMeans → liquidationPriority → share.id → rule.id}
+   * 稳定排序。找不到合格份额 ⇒ 空，planner 保留既有 {@code no-active-pledge} 具名审计，不伪造质押。
+   */
+  private static Optional<Pledge> autoPledgeFor(
+      Context context, DebtContract debt, Map<AssetShareId, Long> activePledgeQuantity) {
+    List<AssetShare> shares = new ArrayList<>(context.assetShares().values());
+    shares.sort(Comparator.comparing(share -> share.id().value()));
+    List<AutoPledgeCandidate> candidates = new ArrayList<>();
+    for (AssetShare share : shares) {
+      if (!share.owner().equals(HouseholdActors.of(debt.debtor()))
+          || share.kind() != AssetShare.RightKind.OWNED
+          || (!context.industries().isEmpty()
+              && !context.industries().containsKey(share.industry()))) {
+        continue;
+      }
+      long available = share.quantity() - activePledgeQuantity.getOrDefault(share.id(), 0L);
+      if (available <= 0L) {
+        continue;
+      }
+      for (AssetRule rule : context.base().assetRules().values()) {
+        if (rule.assetKind() == share.asset() && rule.pledgeable()) {
+          candidates.add(new AutoPledgeCandidate(share, rule, available));
+        }
+      }
+    }
+    if (candidates.isEmpty()) {
+      return Optional.empty();
+    }
+    candidates.sort(
+        Comparator.comparing((AutoPledgeCandidate candidate) -> !candidate.rule().isCoreMeans())
+            .thenComparingInt(candidate -> candidate.rule().liquidationPriority())
+            .thenComparing(candidate -> candidate.share().id().value())
+            .thenComparing(candidate -> candidate.rule().id().value()));
+    AutoPledgeCandidate selected = candidates.get(0);
+    return Optional.of(
+        new Pledge(
+            autoPledgeId(context, debt),
+            debt.id(),
+            selected.share().id(),
+            selected.availableQuantity(),
+            selected.rule().modeId(),
+            selected.rule().liquidationPriority(),
+            Pledge.Status.ACTIVE));
+  }
+
+  /** 自动质押 id：优先 {@code autopledge-<debtId>}；被非 ACTIVE 旧质押占用时按 cycle 确定性避让。 */
+  private static PledgeId autoPledgeId(Context context, DebtContract debt) {
+    PledgeId base = new PledgeId(AUTO_PLEDGE_ID_PREFIX + debt.id().value());
+    if (!context.pledges().containsKey(base)) {
+      return base;
+    }
+    PledgeId cycled =
+        new PledgeId(AUTO_PLEDGE_ID_PREFIX + context.currentCycle() + "-" + debt.id().value());
+    if (!context.pledges().containsKey(cycled)) {
+      return cycled;
+    }
+    int suffix = 1;
+    while (true) {
+      PledgeId candidate = new PledgeId(cycled.value() + "-" + suffix);
+      if (!context.pledges().containsKey(candidate)) {
+        return candidate;
+      }
+      suffix++;
+    }
   }
 
   /** ACTIVE 且 quantity &gt; 0 的质押按债务合同索引（一次派生；同债多条按 PledgeId.value 升序）。 */
