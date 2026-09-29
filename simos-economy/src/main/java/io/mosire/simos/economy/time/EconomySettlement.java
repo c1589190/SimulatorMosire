@@ -52,6 +52,7 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
+import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionRecipe;
 import io.mosire.simos.economy.model.ProductionUnit;
@@ -795,6 +796,36 @@ public final class EconomySettlement {
     // ★★ **H5：当日的缺口**（"今天这一顿没吃上多少"）—— 它先被记下、**不在吃饭那一步就借**
     //   （借是最后手段：自产/分配 → 市场 → 救济(留位) → 借；见 {@link #lendDeficitsInHex}）。
     LinkedHashMap<HouseholdId, Long> deficitToday = new LinkedHashMap<>();
+    // ── 0-entry.4. ★★ E6a 模式变迁执行（理想架构 §4.4；计划 E6a）────────────────────────────────
+    //   ★★ 位置：**必须在自动组织阶段之前** —— 变迁写回 EXITING/ACTIVE 组织、同一 unit 的新 modeKey 与新
+    //      ClassStanding；随后 organize 以新归属做幂等检查（新组织已 ACTIVE ⇒ 不重建），retain=1000 的旧
+    //      EXITING 组织也不会被重建（organize 对该状态显式跳过）。
+    //   ★★ 闸门：`modeTransitions` 为空时连工作副本都不建（空表基线逐值不变）；apply 内部再判一次到期 PENDING。
+    //   ★ 只对"base 里真有一条到期 PENDING"才进入：APPLIED/FAILED 的历史变迁不产生任何拷贝（跨 revision 的稳定基线）。
+    //   ★ 它只写 organizations / units / pledges / classStandings / modeTransitions / classShares
+    // 六张工作副本。
+    boolean dueModeTransition = false;
+    for (ModeTransition transition : base.modeTransitions().values()) {
+      if (transition.status() == ModeTransition.Status.PENDING
+          && transition.effectiveDay() <= day) {
+        dueModeTransition = true;
+        break;
+      }
+    }
+    if (dueModeTransition) {
+      EconomyModeTransitionSettlement.apply(
+          base,
+          day,
+          rows,
+          session.sheet().productionOrganizations(),
+          units,
+          assetShares,
+          session.sheet().pledges(),
+          session.sheet().classStandings(),
+          session.sheet().modeTransitions(),
+          session.sheet().classShares());
+    }
+
     // ── 0-entry.5. ★★ E2 自动生产组织（理想架构 §4.2 ①；计划 E2）────────────────────────────
     //   ★★ 位置：在 **0-entry 候选采用之后、现扣投入/劳动再分配/消费之前** —— 今天新建的 unit 因此当天就能进入本周期
     //      （progressDays=0 ⇒ 现扣投入会为它扣一次料，随后劳动再分配按它的 need 保留配额）。
@@ -808,6 +839,8 @@ public final class EconomySettlement {
       organizationOutcome =
           EconomyOrganizationSettlement.organize(
               base,
+              // ★ E6a：变迁刚写过的 standing 工作副本优先（无变迁时 = base 的不可变表，旧路径逐值不变）。
+              session.sheet().classStandingsOrBase(),
               rows,
               industries,
               base.pledges(),

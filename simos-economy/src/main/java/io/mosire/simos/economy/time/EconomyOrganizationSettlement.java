@@ -32,6 +32,7 @@ import io.mosire.simos.economy.model.ClassPosition.LaborRole;
 import io.mosire.simos.economy.model.ClassPosition.RelationToMeans;
 import io.mosire.simos.economy.model.ClassPosition.SurplusRole;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
@@ -211,10 +212,46 @@ final class EconomyOrganizationSettlement {
   }
 
   /**
+   * ★ 旧签名（E6a 之前）：等价于传 {@code base.classStandings()} —— 保留给既有调用方/用例；无模式变迁时逐值等于 新签名。生产路径（{@code
+   * EconomySettlement}）走带 standing 覆盖的新签名，以便组织阶段看见刚应用的变迁。
+   */
+  static Outcome organize(
+      EconomyData base,
+      Map<HouseholdId, ClassRow> rows,
+      Map<IndustryId, Industry> industries,
+      Map<PledgeId, Pledge> pledges,
+      LinkedHashMap<ProductionUnitId, ProductionUnit> units,
+      LinkedHashMap<ProductionUnitId, ProductionRelation> relations,
+      LinkedHashMap<AssetShareId, AssetShare> assetShares,
+      LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
+      Map<MembershipId, Membership> memberships,
+      Map<PeopleLotId, LaborSupply> laborSupply,
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+      Map<HexCoord, Market> markets,
+      LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations) {
+    return organize(
+        base,
+        base.classStandings(),
+        rows,
+        industries,
+        pledges,
+        units,
+        relations,
+        assetShares,
+        allocations,
+        memberships,
+        laborSupply,
+        householdGoods,
+        markets,
+        organizations);
+  }
+
+  /**
    * ★★ <b>本阶段入口</b>：{@code modes} 为空时<b>第一行就返回</b>（旧路径逐值不变的全部保证在这里）。
    *
    * @param base 结算前的不可变状态（读
    *     modes/classStructures/classPositions/classStandings/assetRules/industries/pledges）
+   * @param classStandings 家户阶层归属视图（E6a：模式变迁在同一日刚写过的工作副本优先；无变迁时 = {@code base.classStandings()}）
    * @param rows 家户工作副本（只读本阶段；键 = 稳定身份）
    * @param industries 产业模板（只读；本阶段不新建模板）
    * @param pledges 质押表（只读；E5a 起作为 {@code AssetShareBook} 的活跃质押上界来源；空表 = 不判）
@@ -231,6 +268,7 @@ final class EconomyOrganizationSettlement {
    */
   static Outcome organize(
       EconomyData base,
+      Map<HouseholdId, ClassStanding> classStandings,
       Map<HouseholdId, ClassRow> rows,
       Map<IndustryId, Industry> industries,
       Map<PledgeId, Pledge> pledges,
@@ -248,6 +286,7 @@ final class EconomyOrganizationSettlement {
       return Outcome.empty(); // ★★ 闸门：旧档/未接线世界完全不执行本阶段
     }
     Objects.requireNonNull(rows, "rows");
+    Objects.requireNonNull(classStandings, "classStandings");
     Objects.requireNonNull(industries, "industries");
     Objects.requireNonNull(pledges, "pledges");
     Objects.requireNonNull(units, "units");
@@ -268,7 +307,7 @@ final class EconomyOrganizationSettlement {
     List<HouseholdId> orderedHouseholds = new ArrayList<>(rows.keySet());
     orderedHouseholds.sort(Comparator.comparing(HouseholdId::value));
     for (HouseholdId household : orderedHouseholds) {
-      ClassPositionResolver.resolveCurrent(base, household)
+      resolveCurrent(base, classStandings, household)
           .ifPresent(position -> positionByHousehold.put(household, position));
     }
 
@@ -308,6 +347,11 @@ final class EconomyOrganizationSettlement {
           try {
             orgId = ProductionOrganizationId.idOf(mode.id(), positionId, household, hexKey);
             ProductionOrganization existing = organizations.get(orgId);
+            if (existing != null && existing.status() == Status.EXITING) {
+              // ★★ E6a：模式变迁把旧 mode 的组织钉在 EXITING —— 该位置即使仍有家户停留（retain=1000），
+              //   也不得被自动组织阶段重建/覆盖成 SHORTAGE/ACTIVE（旧 unit 已改挂新 mode，重组织必然失败）。
+              continue;
+            }
             if (existing != null
                 && existing.status() == Status.ACTIVE
                 && existing.unitId().isPresent()
@@ -653,6 +697,20 @@ final class EconomyOrganizationSettlement {
   private static boolean shouldProduce(ClassPosition position) {
     return position.laborRole() != LaborRole.NONE
         && position.surplusRole() != SurplusRole.DEPENDENT;
+  }
+
+  /**
+   * ★★ <b>E6a：当前阶层位置的解析（结算工作副本优先）</b>：日结算可能在自动组织之前刚应用了模式变迁， {@code classStandings} 工作副本里的
+   * currentPositionId 已是新位置；若仍读 {@code base} 的旧归属，本日组织会按旧位置 重来一遍。传进来的表在无变迁时逐字等于 {@code
+   * base.classStandings()}（{@code classStandingsOrBase()}），旧路径不变。
+   */
+  private static Optional<ClassPositionId> resolveCurrent(
+      EconomyData base, Map<HouseholdId, ClassStanding> classStandings, HouseholdId household) {
+    ClassStanding standing = classStandings.get(household);
+    if (standing != null) {
+      return Optional.of(standing.currentPositionId());
+    }
+    return ClassPositionResolver.resolveCurrent(base, household);
   }
 
   /** 位置角色 → 优先 regime（E2 的产业模板选择启发式；只是"先试哪一个"，不是规则权威）。 */

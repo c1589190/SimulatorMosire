@@ -8,6 +8,7 @@ import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
+import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -18,6 +19,7 @@ import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
+import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.PledgeId;
@@ -38,6 +40,7 @@ import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassPosition;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DebtContract;
@@ -51,6 +54,7 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
+import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionCandidate;
@@ -78,7 +82,7 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **二十七个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的二十七个组件一一对应**（铁律 5）：
+ * <p>★ **二十九个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的二十九个组件一一对应**（铁律 5）：
  * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **跨表同键不变式**（§6.2 的身份部分）：{@code classes} 的每个键必须等于其 {@link ClassRow#key()}；{@code flows}
@@ -111,7 +115,7 @@ import java.util.Set;
  * 时一律收成空表 / 未激活，**此处不抛** —— 抛了等于"旧档全部读不回来"。方向是 fail-closed： 缺键 ⇒
  * 没有产业/没有阶层/没有债务/没有流水/没有劳动供给与配额/没有生产关系/<b>没有市场</b>/未激活。
  *
- * <p>★ **二十七张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
+ * <p>★ **二十九张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**——它的迭代序不是内容的纯函数（字节级往返因此不成立）。冻结那一步**写在字段赋值处** （SpotBugs 的 {@code EI_EXPOSE_REP}
  * 不做跨过程分析，只认它看得见的包装）。
  *
@@ -175,6 +179,12 @@ import java.util.Set;
  * 由 {@code (hex, kind)} 确定性派生；同 hex 同 kind 覆盖即更新）。 ★ 两张表为空 = 旧行为逐值不变，E5a
  * 不产生任何清算/信号；跨表守卫同样按“对侧已提供”分段，保证 {@code with*} 能逐组件构造。
  *
+ * <p>★★ **E6a 追加第 28/29 个组件**（{@code modeTransitions} / {@code classShares}）：前者按 {@link
+ * ModeTransitionId} 键模式变迁（键 == 由 {@code (organizationId, toModeId, effectiveDay)} 确定性派生；同一组织至多一条
+ * PENDING）；后者按 {@link ClassShareId} 键阶层保留份额（键 == 由 {@code (transitionId, householdId,
+ * classPositionId)} 派生；同一 {@code (transitionId, householdId)} 的 Σ 必须 = 1000‰）。两表为空 = 旧行为逐值不变；
+ * 跨表守卫按“对侧已提供”分段（组织 / mode / 变迁 / 家户 / 位置存在性）。
+ *
  * <p>★ <b>守卫**不**检查 cohort 侧的行是否存在</b>（有意不加，同 {@code ActorData}「表与表之间没有引用完整性约束」的口径）： 逐组件增量落盘 ⇒
  * **关系先到、行后到是合法写序**；而 cohort 解析不到行在结算里是**正常状态**（人口为 0 的那些 cohort 就是如此，那一笔留在 {@code
  * residualOwner}）——把它判成非法会让"人口尚未种入"的世界构造不出来。
@@ -206,12 +216,16 @@ public record EconomyData(
     Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances,
     Map<PledgeId, Pledge> pledges,
     Map<AssetRuleId, LiquidationPolicy> liquidationPolicies,
-    Map<CrisisSignalId, HexCrisisSignal> crisisSignals) {
+    Map<CrisisSignalId, HexCrisisSignal> crisisSignals,
+    Map<ModeTransitionId, ModeTransition> modeTransitions,
+    Map<ClassShareId, ClassShare> classShares) {
 
-  /** 往返用例的起点：未激活 + 二十七张空表。 */
+  /** 往返用例的起点：未激活 + 二十九张空表。 */
   public static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
+        Map.of(),
+        Map.of(),
         Map.of(),
         Map.of(),
         Map.of(),
@@ -328,6 +342,14 @@ public record EconomyData(
     }
     if (crisisSignals == null) {
       crisisSignals = Map.of();
+    }
+    // ★★ E6a 的第 28/29 个组件（模式变迁 / 阶层保留份额）：旧档缺键 ⇒ 空表（同上面每一条的口径）。
+    //   空表 = 没有模式变迁请求、没有保留份额记录 ⇒ 旧结算路径逐值不变（E6a 不产生任何变迁）。
+    if (modeTransitions == null) {
+      modeTransitions = Map.of();
+    }
+    if (classShares == null) {
+      classShares = Map.of();
     }
     // ★ 第 8 个组件（S1 阶段 4+5 Task 2）：同一口径（缺键 ⇒ 空表，见类注释）。★ 迁移器要读它，故提到迁移之前。
     if (relations == null) {
@@ -1393,6 +1415,119 @@ public record EconomyData(
       crisisSignalsCopy.put(entry.getKey(), signal);
     }
     crisisSignals = Collections.unmodifiableMap(crisisSignalsCopy); // ★ 冻在赋值处
+    // ── E6a 第 28 个组件：模式变迁（键 == 值内 id == (organizationId, toModeId, effectiveDay) 的确定性派生）──
+    //   ★ 旧档缺键 ⇒ 空表（上面已归一）；空表 = 没有变迁请求，旧结算路径逐值不变。
+    //   ★ 引用完整性按“对侧已提供”分段（与 E1/E2/E5 同款）：modes/productionOrganizations 为空 = 该侧尚未提供
+    //     ⇒ 只判结构；非空才判组织/mode 存在与 fromMode 一致性。★ “同一组织至多一条 PENDING”在构造期判死 ——
+    //     它是模式变迁命令幂等与“一条 revision 只应用一次”的地基（重复 PENDING 会让同一次切换被两次结算）。
+    Map<ModeTransitionId, ModeTransition> modeTransitionsCopy = new LinkedHashMap<>();
+    Set<ProductionOrganizationId> pendingOrganizations = new LinkedHashSet<>();
+    for (Map.Entry<ModeTransitionId, ModeTransition> entry : modeTransitions.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("modeTransitions 的键与值都不得为 null: " + entry.getKey());
+      }
+      ModeTransition transition = entry.getValue();
+      if (!entry.getKey().equals(transition.id())) {
+        throw new IllegalArgumentException(
+            "modeTransitions 的键必须与 ModeTransition.id 一致：键="
+                + entry.getKey()
+                + "，行内 id="
+                + transition.id());
+      }
+      ModeTransitionId derived =
+          ModeTransitionId.idOf(
+              transition.organizationId(), transition.toModeId(), transition.effectiveDay());
+      if (!entry.getKey().equals(derived)) {
+        throw new IllegalArgumentException(
+            "modeTransitions 的键必须由 (organizationId, toModeId, effectiveDay) 确定性派生"
+                + "（同一请求重复提交必须得到同一 id）：键="
+                + entry.getKey()
+                + "，派生="
+                + derived);
+      }
+      if (!productionOrganizations.isEmpty()
+          && !productionOrganizations.containsKey(transition.organizationId())) {
+        throw new IllegalArgumentException(
+            "模式变迁指名的生产组织不存在：变迁=" + entry.getKey() + "，组织=" + transition.organizationId());
+      }
+      if (!productionOrganizations.isEmpty()) {
+        ProductionOrganization organization =
+            productionOrganizations.get(transition.organizationId());
+        if (organization != null && !organization.modeId().equals(transition.fromModeId())) {
+          throw new IllegalArgumentException(
+              "模式变迁的 fromModeId 必须等于组织当前的 modeId（同一件事不许两处拼写）：变迁="
+                  + entry.getKey()
+                  + "，fromMode="
+                  + transition.fromModeId()
+                  + "，组织 mode="
+                  + organization.modeId());
+        }
+      }
+      if (!modesCopy.isEmpty()) {
+        if (!modesCopy.containsKey(transition.fromModeId())) {
+          throw new IllegalArgumentException(
+              "模式变迁的 fromModeId 必须是已存在的生产方式：变迁="
+                  + entry.getKey()
+                  + "，fromMode="
+                  + transition.fromModeId());
+        }
+        if (!modesCopy.containsKey(transition.toModeId())) {
+          throw new IllegalArgumentException(
+              "模式变迁的 toModeId 必须是已存在的生产方式：变迁="
+                  + entry.getKey()
+                  + "，toMode="
+                  + transition.toModeId());
+        }
+      }
+      if (transition.status() == ModeTransition.Status.PENDING
+          && !pendingOrganizations.add(transition.organizationId())) {
+        throw new IllegalArgumentException(
+            "同一生产组织至多允许一条 PENDING 模式变迁（重复会让同一次切换被结算两次）：组织=" + transition.organizationId());
+      }
+      modeTransitionsCopy.put(entry.getKey(), transition);
+    }
+    modeTransitions = Collections.unmodifiableMap(modeTransitionsCopy); // ★ 冻在赋值处
+    // ── E6a 第 29 个组件：阶层保留份额（键 == 值内 id；同一 (transitionId, householdId) 的 Σ = 1000‰）──────────
+    //   ★ 对侧（modeTransitions / classes / classPositions）为空 = 该侧尚未提供 ⇒ 只判结构与分组和；
+    //     一旦对侧非空，引用完整性 fail-closed（变迁/家户/位置必须存在）。
+    Map<ClassShareId, ClassShare> classSharesCopy = new LinkedHashMap<>();
+    Map<String, Long> sharePerGroup = new LinkedHashMap<>();
+    for (Map.Entry<ClassShareId, ClassShare> entry : classShares.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("classShares 的键与值都不得为 null: " + entry.getKey());
+      }
+      ClassShare share = entry.getValue();
+      if (!entry.getKey().equals(share.id())) {
+        throw new IllegalArgumentException(
+            "classShares 的键必须与 ClassShare.id 一致：键=" + entry.getKey() + "，行内 id=" + share.id());
+      }
+      if (!modeTransitionsCopy.isEmpty()
+          && !modeTransitionsCopy.containsKey(share.transitionId())) {
+        throw new IllegalArgumentException(
+            "阶层保留份额指名的模式变迁不存在：份额=" + entry.getKey() + "，变迁=" + share.transitionId());
+      }
+      if (!classesCopy.isEmpty() && !classesCopy.containsKey(share.householdId())) {
+        throw new IllegalArgumentException(
+            "阶层保留份额指名的家户不存在：份额=" + entry.getKey() + "，家户=" + share.householdId());
+      }
+      if (!positionsCopy.isEmpty() && !positionsCopy.containsKey(share.classPositionId())) {
+        throw new IllegalArgumentException(
+            "阶层保留份额指名的阶层位置不存在：份额=" + entry.getKey() + "，位置=" + share.classPositionId());
+      }
+      String groupKey = share.transitionId().value() + "|" + share.householdId().value();
+      sharePerGroup.merge(groupKey, share.sharePerMille(), Math::addExact);
+      classSharesCopy.put(entry.getKey(), share);
+    }
+    for (Map.Entry<String, Long> entry : sharePerGroup.entrySet()) {
+      if (entry.getValue() != 1000L) {
+        throw new IllegalArgumentException(
+            "同一 (transitionId, householdId) 的 Σ ClassShare.sharePerMille 必须 = 1000：组="
+                + entry.getKey()
+                + "，合计="
+                + entry.getValue());
+      }
+    }
+    classShares = Collections.unmodifiableMap(classSharesCopy); // ★ 冻在赋值处
   }
 
   /**
@@ -1478,7 +1613,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1510,7 +1647,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1542,7 +1681,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /**
@@ -1577,7 +1718,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1609,7 +1752,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** 一个组件一个 with（R2：劳动供给表）；其余十九个组件原样带过。 */
@@ -1641,7 +1786,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** 一个组件一个 with（R2：劳动分配表）；其余十九个组件原样带过。 */
@@ -1673,7 +1820,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余十九个组件原样带过。 */
@@ -1705,7 +1854,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /**
@@ -1742,7 +1893,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /**
@@ -1778,7 +1931,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** 一个组件一个 with（S1：成员份额表）；其余十九个组件原样带过。 */
@@ -1810,7 +1965,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** 一个组件一个 with（R3B.1：实物资产份额表）；其余十九个组件原样带过。 */
@@ -1842,7 +1999,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余十九个组件原样带过。 */
@@ -1874,7 +2033,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** ★★ R3B.2：生产单元表（第 14 个组件）；其余十九个组件原样带过。 */
@@ -1906,7 +2067,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** ★★ R4-E2：需求账本（第 15 个组件）；其余十九个组件原样带过（GM 命令的唯一写入口）。 */
@@ -1938,7 +2101,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** ★★ R4-E2：候选预设表（第 16 个组件）；其余十九个组件原样带过（GM 命令的唯一写入口）。 */
@@ -1970,7 +2135,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** ★★ E1：生产方式表（第 17 个组件）；其余十九个组件原样带过。 */
@@ -2002,7 +2169,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** ★★ E1：阶层结构表（第 18 个组件）；其余十九个组件原样带过。 */
@@ -2034,7 +2203,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余十九个组件原样带过。 */
@@ -2066,7 +2237,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余十九个组件原样带过。 */
@@ -2098,7 +2271,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** ★★ E2：生产组织表（第 21 个组件）；其余二十一个组件原样带过。 */
@@ -2131,7 +2306,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** ★★ E2：生产资料规则表（第 22 个组件）；其余二十一个组件原样带过。 */
@@ -2163,7 +2340,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** ★★ E3：政府表（第 23 个组件）；其余二十三个组件原样带过。 */
@@ -2195,7 +2374,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /** ★★ E3：货币发行审计表（第 24 个组件）；其余二十三个组件原样带过。 */
@@ -2227,7 +2408,9 @@ public record EconomyData(
         value,
         pledges,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /**
@@ -2263,7 +2446,9 @@ public record EconomyData(
         moneyIssuances,
         value,
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /**
@@ -2300,7 +2485,9 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         value,
-        crisisSignals);
+        crisisSignals,
+        modeTransitions,
+        classShares);
   }
 
   /**
@@ -2337,6 +2524,86 @@ public record EconomyData(
         moneyIssuances,
         pledges,
         liquidationPolicies,
+        value,
+        modeTransitions,
+        classShares);
+  }
+
+  /**
+   * ★★ E6a：模式变迁表（第 28 个组件）；其余二十八个组件原样带过。
+   *
+   * <p>★ 键 == 值内 id == {@code ModeTransitionId.idOf(organizationId, toModeId,
+   * effectiveDay)}；同一组织至多一条 PENDING。空表 = 没有模式变迁请求，旧行为逐值不变。
+   */
+  public EconomyData withModeTransitions(Map<ModeTransitionId, ModeTransition> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        value,
+        classShares);
+  }
+
+  /**
+   * ★★ E6a：阶层保留份额表（第 29 个组件，追加在末尾）；其余二十八个组件原样带过。
+   *
+   * <p>★ 键 == 值内 id == {@code ClassShareId.idOf(transitionId, householdId, classPositionId)}；同一
+   * {@code (transitionId, householdId)} 的 Σ sharePerMille 必须 = 1000（规范构造器逐组判）。空表 = 没有份额记录。
+   */
+  public EconomyData withClassShares(Map<ClassShareId, ClassShare> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
         value);
   }
 

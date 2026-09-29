@@ -133,7 +133,11 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             //   已播国家的清算制度参数与 hex 危机信号在后续国家 seed 时静默消失（账面上看不出是谁弄丢的）。
             //   ★ 危机信号键 = (hex, kind)，同键以后播的载荷为准（覆盖即更新，见 HexCrisisSignal 类注）。
             merge(base.liquidationPolicies(), seeded.liquidationPolicies()),
-            merge(base.crisisSignals(), seeded.crisisSignals()));
+            merge(base.crisisSignals(), seeded.crisisSignals()),
+            // ★★ E6a 的第 28/29 个组件：同一套 append 口径合并 —— 漏了它们 = 已有模式变迁/保留份额在后续
+            //   国家 seed 时静默消失（新播的 seed 载荷通常为空表，逐值带过已有状态）。
+            merge(base.modeTransitions(), seeded.modeTransitions()),
+            merge(base.classShares(), seeded.classShares()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 

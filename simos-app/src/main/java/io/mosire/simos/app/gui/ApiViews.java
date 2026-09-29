@@ -45,6 +45,7 @@ import io.mosire.simos.economy.api.relation.SubsistenceObligation;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.DebtCapacity;
@@ -57,6 +58,7 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionCandidate;
@@ -698,6 +700,11 @@ public final class ApiViews {
     view.put("crisisSignals", crisisSignalViews(data, coord));
     // ★★ E5b：本格质押只读视图（清算的输入侧；状态真值 = EconomyData.pledges）。
     view.put("pledges", pledgeViews(data, coord));
+    // ★★ E6a：模式变迁与阶层保留份额（**世界级、按 id 稳定序**；两者都是持久状态，空列表 = 没有记录，
+    //   不是"读不到"）。★ 视图只读 EconomyData 的规范表，不重算派生读数、不按 hex 过滤伪造局部空表：
+    //   变迁的目标组织 id 自带格键，读的人可逐条对格；classShares 的家户/位置身份也逐条发出。
+    view.put("modeTransitions", modeTransitionViews(data));
+    view.put("classShares", classShareViews(data));
     // ★★ R4-E2b：**本格的实物资产份额**只读视图（逐条 id/industry/asset/owner/operator/quantity/kind）——
     //   份额的 owner/operator 是"谁拥有/谁经营"的唯一实物总账，进入动作的拆分必须在这里逐条可见（守恒靠它核对）。
     view.put("assetShares", assetShareViews(data, coord));
@@ -2550,6 +2557,52 @@ public final class ApiViews {
       view.put("modeId", pledge.modeId().value());
       view.put("priority", pledge.priority());
       view.put("status", pledge.status().name());
+      out.add(view);
+    }
+    return out;
+  }
+
+  /**
+   * ★★ <b>E6a：模式变迁只读视图</b>（世界级；按 {@code ModeTransitionId} 字典序 ⇒ 响应字节是内容的纯函数）。它只 <b>读</b> {@code
+   * EconomyData.modeTransitions()}：PENDING/APPLIED/FAILED 逐条原样发出（FAILED 的 reason 具名）， 空列表 =
+   * 没有变迁记录（不是"读不到"）。视图不重算位置匹配、不猜格键。
+   */
+  private static List<Map<String, Object>> modeTransitionViews(EconomyData data) {
+    List<ModeTransition> transitions = new ArrayList<>(data.modeTransitions().values());
+    transitions.sort(Comparator.comparing(transition -> transition.id().value()));
+    List<Map<String, Object>> out = new ArrayList<>(transitions.size());
+    for (ModeTransition transition : transitions) {
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("id", transition.id().value());
+      view.put("organizationId", transition.organizationId().value());
+      view.put("fromModeId", transition.fromModeId().value());
+      view.put("toModeId", transition.toModeId().value());
+      view.put("retainOriginalPerMille", transition.retainOriginalPerMille());
+      view.put("requestedDay", transition.requestedDay());
+      view.put("effectiveDay", transition.effectiveDay());
+      view.put("status", transition.status().name());
+      view.put("reason", transition.reason());
+      out.add(view);
+    }
+    return out;
+  }
+
+  /**
+   * ★★ <b>E6a：阶层保留份额只读视图</b>（世界级；按 {@code ClassShareId} 字典序）。它只 <b>读</b> {@code
+   * EconomyData.classShares()}：每条的 {@code sharePerMille} 与 {@link ClassStanding#retainedShares()}
+   * 同源； 同一 {@code (transitionId, householdId)} 的 Σ = 1000‰ 由构造期守卫判死。空列表 = 没有份额记录。
+   */
+  private static List<Map<String, Object>> classShareViews(EconomyData data) {
+    List<ClassShare> shares = new ArrayList<>(data.classShares().values());
+    shares.sort(Comparator.comparing(share -> share.id().value()));
+    List<Map<String, Object>> out = new ArrayList<>(shares.size());
+    for (ClassShare share : shares) {
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("id", share.id().value());
+      view.put("transitionId", share.transitionId().value());
+      view.put("householdId", share.householdId().value());
+      view.put("classPositionId", share.classPositionId().value());
+      view.put("sharePerMille", share.sharePerMille());
       out.add(view);
     }
     return out;

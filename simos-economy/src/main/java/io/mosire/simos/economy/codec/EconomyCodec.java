@@ -23,6 +23,7 @@ import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
+import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
@@ -34,6 +35,7 @@ import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
+import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.PledgeId;
@@ -190,6 +192,9 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     // ★★ E5a：crisisSignals 的键 = CrisisSignalId（{@code crisis-<q>_<r>-<KIND>}，与 parse 互为逆，只需读侧）。
     //   liquidationPolicies 的键 = AssetRuleId，上面 E2 已注册。
     module.addKeyDeserializer(CrisisSignalId.class, keyDeserializer(CrisisSignalId::parse));
+    // ★★ E6a：modeTransitions / classShares 两张新表的键（opaque 裸值，与各自 parse 互为逆，只需读侧）。
+    module.addKeyDeserializer(ModeTransitionId.class, keyDeserializer(ModeTransitionId::parse));
+    module.addKeyDeserializer(ClassShareId.class, keyDeserializer(ClassShareId::parse));
     return module;
   }
 

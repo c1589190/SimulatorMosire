@@ -19,6 +19,8 @@ import io.mosire.simos.economy.api.debt.MonetaryConversion;
 import io.mosire.simos.economy.api.debt.RepaymentRule;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
+import io.mosire.simos.economy.api.id.ClassPositionId;
+import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -28,10 +30,12 @@ import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
+import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
+import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -50,6 +54,7 @@ import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -60,6 +65,7 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
+import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
@@ -511,6 +517,9 @@ final class EconomyPayloads {
     // ★★ E5a：可选初始清算政策 / hex 危机信号（缺键 ⇒ 空表；结构在本层判，引用完整性走 EconomyData 构造期守卫）。
     Map<AssetRuleId, LiquidationPolicy> liquidationPolicies = liquidationPolicies(payload);
     Map<CrisisSignalId, HexCrisisSignal> crisisSignals = crisisSignals(payload);
+    // ★★ E6a：可选初始模式变迁 / 阶层保留份额（缺键 ⇒ 空表；id 确定性派生、分组 Σ=1000 与引用完整性走构造期守卫）。
+    Map<ModeTransitionId, ModeTransition> modeTransitions = modeTransitions(payload);
+    Map<ClassShareId, ClassShare> classShares = classShares(payload);
     return new EconomyData(
         Optional.of(meta),
         industries,
@@ -547,7 +556,10 @@ final class EconomyPayloads {
         pledges,
         // ★★ E5a：清算政策 / 危机信号（可选；键身份/引用完整性由 EconomyData 构造期守卫判）。
         liquidationPolicies,
-        crisisSignals);
+        crisisSignals,
+        // ★★ E6a：模式变迁 / 阶层保留份额（可选；id 派生、分组 Σ=1000 与引用完整性由构造期守卫判）。
+        modeTransitions,
+        classShares);
   }
 
   /**
@@ -1599,6 +1611,107 @@ final class EconomyPayloads {
       signals.put(derived, signal);
     }
     return signals;
+  }
+
+  /**
+   * ★★ E6a：顶层可选 {@code modeTransitions} 数组（缺键 ⇒ 空表；旧载荷逐值不变）。每项：
+   *
+   * <pre>{@code
+   * {"organizationId":"org-…","fromModeId":"…","toModeId":"…","retainOriginalPerMille":400,
+   *  "requestedDay":120,"effectiveDay":121,"status":"PENDING","reason":"…","id":"mt-…"?}
+   * }</pre>
+   *
+   * <p>★ {@code id} 是可选键：给了必须与 {@link ModeTransitionId#idOf(ProductionOrganizationId,
+   * ProductionModeId, long)} 一致（不一致 ⇒ 抛）；不给就派生。★ 同一数组里派生 id 重复 ⇒ 抛（同一请求不得写两条）。 组织/mode 引用与"同一组织至多一条
+   * PENDING"由 {@code EconomyData} 构造期守卫判。
+   */
+  private static Map<ModeTransitionId, ModeTransition> modeTransitions(JsonNode payload) {
+    Map<ModeTransitionId, ModeTransition> transitions = new LinkedHashMap<>();
+    for (JsonNode node : optionalArray(payload, "modeTransitions")) {
+      if (!node.isObject()) {
+        throw new IllegalArgumentException("modeTransitions 的每项必须是对象: " + node);
+      }
+      ProductionOrganizationId organizationId =
+          ProductionOrganizationId.parse(requireText(node, "organizationId"));
+      ProductionModeId fromModeId = ProductionModeId.parse(requireText(node, "fromModeId"));
+      ProductionModeId toModeId = ProductionModeId.parse(requireText(node, "toModeId"));
+      int retainOriginalPerMille = requireInt(node, "retainOriginalPerMille");
+      long requestedDay = requireLong(node, "requestedDay");
+      long effectiveDay = requireLong(node, "effectiveDay");
+      ModeTransition.Status status =
+          enumValue(
+              ModeTransition.Status.class, requireText(node, "status"), "modeTransitions[].status");
+      String reason = optionalText(node, "reason").orElse("");
+      ModeTransitionId derived = ModeTransitionId.idOf(organizationId, toModeId, effectiveDay);
+      optionalText(node, "id")
+          .ifPresent(
+              id -> {
+                if (!derived.equals(ModeTransitionId.parse(id))) {
+                  throw new IllegalArgumentException(
+                      "modeTransitions[].id 必须与 (organizationId, toModeId, effectiveDay) 派生值一致: id="
+                          + id
+                          + "，派生="
+                          + derived);
+                }
+              });
+      ModeTransition transition =
+          new ModeTransition(
+              derived,
+              organizationId,
+              fromModeId,
+              toModeId,
+              retainOriginalPerMille,
+              requestedDay,
+              effectiveDay,
+              status,
+              reason);
+      if (transitions.putIfAbsent(derived, transition) != null) {
+        throw new IllegalArgumentException("同一份载荷里模式变迁 id 重复: " + derived);
+      }
+    }
+    return transitions;
+  }
+
+  /**
+   * ★★ E6a：顶层可选 {@code classShares} 数组（缺键 ⇒ 空表）。每项：
+   *
+   * <pre>{@code
+   * {"transitionId":"mt-…","householdId":"hh-…","classPositionId":"…","sharePerMille":400,"id":"cs-…"?}
+   * }</pre>
+   *
+   * <p>★ {@code id} 是可选键：给了必须与 {@link ClassShareId#idOf(ModeTransitionId, HouseholdId,
+   * ClassPositionId)} 一致（不一致 ⇒ 抛）；不给就派生。同一 {@code (transitionId, householdId)} 的 Σ =
+   * 1000‰、变迁/家户/位置引用完整性由 {@code EconomyData} 构造期守卫判。
+   */
+  private static Map<ClassShareId, ClassShare> classShares(JsonNode payload) {
+    Map<ClassShareId, ClassShare> shares = new LinkedHashMap<>();
+    for (JsonNode node : optionalArray(payload, "classShares")) {
+      if (!node.isObject()) {
+        throw new IllegalArgumentException("classShares 的每项必须是对象: " + node);
+      }
+      ModeTransitionId transitionId = ModeTransitionId.parse(requireText(node, "transitionId"));
+      HouseholdId householdId = HouseholdId.parse(requireText(node, "householdId"));
+      ClassPositionId classPositionId = ClassPositionId.parse(requireText(node, "classPositionId"));
+      long sharePerMille = requireLong(node, "sharePerMille");
+      ClassShareId derived = ClassShareId.idOf(transitionId, householdId, classPositionId);
+      optionalText(node, "id")
+          .ifPresent(
+              id -> {
+                if (!derived.equals(ClassShareId.parse(id))) {
+                  throw new IllegalArgumentException(
+                      "classShares[].id 必须与 (transitionId, householdId, classPositionId) 派生值一致: id="
+                          + id
+                          + "，派生="
+                          + derived);
+                }
+              });
+      ClassShare share =
+          new ClassShare(derived, transitionId, householdId, classPositionId, sharePerMille);
+      if (shares.putIfAbsent(derived, share) != null) {
+        throw new IllegalArgumentException("同一份载荷里阶层保留份额 id 重复: " + derived);
+      }
+    }
+    return shares;
   }
 
   /** ★ E5a：{@code crisisSignals[].evidence} —— 可选对象；键非空白、值为 long（可为负）。缺键 ⇒ 空表。 */

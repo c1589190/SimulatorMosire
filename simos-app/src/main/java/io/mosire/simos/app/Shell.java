@@ -58,6 +58,7 @@ import io.mosire.simos.economy.spi.EconomyMigrateHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterCandidateHandler;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketPriceHandler;
+import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
 import io.mosire.simos.economy.spi.EconomyTransferAssetShareHandler;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
@@ -133,6 +134,7 @@ import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.resolve.ResolverRegistry;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.state.BranchId;
@@ -250,7 +252,11 @@ public final class Shell implements AutoCloseable {
   /** 决策提交渠道（D5，spec §十三）：GUI / MCP / CLI / 外部 HTTP 各一实现——**新增渠道不改领域代码**。 */
   private final List<DecisionChannel> decisionChannels;
 
-  /** 已注册命令类型（D6）：按角色重建工具面时供 catalog 读。 */
+  /**
+   * 决策面命令类型（E6a 起 = 注册面 − {@link GmOnlyCommand}）：按角色重建工具面时供 catalog 读，也是 {@code DirectiveWhitelist}
+   * 的输入。★ 完整注册面仍在 Core 的 handler 注册表与 {@code commandTargets} 里， 故 GM 的 {@code simos.command.submit}
+   * 不受这份过滤影响。
+   */
   private final Set<String> commandTypes;
 
   /**
@@ -453,6 +459,11 @@ public final class Shell implements AutoCloseable {
                 new EconomyAddDemandHandler(),
                 new EconomyCancelDemandHandler(),
                 new EconomyRegisterCandidateHandler(),
+                // ── economy（E6a）：模式变迁登记（只写 PENDING；执行在日结算自动组织之前）。★ GM-only：
+                //   标 GmOnlyCommand ⇒ 排除出 DirectiveWhitelist / 工具目录，但 handler 仍注册、仍进
+                // commandTargets，
+                //   GM 的 simos.command.submit 照常可用（见下方 directiveCommandTypes）。──
+                new EconomySwitchModeHandler(),
                 // ── actor（1 条，S1 阶段 2）：actor.Seed —— 一次种入某地图的 actor 分片（主体/产权/商品库存三张表）。
                 //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）；同时也进 commandTypes ⇒
                 //   simos.command.submit 的目标声明表（CommandTargets）同源认得它。──
@@ -474,15 +485,23 @@ public final class Shell implements AutoCloseable {
                 new SetDirectiveStatusHandler()));
     Set<String> drainableCommandTypes = new LinkedHashSet<>();
     for (CommandHandler handler : handlers) {
-      if (!handler.type().startsWith("sd.")) {
+      // ★★ E6a：GM-only 标记同样排除出 `sd.RegisterEffect` 的可入队命令白名单 —— 它是**第三条**决策人可间接
+      //   触发的路径（效果在后续 tick FIRED 后由 SdCommandDrain 提交）。判定与 DirectiveWhitelist 同源
+      //   （handler 上的标记接口），不另写清单。
+      if (!handler.type().startsWith("sd.") && !(handler instanceof GmOnlyCommand)) {
         drainableCommandTypes.add(handler.type());
       }
     }
     handlers.add(new RegisterEffectHandler(drainableCommandTypes));
-    Set<String> commandTypes = new LinkedHashSet<>();
+    // ★★ E6a：决策面命令类型（**排除 GM-only 标记**）。它同时供 IssueDirectiveHandler 的白名单、CatalogTool
+    //   目录与 sd.AdjudicateTick 重建的白名单使用 —— 一处过滤，三条路径同源；handler 仍在上面的循环里注册到
+    //   Core（GM simos.command.submit 照常可达），commandTargets 也仍从完整 handler 清单派生。
+    Set<String> directiveCommandTypes = new LinkedHashSet<>();
     for (CommandHandler handler : handlers) {
       coreSimos.register(handler);
-      commandTypes.add(handler.type());
+      if (!(handler instanceof GmOnlyCommand)) {
+        directiveCommandTypes.add(handler.type());
+      }
     }
 
     // ★ 第 3 波第 2 步：命令的**目标声明**从同一份 handler 清单派生（实现了 CommandTargets 的那些）——
@@ -494,9 +513,9 @@ public final class Shell implements AutoCloseable {
       }
     }
 
-    // ★ D1：决策命令白名单从**注册面**推导（禁 sd 自指/通用写）⇒ 必须在上面那个循环之后、用完整的 commandTypes 构造。
+    // ★ D1：决策命令白名单从**注册面**推导（禁 sd 自指/通用写）⇒ 用上面那份已排除 GM-only 的 directiveCommandTypes。
     IssueDirectiveHandler issueDirectiveHandler =
-        new IssueDirectiveHandler(new DirectiveWhitelist(commandTypes));
+        new IssueDirectiveHandler(new DirectiveWhitelist(directiveCommandTypes));
     SubmitVerdictHandler submitVerdictHandler = new SubmitVerdictHandler();
     SetDecisionMakerAccessHandler setDecisionMakerAccessHandler =
         new SetDecisionMakerAccessHandler();
@@ -513,7 +532,7 @@ public final class Shell implements AutoCloseable {
             resetDecisionMakerConversationHandler)) {
       handlers.add(late);
       coreSimos.register(late);
-      commandTypes.add(late.type());
+      directiveCommandTypes.add(late.type());
     }
 
     // ★ T10-h：participant 由**清单**注册、条数由清单长度数出来（曾把 `participant=1` 写死在日志里 ⇒ 将来加第二个会静默说谎）。
@@ -625,7 +644,7 @@ public final class Shell implements AutoCloseable {
                 config.mcpInitiator(),
                 config.mapId(),
                 WORLDGEN_CONFIG_FILE,
-                commandTypes,
+                directiveCommandTypes,
                 skillLibrary,
                 renderService,
                 gmToolUsage,
@@ -663,7 +682,7 @@ public final class Shell implements AutoCloseable {
             config.mcpInitiator(),
             config.mapId(),
             WORLDGEN_CONFIG_FILE,
-            commandTypes,
+            directiveCommandTypes,
             skillLibrary,
             renderService,
             gmToolUsage,
@@ -769,7 +788,7 @@ public final class Shell implements AutoCloseable {
         codecs.size(),
         new SdCommandDrain(coreSimos),
         decisionChannels,
-        commandTypes,
+        directiveCommandTypes,
         commandTargets,
         skillLibrary,
         renderService,

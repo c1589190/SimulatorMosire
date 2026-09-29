@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
+import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.GovernmentId;
@@ -10,6 +11,7 @@ import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
+import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.PledgeId;
@@ -23,6 +25,7 @@ import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -33,6 +36,7 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
+import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionOrganization;
@@ -82,6 +86,13 @@ public final class EconomyStateBuilder {
   private LinkedHashMap<AssetRuleId, LiquidationPolicy> liquidationPolicies;
   private LinkedHashMap<CrisisSignalId, HexCrisisSignal> crisisSignals;
   private LinkedHashMap<HouseholdId, ClassStanding> classStandings;
+
+  /** ★★ E6a：模式变迁表工作副本（命令只登记 PENDING；日结算写 APPLIED/FAILED）。 */
+  private LinkedHashMap<ModeTransitionId, ModeTransition> modeTransitions;
+
+  /** ★★ E6a：阶层保留份额表工作副本（日结算 apply 时按变迁/家户写出）。 */
+  private LinkedHashMap<ClassShareId, ClassShare> classShares;
+
   private Optional<EconomyMeta> meta;
 
   public EconomyStateBuilder(EconomyData base) {
@@ -267,6 +278,28 @@ public final class EconomyStateBuilder {
     return classStandings == null ? base.classStandings() : classStandings;
   }
 
+  /**
+   * ★★ <b>E6a：模式变迁表工作副本</b>（第 28 个组件）—— 命令登记 PENDING、日结算写 APPLIED/FAILED； 未物化时 {@link #build} 直接复用
+   * base 的不可变表（空表基线不产生任何拷贝）。
+   */
+  public LinkedHashMap<ModeTransitionId, ModeTransition> modeTransitions() {
+    if (modeTransitions == null) {
+      modeTransitions = new LinkedHashMap<>(base.modeTransitions());
+    }
+    return modeTransitions;
+  }
+
+  /**
+   * ★★ <b>E6a：阶层保留份额表工作副本</b>（第 29 个组件）—— 日结算 apply 按 {@code (transition, household)} 写出两条份额；未物化时
+   * {@link #build} 直接复用 base 的不可变表（空表基线不产生任何拷贝）。
+   */
+  public LinkedHashMap<ClassShareId, ClassShare> classShares() {
+    if (classShares == null) {
+      classShares = new LinkedHashMap<>(base.classShares());
+    }
+    return classShares;
+  }
+
   /** 元信息（未写 ⇒ base 的原值）。 */
   public Optional<EconomyMeta> meta() {
     return meta == null ? base.meta() : meta;
@@ -313,6 +346,9 @@ public final class EconomyStateBuilder {
         moneyIssuances == null ? base.moneyIssuances() : moneyIssuances,
         pledges == null ? base.pledges() : pledges,
         liquidationPolicies == null ? base.liquidationPolicies() : liquidationPolicies,
-        crisisSignals == null ? base.crisisSignals() : crisisSignals);
+        crisisSignals == null ? base.crisisSignals() : crisisSignals,
+        // ★★ E6a：命令登记 PENDING、日结算执行终态 —— 显式工作副本；未物化 ⇒ 原样复用 base。
+        modeTransitions == null ? base.modeTransitions() : modeTransitions,
+        classShares == null ? base.classShares() : classShares);
   }
 }
