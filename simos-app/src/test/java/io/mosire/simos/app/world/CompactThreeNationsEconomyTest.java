@@ -13,8 +13,13 @@ import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.debt.DebtTerms;
+import io.mosire.simos.economy.api.debt.DebtUnit;
+import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.codec.MapCodec;
@@ -38,6 +43,7 @@ import io.mosire.simos.unit.move.TerrainMovementCost;
 import io.mosire.simos.unit.spi.CreateCommandChainHandler;
 import io.mosire.simos.unit.spi.CreateUnitHandler;
 import io.mosire.simos.unit.spi.UnitTimeParticipant;
+import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.ModuleCodec;
@@ -302,6 +308,71 @@ class CompactThreeNationsEconomyTest {
       assertThat((long) day120.get("grainAccountMilli") + (long) day120.get("grainInTransitMilli"))
           .as("120 天后粮的权威库存（账户 + 在途）非负且非空")
           .isPositive();
+    }
+  }
+
+  // ── P4：720 tick 初始债务生命周期（典型条件：地主→贫农初始债 + LAND 拆分 + 质押）────────
+
+  @Test
+  void threeNations720TickInitialDebtLifecycle() throws IOException {
+    Path store = Files.createDirectories(tempDir.resolve("compact-store-720"));
+    try (CoreSimos core = shellAlikeCore(store)) {
+      core.bootstrapGenesis(CompactThreeNationsWorld.state(CompactThreeNationsWorld.MAP_ID));
+      List<JsonNode> summaries =
+          CompactThreeNationsWorld.initializeNations(
+              core,
+              CompactThreeNationsWorld.typicalConditions(),
+              CompactThreeNationsWorld.TYPICAL_CONDITIONS_NATION);
+      assertThat(summaries).as("三国各一条摘要").hasSize(3);
+
+      long headBefore = core.head(MAIN).orElseThrow().value();
+      CommandResult advanced =
+          core.submit(
+              new AdvanceTime(
+                  "cmd-advance-0-720",
+                  "corr-advance-0-720",
+                  INITIATOR,
+                  MAIN,
+                  new RevisionId(headBefore),
+                  new TimeRange(SimosTimestamp.of(0L), Optional.of(SimosTimestamp.of(720L)))));
+      assertThat(advanced)
+          .as("一次推进 720 天仍只落一条 revision")
+          .isEqualTo(
+              new CommandResult.Committed(new StateRef(MAIN, new RevisionId(headBefore + 1L))));
+
+      SimulationState after = core.replay(new StateRef(MAIN, new RevisionId(headBefore + 1L)));
+      Map<String, Object> day720 = CompactThreeNationsWorld.readings(after);
+      System.out.println("[COMPACT-720] " + day720);
+
+      EconomyData economy = CompactThreeNationsWorld.economyOf(after);
+      DebtContractId initialDebtId =
+          DebtContractId.idOf(
+              CompactThreeNationsWorld.TYPICAL_DEBTOR,
+              CompactThreeNationsWorld.TYPICAL_CREDITOR,
+              DebtUnit.commodity(new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID)),
+              DebtTerms.legacyDefault());
+      DebtContract initialDebt = economy.debtContracts().get(initialDebtId);
+      System.out.println("[COMPACT-720-DEBT] " + initialDebt);
+      System.out.println("[COMPACT-720-PLEDGE] " + economy.pledges().values());
+
+      assertThat(CompactThreeNationsWorld.lastClosedCycleOf(economy))
+          .as("720 tick = 6 个完整周期")
+          .isEqualTo(6L);
+      assertThat(economy.debtContracts()).as("720 后全市场债务非空").isNotEmpty();
+      assertThat(initialDebt).as("典型初始债仍在合同表里").isNotNull();
+      assertThat(initialDebt.principal()).as("典型初始债跨 720 tick 后应被真实偿还而下降").isLessThan(1_000_000L);
+      assertThat(initialDebt.lastInterestDay()).as("跨周期后应至少计过一次息").isPresent();
+      assertThat(economy.pledges()).as("典型初始质押仍在").hasSize(1);
+
+      ActorData books = CompactThreeNationsWorld.actorOf(after);
+      for (GoodsAccount account : books.accounts().values()) {
+        assertThat(account.balances().values())
+            .as("商品余额 ≥0：%s", account.key())
+            .allSatisfy(value -> assertThat(value).isNotNegative());
+        assertThat(account.money().values())
+            .as("货币余额 ≥0：%s", account.key())
+            .allSatisfy(value -> assertThat(value).isNotNegative());
+      }
     }
   }
 
