@@ -478,6 +478,8 @@ public final class CompactThreeNationsWorld {
     long repaid = 0L;
     long births = 0L;
     long deaths = 0L;
+    long capitalizedArrears = 0L;
+    long capitalizedArrearsRows = 0L;
     for (FlowRow flow : economy.flows().values()) {
       consumed += sum(flow.consumed());
       income += sum(flow.income());
@@ -486,6 +488,12 @@ public final class CompactThreeNationsWorld {
       repaid += flow.repaid();
       births += flow.births();
       deaths += flow.deaths();
+      long capitalized =
+          flow.capitalizedArrears().values().stream().mapToLong(Long::longValue).sum();
+      capitalizedArrears += capitalized;
+      if (capitalized > 0L) {
+        capitalizedArrearsRows++;
+      }
     }
 
     Map<String, Object> out = new LinkedHashMap<>();
@@ -539,6 +547,8 @@ public final class CompactThreeNationsWorld {
     out.put("cycleUnmetNeed", unmet);
     out.put("cycleNewBorrowing", newBorrowing);
     out.put("cycleRepaid", repaid);
+    out.put("cycleCapitalizedArrears", capitalizedArrears);
+    out.put("cycleCapitalizedArrearsRows", capitalizedArrearsRows);
     out.put("cycleBirths", births);
     out.put("cycleDeaths", deaths);
     out.put("grainAccountMilli", grainAccountMilli(books));
