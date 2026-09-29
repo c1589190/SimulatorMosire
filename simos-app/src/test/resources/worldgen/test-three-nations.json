@@ -1,0 +1,222 @@
+{
+  "_note": "★★ 紧凑三国测试世界（test scope）：只服务经济/世界端到端测试，**不是** v17levant 真档的替代品，更不是 59223 格的超级大世界。地图由 CompactThreeNationsWorld 程序化构造：3 个 region × 48 格 = 144 格陆地 + 14 格海洋（共 158 格）。本文件只给 WorldgenConfig.load(Path) 需要的全部参数，格式与 config/worldgen/v17levant-nations.json 同 schema。",
+  "_design": [
+    "① 粮仓平原国：低城市化（0.15）+ 人口最多 + 平原/沿河 ⇒ 粮食相对盈余、农村阶层厚，是粮食输出方；",
+    "② 织港商邦：高城市化（0.40）+ 商业整合度最高 + 低丘/沿海 ⇒ 纺织/作坊多、城市粮食需求大、进口粮食；",
+    "③ 铁岭山地国：中等城市化（0.25）+ 山地/沙漠为主（可耕地仅 5 格）+ 政治中央度高 ⇒ 工具/作坊 + 粮食自给偏紧，是粮食输入方。",
+    "三国人口 150000 + 120000 + 110000 = 380000（< 40 万），保证 120 天纯经济推进可在秒级跑完。",
+    "randomization.enabled=false + 固定 seed ⇒ 同一份输入产出逐字段相同的世界（可复现）。"
+  ],
+
+  "defaults": {
+    "_note": "生成器默认参数（三国共用，逐字段与 v17levant 出厂档同口径；单国可用同名键覆盖）。",
+    "surplusRatePerTerrain": {
+      "_note": "地形 -> 农业剩余率/人口承载权重。键取 TerrainCatalog.KEYS(7 项)，缺一即抛。",
+      "ocean": 0.0,
+      "plains": 1.0,
+      "desert": 0.02,
+      "low_hills": 0.6,
+      "mountains": 0.1,
+      "plateau": 0.3,
+      "plateau_mountains": 0.05
+    },
+    "riverMultiplier": {
+      "_note": "触到 river 边的格：1 条 = ordinary，>= navigableRiverEdgesAtHex 条 = navigable（标定为干流）。",
+      "ordinary": 1.15,
+      "navigable": 1.5,
+      "navigableRiverEdgesAtHex": 2
+    },
+    "coastalMultiplier": 1.2,
+    "noiseAmplitude": 0.15,
+    "candidateWeights": {
+      "_note": "建城候选分权重：surplus 0.45 + transport 0.35 + historical 0.20。",
+      "surplus": 0.45,
+      "transport": 0.35,
+      "historical": 0.2
+    },
+    "transportBonus": {
+      "_note": "交通优势启发式；山口 = 本格 moveCost 高但邻格存在低 moveCost 的门。",
+      "riverJunction": 1.5,
+      "navigableRiver": 1.35,
+      "river": 1.15,
+      "coastal": 1.4,
+      "mountainPass": 1.3,
+      "plain": 1.0,
+      "deepMountain": 0.5,
+      "barren": 0.35
+    },
+    "tierRadiiHex": {
+      "_note": "市场半径(hex)。紧凑世界 48 格/国、城市间距小，MajorCity 半径取上界表达『跨区域』。",
+      "MarketTown": [1, 2],
+      "Town": [2, 4],
+      "City": [4, 8],
+      "MajorCity": [8, 16]
+    },
+    "minMarketTownDistanceHex": 2,
+    "influenceExponent": 2.0,
+    "travelCostNote": "cost(城,格) = hexDistance * moveCost(格) —— 不用纯 hex 距离。",
+    "rarityPenalty": {
+      "_note": "十万人级城市非常罕见；本世界城市硬目标 <= 30000，故实际上不触发，保留同 schema。",
+      "threshold": 100000,
+      "factor": 0.1
+    },
+    "zipfShape": {
+      "_note": "Rank-Size 目标形状（500 万人口示例，按国家人口等比缩放）。163 座/500 万人 ⇒ 11 万 ~ 15 万人级国家 4~5 座城。",
+      "samplePopulation": 5000000,
+      "ranks": [
+        {"count": 1, "population": 120000},
+        {"count": 2, "population": 50000},
+        {"count": 5, "population": 20000},
+        {"count": 15, "population": 8000},
+        {"count": 40, "population": 3000},
+        {"count": 100, "population": 1000}
+      ]
+    },
+    "tierUpgradeRate": {
+      "_note": "三级抽样里上一级升到下一级的基准比率，再乘 commercialIntegration * politicalCentralization 调制。",
+      "MarketTownToTown": 0.22,
+      "TownToCity": 0.12,
+      "CityToMajorCity": 0.15
+    },
+    "politicalMultiplierNote": "UrbanPopulation = LocalSurplus * TradeMultiplier * PoliticalMultiplier；首都吃政治中央度的大头。",
+    "hexPopulationNote": "social.populations[hex] 只装农村人口；城市人口装在城市批次上（R1 起由批次派生）。"
+  },
+
+  "randomization": {
+    "_note": "★ 固定 seed、关闭随机化：各标量取文档硬值（ValueRange.exact）⇒ 世界逐字段可复现。",
+    "enabled": false,
+    "jitterPct": {
+      "population": 0.03,
+      "urbanizationRate": 0.15,
+      "agrarianSurplusRate": 0.10,
+      "commercialIntegration": 0.10,
+      "politicalCentralization": 0.12,
+      "capitalTargetPopulation": 0.10
+    },
+    "clamp": {
+      "urbanizationRate": [0.03, 0.30],
+      "agrarianSurplusRate": [0.50, 1.60],
+      "commercialIntegration": [0.60, 1.80],
+      "politicalCentralization": [0.80, 1.80]
+    }
+  },
+
+  "cityNameStyle": {
+    "_note": "三国首都名在 nations[].capital 里显式给出；其余城市按坐标哈希从本词表取词（可复现）。",
+    "compact": {
+      "stems": ["丰", "青", "石", "河", "铁", "山", "新", "柳", "沙", "东", "北", "高"],
+      "suffixes": ["城", "镇", "堡", "港", "关", "原", "屯", "驿"]
+    }
+  },
+
+  "armKits": {
+    "_note": "小编制：本任务重点不是军队；编制只为让 sd.CreateNation 打 tag / 建国可用。每 100 人的装备件数，不足 100 向上取整。",
+    "长枪兵": {"长枪": 100, "皮甲": 70, "盾": 60},
+    "弓手": {"弓": 100, "箭矢": 2000, "皮甲": 60},
+    "弩手": {"弩": 100, "箭矢": 1500, "皮甲": 70},
+    "剑士": {"剑": 100, "盾": 80, "皮甲": 80},
+    "重步兵": {"长枪": 100, "板甲": 60, "盾": 80}
+  },
+
+  "nations": [
+    {
+      "regionId": "粮仓平原国",
+      "displayName": "粮仓平原国",
+      "hexCount": 48,
+      "hexCountSource": "CompactThreeNationsWorld：3 个 48 格 region 之一（32 平原 + 12 低丘 + 4 沙漠；含一条 5 格干流）",
+      "terrainHistogram": {"plains": 32, "low_hills": 12, "desert": 4},
+      "population": 150000,
+      "populationSource": "_derived（测试夹具：三国合计 380000 < 40 万，保证 120 天可快速跑完）",
+      "urbanizationRate": 0.15,
+      "urbanizationRateSource": "_derived（农业国：低城市化率 0.15）",
+      "agrarianSurplusRate": 1.35,
+      "commercialIntegration": 0.85,
+      "politicalCentralization": 1.15,
+      "coefficientSource": "_derived（沿河平原 + 农业剩余 + 中等偏弱商业整合）",
+      "seed": 7101,
+      "capital": {
+        "name": "丰禾城",
+        "targetPopulation": 18000,
+        "source": "_derived（测试锚点：22,500 城市人口里的首都硬目标）"
+      },
+      "documentedPlaceNames": [
+        {"name": "丰禾城", "kind": "capital", "source": "本夹具"}
+      ],
+      "army": {
+        "peacetime": 600,
+        "mobilization": 1000,
+        "establishment": {
+          "长枪兵": 400,
+          "弓手": 200
+        },
+        "establishmentNote": "小编制（合计 600），只为建国/打 tag 与编制守恒断言。"
+      }
+    },
+    {
+      "regionId": "织港商邦",
+      "displayName": "织港商邦",
+      "hexCount": 48,
+      "hexCountSource": "CompactThreeNationsWorld：3 个 48 格 region 之一（10 平原 + 16 低丘 + 12 山地 + 10 沙漠；西侧 14 格海洋使其沿海）",
+      "terrainHistogram": {"plains": 10, "low_hills": 16, "mountains": 12, "desert": 10},
+      "population": 120000,
+      "populationSource": "_derived（测试夹具：中等人口 + 最高城市化 ⇒ 城市粮食需求大）",
+      "urbanizationRate": 0.4,
+      "urbanizationRateSource": "_derived（商业/手工业国：高城市化率 0.40）",
+      "agrarianSurplusRate": 1.0,
+      "commercialIntegration": 1.65,
+      "politicalCentralization": 1.0,
+      "coefficientSource": "_derived（商业整合度三国最高；沿海港口 + 过境贸易）",
+      "seed": 7102,
+      "capital": {
+        "name": "织港",
+        "targetPopulation": 30000,
+        "source": "_derived（测试锚点：48,000 城市人口里的首都硬目标）"
+      },
+      "documentedPlaceNames": [
+        {"name": "织港", "kind": "capital", "source": "本夹具"}
+      ],
+      "army": {
+        "peacetime": 500,
+        "mobilization": 800,
+        "establishment": {
+          "弩手": 300,
+          "剑士": 200
+        },
+        "establishmentNote": "小编制（合计 500）。"
+      }
+    },
+    {
+      "regionId": "铁岭山地国",
+      "displayName": "铁岭山地国",
+      "hexCount": 48,
+      "hexCountSource": "CompactThreeNationsWorld：3 个 48 格 region 之一（1 平原 + 4 低丘 + 20 山地 + 23 沙漠；可耕地集中在中心谷地）",
+      "terrainHistogram": {"plains": 1, "low_hills": 4, "mountains": 20, "desert": 23},
+      "population": 110000,
+      "populationSource": "_derived（测试夹具：山地人口 + 最差地力 ⇒ 粮食自给偏紧）",
+      "urbanizationRate": 0.25,
+      "urbanizationRateSource": "_derived（山地/混合国：中等城市化率 0.25）",
+      "agrarianSurplusRate": 0.9,
+      "commercialIntegration": 1.1,
+      "politicalCentralization": 1.35,
+      "coefficientSource": "_derived（山地成本高、工具/作坊、中央度高；农业剩余率略低于 1）",
+      "seed": 7103,
+      "capital": {
+        "name": "铁岭堡",
+        "targetPopulation": 12000,
+        "source": "_derived（测试锚点：27,500 城市人口里的首都硬目标）"
+      },
+      "documentedPlaceNames": [
+        {"name": "铁岭堡", "kind": "capital", "source": "本夹具"}
+      ],
+      "army": {
+        "peacetime": 450,
+        "mobilization": 700,
+        "establishment": {
+          "重步兵": 250,
+          "弓手": 200
+        },
+        "establishmentNote": "小编制（合计 450）。"
+      }
+    }
+  ]
+}
