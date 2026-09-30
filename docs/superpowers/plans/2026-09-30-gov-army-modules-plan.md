@@ -145,12 +145,13 @@ public record OfficePolicy(
     - 支付：从该 GOV 单位国库 actor 账扣（`actor.AdjustAccounts` 语义，不侵冻结；缺账/不足 ⇒ 记 shortfall，**不静默**）；
     - 缺料/缺员：产出 `HexCrisisSignal`（治安/文书/补给三类，Kind 词表按 §3 的裁决补），**不自动扣市场**；
     - 退休/遣散：`DismissStaff` 时按 `policy.retirementPerStaff` 从国库一次性支付（支付不足 ⇒ 记 shortfall）。
-- **命令与工具**（`gov.*`，GM/决策人按口径分桶）：
-  - `gov.SetOfficePolicy`（定额/上限/退休待遇）
-  - `gov.RecruitStaff`（roster+，载荷带**逐来源**：社会批次或人口单位）
-  - `gov.DismissStaff`（roster−，按政策支付退休待遇）
-  - `gov.SetSuperior`（层级；中央为 null）
-  - 工具批（app 组合，一条 revision）：招募 = `social.SeedGroups`（扣人）+ `gov.RecruitStaff`（入编）+ `sd.PutInfo`（记录）；
+- **命令与工具**（★ 控制方实施修订 2026-10-01：编制字段在 `Unit.module`（unit 片），单条命令只能写自己命名空间 ⇒ 命令一律 `unit.*`，工具面仍叫 `simos.gov.*`）：
+  - `unit.SetGovPolicy`（定额/上限/退休待遇）
+  - `unit.RecruitStaff`（roster+，载荷带**逐来源**：社会批次或人口单位）
+  - `unit.DismissStaff`（roster−，按政策支付退休待遇）
+  - `unit.SetGovSuperior`（层级；中央为 null）
+  - （阶段 10a 已落：`unit.SetGovFormation` / `unit.SetArmyFormation`；`gov` 切片无命令，阶段 11 由 participant 写读数）
+  - 工具批（app 组合，一条 revision）：招募 = `social.SeedGroups`（扣人）+ `unit.RecruitStaff`（入编）+ `sd.PutInfo`（记录）；
     建 GOV = `unit.CreateUnit`（或对既有单位 `unit.SetModule`）+ `sd.CreateDecisionMaker{Affiliation.Gov(unitId)}` +
     `sd.SetDecisionMakerAccess` + `sd.PutInfo`——**GOV 必须带决策人**（裁定 10）。
 - **范围（scope）**：
@@ -185,11 +186,11 @@ public record OfficePolicy(
 
 ### 2.6 人员流转（全部走通用批模式）
 
-- **招募**：从辖区内社会批次（`SocialData.groups()`，MALE+ADULT 瀑布，复用 `RegionAllocations`）或从人口单位扣人 → `gov.RecruitStaff` 入编；来源逐条进载荷与 `sd.PutInfo`。
-- **科举（用户原话场景）**：省决策人组织考试（GM 裁定录取名单）→ 从家户/批次选出 N 人 → **无标签纯人员 Unit**（`unit.CreateUnit`，member=N）→ `unit.PlanRoute` 移动至中央人口容纳单位 → 中央用 `unit.ApplyCasualties(减员)` + `gov.RecruitStaff`（来源=该单位）吸收，最后 `unit.DisbandUnit`；一条 revision 一批。
+- **招募**：从辖区内社会批次（`SocialData.groups()`，MALE+ADULT 瀑布，复用 `RegionAllocations`）或从人口单位扣人 → `unit.RecruitStaff` 入编；来源逐条进载荷与 `sd.PutInfo`。
+- **科举（用户原话场景）**：省决策人组织考试（GM 裁定录取名单）→ 从家户/批次选出 N 人 → **无标签纯人员 Unit**（`unit.CreateUnit`，member=N）→ `unit.PlanRoute` 移动至中央人口容纳单位 → 中央用 `unit.ApplyCasualties(减员)` + `unit.RecruitStaff`（来源=该单位）吸收，最后 `unit.DisbandUnit`；一条 revision 一批。
 - **调查组**：同样是无标签纯人员 Unit（高速 `speed`），`gov` 只负责"从编制里出人"（roster−）与建单位；结果由 GM 按移动路径写成 `DecisionDoc` 给决策人（引擎不做自动情报）。
 - **武装调查组**：即给该单位加 `ArmyFormation`（训练小军队），走同一通用接口（裁定 10）。
-- **离编/退休**：`gov.DismissStaff` roster−；按 `policy.retirementPerStaff` 从国库支付；人员回写社会批次（指定 hex/批次，或记具名缺口——一期"不自动找地方塞"）。
+- **离编/退休**：`unit.DismissStaff` roster−；按 `policy.retirementPerStaff` 从国库支付；人员回写社会批次（指定 hex/批次，或记具名缺口——一期"不自动找地方塞"）。
 - **驿传**：`StaffRole.POST` 计入文书覆盖（与 SCRIBE 同口径），不产生任何可移动单位；命令/信息的时间差由 GM 拖 tick 表达（裁定 4）。
 
 ---
@@ -224,8 +225,10 @@ public record OfficePolicy(
 
 ### 阶段 10：`simos-gov` 骨架（切片 + 命令 + 决策人绑定 + 范围）
 - 产出：新模块 `simos-gov`（pom + `GovState/GovOfficeState` + codec + change set + 跨表守卫）；`GovRules`；
-  `Affiliation.Gov` + `GovScope` + `GovTerritory` + 注册表一行；命令 `gov.SetOfficePolicy/RecruitStaff/DismissStaff/SetSuperior` 与 handler；
-  app 工具批：`simos.gov.createOffice`（建 GOV 单位 + 决策人绑定 + 访问范围 + 文档）、`simos.gov.recruit`、`simos.gov.dismiss`、`simos.gov.setPolicy`；
+  `Affiliation.Gov` + `GovScope` + `GovTerritory` + 注册表一行；
+  **10a（已完成）**：`simos-gov` 切片骨架 + `unit.SetGovFormation`/`unit.SetArmyFormation` 两条立编制命令与 GM 工具；
+  **10b**：`unit.SetGovPolicy`/`unit.RecruitStaff`/`unit.DismissStaff`/`unit.SetGovSuperior` 四条命令与 handler；
+  app 工具批：`simos.gov.createOffice`（建 GOV 单位 + 同批绑决策人 + 访问范围 + 文档）、`simos.gov.recruit`、`simos.gov.dismiss`、`simos.gov.setPolicy`；
   `Shell` 注册（codec/handler）；`CatalogTool.PAYLOAD_HINTS` 同步。
 - 门禁：`spotless:apply`；`compile -pl simos-gov -am`；`compile -pl simos-app -am`。
 - 验收输入：切片往返；GOV 必绑决策人（缺则创建期拒/运行期具名 gap）；`GovScope` 直辖；`GovTerritory` 名义聚合（不进权限）；招募来源保真与守恒。
