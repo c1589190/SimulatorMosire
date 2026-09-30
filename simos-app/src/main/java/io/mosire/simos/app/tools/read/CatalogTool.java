@@ -103,6 +103,28 @@ public final class CatalogTool implements AgentTool {
                   + "既有 GovFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
                   + "同类型重复设置 = 整体替换）"),
           Map.entry(
+              "unit.SetGovPolicy",
+              "unitId, grainPerStaffPerTick?, clothPerStaffPerCycle?, moneyPerStaffPerTick?,"
+                  + " retirementPerStaff?, staffCap?{SCRIBE|YAMEN|POST:整数}"
+                  + "（★ 部分覆盖：未给字段保持原值；staffCap 给 {} = 清空上限、缺省保持原表；"
+                  + "四个数值与上限值必须 ≥0，否则 OfficePolicy 构造期具名拒；单位必须是 GOV）"),
+          Map.entry(
+              "unit.SetGovSuperior",
+              "unitId, superiorGov?（缺省/null = 中央）"
+                  + "（★ 非空必须存在且带 GovFormation、不得指向自身；沿 superiorGov 上溯不得成环，"
+                  + "命中和 seen 重复即拒、最多 64 层；单位本身必须是 GOV）"),
+          Map.entry(
+              "unit.RecruitStaff",
+              "unitId, role(SCRIBE|YAMEN|POST), count(≥1), sources?[{...}...]"
+                  + "（★ sources 只校形状：JSON 对象数组、元素字段本层不解析）"
+                  + "（★ 裸提只入编不扣人：本命令只加 roster；人员扣减由同批 social.SeedGroups 负责，"
+                  + "受支持的调用面是配套工具批/决策令批；staffCap 含该角色且现有+count>cap ⇒ 具名拒、不截断）"),
+          Map.entry(
+              "unit.DismissStaff",
+              "unitId, role(SCRIBE|YAMEN|POST), count(≥1)"
+                  + "（★ 只离编不支付：不按 retirementPerStaff 付款、不回写社会，退休待遇/回写由配套工具批/"
+                  + "决策令批承担；现有 < count ⇒ 具名拒；减到 0 保留角色键）"),
+          Map.entry(
               "unit.SetTaxRate",
               "unitId, regionId, ratePerMille(0..1000)"
                   + "（★ regionId 必须已在该单位的管辖里，否则具名拒并指路先 unit.SetJurisdiction）"),

@@ -9,8 +9,10 @@ import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Movement;
+import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Route;
+import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitModule;
@@ -48,8 +50,15 @@ import java.util.Set;
  * <p>★ **reparent 的成环不在这里重复实现**：{@code reparent} 只校验新父存在，环由 {@link UnitState} 构造期拒绝。 **唯一的例外是
  * {@link #attachSubtree}**：P3 要求 attach 成环时给可读理由，故它在 op 内**先显式拒**（不依赖构造期的兜底消息）；T4 的 {@link
  * #reparentSubtree} 同制。
+ *
+ * <p>★ **GOV 编制编辑四件（阶段 10b-i，2026-10-01）**：{@link #setGovPolicy}/{@link #setGovSuperior}/{@link
+ * #recruitStaff}/{@link #dismissStaff} 都只认 {@link GovFormation}，结果统一走 {@link #withModule} canonical
+ * 拷贝（16 个组件一个不丢）。
  */
 public final class UnitOperations {
+
+  /** GOV 上级链环检测的最大层数（阶段 10b-i，2026-10-01）：超过即具名拒，防止深链/环拖爆。 */
+  private static final int MAX_GOV_SUPERIOR_CHAIN = 64;
 
   private UnitOperations() {}
 
@@ -518,6 +527,212 @@ public final class UnitOperations {
     }
     formation.masterGov().ifPresent(master -> requireGovUnit(state, master, "masterGov"));
     return withUnit(state, withModule(unit, Optional.of(formation)));
+  }
+
+  // ── GOV 编制编辑四件（阶段 10b-i，2026-10-01） ──────────────────
+
+  /**
+   * ★ <b>改 GOV 政策</b>（{@code unit.SetGovPolicy} 的领域实现，阶段 10b-i）：四个数值与 {@code staffCap}
+   * 都是**可选覆盖**——未给（{@link Optional#empty()}）保持原值；{@code staffCap} 给空表 = 清空上限。
+   *
+   * <p>★ <b>拒因</b>：
+   *
+   * <ol>
+   *   <li>单位必须存在、且带 {@link GovFormation}（Army 或无编制 ⇒ 具名拒）；
+   *   <li>四个数值 ≥ 0 与 {@code staffCap} 各值 ≥ 0 由 {@link OfficePolicy} 构造期拒（本方法不重复实现）。
+   * </ol>
+   *
+   * <p>★ 保序：{@code staffCap} 经 {@link OfficePolicy} 的 LinkedHashMap 拷贝，已有键保持原位、新键追加在末尾。 ★ 纯函数：结果单位走
+   * {@link #withModule} canonical 拷贝，16 个组件一个不丢。
+   */
+  public static UnitState setGovPolicy(
+      UnitState state,
+      UnitId id,
+      Optional<Long> grainPerStaffPerTick,
+      Optional<Long> clothPerStaffPerCycle,
+      Optional<Long> moneyPerStaffPerTick,
+      Optional<Long> retirementPerStaff,
+      Optional<Map<StaffRole, Long>> staffCap) {
+    Objects.requireNonNull(grainPerStaffPerTick, "grainPerStaffPerTick");
+    Objects.requireNonNull(clothPerStaffPerCycle, "clothPerStaffPerCycle");
+    Objects.requireNonNull(moneyPerStaffPerTick, "moneyPerStaffPerTick");
+    Objects.requireNonNull(retirementPerStaff, "retirementPerStaff");
+    Objects.requireNonNull(staffCap, "staffCap");
+    Unit unit = require(state, id);
+    GovFormation gov = requireGovFormation(unit, id);
+    OfficePolicy current = gov.policy();
+    OfficePolicy next =
+        new OfficePolicy(
+            grainPerStaffPerTick.orElse(current.grainPerStaffPerTick()),
+            clothPerStaffPerCycle.orElse(current.clothPerStaffPerCycle()),
+            moneyPerStaffPerTick.orElse(current.moneyPerStaffPerTick()),
+            retirementPerStaff.orElse(current.retirementPerStaff()),
+            staffCap.orElse(current.staffCap()));
+    return withUnit(state, withModule(unit, Optional.of(withGovPolicy(gov, next))));
+  }
+
+  /**
+   * ★ <b>改 GOV 上级</b>（{@code unit.SetGovSuperior} 的领域实现，阶段 10b-i）：{@code superiorGov} 空 = 中央（无上级）。
+   *
+   * <p>★ <b>拒因</b>：
+   *
+   * <ol>
+   *   <li>单位必须存在、且带 {@link GovFormation}（Army 或无编制 ⇒ 具名拒）；
+   *   <li>非空上级必须存在、带 {@link GovFormation}、不得指向自身；
+   *   <li><b>不得成环</b>：从新上级沿 {@code superiorGov} 向上走，命中自己即拒；同时用 seen 兜住已损坏链的重复， 并限制最多 {@value
+   *       #MAX_GOV_SUPERIOR_CHAIN} 层。
+   * </ol>
+   *
+   * <p>★ 环检测对"查无此人 / 链上单位不是 GOV"的祖先视为链路终点（本命令只负责不引入环；悬空链的修复不在本命令面）。 ★ 纯函数；结果单位走 {@link
+   * #withModule}，16 个组件一个不丢。
+   */
+  public static UnitState setGovSuperior(UnitState state, UnitId id, Optional<UnitId> superiorGov) {
+    Objects.requireNonNull(superiorGov, "superiorGov");
+    Unit unit = require(state, id);
+    GovFormation gov = requireGovFormation(unit, id);
+    superiorGov.ifPresent(
+        superior -> {
+          if (superior.equals(id)) {
+            throw new IllegalArgumentException("上级 GOV 不得指向自身: " + id);
+          }
+          requireGovUnit(state, superior, "superiorGov");
+          requireNoSuperiorCycle(state, id, superior);
+        });
+    return withUnit(state, withModule(unit, Optional.of(withGovSuperior(gov, superiorGov))));
+  }
+
+  /**
+   * ★ <b>招募入编</b>（{@code unit.RecruitStaff} 的领域实现，阶段 10b-i）：只对 GOV 单位的 roster 做 {@code role +=
+   * count}，<b>不扣任何人员来源</b>——来源扣减由同批 {@code social.SeedGroups} / 人口单位命令负责。
+   *
+   * <p>★ <b>staffCap 语义</b>：{@code policy.staffCap} **含该角色**且 {@code 现有 + count > cap} ⇒ 具名拒（消息带现有
+   * / 上限 / 请求三个数字），<b>不截断</b>；不含该角色 = 不设上限。
+   *
+   * <p>★ 保序：{@code staff} 经 LinkedHashMap 拷贝，已有角色保持原位、新角色追加在末尾。★ 纯函数；结果走 {@link #withModule}。
+   */
+  public static UnitState recruitStaff(UnitState state, UnitId id, StaffRole role, long count) {
+    Objects.requireNonNull(role, "role");
+    if (count < 1L) {
+      throw new IllegalArgumentException("招募人数 count 必须 ≥ 1: " + count);
+    }
+    Unit unit = require(state, id);
+    GovFormation gov = requireGovFormation(unit, id);
+    long current = gov.staff().getOrDefault(role, 0L);
+    Long cap = gov.policy().staffCap().get(role);
+    if (cap != null && current > cap - count) {
+      throw new IllegalArgumentException(
+          "招募 "
+              + role
+              + " "
+              + count
+              + " 人会超编制上限: 现有 "
+              + current
+              + " + 请求 "
+              + count
+              + " > staffCap "
+              + cap
+              + "（不截断；先 unit.SetGovPolicy 提上限或减少 count）");
+    }
+    if (current > Long.MAX_VALUE - count) {
+      throw new IllegalArgumentException(
+          "招募后 " + role + " 在编人数溢出 long: 现有 " + current + " + 请求 " + count);
+    }
+    Map<StaffRole, Long> staff = new LinkedHashMap<>(gov.staff());
+    staff.put(role, current + count);
+    return withUnit(state, withModule(unit, Optional.of(withGovStaff(gov, staff))));
+  }
+
+  /**
+   * ★ <b>离编</b>（{@code unit.DismissStaff} 的领域实现，阶段 10b-i）：只对 GOV 单位的 roster 做 {@code role -=
+   * count}，<b>不支付退休待遇、不把人员回写社会</b>——支付/回写由同批 actor / social 命令或 10b-ii 的组合工具批承担。
+   *
+   * <p>★ <b>拒因</b>：单位必须存在且带 {@link GovFormation}；{@code count ≥ 1}；{@code 现有 < count} ⇒
+   * 具名拒（带现有与请求数字）。★ 结果 0 <b>保留键不删</b>（保序 + 保留"该角色编制存在"的事实）。★ 纯函数；结果走 {@link #withModule}。
+   */
+  public static UnitState dismissStaff(UnitState state, UnitId id, StaffRole role, long count) {
+    Objects.requireNonNull(role, "role");
+    if (count < 1L) {
+      throw new IllegalArgumentException("离编人数 count 必须 ≥ 1: " + count);
+    }
+    Unit unit = require(state, id);
+    GovFormation gov = requireGovFormation(unit, id);
+    long current = gov.staff().getOrDefault(role, 0L);
+    if (current < count) {
+      throw new IllegalArgumentException(
+          "离编 " + role + " " + count + " 人超过现有在编: 现有 " + current + " < 请求 " + count);
+    }
+    Map<StaffRole, Long> staff = new LinkedHashMap<>(gov.staff());
+    staff.put(role, current - count); // ★ 0 保留键，不删（保序 + 保留角色编制事实）。
+    return withUnit(state, withModule(unit, Optional.of(withGovStaff(gov, staff))));
+  }
+
+  /**
+   * 阶段 10b-i 的四条 GOV 编辑命令共用守卫：单位存在且 {@code module} 必须是 {@link GovFormation}。
+   *
+   * <p>★ 与 {@link #requireGovUnit} 的区别：那个是"认主子/上级"的引用校验（消息带字段名），本方法是"被编辑对象必须是 GOV"（消息给出下一步：先 {@code
+   * unit.SetGovFormation}）。
+   */
+  private static GovFormation requireGovFormation(Unit unit, UnitId id) {
+    UnitModule module = unit.module().orElse(null);
+    if (module instanceof GovFormation gov) {
+      return gov;
+    }
+    if (module instanceof ArmyFormation) {
+      throw new IllegalArgumentException(
+          "单位 " + id + " 带的是 ArmyFormation 而不是 GovFormation：本命令只改 GOV 编制");
+    }
+    throw new IllegalArgumentException(
+        "单位 " + id + " 没有 GovFormation：先用 unit.SetGovFormation 立 GOV 编制");
+  }
+
+  /**
+   * 环检测（{@link #setGovSuperior}）：从新上级沿 {@code superiorGov} 向上走，命中 {@code id} ⇒ 具名拒； seen 重复 ⇒
+   * 现有链已坏，具名拒；最多走 {@value #MAX_GOV_SUPERIOR_CHAIN} 层，超过 ⇒ 具名拒。
+   *
+   * <p>★ 查无此人或链上单位不是 {@link GovFormation} ⇒ 视为链路终点（本命令只负责不引入环）。
+   */
+  private static void requireNoSuperiorCycle(UnitState state, UnitId id, UnitId newSuperior) {
+    Set<UnitId> seen = new LinkedHashSet<>();
+    UnitId cursor = newSuperior;
+    int depth = 0;
+    while (cursor != null) {
+      if (cursor.equals(id)) {
+        throw new IllegalArgumentException(
+            "不能把 " + id + " 的上级设为 " + newSuperior + "：沿 superiorGov 上溯会回到自己，会成环");
+      }
+      if (!seen.add(cursor)) {
+        throw new IllegalArgumentException(
+            "现有上级 GOV 链在 " + cursor + " 处重复/成环，无法安全设置 " + id + " 的上级: " + newSuperior);
+      }
+      if (depth >= MAX_GOV_SUPERIOR_CHAIN) {
+        throw new IllegalArgumentException(
+            "上级 GOV 链超过 " + MAX_GOV_SUPERIOR_CHAIN + " 层，拒绝设置 " + id + " 的上级: " + newSuperior);
+      }
+      Unit unit = state.units().get(cursor);
+      if (unit == null) {
+        return;
+      }
+      if (!(unit.module().orElse(null) instanceof GovFormation gov)) {
+        return;
+      }
+      cursor = gov.superiorGov().orElse(null);
+      depth++;
+    }
+  }
+
+  /** 只换 {@link GovFormation#policy()}，其余三个组件原样带过（阶段 10b-i）。 */
+  private static GovFormation withGovPolicy(GovFormation gov, OfficePolicy policy) {
+    return new GovFormation(gov.staff(), policy, gov.superiorGov(), gov.level());
+  }
+
+  /** 只换 {@link GovFormation#superiorGov()}，其余三个组件原样带过（阶段 10b-i）。 */
+  private static GovFormation withGovSuperior(GovFormation gov, Optional<UnitId> superiorGov) {
+    return new GovFormation(gov.staff(), gov.policy(), superiorGov, gov.level());
+  }
+
+  /** 只换 {@link GovFormation#staff()}，其余三个组件原样带过（阶段 10b-i）。 */
+  private static GovFormation withGovStaff(GovFormation gov, Map<StaffRole, Long> staff) {
+    return new GovFormation(staff, gov.policy(), gov.superiorGov(), gov.level());
   }
 
   /**

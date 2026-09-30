@@ -86,6 +86,8 @@ import io.mosire.simos.app.tools.write.UnitReparentTool;
 import io.mosire.simos.app.tools.write.UnitSetArmyFormationTool;
 import io.mosire.simos.app.tools.write.UnitSetFormationOffsetTool;
 import io.mosire.simos.app.tools.write.UnitSetGovFormationTool;
+import io.mosire.simos.app.tools.write.UnitSetGovPolicyTool;
+import io.mosire.simos.app.tools.write.UnitSetGovSuperiorTool;
 import io.mosire.simos.app.tools.write.UnitSetJurisdictionTool;
 import io.mosire.simos.app.tools.write.UnitSetRejoinTargetTool;
 import io.mosire.simos.app.tools.write.UnitSetStatusTool;
@@ -369,6 +371,12 @@ public final class SimosToolSource implements ToolSource {
     //   **只在 GM 桶**；决策人侧要改编制仍走 sd.IssueDirective 的审批链（这两条命令非 GmOnly，可嵌入令）。
     built.add(new UnitSetGovFormationTool(core, initiator, mapId));
     built.add(new UnitSetArmyFormationTool(core, initiator, mapId));
+    // 阶段 10b-i（2026-10-01 GOV 计划）：GOV 政策 / 上级层级两条窄工具。**只在 GM 桶**。
+    //   ★ **有意不为 unit.RecruitStaff / unit.DismissStaff 配窄工具**：那会变成"凭空造人 / 跳过退休支付"的
+    //   直通口。两条命令本身已注册（非 GmOnly），由 10b-ii 的配套工具批（social.SeedGroups + RecruitStaff +
+    //   sd.PutInfo / actor 支付 + DismissStaff + social 回写）或决策令批使用。
+    built.add(new UnitSetGovPolicyTool(core, initiator, mapId));
+    built.add(new UnitSetGovSuperiorTool(core, initiator, mapId));
     // 辖区阶段 6（2026-09-30 / 计划 §6.2）：actor 净增量账原语（app 级抽取/组军组合工具的落账腿）。
     //   **只在 GM 桶**：命令类型固定，模型只能给载荷；整条原子由域层判。
     built.add(new ActorAdjustAccountsTool(core, initiator, mapId));

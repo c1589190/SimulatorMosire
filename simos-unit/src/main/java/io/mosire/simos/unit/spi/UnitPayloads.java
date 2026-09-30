@@ -19,7 +19,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * unit 二十个命令 handler 共用的载荷解析助手（spec §四）。
+ * unit 各命令 handler 共用的载荷解析助手（spec §四）。
  *
  * <p>★ **坏载荷一律以 {@link IllegalArgumentException} 面世、带可读中文原因**；handler 在命令边界把它折成 {@code
  * HandlerOutcome.Rejected}（理由进 {@code simos.command.rejected} 事件，拒绝不留 revision）。域规则违反由 {@code
@@ -166,6 +166,19 @@ final class UnitPayloads {
   }
 
   /**
+   * 必填的行政角色（阶段 10b-i 的 {@code unit.RecruitStaff}/{@code unit.DismissStaff}）：未知串 ⇒ 抛 （{@code
+   * StaffRole.valueOf} 失败折成拒绝，理由点名词表）。
+   */
+  static StaffRole requireStaffRole(JsonNode payload, String field) {
+    String text = requireText(payload, field);
+    try {
+      return StaffRole.valueOf(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("字段 " + field + " 不是合法角色（SCRIBE|YAMEN|POST）: " + text, e);
+    }
+  }
+
+  /**
    * 可选的行政角色人数表（阶段 10a 的 {@code unit.SetGovFormation.staff}）：缺失或 {@code null} ⇒ 空 Optional； 给了 ⇒ 必须是
    * {@code {SCRIBE|YAMEN|POST:整数}} 对象。★ <b>角色词表在这里把关</b>（未知串具名拒，不静默丢条目）； <b>值域（≥0）不在这里判</b>——留给
    * {@link io.mosire.simos.unit.GovFormation} 构造期，两处不重复实现。
@@ -198,6 +211,28 @@ final class UnitPayloads {
       staff.put(role, number.asLong());
     }
     return Optional.of(staff);
+  }
+
+  /**
+   * 可选的「逐来源审计数组」形状校验（阶段 10b-i 的 {@code unit.RecruitStaff.sources}）：缺失或 {@code null} ⇒ 合法；给了 ⇒ 必须是
+   * JSON 数组，且每个元素是 JSON 对象。
+   *
+   * <p>★ <b>刻意只校到这个深度</b>：来源元素的字段（来源类型、社会批次 id、人口单位 id、数量…）由 10b-ii 的配套工具批构造与消费；本条命令只把 roster
+   * 入编一件事落盘，<b>不解析来源域对象、也不重复扣人</b> （扣人由同批 {@code social.SeedGroups} 负责）。若在这里顺手解析来源，就会长出第二份来源真相。
+   */
+  static void validateOptionalSourceArray(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return;
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 JSON 对象数组或 null: " + payload);
+    }
+    for (JsonNode source : value) {
+      if (!source.isObject()) {
+        throw new IllegalArgumentException("字段 " + field + " 的每个来源必须是 JSON 对象: " + source);
+      }
+    }
   }
 
   /**

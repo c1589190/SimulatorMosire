@@ -120,16 +120,20 @@ import io.mosire.simos.unit.spi.CreateCommandChainHandler;
 import io.mosire.simos.unit.spi.CreateUnitHandler;
 import io.mosire.simos.unit.spi.DetachUnitHandler;
 import io.mosire.simos.unit.spi.DisbandUnitHandler;
+import io.mosire.simos.unit.spi.DismissStaffHandler;
 import io.mosire.simos.unit.spi.MergeFormationHandler;
 import io.mosire.simos.unit.spi.PlaceAtHandler;
 import io.mosire.simos.unit.spi.PlanRouteHandler;
 import io.mosire.simos.unit.spi.PlanSparseRouteHandler;
+import io.mosire.simos.unit.spi.RecruitStaffHandler;
 import io.mosire.simos.unit.spi.RenameUnitHandler;
 import io.mosire.simos.unit.spi.ReparentSubtreeHandler;
 import io.mosire.simos.unit.spi.ReparentUnitHandler;
 import io.mosire.simos.unit.spi.SetArmyFormationHandler;
 import io.mosire.simos.unit.spi.SetFormationOffsetHandler;
 import io.mosire.simos.unit.spi.SetGovFormationHandler;
+import io.mosire.simos.unit.spi.SetGovPolicyHandler;
+import io.mosire.simos.unit.spi.SetGovSuperiorHandler;
 import io.mosire.simos.unit.spi.SetJurisdictionHandler;
 import io.mosire.simos.unit.spi.SetRejoinTargetHandler;
 import io.mosire.simos.unit.spi.SetStatusHandler;
@@ -471,6 +475,13 @@ public final class Shell implements AutoCloseable {
                 //   ⇒ 与既有 unit 命令同待遇（仍可嵌入决策人令；"只在 GM 桶"说的是配套窄工具）。──
                 new SetGovFormationHandler(),
                 new SetArmyFormationHandler(),
+                // ── 阶段 10b-i（2026-10-01）：GOV 政策 / 层级 / 入编 / 离编四条 unit 命令。全部非 GmOnly
+                //   ⇒ 与既有 unit 命令同待遇（可嵌入决策令）。★ Recruit/Dismiss 有意**不配** GM 窄工具
+                //   （那会变成"凭空造人/跳过支付"的直通口）：它们只作为命令，由 10b-ii 的配套工具批/决策令批使用。──
+                new SetGovPolicyHandler(),
+                new SetGovSuperiorHandler(),
+                new RecruitStaffHandler(),
+                new DismissStaffHandler(),
                 // ── social（4 条）：逐格农村人口 + 城市节点 + **人口批次**（R1 的 T3：人口的唯一落盘入口）。
                 //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）──
                 new SetPopulationHandler(),
