@@ -62,6 +62,8 @@ import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketPriceHandler;
 import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
 import io.mosire.simos.economy.spi.EconomyTransferAssetShareHandler;
+import io.mosire.simos.economy.spi.UnitBorrowHandler;
+import io.mosire.simos.economy.spi.UnitRepayHandler;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.spi.CreateRegionHandler;
@@ -485,6 +487,13 @@ public final class Shell implements AutoCloseable {
                 //   照进 commandTargets；但排除出令白名单 / RegisterEffect / 决策人目录（见下方
                 //   catalogCommandTypes 与 directiveCommandTypes 的拆分）。──
                 new EconomyGmAdjustHandler(),
+                // ── economy（阶段 7 第一段）：地方债借入/还款两条 economy 原语。★ 同样 GM-only：单提其中一条会造成
+                //   资金悬空（放贷方已扣/国库未收，或反之），唯一受支持的调用面是配套工具批
+                //   （economy.UnitBorrow + actor.AdjustAccounts / actor.AdjustAccounts +
+                // economy.UnitRepay）。
+                //   handler 照常注册、照进 commandTargets；但排除出令白名单 / RegisterEffect / 决策人目录。──
+                new UnitBorrowHandler(),
+                new UnitRepayHandler(),
                 // ── actor（1 条，S1 阶段 2）：actor.Seed —— 一次种入某地图的 actor 分片（主体/产权/商品库存三张表）。
                 //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）；同时也进 commandTypes ⇒
                 //   simos.command.submit 的目标声明表（CommandTargets）同源认得它。──

@@ -199,6 +199,23 @@ public final class CatalogTool implements AgentTool {
                   + " priceSource(MARKET|AGREED|POLICY), policyValuePerUnitMilli(≥0；非 POLICY 必须 0),"
                   + " recipientRule(CREDITOR_FIRST|MARKET_FIRST)；引用不存在的 AssetRule ⇒ 拒）"),
           Map.entry(
+              "economy.UnitBorrow",
+              "unitId, lenderId, unit(money|grain), principal(≥1), interestRatePerMille(≥0),"
+                  + " nextDueTick(> 当前 tick), terms?(缺省 unit-debt)"
+                  + "（★ GM-only：地方债借入原语，只改 classFirst.lenders/accounts 两张表——"
+                  + "放贷方余额 −principal、owner=unitId/counterparty=lenderId 与镜像两条腿同批落；"
+                  + "classFirst 为空 / lender 不存在 / unit 不认 / principal 超可贷量 /"
+                  + "已有未结清腿 ⇒ 拒（后者指路 unit.repayDebt）；已结清身份可重开；不碰 actor；"
+                  + "唯一受支持的完整调用面是 economy.UnitBorrow + actor.AdjustAccounts 工具批）"),
+          Map.entry(
+              "economy.UnitRepay",
+              "unitId, lenderId, unit(money|grain), amount(≥1)"
+                  + "（★ GM-only：地方债还款原语，只改 classFirst.lenders/accounts 两张表——"
+                  + "放贷方余额 +amount、借款腿/镜像腿各减 amount，清 0 ⇒ 双腿 SETTLED；"
+                  + "classFirst 为空 / lender 不存在 / unit 不认 / 没有未结清的地方债 / amount 超过负债 ⇒ 拒；"
+                  + "镜像腿缺失或两腿净额不互为相反数 ⇒ 状态损坏（IllegalStateException）；不碰 actor；"
+                  + "唯一受支持的完整调用面是 actor.AdjustAccounts + economy.UnitRepay 工具批）"),
+          Map.entry(
               "actor.Seed",
               "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],"
                   + "goods[{owner{kind,id}, location{q,r}, balances{键:整数}}...]}...]"
