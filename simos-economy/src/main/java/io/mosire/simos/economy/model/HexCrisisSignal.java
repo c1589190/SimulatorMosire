@@ -77,7 +77,13 @@ public record HexCrisisSignal(
     /** 下一轮投入短缺。 */
     INPUT_SHORTFALL,
     /** 劳动负担异常。 */
-    LABOR_BURDEN
+    LABOR_BURDEN,
+    /** 行政治安不足（GOV 辖区治安覆盖率 &lt; 1000‰；阶段 11b，只发信号，不自动扣市场）。 */
+    ADMIN_SECURITY,
+    /** 行政文书不足（GOV 辖区书吏+驿传覆盖率 &lt; 1000‰；阶段 11b，只发信号）。 */
+    ADMIN_PAPERWORK,
+    /** 行政物资/俸禄不足（当日 grain/cloth/silver 任一实付 &lt; 评估；阶段 11b，只发信号）。 */
+    ADMIN_SUPPLY
   }
 
   public HexCrisisSignal {

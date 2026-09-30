@@ -38,11 +38,11 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * ★★ {@code simos.unit.levyRegion}（辖区阶段 6 / 计划 §6.1）：<b>GM 组合工具</b>——一次性从一个单位辖区的家户 actor 账抽粮 /
- * 抽钱、并从该区域抽人力，三条命令<b>同批落一条 revision</b>。
+ * ★★ {@code simos.unit.levyRegion}（辖区阶段 6 / 计划 §6.1；阶段 11b 补 cloth）：<b>GM 组合工具</b>——一次性从一个单位辖区的家户
+ * actor 账抽粮 / 抽钱 / 抽布、并从该区域抽人力，三条命令<b>同批落一条 revision</b>。
  *
- * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：粮 / 钱在 {@code actor} 切片、人在 {@code social} 切片、行动记录在 {@code sd}
- * 切片，单条命令只能落一个命名空间。本工具走 {@link CoreSimos#submitBatch}（同 branch + 同 expectedRevision ⇒ 一批 = 一条
+ * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：粮 / 钱 / 布在 {@code actor} 切片、人在 {@code social} 切片、行动记录在 {@code
+ * sd} 切片，单条命令只能落一个命名空间。本工具走 {@link CoreSimos#submitBatch}（同 branch + 同 expectedRevision ⇒ 一批 = 一条
  * revision，原子）。
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：唯一语义落点是 {@link LevyRegionPlan#plan}（不碰 {@link ToolContext}
@@ -51,15 +51,18 @@ import java.util.UUID;
  * <p>★★ <b>批的三条命令（按此顺序，按需缺席）</b>：
  *
  * <ol>
- *   <li>{@code actor.AdjustAccounts}（粮 / 钱任一 &gt; 0 时）：各来源家户账的<b>负增量</b>（粮与钱合并进同一 {@code (owner,格)}
- *       条目，避免同键重复）+ 一条单位国库账户（{@code ActorRef(UNIT, unitId)}，格 = 单位当刻有效位置）的 <b>正增量</b>；逐值相等（Σ 扣减 ==
- *       入库）；
+ *   <li>{@code actor.AdjustAccounts}（粮 / 钱 / 布任一 &gt; 0 时）：各来源家户账的<b>负增量</b>（粮与布合并进同一 {@code
+ *       (owner,格)} 条目的 {@code goods} 表，钱进同条目的 {@code money} 表，避免同键重复）+ 一条单位国库账户（{@code
+ *       ActorRef(UNIT, unitId)}，格 = 单位当刻有效位置）的 <b>正增量</b>；逐值相等（Σ 扣减 == 入库）；
  *   <li>{@code social.SeedGroups}（人力 &gt; 0 时）：每个被动批次一条<b>整组覆盖</b>条目（{@code id/q/r/sex/count=扣后} +
  *       {@code ageDays/anchorTick/stress} 保真），扣后 count 可为 0（合法空批）；
  *   <li>{@code sd.PutInfo}（恒有）：行动记录，地址 = 单位 canonical（{@link Address#parse} → {@link
  *       Address#canonical()}，与 {@code RejectDirectiveTool} 同款），{@code key="levyRegion"}，{@code
- *       value} = JSON <b>字符串</b>（unitId/regionId/tick/三项数量/来源计数/reason），{@code tick} = 当前世界日。
+ *       value} = JSON <b>字符串</b>（unitId/regionId/tick/四项数量/来源计数/reason），{@code tick} = 当前世界日。
  * </ol>
+ *
+ * <p>★★ <b>cloth 的上限口径（具名）</b>：<b>cloth 本批只受可用量约束；上限字段留后续</b>——{@code Jurisdiction} 只有粮/钱/人三条
+ * {@code levy*CapPerCommand}，本工具不为布发明第四条上限；布的总量不足 ⇒ 仍按统一口径<b>整条拒</b>（不是部分抽、不是截断）。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字也不是命令类型 ⇒ 不进 catalog / {@code
  * PAYLOAD_HINTS}。★ {@code actor.AdjustAccounts} 标了 {@code GmOnlyCommand}，令 / {@code RegisterEffect}
@@ -71,11 +74,11 @@ import java.util.UUID;
  *
  * <p>★ <b>工具结果（preview 与 apply 同形）</b>：{@code
  * preview/submitted/tick/unitId/regionId/treasuryLocation} + 逐维度 {@code grain}/{@code money}/{@code
- * manpower} 各 {@code {requested, available, sources[]}}（账来源带 owner + 格 + amount；人力来源带批次 id + 格 +
- * before/taken/after）+ {@code infoText}；apply 另加 {@code submission} （committed / conflict /
- * rejected + 逐条拒因）。
+ * cloth}/{@code manpower} 各 {@code {requested, available, sources[]}}（账来源带 owner + 格 +
+ * amount；人力来源带批次 id + 格 + before/taken/after）+ {@code infoText}；apply 另加 {@code submission}
+ * （committed / conflict / rejected + 逐条拒因）。
  *
- * <p>★ <b>失败具名</b>：参数缺失 / 负值 / 三项全 0 / 单位不存在 / 无管辖 / 区域不在管辖或地图 / 超上限 / 无位置 / 来源总量不足 ⇒ {@link
+ * <p>★ <b>失败具名</b>：参数缺失 / 负值 / 四项全 0 / 单位不存在 / 无管辖 / 区域不在管辖或地图 / 超上限（粮/钱/人） / 无位置 / 来源总量不足 ⇒ {@link
  * IllegalArgumentException} 折 {@code BAD_REQUEST}；批被整条拒 ⇒ {@code REJECTED} 带逐条可读拒因；提交冲突 ⇒ {@code
  * CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link ResourceDeniedException}（由唯一入口折资源拒因）。
  */
@@ -139,21 +142,23 @@ public final class LevyRegionTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 辖区一次性抽取（组合工具，一批 = 一条 revision）：从单位辖区的家户 actor 账抽粮/钱、从该区域抽人力，"
-        + "三项各自受 unit.SetJurisdiction 的 levy*CapPerCommand 约束（0 = 无额度）。"
-        + "载荷 {unitId(必填), regionId(必填), grain?, money?, manpower?(三项可选 long，缺省 0；"
-        + "负数拒、三项全 0 拒), reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
+    return "GM 辖区一次性抽取（组合工具，一批 = 一条 revision）：从单位辖区的家户 actor 账抽粮/钱/布、从该区域抽人力，"
+        + "粮/钱/人各自受 unit.SetJurisdiction 的 levy*CapPerCommand 约束（0 = 无额度）；"
+        + "★ cloth 本批只受可用量约束，上限字段留后续（Jurisdiction 没有第四条上限）。"
+        + "载荷 {unitId(必填), regionId(必填), grain?, money?, cloth?, manpower?(四项可选 long，缺省 0；"
+        + "负数拒、四项全 0 拒), reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
         + "口径：单位必须存在且管辖含该 region、region 必须在地图里、单位必须有当刻有效位置（国库落点）；"
-        + "粮/钱来源 = region 各 hex 上 HOUSEHOLD 账的可支配量（余额−冻结，AvailableStock 唯一算法），"
+        + "粮/钱/布来源 = region 各 hex 上 HOUSEHOLD 账的可支配量（余额−冻结，AvailableStock 唯一算法；布 = CommodityId(PilotModel.CLOTH)），"
         + "人力来源 = residence 在 region、MALE、当前 tick 落在 AgeBracket.ADULT 的批次；"
         + "总量不足 ⇒ 整条拒（不部分、不截断）；分摊 = 瀑布（可用量/人数降序，同量按账键/批次 id 升序）。"
-        + "apply 批：actor.AdjustAccounts（各来源负增量 + 单位国库正增量）+ social.SeedGroups（各被动批次整组覆盖，"
-        + "带 ageDays/anchorTick/stress 保真、扣后 count 可为 0）+ sd.PutInfo（单位 canonical 地址、key="
+        + "apply 批：actor.AdjustAccounts（各来源负增量 + 单位国库正增量；粮与布合并进 goods、钱进 money）"
+        + "+ social.SeedGroups（各被动批次整组覆盖，带 ageDays/anchorTick/stress 保真、扣后 count 可为 0）"
+        + "+ sd.PutInfo（单位 canonical 地址、key="
         + INFO_KEY
-        + "、value=JSON 字符串的行动记录）。"
-        + "返回 {preview, submitted, tick, unitId, regionId, treasuryLocation, grain/money/manpower 各"
+        + "、value=JSON 字符串的行动记录，带 cloth 计数）。"
+        + "返回 {preview, submitted, tick, unitId, regionId, treasuryLocation, grain/money/cloth/manpower 各"
         + " {requested, available, sources[]}, infoText}；apply 另加 submission。";
   }
 
@@ -170,6 +175,10 @@ public final class LevyRegionTool implements AgentTool {
     props.put(
         "money",
         ToolSupport.prop("integer", "抽钱金额（毫银；可选，缺省 0 = 本维度整段跳过；不得为负，不得超 levyMoneyCapPerCommand）"));
+    props.put(
+        "cloth",
+        ToolSupport.prop(
+            "integer", "抽布数量（毫布；可选，缺省 0 = 本维度整段跳过；不得为负；★ 本批无单命令上限，只受可用量约束，" + "上限字段留后续）"));
     props.put(
         "manpower",
         ToolSupport.prop(
@@ -210,6 +219,8 @@ public final class LevyRegionTool implements AgentTool {
             + args.getOrDefault("grain", 0)
             + " money="
             + args.getOrDefault("money", 0)
+            + " cloth="
+            + args.getOrDefault("cloth", 0)
             + " manpower="
             + args.getOrDefault("manpower", 0)
             + " preview="
@@ -231,6 +242,7 @@ public final class LevyRegionTool implements AgentTool {
       String reason = ToolSupport.requiredText(args, "reason");
       long grain = optionalAmount(args, "grain");
       long money = optionalAmount(args, "money");
+      long cloth = optionalAmount(args, "cloth");
       long manpower = optionalAmount(args, "manpower");
       boolean preview = ToolSupport.optionalBoolean(args, "preview").orElse(true);
       BranchId branch =
@@ -248,7 +260,7 @@ public final class LevyRegionTool implements AgentTool {
                   ? QueryService.QueryTarget.head(branch)
                   : QueryService.QueryTarget.at(branch, new RevisionId(expectedRevision)));
       LevyRegionPlan.Plan plan =
-          LevyRegionPlan.plan(state, unitId, regionId, grain, money, manpower);
+          LevyRegionPlan.plan(state, unitId, regionId, grain, money, cloth, manpower);
       if (preview) {
         return ToolSupport.ok(planView(plan, reason, true, false));
       }
@@ -331,7 +343,7 @@ public final class LevyRegionTool implements AgentTool {
       BranchId branch,
       RevisionId expectedRevision) {
     List<CommandEnvelope> batch = new ArrayList<>(3);
-    if (plan.hasGrainOrMoney()) {
+    if (plan.hasAccountMovements()) {
       batch.add(
           envelope(
               batchId,
@@ -370,8 +382,8 @@ public final class LevyRegionTool implements AgentTool {
   /**
    * {@code actor.AdjustAccounts} 载荷：各来源家户账的负增量 + 一条国库正增量。
    *
-   * <p>★★ 粮与钱<b>按 {@code (owner,格)} 合并</b>：同一本账同时供粮与供钱时只能出现一条（该命令明令拒同键重复）。条目顺序 = 粮来源瀑布序 →
-   * 仅钱的来源瀑布序（首次出现的位置保留）→ 国库（恒在最后），是内容的纯函数。
+   * <p>★★ 粮 / 布 / 钱<b>按 {@code (owner,格)} 合并</b>：同一本账同时供多个维度时只能出现一条（该命令明令拒同键重复）；粮与布进同一个 {@code
+   * goods} 表，钱进 {@code money} 表。条目顺序 = 粮来源瀑布序 → 仅钱的来源瀑布序 → 仅布的来源瀑布序（首次出现的位置保留）→ 国库（恒在最后）， 是内容的纯函数。
    */
   private static String adjustAccountsPayload(LevyRegionPlan.Plan plan) {
     LinkedHashMap<GoodsAccountKey, Long> grainByKey = new LinkedHashMap<>();
@@ -382,17 +394,28 @@ public final class LevyRegionTool implements AgentTool {
     for (LevyRegionPlan.AccountSource source : plan.money().sources()) {
       moneyByKey.put(new GoodsAccountKey(source.owner(), source.at()), -source.amount());
     }
+    LinkedHashMap<GoodsAccountKey, Long> clothByKey = new LinkedHashMap<>();
+    for (LevyRegionPlan.AccountSource source : plan.cloth().sources()) {
+      clothByKey.put(new GoodsAccountKey(source.owner(), source.at()), -source.amount());
+    }
     LinkedHashSet<GoodsAccountKey> order = new LinkedHashSet<>(grainByKey.keySet());
     order.addAll(moneyByKey.keySet());
+    order.addAll(clothByKey.keySet());
     List<Map<String, Object>> entries = new ArrayList<>(order.size() + 1);
     for (GoodsAccountKey key : order) {
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("owner", actorRefView(key.owner()));
       entry.put("q", key.location().q());
       entry.put("r", key.location().r());
+      // ★ 粮与布同在一张 goods 表里：同键同命令只出现一条，扣减逐值对应。
+      Map<String, Object> goods = new LinkedHashMap<>();
       if (grainByKey.containsKey(key)) {
-        Map<String, Object> goods = new LinkedHashMap<>();
         goods.put(PilotModel.GRAIN, grainByKey.get(key));
+      }
+      if (clothByKey.containsKey(key)) {
+        goods.put(PilotModel.CLOTH, clothByKey.get(key));
+      }
+      if (!goods.isEmpty()) {
         entry.put("goods", goods);
       }
       if (moneyByKey.containsKey(key)) {
@@ -402,15 +425,20 @@ public final class LevyRegionTool implements AgentTool {
       }
       entries.add(entry);
     }
-    // ★ 国库账户一条正增量：粮 / 钱各自 +requested（分配不变量保证 Σ扣减 == requested，逐值相等）。
+    // ★ 国库账户一条正增量：粮 / 布 / 钱各自 +requested（分配不变量保证 Σ扣减 == requested，逐值相等）。
     Map<String, Object> treasury = new LinkedHashMap<>();
     treasury.put("owner", actorRefView(new ActorRef(ActorKind.UNIT, plan.unitId())));
     treasury.put("q", plan.treasuryLocation().q());
     treasury.put("r", plan.treasuryLocation().r());
+    Map<String, Object> treasuryGoods = new LinkedHashMap<>();
     if (plan.grain().requested() > 0L) {
-      Map<String, Object> goods = new LinkedHashMap<>();
-      goods.put(PilotModel.GRAIN, plan.grain().requested());
-      treasury.put("goods", goods);
+      treasuryGoods.put(PilotModel.GRAIN, plan.grain().requested());
+    }
+    if (plan.cloth().requested() > 0L) {
+      treasuryGoods.put(PilotModel.CLOTH, plan.cloth().requested());
+    }
+    if (!treasuryGoods.isEmpty()) {
+      treasury.put("goods", treasuryGoods);
     }
     if (plan.money().requested() > 0L) {
       Map<String, Object> money = new LinkedHashMap<>();
@@ -454,7 +482,7 @@ public final class LevyRegionTool implements AgentTool {
 
   /**
    * {@code sd.PutInfo} 载荷：单位 canonical 地址 + {@code key="levyRegion"} + {@code value} = JSON
-   * <b>字符串</b> （含 unitId/regionId/tick/三项数量/来源计数/reason）+ {@code note} = 人可读摘要 + {@code tick} =
+   * <b>字符串</b> （含 unitId/regionId/tick/四项数量/来源计数/reason）+ {@code note} = 人可读摘要 + {@code tick} =
    * 当前世界日。
    *
    * <p>★ {@code id} 不显式给：由 {@code sd.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一单位的后续抽取自然追加 #1、#2…
@@ -466,10 +494,12 @@ public final class LevyRegionTool implements AgentTool {
     value.put("tick", plan.tick());
     value.put("grain", plan.grain().requested());
     value.put("money", plan.money().requested());
+    value.put("cloth", plan.cloth().requested());
     value.put("manpower", plan.manpower().requested());
     Map<String, Object> sourceCounts = new LinkedHashMap<>();
     sourceCounts.put("grain", plan.grain().sources().size());
     sourceCounts.put("money", plan.money().sources().size());
+    sourceCounts.put("cloth", plan.cloth().sources().size());
     sourceCounts.put("manpower", plan.manpower().sources().size());
     value.put("sourceCounts", sourceCounts);
     value.put("reason", reason);
@@ -505,12 +535,13 @@ public final class LevyRegionTool implements AgentTool {
     view.put("treasuryLocation", ToolSupport.hexCoord(plan.treasuryLocation()));
     view.put("grain", accountDimensionView(plan.grain()));
     view.put("money", accountDimensionView(plan.money()));
+    view.put("cloth", accountDimensionView(plan.cloth()));
     view.put("manpower", manpowerView(plan.manpower()));
     view.put("infoText", infoText(plan, reason));
     return view;
   }
 
-  /** 粮 / 钱维度视图：{@code {requested, available, sources:[{owner{kind,id},q,r,amount}…]}}。 */
+  /** 粮 / 钱 / 布维度视图：{@code {requested, available, sources:[{owner{kind,id},q,r,amount}…]}}。 */
   private static Map<String, Object> accountDimensionView(LevyRegionPlan.Dimension dimension) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("requested", dimension.requested());
@@ -573,6 +604,10 @@ public final class LevyRegionTool implements AgentTool {
         + plan.money().requested()
         + "（来源 "
         + plan.money().sources().size()
+        + "）、布 "
+        + plan.cloth().requested()
+        + "（来源 "
+        + plan.cloth().sources().size()
         + "）、人力 "
         + plan.manpower().requested()
         + "（批次 "

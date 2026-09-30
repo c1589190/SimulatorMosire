@@ -86,7 +86,9 @@ public final class CatalogTool implements AgentTool {
                   + " administrationPerMille?(0..1000)"
                   + "（★ 每个 regionId 必须在当前地图里存在，否则具名拒；未给的可选字段保持原值；"
                   + "三个 levy*CapPerCommand 的上限 = 一条抽取命令的上限，0 = 该类无额度、拒，"
-                  + "本批不建周期累计账本）"),
+                  + "本批不建周期累计账本；布（simos.unit.levyRegion 的 cloth?）本批无单命令上限、只受可用量约束，"
+                  + "上限字段留后续；administrationPerMille 已退役：生产路径零读取，仅为旧档兼容保留，"
+                  + "长期税改读 gov 读数的 efficiencyPerMille）"),
           Map.entry(
               "unit.SetGovFormation",
               "unitId, level(CENTRAL|PROVINCE), superiorGov?,"

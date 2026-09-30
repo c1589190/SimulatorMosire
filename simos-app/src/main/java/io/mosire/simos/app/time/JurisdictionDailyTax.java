@@ -29,21 +29,25 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * ★★ <b>阶段 6.3：长期税的纯推导</b>（辖区阶段，计划 §6.3 的口径逐条落在这里）。
+ * ★★ <b>阶段 6.3：长期税的纯推导</b>（辖区阶段，计划 §6.3 的口径逐条落在这里；阶段 11b 起行政效率改读 GOV 读数）。
  *
  * <p>它被 {@link ClassFirstPopulationEconomyTimeParticipant} 的日循环调用——<b>不</b>另起 participant，理由是架构硬约束：
  * {@code TimeProposalResolver} 对两个参与者的<b>同名模块变更 = module clash ⇒ 拒整次推进</b>（Core 手里的 ChangeSet
  * 不透明、无法合并两份）。长期税要写 actor 家户账与单位国库账，而 population 参与者已经是 actor 写面的唯一参与者 ⇒ 只能并进它的日循环。
  *
  * <p>★★ <b>本类是纯函数</b>：不碰 {@code ToolContext} / {@code CoreSimos} / 日志（日志由调用方在推进结束写一条）； 同一份 {@code
- * (actor, units, map, tick)} ⇒ 逐字段相同的结果。它不修改入参，返回的账本要么是同一个 {@link ActorData} 实例（没有任何征收），要么是只换了
- * {@code accounts} 组件的新实例（{@code meta}/{@code actors} 一字不动）。
+ * (actor, units, map, tick, efficiencyPerMilleByUnit)} ⇒ 逐字段相同的结果。它不修改入参，返回的账本要么是同一个 {@link
+ * ActorData} 实例（没有任何征收），要么是只换了 {@code accounts} 组件的新实例（{@code meta}/{@code actors} 一字不动）。
  *
- * <p>★★ <b>征收口径（逐条对应任务书 §6.3）</b>：
+ * <p>★★ <b>征收口径（逐条对应任务书 §6.3 + 阶段 11b 裁定 7/8）</b>：
  *
  * <ol>
  *   <li><b>逐单位</b>：{@code units.units()} 全表按 {@link UnitId#value()} 升序；只收 {@code jurisdiction}
- *       present 且 {@code administrationPerMille > 0} 的单位（admin = 0 是硬门：完全不征、不记缺口、逐字节不变）；
+ *       present 且 <b>{@code efficiencyPerMilleByUnit} 里查得到该单位</b> 的单位；
+ *   <li><b>无 GOV ⇒ 不征（具名口径）</b>：某单位查不到效率（没有 {@code GovFormation}/没有 GOV 读数）⇒ <b>整单位跳过、不征</b>；不读
+ *       {@code Jurisdiction.administrationPerMille} 的旧值、不补 0、不发明来源。 为什么用 {@code Map<UnitId, Long>}
+ *       而不是 {@code ToLongFunction}：{@code ToLongFunction} 无法表达“查不到” （只能回 0，而 0
+ *       与“没有读数”在口径上必须分开），{@code Map.get} 的 {@code null} 正好是有齿的存在性检查；
  *   <li><b>逐区域</b>：该单位 {@code taxRatePerMilleByRegion} 的 key 按 {@link RegionId#value()} 升序，rate = 0
  *       跳过；区域不在 {@code map.regions()} ⇒ 具名 {@link GapKind#REGION_MISSING} 缺口并跳过；
  *   <li><b>国库落点</b>：{@code units.effectivePosition(unitId, SimosTimestamp.of(tick))}；空 ⇒ 具名 {@link
@@ -51,13 +55,17 @@ import java.util.Optional;
  *   <li><b>税基</b>：区域各 hex 上的 {@link ActorKind#HOUSEHOLD} 账，按账键 {@link GoodsAccountKey#toString()}
  *       升序；<b>余额 ≤ 0 跳过</b>（粮看 {@link #GRAIN}、钱看 {@link #SILVER}，两个维度各判各的）；
  *   <li><b>算式</b>：{@code assessed = floor(balance × rate / 1000)}（溢出安全拆法见 {@link #scalePerMille}）；
- *       {@code attainable = floor(assessed × admin / 1000)}；{@code collected = min(attainable,
- *       available)}， 其中 {@code available} 只经 {@link AvailableStock}（全仓唯一的"余额 − 冻结"算法，本类不写减法）；
+ *       {@code attainable = floor(assessed × efficiency / 1000)}（效率可直接取 GOV 读数的 {@code [0,1100]}；
+ *       {@code >1000} 时 {@code attainable > assessed} = 超编加成带来的行政超收能力）； {@code collected =
+ *       min(attainable, available)}， 其中 {@code available} 只经 {@link AvailableStock} （全仓唯一的“余额 −
+ *       冻结”算法，本类不写减法）；
  *   <li><b>落账</b>：{@code collected > 0} 才写——家户账负增量（粮 {@link #GRAIN}、钱 {@link #SILVER}），国库账 {@code
  *       GoodsAccountKey(ActorRef(UNIT, unitId), 有效位置)} 正增量；缺国库账 ⇒ 五参新建（冻结表空），已有 ⇒
  *       保留其两张冻结表。家户同一天两个维度先各自按<b>同一本税前的账</b>算足，再<b>合并成一次改写</b> （不会拿旧值覆盖丢改动）；冻结表、其它键序、0 余额一律原样保留；
- *   <li><b>缺口累计</b>：{@code collected < assessed} ⇒ {@code adminShortfall += assessed − attainable}、
- *       {@code stockShortfall += attainable − collected}，逐维累计；
+ *   <li><b>缺口累计（有符号）</b>：{@code adminShortfall += assessed − attainable}、{@code stockShortfall +=
+ *       attainable − collected}，逐维累计。★ 效率 {@code ≤1000} 时 {@code adminShortfall ≥ 0}（行政能力不足）； 效率
+ *       {@code >1000} 时它为负 = 行政超收，恒等式 {@code collected + adminShortfall + stockShortfall ==
+ *       assessed} 仍成立（无溢出时）；
  *   <li><b>重叠管辖</b>：同一天多单位命中同一区域/同一本账 ⇒ 按单位 id 升序依次征，后者见前者税后余额（本类用一张 保序工作账演进，确定性）；
  *   <li><b>空结果</b>：没有任何征收 ⇒ 返回<b>同一个</b> {@link ActorData} 实例（让上层 {@code ActorChangeSet.between}
  *       自然落 Unchanged）。★ 只有缺口、没有征收时同样返回同一个实例，但 {@link Report} 带着缺口（缺口必须可见，不能静默）。
@@ -85,12 +93,21 @@ final class JurisdictionDailyTax {
    * @param units 只读的 unit 切片（管辖、有效位置）
    * @param map 只读的地图切片（区域的 hex 集）
    * @param tick 世界日（{@code units.effectivePosition} 的取位时刻）
+   * @param efficiencyPerMilleByUnit 单位 id → 当日 GOV 行政效率‰；<b>缺失键 = 没有 GOV 读数 ⇒ 整单位跳过、不征</b> （不读
+   *     {@code Jurisdiction.administrationPerMille} 的旧值，不补 0）
    * @return 新的 actor（无征收时是入参同一实例）+ 本日 {@link Report}
    */
-  static Collected collect(ActorData actor, UnitState units, GameMap map, long tick) {
+  static Collected collect(
+      ActorData actor,
+      UnitState units,
+      GameMap map,
+      long tick,
+      Map<UnitId, Long> efficiencyPerMilleByUnit) {
     Objects.requireNonNull(actor, "actor");
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(map, "map");
+    Objects.requireNonNull(
+        efficiencyPerMilleByUnit, "efficiencyPerMilleByUnit（没有 GOV 读数用 Map.of()）");
     if (tick < 0L) {
       throw new IllegalArgumentException("tick 不得为负: " + tick);
     }
@@ -114,9 +131,17 @@ final class JurisdictionDailyTax {
 
     for (Unit unit : orderedUnits) {
       Jurisdiction jurisdiction = unit.jurisdiction().orElse(null);
-      // ★ admin = 0 = 无班子 ⇒ 完全不征（硬门）：本单元不产生任何账目/缺口/报告字段。
-      if (jurisdiction == null || jurisdiction.administrationPerMille() <= 0L) {
+      Long efficiencyPerMille = efficiencyPerMilleByUnit.get(unit.id());
+      // ★ 无 GOV 读数（查不到效率）⇒ 整单位跳过、不征：不读旧字段、不补 0、不记缺口（无数据就没有）。
+      if (jurisdiction == null || efficiencyPerMille == null) {
         continue;
+      }
+      if (efficiencyPerMille < 0L || efficiencyPerMille > 1100L) {
+        throw new IllegalArgumentException(
+            "GOV 效率必须 ∈ [0,1100]: unit="
+                + unit.id().value()
+                + " efficiency‰="
+                + efficiencyPerMille);
       }
       List<Map.Entry<RegionId, Long>> ratedRegions = new ArrayList<>();
       for (Map.Entry<RegionId, Long> entry : jurisdiction.taxRatePerMilleByRegion().entrySet()) {
@@ -149,7 +174,7 @@ final class JurisdictionDailyTax {
       }
       GoodsAccountKey treasuryKey =
           new GoodsAccountKey(new ActorRef(ActorKind.UNIT, unit.id().value()), treasuryAt.get());
-      long administration = jurisdiction.administrationPerMille();
+      long efficiency = efficiencyPerMille;
       boolean chargedThisUnit = false;
 
       for (Map.Entry<RegionId, Long> regionEntry : existingRegions) {
@@ -158,15 +183,15 @@ final class JurisdictionDailyTax {
         for (GoodsAccountKey householdKey : householdAccounts(working, region)) {
           GoodsAccount book = working.get(householdKey);
           // ★ 两个维度都按这本"税前账"算足（互不依赖），再合并成一次改写 ⇒ 不丢改动。
-          Assessment grain = assess(book, false, rate, administration);
-          Assessment money = assess(book, true, rate, administration);
+          Assessment grain = assess(book, false, rate, efficiency);
+          Assessment money = assess(book, true, rate, efficiency);
           grainAssessed = saturatedAdd(grainAssessed, grain.assessed());
           grainCollected = saturatedAdd(grainCollected, grain.collected());
-          grainAdminShortfall = saturatedAdd(grainAdminShortfall, grain.adminShortfall());
+          grainAdminShortfall = saturatedAddSigned(grainAdminShortfall, grain.adminShortfall());
           grainStockShortfall = saturatedAdd(grainStockShortfall, grain.stockShortfall());
           moneyAssessed = saturatedAdd(moneyAssessed, money.assessed());
           moneyCollected = saturatedAdd(moneyCollected, money.collected());
-          moneyAdminShortfall = saturatedAdd(moneyAdminShortfall, money.adminShortfall());
+          moneyAdminShortfall = saturatedAddSigned(moneyAdminShortfall, money.adminShortfall());
           moneyStockShortfall = saturatedAdd(moneyStockShortfall, money.stockShortfall());
           if (grain.collected() == 0L && money.collected() == 0L) {
             continue;
@@ -216,10 +241,12 @@ final class JurisdictionDailyTax {
    * 一本家户账在一个维度上的一次征收计算。
    *
    * <p>{@code balance} 是该维度的<b>票面余额</b>（冻结也计入税基）；{@code available} 走 {@link AvailableStock} （余额 −
-   * 冻结，唯一算法）；{@code collected = min(attainable, available)}。
+   * 冻结，唯一算法）；{@code assessed = floor(balance × rate / 1000)}；{@code attainable = floor(assessed ×
+   * efficiency / 1000)}（efficiency ∈ [0,1100]）；{@code collected = min(attainable, available)}。 效率
+   * &gt; 1000‰ 时 {@code attainable &gt; assessed}，是超编加成带来的行政超收能力（计划 §3 的公式原样）。
    */
   private static Assessment assess(
-      GoodsAccount account, boolean money, long ratePerMille, long administrationPerMille) {
+      GoodsAccount account, boolean money, long ratePerMille, long efficiencyPerMille) {
     long balance =
         money
             ? account.money().getOrDefault(SILVER, 0L)
@@ -228,7 +255,7 @@ final class JurisdictionDailyTax {
       return Assessment.skipped(); // 余额 ≤ 0 跳过：assessed/attainable/collected 全 0，不记缺口。
     }
     long assessed = scalePerMille(balance, ratePerMille);
-    long attainable = scalePerMille(assessed, administrationPerMille);
+    long attainable = scalePerMille(assessed, efficiencyPerMille);
     long available =
         money
             ? AvailableStock.available(account, SILVER)
@@ -239,14 +266,39 @@ final class JurisdictionDailyTax {
 
   /**
    * ★ <b>溢出安全的 {@code floor(value × perMille / 1000)}</b>（{@code value ≥ 0}、{@code perMille ∈
-   * [0,1000]}， 两者都是本路径的构造期/入口不变量）。
+   * [0,1100]}：税率 ≤1000‰、GOV 效率 ≤1100‰，两者都是本路径的入口不变量）。
    *
-   * <p>拆法：{@code value = (value/1000)×1000 + value%1000} ⇒ 精确值 = {@code (value/1000)×perMille +
-   * floor((value%1000)×perMille/1000)}。第一项 ≤ {@code value}（perMille ≤ 1000），第二项 ≤ 999 ⇒ 逐项与和都 不可能越过
-   * {@link Long#MAX_VALUE}，且数学上等于 {@code floor(value×perMille/1000)}（后一项是整数除法， 对被除数非负即 floor）。
+   * <p>拆法：{@code value = (value/1000)×1000 + value%1000}，并把 {@code perMille = 1000 + bonus}（bonus ∈
+   * [0,100]）：
+   *
+   * <pre>
+   * floor(value×perMille/1000) = value + (value/1000)×bonus + floor((value%1000)×bonus/1000)
+   * </pre>
+   *
+   * 第一项 = value；第二项 ≤ value/10；第三项 ≤ 99。逐项都不越过 long，且只有当数学结果本身 &gt; {@link Long#MAX_VALUE}（即 value
+   * 已接近 long 上限且 bonus 把结果推出界）时饱和到 {@code Long.MAX_VALUE}——
+   * 余额量级下不可达，只为不把溢出静默成错误的小数。后一项是整数除法，对被除数非负即 floor。
    */
   private static long scalePerMille(long value, long perMille) {
-    return (value / 1000L) * perMille + (value % 1000L) * perMille / 1000L;
+    if (value < 0L || perMille < 0L || perMille > 1100L) {
+      throw new IllegalArgumentException(
+          "scalePerMille 的 value 必须 ≥ 0、perMille 必须 ∈ [0,1100]: value="
+              + value
+              + " perMille="
+              + perMille);
+    }
+    long whole = value / 1000L;
+    long remainder = value % 1000L;
+    long bonus = perMille - 1000L;
+    if (bonus <= 0L) {
+      return whole * perMille + remainder * perMille / 1000L;
+    }
+    long base = value; // 公式里的第一项；不溢出
+    long extra = whole * bonus + remainder * bonus / 1000L; // whole×100 ≤ value/10；两项都不溢出
+    if (extra > Long.MAX_VALUE - base) {
+      return Long.MAX_VALUE; // 数学结果本身超过 long 上限：饱和（余额量级不可达）
+    }
+    return base + extra;
   }
 
   // ── 账本改写小件（整本覆盖 → 新 GoodsAccount，不改运行对象）──────────────────────────────
@@ -356,6 +408,18 @@ final class JurisdictionDailyTax {
     return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
   }
 
+  /**
+   * 有符号饱和加法（{@code adminShortfall} 可为负：效率 &gt;1000‰ 时它是行政超收，不是缺口）； 溢出方向决定取 {@link Long#MAX_VALUE} /
+   * {@link Long#MIN_VALUE}。同样只用于合计。
+   */
+  private static long saturatedAddSigned(long left, long right) {
+    long sum = left + right;
+    if (((left ^ sum) & (right ^ sum)) < 0L) {
+      return left > 0L ? Long.MAX_VALUE : Long.MIN_VALUE;
+    }
+    return sum;
+  }
+
   private static void requireNonNegative(long value, String name) {
     if (value < 0L) {
       throw new IllegalArgumentException(name + " 不得为负: " + value);
@@ -418,17 +482,20 @@ final class JurisdictionDailyTax {
   /**
    * 一个维度（粮/钱）的汇总：{@code collected + adminShortfall + stockShortfall == assessed}（无溢出时）。
    *
-   * @param assessed 全部尝试过计税的家户余额 × 税率之和
-   * @param collected 实际入库量
-   * @param adminShortfall 行政能力吃掉的缺口（{@code assessed − attainable}）
-   * @param stockShortfall 库存/冻结吃掉的缺口（{@code attainable − collected}）
+   * <p>★ <b>{@code adminShortfall} 是有符号量</b>：GOV 效率 ≤1000‰ 时它 = 行政能力吃掉的缺口（{@code assessed −
+   * attainable}，≥0）；效率 &gt;1000‰（超编加成）时它为负 = 票面评估之外的行政超收能力。恒等式在两种情况下都成立。
+   *
+   * @param assessed 全部尝试过计税的家户余额 × 税率之和（≥0）
+   * @param collected 实际入库量（≥0；效率 &gt;1000‰ 时可能 &gt; assessed）
+   * @param adminShortfall 行政能力差额（{@code assessed − attainable}；可为负，见上）
+   * @param stockShortfall 库存/冻结吃掉的缺口（{@code attainable − collected}，≥0）
    */
   record Dimension(long assessed, long collected, long adminShortfall, long stockShortfall) {
 
     Dimension {
       requireNonNegative(assessed, "assessed");
       requireNonNegative(collected, "collected");
-      requireNonNegative(adminShortfall, "adminShortfall");
+      // ★ adminShortfall 有意允许负数：效率 >1000‰ 时「行政能力」不是缺口而是超收能力。
       requireNonNegative(stockShortfall, "stockShortfall");
     }
 
@@ -445,7 +512,7 @@ final class JurisdictionDailyTax {
       return new Dimension(
           saturatedAdd(assessed, other.assessed),
           saturatedAdd(collected, other.collected),
-          saturatedAdd(adminShortfall, other.adminShortfall),
+          saturatedAddSigned(adminShortfall, other.adminShortfall),
           saturatedAdd(stockShortfall, other.stockShortfall));
     }
   }
@@ -503,14 +570,14 @@ final class JurisdictionDailyTax {
     }
   }
 
-  /** 一本账一个维度的"算出来的三个数"（不改账）。 */
+  /** 一本账一个维度的"算出来的三个数"（不改账）；{@code attainable} 允许 &gt; {@code assessed}（效率 &gt;1000‰）。 */
   private record Assessment(long assessed, long attainable, long collected) {
 
     Assessment {
       requireNonNegative(assessed, "assessed");
       requireNonNegative(attainable, "attainable");
       requireNonNegative(collected, "collected");
-      if (attainable > assessed || collected > attainable) {
+      if (collected > attainable) {
         throw new IllegalArgumentException(
             "评估量不自洽：assessed="
                 + assessed

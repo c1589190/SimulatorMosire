@@ -2,7 +2,10 @@ package io.mosire.simos.app.time;
 
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.api.actor.ActorKind;
+import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.change.ActorChangeSet;
+import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.EconomyData;
@@ -10,6 +13,8 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.ClassPoolId;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CrisisSignalId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
@@ -21,12 +26,26 @@ import io.mosire.simos.economy.classfirst.HouseholdProductionAccount;
 import io.mosire.simos.economy.classfirst.PilotConfig;
 import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HexCrisisSignal;
+import io.mosire.simos.gov.GovDaily;
+import io.mosire.simos.gov.GovDemand;
+import io.mosire.simos.gov.GovEfficiency;
+import io.mosire.simos.gov.GovOfficeState;
+import io.mosire.simos.gov.GovRules;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.change.GovChangeSet;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.population.PopulationDynamics;
+import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitModule;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.address.Address;
@@ -34,11 +53,13 @@ import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.spi.WorldTimeProposal;
+import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.time.SimosTimestamp;
 import io.mosire.simos.util.time.TimeRange;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -56,22 +77,33 @@ import org.slf4j.LoggerFactory;
  * ClassFirstSettlement#settleOneDay(ClassFirstState, ClassFirstSettlement.Inputs)}，<b>不</b>构造
  * {@code 旧日推进器（R3a 已删除）}、<b>不</b>调 {@code 旧结算引擎（R3a 已删除）}（旧两类已在 R3a 随旧结算运行时删除）。
  *
- * <p>★★ <b>每次 {@code simulateWorld} = 一个 proposal、一条 revision、内部逐日</b>：
+ * <p>★★ <b>每次 {@code simulateWorld} = 一个 proposal、一条 revision、内部逐日</b>。阶段 11b 起，<b>有 GOV 读数</b>时
+ * 一天的次序是（写清并实现）：
  *
  * <pre>
  * ① 由 economy.classFirst + actor 家户账 + social 人口构造 settleOneDay 的输入（非空态里 households/config 只作契约形状，
  *    引擎以状态内 config 为权威）；
- * ② settleOneDay(base, inputs) → 新的 ClassFirstState（池 + 家户生产账户人口/劳动）+ AccountDelta + PopulationDelta + 日审计；
+ * ② settleOneDay(base, inputs) → 新 ClassFirstState + AccountDelta + PopulationDelta + 日审计；
  * ③ AccountDelta 经 {@link ClassFirstActorWriteback} 折进 actor 账本（池级 → 家户级唯一一次展开；土地/农具无 actor 维度 ⇒ 具名 gap）；
- * ④ 家户人口差分经 {@link ClassFirstSocialWriteback} 同步 social 批次（具名 gap）+ 用当日口粮/布读数更新生理压力；
- * ④.5 ★ 阶段 6.3 长期税：并入本参与者的日循环征（{@link JurisdictionDailyTax}）——不另起 participant 的唯一理由是
- *    <b>module clash</b>：另起者写 actor 会与 population 的 actor 变更同名，{@code TimeProposalResolver} 会拒整次推进；
- *    本步只读 unit/map 切片、只写 actor 家户账与单位国库账；
- * ⑤ 每 30 天调 {@code PopulationDynamics.monthly}，出生/死亡经 {@link ClassFirstPopulationWriteback} 接回
- *    classfirst 池/家户账户（in-place 同步 social 的批次人数）；
- * ⑥ classes 只读投影经 {@link ClassFirstClassProjection} 与家户账户对齐（键集/地址不变）；
- * ⑦ 循环结束把最终 ClassFirstState 经 {@link EconomyChangeSet#between}、social/actor 经各自变更集交回（全部新对象，不改运行状态）。
+ * ④ 算 GOV 效率表：对每个有 {@link GovFormation} 的 office，{@link GovDemand#of} + {@link GovEfficiency#of}；
+ *    先检查辖区 Region 是否都在 map 里，缺的记一条具名 WARN（整轮一次）；缺 GOV 读数 ⇒ 该单位不进表（税侧跳过）；
+ * ⑤ 收长期税：{@link JurisdictionDailyTax} 传入效率表（无 GOV 单位跳过）——★ 税在收入侧、先于 upkeep，当天税可先供当天俸禄；
+ * ⑥ {@link GovDaily#settle}：付款 oracle 从 currentActor 的国库账扣 grain/cloth/silver（按 AvailableStock 可用量；
+ *    缺账 ⇒ paid=0），付不足由 GovDaily 记 shortfall；
+ * ⑦ 把 GovDaily 的 {@code SignalDraft} 折成 {@link HexCrisisSignal} 写进 currentEconomy（同 {@code (hex,kind)} 覆盖）；
+ * ⑧ 家户人口差分经 {@link ClassFirstSocialWriteback} 同步 social 批次（具名 gap）+ 用当日口粮/布读数更新生理压力；
+ * ⑨ 每 30 天调 {@code PopulationDynamics.monthly}，出生/死亡经 {@link ClassFirstPopulationWriteback} 接回 classfirst 池/家户账户；
+ * ⑩ classes 只读投影经 {@link ClassFirstClassProjection} 与家户账户对齐（键集/地址不变）。
  * </pre>
+ *
+ * <p>★★ <b>为什么并入本参与者 / 为什么不能另起</b>：module clash —— 另起写 actor 的 participant 会与 population 的 actor
+ * 变更同名， {@code TimeProposalResolver} 会拒整次推进；写 gov 片同理。故 gov 片由本参与者代写，且 govState <b>非空</b>时才把 {@code
+ * gov:<mapId>} 加进 reads/writes、并在 {@code moduleChanges} 里附 {@code gov ->
+ * GovChangeSet.between(before, after)}（{@code GovOfficeState} 的六表语义按 11a 的 Outcome 原样落盘）。
+ *
+ * <p>★ <b>无 GOV 读数 / {@code classFirst} 空 / {@code range.to} 缺省 ⇒ gov 片一字不加</b>：gov 切片缺失读作 {@link
+ * GovState#empty()}；{@code classFirst} 为空或 {@code range.to} 缺省走既有 {@link #unchanged} 路径，不附 gov 片、
+ * 不征行政税、不写任何 11b 新日志（无 GOV 世界的 actor/economy/social 三片保持既有字节）。
  *
  * <p>★★ <b>R2c 的世界级聚合</b>：三国的 {@code economy.Seed} 由 {@code ClassFirstState.merge} 把同键池/放贷账户按加法合并成
  * <b>世界级 4 池</b>（不先做 region 维，区域地理后置）；本参与者因此一次推进整个世界，池内的阶层迁移/借贷/消费在世界范围内发生。
@@ -91,10 +123,10 @@ import org.slf4j.LoggerFactory;
  * <p>★ <b>未激活/无上界</b>：{@code range.to} 缺省、或 {@code economy.classFirst} 为空（含未播种与旧 legacy 世界）⇒
  * 三片都交<b>不变</b>变更集（不是空提案），且 <b>绝不回退</b>旧结算；后者写一条 WARN 具名说明。
  *
- * <p>★ <b>无辖区 / {@code administrationPerMille = 0} ⇒ 逐字节不变</b>：{@link JurisdictionDailyTax#collect}
- * 一笔不写、返回 <b>同一个</b> {@code ActorData} 实例、{@link JurisdictionDailyTax.Report#isEmpty()} 为真 ⇒
- * 既不落账、也不写税日志； 只有缺口而无征收时 actor 仍是同一实例（缺口进 Report 并写一条 WARN），{@code ActorChangeSet.between} 照旧落
- * Unchanged。 本参与者因此新增只读 unit/map 切片，写面仍是 actor/economy/social 三片。
+ * <p>★ <b>“无 GOV ⇒ 不征”具名口径</b>：{@link JurisdictionDailyTax#collect} 只认效率表里的键；查不到效率（= 没有 {@code
+ * GovFormation}/没有 GOV 读数）的单位<b>整单位跳过</b>，不读 {@code Jurisdiction.administrationPerMille} 的旧值。无 GOV
+ * 时 actor 仍是同一实例、{@link JurisdictionDailyTax.Report#isEmpty()} 为真 ⇒ 既不落账、也不写税日志；本参与者因此新增只读
+ * unit/map/gov 切片，写面仍是 actor/economy/social 三片（gov 片只在 govState 非空时写入）。
  */
 public final class ClassFirstPopulationEconomyTimeParticipant implements TimeParticipant {
 
@@ -113,6 +145,24 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
 
   /** 阶段 6.3 新增的<b>只读</b>切片（区域 hex 集）。 */
   private static final String MAP = "map";
+
+  /** 阶段 11b：gov 切片（GOV 读数；读改写在 govState 非空时启用）。 */
+  private static final String GOV = "gov";
+
+  /**
+   * 阶段 11b：有 GOV 时整轮一条 INFO。前半是逐 office 的 assessed/paid/shortfall、coverage/efficiency、signals 数；后半把
+   * 6.3 的长期税汇总并进同一条（避免 GOV 世界出两条 INFO）。
+   */
+  private static final String GOV_LOG =
+      "行政结算（并入 population 参与者）：mapId={} days={} offices={} signals={} 逐office=[{}]"
+          + " 长期税[grain: assessed={} collected={} adminShortfall={} stockShortfall={};"
+          + " money: assessed={} collected={} adminShortfall={} stockShortfall={};"
+          + " unitsCharged={} householdsCharged={} gaps={}]";
+
+  /** 商品 id 的唯一拼写点（PilotModel 的既有常量；审计汇总与 11b 支付表复用同一份）。 */
+  private static final CommodityId GRAIN = new CommodityId(PilotModel.GRAIN);
+
+  private static final CommodityId CLOTH = new CommodityId(PilotModel.CLOTH);
 
   /** 税汇总日志的唯一格式（每次推进最多一条；不逐户刷）。 */
   private static final String TAX_LOG =
@@ -141,6 +191,15 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
     // ★ 阶段 6.3：长期税只读 unit/map（管辖、区域 hex、单位有效位置）——缺切片/类型不符照既有切片读取器当场抛。
     UnitState units = unitsOf(state);
     GameMap map = mapOf(state);
+    // ★ 阶段 11b：gov 切片缺失 ⇒ GovState.empty()（旧档/无 GOV 世界）。
+    GovState govState = govOf(state);
+    // ★ 引导（控制方 2026-10-01 补）：gov 片是"每 tick 读数"，由本参与者写；只要单位带 GovFormation 而
+    //   govState 还没有它的读数，就在本推进里为它补一条 GovOfficeState.empty(...) 作为基线——
+    //   否则"建了 GOV 编制"永远不会激活行政结算（没有人负责首建读数）。govState 空且单位都没有编制时
+    //   引导集仍为空 ⇒ 无 GOV 世界零变化。
+    GovState bootstrappedGov =
+        withBootstrapOffices(govState, units, state.meta().timestamp().tick());
+    boolean govActive = !bootstrappedGov.offices().isEmpty();
 
     LinkedHashSet<String> reads = new LinkedHashSet<>();
     LinkedHashSet<String> writes = new LinkedHashSet<>();
@@ -176,6 +235,12 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
       return unchanged(economy, social, actor, reads, writes);
     }
 
+    // ★ 阶段 11b：只在 govState 非空时声明 gov 片的读写；classFirst 空 / 无上界路径已在上面原样返回，不附 gov 片。
+    if (govActive) {
+      reads.add(govAddressRoot());
+      writes.add(govAddressRoot());
+    }
+
     PilotConfig config = classFirst.meta().config();
     if (config == null) {
       throw new IllegalStateException("classFirst 非空但 meta.config 为空（状态损坏）：mapId=" + mapId);
@@ -188,9 +253,13 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
         economy.memberships().isEmpty() ? economy : economy.withMemberships(Map.of());
     ActorData currentActor = actor;
     SocialData currentSocial = social;
+    GovState currentGov = bootstrappedGov;
     LinkedHashSet<String> unmappedActorDimensions = new LinkedHashSet<>();
     boolean socialGapsLogged = false;
     JurisdictionDailyTax.Report taxReport = JurisdictionDailyTax.Report.empty();
+    AdminSettlementAudit adminAudit = govActive ? new AdminSettlementAudit() : null;
+    LinkedHashSet<String> missingAdminRegions = new LinkedHashSet<>();
+    long adminSignalDrafts = 0L;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
       ClassFirstSettlement.Inputs inputs = inputsFor(current, currentEconomy, currentActor, day);
       ClassFirstSettlement.Result result = ClassFirstSettlement.settleOneDay(current, inputs);
@@ -198,12 +267,30 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
           ClassFirstActorWriteback.apply(currentActor, currentEconomy, current, result);
       currentActor = applied.data();
       unmappedActorDimensions.addAll(applied.unmappedDimensions());
-      // ★★ ④.5 长期税（阶段 6.3）：时点 = 该日结算 + actor 写回<b>之后</b>、月度人口学<b>之前</b>（税基 = 税后家户账）。
-      //    并入本参与者的唯一理由是 module clash —— 另起写 actor 的 participant 会与 population 同名模块变更 ⇒ 拒整次推进。
-      JurisdictionDailyTax.Collected taxed =
-          JurisdictionDailyTax.collect(currentActor, units, map, day);
-      currentActor = taxed.actor();
-      taxReport = taxReport.plus(taxed.report());
+      // ★★ 阶段 11b：GOV 片有读数时才跑行政结算链；无 GOV 时整段跳过（零日志、零字节、零新开销路）。
+      if (govActive) {
+        // ④ 算效率表：对每个有 GovFormation 的 office 走 GovDemand + GovEfficiency；辖区 Region 缺失记具名 WARN（整轮一次）。
+        Map<UnitId, Long> efficiencyPerMilleByUnit =
+            efficiencyTable(currentGov, units, map, currentSocial, missingAdminRegions);
+        // ⑤ 长期税：税在收入侧、upkeep 之前 ⇒ 当天税可先供当天俸禄（税基 = 该日结算 + actor 写回后的家户账）。
+        JurisdictionDailyTax.Collected taxed =
+            JurisdictionDailyTax.collect(currentActor, units, map, day, efficiencyPerMilleByUnit);
+        currentActor = taxed.actor();
+        taxReport = taxReport.plus(taxed.report());
+        // ⑥ GovDaily.settle：付款 oracle 从 currentActor 的国库账扣 grain/cloth/silver（AvailableStock 可用量；缺账
+        // paid=0）。
+        TreasuryPaymentOracle oracle = new TreasuryPaymentOracle(currentActor);
+        GovDaily.Outcome settled =
+            GovDaily.settle(currentGov, units, map, currentSocial, day, oracle);
+        currentActor = oracle.actor();
+        currentGov = settled.next();
+        adminAudit.record(settled);
+        adminSignalDrafts += settled.signals().size();
+        // ⑦ SignalDraft → HexCrisisSignal：写进 currentEconomy，同 (hex,kind) 直接覆盖（映射只此一处）。
+        if (!settled.signals().isEmpty()) {
+          currentEconomy = foldSignals(currentEconomy, settled.signals(), day);
+        }
+      }
       ClassFirstSocialWriteback.AppliedSocial socialApplied =
           ClassFirstSocialWriteback.apply(currentSocial, currentEconomy, current, result);
       currentSocial = socialApplied.data();
@@ -244,20 +331,60 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
           mapId,
           unmappedActorDimensions);
     }
-    // ★★ 阶段 6.3：整轮推进只写这一条税汇总（逐维 assessed/collected/两项缺口 + 计数 + 缺口条数与摘要）。
-    if (!taxReport.isEmpty()) {
-      logTaxSummary(taxReport, to.get().tick() - range.from().tick());
+    long elapsedDays = to.get().tick() - range.from().tick();
+    // ★ 阶段 11b：辖区 Region 缺失的具名 WARN（整轮一条；即使跨多天/多 office 也只报一条汇总）。
+    if (!missingAdminRegions.isEmpty()) {
+      LOG.warn(
+          "行政效率：以下辖区 Region 不在 map.regions()，GovDemand 按既有口径跳过该 Region（整轮一条）：mapId={} 共{}项 {}",
+          mapId,
+          missingAdminRegions.size(),
+          missingAdminRegions);
+    }
+    // ★ 阶段 11b：有 GOV 时整轮一条 INFO（逐 office 明细 + 长期税汇总并入同一条）。税缺口只另补 WARN，不再多一条 INFO。
+    if (govActive) {
+      adminAudit.logSummary(mapId, elapsedDays, adminSignalDrafts, taxReport);
+      if (!taxReport.gaps().isEmpty()) {
+        logTaxSummary(taxReport, elapsedDays);
+      }
+    } else if (!taxReport.isEmpty()) {
+      logTaxSummary(taxReport, elapsedDays);
     }
 
     EconomyData currentEconomyFinal = currentEconomy.withClassFirst(current);
-    return new WorldTimeProposal(
-        NAMESPACE,
-        Map.of(
-            ECONOMY, EconomyChangeSet.between(economy, currentEconomyFinal),
-            SOCIAL, SocialChangeSet.between(social, currentSocial),
-            ACTOR, ActorChangeSet.between(actor, currentActor)),
-        reads,
-        writes);
+    // ★ 保序不可变：moduleChanges 用 LinkedHashMap 演进；gov 片只在 govActive 时附加。
+    LinkedHashMap<String, ChangeSet> moduleChanges = new LinkedHashMap<>();
+    moduleChanges.put(ECONOMY, EconomyChangeSet.between(economy, currentEconomyFinal));
+    moduleChanges.put(SOCIAL, SocialChangeSet.between(social, currentSocial));
+    moduleChanges.put(ACTOR, ActorChangeSet.between(actor, currentActor));
+    if (govActive) {
+      moduleChanges.put(GOV, GovChangeSet.between(govState, currentGov));
+    }
+    return new WorldTimeProposal(NAMESPACE, moduleChanges, reads, writes);
+  }
+
+  /**
+   * ★ 引导（控制方 2026-10-01 补）：为"带 GovFormation 但 gov 片还没有读数"的单位补一条空读数，作为本推进的基线。
+   *
+   * <p>确定性：单位按 {@code UnitId.value()} 升序处理；已有读数原样保留（键序不变）、只追加缺失的。 已有读数与引导读数都以 {@code
+   * GovOfficeState.empty(...)} 形制给出（tick 取推进起点；settle 会按日覆写）。 无 GovFormation 单位时返回入参同一实例（无 GOV
+   * 世界零变化）。
+   */
+  private static GovState withBootstrapOffices(GovState base, UnitState units, long tick) {
+    LinkedHashMap<UnitId, GovOfficeState> offices = new LinkedHashMap<>(base.offices());
+    java.util.List<UnitId> missing = new java.util.ArrayList<>();
+    for (Unit unit : units.units().values()) {
+      if (unit.module().orElse(null) instanceof GovFormation && !offices.containsKey(unit.id())) {
+        missing.add(unit.id());
+      }
+    }
+    if (missing.isEmpty()) {
+      return base;
+    }
+    missing.sort(java.util.Comparator.comparing(UnitId::value));
+    for (UnitId id : missing) {
+      offices.put(id, GovOfficeState.empty(id, tick));
+    }
+    return new GovState(offices);
   }
 
   private static long classFirstPopulation(ClassFirstState state) {
@@ -274,6 +401,370 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
       total += group.count();
     }
     return total;
+  }
+
+  // ── 阶段 11b：GOV 效率表 / 信号折叠 / 付款 oracle / 审计日志 ─────────────────────────────
+
+  /**
+   * ★ 算当日 GOV 效率表（单位 → efficiency‰），供长期税查表。
+   *
+   * <p>口径：{@code govState.offices()} 里每个 office，先取单位上的 {@link GovFormation}（没有 ⇒ 不进表 = 税侧整单位跳过）； 再用
+   * {@link GovDemand#of} + {@link GovEfficiency#of} 现算。★ 检查该单位管辖的每个 Region 是否都在 map 里，缺的累积进 {@code
+   * missingRegions}（只累积、不抛；调用方整轮汇总成一条具名 WARN）。
+   *
+   * @param missingRegions 跨日累积的“unit=…,region=…”明细（调用方只在整轮结束时汇总 WARN 一次）
+   */
+  private static Map<UnitId, Long> efficiencyTable(
+      GovState govState,
+      UnitState units,
+      GameMap map,
+      SocialData social,
+      Set<String> missingRegions) {
+    Map<UnitId, Long> table = new LinkedHashMap<>();
+    List<UnitId> ordered = new ArrayList<>(govState.offices().keySet());
+    ordered.sort(Comparator.comparing(UnitId::value));
+    for (UnitId unitId : ordered) {
+      Unit unit = units.units().get(unitId);
+      if (unit == null) {
+        continue; // 状态损坏由 GovDaily.settle 当场抛；税侧只保证“查不到效率就不征”。
+      }
+      UnitModule module = unit.module().orElse(null);
+      if (!(module instanceof GovFormation formation)) {
+        continue; // 没有 GovFormation ⇒ 不进效率表 ⇒ JurisdictionDailyTax 整单位跳过（无 GOV 不征）。
+      }
+      unit.jurisdiction()
+          .ifPresent(
+              jurisdiction -> {
+                for (var regionId : jurisdiction.taxRatePerMilleByRegion().keySet()) {
+                  if (!map.regions().containsKey(regionId)) {
+                    missingRegions.add("unit=" + unitId.value() + ",region=" + regionId.value());
+                  }
+                }
+              });
+      Map<HexCoord, GovDemand.HexDemand> demand = GovDemand.of(map, social, unit);
+      GovEfficiency.Efficiency efficiency = GovEfficiency.of(formation, demand);
+      table.put(unitId, efficiency.efficiencyPerMille());
+    }
+    return table;
+  }
+
+  /**
+   * 把当日 {@link GovDaily.SignalDraft} 折成 {@link HexCrisisSignal} 写进 economy 的 signals 表。
+   *
+   * <p>★ 同 {@code (hex,kind)} 覆盖：{@code put} 到 {@link CrisisSignalId#idOf} 的键上，旧读数只换值、不追加历史。★ kind
+   * 字符串 → 枚举的映射表只有 {@link #signalKind(String)} 一处。
+   */
+  private static EconomyData foldSignals(
+      EconomyData economy, List<GovDaily.SignalDraft> drafts, long day) {
+    Map<CrisisSignalId, HexCrisisSignal> next = new LinkedHashMap<>(economy.crisisSignals());
+    for (GovDaily.SignalDraft draft : drafts) {
+      HexCrisisSignal.Kind kind = signalKind(draft.kind());
+      int severity = Math.toIntExact(draft.severity());
+      HexCrisisSignal signal =
+          new HexCrisisSignal(
+              CrisisSignalId.idOf(draft.hex(), kind.name()),
+              draft.hex(),
+              kind,
+              severity,
+              day,
+              draft.evidence(),
+              List.of(),
+              List.of(),
+              draft.reason());
+      next.put(signal.id(), signal); // ★ 同 (hex,kind) 直接覆盖 = 保留最新一条
+    }
+    return economy.withCrisisSignals(next);
+  }
+
+  /** ★ kind 字符串 → {@link HexCrisisSignal.Kind} 的<b>唯一</b>映射点；未知 kind 当场抛，不静默丢信号。 */
+  private static HexCrisisSignal.Kind signalKind(String kind) {
+    return switch (kind) {
+      case GovDaily.KIND_ADMIN_SUPPLY -> HexCrisisSignal.Kind.ADMIN_SUPPLY;
+      case GovDaily.KIND_ADMIN_SECURITY -> HexCrisisSignal.Kind.ADMIN_SECURITY;
+      case GovDaily.KIND_ADMIN_PAPERWORK -> HexCrisisSignal.Kind.ADMIN_PAPERWORK;
+      default -> throw new IllegalStateException("未知的 GovDaily SignalDraft.kind（映射表只此一处）: " + kind);
+    };
+  }
+
+  // ── 阶段 11b：付款 oracle（只读可见性内实现，不引 app 工具）──────────────────────────────
+
+  /**
+   * 国库付款 oracle：从 {@code currentActor} 的 {@code ActorRef(UNIT, unitId)} 国库账扣款。
+   *
+   * <p>★★ <b>可用量/冻结口径</b>：每次付款都走 {@link AvailableStock}（余额 − 冻结，缺键 = 0）， {@code paid =
+   * min(available, requested)}；编辑 {@link GoodsAccount} 的余额表时<b>原样保留两张冻结表</b>（不侵冻结）。 缺账 ⇒ {@code
+   * paid = 0}（“没有这本账”= 没有可支配库存；不新建、不猜位置）。同一天同一本账的多次扣款按 GovDaily 的固定资源次序（grain → cloth →
+   * silver）在<b>同一份工作账</b>上串行发生，后一次看得到前一次扣减。
+   */
+  private static final class TreasuryPaymentOracle implements GovDaily.PaymentOracle {
+
+    private final ActorData original;
+    private final Map<GoodsAccountKey, GoodsAccount> working;
+    private boolean changed;
+
+    TreasuryPaymentOracle(ActorData actor) {
+      this.original = Objects.requireNonNull(actor, "actor");
+      this.working = new LinkedHashMap<>(actor.accounts());
+    }
+
+    /** 付款后的 actor；一笔都没付 ⇒ 返回入参同一实例（上层 between 自然落 Unchanged）。 */
+    ActorData actor() {
+      return changed ? original.withAccounts(working) : original;
+    }
+
+    @Override
+    public long pay(UnitId unitId, HexCoord at, GovDaily.GovResource resource, long requested) {
+      Objects.requireNonNull(unitId, "unitId");
+      Objects.requireNonNull(at, "at");
+      Objects.requireNonNull(resource, "resource");
+      if (requested <= 0L) {
+        return 0L; // GovDaily 只对 >0 的请求调本方法；防御性返回 0，不制造“负付款”。
+      }
+      GoodsAccountKey key = new GoodsAccountKey(new ActorRef(ActorKind.UNIT, unitId.value()), at);
+      GoodsAccount account = working.get(key);
+      if (account == null) {
+        return 0L; // ★ 缺账 ⇒ paid=0（没有可支配库存；不新建账本）。
+      }
+      long available = availableOf(account, resource);
+      long paid = Math.min(available, requested);
+      if (paid <= 0L) {
+        return 0L;
+      }
+      working.put(key, debit(account, resource, paid));
+      changed = true;
+      return paid;
+    }
+
+    /** 可用量 = {@link AvailableStock} 的唯一算法（商品/货币各走对应重载；本类不写减法）。 */
+    private static long availableOf(GoodsAccount account, GovDaily.GovResource resource) {
+      if (resource instanceof GovDaily.Commodity commodity) {
+        return AvailableStock.available(account, commodity.commodity());
+      }
+      if (resource instanceof GovDaily.Money money) {
+        return AvailableStock.available(account, money.currency());
+      }
+      throw new IllegalArgumentException("未知 GovResource: " + resource);
+    }
+
+    /** 只改一个余额表：键序、另一张余额表、两张冻结表全部原样带过（冻结不侵）。 */
+    private static GoodsAccount debit(
+        GoodsAccount account, GovDaily.GovResource resource, long amount) {
+      if (amount <= 0L) {
+        throw new IllegalArgumentException("amount 必须 > 0: " + amount);
+      }
+      if (resource instanceof GovDaily.Commodity commodity) {
+        Map<CommodityId, Long> nextBalances = new LinkedHashMap<>(account.balances());
+        long current = nextBalances.getOrDefault(commodity.commodity(), 0L);
+        if (amount > current) {
+          throw new IllegalStateException(
+              "行政付款商品扣减超出余额（内部不自洽）：key="
+                  + account.key()
+                  + " commodity="
+                  + commodity.name()
+                  + " amount="
+                  + amount
+                  + " balance="
+                  + current);
+        }
+        nextBalances.put(commodity.commodity(), current - amount); // 0 余额保留这条键
+        return new GoodsAccount(
+            account.key(),
+            nextBalances,
+            account.money(),
+            account.frozenBalances(),
+            account.frozenMoney());
+      }
+      if (resource instanceof GovDaily.Money money) {
+        Map<CurrencyId, Long> nextMoney = new LinkedHashMap<>(account.money());
+        long current = nextMoney.getOrDefault(money.currency(), 0L);
+        if (amount > current) {
+          throw new IllegalStateException(
+              "行政付款货币扣减超出余额（内部不自洽）：key="
+                  + account.key()
+                  + " currency="
+                  + money.name()
+                  + " amount="
+                  + amount
+                  + " balance="
+                  + current);
+        }
+        nextMoney.put(money.currency(), current - amount); // 0 余额保留这条键
+        return new GoodsAccount(
+            account.key(),
+            account.balances(),
+            nextMoney,
+            account.frozenBalances(),
+            account.frozenMoney());
+      }
+      throw new IllegalArgumentException("未知 GovResource: " + resource);
+    }
+  }
+
+  // ── 阶段 11b：有 GOV 时整轮一条 INFO 的逐 office 审计累计 ─────────────────────────────
+
+  /** 一轮 GOV 结算的逐 office 审计累计（本地聚合，不落盘；只在本类日志里读）。 */
+  private static final class AdminSettlementAudit {
+
+    private final Map<UnitId, OfficeAudit> offices = new LinkedHashMap<>();
+
+    /** 把一天的 {@link GovDaily.Outcome} 折进逐 office 累计；无座位的 office 只更新读数、不造 assessed/paid/shortfall。 */
+    void record(GovDaily.Outcome outcome) {
+      Objects.requireNonNull(outcome, "outcome");
+      Map<UnitId, List<GovDaily.UpkeepDue>> duesByUnit = new LinkedHashMap<>();
+      for (GovDaily.UpkeepDue due : outcome.dues()) {
+        duesByUnit.computeIfAbsent(due.unitId(), ignored -> new ArrayList<>()).add(due);
+      }
+      List<UnitId> ordered = new ArrayList<>(outcome.next().offices().keySet());
+      ordered.sort(Comparator.comparing(UnitId::value));
+      for (UnitId unitId : ordered) {
+        GovOfficeState state = outcome.next().offices().get(unitId);
+        if (state == null) {
+          throw new IllegalStateException(
+              "GovDaily.Outcome.next 缺少 office 读数（状态损坏）: " + unitId.value());
+        }
+        OfficeAudit audit = offices.computeIfAbsent(unitId, ignored -> new OfficeAudit());
+        audit.updateReading(state);
+        List<GovDaily.UpkeepDue> dues = duesByUnit.get(unitId);
+        if (dues == null || dues.isEmpty()) {
+          continue; // 无座位日：GovDaily 不评估/不支付/不发信号，本审计同样不造事实。
+        }
+        audit.daysSeated++;
+        long shortfallTotal = 0L;
+        for (GovDaily.UpkeepDue due : dues) {
+          shortfallTotal = Math.addExact(shortfallTotal, due.shortfall());
+          audit.addDue(due);
+        }
+        // ★ 与 GovDaily 的三类信号条件逐条同构：supply 每 office 至多一条、security/paperwork 各自覆盖 <1000‰ 时一条。
+        if (shortfallTotal > 0L) {
+          audit.signals++;
+        }
+        if (state.securityCoveragePerMille() < GovRules.COVERAGE_FULL_PER_MILLE) {
+          audit.signals++;
+        }
+        if (state.paperworkCoveragePerMille() < GovRules.COVERAGE_FULL_PER_MILLE) {
+          audit.signals++;
+        }
+      }
+    }
+
+    /** 整轮一条 INFO：逐 office（按 unitId 升序）汇总 + 长期税汇总并入同一条。 */
+    void logSummary(
+        String mapId, long days, long totalSignals, JurisdictionDailyTax.Report taxReport) {
+      List<Map.Entry<UnitId, OfficeAudit>> ordered = new ArrayList<>(offices.entrySet());
+      ordered.sort(Comparator.comparing(entry -> entry.getKey().value()));
+      StringBuilder text = new StringBuilder();
+      for (Map.Entry<UnitId, OfficeAudit> entry : ordered) {
+        if (text.length() > 0) {
+          text.append("; ");
+        }
+        text.append(entry.getValue().summary(entry.getKey()));
+      }
+      LOG.info(
+          GOV_LOG,
+          mapId,
+          days,
+          offices.size(),
+          totalSignals,
+          text.toString(),
+          taxReport.grain().assessed(),
+          taxReport.grain().collected(),
+          taxReport.grain().adminShortfall(),
+          taxReport.grain().stockShortfall(),
+          taxReport.money().assessed(),
+          taxReport.money().collected(),
+          taxReport.money().adminShortfall(),
+          taxReport.money().stockShortfall(),
+          taxReport.unitsCharged(),
+          taxReport.householdsCharged(),
+          taxReport.gaps().size());
+    }
+  }
+
+  /** 单个 office 的审计累计（六表逐资源累加 + 最后一次 coverage/efficiency 读数 + 信号草稿计数）。 */
+  private static final class OfficeAudit {
+
+    long daysSeated;
+    long assessedGrain;
+    long paidGrain;
+    long shortfallGrain;
+    long assessedCloth;
+    long paidCloth;
+    long shortfallCloth;
+    long assessedMoney;
+    long paidMoney;
+    long shortfallMoney;
+    long securityCoveragePerMille;
+    long paperworkCoveragePerMille;
+    long efficiencyPerMille;
+    long bonusPerMille;
+    long signals;
+
+    void updateReading(GovOfficeState state) {
+      securityCoveragePerMille = state.securityCoveragePerMille();
+      paperworkCoveragePerMille = state.paperworkCoveragePerMille();
+      efficiencyPerMille = state.efficiencyPerMille();
+      bonusPerMille = state.bonusPerMille();
+    }
+
+    void addDue(GovDaily.UpkeepDue due) {
+      if (due.resource() instanceof GovDaily.Commodity commodity) {
+        if (GRAIN.equals(commodity.commodity())) {
+          assessedGrain = Math.addExact(assessedGrain, due.assessed());
+          paidGrain = Math.addExact(paidGrain, due.paid());
+          shortfallGrain = Math.addExact(shortfallGrain, due.shortfall());
+          return;
+        }
+        if (CLOTH.equals(commodity.commodity())) {
+          assessedCloth = Math.addExact(assessedCloth, due.assessed());
+          paidCloth = Math.addExact(paidCloth, due.paid());
+          shortfallCloth = Math.addExact(shortfallCloth, due.shortfall());
+          return;
+        }
+        throw new IllegalStateException("GovDaily 评估了未知商品（审计无法归表）: " + commodity.name());
+      }
+      if (due.resource() instanceof GovDaily.Money) {
+        assessedMoney = Math.addExact(assessedMoney, due.assessed());
+        paidMoney = Math.addExact(paidMoney, due.paid());
+        shortfallMoney = Math.addExact(shortfallMoney, due.shortfall());
+        return;
+      }
+      throw new IllegalStateException("GovDaily 评估了未知 GovResource: " + due.resource());
+    }
+
+    String summary(UnitId unitId) {
+      return "unit="
+          + unitId.value()
+          + " days="
+          + daysSeated
+          + " assessed[grain="
+          + assessedGrain
+          + ",cloth="
+          + assessedCloth
+          + ",silver="
+          + assessedMoney
+          + "] paid[grain="
+          + paidGrain
+          + ",cloth="
+          + paidCloth
+          + ",silver="
+          + paidMoney
+          + "] shortfall[grain="
+          + shortfallGrain
+          + ",cloth="
+          + shortfallCloth
+          + ",silver="
+          + shortfallMoney
+          + "] coverage[security="
+          + securityCoveragePerMille
+          + "‰,paperwork="
+          + paperworkCoveragePerMille
+          + "‰] efficiency="
+          + efficiencyPerMille
+          + "‰ bonus="
+          + bonusPerMille
+          + "‰ signals="
+          + signals;
+    }
   }
 
   // ── 阶段 6.3：长期税汇总日志（整轮一条；含缺口条数与摘要）──────────────────────────────
@@ -380,8 +871,8 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
                   .accounts()
                   .get(new GoodsAccountKey(HouseholdActors.of(householdId), row.view().hex()));
           if (book != null) {
-            long grain = book.balances().getOrDefault(new CommodityId(PilotModel.GRAIN), 0L);
-            long cloth = book.balances().getOrDefault(new CommodityId(PilotModel.CLOTH), 0L);
+            long grain = book.balances().getOrDefault(GRAIN, 0L);
+            long cloth = book.balances().getOrDefault(CLOTH, 0L);
             if (grain > 0L) {
               goods.put(PilotModel.GRAIN, grain);
             }
@@ -493,6 +984,19 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
     return mapSnapshot.map();
   }
 
+  /** ★ 阶段 11b：读 gov 切片；<b>缺切片 ⇒ {@link GovState#empty()}</b>（旧档/无 GOV 世界），类型不符则照既有读取器当场抛。 */
+  private static GovState govOf(SimulationState state) {
+    Optional<Snapshot> snapshot = state.module(GOV);
+    if (snapshot.isEmpty()) {
+      return GovState.empty();
+    }
+    if (!(snapshot.get() instanceof GovSnapshot govSnapshot)) {
+      throw new IllegalStateException(
+          "state 的 gov 切片不是 GovSnapshot: " + snapshot.get().getClass().getName());
+    }
+    return govSnapshot.state();
+  }
+
   private String economyAddressRoot() {
     return new Address(List.of(new Namespace(ECONOMY), Entity.of(mapId))).canonical();
   }
@@ -523,6 +1027,11 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
   /** ★ 阶段 6.3：只读 map 切片的根地址。 */
   private String mapAddressRoot() {
     return new Address(List.of(new Namespace(MAP), Entity.of(mapId))).canonical();
+  }
+
+  /** ★ 阶段 11b：gov 切片的根地址（只在 govState 非空时进 reads/writes）。 */
+  private String govAddressRoot() {
+    return new Address(List.of(new Namespace(GOV), Entity.of(mapId))).canonical();
   }
 
   /**
