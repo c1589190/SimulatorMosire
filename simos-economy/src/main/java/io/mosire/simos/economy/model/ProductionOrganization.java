@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.model;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
@@ -64,6 +65,11 @@ import java.util.Set;
  * @param status 组织状态；不得为 null
  * @param statusReason 状态原因（SHORTAGE 必须具名；其余可空串）
  */
+// ★ 豁免 EI_EXPOSE_REP（R4a，3 条）：三张表由 freezeDistinct 逐项非空校验 + 保序去重 + unmodifiableList；
+//   SpotBugs 看不穿该私有 helper 的返回值，和 ArmyPlan 的 copyCounts 同款。
+@SuppressFBWarnings(
+    value = "EI_EXPOSE_REP",
+    justification = "三张来源表由 freezeDistinct 复制并 unmodifiableList；SpotBugs 看不穿该私有 helper 的返回值")
 public record ProductionOrganization(
     ProductionOrganizationId id,
     ProductionModeId modeId,

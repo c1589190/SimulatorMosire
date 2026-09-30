@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.migrate;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
@@ -74,6 +75,12 @@ public final class LegacyHouseholdMigration {
   private LegacyHouseholdMigration() {}
 
   /** ★★ 迁移结果（EconomyData 的构造期把七个参数整体换掉；R3B.2 起含 units/relations/operatorConditions）。 */
+  // ★ 豁免 EI_EXPOSE_REP（R4a）：本 record 是 EconomyData 构造期的内部中间载体；六张表都由迁移器当场新建
+  //   并只交给 EconomyData 立即冻结，不存在外部可变引用跨边界。为不改动迁移热路径的拷贝次数，
+  //   这里按 ArmyPlan 的先例按类豁免。
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification = "内部迁移载体；六张表由迁移器新建并立即交给 EconomyData 冻结，无外部可变引用跨边界")
   public record Result(
       Map<ProductionUnitId, ProductionUnit> units,
       Map<LaborAllocationId, LaborAllocation> allocations,

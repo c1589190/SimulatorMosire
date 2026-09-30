@@ -1,5 +1,6 @@
 package io.mosire.simos.economy;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
@@ -207,6 +208,12 @@ import java.util.Set;
  * **关系先到、行后到是合法写序**；而 cohort 解析不到行在结算里是**正常状态**（人口为 0 的那些 cohort 就是如此，那一笔留在 {@code
  * residualOwner}）——把它判成非法会让"人口尚未种入"的世界构造不出来。
  */
+// ★ 豁免 EI_EXPOSE_REP（R4a，canonical verify 实测 28 条）：本 record 的每张表都在 compact 构造器里逐键复制 +
+//   Collections.unmodifiableMap（见下方各 *Copy 段），访问器返回的是冻结副本、调用方改不动。SpotBugs 对
+//   28 个 Map 记录组件的生成访问器保守报"暴露内部表示"；ArmyPlan 已有同类豁免先例。
+@SuppressFBWarnings(
+    value = "EI_EXPOSE_REP",
+    justification = "28 张 Map 组件均在 compact 构造器内逐键复制并 Collections.unmodifiableMap；访问器返回冻结副本")
 public record EconomyData(
     Optional<EconomyMeta> meta,
     Map<IndustryId, Industry> industries,

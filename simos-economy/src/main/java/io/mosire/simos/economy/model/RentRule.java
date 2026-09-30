@@ -182,7 +182,8 @@ public record RentRule(RentType type, int priority, List<RentLeg> legs) {
           }
         }
         case SHARE -> {
-          if (ratePerMille < 1 || ratePerMille > 1000) {
+          // ★ R4a：上界 1000 已由构造器首段守卫判过；这里只补下界，避免 SpotBugs UC_USELESS_CONDITION。
+          if (ratePerMille < 1) {
             throw new IllegalArgumentException("实物分成的 ratePerMille 必须在 [1, 1000]: " + ratePerMille);
           }
           if (fixedAmount != 0L) {

@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DemandId;
@@ -50,6 +51,11 @@ public final class EconomyAddDemandHandler implements CommandHandler {
     return COMMAND;
   }
 
+  // ★ 豁免 RV_RETURN_VALUE_IGNORED_NO_SIDE_EFFECT（R4a）：两处 Math.multiplyExact 只用于探测
+  //   quantityPerCycle × 人口 的溢出；溢出会抛 ArithmeticException，乘积本身不参与后续计算。
+  @SuppressFBWarnings(
+      value = "RV_RETURN_VALUE_IGNORED_NO_SIDE_EFFECT",
+      justification = "Math.multiplyExact 仅作溢出探测；溢出由 ArithmeticException 承接，乘积不参与后续计算")
   @Override
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");

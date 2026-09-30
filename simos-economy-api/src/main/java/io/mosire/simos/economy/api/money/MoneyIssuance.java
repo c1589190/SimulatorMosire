@@ -29,11 +29,16 @@ public final class MoneyIssuance {
   /** 当前登记表（保序、不可变快照）。零登记 ⇒ 空表。 */
   private static List<MoneyAuthority> REGISTERED = List.of();
 
+  /** 私有锁对象（USO_UNSAFE_STATIC_METHOD_SYNCHRONIZATION：不用类固有锁，避免外部持锁者干扰内部互斥）。 */
+  private static final Object LOCK = new Object();
+
   private MoneyIssuance() {}
 
   /** 已登记的发行人（保序、不可变快照；零登记 ⇒ 空表）。 */
-  public static synchronized List<MoneyAuthority> registered() {
-    return REGISTERED;
+  public static List<MoneyAuthority> registered() {
+    synchronized (LOCK) {
+      return REGISTERED;
+    }
   }
 
   /**
@@ -41,12 +46,14 @@ public final class MoneyIssuance {
    *
    * <p>★ 零登记 ⇒ 空集：世界上没有一条路径能造出钱。
    */
-  public static synchronized Set<CurrencyId> issuable() {
-    Set<CurrencyId> currencies = new LinkedHashSet<>();
-    for (MoneyAuthority authority : REGISTERED) {
-      currencies.addAll(authority.issuable());
+  public static Set<CurrencyId> issuable() {
+    synchronized (LOCK) {
+      Set<CurrencyId> currencies = new LinkedHashSet<>();
+      for (MoneyAuthority authority : REGISTERED) {
+        currencies.addAll(authority.issuable());
+      }
+      return currencies;
     }
-    return currencies;
   }
 
   /**
@@ -55,50 +62,56 @@ public final class MoneyIssuance {
    *
    * @throws IllegalArgumentException authority/币种/发行主体为空，或与已登记主体冲突
    */
-  public static synchronized void register(MoneyAuthority authority) {
-    Objects.requireNonNull(authority, "MoneyIssuance.register 的 authority 不得为 null");
-    Set<CurrencyId> currencies = authority.issuable();
-    if (currencies == null) {
-      throw new IllegalArgumentException("MoneyAuthority.issuable() 不得为 null");
-    }
-    if (REGISTERED.contains(authority)) {
-      return; // 政府记录是不可变值；逐值相同的登记是幂等的
-    }
-    // 先只读校验：任何冲突都在表被改动之前抛出。
-    for (CurrencyId currency : currencies) {
-      ActorRef issuer = requireIssuer(authority, currency);
-      ActorRef existing = issuerOfRegistered(currency);
-      if (existing != null && !existing.equals(issuer)) {
-        throw new IllegalArgumentException(
-            "币种 " + currency + " 已有另一个发行主体 " + existing + "，不能再登记 " + issuer);
+  public static void register(MoneyAuthority authority) {
+    synchronized (LOCK) {
+      Objects.requireNonNull(authority, "MoneyIssuance.register 的 authority 不得为 null");
+      Set<CurrencyId> currencies = authority.issuable();
+      if (currencies == null) {
+        throw new IllegalArgumentException("MoneyAuthority.issuable() 不得为 null");
       }
+      if (REGISTERED.contains(authority)) {
+        return; // 政府记录是不可变值；逐值相同的登记是幂等的
+      }
+      // 先只读校验：任何冲突都在表被改动之前抛出。
+      for (CurrencyId currency : currencies) {
+        ActorRef issuer = requireIssuer(authority, currency);
+        ActorRef existing = issuerOfRegistered(currency);
+        if (existing != null && !existing.equals(issuer)) {
+          throw new IllegalArgumentException(
+              "币种 " + currency + " 已有另一个发行主体 " + existing + "，不能再登记 " + issuer);
+        }
+      }
+      List<MoneyAuthority> next = new ArrayList<>(REGISTERED);
+      next.add(authority);
+      REGISTERED = List.copyOf(next);
     }
-    List<MoneyAuthority> next = new ArrayList<>(REGISTERED);
-    next.add(authority);
-    REGISTERED = List.copyOf(next);
   }
 
   /** 撤销一个已登记发行人（按 {@link Object#equals(Object)} 匹配；没登记过 ⇒ 返回 {@code false}，不抛）。 */
-  public static synchronized boolean deregister(MoneyAuthority authority) {
-    Objects.requireNonNull(authority, "MoneyIssuance.deregister 的 authority 不得为 null");
-    List<MoneyAuthority> next = new ArrayList<>(REGISTERED.size());
-    boolean removed = false;
-    for (MoneyAuthority registered : REGISTERED) {
-      if (!removed && registered.equals(authority)) {
-        removed = true;
-        continue;
+  public static boolean deregister(MoneyAuthority authority) {
+    synchronized (LOCK) {
+      Objects.requireNonNull(authority, "MoneyIssuance.deregister 的 authority 不得为 null");
+      List<MoneyAuthority> next = new ArrayList<>(REGISTERED.size());
+      boolean removed = false;
+      for (MoneyAuthority registered : REGISTERED) {
+        if (!removed && registered.equals(authority)) {
+          removed = true;
+          continue;
+        }
+        next.add(registered);
       }
-      next.add(registered);
+      if (removed) {
+        REGISTERED = List.copyOf(next);
+      }
+      return removed;
     }
-    if (removed) {
-      REGISTERED = List.copyOf(next);
-    }
-    return removed;
   }
 
   /** 清空登记表（跨世界/测试隔离的显式口子；清空后 {@link #requireIssuerOf(CurrencyId)} 的行为与零登记逐字相同）。 */
-  public static synchronized void clear() {
-    REGISTERED = List.of();
+  public static void clear() {
+    synchronized (LOCK) {
+      REGISTERED = List.of();
+    }
   }
 
   /**
@@ -109,32 +122,33 @@ public final class MoneyIssuance {
    *
    * @param authorities 当前世界的政府/发行人；不得为 null、元素不得为 null
    */
-  public static synchronized void syncAuthorities(
-      Collection<? extends MoneyAuthority> authorities) {
-    Objects.requireNonNull(authorities, "MoneyIssuance.syncAuthorities 的 authorities 不得为 null");
-    Map<CurrencyId, ActorRef> issuers = new LinkedHashMap<>();
-    List<MoneyAuthority> effective = new ArrayList<>();
-    Set<MoneyAuthority> seen = new LinkedHashSet<>();
-    for (MoneyAuthority authority : authorities) {
-      Objects.requireNonNull(authority, "MoneyIssuance.syncAuthorities 的元素不得为 null");
-      Set<CurrencyId> currencies = authority.issuable();
-      if (currencies == null) {
-        throw new IllegalArgumentException("MoneyAuthority.issuable() 不得为 null: " + authority);
-      }
-      if (currencies.isEmpty() || !seen.add(authority)) {
-        continue;
-      }
-      for (CurrencyId currency : currencies) {
-        ActorRef issuer = requireIssuer(authority, currency);
-        ActorRef existing = issuers.putIfAbsent(currency, issuer);
-        if (existing != null && !existing.equals(issuer)) {
-          throw new IllegalStateException(
-              "同一币种出现两个发行主体（当前世界状态冲突）：币种=" + currency + "，发行主体=" + existing + " vs " + issuer);
+  public static void syncAuthorities(Collection<? extends MoneyAuthority> authorities) {
+    synchronized (LOCK) {
+      Objects.requireNonNull(authorities, "MoneyIssuance.syncAuthorities 的 authorities 不得为 null");
+      Map<CurrencyId, ActorRef> issuers = new LinkedHashMap<>();
+      List<MoneyAuthority> effective = new ArrayList<>();
+      Set<MoneyAuthority> seen = new LinkedHashSet<>();
+      for (MoneyAuthority authority : authorities) {
+        Objects.requireNonNull(authority, "MoneyIssuance.syncAuthorities 的元素不得为 null");
+        Set<CurrencyId> currencies = authority.issuable();
+        if (currencies == null) {
+          throw new IllegalArgumentException("MoneyAuthority.issuable() 不得为 null: " + authority);
         }
+        if (currencies.isEmpty() || !seen.add(authority)) {
+          continue;
+        }
+        for (CurrencyId currency : currencies) {
+          ActorRef issuer = requireIssuer(authority, currency);
+          ActorRef existing = issuers.putIfAbsent(currency, issuer);
+          if (existing != null && !existing.equals(issuer)) {
+            throw new IllegalStateException(
+                "同一币种出现两个发行主体（当前世界状态冲突）：币种=" + currency + "，发行主体=" + existing + " vs " + issuer);
+          }
+        }
+        effective.add(authority);
       }
-      effective.add(authority);
+      REGISTERED = List.copyOf(effective);
     }
-    REGISTERED = List.copyOf(effective);
   }
 
   /**
@@ -147,34 +161,38 @@ public final class MoneyIssuance {
    * @throws IllegalArgumentException 币种为 null
    * @throws IllegalStateException 没有任何已登记的发行人发行该币种
    */
-  public static synchronized ActorRef requireIssuerOf(CurrencyId currency) {
-    if (currency == null) {
-      throw new IllegalArgumentException("CurrencyId 不得为 null（说不出币种就答不出发行人）");
-    }
-    for (MoneyAuthority authority : REGISTERED) {
-      if (authority.issuable().contains(currency)) {
-        return authority.authorityOf(currency);
+  public static ActorRef requireIssuerOf(CurrencyId currency) {
+    synchronized (LOCK) {
+      if (currency == null) {
+        throw new IllegalArgumentException("CurrencyId 不得为 null（说不出币种就答不出发行人）");
       }
+      for (MoneyAuthority authority : REGISTERED) {
+        if (authority.issuable().contains(currency)) {
+          return authority.authorityOf(currency);
+        }
+      }
+      throw new IllegalStateException(
+          "没有任何已登记的货币发行人发行 "
+              + currency
+              + "（H4：MoneyAuthority 在本批**没有实现** ⇒ 世界上没有'发行/回笼'这条路径）。"
+              + "⇒ 付方余额不足以支付时不许透支（透支 = 发行），逐币种 Σ余额 因此恒定。"
+              + "若确实需要发行，先实现 MoneyAuthority 并在 MoneyIssuance 登记它（唯一注册点）");
     }
-    throw new IllegalStateException(
-        "没有任何已登记的货币发行人发行 "
-            + currency
-            + "（H4：MoneyAuthority 在本批**没有实现** ⇒ 世界上没有'发行/回笼'这条路径）。"
-            + "⇒ 付方余额不足以支付时不许透支（透支 = 发行），逐币种 Σ余额 因此恒定。"
-            + "若确实需要发行，先实现 MoneyAuthority 并在 MoneyIssuance 登记它（唯一注册点）");
   }
 
   /** 已登记表里这个币种的发行源；没有 ⇒ {@code null}（只读查询，不抛）。 */
-  public static synchronized ActorRef issuerOfRegistered(CurrencyId currency) {
-    if (currency == null) {
+  public static ActorRef issuerOfRegistered(CurrencyId currency) {
+    synchronized (LOCK) {
+      if (currency == null) {
+        return null;
+      }
+      for (MoneyAuthority authority : REGISTERED) {
+        if (authority.issuable().contains(currency)) {
+          return authority.authorityOf(currency);
+        }
+      }
       return null;
     }
-    for (MoneyAuthority authority : REGISTERED) {
-      if (authority.issuable().contains(currency)) {
-        return authority.authorityOf(currency);
-      }
-    }
-    return null;
   }
 
   private static ActorRef requireIssuer(MoneyAuthority authority, CurrencyId currency) {
