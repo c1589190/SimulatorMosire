@@ -637,4 +637,31 @@ public record ClassFirstState(
         lenders,
         meta);
   }
+
+  /**
+   * ★ 纯 copy-with：只换 {@link #meta}，其余九张表原样带过（class-first 阶段 2：GM 只改 {@code meta.config}）。
+   *
+   * <p>★ 为什么需要它：{@code setCollectionPolicy}/{@code setProductionParameters} 的权威面是 {@code
+   * meta.config}；没有这个 copy-with，调整路径就得手抄十个组件构造 state（铁律 5 的漂移形态）。 保序不可变仍由构造器统一冻结 ——
+   * 本方法只做"换一块、带过其余"。
+   *
+   * @param replacement 新元信息；不得为 null（空元信息口径只在构造器与 {@link ClassFirstMeta#empty()} 处）
+   * @throws IllegalArgumentException replacement 为 null
+   */
+  public ClassFirstState withMeta(ClassFirstMeta replacement) {
+    if (replacement == null) {
+      throw new IllegalArgumentException("withMeta 的 replacement 不得为 null");
+    }
+    return new ClassFirstState(
+        modeParticipations,
+        classPools,
+        householdAccounts,
+        assetStateSchemas,
+        classBounds,
+        mobilityPolicies,
+        classFlowEvents,
+        accounts,
+        lenders,
+        replacement);
+  }
 }

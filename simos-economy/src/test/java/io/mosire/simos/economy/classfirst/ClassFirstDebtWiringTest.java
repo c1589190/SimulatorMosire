@@ -124,6 +124,78 @@ class ClassFirstDebtWiringTest {
     assertThat(net).as("Σ账户净额 == 0").isZero();
   }
 
+  /**
+   * 阶段 2 接线：{@code setProductionParameters} 改 {@code meta.config} ⇒ 下一 tick 的借款额按新参数算。
+   *
+   * <p>同一个 3 格零粮世界：出厂 {@code moneyPerGrain=10} ⇒ LABORER 缺口 3000 借 30,000；GM 改成 20 ⇒ 必须借 60,000。
+   * {@code meta.config} 没被 restore 读到时仍会停在 30,000 ⇒ 本用例咬这条。
+   */
+  @Test
+  void productionParameterAdjustmentReachesTheNextDebtAmount() throws Exception {
+    PilotModel.Lender seedLender =
+        new PilotModel.Lender(LENDER_ID, 1_000_000L, Map.of(), 20L, 60L, 1000L);
+    PilotConfig config =
+        PilotConfig.tenancyAgriculture(
+            seedLender, noCollectionPolicy(), 90L, MobilityPolicy.tenancyDefaults());
+    List<PilotModel.Household> households = new ArrayList<>();
+    households.add(grainlessHousehold("hh-0_0-laborer", PilotModel.LABORER_ID, 1000L));
+    households.add(grainlessHousehold("hh-1_0-middle", PilotModel.MIDDLE_PEASANT_ID, 100L));
+    households.add(grainlessHousehold("hh-2_0-tenant", PilotModel.TENANT_ID, 100L));
+
+    ClassFirstState t0 =
+        new ClassFirstPilotEngine(config, households, List.of(seedLender)).snapshot();
+    EconomyData base = EconomyData.empty().withClassFirst(t0);
+
+    JsonNode doubled = new ObjectMapper().readTree("{\"moneyPerGrain\":20}");
+    EconomyGmAdjustments.Projection adjusted =
+        EconomyGmAdjustments.project(base, "setProductionParameters", doubled, "调高粮价", 0L);
+    assertThat(adjusted.projected().classFirst().meta().config().moneyPerGrain())
+        .as("生产参数已落进 meta.config")
+        .isEqualTo(20L);
+
+    // 越界与假旋钮必须具名拒绝。
+    assertThatThrownBy(
+            () ->
+                EconomyGmAdjustments.project(
+                    base,
+                    "setCollectionPolicy",
+                    new ObjectMapper().readTree("{\"collectionRatioPerMille\":1001}"),
+                    "越界",
+                    0L))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("collectionRatioPerMille");
+    assertThatThrownBy(
+            () ->
+                EconomyGmAdjustments.project(
+                    base,
+                    "setCollectionPolicy",
+                    new ObjectMapper().readTree("{\"seizurePriority\":\"LIQUID_THEN_LAND\"}"),
+                    "单值枚举",
+                    0L))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("seizurePriority");
+
+    ClassFirstSettlement.Result day1 =
+        ClassFirstSettlement.settleOneDay(
+            adjusted.projected().classFirst(),
+            new ClassFirstSettlement.Inputs(1L, null, List.of(), List.of()));
+    ClassFirstAccount debtor = moneyLoan(day1.state(), PilotModel.LABORER_ID, LENDER_ID);
+    assertThat(debtor.cumulativeNet())
+        .as("借款额必须按 GM 改后的 moneyPerGrain=20 计算（未接线时是 -30000）")
+        .isEqualTo(-60_000L);
+  }
+
+  /** 关闭催收的 CollectionPolicy（阈值极高）：新债创建值不被同 tick 的 LIQUID_SEIZED 改写。 */
+  private static PilotModel.CollectionPolicy noCollectionPolicy() {
+    return new PilotModel.CollectionPolicy(
+        PilotModel.LANDLORD_ID,
+        1_000_000_000L,
+        6000L,
+        250L,
+        20L,
+        PilotModel.SeizurePriority.LIQUID_THEN_LAND);
+  }
+
   /** 零粮家户：`goods` 只放 0 粮 0 布；`population` 必须 ≥ 1。 */
   private static PilotModel.Household grainlessHousehold(
       String id, String classPositionId, long population) {

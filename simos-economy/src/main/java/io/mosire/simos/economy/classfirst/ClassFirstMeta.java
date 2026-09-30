@@ -36,6 +36,31 @@ public record ClassFirstMeta(
     }
   }
 
+  /**
+   * ★ 纯 copy-with：只换 {@link #config}，其余组件原样带过（class-first 阶段 2 的 GM 参数调整落点）。
+   *
+   * <p>★ 为什么需要它：{@code meta.config} 是引擎 {@code restore} 直接读的权威源参数面；没有这个 copy-with， GM 调整就得手抄九个组件构造
+   * meta（铁律 5 的漂移形态）。{@code config} 只在空态为 null，非空态必须完整 ⇒ null 拒绝。
+   *
+   * @param replacement 新的世界/模式参数；不得为 null
+   * @throws IllegalArgumentException replacement 为 null
+   */
+  public ClassFirstMeta withConfig(PilotConfig replacement) {
+    if (replacement == null) {
+      throw new IllegalArgumentException("withConfig 的 replacement 不得为 null");
+    }
+    return new ClassFirstMeta(
+        tick,
+        landForSale,
+        landMarketEscrowGrain,
+        landMarketEscrowMoney,
+        totalLeaseHolding,
+        replacement,
+        totals,
+        initial,
+        stockEnrichmentViolations);
+  }
+
   /** 空态：尚未播种，无参数。 */
   public static ClassFirstMeta empty() {
     return new ClassFirstMeta(0L, 0L, 0L, 0L, 0L, null, Totals.empty(), InitialTotals.empty(), 0L);

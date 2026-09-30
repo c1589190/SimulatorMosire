@@ -13,19 +13,20 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * ★★ <b>{@code economy.GmAdjust}（E6b / class-first 阶段 1）：GM 经济调整的窄命令</b>。载荷：
+ * ★★ <b>{@code economy.GmAdjust}（E6b / class-first 阶段 1–2）：GM 经济调整的窄命令</b>。载荷：
  *
  * <pre>{@code
  * {"adjustment":"setMobilityPolicy"|"setClassFirstLender"|"forgiveClassFirstDebt"
+ *              |"setCollectionPolicy"|"setProductionParameters"
  *              |"forgiveDebt"|"setLiquidationPolicy",
  *  "parameters":{...},
  *  "reason":"..."}
  * }</pre>
  *
- * <p>★★ <b>五条 adjustment（源状态白名单，唯一语义落点在 {@link EconomyGmAdjustments#project}）</b>：
+ * <p>★★ <b>七条 adjustment（源状态白名单，唯一语义落点在 {@link EconomyGmAdjustments#project}）</b>：
  *
  * <ul>
- *   <li><b>class-first 原生三</b>：
+ *   <li><b>class-first 原生五</b>：
  *       <ul>
  *         <li>{@code setMobilityPolicy}：{@code modeId?（缺省 = classFirst.meta.config.mode.id()）} +
  *             至少一个 {@code MobilityPolicy} 标量字段 / {@code
@@ -39,6 +40,20 @@ import java.util.Objects;
  *             unit?（缺省 grain）} + {@code amount?（缺省=全额债务）}；只对称清减 {@code owner→counterparty} 与 {@code
  *             counterparty→owner} 两条镜像账户的 {@code cumulativeNet}，归零 ⇒ {@code SETTLED}；不动 {@code
  *             interestAccrued}/库存账户；找不到债务侧或镜像账户 ⇒ 具名拒绝；
+ *         <li>{@code setCollectionPolicy}：{@code collectionThreshold?（≥0）}/{@code
+ *             collectionTriggerRatioPerMille?（≥0）}/{@code collectionRatioPerMille?（0..1000）}/{@code
+ *             landPricePerUnit?（≥1）} 至少一项，按给定字段改既有 {@code CollectionPolicy}，未给字段保持原值；{@code
+ *             seizurePriority（枚举只有一个取值）}/{@code collectorClassPositionId（本阶段固定 LANDLORD）} 给到即具名拒绝；
+ *             未播种/无 {@code meta.config} ⇒ 具名拒绝；
+ *         <li>{@code setProductionParameters}：15 个生产/技术标量（{@code yieldPerLand(>0)}/{@code
+ *             seedPerLand(≥0)}/{@code laborPerLand(>0)}/{@code toolCapacityPerTool(>0)}/{@code
+ *             rentPerLand(≥0)}/{@code wagePerLabor(≥0)}/{@code baseRationPerCapita(≥0)}/{@code
+ *             laborRationPerLabor(≥0)}/{@code nonEssentialNeedPerMille(≥0)}/{@code
+ *             nonEssentialEfficiencyPenaltyPerMille(≥0)}/{@code
+ *             loanInterestRatePerMille(≥0)}/{@code moneyPerGrain(>0)}/{@code
+ *             toolPricePerUnit(≥0)}/{@code reserveTicks(≥0)}/{@code collectionIntervalTicks(≥1)}）
+ *             至少一项，只改 {@code classFirst.meta.config}，未给字段保持原值；不碰
+ *             mode/lender/collectionPolicy/mobilityPolicy； 未播种/无 {@code meta.config} ⇒ 具名拒绝；
  *       </ul>
  *   <li><b>旧表两（仅非空 class-first 为空的世界）</b>：
  *       <ul>
@@ -50,7 +65,7 @@ import java.util.Objects;
  *             + {@code policyValuePerUnitMilli ≥ 0（非 POLICY 必须 0）} + {@code
  *             recipientRule(CREDITOR_FIRST|MARKET_FIRST)}； upsert 到 {@code liquidationPolicies}；引用的
  *             {@code AssetRule} 不存在 ⇒ 具名拒绝。★ {@code classFirst} 非空 ⇒ 二者由 {@link
- *             EconomyGmAdjustments#project} 统一具名拒绝并指路三个新 kind（handler 不重复这道门）。
+ *             EconomyGmAdjustments#project} 统一具名拒绝并指路五个 class-first 原生 kind（handler 不重复这道门）。
  *       </ul>
  * </ul>
  *
@@ -67,8 +82,8 @@ import java.util.Objects;
  * 决策人工具目录时 排除它，普通 GOV Agent 无法把它写进令里执行（E6a 的 {@code directiveCommandTypes} 过滤口径不变）。
  *
  * <p>★ <b>{@link CommandTargets} 的诚实边界</b>：{@code targetPaths(mapId, payloadJson)}
- * 的签名拿不到状态；本命令的语义对象 （债务合同 / 生产资料规则）不是本仓资源命名空间里的可寻址路径（economy 资源围栏以格为粒度），且本命令 GM-only、不进入决策人令 ⇒
- * 有意返回空列表（"没有可声明的目标"）。空列表在裁决路径上是 fail-closed 的语义，而本命令根本到不了那条路径。
+ * 的签名拿不到状态；本命令的语义对象 （债务合同 / 生产资料规则 / class-first 制度参数）不是本仓资源命名空间里的可寻址路径（economy 资源围栏以格为粒度），且本命令
+ * GM-only、不进入决策人令 ⇒ 有意返回空列表（"没有可声明的目标"）。空列表在裁决路径上是 fail-closed 的语义，而本命令根本到不了那条路径。
  */
 public final class EconomyGmAdjustHandler implements CommandHandler, CommandTargets, GmOnlyCommand {
 
@@ -83,8 +98,8 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
   /**
    * ★ 本命令没有可声明的资源目标（见类注）：债务合同 / 生产资料规则 / class-first 政策、放贷方与双边账户都不是 {@code economy} 命名空间里的格键路径，且本命令
    * GM-only、不进入决策人令。只做载荷形状校验（必填/类型/至少一项；坏载荷仍抛具名 {@link
-   * IllegalArgumentException}），合法载荷返回空列表；引用存在性（policy/lender/account/assetRule）在 {@code handle} 走
-   * {@link EconomyGmAdjustments#project} 时判、由 catch 折成 {@link HandlerOutcome.Rejected}。
+   * IllegalArgumentException}），合法载荷返回空列表；引用存在性（policy/lender/account/assetRule/meta.config）在 {@code
+   * handle} 走 {@link EconomyGmAdjustments#project} 时判、由 catch 折成 {@link HandlerOutcome.Rejected}。
    */
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {
@@ -106,6 +121,10 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
       case EconomyGmAdjustments.SET_CLASS_FIRST_LENDER -> requireLenderShape(label, parameters);
       case EconomyGmAdjustments.FORGIVE_CLASS_FIRST_DEBT ->
           requireForgiveClassFirstDebtShape(label, parameters);
+      case EconomyGmAdjustments.SET_COLLECTION_POLICY ->
+          requireCollectionPolicyShape(label, parameters);
+      case EconomyGmAdjustments.SET_PRODUCTION_PARAMETERS ->
+          requireProductionParametersShape(label, parameters);
       default ->
           throw new IllegalArgumentException(
               EconomyGmAdjustments.DERIVED_REJECTION
@@ -167,6 +186,47 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
     long amount = EconomyCommandPayloads.optionalLong(label, parameters, "amount", 1L);
     if (amount <= 0L) {
       throw new IllegalArgumentException(label + " 的 amount 必须 > 0: " + amount);
+    }
+  }
+
+  /**
+   * {@code setCollectionPolicy} 的形状：四个可调标量至少一项、给了的必须是整数；{@code seizurePriority}/{@code
+   * collectorClassPositionId} 的存在性由 {@link EconomyGmAdjustments#project} 统一具名拒绝 （顺序同 {@code
+   * setMobilityPolicy} 的 schema/bounds：不给"看起来接受了"）。
+   */
+  private static void requireCollectionPolicyShape(String label, JsonNode parameters) {
+    int given = 0;
+    for (String field : EconomyGmAdjustments.COLLECTION_POLICY_FIELDS) {
+      if (hasValue(parameters, field)) {
+        EconomyCommandPayloads.requireLong(label, parameters, field);
+        given++;
+      }
+    }
+    if (given == 0) {
+      throw new IllegalArgumentException(
+          label
+              + " 至少需要给出一个可调整字段: "
+              + String.join(" | ", EconomyGmAdjustments.COLLECTION_POLICY_FIELDS));
+    }
+  }
+
+  /**
+   * {@code setProductionParameters} 的形状：15 个标量至少一项、给了的必须是整数（范围由 {@link
+   * EconomyGmAdjustments#project} 统一判，保证与 GM 窄写工具同一份语义）。
+   */
+  private static void requireProductionParametersShape(String label, JsonNode parameters) {
+    int given = 0;
+    for (String field : EconomyGmAdjustments.PRODUCTION_TUNING_FIELDS) {
+      if (hasValue(parameters, field)) {
+        EconomyCommandPayloads.requireLong(label, parameters, field);
+        given++;
+      }
+    }
+    if (given == 0) {
+      throw new IllegalArgumentException(
+          label
+              + " 至少需要给出一个可调整字段: "
+              + String.join(" | ", EconomyGmAdjustments.PRODUCTION_TUNING_FIELDS));
     }
   }
 

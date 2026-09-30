@@ -12,6 +12,7 @@ import io.mosire.simos.economy.classfirst.ClassFirstAccount;
 import io.mosire.simos.economy.classfirst.ClassFirstMeta;
 import io.mosire.simos.economy.classfirst.ClassFirstState;
 import io.mosire.simos.economy.classfirst.MobilityPolicy;
+import io.mosire.simos.economy.classfirst.PilotConfig;
 import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.LiquidationPolicy;
@@ -23,31 +24,38 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * ★★ <b>{@code economy.GmAdjust} 的纯函数项目</b>（E6b / class-first 阶段 1）：handler（{@code simos-economy}）与
- * GM 窄写工具 {@code simos.economy.adjust}（{@code simos-app}）<b>共用同一份</b>调整语义 —— 载荷解析、白名单拒绝、前后差异与
- * {@link EconomyChangeSet} 都在这里算一次，两处只做各自的边界折叠（handler → {@code Rejected}/`Applied`；工具 → {@code
- * BAD_REQUEST} /预览视图）。
+ * ★★ <b>{@code economy.GmAdjust} 的纯函数项目</b>（E6b / class-first 阶段 1–2）：handler（{@code
+ * simos-economy}）与 GM 窄写工具 {@code simos.economy.adjust}（{@code simos-app}）<b>共用同一份</b>调整语义 ——
+ * 载荷解析、白名单拒绝、前后差异与 {@link EconomyChangeSet} 都在这里算一次，两处只做各自的边界折叠（handler → {@code
+ * Rejected}/`Applied`；工具 → {@code BAD_REQUEST} /预览视图）。
  *
- * <p>★★ <b>五条源状态白名单</b>（{@link #ADJUSTMENTS}）：
+ * <p>★★ <b>七条源状态白名单</b>（{@link #ADJUSTMENTS}）：
  *
  * <ul>
- *   <li><b>class-first 原生（三）</b>：{@link #SET_MOBILITY_POLICY} 按给定字段 upsert 既有 {@code
+ *   <li><b>class-first 原生（五）</b>：{@link #SET_MOBILITY_POLICY} 按给定字段 upsert 既有 {@code
  *       mobilityPolicies} 行（只改 {@link MobilityPolicy} 的标量字段 + {@code absorptionPolicy}；{@code
  *       schema}/{@code bounds} 两个 record 组件与 {@code absorptionCapByEdgePerMille}/{@code
  *       bundleTemplates} 两张嵌套表给到即具名拒绝）； {@link #SET_CLASS_FIRST_LENDER} 只改既有 {@link
  *       PilotModel.Lender} 的三个制度参数（不动 money/goods）；{@link #FORGIVE_CLASS_FIRST_DEBT} 对称清减既有 {@code
- *       owner→counterparty} / {@code counterparty→owner} 两条镜像账户 的 {@code cumulativeNet}；
+ *       owner→counterparty} / {@code counterparty→owner} 两条镜像账户 的 {@code cumulativeNet}；{@link
+ *       #SET_COLLECTION_POLICY} 按给定标量改既有 {@link PilotModel.CollectionPolicy} 的四个可调字段（{@code
+ *       seizurePriority}/{@code collectorClassPositionId} 给到即具名拒绝）；{@link
+ *       #SET_PRODUCTION_PARAMETERS} 从 {@link PilotConfig#currentTuning()} 起步、按给定字段改 {@code
+ *       meta.config} 的 15 个生产/技术标量；
  *   <li><b>旧表（两，仅非 class-first 世界）</b>：{@link #FORGIVE_DEBT}（{@link DebtContractBook#forgive} +
  *       {@link EconomyData#withDebtContracts}）与 {@link #SET_LIQUIDATION_POLICY}（{@link
- *       EconomyData#withLiquidationPolicies}）。{@link EconomyData#classFirst()} 非空 ⇒ 二者具名拒绝并指路三个新
- *       kind —— class-first 世界不读 {@code debtContracts}/{@code liquidationPolicies}，改旧表没有结算路径；{@code
- *       classFirst} 为空（旧档 / 尚未播种）⇒ 现有行为逐字不变。
+ *       EconomyData#withLiquidationPolicies}）。{@link EconomyData#classFirst()} 非空 ⇒ 二者具名拒绝并指路
+ *       class-first 原生 kind —— class-first 世界不读 {@code debtContracts}/{@code
+ *       liquidationPolicies}，改旧表没有结算路径；{@code classFirst} 为空（旧档 / 尚未播种）⇒ 现有行为逐字不变。
  * </ul>
  *
- * <p>★★ <b>只改源状态、只走既有写口</b>：class-first 三个新 kind 只经 {@link ClassFirstState} 的 {@code
- * withMobilityPolicies}/{@code withLenders}/{@code withAccounts} 纯 copy-with 与 {@link
- * EconomyData#withClassFirst} 落值； 旧两 kind 仍只调用原有写口。任何调整都不碰
- * totals/conservation/pools/classFlowEvents/meta 等派生量，也不搬粮/钱/库存。
+ * <p>★★ <b>只改源状态、只走既有写口</b>：class-first 五个 kind 只经 {@link ClassFirstState} 的 {@code
+ * withMobilityPolicies}/{@code withLenders}/{@code withAccounts}/{@code withMeta} 纯 copy-with 与
+ * {@link EconomyData#withClassFirst} 落值。其中 {@link #SET_COLLECTION_POLICY}/{@link
+ * #SET_PRODUCTION_PARAMETERS} 只改 {@code meta.config}（引擎 {@code restore} 直接读的源参数）：前者只改 {@code
+ * collectionPolicy}，后者只改 15 个标量；两者都不碰 {@code mode}（无调整口）与 {@code lender}/{@code
+ * mobilityPolicy}（各有专属 kind），也不碰其余状态表。 旧两 kind 仍只调用原有写口；任何调整都不碰
+ * totals/conservation/pools/classFlowEvents 以及 {@code meta} 的累计读数/托管/初始基数等派生量，也不搬粮/钱/库存。
  *
  * <p>★★ <b>派生读数不可直写</b>：{@code flows} / {@code demandBook} / {@code crisisSignals} / {@code
  * classStandings.consecutiveDebtStressCycles} / {@code debtCapacity} 这类派生读数一律以 {@link
@@ -77,19 +85,27 @@ public final class EconomyGmAdjustments {
   /** {@code adjustment} 白名单项：对称清减既有双边账户的债务/债权净额（class-first 原生）。 */
   public static final String FORGIVE_CLASS_FIRST_DEBT = "forgiveClassFirstDebt";
 
+  /** {@code adjustment} 白名单项：按给定标量改既有催收政策（class-first 原生）。 */
+  public static final String SET_COLLECTION_POLICY = "setCollectionPolicy";
+
+  /** {@code adjustment} 白名单项：按给定标量改 {@code meta.config} 的 15 个生产/技术参数（class-first 原生）。 */
+  public static final String SET_PRODUCTION_PARAMETERS = "setProductionParameters";
+
   /** 白名单外调整的统一拒绝短语（handler 折 {@code Rejected}、工具折 {@code BAD_REQUEST} 都用它）。 */
   public static final String DERIVED_REJECTION = "派生读数不可由 GM 调整工具直写";
 
   private static final String COMMAND = EconomyGmAdjustHandler.TYPE;
 
-  /** 五条源状态白名单（拒绝消息与 handler 兜底共用同一顺序；唯一拼写点在各自常量）。 */
+  /** 七条源状态白名单（拒绝消息与 handler 兜底共用同一顺序；唯一拼写点在各自常量）。 */
   static final List<String> ADJUSTMENTS =
       List.of(
           FORGIVE_DEBT,
           SET_LIQUIDATION_POLICY,
           SET_MOBILITY_POLICY,
           SET_CLASS_FIRST_LENDER,
-          FORGIVE_CLASS_FIRST_DEBT);
+          FORGIVE_CLASS_FIRST_DEBT,
+          SET_COLLECTION_POLICY,
+          SET_PRODUCTION_PARAMETERS);
 
   /** {@code setMobilityPolicy} 可调整的 17 个 long 标量字段（与 {@link MobilityPolicy} 逐项对齐）。 */
   static final List<String> MOBILITY_POLICY_LONG_FIELDS =
@@ -130,6 +146,41 @@ public final class EconomyGmAdjustments {
   /** {@code setClassFirstLender} 给到即具名拒绝的字段（当前引擎无消费点）。 */
   private static final String LENDER_UNSUPPORTED_FIELD = "collectionPower";
 
+  /** {@code setCollectionPolicy} 四个可调整的 long 标量（至少给一个；两个固定组件不在内）。 */
+  static final List<String> COLLECTION_POLICY_FIELDS =
+      List.of(
+          "collectionThreshold",
+          "collectionTriggerRatioPerMille",
+          "collectionRatioPerMille",
+          "landPricePerUnit");
+
+  /** {@code setCollectionPolicy} 给到即具名拒绝：{@link PilotModel.SeizurePriority} 只有一个取值（假旋钮）。 */
+  private static final String COLLECTION_POLICY_SEIZURE_FIELD = "seizurePriority";
+
+  /** {@code setCollectionPolicy} 给到即具名拒绝：催收方本阶段固定 {@link PilotModel#LANDLORD_ID}（制度重建）。 */
+  private static final String COLLECTION_POLICY_COLLECTOR_FIELD = "collectorClassPositionId";
+
+  /**
+   * {@code setProductionParameters} 15 个可调整的 long 标量（至少给一个；顺序与 {@link PilotConfig.Tuning} 逐项一致）。
+   */
+  static final List<String> PRODUCTION_TUNING_FIELDS =
+      List.of(
+          "yieldPerLand",
+          "seedPerLand",
+          "laborPerLand",
+          "toolCapacityPerTool",
+          "rentPerLand",
+          "wagePerLabor",
+          "baseRationPerCapita",
+          "laborRationPerLabor",
+          "nonEssentialNeedPerMille",
+          "nonEssentialEfficiencyPenaltyPerMille",
+          "loanInterestRatePerMille",
+          "moneyPerGrain",
+          "toolPricePerUnit",
+          "reserveTicks",
+          "collectionIntervalTicks");
+
   private EconomyGmAdjustments() {}
 
   /**
@@ -137,7 +188,7 @@ public final class EconomyGmAdjustments {
    *
    * @param base 当前 {@link EconomyData}（只读；不得为 null）
    * @param adjustment 调整名；白名单外一律 {@link IllegalArgumentException}（具名 {@link #DERIVED_REJECTION}）
-   * @param parameters 调整参数对象（形状见五条白名单常量）
+   * @param parameters 调整参数对象（形状见七条白名单常量）
    * @param reason 调整原因；必填非空白
    * @param day 世界当前日（只进审计摘要；不改状态）
    * @return 投影后的 {@link EconomyData}、{@link EconomyChangeSet} 与前后差异清单
@@ -160,7 +211,7 @@ public final class EconomyGmAdjustments {
     if (day < 0L) {
       throw new IllegalArgumentException(COMMAND + " 的 day 不得为负: " + day);
     }
-    // ★ 旧表两 kind 的 class-first 门统一在这里：非空 classFirst ⇒ 旧表没有结算路径，具名拒绝并指路三个新 kind。
+    // ★ 旧表两 kind 的 class-first 门统一在这里：非空 classFirst ⇒ 旧表没有结算路径，具名拒绝并指路 class-first 原生 kind。
     if (!base.classFirst().isEmpty()
         && (FORGIVE_DEBT.equals(adjustment) || SET_LIQUIDATION_POLICY.equals(adjustment))) {
       throw legacyClassFirstRejection(adjustment);
@@ -171,6 +222,8 @@ public final class EconomyGmAdjustments {
       case SET_MOBILITY_POLICY -> setMobilityPolicy(base, parameters, reason, day);
       case SET_CLASS_FIRST_LENDER -> setClassFirstLender(base, parameters, reason, day);
       case FORGIVE_CLASS_FIRST_DEBT -> forgiveClassFirstDebt(base, parameters, reason, day);
+      case SET_COLLECTION_POLICY -> setCollectionPolicy(base, parameters, reason, day);
+      case SET_PRODUCTION_PARAMETERS -> setProductionParameters(base, parameters, reason, day);
       default -> throw derivedRejection(adjustment);
     };
   }
@@ -586,6 +639,154 @@ public final class EconomyGmAdjustments {
             new Change("classFirst.accounts", mirrorId.value(), mirror, nextMirror)));
   }
 
+  /**
+   * {@code setCollectionPolicy}：只改既有 {@link PilotModel.CollectionPolicy} 的四个标量（至少一项；未给保持原值）。
+   *
+   * <p>★ {@code collectorClassPositionId} 与 {@code seizurePriority} 本阶段是 record 的固定组件：给到即具名拒绝
+   * （催收方固定 {@link PilotModel#LANDLORD_ID}；{@link PilotModel.SeizurePriority} 只有一个取值）。逐值相同 ⇒ 幂等
+   * no-op。落点只有 {@code classFirst.meta.config.collectionPolicy} —— 不碰 mode/lender/mobilityPolicy
+   * 与一切派生读数。
+   */
+  private static Projection setCollectionPolicy(
+      EconomyData base, JsonNode parameters, String reason, long day) {
+    String label = COMMAND + "." + SET_COLLECTION_POLICY;
+    rejectUnsupportedCollectionPolicyFields(label, parameters);
+    ClassFirstState state = base.classFirst();
+    PilotConfig config = requireConfig(label, state.meta());
+    if (!hasAnyCollectionPolicyField(parameters)) {
+      throw new IllegalArgumentException(
+          label + " 至少需要给出一个可调整字段: " + String.join(" | ", COLLECTION_POLICY_FIELDS));
+    }
+    PilotModel.CollectionPolicy before = config.collectionPolicy();
+    long collectionThreshold =
+        optionalNonNegative(label, parameters, "collectionThreshold", before.collectionThreshold());
+    long collectionTriggerRatioPerMille =
+        optionalNonNegative(
+            label,
+            parameters,
+            "collectionTriggerRatioPerMille",
+            before.collectionTriggerRatioPerMille());
+    long collectionRatioPerMille =
+        optionalInRange(
+            label,
+            parameters,
+            "collectionRatioPerMille",
+            before.collectionRatioPerMille(),
+            0L,
+            1000L);
+    long landPricePerUnit =
+        optionalAtLeast(label, parameters, "landPricePerUnit", before.landPricePerUnit(), 1L);
+    PilotModel.CollectionPolicy after =
+        new PilotModel.CollectionPolicy(
+            before.collectorClassPositionId(),
+            collectionThreshold,
+            collectionTriggerRatioPerMille,
+            collectionRatioPerMille,
+            landPricePerUnit,
+            before.seizurePriority());
+    PilotConfig nextConfig = config.withCollectionPolicy(after);
+    EconomyData projected =
+        base.withClassFirst(state.withMeta(state.meta().withConfig(nextConfig)));
+    EconomyChangeSet changeSet = EconomyChangeSet.between(base, projected);
+    List<Change> changes =
+        after.equals(before)
+            ? List.of() // 逐值相同的 upsert = 幂等 no-op（同 setLiquidationPolicy 口径）
+            : List.of(
+                new Change(
+                    "classFirst.meta.config.collectionPolicy", "collectionPolicy", before, after));
+    return new Projection(SET_COLLECTION_POLICY, reason, day, projected, changeSet, changes);
+  }
+
+  /**
+   * {@code setProductionParameters}：只改 {@code classFirst.meta.config} 的 15 个生产/技术标量（至少一项；未给保持原值）。
+   *
+   * <p>★ 从 {@link PilotConfig#currentTuning()} 起步、只覆盖给到的字段，再走 {@link PilotConfig#withTuning}
+   * 这个唯一重建点 —— 不手抄 19 个组件。mode/lender/collectionPolicy/mobilityPolicy 各有权威面（后者三者各有专属 kind）， 本 kind
+   * 一律不碰；逐值相同 ⇒ 幂等 no-op。参数边界按 {@link PilotConfig} 构造器与用量：生产三率与 {@code moneyPerGrain} 必须 &gt;
+   * 0，其余标量 &ge; 0，{@code collectionIntervalTicks} 必须 &ge; 1。
+   */
+  private static Projection setProductionParameters(
+      EconomyData base, JsonNode parameters, String reason, long day) {
+    String label = COMMAND + "." + SET_PRODUCTION_PARAMETERS;
+    ClassFirstState state = base.classFirst();
+    PilotConfig config = requireConfig(label, state.meta());
+    if (!hasAnyProductionTuningField(parameters)) {
+      throw new IllegalArgumentException(
+          label + " 至少需要给出一个可调整字段: " + String.join(" | ", PRODUCTION_TUNING_FIELDS));
+    }
+    PilotConfig.Tuning before = config.currentTuning();
+    long yieldPerLand =
+        optionalAtLeast(label, parameters, "yieldPerLand", before.yieldPerLand(), 1L);
+    long seedPerLand = optionalNonNegative(label, parameters, "seedPerLand", before.seedPerLand());
+    long laborPerLand =
+        optionalAtLeast(label, parameters, "laborPerLand", before.laborPerLand(), 1L);
+    long toolCapacityPerTool =
+        optionalAtLeast(label, parameters, "toolCapacityPerTool", before.toolCapacityPerTool(), 1L);
+    long rentPerLand = optionalNonNegative(label, parameters, "rentPerLand", before.rentPerLand());
+    long wagePerLabor =
+        optionalNonNegative(label, parameters, "wagePerLabor", before.wagePerLabor());
+    long baseRationPerCapita =
+        optionalNonNegative(label, parameters, "baseRationPerCapita", before.baseRationPerCapita());
+    long laborRationPerLabor =
+        optionalNonNegative(label, parameters, "laborRationPerLabor", before.laborRationPerLabor());
+    long nonEssentialNeedPerMille =
+        optionalNonNegative(
+            label, parameters, "nonEssentialNeedPerMille", before.nonEssentialNeedPerMille());
+    long nonEssentialEfficiencyPenaltyPerMille =
+        optionalNonNegative(
+            label,
+            parameters,
+            "nonEssentialEfficiencyPenaltyPerMille",
+            before.nonEssentialEfficiencyPenaltyPerMille());
+    long loanInterestRatePerMille =
+        optionalNonNegative(
+            label, parameters, "loanInterestRatePerMille", before.loanInterestRatePerMille());
+    long moneyPerGrain =
+        optionalAtLeast(label, parameters, "moneyPerGrain", before.moneyPerGrain(), 1L);
+    long toolPricePerUnit =
+        optionalNonNegative(label, parameters, "toolPricePerUnit", before.toolPricePerUnit());
+    long reserveTicks =
+        optionalNonNegative(label, parameters, "reserveTicks", before.reserveTicks());
+    long collectionIntervalTicks =
+        optionalAtLeast(
+            label, parameters, "collectionIntervalTicks", before.collectionIntervalTicks(), 1L);
+    PilotConfig.Tuning after =
+        new PilotConfig.Tuning(
+            yieldPerLand,
+            seedPerLand,
+            laborPerLand,
+            toolCapacityPerTool,
+            rentPerLand,
+            wagePerLabor,
+            baseRationPerCapita,
+            laborRationPerLabor,
+            nonEssentialNeedPerMille,
+            nonEssentialEfficiencyPenaltyPerMille,
+            loanInterestRatePerMille,
+            moneyPerGrain,
+            toolPricePerUnit,
+            reserveTicks,
+            collectionIntervalTicks);
+    PilotConfig nextConfig = config.withTuning(after);
+    EconomyData projected =
+        base.withClassFirst(state.withMeta(state.meta().withConfig(nextConfig)));
+    EconomyChangeSet changeSet = EconomyChangeSet.between(base, projected);
+    List<Change> changes =
+        after.equals(before)
+            ? List.of() // 逐值相同 = 幂等 no-op（changeSet 也是 Unchanged），不报"变了"
+            : List.of(new Change("classFirst.meta.config", "tuning", before, after));
+    return new Projection(SET_PRODUCTION_PARAMETERS, reason, day, projected, changeSet, changes);
+  }
+
+  /** {@code meta.config} 是两个新 kind 的权威面；空态/旧档没有 config ⇒ 具名拒绝（不静默 no-op）。 */
+  private static PilotConfig requireConfig(String label, ClassFirstMeta meta) {
+    if (meta == null || meta.config() == null) {
+      throw new IllegalArgumentException(
+          label + " 需要 classFirst.meta.config（当前 classFirst 未播种/无 config）；请先播种 class-first 世界");
+    }
+    return meta.config();
+  }
+
   /** 缺省 modeId 取 {@code classFirst.meta.config.mode.id()}；classFirst 未播种/无 config ⇒ 具名拒绝。 */
   private static String resolveModeId(String label, ClassFirstMeta meta, JsonNode parameters) {
     String modeId = EconomyCommandPayloads.optionalText(label, parameters, "modeId", null);
@@ -625,6 +826,50 @@ public final class EconomyGmAdjustments {
 
   private static boolean hasAnyLenderField(JsonNode parameters) {
     for (String field : LENDER_FIELDS) {
+      if (hasValue(parameters, field)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** 两个固定组件给了就拒（含显式 null，避免"看起来接受了"）：枚举只剩一个取值 / 本阶段催收方固定。 */
+  private static void rejectUnsupportedCollectionPolicyFields(String label, JsonNode parameters) {
+    if (parameters.has(COLLECTION_POLICY_COLLECTOR_FIELD)) {
+      throw new IllegalArgumentException(
+          label
+              + " 本阶段拒绝 "
+              + COLLECTION_POLICY_COLLECTOR_FIELD
+              + "：催收方固定为 "
+              + PilotModel.LANDLORD_ID
+              + "，改它属于制度重建；可调整字段: "
+              + String.join(" | ", COLLECTION_POLICY_FIELDS));
+    }
+    if (parameters.has(COLLECTION_POLICY_SEIZURE_FIELD)) {
+      throw new IllegalArgumentException(
+          label
+              + " 本阶段拒绝 "
+              + COLLECTION_POLICY_SEIZURE_FIELD
+              + "："
+              + PilotModel.SeizurePriority.class.getSimpleName()
+              + " 当前只有 "
+              + PilotModel.SeizurePriority.LIQUID_THEN_LAND
+              + " 一个取值，不是可调参数；可调整字段: "
+              + String.join(" | ", COLLECTION_POLICY_FIELDS));
+    }
+  }
+
+  private static boolean hasAnyCollectionPolicyField(JsonNode parameters) {
+    for (String field : COLLECTION_POLICY_FIELDS) {
+      if (hasValue(parameters, field)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean hasAnyProductionTuningField(JsonNode parameters) {
+    for (String field : PRODUCTION_TUNING_FIELDS) {
       if (hasValue(parameters, field)) {
         return true;
       }
@@ -685,7 +930,7 @@ public final class EconomyGmAdjustments {
             + "）");
   }
 
-  /** 旧两 kind 在非空 class-first 世界的具名拒绝：旧表没有结算路径，指路三个新 kind。 */
+  /** 旧两 kind 在非空 class-first 世界的具名拒绝：旧表没有结算路径，指路五个 class-first 原生 kind。 */
   private static IllegalArgumentException legacyClassFirstRejection(String adjustment) {
     return new IllegalArgumentException(
         COMMAND
@@ -697,7 +942,11 @@ public final class EconomyGmAdjustments {
             + " | "
             + SET_CLASS_FIRST_LENDER
             + " | "
-            + FORGIVE_CLASS_FIRST_DEBT);
+            + FORGIVE_CLASS_FIRST_DEBT
+            + " | "
+            + SET_COLLECTION_POLICY
+            + " | "
+            + SET_PRODUCTION_PARAMETERS);
   }
 
   private static MobilityPolicyId mobilityPolicyId(String label, String modeId) {
