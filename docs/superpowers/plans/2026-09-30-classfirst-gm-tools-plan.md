@@ -104,3 +104,21 @@
 - 需要的新判据：三个新 kind 的 `preview=apply` 等价与前后差异；只改源状态（派生读数逐值不变）；
   classfirst 门禁（旧 kind 在非空 classFirst 下必拒、空态保持旧行为）；拒绝消息指路；
   对称免债后 `debt==claim`、`Σ账户净额=0` 仍成立；`MobilityPolicy` 未给字段保持原值。
+
+## 7. 阶段 1 裁定追加（2026-09-30，控制方；写代码代理 BLOCKER 回代码核后裁定）
+
+**背景**（写代码代理实测）：`ClassFirstPilotEngine.restore` 只把 state 的 **mobilityPolicy** 写回 `config`
+（`:371-375`）；state 的 lenders 只装进 `engine.lenders`（`:432-436`），`config.lender()` 仍是播种值。
+而外部货币借款路径读的是 `config.lender()` 的 `interestRatePerMille` / `nextDueTick`（`:1225-1230`）；
+`collectionPower` 在全引擎的唯一出现是 `LenderState.snapshot()`（`:2636`）⇒ **无消费点**。
+
+**裁定**：
+
+1. **授权最小引擎修复**：在 `restore` **构造 `new ClassFirstPilotEngine(config)` 之前**，按 mobility 同款模式，
+   取 state 里与 `config.lender().id()` 同 id 的 lender；不等则 `config = config.withLender(stateLender)`。
+   这样 `setClassFirstLender` 的 `interestRatePerMille` / `nextDueTick` 对下一 tick 新建外部货币债真正生效。
+2. **`collectionPower` 本阶段具名拒绝**：不得接受一个"改了不生效"的参数（本仓禁"看起来在记"）。
+   等将来有人把催收逻辑接到它上，再单独开一条 kind/字段；拒绝消息要点名"当前引擎无消费点"。
+3. 计划 §1.2 的字段清单据此修正为 **`interestRatePerMille` / `nextDueTick`** 两项（其余不变）；
+   §6 的测试判据追加：lender 利率/到期改动后**下一 tick 新建债**确实用新值（否则等于没接线）。
+
