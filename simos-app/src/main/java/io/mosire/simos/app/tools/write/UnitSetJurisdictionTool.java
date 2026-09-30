@@ -36,8 +36,9 @@ public final class UnitSetJurisdictionTool extends AbstractNarrowWriteTool {
   @Override
   public String description() {
     return "设/改单位管辖：固定 unit.SetJurisdiction，载荷 {unitId, regions[regionId...]"
-        + "（必填；空数组 = 撤销全部管辖）, levyGrainCapPerCycle?, levyMoneyCapPerCycle?,"
-        + " levyManpowerCapPerCycle?, administrationPerMille?(0..1000)}"
-        + "（★ 每个 regionId 必须在当前地图里存在，否则具名拒；未给的可选字段保持原值）";
+        + "（必填；空数组 = 撤销全部管辖）, levyGrainCapPerCommand?, levyMoneyCapPerCommand?,"
+        + " levyManpowerCapPerCommand?, administrationPerMille?(0..1000)}"
+        + "（★ 每个 regionId 必须在当前地图里存在，否则具名拒；未给的可选字段保持原值；"
+        + "三个 levy*CapPerCommand 的上限 = **一条**抽取命令的上限，0 = 该类无额度、拒，本批不建周期累计账本）";
   }
 }

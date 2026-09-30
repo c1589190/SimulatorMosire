@@ -24,6 +24,7 @@ import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.resolve.ActorResolver;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
+import io.mosire.simos.actor.spi.AdjustAccountsHandler;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.GmAutoApproveGate;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
@@ -488,6 +489,10 @@ public final class Shell implements AutoCloseable {
                 //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）；同时也进 commandTypes ⇒
                 //   simos.command.submit 的目标声明表（CommandTargets）同源认得它。──
                 new ActorSeedHandler(),
+                // ── actor（阶段 6 / 计划 §6.2）：actor.AdjustAccounts —— 按有符号净增量改 actor 账
+                //   （整条原子；缺账 + 纯正增量新建）。非 sd 前缀 ⇒ 自动进 drainableCommandTypes；
+                //   同时进 commandTypes ⇒ simos.command.submit 的目标声明表（CommandTargets）同源认得它。──
+                new AdjustAccountsHandler(),
                 new CreateNationHandler(),
                 new CreateArmyHandler(),
                 new CreateDecisionMakerHandler(),

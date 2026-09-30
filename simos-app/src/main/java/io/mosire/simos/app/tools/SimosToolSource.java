@@ -33,6 +33,7 @@ import io.mosire.simos.app.tools.read.StateResolveTool;
 import io.mosire.simos.app.tools.read.TimelineRevisionsTool;
 import io.mosire.simos.app.tools.read.UnitGetTool;
 import io.mosire.simos.app.tools.read.UnitListTool;
+import io.mosire.simos.app.tools.write.ActorAdjustAccountsTool;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.app.tools.write.AdvanceTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
@@ -358,6 +359,9 @@ public final class SimosToolSource implements ToolSource {
     // 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率。**只在 GM 桶**（与既有 unit 窄写同待遇）。
     built.add(new UnitSetJurisdictionTool(core, initiator, mapId));
     built.add(new UnitSetTaxRateTool(core, initiator, mapId));
+    // 辖区阶段 6（2026-09-30 / 计划 §6.2）：actor 净增量账原语（app 级抽取/组军组合工具的落账腿）。
+    //   **只在 GM 桶**：命令类型固定，模型只能给载荷；整条原子由域层判。
+    built.add(new ActorAdjustAccountsTool(core, initiator, mapId));
     // M3（spec §八.3）：sd 域余下的写命令 —— ★ **只在 GM 桶**（决策人桶有意不含这批）。
     built.add(new SdCreateNationTool(core, initiator, mapId));
     built.add(new SdCreateArmyTool(core, initiator, mapId));

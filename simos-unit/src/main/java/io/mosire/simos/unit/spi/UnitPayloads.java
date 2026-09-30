@@ -112,8 +112,8 @@ final class UnitPayloads {
   }
 
   /**
-   * 可选整数字段（long 量纲：辖区阶段 5 的三个 {@code levy*CapPerCycle}）：缺失或 {@code null} ⇒ 空 Optional （**未给 ⇒
-   * 保持原值**，不是清 0）；范围由 {@code Jurisdiction} 构造期判。
+   * 可选整数字段（long 量纲：辖区阶段 5 的三个 {@code levy*CapPerCommand}）：缺失或 {@code null} ⇒ 空 Optional （**未给 ⇒
+   * 保持原值**，不是清 0）；范围由 {@code Jurisdiction} 构造期判（≥ 0；语义 = 一条抽取命令的上限，0 = 该类无额度、拒）。
    */
   static Optional<Long> optionalLong(JsonNode payload, String field) {
     JsonNode value = payload.get(field);

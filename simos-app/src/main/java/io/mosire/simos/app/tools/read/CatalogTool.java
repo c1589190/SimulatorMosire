@@ -82,9 +82,11 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "unit.SetJurisdiction",
               "unitId, regions[regionId...]（必填；空数组 = 撤销全部管辖）,"
-                  + " levyGrainCapPerCycle?, levyMoneyCapPerCycle?, levyManpowerCapPerCycle?,"
+                  + " levyGrainCapPerCommand?, levyMoneyCapPerCommand?, levyManpowerCapPerCommand?,"
                   + " administrationPerMille?(0..1000)"
-                  + "（★ 每个 regionId 必须在当前地图里存在，否则具名拒；未给的可选字段保持原值）"),
+                  + "（★ 每个 regionId 必须在当前地图里存在，否则具名拒；未给的可选字段保持原值；"
+                  + "三个 levy*CapPerCommand 的上限 = 一条抽取命令的上限，0 = 该类无额度、拒，"
+                  + "本批不建周期累计账本）"),
           Map.entry(
               "unit.SetTaxRate",
               "unitId, regionId, ratePerMille(0..1000)"
@@ -204,6 +206,13 @@ public final class CatalogTool implements AgentTool {
                   + "goods 的 location 必须等于所在 entry 的 (q,r)，否则拒；"
                   + "owner 必须是载荷里声明的 actors ∪ 现有状态里已有的主体，悬空 owner 拒）"
                   + "（★ H0.5/裁定 S3：产权表 holdings 随 AssetHolding 整块退役 ⇒ 本切片唯一的账是 goods）"),
+          Map.entry(
+              "actor.AdjustAccounts",
+              "entries[{owner{kind,id}, q, r, goods{商品:有符号净增量}?, money{币种:有符号净增量}?}...]"
+                  + "（★ 阶段 6：净增量账原语。entries 必填非空；每项 owner/q/r 必填；"
+                  + "goods/money 至少一个非空、值不得为 0；同一 (owner,q,r) 不得重复；"
+                  + "缺账 + 纯正增量 ⇒ 新建，缺账 + 任何负增量 ⇒ 拒；"
+                  + "负增量使余额 < 0 或侵占冻结额（可支配 = 余额 − 冻结）⇒ 拒；整条原子）"),
           Map.entry("sd.CreateNation", "nationId, name, homeRegionId, adminBudgetPerTick"),
           Map.entry("sd.CreateArmy", "armyId, nationId, rootUnitId, name"),
           Map.entry(

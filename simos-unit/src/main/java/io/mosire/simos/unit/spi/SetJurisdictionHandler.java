@@ -21,10 +21,14 @@ import java.util.Optional;
 
 /**
  * {@code unit.SetJurisdiction} 命令的处理器（辖区阶段 5 / 计划 §2.2）：{@code unitId, regions[regionId…],
- * levyGrainCapPerCycle?, levyMoneyCapPerCycle?, levyManpowerCapPerCycle?, administrationPerMille?}。
+ * levyGrainCapPerCommand?, levyMoneyCapPerCommand?, levyManpowerCapPerCommand?,
+ * administrationPerMille?}。
  *
  * <p>★ <b>语义</b>：{@code regions} 必填（**可空数组 = 撤销全部管辖**）；区域集合整体替换、保留区域旧税率、新区域从 0 起；四个可选政策字段 未给 ⇒
  * 保持原值（单位原本无 {@code jurisdiction} ⇒ 用 0）。完整规则在 {@link UnitOperations#setJurisdiction}。
+ *
+ * <p>★★ <b>三个 {@code levy*CapPerCommand} 的语义（计划 §6.0-1）</b>：上限 = **一条**抽取命令的上限（0 =
+ * 该类无额度、拒）；本命令只改这三个数字，<b>不建周期累计账本</b>（具名：本批没有"每周期已抽多少"的状态）。
  *
  * <p>★ <b>区域存在性由领域层具名拒</b>：{@code GameMap} 从 {@code state.module("map")} 读（照 {@code
  * PlanSparseRouteHandler} 的形制），缺切片/类型不符 ⇒ 装配故障当场炸、不走拒绝路径；{@code regions} 里任一 id 不在 {@code
@@ -58,9 +62,9 @@ public final class SetJurisdictionHandler implements CommandHandler, CommandTarg
       for (String region : UnitPayloads.requireTextArray(payload, "regions")) {
         regions.add(RegionId.parse(region));
       }
-      Optional<Long> grainCap = UnitPayloads.optionalLong(payload, "levyGrainCapPerCycle");
-      Optional<Long> moneyCap = UnitPayloads.optionalLong(payload, "levyMoneyCapPerCycle");
-      Optional<Long> manpowerCap = UnitPayloads.optionalLong(payload, "levyManpowerCapPerCycle");
+      Optional<Long> grainCap = UnitPayloads.optionalLong(payload, "levyGrainCapPerCommand");
+      Optional<Long> moneyCap = UnitPayloads.optionalLong(payload, "levyMoneyCapPerCommand");
+      Optional<Long> manpowerCap = UnitPayloads.optionalLong(payload, "levyManpowerCapPerCommand");
       Optional<Integer> administration =
           UnitPayloads.optionalInt(payload, "administrationPerMille");
       UnitState next =

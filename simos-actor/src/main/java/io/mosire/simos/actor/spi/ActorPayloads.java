@@ -17,6 +17,7 @@ import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -25,11 +26,14 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
- * {@code actor.Seed} 命令的载荷解析助手（与 {@code EconomyPayloads} / {@code SocialPayloads} 同制）。
+ * actor 切片的载荷解析助手（与 {@code EconomyPayloads} / {@code SocialPayloads} 同制）：目前两条命令 —— {@code
+ * actor.Seed}（见下）与 {@code actor.AdjustAccounts}（见 {@link #adjustments}）。
  *
- * <p>★ <b>载荷形态是本模块的私事</b>（C26）：Core 只转交 {@code payloadJson} 字节串。形态如下（<b>与三个 record 的字段一一对应</b>）：
+ * <p>★ <b>载荷形态是本模块的私事</b>（C26）：Core 只转交 {@code payloadJson} 字节串。{@code actor.Seed} 的形态如下（<b>与三个
+ * record 的字段一一对应</b>）：
  *
  * <pre>{@code
  * {"mapId":"Map1","rulesVersion":"actor-v1","entries":[
@@ -156,6 +160,155 @@ final class ActorPayloads {
     // ★ 两张表 + 元信息**批量**装配（`ActorData` 的 bulk wither 的调用面就在这里，见裁定 R-ae / R-ah：Task 8 用不到就删，
     //   而本任务正是它们要等的那条路）："键从值派生"的校验由 ActorData 的构造期守卫统一把守，本类不自己拼键。
     return ActorData.empty().withMeta(Optional.of(meta)).withActors(actors).withAccounts(accounts);
+  }
+
+  // ── actor.AdjustAccounts（净增量账，阶段 6 / 计划 §6.2）────────────────────────────
+
+  /**
+   * ★★ <b>{@code actor.AdjustAccounts} 的一条账目</b>：{@code (owner, 格)} + 两张<b>有符号净增量</b>表。
+   *
+   * <p>★ 两张表<b>至少一张非空</b>（否则这条账目没有任何动作，解析期已拒）；表的迭代序 = 载荷里的键序（{@code LinkedHashMap}）， 构造期冻成不可变。★
+   * 增量是<b>净量</b>（不是存量），0 已在解析期拒（无操作条目请删）。
+   */
+  record AccountAdjustment(
+      ActorRef owner,
+      HexCoord location,
+      Map<CommodityId, Long> goods,
+      Map<CurrencyId, Long> money) {
+
+    AccountAdjustment {
+      if (owner == null || location == null || goods == null || money == null) {
+        throw new IllegalArgumentException("AccountAdjustment 的组件都不得为 null");
+      }
+      // ★ 冻在赋值处（保序不可变：LinkedHashMap + Collections.unmodifiableMap；不用 Map.copyOf）。
+      goods = Collections.unmodifiableMap(new LinkedHashMap<>(goods));
+      money = Collections.unmodifiableMap(new LinkedHashMap<>(money));
+    }
+  }
+
+  /**
+   * 解析 {@code actor.AdjustAccounts} 的载荷（形状见 {@code AdjustAccountsHandler} 的类注）： {@code
+   * entries[{owner{kind,id}, q, r, goods?, money?}...]}。
+   *
+   * <p>★ <b>本层只判形状 / 类型 / 词表 / 0 增量 / 同一 {@code (owner, 格)} 重复</b>；"负增量是否使余额 &lt; 0 / 侵占冻结额、
+   * 缺账能否新建"是<b>数值语义</b>，由 {@code AdjustAccountsHandler} 判（本层不重复实现）。
+   *
+   * @throws IllegalArgumentException 形状/类型/词表/0 增量/重复任一不合法（消息带 owner、位置、维度与数字）
+   */
+  static List<AccountAdjustment> adjustments(JsonNode payload) {
+    JsonNode entries = requireArray(payload, "entries");
+    if (entries.isEmpty()) {
+      throw new IllegalArgumentException("entries 不得为空");
+    }
+    List<AccountAdjustment> parsed = new ArrayList<>(entries.size());
+    Set<GoodsAccountKey> seen = new LinkedHashSet<>();
+    int index = 0;
+    for (JsonNode entry : entries) {
+      if (entry == null || !entry.isObject()) {
+        throw new IllegalArgumentException(
+            "字段 entries 的元素必须是 {owner{kind,id},q,r,goods?,money?} 对象: " + entry);
+      }
+      int q = requireInt(entry, "q");
+      int r = requireInt(entry, "r");
+      HexCoord at = new HexCoord(q, r);
+      ActorRef owner = adjustmentOwner(entry, index, at);
+      GoodsAccountKey key = new GoodsAccountKey(owner, at);
+      if (!seen.add(key)) {
+        throw new IllegalArgumentException(
+            "同一份载荷里账目重复：owner=" + owner + "，格 " + hex(at) + "（同一 (owner,格) 只能出现一次）");
+      }
+      Map<CommodityId, Long> goods = deltas(entry, index, owner, at, "goods", CommodityId::parse);
+      Map<CurrencyId, Long> money = deltas(entry, index, owner, at, "money", CurrencyId::parse);
+      if (goods.isEmpty() && money.isEmpty()) {
+        throw new IllegalArgumentException(
+            "entries["
+                + index
+                + "] 的 goods/money 至少一个必须非空（owner="
+                + owner
+                + "，格 "
+                + hex(at)
+                + "；无操作条目请删）");
+      }
+      parsed.add(new AccountAdjustment(owner, at, goods, money));
+      index++;
+    }
+    return List.copyOf(parsed);
+  }
+
+  /** 一条账目的 {@code owner}：形状/词表错都带 entries 下标与位置（见 {@link #adjustments} 的类注）。 */
+  private static ActorRef adjustmentOwner(JsonNode entry, int index, HexCoord at) {
+    JsonNode ownerNode = optionalObject(entry, "owner");
+    if (ownerNode == null) {
+      throw new IllegalArgumentException(
+          "entries[" + index + "] 的字段 owner 必须是 {kind,id} 对象: " + entry);
+    }
+    try {
+      return actorRef(ownerNode);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "entries[" + index + "] 的 owner 不合法（格 " + hex(at) + "）: " + e.getMessage(), e);
+    }
+  }
+
+  /**
+   * 一张有符号净增量表（{@code goods} / {@code money} 共用）：键交给 {@code idParser}（词表在 ID 类型里），值必须是整数。
+   *
+   * <ul>
+   *   <li>缺键 / {@code null} ⇒ 空表（"这张表没有动作"）；不是对象 ⇒ 拒；
+   *   <li><b>值为 0 ⇒ 拒</b>（"无操作条目请删"）——收下它只会让"这条载荷到底想干什么"多一个假动作；
+   *   <li>错误消息带 entries 下标、owner、位置与维度（哪张表、哪个键）。
+   * </ul>
+   */
+  private static <A> Map<A, Long> deltas(
+      JsonNode entry,
+      int index,
+      ActorRef owner,
+      HexCoord at,
+      String dimension,
+      Function<String, A> idParser) {
+    Map<A, Long> parsed = new LinkedHashMap<>();
+    JsonNode node = optionalObject(entry, dimension);
+    if (node == null) {
+      return parsed;
+    }
+    Iterator<Map.Entry<String, JsonNode>> it = node.fields();
+    while (it.hasNext()) {
+      Map.Entry<String, JsonNode> field = it.next();
+      A id;
+      long delta;
+      try {
+        id = idParser.apply(field.getKey());
+        delta = requireIntegral(field.getValue(), dimension + "." + field.getKey());
+      } catch (IllegalArgumentException e) {
+        throw new IllegalArgumentException(
+            "entries["
+                + index
+                + "] 的 "
+                + dimension
+                + " 键/值不合法（owner="
+                + owner
+                + "，格 "
+                + hex(at)
+                + "）: "
+                + e.getMessage(),
+            e);
+      }
+      if (delta == 0L) {
+        throw new IllegalArgumentException(
+            dimension
+                + " 的值不得为 0（无操作条目请删）：owner="
+                + owner
+                + "，格 "
+                + hex(at)
+                + "，"
+                + dimension
+                + "."
+                + field.getKey()
+                + "=0");
+      }
+      parsed.put(id, delta);
+    }
+    return parsed;
   }
 
   // ── 主体 / 库存 ────────────────────────────────────────────────────────────────────

@@ -355,11 +355,15 @@ public final class UnitOperations {
    *   <li>{@code regions} 的每个 id 必须在当前 {@code map.regions()} 里存在——不存在 ⇒ 具名拒（**不静默丢**，坏的 regionId
    *       不会变成"少管一个区域"）。
    *   <li>区域集合**整体替换**：不在 {@code regions} 里的旧区域连同其税率一并移除；保留区域的旧税率**upsert 保留**； 新区域的税率从 0 起。
-   *   <li>四个可选政策字段（三个 {@code levy*CapPerCycle} 与 {@code administrationPerMille}）**未给 ⇒ 保持原值**；
+   *   <li>四个可选政策字段（三个 {@code levy*CapPerCommand} 与 {@code administrationPerMille}）**未给 ⇒ 保持原值**；
    *       单位原本没有 {@code jurisdiction} ⇒ 保持 0。
    *   <li>{@code regions} 为空数组合法 = **撤销全部管辖**：结果是一个 {@code jurisdiction} present、税率表为空的单位
    *       （政策字段照常按上面的规则更新）——"空 map = 无管辖"是 {@link Jurisdiction} 的既定表示，不把整个 Optional 丢掉。
    * </ol>
+   *
+   * <p>★★ <b>三个 {@code levy*CapPerCommand} 的语义（计划 §6.0-1）</b>：上限 = **一条**抽取命令的上限（0 =
+   * 该类无额度、拒）；本方法只把这三个数字 upsert 进 {@link Jurisdiction}，<b>不建周期累计账本</b>（具名：本批没有"每周期已抽多少"
+   * 的状态，逐周期累计留待测试阶段后按需再裁）。负值由 {@link Jurisdiction} 构造期拒。
    *
    * <p>★ **纯函数**：产新 {@code UnitState}，变更集仍由 {@code UnitChangeSet.between} 派生。
    */
@@ -368,15 +372,15 @@ public final class UnitOperations {
       UnitId id,
       GameMap map,
       List<RegionId> regions,
-      Optional<Long> levyGrainCapPerCycle,
-      Optional<Long> levyMoneyCapPerCycle,
-      Optional<Long> levyManpowerCapPerCycle,
+      Optional<Long> levyGrainCapPerCommand,
+      Optional<Long> levyMoneyCapPerCommand,
+      Optional<Long> levyManpowerCapPerCommand,
       Optional<Integer> administrationPerMille) {
     Objects.requireNonNull(map, "map");
     Objects.requireNonNull(regions, "regions");
-    Objects.requireNonNull(levyGrainCapPerCycle, "levyGrainCapPerCycle");
-    Objects.requireNonNull(levyMoneyCapPerCycle, "levyMoneyCapPerCycle");
-    Objects.requireNonNull(levyManpowerCapPerCycle, "levyManpowerCapPerCycle");
+    Objects.requireNonNull(levyGrainCapPerCommand, "levyGrainCapPerCommand");
+    Objects.requireNonNull(levyMoneyCapPerCommand, "levyMoneyCapPerCommand");
+    Objects.requireNonNull(levyManpowerCapPerCommand, "levyManpowerCapPerCommand");
     Objects.requireNonNull(administrationPerMille, "administrationPerMille");
     Unit unit = require(state, id);
     Optional<Jurisdiction> current = unit.jurisdiction();
@@ -395,16 +399,16 @@ public final class UnitOperations {
     for (RegionId region : regions) {
       nextRates.put(region, oldRates.getOrDefault(region, 0L));
     }
-    long grainCap = current.map(Jurisdiction::levyGrainCapPerCycle).orElse(0L);
-    long moneyCap = current.map(Jurisdiction::levyMoneyCapPerCycle).orElse(0L);
-    long manpowerCap = current.map(Jurisdiction::levyManpowerCapPerCycle).orElse(0L);
+    long grainCap = current.map(Jurisdiction::levyGrainCapPerCommand).orElse(0L);
+    long moneyCap = current.map(Jurisdiction::levyMoneyCapPerCommand).orElse(0L);
+    long manpowerCap = current.map(Jurisdiction::levyManpowerCapPerCommand).orElse(0L);
     long adminPerMille = current.map(Jurisdiction::administrationPerMille).orElse(0L);
     Jurisdiction next =
         new Jurisdiction(
             nextRates,
-            levyGrainCapPerCycle.orElse(grainCap),
-            levyMoneyCapPerCycle.orElse(moneyCap),
-            levyManpowerCapPerCycle.orElse(manpowerCap),
+            levyGrainCapPerCommand.orElse(grainCap),
+            levyMoneyCapPerCommand.orElse(moneyCap),
+            levyManpowerCapPerCommand.orElse(manpowerCap),
             administrationPerMille.map(Integer::longValue).orElse(adminPerMille));
     return withUnit(state, withJurisdiction(unit, Optional.of(next)));
   }
@@ -444,9 +448,9 @@ public final class UnitOperations {
     Jurisdiction next =
         new Jurisdiction(
             nextRates,
-            current.levyGrainCapPerCycle(),
-            current.levyMoneyCapPerCycle(),
-            current.levyManpowerCapPerCycle(),
+            current.levyGrainCapPerCommand(),
+            current.levyMoneyCapPerCommand(),
+            current.levyManpowerCapPerCommand(),
             current.administrationPerMille());
     return withUnit(state, withJurisdiction(unit, Optional.of(next)));
   }
