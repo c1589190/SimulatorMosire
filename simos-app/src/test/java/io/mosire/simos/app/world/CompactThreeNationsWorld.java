@@ -570,15 +570,24 @@ public final class CompactThreeNationsWorld {
   /**
    * ★★ <b>R2a：用任意 profile 初始化单个 region</b>（CLASS_FIRST 小世界的入口）。
    *
-   * <p>★ 为什么必须<b>只播一国</b>：R1 的 {@code ClassFirstState} 是单 mode 状态、池键 = {@code (mode, 阶层位置)} ——
-   * 多国逐条追加时同键是"后播覆盖"，合并状态会被 {@code ClassFirstSettlement.restore} 的单 mode 前提拒掉。 多 region
-   * 聚合属后续轮次，本夹具不制造"看起来支持其实覆盖"的假象。
+   * <p>★ R2c 起 class-first 也支持多 region：{@link #initializeNations(CoreSimos,
+   * EconomySeeder.FoundationProfile)} 依次初始化三国，经 {@code ClassFirstState.merge} 合成世界级 4 池。
    */
   public static JsonNode initializeNation(
       CoreSimos core, RegionId region, EconomySeeder.FoundationProfile profile) throws IOException {
     return initializeNations(
             core, TestConditions.EMPTY, TYPICAL_CONDITIONS_NATION, List.of(region), profile)
         .get(0);
+  }
+
+  /**
+   * ★★ <b>R2c：用同一 profile 依次初始化三国</b>（三国 class-first 验收入口）——每次调用落一条 revision； 三国的 region
+   * 格集互不相同，economy.Seed 全部成功。
+   */
+  public static List<JsonNode> initializeNations(
+      CoreSimos core, EconomySeeder.FoundationProfile profile) throws IOException {
+    return initializeNations(
+        core, TestConditions.EMPTY, TYPICAL_CONDITIONS_NATION, NATION_REGIONS, profile);
   }
 
   /** 内部主循环：regions + profile 都可注入；旧入口在上面逐字保持（COMPLETE + 三国）。 */

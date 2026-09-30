@@ -2166,6 +2166,21 @@ public final class EconomySeeder {
     throw new IllegalStateException("CLASS_FIRST 的词表外社会阶层槽位（拒绝臆造映射）: " + slot);
   }
 
+  /**
+   * ★★ <b>R2c：classfirst 阶层池位置 → 社会阶层槽位</b>（{@link #classFirstPositionOf} 的逆，唯一拼写点）。
+   *
+   * <p>只读 {@code ClassRow} 投影要用它把"家户当前所属的池"翻回 {@code view.stratum}；映射本身仍只写在本类 {@link
+   * #CLASS_FIRST_POSITION_BY_SLOT} 一行，投影侧不另拍一份。
+   */
+  public static SocialClassId classFirstStratumOf(String positionId) {
+    for (int i = 0; i < CLASS_IDS.length; i++) {
+      if (CLASS_FIRST_POSITION_BY_SLOT[i].equals(positionId)) {
+        return new SocialClassId(CLASS_IDS[i]);
+      }
+    }
+    throw new IllegalStateException("CLASS_FIRST 的未知阶层池位置（无法投影为 ClassRow.view）: " + positionId);
+  }
+
   /** R2a：阶层池位置 → {@link PilotModel#classPositions()} 的下标（所有权数组的下标换算）。 */
   private static int classFirstPositionIndex(String positionId) {
     for (int i = 0; i < PilotModel.classPositions().size(); i++) {

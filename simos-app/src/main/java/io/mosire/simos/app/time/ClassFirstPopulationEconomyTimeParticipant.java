@@ -24,6 +24,7 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.change.SocialChangeSet;
+import io.mosire.simos.social.population.PopulationDynamics;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
@@ -45,7 +46,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * ★★ <b>R2b：class-first 生产路径上唯一的人口—经济时间参与者</b>（namespace 仍是 {@code "population"}）。
+ * ★★ <b>R2c：class-first 生产路径上唯一的人口—经济时间参与者</b>（namespace 仍是 {@code "population"}）。
  *
  * <p>它取代旧 {@link PopulationEconomyTimeParticipant} 在 {@code Shell} 里的注册位：<b>只调</b> {@link
  * ClassFirstSettlement#settleOneDay(ClassFirstState, ClassFirstSettlement.Inputs)}，<b>不</b>构造
@@ -59,18 +60,25 @@ import org.slf4j.LoggerFactory;
  * ② settleOneDay(base, inputs) → 新的 ClassFirstState（池 + 家户生产账户人口/劳动）+ AccountDelta + PopulationDelta + 日审计；
  * ③ AccountDelta 经 {@link ClassFirstActorWriteback} 折进 actor 账本（池级 → 家户级唯一一次展开；土地/农具无 actor 维度 ⇒ 具名 gap）；
  * ④ 家户人口差分经 {@link ClassFirstSocialWriteback} 同步 social 批次（具名 gap）+ 用当日口粮/布读数更新生理压力；
- * ⑤ 循环结束把最终 ClassFirstState 经 {@link EconomyChangeSet#between}、social/actor 经各自变更集交回（全部新对象，不改运行状态）。
+ * ⑤ 每 30 天调 {@code PopulationDynamics.monthly}，出生/死亡经 {@link ClassFirstPopulationWriteback} 接回
+ *    classfirst 池/家户账户（in-place 同步 social 的批次人数）；
+ * ⑥ classes 只读投影经 {@link ClassFirstClassProjection} 与家户账户对齐（键集/地址不变）；
+ * ⑦ 循环结束把最终 ClassFirstState 经 {@link EconomyChangeSet#between}、social/actor 经各自变更集交回（全部新对象，不改运行状态）。
  * </pre>
+ *
+ * <p>★★ <b>R2c 的世界级聚合</b>：三国的 {@code economy.Seed} 由 {@code ClassFirstState.merge} 把同键池/放贷账户按加法合并成
+ * <b>世界级 4 池</b>（不先做 region 维，区域地理后置）；本参与者因此一次推进整个世界，池内的阶层迁移/借贷/消费在世界范围内发生。
  *
  * <p>★★ <b>本轮如实边界</b>（计划允许，但必须点名）：
  *
  * <ul>
- *   <li><b>出生/死亡暂未接</b>：不调 {@code PopulationDynamics.monthly}（classfirst 引擎没有把生死写回池人口的入口）⇒
- *       人口只发生阶层移动，总数守恒；逐日生理压力已接（聚合口径，见 {@link ClassFirstSocialWriteback} 类注）；
+ *   <li><b>人口回写按 {@code (格, 居住类型)} 组聚合</b>：classfirst 家户没有年龄/性别维，出生/死亡先按组求和、再按家户人口权重最大余数法摊
+ *       （近似在"组内怎么分"，见 {@link ClassFirstPopulationWriteback}）；逐日生理压力仍是聚合满足率口径（见 {@link
+ *       ClassFirstSocialWriteback} 类注）；
  *   <li><b>actor 账的土地/农具维度不存在</b>：{@code ownedLand}/{@code tools} 的 AccountDelta 只落 classfirst
  *       池，落账时记具名 gap 并写日志；
- *   <li><b>economy.classes 的人口视图不随阶层移动刷新</b>：classfirst 池/家户生产账户才是人口真源；旧 {@code ClassRow} 的人口是 seed
- *       时的静态视图（R3 统一）。
+ *   <li><b>economy.classes 只是投影</b>：classfirst 池/家户生产账户才是人口/资产真源；{@link ClassRow} 的
+ *       population/labor/money 每次推进后从家户账户重算（只读，不再被任何生产路径当权威）。
  * </ul>
  *
  * <p>★ <b>未激活/无上界</b>：{@code range.to} 缺省、或 {@code economy.classFirst} 为空（含未播种与旧 legacy 世界）⇒
@@ -144,19 +152,23 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
     }
 
     ClassFirstState current = classFirst;
+    // ★★ R2c：旧 R2b 档可能带"旧档迁移器补出的合成 memberships"（class-first 不读它，但会让 classes 投影的
+    //    S1 守恒守卫误红）⇒ 推进前先剥掉这一旧口径影子（classFirst 是权威，memberships 不是）。
+    EconomyData currentEconomy =
+        economy.memberships().isEmpty() ? economy : economy.withMemberships(Map.of());
     ActorData currentActor = actor;
     SocialData currentSocial = social;
     LinkedHashSet<String> unmappedActorDimensions = new LinkedHashSet<>();
     boolean socialGapsLogged = false;
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
-      ClassFirstSettlement.Inputs inputs = inputsFor(current, economy, currentActor, day);
+      ClassFirstSettlement.Inputs inputs = inputsFor(current, currentEconomy, currentActor, day);
       ClassFirstSettlement.Result result = ClassFirstSettlement.settleOneDay(current, inputs);
       ClassFirstActorWriteback.Applied applied =
-          ClassFirstActorWriteback.apply(currentActor, economy, current, result);
+          ClassFirstActorWriteback.apply(currentActor, currentEconomy, current, result);
       currentActor = applied.data();
       unmappedActorDimensions.addAll(applied.unmappedDimensions());
       ClassFirstSocialWriteback.AppliedSocial socialApplied =
-          ClassFirstSocialWriteback.apply(currentSocial, economy, current, result);
+          ClassFirstSocialWriteback.apply(currentSocial, currentEconomy, current, result);
       currentSocial = socialApplied.data();
       if (!socialApplied.gaps().isEmpty() && !socialGapsLogged) {
         socialGapsLogged = true;
@@ -164,6 +176,30 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
             "classFirst → social 落账有具名缺口（本轮只报一次）：mapId={} gaps={}", mapId, socialApplied.gaps());
       }
       current = result.state();
+
+      // ★★ R2c：每 30 天（与旧协调器同一窗口）结算出生/死亡，并把 LotChange 接回 classfirst 池/家户账户。
+      //   次序与旧协调器一致：先跑完这一天的经济结算与两条写回，再做月度人口学；出生/死亡不产生商品/货币/土地/债务条目。
+      if (day % PopulationDynamics.SETTLEMENT_DAYS == 0L) {
+        PopulationDynamics.Outcome outcome = PopulationDynamics.monthly(currentSocial, day);
+        currentSocial = outcome.data();
+        if (!outcome.isEmpty()) {
+          ClassFirstPopulationWriteback.Applied populationApplied =
+              ClassFirstPopulationWriteback.apply(current, currentEconomy, outcome.changeList());
+          current = populationApplied.state();
+          LOG.info(
+              "classFirst 月度人口学接回：mapId={} day={} births={} deaths={} net={} classFirstPopulation={} socialPopulation={}",
+              mapId,
+              day,
+              populationApplied.births(),
+              populationApplied.deaths(),
+              populationApplied.births() - populationApplied.deaths(),
+              classFirstPopulation(current),
+              socialPopulation(currentSocial));
+        }
+      }
+
+      // ★★ R2c：每次推进后把只读 classes 投影刷新到与 classfirst 家户账户一致（键集/地址不变）。
+      currentEconomy = ClassFirstClassProjection.project(currentEconomy, current, currentActor);
     }
     if (!unmappedActorDimensions.isEmpty()) {
       LOG.info(
@@ -172,15 +208,31 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
           unmappedActorDimensions);
     }
 
-    EconomyData currentEconomy = economy.withClassFirst(current);
+    EconomyData currentEconomyFinal = currentEconomy.withClassFirst(current);
     return new WorldTimeProposal(
         NAMESPACE,
         Map.of(
-            ECONOMY, EconomyChangeSet.between(economy, currentEconomy),
+            ECONOMY, EconomyChangeSet.between(economy, currentEconomyFinal),
             SOCIAL, SocialChangeSet.between(social, currentSocial),
             ACTOR, ActorChangeSet.between(actor, currentActor)),
         reads,
         writes);
+  }
+
+  private static long classFirstPopulation(ClassFirstState state) {
+    long total = 0L;
+    for (ClassPool pool : state.classPools().values()) {
+      total += pool.population();
+    }
+    return total;
+  }
+
+  private static long socialPopulation(SocialData social) {
+    long total = 0L;
+    for (var group : social.groups().values()) {
+      total += group.count();
+    }
+    return total;
   }
 
   // ── 输入构造（经济状态 + actor 家户账 + social 人口）──────────────────────────────────

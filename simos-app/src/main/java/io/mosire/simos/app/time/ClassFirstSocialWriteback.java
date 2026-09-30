@@ -41,8 +41,9 @@ import java.util.Set;
  * <p>★★ <b>本轮的人口学边界（如实写在这里，报告同口径）</b>：
  *
  * <ul>
- *   <li><b>出生/死亡暂未接</b>：{@code PopulationDynamics.monthly} <b>未被调用</b> —— classfirst
- *       引擎没有"把出生/死亡写回池人口/家户人口" 的入口（那属 R3 的统一），此时跑月度结算只会让 social 与 classfirst 永久漂开 ⇒ 明说不接，而不是接半套；
+ *   <li><b>出生/死亡不在本类</b>：月度结算由参与者调 {@code PopulationDynamics.monthly} 后，经 {@link
+ *       ClassFirstPopulationWriteback} 落到 classfirst 家户账户；本类只做<b>逐日</b>的阶层移动 +
+ *       生理压力，避免同一条人口账被两处各写一遍；
  *   <li><b>逐日生理压力已接，但口径是聚合的</b>：用 classfirst 当日<b>口粮基准缺口</b>（{@code audit().baseRationGap()}）与当日布消费
  *       （{@code meta.totals()} 差分）/布需求算全体批次的满足率，再调 {@link
  *       PopulationDynamics#stressAfter}。引擎的消费是按池分的，而 social 批次没有阶层维 ⇒

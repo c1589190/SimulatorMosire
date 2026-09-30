@@ -47,6 +47,38 @@ public record PilotConfig(
     }
   }
 
+  /**
+   * ★ R2c：只换放贷主体（世界级合并后 lender 资金/商品是各国之和）—— 其余制度/技术参数逐字保留。
+   *
+   * <p>★ 为什么需要它：{@link ClassFirstState#merge} 要把多国 seed 的池与 lender 求和，而 {@code meta.config.lender}
+   * 也必须指向同一份合并后的 lender；否则"状态里的 lender"与"参数里的 lender"会成为同一件事的两处拼写。
+   */
+  public PilotConfig withLender(PilotModel.Lender replacement) {
+    if (replacement == null) {
+      throw new IllegalArgumentException("withLender 的 replacement 不得为 null");
+    }
+    return new PilotConfig(
+        mode,
+        replacement,
+        collectionPolicy,
+        mobilityPolicy,
+        yieldPerLand,
+        seedPerLand,
+        laborPerLand,
+        toolCapacityPerTool,
+        rentPerLand,
+        wagePerLabor,
+        baseRationPerCapita,
+        laborRationPerLabor,
+        nonEssentialNeedPerMille,
+        nonEssentialEfficiencyPenaltyPerMille,
+        loanInterestRatePerMille,
+        moneyPerGrain,
+        toolPricePerUnit,
+        reserveTicks,
+        collectionIntervalTicks);
+  }
+
   /** 单 mode 佃农制农业的最小可用参数。 */
   public static PilotConfig tenancyAgriculture(
       PilotModel.Lender lender, PilotModel.CollectionPolicy collectionPolicy) {

@@ -60,6 +60,12 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     EconomyData base = EconomySnapshots.of(state).data(); // 装配故障当场炸，不走拒绝路径
+    // ★★ R2c：CLASS_FIRST 的权威是 householdAccounts，不声明 memberships。而 EconomyData 的旧档迁移器会对"classes
+    //    非空 + memberships 空"的载荷自动补出合成成员份额（旧生产结构影子）：它既没有消费者，又会在人口回写后让
+    //    S1 的 ΣMembership == ΣClassRow 守恒守卫误红 ⇒ class-first 世界在入口就丢掉这一旧口径影子。
+    if (!base.classFirst().isEmpty()) {
+      base = base.withMemberships(Map.of());
+    }
     JsonNode payload;
     EconomyData seeded;
     try {
@@ -70,6 +76,21 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
       //   以 IllegalStateException fail-closed（"无法定位产业格"等）—— 它同样是**载荷语义错误**，
       //   必须在命令边界成为 Rejected，不允许穿出去变成整条推进/revision 失败（类注的"失败都以 Rejected 出面"）。
       return new HandlerOutcome.Rejected(e.getMessage());
+    }
+    if (!seeded.classFirst().isEmpty()) {
+      seeded = seeded.withMemberships(Map.of());
+    }
+    // ★★ R2c：class-first 与旧生产结构不混播 —— 混合世界的 memberships/classes 守恒口径无法同时成立，
+    //    而且旧结算在 R2b 后已无生产调用方。首次播种（base.meta 空）两种 profile 都放行；此后只许同类追加。
+    boolean baseIsClassFirst = !base.classFirst().isEmpty();
+    boolean seededIsClassFirst = !seeded.classFirst().isEmpty();
+    if (base.meta().isPresent() && baseIsClassFirst != seededIsClassFirst) {
+      return new HandlerOutcome.Rejected(
+          "CLASS_FIRST 与旧生产结构不能混播：base classFirst="
+              + (baseIsClassFirst ? "非空" : "空")
+              + "，本载荷 classFirst="
+              + (seededIsClassFirst ? "非空" : "空")
+              + "（旧结算已无生产调用方，混合世界不受支持）");
     }
     if (base.meta().isEmpty()) {
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, seeded)); // 首次播种：打标

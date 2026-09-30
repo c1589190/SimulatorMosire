@@ -261,10 +261,24 @@ public record ClassFirstState(
   }
 
   /**
-   * 追加合并：{@code this} 的插入序在前、{@code other} 覆盖同键；{@code meta} 取 tick 较大者（后播/后结算的状态赢）。
+   * ★★ <b>R2c：世界级追加合并（唯一入口）</b>：多国 {@code economy.Seed} 逐国到达时，把新载荷并进世界状态。
    *
-   * <p>用途只有一处：{@code economy.Seed} 对已激活世界按格追加时，把新载荷的 classFirst 并进已有状态。同键冲突时后播的值赢， 与 {@code
-   * EconomySeedHandler.merge} 的"后播覆盖"口径一致。
+   * <p>★★ <b>与 R1 旧口径的区别（这条是 R2c 的核心）</b>：旧版对全部表都是"同键后播覆盖"—— 三国 seed
+   * 会把前面国家的池/人口/资产全部盖掉（而池键里没有国家维）。R2c 起：
+   *
+   * <ul>
+   *   <li>{@code classPools}：同 {@code (mode, 阶层位置)} 键的池按 {@link ClassPool#mergedWith} <b>加法</b>合并
+   *       （人口/劳动/库存/债务/租约全部逐值求和）；
+   *   <li>{@code householdAccounts}：按 household id <b>append</b>；同 id 重复 ⇒
+   *       fail-closed（家户身份不能一份变两份）；
+   *   <li>{@code lenders}：同 id 的放贷主体把资金/商品 <b>逐值求和</b>（三国的 GOV 放贷窗口合成一个世界级窗口）；
+   *   <li>{@code accounts}/{@code classFlowEvents}：按 id 合并；同键且值不同 ⇒ fail-closed（不静默覆盖审计账）；
+   *   <li>{@code modeParticipations}/{@code assetStateSchemas}/{@code classBounds}/{@code
+   *       mobilityPolicies}： 世界制度面只有一份，保留已有（同键新值不覆盖），新键追加；
+   *   <li>{@code meta}：tick 取较大者，托管/累计读数/初始基数 <b>逐值求和</b>，config 的 lender 换成合并后的那一份。
+   * </ul>
+   *
+   * <p>★ <b>空态短路</b>：任一侧为空 ⇒ 直接返回另一侧（保持"尚未播种"的唯一字面量语义）。
    */
   public ClassFirstState merge(ClassFirstState other) {
     if (other == null || other.isEmpty()) {
@@ -273,22 +287,237 @@ public record ClassFirstState(
     if (this.isEmpty()) {
       return other;
     }
+    LinkedHashMap<ClassPoolId, ClassPool> pools = new LinkedHashMap<>(classPools);
+    for (Map.Entry<ClassPoolId, ClassPool> entry : other.classPools.entrySet()) {
+      ClassPool existing = pools.get(entry.getKey());
+      if (existing == null) {
+        pools.put(entry.getKey(), entry.getValue().copy());
+      } else {
+        pools.put(entry.getKey(), existing.mergedWith(entry.getValue()));
+      }
+    }
+
+    LinkedHashMap<HouseholdProductionAccountId, HouseholdProductionAccount> households =
+        new LinkedHashMap<>(householdAccounts);
+    for (Map.Entry<HouseholdProductionAccountId, HouseholdProductionAccount> entry :
+        other.householdAccounts.entrySet()) {
+      HouseholdProductionAccount previous =
+          households.putIfAbsent(entry.getKey(), entry.getValue());
+      if (previous != null && !previous.equals(entry.getValue())) {
+        throw new IllegalArgumentException(
+            "世界级合并时发现重复 householdId（家户身份不能一份变两份）："
+                + entry.getKey()
+                + " 已有 "
+                + previous
+                + "，新增 "
+                + entry.getValue());
+      }
+    }
+
+    LinkedHashMap<ModeParticipationId, ModeParticipation> participations =
+        new LinkedHashMap<>(modeParticipations);
+    other.modeParticipations.forEach(participations::putIfAbsent);
+    LinkedHashMap<ProductionModeId, AssetStateSchema> schemas =
+        new LinkedHashMap<>(assetStateSchemas);
+    other.assetStateSchemas.forEach(schemas::putIfAbsent);
+    LinkedHashMap<ClassPoolId, ClassBounds> bounds = new LinkedHashMap<>(classBounds);
+    other.classBounds.forEach(bounds::putIfAbsent);
+    LinkedHashMap<MobilityPolicyId, MobilityPolicy> policies =
+        new LinkedHashMap<>(mobilityPolicies);
+    other.mobilityPolicies.forEach(policies::putIfAbsent);
+
+    LinkedHashMap<ClassFlowEventId, ClassFlowEvent> flows = new LinkedHashMap<>(classFlowEvents);
+    for (Map.Entry<ClassFlowEventId, ClassFlowEvent> entry : other.classFlowEvents.entrySet()) {
+      ClassFlowEvent previous = flows.putIfAbsent(entry.getKey(), entry.getValue());
+      if (previous != null && !previous.equals(entry.getValue())) {
+        throw new IllegalArgumentException("世界级合并时发现冲突的 classFlowEvent id：" + entry.getKey());
+      }
+    }
+    LinkedHashMap<ClassFirstAccountId, ClassFirstAccount> mergedAccounts =
+        new LinkedHashMap<>(accounts);
+    for (Map.Entry<ClassFirstAccountId, ClassFirstAccount> entry : other.accounts.entrySet()) {
+      ClassFirstAccount previous = mergedAccounts.putIfAbsent(entry.getKey(), entry.getValue());
+      if (previous != null && !previous.equals(entry.getValue())) {
+        throw new IllegalArgumentException("世界级合并时发现冲突的双边账户 id：" + entry.getKey());
+      }
+    }
+    LinkedHashMap<ExternalLenderId, PilotModel.Lender> mergedLenders = new LinkedHashMap<>(lenders);
+    for (Map.Entry<ExternalLenderId, PilotModel.Lender> entry : other.lenders.entrySet()) {
+      mergedLenders.merge(entry.getKey(), entry.getValue(), ClassFirstState::mergeLender);
+    }
+
     return new ClassFirstState(
-        concat(modeParticipations, other.modeParticipations),
-        concat(classPools, other.classPools),
-        concat(householdAccounts, other.householdAccounts),
-        concat(assetStateSchemas, other.assetStateSchemas),
-        concat(classBounds, other.classBounds),
-        concat(mobilityPolicies, other.mobilityPolicies),
-        concat(classFlowEvents, other.classFlowEvents),
-        concat(accounts, other.accounts),
-        concat(lenders, other.lenders),
-        other.meta.tick() >= this.meta.tick() ? other.meta : this.meta);
+        participations,
+        pools,
+        households,
+        schemas,
+        bounds,
+        policies,
+        flows,
+        mergedAccounts,
+        mergedLenders,
+        mergeMeta(meta, other.meta, mergedLenders));
   }
 
-  private static <K, V> Map<K, V> concat(Map<K, V> base, Map<K, V> added) {
-    LinkedHashMap<K, V> merged = new LinkedHashMap<>(base);
-    merged.putAll(added);
-    return merged;
+  /** 同 id 放贷主体的加法合并：资金/商品求和；制度参数必须一致（不一致 = 同一放贷制度两处拼写 ⇒ fail-closed）。 */
+  private static PilotModel.Lender mergeLender(PilotModel.Lender base, PilotModel.Lender added) {
+    if (!base.id().equals(added.id())
+        || base.interestRatePerMille() != added.interestRatePerMille()
+        || base.nextDueTick() != added.nextDueTick()
+        || base.collectionPower() != added.collectionPower()) {
+      throw new IllegalArgumentException(
+          "同 id 放贷主体的制度参数不一致，拒绝静默覆盖：base=" + base + " added=" + added);
+    }
+    LinkedHashMap<String, Long> goods = new LinkedHashMap<>(base.goods());
+    for (Map.Entry<String, Long> entry : added.goods().entrySet()) {
+      goods.merge(entry.getKey(), entry.getValue(), Math::addExact);
+    }
+    return new PilotModel.Lender(
+        base.id(),
+        Math.addExact(base.money(), added.money()),
+        goods,
+        base.interestRatePerMille(),
+        base.nextDueTick(),
+        base.collectionPower());
+  }
+
+  /** 元信息的加法合并（tick 取 max，读数和求和，config 的 lender 换成合并后的那一份）。 */
+  private static ClassFirstMeta mergeMeta(
+      ClassFirstMeta base, ClassFirstMeta added, Map<ExternalLenderId, PilotModel.Lender> lenders) {
+    if (base.config() != null
+        && added.config() != null
+        && !base.config().mode().id().equals(added.config().mode().id())) {
+      throw new IllegalArgumentException(
+          "世界级合并的两侧 mode 不一致：base="
+              + base.config().mode().id()
+              + " added="
+              + added.config().mode().id());
+    }
+    PilotConfig config = base.config() != null ? base.config() : added.config();
+    if (config != null) {
+      PilotModel.Lender merged = lenders.get(ExternalLenderId.of(config.lender().id()));
+      if (merged != null && !merged.equals(config.lender())) {
+        config = config.withLender(merged);
+      }
+    }
+    return new ClassFirstMeta(
+        Math.max(base.tick(), added.tick()),
+        Math.addExact(base.landForSale(), added.landForSale()),
+        Math.addExact(base.landMarketEscrowGrain(), added.landMarketEscrowGrain()),
+        Math.addExact(base.landMarketEscrowMoney(), added.landMarketEscrowMoney()),
+        Math.addExact(base.totalLeaseHolding(), added.totalLeaseHolding()),
+        config,
+        addTotals(base.totals(), added.totals()),
+        addInitialTotals(base.initial(), added.initial()),
+        Math.addExact(base.stockEnrichmentViolations(), added.stockEnrichmentViolations()));
+  }
+
+  private static ClassFirstMeta.Totals addTotals(
+      ClassFirstMeta.Totals base, ClassFirstMeta.Totals added) {
+    return new ClassFirstMeta.Totals(
+        Math.addExact(base.producedGrainTotal(), added.producedGrainTotal()),
+        Math.addExact(base.seedUsedTotal(), added.seedUsedTotal()),
+        Math.addExact(base.rationConsumedTotal(), added.rationConsumedTotal()),
+        Math.addExact(base.clothConsumedTotal(), added.clothConsumedTotal()),
+        Math.addExact(base.borrowedGrainTotal(), added.borrowedGrainTotal()),
+        Math.addExact(base.borrowedMoneyTotal(), added.borrowedMoneyTotal()),
+        Math.addExact(base.boughtGrainTotal(), added.boughtGrainTotal()),
+        Math.addExact(base.liquidSeizedTotal(), added.liquidSeizedTotal()),
+        Math.addExact(base.landSeizedTotal(), added.landSeizedTotal()),
+        Math.addExact(base.capitalizedTotal(), added.capitalizedTotal()),
+        Math.addExact(base.redLightTotal(), added.redLightTotal()),
+        Math.addExact(base.collectionEventCount(), added.collectionEventCount()),
+        Math.addExact(base.interestChargedTotal(), added.interestChargedTotal()),
+        Math.addExact(base.rentPaidTotal(), added.rentPaidTotal()),
+        Math.addExact(base.wagePaidTotal(), added.wagePaidTotal()),
+        Math.addExact(base.externalSeedPaidTotal(), added.externalSeedPaidTotal()),
+        Math.addExact(base.residualPaidTotal(), added.residualPaidTotal()),
+        Math.addExact(base.taxPaidTotal(), added.taxPaidTotal()));
+  }
+
+  private static ClassFirstMeta.InitialTotals addInitialTotals(
+      ClassFirstMeta.InitialTotals base, ClassFirstMeta.InitialTotals added) {
+    return new ClassFirstMeta.InitialTotals(
+        Math.addExact(base.grainTotal(), added.grainTotal()),
+        Math.addExact(base.clothTotal(), added.clothTotal()),
+        Math.addExact(base.householdMoneyTotal(), added.householdMoneyTotal()),
+        Math.addExact(base.lenderMoneyTotal(), added.lenderMoneyTotal()),
+        Math.addExact(base.populationTotal(), added.populationTotal()),
+        Math.addExact(base.ownedLandTotal(), added.ownedLandTotal()),
+        Math.addExact(base.toolsTotal(), added.toolsTotal()),
+        Math.addExact(base.claimGrainMilli(), added.claimGrainMilli()));
+  }
+
+  /**
+   * ★★ <b>R2c：更新家户账户人口的唯一入口</b>：把 {@code replacements} 里给出的账户整条替换进 {@code
+   * householdAccounts}，并按<b>成员求和</b>重算每个 {@link ClassPool} 的 {@code population/labor}
+   * （池与家户账户因此不会各说各话）。
+   *
+   * <p>用途只有一处：出生/死亡接回时，{@code ClassFirstPopulationWriteback} 按 {@code (格, 居住类型)} 组把生死摊到 household
+   * 子账户，再经本方法把"家户人口/劳动"同步回池。★ 不碰库存/债务/账户：人口学不是商品/货币/土地守恒的写口。
+   *
+   * <p>★ <b>身份不可变</b>：替换必须保持 {@code
+   * id/poolId/householdId/name/laborPerCapita/participationSharePerMille} 与现有账户一致（只有 population 与
+   * laborUnits 允许变），否则当场抛 —— 人口回写不能变成"偷偷换家户"。
+   */
+  public ClassFirstState withHouseholdAccounts(
+      Map<HouseholdProductionAccountId, HouseholdProductionAccount> replacements) {
+    if (replacements == null || replacements.isEmpty()) {
+      return this;
+    }
+    LinkedHashMap<HouseholdProductionAccountId, HouseholdProductionAccount> nextHouseholds =
+        new LinkedHashMap<>(householdAccounts);
+    for (Map.Entry<HouseholdProductionAccountId, HouseholdProductionAccount> entry :
+        replacements.entrySet()) {
+      HouseholdProductionAccount existing = householdAccounts.get(entry.getKey());
+      HouseholdProductionAccount replacement = entry.getValue();
+      if (existing == null) {
+        throw new IllegalArgumentException("人口回写指名的家户账户不存在：" + entry.getKey());
+      }
+      if (replacement == null) {
+        throw new IllegalArgumentException("人口回写的家户账户不得为 null：" + entry.getKey());
+      }
+      if (replacement.population() < 0L || replacement.laborUnits() < 0L) {
+        throw new IllegalArgumentException("人口回写的家户账户人口/劳动不得为负：" + replacement);
+      }
+      if (!replacement.id().equals(existing.id())
+          || !replacement.poolId().equals(existing.poolId())
+          || !replacement.householdId().equals(existing.householdId())
+          || !replacement.name().equals(existing.name())
+          || replacement.laborPerCapita() != existing.laborPerCapita()
+          || replacement.participationSharePerMille() != existing.participationSharePerMille()) {
+        throw new IllegalArgumentException(
+            "人口回写只允许改 population/laborUnits，身份或制度字段不得变：" + existing + " -> " + replacement);
+      }
+      nextHouseholds.put(entry.getKey(), replacement);
+    }
+
+    LinkedHashMap<ClassPoolId, ClassPool> nextPools = new LinkedHashMap<>();
+    for (Map.Entry<ClassPoolId, ClassPool> entry : classPools.entrySet()) {
+      ClassPool pool = entry.getValue().copy();
+      long population = 0L;
+      long labor = 0L;
+      for (HouseholdProductionAccount account : nextHouseholds.values()) {
+        if (entry.getKey().equals(account.poolId())) {
+          population = Math.addExact(population, account.population());
+          labor = Math.addExact(labor, account.laborUnits());
+        }
+      }
+      pool.setPopulation(population);
+      pool.setLabor(labor);
+      nextPools.put(entry.getKey(), pool);
+    }
+
+    return new ClassFirstState(
+        modeParticipations,
+        nextPools,
+        nextHouseholds,
+        assetStateSchemas,
+        classBounds,
+        mobilityPolicies,
+        classFlowEvents,
+        accounts,
+        lenders,
+        meta);
   }
 }

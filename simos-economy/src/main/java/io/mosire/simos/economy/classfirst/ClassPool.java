@@ -204,6 +204,71 @@ public final class ClassPool {
     return Collections.unmodifiableMap(new LinkedHashMap<>(assetVector()));
   }
 
+  /**
+   * ★★ <b>R2c：世界级合并（唯一入口）</b>：把同一 {@code (mode, 阶层位置)} 键上的另一个池按<b>加法</b>并进本池 ——
+   * 人口/劳动/库存/债务/租约/借贷余额/累计余数全部逐值求和，效率按人口加权，冷却窗口取较晚者。
+   *
+   * <p>★★ <b>为什么不是"后播覆盖"</b>：三国的 seed 逐国到达，而池键里<b>没有国家维</b>（R2c 不做 region 维）⇒
+   * 若同键覆盖，世界只会留下最后一国的池；加法才让"世界级阶层池"= 三国之和。土地/工具/粮/布/钱/人口/lender 资金因此逐值求和（守恒逐值可核对）。
+   *
+   * <p>★ <b>派生维度</b>：{@code OPERATED_LAND}/{@code LEASE_SECURITY}/{@code DEBT} 本就不参与库存守恒，本方法也按
+   * 同口径求和（经营地/租约权利在种子态为 0；非种子态合并后由下一次结算重算）。
+   *
+   * @throws IllegalArgumentException 两个池的 {@code (modeId, classPositionId)} 不同（不同键不允许合并）
+   */
+  ClassPool mergedWith(ClassPool other) {
+    if (other == null) {
+      throw new IllegalArgumentException("mergedWith 的 other 不得为 null");
+    }
+    if (!modeId.equals(other.modeId) || !classPositionId.equals(other.classPositionId)) {
+      throw new IllegalArgumentException(
+          "只有同 (modeId, classPositionId) 的池可以合并：this="
+              + modeId
+              + "/"
+              + classPositionId
+              + " other="
+              + other.modeId
+              + "/"
+              + other.classPositionId);
+    }
+    ClassPool merged = new ClassPool(modeId, classPositionId);
+    merged.population = Math.addExact(population, other.population);
+    merged.labor = Math.addExact(labor, other.labor);
+    for (AssetKind kind : AssetKind.ordered()) {
+      if (kind == AssetKind.DEBT || kind == AssetKind.LEASE_SECURITY) {
+        continue; // 这两个维度各有专属字段（debtGrainMilli / leaseHolding），不按 assets 表重复求和
+      }
+      merged.assets.put(kind, Math.addExact(stock(kind), other.stock(kind)));
+    }
+    merged.setLeaseHolding(Math.addExact(leaseHolding, other.leaseHolding));
+    merged.setOperatedLand(
+        Math.addExact(stock(AssetKind.OPERATED_LAND), other.stock(AssetKind.OPERATED_LAND)));
+    LinkedHashMap<String, Long> debts = new LinkedHashMap<>(debtByUnit);
+    for (Map.Entry<String, Long> entry : other.debtByUnit.entrySet()) {
+      debts.merge(entry.getKey(), entry.getValue(), Math::addExact);
+    }
+    merged.debtByUnit.putAll(debts);
+    merged.debtGrainMilli = Math.addExact(debtGrainMilli, other.debtGrainMilli);
+    long totalPopulation = merged.population;
+    if (totalPopulation <= 0L) {
+      merged.laborEfficiencyPerMille =
+          Math.max(laborEfficiencyPerMille, other.laborEfficiencyPerMille);
+    } else {
+      long weighted =
+          Math.addExact(
+              Math.multiplyExact(laborEfficiencyPerMille, population),
+              Math.multiplyExact(other.laborEfficiencyPerMille, other.population));
+      merged.laborEfficiencyPerMille =
+          Math.min(1000L, (weighted + totalPopulation / 2L) / totalPopulation);
+    }
+    merged.flowUpRemainderMilli = Math.addExact(flowUpRemainderMilli, other.flowUpRemainderMilli);
+    merged.flowDownRemainderMilli =
+        Math.addExact(flowDownRemainderMilli, other.flowDownRemainderMilli);
+    merged.collectionCooldownUntilTick =
+        Math.max(collectionCooldownUntilTick, other.collectionCooldownUntilTick);
+    return merged;
+  }
+
   /** ★ R1：深拷贝 —— {@link ClassFirstState} 用它在不可变边界复制池；引擎用它在 restore 时把持久池拷回工作表。 拷贝后两份池互不影响。 */
   public ClassPool copy() {
     ClassPool copy = new ClassPool(modeId, classPositionId);

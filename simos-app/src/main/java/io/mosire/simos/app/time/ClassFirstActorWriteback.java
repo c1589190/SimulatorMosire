@@ -18,6 +18,7 @@ import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.economy.model.ClassRow;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -42,7 +43,7 @@ import java.util.Set;
  *   <li><b>维度缺口具名</b>：{@code ownedLand} / {@code tools} 在 actor 账本里<b>没有对应维度</b>（{@code
  *       AssetHolding} 已退役，{@link GoodsAccount} 只有商品与货币）⇒ 这两维只落在 classfirst 池、不折 actor，名字经 {@link
  *       Applied#unmappedDimensions()} 交回调用方并写日志（不静默）；
- *   <li><b>fail-closed</b>：池成员缺 {@code ClassRow}/actor 账、负增量超出可用余额（含冻结）、币种不唯一、放贷账户不唯一 —— 一律当场抛，
+ *   <li><b>fail-closed</b>：池成员缺 {@code ClassRow}/actor 账、负增量超出可用余额（含冻结）、币种不唯一、放贷账户组为空 —— 一律当场抛，
  *       绝不静默跳过（跳过 = 直接把货币/商品从守恒式里删掉）。
  * </ul>
  */
@@ -168,8 +169,15 @@ final class ClassFirstActorWriteback {
     return members;
   }
 
-  // ── 放贷账户增量 → GOV 账本 ─────────────────────────────────────────────────────────
+  // ── 放贷账户增量 → GOV 账本（世界级合并后可有多本）──────────────────────────────────────
 
+  /**
+   * ★★ R2c：放贷账户增量落进 actor 里的 <b>{@code GOVERNMENT} 账户组</b>。
+   *
+   * <p>多国 class-first seed 各在<b>本国首格</b>建一本 GOV 账户（同一 owner、不同 location ⇒ 不同 {@link
+   * GoodsAccountKey}），而 classfirst 的放贷主体是世界级单账户 ⇒ 逐池合并后 Σactor GOV 余额 == lender
+   * 资金。本方法把每条增量分到这些账户上：正增量按可用余额权重最大余数法，负增量按可用余额瀑布 —— 逐值分完，不静默丢。
+   */
   private static ActorData applyLenderDelta(
       ActorData actor, ClassFirstSettlement.AccountDelta delta, Set<CurrencyId> currencies) {
     Channel channel;
@@ -178,16 +186,27 @@ final class ClassFirstActorWriteback {
     } else {
       channel = Channel.ofCommodity(new CommodityId(delta.commodity()));
     }
-    GoodsAccountKey key = singleGovernmentAccount(actor, delta);
-    GoodsAccount book = actor.accounts().get(key);
-    if (book == null) {
-      throw new IllegalStateException("放贷账户的 actor 账本不在场：" + key + " delta=" + delta);
+    List<GoodsAccountKey> governments = governmentAccounts(actor, delta);
+    List<GoodsAccount> books = new ArrayList<>(governments.size());
+    for (GoodsAccountKey key : governments) {
+      GoodsAccount book = actor.accounts().get(key);
+      if (book == null) {
+        throw new IllegalStateException("放贷账户的 actor 账本不在场：" + key + " delta=" + delta);
+      }
+      books.add(book);
     }
-    return actor.withAccount(adjust(book, channel, delta.delta(), delta));
+    long[] shares = allocateAcrossBooks(delta, books, channel);
+    ActorData next = actor;
+    for (int i = 0; i < books.size(); i++) {
+      if (shares[i] != 0L) {
+        next = next.withAccount(adjust(books.get(i), channel, shares[i], delta));
+      }
+    }
+    return next;
   }
 
-  /** classfirst 的放贷主体（本项目 = 创世 GOV 账户）：actor 里必须恰有一个 {@code GOVERNMENT} 账。 */
-  private static GoodsAccountKey singleGovernmentAccount(
+  /** classfirst 的放贷主体（本项目 = 创世 GOV 账户）：世界级合并后允许 ≥1 本；键按规范串排序保证确定性。 */
+  private static List<GoodsAccountKey> governmentAccounts(
       ActorData actor, ClassFirstSettlement.AccountDelta delta) {
     List<GoodsAccountKey> governments = new ArrayList<>();
     for (GoodsAccountKey key : actor.accounts().keySet()) {
@@ -195,16 +214,45 @@ final class ClassFirstActorWriteback {
         governments.add(key);
       }
     }
-    if (governments.size() != 1) {
-      throw new IllegalStateException(
-          "放贷 AccountDelta 需要 actor 里恰有一个 GOVERNMENT 账户，实得 "
-              + governments.size()
-              + " 个"
-              + governments
-              + "："
-              + delta);
+    if (governments.isEmpty()) {
+      throw new IllegalStateException("放贷 AccountDelta 需要至少一个 actor GOVERNMENT 账户：" + delta);
     }
-    return governments.get(0);
+    governments.sort(Comparator.comparing(GoodsAccountKey::toString));
+    return governments;
+  }
+
+  /**
+   * 把一条放贷账户增量逐值分到 {@code books}：正增量按可用余额权重最大余数法（余额全 0 ⇒ 落第一本，确定性）； 负增量按可用余额（余额 −
+   * 冻结）从大到小瀑布扣减，分不完当场抛。
+   */
+  private static long[] allocateAcrossBooks(
+      ClassFirstSettlement.AccountDelta delta, List<GoodsAccount> books, Channel channel) {
+    long[] shares = new long[books.size()];
+    if (delta.delta() > 0L) {
+      long[] weights = new long[books.size()];
+      for (int i = 0; i < books.size(); i++) {
+        weights[i] = Math.max(0L, availableOf(books.get(i), channel));
+      }
+      return ClassFirstDistribution.largestRemainder(delta.delta(), weights);
+    }
+    long remaining = -delta.delta();
+    long[] available = new long[books.size()];
+    for (int i = 0; i < books.size(); i++) {
+      available[i] = availableOf(books.get(i), channel);
+    }
+    for (int index : ClassFirstDistribution.orderByDescending(available)) {
+      if (remaining == 0L) {
+        break;
+      }
+      long take = Math.min(remaining, available[index]);
+      shares[index] = -take;
+      remaining -= take;
+    }
+    if (remaining > 0L) {
+      throw new IllegalStateException(
+          "放贷 AccountDelta 超出 actor GOV 账户组的可用余额（余额 − 冻结）：剩余 " + remaining + " 条记录=" + delta);
+    }
+    return shares;
   }
 
   // ── 维度映射 ────────────────────────────────────────────────────────────────────────

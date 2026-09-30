@@ -23,6 +23,7 @@ import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.classfirst.AssetKind;
+import io.mosire.simos.economy.classfirst.ClassFirstPilotEngine;
 import io.mosire.simos.economy.classfirst.ClassFirstState;
 import io.mosire.simos.economy.classfirst.ClassPool;
 import io.mosire.simos.economy.classfirst.HouseholdProductionAccount;
@@ -66,18 +67,20 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * ★★ <b>R2b 的入口判据</b>：{@code economyProfile=class-first} 的真 worldgen 小世界，经<b>新参与者</b> {@link
- * ClassFirstPopulationEconomyTimeParticipant} + 真 {@code AdvanceTime} 推进：
+ * ★★ <b>R2c 的入口判据（三国世界）</b>：{@code economyProfile=class-first} 的真 worldgen 三国小世界，经<b>新参与者</b>
+ * {@link ClassFirstPopulationEconomyTimeParticipant} + 真 {@code AdvanceTime} 推进：
  *
  * <ol>
  *   <li>{@link ClassFirstState} 真的前进（tick 增加、池库存/累计读数变化，不是空转）；
- *   <li><b>AccountDelta 守恒</b>：每个池每维度的 actor 家户账合计 == 池库存（池级增量逐值落进家户账）；放贷账户同理；
- *   <li><b>人口守恒</b>：Σ池 == classfirst 初始总人口 == Σsocial 批次（逐日移动同步，不丢人）；
+ *   <li><b>AccountDelta 守恒</b>：每个池每维度的 actor 家户账合计 == 池库存（池级增量逐值落进家户账）；放贷账户（三国多本 GOV）合计同理；
+ *   <li><b>人口守恒/同步</b>：Σ池 == Σsocial 批次，且逐 {@code (格, 居住类型)} 对上；前 24 tick（无月度结算）人口恒定； 120 tick
+ *       后人口因出生/死亡真的变化，social 与 classfirst 逐值一致；
+ *   <li><b>classes 只读投影</b>：逐家户 population/laborMilli == classfirst 家户账户；
  *   <li><b>没有调用旧结算</b>：{@code economy.flows} / {@code industries} / {@code laborSupply} / {@code
  *       allocations} 在推进后仍为空（旧 {@code EconomyDayStepper} 会写这些表）。
  * </ol>
  *
- * <p>★ 它<b>不</b>测出生/死亡（R2b 明说"人口学暂未接"，见参与者类注）；数值直接打印，不建 Golden。
+ * <p>★ 数值直接打印，不建 Golden。
  */
 class ClassFirstPopulationEconomyTimeParticipantTest {
 
@@ -95,16 +98,17 @@ class ClassFirstPopulationEconomyTimeParticipantTest {
         new ClassFirstPopulationEconomyTimeParticipant(CompactThreeNationsWorld.MAP_ID);
     try (CoreSimos core = classFirstCore(store, participant)) {
       core.bootstrapGenesis(CompactThreeNationsWorld.state(CompactThreeNationsWorld.MAP_ID));
-      CompactThreeNationsWorld.initializeNation(
-          core, CompactThreeNationsWorld.GRANARY, EconomySeeder.FoundationProfile.CLASS_FIRST);
+      CompactThreeNationsWorld.initializeNations(core, EconomySeeder.FoundationProfile.CLASS_FIRST);
 
-      SimulationState seeded = core.replay(new StateRef(MAIN, new RevisionId(2L)));
+      SimulationState seeded = core.replay(new StateRef(MAIN, new RevisionId(4L)));
       EconomyData economy0 = CompactThreeNationsWorld.economyOf(seeded);
       ActorData actor0 = CompactThreeNationsWorld.actorOf(seeded);
       SocialData social0 = CompactThreeNationsWorld.socialOf(seeded);
       assertThat(economy0.classFirst().isEmpty()).as("class-first 世界必须种出池").isFalse();
       long seedStockSignature = poolStockSignature(economy0.classFirst());
       assertAccountConservation(economy0, actor0, economy0, actor0, "seed-baseline");
+      assertClassFirstConservation(economy0.classFirst(), "seed-baseline");
+      assertNoNegativeActorBalances(actor0, "seed-baseline");
 
       // ★ range.to 缺省 ⇒ 三片都交**不变**变更集（不是空提案、不抛、不回退旧结算）。
       WorldTimeProposal noUpper =
@@ -132,8 +136,9 @@ class ClassFirstPopulationEconomyTimeParticipantTest {
       assertThat(economy1.classFirst().meta().tick()).as("单日提案推进 1 tick").isEqualTo(1L);
       assertNoOldSettlement(economy1, "day1");
       assertAccountConservation(economy0, actor0, economy1, actor1, "day1");
-      assertPopulationConservation(economy0, social0, economy1, social1, "day1");
+      assertPopulationConservation(economy0, social0, economy1, social1, 0L, "day1");
       assertSocialMatchesClassfirstByLocation(economy1, social1, "day1");
+      assertClassesProjectionMatchesClassfirst(economy1, "day1");
       printReadings("TICK-1", economy1, actor1, social1);
 
       // ── ② 经 Core 真 AdvanceTime 0 → 24（一条 revision，内部逐日）────────────────────
@@ -147,8 +152,11 @@ class ClassFirstPopulationEconomyTimeParticipantTest {
           .isEqualTo(DAY_24);
       assertNoOldSettlement(economy24, "tick24");
       assertAccountConservation(economy0, actor0, economy24, actor24, "tick24");
-      assertPopulationConservation(economy0, social0, economy24, social24, "tick24");
+      assertClassFirstConservation(economy24.classFirst(), "tick24");
+      assertNoNegativeActorBalances(actor24, "tick24");
+      assertPopulationConservation(economy0, social0, economy24, social24, 0L, "tick24");
       assertSocialMatchesClassfirstByLocation(economy24, social24, "tick24");
+      assertClassesProjectionMatchesClassfirst(economy24, "tick24");
       assertThat(poolStockSignature(economy24.classFirst()))
           .as("24 tick 内真的发生生产/消费/移动（池库存签名变化）")
           .isNotEqualTo(seedStockSignature);
@@ -171,12 +179,32 @@ class ClassFirstPopulationEconomyTimeParticipantTest {
           .isEqualTo(DAY_120);
       assertNoOldSettlement(economy120, "tick120");
       assertAccountConservation(economy0, actor0, economy120, actor120, "tick120");
-      assertPopulationConservation(economy0, social0, economy120, social120, "tick120");
+      assertClassFirstConservation(economy120.classFirst(), "tick120");
+      assertNoNegativeActorBalances(actor120, "tick120");
+      long initialPopulation = poolPopulation(economy0.classFirst());
+      long finalPopulation = poolPopulation(economy120.classFirst());
+      assertThat(finalPopulation)
+          .as("120 tick 后人口学真的改变了人口（出生 − 死亡；不是只换池）")
+          .isGreaterThan(initialPopulation);
+      assertThat(socialPopulation(social120))
+          .as("Σsocial == Σclassfirst（出生/死亡两侧逐值同步）")
+          .isEqualTo(finalPopulation);
       assertSocialMatchesClassfirstByLocation(economy120, social120, "tick120");
+      assertClassesProjectionMatchesClassfirst(economy120, "tick120");
+      assertThat(newbornLotCount(social120))
+          .as("120 tick 内真的产生了出生批次（social 侧的新生 lot）")
+          .isPositive();
       long changedLots = changedLotCount(social0, social120);
       System.out.println(
-          "[R2B-SOCIAL-LOTS] changedCountLots=" + changedLots + "/" + social120.groups().size());
-      assertThat(changedLots).as("120 tick 的阶层移动真的同步到了 social 批次（逐 lot 人数有变化）").isPositive();
+          "[R2C-SOCIAL-LOTS] changedCountLots="
+              + changedLots
+              + "/"
+              + social120.groups().size()
+              + " newbornLots="
+              + newbornLotCount(social120)
+              + " populationDelta="
+              + (finalPopulation - initialPopulation));
+      assertThat(changedLots).as("120 tick 的阶层移动/生死真的同步到了 social 批次（逐 lot 人数有变化）").isPositive();
       printReadings("TICK-120", economy120, actor120, social120);
     }
   }
@@ -189,8 +217,76 @@ class ClassFirstPopulationEconomyTimeParticipantTest {
   private static void assertNoOldSettlement(EconomyData economy, String tag) {
     assertThat(economy.flows()).as("%s: class-first 路径不得写旧 FlowRow（旧结算的痕迹）", tag).isEmpty();
     assertThat(economy.industries()).as("%s: class-first 世界没有旧 industries", tag).isEmpty();
+    assertThat(economy.relations()).as("%s: class-first 路径不得写旧 relations", tag).isEmpty();
+    assertThat(economy.units()).as("%s: class-first 路径不得写旧 units", tag).isEmpty();
     assertThat(economy.laborSupply()).as("%s: class-first 路径不得写旧 laborSupply", tag).isEmpty();
     assertThat(economy.allocations()).as("%s: class-first 路径不得写旧 allocations", tag).isEmpty();
+  }
+
+  /** ★ R2c：土地/货币/债务守恒 + 无负库存/负人口（classfirst 权威侧 + actor 账本侧）。 */
+  private static void assertClassFirstConservation(ClassFirstState state, String tag) {
+    ClassFirstPilotEngine engine = ClassFirstPilotEngine.restore(state);
+    System.out.println(
+        "[R2C-CONSERVATION] "
+            + tag
+            + " ownedLand="
+            + engine.totalOwnedLand()
+            + " landForSale="
+            + engine.landForSale()
+            + " totalMoney="
+            + engine.totalMoney()
+            + " householdMoney="
+            + engine.totalHouseholdMoney()
+            + " lenderMoney="
+            + engine.totalLenderMoney()
+            + " debtMilli="
+            + engine.totalDebtGrainMilli()
+            + " claimMilli="
+            + engine.totalClaimGrainMilli()
+            + " accountNetSum="
+            + engine.accountNetSum());
+    assertThat(engine.totalOwnedLand() + engine.landForSale())
+        .as("%s: 土地守恒（Σ池 OWNED_LAND + LandForSale == 创世初始）", tag)
+        .isEqualTo(engine.initialOwnedLandTotal());
+    assertThat(engine.totalMoney())
+        .as("%s: 货币守恒（Σ池 + 放贷窗口 + 托管 == 创世初始家户+放贷）", tag)
+        .isEqualTo(engine.initialHouseholdMoneyTotal() + engine.initialLenderMoneyTotal());
+    assertThat(engine.accountNetSum()).as("%s: 双边账户净额之和恒为 0", tag).isZero();
+    assertThat(engine.totalDebtGrainMilli())
+        .as("%s: 债务 == 债权（双边记账）", tag)
+        .isEqualTo(engine.totalClaimGrainMilli());
+    for (ClassPool pool : state.classPools().values()) {
+      assertThat(pool.population())
+          .as("%s: 池人口不得为负: %s", tag, pool.classPositionId())
+          .isNotNegative();
+      assertThat(pool.debtGrainMilli()).as("%s: 池欠额不得为负", tag).isNotNegative();
+      for (AssetKind kind : AssetKind.ordered()) {
+        assertThat(pool.stock(kind))
+            .as("%s: %s.%s 不得为负", tag, pool.classPositionId(), kind)
+            .isNotNegative();
+      }
+    }
+    for (var lender : state.lenders().values()) {
+      assertThat(lender.money()).as("%s: 放贷窗口资金不得为负", tag).isNotNegative();
+    }
+  }
+
+  /** ★ R2c：actor 全部余额（含冻结）不得为负 —— 读侧复核落账没有偷偷透支。 */
+  private static void assertNoNegativeActorBalances(ActorData actor, String tag) {
+    for (GoodsAccount book : actor.accounts().values()) {
+      for (long value : book.balances().values()) {
+        assertThat(value).as("%s: actor 商品余额不得为负: %s", tag, book.key()).isNotNegative();
+      }
+      for (long value : book.frozenBalances().values()) {
+        assertThat(value).as("%s: actor 冻结商品不得为负: %s", tag, book.key()).isNotNegative();
+      }
+      for (long value : book.money().values()) {
+        assertThat(value).as("%s: actor 货币余额不得为负: %s", tag, book.key()).isNotNegative();
+      }
+      for (long value : book.frozenMoney().values()) {
+        assertThat(value).as("%s: actor 冻结货币不得为负: %s", tag, book.key()).isNotNegative();
+      }
+    }
   }
 
   /**
@@ -241,26 +337,63 @@ class ClassFirstPopulationEconomyTimeParticipantTest {
         .isEqualTo(stateMoneyDelta);
   }
 
-  /** 人口守恒：Σ池 == classfirst 初始总人口 == Σsocial 批次（social 侧同步的是逐日移动，不是月度生死）。 */
+  /**
+   * 人口守恒：{@code Σclassfirst == Σsocial} 逐值成立；若给定期望变化量，还断言两侧都恰好变化该值。
+   *
+   * <p>★ R2c 起总人口不再恒定：每 30 天出生/死亡会改两侧人数；移动只换池/换地点。故"移动窗口"传 {@code 0L}， 人口学窗口传 {@code null}
+   * 并由调用方另判读。
+   */
   private static void assertPopulationConservation(
       EconomyData beforeEconomy,
       SocialData beforeSocial,
       EconomyData afterEconomy,
       SocialData afterSocial,
+      Long expectedDelta,
       String tag) {
     long beforePoolPopulation = poolPopulation(beforeEconomy.classFirst());
     long afterPoolPopulation = poolPopulation(afterEconomy.classFirst());
     long beforeSocialPopulation = socialPopulation(beforeSocial);
     long afterSocialPopulation = socialPopulation(afterSocial);
-    assertThat(afterPoolPopulation)
-        .as("%s: classfirst 总人口守恒（移动只换池）", tag)
-        .isEqualTo(beforePoolPopulation);
+    if (expectedDelta != null) {
+      assertThat(afterPoolPopulation - beforePoolPopulation)
+          .as("%s: classfirst 人口变化量 == 期望（0 = 纯移动窗口）", tag)
+          .isEqualTo(expectedDelta);
+      assertThat(afterSocialPopulation - beforeSocialPopulation)
+          .as("%s: social 人口变化量 == 期望", tag)
+          .isEqualTo(expectedDelta);
+    }
     assertThat(afterSocialPopulation)
-        .as("%s: social 总人口恒定（本轮无出生/死亡）", tag)
-        .isEqualTo(beforeSocialPopulation);
-    assertThat(afterSocialPopulation)
-        .as("%s: Σsocial == Σclassfirst（逐日移动映射不丢人）", tag)
+        .as("%s: Σsocial == Σclassfirst（逐日移动与出生/死亡都不丢人）", tag)
         .isEqualTo(afterPoolPopulation);
+  }
+
+  /**
+   * ★ R2c：classes 只是 classfirst 家户账户的只读投影 —— 逐 household 断言 {@code population/laborMilli} 与账户一致。
+   */
+  private static void assertClassesProjectionMatchesClassfirst(EconomyData economy, String tag) {
+    for (HouseholdProductionAccount account : economy.classFirst().householdAccounts().values()) {
+      ClassRow row = economy.classes().get(HouseholdId.parse(account.householdId()));
+      assertThat(row).as("%s: 家户生产账户必须在 classes 投影里: %s", tag, account.householdId()).isNotNull();
+      assertThat(row.population())
+          .as("%s: classes.population == 家户账户人口: %s", tag, account.householdId())
+          .isEqualTo(account.population());
+      assertThat(row.laborMilli())
+          .as("%s: classes.laborMilli == 家户账户 laborUnits: %s", tag, account.householdId())
+          .isEqualTo(account.laborUnits());
+    }
+  }
+
+  /** 新生批次数（social 侧的 lot 细分以 {@code b<月>} 结尾 ⇒ 只可能是出生批次）。 */
+  private static long newbornLotCount(SocialData social) {
+    long births = 0L;
+    for (PopulationGroup group : social.groups().values()) {
+      String value = group.id().value();
+      int lastColon = value.lastIndexOf(':');
+      if (lastColon >= 0 && value.substring(lastColon + 1).startsWith("b")) {
+        births++;
+      }
+    }
+    return births;
   }
 
   /**
@@ -342,18 +475,22 @@ class ClassFirstPopulationEconomyTimeParticipantTest {
     return total;
   }
 
-  private static Optional<GoodsAccount> governmentAccount(ActorData actor) {
-    GoodsAccount found = null;
+  /** 世界级 GOV 汇总：三国 seed 各一本（同一 owner、不同格）⇒ 逐本求和，不要求唯一。 */
+  private static String governmentSummary(ActorData actor) {
+    long money = 0L;
+    long accounts = 0L;
+    StringBuilder goods = new StringBuilder();
     for (GoodsAccount book : actor.accounts().values()) {
-      if (book.key().owner().kind() == ActorKind.GOVERNMENT) {
-        if (found != null) {
-          throw new IllegalStateException(
-              "actor 里有多个 GOVERNMENT 账户: " + found.key() + " / " + book.key());
-        }
-        found = book;
+      if (book.key().owner().kind() != ActorKind.GOVERNMENT) {
+        continue;
+      }
+      accounts++;
+      money += book.money().values().stream().mapToLong(Long::longValue).sum();
+      if (!book.balances().isEmpty()) {
+        goods.append(book.balances());
       }
     }
-    return Optional.ofNullable(found);
+    return "accounts=" + accounts + " money=" + money + " goods=" + goods;
   }
 
   private static long poolCommodityTotal(ClassFirstState state, String commodity) {
@@ -456,15 +593,7 @@ class ClassFirstPopulationEconomyTimeParticipantTest {
           .append(" tools=")
           .append(pool.stock(AssetKind.TOOLS));
     }
-    String gov =
-        governmentAccount(actor)
-            .map(
-                book ->
-                    "money="
-                        + book.money().values().stream().mapToLong(Long::longValue).sum()
-                        + " goods="
-                        + book.balances())
-            .orElse("缺失");
+    String gov = governmentSummary(actor);
     System.out.println(
         "[R2B-"
             + tag

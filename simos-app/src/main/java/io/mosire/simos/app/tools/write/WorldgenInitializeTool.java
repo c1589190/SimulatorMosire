@@ -391,13 +391,8 @@ public final class WorldgenInitializeTool implements AgentTool {
       }
       StateRef base = new StateRef(branch, head.get());
       SimulationState state = core.replay(base);
-      // ★★ R2a：classFirst 是单 mode 状态；已有非空 classFirst 时再播一国会按同键覆盖（R1 merge 的"后播赢"）。
-      //    多 region 聚合未实现 ⇒ fail-closed，不静默丢掉第一个 seed 的池/账户。
-      if (economyProfile == EconomySeeder.FoundationProfile.CLASS_FIRST
-          && !ToolSupport.economyData(state).classFirst().isEmpty()) {
-        return ToolResult.error(
-            "REJECTED", "CLASS_FIRST 的 classFirst 已存在（同一世界只支持一个 class-first seed；多 region 聚合未实现）");
-      }
+      // ★★ R2c：多 region class-first 已支持 —— 三国的 seed 逐国到达，EconomySeedHandler 经 ClassFirstState.merge
+      //    把同键池/放贷账户按加法合并成世界级状态（不再拒绝第二个 class-first seed）。
       GameMap map = ToolSupport.gameMap(state);
 
       WorldgenConfig config = loadConfig(randomizeArg);

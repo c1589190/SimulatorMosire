@@ -1,7 +1,6 @@
 package io.mosire.simos.app.world;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
@@ -89,8 +88,8 @@ import org.junit.jupiter.api.io.TempDir;
  *       读回逐值往返（修 R1 的 {@code ClassPool} 裸 Jackson 绑定缺口）。
  * </ol>
  *
- * <p>★ <b>为什么只播一国</b>：R1 的 classFirst 是单 mode 状态、池键 = {@code (mode, 阶层位置)}，多国追加会按同键覆盖； 本类用 {@link
- * CompactThreeNationsWorld#initializeNation} 的\"单 region + 任意 profile\"入口。
+ * <p>★ <b>R2c：三国一起播</b>：本类现在依次播完三国 class-first seed，逐值核对世界级 4 池 = 三国之和（人口 / 家户账户 / 土地 / 农具 / 货币 /
+ * lender 资金），并直接经 {@code ClassFirstSettlement} 推进 24 tick 验证守恒。
  */
 class ClassFirstEconomySeedTest {
 
@@ -105,33 +104,29 @@ class ClassFirstEconomySeedTest {
     Path store = Files.createDirectories(tempDir.resolve("class-first-store"));
     try (CoreSimos core = worldgenCore(store)) {
       core.bootstrapGenesis(CompactThreeNationsWorld.state(CompactThreeNationsWorld.MAP_ID));
-      JsonNode summary =
-          CompactThreeNationsWorld.initializeNation(
-              core, CompactThreeNationsWorld.GRANARY, EconomySeeder.FoundationProfile.CLASS_FIRST);
-      assertThat(summary.get("revision").asLong()).as("创世 1 条 + 本次 1 条").isEqualTo(2L);
-      // ★ 多 region class-first 目前未实现：第二个 seed 必须被具名拒绝（不是静默覆盖第一个的池）。
-      assertThatThrownBy(
-              () ->
-                  CompactThreeNationsWorld.initializeNation(
-                      core,
-                      CompactThreeNationsWorld.WEAVING_PORT,
-                      EconomySeeder.FoundationProfile.CLASS_FIRST))
-          .isInstanceOf(IllegalStateException.class)
-          .hasMessageContaining("classFirst 已存在");
+      List<JsonNode> summaries =
+          CompactThreeNationsWorld.initializeNations(
+              core, EconomySeeder.FoundationProfile.CLASS_FIRST);
+      assertThat(summaries).as("R2c：三国 class-first seed 全部成功").hasSize(3);
+      assertThat(summaries.get(2).get("revision").asLong()).as("创世 1 条 + 三国各 1 条").isEqualTo(4L);
 
-      SimulationState seeded = core.replay(new StateRef(MAIN, new RevisionId(2L)));
+      SimulationState seeded = core.replay(new StateRef(MAIN, new RevisionId(4L)));
       EconomyData economy = CompactThreeNationsWorld.economyOf(seeded);
       ActorData actor = CompactThreeNationsWorld.actorOf(seeded);
       ClassFirstState state = economy.classFirst();
       assertThat(state.isEmpty()).as("CLASS_FIRST 必须真的种出池与账户").isFalse();
       assertThat(state.modeParticipations()).hasSize(4);
-      assertThat(state.classPools()).hasSize(4);
+      assertThat(state.classPools()).as("世界级聚合后仍只有 4 个池（同键加法，不按国家分池）").hasSize(4);
       assertThat(state.assetStateSchemas()).hasSize(1);
       assertThat(state.classBounds()).hasSize(4);
       assertThat(state.mobilityPolicies()).hasSize(1);
-      assertThat(state.householdAccounts()).as("每个有人口的 ClassRow 一个生产账户").isNotEmpty();
+      long positiveRows =
+          economy.classes().values().stream().filter(row -> row.population() > 0L).count();
+      assertThat(state.householdAccounts())
+          .as("家户账户数 = 三国合计（每个有人口的 ClassRow 一个生产账户）")
+          .hasSize((int) positiveRows);
       assertThat(state.accounts()).as("创世零债务：双边账户表为空").isEmpty();
-      assertThat(state.lenders()).hasSize(1);
+      assertThat(state.lenders()).as("三国同 id 放贷窗口合并成 1 个").hasSize(1);
       assertThat(state.meta().config()).as("schema/bounds/policy/config 全部显式落在状态里").isNotNull();
       Set<String> positions = new TreeSet<>();
       for (ClassPool pool : state.classPools().values()) {
@@ -154,15 +149,16 @@ class ClassFirstEconomySeedTest {
       assertThat(economy.laborSupply()).isEmpty();
       assertThat(economy.allocations()).isEmpty();
       assertThat(economy.flows()).isEmpty();
+      assertThat(economy.memberships()).as("R2c：class-first 入口丢弃旧档迁移器补出的合成成员份额（旧生产结构影子）").isEmpty();
       assertThat(economy.classes()).as("classes 只是人口/账户视图，保留").isNotEmpty();
       assertThat(economy.markets()).as("市场壳保留").isNotEmpty();
 
-      // ── 池资产 = actor 家户账本的同一次开缸数字（不双计、不另算） ────────────────────
+      // ── 三国求和：人口 / 池资产 = actor 家户账本的同一次开缸数字（不双计、不另算） ────────
       long poolPopulation =
           state.classPools().values().stream().mapToLong(ClassPool::population).sum();
       assertThat(poolPopulation)
-          .as("Σ池人口 == seed 人口")
-          .isEqualTo(summary.get("totalPopulation").asLong());
+          .as("Σ世界池人口 == 三国人口")
+          .isEqualTo(CompactThreeNationsWorld.TOTAL_POPULATION);
       Map<String, long[]> householdTotals = aggregateActorHouseholds(economy, actor);
       for (ClassPool pool : state.classPools().values()) {
         long[] want = householdTotals.get(pool.classPositionId());
@@ -184,25 +180,27 @@ class ClassFirstEconomySeedTest {
                     state.meta().config().mode().id(), positionOf(row.view().stratum().value())));
       }
 
-      // ── 独立 GOV 放贷账户：大量钱、零商品、不属任何池 ────────────────────────────────
+      // ── 独立 GOV 放贷账户：三国各一本（同一 owner、不同格），合计 == 合并后的 lender 资金 ─────
       var lender = state.lenders().values().iterator().next();
       assertThat(lender.id()).isEqualTo(EconomySeeder.CLASS_FIRST_LENDER_ID);
-      assertThat(lender.money()).as("GOV 放贷窗口有大量资金").isPositive();
+      assertThat(lender.money()).as("GOV 放贷窗口有大量资金（三国之和）").isPositive();
       assertThat(lender.goods()).as("GOV 放贷窗口 0 流动性（不放货）").isEmpty();
-      GoodsAccount govAccount = null;
+      long govMoney = 0L;
+      int govAccounts = 0;
       for (GoodsAccount candidate : actor.accounts().values()) {
         if (candidate
             .key()
             .owner()
             .equals(GovernmentActors.of(EconomySeeder.GENESIS_GOVERNMENT_ID))) {
-          govAccount = candidate;
-          break;
+          govAccounts++;
+          assertThat(candidate.balances()).as("GOV 账户只放钱、不放货").isEmpty();
+          govMoney =
+              Math.addExact(
+                  govMoney, candidate.money().getOrDefault(EconomySeeder.MARKET_NUMERAIRE, 0L));
         }
       }
-      assertThat(govAccount).as("actor.Seed 要建 GOV 账户（与 classFirst 的 lender 同额）").isNotNull();
-      assertThat(govAccount.balances()).isEmpty();
-      assertThat(govAccount.money().getOrDefault(EconomySeeder.MARKET_NUMERAIRE, 0L))
-          .isEqualTo(lender.money());
+      assertThat(govAccounts).as("三国 seed 各建一本 GOV 账户（同一 owner、不同格）").isEqualTo(3);
+      assertThat(govMoney).as("Σactor GOV 货币 == 合并后的 lender 资金").isEqualTo(lender.money());
 
       // ── 用正式入口直接推进 24 tick：守恒断言 ─────────────────────────────────────────
       long initialPopulation =
@@ -210,6 +208,27 @@ class ClassFirstEconomySeedTest {
       ClassFirstPilotEngine seededEngine = ClassFirstPilotEngine.restore(state);
       long initialMoney = seededEngine.totalMoney();
       long initialOwnedLand = seededEngine.initialOwnedLandTotal();
+      System.out.println(
+          "[CLASS-FIRST-SEED] pools="
+              + state.classPools().size()
+              + " households="
+              + state.householdAccounts().size()
+              + " population="
+              + initialPopulation
+              + " grain="
+              + seededEngine.totalGrain()
+              + " cloth="
+              + seededEngine.totalCloth()
+              + " householdMoney="
+              + seededEngine.totalHouseholdMoney()
+              + " lenderMoney="
+              + seededEngine.totalLenderMoney()
+              + " ownedLand="
+              + seededEngine.totalOwnedLand()
+              + " tools="
+              + seededEngine.totalTools()
+              + " landForSale="
+              + seededEngine.landForSale());
       ClassFirstState current = state;
       for (long day = 1L; day <= TICKS; day++) {
         ClassFirstSettlement.Result result =
@@ -387,33 +406,41 @@ class ClassFirstEconomySeedTest {
     for (ClassRow row : economy.classes().values()) {
       classHexes.add(row.view().hex());
     }
-    long landMilliMu = 0L;
-    long workshops = 0L;
-    for (HexCoord hex : classHexes) {
-      String terrain = map.terrainIndex().get(hex);
-      assertThat(terrain).as("classes 的格必须在地图上: %s", hex).isNotNull();
-      landMilliMu += EconomySeeder.landMilliMuOf(terrain);
-      long urban = 0L;
-      for (PopulationGroup group : social.groups().values()) {
-        if (group.residence().equals(hex) && PopulationLots.isUrban(group)) {
-          urban += group.count();
+    // ★★ R2c：CLASS_FIRST 逐国播种 ⇒ 土地/工具按国先各自取整再求和（不是拿三国毫亩总和一次取整）。
+    long expectedLand = 0L;
+    long expectedTools = 0L;
+    for (Region region : map.regions().values()) {
+      long landMilliMu = 0L;
+      long workshops = 0L;
+      for (HexCoord hex : classHexes) {
+        if (!region.hexes().contains(hex)) {
+          continue;
         }
+        String terrain = map.terrainIndex().get(hex);
+        assertThat(terrain).as("classes 的格必须在地图上: %s", hex).isNotNull();
+        landMilliMu += EconomySeeder.landMilliMuOf(terrain);
+        long urban = 0L;
+        for (PopulationGroup group : social.groups().values()) {
+          if (group.residence().equals(hex) && PopulationLots.isUrban(group)) {
+            urban += group.count();
+          }
+        }
+        workshops += urban / EconomySeeder.URBAN_CAPITA_PER_WORKSHOP;
       }
-      workshops += urban / EconomySeeder.URBAN_CAPITA_PER_WORKSHOP;
+      expectedLand += landMilliMu / 1000L;
+      expectedTools +=
+          workshops
+              * EconomySeeder.toolPerWorkshopMilli()
+              / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
     }
-    long expectedLand = landMilliMu / 1000L;
-    long expectedTools =
-        workshops
-            * EconomySeeder.toolPerWorkshopMilli()
-            / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
     long poolLand =
         state.classPools().values().stream()
             .mapToLong(pool -> pool.stock(AssetKind.OWNED_LAND))
             .sum();
     long poolTools =
         state.classPools().values().stream().mapToLong(pool -> pool.stock(AssetKind.TOOLS)).sum();
-    assertThat(poolLand).as("Σ池土地 == 本 seed 可耕地（毫亩→亩）").isEqualTo(expectedLand);
-    assertThat(poolTools).as("Σ池农具 == 本 seed 作坊工具存量（毫工具→件）").isEqualTo(expectedTools);
+    assertThat(poolLand).as("Σ池土地 == 三国可耕地之和（逐国毫亩→亩）").isEqualTo(expectedLand);
+    assertThat(poolTools).as("Σ池农具 == 三国作坊工具存量之和（逐国）").isEqualTo(expectedTools);
   }
 
   /** 社会阶层槽位 → 阶层池位置（与 {@code EconomySeeder.CLASS_FIRST_POSITION_BY_SLOT} 同一映射的测试侧拼写）。 */
