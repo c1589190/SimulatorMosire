@@ -39,6 +39,9 @@ import io.mosire.simos.app.tools.write.AdvanceTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.EconomyAdjustTool;
 import io.mosire.simos.app.tools.write.ForkTool;
+import io.mosire.simos.app.tools.write.GovCreateOfficeTool;
+import io.mosire.simos.app.tools.write.GovDismissTool;
+import io.mosire.simos.app.tools.write.GovRecruitTool;
 import io.mosire.simos.app.tools.write.IssueDebtTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
 import io.mosire.simos.app.tools.write.LevyRegionTool;
@@ -373,10 +376,16 @@ public final class SimosToolSource implements ToolSource {
     built.add(new UnitSetArmyFormationTool(core, initiator, mapId));
     // 阶段 10b-i（2026-10-01 GOV 计划）：GOV 政策 / 上级层级两条窄工具。**只在 GM 桶**。
     //   ★ **有意不为 unit.RecruitStaff / unit.DismissStaff 配窄工具**：那会变成"凭空造人 / 跳过退休支付"的
-    //   直通口。两条命令本身已注册（非 GmOnly），由 10b-ii 的配套工具批（social.SeedGroups + RecruitStaff +
-    //   sd.PutInfo / actor 支付 + DismissStaff + social 回写）或决策令批使用。
+    //   直通口。两条命令本身已注册（非 GmOnly），由阶段 10b-ii 的三条配套工具批（createOffice / recruit / dismiss）
+    //   或决策令批使用；★ 离编人员的**社会回写**明确留阶段 13（见 GovDismissTool/GovDismissPlan 类注的具名缺口）。
     built.add(new UnitSetGovPolicyTool(core, initiator, mapId));
     built.add(new UnitSetGovSuperiorTool(core, initiator, mapId));
+    // 阶段 10b-ii（2026-10-01 GOV 计划）：三条 GOV 组合工具（建 GOV+绑决策人 / 招募 / 离编+退休待遇）。
+    //   **只在 GM 桶**；★ 三个工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；各自走 CoreSimos.submitBatch
+    //   一批一条 revision（批内固定顺序与载荷见各自 *Plan 类）。
+    built.add(new GovCreateOfficeTool(core, query, initiator, mapId));
+    built.add(new GovRecruitTool(core, query, initiator, mapId));
+    built.add(new GovDismissTool(core, query, initiator, mapId));
     // 辖区阶段 6（2026-09-30 / 计划 §6.2）：actor 净增量账原语（app 级抽取/组军组合工具的落账腿）。
     //   **只在 GM 桶**：命令类型固定，模型只能给载荷；整条原子由域层判。
     built.add(new ActorAdjustAccountsTool(core, initiator, mapId));
