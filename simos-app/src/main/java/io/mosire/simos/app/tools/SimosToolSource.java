@@ -39,9 +39,13 @@ import io.mosire.simos.app.tools.write.AdvanceTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.EconomyAdjustTool;
 import io.mosire.simos.app.tools.write.ForkTool;
+import io.mosire.simos.app.tools.write.GovAbsorbUnitTool;
 import io.mosire.simos.app.tools.write.GovCreateOfficeTool;
 import io.mosire.simos.app.tools.write.GovDismissTool;
+import io.mosire.simos.app.tools.write.GovDispatchTeamTool;
 import io.mosire.simos.app.tools.write.GovRecruitTool;
+import io.mosire.simos.app.tools.write.GovRetireStaffTool;
+import io.mosire.simos.app.tools.write.GovSelectExamineesTool;
 import io.mosire.simos.app.tools.write.IssueDebtTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
 import io.mosire.simos.app.tools.write.LevyRegionTool;
@@ -386,6 +390,15 @@ public final class SimosToolSource implements ToolSource {
     built.add(new GovCreateOfficeTool(core, query, initiator, mapId));
     built.add(new GovRecruitTool(core, query, initiator, mapId));
     built.add(new GovDismissTool(core, query, initiator, mapId));
+    // 阶段 13A（2026-10-01 GOV/Army 计划 §2.6 人员流转）：四条 GOV 组合工具——
+    //   selectExaminees（辖区选人 → 无标签纯人员单位，可规划到目的 GOV）、dispatchTeam（GOV 编制出人 → 纯人员单位，
+    //   armed 时加 ArmyFormation）、absorbUnit（吸收纯人员单位进编制，可解散已空源）、retireStaff（离编 + 退休待遇 +
+    //   社会回写）。**只在 GM 桶**；★ 四个工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；各自走
+    //   CoreSimos.submitBatch 一批一条 revision（批内固定顺序与载荷见各自 *Plan 类）。
+    built.add(new GovSelectExamineesTool(core, query, initiator, mapId));
+    built.add(new GovDispatchTeamTool(core, query, initiator, mapId));
+    built.add(new GovAbsorbUnitTool(core, query, initiator, mapId));
+    built.add(new GovRetireStaffTool(core, query, initiator, mapId));
     // 辖区阶段 6（2026-09-30 / 计划 §6.2）：actor 净增量账原语（app 级抽取/组军组合工具的落账腿）。
     //   **只在 GM 桶**：命令类型固定，模型只能给载荷；整条原子由域层判。
     built.add(new ActorAdjustAccountsTool(core, initiator, mapId));
