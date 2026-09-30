@@ -1,13 +1,26 @@
 package io.mosire.simos.gov;
 
 /**
- * 行政需求公式的**唯一常量拼写点**（阶段 10a，计划 §2.2 / §3）：治安/文书需求公式里出现的四个常量只此一处； 阶段 11 的 {@code GovDemand}
- * 逐格算需求时**只引用这里**，不在别处手抄数字。
+ * 行政公式的**唯一常量拼写点**（阶段 10a 的四需求常量；阶段 11a 补覆盖率/加成三常量；计划 §2.2 / §3）：治安/文书需求、 覆盖率上限与超编加成公式里出现的常量只此一处；阶段
+ * 11 的 {@code GovDemand}/{@code GovEfficiency}/{@code GovDaily} **只引用这里**，不在别处手抄数字。
  *
- * <p>★★ <b>默认值来源（四个都是"暂定值"）</b>：本仓此前没有任何"每人配多少治安/书吏"的常量可复用（既有的 {@code
+ * <p>★ <b>三组常量的分工</b>：
+ *
+ * <ul>
+ *   <li><b>需求</b>（{@link #SECURITY_PER_OFFICER} / {@link #PAPERWORK_PER_SCRIBE} / {@link
+ *       #CITY_SECURITY_WEIGHT} / {@link #CITY_PAPERWORK_WEIGHT}）：逐格 {@code ceil(population / PER) +
+ *       cityWeight}；
+ *   <li><b>覆盖</b>（{@link #COVERAGE_FULL_PER_MILLE} = 1000‰）：需求 0 维记全额，有需求维取 {@code min(1000,
+ *       supply×1000/demand)}；
+ *   <li><b>加成</b>（{@link #BONUS_SATURATION} = 10、{@link #MAX_BONUS_PER_MILLE} = 100）：仅两维覆盖都满时，
+ *       {@code bonus‰ = 100·s/(s+10)}（{@code s} = 超支百分数，整数向下取整）。{@code s=10}（超编 +10%）⇒ 50‰；{@code
+ *       s=20} ⇒ 66‰（精确值 66.7‰，向下取整）；{@code s→∞} 渐近 100‰。
+ * </ul>
+ *
+ * <p>★★ <b>默认值来源（四个需求常量都是"暂定值"）</b>：本仓此前没有任何"每人配多少治安/书吏"的常量可复用（既有的 {@code
  * EconomyVocabulary.RATION_MILLI_PER_PERSON} 等是口粮/布料量纲，与编制人数不同维），故本阶段按 <b>可玩量级</b> 取整值；计划 §3
  * 已把常量位置钉在 {@code GovRules}，但未给具体数字 ⇒ 这里是<b>待校准值</b>， <b>阶段 15
- * 的长跑校准</b>（紧凑三国一年期）负责把它们调到实际手感合适，届时只改本文件。
+ * 的长跑校准</b>（紧凑三国一年期）负责把它们调到实际手感合适，届时只改本文件。★ 覆盖率/加成三常量是计划 §3 已钉死的公式常量，不是暂定值。
  *
  * <p>★★ <b>量级判据（控制方口径）</b>：紧凑三国格的 1.2 万–9 万人口，应产生<b>几十到几百</b>的编制需求，而不是几千—— 所以"每编制管多少人"取 500/1000
  * 档、城市权重取几十档，而不是取 10/20 那种会让每个村都需要上百编制的值。
@@ -60,4 +73,30 @@ public final class GovRules {
    * 长跑校准（见类注释手算例）。
    */
   public static final long CITY_PAPERWORK_WEIGHT = 60L;
+
+  /**
+   * 覆盖率/行政效率的<b>满值</b>：<b>1000‰</b>（= 1.0）。
+   *
+   * <p>★ <b>两个用途</b>：① 需求为 0 的维度记 {@code coverage = 本常量}（"无需求 = 全额覆盖"）； ② {@code bonus‰ =
+   * 100·s/(s+10)} 的分母 1000 来自 {@code coverage × (1000 + bonus) / 本常量}——它是 per-mille 与"1 倍"之间的
+   * 唯一换算点。★ <b>不是暂定值</b>：千分制本身是计划 §3 钉死的口径。
+   */
+  public static final long COVERAGE_FULL_PER_MILLE = 1000L;
+
+  /**
+   * 超编加成的<b>饱和参数</b>：公式分母里的 <b>10</b>（即 {@code bonus‰ = 100·s/(s+10)}）。
+   *
+   * <p>★ <b>量纲</b>：与 {@code s} 同维（{@code s} = 超支百分数，如 +10% ⇒ s=10）。{@code s = 本常量} 时加成恰为
+   * 上限的一半（50‰），随后边际递减。★ <b>不是暂定值</b>：计划 §3 的精确拟合（+10%→50‰、+20%→66.7‰）由它决定。
+   */
+  public static final long BONUS_SATURATION = 10L;
+
+  /**
+   * 超编加成的<b>上限</b>：<b>100‰</b>（= +10%）。
+   *
+   * <p>★ <b>两个用途</b>：① 公式分子 {@code 100·s}；② 行政效率上限 {@code 1000 + 100 = 1100‰}。★ 对有限的 {@code s}，
+   * {@code floor(100·s/(s+10))} 实际取不到 100（只在 {@code s→∞} 渐近），本常量仍是写下来的硬上限（防未来改公式/改类型时越界）。 ★
+   * <b>不是暂定值</b>：上限 +10% 是计划 §3 的裁定。
+   */
+  public static final long MAX_BONUS_PER_MILLE = 100L;
 }
