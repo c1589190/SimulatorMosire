@@ -180,7 +180,15 @@ class McpServerTest {
           "unit.SetRejoinTarget",
           "unit.CreateCommandChain",
           "unit.UpdateCommandChain",
-          "unit.ApplyCasualties");
+          "unit.ApplyCasualties",
+          // ★ 辖区阶段 5–8（2026-09-30）：3 条窄写 + 4 条 GM 组合写。
+          "unit.SetJurisdiction",
+          "unit.SetTaxRate",
+          "actor.AdjustAccounts",
+          "simos.unit.levyRegion",
+          "simos.unit.issueDebt",
+          "simos.unit.repayDebt",
+          "simos.unit.raiseUnit");
 
   private static final Duration WAIT = Duration.ofSeconds(10);
 

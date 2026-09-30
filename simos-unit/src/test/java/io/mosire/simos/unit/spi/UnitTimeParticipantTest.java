@@ -592,6 +592,10 @@ class UnitTimeParticipantTest {
    * <p>★ **2026-09-22（权限阶段 Task 1）**：{@code visionRadius}（int，视野半径，spec §4.1）加进来时本用例**如期红了** ——
    * 逐名列举的用意就是"每加一个分量都要有人过一眼"。过完的结论是它**不违反不变量 3**：半径不是位置，更不是终点 hex。 ⇒ 名单补上它； **并同时补一条不依赖名单的判据**（下面的
    * hex 型分量检查）——只更新名单的话，下一个"忘了过眼"的人把 hex 字段**加进名单**就绕过去了， 而那正是本用例存在的理由。
+   *
+   * <p>★ **2026-09-30（辖区阶段 5）**：{@code jurisdiction}（{@code Optional<Jurisdiction>}，单位侧管辖富结构）加进来时本用例
+   * 同样**如期红了**。过完的结论也是它**不违反不变量 3**：管辖是"谁管哪些 Region + 税率/上限/行政能力"的制度事实，不是位置、更不是回归终点
+   * hex（下面的类型判据同时确认 Unit 上仍只有 {@code position} 一个 {@code HexCoord} 分量）。⇒ 名单补上它。
    */
   @Test
   void stateHasNoPlaceToPersistAnEndpointHex() {
@@ -614,7 +618,8 @@ class UnitTimeParticipantTest {
             "attached",
             "offset",
             "rejoinTarget",
-            "visionRadius");
+            "visionRadius",
+            "jurisdiction");
     assertThat(hexTypedComponentNames(Unit.class))
         .as("★ **名单之外的牙齿**：`position` 是 Unit 上唯一能装 hex 的分量 —— 想塞「回归终点」只能塞在这里，改名换名单都绕不过")
         .containsExactly("position");

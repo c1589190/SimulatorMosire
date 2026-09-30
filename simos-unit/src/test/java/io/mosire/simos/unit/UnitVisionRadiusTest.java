@@ -69,12 +69,18 @@ class UnitVisionRadiusTest {
   // ── 形状与缺省（spec §4.1 / 用户裁定⑤） ────────────────────────────
 
   @Test
-  void unitDeclaresVisionRadiusAsTheLastComponent() {
+  void unitDeclaresVisionRadiusBeforeTheLastComponent() {
     RecordComponent[] components = Unit.class.getRecordComponents();
     List<String> names = componentNames();
-    assertThat(names).as("Unit 应为 14 分量，visionRadius 追加在最后").hasSize(14);
-    assertThat(names.get(names.size() - 1)).isEqualTo("visionRadius");
-    assertThat(components[components.length - 1].getType()).as("视野半径是 int").isEqualTo(int.class);
+    assertThat(names)
+        .as("Unit 应为 15 分量；visionRadius 是倒数第二个（辖区阶段 5 起 jurisdiction 追加在最后）")
+        .hasSize(15);
+    assertThat(names.get(names.size() - 2)).isEqualTo("visionRadius");
+    assertThat(components[components.length - 2].getType()).as("视野半径是 int").isEqualTo(int.class);
+    assertThat(names.get(names.size() - 1)).isEqualTo("jurisdiction");
+    assertThat(components[components.length - 1].getType())
+        .as("管辖是 Optional<Jurisdiction>（擦除后 Optional）")
+        .isEqualTo(Optional.class);
   }
 
   @Test
@@ -117,15 +123,15 @@ class UnitVisionRadiusTest {
   }
 
   @Test
-  void onlyThreeConstructorShapesExist() {
-    // 两条兼容构造器都只补缺省、**不接受半径** ⇒ 它们不可能绕过构造期校验（这是结构断言，不靠"我记得")。
+  void onlyFourConstructorShapesExist() {
+    // 三条兼容构造器都只补缺省、**不接受半径/管辖** ⇒ 它们不可能绕过构造期校验（这是结构断言，不靠"我记得")。
     Set<Integer> arities = new LinkedHashSet<>();
     for (var constructor : Unit.class.getConstructors()) {
       arities.add(constructor.getParameterCount());
     }
     assertThat(arities)
-        .as("恰三种构造形态：14 参 canonical + 9/13 参兼容（兼容形态没有视野的来源）")
-        .isEqualTo(Set.of(9, 13, 14));
+        .as("恰四种构造形态：15 参 canonical + 9/13/14 参兼容（兼容形态没有视野/管辖的来源）")
+        .isEqualTo(Set.of(9, 13, 14, 15));
   }
 
   // ── ★★ 9 处生产拷贝/创建点：逐处不丢字段 ──────────────────────────

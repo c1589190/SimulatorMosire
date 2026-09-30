@@ -88,7 +88,13 @@ class McpPortTopologyTest {
           "simos.worldgen.initialize",
           "sd.AdjudicateTick",
           "sd.RejectDirective",
-          "sd.VoidAdjudication");
+          "sd.VoidAdjudication",
+          // ★ 辖区阶段 5–8（2026-09-30）：4 条 GM 组合写（批内固定命令类型组合，不继承
+          //   AbstractNarrowWriteTool ⇒ 与上面 7 条同族）。
+          "simos.unit.levyRegion",
+          "simos.unit.issueDebt",
+          "simos.unit.repayDebt",
+          "simos.unit.raiseUnit");
 
   /** M1 的 7 条 map 窄写（进 GM 桶）：决策人口**不得**含其中任何一条。 */
   private static final List<String> MAP_WRITES =
@@ -126,11 +132,17 @@ class McpPortTopologyTest {
           "unit.SetRejoinTarget",
           "unit.CreateCommandChain",
           "unit.UpdateCommandChain",
-          "unit.ApplyCasualties");
+          "unit.ApplyCasualties",
+          // ★ 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率两条窄写。
+          "unit.SetJurisdiction",
+          "unit.SetTaxRate");
+
+  /** ★ 辖区阶段 6a：actor 域唯一的窄写（账目净增量原语）。 */
+  private static final List<String> ACTOR_WRITES = List.of("actor.AdjustAccounts");
 
   /**
-   * GM 窄写（M1 起 11 条、M2 起 31 条、M3 起 43 条、T11C 起 44 条、会话重置起 45 条、**E6b 起 46 条**）： 1 条 economy GM 调整 +
-   * 18 条 sd 窄写 + 7 条 map 窄写 + 20 条 unit 窄写；**都不是**通用写。
+   * GM 窄写（M1 起 11 条、M2 起 31 条、M3 起 43 条、T11C 起 44 条、会话重置起 45 条、E6b 起 46 条、**辖区阶段 5–8 起 49
+   * 条**）： 1 条 economy GM 调整 + 18 条 sd 窄写 + 7 条 map 窄写 + 22 条 unit 窄写 + 1 条 actor 窄写；**都不是**通用写。
    */
   private static final List<String> GM_NARROW_WRITES =
       concat(
@@ -155,7 +167,8 @@ class McpPortTopologyTest {
               "sd.SetDecisionMakerProvider",
               "simos.economy.adjust"),
           MAP_WRITES,
-          UNIT_WRITES);
+          UNIT_WRITES,
+          ACTOR_WRITES);
 
   private static final Duration PORT_RELEASE_WAIT = Duration.ofSeconds(5);
 
@@ -175,7 +188,7 @@ class McpPortTopologyTest {
     }
   }
 
-  /** J1：**唯一的 MCP 口 = GM 组**（读 22 + 非窄写 7 + 窄写 45 = 74）。 */
+  /** J1：**唯一的 MCP 口 = GM 组**（读 23 + 非窄写 11 + 窄写 49 = 83）。 */
   @Test
   void theSingleMcpPortExposesTheGmToolFace() {
     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
@@ -183,7 +196,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（22 读 + 7 非窄写 + 46 窄写 = 75）")
+          .as("J1：唯一口 = GM 组（23 读 + 11 非窄写 + 49 窄写 = 83）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }
