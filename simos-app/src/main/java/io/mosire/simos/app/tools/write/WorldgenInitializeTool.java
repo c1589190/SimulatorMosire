@@ -277,7 +277,7 @@ public final class WorldgenInitializeTool implements AgentTool {
         + " + sd.CreateArmy）。"
         + "载荷 {nation(regionId，必填), seed?(缺省=配置), randomize?(缺省=配置 randomization.enabled),"
         + " dryRun?(缺省 true=只算不写), army?(缺省 true=连军队编制一起建；false=只做人口+城市), branch?(缺省 main),"
-        + " economyProfile?(legacy|complete，缺省 legacy),"
+        + " economyProfile?(legacy|complete|class-first，缺省 legacy),"
         + " economyTestConditions?(JSON 文本，缺省 null=无条件：初始债务/质押/资产拆分/外部库存货币注入),"
         + " cityLimit?(缺省 "
         + DEFAULT_CITY_LIMIT
@@ -308,7 +308,9 @@ public final class WorldgenInitializeTool implements AgentTool {
     props.put(
         "economyProfile",
         ToolSupport.prop(
-            "string", "经济地基 profile：legacy（缺省，旧 payload 逐字节不变）或 complete（种完整 E1/E2 地基）"));
+            "string",
+            "经济地基 profile：legacy（缺省，旧 payload 逐字节不变）、complete（种完整 E1/E2 地基）或 "
+                + "class-first（R2a：只种阶层池状态 + 最小人口/市场壳，不种旧生产结构）"));
     props.put(
         "economyTestConditions",
         ToolSupport.prop(
@@ -389,6 +391,13 @@ public final class WorldgenInitializeTool implements AgentTool {
       }
       StateRef base = new StateRef(branch, head.get());
       SimulationState state = core.replay(base);
+      // ★★ R2a：classFirst 是单 mode 状态；已有非空 classFirst 时再播一国会按同键覆盖（R1 merge 的"后播赢"）。
+      //    多 region 聚合未实现 ⇒ fail-closed，不静默丢掉第一个 seed 的池/账户。
+      if (economyProfile == EconomySeeder.FoundationProfile.CLASS_FIRST
+          && !ToolSupport.economyData(state).classFirst().isEmpty()) {
+        return ToolResult.error(
+            "REJECTED", "CLASS_FIRST 的 classFirst 已存在（同一世界只支持一个 class-first seed；多 region 聚合未实现）");
+      }
       GameMap map = ToolSupport.gameMap(state);
 
       WorldgenConfig config = loadConfig(randomizeArg);

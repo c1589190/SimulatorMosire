@@ -1,11 +1,18 @@
 package io.mosire.simos.economy.classfirst;
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * 阶层池：阶层本身固定，池持有 {@code population / labor / assetVector / debt}，以及派生的 A_C / x_C。
+ *
+ * <p>★ <b>线格式（R2a）</b>：本类是可变工作表、不是 record，所以裸 Jackson 不认识它的 no-arg 访问器；
+ * {@code @JsonSerialize}/{@code @JsonDeserialize} 把 {@link ClassPoolJson} 的字段集直接钉在类型上 ⇒ <b>任何</b>
+ * mapper （EconomyCodec 私有 mapper、Timeline 的 changeset mapper、诊断裸 mapper）写出的 {@code ClassPool}
+ * 都是同一份字段集， 读回都走 {@link ClassPool#restored}。
  *
  * <p>家户只在池内以 {@code HouseholdAccount(pool, household, sharePerMille)} 存在，负责生产/分配/消费/劳动；
  * 库存资产的唯一权威写口是本类的 {@link #addStock}/{@link #takeStock}，迁移 bundle 也只能经这两个方法转移库存，
@@ -14,6 +21,8 @@ import java.util.Map;
  * <p>资产向量里的 {@code OPERATED_LAND}、{@code LEASE_SECURITY}、{@code DEBT} 是派生维度：
  * 前两者分别由本期经营规划和租约权利折算得到，{@code DEBT} 由双边账户的负净额逐 tick 重算，都不参与库存守恒。
  */
+@JsonSerialize(using = ClassPoolJson.Serializer.class)
+@JsonDeserialize(using = ClassPoolJson.Deserializer.class)
 public final class ClassPool {
 
   private final String modeId;

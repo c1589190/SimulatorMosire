@@ -1,5 +1,7 @@
 package io.mosire.simos.economy.classfirst;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import io.mosire.simos.economy.api.id.ClassFirstAccountId;
 import io.mosire.simos.economy.api.id.ClassFlowEventId;
 import io.mosire.simos.economy.api.id.ClassPoolId;
@@ -38,15 +40,24 @@ import java.util.Map;
  * <p>★ 缺键（null）⇒ 空表 / 空元信息（旧档兼容口径）。{@code empty()} 是"salt 未播"的唯一字面量。
  */
 public record ClassFirstState(
-    Map<ModeParticipationId, ModeParticipation> modeParticipations,
-    Map<ClassPoolId, ClassPool> classPools,
-    Map<HouseholdProductionAccountId, HouseholdProductionAccount> householdAccounts,
-    Map<ProductionModeId, AssetStateSchema> assetStateSchemas,
-    Map<ClassPoolId, ClassBounds> classBounds,
-    Map<MobilityPolicyId, MobilityPolicy> mobilityPolicies,
-    Map<ClassFlowEventId, ClassFlowEvent> classFlowEvents,
-    Map<ClassFirstAccountId, ClassFirstAccount> accounts,
-    Map<ExternalLenderId, PilotModel.Lender> lenders,
+    @JsonDeserialize(keyUsing = ClassFirstJsonKeys.ModeParticipationKey.class)
+        Map<ModeParticipationId, ModeParticipation> modeParticipations,
+    @JsonDeserialize(keyUsing = ClassFirstJsonKeys.ClassPoolKey.class)
+        Map<ClassPoolId, ClassPool> classPools,
+    @JsonDeserialize(keyUsing = ClassFirstJsonKeys.HouseholdProductionAccountKey.class)
+        Map<HouseholdProductionAccountId, HouseholdProductionAccount> householdAccounts,
+    @JsonDeserialize(keyUsing = ClassFirstJsonKeys.ProductionModeKey.class)
+        Map<ProductionModeId, AssetStateSchema> assetStateSchemas,
+    @JsonDeserialize(keyUsing = ClassFirstJsonKeys.ClassPoolKey.class)
+        Map<ClassPoolId, ClassBounds> classBounds,
+    @JsonDeserialize(keyUsing = ClassFirstJsonKeys.MobilityPolicyKey.class)
+        Map<MobilityPolicyId, MobilityPolicy> mobilityPolicies,
+    @JsonDeserialize(keyUsing = ClassFirstJsonKeys.ClassFlowEventKey.class)
+        Map<ClassFlowEventId, ClassFlowEvent> classFlowEvents,
+    @JsonDeserialize(keyUsing = ClassFirstJsonKeys.ClassFirstAccountKey.class)
+        Map<ClassFirstAccountId, ClassFirstAccount> accounts,
+    @JsonDeserialize(keyUsing = ClassFirstJsonKeys.ExternalLenderKey.class)
+        Map<ExternalLenderId, PilotModel.Lender> lenders,
     ClassFirstMeta meta) {
 
   public ClassFirstState {
@@ -229,7 +240,13 @@ public record ClassFirstState(
         ClassFirstMeta.empty());
   }
 
-  /** 是否与 {@link #empty()} 逐值相同（放进变更集时"不存在"的判据）。 */
+  /**
+   * 是否与 {@link #empty()} 逐值相同（放进变更集时"不存在"的判据）。
+   *
+   * <p>★ <b>派生判断、不进线格式</b>：Jackson 会把 {@code isEmpty()} 当属性 {@code "empty"} 写出去，而读侧严格模式会拒； 故直接在本类型上
+   * {@link JsonIgnore}（{@code EconomyCodec} 的同款 mixin 因此成为冗余，但保留）。
+   */
+  @JsonIgnore
   public boolean isEmpty() {
     return modeParticipations.isEmpty()
         && classPools.isEmpty()

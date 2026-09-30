@@ -559,16 +559,47 @@ public final class CompactThreeNationsWorld {
    */
   public static List<JsonNode> initializeNations(
       CoreSimos core, TestConditions conditions, RegionId conditionsNation) throws IOException {
+    return initializeNations(
+        core,
+        conditions,
+        conditionsNation,
+        NATION_REGIONS,
+        EconomySeeder.FoundationProfile.COMPLETE);
+  }
+
+  /**
+   * ★★ <b>R2a：用任意 profile 初始化单个 region</b>（CLASS_FIRST 小世界的入口）。
+   *
+   * <p>★ 为什么必须<b>只播一国</b>：R1 的 {@code ClassFirstState} 是单 mode 状态、池键 = {@code (mode, 阶层位置)} ——
+   * 多国逐条追加时同键是"后播覆盖"，合并状态会被 {@code ClassFirstSettlement.restore} 的单 mode 前提拒掉。 多 region
+   * 聚合属后续轮次，本夹具不制造"看起来支持其实覆盖"的假象。
+   */
+  public static JsonNode initializeNation(
+      CoreSimos core, RegionId region, EconomySeeder.FoundationProfile profile) throws IOException {
+    return initializeNations(
+            core, TestConditions.EMPTY, TYPICAL_CONDITIONS_NATION, List.of(region), profile)
+        .get(0);
+  }
+
+  /** 内部主循环：regions + profile 都可注入；旧入口在上面逐字保持（COMPLETE + 三国）。 */
+  private static List<JsonNode> initializeNations(
+      CoreSimos core,
+      TestConditions conditions,
+      RegionId conditionsNation,
+      List<RegionId> regions,
+      EconomySeeder.FoundationProfile profile)
+      throws IOException {
     Objects.requireNonNull(core, "core");
+    Objects.requireNonNull(profile, "profile");
     TestConditions effective = conditions == null ? TestConditions.EMPTY : conditions;
     lastConditionReport = TestConditions.Report.EMPTY;
     AgentTool tool = new WorldgenInitializeTool(core, INITIATOR, MAP_ID, configFile());
-    List<JsonNode> summaries = new ArrayList<>(NATION_REGIONS.size());
-    for (RegionId region : NATION_REGIONS) {
+    List<JsonNode> summaries = new ArrayList<>(regions.size());
+    for (RegionId region : regions) {
       Map<String, Object> args = new LinkedHashMap<>();
       args.put("nation", region.value());
       args.put("dryRun", false);
-      args.put("economyProfile", "complete");
+      args.put("economyProfile", profile.wireName());
       if (!effective.isEmpty() && region.equals(conditionsNation)) {
         args.put("economyTestConditions", effective.toJson());
       }
@@ -579,7 +610,7 @@ public final class CompactThreeNationsWorld {
       }
       summaries.add(JSON.readTree(result.message()));
     }
-    // ★ 三批都成功后才把条件报告挂上（诊断读数用；apply 失败会抛在上面 ⇒ 不会留下"报成功其实没应用"的读数）。
+    // ★ 全部批次都成功后才把条件报告挂上（诊断读数用；apply 失败会抛在上面 ⇒ 不会留下"报成功其实没应用"的读数）。
     lastConditionReport = effective.report();
     return List.copyOf(summaries);
   }
