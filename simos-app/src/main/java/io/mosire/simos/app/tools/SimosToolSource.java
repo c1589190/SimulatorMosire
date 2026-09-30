@@ -49,6 +49,7 @@ import io.mosire.simos.app.tools.write.MapRegisterPathwayGroupTool;
 import io.mosire.simos.app.tools.write.MapSetEdgeTool;
 import io.mosire.simos.app.tools.write.MapSetTerrainTool;
 import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
+import io.mosire.simos.app.tools.write.RaiseUnitTool;
 import io.mosire.simos.app.tools.write.RejectDirectiveTool;
 import io.mosire.simos.app.tools.write.RepayDebtTool;
 import io.mosire.simos.app.tools.write.ResetDecisionMakerConversationTool;
@@ -374,6 +375,10 @@ public final class SimosToolSource implements ToolSource {
     //   **只在 GM 桶**；★ 两个工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     built.add(new IssueDebtTool(core, query, initiator, mapId));
     built.add(new RepayDebtTool(core, query, initiator, mapId));
+    // 辖区阶段 8（2026-09-30 / 计划 §5）：组军 GM 组合工具——从地方抽人力 + 抽粮/钱，同批 unit.CreateUnit +
+    //   actor.AdjustAccounts + social.SeedGroups + sd.PutInfo，四条命令同批落一条 revision。**只在 GM 桶**；
+    //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；分摊与 levyRegion 共用 RegionAllocations 一份瀑布。
+    built.add(new RaiseUnitTool(core, query, initiator, mapId));
     // M3（spec §八.3）：sd 域余下的写命令 —— ★ **只在 GM 桶**（决策人桶有意不含这批）。
     built.add(new SdCreateNationTool(core, initiator, mapId));
     built.add(new SdCreateArmyTool(core, initiator, mapId));

@@ -152,11 +152,24 @@ spotless + `compile -pl simos-unit -am` + `compile -pl simos-app -am`；
 
 ## 5. 阶段 8：组军（从地方抽人力 + 抽经济，来源/记录优先）
 
-- 一条 app 级窄命令 `unit.RaiseUnit`：
-  - 输入：`{unitId/新单位 id, name, regionId, manpower, grain?, money?, tools?, equipment?}`；
-  - 来源：`social` 批次（按 region 的 hex 人口）+ `actor` 家户账（粮/钱/工具）——数量不足 ⇒ 具名拒，**不拆分不静默**；
-  - 产出：新 `Unit`（member/equipment/speed/... 由载荷与来源量决定）+ 国库/来源账的原子扣减；
-  - **来源可追溯**：命令载荷 + 变更集逐来源键；**行动记录**：一条 `Info`/事件（`unit.RaiseUnit` 的 outcome 里带来源清单）。
+- 形态（控制方落地口径，与阶段 6/7 同一条架构约束）：**不是单条命令**（跨 unit/social/actor/sd 四片，单条命令只能落一个命名空间）
+  ⇒ app 级 **GM 组合工具 `simos.unit.raiseUnit`**：一条 `core.submitBatch` = 一条 revision，批内固定顺序
+  `unit.CreateUnit`（新单位）→ `actor.AdjustAccounts`（家户出粮/钱 + 新单位国库入账）→ `social.SeedGroups`（各批次出人）→ `sd.PutInfo`（行动记录）。
+- 输入：`{newUnitId, name, regionId, at{q,r}, manpower, grain?, money?, speed, mobilityPerMille, equipment?, parent?, reason, preview?, branch?, expectedRevision}`：
+  - `at` = 新单位落点，**必须在 region 的 hex 集里**（不默认、不猜中心；不在 ⇒ 具名拒）；
+  - `speed`/`mobilityPerMille` 必填（不发明默认值）；`equipment` 缺省空表，原样记进新 `Unit`（**不是**从账本抽的——见下）；
+  - `grain`/`money` 可选（缺省 0）；`manpower ≥ 1`。
+- 来源与扣减（**数量不足 ⇒ 整条具名拒，不拆分不静默**）：
+  - 人力：与 `simos.unit.levyRegion` **共用同一份分摊**（抽 `Sex.MALE` + `AgeBracket.ADULT`，count 降序/id 升序瀑布）——
+    实现上抽成共享包内助手，禁止第二份拼写；
+  - 粮/钱：与 levy 共用同一份家户账瀑布（可支配 = 余额 − 冻结，排序同款）；
+  - 产出：新 `Unit.member = 实抽人力`；粮/钱进新单位国库账 `ActorRef(UNIT, newUnitId)` @ `at`（与 levy/债的国库同族）；
+  - `tools` **本批不做**：actor 账只有商品/货币两维（classfirst 的 `TOOLS`/`OWNED_LAND` 不落 actor，`ClassFirstActorWriteback` 已具名 gap）
+    ⇒ 载荷出现 `tools` 一律具名拒（不静默忽略）；装备只走 `equipment` 参数。
+- **来源可追溯**：`actor.AdjustAccounts`/`social.SeedGroups` 的 entries 逐来源键（owner+hex / 批次 id 与数量）；
+  `sd.PutInfo`（`key="raiseUnit"`，地址 `unit:<newUnitId>`）记 unit/region/at/三项数量/来源计数/reason；
+  **不另造第二份账**。
+- 非目标：征兵合法性/民怨/训练度/后勤；用具（tools）来源；多来源单位合并（本批一次组一个）。
 - 先做"来源与原子扣减"；"征兵合法性/民怨"等后果模型后置。
 
 ## 6. 顺序与纪律

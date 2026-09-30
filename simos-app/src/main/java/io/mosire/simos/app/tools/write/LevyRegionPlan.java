@@ -1,11 +1,8 @@
 package io.mosire.simos.app.tools.write;
 
-import io.mosire.simos.actor.ActorData;
-import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -15,10 +12,7 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.social.SocialData;
-import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -26,9 +20,7 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.ToLongFunction;
 
@@ -47,14 +39,17 @@ import java.util.function.ToLongFunction;
  *       requested / cap 与字段名；
  *   <li><b>国库落点</b>：单位<b>当刻有效位置</b>（{@link UnitState#effectivePosition(UnitId, SimosTimestamp)}）；
  *       无位置 ⇒ 具名拒（指路 {@code unit.PlaceAt}）；
- *   <li><b>粮 / 钱来源</b>：region 各 hex 上 {@link ActorKind#HOUSEHOLD} 的 actor 账，可用量 = {@link
- *       AvailableStock#available(GoodsAccount, CommodityId)} / {@link
+ *   <li><b>粮 / 钱来源</b>：region 各 hex 上 {@link io.mosire.simos.actor.api.actor.ActorKind#HOUSEHOLD} 的
+ *       actor 账，可用量 = {@link AvailableStock#available(GoodsAccount, CommodityId)} / {@link
  *       AvailableStock#available(GoodsAccount,
  *       io.mosire.simos.economy.api.id.CurrencyId)}（<b>唯一算法</b>，本类不重写减法）； 总量不足 ⇒ <b>整条拒</b>（带
  *       requested / available / 缺口，不部分、不截断）；
- *   <li><b>分摊 = 瀑布</b>：可用量降序、同量按账键 {@link GoodsAccountKey#toString()} 升序，逐户扣满为止；
- *   <li><b>人力来源</b>：{@code social.groups()} 里 residence 在 region 各 hex、{@link Sex#MALE}、且 {@link
- *       AgeBracket#of(long)} == {@link AgeBracket#ADULT} 的批次（年龄按<b>当前 tick 现算</b>，阈值不在本类另写）；
+ *   <li><b>分摊 = 瀑布</b>：可用量降序、同量按账键 {@link io.mosire.simos.actor.model.GoodsAccountKey#toString()}
+ *       升序，逐户扣满为止；
+ *   <li><b>人力来源</b>：{@code social.groups()} 里 residence 在 region 各 hex、{@link
+ *       io.mosire.simos.social.population.Sex#MALE}、且 {@link
+ *       io.mosire.simos.social.population.AgeBracket#of(long)} == {@link
+ *       io.mosire.simos.social.population.AgeBracket#ADULT} 的批次（年龄按<b>当前 tick 现算</b>，阈值不在本类另写）；
  *       同一瀑布（count 降序、id 升序），不足 ⇒ 整条拒；
  *   <li><b>三项独立</b>：requested = 0 的维度整段跳过（不扫描、不产生来源条目、不建账）。
  * </ol>
@@ -165,7 +160,8 @@ final class LevyRegionPlan {
   // ── 粮 / 钱：HOUSEHOLD 账的瀑布（商品与货币共用同一段分摊）─────────────────────────────
 
   /**
-   * 一个维度的分摊：收集 region 各 hex 上的 {@link ActorKind#HOUSEHOLD} 账 → 过滤可支配 &le; 0 → 降序排 → 总量不足整条拒 → 逐户扣满。
+   * 一个维度的分摊：委托给 {@link RegionAllocations#allocateAccounts}（<b>全仓唯一一份家户账瀑布</b>；本类只做结果类型转换， 保证 {@link
+   * Dimension}/{@link AccountSource} 的对外形状逐字不变）。
    *
    * @param availableOf 可用量的唯一算法（由调用方传 {@link AvailableStock} 的对应重载——本类不写减法）
    */
@@ -175,97 +171,31 @@ final class LevyRegionPlan {
       String label,
       long requested,
       ToLongFunction<GoodsAccount> availableOf) {
-    ActorData actors = ApiViews.actorData(state);
-    List<AccountCandidate> candidates = new ArrayList<>();
-    for (Map.Entry<GoodsAccountKey, GoodsAccount> entry : actors.accounts().entrySet()) {
-      GoodsAccountKey key = entry.getKey();
-      if (key.owner().kind() != ActorKind.HOUSEHOLD) {
-        continue;
-      }
-      if (!region.hexes().contains(key.location())) {
-        continue;
-      }
-      long available = availableOf.applyAsLong(entry.getValue());
-      if (available <= 0L) {
-        continue; // 可支配为 0 的账供不出任何量，不进来源表（也不占用瀑布位次）。
-      }
-      candidates.add(new AccountCandidate(key.owner(), key.location(), available, key.toString()));
+    RegionAllocations.AccountAllocation allocation =
+        RegionAllocations.allocateAccounts(
+            ApiViews.actorData(state), region, label, requested, availableOf);
+    List<AccountSource> sources = new ArrayList<>(allocation.sources().size());
+    for (RegionAllocations.AccountSource source : allocation.sources()) {
+      sources.add(new AccountSource(source.owner(), source.at(), source.amount()));
     }
-    // ★ 瀑布全序：可用量降序、同量按账键规范串升序（键在 Map 里唯一 ⇒ 无并列歧义）。
-    candidates.sort(
-        Comparator.comparingLong((AccountCandidate candidate) -> candidate.available)
-            .reversed()
-            .thenComparing(candidate -> candidate.sortKey));
-    long total = 0L;
-    for (AccountCandidate candidate : candidates) {
-      total = saturatedAdd(total, candidate.available);
-    }
-    requireEnough(label, requested, total);
-    List<AccountSource> sources = new ArrayList<>();
-    long remaining = requested;
-    for (AccountCandidate candidate : candidates) {
-      if (remaining == 0L) {
-        break;
-      }
-      long take = Math.min(candidate.available, remaining);
-      sources.add(new AccountSource(candidate.owner, candidate.at, take));
-      remaining -= take;
-    }
-    if (remaining != 0L) {
-      // 总量 ≥ requested 却分不满 = 内部不变量坏了（数字自相矛盾）⇒ 响亮失败，不静默截断。
-      throw new IllegalStateException(
-          "内部分摊不自洽：" + label + " requested=" + requested + "，仍有 " + remaining + " 未分满");
-    }
-    return new Dimension(requested, total, List.copyOf(sources));
+    return new Dimension(allocation.requested(), allocation.available(), List.copyOf(sources));
   }
 
   // ── 人力：social 批次的瀑布 ──────────────────────────────────────────────────────────
 
-  /** 人力维度的分摊：MALE + 成年档 + region 落点的批次，按 count 降序 / id 升序逐批抽满（口径见类注第 6 条）。 */
+  /**
+   * 人力维度的分摊：委托给 {@link RegionAllocations#allocateManpower}（<b>全仓唯一一份人力瀑布</b>；口径见类注第 6 条）。
+   * 本类只做结果类型转换，保证 {@link Manpower}/{@link GroupSource} 的对外形状逐字不变。
+   */
   private static Manpower manpowerDimension(
       SimulationState state, Region region, long tick, long requested) {
-    SocialData social = ToolSupport.socialData(state);
-    List<PopulationGroup> candidates = new ArrayList<>();
-    for (PopulationGroup group : social.groups().values()) {
-      if (group.sex() != Sex.MALE) {
-        continue;
-      }
-      if (!region.hexes().contains(group.residence())) {
-        continue;
-      }
-      if (group.count() <= 0L) {
-        continue; // 空批供不出人，不进来源表（count = 0 的批次本批次也不会被改写）。
-      }
-      // ★ 成年档的唯一拼写点在 AgeBracket：本类不另写 15/60 岁阈值。
-      if (AgeBracket.of(group.ageDaysAt(tick)) != AgeBracket.ADULT) {
-        continue;
-      }
-      candidates.add(group);
+    RegionAllocations.ManpowerAllocation allocation =
+        RegionAllocations.allocateManpower(ToolSupport.socialData(state), region, tick, requested);
+    List<GroupSource> sources = new ArrayList<>(allocation.sources().size());
+    for (RegionAllocations.GroupSource source : allocation.sources()) {
+      sources.add(new GroupSource(source.group(), source.taken()));
     }
-    candidates.sort(
-        Comparator.comparingLong(PopulationGroup::count)
-            .reversed()
-            .thenComparing(group -> group.id().value()));
-    long total = 0L;
-    for (PopulationGroup group : candidates) {
-      total = saturatedAdd(total, group.count());
-    }
-    requireEnough("人力", requested, total);
-    List<GroupSource> sources = new ArrayList<>();
-    long remaining = requested;
-    for (PopulationGroup group : candidates) {
-      if (remaining == 0L) {
-        break;
-      }
-      long take = Math.min(group.count(), remaining);
-      sources.add(new GroupSource(group, take));
-      remaining -= take;
-    }
-    if (remaining != 0L) {
-      throw new IllegalStateException(
-          "内部分摊不自洽：人力 requested=" + requested + "，仍有 " + remaining + " 未分满");
-    }
-    return new Manpower(requested, total, List.copyOf(sources));
+    return new Manpower(allocation.requested(), allocation.available(), List.copyOf(sources));
   }
 
   // ── 校验小件 ────────────────────────────────────────────────────────────────────────
@@ -289,26 +219,6 @@ final class LevyRegionPlan {
               + cap
               + "（上限语义 = 一条抽取命令；0 = 该类无额度；先 unit.SetJurisdiction 调上限）");
     }
-  }
-
-  /** 总量不足 ⇒ 整条拒（带 requested / available / 缺口，不部分抽取、不截断）。 */
-  private static void requireEnough(String label, long requested, long available) {
-    if (available < requested) {
-      throw new IllegalArgumentException(
-          label
-              + "总量不足：requested="
-              + requested
-              + "，available="
-              + available
-              + "，缺口="
-              + (requested - available)
-              + "（不部分抽取、不截断；先补来源或降低 requested）");
-    }
-  }
-
-  /** 饱和加法（非负 long；溢出取 {@link Long#MAX_VALUE}）——只用于合计与比较，不参与逐值扣减。 */
-  private static long saturatedAdd(long left, long right) {
-    return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
   }
 
   // ── Plan 与来源表（全部保序不可变）────────────────────────────────────────────────────
@@ -427,7 +337,4 @@ final class LevyRegionPlan {
       return group.count() - taken;
     }
   }
-
-  /** 账候选（排序用）：available 参与瀑布，sortKey 只用于同量并列的稳定定序。 */
-  private record AccountCandidate(ActorRef owner, HexCoord at, long available, String sortKey) {}
 }
