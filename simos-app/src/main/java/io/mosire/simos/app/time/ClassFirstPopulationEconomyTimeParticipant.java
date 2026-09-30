@@ -21,10 +21,14 @@ import io.mosire.simos.economy.classfirst.HouseholdProductionAccount;
 import io.mosire.simos.economy.classfirst.PilotConfig;
 import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.population.PopulationDynamics;
+import io.mosire.simos.unit.UnitSnapshot;
+import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
@@ -60,6 +64,9 @@ import org.slf4j.LoggerFactory;
  * ② settleOneDay(base, inputs) → 新的 ClassFirstState（池 + 家户生产账户人口/劳动）+ AccountDelta + PopulationDelta + 日审计；
  * ③ AccountDelta 经 {@link ClassFirstActorWriteback} 折进 actor 账本（池级 → 家户级唯一一次展开；土地/农具无 actor 维度 ⇒ 具名 gap）；
  * ④ 家户人口差分经 {@link ClassFirstSocialWriteback} 同步 social 批次（具名 gap）+ 用当日口粮/布读数更新生理压力；
+ * ④.5 ★ 阶段 6.3 长期税：并入本参与者的日循环征（{@link JurisdictionDailyTax}）——不另起 participant 的唯一理由是
+ *    <b>module clash</b>：另起者写 actor 会与 population 的 actor 变更同名，{@code TimeProposalResolver} 会拒整次推进；
+ *    本步只读 unit/map 切片、只写 actor 家户账与单位国库账；
  * ⑤ 每 30 天调 {@code PopulationDynamics.monthly}，出生/死亡经 {@link ClassFirstPopulationWriteback} 接回
  *    classfirst 池/家户账户（in-place 同步 social 的批次人数）；
  * ⑥ classes 只读投影经 {@link ClassFirstClassProjection} 与家户账户对齐（键集/地址不变）；
@@ -83,6 +90,11 @@ import org.slf4j.LoggerFactory;
  *
  * <p>★ <b>未激活/无上界</b>：{@code range.to} 缺省、或 {@code economy.classFirst} 为空（含未播种与旧 legacy 世界）⇒
  * 三片都交<b>不变</b>变更集（不是空提案），且 <b>绝不回退</b>旧结算；后者写一条 WARN 具名说明。
+ *
+ * <p>★ <b>无辖区 / {@code administrationPerMille = 0} ⇒ 逐字节不变</b>：{@link JurisdictionDailyTax#collect}
+ * 一笔不写、返回 <b>同一个</b> {@code ActorData} 实例、{@link JurisdictionDailyTax.Report#isEmpty()} 为真 ⇒
+ * 既不落账、也不写税日志； 只有缺口而无征收时 actor 仍是同一实例（缺口进 Report 并写一条 WARN），{@code ActorChangeSet.between} 照旧落
+ * Unchanged。 本参与者因此新增只读 unit/map 切片，写面仍是 actor/economy/social 三片。
  */
 public final class ClassFirstPopulationEconomyTimeParticipant implements TimeParticipant {
 
@@ -95,6 +107,18 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
   private static final String ECONOMY = "economy";
   private static final String SOCIAL = "social";
   private static final String ACTOR = "actor";
+
+  /** 阶段 6.3 新增的<b>只读</b>切片（长期税的管辖/区域/单位位置）。 */
+  private static final String UNIT = "unit";
+
+  /** 阶段 6.3 新增的<b>只读</b>切片（区域 hex 集）。 */
+  private static final String MAP = "map";
+
+  /** 税汇总日志的唯一格式（每次推进最多一条；不逐户刷）。 */
+  private static final String TAX_LOG =
+      "长期税结算（并入 population 参与者）：mapId={} days={} grain[assessed={} collected={} adminShortfall={}"
+          + " stockShortfall={}] money[assessed={} collected={} adminShortfall={} stockShortfall={}]"
+          + " unitsCharged={} householdsCharged={} gaps={} 摘要={}";
 
   private final String mapId;
 
@@ -114,6 +138,9 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
     EconomyData economy = economyOf(state);
     SocialData social = socialOf(state);
     ActorData actor = actorOf(state);
+    // ★ 阶段 6.3：长期税只读 unit/map（管辖、区域 hex、单位有效位置）——缺切片/类型不符照既有切片读取器当场抛。
+    UnitState units = unitsOf(state);
+    GameMap map = mapOf(state);
 
     LinkedHashSet<String> reads = new LinkedHashSet<>();
     LinkedHashSet<String> writes = new LinkedHashSet<>();
@@ -135,6 +162,9 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
       reads.add(accountAddress(key));
       writes.add(accountAddress(key));
     }
+    // ★ 阶段 6.3：长期税只读 unit/map 两片 ⇒ reads 补两片的根地址；writes 不变（仍只写 actor/economy/social）。
+    reads.add(unitAddressRoot());
+    reads.add(mapAddressRoot());
 
     Optional<SimosTimestamp> to = range.to();
     ClassFirstState classFirst = economy.classFirst();
@@ -160,6 +190,7 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
     SocialData currentSocial = social;
     LinkedHashSet<String> unmappedActorDimensions = new LinkedHashSet<>();
     boolean socialGapsLogged = false;
+    JurisdictionDailyTax.Report taxReport = JurisdictionDailyTax.Report.empty();
     for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
       ClassFirstSettlement.Inputs inputs = inputsFor(current, currentEconomy, currentActor, day);
       ClassFirstSettlement.Result result = ClassFirstSettlement.settleOneDay(current, inputs);
@@ -167,6 +198,12 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
           ClassFirstActorWriteback.apply(currentActor, currentEconomy, current, result);
       currentActor = applied.data();
       unmappedActorDimensions.addAll(applied.unmappedDimensions());
+      // ★★ ④.5 长期税（阶段 6.3）：时点 = 该日结算 + actor 写回<b>之后</b>、月度人口学<b>之前</b>（税基 = 税后家户账）。
+      //    并入本参与者的唯一理由是 module clash —— 另起写 actor 的 participant 会与 population 同名模块变更 ⇒ 拒整次推进。
+      JurisdictionDailyTax.Collected taxed =
+          JurisdictionDailyTax.collect(currentActor, units, map, day);
+      currentActor = taxed.actor();
+      taxReport = taxReport.plus(taxed.report());
       ClassFirstSocialWriteback.AppliedSocial socialApplied =
           ClassFirstSocialWriteback.apply(currentSocial, currentEconomy, current, result);
       currentSocial = socialApplied.data();
@@ -207,6 +244,10 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
           mapId,
           unmappedActorDimensions);
     }
+    // ★★ 阶段 6.3：整轮推进只写这一条税汇总（逐维 assessed/collected/两项缺口 + 计数 + 缺口条数与摘要）。
+    if (!taxReport.isEmpty()) {
+      logTaxSummary(taxReport, to.get().tick() - range.from().tick());
+    }
 
     EconomyData currentEconomyFinal = currentEconomy.withClassFirst(current);
     return new WorldTimeProposal(
@@ -233,6 +274,62 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
       total += group.count();
     }
     return total;
+  }
+
+  // ── 阶段 6.3：长期税汇总日志（整轮一条；含缺口条数与摘要）──────────────────────────────
+
+  /** 有缺口 ⇒ WARN，否则 INFO；格式与参数表见 {@link #TAX_LOG}（不逐户刷日志）。 */
+  private void logTaxSummary(JurisdictionDailyTax.Report report, long days) {
+    Object[] args = {
+      mapId,
+      days,
+      report.grain().assessed(),
+      report.grain().collected(),
+      report.grain().adminShortfall(),
+      report.grain().stockShortfall(),
+      report.money().assessed(),
+      report.money().collected(),
+      report.money().adminShortfall(),
+      report.money().stockShortfall(),
+      report.unitsCharged(),
+      report.householdsCharged(),
+      report.gaps().size(),
+      gapSummary(report.gaps())
+    };
+    if (report.gaps().isEmpty()) {
+      LOG.info(TAX_LOG, args);
+    } else {
+      LOG.warn(TAX_LOG, args);
+    }
+  }
+
+  /** 缺口摘要：按 kind 计数 + 最多 5 条明细（确定性；不把整张表倒进日志）。 */
+  private static String gapSummary(List<JurisdictionDailyTax.Gap> gaps) {
+    StringBuilder summary = new StringBuilder();
+    for (JurisdictionDailyTax.GapKind kind : JurisdictionDailyTax.GapKind.values()) {
+      int count = 0;
+      for (JurisdictionDailyTax.Gap gap : gaps) {
+        if (gap.kind() == kind) {
+          count++;
+        }
+      }
+      if (count > 0) {
+        if (summary.length() > 0) {
+          summary.append(", ");
+        }
+        summary.append(kind).append('×').append(count);
+      }
+    }
+    int shown = 0;
+    for (JurisdictionDailyTax.Gap gap : gaps) {
+      if (shown == 5) {
+        summary.append(" …（共 ").append(gaps.size()).append(" 条）");
+        break;
+      }
+      summary.append(" | ").append(gap.summary());
+      shown++;
+    }
+    return summary.toString();
   }
 
   // ── 输入构造（经济状态 + actor 家户账 + social 人口）──────────────────────────────────
@@ -370,6 +467,32 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
     return actorSnapshot.data();
   }
 
+  /** ★ 阶段 6.3：长期税只读 unit（管辖 + 有效位置）——缺切片/类型不符照既有读取器当场抛。 */
+  private static UnitState unitsOf(SimulationState state) {
+    Snapshot snapshot =
+        state
+            .module(UNIT)
+            .orElseThrow(() -> new IllegalStateException("state 里没有 unit 切片（装配故障：长期税要求切片在场）"));
+    if (!(snapshot instanceof UnitSnapshot unitSnapshot)) {
+      throw new IllegalStateException(
+          "state 的 unit 切片不是 UnitSnapshot: " + snapshot.getClass().getName());
+    }
+    return unitSnapshot.state();
+  }
+
+  /** ★ 阶段 6.3：长期税只读 map（区域的 hex 集）——缺切片/类型不符照既有读取器当场抛。 */
+  private static GameMap mapOf(SimulationState state) {
+    Snapshot snapshot =
+        state
+            .module(MAP)
+            .orElseThrow(() -> new IllegalStateException("state 里没有 map 切片（装配故障：长期税要求切片在场）"));
+    if (!(snapshot instanceof MapSnapshot mapSnapshot)) {
+      throw new IllegalStateException(
+          "state 的 map 切片不是 MapSnapshot: " + snapshot.getClass().getName());
+    }
+    return mapSnapshot.map();
+  }
+
   private String economyAddressRoot() {
     return new Address(List.of(new Namespace(ECONOMY), Entity.of(mapId))).canonical();
   }
@@ -390,6 +513,16 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
 
   private String actorAddressRoot() {
     return new Address(List.of(new Namespace(ACTOR), Entity.of(mapId))).canonical();
+  }
+
+  /** ★ 阶段 6.3：只读 unit 切片的根地址（声明用；具体写入方 {@code UnitTimeParticipant} 仍用 {@code unit:<id>}）。 */
+  private String unitAddressRoot() {
+    return new Address(List.of(new Namespace(UNIT), Entity.of(mapId))).canonical();
+  }
+
+  /** ★ 阶段 6.3：只读 map 切片的根地址。 */
+  private String mapAddressRoot() {
+    return new Address(List.of(new Namespace(MAP), Entity.of(mapId))).canonical();
   }
 
   /**
