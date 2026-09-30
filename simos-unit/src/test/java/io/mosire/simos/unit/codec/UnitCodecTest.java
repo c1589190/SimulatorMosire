@@ -3,9 +3,13 @@ package io.mosire.simos.unit.codec;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
+import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Route;
@@ -25,6 +29,7 @@ import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -98,6 +103,120 @@ class UnitCodecTest {
         (UnitChangeSet)
             CODEC.decodeChangeSet(CODEC.encodeChangeSet(UnitChangeSet.between(base, target)));
     assertThat(UnitChangeSet.apply(encoded, base)).as("只改视野半径也必须能过线并重建（铁律 5）").isEqualTo(target);
+  }
+
+  /**
+   * ★★ **非空管辖（辖区阶段 5）的线格式往返**：区域→税率逐对、三个 cap、行政能力都必须过线，**map 迭代序**也逐值保留 （税率的序是展示/结算的稳定序，不能被哈希序替换）。
+   */
+  @Test
+  void snapshotRoundTripsANonEmptyJurisdiction() {
+    RegionId r9 = new RegionId("r-9");
+    RegionId r1 = new RegionId("r-1");
+    RegionId r5 = new RegionId("r-5");
+    Map<RegionId, Long> rates = new LinkedHashMap<>();
+    rates.put(r9, 900L);
+    rates.put(r1, 100L);
+    rates.put(r5, 500L);
+    Jurisdiction jurisdiction = new Jurisdiction(rates, 11L, 22L, 33L, 250);
+
+    UnitSnapshot snapshot =
+        snapshotOf(
+            stateOf(oneUnitWithJurisdiction("u-1", H11, Optional.of(jurisdiction))),
+            SimosTimestamp.of(12));
+    UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshot));
+
+    assertThat(back).as("整份快照往返相等").isEqualTo(snapshot);
+    Jurisdiction decoded = back.state().units().get(new UnitId("u-1")).jurisdiction().orElseThrow();
+    assertThat(decoded).as("record 五个组件逐值相等").isEqualTo(jurisdiction);
+    assertThat(new ArrayList<>(decoded.taxRatePerMilleByRegion().keySet()))
+        .as("★ 含 map 序：插入序不能被哈希序替换")
+        .containsExactly(r9, r1, r5);
+    assertThat(decoded.taxRatePerMilleByRegion())
+        .containsExactly(Map.entry(r9, 900L), Map.entry(r1, 100L), Map.entry(r5, 500L));
+    assertThat(decoded.levyGrainCapPerCommand()).isEqualTo(11L);
+    assertThat(decoded.levyMoneyCapPerCommand()).isEqualTo(22L);
+    assertThat(decoded.levyManpowerCapPerCommand()).isEqualTo(33L);
+    assertThat(decoded.administrationPerMille()).isEqualTo(250);
+  }
+
+  /** ★ empty Optional 过线仍是 empty（不是 `{"present":…}`、也不是 null 指针）；键仍在线格式里。 */
+  @Test
+  void snapshotRoundTripsAnEmptyJurisdictionOptional() {
+    UnitSnapshot snapshot =
+        snapshotOf(
+            stateOf(oneUnitWithJurisdiction("u-1", H11, Optional.empty())), SimosTimestamp.of(12));
+    String json = CODEC.encodeSnapshot(snapshot);
+    assertThat(json).as("empty Optional 写成 null（键不消失）").contains("\"jurisdiction\":null");
+
+    UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(json);
+
+    assertThat(back).isEqualTo(snapshot);
+    assertThat(back.state().units().get(new UnitId("u-1")).jurisdiction())
+        .as("empty ⇒ 往返仍 empty")
+        .isEmpty();
+  }
+
+  /** ★ 空 map 的管辖是"present 但无区域"（撤销全部管辖的表示），**不是** Optional.empty——两者必须分得开。 */
+  @Test
+  void snapshotRoundTripsAPresentJurisdictionWithEmptyRegionMap() {
+    Jurisdiction jurisdiction = new Jurisdiction(new LinkedHashMap<>(), 4L, 5L, 6L, 700);
+    UnitSnapshot snapshot =
+        snapshotOf(
+            stateOf(oneUnitWithJurisdiction("u-1", H11, Optional.of(jurisdiction))),
+            SimosTimestamp.of(12));
+
+    UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshot));
+
+    assertThat(back).isEqualTo(snapshot);
+    assertThat(back.state().units().get(new UnitId("u-1")).jurisdiction())
+        .as("present+空 map 不能被读回成 Optional.empty")
+        .contains(jurisdiction);
+  }
+
+  /**
+   * ★★ **旧档缺 {@code jurisdiction} 键**（辖区阶段 5 之前的快照）：读回后必须是 **empty**，其余字段逐值活着。
+   *
+   * <p>做法照 {@code MapCodecLegacyTest}：用**新** codec 编一份新形状快照，再把 {@code state.units.u-1} 里的 {@code
+   * jurisdiction} 键删掉——信封与其余 14 个分量都是真实字节，只有这一处是旧形状。若构造期不把缺参归一成 empty， "整个世界打不开"（旧档兼容的落点）。
+   */
+  @Test
+  void legacySnapshotWithoutJurisdictionKeyDecodesToEmptyJurisdiction() throws Exception {
+    Jurisdiction jurisdiction = new Jurisdiction(Map.of(new RegionId("r-1"), 100L), 1L, 2L, 3L, 4);
+    UnitSnapshot snapshot =
+        snapshotOf(
+            stateOf(oneUnitWithJurisdiction("u-1", H11, Optional.of(jurisdiction))),
+            SimosTimestamp.of(12));
+
+    ObjectMapper treeMapper = new ObjectMapper();
+    ObjectNode root = (ObjectNode) treeMapper.readTree(CODEC.encodeSnapshot(snapshot));
+    ObjectNode unitNode = (ObjectNode) root.get("state").get("units").get("u-1");
+    assertThat(unitNode.has("jurisdiction")).as("前置：新形状确实写了该键（否则删键用例是恒真）").isTrue();
+    unitNode.remove("jurisdiction");
+
+    UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(root.toString());
+
+    Unit unit = back.state().units().get(new UnitId("u-1"));
+    assertThat(unit.jurisdiction()).as("旧档缺键 ⇒ 空管辖（不是 null、不抛）").isEmpty();
+    assertThat(unit.name()).as("其余字段照常读回").isEqualTo("单位 u-1");
+    assertThat(unit.member()).isEqualTo(500);
+    assertThat(unit.position().valueAt(T0)).contains(H11);
+    assertThat(unit.visionRadius()).isEqualTo(Unit.DEFAULT_VISION_RADIUS);
+  }
+
+  /** 变更集也带得动管辖：{@code between} ⇒ 编码 ⇒ 解码 ⇒ {@code apply} 逐值重建目标。 */
+  @Test
+  void changeSetRoundTripsAJurisdictionChange() {
+    UnitState base = stateOf(oneUnitWithJurisdiction("u-1", H11, Optional.empty()));
+    Jurisdiction target =
+        new Jurisdiction(
+            orderedRates(new RegionId("r-9"), 900L, new RegionId("r-1"), 100L), 7L, 8L, 9L, 300);
+    UnitState changed = stateOf(oneUnitWithJurisdiction("u-1", H11, Optional.of(target)));
+
+    UnitChangeSet encoded =
+        (UnitChangeSet)
+            CODEC.decodeChangeSet(CODEC.encodeChangeSet(UnitChangeSet.between(base, changed)));
+
+    assertThat(UnitChangeSet.apply(encoded, base)).as("管辖变更也必须过线并逐值重建（铁律 5）").isEqualTo(changed);
   }
 
   /** 变更集往返：四条变体各造一条（Unchanged / Upsert / Remove / Patch），逐条过线。 */
@@ -300,6 +419,38 @@ class UnitCodecTest {
             List.of(new Segment<>(T0, Optional.<RelativeOffset>empty())), List.of(), null),
         Optional.empty(),
         visionRadius);
+  }
+
+  /** 视野半径取缺省、管辖逐值给的 canonical 15 参形态（辖区阶段 5 的往返夹具专用）。 */
+  private static Unit oneUnitWithJurisdiction(
+      String id, HexCoord at, Optional<Jurisdiction> jurisdiction) {
+    return new Unit(
+        new UnitId(id),
+        "单位 " + id,
+        new SegmentedSeries<>(
+            List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
+        new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(at))), List.of(), null),
+        500,
+        Map.of("旗帜", 3),
+        2,
+        1000,
+        Optional.empty(),
+        UnitStatus.MOVING,
+        new SegmentedSeries<>(List.of(new Segment<>(T0, true)), List.of(), null),
+        new SegmentedSeries<>(
+            List.of(new Segment<>(T0, Optional.<RelativeOffset>empty())), List.of(), null),
+        Optional.empty(),
+        Unit.DEFAULT_VISION_RADIUS,
+        jurisdiction);
+  }
+
+  /** 两键的保序税率表（判据要的是"顺序不被哈希序替换"，不是大表）。 */
+  private static Map<RegionId, Long> orderedRates(
+      RegionId first, long firstRate, RegionId second, long secondRate) {
+    Map<RegionId, Long> rates = new LinkedHashMap<>();
+    rates.put(first, firstRate);
+    rates.put(second, secondRate);
+    return rates;
   }
 
   private static UnitSnapshot snapshotOf(UnitState state, SimosTimestamp timestamp) {
