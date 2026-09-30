@@ -127,9 +127,28 @@ spotless + `compile -pl simos-unit -am` + `compile -pl simos-app -am`；
 
 ## 4. 阶段 7：地方债
 
-- 发行主体 = 单位国库（`ActorRef(UNIT, unitId)`）；债权人 = `classFirst.lenders` 或指定阶层池；
-- 债务走 `classfirst` 的双边 `accounts`（owner = unit id），或 actor 侧新债权类型——**实施前单独裁一次"债务记在哪本账"**；
-- 还款/催收必须有独立 participant；先做"发债 + 到期还款命令"，催收后置。
+**用户裁定（2026-09-30）**：账本走 **A = classfirst 双边账户**；债权人**先用 `classFirst.lenders` 起步**，阶层池分支具名拒（后置）。
+
+- **账本**：`ClassFirstState.accounts` 的 `ClassFirstAccount`（身份 = `idOf(ownerId, counterpartyId, unit)` 的纯函数）。
+  借款腿：`owner = unitId, counterparty = lenderId, unit = money|grain, cumulativeNet < 0`（单位负债）；
+  镜像腿：`owner = lenderId, counterparty = unitId, cumulativeNet > 0`（放贷方 claim）；两条**同批**落，`terms = "unit-debt"`。
+  引擎 `rollAccounts` 会对负净额腿**自动滚动计息**、到 `nextDueTick` 标 `DUE`；催收循环只收 owner 是阶层池的账
+  ⇒ 单位债**不会被自动催收**（催收后置正是这个原因），到期状态只作读面标记。
+- **命令**（economy 域，**标 `GmOnlyCommand`**）：
+  - `economy.UnitBorrow`：`{unitId, lenderId, unit(money|grain), principal, interestRatePerMille, nextDueTick, terms?}`；
+    只动 economy 两处（放贷方余额 −principal、双边账户两条腿）；**不碰 actor**。
+  - `economy.UnitRepay`：`{unitId, lenderId, unit, amount}`；放贷方 +amount、两条腿各减 amount；清 0 ⇒ 双腿 `SETTLED`。
+  - 标 GmOnly 的理由：单提 `UnitBorrow` 会造成"放贷方已扣、国库未收"的悬空；唯一受支持的调用面是配套工具批
+    （工具批里同时落 `actor.AdjustAccounts`）。
+- **工具**（app 组合根，GM 桶；一条 `submitBatch` = 一条 revision，含 `sd.PutInfo` 行动记录）：
+  - `simos.unit.issueDebt`：`economy.UnitBorrow` + `actor.AdjustAccounts`（国库 +principal）+ `sd.PutInfo`；
+  - `simos.unit.repayDebt`：`actor.AdjustAccounts`（国库 −amount）+ `economy.UnitRepay` + `sd.PutInfo`；
+  - 两工具都 preview/apply 两态、共用同一份纯推导；preview 默认 true，apply 要 `expectedRevision`。
+- **口径**：`principal/amount ≥ 1`；`nextDueTick > 当前 tick`；`interestRatePerMille ≥ 0`（必填，0 = 无息）；
+  同一 `(unitId, lenderId, unit)` 已有**未结清**腿 ⇒ 拒新借（"先还款清账，本批一次一笔"；SETTLED 腿可复用身份重开）；
+  还款 `amount > 当前负债` ⇒ 具名拒（不超付、不找零）；国库可支配不足 ⇒ 具名拒。
+- **守恒**：钱/粮只在放贷方（economy）与单位国库 actor 账之间移动；阶层池库存不动；双边账户只记债权/债务，不动钱。
+- 非目标：催收（扣押/摊派）、多笔合并、阶层池债权人分支（具名拒）、债券/利息重定价、违约状态机。
 
 ## 5. 阶段 8：组军（从地方抽人力 + 抽经济，来源/记录优先）
 
