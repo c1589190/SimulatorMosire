@@ -8,7 +8,9 @@ import java.util.Map;
  *
  * <p>★ **只在 GM 桶**：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
- * <p>★ 三条前置（id 已存在 / {@code nationId} 不存在 / {@code rootUnitId} 不存在）都在**域层**判、逐条有可读文案——工具层不重复校验（同上）。
+ * <p>★ 前置（id 已存在 / {@code masterGovUnitId} 不存在或不是 GOV / {@code rootUnitId}
+ * 不存在）都在**域层**判、逐条有可读文案——工具层不重复校验（同上）。 旧 {@code nationId} 键在域层具名拒并指路 {@code masterGovUnitId}/{@code
+ * unit.SetArmyFormation}。
  */
 public final class SdCreateArmyTool extends AbstractNarrowWriteTool {
 
@@ -30,6 +32,8 @@ public final class SdCreateArmyTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "建军：固定 sd.CreateArmy，载荷 {armyId, nationId, rootUnitId, name}（四者全必填；★ nationId 与 rootUnitId 指向不存在者即被拒）";
+    return "建军：固定 sd.CreateArmy，载荷 {armyId, masterGovUnitId?, rootUnitId, name}"
+        + "（armyId/rootUnitId/name 必填；masterGovUnitId 缺省 = 未认主子，给了必须存在且带 GovFormation；"
+        + "★ 旧 nationId 键已拒并指路 masterGovUnitId）";
   }
 }

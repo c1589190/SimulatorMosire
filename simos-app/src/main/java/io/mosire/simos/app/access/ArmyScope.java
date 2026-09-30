@@ -3,8 +3,8 @@ package io.mosire.simos.app.access;
 import io.mosire.agentlib.permission.ResourceScope;
 import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.army.ArmyVision;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.map.hex.HexGrid;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.DecisionMaker;
@@ -23,12 +23,12 @@ import java.util.TreeSet;
 /**
  * **军队决策人**的可见范围（spec §3.2）：军队当前位置 + 视野半径圈内的格。
  *
- * <p>链路：{@code Affiliation.Army(armyId)} → sd 的 {@link Army#rootUnit()}（归属只存关系，编制在 unit） → {@code
- * UnitState.effectivePosition} 取**当前位置** → 该单位的 {@code visionRadius} ⇒ 六角距离 ≤ R 的格 ⇒ 前缀 {@code
- * <mapId>/hex/<q>_<r>} 每条（R=1 ⇒ 7 条、R=2 ⇒ 19 条，可控）。
+ * <p>链路：{@code Affiliation.Army(armyId)} → sd 的 {@link Army#rootUnit()}（归属只存关系，编制在 unit） → {@link
+ * ArmyVision#visionHexes(UnitState, io.mosire.simos.unit.UnitId, SimosTimestamp)} 取**当前位置 + 半径圈** ⇒
+ * 前缀 {@code <mapId>/hex/<q>_<r>} 每条（R=1 ⇒ 7 条、R=2 ⇒ 19 条，可控）。★★ <b>视野算法唯一拼写点在 {@code
+ * simos-army.ArmyVision}</b>，本类只做 sd/unit 解引用与命名空间投影，不再内联半径算式。
  *
- * <p>★ **位置走 {@code effectivePosition}**（与 GUI / 工具面 / facet 同口径）：编队里根单位自身没有位置、 跟随父单位 ⇒ 自己读 {@code
- * unit.position()} 会得到"不知道在哪"，而正确答案是父的位置（含偏移）。
+ * <p>★ **位置走 {@code effectivePosition}**（与 GUI / 工具面 / facet 同口径）：根单位自身没有有效位置 ⇒ 空答案。
  *
  * <p>★ **纯半径，不做地形遮挡**（用户裁定⑥）：地形、河、敌情都不参与——遮挡是"视野功能"， 归 unit 模块将来做；本轮范围函数只按半径圈格。
  *
@@ -63,19 +63,15 @@ public final class ArmyScope implements DecisionScopeFunction {
       return denyAll();
     }
     UnitState units = ToolSupport.unitState(state);
-    Unit root = units.units().get(affiliation.rootUnit());
-    if (root == null) {
-      return denyAll();
-    }
-    Optional<HexCoord> center =
-        units.effectivePosition(affiliation.rootUnit(), state.meta().timestamp());
-    if (center.isEmpty()) {
+    Optional<Set<HexCoord>> visible =
+        ArmyVision.visionHexes(units, affiliation.rootUnit(), state.meta().timestamp());
+    if (visible.isEmpty()) {
       return denyAll();
     }
 
     Set<String> prefixes = new TreeSet<>(); // ★ 有序：范围内容与球内迭代序无关（HashSet 不保序）
     Set<String> socialPrefixes = new TreeSet<>();
-    Set<HexCoord> circle = new TreeSet<>(HexGrid.withinRadius(center.get(), root.visionRadius()));
+    Set<HexCoord> circle = visible.get();
     for (HexCoord coord : circle) {
       prefixes.add(ToolSupport.resourceHex(mapId, coord.q(), coord.r()).path());
       // social：圈内格（spec §3.3 的 social 路径是 <q>_<r>，不带 mapId）

@@ -11,7 +11,7 @@
   <version>0.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>SimulatorMosire</name>
-  <description>多模块模拟引擎：UtilSimos / MapSimos / SocialSimos / UnitSimos / CoreSimos / SDSimos / ActorApiSimos / ActorSimos / EconomyApiSimos / EconomySimos / SimosApp（组合根）。各模块的边界与允许依赖见 AGENTS.md 的表。</description>
+  <description>多模块模拟引擎：UtilSimos / MapSimos / SocialSimos / UnitSimos / CoreSimos / SDSimos / ActorApiSimos / ActorSimos / EconomyApiSimos / EconomySimos / GovSimos / ArmySimos / SimosApp（组合根）。各模块的边界与允许依赖见 AGENTS.md 的表。</description>
 
   <modules>
     <module>simos-util</module>
@@ -43,6 +43,9 @@
          + 落盘切片/变更集/编解码。只依赖 util/map/unit/social/economy-api（本阶段只用 unit/economy-api 的类型），
          **不得依赖 core/app**（铁律 3：领域模块不认识组合与调度）。 -->
     <module>simos-gov</module>
+    <!-- ★ 阶段 12（2026-10-01 用户裁定 6/8）：军队切片——一期只把“辖区 = 视野”做成纯派生视图（ArmyVision），
+         不落盘、不算战力；只依赖 util/map/unit，不得依赖 sd/economy/app/core。 -->
+    <module>simos-army</module>
     <!-- ★ M5 T1：组合根。依赖全部领域模块 + AgentLib/MCP，是 reactor 末位；
          它不被任何模块依赖（父 POM 不引它 ⇒ 无反向依赖）。不设 enforcer（spec §2.2）。 -->
     <module>simos-app</module>
@@ -108,6 +111,9 @@
       </dependency>
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-gov</artifactId><version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.mosire</groupId><artifactId>simos-army</artifactId><version>${project.version}</version>
       </dependency>
 
       <!-- 外部依赖 -->

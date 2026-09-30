@@ -245,6 +245,7 @@ public final class SdQueryService {
             value == null ? null : value.name(),
             nation.nationId().value(),
             null,
+            null,
             pending(maker, sd, tick));
       }
       case Affiliation.Army army -> {
@@ -254,7 +255,8 @@ public final class SdQueryService {
             "army",
             army.armyId().value(),
             value == null ? null : value.name(),
-            value == null ? null : value.nationId().value(),
+            null,
+            value == null ? null : value.masterGovUnitId().map(UnitId::value).orElse(null),
             value == null ? null : value.rootUnit().value(),
             pending(maker, sd, tick));
       }
@@ -266,6 +268,7 @@ public final class SdQueryService {
             "gov",
             gov.govUnit().value(),
             value == null ? null : value.name(),
+            null,
             null,
             null,
             pending(maker, sd, tick));
@@ -333,6 +336,9 @@ public final class SdQueryService {
    *
    * <p>★ 解析不出的字段一律 {@code null}（显式未知）。当前命令路径（{@code sd.CreateDecisionMaker} 拒绝不存在的 affiliation
    * 目标）下这些字段必非空；{@code null} 只在状态被外部构造坏时出现——**不用空串顶替**，那会与"名称为空"混淆。
+   *
+   * <p>★ 阶段 12：Army 去 {@code NationId} 后，{@code nationId} 槽位只服务 {@link
+   * Affiliation.Nation}；军队的认领主子改看 {@code masterGovUnitId}（未认主子 ⇒ {@code null}）。
    */
   public record DecisionMakerInfo(
       DecisionMaker maker,
@@ -340,6 +346,7 @@ public final class SdQueryService {
       String affiliationId,
       String displayName,
       String nationId,
+      String masterGovUnitId,
       String rootUnit,
       PendingSignal pending) {}
 

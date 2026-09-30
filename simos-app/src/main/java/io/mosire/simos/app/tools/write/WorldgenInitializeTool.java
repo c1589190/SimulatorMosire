@@ -108,7 +108,8 @@ import java.util.UUID;
  *       RESTING}、兵种单位的 {@code parent} 指向根单位。
  *   <li>{@code unit.CreateCommandChain}：{@code commander = 根单位}，{@code members}
  *       **含根单位与全部兵种单位**（{@code CommandChain} 构造期硬要求 {@code commander ∈ members}）。
- *   <li>{@code sd.CreateArmy}：{@code rootUnitId = 根单位}。
+ *   <li>{@code sd.CreateArmy}：{@code rootUnitId = 根单位}；{@code masterGovUnitId} <b>省略</b>——本批尚不建 GOV
+ *       单位（阶段 12：Army 只认 GOV，国家字段已删），后续由 {@code unit.SetArmyFormation} 认领主子。
  * </ol>
  *
  * <p>★ 同批内 handler 看到的是**累计候选态**（{@code CommandBus.runBatch} 的 candidate 逐条演进）⇒ {@code
@@ -973,7 +974,7 @@ public final class WorldgenInitializeTool implements AgentTool {
             branch,
             expectedRevision,
             CREATE_ARMY_TYPE,
-            createArmyPayload(armyId(nationId), nationId, rootId, displayName + ARMY_NAME_SUFFIX)));
+            createArmyPayload(armyId(nationId), rootId, displayName + ARMY_NAME_SUFFIX)));
   }
 
   // ── 军队编制：id / 载荷 ──────────────────────────────────────────────────────────────
@@ -1072,12 +1073,13 @@ public final class WorldgenInitializeTool implements AgentTool {
     return ToolSupport.json(payload);
   }
 
-  /** {@code sd.CreateArmy} 载荷（键名以 {@code CreateArmyHandler} 为准：armyId/nationId/rootUnitId/name）。 */
-  private static String createArmyPayload(
-      String armyId, String nationId, String rootUnitId, String name) {
+  /**
+   * {@code sd.CreateArmy} 载荷（键名以 {@code CreateArmyHandler} 为准：armyId/rootUnitId/name； {@code
+   * masterGovUnitId} 省略 = 未认主子，等后续 {@code unit.SetArmyFormation} 认领）。
+   */
+  private static String createArmyPayload(String armyId, String rootUnitId, String name) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("armyId", armyId);
-    payload.put("nationId", nationId);
     payload.put("rootUnitId", rootUnitId);
     payload.put("name", name);
     return ToolSupport.json(payload);

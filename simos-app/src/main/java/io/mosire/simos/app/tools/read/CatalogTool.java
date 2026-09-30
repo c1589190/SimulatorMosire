@@ -270,7 +270,11 @@ public final class CatalogTool implements AgentTool {
                   + "缺账 + 纯正增量 ⇒ 新建，缺账 + 任何负增量 ⇒ 拒；"
                   + "负增量使余额 < 0 或侵占冻结额（可支配 = 余额 − 冻结）⇒ 拒；整条原子）"),
           Map.entry("sd.CreateNation", "nationId, name, homeRegionId, adminBudgetPerTick"),
-          Map.entry("sd.CreateArmy", "armyId, nationId, rootUnitId, name"),
+          Map.entry(
+              "sd.CreateArmy",
+              "armyId, masterGovUnitId?, rootUnitId, name"
+                  + "（★ masterGovUnitId 缺省 = 未认主子，给了必须存在且带 GovFormation；"
+                  + "旧 nationId 键已拒并指路 masterGovUnitId）"),
           Map.entry(
               "sd.CreateDecisionMaker", "id, affiliation{kind,id}, allowedTools[字符串...], cadence"),
           Map.entry(

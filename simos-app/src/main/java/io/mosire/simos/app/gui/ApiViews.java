@@ -4883,9 +4883,12 @@ public final class ApiViews {
   /**
    * 单个决策人视图（T5，D13：**复用现有字段，不新增 sd 数据**）。
    *
-   * <p>字段：{@code id} / {@code affiliation}（kind + id + 解析出的显示名 + 国家 id + 军队的根单位）/ {@code
-   * allowedTools} / {@code cadence} / {@code accessLimit} 摘要 / {@code due} / {@code
+   * <p>字段：{@code id} / {@code affiliation}（kind + id + 解析出的显示名 + 国家 id + 军队认领的 GOV + 军队的根单位）/
+   * {@code allowedTools} / {@code cadence} / {@code accessLimit} 摘要 / {@code due} / {@code
    * lastDirectiveTick} / {@code ticksSinceLast}。
+   *
+   * <p>★ <b>阶段 12</b>：Army 去 {@code NationId} 后，军队的 {@code nationId} 为 {@code null}，认领主子改看 {@code
+   * masterGovUnitId}；Nation 的 {@code nationId} 照旧。两个槽位都显式给（不写空串顶替）。
    *
    * <p>★ **T9 起 {@code due} 是真值**（D7 公式，由 {@link SdQueryService#listDecisionMakers} / {@link
    * SdQueryService#decisionMaker} 算出），不再有占位：首次（无任何 Directive）⇒ {@code true}， {@code
@@ -4900,6 +4903,7 @@ public final class ApiViews {
     affiliation.put("id", info.affiliationId());
     affiliation.put("displayName", info.displayName());
     affiliation.put("nationId", info.nationId());
+    affiliation.put("masterGovUnitId", info.masterGovUnitId());
     affiliation.put("rootUnit", info.rootUnit());
     view.put("affiliation", affiliation);
     view.put("allowedTools", sorted(maker.allowedTools()));

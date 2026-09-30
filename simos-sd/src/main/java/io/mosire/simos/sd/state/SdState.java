@@ -76,15 +76,7 @@ public record SdState(
 
     requireAtMostOneActiveDirective(directives);
     requireReferentialIntegrity(
-        nations,
-        armies,
-        combats,
-        combatStates,
-        decisionMakers,
-        directives,
-        effects,
-        verdicts,
-        lossRecords);
+        combats, combatStates, decisionMakers, directives, effects, verdicts, lossRecords);
     requireOutcomeConsistency(combats, combatStates);
     requireStageChains(combats);
     requireLossConsistency(combatStates, lossRecords);
@@ -288,10 +280,14 @@ public record SdState(
     return status == DirectiveStatus.PLANNED || status == DirectiveStatus.ISSUED;
   }
 
-  /** 不变量 2：外键必须存在于同快照。 */
+  /**
+   * 不变量 2：外键必须存在于同快照。
+   *
+   * <p>★ 阶段 12：Army 去 {@code NationId} 后不再有 {@code nations} 外键可查；{@code masterGovUnitId} 指向的是
+   * <b>unit 切片</b>里的 GOV 单位（跨片），存在性由命令期（{@code sd.CreateArmy} / {@code unit.SetArmyFormation}）判， sd
+   * 快照构造期不做跨片查询（铁律 3：sd 只拥有 sd 数据）。
+   */
   private static void requireReferentialIntegrity(
-      Map<NationId, Nation> nations,
-      Map<ArmyId, Army> armies,
       Map<CombatId, Combat> combats,
       Map<CombatStateId, CombatState> combatStates,
       Map<DecisionMakerId, DecisionMaker> decisionMakers,
@@ -299,12 +295,6 @@ public record SdState(
       Map<EffectId, Effect> effects,
       Map<VerdictId, Verdict> verdicts,
       Map<LossRecordId, LossRecord> lossRecords) {
-    for (Army army : armies.values()) {
-      if (!nations.containsKey(army.nationId())) {
-        throw new IllegalArgumentException(
-            "引用完整性：Army " + army.id().value() + " 的 nationId " + army.nationId().value() + " 不存在");
-      }
-    }
     for (Directive directive : directives.values()) {
       if (!decisionMakers.containsKey(directive.decisionMakerId())) {
         throw new IllegalArgumentException(

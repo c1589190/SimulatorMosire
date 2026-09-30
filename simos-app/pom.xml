@@ -71,6 +71,11 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-gov</artifactId>
     </dependency>
+    <!-- ★ 阶段 12（2026-10-01 用户裁定 6/8）：军队切片——ArmyScope 改调 simos-army 的 ArmyVision（“辖区 = 视野”
+         的唯一算法点）；NationSummary 也落 app 侧。★ 同一条纪律：显式声明，不靠传递依赖。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-army</artifactId>
+    </dependency>
     <!-- 工具 / 权限 / 审批 / MCP（T5~T7 消费；依赖先按 spec 声明）。
          SNAPSHOT——跨机重建见 CLAUDE.md「换设备后的自检清单」第 2 条。 -->
     <dependency>
