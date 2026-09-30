@@ -33,9 +33,9 @@
 | # | 裁定 | 对实现的影响 |
 |---|---|---|
 | 1 | Unit 只提供**成分结构/位置/移动**，不算力量 | `Unit` 的编制字段只放人员/角色/政策；任何"力量值"不落 Unit |
-| 2 | 行政力与战斗力**分开算**；警察不计战力 | `simos-gov` 与 `simos-army` 两套算法互不引用；结构性测试钉住 |
+| 2 | 行政力与战斗力**分开算**；衙门（治安编制）不计战力 | `simos-gov` 与 `simos-army` 两套算法互不引用；结构性测试钉住 |
 | 3 | 一单位**至多一个**编制标签 | `Optional<UnitModule>`（sealed `Gov | Army`），互斥由类型保证 |
-| 4 | 传令**不拆可移动单位**；最多 GOV 编制内加**通讯人员**；时间差由 GM 拖 tick | 无信使单位、无 effect 投递；`StaffRole.COMMS` 只是编制角色 |
+| 4 | 传令**不拆可移动单位**；最多 GOV 编制内加**驿传**；时间差由 GM 拖 tick | 无信使单位、无 effect 投递；`StaffRole.POST` 只是编制角色 |
 | 5 | 实际行政实体用 **Gov 字段**；**Nation = 显示/外交总概括** | 中央也是 GOV 单位；`NationSummary` 是**派生只读视图**，不是行政状态 |
 | 6 | Army **不算战力**，只把 `Nation` 依赖拆掉 | `simos-army` 一期只做编制/隶属/视野派生；`sd.Army` 去 `nationId` |
 | 7 | 不新增产品；GOV 消耗 = **粮食 + 其他已有物资** | 用 grain / cloth / money；`levyRegion` 补 cloth 一路；缺料只发信号 |
@@ -88,7 +88,7 @@ public record Unit(
 public sealed interface UnitModule {
 
   record GovFormation(
-      Map<StaffRole, Long> staff,          // CLERK / POLICE / COMMS；值 ≥ 0，保序不可变
+      Map<StaffRole, Long> staff,          // SCRIBE（书吏）/ YAMEN（衙门）/ POST（驿传）；值 ≥ 0，保序不可变
       OfficePolicy policy,                 // 定额/上限/退休待遇
       Optional<UnitId> superiorGov,        // 层级：中央为空；多数省直接指中央
       GovLevel level                       // CENTRAL / PROVINCE
@@ -100,7 +100,7 @@ public sealed interface UnitModule {
   ) implements UnitModule {}
 }
 
-public enum StaffRole { CLERK, POLICE, COMMS }
+public enum StaffRole { SCRIBE, YAMEN, POST }
 public enum GovLevel { CENTRAL, PROVINCE }
 public record OfficePolicy(
     long grainPerStaffPerTick,      // 默认 = RATION_MILLI_PER_PERSON（复用既有常量）
@@ -124,8 +124,8 @@ public record OfficePolicy(
       Map<String, Long> lastAssessed,   // "grain"/"cloth"/"silver" → 量（毫）
       Map<String, Long> lastPaid,
       Map<String, Long> lastShortfall,
-      long securityCoveragePerMille,    // 0..1000（警察 vs 治安需求）
-      long paperworkCoveragePerMille,   // 0..1000（文员+通讯 vs 文书需求）
+      long securityCoveragePerMille,    // 0..1000（衙门 vs 治安需求）
+      long paperworkCoveragePerMille,   // 0..1000（书吏+驿传 vs 文书需求）
       long efficiencyPerMille,          // 用于税：coverage ≥0，加成 ≤ +10%
       long bonusPerMille,               // 超编加成（0..100）
       long tick) {}
@@ -134,10 +134,10 @@ public record OfficePolicy(
 - **纯函数**（`simos-gov`，不碰 app）：
   - `GovDemand.of(map, social, unit) -> Map<HexCoord, HexDemand{security, paperwork}>`
     - `securityDemand(hex) = ceil(population(hex) / SECURITY_PER_OFFICER) + cityWeight(hex)`
-    - `paperworkDemand(hex) = ceil(population(hex) / PAPERWORK_PER_CLERK) + cityWeight(hex)`
+    - `paperworkDemand(hex) = ceil(population(hex) / PAPERWORK_PER_SCRIBE) + cityWeight(hex)`
     - 常量与默认值放 `GovRules`（single spelling point）；城市权重取 `SocialData.cities()`/`City.at()`。
   - `GovEfficiency.of(roster, demand) -> {coverage, bonus, efficiency}`
-    - 覆盖：`min(1, Σ供给 / Σ需求)` 按辖区 hex 汇总（警察对治安、文员+通讯对文书）；
+    - 覆盖：`min(1, Σ供给 / Σ需求)` 按辖区 hex 汇总（衙门对治安、书吏+驿传对文书）；
     - 加成（仅当覆盖 = 1）：`surplus = (供给 − 需求)/需求`；`bonus = 0.1·surplus/(surplus+0.1)`（上限 10%，精确拟合 +10%→5%、+20%→6.67%）；
     - `efficiency = coverage × (1 + bonus)`（≤ 1.1）。
   - `GovDaily.settle(govState, unitState, map, social, actor, tick) -> (GovState', 支付/信号计划)`
@@ -190,7 +190,7 @@ public record OfficePolicy(
 - **调查组**：同样是无标签纯人员 Unit（高速 `speed`），`gov` 只负责"从编制里出人"（roster−）与建单位；结果由 GM 按移动路径写成 `DecisionDoc` 给决策人（引擎不做自动情报）。
 - **武装调查组**：即给该单位加 `ArmyFormation`（训练小军队），走同一通用接口（裁定 10）。
 - **离编/退休**：`gov.DismissStaff` roster−；按 `policy.retirementPerStaff` 从国库支付；人员回写社会批次（指定 hex/批次，或记具名缺口——一期"不自动找地方塞"）。
-- **通讯人员**：`StaffRole.COMMS` 计入文书覆盖（与 CLERK 同口径），不产生任何可移动单位；命令/信息的时间差由 GM 拖 tick 表达（裁定 4）。
+- **驿传**：`StaffRole.POST` 计入文书覆盖（与 SCRIBE 同口径），不产生任何可移动单位；命令/信息的时间差由 GM 拖 tick 表达（裁定 4）。
 
 ---
 
@@ -199,10 +199,10 @@ public record OfficePolicy(
 | 项 | 默认 |
 |---|---|
 | 治安需求/格 | `ceil(population / SECURITY_PER_OFFICER) + (cityOnHex ? CITY_SECURITY_WEIGHT : 0)` |
-| 文书需求/格 | `ceil(population / PAPERWORK_PER_CLERK) + (cityOnHex ? CITY_PAPERWORK_WEIGHT : 0)` |
-| 供给 | 治安 ← `POLICE` 人数；文书 ← `CLERK + COMMS` 人数；**互不通用** |
+| 文书需求/格 | `ceil(population / PAPERWORK_PER_SCRIBE) + (cityOnHex ? CITY_PAPERWORK_WEIGHT : 0)` |
+| 供给 | 治安 ← `YAMEN` 人数；文书 ← `SCRIBE + POST` 人数；**互不通用** |
 | 覆盖 | `coverage = min(1000, 供给×1000/需求)`（需求 0 格记 1000） |
-| 加成 | 仅 `coverage=1000` 时：`bonus = 100×surplus/(surplus+100)`（千分制，surplus 为百分数）；否则 0 |
+| 加成 | 仅 `coverage=1000` 时：`bonus‰ = 100·s/(s+10)`（s = 超支百分数，如 s=10 ⇒ 50‰、s=20 ⇒ 66.7‰、上限 100‰）；否则 0 |
 | 效率 | `efficiency = coverage × (1 + bonus)`（≤ 1100‰） |
 | 税 | `attainable = assessed × efficiency / 1000`（无 GOV ⇒ 0） |
 | 口粮 | 复用 `EconomyVocabulary.RATION_MILLI_PER_PERSON`（单一拼写点） |
@@ -212,15 +212,15 @@ public record OfficePolicy(
 
 ---
 
-## 4. 阶段计划（阶段 9–15）
+## 4. 阶段计划（阶段 9–13）
 
 > 每阶段：**一个写代码代理**，只做该阶段范围；门禁 = `spotless:apply` + 指定 `compile`；**不写测试**；控制方审 diff 后提交推送。
-> 测试统一在阶段 14 补（各阶段自己那波判据），变异自证只在阶段 14 对四类关键项做。
+> 测试统一在阶段 13B 补（各阶段自己那波判据），变异自证只在阶段 13B 对四类关键项做。
 
 ### 阶段 9：Unit 通用化（编制模块）
 - 产出：`UnitModule` sealed + `GovFormation/ArmyFormation/StaffRole/GovLevel/OfficePolicy`；Unit 第 16 组件；9/13/14/15/16 参构造器矩阵；codec（`@JsonTypeInfo` 子类型 + 旧档缺键 ⇒ empty）；全部生产拷贝点；`Unit` 反射守卫同步。
 - 门禁：`spotless:apply`；`compile -pl simos-unit -am`；`compile -pl simos-app -am`。
-- 验收输入（阶段 14）：16 组件逐名/构造器；旧档缺 `module` 往返；拷贝点不丢失（变异靶子）；GOV/Army 互斥（sealed 不能同时）。
+- 验收输入（阶段 13B）：16 组件逐名/构造器；旧档缺 `module` 往返；拷贝点不丢失（变异靶子）；GOV/Army 互斥（sealed 不能同时）。
 
 ### 阶段 10：`simos-gov` 骨架（切片 + 命令 + 决策人绑定 + 范围）
 - 产出：新模块 `simos-gov`（pom + `GovState/GovOfficeState` + codec + change set + 跨表守卫）；`GovRules`；
@@ -241,32 +241,45 @@ public record OfficePolicy(
 ### 阶段 12：`simos-army`（最小）+ 拆 Nation + NationSummary
 - 产出：新模块 `simos-army`（`ArmyFormation` 校验辅助 + 视野辖区派生视图 + `army.AssignGov` 命令/handler + GM 工具）；
   `sd.Army` 去 `nationId`、改 `masterGovUnitId`（旧档缺键 ⇒ empty，兼容构造器保旧调用点）；`ArmyScope` 不动；
-  `NationSummary` 只读视图（中央根 + 名义区域 + 人口汇总）；GUI 读口（如 `simos.map.overview` 增补或新读工具）后置在阶段 14 一并测。
+  `NationSummary` 只读视图（中央根 + 名义区域 + 人口汇总）；GUI 读口（如 `simos.map.overview` 增补或新读工具）后置到阶段 13 的机械回归/场景验收里一并测。
 - 门禁：`spotless:apply`；`compile -pl simos-army -am`；`compile -pl simos-app -am`。
 - 验收输入：Army 认领/解除主子；视野派生（位置+半径，不落盘）；旧档 `Army` 兼容；NationSummary 与层级一致、**不参与任何授权判定**。
 
-### 阶段 13：人员流转（科举 / 调查组 / 退休待遇）
-- 产出：`gov` 侧的出人/收人原语与工具批（`simos.gov.dispatchTeam`、`simos.gov.absorbUnit`、科举的省选人 + 中央吸收两段）；
-  调查组 = 无标签 Unit；武装调查组 = 加 `ArmyFormation`（走通用接口）；退休待遇支付已完成于阶段 11，这里补"待遇政策 + 离编回写"的完整链路与工具；
-  调查结果文档流程（GM 用既有 `sd.PutInfo`/`DecisionDoc`，不做自动情报）。
-- 门禁：`spotless:apply`；`compile -pl simos-app -am`。
-- 验收输入：省选人 → 子单位移动 → 中央吸收（member 守恒、来源可追溯、一条 revision）；调查组出/回与编制守恒；退休待遇按政策支付、回写不静默。
+### 阶段 13（合并原 13–15）：人员流转 + 机械回归 + 真 LLM 多决策人协作验收
 
-### 阶段 14：测试统一（收尾期）
-- 各阶段测试波（照阶段 5–8 的四波模式：每波一个测试代理，只写 `src/test/**`，跑目标测试到绿）：
-  1. Unit 模块（16 组件/构造器/旧档/拷贝点/互斥）；
-  2. `simos-gov`（切片往返、需求/覆盖/加成逐值、scope/决策人绑定、招募/离编守恒）；
-  3. 结算与税（GovDaily 并入 participant 的每日守恒、缺料信号、无 GOV 恒等、levy cloth）；
-  4. Army/Nation（认领、视野派生、旧档兼容、NationSummary 显示与权限隔离）+ 人员流转（科举/调查组/退休）。
-- **变异自证四类**（仅这四类）：守恒式（upkeep 支付/收回）、不丢失（`UnitModule` 拷贝点、招募来源）、静默付 0（缺料必须信号而非 0 记）、断粮（staff 无粮 → 信号/效率下降，不静默）。
-- 既有镜子同步：`Unit` 反射守卫、MCP 工具/命令计数（65+ / 83+）、`PAYLOAD_HINTS`、`AdjudicateTick` 白名单与目标样本。
+> 用户裁定：13–15 都是针对具体功能场景的验收，**不是测经济**；需要的是**多开几个决策人、观察其协作是否符合要求** ⇒
+> 合并为「针对新开发内容的**真 LLM 具体内容测试**」。不做 360 tick 经济长跑。
+
+**A. 人员流转实现**（先做）
+- `gov` 侧出人/收人原语与工具批：`simos.gov.dispatchTeam`、`simos.gov.absorbUnit`；科举两段（省选人 → 无标签子单位移动 → 中央吸收）；
+  调查组 = 无标签 Unit；武装调查组 = 加 `ArmyFormation`（通用接口）；退休待遇政策 + 离编回写（回写指定批次或记具名缺口，不静默）；
+  调查结果 = GM 用既有 `sd.PutInfo`/`DecisionDoc` 按调查组**移动路径**写文档，引擎不做自动情报。
+- 门禁：`spotless:apply`；`compile -pl simos-app -am`。
+
+**B. 机械回归（仓库卫生，必须有）**
+- 四波测试（照阶段 5–8 模式）：1) Unit（16 组件/构造器/旧档/拷贝点/互斥）；2) `simos-gov`（切片往返、需求/覆盖/加成逐值、
+  scope/决策人绑定、招募/离编守恒）；3) 结算与税（GovDaily 并入 participant 的每日守恒、缺料信号、无 GOV 恒等、levy cloth）；
+  4) Army/Nation（认领、视野派生、旧档兼容、NationSummary 显示与权限隔离）+ 人员流转（科举/调查组/退休）。
+- **变异自证四类**（仅这四类）：守恒式、不丢失（`UnitModule` 拷贝点/招募来源）、静默付 0（缺料必须信号）、断粮（无粮 → 信号/效率下降）。
+- 镜像同步：`Unit` 反射守卫、MCP 工具/命令计数、`PAYLOAD_HINTS`、`AdjudicateTick` 白名单与目标样本。
 - 门禁：全仓 `clean verify`（模块测试 + SpotBugs + Checkstyle + Spotless + 前端 297）。
 
-### 阶段 15：验收（模拟数据）
-- 紧凑三国 classfirst 世界：给每国播种 1 个 CENTRAL GOV + 2–3 个 PROVINCE GOV（编制/政策/决策人），推 **360 tick**；
-- 断言/读数：税 + 行政消耗 + 编制/覆盖/效率的时间序列；缺料信号与扩招（决策人或 GM 脚本）后的恢复；GOV 世界与无 GOV 对照分支的守恒；
-- 真 v17levant 世界在 GOV 链下的长跑（可选，视产物大小与时间）。
-- 最终判据：模拟数据（AGENTS §三.0）+ `clean verify` 绿；报告如实写"哪些是后补测试、哪些未自证"。
+**C. 真 LLM 多决策人协作验收（本阶段主体，合并原阶段 15）**
+- 场景世界：紧凑三国 classfirst，每国 1 个 CENTRAL GOV + 2–3 个 PROVINCE GOV + 若干 Army 单位，各自绑定真 provider 决策人
+  （`mosire-flash`）；GM 由测试脚本/控制方担任。
+- 场景清单（逐条观察，**只钉可观察行为，不钉模型具体文本**）：
+  1. **命令不强制服从**：中央出令/发文 → 省决策人自己决定照办/已读不回/抗令；中央命令越界（指向省资源）在 `AdjudicateTick` 必拒；
+  2. **编制与效率**：省决策人读 GOV 读数后自主招募书吏/衙门/驿传 ⇒ 覆盖率/加成按公式变化；超编加成的递减可被观察到；
+  3. **缺料/缺员信号**：只发信号；决策人自己决定扩招/加税/降定额/削编，下一轮观察恢复或继续恶化（都由决策人负责）；
+  4. **科举链路**：省选人 → 无标签子单位移动 → 中央吸收（member 守恒、来源可追溯、一条 revision）；
+  5. **调查组与信息**：派出调查组 → GM 按路径写 `DecisionDoc` → 中央/省决策人依据文档行动（信息**不**经数据层直读）；
+  6. **Army 认领**：Army 认领 GOV、视野派生范围、跨辖调动；中央只能指挥真正认领它的 Army（认领关系可被决策人/GM 调整）；
+  7. **范围两层**：中央只读直辖（读不到省数据）；名义全境只出现在显示面（NationSummary）；越权读/写必拒；
+  8. **审批链**：`sd.IssueDirective` 进审批、GM 裁决后执行、被拒命令的拒因进决策结果。
+- 判据：每轮都有真轨迹/真 revision；越权必拒；不存在"自动服从"；编制/库存/人口在轮次间守恒或按政策单调；
+  协作链路（令 → 文档 → 执行）可追溯；连续 ≥3 轮无 `TOOL_ERROR`/未捕获异常（依赖隔壁修好 thinking 模式回放）。
+- 载体：把 env 门控的 `RealLlmUnitDecisionLoopTest` 扩成多 DM 场景 harness（逐轮轨迹矩阵 + 原始记录），不新增"模拟器"生产代码。
+- 最终判据：`clean verify` 绿 + 真 LLM 多决策人场景矩阵通过；不达/阻塞项如实报告（不粉饰、不把"没跑"写成"通过"）。
 
 ---
 
@@ -274,13 +287,14 @@ public record OfficePolicy(
 
 | 风险 | 对策 |
 |---|---|
-| Unit 第 16 组件破坏面（拷贝点/档/codec） | 照 `jurisdiction` 既有流程：兼容构造器 + 缺键默认 + 反射守卫 + 全拷贝点扫描（阶段 9 门禁 + 测试波 1） |
+| Unit 第 16 组件破坏面（拷贝点/档/codec） | 照 `jurisdiction` 既有流程：兼容构造器 + 缺键默认 + 反射守卫 + 全拷贝点扫描（阶段 9 门禁 + 阶段 13B 测试波 1） |
 | module clash（gov 读数每 tick 写） | gov 片由 population participant 代写（唯一 actor 写者），不另起参与者 |
-| 无 GOV 世界行为突变（税不再征） | 用户已裁"无数据就没有"（裁定 8）；测试波 3 显式钉"无 GOV ⇒ 不征"并写入计划留痕 |
-| `administrationPerMille` 退役的兼容面 | 旧档缺字段按默认处理；生产路径零读取（阶段 11 门禁 + 测试波 3） |
+| 无 GOV 世界行为突变（税不再征） | 用户已裁"无数据就没有"（裁定 8）；阶段 13B 测试波 3 显式钉"无 GOV ⇒ 不征"并写入计划留痕 |
+| `administrationPerMille` 退役的兼容面 | 旧档缺字段按默认处理；生产路径零读取（阶段 11 门禁 + 阶段 13B 测试波 3） |
 | GOV 未绑决策人 | 创建期强绑（阶段 10）；运行期缺失 ⇒ 具名 gap、不崩 |
-| 名义全境被误用为权限 | `GovTerritory` 不进任何授权判定（测试波 2 结构性断言） |
-| 通讯/传令被做成隐式时间模拟 | 明确不做投递载体；GM 拖 tick；COMMS 只是编制角色（裁定 4） |
+| 真 LLM 验收不稳定（模型输出漂移） | 判据只钉可观察不变量（越权必拒/守恒/审批/轮次），不钉具体文本；env 门控 + 多轮矩阵；不达项如实报告 |
+| 名义全境被误用为权限 | `GovTerritory` 不进任何授权判定（阶段 13B 测试波 2 结构性断言） |
+| 通讯/传令被做成隐式时间模拟 | 明确不做投递载体；GM 拖 tick；POST 只是编制角色（裁定 4） |
 | 战力被顺手实现 | 本计划明列非目标；`simos-army` 无 combat power 出口（测试波 4 断言模块不产出） |
 
 ---
@@ -289,5 +303,5 @@ public record OfficePolicy(
 
 - 每阶段一个写代码代理：只写该阶段生产代码，不写/不改测试，不 commit；
 - 控制方审 diff + 提交推送；
-- 测试在阶段 14 统一做（AGENTS §三.0），四类变异自证只做一次；
+- 测试在阶段 13B 统一做（AGENTS §三.0），四类变异自证只做一次；
 - 每阶段报"未做/未验证"一节；不把"没跑"写成"通过"。
