@@ -127,7 +127,7 @@ public record NationSummary(
           continue; // 环/重复入队：显示端不许死循环
         }
         Unit govUnit = units.units().get(govId);
-        if (govUnit == null || !(govUnit.module().orElse(null) instanceof GovFormation formation)) {
+        if (govUnit == null || !(govUnit.module().orElse(null) instanceof GovFormation)) {
           continue; // 悬空 superiorGov：跳过这一支，不抛（显示派生对坏数据降级）
         }
         govUnits.add(govId);
