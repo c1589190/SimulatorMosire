@@ -78,8 +78,9 @@ spotless + `compile -pl simos-unit -am` + `compile -pl simos-app -am`；
    （若将来要"抽税同时缩池"，须单独裁摊派规则，不在本批。）
 4. **国库落点**：`GoodsAccountKey(ActorRef(UNIT, unitId), location=单位当刻有效位置)`；单位无位置 ⇒ 具名拒。
    库存到格（`GoodsAccount` 的既定语义）：**单位移动不搬迁库存**，搬迁是另一次行动。
-5. **人力口径（本批）**：只抽 `Sex.MALE` 且当前 tick 现算年龄 ∈ **[16,60)** 的 `social` 批次；
-   不足 ⇒ **整条拒**（不部分、不拆别的批次）。未成年/老年/女性不动。征兵合法性/民怨后置。
+5. **人力口径（本批）**：只抽 `Sex.MALE` 且当前 tick 现算年龄落在**仓内既有成年档**
+   （`AgeBracket.of(group.ageDaysAt(tick)) == AgeBracket.ADULT`，即 15–59 岁；年龄档的唯一拼写点在 `AgeBracket`，本工具不另写阈值）
+   的 `social` 批次；不足 ⇒ **整条拒**（不部分、不拆别的批次）。未成年/老年/女性不动。征兵合法性/民怨后置。
 6. **数量不足 ⇒ 整条具名拒**（与 `ClassFirstLevy` 的"不截断"同口径），不给部分抽取；
    家庭/批次之间的分摊用**瀑布**：可用量降序、同量按键规范串升序，逐值扣满为止（与 `ClassFirstActorWriteback` 的负增量分摊同法）。
 
