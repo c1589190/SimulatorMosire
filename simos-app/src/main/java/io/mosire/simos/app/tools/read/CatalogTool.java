@@ -161,8 +161,15 @@ public final class CatalogTool implements AgentTool {
                   + "普通决策人令 / RegisterEffect 不可嵌入它）"),
           Map.entry(
               "economy.GmAdjust",
-              "adjustment(forgiveDebt|setLiquidationPolicy), parameters(JSON 对象), reason(必填非空白)"
+              "adjustment(setMobilityPolicy|setClassFirstLender|forgiveClassFirstDebt"
+                  + "|forgiveDebt|setLiquidationPolicy), parameters(JSON 对象), reason(必填非空白)"
                   + "（★ GM-only、只改源状态：白名单外/派生读数 ⇒ 拒；"
+                  + "class-first 原生：setMobilityPolicy={modeId?, 任一 MobilityPolicy 标量字段或 absorptionPolicy"
+                  + "(PROPORTIONAL|ALL_OR_NOTHING)；schema/bounds/absorptionCapByEdgePerMille/bundleTemplates 给到即拒}；"
+                  + "setClassFirstLender={lenderId, interestRatePerMille?/nextDueTick? 至少一项(≥0)；collectionPower 无消费点 ⇒ 拒}；"
+                  + "forgiveClassFirstDebt={ownerId, counterpartyId, unit?(缺省=grain), amount?(缺省=全额债务)}"
+                  + "（对称清减两条镜像账户，归零 ⇒ SETTLED；不动 interestAccrued/库存）；"
+                  + "旧表两 kind 仅非空 classFirst 为空的世界可用（classFirst 非空 ⇒ 具名拒绝并指路三个新 kind）："
                   + "forgiveDebt: debtContractId, amount?(缺省=全额本金，须 ≤ 本金)；"
                   + "setLiquidationPolicy: assetRuleId, maxLiquidatePerMille(0..1000), protectedReserve(≥0),"
                   + " priceSource(MARKET|AGREED|POLICY), policyValuePerUnitMilli(≥0；非 POLICY 必须 0),"

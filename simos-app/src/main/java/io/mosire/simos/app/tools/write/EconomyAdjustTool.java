@@ -99,9 +99,17 @@ public final class EconomyAdjustTool implements AgentTool {
   public String description() {
     return "GM 经济调整（economy.GmAdjust 的窄封装）：先用 economy 侧纯函数算好 projected 状态与前后差异，"
         + "preview=true（缺省）只算不写；preview=false 时提交同一条 payload（reason 必填，进载荷/事件与工具结果）。"
-        + "adjustment 白名单：forgiveDebt（debtContractId + 可选 amount，缺省=全额；只减/清本金，不动粮/钱）、"
-        + "setLiquidationPolicy（assetRuleId + maxLiquidatePerMille/protectedReserve/priceSource/"
-        + "policyValuePerUnitMilli/recipientRule，upsert liquidationPolicies）。"
+        + "adjustment 白名单（5）：class-first 原生三 kind —— "
+        + "setMobilityPolicy（modeId?（缺省=当前 mode）+ gamma/upMinPerMillePerYear/.../extractionTaxPerMille 任一标量/"
+        + "absorptionPolicy，按给定字段 upsert 既有 MobilityPolicy；schema/bounds/absorptionCapByEdgePerMille/"
+        + "bundleTemplates 给到即拒）、"
+        + "setClassFirstLender（lenderId + interestRatePerMille/nextDueTick 至少一项，只改制度参数、"
+        + "不动 money/goods；collectionPower 引擎无消费点 ⇒ 给到即拒）、"
+        + "forgiveClassFirstDebt（ownerId + counterpartyId + unit?（缺省=grain）+ amount?（缺省=全额债务），"
+        + "对称清减两条镜像账户，归零 ⇒ SETTLED，不动 interestAccrued/库存）；"
+        + "旧表两 kind —— forgiveDebt（debtContractId + amount?，只减/清本金）、setLiquidationPolicy"
+        + "（assetRuleId + maxLiquidatePerMille/protectedReserve/priceSource/policyValuePerUnitMilli/recipientRule），"
+        + "只在非 class-first 旧档可用（classFirst 非空 ⇒ 具名拒绝并指路前三个）。"
         + "白名单外 adjustment（flows/demandBook/crisisSignals/classStandings 等派生读数）一律拒："
         + "派生读数不可由 GM 调整工具直写。★ 只在 GM 桶，决策人不可调用。";
   }
@@ -112,12 +120,19 @@ public final class EconomyAdjustTool implements AgentTool {
     props.put(
         "adjustment",
         ToolSupport.prop(
-            "string", "调整名（源状态白名单）：forgiveDebt | setLiquidationPolicy；白名单外一律拒（派生读数不可直写）"));
+            "string",
+            "调整名（源状态白名单）：setMobilityPolicy | setClassFirstLender | forgiveClassFirstDebt"
+                + "（class-first 原生）；forgiveDebt | setLiquidationPolicy（仅非 class-first 旧档）；"
+                + "白名单外一律拒（派生读数不可直写）"));
     props.put(
         "parameters",
         ToolSupport.prop(
             "object",
-            "调整参数：forgiveDebt={debtContractId, amount?(缺省=全额本金，须 ≤ 本金)}；"
+            "调整参数：setMobilityPolicy={modeId?, 任一 MobilityPolicy 标量字段或 absorptionPolicy"
+                + "(PROPORTIONAL|ALL_OR_NOTHING)；schema/bounds/absorptionCapByEdgePerMille/bundleTemplates 给到即拒}；"
+                + "setClassFirstLender={lenderId, interestRatePerMille?/nextDueTick? 至少一项(≥0)；collectionPower 无消费点 ⇒ 拒}；"
+                + "forgiveClassFirstDebt={ownerId, counterpartyId, unit?(缺省=grain), amount?(缺省=全额债务)}；"
+                + "forgiveDebt={debtContractId, amount?(缺省=全额本金，须 ≤ 本金)}；"
                 + "setLiquidationPolicy={assetRuleId, maxLiquidatePerMille(0..1000), protectedReserve(≥0),"
                 + " priceSource(MARKET|AGREED|POLICY), policyValuePerUnitMilli(≥0；非 POLICY 必须 0),"
                 + " recipientRule(CREDITOR_FIRST|MARKET_FIRST)}"));

@@ -3,6 +3,7 @@ package io.mosire.simos.economy.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -12,25 +13,45 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * ★★ <b>{@code economy.GmAdjust}（E6b）：GM 经济调整的窄命令</b>。载荷：
+ * ★★ <b>{@code economy.GmAdjust}（E6b / class-first 阶段 1）：GM 经济调整的窄命令</b>。载荷：
  *
  * <pre>{@code
- * {"adjustment":"forgiveDebt"|"setLiquidationPolicy",
+ * {"adjustment":"setMobilityPolicy"|"setClassFirstLender"|"forgiveClassFirstDebt"
+ *              |"forgiveDebt"|"setLiquidationPolicy",
  *  "parameters":{...},
  *  "reason":"..."}
  * }</pre>
  *
- * <p>★★ <b>只认两个 adjustment（源状态白名单）</b>：
+ * <p>★★ <b>五条 adjustment（源状态白名单，唯一语义落点在 {@link EconomyGmAdjustments#project}）</b>：
  *
  * <ul>
- *   <li>{@code forgiveDebt}：{@code debtContractId} + 可选 {@code amount}（缺省 = 全额本金）。调用 {@code
- *       DebtContractBook.forgive} 减/清本金，<b>不碰粮/钱库存</b>；{@code amount > 本金} ⇒ 具名 {@link
- *       HandlerOutcome.Rejected}；
- *   <li>{@code setLiquidationPolicy}：{@code assetRuleId} + {@code maxLiquidatePerMille ∈ [0,1000]}
- *       + {@code protectedReserve ≥ 0} + {@code priceSource(MARKET|AGREED|POLICY)} + {@code
- *       policyValuePerUnitMilli ≥ 0（非 POLICY 必须 0）} + {@code
- *       recipientRule(CREDITOR_FIRST|MARKET_FIRST)}； upsert 到 {@code liquidationPolicies}；引用的
- *       {@code AssetRule} 不存在 ⇒ 具名拒绝。
+ *   <li><b>class-first 原生三</b>：
+ *       <ul>
+ *         <li>{@code setMobilityPolicy}：{@code modeId?（缺省 = classFirst.meta.config.mode.id()）} +
+ *             至少一个 {@code MobilityPolicy} 标量字段 / {@code
+ *             absorptionPolicy(PROPORTIONAL|ALL_OR_NOTHING)}；只改既有 {@code mobilityPolicies}
+ *             行，未给字段保持原值；{@code schema}/{@code bounds}/{@code absorptionCapByEdgePerMille}/{@code
+ *             bundleTemplates} 给到即具名拒绝；policy 不存在 ⇒ 具名拒绝；
+ *         <li>{@code setClassFirstLender}：{@code lenderId} + {@code interestRatePerMille}/{@code
+ *             nextDueTick} 至少一项；{@code collectionPower} 给到即具名拒绝（引擎无消费点、禁止"改了不生效"）；只改既有 lender
+ *             的制度参数（不动 money/goods）；lender 不存在 ⇒ 具名拒绝；
+ *         <li>{@code forgiveClassFirstDebt}：{@code ownerId} + {@code counterpartyId} + {@code
+ *             unit?（缺省 grain）} + {@code amount?（缺省=全额债务）}；只对称清减 {@code owner→counterparty} 与 {@code
+ *             counterparty→owner} 两条镜像账户的 {@code cumulativeNet}，归零 ⇒ {@code SETTLED}；不动 {@code
+ *             interestAccrued}/库存账户；找不到债务侧或镜像账户 ⇒ 具名拒绝；
+ *       </ul>
+ *   <li><b>旧表两（仅非空 class-first 为空的世界）</b>：
+ *       <ul>
+ *         <li>{@code forgiveDebt}：{@code debtContractId} + 可选 {@code amount}（缺省 = 全额本金）。调用 {@code
+ *             DebtContractBook.forgive} 减/清本金，<b>不碰粮/钱库存</b>；{@code amount > 本金} ⇒ 具名 {@link
+ *             HandlerOutcome.Rejected}；
+ *         <li>{@code setLiquidationPolicy}：{@code assetRuleId} + {@code maxLiquidatePerMille ∈
+ *             [0,1000]} + {@code protectedReserve ≥ 0} + {@code priceSource(MARKET|AGREED|POLICY)}
+ *             + {@code policyValuePerUnitMilli ≥ 0（非 POLICY 必须 0）} + {@code
+ *             recipientRule(CREDITOR_FIRST|MARKET_FIRST)}； upsert 到 {@code liquidationPolicies}；引用的
+ *             {@code AssetRule} 不存在 ⇒ 具名拒绝。★ {@code classFirst} 非空 ⇒ 二者由 {@link
+ *             EconomyGmAdjustments#project} 统一具名拒绝并指路三个新 kind（handler 不重复这道门）。
+ *       </ul>
  * </ul>
  *
  * <p>★★ <b>派生读数不可直写</b>：{@code flows} / {@code demandBook} / {@code crisisSignals} / {@code
@@ -60,8 +81,10 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
   }
 
   /**
-   * ★ 本命令没有可声明的资源目标（见类注）：债务合同 / 生产资料规则不是 {@code economy} 命名空间里的格键路径，且本命令 GM-only、
-   * 不进入决策人令。只做载荷形状校验（坏载荷仍抛具名 {@link IllegalArgumentException}），合法载荷返回空列表。
+   * ★ 本命令没有可声明的资源目标（见类注）：债务合同 / 生产资料规则 / class-first 政策、放贷方与双边账户都不是 {@code economy} 命名空间里的格键路径，且本命令
+   * GM-only、不进入决策人令。只做载荷形状校验（必填/类型/至少一项；坏载荷仍抛具名 {@link
+   * IllegalArgumentException}），合法载荷返回空列表；引用存在性（policy/lender/account/assetRule）在 {@code handle} 走
+   * {@link EconomyGmAdjustments#project} 时判、由 catch 折成 {@link HandlerOutcome.Rejected}。
    */
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {
@@ -72,11 +95,17 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
     if (parameters == null || !parameters.isObject()) {
       throw new IllegalArgumentException(TYPE + " 的字段 parameters 必须是 JSON 对象: " + parameters);
     }
+    String label = TYPE + "." + adjustment;
     switch (adjustment) {
       case EconomyGmAdjustments.FORGIVE_DEBT ->
-          EconomyCommandPayloads.requireText(TYPE + "." + adjustment, parameters, "debtContractId");
+          EconomyCommandPayloads.requireText(label, parameters, "debtContractId");
       case EconomyGmAdjustments.SET_LIQUIDATION_POLICY ->
-          EconomyCommandPayloads.requireText(TYPE + "." + adjustment, parameters, "assetRuleId");
+          EconomyCommandPayloads.requireText(label, parameters, "assetRuleId");
+      case EconomyGmAdjustments.SET_MOBILITY_POLICY ->
+          requireMobilityPolicyShape(label, parameters);
+      case EconomyGmAdjustments.SET_CLASS_FIRST_LENDER -> requireLenderShape(label, parameters);
+      case EconomyGmAdjustments.FORGIVE_CLASS_FIRST_DEBT ->
+          requireForgiveClassFirstDebtShape(label, parameters);
       default ->
           throw new IllegalArgumentException(
               EconomyGmAdjustments.DERIVED_REJECTION
@@ -85,12 +114,65 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
                   + "（"
                   + TYPE
                   + " 只允许 "
-                  + EconomyGmAdjustments.FORGIVE_DEBT
-                  + " | "
-                  + EconomyGmAdjustments.SET_LIQUIDATION_POLICY
+                  + String.join(" | ", EconomyGmAdjustments.ADJUSTMENTS)
                   + "）");
     }
     return List.of();
+  }
+
+  /** {@code setMobilityPolicy} 的形状：modeId 可选非空文本；至少一个标量/枚举字段；给了的字段类型必须对。 */
+  private static void requireMobilityPolicyShape(String label, JsonNode parameters) {
+    EconomyCommandPayloads.optionalText(label, parameters, "modeId", null);
+    int given = 0;
+    for (String field : EconomyGmAdjustments.MOBILITY_POLICY_LONG_FIELDS) {
+      if (hasValue(parameters, field)) {
+        EconomyCommandPayloads.requireLong(label, parameters, field);
+        given++;
+      }
+    }
+    if (hasValue(parameters, EconomyGmAdjustments.MOBILITY_POLICY_ENUM_FIELD)) {
+      EconomyCommandPayloads.requireText(
+          label, parameters, EconomyGmAdjustments.MOBILITY_POLICY_ENUM_FIELD);
+      given++;
+    }
+    if (given == 0) {
+      throw new IllegalArgumentException(label + " 至少需要给出一个可调整字段（modeId 只是定位键）");
+    }
+  }
+
+  /**
+   * {@code setClassFirstLender} 的形状：lenderId 必填；两个制度参数至少一项；给了的字段必须是整数；collectionPower 由 project
+   * 统一拒绝。
+   */
+  private static void requireLenderShape(String label, JsonNode parameters) {
+    EconomyCommandPayloads.requireText(label, parameters, "lenderId");
+    int given = 0;
+    for (String field : EconomyGmAdjustments.LENDER_FIELDS) {
+      if (hasValue(parameters, field)) {
+        EconomyCommandPayloads.requireLong(label, parameters, field);
+        given++;
+      }
+    }
+    if (given == 0) {
+      throw new IllegalArgumentException(
+          label + " 至少需要给出一个可调整字段: " + String.join(" | ", EconomyGmAdjustments.LENDER_FIELDS));
+    }
+  }
+
+  /** {@code forgiveClassFirstDebt} 的形状：ownerId/counterpartyId 必填；unit/amount 可选但类型与范围要对。 */
+  private static void requireForgiveClassFirstDebtShape(String label, JsonNode parameters) {
+    EconomyCommandPayloads.requireText(label, parameters, "ownerId");
+    EconomyCommandPayloads.requireText(label, parameters, "counterpartyId");
+    EconomyCommandPayloads.optionalText(label, parameters, "unit", PilotModel.GRAIN);
+    long amount = EconomyCommandPayloads.optionalLong(label, parameters, "amount", 1L);
+    if (amount <= 0L) {
+      throw new IllegalArgumentException(label + " 的 amount 必须 > 0: " + amount);
+    }
+  }
+
+  private static boolean hasValue(JsonNode parameters, String field) {
+    JsonNode node = parameters.get(field);
+    return node != null && !node.isNull();
   }
 
   @Override

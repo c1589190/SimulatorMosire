@@ -374,6 +374,15 @@ public final class ClassFirstPilotEngine {
     if (stateMobility != null && !stateMobility.equals(config.mobilityPolicy())) {
       config = withMobilityPolicy(config, stateMobility);
     }
+    // ★ 阶段 1（2026-09-30，GM 经济工具裁定）：state 里的 lenders 也是 GM 可调制度参数的权威面。
+    //   与 mobility 同一条纪律：state 与 config 不一致 ⇒ 以 state 为准重建 config；
+    //   ★ 必须在 `new ClassFirstPilotEngine(config)` 之前 —— 外部货币借款路径读的是 config.lender()
+    //   的 interestRatePerMille/nextDueTick（borrowIfNeeded），晚一步写回等于 GM 调整没接线。
+    PilotModel.Lender configuredLender = config.lender();
+    PilotModel.Lender stateLender = state.lenders().get(ExternalLenderId.of(configuredLender.id()));
+    if (stateLender != null && !stateLender.equals(configuredLender)) {
+      config = config.withLender(stateLender);
+    }
     ClassFirstPilotEngine engine = new ClassFirstPilotEngine(config);
     LinkedHashMap<ClassPoolId, ClassPool> poolById = new LinkedHashMap<>();
     for (Map.Entry<ClassPoolId, ClassPool> entry : state.classPools().entrySet()) {

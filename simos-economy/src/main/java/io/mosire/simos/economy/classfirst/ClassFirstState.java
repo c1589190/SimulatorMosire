@@ -520,4 +520,121 @@ public record ClassFirstState(
         lenders,
         meta);
   }
+
+  /**
+   * ★ 纯 copy-with：把 {@code replacements} 逐条盖进 {@code mobilityPolicies}（同键覆盖），其余组件原样带过。
+   *
+   * <p>★ <b>只接受替换既有键</b>（与 {@link #withHouseholdAccounts} 同法）：GM 只调既有 mode 的政策参数，
+   * 新增/删除政策键属于制度播种，不从这里开写口。保序不可变由 {@link ClassFirstState} 构造器统一冻结（不用 {@code Map.copyOf}，它不保证迭代序）。
+   *
+   * @param replacements 政策替换表；null/空表 ⇒ 原样返回 {@code this}
+   * @throws IllegalArgumentException 指名不存在的政策键或键/值为 null
+   */
+  public ClassFirstState withMobilityPolicies(Map<MobilityPolicyId, MobilityPolicy> replacements) {
+    if (replacements == null || replacements.isEmpty()) {
+      return this;
+    }
+    LinkedHashMap<MobilityPolicyId, MobilityPolicy> nextPolicies =
+        new LinkedHashMap<>(mobilityPolicies);
+    for (Map.Entry<MobilityPolicyId, MobilityPolicy> entry : replacements.entrySet()) {
+      MobilityPolicyId id = entry.getKey();
+      MobilityPolicy replacement = entry.getValue();
+      if (id == null || replacement == null) {
+        throw new IllegalArgumentException("mobilityPolicies 的替换键与值都不得为 null: " + id);
+      }
+      if (!mobilityPolicies.containsKey(id)) {
+        throw new IllegalArgumentException("只允许替换既有 MobilityPolicy，不接受新增/删除: " + id);
+      }
+      nextPolicies.put(id, replacement);
+    }
+    return new ClassFirstState(
+        modeParticipations,
+        classPools,
+        householdAccounts,
+        assetStateSchemas,
+        classBounds,
+        nextPolicies,
+        classFlowEvents,
+        accounts,
+        lenders,
+        meta);
+  }
+
+  /**
+   * ★ 纯 copy-with：把 {@code replacements} 逐条盖进 {@code lenders}（同键覆盖），其余组件原样带过。
+   *
+   * <p>★ <b>只接受替换既有键</b>（同 {@link #withHouseholdAccounts}）：放贷主体的身份 = {@code
+   * ExternalLenderId.of(id)}， 键与行内 id 的一致性仍由 {@link ClassFirstState} 构造器 fail-closed
+   * 校验；保序不可变由构造器统一冻结。
+   *
+   * @param replacements 放贷主体替换表；null/空表 ⇒ 原样返回 {@code this}
+   * @throws IllegalArgumentException 指名不存在的放贷方键或键/值为 null
+   */
+  public ClassFirstState withLenders(Map<ExternalLenderId, PilotModel.Lender> replacements) {
+    if (replacements == null || replacements.isEmpty()) {
+      return this;
+    }
+    LinkedHashMap<ExternalLenderId, PilotModel.Lender> nextLenders = new LinkedHashMap<>(lenders);
+    for (Map.Entry<ExternalLenderId, PilotModel.Lender> entry : replacements.entrySet()) {
+      ExternalLenderId id = entry.getKey();
+      PilotModel.Lender replacement = entry.getValue();
+      if (id == null || replacement == null) {
+        throw new IllegalArgumentException("lenders 的替换键与值都不得为 null: " + id);
+      }
+      if (!lenders.containsKey(id)) {
+        throw new IllegalArgumentException("只允许替换既有放贷方，不接受新增/删除: " + id);
+      }
+      nextLenders.put(id, replacement);
+    }
+    return new ClassFirstState(
+        modeParticipations,
+        classPools,
+        householdAccounts,
+        assetStateSchemas,
+        classBounds,
+        mobilityPolicies,
+        classFlowEvents,
+        accounts,
+        nextLenders,
+        meta);
+  }
+
+  /**
+   * ★ 纯 copy-with：把 {@code replacements} 逐条盖进 {@code accounts}（同键覆盖），其余组件原样带过。
+   *
+   * <p>★ <b>只接受替换既有键</b>（同 {@link #withHouseholdAccounts}）：GM 免债只减既有双边账户的净额， 不新增/删除账户；键与 {@code
+   * (owner, counterparty, unit)} 派生 id 的一致性由构造器 fail-closed 校验。
+   *
+   * @param replacements 账户替换表；null/空表 ⇒ 原样返回 {@code this}
+   * @throws IllegalArgumentException 指名不存在的账户键或键/值为 null
+   */
+  public ClassFirstState withAccounts(Map<ClassFirstAccountId, ClassFirstAccount> replacements) {
+    if (replacements == null || replacements.isEmpty()) {
+      return this;
+    }
+    LinkedHashMap<ClassFirstAccountId, ClassFirstAccount> nextAccounts =
+        new LinkedHashMap<>(accounts);
+    for (Map.Entry<ClassFirstAccountId, ClassFirstAccount> entry : replacements.entrySet()) {
+      ClassFirstAccountId id = entry.getKey();
+      ClassFirstAccount replacement = entry.getValue();
+      if (id == null || replacement == null) {
+        throw new IllegalArgumentException("accounts 的替换键与值都不得为 null: " + id);
+      }
+      if (!accounts.containsKey(id)) {
+        throw new IllegalArgumentException("只允许替换既有双边账户，不接受新增/删除: " + id);
+      }
+      nextAccounts.put(id, replacement);
+    }
+    return new ClassFirstState(
+        modeParticipations,
+        classPools,
+        householdAccounts,
+        assetStateSchemas,
+        classBounds,
+        mobilityPolicies,
+        classFlowEvents,
+        nextAccounts,
+        lenders,
+        meta);
+  }
 }

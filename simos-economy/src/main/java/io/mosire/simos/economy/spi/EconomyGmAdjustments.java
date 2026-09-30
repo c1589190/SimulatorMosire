@@ -3,8 +3,16 @@ package io.mosire.simos.economy.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.AssetRuleId;
+import io.mosire.simos.economy.api.id.ClassFirstAccountId;
 import io.mosire.simos.economy.api.id.DebtContractId;
+import io.mosire.simos.economy.api.id.ExternalLenderId;
+import io.mosire.simos.economy.api.id.MobilityPolicyId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.classfirst.ClassFirstAccount;
+import io.mosire.simos.economy.classfirst.ClassFirstMeta;
+import io.mosire.simos.economy.classfirst.ClassFirstState;
+import io.mosire.simos.economy.classfirst.MobilityPolicy;
+import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.time.DebtContractBook;
@@ -15,43 +23,112 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * ★★ <b>{@code economy.GmAdjust} 的纯函数项目</b>（E6b）：handler（{@code simos-economy}）与 GM 窄写工具 {@code
- * simos.economy.adjust}（{@code simos-app}）<b>共用同一份</b>调整语义 —— 载荷解析、白名单拒绝、前后差异与 {@link
- * EconomyChangeSet} 都在这里算一次，两处只做各自的边界折叠（handler → {@code Rejected}/`Applied`；工具 → {@code
+ * ★★ <b>{@code economy.GmAdjust} 的纯函数项目</b>（E6b / class-first 阶段 1）：handler（{@code simos-economy}）与
+ * GM 窄写工具 {@code simos.economy.adjust}（{@code simos-app}）<b>共用同一份</b>调整语义 —— 载荷解析、白名单拒绝、前后差异与
+ * {@link EconomyChangeSet} 都在这里算一次，两处只做各自的边界折叠（handler → {@code Rejected}/`Applied`；工具 → {@code
  * BAD_REQUEST} /预览视图）。
  *
- * <p>★★ <b>只改源状态、只走既有写口</b>：本类不碰任何表，只构造副本后调用两个既有写口 ——
+ * <p>★★ <b>五条源状态白名单</b>（{@link #ADJUSTMENTS}）：
  *
  * <ul>
- *   <li>{@code forgiveDebt}：{@link DebtContractBook#forgive}（E4c 的公开写口）+ {@link
- *       EconomyData#withDebtContracts}。只减/清本金；<b>不搬任何粮/钱</b>（库存仍只经 {@code applyTransfer} 换手）；
- *   <li>{@code setLiquidationPolicy}：{@link EconomyData#withLiquidationPolicies}（E5a 的写口）做 upsert。
+ *   <li><b>class-first 原生（三）</b>：{@link #SET_MOBILITY_POLICY} 按给定字段 upsert 既有 {@code
+ *       mobilityPolicies} 行（只改 {@link MobilityPolicy} 的标量字段 + {@code absorptionPolicy}；{@code
+ *       schema}/{@code bounds} 两个 record 组件与 {@code absorptionCapByEdgePerMille}/{@code
+ *       bundleTemplates} 两张嵌套表给到即具名拒绝）； {@link #SET_CLASS_FIRST_LENDER} 只改既有 {@link
+ *       PilotModel.Lender} 的三个制度参数（不动 money/goods）；{@link #FORGIVE_CLASS_FIRST_DEBT} 对称清减既有 {@code
+ *       owner→counterparty} / {@code counterparty→owner} 两条镜像账户 的 {@code cumulativeNet}；
+ *   <li><b>旧表（两，仅非 class-first 世界）</b>：{@link #FORGIVE_DEBT}（{@link DebtContractBook#forgive} +
+ *       {@link EconomyData#withDebtContracts}）与 {@link #SET_LIQUIDATION_POLICY}（{@link
+ *       EconomyData#withLiquidationPolicies}）。{@link EconomyData#classFirst()} 非空 ⇒ 二者具名拒绝并指路三个新
+ *       kind —— class-first 世界不读 {@code debtContracts}/{@code liquidationPolicies}，改旧表没有结算路径；{@code
+ *       classFirst} 为空（旧档 / 尚未播种）⇒ 现有行为逐字不变。
  * </ul>
  *
- * <p>★★ <b>派生读数不可直写</b>：{@code adjustment} 只承认 {@link #FORGIVE_DEBT} / {@link
- * #SET_LIQUIDATION_POLICY} 两项；其余（包括 {@code flows} / {@code demandBook} / {@code crisisSignals} /
- * {@code classStandings.consecutiveDebtStressCycles} / {@code debtCapacity} 这类派生读数）一律以 {@link
+ * <p>★★ <b>只改源状态、只走既有写口</b>：class-first 三个新 kind 只经 {@link ClassFirstState} 的 {@code
+ * withMobilityPolicies}/{@code withLenders}/{@code withAccounts} 纯 copy-with 与 {@link
+ * EconomyData#withClassFirst} 落值； 旧两 kind 仍只调用原有写口。任何调整都不碰
+ * totals/conservation/pools/classFlowEvents/meta 等派生量，也不搬粮/钱/库存。
+ *
+ * <p>★★ <b>派生读数不可直写</b>：{@code flows} / {@code demandBook} / {@code crisisSignals} / {@code
+ * classStandings.consecutiveDebtStressCycles} / {@code debtCapacity} 这类派生读数一律以 {@link
  * #DERIVED_REJECTION} 具名拒绝 —— 派生读数只能由结算从源状态现算，不能从这里写进去。
  *
  * <p>★ <b>确定性</b>：同一 {@code (base, adjustment, parameters, reason, day)} ⇒ 逐字段相同的 {@link
- * Projection}。复制既有表用 {@link LinkedHashMap}（保序），id 用各稳定 ID 的 {@code parse}（唯一拼写点），不做任何 与迭代序 / 时钟 /
- * 随机数有关的事。
+ * Projection}。复制既有表用 {@link LinkedHashMap}（保序），id 用各稳定 ID 的 {@code parse}/{@code
+ * of}（唯一拼写点），不做任何与迭代序 / 时钟 / 随机数有关的事。
  *
- * <p>★ <b>reason 的落点</b>：本类把 {@code reason} 原样带进 {@link Projection} 与 {@code forgive} 写口（E4c 的
+ * <p>★ <b>reason 的落点</b>：本类把 {@code reason} 原样带进 {@link Projection} 与旧的 {@code forgive} 写口（E4c 的
  * {@code Forgiveness} 返回里含原因）；命令载荷本身也带 {@code reason}（见 handler 与工具）。本阶段不新增持久审计组件。
  */
 public final class EconomyGmAdjustments {
 
-  /** {@code adjustment} 白名单项：减免债务（部分/全额）。 */
+  /** {@code adjustment} 白名单项：减免旧表债务合同（部分/全额；仅非 class-first 世界）。 */
   public static final String FORGIVE_DEBT = "forgiveDebt";
 
-  /** {@code adjustment} 白名单项：按 {@code assetRuleId} upsert 清算政策。 */
+  /** {@code adjustment} 白名单项：按 {@code assetRuleId} upsert 旧表清算政策（仅非 class-first 世界）。 */
   public static final String SET_LIQUIDATION_POLICY = "setLiquidationPolicy";
+
+  /** {@code adjustment} 白名单项：按给定字段 upsert 既有 mode 的 {@code MobilityPolicy}（class-first 原生）。 */
+  public static final String SET_MOBILITY_POLICY = "setMobilityPolicy";
+
+  /** {@code adjustment} 白名单项：修改既有外部放贷主体的三个制度参数（class-first 原生）。 */
+  public static final String SET_CLASS_FIRST_LENDER = "setClassFirstLender";
+
+  /** {@code adjustment} 白名单项：对称清减既有双边账户的债务/债权净额（class-first 原生）。 */
+  public static final String FORGIVE_CLASS_FIRST_DEBT = "forgiveClassFirstDebt";
 
   /** 白名单外调整的统一拒绝短语（handler 折 {@code Rejected}、工具折 {@code BAD_REQUEST} 都用它）。 */
   public static final String DERIVED_REJECTION = "派生读数不可由 GM 调整工具直写";
 
   private static final String COMMAND = EconomyGmAdjustHandler.TYPE;
+
+  /** 五条源状态白名单（拒绝消息与 handler 兜底共用同一顺序；唯一拼写点在各自常量）。 */
+  static final List<String> ADJUSTMENTS =
+      List.of(
+          FORGIVE_DEBT,
+          SET_LIQUIDATION_POLICY,
+          SET_MOBILITY_POLICY,
+          SET_CLASS_FIRST_LENDER,
+          FORGIVE_CLASS_FIRST_DEBT);
+
+  /** {@code setMobilityPolicy} 可调整的 17 个 long 标量字段（与 {@link MobilityPolicy} 逐项对齐）。 */
+  static final List<String> MOBILITY_POLICY_LONG_FIELDS =
+      List.of(
+          "gamma",
+          "upMinPerMillePerYear",
+          "upMaxPerMillePerYear",
+          "downMinPerMillePerYear",
+          "downMaxPerMillePerYear",
+          "upCapPerMillePerTick",
+          "downCapPerMillePerTick",
+          "leaseAvailabilityPerMille",
+          "initialLandForSale",
+          "ticksPerYear",
+          "leasePerCapitaMilli",
+          "landPurchasePerCapitaMilli",
+          "absorptionCapTenantPerMille",
+          "absorptionCapMiddlePerMille",
+          "absorptionCapLandlordPerMille",
+          "absorptionCapLaborerPerMille",
+          "extractionTaxPerMille");
+
+  /** {@code setMobilityPolicy} 可调整的枚举字段（与 17 个 long 字段合起来是"至少给一个"的全集）。 */
+  static final String MOBILITY_POLICY_ENUM_FIELD = "absorptionPolicy";
+
+  /** {@code setMobilityPolicy} 本阶段只读、给到即具名拒绝的字段（两个 record 组件 + 两张嵌套表）。 */
+  private static final List<String> MOBILITY_POLICY_UNSUPPORTED_FIELDS =
+      List.of("schema", "bounds", "absorptionCapByEdgePerMille", "bundleTemplates");
+
+  /**
+   * {@code setClassFirstLender} 两个可调整制度参数（至少给一个）。
+   *
+   * <p>★ 2026-09-30 裁定：`collectionPower` **本阶段不在白名单** —— 它在全引擎唯一出现是 {@code
+   * LenderState.snapshot()}，没有任何消费点；接受一个"改了不生效"的参数是本仓禁的"看起来在记"。
+   */
+  static final List<String> LENDER_FIELDS = List.of("interestRatePerMille", "nextDueTick");
+
+  /** {@code setClassFirstLender} 给到即具名拒绝的字段（当前引擎无消费点）。 */
+  private static final String LENDER_UNSUPPORTED_FIELD = "collectionPower";
 
   private EconomyGmAdjustments() {}
 
@@ -60,7 +137,7 @@ public final class EconomyGmAdjustments {
    *
    * @param base 当前 {@link EconomyData}（只读；不得为 null）
    * @param adjustment 调整名；白名单外一律 {@link IllegalArgumentException}（具名 {@link #DERIVED_REJECTION}）
-   * @param parameters 调整参数对象（形状见 {@link #FORGIVE_DEBT}/{@link #SET_LIQUIDATION_POLICY}）
+   * @param parameters 调整参数对象（形状见五条白名单常量）
    * @param reason 调整原因；必填非空白
    * @param day 世界当前日（只进审计摘要；不改状态）
    * @return 投影后的 {@link EconomyData}、{@link EconomyChangeSet} 与前后差异清单
@@ -83,9 +160,17 @@ public final class EconomyGmAdjustments {
     if (day < 0L) {
       throw new IllegalArgumentException(COMMAND + " 的 day 不得为负: " + day);
     }
+    // ★ 旧表两 kind 的 class-first 门统一在这里：非空 classFirst ⇒ 旧表没有结算路径，具名拒绝并指路三个新 kind。
+    if (!base.classFirst().isEmpty()
+        && (FORGIVE_DEBT.equals(adjustment) || SET_LIQUIDATION_POLICY.equals(adjustment))) {
+      throw legacyClassFirstRejection(adjustment);
+    }
     return switch (adjustment) {
       case FORGIVE_DEBT -> forgive(base, parameters, reason, day);
       case SET_LIQUIDATION_POLICY -> setLiquidationPolicy(base, parameters, reason, day);
+      case SET_MOBILITY_POLICY -> setMobilityPolicy(base, parameters, reason, day);
+      case SET_CLASS_FIRST_LENDER -> setClassFirstLender(base, parameters, reason, day);
+      case FORGIVE_CLASS_FIRST_DEBT -> forgiveClassFirstDebt(base, parameters, reason, day);
       default -> throw derivedRejection(adjustment);
     };
   }
@@ -197,6 +282,397 @@ public final class EconomyGmAdjustments {
     return new Projection(SET_LIQUIDATION_POLICY, reason, day, projected, changeSet, changes);
   }
 
+  /**
+   * {@code setMobilityPolicy}：按给到的字段 upsert 既有 {@link MobilityPolicy}（至少一个字段；未给字段保持原值）。
+   *
+   * <p>★ key = {@code MobilityPolicyId.of(modeId)}；{@code modeId} 缺省 = {@code
+   * base.classFirst().meta().config().mode().id()}；policy 不存在 ⇒ 具名拒绝。{@code schema}/{@code bounds}
+   * 两个 record 组件与 {@code absorptionCapByEdgePerMille}/{@code bundleTemplates} 两张嵌套表本阶段只读 ——
+   * 给到即具名拒绝，不静默忽略。
+   */
+  private static Projection setMobilityPolicy(
+      EconomyData base, JsonNode parameters, String reason, long day) {
+    String label = COMMAND + "." + SET_MOBILITY_POLICY;
+    rejectUnsupportedMobilityPolicyFields(label, parameters);
+    ClassFirstState state = base.classFirst();
+    String modeId = resolveModeId(label, state.meta(), parameters);
+    MobilityPolicyId key = mobilityPolicyId(label, modeId);
+    MobilityPolicy before = state.mobilityPolicies().get(key);
+    if (before == null) {
+      throw new IllegalArgumentException(label + " 指名的 MobilityPolicy 不存在: " + key.value());
+    }
+    if (!hasAnyMobilityPolicyField(parameters)) {
+      throw new IllegalArgumentException(label + " 至少需要给出一个可调整字段（modeId 只是定位键）: " + parameters);
+    }
+
+    long gamma = optionalAtLeast(label, parameters, "gamma", before.gamma(), 1L);
+    long upMin =
+        optionalNonNegative(
+            label, parameters, "upMinPerMillePerYear", before.upMinPerMillePerYear());
+    long upMax =
+        optionalNonNegative(
+            label, parameters, "upMaxPerMillePerYear", before.upMaxPerMillePerYear());
+    long downMin =
+        optionalNonNegative(
+            label, parameters, "downMinPerMillePerYear", before.downMinPerMillePerYear());
+    long downMax =
+        optionalNonNegative(
+            label, parameters, "downMaxPerMillePerYear", before.downMaxPerMillePerYear());
+    long upCap =
+        optionalNonNegative(
+            label, parameters, "upCapPerMillePerTick", before.upCapPerMillePerTick());
+    long downCap =
+        optionalNonNegative(
+            label, parameters, "downCapPerMillePerTick", before.downCapPerMillePerTick());
+    long leaseAvailability =
+        optionalInRange(
+            label,
+            parameters,
+            "leaseAvailabilityPerMille",
+            before.leaseAvailabilityPerMille(),
+            0L,
+            1000L);
+    long initialLandForSale =
+        optionalNonNegative(label, parameters, "initialLandForSale", before.initialLandForSale());
+    long ticksPerYear =
+        optionalAtLeast(label, parameters, "ticksPerYear", before.ticksPerYear(), 1L);
+    long leasePerCapita =
+        optionalNonNegative(label, parameters, "leasePerCapitaMilli", before.leasePerCapitaMilli());
+    long landPurchasePerCapita =
+        optionalNonNegative(
+            label, parameters, "landPurchasePerCapitaMilli", before.landPurchasePerCapitaMilli());
+    long capTenant =
+        optionalNonNegative(
+            label, parameters, "absorptionCapTenantPerMille", before.absorptionCapTenantPerMille());
+    long capMiddle =
+        optionalNonNegative(
+            label, parameters, "absorptionCapMiddlePerMille", before.absorptionCapMiddlePerMille());
+    long capLandlord =
+        optionalNonNegative(
+            label,
+            parameters,
+            "absorptionCapLandlordPerMille",
+            before.absorptionCapLandlordPerMille());
+    long capLaborer =
+        optionalNonNegative(
+            label,
+            parameters,
+            "absorptionCapLaborerPerMille",
+            before.absorptionCapLaborerPerMille());
+    long extractionTax =
+        optionalNonNegative(
+            label, parameters, "extractionTaxPerMille", before.extractionTaxPerMille());
+    MobilityPolicy.AbsorptionPolicy absorptionPolicy = before.absorptionPolicy();
+    if (hasValue(parameters, MOBILITY_POLICY_ENUM_FIELD)) {
+      absorptionPolicy =
+          enumValue(
+              label,
+              MOBILITY_POLICY_ENUM_FIELD,
+              EconomyCommandPayloads.requireText(label, parameters, MOBILITY_POLICY_ENUM_FIELD),
+              MobilityPolicy.AbsorptionPolicy.class);
+    }
+    if (upMax < upMin) {
+      throw new IllegalArgumentException(
+          label
+              + " 的 upMaxPerMillePerYear 必须 >= upMinPerMillePerYear：upMin="
+              + upMin
+              + "，upMax="
+              + upMax);
+    }
+    if (downMax < downMin) {
+      throw new IllegalArgumentException(
+          label
+              + " 的 downMaxPerMillePerYear 必须 >= downMinPerMillePerYear：downMin="
+              + downMin
+              + "，downMax="
+              + downMax);
+    }
+
+    MobilityPolicy after =
+        new MobilityPolicy(
+            before.schema(),
+            before.bounds(),
+            gamma,
+            upMin,
+            upMax,
+            downMin,
+            downMax,
+            upCap,
+            downCap,
+            leaseAvailability,
+            initialLandForSale,
+            ticksPerYear,
+            leasePerCapita,
+            landPurchasePerCapita,
+            capTenant,
+            capMiddle,
+            capLandlord,
+            capLaborer,
+            before.absorptionCapByEdgePerMille(),
+            absorptionPolicy,
+            before.bundleTemplates(),
+            extractionTax);
+    EconomyData projected = base.withClassFirst(state.withMobilityPolicies(Map.of(key, after)));
+    EconomyChangeSet changeSet = EconomyChangeSet.between(base, projected);
+    List<Change> changes =
+        after.equals(before)
+            ? List.of() // 逐值相同的 upsert = 幂等 no-op（同 setLiquidationPolicy 口径）
+            : List.of(new Change("classFirst.mobilityPolicies", key.value(), before, after));
+    return new Projection(SET_MOBILITY_POLICY, reason, day, projected, changeSet, changes);
+  }
+
+  /**
+   * {@code setClassFirstLender}：只改既有放贷主体的 {@code interestRatePerMille}/{@code nextDueTick}（至少一项），
+   * 不动 money/goods；{@code collectionPower} 当前引擎无消费点 ⇒ 给到即具名拒绝。
+   *
+   * <p>lender 不存在 ⇒ 具名拒绝；两个参数都必须 &ge; 0（负值会让下一 tick 的账户校验炸掉，故在这里 fail-closed）。 ★ 接线说明：{@code
+   * ClassFirstPilotEngine.restore} 会在构造引擎前把 state 里同 id 的 lender 写回 {@code config}， 外部货币借款路径读的就是
+   * {@code config.lender()} ⇒ 这里改的利率/到期对下一 tick 新建债生效。
+   */
+  private static Projection setClassFirstLender(
+      EconomyData base, JsonNode parameters, String reason, long day) {
+    String label = COMMAND + "." + SET_CLASS_FIRST_LENDER;
+    String lenderId = EconomyCommandPayloads.requireText(label, parameters, "lenderId");
+    ExternalLenderId key = externalLenderId(label, lenderId);
+    PilotModel.Lender before = base.classFirst().lenders().get(key);
+    if (before == null) {
+      throw new IllegalArgumentException(label + " 指名的放贷方不存在: " + key.value());
+    }
+    if (parameters.has(LENDER_UNSUPPORTED_FIELD)) {
+      throw new IllegalArgumentException(
+          label
+              + " 本阶段拒绝 "
+              + LENDER_UNSUPPORTED_FIELD
+              + "：当前引擎没有消费点（改了不生效），等催收逻辑接线后再开；可调整字段: "
+              + String.join(" | ", LENDER_FIELDS));
+    }
+    if (!hasAnyLenderField(parameters)) {
+      throw new IllegalArgumentException(
+          label + " 至少需要给出一个可调整字段: " + String.join(" | ", LENDER_FIELDS));
+    }
+    long interestRate =
+        optionalNonNegative(
+            label, parameters, "interestRatePerMille", before.interestRatePerMille());
+    long nextDueTick = optionalNonNegative(label, parameters, "nextDueTick", before.nextDueTick());
+
+    PilotModel.Lender after =
+        new PilotModel.Lender(
+            before.id(),
+            before.money(),
+            before.goods(),
+            interestRate,
+            nextDueTick,
+            before.collectionPower());
+    EconomyData projected = base.withClassFirst(base.classFirst().withLenders(Map.of(key, after)));
+    EconomyChangeSet changeSet = EconomyChangeSet.between(base, projected);
+    List<Change> changes =
+        after.equals(before)
+            ? List.of()
+            : List.of(new Change("classFirst.lenders", key.value(), before, after));
+    return new Projection(SET_CLASS_FIRST_LENDER, reason, day, projected, changeSet, changes);
+  }
+
+  /**
+   * {@code forgiveClassFirstDebt}：对称免去既有双边账户的债务/债权净额（只改 {@code cumulativeNet}/{@code status}）。
+   *
+   * <p>账户按 {@code ownerId→counterpartyId} 方向找债务人侧（{@code cumulativeNet < 0}），{@code unit} 缺省 {@link
+   * PilotModel#GRAIN}；减免额 = {@code min(amount（缺省=全额债务）, -cumulativeNet)}。两条镜像账户的 {@code
+   * cumulativeNet} 同步一增一减，保持 {@code debt==claim} 与 {@code Σ账户净额=0}；归零的一侧（全额免债时是两侧） {@code
+   * status=SETTLED}。★ <b>本阶段不动 {@code interestAccrued}</b> —— 免债不冲销已计利息，累计利息只由结算滚动追加；也不改 {@code
+   * terms}/{@code interestRatePerMille}/{@code nextDueTick}，不搬库存/商品/货币，不新增/删除账户。
+   */
+  private static Projection forgiveClassFirstDebt(
+      EconomyData base, JsonNode parameters, String reason, long day) {
+    String label = COMMAND + "." + FORGIVE_CLASS_FIRST_DEBT;
+    String ownerId = EconomyCommandPayloads.requireText(label, parameters, "ownerId");
+    String counterpartyId = EconomyCommandPayloads.requireText(label, parameters, "counterpartyId");
+    if (ownerId.equals(counterpartyId)) {
+      throw new IllegalArgumentException(label + " 的 ownerId 与 counterpartyId 不得相同: " + ownerId);
+    }
+    String unit = EconomyCommandPayloads.optionalText(label, parameters, "unit", PilotModel.GRAIN);
+    ClassFirstState state = base.classFirst();
+    ClassFirstAccountId debtorId = accountId(label, ownerId, counterpartyId, unit);
+    ClassFirstAccountId mirrorId = accountId(label, counterpartyId, ownerId, unit);
+    ClassFirstAccount debtor = state.accounts().get(debtorId);
+    if (debtor == null) {
+      throw new IllegalArgumentException(
+          label
+              + " 找不到 owner→counterparty 账户: "
+              + debtorId.value()
+              + "（owner="
+              + ownerId
+              + "，counterparty="
+              + counterpartyId
+              + "，unit="
+              + unit
+              + "）");
+    }
+    if (debtor.cumulativeNet() >= 0L) {
+      throw new IllegalArgumentException(
+          label
+              + " 指名的账户不是债务人侧（cumulativeNet 必须 < 0）: "
+              + debtorId.value()
+              + "，net="
+              + debtor.cumulativeNet());
+    }
+    long debt = -debtor.cumulativeNet();
+    ClassFirstAccount mirror = state.accounts().get(mirrorId);
+    if (mirror == null) {
+      throw new IllegalArgumentException(
+          label + " 缺少镜像账户 " + mirrorId.value() + "，无法对称免债（不新增/删除账户）");
+    }
+    if (mirror.cumulativeNet() != debt) {
+      throw new IllegalArgumentException(
+          label
+              + " 的镜像账户 "
+              + mirrorId.value()
+              + " 与债务侧不构成 debt==claim（debt="
+              + debt
+              + "，claim="
+              + mirror.cumulativeNet()
+              + "），拒绝免债以免破坏双边守恒");
+    }
+    long amount = debt;
+    if (hasValue(parameters, "amount")) {
+      amount = EconomyCommandPayloads.requireLong(label, parameters, "amount");
+    }
+    if (amount <= 0L) {
+      throw new IllegalArgumentException(label + " 的 amount 必须 > 0: " + amount);
+    }
+    // ★ 按计划取 min(amount, 全额债务)：给出超过债务的 amount 视为封顶到全额，不报错。
+    long forgiven = Math.min(amount, debt);
+    long debtorAfterNet = debtor.cumulativeNet() + forgiven; // 向 0 靠近，恒 ≤ 0
+    long mirrorAfterNet = mirror.cumulativeNet() - forgiven; // claim 侧对称减少，恒 ≥ 0
+    PilotModel.AccountStatus debtorStatus =
+        debtorAfterNet == 0L ? PilotModel.AccountStatus.SETTLED : debtor.status();
+    PilotModel.AccountStatus mirrorStatus =
+        mirrorAfterNet == 0L ? PilotModel.AccountStatus.SETTLED : mirror.status();
+
+    ClassFirstAccount nextDebtor =
+        new ClassFirstAccount(
+            debtorId,
+            ownerId,
+            counterpartyId,
+            unit,
+            debtor.terms(),
+            debtor.interestRatePerMille(),
+            debtor.nextDueTick(),
+            debtorAfterNet,
+            debtor.interestAccrued(), // ★ 本阶段不动：免债不冲销已计利息
+            debtorStatus);
+    ClassFirstAccount nextMirror =
+        new ClassFirstAccount(
+            mirrorId,
+            counterpartyId,
+            ownerId,
+            unit,
+            mirror.terms(),
+            mirror.interestRatePerMille(),
+            mirror.nextDueTick(),
+            mirrorAfterNet,
+            mirror.interestAccrued(), // ★ 同上
+            mirrorStatus);
+    EconomyData projected =
+        base.withClassFirst(state.withAccounts(Map.of(debtorId, nextDebtor, mirrorId, nextMirror)));
+    EconomyChangeSet changeSet = EconomyChangeSet.between(base, projected);
+    return new Projection(
+        FORGIVE_CLASS_FIRST_DEBT,
+        reason,
+        day,
+        projected,
+        changeSet,
+        List.of(
+            new Change("classFirst.accounts", debtorId.value(), debtor, nextDebtor),
+            new Change("classFirst.accounts", mirrorId.value(), mirror, nextMirror)));
+  }
+
+  /** 缺省 modeId 取 {@code classFirst.meta.config.mode.id()}；classFirst 未播种/无 config ⇒ 具名拒绝。 */
+  private static String resolveModeId(String label, ClassFirstMeta meta, JsonNode parameters) {
+    String modeId = EconomyCommandPayloads.optionalText(label, parameters, "modeId", null);
+    if (modeId != null) {
+      return modeId;
+    }
+    if (meta == null || meta.config() == null || meta.config().mode() == null) {
+      throw new IllegalArgumentException(
+          label
+              + " 的 modeId 缺省需要 classFirst.meta.config.mode（当前 classFirst 未播种/无 config）；请显式给出 modeId");
+    }
+    return meta.config().mode().id();
+  }
+
+  /** 四个只读字段给了就拒（含显式 null，避免"看起来接受了"）。 */
+  private static void rejectUnsupportedMobilityPolicyFields(String label, JsonNode parameters) {
+    for (String field : MOBILITY_POLICY_UNSUPPORTED_FIELDS) {
+      if (parameters.has(field)) {
+        throw new IllegalArgumentException(
+            label
+                + " 本阶段不支持修改 "
+                + field
+                + "（schema/bounds 是 record 组件、absorptionCapByEdgePerMille/bundleTemplates"
+                + " 是嵌套表；给到即具名拒绝，不静默忽略）");
+      }
+    }
+  }
+
+  private static boolean hasAnyMobilityPolicyField(JsonNode parameters) {
+    for (String field : MOBILITY_POLICY_LONG_FIELDS) {
+      if (hasValue(parameters, field)) {
+        return true;
+      }
+    }
+    return hasValue(parameters, MOBILITY_POLICY_ENUM_FIELD);
+  }
+
+  private static boolean hasAnyLenderField(JsonNode parameters) {
+    for (String field : LENDER_FIELDS) {
+      if (hasValue(parameters, field)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean hasValue(JsonNode parameters, String field) {
+    JsonNode node = parameters.get(field);
+    return node != null && !node.isNull();
+  }
+
+  /** 可选 long：缺键 / JSON null ⇒ fallback；给了 ⇒ 必须为非负整数。 */
+  private static long optionalNonNegative(
+      String label, JsonNode parameters, String field, long fallback) {
+    if (!hasValue(parameters, field)) {
+      return fallback;
+    }
+    return nonNegative(label, field, EconomyCommandPayloads.requireLong(label, parameters, field));
+  }
+
+  /** 可选 long：缺键 / JSON null ⇒ fallback；给了 ⇒ 必须 &ge; min。 */
+  private static long optionalAtLeast(
+      String label, JsonNode parameters, String field, long fallback, long min) {
+    if (!hasValue(parameters, field)) {
+      return fallback;
+    }
+    long value = EconomyCommandPayloads.requireLong(label, parameters, field);
+    if (value < min) {
+      throw new IllegalArgumentException(label + " 的 " + field + " 必须 >= " + min + ": " + value);
+    }
+    return value;
+  }
+
+  /** 可选 long：缺键 / JSON null ⇒ fallback；给了 ⇒ 必须 ∈ [min, max]。 */
+  private static long optionalInRange(
+      String label, JsonNode parameters, String field, long fallback, long min, long max) {
+    if (!hasValue(parameters, field)) {
+      return fallback;
+    }
+    long value = EconomyCommandPayloads.requireLong(label, parameters, field);
+    if (value < min || value > max) {
+      throw new IllegalArgumentException(
+          label + " 的 " + field + " 必须 ∈ [" + min + ", " + max + "]: " + value);
+    }
+    return value;
+  }
+
   private static IllegalArgumentException derivedRejection(String adjustment) {
     return new IllegalArgumentException(
         DERIVED_REJECTION
@@ -205,10 +681,48 @@ public final class EconomyGmAdjustments {
             + "（"
             + COMMAND
             + " 只允许源状态调整："
-            + FORGIVE_DEBT
-            + " | "
-            + SET_LIQUIDATION_POLICY
+            + String.join(" | ", ADJUSTMENTS)
             + "）");
+  }
+
+  /** 旧两 kind 在非空 class-first 世界的具名拒绝：旧表没有结算路径，指路三个新 kind。 */
+  private static IllegalArgumentException legacyClassFirstRejection(String adjustment) {
+    return new IllegalArgumentException(
+        COMMAND
+            + "."
+            + adjustment
+            + " 在 class-first 世界不可用：class-first 不读 debtContracts/liquidationPolicies，旧表没有结算路径；"
+            + "请改用 "
+            + SET_MOBILITY_POLICY
+            + " | "
+            + SET_CLASS_FIRST_LENDER
+            + " | "
+            + FORGIVE_CLASS_FIRST_DEBT);
+  }
+
+  private static MobilityPolicyId mobilityPolicyId(String label, String modeId) {
+    try {
+      return MobilityPolicyId.of(modeId);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(label + " 的 modeId 非法: " + e.getMessage());
+    }
+  }
+
+  private static ExternalLenderId externalLenderId(String label, String lenderId) {
+    try {
+      return ExternalLenderId.of(lenderId);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(label + " 的 lenderId 非法: " + e.getMessage());
+    }
+  }
+
+  private static ClassFirstAccountId accountId(
+      String label, String ownerId, String counterpartyId, String unit) {
+    try {
+      return ClassFirstAccountId.idOf(ownerId, counterpartyId, unit);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(label + " 的账户身份非法: " + e.getMessage());
+    }
   }
 
   private static DebtContractId parseDebtId(String label, String text) {
@@ -291,7 +805,8 @@ public final class EconomyGmAdjustments {
   /**
    * 一个稳定键的前后差异。
    *
-   * @param component 源状态组件名（如 {@code debtContracts} / {@code liquidationPolicies}）
+   * @param component 源状态组件名（如 {@code debtContracts} / {@code liquidationPolicies} / {@code
+   *     classFirst.mobilityPolicies}）
    * @param keyId 该组件内的稳定键（规范串）
    * @param before 调整前的值；新增时为 {@code null}
    * @param after 调整后的值
