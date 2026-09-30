@@ -17,6 +17,7 @@ import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * ★★ {@code economy.TransferAssetShare}（R4-B.3b）：GM/事件用的<b>实物资产份额拆分/转移</b>命令。
@@ -56,14 +57,26 @@ import java.util.Objects;
  * <p>★★ <b>E5a：份额表写入委托 {@link AssetShareBook#transfer}</b>（计划 §4 硬约束 2 的唯一写口）。本类只做
  * 命令语义的准入判断（份额存在/数量范围/至少一栏变化），真正的校验/新 id/守恒/活跃质押上界全在 Book 里一次完成： 任一失败 ⇒ 调用方的表一字不动（不再有"先改源行、后生成 id
  * 抛错"的半笔风险）。
+ *
+ * <p>★★ <b>class-first 世界拒绝</b>：{@link EconomyData#classFirst()} 非空时本命令由 {@link
+ * ClassFirstCommandGuard} 在读取 base 后立即具名拒绝 —— class-first 结算的资产真值在 {@code
+ * classFirst.classPools}（池级资产/劳动/债务），<b>不读</b> {@code assetShares}；{@code classFirst}
+ * 为空（旧档/未播种）时本命令行为逐字不变。
  */
 public final class EconomyTransferAssetShareHandler implements CommandHandler {
+
+  private static final String COMMAND = "economy.TransferAssetShare";
+
+  /** class-first 拒绝的理由主体（不读什么 + 真值在哪 + 指路）。 */
+  private static final String CLASS_FIRST_GUIDANCE =
+      "class-first 结算的资产真值在 classFirst.classPools（池级资产/劳动/债务），不读 assetShares；"
+          + "class-first 资产转移工具未接（后续阶段）";
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
   @Override
   public String type() {
-    return "economy.TransferAssetShare";
+    return COMMAND;
   }
 
   @Override
@@ -71,6 +84,11 @@ public final class EconomyTransferAssetShareHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     EconomyData base = EconomySnapshots.of(state).data();
+    Optional<HandlerOutcome> classFirstRejection =
+        ClassFirstCommandGuard.rejectIfClassFirst(COMMAND, base, CLASS_FIRST_GUIDANCE);
+    if (classFirstRejection.isPresent()) {
+      return classFirstRejection.get();
+    }
     try {
       JsonNode payload = MAPPER.readTree(payloadJson);
       if (payload == null || !payload.isObject()) {
@@ -163,7 +181,7 @@ public final class EconomyTransferAssetShareHandler implements CommandHandler {
   private static String requireText(JsonNode node, String field) {
     JsonNode value = node.get(field);
     if (value == null || !value.isTextual() || value.asText().isBlank()) {
-      throw new IllegalArgumentException("economy.TransferAssetShare 缺少非空文本字段: " + field);
+      throw new IllegalArgumentException(COMMAND + " 缺少非空文本字段: " + field);
     }
     return value.asText();
   }

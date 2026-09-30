@@ -13,6 +13,7 @@ import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * ★★ {@code economy.SetMarketPrice}（R4-E2）：GM 给某格某商品定价。
@@ -33,10 +34,20 @@ import java.util.Objects;
  * <p>★ <b>不做的事</b>：不校验"该格在图上"（命令层只要求格坐标合法；市场可以在尚未播种的格上先建，等人口/产业后到 —— 那是 GM 的判断，不是状态守卫）；不实现 {@code
  * CommandTargets}（同 {@code economy.MigrateHousehold}：GM {@code simos.command.submit} 可用，directive
  * 内会被 fail-closed 拒）。
+ *
+ * <p>★★ <b>class-first 世界拒绝</b>：{@link EconomyData#classFirst()} 非空时本命令由 {@link
+ * ClassFirstCommandGuard} 在读取 base 后立即具名拒绝 —— class-first 结算用 {@code classFirst.meta.config}
+ * 的固定换算率（{@code moneyPerGrain} 等），<b>不读</b> {@code markets}；改价请改走 {@code economy.GmAdjust} 的 {@code
+ * setProductionParameters}。{@code classFirst} 为空（旧档/未播种）时本命令行为逐字不变。
  */
 public final class EconomySetMarketPriceHandler implements CommandHandler {
 
   private static final String COMMAND = "economy.SetMarketPrice";
+
+  /** class-first 拒绝的理由主体（不读什么 + 真值在哪 + 指路）。 */
+  private static final String CLASS_FIRST_GUIDANCE =
+      "class-first 结算用 classFirst.meta.config 的固定换算率（moneyPerGrain 等），不读 markets；"
+          + "改价请改走 economy.GmAdjust 的 setProductionParameters（改 moneyPerGrain 等）";
 
   @Override
   public String type() {
@@ -48,6 +59,11 @@ public final class EconomySetMarketPriceHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     EconomyData base = EconomySnapshots.of(state).data();
+    Optional<HandlerOutcome> classFirstRejection =
+        ClassFirstCommandGuard.rejectIfClassFirst(COMMAND, base, CLASS_FIRST_GUIDANCE);
+    if (classFirstRejection.isPresent()) {
+      return classFirstRejection.get();
+    }
     try {
       JsonNode payload = EconomyCommandPayloads.parseObject(COMMAND, payloadJson);
       int q = EconomyCommandPayloads.optionalInt(COMMAND, payload, "q", Integer.MIN_VALUE);

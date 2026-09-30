@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * ★★ {@code economy.SwitchMode}（E6a）：登记一次"某生产组织切换到另一生产方式"的请求。
@@ -43,11 +44,20 @@ import java.util.Objects;
  * 的 unit/industry 或 assetSources 推格键"；这里走 {@link ProductionOrganizationId#hexKey()} —— 它读的是 {@link
  * ProductionOrganizationId#idOf} 已经写进稳定身份末尾的同一个格键（唯一拼写点，不内联切串）。旧档/手写 org id 末尾不是 {@code q_r} ⇒
  * 返回空目标（裁决侧 fail-closed 拒绝"无目标声明"），不伪造坐标。
+ *
+ * <p>★★ <b>class-first 世界拒绝</b>：{@link EconomyData#classFirst()} 非空时本命令由 {@link
+ * ClassFirstCommandGuard} 在读取 base 后立即具名拒绝 —— class-first 当前只跑 {@code classFirst.meta.config.mode}
+ * 单一 mode，<b>不读</b> {@code modeTransitions}；模式迁移工具未接（后续阶段）； {@code classFirst}
+ * 为空（旧档/未播种）时本命令行为逐字不变。
  */
 public final class EconomySwitchModeHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
 
   private static final String COMMAND = "economy.SwitchMode";
+
+  /** class-first 拒绝的理由主体（不读什么 + 真值在哪 + 指路）。 */
+  private static final String CLASS_FIRST_GUIDANCE =
+      "class-first 当前只跑 classFirst.meta.config.mode 单一 mode，不读 modeTransitions；" + "模式迁移工具未接（后续阶段）";
 
   @Override
   public String type() {
@@ -75,6 +85,11 @@ public final class EconomySwitchModeHandler
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     EconomyData base = EconomySnapshots.of(state).data(); // 装配故障当场炸，不走拒绝路径
+    Optional<HandlerOutcome> classFirstRejection =
+        ClassFirstCommandGuard.rejectIfClassFirst(COMMAND, base, CLASS_FIRST_GUIDANCE);
+    if (classFirstRejection.isPresent()) {
+      return classFirstRejection.get();
+    }
     try {
       JsonNode payload = EconomyCommandPayloads.parseObject(COMMAND, payloadJson);
       ProductionOrganizationId organizationId =
