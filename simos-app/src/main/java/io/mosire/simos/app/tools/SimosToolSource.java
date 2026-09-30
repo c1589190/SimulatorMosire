@@ -40,6 +40,7 @@ import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.EconomyAdjustTool;
 import io.mosire.simos.app.tools.write.ForkTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
+import io.mosire.simos.app.tools.write.LevyRegionTool;
 import io.mosire.simos.app.tools.write.MapCreateRegionTool;
 import io.mosire.simos.app.tools.write.MapDeleteRegionTool;
 import io.mosire.simos.app.tools.write.MapRandomizeRegionTool;
@@ -362,6 +363,10 @@ public final class SimosToolSource implements ToolSource {
     // 辖区阶段 6（2026-09-30 / 计划 §6.2）：actor 净增量账原语（app 级抽取/组军组合工具的落账腿）。
     //   **只在 GM 桶**：命令类型固定，模型只能给载荷；整条原子由域层判。
     built.add(new ActorAdjustAccountsTool(core, initiator, mapId));
+    // 辖区阶段 6（2026-09-30 / 计划 §6.1）：GM 组合工具——一次抽粮/钱/人力，三条命令同批落一条 revision。
+    //   **只在 GM 桶**；★ 它不是一条命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。actor.AdjustAccounts 已标
+    //   GmOnlyCommand ⇒ 这条组合工具的上限/管辖区口径不会被"嵌进决策令"绕过。
+    built.add(new LevyRegionTool(core, query, initiator, mapId));
     // M3（spec §八.3）：sd 域余下的写命令 —— ★ **只在 GM 桶**（决策人桶有意不含这批）。
     built.add(new SdCreateNationTool(core, initiator, mapId));
     built.add(new SdCreateArmyTool(core, initiator, mapId));

@@ -126,13 +126,16 @@ final class SocialPayloads {
   }
 
   /**
-   * 必填的 {@code [{id,q,r,sex,count,ageDays,anchorTick?}…]} 数组 ⇒ **保序**的批次表（R1 的 {@code
+   * 必填的 {@code [{id,q,r,sex,count,ageDays,anchorTick?,stress?}…]} 数组 ⇒ **保序**的批次表（R1 的 {@code
    * social.SeedGroups}）。**重复 id：后出现者覆盖先出现者，不报错**（先出现的那个位置保持）；空数组 ⇒ 抛。
    *
-   * <p>★ **形状与类型在本层判**（{@code sex} 必须是 {@code MALE}/{@code FEMALE}、四个数值字段必须是整数且可转 long）；{@code
-   * count}/{@code ageDays} **为负由 {@link PopulationGroup} 的构造期守卫拒**（那是域规则，本层不重复实现）；{@code id} 的空白由
-   * {@link PeopleLotId#parse} 拒；批次落在没有序列的格上由 {@code SocialData} 的跨组件校验拒 —— 四者都在 handler 边界折成 {@code
-   * Rejected}。
+   * <p>★ **形状与类型在本层判**（{@code sex} 必须是 {@code MALE}/{@code FEMALE}、五个数值字段必须是整数且可转 long）； {@code
+   * count}/{@code ageDays}/{@code stress} **为负由 {@link PopulationGroup} 的构造期守卫拒**（那是域规则，本层不重复实现）；
+   * {@code id} 的空白由 {@link PeopleLotId#parse} 拒；批次落在没有序列的格上由 {@code SocialData} 的跨组件校验拒 —— 四者都在
+   * handler 边界折成 {@code Rejected}。
+   *
+   * <p>★ {@code stress} 可选、**缺省 0**（辖区阶段 6 的向后兼容加字段）：旧载荷不带它 ⇒ 与从前逐值相同；新调用方整组覆盖既有批次时
+   * 应把原批次的压力原样带过，否则会把压力静默清零（{@code simos.unit.levyRegion} 抽人力靠它保真）。
    *
    * @param defaultAnchorTick 载荷没给 {@code anchorTick} 时的缺省（= 世界当前世界日）
    */
@@ -141,7 +144,7 @@ final class SocialPayloads {
     JsonNode value = payload.get("entries");
     if (value == null || value.isNull() || !value.isArray()) {
       throw new IllegalArgumentException(
-          "字段 entries 必须是 [{id,q,r,sex,count,ageDays,anchorTick?}…] 数组: " + payload);
+          "字段 entries 必须是 [{id,q,r,sex,count,ageDays,anchorTick?,stress?}…] 数组: " + payload);
     }
     Map<PeopleLotId, PopulationGroup> entries = new LinkedHashMap<>();
     for (JsonNode element : value) {
@@ -155,7 +158,9 @@ final class SocialPayloads {
       long count = requireLong(element, "count");
       long ageDays = requireLong(element, "ageDays");
       Long anchorTick = optionalLong(element, "anchorTick");
-      // ★ 域不变量（count/ageDays/anchorTick 非负）由 PopulationGroup 的构造期守卫抛，本层不重复实现。
+      // ★ stress 可选：缺省 0（旧载荷行为逐字不变）；负值由 PopulationGroup 的构造期守卫拒。
+      Long stress = optionalLong(element, "stress");
+      // ★ 域不变量（count/ageDays/anchorTick/stress 非负）由 PopulationGroup 的构造期守卫抛，本层不重复实现。
       entries.put(
           id,
           new PopulationGroup(
@@ -164,7 +169,8 @@ final class SocialPayloads {
               sex,
               count,
               ageDays,
-              anchorTick == null ? defaultAnchorTick : anchorTick));
+              anchorTick == null ? defaultAnchorTick : anchorTick,
+              stress == null ? 0L : stress));
     }
     if (entries.isEmpty()) {
       throw new IllegalArgumentException("entries 不得为空");

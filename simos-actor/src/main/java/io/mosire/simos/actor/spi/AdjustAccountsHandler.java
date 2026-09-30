@@ -11,6 +11,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
@@ -72,10 +73,15 @@ import java.util.Objects;
  * ResourcePaths#actor(int, int)}，经 {@link ActorPayloads#entryHexKeys} 这个与 {@code actor.Seed}
  * <b>共用</b>的拼写点（两处各拼一份 ⇒ 权限围栏两侧会漂）。
  *
+ * <p>★★ <b>GM-only（辖区阶段 6）</b>：实现 {@link GmOnlyCommand} —— 本命令是给组合工具用的<b>裸账目原语</b>， 上限 / 管辖 /
+ * 人力口径都在 {@code simos.unit.levyRegion} 里；若它能被嵌进决策令，那些上限就被绕过了。 标记只禁"嵌入令 / {@code RegisterEffect} /
+ * 决策人 catalog"三条路：命令仍照常注册、仍进 {@link CommandTargets}， GM 的 {@code simos.command.submit} 与 {@code
+ * actor.AdjustAccounts} 窄工具照常可调。
+ *
  * <p>★ <b>校验分工</b>：形状 / 类型 / 词表 / 0 增量 / 重复在 {@link ActorPayloads#adjustments} 判；余额与冻结语义在本类判；
  * <b>装配故障</b>（state 里没有 actor 切片）当场炸、不走拒绝路径（见 {@link ActorSnapshots}）。
  */
-public final class AdjustAccountsHandler implements CommandHandler, CommandTargets {
+public final class AdjustAccountsHandler implements CommandHandler, CommandTargets, GmOnlyCommand {
 
   @Override
   public String type() {

@@ -22,13 +22,17 @@ import java.util.Objects;
  * 唯一的落盘入口；没有它，批次只能活在测试里。
  *
  * <pre>{@code
- * {"entries":[{"id":"rural:0_0:MALE","q":0,"r":0,"sex":"MALE","count":6000,"ageDays":13505},
- *             {"id":"urban:c-0_0:FEMALE","q":0,"r":0,"sex":"FEMALE","count":4000,"ageDays":13505}],
+ * {"entries":[{"id":"rural:0_0:MALE","q":0,"r":0,"sex":"MALE","count":6000,"ageDays":13505,"stress":0},
+ *             {"id":"urban:c-0_0:FEMALE","q":0,"r":0,"sex":"FEMALE","count":4000,"ageDays":13505,"stress":0}],
  *  "anchorTick":0?}
  * }</pre>
  *
  * <p>★ **一条命令 = 一条 revision**：全部 entries 由同一个 {@link SocialChangeSet} 承载（{@link
  * SocialChangeSet#between} 逐组件比一次），批内不存在"落了一半"的中间态。
+ *
+ * <p>★ **整条替换现在可带可选 {@code stress}**（缺省 0；非负由 {@link PopulationGroup} 的构造期守卫判）：重写既有批次时把原批次的
+ * 压力原样带过，<b>不会静默清零</b>——组合工具 {@code simos.unit.levyRegion} 抽人力靠它保真。旧载荷不带 {@code stress} ⇒ 取 0，
+ * 行为与从前逐值相同。
  *
  * <p>★ **anchorTick 缺省 = 世界当前时刻**（{@code state.meta().timestamp().tick()}，单位：日）——与 {@code
  * social.SetPopulation} 同款；给了就按给的记（创世批量落批次时由调用方一次定死，见 {@code WorldgenInitializeTool}）。
@@ -37,9 +41,9 @@ import java.util.Objects;
  * 的人口再生产，不在这里装作能做。
  *
  * <p>★ **坏载荷与域规则违反都折成 {@code Rejected}**（照本模块惯例，见 {@link SocialPayloads}）：空 entries、{@code sex} 不在
- * 词表里、id 空白各抛 {@link IllegalArgumentException}；{@code count}/{@code ageDays} 为负由 {@link
- * PopulationGroup} 拒；**批次落在没有 {@code populations} 序列的格上**由 {@link SocialData} 的跨组件校验拒（设计稿 §十.7） ——
- * 最后这条正是"两笔人口账不许各说各话"的命令边界落点。
+ * 词表里、id 空白各抛 {@link IllegalArgumentException}；{@code count}/{@code ageDays}/{@code stress} 为负由
+ * {@link PopulationGroup} 拒；**批次落在没有 {@code populations} 序列的格上**由 {@link SocialData} 的跨组件校验拒（设计稿
+ * §十.7） —— 最后这条正是"两笔人口账不许各说各话"的命令边界落点。
  *
  * <p>★ **目标资源**（{@link CommandTargets}）：{@code entries[]} 里**每一个**格，路径取 social 命名空间的既有形态 {@link
  * ResourcePaths#social(int, int)}（{@code <q>_<r>}，**不带 mapId**）—— 与 {@code social.SetPopulation}
