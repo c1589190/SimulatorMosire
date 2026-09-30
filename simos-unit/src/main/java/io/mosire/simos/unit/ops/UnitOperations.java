@@ -1063,9 +1063,9 @@ public final class UnitOperations {
 
   /**
    * ★ **canonical 拷贝点**：9 个可变字段由调用方给，T1 的四个新字段（{@code status}/{@code attached}/{@code
-   * offset}/{@code rejoinTarget}）、Task 1 的 {@code visionRadius} 与辖区阶段 5 的 {@code jurisdiction}
-   * 一律**原样带过**——不用兼容构造器（那会把新字段重置成默认值，正是 R1 的残留风险）。 只动编队三件套（{@code parent}/{@code attached}/{@code
-   * offset}）的操作用同族的 {@link #copyFormation}。
+   * offset}/{@code rejoinTarget}）、Task 1 的 {@code visionRadius}、辖区阶段 5 的 {@code jurisdiction} 与阶段 9
+   * 的 {@code module} 一律**原样带过**——不用兼容构造器（那会把新字段重置成默认值，正是 R1 的残留风险）。 只动编队三件套（{@code parent}/{@code
+   * attached}/{@code offset}）的操作用同族的 {@link #copyFormation}。
    */
   private static Unit copy(
       Unit unit,
@@ -1092,13 +1092,14 @@ public final class UnitOperations {
         unit.offset(),
         unit.rejoinTarget(),
         unit.visionRadius(),
-        unit.jurisdiction());
+        unit.jurisdiction(),
+        unit.module());
   }
 
   /**
    * ★ **T3 的 canonical 拷贝点**：在 9 参 {@link #copy} 之上**显式**给 `position`/`attached`/`offset`
-   * 三个分量（`status`/`rejoinTarget`/`visionRadius`/`jurisdiction` 仍原样带过）。四个形参类型两两不同 ⇒
-   * 传错顺序是**编译错误**，不是静默错位；编制三件套的操作 （`parent`/`attached`/`offset` **加上新落地的 `position`**）只动这四个，故不走全 15
+   * 三个分量（`status`/`rejoinTarget`/`visionRadius`/`jurisdiction`/`module` 仍原样带过）。四个形参类型两两不同 ⇒
+   * 传错顺序是**编译错误**，不是静默错位；编制三件套的操作 （`parent`/`attached`/`offset` **加上新落地的 `position`**）只动这四个，故不走全 16
    * 参。
    *
    * <p>★★ **编制 v2（2026-09-24，取消跟随）起本方法的实际用法**：{@code attachSubtree}、{@code detachUnit}、 {@code
@@ -1127,12 +1128,13 @@ public final class UnitOperations {
         offset,
         unit.rejoinTarget(),
         unit.visionRadius(),
-        unit.jurisdiction());
+        unit.jurisdiction(),
+        unit.module());
   }
 
   /**
-   * 只换 `speed`、其余 14 个组件（尤其是 {@code mobilityPerMille}、视野半径与管辖）原样带过——**mergeFormation 的最慢者决定速度**专用
-   * （canonical 拷贝点，同 {@link #withStatus} 的形制）。
+   * 只换 `speed`、其余 15 个组件（尤其是 {@code mobilityPerMille}、视野半径、管辖与编制模块）原样带过——**mergeFormation
+   * 的最慢者决定速度**专用 （canonical 拷贝点，同 {@link #withStatus} 的形制）。
    */
   private static Unit withSpeed(Unit unit, int speed) {
     return new Unit(
@@ -1150,10 +1152,11 @@ public final class UnitOperations {
         unit.offset(),
         unit.rejoinTarget(),
         unit.visionRadius(),
-        unit.jurisdiction());
+        unit.jurisdiction(),
+        unit.module());
   }
 
-  /** 只换 status、其余 14 个组件（含另外三个新字段、视野半径与管辖）原样带过。 */
+  /** 只换 status、其余 15 个组件（含另外三个新字段、视野半径、管辖与编制模块）原样带过。 */
   private static Unit withStatus(Unit unit, UnitStatus status) {
     return new Unit(
         unit.id(),
@@ -1170,14 +1173,15 @@ public final class UnitOperations {
         unit.offset(),
         unit.rejoinTarget(),
         unit.visionRadius(),
-        unit.jurisdiction());
+        unit.jurisdiction(),
+        unit.module());
   }
 
   /**
-   * 只换 `rejoinTarget`、其余 14 个组件原样带过（T7，与 {@link #withStatus} 同形的 canonical 拷贝点）。
+   * 只换 `rejoinTarget`、其余 15 个组件原样带过（T7，与 {@link #withStatus} 同形的 canonical 拷贝点）。
    *
-   * <p>★ **不用兼容构造器**：那会把 `status`/`attached`/`offset`（以及视野半径、管辖）一并重置成默认值（R1 的残留风险，同 {@link #copy}
-   * 的注）。
+   * <p>★ **不用兼容构造器**：那会把 `status`/`attached`/`offset`（以及视野半径、管辖、编制模块）一并重置成默认值（R1 的残留风险，同 {@link
+   * #copy} 的注）。
    */
   private static Unit withRejoinTarget(Unit unit, Optional<UnitId> rejoinTarget) {
     return new Unit(
@@ -1195,13 +1199,14 @@ public final class UnitOperations {
         unit.offset(),
         rejoinTarget,
         unit.visionRadius(),
-        unit.jurisdiction());
+        unit.jurisdiction(),
+        unit.module());
   }
 
   /**
-   * 只换 `jurisdiction`、其余 14 个组件原样带过（辖区阶段 5，与 {@link #withStatus} 同形的 canonical 拷贝点）。
+   * 只换 `jurisdiction`、其余 15 个组件原样带过（辖区阶段 5，与 {@link #withStatus} 同形的 canonical 拷贝点）。
    *
-   * <p>★ **不用兼容构造器**：那会把全部既有字段重置成默认值——管辖变更绝不能顺手清掉编制/位置/视野。
+   * <p>★ **不用兼容构造器**：那会把全部既有字段（含编制模块）重置成默认值——管辖变更绝不能顺手清掉编制/位置/视野。
    */
   private static Unit withJurisdiction(Unit unit, Optional<Jurisdiction> jurisdiction) {
     return new Unit(
@@ -1219,6 +1224,7 @@ public final class UnitOperations {
         unit.offset(),
         unit.rejoinTarget(),
         unit.visionRadius(),
-        jurisdiction);
+        jurisdiction,
+        unit.module());
   }
 }

@@ -32,6 +32,14 @@ import java.util.function.Function;
  * 绑定（present ⇒ 对象本体，empty ⇒ JSON {@code null}），**不另造格式**。旧档没有该键 ⇒ Jackson 对 record 缺参给 {@code null}
  * ⇒ {@code Unit} 紧凑构造器归一成 {@link java.util.Optional#empty()}（旧档行为逐字不变）；读侧本来就认 {@code null}。
  *
+ * <p>★ <b>阶段 9 的线格式</b>：{@code Unit} 再多一个 {@code "module"} 键（紧接 {@code "jurisdiction"}），值同样是 {@code
+ * Optional} 绑定——present ⇒ 对象本体，empty ⇒ JSON {@code null}。对象本体走 {@link
+ * io.mosire.simos.unit.UnitModule} 类型上的 Jackson 多态注解（属性 {@code "@class"}：{@code "gov"} ⇒ {@link
+ * io.mosire.simos.unit.GovFormation}、{@code "army"} ⇒ {@link
+ * io.mosire.simos.unit.ArmyFormation}），**本类不注册任何 mixin / 子类型映射**（与 {@code Affiliation}/{@code
+ * Action} 同制：类型信息钉在类型上）。旧档没有该键 ⇒ Jackson 对 record 缺参给 {@code null} ⇒ {@code Unit} 紧凑构造器归一成 {@code
+ * Optional.empty()}，行为逐字不变。
+ *
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
  *
  * <p>★ **同时实现 {@link ModuleDiffer}**（"一批命令 = 一条 revision" 的原子批量提交需要）：委托 {@link

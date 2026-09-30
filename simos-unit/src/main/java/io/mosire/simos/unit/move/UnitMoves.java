@@ -74,7 +74,8 @@ public final class UnitMoves {
             unit.offset(),
             unit.rejoinTarget(),
             unit.visionRadius(),
-            unit.jurisdiction());
+            unit.jurisdiction(),
+            unit.module());
 
     List<HexCoord> path = movement.route().path();
     for (int i = 0; i + 1 < path.size(); i++) {
