@@ -33,8 +33,8 @@ import io.mosire.simos.app.docs.DecisionDoc;
 import io.mosire.simos.app.llm.ProviderLlm;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.read.LlmProvidersTool;
-import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.app.tools.write.ActorAdjustAccountsTool;
+import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.app.tools.write.GovAbsorbUnitTool;
 import io.mosire.simos.app.tools.write.GovCreateOfficeTool;
 import io.mosire.simos.app.tools.write.GovDispatchTeamTool;
@@ -72,7 +72,6 @@ import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveCommand;
-import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.spi.IssueDirectiveHandler;
 import io.mosire.simos.sd.state.SdSnapshot;
@@ -126,13 +125,12 @@ import org.junit.jupiter.api.io.TempDir;
  * 的四类人员流转作为中央决策人的目标，观察「中央出令 → 省级响应/执行 → GM 代执行 → GM 文档回复」的协作链；中央前两轮不作为则 GM
  * 把首都人口减半并写入它的决策文档，再观察是否被促动。
  *
- * <p>★★ <b>本类默认跳过、会打真网络</b>：整类门控 {@code SIMOS_REAL_LLM=1}；另有一个只验夹具与四条 GM
- * 工具（不打 LLM）的自检方法，门控 {@code SIMOS_GOV_SCENARIO_FIXTURE_ONLY=1}。真跑命令见类尾注释。
+ * <p>★★ <b>本类默认跳过、会打真网络</b>：整类门控 {@code SIMOS_REAL_LLM=1}；另有一个只验夹具与四条 GM 工具（不打 LLM）的自检方法，门控 {@code
+ * SIMOS_GOV_SCENARIO_FIXTURE_ONLY=1}。真跑命令见类尾注释。
  *
  * <p>★★ <b>判据只钉可观察行为</b>：每轮真轨迹/真 revision、连续 ≥3 轮无 {@code TOOL_ERROR}/未捕获异常、中央与省级的令、
- * 范围隔离（中央读不到省、命令省资源必拒；省在辖区内可读）、A 四类工具至少真跑过一遍且逐值守恒、升级减半逐批恰为原值/2。
- * 模型侧不达（不出令/不提目标/未触发越权探测）会以 {@code [GOV-SCENARIO-MODEL-GAP]} 如实打印，并在收尾的模型判据断言里点名——
- * 这类红是模型侧失败，不是夹具/机制错误。
+ * 范围隔离（中央读不到省、命令省资源必拒；省在辖区内可读）、A 四类工具至少真跑过一遍且逐值守恒、升级减半逐批恰为原值/2。 模型侧不达（不出令/不提目标/未触发越权探测）会以 {@code
+ * [GOV-SCENARIO-MODEL-GAP]} 如实打印，并在收尾的模型判据断言里点名—— 这类红是模型侧失败，不是夹具/机制错误。
  */
 @EnabledIfEnvironmentVariable(named = "SIMOS_REAL_LLM", matches = "1")
 class RealLlmGovScenarioTest {
@@ -158,6 +156,7 @@ class RealLlmGovScenarioTest {
 
   /** 四条工具名（GM 代执行/补执行的靶子）。 */
   private static final String TOOL_SELECT = GovSelectExamineesTool.NAME;
+
   private static final String TOOL_DISPATCH = GovDispatchTeamTool.NAME;
   private static final String TOOL_ABSORB = GovAbsorbUnitTool.NAME;
   private static final String TOOL_RETIRE = GovRetireStaffTool.NAME;
@@ -234,16 +233,7 @@ class RealLlmGovScenarioTest {
     // ★ 不注入 llm ⇒ 生产路径：按决策人 providerId 经 AgentLib 配置解析真 provider。
     ShellConfig shellConfig =
         new ShellConfig(
-            storeDir,
-            CHECKPOINT_INTERVAL,
-            0,
-            0,
-            "/mcp",
-            0,
-            INITIATOR,
-            MAP_ID,
-            "127.0.0.1",
-            false);
+            storeDir, CHECKPOINT_INTERVAL, 0, 0, "/mcp", 0, INITIATOR, MAP_ID, "127.0.0.1", false);
     boolean fake = "1".equals(envText("SIMOS_GOV_SCENARIO_FAKE"));
     if (fake) {
       fakeLlmClients = new ScriptedGovLlmClients();
@@ -411,7 +401,10 @@ class RealLlmGovScenarioTest {
     criteria.put("punishedNations", punishedNations.size());
     criteria.put(
         "actedAfterPunishment",
-        nations.values().stream().filter(n -> n.punished).map(n -> n.key + "=" + n.actedAfterPunishment).toList());
+        nations.values().stream()
+            .filter(n -> n.punished)
+            .map(n -> n.key + "=" + n.actedAfterPunishment)
+            .toList());
     summary.put("criteria", criteria);
     summary.put("roundsDetail", roundViews);
     System.out.println("[GOV-SCENARIO-MATRIX] " + json(summary));
@@ -420,12 +413,10 @@ class RealLlmGovScenarioTest {
         && !centralAnyQualified
         && !punishedNations.isEmpty()
         && nations.values().stream().anyMatch(n -> n.punished && !n.actedAfterPunishment)) {
-      System.out.println(
-          "[GOV-SCENARIO-MODEL-GAP] 中央出过令但未提及四目标；减半后 1–2 轮内仍未观测到促动。");
+      System.out.println("[GOV-SCENARIO-MODEL-GAP] 中央出过令但未提及四目标；减半后 1–2 轮内仍未观测到促动。");
     }
     if (!centralOutOfScopeAttempt) {
-      System.out.println(
-          "[GOV-SCENARIO-MODEL-GAP] 中央未发起可识别的越权读/令探测（范围隔离仍有确定性断言与 GovScope 真值）。");
+      System.out.println("[GOV-SCENARIO-MODEL-GAP] 中央未发起可识别的越权读/令探测（范围隔离仍有确定性断言与 GovScope 真值）。");
     }
 
     // ── 机制侧硬判据 ──────────────────────────────────────────────────────────
@@ -436,13 +427,12 @@ class RealLlmGovScenarioTest {
         .as("四条 A 工具（科举/调查/吸收/退休）必须都真跑过一次（场景意图或 GM 确定性补执行）")
         .containsExactlyInAnyOrder(TOOL_SELECT, TOOL_DISPATCH, TOOL_ABSORB, TOOL_RETIRE);
     if (ROUNDS < 3) {
-      System.out.println("[GOV-SCENARIO-WARN] 本轮是调试冒烟：SIMOS_GOV_SCENARIO_ROUNDS=" + ROUNDS + " < 3。");
+      System.out.println(
+          "[GOV-SCENARIO-WARN] 本轮是调试冒烟：SIMOS_GOV_SCENARIO_ROUNDS=" + ROUNDS + " < 3。");
     }
 
     // ── 模型侧验收判据（如实点名：红 = 模型侧不达，不是夹具/机制错）──────────────────
-    assertThat(centralAnyDirective)
-        .as("模型侧判据：至少一条中央 DM 的真令 revision（不作为 = 模型侧失败）")
-        .isTrue();
+    assertThat(centralAnyDirective).as("模型侧判据：至少一条中央 DM 的真令 revision（不作为 = 模型侧失败）").isTrue();
     assertThat(provinceDirective || provinceIntentAction)
         .as("模型侧判据：至少一个省级 DM 的指令或由其意图触发的行动（模型侧失败）")
         .isTrue();
@@ -491,7 +481,12 @@ class RealLlmGovScenarioTest {
     }
     assertThat(flash).as("provider %s 必须已迁移进 AgentLib 配置根", PROVIDER_ID).isNotNull();
     assertThat(flash.get("valid").asBoolean()).as("路由必须 valid").isTrue();
-    assertThat(flash.get("model").asText()).isEqualTo("deepseek-flash");
+    // ★ 允许用 SIMOS_GOV_SCENARIO_MODEL 在 store 副本里换同站模型（上游故障应急）；期望值同步。
+    String expectedModel =
+        java.util.Optional.ofNullable(System.getenv("SIMOS_GOV_SCENARIO_MODEL"))
+            .filter(v -> !v.isBlank())
+            .orElse("deepseek-flash");
+    assertThat(flash.get("model").asText()).isEqualTo(expectedModel);
     assertThat(flash.get("keyConfigured").asBoolean()).as("密钥必须已配置（不打印值）").isTrue();
     System.out.println(
         "[GOV-SCENARIO-CONFIG] provider="
@@ -606,14 +601,10 @@ class RealLlmGovScenarioTest {
         callToolOutcome(
             UnitSetJurisdictionTool.NAME,
             Map.of(
-                "payloadJson",
-                json(payload),
-                "branch",
-                MAIN.value(),
-                "expectedRevision",
-                head()));
+                "payloadJson", json(payload), "branch", MAIN.value(), "expectedRevision", head()));
     assertThat(outcome.isError()).as(outcome.raw()).isFalse();
-    System.out.println("[GOV-SCENARIO-JURISDICTION] " + nf.provinceGov.value() + " -> " + nf.regionId.value());
+    System.out.println(
+        "[GOV-SCENARIO-JURISDICTION] " + nf.provinceGov.value() + " -> " + nf.regionId.value());
   }
 
   private void prechargeTreasury(NationFixture nf) throws Exception {
@@ -626,12 +617,7 @@ class RealLlmGovScenarioTest {
         callToolOutcome(
             ActorAdjustAccountsTool.NAME,
             Map.of(
-                "payloadJson",
-                json(payload),
-                "branch",
-                MAIN.value(),
-                "expectedRevision",
-                head()));
+                "payloadJson", json(payload), "branch", MAIN.value(), "expectedRevision", head()));
     assertThat(outcome.isError()).as(outcome.raw()).isFalse();
   }
 
@@ -656,16 +642,8 @@ class RealLlmGovScenarioTest {
   }
 
   private void putBriefs(NationFixture nf) throws Exception {
-    writeDoc(
-        "central-brief-" + nf.key,
-        nf.centralDm.value(),
-        "第 0 号中央任务简报",
-        centralBrief(nf));
-    writeDoc(
-        "province-brief-" + nf.key,
-        nf.provinceDm.value(),
-        "第 0 号省级任务简报",
-        provinceBrief(nf));
+    writeDoc("central-brief-" + nf.key, nf.centralDm.value(), "第 0 号中央任务简报", centralBrief(nf));
+    writeDoc("province-brief-" + nf.key, nf.provinceDm.value(), "第 0 号省级任务简报", provinceBrief(nf));
   }
 
   private static String centralBrief(NationFixture nf) {
@@ -704,10 +682,18 @@ class RealLlmGovScenarioTest {
     StringBuilder body = new StringBuilder();
     body.append("第 ").append(round).append(" 轮：GM 已代执行你的令的意图。\n");
     for (DirectiveInfo info : directives) {
-      body.append("令 ").append(info.directive().id().value()).append(" intent=").append(info.intent()).append('\n');
+      body.append("令 ")
+          .append(info.directive().id().value())
+          .append(" intent=")
+          .append(info.intent())
+          .append('\n');
     }
     for (ExecutionRecord record : acted) {
-      body.append("GM 代执行 ").append(record.tool()).append(" => ").append(record.violations().isEmpty() ? "守恒通过" : record.violations()).append('\n');
+      body.append("GM 代执行 ")
+          .append(record.tool())
+          .append(" => ")
+          .append(record.violations().isEmpty() ? "守恒通过" : record.violations())
+          .append('\n');
     }
     writeDoc(
         "central-outcome-" + nf.key + "-r" + round,
@@ -719,14 +705,22 @@ class RealLlmGovScenarioTest {
   private void writeProvinceRelayDoc(
       int round, NationFixture nf, List<DirectiveInfo> directives, List<ExecutionRecord> acted) {
     StringBuilder body = new StringBuilder();
-    body.append("GM 转达：中央 GOV ").append(nf.centralGov.value()).append(" 第 ").append(round).append(" 轮的令/意图：\n");
+    body.append("GM 转达：中央 GOV ")
+        .append(nf.centralGov.value())
+        .append(" 第 ")
+        .append(round)
+        .append(" 轮的令/意图：\n");
     for (DirectiveInfo info : directives) {
       body.append("- ").append(info.intent()).append('\n');
     }
     if (!acted.isEmpty()) {
       body.append("GM 已代执行：\n");
       for (ExecutionRecord record : acted) {
-        body.append("- ").append(record.tool()).append(" count=").append(record.count()).append('\n');
+        body.append("- ")
+            .append(record.tool())
+            .append(" count=")
+            .append(record.count())
+            .append('\n');
       }
     } else {
       body.append("（GM 本轮未代执行具体工具；你若认为该执行，请在 intentInfo 里写清目标与数量。）\n");
@@ -830,8 +824,14 @@ class RealLlmGovScenarioTest {
               || trace.result().contains("未捕获")
               || trace.result().contains("Exception"))) {
         blockers.add(
-            "round " + round + " dm=" + dmId + " tool=" + realToolName(trace.tool())
-                + " TOOL_ERROR/异常: " + truncate(trace.result(), 800));
+            "round "
+                + round
+                + " dm="
+                + dmId
+                + " tool="
+                + realToolName(trace.tool())
+                + " TOOL_ERROR/异常: "
+                + truncate(trace.result(), 800));
       }
       System.out.println(
           "[GOV-SCENARIO-TOOL] round="
@@ -977,8 +977,7 @@ class RealLlmGovScenarioTest {
         continue;
       }
       boolean allowed =
-          scope.declaredScope(namespace) != null
-              && scope.declaredScope(namespace).allows(resource);
+          scope.declaredScope(namespace) != null && scope.declaredScope(namespace).allows(resource);
       boolean intended = isOutOfScopeProbe(real, trace.args(), nf);
       if (central && intended) {
         centralOutOfScopeAttempt = true;
@@ -989,9 +988,7 @@ class RealLlmGovScenarioTest {
         attempt.put("args", trace.args());
         attempt.put("ok", trace.ok());
         attempt.put("result", truncate(trace.result(), 1200));
-        attempt.put(
-            "note",
-            "被探测的省资源在夹具中确实存在（assertFixtureWired 已断言）；此处的原始拒因是作用域过滤后的结果（权限≠信息）");
+        attempt.put("note", "被探测的省资源在夹具中确实存在（assertFixtureWired 已断言）；此处的原始拒因是作用域过滤后的结果（权限≠信息）");
         scopeAttempts.add(attempt);
         if (trace.ok()) {
           scopeViolations.add("中央越权读成功: " + real + " " + json(trace.args()));
@@ -1000,7 +997,8 @@ class RealLlmGovScenarioTest {
           System.out.println("[GOV-SCENARIO-SCOPE-DENIED] " + json(attempt));
         }
       } else if (!central && intended && !allowed && !trace.ok()) {
-        System.out.println("[GOV-SCENARIO-PROVINCE-RESOURCE-DENIED] " + real + " " + json(trace.args()));
+        System.out.println(
+            "[GOV-SCENARIO-PROVINCE-RESOURCE-DENIED] " + real + " " + json(trace.args()));
       }
       if (!central && trace.ok() && isReadTool(real)) {
         provinceDirectReadOk = true;
@@ -1067,7 +1065,11 @@ class RealLlmGovScenarioTest {
     }
     if (select && !nf.selectExecuted) {
       ExecutionRecord record =
-          executeSelect(nf, true, "DM 意图代执行：科举选人 round=" + round + " fromCentral=" + fromCentral, parseCount(merged, 10));
+          executeSelect(
+              nf,
+              true,
+              "DM 意图代执行：科举选人 round=" + round + " fromCentral=" + fromCentral,
+              parseCount(merged, 10));
       if (record != null) {
         acted.add(record);
       }
@@ -1163,7 +1165,11 @@ class RealLlmGovScenarioTest {
   }
 
   private ExecutionRecord executeDispatch(
-      NationFixture nf, boolean scenarioTriggered, String reason, long requestedCount, boolean armed) {
+      NationFixture nf,
+      boolean scenarioTriggered,
+      String reason,
+      long requestedCount,
+      boolean armed) {
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("unitId", nf.provinceGov.value());
     args.put("count", requestedCount);
@@ -1177,7 +1183,10 @@ class RealLlmGovScenarioTest {
           TOOL_DISPATCH,
           nf.key,
           scenarioTriggered,
-          "dispatchTeam preview 缺员：requested=" + requestedCount + " staffBefore=" + (preview == null ? "N/A" : preview.path("staffBefore").asLong()));
+          "dispatchTeam preview 缺员：requested="
+              + requestedCount
+              + " staffBefore="
+              + (preview == null ? "N/A" : preview.path("staffBefore").asLong()));
       return null;
     }
     long count = preview.path("count").asLong(requestedCount);
@@ -1317,7 +1326,10 @@ class RealLlmGovScenarioTest {
           TOOL_RETIRE,
           nf.key,
           scenarioTriggered,
-          "retireStaff preview 缺员：requested=" + requestedCount + " staffBefore=" + (preview == null ? "N/A" : preview.path("staffBefore").asLong()));
+          "retireStaff preview 缺员：requested="
+              + requestedCount
+              + " staffBefore="
+              + (preview == null ? "N/A" : preview.path("staffBefore").asLong()));
       return null;
     }
     long count = preview.path("count").asLong(requestedCount);
@@ -1436,13 +1448,15 @@ class RealLlmGovScenarioTest {
         scenarioToolTypes.add(record.tool());
       }
     } else {
-      conservationFailures.add(record.tool() + " nation=" + record.nationKey() + " " + record.violations());
+      conservationFailures.add(
+          record.tool() + " nation=" + record.nationKey() + " " + record.violations());
     }
   }
 
   private void recordFailure(
       String tool, String nationKey, boolean scenarioTriggered, String detail) {
-    System.out.println("[GOV-SCENARIO-GM-EXEC] tool=" + tool + " nation=" + nationKey + " failure=" + detail);
+    System.out.println(
+        "[GOV-SCENARIO-GM-EXEC] tool=" + tool + " nation=" + nationKey + " failure=" + detail);
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("tool", tool);
     view.put("nation", nationKey);
@@ -1688,7 +1702,11 @@ class RealLlmGovScenarioTest {
     view.put("headAfter", headAfter);
     view.put("groups", groups.size());
     view.put("countsBefore", groups.stream().map(PopulationGroup::count).toList());
-    view.put("countsAfter", groups.stream().map(g -> CompactThreeNationsWorld.socialOf(after).groups().get(g.id()).count()).toList());
+    view.put(
+        "countsAfter",
+        groups.stream()
+            .map(g -> CompactThreeNationsWorld.socialOf(after).groups().get(g.id()).count())
+            .toList());
     writeDoc(
         "punish-" + nf.key + "-r" + round,
         nf.centralDm.value(),
@@ -1721,7 +1739,8 @@ class RealLlmGovScenarioTest {
     if (outcome.isError()) {
       blockers.add("round " + round + " advance 失败: " + truncate(outcome.raw(), 1200));
     } else {
-      System.out.println("[GOV-SCENARIO-ADVANCE] round=" + round + " from=" + from + " to=" + (from + 1));
+      System.out.println(
+          "[GOV-SCENARIO-ADVANCE] round=" + round + " from=" + from + " to=" + (from + 1));
     }
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("from", from);
@@ -1741,8 +1760,12 @@ class RealLlmGovScenarioTest {
       Unit province = units.units().get(nf.provinceGov);
       assertThat(central).as("中央 GOV %s 存在", nf.centralGov.value()).isNotNull();
       assertThat(province).as("省 GOV %s 存在", nf.provinceGov.value()).isNotNull();
-      assertThat(central.module().orElse(null)).as("中央挂 GovFormation").isInstanceOf(GovFormation.class);
-      assertThat(province.module().orElse(null)).as("省挂 GovFormation").isInstanceOf(GovFormation.class);
+      assertThat(central.module().orElse(null))
+          .as("中央挂 GovFormation")
+          .isInstanceOf(GovFormation.class);
+      assertThat(province.module().orElse(null))
+          .as("省挂 GovFormation")
+          .isInstanceOf(GovFormation.class);
       GovFormation pf = (GovFormation) province.module().orElseThrow();
       assertThat(pf.superiorGov()).contains(nf.centralGov);
       assertThat(province.jurisdiction()).isPresent();
@@ -1752,8 +1775,10 @@ class RealLlmGovScenarioTest {
       DecisionMaker provinceDm = sdAt(head()).decisionMakers().get(nf.provinceDm);
       assertThat(centralDm).isNotNull();
       assertThat(provinceDm).isNotNull();
-      assertThat(centralDm.affiliation()).isInstanceOf(io.mosire.simos.sd.model.Affiliation.Gov.class);
-      assertThat(provinceDm.affiliation()).isInstanceOf(io.mosire.simos.sd.model.Affiliation.Gov.class);
+      assertThat(centralDm.affiliation())
+          .isInstanceOf(io.mosire.simos.sd.model.Affiliation.Gov.class);
+      assertThat(provinceDm.affiliation())
+          .isInstanceOf(io.mosire.simos.sd.model.Affiliation.Gov.class);
       assertThat(centralDm.providerId()).contains(PROVIDER_ID);
       assertThat(provinceDm.providerId()).contains(PROVIDER_ID);
       assertThat(treasurySilver(state, nf.centralGov)).as("中央国库预充银").isPositive();
@@ -1774,19 +1799,36 @@ class RealLlmGovScenarioTest {
           DecisionCallerFactory.resourceScopesFor(scopeFunctions, centralDm, state, MAP_ID);
       ResourceScopeMap provinceScope =
           DecisionCallerFactory.resourceScopesFor(scopeFunctions, provinceDm, state, MAP_ID);
-      assertThat(centralScope.declaredScope("unit").allows(ToolSupport.resourceUnit(nf.provinceGov.value()).path()))
+      assertThat(
+              centralScope
+                  .declaredScope("unit")
+                  .allows(ToolSupport.resourceUnit(nf.provinceGov.value()).path()))
           .as("中央不能读/命令省 GOV %s（权限≠信息）", nf.provinceGov.value())
           .isFalse();
-      assertThat(centralScope.declaredScope("social").allows(ToolSupport.resourceSocial(nf.provinceSeat.q(), nf.provinceSeat.r()).path()))
+      assertThat(
+              centralScope
+                  .declaredScope("social")
+                  .allows(
+                      ToolSupport.resourceSocial(nf.provinceSeat.q(), nf.provinceSeat.r()).path()))
           .as("中央不能读省会格 %s", hexText(nf.provinceSeat))
           .isFalse();
-      assertThat(provinceScope.declaredScope("unit").allows(ToolSupport.resourceUnit(nf.provinceGov.value()).path()))
+      assertThat(
+              provinceScope
+                  .declaredScope("unit")
+                  .allows(ToolSupport.resourceUnit(nf.provinceGov.value()).path()))
           .as("省能读/命令自己的 GOV")
           .isTrue();
-      assertThat(provinceScope.declaredScope("social").allows(ToolSupport.resourceSocial(nf.provinceSeat.q(), nf.provinceSeat.r()).path()))
+      assertThat(
+              provinceScope
+                  .declaredScope("social")
+                  .allows(
+                      ToolSupport.resourceSocial(nf.provinceSeat.q(), nf.provinceSeat.r()).path()))
           .as("省能读自己的辖区格")
           .isTrue();
-      assertThat(provinceScope.declaredScope("map").allows(ToolSupport.resourceRegion(MAP_ID, nf.regionId.value()).path()))
+      assertThat(
+              provinceScope
+                  .declaredScope("map")
+                  .allows(ToolSupport.resourceRegion(MAP_ID, nf.regionId.value()).path()))
           .as("省能读自己的 region")
           .isTrue();
     }
@@ -1864,7 +1906,8 @@ class RealLlmGovScenarioTest {
     }
     List<DirectiveInfo> out = new ArrayList<>();
     for (Directive directive : after.directives().values()) {
-      if (!directive.decisionMakerId().value().equals(dmId) || before.directives().containsKey(directive.id())) {
+      if (!directive.decisionMakerId().value().equals(dmId)
+          || before.directives().containsKey(directive.id())) {
         continue;
       }
       String intent = stateIntent(after, directive);
@@ -1882,7 +1925,8 @@ class RealLlmGovScenarioTest {
       return "";
     }
     for (SdInfoEntry entry : entries) {
-      if (IssueDirectiveHandler.INTENT_INFO_KEY.equals(entry.key()) && entry.value() instanceof String text) {
+      if (IssueDirectiveHandler.INTENT_INFO_KEY.equals(entry.key())
+          && entry.value() instanceof String text) {
         return text;
       }
     }
@@ -1982,8 +2026,7 @@ class RealLlmGovScenarioTest {
       return 0L;
     }
     Optional<HexCoord> at =
-        CompactThreeNationsWorld.unitOf(state)
-            .effectivePosition(govUnit, state.meta().timestamp());
+        CompactThreeNationsWorld.unitOf(state).effectivePosition(govUnit, state.meta().timestamp());
     if (at.isEmpty()) {
       return 0L;
     }
@@ -2043,7 +2086,8 @@ class RealLlmGovScenarioTest {
     return client.callTool(new McpSchema.CallToolRequest(toolName, args));
   }
 
-  private McpToolOutcome callToolOutcome(String toolName, Map<String, Object> args) throws Exception {
+  private McpToolOutcome callToolOutcome(String toolName, Map<String, Object> args)
+      throws Exception {
     McpSchema.CallToolResult result = callWithApproval(toolName, args);
     String raw = wireText(result);
     JsonNode body = null;
@@ -2060,7 +2104,8 @@ class RealLlmGovScenarioTest {
   private JsonNode callToolJson(String toolName, Map<String, Object> args) throws Exception {
     McpToolOutcome outcome = callToolOutcome(toolName, args);
     if (outcome.isError()) {
-      throw new IllegalStateException("GM 工具 " + toolName + " 失败: " + truncate(outcome.raw(), 1500));
+      throw new IllegalStateException(
+          "GM 工具 " + toolName + " 失败: " + truncate(outcome.raw(), 1500));
     }
     return outcome.body();
   }
@@ -2156,8 +2201,21 @@ class RealLlmGovScenarioTest {
   private void copyRepoProviderConfig() throws IOException {
     Path repoConfig = repoRoot().resolve("config").resolve("llm-providers.json");
     assertThat(Files.isRegularFile(repoConfig)).as("仓库存在 %s", repoConfig).isTrue();
-    Files.copy(
-        repoConfig, storeDir.resolve("llm-providers.json"), StandardCopyOption.REPLACE_EXISTING);
+    Path target = storeDir.resolve("llm-providers.json");
+    Files.copy(repoConfig, target, StandardCopyOption.REPLACE_EXISTING);
+    // ★ 仅改 store 里的副本（不动仓库配置）：中转站某模型上游故障时，可用
+    //   SIMOS_GOV_SCENARIO_MODEL=<同站另一模型> 跑同一真场景（例如 deepseek-flash 上游 500 时换 glm-5.3-flash）。
+    String modelOverride = System.getenv("SIMOS_GOV_SCENARIO_MODEL");
+    if (modelOverride != null && !modelOverride.isBlank()) {
+      var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+      var root = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(target.toFile());
+      for (var provider : root.withArray("providers")) {
+        if (provider.path("id").asText().equals(PROVIDER_ID)) {
+          ((com.fasterxml.jackson.databind.node.ObjectNode) provider).put("model", modelOverride);
+        }
+      }
+      mapper.writerWithDefaultPrettyPrinter().writeValue(target.toFile(), root);
+    }
   }
 
   private void copyRepoSkills() throws IOException {
@@ -2209,8 +2267,7 @@ class RealLlmGovScenarioTest {
             new StateMeta(ref, T0),
             Map.of(
                 "map", new io.mosire.simos.map.MapSnapshot(ref, T0, CompactThreeNationsWorld.map()),
-                "social",
-                    new SocialSnapshot(ref, T0, new SocialData(Map.of(), Map.of(), Map.of())),
+                "social", new SocialSnapshot(ref, T0, new SocialData(Map.of(), Map.of(), Map.of())),
                 "unit", new UnitSnapshot(ref, T0, UnitState.empty()),
                 "sd", new SdSnapshot(ref, T0, SdState.empty()),
                 "economy", new EconomySnapshot(ref, T0, EconomyData.empty()),
@@ -2421,9 +2478,7 @@ class RealLlmGovScenarioTest {
       if (central && "scope".equals(mode) && phase == 0) {
         phaseByDm.put(dmId, 1);
         return LlmResponse.toolCall(
-            "fake-probe-" + dmId + "-" + call,
-            "simos_unit_get",
-            Map.of("id", provinceGovId(dmId)));
+            "fake-probe-" + dmId + "-" + call, "simos_unit_get", Map.of("id", provinceGovId(dmId)));
       }
       if (central && "scope".equals(mode) && phase == 1) {
         phaseByDm.put(dmId, 2);
@@ -2462,27 +2517,14 @@ class RealLlmGovScenarioTest {
                     "type",
                     "unit.RecruitStaff",
                     "payloadJson",
-                    json(
-                        Map.of(
-                            "unitId",
-                            provinceGovId(dmId),
-                            "role",
-                            "SCRIBE",
-                            "count",
-                            1L)))));
+                    json(Map.of("unitId", provinceGovId(dmId), "role", "SCRIBE", "count", 1L)))));
       } else {
         payload.put("commands", List.of());
       }
       return LlmResponse.toolCall(
           "fake-call-" + dmId + "-" + call,
           "sd_IssueDirective",
-          Map.of(
-              "payloadJson",
-              json(payload),
-              "branch",
-              MAIN.value(),
-              "expectedRevision",
-              head()));
+          Map.of("payloadJson", json(payload), "branch", MAIN.value(), "expectedRevision", head()));
     }
 
     private String provinceGovId(String dmId) {
