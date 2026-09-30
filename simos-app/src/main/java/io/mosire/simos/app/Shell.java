@@ -64,6 +64,7 @@ import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
 import io.mosire.simos.economy.spi.EconomyTransferAssetShareHandler;
 import io.mosire.simos.economy.spi.UnitBorrowHandler;
 import io.mosire.simos.economy.spi.UnitRepayHandler;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.spi.CreateRegionHandler;
@@ -126,7 +127,9 @@ import io.mosire.simos.unit.spi.PlanSparseRouteHandler;
 import io.mosire.simos.unit.spi.RenameUnitHandler;
 import io.mosire.simos.unit.spi.ReparentSubtreeHandler;
 import io.mosire.simos.unit.spi.ReparentUnitHandler;
+import io.mosire.simos.unit.spi.SetArmyFormationHandler;
 import io.mosire.simos.unit.spi.SetFormationOffsetHandler;
+import io.mosire.simos.unit.spi.SetGovFormationHandler;
 import io.mosire.simos.unit.spi.SetJurisdictionHandler;
 import io.mosire.simos.unit.spi.SetRejoinTargetHandler;
 import io.mosire.simos.unit.spi.SetStatusHandler;
@@ -421,7 +424,11 @@ public final class Shell implements AutoCloseable {
             new EconomyCodec(),
             // ★ S1 阶段 2：第六个切片（actor）。★ 它的 namespace() 恒 "actor" —— 必须与 ActorSnapshot.namespace()
             //   同字面（ToolSupport.ACTOR_NAMESPACE 是第三处），写歪 SimulationState 构造期当场抛。
-            new ActorCodec());
+            new ActorCodec(),
+            // ★ 阶段 10a（2026-09-30 GOV/Army 计划 §2.2）：第七个切片（gov）。★ namespace() 恒 "gov" —— 必须与
+            //   GovSnapshot.namespace() 同字面，写歪 SimulationState 构造期当场抛。本阶段只注册 codec
+            //   （无 participant/handler，每 tick 结算由阶段 11 并入 actor 写者）。
+            new GovCodec());
     for (ModuleCodec codec : codecs) {
       coreSimos.register(codec);
     }
@@ -460,6 +467,10 @@ public final class Shell implements AutoCloseable {
                 //   （仍可嵌入决策人令；"只在 GM 桶"说的是配套窄工具）。──
                 new SetJurisdictionHandler(),
                 new SetTaxRateHandler(),
+                // ── 阶段 10a（2026-09-30）：两条"立编制"命令（编制字段在 Unit.module ⇒ unit 域命令）。非 GmOnly
+                //   ⇒ 与既有 unit 命令同待遇（仍可嵌入决策人令；"只在 GM 桶"说的是配套窄工具）。──
+                new SetGovFormationHandler(),
+                new SetArmyFormationHandler(),
                 // ── social（4 条）：逐格农村人口 + 城市节点 + **人口批次**（R1 的 T3：人口的唯一落盘入口）。
                 //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）──
                 new SetPopulationHandler(),

@@ -443,6 +443,10 @@ public final class RedactingQueryService {
           view.put("kind", "army");
           view.put("id", army.armyId().value());
         }
+        case Affiliation.Gov gov -> {
+          view.put("kind", "gov");
+          view.put("id", gov.govUnit().value());
+        }
       }
       out.add(view);
     }

@@ -388,6 +388,8 @@ public final class DecisionAgentRunner {
       where = "国家（nationId=" + nation.nationId().value() + "）";
     } else if (affiliation instanceof Affiliation.Army army) {
       where = "军队（armyId=" + army.armyId().value() + "）";
+    } else if (affiliation instanceof Affiliation.Gov gov) {
+      where = "政府（govUnit=" + gov.govUnit().value() + "）";
     } else {
       // 封闭类型（sealed）不会走到这里；留一句响亮的话，好过静默给一个错的身份。
       throw new IllegalStateException("未知的归属类型: " + affiliation.getClass().getName());

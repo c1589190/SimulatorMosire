@@ -13,6 +13,9 @@ import io.mosire.simos.sd.model.Nation;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
 import java.util.ArrayList;
@@ -50,7 +53,12 @@ public final class SdQueryService {
     this.query = Objects.requireNonNull(query, "query");
   }
 
-  /** 归属过滤（spec §六.1 的 {@code ?affiliation=nation:<id>|army:<id>}）。 */
+  /**
+   * 归属过滤（spec §六.1 的 {@code ?affiliation=nation:<id>|army:<id>|gov:<unitId>}）。
+   *
+   * <p>★ {@code gov} 是阶段 10a 新增：过滤的是 {@code Affiliation.Gov(govUnit)}（实际行政部门），与 {@code
+   * Affiliation.Nation}（政治实体）是两条并存的归属轴（用户裁定 5/7）。
+   */
   public sealed interface AffiliationFilter {
 
     /** 不筛（列出全部）。 */
@@ -59,6 +67,8 @@ public final class SdQueryService {
     record OfNation(NationId nationId) implements AffiliationFilter {}
 
     record OfArmy(ArmyId armyId) implements AffiliationFilter {}
+
+    record OfGov(UnitId govUnit) implements AffiliationFilter {}
   }
 
   /** 过滤缺省：全部。 */
@@ -66,7 +76,7 @@ public final class SdQueryService {
 
   /**
    * 解析 {@code ?affiliation=…}：{@code null}/空白 ⇒ {@link #ALL}；{@code nation:<id>} / {@code
-   * army:<id>} 各成过滤。
+   * army:<id>} / {@code gov:<unitId>} 各成过滤。
    *
    * <p>★ **fail-closed**：未知 kind、缺冒号、空 id 一律 {@link IllegalArgumentException}（GUI 回 400）。把这些折成"空列表"
    * 会让"输入坏掉"与"确实没有决策人"不可区分——那是把"没查到"伪装成"不存在"的同族陷阱。
@@ -77,15 +87,18 @@ public final class SdQueryService {
     }
     int colon = raw.indexOf(':');
     if (colon < 0) {
-      throw new IllegalArgumentException("affiliation 过滤形如 nation:<id> 或 army:<id>: " + raw);
+      throw new IllegalArgumentException(
+          "affiliation 过滤形如 nation:<id> / army:<id> / gov:<unitId>: " + raw);
     }
     String kind = raw.substring(0, colon);
     String id = raw.substring(colon + 1);
     return switch (kind) {
       case "nation" -> new AffiliationFilter.OfNation(NationId.parse(id));
       case "army" -> new AffiliationFilter.OfArmy(ArmyId.parse(id));
+      case "gov" -> new AffiliationFilter.OfGov(UnitId.parse(id));
       default ->
-          throw new IllegalArgumentException("未知 affiliation kind（只认 nation / army）: " + kind);
+          throw new IllegalArgumentException(
+              "未知 affiliation kind（只认 nation / army / gov）: " + kind);
     };
   }
 
@@ -105,7 +118,7 @@ public final class SdQueryService {
       }
     }
     makers.sort(Comparator.comparing(maker -> maker.id().value()));
-    return infos(makers, sd, tickOf(state));
+    return infos(makers, sd, state, tickOf(state));
   }
 
   /**
@@ -196,7 +209,7 @@ public final class SdQueryService {
     SimulationState state = query.stateAt(target);
     SdState sd = sdState(state);
     DecisionMaker maker = sd.decisionMakers().get(id);
-    return maker == null ? Optional.empty() : Optional.of(info(maker, sd, tickOf(state)));
+    return maker == null ? Optional.empty() : Optional.of(info(maker, sd, state, tickOf(state)));
   }
 
   private static boolean matches(Affiliation affiliation, AffiliationFilter filter) {
@@ -206,18 +219,22 @@ public final class SdQueryService {
           affiliation instanceof Affiliation.Nation n && n.nationId().equals(nation.nationId());
       case AffiliationFilter.OfArmy army ->
           affiliation instanceof Affiliation.Army a && a.armyId().equals(army.armyId());
+      case AffiliationFilter.OfGov gov ->
+          affiliation instanceof Affiliation.Gov g && g.govUnit().equals(gov.govUnit());
     };
   }
 
-  private static List<DecisionMakerInfo> infos(List<DecisionMaker> makers, SdState sd, long tick) {
+  private static List<DecisionMakerInfo> infos(
+      List<DecisionMaker> makers, SdState sd, SimulationState state, long tick) {
     List<DecisionMakerInfo> out = new ArrayList<>(makers.size());
     for (DecisionMaker maker : makers) {
-      out.add(info(maker, sd, tick));
+      out.add(info(maker, sd, state, tick));
     }
     return List.copyOf(out);
   }
 
-  private static DecisionMakerInfo info(DecisionMaker maker, SdState sd, long tick) {
+  private static DecisionMakerInfo info(
+      DecisionMaker maker, SdState sd, SimulationState state, long tick) {
     return switch (maker.affiliation()) {
       case Affiliation.Nation nation -> {
         Nation value = sd.nations().get(nation.nationId());
@@ -241,7 +258,30 @@ public final class SdQueryService {
             value == null ? null : value.rootUnit().value(),
             pending(maker, sd, tick));
       }
+      case Affiliation.Gov gov -> {
+        // ★ 显示名从 unit 切片现取（GOV 没有 sd 侧的名字字段）；单位被删/不是 GOV ⇒ null（显式未知，不编造）。
+        Unit value = unitOf(state, gov.govUnit());
+        yield new DecisionMakerInfo(
+            maker,
+            "gov",
+            gov.govUnit().value(),
+            value == null ? null : value.name(),
+            null,
+            null,
+            pending(maker, sd, tick));
+      }
     };
+  }
+
+  /** unit 切片里的单位（stage 10a 的 GOV 显示名用）：缺切片/类型不对 = 装配故障，当场炸。 */
+  private static Unit unitOf(SimulationState state, UnitId id) {
+    Snapshot snapshot =
+        state.module("unit").orElseThrow(() -> new IllegalStateException("状态里没有 unit 切片（装配故障）"));
+    if (!(snapshot instanceof UnitSnapshot unitSnapshot)) {
+      throw new IllegalStateException(
+          "状态里 unit 切片不是 UnitSnapshot：" + snapshot.getClass().getName());
+    }
+    return unitSnapshot.state().units().get(id);
   }
 
   /**

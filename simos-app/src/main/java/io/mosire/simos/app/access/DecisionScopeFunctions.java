@@ -43,12 +43,13 @@ public final class DecisionScopeFunctions {
     this.byAffiliationType = Map.copyOf(copy);
   }
 
-  /** 两个内置实现：{@code Nation ⇒ NationScope}、{@code Army ⇒ ArmyScope}。 */
+  /** 三个内置实现：{@code Nation ⇒ NationScope}、{@code Army ⇒ ArmyScope}、{@code Gov ⇒ GovScope}。 */
   public static DecisionScopeFunctions defaults() {
     return new DecisionScopeFunctions(
         Map.of(
             Affiliation.Nation.class, NationScope.INSTANCE,
-            Affiliation.Army.class, ArmyScope.INSTANCE));
+            Affiliation.Army.class, ArmyScope.INSTANCE,
+            Affiliation.Gov.class, GovScope.INSTANCE));
   }
 
   /**

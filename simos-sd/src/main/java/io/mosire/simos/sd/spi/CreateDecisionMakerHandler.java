@@ -7,12 +7,15 @@ import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.Unit;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -51,8 +54,9 @@ public final class CreateDecisionMakerHandler implements CommandHandler {
       if (base.decisionMakers().containsKey(id)) {
         return new HandlerOutcome.Rejected("决策人已存在: " + id);
       }
-      if (!affiliationExists(base, affiliation)) {
-        return new HandlerOutcome.Rejected("affiliation 目标不存在: " + affiliation);
+      Optional<String> affiliationProblem = affiliationProblem(state, base, affiliation);
+      if (affiliationProblem.isPresent()) {
+        return new HandlerOutcome.Rejected(affiliationProblem.get());
       }
       if (allowedTools.contains(SdCommandNames.SIMOS_COMMAND_SUBMIT)) {
         return new HandlerOutcome.Rejected(
@@ -66,10 +70,38 @@ public final class CreateDecisionMakerHandler implements CommandHandler {
     }
   }
 
-  private static boolean affiliationExists(SdState base, Affiliation affiliation) {
+  /**
+   * 归属目标的存在性/形态校验（创建期强绑，计划 §0 裁定 10 / 阶段 10 验收）：Nation 要在 {@code sd.nations()}、Army 要在 {@code
+   * sd.armies()}、<b>Gov 要在 unit 切片里存在且带 {@code GovFormation}</b>——GOV 决策人只绑 GOV 单位。
+   *
+   * <p>★ 返回具名理由而不是 boolean：Gov 的"单位不存在"与"单位存在但不是 GOV"是两条不同的纠正方向（先建单位 vs 先 {@code
+   * unit.SetGovFormation}），合成一句"目标不存在"会把后者说成谎。★ 运行期缺失由 {@code GovScope} 的 deny-all
+   * 兜底（fail-closed，见计划 §5 风险表）。
+   */
+  private static Optional<String> affiliationProblem(
+      SimulationState state, SdState base, Affiliation affiliation) {
     return switch (affiliation) {
-      case Affiliation.Nation nation -> base.nations().containsKey(nation.nationId());
-      case Affiliation.Army army -> base.armies().containsKey(army.armyId());
+      case Affiliation.Nation nation ->
+          base.nations().containsKey(nation.nationId())
+              ? Optional.empty()
+              : Optional.of("affiliation 目标不存在: " + affiliation);
+      case Affiliation.Army army ->
+          base.armies().containsKey(army.armyId())
+              ? Optional.empty()
+              : Optional.of("affiliation 目标不存在: " + affiliation);
+      case Affiliation.Gov gov -> {
+        Unit unit = SdSnapshots.units(state).units().get(gov.govUnit());
+        if (unit == null) {
+          yield Optional.of("affiliation 目标不存在: " + affiliation);
+        }
+        if (!(unit.module().orElse(null) instanceof GovFormation)) {
+          yield Optional.of(
+              "affiliation 单位 "
+                  + gov.govUnit().value()
+                  + " 没有 GovFormation：GOV 决策人只能绑 GOV 单位（先 unit.SetGovFormation）");
+        }
+        yield Optional.empty();
+      }
     };
   }
 }

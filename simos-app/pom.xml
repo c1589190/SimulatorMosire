@@ -66,6 +66,11 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-actor</artifactId>
     </dependency>
+    <!-- ★ 阶段 10a（2026-09-30 GOV/Army 计划 §2.2）：行政切片 —— GovCodec 装进 Shell/RichWorld 的
+         codec 列表（本阶段无 gov participant/handler）。★ 与上面 actor 同一条纪律：显式声明，不靠传递依赖。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-gov</artifactId>
+    </dependency>
     <!-- 工具 / 权限 / 审批 / MCP（T5~T7 消费；依赖先按 spec 声明）。
          SNAPSHOT——跨机重建见 CLAUDE.md「换设备后的自检清单」第 2 条。 -->
     <dependency>

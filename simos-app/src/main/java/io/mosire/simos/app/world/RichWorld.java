@@ -9,6 +9,7 @@ import io.mosire.simos.core.store.Envelope;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.state.SdSnapshot;
@@ -103,7 +104,7 @@ public final class RichWorld {
     return new SimulationState(decoded.meta(), modules, readInfo(decoded.infoJson()));
   }
 
-  /** 六个模块 codec（与 {@code Shell} 的装配同一套类型）。 */
+  /** 七个模块 codec（与 {@code Shell} 的装配同一套类型）。 */
   private static Map<String, ModuleCodec> codecTable() {
     Map<String, ModuleCodec> codecs = new LinkedHashMap<>();
     for (ModuleCodec codec :
@@ -113,7 +114,10 @@ public final class RichWorld {
             new UnitCodec(),
             new SdCodec(),
             new EconomyCodec(),
-            new ActorCodec())) {
+            new ActorCodec(),
+            // ★ 阶段 10a：gov codec 与 Shell 同源。资源里没有 gov 切片时不需要空片——SimulationState 的
+            //   slices map 允许不含 gov（阶段 10a 无 gov 命令/参与者，读侧按"缺切片 = 没有读数"处理）。
+            new GovCodec())) {
       codecs.put(codec.namespace(), codec);
     }
     return codecs;

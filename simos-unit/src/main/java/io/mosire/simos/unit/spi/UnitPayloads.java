@@ -4,6 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.OfficePolicy;
+import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -147,6 +150,83 @@ final class UnitPayloads {
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("字段 " + field + " 不是合法状态: " + text.get(), e);
     }
+  }
+
+  /**
+   * 必填的政府编制层级（阶段 10a 的 {@code unit.SetGovFormation} 用）：未知串 ⇒ 抛（{@code GovLevel.valueOf} 失败
+   * 折成拒绝，理由点名词表）。
+   */
+  static GovLevel requireGovLevel(JsonNode payload, String field) {
+    String text = requireText(payload, field);
+    try {
+      return GovLevel.valueOf(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("字段 " + field + " 不是合法层级（CENTRAL|PROVINCE）: " + text, e);
+    }
+  }
+
+  /**
+   * 可选的行政角色人数表（阶段 10a 的 {@code unit.SetGovFormation.staff}）：缺失或 {@code null} ⇒ 空 Optional； 给了 ⇒ 必须是
+   * {@code {SCRIBE|YAMEN|POST:整数}} 对象。★ <b>角色词表在这里把关</b>（未知串具名拒，不静默丢条目）； <b>值域（≥0）不在这里判</b>——留给
+   * {@link io.mosire.simos.unit.GovFormation} 构造期，两处不重复实现。
+   */
+  static Optional<Map<StaffRole, Long>> optionalStaffMap(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return Optional.empty();
+    }
+    if (!value.isObject()) {
+      throw new IllegalArgumentException(
+          "字段 " + field + " 必须是 {\"SCRIBE|YAMEN|POST\":整数} 对象或 null: " + payload);
+    }
+    Map<StaffRole, Long> staff = new LinkedHashMap<>();
+    Iterator<Map.Entry<String, JsonNode>> fields = value.fields();
+    while (fields.hasNext()) {
+      Map.Entry<String, JsonNode> entry = fields.next();
+      StaffRole role;
+      try {
+        role = StaffRole.valueOf(entry.getKey());
+      } catch (IllegalArgumentException e) {
+        throw new IllegalArgumentException(
+            "字段 " + field + " 的角色未知（只认 SCRIBE / YAMEN / POST）: " + entry.getKey(), e);
+      }
+      JsonNode number = entry.getValue();
+      if (!number.isIntegralNumber() || !number.canConvertToLong()) {
+        throw new IllegalArgumentException(
+            "字段 " + field + " 的值必须是整数: " + entry.getKey() + "=" + number);
+      }
+      staff.put(role, number.asLong());
+    }
+    return Optional.of(staff);
+  }
+
+  /**
+   * 可选的编制政策（阶段 10a 的 {@code unit.SetGovFormation.policy}）：缺失或 {@code null} ⇒ {@link
+   * OfficePolicy#defaults()}；给了 ⇒ 只覆盖给出的字段，缺省字段取 defaults（**部分字段合法**）。
+   *
+   * <p>★ 五个字段都走同一台 mapper 的默认值：四个数值缺省取 {@code defaults().xxx()}，{@code staffCap} 缺省取空表
+   * （不设上限）。越界（负值）由 {@link OfficePolicy} 构造期拒。
+   */
+  static OfficePolicy optionalPolicy(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return OfficePolicy.defaults();
+    }
+    if (!value.isObject()) {
+      throw new IllegalArgumentException(
+          "字段 " + field + " 必须是对象或 null（缺省 = OfficePolicy.defaults()）: " + payload);
+    }
+    OfficePolicy defaults = OfficePolicy.defaults();
+    long grain =
+        optionalLong(value, "grainPerStaffPerTick").orElse(defaults.grainPerStaffPerTick());
+    long cloth =
+        optionalLong(value, "clothPerStaffPerCycle").orElse(defaults.clothPerStaffPerCycle());
+    long money =
+        optionalLong(value, "moneyPerStaffPerTick").orElse(defaults.moneyPerStaffPerTick());
+    long retirement =
+        optionalLong(value, "retirementPerStaff").orElse(defaults.retirementPerStaff());
+    Map<StaffRole, Long> staffCap = optionalStaffMap(value, "staffCap").orElse(defaults.staffCap());
+    return new OfficePolicy(grain, cloth, money, retirement, staffCap);
   }
 
   /** 必填的 {@code {q,r}} 坐标对象。 */

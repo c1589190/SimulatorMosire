@@ -1082,7 +1082,8 @@ public final class GuiServer implements AutoCloseable {
   }
 
   /**
-   * 决策人列表（T5，spec §六.1）：{@code GET /api/sd/decision-makers[?affiliation=nation:<id>|army:<id>]}。
+   * 决策人列表（T5，spec §六.1）：{@code GET
+   * /api/sd/decision-makers[?affiliation=nation:<id>|army:<id>|gov:<unitId>]}。
    *
    * <p>★ **只读**（不经 {@code CoreSimos}、不写盘）。空库/无匹配 ⇒ {@code 200 {"decisionMakers":[]}}（不是 404/500）；
    * 过滤串坏掉 ⇒ {@link IllegalArgumentException} ⇒ 400（**fail-closed，不静默当空集合**）。

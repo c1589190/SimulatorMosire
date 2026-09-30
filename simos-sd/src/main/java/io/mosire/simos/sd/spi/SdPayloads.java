@@ -180,7 +180,10 @@ final class SdPayloads {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull() || !value.isObject()) {
       throw new IllegalArgumentException(
-          "字段 " + field + " 必须是 {\"kind\":\"nation\"|\"army\",\"id\":\"…\"} 对象: " + payload);
+          "字段 "
+              + field
+              + " 必须是 {\"kind\":\"nation\"|\"army\"|\"gov\",\"id\":\"…\"} 对象: "
+              + payload);
     }
     return readAffiliation(value);
   }
@@ -198,7 +201,10 @@ final class SdPayloads {
     }
     if (!value.isArray()) {
       throw new IllegalArgumentException(
-          "字段 " + field + " 必须是 [{\"kind\":\"nation\"|\"army\",\"id\":\"…\"}…] 数组: " + payload);
+          "字段 "
+              + field
+              + " 必须是 [{\"kind\":\"nation\"|\"army\"|\"gov\",\"id\":\"…\"}…] 数组: "
+              + payload);
     }
     Set<Affiliation> out = new LinkedHashSet<>();
     for (JsonNode element : value) {
@@ -218,7 +224,9 @@ final class SdPayloads {
     return switch (kind) {
       case "nation" -> new Affiliation.Nation(NationId.parse(id));
       case "army" -> new Affiliation.Army(ArmyId.parse(id));
-      default -> throw new IllegalArgumentException("affiliation.kind 必须是 nation|army: " + kind);
+      case "gov" -> new Affiliation.Gov(UnitId.parse(id));
+      default ->
+          throw new IllegalArgumentException("affiliation.kind 必须是 nation|army|gov: " + kind);
     };
   }
 

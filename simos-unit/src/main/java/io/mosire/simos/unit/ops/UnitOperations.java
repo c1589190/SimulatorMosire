@@ -3,14 +3,17 @@ package io.mosire.simos.unit.ops;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
+import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitModule;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.move.MovementCost;
@@ -453,6 +456,85 @@ public final class UnitOperations {
             current.levyManpowerCapPerCommand(),
             current.administrationPerMille());
     return withUnit(state, withJurisdiction(unit, Optional.of(next)));
+  }
+
+  // ── 编制标签（阶段 10a，控制方修订：编制在 unit 片，故这两条是 unit.* 域命令） ─────────────
+
+  /**
+   * ★ <b>立 GOV 编制</b>（{@code unit.SetGovFormation} 的领域实现，阶段 10a）：把给定 {@link GovFormation} 挂到单位上。
+   *
+   * <p>★ <b>语义与拒因</b>：
+   *
+   * <ol>
+   *   <li>单位必须存在（{@link #require}）；
+   *   <li><b>一单位至多一个编制标签</b>：既有 {@link ArmyFormation} ⇒ 具名拒，<b>不做静默替换</b>；
+   *   <li>{@code superiorGov} 非空 ⇒ 必须存在、必须是带 {@link GovFormation} 的单位、且不得指向自身；
+   *   <li><b>同类型重复设置 = 整体替换</b>：已有 {@code GovFormation} 时不做字段级合并，直接换成传入的整份（命令层缺省 = 空 staff + {@code
+   *       OfficePolicy.defaults()}）。这条是文档化的：要改一部分就先把完整目标编制造出来。
+   * </ol>
+   *
+   * <p>★ 纯函数：产新 {@code UnitState}；变更集仍由 {@code UnitChangeSet.between} 派生（不做第二条拼增量路径）。 结果单位走 {@link
+   * #withModule} 的 canonical 拷贝，16 个组件一个不丢。
+   */
+  public static UnitState setGovFormation(UnitState state, UnitId id, GovFormation formation) {
+    Objects.requireNonNull(formation, "formation");
+    Unit unit = require(state, id);
+    if (unit.module().orElse(null) instanceof ArmyFormation) {
+      throw new IllegalArgumentException(
+          "单位 " + id + " 已带 ArmyFormation（一单位至多一个编制标签）：不能改挂 GovFormation；本命令不做静默替换");
+    }
+    formation
+        .superiorGov()
+        .ifPresent(
+            superior -> {
+              if (superior.equals(id)) {
+                throw new IllegalArgumentException("上级 GOV 不得指向自身: " + id);
+              }
+              requireGovUnit(state, superior, "superiorGov");
+            });
+    return withUnit(state, withModule(unit, Optional.of(formation)));
+  }
+
+  /**
+   * ★ <b>立 Army 编制</b>（{@code unit.SetArmyFormation} 的领域实现，阶段 10a）：把给定 {@link ArmyFormation} 挂到单位上。
+   *
+   * <p>★ <b>语义与拒因</b>：
+   *
+   * <ol>
+   *   <li>单位必须存在（{@link #require}）；
+   *   <li><b>一单位至多一个编制标签</b>：既有 {@link GovFormation} ⇒ 具名拒，<b>不做静默替换</b>；
+   *   <li>{@code masterGov} 非空 ⇒ 必须存在、且必须是带 {@link GovFormation} 的单位（认主子只认 GOV）；
+   *   <li><b>同类型重复设置 = 整体替换</b>（{@code role}/{@code masterGov} 一起换成传入的整份）。
+   * </ol>
+   *
+   * <p>★ 纯函数；结果单位走 {@link #withModule}，16 个组件一个不丢。
+   */
+  public static UnitState setArmyFormation(UnitState state, UnitId id, ArmyFormation formation) {
+    Objects.requireNonNull(formation, "formation");
+    Unit unit = require(state, id);
+    if (unit.module().orElse(null) instanceof GovFormation) {
+      throw new IllegalArgumentException(
+          "单位 " + id + " 已带 GovFormation（一单位至多一个编制标签）：不能改挂 ArmyFormation；本命令不做静默替换");
+    }
+    formation.masterGov().ifPresent(master -> requireGovUnit(state, master, "masterGov"));
+    return withUnit(state, withModule(unit, Optional.of(formation)));
+  }
+
+  /**
+   * 认主子/上级的共用守卫：目标必须存在、且必须带 {@link GovFormation}（GOV 只能认 GOV）。
+   *
+   * <p>★ 两条消息都点名 {@code field} 与坏 id：载荷写歪时模型要能知道是 {@code superiorGov} 还是 {@code masterGov}
+   * 写错了，而不是笼统一句"参数不合法"。自身指涉的上游检查不在这里（{@link #setGovFormation} 显式判， 因为只有上级 GOV 有这一条）。
+   */
+  private static void requireGovUnit(UnitState state, UnitId govUnitId, String field) {
+    Unit gov = state.units().get(govUnitId);
+    if (gov == null) {
+      throw new IllegalArgumentException(field + " 指定的 GOV 单位不存在: " + govUnitId);
+    }
+    if (!(gov.module().orElse(null) instanceof GovFormation)) {
+      throw new IllegalArgumentException(
+          field + " 指定的单位 " + govUnitId + " 没有 GovFormation：不能作为 GOV");
+    }
   }
 
   /**
@@ -1226,5 +1308,35 @@ public final class UnitOperations {
         unit.visionRadius(),
         jurisdiction,
         unit.module());
+  }
+
+  /**
+   * ★ <b>只换 {@code module}、其余 15 个组件原样带过</b>（阶段 10a 的 canonical 拷贝点，与 {@link #withJurisdiction} /
+   * {@link #withStatus} 同形）。
+   *
+   * <p>★★ <b>16 个组件逐一显式列出</b>（不是走兼容构造器）：那会把 {@code status}/{@code attached}/{@code offset}/ {@code
+   * rejoinTarget}/{@code visionRadius}/{@code jurisdiction} 一并重置成默认值——立编制顺手清掉管辖/视野/编队 是本仓最贵的教训形态（R1
+   * 字段漂移）。★ 两条"立编制"命令（{@link #setGovFormation} / {@link #setArmyFormation}） 都只经此一处换 {@code
+   * module}，不为 GOV / Army 各写一份拷贝点。
+   */
+  private static Unit withModule(Unit unit, Optional<UnitModule> module) {
+    Objects.requireNonNull(module, "module");
+    return new Unit(
+        unit.id(),
+        unit.name(),
+        unit.parent(),
+        unit.position(),
+        unit.member(),
+        unit.equipment(),
+        unit.speed(),
+        unit.mobilityPerMille(),
+        unit.movement(),
+        unit.status(),
+        unit.attached(),
+        unit.offset(),
+        unit.rejoinTarget(),
+        unit.visionRadius(),
+        unit.jurisdiction(),
+        module);
   }
 }

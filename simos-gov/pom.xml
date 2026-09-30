@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.mosire</groupId>
+    <artifactId>simos-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>simos-gov</artifactId>
+  <name>GovSimos</name>
+  <description>行政切片（阶段 10a 骨架）：每 tick 行政读数（GovOfficeState）的状态树 / 落盘切片 / 变更集 / JSON 编解码（GovCodec，namespace() = "gov"）与 GovRules 常量。编制字段本身在 unit 片（UnitModule），本模块只拥有"每 tick 读数"。</description>
+
+  <!-- ★ 依赖面（计划 §2.2 的依赖表）：
+       util（Snapshot / ChangeSet / FieldDelta / StateRef / SimosTimestamp）、
+       map（阶段 11 的 GovDemand 逐格算需求用 HexCoord；本阶段暂无 import）、
+       unit（UnitId 与 GovFormation 的读取）、
+       social（阶段 11 的 GovDemand 读人口/城市；本阶段暂无 import）、
+       economy-api（CommodityId / CurrencyId —— GovOfficeState 六张读数表的键）。
+       ★ 本阶段 10a 真正的 import 只有 util / unit / economy-api；map 与 social 是计划里阶段 11 结算的输入面，
+         按任务书先声明（不是"顺手加的"；见类注里对阶段 11 的指向）。
+       ★ actor-api 只在真用 ActorRef 时才该声明：本阶段没有 ActorRef，故不加（任务书口径）。
+       ★ 不得依赖 core / app（铁律 3：领域模块不认识组合与调度）——由下面的 enforcer 构建期强制。 -->
+  <dependencies>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-unit</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-social</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId>
+    </dependency>
+    <!-- GovCodec 真的 import Jackson（ObjectMapper / SimpleModule / KeyDeserializer）。版本由父 POM 已
+         import 的 jackson-bom 提供。 -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
+    </dependency>
+    <!-- 阶段 11 的日结算日志面（计划 §2.5 的"日志汇总"）；本阶段没有使用点，按任务书声明。 -->
+    <dependency>
+      <groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-module-boundaries</id>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <!-- 铁律 3：行政切片不认识组合与调度。 -->
+                    <exclude>io.mosire:simos-core</exclude>
+                    <exclude>io.mosire:simos-app</exclude>
+                    <exclude>io.mosire:agentlib-mosire</exclude>
+                    <!-- 切片之间互不依赖（对称）：sd 是领域模块的下游；economy / actor 是兄弟切片。
+                         ★ economy-api 与 actor-api **不在禁列**（契约层，任务书明文允许；本阶段只用了 economy-api 的 ID）。
+                         ★ map / social / unit 是计划 §2.2 明确允许的上游，也不在禁列。 -->
+                    <exclude>io.mosire:simos-sd</exclude>
+                    <exclude>io.mosire:simos-economy</exclude>
+                    <exclude>io.mosire:simos-actor</exclude>
+                  </excludes>
+                  <message>GovSimos 不得依赖 core/app/agentlib（铁律 3/4），也不得反向依赖 sd 或兄弟切片 economy/actor；允许 util/map/unit/social/economy-api（计划 §2.2）</message>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

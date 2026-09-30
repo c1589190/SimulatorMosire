@@ -88,6 +88,21 @@ public final class CatalogTool implements AgentTool {
                   + "三个 levy*CapPerCommand 的上限 = 一条抽取命令的上限，0 = 该类无额度、拒，"
                   + "本批不建周期累计账本）"),
           Map.entry(
+              "unit.SetGovFormation",
+              "unitId, level(CENTRAL|PROVINCE), superiorGov?,"
+                  + " staff?{SCRIBE|YAMEN|POST:整数}, policy?{grainPerStaffPerTick?,"
+                  + " clothPerStaffPerCycle?, moneyPerStaffPerTick?, retirementPerStaff?,"
+                  + " staffCap?{SCRIBE|YAMEN|POST:整数}}"
+                  + "（★ staff 缺省空表、policy 缺省 OfficePolicy.defaults() 且可给部分字段；"
+                  + "既有 ArmyFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
+                  + "superiorGov 必须存在且带 GovFormation、不得指向自身；同类型重复设置 = 整体替换）"),
+          Map.entry(
+              "unit.SetArmyFormation",
+              "unitId, masterGov?, role"
+                  + "（★ role 必填非空白；masterGov 缺省 = 未认主子，给了必须存在且带 GovFormation；"
+                  + "既有 GovFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
+                  + "同类型重复设置 = 整体替换）"),
+          Map.entry(
               "unit.SetTaxRate",
               "unitId, regionId, ratePerMille(0..1000)"
                   + "（★ regionId 必须已在该单位的管辖里，否则具名拒并指路先 unit.SetJurisdiction）"),

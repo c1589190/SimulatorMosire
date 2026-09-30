@@ -39,6 +39,10 @@
          **无公式**（§八 R1 行）。只依赖 util/economy-api，不被 core 依赖。
          后续 R2+ 的结算逻辑（人口→阶层、日/周期结算、税、市场）在本切片内续做。 -->
     <module>simos-economy</module>
+    <!-- ★ 阶段 10a（2026-09-30 GOV/Army 计划 §2.2）：行政切片骨架——每 tick 行政读数（GovOfficeState）
+         + 落盘切片/变更集/编解码。只依赖 util/map/unit/social/economy-api（本阶段只用 unit/economy-api 的类型），
+         **不得依赖 core/app**（铁律 3：领域模块不认识组合与调度）。 -->
+    <module>simos-gov</module>
     <!-- ★ M5 T1：组合根。依赖全部领域模块 + AgentLib/MCP，是 reactor 末位；
          它不被任何模块依赖（父 POM 不引它 ⇒ 无反向依赖）。不设 enforcer（spec §2.2）。 -->
     <module>simos-app</module>
@@ -101,6 +105,9 @@
       </dependency>
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-economy</artifactId><version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.mosire</groupId><artifactId>simos-gov</artifactId><version>${project.version}</version>
       </dependency>
 
       <!-- 外部依赖 -->
