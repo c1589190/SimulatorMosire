@@ -215,3 +215,56 @@ GM 可调制度/技术参数补成工具，阶段 1 的三个 kind 之外不再�
 不写/不改测试（既有用例的同步留给测试代理）；不 commit。
 **测试代理输入**：7 条命令的 class-first 拒绝理由、空 classFirst 下行为不变的对照面。
 
+## 10. 阶段 4（2026-09-30 追加）：一次性抽取（粮/钱）
+
+**目标**：GM 从某个阶层池**一次性抽取**粮/钱到外部账户（现有 `classFirst.lenders` 里的 GOV/军队账户），
+把军队"临时抽钱抽粮"这一类动作先落成工具；**征调人力**需要跨 economy/social/unit 切片，留到"组军"阶段。
+
+### 10.1 新 adjustment `levyStock`
+
+```json
+{"adjustment":"levyStock",
+ "parameters":{"fromClassPositionId":"LABORER", "lenderId":"gov-class-first-lender",
+               "unit":"grain"|"money", "amount":12345},
+ "reason":"…"}
+```
+
+- 四个字段全必填；`amount ≥ 1`、整数。
+- 源池必须存在（按 `classPositionId` 在 `classFirst.classPools` 里找）；`lenderId` 必须在 `classFirst.lenders` 里存在；
+  `unit` 只认 `grain`/`money`（其余具名拒绝）。
+- **抽取上限（保护口粮）**：
+  - `grain`：`可用 = stock(GRAIN) − protectedGrainReserve`，其中
+    `protectedGrainReserve = config.reserveTicks × (config.baseRationPerCapita × population + config.laborRationPerLabor × labor)`；
+  - `money`：`可用 = stock(MONEY)`；
+  - `amount > 可用` ⇒ 具名拒绝并**报可用量**（不静默截断；GM 可按预览重发）。
+- **效果**：源池 `takeStock(unit, amount)`、目标 lender `+amount`（grain 进 `goods`，money 进 `money`），
+  其余组件逐值不变；粮/钱守恒（两侧都在总量里）不破。
+- **审计**：两条 `Change`（`classFirst.classPools` 源池、`classFirst.lenders` 目标），reason 必填；
+  preview/apply 沿用现有工具。
+- **防漂移**：`protectedGrainReserve` 的算式抽成共享静态点（建议 `PilotConfig.protectedGrainReserve(population, labor)`），
+  引擎的私有同算式改为委托它——不得两处各写一遍。
+
+### 10.2 落点
+
+| 文件 | 改动 |
+|---|---|
+| `.../classfirst/PilotConfig.java` | 新增 `protectedGrainReserve(long population, long labor)` |
+| `.../classfirst/ClassFirstPilotEngine.java` | 私有 `protectedReserveGrain(pool)` 改为委托 `config.protectedGrainReserve(...)`（行为逐字不变） |
+| `.../classfirst/ClassFirstState.java` | 新增 `withClassPools(Map<ClassPoolId, ClassPool>)` 纯 copy-with（只替换既有键） |
+| `.../classfirst/ClassFirstLevy.java`（新增） | 抽取纯函数：find pool/lender、算上限、copy-on-write 扣加、返回新 state + 两条变更信息；校验失败抛可读 `IllegalArgumentException` |
+| `.../spi/EconomyGmAdjustments.java` | 新 kind `levyStock` + switch + 复用 `ClassFirstLevy`；允许清单 7 → 8 |
+| `.../spi/EconomyGmAdjustHandler.java` | `levyStock` 形状校验（四字段必填/类型/`amount ≥ 1`） |
+| `simos-app/.../EconomyAdjustTool.java`、`.../CatalogTool.java` | 白名单/形状文本 7 → 8 |
+
+### 10.3 验收
+
+spotless + 两处 compile 绿；控制方另加一条接线测试（抽取后源池减少、lender 增加、守恒不破、超上限具名拒绝）；
+不写/不改其它测试、不 commit。
+
+### 10.4 非目标
+
+- 征调人力/征兵（要 economy→social→unit 跨切片）；
+- 反向 `grantStock`（救济/拨款）；
+- 税率/地方债（要辖区维与征收结算，随"机制计算辖区"计划）；
+- 组军经济买单（要 unit 耦合）。
+
