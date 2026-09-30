@@ -79,9 +79,11 @@ import io.mosire.simos.app.tools.write.UnitRenameTool;
 import io.mosire.simos.app.tools.write.UnitReparentSubtreeTool;
 import io.mosire.simos.app.tools.write.UnitReparentTool;
 import io.mosire.simos.app.tools.write.UnitSetFormationOffsetTool;
+import io.mosire.simos.app.tools.write.UnitSetJurisdictionTool;
 import io.mosire.simos.app.tools.write.UnitSetRejoinTargetTool;
 import io.mosire.simos.app.tools.write.UnitSetStatusTool;
 import io.mosire.simos.app.tools.write.UnitSetStrengthTool;
+import io.mosire.simos.app.tools.write.UnitSetTaxRateTool;
 import io.mosire.simos.app.tools.write.UnitSplitFormationTool;
 import io.mosire.simos.app.tools.write.UnitUpdateCommandChainTool;
 import io.mosire.simos.app.tools.write.VoidAdjudicationTool;
@@ -353,6 +355,9 @@ public final class SimosToolSource implements ToolSource {
     built.add(new UnitCreateCommandChainTool(core, initiator, mapId));
     built.add(new UnitUpdateCommandChainTool(core, initiator, mapId));
     built.add(new UnitApplyCasualtiesTool(core, initiator, mapId));
+    // 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率。**只在 GM 桶**（与既有 unit 窄写同待遇）。
+    built.add(new UnitSetJurisdictionTool(core, initiator, mapId));
+    built.add(new UnitSetTaxRateTool(core, initiator, mapId));
     // M3（spec §八.3）：sd 域余下的写命令 —— ★ **只在 GM 桶**（决策人桶有意不含这批）。
     built.add(new SdCreateNationTool(core, initiator, mapId));
     built.add(new SdCreateArmyTool(core, initiator, mapId));

@@ -31,7 +31,11 @@ import java.util.Optional;
  * <p>★ **视野半径（权限阶段 Task 1 / spec §4.1）**：{@code visionRadius} = 六角圈数，**缺省 1**（用户裁定⑤），{@code 0}
  * 表示只看自身格。**本轮只加字段**——迷雾/探测/遮挡不在本轮（用户："具体的视野功能后面再在 unit 里面写"）；它当前唯一的读者是 军队决策人的可见范围函数（{@code
  * ArmyScope}，按军队位置 + 本半径算可见 hex）。 与 T1 四字段同一条纪律：兼容构造器取 {@link #DEFAULT_VISION_RADIUS}，**生产拷贝点一律走
- * canonical 14 参形态**（漏传 = 静默丢字段，本仓最贵的教训形态）。
+ * canonical 15 参形态**（漏传 = 静默丢字段，本仓最贵的教训形态）。
+ *
+ * <p>★ **管辖（辖区阶段 5，2026-09-30）**：第 15 组件 {@code jurisdiction} = 单位侧的管辖富结构（管辖区域 + 每区域长期税率 + 一次性抽取上限
+ * + 行政能力）。缺省 {@link Optional#empty()} ⇒ 旧档/旧调用点行为逐字不变；**所有重建既有 Unit 的拷贝点都必须原样带过 {@code
+ * before.jurisdiction()}**（漏传 = 静默丢管辖，同一条最贵教训）。
  */
 public record Unit(
     UnitId id,
@@ -47,7 +51,8 @@ public record Unit(
     SegmentedSeries<Boolean> attached,
     SegmentedSeries<Optional<RelativeOffset>> offset,
     Optional<UnitId> rejoinTarget,
-    int visionRadius) {
+    int visionRadius,
+    Optional<Jurisdiction> jurisdiction) {
 
   /** ★ **缺省视野半径**（spec §4.1 / 用户裁定⑤）= 1 圈（自身 + 六个邻格 = 7 格）。 */
   public static final int DEFAULT_VISION_RADIUS = 1;
@@ -92,6 +97,10 @@ public record Unit(
     if (visionRadius < 0) {
       throw new IllegalArgumentException("visionRadius 必须 ≥ 0: " + visionRadius);
     }
+    if (jurisdiction == null) {
+      // ★ 旧档没有 jurisdiction 键 ⇒ Jackson 对 record 的缺参给 null；这里归一成 empty（旧档兼容的落点）。
+      jurisdiction = Optional.empty();
+    }
   }
 
   /**
@@ -110,9 +119,9 @@ public record Unit(
   /**
    * ★ **兼容构造器**（T1，R1 的对策）：旧 9 参签名 ⇒ 以 {@code parent} 的锚段时刻造 {@code attached}/{@code offset}
    * 的锚段，{@code status = MOVING}、{@code rejoinTarget = empty}、{@code visionRadius = }{@link
-   * #DEFAULT_VISION_RADIUS}。
+   * #DEFAULT_VISION_RADIUS}、{@code jurisdiction = empty}。
    *
-   * <p>它让全仓约 40 处既有 {@code new Unit(…)} 调用点零改动编过；**生产拷贝点不要用它**（那会丢新字段），一律走 canonical 14 参形态——{@code
+   * <p>它让全仓约 40 处既有 {@code new Unit(…)} 调用点零改动编过；**生产拷贝点不要用它**（那会丢新字段），一律走 canonical 15 参形态——{@code
    * UnitOperations.copy} / {@code UnitMoves.evaluate} 的 frozen 视图 / {@code
    * UnitTimeParticipant.withPositionAndMovement} 都已改直。
    */
@@ -148,12 +157,13 @@ public record Unit(
 
   /**
    * ★ **第二兼容构造器**（权限阶段 Task 1 / spec §4.1）：T1 的 13 参形态 ⇒ 只补 {@code visionRadius = }{@link
-   * #DEFAULT_VISION_RADIUS}。
+   * #DEFAULT_VISION_RADIUS} 与 {@code jurisdiction = empty}。
    *
    * <p>**为什么需要它**：T1 那批调用点（夹具与测试里的 13 参规范形态）不是"忘了新字段"的拷贝点——{@code visionRadius}
    * 对它们而言没有来源，取缺省正是**唯一正确**的语义。有了它，新字段不会把既有 13 参调用点逼成编译错误。
    *
-   * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.visionRadius()}），走 canonical 14 参。
+   * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.visionRadius()} / {@code 原.jurisdiction()}），走
+   * canonical 15 参。
    */
   public Unit(
       UnitId id,
@@ -184,6 +194,48 @@ public record Unit(
         offset,
         rejoinTarget,
         DEFAULT_VISION_RADIUS);
+  }
+
+  /**
+   * ★ **第三兼容构造器**（辖区阶段 5，2026-09-30）：扩容后旧的 14 参 canonical 形态（截至 {@code visionRadius}）⇒ 只补 {@code
+   * jurisdiction = empty}。
+   *
+   * <p>**为什么需要它**：既有测试/夹具与少量调用点按 14 参规范形态写（它们不是"忘了新字段"的生产拷贝点——管辖对它们而言没有来源），
+   * 取空管辖正是**唯一正确**的语义；有了它，新增第 15 组件不会把既有 14 参调用点逼成编译错误。
+   *
+   * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.jurisdiction()}），走 canonical 15 参——漏传 = 静默丢管辖。
+   */
+  public Unit(
+      UnitId id,
+      String name,
+      SegmentedSeries<Optional<UnitId>> parent,
+      SegmentedSeries<Optional<HexCoord>> position,
+      int member,
+      Map<String, Integer> equipment,
+      int speed,
+      int mobilityPerMille,
+      Optional<Movement> movement,
+      UnitStatus status,
+      SegmentedSeries<Boolean> attached,
+      SegmentedSeries<Optional<RelativeOffset>> offset,
+      Optional<UnitId> rejoinTarget,
+      int visionRadius) {
+    this(
+        id,
+        name,
+        parent,
+        position,
+        member,
+        equipment,
+        speed,
+        mobilityPerMille,
+        movement,
+        status,
+        attached,
+        offset,
+        rejoinTarget,
+        visionRadius,
+        Optional.empty());
   }
 
   /** 兼容构造器的锚时刻取 {@code parent} 的首段（{@code parent} 不得为 null、构造期保证至少一段）。 */

@@ -2,8 +2,10 @@ package io.mosire.simos.unit.ops;
 
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
+import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Route;
@@ -340,6 +342,113 @@ public final class UnitOperations {
             unit.speed(),
             unit.mobilityPerMille(),
             Optional.empty()));
+  }
+
+  // ── 辖区（阶段 5，2026-09-30） ──────────────────────────────
+
+  /**
+   * ★ **整体替换管辖区域集合 + upsert 政策字段**（{@code unit.SetJurisdiction} 的领域实现，计划 §2.2）。
+   *
+   * <p>语义四条：
+   *
+   * <ol>
+   *   <li>{@code regions} 的每个 id 必须在当前 {@code map.regions()} 里存在——不存在 ⇒ 具名拒（**不静默丢**，坏的 regionId
+   *       不会变成"少管一个区域"）。
+   *   <li>区域集合**整体替换**：不在 {@code regions} 里的旧区域连同其税率一并移除；保留区域的旧税率**upsert 保留**； 新区域的税率从 0 起。
+   *   <li>四个可选政策字段（三个 {@code levy*CapPerCycle} 与 {@code administrationPerMille}）**未给 ⇒ 保持原值**；
+   *       单位原本没有 {@code jurisdiction} ⇒ 保持 0。
+   *   <li>{@code regions} 为空数组合法 = **撤销全部管辖**：结果是一个 {@code jurisdiction} present、税率表为空的单位
+   *       （政策字段照常按上面的规则更新）——"空 map = 无管辖"是 {@link Jurisdiction} 的既定表示，不把整个 Optional 丢掉。
+   * </ol>
+   *
+   * <p>★ **纯函数**：产新 {@code UnitState}，变更集仍由 {@code UnitChangeSet.between} 派生。
+   */
+  public static UnitState setJurisdiction(
+      UnitState state,
+      UnitId id,
+      GameMap map,
+      List<RegionId> regions,
+      Optional<Long> levyGrainCapPerCycle,
+      Optional<Long> levyMoneyCapPerCycle,
+      Optional<Long> levyManpowerCapPerCycle,
+      Optional<Integer> administrationPerMille) {
+    Objects.requireNonNull(map, "map");
+    Objects.requireNonNull(regions, "regions");
+    Objects.requireNonNull(levyGrainCapPerCycle, "levyGrainCapPerCycle");
+    Objects.requireNonNull(levyMoneyCapPerCycle, "levyMoneyCapPerCycle");
+    Objects.requireNonNull(levyManpowerCapPerCycle, "levyManpowerCapPerCycle");
+    Objects.requireNonNull(administrationPerMille, "administrationPerMille");
+    Unit unit = require(state, id);
+    Optional<Jurisdiction> current = unit.jurisdiction();
+    Map<RegionId, Long> oldRates =
+        current.map(Jurisdiction::taxRatePerMilleByRegion).orElseGet(Map::of);
+    // ★ 先逐条验区域存在（具名拒），再动手——不静默丢任何 regionId。
+    for (RegionId region : regions) {
+      if (region == null) {
+        throw new IllegalArgumentException("regions 的元素不得为 null");
+      }
+      if (!map.regions().containsKey(region)) {
+        throw new IllegalArgumentException("区域不存在: " + region + "（当前地图 regions() 里没有它，无法纳入管辖）");
+      }
+    }
+    Map<RegionId, Long> nextRates = new LinkedHashMap<>();
+    for (RegionId region : regions) {
+      nextRates.put(region, oldRates.getOrDefault(region, 0L));
+    }
+    long grainCap = current.map(Jurisdiction::levyGrainCapPerCycle).orElse(0L);
+    long moneyCap = current.map(Jurisdiction::levyMoneyCapPerCycle).orElse(0L);
+    long manpowerCap = current.map(Jurisdiction::levyManpowerCapPerCycle).orElse(0L);
+    long adminPerMille = current.map(Jurisdiction::administrationPerMille).orElse(0L);
+    Jurisdiction next =
+        new Jurisdiction(
+            nextRates,
+            levyGrainCapPerCycle.orElse(grainCap),
+            levyMoneyCapPerCycle.orElse(moneyCap),
+            levyManpowerCapPerCycle.orElse(manpowerCap),
+            administrationPerMille.map(Integer::longValue).orElse(adminPerMille));
+    return withUnit(state, withJurisdiction(unit, Optional.of(next)));
+  }
+
+  /**
+   * ★ **upsert 某管辖区域的长期税率**（{@code unit.SetTaxRate} 的领域实现，计划 §2.2）：只改 {@code
+   * taxRatePerMilleByRegion} 里一个键的值，其余字段与 map 顺序原样带过。
+   *
+   * <p>两条具名拒（都指向纠正动作，不是模糊的"坏参数"）：
+   *
+   * <ul>
+   *   <li>单位没有 {@code jurisdiction} ⇒ 拒，指路 {@code unit.SetJurisdiction}；
+   *   <li>{@code regionId} 不在该单位的管辖 key 集里 ⇒ 拒，指路先 {@code unit.SetJurisdiction} 把它纳入管辖。
+   * </ul>
+   *
+   * <p>★ 税率范围 {@code [0,1000]}‰ 在本方法显式判（{@link Jurisdiction} 构造期同判），超界 ⇒ 具名拒、不钳制。
+   */
+  public static UnitState setTaxRate(
+      UnitState state, UnitId id, RegionId regionId, long ratePerMille) {
+    Objects.requireNonNull(regionId, "regionId");
+    Unit unit = require(state, id);
+    Jurisdiction current =
+        unit.jurisdiction()
+            .orElseThrow(
+                () ->
+                    new IllegalArgumentException(
+                        "单位 " + id + " 没有 jurisdiction：先用 unit.SetJurisdiction 设定管辖区域"));
+    if (!current.taxRatePerMilleByRegion().containsKey(regionId)) {
+      throw new IllegalArgumentException(
+          "区域 " + regionId + " 不在单位 " + id + " 的管辖里：先用 unit.SetJurisdiction 把它纳入管辖");
+    }
+    if (ratePerMille < 0 || ratePerMille > 1000) {
+      throw new IllegalArgumentException("ratePerMille 必须 ∈ [0,1000]: " + ratePerMille);
+    }
+    Map<RegionId, Long> nextRates = new LinkedHashMap<>(current.taxRatePerMilleByRegion());
+    nextRates.put(regionId, ratePerMille); // 既有键保持原位（LinkedHashMap 对已有键只换值）
+    Jurisdiction next =
+        new Jurisdiction(
+            nextRates,
+            current.levyGrainCapPerCycle(),
+            current.levyMoneyCapPerCycle(),
+            current.levyManpowerCapPerCycle(),
+            current.administrationPerMille());
+    return withUnit(state, withJurisdiction(unit, Optional.of(next)));
   }
 
   /**
@@ -950,7 +1059,7 @@ public final class UnitOperations {
 
   /**
    * ★ **canonical 拷贝点**：9 个可变字段由调用方给，T1 的四个新字段（{@code status}/{@code attached}/{@code
-   * offset}/{@code rejoinTarget}）与 Task 1 的 {@code visionRadius}
+   * offset}/{@code rejoinTarget}）、Task 1 的 {@code visionRadius} 与辖区阶段 5 的 {@code jurisdiction}
    * 一律**原样带过**——不用兼容构造器（那会把新字段重置成默认值，正是 R1 的残留风险）。 只动编队三件套（{@code parent}/{@code attached}/{@code
    * offset}）的操作用同族的 {@link #copyFormation}。
    */
@@ -978,13 +1087,15 @@ public final class UnitOperations {
         unit.attached(),
         unit.offset(),
         unit.rejoinTarget(),
-        unit.visionRadius());
+        unit.visionRadius(),
+        unit.jurisdiction());
   }
 
   /**
    * ★ **T3 的 canonical 拷贝点**：在 9 参 {@link #copy} 之上**显式**给 `position`/`attached`/`offset`
-   * 三个分量（`status`/ `rejoinTarget`/`visionRadius` 仍原样带过）。四个形参类型两两不同 ⇒ 传错顺序是**编译错误**，不是静默错位；编制三件套的操作
-   * （`parent`/`attached`/`offset` **加上新落地的 `position`**）只动这四个，故不走全 14 参。
+   * 三个分量（`status`/`rejoinTarget`/`visionRadius`/`jurisdiction` 仍原样带过）。四个形参类型两两不同 ⇒
+   * 传错顺序是**编译错误**，不是静默错位；编制三件套的操作 （`parent`/`attached`/`offset` **加上新落地的 `position`**）只动这四个，故不走全 15
+   * 参。
    *
    * <p>★★ **编制 v2（2026-09-24，取消跟随）起本方法的实际用法**：{@code attachSubtree}、{@code detachUnit}、 {@code
    * reparentSubtree} 都**只改 `parent`/`attached`**，`position`/`offset` 一律原样传回（不再清位、不再反算、
@@ -1011,11 +1122,12 @@ public final class UnitOperations {
         attached,
         offset,
         unit.rejoinTarget(),
-        unit.visionRadius());
+        unit.visionRadius(),
+        unit.jurisdiction());
   }
 
   /**
-   * 只换 `speed`、其余 13 个组件（尤其是 {@code mobilityPerMille} 与视野半径）原样带过——**mergeFormation 的最慢者决定速度**专用
+   * 只换 `speed`、其余 14 个组件（尤其是 {@code mobilityPerMille}、视野半径与管辖）原样带过——**mergeFormation 的最慢者决定速度**专用
    * （canonical 拷贝点，同 {@link #withStatus} 的形制）。
    */
   private static Unit withSpeed(Unit unit, int speed) {
@@ -1033,10 +1145,11 @@ public final class UnitOperations {
         unit.attached(),
         unit.offset(),
         unit.rejoinTarget(),
-        unit.visionRadius());
+        unit.visionRadius(),
+        unit.jurisdiction());
   }
 
-  /** 只换 status、其余 13 个组件（含另外三个新字段与视野半径）原样带过。 */
+  /** 只换 status、其余 14 个组件（含另外三个新字段、视野半径与管辖）原样带过。 */
   private static Unit withStatus(Unit unit, UnitStatus status) {
     return new Unit(
         unit.id(),
@@ -1052,13 +1165,15 @@ public final class UnitOperations {
         unit.attached(),
         unit.offset(),
         unit.rejoinTarget(),
-        unit.visionRadius());
+        unit.visionRadius(),
+        unit.jurisdiction());
   }
 
   /**
-   * 只换 `rejoinTarget`、其余 13 个组件原样带过（T7，与 {@link #withStatus} 同形的 canonical 拷贝点）。
+   * 只换 `rejoinTarget`、其余 14 个组件原样带过（T7，与 {@link #withStatus} 同形的 canonical 拷贝点）。
    *
-   * <p>★ **不用兼容构造器**：那会把 `status`/`attached`/`offset`（以及视野半径）一并重置成默认值（R1 的残留风险，同 {@link #copy} 的注）。
+   * <p>★ **不用兼容构造器**：那会把 `status`/`attached`/`offset`（以及视野半径、管辖）一并重置成默认值（R1 的残留风险，同 {@link #copy}
+   * 的注）。
    */
   private static Unit withRejoinTarget(Unit unit, Optional<UnitId> rejoinTarget) {
     return new Unit(
@@ -1075,6 +1190,31 @@ public final class UnitOperations {
         unit.attached(),
         unit.offset(),
         rejoinTarget,
-        unit.visionRadius());
+        unit.visionRadius(),
+        unit.jurisdiction());
+  }
+
+  /**
+   * 只换 `jurisdiction`、其余 14 个组件原样带过（辖区阶段 5，与 {@link #withStatus} 同形的 canonical 拷贝点）。
+   *
+   * <p>★ **不用兼容构造器**：那会把全部既有字段重置成默认值——管辖变更绝不能顺手清掉编制/位置/视野。
+   */
+  private static Unit withJurisdiction(Unit unit, Optional<Jurisdiction> jurisdiction) {
+    return new Unit(
+        unit.id(),
+        unit.name(),
+        unit.parent(),
+        unit.position(),
+        unit.member(),
+        unit.equipment(),
+        unit.speed(),
+        unit.mobilityPerMille(),
+        unit.movement(),
+        unit.status(),
+        unit.attached(),
+        unit.offset(),
+        unit.rejoinTarget(),
+        unit.visionRadius(),
+        jurisdiction);
   }
 }

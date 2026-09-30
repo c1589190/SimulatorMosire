@@ -111,7 +111,9 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
                   List.of(new Segment<>(at, Optional.<RelativeOffset>empty())), List.of(), null),
               Optional.empty(),
               // ★ 创建（不是拷贝）：视野半径取缺省 1 圈——载荷里没有该字段，不凭空发明输入（spec §4.1 只要求"缺省 1"）。
-              Unit.DEFAULT_VISION_RADIUS);
+              Unit.DEFAULT_VISION_RADIUS,
+              // ★ 创建（不是拷贝）：新单位尚无管辖 ⇒ Optional.empty()（辖区阶段 5）。
+              Optional.empty());
       UnitState next = UnitOperations.create(snapshot.state(), unit);
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {

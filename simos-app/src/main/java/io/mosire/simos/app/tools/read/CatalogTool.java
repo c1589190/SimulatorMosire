@@ -79,6 +79,16 @@ public final class CatalogTool implements AgentTool {
           Map.entry("unit.CreateCommandChain", "chainId, name, commander, members[字符串...]"),
           Map.entry("unit.UpdateCommandChain", "chainId, name?, commander?, members?"),
           Map.entry("unit.ApplyCasualties", "id, personnel(负增量), equipment{键:负增量}"),
+          Map.entry(
+              "unit.SetJurisdiction",
+              "unitId, regions[regionId...]（必填；空数组 = 撤销全部管辖）,"
+                  + " levyGrainCapPerCycle?, levyMoneyCapPerCycle?, levyManpowerCapPerCycle?,"
+                  + " administrationPerMille?(0..1000)"
+                  + "（★ 每个 regionId 必须在当前地图里存在，否则具名拒；未给的可选字段保持原值）"),
+          Map.entry(
+              "unit.SetTaxRate",
+              "unitId, regionId, ratePerMille(0..1000)"
+                  + "（★ regionId 必须已在该单位的管辖里，否则具名拒并指路先 unit.SetJurisdiction）"),
           Map.entry("map.SetTerrain", "hexes[{q,r}...], terrain"),
           Map.entry("map.CreateRegion", "regionId, name, hexes[{q,r}...], meta?"),
           Map.entry("map.UpdateRegion", "regionId, hexes?, meta?"),

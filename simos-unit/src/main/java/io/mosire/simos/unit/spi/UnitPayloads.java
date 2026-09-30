@@ -88,6 +88,15 @@ final class UnitPayloads {
     return value.asInt();
   }
 
+  /** 必填整数字段（long 量纲：辖区阶段 5 的税率以及后续抽取上限用；范围由领域层判）。 */
+  static long requireLong(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || !value.isIntegralNumber() || !value.canConvertToLong()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + payload);
+    }
+    return value.asLong();
+  }
+
   /**
    * 可选整数字段（T3：{@code SetFormationOffset} 的 {@code dq}/{@code dr}）：缺失或 {@code null} ⇒ 空 Optional。
    */
@@ -100,6 +109,21 @@ final class UnitPayloads {
       throw new IllegalArgumentException("字段 " + field + " 必须是整数或 null: " + payload);
     }
     return Optional.of(value.asInt());
+  }
+
+  /**
+   * 可选整数字段（long 量纲：辖区阶段 5 的三个 {@code levy*CapPerCycle}）：缺失或 {@code null} ⇒ 空 Optional （**未给 ⇒
+   * 保持原值**，不是清 0）；范围由 {@code Jurisdiction} 构造期判。
+   */
+  static Optional<Long> optionalLong(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return Optional.empty();
+    }
+    if (!value.isIntegralNumber() || !value.canConvertToLong()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是整数或 null: " + payload);
+    }
+    return Optional.of(value.asLong());
   }
 
   /** 必填的三态状态（T2）：未知串 ⇒ 抛（`UnitStatus.valueOf` 失败折成拒绝）。 */

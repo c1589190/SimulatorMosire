@@ -124,9 +124,11 @@ import io.mosire.simos.unit.spi.RenameUnitHandler;
 import io.mosire.simos.unit.spi.ReparentSubtreeHandler;
 import io.mosire.simos.unit.spi.ReparentUnitHandler;
 import io.mosire.simos.unit.spi.SetFormationOffsetHandler;
+import io.mosire.simos.unit.spi.SetJurisdictionHandler;
 import io.mosire.simos.unit.spi.SetRejoinTargetHandler;
 import io.mosire.simos.unit.spi.SetStatusHandler;
 import io.mosire.simos.unit.spi.SetStrengthHandler;
+import io.mosire.simos.unit.spi.SetTaxRateHandler;
 import io.mosire.simos.unit.spi.SplitFormationHandler;
 import io.mosire.simos.unit.spi.UnitTimeParticipant;
 import io.mosire.simos.unit.spi.UpdateCommandChainHandler;
@@ -451,6 +453,10 @@ public final class Shell implements AutoCloseable {
                 new CreateCommandChainHandler(),
                 new UpdateCommandChainHandler(),
                 new ApplyCasualtiesHandler(),
+                // ── 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率两条窄写。非 GmOnly ⇒ 与既有 unit 命令同待遇
+                //   （仍可嵌入决策人令；"只在 GM 桶"说的是配套窄工具）。──
+                new SetJurisdictionHandler(),
+                new SetTaxRateHandler(),
                 // ── social（4 条）：逐格农村人口 + 城市节点 + **人口批次**（R1 的 T3：人口的唯一落盘入口）。
                 //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）──
                 new SetPopulationHandler(),

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -21,10 +22,15 @@ import java.util.function.Function;
 /**
  * unit 模块的 {@link ModuleCodec} 实现（spec §八）。形态与 {@code MapCodec} 同制，理由不重复——只记 unit 自己的那点差异。
  *
- * <p>★ 树里的自定义键有 {@code UnitId}（{@code units} 的键）与 {@code CommandChainId}（T1 新增的 {@code
- * commandChains} 的键），都住在 simos-unit 自己家里。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。 树里的 {@code
- * HexCoord}（{@code position} 序列的值、{@code Route} 的路点）都是**值**不是 Map 键，Jackson 按 record
- * 值处理，**不需要**也不应该注册。
+ * <p>★ 树里的自定义键有 {@code UnitId}（{@code units} 的键）、{@code CommandChainId}（T1 新增的 {@code
+ * commandChains} 的键）与 {@code RegionId}（辖区阶段 5 起 {@code Jurisdiction.taxRatePerMilleByRegion}
+ * 的键）——前两者住在 simos-unit 自己家里，{@code RegionId} 来自 unit 已依赖的 simos-map。键反序列化器照裁定 16
+ * 在**本模块**注册，不进共享基座。 树里的 {@code HexCoord}（{@code position} 序列的值、{@code Route} 的路点）都是**值**不是 Map
+ * 键，Jackson 按 record 值处理，**不需要**也不应该注册。
+ *
+ * <p>★ <b>辖区阶段 5 的线格式</b>：{@code Unit} 最后多一个 {@code "jurisdiction"} 键，值走既有的 jdk8 {@code Optional}
+ * 绑定（present ⇒ 对象本体，empty ⇒ JSON {@code null}），**不另造格式**。旧档没有该键 ⇒ Jackson 对 record 缺参给 {@code null}
+ * ⇒ {@code Unit} 紧凑构造器归一成 {@link java.util.Optional#empty()}（旧档行为逐字不变）；读侧本来就认 {@code null}。
  *
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
  *
@@ -55,10 +61,12 @@ public final class UnitCodec implements ModuleCodec, ModuleDiffer {
     abstract boolean isEmpty();
   }
 
+  /** 三个键类型各接一路 {@code parse}（{@code RegionId} 是辖区阶段 5 新进树的自定义键）。 */
   private static SimpleModule keyModule() {
     SimpleModule module = new SimpleModule("unit-json-keys");
     module.addKeyDeserializer(UnitId.class, keyDeserializer(UnitId::parse));
     module.addKeyDeserializer(CommandChainId.class, keyDeserializer(CommandChainId::parse));
+    module.addKeyDeserializer(RegionId.class, keyDeserializer(RegionId::parse));
     return module;
   }
 

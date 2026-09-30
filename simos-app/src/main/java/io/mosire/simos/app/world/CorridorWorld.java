@@ -142,7 +142,9 @@ public final class CorridorWorld {
                 List.of(new Segment<>(T0, Optional.<RelativeOffset>empty())), List.of(), null),
             Optional.empty(),
             // ★ 创建（不是拷贝）：视野半径取缺省 1 圈（spec §4.1 / 用户裁定⑤）。
-            Unit.DEFAULT_VISION_RADIUS);
+            Unit.DEFAULT_VISION_RADIUS,
+            // ★ 创建（不是拷贝）：创世单位尚无管辖（辖区阶段 5）。
+            Optional.empty());
     Map<UnitId, Unit> units = new LinkedHashMap<>();
     units.put(UNIT, unit);
     return new UnitState(units);

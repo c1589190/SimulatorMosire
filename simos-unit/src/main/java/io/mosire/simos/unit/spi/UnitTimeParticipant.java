@@ -192,7 +192,7 @@ public final class UnitTimeParticipant implements TimeParticipant {
 
   // ── 私有助手 ────────────────────────────────────────────────────
 
-  /** 追加一条 {@code position} 段（{@code from = at}）并替换在途行程；其余字段（含视野半径）原样带过。 */
+  /** 追加一条 {@code position} 段（{@code from = at}）并替换在途行程；其余字段（含视野半径与管辖）原样带过。 */
   private static Unit withPositionAndMovement(
       Unit unit, SimosTimestamp at, HexCoord hex, Optional<Movement> movement) {
     List<Segment<Optional<HexCoord>>> segments = new ArrayList<>(unit.position().segments());
@@ -213,10 +213,11 @@ public final class UnitTimeParticipant implements TimeParticipant {
         unit.attached(),
         unit.offset(),
         unit.rejoinTarget(),
-        unit.visionRadius());
+        unit.visionRadius(),
+        unit.jurisdiction());
   }
 
-  /** 只换在途行程、其余 13 个组件（含 {@code position} 与视野半径）原样带过（T7：回归重规划**不碰位置**）。 */
+  /** 只换在途行程、其余 14 个组件（含 {@code position}、视野半径与管辖）原样带过（T7：回归重规划**不碰位置**）。 */
   private static Unit withMovement(Unit unit, Optional<Movement> movement) {
     return new Unit(
         unit.id(),
@@ -232,7 +233,8 @@ public final class UnitTimeParticipant implements TimeParticipant {
         unit.attached(),
         unit.offset(),
         unit.rejoinTarget(),
-        unit.visionRadius());
+        unit.visionRadius(),
+        unit.jurisdiction());
   }
 
   private static GameMap mapOf(SimulationState state) {
