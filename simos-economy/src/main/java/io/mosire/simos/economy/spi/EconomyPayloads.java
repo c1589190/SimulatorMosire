@@ -52,6 +52,8 @@ import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
+import io.mosire.simos.economy.classfirst.ClassFirstState;
+import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.AssetShare;
@@ -535,6 +537,8 @@ final class EconomyPayloads {
     // ★★ E6a：可选初始模式变迁 / 阶层保留份额（缺键 ⇒ 空表；id 确定性派生、分组 Σ=1000 与引用完整性走构造期守卫）。
     Map<ModeTransitionId, ModeTransition> modeTransitions = modeTransitions(payload);
     Map<ClassShareId, ClassShare> classShares = classShares(payload);
+    // ★★ R1：顶层可选 classFirst 持久状态（缺键 ⇒ 空态；形状/引用完整性由 ClassFirstState 构造期与绑定层判）。
+    ClassFirstState classFirst = classFirst(payload);
     return new EconomyData(
         Optional.of(meta),
         industries,
@@ -574,7 +578,8 @@ final class EconomyPayloads {
         crisisSignals,
         // ★★ E6a：模式变迁 / 阶层保留份额（可选；id 派生、分组 Σ=1000 与引用完整性由构造期守卫判）。
         modeTransitions,
-        classShares);
+        classShares,
+        classFirst);
   }
 
   /**
@@ -2229,6 +2234,18 @@ final class EconomyPayloads {
       throw new IllegalArgumentException("字段 " + field + " 必须是数组: " + node);
     }
     return value;
+  }
+
+  /**
+   * ★★ R1：顶层可选 {@code classFirst} 持久状态。缺键 ⇒ {@link ClassFirstState#empty()}（旧 payload 逐值不变）；
+   * 给了但形状不对 ⇒ 交给同一条 Jackson 绑定路径 fail-closed（{@link EconomyCodec#deserializeClassFirstState}）。
+   */
+  private static ClassFirstState classFirst(JsonNode payload) {
+    JsonNode node = optionalObject(payload, "classFirst");
+    if (node == null) {
+      return ClassFirstState.empty();
+    }
+    return EconomyCodec.deserializeClassFirstState(node);
   }
 
   private static JsonNode optionalObject(JsonNode node, String field) {

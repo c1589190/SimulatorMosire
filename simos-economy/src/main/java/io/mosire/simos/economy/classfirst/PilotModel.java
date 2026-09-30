@@ -1,4 +1,4 @@
-package io.mosire.simos.economy.pilot;
+package io.mosire.simos.economy.classfirst;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -6,10 +6,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 独立最小试点（单 mode：佃农制农业）的数据形状与阶层语义。
+ * 阶层池经济（单 mode：佃农制农业）的数据形状与阶层语义（R1 从 pilot 试点迁入正式包 classfirst）。
  *
- * <p>★ 边界：本包不读写 {@code EconomyData}、不碰三国 compact world、不依赖 E1–E6。全部字段都是整数（{@code long}）与 {@link
- * LinkedHashMap}，没有任何随机数/UUID/时钟；同样的输入必然得到同样的 360 tick 轨迹。
+ * <p>★ 边界：模型/引擎不读旧 {@code EconomySettlement} 路径；跨 tick 持久化统一走 {@link ClassFirstState} → {@code
+ * EconomyData.classFirst}（见 {@link ClassFirstSettlement}）。不碰三国 compact world，也不依赖旧 E1–E6 结算。
+ * 全部字段都是整数（{@code long}）与 {@link LinkedHashMap}，没有任何随机数/UUID/时钟；同样的输入必然得到同样的 360 tick 轨迹。
  *
  * <p>阶层语义写死如下（见 {@link #tenancyMode()}）：
  *

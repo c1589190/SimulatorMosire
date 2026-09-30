@@ -15,6 +15,7 @@ import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
+import io.mosire.simos.economy.api.id.ClassPoolId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
@@ -53,6 +54,9 @@ import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
+import io.mosire.simos.economy.classfirst.ClassFirstMeta;
+import io.mosire.simos.economy.classfirst.ClassFirstState;
+import io.mosire.simos.economy.classfirst.ClassPool;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.AssetShare;
@@ -106,7 +110,7 @@ import org.junit.jupiter.api.Test;
  * <p>★★ <b>S1/R3B.2/R4/E1–E6 的 API 漂移已在这里就位</b>：{@code classes}/{@code flows} 的键 = {@link
  * HouseholdId}（旧视图用 {@code HouseholdId.ofLegacy}）；{@code relations} 挂 {@link ProductionUnitId}；
  * operator / 周期进度住在 {@link ProductionUnit} 上（不是 {@code Industry} 的旧档兼容位）；{@code EconomyData} 是 29
- * 组件记录（E1–E6 追加组件全在 {@link EconomyChangeSet} 里逐一对齐）。
+ * 组件记录（E1–E6 追加组件 + R1 的 classFirst 全在 {@link EconomyChangeSet} 里逐一对齐）。
  */
 class EconomyRoundTripTest {
 
@@ -268,18 +272,19 @@ class EconomyRoundTripTest {
   }
 
   /**
-   * ★★ <b>组件计数（E6 = 29）</b>：{@code meta} / {@code industries} / {@code classes} / {@code
-   * debtContracts} / {@code flows} / {@code laborSupply} / {@code allocations} / {@code relations}
-   * / {@code markets} / {@code shipments} / {@code memberships} / {@code assetShares} / {@code
-   * operatorConditions} / {@code units} / {@code demands} / {@code candidates} / E1 的四个 / E2 的两个 /
-   * E3 的两个 / E4 的 {@code pledges} / E5 的两个 / E6 的两个。
+   * ★★ <b>组件计数（E6 = 29 + R1 classFirst = 30）</b>：{@code meta} / {@code industries} / {@code
+   * classes} / {@code debtContracts} / {@code flows} / {@code laborSupply} / {@code allocations} /
+   * {@code relations} / {@code markets} / {@code shipments} / {@code memberships} / {@code
+   * assetShares} / {@code operatorConditions} / {@code units} / {@code demands} / {@code
+   * candidates} / E1 的四个 / E2 的两个 / E3 的两个 / E4 的 {@code pledges} / E5 的两个 / E6 的两个 / R1 的 {@code
+   * classFirst}。
    *
-   * <p>★ 这个名字里的数字**故意写死**（R4 16 → E3 24 → E4 25 → E5 27 → E6 29）：它就是"又加了一个状态组件"这件事
+   * <p>★ 这个名字里的数字**故意写死**（R4 16 → E3 24 → E4 25 → E5 27 → E6 29 → R1 30）：它就是"又加了一个状态组件"这件事
    * 在编译/测试面上的**唯一提醒**——新增组件却只改了 {@code EconomyData} 而没进变更集时，本用例当场红。
    */
   @Test
-  void changeSetHasExactlyTwentyNineComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(29);
+  void changeSetHasExactlyThirtyComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(30);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -296,6 +301,24 @@ class EconomyRoundTripTest {
             SimosTimestamp.of(5),
             EconomyData.empty());
     assertThat(snapshot.namespace()).isEqualTo("economy");
+  }
+
+  /** ★ R1：非空的最小 classFirst 夹具（一个池 + 一个 tick 的 meta，足以让"组件参与差异"有判别力）。 */
+  private static ClassFirstState classFirst() {
+    ClassPoolId poolId = ClassPoolId.idOf("tenancy_agriculture", "LABORER");
+    ClassPool pool = new ClassPool("tenancy_agriculture", "LABORER");
+    ClassFirstMeta meta = new ClassFirstMeta(1L, 0L, 0L, 0L, 0L, null, null, null, 0L);
+    return new ClassFirstState(
+        Map.of(),
+        Map.of(poolId, pool),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        meta);
   }
 
   private static EconomyData mutate(EconomyData base, String name) {
@@ -392,6 +415,7 @@ class EconomyRoundTripTest {
       case "crisisSignals" -> base.withCrisisSignals(Map.of(CRISIS, crisisSignal()));
       case "modeTransitions" -> base.withModeTransitions(Map.of(TRANSITION, modeTransition()));
       case "classShares" -> base.withClassShares(Map.of(CLASS_SHARE, classShare()));
+      case "classFirst" -> base.withClassFirst(classFirst());
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -427,6 +451,7 @@ class EconomyRoundTripTest {
       case "crisisSignals" -> cs.crisisSignals().changed();
       case "modeTransitions" -> cs.modeTransitions().changed();
       case "classShares" -> cs.classShares().changed();
+      case "classFirst" -> cs.classFirst().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }

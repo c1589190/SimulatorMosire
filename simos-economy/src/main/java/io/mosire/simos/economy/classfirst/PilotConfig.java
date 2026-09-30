@@ -1,7 +1,7 @@
-package io.mosire.simos.economy.pilot;
+package io.mosire.simos.economy.classfirst;
 
 /**
- * 试点的显式制度/技术参数。
+ * 阶层池经济的显式制度/技术参数。
  *
  * <p>数量一律是整数：粮食/布匹按件，货币按最小单位，劳动按"千分劳动单位"（1000 = 一个全劳力/ tick），比例按千分比。 {@link #tenancyAgriculture}
  * 给出一套能跑 360 tick 的最小参数；测试只显式构造 lender 与催收政策。人口流动/GM 政策单独放在 {@link MobilityPolicy}（{@link

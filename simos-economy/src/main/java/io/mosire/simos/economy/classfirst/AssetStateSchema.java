@@ -1,4 +1,4 @@
-package io.mosire.simos.economy.pilot;
+package io.mosire.simos.economy.classfirst;
 
 import java.math.BigInteger;
 import java.util.Collections;

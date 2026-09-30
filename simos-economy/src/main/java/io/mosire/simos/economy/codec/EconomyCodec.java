@@ -1,13 +1,16 @@
 package io.mosire.simos.economy.codec;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -22,6 +25,9 @@ import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
+import io.mosire.simos.economy.api.id.ClassFirstAccountId;
+import io.mosire.simos.economy.api.id.ClassFlowEventId;
+import io.mosire.simos.economy.api.id.ClassPoolId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
@@ -30,11 +36,15 @@ import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
+import io.mosire.simos.economy.api.id.ExternalLenderId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.economy.api.id.HouseholdProductionAccountId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
+import io.mosire.simos.economy.api.id.MobilityPolicyId;
+import io.mosire.simos.economy.api.id.ModeParticipationId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
@@ -50,6 +60,8 @@ import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.classfirst.ClassFirstState;
+import io.mosire.simos.economy.classfirst.ClassPool;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.DebtContract;
@@ -118,25 +130,36 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
    * <p>★ 先例：H2 的补偿规则兼容层就是"整形后交给 {@code PLAIN}"；S1 的旧档迁移沿用同一分工。 ⇒ "一条记录怎么从 JSON
    * 造出来"永远只有<b>一处</b>拼写点（Jackson 的 record 绑定），兼容层只负责改节点。
    */
-  private static final ObjectMapper PLAIN = SimosObjectMapper.create(keyModule());
+  private static final ObjectMapper PLAIN =
+      withEconomyMixins(SimosObjectMapper.create(keyModule()));
 
   /** 本模块唯一的一台 mapper：共享基座 + 键反序列化器 + S1/H2 的值兼容层。 */
   private static final ObjectMapper MAPPER =
-      withChangeSetMixin(SimosObjectMapper.create(keyModule(), compatModule()));
+      withEconomyMixins(SimosObjectMapper.create(keyModule(), compatModule()));
 
   /**
-   * ★ 把 {@code EconomyChangeSet.isEmpty()} 摘出 JSON 形态（与 {@code LedgerCodec} 同制）：Jackson 会把 {@code
-   * isEmpty()} 当成属性 {@code "empty"} 写进字节，而严格读入随即炸掉。{@code isEmpty} 是派生判断不是状态，**不进线格式**； mixin
-   * 放本类（mapper 与 mixin 同处一地、谁也丢不了），领域类型保持零 Jackson 注解（{@code AllocationRule} 的 sealed
-   * 多态注解除外——那是往返的硬前提）。
+   * ★ 把 {@code EconomyChangeSet.isEmpty()} / {@link ClassFirstState#isEmpty()} 摘出 JSON 形态（与 {@code
+   * LedgerCodec} 同制）：Jackson 会把 {@code isEmpty()} 当成属性 {@code "empty"} 写进字节，而严格读入随即炸掉。 {@code
+   * isEmpty} 是派生判断不是状态，**不进线格式**；mixin 放本类（mapper 与 mixin 同处一地、谁也丢不了），领域类型保持零 Jackson 注解（{@code
+   * AllocationRule} 的 sealed 多态注解除外——那是往返的硬前提）。
+   *
+   * <p>★ R1：{@link ClassFirstState} 也带 {@code isEmpty()}（空态投影判据），故两台 mapper（MAPPER 与 PLAIN）都要装。
    */
-  private static ObjectMapper withChangeSetMixin(ObjectMapper mapper) {
+  private static ObjectMapper withEconomyMixins(ObjectMapper mapper) {
     mapper.addMixIn(EconomyChangeSet.class, EconomyChangeSetMixin.class);
+    mapper.addMixIn(ClassFirstState.class, ClassFirstStateMixin.class);
     return mapper;
   }
 
   /** 只承载注解，方法体永不执行。 */
   abstract static class EconomyChangeSetMixin {
+
+    @JsonIgnore
+    abstract boolean isEmpty();
+  }
+
+  /** ★ R1：同上，为 {@link ClassFirstState#isEmpty()} 摘掉派生属性。 */
+  abstract static class ClassFirstStateMixin {
 
     @JsonIgnore
     abstract boolean isEmpty();
@@ -195,6 +218,19 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     // ★★ E6a：modeTransitions / classShares 两张新表的键（opaque 裸值，与各自 parse 互为逆，只需读侧）。
     module.addKeyDeserializer(ModeTransitionId.class, keyDeserializer(ModeTransitionId::parse));
     module.addKeyDeserializer(ClassShareId.class, keyDeserializer(ClassShareId::parse));
+    // ★★ R1：classfirst 持久状态新增的七类键（toString/parse 互逆，只需读侧）与 ClassPool 的值绑定。
+    module.addKeyDeserializer(ClassPoolId.class, keyDeserializer(ClassPoolId::parse));
+    module.addKeyDeserializer(
+        ModeParticipationId.class, keyDeserializer(ModeParticipationId::parse));
+    module.addKeyDeserializer(
+        HouseholdProductionAccountId.class, keyDeserializer(HouseholdProductionAccountId::parse));
+    module.addKeyDeserializer(MobilityPolicyId.class, keyDeserializer(MobilityPolicyId::parse));
+    module.addKeyDeserializer(ClassFlowEventId.class, keyDeserializer(ClassFlowEventId::parse));
+    module.addKeyDeserializer(
+        ClassFirstAccountId.class, keyDeserializer(ClassFirstAccountId::parse));
+    module.addKeyDeserializer(ExternalLenderId.class, keyDeserializer(ExternalLenderId::parse));
+    module.addSerializer(ClassPool.class, new ClassPoolSerializer());
+    module.addDeserializer(ClassPool.class, new ClassPoolDeserializer());
     return module;
   }
 
@@ -1604,6 +1640,133 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
         return ProductionUnitId.parse(raw.get("value").asText());
       }
       throw new IllegalStateException("ProductionUnitId 必须是字符串或 {value:\"…\"}: " + raw);
+    }
+  }
+
+  // ── R1：classfirst 持久状态的线格式 ─────────────────────────────────────────
+
+  /**
+   * ★★ R1：给 {@code EconomyPayloads} 的顶层可选 {@code classFirst} 键用（与快照同一条绑定路径）。缺键 ⇒ {@link
+   * ClassFirstState#empty()}。
+   */
+  public static ClassFirstState deserializeClassFirstState(JsonNode node) {
+    if (node == null || node.isNull()) {
+      return ClassFirstState.empty();
+    }
+    try {
+      return MAPPER.treeToValue(node, ClassFirstState.class);
+    } catch (JsonProcessingException e) {
+      throw new IllegalStateException("classFirst 解码失败: " + node, e);
+    }
+  }
+
+  /**
+   * ★★ R1：{@link ClassPool} 是**可变工作表类**（不是 record），但它进了持久状态 ⇒ 线格式由本 codec 显式拥有： 写侧固定字段序（保序 ⇒
+   * 字节可重放），读侧走 {@link ClassPool#restored}，不让 Jackson 内省私有字段。
+   */
+  private static final class ClassPoolSerializer extends JsonSerializer<ClassPool> {
+
+    @Override
+    public void serialize(ClassPool pool, JsonGenerator generator, SerializerProvider serializers)
+        throws IOException {
+      generator.writeStartObject();
+      generator.writeStringField("modeId", pool.modeId());
+      generator.writeStringField("classPositionId", pool.classPositionId());
+      generator.writeNumberField("population", pool.population());
+      generator.writeNumberField("labor", pool.labor());
+      generator.writeObjectFieldStart("stock");
+      for (io.mosire.simos.economy.classfirst.AssetKind kind :
+          io.mosire.simos.economy.classfirst.AssetKind.ordered()) {
+        if (kind.stock()) {
+          generator.writeNumberField(kind.name(), pool.stock(kind));
+        }
+      }
+      generator.writeEndObject();
+      generator.writeNumberField(
+          "operatedLand", pool.stock(io.mosire.simos.economy.classfirst.AssetKind.OPERATED_LAND));
+      generator.writeNumberField("leaseHolding", pool.leaseHolding());
+      generator.writeNumberField("laborEfficiencyPerMille", pool.laborEfficiencyPerMille());
+      generator.writeNumberField("flowUpRemainderMilli", pool.flowUpRemainderMilli());
+      generator.writeNumberField("flowDownRemainderMilli", pool.flowDownRemainderMilli());
+      generator.writeNumberField("collectionCooldownUntilTick", pool.collectionCooldownUntilTick());
+      generator.writeNumberField("debtGrainMilli", pool.debtGrainMilli());
+      generator.writeObjectFieldStart("debtByUnit");
+      for (Map.Entry<String, Long> entry : pool.debtByUnit().entrySet()) {
+        generator.writeNumberField(entry.getKey(), entry.getValue());
+      }
+      generator.writeEndObject();
+      generator.writeEndObject();
+    }
+  }
+
+  /** ★★ R1：{@link ClassPool} 的读侧（唯一入口 {@link ClassPool#restored}，旧形状不接受）。 */
+  private static final class ClassPoolDeserializer extends JsonDeserializer<ClassPool> {
+
+    @Override
+    public ClassPool deserialize(JsonParser parser, DeserializationContext context)
+        throws IOException {
+      JsonNode raw = parser.getCodec().readTree(parser);
+      if (!(raw instanceof ObjectNode node)) {
+        throw new IllegalStateException("ClassPool 必须是 JSON 对象: " + raw);
+      }
+      String modeId = requiredText(node, "modeId");
+      String classPositionId = requiredText(node, "classPositionId");
+      LinkedHashMap<io.mosire.simos.economy.classfirst.AssetKind, Long> stocks =
+          new LinkedHashMap<>();
+      JsonNode stockNode = node.get("stock");
+      if (stockNode != null && !stockNode.isNull()) {
+        if (!(stockNode instanceof ObjectNode stockObject)) {
+          throw new IllegalStateException("ClassPool.stock 必须是对象: " + stockNode);
+        }
+        List<String> names = new ArrayList<>();
+        stockObject.fieldNames().forEachRemaining(names::add);
+        for (String name : names) {
+          io.mosire.simos.economy.classfirst.AssetKind kind;
+          try {
+            kind = io.mosire.simos.economy.classfirst.AssetKind.valueOf(name);
+          } catch (IllegalArgumentException e) {
+            throw new IllegalStateException("ClassPool.stock 的库存维度不认识: " + name, e);
+          }
+          if (!kind.stock()) {
+            throw new IllegalStateException("ClassPool.stock 只允许真实库存（stock=true）维度，收到: " + name);
+          }
+          stocks.put(kind, stockObject.get(name).asLong());
+        }
+      }
+      LinkedHashMap<String, Long> debtByUnit = new LinkedHashMap<>();
+      JsonNode debtNode = node.get("debtByUnit");
+      if (debtNode != null && !debtNode.isNull()) {
+        if (!(debtNode instanceof ObjectNode debtObject)) {
+          throw new IllegalStateException("ClassPool.debtByUnit 必须是对象: " + debtNode);
+        }
+        List<String> units = new ArrayList<>();
+        debtObject.fieldNames().forEachRemaining(units::add);
+        for (String unit : units) {
+          debtByUnit.put(unit, debtObject.get(unit).asLong());
+        }
+      }
+      return ClassPool.restored(
+          modeId,
+          classPositionId,
+          node.path("population").asLong(),
+          node.path("labor").asLong(),
+          stocks,
+          node.path("operatedLand").asLong(),
+          node.path("leaseHolding").asLong(),
+          node.path("laborEfficiencyPerMille").asLong(),
+          node.path("flowUpRemainderMilli").asLong(),
+          node.path("flowDownRemainderMilli").asLong(),
+          node.path("collectionCooldownUntilTick").asLong(),
+          debtByUnit,
+          node.path("debtGrainMilli").asLong());
+    }
+
+    private static String requiredText(ObjectNode node, String field) {
+      JsonNode value = node.get(field);
+      if (value == null || !value.isTextual() || value.asText().isBlank()) {
+        throw new IllegalStateException("ClassPool 的字段 " + field + " 必须是非空文本: " + node);
+      }
+      return value.asText();
     }
   }
 

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.classfirst.ClassFirstState;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -137,7 +138,10 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             // ★★ E6a 的第 28/29 个组件：同一套 append 口径合并 —— 漏了它们 = 已有模式变迁/保留份额在后续
             //   国家 seed 时静默消失（新播的 seed 载荷通常为空表，逐值带过已有状态）。
             merge(base.modeTransitions(), seeded.modeTransitions()),
-            merge(base.classShares(), seeded.classShares()));
+            merge(base.classShares(), seeded.classShares()),
+            // ★★ R1 第 30 个组件：可选 classFirst 顶层键按"空表播种 ⇒ 逐值带过已有状态"的口径合并
+            //   （漏了它 = 已播的阶层池状态在后续国家 seed 时静默消失）。
+            mergeClassFirst(base.classFirst(), seeded.classFirst()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 
@@ -151,6 +155,22 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
       hexes.add(IndustryHexKeys.hexKey(row.view().hex().q(), row.view().hex().r()));
     }
     return hexes;
+  }
+
+  /**
+   * ★★ R1：{@code classFirst} 的追加合并 —— 空表播种 ⇒ 逐值带过已有状态；新载荷非空 ⇒ 按 {@link ClassFirstState#merge}
+   * 追加（同键以新载荷为准）。
+   */
+  private static ClassFirstState mergeClassFirst(ClassFirstState base, ClassFirstState added) {
+    ClassFirstState canonicalBase = base == null ? ClassFirstState.empty() : base;
+    ClassFirstState canonicalAdded = added == null ? ClassFirstState.empty() : added;
+    if (canonicalAdded.isEmpty()) {
+      return canonicalBase;
+    }
+    if (canonicalBase.isEmpty()) {
+      return canonicalAdded;
+    }
+    return canonicalBase.merge(canonicalAdded);
   }
 
   /** 追加表：保留 {@code base} 的插入序，再把新增项接在后面（保序不可变的纯形态仍由 {@link EconomyData} 构造期冻结）。 */

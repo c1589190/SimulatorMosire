@@ -1,4 +1,4 @@
-package io.mosire.simos.economy.pilot;
+package io.mosire.simos.economy.classfirst;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -193,5 +193,126 @@ public final class ClassPool {
 
   public Map<AssetKind, Long> readOnlyAssets() {
     return Collections.unmodifiableMap(new LinkedHashMap<>(assetVector()));
+  }
+
+  /** ★ R1：深拷贝 —— {@link ClassFirstState} 用它在不可变边界复制池；引擎用它在 restore 时把持久池拷回工作表。 拷贝后两份池互不影响。 */
+  public ClassPool copy() {
+    ClassPool copy = new ClassPool(modeId, classPositionId);
+    copy.population = population;
+    copy.labor = labor;
+    copy.assets.clear();
+    copy.assets.putAll(assets);
+    copy.debtByUnit.clear();
+    copy.debtByUnit.putAll(debtByUnit);
+    copy.debtGrainMilli = debtGrainMilli;
+    copy.leaseHolding = leaseHolding;
+    copy.laborEfficiencyPerMille = laborEfficiencyPerMille;
+    copy.flowUpRemainderMilli = flowUpRemainderMilli;
+    copy.flowDownRemainderMilli = flowDownRemainderMilli;
+    copy.collectionCooldownUntilTick = collectionCooldownUntilTick;
+    return copy;
+  }
+
+  /**
+   * ★ R1：从持久形态重建池（唯一入口，供 {@code EconomyCodec} 的读侧调用）。传入的库存只允许是真实库存维度； OPERATED_LAND /
+   * LEASE_SECURITY / DEBT 由专用参数重建，避免同一维度两处拼写。
+   */
+  public static ClassPool restored(
+      String modeId,
+      String classPositionId,
+      long population,
+      long labor,
+      Map<AssetKind, Long> stocks,
+      long operatedLand,
+      long leaseHolding,
+      long laborEfficiencyPerMille,
+      long flowUpRemainderMilli,
+      long flowDownRemainderMilli,
+      long collectionCooldownUntilTick,
+      Map<String, Long> debtByUnit,
+      long debtGrainMilli) {
+    ClassPool pool = new ClassPool(modeId, classPositionId);
+    if (stocks != null) {
+      for (Map.Entry<AssetKind, Long> entry : stocks.entrySet()) {
+        AssetKind kind = entry.getKey();
+        if (kind == null || !kind.stock()) {
+          throw new IllegalArgumentException(
+              "ClassPool.restored 的库存维度必须是真实库存（stock=true），收到: " + kind);
+        }
+        pool.assets.put(kind, Math.max(0L, entry.getValue() == null ? 0L : entry.getValue()));
+      }
+    }
+    pool.setPopulation(population);
+    pool.setLabor(labor);
+    pool.setLaborEfficiencyPerMille(laborEfficiencyPerMille);
+    pool.setFlowUpRemainderMilli(flowUpRemainderMilli);
+    pool.setFlowDownRemainderMilli(flowDownRemainderMilli);
+    pool.setCollectionCooldownUntilTick(collectionCooldownUntilTick);
+    pool.setLeaseHolding(leaseHolding);
+    pool.setOperatedLand(operatedLand);
+    LinkedHashMap<String, Long> debts = new LinkedHashMap<>();
+    if (debtByUnit != null) {
+      debts.putAll(debtByUnit);
+    }
+    pool.setDebtState(debts, debtGrainMilli);
+    return pool;
+  }
+
+  /** ★ R1：值相等 —— 变更集差异/重建与状态往返都按值判等（同 record 状态的口径）。 */
+  @Override
+  public boolean equals(Object other) {
+    if (this == other) {
+      return true;
+    }
+    if (!(other instanceof ClassPool that)) {
+      return false;
+    }
+    return population == that.population
+        && labor == that.labor
+        && debtGrainMilli == that.debtGrainMilli
+        && leaseHolding == that.leaseHolding
+        && laborEfficiencyPerMille == that.laborEfficiencyPerMille
+        && flowUpRemainderMilli == that.flowUpRemainderMilli
+        && flowDownRemainderMilli == that.flowDownRemainderMilli
+        && collectionCooldownUntilTick == that.collectionCooldownUntilTick
+        && modeId.equals(that.modeId)
+        && classPositionId.equals(that.classPositionId)
+        && assets.equals(that.assets)
+        && debtByUnit.equals(that.debtByUnit);
+  }
+
+  /** ★ R1：与 {@link #equals(Object)} 同源的值哈希。 */
+  @Override
+  public int hashCode() {
+    return java.util.Objects.hash(
+        modeId,
+        classPositionId,
+        population,
+        labor,
+        assets,
+        debtByUnit,
+        debtGrainMilli,
+        leaseHolding,
+        laborEfficiencyPerMille,
+        flowUpRemainderMilli,
+        flowDownRemainderMilli,
+        collectionCooldownUntilTick);
+  }
+
+  @Override
+  public String toString() {
+    return "ClassPool["
+        + modeId
+        + ":"
+        + classPositionId
+        + " population="
+        + population
+        + " labor="
+        + labor
+        + " assets="
+        + assets
+        + " debtGrainMilli="
+        + debtGrainMilli
+        + "]";
   }
 }

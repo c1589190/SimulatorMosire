@@ -1,4 +1,4 @@
-package io.mosire.simos.economy.pilot;
+package io.mosire.simos.economy.classfirst;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

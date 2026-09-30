@@ -1,5 +1,13 @@
-package io.mosire.simos.economy.pilot;
+package io.mosire.simos.economy.classfirst;
 
+import io.mosire.simos.economy.api.id.ClassFirstAccountId;
+import io.mosire.simos.economy.api.id.ClassFlowEventId;
+import io.mosire.simos.economy.api.id.ClassPoolId;
+import io.mosire.simos.economy.api.id.ExternalLenderId;
+import io.mosire.simos.economy.api.id.HouseholdProductionAccountId;
+import io.mosire.simos.economy.api.id.MobilityPolicyId;
+import io.mosire.simos.economy.api.id.ModeParticipationId;
+import io.mosire.simos.economy.api.id.ProductionModeId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -8,7 +16,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 独立最小试点引擎：单 mode（佃农制农业），按"阶层池"推进 "计划 → 投入 → 生产 → 阶层分配 → 家户份额 → 滚动账户 → 消费 → 借贷 → 催收 → 人口流动 → 报告"。
+ * 阶层池经济引擎（R1 从 pilot 试点迁入正式包 classfirst）：单 mode（佃农制农业），按"阶层池"推进 "计划 → 投入 → 生产 → 阶层分配 → 家户份额 → 滚动账户
+ * → 消费 → 借贷 → 催收 → 人口流动 → 报告"。
  *
  * <p>★ 池化边界：人口、劳动、库存资产、债务与 A_C/x_C 都由 {@link ClassPool} 持有；家户只是池内的 {@link
  * PilotModel.HouseholdAccount}（人口 + 劳动 + 份额 + 生产子账户），不再持有库存。投入抽取、生产、阶层分配、
@@ -34,6 +43,8 @@ public final class ClassFirstPilotEngine {
   private final LinkedHashMap<String, HouseholdState> households = new LinkedHashMap<>();
   private final LinkedHashMap<AccountKey, AccountState> accounts = new LinkedHashMap<>();
   private final LinkedHashMap<String, LenderState> lenders = new LinkedHashMap<>();
+  private final LinkedHashMap<ClassFlowEventId, ClassFlowEvent> classFlowEvents =
+      new LinkedHashMap<>();
   private final List<PilotModel.Transition> transitions = new ArrayList<>();
   private final List<PilotModel.MobilityEvent> mobilityEvents = new ArrayList<>();
   private final List<PilotModel.TickReport> reports = new ArrayList<>();
@@ -79,9 +90,18 @@ public final class ClassFirstPilotEngine {
   private long stockEnrichmentViolations;
 
   public ClassFirstPilotEngine(PilotConfig config, List<PilotModel.Household> initialHouseholds) {
+    this(config, initialHouseholds, List.of(config.lender()));
+  }
+
+  /** ★ R1：显式放贷主体账户播种（actor 商品/货币账户的边界；空/缺省由 2 参构造器回落到 config.lender()）。 */
+  public ClassFirstPilotEngine(
+      PilotConfig config,
+      List<PilotModel.Household> initialHouseholds,
+      List<PilotModel.Lender> initialLenders) {
     this.config = Objects.requireNonNull(config, "config");
     this.mobility = config.mobilityPolicy();
     Objects.requireNonNull(initialHouseholds, "initialHouseholds");
+    Objects.requireNonNull(initialLenders, "initialLenders");
     for (PilotModel.ClassPosition position : PilotModel.classPositions()) {
       pools.put(position.id(), new ClassPool(config.mode().id(), position.id()));
     }
@@ -128,8 +148,15 @@ public final class ClassFirstPilotEngine {
         households.put(seed.id(), seedState);
       }
     }
-    PilotModel.Lender lenderSpec = config.lender();
-    lenders.put(lenderSpec.id(), new LenderState(lenderSpec));
+    if (initialLenders.isEmpty()) {
+      throw new IllegalArgumentException("at least one lender account is required");
+    }
+    for (PilotModel.Lender lenderSpec : initialLenders) {
+      Objects.requireNonNull(lenderSpec, "lender");
+      if (lenders.put(lenderSpec.id(), new LenderState(lenderSpec)) != null) {
+        throw new IllegalArgumentException("duplicate lender id: " + lenderSpec.id());
+      }
+    }
     this.landForSale = Math.max(0L, mobility.initialLandForSale());
     recomputePoolMembers();
     refreshAccountsAndDerived();
@@ -141,6 +168,12 @@ public final class ClassFirstPilotEngine {
     this.initialOwnedLandTotal = totalOwnedLand() + landForSale;
     this.initialToolsTotal = totalTools();
     this.initialClaimGrainMilli = totalAccountClaimMilli();
+  }
+
+  /** ★ R1：restore 专用 —— 只固定参数，其余状态由 {@link #restore(ClassFirstState)} 逐表写回。 */
+  private ClassFirstPilotEngine(PilotConfig config) {
+    this.config = Objects.requireNonNull(config, "config");
+    this.mobility = config.mobilityPolicy();
   }
 
   // ── 对外只读 API ─────────────────────────────────────────────────────────────
@@ -204,6 +237,264 @@ public final class ClassFirstPilotEngine {
 
   public ClassPool poolOf(String classPositionId) {
     return pools.get(classPositionId);
+  }
+
+  // ── 持久状态边界（R1）：引擎 ⇄ ClassFirstState ────────────────────────────────
+
+  /**
+   * ★ R1：把当前引擎的**全部跨 tick 状态**拷成不可变 {@link ClassFirstState}（池/家户/双边账户/放贷账户/累计读数/ 参数）。同一引擎在两次 tick
+   * 之间反复 snapshot 得到逐值相等的状态。
+   */
+  public ClassFirstState snapshot() {
+    String modeId = config.mode().id();
+    ProductionModeId productionModeId = new ProductionModeId(modeId);
+    LinkedHashMap<ModeParticipationId, ModeParticipation> participations = new LinkedHashMap<>();
+    LinkedHashMap<ClassPoolId, ClassPool> poolStates = new LinkedHashMap<>();
+    LinkedHashMap<ClassPoolId, ClassBounds> boundsByPool = new LinkedHashMap<>();
+    for (ClassPool pool : pools.values()) {
+      ClassPoolId poolId = ClassPoolId.idOf(modeId, pool.classPositionId());
+      poolStates.put(poolId, pool.copy());
+      ModeParticipationId participationId =
+          ModeParticipationId.idOf(modeId, pool.classPositionId());
+      participations.put(
+          participationId,
+          new ModeParticipation(
+              participationId, productionModeId, poolId, pool.classPositionId(), 1000L));
+      boundsByPool.put(poolId, mobility.bounds());
+    }
+    LinkedHashMap<HouseholdProductionAccountId, HouseholdProductionAccount> householdStates =
+        new LinkedHashMap<>();
+    for (HouseholdState member : households.values()) {
+      ClassPoolId poolId = ClassPoolId.idOf(modeId, member.pool.classPositionId());
+      HouseholdProductionAccountId id = HouseholdProductionAccountId.idOf(poolId, member.id);
+      householdStates.put(
+          id,
+          new HouseholdProductionAccount(
+              id,
+              poolId,
+              member.id,
+              member.name,
+              member.population,
+              member.laborPerCapita,
+              member.participationSharePerMille,
+              member.population * member.laborPerCapita / 1000L));
+    }
+    LinkedHashMap<ClassFirstAccountId, ClassFirstAccount> accountStates = new LinkedHashMap<>();
+    for (AccountState state : accounts.values()) {
+      ClassFirstAccountId id =
+          ClassFirstAccountId.idOf(state.key.ownerId, state.key.counterpartyId, state.key.unit);
+      accountStates.put(
+          id,
+          new ClassFirstAccount(
+              id,
+              state.key.ownerId,
+              state.key.counterpartyId,
+              state.key.unit,
+              state.terms,
+              state.interestRatePerMille,
+              state.nextDueTick,
+              state.cumulativeNet,
+              state.interestAccrued,
+              state.status));
+    }
+    LinkedHashMap<ExternalLenderId, PilotModel.Lender> lenderStates = new LinkedHashMap<>();
+    for (LenderState lender : lenders.values()) {
+      PilotModel.Lender spec = lender.snapshot();
+      lenderStates.put(ExternalLenderId.of(spec.id()), spec);
+    }
+    LinkedHashMap<ProductionModeId, AssetStateSchema> schemas = new LinkedHashMap<>();
+    schemas.put(productionModeId, mobility.schema());
+    LinkedHashMap<MobilityPolicyId, MobilityPolicy> policies = new LinkedHashMap<>();
+    policies.put(MobilityPolicyId.of(modeId), mobility);
+    ClassFirstMeta meta =
+        new ClassFirstMeta(
+            tick,
+            landForSale,
+            landMarketEscrowGrain,
+            landMarketEscrowMoney,
+            totalLeaseHolding,
+            config,
+            new ClassFirstMeta.Totals(
+                producedGrainTotal,
+                seedUsedTotal,
+                rationConsumedTotal,
+                clothConsumedTotal,
+                borrowedGrainTotal,
+                borrowedMoneyTotal,
+                boughtGrainTotal,
+                liquidSeizedTotal,
+                landSeizedTotal,
+                capitalizedTotal,
+                redLightTotal,
+                collectionEventCount,
+                interestChargedTotal,
+                rentPaidTotal,
+                wagePaidTotal,
+                externalSeedPaidTotal,
+                residualPaidTotal,
+                taxPaidTotal),
+            new ClassFirstMeta.InitialTotals(
+                initialGrainTotal,
+                initialClothTotal,
+                initialHouseholdMoneyTotal,
+                initialLenderMoneyTotal,
+                initialPopulationTotal,
+                initialOwnedLandTotal,
+                initialToolsTotal,
+                initialClaimGrainMilli),
+            stockEnrichmentViolations);
+    return new ClassFirstState(
+        participations,
+        poolStates,
+        householdStates,
+        schemas,
+        boundsByPool,
+        policies,
+        new LinkedHashMap<>(classFlowEvents),
+        accountStates,
+        lenderStates,
+        meta);
+  }
+
+  /** ★ R1：从持久状态重建引擎工作表（唯一 restore 入口）。重建后的下一次 {@code advanceTick()} 与"从未快照过"的同状态引擎 逐值同轨迹。 */
+  public static ClassFirstPilotEngine restore(ClassFirstState state) {
+    Objects.requireNonNull(state, "state");
+    if (state.isEmpty()) {
+      throw new IllegalArgumentException("restore 需要非空 ClassFirstState（空态请用播种构造器）");
+    }
+    ClassFirstMeta meta = state.meta();
+    PilotConfig config = meta.config();
+    if (config == null) {
+      throw new IllegalArgumentException("非空 ClassFirstState 必须带 meta.config（世界/模式参数）");
+    }
+    String modeId = config.mode().id();
+    // ★ R1：state 里的 mobilityPolicies 是 GM 可调政策的权威面（meta.config 是播种时的同一值）；
+    //   若两者不一致（GM 直接改 state 政策），以 state 为准重建 config，避免同一件事两处拼写。
+    MobilityPolicy stateMobility = state.mobilityPolicies().get(MobilityPolicyId.of(modeId));
+    if (stateMobility != null && !stateMobility.equals(config.mobilityPolicy())) {
+      config = withMobilityPolicy(config, stateMobility);
+    }
+    ClassFirstPilotEngine engine = new ClassFirstPilotEngine(config);
+    LinkedHashMap<ClassPoolId, ClassPool> poolById = new LinkedHashMap<>();
+    for (Map.Entry<ClassPoolId, ClassPool> entry : state.classPools().entrySet()) {
+      ClassPool pool = entry.getValue();
+      if (!pool.modeId().equals(modeId)) {
+        throw new IllegalArgumentException(
+            "ClassPool.modeId 与 meta.config.mode 不一致：池="
+                + entry.getKey()
+                + "，mode="
+                + pool.modeId()
+                + "，config.mode="
+                + modeId);
+      }
+      if (engine.pools.put(pool.classPositionId(), pool.copy()) != null) {
+        throw new IllegalArgumentException(
+            "ClassFirstState 含重复 classPositionId 的池: " + pool.classPositionId());
+      }
+      poolById.put(entry.getKey(), engine.pools.get(pool.classPositionId()));
+    }
+    if (engine.pools.isEmpty()) {
+      throw new IllegalArgumentException("非空 ClassFirstState 必须至少有一个 ClassPool");
+    }
+    for (HouseholdProductionAccount account : state.householdAccounts().values()) {
+      ClassPool pool = poolById.get(account.poolId());
+      if (pool == null) {
+        throw new IllegalArgumentException("家户账户指名的阶层池不存在: " + account.id());
+      }
+      HouseholdState household =
+          new HouseholdState(
+              account.householdId(),
+              account.name(),
+              pool,
+              account.population(),
+              account.laborPerCapita(),
+              account.participationSharePerMille());
+      if (engine.households.put(account.householdId(), household) != null) {
+        throw new IllegalArgumentException(
+            "ClassFirstState 含重复 householdId: " + account.householdId());
+      }
+    }
+    if (engine.households.isEmpty()) {
+      throw new IllegalArgumentException("非空 ClassFirstState 必须至少有一个家户账户");
+    }
+    for (ClassFirstAccount account : state.accounts().values()) {
+      AccountKey key = new AccountKey(account.ownerId(), account.counterpartyId(), account.unit());
+      AccountState accountState =
+          new AccountState(
+              key, account.terms(), account.interestRatePerMille(), account.nextDueTick());
+      accountState.cumulativeNet = account.cumulativeNet();
+      accountState.interestAccrued = account.interestAccrued();
+      accountState.status = account.status();
+      if (engine.accounts.put(key, accountState) != null) {
+        throw new IllegalArgumentException("ClassFirstState 含重复账户: " + account.id());
+      }
+    }
+    for (PilotModel.Lender lender : state.lenders().values()) {
+      if (engine.lenders.put(lender.id(), new LenderState(lender)) != null) {
+        throw new IllegalArgumentException("ClassFirstState 含重复放贷方: " + lender.id());
+      }
+    }
+    engine.classFlowEvents.putAll(state.classFlowEvents());
+    engine.tick = meta.tick();
+    engine.landForSale = meta.landForSale();
+    engine.landMarketEscrowGrain = meta.landMarketEscrowGrain();
+    engine.landMarketEscrowMoney = meta.landMarketEscrowMoney();
+    engine.totalLeaseHolding = meta.totalLeaseHolding();
+    ClassFirstMeta.Totals totals = meta.totals();
+    engine.producedGrainTotal = totals.producedGrainTotal();
+    engine.seedUsedTotal = totals.seedUsedTotal();
+    engine.rationConsumedTotal = totals.rationConsumedTotal();
+    engine.clothConsumedTotal = totals.clothConsumedTotal();
+    engine.borrowedGrainTotal = totals.borrowedGrainTotal();
+    engine.borrowedMoneyTotal = totals.borrowedMoneyTotal();
+    engine.boughtGrainTotal = totals.boughtGrainTotal();
+    engine.liquidSeizedTotal = totals.liquidSeizedTotal();
+    engine.landSeizedTotal = totals.landSeizedTotal();
+    engine.capitalizedTotal = totals.capitalizedTotal();
+    engine.redLightTotal = totals.redLightTotal();
+    engine.collectionEventCount = totals.collectionEventCount();
+    engine.interestChargedTotal = totals.interestChargedTotal();
+    engine.rentPaidTotal = totals.rentPaidTotal();
+    engine.wagePaidTotal = totals.wagePaidTotal();
+    engine.externalSeedPaidTotal = totals.externalSeedPaidTotal();
+    engine.residualPaidTotal = totals.residualPaidTotal();
+    engine.taxPaidTotal = totals.taxPaidTotal();
+    ClassFirstMeta.InitialTotals initial = meta.initial();
+    engine.initialGrainTotal = initial.grainTotal();
+    engine.initialClothTotal = initial.clothTotal();
+    engine.initialHouseholdMoneyTotal = initial.householdMoneyTotal();
+    engine.initialLenderMoneyTotal = initial.lenderMoneyTotal();
+    engine.initialPopulationTotal = initial.populationTotal();
+    engine.initialOwnedLandTotal = initial.ownedLandTotal();
+    engine.initialToolsTotal = initial.toolsTotal();
+    engine.initialClaimGrainMilli = initial.claimGrainMilli();
+    engine.stockEnrichmentViolations = meta.stockEnrichmentViolations();
+    engine.refreshAccountsAndDerived();
+    return engine;
+  }
+
+  /** ★ R1：把 state 的权威政策写回 config（除 mobilityPolicy 外逐参原值），保持"一处拼写"。 */
+  private static PilotConfig withMobilityPolicy(PilotConfig config, MobilityPolicy mobility) {
+    return new PilotConfig(
+        config.mode(),
+        config.lender(),
+        config.collectionPolicy(),
+        mobility,
+        config.yieldPerLand(),
+        config.seedPerLand(),
+        config.laborPerLand(),
+        config.toolCapacityPerTool(),
+        config.rentPerLand(),
+        config.wagePerLabor(),
+        config.baseRationPerCapita(),
+        config.laborRationPerLabor(),
+        config.nonEssentialNeedPerMille(),
+        config.nonEssentialEfficiencyPenaltyPerMille(),
+        config.loanInterestRatePerMille(),
+        config.moneyPerGrain(),
+        config.toolPricePerUnit(),
+        config.reserveTicks(),
+        config.collectionIntervalTicks());
   }
 
   public long landForSale() {
@@ -446,10 +737,32 @@ public final class ClassFirstPilotEngine {
     borrowIfNeeded();
     dueAndCollect();
     populationFlow();
+    recordClassFlowEvents();
 
     PilotModel.TickReport report = buildReport();
     reports.add(report);
     return report;
+  }
+
+  /** ★ R1：把本 tick 的迁移事件写进持久审计表（id = {@code (tick, 本 tick 内序号)}，确定性派生）。 */
+  private void recordClassFlowEvents() {
+    long sequence = 0L;
+    for (PilotModel.MobilityEvent event : mobilityEvents) {
+      if (event.tick() != tick) {
+        continue;
+      }
+      ClassFlowEvent flow = ClassFlowEvent.from(config.mode().id(), event, sequence);
+      classFlowEvents.put(flow.id(), flow);
+      sequence++;
+    }
+  }
+
+  /** ★ R1：settleOneDay 的播种路径把日序号对齐后开跑（day = tick + 1 的口径）。 */
+  void setTick(long value) {
+    if (value < 0L) {
+      throw new IllegalArgumentException("tick must be >= 0: " + value);
+    }
+    this.tick = value;
   }
 
   // ── 1) plan：本期土地/劳动/工具/种子需求（池级） ────────────────────────────
@@ -2288,12 +2601,31 @@ public final class ClassFirstPilotEngine {
     long population;
 
     HouseholdState(PilotModel.Household spec, ClassPool pool) {
-      this.id = spec.id();
-      this.name = spec.name();
+      this(
+          spec.id(),
+          spec.name(),
+          pool,
+          spec.population(),
+          spec.laborPerCapita(),
+          spec.participationSharePerMille());
+    }
+
+    /**
+     * ★ R1：restore 用 —— 允许 population=0 的空池 seed 账户（{@link PilotModel.Household} 的构造期 ≥1 守卫不适用）。
+     */
+    HouseholdState(
+        String id,
+        String name,
+        ClassPool pool,
+        long population,
+        long laborPerCapita,
+        long participationSharePerMille) {
+      this.id = id;
+      this.name = name;
       this.pool = pool;
-      this.population = spec.population();
-      this.laborPerCapita = spec.laborPerCapita();
-      this.participationSharePerMille = spec.participationSharePerMille();
+      this.population = Math.max(0L, population);
+      this.laborPerCapita = Math.max(0L, laborPerCapita);
+      this.participationSharePerMille = Math.max(0L, participationSharePerMille);
     }
 
     long sharePerMille() {
@@ -2313,12 +2645,24 @@ public final class ClassFirstPilotEngine {
   }
 
   private static final class LenderState {
+    final PilotModel.Lender spec;
     long money;
     final LinkedHashMap<String, Long> goods = new LinkedHashMap<>();
 
     LenderState(PilotModel.Lender spec) {
+      this.spec = spec;
       money = spec.money();
       goods.putAll(spec.goods());
+    }
+
+    PilotModel.Lender snapshot() {
+      return new PilotModel.Lender(
+          spec.id(),
+          money,
+          new LinkedHashMap<>(goods),
+          spec.interestRatePerMille(),
+          spec.nextDueTick(),
+          spec.collectionPower());
     }
   }
 
