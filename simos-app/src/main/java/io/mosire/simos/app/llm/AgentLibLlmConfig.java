@@ -86,6 +86,12 @@ public final class AgentLibLlmConfig {
    */
   private static final String KEY_CAPABILITIES = "capabilities";
 
+  /**
+   * 思考模式回传位（A6 修复版）：AgentLib 的 {@code capabilities.echoReasoningContent}。它是"历史 assistant 消息是否恒带
+   * {@code reasoning_content}"的唯一开关；本类只做迁移/搬运，不解释它的线级语义。
+   */
+  private static final String KEY_ECHO_REASONING_CONTENT = "echoReasoningContent";
+
   /** 承载密钥值的段（AgentLib 口径：{@code keys.<name>}）。 */
   private static final String SECTION_KEYS = "keys";
 
@@ -255,7 +261,7 @@ public final class AgentLibLlmConfig {
   }
 
   /**
-   * 新增 / 覆盖一条路由（**只写路由，不碰密钥**）。
+   * 新增 / 覆盖一条路由（**只写路由，不碰密钥**）；能力位里的思考模式回传位沿用既有值。
    *
    * <p>★ **密钥走 {@link #putKey}**：本方法刻意不收密钥值——把"端点配置"与"凭据"分两个键写，是 AgentLib 的配置形态 （{@code
    * llm.routes.<name>.credentialsRef = "keys.<name>"}），也是本仓密钥纪律的结构化。
@@ -268,6 +274,25 @@ public final class AgentLibLlmConfig {
    */
   public void upsertRoute(
       String name, String baseUrl, String model, String credentialsRef, long readTimeoutMs) {
+    upsertRoute(
+        name, baseUrl, model, credentialsRef, readTimeoutMs, existingEchoReasoningContent(name));
+  }
+
+  /**
+   * 同 {@link #upsertRoute(String, String, String, String, long)}，但显式指定 {@code
+   * capabilities.echoReasoningContent}（A6 修复版）。
+   *
+   * <p>迁移旧 provider 配置时由 {@code llm-providers.json} 里的能力位驱动；配置页保存既有路由时走五参重载，避免把用户手改的位抹掉。
+   *
+   * @param echoReasoningContent 思考模式是否要求历史 assistant 消息恒带 {@code reasoning_content}（空内容发空串）
+   */
+  public void upsertRoute(
+      String name,
+      String baseUrl,
+      String model,
+      String credentialsRef,
+      long readTimeoutMs,
+      boolean echoReasoningContent) {
     Objects.requireNonNull(name, "name");
     requireText(baseUrl, "baseUrl");
     requireText(model, "model");
@@ -284,12 +309,27 @@ public final class AgentLibLlmConfig {
     // ★★ **把既有的 capabilities 原样搬过来**（P4，2026-09-24）：本方法**不管理能力位**，而 {@code configStore.put}
     //   是"整体替换该结点"⇒ 不搬的话，在配置页上保存一次路由就会把 {@code capabilities.vision} 抹掉。症状是
     //   **决策人忽然收不到图了，而配置页看上去一切正常**（那种"改了 A、坏在 B"的形态正是本仓最贵的一类）。
-    //   能力位目前由直接编辑 config.json 写入（将来若有能力编辑面，也应经由它、而不是顺手在这里默认值化）。
+    //   A6 修复版的 echoReasoningContent 是同一个坑的新成员：不搬就会让多轮 thinking 在保存配置后重新缺键。
     JsonNode existing = configStore.get(SECTION_LLM, KEY_ROUTES + "." + name).orElse(null);
-    if (existing != null && existing.get(KEY_CAPABILITIES) != null) {
-      route.set(KEY_CAPABILITIES, existing.get(KEY_CAPABILITIES));
+    JsonNode existingCapabilities = existing == null ? null : existing.get(KEY_CAPABILITIES);
+    ObjectNode capabilities =
+        existingCapabilities != null && existingCapabilities.isObject()
+            ? existingCapabilities.deepCopy()
+            : (echoReasoningContent ? MAPPER.createObjectNode() : null);
+    if (capabilities != null) {
+      capabilities.put(KEY_ECHO_REASONING_CONTENT, echoReasoningContent);
+      route.set(KEY_CAPABILITIES, capabilities);
     }
     configStore.put(SECTION_LLM, KEY_ROUTES + "." + name, route, SYSTEM, null, ROUTES_FILE_SCHEMA);
+  }
+
+  /** 读既有路由的 {@code capabilities.echoReasoningContent}；路由不存在/没配能力块/键缺席都按 false。 */
+  private boolean existingEchoReasoningContent(String name) {
+    JsonNode existing = configStore.get(SECTION_LLM, KEY_ROUTES + "." + name).orElse(null);
+    JsonNode capabilities = existing == null ? null : existing.get(KEY_CAPABILITIES);
+    return capabilities != null
+        && capabilities.isObject()
+        && capabilities.path(KEY_ECHO_REASONING_CONTENT).asBoolean(false);
   }
 
   /** 删除一条路由（**幂等**：不存在 = 无操作，AgentLib 的 {@code remove} 语义）。 */
@@ -384,7 +424,13 @@ public final class AgentLibLlmConfig {
         if (row.keyValue() != null) {
           putKey(row.migratedKeyName(), row.keyValue());
         }
-        upsertRoute(row.id(), row.baseUrl(), row.model(), credentialsRef, row.readTimeoutMs());
+        upsertRoute(
+            row.id(),
+            row.baseUrl(),
+            row.model(),
+            credentialsRef,
+            row.readTimeoutMs(),
+            row.echoReasoningContent());
         migrated++;
       } catch (RuntimeException e) {
         LOG.warn(
@@ -405,7 +451,8 @@ public final class AgentLibLlmConfig {
       String envRef,
       String fileRef,
       String literalValue,
-      long readTimeoutMs) {
+      long readTimeoutMs,
+      boolean echoReasoningContent) {
 
     /** 目标密钥名：{@code keys.<id>}（id 已在写入前做过形态校验）。 */
     String migratedKeyName() {
@@ -424,6 +471,26 @@ public final class AgentLibLlmConfig {
     String keyValue() {
       return literalValue;
     }
+  }
+
+  /**
+   * 旧 provider 配置里的思考模式回传位：兼容顶层 {@code echoReasoningContent} 与 {@code
+   * capabilities.echoReasoningContent} 两种写法；缺席 = false。
+   *
+   * <p>非布尔值在旧格式里只可能是手改错。迁移路径不在此处炸（一条坏 provider 不该拖垮其余 provider 的迁移），按 false 处理并由后续真 provider
+   * 调用暴露问题。
+   */
+  private static boolean legacyEchoReasoningContent(JsonNode provider) {
+    JsonNode top = provider.get(KEY_ECHO_REASONING_CONTENT);
+    if (top != null && top.isBoolean()) {
+      return top.asBoolean();
+    }
+    JsonNode capabilities = provider.get(KEY_CAPABILITIES);
+    if (capabilities != null && capabilities.isObject()) {
+      JsonNode nested = capabilities.get(KEY_ECHO_REASONING_CONTENT);
+      return nested != null && nested.isBoolean() && nested.asBoolean();
+    }
+    return false;
   }
 
   private List<LegacyRow> readLegacy(Path legacy) {
@@ -463,7 +530,10 @@ public final class AgentLibLlmConfig {
       }
       JsonNode timeout = node.get("timeoutMs");
       long readTimeoutMs = timeout != null && timeout.isNumber() ? timeout.asLong() : 120_000L;
-      rows.add(new LegacyRow(id, baseUrl, model, envRef, fileRef, literal, readTimeoutMs));
+      boolean echoReasoningContent = legacyEchoReasoningContent(node);
+      rows.add(
+          new LegacyRow(
+              id, baseUrl, model, envRef, fileRef, literal, readTimeoutMs, echoReasoningContent));
     }
     return rows;
   }
@@ -485,6 +555,9 @@ public final class AgentLibLlmConfig {
     // ★ P4（2026-09-24）：vision 也报出来。它是**决策人链路是否发图**的唯一依据（见 ProviderLlm）——
     //   配了却在界面上看不见，就等于让运维无法回答"这个人为什么收不到图"。
     view.put("vision", caps.vision());
+    // ★ A6 修复版（2026-09-30）：思考模式回传位也必须出现在掩码视图里。它不含密钥，但决定多轮 thinking 是缺键 400
+    //   还是正常回传；配了却在界面上看不见，运维就无法回答"这个 provider 为什么第二轮挂"。
+    view.put("echoReasoningContent", caps.echoReasoningContent());
     return view;
   }
 

@@ -56,7 +56,8 @@ public final class LlmProvidersTool implements AgentTool, GmOnlyRead {
   @Override
   public String description() {
     return "LLM provider 配置（掩码视图，不含密钥值）：{providers:[{id,valid,baseUrl,model,protocol,"
-        + "readTimeoutMs,connectTimeoutMs,credentialsRef,keyConfigured,capabilities}]}";
+        + "readTimeoutMs,connectTimeoutMs,credentialsRef,keyConfigured,capabilities"
+        + "(含 echoReasoningContent)}]}";
   }
 
   @Override

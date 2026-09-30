@@ -133,38 +133,42 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>★★ **真 provider 是走生产路径解析出来的，不是注入替身**：Shell 用 {@code Shell.start(ShellConfig)}（不传
  * decisionLlmClients）⇒ 决策编排按 {@link DecisionMaker#providerId()} 在 {@code
- * <store>/agentlib/config.json} 的路由表里解析真客户端；夹具把仓库的 {@code config/llm-providers.json}
- * **逐字节复制**到 {@code <store>/llm-providers.json} 作为 AgentLib 的一次性迁移源（本类不读、不打印密钥值）。
+ * <store>/agentlib/config.json} 的路由表里解析真客户端；夹具把仓库的 {@code config/llm-providers.json} **逐字节复制**到
+ * {@code <store>/llm-providers.json} 作为 AgentLib 的一次性迁移源（本类不读、不打印密钥值）。
  *
  * <p>★★ **纯白板 Unit 决策人**（无任何生产范围代码改动）：
  *
  * <ul>
- *   <li>map：4 格 {@code (1,1)/(1,2)/(2,1)/(2,2)}；区域 {@code r-core} = 前 3 格（= 管辖 hex 集），区域 {@code r-out}
- *       = {@code (2,2)}（**区外对照**）；
- *   <li>unit：{@code u-1} 在 {@code (1,1)}、visionRadius=2（视野圈恰好覆盖 4 格）、**真挂
- *       {@code jurisdiction{r-core:0‰, caps 1000/1000/1000, admin 1000}}**；区外单位 {@code u-out} 在 {@code (2,2)}；
+ *   <li>map：4 格 {@code (1,1)/(1,2)/(2,1)/(2,2)}；区域 {@code r-core} = 前 3 格（= 管辖 hex 集），区域 {@code
+ *       r-out} = {@code (2,2)}（**区外对照**）；
+ *   <li>unit：{@code u-1} 在 {@code (1,1)}、visionRadius=2（视野圈恰好覆盖 4 格）、**真挂 {@code
+ *       jurisdiction{r-core:0‰, caps 1000/1000/1000, admin 1000}}**；区外单位 {@code u-out} 在 {@code
+ *       (2,2)}；
  *   <li>social：4 格各一条人口序列 + 各一条人口批次（人数不同，便于模型读出差异）；
- *   <li>sd：Nation FRA + Army a1（rootUnit=u-1）+ DecisionMaker {@code dm-u1}（{@code Affiliation.Army(a1)}、
- *       {@code allowedTools=Set.of()}、{@code providerId=mosire-flash}）；另有**一条发给 dm-u1 的任务简报（Docs）**，
- *       让"这一轮该做什么"有明确出处（{@code sd.RunDecision} 的载荷只有 decisionMakerId，没有任务字段）。
+ *   <li>sd：Nation FRA + Army a1（rootUnit=u-1）+ DecisionMaker {@code dm-u1}（{@code
+ *       Affiliation.Army(a1)}、 {@code allowedTools=Set.of()}、{@code
+ *       providerId=mosire-flash}）；另有**一条发给 dm-u1 的任务简报（Docs）**， 让"这一轮该做什么"有明确出处（{@code
+ *       sd.RunDecision} 的载荷只有 decisionMakerId，没有任务字段）。
  * </ul>
  *
- * <p>★★ **范围怎么定（本任务的核心约束）**：生产范围函数仍是 {@code ArmyScope}（根单位位置 + visionRadius 圈），GM
- * 限制 {@code accessLimit} 显式收紧到 {@code Region.hexes()} 派生的前缀（map：r-core 各 hex；social：
- * r-core 各格；unit：{@code u-1}）。两者语义是**交集**（{@code ResourceScopeMap#narrowTo}）⇒ 区外格 {@code (2,2)} 与区外单位
- * {@code u-out} 在视野圈内也**不可达**。★ **本任务不改生产范围代码**：{@code jurisdiction → scope} 的自动接线尚未做，
- * 本测试只是把真值挂上 {@code Unit.jurisdiction} 并显式写 accessLimit（为下一阶段接线留真值）。
+ * <p>★★ **范围怎么定（本任务的核心约束）**：生产范围函数仍是 {@code ArmyScope}（根单位位置 + visionRadius 圈），GM 限制 {@code
+ * accessLimit} 显式收紧到 {@code Region.hexes()} 派生的前缀（map：r-core 各 hex；social： r-core 各格；unit：{@code
+ * u-1}）。两者语义是**交集**（{@code ResourceScopeMap#narrowTo}）⇒ 区外格 {@code (2,2)} 与区外单位 {@code u-out}
+ * 在视野圈内也**不可达**。★ **本任务不改生产范围代码**：{@code jurisdiction → scope} 的自动接线尚未做， 本测试只是把真值挂上 {@code
+ * Unit.jurisdiction} 并显式写 accessLimit（为下一阶段接线留真值）。
  *
  * <p>★★ **2026-09-30 实测结论（本轮）**：**默认单轮全链绿** —— 白板 {@code dm-u1} 经真 provider 读到真值（辖区三格人口
- * 12000/23000/34000、{@code u-1} 的 member/position）、{@code sd.IssueDirective} 进审批并落真 revision、GM 经 MCP
- * {@code sd.AdjudicateTick} 执行 {@code unit.SetTaxRate}（税率 0‰→100‰）。**多轮（≥2 轮）当前被中转站 thinking 模式阻断**：
- * 模型某次收口 assistant 消息没有 {@code reasoning_content}，AgentLib 回放时省略该键 ⇒ 下一次请求 HTTP 400
- * {@code The reasoning_content in the thinking mode must be passed back to the API}。故**默认轮数 = 1**；要复现多轮压测用
- * {@code SIMOS_REAL_LLM_ROUNDS=3}（阻断未修前预期红，且这正是要留下的证据）。
+ * 12000/23000/34000、{@code u-1} 的 member/position）、{@code sd.IssueDirective} 进审批并落真 revision、GM 经
+ * MCP {@code sd.AdjudicateTick} 执行 {@code unit.SetTaxRate}（税率 0‰→100‰）。**多轮（≥2 轮）原有 thinking
+ * 回传缺陷已修**： 2026-09-30 首次实测时，模型某次收口 assistant 消息没有 {@code reasoning_content}，AgentLib 回放省略该键 ⇒
+ * 下一次请求 HTTP 400 {@code The reasoning_content in the thinking mode must be passed back to the
+ * API}；AgentLib 修复后由路由能力位 {@code capabilities.echoReasoningContent=true} 对每条 assistant
+ * 历史消息恒发该键（无内容发空串）。**默认轮数仍 = 1**（常规冒烟 省时）；多轮回归用 {@code SIMOS_REAL_LLM_ROUNDS=3}，应连续三轮、{@code
+ * blockers=0}、无 400。
  *
  * <p>★ **另一个具名缺口**：{@code ArmyScope} 的 map 通道只发逐 hex 前缀、不发 {@code map:<mapId>/region/<rid>} ⇒
- * {@code simos.map.region} 对**本辖区**也返回 {@code NOT_FOUND}（accessLimit 是交集，不能"加"范围）；{@code simos.unit.get}
- * 也还没有 {@code jurisdiction}/税率只读视图。下一阶段接线 {@code jurisdiction → scope} 时应一并补。
+ * {@code simos.map.region} 对**本辖区**也返回 {@code NOT_FOUND}（accessLimit 是交集，不能"加"范围）；{@code
+ * simos.unit.get} 也还没有 {@code jurisdiction}/税率只读视图。下一阶段接线 {@code jurisdiction → scope} 时应一并补。
  */
 @EnabledIfEnvironmentVariable(named = "SIMOS_REAL_LLM", matches = "1")
 class RealLlmUnitDecisionLoopTest {
@@ -195,16 +199,18 @@ class RealLlmUnitDecisionLoopTest {
   private static final RegionId R_OUT = new RegionId(REGION_OUT);
 
   /** 人口批次真值（每格不同 ⇒ 轨迹里读到哪个数字就能认出是哪一格）。 */
-  private static final Map<HexCoord, Long> POPULATION = Map.of(H11, 12_000L, H12, 23_000L, H21, 34_000L, H22, 90_000L);
+  private static final Map<HexCoord, Long> POPULATION =
+      Map.of(H11, 12_000L, H12, 23_000L, H21, 34_000L, H22, 90_000L);
 
   /** 每轮触发后的等待上限（含真模型思考 + 工具 + 内层审批）。 */
   private static final Duration CALL_TIMEOUT = Duration.ofMinutes(6);
 
   /**
-   * 轮数：**默认 1**（单轮全链可绿；见类注的 2026-09-30 实测结论）。多轮压测用 {@code SIMOS_REAL_LLM_ROUNDS=3} 显式开
-   * —— 在"thinking 模式 reasoning_content 回放"阻断修好前，多轮会命中 provider HTTP 400（测试会如实红）。
+   * 轮数：**默认 1**（单轮全链可绿、省时；见类注的 2026-09-30 实测结论）。多轮回归用 {@code SIMOS_REAL_LLM_ROUNDS=3} 显式开 ——
+   * thinking 回传缺陷已由 AgentLib 的 {@code echoReasoningContent} 能力位修复，三轮应连续成功且无 400。
    */
   private static final int ROUNDS = envInt("SIMOS_REAL_LLM_ROUNDS", 1);
+
   private static final long WORLD_TICK = T7.tick();
   private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -274,8 +280,8 @@ class RealLlmUnitDecisionLoopTest {
   // ── 用例 1：前置自检（不打 LLM）────────────────────────────────────────────────────
 
   /**
-   * ★ **配置迁移真的成功**：经真 MCP 读 {@code simos.llm.providers}（GM 只读），{@code mosire-flash} 必须在场且
-   * {@code valid=true}、密钥已配置。它证明后续真调用不是"碰巧用了另一个 provider"。
+   * ★ **配置迁移真的成功**：经真 MCP 读 {@code simos.llm.providers}（GM 只读），{@code mosire-flash} 必须在场且 {@code
+   * valid=true}、密钥已配置。它证明后续真调用不是"碰巧用了另一个 provider"。
    */
   @Test
   void providerConfigIsMigratedIntoAgentLibAndValidThroughMcp() throws Exception {
@@ -305,8 +311,8 @@ class RealLlmUnitDecisionLoopTest {
   }
 
   /**
-   * ★ **夹具自检（不打 LLM）**：范围函数 ∩ accessLimit 的结果真的"只放 r-core/u-1"；区外对照（{@code (2,2)} /
-   * {@code u-out} / {@code r-out}）真的存在但不可达；{@code Unit.jurisdiction} 真的挂上了。
+   * ★ **夹具自检（不打 LLM）**：范围函数 ∩ accessLimit 的结果真的"只放 r-core/u-1"；区外对照（{@code (2,2)} / {@code u-out} /
+   * {@code r-out}）真的存在但不可达；{@code Unit.jurisdiction} 真的挂上了。
    */
   @Test
   void fixtureScopeIsWiredAndOutOfScopeControlIsReal() {
@@ -327,8 +333,7 @@ class RealLlmUnitDecisionLoopTest {
     Unit u1 = units.units().get(U1);
     assertThat(u1.visionRadius()).isEqualTo(2);
     assertThat(u1.jurisdiction()).isPresent();
-    assertThat(u1.jurisdiction().orElseThrow().taxRatePerMilleByRegion())
-        .containsEntry(R_CORE, 0L);
+    assertThat(u1.jurisdiction().orElseThrow().taxRatePerMilleByRegion()).containsEntry(R_CORE, 0L);
     assertThat(u1.jurisdiction().orElseThrow().levyGrainCapPerCommand()).isEqualTo(1000L);
 
     // 范围 = ArmyScope（位置+视野圈）∩ accessLimit（r-core hex ∪ r-core region；u-1）——只读纯函数，无 LLM。
@@ -363,8 +368,8 @@ class RealLlmUnitDecisionLoopTest {
    *   <li>三轮无 TOOL_ERROR / 无未捕获异常 / 无预算中止（稳定性硬判据）。
    * </ol>
    *
-   * <p>★ **模型不出令或出非法令不伪造**：这类"模型侧不达"只打印 {@code [REAL-LLM-GAP]}/记进稳定性矩阵，不让机制判据变红；
-   * 机制侧（provider 可达、读工具可用、审批链、裁决链）不达才红。
+   * <p>★ **模型不出令或出非法令不伪造**：这类"模型侧不达"只打印 {@code [REAL-LLM-GAP]}/记进稳定性矩阵，不让机制判据变红； 机制侧（provider
+   * 可达、读工具可用、审批链、裁决链）不达才红。
    */
   @Test
   @Timeout(value = 45, unit = TimeUnit.MINUTES)
@@ -375,7 +380,12 @@ class RealLlmUnitDecisionLoopTest {
     List<String> blockers = new ArrayList<>();
     List<String> scopeViolations = new ArrayList<>();
     System.out.println(
-        "[REAL-LLM-START] rounds=" + ROUNDS + " decisionMaker=" + DM_ID + " provider=" + PROVIDER_ID);
+        "[REAL-LLM-START] rounds="
+            + ROUNDS
+            + " decisionMaker="
+            + DM_ID
+            + " provider="
+            + PROVIDER_ID);
     int committedRounds = 0;
     boolean sawReadWithFixtureTruth = false;
     boolean anyDirectiveCall = false;
@@ -504,11 +514,11 @@ class RealLlmUnitDecisionLoopTest {
 
       // 出令：轨迹里出现 sd.IssueDirective（无论成否）都必须进审批；成功则必须落真 revision。
       boolean directiveCall =
-          roundTraces.stream().anyMatch(t -> IssueDirectiveTool.NAME.equals(realToolName(t.tool())));
+          roundTraces.stream()
+              .anyMatch(t -> IssueDirectiveTool.NAME.equals(realToolName(t.tool())));
       boolean directiveOk =
           roundTraces.stream()
-              .anyMatch(
-                  t -> IssueDirectiveTool.NAME.equals(realToolName(t.tool())) && t.ok());
+              .anyMatch(t -> IssueDirectiveTool.NAME.equals(realToolName(t.tool())) && t.ok());
       if (directiveCall) {
         anyDirectiveCall = true;
         if (!approvals.contains(IssueDirectiveTool.NAME)) {
@@ -532,7 +542,9 @@ class RealLlmUnitDecisionLoopTest {
       }
       Optional<Directive> active =
           fresh.stream()
-              .filter(d -> d.status() == DirectiveStatus.ISSUED || d.status() == DirectiveStatus.PLANNED)
+              .filter(
+                  d ->
+                      d.status() == DirectiveStatus.ISSUED || d.status() == DirectiveStatus.PLANNED)
               .findFirst();
       if (active.isPresent()) {
         anyDirectiveLanded = true;
@@ -606,14 +618,11 @@ class RealLlmUnitDecisionLoopTest {
           view.put("directiveAnyCommandRejected", anyRejected);
           if (appliedCoreTax && requestedRate.isPresent()) {
             assertThat(taxAfter)
-                .as(
-                    "round %s：unit.SetTaxRate 报了 applied，u-1 的 r-core 税率必须真的变到请求值",
-                    round)
+                .as("round %s：unit.SetTaxRate 报了 applied，u-1 的 r-core 税率必须真的变到请求值", round)
                 .isEqualTo(requestedRate.get());
           }
           if (!allApplied) {
-            String gap =
-                "令里有命令被 GM 裁决拒（见 adjudicateRaw.commands）——模型侧不达，如实记录，不伪造";
+            String gap = "令里有命令被 GM 裁决拒（见 adjudicateRaw.commands）——模型侧不达，如实记录，不伪造";
             view.put("adjudicationGap", gap);
             System.out.println("[REAL-LLM-GAP] round=" + round + " " + gap);
           }
@@ -625,7 +634,8 @@ class RealLlmUnitDecisionLoopTest {
                   + adjudicationCommandsView(adjBody));
         } else {
           view.put(
-              "adjudicationError", adjudicationRaw.substring(0, Math.min(adjudicationRaw.length(), 500)));
+              "adjudicationError",
+              adjudicationRaw.substring(0, Math.min(adjudicationRaw.length(), 500)));
         }
       } else {
         view.put("directiveId", null);
@@ -665,9 +675,7 @@ class RealLlmUnitDecisionLoopTest {
     assertThat(committedRounds)
         .as("至少一轮 sd.RunDecision 真跑通（provider 可达、触发事实已落）；traces=%s", allTraces)
         .isGreaterThan(0);
-    assertThat(blockers)
-        .as("不得有 TOOL_ERROR / 未捕获异常 / 回合预算中止（发现即命中，不重试掩盖）")
-        .isEmpty();
+    assertThat(blockers).as("不得有 TOOL_ERROR / 未捕获异常 / 回合预算中止（发现即命中，不重试掩盖）").isEmpty();
     assertThat(scopeViolations).as("越界探测若发生必须被拒；决策人出令必须进审批且落真 revision").isEmpty();
     assertThat(sawReadWithFixtureTruth)
         .as("至少一次成功的读工具结果里带夹具真值（u-1 / 真实人口 / 真实格 / r-core）；traces=%s", allTraces)
@@ -695,8 +703,8 @@ class RealLlmUnitDecisionLoopTest {
   }
 
   /**
-   * 经真 MCP 传输调工具，并**把这一轮里出现的每条审批都答成"批一次"**（内层 {@code sd.IssueDirective} 走决策人链，
-   * 仍要人批；GM 面的触发/裁决由 {@code GmAutoApproveGate} 无脑过，不出现在这里）。
+   * 经真 MCP 传输调工具，并**把这一轮里出现的每条审批都答成"批一次"**（内层 {@code sd.IssueDirective} 走决策人链， 仍要人批；GM 面的触发/裁决由
+   * {@code GmAutoApproveGate} 无脑过，不出现在这里）。
    */
   private McpSchema.CallToolResult callWithApproval(String toolName, Map<String, Object> args)
       throws Exception {
@@ -719,12 +727,7 @@ class RealLlmUnitDecisionLoopTest {
     if (!task.isDone()) {
       task.cancel(true);
       throw new AssertionError(
-          "MCP 调用 "
-              + toolName
-              + " 在 "
-              + CALL_TIMEOUT
-              + " 内未返回（可能卡在审批或真 LLM）；本轮已答审批="
-              + approvals);
+          "MCP 调用 " + toolName + " 在 " + CALL_TIMEOUT + " 内未返回（可能卡在审批或真 LLM）；本轮已答审批=" + approvals);
     }
     return task.get(5, TimeUnit.SECONDS);
   }
@@ -833,7 +836,8 @@ class RealLlmUnitDecisionLoopTest {
 
   private List<LlmMessage> conversationMessages() {
     try (SqliteConversationStore conversations =
-        SqliteConversationStore.open(storeDir.resolve(DecisionAgentService.CONVERSATIONS_FILE_NAME))) {
+        SqliteConversationStore.open(
+            storeDir.resolve(DecisionAgentService.CONVERSATIONS_FILE_NAME))) {
       return conversations.load(CONVERSATION_ID);
     }
   }
@@ -845,7 +849,8 @@ class RealLlmUnitDecisionLoopTest {
       if (!LlmMessage.ROLE_ASSISTANT.equals(message.role()) || message.hasReasoning()) {
         continue;
       }
-      boolean toolCall = message.content().stream().anyMatch(ContentPart.ToolCall.class::isInstance);
+      boolean toolCall =
+          message.content().stream().anyMatch(ContentPart.ToolCall.class::isInstance);
       if (toolCall) {
         count++;
       }
@@ -1101,8 +1106,7 @@ class RealLlmUnitDecisionLoopTest {
     if (unit == null) {
       return Long.MIN_VALUE;
     }
-    return unit
-        .jurisdiction()
+    return unit.jurisdiction()
         .map(j -> j.taxRatePerMilleByRegion().getOrDefault(region, Long.MIN_VALUE))
         .orElse(Long.MIN_VALUE);
   }
@@ -1128,9 +1132,7 @@ class RealLlmUnitDecisionLoopTest {
     assertThat(Files.isRegularFile(repoConfig)).as("仓库存在 %s", repoConfig).isTrue();
     // ★ 逐字节复制既有事实，不读内容、不打印任何值（密钥只落在 store 的迁移源里）。
     Files.copy(
-        repoConfig,
-        storeDir.resolve("llm-providers.json"),
-        StandardCopyOption.REPLACE_EXISTING);
+        repoConfig, storeDir.resolve("llm-providers.json"), StandardCopyOption.REPLACE_EXISTING);
   }
 
   private void copyRepoSkills() throws IOException {
@@ -1177,10 +1179,7 @@ class RealLlmUnitDecisionLoopTest {
     } catch (Exception e) {
       throw new IllegalStateException("创世 revision 落盘失败", e);
     }
-    UnitState units =
-        new UnitState(
-            new LinkedHashMap<>(
-                Map.of(U1, coreUnit(), U_OUT, outUnit())));
+    UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, coreUnit(), U_OUT, outUnit())));
     SocialData social = socialData();
     SimulationState genesis =
         new SimulationState(
@@ -1209,8 +1208,7 @@ class RealLlmUnitDecisionLoopTest {
 
   /** u-1：(1,1)、visionRadius=2、真挂 jurisdiction{r-core: 0‰, caps 1000/1000/1000, admin 1000}。 */
   private static Unit coreUnit() {
-    Jurisdiction jurisdiction =
-        new Jurisdiction(Map.of(R_CORE, 0L), 1000L, 1000L, 1000L, 1000);
+    Jurisdiction jurisdiction = new Jurisdiction(Map.of(R_CORE, 0L), 1000L, 1000L, 1000L, 1000);
     return new Unit(
         U1,
         "第一连",
@@ -1255,8 +1253,7 @@ class RealLlmUnitDecisionLoopTest {
   }
 
   private static SegmentedSeries<Optional<HexCoord>> fixedPosition(HexCoord hex) {
-    return new SegmentedSeries<>(
-        List.of(new Segment<>(T0, Optional.of(hex))), List.of(), null);
+    return new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(hex))), List.of(), null);
   }
 
   private static SegmentedSeries<Boolean> attachedSeries() {
@@ -1286,10 +1283,7 @@ class RealLlmUnitDecisionLoopTest {
     regions.put(
         R_OUT,
         Region.of(
-            R_OUT,
-            "区外对照区",
-            Set.of(H22),
-            new RegionMeta(null, NationTag.tagFor(FRA), null, null)));
+            R_OUT, "区外对照区", Set.of(H22), new RegionMeta(null, NationTag.tagFor(FRA), null, null)));
     Map<String, TerrainType> terrainTypes = new LinkedHashMap<>();
     terrainTypes.put(desert.key(), desert);
     return new GameMap(
@@ -1306,8 +1300,7 @@ class RealLlmUnitDecisionLoopTest {
 
   private static SocialData socialData() {
     Map<HexCoord, PopulationSeries> populations = new LinkedHashMap<>();
-    Map<io.mosire.simos.economy.api.id.PeopleLotId, PopulationGroup> groups =
-        new LinkedHashMap<>();
+    Map<io.mosire.simos.economy.api.id.PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
     for (Map.Entry<HexCoord, Long> entry : POPULATION.entrySet()) {
       populations.put(entry.getKey(), populationSeries(entry.getValue()));
       groups.put(
@@ -1362,8 +1355,8 @@ class RealLlmUnitDecisionLoopTest {
   }
 
   /**
-   * ★ **发给 dm-u1 的任务简报**：{@code sd.RunDecision} 的载荷只有 decisionMakerId（没有任务字段），生产里"这一局该做什么"
-   * 的正规出处就是 Docs。简报把任务收敛到"核实 → 用合规命令把 r-core 税率调到 100‰ → 顺带核对区外 (2,2)/u-out 不可见"，
+   * ★ **发给 dm-u1 的任务简报**：{@code sd.RunDecision} 的载荷只有 decisionMakerId（没有任务字段），生产里"这一局该做什么" 的正规出处就是
+   * Docs。简报把任务收敛到"核实 → 用合规命令把 r-core 税率调到 100‰ → 顺带核对区外 (2,2)/u-out 不可见"，
    * 使"能不能出正确决策"这条判据不落在模型的自由发挥上。
    */
   private static String briefText() {
@@ -1388,21 +1381,15 @@ class RealLlmUnitDecisionLoopTest {
 
   private static DecisionMaker decisionMaker() {
     return new DecisionMaker(
-        DM,
-        new Affiliation.Army(A1),
-        Set.of(),
-        accessLimit(),
-        1,
-        Optional.of(PROVIDER_ID),
-        0L);
+        DM, new Affiliation.Army(A1), Set.of(), accessLimit(), 1, Optional.of(PROVIDER_ID), 0L);
   }
 
   /**
    * ★ **显式收紧**：管辖 hex 集从 {@code r-core} 的 {@code Region.hexes()} 派生（与下一阶段的自动接线同源）。
    *
-   * <p>map：r-core 各 hex；social：r-core 各格；unit：{@code u-1}。★ 现状（未改生产）：ArmyScope 的 map
-   * 通道只给**逐 hex** 前缀，故 {@code simos.map.region} 的 region 资源对军队决策人不可达——本测试的成功读走
-   * {@code map.hex / unit.get / social.population / catalog / skill}。
+   * <p>map：r-core 各 hex；social：r-core 各格；unit：{@code u-1}。★ 现状（未改生产）：ArmyScope 的 map 通道只给**逐 hex**
+   * 前缀，故 {@code simos.map.region} 的 region 资源对军队决策人不可达——本测试的成功读走 {@code map.hex / unit.get /
+   * social.population / catalog / skill}。
    */
   private static AccessLimit accessLimit() {
     Set<HexCoord> coreHexes = Set.of(H11, H12, H21);

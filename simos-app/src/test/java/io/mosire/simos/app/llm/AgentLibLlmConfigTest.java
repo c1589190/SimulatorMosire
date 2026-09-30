@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.agentlib.config.ConfigStore;
 import io.mosire.agentlib.llm.LlmClient;
+import io.mosire.agentlib.llm.LlmRouteLoader;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -113,6 +114,41 @@ class AgentLibLlmConfigTest {
     assertThat(config.configStore().get("keys", "old").orElseThrow().asText()).isEqualTo("sk-OLD");
     assertThat(config.view("old").get("credentialsRef")).isEqualTo("keys.old");
     assertThat(legacy).as("迁移来源文件必须保留").exists();
+  }
+
+  @Test
+  void legacyEchoReasoningContentMigratesIntoAgentLibCapability() {
+    // 旧格式顶层位（config/llm-providers.json 的形态）⇒ AgentLib capabilities.echoReasoningContent。
+    Path legacy = tempDir.resolve(AgentLibLlmConfig.LEGACY_FILE_NAME);
+    write(
+        legacy,
+        "{\"providers\":[{\"id\":\"ds\",\"baseUrl\":\"https://ds/v1\",\"model\":\"deepseek-flash\","
+            + "\"echoReasoningContent\":true}]}");
+
+    AgentLibLlmConfig config = AgentLibLlmConfig.open(tempDir);
+
+    assertThat(LlmRouteLoader.load(config.configStore(), "ds").transport().echoReasoningContent())
+        .as("旧配置位必须进入发送侧权威的 LlmTransport")
+        .isTrue();
+    assertThat(LlmRouteLoader.capabilities(config.configStore(), "ds").echoReasoningContent())
+        .as("掩码视图读到的能力描述也必须为 true")
+        .isTrue();
+    assertThat(config.view("ds").get("capabilities").toString())
+        .as("simos.llm.providers 掩码视图必须能显示该能力位")
+        .contains("echoReasoningContent=true");
+  }
+
+  @Test
+  void upsertRouteWithoutEchoArgPreservesExistingEchoBit() {
+    AgentLibLlmConfig config = AgentLibLlmConfig.open(tempDir);
+    config.upsertRoute("ds", "https://ds/v1", "deepseek-flash", "keys.ds", 30_000L, true);
+
+    // 配置页的常规保存路径（五参重载）不管理能力位，但绝不能把它顺手抹掉。
+    config.upsertRoute("ds", "https://ds/v1", "deepseek-flash", "keys.ds", 30_000L);
+
+    assertThat(LlmRouteLoader.load(config.configStore(), "ds").transport().echoReasoningContent())
+        .as("保存路由不得把思考模式回传位重置为 false")
+        .isTrue();
   }
 
   @Test
