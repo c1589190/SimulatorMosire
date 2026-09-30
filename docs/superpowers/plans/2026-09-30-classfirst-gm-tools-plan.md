@@ -191,3 +191,27 @@ GM 可调制度/技术参数补成工具，阶段 1 的三个 kind 之外不再�
 - 7 条脱钩命令收口（阶段 3）；
 - nation/army 工具（用户指令：工具做完再做）。
 
+## 9. 阶段 3（2026-09-30 追加）：7 条脱钩命令具名收口
+
+**用户指令**："按照这个顺序依次做完" —— 阶段 3 先做。
+
+**规则**：`EconomyData.classFirst()` **非空**（class-first 世界）⇒ 下列命令**具名拒绝**并说明"结算不读它"；
+`classFirst` 为空（旧档/未播种）⇒ 行为**逐字不变**。
+
+| 命令 | class-first 世界的真值 | 拒绝理由要点 |
+|---|---|---|
+| `economy.TransferAssetShare` | 资产在 `classFirst.classPools`（池级），不读 `assetShares` | 真值在阶层池；classfirst 资产转移工具未接（后续） |
+| `economy.SetMarketPrice` | 结算用 `config` 固定换算率（`moneyPerGrain` 等），不读 `markets` | 改价走 `economy.GmAdjust.setProductionParameters` |
+| `economy.AddDemand` / `CancelDemand` | 消费由结算按口粮/非必要品规则决定，不读 `demands` | 需求账本不参与 class-first 结算 |
+| `economy.RegisterCandidate` | 生产方式 = `config.mode` + classfirst 政策，不读 `candidates` | 候选预设不参与 class-first 结算 |
+| `economy.SwitchMode` | 当前单 mode，不读 `modeTransitions` | 模式迁移未接（后续） |
+| `economy.MigrateHousehold` | `classes.view` 只是投影；class-first 家户无格维权威 | 迁移只改投影映射，真值在世界级池/账户；本版不开放 |
+
+**落点**：新增一个共享守卫（如 `ClassFirstCommandGuard.rejectIfActive(commandType, base, guidance)`，
+返回 `Optional<HandlerOutcome.Rejected>`），7 个 handler 在读到 base 后立即调用；handler 类注同步。
+旧 `economy.GmAdjust` 的旧两 kind 已在阶段 1 门住，不重复。
+
+**验收**：spotless + `compile -pl simos-economy -am` + `compile -pl simos-app -am` 绿；
+不写/不改测试（既有用例的同步留给测试代理）；不 commit。
+**测试代理输入**：7 条命令的 class-first 拒绝理由、空 classFirst 下行为不变的对照面。
+
