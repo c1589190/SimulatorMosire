@@ -34,9 +34,9 @@
 /** 单位侧的管辖：管辖哪些 Region、每区域长期税率、周期性一次性抽取上限、行政能力。 */
 public record Jurisdiction(
     Map<RegionId, Long> taxRatePerMilleByRegion, // key 集 = 管辖区域；value = 每周期税率(‰)；空 map = 无管辖
-    long levyGrainCapPerCycle,                   // 一次性抽取：粮/周期
-    long levyMoneyCapPerCycle,                   // 一次性抽取：钱/周期
-    long levyManpowerCapPerCycle,                // 一次性抽取：人/周期（组军用）
+    long levyGrainCapPerCommand,                   // 一次性抽取：粮/次
+    long levyMoneyCapPerCommand,                   // 一次性抽取：钱/次
+    long levyManpowerCapPerCommand,                // 一次性抽取：人/次（组军用）
     long administrationPerMille) {               // 行政能力：0=无班子（军队只能一次性抽），>0=可长期税
   ...
 }
@@ -50,7 +50,7 @@ public record Jurisdiction(
 
 | 命令 | 载荷 | 语义 |
 |---|---|---|
-| `unit.SetJurisdiction` | `{unitId, regions:[regionId...], levyGrainCapPerCycle?, levyMoneyCapPerCycle?, levyManpowerCapPerCycle?, administrationPerMille?}` | 整体替换管辖区域 + 缺省保持其余字段；`regions` 里每个 id 必须存在于当前 `GameMap.regions()`（不存在 ⇒ 具名拒，不静默丢）；空数组 = 撤销全部管辖 |
+| `unit.SetJurisdiction` | `{unitId, regions:[regionId...], levyGrainCapPerCommand?, levyMoneyCapPerCommand?, levyManpowerCapPerCommand?, administrationPerMille?}` | 整体替换管辖区域 + 缺省保持其余字段；`regions` 里每个 id 必须存在于当前 `GameMap.regions()`（不存在 ⇒ 具名拒，不静默丢）；空数组 = 撤销全部管辖 |
 | `unit.SetTaxRate` | `{unitId, regionId, ratePerMille}` | upsert 某管辖区域的长期税率；`regionId` 不在该 unit 的管辖里 ⇒ 具名拒（先 `SetJurisdiction`） |
 
 - 两条都走 `UnitChangeSet`/revision；配套 GM 窄工具 + `CatalogTool.PAYLOAD_HINTS` + `McpCoverageTest` 载荷断言（按既有工具面模板）。
@@ -63,14 +63,53 @@ spotless + `compile -pl simos-unit -am` + `compile -pl simos-app -am`；
 ## 3. 阶段 6：区域税 / 一次性抽取（app 组合根，跨切片）
 
 > 辖区在 unit、钱粮在 actor/classfirst、人口在 social ⇒ 只能由 **app 组合根**做原子命令。
+> 控制方口径补裁（2026-09-30，落地前记录；与用户裁定"来源、行动记录优先"一致）：
 
-- **长期税**（`administrationPerMille > 0` 才允许）：周期结算时，对每个管辖 Region 的 hex 上的家户 actor 账
-  （`ActorKind.HOUSEHOLD`）按 `taxRatePerMilleByRegion` 扣粮/钱，转入该 unit 的国库 actor 账
-  （`ActorRef(UNIT, unitId)`）；不足 ⇒ 记欠税/具名缺口，不静默跳过。
-- **一次性抽取**（`economy.LevyRegion` 或 `unit.LevyRegion`）：GM 指定 `{unitId, regionId, grain?, money?, manpower?}`，
-  受 `levy*CapPerCycle` 限制；manpower 从 social 批次扣、粮/钱从家户 actor 账扣，**同一 revision 原子**。
-- 来源与记录：每条抽取在载荷/变更集里带 `regionId + 逐来源键（actor/批次 id）+ 数量`；行动记录用现有事件链 +
-  命令载荷留痕，**不另造第二份账**。
+### 6.0 落地口径（先记后做）
+
+1. **上限语义 = 单条抽取命令**：`levy*CapPerCommand` 是**一条** `simos.unit.levyRegion` 调用的上限（0 = 该类无额度、拒）。
+   "逐周期（tick）累计额度账本"**本批不建**（要动 `Jurisdiction` 增状态 + 周期边界重置，收益小）；
+   字段名从 `CapPerCycle` 改成 `CapPerCommand`，不让名字撒谎。周期累计留待测试阶段后按需再裁。
+2. **周期定义（只对长期税）**：一个周期 = 1 tick = 世界日；长期税每日结算一次。
+3. **账本边界（本次具名，不静默）**：阶段 6 的粮/钱抽取**只动 actor 家户账 + 单位国库 actor 账**
+   （`ActorKind.HOUSEHOLD` / `ActorKind.UNIT`）；`classfirst` 阶层池库存**本批不动** —— 池是"阶层级生产库存"的权威、
+   家户 actor 账是"家户持有"的权威，日结算只把**池级增量**折进家户账（`ClassFirstActorWriteback` 的既定近似），
+   两者绝对量本就不是硬镜像。**"全国粮总量"因此必须现算两本账之和**，不许把任一本当唯一口径。
+   （若将来要"抽税同时缩池"，须单独裁摊派规则，不在本批。）
+4. **国库落点**：`GoodsAccountKey(ActorRef(UNIT, unitId), location=单位当刻有效位置)`；单位无位置 ⇒ 具名拒。
+   库存到格（`GoodsAccount` 的既定语义）：**单位移动不搬迁库存**，搬迁是另一次行动。
+5. **人力口径（本批）**：只抽 `Sex.MALE` 且当前 tick 现算年龄 ∈ **[16,60)** 的 `social` 批次；
+   不足 ⇒ **整条拒**（不部分、不拆别的批次）。未成年/老年/女性不动。征兵合法性/民怨后置。
+6. **数量不足 ⇒ 整条具名拒**（与 `ClassFirstLevy` 的"不截断"同口径），不给部分抽取；
+   家庭/批次之间的分摊用**瀑布**：可用量降序、同量按键规范串升序，逐值扣满为止（与 `ClassFirstActorWriteback` 的负增量分摊同法）。
+
+### 6.1 一次性抽取 `simos.unit.levyRegion`（GM 组合工具）
+
+- 形态：app 级 GM 工具（不是 CommandHandler——单条命令只能落一个命名空间），照 `WorldgenInitializeTool`/`AdjudicateTickTool`
+  的先例**一条 `core.submitBatch` = 一条 revision**：
+  - 先落新原语 `actor.AdjustAccounts`（净增量账，见 6.2）；
+  - 再落既有 `social.SeedGroups`（整组覆盖，抽人力）；
+  - 再落一条 `sd.PutInfo`（行动记录：unit/region/三项数量/来源计数，人可读）；
+- 载荷：`{unitId, regionId, grain?, money?, manpower?, reason, branch?, expectedRevision}`；
+  三项各自受对应上限约束；单位/区域/管辖校验照阶段 5 的判据。
+- 粮/钱来源：region 各 hex 上 `ActorKind.HOUSEHOLD` 的 actor 账（`balances` 的 `grain`、`money` 的 `silver`）；
+  可用量 = 余额 − 冻结额（夹 ≥0）；国库目标 = 上面第 4 条。
+- 记录：`actor.AdjustAccounts` 的 entries 与 `social.SeedGroups` 的 entries **逐来源键**（owner+hex / 批次 id）；
+  `sd.PutInfo` 一条人可读行动记录。**不另造第二份账**。
+
+### 6.2 新原语 `actor.AdjustAccounts`（actor 域窄写）
+
+- 载荷 `{entries:[{owner:{kind,id}, q, r, goods:{<commodity>:delta}, money:{<currency>:delta}}...]}`；
+- 有符号增量、整条原子（任一违例 ⇒ 全拒）：任何余额结果 < 0 或侵占冻结额 ⇒ 具名拒；
+  缺账 + 有负增量 ⇒ 拒；缺账 + 纯增 ⇒ 新建（其余表空）；同键在一条载荷里重复 ⇒ 拒；
+- 配套 GM 窄工具 + `Shell` 注册 + `CatalogTool.PAYLOAD_HINTS`。
+
+### 6.3 长期税（第二段，6.2 之后）
+
+- `administrationPerMille > 0` 才允许；每日对每个有管辖的单位，按 region 的家户 actor 账余额 × `taxRatePerMilleByRegion`
+  扣粮/钱入国库；每户不足 ⇒ 按可用量部分缴并**具名记缺口**（欠税清单进 INFO），不静默跳过；
+- 由 app 级 `TimeParticipant`（`simulateWorld`，写 actor + 可选 sd INFO）实现，**不放进 ③Resolve**。
+
 - 非目标：完整税制/财政预算/救济（后续）；军队长期税由 `administrationPerMille=0` 的硬门堵住（用户 2026-09-30 前文的口径）。
 
 ## 4. 阶段 7：地方债
