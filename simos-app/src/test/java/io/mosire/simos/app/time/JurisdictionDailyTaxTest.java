@@ -43,8 +43,8 @@ import org.junit.jupiter.api.Test;
  * ★★ <b>阶段 6.3 长期税纯函数（{@link JurisdictionDailyTax#collect}）的逐值判据</b>（同包，不经 Core）：
  *
  * <ol>
- *   <li><b>空转恒等</b>：无 jurisdiction / {@code admin=0}（硬门）/ 全区域 rate=0 / 无可税家户 ⇒ 返回<b>同一
- *       ActorData 实例</b>且 {@code Report.isEmpty()}；只有缺口时仍是同一实例、但 Report 非空；
+ *   <li><b>空转恒等</b>：无 jurisdiction / {@code admin=0}（硬门）/ 全区域 rate=0 / 无可税家户 ⇒ 返回<b>同一 ActorData
+ *       实例</b>且 {@code Report.isEmpty()}；只有缺口时仍是同一实例、但 Report 非空；
  *   <li><b>手算逐值</b>：2 户 × 1 单位 × 粮/钱，含一个 {@code REGION_MISSING}、一个 {@code stockShortfall}（冻结吃掉的
  *       可支配）与 {@code adminShortfall}（admin=500）；逐户余额、国库账（五参新建、冻结表空）、Report 四量、计数、账键序、0
  *       余额保留、meta/actors 原样；
@@ -89,12 +89,9 @@ class JurisdictionDailyTaxTest {
 
     UnitState noJurisdiction = unitsOf(unit(U1, Optional.of(H1), Optional.empty()));
     assertNoOp(
-        taxed,
-        JurisdictionDailyTax.collect(taxed, noJurisdiction, map, TICK),
-        "单位没有 jurisdiction");
+        taxed, JurisdictionDailyTax.collect(taxed, noJurisdiction, map, TICK), "单位没有 jurisdiction");
 
-    Jurisdiction adminZero =
-        new Jurisdiction(rateMap(R1, 200L), 1_000L, 1_000L, 1_000L, 0L);
+    Jurisdiction adminZero = new Jurisdiction(rateMap(R1, 200L), 1_000L, 1_000L, 1_000L, 0L);
     UnitState withAdminZero = unitsOf(unit(U1, Optional.of(H1), Optional.of(adminZero)));
     assertNoOp(
         taxed,
@@ -104,9 +101,7 @@ class JurisdictionDailyTaxTest {
     Jurisdiction rateZero = new Jurisdiction(rateMap(R1, 0L), 1_000L, 1_000L, 1_000L, 1_000L);
     UnitState withRateZero = unitsOf(unit(U1, Optional.of(H1), Optional.of(rateZero)));
     assertNoOp(
-        taxed,
-        JurisdictionDailyTax.collect(taxed, withRateZero, map, TICK),
-        "全区域 rate=0（整段跳过）");
+        taxed, JurisdictionDailyTax.collect(taxed, withRateZero, map, TICK), "全区域 rate=0（整段跳过）");
 
     Jurisdiction full = new Jurisdiction(rateMap(R1, 200L), 1_000L, 1_000L, 1_000L, 1_000L);
     UnitState collected = unitsOf(unit(U1, Optional.of(H1), Optional.of(full)));
@@ -129,7 +124,8 @@ class JurisdictionDailyTaxTest {
   void missingRegionWithoutAnyExistingRegionReturnsSameInstanceWithNamedGap() {
     GameMap map = twoHexMap();
     ActorData before = actor(accountsWithAAndB());
-    Jurisdiction jurisdiction = new Jurisdiction(rateMap(GHOST, 300L), 1_000L, 1_000L, 1_000L, 1_000L);
+    Jurisdiction jurisdiction =
+        new Jurisdiction(rateMap(GHOST, 300L), 1_000L, 1_000L, 1_000L, 1_000L);
     UnitState units = unitsOf(unit(U1, Optional.of(H1), Optional.of(jurisdiction)));
 
     JurisdictionDailyTax.Collected collected =
@@ -157,9 +153,9 @@ class JurisdictionDailyTaxTest {
    * 管辖：R1(1000‰) + r-ghost(300‰，图上不存在)；单位 u-1 在 H1
    * </pre>
    *
-   * 手算：甲粮 assessed=floor(100×1000/1000)=100、attainable=floor(100×500/1000)=50、可支配 40 不够
-   * ⇒ collected=min(50,40)=40、adminShortfall=50、stockShortfall=10；甲钱 200/100/100；乙粮 300/150/150；
-   * 乙钱余额 0 ⇒ 全 0 跳过。合计：粮(400,190,200,10)、钱(200,100,100,0)、unitsCharged=1、
+   * 手算：甲粮 assessed=floor(100×1000/1000)=100、attainable=floor(100×500/1000)=50、可支配 40 不够 ⇒
+   * collected=min(50,40)=40、adminShortfall=50、stockShortfall=10；甲钱 200/100/100；乙粮 300/150/150； 乙钱余额
+   * 0 ⇒ 全 0 跳过。合计：粮(400,190,200,10)、钱(200,100,100,0)、unitsCharged=1、
    * householdsCharged=2、缺口=REGION_MISSING(r-ghost,300)。
    */
   @Test
@@ -331,10 +327,8 @@ class JurisdictionDailyTaxTest {
     assertThat(report.householdsCharged()).isEqualTo(1L);
     assertThat(report.gaps()).isEmpty();
 
-    GoodsAccountKey treasuryOfA =
-        new GoodsAccountKey(new ActorRef(ActorKind.UNIT, "a-unit"), H1);
-    GoodsAccountKey treasuryOfB =
-        new GoodsAccountKey(new ActorRef(ActorKind.UNIT, "b-unit"), H2);
+    GoodsAccountKey treasuryOfA = new GoodsAccountKey(new ActorRef(ActorKind.UNIT, "a-unit"), H1);
+    GoodsAccountKey treasuryOfB = new GoodsAccountKey(new ActorRef(ActorKind.UNIT, "b-unit"), H2);
     assertThat(after.accounts().keySet())
         .as("国库账按处理序（= unitId 升序）首次创建")
         .containsExactly(A_KEY, treasuryOfA, treasuryOfB);
@@ -380,16 +374,13 @@ class JurisdictionDailyTaxTest {
     shuffledAccounts.put(A_KEY, account(HH_A, H1, 500L, 300L));
     Map<RegionId, Long> shuffledRates = new LinkedHashMap<>();
     shuffledRates.put(R1, 125L);
-    Jurisdiction shuffledRateA =
-        new Jurisdiction(shuffledRates, 1_000L, 1_000L, 1_000L, 1_000L);
+    Jurisdiction shuffledRateA = new Jurisdiction(shuffledRates, 1_000L, 1_000L, 1_000L, 1_000L);
     Unit shuffledUnitA = unit(new UnitId("a-unit"), Optional.of(H1), Optional.of(shuffledRateA));
     JurisdictionDailyTax.Collected shuffled =
         JurisdictionDailyTax.collect(
             actor(shuffledAccounts), unitsOf(shuffledUnitA, unitB), shuffledMap, 3L);
 
-    assertThat(shuffled.report())
-        .as("区域/账户/单位/税率表插入序不影响 Report（含缺口表序）")
-        .isEqualTo(once.report());
+    assertThat(shuffled.report()).as("区域/账户/单位/税率表插入序不影响 Report（含缺口表序）").isEqualTo(once.report());
     assertThat(shuffled.actor()).as("结果按内容相等（与 Map 插入序无关）").isEqualTo(once.actor());
     assertThat(shuffled.actor().accounts().get(A_KEY))
         .isEqualTo(once.actor().accounts().get(A_KEY));
@@ -402,8 +393,7 @@ class JurisdictionDailyTaxTest {
   @Test
   void existingTreasuryAccountKeepsItsFrozenTablesAndAccumulates() {
     GameMap map = twoHexMap();
-    GoodsAccountKey treasuryKey =
-        new GoodsAccountKey(new ActorRef(ActorKind.UNIT, U1.value()), H1);
+    GoodsAccountKey treasuryKey = new GoodsAccountKey(new ActorRef(ActorKind.UNIT, U1.value()), H1);
 
     Map<CommodityId, Long> balances = new LinkedHashMap<>();
     balances.put(GRAIN, 7L);
@@ -429,12 +419,14 @@ class JurisdictionDailyTaxTest {
     GoodsAccount afterTreasury = collected.actor().accounts().get(treasuryKey);
 
     assertThat(collected.actor().accounts().get(A_KEY).balances()).containsEntry(GRAIN, 90L);
-    assertThat(afterTreasury.balances())
-        .as("已有国库账：余额 7+10=17")
-        .containsExactly(entry(GRAIN, 17L));
+    assertThat(afterTreasury.balances()).as("已有国库账：余额 7+10=17").containsExactly(entry(GRAIN, 17L));
     assertThat(afterTreasury.money()).containsExactly(entry(SILVER, 3L));
-    assertThat(afterTreasury.frozenBalances()).as("已有国库账的商品冻结表原样保留").containsExactly(entry(GRAIN, 2L));
-    assertThat(afterTreasury.frozenMoney()).as("已有国库账的货币冻结表原样保留").containsExactly(entry(SILVER, 1L));
+    assertThat(afterTreasury.frozenBalances())
+        .as("已有国库账的商品冻结表原样保留")
+        .containsExactly(entry(GRAIN, 2L));
+    assertThat(afterTreasury.frozenMoney())
+        .as("已有国库账的货币冻结表原样保留")
+        .containsExactly(entry(SILVER, 1L));
     assertThat(collected.actor().accounts().keySet())
         .as("已有国库账保持原键位（不追加到末尾）")
         .containsExactly(A_KEY, treasuryKey);

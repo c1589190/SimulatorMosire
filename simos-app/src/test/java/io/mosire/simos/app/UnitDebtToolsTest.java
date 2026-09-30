@@ -73,21 +73,20 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code simos.unit.issueDebt} / {@code simos.unit.repayDebt} 的**真 Shell 端到端**（收尾期 T4a）：preview 零写入、apply
- * 一批 = 一条 revision、批内命令类型与顺序、{@code sd.PutInfo} 落点 / key / value（JSON 字符串）/ tick、以及 ★★ 放贷方 ↔
- * 单位国库之间的**守恒式**（lender 余额减少 == 国库增加；双腿 Σ=0 且 |net| == principal）；还款批的国库减少 ==
- * 放贷方增加 == 腿上净额收回量、全额 ⇒ SETTLED；失败零 revision + stale ⇒ CONFLICT。
+ * {@code simos.unit.issueDebt} / {@code simos.unit.repayDebt} 的**真 Shell 端到端**（收尾期 T4a）：preview
+ * 零写入、apply 一批 = 一条 revision、批内命令类型与顺序、{@code sd.PutInfo} 落点 / key / value（JSON 字符串）/ tick、以及 ★★
+ * 放贷方 ↔ 单位国库之间的**守恒式**（lender 余额减少 == 国库增加；双腿 Σ=0 且 |net| == principal）；还款批的国库减少 == 放贷方增加 ==
+ * 腿上净额收回量、全额 ⇒ SETTLED；失败零 revision + stale ⇒ CONFLICT。
  *
  * <p>★ <b>本类在 {@code io.mosire.simos.app} 包</b>：{@code Shell#gmCaller()} 是包内可见的装配自检口径（{@code
  * LevyRegionToolTest} 的先例）。工具经真 {@code ToolRegistry} + 真 {@code gmToolAuthorizer} 调用（GM 面 ⇒ 审批无脑过）。
  *
- * <p>★★ <b>批内顺序怎么读</b>：批的 revision 行 {@code command_type} 恒为 {@code core.SubmitBatch}（composition 不落盘） ⇒
- * 用一条**必然拒**的 {@code sd.PutInfo}（同地址已存在下一个合成 id 的条目）把整批逼成 {@code REJECTED}，再读工具结果里
- * {@code submission.commands[i].type} —— 那是同一份真批的逐条类型（按批内序），不是复制出来的清单；同时顺带钉住"整批拒 ⇒
- * 零 revision"。
+ * <p>★★ <b>批内顺序怎么读</b>：批的 revision 行 {@code command_type} 恒为 {@code core.SubmitBatch}（composition
+ * 不落盘） ⇒ 用一条**必然拒**的 {@code sd.PutInfo}（同地址已存在下一个合成 id 的条目）把整批逼成 {@code REJECTED}，再读工具结果里 {@code
+ * submission.commands[i].type} —— 那是同一份真批的逐条类型（按批内序），不是复制出来的清单；同时顺带钉住"整批拒 ⇒ 零 revision"。
  *
- * <p>★ 夹具 = 手搭创世 checkpoint（map/social/unit/sd/economy/actor 六切片）：unit + classFirst（lender / 可带既存双腿）+
- * 单位国库账。工具本身一步都没绕（真 {@code CoreSimos.submitBatch}）。
+ * <p>★ 夹具 = 手搭创世 checkpoint（map/social/unit/sd/economy/actor 六切片）：unit + classFirst（lender /
+ * 可带既存双腿）+ 单位国库账。工具本身一步都没绕（真 {@code CoreSimos.submitBatch}）。
  */
 class UnitDebtToolsTest {
 
@@ -158,7 +157,10 @@ class UnitDebtToolsTest {
     ClassFirstState classFirstBefore = economyData(stateAt(world, headBefore)).classFirst();
 
     ToolResult result =
-        execute(world, IssueDebtTool.NAME, issueArgs("u-1", LENDER_ID, MONEY, 1000L, 20L, 50L, null, null));
+        execute(
+            world,
+            IssueDebtTool.NAME,
+            issueArgs("u-1", LENDER_ID, MONEY, 1000L, 20L, 50L, null, null));
 
     assertThat(result.success()).as(result.message()).isTrue();
     JsonNode view = JSON.readTree(result.message());
@@ -217,7 +219,9 @@ class UnitDebtToolsTest {
     PilotModel.Lender lenderBefore =
         economyData(stateAt(world, 1L)).classFirst().lenders().get(ExternalLenderId.of(LENDER_ID));
     PilotModel.Lender lenderAfter = classFirst.lenders().get(ExternalLenderId.of(LENDER_ID));
-    assertThat(lenderAfter.money()).as("放贷方 money 逐值 −principal").isEqualTo(lenderBefore.money() - 2000L);
+    assertThat(lenderAfter.money())
+        .as("放贷方 money 逐值 −principal")
+        .isEqualTo(lenderBefore.money() - 2000L);
     assertThat(lenderAfter.money()).isEqualTo(8000L);
 
     ClassFirstAccount debt = classFirst.accounts().get(UNIT_MONEY_ID);
@@ -345,8 +349,7 @@ class UnitDebtToolsTest {
     assertThat(rejected.code()).as("整批拒走 REJECTED（不是 BAD_REQUEST）").isEqualTo("REJECTED");
     assertThat(commandTypesOf(rejected))
         .as("批内顺序：先出国库款、再销债、最后行动记录")
-        .containsExactly(
-            "actor.AdjustAccounts", "economy.UnitRepay", "sd.PutInfo");
+        .containsExactly("actor.AdjustAccounts", "economy.UnitRepay", "sd.PutInfo");
     assertThat(head(world)).as("整批拒 ⇒ 零 revision").isEqualTo(2L);
     assertThat(revisionRowCount(world)).isEqualTo(rowsAfterDecoy);
 
@@ -516,11 +519,16 @@ class UnitDebtToolsTest {
 
   @Test
   void issueWithoutClassFirstIsBadRequestWithZeroRevision() {
-    World world = startWorld("no-classfirst", EconomyData.empty(), treasury(500L, 0L, 300L, 0L), SdState.empty());
+    World world =
+        startWorld(
+            "no-classfirst", EconomyData.empty(), treasury(500L, 0L, 300L, 0L), SdState.empty());
     long rowsBefore = revisionRowCount(world);
 
     ToolResult result =
-        execute(world, IssueDebtTool.NAME, issueArgs("u-1", LENDER_ID, MONEY, 100L, 20L, 50L, null, 1L));
+        execute(
+            world,
+            IssueDebtTool.NAME,
+            issueArgs("u-1", LENDER_ID, MONEY, 100L, 20L, 50L, null, 1L));
 
     assertThat(result.success()).isFalse();
     assertThat(result.code()).isEqualTo("BAD_REQUEST");
@@ -572,10 +580,7 @@ class UnitDebtToolsTest {
 
     assertThat(result.success()).isFalse();
     assertThat(result.code()).isEqualTo("BAD_REQUEST");
-    assertThat(result.message())
-        .contains("国库可支配")
-        .contains("money")
-        .contains("available=100");
+    assertThat(result.message()).contains("国库可支配").contains("money").contains("available=100");
     assertThat(head(world)).isEqualTo(1L);
     assertThat(revisionRowCount(world)).isEqualTo(rowsBefore);
   }
@@ -585,13 +590,19 @@ class UnitDebtToolsTest {
   void staleExpectedRevisionIsConflictWithTheRealHead() throws Exception {
     World world = issueWorld();
     ToolResult first =
-        execute(world, IssueDebtTool.NAME, issueArgs("u-1", LENDER_ID, MONEY, 1000L, 20L, 50L, null, 1L));
+        execute(
+            world,
+            IssueDebtTool.NAME,
+            issueArgs("u-1", LENDER_ID, MONEY, 1000L, 20L, 50L, null, 1L));
     assertThat(first.success()).as(first.message()).isTrue();
     assertThat(head(world)).isEqualTo(2L);
     long rowsAfterFirst = revisionRowCount(world);
 
     ToolResult stale =
-        execute(world, IssueDebtTool.NAME, issueArgs("u-1", LENDER_ID, MONEY, 1000L, 20L, 50L, null, 1L));
+        execute(
+            world,
+            IssueDebtTool.NAME,
+            issueArgs("u-1", LENDER_ID, MONEY, 1000L, 20L, 50L, null, 1L));
 
     assertThat(stale.success()).isFalse();
     assertThat(stale.code()).isEqualTo("CONFLICT");
@@ -613,7 +624,10 @@ class UnitDebtToolsTest {
     ToolContext gm = Shell.gmCaller();
     ToolContext context =
         new ToolContext(gm.caller(), gm.permissions(), gm.config(), arguments, gm.identity());
-    return world.shell().gmToolAuthorizer().execute(world.shell().toolRegistry(), toolName, context);
+    return world
+        .shell()
+        .gmToolAuthorizer()
+        .execute(world.shell().toolRegistry(), toolName, context);
   }
 
   private World issueWorld() {
@@ -647,8 +661,7 @@ class UnitDebtToolsTest {
         SdState.empty());
   }
 
-  private World startWorld(
-      String label, EconomyData economy, ActorData actors, SdState sd) {
+  private World startWorld(String label, EconomyData economy, ActorData actors, SdState sd) {
     Path storeDir = tempDir.resolve(label + "-" + worldSeq++);
     seedGenesis(storeDir, economy, actors, sd);
     ShellConfig base = ShellConfig.defaults(storeDir).withPorts(0, 0, 0);
@@ -700,8 +713,7 @@ class UnitDebtToolsTest {
                 "economy", new EconomySnapshot(ref(1L), T7, economy),
                 "actor", new ActorSnapshot(ref(1L), T7, actors)),
             InMemoryInfoSystem.empty());
-    new CheckpointStore(storeDir)
-        .write(ref(1L), CheckpointEncoder.encode(genesis, GENESIS_CODECS));
+    new CheckpointStore(storeDir).write(ref(1L), CheckpointEncoder.encode(genesis, GENESIS_CODECS));
   }
 
   private static PilotModel.Lender lender() {
@@ -721,8 +733,7 @@ class UnitDebtToolsTest {
         id, owner, counterparty, unit, "unit-debt", 20L, 50L, net, interestAccrued, status);
   }
 
-  private static EconomyData economyWith(
-      PilotModel.Lender lender, ClassFirstAccount... legs) {
+  private static EconomyData economyWith(PilotModel.Lender lender, ClassFirstAccount... legs) {
     LinkedHashMap<ClassFirstAccountId, ClassFirstAccount> accounts = new LinkedHashMap<>();
     for (ClassFirstAccount leg : legs) {
       accounts.put(leg.id(), leg);
@@ -805,7 +816,12 @@ class UnitDebtToolsTest {
   }
 
   private static Map<String, Object> repayArgs(
-      String unitId, String lenderId, String unit, long amount, boolean preview, long expectedRevision) {
+      String unitId,
+      String lenderId,
+      String unit,
+      long amount,
+      boolean preview,
+      long expectedRevision) {
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("unitId", unitId);
     args.put("lenderId", lenderId);

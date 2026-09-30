@@ -70,7 +70,6 @@ import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
-import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -84,16 +83,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code simos.unit.raiseUnit} 的**真 Shell 端到端**（收尾期 T4b）：preview 零写入、apply 一批 = 一条 revision、批内四片命令的类型与顺序、
- * 新单位逐值、★★ 守恒式（家户粮/钱减少 == 新单位国库增加 == 请求量；Σ各批次被抓人数 == member == 请求人力）、★ 不丢失（被抽批次的
- * {@code ageDays}/{@code anchorTick}/{@code stress} 与税前逐值一致、未涉及批次整条原样）、{@code sd.PutInfo} 落点、失败零 revision。
+ * {@code simos.unit.raiseUnit} 的**真 Shell 端到端**（收尾期 T4b）：preview 零写入、apply 一批 = 一条
+ * revision、批内四片命令的类型与顺序、 新单位逐值、★★ 守恒式（家户粮/钱减少 == 新单位国库增加 == 请求量；Σ各批次被抓人数 == member == 请求人力）、★
+ * 不丢失（被抽批次的 {@code ageDays}/{@code anchorTick}/{@code stress} 与税前逐值一致、未涉及批次整条原样）、{@code sd.PutInfo}
+ * 落点、失败零 revision。
  *
- * <p>★ <b>批内顺序怎么读</b>：批的 revision 行 {@code command_type} 恒为 {@code core.Batch}（composition 不落盘）⇒ 用一条**必然撞 id** 的
- * {@code sd.PutInfo} 把整批逼成 {@code REJECTED}，再读工具结果里 {@code submission.commands[i].type} —— 那是真 {@code submitBatch}
- * 收到的同一批（按批内序），不是复制出来的清单；同时顺带钉住"整批拒 ⇒ 零 revision"。
+ * <p>★ <b>批内顺序怎么读</b>：批的 revision 行 {@code command_type} 恒为 {@code core.Batch}（composition 不落盘）⇒
+ * 用一条**必然撞 id** 的 {@code sd.PutInfo} 把整批逼成 {@code REJECTED}，再读工具结果里 {@code
+ * submission.commands[i].type} —— 那是真 {@code submitBatch} 收到的同一批（按批内序），不是复制出来的清单；同时顺带钉住"整批拒 ⇒ 零
+ * revision"。
  *
- * <p>★ 夹具 = 手搭创世 checkpoint（map/social/unit/sd/economy/actor 六切片）：region 覆盖 {@code at}、家户账、非 0 stress 的批次、且
- * 无 {@code u-new}；工具本身一步都没绕（真 {@code CoreSimos.submitBatch}）。
+ * <p>★ 夹具 = 手搭创世 checkpoint（map/social/unit/sd/economy/actor 六切片）：region 覆盖 {@code at}、家户账、非 0
+ * stress 的批次、且 无 {@code u-new}；工具本身一步都没绕（真 {@code CoreSimos.submitBatch}）。
  */
 class RaiseUnitToolTest {
 
@@ -125,6 +126,7 @@ class RaiseUnitToolTest {
 
   /** 被抽批次的非 0 保真样本：锚点 tick 也一个非 0。 */
   private static final long G1_AGE_DAYS = 20L * 365L;
+
   private static final long G1_ANCHOR_TICK = 0L;
   private static final long G1_STRESS = 4L;
   private static final long G2_AGE_DAYS = 30L * 365L;
@@ -325,8 +327,7 @@ class RaiseUnitToolTest {
         .as("不得给新单位建空国库账（没有 AdjustAccounts 就没有国库条目）")
         .noneMatch(
             key ->
-                key.owner().kind() == ActorKind.UNIT
-                    && key.owner().id().equals(NEW_UNIT.value()));
+                key.owner().kind() == ActorKind.UNIT && key.owner().id().equals(NEW_UNIT.value()));
     assertInfoRecord(after, 0L, 0L, 0, 0, 2);
   }
 
@@ -357,15 +358,12 @@ class RaiseUnitToolTest {
     assertThat(created.parent().valueAt(T7)).as("parent 原样进 CreateUnit 载荷").contains(U_PARENT);
     assertThat(created.attached().valueAt(T7)).as("有父 ⇒ 编入该支").isTrue();
     assertThat(created.position().valueAt(T7)).contains(H11);
-    assertThat(unitState(after).units().get(U_PARENT))
-        .as("既有父单位逐字段不得被改写")
-        .isEqualTo(parentBefore);
+    assertThat(unitState(after).units().get(U_PARENT)).as("既有父单位逐字段不得被改写").isEqualTo(parentBefore);
   }
 
   /**
-   * ★ <b>批内顺序的真读数</b>：先用通用写工具种一条显式 id = {@value #DECOY_INFO_ID} 的 decoy INFO；组军的
-   * {@code sd.PutInfo} 合成 id 正好是同一个 ⇒ 必然拒 ⇒ 整批 {@code REJECTED}。从结果读四条命令类型（按批内序），并钉住整批拒
-   * ⇒ 四切片零变化、head / revision 行数不动。
+   * ★ <b>批内顺序的真读数</b>：先用通用写工具种一条显式 id = {@value #DECOY_INFO_ID} 的 decoy INFO；组军的 {@code sd.PutInfo}
+   * 合成 id 正好是同一个 ⇒ 必然拒 ⇒ 整批 {@code REJECTED}。从结果读四条命令类型（按批内序），并钉住整批拒 ⇒ 四切片零变化、head / revision 行数不动。
    */
   @Test
   void rejectedBatchExposesTheExactCommandOrderAndLeavesEverythingUntouched() throws Exception {
@@ -416,9 +414,7 @@ class RaiseUnitToolTest {
     ToolResult tools = call(withTools);
     assertThat(tools.success()).as(tools.message()).isFalse();
     assertThat(tools.code()).isEqualTo("BAD_REQUEST");
-    assertThat(tools.message())
-        .contains("载荷不支持 tools 键")
-        .contains("本批不做用具来源");
+    assertThat(tools.message()).contains("载荷不支持 tools 键").contains("本批不做用具来源");
     assertStillZeroRevision(headBefore, rowsBefore);
 
     ToolResult atOutside =
@@ -442,7 +438,20 @@ class RaiseUnitToolTest {
     assertStillZeroRevision(headBefore, rowsBefore);
 
     ToolResult grainShort =
-        call(raiseArgs(NEW_UNIT.value(), NATION.value(), H11, 40L, 121L, 100L, 4, 700, equipment(), null, true, -1L));
+        call(
+            raiseArgs(
+                NEW_UNIT.value(),
+                NATION.value(),
+                H11,
+                40L,
+                121L,
+                100L,
+                4,
+                700,
+                equipment(),
+                null,
+                true,
+                -1L));
     assertThat(grainShort.success()).isFalse();
     assertThat(grainShort.code()).isEqualTo("BAD_REQUEST");
     assertThat(grainShort.message())
@@ -453,7 +462,20 @@ class RaiseUnitToolTest {
     assertStillZeroRevision(headBefore, rowsBefore);
 
     ToolResult moneyShort =
-        call(raiseArgs(NEW_UNIT.value(), NATION.value(), H11, 40L, 120L, 131L, 4, 700, equipment(), null, true, -1L));
+        call(
+            raiseArgs(
+                NEW_UNIT.value(),
+                NATION.value(),
+                H11,
+                40L,
+                120L,
+                131L,
+                4,
+                700,
+                equipment(),
+                null,
+                true,
+                -1L));
     assertThat(moneyShort.success()).isFalse();
     assertThat(moneyShort.code()).isEqualTo("BAD_REQUEST");
     assertThat(moneyShort.message())
@@ -464,7 +486,20 @@ class RaiseUnitToolTest {
     assertStillZeroRevision(headBefore, rowsBefore);
 
     ToolResult manpowerShort =
-        call(raiseArgs(NEW_UNIT.value(), NATION.value(), H11, 51L, 120L, 100L, 4, 700, equipment(), null, true, -1L));
+        call(
+            raiseArgs(
+                NEW_UNIT.value(),
+                NATION.value(),
+                H11,
+                51L,
+                120L,
+                100L,
+                4,
+                700,
+                equipment(),
+                null,
+                true,
+                -1L));
     assertThat(manpowerShort.success()).isFalse();
     assertThat(manpowerShort.code()).isEqualTo("BAD_REQUEST");
     assertThat(manpowerShort.message())
@@ -475,7 +510,20 @@ class RaiseUnitToolTest {
     assertStillZeroRevision(headBefore, rowsBefore);
 
     ToolResult existing =
-        call(raiseArgs(U_PARENT.value(), NATION.value(), H11, 40L, 120L, 100L, 4, 700, equipment(), null, true, -1L));
+        call(
+            raiseArgs(
+                U_PARENT.value(),
+                NATION.value(),
+                H11,
+                40L,
+                120L,
+                100L,
+                4,
+                700,
+                equipment(),
+                null,
+                true,
+                -1L));
     assertThat(existing.success()).isFalse();
     assertThat(existing.code()).isEqualTo("BAD_REQUEST");
     assertThat(existing.message()).contains("单位 id 已存在").contains(U_PARENT.value());
@@ -513,8 +561,7 @@ class RaiseUnitToolTest {
   }
 
   /** ★ 守恒式：Σ家户粮减少 == 国库粮增加 == 请求粮；钱同款；逐户差额钉在哪一户、扣了多少。 */
-  private static void assertGrainAndMoneyConservation(
-      ActorData before, ActorData after) {
+  private static void assertGrainAndMoneyConservation(ActorData before, ActorData after) {
     long grainReduction = 0L;
     long moneyReduction = 0L;
     for (GoodsAccountKey key : before.accounts().keySet()) {
@@ -531,33 +578,17 @@ class RaiseUnitToolTest {
         moneyOf(after, new GoodsAccountKey(NEW_TREASURY, H11))
             - moneyOf(before, new GoodsAccountKey(NEW_TREASURY, H11));
 
-    assertThat(grainReduction)
-        .as("Σ家户粮减少 == 请求粮")
-        .isEqualTo(120L);
-    assertThat(treasuryGrainIncrease)
-        .as("新单位国库粮 == 请求粮")
-        .isEqualTo(120L);
-    assertThat(grainReduction)
-        .as("守恒式：Σ家户粮减少 == 新单位国库粮")
-        .isEqualTo(treasuryGrainIncrease);
+    assertThat(grainReduction).as("Σ家户粮减少 == 请求粮").isEqualTo(120L);
+    assertThat(treasuryGrainIncrease).as("新单位国库粮 == 请求粮").isEqualTo(120L);
+    assertThat(grainReduction).as("守恒式：Σ家户粮减少 == 新单位国库粮").isEqualTo(treasuryGrainIncrease);
     assertThat(moneyReduction).as("Σ家户钱减少 == 请求钱").isEqualTo(100L);
     assertThat(treasuryMoneyIncrease).as("新单位国库钱 == 请求钱").isEqualTo(100L);
-    assertThat(moneyReduction)
-        .as("守恒式：Σ家户钱减少 == 新单位国库钱")
-        .isEqualTo(treasuryMoneyIncrease);
+    assertThat(moneyReduction).as("守恒式：Σ家户钱减少 == 新单位国库钱").isEqualTo(treasuryMoneyIncrease);
 
-    assertThat(grainOf(after, new GoodsAccountKey(HH1, H11)))
-        .as("hh-1 粮：100−80")
-        .isEqualTo(20L);
-    assertThat(grainOf(after, new GoodsAccountKey(HH2, H12)))
-        .as("hh-2 粮：40−40（落到 0 保留）")
-        .isZero();
-    assertThat(moneyOf(after, new GoodsAccountKey(HH2, H12)))
-        .as("hh-2 钱：80−80")
-        .isZero();
-    assertThat(moneyOf(after, new GoodsAccountKey(HH1, H11)))
-        .as("hh-1 钱：50−20")
-        .isEqualTo(30L);
+    assertThat(grainOf(after, new GoodsAccountKey(HH1, H11))).as("hh-1 粮：100−80").isEqualTo(20L);
+    assertThat(grainOf(after, new GoodsAccountKey(HH2, H12))).as("hh-2 粮：40−40（落到 0 保留）").isZero();
+    assertThat(moneyOf(after, new GoodsAccountKey(HH2, H12))).as("hh-2 钱：80−80").isZero();
+    assertThat(moneyOf(after, new GoodsAccountKey(HH1, H11))).as("hh-1 钱：50−20").isEqualTo(30L);
     assertThat(after.accounts().get(new GoodsAccountKey(HH1, H11)).frozenBalances())
         .as("冻结额不许被抽走（粮冻结 20 原样）")
         .containsEntry(GRAIN, 20L);
@@ -588,9 +619,7 @@ class RaiseUnitToolTest {
             .as("stress 保真（不得静默清零）")
             .isEqualTo(beforeGroup.physiologicalStress());
       } else {
-        assertThat(afterGroup)
-            .as("未涉及批次逐字段原样: %s", id.value())
-            .isEqualTo(beforeGroup);
+        assertThat(afterGroup).as("未涉及批次逐字段原样: %s", id.value()).isEqualTo(beforeGroup);
       }
     }
 
@@ -615,7 +644,9 @@ class RaiseUnitToolTest {
     assertThat(G2_STRESS).as("样本压力必须非 0（假绿防线）").isNotZero();
   }
 
-  /** {@code sd.PutInfo} 逐值：address=unit:&lt;newUnitId&gt;、key=raiseUnit、value=JSON 字符串、tick=当前世界日。 */
+  /**
+   * {@code sd.PutInfo} 逐值：address=unit:&lt;newUnitId&gt;、key=raiseUnit、value=JSON 字符串、tick=当前世界日。
+   */
   private static void assertInfoRecord(SimulationState after) throws Exception {
     assertInfoRecord(after, 120L, 100L, 2, 2, 2);
   }
@@ -766,12 +797,7 @@ class RaiseUnitToolTest {
                 "economy", new EconomySnapshot(ref(1L), T7, EconomyData.empty()),
                 "actor", new ActorSnapshot(ref(1L), T7, actors())),
             InMemoryInfoSystem.empty());
-    new CheckpointStore(tempDir)
-        .write(
-            ref(1L),
-            CheckpointEncoder.encode(
-                genesis,
-                GENESIS_CODECS));
+    new CheckpointStore(tempDir).write(ref(1L), CheckpointEncoder.encode(genesis, GENESIS_CODECS));
   }
 
   private static UnitState unitState() {
@@ -817,12 +843,8 @@ class RaiseUnitToolTest {
 
   private static SocialData social() {
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
-    groups.put(
-        lot("g1"),
-        group("g1", H11, Sex.MALE, 30L, G1_AGE_DAYS, G1_ANCHOR_TICK, G1_STRESS));
-    groups.put(
-        lot("g2"),
-        group("g2", H12, Sex.MALE, 20L, G2_AGE_DAYS, G2_ANCHOR_TICK, G2_STRESS));
+    groups.put(lot("g1"), group("g1", H11, Sex.MALE, 30L, G1_AGE_DAYS, G1_ANCHOR_TICK, G1_STRESS));
+    groups.put(lot("g2"), group("g2", H12, Sex.MALE, 20L, G2_AGE_DAYS, G2_ANCHOR_TICK, G2_STRESS));
     groups.put(lot("g-female"), group("g-female", H11, Sex.FEMALE, 1000L, 20L * 365L, 0L, 1L));
     groups.put(lot("g-child"), group("g-child", H11, Sex.MALE, 100L, 10L * 365L, 0L, 2L));
     groups.put(lot("g-elder"), group("g-elder", H12, Sex.MALE, 7L, 60L * 365L, 0L, 3L));

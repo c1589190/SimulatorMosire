@@ -43,13 +43,13 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link UnitDebtPlan} 纯推导（收尾期 T4a · 地方债工具面）：issue / repay 各自的逐条拒因、happy Plan 数字、确定性。不碰
- * {@code ToolContext} / {@code CoreSimos}（那是 {@code UnitDebtToolsTest} 的真 Shell 面）。
+ * {@link UnitDebtPlan} 纯推导（收尾期 T4a · 地方债工具面）：issue / repay 各自的逐条拒因、happy Plan 数字、确定性。不碰 {@code
+ * ToolContext} / {@code CoreSimos}（那是 {@code UnitDebtToolsTest} 的真 Shell 面）。
  *
- * <p>★ 判别力：happy 路径把 {@code debtBefore/After}、{@code lenderAvailableBefore/After}、
- * {@code outstandingBefore/After}、{@code treasuryAvailableBefore/After}（<b>余额 − 冻结</b>）与
- * {@code treasuryLocation} 逐值钉住——"少算一次扣款 / 把负数负债当正数读 / 忘减冻结 / 落点取错"都会当场红。拒因断言带具名 id、数字与指路词；
- * 状态损坏（镜像腿缺失 / 不对称）必须 {@link IllegalStateException}，不得被折成参数问题。
+ * <p>★ 判别力：happy 路径把 {@code debtBefore/After}、{@code lenderAvailableBefore/After}、 {@code
+ * outstandingBefore/After}、{@code treasuryAvailableBefore/After}（<b>余额 − 冻结</b>）与 {@code
+ * treasuryLocation} 逐值钉住——"少算一次扣款 / 把负数负债当正数读 / 忘减冻结 / 落点取错"都会当场红。拒因断言带具名 id、数字与指路词； 状态损坏（镜像腿缺失 /
+ * 不对称）必须 {@link IllegalStateException}，不得被折成参数问题。
  */
 class UnitDebtPlanTest {
 
@@ -70,8 +70,7 @@ class UnitDebtPlanTest {
   private static final ActorRef TREASURY = new ActorRef(ActorKind.UNIT, "u-1");
 
   private static final PilotModel.Lender LENDER =
-      new PilotModel.Lender(
-          LENDER_ID, 10_000L, Map.of(GRAIN, 500L, "cloth", 7L), 20L, 60L, 1000L);
+      new PilotModel.Lender(LENDER_ID, 10_000L, Map.of(GRAIN, 500L, "cloth", 7L), 20L, 60L, 1000L);
   private static final PilotModel.Lender OTHER_LENDER =
       new PilotModel.Lender(OTHER_LENDER_ID, 1L, Map.of(), 1L, 2L, 3L);
 
@@ -155,13 +154,16 @@ class UnitDebtPlanTest {
     SimulationState state = issueState(unitAt(H11), economyWith(LENDER), ActorData.empty());
 
     assertThatThrownBy(
-            () -> UnitDebtPlan.planIssue(state, "u-1", LENDER_ID, MONEY, 10_001L, 20L, 50L, "unit-debt"))
+            () ->
+                UnitDebtPlan.planIssue(
+                    state, "u-1", LENDER_ID, MONEY, 10_001L, 20L, 50L, "unit-debt"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("放贷方可贷 money 不足")
         .hasMessageContaining("principal=10001")
         .hasMessageContaining("available=10000");
     assertThatThrownBy(
-            () -> UnitDebtPlan.planIssue(state, "u-1", LENDER_ID, GRAIN, 501L, 20L, 50L, "unit-debt"))
+            () ->
+                UnitDebtPlan.planIssue(state, "u-1", LENDER_ID, GRAIN, 501L, 20L, 50L, "unit-debt"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("放贷方可贷 grain 不足")
         .hasMessageContaining("principal=501")
@@ -174,7 +176,14 @@ class UnitDebtPlanTest {
         economyWith(
             LENDER,
             leg(UNIT_MONEY_ID, "u-1", LENDER_ID, MONEY, -500L, 0L, PilotModel.AccountStatus.ACTIVE),
-            leg(MIRROR_MONEY_ID, LENDER_ID, "u-1", MONEY, 500L, 0L, PilotModel.AccountStatus.ACTIVE));
+            leg(
+                MIRROR_MONEY_ID,
+                LENDER_ID,
+                "u-1",
+                MONEY,
+                500L,
+                0L,
+                PilotModel.AccountStatus.ACTIVE));
 
     assertThatThrownBy(
             () ->
@@ -198,7 +207,14 @@ class UnitDebtPlanTest {
     EconomyData economy =
         economyWith(
             LENDER,
-            leg(MIRROR_MONEY_ID, LENDER_ID, "u-1", MONEY, 500L, 0L, PilotModel.AccountStatus.ACTIVE));
+            leg(
+                MIRROR_MONEY_ID,
+                LENDER_ID,
+                "u-1",
+                MONEY,
+                500L,
+                0L,
+                PilotModel.AccountStatus.ACTIVE));
 
     assertThatThrownBy(
             () ->
@@ -414,8 +430,7 @@ class UnitDebtPlanTest {
                     0L,
                     PilotModel.AccountStatus.ACTIVE)),
             treasury(1200L, 0L, 400L, 0L));
-    assertThatThrownBy(
-            () -> UnitDebtPlan.planRepay(missingMirror, "u-1", LENDER_ID, MONEY, 100L))
+    assertThatThrownBy(() -> UnitDebtPlan.planRepay(missingMirror, "u-1", LENDER_ID, MONEY, 100L))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("状态损坏")
         .hasMessageContaining("镜像腿")
@@ -457,8 +472,7 @@ class UnitDebtPlanTest {
   @Test
   void partialRepayPlanCarriesEveryNumber() {
     UnitDebtPlan.RepayPlan plan =
-        UnitDebtPlan.planRepay(
-            repayState(1000L, 1200L, 50L), "u-1", LENDER_ID, MONEY, 400L);
+        UnitDebtPlan.planRepay(repayState(1000L, 1200L, 50L), "u-1", LENDER_ID, MONEY, 400L);
 
     assertThat(plan.unitId()).isEqualTo("u-1");
     assertThat(plan.lenderId()).isEqualTo(LENDER_ID);
@@ -478,8 +492,7 @@ class UnitDebtPlanTest {
   @Test
   void fullRepayPlanSettlesOutstandingToZero() {
     UnitDebtPlan.RepayPlan plan =
-        UnitDebtPlan.planRepay(
-            repayState(1000L, 1200L, 50L), "u-1", LENDER_ID, MONEY, 1000L);
+        UnitDebtPlan.planRepay(repayState(1000L, 1200L, 50L), "u-1", LENDER_ID, MONEY, 1000L);
 
     assertThat(plan.outstandingBefore()).isEqualTo(1000L);
     assertThat(plan.outstandingAfter()).as("全额 ⇒ 0 = 视图 settled").isZero();
@@ -494,14 +507,7 @@ class UnitDebtPlanTest {
     EconomyData economy =
         economyWith(
             LENDER,
-            leg(
-                GRAIN_DEBT_ID,
-                "u-1",
-                LENDER_ID,
-                GRAIN,
-                -200L,
-                0L,
-                PilotModel.AccountStatus.ACTIVE),
+            leg(GRAIN_DEBT_ID, "u-1", LENDER_ID, GRAIN, -200L, 0L, PilotModel.AccountStatus.ACTIVE),
             leg(
                 GRAIN_MIRROR_ID,
                 LENDER_ID,
@@ -510,11 +516,9 @@ class UnitDebtPlanTest {
                 200L,
                 0L,
                 PilotModel.AccountStatus.ACTIVE));
-    SimulationState state =
-        state(unitState(unitAt(H11)), economy, treasury(1200L, 50L, 400L, 20L));
+    SimulationState state = state(unitState(unitAt(H11)), economy, treasury(1200L, 50L, 400L, 20L));
 
-    UnitDebtPlan.RepayPlan plan =
-        UnitDebtPlan.planRepay(state, "u-1", LENDER_ID, GRAIN, 120L);
+    UnitDebtPlan.RepayPlan plan = UnitDebtPlan.planRepay(state, "u-1", LENDER_ID, GRAIN, 120L);
 
     assertThat(plan.outstandingBefore()).isEqualTo(200L);
     assertThat(plan.outstandingAfter()).as("未结清（非全额）").isEqualTo(80L);
@@ -609,8 +613,7 @@ class UnitDebtPlanTest {
     return state(unitState(unit), economy, actors);
   }
 
-  private static SimulationState state(
-      UnitState units, EconomyData economy, ActorData actors) {
+  private static SimulationState state(UnitState units, EconomyData economy, ActorData actors) {
     return new SimulationState(
         new StateMeta(REF, T7),
         Map.of(
@@ -657,8 +660,7 @@ class UnitDebtPlanTest {
         id, owner, counterparty, unit, "unit-debt", 20L, 50L, net, interestAccrued, status);
   }
 
-  private static ActorData treasury(
-      long silver, long frozenSilver, long grain, long frozenGrain) {
+  private static ActorData treasury(long silver, long frozenSilver, long grain, long frozenGrain) {
     GoodsAccount account =
         new GoodsAccount(
             new GoodsAccountKey(TREASURY, H11),

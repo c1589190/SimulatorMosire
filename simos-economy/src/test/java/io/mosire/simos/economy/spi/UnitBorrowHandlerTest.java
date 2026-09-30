@@ -35,12 +35,12 @@ import org.junit.jupiter.api.Test;
  * 路径的逐值账（放贷方余额、双边腿十字段、变更集过线往返）、SETTLED 身份重开、逐条具名拒因、以及"镜像腿非 0 = 状态损坏 ⇒ {@link
  * IllegalStateException}（不是 {@code Rejected}）"。
  *
- * <p>★ 判别力：happy 路径把 <b>lender 余额与 goods 表</b>、<b>两条腿的 id/owner/counterparty/unit/terms/rate/due/net/
- * interestAccrued/status 全部逐值</b>钉住；"少扣一笔 / 记错方向 / terms 缺省没生效 / 把 SETTLED 的旧字段抄过来"都会当场红。拒因断言带
- * principal / available / 净额等数字与指路词。
+ * <p>★ 判别力：happy 路径把 <b>lender 余额与 goods 表</b>、<b>两条腿的
+ * id/owner/counterparty/unit/terms/rate/due/net/ interestAccrued/status 全部逐值</b>钉住；"少扣一笔 / 记错方向 /
+ * terms 缺省没生效 / 把 SETTLED 的旧字段抄过来"都会当场红。拒因断言带 principal / available / 净额等数字与指路词。
  *
- * <p>★ 夹具 = 只含 {@code classFirst}（lenders + 可选 legs）的 {@link EconomyData}；tick 由
- * {@link SimulationState#meta()} 提供（handler 读它判 due）。不碰 app / Shell。
+ * <p>★ 夹具 = 只含 {@code classFirst}（lenders + 可选 legs）的 {@link EconomyData}；tick 由 {@link
+ * SimulationState#meta()} 提供（handler 读它判 due）。不碰 app / Shell。
  */
 class UnitBorrowHandlerTest {
 
@@ -65,8 +65,7 @@ class UnitBorrowHandlerTest {
       ClassFirstAccountId.idOf(LENDER_ID, UNIT_ID, GRAIN);
 
   private static final PilotModel.Lender LENDER =
-      new PilotModel.Lender(
-          LENDER_ID, 10_000L, Map.of(GRAIN, 500L, "cloth", 7L), 20L, 60L, 1000L);
+      new PilotModel.Lender(LENDER_ID, 10_000L, Map.of(GRAIN, 500L, "cloth", 7L), 20L, 60L, 1000L);
 
   // ── 命令面 ──────────────────────────────────────────────────────────────────────────
 
@@ -102,11 +101,15 @@ class UnitBorrowHandlerTest {
     assertThatThrownBy(() -> HANDLER.targetPaths("Map1", "{}"))
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(
-            () -> HANDLER.targetPaths("Map1", borrowJson(UNIT_ID, LENDER_ID, "silver", 100L, 20L, 50L, null)))
+            () ->
+                HANDLER.targetPaths(
+                    "Map1", borrowJson(UNIT_ID, LENDER_ID, "silver", 100L, 20L, 50L, null)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unit");
     assertThatThrownBy(
-            () -> HANDLER.targetPaths("Map1", borrowJson(UNIT_ID, LENDER_ID, MONEY, 0L, 20L, 50L, null)))
+            () ->
+                HANDLER.targetPaths(
+                    "Map1", borrowJson(UNIT_ID, LENDER_ID, MONEY, 0L, 20L, 50L, null)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("principal");
   }
@@ -120,7 +123,8 @@ class UnitBorrowHandlerTest {
   @Test
   void borrowMoneyDebitsLenderAndLandsBothLegsWithDefaultTerms() {
     EconomyData target =
-        apply(borrowJson(UNIT_ID, LENDER_ID, MONEY, 2000L, 20L, 50L, null), economyWith(LENDER), 10L);
+        apply(
+            borrowJson(UNIT_ID, LENDER_ID, MONEY, 2000L, 20L, 50L, null), economyWith(LENDER), 10L);
 
     PilotModel.Lender after = lenderOf(target);
     assertThat(after.id()).isEqualTo(LENDER_ID);
@@ -133,21 +137,37 @@ class UnitBorrowHandlerTest {
     ClassFirstAccount debt = target.classFirst().accounts().get(DEBT_MONEY_ID);
     ClassFirstAccount mirror = target.classFirst().accounts().get(MIRROR_MONEY_ID);
     assertLeg(
-        debt, DEBT_MONEY_ID, UNIT_ID, LENDER_ID, MONEY, "unit-debt", 20L, 50L, -2000L, 0L,
+        debt,
+        DEBT_MONEY_ID,
+        UNIT_ID,
+        LENDER_ID,
+        MONEY,
+        "unit-debt",
+        20L,
+        50L,
+        -2000L,
+        0L,
         PilotModel.AccountStatus.ACTIVE);
     assertLeg(
-        mirror, MIRROR_MONEY_ID, LENDER_ID, UNIT_ID, MONEY, "unit-debt", 20L, 50L, 2000L, 0L,
+        mirror,
+        MIRROR_MONEY_ID,
+        LENDER_ID,
+        UNIT_ID,
+        MONEY,
+        "unit-debt",
+        20L,
+        50L,
+        2000L,
+        0L,
         PilotModel.AccountStatus.ACTIVE);
-    assertThat(debt.cumulativeNet() + mirror.cumulativeNet())
-        .as("双边账户 Σ=0")
-        .isZero();
+    assertThat(debt.cumulativeNet() + mirror.cumulativeNet()).as("双边账户 Σ=0").isZero();
     assertThat(Math.abs(debt.cumulativeNet())).as("借款腿绝对值 == principal").isEqualTo(2000L);
     assertThat(target.classFirst().accounts()).as("恰好落两条腿").hasSize(2);
   }
 
   /**
-   * ★ grain happy：放贷方 goods.grain 500→100（cloth 等其它键原样保留）、借款腿 / 镜像腿逐值、terms 显式
-   * {@code harvest-loan} 逐字落账（不吃缺省）。
+   * ★ grain happy：放贷方 goods.grain 500→100（cloth 等其它键原样保留）、借款腿 / 镜像腿逐值、terms 显式 {@code harvest-loan}
+   * 逐字落账（不吃缺省）。
    */
   @Test
   void borrowGrainDebitsGoodsAndLandsBothLegsWithExplicitTerms() {
@@ -168,10 +188,28 @@ class UnitBorrowHandlerTest {
     ClassFirstAccount debt = target.classFirst().accounts().get(DEBT_GRAIN_ID);
     ClassFirstAccount mirror = target.classFirst().accounts().get(MIRROR_GRAIN_ID);
     assertLeg(
-        debt, DEBT_GRAIN_ID, UNIT_ID, LENDER_ID, GRAIN, "harvest-loan", 7L, 44L, -400L, 0L,
+        debt,
+        DEBT_GRAIN_ID,
+        UNIT_ID,
+        LENDER_ID,
+        GRAIN,
+        "harvest-loan",
+        7L,
+        44L,
+        -400L,
+        0L,
         PilotModel.AccountStatus.ACTIVE);
     assertLeg(
-        mirror, MIRROR_GRAIN_ID, LENDER_ID, UNIT_ID, GRAIN, "harvest-loan", 7L, 44L, 400L, 0L,
+        mirror,
+        MIRROR_GRAIN_ID,
+        LENDER_ID,
+        UNIT_ID,
+        GRAIN,
+        "harvest-loan",
+        7L,
+        44L,
+        400L,
+        0L,
         PilotModel.AccountStatus.ACTIVE);
     assertThat(debt.cumulativeNet() + mirror.cumulativeNet()).isZero();
   }
@@ -196,10 +234,24 @@ class UnitBorrowHandlerTest {
         economyWith(
             LENDER,
             leg(
-                UNIT_ID, LENDER_ID, MONEY, "old-terms", 999L, 5L, 0L, 777L,
+                UNIT_ID,
+                LENDER_ID,
+                MONEY,
+                "old-terms",
+                999L,
+                5L,
+                0L,
+                777L,
                 PilotModel.AccountStatus.SETTLED),
             leg(
-                LENDER_ID, UNIT_ID, MONEY, "old-mirror-terms", 998L, 6L, 0L, 888L,
+                LENDER_ID,
+                UNIT_ID,
+                MONEY,
+                "old-mirror-terms",
+                998L,
+                6L,
+                0L,
+                888L,
                 PilotModel.AccountStatus.SETTLED));
 
     EconomyData target =
@@ -207,11 +259,27 @@ class UnitBorrowHandlerTest {
 
     assertLeg(
         target.classFirst().accounts().get(DEBT_MONEY_ID),
-        DEBT_MONEY_ID, UNIT_ID, LENDER_ID, MONEY, "new-terms", 13L, 44L, -700L, 0L,
+        DEBT_MONEY_ID,
+        UNIT_ID,
+        LENDER_ID,
+        MONEY,
+        "new-terms",
+        13L,
+        44L,
+        -700L,
+        0L,
         PilotModel.AccountStatus.ACTIVE);
     assertLeg(
         target.classFirst().accounts().get(MIRROR_MONEY_ID),
-        MIRROR_MONEY_ID, LENDER_ID, UNIT_ID, MONEY, "new-terms", 13L, 44L, 700L, 0L,
+        MIRROR_MONEY_ID,
+        LENDER_ID,
+        UNIT_ID,
+        MONEY,
+        "new-terms",
+        13L,
+        44L,
+        700L,
+        0L,
         PilotModel.AccountStatus.ACTIVE);
   }
 
@@ -219,32 +287,31 @@ class UnitBorrowHandlerTest {
 
   @Test
   void rejectsWhenClassFirstIsEmpty() {
-    String reason = rejection(borrowJson(UNIT_ID, LENDER_ID, MONEY, 100L, 20L, 50L, null), EconomyData.empty(), 10L);
+    String reason =
+        rejection(
+            borrowJson(UNIT_ID, LENDER_ID, MONEY, 100L, 20L, 50L, null), EconomyData.empty(), 10L);
 
     assertThat(reason).contains("economy.UnitBorrow").contains("只在 class-first 世界可用");
   }
 
   @Test
   void rejectsUnknownLenderAndListsExistingIds() {
-    PilotModel.Lender other =
-        new PilotModel.Lender("OTHER", 100L, Map.of(), 1L, 2L, 3L);
-    EconomyData base =
-        economy(
-            classFirst(Map.of(), Map.of(ExternalLenderId.of("OTHER"), other)));
+    PilotModel.Lender other = new PilotModel.Lender("OTHER", 100L, Map.of(), 1L, 2L, 3L);
+    EconomyData base = economy(classFirst(Map.of(), Map.of(ExternalLenderId.of("OTHER"), other)));
 
-    String reason = rejection(borrowJson(UNIT_ID, LENDER_ID, MONEY, 100L, 20L, 50L, null), base, 10L);
+    String reason =
+        rejection(borrowJson(UNIT_ID, LENDER_ID, MONEY, 100L, 20L, 50L, null), base, 10L);
 
-    assertThat(reason)
-        .contains("放贷方不存在")
-        .contains(LENDER_ID)
-        .contains("现有放贷方")
-        .contains("OTHER");
+    assertThat(reason).contains("放贷方不存在").contains(LENDER_ID).contains("现有放贷方").contains("OTHER");
   }
 
   @Test
   void rejectsUnknownUnitVocabulary() {
     String reason =
-        rejection(borrowJson(UNIT_ID, LENDER_ID, "silver", 100L, 20L, 50L, null), economyWith(LENDER), 10L);
+        rejection(
+            borrowJson(UNIT_ID, LENDER_ID, "silver", 100L, 20L, 50L, null),
+            economyWith(LENDER),
+            10L);
 
     assertThat(reason).contains("unit").contains("silver").contains("money").contains("grain");
   }
@@ -252,7 +319,8 @@ class UnitBorrowHandlerTest {
   @Test
   void rejectsPrincipalBelowOne() {
     String reason =
-        rejection(borrowJson(UNIT_ID, LENDER_ID, MONEY, 0L, 20L, 50L, null), economyWith(LENDER), 10L);
+        rejection(
+            borrowJson(UNIT_ID, LENDER_ID, MONEY, 0L, 20L, 50L, null), economyWith(LENDER), 10L);
 
     assertThat(reason).contains("principal").contains(">= 1").contains("0");
   }
@@ -260,7 +328,8 @@ class UnitBorrowHandlerTest {
   @Test
   void rejectsNegativeInterestRate() {
     String reason =
-        rejection(borrowJson(UNIT_ID, LENDER_ID, MONEY, 100L, -1L, 50L, null), economyWith(LENDER), 10L);
+        rejection(
+            borrowJson(UNIT_ID, LENDER_ID, MONEY, 100L, -1L, 50L, null), economyWith(LENDER), 10L);
 
     assertThat(reason).contains("interestRatePerMille").contains(">= 0").contains("-1");
   }
@@ -268,7 +337,8 @@ class UnitBorrowHandlerTest {
   @Test
   void rejectsNextDueTickNotInTheFuture() {
     String reason =
-        rejection(borrowJson(UNIT_ID, LENDER_ID, MONEY, 100L, 20L, 50L, null), economyWith(LENDER), 50L);
+        rejection(
+            borrowJson(UNIT_ID, LENDER_ID, MONEY, 100L, 20L, 50L, null), economyWith(LENDER), 50L);
 
     assertThat(reason)
         .contains("nextDueTick 必须大于当前 tick")
@@ -280,7 +350,9 @@ class UnitBorrowHandlerTest {
   void rejectsMoneyPrincipalAboveLendableAmount() {
     String reason =
         rejection(
-            borrowJson(UNIT_ID, LENDER_ID, MONEY, 10_001L, 20L, 50L, null), economyWith(LENDER), 10L);
+            borrowJson(UNIT_ID, LENDER_ID, MONEY, 10_001L, 20L, 50L, null),
+            economyWith(LENDER),
+            10L);
 
     assertThat(reason)
         .contains("放贷方可贷 money 不足")
@@ -306,13 +378,28 @@ class UnitBorrowHandlerTest {
         economyWith(
             LENDER,
             leg(
-                UNIT_ID, LENDER_ID, MONEY, "unit-debt", 20L, 50L, -500L, 0L,
+                UNIT_ID,
+                LENDER_ID,
+                MONEY,
+                "unit-debt",
+                20L,
+                50L,
+                -500L,
+                0L,
                 PilotModel.AccountStatus.ACTIVE),
             leg(
-                LENDER_ID, UNIT_ID, MONEY, "unit-debt", 20L, 50L, 500L, 0L,
+                LENDER_ID,
+                UNIT_ID,
+                MONEY,
+                "unit-debt",
+                20L,
+                50L,
+                500L,
+                0L,
                 PilotModel.AccountStatus.ACTIVE));
 
-    String reason = rejection(borrowJson(UNIT_ID, LENDER_ID, MONEY, 100L, 20L, 50L, null), base, 10L);
+    String reason =
+        rejection(borrowJson(UNIT_ID, LENDER_ID, MONEY, 100L, 20L, 50L, null), base, 10L);
 
     assertThat(reason)
         .contains("已存在未结清的地方债")
@@ -330,14 +417,20 @@ class UnitBorrowHandlerTest {
         economyWith(
             LENDER,
             leg(
-                LENDER_ID, UNIT_ID, MONEY, "unit-debt", 20L, 50L, 500L, 0L,
+                LENDER_ID,
+                UNIT_ID,
+                MONEY,
+                "unit-debt",
+                20L,
+                50L,
+                500L,
+                0L,
                 PilotModel.AccountStatus.ACTIVE));
 
     assertThatThrownBy(
             () ->
                 HANDLER.handle(
-                    state(base, 10L),
-                    borrowJson(UNIT_ID, LENDER_ID, MONEY, 100L, 20L, 50L, null)))
+                    state(base, 10L), borrowJson(UNIT_ID, LENDER_ID, MONEY, 100L, 20L, 50L, null)))
         .as("状态损坏必须响亮，不得被 catch(IllegalArgumentException) 折成 Rejected")
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("状态损坏")
@@ -358,18 +451,14 @@ class UnitBorrowHandlerTest {
 
     EconomyChangeSet decoded =
         (EconomyChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(changeSet));
-    assertThat(EconomyChangeSet.apply(decoded, base))
-        .as("变更集过 JSON 线往返后重建逐值不变")
-        .isEqualTo(target);
+    assertThat(EconomyChangeSet.apply(decoded, base)).as("变更集过 JSON 线往返后重建逐值不变").isEqualTo(target);
     return target;
   }
 
   /** 执行一次 borrow，断言走到 {@link HandlerOutcome.Rejected} 并返回拒因。 */
   private static String rejection(String payload, EconomyData base, long tick) {
     HandlerOutcome outcome = HANDLER.handle(state(base, tick), payload);
-    assertThat(outcome)
-        .as("该载荷必须走 Rejected（而不是抛异常）")
-        .isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(outcome).as("该载荷必须走 Rejected（而不是抛异常）").isInstanceOf(HandlerOutcome.Rejected.class);
     return ((HandlerOutcome.Rejected) outcome).reason();
   }
 

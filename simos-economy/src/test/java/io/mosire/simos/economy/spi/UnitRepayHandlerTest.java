@@ -31,12 +31,12 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code economy.UnitRepay} 处理器（收尾期 T4a · 地方债第二腿）：命令面 / targetPaths 边界、部分还款（money/grain，tick
- * 未到 vs 已到期的 ACTIVE/DUE）、全额清偿 ⇒ 双腿 {@code SETTLED} 且各自 fields 原样、逐条具名拒因、以及"镜像腿缺失 / 不对称 =
- * 状态损坏 ⇒ {@link IllegalStateException}（不是 {@code Rejected}）"。
+ * {@code economy.UnitRepay} 处理器（收尾期 T4a · 地方债第二腿）：命令面 / targetPaths 边界、部分还款（money/grain，tick 未到 vs
+ * 已到期的 ACTIVE/DUE）、全额清偿 ⇒ 双腿 {@code SETTLED} 且各自 fields 原样、逐条具名拒因、以及"镜像腿缺失 / 不对称 = 状态损坏 ⇒ {@link
+ * IllegalStateException}（不是 {@code Rejected}）"。
  *
- * <p>★ 判别力：两条腿用**不同的** terms/rate/due/interestAccrued（而不是抄同一份），"只改净额、把另一条腿的 fields 抄过去 /
- * 把 accrued 归零 / 状态按错的那条腿判"都会当场红；守恒面把 lender 余额的加减与双腿净额变化逐值钉住。
+ * <p>★ 判别力：两条腿用**不同的** terms/rate/due/interestAccrued（而不是抄同一份），"只改净额、把另一条腿的 fields 抄过去 / 把 accrued
+ * 归零 / 状态按错的那条腿判"都会当场红；守恒面把 lender 余额的加减与双腿净额变化逐值钉住。
  */
 class UnitRepayHandlerTest {
 
@@ -61,8 +61,7 @@ class UnitRepayHandlerTest {
       ClassFirstAccountId.idOf(LENDER_ID, UNIT_ID, GRAIN);
 
   private static final PilotModel.Lender LENDER =
-      new PilotModel.Lender(
-          LENDER_ID, 8000L, Map.of(GRAIN, 100L, "cloth", 7L), 20L, 60L, 1000L);
+      new PilotModel.Lender(LENDER_ID, 8000L, Map.of(GRAIN, 100L, "cloth", 7L), 20L, 60L, 1000L);
 
   // ── 命令面 ──────────────────────────────────────────────────────────────────────────
 
@@ -77,10 +76,8 @@ class UnitRepayHandlerTest {
   void handlerIsGmOnlyAndTargetPathsAreEmptyForValidPayload() {
     assertThat(HANDLER).isInstanceOf(GmOnlyCommand.class);
     assertThat(HANDLER).isInstanceOf(CommandTargets.class);
-    assertThat(HANDLER.targetPaths("Map1", repayJson(UNIT_ID, LENDER_ID, MONEY, 100L)))
-        .isEmpty();
-    assertThat(HANDLER.targetPaths("Map1", repayJson(UNIT_ID, LENDER_ID, GRAIN, 100L)))
-        .isEmpty();
+    assertThat(HANDLER.targetPaths("Map1", repayJson(UNIT_ID, LENDER_ID, MONEY, 100L))).isEmpty();
+    assertThat(HANDLER.targetPaths("Map1", repayJson(UNIT_ID, LENDER_ID, GRAIN, 100L))).isEmpty();
   }
 
   /** ★ 坏载荷（非法 JSON / 缺字段 / 词表外 unit / amount 越界）在 targetPaths 就抛。 */
@@ -94,8 +91,7 @@ class UnitRepayHandlerTest {
             () -> HANDLER.targetPaths("Map1", repayJson(UNIT_ID, LENDER_ID, "silver", 100L)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("unit");
-    assertThatThrownBy(
-            () -> HANDLER.targetPaths("Map1", repayJson(UNIT_ID, LENDER_ID, MONEY, 0L)))
+    assertThatThrownBy(() -> HANDLER.targetPaths("Map1", repayJson(UNIT_ID, LENDER_ID, MONEY, 0L)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("amount");
   }
@@ -112,24 +108,55 @@ class UnitRepayHandlerTest {
         economyWith(
             LENDER,
             leg(
-                UNIT_ID, LENDER_ID, MONEY, "unit-debt", 20L, 50L, -1000L, 7L,
+                UNIT_ID,
+                LENDER_ID,
+                MONEY,
+                "unit-debt",
+                20L,
+                50L,
+                -1000L,
+                7L,
                 PilotModel.AccountStatus.ACTIVE),
             leg(
-                LENDER_ID, UNIT_ID, MONEY, "lender-copy", 99L, 90L, 1000L, 42L,
+                LENDER_ID,
+                UNIT_ID,
+                MONEY,
+                "lender-copy",
+                99L,
+                90L,
+                1000L,
+                42L,
                 PilotModel.AccountStatus.ACTIVE));
 
     EconomyData target = apply(repayJson(UNIT_ID, LENDER_ID, MONEY, 400L), base, 10L);
 
     assertLeg(
         target.classFirst().accounts().get(DEBT_MONEY_ID),
-        DEBT_MONEY_ID, UNIT_ID, LENDER_ID, MONEY, "unit-debt", 20L, 50L, -600L, 7L,
+        DEBT_MONEY_ID,
+        UNIT_ID,
+        LENDER_ID,
+        MONEY,
+        "unit-debt",
+        20L,
+        50L,
+        -600L,
+        7L,
         PilotModel.AccountStatus.ACTIVE);
     assertLeg(
         target.classFirst().accounts().get(MIRROR_MONEY_ID),
-        MIRROR_MONEY_ID, LENDER_ID, UNIT_ID, MONEY, "lender-copy", 99L, 90L, 600L, 42L,
+        MIRROR_MONEY_ID,
+        LENDER_ID,
+        UNIT_ID,
+        MONEY,
+        "lender-copy",
+        99L,
+        90L,
+        600L,
+        42L,
         PilotModel.AccountStatus.ACTIVE);
-    assertThat(target.classFirst().accounts().get(DEBT_MONEY_ID).cumulativeNet()
-            + target.classFirst().accounts().get(MIRROR_MONEY_ID).cumulativeNet())
+    assertThat(
+            target.classFirst().accounts().get(DEBT_MONEY_ID).cumulativeNet()
+                + target.classFirst().accounts().get(MIRROR_MONEY_ID).cumulativeNet())
         .as("还款后 Σ=0")
         .isZero();
 
@@ -138,30 +165,58 @@ class UnitRepayHandlerTest {
     assertThat(after.goods()).as("money 还款不动 goods").isEqualTo(LENDER.goods());
   }
 
-  /**
-   * ★ grain 部分还款、tick == nextDueTick ⇒ 双腿 DUE（到期日是"到或过"）；lender goods.grain 100→300，其它商品键原样。
-   */
+  /** ★ grain 部分还款、tick == nextDueTick ⇒ 双腿 DUE（到期日是"到或过"）；lender goods.grain 100→300，其它商品键原样。 */
   @Test
   void partialGrainRepaymentAtDueMarksBothLegsDueAndCreditsGoods() {
     EconomyData base =
         economyWith(
             LENDER,
             leg(
-                UNIT_ID, LENDER_ID, GRAIN, "unit-debt", 5L, 10L, -500L, 3L,
+                UNIT_ID,
+                LENDER_ID,
+                GRAIN,
+                "unit-debt",
+                5L,
+                10L,
+                -500L,
+                3L,
                 PilotModel.AccountStatus.ACTIVE),
             leg(
-                LENDER_ID, UNIT_ID, GRAIN, "unit-debt", 5L, 10L, 500L, 3L,
+                LENDER_ID,
+                UNIT_ID,
+                GRAIN,
+                "unit-debt",
+                5L,
+                10L,
+                500L,
+                3L,
                 PilotModel.AccountStatus.ACTIVE));
 
     EconomyData target = apply(repayJson(UNIT_ID, LENDER_ID, GRAIN, 200L), base, 10L);
 
     assertLeg(
         target.classFirst().accounts().get(DEBT_GRAIN_ID),
-        DEBT_GRAIN_ID, UNIT_ID, LENDER_ID, GRAIN, "unit-debt", 5L, 10L, -300L, 3L,
+        DEBT_GRAIN_ID,
+        UNIT_ID,
+        LENDER_ID,
+        GRAIN,
+        "unit-debt",
+        5L,
+        10L,
+        -300L,
+        3L,
         PilotModel.AccountStatus.DUE);
     assertLeg(
         target.classFirst().accounts().get(MIRROR_GRAIN_ID),
-        MIRROR_GRAIN_ID, LENDER_ID, UNIT_ID, GRAIN, "unit-debt", 5L, 10L, 300L, 3L,
+        MIRROR_GRAIN_ID,
+        LENDER_ID,
+        UNIT_ID,
+        GRAIN,
+        "unit-debt",
+        5L,
+        10L,
+        300L,
+        3L,
         PilotModel.AccountStatus.DUE);
 
     assertThat(lenderOf(target).goods())
@@ -172,7 +227,8 @@ class UnitRepayHandlerTest {
   }
 
   /**
-   * ★ 全额还款 ⇒ 双腿 {@code SETTLED}、净额为 0，且各自 terms/rate/due/interestAccrued **原样**（不归零、不重写）；lender 收回全额。
+   * ★ 全额还款 ⇒ 双腿 {@code SETTLED}、净额为 0，且各自 terms/rate/due/interestAccrued **原样**（不归零、不重写）；lender
+   * 收回全额。
    */
   @Test
   void fullRepaymentSettlesBothLegsAndPreservesEveryField() {
@@ -180,21 +236,51 @@ class UnitRepayHandlerTest {
         economyWith(
             LENDER,
             leg(
-                UNIT_ID, LENDER_ID, MONEY, "unit-debt", 20L, 50L, -1000L, 7L,
+                UNIT_ID,
+                LENDER_ID,
+                MONEY,
+                "unit-debt",
+                20L,
+                50L,
+                -1000L,
+                7L,
                 PilotModel.AccountStatus.ACTIVE),
             leg(
-                LENDER_ID, UNIT_ID, MONEY, "lender-copy", 99L, 90L, 1000L, 42L,
+                LENDER_ID,
+                UNIT_ID,
+                MONEY,
+                "lender-copy",
+                99L,
+                90L,
+                1000L,
+                42L,
                 PilotModel.AccountStatus.ACTIVE));
 
     EconomyData target = apply(repayJson(UNIT_ID, LENDER_ID, MONEY, 1000L), base, 10L);
 
     assertLeg(
         target.classFirst().accounts().get(DEBT_MONEY_ID),
-        DEBT_MONEY_ID, UNIT_ID, LENDER_ID, MONEY, "unit-debt", 20L, 50L, 0L, 7L,
+        DEBT_MONEY_ID,
+        UNIT_ID,
+        LENDER_ID,
+        MONEY,
+        "unit-debt",
+        20L,
+        50L,
+        0L,
+        7L,
         PilotModel.AccountStatus.SETTLED);
     assertLeg(
         target.classFirst().accounts().get(MIRROR_MONEY_ID),
-        MIRROR_MONEY_ID, LENDER_ID, UNIT_ID, MONEY, "lender-copy", 99L, 90L, 0L, 42L,
+        MIRROR_MONEY_ID,
+        LENDER_ID,
+        UNIT_ID,
+        MONEY,
+        "lender-copy",
+        99L,
+        90L,
+        0L,
+        42L,
         PilotModel.AccountStatus.SETTLED);
     assertThat(lenderOf(target).money()).as("lender 8000 + 1000").isEqualTo(9000L);
   }
@@ -211,25 +297,18 @@ class UnitRepayHandlerTest {
   @Test
   void rejectsUnknownLenderAndListsExistingIds() {
     PilotModel.Lender other = new PilotModel.Lender("OTHER", 100L, Map.of(), 1L, 2L, 3L);
-    EconomyData base =
-        economy(classFirst(Map.of(), Map.of(ExternalLenderId.of("OTHER"), other)));
+    EconomyData base = economy(classFirst(Map.of(), Map.of(ExternalLenderId.of("OTHER"), other)));
 
     String reason = rejection(repayJson(UNIT_ID, LENDER_ID, MONEY, 100L), base, 10L);
 
-    assertThat(reason)
-        .contains("放贷方不存在")
-        .contains(LENDER_ID)
-        .contains("现有放贷方")
-        .contains("OTHER");
+    assertThat(reason).contains("放贷方不存在").contains(LENDER_ID).contains("现有放贷方").contains("OTHER");
   }
 
   @Test
   void rejectsWhenDebtLegIsMissing() {
     String reason = rejection(repayJson(UNIT_ID, LENDER_ID, MONEY, 100L), economyWith(LENDER), 10L);
 
-    assertThat(reason)
-        .contains("没有未结清的地方债")
-        .contains(DEBT_MONEY_ID.value());
+    assertThat(reason).contains("没有未结清的地方债").contains(DEBT_MONEY_ID.value());
   }
 
   @Test
@@ -238,14 +317,19 @@ class UnitRepayHandlerTest {
         economyWith(
             LENDER,
             leg(
-                UNIT_ID, LENDER_ID, MONEY, "unit-debt", 20L, 50L, 0L, 0L,
+                UNIT_ID,
+                LENDER_ID,
+                MONEY,
+                "unit-debt",
+                20L,
+                50L,
+                0L,
+                0L,
                 PilotModel.AccountStatus.SETTLED));
 
     String reason = rejection(repayJson(UNIT_ID, LENDER_ID, MONEY, 100L), base, 10L);
 
-    assertThat(reason)
-        .contains("没有未结清的地方债")
-        .contains(DEBT_MONEY_ID.value());
+    assertThat(reason).contains("没有未结清的地方债").contains(DEBT_MONEY_ID.value());
   }
 
   @Test
@@ -254,10 +338,24 @@ class UnitRepayHandlerTest {
         economyWith(
             LENDER,
             leg(
-                UNIT_ID, LENDER_ID, MONEY, "unit-debt", 20L, 50L, -500L, 0L,
+                UNIT_ID,
+                LENDER_ID,
+                MONEY,
+                "unit-debt",
+                20L,
+                50L,
+                -500L,
+                0L,
                 PilotModel.AccountStatus.ACTIVE),
             leg(
-                LENDER_ID, UNIT_ID, MONEY, "unit-debt", 20L, 50L, 500L, 0L,
+                LENDER_ID,
+                UNIT_ID,
+                MONEY,
+                "unit-debt",
+                20L,
+                50L,
+                500L,
+                0L,
                 PilotModel.AccountStatus.ACTIVE));
 
     String reason = rejection(repayJson(UNIT_ID, LENDER_ID, MONEY, 0L), base, 10L);
@@ -271,18 +369,29 @@ class UnitRepayHandlerTest {
         economyWith(
             LENDER,
             leg(
-                UNIT_ID, LENDER_ID, MONEY, "unit-debt", 20L, 50L, -1000L, 0L,
+                UNIT_ID,
+                LENDER_ID,
+                MONEY,
+                "unit-debt",
+                20L,
+                50L,
+                -1000L,
+                0L,
                 PilotModel.AccountStatus.ACTIVE),
             leg(
-                LENDER_ID, UNIT_ID, MONEY, "unit-debt", 20L, 50L, 1000L, 0L,
+                LENDER_ID,
+                UNIT_ID,
+                MONEY,
+                "unit-debt",
+                20L,
+                50L,
+                1000L,
+                0L,
                 PilotModel.AccountStatus.ACTIVE));
 
     String reason = rejection(repayJson(UNIT_ID, LENDER_ID, MONEY, 1001L), base, 10L);
 
-    assertThat(reason)
-        .contains("超过未结清负债")
-        .contains("amount=1001")
-        .contains("负债=1000");
+    assertThat(reason).contains("超过未结清负债").contains("amount=1001").contains("负债=1000");
   }
 
   // ── 状态损坏：IllegalStateException，不得折成 Rejected ───────────────────────────────
@@ -294,7 +403,14 @@ class UnitRepayHandlerTest {
         economyWith(
             LENDER,
             leg(
-                UNIT_ID, LENDER_ID, MONEY, "unit-debt", 20L, 50L, -500L, 0L,
+                UNIT_ID,
+                LENDER_ID,
+                MONEY,
+                "unit-debt",
+                20L,
+                50L,
+                -500L,
+                0L,
                 PilotModel.AccountStatus.ACTIVE));
 
     assertThatThrownBy(
@@ -313,10 +429,24 @@ class UnitRepayHandlerTest {
         economyWith(
             LENDER,
             leg(
-                UNIT_ID, LENDER_ID, MONEY, "unit-debt", 20L, 50L, -500L, 0L,
+                UNIT_ID,
+                LENDER_ID,
+                MONEY,
+                "unit-debt",
+                20L,
+                50L,
+                -500L,
+                0L,
                 PilotModel.AccountStatus.ACTIVE),
             leg(
-                LENDER_ID, UNIT_ID, MONEY, "unit-debt", 20L, 50L, 400L, 0L,
+                LENDER_ID,
+                UNIT_ID,
+                MONEY,
+                "unit-debt",
+                20L,
+                50L,
+                400L,
+                0L,
                 PilotModel.AccountStatus.ACTIVE));
 
     assertThatThrownBy(
@@ -340,17 +470,13 @@ class UnitRepayHandlerTest {
 
     EconomyChangeSet decoded =
         (EconomyChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(changeSet));
-    assertThat(EconomyChangeSet.apply(decoded, base))
-        .as("变更集过 JSON 线往返后重建逐值不变")
-        .isEqualTo(target);
+    assertThat(EconomyChangeSet.apply(decoded, base)).as("变更集过 JSON 线往返后重建逐值不变").isEqualTo(target);
     return target;
   }
 
   private static String rejection(String payload, EconomyData base, long tick) {
     HandlerOutcome outcome = HANDLER.handle(state(base, tick), payload);
-    assertThat(outcome)
-        .as("该载荷必须走 Rejected（而不是抛异常）")
-        .isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(outcome).as("该载荷必须走 Rejected（而不是抛异常）").isInstanceOf(HandlerOutcome.Rejected.class);
     return ((HandlerOutcome.Rejected) outcome).reason();
   }
 

@@ -55,8 +55,8 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link RaiseUnitPlan} 纯推导（收尾期 T4b）：参数 / 引用逐条具名拒、三项来源瀑布与不足缺口、四片载荷逐值、命令类型与顺序、★
- * 不丢失（SeedGroups 的 {@code ageDays}/{@code anchorTick}/{@code stress} 保真）、同状态同参数确定性。
+ * {@link RaiseUnitPlan} 纯推导（收尾期 T4b）：参数 / 引用逐条具名拒、三项来源瀑布与不足缺口、四片载荷逐值、命令类型与顺序、★ 不丢失（SeedGroups 的
+ * {@code ageDays}/{@code anchorTick}/{@code stress} 保真）、同状态同参数确定性。
  *
  * <p>★ 判别力：来源表把**每个来源的 (owner/批次, 格, 额/扣后人数)** 逐值钉住；保真断言取**非 0 stress / 非 0 anchorTick**——
  * 生产若把压力静默清零或把锚点写成当前 tick，当场红；国库落点从 {@code actor.AdjustAccounts} 载荷读回，不是另抄一份视图。
@@ -95,17 +95,7 @@ class RaiseUnitPlanTest {
   void rejectsExistingNewUnitId() {
     assertThatThrownBy(
             () ->
-                plan(
-                    U_PARENT.value(),
-                    "r-nation",
-                    H11,
-                    40L,
-                    120L,
-                    100L,
-                    4,
-                    700,
-                    equipment(),
-                    null))
+                plan(U_PARENT.value(), "r-nation", H11, 40L, 120L, 100L, 4, 700, equipment(), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("单位 id 已存在")
         .hasMessageContaining(U_PARENT.value());
@@ -114,18 +104,7 @@ class RaiseUnitPlanTest {
   @Test
   void rejectsRegionMissingFromMap() {
     assertThatThrownBy(
-            () ->
-                plan(
-                    "u-new",
-                    "r-ghost",
-                    H11,
-                    40L,
-                    120L,
-                    100L,
-                    4,
-                    700,
-                    equipment(),
-                    null))
+            () -> plan("u-new", "r-ghost", H11, 40L, 120L, 100L, 4, 700, equipment(), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("地图里没有区域: r-ghost")
         .hasMessageContaining("map.CreateRegion");
@@ -134,18 +113,7 @@ class RaiseUnitPlanTest {
   @Test
   void rejectsAtOutsideRegion() {
     assertThatThrownBy(
-            () ->
-                plan(
-                    "u-new",
-                    "r-nation",
-                    H13,
-                    40L,
-                    120L,
-                    100L,
-                    4,
-                    700,
-                    equipment(),
-                    null))
+            () -> plan("u-new", "r-nation", H13, 40L, 120L, 100L, 4, 700, equipment(), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("at (1,3)")
         .hasMessageContaining("不在区域 r-nation")
@@ -155,18 +123,7 @@ class RaiseUnitPlanTest {
   @Test
   void rejectsMissingParent() {
     assertThatThrownBy(
-            () ->
-                plan(
-                    "u-new",
-                    "r-nation",
-                    H11,
-                    40L,
-                    120L,
-                    100L,
-                    4,
-                    700,
-                    equipment(),
-                    "u-404"))
+            () -> plan("u-new", "r-nation", H11, 40L, 120L, 100L, 4, 700, equipment(), "u-404"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("父单位不存在: u-404")
         .hasMessageContaining("parent 必须指向既有单位");
@@ -207,18 +164,7 @@ class RaiseUnitPlanTest {
 
     long aboveInt = (long) Integer.MAX_VALUE + 1L;
     assertThatThrownBy(
-            () ->
-                plan(
-                    "u-new",
-                    "r-nation",
-                    H11,
-                    aboveInt,
-                    0L,
-                    0L,
-                    4,
-                    700,
-                    equipment(),
-                    null))
+            () -> plan("u-new", "r-nation", H11, aboveInt, 0L, 0L, 4, 700, equipment(), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("超过 unit.CreateUnit 的 member")
         .hasMessageContaining(String.valueOf(aboveInt));
@@ -237,23 +183,17 @@ class RaiseUnitPlanTest {
   @Test
   void rejectsSpeedAndMobilityBounds() {
     assertThatThrownBy(
-            () ->
-                plan(
-                    "u-new", "r-nation", H11, 40L, 120L, 100L, 0, 700, equipment(), null))
+            () -> plan("u-new", "r-nation", H11, 40L, 120L, 100L, 0, 700, equipment(), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("speed 必须 ≥ 1");
 
     assertThatThrownBy(
-            () ->
-                plan(
-                    "u-new", "r-nation", H11, 40L, 120L, 100L, 4, 0, equipment(), null))
+            () -> plan("u-new", "r-nation", H11, 40L, 120L, 100L, 4, 0, equipment(), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("mobilityPerMille 必须在 [1,1000]")
         .hasMessageContaining(": 0");
     assertThatThrownBy(
-            () ->
-                plan(
-                    "u-new", "r-nation", H11, 40L, 120L, 100L, 4, 1001, equipment(), null))
+            () -> plan("u-new", "r-nation", H11, 40L, 120L, 100L, 4, 1001, equipment(), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("mobilityPerMille 必须在 [1,1000]")
         .hasMessageContaining(": 1001");
@@ -264,18 +204,14 @@ class RaiseUnitPlanTest {
     Map<String, Integer> blankKey = new LinkedHashMap<>();
     blankKey.put(" ", 1);
     assertThatThrownBy(
-            () ->
-                plan(
-                    "u-new", "r-nation", H11, 40L, 120L, 100L, 4, 700, blankKey, null))
+            () -> plan("u-new", "r-nation", H11, 40L, 120L, 100L, 4, 700, blankKey, null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("equipment 的键不得空白");
 
     Map<String, Integer> negative = new LinkedHashMap<>();
     negative.put("rifle", -1);
     assertThatThrownBy(
-            () ->
-                plan(
-                    "u-new", "r-nation", H11, 40L, 120L, 100L, 4, 700, negative, null))
+            () -> plan("u-new", "r-nation", H11, 40L, 120L, 100L, 4, 700, negative, null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("equipment 的值必须 ≥ 0")
         .hasMessageContaining("rifle=-1");
@@ -325,10 +261,7 @@ class RaiseUnitPlanTest {
     assertThat(plan.parent()).isEmpty();
     assertThat(plan.commandTypes())
         .containsExactly(
-            "unit.CreateUnit",
-            "actor.AdjustAccounts",
-            "social.SeedGroups",
-            "sd.PutInfo");
+            "unit.CreateUnit", "actor.AdjustAccounts", "social.SeedGroups", "sd.PutInfo");
 
     // 粮：hh1 可支配 100−20=80 先扣满，再 hh2 的 40；ESTATE / 区外 / 可用 0 不进来源表。
     assertThat(plan.grain().requested()).isEqualTo(120L);
@@ -377,8 +310,7 @@ class RaiseUnitPlanTest {
     assertThat(create.has("status")).as("CreateUnit 的 status 有缺省，本工具不发明").isFalse();
 
     // actor.AdjustAccounts：粮来源序 → 仅钱来源（此处同两户）→ 国库恒最后；同 (owner,格) 合并成一条。
-    JsonNode entries =
-        JSON.readTree(plan.adjustAccountsPayloadJson()).get("entries");
+    JsonNode entries = JSON.readTree(plan.adjustAccountsPayloadJson()).get("entries");
     assertThat(entries).hasSize(3);
     assertHouseholdAdjustment(entries.get(0), HH1, H11, -80L, -20L);
     assertHouseholdAdjustment(entries.get(1), HH2, H12, -40L, -80L);
@@ -414,17 +346,7 @@ class RaiseUnitPlanTest {
   @Test
   void parentOnSameHexIsCarriedIntoCreatePayload() throws Exception {
     RaiseUnitPlan.Plan plan =
-        plan(
-            "u-new",
-            "r-nation",
-            H11,
-            40L,
-            120L,
-            100L,
-            4,
-            700,
-            equipment(),
-            U_PARENT.value());
+        plan("u-new", "r-nation", H11, 40L, 120L, 100L, 4, 700, equipment(), U_PARENT.value());
 
     assertThat(plan.parent()).contains(U_PARENT.value());
     JsonNode create = JSON.readTree(plan.createUnitPayloadJson());
@@ -469,30 +391,18 @@ class RaiseUnitPlanTest {
     assertThat(second).isEqualTo(first);
     assertThat(second.commandTypes()).containsExactlyElementsOf(first.commandTypes());
     assertThat(second.createUnitPayloadJson()).isEqualTo(first.createUnitPayloadJson());
-    assertThat(second.adjustAccountsPayloadJson())
-        .isEqualTo(first.adjustAccountsPayloadJson());
+    assertThat(second.adjustAccountsPayloadJson()).isEqualTo(first.adjustAccountsPayloadJson());
     assertThat(second.seedGroupsPayloadJson()).isEqualTo(first.seedGroupsPayloadJson());
     assertThat(second.infoValueJson("组军测试")).isEqualTo(first.infoValueJson("组军测试"));
     assertThat(second.grain().sources()).containsExactlyElementsOf(first.grain().sources());
-    assertThat(second.manpower().sources())
-        .containsExactlyElementsOf(first.manpower().sources());
+    assertThat(second.manpower().sources()).containsExactlyElementsOf(first.manpower().sources());
   }
 
   // ── 夹具 ─────────────────────────────────────────────────────────────────────────────
 
   /** 默认合法参数：at=H11、region=r-nation、speed=4、mobility=700、equipment 两键、无 parent。 */
   private static RaiseUnitPlan.Plan plan(long manpower, long grain, long money) {
-    return plan(
-        "u-new",
-        "r-nation",
-        H11,
-        manpower,
-        grain,
-        money,
-        4,
-        700,
-        equipment(),
-        null);
+    return plan("u-new", "r-nation", H11, manpower, grain, money, 4, 700, equipment(), null);
   }
 
   private static RaiseUnitPlan.Plan plan(
@@ -652,12 +562,8 @@ class RaiseUnitPlanTest {
     assertThat(entry.get("owner").get("id").asText()).isEqualTo(owner.id());
     assertThat(entry.get("q").asInt()).isEqualTo(at.q());
     assertThat(entry.get("r").asInt()).isEqualTo(at.r());
-    assertThat(entry.get("goods").get("grain").asLong())
-        .as("家户粮 = 有符号负增量")
-        .isEqualTo(grainDelta);
-    assertThat(entry.get("money").get("silver").asLong())
-        .as("家户钱 = 有符号负增量")
-        .isEqualTo(moneyDelta);
+    assertThat(entry.get("goods").get("grain").asLong()).as("家户粮 = 有符号负增量").isEqualTo(grainDelta);
+    assertThat(entry.get("money").get("silver").asLong()).as("家户钱 = 有符号负增量").isEqualTo(moneyDelta);
   }
 
   private static void assertTreasuryAdjustment(

@@ -72,17 +72,17 @@ import org.junit.jupiter.api.io.TempDir;
  * （50‰），B 不设 → 两侧各经真 {@code AdvanceTime} 推进同一日（0 → 1）。断言：
  *
  * <ol>
- *   <li><b>逐户税值</b>：从对照 B（无税）的<b>税日末家户账</b>（= A 的税前账）逐户算
- *       {@code assessed=floor(balance×50/1000)}、{@code collected=min(assessed, AvailableStock.available)}，A
- *       的每一本家户账都逐值等于 {@code B 余额 − 手算税}；未被征税的账逐字段原样；
- *   <li><b>累计守恒</b>：{@code ΣA家户粮 == ΣB家户粮 − 税粮}、{@code ΣA家户银 == ΣB家户银 − 税银}，且 A 新建的
- *       国库账恰好 {@code == 税粮/税银}（逐值），两张冻结表空；B 无该国库账；
- *   <li><b>Settlement 不受税影响</b>：税在 actor 写回之后 ⇒ 两侧 {@code classFirst} 结算轨迹逐字段一致、social
- *       一致、tick 都是 1；推进本身 {@code Committed}、actor 无负余额（{@code ClassFirstActorWriteback} 的约束未破）。
+ *   <li><b>逐户税值</b>：从对照 B（无税）的<b>税日末家户账</b>（= A 的税前账）逐户算 {@code
+ *       assessed=floor(balance×50/1000)}、{@code collected=min(assessed,
+ *       AvailableStock.available)}，A 的每一本家户账都逐值等于 {@code B 余额 − 手算税}；未被征税的账逐字段原样；
+ *   <li><b>累计守恒</b>：{@code ΣA家户粮 == ΣB家户粮 − 税粮}、{@code ΣA家户银 == ΣB家户银 − 税银}，且 A 新建的 国库账恰好 {@code ==
+ *       税粮/税银}（逐值），两张冻结表空；B 无该国库账；
+ *   <li><b>Settlement 不受税影响</b>：税在 actor 写回之后 ⇒ 两侧 {@code classFirst} 结算轨迹逐字段一致、social 一致、tick 都是
+ *       1；推进本身 {@code Committed}、actor 无负余额（{@code ClassFirstActorWriteback} 的约束未破）。
  * </ol>
  *
- * <p>★ <b>未构造（留给控制方裁）</b>：把税率压到"次日 ClassFirstActorWriteback fail-closed 断粮"的那一幕 ——
- * 本文件只推一日、取低税 50‰，不构造次日失败。
+ * <p>★ <b>未构造（留给控制方裁）</b>：把税率压到"次日 ClassFirstActorWriteback fail-closed 断粮"的那一幕 —— 本文件只推一日、取低税
+ * 50‰，不构造次日失败。
  */
 class ClassFirstPopulationEconomyTimeParticipantTaxTest {
 
@@ -219,12 +219,8 @@ class ClassFirstPopulationEconomyTimeParticipantTaxTest {
     // ── 国库账逐值 == 逐户税合计；两张冻结表空（五参新建）────────────────
     GoodsAccount treasury = taxed.accounts().get(treasuryKey);
     assertThat(treasury).as("国库账由本日税新建").isNotNull();
-    assertThat(treasury.balances().getOrDefault(GRAIN, 0L))
-        .as("国库粮 == Σ逐户粮税")
-        .isEqualTo(taxGrain);
-    assertThat(treasury.money().getOrDefault(SILVER, 0L))
-        .as("国库银 == Σ逐户银税")
-        .isEqualTo(taxSilver);
+    assertThat(treasury.balances().getOrDefault(GRAIN, 0L)).as("国库粮 == Σ逐户粮税").isEqualTo(taxGrain);
+    assertThat(treasury.money().getOrDefault(SILVER, 0L)).as("国库银 == Σ逐户银税").isEqualTo(taxSilver);
     assertThat(treasury.frozenBalances()).as("新建国库账的粮冻结表空").isEmpty();
     assertThat(treasury.frozenMoney()).as("新建国库账的银冻结表空").isEmpty();
 
@@ -409,7 +405,9 @@ class ClassFirstPopulationEconomyTimeParticipantTaxTest {
 
   // ── 装配与命令 ─────────────────────────────────────────────────────────────
 
-  /** 与 {@code ClassFirstPopulationEconomyTimeParticipantTest.classFirstCore} 同源，另注册两条辖区命令（不改生产注册）。 */
+  /**
+   * 与 {@code ClassFirstPopulationEconomyTimeParticipantTest.classFirstCore} 同源，另注册两条辖区命令（不改生产注册）。
+   */
   private static CoreSimos classFirstCore(Path storeDir) {
     CoreSimos core = new CoreSimos(new CoreConfig(storeDir, 100, SimosObjectMapper.create()));
     for (ModuleCodec codec :
@@ -439,8 +437,7 @@ class ClassFirstPopulationEconomyTimeParticipantTaxTest {
             new SetTaxRateHandler())) {
       core.register(handler);
     }
-    core.register(
-        new ClassFirstPopulationEconomyTimeParticipant(CompactThreeNationsWorld.MAP_ID));
+    core.register(new ClassFirstPopulationEconomyTimeParticipant(CompactThreeNationsWorld.MAP_ID));
     return core;
   }
 
@@ -468,13 +465,7 @@ class ClassFirstPopulationEconomyTimeParticipantTaxTest {
     CommandResult result =
         core.submit(
             new CommandEnvelope(
-                commandId,
-                commandId,
-                INITIATOR,
-                MAIN,
-                new RevisionId(head),
-                type,
-                payloadJson));
+                commandId, commandId, INITIATOR, MAIN, new RevisionId(head), type, payloadJson));
     assertThat(result)
         .as("%s 提交成功", type)
         .isEqualTo(new CommandResult.Committed(new StateRef(MAIN, new RevisionId(head + 1L))));
