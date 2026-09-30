@@ -64,9 +64,11 @@ import io.mosire.simos.app.tools.write.UnitRenameTool;
 import io.mosire.simos.app.tools.write.UnitReparentSubtreeTool;
 import io.mosire.simos.app.tools.write.UnitReparentTool;
 import io.mosire.simos.app.tools.write.UnitSetFormationOffsetTool;
+import io.mosire.simos.app.tools.write.UnitSetJurisdictionTool;
 import io.mosire.simos.app.tools.write.UnitSetRejoinTargetTool;
 import io.mosire.simos.app.tools.write.UnitSetStatusTool;
 import io.mosire.simos.app.tools.write.UnitSetStrengthTool;
+import io.mosire.simos.app.tools.write.UnitSetTaxRateTool;
 import io.mosire.simos.app.tools.write.UnitSplitFormationTool;
 import io.mosire.simos.app.tools.write.UnitUpdateCommandChainTool;
 import io.mosire.simos.core.CoreSimos;
@@ -140,7 +142,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * 工具集验收（M5 T5）：注册表 12 条 / catalog 与注册面一致（R5）/ 写工具身份注入（R4）/ 读工具与 {@code QueryService} 逐值 对拍 /
+ * 工具集验收（M5 T5）：注册表 83 条（GM 桶全量）/ catalog 与注册面一致（R5）/ 写工具身份注入（R4）/ 读工具与 {@code QueryService} 逐值 对拍 /
  * 拒绝与冲突不留 revision。
  *
  * <p>夹具与 {@code QueryServiceTest}/{@code GuiApiTest} 同法：独立 store 种创世 {@code (main,1)} + 含
@@ -167,9 +169,10 @@ class SimosToolsTest {
   private static final String TEST_INITIATOR = "agent:t5-test";
 
   /**
-   * **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 22 读 + 53 写 = 76（**7 非窄写**：3 通用写 + {@code
+   * **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 23 读 + 60 写 = 83（**12 非窄写**：3 通用写 + {@code
    * sd.AdjudicateTick} + {@code sd.RejectDirective} + {@code sd.VoidAdjudication} + {@code
-   * simos.worldgen.initialize}，**都不是**命令类型；+ **46 窄写**：1 economy.adjust + 18 sd + 7 map + 20 unit）。
+   * simos.worldgen.initialize} + {@code simos.economy.adjust} + 辖区阶段 6–8 的 4 条组合写，**都不是**命令类型； +
+   * **48 窄写**：18 sd + 7 map + 22 unit + 1 actor）。
    */
   private static final List<String> GM_TOOL_NAMES =
       List.of(
@@ -252,10 +255,18 @@ class SimosToolsTest {
           "unit.SetRejoinTarget",
           "unit.CreateCommandChain",
           "unit.UpdateCommandChain",
-          "unit.ApplyCasualties");
+          "unit.ApplyCasualties",
+          // ★ 辖区阶段 5–8（2026-09-30）：3 条新窄写 + 4 条 GM 组合写（组合写的名字**不是**命令类型）。
+          "unit.SetJurisdiction",
+          "unit.SetTaxRate",
+          "actor.AdjustAccounts",
+          "simos.unit.levyRegion",
+          "simos.unit.issueDebt",
+          "simos.unit.repayDebt",
+          "simos.unit.raiseUnit");
 
   /**
-   * 读工具名单（22 条）：读闸**按名字选**，不用索引切片。
+   * 读工具名单（23 条）：读闸**按名字选**，不用索引切片。
    *
    * <p>★ 索引切片（{@code subList(0, 9)}）在名单变长后**仍然合法** ⇒ 断言照绿、判别力静默流失。
    */
@@ -307,16 +318,19 @@ class SimosToolsTest {
           "simos.map.block",
           "simos.sd.verdicts",
           "simos.gm.tool-usage",
-          "simos.llm.providers");
+          "simos.llm.providers",
+          // ★ H0.6（2026-09-27）：产权读数含 actor 侧 GoodsAccount ⇒ 与 sd.verdicts 同款，只给 GM 桶。
+          "simos.economy.ownership");
 
   /**
-   * 非窄写工具（7 条）：**只有 GM 组有**（用户裁定：MCP 与 GM Agent 同权限级）。
+   * 非窄写工具（12 条）：**只有 GM 组有**（用户裁定：MCP 与 GM Agent 同权限级）。
    *
    * <p>★ 它们**不是窄写**：不继承 {@code AbstractNarrowWriteTool} ⇒ 窄写扫描器（按 {@code tools/write}
-   * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这 5 条从差集里扣掉。
+   * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这 12 条从差集里扣掉。
    *
    * <p>★ 前 3 条是**通用写**（自选命令类型）；{@code sd.AdjudicateTick} 是**批裁决**——命令类型由它要裁决的令决定 （不是固定一条）；{@code
-   * sd.RejectDirective} 是**GM 打回**（同批两条既有命令 + 会话旁路写）——两者同样不属于"窄写"那一族。
+   * sd.RejectDirective} 是**GM 打回**（同批两条既有命令 + 会话旁路写）；{@code simos.economy.adjust} 是 GM 经济调整窄封装；辖区阶段
+   * 6–8 的 4 条组合写是**一次提交多条命令、同批落一条 revision**的 app 级组合—— 同样不属于"窄写"那一族。
    */
   private static final List<String> NON_NARROW_WRITE_NAMES =
       List.of(
@@ -327,10 +341,14 @@ class SimosToolsTest {
           "sd.AdjudicateTick",
           "sd.RejectDirective",
           "sd.VoidAdjudication",
-          "simos.economy.adjust");
+          "simos.economy.adjust",
+          "simos.unit.levyRegion",
+          "simos.unit.issueDebt",
+          "simos.unit.repayDebt",
+          "simos.unit.raiseUnit");
 
   /**
-   * 写工具全集（53 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的**补集**。
+   * 写工具全集（60 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的**补集**。
    *
    * <p>★★ **它是写闸的判据对象**：写闸覆盖集必须 == 本名单，而不是"名单的某一段下标"。M1 之前写闸用 {@code subList(9, 16)}——名单加了 7 条 map
    * 写之后切片仍合法，于是新工具**完全不被写闸覆盖**，且没有任何症状 （本仓「把没发生伪装成没发生」那一族）。
@@ -383,7 +401,11 @@ class SimosToolsTest {
               "unit.SetRejoinTarget",
               "unit.CreateCommandChain",
               "unit.UpdateCommandChain",
-              "unit.ApplyCasualties"));
+              "unit.ApplyCasualties",
+              // ★ 辖区阶段 5–8：新增 3 条窄写（前两条 unit 域、第三条 actor 落账原语）。
+              "unit.SetJurisdiction",
+              "unit.SetTaxRate",
+              "actor.AdjustAccounts"));
 
   /** M1 的 7 条 map 窄写：**只进 GM 组**（= MCP 口），**不进**决策人组（用户 2026-09-22：决策人不能直接改数据）。 */
   private static final List<String> MAP_WRITE_NAMES =
@@ -397,8 +419,8 @@ class SimosToolsTest {
           "map.RegisterPathwayGroup");
 
   /**
-   * M2 的 20 条 unit 窄写：**只进 GM 组**（= MCP 口）——旧 D-1 裁定曾让它们也挂决策人桶，**2026-09-22 已撤销**
-   * （用户：「决策人不能直接改地图等数据」）。
+   * unit 的 22 条窄写（M2 的 20 条 + 辖区阶段 5 的 2 条）：**只进 GM 组**（= MCP 口）——旧 D-1 裁定曾让它们也挂决策人桶，**2026-09-22
+   * 已撤销** （用户：「决策人不能直接改地图等数据」）。
    *
    * <p>★ 名单顺序与 {@code SimosToolSource.addGmWrites} 的登记顺序一致（**判据不依赖顺序**，只为对齐可读）。
    */
@@ -423,7 +445,10 @@ class SimosToolsTest {
           "unit.SetRejoinTarget",
           "unit.CreateCommandChain",
           "unit.UpdateCommandChain",
-          "unit.ApplyCasualties");
+          "unit.ApplyCasualties",
+          // ★ 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率（只在 GM 桶，与上面 20 条同待遇）。
+          "unit.SetJurisdiction",
+          "unit.SetTaxRate");
 
   /**
    * M3 的 12 条 sd 窄写：**只进 GM 组**（= MCP 口）——**不进**决策人组。
@@ -507,7 +532,15 @@ class SimosToolsTest {
           "economy.SwitchMode",
           "economy.TransferAssetShare",
           // ★ S1 阶段 2：actor 播种（第六个切片）。
-          "actor.Seed");
+          "actor.Seed",
+          // ★ 辖区阶段 5–8（2026-09-30）：2 条非 GmOnly 的 unit 命令（进决策令白名单）+ 3 条 GmOnly
+          //   原语（actor.AdjustAccounts / economy.UnitBorrow / economy.UnitRepay，只进 catalog 与 GM
+          // 提交面）。
+          "unit.SetJurisdiction",
+          "unit.SetTaxRate",
+          "actor.AdjustAccounts",
+          "economy.UnitBorrow",
+          "economy.UnitRepay");
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -584,9 +617,10 @@ class SimosToolsTest {
   }
 
   /**
-   * ★ M2 判据 2：**名字同源**（20 条 unit 窄写）—— 每条工具钉死的命令类型 == 它在名单里登记的名字（{@code
-   * AbstractNarrowWriteTool.name()} 直返 {@code commandType()}），同一批名字在 **GM 桶与决策人桶**里都按名可寻（用户裁定 D-1 的
-   * "同一批挂两个桶"），且 20 个类型都已在 {@code catalog} 里（catalog 与已注册 handler 同源 ⇒ 名能到达 handler）。
+   * ★ M2 判据 2：**名字同源**（22 条 unit 窄写 = M2 的 20 条 + 辖区阶段 5 的 2 条）—— 每条工具钉死的命令类型 == 它在名单里登记的名字（{@code
+   * AbstractNarrowWriteTool.name()} 直返 {@code commandType()}），同一批名字在 **GM
+   * 桶**里都按名可寻、在**决策人桶**里一条都不出现 （后者由紧随的 {@code doesNotContainAnyElementsOf} 断言），且 22 个类型都已在 {@code
+   * catalog} 里（catalog 与已注册 handler 同源 ⇒ 名能到达 handler）。
    *
    * <p>★ **逐个构造真工具**而不是只查桶：把任一工具的 {@code commandType()} 改成别的已注册类型，这里当场红（M2 的 m2 变异体）。
    */
@@ -615,10 +649,12 @@ class SimosToolsTest {
             new UnitSetRejoinTargetTool(core, TEST_INITIATOR, mapId),
             new UnitCreateCommandChainTool(core, TEST_INITIATOR, mapId),
             new UnitUpdateCommandChainTool(core, TEST_INITIATOR, mapId),
-            new UnitApplyCasualtiesTool(core, TEST_INITIATOR, mapId));
+            new UnitApplyCasualtiesTool(core, TEST_INITIATOR, mapId),
+            new UnitSetJurisdictionTool(core, TEST_INITIATOR, mapId),
+            new UnitSetTaxRateTool(core, TEST_INITIATOR, mapId));
 
     assertThat(toolNames(unitTools))
-        .as("20 条 unit 窄工具的 name() == 它们各自钉死的命令类型")
+        .as("22 条 unit 窄工具的 name() == 它们各自钉死的命令类型")
         .containsExactlyElementsOf(UNIT_WRITE_NAMES);
     assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
         .as("同一批名字在 GM 桶里按名可寻")
@@ -629,7 +665,7 @@ class SimosToolsTest {
 
     JsonNode types = JSON.readTree(call("simos.command.catalog", Map.of()).message()).get("types");
     assertThat(textValues(types))
-        .as("20 个 unit 类型都已在 catalog 里（⇒ 名字能到达已注册 handler）")
+        .as("22 个 unit 类型都已在 catalog 里（⇒ 名字能到达已注册 handler）")
         .containsAll(UNIT_WRITE_NAMES);
   }
 
@@ -690,7 +726,7 @@ class SimosToolsTest {
   }
 
   /**
-   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 49 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
+   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 65 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
    * 而不只是"与一份手抄的期望表相等"。扫描 simos-unit/map/social/sd 的 main 源码抽 `type()` 的返回串——**任一 handler 存在却没注册进
    * {@code Shell}，或注册了一条没有实现的 type，这里都会红**。
    *
@@ -702,8 +738,8 @@ class SimosToolsTest {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
         .as(
-            "扫描必须恰为 60 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler）")
-        .hasSize(60);
+            "扫描必须恰为 65 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，辖区阶段 5–8 +5）")
+        .hasSize(65);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -740,8 +776,8 @@ class SimosToolsTest {
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
         .as(
-            "★ H0.6/E6b：GM 桶 = 22 读 + 53 写 = 76（新增 simos.economy.ownership GM-only 读口 + simos.economy.adjust GM 窄写）")
-        .hasSize(76);
+            "★ H0.6/E6b + 辖区阶段 5–8：GM 桶 = 23 读 + 60 写 = 83（新增 7 条：unit.SetJurisdiction/unit.SetTaxRate/actor.AdjustAccounts 三条窄写 + 4 条 GM 组合写）")
+        .hasSize(83);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -853,10 +889,11 @@ class SimosToolsTest {
   @Test
   void everyNarrowWriteToolClassIsWiredIntoTheGmBucket() throws Exception {
     Set<String> implemented = narrowWriteToolNamesFromSources();
-    assertThat(implemented).as("扫描必须恰为 45 个窄写工具类（扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）").hasSize(45);
+    assertThat(implemented).as("扫描必须恰为 48 个窄写工具类（扫到 0 个/漏文件是『扫描器静默』陷阱 ⇒ 空 == 空 恒真）").hasSize(48);
 
-    // ★ GM 组还含 4 条非窄写工具（J1 起 3 条通用写；第 3 波第 2 步 + sd.AdjudicateTick）：窄写扫描器按 tools/write
-    //   目录扫源码，扫不到它们 ⇒ 不扣掉就是"名单对不上"的假红。
+    // ★ GM 组还含 12 条非窄写工具（3 条通用写 + sd.AdjudicateTick/RejectDirective/VoidAdjudication +
+    //   simos.worldgen.initialize + simos.economy.adjust + 辖区阶段 6–8 的 4 条组合写）：窄写扫描器按
+    //   tools/write 目录扫源码，但只认 extends AbstractNarrowWriteTool ⇒ 不扣掉这 12 条就是"名单对不上"的假红。
     assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM)))
         .as("GM 组 ∖ 读名单 ∖ 非窄写写工具必须**逐条等于**磁盘上实现了窄写工具的集合（孤儿工具 ⇒ 这里红）")
         .filteredOn(name -> !READ_TOOL_NAMES.contains(name))
@@ -1061,7 +1098,9 @@ class SimosToolsTest {
   @Test
   void everyToolClassOnDiskIsRegisteredInSomeBucket() throws Exception {
     Set<String> onDisk = toolNamesFromSources();
-    assertThat(onDisk).as("扫描必须真扫到东西（扫到 0 是『扫描器静默』陷阱）").hasSizeGreaterThanOrEqualTo(60);
+    assertThat(onDisk)
+        .as("扫描必须恰为 85 个 *Tool.java 的 NAME（83 条 GM 桶 + 2 条只进决策人桶的读口；扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(85);
 
     List<String> union =
         Stream.concat(

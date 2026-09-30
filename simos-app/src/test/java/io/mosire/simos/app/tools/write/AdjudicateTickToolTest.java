@@ -509,7 +509,8 @@ class AdjudicateTickToolTest {
   // ── 判据九：目标声明清单（缺口可见，不静默）────────────────────────────────────────────
 
   /**
-   * ★★ **23 条映射逐条有断言 + 4 条缺口在册可查**。
+   * ★★ **41 条白名单命令逐条有断言 + 10 条缺口在册可查**（另 5 条 GM-only 也逐条钉住目标声明： 4 条有意空目标 + {@code
+   * actor.AdjustAccounts} 的落格目标）。
    *
    * <p>★ 为什么必须逐条断言：映射表漏一项的后果是"那条命令**永远被静默拒**"（fail-closed 的另一面）——看起来
    * 一切正常，只有用户的令无声无息地不生效。所以这里对**每一条**都钉住输出路径。
@@ -520,6 +521,8 @@ class AdjudicateTickToolTest {
     Map<String, CommandTargets> targets = tool.commandTargets();
 
     // ① 10 条缺口必须**恰好**是这 10 条（少一条 ⇒ 有人悄悄补上了却没登记；多一条 ⇒ 白名单里多了没人管的类型）。
+    //   ★ 辖区阶段 5 的 unit.SetJurisdiction / unit.SetTaxRate 都实现了 CommandTargets（目标 = 载荷点名的 unitId）
+    //     ⇒ 二者不在缺口里，由下面的 samples 逐条钉住输出路径。
     Set<String> missing = new LinkedHashSet<>(tool.allowedCommandTypes());
     missing.removeAll(targets.keySet());
     assertThat(missing)
@@ -537,11 +540,13 @@ class AdjudicateTickToolTest {
             "economy.TransferAssetShare");
     assertThat(tool.allowedCommandTypes())
         .as(
-            "白名单 = unit 20 + map 7 + social 4（R1 起 +1 = social.SeedGroups）+ economy 7"
-                + " + actor 1（S1 阶段 2 起 = actor.Seed）⇒ 39")
-        .hasSize(39);
+            "白名单 = unit 22（20 + 辖区阶段 5 的 SetJurisdiction/SetTaxRate）+ map 7 + social 4"
+                + " + economy 7 + actor 1（actor.Seed）⇒ 41")
+        .hasSize(41);
 
-    // ② 其余 29 条白名单类型 + 2 条 GM-only 空目标 = 31 条样本：逐条给真载荷、钉死输出路径。
+    // ② 其余 31 条白名单类型 + 5 条 GM-only = 36 条样本：逐条给真载荷、钉死输出路径。
+    //   ★ 5 条 GM-only 里 4 条（SwitchMode/GmAdjust/UnitBorrow/UnitRepay）有意返回空目标；
+    //     actor.AdjustAccounts 实现 CommandTargets 且返回**落格**目标（entries[] 的 q/r）。
     Map<String, List<String>> samples = new LinkedHashMap<>();
     samples.put("unit.RenameUnit", List.of("{\"id\":\"u-1\",\"name\":\"x\"}", "u-1"));
     samples.put(
@@ -576,6 +581,12 @@ class AdjudicateTickToolTest {
     samples.put(
         "unit.SplitFormation",
         List.of("{\"rootId\":\"u-1\",\"subUnitIds\":[\"u-3\",\"u-2\"]}", "u-1", "u-3", "u-2"));
+    // ★ 辖区阶段 5（2026-09-30）：两条 unit 命令的目标都按载荷点名的 unitId 判（同既有 unit 命令）。
+    samples.put(
+        "unit.SetJurisdiction", List.of("{\"unitId\":\"u-1\",\"regions\":[\"701\"]}", "u-1"));
+    samples.put(
+        "unit.SetTaxRate",
+        List.of("{\"unitId\":\"u-1\",\"regionId\":\"701\",\"ratePerMille\":100}", "u-1"));
     samples.put("map.DeleteRegion", List.of("{\"regionId\":\"701\"}", MAP_ID + "/region/701"));
     samples.put(
         "map.SetTerrain",
@@ -630,7 +641,14 @@ class AdjudicateTickToolTest {
         List.of(
             "{\"mapId\":\"Map1\",\"rulesVersion\":\"v\",\"entries\":[{\"q\":1,\"r\":1,\"actors\":[]}]}",
             "1_1"));
-    // E6b 的 2 条 GM-only：实现 CommandTargets 但**有意返回空目标**（不进入决策人令），
+    // actor 一条（辖区阶段 6）：净增量账按 entries[] 的**格**给目标（`<q>_<r>`）；owner 不参与目标声明。
+    samples.put(
+        "actor.AdjustAccounts",
+        List.of(
+            "{\"entries\":[{\"owner\":{\"kind\":\"UNIT\",\"id\":\"u-1\"},\"q\":1,\"r\":1,"
+                + "\"goods\":{\"grain\":1}}]}",
+            "1_1"));
+    // E6b + 辖区阶段 7 的 4 条 GM-only：实现 CommandTargets 但**有意返回空目标**（不进入决策人令），
     // 故也在 samples 表面登记为"无路径"（空列表的另一半判据）。
     samples.put(
         "economy.SwitchMode",
@@ -643,6 +661,15 @@ class AdjudicateTickToolTest {
             "{\"adjustment\":\"forgiveDebt\","
                 + "\"parameters\":{\"debtContractId\":\"missing-debt\"},"
                 + "\"reason\":\"coverage\"}"));
+    samples.put(
+        "economy.UnitBorrow",
+        List.of(
+            "{\"unitId\":\"u-1\",\"lenderId\":\"lender-cov\",\"unit\":\"money\",\"principal\":1,"
+                + "\"interestRatePerMille\":0,\"nextDueTick\":400}"));
+    samples.put(
+        "economy.UnitRepay",
+        List.of(
+            "{\"unitId\":\"u-1\",\"lenderId\":\"lender-cov\",\"unit\":\"money\",\"amount\":1}"));
 
     for (Map.Entry<String, List<String>> sample : samples.entrySet()) {
       List<String> expected = sample.getValue();
@@ -654,9 +681,9 @@ class AdjudicateTickToolTest {
     }
     assertThat(samples.keySet())
         .as(
-            "31 条样本一条不漏（29 条白名单目标 + 2 条 E6b GM-only 空目标；少一条 ⇒ 上面那条断言根本不会跑；"
-                + "S1 阶段 2 起 +1 = actor.Seed）")
-        .hasSize(31);
+            "36 条样本一条不漏（31 条白名单目标 + 5 条 GM-only：4 条有意空目标 + actor.AdjustAccounts 的落格目标；"
+                + "少一条 ⇒ 上面那条断言根本不会跑）")
+        .hasSize(36);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());

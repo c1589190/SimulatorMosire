@@ -113,9 +113,9 @@ class McpCoverageTest {
   private static final String TEST_INITIATOR = "agent:t11-coverage";
 
   /**
-   * catalog 预期的 50 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
+   * catalog 预期的 65 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
    * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43，T11C 起 43 → 44，会话重置起 44 → 45，令状态翻转起 45 → 46， social
-   * 起 46 → 49，economy 起 49 → 50）。
+   * 起 46 → 49，economy/actor 全族补齐后 50 → 60，辖区阶段 5–8 起 60 → 65）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -181,7 +181,17 @@ class McpCoverageTest {
           "economy.SwitchMode",
           "economy.TransferAssetShare",
           // ★ S1 阶段 2：actor 播种（同 economy，放最后 ⇒ 不移动前面各命令的 revision 号）。
-          "actor.Seed");
+          "actor.Seed",
+          // ★ 辖区阶段 5–8（2026-09-30）：同样放最后 ⇒ 不移动前面各命令的 revision 号。
+          //   2 条非 GmOnly 的 unit 命令进 MINIMAL_PAYLOADS（unit.SetTaxRate 需先有管辖 ⇒ SetJurisdiction
+          // 排在它前面）；
+          //   3 条 GmOnly 原语里 actor.AdjustAccounts 可用纯正增量合法提交，另两条（economy.UnitBorrow/UnitRepay）
+          //   在本夹具没有 class-first 放贷方 ⇒ 走 GM_ONLY_PRECONDITION_TYPES 的具名拒分支。
+          "unit.SetJurisdiction",
+          "unit.SetTaxRate",
+          "actor.AdjustAccounts",
+          "economy.UnitBorrow",
+          "economy.UnitRepay");
 
   /**
    * ★★ H1：{@code economy.Seed} 那条最小载荷在 (1,1) 落的那个家户 —— id 由 {@link HouseholdId#ofSeed} 拼 （家户 id
@@ -192,9 +202,30 @@ class McpCoverageTest {
 
   private static final String HOUSEHOLD_ID = HouseholdActors.idOf(SEEDED_HOUSEHOLD);
 
-  /** E6b：GM-only 命令在本夹具没有前置组织/合同，无法提交成功；单独断言其具名拒绝。 */
+  /**
+   * E6b + 辖区阶段 7：GM-only 命令在本夹具没有前置组织 / 债务合同 / class-first 放贷方，无法提交成功；单独断言其具名拒绝。
+   *
+   * <p>★ 同为 GM-only 的 {@code actor.AdjustAccounts} **不在此列**：它可以用"纯正增量新建/追加一本账"合法提交（见 {@link
+   * #MINIMAL_PAYLOADS}），故走正常覆盖路径。
+   */
   private static final Set<String> GM_ONLY_PRECONDITION_TYPES =
-      Set.of("economy.SwitchMode", "economy.GmAdjust");
+      Set.of("economy.SwitchMode", "economy.GmAdjust", "economy.UnitBorrow", "economy.UnitRepay");
+
+  /** 每条 {@link #GM_ONLY_PRECONDITION_TYPES} 的载荷：形状合法、但引用在本夹具不存在 ⇒ 必须具名拒且不推 revision。 */
+  private static final Map<String, String> GM_ONLY_PRECONDITION_PAYLOADS =
+      Map.of(
+          "economy.SwitchMode",
+          "{\"organizationId\":\"org-missing\",\"toModeId\":\"mode-missing\","
+              + "\"retainOriginalPerMille\":1000,\"effectiveDay\":7,\"reason\":\"coverage\"}",
+          "economy.GmAdjust",
+          "{\"adjustment\":\"forgiveDebt\","
+              + "\"parameters\":{\"debtContractId\":\"missing-debt\"},\"reason\":\"coverage\"}",
+          // class-first 未播种 ⇒ handler 在查放贷方之前先拒"只在 class-first 世界可用"。
+          "economy.UnitBorrow",
+          "{\"unitId\":\"u-2\",\"lenderId\":\"lender-missing\",\"unit\":\"money\",\"principal\":1,"
+              + "\"interestRatePerMille\":0,\"nextDueTick\":400}",
+          "economy.UnitRepay",
+          "{\"unitId\":\"u-2\",\"lenderId\":\"lender-missing\",\"unit\":\"money\",\"amount\":1}");
 
   /** 真实播种归一化出的农地份额身份（{@code (farm@1_1, LAND, ESTATE:farm@1_1, OWNED, 0)}）。 */
   private static final AssetShareId SEEDED_LAND_SHARE =
@@ -423,6 +454,19 @@ class McpCoverageTest {
             + SEEDED_LAND_SHARE.value()
             + "\",\"quantity\":1,\"toOwner\":{\"kind\":\"HOUSEHOLD\",\"id\":\"house-7\"},"
             + "\"toOperator\":{\"kind\":\"HOUSEHOLD\",\"id\":\"house-7\"}}");
+
+    // ── 辖区阶段 5–8 的 3 条可提交命令：一律追加在最后 ⇒ 不移动上面任何命令的 revision 号。──
+    //   顺序敏感：unit.SetTaxRate 要求该单位已把目标区域纳入管辖 ⇒ SetJurisdiction 必须先跑。
+    //   目标单位取 u-2（被 DisbandUnit 解散的是 u-1；u-2 一直存活到覆盖结束）；区域取夹具里已有的 r-nation。
+    MINIMAL_PAYLOADS.put("unit.SetJurisdiction", "{\"unitId\":\"u-2\",\"regions\":[\"r-nation\"]}");
+    MINIMAL_PAYLOADS.put(
+        "unit.SetTaxRate", "{\"unitId\":\"u-2\",\"regionId\":\"r-nation\",\"ratePerMille\":100}");
+    // actor.AdjustAccounts：纯正增量打在 actor.Seed 已落好的既有 ESTATE 账（farm@1_1 @ (1,1)）上，无前置；
+    //   grain +1 ⇒ 变更集非空。它是 GmOnly，但 GM 的 simos.command.submit 照常可提交。
+    MINIMAL_PAYLOADS.put(
+        "actor.AdjustAccounts",
+        "{\"entries\":[{\"owner\":{\"kind\":\"ESTATE\",\"id\":\"farm@1_1\"},\"q\":1,\"r\":1,"
+            + "\"goods\":{\"grain\":1}}]}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -474,12 +518,12 @@ class McpCoverageTest {
     // 1. catalog 经 MCP 读回，与注册面一致（R5 的载体）。
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
-        .as("catalog 列出的 type 与 Shell 注册的 60 个 handler 同源（R4/E6 后含 economy 全族）")
+        .as("catalog 列出的 type 与 Shell 注册的 65 个 handler 同源（R4/E6 后含 economy/actor 全族 + 辖区阶段 5–8）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
     committableCatalogTypes.removeAll(GM_ONLY_PRECONDITION_TYPES);
     assertThat(MINIMAL_PAYLOADS.keySet())
-        .as("除 2 条需要前置状态的 GM-only 命令外，每个 catalog type 都备了载荷（%s）", GM_ONLY_PRECONDITION_TYPES)
+        .as("除 4 条需要前置状态的 GM-only 命令外，每个 catalog type 都备了载荷（%s）", GM_ONLY_PRECONDITION_TYPES)
         .containsExactlyInAnyOrderElementsOf(committableCatalogTypes);
 
     // 2. 逐类经 MCP 提交（每条都过审批 APPROVE_ONCE），断言全部 commit 且 head 逐条前进。
@@ -507,7 +551,7 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("每条可提交命令各推一格；GM-only 两条留在下一段验证具名拒绝")
+        .as("每条可提交命令各推一格；GM-only 四条留在下一段验证具名拒绝")
         .isEqualTo(1L + MINIMAL_PAYLOADS.size());
 
     // 2a. MigrateHousehold 在上面的覆盖里把家户迁到了 (1,2)，但 actor 账仍在 (1,1)
@@ -522,20 +566,14 @@ class McpCoverageTest {
     assertThat(restore.isError()).as(wireText(restore)).isFalse();
     assertThat(JSON.readTree(wireText(restore)).get("result").asText()).isEqualTo("committed");
 
-    // 2b. GM-only（economy.SwitchMode / economy.GmAdjust）：在本夹具没有可满足的前置状态
-    //     （组织 / 债务合同）⇒ 必须经 MCP 可提交但被**具名拒绝**，且不推 revision。
+    // 2b. GM-only（economy.SwitchMode / economy.GmAdjust / economy.UnitBorrow /
+    // economy.UnitRepay）：在本夹具没有可满足的
+    //     前置状态（组织 / 债务合同 / class-first 放贷方）⇒ 必须经 MCP 可提交但被**具名拒绝**，且不推 revision。
     for (String gmOnlyType : GM_ONLY_PRECONDITION_TYPES) {
       long headBeforeGmOnly = shell.coreSimos().head(main()).orElseThrow().value();
-      McpSchema.CallToolResult rejected =
-          submitViaMcp(
-              gmOnlyType,
-              gmOnlyType.equals("economy.SwitchMode")
-                  ? "{\"organizationId\":\"org-missing\",\"toModeId\":\"mode-missing\","
-                      + "\"retainOriginalPerMille\":1000,\"effectiveDay\":7,\"reason\":\"coverage\"}"
-                  : "{\"adjustment\":\"forgiveDebt\","
-                      + "\"parameters\":{\"debtContractId\":\"missing-debt\"},"
-                      + "\"reason\":\"coverage\"}",
-              headBeforeGmOnly);
+      String gmOnlyPayload = GM_ONLY_PRECONDITION_PAYLOADS.get(gmOnlyType);
+      assertThat(gmOnlyPayload).as("%s 必须备一条形状合法的载荷（缺项会让下面的提交退化成 NPE）", gmOnlyType).isNotNull();
+      McpSchema.CallToolResult rejected = submitViaMcp(gmOnlyType, gmOnlyPayload, headBeforeGmOnly);
       assertThat(rejected.isError())
           .as("%s 在缺前置状态时必须是具名拒绝: %s", gmOnlyType, wireText(rejected))
           .isTrue();
@@ -552,6 +590,7 @@ class McpCoverageTest {
 
     // 3. 世界真的变了（不是"没报错"）：u-1 被解散；CreateUnit 建的 u-2 与三条编制命令的
     //    u-3/u-4/u-5 都还在（T9 新增：编制命令各挂在不同单位上，避免同一时刻对同一条段序列重复落段）。
+    //    ★ 21 = DisbandUnit 之后的一格；辖区阶段新增的 3 条命令**追加在 MINIMAL_PAYLOADS 末尾** ⇒ 不挪动它。
     SimulationState afterUnitCommands = shell.coreSimos().replay(ref("main", 21));
     UnitState units = unitSlice(afterUnitCommands);
     assertThat(units.units().keySet())
