@@ -224,8 +224,8 @@ public final class ClassFirstLevy {
    * 源池、{@code classFirst.lenders} 目标），不额外表达"改了什么"。
    *
    * @param state 抽取后的新 {@link ClassFirstState}（纯 copy-with 产出）
-   * @param poolBefore 抽取前的源池（{@code state} 入参里的值）
-   * @param poolAfter 抽取后的源池副本（已扣库存）
+   * @param poolBefore 抽取前的源池（**防御性副本**：与入参状态不共享可写引用）
+   * @param poolAfter 抽取后的源池（**防御性副本**，已扣库存）
    * @param lenderBefore 抽取前的目标 lender
    * @param lenderAfter 加库存后的目标 lender
    */
@@ -242,6 +242,22 @@ public final class ClassFirstLevy {
       Objects.requireNonNull(poolAfter, "poolAfter");
       Objects.requireNonNull(lenderBefore, "lenderBefore");
       Objects.requireNonNull(lenderAfter, "lenderAfter");
+      // ★ SpotBugs EI_EXPOSE_REP2 的收口（与 state 里的池不共享可写引用）：ClassPool 是可变类型且只有
+      //   copy-on-write 值语义 ⇒ 存副本、取副本；不引 @SuppressFBWarnings（本仓的既有口径：冻在赋值处）。
+      poolBefore = poolBefore.copy();
+      poolAfter = poolAfter.copy();
+    }
+
+    /** ★ 返回**防御性副本**（EI_EXPOSE_REP 的收口）：调用方拿到的是快照，改不到状态里的池。 */
+    @Override
+    public ClassPool poolBefore() {
+      return poolBefore.copy();
+    }
+
+    /** ★ 返回**防御性副本**（EI_EXPOSE_REP 的收口）：口径同 {@link #poolBefore()}。 */
+    @Override
+    public ClassPool poolAfter() {
+      return poolAfter.copy();
     }
   }
 }

@@ -25,6 +25,7 @@ import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -357,10 +358,7 @@ public final class RaiseUnitTool implements AgentTool {
       throw new IllegalArgumentException("参数 " + field + " 的 " + part + " 必须是整数");
     }
     if (number instanceof Double || number instanceof Float) {
-      double asDouble = number.doubleValue();
-      if (Double.isNaN(asDouble)
-          || Double.isInfinite(asDouble)
-          || asDouble != Math.rint(asDouble)) {
+      if (hasFraction(number.doubleValue())) {
         throw new IllegalArgumentException("参数 " + field + " 的 " + part + " 必须是整数: " + value);
       }
     }
@@ -369,6 +367,20 @@ public final class RaiseUnitTool implements AgentTool {
       throw new IllegalArgumentException("参数 " + field + " 的 " + part + " 超出 int 范围: " + value);
     }
     return (int) asLong;
+  }
+
+  /**
+   * 浮点数是否有小数部分（NaN / 无穷 ⇒ 也算"不是整数"）。
+   *
+   * <p>★ 用 {@link BigDecimal} 精确判定，**不写浮点相等/取模比较**——那是 SpotBugs 的 {@code
+   * FE_FLOATING_POINT_EQUALITY} 靶子；{@code BigDecimal.valueOf} 走 {@code Double.toString} 的十进制字面量，
+   * {@code stripTrailingZeros().scale() > 0} 才是"确实有小数位"的判据（{@code 2.0} 归一成 {@code 2}，scale=0）。
+   */
+  private static boolean hasFraction(double value) {
+    if (!Double.isFinite(value)) {
+      return true;
+    }
+    return BigDecimal.valueOf(value).stripTrailingZeros().scale() > 0;
   }
 
   /** 可选装备表：缺席/null ⇒ 空表；键必须是非空文本、值必须是 int 范围内的整数（负值由推导期具名拒）。 */
@@ -389,10 +401,7 @@ public final class RaiseUnitTool implements AgentTool {
         throw new IllegalArgumentException("参数 equipment 的值必须是整数: " + key + "=" + entry.getValue());
       }
       if (number instanceof Double || number instanceof Float) {
-        double asDouble = number.doubleValue();
-        if (Double.isNaN(asDouble)
-            || Double.isInfinite(asDouble)
-            || asDouble != Math.rint(asDouble)) {
+        if (hasFraction(number.doubleValue())) {
           throw new IllegalArgumentException(
               "参数 equipment 的值必须是整数: " + key + "=" + entry.getValue());
         }

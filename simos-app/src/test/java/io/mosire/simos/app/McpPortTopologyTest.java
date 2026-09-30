@@ -141,8 +141,8 @@ class McpPortTopologyTest {
   private static final List<String> ACTOR_WRITES = List.of("actor.AdjustAccounts");
 
   /**
-   * GM 窄写（M1 起 11 条、M2 起 31 条、M3 起 43 条、T11C 起 44 条、会话重置起 45 条、E6b 起 46 条、**辖区阶段 5–8 起 49
-   * 条**）： 1 条 economy GM 调整 + 18 条 sd 窄写 + 7 条 map 窄写 + 22 条 unit 窄写 + 1 条 actor 窄写；**都不是**通用写。
+   * GM 窄写（M1 起 11 条、M2 起 31 条、M3 起 43 条、T11C 起 44 条、会话重置起 45 条、E6b 起 46 条、**辖区阶段 5–8 起 49 条**）： 1 条
+   * economy GM 调整 + 18 条 sd 窄写 + 7 条 map 窄写 + 22 条 unit 窄写 + 1 条 actor 窄写；**都不是**通用写。
    */
   private static final List<String> GM_NARROW_WRITES =
       concat(
