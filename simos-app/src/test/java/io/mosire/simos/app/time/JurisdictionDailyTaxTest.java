@@ -43,10 +43,10 @@ import org.junit.jupiter.api.Test;
  * ★★ <b>阶段 6.3 长期税纯函数（{@link JurisdictionDailyTax#collect}）的逐值判据</b>（同包，不经 Core）：
  *
  * <ol>
- *   <li><b>空转恒等</b>：无 jurisdiction / {@code admin=0}（硬门）/ 全区域 rate=0 / 无可税家户 ⇒ 返回<b>同一 ActorData
- *       实例</b>且 {@code Report.isEmpty()}；只有缺口时仍是同一实例、但 Report 非空；
+ *   <li><b>空转恒等</b>：无 jurisdiction / 效率表查不到该单位（无 GOV 读数）/ 全区域 rate=0 / 无可税家户 ⇒ 返回<b>同一 ActorData
+ *       实例</b>且 {@code Report.isEmpty()}；显式 efficiency=0 与只有缺口时仍是同一实例、但 Report 非空；
  *   <li><b>手算逐值</b>：2 户 × 1 单位 × 粮/钱，含一个 {@code REGION_MISSING}、一个 {@code stockShortfall}（冻结吃掉的
- *       可支配）与 {@code adminShortfall}（admin=500）；逐户余额、国库账（五参新建、冻结表空）、Report 四量、计数、账键序、0
+ *       可支配）与 {@code adminShortfall}（efficiency=500‰）；逐户余额、国库账（五参新建、冻结表空）、Report 四量、计数、账键序、0
  *       余额保留、meta/actors 原样；
  *   <li><b>NO_POSITION</b>：单位无有效位置 ⇒ 同实例 + 具名缺口，一笔不征；
  *   <li><b>重叠管辖</b>：两单位同区同户，按 unitId 升序，第二个见税后余额；
@@ -83,32 +83,50 @@ class JurisdictionDailyTaxTest {
   // ── 空转恒等 ───────────────────────────────────────────────────────────────
 
   @Test
-  void noJurisdictionOrZeroAdminOrZeroRateOrNoTaxableHouseholdReturnsSameInstance() {
+  void missingEfficiencyOrZeroRateOrNoTaxableHouseholdReturnsSameInstance() {
     GameMap map = twoHexMap();
     ActorData taxed = actor(accountsWithAAndB());
 
     UnitState noJurisdiction = unitsOf(unit(U1, Optional.of(H1), Optional.empty()));
     assertNoOp(
-        taxed, JurisdictionDailyTax.collect(taxed, noJurisdiction, map, TICK), "单位没有 jurisdiction");
+        taxed,
+        JurisdictionDailyTax.collect(taxed, noJurisdiction, map, TICK, Map.of()),
+        "单位没有 jurisdiction");
 
-    Jurisdiction adminZero = new Jurisdiction(rateMap(R1, 200L), 1_000L, 1_000L, 1_000L, 0L);
-    UnitState withAdminZero = unitsOf(unit(U1, Optional.of(H1), Optional.of(adminZero)));
+    // ★ 阶段 11b 的口径：有管辖但效率表查不到该单位（没有 GovFormation/没有 GOV 读数）⇒ 整单位跳过、不征。
+    Jurisdiction full = new Jurisdiction(rateMap(R1, 200L), 1_000L, 1_000L, 1_000L, 1_000L);
+    UnitState collected = unitsOf(unit(U1, Optional.of(H1), Optional.of(full)));
     assertNoOp(
         taxed,
-        JurisdictionDailyTax.collect(taxed, withAdminZero, map, TICK),
-        "admin=0 硬门（无征收、不记缺口、逐字节不变）");
+        JurisdictionDailyTax.collect(taxed, collected, map, TICK, Map.of()),
+        "效率表查不到该单位（无 GOV 读数）⇒ 整单位跳过、不征");
+
+    // ★ 显式 efficiency=0 是**真读数**（不是没有数据）：不动 actor，但 Report 必须暴露全额 adminShortfall。
+    JurisdictionDailyTax.Collected zeroEfficiency =
+        JurisdictionDailyTax.collect(taxed, collected, map, TICK, Map.of(U1, 0L));
+    assertThat(zeroEfficiency.actor()).as("efficiency=0 ⇒ 无实收、actor 同实例").isSameAs(taxed);
+    assertThat(zeroEfficiency.report().isEmpty()).as("efficiency=0 不是『无数据』⇒ Report 必须非空").isFalse();
+    assertThat(zeroEfficiency.report().grain())
+        .as("粮：assessed=80、可达到=0、adminShortfall=80")
+        .isEqualTo(new JurisdictionDailyTax.Dimension(80L, 0L, 80L, 0L));
+    assertThat(zeroEfficiency.report().money())
+        .as("钱：assessed=14、可达到=0、adminShortfall=14")
+        .isEqualTo(new JurisdictionDailyTax.Dimension(14L, 0L, 14L, 0L));
+    assertThat(zeroEfficiency.report().unitsCharged()).isZero();
+    assertThat(zeroEfficiency.report().householdsCharged()).isZero();
+    assertThat(zeroEfficiency.report().gaps()).isEmpty();
 
     Jurisdiction rateZero = new Jurisdiction(rateMap(R1, 0L), 1_000L, 1_000L, 1_000L, 1_000L);
     UnitState withRateZero = unitsOf(unit(U1, Optional.of(H1), Optional.of(rateZero)));
     assertNoOp(
-        taxed, JurisdictionDailyTax.collect(taxed, withRateZero, map, TICK), "全区域 rate=0（整段跳过）");
+        taxed,
+        JurisdictionDailyTax.collect(taxed, withRateZero, map, TICK, Map.of(U1, 1_000L)),
+        "全区域 rate=0（整段跳过）");
 
-    Jurisdiction full = new Jurisdiction(rateMap(R1, 200L), 1_000L, 1_000L, 1_000L, 1_000L);
-    UnitState collected = unitsOf(unit(U1, Optional.of(H1), Optional.of(full)));
     ActorData noHouseholds = actor(new LinkedHashMap<>());
     assertNoOp(
         noHouseholds,
-        JurisdictionDailyTax.collect(noHouseholds, collected, map, TICK),
+        JurisdictionDailyTax.collect(noHouseholds, collected, map, TICK, Map.of(U1, 1_000L)),
         "管辖有效但 actor 里没有任何 HOUSEHOLD 账");
 
     Map<GoodsAccountKey, GoodsAccount> zeroBook = new LinkedHashMap<>();
@@ -116,7 +134,7 @@ class JurisdictionDailyTaxTest {
     ActorData zeroHousehold = actor(zeroBook);
     assertNoOp(
         zeroHousehold,
-        JurisdictionDailyTax.collect(zeroHousehold, collected, map, TICK),
+        JurisdictionDailyTax.collect(zeroHousehold, collected, map, TICK, Map.of(U1, 1_000L)),
         "有家户账但两个维度余额都是 0（≤0 跳过）");
   }
 
@@ -129,7 +147,7 @@ class JurisdictionDailyTaxTest {
     UnitState units = unitsOf(unit(U1, Optional.of(H1), Optional.of(jurisdiction)));
 
     JurisdictionDailyTax.Collected collected =
-        JurisdictionDailyTax.collect(before, units, map, TICK);
+        JurisdictionDailyTax.collect(before, units, map, TICK, Map.of(U1, 1_000L));
 
     assertThat(collected.actor()).as("只有缺口 ⇒ 仍是入参同一实例").isSameAs(before);
     JurisdictionDailyTax.Report report = collected.report();
@@ -145,7 +163,7 @@ class JurisdictionDailyTaxTest {
   // ── 手算逐值例 ─────────────────────────────────────────────────────────────
 
   /**
-   * 装置（rate=1000‰、admin=500‰）：
+   * 装置（rate=1000‰、GOV efficiency=500‰）：
    *
    * <pre>
    * 户甲 @H1：粮 100（冻结 60 ⇒ 可支配 40）、钱 200、布 0（0 键必须保留）
@@ -190,7 +208,7 @@ class JurisdictionDailyTaxTest {
     UnitState units = unitsOf(unit(U1, Optional.of(H1), Optional.of(jurisdiction)));
 
     JurisdictionDailyTax.Collected collected =
-        JurisdictionDailyTax.collect(before, units, map, TICK);
+        JurisdictionDailyTax.collect(before, units, map, TICK, Map.of(U1, 500L));
     ActorData after = collected.actor();
     JurisdictionDailyTax.Report report = collected.report();
 
@@ -285,7 +303,7 @@ class JurisdictionDailyTaxTest {
     UnitState units = unitsOf(unit(U1, Optional.empty(), Optional.of(jurisdiction)));
 
     JurisdictionDailyTax.Collected collected =
-        JurisdictionDailyTax.collect(before, units, map, TICK);
+        JurisdictionDailyTax.collect(before, units, map, TICK, Map.of(U1, 1_000L));
 
     assertThat(collected.actor()).as("无有效位置 ⇒ 不征、同实例").isSameAs(before);
     JurisdictionDailyTax.Report report = collected.report();
@@ -316,7 +334,12 @@ class JurisdictionDailyTaxTest {
     UnitState units = unitsOf(second, first);
 
     JurisdictionDailyTax.Collected collected =
-        JurisdictionDailyTax.collect(before, units, map, TICK);
+        JurisdictionDailyTax.collect(
+            before,
+            units,
+            map,
+            TICK,
+            Map.of(new UnitId("a-unit"), 1_000L, new UnitId("b-unit"), 1_000L));
     ActorData after = collected.actor();
     JurisdictionDailyTax.Report report = collected.report();
 
@@ -359,8 +382,20 @@ class JurisdictionDailyTaxTest {
     Unit unitB = unit(new UnitId("b-unit"), Optional.of(H2), Optional.of(rateB));
     UnitState units = unitsOf(unitB, unitA);
 
-    JurisdictionDailyTax.Collected once = JurisdictionDailyTax.collect(before, units, map, 3L);
-    JurisdictionDailyTax.Collected twice = JurisdictionDailyTax.collect(before, units, map, 3L);
+    JurisdictionDailyTax.Collected once =
+        JurisdictionDailyTax.collect(
+            before,
+            units,
+            map,
+            3L,
+            Map.of(new UnitId("a-unit"), 1_000L, new UnitId("b-unit"), 1_000L));
+    JurisdictionDailyTax.Collected twice =
+        JurisdictionDailyTax.collect(
+            before,
+            units,
+            map,
+            3L,
+            Map.of(new UnitId("a-unit"), 1_000L, new UnitId("b-unit"), 1_000L));
     assertThat(twice.report()).as("同输入两次 Report 逐字段相等").isEqualTo(once.report());
     assertThat(twice.actor()).as("同输入两次 ActorData 逐字段相等").isEqualTo(once.actor());
     assertThat(new ArrayList<>(twice.actor().accounts().keySet()))
@@ -378,7 +413,11 @@ class JurisdictionDailyTaxTest {
     Unit shuffledUnitA = unit(new UnitId("a-unit"), Optional.of(H1), Optional.of(shuffledRateA));
     JurisdictionDailyTax.Collected shuffled =
         JurisdictionDailyTax.collect(
-            actor(shuffledAccounts), unitsOf(shuffledUnitA, unitB), shuffledMap, 3L);
+            actor(shuffledAccounts),
+            unitsOf(shuffledUnitA, unitB),
+            shuffledMap,
+            3L,
+            Map.of(new UnitId("a-unit"), 1_000L, new UnitId("b-unit"), 1_000L));
 
     assertThat(shuffled.report()).as("区域/账户/单位/税率表插入序不影响 Report（含缺口表序）").isEqualTo(once.report());
     assertThat(shuffled.actor()).as("结果按内容相等（与 Map 插入序无关）").isEqualTo(once.actor());
@@ -415,7 +454,7 @@ class JurisdictionDailyTaxTest {
     UnitState units = unitsOf(unit(U1, Optional.of(H1), Optional.of(jurisdiction)));
 
     JurisdictionDailyTax.Collected collected =
-        JurisdictionDailyTax.collect(before, units, map, TICK);
+        JurisdictionDailyTax.collect(before, units, map, TICK, Map.of(U1, 1_000L));
     GoodsAccount afterTreasury = collected.actor().accounts().get(treasuryKey);
 
     assertThat(collected.actor().accounts().get(A_KEY).balances()).containsEntry(GRAIN, 90L);

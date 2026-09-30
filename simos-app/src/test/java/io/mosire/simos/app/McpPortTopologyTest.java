@@ -94,7 +94,11 @@ class McpPortTopologyTest {
           "simos.unit.levyRegion",
           "simos.unit.issueDebt",
           "simos.unit.repayDebt",
-          "simos.unit.raiseUnit");
+          "simos.unit.raiseUnit",
+          // ★ 阶段 9–12（2026-10-01）：3 条 GOV 组合写（建 GOV + 绑决策人 / 招募 / 离编 + 退休待遇）。
+          "simos.gov.createOffice",
+          "simos.gov.recruit",
+          "simos.gov.dismiss");
 
   /** M1 的 7 条 map 窄写（进 GM 桶）：决策人口**不得**含其中任何一条。 */
   private static final List<String> MAP_WRITES =
@@ -135,14 +139,20 @@ class McpPortTopologyTest {
           "unit.ApplyCasualties",
           // ★ 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率两条窄写。
           "unit.SetJurisdiction",
-          "unit.SetTaxRate");
+          "unit.SetTaxRate",
+          // ★ 阶段 9–12（2026-10-01）：编制 / 政策 / 上级四条窄写。
+          "unit.SetGovFormation",
+          "unit.SetArmyFormation",
+          "unit.SetGovPolicy",
+          "unit.SetGovSuperior");
 
   /** ★ 辖区阶段 6a：actor 域唯一的窄写（账目净增量原语）。 */
   private static final List<String> ACTOR_WRITES = List.of("actor.AdjustAccounts");
 
   /**
-   * GM 窄写（M1 起 11 条、M2 起 31 条、M3 起 43 条、T11C 起 44 条、会话重置起 45 条、E6b 起 46 条、**辖区阶段 5–8 起 49 条**）： 1 条
-   * economy GM 调整 + 18 条 sd 窄写 + 7 条 map 窄写 + 22 条 unit 窄写 + 1 条 actor 窄写；**都不是**通用写。
+   * GM 窄写（M1 起 11 条、M2 起 31 条、M3 起 43 条、T11C 起 44 条、会话重置起 45 条、E6b 起 46 条、辖区阶段 5–8 起 49 条、 **阶段
+   * 9–12 起 53 条**）：1 条 economy GM 调整 + 18 条 sd 窄写 + 7 条 map 窄写 + 26 条 unit 窄写 + 1 条 actor 窄写；
+   * **都不是**通用写。
    */
   private static final List<String> GM_NARROW_WRITES =
       concat(
@@ -188,7 +198,7 @@ class McpPortTopologyTest {
     }
   }
 
-  /** J1：**唯一的 MCP 口 = GM 组**（读 23 + 非窄写 11 + 窄写 49 = 83）。 */
+  /** J1：**唯一的 MCP 口 = GM 组**（读 23 + 非窄写 14 + 窄写 53 = 90）。 */
   @Test
   void theSingleMcpPortExposesTheGmToolFace() {
     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
@@ -196,7 +206,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（23 读 + 11 非窄写 + 49 窄写 = 83）")
+          .as("J1：唯一口 = GM 组（23 读 + 14 非窄写 + 53 窄写 = 90）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }

@@ -34,6 +34,8 @@ class ArchitectureGuardsTest {
           "simos-actor",
           "simos-economy-api",
           "simos-economy",
+          "simos-gov",
+          "simos-army",
           "simos-app");
 
   /** 根 {@code pom.xml} 里的模块声明（构建面的权威清单）。 */
@@ -41,8 +43,8 @@ class ArchitectureGuardsTest {
 
   /**
    * R1：main 源码里 {@code ChangeSet} 的实现者**恰 8 个**（World / Map / Social / Unit / Sd / Actor / Economy
-   * / Ledger）——多一个少一个都是信号： 多一个可能是有人绕过 codec 在 Core 里另造状态形态；少一个说明某个模块的变更集丢了 ChangeSet 身份
-   * （Featherweight 的"契约不空转"断了一根）。
+   * / Gov）——多一个少一个都是信号： 多一个可能是有人绕过 codec 在 Core 里另造状态形态；少一个说明某个模块的变更集丢了 ChangeSet 身份（Featherweight
+   * 的"契约不空转"断了一根）。
    *
    * <p>★ test 侧的 3 个玩具实现者（simos-util 的 {@code RoundTripAssertionsTest} / {@code DriftTest} 里）
    * **不计入**：它们不在 main 源码里，本扫描只枚举各模块的 {@code src/main}——这条例外写在这里， 免得下一个人以为漏扫了。
@@ -52,8 +54,9 @@ class ArchitectureGuardsTest {
    * 与类型名仍落在同一行（实测：MapChangeSet 即折行形态，仍命中）。
    *
    * <p>★ A3（2026-09-20）：第 5 个实现者是 SDSimos 的 {@code SdChangeSet}；方法名由 {@code ...Four...} 改为 {@code
-   * ...Five...}（旧名会误导）。★ Task 10（2026-09-26）：第 6~8 个是 {@code actor}/{@code economy}/{@code ledger}
-   * 三片（它们**当时就没进扫描面**，不是新增的变更集没登记），方法名同款改为 {@code ...Eight...}。
+   * ...Five...}（旧名会误导）。★ Task 10（2026-09-26）：第 6~7 个是 {@code actor}/{@code economy}
+   * 两片（它们**当时就没进扫描面**， 不是新增的变更集没登记），方法名同款改为 {@code ...Seven...}。★ 阶段 10a（2026-09-30）：{@code
+   * simos-ledger} 退役、 {@code simos-gov} 的 {@code GovChangeSet} 进场 ⇒ 当前恰 8 个。
    */
   @Test
   void changeSetHasExactlyEightMainSourceImplementors() throws IOException {
@@ -71,6 +74,7 @@ class ArchitectureGuardsTest {
             "simos-actor/src/main/java/io/mosire/simos/actor/change/ActorChangeSet.java",
             "simos-core/src/main/java/io/mosire/simos/core/state/WorldChangeSet.java",
             "simos-economy/src/main/java/io/mosire/simos/economy/change/EconomyChangeSet.java",
+            "simos-gov/src/main/java/io/mosire/simos/gov/change/GovChangeSet.java",
             "simos-map/src/main/java/io/mosire/simos/map/change/MapChangeSet.java",
             "simos-sd/src/main/java/io/mosire/simos/sd/change/SdChangeSet.java",
             "simos-social/src/main/java/io/mosire/simos/social/change/SocialChangeSet.java",
@@ -95,7 +99,8 @@ class ArchitectureGuardsTest {
     assertThat(declared)
         .as("★ 先证明解析器不是静默返回空（'命中 0 先怀疑自己的读取'：读取坏掉时下面那条会变成恒真）")
         .contains("simos-util", "simos-actor-api", "simos-actor", "simos-app")
-        .hasSizeGreaterThanOrEqualTo(11); // ★ 2026-09-27：simos-ledger 按裁定 D2-A 退役 ⇒ 模块数 −1
+        .hasSizeGreaterThanOrEqualTo(
+            13); // ★ 2026-09-30/10-01：simos-gov / simos-army 新增 ⇒ 13（simos-ledger 已退役）
     assertThat(MODULES)
         .as("★★ 扫描面必须恰恰等于根 pom 的 <module> 集合——否则下一个新模块的 ChangeSet 还会静默漏掉")
         .containsExactlyInAnyOrderElementsOf(declared);

@@ -8,9 +8,9 @@ import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStateId;
+import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.LossRecordId;
-import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatStage;
@@ -21,6 +21,7 @@ import io.mosire.simos.sd.model.LossRecord;
 import io.mosire.simos.sd.model.OutcomeTable;
 import io.mosire.simos.sd.model.Trigger;
 import io.mosire.simos.sd.testing.SdFixtures;
+import io.mosire.simos.unit.UnitId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -75,14 +76,31 @@ class SdStateInvariantTest {
   }
 
   @Test
-  void danglingForeignKeyIsRejected() {
+  void danglingSdLocalForeignKeyIsRejected() {
     SdState base = SdFixtures.full();
-    Map<ArmyId, Army> bad = new LinkedHashMap<>(base.armies());
-    ArmyId extra = new ArmyId("a-bad");
-    bad.put(extra, new Army(extra, new NationId("ghost"), SdFixtures.U1, "a-bad"));
-    assertThatThrownBy(() -> base.withArmies(bad))
+    Map<DirectiveId, Directive> bad = new LinkedHashMap<>(base.directives());
+    DirectiveId extra = new DirectiveId("d-bad");
+    bad.put(extra, SdFixtures.directive(extra, new DecisionMakerId("ghost"), 0));
+    assertThatThrownBy(() -> base.withDirectives(bad))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessage("引用完整性：Army a-bad 的 nationId ghost 不存在");
+        .hasMessage("引用完整性：Directive d-bad 的 decisionMakerId ghost 不存在");
+  }
+
+  /**
+   * ★ 阶段 12：Army 的 {@code masterGovUnitId} 是**跨片**引用（指向 unit 切片），sd 快照构造期不做跨片查询；
+   * 存在性由命令期（sd.CreateArmy / unit.SetArmyFormation）判。这里钉住"sd 不再拿 nations 当 Army 外键"。
+   */
+  @Test
+  void armyMasterGovIsCrossSliceAndNotValidatedBySdState() {
+    SdState base = SdFixtures.full();
+    Map<ArmyId, Army> next = new LinkedHashMap<>(base.armies());
+    ArmyId extra = new ArmyId("a-cross");
+    next.put(
+        extra, new Army(extra, Optional.of(new UnitId("ghost-gov")), SdFixtures.U1, "a-cross"));
+
+    SdState after = base.withArmies(next);
+
+    assertThat(after.armies().get(extra).masterGovUnitId()).contains(new UnitId("ghost-gov"));
   }
 
   @Test

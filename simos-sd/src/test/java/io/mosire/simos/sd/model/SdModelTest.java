@@ -201,7 +201,13 @@ class SdModelTest {
     assertThatThrownBy(() -> new Nation(new NationId("n1"), "n", new RegionId("r1"), -1))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("adminBudgetPerTick 必须 ≥ 0: -1");
-    assertThatThrownBy(() -> new Army(new ArmyId("a1"), null, new UnitId("u1"), "a"))
+    // ★ 阶段 12：canonical 4 参第二参是 Optional<UnitId>；deprecated 4 参第二参是 NationId。
+    //   两处 null 都用显式转型消歧（裸 null 会让编译器面对两个 4 参构造器无法选择）。
+    assertThatThrownBy(
+            () -> new Army(new ArmyId("a1"), (Optional<UnitId>) null, new UnitId("u1"), "a"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("masterGovUnitId 不得为 null（未认主子用 Optional.empty()）");
+    assertThatThrownBy(() -> new Army(new ArmyId("a1"), (NationId) null, new UnitId("u1"), "a"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("nationId 不得为 null");
 

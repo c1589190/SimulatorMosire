@@ -620,7 +620,8 @@ class UnitTimeParticipantTest {
             "offset",
             "rejoinTarget",
             "visionRadius",
-            "jurisdiction");
+            "jurisdiction",
+            "module");
     assertThat(hexTypedComponentNames(Unit.class))
         .as("★ **名单之外的牙齿**：`position` 是 Unit 上唯一能装 hex 的分量 —— 想塞「回归终点」只能塞在这里，改名换名单都绕不过")
         .containsExactly("position");

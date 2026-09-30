@@ -93,10 +93,9 @@ class McpServerTest {
   private static final String SERVER_NAME = "simos-shell";
 
   /**
-   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 22 读 + 7 非窄写 + 45 条窄写（18 sd + 7 map + 20 unit） + E6b 新增 GM 窄写
-   * {@code simos.economy.adjust} = 75 条（spec §七.2 的 C6；含 T11C 起的 sd.RunDecision、 会话重置的
-   * sd.ResetDecisionMakerConversation、第 3 波第 2 步的 sd.AdjudicateTick、2026-09-23 的
-   * sd.RejectDirective、2026-09-25 补的五条读口与 H0.6 的 simos.economy.ownership）。
+   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 23 读 + 67 写 = 90 条（spec §七.2 的 C6；含阶段 9–12 新增的 4 条 unit 编制/政策窄写与 3
+   * 条 GOV 组合写，以及第 3 波第 2 步的 sd.AdjudicateTick、2026-09-23 的 sd.RejectDirective、 2026-09-25 补的五条读口与
+   * H0.6 的 simos.economy.ownership）。
    */
   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
       List.of(
@@ -184,11 +183,19 @@ class McpServerTest {
           // ★ 辖区阶段 5–8（2026-09-30）：3 条窄写 + 4 条 GM 组合写。
           "unit.SetJurisdiction",
           "unit.SetTaxRate",
+          // ★ 阶段 9–12（2026-10-01）：4 条 unit 编制/政策窄写 + 3 条 GOV 组合写。
+          "unit.SetGovFormation",
+          "unit.SetArmyFormation",
+          "unit.SetGovPolicy",
+          "unit.SetGovSuperior",
           "actor.AdjustAccounts",
           "simos.unit.levyRegion",
           "simos.unit.issueDebt",
           "simos.unit.repayDebt",
-          "simos.unit.raiseUnit");
+          "simos.unit.raiseUnit",
+          "simos.gov.createOffice",
+          "simos.gov.recruit",
+          "simos.gov.dismiss");
 
   private static final Duration WAIT = Duration.ofSeconds(10);
 
@@ -244,7 +251,7 @@ class McpServerTest {
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
         .as(
-            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 75 条（C6：含通用写、sd 窄工具、7 条 map 窄写、20 条 unit 窄写与 1 条 economy 读口，"
+            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 90 条（C6：含通用写、sd 窄工具、7 条 map 窄写、26 条 unit 窄写与 1 条 economy 读口，"
                 + "以及第 3 波第 2 步的 sd.AdjudicateTick、2026-09-23 的 sd.RejectDirective 与"
                 + " simos.worldgen.initialize、2026-09-25 补的五条读口）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);

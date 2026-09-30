@@ -152,7 +152,12 @@ class SdDecisionMakerApiTest {
     assertThat(army.get("affiliation").get("displayName").asText())
         .as("军队显示名来自 Army.name")
         .isEqualTo("第一军");
-    assertThat(army.get("affiliation").get("nationId").asText()).isEqualTo("n1");
+    assertThat(army.get("affiliation").get("nationId").isNull())
+        .as("阶段 12：Army 去 NationId ⇒ 军队的 nationId 槽位是 null，不再假装军队还记着国家")
+        .isTrue();
+    assertThat(army.get("affiliation").get("masterGovUnitId").isNull())
+        .as("未认主子（夹具省略 masterGovUnitId）⇒ 该槽位 null，不是空串")
+        .isTrue();
     assertThat(army.get("affiliation").get("rootUnit").asText()).isEqualTo("u-1");
     assertThat(army.get("cadence").asLong()).isEqualTo(5L);
     // ★ T9 起 due 是真值：这两个决策人尚未落过 Directive ⇒ 首次恒待决，无"上一次"。
@@ -439,9 +444,7 @@ class SdDecisionMakerApiTest {
     submit(
         "sd.CreateNation",
         "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"r-nation\",\"adminBudgetPerTick\":10}");
-    submit(
-        "sd.CreateArmy",
-        "{\"armyId\":\"a1\",\"nationId\":\"n1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}");
+    submit("sd.CreateArmy", "{\"armyId\":\"a1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}");
     createMaker("dm-first", 5);
     createMaker("dm-wait", 5);
     createMaker("dm-due", 2);
@@ -502,9 +505,7 @@ class SdDecisionMakerApiTest {
     submit(
         "sd.CreateNation",
         "{\"nationId\":\"n1\",\"name\":\"甲国\",\"homeRegionId\":\"r-nation\",\"adminBudgetPerTick\":10}");
-    submit(
-        "sd.CreateArmy",
-        "{\"armyId\":\"a1\",\"nationId\":\"n1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}");
+    submit("sd.CreateArmy", "{\"armyId\":\"a1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}");
     submit(
         "sd.CreateDecisionMaker",
         "{\"id\":\"dm-nation\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},"

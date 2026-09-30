@@ -54,8 +54,8 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link LevyRegionPlan} 纯推导（收尾期 T2，按计划 §6.0 / §6.1 逐条）：单位 / 管辖 / 区域三道存在性、三项全 0、单命令上限（含 cap=0）、
- * 国库落点、粮钱人各自的瀑布与不足整条拒、requested=0 维度整段跳过、同状态同参数逐字段确定。
+ * {@link LevyRegionPlan} 纯推导（收尾期 T2，按计划 §6.0 / §6.1 逐条；阶段 11b 起含 cloth 维度）：单位 / 管辖 / 区域三道存在性、四项全
+ * 0、单命令上限（含 cap=0）、国库落点、粮钱布人各自的瀑布与不足整条拒、requested=0 维度整段跳过、同状态同参数逐字段确定。
  *
  * <p>★ 判别力：happy 路径把**每个来源的 (owner,格,额)** 与**国库落点**逐值钉住；拒因断言带 requested / available / 缺口 / cap 数字。★
  * 本类不碰 {@code ToolContext} / {@code CoreSimos}（那是 {@code LevyRegionToolTest} 的端到端面）。
@@ -86,7 +86,7 @@ class LevyRegionPlanTest {
 
   @Test
   void rejectsUnknownUnit() {
-    assertThatThrownBy(() -> plan(baseUnit(), "u-404", "r-nation", 1L, 0L, 0L))
+    assertThatThrownBy(() -> plan(baseUnit(), "u-404", "r-nation", 1L, 0L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("单位不存在: u-404");
   }
@@ -95,7 +95,7 @@ class LevyRegionPlanTest {
   void rejectsUnitWithoutJurisdiction() {
     Unit unit = unitWithPosition(H11, Optional.empty());
 
-    assertThatThrownBy(() -> plan(unit, "u-1", "r-nation", 1L, 0L, 0L))
+    assertThatThrownBy(() -> plan(unit, "u-1", "r-nation", 1L, 0L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("没有 jurisdiction")
         .hasMessageContaining("unit.SetJurisdiction");
@@ -107,7 +107,7 @@ class LevyRegionPlanTest {
         unitWithPosition(
             H11, Optional.of(jurisdiction(Map.of(new RegionId("r-other"), 0L), 10L, 10L, 10L)));
 
-    assertThatThrownBy(() -> plan(unit, "u-1", "r-nation", 1L, 0L, 0L))
+    assertThatThrownBy(() -> plan(unit, "u-1", "r-nation", 1L, 0L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("管辖不含区域 r-nation")
         .hasMessageContaining("unit.SetJurisdiction");
@@ -119,7 +119,7 @@ class LevyRegionPlanTest {
         unitWithPosition(
             H11, Optional.of(jurisdiction(Map.of(new RegionId("r-ghost"), 0L), 10L, 10L, 10L)));
 
-    assertThatThrownBy(() -> plan(unit, "u-1", "r-ghost", 1L, 0L, 0L))
+    assertThatThrownBy(() -> plan(unit, "u-1", "r-ghost", 1L, 0L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("地图里没有区域: r-ghost")
         .hasMessageContaining("map.CreateRegion");
@@ -127,17 +127,20 @@ class LevyRegionPlanTest {
 
   @Test
   void rejectsAllZeroRequest() {
-    assertThatThrownBy(() -> plan(baseUnit(), "u-1", "r-nation", 0L, 0L, 0L))
+    assertThatThrownBy(() -> plan(baseUnit(), "u-1", "r-nation", 0L, 0L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("三项全为 0");
+        .hasMessageContaining("四项全为 0");
   }
 
   @Test
   void rejectsNegativeAmounts() {
-    assertThatThrownBy(() -> plan(baseUnit(), "u-1", "r-nation", -1L, 0L, 0L))
+    assertThatThrownBy(() -> plan(baseUnit(), "u-1", "r-nation", -1L, 0L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("grain 不得为负");
-    assertThatThrownBy(() -> plan(baseUnit(), "u-1", "r-nation", 0L, 0L, -1L))
+    assertThatThrownBy(() -> plan(baseUnit(), "u-1", "r-nation", 0L, 0L, -1L, 0L))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("cloth 不得为负");
+    assertThatThrownBy(() -> plan(baseUnit(), "u-1", "r-nation", 0L, 0L, 0L, -1L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("manpower 不得为负");
   }
@@ -148,13 +151,13 @@ class LevyRegionPlanTest {
     Unit unit =
         unitWithPosition(H11, Optional.of(jurisdiction(Map.of(NATION, 100L), 100L, 0L, 5L)));
 
-    assertThatThrownBy(() -> plan(unit, "u-1", "r-nation", 101L, 0L, 0L))
+    assertThatThrownBy(() -> plan(unit, "u-1", "r-nation", 101L, 0L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("粮 requested=101 超过 levyGrainCapPerCommand=100");
-    assertThatThrownBy(() -> plan(unit, "u-1", "r-nation", 0L, 1L, 0L))
+    assertThatThrownBy(() -> plan(unit, "u-1", "r-nation", 0L, 1L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("钱 requested=1 超过 levyMoneyCapPerCommand=0");
-    assertThatThrownBy(() -> plan(unit, "u-1", "r-nation", 0L, 0L, 6L))
+    assertThatThrownBy(() -> plan(unit, "u-1", "r-nation", 0L, 0L, 0L, 6L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("人力 requested=6 超过 levyManpowerCapPerCommand=5");
   }
@@ -163,7 +166,7 @@ class LevyRegionPlanTest {
   void rejectsUnitWithoutAnEffectivePosition() {
     Unit unit = unitWithPosition(Optional.empty(), Optional.of(defaultJurisdiction()));
 
-    assertThatThrownBy(() -> plan(unit, "u-1", "r-nation", 1L, 0L, 0L))
+    assertThatThrownBy(() -> plan(unit, "u-1", "r-nation", 1L, 0L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("当刻没有有效位置")
         .hasMessageContaining("unit.PlaceAt");
@@ -173,19 +176,19 @@ class LevyRegionPlanTest {
 
   @Test
   void rejectsEachDimensionWhenItsSourcesAreInsufficient() {
-    assertThatThrownBy(() -> plan(baseUnit(), "u-1", "r-nation", 121L, 0L, 0L))
+    assertThatThrownBy(() -> plan(baseUnit(), "u-1", "r-nation", 121L, 0L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("粮总量不足")
         .hasMessageContaining("requested=121")
         .hasMessageContaining("available=120")
         .hasMessageContaining("缺口=1");
-    assertThatThrownBy(() -> plan(baseUnit(), "u-1", "r-nation", 0L, 131L, 0L))
+    assertThatThrownBy(() -> plan(baseUnit(), "u-1", "r-nation", 0L, 131L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("钱总量不足")
         .hasMessageContaining("requested=131")
         .hasMessageContaining("available=130")
         .hasMessageContaining("缺口=1");
-    assertThatThrownBy(() -> plan(baseUnit(), "u-1", "r-nation", 0L, 0L, 51L))
+    assertThatThrownBy(() -> plan(baseUnit(), "u-1", "r-nation", 0L, 0L, 0L, 51L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("人力总量不足")
         .hasMessageContaining("requested=51")
@@ -198,7 +201,7 @@ class LevyRegionPlanTest {
   /** ★ 三项各自的来源（owner / 格 / 额）与国库落点逐值：粮 = 80+40、钱 = 80+20、人 = 30+10。 */
   @Test
   void happyPlanCarriesEverySourceAndTheTreasuryLocation() {
-    LevyRegionPlan.Plan plan = plan(baseUnit(), "u-1", "r-nation", 120L, 100L, 40L);
+    LevyRegionPlan.Plan plan = plan(baseUnit(), "u-1", "r-nation", 120L, 100L, 0L, 40L);
 
     assertThat(plan.unitId()).isEqualTo("u-1");
     assertThat(plan.regionId()).isEqualTo("r-nation");
@@ -234,38 +237,50 @@ class LevyRegionPlanTest {
         .extracting(LevyRegionPlan.GroupSource::taken)
         .containsExactly(30L, 10L);
 
-    assertThat(plan.hasGrainOrMoney()).isTrue();
+    // ★ 阶段 11b：cloth=0 的维度整段跳过（不扫描、不产生来源、available 记 0 = 未求值）。
+    assertThat(plan.cloth().requested()).isZero();
+    assertThat(plan.cloth().available()).as("cloth 0 = 未求值").isZero();
+    assertThat(plan.cloth().sources()).isEmpty();
+
+    assertThat(plan.hasAccountMovements()).isTrue();
     assertThat(plan.hasManpower()).isTrue();
   }
 
   /** ★ requested = 0 的维度**整段跳过**：不扫描、不产生来源条目、不建账（结果 = 规范空维度）。 */
   @Test
   void zeroRequestedDimensionsAreSkippedEntirely() {
-    LevyRegionPlan.Plan grainOnly = plan(baseUnit(), "u-1", "r-nation", 120L, 0L, 0L);
+    LevyRegionPlan.Plan grainOnly = plan(baseUnit(), "u-1", "r-nation", 120L, 0L, 0L, 0L);
 
     assertThat(grainOnly.money().requested()).isZero();
     assertThat(grainOnly.money().available()).as("0 = 未求值（不是『恰好没有来源』）").isZero();
     assertThat(grainOnly.money().sources()).isEmpty();
+    assertThat(grainOnly.cloth().requested()).isZero();
+    assertThat(grainOnly.cloth().available()).isZero();
+    assertThat(grainOnly.cloth().sources()).isEmpty();
     assertThat(grainOnly.manpower().requested()).isZero();
     assertThat(grainOnly.manpower().available()).isZero();
     assertThat(grainOnly.manpower().sources()).isEmpty();
     assertThat(grainOnly.hasManpower()).as("人力 0 ⇒ 批次里没有 SeedGroups").isFalse();
-    assertThat(grainOnly.hasGrainOrMoney()).isTrue();
+    assertThat(grainOnly.hasAccountMovements()).isTrue();
 
-    LevyRegionPlan.Plan manpowerOnly = plan(baseUnit(), "u-1", "r-nation", 0L, 0L, 40L);
+    LevyRegionPlan.Plan manpowerOnly = plan(baseUnit(), "u-1", "r-nation", 0L, 0L, 0L, 40L);
     assertThat(manpowerOnly.grain().requested()).isZero();
     assertThat(manpowerOnly.grain().sources()).isEmpty();
     assertThat(manpowerOnly.money().requested()).isZero();
     assertThat(manpowerOnly.money().sources()).isEmpty();
+    assertThat(manpowerOnly.cloth().requested()).isZero();
+    assertThat(manpowerOnly.cloth().sources()).isEmpty();
+    assertThat(manpowerOnly.cloth()).isEqualTo(LevyRegionPlan.Dimension.skipped());
     assertThat(manpowerOnly.grain()).isEqualTo(LevyRegionPlan.Dimension.skipped());
     assertThat(manpowerOnly.manpower().sources()).hasSize(2);
+    assertThat(manpowerOnly.hasAccountMovements()).as("粮/钱/布全 0 ⇒ 批次里没有 AdjustAccounts").isFalse();
   }
 
   /** ★ 确定性：同状态同参数两次 plan **逐字段**相等（不是只比整体 equals）。 */
   @Test
   void planIsDeterministicFieldByField() {
-    LevyRegionPlan.Plan first = plan(baseUnit(), "u-1", "r-nation", 120L, 100L, 40L);
-    LevyRegionPlan.Plan second = plan(baseUnit(), "u-1", "r-nation", 120L, 100L, 40L);
+    LevyRegionPlan.Plan first = plan(baseUnit(), "u-1", "r-nation", 120L, 100L, 0L, 40L);
+    LevyRegionPlan.Plan second = plan(baseUnit(), "u-1", "r-nation", 120L, 100L, 0L, 40L);
 
     assertThat(second.unitId()).isEqualTo(first.unitId());
     assertThat(second.regionId()).isEqualTo(first.regionId());
@@ -273,6 +288,7 @@ class LevyRegionPlanTest {
     assertThat(second.treasuryLocation()).isEqualTo(first.treasuryLocation());
     assertThat(second.grain()).as("grain 维度逐字段").isEqualTo(first.grain());
     assertThat(second.money()).as("money 维度逐字段").isEqualTo(first.money());
+    assertThat(second.cloth()).as("cloth 维度逐字段").isEqualTo(first.cloth());
     assertThat(second.manpower()).as("manpower 维度逐字段").isEqualTo(first.manpower());
     assertThat(second).isEqualTo(first);
     assertThat(second.grain().sources())
@@ -283,8 +299,14 @@ class LevyRegionPlanTest {
   // ── 夹具 ────────────────────────────────────────────────────────────────────────────
 
   private static LevyRegionPlan.Plan plan(
-      Unit unit, String unitId, String regionId, long grain, long money, long manpower) {
-    return LevyRegionPlan.plan(state(unit), unitId, regionId, grain, money, manpower);
+      Unit unit,
+      String unitId,
+      String regionId,
+      long grain,
+      long money,
+      long cloth,
+      long manpower) {
+    return LevyRegionPlan.plan(state(unit), unitId, regionId, grain, money, cloth, manpower);
   }
 
   private static Unit baseUnit() {

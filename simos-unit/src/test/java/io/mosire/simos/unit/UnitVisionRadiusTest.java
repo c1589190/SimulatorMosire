@@ -73,13 +73,17 @@ class UnitVisionRadiusTest {
     RecordComponent[] components = Unit.class.getRecordComponents();
     List<String> names = componentNames();
     assertThat(names)
-        .as("Unit 应为 15 分量；visionRadius 是倒数第二个（辖区阶段 5 起 jurisdiction 追加在最后）")
-        .hasSize(15);
-    assertThat(names.get(names.size() - 2)).isEqualTo("visionRadius");
-    assertThat(components[components.length - 2].getType()).as("视野半径是 int").isEqualTo(int.class);
-    assertThat(names.get(names.size() - 1)).isEqualTo("jurisdiction");
-    assertThat(components[components.length - 1].getType())
+        .as("Unit 应为 16 分量；visionRadius 仍是倒数第三个（辖区阶段 5 的 jurisdiction 与阶段 9 的 module 依次追加在最后）")
+        .hasSize(16);
+    assertThat(names.get(names.size() - 3)).isEqualTo("visionRadius");
+    assertThat(components[components.length - 3].getType()).as("视野半径是 int").isEqualTo(int.class);
+    assertThat(names.get(names.size() - 2)).isEqualTo("jurisdiction");
+    assertThat(components[components.length - 2].getType())
         .as("管辖是 Optional<Jurisdiction>（擦除后 Optional）")
+        .isEqualTo(Optional.class);
+    assertThat(names.get(names.size() - 1)).isEqualTo("module");
+    assertThat(components[components.length - 1].getType())
+        .as("编制是 Optional<UnitModule>（擦除后 Optional）")
         .isEqualTo(Optional.class);
   }
 
@@ -124,14 +128,14 @@ class UnitVisionRadiusTest {
 
   @Test
   void onlyFourConstructorShapesExist() {
-    // 三条兼容构造器都只补缺省、**不接受半径/管辖** ⇒ 它们不可能绕过构造期校验（这是结构断言，不靠"我记得")。
+    // 四条兼容构造器（9/13/14/15 参）都只补缺省、不接受新字段的显式来源 ⇒ 它们不可能绕过构造期校验（这是结构断言，不靠"我记得")。
     Set<Integer> arities = new LinkedHashSet<>();
     for (var constructor : Unit.class.getConstructors()) {
       arities.add(constructor.getParameterCount());
     }
     assertThat(arities)
-        .as("恰四种构造形态：15 参 canonical + 9/13/14 参兼容（兼容形态没有视野/管辖的来源）")
-        .isEqualTo(Set.of(9, 13, 14, 15));
+        .as("恰五种构造形态：16 参 canonical + 9/13/14/15 参兼容（兼容形态没有新增字段的显式来源）")
+        .isEqualTo(Set.of(9, 13, 14, 15, 16));
   }
 
   // ── ★★ 9 处生产拷贝/创建点：逐处不丢字段 ──────────────────────────

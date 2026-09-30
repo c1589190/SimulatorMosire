@@ -509,7 +509,7 @@ class AdjudicateTickToolTest {
   // ── 判据九：目标声明清单（缺口可见，不静默）────────────────────────────────────────────
 
   /**
-   * ★★ **41 条白名单命令逐条有断言 + 10 条缺口在册可查**（另 5 条 GM-only 也逐条钉住目标声明： 4 条有意空目标 + {@code
+   * ★★ **47 条白名单命令逐条有断言 + 10 条缺口在册可查**（另 5 条 GM-only 也逐条钉住目标声明： 4 条有意空目标 + {@code
    * actor.AdjustAccounts} 的落格目标）。
    *
    * <p>★ 为什么必须逐条断言：映射表漏一项的后果是"那条命令**永远被静默拒**"（fail-closed 的另一面）——看起来
@@ -521,8 +521,8 @@ class AdjudicateTickToolTest {
     Map<String, CommandTargets> targets = tool.commandTargets();
 
     // ① 10 条缺口必须**恰好**是这 10 条（少一条 ⇒ 有人悄悄补上了却没登记；多一条 ⇒ 白名单里多了没人管的类型）。
-    //   ★ 辖区阶段 5 的 unit.SetJurisdiction / unit.SetTaxRate 都实现了 CommandTargets（目标 = 载荷点名的 unitId）
-    //     ⇒ 二者不在缺口里，由下面的 samples 逐条钉住输出路径。
+    //   ★ 辖区阶段 5 的 unit.SetJurisdiction / unit.SetTaxRate 与阶段 9–12 的 6 条新 unit 命令都实现了
+    //     CommandTargets（目标 = 载荷点名的 unitId）⇒ 它们不在缺口里，由下面的 samples 逐条钉住输出路径。
     Set<String> missing = new LinkedHashSet<>(tool.allowedCommandTypes());
     missing.removeAll(targets.keySet());
     assertThat(missing)
@@ -541,10 +541,10 @@ class AdjudicateTickToolTest {
     assertThat(tool.allowedCommandTypes())
         .as(
             "白名单 = unit 22（20 + 辖区阶段 5 的 SetJurisdiction/SetTaxRate）+ map 7 + social 4"
-                + " + economy 7 + actor 1（actor.Seed）⇒ 41")
-        .hasSize(41);
+                + " + economy 7 + actor 1（actor.Seed）⇒ 41，阶段 9–12 的 6 条 unit 命令再 +6 ⇒ 47")
+        .hasSize(47);
 
-    // ② 其余 31 条白名单类型 + 5 条 GM-only = 36 条样本：逐条给真载荷、钉死输出路径。
+    // ② 其余 37 条白名单类型 + 5 条 GM-only = 42 条样本：逐条给真载荷、钉死输出路径。
     //   ★ 5 条 GM-only 里 4 条（SwitchMode/GmAdjust/UnitBorrow/UnitRepay）有意返回空目标；
     //     actor.AdjustAccounts 实现 CommandTargets 且返回**落格**目标（entries[] 的 q/r）。
     Map<String, List<String>> samples = new LinkedHashMap<>();
@@ -587,6 +587,20 @@ class AdjudicateTickToolTest {
     samples.put(
         "unit.SetTaxRate",
         List.of("{\"unitId\":\"u-1\",\"regionId\":\"701\",\"ratePerMille\":100}", "u-1"));
+    // ★ 阶段 9–12（2026-10-01）：6 条新 unit 命令的目标都按载荷点名的 unitId 判（同既有 unit 命令）。
+    samples.put(
+        "unit.SetGovFormation", List.of("{\"unitId\":\"u-1\",\"level\":\"PROVINCE\"}", "u-1"));
+    samples.put(
+        "unit.SetArmyFormation", List.of("{\"unitId\":\"u-3\",\"role\":\"garrison\"}", "u-3"));
+    samples.put(
+        "unit.SetGovPolicy", List.of("{\"unitId\":\"u-1\",\"moneyPerStaffPerTick\":1}", "u-1"));
+    samples.put("unit.SetGovSuperior", List.of("{\"unitId\":\"u-1\",\"superiorGov\":null}", "u-1"));
+    samples.put(
+        "unit.RecruitStaff",
+        List.of("{\"unitId\":\"u-1\",\"role\":\"SCRIBE\",\"count\":1}", "u-1"));
+    samples.put(
+        "unit.DismissStaff",
+        List.of("{\"unitId\":\"u-1\",\"role\":\"SCRIBE\",\"count\":1}", "u-1"));
     samples.put("map.DeleteRegion", List.of("{\"regionId\":\"701\"}", MAP_ID + "/region/701"));
     samples.put(
         "map.SetTerrain",
@@ -681,9 +695,9 @@ class AdjudicateTickToolTest {
     }
     assertThat(samples.keySet())
         .as(
-            "36 条样本一条不漏（31 条白名单目标 + 5 条 GM-only：4 条有意空目标 + actor.AdjustAccounts 的落格目标；"
+            "42 条样本一条不漏（37 条白名单目标 + 5 条 GM-only：4 条有意空目标 + actor.AdjustAccounts 的落格目标；"
                 + "少一条 ⇒ 上面那条断言根本不会跑）")
-        .hasSize(36);
+        .hasSize(42);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());

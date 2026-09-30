@@ -9,6 +9,8 @@ import io.mosire.simos.core.store.Envelope;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
 import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.sd.codec.SdCodec;
@@ -101,6 +103,12 @@ public final class RichWorld {
         "actor",
         ignored ->
             new ActorSnapshot(decoded.meta().ref(), decoded.meta().timestamp(), ActorData.empty()));
+    // ★ 阶段 11b/12（2026-10-01 控制方修生产缺陷）：参与者在单位带 GovFormation 时会写 gov 片，而
+    //   TimeAdvance 要求 base 已有该 namespace 快照 ⇒ 升旧档/创世必须补一个空 gov 片（与 sd/economy/actor 同制）。
+    modules.computeIfAbsent(
+        "gov",
+        ignored ->
+            new GovSnapshot(decoded.meta().ref(), decoded.meta().timestamp(), GovState.empty()));
     return new SimulationState(decoded.meta(), modules, readInfo(decoded.infoJson()));
   }
 
@@ -115,8 +123,8 @@ public final class RichWorld {
             new SdCodec(),
             new EconomyCodec(),
             new ActorCodec(),
-            // ★ 阶段 10a：gov codec 与 Shell 同源。资源里没有 gov 切片时不需要空片——SimulationState 的
-            //   slices map 允许不含 gov（阶段 10a 无 gov 命令/参与者，读侧按"缺切片 = 没有读数"处理）。
+            // ★ 阶段 10a：gov codec 与 Shell 同源。★ 阶段 11b 起 gov 片由参与者写 ⇒ 创世/升档必须补空片
+            //   （见上面 computeIfAbsent("gov")），否则带 GovFormation 的单位推进会被 TimeAdvance 拒。
             new GovCodec())) {
       codecs.put(codec.namespace(), codec);
     }

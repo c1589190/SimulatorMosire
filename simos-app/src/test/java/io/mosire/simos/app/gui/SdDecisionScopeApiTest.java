@@ -206,9 +206,7 @@ class SdDecisionScopeApiTest {
     submit(
         "sd.CreateNation",
         "{\"nationId\":\"n2\",\"name\":\"乙国\",\"homeRegionId\":\"r-other\",\"adminBudgetPerTick\":10}");
-    submit(
-        "sd.CreateArmy",
-        "{\"armyId\":\"a1\",\"nationId\":\"n1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}");
+    submit("sd.CreateArmy", "{\"armyId\":\"a1\",\"rootUnitId\":\"u-1\",\"name\":\"第一军\"}");
     submit(
         "sd.CreateDecisionMaker",
         "{\"id\":\"dm-nation\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n1\"},"

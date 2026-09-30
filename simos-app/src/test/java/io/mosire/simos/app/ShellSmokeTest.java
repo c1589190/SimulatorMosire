@@ -110,9 +110,10 @@ class ShellSmokeTest {
     try (Shell shell = Shell.start(shellConfig())) {
       assertThat(shell.registeredModuleCount())
           .as(
-              "壳应注册 map/social/unit/sd/economy/actor 六个 codec"
-                  + "（R2a 起第 5 个是 EconomyCodec，S1 阶段 2 起第 6 个是 ActorCodec）")
-          .isEqualTo(6);
+              "壳应注册 map/social/unit/sd/economy/actor/gov 七个 codec"
+                  + "（R2a 起第 5 个是 EconomyCodec，S1 阶段 2 起第 6 个是 ActorCodec，"
+                  + "阶段 10a 起第 7 个是 gov.codec.GovCodec）")
+          .isEqualTo(7);
 
       CommandResult result =
           shell.coreSimos().submit(rename(1L, "{\"id\":\"u-1\",\"name\":\"改名后的第一连\"}"));

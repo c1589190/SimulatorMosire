@@ -197,6 +197,11 @@ class LevyRegionToolTest {
     assertThat(view.get("manpower").get("sources").get(1).get("taken").asLong()).isEqualTo(10L);
     assertThat(view.get("manpower").get("sources").get(1).get("after").asLong()).isEqualTo(10L);
 
+    // ★ 阶段 11b：cloth=0 ⇒ 视图有规范空维度（requested/available=0、来源空）。
+    assertThat(view.get("cloth").get("requested").asLong()).isZero();
+    assertThat(view.get("cloth").get("available").asLong()).as("0 = 未求值").isZero();
+    assertThat(view.get("cloth").get("sources")).isEmpty();
+
     assertThat(head()).as("preview 不得推 head").isEqualTo(headBefore);
     assertThat(revisionRowCount()).as("preview 不得留 revision").isEqualTo(revisionsBefore);
     SimulationState still = stateAt(headBefore);
@@ -214,7 +219,7 @@ class LevyRegionToolTest {
   @Test
   void applySubmitsOneRevisionWithTheExpectedBatchAndInfoRecord() throws Exception {
     // 批内命令类型 / 顺序：反射调工具自己的 buildBatch（batch 行读不出 composition，见类注）。
-    List<CommandEnvelope> batch = batchOf(120L, 100L, 40L);
+    List<CommandEnvelope> batch = batchOf(120L, 100L, 0L, 40L);
     assertThat(batch)
         .extracting(CommandEnvelope::type)
         .containsExactly(
@@ -238,6 +243,9 @@ class LevyRegionToolTest {
     assertThat(treasury.get("r").asInt()).isEqualTo(1);
     assertThat(treasury.get("goods").get("grain").asLong()).as("国库粮 = 请求量（恒在最后一条）").isEqualTo(120L);
     assertThat(treasury.get("money").get("silver").asLong()).as("国库钱 = 请求量").isEqualTo(100L);
+    // ★ 阶段 11b：cloth=0 ⇒ AdjustAccounts 的 goods 表里不出现 cloth 键（也不为它建条目）。
+    assertThat(treasury.get("goods").has("cloth")).as("国库 goods 不得有 cloth 键").isFalse();
+    assertThat(entries.get(0).get("goods").has("cloth")).as("家户 goods 不得有 cloth 键").isFalse();
 
     JsonNode seedGroups = JSON.readTree(batch.get(1).payloadJson());
     JsonNode groupEntries = seedGroups.get("entries");
@@ -256,9 +264,11 @@ class LevyRegionToolTest {
     assertThat(value.get("tick").asLong()).isEqualTo(7L);
     assertThat(value.get("grain").asLong()).isEqualTo(120L);
     assertThat(value.get("money").asLong()).isEqualTo(100L);
+    assertThat(value.get("cloth").asLong()).isZero();
     assertThat(value.get("manpower").asLong()).isEqualTo(40L);
     assertThat(value.get("sourceCounts").get("grain").asInt()).isEqualTo(2);
     assertThat(value.get("sourceCounts").get("money").asInt()).isEqualTo(2);
+    assertThat(value.get("sourceCounts").get("cloth").asInt()).isZero();
     assertThat(value.get("sourceCounts").get("manpower").asInt()).isEqualTo(2);
     assertThat(value.get("reason").asText()).isEqualTo(REASON);
 
@@ -367,7 +377,7 @@ class LevyRegionToolTest {
   /** ★ requested=0 的维度不产生批内命令（且 AdjustAccounts 载荷里没有该维度）：只粮 / 只人两种形态各钉一次。 */
   @Test
   void zeroRequestedDimensionsProduceNoCommandAndNoEntry() throws Exception {
-    List<CommandEnvelope> grainOnly = batchOf(120L, 0L, 0L);
+    List<CommandEnvelope> grainOnly = batchOf(120L, 0L, 0L, 0L);
     assertThat(grainOnly)
         .extracting(CommandEnvelope::type)
         .containsExactly(LevyRegionTool.ADJUST_ACCOUNTS_TYPE, LevyRegionTool.PUT_INFO_TYPE);
@@ -379,7 +389,7 @@ class LevyRegionToolTest {
     assertThat(grainValue.get("manpower").asLong()).as("人力 0 进行动记录，但不进批内命令").isZero();
     assertThat(grainValue.get("sourceCounts").get("manpower").asInt()).isZero();
 
-    List<CommandEnvelope> moneyOnly = batchOf(0L, 100L, 0L);
+    List<CommandEnvelope> moneyOnly = batchOf(0L, 100L, 0L, 0L);
     assertThat(moneyOnly)
         .extracting(CommandEnvelope::type)
         .containsExactly(LevyRegionTool.ADJUST_ACCOUNTS_TYPE, LevyRegionTool.PUT_INFO_TYPE);
@@ -389,7 +399,7 @@ class LevyRegionToolTest {
     assertThat(moneyAdjust.get("entries").get(2).get("money").get("silver").asLong())
         .isEqualTo(100L);
 
-    List<CommandEnvelope> manpowerOnly = batchOf(0L, 0L, 40L);
+    List<CommandEnvelope> manpowerOnly = batchOf(0L, 0L, 0L, 40L);
     assertThat(manpowerOnly)
         .extracting(CommandEnvelope::type)
         .containsExactly(LevyRegionTool.SEED_GROUPS_TYPE, LevyRegionTool.PUT_INFO_TYPE);
@@ -531,7 +541,7 @@ class LevyRegionToolTest {
    * 反射调**工具自己的** {@code buildBatch}（私有；批 composition 的唯一可读点）：先生成 {@code LevyRegionPlan.Plan}，再按
    * 真方法组批。参数类型逐字对应生产签名，不复制任何组批逻辑。
    */
-  private List<CommandEnvelope> batchOf(long grain, long money, long manpower) {
+  private List<CommandEnvelope> batchOf(long grain, long money, long cloth, long manpower) {
     try {
       Class<?> planClass = Class.forName("io.mosire.simos.app.tools.write.LevyRegionPlan");
       Method planMethod =
@@ -542,10 +552,12 @@ class LevyRegionToolTest {
               String.class,
               long.class,
               long.class,
+              long.class,
               long.class);
       planMethod.setAccessible(true);
       SimulationState state = stateAt(head());
-      Object plan = planMethod.invoke(null, state, "u-1", "r-nation", grain, money, manpower);
+      Object plan =
+          planMethod.invoke(null, state, "u-1", "r-nation", grain, money, cloth, manpower);
       Method buildBatch =
           LevyRegionTool.class.getDeclaredMethod(
               "buildBatch",

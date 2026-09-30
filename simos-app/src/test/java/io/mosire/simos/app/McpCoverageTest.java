@@ -113,9 +113,9 @@ class McpCoverageTest {
   private static final String TEST_INITIATOR = "agent:t11-coverage";
 
   /**
-   * catalog 预期的 65 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
+   * catalog 预期的 71 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
    * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43，T11C 起 43 → 44，会话重置起 44 → 45，令状态翻转起 45 → 46， social
-   * 起 46 → 49，economy/actor 全族补齐后 50 → 60，辖区阶段 5–8 起 60 → 65）。
+   * 起 46 → 49，economy/actor 全族补齐后 50 → 60，辖区阶段 5–8 起 60 → 65，阶段 9–12 起 65 → 71）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -191,7 +191,15 @@ class McpCoverageTest {
           "unit.SetTaxRate",
           "actor.AdjustAccounts",
           "economy.UnitBorrow",
-          "economy.UnitRepay");
+          "economy.UnitRepay",
+          // ★ 阶段 9–12（2026-10-01）：6 条新 unit 命令（编制/政策/上级/招募/遣散），一律追加在末尾 ⇒
+          //   不移动前面各命令的 revision 号（本用例按插入序逐条断言 revision）。
+          "unit.SetGovFormation",
+          "unit.SetArmyFormation",
+          "unit.SetGovPolicy",
+          "unit.SetGovSuperior",
+          "unit.RecruitStaff",
+          "unit.DismissStaff");
 
   /**
    * ★★ H1：{@code economy.Seed} 那条最小载荷在 (1,1) 落的那个家户 —— id 由 {@link HouseholdId#ofSeed} 拼 （家户 id
@@ -294,9 +302,9 @@ class McpCoverageTest {
         "sd.CreateNation",
         "{\"nationId\":\"n-cov\",\"name\":\"覆盖国\",\"homeRegionId\":\"r-nation\","
             + "\"adminBudgetPerTick\":1}");
+    // ★ 阶段 12：sd.CreateArmy 去掉 nationId（发 nationId 会被具名拒）；masterGovUnitId 可省略 = 未认主子。
     MINIMAL_PAYLOADS.put(
-        "sd.CreateArmy",
-        "{\"armyId\":\"a-cov\",\"nationId\":\"n-cov\",\"rootUnitId\":\"u-2\",\"name\":\"覆盖军\"}");
+        "sd.CreateArmy", "{\"armyId\":\"a-cov\",\"rootUnitId\":\"u-2\",\"name\":\"覆盖军\"}");
     MINIMAL_PAYLOADS.put(
         "sd.CreateDecisionMaker",
         "{\"id\":\"dm-cov\",\"affiliation\":{\"kind\":\"nation\",\"id\":\"n-cov\"},"
@@ -467,6 +475,20 @@ class McpCoverageTest {
         "actor.AdjustAccounts",
         "{\"entries\":[{\"owner\":{\"kind\":\"ESTATE\",\"id\":\"farm@1_1\"},\"q\":1,\"r\":1,"
             + "\"goods\":{\"grain\":1}}]}");
+
+    // ── 阶段 9–12（2026-10-01）的 6 条新 unit 命令：一律追加在最后 ⇒ 不移动上面任何命令的 revision 号。──
+    //   顺序敏感：SetGovPolicy/SetGovSuperior/RecruitStaff/DismissStaff 都要求 u-2 已是 GOV ⇒ SetGovFormation
+    //   必须排在它们之前；SetArmyFormation 也认 u-2 为主子（masterGov），故它同样排在 SetGovFormation 之后。
+    MINIMAL_PAYLOADS.put("unit.SetGovFormation", "{\"unitId\":\"u-2\",\"level\":\"PROVINCE\"}");
+    MINIMAL_PAYLOADS.put(
+        "unit.SetArmyFormation",
+        "{\"unitId\":\"u-3\",\"masterGov\":\"u-2\",\"role\":\"garrison\"}");
+    MINIMAL_PAYLOADS.put("unit.SetGovPolicy", "{\"unitId\":\"u-2\",\"moneyPerStaffPerTick\":1}");
+    MINIMAL_PAYLOADS.put("unit.SetGovSuperior", "{\"unitId\":\"u-2\"}");
+    MINIMAL_PAYLOADS.put(
+        "unit.RecruitStaff", "{\"unitId\":\"u-2\",\"role\":\"SCRIBE\",\"count\":1}");
+    MINIMAL_PAYLOADS.put(
+        "unit.DismissStaff", "{\"unitId\":\"u-2\",\"role\":\"SCRIBE\",\"count\":1}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -518,7 +540,8 @@ class McpCoverageTest {
     // 1. catalog 经 MCP 读回，与注册面一致（R5 的载体）。
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
-        .as("catalog 列出的 type 与 Shell 注册的 65 个 handler 同源（R4/E6 后含 economy/actor 全族 + 辖区阶段 5–8）")
+        .as(
+            "catalog 列出的 type 与 Shell 注册的 71 个 handler 同源（R4/E6 后含 economy/actor 全族 + 辖区阶段 5–8 + 阶段 9–12）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
     committableCatalogTypes.removeAll(GM_ONLY_PRECONDITION_TYPES);

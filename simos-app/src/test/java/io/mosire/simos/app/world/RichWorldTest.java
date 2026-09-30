@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.actor.codec.ActorCodec;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.economy.codec.EconomyCodec;
@@ -58,7 +59,7 @@ class RichWorldTest {
     assertThat(first.meta().ref()).isEqualTo(new StateRef(MAIN, R1));
     assertThat(first.meta().timestamp().tick()).as("资源信封的 tick").isZero();
     assertThat(first.modules().keySet())
-        .containsExactlyInAnyOrder("map", "social", "unit", "sd", "economy", "actor");
+        .containsExactlyInAnyOrder("map", "social", "unit", "sd", "economy", "actor", "gov");
     assertThat(first.info()).as("C26：绝不录 Info").isEqualTo(InMemoryInfoSystem.empty());
   }
 
@@ -151,6 +152,7 @@ class RichWorldTest {
       core.register(new EconomyCodec());
       // ★ S1 阶段 2：RichWorld.state() 带 actor 切片 ⇒ codec 表必须随之长（否则 bootstrapGenesis 当场抛）。
       core.register(new ActorCodec());
+      core.register(new GovCodec());
 
       SimulationState genesis = RichWorld.state("Map1");
       core.bootstrapGenesis(genesis);
@@ -174,6 +176,7 @@ class RichWorldTest {
       core.register(new EconomyCodec());
       // ★ S1 阶段 2：RichWorld.state() 带 actor 切片 ⇒ codec 表必须随之长（否则 bootstrapGenesis 当场抛）。
       core.register(new ActorCodec());
+      core.register(new GovCodec());
 
       core.bootstrapGenesis(RichWorld.state("Map1"));
       assertThatThrownBy(() -> core.bootstrapGenesis(RichWorld.state("Map1")))
