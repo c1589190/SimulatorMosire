@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.classfirst;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.api.id.ClassPoolId;
 import io.mosire.simos.economy.api.id.ExternalLenderId;
 import java.util.ArrayList;
@@ -83,6 +84,12 @@ public final class ClassFirstSettlement {
   }
 
   /** 单日结算结果：新状态 + 读写边界增量 + 日审计。 */
+  // ★ SpotBugs 不做跨过程/紧凑构造器重赋值跟踪：两个 List 已在构造器里 unmodifiableList(new ArrayList<>(...))，
+  //   访问器返回的既不是调用方原对象也改不动 ⇒ 按类豁免（先例：simos-social 的 ArmyPlan）。
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "紧凑构造器已 Collections.unmodifiableList(new ArrayList<>(...))；检测器对 record 紧凑构造器的重赋值不做跟踪")
   public record Result(
       ClassFirstState state,
       List<AccountDelta> actorAccountDeltas,

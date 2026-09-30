@@ -776,7 +776,7 @@ public final class Shell implements AutoCloseable {
     LOG.info(
         "Shell 装配完成: store={} checkpointInterval={} codec={} handler={} participant={}"
             + " resolver={} facet={} tool={} mapId={} bindAddress={} mcpPort={} guiPort={}"
-            + " approvalPort={} economyThreads={}",
+            + " approvalPort={}",
         config.storeDir(),
         config.checkpointInterval(),
         codecs.size(),
@@ -789,8 +789,7 @@ public final class Shell implements AutoCloseable {
         config.bindAddress(),
         mcpServer.boundPort(),
         guiServer.boundPort(),
-        approvalEndpoint.boundPort(),
-        config.economyWorkerCount());
+        approvalEndpoint.boundPort());
     return new Shell(
         config,
         coreSimos,

@@ -27,8 +27,8 @@ import java.util.Objects;
  * 可售库存 = max(0, 持有 − 已冻结 − 必要生产投入 − 生活保留)   // 各项互不重复扣除
  * </pre>
  *
- * 逐项算。<b>不许</b>把 {@code MarketSettlement.MARKET_SELF_RESERVE_PER_MILLE} / {@code
- * 旧结算引擎（R3a 已删除）.LENDER_SUBSISTENCE_RESERVE_PER_MILLE} 塞进本类，也<b>不许</b>在这里按阶层/人口推一个保留额。
+ * 逐项算。<b>不许</b>把 {@code MarketSettlement.MARKET_SELF_RESERVE_PER_MILLE} / {@code 旧结算引擎（R3a
+ * 已删除）.LENDER_SUBSISTENCE_RESERVE_PER_MILLE} 塞进本类，也<b>不许</b>在这里按阶层/人口推一个保留额。
  *
  * <p>★ <b>这里没有 {@code max(0, …)}，是刻意的</b>：{@code GoodsAccount} 的构造期守卫已经把"{@code 0 ≤ 冻结 ≤ 余额}"钉成
  * 类型不变量 ⇒ 本减法的结果<b>必然 ≥ 0</b>。而那条例式里的 {@code max(0, …)} 属于 M2（那里还要再减两项，减成负数才需要截断）—— 在这里抄一个 {@code

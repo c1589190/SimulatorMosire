@@ -160,10 +160,19 @@ public final class DebtCapacityBook {
       }
       rows.put(key, row);
       FlowRow flow = data.flows().get(key);
-      income.put(key, flow == null ? 0L : flow.income().getOrDefault(EconomyCommodities.GRAIN, 0L));
-      consumed.put(
-          key, flow == null ? 0L : flow.consumed().getOrDefault(EconomyCommodities.GRAIN, 0L));
-      taxPaid.put(key, flow == null ? 0L : flow.taxPaid());
+      // ★ 用 long 局部再装箱：避免 Map<..., Long> 的 getOrDefault 先拆箱、put
+      // 立刻重装箱（BX_UNBOXING_IMMEDIATELY_REBOXED）。
+      long grainIncome = 0L;
+      long grainConsumed = 0L;
+      long paidTax = 0L;
+      if (flow != null) {
+        grainIncome = flow.income().getOrDefault(EconomyCommodities.GRAIN, 0L);
+        grainConsumed = flow.consumed().getOrDefault(EconomyCommodities.GRAIN, 0L);
+        paidTax = flow.taxPaid();
+      }
+      income.put(key, grainIncome);
+      consumed.put(key, grainConsumed);
+      taxPaid.put(key, paidTax);
     }
     return capacities(
         rows,

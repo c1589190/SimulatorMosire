@@ -852,21 +852,15 @@ public final class ClassFirstPilotEngine {
         long seedNeeded = plannedLand * config.seedPerLand() - seedSelf;
         plan.seedExternalByProviderPool =
             trimToMap(plan.seedExternalByProviderPool, Math.max(0L, seedNeeded));
-        seedExternal = sumValues(plan.seedExternalByProviderPool);
       } else {
         plan.seedExternalByProviderPool = trimToMap(plan.seedExternalByProviderPool, seedExternal);
       }
       plan.desiredLand = desiredLand;
       plan.plannedLand = plannedLand;
       plan.ownLaborUsed = ownUsed;
-      plan.externalLaborUsed = sumValues(plan.externalLaborByProviderPool);
       plan.seedRequired = plannedLand * config.seedPerLand();
       plan.seedSelf = Math.min(pool.stock(AssetKind.GRAIN), plan.seedRequired);
       plan.seedExternal = sumValues(plan.seedExternalByProviderPool);
-      plan.toolsUsed =
-          Math.min(
-              pool.stock(AssetKind.TOOLS),
-              ceilDiv(plannedLand, Math.max(1L, config.toolCapacityPerTool())));
       plan.toolsShortageLand =
           Math.max(
               0L,
@@ -897,7 +891,6 @@ public final class ClassFirstPilotEngine {
       // 劳动用外部提供 ⇒ 生产账户欠提供者工资；分配时按"地租→工资/给养→种子→残值"优先偿付。
       long externalLabor = sumValues(plan.externalLaborByProviderPool);
       if (externalLabor > 0L) {
-        long wage = externalLabor * config.wagePerLabor();
         for (Map.Entry<String, Long> entry : plan.externalLaborByProviderPool.entrySet()) {
           long part = entry.getValue() * config.wagePerLabor();
           postObligation(
@@ -909,7 +902,6 @@ public final class ClassFirstPilotEngine {
               config.loanInterestRatePerMille(),
               tick + config.collectionIntervalTicks());
         }
-        plan.wageDue = wage;
       }
       plan.leasedLand = Math.max(0L, plan.plannedLand - Math.min(plan.ownedLand, plan.plannedLand));
       pool.setOperatedLand(plan.plannedLand);
@@ -963,10 +955,6 @@ public final class ClassFirstPilotEngine {
           Math.max(0L, plan.plannedLand - Math.min(plan.ownedLand, plan.plannedLand));
       long rentDue = operatedLeasedLand * config.rentPerLand() * rule.rentSharePerMille() / 1000L;
       long wageDue = sumValues(plan.externalLaborByProviderPool) * config.wagePerLabor();
-      long seedDue = sumValues(plan.seedExternalByProviderPool);
-      plan.rentDue = rentDue;
-      plan.wageDue = wageDue;
-      plan.seedDue = seedDue;
 
       LinkedHashMap<String, Long> rentByLandlord =
           splitByPool(rentDue, pools.get(PilotModel.LANDLORD_ID));
@@ -1187,42 +1175,40 @@ public final class ClassFirstPilotEngine {
         internalGrainLendable +=
             Math.max(0L, lender.stock(AssetKind.GRAIN) - protectedReserveGrain(lender));
       }
-      if (gap > 0L) {
-        for (ClassPool lender : poolsByTier(true)) {
-          if (gap <= 0L) {
-            break;
-          }
-          if (lender.classPositionId().equals(pool.classPositionId())) {
-            continue;
-          }
-          long lendable =
-              Math.max(0L, lender.stock(AssetKind.GRAIN) - protectedReserveGrain(lender));
-          long take = Math.min(gap, lendable);
-          if (take > 0L) {
-            lender.takeStock(AssetKind.GRAIN, take);
-            pool.addStock(AssetKind.GRAIN, take);
-            postObligation(
-                pool.classPositionId(),
-                lender.classPositionId(),
-                PilotModel.GRAIN,
-                take,
-                TERMS_GRAIN_LOAN,
-                config.loanInterestRatePerMille(),
-                tick + config.collectionIntervalTicks());
-            borrowedGoods += take;
-            borrowedGrainTotal += take;
-            gap -= take;
-            transitions.add(
-                new PilotModel.Transition(
-                    tick,
-                    PilotModel.TransitionKind.BORROW_GOODS,
-                    pool.classPositionId(),
-                    lender.classPositionId(),
-                    0L,
-                    0L,
-                    take,
-                    "baseRationGap=" + originalGap));
-          }
+      // ★ gap > 0 已由上面的 continue 保证（这一段只向民间借粮；货币/买入在下面各自再判 gap）。
+      for (ClassPool lender : poolsByTier(true)) {
+        if (gap <= 0L) {
+          break;
+        }
+        if (lender.classPositionId().equals(pool.classPositionId())) {
+          continue;
+        }
+        long lendable = Math.max(0L, lender.stock(AssetKind.GRAIN) - protectedReserveGrain(lender));
+        long take = Math.min(gap, lendable);
+        if (take > 0L) {
+          lender.takeStock(AssetKind.GRAIN, take);
+          pool.addStock(AssetKind.GRAIN, take);
+          postObligation(
+              pool.classPositionId(),
+              lender.classPositionId(),
+              PilotModel.GRAIN,
+              take,
+              TERMS_GRAIN_LOAN,
+              config.loanInterestRatePerMille(),
+              tick + config.collectionIntervalTicks());
+          borrowedGoods += take;
+          borrowedGrainTotal += take;
+          gap -= take;
+          transitions.add(
+              new PilotModel.Transition(
+                  tick,
+                  PilotModel.TransitionKind.BORROW_GOODS,
+                  pool.classPositionId(),
+                  lender.classPositionId(),
+                  0L,
+                  0L,
+                  take,
+                  "baseRationGap=" + originalGap));
         }
       }
 
@@ -2515,17 +2501,6 @@ public final class ClassFirstPilotEngine {
     return total;
   }
 
-  private long trimMap(Map<String, Long> source, long limit) {
-    long total = 0L;
-    long left = Math.max(0L, limit);
-    for (long value : source.values()) {
-      long take = Math.min(left, Math.max(0L, value));
-      total += take;
-      left -= take;
-    }
-    return total;
-  }
-
   private LinkedHashMap<String, Long> trimToMap(Map<String, Long> source, long limit) {
     LinkedHashMap<String, Long> result = new LinkedHashMap<>();
     long left = Math.max(0L, limit);
@@ -2584,10 +2559,6 @@ public final class ClassFirstPilotEngine {
         .subtract(java.math.BigInteger.ONE)
         .divide(denominator)
         .longValue();
-  }
-
-  private static long ceilDiv(long numerator, long denominator) {
-    return (numerator + denominator - 1L) / denominator;
   }
 
   // ── 内部状态类型 ─────────────────────────────────────────────────────────────
@@ -2736,18 +2707,13 @@ public final class ClassFirstPilotEngine {
     long desiredLand;
     long plannedLand;
     long ownLaborUsed;
-    long externalLaborUsed;
     long seedRequired;
     long seedSelf;
     long seedExternal;
-    long toolsUsed;
     long toolsShortageLand;
     long laborShortageLand;
     long seedShortage;
     long outputGrain;
-    long rentDue;
-    long wageDue;
-    long seedDue;
     LinkedHashMap<String, Long> externalLaborByProviderPool = new LinkedHashMap<>();
     LinkedHashMap<String, Long> seedExternalByProviderPool = new LinkedHashMap<>();
 

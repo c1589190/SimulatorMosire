@@ -9,29 +9,36 @@ import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
+import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.time.ClassFirstPopulationEconomyTimeParticipant;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.core.command.ForkBranch;
+import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.ClassPoolId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.economy.api.id.MobilityPolicyId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.classfirst.AssetKind;
 import io.mosire.simos.economy.classfirst.ClassFirstPilotEngine;
 import io.mosire.simos.economy.classfirst.ClassFirstState;
+import io.mosire.simos.economy.classfirst.ClassFlowEvent;
 import io.mosire.simos.economy.classfirst.ClassPool;
 import io.mosire.simos.economy.classfirst.HouseholdProductionAccount;
+import io.mosire.simos.economy.classfirst.MobilityPolicy;
 import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.map.codec.MapCodec;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.spi.UpdateRegionHandler;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.spi.CreateArmyHandler;
@@ -88,6 +95,12 @@ class ClassFirstPopulationEconomyTimeParticipantTest {
   private static final String INITIATOR = "agent:r2b-class-first-test";
   private static final long DAY_24 = 24L;
   private static final long DAY_120 = 120L;
+  private static final long DAY_360 = 360L;
+  private static final long DAY_30 = 30L;
+  private static final long GM_UP_CAP_PER_MILLE_PER_TICK = 10L;
+  private static final long GM_LEASE_AVAILABILITY_PER_MILLE = 800L;
+  private static final String GM_INITIATOR = "agent:r3b-gm-classfirst";
+  private static final BranchId CONTROL_BRANCH = new BranchId("r3b-baseline-control");
 
   @TempDir Path tempDir;
 
@@ -206,6 +219,351 @@ class ClassFirstPopulationEconomyTimeParticipantTest {
               + (finalPopulation - initialPopulation));
       assertThat(changedLots).as("120 tick 的阶层移动/生死真的同步到了 social 批次（逐 lot 人数有变化）").isPositive();
       printReadings("TICK-120", economy120, actor120, social120);
+    }
+  }
+
+  /**
+   * ★★ <b>R3b：classfirst 三国 360 tick 验收（CompactThreeNationsWorld + 真 {@code AdvanceTime}）</b>。
+   *
+   * <p>0→360 分 12 段、每段 30 tick（每段落一条 revision，参与者内部仍逐日结算，语义与 0→120→360 两段相同）；每段末读 social 的 {@code
+   * b<月>} 新生批次 ⇒ 出生数逐月精确；死亡数 = 上月末人口 + 本月出生 − 本月末人口（迁移不改总人口 ⇒ 差额只能是死亡）。tick 120（第 4 段末）用 {@code
+   * submitRestore} 把 GM 政策源写进 {@code economy.classFirst.mobilityPolicies}（upCap
+   * 1→10‰/tick、leaseAvailability 300→800‰）—— 那是 {@link
+   * ClassFirstPilotEngine#restore(ClassFirstState)} 的权威面；随后 8 段继续推进。
+   *
+   * <p>判据与打印（读数直接打印 {@code [CLASSFIRST-360]}，不建 Golden）：4 池人口/A_C/x_C/r_up/r_down、UP/DOWN
+   * 事件数、LandForSale 闭环（{@code landForSale == 初始 + Σ放地 − Σ购地}）、GM 调参前后迁移数、出生/死亡、粮/布/货币/土地/债务/债权守恒、
+   * 旧投影 flows/industries/units 恒空。
+   */
+  @Test
+  void classFirstThreeNationsRun360TicksAndGmKnobsBite() throws IOException {
+    Path store = Files.createDirectories(tempDir.resolve("r3b-classfirst-360-store"));
+    ClassFirstPopulationEconomyTimeParticipant participant =
+        new ClassFirstPopulationEconomyTimeParticipant(CompactThreeNationsWorld.MAP_ID);
+    try (CoreSimos core = classFirstCore(store, participant)) {
+      core.bootstrapGenesis(CompactThreeNationsWorld.state(CompactThreeNationsWorld.MAP_ID));
+      CompactThreeNationsWorld.initializeNations(core, EconomySeeder.FoundationProfile.CLASS_FIRST);
+      SimulationState seeded = core.replay(new StateRef(MAIN, new RevisionId(4L)));
+      EconomyData economy0 = CompactThreeNationsWorld.economyOf(seeded);
+      ActorData actor0 = CompactThreeNationsWorld.actorOf(seeded);
+      SocialData social0 = CompactThreeNationsWorld.socialOf(seeded);
+      assertThat(economy0.classFirst().isEmpty()).as("class-first 世界必须种出池").isFalse();
+      assertThat(economy0.classFirst().classPools()).as("三国合并后恰 4 池").hasSize(4);
+      assertNoOldSettlement(economy0, "360-seed");
+      assertClassFirstConservation(economy0.classFirst(), "360-seed");
+      assertGrainClothConservation(economy0.classFirst(), "360-seed");
+      assertAccountConservation(economy0, actor0, economy0, actor0, "360-seed");
+      MobilityPolicy before = policyOf(economy0);
+      System.out.println(
+          "[CLASSFIRST-360] seed tick=0 pools="
+              + economy0.classFirst().classPools().size()
+              + " population="
+              + poolPopulation(economy0.classFirst())
+              + " upCap="
+              + before.upCapPerMillePerTick()
+              + "‰/tick leaseAvailability="
+              + before.leaseAvailabilityPerMille()
+              + "‰");
+
+      // ── 0→120（4 段），第 4 段末做 GM 调参 ─────────────────────────────────────────────
+      long population = poolPopulation(economy0.classFirst());
+      long births = 0L;
+      long deaths = 0L;
+      SimulationState at120 = null;
+      SimulationState at360 = null;
+      EconomyData economy120 = null;
+      for (int month = 1; month <= (int) (DAY_360 / DAY_30); month++) {
+        long to = DAY_30 * month;
+        long revision = advance(core, to - DAY_30, to);
+        SimulationState state = core.replay(new StateRef(MAIN, new RevisionId(revision)));
+        EconomyData economy = CompactThreeNationsWorld.economyOf(state);
+        ActorData actor = CompactThreeNationsWorld.actorOf(state);
+        SocialData social = CompactThreeNationsWorld.socialOf(state);
+        assertNoOldSettlement(economy, "360-month" + month);
+        assertClassFirstConservation(economy.classFirst(), "360-month" + month);
+        assertGrainClothConservation(economy.classFirst(), "360-month" + month);
+        assertAccountConservation(economy0, actor0, economy, actor, "360-month" + month);
+        long now = poolPopulation(economy.classFirst());
+        long monthBirths = bornPopulation(social, month);
+        long monthDeaths = population + monthBirths - now;
+        assertThat(monthDeaths).as("month %d：死亡数不得为负（出生批次在结算月之后才参与死亡）", month).isNotNegative();
+        assertThat(socialPopulation(social))
+            .as("month %d：Σsocial == Σclassfirst（逐日移动 + 月度生死都不丢人）", month)
+            .isEqualTo(now);
+        births += monthBirths;
+        deaths += monthDeaths;
+        population = now;
+        if (month == 4) {
+          at120 = state;
+          economy120 = economy;
+          ClassFirstPilotEngine engine120 = ClassFirstPilotEngine.restore(economy120.classFirst());
+          long upPre = flowCount(economy120.classFirst(), PilotModel.Direction.UP, 0L, DAY_120);
+          long downPre = flowCount(economy120.classFirst(), PilotModel.Direction.DOWN, 0L, DAY_120);
+          System.out.println(
+              "[CLASSFIRST-360] phase=pre-gm tick=120 pools="
+                  + economy120.classFirst().classPools().size()
+                  + " population="
+                  + now
+                  + " births="
+                  + births
+                  + " deaths="
+                  + deaths
+                  + " ownedLand="
+                  + engine120.totalOwnedLand()
+                  + " landForSale="
+                  + engine120.landForSale()
+                  + " leaseSupply="
+                  + engine120.leaseSupply()
+                  + " money="
+                  + engine120.totalMoney()
+                  + " debtMilli="
+                  + engine120.totalDebtGrainMilli()
+                  + " claimMilli="
+                  + engine120.totalClaimGrainMilli()
+                  + " accountNetSum="
+                  + engine120.accountNetSum()
+                  + " upEvents="
+                  + upPre
+                  + " downEvents="
+                  + downPre
+                  + " flowEventsTotal="
+                  + economy120.classFirst().classFlowEvents().size());
+          printPoolReadings("pre-gm", economy120.classFirst());
+          // ★ 同态对照：从 tick 120 分岔一条**不改政策**的基线分支，稍后跑同样的 120→240 ——
+          //   两次推进的起点逐字段相同，唯一差别就是 GM 政策，迁移数差异才有因果判别力。
+          long head120 = core.head(MAIN).orElseThrow().value();
+          CommandResult forked =
+              core.submit(
+                  new ForkBranch(
+                      "cmd-r3b-fork-control",
+                      "corr-r3b-fork-control",
+                      GM_INITIATOR,
+                      MAIN,
+                      new RevisionId(head120),
+                      CONTROL_BRANCH));
+          assertThat(forked).as("基线对照分支必须分岔成功").isInstanceOf(CommandResult.Committed.class);
+          // ★ GM 调参：只改源政策（upCap/leaseAvailability），不直接改池读数。
+          MobilityPolicy raised =
+              before
+                  .withUpCapPerMillePerTick(GM_UP_CAP_PER_MILLE_PER_TICK)
+                  .withLeaseAvailabilityPerMille(GM_LEASE_AVAILABILITY_PER_MILLE);
+          long gmRevision = applyGmMobilityPolicy(core, economy120, raised);
+          SimulationState adjusted = core.replay(new StateRef(MAIN, new RevisionId(gmRevision)));
+          MobilityPolicy persisted = policyOf(CompactThreeNationsWorld.economyOf(adjusted));
+          assertThat(persisted.upCapPerMillePerTick())
+              .as("GM 写入后 upCap 立即生效（引擎 restore 的权威面）")
+              .isEqualTo(GM_UP_CAP_PER_MILLE_PER_TICK);
+          assertThat(persisted.leaseAvailabilityPerMille())
+              .as("GM 写入后 leaseAvailability 立即生效")
+              .isEqualTo(GM_LEASE_AVAILABILITY_PER_MILLE);
+          System.out.println(
+              "[CLASSFIRST-360] GM adjusted at tick=120: upCap "
+                  + before.upCapPerMillePerTick()
+                  + "‰ → "
+                  + raised.upCapPerMillePerTick()
+                  + "‰/tick, leaseAvailability "
+                  + before.leaseAvailabilityPerMille()
+                  + "‰ → "
+                  + raised.leaseAvailabilityPerMille()
+                  + "‰ (revision="
+                  + gmRevision
+                  + ")");
+        }
+        if (month == (int) (DAY_360 / DAY_30)) {
+          at360 = state;
+        }
+      }
+      assertThat(at120).as("tick 120 状态必须可得").isNotNull();
+      assertThat(at360).as("tick 360 状态必须可得").isNotNull();
+
+      // ── 同态对照：基线分支 120→240（与主分支同起点、同段数；唯一差别 = GM 政策）──────────────
+      for (int month = 5; month <= 8; month++) {
+        long to = DAY_30 * month;
+        advance(core, CONTROL_BRANCH, to - DAY_30, to);
+      }
+      long controlHead = core.head(CONTROL_BRANCH).orElseThrow().value();
+      SimulationState control240 =
+          core.replay(new StateRef(CONTROL_BRANCH, new RevisionId(controlHead)));
+      EconomyData controlEconomy = CompactThreeNationsWorld.economyOf(control240);
+      assertThat(controlEconomy.classFirst().meta().tick()).as("对照分支也在 tick 240").isEqualTo(240L);
+      assertClassFirstConservation(controlEconomy.classFirst(), "control-240");
+      assertGrainClothConservation(controlEconomy.classFirst(), "control-240");
+      assertThat(socialPopulation(CompactThreeNationsWorld.socialOf(control240)))
+          .as("对照分支也保持 Σsocial == Σclassfirst")
+          .isEqualTo(poolPopulation(controlEconomy.classFirst()));
+      long upControl =
+          flowCount(controlEconomy.classFirst(), PilotModel.Direction.UP, DAY_120, 240L);
+      long downControl =
+          flowCount(controlEconomy.classFirst(), PilotModel.Direction.DOWN, DAY_120, 240L);
+
+      // ── 终局判据 ───────────────────────────────────────────────────────────────────
+      EconomyData economy360 = CompactThreeNationsWorld.economyOf(at360);
+      ActorData actor360 = CompactThreeNationsWorld.actorOf(at360);
+      SocialData social360 = CompactThreeNationsWorld.socialOf(at360);
+      assertThat(economy360.classFirst().meta().tick())
+          .as("classfirst tick == 360")
+          .isEqualTo(DAY_360);
+      assertNoOldSettlement(economy360, "360-final");
+      assertClassFirstConservation(economy360.classFirst(), "360-final");
+      assertGrainClothConservation(economy360.classFirst(), "360-final");
+      assertAccountConservation(economy0, actor0, economy360, actor360, "360-final");
+      ClassFirstPilotEngine engine360 = ClassFirstPilotEngine.restore(economy360.classFirst());
+      MobilityPolicy after = engine360.mobilityPolicy();
+      assertThat(after.upCapPerMillePerTick()).isEqualTo(GM_UP_CAP_PER_MILLE_PER_TICK);
+      assertThat(after.leaseAvailabilityPerMille()).isEqualTo(GM_LEASE_AVAILABILITY_PER_MILLE);
+
+      long population360 = poolPopulation(economy360.classFirst());
+      assertThat(socialPopulation(social360))
+          .as("终局 Σsocial == Σclassfirst")
+          .isEqualTo(population360);
+      assertThat(population360)
+          .as("终局人口 == 初始 + 出生 − 死亡（逐月差额的累计）")
+          .isEqualTo(poolPopulation(economy0.classFirst()) + births - deaths);
+      assertThat(births).as("360 tick 内真的发生出生").isPositive();
+      assertThat(deaths).as("360 tick 内真的发生死亡（基础死亡率不等于 0）").isPositive();
+
+      // UP/DOWN：总事件数 + GM 前后窗口（pre = ticks 1..120，post = ticks 121..360）
+      long upTotal = flowCount(economy360.classFirst(), PilotModel.Direction.UP, 0L, DAY_360);
+      long downTotal = flowCount(economy360.classFirst(), PilotModel.Direction.DOWN, 0L, DAY_360);
+      long upPre = flowCount(economy360.classFirst(), PilotModel.Direction.UP, 0L, DAY_120);
+      long downPre = flowCount(economy360.classFirst(), PilotModel.Direction.DOWN, 0L, DAY_120);
+      long upPost = flowCount(economy360.classFirst(), PilotModel.Direction.UP, DAY_120, DAY_360);
+      long downPost =
+          flowCount(economy360.classFirst(), PilotModel.Direction.DOWN, DAY_120, DAY_360);
+      assertThat(upTotal).as("360 tick 内应有向上迁移").isPositive();
+      assertThat(downTotal).as("360 tick 内应有向下迁移").isPositive();
+      assertThat(upPost * DAY_120)
+          .as(
+              "GM 调高 upCap/leaseAvailability 后，上行迁移的每 tick 速率应高于调参前（pre=%d/%d→post=%d/%d）",
+              upPre, DAY_120, upPost, DAY_360 - DAY_120)
+          .isGreaterThan(upPre * (DAY_360 - DAY_120));
+      long upGmWindow = flowCount(economy360.classFirst(), PilotModel.Direction.UP, DAY_120, 240L);
+      long downGmWindow =
+          flowCount(economy360.classFirst(), PilotModel.Direction.DOWN, DAY_120, 240L);
+      System.out.println(
+          "[CLASSFIRST-360] GM controlled A/B (tick 120→240, same start state): GM up="
+              + upGmWindow
+              + " down="
+              + downGmWindow
+              + " vs baseline up="
+              + upControl
+              + " down="
+              + downControl);
+      assertThat(upGmWindow)
+          .as(
+              "同态对照：GM 调高 upCap/leaseAvailability 后 120→240 上行迁移数应严格高于基线（GM=%d，baseline=%d）",
+              upGmWindow, upControl)
+          .isGreaterThan(upControl);
+
+      // LandForSale 闭环：landForSale == 初始 + Σ放地 − Σ购地（放地不消失，购地不凭空）
+      long landToMarket = 0L;
+      long landPurchased = 0L;
+      for (ClassFlowEvent event : economy360.classFirst().classFlowEvents().values()) {
+        landToMarket += event.bundle().landOwnershipToMarket();
+        landPurchased += event.bundle().landPurchasedFromMarket();
+      }
+      assertThat(engine360.landForSale())
+          .as(
+              "LandForSale 闭环（初始 %d + 放地 %d − 购地 %d）",
+              after.initialLandForSale(), landToMarket, landPurchased)
+          .isEqualTo(after.initialLandForSale() + landToMarket - landPurchased);
+      assertThat(landPurchased)
+          .as("购地量不得超过市场上出现过的地（初始 + 放地）")
+          .isLessThanOrEqualTo(after.initialLandForSale() + landToMarket);
+      System.out.println(
+          "[CLASSFIRST-360] landMarket closure: initialForSale="
+              + after.initialLandForSale()
+              + " + landToMarket="
+              + landToMarket
+              + " - landPurchased="
+              + landPurchased
+              + " == landForSaleEnd="
+              + engine360.landForSale()
+              + " (leaseSupplyEnd="
+              + engine360.leaseSupply()
+              + ")");
+
+      printClassFirst360Final(
+          economy360, social360, births, deaths, upPre, downPre, upPost, downPost);
+      printPoolReadings("final", economy360.classFirst());
+
+      // ── 读口收口：GUI/MCP 共用的 ApiViews.economyHex 从同一状态给出 class-first 权威读数，旧栏只留具名 unavailable ──
+      Map<String, Object> hexView = ApiViews.economyHex(new HexCoord(0, 0), at360);
+      Map<?, ?> classFirstReadout = (Map<?, ?>) hexView.get("classFirst");
+      assertThat(classFirstReadout.get("available"))
+          .as("class-first 已播种 ⇒ 读口 available=true")
+          .isEqualTo(true);
+      assertThat(classFirstReadout.get("scope").toString()).as("读数必须自述世界级").contains("世界级");
+      List<?> poolReadouts = (List<?>) classFirstReadout.get("pools");
+      assertThat(poolReadouts).as("4 池逐池可读").hasSize(4);
+      for (Object poolReadoutObject : poolReadouts) {
+        Map<?, ?> poolReadout = (Map<?, ?>) poolReadoutObject;
+        assertThat(poolReadout.get("population")).as("池人口可读").isNotNull();
+        assertThat(poolReadout.get("aMilli")).as("A_C 可读").isNotNull();
+        assertThat(poolReadout.get("xMilli")).as("x_C 可读").isNotNull();
+        assertThat(poolReadout.get("rateUpPerMillePerYear")).as("r_up 可读").isNotNull();
+        assertThat(poolReadout.get("rateDownPerMillePerYear")).as("r_down 可读").isNotNull();
+      }
+      Map<?, ?> landMarketReadout = (Map<?, ?>) classFirstReadout.get("landMarket");
+      assertThat(landMarketReadout.get("landBalanced"))
+          .as("读口的 LandForSale 守恒读数与测试断言同源")
+          .isEqualTo(true);
+      Map<?, ?> accountsReadout = (Map<?, ?>) classFirstReadout.get("accounts");
+      assertThat(accountsReadout.get("debtGrainMilli"))
+          .as("读口：债务 == 债权")
+          .isEqualTo(accountsReadout.get("claimGrainMilli"));
+      Map<?, ?> flowReadout = (Map<?, ?>) classFirstReadout.get("classFlowEvents");
+      assertThat(flowReadout.get("upCount")).as("读口 UP 计数 == 状态里的 UP 事件数").isEqualTo(upTotal);
+      assertThat(flowReadout.get("downCount"))
+          .as("读口 DOWN 计数 == 状态里的 DOWN 事件数")
+          .isEqualTo(downTotal);
+      List<?> policyReadouts = (List<?>) classFirstReadout.get("mobilityPolicies");
+      assertThat(policyReadouts).as("GM 政策逐 mode 可读").hasSize(1);
+      Map<?, ?> policyReadout = (Map<?, ?>) policyReadouts.get(0);
+      assertThat(policyReadout.get("upCapPerMillePerTick"))
+          .as("读口的 upCap 是 GM 写入后的值")
+          .isEqualTo(GM_UP_CAP_PER_MILLE_PER_TICK);
+      assertThat(policyReadout.get("leaseAvailabilityPerMille"))
+          .as("读口的 leaseAvailability 是 GM 写入后的值")
+          .isEqualTo(GM_LEASE_AVAILABILITY_PER_MILLE);
+      Map<?, ?> conservationReadout = (Map<?, ?>) classFirstReadout.get("conservation");
+      for (String key :
+          List.of(
+              "grainBalanced",
+              "clothBalanced",
+              "moneyBalanced",
+              "landBalanced",
+              "debtEqualsClaim",
+              "accountNetZero")) {
+        assertThat(conservationReadout.get(key)).as("读口守恒读数 %s", key).isEqualTo(true);
+      }
+      // 旧结算删除后恒 null 的栏位：保留具名 unavailable，且指向 class-first 的权威替代读数。
+      assertThat(hexView.get("marketReadout")).isNull();
+      assertThat(hexView.get("marketReadoutUnavailable").toString()).contains("classFirst");
+      assertThat(hexView.get("classTransitions")).isNull();
+      assertThat(hexView.get("classTransitionsUnavailable").toString()).contains("classFlowEvents");
+      assertThat(hexView.get("entryOutcomes")).isNull();
+      assertThat(hexView.get("arrears")).isNull();
+      assertThat(hexView.get("arrearsUnavailable").toString()).contains("classFirst.accounts");
+      assertThat(hexView.get("liquidationAudits")).isNull();
+      assertThat(hexView.get("liquidationAuditsUnavailable").toString())
+          .contains("classFirst.totals");
+      System.out.println(
+          "[CLASSFIRST-360] readout ApiViews.economyHex: classFirst.pools="
+              + poolReadouts.size()
+              + " flowEvents="
+              + flowReadout.get("count")
+              + " up="
+              + flowReadout.get("upCount")
+              + " down="
+              + flowReadout.get("downCount")
+              + " accounts="
+              + accountsReadout.get("count")
+              + " landBalanced="
+              + landMarketReadout.get("landBalanced")
+              + " mobilityPolicies="
+              + policyReadouts.size()
+              + " (marketReadout/classTransitions/entryOutcomes/arrears/liquidationAudits 具名 unavailable)");
     }
   }
 
@@ -627,6 +985,226 @@ class ClassFirstPopulationEconomyTimeParticipantTest {
             + pools);
   }
 
+  /** 当前 mode 生效的 GM 政策（engine restore 的权威面 = state.mobilityPolicies）。 */
+  private static MobilityPolicy policyOf(EconomyData economy) {
+    ClassFirstState state = economy.classFirst();
+    assertThat(state.meta().config()).as("class-first 非空态必须带 meta.config").isNotNull();
+    MobilityPolicy policy =
+        state.mobilityPolicies().get(MobilityPolicyId.of(state.meta().config().mode().id()));
+    assertThat(policy).as("class-first 状态必须带当前 mode 的 mobility policy").isNotNull();
+    return policy;
+  }
+
+  /**
+   * GM 政策源写入：重建 {@code mobilityPolicies} 后经 Core 的 {@code submitRestore} 落一条 revision；返回新 revision。
+   */
+  private static long applyGmMobilityPolicy(
+      CoreSimos core, EconomyData economy, MobilityPolicy policy) {
+    ClassFirstState state = economy.classFirst();
+    Map<MobilityPolicyId, MobilityPolicy> policies = new LinkedHashMap<>(state.mobilityPolicies());
+    policies.put(MobilityPolicyId.of(state.meta().config().mode().id()), policy);
+    ClassFirstState adjusted =
+        new ClassFirstState(
+            state.modeParticipations(),
+            state.classPools(),
+            state.householdAccounts(),
+            state.assetStateSchemas(),
+            state.classBounds(),
+            policies,
+            state.classFlowEvents(),
+            state.accounts(),
+            state.lenders(),
+            state.meta());
+    EconomyChangeSet changeSet =
+        EconomyChangeSet.between(economy, economy.withClassFirst(adjusted));
+    long head = core.head(MAIN).orElseThrow().value();
+    CommandResult result =
+        core.submitRestore(
+            MAIN,
+            new RevisionId(head),
+            GM_INITIATOR,
+            new WorldChangeSet(Map.of("economy", changeSet)));
+    assertThat(result)
+        .as("GM 政策源写入必须落一条 revision")
+        .isEqualTo(new CommandResult.Committed(new StateRef(MAIN, new RevisionId(head + 1L))));
+    return head + 1L;
+  }
+
+  /** 窗口内的 UP/DOWN 迁移事件数（from 开区间、to 闭区间；事件 tick 落在窗口内的才计数）。 */
+  private static long flowCount(
+      ClassFirstState state, PilotModel.Direction direction, long fromExclusive, long toInclusive) {
+    long count = 0L;
+    for (ClassFlowEvent event : state.classFlowEvents().values()) {
+      if (event.direction() == direction
+          && event.tick() > fromExclusive
+          && event.tick() <= toInclusive) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /** 第 {@code month} 月结算产生的出生人数：social 里 id 末段 = {@code b<month>} 的批次总人数（结算当月即精确读取）。 */
+  private static long bornPopulation(SocialData social, long month) {
+    String cohort = "b" + month;
+    long total = 0L;
+    for (PopulationGroup group : social.groups().values()) {
+      String value = group.id().value();
+      int lastColon = value.lastIndexOf(':');
+      if (lastColon >= 0 && cohort.equals(value.substring(lastColon + 1))) {
+        total += group.count();
+      }
+    }
+    return total;
+  }
+
+  /** ★ R3b：粮/布守恒（与 {@code ClassFirstPilotEngineTest} 的 360 tick 判据同式）。 */
+  private static void assertGrainClothConservation(ClassFirstState state, String tag) {
+    ClassFirstPilotEngine engine = ClassFirstPilotEngine.restore(state);
+    assertThat(engine.initialGrainTotal() + engine.producedGrainTotal())
+        .as("%s: 粮守恒（初始 + 生产 == Σ池+放贷+托管 库存 − 留种 − 口粮）", tag)
+        .isEqualTo(engine.totalGrain() + engine.seedUsedTotal() + engine.rationConsumedTotal());
+    assertThat(engine.initialClothTotal())
+        .as("%s: 布守恒（初始 == Σ池+放贷 库存 − 布消费）", tag)
+        .isEqualTo(engine.totalCloth() + engine.clothConsumedTotal());
+  }
+
+  /** 逐池打印人口/库存/A_C/x_C/r_up/r_down（A/x/r 与结算引擎同源：schema/bounds/policy 现算）。 */
+  private static void printPoolReadings(String tag, ClassFirstState state) {
+    MobilityPolicy policy = state.mobilityPolicies().values().iterator().next();
+    long moneyPerGrain = state.meta().config().moneyPerGrain();
+    for (ClassPool pool : state.classPools().values()) {
+      long aMilli = policy.schema().aMilli(pool, moneyPerGrain);
+      long xMilli = policy.bounds().xMilli(pool.classPositionId(), aMilli);
+      System.out.println(
+          "[CLASSFIRST-360]   "
+              + tag
+              + " pool="
+              + pool.classPositionId()
+              + " population="
+              + pool.population()
+              + " labor="
+              + pool.labor()
+              + " grain="
+              + pool.stock(AssetKind.GRAIN)
+              + " cloth="
+              + pool.stock(AssetKind.CLOTH)
+              + " money="
+              + pool.stock(AssetKind.MONEY)
+              + " ownedLand="
+              + pool.stock(AssetKind.OWNED_LAND)
+              + " tools="
+              + pool.stock(AssetKind.TOOLS)
+              + " debtMilli="
+              + pool.debtGrainMilli()
+              + " leaseHolding="
+              + pool.leaseHolding()
+              + " A_C="
+              + aMilli
+              + " x_C="
+              + xMilli
+              + " r_up="
+              + policy.rateUpPerMillePerYear(xMilli)
+              + " r_down="
+              + policy.rateDownPerMillePerYear(xMilli));
+    }
+  }
+
+  /** 360 tick 终局一行汇总（守恒读数 + GM 前后迁移 + 旧投影条数）。 */
+  private static void printClassFirst360Final(
+      EconomyData economy,
+      SocialData social,
+      long births,
+      long deaths,
+      long upPre,
+      long downPre,
+      long upPost,
+      long downPost) {
+    ClassFirstState state = economy.classFirst();
+    ClassFirstPilotEngine engine = ClassFirstPilotEngine.restore(state);
+    MobilityPolicy policy = engine.mobilityPolicy();
+    System.out.println(
+        "[CLASSFIRST-360] final tick="
+            + state.meta().tick()
+            + " pools="
+            + state.classPools().size()
+            + " households="
+            + state.householdAccounts().size()
+            + " population="
+            + engine.totalPopulation()
+            + " socialPopulation="
+            + socialPopulation(social)
+            + " births="
+            + births
+            + " deaths="
+            + deaths
+            + " upEvents="
+            + flowCount(state, PilotModel.Direction.UP, 0L, DAY_360)
+            + " downEvents="
+            + flowCount(state, PilotModel.Direction.DOWN, 0L, DAY_360)
+            + " upPre120="
+            + upPre
+            + " downPre120="
+            + downPre
+            + " upPost240="
+            + upPost
+            + " downPost240="
+            + downPost
+            + " ownedLand="
+            + engine.totalOwnedLand()
+            + " landForSale="
+            + engine.landForSale()
+            + " leaseSupply="
+            + engine.leaseSupply()
+            + " grainStock="
+            + engine.totalGrain()
+            + " clothStock="
+            + engine.totalCloth()
+            + " householdMoney="
+            + engine.totalHouseholdMoney()
+            + " lenderMoney="
+            + engine.totalLenderMoney()
+            + " escrowMoney="
+            + engine.landMarketEscrowMoney()
+            + " totalMoney="
+            + engine.totalMoney()
+            + " debtMilli="
+            + engine.totalDebtGrainMilli()
+            + " claimMilli="
+            + engine.totalClaimGrainMilli()
+            + " accountNetSum="
+            + engine.accountNetSum()
+            + " producedGrain="
+            + engine.producedGrainTotal()
+            + " rationConsumed="
+            + engine.rationConsumedTotal()
+            + " clothConsumed="
+            + engine.clothConsumedTotal()
+            + " collectionEvents="
+            + engine.collectionEventCount()
+            + " capitalized="
+            + engine.capitalizedTotal()
+            + " landSeized="
+            + engine.landSeizedTotal()
+            + " upCap="
+            + policy.upCapPerMillePerTick()
+            + " leaseAvailability="
+            + policy.leaseAvailabilityPerMille()
+            + " oldProjections{flows="
+            + economy.flows().size()
+            + ", industries="
+            + economy.industries().size()
+            + ", units="
+            + economy.units().size()
+            + ", relations="
+            + economy.relations().size()
+            + ", laborSupply="
+            + economy.laborSupply().size()
+            + ", allocations="
+            + economy.allocations().size()
+            + "}");
+  }
+
   // ── 装配 ────────────────────────────────────────────────────────────────────────────
 
   /** 真 worldgen 的 core（与 {@code ClassFirstEconomySeedTest.worldgenCore} 同源）+ R2b 新参与者（封存前注册）。 */
@@ -663,19 +1241,24 @@ class ClassFirstPopulationEconomyTimeParticipantTest {
 
   /** 一次 {@code AdvanceTime}（一条 revision，内部由参与者逐日跑）；返回新 revision。 */
   private static long advance(CoreSimos core, long from, long to) {
-    long head = core.head(MAIN).orElseThrow().value();
+    return advance(core, MAIN, from, to);
+  }
+
+  /** 指定分支的一次 {@code AdvanceTime}（对照分支与主分支走同一条语义）。 */
+  private static long advance(CoreSimos core, BranchId branch, long from, long to) {
+    long head = core.head(branch).orElseThrow().value();
     CommandResult result =
         core.submit(
             new AdvanceTime(
-                "cmd-advance-" + from + "-" + to,
-                "corr-advance-" + from + "-" + to,
+                "cmd-advance-" + branch.value() + "-" + from + "-" + to,
+                "corr-advance-" + branch.value() + "-" + from + "-" + to,
                 INITIATOR,
-                MAIN,
+                branch,
                 new RevisionId(head),
                 new TimeRange(SimosTimestamp.of(from), Optional.of(SimosTimestamp.of(to)))));
     assertThat(result)
-        .as("一次推进 %d → %d 天只落一条 revision", from, to)
-        .isEqualTo(new CommandResult.Committed(new StateRef(MAIN, new RevisionId(head + 1L))));
+        .as("一次推进 %d → %d 天只落一条 revision（branch=%s）", from, to, branch.value())
+        .isEqualTo(new CommandResult.Committed(new StateRef(branch, new RevisionId(head + 1L))));
     return head + 1L;
   }
 

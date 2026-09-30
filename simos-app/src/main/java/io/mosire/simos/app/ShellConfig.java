@@ -29,9 +29,6 @@ import java.util.Objects;
  *     io.mosire.simos.app.Shell}
  * @param openingSnapshot **开场快照开关**（P4，缺省 {@value #DEFAULT_OPENING_SNAPSHOT}）：开 ⇒ 决策人的会话首次为空时，
  *     先给它发一张本国所在区域的渲染图（只在有视觉能力的路由上生效）。见 {@link #withOpeningSnapshot}
- * @param economyWorkerCount **经济日结算的并行 worker 数**（R2；缺省 {@value #DEFAULT_ECONOMY_WORKER_COUNT} =
- *     单线程退化路径）： 显式传 ≥ 2 才真的并行；结构分区数恒为 {@code
- *     EconomyParallelism.STRUCTURAL_PARTITIONS}（线程数不参与分区/提交序）。
  */
 public record ShellConfig(
     Path storeDir,
@@ -43,8 +40,7 @@ public record ShellConfig(
     String mcpInitiator,
     String mapId,
     String bindAddress,
-    boolean openingSnapshot,
-    int economyWorkerCount) {
+    boolean openingSnapshot) {
 
   public static final int DEFAULT_CHECKPOINT_INTERVAL = 100;
   public static final int DEFAULT_GUI_PORT = 5711;
@@ -66,46 +62,7 @@ public record ShellConfig(
   public static final boolean DEFAULT_OPENING_SNAPSHOT = false;
 
   /**
-   * **经济结算 worker 数的缺省**：{@value #DEFAULT_ECONOMY_WORKER_COUNT} = 单线程退化路径。
-   *
-   * <p>★ 为什么缺省是 1：并行是有明确代价的（线程池 + 意向收集 + 协调器回放）；缺省保持旧口径，只有命令行显式 {@code --economy-threads N}（N ≥
-   * 2）才真的并行。★ 1 与 4/8 走同一套分区/提交序，见 {@code EconomyParallelism} 的类注。
-   */
-  public static final int DEFAULT_ECONOMY_WORKER_COUNT = 1;
-
-  /**
-   * **10 参兼容构造**（P4 + R2）：{@code economyWorkerCount} 取 {@value #DEFAULT_ECONOMY_WORKER_COUNT}。
-   *
-   * <p>★ 它存在的理由与 9 参构造同款：并行度是**新加的第 11 个分量**，而库内已有按 10 参装配的调用点（多数在测试里）；
-   * 加两个形参就让它们各改一行换不到任何东西。命令行/组合根要显式并行时走 11 参构造或 {@link #withEconomyWorkerCount(int)}。
-   */
-  public ShellConfig(
-      Path storeDir,
-      int checkpointInterval,
-      int guiPort,
-      int mcpPort,
-      String mcpPath,
-      int approvalPort,
-      String mcpInitiator,
-      String mapId,
-      String bindAddress,
-      boolean openingSnapshot) {
-    this(
-        storeDir,
-        checkpointInterval,
-        guiPort,
-        mcpPort,
-        mcpPath,
-        approvalPort,
-        mcpInitiator,
-        mapId,
-        bindAddress,
-        openingSnapshot,
-        DEFAULT_ECONOMY_WORKER_COUNT);
-  }
-
-  /**
-   * **9 参兼容构造**（P4）：{@code openingSnapshot} 取 {@value #DEFAULT_OPENING_SNAPSHOT}，并行度取缺省单线程。
+   * **9 参兼容构造**（P4）：{@code openingSnapshot} 取 {@value #DEFAULT_OPENING_SNAPSHOT}。
    *
    * <p>★ 它存在的理由很实在：那个开关是**新加的第 10 个分量**，而库内已有 13 处按 9 参装配（多数在测试里）。加一个形参就让 13
    * 个与本次改动无关的地方各改一行，换不到任何东西；把它们钉在"新特性缺省关"上，正是我们要的语义。
@@ -130,8 +87,7 @@ public record ShellConfig(
         mcpInitiator,
         mapId,
         bindAddress,
-        DEFAULT_OPENING_SNAPSHOT,
-        DEFAULT_ECONOMY_WORKER_COUNT);
+        DEFAULT_OPENING_SNAPSHOT);
   }
 
   public ShellConfig {
@@ -153,10 +109,6 @@ public record ShellConfig(
     mcpInitiator = requireText(mcpInitiator, "mcpInitiator");
     mapId = requireText(mapId, "mapId");
     bindAddress = requireText(bindAddress, "bindAddress");
-    if (economyWorkerCount < 1) {
-      throw new IllegalArgumentException(
-          "economyWorkerCount 必须 ≥ 1（1 = 单线程退化路径，≥ 2 才真的并行）: " + economyWorkerCount);
-    }
   }
 
   /**
@@ -176,8 +128,7 @@ public record ShellConfig(
         DEFAULT_MCP_INITIATOR,
         DEFAULT_MAP_ID,
         DEFAULT_BIND_ADDRESS,
-        DEFAULT_OPENING_SNAPSHOT,
-        DEFAULT_ECONOMY_WORKER_COUNT);
+        DEFAULT_OPENING_SNAPSHOT);
   }
 
   /** 仅替换三个端口，其余原样（测试用 {@code 0} 取随机端口时最常用）。 */
@@ -192,8 +143,7 @@ public record ShellConfig(
         mcpInitiator,
         mapId,
         bindAddress,
-        openingSnapshot,
-        economyWorkerCount);
+        openingSnapshot);
   }
 
   /** 仅替换 GUI / MCP 的绑定地址，其余原样（M10；测试绑非回环地址时最常用）。 */
@@ -208,8 +158,7 @@ public record ShellConfig(
         mcpInitiator,
         mapId,
         bindAddress,
-        openingSnapshot,
-        economyWorkerCount);
+        openingSnapshot);
   }
 
   /**
@@ -229,24 +178,7 @@ public record ShellConfig(
         mcpInitiator,
         mapId,
         bindAddress,
-        enabled,
-        economyWorkerCount);
-  }
-
-  /** 仅替换**经济结算并行 worker 数**，其余原样（R2；{@code 1} = 单线程退化路径）。 */
-  public ShellConfig withEconomyWorkerCount(int workerCount) {
-    return new ShellConfig(
-        storeDir,
-        checkpointInterval,
-        guiPort,
-        mcpPort,
-        mcpPath,
-        approvalPort,
-        mcpInitiator,
-        mapId,
-        bindAddress,
-        openingSnapshot,
-        workerCount);
+        enabled);
   }
 
   private static String requireText(String value, String name) {

@@ -10,28 +10,18 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
-import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.app.tools.write.WorldgenInitializeTool;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.cohort.ResidenceKind;
-import io.mosire.simos.economy.api.debt.DebtTerms;
-import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.api.id.RegimeId;
-import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.migrate.LegacyClassStructure;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -77,7 +67,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -169,122 +158,12 @@ public final class CompactThreeNationsWorld {
 
   private static final ObjectMapper JSON = SimosObjectMapper.create();
 
-  /** ★★ P3 典型测试条件的目标国（粮仓平原国）—— 债务/拆分/质押都落在它的中心格 {@link #TYPICAL_CONDITIONS_HEX}。 */
+  /**
+   * ★★ 测试条件的目标国（粮仓平原国）—— 旧 P3 的债务/拆分/质押条件只作用于该国。★ R3b：那两个条件夹具 （{@code typicalConditions}/{@code
+   * stressConditions}）已随旧结算运行时一并删除（无调用方，且 class-first 入口会具名拒绝带旧资产规则的 payload）；本常量保留，因为 {@link
+   * #initializeNations(CoreSimos, TestConditions, RegionId)} 的"条件只作用于哪一国"语义仍需要它。
+   */
   public static final RegionId TYPICAL_CONDITIONS_NATION = GRANARY;
-
-  /** ★★ P3 典型测试条件的目标格（粮仓国的几何中心；中心格在平原带上 ⇒ 农业 LAND 产能非零）。 */
-  public static final HexCoord TYPICAL_CONDITIONS_HEX = GRANARY_CENTER;
-
-  /** ★ 典型条件的债务人 = 粮仓国中心格的农村贫农（自有粮最少、最可能见底的那一档）。 */
-  public static final HouseholdId TYPICAL_DEBTOR =
-      HouseholdId.ofSeed(
-          TYPICAL_CONDITIONS_HEX, ResidenceKind.RURAL, new SocialClassId("poor_peasant"));
-
-  /** ★ 典型条件的债权人 = 同一格的农村地主（开缸口粮最厚、同格主要债权人）。 */
-  public static final HouseholdId TYPICAL_CREDITOR =
-      HouseholdId.ofSeed(
-          TYPICAL_CONDITIONS_HEX, ResidenceKind.RURAL, new SocialClassId("landlord"));
-
-  /** ★★ 压力 720 的债权人 = 同一格中农（阶层份额更大、总储备通常高于地主；真实库存足够。） */
-  public static final HouseholdId STRESS_CREDITOR =
-      HouseholdId.ofSeed(
-          TYPICAL_CONDITIONS_HEX, ResidenceKind.RURAL, new SocialClassId("middle_peasant"));
-
-  /** ★★ 压力 720 的初始粮债本金（显著大于贫农 F/收入；不得超过债权人真实库存，否则播种 fail-closed）。 */
-  public static final long STRESS_DEBT_PRINCIPAL_MILLI = 5_400_000L;
-
-  /**
-   * ★★ 压力 720 的利率（500‰/周期）：legacy 20‰ 下 4c 会用借入本金先还清、5 计息只留 2% 尾巴，E5b 一两轮就结清 ⇒ 720 读不到
-   * DEFAULTED。这里仍走同一条 terms/结算路径，只把合同调成高利贷，让"欠债不还"持续到 720。
-   */
-  public static final int STRESS_INTEREST_RATE_PER_MILLE_PER_CYCLE = 500;
-
-  /** ★★ 压力 720 唯一拆给贫农的 LAND 份额（毫亩；不给 InitialPledge ⇒ 专门测自动挂质押）。 */
-  public static final long STRESS_LAND_SPLIT_MILLI_MU = 20_000L;
-
-  /**
-   * ★★ <b>P3 的"典型条件"</b>（P4 备用）：粮仓国中心格上"地主借粮给贫农 + 庄园拆一块 LAND 给贫农 + 一条质押"， 并给贫农一笔具名外部粮注入（只加开缸库存，走
-   * {@code test-condition:external-endowment} 报告）。
-   *
-   * <pre>
-   * 债务    : 地主 → 贫农，1,000,000 毫粮（= 1,000 粮），真实转账（moveInventory=true），legacy 条款
-   * 资产拆分: farm@0_0 的 ESTATE 自有 LAND 份额拆 1,000,000 毫亩（= 1,000 亩）给贫农（OWNED）
-   * 质押    : 上述债务 × 贫农新得的 LAND 份额 500,000 毫亩（mode = legacy，priority = 10）
-   * 外部注入: 贫农 +1,000,000 毫粮（报告键 conditionInjectedGoods）
-   * </pre>
-   *
-   * <p>★ 质押的目标份额 id 由 {@code TestConditions.ownedShareIdForHousehold(..., 0)} 预测（贫农在 {@code
-   * farm@0_0} 此前没有同键 OWNED 份额 ⇒ 新份额序号必为 0）；若世界结构变了，播种器会 fail-closed （"质押份额 owner/不存在"），不会静默错挂。
-   */
-  public static TestConditions typicalConditions() {
-    IndustryId farm =
-        IndustryHexKeys.id(
-            EconomySeeder.FARM, TYPICAL_CONDITIONS_HEX.q(), TYPICAL_CONDITIONS_HEX.r());
-    CommodityId grain = new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID);
-    DebtUnit unit = DebtUnit.commodity(grain);
-    DebtTerms terms = DebtTerms.legacyDefault();
-    long principalMilli = 1_000_000L;
-    long landSplitMilliMu = 1_000_000L;
-    long pledgeMilliMu = 500_000L;
-    long extraGrainMilli = 1_000_000L;
-    return new TestConditions(
-        List.of(
-            TestConditions.InitialDebt.moving(
-                TYPICAL_DEBTOR,
-                TYPICAL_CREDITOR,
-                unit,
-                principalMilli,
-                terms,
-                OptionalLong.empty())),
-        List.of(
-            new TestConditions.InitialPledge(
-                DebtContractId.idOf(TYPICAL_DEBTOR, TYPICAL_CREDITOR, unit, terms),
-                TestConditions.ownedShareIdForHousehold(farm, AssetKind.LAND, TYPICAL_DEBTOR, 0L),
-                pledgeMilliMu,
-                LegacyClassStructure.defaultModeId(),
-                10)),
-        List.of(
-            TestConditions.AssetSplit.byQuery(
-                farm,
-                AssetKind.LAND,
-                RegimeOperators.defaultOperator(new RegimeId(EconomySeeder.REGIME_FEUDAL), farm),
-                TYPICAL_DEBTOR,
-                landSplitMilliMu)),
-        Map.of(TYPICAL_DEBTOR, Map.of(grain, extraGrainMilli)),
-        Map.of());
-  }
-
-  /**
-   * ★★ <b>P4 压力条件</b>：粮仓国中心格"中农 → 贫农"一笔到期即违约的大额粮债（{@code dueCycle=1}、真实转账、无外部注入）+ 一块拆给贫农的 LAND（无
-   * InitialPledge）—— 让 E5b 的"到期自动 DEFAULTED → 自动挂质押 → 处置 → 减债 → 阶层下滑 → 危机信号" 全部发生。
-   */
-  public static TestConditions stressConditions() {
-    IndustryId farm =
-        IndustryHexKeys.id(
-            EconomySeeder.FARM, TYPICAL_CONDITIONS_HEX.q(), TYPICAL_CONDITIONS_HEX.r());
-    CommodityId grain = new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID);
-    DebtUnit unit = DebtUnit.commodity(grain);
-    DebtTerms terms = DebtTerms.legacyDefault(STRESS_INTEREST_RATE_PER_MILLE_PER_CYCLE);
-    return new TestConditions(
-        List.of(
-            TestConditions.InitialDebt.moving(
-                TYPICAL_DEBTOR,
-                STRESS_CREDITOR,
-                unit,
-                STRESS_DEBT_PRINCIPAL_MILLI,
-                terms,
-                OptionalLong.of(1L))),
-        List.of(),
-        List.of(
-            TestConditions.AssetSplit.byQuery(
-                farm,
-                AssetKind.LAND,
-                RegimeOperators.defaultOperator(new RegimeId(EconomySeeder.REGIME_FEUDAL), farm),
-                TYPICAL_DEBTOR,
-                STRESS_LAND_SPLIT_MILLI_MU)),
-        Map.of(),
-        Map.of());
-  }
 
   private CompactThreeNationsWorld() {}
 
@@ -541,10 +420,11 @@ public final class CompactThreeNationsWorld {
 
   /**
    * ★★ 用真工具 {@code simos.worldgen.initialize} 依次初始化三国（{@code dryRun=false, army=true,
-   * economyProfile=complete}），返回三国摘要 JSON。
+   * economyProfile=class-first}），返回三国摘要 JSON。
    *
-   * <p>★ 顺序 = {@link #NATION_REGIONS} 的顺序；每次调用落一条 revision。任一失败即抛（不把失败折叠成"跳过"）。 ★ P1：本夹具显式选
-   * COMPLETE 经济地基（E1 mode/结构/位置/归属 + E2 资产规则/清算政策）， 让 E2 自动组织阶段在紧凑世界里真正可执行。
+   * <p>★ 顺序 = {@link #NATION_REGIONS} 的顺序；每次调用落一条 revision。任一失败即抛（不把失败折叠成"跳过"）。 ★ R3a 起 economy 只有
+   * class-first 一条生产路径；旧 P1/P3 的 COMPLETE 条件（债务/质押/资产拆分）随旧结算运行时一并退役， 带条件的 worldgen 调用会被 {@code
+   * applyTestConditions} 具名拒绝。
    */
   public static List<JsonNode> initializeNations(CoreSimos core) throws IOException {
     return initializeNations(core, TestConditions.EMPTY, TYPICAL_CONDITIONS_NATION);

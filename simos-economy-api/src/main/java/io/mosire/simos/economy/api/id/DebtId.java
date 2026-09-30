@@ -13,9 +13,9 @@ package io.mosire.simos.economy.api.id;
  *   <li>**跨周期不同** —— 周期号在 id 里 ⇒ 新周期的借入不覆盖旧条。
  * </ol>
  *
- * <p>存量/流量分离（§3.3 末条）：债务只能由借入/赊购产生（**计息并入本金**是本批唯一允许的例外，理由见 {@code
- * 旧结算引擎（R3a 已删除）.chargeInterest}），**本金是存量**，不在 {@code FlowRow} 里冒充。 裸值 {@code toString()} +
- * {@code static parse} 三件套（铁律 1）。
+ * <p>存量/流量分离（§3.3 末条）：债务只能由借入/赊购产生（**计息并入本金**是本批唯一允许的例外，理由见 {@code 旧结算引擎（R3a
+ * 已删除）.chargeInterest}），**本金是存量**，不在 {@code FlowRow} 里冒充。 裸值 {@code toString()} + {@code static
+ * parse} 三件套（铁律 1）。
  *
  * <p>★ {@link #parse} 只校验非空白、**不校验格式**（与其余 id 同款：格式的权威是产出方那唯一一处拼写）。
  */

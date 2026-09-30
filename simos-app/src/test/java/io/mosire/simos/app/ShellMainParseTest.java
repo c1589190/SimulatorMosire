@@ -69,4 +69,19 @@ class ShellMainParseTest {
         .hasMessageContaining("未知参数")
         .hasMessageContaining("--demo");
   }
+
+  /**
+   * ★ <b>R3b 的开关面</b>：{@code --economy-threads} <b>已拔掉</b> —— R3a 起 class-first 引擎是单线程，旧的并行结算
+   * worker 随旧结算运行时一并退役；传它必须被当成未知参数拒（不是静默忽略、也不是还在接线）。
+   */
+  @Test
+  void economyThreadsFlagIsGone() {
+    assertThatThrownBy(
+            () ->
+                ShellMain.parse(
+                    new String[] {"--store", tempDir.toString(), "--economy-threads", "4"}))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("未知参数")
+        .hasMessageContaining("--economy-threads");
+  }
 }

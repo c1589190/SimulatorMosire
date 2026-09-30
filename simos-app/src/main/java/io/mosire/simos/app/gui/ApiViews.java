@@ -21,6 +21,7 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetShareId;
+import io.mosire.simos.economy.api.id.ClassPoolId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -28,11 +29,11 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.MobilityPolicyId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
-import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.money.CurrencyDef;
 import io.mosire.simos.economy.api.money.InstrumentKind;
 import io.mosire.simos.economy.api.money.MoneyInstrument;
@@ -42,6 +43,17 @@ import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.SubsistenceObligation;
+import io.mosire.simos.economy.classfirst.AssetStateSchema;
+import io.mosire.simos.economy.classfirst.ClassBounds;
+import io.mosire.simos.economy.classfirst.ClassFirstAccount;
+import io.mosire.simos.economy.classfirst.ClassFirstMeta;
+import io.mosire.simos.economy.classfirst.ClassFirstPilotEngine;
+import io.mosire.simos.economy.classfirst.ClassFirstState;
+import io.mosire.simos.economy.classfirst.ClassFlowEvent;
+import io.mosire.simos.economy.classfirst.ClassPool;
+import io.mosire.simos.economy.classfirst.MobilityPolicy;
+import io.mosire.simos.economy.classfirst.PilotConfig;
+import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
@@ -137,6 +149,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
@@ -729,6 +742,9 @@ public final class ApiViews {
     view.put("moneyInstruments", moneyInstrumentViews());
     view.put("classes", classes);
     view.put("industries", industries);
+    // ★★ R3b：class-first 权威读数（世界级）。旧结算运行时删除后，池/账户/迁移/GM 政策只有这一处权威读口
+    //   （GUI 与 MCP 共用 economyHex 这一个形状；不新开路由/工具，也不为 class-first 另开形状）。
+    view.put("classFirst", classFirstView(data));
     // ★★ S3：逐家户的状态读数与阶层分化（派生；来源与边界见 HouseholdCondition / HouseholdClassRule 的类注）。
     // ★★ R3a：旧每日 ledger 投递点（EconomyDayFeed）已随旧结算引擎删除；class-first 路径不产生当日
     //   ProductionLedger ⇒ 这里恒空，下面的 arrears / 资本化 / 清算读数走"具名不可得"分支。
@@ -792,6 +808,10 @@ public final class ApiViews {
     // ★★ S3：写回结果与"从哪一档跳来"的具名读数——classes[].slot 是当前真值；classifications 给逐户证据；
     //   classTransitions 是关账日写回的审计（进程内、不落盘；读不到时具名，不填 0/空数组冒充）。
     view.put("classifications", classifications);
+    if (!data.classFirst().isEmpty()) {
+      view.put("householdConditionsNote", CLASS_FIRST_CLASS_POSITION_NOTE);
+      view.put("classificationsNote", CLASS_FIRST_CLASS_POSITION_NOTE);
+    }
     if (tick >= 0L && mapId != null) {
       Optional<ClassTransitionFeed.Snapshot> classTransitions =
           ClassTransitionFeed.last(mapId, tick);
@@ -847,7 +867,9 @@ public final class ApiViews {
     }
     // ★★ R3a：旧区级市场读数（MarketReadout）已随旧撮合引擎删除 ⇒ 这一栏恒为 null + 具名原因，不填 0 冒充。
     view.put("marketReadout", null);
-    view.put("marketReadoutUnavailable", readoutUnavailable);
+    view.put(
+        "marketReadoutUnavailable",
+        data.classFirst().isEmpty() ? readoutUnavailable : MARKET_READOUT_CLASSFIRST_UNAVAILABLE);
     // ★★ M0.3：**逐格粮食诊断**（七项里今天做得到的四项 + 三项"做不到"的具名占位）。
     //   ★ 它挂在**同一个视图**里（不另开读口）：报表脚本按格 dump 的就是这一份，多一栏即多一栏读数。
     //   ★ M2.7 复评：logisticsGap 在拿到进程内报告时就可算；productionSelfSufficiency / paymentInstrumentGap
@@ -871,6 +893,458 @@ public final class ApiViews {
             report,
             tick,
             readoutUnavailable));
+    return view;
+  }
+
+  /** ★★ R3b：class-first 读口的 scope 说明（唯一拼写点）。 */
+  private static final String CLASS_FIRST_SCOPE =
+      "世界级：三国 economy.Seed 的阶层池按 (mode, classPosition) 加法合并成 4 池；池键无国家维，与查询格无关";
+
+  /**
+   * ★★ <b>R3b：class-first 阶层池经济的权威读数</b>（GUI 与 MCP 共用 {@code economyHex} 这一个形状；不新开路由/工具）。
+   *
+   * <p>★★ <b>为什么是世界级</b>：三国的 {@code economy.Seed} 由 {@code ClassFirstState.merge} 合并成世界级 4
+   * 池（池键里没有国家维） ⇒ 本块与查询格无关，块内 {@code scope} 具名写出，避免读者把 4 池当成"这一格的 4 个阶层"。
+   *
+   * <pre>
+   *   pools[]            : 每池人口/劳动/资产向量/债务/租约 + A_C（资产状态）/x_C（阶层边界归一）/r_up/r_down（年化‰）
+   *   landMarket         : LandForSale/LeaseSupply/托管 + 土地守恒读数（Σ池 OWNED_LAND + LandForSale == 创世初始）
+   *   accounts           : 持久双边滚动账户（正 = claim、负 = debt）+ 世界级债务/债权合计与净额
+   *   lenders[]          : 外部放贷窗口（钱/货）—— 货币守恒的另一半
+   *   classFlowEvents    : 持久迁移审计（UP/DOWN 计数 + 逐边聚合 + 最近窗口；全量表在状态里）
+   *   mobilityPolicies[] : GM 政策源参数（upCap/leaseAvailability/…）+ schema/bundle 模板（A/x 的派生输入）
+   *   totals             : 累计流水（生产/消费/催收/资本化/税收…）—— 旧当日 ledger 的权威替代读数
+   *   conservation       : 粮/布/货币/土地/债务=债权/账户净额七条守恒读数（读数不是判据；判据在测试里）
+   * </pre>
+   *
+   * <p>★★ <b>派生读数口径</b>：A_C/x_C/r_up/r_down 由 {@code MobilityPolicy.schema().aMilli(...)} / {@code
+   * bounds().xMilli(...)} / {@code rate*PerMillePerYear(...)} 现算，与结算引擎逐值同源（不在视图层另写一套公式）；政策取 {@code
+   * state.mobilityPolicies}（引擎 {@code restore} 的权威面，GM 改它即生效，见 ClassFirstPilotEngine.restore 的类注）。
+   */
+  private static Map<String, Object> classFirstView(EconomyData data) {
+    Objects.requireNonNull(data, "data");
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("scope", CLASS_FIRST_SCOPE);
+    ClassFirstState state = data.classFirst();
+    if (state.isEmpty()) {
+      Map<String, Object> accounts = new LinkedHashMap<>();
+      accounts.put("count", 0);
+      accounts.put("debtGrainMilli", 0L);
+      accounts.put("claimGrainMilli", 0L);
+      accounts.put("netSum", 0L);
+      accounts.put("rows", List.of());
+      accounts.put("note", CLASS_FIRST_UNAVAILABLE);
+      Map<String, Object> flows = new LinkedHashMap<>();
+      flows.put("count", 0);
+      flows.put("upCount", 0L);
+      flows.put("downCount", 0L);
+      flows.put("movedPopulationUp", 0L);
+      flows.put("movedPopulationDown", 0L);
+      flows.put("byEdge", Map.of());
+      flows.put("recentLimit", CLASS_FLOW_EVENT_RECENT_LIMIT);
+      flows.put("recent", List.of());
+      flows.put("note", CLASS_FIRST_UNAVAILABLE);
+      view.put("available", false);
+      view.put("unavailable", CLASS_FIRST_UNAVAILABLE);
+      view.put("tick", null);
+      view.put("poolCount", 0);
+      view.put("householdCount", 0);
+      view.put("pools", List.of());
+      view.put("landMarket", null);
+      view.put("accounts", accounts);
+      view.put("lenders", List.of());
+      view.put("classFlowEvents", flows);
+      view.put("mobilityPolicies", List.of());
+      view.put("totals", null);
+      view.put("conservation", null);
+      return view;
+    }
+
+    ClassFirstPilotEngine engine = ClassFirstPilotEngine.restore(state);
+    PilotConfig config = state.meta().config();
+    MobilityPolicy policy = engine.mobilityPolicy();
+    view.put("available", true);
+    view.put("unavailable", null);
+    view.put("tick", state.meta().tick());
+    view.put("poolCount", state.classPools().size());
+    view.put("householdCount", state.householdAccounts().size());
+
+    // ★ pools：库存 + A_C/x_C/r（口径见方法注；逐池与结算引擎同源）
+    List<Map<String, Object>> pools = new ArrayList<>();
+    for (Map.Entry<ClassPoolId, ClassPool> entry : state.classPools().entrySet()) {
+      pools.add(classFirstPoolView(entry.getKey(), entry.getValue(), state, config, policy));
+    }
+    pools.sort(Comparator.comparing(item -> String.valueOf(item.get("classPositionId"))));
+    view.put("pools", pools);
+
+    // ★ landMarket：LandForSale / LeaseSupply / 托管 + 土地守恒读数（唯一算法在引擎里，不在视图层重算）
+    Map<String, Object> landMarket = new LinkedHashMap<>();
+    long ownedLand = engine.totalOwnedLand();
+    long initialLand = engine.initialOwnedLandTotal();
+    long landGap = ownedLand + engine.landForSale() - initialLand;
+    landMarket.put("landForSale", engine.landForSale());
+    landMarket.put("leaseSupply", engine.leaseSupply());
+    landMarket.put("totalLeaseHolding", state.meta().totalLeaseHolding());
+    landMarket.put("landMarketEscrowGrain", engine.landMarketEscrowGrain());
+    landMarket.put("landMarketEscrowMoney", engine.landMarketEscrowMoney());
+    landMarket.put("ownedLandTotal", ownedLand);
+    landMarket.put("initialOwnedLandTotal", initialLand);
+    landMarket.put("landGapMilliMu", landGap);
+    landMarket.put("landBalanced", landGap == 0L);
+    landMarket.put(
+        "leaseSupplyNote",
+        "LeaseSupply = 地主可出租上限（landlordOwned × leaseAvailability‰）+ LandForSale − 已持有租约（floor 0）；"
+            + "LandForSale 是待售池，卖地不消失 —— 下行放的地就是上行买的 OpportunitySupply");
+    view.put("landMarket", landMarket);
+
+    // ★ accounts：持久双边滚动账户（正 = claim、负 = debt；Σnet 恒 0）
+    List<ClassFirstAccount> accountRows = new ArrayList<>(state.accounts().values());
+    accountRows.sort(Comparator.comparing(account -> account.id().value()));
+    List<Map<String, Object>> accountViews = new ArrayList<>(accountRows.size());
+    for (ClassFirstAccount account : accountRows) {
+      long net = account.cumulativeNet();
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("id", account.id().value());
+      row.put("ownerId", account.ownerId());
+      row.put("counterpartyId", account.counterpartyId());
+      row.put("unit", account.unit());
+      row.put("terms", account.terms());
+      row.put("interestRatePerMille", account.interestRatePerMille());
+      row.put("nextDueTick", account.nextDueTick());
+      row.put("cumulativeNet", net);
+      row.put("side", net < 0L ? "DEBT" : net > 0L ? "CLAIM" : "FLAT");
+      row.put("interestAccrued", account.interestAccrued());
+      row.put("status", account.status().name());
+      accountViews.add(row);
+    }
+    Map<String, Object> accounts = new LinkedHashMap<>();
+    accounts.put("count", accountRows.size());
+    accounts.put("debtGrainMilli", engine.totalDebtGrainMilli());
+    accounts.put("claimGrainMilli", engine.totalClaimGrainMilli());
+    accounts.put("netSum", engine.accountNetSum());
+    accounts.put("rows", accountViews);
+    accounts.put("note", "债务/债权合计按账户单位折粮（与结算引擎同一函数）；逐行 cumulativeNet 是原单位净额（粮或钱），不跨单位求和");
+    view.put("accounts", accounts);
+
+    // ★ lenders：外部放贷窗口（货币守恒的另一半；空 = 该世界没有外部放贷主体）
+    List<Map<String, Object>> lenders = new ArrayList<>();
+    for (PilotModel.Lender lender : state.lenders().values()) {
+      Map<String, Object> lenderView = new LinkedHashMap<>();
+      lenderView.put("id", lender.id());
+      lenderView.put("money", lender.money());
+      lenderView.put("goods", new TreeMap<>(lender.goods()));
+      lenderView.put("interestRatePerMille", lender.interestRatePerMille());
+      lenderView.put("nextDueTick", lender.nextDueTick());
+      lenders.add(lenderView);
+    }
+    lenders.sort(Comparator.comparing(item -> String.valueOf(item.get("id"))));
+    view.put("lenders", lenders);
+
+    // ★ classFlowEvents：持久迁移审计（读口有界：逐边聚合 + 最近窗口；全量表在状态里）
+    view.put("classFlowEvents", classFlowEventsView(state));
+
+    // ★ mobilityPolicies + assetStateSchema + bundle 模板：GM 只改这里的源参数（不直接改池读数）
+    List<Map<String, Object>> policies = new ArrayList<>();
+    for (Map.Entry<MobilityPolicyId, MobilityPolicy> entry : state.mobilityPolicies().entrySet()) {
+      policies.add(mobilityPolicyView(entry.getKey(), entry.getValue()));
+    }
+    policies.sort(Comparator.comparing(item -> String.valueOf(item.get("policyId"))));
+    view.put("mobilityPolicies", policies);
+
+    // ★ totals：旧当日 ledger 删除后的累计流水权威读数（ClassFirstMeta.Totals 原样展开）
+    view.put("totals", classFirstTotalsView(state.meta().totals()));
+
+    // ★ conservation：读数（不是判据）—— 与 360 tick 验收同一组守恒式
+    Map<String, Object> conservation = new LinkedHashMap<>();
+    long moneyGap =
+        engine.totalMoney()
+            - (engine.initialHouseholdMoneyTotal() + engine.initialLenderMoneyTotal());
+    long grainGap =
+        engine.initialGrainTotal()
+            + engine.producedGrainTotal()
+            - engine.totalGrain()
+            - engine.seedUsedTotal()
+            - engine.rationConsumedTotal();
+    long clothGap = engine.initialClothTotal() - engine.totalCloth() - engine.clothConsumedTotal();
+    conservation.put("population", engine.totalPopulation());
+    conservation.put("grainGap", grainGap);
+    conservation.put("grainBalanced", grainGap == 0L);
+    conservation.put("clothGap", clothGap);
+    conservation.put("clothBalanced", clothGap == 0L);
+    conservation.put("moneyGap", moneyGap);
+    conservation.put("moneyBalanced", moneyGap == 0L);
+    conservation.put("landGapMilliMu", landGap);
+    conservation.put("landBalanced", landGap == 0L);
+    conservation.put("debtGrainMilli", engine.totalDebtGrainMilli());
+    conservation.put("claimGrainMilli", engine.totalClaimGrainMilli());
+    conservation.put(
+        "debtEqualsClaim", engine.totalDebtGrainMilli() == engine.totalClaimGrainMilli());
+    conservation.put("accountNetSum", engine.accountNetSum());
+    conservation.put("accountNetZero", engine.accountNetSum() == 0L);
+    conservation.put(
+        "note",
+        "粮：初始+生产 == Σ池+放贷+托管 − 留种 − 口粮（totalGrain 口径含托管）− 消费；布：初始 == Σ池+放贷 − 消费；"
+            + "货币：Σ池+放贷+托管 == 创世家户+放贷；土地：ΣOWNED_LAND+LandForSale == 创世初始；债务 == 债权；Σ账户净额 == 0");
+    view.put("conservation", conservation);
+    return view;
+  }
+
+  /** 单个阶层池：库存向量 + 派生 A_C/x_C/r_up/r_down + 边界（A/x 的派生输入与结果并排）。 */
+  private static Map<String, Object> classFirstPoolView(
+      ClassPoolId poolId,
+      ClassPool pool,
+      ClassFirstState state,
+      PilotConfig config,
+      MobilityPolicy policy) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("poolId", poolId.value());
+    view.put("modeId", pool.modeId());
+    view.put("classPositionId", pool.classPositionId());
+    view.put("tier", pool.tier());
+    view.put("population", pool.population());
+    view.put("labor", pool.labor());
+    view.put("laborEfficiencyPerMille", pool.laborEfficiencyPerMille());
+    view.put("flowUpRemainderMilli", pool.flowUpRemainderMilli());
+    view.put("flowDownRemainderMilli", pool.flowDownRemainderMilli());
+    view.put("collectionCooldownUntilTick", pool.collectionCooldownUntilTick());
+    view.put("debtGrainMilli", pool.debtGrainMilli());
+    view.put("leaseHolding", pool.leaseHolding());
+    Map<String, Long> assets = new LinkedHashMap<>();
+    for (Map.Entry<io.mosire.simos.economy.classfirst.AssetKind, Long> asset :
+        pool.assetVector().entrySet()) {
+      assets.put(asset.getKey().schemaName(), asset.getValue());
+    }
+    view.put("assets", assets);
+    long aMilli = policy.schema().aMilli(pool, config.moneyPerGrain());
+    long xMilli = policy.bounds().xMilli(pool.classPositionId(), aMilli);
+    long rateUp = policy.rateUpPerMillePerYear(xMilli);
+    long rateDown = policy.rateDownPerMillePerYear(xMilli);
+    view.put("aMilli", aMilli);
+    view.put("xMilli", xMilli);
+    view.put("rateUpPerMillePerYear", rateUp);
+    view.put("rateDownPerMillePerYear", rateDown);
+    view.put("flowUpPerTickMilli", policy.flowPerTickMilli(pool.population(), rateUp));
+    view.put("flowDownPerTickMilli", policy.flowPerTickMilli(pool.population(), rateDown));
+    ClassBounds bounds = state.classBounds().get(poolId);
+    if (bounds == null) {
+      view.put("bound", null);
+    } else {
+      ClassBounds.Bound bound = bounds.boundFor(pool.classPositionId());
+      Map<String, Object> boundView = new LinkedHashMap<>();
+      boundView.put("lowerMilli", bound.lowerMilli());
+      boundView.put("upperMilli", bound.upperMilli());
+      view.put("bound", boundView);
+    }
+    view.put(
+        "derivation",
+        "A_C = schema 加权几何均值 × bottleneck（千分，1000=1.0）；x_C = clamp((A−L)/(U−L))；r_up/r_down = 年化千分；"
+            + "flow*PerTickMilli = 人口 × r ÷ ticksPerYear（迁移的实际请求量，还要过机会/吸收 cap）");
+    return view;
+  }
+
+  /** 持久迁移审计的有界读口：逐边聚合 + 最近 {@value #CLASS_FLOW_EVENT_RECENT_LIMIT} 条。 */
+  private static Map<String, Object> classFlowEventsView(ClassFirstState state) {
+    List<ClassFlowEvent> events = new ArrayList<>(state.classFlowEvents().values()); // 插入序 = 时间序
+    long upCount = 0L;
+    long downCount = 0L;
+    long movedUp = 0L;
+    long movedDown = 0L;
+    Map<String, long[]> byEdge = new LinkedHashMap<>();
+    for (ClassFlowEvent event : events) {
+      if (event.direction() == PilotModel.Direction.UP) {
+        upCount++;
+        movedUp += event.movedPopulation();
+      } else {
+        downCount++;
+        movedDown += event.movedPopulation();
+      }
+      String edge = event.fromPoolId().value() + "->" + event.toPoolId().value();
+      long[] aggregate = byEdge.computeIfAbsent(edge, ignored -> new long[2]);
+      aggregate[0]++;
+      aggregate[1] += event.movedPopulation();
+    }
+    Map<String, Object> byEdgeView = new LinkedHashMap<>();
+    for (Map.Entry<String, long[]> entry : byEdge.entrySet()) {
+      Map<String, Object> edgeView = new LinkedHashMap<>();
+      edgeView.put("count", entry.getValue()[0]);
+      edgeView.put("movedPopulation", entry.getValue()[1]);
+      byEdgeView.put(entry.getKey(), edgeView);
+    }
+    int from = Math.max(0, events.size() - CLASS_FLOW_EVENT_RECENT_LIMIT);
+    List<Map<String, Object>> recent = new ArrayList<>();
+    for (int i = from; i < events.size(); i++) {
+      recent.add(classFlowEventView(events.get(i)));
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("count", events.size());
+    view.put("upCount", upCount);
+    view.put("downCount", downCount);
+    view.put("movedPopulationUp", movedUp);
+    view.put("movedPopulationDown", movedDown);
+    view.put("byEdge", byEdgeView);
+    view.put("recentLimit", CLASS_FLOW_EVENT_RECENT_LIMIT);
+    view.put("recent", recent);
+    view.put(
+        "note",
+        "全量迁移事件在 ClassFirstState.classFlowEvents（持久、跨重启可读）；读口只发最近窗口 + 逐边聚合，"
+            + "载荷不随 tick 线性膨胀。事件自带 bundle（土地买卖/租约/债权债务份额）供 LandForSale 闭环核对");
+    return view;
+  }
+
+  /** 单条迁移事件（字段与 {@link ClassFlowEvent} 一一对应；bundle 是守恒明细）。 */
+  private static Map<String, Object> classFlowEventView(ClassFlowEvent event) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("id", event.id().value());
+    view.put("tick", event.tick());
+    view.put("direction", event.direction().name());
+    view.put("fromPoolId", event.fromPoolId().value());
+    view.put("toPoolId", event.toPoolId().value());
+    view.put("movedPopulation", event.movedPopulation());
+    view.put("aMilli", event.aMilli());
+    view.put("afterAMilli", event.afterAMilli());
+    view.put("xMilli", event.xMilli());
+    view.put("ratePerMillePerYear", event.ratePerMillePerYear());
+    view.put("opportunityPerMille", event.opportunityPerMille());
+    view.put("absorptionCapPerMille", event.absorptionCapPerMille());
+    view.put("capMilliPeople", event.capMilliPeople());
+    view.put("skipLevel", event.skipLevel());
+    view.put("originStockPerCapitaNotIncreased", event.originStockPerCapitaNotIncreased());
+    view.put("reason", event.reason());
+    view.put("bundle", transitionBundleView(event.bundle()));
+    return view;
+  }
+
+  /** 迁移 bundle：库存/土地/租约/债权债务份额的守恒明细（AssetKind → 线格式名）。 */
+  private static Map<String, Object> transitionBundleView(PilotModel.TransitionBundle bundle) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("population", bundle.population());
+    view.put("labor", bundle.labor());
+    Map<String, Long> movedAssets = new LinkedHashMap<>();
+    for (Map.Entry<io.mosire.simos.economy.classfirst.AssetKind, Long> asset :
+        bundle.movedAssets().entrySet()) {
+      movedAssets.put(asset.getKey().schemaName(), asset.getValue());
+    }
+    view.put("movedAssets", movedAssets);
+    view.put("landOwnershipToDestination", bundle.landOwnershipToDestination());
+    view.put("landOwnershipToMarket", bundle.landOwnershipToMarket());
+    view.put("landPurchasedFromMarket", bundle.landPurchasedFromMarket());
+    view.put("leaseRightsGranted", bundle.leaseRightsGranted());
+    view.put("leaseRightsReturned", bundle.leaseRightsReturned());
+    view.put("claimsMovedMilli", bundle.claimsMovedMilli());
+    view.put("debtMovedMilli", bundle.debtMovedMilli());
+    view.put("debtRule", bundle.debtRule());
+    view.put("landRule", bundle.landRule());
+    return view;
+  }
+
+  /** GM 政策读口：源参数全量发出（含 schema 与 bundle 模板），派生读数不在这里（见 pools[]）。 */
+  private static Map<String, Object> mobilityPolicyView(
+      MobilityPolicyId id, MobilityPolicy policy) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("policyId", id.value());
+    view.put("gamma", policy.gamma());
+    view.put("upMinPerMillePerYear", policy.upMinPerMillePerYear());
+    view.put("upMaxPerMillePerYear", policy.upMaxPerMillePerYear());
+    view.put("downMinPerMillePerYear", policy.downMinPerMillePerYear());
+    view.put("downMaxPerMillePerYear", policy.downMaxPerMillePerYear());
+    view.put("upCapPerMillePerTick", policy.upCapPerMillePerTick());
+    view.put("downCapPerMillePerTick", policy.downCapPerMillePerTick());
+    view.put("leaseAvailabilityPerMille", policy.leaseAvailabilityPerMille());
+    view.put("initialLandForSale", policy.initialLandForSale());
+    view.put("ticksPerYear", policy.ticksPerYear());
+    view.put("leasePerCapitaMilli", policy.leasePerCapitaMilli());
+    view.put("landPurchasePerCapitaMilli", policy.landPurchasePerCapitaMilli());
+    view.put("absorptionCapTenantPerMille", policy.absorptionCapTenantPerMille());
+    view.put("absorptionCapMiddlePerMille", policy.absorptionCapMiddlePerMille());
+    view.put("absorptionCapLandlordPerMille", policy.absorptionCapLandlordPerMille());
+    view.put("absorptionCapLaborerPerMille", policy.absorptionCapLaborerPerMille());
+    Map<String, Long> edgeCaps = new LinkedHashMap<>(policy.absorptionCapByEdgePerMille());
+    view.put("absorptionCapByEdgePerMille", edgeCaps);
+    view.put("absorptionPolicy", policy.absorptionPolicy().name());
+    view.put("extractionTaxPerMille", policy.extractionTaxPerMille());
+    List<Map<String, Object>> templates = new ArrayList<>();
+    for (Map.Entry<String, MobilityPolicy.BundleTemplate> entry :
+        policy.bundleTemplates().entrySet()) {
+      MobilityPolicy.BundleTemplate template = entry.getValue();
+      Map<String, Object> templateView = new LinkedHashMap<>();
+      templateView.put("edge", entry.getKey());
+      templateView.put("grainSharePerMille", template.grainSharePerMille());
+      templateView.put("moneySharePerMille", template.moneySharePerMille());
+      templateView.put("toolsSharePerMille", template.toolsSharePerMille());
+      templateView.put("clothSharePerMille", template.clothSharePerMille());
+      templateView.put("landSharePerMille", template.landSharePerMille());
+      templateView.put("landToMarket", template.landToMarket());
+      templateView.put("takesLease", template.takesLease());
+      templateView.put("returnsLease", template.returnsLease());
+      templateView.put("buysLand", template.buysLand());
+      templateView.put("movesDebt", template.movesDebt());
+      templateView.put("movesClaims", template.movesClaims());
+      templates.add(templateView);
+    }
+    templates.sort(Comparator.comparing(item -> String.valueOf(item.get("edge"))));
+    view.put("bundleTemplates", templates);
+    view.put("assetStateSchema", assetStateSchemaView(policy.schema()));
+    view.put("note", "GM 只改这里的源参数（阈值/上限/机会/模板）⇒ 结算的 r/O 与吸收 cap 随之变；派生读数不在这里写死");
+    return view;
+  }
+
+  /** A_C 的 schema 输入：逐阶层的每人需求向量与权重（千分定点；unpriced 维度降权）。 */
+  private static Map<String, Object> assetStateSchemaView(AssetStateSchema schema) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("unpricedWeightPerMille", schema.unpricedWeightPerMille());
+    List<Map<String, Object>> classes = new ArrayList<>();
+    for (Map.Entry<String, AssetStateSchema.ClassRequirement> entry : schema.byClass().entrySet()) {
+      AssetStateSchema.ClassRequirement requirement = entry.getValue();
+      Map<String, Object> classView = new LinkedHashMap<>();
+      classView.put("classPositionId", entry.getKey());
+      classView.put(
+          "requirementPerCapitaMilli", assetKindValues(requirement.requirementPerCapitaMilli()));
+      classView.put("weights", assetKindValues(requirement.weights()));
+      classView.put("bottleneckWeightPerMille", requirement.bottleneckWeightPerMille());
+      List<String> unpriced = new ArrayList<>();
+      for (io.mosire.simos.economy.classfirst.AssetKind kind : requirement.unpriced()) {
+        unpriced.add(kind.schemaName());
+      }
+      unpriced.sort(Comparator.naturalOrder());
+      classView.put("unpriced", unpriced);
+      classes.add(classView);
+    }
+    classes.sort(Comparator.comparing(item -> String.valueOf(item.get("classPositionId"))));
+    view.put("classes", classes);
+    return view;
+  }
+
+  /** AssetKind 键的向量 → 线格式名键（同一维度在 schema/库存/bundle 三处同拼写）。 */
+  private static Map<String, Long> assetKindValues(
+      Map<io.mosire.simos.economy.classfirst.AssetKind, Long> values) {
+    Map<String, Long> view = new LinkedHashMap<>();
+    for (Map.Entry<io.mosire.simos.economy.classfirst.AssetKind, Long> entry : values.entrySet()) {
+      view.put(entry.getKey().schemaName(), entry.getValue());
+    }
+    return view;
+  }
+
+  /** ClassFirstMeta.Totals 展开（旧当日 ledger 删除后的累计流水权威读数）。 */
+  private static Map<String, Object> classFirstTotalsView(ClassFirstMeta.Totals totals) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("producedGrainTotal", totals.producedGrainTotal());
+    view.put("seedUsedTotal", totals.seedUsedTotal());
+    view.put("rationConsumedTotal", totals.rationConsumedTotal());
+    view.put("clothConsumedTotal", totals.clothConsumedTotal());
+    view.put("borrowedGrainTotal", totals.borrowedGrainTotal());
+    view.put("borrowedMoneyTotal", totals.borrowedMoneyTotal());
+    view.put("boughtGrainTotal", totals.boughtGrainTotal());
+    view.put("liquidSeizedTotal", totals.liquidSeizedTotal());
+    view.put("landSeizedTotal", totals.landSeizedTotal());
+    view.put("capitalizedTotal", totals.capitalizedTotal());
+    view.put("redLightTotal", totals.redLightTotal());
+    view.put("collectionEventCount", totals.collectionEventCount());
+    view.put("interestChargedTotal", totals.interestChargedTotal());
+    view.put("rentPaidTotal", totals.rentPaidTotal());
+    view.put("wagePaidTotal", totals.wagePaidTotal());
+    view.put("externalSeedPaidTotal", totals.externalSeedPaidTotal());
+    view.put("residualPaidTotal", totals.residualPaidTotal());
+    view.put("taxPaidTotal", totals.taxPaidTotal());
     return view;
   }
 
@@ -1190,6 +1664,8 @@ public final class ApiViews {
     crisis.put("signals", crisisSignalViews(data, coord));
     crisis.put("unavailable", null);
     dashboard.put("crisis", crisis);
+    dashboard.put(
+        "classFirstNote", data.classFirst().isEmpty() ? null : CLASS_FIRST_DASHBOARD_NOTE);
     dashboard.put("windows", dashboardWindows(report, tick, readoutUnavailable));
     return dashboard;
   }
@@ -1958,7 +2434,6 @@ public final class ApiViews {
    */
   private static Map<String, Object> shortageOrganizationSummary(
       EconomyData data, ActorData actors, HexCoord coord) {
-    String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
     Set<ActorRef> organizersAtHex = new LinkedHashSet<>();
     for (GoodsAccount account : accountsAt(actors, coord)) {
       organizersAtHex.add(account.key().owner());
@@ -2174,15 +2649,6 @@ public final class ApiViews {
       view.put("statusCounts", new TreeMap<>(statusCounts));
       return view;
     }
-  }
-
-  /** 未成交原因分布：键 = 规范字面量（小写下划线），保序（原因档声明序已在读数组件里保序）。 */
-  private static Map<String, Long> reasonCountsView(Map<MarketUnfilledReason, Long> counts) {
-    Map<String, Long> view = new LinkedHashMap<>();
-    for (Map.Entry<MarketUnfilledReason, Long> entry : counts.entrySet()) {
-      view.put(entry.getKey().value(), entry.getValue());
-    }
-    return view;
   }
 
   /** ★ S3：经营者状态（制度状态机读数；字段口径见 {@code OperatorCondition} 类注）。 */
@@ -2454,14 +2920,39 @@ public final class ApiViews {
     return view;
   }
 
-  /** ★ S3：欠款读不到的具名原因（唯一拼写点）。 */
+  /** ★ S3：欠款读不到的具名原因（唯一拼写点；R3b 起指向 class-first 的权威替代读数）。 */
   private static final String ARREARS_PROCESS_ONLY =
-      "当日 ProductionLedger 是进程内瞬态（重启/换进程/还没结算即失）：租与工资欠款读不到；缺失不是 0，" + "而是\"这一轮没有可读账本\"";
+      "旧当日 ProductionLedger 已随旧结算运行时删除（R3a）：租与工资欠款明细读不到；缺失不是 0。"
+          + "class-first 的权威欠款/债权读见 classFirst.accounts（持久双边滚动账户，正 = claim、负 = debt）";
 
-  /** ★ S3：阶层写回审计读不到的具名原因（唯一拼写点）。 */
+  /** ★★ R3b：class-first 未播种时读口的具名原因（唯一拼写点）。 */
+  private static final String CLASS_FIRST_UNAVAILABLE =
+      "economy.classFirst 为空（世界不是 class-first 播种，或旧档缺 classFirst 键）⇒ 阶层池/滚动账户/GM 政策没有权威读数";
+
+  /** ★★ R3b：旧 HouseholdClassRule 分类投影在 class-first 世界的口径说明（唯一拼写点）。 */
+  private static final String CLASS_FIRST_CLASS_POSITION_NOTE =
+      "class-first 世界的阶层归属真值是 classFirst.pools[].classPositionId（ClassPool）与 classFirst.accounts；"
+          + "本栏（householdConditions/classifications）是旧 HouseholdClassRule 的只读投影，不作为权威，也不产生写回";
+
+  /** ★★ R3b：dashboard 的旧模型投影为何在 class-first 世界为空（唯一拼写点）。 */
+  private static final String CLASS_FIRST_DASHBOARD_NOTE =
+      "dashboard 的 stocks/flows/derived 读的是旧家户/产业模型投影（ClassRow/Industry/AssetShare/FlowRow…）；"
+          + "class-first 世界不再写这些旧表 ⇒ 本 dashboard 显示为空是**结构性的**，不是读不到；"
+          + "权威读数在世界级 classFirst 块（pools/landMarket/accounts/classFlowEvents/mobilityPolicies/conservation）";
+
+  /** ★★ R3b：class-first 世界的区级市场读数为何为空（唯一拼写点）。 */
+  private static final String MARKET_READOUT_CLASSFIRST_UNAVAILABLE =
+      "class-first 生产路径不产生区级撮合读数（R3a 起旧市场读数组件已随旧撮合引擎删除）⇒ 这一栏恒 null；"
+          + "世界级权威读见 classFirst（池资产/A_C/x_C/r、LandForSale/LeaseSupply、滚动账户、迁移审计、GM 政策）";
+
+  /** classFlowEvents 读口的最近事件窗口：全量事件在持久状态里，读口只发最近 N 条（避免 GUI/MCP 载荷随 tick 线性膨胀）。 */
+  private static final int CLASS_FLOW_EVENT_RECENT_LIMIT = 30;
+
+  /** ★ S3：阶层写回审计读不到的具名原因（唯一拼写点；R3b 起指向 class-first 的持久迁移审计）。 */
   private static final String CLASS_TRANSITIONS_PROCESS_ONLY =
-      "阶层写回的审计是进程内瞬态（ClassTransitionFeed；不落盘）：重启/换进程/本轮推进没跨关账日时"
-          + "读不到\"从哪一档跳来\"；当前阶层真值仍在 classes[].slot 与 classifications[] 两栏";
+      "旧阶层写回审计（ClassTransitionFeed）已无生产写入方（R3a 起旧结算不再投递）："
+          + "读不到\"从哪一档跳来\"的旧口径；class-first 的权威迁移审计是持久状态 "
+          + "classFirst.classFlowEvents（UP/DOWN 逐事件，跨重启可读）";
 
   /** ★ R4-E2b：候选进入评估结果读不到的具名原因（唯一拼写点）。 */
   private static final String ENTRY_OUTCOMES_PROCESS_ONLY =
@@ -2473,11 +2964,11 @@ public final class ApiViews {
       "该家户没有 ClassStanding 记录（economy.classStandings 为空或未覆盖此户）：E1 起新状态为空时旧路径仍以 "
           + "ClassRow.view 为准；E5a 不产生任何阶层变动，不伪造 current/original/consecutiveDebtStressCycles";
 
-  /** ★★ E5b：清算审计读不到的具名原因（唯一拼写点；不落盘、只在同一 tick 的当日 ledger 里可读）。 */
+  /** ★★ E5b：清算审计读不到的具名原因（唯一拼写点；R3b 起指向 class-first 的权威清算读数）。 */
   private static final String LIQUIDATION_AUDIT_PROCESS_ONLY =
-      "清算/阶层下滑审计是进程内瞬态（当日 ProductionLedger.liquidationAudits；不落盘）：重启/换进程/"
-          + "本轮推进没跨关账日时读不到\"处置了什么、跳过了什么\"；状态真值仍在 assetShares/pledges/debtContracts/"
-          + "classStandings/crisisSignals 五栏";
+      "旧清算/阶层下滑审计（当日 ProductionLedger.liquidationAudits）已随旧结算运行时删除（R3a）："
+          + "逐条\"处置了什么、跳过了什么\"读不到；class-first 的权威合计读见 classFirst.totals "
+          + "（liquidSeizedTotal / landSeizedTotal / capitalizedTotal / collectionEventCount）与 classFirst.accounts";
 
   /** ① 生产自给率报不出来的原因（唯一拼写点：主函数与类注引同一句）。 */
   private static final String PRODUCTION_NEEDS_LEDGER =

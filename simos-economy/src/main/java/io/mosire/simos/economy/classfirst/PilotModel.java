@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.classfirst;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -127,6 +128,12 @@ public final class PilotModel {
       LossResponsibility lossResponsibility) {}
 
   /** 生产方式：单 mode = tenancy_agriculture，classRules 必须覆盖全部四个位置。 */
+  // ★ SpotBugs 不做跨过程分析：紧凑构造器里的 immutableCopy(...) 已 unmodifiableMap + 深拷，
+  //   但检测器看不穿那个私有 helper 的返回值 ⇒ 按类豁免（先例：simos-social 的 ArmyPlan）。
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "紧凑构造器已用 immutableCopy(...)（不可变拷贝 + unmodifiableMap）；SpotBugs 看不穿该私有 helper 的返回值")
   public record Mode(String id, Map<String, ClassRule> classRules) {
     public Mode {
       classRules = immutableCopy(classRules);
@@ -141,6 +148,12 @@ public final class PilotModel {
    * 初始家户夹具。池化后家户只是池内 {@link HouseholdAccount} 的生产/消费子账户；{@code land} 是**自有地** （佃农夹具为 0，租入地由池的租约在首
    * tick 配置）。
    */
+  // ★ SpotBugs 不做跨过程分析：紧凑构造器里的 immutableCopy(...) 已 unmodifiableMap + 深拷，
+  //   但检测器看不穿那个私有 helper 的返回值 ⇒ 按类豁免（先例：simos-social 的 ArmyPlan）。
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "紧凑构造器已用 immutableCopy(...)（不可变拷贝 + unmodifiableMap）；SpotBugs 看不穿该私有 helper 的返回值")
   public record Household(
       String id,
       String name,
@@ -175,6 +188,12 @@ public final class PilotModel {
   }
 
   /** 独立放贷方（模拟 GOV/特殊单位）：不属于农业阶层结构，利率/条款显式配置。 */
+  // ★ SpotBugs 不做跨过程分析：紧凑构造器里的 immutableCopy(...) 已 unmodifiableMap + 深拷，
+  //   但检测器看不穿那个私有 helper 的返回值 ⇒ 按类豁免（先例：simos-social 的 ArmyPlan）。
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "紧凑构造器已用 immutableCopy(...)（不可变拷贝 + unmodifiableMap）；SpotBugs 看不穿该私有 helper 的返回值")
   public record Lender(
       String id,
       long money,
@@ -198,6 +217,12 @@ public final class PilotModel {
       SeizurePriority seizurePriority) {}
 
   /** 单池本期生产计划：土地/劳动/工具/种子/效率都显式记录，收支双方可对账。 */
+  // ★ SpotBugs 不做跨过程分析：紧凑构造器里的 immutableCopy(...) 已 unmodifiableMap + 深拷，
+  //   但检测器看不穿那个私有 helper 的返回值 ⇒ 按类豁免（先例：simos-social 的 ArmyPlan）。
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "紧凑构造器已用 immutableCopy(...)（不可变拷贝 + unmodifiableMap）；SpotBugs 看不穿该私有 helper 的返回值")
   public record ProductionPlan(
       long tick,
       String poolId,
@@ -225,6 +250,12 @@ public final class PilotModel {
   }
 
   /** 本期生产账户：投入、产出、按阶层位置的实际分配与家户份额。 */
+  // ★ SpotBugs 不做跨过程分析：紧凑构造器里的 immutableCopy(...) 已 unmodifiableMap + 深拷，
+  //   但检测器看不穿那个私有 helper 的返回值 ⇒ 按类豁免（先例：simos-social 的 ArmyPlan）。
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "紧凑构造器已用 immutableCopy(...)（不可变拷贝 + unmodifiableMap）；SpotBugs 看不穿该私有 helper 的返回值")
   public record ProductionAccount(
       long tick,
       String poolId,
@@ -287,6 +318,12 @@ public final class PilotModel {
       String reason) {}
 
   /** 迁移 bundle 的守恒明细（库存 + 权利 + 债权/债务份额）。 */
+  // ★ SpotBugs 不做跨过程分析：紧凑构造器里的 immutableCopy(...) 已 unmodifiableMap + 深拷，
+  //   但检测器看不穿那个私有 helper 的返回值 ⇒ 按类豁免（先例：simos-social 的 ArmyPlan）。
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "紧凑构造器已用 immutableCopy(...)（不可变拷贝 + unmodifiableMap）；SpotBugs 看不穿该私有 helper 的返回值")
   public record TransitionBundle(
       long population,
       long labor,
@@ -326,6 +363,12 @@ public final class PilotModel {
       String reason) {}
 
   /** 单池读数（含 A_C/x_C/r_up/r_down）。 */
+  // ★ SpotBugs 不做跨过程分析：紧凑构造器里的 immutableCopy(...) 已 unmodifiableMap + 深拷，
+  //   但检测器看不穿那个私有 helper 的返回值 ⇒ 按类豁免（先例：simos-social 的 ArmyPlan）。
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "紧凑构造器已用 immutableCopy(...)（不可变拷贝 + unmodifiableMap）；SpotBugs 看不穿该私有 helper 的返回值")
   public record PoolReading(
       String classPositionId,
       String name,
@@ -351,6 +394,12 @@ public final class PilotModel {
   }
 
   /** 单 tick 读数（全部是深拷贝，构造后不可变）。 */
+  // ★ SpotBugs 不做跨过程分析：紧凑构造器里的 immutableCopy(...) 已 unmodifiableMap + 深拷，
+  //   但检测器看不穿那个私有 helper 的返回值 ⇒ 按类豁免（先例：simos-social 的 ArmyPlan）。
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "紧凑构造器已用 immutableCopy(...)（不可变拷贝 + unmodifiableMap）；SpotBugs 看不穿该私有 helper 的返回值")
   public record TickReport(
       long tick,
       Map<String, PoolReading> pools,

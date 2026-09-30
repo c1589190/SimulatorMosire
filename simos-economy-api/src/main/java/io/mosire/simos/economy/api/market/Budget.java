@@ -15,8 +15,7 @@ import io.mosire.simos.economy.api.money.MoneyVocabulary;
  * InstrumentId}，如银币）才回答"这是哪一种银"。M1.1 起两者是两个命名空间，而订单要能指名<b>用哪种工具支付</b> ⇒ 预算必须带上工具那一维。 {@link
  * BuyOrder#payWith()} 是同一事实在订单上的显式一栏（构造期判两者逐值相等，不许两处各写一份）。
  *
- * <p>★ <b>它只描述"可动用"，不占用任何账</b>：真正的扣款仍走 {@code
- * 旧结算引擎（R3a 已删除）.applyTransfer}（唯一写口）；本类型不冻结、不预留、不落账。
+ * <p>★ <b>它只描述"可动用"，不占用任何账</b>：真正的扣款仍走 {@code 旧结算引擎（R3a 已删除）.applyTransfer}（唯一写口）；本类型不冻结、不预留、不落账。
  *
  * @param amountMilli 可动用的金额（最小币值；{@code ≥ 0}；0 = 这张订单买不到任何东西）
  * @param instrument 可动用的货币工具；不得为 null（说不出是哪种钱就不是一笔预算）

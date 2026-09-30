@@ -72,10 +72,9 @@ import java.util.Map;
  * 逐项算在 M2。⇒ 两条禁令（都不是洁癖，是"把储备政策搬进账户模型"这个错误的两个具体形态）：
  *
  * <ol>
- *   <li><b>不许</b>把 {@code MarketSettlement.MARKET_SELF_RESERVE_PER_MILLE} 或 {@code
- *       旧结算引擎（R3a 已删除）.LENDER_SUBSISTENCE_RESERVE_PER_MILLE} 折进 {@code frozen} ——
- *       那两条是<b>只读算式的中间量</b>（{@code 旧结算引擎（R3a 已删除）}
- *       逐字写着"保留额不是冻结起来的一笔粮"），搬进来就等于让"制度参数"变成"某人的库存事实"；
+ *   <li><b>不许</b>把 {@code MarketSettlement.MARKET_SELF_RESERVE_PER_MILLE} 或 {@code 旧结算引擎（R3a
+ *       已删除）.LENDER_SUBSISTENCE_RESERVE_PER_MILLE} 折进 {@code frozen} —— 那两条是<b>只读算式的中间量</b>（{@code
+ *       旧结算引擎（R3a 已删除）} 逐字写着"保留额不是冻结起来的一笔粮"），搬进来就等于让"制度参数"变成"某人的库存事实"；
  *   <li><b>不许</b>让 {@code frozen} 变成"按阶层/人口自动算出来的保留额" —— 那样一来，"已经承诺出去的东西"与"自己打算留着的东西" 就再也分不开，而 M2
  *       的算式恰恰要求它们<b>逐项互不重复扣除</b>。
  * </ol>
