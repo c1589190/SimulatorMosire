@@ -85,10 +85,9 @@ public final class PilotModel {
     SETTLED
   }
 
-  /** 报告里的迁移/催收/红灯事件种类。 */
+  /** 报告里的非流动性/催收/红灯事件种类。人口流动另有 {@link MobilityEvent}。 */
   public enum TransitionKind {
     POPULATION_FLOW,
-    CLASS_DOWNGRADE,
     LAND_SEIZED,
     LIQUID_SEIZED,
     DEBT_CAPITALIZED,
@@ -96,6 +95,12 @@ public final class PilotModel {
     BORROW_MONEY,
     BUY_GRAIN,
     RED_LIGHT
+  }
+
+  /** 迁移方向：UP = tier+1（雇农→佃农→中农→地主），DOWN = tier−1。 */
+  public enum Direction {
+    UP,
+    DOWN
   }
 
   /** 阶层位置（id + 政治经济学语义 + 序：rank 越小越高）。 */
@@ -132,8 +137,8 @@ public final class PilotModel {
   }
 
   /**
-   * 家户（初始夹具与只读快照）。goods/money/land/tools 都是家户私有库存；{@code laborPerCapita} 的单位是"千分劳动者" （500 = 0.5
-   * 个全劳力/人/ tick）。
+   * 初始家户夹具。池化后家户只是池内 {@link HouseholdAccount} 的生产/消费子账户；{@code land} 是**自有地** （佃农夹具为 0，租入地由池的租约在首
+   * tick 配置）。
    */
   public record Household(
       String id,
@@ -168,11 +173,7 @@ public final class PilotModel {
     }
   }
 
-  /**
-   * 独立放贷方（模拟 GOV/特殊单位）：不属于农业阶层结构，默认资金很多、流动性为 0，利率/条款显式配置。
-   *
-   * <p>它只通过 {@link ClassFirstPilotEngine} 的借贷账户和家户发生关系，不出现在四个阶层位置里。
-   */
+  /** 独立放贷方（模拟 GOV/特殊单位）：不属于农业阶层结构，利率/条款显式配置。 */
   public record Lender(
       String id,
       long money,
@@ -186,22 +187,19 @@ public final class PilotModel {
     }
   }
 
-  /** 地主催收/人口流动政策（试点显式配置，不是从别处推导）。 */
+  /** 地主催收政策（试点显式配置，不是从别处推导）。 */
   public record CollectionPolicy(
       String collectorClassPositionId,
       long collectionThreshold,
       long collectionTriggerRatioPerMille,
       long collectionRatioPerMille,
       long landPricePerUnit,
-      SeizurePriority seizurePriority,
-      long baseFlowPerMille,
-      long flowSlopePerMille,
-      long maxFlowPerMille) {}
+      SeizurePriority seizurePriority) {}
 
-  /** 单个生产组织（家户）的本期计划，收支双方都显式记录。 */
+  /** 单池本期生产计划：土地/劳动/工具/种子/效率都显式记录，收支双方可对账。 */
   public record ProductionPlan(
       long tick,
-      String householdId,
+      String poolId,
       String classPositionId,
       long ownedLand,
       long leasedLand,
@@ -216,47 +214,56 @@ public final class PilotModel {
       long laborShortageLand,
       long seedShortage,
       long efficiencyPerMille,
-      Map<String, Long> externalLaborByProvider,
-      Map<String, Long> seedExternalByProvider) {
+      Map<String, Long> externalLaborByProviderPool,
+      Map<String, Long> seedExternalByProviderPool) {
 
     public ProductionPlan {
-      externalLaborByProvider = immutableCopy(externalLaborByProvider);
-      seedExternalByProvider = immutableCopy(seedExternalByProvider);
+      externalLaborByProviderPool = immutableCopy(externalLaborByProviderPool);
+      seedExternalByProviderPool = immutableCopy(seedExternalByProviderPool);
     }
   }
 
-  /** 本期生产账户：投入、产出、按阶层位置的实际分配。 */
+  /** 本期生产账户：投入、产出、按阶层位置的实际分配与家户份额。 */
   public record ProductionAccount(
       long tick,
-      String householdId,
+      String poolId,
       String classPositionId,
       long plannedLand,
       long actualLand,
       long outputGrain,
       long seedSelfUsed,
       long seedExternalUsed,
-      long externalSeedPaid,
+      long seedPaid,
       long rentPaid,
       long wagePaid,
       long residualPaid,
       Map<String, Long> distributedByClass,
+      Map<String, Long> householdGrainShares,
       List<String> shortages) {
 
     public ProductionAccount {
       distributedByClass = immutableCopy(distributedByClass);
+      householdGrainShares = immutableCopy(householdGrainShares);
       shortages = List.copyOf(shortages);
     }
   }
 
-  /**
-   * 滚动账户快照（家户或放贷方视角）。
-   *
-   * <p>{@code cumulativeNet} 有符号：{@code >0} ⇒ 对手方欠 {@code household}（claim）；{@code <0} ⇒ {@code
-   * household} 欠对手方（debt）。正净额永远不会被写成 debt，反之亦然。
-   */
+  /** 池内家户子账户：只承载人口/劳动/份额与生产子账户，不承载库存资产。 */
   public record HouseholdAccount(
+      String poolId,
       String householdId,
-      String modeId,
+      String name,
+      long population,
+      long laborPerCapita,
+      long sharePerMille,
+      long laborUnits) {}
+
+  /**
+   * 池级滚动账户快照。{@code cumulativeNet > 0} ⇒ 对手方欠 owner（claim）；{@code < 0} ⇒ owner 欠对手方（debt）。
+   * 正净额永远不会被写成 debt，反之亦然。
+   */
+  public record RollingAccount(
+      String ownerId,
       String counterpartyId,
       String unit,
       String terms,
@@ -267,47 +274,111 @@ public final class PilotModel {
       long nextDueTick,
       AccountStatus status) {}
 
-  /** 一次可报告事件（人口流动 / 阶层下调 / 收地 / 扣流动商品 / 资本化 / 借贷 / 红灯）。 */
+  /** 一次非流动性/催收事件。 */
   public record Transition(
       long tick,
       TransitionKind kind,
-      String householdId,
+      String poolId,
       String counterpartyId,
       long populationMoved,
       long landSeized,
       long debtReduced,
       String reason) {}
 
+  /** 迁移 bundle 的守恒明细（库存 + 权利 + 债权/债务份额）。 */
+  public record TransitionBundle(
+      long population,
+      long labor,
+      Map<AssetKind, Long> movedAssets,
+      long landOwnershipToDestination,
+      long landOwnershipToMarket,
+      long landPurchasedFromMarket,
+      long leaseRightsGranted,
+      long leaseRightsReturned,
+      long claimsMovedMilli,
+      long debtMovedMilli,
+      String debtRule,
+      String landRule) {
+
+    public TransitionBundle {
+      movedAssets = immutableCopy(movedAssets);
+    }
+  }
+
+  /** 池级迁移事件：tick、方向、from→to、人数、bundle、A/x/r/O/cap 原因。 */
+  public record MobilityEvent(
+      long tick,
+      Direction direction,
+      String fromClassPositionId,
+      String toClassPositionId,
+      long movedPopulation,
+      TransitionBundle bundle,
+      long aMilli,
+      long afterAMilli,
+      boolean originStockPerCapitaNotIncreased,
+      long xMilli,
+      long ratePerMillePerYear,
+      long opportunityPerMille,
+      long absorptionCapPerMille,
+      long capMilliPeople,
+      boolean skipLevel,
+      String reason) {}
+
+  /** 单池读数（含 A_C/x_C/r_up/r_down）。 */
+  public record PoolReading(
+      String classPositionId,
+      String name,
+      long population,
+      long labor,
+      long aMilli,
+      long xMilli,
+      long rateUpPerMillePerYear,
+      long rateDownPerMillePerYear,
+      long rateUpPerMillePerTick,
+      long rateDownPerMillePerTick,
+      Map<AssetKind, Long> assetVector,
+      Map<String, Long> debtByUnit,
+      long leaseHolding,
+      long laborEfficiencyPerMille,
+      long upCapPerMillePerTick,
+      long downCapPerMillePerTick) {
+
+    public PoolReading {
+      assetVector = immutableCopy(assetVector);
+      debtByUnit = immutableCopy(debtByUnit);
+    }
+  }
+
   /** 单 tick 读数（全部是深拷贝，构造后不可变）。 */
   public record TickReport(
       long tick,
-      Map<String, Long> populationByClass,
-      Map<String, Long> householdsByClass,
-      Map<String, Long> debtByClassGrainMilli,
-      Map<String, Long> claimByClassGrainMilli,
-      Map<String, Map<String, Long>> goodsByHousehold,
-      Map<String, Long> moneyByHousehold,
-      Map<String, Long> landByHousehold,
-      Map<String, Long> toolsByHousehold,
-      Map<String, Long> efficiencyByHousehold,
+      Map<String, PoolReading> pools,
+      long landForSale,
+      long leaseSupply,
+      List<MobilityEvent> mobility,
+      List<Transition> transitions,
+      List<ProductionAccount> productionAccounts,
       long redLights,
       long baseRationGap,
-      List<Transition> transitions,
-      long landlordLandSharePerMille,
-      long topHouseholdLandSharePerMille,
-      List<String> diagnostics) {
+      List<String> diagnostics,
+      long totalPopulation,
+      long totalOwnedLand,
+      long totalTools,
+      long totalGrain,
+      long totalCloth,
+      long totalMoney,
+      long totalDebtGrainMilli,
+      long totalClaimGrainMilli,
+      long producedGrainTotal,
+      long seedUsedTotal,
+      long rationConsumedTotal,
+      long clothConsumedTotal) {
 
     public TickReport {
-      populationByClass = immutableCopy(populationByClass);
-      householdsByClass = immutableCopy(householdsByClass);
-      debtByClassGrainMilli = immutableCopy(debtByClassGrainMilli);
-      claimByClassGrainMilli = immutableCopy(claimByClassGrainMilli);
-      goodsByHousehold = deepImmutableCopy(goodsByHousehold);
-      moneyByHousehold = immutableCopy(moneyByHousehold);
-      landByHousehold = immutableCopy(landByHousehold);
-      toolsByHousehold = immutableCopy(toolsByHousehold);
-      efficiencyByHousehold = immutableCopy(efficiencyByHousehold);
+      pools = immutableCopy(pools);
+      mobility = List.copyOf(mobility);
       transitions = List.copyOf(transitions);
+      productionAccounts = List.copyOf(productionAccounts);
       diagnostics = List.copyOf(diagnostics);
     }
   }
@@ -386,16 +457,5 @@ public final class PilotModel {
       return Collections.emptyMap();
     }
     return Collections.unmodifiableMap(new LinkedHashMap<>(source));
-  }
-
-  private static Map<String, Map<String, Long>> deepImmutableCopy(
-      Map<String, Map<String, Long>> source) {
-    LinkedHashMap<String, Map<String, Long>> copy = new LinkedHashMap<>();
-    if (source != null) {
-      for (Map.Entry<String, Map<String, Long>> entry : source.entrySet()) {
-        copy.put(entry.getKey(), immutableCopy(entry.getValue()));
-      }
-    }
-    return Collections.unmodifiableMap(copy);
   }
 }
