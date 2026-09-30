@@ -162,10 +162,10 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "economy.GmAdjust",
               "adjustment(setMobilityPolicy|setClassFirstLender|forgiveClassFirstDebt"
-                  + "|setCollectionPolicy|setProductionParameters"
+                  + "|setCollectionPolicy|setProductionParameters|levyStock"
                   + "|forgiveDebt|setLiquidationPolicy), parameters(JSON 对象), reason(必填非空白)"
                   + "（★ GM-only、只改源状态：白名单外/派生读数 ⇒ 拒；"
-                  + "class-first 原生五：setMobilityPolicy={modeId?, 任一 MobilityPolicy 标量字段或 absorptionPolicy"
+                  + "class-first 原生六：setMobilityPolicy={modeId?, 任一 MobilityPolicy 标量字段或 absorptionPolicy"
                   + "(PROPORTIONAL|ALL_OR_NOTHING)；schema/bounds/absorptionCapByEdgePerMille/bundleTemplates 给到即拒}；"
                   + "setClassFirstLender={lenderId, interestRatePerMille?/nextDueTick? 至少一项(≥0)；collectionPower 无消费点 ⇒ 拒}；"
                   + "forgiveClassFirstDebt={ownerId, counterpartyId, unit?(缺省=grain), amount?(缺省=全额债务)}"
@@ -178,6 +178,9 @@ public final class CatalogTool implements AgentTool {
                   + "nonEssentialNeedPerMille(≥0)/nonEssentialEfficiencyPenaltyPerMille(≥0)/loanInterestRatePerMille(≥0)/"
                   + "moneyPerGrain(>0)/toolPricePerUnit(≥0)/reserveTicks(≥0)/collectionIntervalTicks(≥1)；"
                   + "只改 meta.config、未给字段保持原值}；"
+                  + "levyStock={fromClassPositionId, lenderId, unit(grain|money), amount(≥1 整数) 四字段全必填；"
+                  + "grain 上限=stock−protectedGrainReserve(population,labor)（口粮保护储备不可抽）、money 上限=stock；"
+                  + "超上限 ⇒ 拒并报 available，不截断；只改源池与目标 lender}；"
                   + "旧表两 kind 仅非空 classFirst 为空的世界可用（classFirst 非空 ⇒ 具名拒绝并指路 class-first 原生 kind）："
                   + "forgiveDebt: debtContractId, amount?(缺省=全额本金，须 ≤ 本金)；"
                   + "setLiquidationPolicy: assetRuleId, maxLiquidatePerMille(0..1000), protectedReserve(≥0),"

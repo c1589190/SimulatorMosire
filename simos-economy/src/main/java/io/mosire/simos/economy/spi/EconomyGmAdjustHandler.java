@@ -17,16 +17,16 @@ import java.util.Objects;
  *
  * <pre>{@code
  * {"adjustment":"setMobilityPolicy"|"setClassFirstLender"|"forgiveClassFirstDebt"
- *              |"setCollectionPolicy"|"setProductionParameters"
+ *              |"setCollectionPolicy"|"setProductionParameters"|"levyStock"
  *              |"forgiveDebt"|"setLiquidationPolicy",
  *  "parameters":{...},
  *  "reason":"..."}
  * }</pre>
  *
- * <p>★★ <b>七条 adjustment（源状态白名单，唯一语义落点在 {@link EconomyGmAdjustments#project}）</b>：
+ * <p>★★ <b>八条 adjustment（源状态白名单，唯一语义落点在 {@link EconomyGmAdjustments#project}）</b>：
  *
  * <ul>
- *   <li><b>class-first 原生五</b>：
+ *   <li><b>class-first 原生六</b>：
  *       <ul>
  *         <li>{@code setMobilityPolicy}：{@code modeId?（缺省 = classFirst.meta.config.mode.id()）} +
  *             至少一个 {@code MobilityPolicy} 标量字段 / {@code
@@ -54,6 +54,12 @@ import java.util.Objects;
  *             toolPricePerUnit(≥0)}/{@code reserveTicks(≥0)}/{@code collectionIntervalTicks(≥1)}）
  *             至少一项，只改 {@code classFirst.meta.config}，未给字段保持原值；不碰
  *             mode/lender/collectionPolicy/mobilityPolicy； 未播种/无 {@code meta.config} ⇒ 具名拒绝；
+ *         <li>{@code levyStock}：{@code fromClassPositionId} + {@code lenderId} + {@code
+ *             unit(grain|money)} + {@code amount(整数 ≥ 1)} 四字段全必填；从既有 {@code classFirst.classPools}
+ *             源池抽取粮/钱到既有 {@code classFirst.lenders} 目标账户。grain 上限 = {@code stock(GRAIN) −
+ *             config.protectedGrainReserve(population, labor)}，money 上限 = {@code stock(MONEY)}；超上限
+ *             ⇒ 具名拒绝并报 {@code available}（不截断）；源池按 {@code classPositionId} 找不到 / lender 找不到 / unit
+ *             不认 ⇒ 具名拒绝；只改源池与目标 lender（守恒不破），其余组件逐值不变；
  *       </ul>
  *   <li><b>旧表两（仅非空 class-first 为空的世界）</b>：
  *       <ul>
@@ -65,7 +71,7 @@ import java.util.Objects;
  *             + {@code policyValuePerUnitMilli ≥ 0（非 POLICY 必须 0）} + {@code
  *             recipientRule(CREDITOR_FIRST|MARKET_FIRST)}； upsert 到 {@code liquidationPolicies}；引用的
  *             {@code AssetRule} 不存在 ⇒ 具名拒绝。★ {@code classFirst} 非空 ⇒ 二者由 {@link
- *             EconomyGmAdjustments#project} 统一具名拒绝并指路五个 class-first 原生 kind（handler 不重复这道门）。
+ *             EconomyGmAdjustments#project} 统一具名拒绝并指路六个 class-first 原生 kind（handler 不重复这道门）。
  *       </ul>
  * </ul>
  *
@@ -125,6 +131,7 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
           requireCollectionPolicyShape(label, parameters);
       case EconomyGmAdjustments.SET_PRODUCTION_PARAMETERS ->
           requireProductionParametersShape(label, parameters);
+      case EconomyGmAdjustments.LEVY_STOCK -> requireLevyStockShape(label, parameters);
       default ->
           throw new IllegalArgumentException(
               EconomyGmAdjustments.DERIVED_REJECTION
@@ -227,6 +234,20 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
           label
               + " 至少需要给出一个可调整字段: "
               + String.join(" | ", EconomyGmAdjustments.PRODUCTION_TUNING_FIELDS));
+    }
+  }
+
+  /**
+   * {@code levyStock} 的形状：四个字段全必填；文本字段非空、{@code amount} 是整数且 ≥ 1。unit 的取值白名单与 源池/lender 上限等语义由
+   * {@link EconomyGmAdjustments#project} 统一判（保证与 GM 窄写工具同一份语义）。
+   */
+  private static void requireLevyStockShape(String label, JsonNode parameters) {
+    EconomyCommandPayloads.requireText(label, parameters, "fromClassPositionId");
+    EconomyCommandPayloads.requireText(label, parameters, "lenderId");
+    EconomyCommandPayloads.requireText(label, parameters, "unit");
+    long amount = EconomyCommandPayloads.requireLong(label, parameters, "amount");
+    if (amount < 1L) {
+      throw new IllegalArgumentException(label + " 的 amount 必须 >= 1: " + amount);
     }
   }
 

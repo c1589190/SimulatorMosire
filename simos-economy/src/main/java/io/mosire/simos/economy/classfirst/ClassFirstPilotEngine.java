@@ -2340,11 +2340,12 @@ public final class ClassFirstPilotEngine {
     return total;
   }
 
+  /**
+   * 保护口粮储备：委托 {@link PilotConfig#protectedGrainReserve(long, long)}（唯一算式点在 config）—— 引擎结算与 GM
+   * 抽取上限必须用同一个数，不得两处各写一遍。
+   */
   private long protectedReserveGrain(ClassPool pool) {
-    long laborUnits = pool.labor();
-    return config.reserveTicks()
-        * (config.baseRationPerCapita() * pool.population()
-            + config.laborRationPerLabor() * laborUnits);
+    return config.protectedGrainReserve(pool.population(), pool.labor());
   }
 
   private long poolDebtValueMilli(ClassPool pool) {

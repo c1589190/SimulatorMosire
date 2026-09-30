@@ -4,11 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.ClassFirstAccountId;
+import io.mosire.simos.economy.api.id.ClassPoolId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.ExternalLenderId;
 import io.mosire.simos.economy.api.id.MobilityPolicyId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.classfirst.AssetKind;
 import io.mosire.simos.economy.classfirst.ClassFirstAccount;
+import io.mosire.simos.economy.classfirst.ClassFirstLevy;
 import io.mosire.simos.economy.classfirst.ClassFirstMeta;
 import io.mosire.simos.economy.classfirst.ClassFirstState;
 import io.mosire.simos.economy.classfirst.MobilityPolicy;
@@ -29,10 +32,10 @@ import java.util.Objects;
  * 载荷解析、白名单拒绝、前后差异与 {@link EconomyChangeSet} 都在这里算一次，两处只做各自的边界折叠（handler → {@code
  * Rejected}/`Applied`；工具 → {@code BAD_REQUEST} /预览视图）。
  *
- * <p>★★ <b>七条源状态白名单</b>（{@link #ADJUSTMENTS}）：
+ * <p>★★ <b>八条源状态白名单</b>（{@link #ADJUSTMENTS}）：
  *
  * <ul>
- *   <li><b>class-first 原生（五）</b>：{@link #SET_MOBILITY_POLICY} 按给定字段 upsert 既有 {@code
+ *   <li><b>class-first 原生（六）</b>：{@link #SET_MOBILITY_POLICY} 按给定字段 upsert 既有 {@code
  *       mobilityPolicies} 行（只改 {@link MobilityPolicy} 的标量字段 + {@code absorptionPolicy}；{@code
  *       schema}/{@code bounds} 两个 record 组件与 {@code absorptionCapByEdgePerMille}/{@code
  *       bundleTemplates} 两张嵌套表给到即具名拒绝）； {@link #SET_CLASS_FIRST_LENDER} 只改既有 {@link
@@ -41,7 +44,9 @@ import java.util.Objects;
  *       #SET_COLLECTION_POLICY} 按给定标量改既有 {@link PilotModel.CollectionPolicy} 的四个可调字段（{@code
  *       seizurePriority}/{@code collectorClassPositionId} 给到即具名拒绝）；{@link
  *       #SET_PRODUCTION_PARAMETERS} 从 {@link PilotConfig#currentTuning()} 起步、按给定字段改 {@code
- *       meta.config} 的 15 个生产/技术标量；
+ *       meta.config} 的 15 个生产/技术标量；{@link #LEVY_STOCK} 从既有 {@code classPools} 源池一次性抽取粮/钱到既有 {@code
+ *       lenders} 目标账户（grain 不得穿透 {@link PilotConfig#protectedGrainReserve(long, long)}
+ *       保护口粮；超上限具名拒绝并报 available，不截断；其余组件逐值不变）；
  *   <li><b>旧表（两，仅非 class-first 世界）</b>：{@link #FORGIVE_DEBT}（{@link DebtContractBook#forgive} +
  *       {@link EconomyData#withDebtContracts}）与 {@link #SET_LIQUIDATION_POLICY}（{@link
  *       EconomyData#withLiquidationPolicies}）。{@link EconomyData#classFirst()} 非空 ⇒ 二者具名拒绝并指路
@@ -49,13 +54,14 @@ import java.util.Objects;
  *       liquidationPolicies}，改旧表没有结算路径；{@code classFirst} 为空（旧档 / 尚未播种）⇒ 现有行为逐字不变。
  * </ul>
  *
- * <p>★★ <b>只改源状态、只走既有写口</b>：class-first 五个 kind 只经 {@link ClassFirstState} 的 {@code
- * withMobilityPolicies}/{@code withLenders}/{@code withAccounts}/{@code withMeta} 纯 copy-with 与
- * {@link EconomyData#withClassFirst} 落值。其中 {@link #SET_COLLECTION_POLICY}/{@link
- * #SET_PRODUCTION_PARAMETERS} 只改 {@code meta.config}（引擎 {@code restore} 直接读的源参数）：前者只改 {@code
- * collectionPolicy}，后者只改 15 个标量；两者都不碰 {@code mode}（无调整口）与 {@code lender}/{@code
- * mobilityPolicy}（各有专属 kind），也不碰其余状态表。 旧两 kind 仍只调用原有写口；任何调整都不碰
- * totals/conservation/pools/classFlowEvents 以及 {@code meta} 的累计读数/托管/初始基数等派生量，也不搬粮/钱/库存。
+ * <p>★★ <b>只改源状态、只走既有写口</b>：class-first 六个 kind 只经 {@link ClassFirstState} 的 {@code
+ * withClassPools}/{@code withMobilityPolicies}/{@code withLenders}/{@code withAccounts}/{@code
+ * withMeta} 纯 copy-with 与 {@link EconomyData#withClassFirst} 落值。其中 {@link
+ * #SET_COLLECTION_POLICY}/{@link #SET_PRODUCTION_PARAMETERS} 只改 {@code meta.config}（引擎 {@code
+ * restore} 直接读的源参数）：前者只改 {@code collectionPolicy}，后者只改 15 个标量；两者都不碰 {@code mode}（无调整口）与 {@code
+ * lender}/{@code mobilityPolicy}（各有专属 kind），也不碰其余状态表。{@link #LEVY_STOCK} 是本白名单里唯一"搬粮/钱"的
+ * kind：只把源池的粮/钱搬进目标 lender（两侧仍在总量里，守恒不破），仍不碰 totals/conservation/classFlowEvents 与 {@code meta}
+ * 的累计读数/托管/初始基数；其余五个 kind 不搬任何库存。旧两 kind 仍只调用原有写口。
  *
  * <p>★★ <b>派生读数不可直写</b>：{@code flows} / {@code demandBook} / {@code crisisSignals} / {@code
  * classStandings.consecutiveDebtStressCycles} / {@code debtCapacity} 这类派生读数一律以 {@link
@@ -91,12 +97,15 @@ public final class EconomyGmAdjustments {
   /** {@code adjustment} 白名单项：按给定标量改 {@code meta.config} 的 15 个生产/技术参数（class-first 原生）。 */
   public static final String SET_PRODUCTION_PARAMETERS = "setProductionParameters";
 
+  /** {@code adjustment} 白名单项：从既有阶层池一次性抽取粮/钱到既有外部放贷主体账户（class-first 原生）。 */
+  public static final String LEVY_STOCK = "levyStock";
+
   /** 白名单外调整的统一拒绝短语（handler 折 {@code Rejected}、工具折 {@code BAD_REQUEST} 都用它）。 */
   public static final String DERIVED_REJECTION = "派生读数不可由 GM 调整工具直写";
 
   private static final String COMMAND = EconomyGmAdjustHandler.TYPE;
 
-  /** 七条源状态白名单（拒绝消息与 handler 兜底共用同一顺序；唯一拼写点在各自常量）。 */
+  /** 八条源状态白名单（拒绝消息与 handler 兜底共用同一顺序；唯一拼写点在各自常量）。 */
   static final List<String> ADJUSTMENTS =
       List.of(
           FORGIVE_DEBT,
@@ -105,7 +114,8 @@ public final class EconomyGmAdjustments {
           SET_CLASS_FIRST_LENDER,
           FORGIVE_CLASS_FIRST_DEBT,
           SET_COLLECTION_POLICY,
-          SET_PRODUCTION_PARAMETERS);
+          SET_PRODUCTION_PARAMETERS,
+          LEVY_STOCK);
 
   /** {@code setMobilityPolicy} 可调整的 17 个 long 标量字段（与 {@link MobilityPolicy} 逐项对齐）。 */
   static final List<String> MOBILITY_POLICY_LONG_FIELDS =
@@ -188,7 +198,7 @@ public final class EconomyGmAdjustments {
    *
    * @param base 当前 {@link EconomyData}（只读；不得为 null）
    * @param adjustment 调整名；白名单外一律 {@link IllegalArgumentException}（具名 {@link #DERIVED_REJECTION}）
-   * @param parameters 调整参数对象（形状见七条白名单常量）
+   * @param parameters 调整参数对象（形状见八条白名单常量）
    * @param reason 调整原因；必填非空白
    * @param day 世界当前日（只进审计摘要；不改状态）
    * @return 投影后的 {@link EconomyData}、{@link EconomyChangeSet} 与前后差异清单
@@ -224,6 +234,7 @@ public final class EconomyGmAdjustments {
       case FORGIVE_CLASS_FIRST_DEBT -> forgiveClassFirstDebt(base, parameters, reason, day);
       case SET_COLLECTION_POLICY -> setCollectionPolicy(base, parameters, reason, day);
       case SET_PRODUCTION_PARAMETERS -> setProductionParameters(base, parameters, reason, day);
+      case LEVY_STOCK -> levyStock(base, parameters, reason, day);
       default -> throw derivedRejection(adjustment);
     };
   }
@@ -778,6 +789,69 @@ public final class EconomyGmAdjustments {
     return new Projection(SET_PRODUCTION_PARAMETERS, reason, day, projected, changeSet, changes);
   }
 
+  /**
+   * {@code levyStock}：从既有阶层池一次性抽取粮/钱到既有外部放贷主体账户（四个字段全必填）。
+   *
+   * <p>★ 语义唯一落点是 {@link ClassFirstLevy#extract}：源池按 {@code classPositionId} 找、目标 lender 必须在 {@code
+   * classFirst.lenders}；grain 上限 = {@code stock − config.protectedGrainReserve(population, labor)}，
+   * money 上限 = {@code stock}；超上限具名拒绝并报 available（不截断）。只改源池与目标 lender，其余组件逐值不变 （粮/钱守恒：源减多少、lender
+   * 加多少）。两条审计 {@code Change}：源池、目标 lender。
+   */
+  private static Projection levyStock(
+      EconomyData base, JsonNode parameters, String reason, long day) {
+    String label = COMMAND + "." + LEVY_STOCK;
+    String fromClassPositionId =
+        EconomyCommandPayloads.requireText(label, parameters, "fromClassPositionId");
+    ExternalLenderId lenderId =
+        externalLenderId(label, EconomyCommandPayloads.requireText(label, parameters, "lenderId"));
+    AssetKind unit = levyUnit(label, EconomyCommandPayloads.requireText(label, parameters, "unit"));
+    long amount = EconomyCommandPayloads.requireLong(label, parameters, "amount");
+    if (amount < 1L) {
+      throw new IllegalArgumentException(label + " 的 amount 必须 >= 1: " + amount);
+    }
+
+    ClassFirstLevy.Result result =
+        ClassFirstLevy.extract(base.classFirst(), fromClassPositionId, lenderId, unit, amount);
+    EconomyData projected = base.withClassFirst(result.state());
+    EconomyChangeSet changeSet = EconomyChangeSet.between(base, projected);
+    ClassPoolId sourcePoolId =
+        ClassPoolId.idOf(result.poolBefore().modeId(), result.poolBefore().classPositionId());
+    return new Projection(
+        LEVY_STOCK,
+        reason,
+        day,
+        projected,
+        changeSet,
+        List.of(
+            new Change(
+                "classFirst.classPools",
+                sourcePoolId.value(),
+                result.poolBefore(),
+                result.poolAfter()),
+            new Change(
+                "classFirst.lenders",
+                lenderId.value(),
+                result.lenderBefore(),
+                result.lenderAfter())));
+  }
+
+  /** {@code levyStock} 的 {@code unit} 只认 {@code "grain"|"money"}（其余具名拒绝，不做大小写/别名归一）。 */
+  private static AssetKind levyUnit(String label, String text) {
+    return switch (text) {
+      case PilotModel.GRAIN -> AssetKind.GRAIN;
+      case PilotModel.MONEY -> AssetKind.MONEY;
+      default ->
+          throw new IllegalArgumentException(
+              label
+                  + " 的 unit 只支持 "
+                  + PilotModel.GRAIN
+                  + " | "
+                  + PilotModel.MONEY
+                  + "，收到: "
+                  + text);
+    };
+  }
+
   /** {@code meta.config} 是两个新 kind 的权威面；空态/旧档没有 config ⇒ 具名拒绝（不静默 no-op）。 */
   private static PilotConfig requireConfig(String label, ClassFirstMeta meta) {
     if (meta == null || meta.config() == null) {
@@ -930,7 +1004,7 @@ public final class EconomyGmAdjustments {
             + "）");
   }
 
-  /** 旧两 kind 在非空 class-first 世界的具名拒绝：旧表没有结算路径，指路五个 class-first 原生 kind。 */
+  /** 旧两 kind 在非空 class-first 世界的具名拒绝：旧表没有结算路径，指路六个 class-first 原生 kind。 */
   private static IllegalArgumentException legacyClassFirstRejection(String adjustment) {
     return new IllegalArgumentException(
         COMMAND
@@ -946,7 +1020,9 @@ public final class EconomyGmAdjustments {
             + " | "
             + SET_COLLECTION_POLICY
             + " | "
-            + SET_PRODUCTION_PARAMETERS);
+            + SET_PRODUCTION_PARAMETERS
+            + " | "
+            + LEVY_STOCK);
   }
 
   private static MobilityPolicyId mobilityPolicyId(String label, String modeId) {

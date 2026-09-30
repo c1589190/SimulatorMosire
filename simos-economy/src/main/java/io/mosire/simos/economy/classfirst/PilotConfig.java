@@ -208,6 +208,22 @@ public record PilotConfig(
         replacement.collectionIntervalTicks());
   }
 
+  /**
+   * ★ <b>保护口粮储备的唯一算式</b>：{@code reserveTicks × (baseRationPerCapita × population +
+   * laborRationPerLabor × labor)}，与引擎 {@code ClassFirstPilotEngine} 的私有 {@code
+   * protectedReserveGrain} 逐字一致（后者已改为委托这里， 全仓不得再出现第二份 —— GM 抽取上限与结算保护口粮必须是同一个数）。
+   *
+   * <p>语义：保护线 = {@code reserveTicks} 个 tick 的人均基础口粮 + 实际出劳动者额外口粮之和。★ 算式保持引擎现状的普通 {@code long} 乘加：不加
+   * {@code Math.addExact}、不截断到 0（引擎对结果的使用才做 {@code Math.max(0, stock - reserve)}，本方法只负责"储备是多少"）。
+   *
+   * @param population 阶层池人口（引擎工作表与状态构造器都保证非负）
+   * @param labor 阶层池劳动（千分劳动单位；同上非负）
+   * @return 受保护、不可抽取的粮量
+   */
+  public long protectedGrainReserve(long population, long labor) {
+    return reserveTicks * (baseRationPerCapita * population + laborRationPerLabor * labor);
+  }
+
   /** 单 mode 佃农制农业的最小可用参数。 */
   public static PilotConfig tenancyAgriculture(
       PilotModel.Lender lender, PilotModel.CollectionPolicy collectionPolicy) {

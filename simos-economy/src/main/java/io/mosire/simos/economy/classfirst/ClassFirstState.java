@@ -522,6 +522,45 @@ public record ClassFirstState(
   }
 
   /**
+   * ★ 纯 copy-with：把 {@code replacements} 逐条盖进 {@code classPools}（同键覆盖），其余组件原样带过。
+   *
+   * <p>★ <b>只接受替换既有键</b>（与 {@link #withHouseholdAccounts} 同法）：GM 抽取只减既有阶层池的库存，
+   * 新增/删除池属于播种/制度重建，不从这里开写口；键与 {@code (modeId, classPositionId)} 派生 id 的一致性由构造器 fail-closed
+   * 校验，保序不可变由构造器统一冻结（不用 {@code Map.copyOf}，它不保证迭代序）。
+   *
+   * @param replacements 阶层池替换表；null/空表 ⇒ 原样返回 {@code this}
+   * @throws IllegalArgumentException 指名不存在的池键或键/值为 null
+   */
+  public ClassFirstState withClassPools(Map<ClassPoolId, ClassPool> replacements) {
+    if (replacements == null || replacements.isEmpty()) {
+      return this;
+    }
+    LinkedHashMap<ClassPoolId, ClassPool> nextPools = new LinkedHashMap<>(classPools);
+    for (Map.Entry<ClassPoolId, ClassPool> entry : replacements.entrySet()) {
+      ClassPoolId id = entry.getKey();
+      ClassPool replacement = entry.getValue();
+      if (id == null || replacement == null) {
+        throw new IllegalArgumentException("classPools 的替换键与值都不得为 null: " + id);
+      }
+      if (!classPools.containsKey(id)) {
+        throw new IllegalArgumentException("只允许替换既有阶层池，不接受新增/删除: " + id);
+      }
+      nextPools.put(id, replacement);
+    }
+    return new ClassFirstState(
+        modeParticipations,
+        nextPools,
+        householdAccounts,
+        assetStateSchemas,
+        classBounds,
+        mobilityPolicies,
+        classFlowEvents,
+        accounts,
+        lenders,
+        meta);
+  }
+
+  /**
    * ★ 纯 copy-with：把 {@code replacements} 逐条盖进 {@code mobilityPolicies}（同键覆盖），其余组件原样带过。
    *
    * <p>★ <b>只接受替换既有键</b>（与 {@link #withHouseholdAccounts} 同法）：GM 只调既有 mode 的政策参数，

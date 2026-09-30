@@ -99,7 +99,7 @@ public final class EconomyAdjustTool implements AgentTool {
   public String description() {
     return "GM 经济调整（economy.GmAdjust 的窄封装）：先用 economy 侧纯函数算好 projected 状态与前后差异，"
         + "preview=true（缺省）只算不写；preview=false 时提交同一条 payload（reason 必填，进载荷/事件与工具结果）。"
-        + "adjustment 白名单（7）：class-first 原生五 kind —— "
+        + "adjustment 白名单（8）：class-first 原生六 kind —— "
         + "setMobilityPolicy（modeId?（缺省=当前 mode）+ gamma/upMinPerMillePerYear/.../extractionTaxPerMille 任一标量/"
         + "absorptionPolicy，按给定字段 upsert 既有 MobilityPolicy；schema/bounds/absorptionCapByEdgePerMille/"
         + "bundleTemplates 给到即拒）、"
@@ -114,7 +114,10 @@ public final class EconomyAdjustTool implements AgentTool {
         + "rentPerLand(≥0)/wagePerLabor(≥0)/baseRationPerCapita(≥0)/laborRationPerLabor(≥0)/"
         + "nonEssentialNeedPerMille(≥0)/nonEssentialEfficiencyPenaltyPerMille(≥0)/loanInterestRatePerMille(≥0)/"
         + "moneyPerGrain(>0)/toolPricePerUnit(≥0)/reserveTicks(≥0)/collectionIntervalTicks(≥1) 至少一项，"
-        + "只改 meta.config、未给字段保持原值）；"
+        + "只改 meta.config、未给字段保持原值）、"
+        + "levyStock（fromClassPositionId + lenderId + unit(grain|money) + amount(≥1 整数) 四字段全必填，"
+        + "从既有阶层池一次性抽粮/钱到既有外部放贷主体：grain 上限=stock−口粮保护储备（与结算同源）、"
+        + "money 上限=stock；超上限具名拒绝并报 available（不截断）；只改源池与目标 lender，守恒不破）；"
         + "旧表两 kind —— forgiveDebt（debtContractId + amount?，只减/清本金）、setLiquidationPolicy"
         + "（assetRuleId + maxLiquidatePerMille/protectedReserve/priceSource/policyValuePerUnitMilli/recipientRule），"
         + "只在非 class-first 旧档可用（classFirst 非空 ⇒ 具名拒绝并指路 class-first 原生 kind）。"
@@ -130,7 +133,7 @@ public final class EconomyAdjustTool implements AgentTool {
         ToolSupport.prop(
             "string",
             "调整名（源状态白名单）：setMobilityPolicy | setClassFirstLender | forgiveClassFirstDebt"
-                + " | setCollectionPolicy | setProductionParameters（class-first 原生）；"
+                + " | setCollectionPolicy | setProductionParameters | levyStock（class-first 原生）；"
                 + "forgiveDebt | setLiquidationPolicy（仅非 class-first 旧档）；"
                 + "白名单外一律拒（派生读数不可直写）"));
     props.put(
@@ -149,6 +152,9 @@ public final class EconomyAdjustTool implements AgentTool {
                 + " laborRationPerLabor(≥0), nonEssentialNeedPerMille(≥0), nonEssentialEfficiencyPenaltyPerMille(≥0),"
                 + " loanInterestRatePerMille(≥0), moneyPerGrain(>0), toolPricePerUnit(≥0), reserveTicks(≥0),"
                 + " collectionIntervalTicks(≥1)；只改 meta.config、未给字段保持原值}；"
+                + "levyStock={fromClassPositionId, lenderId, unit(grain|money), amount(≥1 整数) 四字段全必填；"
+                + " grain 上限=stock−protectedGrainReserve(population,labor)（保护口粮不可抽）、money 上限=stock；"
+                + "超上限拒绝并报 available，不截断；只改源池与目标 lender}；"
                 + "forgiveDebt={debtContractId, amount?(缺省=全额本金，须 ≤ 本金)}；"
                 + "setLiquidationPolicy={assetRuleId, maxLiquidatePerMille(0..1000), protectedReserve(≥0),"
                 + " priceSource(MARKET|AGREED|POLICY), policyValuePerUnitMilli(≥0；非 POLICY 必须 0),"
