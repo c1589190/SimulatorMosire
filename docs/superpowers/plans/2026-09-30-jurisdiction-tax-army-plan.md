@@ -107,9 +107,21 @@ spotless + `compile -pl simos-unit -am` + `compile -pl simos-app -am`；
 
 ### 6.3 长期税（第二段，6.2 之后）
 
-- `administrationPerMille > 0` 才允许；每日对每个有管辖的单位，按 region 的家户 actor 账余额 × `taxRatePerMilleByRegion`
-  扣粮/钱入国库；每户不足 ⇒ 按可用量部分缴并**具名记缺口**（欠税清单进 INFO），不静默跳过；
-- 由 app 级 `TimeParticipant`（`simulateWorld`，写 actor + 可选 sd INFO）实现，**不放进 ③Resolve**。
+- **载体（架构硬约束）**：并入 `ClassFirstPopulationEconomyTimeParticipant` 的日循环——它已是 actor 写面的**唯一**参与者。
+  ★ 不能另起 participant：`TimeProposalResolver` 对两个参与者的**同名模块变更 = module clash ⇒ 拒整次推进**
+  （Core 手里的 ChangeSet 不透明、无法合并两份）；另起者若写 actor 会撞 population，若写 sd 会撞 `SdTimeParticipant`。
+- **时点**：每一天 `ClassFirstSettlement` + actor 写回**之后**、月度人口学之前；税基 = 该日结算后的 actor 家户账。
+- **行政能力计入效率**：`assessed = floor(balance × rate‰)`；`attainable = floor(assessed × administrationPerMille‰)`；
+  `collected = min(attainable, available=余额−冻结)`；`administrationPerMille = 0` ⇒ 完全不征（硬门）。
+- **缺口**：`collected < assessed` ⇒ 拆记 `adminShortfall = assessed − attainable` 与 `stockShortfall = attainable − collected`，
+  逐户/逐维累计；本轮**只进日志（推进结束一条 INFO）+ actor 变更集**，不落 sd INFO
+  （见上条：sd 写面由 `SdTimeParticipant` 独占；要落 INFO 须另裁一条通道，后置）。
+- **重叠管辖**：按 `unitId` 升序依次征，后者见前者税后余额；本批不禁止重叠，按序可复现。
+- **已知耦合（具名，不静默）**：税会抽走家户账余额，减少 `ClassFirstActorWriteback` 负增量分摊的可用池；
+  若某户不足，次日写回 fail-closed 当场抛 = "政策超出账本承受力"的响亮失败。测试阶段须专门构造高压税用例。
+- **读面**：participant 新增**只读** unit/map 切片（读管辖、区域 hex、单位位置）；写面仍只有 actor（外加原有的 economy/social）。
+- 实现分层：App 侧一个**纯函数** `JurisdictionDailyTax.collect(actor, units, map, tick) -> (新 actor, Report)`，
+  participant 日循环里调它并累计 Report；工具面不可达（自动结算，不是命令）。
 
 - 非目标：完整税制/财政预算/救济（后续）；军队长期税由 `administrationPerMille=0` 的硬门堵住（用户 2026-09-30 前文的口径）。
 
