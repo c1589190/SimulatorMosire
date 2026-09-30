@@ -18,7 +18,7 @@ import java.util.OptionalLong;
  * ★★ <b>一轮区域市场的只读报告</b>（M2.3/M2.4 的读数原料；L3 的逐区读数组件接它）。
  *
  * <p>★★ <b>它不落盘</b>：本层（L2）只保证"信息被产生且不聚合丢失"，把"逐区逐商品供给/需求/成交量/到货价/运费/损耗/ 未成交原因分布/未利用运力"落成读数组件是
- * L3（M2.7）的事。⇒ {@link EconomyDayStepper#lastMarketReport()} 交出的就是这一份；L3 的 {@code MarketReadout}
+ * L3（M2.7）的事。⇒ 旧日推进器的 lastMarketReport()（R3a 已删除） 交出的就是这一份；L3 的 {@code MarketReadout}
  * 把它折进去（读时派生、进程内、重启即失），不必回头改撮合。
  *
  * <p>★★ <b>四类信息一个不少</b>（L3 需要的都在这里，不是"以后再算"）：
@@ -69,9 +69,11 @@ public record MarketReport(
     List<SellerOutcome> sellerOutcomes,
     List<BuyerOutcome> buyerOutcomes) {
 
-  /** ★★ <b>跨区结算暂设即时</b>（M2.0 #4 的具名标记）：货款与运费在发运日结清，货在 ETA 之后到。 ★ L3 的读数契约接这一位；本批不做"到货付款"。 */
-  public static final boolean CROSS_REGION_SETTLEMENT_IMMEDIATE =
-      MarketSettlement.MARKET_CROSS_REGION_SETTLEMENT_IMMEDIATE;
+  /**
+   * ★★ <b>跨区结算暂设即时</b>（M2.0 #4 的具名标记）：货款与运费在发运日结清，货在 ETA 之后到。 ★ L3 的读数契约接这一位；本批不做"到货付款"。★
+   * R3a：旧撮合引擎删除，此常量由 {@code MarketSettlement} 迁来，值恒为 {@code true}。
+   */
+  public static final boolean CROSS_REGION_SETTLEMENT_IMMEDIATE = true;
 
   public MarketReport {
     Objects.requireNonNull(trigger, "trigger");
@@ -98,7 +100,7 @@ public record MarketReport(
         0L,
         0L,
         0L,
-        MarketSettlement.priceMode(),
+        PriceMode.FIXED, // R3a：旧撮合的 priceMode() 是"默认固定价"（自适应开关出厂 false），此处逐值保留
         List.of(),
         List.of(),
         List.of());

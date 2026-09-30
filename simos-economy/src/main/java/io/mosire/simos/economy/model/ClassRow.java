@@ -16,18 +16,18 @@ import java.util.Map;
  *
  * <p>★★ <b>键 = {@link CohortKey}（格 + 居住类型 + 阶层），不再是"产业 + 槽位"</b>（裁定 K2 / D3-C）：家户是**持有商品与货币的经济主体**，
  * 而人口数、劳动、需求、压力、生死是**同一批人的视图** —— 就是本记录。一个家户给多个产业出劳动（农村家庭既种地又织布）⇒ <b>仍然只有一份账</b>（V9 /
- * I1.2），而"哪些行属于这个产业"改由**劳动配额表**推（见 {@code EconomySettlement.householdKeysOf}）。
+ * I1.2），而"哪些行属于这个产业"改由**劳动配额表**推（见 {@code 旧结算引擎（R3a 已删除）.householdKeysOf}）。
  *
  * <p>★★ <b>为什么没有 {@code goods}</b>（H1；裁定 D3-C "家户主体化" + I6.1/I7.1 "一本账"）：商品库存的**唯一持久真源**是 actor
  * 切片里该家户 actor 的 {@code GoodsAccount}（键 {@code (HouseholdActors.of(key), key.hex())}）。 economy
- * 的日结算要读库存 ⇒ 它在**会话工作副本**里读（{@code EconomyDayStepper} 持有、就地更新，见 {@link
- * io.mosire.simos.economy.time.EconomyDayStepper}），**不是第二本持久账**。 ★ <b>辨别口径</b>：本字段一旦回来（或守恒式里重新出现
+ * 的日结算要读库存 ⇒ 它在**会话工作副本**里读（{@code 旧日推进器（R3a 已删除）} 持有、就地更新，见 {@link
+ * io.mosire.simos.economy.time.旧日推进器（R3a 已删除）}），**不是第二本持久账**。 ★ <b>辨别口径</b>：本字段一旦回来（或守恒式里重新出现
  * {@code ΔΣRowGoods} 这一项），就说明"还有一本账没搬完"。
  *
  * <p>★★ <b>为什么没有 {@code meansOfProduction}</b>（裁定 K3，2026-09-27）：产能（亩/织机/作坊）是**该格该产业的技术属性**， 已搬到
  * {@link Industry#capacity()}。搬走的**代价如实记**：改前 {@code scaleOf} 用 Σ各行的产能 ⇒ 隐含"贫农缸空 ⇒
- * 它的地荒着"的阶级差异；搬走之后这条不再由产能表达，改由"投入由谁出"表达（C3，后续批次）—— 本阶段以**人口占比**折算各行"想扣多少" （见 {@code
- * EconomySettlement.rowSharesOf}（★ H3 已删），真档数值因此**允许变**。
+ * 它的地荒着"的阶级差异；搬走之后这条不再由产能表达，改由"投入由谁出"表达（C3，后续批次）—— 本阶段以**人口占比**折算各行"想扣多少" （见 {@code 旧结算引擎（R3a
+ * 已删除）.rowSharesOf}（★ H3 已删），真档数值因此**允许变**。
  *
  * <p>★ **它是存量**（§3.3 末条"存量/流量分离"）：本期的发生额在 {@link FlowRow} 里、**结算后清零**；绝不用"生产成本"或"资产减少"
  * 冒充负债——债务只能由借入/赊购产生，引用 {@link #debts} 指向债务表。
@@ -56,7 +56,7 @@ import java.util.Map;
  * @param effectiveDemand 有效需求（= 有支付力的那部分，§十四/§十五 的分野）；键值非空、逐值 ≥ 0
  * @param cycleNaturalNeedMilli ★★ <b>M2.7 丙条仪器：本周期累计自然口粮需要</b>（毫粮）= {@code Σ_d
  *     dailyRationMilli(population_d, d)}，{@code population_d} = 第 d 天结算前的行人口（日初人口）—— 由 {@code
- *     EconomySettlement} 逐日累加、新周期第一天重置为当天需要（见 {@code withDailyNeed} 与流水清零点旁的注释）。
+ *     旧结算引擎（R3a 已删除）} 逐日累加、新周期第一天重置为当天需要（见 {@code withDailyNeed} 与流水清零点旁的注释）。
  *     <b>它是唯一与"周期累计未满足需求"同窗口的自然需求分母</b>；旧的"某一天人口 × 整周期配额"不得再与它并排当同一分母（丙条）。 旧档（M2.7 之前）缺本键 ⇒
  *     0（fail-closed 的"还没开始累计"），由 {@code EconomyPayloads.classRow} 与 Jackson 的记录绑定分别兜底。 不得为负
  */
@@ -153,8 +153,8 @@ public record ClassRow(
   /**
    * ★★ <b>S3 阶层写回：只换当前视图，别的字段一字不动</b>—— 身份（{@link #id()}）、人口、劳动、参与率、货币、债务引用、 两类需求与周期累计自然需要全部原样保留。
    *
-   * <p>★★ <b>为什么必须是一个方法而不是调用方逐字段抄</b>：写回路径（{@code EconomySettlement} 的关账日阶层分类）若在调用点 手抄字段，任何一次
-   * {@code ClassRow} 加字段都会把写回路径变成"静默丢字段"的第二处拼写点；本方法把"只改 view"的承诺钉在类型内部， 将来加字段时这段也只会编译失败一次（不会静默漏）。★
+   * <p>★★ <b>为什么必须是一个方法而不是调用方逐字段抄</b>：写回路径（{@code 旧结算引擎（R3a 已删除）} 的关账日阶层分类）若在调用点 手抄字段，任何一次 {@code
+   * ClassRow} 加字段都会把写回路径变成"静默丢字段"的第二处拼写点；本方法把"只改 view"的承诺钉在类型内部， 将来加字段时这段也只会编译失败一次（不会静默漏）。★
    * 它<b>不改</b> {@code HouseholdId}（铁律 1：ID 是身份，视图是可变的）。
    */
   public ClassRow withView(CohortKey newView) {
@@ -183,7 +183,7 @@ public record ClassRow(
    *
    * <ul>
    *   <li>{@code EconomySeeder.industryDailyLabor}（产业当日的配额总量）；
-   *   <li>{@code EconomySettlement.laborOfCohort}（关账时逐 cohort 的**本周期**劳动量，再乘 {@code cycleDays}）；
+   *   <li>{@code 旧结算引擎（R3a 已删除）.laborOfCohort}（关账时逐 cohort 的**本周期**劳动量，再乘 {@code cycleDays}）；
    *   <li>读口 {@code ApiViews.classRowView} 的 {@code participationAdjustedLaborMilli} 一栏。
    * </ul>
    *

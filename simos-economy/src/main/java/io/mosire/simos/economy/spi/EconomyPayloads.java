@@ -143,7 +143,7 @@ import java.util.Set;
  *
  * <p>★★ <b>H1（2026-09-27，裁定 D3-C/K1）的第四处形状变化：{@code classes[].goods} 键<b>不再接受</b></b> —— 家户的商品库存住在
  * actor 切片的 {@code GoodsAccount}（键 {@code (HouseholdActors.of(cohort), cohort.hex())}）， economy
- * 侧只在**会话工作副本**（{@code EconomyDayStepper} 的入参）里读它。★ 与 K3 的 {@code meansOfProduction} 同款理由：
+ * 侧只在**会话工作副本**（{@code 旧日推进器（R3a 已删除）} 的入参）里读它。★ 与 K3 的 {@code meansOfProduction} 同款理由：
  * 载荷里留着它而解析器静默忽略 = 创世库存凭空消失（真档表现为第 1 天全员断粮，而载荷看起来完全正常）⇒ <b>给了即抛</b>。 ★ <b>播种那一份要搬</b>：app 的 {@code
  * HouseholdSeeder} 把它写进该家户 actor 的账户，**不再**写进行载荷。
  *
@@ -1499,7 +1499,7 @@ final class EconomyPayloads {
    *       "看起来在记、其实被丢掉"（真档表现为全格绝收而账面看不出是谁弄丢的）；
    *   <li>★★ {@code goods} <b>给了即抛</b>（H1；裁定 D3-C/K1）：家户的商品库存住在 actor 切片的 {@code GoodsAccount}（键
    *       {@code (HouseholdActors.of(cohort), cohort.hex())}），economy 侧只在**会话工作副本**里读它 （{@code
-   *       EconomyDayStepper} 的入参）。★ 播种那一份要**搬**过去（app 的 {@code HouseholdSeeder}）， 静默忽略它 =
+   *       旧日推进器（R3a 已删除）} 的入参）。★ 播种那一份要**搬**过去（app 的 {@code HouseholdSeeder}）， 静默忽略它 =
    *       创世库存凭空消失（真档表现为第 1 天全员断粮，而载荷看起来完全正常）。
    * </ul>
    *
@@ -1520,7 +1520,7 @@ final class EconomyPayloads {
     if (node.hasNonNull("goods")) {
       throw new IllegalArgumentException(
           "家户行不再有 goods 键（H1/K1：商品库存住在 actor 切片的 GoodsAccount 上，"
-              + "economy 侧只在 EconomyDayStepper 的会话工作副本里读它 —— 播种时请把它搬进该家户 actor 的账户）："
+              + "economy 侧只在 旧日推进器（R3a 已删除） 的会话工作副本里读它 —— 播种时请把它搬进该家户 actor 的账户）："
               + node.get("goods"));
     }
     long money = optionalLong(node, "money", 0L);

@@ -19,7 +19,7 @@ import java.util.Set;
  * ClassFirstState} 里（见 {@link ClassFirstPilotEngine#snapshot()} / {@link
  * ClassFirstPilotEngine#restore(ClassFirstState)}），因此逐日链式调用与一次性 360 tick 逐值同轨迹。
  *
- * <p>★★ <b>边界纪律</b>：本类不调用 {@code EconomySettlement} / {@code EconomyDayStepper} / 旧生产分配类；它是 R2
+ * <p>★★ <b>边界纪律</b>：本类不调用 {@code 旧结算引擎（R3a 已删除）} / {@code 旧日推进器（R3a 已删除）} / 旧生产分配类；它是 R2
  * 切换调用方时唯一要认识的入口。{@code base} 为空态时用 {@code inputs} 播种（config + 家户账户 + 放贷账户）；非空态时 {@code
  * inputs.config} 必须与状态内 config 一致（同一状态流中途换参数 ⇒ 显式拒绝，不静默换规则）。
  *

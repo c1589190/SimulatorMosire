@@ -48,9 +48,9 @@ import org.slf4j.LoggerFactory;
 /**
  * ★★ <b>R2c：class-first 生产路径上唯一的人口—经济时间参与者</b>（namespace 仍是 {@code "population"}）。
  *
- * <p>它取代旧 {@link PopulationEconomyTimeParticipant} 在 {@code Shell} 里的注册位：<b>只调</b> {@link
+ * <p>它取代旧 PopulationEconomyTimeParticipant（R3a 已删除）在 {@code Shell} 里的注册位：<b>只调</b> {@link
  * ClassFirstSettlement#settleOneDay(ClassFirstState, ClassFirstSettlement.Inputs)}，<b>不</b>构造
- * {@code EconomyDayStepper}、<b>不</b>调 {@code EconomySettlement}（旧两个类仍可编译，但已无生产注册点，R3 删）。
+ * {@code 旧日推进器（R3a 已删除）}、<b>不</b>调 {@code 旧结算引擎（R3a 已删除）}（旧两类已在 R3a 随旧结算运行时删除）。
  *
  * <p>★★ <b>每次 {@code simulateWorld} = 一个 proposal、一条 revision、内部逐日</b>：
  *

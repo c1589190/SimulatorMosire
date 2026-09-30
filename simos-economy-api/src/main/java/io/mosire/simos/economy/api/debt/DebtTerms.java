@@ -45,7 +45,7 @@ public record DebtTerms(
     OptionalLong dueCycle,
     OptionalLong dueDay) {
 
-  /** ★ 旧生产路径的利率字面量（唯一拼写点；{@code EconomySettlement} 的公开常量引用它）。 */
+  /** ★ 旧生产路径的利率字面量（唯一拼写点；{@code 旧结算引擎（R3a 已删除）} 的公开常量引用它）。 */
   public static final int LEGACY_INTEREST_RATE_PER_MILLE_PER_CYCLE = 20;
 
   public DebtTerms {

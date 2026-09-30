@@ -39,7 +39,7 @@ public enum TransferReason {
   /** 借粮的本金（要还的信用：债权人 → 债务人）。 */
   LOAN_PRINCIPAL("loan_principal"),
 
-  /** ★★ 偿还本金（H5 起**真的有写者**：{@code EconomySettlement.repayDebts} 铸 {@code 债务人 → 债权人} 的粮腿）。 */
+  /** ★★ 偿还本金（H5 起**真的有写者**：{@code 旧结算引擎（R3a 已删除）.repayDebts} 铸 {@code 债务人 → 债权人} 的粮腿）。 */
   LOAN_REPAYMENT("loan_repayment"),
 
   /** 同格市场成交（H4：买方付钱、卖方交货 —— 一笔买卖铸<b>一对</b>转移，见 {@code Transfer} 的货币腿口径）。 */

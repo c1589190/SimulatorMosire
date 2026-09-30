@@ -37,7 +37,7 @@ import java.util.function.Predicate;
  * dueCycle}（借粮路径的最新一笔到期）；传入空 ⇒ <b>保留</b>原值（条款自身写死了期限的合同不被滚动字段改掉）。
  *
  * <p>★★ <b>它不搬任何粮/钱、不碰任何库存</b>：所有方法只写传入的债务工作表（以及 {@link #withDebtReference}
- * 返回的家户行副本）。利息/资本化/减免都只是本金与状态的变化；真实的粮/钱换手仍只走 {@code EconomySettlement.applyTransfer}。
+ * 返回的家户行副本）。利息/资本化/减免都只是本金与状态的变化；真实的粮/钱换手仍只走 {@code 旧结算引擎（R3a 已删除）.applyTransfer}。
  *
  * <p>★★ <b>与派生读物的关系</b>：{@link io.mosire.simos.economy.model.DebtIndex} 是纯派生（只在读时从合同表现算）； {@link
  * io.mosire.simos.economy.migrate.DebtReferenceReconciler} 只在 {@code EconomyData} 构造期按合同表重建 {@code
@@ -370,7 +370,7 @@ public final class DebtContractBook {
   }
 
   /**
-   * ★★ <b>并行分区结果的唯一落回口</b>（包内可见：只服务 {@code EconomySettlement} 的并行借粮分区）。
+   * ★★ <b>并行分区结果的唯一落回口</b>（包内可见：只服务 {@code 旧结算引擎（R3a 已删除）} 的并行借粮分区）。
    *
    * <p>★ 它<b>不是</b>本金递增语义：不做 addExact、不重置状态；只负责「分区 worker 的终值 → 协调器」这一步， 所以每个分区只允许碰自己债务人集合内的合同（同
    * key 不会由两个分区同时写）。值与原值逐字相同 ⇒ 不产生写入。 键/值身份守卫照 {@link #requireSameIdentity} 走。

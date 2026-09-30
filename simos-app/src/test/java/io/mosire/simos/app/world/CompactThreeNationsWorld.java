@@ -564,7 +564,8 @@ public final class CompactThreeNationsWorld {
         conditions,
         conditionsNation,
         NATION_REGIONS,
-        EconomySeeder.FoundationProfile.COMPLETE);
+        EconomySeeder.FoundationProfile
+            .CLASS_FIRST); // R3a：只支持 class-first；带旧资产规则的条件会被 applyTestConditions 具名拒绝
   }
 
   /**

@@ -557,7 +557,7 @@ public final class Shell implements AutoCloseable {
 
     // ★ T10-h：participant 由**清单**注册、条数由清单长度数出来（曾把 `participant=1` 写死在日志里 ⇒ 将来加第二个会静默说谎）。
     //   ★ R2b（2026-09-30）：生产路径切到 **class-first** —— 经济/人口只由 ClassFirstSettlement 推进（新参与者），
-    //     旧的 PopulationEconomyTimeParticipant 保留编译但**不再注册**（它在别处只服务旧档测试；R3 删）。
+    //     R3a：旧的 PopulationEconomyTimeParticipant 已随旧结算运行时删除（只剩 class-first 一条生产路径）。
     //   ★ 旧注释（R4 为何 economy 与 social 合为一个参与者）仍成立：出生/死亡要同时看两侧，且"同一模块只能有一个写者"。
     List<TimeParticipant> participants =
         List.of(

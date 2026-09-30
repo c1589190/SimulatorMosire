@@ -16,7 +16,7 @@ import java.util.Objects;
  * ★★ <b>生产单元的派生读口</b>（R3B.2）：从 {@code AssetShare} 实物总账<b>纯派生</b>一个 unit 的可用资产与规模，不落第二份状态。
  *
  * <p>★★ <b>为什么必须是派生</b>：{@code AssetShare} 是唯一的实物总账；若 unit 或 {@code Industry} 再存一份 {@code
- * capacity}，两处就会漂开（旧代码正是这样：{@code EconomySettlement.capacityScaleOf} 读 {@code Industry.capacity}，而
+ * capacity}，两处就会漂开（旧代码正是这样：{@code 旧结算引擎（R3a 已删除）.capacityScaleOf} 读 {@code Industry.capacity}，而
  * {@code HouseholdClassRule} 另用 {@code AssetShare} 近似）。本类只做算术，不含公式常量。
  *
  * <pre>
@@ -89,7 +89,7 @@ public final class ProductionUnitBook {
    * ★★ <b>unit 的产能规模</b> = {@code min over k ∈ capacityPerUnit: ⌊usableAssets[k] ÷
    * capacityPerUnit[k]⌋}。
    *
-   * <p>★ 与旧 {@code EconomySettlement.capacityScaleOf(Industry)} 同式：缺资产 = 0，空表 = 0，整数向下取整。
+   * <p>★ 与旧 {@code 旧结算引擎（R3a 已删除）.capacityScaleOf(Industry)} 同式：缺资产 = 0，空表 = 0，整数向下取整。
    */
   public static long capacityScaleOf(
       ProductionUnit unit, Industry industry, Map<AssetShareId, AssetShare> assetShares) {

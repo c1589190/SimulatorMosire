@@ -21,7 +21,6 @@ import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
-import io.mosire.simos.app.time.OwnershipBooks;
 import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
@@ -929,13 +928,12 @@ class GuiApiTest {
   /**
    * ★★ <b>H1：actor 切片（家户 actor + 它的账本）</b> —— 本夹具那一格只有**一个农村贫农行**，故账上只有一条家户。
    *
-   * <p>★ 余额 = 旧版行里的 498,000 毫粮（{@code H11} 那本账）；账户键经 {@link
-   * OwnershipBooks#accountKeyOf(HouseholdId, HexCoord)} 拼（**本夹具不复述家户 id 的形状**）。 ★ 这也让 {@code
-   * /api/economy/hex} 的 {@code goods} 与 {@code /api/economy/ownership} 的 {@code actorGoodsTotal}
-   * **逐值同源**（两处都读 actor 侧的账本）。
+   * <p>★ 余额 = 旧版行里的 498,000 毫粮（{@code H11} 那本账）；账户键 = {@code (HouseholdActors.of(household),
+   * 格)}（**本夹具不复述家户 id 的形状**；R3a 起旧 OwnershipBooks 已删）。 ★ 这也让 {@code /api/economy/hex} 的 {@code
+   * goods} 与 {@code /api/economy/ownership} 的 {@code actorGoodsTotal} **逐值同源**（两处都读 actor 侧的账本）。
    */
   private static ActorData actorData() {
-    GoodsAccountKey accountKey = OwnershipBooks.accountKeyOf(H11_HOUSEHOLD, H11);
+    GoodsAccountKey accountKey = new GoodsAccountKey(HouseholdActors.of(H11_HOUSEHOLD), H11);
     return ActorData.empty()
         .withActor(new io.mosire.simos.actor.model.Actor(accountKey.owner(), "农村贫农家户"))
         // ★★ H4：货币账与商品账同住一本（同一本 GoodsAccount 的两个余额表）——

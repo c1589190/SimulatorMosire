@@ -29,8 +29,8 @@ import java.util.Set;
 /**
  * ★★ <b>R2b：把 {@link ClassFirstSettlement.Result#actorAccountDeltas()} 落到 actor 家户账本</b>。
  *
- * <p>它住在 {@code simos-app}：只有组合根同时看得见 classfirst 池（economy）与家户账本（actor）。{@code EconomyDayStepper} 的
- * ledger 折账（{@link OwnershipBooks}）与 classfirst 的账户增量<b>不是同一套口径</b>：后者是<b>池级</b>资产差分，而 actor 账本按
+ * <p>它住在 {@code simos-app}：只有组合根同时看得见 classfirst 池（economy）与家户账本（actor）。{@code 旧日推进器（R3a 已删除）} 的
+ * ledger 折账（旧 OwnershipBooks，R3a 已删除）与 classfirst 的账户增量<b>不是同一套口径</b>：后者是<b>池级</b>资产差分，而 actor 账本按
  * {@code (owner, hex)} 展开 ⇒ 本类负责"池级增量 → 家户级落账"的<b>唯一一次</b>展开。
  *
  * <p>★★ <b>落账口径（如实写在类注）</b>：

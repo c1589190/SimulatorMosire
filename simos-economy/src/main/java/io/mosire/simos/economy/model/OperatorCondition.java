@@ -158,7 +158,7 @@ public record OperatorCondition(
   /**
    * ★★ <b>只换 {@code lastReason}</b>（E1 的退出处置摘要追加口）：其余字段逐字带过。
    *
-   * <p>退出处置发生在状态机已把本 unit 置为 {@code EXITED} 之后（{@code EconomySettlement.settleOperatorExits} 里），
+   * <p>退出处置发生在状态机已把本 unit 置为 {@code EXITED} 之后（{@code 旧结算引擎（R3a 已删除）.settleOperatorExits} 里），
    * 那里只追加"资产退回 / 劳动释放 / 偿债违约 / 留存库存"的事实摘要，不改任何转移判据字段 —— 本方法就是那条"只改理由"的写口。
    */
   public OperatorCondition withLastReason(String nextReason) {

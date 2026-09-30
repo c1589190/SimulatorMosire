@@ -7,14 +7,12 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccount;
+import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.query.SdQueryService;
-import io.mosire.simos.app.time.EconomyDayFeed;
-import io.mosire.simos.app.time.MarketReadoutAssembly;
-import io.mosire.simos.app.time.OwnershipBooks;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -69,15 +67,12 @@ import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.time.ClassTransition;
 import io.mosire.simos.economy.time.ClassTransitionFeed;
 import io.mosire.simos.economy.time.DebtCapacityBook;
-import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.EntryOutcome;
 import io.mosire.simos.economy.time.EntryOutcomeFeed;
 import io.mosire.simos.economy.time.HouseholdClassRule;
 import io.mosire.simos.economy.time.HouseholdCondition;
-import io.mosire.simos.economy.time.MarketReadout;
 import io.mosire.simos.economy.time.MarketReport;
 import io.mosire.simos.economy.time.ProductionLedger;
-import io.mosire.simos.economy.time.ProductionSettlement;
 import io.mosire.simos.economy.time.ProductionUnitBook;
 import io.mosire.simos.map.City;
 import io.mosire.simos.map.GameMap;
@@ -481,32 +476,30 @@ public final class ApiViews {
         data,
         actors,
         Optional.empty(),
-        Optional.empty(),
         -1L,
         "读口没有 SimulationState 上下文（3 参重载）⇒ 拿不到 tick 与进程内市场报告");
   }
 
-  /** ★★ M2.7：GUI / MCP 的正式入口（从状态装配焦点区市场读数与进程内报告；与 {@link MarketReadoutAssembly} 同源）。 */
+  /** ★★ M2.7：GUI / MCP 的正式入口（从状态装配焦点区读数与 tick；R3a 起旧市场读数组件已删除）。 */
   public static Map<String, Object> economyHex(HexCoord coord, SimulationState state) {
     EconomyData data = economyData(state);
     ActorData actors = actorData(state);
-    MarketReadoutAssembly.MarketReadoutContext context =
-        MarketReadoutAssembly.contextFor(state, coord);
+    long tick = state.meta().timestamp().tick();
+    // ★★ R3a：旧市场读数组件（MarketReadoutAssembly / MarketReadout / MarketReportFeed）已随旧撮合引擎删除；
+    //   class-first 生产路径不产生进程内市场报告 ⇒ 这一栏具名不可得，不填 0、不假装空数组。
     return economyHex(
         coord,
         data,
         actors,
-        context.readout(),
-        context.report(),
-        context.tick(),
-        context.readoutUnavailable());
+        Optional.empty(),
+        tick,
+        "R3a 起旧市场读数组件已删除（class-first 生产路径不产生进程内市场报告）⇒ 没有区级市场读数");
   }
 
   private static Map<String, Object> economyHex(
       HexCoord coord,
       EconomyData data,
       ActorData actors,
-      Optional<MarketReadout> readout,
       Optional<MarketReport> report,
       long tick,
       String readoutUnavailable) {
@@ -570,10 +563,10 @@ public final class ApiViews {
         }
       }
       landMilliMu += unitAssets.getOrDefault(AssetKind.LAND, 0L);
-      // ★★ M1.7：给养义务读口要"按本周期实际劳动量" —— 走结算侧的**同一个函数**（{@code EconomySettlement.laborOfCohort}），
+      // ★★ M1.7：给养义务读口要"按本周期实际劳动量" —— 走结算侧的**同一个函数**（{@code 旧结算引擎（R3a 已删除）.laborOfCohort}），
       //   不在视图层另写一套（口径两处各写一遍 = 读到的义务与实付的义务会漂开）。
       Map<HouseholdId, Long> cycleLabor =
-          EconomySettlement.laborOfCohort(data.classes(), coord, industry.cycleDays());
+          laborOfCohort(data.classes(), coord, industry.cycleDays());
       // ★★ R3B.2：关系挂在 unit 上 ⇒ 产业行的"给养义务"兼容字段取**第一条 unit** 的关系
       //   （一产业一 unit 时与旧读法逐值相同；多 unit 时逐条见 units[].relation）。
       ProductionUnit compatUnit = units.isEmpty() ? null : units.get(0);
@@ -737,10 +730,9 @@ public final class ApiViews {
     view.put("classes", classes);
     view.put("industries", industries);
     // ★★ S3：逐家户的状态读数与阶层分化（派生；来源与边界见 HouseholdCondition / HouseholdClassRule 的类注）。
-    Optional<ProductionLedger> dayLedger =
-        data.meta().isPresent()
-            ? EconomyDayFeed.last(data.meta().orElseThrow().mapId(), tick)
-            : Optional.empty();
+    // ★★ R3a：旧每日 ledger 投递点（EconomyDayFeed）已随旧结算引擎删除；class-first 路径不产生当日
+    //   ProductionLedger ⇒ 这里恒空，下面的 arrears / 资本化 / 清算读数走"具名不可得"分支。
+    Optional<ProductionLedger> dayLedger = Optional.empty();
     String mapId = data.meta().map(meta -> meta.mapId()).orElse(null);
     List<HouseholdId> householdKeys = cohortKeysAt(data, coord);
     Set<HouseholdId> hexHouseholds = new LinkedHashSet<>(householdKeys);
@@ -853,14 +845,9 @@ public final class ApiViews {
       view.put("liquidationAudits", null);
       view.put("liquidationAuditsUnavailable", LIQUIDATION_AUDIT_PROCESS_ONLY);
     }
-    // ★★ M2.7：**焦点区的逐区逐商品市场读数**（与 MCP / GUI 共用同一份视图；进程内报告缺失时 match=null 且具名）。
-    //   ★ 挂进同一个 economyHex 而不新开路由/工具：GUI 与 MCP 的读口数量不变（工具面测试不需要改名单）。
-    view.put("marketReadout", readout.map(ApiViews::marketReadoutView).orElse(null));
-    if (readout.isEmpty()) {
-      view.put("marketReadoutUnavailable", readoutUnavailable);
-    } else if (!readoutUnavailable.isEmpty()) {
-      view.put("marketReadoutUnavailable", readoutUnavailable);
-    }
+    // ★★ R3a：旧区级市场读数（MarketReadout）已随旧撮合引擎删除 ⇒ 这一栏恒为 null + 具名原因，不填 0 冒充。
+    view.put("marketReadout", null);
+    view.put("marketReadoutUnavailable", readoutUnavailable);
     // ★★ M0.3：**逐格粮食诊断**（七项里今天做得到的四项 + 三项"做不到"的具名占位）。
     //   ★ 它挂在**同一个视图**里（不另开读口）：报表脚本按格 dump 的就是这一份，多一栏即多一栏读数。
     //   ★ M2.7 复评：logisticsGap 在拿到进程内报告时就可算；productionSelfSufficiency / paymentInstrumentGap
@@ -990,7 +977,7 @@ public final class ApiViews {
         "purchasingCaveat",
         "affordableGrain / affordableGrainAtAsk 都是**账本级上限**：它们把该格全部账本的钱与全部库存混在一起算，"
             + "而市场的有效需求只算「本轮有预算、按参考价买得起且限价内」的家户"
-            + "（见 MarketReadout 的 effectiveDemandMilli / needsButCannotAffordMilli 两栏）⇒ 实际能成交的量 ≤ 它们");
+            + "（旧区级市场读数已随旧撮合引擎删除，R3a；历史口径见原 MarketReadout 的 effectiveDemandMilli / needsButCannotAffordMilli 两栏）⇒ 实际能成交的量 ≤ 它们");
     // ⑦ 满足率（千分）与未满足人日 —— 分母 = 丙条的**逐日累加周期需要**。
     view.put(
         "satisfactionPerMille",
@@ -2189,107 +2176,6 @@ public final class ApiViews {
     }
   }
 
-  /**
-   * ★★ <b>M2.7：{@link MarketReadout} → JSON 视图</b>（GUI 与 MCP 共用；逐区逐商品）。
-   *
-   * <p>★ <b>进程内/重启即失</b>由读数对象自己的 {@code unavailable} 标注原样带出；{@code match = null} 不是 0。
-   */
-  private static Map<String, Object> marketReadoutView(MarketReadout readout) {
-    Map<String, Object> view = new LinkedHashMap<>();
-    view.put("tick", readout.tick());
-    view.put(
-        "lastSettledDay",
-        readout.lastSettledDay().isPresent() ? readout.lastSettledDay().getAsLong() : null);
-    view.put("priceMode", readout.priceMode().value());
-    view.put("adaptivePricingEnabled", readout.adaptivePricingEnabled());
-    view.put("crossRegionSettlementImmediate", readout.crossRegionSettlementImmediate());
-    List<Map<String, Object>> priceUpdates = new ArrayList<>(readout.priceUpdates().size());
-    for (MarketReport.PriceUpdate update : readout.priceUpdates()) {
-      Map<String, Object> item = new LinkedHashMap<>();
-      item.put("anchor", update.anchor().toString());
-      item.put("commodity", update.commodity().value());
-      item.put("previousPriceMilli", update.previousPriceMilli());
-      item.put("nextPriceMilli", update.nextPriceMilli());
-      priceUpdates.add(item);
-    }
-    view.put("priceUpdates", priceUpdates);
-    view.put("provenance", readout.provenance());
-    view.put("unavailable", readout.unavailable());
-    List<Map<String, Object>> regions = new ArrayList<>(readout.regions().size());
-    for (MarketReadout.RegionReadout region : readout.regions()) {
-      Map<String, Object> regionView = new LinkedHashMap<>();
-      regionView.put("regionId", region.regionId());
-      regionView.put("anchor", region.anchor().toString());
-      regionView.put("radiusHex", region.radiusHex());
-      regionView.put("numeraire", region.numeraire().value());
-      List<String> members = new ArrayList<>(region.members().size());
-      for (HexCoord member : region.members()) {
-        members.add(member.toString());
-      }
-      regionView.put("members", members);
-      List<Map<String, Object>> commodities = new ArrayList<>(region.commodities().size());
-      for (MarketReadout.CommodityReadout commodity : region.commodities()) {
-        Map<String, Object> commodityView = new LinkedHashMap<>();
-        commodityView.put("commodity", commodity.commodity().value());
-        commodityView.put("referencePriceMilli", commodity.referencePriceMilli());
-        commodityView.put("bidPriceMilli", commodity.bidPriceMilli());
-        commodityView.put("askPriceMilli", commodity.askPriceMilli());
-        commodityView.put("supplyMilli", commodity.supplyMilli());
-        commodityView.put("naturalNeedMilli", commodity.naturalNeedMilli());
-        commodityView.put("naturalNeedWindow", commodity.naturalNeedWindow());
-        commodityView.put("cycleNaturalNeedMilli", commodity.cycleNaturalNeedMilli());
-        commodityView.put("effectiveDemandMilli", commodity.effectiveDemandMilli());
-        commodityView.put("needsButCannotAffordMilli", commodity.needsButCannotAffordMilli());
-        commodityView.put(
-            "needsButCannotAffordHouseholds", commodity.needsButCannotAffordHouseholds());
-        commodityView.put(
-            "match", commodity.match().map(ApiViews::commodityMatchView).orElse(null));
-        commodities.add(commodityView);
-      }
-      regionView.put("commodities", commodities);
-      regions.add(regionView);
-    }
-    view.put("regions", regions);
-    return view;
-  }
-
-  /** 撮合结果读数的 JSON 形（{@code landedPriceMilli} 无成交 ⇒ null；四张原因分布逐档给）。 */
-  private static Map<String, Object> commodityMatchView(MarketReadout.CommodityMatchReadout match) {
-    Map<String, Object> view = new LinkedHashMap<>();
-    view.put("tradedMilli", match.tradedMilli());
-    view.put(
-        "landedPriceMilli",
-        match.landedPriceMilli().isPresent() ? match.landedPriceMilli().getAsLong() : null);
-    view.put("freightMilli", match.freightMilli());
-    view.put("lossMilli", match.lossMilli());
-    view.put("unusedCapacityMilli", match.unusedCapacityMilli());
-    view.put("capacityBottleneck", match.capacityBottleneck());
-    view.put("sellerOutcomeCount", match.sellerOutcomeCount());
-    view.put("sellerSelfUsableQtyMilli", match.sellerSelfUsableQtyMilli());
-    view.put("sellerOutcompetedCount", match.sellerOutcompetedCount());
-    view.put("sellerOutcompetedQtyMilli", match.sellerOutcompetedQtyMilli());
-    view.put("sellerPriceMissingCount", match.sellerPriceMissingCount());
-    view.put(
-        "cheapestSellerUnitCostMilli",
-        match.cheapestSellerUnitCostMilli().isPresent()
-            ? match.cheapestSellerUnitCostMilli().getAsLong()
-            : null);
-    view.put(
-        "dearestSellerUnitCostMilli",
-        match.dearestSellerUnitCostMilli().isPresent()
-            ? match.dearestSellerUnitCostMilli().getAsLong()
-            : null);
-    view.put("buyerOutcomeCount", match.buyerOutcomeCount());
-    view.put("buyerStockSufficientCount", match.buyerStockSufficientCount());
-    view.put("buyerNoBudgetCount", match.buyerNoBudgetCount());
-    view.put("buyerGapMilli", match.buyerGapMilli());
-    view.put("unfilledBuyCounts", reasonCountsView(match.unfilledBuyCounts()));
-    view.put("unfilledSellCounts", reasonCountsView(match.unfilledSellCounts()));
-    view.put("unfilledBuyQuantities", reasonCountsView(match.unfilledBuyQuantities()));
-    view.put("unfilledSellQuantities", reasonCountsView(match.unfilledSellQuantities()));
-    return view;
-  }
-
   /** 未成交原因分布：键 = 规范字面量（小写下划线），保序（原因档声明序已在读数组件里保序）。 */
   private static Map<String, Long> reasonCountsView(Map<MarketUnfilledReason, Long> counts) {
     Map<String, Long> view = new LinkedHashMap<>();
@@ -2423,7 +2309,7 @@ public final class ApiViews {
     view.put("day", snapshot.day());
     view.put("items", items);
     view.put(
-        "provenance", "关账日 EconomySettlement 写回 ClassRow.view 时投递的进程内审计；day = 最近一次不晚于当前 tick 的关账日");
+        "provenance", "关账日 旧结算引擎（R3a 已删除） 写回 ClassRow.view 时投递的进程内审计；day = 最近一次不晚于当前 tick 的关账日");
     view.put(
         "classReasonNote", "reason 字段保留 lastClassReason 语义（见 HouseholdClassRule.Classification）");
     return view;
@@ -2435,7 +2321,7 @@ public final class ApiViews {
     long wageOwed = 0L;
     long rentOwed = 0L;
     long subsistenceOwed = 0L;
-    for (ProductionSettlement.Arrear arrear : ledger.arrears()) {
+    for (ProductionLedger.Arrear arrear : ledger.arrears()) {
       Map<String, Object> item = new LinkedHashMap<>();
       item.put("kind", arrear.kind().name().toLowerCase(java.util.Locale.ROOT));
       item.put("ruleType", arrear.rule().type().name());
@@ -2627,7 +2513,7 @@ public final class ApiViews {
       "最近一次结算日 d 的当天自然口粮需要（逐日覆盖，不是周期累计、也不是周期均值）；"
           + "人口时点 = 该日结算前的日初人口。不得用它 × 120 与周期量并排比较（丙条：口径不可比）";
 
-  /** 千分率的分母（口粮折算用；与 {@code EconomySettlement.MILLI_PER_GRAIN} 同值，此处只服务读口）。 */
+  /** 千分率的分母（口粮折算用；与 {@code 旧结算引擎（R3a 已删除）.MILLI_PER_GRAIN} 同值，此处只服务读口）。 */
   private static final long MILLI_PER_GRAIN = EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
 
   /**
@@ -2806,12 +2692,12 @@ public final class ApiViews {
    * <p>★★ <b>M1.7：把"实物给养义务"发出来</b>（{@code subsistenceObligations} / {@code subsistencePromised}）——
    * 改前"谁给谁多少给养"只能从规则表 + 劳动账现算，读口里根本不存在；现在它由**契约层的** {@link
    * SubsistenceObligation#of(ProductionRelation, Map)} 纯派生（受方 / 按什么劳动量 / 每周期应付 / 商品），
-   * 而"按什么量"用的是**结算侧的同一个** {@code EconomySettlement.laborOfCohort}（M1.8 的折扣后口径）⇒ 读到的义务与实付的应付**同源**。
-   * ★ 缺 relation ⇒ 空表（"没有规则 ⇒ 全归 residualOwner"的等价路径，不是读不到）；{@code subsistencePromised} = 逐商品 Σ
-   * 应付，也正是 M2 保留算式经 {@link SubsistenceObligation#retentionOf} 封顶时用的"承诺额"。
+   * 而"按什么量"用的是**结算侧的同一个** {@code 旧结算引擎（R3a 已删除）.laborOfCohort}（M1.8 的折扣后口径）⇒ 读到的义务与实付的应付**同源**。 ★ 缺
+   * relation ⇒ 空表（"没有规则 ⇒ 全归 residualOwner"的等价路径，不是读不到）；{@code subsistencePromised} = 逐商品 Σ 应付，也正是
+   * M2 保留算式经 {@link SubsistenceObligation#retentionOf} 封顶时用的"承诺额"。
    *
    * @param relation 该产业的生产关系（{@code EconomyData.relations}；可为 null = 没有规则）
-   * @param laborOfCohort 本周期各 cohort 的劳动量（由 {@code EconomySettlement.laborOfCohort} 算好传入；不得为 null）
+   * @param laborOfCohort 本周期各 cohort 的劳动量（由 {@code 旧结算引擎（R3a 已删除）.laborOfCohort} 算好传入；不得为 null）
    */
   private static Map<String, Object> industryView(
       Industry industry, ProductionRelation relation, Map<HouseholdId, Long> laborOfHousehold) {
@@ -2974,9 +2860,8 @@ public final class ApiViews {
         perCapitaLaborMilli(row.participationAdjustedLaborMilli(), row.population()));
     // ★★ H1：这个家户的商品余额**只在 actor 侧的账本上**（{@code GoodsAccount}，键 =
     //   {@code (HouseholdActors.of(key), key.hex())}）—— 行里没有 goods 这一栏。★ 键的拼法只经
-    //   {@link OwnershipBooks#accountKeyOf}（本层不复述家户 id / 账户键的形状）；账本缺席 ⇒ 空表（读口不抛）。
-    GoodsAccount account =
-        actors.accounts().get(OwnershipBooks.accountKeyOf(key, row.view().hex()));
+    //   {@link #accountKeyOf(HouseholdId, HexCoord)}（本层不复述家户 id / 账户键的形状）；账本缺席 ⇒ 空表（读口不抛）。
+    GoodsAccount account = actors.accounts().get(accountKeyOf(key, row.view().hex()));
     view.put("goods", sortedCommodities(account == null ? Map.of() : account.balances()));
     // ★★ H4：这个家户的**货币账**（actor 侧；与 {@code goods} 同住一本 {@code GoodsAccount}）——
     //   与下面那个行侧恒 0 的 {@code money} 并排（同 goods 与 rowGoodsTotal 的处置：真值在 actor 侧）。
@@ -3257,10 +3142,10 @@ public final class ApiViews {
    * 本期流水（§3.3 表 3）的读侧形：所得 / 消费 / 新借 / 偿还 / 净盈余 / **未满足需求 / 饿死**（税与利息 v1 恒 0）。{@code flow} 为 null ⇒
    * 全 0（该行本期无事）。
    *
-   * <p>★★ **V4 起 {@code deaths} 在默认路径上恒 0**：致死率默认 {@code
-   * EconomySettlement.FAMINE_MORTALITY_PER_MILLE = 0‰}（"先不做饿死人系统"）⇒ **缺口照记**（{@code unmetNeed} 非 0
-   * 是常态），但**不死人**。字段照发不删（旋钮还在）； 读到的 0 是**结论**，不是"没在记"。 ★ 它由端到端用例钉住："缺粮 ⇒ 读口读到非 0 的 {@code
-   * unmetNeed}、且 {@code deaths == 0}、人口一个不少" （{@code EconomySettlementEndToEndTest}）。
+   * <p>★★ **V4 起 {@code deaths} 在默认路径上恒 0**：致死率默认 {@code 旧结算引擎（R3a 已删除）.FAMINE_MORTALITY_PER_MILLE
+   * = 0‰}（"先不做饿死人系统"）⇒ **缺口照记**（{@code unmetNeed} 非 0 是常态），但**不死人**。字段照发不删（旋钮还在）； 读到的 0
+   * 是**结论**，不是"没在记"。 ★ 它由端到端用例钉住："缺粮 ⇒ 读口读到非 0 的 {@code unmetNeed}、且 {@code deaths == 0}、人口一个不少"
+   * （{@code 旧结算端到端测试（已随旧路径删除）}）。
    *
    * <p>★ **本期口径**（§八.5）：各字段是**本周期**的发生额，新周期第一天归零 ⇒ 关账日读到的是整周期的量（含那次收获）。
    */
@@ -3823,7 +3708,7 @@ public final class ApiViews {
   /**
    * ★★ <b>E5b：本日清算/阶层下滑/投影回退的瞬态审计</b>（{@code ProductionLedger.liquidationAudits}；只列与本格相关的条目）。
    *
-   * <p>★ <b>窗口</b>：只在读数 tick 与最近一次结算 tick 相同时可读（{@link EconomyDayFeed}）；不落盘。 ★ <b>单位</b>：{@code
+   * <p>★ <b>窗口</b>：只在读数 tick 与最近一次结算 tick 相同时可读（旧 EconomyDayFeed，R3a 已删除）；不落盘。 ★ <b>单位</b>：{@code
    * quantity} 与 AssetShare 同单位；{@code *Milli} 为毫值（粮债口径 = 毫粮）。 ★ <b>读不到</b>：上层返回 null + {@link
    * #LIQUIDATION_AUDIT_PROCESS_ONLY}，<b>不填空数组</b>冒充"当天没有清算"。
    */
@@ -4799,5 +4684,32 @@ public final class ApiViews {
           "actor 模块切片不是 ActorSnapshot：" + snapshot.getClass().getName());
     }
     return actorSnapshot.data();
+  }
+
+  /**
+   * ★★ <b>本格各家庭行的"本周期劳动量"</b>（每日千分劳动 × 周期天数；R3a 从{@code 旧结算引擎（R3a 已删除）} 原样搬来）。
+   *
+   * <p>★ 口径与量纲一字未改：{@code participationAdjustedLaborMilli} 是参与率折算后的**每日**劳动；{@code LABOR_AMOUNT}
+   * 一族量的是**本周期**劳动 ⇒ 乘周期天数。R3a 之后旧结算引擎已删除，本方法只服务这一条读口。
+   */
+  private static Map<HouseholdId, Long> laborOfCohort(
+      Map<HouseholdId, ClassRow> rows, HexCoord location, long cycleDays) {
+    Map<HouseholdId, Long> byCohort = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, ClassRow> entry : rows.entrySet()) {
+      if (!entry.getValue().view().hex().equals(location)) {
+        continue;
+      }
+      long rowLabor = entry.getValue().participationAdjustedLaborMilli() * cycleDays;
+      if (rowLabor <= 0L) {
+        continue;
+      }
+      byCohort.put(entry.getKey(), rowLabor);
+    }
+    return byCohort;
+  }
+
+  /** 家户 actor 账键：{@code (HouseholdActors.of(household), 格)}（R3a 从旧 {@code OwnershipBooks} 原样搬来）。 */
+  private static GoodsAccountKey accountKeyOf(HouseholdId household, HexCoord location) {
+    return new GoodsAccountKey(HouseholdActors.of(household), location);
   }
 }

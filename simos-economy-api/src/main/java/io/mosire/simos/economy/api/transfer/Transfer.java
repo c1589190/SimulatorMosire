@@ -16,7 +16,7 @@ import java.util.Optional;
  * {@code ActorRef}」+ 裁定 K4）。
  *
  * <p>★★ <b>它为什么是唯一的一处</b>：在它之前，"东西换手"这件事在三个地方各写了一遍 —— {@code ProductionSettlement} 的收支条目、{@code
- * EconomySettlement.transferIntraHexInputs} 的同格取材、 {@code EconomySettlement.settleHexes}
+ * 旧结算引擎（R3a 已删除）.transferIntraHexInputs} 的同格取材、 {@code 旧结算引擎（R3a 已删除）.settleHexes}
  * 的同格借粮。三处各写各的 ⇒ 加第四条路（市场）时没人拦得住它长成第四套写法。 本类把"从 A 到 B
  * 走了什么"钉成<b>一个形状</b>，于是"任何库存变动必有对应转移记录"这条不变量<b>可判</b>。
  *

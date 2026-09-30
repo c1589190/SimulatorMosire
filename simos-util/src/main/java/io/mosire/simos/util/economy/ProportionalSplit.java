@@ -6,7 +6,7 @@ import java.math.BigInteger;
  * ★★ **按权重成比例切分 + 最大余数法分派残差**（全仓**唯一**实现；v2 spec §八.7）。
  *
  * <p>★★ **为什么要收在一处**：v1 有**三份**同族的定点切分（{@code EconomySeeder.splitByShares}、 {@code
- * EconomySeeder.splitProportional}、{@code EconomySettlement.allocate}），残差规则**各不相同** ——{@code
+ * EconomySeeder.splitProportional}、{@code 旧结算引擎（R3a 已删除）.allocate}），残差规则**各不相同** ——{@code
  * splitByShares}/{@code splitProportional} 按**下标序**逐个 +1，{@code allocate} 按**索引序均摊** （{@code
  * remainder / n} 人人有份）。spec §八.7 点名后者："把权重和的缺口**平均分给每一行**"⇒ 按格净产 5,950,000 算， 地主实得是**按权重应得的 7
  * 倍**（2,975 vs 429），与"制度分配决定谁得多少"**方向相反**。

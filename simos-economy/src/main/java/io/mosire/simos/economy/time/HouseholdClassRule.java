@@ -81,7 +81,7 @@ import java.util.Set;
  *
  * <p>★★ <b>旧四档不受影响</b>：本规则返回的 {@link SocialClassId} 可以是旧四档，也可以是 S3 追加的 {@code
  * landless_laborer}/{@code artisan}/{@code official}；旧档的 parse 行为不变（见 {@code SocialClassId}）。
- * <b>写回</b>只发生在结算关账日，且只改 {@code ClassRow.view}（见 {@code EconomySettlement}）。
+ * <b>写回</b>只发生在结算关账日，且只改 {@code ClassRow.view}（见 {@code 旧结算引擎（R3a 已删除）}）。
  *
  * <p>★★ <b>R4-B.4：纯派生</b>：分类不再读 {@code Industry.slots}，也没有任何"槽位上限回退"分支；{@code Industry.slots} /
  * {@code ClassSlot} 只作为生产方式内部的角色/劳动配置，不再是 {@code ClassRow.view} 或参与率的上限来源。
@@ -572,7 +572,7 @@ public final class HouseholdClassRule {
         Set<CompensationRule> settled = new LinkedHashSet<>();
         long paid = 0L;
         boolean unmappedLedgerRule = false;
-        for (ProductionSettlement.RuleSettlement reading : ledger.orElseThrow().ruleSettlements()) {
+        for (ProductionLedger.RuleSettlement reading : ledger.orElseThrow().ruleSettlements()) {
           if (!isRentShaped(reading.rule())) {
             continue;
           }

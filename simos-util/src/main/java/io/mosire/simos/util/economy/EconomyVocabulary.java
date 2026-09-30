@@ -13,7 +13,7 @@ import java.util.Map;
  * economy 侧，由 {@link #GRAIN_COMMODITY_ID} 构造。
  *
  * <p>★★ **商品不再只有粮**（R3 的 T1）：本类是**六个商品 id 的唯一拼写点**（粮 / 布 / 纤维 / 工具 / 铁 / 木）—— 三个以上模块各写一份
- * 字面量就是三处真相（{@code ApiViews} 与 {@code EconomySettlement} 各私藏一份 {@code "grain"} 正是 v1 的病灶形态）。
+ * 字面量就是三处真相（{@code ApiViews} 与 {@code 旧结算引擎（R3a 已删除）} 各私藏一份 {@code "grain"} 正是 v1 的病灶形态）。
  *
  * <p>★★ **需求口径带商品维度**（R3 的 T1；spec §七 原文："粮食不足与衣物不足对死亡的时间尺度显然不能一样"）：
  *

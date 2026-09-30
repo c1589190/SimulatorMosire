@@ -23,17 +23,17 @@ import java.util.Map;
  * interestDue}（利息也以粮计：实物债的本金口径就是粮）。其余商品的净额在 {@code income}/{@code consumed} 两张表里
  * **分别读得到**，只是不汇总成一个数。
  *
- * <p>★★ **"本期"的边界（v2 spec §八.5；V5 落地）**：{@code EconomySettlement} 在**新周期的第一天**（{@code progressDays
- * == 0}，含创世）把该行**整行从 0 重记** —— 上周期末的读数在**关账那一支的 revision 里**读得到（归档），
+ * <p>★★ **"本期"的边界（v2 spec §八.5；V5 落地）**：{@code 旧结算引擎（R3a 已删除）} 在**新周期的第一天**（{@code progressDays ==
+ * 0}，含创世）把该行**整行从 0 重记** —— 上周期末的读数在**关账那一支的 revision 里**读得到（归档），
  * 次日才归零（清零）。故关账日读到的是**一整个周期**的量（{@code income} 含那次收获的毛产分配），不是两个周期的累计。
  *
  * <p>★★ **未满足需求与饿死（2026-09-25 新增；V4 起默认不致命）**：{@code unmetNeed} = 本周期**需求 − 实得**的逐日累加（毫粮），
- * 是饿死判据的输入；{@code deaths} = 本周期因饿死而减少的人口（人）。两者都由 {@code EconomySettlement} 写入，
+ * 是饿死判据的输入；{@code deaths} = 本周期因饿死而减少的人口（人）。两者都由 {@code 旧结算引擎（R3a 已删除）} 写入，
  * 且与其它字段**同口径**（本期量、新周期第一天归零）。
  *
- * <p>★★ **{@code deaths} 在默认路径上恒为 0**：致死率默认 {@code EconomySettlement.FAMINE_MORTALITY_PER_MILLE =
- * 0‰} （用户 2026-09-25：「可以先不做什么饿死人系统」）⇒ **缺口照记不误**（{@code unmetNeed} 非 0 是常态），但**不死人**。 字段**保留不删**（v1
- * spec §3.3 的形状，且致死判据落地时要用），旋钮是 {@code EconomySettlement} 的包内可见重载入参 （**不是** {@code static final} +
+ * <p>★★ **{@code deaths} 在默认路径上恒为 0**：致死率默认 {@code 旧结算引擎（R3a 已删除）.FAMINE_MORTALITY_PER_MILLE = 0‰}
+ * （用户 2026-09-25：「可以先不做什么饿死人系统」）⇒ **缺口照记不误**（{@code unmetNeed} 非 0 是常态），但**不死人**。 字段**保留不删**（v1
+ * spec §3.3 的形状，且致死判据落地时要用），旋钮是 {@code 旧结算引擎（R3a 已删除）} 的包内可见重载入参 （**不是** {@code static final} +
  * {@code if} 的死分支）。★ 读口读到的 {@code deaths == 0} 是**结论**，不是"没在记"。
  *
  * <p>★ **不变量（构造期判）**：{@code taxPaid}/{@code interestDue}/{@code newBorrowing}/{@code repaid}/{@code
@@ -47,11 +47,11 @@ import java.util.Map;
  * @param income 本期所得（**逐商品**，按最小计量单位）；键值非空、逐值 ≥ 0
  * @param consumed ★★ <b>本期"从本行账上离开"的量</b>（**逐商品**；键值非空、逐值 ≥ 0）—— <b>只含两项</b>：
  *     <ol>
- *       <li>{@code EconomySettlement.consumeOwnStock} 的**日耗**（口粮/衣着，含当天借来就吃掉的那一笔）；
+ *       <li>{@code 旧结算引擎（R3a 已删除）.consumeOwnStock} 的**日耗**（口粮/衣着，含当天借来就吃掉的那一笔）；
  *       <li>{@code drawCycleInputs} 的**现扣周期投入**（种子/原料；在"谁出料"的那一行的流水里）。
  *     </ol>
  *     ★★ <b>生产损耗不在里面</b>（饲料 + 折旧）：损耗不是"谁消费了"，是"蒸发了" ⇒ 只进 {@code
- *     ProductionLedger.losses()}，在守恒式里自成一项（见 {@code EconomySettlement} §6.1 的 H1 式）。 ★★
+ *     ProductionLedger.losses()}，在守恒式里自成一项（见 {@code 旧结算引擎（R3a 已删除）} §6.1 的 H1 式）。 ★★
  *     <b>"同格取材转出"也不在里面</b>（H3 起那条通道整块删掉了）。⇒ 于是"真正被吃掉的"= {@code consumed} − 当天 ledger 的投入 —— 这正是守恒式里
  *     {@code ΣFinalConsumption} 的定义，**不要**把 {@code consumed} 直接读成"消费"。
  *     <p>★★ <b>历史留痕</b>（改前口径，已作废）：本字段曾写作"口粮 + 留种 + 生产损耗"。三者都不对：留种是**投入**不是消费、

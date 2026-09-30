@@ -13,6 +13,7 @@ import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.TransferId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.map.hex.HexCoord;
@@ -31,7 +32,7 @@ import java.util.Optional;
  * 账上的增减）。这一样<b>不是 economy 切片自己的数据</b>： 产权住在 {@code simos-actor}，而"谁把条目/转移落到账上"必须由<b>同时看得见两片</b>的
  * app 协调器来做（R4/E7）。 于是 economy 侧交出的就是它 —— <b>一天一本账</b>，一个字段不少，且<b>绝不静默丢弃</b>。
  *
- * <p>★★ <b>它是"一天"的，不是"一个周期"的</b>（{@link EconomyDayStepper#step(long)} 的返回值）：协调器逐步 把它落到账上 ⇒
+ * <p>★★ <b>它是"一天"的，不是"一个周期"的</b>（旧日推进器的 step(long)（R3a 已删除） 的返回值）：协调器逐步 把它落到账上 ⇒
  * 若它跨日累计，调用方就会<b>重复落账</b>。需要"整周期"的读数由调用方自己按天攒。
  *
  * <p>★★ <b>七件</b>（逐件与判据对应；★ H1.3 删掉了原来的第六件 {@code cohortIntake}，★ H2 把 {@code actorEntries} 拆成"产出计提
@@ -48,13 +49,12 @@ import java.util.Optional;
  *       <b>同格借粮</b>（家户 → 家户）、<b>同格市场成交</b>（H4：一笔买卖<b>一对</b>转移 —— 货一条、钱一条）。 ★ <b>货币腿逐币种直接可读</b>（H4
  *       的逐币种守恒判据就读它，不另设一张"货币发生额"表：同一件事两处拼写必然漂开）。 ★ 协调器把它们折成 {@code (actor, location, commodity,
  *       delta)} 落到 {@code ActorData.accounts}（见 {@link #transfers()} 的注释）；
- *   <li>{@link #outputAccruals()} <b>产出计提</b>（{@code +净产 → operator}；{@link
- *       ProductionSettlement.ActorEntry}）。 ★ <b>它不是一条转移</b>：产出是<b>造出来</b>的、没有对端，而转移的两端恒为 actor
- *       且不许相等 —— 理由详见 {@link ProductionSettlement.ActorEntry}；
+ *   <li>{@link #outputAccruals()} <b>产出计提</b>（{@code +净产 → operator}；{@link ActorEntry}）。 ★
+ *       <b>它不是一条转移</b>：产出是<b>造出来</b>的、没有对端，而转移的两端恒为 actor 且不许相等 —— 理由详见 {@link ActorEntry}；
  *   <li>{@link #ruleSettlements()} <b>逐规则的实得读数</b>（应付 / 实付 / 欠；裁定 S4）。★ <b>只读</b>：不影响守恒、不落债权；
  *   <li>{@link #deferredMoney()} ★ <b>留档字段</b>（H4 起<b>恒为空表</b>）：H2/H3 装的是"只定义、不结算"的货币规则； H4
  *       起货币档真的结算（进 {@link #transfers()} 与 {@link #ruleSettlements()}）⇒ 它再没有内容 —— 保留的理由见 {@code
- *       ProductionSettlement.Outcome} 的 {@code deferredMoney} 注释；
+ *       Outcome} 的 {@code deferredMoney} 注释；
  *   <li>★★ {@link #debtCapitalizations()} <b>E4c：本日"欠租/欠薪 → 合同债权"的资本化明细</b>（逐事件；只记本金增量，
  *       <b>不搬粮/钱</b>）。它是 {@link #ruleSettlements()} 的 owed 那一侧真的落成债权之后的具名审计；
  *   <li>★★ {@link #unresolvedDebtCapitalizations()} <b>E4c：资本化跳过的具名原因</b>——付款人/受款人 actor 解析不到 家户
@@ -70,9 +70,9 @@ public record ProductionLedger(
     Map<IndustryId, Map<CommodityId, Long>> gross,
     Map<IndustryId, Map<CommodityId, Long>> losses,
     Map<IndustryId, Map<CommodityId, Long>> inputs,
-    List<ProductionSettlement.ActorEntry> outputAccruals,
+    List<ActorEntry> outputAccruals,
     List<Transfer> transfers,
-    List<ProductionSettlement.RuleSettlement> ruleSettlements,
+    List<RuleSettlement> ruleSettlements,
     List<CompensationRule> deferredMoney,
     List<DebtCapitalization> debtCapitalizations,
     List<UnresolvedDebtCapitalization> unresolvedDebtCapitalizations,
@@ -81,7 +81,7 @@ public record ProductionLedger(
 
   public ProductionLedger {
     // ★ 缺键按空处理（同 EconomyData 的旧档兼容口径：这里只服务"当天什么都没发生"这一形态）。
-    // ★★ 不可变写在**赋值处**（照 Industry.outputPerUnit / ProductionSettlement.Facts 的先例）：SpotBugs 的
+    // ★★ 不可变写在**赋值处**（照 Industry.outputPerUnit / Facts 的先例）：SpotBugs 的
     //   EI_EXPOSE_REP 不做跨过程分析，看不出"校验助手返回的是一份不可变副本"。
     gross = Collections.unmodifiableMap(freezeQuantities(gross, "gross"));
     losses = Collections.unmodifiableMap(freezeQuantities(losses, "losses"));
@@ -98,6 +98,227 @@ public record ProductionLedger(
             : List.copyOf(unresolvedDebtCapitalizations);
     debtRepaymentSkips = debtRepaymentSkips == null ? List.of() : List.copyOf(debtRepaymentSkips);
     liquidationAudits = liquidationAudits == null ? List.of() : List.copyOf(liquidationAudits);
+  }
+
+  /**
+   * ★★ <b>转移凭据的铸造口</b>（H2）：结算只回答"这条转移<b>是什么</b>"，而 <b>id（{@code tr-<day>-<seq>}）与日号由当天的 ledger
+   * 累加器盖</b>（{@code ProductionLedger.Accumulator#mint}）—— ★ 序号是"当天该账本内第几条"，只有那个累加器 知道 ⇒
+   * 分配点<b>恰一处</b>，重放/分支可比。
+   *
+   * <p>★ 纯函数调用方（夹具、公式读法）走 （旧结算引擎在 R3a 删除；本接口只服务 {@link ProductionLedger.Accumulator} 的铸造口。）
+   */
+  @FunctionalInterface
+  public interface TransferMint {
+
+    /**
+     * 铸一条转移（{@code settles} 恒空：清偿留待 H5）。
+     *
+     * <p>★★ <b>H4 起货币腿真的有钱</b>：货币工资/地租铸的是<b>只带货币腿</b>的转移（{@code goods} 给空表）。 ★ 两条腿都沿 {@code from →
+     * to}（见 {@code Transfer} 的货币腿口径）⇒ 一笔买卖铸<b>一对</b>转移。
+     */
+    Transfer mint(
+        ActorRef from,
+        ActorRef to,
+        HexCoord location,
+        Map<CommodityId, Long> goods,
+        Map<CurrencyId, Long> money,
+        TransferReason reason);
+
+    /**
+     * <b>纯商品转移</b>的便捷重载（没有货币腿 ⇒ 给一枚空 map）。
+     *
+     * <p>★ 它<b>不是</b>第二套语义：默认实现转调上面那一个，{@code money = Map.of()}。
+     */
+    default Transfer mint(
+        ActorRef from,
+        ActorRef to,
+        HexCoord location,
+        Map<CommodityId, Long> goods,
+        TransferReason reason) {
+      return mint(from, to, location, goods, Map.of(), reason);
+    }
+  }
+
+  /**
+   * 一条产权条目：{@code +} 收 / {@code −} 付（毫单位）。<b>账户 = (actor, location)</b>。
+   *
+   * <p>★★ <b>H2 起它只剩一种用途：产出计提</b>（{@code +净产 → operator}）—— 三条搬运路径的腿<b>全部改走 {@link Transfer}</b>。 ★
+   * <b>为什么产出不是一条转移</b>：产出是<b>造出来</b>的，没有对端；而 {@code Transfer} 的两端恒为 actor、且<b>不许相等</b>（自转移是坏数据）⇒
+   * "净产入 operator"没有合法的 {@code from}。 故它留在账上作<b>产出计提读数</b> （守恒式里与毛产/损耗同族），而"东西从 A 到 B"这件事只有 {@code
+   * Transfer} 一个拼写点。
+   *
+   * @param actor 账户主体；不得为 null
+   * @param location 账户所在格；不得为 null
+   * @param commodity 商品；不得为 null
+   * @param delta 增减（毫单位；符号有意义：{@code > 0} 收、{@code < 0} 付）
+   */
+  public record ActorEntry(ActorRef actor, HexCoord location, CommodityId commodity, long delta) {
+
+    public ActorEntry {
+      if (actor == null) {
+        throw new IllegalArgumentException("ActorEntry.actor 不得为 null");
+      }
+      if (location == null) {
+        throw new IllegalArgumentException("ActorEntry.location 不得为 null（账户 = (actor, location)）");
+      }
+      if (commodity == null) {
+        throw new IllegalArgumentException("ActorEntry.commodity 不得为 null");
+      }
+    }
+  }
+
+  /**
+   * ★★ <b>一条规则的"实得读数"</b>（H2；裁定 S4）：这条规则<b>要了多少</b>、<b>真的付了多少</b>、<b>还欠多少</b>。
+   *
+   * <p>★★ <b>为什么三个数都要报</b>：只报实付，"制度规定 30%、实付 17%"与"制度规定 17%"在账上<b>完全一样</b> ——
+   * 而这两件事的含义相反（前者是付款上限/产出不够咬合，后者是制度本身如此）。★ <b>实付 0 的那些也报</b>：那正是最该被看见的一条。
+   *
+   * <p>★★ <b>它本身只是读数，不是债权</b>：本类不写任何索取权。★★ E4c 起 旧结算层的资本化写口（R3a 已删） 在这些读数（{@code owed > 0}）之后显式落成
+   * {@code DebtContract}；资本化不改本读数，也不清零它。
+   *
+   * @param rule 这一条规则（付款次序里的那一条）；不得为 null
+   * @param commodity 这条规则的**实物**商品（货币档为空）；与 {@code currency} <b>恰其一</b>
+   * @param currency 这条规则的**货币**币种（实物档为空；H4 起货币档也有读数）；与 {@code commodity} 互为反相
+   * @param dueAmount 应付（毫单位；{@code ≥ 0}）
+   * @param paidNow 实付（毫单位；{@code ∈ [0, 应付]} —— 上限是 R6 的"本周期可用"：实物 = 本周期产出、货币 = 付方可见的余额）
+   * @param payer ★★ <b>E4c：付款人 actor</b>（恒为 {@code relation.operator()}；不得为 null）。欠款资本化要解析到家户
+   *     {@code HouseholdId}，<b>不能靠猜</b> —— 解析不到（聚合主体/外部主体）就具名跳过，不伪造端点。
+   * @param payee ★★ <b>E4c：受款人 actor</b>（规则受方；{@code ToHousehold}/{@code ToCohort} 经 {@code
+   *     HouseholdActors.of} 归一，{@code ToActor} 原样）；不得为 null。语义同上。
+   * @param activity ★★ <b>E4c：这条欠款所属的生产单元/活动</b>（{@code ProductionRelation.activity()}）；不得为 null。
+   *     它是同一天内"同一付款人 × 同一受款人 × 同一 unit × 同一规则"的两笔事件<b>不被误合成一笔</b>的事件维； {@code DebtContractId}
+   *     只含四元组，事件维不参与合同身份（同四元组仍是同一条连续欠账）。
+   */
+  public record RuleSettlement(
+      CompensationRule rule,
+      Optional<CommodityId> commodity,
+      Optional<CurrencyId> currency,
+      long dueAmount,
+      long paidNow,
+      ActorRef payer,
+      ActorRef payee,
+      ProductionUnitId activity) {
+
+    public RuleSettlement {
+      if (rule == null) {
+        throw new IllegalArgumentException("RuleSettlement.rule 不得为 null");
+      }
+      if (commodity == null || currency == null) {
+        throw new IllegalArgumentException(
+            "RuleSettlement 的 commodity / currency 都不得为 null（空要用 Optional.empty()）");
+      }
+      // ★★ 恰其一（H4）：与 CompensationRule 的那条反相守卫同源 —— "两处都能填"会让读口的判别力当场消失
+      //   （分不清"这条付的是粮"还是"付的是银"）。
+      if (commodity.isPresent() == currency.isPresent()) {
+        throw new IllegalArgumentException(
+            "RuleSettlement 必须恰给 commodity 或 currency 之一（同时给/都不给都是坏数据）: "
+                + commodity
+                + " / "
+                + currency);
+      }
+      if (dueAmount < 0L) {
+        throw new IllegalArgumentException("RuleSettlement.dueAmount 不得为负: " + dueAmount);
+      }
+      if (paidNow < 0L || paidNow > dueAmount) {
+        throw new IllegalArgumentException(
+            "RuleSettlement.paidNow 必须在 [0, 应付] 里（R6 的上限就是应付与可用取小）: 应付="
+                + dueAmount
+                + " 实付="
+                + paidNow);
+      }
+      if (payer == null || payee == null || activity == null) {
+        throw new IllegalArgumentException(
+            "RuleSettlement 的 payer/payee/activity 都不得为 null（E4c 的身份维，不许靠猜补）");
+      }
+    }
+
+    /** <b>欠 = 应付 − 实付</b>（毫单位；{@code ≥ 0}）。★ 派生量不落成字段：两个数各自只有一处拼写点。 */
+    public long owed() {
+      return dueAmount - paidNow;
+    }
+  }
+
+  /**
+   * ★★ <b>S3：具名欠款（WageArrears / RentArrears / SubsistenceArrears）</b>—— 由 {@link RuleSettlement} 里
+   * {@code owed > 0} 的那些派生；<b>不是新状态、本身也不是债权</b>（E4c 起由 旧结算层的资本化写口（R3a 已删） 显式落成合同债权），
+   * 但它是"制度规定要付、实际付不出"的<b>具名可读聚合</b>：不把欠款静默当 0。
+   *
+   * <p>★ 它的名字按规则类型分档：{@link RuleType#FIXED_MONEY_WAGE} ⇒ {@link Kind#WAGE}（WageArrears）； 两类固定租 ⇒
+   * {@link Kind#RENT}（RentArrears）；给养/实物劳动报酬 ⇒ {@link Kind#SUBSISTENCE}。
+   *
+   * <p>★★ <b>E4c：身份维随读数一起发出</b>（{@code payer}/{@code payee}/{@code activity}）—— 资本化必须解析出 {@code
+   * HouseholdId} 两端；解析不到就具名跳过。<b>不许</b>在这里按图层/规则反推付款人（那会伪造端点）。
+   */
+  public record Arrear(
+      CompensationRule rule,
+      Kind kind,
+      Optional<CommodityId> commodity,
+      Optional<CurrencyId> currency,
+      long dueAmount,
+      long paidNow,
+      long owed,
+      ActorRef payer,
+      ActorRef payee,
+      ProductionUnitId activity) {
+
+    /** 欠款名目（具名，不合成一个"总欠款"）。 */
+    public enum Kind {
+      /** 货币工资欠款（WageArrears）。 */
+      WAGE,
+      /** 地租欠款（RentArrears）。 */
+      RENT,
+      /** 给养/实物劳动报酬欠款（SubsistenceArrears）。 */
+      SUBSISTENCE,
+      /** 其它未偿规则（不静默丢；本批枚举里没有别的档会走到这里）。 */
+      OTHER
+    }
+
+    public Arrear {
+      if (rule == null || kind == null || commodity == null || currency == null) {
+        throw new IllegalArgumentException("Arrear 的字段不得为 null");
+      }
+      if (dueAmount < 0L || paidNow < 0L || paidNow > dueAmount) {
+        throw new IllegalArgumentException("Arrear 的实付必须在 [0, 应付] 里: " + dueAmount + "/" + paidNow);
+      }
+      if (owed != dueAmount - paidNow) {
+        throw new IllegalArgumentException(
+            "Arrear.owed 必须逐值等于 应付 − 实付: " + owed + " != " + (dueAmount - paidNow));
+      }
+      if (payer == null || payee == null || activity == null) {
+        throw new IllegalArgumentException(
+            "Arrear 的 payer/payee/activity 都不得为 null（E4c 的身份维，不许靠猜补）");
+      }
+    }
+
+    /** 从一条逐规则读数派生（{@code owed == 0} ⇒ 调用方应过滤）；身份维逐值带过。 */
+    public static Arrear of(RuleSettlement reading) {
+      Objects.requireNonNull(reading, "reading");
+      return new Arrear(
+          reading.rule(),
+          kindOf(reading.rule().type()),
+          reading.commodity(),
+          reading.currency(),
+          reading.dueAmount(),
+          reading.paidNow(),
+          reading.owed(),
+          reading.payer(),
+          reading.payee(),
+          reading.activity());
+    }
+
+    /** 规则的欠款名目（唯一分档点）。 */
+    public static Kind kindOf(RuleType type) {
+      if (type == RuleType.FIXED_MONEY_WAGE) {
+        return Kind.WAGE;
+      }
+      if (type == RuleType.FIXED_IN_KIND_RENT || type == RuleType.FIXED_MONEY_RENT) {
+        return Kind.RENT;
+      }
+      if (type == RuleType.FIXED_IN_KIND_PER_LABOR) {
+        return Kind.SUBSISTENCE;
+      }
+      return Kind.OTHER;
+    }
   }
 
   /** 一天什么都没有发生（既没关账、也没有任何转移）。 */
@@ -355,35 +576,34 @@ public record ProductionLedger(
   }
 
   /** ★★ <b>S3：本日全部具名欠款</b>（由 {@code ruleSettlements} 的 {@code owed>0} 派生；不新增状态组件）。 */
-  public List<ProductionSettlement.Arrear> arrears() {
+  public List<Arrear> arrears() {
     return arrearsOf(ruleSettlements);
   }
 
   /** 欠款派生的唯一实现（record 与 Accumulator 共用；见 {@link #arrears()}）。 */
-  private static List<ProductionSettlement.Arrear> arrearsOf(
-      List<ProductionSettlement.RuleSettlement> readings) {
-    List<ProductionSettlement.Arrear> result = new ArrayList<>();
-    for (ProductionSettlement.RuleSettlement reading : readings) {
+  private static List<Arrear> arrearsOf(List<RuleSettlement> readings) {
+    List<Arrear> result = new ArrayList<>();
+    for (RuleSettlement reading : readings) {
       if (reading.owed() > 0L) {
-        result.add(ProductionSettlement.Arrear.of(reading));
+        result.add(Arrear.of(reading));
       }
     }
     return List.copyOf(result);
   }
 
   /** ★ S3：工资欠款（WageArrears）具名读数。 */
-  public List<ProductionSettlement.Arrear> wageArrears() {
-    return arrearsOfKind(ProductionSettlement.Arrear.Kind.WAGE);
+  public List<Arrear> wageArrears() {
+    return arrearsOfKind(Arrear.Kind.WAGE);
   }
 
   /** ★ S3：地租欠款（RentArrears）具名读数。 */
-  public List<ProductionSettlement.Arrear> rentArrears() {
-    return arrearsOfKind(ProductionSettlement.Arrear.Kind.RENT);
+  public List<Arrear> rentArrears() {
+    return arrearsOfKind(Arrear.Kind.RENT);
   }
 
-  private List<ProductionSettlement.Arrear> arrearsOfKind(ProductionSettlement.Arrear.Kind kind) {
-    List<ProductionSettlement.Arrear> result = new ArrayList<>();
-    for (ProductionSettlement.Arrear arrear : arrears()) {
+  private List<Arrear> arrearsOfKind(Arrear.Kind kind) {
+    List<Arrear> result = new ArrayList<>();
+    for (Arrear arrear : arrears()) {
       if (arrear.kind() == kind) {
         result.add(arrear);
       }
@@ -403,15 +623,15 @@ public record ProductionLedger(
    * <p>★ 形制与 {@code settleOneDay} 里那几张"逐日累加器"同款（{@code consumedGoods} / {@code income}）：<b>可变的那一份
    * 不出包</b>，外部拿到的永远是冻好的值。
    */
-  static final class Accumulator implements ProductionSettlement.TransferMint {
+  static final class Accumulator implements TransferMint {
 
     private final long day;
     private final Map<IndustryId, Map<CommodityId, Long>> gross = new LinkedHashMap<>();
     private final Map<IndustryId, Map<CommodityId, Long>> losses = new LinkedHashMap<>();
     private final Map<IndustryId, Map<CommodityId, Long>> inputs = new LinkedHashMap<>();
-    private final List<ProductionSettlement.ActorEntry> outputAccruals = new ArrayList<>();
+    private final List<ActorEntry> outputAccruals = new ArrayList<>();
     private final List<Transfer> transfers = new ArrayList<>();
-    private final List<ProductionSettlement.RuleSettlement> ruleSettlements = new ArrayList<>();
+    private final List<RuleSettlement> ruleSettlements = new ArrayList<>();
     private final List<CompensationRule> deferredMoney = new ArrayList<>();
     private final List<DebtCapitalization> debtCapitalizations = new ArrayList<>();
     private final List<UnresolvedDebtCapitalization> unresolvedDebtCapitalizations =
@@ -461,7 +681,7 @@ public record ProductionLedger(
     }
 
     /** 追加一条产出计提（{@code delta} 为 0 的条目在此挡掉：0 不是一条发生额）。 */
-    void addOutputAccrual(ProductionSettlement.ActorEntry accrual) {
+    void addOutputAccrual(ActorEntry accrual) {
       if (accrual.delta() == 0L) {
         return;
       }
@@ -546,13 +766,13 @@ public record ProductionLedger(
     }
 
     /** 一条逐规则的实得读数（应付 / 实付 / 欠；★ 只读）。 */
-    void addRuleSettlement(ProductionSettlement.RuleSettlement reading) {
+    void addRuleSettlement(RuleSettlement reading) {
       ruleSettlements.add(reading);
     }
 
     /**
      * 收下一条**被推迟的货币规则**（★ H4 起<b>没有生产调用方</b>：货币档真的结算了 ⇒ 这张表恒空；它只服务旧口径的留痕， 见 {@code
-     * ProductionSettlement.Outcome.deferredMoney}）。
+     * Outcome.deferredMoney}）。
      */
     void addDeferred(CompensationRule rule) {
       deferredMoney.add(rule);
@@ -579,13 +799,13 @@ public record ProductionLedger(
     }
 
     /** ★★ E4c：本日全部具名欠款（与 {@link ProductionLedger#arrears()} 同一派生实现）。 */
-    List<ProductionSettlement.Arrear> arrears() {
+    List<Arrear> arrears() {
       return arrearsOf(ruleSettlements);
     }
 
     /**
-     * ★ 记下当天的区域市场报告（M2.3/M2.4；瞬态，不进落盘的 {@link ProductionLedger}）—— {@code
-     * EconomyDayStepper.lastMarketReport()} 读它。
+     * ★ 记下当天的区域市场报告（M2.3/M2.4；瞬态，不进落盘的 {@link ProductionLedger}）—— {@code 旧日推进器（R3a
+     * 已删除）.lastMarketReport()} 读它。
      */
     void recordMarketReport(MarketReport report) {
       this.marketReport = report;

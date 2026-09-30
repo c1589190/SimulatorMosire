@@ -15,7 +15,7 @@ import java.util.Optional;
  * ★★ <b>阶层位置解析器（E1b）</b>：旧 {@code ClassRow.view.stratum} ↔ 新 {@code ClassStanding} / {@code
  * ClassPosition} 之间的唯一纯函数入口。
  *
- * <p>★★ <b>它不参与结算，也不改变旧路径</b>：旧 {@code HouseholdClassRule} / {@code EconomySettlement} / {@code
+ * <p>★★ <b>它不参与结算，也不改变旧路径</b>：旧 {@code HouseholdClassRule} / {@code 旧结算引擎（R3a 已删除）} / {@code
  * EconomySeedHandler} / {@code EconomyStateBuilder} <b>全部原样不动</b>（旧路径仍以 {@code ClassRow.view}
  * 为准）；本类只有"未来显式迁移器或读口主动调用"时才起作用。调用与不调用都不构成行为变化 —— 唯一的区别是后者状态树里多/少四张新表。
  *

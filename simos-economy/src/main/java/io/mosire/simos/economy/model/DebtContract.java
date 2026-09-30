@@ -29,8 +29,8 @@ import java.util.OptionalLong;
  * unit, legacy terms)} 合并为一条；{@code principal} 用 {@code Math.addExact} 求和（本金逐值守恒），{@code dueCycle}
  * 取被合并条的**最大**到期周期（连续余额的最新约定），旧 {@code defaulted} 映射到 {@link DebtStatus#DEFAULTED}。
  *
- * <p>★ <b>计息只增 {@code principal}</b>，不动任何库存/货币余额；旧路径的“关账日偿还后计息、以当日起始本金为 基数”由 {@code
- * EconomySettlement.chargeInterest} 按 {@code terms.interestTiming} 分派。
+ * <p>★ <b>计息只增 {@code principal}</b>，不动任何库存/货币余额；旧路径的“关账日偿还后计息、以当日起始本金为 基数”由 {@code 旧结算引擎（R3a
+ * 已删除）.chargeInterest} 按 {@code terms.interestTiming} 分派。
  *
  * @param id 稳定身份；不得为 null（键 == 值内 id、且必须是 {@code DebtContractId.idOf(...)} 的产物）
  * @param debtor 债务人；不得为 null

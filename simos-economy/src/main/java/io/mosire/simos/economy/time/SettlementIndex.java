@@ -80,7 +80,7 @@ final class SettlementIndex {
   private final Map<String, List<IndustryId>> industriesByHex;
   private final Map<HouseholdId, List<DebtContract>> debtsByDebtor;
 
-  // ── E4c/P2：主体 → 相关生产 unit / 生产组织（只读；见 {@link DebtPartyResolver}）────────
+  // ── E4c/P2：主体 → 相关生产 unit / 生产组织（只读；旧 DebtPartyResolver 解析器已随旧结算引擎删除）────────
   private final Map<ActorRef, List<ProductionUnitId>> unitsByParty;
   private final Map<ActorRef, List<ProductionOrganization>> organizationsByActor;
 
@@ -142,7 +142,7 @@ final class SettlementIndex {
 
   /**
    * ★★ <b>P2：带生产组织只读视图的构建重载</b>。旧调用点（不关心组织的主体解析）继续走上面的重载， 行为逐值不变；日结算入口传 {@code
-   * session.sheet().productionOrganizations()}，让今天的 E2 组织也能被 {@link DebtPartyResolver} 看见。
+   * session.sheet().productionOrganizations()}，让今天的 E2 组织也能被旧 DebtPartyResolver 的同类解析看见。
    */
   static SettlementIndex build(
       Map<ProductionUnitId, ProductionUnit> units,
@@ -498,8 +498,8 @@ final class SettlementIndex {
   }
 
   /**
-   * unit → 家户行（旧 {@link EconomySettlement#householdKeysOf} 的精确口径：按 activity 去重、只留真有行的、按
-   * HouseholdId.value 升序）。
+   * unit → 家户行（旧 旧结算引擎的 householdKeysOf（R3a 已删除） 的精确口径：按 activity 去重、只留真有行的、按 HouseholdId.value
+   * 升序）。
    */
   private static Map<ProductionUnitId, List<HouseholdId>> householdsByUnit(
       Map<LaborAllocationId, LaborAllocation> allocations, Map<HouseholdId, ClassRow> rows) {
@@ -607,7 +607,7 @@ final class SettlementIndex {
     return Collections.unmodifiableMap(frozen);
   }
 
-  /** 格 → 该格产业（序 = 产业表序；与 {@code EconomySettlement.industriesByHexMap} 逐值同）。 */
+  /** 格 → 该格产业（序 = 产业表序；与 {@code 旧结算引擎（R3a 已删除）.industriesByHexMap} 逐值同）。 */
   private static Map<String, List<IndustryId>> industriesByHex(
       Map<IndustryId, Industry> industries) {
     Map<String, List<IndustryId>> raw = new LinkedHashMap<>();
@@ -694,7 +694,7 @@ final class SettlementIndex {
    * ★★ <b>P2：主体 → 关联生产组织</b>（{@code organizer == actor} 或组织对应 unit 的 {@code operator == actor}；同一
    * actor 只记一次，序 = 组织表首次出现序）。
    *
-   * <p>它服务 {@link DebtPartyResolver} 的聚合主体解析：优先用 E2 自动组织登记的 {@code laborSources} / 家户归属，
+   * <p>它服务旧 DebtPartyResolver 的聚合主体解析（R3a 已删除）：优先用 E2 自动组织登记的 {@code laborSources} / 家户归属，
    * 而不是直接按阶层人口猜。
    */
   private static Map<ActorRef, List<ProductionOrganization>> organizationsByActor(

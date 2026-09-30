@@ -54,7 +54,7 @@ import java.util.List;
  * #operator()}</b>（因为 operator 就是那个主体）。⇒ 这一栏的价值 <b>不是"改默认值"</b>，而是两条：
  *
  * <ol>
- *   <li>★★ <b>把"谁出料"从"按人口猜"变成"制度明说"</b>：改前 {@code EconomySettlement.drawCycleInputs} 按 {@code
+ *   <li>★★ <b>把"谁出料"从"按人口猜"变成"制度明说"</b>：改前 {@code 旧结算引擎（R3a 已删除）.drawCycleInputs} 按 {@code
  *       rowSharesOf}（该产业各行的人口占比 + 逐行向下取整）把投入需求摊给"供给该产业的家户" —— 那条口径的
  *       <b>分摊比例是算出来的，不是谁说出来的</b>（实测后果：小夹具 6 座作坊只开 4 座、50 台织机只开 48 台、 真档年末剩 24,001,080
  *       毫纤维）。现在"谁出"写在数据里：{@code inputSupplier} 指名的那一个主体，从<b>它自己的账</b>出；
@@ -72,7 +72,7 @@ import java.util.List;
  * JSON 没有这个键，Jackson 会传 null 进来 —— 在构造期补成 operator，旧档照常打开 （"旧档读不回来"不是兼容，是事故）；③ 载荷边缘（{@code
  * EconomyPayloads}）因此<b>不必</b>再写一遍缺省。
  *
- * <p>★ <b>"从该主体自己的账出"的实现边界</b>（如实记，见 {@code EconomySettlement#drawCycleInputs}）：economy
+ * <p>★ <b>"从该主体自己的账出"的实现边界</b>（如实记，见 旧结算引擎的 drawCycleInputs（R3a 已删除））：economy
  * 切片只看得见<b>家户账</b>（会话工作副本）；若指名的供方是<b>聚合主体</b>（{@code ESTATE} / {@code WORKSHOP} / 产业型 {@code
  * HOUSEHOLD} —— 它们的账住在 actor 切片），economy 读不到那本账 ⇒ 由**该产业名下的家户账**代理（"这个主体的 缸"=
  * 它名下那些家户的缸），逐户按持仓量等比例、按最大余数法分派，取不满则规模缩（不凭空造）。

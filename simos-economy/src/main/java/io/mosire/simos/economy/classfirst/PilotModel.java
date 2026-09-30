@@ -8,7 +8,7 @@ import java.util.Map;
 /**
  * 阶层池经济（单 mode：佃农制农业）的数据形状与阶层语义（R1 从 pilot 试点迁入正式包 classfirst）。
  *
- * <p>★ 边界：模型/引擎不读旧 {@code EconomySettlement} 路径；跨 tick 持久化统一走 {@link ClassFirstState} → {@code
+ * <p>★ 边界：模型/引擎不读{@code 旧结算引擎（R3a 已删除）} 路径；跨 tick 持久化统一走 {@link ClassFirstState} → {@code
  * EconomyData.classFirst}（见 {@link ClassFirstSettlement}）。不碰三国 compact world，也不依赖旧 E1–E6 结算。
  * 全部字段都是整数（{@code long}）与 {@link LinkedHashMap}，没有任何随机数/UUID/时钟；同样的输入必然得到同样的 360 tick 轨迹。
  *

@@ -162,7 +162,7 @@ public final class WorldgenInitializeTool implements AgentTool {
    * ⇒ 一条 revision），载荷由 {@link HouseholdSeeder} 从 {@link EconomySeeder#plan} 交回的 **同一份**家户开缸库存算出。
    *
    * <p>★★ <b>为什么它必须与经济同批</b>：H1 起"商品库存"的唯一持久真源是 actor 切片的 {@code GoodsAccount} （裁定 D3-C/K1）—— 若只播
-   * economy 而不播 actor，世界起来的当天就<b>没有一本家户账</b>， 而日结算的消费与投入都要读它（{@code EconomyDayStepper} 当场抛，不静默当 0）。
+   * economy 而不播 actor，世界起来的当天就<b>没有一本家户账</b>， 而日结算的消费与投入都要读它（{@code 旧日推进器（R3a 已删除）} 当场抛，不静默当 0）。
    */
   public static final String SEED_ACTOR_TYPE = "actor.Seed";
 
@@ -277,7 +277,7 @@ public final class WorldgenInitializeTool implements AgentTool {
         + " + sd.CreateArmy）。"
         + "载荷 {nation(regionId，必填), seed?(缺省=配置), randomize?(缺省=配置 randomization.enabled),"
         + " dryRun?(缺省 true=只算不写), army?(缺省 true=连军队编制一起建；false=只做人口+城市), branch?(缺省 main),"
-        + " economyProfile?(legacy|complete|class-first，缺省 legacy),"
+        + " economyProfile?(R3a 起只有 class-first，缺省 class-first),"
         + " economyTestConditions?(JSON 文本，缺省 null=无条件：初始债务/质押/资产拆分/外部库存货币注入),"
         + " cityLimit?(缺省 "
         + DEFAULT_CITY_LIMIT
@@ -308,9 +308,7 @@ public final class WorldgenInitializeTool implements AgentTool {
     props.put(
         "economyProfile",
         ToolSupport.prop(
-            "string",
-            "经济地基 profile：legacy（缺省，旧 payload 逐字节不变）、complete（种完整 E1/E2 地基）或 "
-                + "class-first（R2a：只种阶层池状态 + 最小人口/市场壳，不种旧生产结构）"));
+            "string", "经济地基 profile：R3a 起只有 class-first（缺省；只种阶层池状态 + 最小人口/市场壳，不种旧生产结构）"));
     props.put(
         "economyTestConditions",
         ToolSupport.prop(
@@ -374,10 +372,10 @@ public final class WorldgenInitializeTool implements AgentTool {
       }
       long genesisMoneyMilliPerCapita =
           genesisMoneyArg == null ? EconomySeeder.genesisMoneyMilliPerCapita() : genesisMoneyArg;
-      // ★★ P1：经济地基 profile（GM 可传参数；缺省 legacy，保证旧载荷逐值不变）。不用 System property。
+      // ★★ P1：经济地基 profile（GM 可传参数；R3a 起缺省/唯一合法值 = class-first）。不用 System property。
       EconomySeeder.FoundationProfile economyProfile =
           EconomySeeder.FoundationProfile.parse(
-              ToolSupport.optionalText(args, "economyProfile", "legacy"));
+              ToolSupport.optionalText(args, "economyProfile", "class-first"));
       // ★★ P3：测试条件（JSON 文本；缺省 null = 无条件）。解析失败 ⇒ BAD_REQUEST（具名原因，不静默忽略）。
       String conditionsText = ToolSupport.optionalText(args, "economyTestConditions", null);
       TestConditions conditions =
@@ -584,12 +582,12 @@ public final class WorldgenInitializeTool implements AgentTool {
         seed,
         anchorTick,
         EconomySeeder.genesisMoneyMilliPerCapita(),
-        EconomySeeder.FoundationProfile.LEGACY);
+        EconomySeeder.FoundationProfile.CLASS_FIRST);
   }
 
   /**
    * ★★ E3：同上一支 + **初始禀赋参数**（毫/人）。缺省重载逐值等于 E3 之前；本重载把参数透传给 {@link EconomySeeder#plan(String, List,
-   * GameMap, long)}，只改 INITIAL_ENDOWMENT 的每人金额。profile 缺省 LEGACY。
+   * GameMap, long)}，只改 INITIAL_ENDOWMENT 的每人金额。profile 缺省 CLASS_FIRST（R3a 起唯一值）。
    */
   static List<CommandEnvelope> buildBatch(
       String batchId,
@@ -615,7 +613,7 @@ public final class WorldgenInitializeTool implements AgentTool {
         seed,
         anchorTick,
         genesisMoneyMilliPerCapita,
-        EconomySeeder.FoundationProfile.LEGACY);
+        EconomySeeder.FoundationProfile.CLASS_FIRST);
   }
 
   /**
@@ -771,10 +769,10 @@ public final class WorldgenInitializeTool implements AgentTool {
         at,
         anchorTick,
         EconomySeeder.genesisMoneyMilliPerCapita(),
-        EconomySeeder.FoundationProfile.LEGACY);
+        EconomySeeder.FoundationProfile.CLASS_FIRST);
   }
 
-  /** ★★ E3：军队批 + 初始禀赋参数（毫/人）—— 与无军队那支共用同一个透传点。profile 缺省 LEGACY。 */
+  /** ★★ E3：军队批 + 初始禀赋参数（毫/人）—— 与无军队那支共用同一个透传点。profile 缺省 CLASS_FIRST（R3a 起唯一值）。 */
   static List<CommandEnvelope> buildBatch(
       String batchId,
       String initiator,
@@ -805,7 +803,7 @@ public final class WorldgenInitializeTool implements AgentTool {
         at,
         anchorTick,
         genesisMoneyMilliPerCapita,
-        EconomySeeder.FoundationProfile.LEGACY);
+        EconomySeeder.FoundationProfile.CLASS_FIRST);
   }
 
   /** ★★ P1：军队批 + 初始禀赋 + 经济地基 profile（与无军队那支共用同一个透传点）。P3 起条件缺省为空。 */

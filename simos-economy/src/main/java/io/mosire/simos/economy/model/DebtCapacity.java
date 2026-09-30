@@ -32,7 +32,7 @@ import java.util.OptionalLong;
  *   <tr><td>{@link #taxPaid()}</td><td>{@code FlowRow.taxPaid}</td>
  *       <td><b>本周期已缴</b>（当前生产路径恒 0；照实读，不伪造）</td></tr>
  *   <tr><td>{@link #pledgeableGrainSurplusValue()}</td><td>调用方传入的粮库存
- *       − 本周期自需（与放贷方 {@code EconomySettlement.lendableOf} 同一算式、同一保留额）</td>
+ *       − 本周期自需（与放贷方 {@code 旧结算引擎（R3a 已删除）.lendableOf} 同一算式、同一保留额）</td>
  *       <td><b>时点</b>（会话工作副本的调用时值）；库存读不到 ⇒ {@link OptionalLong#empty()}，<b>不是 0</b></td></tr>
  *   <tr><td>{@link #pledgeableAssetPolicyValue()}</td><td>显式钩子（E5 的 {@code LiquidationPolicy}／价格源）</td>
  *       <td><b>时点</b>；E4b 两侧调用点都传 {@link #PLEDGEABLE_ASSET_POLICY_VALUE_NOT_LANDED}（0），
@@ -78,9 +78,9 @@ public record DebtCapacity(
     int unpricedDebtCount) {
 
   /**
-   * ★★ <b>信用公式里 F 的乘数 κ（千分数）</b>：<b>1000</b>，复现旧信用线的乘数 （旧 {@code
-   * EconomySettlement.LOAN_INCOME_MULTIPLE_PER_MILLE = 1000}）。<b>唯一拼写点</b>：旧的公开常量现在是
-   * {@code @Deprecated} 别名，生产代码只读这里。
+   * ★★ <b>信用公式里 F 的乘数 κ（千分数）</b>：<b>1000</b>，复现旧信用线的乘数 （旧 {@code 旧结算引擎（R3a
+   * 已删除）.LOAN_INCOME_MULTIPLE_PER_MILLE = 1000}）。<b>唯一拼写点</b>：旧的公开常量现在是 {@code @Deprecated}
+   * 别名，生产代码只读这里。
    *
    * <p>★ 它是制度层参数：{@code 0} = 五 F 即无 F 信用；{@code 2000} = 允许两倍 F（“宽信用”）。V7 参数目录落地后迁入参数表。
    */

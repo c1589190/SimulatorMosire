@@ -83,8 +83,8 @@ import java.util.Set;
  * <b>作坊主出</b>（唯一拼写点是 {@link #defaultInputSupplier}）。
  *
  * <p>★★ <b>如实记：这四档默认<b>同值</b> —— 都落在该档的 {@code operator} 上</b>（因为 operator 就是那个主体：庄园 / 佃农家户 / 织布的家户
- * / 作坊主）。⇒ <b>这一栏的价值不是"改默认值"</b>，而是把"谁出料"从<b>按人口猜</b>（改前的 {@code
- * EconomySettlement.rowSharesOf}：该产业各行人口占比 + 逐行向下取整）变成<b>制度明说</b>，并让 GM 能配（载荷里一条显式 {@code relation}
+ * / 作坊主）。⇒ <b>这一栏的价值不是"改默认值"</b>，而是把"谁出料"从<b>按人口猜</b>（改前的 {@code 旧结算引擎（R3a
+ * 已删除）.rowSharesOf}：该产业各行人口占比 + 逐行向下取整）变成<b>制度明说</b>，并让 GM 能配（载荷里一条显式 {@code relation}
  * 就能写"<b>地主出种</b>"这种制度 —— spec §2.4"同一个制度可以 A 格这样、B 格那样"的落点）。详见 {@code ProductionRelation} 的类注。
  *
  * <p>★ <b>为什么仍然做成一张"制度 → 值"的表（而不是直接在别处写 {@code ToActor(operator)}）</b>：① 四条默认是
@@ -112,8 +112,8 @@ import java.util.Set;
  *
  * <p>★ <b>补注（裁定 E24，2026-09-26；H0
  * 起由身份维直接表达）</b>：那四条规则的<b>受方行</b>不是"同格同阶层的全部行"，而是"<b>真出了这份劳动的那批人住的行</b>"。 H0 之前靠"受方产业集"过滤（{@code
- * EconomySettlement.classRowsOfCohort}，已删）；H0 起 <b>居住维进了身份</b> （{@code rural} / {@code urban}）⇒ 受方
- * = 键与规则里的 cohort 逐字相等的**那一行**，歧义消失（E24 与 E28 一并收口）。 于是城市格上：家庭纺织那一份只落 <b>农村家户行</b>（农村批次供农业 +
+ * 旧结算引擎（R3a 已删除）.classRowsOfCohort}，已删）；H0 起 <b>居住维进了身份</b> （{@code rural} / {@code urban}）⇒ 受方 =
+ * 键与规则里的 cohort 逐字相等的**那一行**，歧义消失（E24 与 E28 一并收口）。 于是城市格上：家庭纺织那一份只落 <b>农村家户行</b>（农村批次供农业 +
  * 纺织），作坊那一份只落<b>城镇家户行</b> （城镇批次只供作坊）；本类只多了"居住类型"这一维。
  *
  * <p>★ <b>地点取自产业 id</b>（{@link IndustryHexKeys#hexKeyOf} 是唯一拼写点）：{@link CohortKey#hex()} = 该产业所在的格；
@@ -414,9 +414,9 @@ public final class RegimeRelations {
    * 新生产关系 ⇒ 必须显式说清谁出料），而"直接把 operator 包一层"就没有这道判； ③ 将来某一档真的要改（例如 {@code tenant}
    * 改成"地主出种"），改的是<b>这一处</b>。
    *
-   * <p>★ <b>另有一条更根本的理由</b>（改前口径的病）：H3 之前"谁出料"是<b>算</b>出来的 —— {@code
-   * EconomySettlement.drawCycleInputs} 把投入需求按该产业各行的人口占比摊下去、逐行向下取整。那条口径的后果实测得到（小夹具 6 座作坊只开 4 座、 50
-   * 台织机只开 48 台）。本方法把"谁出"变成<b>表里的一行</b>：默认是 operator，GM 要"地主出种"就写一条显式 {@code relation}。
+   * <p>★ <b>另有一条更根本的理由</b>（改前口径的病）：H3 之前"谁出料"是<b>算</b>出来的 —— {@code 旧结算引擎（R3a 已删除）.drawCycleInputs}
+   * 把投入需求按该产业各行的人口占比摊下去、逐行向下取整。那条口径的后果实测得到（小夹具 6 座作坊只开 4 座、 50 台织机只开 48
+   * 台）。本方法把"谁出"变成<b>表里的一行</b>：默认是 operator，GM 要"地主出种"就写一条显式 {@code relation}。
    *
    * @param regime 生产制度；不得为 null
    * @param operator 该产业的经营主体（H3 的四档默认都落在它身上）；不得为 null

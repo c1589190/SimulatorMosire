@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -11,6 +12,7 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.DebtCapacity;
@@ -19,6 +21,7 @@ import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DebtIndex;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionUnit;
 import java.util.ArrayList;
@@ -157,9 +160,9 @@ public final class DebtCapacityBook {
       }
       rows.put(key, row);
       FlowRow flow = data.flows().get(key);
-      income.put(key, flow == null ? 0L : flow.income().getOrDefault(EconomySettlement.GRAIN, 0L));
+      income.put(key, flow == null ? 0L : flow.income().getOrDefault(EconomyCommodities.GRAIN, 0L));
       consumed.put(
-          key, flow == null ? 0L : flow.consumed().getOrDefault(EconomySettlement.GRAIN, 0L));
+          key, flow == null ? 0L : flow.consumed().getOrDefault(EconomyCommodities.GRAIN, 0L));
       taxPaid.put(key, flow == null ? 0L : flow.taxPaid());
     }
     return capacities(
@@ -168,7 +171,7 @@ public final class DebtCapacityBook {
         consumed,
         taxPaid,
         grainStockMilliOf,
-        EconomySettlement.cycleDaysByHousehold(data),
+        cycleDaysByHousehold(data),
         data.debtContracts(),
         data.units(),
         data.industries(),
@@ -265,7 +268,7 @@ public final class DebtCapacityBook {
           continue; // 防御性判空（债务表在本次调用内只读；缺条 = 坏状态 ⇒ 不猜、不计）
         }
         if (debt.unit() instanceof DebtUnit.Commodity commodity
-            && commodity.commodity().equals(EconomySettlement.GRAIN)) {
+            && commodity.commodity().equals(EconomyCommodities.GRAIN)) {
           existingDebt = Math.addExact(existingDebt, debt.principal());
           continue;
         }
@@ -283,12 +286,12 @@ public final class DebtCapacityBook {
         }
       }
 
-      // ★ 可自用余粮与放贷方的余粮**同一算式、同一保留额**（EconomySettlement.lendableOf 的唯一实现）；
+      // ★ 可自用余粮与旧放贷方的余粮**同一算式、同一保留额**（R3a 从 旧结算引擎（R3a 已删除） 原样搬来，见下面的
+      //   {@link #lendableOf(ClassRow, long, long)}）；
       //   库存读不到 ⇒ 空（不是 0）。
       OptionalLong selfUsable =
           grainStock.isPresent()
-              ? OptionalLong.of(
-                  EconomySettlement.lendableOf(row, grainStock.getAsLong(), cycleDays))
+              ? OptionalLong.of(lendableOf(row, grainStock.getAsLong(), cycleDays))
               : OptionalLong.empty();
 
       capacities.put(
@@ -353,7 +356,7 @@ public final class DebtCapacityBook {
       if (!recipeInputs.isEmpty()) {
         anyRecipeSeen = true; // 这个产业的配方存在（哪怕粮那一维为 0，也是“数据在”）
       }
-      long perScaleGrain = recipeInputs.getOrDefault(EconomySettlement.GRAIN, 0L);
+      long perScaleGrain = recipeInputs.getOrDefault(EconomyCommodities.GRAIN, 0L);
       if (perScaleGrain <= 0L) {
         continue; // 这个产业不耗粮（布/工具）：粮口径下需求为 0，不是“数据不足”
       }
@@ -375,4 +378,84 @@ public final class DebtCapacityBook {
 
   /** 内部结果对：数值 + 口径，保证两者一起产生、一起落进 {@link DebtCapacity}。 */
   private record NextRoundNeed(long input, NextRoundNecessaryInputSource source) {}
+
+  /**
+   * ★★ <b>每条家户行的 {@code cycleDays}</b>（{@link #lendableOf} 的"本周期自需"要用它）：取**它供给的那些产业的最长周期**。
+   *
+   * <p>★ R3a：本方法从{@code 旧结算引擎（R3a 已删除）} 原样搬来（唯一调用方是 {@link #capacitiesForState} 这条只读派生）； 旧引擎删除后，
+   * 它是读口按"同一份保留额"算可自用余粮的唯一来源。
+   *
+   * <p>★ <b>没有配额的家户</b>（供给集合为空）：退回**本格产业的最长周期**；连产业都没有的格 ⇒ 记 0（保留额 0）。
+   */
+  static Map<HouseholdId, Long> cycleDaysByHousehold(EconomyData data) {
+    Objects.requireNonNull(data, "data 不得为 null");
+    Map<String, List<IndustryId>> industriesByHex = new LinkedHashMap<>();
+    for (IndustryId industryId : data.industries().keySet()) {
+      IndustryHexKeys.hexKeyOf(industryId)
+          .ifPresent(
+              hex ->
+                  industriesByHex
+                      .computeIfAbsent(hex, ignored -> new ArrayList<>())
+                      .add(industryId));
+    }
+    Map<HouseholdId, Set<ProductionUnitId>> unitsOfHouseholds = new LinkedHashMap<>();
+    for (LaborAllocation allocation : data.allocations().values()) {
+      ProductionUnitId unitId = new ProductionUnitId(allocation.activity());
+      if (!data.units().containsKey(unitId)
+          || !data.classes().containsKey(allocation.household())) {
+        continue;
+      }
+      unitsOfHouseholds
+          .computeIfAbsent(allocation.household(), ignored -> new LinkedHashSet<>())
+          .add(unitId);
+    }
+    Map<HouseholdId, Long> byHousehold = new LinkedHashMap<>();
+    for (HouseholdId key : data.classes().keySet()) {
+      Set<ProductionUnitId> supplied = unitsOfHouseholds.getOrDefault(key, Set.of());
+      long cycleDays = 0L;
+      for (ProductionUnitId unitId : supplied) {
+        ProductionUnit unit = data.units().get(unitId);
+        Industry industry = unit == null ? null : data.industries().get(unit.industry());
+        if (industry != null) {
+          cycleDays = Math.max(cycleDays, industry.cycleDays());
+        }
+      }
+      if (cycleDays == 0L) {
+        ClassRow row = data.classes().get(key);
+        if (row != null) {
+          for (IndustryId industryId :
+              industriesByHex.getOrDefault(
+                  IndustryHexKeys.hexKey(row.view().hex().q(), row.view().hex().r()), List.of())) {
+            Industry industry = data.industries().get(industryId);
+            if (industry != null) {
+              cycleDays = Math.max(cycleDays, industry.cycleDays());
+            }
+          }
+        }
+      }
+      byHousehold.put(key, cycleDays);
+    }
+    return byHousehold;
+  }
+
+  /**
+   * ★★ <b>放贷行的可贷额（余粮）</b>：{@code reserve = 整周期口粮 × 1000‰ ÷ 1000；lendable = max(0, 库存 − reserve)}。
+   *
+   * <p>★ R3a：本方法从旧 {@code 旧结算引擎（R3a 已删除）.lendableOf} 原样搬来（算式与保留额一字不改）；它是 {@link
+   * #capacitiesForState} 里"可自用余粮"那一栏的唯一实现，不新增第二处口径。
+   */
+  static long lendableOf(ClassRow lender, long stock, long cycleDays) {
+    if (stock <= 0L) {
+      return 0L;
+    }
+    long reserve =
+        io.mosire.simos.util.economy.EconomyVocabulary.cumulativeRationMilli(
+                lender.population(), cycleDays)
+            * LENDER_SUBSISTENCE_RESERVE_PER_MILLE
+            / 1000L;
+    return Math.max(0L, stock - reserve);
+  }
+
+  /** 旧 {@code 旧结算引擎（R3a 已删除）.LENDER_SUBSISTENCE_RESERVE_PER_MILLE} 的同值搬移（放贷方自留整周期口粮的千分比）。 */
+  private static final int LENDER_SUBSISTENCE_RESERVE_PER_MILLE = 1000;
 }

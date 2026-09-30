@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.time;
 
+import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.HouseholdId;
@@ -104,7 +105,7 @@ public record HouseholdCondition(
   /**
    * 从当前状态现算一份家户状态读数（不带上限口径的粮覆盖：{@code grainCoveragePerMille} 为 empty，"读不到"）。
    *
-   * @param ledger 本日由 {@code EconomyDayStepper.step} 交出的瞬态账本；{@link Optional#empty()} ⇒ 租/工资欠款两栏
+   * @param ledger 本日由 {@code 旧日推进器（R3a 已删除）.step} 交出的瞬态账本；{@link Optional#empty()} ⇒ 租/工资欠款两栏
    *     empty（"读不到"而不是 0）
    */
   public static HouseholdCondition derive(
@@ -132,9 +133,9 @@ public record HouseholdCondition(
     Objects.requireNonNull(grainStockMilli, "grainStockMilli");
     FlowRow flow = data.flows().get(household);
     long unmetGrain =
-        flow == null ? 0L : flow.unmetNeed().getOrDefault(EconomySettlement.GRAIN, 0L);
+        flow == null ? 0L : flow.unmetNeed().getOrDefault(EconomyCommodities.GRAIN, 0L);
     long unmetCloth =
-        flow == null ? 0L : flow.unmetNeed().getOrDefault(EconomySettlement.CLOTH, 0L);
+        flow == null ? 0L : flow.unmetNeed().getOrDefault(EconomyCommodities.CLOTH, 0L);
     long principal = 0L;
     for (DebtContract debt : data.debtContracts().values()) {
       if (debt.debtor().equals(household)) {
@@ -183,8 +184,8 @@ public record HouseholdCondition(
     OptionalLong wageArrears = OptionalLong.empty();
     if (ledger.isPresent()) {
       long wage = 0L;
-      for (ProductionSettlement.Arrear arrear : ledger.orElseThrow().arrears()) {
-        if (arrear.kind() == ProductionSettlement.Arrear.Kind.WAGE
+      for (ProductionLedger.Arrear arrear : ledger.orElseThrow().arrears()) {
+        if (arrear.kind() == ProductionLedger.Arrear.Kind.WAGE
             && recipientIs(arrear.rule(), household)) {
           wage += arrear.owed();
         }
