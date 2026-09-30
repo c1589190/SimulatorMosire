@@ -195,7 +195,11 @@ class McpServerTest {
           "simos.unit.raiseUnit",
           "simos.gov.createOffice",
           "simos.gov.recruit",
-          "simos.gov.dismiss");
+          "simos.gov.dismiss",
+          "simos.gov.selectExaminees",
+          "simos.gov.dispatchTeam",
+          "simos.gov.absorbUnit",
+          "simos.gov.retireStaff");
 
   private static final Duration WAIT = Duration.ofSeconds(10);
 

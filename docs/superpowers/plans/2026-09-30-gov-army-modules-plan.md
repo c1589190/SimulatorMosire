@@ -267,6 +267,11 @@ public record OfficePolicy(
 - 镜像同步：`Unit` 反射守卫、MCP 工具/命令计数、`PAYLOAD_HINTS`、`AdjudicateTick` 白名单与目标样本。
 - 门禁：全仓 `clean verify`（模块测试 + SpotBugs + Checkstyle + Spotless + 前端 297）。
 
+**A 的定位（用户裁定 2026-10-01）**：A 的四类人员流转（科举 / 调查组 / 吸收 / 退休回写）**不作为独立机械验收**；
+它们是 C 里**交给决策人的任务目标**——把测试目的事先告诉三国中央决策人，让它指挥下属地方政府去做。
+为保证测试推进：**若中央决策人在若干轮内不作为，GM 把首都人口砍半**（GM 侧用 `social.SeedGroups`/`social.SetPopulation` 实施并留文档），
+让决策人看到后果后再观察其是否开始行动。A 的产出 = 四个可被 GM 代执行的组合工具（`simos.gov.selectExaminees`/`dispatchTeam`/`absorbUnit`/`retireStaff`）。
+
 **C. 真 LLM 多决策人协作验收（本阶段主体，合并原阶段 15）**
 - 场景世界：紧凑三国 classfirst，每国 1 个 CENTRAL GOV + 2–3 个 PROVINCE GOV + 若干 Army 单位，各自绑定真 provider 决策人
   （`mosire-flash`）；GM 由测试脚本/控制方担任。

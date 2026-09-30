@@ -98,7 +98,11 @@ class McpPortTopologyTest {
           // ★ 阶段 9–12（2026-10-01）：3 条 GOV 组合写（建 GOV + 绑决策人 / 招募 / 离编 + 退休待遇）。
           "simos.gov.createOffice",
           "simos.gov.recruit",
-          "simos.gov.dismiss");
+          "simos.gov.dismiss",
+          "simos.gov.selectExaminees",
+          "simos.gov.dispatchTeam",
+          "simos.gov.absorbUnit",
+          "simos.gov.retireStaff");
 
   /** M1 的 7 条 map 窄写（进 GM 桶）：决策人口**不得**含其中任何一条。 */
   private static final List<String> MAP_WRITES =
@@ -198,7 +202,7 @@ class McpPortTopologyTest {
     }
   }
 
-  /** J1：**唯一的 MCP 口 = GM 组**（读 23 + 非窄写 14 + 窄写 53 = 90）。 */
+  /** J1：**唯一的 MCP 口 = GM 组**（读 23 + 非窄写 18 + 窄写 53 = 94）。 */
   @Test
   void theSingleMcpPortExposesTheGmToolFace() {
     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
@@ -206,7 +210,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（23 读 + 14 非窄写 + 53 窄写 = 90）")
+          .as("J1：唯一口 = GM 组（23 读 + 18 非窄写 + 53 窄写 = 94）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }

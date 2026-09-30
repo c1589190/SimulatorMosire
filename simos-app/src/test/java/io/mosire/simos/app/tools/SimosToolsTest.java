@@ -173,7 +173,7 @@ class SimosToolsTest {
   private static final String TEST_INITIATOR = "agent:t5-test";
 
   /**
-   * **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 23 读 + 67 写 = 90（**15 非窄写**：3 通用写 + {@code
+   * **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 23 读 + 71 写 = 94（**19 非窄写**：3 通用写 + {@code
    * sd.AdjudicateTick} + {@code sd.RejectDirective} + {@code sd.VoidAdjudication} + {@code
    * simos.worldgen.initialize} + {@code simos.economy.adjust} + 辖区阶段 6–8 的 4 条组合写 + 阶段 9–12 的 3 条
    * GOV 组合写，**都不是**命令类型； + **52 窄写**：18 sd + 7 map + 26 unit + 1 actor）。
@@ -276,7 +276,11 @@ class SimosToolsTest {
           // ★ 阶段 10b-ii/12：三条 GOV 组合写（非窄写，名字不是命令类型）。
           "simos.gov.createOffice",
           "simos.gov.recruit",
-          "simos.gov.dismiss");
+          "simos.gov.dismiss",
+          "simos.gov.selectExaminees",
+          "simos.gov.dispatchTeam",
+          "simos.gov.absorbUnit",
+          "simos.gov.retireStaff");
 
   /**
    * 读工具名单（23 条）：读闸**按名字选**，不用索引切片。
@@ -362,7 +366,11 @@ class SimosToolsTest {
           // ★ 阶段 10b-ii/12（2026-10-01）：三条 GOV 组合写（建 GOV + 绑决策人 / 招募 / 离编 + 退休待遇）。
           "simos.gov.createOffice",
           "simos.gov.recruit",
-          "simos.gov.dismiss");
+          "simos.gov.dismiss",
+          "simos.gov.selectExaminees",
+          "simos.gov.dispatchTeam",
+          "simos.gov.absorbUnit",
+          "simos.gov.retireStaff");
 
   /**
    * 写工具全集（60 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的**补集**。
@@ -816,7 +824,7 @@ class SimosToolsTest {
         .containsAll(UNIT_WRITE_NAMES)
         .as(
             "★ H0.6/E6b + 辖区阶段 5–8 + 阶段 9–12：GM 桶 = 23 读 + 67 写 = 90（阶段 9–12 新增 7 条：4 条 unit 编制/政策窄写 + 3 条 GOV 组合写）")
-        .hasSize(90);
+        .hasSize(94);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -1140,7 +1148,7 @@ class SimosToolsTest {
     Set<String> onDisk = toolNamesFromSources();
     assertThat(onDisk)
         .as("扫描必须恰为 92 个 *Tool.java 的 NAME（90 条 GM 桶 + 2 条只进决策人桶的读口；扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(92);
+        .hasSize(96);
 
     List<String> union =
         Stream.concat(
