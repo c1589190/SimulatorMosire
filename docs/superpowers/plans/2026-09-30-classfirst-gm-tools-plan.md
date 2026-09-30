@@ -122,3 +122,72 @@
 3. 计划 §1.2 的字段清单据此修正为 **`interestRatePerMille` / `nextDueTick`** 两项（其余不变）；
    §6 的测试判据追加：lender 利率/到期改动后**下一 tick 新建债**确实用新值（否则等于没接线）。
 
+## 8. 阶段 2（2026-09-30 追加）：制度参数补全（用户指令"先把工具做出来，再做 nation/army"）
+
+**目标**：把 `PilotConfig`（`ClassFirstMeta.config`，引擎在 `restore` 直接读它的权威源参数）里剩余的
+GM 可调制度/技术参数补成工具，阶段 1 的三个 kind 之外不再留"只能靠改代码/重播种"的旋钮。
+
+### 8.1 新增 adjustment
+
+1. **`setCollectionPolicy`**（`config.collectionPolicy()`，`dueAndCollect` 直接读，`ClassFirstPilotEngine:1355`）：
+
+   ```json
+   {"adjustment":"setCollectionPolicy",
+    "parameters":{"collectionThreshold":?, "collectionTriggerRatioPerMille":?,
+                  "collectionRatioPerMille":?, "landPricePerUnit":?, "seizurePriority"?},
+    "reason":"…"}
+   ```
+
+   - 至少给一个字段；未给保持原值；逐值相同 ⇒ 幂等 no-op。
+   - 边界：`collectionThreshold ≥ 0`、`collectionTriggerRatioPerMille ≥ 0`、`collectionRatioPerMille ∈ [0,1000]`、
+     `landPricePerUnit ≥ 1`（`PilotConfig` 构造器硬校验 > 0）。
+   - **`seizurePriority` 本阶段不给**：枚举当前只有一个值 `LIQUID_THEN_LAND`（`PilotModel.SeizurePriority`），
+     给到即具名拒绝（只有一个取值的"可调参数"是假旋钮）。
+   - **`collectorClassPositionId` 本阶段不给**（固定 LANDLORD；改它属于制度重建）。
+
+2. **`setProductionParameters`**（`PilotConfig` 的 15 个技术/制度标量）：
+
+   ```json
+   {"adjustment":"setProductionParameters",
+    "parameters":{"yieldPerLand":?, "seedPerLand":?, "laborPerLand":?, "toolCapacityPerTool":?,
+                  "rentPerLand":?, "wagePerLabor":?, "baseRationPerCapita":?, "laborRationPerLabor":?,
+                  "nonEssentialNeedPerMille":?, "nonEssentialEfficiencyPenaltyPerMille":?,
+                  "loanInterestRatePerMille":?, "moneyPerGrain":?, "toolPricePerUnit":?,
+                  "reserveTicks":?, "collectionIntervalTicks":?},
+    "reason":"…"}
+   ```
+
+   - 至少给一个字段；未给保持原值；逐值相同 ⇒ 幂等 no-op；只改 `meta.config`，不碰 `mode`/`lender`/`collectionPolicy`/`mobilityPolicy`
+     （后三者各有专属 kind）。
+   - 边界按 `PilotConfig` 构造器 + 用量：`yieldPerLand > 0`、`seedPerLand ≥ 0`、`laborPerLand > 0`、
+     `toolCapacityPerTool > 0`、`moneyPerGrain > 0`、`baseRationPerCapita ≥ 0`、`laborRationPerLabor ≥ 0`、
+     其余 ≥ 0；`collectionIntervalTicks ≥ 1`（`tick + collectionIntervalTicks` 做到期）。
+
+### 8.2 落点
+
+| 文件 | 改动 |
+|---|---|
+| `.../classfirst/PilotConfig.java` | 新增 `Tuning`（15 标量）record + `currentTuning()` + `withTuning(Tuning)`（**唯一重建点**，避免手抄 19 组件漂移）；`withLender` 保留 |
+| `.../classfirst/ClassFirstMeta.java` | 新增 `withConfig(PilotConfig)`（纯 copy-with） |
+| `.../classfirst/ClassFirstState.java` | 新增 `withMeta(ClassFirstMeta)`（纯 copy-with） |
+| `.../spi/EconomyGmAdjustments.java` | 两个新 kind 常量 + `project` 分支 + 纯函数实现；允许清单/类注同步 |
+| `.../spi/EconomyGmAdjustHandler.java` | 两个新 kind 的形状校验（至少一项/类型/范围） |
+| `simos-app/.../EconomyAdjustTool.java`、`.../CatalogTool.java` | 白名单/参数形状文本同步（5 → 7） |
+
+**接线说明**：`ClassFirstPilotEngine.restore` 直接读 `meta.config()`（阶段 1 只额外把 state lender 写回 config）；
+因此改 `meta.config` 的参数对下一 tick 生效，无需再动引擎。
+
+### 8.3 验收（开发期：只编译 + 接线测试；测试统一仍留最后）
+
+- `tools/mvn-lock.sh -q spotless:apply`；
+- `tools/mvn-lock.sh -DskipTests compile -pl simos-economy -am`、`-pl simos-app -am` 均绿；
+- 可仿 `ClassFirstDebtWiringTest` 加一条"改 `moneyPerGrain`/`baseRationPerCapita` ⇒ 下一 tick 借款额/口粮缺口按新值"
+  的接线测试（若成本低）；不写/不改其它测试文件、不 commit。
+
+### 8.4 非目标
+
+- `schema`/`bounds` 直接编辑（仍走 `setMobilityPolicy` 的拒绝口）；
+- 外部注入/发行（要新状态与守恒记账）；
+- 7 条脱钩命令收口（阶段 3）；
+- nation/army 工具（用户指令：工具做完再做）。
+
