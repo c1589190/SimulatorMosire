@@ -39,6 +39,22 @@ class CreateArmyHandlerTest {
         .isEmpty();
   }
 
+  /** ★ 显式 {@code null} 与缺省同义（可空载荷的两侧都钉住）。 */
+  @Test
+  void createsArmyWhenMasterGovIsExplicitNull() {
+    SdState base = SdFixtures.full();
+    SdState next =
+        applied(
+            base,
+            SdWorlds.world(base),
+            "{\"armyId\":\"a9\",\"masterGovUnitId\":null,\"rootUnitId\":\"u-1\","
+                + "\"name\":\"第九军\"}");
+
+    assertThat(next.armies().get(new ArmyId("a9")).masterGovUnitId())
+        .as("显式 null ⇒ 未认主子")
+        .isEmpty();
+  }
+
   @Test
   void createsArmyWhenMasterGovIsAnExistingGovUnit() {
     SdState base = SdFixtures.full();

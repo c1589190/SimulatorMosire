@@ -3,10 +3,10 @@ package io.mosire.simos.app.world;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.actor.codec.ActorCodec;
-import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.state.SdSnapshot;

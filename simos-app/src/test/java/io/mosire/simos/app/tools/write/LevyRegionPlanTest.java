@@ -74,6 +74,7 @@ class LevyRegionPlanTest {
   private static final RegionId NATION = new RegionId("r-nation");
 
   private static final CommodityId GRAIN = new CommodityId(PilotModel.GRAIN);
+  private static final CommodityId CLOTH = new CommodityId(PilotModel.CLOTH);
   private static final CurrencyId SILVER = MoneyVocabulary.SILVER_CURRENCY;
 
   private static final ActorRef HH1 = new ActorRef(ActorKind.HOUSEHOLD, "hh-1");
@@ -193,6 +194,88 @@ class LevyRegionPlanTest {
         .hasMessageContaining("人力总量不足")
         .hasMessageContaining("requested=51")
         .hasMessageContaining("available=50")
+        .hasMessageContaining("缺口=1");
+  }
+
+  // ── cloth（阶段 11b）：只受可用量约束，逐值 + 无上限 + 不足整条拒 ─────────────────────────
+
+  /** ★ 只抽布（粮 / 钱 / 人 = 0）：cloth 维度逐值，其余三维修道为 {@link LevyRegionPlan.Dimension#skipped()}。 */
+  @Test
+  void clothOnlyPlanAllocatesByAvailabilityWaterfallAndSkipsTheOtherDimensions() {
+    LevyRegionPlan.Plan plan = plan(baseUnit(), "u-1", "r-nation", 0L, 0L, 70L, 0L);
+
+    assertThat(plan.cloth().requested()).as("cloth requested = 70").isEqualTo(70L);
+    assertThat(plan.cloth().available())
+        .as("布可支配 = (60−10) + (70−20) = 100；区外 hh-out、ESTATE、可用 0 的 hh-zero 都不进合计")
+        .isEqualTo(100L);
+    assertThat(plan.cloth().sources())
+        .as("布瀑布：两户可用量同为 50，按账键升序 hh-1 先扣 50、hh-2 再扣 20")
+        .containsExactly(
+            new LevyRegionPlan.AccountSource(HH1, H11, 50L),
+            new LevyRegionPlan.AccountSource(HH2, H12, 20L));
+
+    assertThat(plan.grain().requested()).as("grain=0 ⇒ 整维跳过：requested=0").isZero();
+    assertThat(plan.grain().available()).as("grain=0 ⇒ available=0（未求值）").isZero();
+    assertThat(plan.grain().sources()).as("grain=0 ⇒ 不扫描来源").isEmpty();
+    assertThat(plan.grain()).as("grain 维度 = 规范空维度").isEqualTo(LevyRegionPlan.Dimension.skipped());
+    assertThat(plan.money().requested()).as("money=0 ⇒ 整维跳过：requested=0").isZero();
+    assertThat(plan.money().available()).as("money=0 ⇒ available=0（未求值）").isZero();
+    assertThat(plan.money().sources()).as("money=0 ⇒ 不扫描来源").isEmpty();
+    assertThat(plan.money()).as("money 维度 = 规范空维度").isEqualTo(LevyRegionPlan.Dimension.skipped());
+    assertThat(plan.manpower().requested()).as("manpower=0 ⇒ 整维跳过：requested=0").isZero();
+    assertThat(plan.manpower().available()).as("manpower=0 ⇒ available=0（未求值）").isZero();
+    assertThat(plan.manpower().sources()).as("manpower=0 ⇒ 不扫描批次").isEmpty();
+    assertThat(plan.manpower())
+        .as("manpower 维度 = 规范空维度")
+        .isEqualTo(LevyRegionPlan.Manpower.skipped());
+
+    assertThat(plan.hasAccountMovements()).as("只有 cloth > 0 ⇒ 需要 AdjustAccounts").isTrue();
+    assertThat(plan.hasManpower()).as("manpower=0 ⇒ 没有 SeedGroups").isFalse();
+    assertThat(plan.treasuryLocation()).as("国库落点仍是单位当刻有效位置").isEqualTo(H11);
+  }
+
+  /** ★ cloth 可用量 100：请求 101 ⇒ 整条拒（不部分、不截断），拒因带 requested / available / 缺口逐值。 */
+  @Test
+  void rejectsClothWhenHouseholdAvailabilityIsShortByOne() {
+    assertThatThrownBy(() -> plan(baseUnit(), "u-1", "r-nation", 0L, 0L, 101L, 0L))
+        .as("cloth 请求 = 可用量 100 + 1 ⇒ 整条拒（带 requested / available / 缺口）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("布总量不足")
+        .hasMessageContaining("requested=101")
+        .hasMessageContaining("available=100")
+        .hasMessageContaining("缺口=1");
+  }
+
+  /**
+   * ★ cloth **没有第四条单命令上限**：三条 cap 都 = 1，仍可成功申请 100（= 全部可用量）；请求 +1 时按可用量拒（不是按 cap 拒）。对照粮请求 2 > cap
+   * 1：粮仍按 cap 拒 —— 上限只作用于粮 / 钱 / 人。
+   */
+  @Test
+  void clothHasNoSingleCommandCapAndOnlyAvailabilityBoundsIt() {
+    Unit unit = unitWithPosition(H11, Optional.of(jurisdiction(Map.of(NATION, 100L), 1L, 1L, 1L)));
+
+    LevyRegionPlan.Plan plan = plan(unit, "u-1", "r-nation", 0L, 0L, 100L, 0L);
+
+    assertThat(plan.cloth().requested()).as("cloth 请求 100 ≫ 三条 cap=1，仍成功").isEqualTo(100L);
+    assertThat(plan.cloth().available()).as("cloth 的 available 只由家户可用量决定，与 cap 无关").isEqualTo(100L);
+    assertThat(plan.cloth().sources())
+        .as("请求 = 全部可用量 ⇒ 两户各扣满 50")
+        .containsExactly(
+            new LevyRegionPlan.AccountSource(HH1, H11, 50L),
+            new LevyRegionPlan.AccountSource(HH2, H12, 50L));
+    assertThat(plan.hasAccountMovements()).as("只有 cloth > 0 ⇒ 需要 AdjustAccounts").isTrue();
+
+    assertThatThrownBy(() -> plan(unit, "u-1", "r-nation", 2L, 0L, 0L, 0L))
+        .as("对照：粮请求 2 仍被 levyGrainCapPerCommand=1 拒")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("粮 requested=2 超过 levyGrainCapPerCommand=1");
+
+    assertThatThrownBy(() -> plan(unit, "u-1", "r-nation", 0L, 0L, 101L, 0L))
+        .as("对照：cloth 超可用量 1 ⇒ 仍整条拒（拒因是可用量，不是 cap）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("布总量不足")
+        .hasMessageContaining("requested=101")
+        .hasMessageContaining("available=100")
         .hasMessageContaining("缺口=1");
   }
 
@@ -385,20 +468,37 @@ class LevyRegionPlanTest {
 
   private static ActorData actors() {
     return ActorData.empty()
-        .withAccount(account(HH1, H11, 100L, 20L, 50L, 0L))
-        .withAccount(account(HH2, H12, 40L, 0L, 80L, 0L))
-        .withAccount(account(ESTATE, H11, 1000L, 0L, 1000L, 0L))
-        .withAccount(account(HH_OUT, H13, 1000L, 0L, 1000L, 0L))
-        .withAccount(account(HH_ZERO, H11, 10L, 10L, 0L, 0L));
+        .withAccount(account(HH1, H11, 100L, 20L, 50L, 0L, 60L, 10L))
+        .withAccount(account(HH2, H12, 40L, 0L, 80L, 0L, 70L, 20L))
+        .withAccount(account(ESTATE, H11, 1000L, 0L, 1000L, 0L, 1000L, 0L))
+        .withAccount(account(HH_OUT, H13, 1000L, 0L, 1000L, 0L, 1000L, 0L))
+        .withAccount(account(HH_ZERO, H11, 10L, 10L, 0L, 0L, 0L, 0L));
   }
 
   private static GoodsAccount account(
-      ActorRef owner, HexCoord at, long grain, long frozenGrain, long silver, long frozenSilver) {
+      ActorRef owner,
+      HexCoord at,
+      long grain,
+      long frozenGrain,
+      long silver,
+      long frozenSilver,
+      long cloth,
+      long frozenCloth) {
+    Map<CommodityId, Long> balances = new LinkedHashMap<>();
+    balances.put(GRAIN, grain);
+    balances.put(CLOTH, cloth);
+    Map<CommodityId, Long> frozenBalances = new LinkedHashMap<>();
+    if (frozenGrain != 0L) {
+      frozenBalances.put(GRAIN, frozenGrain);
+    }
+    if (frozenCloth != 0L) {
+      frozenBalances.put(CLOTH, frozenCloth);
+    }
     return new GoodsAccount(
         new GoodsAccountKey(owner, at),
-        Map.of(GRAIN, grain),
+        balances,
         Map.of(SILVER, silver),
-        frozenGrain == 0L ? Map.of() : Map.of(GRAIN, frozenGrain),
+        frozenBalances,
         frozenSilver == 0L ? Map.of() : Map.of(SILVER, frozenSilver));
   }
 

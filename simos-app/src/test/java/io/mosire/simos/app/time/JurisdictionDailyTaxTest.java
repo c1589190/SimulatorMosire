@@ -51,7 +51,9 @@ import org.junit.jupiter.api.Test;
  *   <li><b>NO_POSITION</b>：单位无有效位置 ⇒ 同实例 + 具名缺口，一笔不征；
  *   <li><b>重叠管辖</b>：两单位同区同户，按 unitId 升序，第二个见税后余额；
  *   <li><b>确定性</b>：同输入两次逐字段相等；账户/单位/map 插入序打乱后 Report 与账值不变；
- *   <li><b>守恒式</b>：逐维 {@code Σ家户减少 == 国库增加}（冻结表逐值不动）。
+ *   <li><b>守恒式</b>：逐维 {@code Σ家户减少 == 国库增加}（冻结表逐值不动）；
+ *   <li><b>efficiency &gt;1000‰</b>：{@code attainable > assessed} ⇒ {@code adminShortfall}
+ *       为负的逐值用例（粮 / 钱各判一次恒等式）。
  * </ol>
  *
  * <p>★ 数值全部由本文件用冻结字面量算好写在断言里，不建 Golden、不调私有算式。
@@ -288,6 +290,104 @@ class JurisdictionDailyTaxTest {
     assertThat(accountB.balances()).containsEntry(GRAIN, 300L);
     assertThat(accountB.money()).containsEntry(SILVER, 0L);
     assertThat(before.accounts()).hasSize(2);
+  }
+
+  // ── efficiency > 1000‰：adminShortfall 为负，恒等式仍成立 ─────────────────────────────
+
+  /**
+   * ★ efficiency=1100‰（超编加成）⇒ {@code attainable > assessed}、{@code adminShortfall} 为负；{@code
+   * collected = min(attainable, available)} 仍逐值，恒等式 {@code collected + adminShortfall +
+   * stockShortfall == assessed} 粮 / 钱各成立一次。
+   *
+   * <pre>
+   * 户甲 @H1：粮 200（冻结 195 ⇒ 可支配 5）、钱 200（无冻结 ⇒ 可支配 200）；布 0 键保留。
+   * 管辖 R1=50‰、GOV efficiency=1100‰。
+   * 粮：assessed=floor(200×50/1000)=10、attainable=floor(10×1100/1000)=11、collected=min(11,5)=5
+   *     ⇒ adminShortfall=10−11=−1、stockShortfall=11−5=6；5+(−1)+6=10。
+   * 钱：assessed=10、attainable=11、collected=min(11,200)=11
+   *     ⇒ adminShortfall=10−11=−1、stockShortfall=11−11=0；11+(−1)+0=10。
+   * </pre>
+   */
+  @Test
+  void efficiencyAboveOneThousandMakesAdminShortfallNegativeAndKeepsTheIdentity() {
+    GameMap map = twoHexMap();
+
+    Map<CommodityId, Long> balances = new LinkedHashMap<>();
+    balances.put(GRAIN, 200L);
+    balances.put(CLOTH, 0L);
+    Map<CurrencyId, Long> money = new LinkedHashMap<>();
+    money.put(SILVER, 200L);
+    Map<CommodityId, Long> frozenBalances = new LinkedHashMap<>();
+    frozenBalances.put(GRAIN, 195L);
+    GoodsAccount accountA = new GoodsAccount(A_KEY, balances, money, frozenBalances, Map.of());
+    Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>();
+    accounts.put(A_KEY, accountA);
+    ActorData before = actor(accounts);
+
+    Jurisdiction jurisdiction = new Jurisdiction(rateMap(R1, 50L), 1_000L, 1_000L, 1_000L, 1_000L);
+    UnitState units = unitsOf(unit(U1, Optional.of(H1), Optional.of(jurisdiction)));
+
+    JurisdictionDailyTax.Collected collected =
+        JurisdictionDailyTax.collect(before, units, map, TICK, Map.of(U1, 1_100L));
+    ActorData after = collected.actor();
+    JurisdictionDailyTax.Report report = collected.report();
+
+    assertThat(after).as("有征收 ⇒ 换 accounts 组件的新实例").isNotSameAs(before);
+    assertThat(report.grain())
+        .as("粮：(assessed=10, collected=5, adminShortfall=−1, stockShortfall=6) 逐值")
+        .isEqualTo(new JurisdictionDailyTax.Dimension(10L, 5L, -1L, 6L));
+    assertThat(report.grain().adminShortfall())
+        .as("粮 adminShortfall == assessed − attainable = 10 − 11 = −1（为负）")
+        .isNegative()
+        .isEqualTo(-1L);
+    assertThat(
+            report.grain().collected()
+                + report.grain().adminShortfall()
+                + report.grain().stockShortfall())
+        .as("粮恒等式：collected + adminShortfall + stockShortfall == assessed")
+        .isEqualTo(report.grain().assessed());
+
+    assertThat(report.money())
+        .as("钱：(assessed=10, collected=11, adminShortfall=−1, stockShortfall=0) 逐值")
+        .isEqualTo(new JurisdictionDailyTax.Dimension(10L, 11L, -1L, 0L));
+    assertThat(report.money().adminShortfall())
+        .as("钱 adminShortfall == assessed − attainable = 10 − 11 = −1（为负）")
+        .isNegative()
+        .isEqualTo(-1L);
+    assertThat(
+            report.money().collected()
+                + report.money().adminShortfall()
+                + report.money().stockShortfall())
+        .as("钱恒等式：collected + adminShortfall + stockShortfall == assessed")
+        .isEqualTo(report.money().assessed());
+
+    assertThat(report.unitsCharged()).as("恰一个单位被征").isEqualTo(1L);
+    assertThat(report.householdsCharged()).as("恰一户被征").isEqualTo(1L);
+    assertThat(report.gaps()).as("本用例无具名缺口").isEmpty();
+
+    // 家户 / 国库两侧按 collected 逐值。
+    GoodsAccount taxed = after.accounts().get(A_KEY);
+    assertThat(taxed.balances())
+        .as("户甲粮 200−5=195；布 0 键原样保留")
+        .containsEntry(GRAIN, 195L)
+        .containsEntry(CLOTH, 0L);
+    assertThat(taxed.money()).as("户甲钱 200−11=189").containsEntry(SILVER, 189L);
+    assertThat(taxed.frozenBalances()).as("冻结表逐值不动").containsExactly(entry(GRAIN, 195L));
+    assertThat(taxed.frozenMoney()).isEmpty();
+
+    GoodsAccountKey treasuryKey = new GoodsAccountKey(new ActorRef(ActorKind.UNIT, U1.value()), H1);
+    GoodsAccount treasury = after.accounts().get(treasuryKey);
+    assertThat(treasury.balances()).as("国库粮 += collected=5").containsExactly(entry(GRAIN, 5L));
+    assertThat(treasury.money()).as("国库钱 += collected=11").containsExactly(entry(SILVER, 11L));
+    assertThat(treasury.frozenBalances()).as("新建国库账：商品冻结表空").isEmpty();
+    assertThat(treasury.frozenMoney()).as("新建国库账：货币冻结表空").isEmpty();
+
+    long grainReduction = 200L - taxed.balances().get(GRAIN);
+    long silverReduction = 200L - taxed.money().get(SILVER);
+    assertThat(grainReduction).as("Σ家户粮减少 == collected 5").isEqualTo(report.grain().collected());
+    assertThat(silverReduction).as("Σ家户钱减少 == collected 11").isEqualTo(report.money().collected());
+    assertThat(treasury.balances().get(GRAIN)).as("国库粮增加 == Σ家户粮减少").isEqualTo(grainReduction);
+    assertThat(treasury.money().get(SILVER)).as("国库钱增加 == Σ家户钱减少").isEqualTo(silverReduction);
   }
 
   // ── NO_POSITION ────────────────────────────────────────────────────────────

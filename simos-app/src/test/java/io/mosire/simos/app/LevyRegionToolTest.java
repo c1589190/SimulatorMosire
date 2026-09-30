@@ -85,7 +85,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code simos.unit.levyRegion} 的**真 Shell 端到端**（收尾期 T2）：preview 零写入、apply 一批 = 一条
- * revision、批内命令类型/顺序、 {@code sd.PutInfo} 落点与 value JSON、守恒式（粮 / 钱 / 人力）、失败零 revision。
+ * revision、批内命令类型/顺序、 {@code sd.PutInfo} 落点与 value JSON、守恒式（粮 / 钱 / **布** / 人力）、失败零 revision。 ★ 阶段
+ * 11b 追加：cloth-only apply（逐户扣后 / 两张冻结表 / 守恒 / INFO 逐值）、cloth 不足整条拒、cloth=0 整段跳过、 cloth 无第四条
+ * cap（u-cap-1 三条 cap=1 对照）。
  *
  * <p>★ **本类在 {@code io.mosire.simos.app} 包**：{@code Shell#gmCaller()} 是包内可见的装配自检口径（{@code
  * GmPermissionGroupTest} / {@code ActorResolveVisibilityTest} 的先例）。工具经真 {@code ToolRegistry} + 真
@@ -113,6 +115,10 @@ class LevyRegionToolTest {
 
   private static final UnitId U1 = new UnitId("u-1");
   private static final UnitId U_NO_JURISDICTION = new UnitId("u-nj");
+
+  /** ★ cap 全 = 1 的对照单位（cloth 无上限用例）；位置 H13，国库落点自成一键。 */
+  private static final UnitId U_SMALL_CAPS = new UnitId("u-cap-1");
+
   private static final RegionId NATION = new RegionId("r-nation");
 
   private static final ActorRef HH1 = new ActorRef(ActorKind.HOUSEHOLD, "house@1_1");
@@ -120,8 +126,10 @@ class LevyRegionToolTest {
   private static final ActorRef HH_OUT = new ActorRef(ActorKind.HOUSEHOLD, "house@1_3");
   private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "e-1");
   private static final ActorRef TREASURY = new ActorRef(ActorKind.UNIT, "u-1");
+  private static final ActorRef TREASURY_SMALL_CAPS = new ActorRef(ActorKind.UNIT, "u-cap-1");
 
   private static final CommodityId GRAIN = new CommodityId(PilotModel.GRAIN);
+  private static final CommodityId CLOTH = new CommodityId(PilotModel.CLOTH);
   private static final CurrencyId SILVER = MoneyVocabulary.SILVER_CURRENCY;
 
   private static final String REASON = "第一轮军粮与兵源";
@@ -374,6 +382,100 @@ class LevyRegionToolTest {
         .isEqualTo(1000L);
   }
 
+  /**
+   * ★★ <b>cloth-only apply 的逐值 + 守恒</b>：一次只抽布的请求经真 GM 工具链（preview=false）落一条 revision； 国库 {@code
+   * (UNIT,u-1)@H11} 的 cloth 正增量 == 请求量；Σ本区家户 cloth 增量 == −请求量；{@code Σ家户 + 国库 == 0}； 逐户扣后 = 扣前 −
+   * 计划来源额；两张冻结表逐值不动；{@code sd.PutInfo} 的 value.cloth / sourceCounts.cloth 逐值。
+   *
+   * <p>装置：hh-1 cloth 100（冻结 20 ⇒ 可用 80）、hh-2 cloth 40（可用 40）；请求 100 ⇒ 瀑布 hh-1 80 + hh-2 20。
+   */
+  @Test
+  void applyClothOnlyMovesHouseholdClothToTreasuryAndConserves() throws Exception {
+    long headBefore = head();
+    long revisionsBefore = revisionRowCount();
+    ActorData before = actorData(stateAt(headBefore));
+
+    ToolResult result = levy(args(0L, 0L, 100L, 0L, false, headBefore));
+    assertThat(result.success()).as(result.message()).isTrue();
+    assertThat(head()).as("一批 = 一条 revision：head 恰好 +1").isEqualTo(headBefore + 1L);
+    assertThat(revisionRowCount())
+        .as("一批 = 一条 revision：revisions 行数恰好 +1")
+        .isEqualTo(revisionsBefore + 1L);
+
+    SimulationState afterState = stateAt(headBefore + 1L);
+    ActorData after = actorData(afterState);
+
+    GoodsAccountKey treasuryKey = new GoodsAccountKey(TREASURY, H11);
+    long clothToTreasury = clothOf(after, treasuryKey) - clothOf(before, treasuryKey);
+    assertThat(clothToTreasury).as("国库 (UNIT,u-1)@H11 的 cloth 正增量 == 请求量 100").isEqualTo(100L);
+
+    long clothFromHouseholds = 0L;
+    for (Map.Entry<GoodsAccountKey, GoodsAccount> account : before.accounts().entrySet()) {
+      GoodsAccountKey key = account.getKey();
+      if (key.owner().kind() != ActorKind.HOUSEHOLD || !isInNation(key.location())) {
+        continue;
+      }
+      clothFromHouseholds += clothOf(after, key) - clothOf(before, key);
+    }
+    assertThat(clothFromHouseholds).as("Σ本区家户 cloth 增量（含符号）== −100").isEqualTo(-100L);
+    assertThat(clothFromHouseholds + clothToTreasury).as("cloth 守恒：Σ本区家户负增量 + 国库正增量 == 0").isZero();
+
+    GoodsAccountKey hh1Key = new GoodsAccountKey(HH1, H11);
+    GoodsAccountKey hh2Key = new GoodsAccountKey(HH2, H12);
+    long hh1Before = clothOf(before, hh1Key);
+    long hh2Before = clothOf(before, hh2Key);
+    assertThat(hh1Before).as("hh-1 抽前 cloth 余额 = 100").isEqualTo(100L);
+    assertThat(hh2Before).as("hh-2 抽前 cloth 余额 = 40").isEqualTo(40L);
+    assertThat(clothOf(after, hh1Key))
+        .as("hh-1 扣后 = 100 − 80（计划来源额；可用量 = 余额 100 − 冻结 20）")
+        .isEqualTo(hh1Before - 80L);
+    assertThat(clothOf(after, hh2Key))
+        .as("hh-2 扣后 = 40 − 20（计划来源额；可用量 = 余额 40 − 冻结 0）")
+        .isEqualTo(hh2Before - 20L);
+    assertThat(clothOf(after, new GoodsAccountKey(HH_OUT, H13)))
+        .as("区外 hh-out 的 cloth 一字不动")
+        .isEqualTo(1000L);
+    assertThat(clothOf(after, new GoodsAccountKey(ESTATE, H11)))
+        .as("ESTATE 的 cloth 一字不动")
+        .isEqualTo(1000L);
+
+    GoodsAccount hh1After = after.accounts().get(hh1Key);
+    GoodsAccount hh1BeforeBook = before.accounts().get(hh1Key);
+    assertThat(hh1After.frozenBalances())
+        .as("hh-1 商品冻结表逐值不动（粮 20 + 布 20）")
+        .isEqualTo(hh1BeforeBook.frozenBalances())
+        .containsEntry(GRAIN, 20L)
+        .containsEntry(CLOTH, 20L);
+    assertThat(hh1After.frozenMoney()).as("hh-1 货币冻结表逐值不动").isEqualTo(hh1BeforeBook.frozenMoney());
+    GoodsAccount hh2After = after.accounts().get(hh2Key);
+    assertThat(hh2After.frozenBalances())
+        .as("hh-2 商品冻结表逐值不动（空）")
+        .isEqualTo(before.accounts().get(hh2Key).frozenBalances())
+        .isEmpty();
+
+    List<SdInfoEntry> infos = sdState(afterState).info().get("unit:u-1");
+    assertThat(infos).as("sd 里恰有一条 levyRegion 行动记录").hasSize(1);
+    JsonNode stored = JSON.readTree((String) infos.get(0).value());
+    assertThat(stored.get("cloth").asLong())
+        .as("sd.PutInfo value.cloth == 请求量 100")
+        .isEqualTo(100L);
+    assertThat(stored.get("sourceCounts").get("cloth").asInt())
+        .as("sourceCounts.cloth == 来源数 2（hh-1 / hh-2）")
+        .isEqualTo(2);
+    assertThat(stored.get("grain").asLong()).as("cloth-only ⇒ value.grain=0").isZero();
+    assertThat(stored.get("money").asLong()).as("cloth-only ⇒ value.money=0").isZero();
+    assertThat(stored.get("manpower").asLong()).as("cloth-only ⇒ value.manpower=0").isZero();
+    assertThat(stored.get("sourceCounts").get("grain").asInt())
+        .as("cloth-only ⇒ sourceCounts.grain=0")
+        .isZero();
+    assertThat(stored.get("sourceCounts").get("money").asInt())
+        .as("cloth-only ⇒ sourceCounts.money=0")
+        .isZero();
+    assertThat(stored.get("sourceCounts").get("manpower").asInt())
+        .as("cloth-only ⇒ sourceCounts.manpower=0")
+        .isZero();
+  }
+
   /** ★ requested=0 的维度不产生批内命令（且 AdjustAccounts 载荷里没有该维度）：只粮 / 只人两种形态各钉一次。 */
   @Test
   void zeroRequestedDimensionsProduceNoCommandAndNoEntry() throws Exception {
@@ -411,6 +513,92 @@ class LevyRegionToolTest {
     assertThat(value.get("sourceCounts").get("money").asInt()).isZero();
   }
 
+  /**
+   * ★ cloth=0 维度整段跳过（端到端）：AdjustAccounts 的每条 goods 表里都没有 cloth 键，PutInfo 照落且 cloth=0；只 cloth&gt;0
+   * 时批内命令恰为 {@code AdjustAccounts + PutInfo}（无 SeedGroups）；真 apply 一次 grain-only（cloth=0）后逐户 cloth
+   * 未动。
+   */
+  @Test
+  void zeroClothDimensionLeavesNoClothEntryAndClothOnlyBatchHasTwoCommands() throws Exception {
+    List<CommandEnvelope> grainOnly = batchOf(120L, 0L, 0L, 0L);
+    assertThat(grainOnly)
+        .extracting(CommandEnvelope::type)
+        .as("cloth=0 ⇒ 仍走 AdjustAccounts + PutInfo 两条命令")
+        .containsExactly(LevyRegionTool.ADJUST_ACCOUNTS_TYPE, LevyRegionTool.PUT_INFO_TYPE);
+    JsonNode grainAdjust = JSON.readTree(grainOnly.get(0).payloadJson());
+    JsonNode grainEntries = grainAdjust.get("entries");
+    assertThat(grainEntries).as("粮来源 2 户 + 国库 1 条").hasSize(3);
+    for (JsonNode entry : grainEntries) {
+      assertThat(entry.get("goods").has("cloth"))
+          .as("cloth=0 ⇒ 每条家户 / 国库条目都不得出现 cloth 键")
+          .isFalse();
+    }
+    JsonNode grainPutInfo = JSON.readTree(grainOnly.get(1).payloadJson());
+    JsonNode grainValue = JSON.readTree(grainPutInfo.get("value").asText());
+    assertThat(grainValue.get("cloth").asLong()).as("grain-only：PutInfo value.cloth=0").isZero();
+    assertThat(grainValue.get("sourceCounts").get("cloth").asInt())
+        .as("grain-only：sourceCounts.cloth=0")
+        .isZero();
+
+    List<CommandEnvelope> clothOnly = batchOf(0L, 0L, 100L, 0L);
+    assertThat(clothOnly)
+        .extracting(CommandEnvelope::type)
+        .as("只 cloth>0：AdjustAccounts + PutInfo，没有 SeedGroups")
+        .containsExactly(LevyRegionTool.ADJUST_ACCOUNTS_TYPE, LevyRegionTool.PUT_INFO_TYPE);
+    JsonNode clothAdjust = JSON.readTree(clothOnly.get(0).payloadJson());
+    JsonNode clothEntries = clothAdjust.get("entries");
+    assertThat(clothEntries).as("cloth 来源 2 户 + 国库 1 条").hasSize(3);
+    assertThat(clothEntries.get(0).get("owner").get("id").asText())
+        .as("第一条家户来源 owner = house@1_1")
+        .isEqualTo("house@1_1");
+    assertThat(clothEntries.get(0).get("goods").get("cloth").asLong())
+        .as("hh-1 cloth −80")
+        .isEqualTo(-80L);
+    assertThat(clothEntries.get(1).get("owner").get("id").asText())
+        .as("第二条家户来源 owner = house@1_2")
+        .isEqualTo("house@1_2");
+    assertThat(clothEntries.get(1).get("goods").get("cloth").asLong())
+        .as("hh-2 cloth −20")
+        .isEqualTo(-20L);
+    JsonNode nodeTreasury = clothEntries.get(2);
+    assertThat(nodeTreasury.get("owner").get("id").asText())
+        .as("国库条目 owner = u-1")
+        .isEqualTo("u-1");
+    assertThat(nodeTreasury.get("goods").get("cloth").asLong()).as("国库 cloth +100").isEqualTo(100L);
+    assertThat(nodeTreasury.get("goods").has("grain"))
+        .as("cloth-only ⇒ 国库 goods 无 grain 键")
+        .isFalse();
+    assertThat(nodeTreasury.has("money")).as("cloth-only ⇒ 国库条目无 money 键").isFalse();
+    JsonNode clothPutInfo = JSON.readTree(clothOnly.get(1).payloadJson());
+    JsonNode clothValue = JSON.readTree(clothPutInfo.get("value").asText());
+    assertThat(clothValue.get("cloth").asLong()).as("PutInfo value.cloth=100").isEqualTo(100L);
+    assertThat(clothValue.get("sourceCounts").get("cloth").asInt())
+        .as("sourceCounts.cloth=2")
+        .isEqualTo(2);
+    assertThat(clothValue.get("grain").asLong()).as("cloth-only：value.grain=0").isZero();
+    assertThat(clothValue.get("money").asLong()).as("cloth-only：value.money=0").isZero();
+    assertThat(clothValue.get("manpower").asLong()).as("cloth-only：value.manpower=0").isZero();
+
+    // 真 apply 一次 grain-only（cloth=0）：PutInfo 照落，逐户 cloth 一字未动。
+    ActorData before = actorData(stateAt(head()));
+    ToolResult applied = levy(args(120L, 0L, 0L, false, head()));
+    assertThat(applied.success()).as(applied.message()).isTrue();
+    SimulationState afterState = stateAt(head());
+    ActorData after = actorData(afterState);
+    for (Map.Entry<GoodsAccountKey, GoodsAccount> account : before.accounts().entrySet()) {
+      assertThat(clothOf(after, account.getKey()))
+          .as("cloth=0 时每本账的 cloth 余额都不动")
+          .isEqualTo(clothOf(before, account.getKey()));
+    }
+    List<SdInfoEntry> infos = sdState(afterState).info().get("unit:u-1");
+    assertThat(infos).as("grain-only apply 后 sd 里恰有一条行动记录").hasSize(1);
+    JsonNode stored = JSON.readTree((String) infos.get(0).value());
+    assertThat(stored.get("cloth").asLong()).as("grain-only apply 的 PutInfo 仍写 cloth=0").isZero();
+    assertThat(stored.get("sourceCounts").get("cloth").asInt())
+        .as("grain-only apply：sourceCounts.cloth=0")
+        .isZero();
+  }
+
   /** ★ 工具只在 GM 桶：GM 面有、决策人面无。 */
   @Test
   void toolIsOnlyInTheGmBucket() {
@@ -438,6 +626,64 @@ class LevyRegionToolTest {
     assertThat(revisionRowCount()).as("失败不得留 revision").isEqualTo(revisionsBefore);
   }
 
+  /**
+   * ★ cloth 没有第四条 cap（端到端）：u-cap-1 的三条 cap 都 = 1，cloth 80 ≤ 可用量 120 ⇒ apply 成功且国库 cloth +80；
+   * 同一单位粮请求 2 &gt; cap 1 ⇒ BAD_REQUEST（上限仍只作用于粮 / 钱 / 人）。
+   */
+  @Test
+  void clothIgnoresTheThreeLevyCapsWhileGrainStillRespectsThem() throws Exception {
+    long revisionsBefore = revisionRowCount();
+
+    ToolResult overGrainCap = levy(argsFor("u-cap-1", "r-nation", 2L, 0L, 0L, false, 1L));
+    assertThat(overGrainCap.success()).as("粮 2 > cap 1 ⇒ 不成功").isFalse();
+    assertThat(overGrainCap.code()).as("粮 2 > cap 1 ⇒ BAD_REQUEST").isEqualTo("BAD_REQUEST");
+    assertThat(overGrainCap.message())
+        .as("拒因逐值带字段名 / requested / cap")
+        .contains("粮 requested=2 超过 levyGrainCapPerCommand=1");
+    assertThat(head()).as("超粮 cap 不得推 head").isEqualTo(1L);
+    assertThat(revisionRowCount()).as("超粮 cap 不得留 revision").isEqualTo(revisionsBefore);
+
+    List<CommandEnvelope> batch = batchOfFor("u-cap-1", 0L, 0L, 80L, 0L);
+    assertThat(batch)
+        .extracting(CommandEnvelope::type)
+        .as("cloth-only ⇒ AdjustAccounts + PutInfo（无 SeedGroups）")
+        .containsExactly(LevyRegionTool.ADJUST_ACCOUNTS_TYPE, LevyRegionTool.PUT_INFO_TYPE);
+
+    ActorData before = actorData(stateAt(1L));
+    ToolResult applied = levy(argsFor("u-cap-1", "r-nation", 0L, 0L, 80L, 0L, false, 1L));
+    assertThat(applied.success()).as(applied.message()).isTrue();
+    assertThat(head()).as("cloth 80 ≫ 三条 cap=1 仍成功 ⇒ 恰好一条 revision").isEqualTo(2L);
+
+    ActorData after = actorData(stateAt(2L));
+    GoodsAccountKey treasuryKey = new GoodsAccountKey(TREASURY_SMALL_CAPS, H13);
+    long clothToTreasury = clothOf(after, treasuryKey) - clothOf(before, treasuryKey);
+    assertThat(clothToTreasury).as("国库 (UNIT,u-cap-1)@H13 的 cloth 增量 == 请求量 80").isEqualTo(80L);
+
+    long clothFromHouseholds = 0L;
+    for (Map.Entry<GoodsAccountKey, GoodsAccount> account : before.accounts().entrySet()) {
+      GoodsAccountKey key = account.getKey();
+      if (key.owner().kind() != ActorKind.HOUSEHOLD || !isInNation(key.location())) {
+        continue;
+      }
+      clothFromHouseholds += clothOf(after, key) - clothOf(before, key);
+    }
+    assertThat(clothFromHouseholds).as("Σ本区家户 cloth 增量 == −80").isEqualTo(-80L);
+    assertThat(clothFromHouseholds + clothToTreasury)
+        .as("cap=1 下的 cloth 守恒：Σ家户 + 国库 == 0")
+        .isZero();
+
+    assertThat(clothOf(after, new GoodsAccountKey(HH1, H11)))
+        .as("hh-1 扣后 = 100 − 80 = 20（可用量 = 余额 100 − 冻结 20）")
+        .isEqualTo(20L);
+    assertThat(clothOf(after, new GoodsAccountKey(HH2, H12)))
+        .as("请求 80 落在 hh-1 可用量内 ⇒ hh-2 的 40 不动")
+        .isEqualTo(40L);
+    assertThat(after.accounts().get(new GoodsAccountKey(HH1, H11)).frozenBalances())
+        .as("冻结表逐值不动")
+        .containsEntry(GRAIN, 20L)
+        .containsEntry(CLOTH, 20L);
+  }
+
   /** ★ 来源不足 ⇒ BAD_REQUEST，拒因带 requested / available / 缺口，零 revision。 */
   @Test
   void insufficientSourcesIsBadRequestWithZeroRevision() throws Exception {
@@ -453,6 +699,24 @@ class LevyRegionToolTest {
         .contains("缺口=880");
     assertThat(head()).isEqualTo(1L);
     assertThat(revisionRowCount()).isEqualTo(revisionsBefore);
+  }
+
+  /** ★ cloth 不足整条拒：requested = 可用量 + 1 ⇒ BAD_REQUEST，消息带 requested / available / 缺口，零 revision。 */
+  @Test
+  void clothInsufficientIsBadRequestWithZeroRevision() throws Exception {
+    long revisionsBefore = revisionRowCount();
+    ToolResult result = levy(args(0L, 0L, 121L, 0L, false, 1L));
+
+    assertThat(result.success()).as("cloth 121 > 可用量 120 ⇒ 不成功").isFalse();
+    assertThat(result.code()).as("cloth 不足 ⇒ BAD_REQUEST").isEqualTo("BAD_REQUEST");
+    assertThat(result.message())
+        .as("拒因逐值带 requested / available / 缺口")
+        .contains("布总量不足")
+        .contains("requested=121")
+        .contains("available=120")
+        .contains("缺口=1");
+    assertThat(head()).as("布不足不得推 head").isEqualTo(1L);
+    assertThat(revisionRowCount()).as("布不足不得留 revision").isEqualTo(revisionsBefore);
   }
 
   /** ★ 单位无管辖 ⇒ BAD_REQUEST（指路 unit.SetJurisdiction），零 revision。 */
@@ -511,11 +775,19 @@ class LevyRegionToolTest {
     return shell.gmToolAuthorizer().execute(shell.toolRegistry(), LevyRegionTool.NAME, context);
   }
 
+  /** 旧 5 参调用保持兼容（cloth 缺省 0）。 */
   private static Map<String, Object> args(
       long grain, long money, long manpower, boolean preview, long expectedRevision) {
-    return argsFor("u-1", "r-nation", grain, money, manpower, preview, expectedRevision);
+    return argsFor("u-1", "r-nation", grain, money, 0L, manpower, preview, expectedRevision);
   }
 
+  /** 带 cloth 的 6 参调用（grain / money / cloth / manpower 顺序与计划一致）。 */
+  private static Map<String, Object> args(
+      long grain, long money, long cloth, long manpower, boolean preview, long expectedRevision) {
+    return argsFor("u-1", "r-nation", grain, money, cloth, manpower, preview, expectedRevision);
+  }
+
+  /** 旧 7 参调用保持兼容（cloth 缺省 0）。 */
   private static Map<String, Object> argsFor(
       String unitId,
       String regionId,
@@ -524,11 +796,24 @@ class LevyRegionToolTest {
       long manpower,
       boolean preview,
       long expectedRevision) {
+    return argsFor(unitId, regionId, grain, money, 0L, manpower, preview, expectedRevision);
+  }
+
+  private static Map<String, Object> argsFor(
+      String unitId,
+      String regionId,
+      long grain,
+      long money,
+      long cloth,
+      long manpower,
+      boolean preview,
+      long expectedRevision) {
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("unitId", unitId);
     args.put("regionId", regionId);
     args.put("grain", grain);
     args.put("money", money);
+    args.put("cloth", cloth);
     args.put("manpower", manpower);
     args.put("reason", REASON);
     args.put("branch", "main");
@@ -542,6 +827,12 @@ class LevyRegionToolTest {
    * 真方法组批。参数类型逐字对应生产签名，不复制任何组批逻辑。
    */
   private List<CommandEnvelope> batchOf(long grain, long money, long cloth, long manpower) {
+    return batchOfFor("u-1", grain, money, cloth, manpower);
+  }
+
+  /** 见 {@link #batchOf}；本重载换抽取主体（u-cap-1 的 cap=1 用例需要）。 */
+  private List<CommandEnvelope> batchOfFor(
+      String unitId, long grain, long money, long cloth, long manpower) {
     try {
       Class<?> planClass = Class.forName("io.mosire.simos.app.tools.write.LevyRegionPlan");
       Method planMethod =
@@ -557,7 +848,7 @@ class LevyRegionToolTest {
       planMethod.setAccessible(true);
       SimulationState state = stateAt(head());
       Object plan =
-          planMethod.invoke(null, state, "u-1", "r-nation", grain, money, cloth, manpower);
+          planMethod.invoke(null, state, unitId, "r-nation", grain, money, cloth, manpower);
       Method buildBatch =
           LevyRegionTool.class.getDeclaredMethod(
               "buildBatch",
@@ -637,6 +928,11 @@ class LevyRegionToolTest {
     return account == null ? 0L : account.money().getOrDefault(SILVER, 0L);
   }
 
+  private static long clothOf(ActorData data, GoodsAccountKey key) {
+    GoodsAccount account = data.accounts().get(key);
+    return account == null ? 0L : account.balances().getOrDefault(CLOTH, 0L);
+  }
+
   private long revisionRowCount() {
     try (SqliteStore store = SqliteStore.open(dbFile())) {
       return store.inTransaction(
@@ -669,7 +965,8 @@ class LevyRegionToolTest {
             new LinkedHashMap<>(
                 Map.of(
                     U1, unit(U1, H11, Optional.of(nationJurisdiction())),
-                    U_NO_JURISDICTION, unit(U_NO_JURISDICTION, H12, Optional.empty()))));
+                    U_NO_JURISDICTION, unit(U_NO_JURISDICTION, H12, Optional.empty()),
+                    U_SMALL_CAPS, unit(U_SMALL_CAPS, H13, Optional.of(smallCapsJurisdiction())))));
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref(1L), T7),
@@ -697,19 +994,32 @@ class LevyRegionToolTest {
 
   private static ActorData actors() {
     return ActorData.empty()
-        .withAccount(account(HH1, H11, 100L, 20L, 50L))
-        .withAccount(account(HH2, H12, 40L, 0L, 80L))
-        .withAccount(account(HH_OUT, H13, 1000L, 0L, 1000L))
-        .withAccount(account(ESTATE, H11, 1000L, 0L, 1000L));
+        .withAccount(account(HH1, H11, 100L, 20L, 50L, 100L, 20L))
+        .withAccount(account(HH2, H12, 40L, 0L, 80L, 40L, 0L))
+        .withAccount(account(HH_OUT, H13, 1000L, 0L, 1000L, 1000L, 0L))
+        .withAccount(account(ESTATE, H11, 1000L, 0L, 1000L, 1000L, 0L));
   }
 
   private static GoodsAccount account(
-      ActorRef owner, HexCoord at, long grain, long frozenGrain, long silver) {
+      ActorRef owner,
+      HexCoord at,
+      long grain,
+      long frozenGrain,
+      long silver,
+      long cloth,
+      long frozenCloth) {
+    Map<CommodityId, Long> frozenBalances = new LinkedHashMap<>();
+    if (frozenGrain != 0L) {
+      frozenBalances.put(GRAIN, frozenGrain);
+    }
+    if (frozenCloth != 0L) {
+      frozenBalances.put(CLOTH, frozenCloth);
+    }
     return new GoodsAccount(
         new GoodsAccountKey(owner, at),
-        Map.of(GRAIN, grain),
+        Map.of(GRAIN, grain, CLOTH, cloth),
         Map.of(SILVER, silver),
-        frozenGrain == 0L ? Map.of() : Map.of(GRAIN, frozenGrain),
+        frozenBalances,
         Map.of());
   }
 
@@ -742,6 +1052,11 @@ class LevyRegionToolTest {
 
   private static Jurisdiction nationJurisdiction() {
     return new Jurisdiction(Map.of(NATION, 100L), 1000L, 1000L, 1000L, 0L);
+  }
+
+  /** ★ 三条 {@code levy*CapPerCommand} 全是 1：cloth 不受它们约束，粮 / 钱 / 人 仍受。 */
+  private static Jurisdiction smallCapsJurisdiction() {
+    return new Jurisdiction(Map.of(NATION, 100L), 1L, 1L, 1L, 0L);
   }
 
   private static Unit unit(UnitId id, HexCoord position, Optional<Jurisdiction> jurisdiction) {

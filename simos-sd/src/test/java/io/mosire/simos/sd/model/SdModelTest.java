@@ -3,8 +3,11 @@ package io.mosire.simos.sd.model;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatOutcomeId;
@@ -15,7 +18,13 @@ import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
 import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.state.SdSnapshot;
+import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.sd.testing.SdFixtures;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.util.state.BranchId;
+import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.StateRef;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -30,6 +39,8 @@ import org.junit.jupiter.api.Test;
  * CasualtyDelta} 双轨符号、集合不可变、{@code VerdictMeta} 三字段非空、{@code Trigger} 变体边界。
  */
 class SdModelTest {
+
+  private static final StateRef REF = new StateRef(new BranchId("main"), new RevisionId(1));
 
   private static CasualtySpec spec() {
     return new CasualtySpec(0, Map.of());
@@ -256,5 +267,117 @@ class SdModelTest {
         .isInstanceOf(UnsupportedOperationException.class);
     assertThatThrownBy(() -> state.losses().add(new LossRecordId("l3")))
         .isInstanceOf(UnsupportedOperationException.class);
+  }
+
+  // ── 阶段 12：Affiliation.Gov 与 Army.masterGovUnitId 的线格式 ──────────
+
+  /** ★ {@code Affiliation.Gov} 必须过 SdCodec 的 JSON 线往返（注解钉在类型上，@class=gov）。 */
+  @Test
+  void affiliationGovSurvivesSnapshotRoundTrip() {
+    DecisionMaker dm =
+        new DecisionMaker(
+            new DecisionMakerId("dm-gov"),
+            new Affiliation.Gov(new UnitId("g-1")),
+            Set.of("unit.GetUnit"),
+            AccessLimit.empty(),
+            1);
+    SdState state = SdFixtures.empty().withDecisionMakers(Map.of(dm.id(), dm));
+    SdSnapshot snapshot = new SdSnapshot(REF, SdFixtures.T0, state);
+    SdCodec codec = new SdCodec();
+
+    String json = codec.encodeSnapshot(snapshot);
+    assertThat(json).as("子类型标记进字节").contains("\"@class\":\"gov\"");
+    assertThat(json).as("归属目标逐字在线").contains("\"govUnit\":{\"value\":\"g-1\"}");
+
+    SdSnapshot back = (SdSnapshot) codec.decodeSnapshot(json);
+
+    assertThat(back).as("整份快照往返相等").isEqualTo(snapshot);
+    assertThat(back.state().decisionMakers().get(dm.id()).affiliation())
+        .as("读回来仍是 Gov(UnitId)，不是 Nation/Army、也不是 Map")
+        .isEqualTo(new Affiliation.Gov(new UnitId("g-1")));
+  }
+
+  /** ★ {@code Army.masterGovUnitId} 的 present 侧过线逐值往返。 */
+  @Test
+  void armyMasterGovUnitIdSurvivesSnapshotRoundTrip() {
+    Army army =
+        new Army(new ArmyId("a-g"), Optional.of(new UnitId("g-1")), new UnitId("u-1"), "第一军");
+    SdState state = SdFixtures.empty().withArmies(Map.of(army.id(), army));
+    SdSnapshot snapshot = new SdSnapshot(REF, SdFixtures.T0, state);
+    SdCodec codec = new SdCodec();
+
+    String json = codec.encodeSnapshot(snapshot);
+    assertThat(json).contains("\"masterGovUnitId\":{\"value\":\"g-1\"}");
+
+    SdSnapshot back = (SdSnapshot) codec.decodeSnapshot(json);
+
+    assertThat(back).isEqualTo(snapshot);
+    Army decoded = back.state().armies().get(army.id());
+    assertThat(decoded.masterGovUnitId()).contains(new UnitId("g-1"));
+    assertThat(decoded.rootUnit()).isEqualTo(new UnitId("u-1"));
+    assertThat(decoded.name()).isEqualTo("第一军");
+  }
+
+  /**
+   * ★★ **旧档缺 {@code masterGovUnitId} 键 ⇒ empty**（阶段 12 兼容口径），其余字段逐值活着。
+   *
+   * <p>做法照既有旧档用例：用新 codec 编一份新形状，再在 tree 上删掉该键。若读侧不把缺参归一成 empty，旧的世界打不开。
+   */
+  @Test
+  void legacyArmyWithoutMasterGovKeyDecodesToEmpty() throws Exception {
+    Army army =
+        new Army(new ArmyId("a-g"), Optional.of(new UnitId("g-1")), new UnitId("u-1"), "第一军");
+    SdState state = SdFixtures.empty().withArmies(Map.of(army.id(), army));
+    SdCodec codec = new SdCodec();
+    String json = codec.encodeSnapshot(new SdSnapshot(REF, SdFixtures.T0, state));
+
+    ObjectMapper treeMapper = new ObjectMapper();
+    ObjectNode root = (ObjectNode) treeMapper.readTree(json);
+    ObjectNode armyNode = (ObjectNode) root.get("state").get("armies").get("a-g");
+    assertThat(armyNode.has("masterGovUnitId")).as("前置：新形状确实写了该键（否则删键用例是恒真）").isTrue();
+    armyNode.remove("masterGovUnitId");
+
+    SdSnapshot back = (SdSnapshot) codec.decodeSnapshot(root.toString());
+
+    Army decoded = back.state().armies().get(new ArmyId("a-g"));
+    assertThat(decoded.masterGovUnitId()).as("旧档缺键 ⇒ 未认主子（不是抛、不是 null）").isEmpty();
+    assertThat(decoded.rootUnit()).as("其余字段照常读回").isEqualTo(new UnitId("u-1"));
+    assertThat(decoded.name()).isEqualTo("第一军");
+  }
+
+  /**
+   * ★★ **旧档的 {@code nationId} 键被忽略**（{@code @JsonIgnoreProperties({"nationId"})}）：既能读开旧字节，又**不把
+   * nationId 硬映射成 masterGov**——两者不是同一个概念。
+   */
+  @Test
+  void legacyArmyNationIdKeyIsIgnoredAndNeverBecomesMasterGov() throws Exception {
+    Army army = new Army(new ArmyId("a-g"), Optional.empty(), new UnitId("u-1"), "第一军");
+    SdState state = SdFixtures.empty().withArmies(Map.of(army.id(), army));
+    SdCodec codec = new SdCodec();
+    String json = codec.encodeSnapshot(new SdSnapshot(REF, SdFixtures.T0, state));
+
+    ObjectMapper treeMapper = new ObjectMapper();
+    ObjectNode root = (ObjectNode) treeMapper.readTree(json);
+    ObjectNode armyNode = (ObjectNode) root.get("state").get("armies").get("a-g");
+    armyNode.put("nationId", "n-legacy");
+
+    SdSnapshot back = (SdSnapshot) codec.decodeSnapshot(root.toString());
+
+    Army decoded = back.state().armies().get(new ArmyId("a-g"));
+    assertThat(decoded.masterGovUnitId()).as("旧 nationId 不得被当成 masterGov").isEmpty();
+    assertThat(decoded.rootUnit()).isEqualTo(new UnitId("u-1"));
+    assertThat(decoded.name()).isEqualTo("第一军");
+  }
+
+  /** ★ 记录的组件形状只有 canonical 四个——没有藏着的 nationId 字段（结构断言，不靠"我记得"）。 */
+  @Test
+  void armyRecordComponentsAreExactlyTheFourCanonicalFields() {
+    List<String> names =
+        java.util.Arrays.stream(Army.class.getRecordComponents())
+            .map(java.lang.reflect.RecordComponent::getName)
+            .toList();
+    assertThat(names)
+        .as("Army 去 NationId 后恰 four 组件；nationId 只存在于 deprecated 构造签名，不是状态")
+        .containsExactly("id", "masterGovUnitId", "rootUnit", "name");
   }
 }

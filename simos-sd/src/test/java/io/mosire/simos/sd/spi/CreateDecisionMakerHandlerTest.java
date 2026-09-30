@@ -4,11 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.sd.testing.SdFixtures;
 import io.mosire.simos.sd.testing.SdWorlds;
+import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.OfficePolicy;
+import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /** {@code sd.CreateDecisionMaker} 的正常 / 拒绝路径，并直证 N9（白名单不得含通用写）。 */
@@ -81,10 +89,77 @@ class CreateDecisionMakerHandlerTest {
         .contains("N9");
   }
 
+  // ── 阶段 10a/12：Gov 归属必须绑"存在且带 GovFormation"的单位 ──────────
+
+  /** ★ {@code {"kind":"gov","id":…}} 解析 + 创建期强绑：单位存在且带 GovFormation ⇒ Applied。 */
+  @Test
+  void createsGovAffiliationWhenTheUnitHasGovFormation() {
+    SdState base = SdFixtures.full();
+    SdState next =
+        applied(
+            base,
+            SdWorlds.world(base, SdWorlds.map(), govUnits()),
+            "{\"id\":\"dm9\",\"affiliation\":{\"kind\":\"gov\",\"id\":\"u-1\"},"
+                + "\"allowedTools\":[\"unit.GetUnit\"],\"cadence\":1}");
+
+    assertThat(next.decisionMakers()).containsKey(new DecisionMakerId("dm9"));
+    assertThat(next.decisionMakers().get(new DecisionMakerId("dm9")).affiliation())
+        .as("读回来是 Gov(UnitId)，不是 Nation/Army")
+        .isEqualTo(new Affiliation.Gov(SdWorlds.ROOT_UNIT));
+  }
+
+  /** ★ 单位**不存在**：具名理由必须说"目标不存在"，而不是"没有 GovFormation"（纠正方向不同）。 */
+  @Test
+  void rejectsGovAffiliationWhenTheUnitDoesNotExist() {
+    SdState base = SdFixtures.full();
+    HandlerOutcome outcome =
+        HANDLER.handle(
+            SdWorlds.world(base, SdWorlds.map(), govUnits()),
+            "{\"id\":\"dm9\",\"affiliation\":{\"kind\":\"gov\",\"id\":\"g-ghost\"},"
+                + "\"allowedTools\":[],\"cadence\":1}");
+
+    assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) outcome).reason())
+        .as("不存在 ⇒ 目标不存在")
+        .contains("affiliation 目标不存在")
+        .contains("g-ghost");
+  }
+
+  /**
+   * ★ 单位存在但**不是 GOV**：另一条具名拒（先 {@code unit.SetGovFormation}），不得与"不存在"合成一句。
+   *
+   * <p>判别力：同一 payload 在 {@code govUnits()} 世界是 Applied、在本世界是 Rejected——证明拒因真的来自编制形态。
+   */
+  @Test
+  void rejectsGovAffiliationWhenTheUnitHasNoGovFormation() {
+    SdState base = SdFixtures.full();
+    HandlerOutcome outcome =
+        HANDLER.handle(
+            SdWorlds.world(base),
+            "{\"id\":\"dm9\",\"affiliation\":{\"kind\":\"gov\",\"id\":\"u-1\"},"
+                + "\"allowedTools\":[],\"cadence\":1}");
+
+    assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(((HandlerOutcome.Rejected) outcome).reason())
+        .as("单位存在但无 GovFormation ⇒ 指路 SetGovFormation")
+        .contains("u-1")
+        .contains("没有 GovFormation")
+        .contains("unit.SetGovFormation")
+        .doesNotContain("affiliation 目标不存在");
+  }
+
   private static SdState applied(SdState base, SimulationState world, String payload) {
     HandlerOutcome outcome = HANDLER.handle(world, payload);
     assertThat(outcome).as("期望 Applied，实际: %s", outcome).isInstanceOf(HandlerOutcome.Applied.class);
     SdChangeSet cs = (SdChangeSet) ((HandlerOutcome.Applied) outcome).changeSet();
     return SdChangeSet.apply(cs, base);
+  }
+
+  /** 既有根单位 u-1 挂上 GovFormation，作为 Gov 归属的合法目标（与 CreateArmyHandlerTest 同形）。 */
+  private static UnitState govUnits() {
+    return UnitOperations.setGovFormation(
+        SdWorlds.units(),
+        SdWorlds.ROOT_UNIT,
+        new GovFormation(Map.of(), OfficePolicy.defaults(), Optional.empty(), GovLevel.CENTRAL));
   }
 }

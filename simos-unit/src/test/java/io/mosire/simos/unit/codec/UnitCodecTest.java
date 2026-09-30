@@ -7,14 +7,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
+import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovLevel;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Movement;
+import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Route;
+import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitModule;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
@@ -217,6 +223,207 @@ class UnitCodecTest {
             CODEC.decodeChangeSet(CODEC.encodeChangeSet(UnitChangeSet.between(base, changed)));
 
     assertThat(UnitChangeSet.apply(encoded, base)).as("管辖变更也必须过线并逐值重建（铁律 5）").isEqualTo(changed);
+  }
+
+  /**
+   * ★★ **非空 GOV 编制的线格式往返**（阶段 9）：{@code staff} 逐键逐值（含**保序**）、{@code policy} 五字段（含 {@code staffCap}
+   * 的保序）、{@code superiorGov} 的 Optional、{@code level} 都要过线；且线格式里确实带 {@code "@class":"gov"}
+   * 子类型标记（不靠某台 mapper 的 mixin）。
+   */
+  @Test
+  void snapshotRoundTripsANonEmptyGovModule() {
+    Map<StaffRole, Long> staff =
+        orderedStaff(
+            Map.entry(StaffRole.YAMEN, 2L),
+            Map.entry(StaffRole.POST, 1L),
+            Map.entry(StaffRole.SCRIBE, 5L));
+    Map<StaffRole, Long> staffCap =
+        orderedStaff(Map.entry(StaffRole.POST, 9L), Map.entry(StaffRole.SCRIBE, 6L));
+    GovFormation gov =
+        new GovFormation(
+            staff,
+            new OfficePolicy(111L, 222L, 3L, 7L, staffCap),
+            Optional.of(new UnitId("g-9")),
+            GovLevel.PROVINCE);
+    Jurisdiction jurisdiction =
+        new Jurisdiction(orderedRates(new RegionId("r-1"), 100L), 1L, 2L, 3L, 4);
+    UnitSnapshot snapshot =
+        snapshotOf(
+            stateOf(oneUnitWithModule("u-1", H11, Optional.of(jurisdiction), Optional.of(gov), 3)),
+            SimosTimestamp.of(12));
+
+    String json = CODEC.encodeSnapshot(snapshot);
+    assertThat(json).as("子类型信息钉在类型上：@class=gov").contains("\"@class\":\"gov\"");
+    assertThat(json).as("staff 的值逐字在线").contains("\"SCRIBE\":5");
+
+    UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(json);
+
+    assertThat(back).as("整份快照往返相等").isEqualTo(snapshot);
+    Unit unit = back.state().units().get(new UnitId("u-1"));
+    GovFormation decoded = (GovFormation) unit.module().orElseThrow();
+    assertThat(new ArrayList<>(decoded.staff().keySet()))
+        .as("★ staff 保序：插入序 YAMEN→POST→SCRIBE 不能被哈希序替换")
+        .containsExactly(StaffRole.YAMEN, StaffRole.POST, StaffRole.SCRIBE);
+    assertThat(decoded.staff())
+        .containsExactly(
+            Map.entry(StaffRole.YAMEN, 2L),
+            Map.entry(StaffRole.POST, 1L),
+            Map.entry(StaffRole.SCRIBE, 5L));
+    assertThat(decoded.policy().grainPerStaffPerTick()).isEqualTo(111L);
+    assertThat(decoded.policy().clothPerStaffPerCycle()).isEqualTo(222L);
+    assertThat(decoded.policy().moneyPerStaffPerTick()).isEqualTo(3L);
+    assertThat(decoded.policy().retirementPerStaff()).isEqualTo(7L);
+    assertThat(new ArrayList<>(decoded.policy().staffCap().keySet()))
+        .as("staffCap 同样保序")
+        .containsExactly(StaffRole.POST, StaffRole.SCRIBE);
+    assertThat(decoded.policy().staffCap())
+        .containsExactly(Map.entry(StaffRole.POST, 9L), Map.entry(StaffRole.SCRIBE, 6L));
+    assertThat(decoded.superiorGov()).as("Optional 的 present 侧逐值在线").contains(new UnitId("g-9"));
+    assertThat(decoded.level()).isEqualTo(GovLevel.PROVINCE);
+    assertThat(unit.jurisdiction()).as("module 往返不得顺手吞掉 jurisdiction").contains(jurisdiction);
+    assertThat(unit.visionRadius()).as("非缺省视野半径也要活着").isEqualTo(3);
+  }
+
+  /** ★★ **Army 编制的线格式往返**：{@code "@class":"army"} + present/empty 两侧的 {@code masterGov} + role。 */
+  @Test
+  void snapshotRoundTripsBothSidesOfArmyMasterGov() {
+    Jurisdiction jurisdiction =
+        new Jurisdiction(orderedRates(new RegionId("r-1"), 100L), 0L, 0L, 0L, 0);
+    ArmyFormation withMaster = new ArmyFormation(Optional.of(new UnitId("g-1")), "garrison");
+    UnitSnapshot snapshotWithMaster =
+        snapshotOf(
+            stateOf(
+                oneUnitWithModule("u-1", H11, Optional.of(jurisdiction), Optional.of(withMaster))),
+            SimosTimestamp.of(13));
+    String jsonWithMaster = CODEC.encodeSnapshot(snapshotWithMaster);
+    assertThat(jsonWithMaster).contains("\"@class\":\"army\"");
+    assertThat(jsonWithMaster).contains("\"role\":\"garrison\"");
+    assertThat(jsonWithMaster).contains("\"masterGov\":{\"value\":\"g-1\"}");
+
+    UnitSnapshot backWithMaster = (UnitSnapshot) CODEC.decodeSnapshot(jsonWithMaster);
+    assertThat(backWithMaster).isEqualTo(snapshotWithMaster);
+    ArmyFormation decoded =
+        (ArmyFormation)
+            backWithMaster.state().units().get(new UnitId("u-1")).module().orElseThrow();
+    assertThat(decoded.masterGov()).contains(new UnitId("g-1"));
+    assertThat(decoded.role()).isEqualTo("garrison");
+
+    ArmyFormation withoutMaster = new ArmyFormation(Optional.empty(), "militia");
+    UnitSnapshot snapshotWithoutMaster =
+        snapshotOf(
+            stateOf(oneUnitWithModule("u-1", H11, Optional.empty(), Optional.of(withoutMaster))),
+            SimosTimestamp.of(14));
+    UnitSnapshot backWithoutMaster =
+        (UnitSnapshot) CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshotWithoutMaster));
+    assertThat(backWithoutMaster).isEqualTo(snapshotWithoutMaster);
+    assertThat(
+            ((ArmyFormation)
+                    backWithoutMaster.state().units().get(new UnitId("u-1")).module().orElseThrow())
+                .masterGov())
+        .as("empty Optional 过线仍是 empty（不是 null 指针、也不是 present）")
+        .isEmpty();
+  }
+
+  /** ★ empty module 过线仍是 empty，且键在字节里是显式 {@code null}（键不消失）。 */
+  @Test
+  void snapshotRoundTripsAnEmptyModuleOptional() {
+    Jurisdiction jurisdiction =
+        new Jurisdiction(orderedRates(new RegionId("r-1"), 100L), 0L, 0L, 0L, 0);
+    UnitSnapshot snapshot =
+        snapshotOf(
+            stateOf(oneUnitWithModule("u-1", H11, Optional.of(jurisdiction), Optional.empty())),
+            SimosTimestamp.of(15));
+
+    String json = CODEC.encodeSnapshot(snapshot);
+    assertThat(json).as("empty Optional 写成 null（键不消失）").contains("\"module\":null");
+
+    UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(json);
+
+    assertThat(back).isEqualTo(snapshot);
+    assertThat(back.state().units().get(new UnitId("u-1")).module()).isEmpty();
+    assertThat(back.state().units().get(new UnitId("u-1")).jurisdiction())
+        .as("empty module 不得把非空管辖带走")
+        .contains(jurisdiction);
+  }
+
+  /** ★ GOV 的 {@code superiorGov} **empty 侧**也要过线：写 null、读回 empty（不是 present、不是丢键）。 */
+  @Test
+  void snapshotRoundTripsAGovWithEmptySuperior() {
+    GovFormation gov =
+        new GovFormation(
+            orderedStaff(Map.entry(StaffRole.SCRIBE, 2L)),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovLevel.CENTRAL);
+    UnitSnapshot snapshot =
+        snapshotOf(
+            stateOf(oneUnitWithModule("u-1", H11, Optional.empty(), Optional.of(gov))),
+            SimosTimestamp.of(17));
+
+    String json = CODEC.encodeSnapshot(snapshot);
+    assertThat(json).as("empty superiorGov 写成 null").contains("\"superiorGov\":null");
+
+    UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(json);
+
+    assertThat(back).isEqualTo(snapshot);
+    GovFormation decoded =
+        (GovFormation) back.state().units().get(new UnitId("u-1")).module().orElseThrow();
+    assertThat(decoded.superiorGov()).as("中央 = 无上级，读回仍 empty").isEmpty();
+    assertThat(decoded.level()).isEqualTo(GovLevel.CENTRAL);
+    assertThat(decoded.staff()).containsExactly(Map.entry(StaffRole.SCRIBE, 2L));
+  }
+
+  /**
+   * ★★ **旧档缺 {@code module} 键**（阶段 9 之前的快照）：读回必须是 **empty**，且 {@code jurisdiction}、视野半径与其余字段逐值活着
+   * ——旧档兼容的落点（构造器把 Jackson 的缺参 null 归一成 empty）。
+   */
+  @Test
+  void legacySnapshotWithoutModuleKeyDecodesToEmptyAndKeepsOtherFields() throws Exception {
+    Map<StaffRole, Long> staff = orderedStaff(Map.entry(StaffRole.SCRIBE, 5L));
+    GovFormation gov =
+        new GovFormation(staff, OfficePolicy.defaults(), Optional.empty(), GovLevel.CENTRAL);
+    Jurisdiction jurisdiction =
+        new Jurisdiction(orderedRates(new RegionId("r-9"), 900L), 11L, 22L, 33L, 250);
+    UnitSnapshot snapshot =
+        snapshotOf(
+            stateOf(oneUnitWithModule("u-1", H11, Optional.of(jurisdiction), Optional.of(gov), 4)),
+            SimosTimestamp.of(16));
+
+    ObjectMapper treeMapper = new ObjectMapper();
+    ObjectNode root = (ObjectNode) treeMapper.readTree(CODEC.encodeSnapshot(snapshot));
+    ObjectNode unitNode = (ObjectNode) root.get("state").get("units").get("u-1");
+    assertThat(unitNode.has("module")).as("前置：新形状确实写了该键（否则删键用例是恒真）").isTrue();
+    unitNode.remove("module");
+
+    UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(root.toString());
+
+    Unit unit = back.state().units().get(new UnitId("u-1"));
+    assertThat(unit.module()).as("旧档缺键 ⇒ 空编制（不是 null、不抛）").isEmpty();
+    assertThat(unit.jurisdiction()).as("其余字段逐值活着：管辖").contains(jurisdiction);
+    assertThat(unit.visionRadius()).as("其余字段逐值活着：视野半径").isEqualTo(4);
+    assertThat(unit.name()).isEqualTo("单位 u-1");
+    assertThat(unit.member()).isEqualTo(500);
+    assertThat(unit.position().valueAt(T0)).contains(H11);
+  }
+
+  /** 变更集也带得动编制：{@code between} ⇒ 编码 ⇒ 解码 ⇒ {@code apply} 逐值重建目标。 */
+  @Test
+  void changeSetRoundTripsAGovModuleChange() {
+    UnitState base = stateOf(oneUnitWithModule("u-1", H11, Optional.empty(), Optional.empty()));
+    GovFormation target =
+        new GovFormation(
+            orderedStaff(Map.entry(StaffRole.YAMEN, 2L), Map.entry(StaffRole.SCRIBE, 5L)),
+            new OfficePolicy(7L, 8L, 9L, 10L, orderedStaff(Map.entry(StaffRole.SCRIBE, 40L))),
+            Optional.of(new UnitId("g-central")),
+            GovLevel.PROVINCE);
+    UnitState changed =
+        stateOf(oneUnitWithModule("u-1", H11, Optional.empty(), Optional.of(target)));
+
+    UnitChangeSet encoded =
+        (UnitChangeSet)
+            CODEC.decodeChangeSet(CODEC.encodeChangeSet(UnitChangeSet.between(base, changed)));
+
+    assertThat(UnitChangeSet.apply(encoded, base)).as("编制变更也必须过线并逐值重建（铁律 5）").isEqualTo(changed);
   }
 
   /** 变更集往返：四条变体各造一条（Unchanged / Upsert / Remove / Patch），逐条过线。 */
@@ -424,6 +631,22 @@ class UnitCodecTest {
   /** 视野半径取缺省、管辖逐值给的 canonical 15 参形态（辖区阶段 5 的往返夹具专用）。 */
   private static Unit oneUnitWithJurisdiction(
       String id, HexCoord at, Optional<Jurisdiction> jurisdiction) {
+    return oneUnitWithModule(id, at, jurisdiction, Optional.empty());
+  }
+
+  /** 视野半径取缺省的重载（调用点多在 jurisdiction 夹具上）。 */
+  private static Unit oneUnitWithModule(
+      String id, HexCoord at, Optional<Jurisdiction> jurisdiction, Optional<UnitModule> module) {
+    return oneUnitWithModule(id, at, jurisdiction, module, Unit.DEFAULT_VISION_RADIUS);
+  }
+
+  /** 视野半径逐值给的 canonical 16 参形态（阶段 9 的编制往返夹具）。 */
+  private static Unit oneUnitWithModule(
+      String id,
+      HexCoord at,
+      Optional<Jurisdiction> jurisdiction,
+      Optional<UnitModule> module,
+      int visionRadius) {
     return new Unit(
         new UnitId(id),
         "单位 " + id,
@@ -440,8 +663,26 @@ class UnitCodecTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<RelativeOffset>empty())), List.of(), null),
         Optional.empty(),
-        Unit.DEFAULT_VISION_RADIUS,
-        jurisdiction);
+        visionRadius,
+        jurisdiction,
+        module);
+  }
+
+  /** 保序的编制表（`staff`/`staffCap` 共用；判据要的是"顺序不被哈希序替换"）。 */
+  @SafeVarargs
+  private static Map<StaffRole, Long> orderedStaff(Map.Entry<StaffRole, Long>... entries) {
+    Map<StaffRole, Long> staff = new LinkedHashMap<>();
+    for (Map.Entry<StaffRole, Long> entry : entries) {
+      staff.put(entry.getKey(), entry.getValue());
+    }
+    return staff;
+  }
+
+  /** 单键保序税率表（只有一条税率时要测"非空但小"的往返）。 */
+  private static Map<RegionId, Long> orderedRates(RegionId only, long rate) {
+    Map<RegionId, Long> rates = new LinkedHashMap<>();
+    rates.put(only, rate);
+    return rates;
   }
 
   /** 两键的保序税率表（判据要的是"顺序不被哈希序替换"，不是大表）。 */
