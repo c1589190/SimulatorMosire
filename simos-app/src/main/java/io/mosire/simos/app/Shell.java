@@ -43,7 +43,7 @@ import io.mosire.simos.app.sd.channel.CliDecisionChannel;
 import io.mosire.simos.app.sd.channel.GuiDecisionChannel;
 import io.mosire.simos.app.sd.channel.HttpDecisionChannel;
 import io.mosire.simos.app.skill.SkillLibrary;
-import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
+import io.mosire.simos.app.time.ClassFirstPopulationEconomyTimeParticipant;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreConfig;
@@ -556,17 +556,15 @@ public final class Shell implements AutoCloseable {
     }
 
     // ★ T10-h：participant 由**清单**注册、条数由清单长度数出来（曾把 `participant=1` 写死在日志里 ⇒ 将来加第二个会静默说谎）。
-    //   ★ R3a/R4a（2026-09-25）：economy 结算每天跑（消费/进度/周期收获与分配）。
-    //   ★★ R4：economy 与 social 的推进**由同一个参与者承担**（`population`）—— 理由见
-    //     {@code PopulationEconomyTimeParticipant} 的类注：出生/死亡要同时看两侧（年龄性别在 social、需求实得在
-    //     economy），而"同一模块只能有一个写者"与 §十一 等价性都要求**逐日的语义落在同一个参与者内部**。
-    //     故清单里不再单独注册 EconomyTimeParticipant / SocialTimeParticipant（两者的独立形态仍服务"只装一个切片"的用例）。
+    //   ★ R2b（2026-09-30）：生产路径切到 **class-first** —— 经济/人口只由 ClassFirstSettlement 推进（新参与者），
+    //     旧的 PopulationEconomyTimeParticipant 保留编译但**不再注册**（它在别处只服务旧档测试；R3 删）。
+    //   ★ 旧注释（R4 为何 economy 与 social 合为一个参与者）仍成立：出生/死亡要同时看两侧，且"同一模块只能有一个写者"。
     List<TimeParticipant> participants =
         List.of(
             new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId()),
             new SdTimeParticipant(config.mapId()),
-            // ★ R2：经济日结算的并行度由 CLI → ShellConfig → 这里进 stepper；缺省 1 = 单线程退化路径。
-            new PopulationEconomyTimeParticipant(config.mapId(), config.economyWorkerCount()));
+            // ★ R2b：唯一的经济—人口协调器 = class-first 单日入口；不再传入 economyWorkerCount（classfirst 引擎无并行池）。
+            new ClassFirstPopulationEconomyTimeParticipant(config.mapId()));
     for (TimeParticipant participant : participants) {
       coreSimos.register(participant);
     }
