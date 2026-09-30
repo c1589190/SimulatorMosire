@@ -2,17 +2,12 @@ package io.mosire.simos.core;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandResult;
-import io.mosire.simos.core.observe.EventTypes;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.CheckpointEncoder;
 import io.mosire.simos.core.store.CheckpointStore;
-import io.mosire.simos.core.store.EventRow;
-import io.mosire.simos.core.store.EventStore;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
@@ -188,44 +183,11 @@ class RealmEffectEndToEndTest {
     }
   }
 
-  /**
-   * R10 在**真实参与者**上的落点（判据 ④ 之外的第二重价值，也是 m2 的咬点）：真推进写下的 {@code simos.module.proposal} 事件里，{@code
-   * reads}/{@code writes} 必须真的是参与者声明的那些 canonical 地址。
-   *
-   * <p>★ 为什么单列一条：m2（{@code writes} 恒为空集）**不会**让推进失败——单参与者没有写-写冲突，① 与 ② 照样绿。
-   * 只有"读事件表、查提案载荷"这条断言能咬住它。若只做 ① ②，m2 就是一个存活的变异体。
-   */
-  @Test
-  void proposalEventCarriesTheRealParticipantsReadWriteSets() {
-    seedGenesis();
-
-    try (CoreSimos core = wiredCore()) {
-      assertThat(core.submit(advance(1L)))
-          .as("推进应提交到 (main,2)")
-          .isEqualTo(new CommandResult.Committed(ref("main", 2)));
-    }
-
-    // 关库后用一棵独立 store 读事件（与门面持有的连接各走各的 WAL 读）。
-    List<EventRow> trace;
-    try (SqliteStore store = SqliteStore.open(dbFile())) {
-      trace = new EventStore(store).byCorrelation(CORR);
-    }
-
-    EventRow proposal =
-        trace.stream()
-            .filter(row -> EventTypes.MODULE_PROPOSAL.equals(row.type()))
-            .findFirst()
-            .orElseThrow(() -> new AssertionError("推进链路里没有 module.proposal 事件: " + CORR));
-
-    JsonNode payload = json(proposal.payload());
-    assertThat(payload.get("namespace").asText()).isEqualTo("unit");
-    assertThat(texts(payload.get("reads")))
-        .as("R10：真参与者的 reads 按字典序落进事件")
-        .containsExactly("map:Map1:hex.1_1", "map:Map1:hex.1_2", "map:Map1:hex.1_3", "unit:u-1");
-    assertThat(texts(payload.get("writes")))
-        .as("R10 在真实参与者上：writes 必须真的含 unit:u-1（m2 打的就是这条）")
-        .containsExactly("unit:u-1");
-  }
+  // ★★ 2026-09-30 用户裁定：{@code simos.module.proposal} 只留内存、不再落盘 ⇒
+  //   原 "proposalEventCarriesTheRealParticipantsReadWriteSets"（R10 在真实参与者上的观测点）随之删除。
+  //   reads/writes 仍在推进内存里供 TimeProposalResolver 判冲突，但事后无可观测面 ⇒
+  //   该变异靶子（writes 恒空）在本文件里不再有咬点；要恢复观测需另立内存钩子。
+  //   世界状态/重放/分支/冲突判定均不受影响（同文件其余用例继续覆盖）。
 
   // ────────────────────────────── 夹具 ──────────────────────────────
 
@@ -387,20 +349,6 @@ class RealmEffectEndToEndTest {
   private static GameMap mapOf(SimulationState state) {
     return ((MapSnapshot) state.module("map").orElseThrow(() -> new AssertionError("状态里没有 map 切片")))
         .map();
-  }
-
-  private static List<String> texts(JsonNode array) {
-    List<String> values = new ArrayList<>();
-    array.forEach(node -> values.add(node.asText()));
-    return values;
-  }
-
-  private static JsonNode json(String payload) {
-    try {
-      return MAPPER.readTree(payload);
-    } catch (JsonProcessingException e) {
-      throw new IllegalStateException("事件载荷不是合法 JSON（不该发生）: " + payload, e);
-    }
   }
 
   private static BranchId main() {

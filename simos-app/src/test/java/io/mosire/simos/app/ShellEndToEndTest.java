@@ -235,23 +235,17 @@ class ShellEndToEndTest {
           .as("Agent 写的信封链完整")
           .containsExactly(EventTypes.COMMAND_RECEIVED, EventTypes.COMMAND_COMMITTED);
       assertThat(types(events, advanceRow.correlationId()))
-          .as(
-              "推进支的冻结序列（本壳 3 个 time participant（unit/sd/population）⇒ 模块提案 5 条"
-                  + "（含 economy / social / **actor** —— T5 起产权落账是第三片））")
+          .as("推进支的冻结序列（module.proposal 已按 2026-09-30 裁定只留内存、不落盘）")
           .containsExactly(
               EventTypes.COMMAND_RECEIVED,
               EventTypes.TIME_ADVANCE_STARTED,
-              EventTypes.MODULE_PROPOSAL,
-              EventTypes.MODULE_PROPOSAL,
-              EventTypes.MODULE_PROPOSAL,
-              EventTypes.MODULE_PROPOSAL,
-              EventTypes.MODULE_PROPOSAL,
               EventTypes.TIME_ADVANCE_FINISHED,
               EventTypes.COMMAND_COMMITTED);
 
       // ── ★★ R4：**social 与 economy 由同一个参与者写**（`population`） ──────────────────
       //   ① 参与者清单（started 事件）里点名 population；
-      //   ② 它的提案带**两个模块键**（economy + social）⇒ module.proposal 仍是 4 条；
+      //   ② 它的提案带**三个模块键**（economy + social + actor）⇒ 改由 revision 的
+      //      changeset_json 模块键承接（module.proposal 事件已按 2026-09-30 裁定只留内存）；
       //   ③ 本壳的世界没有批次、经济也没激活 ⇒ 两份变更集都是**不变**的（交不变变更集，不是空提案）。
       //   ★ R1 的 T6 判据（"social 出现在推进日志里"）由 ② 承接：它不再是一个**参与者名**，而是一个**模块键**。
       List<EventRow> advanceEvents = events.byCorrelation(advanceRow.correlationId());
@@ -262,16 +256,11 @@ class ShellEndToEndTest {
           .as("推进日志的参与者清单（R4 起 economy 与 social 合为一个参与者，见 PopulationEconomyTimeParticipant）")
           .containsExactlyInAnyOrder("unit", "sd", "population");
 
-      List<EventRow> proposals =
-          advanceEvents.stream()
-              .filter(row -> EventTypes.MODULE_PROPOSAL.equals(row.type()))
-              .toList();
-      List<String> proposalNamespaces = new ArrayList<>();
-      for (EventRow row : proposals) {
-        proposalNamespaces.add(JSON.readTree(row.payload()).get("namespace").asText());
-      }
-      assertThat(proposalNamespaces)
-          .as("每一个**模块**各一条 module.proposal（population 参与者带 economy + social + **actor** 三个模块键）")
+      JsonNode changeset = JSON.readTree(advanceRow.changesetJson());
+      List<String> moduleKeys = new ArrayList<>();
+      changeset.get("modules").fieldNames().forEachRemaining(moduleKeys::add);
+      assertThat(moduleKeys)
+          .as("changeset 的模块键（population 参与者带 economy + social + **actor** 三个模块键）")
           .containsExactlyInAnyOrder("unit", "sd", "economy", "social", "actor");
 
       // ③ 本壳的世界没有人口批次、经济也未激活 ⇒ **两份变更集都是不变的**（交不变变更集，不是空提案）。

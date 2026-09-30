@@ -30,9 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -226,9 +224,9 @@ public final class TimeAdvance implements AdvanceRoute {
       proposals.add(proposal);
     }
     trace.add(started(cmd, newMeta));
-    for (WorldTimeProposal proposal : proposals) {
-      trace.addAll(proposalEvents(cmd, proposal));
-    }
+    // ★★ 2026-09-30 用户裁定：**module.proposal 只留在内存里**，不再落事件表。
+    //   `proposals` 列表继续供 ③ Resolve 判读写冲突；但它的全量地址清单不再逐条持久化——
+    //   实测 360 tick 里它占 store 的 209/363MB（advance 次数 × namespace 数 × 万级地址串）。
 
     // ③ Resolve
     TimeProposalResolver.Outcome outcome = TimeProposalResolver.resolve(proposals);
@@ -463,32 +461,6 @@ public final class TimeAdvance implements AdvanceRoute {
   }
 
   /**
-   * 一个参与者的**每模块**一条提案事件（多切片参与者 ⇒ 每模块一条，载荷带 {@code participant} 以便事后分辨 "这个 namespace
-   * 是谁提的"；单模块参与者照旧只落一条）。
-   *
-   * <p>★ {@code reads}/{@code writes} **按字典序**（C15 / 裁定 44 的第二个落点）——它们来自 {@code WorldTimeProposal}
-   * 的 {@code Set}，而 {@code Set} 的迭代序不是键集的纯函数。故在此**显式排序**。每个模块事件带的是**参与者整份** 读写集（不按模块拆：拆开只会制造重复，见
-   * {@code WorldTimeProposal} 的类注释）。
-   *
-   * <p>★★ **载荷里没有变更集摘要，这是有意的，别来"补"**：§7.1 那句"参数摘要复用 {@code Digest}——不记明文"针对的是
-   * **会泄露领域载荷明文的**载荷（如信封支的 {@code payloadDigest}）。本载荷的字段全是 canonical 地址串与 namespace，
-   * **没有明文可藏**；而要为它算出摘要就得先 {@code encodeChangeSet}，那道编码在 ④ 才做、判定归属也在那里。
-   * 硬塞一个"摘要"出来只会得到一个**名字叫摘要、内容却不是摘要**的假字段——那正是本项目最贵的那类事故形态。
-   */
-  private static List<EventRow> proposalEvents(AdvanceTime cmd, WorldTimeProposal proposal) {
-    List<EventRow> events = new ArrayList<>();
-    for (String namespace : proposal.moduleChanges().keySet()) {
-      Map<String, Object> payload = new LinkedHashMap<>();
-      payload.put("participant", proposal.participantId());
-      payload.put("namespace", namespace);
-      payload.put("reads", sorted(proposal.reads()));
-      payload.put("writes", sorted(proposal.writes()));
-      events.add(event(EventTypes.MODULE_PROPOSAL, cmd, json(payload)));
-    }
-    return events;
-  }
-
-  /**
    * 冲突留痕：{@code {kind, namespaces, addresses}}（spec §7.1 冻结的载荷形状，序已由 {@link AdvanceConflict} 定死）。
    */
   private static EventRow conflictEvent(AdvanceTime cmd, AdvanceConflict conflict) {
@@ -528,11 +500,6 @@ public final class TimeAdvance implements AdvanceRoute {
   /** ★ {@code correlationId} **逐字节取自命令**——这一行是判据二的全部（与 Task 11 同一条纪律）。 */
   private static EventRow event(String type, AdvanceTime cmd, String payload) {
     return EventRow.of(type, cmd.initiator(), payload, cmd.correlationId());
-  }
-
-  /** 字典序去重（C15）。{@code TreeSet} 同时给了去重，虽然集合运算本就不产生重复。 */
-  private static List<String> sorted(Set<String> values) {
-    return List.copyOf(new TreeSet<>(values));
   }
 
   private static Map<String, String> refJson(StateRef ref) {

@@ -7,17 +7,21 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * 事件类型常量表**冻结**（C20 / spec §7.1）：八种，多一个少一个都要红。
+ * 事件类型常量表**冻结**（C20 / spec §7.1）：**七种**，多一个少一个都要红。
  *
- * <p>★★ **为什么值得单写一个用例**：这八个串是**跨版本兼容面**——历史库里的 {@code events.type} 是裸字符串，
+ * <p>★★ **为什么值得单写一个用例**：这七个串是**跨版本兼容面**——历史库里的 {@code events.type} 是裸字符串，
  * 改一个字母等于让旧档读不出来（没有任何编译期检查兜得住）。故在这里**逐字钉死**，改动必须是有意识的。
  *
- * <p>★ 特别是 {@code simos.revision.created} **必须不在**表里：spec §7.1 冻结的八种里没有它， 而它是个**极容易被顺手加进来**的名字（"落了
+ * <p>★★ **2026-09-30 用户裁定（对 spec §7.1 的取代）**：{@code simos.module.proposal} 不再落盘（只留内存），
+ * 故从冻结面移出——它是每次 advance × 每 namespace 一条、载荷为全量读写地址清单的审计事件，实测占 store 的 209/363MB；提案本身仍在推进的内存里供
+ * {@code TimeProposalResolver} 判冲突。
+ *
+ * <p>★ 特别是 {@code simos.revision.created} **必须不在**表里：spec §7.1 冻结的七种里没有它， 而它是个**极容易被顺手加进来**的名字（"落了
  * revision 嘛，发一条多自然"）——故专门为它写一条反向断言。 {@code committed} 才是"revision 落了"的那条事件。
  */
 class EventTypesTest {
 
-  /** spec §7.1 的八种，**逐字**抄自规范（不是抄自 {@link EventTypes}——从被测对象抄断言等于问它"你觉得自己对吗"）。 */
+  /** spec §7.1 的七种，**逐字**抄自规范（不是抄自 {@link EventTypes}——从被测对象抄断言等于问它"你觉得自己对吗"）。 */
   private static final List<String> FROZEN =
       List.of(
           "simos.command.received",
@@ -26,15 +30,14 @@ class EventTypesTest {
           "simos.command.committed",
           "simos.time.advance.started",
           "simos.time.advance.finished",
-          "simos.module.proposal",
           "simos.timeline.conflict");
 
   @Test
-  void allHoldsExactlyTheEightFrozenTypes() {
+  void allHoldsExactlyTheSevenFrozenTypes() {
     assertThat(EventTypes.ALL)
-        .as("C20 / spec §7.1 冻结八种；实得 %s", EventTypes.ALL)
+        .as("C20 / spec §7.1 冻结七种；实得 %s", EventTypes.ALL)
         .containsExactlyElementsOf(FROZEN);
-    assertThat(EventTypes.ALL).hasSize(8);
+    assertThat(EventTypes.ALL).hasSize(7);
   }
 
   /** ★ 反向断言：{@code simos.revision.created} **不在**表里（它是最容易被顺手加进来的名字，见类注）。 */

@@ -33,8 +33,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * **R6（判据二）**：一次成功的推进，{@code correlation_id = X} 的事件行**恰好**是 {@code received + started +
- * N×module.proposal + finished + committed}，且 {@code revisions} **恰 1 行**。
+ * **R6（判据二）**：一次成功的推进，{@code correlation_id = X} 的事件行**恰好**是 {@code received + started + finished +
+ * committed}（{@code module.proposal} 已按 2026-09-30 裁定只留内存），且 {@code revisions} **恰 1 行**。
  *
  * <p>★★ **本用例把"真代码"与"机制"分得很清楚，因为混起来会变成同义反复**：序列的**真正生产者是 Task 12 的 {@code TimeAdvance}`**，Task 11
  * 手里没有它（当前 {@link AdvanceRoute} 是注入的替身）。若拿替身 route 写一遍序列再读回来， 验的只是"我写进去的能读出来"——**那不是判据二**。故：
@@ -239,8 +239,6 @@ class CorrelationChainTest {
   void advanceSequenceShapeIsWhatR6Requires() {
     String commandId = "cmd-adv";
     String correlationId = "corr-adv";
-    List<String> namespaces = List.of("map", "unit");
-
     AdvanceRoute standIn =
         cmd -> {
           List<EventRow> chain = new ArrayList<>();
@@ -249,14 +247,6 @@ class CorrelationChainTest {
           chain.add(
               EventRow.of(
                   EventTypes.TIME_ADVANCE_STARTED, cmd.initiator(), "{}", cmd.correlationId()));
-          for (String namespace : namespaces) {
-            chain.add(
-                EventRow.of(
-                    EventTypes.MODULE_PROPOSAL,
-                    cmd.initiator(),
-                    "{\"namespace\":\"" + namespace + "\"}",
-                    cmd.correlationId()));
-          }
           chain.add(
               EventRow.of(
                   EventTypes.TIME_ADVANCE_FINISHED, cmd.initiator(), "{}", cmd.correlationId()));
@@ -297,12 +287,10 @@ class CorrelationChainTest {
 
     List<String> types = events.byCorrelation(correlationId).stream().map(EventRow::type).toList();
     assertThat(types)
-        .as("R6 的冻结序列：1×received + 1×started + N×proposal + 1×finished + 1×committed（N = 参与者数）")
+        .as("R6 的冻结序列：1×received + 1×started + 1×finished + 1×committed")
         .containsExactly(
             EventTypes.COMMAND_RECEIVED,
             EventTypes.TIME_ADVANCE_STARTED,
-            EventTypes.MODULE_PROPOSAL,
-            EventTypes.MODULE_PROPOSAL,
             EventTypes.TIME_ADVANCE_FINISHED,
             EventTypes.COMMAND_COMMITTED);
     assertThat(timeline.byCorrelation(correlationId)).as("R6 的第二张表：revisions 恰 1 行").hasSize(1);

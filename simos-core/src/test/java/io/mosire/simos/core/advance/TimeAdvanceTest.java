@@ -239,7 +239,8 @@ class TimeAdvanceTest {
 
   /**
    * ★★ **判据二的真 route 版**：一次成功的时间推进，{@code correlation_id = X} 的行**恰好**是 {@code received + started +
-   * N×module.proposal + finished + committed}，且 {@code revisions} **恰 1 行**。
+   * finished + committed}（{@code module.proposal} 已按 2026-09-30 裁定只留内存、不落盘），且 {@code revisions} **恰
+   * 1 行**。
    *
    * <p>★ **参与者按 [beta, alpha] 注册**——事件里必须**先 alpha 后 beta**（C25 / 裁定 44）。这一条同时钉住了
    * "参与者清单不得靠注册表插入序"，而那正是 {@code SimulationState.modules()} 那类 {@code Map.copyOf} 的坑。
@@ -264,12 +265,10 @@ class TimeAdvanceTest {
 
     List<EventRow> chain = events.byCorrelation(correlationId);
     assertThat(chain.stream().map(EventRow::type).toList())
-        .as("R6 的冻结序列（1×received + 1×started + N×proposal + 1×finished + 1×committed，N = 参与者数）")
+        .as("R6 的冻结序列（1×received + 1×started + 1×finished + 1×committed；module.proposal 已只留内存）")
         .containsExactly(
             EventTypes.COMMAND_RECEIVED,
             EventTypes.TIME_ADVANCE_STARTED,
-            EventTypes.MODULE_PROPOSAL,
-            EventTypes.MODULE_PROPOSAL,
             EventTypes.TIME_ADVANCE_FINISHED,
             EventTypes.COMMAND_COMMITTED);
     assertThat(chain)
@@ -278,25 +277,24 @@ class TimeAdvanceTest {
     assertThat(chain)
         .as("agent 存 initiator 原文（C21）")
         .allSatisfy(row -> assertThat(row.agent()).isEqualTo("player:local"));
-    assertThat(
+    // ★ C25（原由 proposal 事件的 namespace 序承接）：参与者清单在构造期按字典序定死——
+    //   module.proposal 已只留内存，故这一判据改读 started 事件的 participants 载荷。
+    JsonNode startedPayload =
+        json(
             chain.stream()
-                .filter(row -> row.type().equals(EventTypes.MODULE_PROPOSAL))
-                .map(EventRow::payload)
-                .toList())
+                .filter(row -> row.type().equals(EventTypes.TIME_ADVANCE_STARTED))
+                .findFirst()
+                .orElseThrow()
+                .payload());
+    assertThat(startedPayload.get("participants").toString())
         .as("★ C25：按 namespace 字典序，与注册序 [beta, alpha] 相反")
-        .allSatisfy(payload -> {})
-        .hasSize(2)
-        .satisfies(
-            payloads -> {
-              assertThat(payloads.get(0)).contains("\"namespace\":\"alpha\"");
-              assertThat(payloads.get(1)).contains("\"namespace\":\"beta\"");
-            });
+        .isEqualTo("[\"alpha\",\"beta\"]");
     assertThat(timeline.byCorrelation(correlationId)).as("R6 的第二张表：revisions 恰 1 行").hasSize(1);
     assertThat(alpha.simulateCalls).as("两个参与者各被调一次").isEqualTo(1);
     assertThat(beta.simulateCalls).isEqualTo(1);
   }
 
-  /** ★ 参与者清单在**构造期**定死：注册序不同 ⇒ 提案事件序相同（C25 的直接断言）。 */
+  /** ★ 参与者清单在**构造期**定死：注册序不同 ⇒ {@code started} 事件的 participants 序相同（C25 的直接断言）。 */
   @Test
   void participantOrderIsFixedAtConstructionNotByRegistrationOrder() {
     seedMain(2L);
@@ -313,19 +311,19 @@ class TimeAdvanceTest {
 
     forward.run(advanceCmd("cmd-f", "corr-f", 1L, 10L));
     // ★ 第二次推进的期望坐标必须是 **2**：第一次已经把 head 推到 2 了。写 1 会走 ① 的过期检查，
-    //   结局是 Conflict **没有 proposal 事件** ⇒ 拿到空列表，与第一次的 [alpha,beta] 一比就红——
+    //   结局是 Conflict **没有 started 事件** ⇒ 拿到空参与者列表，与第一次的 [alpha,beta] 一比就红——
     //   而那个红是**夹具错**，不是产品错（本用例首轮实测正是如此，在此留痕以免后人重踩）。
     reversed.run(advanceCmd("cmd-r", "corr-r", 2L, 10L));
 
-    assertThat(namespacesOfProposals("corr-r")).isEqualTo(namespacesOfProposals("corr-f"));
-    assertThat(namespacesOfProposals("corr-f")).containsExactly("alpha", "beta");
+    assertThat(startedParticipants("corr-r")).isEqualTo(startedParticipants("corr-f"));
+    assertThat(startedParticipants("corr-f")).containsExactly("alpha", "beta");
   }
 
   // ── ③ Resolve 的结局（R9 / R10）────────────────────────────────────────────────────
 
   /**
    * **R9**：写-写冲突 ⇒ {@code Rejected}，**拒绝是原子的**——{@code revisions} 一行不留，head 不动， 但事件链完整（{@code
-   * received + started + N×proposal + conflict + rejected}）。
+   * received + started + conflict + rejected}）。
    */
   @Test
   void writeWriteConflictIsRejectedAndLeavesNoRevision() {
@@ -349,8 +347,6 @@ class TimeAdvanceTest {
         .containsExactly(
             EventTypes.COMMAND_RECEIVED,
             EventTypes.TIME_ADVANCE_STARTED,
-            EventTypes.MODULE_PROPOSAL,
-            EventTypes.MODULE_PROPOSAL,
             EventTypes.TIMELINE_CONFLICT,
             EventTypes.COMMAND_REJECTED);
     JsonNode payload = json(conflictPayload("corr-ww"));
@@ -394,12 +390,10 @@ class TimeAdvanceTest {
         .as("★ 有向对：**读方 beta 在前、写方 alpha 在后**（不是字典序——排序会把方向抹掉）")
         .isEqualTo("[\"beta\",\"alpha\"]");
     assertThat(types("corr-rw"))
-        .as("冲突事件在 started/proposal 之后、finished 之前——它是**留痕**，不是结局")
+        .as("冲突事件在 started 之后、finished 之前——它是**留痕**，不是结局")
         .containsExactly(
             EventTypes.COMMAND_RECEIVED,
             EventTypes.TIME_ADVANCE_STARTED,
-            EventTypes.MODULE_PROPOSAL,
-            EventTypes.MODULE_PROPOSAL,
             EventTypes.TIMELINE_CONFLICT,
             EventTypes.TIME_ADVANCE_FINISHED,
             EventTypes.COMMAND_COMMITTED);
@@ -407,9 +401,9 @@ class TimeAdvanceTest {
 
   // ── 多切片提案（1b-1：WorldTimeProposal + 逐模块校验 + 原子性）────────────────────────
 
-  /** ★ 多切片参与者：每模块一条提案事件，两份变更集都进同一条 revision 的 changeset_json。 */
+  /** ★ 多切片参与者：两份变更集都进同一条 revision 的 changeset_json（module.proposal 已按 2026-09-30 裁定只留内存）。 */
   @Test
-  void multiSliceParticipantCommitsEveryModuleAndEmitsOneProposalEventPerModule() {
+  void multiSliceParticipantCommitsEveryModuleIntoOneRevision() {
     seedMain(2L);
     TimeAdvance route =
         route(
@@ -422,17 +416,12 @@ class TimeAdvanceTest {
 
     assertThat(result).isEqualTo(new CommandResult.Committed(ref("main", 2)));
     assertThat(types("corr-multi"))
-        .as("一个参与者两模块 ⇒ two module.proposal（每模块一条）")
+        .as("一个参与者两模块 ⇒ 仍然只落一条 revision 的事件链（提案不落事件）")
         .containsExactly(
             EventTypes.COMMAND_RECEIVED,
             EventTypes.TIME_ADVANCE_STARTED,
-            EventTypes.MODULE_PROPOSAL,
-            EventTypes.MODULE_PROPOSAL,
             EventTypes.TIME_ADVANCE_FINISHED,
             EventTypes.COMMAND_COMMITTED);
-    assertThat(namespacesOfProposals("corr-multi"))
-        .as("事件按参与者给出的模块顺序（参与者自己负责确定性）")
-        .containsExactly("alpha", "beta");
     assertThat(timeline.row(ref("main", 2)).orElseThrow().changesetJson())
         .as("★ 两份变更集进同一条 revision 的 changeset_json")
         .contains("\"alpha\"")
@@ -529,7 +518,6 @@ class TimeAdvanceTest {
         .containsExactly(
             EventTypes.COMMAND_RECEIVED,
             EventTypes.TIME_ADVANCE_STARTED,
-            EventTypes.MODULE_PROPOSAL,
             EventTypes.COMMAND_REJECTED);
   }
 
@@ -623,7 +611,6 @@ class TimeAdvanceTest {
         .containsExactly(
             EventTypes.COMMAND_RECEIVED,
             EventTypes.TIME_ADVANCE_STARTED,
-            EventTypes.MODULE_PROPOSAL,
             EventTypes.TIME_ADVANCE_FINISHED,
             EventTypes.COMMAND_COMMITTED);
     assertThat(loadCalls[0]).as("装配器被调一次（它真的跑了）").isEqualTo(1);
@@ -1057,11 +1044,18 @@ class TimeAdvanceTest {
     return events.byCorrelation(correlationId).stream().map(EventRow::type).toList();
   }
 
-  private List<String> namespacesOfProposals(String correlationId) {
-    return events.byCorrelation(correlationId).stream()
-        .filter(row -> row.type().equals(EventTypes.MODULE_PROPOSAL))
-        .map(row -> json(row.payload()).get("namespace").asText())
-        .toList();
+  /** 取该链上 {@code started} 事件的 {@code participants}（构造期定序的参与者清单）。 */
+  private List<String> startedParticipants(String correlationId) {
+    JsonNode started =
+        json(
+            events.byCorrelation(correlationId).stream()
+                .filter(row -> row.type().equals(EventTypes.TIME_ADVANCE_STARTED))
+                .findFirst()
+                .orElseThrow()
+                .payload());
+    List<String> participants = new ArrayList<>();
+    started.get("participants").forEach(node -> participants.add(node.asText()));
+    return participants;
   }
 
   /** 取该链上**唯一**那条冲突事件的载荷。 */

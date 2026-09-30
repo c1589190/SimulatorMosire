@@ -50,10 +50,10 @@ import org.slf4j.LoggerFactory;
  * conflicted} / {@code committed}）**与 revision 行同一事务**落盘。
  *
  * <p>★ **事件链只有信封支归本类**（裁定 46）：{@link AdvanceTime} 在 {@link #submit} 里被**原样递给注入的 {@link
- * AdvanceRoute}**，它那一支的全部事件（{@code received} → {@code started} → N× {@code module.proposal} →
- * {@code finished} → {@code committed}）**由 route 自己写**。理由：只有 route 开得了那个事务，"全部事件行 + revision
- * 行同一事务"才成立；若本类替它写 {@code received}，那条事件必然落在 **另一个事务**里，原子性当场就破了。{@link ForkBranch} 支见 {@link
- * #fork} 的注（已知缺口）。
+ * AdvanceRoute}**，它那一支的全部事件（{@code received} → {@code started} → {@code finished} → {@code
+ * committed}；{@code module.proposal} 已按 2026-09-30 裁定只留内存、不落盘）**由 route 自己写**。理由：只有 route
+ * 开得了那个事务，"全部事件行 + revision 行同一事务"才成立；若本类替它写 {@code received}，那条事件必然落在 **另一个事务**里，原子性当场就破了。{@link
+ * ForkBranch} 支见 {@link #fork} 的注（已知缺口）。
  *
  * <p>★ **为什么"received 也一起落"而不是一进门就写**：一条命令的全部事件要么都在、要么都不在。若 {@code received}
  * 先落、结局事件后落，进程死在中间就留下"收到了却不知结局"的半条链路，事后审计读不出它是被拒了还是崩了。 ⇒ 本类的四个结局方法（{@link #reject} / {@link
