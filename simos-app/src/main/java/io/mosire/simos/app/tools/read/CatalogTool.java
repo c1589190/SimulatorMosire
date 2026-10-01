@@ -151,6 +151,11 @@ public final class CatalogTool implements AgentTool {
                   + "（★ 人口批次的创世入口，R1；同 id 覆盖，anchorTick 缺省=世界当前 tick；"
                   + "批次必须落在**已有农村人口序列**的格上）"),
           Map.entry(
+              "social.ClearRegion",
+              "regionId（必填；必须在当前 map.regions() 里）"
+                  + "（★ GM-only 区域社会数据清空：目标 Region 格集内的 populations 键、groups.residence、"
+                  + "cities.at 或 city.region 命中项整条删除；不动其它 Region 与任何地图/单位/GOV/决策人结构）"),
+          Map.entry(
               "economy.Seed",
               "mapId, rulesVersion, entries[{q,r,"
                   + "industries[{id,name,regime,cycleDays,"
@@ -211,6 +216,13 @@ public final class CatalogTool implements AgentTool {
                   + "（★ GM-only：只登记 PENDING，迁移在日结算自动组织之前执行；"
                   + "普通决策人令 / RegisterEffect 不可嵌入它）"),
           Map.entry(
+              "economy.ClearRegion",
+              "regionId（必填；必须在当前 map.regions() 里）"
+                  + "（★ GM-only 区域经济数据清空：目标 Region 格集内 industries/markets 及可靠可定位的连带记录"
+                  + "（units/relations/operatorConditions/assetShares/classes/flows/memberships/allocations/"
+                  + "debtContracts/pledges/productionOrganizations/modeTransitions/classShares/classStandings/demands/"
+                  + "crisisSignals）整条删除；世界级 classFirst/发行审计/在途货物/laborSupply/制度定义不动）"),
+          Map.entry(
               "economy.GmAdjust",
               "adjustment(setMobilityPolicy|setClassFirstLender|forgiveClassFirstDebt"
                   + "|setCollectionPolicy|setProductionParameters|levyStock"
@@ -269,6 +281,11 @@ public final class CatalogTool implements AgentTool {
                   + "goods/money 至少一个非空、值不得为 0；同一 (owner,q,r) 不得重复；"
                   + "缺账 + 纯正增量 ⇒ 新建，缺账 + 任何负增量 ⇒ 拒；"
                   + "负增量使余额 < 0 或侵占冻结额（可支配 = 余额 − 冻结）⇒ 拒；整条原子）"),
+          Map.entry(
+              "actor.ClearRegion",
+              "regionId（必填；必须在当前 map.regions() 里）"
+                  + "（★ GM-only 区域 actor 数据清空：目标 Region 格集内 location 命中的 GoodsAccount 整条删除；"
+                  + "actors 只删除清账后在任何位置都不再持有账户的主体，仍有别处账户或本来就无账户的主体保留）"),
           Map.entry("sd.CreateNation", "nationId, name, homeRegionId, adminBudgetPerTick"),
           Map.entry(
               "sd.CreateArmy",

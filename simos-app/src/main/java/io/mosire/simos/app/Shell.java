@@ -23,6 +23,7 @@ import io.mosire.agentlib.tool.ToolExecutionGuard;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.resolve.ActorResolver;
+import io.mosire.simos.actor.spi.ActorClearRegionHandler;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
 import io.mosire.simos.actor.spi.AdjustAccountsHandler;
 import io.mosire.simos.app.access.DecisionCallerFactory;
@@ -55,6 +56,7 @@ import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.resolve.EconomyResolver;
 import io.mosire.simos.economy.spi.EconomyAddDemandHandler;
 import io.mosire.simos.economy.spi.EconomyCancelDemandHandler;
+import io.mosire.simos.economy.spi.EconomyClearRegionHandler;
 import io.mosire.simos.economy.spi.EconomyGmAdjustHandler;
 import io.mosire.simos.economy.spi.EconomyMigrateHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterCandidateHandler;
@@ -106,6 +108,7 @@ import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.facet.PopulationFacet;
 import io.mosire.simos.social.resolve.SocialResolver;
+import io.mosire.simos.social.spi.ClearRegionHandler;
 import io.mosire.simos.social.spi.CreateCityHandler;
 import io.mosire.simos.social.spi.SeedGroupsHandler;
 import io.mosire.simos.social.spi.SetPopulationHandler;
@@ -489,6 +492,9 @@ public final class Shell implements AutoCloseable {
                 new CreateCityHandler(),
                 new UpdateCityHandler(),
                 new SeedGroupsHandler(),
+                // ── P1b1（2026-10-01）：GM-only 区域社会数据清空（目标 Region 格集内的 populations/groups/cities）。
+                //   标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
+                new ClearRegionHandler(),
                 // ── economy（1 条，R2a）：一次播种某国全部格的初始经济状态（§十"验收目标 A"）──
                 new EconomySeedHandler(),
                 // ── economy（S3）：家户迁移的最小合法入口（只搬视图/份额，不生成人口；账 location 不搬）──
@@ -510,6 +516,9 @@ public final class Shell implements AutoCloseable {
                 //   照进 commandTargets；但排除出令白名单 / RegisterEffect / 决策人目录（见下方
                 //   catalogCommandTypes 与 directiveCommandTypes 的拆分）。──
                 new EconomyGmAdjustHandler(),
+                // ── P1b1（2026-10-01）：GM-only 区域经济数据清空（目标格 industries/markets + 可靠可定位的连带记录）。
+                //   标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
+                new EconomyClearRegionHandler(),
                 // ── economy（阶段 7 第一段）：地方债借入/还款两条 economy 原语。★ 同样 GM-only：单提其中一条会造成
                 //   资金悬空（放贷方已扣/国库未收，或反之），唯一受支持的调用面是配套工具批
                 //   （economy.UnitBorrow + actor.AdjustAccounts / actor.AdjustAccounts +
@@ -525,6 +534,8 @@ public final class Shell implements AutoCloseable {
                 //   （整条原子；缺账 + 纯正增量新建）。非 sd 前缀 ⇒ 自动进 drainableCommandTypes；
                 //   同时进 commandTypes ⇒ simos.command.submit 的目标声明表（CommandTargets）同源认得它。──
                 new AdjustAccountsHandler(),
+                // ── P1b1（2026-10-01）：GM-only 区域 actor 账本清空（目标格账本 + 清账后不再持有账户的主体）。──
+                new ActorClearRegionHandler(),
                 new CreateNationHandler(),
                 new CreateArmyHandler(),
                 // ── 阶段 12 后续赋值（2026-10-01 Army 主子改派缺口）：Army 创建后的主子改派/解除。★ GM-only

@@ -394,8 +394,11 @@ final class RegionSeedPlan {
    *
    * <p>★ 逐格经济只认 {@code industries}（按 {@link IndustryHexKeys} 的 id 语法）与 {@code markets}（格键）——世界级的
    * {@code classFirst} 不在此列，见类注。
+   *
+   * <p>★ <b>P1b1 起包内可见</b>（原 {@code private}）：{@code simos.region.clearData} 的只读 pre-scan 复用同一次扫描，
+   * 避免"清空工具的命中清单"与"播种工具的 clean gate"各写一份而漂开。语义、命中序、样本数与拒因一字未动。
    */
-  private static CleanGate inspectCleanGate(SimulationState state, Region region) {
+  static CleanGate inspectCleanGate(SimulationState state, Region region) {
     Set<HexCoord> hexes = region.hexes();
     List<Hit> hits = new ArrayList<>();
     SocialData social = ToolSupport.socialData(state);
