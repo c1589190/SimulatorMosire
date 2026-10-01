@@ -1,6 +1,6 @@
-// unit.js —— /unit 页专用：列表 + 详情 + 8 条命令表单（M5 T9，spec §8.3/§四）。
+// unit.js —— /unit 页专用：列表 + 详情 + 9 条命令表单（M5 T9，spec §8.3/§四；D3b 适配通用 Unit 表）。
 // ★ 命令一律经 /api/command 提交；表单只负责把字段装配成 payloadJson 文本。
-// ★ payload 字段名逐条对齐 spec §四（unit 命令面补齐表）。
+// ★ payload 字段名逐条对齐 spec §四（unit 命令面补齐表）；D3a 起人力/装备是 [{type,amount}] 有序表。
 
 (function () {
   "use strict";
@@ -8,12 +8,12 @@
   var app = window.SimosApp;
   var api = window.SimosApi;
 
-  // 8 条命令的字段定义。kind 决定如何装配进 payload。
-  //   text  : 纯字符串
-  //   int   : 整数
-  //   map   : "k=v,k=v" → {k:"v"}（equipment）
-  //   coord : "q,r" → {q,r}；空 → null
-  //   coords: "q,r;q,r" → [{q,r}...]
+  // 9 条命令的字段定义。kind 决定如何装配进 payload。
+  //   text    : 纯字符串
+  //   int     : 整数
+  //   entries : "类型=整数；类型=整数" → [{type,amount}…]（人力/装备同构；保序、同表 type 不重复）
+  //   coord   : "q,r" → {q,r}；空 → null
+  //   coords  : "q,r;q,r" → [{q,r}...]
   var COMMANDS = [
     {
       type: "unit.CreateUnit",
@@ -22,8 +22,8 @@
         { name: "id", label: "id", kind: "text", required: true },
         { name: "name", label: "name", kind: "text", required: true },
         { name: "position", label: "position（q,r）", kind: "coord", required: true },
-        { name: "member", label: "member", kind: "int", required: true },
-        { name: "equipment", label: "equipment（k=v,k=v）", kind: "map" },
+        { name: "manpower", label: "manpower（类型=整数；留空=空表）", kind: "entries" },
+        { name: "equipment", label: "equipment（类型=整数；留空=空表）", kind: "entries" },
         { name: "speed", label: "speed", kind: "int", required: true },
         { name: "mobilityPerMille", label: "mobilityPerMille", kind: "int", required: true },
         { name: "parent", label: "parent（可空）", kind: "text" },
@@ -38,12 +38,31 @@
       ],
     },
     {
-      type: "unit.SetStrength",
-      help: "改兵力与装备。",
+      type: "unit.SetComposition",
+      help: "整表复写人力与装备（空输入=清空该表；未知类型合法）。",
       fields: [
         { name: "id", label: "id", kind: "text", required: true },
-        { name: "member", label: "member", kind: "int", required: true },
-        { name: "equipment", label: "equipment（k=v,k=v）", kind: "map" },
+        { name: "manpower", label: "manpower（类型=整数；留空=清空）", kind: "entries" },
+        { name: "equipment", label: "equipment（类型=整数；留空=清空）", kind: "entries" },
+      ],
+    },
+    {
+      type: "unit.AdjustComposition",
+      help: "GM 调试直改：有符号增量（正增量可新建类型；负增量要求类型已存在且 |Δ| ≤ 当前量）。",
+      fields: [
+        { name: "id", label: "id", kind: "text", required: true },
+        {
+          name: "manpower",
+          label: "manpower（类型=有符号整数；留空=不动）",
+          kind: "entries",
+          signed: true,
+        },
+        {
+          name: "equipment",
+          label: "equipment（类型=有符号整数；留空=不动）",
+          kind: "entries",
+          signed: true,
+        },
       ],
     },
     {
@@ -123,26 +142,44 @@
       .map(parseCoord);
   }
 
-  function parseMap(raw) {
-    var out = {};
-    if (raw === null || raw === "") {
+  /**
+   * 人力/装备文本 → **有序条目数组** `[{type,amount}…]`（D-006 / R1：两表同构）。
+   *
+   * <p>格式 `类型=整数；类型=整数`（分隔符 `,` `;` `；` 或换行）：保序、`amount` 必须为整数、
+   * 同表 `type` 不得重复；空输入 ⇒ `[]`（空表）。`signed=true`（AdjustComposition）时允许负数。
+   * 坏输入抛 Error（消息含出错片段），由调用方显示——不静默丢字段。
+   */
+  function parseEntries(raw, signed) {
+    var out = [];
+    if (raw === null || raw === undefined || raw === "") {
       return out;
     }
+    var seen = {};
     String(raw)
-      .split(",")
-      .forEach(function (pair) {
-        var trimmed = pair.trim();
-        if (trimmed === "") {
+      .split(/[,;；\n]/)
+      .forEach(function (piece) {
+        var item = piece.trim();
+        if (item === "") {
           return;
         }
-        var eq = trimmed.indexOf("=");
-        if (eq < 0) {
-          throw new Error("装备格式应为 k=v：" + trimmed);
+        var eq = item.indexOf("=");
+        if (eq <= 0) {
+          throw new Error("人力/装备格式应为 类型=整数：" + item);
         }
-        var key = trimmed.slice(0, eq).trim();
-        var value = trimmed.slice(eq + 1).trim();
-        var n = Number(value);
-        out[key] = value !== "" && Number.isFinite(n) ? n : value;
+        var type = item.slice(0, eq).trim();
+        var amountText = item.slice(eq + 1).trim();
+        var amount = Number(amountText);
+        if (!type || amountText === "" || !Number.isInteger(amount)) {
+          throw new Error("人力/装备项非法（类型非空、数量为整数）：" + item);
+        }
+        if (!signed && amount < 0) {
+          throw new Error("数量必须 ≥ 0 的整数：" + item);
+        }
+        if (Object.prototype.hasOwnProperty.call(seen, type)) {
+          throw new Error("同一张表不得有重复类型：" + type);
+        }
+        seen[type] = true;
+        out.push({ type: type, amount: amount });
       });
     return out;
   }
@@ -155,6 +192,12 @@
     def.fields.forEach(function (field) {
       var raw = app.fieldValue(form, field.name);
       if (raw === null || raw === undefined) {
+        // ★ D3b：人力/装备的**空输入 = 空表**（`[]`）——payload 键必须照发（后端 requireComposition
+        //   要求数组字段存在，空数组合法）；不能走下面"必填"的抛错分支。
+        if (field.kind === "entries") {
+          payload[field.name] = [];
+          return;
+        }
         if (field.required) {
           throw new Error("字段 " + field.name + " 必填");
         }
@@ -169,8 +212,8 @@
           throw new Error("字段 " + field.name + " 必须是整数");
         }
         payload[field.name] = n;
-      } else if (field.kind === "map") {
-        payload[field.name] = parseMap(raw);
+      } else if (field.kind === "entries") {
+        payload[field.name] = parseEntries(raw, field.signed === true);
       } else if (field.kind === "coord") {
         payload[field.name] = parseCoord(raw);
       } else if (field.kind === "coords") {
@@ -207,7 +250,14 @@
       var input = app.el("input", {
         name: field.name,
         type: field.kind === "int" ? "number" : "text",
-        placeholder: field.kind === "coords" ? "示例：1,1;1,2" : field.kind === "coord" ? "示例：1,1" : "",
+        placeholder:
+          field.kind === "coords"
+            ? "示例：1,1;1,2"
+            : field.kind === "coord"
+              ? "示例：1,1"
+              : field.kind === "entries"
+                ? "示例：步兵=100；骑兵=20"
+                : "",
       });
       container.appendChild(app.el("label", { text: field.label + (field.required ? " *" : "") }, [input]));
       input.addEventListener("input", refreshEnvelope);
@@ -231,6 +281,18 @@
 
   // ── 列表与详情 ───────────────────────────────────────────────────
 
+  /** 有序条目表 → 列表/详情读侧文本（`类型=数量；…`；空表「（空）」）。 */
+  function entriesText(entries) {
+    if (!Array.isArray(entries) || !entries.length) {
+      return "（空）";
+    }
+    return entries
+      .map(function (entry) {
+        return entry && entry.type !== undefined ? entry.type + "=" + entry.amount : "?";
+      })
+      .join("；");
+  }
+
   function loadUnits() {
     var status = app.byId("units-status");
     app.statusMessage(status, "载入单位列表…", "muted");
@@ -249,7 +311,7 @@
             app.el("tr", null, [
               app.el("th", { text: "id" }),
               app.el("th", { text: "name" }),
-              app.el("th", { text: "member" }),
+              app.el("th", { text: "manpower" }),
               app.el("th", { text: "position" }),
               app.el("th", { text: "movement" }),
             ]),
@@ -261,7 +323,7 @@
               var row = app.el("tr", { "data-id": u.id }, [
                 app.el("td", { text: app.text(u.id) }),
                 app.el("td", { text: app.text(u.name) }),
-                app.el("td", { text: app.text(u.member) }),
+                app.el("td", { text: entriesText(u.manpower) }),
                 app.el("td", {
                   text: u.position ? u.position.q + "," + u.position.r : "—",
                 }),
@@ -318,8 +380,8 @@
         [
           ["id", body.id],
           ["name", body.name],
-          ["member", body.member],
-          ["equipment", JSON.stringify(body.equipment)],
+          ["manpower", entriesText(body.manpower)],
+          ["equipment", entriesText(body.equipment)],
           ["speed", body.speed],
           ["mobilityPerMille", body.mobilityPerMille],
           ["parent", body.parent],

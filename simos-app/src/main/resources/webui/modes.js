@@ -37,11 +37,11 @@
       id: "unit",
       label: "单位移动编辑",
       // ★ spec §三 只列了 PlanRoute / CancelRoute；但 M7 T7 起"单位移动与编辑"面板**已经**有
-      //   ReparentUnit / SetStrength / DisbandUnit / CreateUnit 四个真写入口。把它们排除会让既有能力
+      //   ReparentUnit / SetComposition / DisbandUnit / CreateUnit 四个真写入口。把它们排除会让既有能力
       //   当场退化（MUST NOT「不破坏既有能力」）⇒ 本表按**源码**的实际写面列全，并在报告里记为与 spec 的分歧。
       //
       // ★★ T10-i 裁定（只读取证后）：本表的语义 = **工作台**（index.html + map.js/app.js）实际发出的写命令面，
-      //   不是"后端注册面"。依据：工作台唯一写路径是 app.writeCommand（app.js），map.js 里的 unit.* 写恰是这 6 条；
+      //   不是"后端注册面"。依据：工作台唯一写路径是 app.writeCommand（app.js），map.js 里的 unit.* 写恰是这 8 条；
       //   unit.RenameUnit / unit.PlaceAt 只由**调试页** unit.js 经 SimosApi.submitCommand **直发**（绕开本白名单），
       //   故**有意**不列——它们不是"漏"，是"不在工作台上"。T9 新注册的 12 条 unit 命令在工作台**无 UI 入口**
       //   （unit-ext 是 MCP/agent-only，见 T10-l 范围声明），同样有意不列。
@@ -55,7 +55,9 @@
         "unit.PlanRoute",
         "unit.CancelRoute",
         "unit.ReparentUnit",
-        "unit.SetStrength",
+        // ★ D3b（2026-10-02 / D3a 命令 rename）：旧 unit.SetStrength 已删，工作台写的是 unit.SetComposition
+        //   （整表复写 [{type,amount}…]）——白名单漏改会被 isWriteAllowed fail-closed 静默发不出。
+        "unit.SetComposition",
         "unit.DisbandUnit",
         "unit.CreateUnit",
         "unit.AttachUnit",

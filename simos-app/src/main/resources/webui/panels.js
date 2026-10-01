@@ -34,6 +34,7 @@
   var regionMembershipSummary = readout.regionMembershipSummary;
   var millisToMpText = readout.millisToMpText;
   var perMilleToRateText = readout.perMilleToRateText;
+  var compositionText = readout.compositionText;
   var equipmentText = readout.equipmentText;
   var hexLabel = readout.hexLabel;
   var movementReadout = readout.movementReadout;
@@ -869,7 +870,9 @@
         appendRowGroup(detail, "单位", function (dl) {
           appendRow(dl, "id", unit.id);
           appendRow(dl, "name", unit.name);
-          appendRow(dl, "人数", unit.member);
+          // ★ D3b（D-006 / R1）：人力/装备都是有序条目表 [{type,amount}…]；旧 `member:int` 键已随
+          //   D3a/D-011 删除，这里不再读它（缺字段渲染成"（空）"，不回落旧语义）。
+          appendRow(dl, "人力", compositionText(unit.manpower));
           appendRow(dl, "装备", equipmentText(unit.equipment));
           // ★ B9：单位**自身**状态（此前 /api/unit 不发这个字段 ⇒ 这里拿不到、也不许编；该字段已补在
           //   ApiViews.unit() / ToolSupport.unit()）。词表外原样透出，不掩成空。

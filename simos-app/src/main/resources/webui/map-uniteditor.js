@@ -26,7 +26,7 @@
   var host = core.host; // 对象按引用共享：host.routeMode / routePath / editBusy 的改写对 map.js 可见
   var coordText = core.coordText; // 纯函数，仍在 map.js
   var isAdjacent = core.isAdjacent; // 纯函数，仍在 map.js
-  var parseEquipmentText = core.parseEquipmentText; // 纯函数，仍在 map.js
+  var parseCompositionText = core.parseCompositionText; // 纯函数，仍在 map.js（D3b：人力/装备同构的有序条目表）
 
   // ── 单位移动与编辑模式（M7 T7，判据⑤ / R8）[原文：map.js 2724-3066] ─────────────────
 
@@ -306,30 +306,52 @@
     return result;
   }
 
+  /** 有序条目数组 → 一行摘要（`类型=数量；…`；空表「（空）」）——只用于状态行显示，不参与提交。 */
+  function compositionSummaryText(entries) {
+    if (!entries || !entries.length) {
+      return "（空）";
+    }
+    return entries
+      .map(function (entry) {
+        return entry.type + "=" + entry.amount;
+      })
+      .join("；");
+  }
+
   async function submitStrength() {
     var id = requireSelectedUnit("改编制");
     if (!id || host.editBusy) {
       return null;
     }
-    var memberInput = app.byId("unit-strength-member");
-    var member = Number(memberInput ? memberInput.value : NaN);
-    if (!Number.isInteger(member) || member < 0) {
-      setEditStatus("人数必须是 ≥ 0 的整数。", "warn");
-      return null;
-    }
+    // ★ D3b（D-006 / R1）：人力与装备都是**有序条目数组** [{type,amount}…]（不是 member:int /
+    //   equipment-map）；两张表都整表复写，空输入 = 空表（清空该表）。
+    var manpower;
     var equipment;
     try {
-      equipment = parseEquipmentText(app.byId("unit-strength-equipment").value);
+      manpower = parseCompositionText(app.byId("unit-strength-manpower").value);
+      equipment = parseCompositionText(app.byId("unit-strength-equipment").value);
     } catch (e) {
       setEditStatus(e.message, "warn");
       return null;
     }
     host.editBusy = true;
     setEditStatus("改编制 " + id + " …", "muted");
-    var result = await app.writeCommand("unit.SetStrength", { id: id, member: member, equipment: equipment });
+    var result = await app.writeCommand("unit.SetComposition", {
+      id: id,
+      manpower: manpower,
+      equipment: equipment,
+    });
     host.editBusy = false;
     setEditStatus(
-      result.ok ? "已改编制 " + id + "（人数 " + member + "）" : result.message,
+      result.ok
+        ? "已改编制 " +
+            id +
+            "（人力 " +
+            compositionSummaryText(manpower) +
+            "；装备 " +
+            compositionSummaryText(equipment) +
+            "）"
+        : result.message,
       result.ok ? "ok" : result.kind === "rejected" ? "err" : "warn"
     );
     return result;
@@ -417,7 +439,6 @@
     var name = app.byId("unit-create-name").value.trim();
     var q = Number(app.byId("unit-create-q").value);
     var r = Number(app.byId("unit-create-r").value);
-    var member = Number(app.byId("unit-create-member").value);
     var speed = Number(app.byId("unit-create-speed").value);
     var mobility = Number(app.byId("unit-create-mobility").value);
     var parent = app.byId("unit-create-parent").value.trim();
@@ -425,20 +446,16 @@
       setEditStatus("新建单位需要 id、名称、整数 q/r。", "warn");
       return null;
     }
-    if (
-      !Number.isInteger(member) ||
-      member < 0 ||
-      !Number.isInteger(speed) ||
-      speed < 1 ||
-      !Number.isInteger(mobility) ||
-      mobility < 1
-    ) {
-      setEditStatus("新建单位：人数 ≥ 0、速度 ≥ 1、机动‰ ≥ 1。", "warn");
+    if (!Number.isInteger(speed) || speed < 1 || !Number.isInteger(mobility) || mobility < 1) {
+      setEditStatus("新建单位：速度 ≥ 1、机动‰ ≥ 1。", "warn");
       return null;
     }
+    // ★ D3b（D-006 / R1）：CreateUnit 的 manpower / equipment 都是有序条目数组；空输入 = 空表。
+    var manpower;
     var equipment;
     try {
-      equipment = parseEquipmentText(app.byId("unit-create-equipment").value);
+      manpower = parseCompositionText(app.byId("unit-create-manpower").value);
+      equipment = parseCompositionText(app.byId("unit-create-equipment").value);
     } catch (e) {
       setEditStatus(e.message, "warn");
       return null;
@@ -447,7 +464,7 @@
       id: id,
       name: name,
       position: { q: q, r: r },
-      member: member,
+      manpower: manpower,
       equipment: equipment,
       speed: speed,
       mobilityPerMille: mobility,

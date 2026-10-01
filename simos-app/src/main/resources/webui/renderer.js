@@ -580,7 +580,8 @@
             position: u.position,
             // ★ F1：保留服务端已发出的编制/身份/状态读数（markerGroups 只读 id/parent/position/status，
             //   多带字段不改变它的 pure 行为；module/jurisdiction 等保持"键缺席"语义，不拿 null 冒充）。
-            member: u.member,
+            // ★ D3b（2026-10-02）：旧 Unit.member 字段已随 D-006 退役 ⇒ 这里不再拷贝（marker 组的 member
+            //   是 hexgeom 由单位 id 现生成的编队成员表，与本行无关）。
             status: u.status === undefined ? null : u.status,
             module: u.module,
             jurisdiction: u.jurisdiction,

@@ -2445,30 +2445,39 @@
   }
 
   /**
-   * 解析装备文本 `名=整数；名=整数`（分隔符 `;` `；` 或换行）⇒ `{名:整数}`；空串 ⇒ `{}`（清空语义）。
-   * 坏输入抛 Error（消息含出错片段），由调用方显示——不静默丢字段。
+   * D3b（D-006 / R1）：人力与装备**同构**，都是**有序条目数组** `[{type,amount}…]`。
+   *
+   * <p>解析文本 `类型=整数；类型=整数`（分隔符 `,` `;` `；` 或换行）⇒ 条目数组：**保序**（先写的在前）、
+   * 同表 `type` 不得重复、`amount` 必须是 ≥ 0 的整数；空串 ⇒ `[]`（空表 / 清空语义）。
+   * 坏输入抛 Error（消息含出错片段），由调用方显示——不静默丢字段，也**不回落**旧的 `{类型:数量}` map 语义。
    */
-  function parseEquipmentText(text) {
-    var out = {};
+  function parseCompositionText(text) {
+    var out = [];
     var raw = (text || "").trim();
     if (raw === "") {
       return out;
     }
-    raw.split(/[;；\n]/).forEach(function (piece) {
+    var seen = {};
+    raw.split(/[,;；\n]/).forEach(function (piece) {
       var item = piece.trim();
       if (item === "") {
         return;
       }
       var eq = item.indexOf("=");
       if (eq <= 0) {
-        throw new Error("装备项缺少「名=整数」：" + item);
+        throw new Error("人力/装备项缺少「类型=整数」：" + item);
       }
-      var key = item.slice(0, eq).trim();
-      var value = Number(item.slice(eq + 1).trim());
-      if (!key || !Number.isInteger(value) || value < 0) {
-        throw new Error("装备项非法（名非空、值 ≥ 0 的整数）：" + item);
+      var type = item.slice(0, eq).trim();
+      var amountText = item.slice(eq + 1).trim();
+      var amount = Number(amountText);
+      if (!type || amountText === "" || !Number.isInteger(amount) || amount < 0) {
+        throw new Error("人力/装备项非法（类型非空、数量 ≥ 0 的整数）：" + item);
       }
-      out[key] = value;
+      if (Object.prototype.hasOwnProperty.call(seen, type)) {
+        throw new Error("同一张表不得有重复类型：" + type);
+      }
+      seen[type] = true;
+      out.push({ type: type, amount: amount });
     });
     return out;
   }
@@ -2578,7 +2587,7 @@
     // ★ M12 第五波：搬出的宿主文件（map-uniteditor.js / map-hostpage.js）需要的纯函数与状态写入口。
     coordText: coordText,
     isAdjacent: isAdjacent,
-    parseEquipmentText: parseEquipmentText,
+    parseCompositionText: parseCompositionText,
     persistRegionNamesEnabled: persistRegionNamesEnabled,
     setRegionNamesEnabled: setRegionNamesEnabled,
     hexColor: hexColor,
@@ -2727,7 +2736,7 @@
     hexDistance: hexDistance,
     isAdjacent: isAdjacent,
     remainingPath: remainingPath,
-    parseEquipmentText: parseEquipmentText,
+    parseCompositionText: parseCompositionText,
     // ★ D2（2026-10-02 / D-012）：Army 交战记录 → renderer `setCombats` 形状（纯函数、无 DOM/IO；
     //   门禁可直接断言"id→combatId / participants 直用 / name·stage 留空 / 缺 hex 返回 null"）。
     armyCombatForRenderer: armyCombatForRenderer,

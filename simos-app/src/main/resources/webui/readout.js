@@ -153,20 +153,35 @@
     );
   }
 
-  /** 装备表渲染成 `键=值；…`（空表显示"（空）"）。 */
-  function equipmentText(equipment) {
-    if (!equipment) {
+  /**
+   * 人力/装备**有序条目表**渲染成 `类型=数量；…`（空表 / 缺表显示"（空）"）。
+   *
+   * <p>★ D3b（D-006 / R1）：入参是 `[{type,amount}…]`（人力与装备同构）；**不解释**旧的 `{类型:数量}` map
+   * ——遇到非数组形状只报"（未识别表形状）"，不回落旧数据语义（D-011 / R4 不背兼容）。
+   */
+  function compositionText(entries) {
+    if (entries === null || entries === undefined) {
       return "（空）";
     }
-    var keys = Object.keys(equipment);
-    if (!keys.length) {
+    if (!Array.isArray(entries)) {
+      return "（未识别表形状）";
+    }
+    if (!entries.length) {
       return "（空）";
     }
-    return keys
-      .map(function (key) {
-        return key + "=" + equipment[key];
+    return entries
+      .map(function (entry) {
+        if (!entry || entry.type === null || entry.type === undefined) {
+          return "?";
+        }
+        return entry.type + "=" + entry.amount;
       })
       .join("；");
+  }
+
+  /** 旧调用点名（`readout.equipmentText`）保留，渲染形态与 {@link compositionText} 同一份；无旧 map 语义。 */
+  function equipmentText(equipment) {
+    return compositionText(equipment);
   }
 
   function hexLabel(coord) {
@@ -282,6 +297,7 @@
     formatValue: formatValue,
     millisToMpText: millisToMpText,
     perMilleToRateText: perMilleToRateText,
+    compositionText: compositionText,
     equipmentText: equipmentText,
     hexLabel: hexLabel,
     movementReadout: movementReadout,
