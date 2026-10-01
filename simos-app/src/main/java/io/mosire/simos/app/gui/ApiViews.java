@@ -124,10 +124,16 @@ import io.mosire.simos.social.population.PopulationHeadline;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.social.population.UrbanRural;
+import io.mosire.simos.unit.ArmyFormation;
+import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Movement;
+import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.Route;
+import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitModule;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.move.MovementState;
@@ -4496,6 +4502,12 @@ public final class ApiViews {
    * 经 {@code ToolSupport.unit} 直接调本方法 ⇒ 新字段**一处加、两面同形**（原先两处各写一份，加字段就得记得改两处）。
    *
    * <p>★ {@code combat} 是**真实交战记录**（不是 GUI 现推的"同格多军队"）：见 {@link #combatOf}。
+   *
+   * <p>★★ <b>P4 只读 additive（2026-10-01）</b>：{@code unit.module()} 存在 ⇒ 追加 {@code module}（{@code
+   * kind} + gov 的 {@code level/superiorGov/staff/policy} 或 army 的 {@code masterGov/role}）；{@code
+   * unit.jurisdiction()} 存在 ⇒ 追加 {@code jurisdiction}（{@code regions}→税率、三个 levy 单命令上限、已退役的 {@code
+   * administrationPerMille}）。两者缺席 ⇒ <b>键缺席</b>（不是 null/空对象），旧键逐字不变——与 {@code map.overview} 的 {@code
+   * neighbors} 同款"你不是这种单位"与"你这种单位没有"必须可分。
    */
   public static Map<String, Object> unit(
       Unit unit, UnitState units, SimosTimestamp at, GameMap map, SdState sd) {
@@ -4526,6 +4538,78 @@ public final class ApiViews {
     view.put(
         "formationSize", rootId.map(root -> units.formationMembers(root, at).size()).orElse(1));
     view.put("formationSpeed", rootId.map(root -> units.formationSpeed(root, at)).orElse(0));
+    // ★★ P4：编制标签与管辖的只读读回（缺席 ⇒ 键缺席，不改任何旧键）。
+    unit.module().ifPresent(module -> view.put("module", unitModuleView(module)));
+    unit.jurisdiction()
+        .ifPresent(jurisdiction -> view.put("jurisdiction", unitJurisdictionView(jurisdiction)));
+    return view;
+  }
+
+  /**
+   * 编制标签视图（P4 gov 读回）：两个 {@link UnitModule} sealed 子类型各自的字段<b>逐值透出</b>，不派生任何力量/效率数值。
+   *
+   * <p>★ {@code kind} 取 {@code "gov"|"army"}：与 {@code UnitModule} 线格式的 {@code @class} 子类型名、以及
+   * {@code Affiliation.Gov} 的 {@code kind:"gov"} 同一口径；{@code superiorGov}/{@code masterGov} 缺席 ⇒
+   * {@code null}（"无上级/未认主子"是编制自身的状态，不是键缺失）。
+   */
+  private static Map<String, Object> unitModuleView(UnitModule module) {
+    if (module instanceof GovFormation gov) {
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("kind", "gov");
+      view.put("level", gov.level().name());
+      view.put("superiorGov", gov.superiorGov().map(UnitId::value).orElse(null));
+      view.put("staff", unitStaffView(gov.staff()));
+      view.put("policy", officePolicyView(gov.policy()));
+      return view;
+    }
+    if (module instanceof ArmyFormation army) {
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("kind", "army");
+      view.put("masterGov", army.masterGov().map(UnitId::value).orElse(null));
+      view.put("role", army.role());
+      return view;
+    }
+    throw new IllegalStateException("未知的 UnitModule 实现: " + module.getClass().getName());
+  }
+
+  /** 行政在编人数视图（角色名 → 人数；{@link GovFormation#staff()} 的插入序原样保留）。 */
+  private static Map<String, Object> unitStaffView(Map<StaffRole, Long> staff) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    for (Map.Entry<StaffRole, Long> entry : staff.entrySet()) {
+      view.put(entry.getKey().name(), entry.getValue());
+    }
+    return view;
+  }
+
+  /** {@link OfficePolicy} 视图（五个字段全给；{@code staffCap} 角色名键、保序）。 */
+  private static Map<String, Object> officePolicyView(OfficePolicy policy) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("grainPerStaffPerTick", policy.grainPerStaffPerTick());
+    view.put("clothPerStaffPerCycle", policy.clothPerStaffPerCycle());
+    view.put("moneyPerStaffPerTick", policy.moneyPerStaffPerTick());
+    view.put("retirementPerStaff", policy.retirementPerStaff());
+    view.put("staffCap", unitStaffView(policy.staffCap()));
+    return view;
+  }
+
+  /**
+   * 管辖视图（P4 gov 读回）：{@code regions} = region id → 每周期长期税率（‰）的<b>有序</b>映射（{@code
+   * taxRatePerMilleByRegion} 的 JSON 形），另附三个 {@code levy*CapPerCommand}（一条抽取命令的上限；0 = 无额度） 与已退役的
+   * {@code administrationPerMille}。
+   *
+   * <p>★ {@code administrationPerMille} 仅旧档兼容、生产路径零读取（阶段 11b）；这里如实透出，<b>不回写、不参与任何判定</b>。
+   */
+  private static Map<String, Object> unitJurisdictionView(Jurisdiction jurisdiction) {
+    Map<String, Object> regions = new LinkedHashMap<>();
+    for (Map.Entry<RegionId, Long> entry : jurisdiction.taxRatePerMilleByRegion().entrySet()) {
+      regions.put(entry.getKey().value(), entry.getValue());
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("regions", regions);
+    view.put("levyGrainCapPerCommand", jurisdiction.levyGrainCapPerCommand());
+    view.put("levyMoneyCapPerCommand", jurisdiction.levyMoneyCapPerCommand());
+    view.put("levyManpowerCapPerCommand", jurisdiction.levyManpowerCapPerCommand());
+    view.put("administrationPerMille", jurisdiction.administrationPerMille());
     return view;
   }
 

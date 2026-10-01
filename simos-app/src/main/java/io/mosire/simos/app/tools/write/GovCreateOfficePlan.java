@@ -1,7 +1,9 @@
 package io.mosire.simos.app.tools.write;
 
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.GovLevel;
@@ -32,9 +34,10 @@ import java.util.Set;
  *
  * <p>★★ <b>新单位参数（控制方口径，逐值写死；不在类外再拼一份）</b>：{@code member=0}、{@code equipment={}}、{@code
  * speed=1}、{@code mobilityPerMille=500}、{@code position=(q,r)}、<b>无 parent</b>（顶层，{@code
- * attached=false}）、{@code status} 走 {@code unit.CreateUnit} 的缺省 {@code MOVING}、{@code jurisdiction}
- * 走创建缺省 {@code empty}、{@code module} 由同批 {@code unit.SetGovFormation} 落。{@code q}/{@code r} 是
- * {@link HexCoord} 的合法 int 坐标（工具层已折）。
+ * attached=false}）、{@code status} 走 {@code unit.CreateUnit} 的缺省 {@code MOVING}、{@code module} 由同批
+ * {@code unit.SetGovFormation} 落。{@code jurisdiction}：{@code regions} 非空时由同批 {@code
+ * unit.SetJurisdiction} 落（新单位本无管辖，故不依赖旧值合并）；{@code regions} 为空（仅 CENTRAL 允许）时不落该命令、 保持创建缺省 {@code
+ * empty}。{@code q}/{@code r} 是 {@link HexCoord} 的合法 int 坐标（工具层已折）。
  *
  * <p>★★ <b>决策人三件（载荷先读 {@code CreateDecisionMakerHandler}/{@code SdPayloads} 定准）</b>：
  *
@@ -49,21 +52,24 @@ import java.util.Set;
  *       与缺省等价，故不产生 {@code sd.SetDecisionMakerAccess} 命令。
  * </ul>
  *
- * <p>★★ <b>批顺序（固定，可复现）</b>：{@code unit.CreateUnit} → {@code unit.SetGovFormation} → {@code
- * sd.CreateDecisionMaker} →（{@code providerId} 给了才落）{@code sd.SetDecisionMakerProvider} →（{@code
- * accessLimit} 给了非空对象才落）{@code sd.SetDecisionMakerAccess} → {@code sd.PutInfo}（key={@code
- * createOffice}， address=单位 canonical，value=JSON <b>字符串</b>，note=人可读摘要）。四条/六条共享同一 batchId 与同一
- * branch/expectedRevision ⇒ 一条 revision。
+ * <p>★★ <b>批顺序（固定，可复现）</b>：{@code unit.CreateUnit} → {@code unit.SetGovFormation} →（{@code regions}
+ * 非空才落）{@code unit.SetJurisdiction} → {@code sd.CreateDecisionMaker} →（{@code providerId}
+ * 给了才落）{@code sd.SetDecisionMakerProvider} →（{@code accessLimit} 给了非空对象才落）{@code
+ * sd.SetDecisionMakerAccess} → {@code sd.PutInfo}（key={@code createOffice}， address=单位
+ * canonical，value=JSON <b>字符串</b>，note=人可读摘要）。 四条/五条/七条共享同一 batchId 与同一 branch/expectedRevision ⇒
+ * 一条 revision。
  *
  * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：{@code unitId}/{@code name}/
  * {@code decisionMakerId} 非空白；{@code unitId} 在 unit 切片里<b>必须不存在</b>；{@code decisionMakerId} 在 sd
- * 切片里 <b>必须不存在</b>；{@code level} 必须是 {@link GovLevel} 词表；{@code superiorGov} 非空 ⇒ 必须存在、带 {@link
- * GovFormation}、且不得等于新 unitId；{@code cadence ≥ 1}。批内域层拒（如一单位一标签、N9 白名单）由 {@code submitBatch}
- * 整条拒，逐条真拒因折成 {@code REJECTED}。
+ * 切片里 <b>必须不存在</b>；{@code level} 必须是 {@link GovLevel} 词表；{@code regions} 每个元素必须存在于当前 map 的 {@code
+ * regions()}（具名拒，不静默丢）；{@code level=PROVINCE} ⇒ {@code regions} 必须非空；{@code level=CENTRAL} ⇒ {@code
+ * regions} 可为空（缺省空）；{@code superiorGov} 非空 ⇒ 必须存在、带 {@link GovFormation}、且不得等于新 unitId；{@code
+ * cadence ≥ 1}。批内域层拒（如一单位一标签、N9 白名单）由 {@code submitBatch} 整条拒，逐条真拒因折成 {@code REJECTED}。
  *
  * <p>★ <b>确定性 / 保序不可变</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；{@code staff} 用 {@code
- * LinkedHashMap} 拷贝 + 赋值处冻结，{@code allowedTools} 用 {@code LinkedHashSet} 保留调用方给的顺序， {@code
- * accessLimit} 的命名空间与前缀都保留插入序；<b>不用</b> {@code Map.copyOf}（它不承诺保序）。
+ * LinkedHashMap} 拷贝 + 赋值处冻结，{@code allowedTools} 用 {@code LinkedHashSet} 保留调用方给的顺序，{@code regions}
+ * 用 {@code List.copyOf} 保序冻结，{@code accessLimit} 的命名空间与前缀都保留插入序；<b>不用</b> {@code
+ * Map.copyOf}（它不承诺保序）。
  */
 final class GovCreateOfficePlan {
 
@@ -72,6 +78,9 @@ final class GovCreateOfficePlan {
 
   /** {@code unit.SetGovFormation} 的命令类型。 */
   static final String SET_GOV_FORMATION_TYPE = "unit.SetGovFormation";
+
+  /** {@code unit.SetJurisdiction} 的命令类型（仅 regions 非空才落）。 */
+  static final String SET_JURISDICTION_TYPE = "unit.SetJurisdiction";
 
   /** {@code sd.CreateDecisionMaker} 的命令类型。 */
   static final String CREATE_DECISION_MAKER_TYPE = "sd.CreateDecisionMaker";
@@ -104,6 +113,7 @@ final class GovCreateOfficePlan {
    * @param name 新单位名（非空白）
    * @param at 新单位落点 = 工具层的 {@code (q,r)}
    * @param level GOV 层级词表（CENTRAL|PROVINCE）
+   * @param regions 初始管辖区域（保序；工具层已解析为 {@link RegionId} 并去重。CENTRAL 可为空；PROVINCE 必须非空）
    * @param superiorGov 上级 GOV（可选；非空必须存在、带 GovFormation、不得等于 unitId）
    * @param staff 初始编制（保序；缺省空表由工具层给）
    * @param policy 编制政策（缺省 {@link OfficePolicy#defaults()} 由工具层给）
@@ -120,6 +130,7 @@ final class GovCreateOfficePlan {
       String name,
       HexCoord at,
       GovLevel level,
+      List<RegionId> regions,
       Optional<String> superiorGov,
       Map<StaffRole, Long> staff,
       OfficePolicy policy,
@@ -134,6 +145,7 @@ final class GovCreateOfficePlan {
     requireNonBlank(decisionMakerId, "decisionMakerId");
     Objects.requireNonNull(at, "at");
     Objects.requireNonNull(level, "level");
+    Objects.requireNonNull(regions, "regions");
     Objects.requireNonNull(superiorGov, "superiorGov");
     Objects.requireNonNull(staff, "staff");
     Objects.requireNonNull(policy, "policy");
@@ -142,6 +154,22 @@ final class GovCreateOfficePlan {
     Objects.requireNonNull(accessLimit, "accessLimit");
     if (cadence < 1L) {
       throw new IllegalArgumentException("cadence 必须 ≥ 1（决策周期，单位：天）: " + cadence);
+    }
+    if (level == GovLevel.PROVINCE && regions.isEmpty()) {
+      throw new IllegalArgumentException("level=PROVINCE 时 regions 不得为空：省 GOV 必须至少管辖本省一个 Region");
+    }
+    if (!regions.isEmpty()) {
+      // ★ regions 为空（仅 CENTRAL 合法）时不读 map 切片：保持"空管辖路径"与旧行为同依赖面。
+      GameMap map = ToolSupport.gameMap(state);
+      for (RegionId region : regions) {
+        if (region == null) {
+          throw new IllegalArgumentException("regions 的元素不得为 null");
+        }
+        if (!map.regions().containsKey(region)) {
+          throw new IllegalArgumentException(
+              "区域不存在: " + region.value() + "（当前地图 regions() 里没有它，无法纳入管辖）");
+        }
+      }
     }
     UnitId id = UnitId.parse(unitId);
     if (ToolSupport.unitState(state).units().containsKey(id)) {
@@ -174,6 +202,7 @@ final class GovCreateOfficePlan {
         name,
         at,
         level,
+        regions,
         superiorGov,
         staff,
         policy,
@@ -211,6 +240,7 @@ final class GovCreateOfficePlan {
    * @param name 新单位名
    * @param at 新单位落点
    * @param level GOV 层级
+   * @param regions 初始管辖区域（保序不可变；空 = 不落 unit.SetJurisdiction，创建缺省无管辖）
    * @param superiorGov 上级 GOV（可选）
    * @param staff 初始编制（保序不可变）
    * @param policy 编制政策
@@ -226,6 +256,7 @@ final class GovCreateOfficePlan {
       String name,
       HexCoord at,
       GovLevel level,
+      List<RegionId> regions,
       Optional<String> superiorGov,
       Map<StaffRole, Long> staff,
       OfficePolicy policy,
@@ -242,6 +273,12 @@ final class GovCreateOfficePlan {
       requireNonBlank(decisionMakerId, "decisionMakerId");
       Objects.requireNonNull(at, "at");
       Objects.requireNonNull(level, "level");
+      Objects.requireNonNull(regions, "regions");
+      for (RegionId region : regions) {
+        if (region == null) {
+          throw new IllegalArgumentException("regions 的元素不得为 null");
+        }
+      }
       Objects.requireNonNull(superiorGov, "superiorGov");
       Objects.requireNonNull(policy, "policy");
       Objects.requireNonNull(providerId, "providerId");
@@ -251,9 +288,15 @@ final class GovCreateOfficePlan {
       if (tick < 0L) {
         throw new IllegalArgumentException("tick 不得为负: " + tick);
       }
+      regions = List.copyOf(regions);
       staff = freezeStaff(staff);
       allowedTools = freezeTools(allowedTools);
       accessLimit = freezeLimit(accessLimit);
+    }
+
+    /** 是否要落 {@code unit.SetJurisdiction}（只有 regions 非空才落；空 = 保持创建缺省无管辖）。 */
+    boolean hasJurisdictionCommand() {
+      return !regions.isEmpty();
     }
 
     /** 是否要落 {@code sd.SetDecisionMakerProvider}（providerId 给了才落）。 */
@@ -271,9 +314,12 @@ final class GovCreateOfficePlan {
 
     /** 本工具将落的命令类型（批内固定顺序；preview 视图与 apply 组批共用这一处）。 */
     List<String> commandTypes() {
-      List<String> types = new ArrayList<>(6);
+      List<String> types = new ArrayList<>(7);
       types.add(CREATE_UNIT_TYPE);
       types.add(SET_GOV_FORMATION_TYPE);
+      if (hasJurisdictionCommand()) {
+        types.add(SET_JURISDICTION_TYPE);
+      }
       types.add(CREATE_DECISION_MAKER_TYPE);
       if (hasProviderCommand()) {
         types.add(SET_DECISION_MAKER_PROVIDER_TYPE);
@@ -287,7 +333,8 @@ final class GovCreateOfficePlan {
 
     /**
      * {@code unit.CreateUnit} 载荷：新 GOV 单位参数逐值写死（类注口径）；不给 {@code parent}/{@code status}（status 缺省
-     * MOVING），{@code jurisdiction} 由 handler 对新建单位固定 {@code empty}，本工具不发明第二个字段。
+     * MOVING），{@code jurisdiction} 也不进该载荷——{@code CreateUnitHandler} 对新建单位固定 {@code empty}， 管辖由同批
+     * {@code unit.SetJurisdiction} 落。
      */
     String createUnitPayloadJson() {
       Map<String, Object> payload = new LinkedHashMap<>();
@@ -313,6 +360,30 @@ final class GovCreateOfficePlan {
       payload.put("staff", staffView());
       payload.put("policy", policyView());
       return ToolSupport.json(payload);
+    }
+
+    /**
+     * {@code unit.SetJurisdiction} 载荷：只带 {@code {unitId, regions:[regionId…]}}——三个 {@code
+     * levy*CapPerCommand} 与 {@code administrationPerMille} <b>不进载荷</b>，保持域层现缺省（新单位原本无 jurisdiction
+     * ⇒ 全部为 0），不发明第二个字段。
+     */
+    String setJurisdictionPayloadJson() {
+      if (!hasJurisdictionCommand()) {
+        throw new IllegalStateException("批不自洽：regions 为空却要组装 unit.SetJurisdiction 载荷");
+      }
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("unitId", unitId);
+      payload.put("regions", regionValues());
+      return ToolSupport.json(payload);
+    }
+
+    /** 管辖区域的裸 id（保序；载荷 / info 回显 / 视图三处共用这一份）。 */
+    List<String> regionValues() {
+      List<String> values = new ArrayList<>(regions.size());
+      for (RegionId region : regions) {
+        values.add(region.value());
+      }
+      return List.copyOf(values);
     }
 
     /**
@@ -367,6 +438,7 @@ final class GovCreateOfficePlan {
       value.put("q", at.q());
       value.put("r", at.r());
       value.put("level", level.name());
+      value.put("regions", regionValues());
       value.put("superiorGov", superiorGov.orElse(null));
       value.put("staff", staffView());
       value.put("policy", policyView());

@@ -16,6 +16,10 @@ import java.util.Map;
 /**
  * {@code simos.unit.get}（spec §7.1 读工具）：单个单位详情（冻结字段 + 有效位置 + parent）。
  *
+ * <p>★ <b>P4 只读 additive（2026-10-01）</b>：视图层仍在 {@link ToolSupport#unit} → {@code ApiViews.unit} 这一份
+ * ——单位带 {@code module}（GovFormation/ArmyFormation）时追加 {@code module}，带 {@code jurisdiction} 时追加
+ * {@code jurisdiction}；缺席 ⇒ 键缺席，旧键逐字不变。工具的资源/级别/桶归属一字不动。
+ *
  * <p>查无此人 ⇒ {@code NOT_FOUND}（不是静默空对象）。
  */
 public final class UnitGetTool implements AgentTool {
@@ -36,7 +40,9 @@ public final class UnitGetTool implements AgentTool {
 
   @Override
   public String description() {
-    return "按 id 查单位详情：name/member/equipment/speed/mobilityPerMille/parent/position";
+    return "按 id 查单位详情：name/member/equipment/speed/mobilityPerMille/parent/position；"
+        + "若单位带编制/管辖，另含 module（gov: level/superiorGov/staff/policy；army: masterGov/role）与 "
+        + "jurisdiction（regions→每周期税率‰、levy*CapPerCommand、administrationPerMille）";
   }
 
   @Override

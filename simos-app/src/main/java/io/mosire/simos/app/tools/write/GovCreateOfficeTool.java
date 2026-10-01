@@ -20,6 +20,7 @@ import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.unit.GovLevel;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.StaffRole;
@@ -53,6 +54,8 @@ import java.util.UUID;
  *   <li>{@code unit.CreateUnit}（恒有）：{@code member=0, equipment={}, speed=1, mobilityPerMille=500,
  *       position=(q,r)}，无 parent、status 缺省 MOVING；
  *   <li>{@code unit.SetGovFormation}（恒有）：{@code level/superiorGov?/staff/policy}；
+ *   <li>{@code unit.SetJurisdiction}（仅 {@code regions} 非空才落）：{@code {unitId, regions:[…]}}，不带 levy
+ *       caps；
  *   <li>{@code sd.CreateDecisionMaker}（恒有）：{@code {id, affiliation:{kind:"gov",id:unitId},
  *       allowedTools, cadence}}；
  *   <li>{@code sd.SetDecisionMakerProvider}（仅 providerId 给了才落）；
@@ -67,14 +70,16 @@ import java.util.UUID;
  * <p>★ <b>资源声明</b>：只写 {@code unit}/{@code sd} 两个命名空间（{@link ResourcePolicy#UNRESTRICTED}，GM 侧两者
  * unlimited）；{@code requireAll(Operation.WRITE, …)} 与其余 GM 窄写同制。
  *
- * <p>★ <b>缺省</b>：{@code cadence?} 缺省 1（域层下界）；{@code allowedTools?} 缺省空集；{@code staff?} 缺省空表（工具层给
- * Plan）；{@code policy?} 缺省 {@link OfficePolicy#defaults()}（给了可只覆盖部分字段，缺省字段取 defaults——与 {@code
- * unit.SetGovFormation} 的载荷语义逐字一致）；{@code accessLimit?} 缺省不写。
+ * <p>★ <b>缺省</b>：{@code regions?} 缺省空数组（CENTRAL 合法；PROVINCE 会被前置校验具名拒）；{@code cadence?} 缺省 1（域层下界）；
+ * {@code allowedTools?} 缺省空集；{@code staff?} 缺省空表（工具层给 Plan）；{@code policy?} 缺省 {@link
+ * OfficePolicy#defaults()}（给了可只覆盖部分字段，缺省字段取 defaults——与 {@code unit.SetGovFormation} 的载荷语义逐字一致）；
+ * {@code accessLimit?} 缺省不写。
  *
- * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / level 不在词表 / unitId 已存在 / decisionMakerId 已存在 / superiorGov 不存在或不是
- * GOV / cadence &lt; 1 ⇒ {@link IllegalArgumentException} 折 {@code BAD_REQUEST}（零
- * revision）；批内域层拒（如一单位一标签、N9 白名单）⇒ {@code REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒
- * 原样抛 {@link ResourceDeniedException}（由唯一入口折资源拒因）。
+ * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / level 不在词表 / regions 元素在地图里查无 / PROVINCE 的 regions 为空 / unitId 已存在
+ * / decisionMakerId 已存在 / superiorGov 不存在或不是 GOV / cadence &lt; 1 ⇒ {@link
+ * IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒（如一单位一标签、N9 白名单）⇒ {@code
+ * REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link
+ * ResourceDeniedException}（由唯一入口折资源拒因）。
  */
 public final class GovCreateOfficeTool implements AgentTool {
 
@@ -124,6 +129,7 @@ public final class GovCreateOfficeTool implements AgentTool {
   public String description() {
     return "GM 建 GOV 单位并同批绑决策人（组合工具，一批 = 一条 revision）："
         + "参数 {unitId(必填), name(必填), q(必填 int), r(必填 int), level(必填 CENTRAL|PROVINCE), "
+        + "regions?(可选 RegionId 字符串数组; 每个必须存在于当前地图 regions()，重复元素保序去重), "
         + "superiorGov?(可选; 非空必须存在且带 GovFormation), staff?(可选 {SCRIBE|YAMEN|POST:整数}, 缺省空表), "
         + "policy?(可选 {grainPerStaffPerTick?, clothPerStaffPerCycle?, moneyPerStaffPerTick?, retirementPerStaff?, "
         + "staffCap?{角色:整数}}, 缺省 OfficePolicy.defaults()、可部分覆盖), decisionMakerId(必填, 不得已存在), "
@@ -132,13 +138,15 @@ public final class GovCreateOfficeTool implements AgentTool {
         + "sd.SetDecisionMakerAccess), reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
-        + "纯推导前置：unitId/decisionMakerId 必须不存在；level 词表；superiorGov 非空须存在且带 GovFormation。"
+        + "纯推导前置：unitId/decisionMakerId 必须不存在；level 词表；regions 每个必须存在于当前地图（具名拒，不静默丢）；"
+        + "level=PROVINCE 时 regions 必须非空，level=CENTRAL 时可为空（缺省空 = 不落 SetJurisdiction、无管辖）；"
+        + "superiorGov 非空须存在且带 GovFormation。"
         + "新单位固定 member=0/equipment={}/speed=1/mobilityPerMille=500/position=(q,r)/无 parent。"
-        + "批顺序：unit.CreateUnit → unit.SetGovFormation → sd.CreateDecisionMaker → [provider] → [access] → "
-        + "sd.PutInfo(key="
+        + "批顺序：unit.CreateUnit → unit.SetGovFormation → [regions 非空: unit.SetJurisdiction] → "
+        + "sd.CreateDecisionMaker → [provider] → [access] → sd.PutInfo(key="
         + INFO_KEY
-        + ")。"
-        + "返回 {preview, submitted, tick, unitId, name, position, level, superiorGov, staff, policy, "
+        + "，value 回显 regions)。"
+        + "返回 {preview, submitted, tick, unitId, name, position, level, regions, superiorGov, staff, policy, "
         + "decisionMakerId, providerId, cadence, allowedTools, accessLimit, commands, infoText}；apply 另加 submission。";
   }
 
@@ -150,6 +158,12 @@ public final class GovCreateOfficeTool implements AgentTool {
     props.put("q", ToolSupport.prop("integer", "新单位落点 q（int）"));
     props.put("r", ToolSupport.prop("integer", "新单位落点 r（int）"));
     props.put("level", ToolSupport.prop("string", "GOV 层级：CENTRAL|PROVINCE"));
+    props.put(
+        "regions",
+        ToolSupport.prop(
+            "array",
+            "初始管辖区域 RegionId 字符串数组（可选；每个必须存在于当前地图；PROVINCE 必须非空，CENTRAL 可空缺省；"
+                + "仅非空时同批落 unit.SetJurisdiction，载荷不带 levy caps）"));
     props.put("superiorGov", ToolSupport.prop("string", "上级 GOV 单位 id（可选；非空必须存在且带 GovFormation）"));
     props.put("staff", ToolSupport.prop("object", "初始编制 {SCRIBE|YAMEN|POST:整数}（可选，缺省空表；值必须 ≥ 0）"));
     props.put(
@@ -200,6 +214,8 @@ public final class GovCreateOfficeTool implements AgentTool {
             + args.get("name")
             + " level="
             + args.get("level")
+            + " regions="
+            + args.getOrDefault("regions", "(缺省空)")
             + " decisionMakerId="
             + args.get("decisionMakerId")
             + " providerId="
@@ -223,6 +239,7 @@ public final class GovCreateOfficeTool implements AgentTool {
       int q = requiredInt(args, "q");
       int r = requiredInt(args, "r");
       GovLevel level = parseLevel(ToolSupport.requiredText(args, "level"));
+      List<RegionId> regions = parseRegions(args.get("regions"));
       Optional<String> superiorGov = optionalText(args, "superiorGov");
       Map<StaffRole, Long> staff = parseStaff(args.get("staff"));
       OfficePolicy policy = parsePolicy(args.get("policy"));
@@ -255,6 +272,7 @@ public final class GovCreateOfficeTool implements AgentTool {
               name,
               new HexCoord(q, r),
               level,
+              regions,
               superiorGov,
               staff,
               policy,
@@ -303,6 +321,32 @@ public final class GovCreateOfficeTool implements AgentTool {
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("参数 level 不是合法层级（CENTRAL|PROVINCE）: " + text, e);
     }
+  }
+
+  /**
+   * {@code regions?}：缺省空数组；给了必须是字符串数组（元素 {@link RegionId#parse} 把关空白，保序去重）。
+   *
+   * <p>★ 去重与域层 {@code UnitOperations.setJurisdiction} 的 key 语义一致（{@code LinkedHashMap.put} 同键只留一个），
+   * 让 Plan 的 info/视图回显与落盘后的 jurisdiction key 集逐值同形；<b>区域存在性</b>由 Plan 对着状态具名拒，不在这里做。
+   */
+  private static List<RegionId> parseRegions(Object raw) {
+    if (raw == null) {
+      return List.of();
+    }
+    if (!(raw instanceof List<?> list)) {
+      throw new IllegalArgumentException("参数 regions 必须是 RegionId 字符串数组");
+    }
+    Set<RegionId> regions = new LinkedHashSet<>();
+    for (Object element : list) {
+      if (!(element instanceof String text)) {
+        throw new IllegalArgumentException("参数 regions 的元素必须是字符串: " + element);
+      }
+      if (text.isBlank()) {
+        throw new IllegalArgumentException("参数 regions 的元素不得为空白: " + element);
+      }
+      regions.add(RegionId.parse(text));
+    }
+    return List.copyOf(regions);
   }
 
   /** {@code staff?}：缺省空表；给了必须是 {角色:整数} 对象（角色词表在这里把关，负值也在解析期拒）。 */
@@ -487,7 +531,7 @@ public final class GovCreateOfficeTool implements AgentTool {
       String reason,
       BranchId branch,
       RevisionId expectedRevision) {
-    List<CommandEnvelope> batch = new ArrayList<>(6);
+    List<CommandEnvelope> batch = new ArrayList<>(7);
     batch.add(
         envelope(
             batchId,
@@ -502,6 +546,15 @@ public final class GovCreateOfficeTool implements AgentTool {
             expectedRevision,
             GovCreateOfficePlan.SET_GOV_FORMATION_TYPE,
             plan.setGovFormationPayloadJson()));
+    if (plan.hasJurisdictionCommand()) {
+      batch.add(
+          envelope(
+              batchId,
+              branch,
+              expectedRevision,
+              GovCreateOfficePlan.SET_JURISDICTION_TYPE,
+              plan.setJurisdictionPayloadJson()));
+    }
     batch.add(
         envelope(
             batchId,
@@ -579,6 +632,7 @@ public final class GovCreateOfficeTool implements AgentTool {
     view.put("name", plan.name());
     view.put("position", ToolSupport.hexCoord(plan.at()));
     view.put("level", plan.level().name());
+    view.put("regions", plan.regionValues());
     view.put("superiorGov", plan.superiorGov().orElse(null));
     view.put("staff", plan.staffView());
     view.put("policy", plan.policyView());
