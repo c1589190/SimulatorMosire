@@ -7,6 +7,7 @@ import io.mosire.agentlib.permission.Operation;
 import io.mosire.agentlib.permission.ResourceDeniedException;
 import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
+import io.mosire.agentlib.permission.ResourcePolicy;
 import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
@@ -73,6 +74,34 @@ abstract class AbstractNarrowWriteTool implements AgentTool {
   @Override
   public ResourceManifest resources() {
     return ToolSupport.ALL_WRITE;
+  }
+
+  /**
+   * **GM 专用 sd 窄写**共用的资源声明（P0 对齐）：这些工具各自钉死一条 {@code sd.*} 命令，命令 handler 只产 {@code SdChangeSet} ⇒
+   * 实际只写 sd 命名空间，不能再沿用基类的三命名空间粗断言。
+   *
+   * <p>★ 写操作取 {@link ResourcePolicy#UNRESTRICTED}（不是 {@code IssueDirective}/{@code SubmitVerdict}
+   * 那两条决策窄写的 {@code READ_ONLY}）：它们只在 GM 桶，调用者的 sd 表态是 unlimited；取只读会把"未表态 sd 的系统身份"整调拒掉（与 {@code
+   * WorldgenInitializeTool} 的取舍同一条）。
+   */
+  protected static final ResourceManifest SD_NAMESPACE_WRITE =
+      ResourceManifest.of(ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
+
+  /**
+   * 同 {@link #SD_NAMESPACE_WRITE}，用于 {@code actor.AdjustAccounts}（handler 只产 {@code
+   * ActorChangeSet}）。
+   */
+  protected static final ResourceManifest ACTOR_NAMESPACE_WRITE =
+      ResourceManifest.of(ToolSupport.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED);
+
+  /** GM 专用 sd 窄写的写资源断言（{@code sd:*}；GM 侧 sd 是 unlimited）。 */
+  protected static List<ResourceId> sdNamespaceWriteResources() {
+    return List.of(ResourceId.of(ToolSupport.SD_NAMESPACE, "*"));
+  }
+
+  /** GM 专用 actor 窄写的写资源断言（{@code actor:*}；GM 侧 actor 是 unlimited）。 */
+  protected static List<ResourceId> actorNamespaceWriteResources() {
+    return List.of(ResourceId.of(ToolSupport.ACTOR_NAMESPACE, "*"));
   }
 
   /**

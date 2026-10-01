@@ -1,6 +1,10 @@
 package io.mosire.simos.app.tools.write;
 
+import io.mosire.agentlib.permission.ResourceId;
+import io.mosire.agentlib.permission.ResourceManifest;
+import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.core.CoreSimos;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -31,5 +35,19 @@ public final class SdCommitCombatOutcomeTool extends AbstractNarrowWriteTool {
   @Override
   public String description() {
     return "定结局：固定 sd.CommitCombatOutcome，载荷 {combatId, stageId, selectedOutcomeId}（三者全必填；★ 结局必须在该阶段的 outcomeTable 里，且**已选定过就不再覆盖**）";
+  }
+
+  @Override
+  public ResourceManifest resources() {
+    return SD_NAMESPACE_WRITE;
+  }
+
+  /**
+   * ★ P0 资源对齐：本工具钉死的 {@code sd.*} 命令只产 {@code SdChangeSet}（实际只写 sd 命名空间），故写断言取 {@code sd:*}（GM 侧
+   * unlimited），不再沿用基类的三命名空间粗断言。
+   */
+  @Override
+  protected List<ResourceId> writeResources(ToolContext context) {
+    return sdNamespaceWriteResources();
   }
 }

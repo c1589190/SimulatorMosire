@@ -1,6 +1,10 @@
 package io.mosire.simos.app.tools.write;
 
+import io.mosire.agentlib.permission.ResourceId;
+import io.mosire.agentlib.permission.ResourceManifest;
+import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.core.CoreSimos;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -37,5 +41,19 @@ public final class SdPutInfoTool extends AbstractNarrowWriteTool {
         + "（要存结构化内容请自行序列化成 JSON 字符串）；"
         + "★ tags 与 affiliations 是决策文档可见性的两轴，**取并集**（命中其一即可见、都空 = 谁都不给看）；"
         + "★ tick 缺省 = 世界当前 tick，记在未来会被拒）";
+  }
+
+  @Override
+  public ResourceManifest resources() {
+    return SD_NAMESPACE_WRITE;
+  }
+
+  /**
+   * ★ P0 资源对齐：本工具钉死的 {@code sd.*} 命令只产 {@code SdChangeSet}（实际只写 sd 命名空间），故写断言取 {@code sd:*}（GM 侧
+   * unlimited），不再沿用基类的三命名空间粗断言。
+   */
+  @Override
+  protected List<ResourceId> writeResources(ToolContext context) {
+    return sdNamespaceWriteResources();
   }
 }

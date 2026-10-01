@@ -1,6 +1,10 @@
 package io.mosire.simos.app.tools.write;
 
+import io.mosire.agentlib.permission.ResourceId;
+import io.mosire.agentlib.permission.ResourceManifest;
+import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.core.CoreSimos;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -32,5 +36,19 @@ public final class SdCreateCombatTool extends AbstractNarrowWriteTool {
   @Override
   public String description() {
     return "建交战：固定 sd.CreateCombat，载荷 {combatId, name, participants?}（前两者必填；★ participants 缺省即空集，可建出零参与者交战）";
+  }
+
+  @Override
+  public ResourceManifest resources() {
+    return SD_NAMESPACE_WRITE;
+  }
+
+  /**
+   * ★ P0 资源对齐：本工具钉死的 {@code sd.*} 命令只产 {@code SdChangeSet}（实际只写 sd 命名空间），故写断言取 {@code sd:*}（GM 侧
+   * unlimited），不再沿用基类的三命名空间粗断言。
+   */
+  @Override
+  protected List<ResourceId> writeResources(ToolContext context) {
+    return sdNamespaceWriteResources();
   }
 }

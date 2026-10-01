@@ -1,6 +1,10 @@
 package io.mosire.simos.app.tools.write;
 
+import io.mosire.agentlib.permission.ResourceId;
+import io.mosire.agentlib.permission.ResourceManifest;
+import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.core.CoreSimos;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -33,5 +37,19 @@ public final class SdSetDecisionMakerProviderTool extends AbstractNarrowWriteToo
   @Override
   public String description() {
     return "配 provider：固定 sd.SetDecisionMakerProvider，载荷 {decisionMakerId, providerId}（两者全必填；★★ 本命令**只校验 providerId 非空白，不校验 provider 是否存在**——存在性在**使用时刻**解析，解析不到即 fail-closed，绝不静默兜底）";
+  }
+
+  @Override
+  public ResourceManifest resources() {
+    return SD_NAMESPACE_WRITE;
+  }
+
+  /**
+   * ★ P0 资源对齐：本工具钉死的 {@code sd.*} 命令只产 {@code SdChangeSet}（实际只写 sd 命名空间），故写断言取 {@code sd:*}（GM 侧
+   * unlimited），不再沿用基类的三命名空间粗断言。
+   */
+  @Override
+  protected List<ResourceId> writeResources(ToolContext context) {
+    return sdNamespaceWriteResources();
   }
 }

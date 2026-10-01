@@ -1,6 +1,10 @@
 package io.mosire.simos.app.tools.write;
 
+import io.mosire.agentlib.permission.ResourceId;
+import io.mosire.agentlib.permission.ResourceManifest;
+import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.core.CoreSimos;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -44,5 +48,19 @@ public final class ActorAdjustAccountsTool extends AbstractNarrowWriteTool {
         + "（★ entries 必填非空；每项 owner/q/r 必填；goods/money 至少一个非空；"
         + "值 = 有符号净增量、不得为 0；同一 (owner,q,r) 不得重复；"
         + "缺账只允许纯正增量并新建；负增量不得使余额 < 0、不得侵占冻结额（可支配 = 余额 − 冻结）；整条原子，任一违例全拒）";
+  }
+
+  @Override
+  public ResourceManifest resources() {
+    return ACTOR_NAMESPACE_WRITE;
+  }
+
+  /**
+   * ★ P0 资源对齐：本工具钉死的 {@code actor.*} 命令只产 {@code ActorChangeSet}（实际只写 actor 命名空间），故写断言取 {@code
+   * actor:*}（GM 侧 unlimited），不再沿用基类的三命名空间粗断言。
+   */
+  @Override
+  protected List<ResourceId> writeResources(ToolContext context) {
+    return actorNamespaceWriteResources();
   }
 }
