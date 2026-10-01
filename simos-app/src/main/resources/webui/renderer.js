@@ -19,6 +19,9 @@
   var hexColor = window.SimosHexColor;
   var regionShape = window.SimosRegionShape;
   var core = window.SimosMapCore;
+  // ★ F1：世界视图纯函数（城市 LOD / 国家名 / 图层归一）。两宿主页都在 renderer.js 之前引入；
+  //   节点门禁若只加载 renderer 也不炸（下面的降级常量给"全开 + 全城市简单计划"）。
+  var worldModel = window.SimosWorldModel || null;
 
   // hexgeom.js
   var MIN_SCALE = hexGeom.MIN_SCALE;
@@ -58,6 +61,16 @@
   var withAlpha = hexColor.withAlpha;
   // regionShape.js
   var regionBoundaryRings = regionShape.regionBoundaryRings;
+
+  // ★ F1：GOV 辖区覆盖层的统一配色（填充 + 精确边界 stroke；选中态优先用 accent 蓝）。
+  //   2026-10-01 可见性修正：青绿提亮为 #2ee6c8、填充/线宽同步上调（默认世界缩放下 1.2px 实线几乎不可见）。
+  var GOV_JURISDICTION_COLOR = "#2ee6c8";
+  var GOV_JURISDICTION_SELECTED_COLOR = "#4ea1ff";
+  var GOV_JURISDICTION_FILL_ALPHA = 0.24;
+  var GOV_JURISDICTION_SELECTED_FILL_ALPHA = 0.38;
+  var GOV_JURISDICTION_STROKE_PX = 2.0;
+  var GOV_JURISDICTION_SELECTED_STROKE_PX = 3.0;
+
   // map.js（window.SimosMapCore）
   var app = core.app;
   var api = core.api;
@@ -126,6 +139,18 @@
     //   这是判定"哪格在交战"的**真值来源**；旧的两条推断（同格多军队 / ENGAGED）在 combatHexes 里兜底。
     var realCombatHexes = {};
     var routes = []; // 在途路线（M7b T2）：{id,movement,path:[{q,r}…]}
+    // ★ F1：social 侧城市（`/api/social/cities`）。标记位置与 LOD 在 drawCities/cityMarkerPlanOf 里现算。
+    var cities = [];
+    var cityById = {}; // String(id) → 城市（搜索定位 / pickAt 的名字）
+    // ★ F1：图层开关（集中归一，未知键不打开；见 worldmodel.layerVisibility）。
+    var layerState = defaultLayerState();
+    // ★ F1：国家着色面（区域详情 hex 集合 → 已解析色 + 已算边界环）；仅工作台开启（旧 /map 保持原渲染行为）。
+    var nationRegions = [];
+    // ★ F1：GOV 辖区覆盖层（每项 {govId,name,hexes,rings,color}，见 setGovJurisdictions）；仅工作台、图层开启时画。
+    var govJurisdictions = [];
+    // ★ F1：决策人（军队 rootUnit / GOV 单位 id 匹配 ⇒ 在标记上画金色徽标；决策人图层开关控制）。
+    var decisionMakers = [];
+    var selectedCity = null;
     var colorByTerrain = {};
     var fallbackWarned = false;
     var selected = null;
@@ -176,6 +201,7 @@
     var outlineVertexCount = 0; // 全部区域边界环的顶点数（精确值；不应被任何简化压低）
     var dimPasses = 0; // ★ U1：地形压暗层绘制次数（区域模式应 > 0，常规应恒 0）
     var regionNameDraws = 0; // ★ U2：区域名实际绘制条数（可断言 0 / >0）
+    var nationNameDraws = 0; // ★ F1：世界视图国家名实际绘制条数（与区域名分开计数，互不污染既有断言）
 
     var rafId = null;
     var dragging = false;
@@ -191,6 +217,92 @@
         rafId = null;
         render();
       });
+    }
+
+    /** 图层缺省（worldmodel 缺席时的兜底；正常路径走 worldmodel.layerVisibility）。 */
+    function defaultLayerState() {
+      if (worldModel && worldModel.DEFAULT_LAYERS) {
+        return worldModel.layerVisibility(null);
+      }
+      return {
+        nation: true,
+        regionNames: true,
+        cities: true,
+        army: true,
+        gov: true,
+        govJurisdiction: false,
+        decisionMakers: true,
+        combats: true,
+        routes: true,
+      };
+    }
+
+    function normalizeLayerState(layers) {
+      if (worldModel && worldModel.layerVisibility) {
+        return worldModel.layerVisibility(layers);
+      }
+      var out = defaultLayerState();
+      if (layers && typeof layers === "object") {
+        Object.keys(out).forEach(function (key) {
+          if (Object.prototype.hasOwnProperty.call(layers, key)) {
+            // 与 worldmodel.layerVisibility 同口径：键在场时只认显式 true，未知值一律关闭（fail-closed）。
+            out[key] = layers[key] === true;
+          }
+        });
+      }
+      return out;
+    }
+
+    /** 当前缩放/图层下的城市标记计划；worldmodel 缺席时降级为"全城市、无 LOD"（fail-open 仅此兜底）。 */
+    function cityMarkerPlanOf() {
+      if (worldModel && worldModel.cityMarkerPlan) {
+        return worldModel.cityMarkerPlan(cities, view.scale, layerState);
+      }
+      return cities.map(function (city) {
+        return {
+          kind: "city",
+          id: String(city.id),
+          name: city.name || "",
+          at: { q: city.at.q, r: city.at.r },
+          region: city.region,
+          tier: city.tier,
+          population: city.population,
+          category: "unknown",
+          capital: false,
+          showLabel: false,
+          radiusFactor: 0.09,
+          rank: 0,
+        };
+      });
+    }
+
+    // ★ F1 可见性：各类别的**屏幕空间半径下限**（CSS px）。full map fit 时 scale≈0.06，
+    //   纯世界半径（cellSize×factor≈3~9）只有 0.18~0.55 px ⇒ 标记不可见。
+    var CITY_MIN_SCREEN_PX = {
+      capital: 4.5,
+      major: 4,
+      city: 3.5,
+      town: 3,
+      marketTown: 2.5,
+      unknown: 2.5,
+    };
+
+    /** 屏幕尺寸 → 世界尺寸；view.scale 非正/非有限 ⇒ 0（fail-closed，不除 0 / 不放大）。 */
+    function screenSizeToWorld(px) {
+      return typeof view.scale === "number" && isFinite(view.scale) && view.scale > 0
+        ? px / view.scale
+        : 0;
+    }
+
+    /**
+     * 城市标记世界半径 = max(世界半径, 类别屏幕下限 / view.scale)。
+     * fit 全图（scale≈0.06）时保证 capital≥4.5px、major≥4px…；scale 非正/非有限时退回世界半径。
+     */
+    function cityRadiusOf(item) {
+      var factor = item && typeof item.radiusFactor === "number" ? item.radiusFactor : 0.09;
+      var worldRadius = Math.max(3, cellSize * factor);
+      var minScreenPx = CITY_MIN_SCREEN_PX[item && item.category] || 2.5;
+      return Math.max(worldRadius, screenSizeToWorld(minScreenPx));
     }
 
     function rebuildColors() {
@@ -241,6 +353,30 @@
     }
 
     /**
+     * ★ F1 修复：该格是否有**真实交战记录**。`setCombats` 收成 `{"q_r": …}` 对象表，`combatHexes`
+     * 的第二参也允许数组形状；这里两种都认（只判 key，不编坐标）。
+     */
+    function hasRealCombatAt(key, trueHexes) {
+      if (!trueHexes) {
+        return false;
+      }
+      if (Array.isArray(trueHexes)) {
+        for (var i = 0; i < trueHexes.length; i += 1) {
+          var entry = trueHexes[i];
+          if (!entry) {
+            continue;
+          }
+          var at = entry.hex || entry.at || (entry.q !== undefined && entry.r !== undefined ? entry : null);
+          if (at && at.q !== undefined && at.r !== undefined && at.q + "_" + at.r === key) {
+            return true;
+          }
+        }
+        return false;
+      }
+      return Object.prototype.hasOwnProperty.call(trueHexes, key);
+    }
+
+    /**
      * 预计算**标记**的世界像素位置（px/py）。
      * 1) 先由 `markerGroups(units)`（hexgeom 纯函数）把单位**按格、再按军队根**分组 ⇒ 每组一个标记；
      *    ——首都格（根 + 各兵种同格）只出 1 个标记（代表 = 根），分遣队单独一格不会被藏掉。
@@ -249,6 +385,12 @@
      *    门控 `combatLayoutEnabled`：屏幕格高不够时**不**启用特殊布局，退回下面的纵向摊开/重叠。
      * 3) 非交战格：同格不同军队**纵向摊开**（stackOffset；格太小则保持重叠）。
      *    摊开间距记在 `marker.stackSpacing`（0=未摊开），供 pickAt 收缩命中半径。
+     * ★ F1 修复（用户实测"同格军队、GOV 重合"）：
+     *    · `combatHexes` 的旧口径把 GOV 与军队同格（≥2 rootId）误判成交战 ⇒ 调用后**后过滤**：
+     *      真交战记录优先；否则只统计**非 GOV** 标记的不同 rootId（≥2 或有非 GOV `engaged`）才保留。
+     *    · 非交战布局里，该格若有**可见城市标记**（`cityMarkerPlanOf()`，与绘制/点选同一份计划），
+     *      整组单位沿 y 向下让开一段**按半径实算**的距离（城市半径 + 单位半径 + 屏幕 4px 间隙 +
+     *      摊开总跨度的上半跨度）⇒ 最上面的单位顶边也在城市下边缘之下，不再压住城市星标。
      * ★ 只改 markers 的 px/py ⇒ pickAt / drawUnits 自动跟随（不另造一份坐标）。
      */
     function recomputeWorldPixels() {
@@ -265,10 +407,43 @@
         }
         groups[key].push(m);
       });
+      // ★ F1 修复：GOV 不是交战方 —— 后过滤 combatHexes 的旧口径推断结果。
+      //   真记录格无条件保留；其余格只在**非 GOV 标记**里仍有 ≥2 支不同 rootId、或有非 GOV engaged 时才保留。
+      Object.keys(combat).forEach(function (key) {
+        if (hasRealCombatAt(key, realCombatHexes)) {
+          return; // 记录在案的格必须保留（由 combatHexes 第二参保证）
+        }
+        var list = groups[key] || [];
+        var nonGovRoots = {};
+        var nonGovRootCount = 0;
+        var nonGovEngaged = false;
+        list.forEach(function (m) {
+          if (markerIsGov(m)) {
+            return; // GOV 标记不算交战方（哪怕它是某格唯一的"第二方"）
+          }
+          var rootId = String(m.rootId);
+          if (!Object.prototype.hasOwnProperty.call(nonGovRoots, rootId)) {
+            nonGovRoots[rootId] = true;
+            nonGovRootCount += 1;
+          }
+          if (m.engaged === true) {
+            nonGovEngaged = true;
+          }
+        });
+        if (nonGovRootCount < 2 && !nonGovEngaged) {
+          delete combat[key]; // GOV 单独 / GOV+army 但军队未交战 ⇒ 不是交战格
+        }
+      });
       // ★ 摊开/交战布局的门控都吃**屏幕上**的格高（cellSize 是世界单位且在**工作台恒定**，
       //   随缩放变的是 view.scale）⇒ 必须相乘，否则缩放永远不会改变"摊不摊开/交不交战布局"。
       var screenCell = cellSize * view.scale;
       var combatOn = combatLayoutEnabled(cellSize, screenCell);
+      // ★ F1 修复：只认**当前可见**的城市标记（来自 cityMarkerPlanOf，与 drawCities/pickAt 同源）。
+      //   值从 true 改成**城市 item 本身**：让位距离必须算城市半径（类别/radiusFactor），不能再用固定 clearance。
+      var cityByKey = {};
+      cityMarkerPlanOf().forEach(function (city) {
+        cityByKey[city.at.q + "_" + city.at.r] = city;
+      });
       keys.forEach(function (key) {
         var list = groups[key];
         var parties = combat[key] || 0;
@@ -288,12 +463,24 @@
           });
           return;
         }
-        // ★ 普通布局：同格多军队纵向摊开（格太小则重叠）。
+        // ★ 普通布局：同格多军队纵向摊开（格太小则重叠）；该格有可见城市 ⇒ 整组再向下让开城市标记。
+        //   让位距离按真实半径实算（见上方函数注释）：
+        //   最上面的单位中心 = cityClearance − halfSpan ⇒ 顶边 = cityRadius + gapWorld，
+        //   正好落在城市下边缘之下至少 4 CSS px（gapWorld = 4 / view.scale；scale 异常时退化为 4 世界单位）。
+        var cityItem = cityByKey[key] || null;
+        var cityRadius = cityItem ? cityRadiusOf(cityItem) : 0;
+        var unitRadius = Math.max(markerRadius(cellSize), screenSizeToWorld(3.5));
         var spacing = stackSpacing(list.length, cellSize, screenCell);
+        var halfSpan = (spacing * (list.length - 1)) / 2;
+        var gapWorld =
+          view.scale > 0 && isFinite(view.scale) ? 4 / view.scale : 4;
+        var cityClearance = cityItem
+          ? cityRadius + unitRadius + gapWorld + halfSpan
+          : 0;
         list.forEach(function (m, index) {
           var p = hexToPixel(m.at.q, m.at.r, cellSize);
           m.px = p.x;
-          m.py = p.y + stackOffset(index, list.length, cellSize, screenCell);
+          m.py = p.y + cityClearance + stackOffset(index, list.length, cellSize, screenCell);
           m.stackSpacing = spacing;
           m.combat = false;
           m.combatCount = 0;
@@ -389,6 +576,17 @@
             // ★ 2026-09-24 修正 1：必须保留 parent —— markerGroups 靠它判"军队根"（与 buildTree 同口径）。
             parent: u.parent === undefined ? null : u.parent,
             position: u.position,
+            // ★ F1：保留服务端已发出的编制/身份/状态读数（markerGroups 只读 id/parent/position/status，
+            //   多带字段不改变它的 pure 行为；module/jurisdiction 等保持"键缺席"语义，不拿 null 冒充）。
+            member: u.member,
+            status: u.status === undefined ? null : u.status,
+            module: u.module,
+            jurisdiction: u.jurisdiction,
+            attached: u.attached,
+            formationRootId: u.formationRootId,
+            formationSize: u.formationSize,
+            formationSpeed: u.formationSpeed,
+            combat: u.combat,
           };
         });
       unitById = {};
@@ -430,6 +628,156 @@
       });
       realCombatHexes = table;
       recomputeWorldPixels();
+      scheduleRender();
+    }
+
+    /** ★ F1：装载社交城市列表；只做形状过滤（缺 id/at 的条目跳过，不编坐标），装载即重绘。 */
+    function setCities(list) {
+      cities = (Array.isArray(list) ? list : [])
+        .filter(function (city) {
+          return (
+            city &&
+            city.id !== null &&
+            city.id !== undefined &&
+            city.at &&
+            typeof city.at.q === "number" &&
+            typeof city.at.r === "number"
+          );
+        })
+        .map(function (city) {
+          return {
+            id: String(city.id),
+            name: city.name === undefined ? "" : city.name,
+            at: { q: city.at.q, r: city.at.r },
+            region: city.region === undefined ? null : city.region,
+            tier: city.tier === undefined ? null : city.tier,
+            population: city.population,
+            props: city.props,
+          };
+        });
+      cityById = {};
+      cities.forEach(function (city) {
+        cityById[city.id] = city;
+      });
+      if (selectedCity && !cityById[selectedCity]) {
+        selectedCity = null;
+      }
+      updateLegend(); // 图例含城市数：装载城市后同步刷新（overview 未载入时 updateLegend 自己返回）。
+      // ★ F1 修复：城市标记计划参与"单位在可见城市格向下让位"的坐标重算 ⇒ 装载后立即重算，不等下一次缩放。
+      recomputeWorldPixels();
+      scheduleRender();
+    }
+
+    /**
+     * ★ F1：国家着色面（工作台）。每项 = `/api/map/region/{id}` 的体（含 `hexes` + `meta.color`）；
+     * 边界环只算一次（精确 RegionBoundary 环），颜色走 hexcolor 的同一套解析（非法/缺失回兜底色）。
+     */
+    function setNationRegions(list) {
+      nationRegions = (Array.isArray(list) ? list : [])
+        .filter(function (region) {
+          return (
+            region &&
+            region.id !== null &&
+            region.id !== undefined &&
+            Array.isArray(region.hexes) &&
+            region.hexes.length > 0
+          );
+        })
+        .map(function (region) {
+          return {
+            id: String(region.id),
+            name: region.name === undefined ? null : region.name,
+            color: regionColor(region.meta),
+            rings: regionBoundaryRings(region.hexes),
+          };
+        });
+      scheduleRender();
+    }
+
+    /**
+     * ★ F1：GOV 辖区覆盖层（工作台专用）。每项 = `{govId,name,hexes,rings,color}`：
+     * · hexes 先过滤成有限 `q/r`、规整成 `{q,r}`，并在**同一 GOV 的辖区并集内**按 `q_r` 去重；
+     * · 边界环用现有 `regionBoundaryRings(hexes)` 对去重后的完整并集**一次性**精确计算（不简化、不逐格）；
+     * · 颜色统一 {@link GOV_JURISDICTION_COLOR}；空数组 = 清空（切 target / 失败时必须显式推空）。
+     *
+     * <p>非法项（无 govId / hexes 不是数组 / 过滤后无有效 hex）整项丢弃，不拿 0 或占位坐标冒充。
+     */
+    function setGovJurisdictions(list) {
+      govJurisdictions = (Array.isArray(list) ? list : [])
+        .filter(function (item) {
+          return (
+            item &&
+            item.govId !== null &&
+            item.govId !== undefined &&
+            Array.isArray(item.hexes)
+          );
+        })
+        .map(function (item) {
+          var seen = {};
+          var hexes = [];
+          item.hexes.forEach(function (hex) {
+            if (
+              !hex ||
+              typeof hex.q !== "number" ||
+              typeof hex.r !== "number" ||
+              !isFinite(hex.q) ||
+              !isFinite(hex.r)
+            ) {
+              return;
+            }
+            var key = hex.q + "_" + hex.r;
+            if (Object.prototype.hasOwnProperty.call(seen, key)) {
+              return;
+            }
+            seen[key] = true;
+            hexes.push({ q: hex.q, r: hex.r });
+          });
+          if (!hexes.length) {
+            return null;
+          }
+          return {
+            govId: String(item.govId),
+            name: item.name === null || item.name === undefined ? "" : String(item.name),
+            hexes: hexes,
+            rings: regionBoundaryRings(hexes),
+            color: GOV_JURISDICTION_COLOR,
+          };
+        })
+        .filter(function (item) {
+          return !!item;
+        });
+      scheduleRender();
+    }
+
+    /** ★ F1：决策人列表（只取匹配用的 id/affiliation）；徽标属绘制层，装载即重绘。 */
+    function setDecisionMakers(list) {
+      decisionMakers = (Array.isArray(list) ? list : [])
+        .filter(function (maker) {
+          return maker && maker.id !== null && maker.id !== undefined;
+        })
+        .map(function (maker) {
+          return { id: String(maker.id), affiliation: maker.affiliation || {} };
+        });
+      scheduleRender();
+    }
+
+    /** ★ F1：图层开关（未知键不打开；只影响绘制，不触发任何取数）。 */
+    function setLayerState(layers) {
+      layerState = normalizeLayerState(layers);
+      // ★ F1 修复：城市图层开关会改变"可见城市标记"集合（单位让位判据）⇒ 单位坐标必须跟着重算。
+      recomputeWorldPixels();
+      scheduleRender();
+    }
+
+    /** ★ F1：城市当前所在格；未载入 ⇒ null（搜索定位 / 选中态共用）。 */
+    function cityPositionOf(id) {
+      var city = cityById[String(id)];
+      return city ? { q: city.at.q, r: city.at.r } : null;
+    }
+
+    /** ★ F1：选中城市的绘制高亮（null 清空）。 */
+    function setSelectedCity(id) {
+      selectedCity = id === null || id === undefined || id === "" ? null : String(id);
       scheduleRender();
     }
 
@@ -590,6 +938,27 @@
       return true;
     }
 
+    /**
+     * ★ F1：城市定位（搜索"定位"入口）。语义与 {@link #ensureUnitVisible} 逐条相同（已可见且缩放够 ⇒
+     * 短路不碰视图；否则居中并把 scale 抬到 max(现有, minScale)），只是锚点换成城市所在格。
+     */
+    function ensureCityVisible(q, r, minScale, force) {
+      var world = hexToPixel(q, r, cellSize);
+      var viewport = { width: cssW, height: cssH };
+      var wanted = typeof minScale === "number" && isFinite(minScale) ? minScale : 0;
+      if (!force) {
+        var screen = worldToScreen(world, view);
+        if (view.scale >= wanted && markerScreenVisible(screen, viewport, MARKER_VISIBLE_MARGIN)) {
+          return false;
+        }
+      }
+      view = centerViewOn(world, viewport, Math.max(view.scale, wanted));
+      recomputeWorldPixels();
+      updateZoomUi();
+      scheduleRender();
+      return true;
+    }
+
     function resize() {
       var host = canvas.parentElement;
       if (!host) {
@@ -653,6 +1022,9 @@
 
     /** 在途路线折线（M7b T2；M7e T1 加深色外描边）：描边 + 整条实色 + 未走完亮色；无路线时不画。 */
     function drawRoutes() {
+      if (!layerState.routes) {
+        return; // ★ F1：路线图层关闭 ⇒ 只影响绘制，不碰数据。
+      }
       routes.forEach(function (route) {
         var points = route.path.map(function (h) {
           return hexToPixel(h.q, h.r, cellSize);
@@ -712,19 +1084,100 @@
       });
     }
 
-    function drawCities() {
-      (overview.cities || []).forEach(function (city) {
-        if (!city.at) {
-          return;
+    /** 五角星路径（首都 / MajorCity 星标）。 */
+    function traceStar(cx, cy, outer, inner) {
+      ctx.beginPath();
+      for (var i = 0; i < 10; i += 1) {
+        var angle = -Math.PI / 2 + (Math.PI / 5) * i;
+        var radius = i % 2 === 0 ? outer : inner;
+        var x = cx + Math.cos(angle) * radius;
+        var y = cy + Math.sin(angle) * radius;
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
         }
-        var p = hexToPixel(city.at.q, city.at.r, cellSize);
-        var cx = p.x + cellSize * 0.42;
-        var cy = p.y - cellSize * 0.42;
-        ctx.fillStyle = "#f0d27a";
-        ctx.fillRect(cx - 4, cy - 4, 8, 8);
+      }
+      ctx.closePath();
+    }
+
+    /** 单个城市标记的形状（按 LOD 类别分级）：首都/MajorCity 星标、City 圆环、Town 小圆、其余小点。 */
+    function drawCityShape(item, p, radius) {
+      if (item.category === "capital" || item.category === "major") {
+        var outer = item.category === "capital" ? radius : radius * 0.9;
+        ctx.fillStyle = item.category === "capital" ? "#ffd76a" : "#f0b04a";
+        traceStar(p.x, p.y, outer, outer * 0.45);
+        ctx.fill();
         ctx.strokeStyle = "#0d1015";
-        ctx.lineWidth = 1 / view.scale;
-        ctx.strokeRect(cx - 4, cy - 4, 8, 8);
+        ctx.lineWidth = 1.5 / view.scale;
+        ctx.stroke();
+        if (item.category === "capital") {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, outer + 2 / view.scale, 0, Math.PI * 2);
+          ctx.strokeStyle = "#fff3c4";
+          ctx.lineWidth = 1.2 / view.scale;
+          ctx.stroke();
+        }
+        return;
+      }
+      if (item.category === "city") {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(30, 40, 55, 0.75)";
+        ctx.fill();
+        ctx.strokeStyle = "#9fd0ff";
+        ctx.lineWidth = 2 / view.scale;
+        ctx.stroke();
+        return;
+      }
+      // town / marketTown / unknown：小实心点；未知等级更小更灰（fail-closed，不冒充等级）。
+      var fill =
+        item.category === "town"
+          ? "#cfe6ff"
+          : item.category === "marketTown"
+            ? "#9fb6cc"
+            : "#7f8c9b";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.strokeStyle = "#0d1015";
+      ctx.lineWidth = 1 / view.scale;
+      ctx.stroke();
+    }
+
+    /**
+     * ★ F1：城市图层。数据来自 {@link setCities}（social 侧城市）；LOD / 标签 / 图层开关走
+     * {@code worldmodel.cityMarkerPlan} 的同一份计划（pickAt 也只认它 ⇒"看得见才点得到"）。
+     */
+    function drawCities() {
+      if (!layerState.cities) {
+        return;
+      }
+      var plan = cityMarkerPlanOf();
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      plan.forEach(function (item) {
+        var p = hexToPixel(item.at.q, item.at.r, cellSize);
+        var radius = cityRadiusOf(item);
+        drawCityShape(item, p, radius);
+        if (selectedCity !== null && selectedCity === item.id) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, radius + 4 / view.scale, 0, Math.PI * 2);
+          ctx.strokeStyle = "#4ea1ff";
+          ctx.lineWidth = 2.5 / view.scale;
+          ctx.stroke();
+        }
+        if (item.showLabel && item.name) {
+          var fontPx = Math.max(10, Math.min(18, radius * 1.6));
+          ctx.font = fontPx / view.scale + "px sans-serif";
+          ctx.strokeStyle = "rgba(0, 0, 0, 0.85)";
+          ctx.lineWidth = 3 / view.scale;
+          var labelY = p.y - radius - 8 / view.scale;
+          ctx.strokeText(item.name, p.x, labelY);
+          ctx.fillStyle = "#ffffff";
+          ctx.fillText(item.name, p.x, labelY);
+        }
       });
     }
 
@@ -753,20 +1206,66 @@
       return marker.member.indexOf(String(selectedUnit)) >= 0;
     }
 
+    /** ★ F1：该标记里是否有 GOV 单位（root 或任一成员 module.kind === "gov"）⇒ 画菱形/ GOV 徽标。 */
+    function markerIsGov(m) {
+      for (var i = 0; i < m.member.length; i += 1) {
+        var unit = unitById[m.member[i]];
+        if (unit && unit.module && unit.module.kind === "gov") {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    /** ★ F1：该标记是否有决策人（army：affiliation.rootUnit == 军队根；gov：affiliation.id 是标记成员）。 */
+    function markerHasDecisionMaker(m) {
+      for (var i = 0; i < decisionMakers.length; i += 1) {
+        var affiliation = decisionMakers[i].affiliation || {};
+        if (
+          affiliation.kind === "gov" &&
+          affiliation.id !== null &&
+          affiliation.id !== undefined &&
+          m.member.indexOf(String(affiliation.id)) >= 0
+        ) {
+          return true;
+        }
+        if (
+          affiliation.kind === "army" &&
+          affiliation.rootUnit !== null &&
+          affiliation.rootUnit !== undefined &&
+          String(affiliation.rootUnit) === String(m.rootId)
+        ) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     /**
      * ★ 2026-09-24 修正 1：画的是**军队标记**（markers）。
      * 组内**任一**单位被选中 ⇒ 高亮该组标记（选中的是某个兵种时，它所属军队的那个标记也亮）。
      * ★ 2026-09-24 交战：交战方的圆改用**琥珀色加粗描边**与普通（白描边）标记区分，
      * 并在每个交战格的**格心**画一次 ⚔（不是每个标记画一次）。
+     * ★ F1：GOV 单位（module.kind === "gov"）画成菱形 + 徽标；决策人图层在其标记上添金色点；
+     * 军队/GOV 与交战/路线三个图层都只影响绘制（数据不重取）。
      */
     function drawUnits() {
-      var radius = markerRadius(cellSize);
+      // ★ F1 可见性：单位标记半径同样加屏幕空间下限（fit 全图时 markerRadius 世界半径只有亚像素）；
+      //   选中外圈 / 决策人徽标 / 交战描边都基于这个 radius 绘制。scale 异常时退回世界半径。
+      var radius = Math.max(markerRadius(cellSize), screenSizeToWorld(3.5));
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
+      // ★ F1 修复：**军队**标签只在**非 world LOD** 画 —— 世界视图不画军队标签，避免与国名/城市混在一起。
+      // ★ 2026-10-01 可见性修正：GOV 标签不再跟着军队一刀切 —— 只要 gov 图层开着（循环入口已门控），
+      //   世界视图也画「政府：<名>」；GOV 标记数量少，不会糊。
+      var armyLabelsVisible =
+        worldModel && worldModel.lodForScale
+          ? worldModel.lodForScale(view.scale) !== "world"
+          : typeof view.scale === "number" && isFinite(view.scale) && view.scale >= 0.22;
       var combatIcons = {}; // "q_r" → 格心世界坐标（每格只画一个 ⚔）
       // ★ 2026-09-24 交战：**真实记录的格**先占位 —— 哪怕该格一个单位标记都没有，也必须画成交战格。
       //   与标记路径同一门控（屏幕格高不够时不启用交战显示，退化为普通视图；口径见 combatLayoutEnabled）。
-      if (combatLayoutEnabled(cellSize, cellSize * view.scale)) {
+      if (layerState.combats && combatLayoutEnabled(cellSize, cellSize * view.scale)) {
         Object.keys(realCombatHexes).forEach(function (key) {
           var parts = key.split("_");
           var q = Number(parts[0]);
@@ -777,13 +1276,31 @@
         });
       }
       markers.forEach(function (m) {
-        ctx.beginPath();
-        ctx.arc(m.px, m.py, radius, 0, Math.PI * 2);
-        ctx.fillStyle = "#e8503a";
-        ctx.fill();
-        // ★ 交战方：琥珀色加粗描边；普通标记：白描边（保持原样）。
-        ctx.strokeStyle = m.combat ? "#ffd54a" : "#ffffff";
-        ctx.lineWidth = (m.combat ? 3 : 2) / view.scale;
+        var gov = markerIsGov(m);
+        // ★ F1：GOV / army 各自图层门控（取代旧的 units 一刀切门控；pickAt 用同一判据过滤命中）。
+        if (gov ? !layerState.gov : !layerState.army) {
+          return;
+        }
+        if (gov) {
+          // GOV：菱形（与 army 的红圆一眼可分）。
+          ctx.beginPath();
+          ctx.moveTo(m.px, m.py - radius);
+          ctx.lineTo(m.px + radius, m.py);
+          ctx.lineTo(m.px, m.py + radius);
+          ctx.lineTo(m.px - radius, m.py);
+          ctx.closePath();
+          ctx.fillStyle = GOV_JURISDICTION_COLOR;
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.arc(m.px, m.py, radius, 0, Math.PI * 2);
+          ctx.fillStyle = "#e8503a";
+          ctx.fill();
+        }
+        // ★ 交战方：琥珀色加粗描边（仅交战图层开着时）；普通标记：白描边（保持原样）。
+        var combatStroke = layerState.combats && m.combat;
+        ctx.strokeStyle = combatStroke ? "#ffd54a" : "#ffffff";
+        ctx.lineWidth = (combatStroke ? 3 : 2) / view.scale;
         ctx.stroke();
         if (isMarkerSelected(m)) {
           ctx.beginPath();
@@ -792,11 +1309,46 @@
           ctx.lineWidth = 2.5 / view.scale;
           ctx.stroke();
         }
-        ctx.fillStyle = "#ffffff";
-        ctx.font = Math.max(9, Math.round(radius)) + "px sans-serif";
-        // ★ 2026-09-24：「军队名 × N」（N = 该标记在本格的成员数）——不再写 leadId 的短 id（那会冒充某个兵种）。
-        ctx.fillText(markerLabel(armyNameOf(m.rootId), m.member.length), m.px, m.py);
-        if (m.combat) {
+        // ★ F1：决策人徽标（金色小点）—— 只在该图层开着时画。
+        if (layerState.decisionMakers && markerHasDecisionMaker(m)) {
+          var badge = Math.max(2.5, radius * 0.3);
+          ctx.beginPath();
+          ctx.arc(m.px + radius * 0.85, m.py - radius * 0.85, badge, 0, Math.PI * 2);
+          ctx.fillStyle = "#ffd76a";
+          ctx.fill();
+          ctx.strokeStyle = "#0d1015";
+          ctx.lineWidth = 1 / view.scale;
+          ctx.stroke();
+        }
+        // ★ F1 可见性修正：GOV 只要图层开着（上面的门控已保证）就在世界视图显示标签；
+        //   军队仍按 LOD 门控（world 档不画）。gov/military 预设由此自动表现。
+        var unitLabelsVisible = gov ? layerState.gov : armyLabelsVisible;
+        // ★ F1 修复：标签画在标记**下方**（textBaseline="top"），字号取屏幕恒定口径
+        //   `max(9, 11 / view.scale)`（世界坐标），黑描边白字、居中；军队在 world LOD 不画（见 armyLabelsVisible）。
+        if (unitLabelsVisible) {
+          var labelFontWorld =
+            typeof view.scale === "number" && isFinite(view.scale) && view.scale > 0
+              ? Math.max(9, 11 / view.scale)
+              : 11;
+          var labelY =
+            typeof view.scale === "number" && isFinite(view.scale) && view.scale > 0
+              ? m.py + radius + 2 / view.scale
+              : m.py + radius + 2;
+          var rootName = armyNameOf(m.rootId);
+          // ★ F1：GOV / army 标签前缀区分；GOV 取根单位名（>12 字符截断加省略号，不显示 ×N）。
+          var unitLabel = gov
+            ? "政府：" + (rootName.length > 12 ? rootName.slice(0, 12) + "…" : rootName)
+            : "军：" + markerLabel(rootName, m.member.length);
+          ctx.textAlign = "center";
+          ctx.textBaseline = "top";
+          ctx.font = labelFontWorld + "px sans-serif";
+          ctx.strokeStyle = "rgba(0, 0, 0, 0.85)";
+          ctx.lineWidth = 3 / view.scale;
+          ctx.strokeText(unitLabel, m.px, labelY);
+          ctx.fillStyle = "#ffffff";
+          ctx.fillText(unitLabel, m.px, labelY);
+        }
+        if (layerState.combats && m.combat) {
           var key = m.at.q + "_" + m.at.r;
           if (!combatIcons[key]) {
             combatIcons[key] = hexToPixel(m.at.q, m.at.r, cellSize);
@@ -804,6 +1356,8 @@
         }
       });
       // ★ 交战格：格心画一次 ⚔（在标记之上，颜色用亮黄，与红/白标记区分得开）。
+      //   标记标签把 textBaseline 改成了 top ⇒ 画 ⚔ 前恢复 middle，图标仍以格心为中心。
+      ctx.textBaseline = "middle";
       var iconKeys = Object.keys(combatIcons);
       if (iconKeys.length > 0) {
         var iconOff = combatIconOffset();
@@ -854,6 +1408,95 @@
     }
 
     /**
+     * ★ F1：**国家着色**（世界视图）——把国家的区域 hex 集合按精确边界环填充一次（半透明），
+     * 压在地形之上、其它高亮之下。只画工作台（旧 /map 保持原渲染行为）；图层关掉即不画，数据不重取。
+     */
+    function paintNationFills(targetCtx) {
+      if (!isWorkbench || !layerState.nation || !nationRegions.length) {
+        return;
+      }
+      nationRegions.forEach(function (region) {
+        if (!region.rings.length) {
+          return;
+        }
+        var path = new Path2D();
+        region.rings.forEach(function (ring) {
+          for (var i = 0; i < ring.length; i += 1) {
+            var x = ring[i].x * cellSize;
+            var y = ring[i].y * cellSize;
+            if (i === 0) {
+              path.moveTo(x, y);
+            } else {
+              path.lineTo(x, y);
+            }
+          }
+          path.closePath();
+        });
+        targetCtx.fillStyle = withAlpha(region.color, 0.32);
+        targetCtx.fill(path, "evenodd");
+      });
+    }
+
+    /**
+     * ★ F1：**GOV 辖区覆盖层**（workbench 专用）。每项用预算好的精确 rings 画一次 Path2D：
+     * 填充 alpha 未选中 ≈0.24 / 选中 ≈0.38（选中色用 {@link GOV_JURISDICTION_SELECTED_COLOR}，
+     * 未选中用 {@link GOV_JURISDICTION_COLOR}），再按屏幕线宽描边界（选中 3.0px 实线、未选中 2.0px 虚线）。
+     * 未选中虚线用世界坐标 [6/scale, 4/scale]，屏幕恒定为 6px 实 / 4px 空；scale 非正/非有限时退回 [6,4]
+     * （不除 0、不产生 NaN）。函数末尾恢复 setLineDash([])，避免污染后续描边。
+     *
+     * <p>门控：非工作台 / 图层关 / 无数据 ⇒ 直接 return；屏幕线宽 = px / view.scale，走
+     * {@link screenSizeToWorld} 的同一守卫（scale 非正/非有限 ⇒ 0，不除 0；宽度无效时只填不描）。
+     */
+    function paintGovJurisdictions(targetCtx) {
+      if (!isWorkbench || !layerState.govJurisdiction || !govJurisdictions.length) {
+        return;
+      }
+      var strokeWidth = screenSizeToWorld(GOV_JURISDICTION_STROKE_PX);
+      var selectedStrokeWidth = screenSizeToWorld(GOV_JURISDICTION_SELECTED_STROKE_PX);
+      // ★ F1 可见性修正：未选中 = 屏幕恒定虚线（世界坐标按 scale 折算）；scale 异常时退回 [6,4]（绝不 NaN）。
+      var dashPattern =
+        typeof view.scale === "number" && isFinite(view.scale) && view.scale > 0
+          ? [6 / view.scale, 4 / view.scale]
+          : [6, 4];
+      govJurisdictions.forEach(function (item) {
+        if (!item.rings.length) {
+          return;
+        }
+        var selected =
+          selectedUnit !== null && selectedUnit !== undefined && String(selectedUnit) === item.govId;
+        var path = new Path2D();
+        item.rings.forEach(function (ring) {
+          for (var i = 0; i < ring.length; i += 1) {
+            var x = ring[i].x * cellSize;
+            var y = ring[i].y * cellSize;
+            if (i === 0) {
+              path.moveTo(x, y);
+            } else {
+              path.lineTo(x, y);
+            }
+          }
+          path.closePath();
+        });
+        // ★ 选中 = 实线；未选中 = 虚线。setLineDash 在 fill/stroke 之间保持，结束时统一清空。
+        targetCtx.setLineDash(selected ? [] : dashPattern);
+        targetCtx.fillStyle = withAlpha(
+          selected ? GOV_JURISDICTION_SELECTED_COLOR : GOV_JURISDICTION_COLOR,
+          selected ? GOV_JURISDICTION_SELECTED_FILL_ALPHA : GOV_JURISDICTION_FILL_ALPHA
+        );
+        targetCtx.fill(path, "evenodd");
+        var width = selected ? selectedStrokeWidth : strokeWidth;
+        if (typeof width === "number" && isFinite(width) && width > 0) {
+          targetCtx.strokeStyle = selected
+            ? GOV_JURISDICTION_SELECTED_COLOR
+            : GOV_JURISDICTION_COLOR;
+          targetCtx.lineWidth = width;
+          targetCtx.stroke(path);
+        }
+      });
+      targetCtx.setLineDash([]);
+    }
+
+    /**
      * ★ U1：区域查看 / 区域编辑模式下压暗地形底图（全画布深色 scrim，屏幕空间画、不随缩放变强度）。
      *
      * <p>插入点是**地形之后、高亮之前** —— 否则区域填充会被一起压暗、或地形盖住压暗层。
@@ -880,7 +1523,8 @@
      */
     function paintRegionNames(targetCtx) {
       regionNameDraws = 0;
-      if (!regionNamesVisible(mode) || view.scale < REGION_NAME_MIN_SCALE) {
+      // ★ F1：区域名图层开关（默认开）与既有"区域名"复选框**同时**满足才画；关掉图层不影响既有开关语义。
+      if (!layerState.regionNames || !regionNamesVisible(mode) || view.scale < REGION_NAME_MIN_SCALE) {
         return;
       }
       var plan = regionNamePlan(
@@ -905,6 +1549,45 @@
         targetCtx.fillText(label.text, label.x, label.y);
       });
       regionNameDraws = plan.length;
+    }
+
+    /**
+     * ★ F1：世界视图里的**国家名**（区域名图层的 world LOD 子集）。区域模式仍走 {@link #paintRegionNames}
+     * 的既有全区域计划；本函数只在 view 模式、且缩放达到 {@code NATION_LABEL_MIN_SCALE} 时画三国的国名，
+     * 使"世界视图能看见国名"不需要先切到区域模式。计数独立成 {@code nationNameDraws}，不污染既有区域名断言。
+     */
+    function paintNationNames(targetCtx) {
+      nationNameDraws = 0;
+      if (!layerState.regionNames || !isWorkbench || mode !== "view") {
+        return;
+      }
+      // ★ F1 修复：国家名只在**世界级 LOD** 显示（worldmodel.nationNamesVisible 与城市 LOD 同一判据）；
+      //   缩放大到区域/近景后国家名消失，只留城市名。
+      var nationsVisible =
+        worldModel && worldModel.nationNamesVisible
+          ? worldModel.nationNamesVisible(view.scale)
+          : typeof view.scale === "number" && isFinite(view.scale) && view.scale > 0 && view.scale < 0.22;
+      if (!nationsVisible) {
+        return;
+      }
+      var plan = worldModel && worldModel.nationLabelPlan
+        ? worldModel.nationLabelPlan((overview && overview.regions) || [], view.scale)
+        : [];
+      if (!plan.length) {
+        return;
+      }
+      targetCtx.textAlign = "center";
+      targetCtx.textBaseline = "middle";
+      targetCtx.lineWidth = 3 / view.scale;
+      targetCtx.strokeStyle = "rgba(0, 0, 0, 0.85)";
+      targetCtx.fillStyle = "#ffffff";
+      plan.forEach(function (label) {
+        var world = hexToPixel(label.q, label.r, cellSize);
+        targetCtx.font = "bold " + label.fontSize + "px sans-serif";
+        targetCtx.strokeText(label.text, world.x, world.y);
+        targetCtx.fillText(label.text, world.x, world.y);
+      });
+      nationNameDraws = plan.length;
     }
 
     /**
@@ -1095,12 +1778,18 @@
       } else {
         paintTerrain(ctx);
       }
+      // ★ F1：国家着色（地形之上、其它高亮之下；只画工作台，见图层开关）。
+      paintNationFills(ctx);
+      // ★ F1：GOV 辖区覆盖层（国家着色之上、地形压暗/高亮之下；只画工作台，见图层开关）。
+      paintGovJurisdictions(ctx);
       // ★ U1：区域模式先把地形压暗（屏幕空间全覆盖），再叠区域填充/边界 ⇒ 区域成为视觉主体。
       paintTerrainDim(ctx, app.getState().mode);
       paintHighlights(ctx);
       paintRegionOutlines(ctx);
       // ★ U2：区域名压在填充/边界之上、单位之下。
       paintRegionNames(ctx);
+      // ★ F1：世界视图的国家名（与区域名分开计数，互不影响既有断言）。
+      paintNationNames(ctx);
       paintDraft(ctx);
       paintLasso(ctx);
       paintBoundaryDots(ctx);
@@ -1221,6 +1910,11 @@
       //   点首都格里的兵种标记，选中的是整支军队的代表（根），与标记画的是同一个单位。
       for (var i = markers.length - 1; i >= 0; i--) {
         var m = markers[i];
+        // ★ F1：单位命中按 kind 过滤 —— GOV 标记只在 gov 图层开时参与，army 标记只在 army 图层开时参与
+        //   （与 drawUnits 的绘制门控同口径："看得见才点得到"）；城市命中仍只看 cities 图层。
+        if (markerIsGov(m) ? !layerState.gov : !layerState.army) {
+          continue;
+        }
         // ★ 2026-09-23：摊开的标记命中半径收缩到**不超过半间距** ⇒ 不误伤纵向相邻的邻居；
         //   未摊开（stackSpacing=0，含大小格下的重叠态）保持原口径。
         // ★ 2026-09-24 交战：交战格上的标记用**同一套 combatSlot 坐标**（m.px/m.py），命中半径
@@ -1244,6 +1938,28 @@
             r: m.at.r,
             inMap: true,
           };
+        }
+      }
+      // ★ F1：单位标记之后、hex 之前命中**城市标记**（同一格有单位时单位优先，保持"点单位"直觉）。
+      //   只在城市图层开着时命中（"看得见才点得到"）；命中半径与绘制半径同源（避免"画得大、点不到"）。
+      if (layerState.cities) {
+        var cityPlan = cityMarkerPlanOf();
+        for (var c = cityPlan.length - 1; c >= 0; c -= 1) {
+          var city = cityPlan[c];
+          var cp = hexToPixel(city.at.q, city.at.r, cellSize);
+          var cityHitRadius = Math.max(cityRadiusOf(city), 6 / view.scale);
+          var cdx = world.x - cp.x;
+          var cdy = world.y - cp.y;
+          if (cdx * cdx + cdy * cdy <= cityHitRadius * cityHitRadius) {
+            return {
+              kind: "city",
+              id: city.id,
+              name: city.name || null,
+              q: city.at.q,
+              r: city.at.r,
+              inMap: true,
+            };
+          }
         }
       }
       var coord = pixelToHex(world.x, world.y, cellSize);
@@ -1881,7 +2597,9 @@
         overview.hexCount +
         " 格 · " +
         (overview.regions ? overview.regions.length : 0) +
-        " 区域 · 单位 " +
+        " 区域 · " +
+        cities.length +
+        " 城市 · 单位 " +
         units.length +
         " · " +
         types
@@ -1932,6 +2650,19 @@
         paintedRingCount: paintedRingCount,
         pass2Draws: pass2Draws,
         unitCount: units.length,
+        // ★ F1：城市 / 图层 / 国家着色 / 决策人徽标的只读投影（验收与门禁可直接断言）。
+        cityCount: cities.length,
+        visibleCityCount: cityMarkerPlanOf().length,
+        selectedCity: selectedCity,
+        layerState: Object.assign({}, layerState),
+        nationRegionCount: nationRegions.length,
+        nationNameDraws: nationNameDraws,
+        decisionMakerCount: decisionMakers.length,
+        // ★ F1：GOV 辖区覆盖层条数与 hex 总数（逐项 hexes.length 求和；供验收/门禁断言）。
+        govJurisdictionCount: govJurisdictions.length,
+        govJurisdictionHexCount: govJurisdictions.reduce(function (sum, item) {
+          return sum + item.hexes.length;
+        }, 0),
         colorByTerrain: Object.assign({}, colorByTerrain),
         fallbackColor: FALLBACK_COLOR,
         fallbackWarned: fallbackWarned,
@@ -2092,6 +2823,15 @@
       setData: setData,
       setUnits: setUnits,
       setCombats: setCombats,
+      // ★ F1：城市 / 图层 / 国家着色 / 决策人徽标的装载入口。
+      setCities: setCities,
+      setLayerState: setLayerState,
+      setNationRegions: setNationRegions,
+      // ★ F1：GOV 辖区覆盖层（切 target / 取数失败时调用方推空数组清空）。
+      setGovJurisdictions: setGovJurisdictions,
+      setDecisionMakers: setDecisionMakers,
+      setSelectedCity: setSelectedCity,
+      cityPositionOf: cityPositionOf,
       setCellSize: setCellSize,
       setSelected: setSelected,
       setSelectedUnit: setSelectedUnit,
@@ -2129,6 +2869,8 @@
       computeFit: computeFit,
       // ★ 2026-09-24 可用性修复：选中/定位单位时把它居中并抬到可见缩放（见方法注释）。
       ensureUnitVisible: ensureUnitVisible,
+      // ★ F1：城市/锚点定位（搜索定位入口；城市标记与单位标记的可见性口径同源）。
+      ensureCityVisible: ensureCityVisible,
       resize: resize,
       render: render,
       pickAt: pickAt,
@@ -2165,7 +2907,11 @@
        * 与屏幕上真正画出来的会分叉（那正是"投影不是证据"的形态）。
        */
       regionNameLayouts: function () {
-        if (!regionNamesVisible(mode) || view.scale < REGION_NAME_MIN_SCALE) {
+        if (
+          !layerState.regionNames ||
+          !regionNamesVisible(mode) ||
+          view.scale < REGION_NAME_MIN_SCALE
+        ) {
           return [];
         }
         var plan = regionNamePlan(

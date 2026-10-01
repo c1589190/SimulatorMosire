@@ -19,7 +19,8 @@
     { id: "docs", label: "文档" },
   ];
 
-  var AFFILIATION_LABELS = { nation: "国家", army: "军队" };
+  // ★ F1：增补 gov（政府）——与服务端 affiliation.kind 同口径；未知 kind 仍走"其它（kind）"。
+  var AFFILIATION_LABELS = { nation: "国家", army: "军队", gov: "政府" };
 
   /** 非空文本或 null（不 trim 值本身之外的加工；空白一律 null）。 */
   function textOrNull(value) {
@@ -184,6 +185,24 @@
         byId[String(unit.id)] = unit;
       }
     });
+    // ★ F1：GOV 分支——决策人的 affiliation.id 就是 GOV 单位 id（逐值相等；组内按 id 字典序，确定性）。
+    var govMakers = (makers || [])
+      .filter(function (maker) {
+        return (
+          maker &&
+          maker.affiliation &&
+          maker.affiliation.kind === "gov" &&
+          maker.affiliation.id !== null &&
+          maker.affiliation.id !== undefined &&
+          String(maker.affiliation.id) === String(unitId)
+        );
+      })
+      .sort(function (a, b) {
+        return String(a.id).localeCompare(String(b.id));
+      });
+    if (govMakers.length) {
+      return govMakers[0];
+    }
     var armies = (makers || [])
       .filter(function (maker) {
         return (
@@ -932,6 +951,8 @@
     decisionMakerGroups: decisionMakerGroups,
     decisionMakersForNation: decisionMakersForNation,
     decisionMakerForUnit: decisionMakerForUnit,
+    // ★ F1：计划里点名的 GOV 单位专用入口；与 decisionMakerForUnit 是**同一份实现**（不复制规则）。
+    decisionMakerForGovUnit: decisionMakerForUnit,
     decisionMakerFields: decisionMakerFields,
     prefixSummary: prefixSummary,
     decisionSubpageState: decisionSubpageState,

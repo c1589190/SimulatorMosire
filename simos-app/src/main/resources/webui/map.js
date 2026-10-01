@@ -16,6 +16,8 @@
 
   var app = window.SimosApp;
   var api = window.SimosApi;
+  // ★ F1：世界视图纯函数（城市 LOD / 搜索索引与匹配 / 国家汇总 / 图层归一）。两宿主页都在本文件之前引入。
+  var worldModel = window.SimosWorldModel || null;
   // ★ M12 拆分第一步：纯几何 / 颜色 / 区域边界已搬到兄弟文件（hexgeom.js / hexcolor.js /
   //   regionShape.js，两份宿主页按依赖顺序在本文件之前引入）。此处按名取回 ⇒ **调用点与
   //   window.SimosMap 暴露处一字未改**。regionFallbackWarned 是可变旗标，不取快照（见下）。
@@ -136,6 +138,17 @@
     paletteSignature: null,
     // ★ 2026-09-24 可用性修复：上次已为其"保证可见"的选中单位 id（选中项换了才重新居中，见 onStateChange）。
     lastEnsuredUnitId: null,
+    // ★ F1：上次已为其"保证可见"的选中城市 id（与单位分开记，互不误判"选中项没换"）。
+    lastEnsuredCityId: null,
+    // ★ F1：世界视图数据（城市/区域汇总/经济总览/决策人）与搜索索引；map.js 是取数收口，面板只读这份投影。
+    worldCities: [],
+    worldRegionSummaries: [],
+    worldEconomyOverview: null,
+    worldDecisionMakers: [],
+    worldUnits: [],
+    searchIndex: [],
+    // ★ F1：图层开关的 localStorage 降级内存态（无 localStorage 宿主用；键名与持久化一致）。
+    layerMemory: null,
     mapEditBusy: false,
     mapEditTool: "terrain",
     mapEditSubtool: "terrain",
@@ -182,6 +195,9 @@
       //   本文件对它们只做**惰性** window.SimosMapEditor.* / window.SimosMapRegionEditor.* 调用。
       window.SimosMapEditor.renderTerrainPalette(body.terrainTypes || []);
       await reloadUnits();
+      // ★ F1：世界视图数据（城市 / 区域汇总 / 经济总览 / 决策人 / 国家着色 / 搜索索引）。
+      //   三个新端点全部带 target 走共享缓存；任何一路失败只退化为该图层缺数据，不拖垮地图主流程。
+      await reloadWorldLayers(body);
       var mode = app.getState().mode;
       if (mode === "map-edit" || mode === "region-edit") {
         window.SimosMapEditor.renderRegionInfo(app.getState().selection);
@@ -209,6 +225,10 @@
           body.hexCount +
           " 格（mapId=" +
           app.text(body.mapId) +
+          "，区域 " +
+          (body.regions || []).length +
+          "，城市 " +
+          active.debug().cityCount +
           "，单位 " +
           active.debug().unitCount +
           "）",
@@ -231,12 +251,171 @@
       ]);
       active.setUnits((results[0] && results[0].units) || []);
       active.setCombats((results[1] && results[1].combats) || []);
+      // ★ F1：搜索索引 / 世界总览需要带 module/parent 的单位列表——与 renderer 同一份服务端读数。
+      host.worldUnits = (results[0] && results[0].units) || [];
+      // ★ F1：GOV 辖区随单位同批重算（切 target / revision 沿本链自动覆盖旧数据）。
+      await reloadGovJurisdictions();
       return null;
     } catch (e) {
       active.setUnits([]);
       active.setCombats([]);
+      host.worldUnits = [];
+      // ★ F1：单位取数失败 ⇒ 辖区必须清空，不能留旧 revision 的覆盖层。
+      if (active && active.setGovJurisdictions) {
+        active.setGovJurisdictions([]);
+      }
       return e.message;
     }
+  }
+
+  /**
+   * ★ F1：GOV 辖区数据（只在工作台取数；旧 /map 直接清空）。
+   *
+   * <p>数据源 = {@code host.worldUnits}（即 `/api/units` 的 units）：筛 `module.kind === "gov"` 且
+   * `jurisdiction.regions` 非空（regionId → 税率）的 GOV；每个 regionId 走既有 {@link fetchRegionCached}
+   * 的同一 target 缓存（**不另写 fetch**），取其 `hexes`，在**同一 GOV 的各辖区并集内**按 `q_r` 去重。
+   * 汇总 `[{govId,name,hexes}]` 推给 renderer；失败 / 无 GOV / 辖区全空 ⇒ 空数组（不抛、不编坐标）。
+   *
+   * <p>renderer 侧会再做一次同口径去重并用 regionBoundaryRings 算精确边界；切换 target / revision 由现有
+   * `reloadOverview → reloadUnits` 链自动重算，故这里不另加监听。
+   */
+  async function reloadGovJurisdictions() {
+    if (!host.isWorkbench) {
+      if (active && active.setGovJurisdictions) {
+        active.setGovJurisdictions([]);
+      }
+      return;
+    }
+    var out = [];
+    try {
+      var govs = (host.worldUnits || []).filter(function (unit) {
+        var regions = unit && unit.module && unit.module.kind === "gov"
+          ? unit.jurisdiction && unit.jurisdiction.regions
+          : null;
+        return (
+          !!regions &&
+          typeof regions === "object" &&
+          !Array.isArray(regions) &&
+          Object.keys(regions).length > 0
+        );
+      });
+      for (var i = 0; i < govs.length; i += 1) {
+        var gov = govs[i];
+        var govId = String(gov.id);
+        var regionIds = Object.keys(gov.jurisdiction.regions);
+        var seen = {};
+        var hexes = [];
+        for (var j = 0; j < regionIds.length; j += 1) {
+          var region = null;
+          try {
+            region = await fetchRegionCached(regionIds[j]);
+          } catch (e) {
+            region = null; // 单区失败只丢这一区；其余辖区照常汇总。
+          }
+          var list = region && Array.isArray(region.hexes) ? region.hexes : [];
+          for (var k = 0; k < list.length; k += 1) {
+            var hex = list[k];
+            if (
+              !hex ||
+              typeof hex.q !== "number" ||
+              typeof hex.r !== "number" ||
+              !isFinite(hex.q) ||
+              !isFinite(hex.r)
+            ) {
+              continue;
+            }
+            var key = hex.q + "_" + hex.r;
+            if (Object.prototype.hasOwnProperty.call(seen, key)) {
+              continue;
+            }
+            seen[key] = true;
+            hexes.push({ q: hex.q, r: hex.r });
+          }
+        }
+        if (!hexes.length) {
+          continue; // 该 GOV 的辖区一格都没读到 ⇒ 不推空壳覆盖层。
+        }
+        var name =
+          gov.name === null || gov.name === undefined || gov.name === ""
+            ? govId
+            : String(gov.name);
+        out.push({ govId: govId, name: name, hexes: hexes });
+      }
+    } catch (e) {
+      out = []; // 兜底：任何意外都清空推给 renderer，不把半成品/旧数据留在图上。
+    }
+    if (active && active.setGovJurisdictions) {
+      active.setGovJurisdictions(out);
+    }
+  }
+
+  /**
+   * ★ F1：世界视图数据取数收口（城市 / 区域汇总 / 经济总览 / 决策人 / 国家着色 / 搜索索引）。
+   *
+   * <p>★ 三个新端点都经 api 的 **target 记忆化缓存**：本函数与右栏总览、hex 详情可能同时要同一份数据，
+   * 共享缓存保证"同一 URL×target 只发一次"。任一路失败只让对应图层缺数据（如实显示），不拖垮地图主流程。
+   */
+  async function reloadWorldLayers(overviewBody) {
+    var results = await Promise.all([
+      api.cachedCities(app.target()).catch(function () {
+        return null;
+      }),
+      api.cachedRegionSummaries(app.target()).catch(function () {
+        return null;
+      }),
+      api.cachedEconomyOverview(app.target()).catch(function () {
+        return null;
+      }),
+      api.cachedDecisionMakers(app.target()).catch(function () {
+        return null;
+      }),
+    ]);
+    var cities = (results[0] && results[0].cities) || [];
+    var regionSummaries = (results[1] && results[1].regions) || [];
+    var economyOverview = results[2] || null;
+    var makers = (results[3] && results[3].decisionMakers) || [];
+    host.worldCities = cities;
+    host.worldRegionSummaries = regionSummaries;
+    host.worldEconomyOverview = economyOverview;
+    host.worldDecisionMakers = makers;
+    active.setCities(cities);
+    active.setDecisionMakers(makers);
+    host.searchIndex =
+      worldModel && worldModel.searchIndex
+        ? worldModel.searchIndex(overviewBody, cities, host.worldUnits, makers)
+        : [];
+    // ★ 国家着色只画工作台（旧 /map 保持原渲染行为）；区域 hex 懒拉走既有 mapRegion 缓存。
+    if (host.isWorkbench) {
+      await reloadNationFills();
+    }
+    if (window.SimosPanelRight && window.SimosPanelRight.setWorldData) {
+      window.SimosPanelRight.setWorldData({
+        cities: cities,
+        regionSummaries: regionSummaries,
+        economyOverview: economyOverview,
+        units: host.worldUnits,
+        decisionMakers: makers,
+      });
+    }
+  }
+
+  /** ★ F1：国家着色数据（`meta.tag` 以 `nation:` 开头的区域 ⇒ 拉 hex 集合 ⇒ 推给 renderer）。 */
+  async function reloadNationFills() {
+    var nationRegions = (host.overviewRegions || []).filter(function (region) {
+      return nationTagOf(region) !== null;
+    });
+    var results = await Promise.all(
+      nationRegions.map(function (region) {
+        return fetchRegionCached(String(region.id)).catch(function () {
+          return null;
+        });
+      })
+    );
+    active.setNationRegions(
+      results.filter(function (region) {
+        return !!region;
+      })
+    );
   }
 
   /** 按 id 懒拉区域详情并缓存（键含 target）；失败折成空 hex 集合（不整块崩）。 */
@@ -738,13 +917,17 @@
   var DECISION_SCOPE_ALPHA_SMALL = 0.42; // 格少 ⇒ 逐格实心，范围圈看得清
   var DECISION_SCOPE_ALPHA_LARGE = 0.2; // 格多 ⇒ 压淡，否则整片国土盖死地形
 
-  /** 「国家级 / 军队级」的中文标签（纯函数）。 */
+  /** 「国家级 / 军队级 / 政府级」的中文标签（纯函数）。 */
   function decisionScopeLevelLabel(kind) {
     if (kind === "nation") {
       return "国家级";
     }
     if (kind === "army") {
       return "军队级";
+    }
+    // ★ F1：GOV 决策人的可见范围（管辖区）——与服务端 affiliation.kind 同口径。
+    if (kind === "gov") {
+      return "政府级";
     }
     return kind ? String(kind) : "未知归属";
   }
@@ -876,6 +1059,256 @@
     return plan;
   }
 
+  // ── F1：图层抽屉 / 搜索定位 / 世界视图入口 ─────────────────────────────
+  //
+  // ★ 图层状态持久化键与格式都是世界视图的一部分（localStorage 不可用 ⇒ 内存态，不报错）；
+  //   渲染器只认 worldmodel.layerVisibility 归一后的键，未知键不会打开一个图层。
+  var LAYERS_STORAGE_KEY = "simos.layers.v1";
+
+  function layerPrefsFromDom() {
+    var out = {};
+    var panel = app.byId("layer-panel");
+    if (!panel || !panel.querySelectorAll) {
+      return out;
+    }
+    Array.prototype.forEach.call(panel.querySelectorAll("input[data-layer]"), function (node) {
+      var key = node.getAttribute("data-layer");
+      if (key) {
+        out[key] = !!node.checked;
+      }
+    });
+    return out;
+  }
+
+  function loadLayerPrefs() {
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        var raw = window.localStorage.getItem(LAYERS_STORAGE_KEY);
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object") {
+            return parsed;
+          }
+        }
+      }
+    } catch (e) {
+      // 无 localStorage / 坏 JSON ⇒ 用内存态（不静默丢用户当前这一轮的开关）。
+    }
+    return host.layerMemory;
+  }
+
+  function persistLayerPrefs(layers) {
+    host.layerMemory = Object.assign({}, layers || {});
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        window.localStorage.setItem(LAYERS_STORAGE_KEY, JSON.stringify(host.layerMemory));
+      }
+    } catch (e) {
+      // 持久化失败只丢"下次打开还记着"这一条，不影响本次绘制。
+    }
+  }
+
+  /**
+   * 把 `layers` 写回抽屉复选框，再把**读回的 DOM 状态**持久化并推给 renderer（只重绘、不重取数）。
+   *
+   * <p>fail-closed：只在 `layers` 里**存在该键**时写复选框，且只有 `=== true` 才勾（缺键保持 DOM 原样）；
+   * 归一化仍由 renderer 侧 worldmodel.layerVisibility 收口。`persistLayerPrefs` 后 `setLayerState` 用的是
+   * `layerPrefsFromDom()` 的读数，保证内存态/绘制态/DOM 三者同源。
+   */
+  function applyLayerPrefs(layers) {
+    var panel = app.byId("layer-panel");
+    if (panel && panel.querySelectorAll) {
+      Array.prototype.forEach.call(panel.querySelectorAll("input[data-layer]"), function (node) {
+        var key = node.getAttribute("data-layer");
+        if (key && layers && Object.prototype.hasOwnProperty.call(layers, key)) {
+          node.checked = layers[key] === true;
+        }
+      });
+    }
+    var prefs = layerPrefsFromDom();
+    persistLayerPrefs(prefs);
+    if (active && active.setLayerState) {
+      active.setLayerState(prefs);
+    }
+  }
+
+  function wireLayerDrawer() {
+    var button = app.byId("layer-toggle");
+    var panel = app.byId("layer-panel");
+    if (!button || !panel) {
+      return;
+    }
+    var stored = loadLayerPrefs();
+    applyLayerPrefs(stored);
+    button.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
+    button.addEventListener("click", function () {
+      panel.hidden = !panel.hidden;
+      button.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
+    });
+    if (panel.querySelectorAll) {
+      Array.prototype.forEach.call(panel.querySelectorAll("input[data-layer]"), function (node) {
+        node.addEventListener("change", function () {
+          applyLayerPrefs(layerPrefsFromDom());
+        });
+      });
+      // ★ F1：场景预设按钮。未知 preset / worldmodel 缺席 ⇒ 什么都不做（fail-closed，不猜、不改 DOM）。
+      Array.prototype.forEach.call(
+        panel.querySelectorAll("button[data-layer-preset]"),
+        function (node) {
+          node.addEventListener("click", function () {
+            var name = node.getAttribute("data-layer-preset");
+            if (!worldModel || !worldModel.layerPreset) {
+              return;
+            }
+            var preset = worldModel.layerPreset(name);
+            if (preset) {
+              applyLayerPrefs(preset);
+            }
+          });
+        }
+      );
+    }
+  }
+
+  var SEARCH_KIND_LABELS = {
+    city: "城市",
+    region: "区域",
+    unit: "单位/GOV",
+    decisionMaker: "决策人",
+  };
+
+  function searchKindLabel(kind) {
+    return Object.prototype.hasOwnProperty.call(SEARCH_KIND_LABELS, kind)
+      ? SEARCH_KIND_LABELS[kind]
+      : String(kind);
+  }
+
+  /** 搜索当前索引（worldmodel 缺席 ⇒ 空；绝不从 DOM 反推）。 */
+  function currentSearchMatches(query) {
+    if (!worldModel || !worldModel.searchMatches) {
+      return [];
+    }
+    return worldModel.searchMatches(host.searchIndex, query);
+  }
+
+  /**
+   * ★ F1 搜索定位（UI 的唯一入口；也挂到 window.SimosMap 供 e2e/其它页复用）：
+   * 城市/单位 ⇒ 选中 + 保证可见；区域 ⇒ 切区域模式并高亮 + 居中；决策人 ⇒ 切决策模式并聚焦。
+   * 未知 kind fail-closed ⇒ false（不猜、不改任何状态）。
+   */
+  function locateSearchResult(item) {
+    if (!item || !active) {
+      return false;
+    }
+    var state = app.getState();
+    if (item.kind === "city") {
+      if (state.mode !== "view") {
+        app.setMode("view");
+      }
+      app.setSelection({ kind: "city", id: item.id });
+      if (item.at) {
+        active.ensureCityVisible(item.at.q, item.at.r, hexGeom.UNIT_VISIBLE_MIN_SCALE, true);
+      }
+      return true;
+    }
+    if (item.kind === "unit") {
+      if (state.mode !== "view" && state.mode !== "unit") {
+        app.setMode("view");
+      }
+      app.setSelection({ kind: "unit", id: item.id });
+      var unitPos = active.positionOf(item.id);
+      if (unitPos) {
+        active.ensureUnitVisible(unitPos.q, unitPos.r, hexGeom.UNIT_VISIBLE_MIN_SCALE, true);
+      }
+      return true;
+    }
+    if (item.kind === "region") {
+      if (state.mode !== "region") {
+        app.setMode("region");
+      }
+      app.setHighlightRegions([String(item.id)], "single");
+      if (item.at) {
+        active.ensureCityVisible(item.at.q, item.at.r, 0.3, true);
+      }
+      return true;
+    }
+    if (item.kind === "decisionMaker") {
+      if (state.mode !== "decision") {
+        app.setMode("decision");
+      }
+      app.setDecisionMakerFocus(item.id);
+      return true;
+    }
+    return false;
+  }
+
+  function renderSearchResults() {
+    var input = app.byId("search-input");
+    var mount = app.byId("search-results");
+    if (!input || !mount) {
+      return;
+    }
+    var matches = currentSearchMatches(input.value);
+    app.clear(mount);
+    if (!matches.length) {
+      mount.hidden = true;
+      return;
+    }
+    matches.forEach(function (item) {
+      var button = app.el("button", {
+        type: "button",
+        class: "search-result",
+        "data-kind": item.kind,
+      });
+      button.appendChild(
+        app.el("span", { class: "search-result-kind", text: searchKindLabel(item.kind) })
+      );
+      button.appendChild(app.el("span", { class: "search-result-name", text: app.text(item.name) }));
+      button.appendChild(app.el("span", { class: "search-result-id", text: app.text(item.id) }));
+      button.addEventListener("click", function () {
+        locateSearchResult(item);
+        mount.hidden = true;
+        input.value = item.name || item.id;
+      });
+      mount.appendChild(button);
+    });
+    mount.hidden = false;
+  }
+
+  function wireSearchBox() {
+    var input = app.byId("search-input");
+    var mount = app.byId("search-results");
+    if (!input || !mount) {
+      return;
+    }
+    input.addEventListener("input", renderSearchResults);
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        var matches = currentSearchMatches(input.value);
+        if (matches.length) {
+          locateSearchResult(matches[0]);
+          mount.hidden = true;
+          input.value = matches[0].name || matches[0].id;
+          if (event.preventDefault) {
+            event.preventDefault();
+          }
+        }
+        return;
+      }
+      if (event.key === "Escape") {
+        mount.hidden = true;
+      }
+    });
+    document.addEventListener("click", function (event) {
+      if (mount.hidden) {
+        return;
+      }
+      if (event.target === input || (mount.contains && mount.contains(event.target))) {
+        return;
+      }
+      mount.hidden = true;
+    });
+  }
 
   /** 目标坐标变了 ⇒ 地图/单位/区域填充全部按新 revision 重取（取数一律带 withTarget）。 */
   function scheduleTargetReload() {
@@ -961,6 +1394,8 @@
     }
     var sel = state.selection;
     if (sel && sel.kind === "unit") {
+      host.lastEnsuredCityId = null;
+      active.setSelectedCity(null);
       active.setSelectedUnit(sel.id);
       var selPos = active.positionOf(sel.id);
       active.setSelected(selPos);
@@ -974,9 +1409,22 @@
         host.lastEnsuredUnitId = sel.id;
         active.ensureUnitVisible(selPos.q, selPos.r, hexGeom.UNIT_VISIBLE_MIN_SCALE);
       }
-    } else {
+    } else if (sel && sel.kind === "city") {
+      // ★ F1：城市选中（地图点选 / 搜索定位 / hex 详情里的城市链接）——与单位同一套"保证可见"收口。
       host.lastEnsuredUnitId = null;
       active.setSelectedUnit(null);
+      active.setSelectedCity(sel.id);
+      var cityPos = active.cityPositionOf(sel.id);
+      active.setSelected(cityPos);
+      if (cityPos && host.lastEnsuredCityId !== sel.id) {
+        host.lastEnsuredCityId = sel.id;
+        active.ensureCityVisible(cityPos.q, cityPos.r, hexGeom.UNIT_VISIBLE_MIN_SCALE);
+      }
+    } else {
+      host.lastEnsuredUnitId = null;
+      host.lastEnsuredCityId = null;
+      active.setSelectedUnit(null);
+      active.setSelectedCity(null);
       active.setSelected(sel && sel.kind === "hex" ? { q: sel.q, r: sel.r } : null);
     }
     if (state.mode === "map-edit" || state.mode === "region-edit") {
@@ -987,6 +1435,11 @@
   function workbenchSelect(pick) {
     var mode = app.getState().mode;
     var selId = window.SimosMapUnitEditor.selectedUnitId();
+    // ★ F1：城市命中优先只领"选中城市"（不抢模式）：左栏切到城市详情，地图居中由 onStateChange 收口。
+    if (pick.kind === "city") {
+      app.setSelection({ kind: "city", id: pick.id });
+      return;
+    }
     // ★ M7e T1（用户裁定，§2「一下选中、两下取消」）：左键点**已选中**的单位标记 ⇒ 取消移动；
     //   未选中则只是选中它。不点单位、点已选中单位**当前所在格**同样取消移动。
     if (pick.kind === "unit") {
@@ -1574,6 +2027,9 @@
 
     if (isWorkbench) {
       window.SimosMapHostPage.wireWorkbenchControls();
+      // ★ F1：图层抽屉与搜索框（旧页没有这两个 DOM ⇒ 接线函数内部静默跳过，不报错）。
+      wireLayerDrawer();
+      wireSearchBox();
       app.onStateChange(onStateChange);
       onStateChange(app.getState());
       window.SimosMapUnitEditor.wireUnitEditor();
@@ -1954,6 +2410,29 @@
     },
     /** 把最近算好的摘要重新写回「可见范围（现算）」那一行（panels.js 重画详情后调用）。 */
     republishDecisionScopeSummary: republishDecisionScopeSummary,
+    // ★ F1：搜索定位入口（搜索框 / e2e 共用同一份实现；UI 不另写一套）。
+    locateSearchResult: locateSearchResult,
+    // ★ F1：世界视图的只读投影（图层开关 / 世界数据条数 / 搜索索引条数）——验收与门禁可断言。
+    worldViewDebug: function () {
+      var debug = active && active.debug ? active.debug() : {};
+      return {
+        cities: host.worldCities.length,
+        regionSummaries: host.worldRegionSummaries.length,
+        economyOverviewLoaded: !!host.worldEconomyOverview,
+        decisionMakers: host.worldDecisionMakers.length,
+        units: host.worldUnits.length,
+        searchIndexCount: host.searchIndex.length,
+        layerState: debug.layerState || null,
+        nationRegionCount: debug.nationRegionCount || 0,
+        nationNameDraws: debug.nationNameDraws || 0,
+        visibleCityCount: debug.visibleCityCount || 0,
+        // ★ F1：GOV 辖区条数 / hex 总数——单一真相在 renderer.debug()，这里只是同源转出。
+        govJurisdictions: debug.govJurisdictionCount || 0,
+        govJurisdictionHexes: debug.govJurisdictionHexCount || 0,
+      };
+    },
+    // ★ F1：决策范围等级标签（gov ⇒ 政府级），纯函数、门禁可直接断言。
+    decisionScopeLevelLabel: decisionScopeLevelLabel,
     regionPaintForTest: function (hexes, op) {
       if (op) {
         host.regionOp = op === "remove" ? "remove" : "add";

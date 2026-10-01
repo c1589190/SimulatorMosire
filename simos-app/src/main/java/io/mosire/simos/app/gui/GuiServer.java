@@ -78,6 +78,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -248,6 +249,21 @@ public final class GuiServer implements AutoCloseable {
    */
   private static final String COMBATS_PATH = "/api/sd/combats";
 
+  /**
+   * ★ F1 城市图层只读面：{@code GET /api/social/cities[?region=<regionId>][?as=<dmId>]}。
+   *
+   * <p>★ 视图由 {@link ApiViews#cities} 一处装配（GUI 与未来 MCP 共用）；本层只做路由与参数解析。
+   * 带 {@code as=} 时逐城按 {@code at} 走与 {@code /api/social/population} 同款的 {@code seesHex}
+   * 过滤（不可见的城整条不出现，不生成"未探测到"的否定式条目）。
+   */
+  private static final String CITIES_PATH = "/api/social/cities";
+
+  /** ★ F1 区域汇总只读面：{@code GET /api/map/regions/summary}；未接 redaction ⇒ 带 {@code as=} fail-closed。 */
+  private static final String REGION_SUMMARY_PATH = "/api/map/regions/summary";
+
+  /** ★ F1 世界经济总览只读面：{@code GET /api/economy/overview}；未接 redaction ⇒ 带 {@code as=} fail-closed。 */
+  private static final String ECONOMY_OVERVIEW_PATH = "/api/economy/overview";
+
   private static final Set<String> GET_ROUTES =
       Set.of(
           "/api/state",
@@ -258,6 +274,10 @@ public final class GuiServer implements AutoCloseable {
           "/api/map/path",
           "/api/units",
           "/api/social/population",
+          // ★ F1（2026-10-01）：城市图层 / 区域汇总 / 世界经济总览（三个只读口，视图全在 ApiViews）。
+          CITIES_PATH,
+          REGION_SUMMARY_PATH,
+          ECONOMY_OVERVIEW_PATH,
           // ★ R2a（2026-09-25）：逐格经济读数（G1 最小读口，与 simos.economy.hex 共用 ApiViews.economyHex）。
           "/api/economy/hex",
           // ★ H0.6（2026-09-27）：逐格产权读数（与 simos.economy.ownership 共用 ApiViews.economyOwnership）。
@@ -571,6 +591,18 @@ public final class GuiServer implements AutoCloseable {
       SimulationState state = queryService.stateAt(target(params));
       return Reply.of(200, ApiViews.mapOverview(mapId, ApiViews.gameMap(state)));
     }
+    if (path.equals(REGION_SUMMARY_PATH)) {
+      // ★ F1：区域汇总——未接 redaction ⇒ 带 as= 显式拒绝（fail-closed，不静默给全量）。
+      rejectAs(path, asPresent);
+      SimulationState state = queryService.stateAt(target(params));
+      return Reply.of(
+          200,
+          ApiViews.regionSummaries(
+              ApiViews.gameMap(state),
+              ApiViews.socialData(state),
+              ApiViews.unitState(state),
+              state.meta().timestamp()));
+    }
     if (path.equals("/api/map/hex")) {
       return mapHexReply(params, actor, asPresent);
     }
@@ -612,6 +644,20 @@ public final class GuiServer implements AutoCloseable {
     }
     if (path.equals("/api/social/population")) {
       return populationReply(params, actor, asPresent);
+    }
+    if (path.equals(CITIES_PATH)) {
+      // ★ F1：城市列表。带 as= 时逐城走 seesHex（与 /api/social/population 同口径）；不带 as= 全量。
+      QueryTarget cityTarget = target(params);
+      SimulationState state = queryService.stateAt(cityTarget);
+      Predicate<HexCoord> visible =
+          asPresent ? coord -> redactingQueryService.seesHex(actor, cityTarget, coord) : null;
+      return Reply.of(
+          200, ApiViews.cities(ApiViews.socialData(state), params.get("region"), visible));
+    }
+    if (path.equals(ECONOMY_OVERVIEW_PATH)) {
+      // ★ F1：世界经济总览（不逐格）——未接 redaction ⇒ 带 as= 显式拒绝（fail-closed）。
+      rejectAs(path, asPresent);
+      return Reply.of(200, ApiViews.economyOverview(queryService.stateAt(target(params))));
     }
     if (path.equals("/api/economy/hex")) {
       // ★ R2a：逐格经济读数——与 population 同款：未接 redaction ⇒ 带 as= 显式拒绝（fail-closed，不静默给全量）。

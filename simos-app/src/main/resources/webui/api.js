@@ -137,6 +137,44 @@
     return cachedGet("/economy/hex?q=" + Number(q) + "&r=" + Number(r), target);
   }
 
+  /**
+   * ★ F1：社交城市列表（`GET /api/social/cities`）。数据源是 **social 侧城市**（`SocialData.cities()`），
+   * 不是 map overview 的 `cities`（worldgen 之后仍为空）。`region` 可选；缓存版 `cachedCities(target)`
+   * 只走全量 URL（因此与地图/面板共用同一份 target 缓存键）。
+   */
+  function cities(region, target) {
+    var path = "/social/cities";
+    if (region !== null && region !== undefined && String(region) !== "") {
+      path += "?region=" + encodeURIComponent(region);
+    }
+    return getJson(withTarget(path, target));
+  }
+
+  function cachedCities(target) {
+    return cachedGet("/social/cities", target);
+  }
+
+  /** ★ F1：区域汇总（`GET /api/map/regions/summary`）：{regions:[{id,name,hexCount,meta,population,…}]}。 */
+  function regionSummaries(target) {
+    return getJson(withTarget("/map/regions/summary", target));
+  }
+
+  function cachedRegionSummaries(target) {
+    return cachedGet("/map/regions/summary", target);
+  }
+
+  /**
+   * ★ F1：世界经济总览（`GET /api/economy/overview`）——class-first / 货币发行 / 账户守恒的**世界级**
+   * 读数；逐格经济仍走 {@link cachedEconomyHex}。
+   */
+  function economyOverview(target) {
+    return getJson(withTarget("/economy/overview", target));
+  }
+
+  function cachedEconomyOverview(target) {
+    return cachedGet("/economy/overview", target);
+  }
+
   // ── /api/state 合流（M9 T2）：启动期 pollState 与 timeline 各拉一次 ⇒ 去重。
   //   TTL 只罩"刚刚解析过"的极短窗口（启动同拍）；写命令开头发起 invalidateState()（epoch+1），
   //   使写后的 state() 既不读旧缓存、也不搭上写前已发出的在途请求 ⇒ 必读到新 head。
@@ -491,6 +529,13 @@
     decisionMakerScope: decisionMakerScope,
     directives: directives,
     population: population,
+    // ★ F1：城市 / 区域汇总 / 世界经济总览（原始 + 缓存两套）。
+    cities: cities,
+    cachedCities: cachedCities,
+    regionSummaries: regionSummaries,
+    cachedRegionSummaries: cachedRegionSummaries,
+    economyOverview: economyOverview,
+    cachedEconomyOverview: cachedEconomyOverview,
     cachedMapOverview: cachedMapOverview,
     cachedUnits: cachedUnits,
     cachedCombats: cachedCombats,

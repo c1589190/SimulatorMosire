@@ -1994,3 +1994,202 @@ body.workbench-page .gm-usage-failed {
   white-space: nowrap;
 }
 
+
+/* ── F1：世界视图（图层抽屉 / 搜索定位 / 城市链接 / 世界总览卡片）────────────────
+   沿用既有深色主题变量（--panel / --line / --accent / --muted），不新造主题。 */
+
+body.workbench-page .layer-panel {
+  position: fixed;
+  top: 54px;
+  right: 12px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 190px;
+  padding: 10px 12px;
+  background: rgba(27, 32, 39, 0.96);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.38);
+  pointer-events: auto;
+  font-size: 12px;
+}
+
+body.workbench-page .layer-panel h3 {
+  margin: 0 0 2px;
+  font-size: 13px;
+}
+
+body.workbench-page .layer-panel label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* ★ F1：图层抽屉的 9 键分组 + 场景预设按钮（沿用既有 panel 视觉变量，不改 .layer-panel 基调）。 */
+body.workbench-page .layer-panel .layer-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+body.workbench-page .layer-panel .layer-group > span {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+body.workbench-page .layer-panel .layer-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+body.workbench-page .layer-panel .layer-presets button {
+  padding: 2px 7px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+body.workbench-page .layer-panel .layer-presets button:hover,
+body.workbench-page .layer-panel .layer-presets button:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+}
+
+body.workbench-page .search-box {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+body.workbench-page .search-box input[type="search"] {
+  width: 200px;
+  padding: 4px 8px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 12px;
+}
+
+body.workbench-page .search-box input[type="search"]:focus {
+  outline: 1px solid var(--accent);
+}
+
+body.workbench-page .search-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 31;
+  display: flex;
+  flex-direction: column;
+  max-height: 280px;
+  overflow: auto;
+  background: rgba(27, 32, 39, 0.98);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.38);
+  pointer-events: auto;
+}
+
+body.workbench-page .search-result {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 8px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+body.workbench-page .search-result:hover {
+  background: var(--panel-2);
+}
+
+body.workbench-page .search-result-kind {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+body.workbench-page .search-result-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+body.workbench-page .search-result-id {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.city-link {
+  padding: 0;
+  color: var(--accent);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.city-link:hover {
+  text-decoration: underline;
+}
+
+.world-overview .world-stat {
+  margin: 4px 0;
+}
+
+.world-overview .nation-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.world-overview .nation-card {
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.world-overview .nation-card h3 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.world-overview .nation-card dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.world-overview .nation-card dt {
+  color: var(--muted);
+}
+
+.world-overview .nation-card dd {
+  margin: 0;
+  text-align: right;
+}

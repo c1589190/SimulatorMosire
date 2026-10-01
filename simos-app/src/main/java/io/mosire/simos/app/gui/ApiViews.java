@@ -118,6 +118,7 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationHeadline;
@@ -161,6 +162,7 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 
 /**
  * JSON 视图装配（M5 T8）：把领域类型转成 GUI 直读的 {@link Map} / {@link List} 树，**只读、无副作用**。
@@ -341,6 +343,142 @@ public final class ApiViews {
     view.put("terrainTypes", terrainTypeDefinitions(map));
     view.put("pathwayGroups", pathwayGroupDefinitions(map));
     view.put("edges", allEdgeViews(map.edges()));
+    return view;
+  }
+
+  /**
+   * ★ F1：**社交城市列表**（{@code GET /api/social/cities} 的视图；GUI 与未来 MCP 共用同一份装配）。
+   *
+   * <p>★ 数据源是 {@link SocialData#cities()}（social 侧城市），**不是** {@code GameMap.cities()} ——
+   * 后者在 worldgen 之后仍为空，拿它当城市源会得到一张永远没有城市的地图。{@code population} 走 {@link
+   * SocialData#urbanPopulationAt(io.mosire.simos.map.CityId)} **现算**（social 侧不存该字段）。
+   *
+   * <p>★ {@code tier} 只认 {@code props.tier}；缺失 ⇒ {@code null}（不猜等级）。{@code props} 原样透出
+   * （worldgen 写的 {@code tier} / {@code catchmentHexes} / … 都在里面）。排序按 city id 字典序。
+   *
+   * @param social 社会切片
+   * @param regionFilter 只列 {@code SocialCity.region} 逐字等于它的城；null/空白 = 不筛（**不按落点猜归属**）
+   * @param visible 资源级可见谓词（非 null 时逐城按 {@code at} 过滤，口径与 {@code seesHex} 相同）；null =
+   *     全量
+   */
+  public static Map<String, Object> cities(
+      SocialData social, String regionFilter, Predicate<HexCoord> visible) {
+    Objects.requireNonNull(social, "social");
+    List<SocialCity> ordered = new ArrayList<>(social.cities().values());
+    ordered.sort(Comparator.comparing(city -> city.id().value()));
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (SocialCity city : ordered) {
+      if (regionFilter != null && !regionFilter.isBlank()) {
+        boolean matched =
+            city.region().map(region -> region.value().equals(regionFilter)).orElse(false);
+        if (!matched) {
+          continue;
+        }
+      }
+      if (visible != null && !visible.test(city.at())) {
+        continue;
+      }
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("id", city.id().value());
+      item.put("name", city.name());
+      item.put("at", hexCoord(city.at()));
+      item.put("region", city.region().map(RegionId::value).orElse(null));
+      item.put("tier", city.props().get("tier"));
+      item.put("population", social.urbanPopulationAt(city.id()));
+      item.put("props", new LinkedHashMap<>(city.props()));
+      out.add(item);
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("cities", out);
+    return view;
+  }
+
+  /**
+   * ★ F1：**区域汇总**（{@code GET /api/map/regions/summary} 的视图）。
+   *
+   * <p>★ 口径（逐条对上 F1 计划 §2.2）：
+   *
+   * <ul>
+   *   <li>{@code population} = Region 的 hex 集合逐格 {@link SocialData#populationAt(HexCoord)} 之和。
+   *       区域可以重叠 ⇒ 同一格会在两个区域里各计一次；**这不是世界守恒量**，是"区域格集求和"（F1 有意如此）。
+   *   <li>{@code cityCount} / {@code cityPopulation} **只认** {@code SocialCity.region == id}；region 为空的城
+   *       不按落点猜归属（缺 region 的城不进入任何区域汇总）。
+   *   <li>{@code unitCount} = 该单位在 {@code at} 时刻的 {@link UnitState#effectivePosition} 落在 Region hex
+   *       集合内的数量（含 GOV）；{@code govCount} 是其中 {@code unit.module()} 为 {@link GovFormation}
+   *       的数量。
+   * </ul>
+   *
+   * <p>★ 按 region id 字典序发；同一份状态两次调用逐字节相同。
+   */
+  public static Map<String, Object> regionSummaries(
+      GameMap map, SocialData social, UnitState units, SimosTimestamp at) {
+    Objects.requireNonNull(map, "map");
+    Objects.requireNonNull(social, "social");
+    Objects.requireNonNull(units, "units");
+    Objects.requireNonNull(at, "at");
+    // ★ 人口按格预聚合一次（region 总格数可能上万，逐区域逐格调 populationAt 会退化成 O(格 × 批次)）。
+    Map<HexCoord, Long> populationByHex = new LinkedHashMap<>();
+    for (Region region : map.regions().values()) {
+      for (HexCoord hex : region.hexes()) {
+        populationByHex.putIfAbsent(hex, 0L);
+      }
+    }
+    for (PopulationGroup group : social.groups().values()) {
+      Long current = populationByHex.get(group.residence());
+      if (current != null) {
+        populationByHex.put(group.residence(), current + group.count());
+      }
+    }
+    // 城市数 / 城市人口按**显式 region 归属**预聚合；region 缺失的城不进任何区域。
+    Map<String, long[]> cityByRegion = new TreeMap<>();
+    for (SocialCity city : social.cities().values()) {
+      if (city.region().isEmpty()) {
+        continue;
+      }
+      long[] aggregate =
+          cityByRegion.computeIfAbsent(city.region().get().value(), ignored -> new long[2]);
+      aggregate[0] += 1L;
+      aggregate[1] += social.urbanPopulationAt(city.id());
+    }
+    List<RegionId> ordered = new ArrayList<>(map.regions().keySet());
+    ordered.sort(Comparator.comparing(RegionId::value));
+    List<Map<String, Object>> out = new ArrayList<>(ordered.size());
+    for (RegionId id : ordered) {
+      Region region = map.regions().get(id);
+      long population = 0L;
+      for (HexCoord hex : region.hexes()) {
+        Long value = populationByHex.get(hex);
+        if (value != null) {
+          population += value;
+        }
+      }
+      long[] cityAggregate = cityByRegion.getOrDefault(id.value(), new long[2]);
+      long unitCount = 0L;
+      long govCount = 0L;
+      for (Unit unit : units.units().values()) {
+        Optional<HexCoord> position = units.effectivePosition(unit.id(), at);
+        if (position.isEmpty() || !region.hexes().contains(position.get())) {
+          continue;
+        }
+        unitCount += 1L;
+        if (unit.module().map(module -> module instanceof GovFormation).orElse(false)) {
+          govCount += 1L;
+        }
+      }
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("id", id.value());
+      item.put("name", region.name());
+      item.put("hexCount", region.hexes().size());
+      item.put("meta", regionMeta(region.meta()));
+      item.put("population", population);
+      item.put("cityCount", cityAggregate[0]);
+      item.put("cityPopulation", cityAggregate[1]);
+      item.put("unitCount", unitCount);
+      item.put("govCount", govCount);
+      out.add(item);
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("regions", out);
     return view;
   }
 
@@ -901,6 +1039,42 @@ public final class ApiViews {
             readoutUnavailable));
     return view;
   }
+
+  /**
+   * ★ F1：**世界级经济总览**（{@code GET /api/economy/overview} 的视图）。
+   *
+   * <p>★ <b>它不逐格</b>：class-first 的 4 池、货币发行/回笼、actor kind / 家户阶层聚合都是**世界级**量；逐格读仍走
+   * {@link #economyHex}。本方法只是把 {@code economyHex} 用的同一批私有装配函数（{@link #classFirstView} /
+   * {@link #moneyIssuanceView} / {@link #moneyByActorKind} / {@link #moneyByHouseholdClass} /
+   * {@link #moneyLayers} / {@link #currencyDefViews} / {@link #moneyInstrumentViews}）按**同一口径**组装一次
+   * —— 不复制第二份公式，两个读口的数字不会漂移。
+   *
+   * <p>★ {@code activated} / {@code tick} 来自 economy 切片；{@code scope} 具名写出"世界级"，避免读者把 4 池
+   * 当成某一格或某一国的量。
+   */
+  public static Map<String, Object> economyOverview(SimulationState state) {
+    Objects.requireNonNull(state, "state");
+    EconomyData data = economyData(state);
+    ActorData actors = actorData(state);
+    long tick = state.meta().timestamp().tick();
+    Map<String, Long> circulation = moneyTotals(actors);
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("activated", data.meta().isPresent());
+    view.put("tick", tick < 0L ? null : tick);
+    view.put("scope", WORLD_ECONOMY_SCOPE);
+    view.put("classFirst", classFirstView(data));
+    view.put("moneyIssuance", moneyIssuanceView(data, circulation));
+    view.put("moneyByActorKind", moneyByActorKind(actors));
+    view.put("moneyByHouseholdClass", moneyByHouseholdClass(data, actors));
+    view.put("moneyLayers", moneyLayers(circulation));
+    view.put("currencyDefs", currencyDefViews());
+    view.put("moneyInstruments", moneyInstrumentViews());
+    return view;
+  }
+
+  /** ★ F1：世界经济总览的 scope 说明（唯一拼写点；与逐格读口分开）。 */
+  private static final String WORLD_ECONOMY_SCOPE =
+      "世界级：economy 切片与 actor 账本的全量聚合（三国合并）；不含逐格分解，逐格读 /api/economy/hex";
 
   /** ★★ R3b：class-first 读口的 scope 说明（唯一拼写点）。 */
   private static final String CLASS_FIRST_SCOPE =

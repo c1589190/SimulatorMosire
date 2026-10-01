@@ -30,10 +30,56 @@
         <label class="region-name-toggle" title="在地图上显示区域名（默认开，记忆在本机）"><input type="checkbox" id="region-name-toggle" checked> 区域名</label>
         <button type="button" id="panel-toggle-left" aria-pressed="false" title="折叠/展开左栏">收起左栏</button>
         <button type="button" id="panel-toggle-right" aria-pressed="false" title="折叠/展开右栏">收起右栏</button>
+        <!-- ★ F1：搜索框放在既有控件之后（保持 region-name-toggle 在 topbar-actions 的非贪婪捕获段内）。 -->
+        <div class="search-box">
+          <input type="search" id="search-input" placeholder="搜索城市 / 单位 / 区域 / 决策人" autocomplete="off"
+            aria-label="搜索并定位城市、单位、区域、决策人">
+          <div id="search-results" class="search-results" role="listbox" hidden></div>
+        </div>
+        <button type="button" id="layer-toggle" aria-expanded="false" aria-controls="layer-panel"
+          title="图层开关（国家着色 / 区域名与国名 / 城市 / 军队 / 政府单位 / 政府辖区 / 决策人 / 交战 / 路线）">图层</button>
       </div>
 
       <span id="shell-state" class="shell-state">状态加载中…</span>
     </header>
+
+    <!-- ★ F1：图层抽屉（默认 hidden；localStorage 键 simos.layers.v1；无 localStorage 时降级为内存态）。
+         9 键分组开关 + 场景预设只影响绘制：国家着色 / 区域名与国名 / 城市 / 军队 / 政府单位 / 政府辖区 /
+         决策人 / 交战 / 路线。 -->
+    <div id="layer-panel" class="layer-panel" hidden aria-label="图层开关">
+      <h3>图层</h3>
+      <div class="layer-presets" role="group" aria-label="图层预设">
+        <button type="button" data-layer-preset="all">全开</button>
+        <button type="button" data-layer-preset="terrain">地形</button>
+        <button type="button" data-layer-preset="military">军事</button>
+        <button type="button" data-layer-preset="government">政府</button>
+        <button type="button" data-layer-preset="cities">城市</button>
+      </div>
+      <div class="layer-group">
+        <span>底图</span>
+        <label><input type="checkbox" data-layer="nation" checked> 国家着色</label>
+        <label><input type="checkbox" data-layer="regionNames" checked> 区域名/国名</label>
+      </div>
+      <div class="layer-group">
+        <span>聚落</span>
+        <label><input type="checkbox" data-layer="cities" checked> 城市</label>
+      </div>
+      <div class="layer-group">
+        <span>军事</span>
+        <label><input type="checkbox" data-layer="army" checked> 军队</label>
+        <label><input type="checkbox" data-layer="combats" checked> 交战</label>
+        <label><input type="checkbox" data-layer="routes" checked> 路线</label>
+      </div>
+      <div class="layer-group">
+        <span>政府</span>
+        <label><input type="checkbox" data-layer="gov" checked> 政府单位</label>
+        <label><input type="checkbox" data-layer="govJurisdiction"> 政府辖区</label>
+      </div>
+      <div class="layer-group">
+        <span>人物</span>
+        <label><input type="checkbox" data-layer="decisionMakers" checked> 决策人徽标</label>
+      </div>
+    </div>
 
     <div class="wb-body">
       <section class="panel col-left" id="left-panel">
@@ -399,7 +445,14 @@
 
       <div class="wb-gap" aria-hidden="true"></div>
 
-      <section class="panel col-right" id="right-panel" data-modes="region region-edit decision">>
+      <section class="panel col-right" id="right-panel" data-modes="view region region-edit decision">
+        <!-- ★ F1：世界总览（无选中时显示；有选中让位给 hex/城市/区域详情，由 panel-right.js 控制 hidden）。 -->
+        <div data-modes="view region" id="world-overview-section">
+          <h2>世界总览</h2>
+          <div id="world-overview-mount">
+            <p class="empty">载入世界总览…</p>
+          </div>
+        </div>
         <div data-modes="region region-edit">
           <h2>区域</h2>
           <div id="region-panel-mount"></div>
@@ -407,7 +460,7 @@
         <div data-modes="decision" class="decision-right">
           <div data-decision-subpage="view">
             <h2>决策人</h2>
-            <p class="muted">按类型分类（国家 / 军队）。点一条 ⇒ 国家：高亮其全部区域；军队：选中其根单位。</p>
+            <p class="muted">按类型分类（国家 / 军队 / 政府）。点一条 ⇒ 国家：高亮其全部区域；军队：选中其根单位。</p>
             <!-- ★ 第2波 B11（用户 2026-09-23「右边栏也没有对应显示」）：选中项**没有决策人**时，
                  这里由 panels.js 写明"为什么没有 / 点了会怎样"，不再只列全量决策人让人看不出差别。 -->
             <p id="decision-selection-note" class="decision-selection-note muted" hidden></p>
@@ -488,6 +541,8 @@
   <!-- ★ M12 第三波：panels.js 的无状态纯函数已拆出；必须在 panels.js 之前引入 -->
   <script src="readout.js"></script>
   <script src="decisionmodel.js"></script>
+  <!-- ★ F1：世界视图纯函数（城市 LOD / 搜索 / 国家汇总 / 图层归一）。必须在 panels.js 与 renderer.js 之前引入。 -->
+  <script src="worldmodel.js"></script>
   <!-- ★ M12 第四波：共享 DOM 叶子（paneldom.js）与右栏（panel-right.js）必须在 panels.js 之前按依赖顺序引入 -->
   <script src="paneldom.js"></script>
   <script src="panel-right.js"></script>

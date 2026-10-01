@@ -251,12 +251,217 @@
     }
   }
 
+  /** class-first 算不出的字段文本：绝不拿 0 冒充（F1 计划 §3.6）。 */
+  function unavailableText(reason) {
+    return "—（不可得：" + reason + "）";
+  }
+
+  function numberOrUnavailable(value, reason) {
+    return typeof value === "number" && isFinite(value) ? value : unavailableText(reason);
+  }
+
+  function balancedText(value) {
+    if (value === true) {
+      return "平衡";
+    }
+    if (value === false) {
+      return "不平衡";
+    }
+    return unavailableText("守恒读数缺失");
+  }
+
+  /** 逐池取同一个数值字段并求和；**任一池缺失 ⇒ 整体不可得**（不拿部分和冒充合计）。 */
+  function sumPoolField(pools, pick) {
+    var total = 0;
+    for (var i = 0; i < pools.length; i += 1) {
+      var value = pick(pools[i]);
+      if (typeof value !== "number" || !isFinite(value)) {
+        return null;
+      }
+      total += value;
+    }
+    return total;
+  }
+
+  function commodityOrUnavailable(goods) {
+    if (goods === undefined || goods === null) {
+      return unavailableText("actor GoodsAccount 未发出 goods");
+    }
+    return commodityText(goods);
+  }
+
+  function moneyText(money) {
+    if (money === undefined || money === null) {
+      return unavailableText("actorMoneyTotal 缺失");
+    }
+    var keys = Object.keys(money).sort();
+    if (!keys.length) {
+      return "无（该格没有 actor 货币余额）";
+    }
+    return keys
+      .map(function (key) {
+        return key + " " + money[key];
+      })
+      .join("、");
+  }
+
+  /**
+   * ★ F1：`classFirst.available === true` 时的**权威经济读数**（世界级池 / 土地市场 / 账户 / 守恒 +
+   * 本格 actor 库存与货币）。
+   *
+   * <p>★ 四条纪律：
+   * <ul>
+   *   <li>class-first 是**世界级**（4 池没有国家维）——标签与 hint 都写明"世界级、非本格"；
+   *   <li>逐格只读**真实存在的 actor 事实**（goods / actorMoneyTotal / grainStock），不读旧投影；
+   *   <li>算不出的字段一律 `—（不可得：原因）`，**绝不填 0**；
+   *   <li>本函数只做投影，数字全部来自服务端响应（GUI 不造第二份真相）。
+   * </ul>
+   */
+  function classFirstReadoutRows(economy, classFirst) {
+    var rows = [];
+    var pools = Array.isArray(classFirst.pools) ? classFirst.pools : null;
+    if (!pools) {
+      rows.push({
+        label: "世界级阶层池",
+        value: unavailableText("classFirst.pools 缺失"),
+        hint: "class-first 的 4 池是世界级量；这一栏不是本格数据。",
+      });
+    } else {
+      var population = sumPoolField(pools, function (pool) {
+        return pool && pool.population;
+      });
+      var labor = sumPoolField(pools, function (pool) {
+        return pool && pool.labor;
+      });
+      var land = sumPoolField(pools, function (pool) {
+        return pool && pool.assets ? pool.assets.ownedLand : null;
+      });
+      var debt = sumPoolField(pools, function (pool) {
+        return pool && pool.debtGrainMilli;
+      });
+      rows.push({
+        label: "世界级阶层池",
+        value:
+          pools.length +
+          " 池 · 家户账户 " +
+          numberOrUnavailable(classFirst.householdCount, "classFirst.householdCount"),
+        hint: "class-first 的池键是 (mode, classPosition)，**没有国家维、与世界/格无关**；这一栏是全世界合并后的层级读数。",
+      });
+      rows.push({
+        label: "世界级池合计",
+        value:
+          "人口 " +
+          numberOrUnavailable(population, "pools[].population") +
+          " · 劳动 " +
+          numberOrUnavailable(labor, "pools[].labor") +
+          " · 土地 " +
+          (land === null
+            ? unavailableText("pools[].assets.ownedLand")
+            : land + " 千分亩") +
+          " · 债务 " +
+          (debt === null ? unavailableText("pools[].debtGrainMilli") : debt + " 毫粮"),
+        hint: "逐池相加：人口 / 劳动直接合计；土地 = Σ assets.ownedLand；债务 = Σ debtGrainMilli。**世界级、非本格**。",
+      });
+    }
+    var market = classFirst.landMarket;
+    if (!market) {
+      rows.push({
+        label: "土地市场",
+        value: unavailableText("classFirst.landMarket 缺失"),
+        hint: "LandForSale / LeaseSupply 与土地守恒读数的世界级唯一来源。",
+      });
+    } else {
+      rows.push({
+        label: "土地市场",
+        value:
+          "待售 " +
+          numberOrUnavailable(market.landForSale, "landMarket.landForSale") +
+          " · 出租供给 " +
+          numberOrUnavailable(market.leaseSupply, "landMarket.leaseSupply") +
+          " · 土地守恒 " +
+          balancedText(market.landBalanced),
+        hint: "LandForSale = 待售池；LeaseSupply = 地主可出租上限 + LandForSale − 已持有租约；守恒 = Σ池 OWNED_LAND + LandForSale == 创世初始。",
+      });
+    }
+    var accounts = classFirst.accounts;
+    if (!accounts) {
+      rows.push({
+        label: "世界级账户",
+        value: unavailableText("classFirst.accounts 缺失"),
+        hint: "持久双边滚动账户（正 = claim、负 = debt）。",
+      });
+    } else {
+      rows.push({
+        label: "世界级账户",
+        value:
+          "债务 " +
+          numberOrUnavailable(accounts.debtGrainMilli, "accounts.debtGrainMilli") +
+          " 毫粮 · 债权 " +
+          numberOrUnavailable(accounts.claimGrainMilli, "accounts.claimGrainMilli") +
+          " 毫粮 · 净额 " +
+          numberOrUnavailable(accounts.netSum, "accounts.netSum"),
+        hint: "债务/债权按账户单位折粮；净额为原单位求和（Σnet 恒 0 是读数、不是判据）。**世界级**。",
+      });
+    }
+    var conservation = classFirst.conservation;
+    if (!conservation) {
+      rows.push({
+        label: "世界级守恒",
+        value: unavailableText("classFirst.conservation 缺失"),
+        hint: "粮/布/货币/土地/债务=债权/账户净额六条守恒读数。",
+      });
+    } else {
+      rows.push({
+        label: "世界级守恒",
+        value:
+          "粮 " +
+          balancedText(conservation.grainBalanced) +
+          " · 布 " +
+          balancedText(conservation.clothBalanced) +
+          " · 货币 " +
+          balancedText(conservation.moneyBalanced) +
+          " · 土地 " +
+          balancedText(conservation.landBalanced) +
+          " · 债=权 " +
+          (conservation.debtEqualsClaim === true
+            ? "是"
+            : conservation.debtEqualsClaim === false
+              ? "否"
+              : unavailableText("conservation.debtEqualsClaim")) +
+          " · 账户净额 " +
+          numberOrUnavailable(conservation.accountNetSum, "conservation.accountNetSum"),
+        hint: "读数不是判据；逐条定义与算式见服务端 classFirst.conservation.note。**世界级**。",
+      });
+    }
+    // ★ 本格仍然只有 actor 侧事实：库存 / 货币 / 粮库存（class-first 的池不逐格分解）。
+    rows.push({
+      label: "本格库存",
+      value: commodityOrUnavailable(economy.goods),
+      hint: "本格 actor GoodsAccount.balances 的逐商品合计（粮 = 公斤）；不是世界级池库存。",
+    });
+    rows.push({
+      label: "本格货币",
+      value: moneyText(economy.actorMoneyTotal),
+      hint: "本格 actor GoodsAccount.money 的**逐币种**余额（不跨币种求和）；世界级发行/流通见 /api/economy/overview。",
+    });
+    rows.push({
+      label: "本格粮库存",
+      value: numberOrZero(economy.grainStock),
+      hint: "本格 actor 账里的粮余额（毫粮）；与上面的世界级池/世界守恒是不同窗口，不可互相抵扣。",
+    });
+    return rows;
+  }
+
   /**
    * ★ R2a（2026-09-25）：**该格经济读数的显示行**（纯函数——门禁直接对它下断言，不碰 DOM / 不发请求）。
    *
    * <p>输入 = `GET /api/economy/hex` 的体（或 null = 取不到）。输出 = `[{label,value,hint}]`，由调用方逐行落 DOM。
    * ★ **不做任何二次解释**：人口 / 有效劳动 / 土地 / 库存 / 货币 / 负债 / 制度 / 周期进度一律照服务端的值发（GUI 不造第二份真相）。
    * 缺字段（旧后端）折成 0 / "无"，不抛。
+   *
+   * <p>★★ F1：`economy.classFirst.available === true` ⇒ **只走 class-first 权威读数**（世界级池/市场/账户/守恒 +
+   * 本格 actor 事实），不再把旧 `money` / `industries` / `flows` 的 0 / 空数组当真相；其余（旧档 / 未播种）
+   * 仍走旧分支。函数保持**唯一一份实现**（`economy-panel.test.cjs` 的静态断言钉着它）。
    */
   function economyReadoutRows(economy) {
     if (!economy) {
@@ -264,6 +469,9 @@
     }
     if (!economy.activated) {
       return [{ label: "经济", value: "未激活", hint: "这一版世界还没播种经济状态（economy 切片的 meta 为空）。" }];
+    }
+    if (economy.classFirst && economy.classFirst.available === true) {
+      return classFirstReadoutRows(economy, economy.classFirst);
     }
     var rows = [
       {
@@ -394,6 +602,33 @@
     return "所得 " + income + " · 消费 " + consumed + " · 新借 " + borrowing + " · 净 " + net;
   }
 
+  /**
+   * ★ F1：该格的**社交城市**段（点击城市按钮 ⇒ `app.setSelection({kind:"city", id})`，与地图点击城市
+   * 进入同一个详情分支）。无城市 ⇒ 不追加任何行（不写"城市 无"这种噪声）。
+   */
+  function appendHexCityRows(detail, cityList) {
+    (cityList || []).forEach(function (city) {
+      detail.appendChild(app.el("dt", { text: "城市" }));
+      var dd = app.el("dd");
+      var button = app.el("button", {
+        type: "button",
+        class: "city-link",
+        text:
+          app.text(city.name || city.id) +
+          "（" +
+          (city.tier === null || city.tier === undefined ? "未标等级" : city.tier) +
+          " · " +
+          app.text(city.population) +
+          " 人）",
+      });
+      button.addEventListener("click", function () {
+        app.setSelection({ kind: "city", id: city.id });
+      });
+      dd.appendChild(button);
+      detail.appendChild(dd);
+    });
+  }
+
   function renderHex(selection, token) {
     var status = app.byId("left-status");
     var detail = app.clear(app.byId("selection-detail"));
@@ -411,6 +646,10 @@
       }),
       // ★ R2a：该格的经济读数（取不到/未激活都不拖垮整条详情，由投影函数决定显示什么）。
       api.cachedEconomyHex(selection.q, selection.r, app.target()).catch(function () {
+        return null;
+      }),
+      // ★ F1：该格的城市（social 侧城市源；取不到不拖垮整条详情）。
+      api.cachedCities(app.target()).catch(function () {
         return null;
       }),
     ])
@@ -439,13 +678,20 @@
         appendRow(detail, "regions", regionIds.length ? regionIds.join("、") : "无区域");
         // ★ M8 T9：每个区域给出**它自己的** hexCount，合计是**真并集**（不是求和 —— 裁定 72.1）。
         renderRegionMembership(detail, regionIds, token);
+        // ★ F1：城市段（social 侧城市；点击进入城市详情）。
+        var citiesHere = ((results[5] && results[5].cities) || []).filter(function (city) {
+          return city && city.at && city.at.q === selection.q && city.at.r === selection.r;
+        });
+        appendHexCityRows(detail, citiesHere);
         appendRow(
           detail,
           "该处单位",
           unitsHere.length
             ? unitsHere
                 .map(function (u) {
-                  return u.id + " " + app.text(u.name);
+                  // ★ F1：GOV 与 army 在列表里区分（module.kind 缺失 = 旧档/非编制单位，不冒充）。
+                  var isGov = !!(u.module && u.module.kind === "gov");
+                  return (isGov ? "GOV " : "") + u.id + " " + app.text(u.name);
                 })
                 .join("；")
             : "无"
@@ -527,6 +773,69 @@
     return null;
   }
 
+  /** 行政在编人数（角色 → 人数；键按字典序，确定性）。 */
+  function staffText(staff) {
+    if (!staff || typeof staff !== "object") {
+      return "—（无 staff）";
+    }
+    var keys = Object.keys(staff).sort();
+    if (!keys.length) {
+      return "（无）";
+    }
+    return keys
+      .map(function (key) {
+        return key + " " + staff[key];
+      })
+      .join("、");
+  }
+
+  /** GOV 政策读数（逐字段透出，不折算成任何力量值）。 */
+  function policyText(policy) {
+    if (!policy || typeof policy !== "object") {
+      return "—（无 policy）";
+    }
+    return (
+      "粮 " +
+      app.text(policy.grainPerStaffPerTick) +
+      "/staff·tick · 布 " +
+      app.text(policy.clothPerStaffPerCycle) +
+      "/staff·cycle · 钱 " +
+      app.text(policy.moneyPerStaffPerTick) +
+      "/staff·tick · 退役 " +
+      app.text(policy.retirementPerStaff) +
+      " · staffCap " +
+      staffText(policy.staffCap)
+    );
+  }
+
+  /** 管辖读数：regions → 税率（‰）+ 三个 levy 单命令上限。 */
+  function jurisdictionText(jurisdiction) {
+    if (!jurisdiction || typeof jurisdiction !== "object") {
+      return "—（无 jurisdiction）";
+    }
+    var regions = jurisdiction.regions || {};
+    var regionKeys = Object.keys(regions).sort();
+    var regionText = regionKeys.length
+      ? regionKeys
+          .map(function (key) {
+            return key + "（" + regions[key] + "‰）";
+          })
+          .join("、")
+      : "（无区域）";
+    return (
+      "regions " +
+      regionText +
+      " · levy 粮/钱/兵上限 " +
+      app.text(jurisdiction.levyGrainCapPerCommand) +
+      "/" +
+      app.text(jurisdiction.levyMoneyCapPerCommand) +
+      "/" +
+      app.text(jurisdiction.levyManpowerCapPerCommand) +
+      " · administrationPerMille " +
+      app.text(jurisdiction.administrationPerMille)
+    );
+  }
+
   function renderUnit(selection, token) {
     var status = app.byId("left-status");
     var detail = app.clear(app.byId("selection-detail"));
@@ -536,6 +845,13 @@
       loadOverview().catch(function () {
         return null;
       }),
+      // ★ F1：GOV 单位的决策人匹配需要完整单位列表（parent 链）与决策人列表；取不到不拖垮详情。
+      api.cachedUnits(app.target()).catch(function () {
+        return null;
+      }),
+      api.cachedDecisionMakers(app.target()).catch(function () {
+        return null;
+      }),
     ])
       .then(function (results) {
         if (token !== requestToken) {
@@ -543,6 +859,9 @@
         }
         var unit = results[0];
         var overview = results[1];
+        var units = (results[2] && results[2].units) || [];
+        var makers = (results[3] && results[3].decisionMakers) || [];
+        var maker = decisionMakerForUnit(makers, units, unit.id);
         // ★ 第2波 B9/B17（用户 2026-09-23 实测「鬼知道这个单位有啥项目」）：首屏**先"这个单位是什么"**，
         //   移动信息（预计到达 / 出发 tick / 出发速度…）归入「在途移动」分节、**不再压在最上面**；
         //   编辑表单在下面各自的 `<section>`（index.html）里 ⇒ 本函数只负责"先展示"。
@@ -578,6 +897,45 @@
           //   引擎不要求交战双方同格 ⇒ 单位在不在交战格必须显式说（不在时给出交战格坐标，见下方提示行）。
           appendCombatRows(dl, unit.combat);
         });
+        // ★ F1：编制与管辖（GOV：level/superiorGov/staff/policy/jurisdiction；army：masterGov/role）。
+        //   字段缺席 = "不是这种单位"或"旧档没有"，如实写出来，不用 null/空对象冒充。
+        appendRowGroup(detail, "编制与管辖", function (dl) {
+          var module = unit.module;
+          if (!module) {
+            appendRow(dl, "编制", "—（无 module：旧档或非编制单位）");
+          } else if (module.kind === "gov") {
+            appendRow(dl, "编制", "GOV（政府）");
+            appendRow(dl, "level", app.text(module.level));
+            appendRow(
+              dl,
+              "superiorGov",
+              module.superiorGov === null || module.superiorGov === undefined
+                ? "—（无上级）"
+                : module.superiorGov
+            );
+            appendRow(dl, "staff", staffText(module.staff));
+            appendRow(dl, "policy", policyText(module.policy));
+          } else if (module.kind === "army") {
+            appendRow(dl, "编制", "军队（army）");
+            appendRow(
+              dl,
+              "masterGov",
+              module.masterGov === null || module.masterGov === undefined
+                ? "—（未认主子）"
+                : module.masterGov
+            );
+            appendRow(dl, "role", app.text(module.role));
+          } else {
+            // 未知 module.kind：原样透出（不猜成 army/gov）。
+            appendRow(dl, "编制", "未知 module.kind：" + app.text(module.kind));
+          }
+          appendRow(
+            dl,
+            "管辖",
+            unit.jurisdiction ? jurisdictionText(unit.jurisdiction) : "—（无 jurisdiction）"
+          );
+          appendRow(dl, "决策人", maker ? maker.id : "无");
+        });
         appendRowGroup(detail, "在途移动", function (dl) {
           appendMovementRows(dl, unit, overview);
         });
@@ -588,6 +946,119 @@
           return;
         }
         app.statusMessage(status, "查询失败：" + e.message, "err");
+      });
+  }
+
+  /** props 对象 ⇒ 一行可读文本（键字典序；空/缺 ⇒ 显式"无"）。 */
+  function propsText(props) {
+    if (!props || typeof props !== "object") {
+      return "—（无 props）";
+    }
+    var keys = Object.keys(props).sort();
+    if (!keys.length) {
+      return "—（空 props）";
+    }
+    return keys
+      .map(function (key) {
+        return key + "=" + app.text(props[key]);
+      })
+      .join("；");
+  }
+
+  /**
+   * ★ F1：城市详情（selection.kind === "city"）——名称 / 等级 / 人口 / 位置 / 区域 / 父国 / props /
+   * 周边单位与 GOV。
+   *
+   * <p>★ 数据只来自 `/api/social/cities`（social 侧城市）、`/api/map/regions/summary`（区域 → 国家 tag）与
+   * `/api/units`（周边单位）；不拿地图 overview 的 `cities` 当城市源（worldgen 后为空）。
+   */
+  function renderCity(selection, token) {
+    var status = app.byId("left-status");
+    var detail = app.clear(app.byId("selection-detail"));
+    app.statusMessage(status, "查询城市 " + selection.id + "（" + targetLabel() + "）…", "muted");
+    Promise.all([
+      api.cachedCities(app.target()).catch(function () {
+        return null;
+      }),
+      api.cachedRegionSummaries(app.target()).catch(function () {
+        return null;
+      }),
+      api.cachedUnits(app.target()).catch(function () {
+        return null;
+      }),
+    ])
+      .then(function (results) {
+        if (token !== requestToken) {
+          return;
+        }
+        var cities = (results[0] && results[0].cities) || [];
+        var city = null;
+        cities.forEach(function (item) {
+          if (String(item.id) === String(selection.id)) {
+            city = item;
+          }
+        });
+        if (!city) {
+          app.statusMessage(status, "城市不存在或未载入：" + app.text(selection.id), "warn");
+          return;
+        }
+        var summaries = (results[1] && results[1].regions) || [];
+        var regionSummary = null;
+        summaries.forEach(function (item) {
+          if (city.region !== null && String(item.id) === String(city.region)) {
+            regionSummary = item;
+          }
+        });
+        var tag = regionSummary && regionSummary.meta ? regionSummary.meta.tag : null;
+        var nation =
+          typeof tag === "string" && tag.indexOf("nation:") === 0 ? tag.slice("nation:".length) : null;
+        var unitsHere = ((results[2] && results[2].units) || []).filter(function (unit) {
+          return (
+            unit.position &&
+            city.at &&
+            unit.position.q === city.at.q &&
+            unit.position.r === city.at.r
+          );
+        });
+        appendRowGroup(detail, "城市", function (dl) {
+          appendRow(dl, "id", city.id);
+          appendRow(dl, "name", city.name);
+          appendRow(
+            dl,
+            "等级",
+            city.tier === null || city.tier === undefined ? "—（props 未标 tier）" : city.tier
+          );
+          appendRow(dl, "人口", numberOrZero(city.population));
+          appendRow(dl, "位置", city.at ? hexLabel(city.at) : "—");
+          appendRow(dl, "区域", city.region === null || city.region === undefined ? "无区域" : city.region);
+          appendRow(
+            dl,
+            "父国",
+            nation === null ? "—（所属区域没有 nation: tag）" : nation
+          );
+          appendRow(dl, "props", propsText(city.props));
+        });
+        appendRowGroup(detail, "周边单位/GOV", function (dl) {
+          if (!unitsHere.length) {
+            appendRow(dl, "单位", "无");
+            return;
+          }
+          unitsHere.forEach(function (unit) {
+            var isGov = !!(unit.module && unit.module.kind === "gov");
+            appendRow(
+              dl,
+              (isGov ? "GOV " : "军队 ") + unit.id,
+              app.text(unit.name) + (unit.status ? "（" + unit.status + "）" : "")
+            );
+          });
+        });
+        app.statusMessage(status, "城市 " + app.text(city.name) + " · " + targetLabel(), "ok");
+      })
+      .catch(function (e) {
+        if (token !== requestToken) {
+          return;
+        }
+        app.statusMessage(status, "城市查询失败：" + e.message, "err");
       });
   }
 
@@ -616,6 +1087,10 @@
       // ★ B8：hex 分支的可见性**故意不在这里判** —— 要先知道"这格到底有没有单位"，而那是 renderHex
       //   取数之后才知道的（在那里落地）。在此之前保持原状，免得"取数中先隐藏、拿到单位又弹回来"那种无谓的闪。
       renderHex(selection, token);
+    } else if (selection.kind === "city") {
+      // ★ F1：城市选中（地图点选 / 搜索定位 / hex 详情里的城市链接）。
+      applyUnitTreeSection(true);
+      renderCity(selection, token);
     } else if (selection.kind === "unit") {
       // ★ B8：选中单位 ⇒ 立刻显示（编制树里正要高亮它，没有什么可矛盾的，不必等取数）。
       applyUnitTreeSection(true);
@@ -2515,6 +2990,10 @@
     unitTreeSectionVisible: unitTreeSectionVisible,
     // ★ R2a：该格经济读数的显示行（纯函数）——「经济读数逐值来自服务端」由它承重。
     economyReadoutRows: economyReadoutRows,
+    // ★ F1：class-first 权威行的投影（与 economyReadoutRows 内的分支同一份实现）——测试可直接对拍。
+    classFirstReadoutRows: classFirstReadoutRows,
+    // ★ F1：城市详情渲染（e2e/调试入口；生产方式由 renderLeft 的 city 分支调用）。
+    renderCity: renderCity,
     // ★ M8 T9：左栏"从属区域"读数（纯函数）——门禁直接对它下断言（并集 ≠ 求和）。
     regionMembershipSummary: regionMembershipSummary,
     UNTAGGED_LABEL: UNTAGGED_LABEL,

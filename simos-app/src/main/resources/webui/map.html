@@ -40,6 +40,8 @@
   </main>
 
   <script src="api.js"></script>
+  <!-- ★ F1：worldmodel.js 必须在 map.js / renderer.js 之前（两者加载期就取 window.SimosWorldModel）。 -->
+  <script src="worldmodel.js"></script>
   <script src="app.js"></script>
   <script src="blocks.js"></script>
   <!-- ★ M12：map.js 的纯几何/颜色/区域边界已拆出；必须在 map.js 之前按依赖顺序引入 -->
