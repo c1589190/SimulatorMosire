@@ -58,6 +58,7 @@ import io.mosire.simos.app.tools.write.MapSetEdgeTool;
 import io.mosire.simos.app.tools.write.MapSetTerrainTool;
 import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
 import io.mosire.simos.app.tools.write.RaiseUnitTool;
+import io.mosire.simos.app.tools.write.RegionSeedTool;
 import io.mosire.simos.app.tools.write.RejectDirectiveTool;
 import io.mosire.simos.app.tools.write.RepayDebtTool;
 import io.mosire.simos.app.tools.write.ResetDecisionMakerConversationTool;
@@ -346,6 +347,10 @@ public final class SimosToolSource implements ToolSource {
     //   一批一条 revision；dryRun 只算不写）。★ 它不是某一条命令的窄封装 ⇒ 不继承 AbstractNarrowWriteTool；★
     //   也不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。只在 GM 桶。
     built.add(new WorldgenInitializeTool(core, initiator, mapId, worldgenConfigFile));
+    // ★★ P1a1（2026-10-01 后端 + MCP 稳定化计划）：任意 Region 数据播种（生成模式）——复用同一份
+    //   SettlementGenerator / PopulationSeeder / EconomySeeder，固定批序同 WorldgenInitializeTool，
+    //   clean gate 命中 ⇒ NEEDS_CLEAR + 零 revision。**只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog。
+    built.add(new RegionSeedTool(core, query, initiator, mapId));
     built.add(new MapSetTerrainTool(core, initiator, mapId));
     built.add(new MapSetEdgeTool(core, initiator, mapId));
     built.add(new MapCreateRegionTool(core, initiator, mapId));
