@@ -102,3 +102,41 @@
   - n→n+1 的“紧急回应”只能靠 GM 手动触发 `run-decision-makers`，并把事件写进世界可见信息。
 - [ ] **无多边谈判/联动裁决**
   - DM 各自跑轮、各自出令，没有“多方同时谈判 / 条件反射 / 联动结果”的原子协议；外交交互只能逐方出令 + GM 裁决。
+
+---
+
+## 2026-10-02 代码级复核更正（四条只读调查线）
+
+> 来源：本日四线代码级调查（A 军事 / B 社会人口 / C SD 外交 / D 行政基础设施），报告与逐条 `文件:行号` 证据在
+> `.superpowers/sdd/2026-10-02-undeveloped-features/`，汇总与实现批次建议在
+> `docs/superpowers/reports/2026-10-02-undeveloped-features-code-investigation.md`。
+> 以下六处若不更正会让人做错方向；**原条目保留不改**（留痕），以本节为准。
+
+1. **`simos.command.submitBatch`：Core 已有，缺的只是 MCP/GM 工具面。**
+   `CommandBus.submitBatch`（`simos-core/src/main/java/io/mosire/simos/core/command/CommandBus.java:265-306`；
+   `CoreSimos.java:207-212` 转发）早已实现「一批命令 = 一条 revision」的原子批提交，23 个组合工具在用
+   （`simos.region.seed` / `clearData` / `clearStructures` / `province.apply` 等）；运行世界 rev2 的
+   `core.SubmitBatch` 就是这个落盘行标签（`CommandBus.java:94`）。⇒ 需要的是 GM-only 的
+   `simos.command.submitBatch` 薄工具；另注意批路径**不写事件**、批行身份只取首条命令（`CommandBus.java:428-441`）。
+2. **`sd.RegisterEffect` 的效果：`simos.advance` 会自动跑 sd 效果，`sd.AdjudicateTick` 反而不处理它们。**
+   `SdTimeParticipant` 逐日求值 trigger ⇒ `PLANNED→FIRED`，内联执行 `PutInfo`/`SetStage`，并按 `CombatStage.exit`
+   自动翻阶段（`SdTimeParticipant.java:94-120`、`:164-211`）。真正不自动的是跨模块 `Action.EnqueueUnitCommand`——
+   `SdCommandDrain` 没有接进生产 advance 路径（`Shell.advanceAndDrain` 零调用方，`Shell.java:1121-1132`）；
+   `Action.RecordCasualties` 被命令层接受但执行层 `default -> {}` 静默无动作（`SdTimeParticipant.java:210`）。
+3. **`simos.state.resolve` 的 nation 地址语法**：canonical 是点号 `sd:nation.大蜀`，`sd:nation/大蜀`（斜杠）返回空
+   （`AddressParser.java:14-35`、`:66-89`）。真正缺的是 Nation/Army 的清单与详情读口。
+4. **`NationScope` 已存在且已注册**（`app/access/DecisionScopeFunctions.java:46-53`、`NationScope.java:46`）；
+   当前世界 46 个 DM 全是 Gov 归属。占领区 tag 是 `Nation`（不是 `nation:大蜀`），Nation DM 仍看不到它。
+5. **DM 出令审批链已具备、可观测、可裁决**（敏感写 ⇒ Ask → AutoApproveGate → ConfirmGate → PendingApprovals；
+   GUI 审批页 / `simos.gm.approve`；5 分钟超时）。"可能停在 pending、run-decision-makers 不代批"是设计口径，不是缺陷。
+6. **`simos.map.overview.cities` 为空的根因**是 map 侧 `GameMap.cities` 没有写入者（社会城市在 `SocialData.cities`）；
+   `ApiViews.cities` 已在 GUI 暴露同一份视图 ⇒ 补 MCP 读工具 + `subjectVisible` 的 `social.city` 分支是小活。
+
+**复核中新发现的三处隐患**（原清单未列）：
+
+- `social.UpdateCity` 对未知键（含 `at`）静默忽略，调用方会以为改了（`UpdateCityHandler.java:62-71`；`SocialPayloads.java:36-48`）。
+- Region 之间没有互斥不变式、允许重叠；两个 GOV 同时辖同一 hex 且税率 > 0 时会重复征税（`JurisdictionDailyTax.java:132-226` 无跨 GOV 去重）。
+- `unit.SetStrength` / `unit.CreateUnit` 未标 `GmOnly` 且无上界校验，可嵌决策令 ⇒ 决策人能在自己视野内凭空增兵（`DirectiveWhitelist.java:31-47`；`Shell.java:585-591`）。
+
+**实现批次建议**（详见汇总报告 §三）：批次 0 读口+逃生口（城市/国家/军队读口、`submitBatch` 工具、`nameHex`）→
+批次 1 军事转移/拆兵/休整+drain → 批次 2 迁都+人口 → 批次 3 轰城 → 批次 4 外交/附庸/全国视野 → 批次 5 人物/家族 → 批次 6 长程。

@@ -114,3 +114,16 @@
   - `social.MoveCity` / `social.DeleteCity` / 批量改名；
   - 城市人口可迁移（`social.MovePopulationLots`）或建城时指定人口（`social.CreateCity` 目前明确拒收 `population`，人口只能由 `social.SeedGroups` 派生）。
 - 因此“种子生成后把首都/城市挪到档案坐标”目前只能多命令 workaround，且人口搬不动。
+
+---
+
+## 2026-10-02 代码级复核（四线只读调查）
+
+> 汇总：`docs/superpowers/reports/2026-10-02-undeveloped-features-code-investigation.md`；
+> 分线证据：`.superpowers/sdd/2026-10-02-undeveloped-features/D-admin-infra.md`（行政线）与 B/C 线报告。
+
+- 本文件 §一 的六条"当前无法用 MCP 干净完成的事"**逐条核实为真**（迁都/城市 at 不可变/人口批次不可迁移/省界合并拆分/DeleteNation/canonical 不统一）；
+  建议的补齐批次顺序调整为：**P1 `simos.map.nameHex`（overlay 包装）→ P2 `actor.MoveAccount` → P3 `social.MoveCity`/`DeleteCity` + 批次读口 + `MovePopulationLots` → P4 `simos.gov.moveCapital` → P5 区划合并/拆分/重划 → P6 canonical 归一**。
+- 新发现：`social.UpdateCity` 对未知键（包括 `at`）**静默忽略**（`UpdateCityHandler.java:62-71`）——workaround 里把 `at` 塞进 `UpdateCity` 不会报错也不会生效，必须显式知道这一点。
+- `actor.RemitGovTreasury` 只支持 grain/cloth/money 且要显式金额、不能搬冻结额；`actor.MoveAccount` 建议做成"整本四表搬 + 冻结随行 + 目标已存在则逐键精确相加、溢出拒 + GmOnly"（`GoodsAccount.java:95-107`、`:184-232`；`AvailableStock` 是唯一可支配算法）。
+- `sd.DeleteNation` 归 C 线调查（确认缺失；建议严格拒绝式：引用未清就拒，不做静默级联）。
