@@ -110,13 +110,18 @@ import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStageId;
 import io.mosire.simos.sd.id.CombatStateId;
+import io.mosire.simos.sd.id.DiplomaticEventId;
 import io.mosire.simos.sd.id.EffectId;
+import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.CombatState;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.sd.model.DiplomaticEvent;
+import io.mosire.simos.sd.model.DiplomaticRelation;
+import io.mosire.simos.sd.model.DiplomaticRelationKey;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveCommand;
 import io.mosire.simos.sd.state.SdSnapshot;
@@ -5251,6 +5256,70 @@ public final class ApiViews {
     for (CombatStateId id : ids) {
       CombatState state = sd.combatStates().get(id);
       out.add(combat(state, sd.combats().get(state.combatId()), units, at));
+    }
+    return out;
+  }
+
+  /**
+   * 外交关系边清单（D-003 / R6；GUI 与 MCP 的 {@code simos.sd.diplomacy} 共用这一份形状）。
+   *
+   * <p>每条 = 一条**有向边** {@code from → to}：字段 {@code from}/{@code to}（Nation id 裸值）、{@code kind}（无
+   * kind ⇒ {@code null}）、{@code text}（自然语言；谈判状态就记在它里面）、{@code updatedTick}。
+   *
+   * <p>★ <b>逐字节可复现</b>：边先按 {@code from}、再按 {@code to} 的 Nation id 字典序发（插入序不是内容的纯函数）。 ★
+   * <b>自然语言是世界级文本</b>（D-002/R6）：这里不做逐格视野过滤；调用方要看的是"谁和谁是什么关系"。
+   *
+   * @param relations 关系边表（{@code SdState.diplomaticRelations()}）
+   * @param nation 可选过滤：只看 from 或 to 等于该 Nation 的边（{@code null} = 全部）
+   */
+  public static List<Map<String, Object>> diplomaticRelations(
+      Map<DiplomaticRelationKey, DiplomaticRelation> relations, NationId nation) {
+    List<DiplomaticRelationKey> keys = new ArrayList<>(relations.keySet());
+    keys.sort(
+        Comparator.comparing((DiplomaticRelationKey key) -> key.from().value())
+            .thenComparing(key -> key.to().value()));
+    List<Map<String, Object>> out = new ArrayList<>(keys.size());
+    for (DiplomaticRelationKey key : keys) {
+      if (nation != null && !key.from().equals(nation) && !key.to().equals(nation)) {
+        continue;
+      }
+      DiplomaticRelation relation = relations.get(key);
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("from", key.from().value());
+      view.put("to", key.to().value());
+      view.put("kind", relation.kind().orElse(null));
+      view.put("text", relation.text());
+      view.put("updatedTick", relation.updatedTick());
+      out.add(view);
+    }
+    return out;
+  }
+
+  /**
+   * 外交事件清单（D-005 / R6；GUI 与 MCP 的 {@code simos.sd.diplomatic-events} 共用这一份形状）。
+   *
+   * <p>每条 = {@code {eventId,tick,participants,text}}；{@code participants} 按记录时的顺序发（自然语言事件记录的一部分）。
+   *
+   * <p>★ <b>逐字节可复现</b>：事件按 id 字典序发。★ 过滤（tick / participant）由调用方在视图层之外做，本方法保持"投影 +
+   * 排序"两件事，不替调用方定过滤语义。
+   */
+  public static List<Map<String, Object>> diplomaticEvents(
+      Map<DiplomaticEventId, DiplomaticEvent> events) {
+    List<DiplomaticEventId> ids = new ArrayList<>(events.keySet());
+    ids.sort(Comparator.comparing(DiplomaticEventId::value));
+    List<Map<String, Object>> out = new ArrayList<>(ids.size());
+    for (DiplomaticEventId id : ids) {
+      DiplomaticEvent event = events.get(id);
+      Map<String, Object> view = new LinkedHashMap<>();
+      view.put("eventId", event.id().value());
+      view.put("tick", event.tick());
+      List<String> participants = new ArrayList<>(event.participants().size());
+      for (NationId participant : event.participants()) {
+        participants.add(participant.value());
+      }
+      view.put("participants", participants);
+      view.put("text", event.text());
+      out.add(view);
     }
     return out;
   }

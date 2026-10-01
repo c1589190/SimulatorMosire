@@ -101,12 +101,14 @@ import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import io.mosire.simos.sd.spi.IssueDirectiveHandler;
 import io.mosire.simos.sd.spi.PutInfoHandler;
 import io.mosire.simos.sd.spi.RecordCasualtiesHandler;
+import io.mosire.simos.sd.spi.RecordDiplomaticEventHandler;
 import io.mosire.simos.sd.spi.RegisterEffectHandler;
 import io.mosire.simos.sd.spi.ResetDecisionMakerConversationHandler;
 import io.mosire.simos.sd.spi.RunDecisionHandler;
 import io.mosire.simos.sd.spi.SetArmyMasterGovHandler;
 import io.mosire.simos.sd.spi.SetDecisionMakerAccessHandler;
 import io.mosire.simos.sd.spi.SetDecisionMakerProviderHandler;
+import io.mosire.simos.sd.spi.SetDiplomaticRelationHandler;
 import io.mosire.simos.sd.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.sd.spi.SetOutcomeTableHandler;
 import io.mosire.simos.sd.spi.StartDecisionHandler;
@@ -576,6 +578,11 @@ public final class Shell implements AutoCloseable {
                 //   文档 / 会话）。标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
                 new DeleteDecisionMakerHandler(),
                 new PutInfoHandler(),
+                // ★★ D5（2026-10-02 / D-003、D-005、R6）：sd 的两条外交命令（非 GmOnly；sd.* 不进指令白名单）。
+                //   变更集走 SdChangeSet 的第 11/12 个组件（diplomaticRelations / diplomaticEvents），
+                //   旧档缺这两个组件 ⇒ 空表（见 SdState / SdChangeSet 的构造期兼容）。
+                new SetDiplomaticRelationHandler(),
+                new RecordDiplomaticEventHandler(),
                 new CreateCombatHandler(),
                 new AddStageHandler(),
                 new SetOutcomeTableHandler(),

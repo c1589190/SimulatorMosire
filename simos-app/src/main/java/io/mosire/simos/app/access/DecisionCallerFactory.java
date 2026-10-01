@@ -23,13 +23,18 @@ import io.mosire.simos.app.tools.read.MapRegionTool;
 import io.mosire.simos.app.tools.read.MapRenderTool;
 import io.mosire.simos.app.tools.read.PopulationTool;
 import io.mosire.simos.app.tools.read.SdCombatsTool;
+import io.mosire.simos.app.tools.read.SdDiplomacyTool;
+import io.mosire.simos.app.tools.read.SdDiplomaticEventsTool;
 import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.read.StateFacetsTool;
 import io.mosire.simos.app.tools.read.StateResolveTool;
 import io.mosire.simos.app.tools.read.TimelineRevisionsTool;
 import io.mosire.simos.app.tools.read.UnitGetTool;
 import io.mosire.simos.app.tools.read.UnitListTool;
+import io.mosire.simos.app.tools.write.GovPayTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
+import io.mosire.simos.app.tools.write.RecordDiplomaticEventTool;
+import io.mosire.simos.app.tools.write.SetDiplomaticRelationTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.NationId;
@@ -79,8 +84,11 @@ public final class DecisionCallerFactory {
    * <p>★ 第 12 条是 Skill 系统的 {@link SkillTool}（**方法论与常识**，2026-09-23）——它**两桶共享**（GM 也要读同一份口径去写 Docs），
    * 读的是外部 Markdown 库（改文件即生效，不在世界 revision 内）。三件套到此齐了：skill 说"怎么做"，docs 说"这一局的情况"， catalog 说"你能调什么"。
    *
-   * <p>★ **一条写工具都没有**（除两条决策行为外）：用户 2026-09-22「决策人不能直接改地图等数据，只能获取有限的、被 GM 权限层限制范围的信息」——旧 D-1
-   * 裁定给决策人挂的 unit 域 20 条窄写**已撤销**。指挥走 {@code sd.IssueDirective}。
+   * <p>★ **写面只有决策行为 + D5 的三条受限写入**：用户 2026-09-22「决策人不能直接改地图等数据，只能获取有限的、被 GM 权限层限制范围的信息」—— 旧 D-1
+   * 裁定给决策人挂的 unit 域 20 条窄写**已撤销**。指挥走 {@code sd.IssueDirective}。★ D5（2026-10-02 /
+   * D-003、D-004、D-005、R5、 R6）追加：{@link SetDiplomaticRelationTool}（外交边，from 必须是调用者 Nation）、{@link
+   * RecordDiplomaticEventTool} （事件，participants 必须含调用者 Nation）、{@link GovPayTool}（付款人 = 调用者所属
+   * GOV，身份派生）——三条都只挂决策人桶且都在本白名单里。
    *
    * <p>★ **不写 {@code ALL_TOOLS} 通配**：那等于"想用什么用什么"，白名单就退化成装饰。
    */
@@ -110,8 +118,16 @@ public final class DecisionCallerFactory {
           //   辖地的产出与库存；它走 ToolSupport.hexVisible 收窄视野，故不越界。
           EconomyHexTool.NAME,
           SkillTool.NAME,
+          // ★★ D5（2026-10-02 / R6）：两条外交读口（世界级自然语言、四桶共享读）。
+          SdDiplomacyTool.NAME,
+          SdDiplomaticEventsTool.NAME,
           IssueDirectiveTool.NAME,
-          SubmitVerdictTool.NAME);
+          SubmitVerdictTool.NAME,
+          // ★★ D5（2026-10-02 / D-003、D-004、D-005、R5、R6）：三条决策人受限窄写
+          //   （桶在 SimosToolSource.addDecisionAgentWrites，与这里必须同源）。
+          SetDiplomaticRelationTool.NAME,
+          RecordDiplomaticEventTool.NAME,
+          GovPayTool.NAME);
 
   /** 决策人身份的实例 id 前缀（与将来的会话 id 同源：按决策人派生，不隐式取全局状态）。 */
   public static final String INSTANCE_ID_PREFIX = "decision-maker:";
@@ -120,7 +136,8 @@ public final class DecisionCallerFactory {
   public static final String DECISION_MAKER_KIND = "decision-maker";
 
   /** 决策人的派生目标（进身份的 {@code goal}，只进内存态提示面与审批提示，不进事件库）。 */
-  public static final String GOAL = "在受限可见范围内做出决策：出令（sd.IssueDirective）与裁决（sd.SubmitVerdict）";
+  public static final String GOAL =
+      "在受限可见范围内做出决策：出令（sd.IssueDirective）、裁决（sd.SubmitVerdict）、外交写入（sd.SetDiplomaticRelation / sd.RecordDiplomaticEvent）与向 GOV 付款（simos.gov.pay）";
 
   private final DecisionScopeFunctions scopeFunctions;
   private final ToolCallAuthorizer authorizer;

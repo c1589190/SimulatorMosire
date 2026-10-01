@@ -32,6 +32,8 @@ import io.mosire.simos.app.tools.read.MapRenderTool;
 import io.mosire.simos.app.tools.read.PopulationTool;
 import io.mosire.simos.app.tools.read.ProvinceDivideTool;
 import io.mosire.simos.app.tools.read.SdCombatsTool;
+import io.mosire.simos.app.tools.read.SdDiplomacyTool;
+import io.mosire.simos.app.tools.read.SdDiplomaticEventsTool;
 import io.mosire.simos.app.tools.read.SdDirectivesTool;
 import io.mosire.simos.app.tools.read.SdVerdictsTool;
 import io.mosire.simos.app.tools.read.SkillTool;
@@ -55,6 +57,7 @@ import io.mosire.simos.app.tools.write.GovApplyStaffingTool;
 import io.mosire.simos.app.tools.write.GovCreateOfficeTool;
 import io.mosire.simos.app.tools.write.GovDismissTool;
 import io.mosire.simos.app.tools.write.GovDispatchTeamTool;
+import io.mosire.simos.app.tools.write.GovPayTool;
 import io.mosire.simos.app.tools.write.GovRecruitTool;
 import io.mosire.simos.app.tools.write.GovRemitTool;
 import io.mosire.simos.app.tools.write.GovRetireStaffTool;
@@ -73,6 +76,7 @@ import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
 import io.mosire.simos.app.tools.write.ProvinceApplyTool;
 import io.mosire.simos.app.tools.write.ProvinceAssignCitiesTool;
 import io.mosire.simos.app.tools.write.RaiseUnitTool;
+import io.mosire.simos.app.tools.write.RecordDiplomaticEventTool;
 import io.mosire.simos.app.tools.write.RegionClearDataTool;
 import io.mosire.simos.app.tools.write.RegionClearStructuresTool;
 import io.mosire.simos.app.tools.write.RegionSeedTool;
@@ -91,11 +95,14 @@ import io.mosire.simos.app.tools.write.SdCreateDecisionMakerTool;
 import io.mosire.simos.app.tools.write.SdCreateNationTool;
 import io.mosire.simos.app.tools.write.SdPutInfoTool;
 import io.mosire.simos.app.tools.write.SdRecordCasualtiesTool;
+import io.mosire.simos.app.tools.write.SdRecordDiplomaticEventTool;
 import io.mosire.simos.app.tools.write.SdRegisterEffectTool;
 import io.mosire.simos.app.tools.write.SdSetArmyMasterGovTool;
 import io.mosire.simos.app.tools.write.SdSetDecisionMakerProviderTool;
+import io.mosire.simos.app.tools.write.SdSetDiplomaticRelationTool;
 import io.mosire.simos.app.tools.write.SdSetStageOutcomeTableTool;
 import io.mosire.simos.app.tools.write.SetDecisionMakerAccessTool;
+import io.mosire.simos.app.tools.write.SetDiplomaticRelationTool;
 import io.mosire.simos.app.tools.write.SocialUpdateCityTool;
 import io.mosire.simos.app.tools.write.SpawnArmyTool;
 import io.mosire.simos.app.tools.write.StartCombatTool;
@@ -356,7 +363,7 @@ public final class SimosToolSource implements ToolSource {
         //   可按任意决策人的视角预览实际可见集合）；可见性判据在 RedactingQueryService#docs
         //   （tags 含调用者自己 **或** affiliations 含调用者归属，两轴取并集）。
         built.add(new DecisionDocsTool(query, mapId));
-        addDecisionAgentWrites(built, core, initiator, mapId);
+        addDecisionAgentWrites(built, core, query, initiator, mapId);
       }
     }
     this.tools = List.copyOf(built);
@@ -556,6 +563,11 @@ public final class SimosToolSource implements ToolSource {
     built.add(new SdSetArmyMasterGovTool(core, initiator, mapId));
     built.add(new SdCreateDecisionMakerTool(core, initiator, mapId));
     built.add(new SdPutInfoTool(core, initiator, mapId));
+    // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件的 GM 窄写。
+    //   **只在 GM 桶**；工具名（simos.sd.*）不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 sd。
+    //   决策人侧另有同名命令型的窄工具（见 addDecisionAgentWrites）。──
+    built.add(new SdSetDiplomaticRelationTool(core, initiator, mapId));
+    built.add(new SdRecordDiplomaticEventTool(core, initiator, mapId));
     built.add(new SdCreateCombatTool(core, initiator, mapId));
     built.add(new SdAddCombatStageTool(core, initiator, mapId));
     built.add(new SdSetStageOutcomeTableTool(core, initiator, mapId));
@@ -589,12 +601,14 @@ public final class SimosToolSource implements ToolSource {
   }
 
   /**
-   * 决策人组的写面（N9 + 用户 2026-09-22 的收窄）：**只有决策行为** —— {@code sd.IssueDirective}（出令）与 {@code
-   * sd.SubmitVerdict}（裁决者冻结判决）。
+   * 决策人组的写面（N9 + 用户 2026-09-22 的收窄 + D5 的三条新增）：**决策行为 + 外交/支付两条受限写入** —— {@code
+   * sd.IssueDirective}（出令）、{@code sd.SubmitVerdict}（裁决者冻结判决）、{@code sd.SetDiplomaticRelation} （以调用者
+   * Nation 名义写外交边）、{@code sd.RecordDiplomaticEvent}（参与者必须含调用者 Nation）、 {@code simos.gov.pay}（付款人 =
+   * 调用者所属 GOV，身份派生；收款方由既有审批链把关）。
    *
    * <p>★ **无** `sd.SetDecisionMakerAccess`（配权是 GM 的活）、**无**通用写、**无** map/unit/sd
    * 的任何其他写工具：用户原话「决策人不能直接改地图等数据， 只能获取有限的、被 GM 权限层限制范围的信息」。指挥一律走 `sd.IssueDirective`（spec §八.2 的 D2
-   * 原设计）。
+   * 原设计）。★ D5 新增的三条也都是**受限面**：两条外交写只以自己的 Nation 名义、支付只能花自己所属 GOV 的国库， 且都走同一条敏感审批链。
    *
    * <p>★ **本清单要与 {@code DecisionCallerFactory} 的白名单同源**：那边给的是**权限组**（工具名白名单），这里给的是**桶**（注册进 MCP
    * 口用）——两处都收窄才算"改不掉"，只改一处等于留一条旁路。
@@ -605,9 +619,16 @@ public final class SimosToolSource implements ToolSource {
    * 三条路径同样排除。三层同源收窄，缺一层就等于留一条绕过政治能力的入口。
    */
   private static void addDecisionAgentWrites(
-      List<AgentTool> built, CoreSimos core, String initiator, String mapId) {
+      List<AgentTool> built, CoreSimos core, QueryService query, String initiator, String mapId) {
     built.add(new IssueDirectiveTool(core, initiator, mapId));
     built.add(new SubmitVerdictTool(core, initiator, mapId));
+    // ★★ D5（2026-10-02 / D-003、D-005、R5、R6）：决策人侧的三条新增窄写——
+    //   外交关系边（from 必须是调用者 Nation）、外交事件（participants 必须含调用者 Nation）、
+    //   "给 XXX 政府钱"（付款人 = 调用者所属 GOV，身份派生；任意收款 GOV 由既有审批链把关）。
+    //   **桶**（本方法）与 **权限组白名单**（DecisionCallerFactory.WHITELIST）必须同源——只改一处 = 留旁路。
+    built.add(new SetDiplomaticRelationTool(core, query, initiator, mapId));
+    built.add(new RecordDiplomaticEventTool(core, query, initiator, mapId));
+    built.add(new GovPayTool(core, query, initiator));
   }
 
   private static List<AgentTool> readTools(
@@ -663,6 +684,11 @@ public final class SimosToolSource implements ToolSource {
         new SdDirectivesTool(query),
         // ★ 工具面补齐（2026-09-25）：交战记录（世界状态 ⇒ 四桶共享，复用 ApiViews.combats）。
         new SdCombatsTool(query),
+        // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件（世界级自然语言文本 ⇒
+        //   四桶共享读；不标 GmOnlyRead；**不做逐格视野过滤**、也绝不借它给中央 DM 地图/单位视野——D-002）。
+        //   形状复用 ApiViews.diplomaticRelations / ApiViews.diplomaticEvents。
+        new SdDiplomacyTool(query),
+        new SdDiplomaticEventsTool(query),
         // ★★ D1（2026-10-02 / D-012）：army 切片的交战记录读口（"当前 tick 在哪发生交战"的唯一直接读口）。
         //   四桶共享（世界状态、可回放）；逐条可见性按记录所在格判（ToolSupport.hexVisible）——看不见的格不进结果。
         //   形状与 GUI 同源（ApiViews.armyCombat）。

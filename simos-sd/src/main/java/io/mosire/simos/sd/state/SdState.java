@@ -6,6 +6,7 @@ import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStageId;
 import io.mosire.simos.sd.id.CombatStateId;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.id.DiplomaticEventId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
@@ -16,6 +17,9 @@ import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.CombatState;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.sd.model.DiplomaticEvent;
+import io.mosire.simos.sd.model.DiplomaticRelation;
+import io.mosire.simos.sd.model.DiplomaticRelationKey;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.model.Effect;
@@ -38,8 +42,9 @@ import java.util.Set;
  * SdSnapshot}。spec §三.1 把 {@code implements Snapshot} 写在了状态树头（设计形状的笔误），执行期按"树 / 切片分离"落地 ——
  * 记入台账取代说明。
  *
- * <p>★ **10 个组件与 {@link io.mosire.simos.sd.change.SdChangeSet} 的 10 个组件一一对应**（铁律 5）：任何新增组件都要同时进变更集，
- * 由 {@code SdRoundTripTest} 的反射枚举把守。
+ * <p>★ **12 个组件与 {@link io.mosire.simos.sd.change.SdChangeSet} 的 12 个组件一一对应**（铁律 5）：任何新增组件都要同时进变更集，
+ * 由 {@code SdRoundTripTest} 的反射枚举把守。★ D5（2026-10-02 / R6）新增最后两个：{@code diplomaticRelations}（D-003
+ * 有向边） 与 {@code diplomaticEvents}（D-005 多国谈判逐 tick 记录）。
  *
  * <p>★ **两张表的键都保序不可变**（{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**禁用** {@code
  * Map.copyOf} ——迭代序不是内容的纯函数，M2 Task 5 实测）。冻结那一步**写在赋值处**（SpotBugs 的 {@code EI_EXPOSE_REP}
@@ -60,7 +65,9 @@ public record SdState(
     Map<EffectId, Effect> effects,
     Map<VerdictId, Verdict> verdicts,
     Map<LossRecordId, LossRecord> lossRecords,
-    Map<String, List<SdInfoEntry>> info) {
+    Map<String, List<SdInfoEntry>> info,
+    Map<DiplomaticRelationKey, DiplomaticRelation> diplomaticRelations,
+    Map<DiplomaticEventId, DiplomaticEvent> diplomaticEvents) {
 
   public SdState {
     nations = Collections.unmodifiableMap(copyOf(nations, "nations"));
@@ -73,6 +80,17 @@ public record SdState(
     verdicts = Collections.unmodifiableMap(copyOf(verdicts, "verdicts"));
     lossRecords = Collections.unmodifiableMap(copyOf(lossRecords, "lossRecords"));
     info = Collections.unmodifiableMap(copyInfo(info));
+    // ★ 老档兼容（D5 新增的两个组件之前落盘的快照没有这两个键）：Jackson 对缺失的 Map 绑 null
+    //   ⇒ 缺省 = 空表（不是抛——抛了等于"整个世界打不开"，与 SdInfoEntry 的新字段同一条口径）。
+    if (diplomaticRelations == null) {
+      diplomaticRelations = Map.of();
+    }
+    if (diplomaticEvents == null) {
+      diplomaticEvents = Map.of();
+    }
+    diplomaticRelations =
+        Collections.unmodifiableMap(copyOf(diplomaticRelations, "diplomaticRelations"));
+    diplomaticEvents = Collections.unmodifiableMap(copyOf(diplomaticEvents, "diplomaticEvents"));
 
     requireAtMostOneActiveDirective(directives);
     requireReferentialIntegrity(
@@ -86,12 +104,12 @@ public record SdState(
   public static SdState empty() {
     return new SdState(
         Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-        Map.of());
+        Map.of(), Map.of(), Map.of());
   }
 
   // ── 逐组件替换（一个组件一个 with，照 GameMap 的形制）────────────────────────────────
 
-  /** 仅替换 {@code nations}，其余 9 个组件原样。 */
+  /** 仅替换 {@code nations}，其余 11 个组件原样。 */
   public SdState withNations(Map<NationId, Nation> v) {
     return new SdState(
         v,
@@ -103,7 +121,9 @@ public record SdState(
         effects,
         verdicts,
         lossRecords,
-        info);
+        info,
+        diplomaticRelations,
+        diplomaticEvents);
   }
 
   /** 仅替换 {@code armies}。 */
@@ -118,7 +138,9 @@ public record SdState(
         effects,
         verdicts,
         lossRecords,
-        info);
+        info,
+        diplomaticRelations,
+        diplomaticEvents);
   }
 
   /** 仅替换 {@code combats}。 */
@@ -133,7 +155,9 @@ public record SdState(
         effects,
         verdicts,
         lossRecords,
-        info);
+        info,
+        diplomaticRelations,
+        diplomaticEvents);
   }
 
   /** 仅替换 {@code combatStates}。 */
@@ -148,7 +172,9 @@ public record SdState(
         effects,
         verdicts,
         lossRecords,
-        info);
+        info,
+        diplomaticRelations,
+        diplomaticEvents);
   }
 
   /** 仅替换 {@code decisionMakers}。 */
@@ -163,7 +189,9 @@ public record SdState(
         effects,
         verdicts,
         lossRecords,
-        info);
+        info,
+        diplomaticRelations,
+        diplomaticEvents);
   }
 
   /** 仅替换 {@code directives}。 */
@@ -178,7 +206,9 @@ public record SdState(
         effects,
         verdicts,
         lossRecords,
-        info);
+        info,
+        diplomaticRelations,
+        diplomaticEvents);
   }
 
   /** 仅替换 {@code effects}。 */
@@ -193,7 +223,9 @@ public record SdState(
         v,
         verdicts,
         lossRecords,
-        info);
+        info,
+        diplomaticRelations,
+        diplomaticEvents);
   }
 
   /** 仅替换 {@code verdicts}。 */
@@ -208,7 +240,9 @@ public record SdState(
         effects,
         v,
         lossRecords,
-        info);
+        info,
+        diplomaticRelations,
+        diplomaticEvents);
   }
 
   /** 仅替换 {@code lossRecords}。 */
@@ -223,7 +257,9 @@ public record SdState(
         effects,
         verdicts,
         v,
-        info);
+        info,
+        diplomaticRelations,
+        diplomaticEvents);
   }
 
   /** 仅替换 {@code info}（canonical 地址串 → 条目列表）。 */
@@ -238,6 +274,42 @@ public record SdState(
         effects,
         verdicts,
         lossRecords,
+        v,
+        diplomaticRelations,
+        diplomaticEvents);
+  }
+
+  /** 仅替换 {@code diplomaticRelations}（D-003 有向边表；键 = (from,to)）。 */
+  public SdState withDiplomaticRelations(Map<DiplomaticRelationKey, DiplomaticRelation> v) {
+    return new SdState(
+        nations,
+        armies,
+        combats,
+        combatStates,
+        decisionMakers,
+        directives,
+        effects,
+        verdicts,
+        lossRecords,
+        info,
+        v,
+        diplomaticEvents);
+  }
+
+  /** 仅替换 {@code diplomaticEvents}（D-005 多国谈判/外交事件记录）。 */
+  public SdState withDiplomaticEvents(Map<DiplomaticEventId, DiplomaticEvent> v) {
+    return new SdState(
+        nations,
+        armies,
+        combats,
+        combatStates,
+        decisionMakers,
+        directives,
+        effects,
+        verdicts,
+        lossRecords,
+        info,
+        diplomaticRelations,
         v);
   }
 

@@ -347,6 +347,16 @@ public final class CatalogTool implements AgentTool {
               "sd.PutInfo",
               "address, key, value, note?, id?（同类型内唯一）, tags[决策人 id…]?,"
                   + " tick?（缺省=世界当前 tick；记在未来 ⇒ 拒）"),
+          Map.entry(
+              "sd.SetDiplomaticRelation",
+              "from, to, kind?, text, tick?（★ D5 / D-003：upsert 一条有向外交关系边；from≠to 且两端必须是已存在的"
+                  + " Nation；kind 自由文本可空——「称臣纳贡」只是它的一个取值，本命令不解释、不写死贡额/周期/违约；"
+                  + " text 非空白自然语言、谈判状态记这里；tick 缺省=世界当前 tick、不得记在未来；同 (from,to) 再调一次=更新）"),
+          Map.entry(
+              "sd.RecordDiplomaticEvent",
+              "eventId?, tick?, participants[字符串...], text（★ D5 / D-005：追加一条外交事件记录；"
+                  + "participants ≥2 且不得重复；text 非空白自然语言；tick 缺省=世界当前 tick、不得记在未来；"
+                  + "eventId 缺省按 tick 合成（diplomatic-event:<tick>#<该 tick 已有事件数>），撞车 ⇒ 拒）"),
           Map.entry("sd.CreateCombat", "combatId, name, participants[字符串...]"),
           Map.entry(
               "sd.AddCombatStage",
