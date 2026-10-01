@@ -66,6 +66,7 @@ import io.mosire.simos.app.tools.write.RegionSeedTool;
 import io.mosire.simos.app.tools.write.RejectDirectiveTool;
 import io.mosire.simos.app.tools.write.RepayDebtTool;
 import io.mosire.simos.app.tools.write.ResetDecisionMakerConversationTool;
+import io.mosire.simos.app.tools.write.RunDecisionMakersTool;
 import io.mosire.simos.app.tools.write.RunDecisionTool;
 import io.mosire.simos.app.tools.write.SdAddCombatStageTool;
 import io.mosire.simos.app.tools.write.SdCancelEffectTool;
@@ -335,6 +336,11 @@ public final class SimosToolSource implements ToolSource {
     built.add(new StartDecisionTool(core, initiator, mapId));
     // T11C：触发**决策人自己**跑一轮（真 LLM + 真工具）。★ **只在 GM 桶**——决策人不触发自己（那是自环）。
     built.add(new RunDecisionTool(core, initiator, mapId, decisionAgent));
+    // ★★ P7a（2026-10-01 后端 + MCP 稳定化计划）：显式名单批量派决策人（GM-only 组合工具）。
+    //   不做自动筛选/自动派出：due 只读展示、不参与选择；名单由调用方显式给。先同批落 N 条 sd.RunDecision 触发事实
+    //   （一条 revision），批成功后按名单顺序逐个调运行流跑真轮；批拒/冲突零 revision 且不跑 LLM。
+    //   本工具不做跨调用锁、不做自动重试；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
+    built.add(new RunDecisionMakersTool(core, query, initiator, decisionAgent));
     // 第 3 波第 2 步：把某 tick 里所有决策人的令**一起**判效果、一次落一条 revision（原子）。
     //   ★ **只在 GM 桶**（裁决是 GM 的活）；★ 它**不是**一条命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
     //   ★★ E6b：它吃的是**可嵌入令**白名单（注册面 − GM-only）——economy.SwitchMode / economy.GmAdjust
