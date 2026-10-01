@@ -74,6 +74,7 @@ import io.mosire.simos.app.tools.write.SdRegisterEffectTool;
 import io.mosire.simos.app.tools.write.SdSetDecisionMakerProviderTool;
 import io.mosire.simos.app.tools.write.SdSetStageOutcomeTableTool;
 import io.mosire.simos.app.tools.write.SetDecisionMakerAccessTool;
+import io.mosire.simos.app.tools.write.SpawnArmyTool;
 import io.mosire.simos.app.tools.write.StartDecisionTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.app.tools.write.UnitApplyCasualtiesTool;
@@ -415,6 +416,11 @@ public final class SimosToolSource implements ToolSource {
     //   actor.AdjustAccounts + social.SeedGroups + sd.PutInfo，四条命令同批落一条 revision。**只在 GM 桶**；
     //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；分摊与 levyRegion 共用 RegionAllocations 一份瀑布。
     built.add(new RaiseUnitTool(core, query, initiator, mapId));
+    // P5（2026-10-01 后端 + MCP 稳定化计划）：按格直接建军 GM 组合工具——GM 特权不抽人口/粮饷，同批
+    //   unit.CreateUnit + [role 非空: unit.SetArmyFormation] + sd.CreateArmy + sd.PutInfo，一条
+    // revision。
+    //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；raiseUnit 的抽取语义不变。
+    built.add(new SpawnArmyTool(core, query, initiator, mapId));
     // M3（spec §八.3）：sd 域余下的写命令 —— ★ **只在 GM 桶**（决策人桶有意不含这批）。
     built.add(new SdCreateNationTool(core, initiator, mapId));
     built.add(new SdCreateArmyTool(core, initiator, mapId));
