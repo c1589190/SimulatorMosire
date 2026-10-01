@@ -335,7 +335,9 @@ final class GovSelectExamineesPlan {
         Optional.empty(),
         Unit.DEFAULT_VISION_RADIUS,
         Optional.empty(),
-        Optional.empty());
+        Optional.empty(),
+        // ★ 创建（不是拷贝）：探针单位不承载任何状态链接（阶段 D1 / D-012）。
+        Map.<String, String>of());
   }
 
   private static void requireNonBlank(String value, String field) {

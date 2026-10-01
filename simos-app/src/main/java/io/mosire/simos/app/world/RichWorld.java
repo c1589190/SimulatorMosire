@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.codec.ActorCodec;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.core.store.Envelope;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -109,10 +112,17 @@ public final class RichWorld {
         "gov",
         ignored ->
             new GovSnapshot(decoded.meta().ref(), decoded.meta().timestamp(), GovState.empty()));
+    // ★★ D1（2026-10-02 / D-012）：v17levant 档早于 army 切片，而命令总线要求切片在场（army.RecordCombat
+    //   找不到命名空间会响亮失败）⇒ 补一个空的 army 片（与 sd/economy/actor/gov 同制）。★ 键名与
+    //   ArmySnapshot.namespace() 同字面（SimulationState 构造期校验）。
+    modules.computeIfAbsent(
+        "army",
+        ignored ->
+            new ArmySnapshot(decoded.meta().ref(), decoded.meta().timestamp(), ArmyData.empty()));
     return new SimulationState(decoded.meta(), modules, readInfo(decoded.infoJson()));
   }
 
-  /** 七个模块 codec（与 {@code Shell} 的装配同一套类型）。 */
+  /** 八个模块 codec（与 {@code Shell} 的装配同一套类型）。 */
   private static Map<String, ModuleCodec> codecTable() {
     Map<String, ModuleCodec> codecs = new LinkedHashMap<>();
     for (ModuleCodec codec :
@@ -125,7 +135,10 @@ public final class RichWorld {
             new ActorCodec(),
             // ★ 阶段 10a：gov codec 与 Shell 同源。★ 阶段 11b 起 gov 片由参与者写 ⇒ 创世/升档必须补空片
             //   （见上面 computeIfAbsent("gov")），否则带 GovFormation 的单位推进会被 TimeAdvance 拒。
-            new GovCodec())) {
+            new GovCodec(),
+            // ★★ D1（2026-10-02 / D-012）：army codec 与 Shell 同源；上面 computeIfAbsent("army") 保证
+            //   旧档/创世也有空 army 片（命令总线要求切片在场）。
+            new ArmyCodec())) {
       codecs.put(codec.namespace(), codec);
     }
     return codecs;

@@ -10,6 +10,7 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.util.facet.FacetEntry;
 import io.mosire.simos.util.identity.ResolvedSubject;
+import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -79,9 +80,10 @@ public final class StateFacetsTool implements AgentTool {
 
   /** facet 的可见性按**地址解析出的主体**判（facet 自己挂在那个主体上，资源也就随它）。 */
   private boolean anyCandidateVisible(ToolContext context, String address, QueryTarget target) {
-    GameMap map = ToolSupport.gameMap(query.stateAt(target));
+    SimulationState state = query.stateAt(target);
+    GameMap map = ToolSupport.gameMap(state);
     for (ResolvedSubject subject : query.resolve(address, target).candidates()) {
-      if (ToolSupport.subjectVisible(context, mapId, map, subject)) {
+      if (ToolSupport.subjectVisible(context, mapId, map, state, subject)) {
         return true;
       }
     }

@@ -150,7 +150,9 @@ public final class CorridorWorld {
             // ★ 创建（不是拷贝）：创世单位尚无管辖（辖区阶段 5）。
             Optional.empty(),
             // ★ 创建（不是拷贝）：创世单位尚无编制模块（阶段 9）。
-            Optional.empty());
+            Optional.empty(),
+            // ★ 创建（不是拷贝）：创世单位尚无"状态 ↔ 状态描述地址"链接（阶段 D1 / D-012）。
+            Map.<String, String>of());
     Map<UnitId, Unit> units = new LinkedHashMap<>();
     units.put(UNIT, unit);
     return new UnitState(units);

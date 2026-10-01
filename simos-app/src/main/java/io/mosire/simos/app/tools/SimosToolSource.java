@@ -10,6 +10,8 @@ import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.skill.SkillLibrary;
+import io.mosire.simos.app.tools.read.ArmyCombatTool;
+import io.mosire.simos.app.tools.read.ArmyCombatsTool;
 import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.tools.read.DecisionDocsTool;
@@ -41,6 +43,7 @@ import io.mosire.simos.app.tools.read.UnitListTool;
 import io.mosire.simos.app.tools.write.ActorAdjustAccountsTool;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.app.tools.write.AdvanceTool;
+import io.mosire.simos.app.tools.write.ArmyRecordCombatTool;
 import io.mosire.simos.app.tools.write.AssignArmyGovTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.EconomyAdjustTool;
@@ -116,6 +119,7 @@ import io.mosire.simos.app.tools.write.UnitSetGovPolicyTool;
 import io.mosire.simos.app.tools.write.UnitSetGovSuperiorTool;
 import io.mosire.simos.app.tools.write.UnitSetJurisdictionTool;
 import io.mosire.simos.app.tools.write.UnitSetRejoinTargetTool;
+import io.mosire.simos.app.tools.write.UnitSetStateDescriptionTool;
 import io.mosire.simos.app.tools.write.UnitSetStatusTool;
 import io.mosire.simos.app.tools.write.UnitSetStrengthTool;
 import io.mosire.simos.app.tools.write.UnitSetTaxRateTool;
@@ -459,6 +463,9 @@ public final class SimosToolSource implements ToolSource {
     built.add(new UnitCancelRouteTool(core, initiator, mapId));
     built.add(new UnitDisbandTool(core, initiator, mapId));
     built.add(new UnitSetStatusTool(core, initiator, mapId));
+    // ★★ D1（2026-10-02 / D-012）：当前回合状态 ↔ 状态描述地址的窄写。**只在 GM 桶**（命令本身非 GmOnly，
+    //   决策人仍可经 sd.IssueDirective 审批链写）；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
+    built.add(new UnitSetStateDescriptionTool(core, initiator, mapId));
     built.add(new UnitAttachTool(core, initiator, mapId));
     built.add(new UnitDetachTool(core, initiator, mapId));
     built.add(new UnitReparentSubtreeTool(core, initiator, mapId));
@@ -550,6 +557,9 @@ public final class SimosToolSource implements ToolSource {
     built.add(new SdRegisterEffectTool(core, initiator, mapId));
     built.add(new SdCancelEffectTool(core, initiator, mapId));
     built.add(new SdSetDecisionMakerProviderTool(core, initiator, mapId));
+    // ★★ D1（2026-10-02 / D-012）：army 切片的交战记录写入（GM-only 命令 army.RecordCombat 的窄封装）。
+    //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 army 命名空间。
+    built.add(new ArmyRecordCombatTool(core, initiator, mapId));
     // ★★ E6b：GM 经济调整（economy.GmAdjust 的窄封装：预览 / 原因 / 前后差异 / 审计）。
     //   **只在 GM 桶**：决策人桶（addDecisionAgentWrites）没有它，DecisionCallerFactory.WHITELIST 也没有它，
     //   且 economy.GmAdjust 本身标了 GmOnlyCommand（令/RegisterEffect/决策人 catalog 三条路径都排除）。
@@ -635,6 +645,11 @@ public final class SimosToolSource implements ToolSource {
         new SdDirectivesTool(query),
         // ★ 工具面补齐（2026-09-25）：交战记录（世界状态 ⇒ 四桶共享，复用 ApiViews.combats）。
         new SdCombatsTool(query),
+        // ★★ D1（2026-10-02 / D-012）：army 切片的交战记录读口（"当前 tick 在哪发生交战"的唯一直接读口）。
+        //   四桶共享（世界状态、可回放）；逐条可见性按记录所在格判（ToolSupport.hexVisible）——看不见的格不进结果。
+        //   形状与 GUI 同源（ApiViews.armyCombat）。
+        new ArmyCombatsTool(query, mapId),
+        new ArmyCombatTool(query, mapId),
         // ★ 判决（模型原始输出 + meta）：省略 actor = FULL 全量披露 ⇒ 只给 GM 桶（GmOnlyRead），见类注。
         new SdVerdictsTool(query, mapId),
         // ★ GM 面观测/配置读口（只给 GM 桶）：工具使用记录（运行时监督数据）与 LLM provider 掩码配置。

@@ -1,6 +1,7 @@
 package io.mosire.simos.unit;
 
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -41,6 +42,12 @@ import java.util.Optional;
  * {@link GovFormation} 或 {@link ArmyFormation}，一单位至多一个，互斥由类型保证）。缺省 {@link Optional#empty()} ⇒
  * 旧档/旧调用点行为逐字不变；**所有重建既有 Unit 的拷贝点都必须原样带过 {@code before.module()}**（漏传 = 静默丢编制，同一条最贵教训）； 创建点显式给
  * {@link Optional#empty()}。★ 它只放编制成分/隶属/层级，**不算任何力量**（用户裁定 1/2：行政力与战斗力分开算，分别归 gov/army 模块）。
+ *
+ * <p>★ **状态描述地址（阶段 D1，2026-10-02 / D-012）**：第 17 组件 {@code stateDescriptions} = **当前回合状态**（自由文本键）→
+ * **状态描述地址**（canonical 地址文本）的链接表。★ **本模块不解析目标域**（不 import army/sd/gov 等域）：只校验地址文本是 canonical 形态（语法走
+ * util 的 {@link Address}，全仓唯一拼写点），"这个地址指向什么"由读侧/各域解析器回答——交战记录、公文处理状态等都只是 "某个地址"，Unit 对此一无所知。缺省空表 ⇒
+ * 旧档/旧调用点行为逐字不变；**所有重建既有 Unit 的拷贝点都必须原样带过 {@code before.stateDescriptions()}**（漏传 =
+ * 静默丢链接，同一条最贵教训）；创建点显式给空表。
  */
 public record Unit(
     UnitId id,
@@ -58,7 +65,8 @@ public record Unit(
     Optional<UnitId> rejoinTarget,
     int visionRadius,
     Optional<Jurisdiction> jurisdiction,
-    Optional<UnitModule> module) {
+    Optional<UnitModule> module,
+    Map<String, String> stateDescriptions) {
 
   /** ★ **缺省视野半径**（spec §4.1 / 用户裁定⑤）= 1 圈（自身 + 六个邻格 = 7 格）。 */
   public static final int DEFAULT_VISION_RADIUS = 1;
@@ -111,6 +119,13 @@ public record Unit(
       // ★ 旧档没有 module 键 ⇒ Jackson 对 record 的缺参给 null；这里归一成 empty（与 jurisdiction 同款落点）。
       module = Optional.empty();
     }
+    if (stateDescriptions == null) {
+      // ★ 旧档没有 stateDescriptions 键 ⇒ Jackson 对 record 的缺参给 null；这里归一成空表（与 jurisdiction/module
+      // 同款落点）。
+      stateDescriptions = Map.of();
+    }
+    stateDescriptions =
+        Collections.unmodifiableMap(copyStateDescriptions(stateDescriptions)); // ★ 冻在赋值处
   }
 
   /**
@@ -129,9 +144,10 @@ public record Unit(
   /**
    * ★ **兼容构造器**（T1，R1 的对策）：旧 9 参签名 ⇒ 以 {@code parent} 的锚段时刻造 {@code attached}/{@code offset}
    * 的锚段，{@code status = MOVING}、{@code rejoinTarget = empty}、{@code visionRadius = }{@link
-   * #DEFAULT_VISION_RADIUS}、{@code jurisdiction = empty}、{@code module = empty}。
+   * #DEFAULT_VISION_RADIUS}、{@code jurisdiction = empty}、{@code module = empty}、 {@code
+   * stateDescriptions = 空表}。
    *
-   * <p>它让全仓约 40 处既有 {@code new Unit(…)} 调用点零改动编过；**生产拷贝点不要用它**（那会丢新字段），一律走 canonical 16 参形态——{@code
+   * <p>它让全仓约 40 处既有 {@code new Unit(…)} 调用点零改动编过；**生产拷贝点不要用它**（那会丢新字段），一律走 canonical 17 参形态——{@code
    * UnitOperations.copy} / {@code UnitMoves.evaluate} 的 frozen 视图 / {@code
    * UnitTimeParticipant.withPositionAndMovement} 都已改直。
    */
@@ -168,13 +184,14 @@ public record Unit(
 
   /**
    * ★ **第二兼容构造器**（权限阶段 Task 1 / spec §4.1）：T1 的 13 参形态 ⇒ 只补 {@code visionRadius = }{@link
-   * #DEFAULT_VISION_RADIUS}、{@code jurisdiction = empty} 与 {@code module = empty}。
+   * #DEFAULT_VISION_RADIUS}、{@code jurisdiction = empty}、{@code module = empty} 与 {@code
+   * stateDescriptions = 空表}。
    *
    * <p>**为什么需要它**：T1 那批调用点（夹具与测试里的 13 参规范形态）不是"忘了新字段"的拷贝点——{@code visionRadius}
    * 对它们而言没有来源，取缺省正是**唯一正确**的语义。有了它，新字段不会把既有 13 参调用点逼成编译错误。
    *
    * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.visionRadius()} / {@code 原.jurisdiction()} / {@code
-   * 原.module()}），走 canonical 16 参。
+   * 原.module()} / {@code 原.stateDescriptions()}），走 canonical 17 参。
    */
   public Unit(
       UnitId id,
@@ -214,8 +231,8 @@ public record Unit(
    * <p>**为什么需要它**：既有测试/夹具与少量调用点按 14 参规范形态写（它们不是"忘了新字段"的生产拷贝点——管辖对它们而言没有来源），
    * 取空管辖正是**唯一正确**的语义；有了它，新增第 15 组件不会把既有 14 参调用点逼成编译错误。
    *
-   * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.jurisdiction()} / {@code 原.module()}），走 canonical 16
-   * 参——漏传 = 静默丢管辖/编制。
+   * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.jurisdiction()} / {@code 原.module()} / {@code
+   * 原.stateDescriptions()}），走 canonical 17 参——漏传 = 静默丢管辖/编制/链接。
    */
   public Unit(
       UnitId id,
@@ -257,7 +274,8 @@ public record Unit(
    * <p>**为什么需要它**：第 16 组件落地前写的调用点/夹具按"15 参规范形态"写（{@code jurisdiction} 有来源、编制模块没有），
    * 取空编制正是**唯一正确**的语义；有了它，新增第 16 组件不会把既有 15 参调用点逼成编译错误。
    *
-   * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.module()}），走 canonical 16 参——漏传 = 静默丢编制。
+   * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.module()} / {@code 原.stateDescriptions()}），走 canonical
+   * 17 参——漏传 = 静默丢编制/链接。
    */
   public Unit(
       UnitId id,
@@ -292,6 +310,52 @@ public record Unit(
         visionRadius,
         jurisdiction,
         Optional.<UnitModule>empty());
+  }
+
+  /**
+   * ★ **第五兼容构造器**（阶段 D1，2026-10-02）：扩容后旧的 16 参 canonical 形态（截至 {@code module}）⇒ 只补 {@code
+   * stateDescriptions = 空表}。
+   *
+   * <p>**为什么需要它**：第 17 组件落地前写的调用点/夹具按"16 参规范形态"写（{@code jurisdiction}/{@code module}
+   * 有来源、状态链接没有），取空表正是**唯一正确**的语义；有了它，新增第 17 组件不会把既有 16 参调用点逼成编译错误。
+   *
+   * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.stateDescriptions()}），走 canonical 17 参——漏传 = 静默丢链接。
+   */
+  public Unit(
+      UnitId id,
+      String name,
+      SegmentedSeries<Optional<UnitId>> parent,
+      SegmentedSeries<Optional<HexCoord>> position,
+      int member,
+      Map<String, Integer> equipment,
+      int speed,
+      int mobilityPerMille,
+      Optional<Movement> movement,
+      UnitStatus status,
+      SegmentedSeries<Boolean> attached,
+      SegmentedSeries<Optional<RelativeOffset>> offset,
+      Optional<UnitId> rejoinTarget,
+      int visionRadius,
+      Optional<Jurisdiction> jurisdiction,
+      Optional<UnitModule> module) {
+    this(
+        id,
+        name,
+        parent,
+        position,
+        member,
+        equipment,
+        speed,
+        mobilityPerMille,
+        movement,
+        status,
+        attached,
+        offset,
+        rejoinTarget,
+        visionRadius,
+        jurisdiction,
+        module,
+        Map.of());
   }
 
   /** 兼容构造器的锚时刻取 {@code parent} 的首段（{@code parent} 不得为 null、构造期保证至少一段）。 */
@@ -331,6 +395,56 @@ public record Unit(
         throw new IllegalArgumentException("equipment 的值必须 ≥ 0: " + entry.getKey());
       }
       copy.put(entry.getKey(), entry.getValue());
+    }
+    return Collections.unmodifiableMap(copy);
+  }
+
+  /**
+   * 拷贝 + 校验状态描述链接（不做冻结，赋值处冻结——同 {@link #copyEquipment} 的 SpotBugs 口径）。
+   *
+   * <p>★ 校验只到**文本形状**这一层：键（状态）非空白；值（地址）非空白且是 canonical 地址文本。地址语法委托 util 的 {@link
+   * Address#parse}（全仓唯一拼写点），**不解析目标域**——本模块不知道 {@code army:combat.x} 是交战记录、也不知道 {@code gov:...}
+   * 是公文；"这个地址指向什么"由读侧/各域 resolver 回答（铁律 3）。
+   *
+   * <p>★ 为什么要求 canonical：链接表是**稳定地址**（D-012 的"状态描述地址"接入地址体系），宽容写法（人类形式）会让同一目标有多个 拼写；canonical 唯一性由
+   * {@link Address#canonical()} 的往返把守。
+   */
+  private static Map<String, String> copyStateDescriptions(Map<String, String> stateDescriptions) {
+    Map<String, String> copy = new LinkedHashMap<>();
+    for (Map.Entry<String, String> entry : stateDescriptions.entrySet()) {
+      if (entry.getKey() == null || entry.getKey().isBlank()) {
+        throw new IllegalArgumentException("stateDescriptions 的键（状态）不得空白");
+      }
+      String state = entry.getKey();
+      String address = entry.getValue();
+      if (address == null || address.isBlank()) {
+        throw new IllegalArgumentException("stateDescriptions 的地址不得为空白（清除链接请删除该键）: state=" + state);
+      }
+      Address parsed;
+      try {
+        parsed = Address.parse(address);
+      } catch (IllegalArgumentException e) {
+        throw new IllegalArgumentException(
+            "stateDescriptions 的地址不是合法地址（state="
+                + state
+                + "）: "
+                + address
+                + "（"
+                + e.getMessage()
+                + "）",
+            e);
+      }
+      if (!parsed.canonical().equals(address)) {
+        throw new IllegalArgumentException(
+            "stateDescriptions 的地址不是 canonical 形态（state="
+                + state
+                + "）: "
+                + address
+                + "（canonical="
+                + parsed.canonical()
+                + "）");
+      }
+      copy.put(state, address);
     }
     return Collections.unmodifiableMap(copy);
   }

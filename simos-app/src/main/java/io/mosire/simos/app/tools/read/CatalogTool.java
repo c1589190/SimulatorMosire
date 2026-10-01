@@ -68,6 +68,12 @@ public final class CatalogTool implements AgentTool {
           Map.entry("unit.CancelRoute", "id"),
           Map.entry("unit.DisbandUnit", "id"),
           Map.entry("unit.SetStatus", "id, status(MOVING|RESTING|ENGAGED)"),
+          Map.entry(
+              "unit.SetStateDescription",
+              "id, state, address?（★ 阶段 D1 / D-012：当前回合状态 → 状态描述地址的链接；"
+                  + "state 必填非空白；address 缺省/null/空串 = **清除**该状态链接（本来没有 ⇒ 具名拒），"
+                  + "非空 = canonical 地址文本（如 army:combat.c-1；unit 不解析目标域）；"
+                  + "非 GmOnly，可嵌进决策令，目标就是载荷点名的那个单位）"),
           Map.entry("unit.AttachUnit", "id, parent"),
           Map.entry("unit.DetachUnit", "id"),
           Map.entry("unit.ReparentSubtree", "rootId, parent"),
@@ -367,7 +373,13 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "sd.SetDirectiveStatus",
               "directiveId, status(EXECUTED|CANCELLED)（★ 只允许 ISSUED → 二者之一，只由"
-                  + " sd.AdjudicateTick 内部编排产生；不对外提供窄工具）"));
+                  + " sd.AdjudicateTick 内部编排产生；不对外提供窄工具）"),
+          Map.entry(
+              "army.RecordCombat",
+              "id, tick?, hex{q,r}, participants[unitId...]（至少一个、不重复）, text（自然语言过程/结局，非空白）,"
+                  + " losses?{自然语义键:非负整数}（★ 阶段 D1 / D-012：单 tick 单场交战记录；"
+                  + "tick 缺省 = 当前 tick、不得记在未来；同 id 已存在 ⇒ 具名拒（不可变历史）；"
+                  + "参与者不查 unit 切片是否存在；★ GmOnly：决策人不得凭空写战果）"));
 
   /** {@code regime→种类} 的 ` / ` 连接串（登记表序；见 {@link #OPERATOR_HINT}）。 */
   private static String operatorHint() {

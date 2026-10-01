@@ -46,15 +46,26 @@ abstract class AbstractNarrowWriteTool implements AgentTool {
     this.mapId = mapId;
   }
 
-  /** 固定命令类型（同时是工具名）。 */
+  /** 固定命令类型。★ 缺省时它同时是工具名；两者不同名时覆写 {@link #toolName()}。 */
   protected abstract String commandType();
+
+  /**
+   * 工具名（缺省 = {@link #commandType()}）。
+   *
+   * <p>★ D1（2026-10-02）新增这个钩子：{@code simos.*} 风格的工具名与命令类型不同名（用户给定的 {@code
+   * simos.unit.set-state-description} / {@code simos.army.recordCombat}），而本基类的信封组装 / 资源断言 /
+   * 结局折叠三段仍照用。 只改名字，其余一字不动；既有子类不覆写 ⇒ 行为逐字不变。
+   */
+  protected String toolName() {
+    return commandType();
+  }
 
   /** 审批摘要里的一行人话。 */
   protected abstract String summary(Map<String, Object> args);
 
   @Override
   public final String name() {
-    return commandType();
+    return toolName();
   }
 
   @Override
@@ -100,6 +111,13 @@ abstract class AbstractNarrowWriteTool implements AgentTool {
   protected static final ResourceManifest SOCIAL_NAMESPACE_WRITE =
       ResourceManifest.of(ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
+  /**
+   * 同 {@link #SD_NAMESPACE_WRITE}，用于 {@code army.RecordCombat}（阶段 D1：handler 只产 {@code
+   * ArmyChangeSet}）。
+   */
+  protected static final ResourceManifest ARMY_NAMESPACE_WRITE =
+      ResourceManifest.of(ToolSupport.ARMY_NAMESPACE, ResourcePolicy.UNRESTRICTED);
+
   /** GM 专用 sd 窄写的写资源断言（{@code sd:*}；GM 侧 sd 是 unlimited）。 */
   protected static List<ResourceId> sdNamespaceWriteResources() {
     return List.of(ResourceId.of(ToolSupport.SD_NAMESPACE, "*"));
@@ -113,6 +131,11 @@ abstract class AbstractNarrowWriteTool implements AgentTool {
   /** GM 专用 social 窄写的写资源断言（{@code social:*}；GM 侧 social 是 unlimited）。 */
   protected static List<ResourceId> socialNamespaceWriteResources() {
     return List.of(ResourceId.of(ToolSupport.SOCIAL_NAMESPACE, "*"));
+  }
+
+  /** GM 专用 army 窄写的写资源断言（{@code army:*}；GM 侧 army 是 unlimited，见 {@code Shell#gmPermissionSet}）。 */
+  protected static List<ResourceId> armyNamespaceWriteResources() {
+    return List.of(ResourceId.of(ToolSupport.ARMY_NAMESPACE, "*"));
   }
 
   /**

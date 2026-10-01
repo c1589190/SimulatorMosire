@@ -40,6 +40,13 @@ import java.util.function.Function;
  * Action} 同制：类型信息钉在类型上）。旧档没有该键 ⇒ Jackson 对 record 缺参给 {@code null} ⇒ {@code Unit} 紧凑构造器归一成 {@code
  * Optional.empty()}，行为逐字不变。
  *
+ * <p>★★ <b>阶段 D1 的线格式</b>：{@code Unit} 再多一个 {@code "stateDescriptions"} 键（第 17 组件，紧接 {@code
+ * "module"}）， 值就是普通 JSON 对象 {@code {状态:canonical 地址}}。★ <b>它的键与值都是 {@link String}</b> ⇒
+ * <b>不需要</b>注册任何键反序列化器 （与 {@code equipment} 的 {@code String} 键同款；Jackson 的默认 {@code String}
+ * 键绑定就对了），本类<b>一字未改</b>。旧档没有该键 ⇒ Jackson 对 record 缺参给 {@code null} ⇒ {@code Unit}
+ * 紧凑构造器归一成空表，行为逐字不变。★ 变更集侧同样自动覆盖：{@code UnitChangeSet} 的组件是 {@code FieldDelta<Unit>}（值就是整份
+ * Unit），record 的 {@code equals} 含新组件 ⇒ "新组件不进变更集"这类漂移在这里结构上不可能发生（判别力仍由往返测试的反射枚举把守）。
+ *
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
  *
  * <p>★ **同时实现 {@link ModuleDiffer}**（"一批命令 = 一条 revision" 的原子批量提交需要）：委托 {@link

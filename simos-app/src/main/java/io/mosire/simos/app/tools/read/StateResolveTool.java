@@ -10,6 +10,7 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.identity.ResolvedSubject;
+import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -64,10 +65,12 @@ public final class StateResolveTool implements AgentTool {
       QueryResult result = query.resolve(ToolSupport.requiredText(args, "address"), target);
       // ★ **筛掉不可见的主体**（T10）：**不是**回全量、也**不是**整调拒——解析得到的候选与"这个地址解析不出东西"
       //   必须分不开（否则"存在但你看不到"会从候选数里漏出去）。
-      GameMap map = ToolSupport.gameMap(query.stateAt(target));
+      //   ★ D1 起 subjectVisible 多收一个 state：army 的交战记录主体没有自己的资源路径，要按记录所在格判。
+      SimulationState state = query.stateAt(target);
+      GameMap map = ToolSupport.gameMap(state);
       List<Map<String, Object>> candidates = new ArrayList<>(result.candidates().size());
       for (ResolvedSubject subject : result.candidates()) {
-        if (!ToolSupport.subjectVisible(context, mapId, map, subject)) {
+        if (!ToolSupport.subjectVisible(context, mapId, map, state, subject)) {
           continue;
         }
         Map<String, Object> id = new LinkedHashMap<>();

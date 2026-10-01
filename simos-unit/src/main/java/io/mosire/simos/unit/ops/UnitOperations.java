@@ -53,7 +53,7 @@ import java.util.Set;
  *
  * <p>★ **GOV 编制编辑四件（阶段 10b-i，2026-10-01）**：{@link #setGovPolicy}/{@link #setGovSuperior}/{@link
  * #recruitStaff}/{@link #dismissStaff} 都只认 {@link GovFormation}，结果统一走 {@link #withModule} canonical
- * 拷贝（16 个组件一个不丢）。
+ * 拷贝（17 个组件一个不丢）。
  */
 public final class UnitOperations {
 
@@ -340,6 +340,46 @@ public final class UnitOperations {
     return withUnit(state, withStatus(unit, status));
   }
 
+  // ── 状态描述地址（阶段 D1，2026-10-02 / D-012） ──────────────
+
+  /**
+   * ★ <b>当前回合状态 ↔ 状态描述地址的 upsert / 删除</b>（{@code unit.SetStateDescription} 的领域实现，D-012）。
+   *
+   * <p>语义三条：
+   *
+   * <ol>
+   *   <li><b>upsert</b>：{@code address} present 且非空白 ⇒ 写入/覆盖 {@code stateKey} 的链接（覆盖合法——"这个状态现在链到哪个
+   *       地址"是存量语义）；
+   *   <li><b>删除</b>：{@code address} 为空（缺省 / null / 空串）⇒ 删掉 {@code stateKey} 的链接；**本来就没有这条链接 ⇒ 具名拒**
+   *       （不是静默 no-op：一条"清除"命令什么都没清，调用方应当知道）；
+   *   <li>{@code stateKey} 空白 ⇒ 具名拒。地址文本的 canonical 校验在 {@link Unit} 构造期（本方法只把候选表交给它）——域模型是
+   *       唯一真相，不在操作层再抄一遍语法。
+   * </ol>
+   *
+   * <p>★ <b>只动这一条链接</b>：其余 16 个组件（含整张 {@code stateDescriptions} 的其它键、编制/管辖）经 {@link
+   * #withStateDescriptions} 原样带过。
+   *
+   * <p>★ <b>不含时间语义</b>：谁在什么 tick 清链接、链接是否跨 tick 延续，本批不做（D-012 只要求"当前回合状态"的链接表）。
+   */
+  public static UnitState setStateDescription(
+      UnitState state, UnitId id, String stateKey, Optional<String> address) {
+    Objects.requireNonNull(address, "address");
+    if (stateKey == null || stateKey.isBlank()) {
+      throw new IllegalArgumentException("state 不得为空白");
+    }
+    Unit unit = require(state, id);
+    Map<String, String> next = new LinkedHashMap<>(unit.stateDescriptions());
+    if (address.isEmpty() || address.get().isBlank()) {
+      if (!next.containsKey(stateKey)) {
+        throw new IllegalArgumentException("状态 " + stateKey + " 本来就没有描述地址，无可清除");
+      }
+      next.remove(stateKey);
+    } else {
+      next.put(stateKey, address.get()); // 覆盖时既有键保持原位（LinkedHashMap 的既有键不改变位置）
+    }
+    return withUnit(state, withStateDescriptions(unit, next));
+  }
+
   public static UnitState cancelRoute(UnitState state, UnitId id) {
     Unit unit = require(state, id);
     return withUnit(
@@ -483,7 +523,7 @@ public final class UnitOperations {
    * </ol>
    *
    * <p>★ 纯函数：产新 {@code UnitState}；变更集仍由 {@code UnitChangeSet.between} 派生（不做第二条拼增量路径）。 结果单位走 {@link
-   * #withModule} 的 canonical 拷贝，16 个组件一个不丢。
+   * #withModule} 的 canonical 拷贝，17 个组件一个不丢。
    */
   public static UnitState setGovFormation(UnitState state, UnitId id, GovFormation formation) {
     Objects.requireNonNull(formation, "formation");
@@ -516,7 +556,7 @@ public final class UnitOperations {
    *   <li><b>同类型重复设置 = 整体替换</b>（{@code role}/{@code masterGov} 一起换成传入的整份）。
    * </ol>
    *
-   * <p>★ 纯函数；结果单位走 {@link #withModule}，16 个组件一个不丢。
+   * <p>★ 纯函数；结果单位走 {@link #withModule}，17 个组件一个不丢。
    */
   public static UnitState setArmyFormation(UnitState state, UnitId id, ArmyFormation formation) {
     Objects.requireNonNull(formation, "formation");
@@ -543,7 +583,7 @@ public final class UnitOperations {
    * </ol>
    *
    * <p>★ 保序：{@code staffCap} 经 {@link OfficePolicy} 的 LinkedHashMap 拷贝，已有键保持原位、新键追加在末尾。 ★ 纯函数：结果单位走
-   * {@link #withModule} canonical 拷贝，16 个组件一个不丢。
+   * {@link #withModule} canonical 拷贝，17 个组件一个不丢。
    */
   public static UnitState setGovPolicy(
       UnitState state,
@@ -584,7 +624,7 @@ public final class UnitOperations {
    * </ol>
    *
    * <p>★ 环检测对"查无此人 / 链上单位不是 GOV"的祖先视为链路终点（本命令只负责不引入环；悬空链的修复不在本命令面）。 ★ 纯函数；结果单位走 {@link
-   * #withModule}，16 个组件一个不丢。
+   * #withModule}，17 个组件一个不丢。
    */
   public static UnitState setGovSuperior(UnitState state, UnitId id, Optional<UnitId> superiorGov) {
     Objects.requireNonNull(superiorGov, "superiorGov");
@@ -1391,13 +1431,14 @@ public final class UnitOperations {
         unit.rejoinTarget(),
         unit.visionRadius(),
         unit.jurisdiction(),
-        unit.module());
+        unit.module(),
+        unit.stateDescriptions());
   }
 
   /**
    * ★ **T3 的 canonical 拷贝点**：在 9 参 {@link #copy} 之上**显式**给 `position`/`attached`/`offset`
    * 三个分量（`status`/`rejoinTarget`/`visionRadius`/`jurisdiction`/`module` 仍原样带过）。四个形参类型两两不同 ⇒
-   * 传错顺序是**编译错误**，不是静默错位；编制三件套的操作 （`parent`/`attached`/`offset` **加上新落地的 `position`**）只动这四个，故不走全 16
+   * 传错顺序是**编译错误**，不是静默错位；编制三件套的操作 （`parent`/`attached`/`offset` **加上新落地的 `position`**）只动这四个，故不走全 17
    * 参。
    *
    * <p>★★ **编制 v2（2026-09-24，取消跟随）起本方法的实际用法**：{@code attachSubtree}、{@code detachUnit}、 {@code
@@ -1427,11 +1468,12 @@ public final class UnitOperations {
         unit.rejoinTarget(),
         unit.visionRadius(),
         unit.jurisdiction(),
-        unit.module());
+        unit.module(),
+        unit.stateDescriptions());
   }
 
   /**
-   * 只换 `speed`、其余 15 个组件（尤其是 {@code mobilityPerMille}、视野半径、管辖与编制模块）原样带过——**mergeFormation
+   * 只换 `speed`、其余 16 个组件（尤其是 {@code mobilityPerMille}、视野半径、管辖与编制模块）原样带过——**mergeFormation
    * 的最慢者决定速度**专用 （canonical 拷贝点，同 {@link #withStatus} 的形制）。
    */
   private static Unit withSpeed(Unit unit, int speed) {
@@ -1451,10 +1493,11 @@ public final class UnitOperations {
         unit.rejoinTarget(),
         unit.visionRadius(),
         unit.jurisdiction(),
-        unit.module());
+        unit.module(),
+        unit.stateDescriptions());
   }
 
-  /** 只换 status、其余 15 个组件（含另外三个新字段、视野半径、管辖与编制模块）原样带过。 */
+  /** 只换 status、其余 16 个组件（含另外三个新字段、视野半径、管辖与编制模块）原样带过。 */
   private static Unit withStatus(Unit unit, UnitStatus status) {
     return new Unit(
         unit.id(),
@@ -1472,11 +1515,12 @@ public final class UnitOperations {
         unit.rejoinTarget(),
         unit.visionRadius(),
         unit.jurisdiction(),
-        unit.module());
+        unit.module(),
+        unit.stateDescriptions());
   }
 
   /**
-   * 只换 `rejoinTarget`、其余 15 个组件原样带过（T7，与 {@link #withStatus} 同形的 canonical 拷贝点）。
+   * 只换 `rejoinTarget`、其余 16 个组件原样带过（T7，与 {@link #withStatus} 同形的 canonical 拷贝点）。
    *
    * <p>★ **不用兼容构造器**：那会把 `status`/`attached`/`offset`（以及视野半径、管辖、编制模块）一并重置成默认值（R1 的残留风险，同 {@link
    * #copy} 的注）。
@@ -1498,11 +1542,12 @@ public final class UnitOperations {
         rejoinTarget,
         unit.visionRadius(),
         unit.jurisdiction(),
-        unit.module());
+        unit.module(),
+        unit.stateDescriptions());
   }
 
   /**
-   * 只换 `jurisdiction`、其余 15 个组件原样带过（辖区阶段 5，与 {@link #withStatus} 同形的 canonical 拷贝点）。
+   * 只换 `jurisdiction`、其余 16 个组件原样带过（辖区阶段 5，与 {@link #withStatus} 同形的 canonical 拷贝点）。
    *
    * <p>★ **不用兼容构造器**：那会把全部既有字段（含编制模块）重置成默认值——管辖变更绝不能顺手清掉编制/位置/视野。
    */
@@ -1523,14 +1568,15 @@ public final class UnitOperations {
         unit.rejoinTarget(),
         unit.visionRadius(),
         jurisdiction,
-        unit.module());
+        unit.module(),
+        unit.stateDescriptions());
   }
 
   /**
-   * ★ <b>只换 {@code module}、其余 15 个组件原样带过</b>（阶段 10a 的 canonical 拷贝点，与 {@link #withJurisdiction} /
+   * ★ <b>只换 {@code module}、其余 16 个组件原样带过</b>（阶段 10a 的 canonical 拷贝点，与 {@link #withJurisdiction} /
    * {@link #withStatus} 同形）。
    *
-   * <p>★★ <b>16 个组件逐一显式列出</b>（不是走兼容构造器）：那会把 {@code status}/{@code attached}/{@code offset}/ {@code
+   * <p>★★ <b>17 个组件逐一显式列出</b>（不是走兼容构造器）：那会把 {@code status}/{@code attached}/{@code offset}/ {@code
    * rejoinTarget}/{@code visionRadius}/{@code jurisdiction} 一并重置成默认值——立编制顺手清掉管辖/视野/编队 是本仓最贵的教训形态（R1
    * 字段漂移）。★ 两条"立编制"命令（{@link #setGovFormation} / {@link #setArmyFormation}） 都只经此一处换 {@code
    * module}，不为 GOV / Army 各写一份拷贝点。
@@ -1553,6 +1599,37 @@ public final class UnitOperations {
         unit.rejoinTarget(),
         unit.visionRadius(),
         unit.jurisdiction(),
-        module);
+        module,
+        unit.stateDescriptions());
+  }
+
+  /**
+   * ★ <b>只换 {@code stateDescriptions}、其余 16 个组件原样带过</b>（阶段 D1 / D-012 的 canonical 拷贝点，与 {@link
+   * #withModule} 同形）。
+   *
+   * <p>★★ <b>17 个组件逐一显式列出</b>（不是走兼容构造器）：那会把 {@code status}/{@code attached}/{@code offset}/{@code
+   * rejoinTarget}/{@code visionRadius}/{@code jurisdiction}/{@code module}
+   * 一并重置成默认值——改一条状态链接顺手清掉编制/管辖/编队是本仓最贵的教训形态（R1 字段漂移）。
+   */
+  private static Unit withStateDescriptions(Unit unit, Map<String, String> stateDescriptions) {
+    Objects.requireNonNull(stateDescriptions, "stateDescriptions");
+    return new Unit(
+        unit.id(),
+        unit.name(),
+        unit.parent(),
+        unit.position(),
+        unit.member(),
+        unit.equipment(),
+        unit.speed(),
+        unit.mobilityPerMille(),
+        unit.movement(),
+        unit.status(),
+        unit.attached(),
+        unit.offset(),
+        unit.rejoinTarget(),
+        unit.visionRadius(),
+        unit.jurisdiction(),
+        unit.module(),
+        stateDescriptions);
   }
 }

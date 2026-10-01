@@ -10,6 +10,8 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.army.CombatRecord;
+import io.mosire.simos.army.CombatRecordId;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.map.City;
@@ -107,6 +109,19 @@ public final class ToolSupport {
    * actor 自己的工具资源声明；新命名空间不加进前者，GM 面就会回落成"未表态"分支。
    */
   public static final String ACTOR_NAMESPACE = "actor";
+
+  /**
+   * army 资源所属的命名空间（阶段 D1 / D-012，2026-10-02 起：{@code army:combat.<id>}）。
+   *
+   * <p>★★ <b>字面量 {@code "army"} 全仓三处同字面</b>：这里、{@code ArmySnapshot.namespace()}、{@code
+   * ArmyCodec.namespace()}——{@code SimulationState} 构造期校验"modules 的键 == snapshot.namespace()"，
+   * 写歪当场抛（不是静默 miss）。
+   *
+   * <p>★ <b>它今天只用于写侧表态</b>（GM 的 {@code army.*} 写资源断言与 {@code gmPermissionSet} 的逐命名空间范围）；
+   * <b>读侧的可见性不落在这个命名空间上</b>——交战记录没有自己的资源路径，按记录所在格判（与 {@code map.city} 同款，见 {@link #subjectVisible}
+   * 与 {@code ToolSupport.armyCombatVisible}）。新命名空间不加进 {@code gmPermissionSet}，GM 面就会回落成"未表态"分支。
+   */
+  public static final String ARMY_NAMESPACE = "army";
 
   /**
    * 读工具的资源声明（spec §7.1：map+soc+unit READ_ONLY）。
@@ -276,10 +291,18 @@ public final class ToolSupport {
    *
    * <p>★ 各命名空间的 localId 形态来自各自的 resolver（实测）：{@code map} → mapId（根主体）、{@code map.hex} → {@code
    * q_r}、{@code map.region} → 区域 id、{@code map.city} → 城市 id、{@code social}/{@code social.hex} →
-   * mapId / {@code q_r}、{@code unit} → 单位 id、{@code sd} → {@code <kind>.<name>}。
+   * mapId / {@code q_r}、{@code unit} → 单位 id、{@code sd} → {@code <kind>.<name>}、{@code army} →
+   * {@code combat.<id>}。
+   *
+   * <p>★ <b>{@code state} 参数只被 {@code army} 分支用</b>（阶段 D1）：交战记录没有自己的资源路径，要先从 army 切片取出记录、再按记录所在格判 ⇒
+   * 需要完整 state。其余命名空间不看它（调用方照旧传当前查询态即可）。
    */
   public static boolean subjectVisible(
-      ToolContext context, String mapId, GameMap map, ResolvedSubject subject) {
+      ToolContext context,
+      String mapId,
+      GameMap map,
+      SimulationState state,
+      ResolvedSubject subject) {
     String namespace = subject.id().namespace();
     String localId = subject.id().localId();
     return switch (namespace) {
@@ -299,12 +322,38 @@ public final class ToolSupport {
       //   ——"判不了就不可见"的兜底不该吞掉一条**判得了**的表达式。
       case "actor" ->
           context.resources().allows(Operation.READ, ResourceId.of(ACTOR_NAMESPACE, localId));
+      // ★ D1（2026-10-02）：army 的交战记录主体（`army:combat.<id>`）——记录**没有自己的资源路径**，
+      //   按它所在的那一格判（与上面 `map.city` 的"没有自己的资源路径 ⇒ 按格判"同款）。这一支要读 army 切片，
+      //   故本方法多了 state 参数（只有它用）。
+      case "army" -> armyCombatVisible(context, mapId, map, state, localId);
       // ★ 三个子命名空间（`actor.actor` / `actor.holding` / `actor.goods`）**仍然 fail-closed**：它们的
       //   localId 是聚合键的规范串（`UNIT:u-1`、`…|1_1|…`），而本切片在 `ResourcePaths` 里只有**逐格**的
       //   `actor:<q>_<r>`（`actor.Seed` 的命令目标）——实体级资源路径不存在 ⇒ 该按什么判**没有出处**，
       //   凭空定一条就是在编设计（AGENT.md §○：先裁决再写）。故这里只补有出处的根主体那条。
       default -> false;
     };
+  }
+
+  /**
+   * {@code army:combat.<id>} 主体是否可见（阶段 D1 / D-012）：记录没有自己的资源路径 ⇒ **按记录所在格判**（{@link #hexVisible}）。
+   *
+   * <p>★ localId 由 {@code ArmyResolver} 产出，形如 {@code combat.<id>}。判不出/记录不存在/战格不可见 ⇒
+   * false（fail-closed，与 {@code default -> false} 同一条口径）。
+   */
+  private static boolean armyCombatVisible(
+      ToolContext context, String mapId, GameMap map, SimulationState state, String localId) {
+    int dot = localId.indexOf('.');
+    if (dot <= 0 || dot == localId.length() - 1 || !"combat".equals(localId.substring(0, dot))) {
+      return false;
+    }
+    CombatRecordId id;
+    try {
+      id = CombatRecordId.parse(localId.substring(dot + 1));
+    } catch (IllegalArgumentException e) {
+      return false; // 判不了就不可见
+    }
+    CombatRecord record = ApiViews.armyData(state).combats().get(id);
+    return record != null && hexVisible(context, mapId, map, record.hex());
   }
 
   /** 城市的格（{@code map.city} 主体没有自己的资源路径 ⇒ 按它所在的那一格判，与 `map.overview` 的 cities 同口径）。 */

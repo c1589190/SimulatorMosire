@@ -27,6 +27,13 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-unit</artifactId>
     </dependency>
+    <!-- ★ 阶段 D1（2026-10-02）：Army 切片落地 —— ArmyCodec 真 import Jackson（ObjectMapper /
+         SimpleModule / KeyDeserializer / JsonIgnore）。★ 版本由父 POM 的 dependencyManagement
+         提供，不在此处写版本；★ 它**不在**下面的 ban 列（ban 列管的是 simos 模块与 agentlib，不是基础库）。
+         ★ 口径同 actor：不声明零 import 的依赖，也不缺席真 import 的依赖。 -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
+    </dependency>
   </dependencies>
 
   <build>

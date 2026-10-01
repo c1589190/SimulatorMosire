@@ -116,7 +116,9 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
               Optional.empty(),
               // ★ 创建（不是拷贝）：新单位尚无编制模块 ⇒ Optional.empty()（阶段 9；编制是后续命令/创建批的输入，
               //   不凭空发明）。
-              Optional.empty());
+              Optional.empty(),
+              // ★ 创建（不是拷贝）：新单位尚无"状态 ↔ 状态描述地址"链接 ⇒ 空表（阶段 D1 / D-012）。
+              Map.<String, String>of());
       UnitState next = UnitOperations.create(snapshot.state(), unit);
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {

@@ -13,6 +13,9 @@ import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.query.SdQueryService;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.CombatRecord;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -5099,6 +5102,10 @@ public final class ApiViews {
    * unit.jurisdiction()} 存在 ⇒ 追加 {@code jurisdiction}（{@code regions}→税率、三个 levy 单命令上限、已退役的 {@code
    * administrationPerMille}）。两者缺席 ⇒ <b>键缺席</b>（不是 null/空对象），旧键逐字不变——与 {@code map.overview} 的 {@code
    * neighbors} 同款"你不是这种单位"与"你这种单位没有"必须可分。
+   *
+   * <p>★★ <b>D1 只读 additive（2026-10-02 / D-012）</b>：追加 {@code stateDescriptions} = 当前回合状态 →
+   * canonical 状态描述地址的链接表。★ 与上面两项不同，它**空表也照发**：这是单位状态本体的一部分（与 {@code equipment} 同款），"没有链接"用空对象表达，
+   * 读侧不必分"字段缺席"与"空表"两态。
    */
   public static Map<String, Object> unit(
       Unit unit, UnitState units, SimosTimestamp at, GameMap map, SdState sd) {
@@ -5133,6 +5140,9 @@ public final class ApiViews {
     unit.module().ifPresent(module -> view.put("module", unitModuleView(module)));
     unit.jurisdiction()
         .ifPresent(jurisdiction -> view.put("jurisdiction", unitJurisdictionView(jurisdiction)));
+    // ★★ D1（2026-10-02 / D-012）：当前回合状态 ↔ 状态描述地址的链接表**原样透出**（空表也发——与
+    //   `equipment` 同款：这栏本身是单位状态的一部分，"没有链接"就用空对象表达；GUI 与 MCP 同源这一份）。
+    view.put("stateDescriptions", new LinkedHashMap<>(unit.stateDescriptions()));
     return view;
   }
 
@@ -5322,6 +5332,27 @@ public final class ApiViews {
       out.add(id.value());
     }
     return out;
+  }
+
+  /**
+   * 单条交战记录视图（阶段 D1 / 用户设计 D-012，2026-10-02）：**GUI / MCP 读工具共用这一份形状**。
+   *
+   * <p>字段：{@code id} / {@code tick}（世界日）/ {@code hex}（交战格）/ {@code participants}（参与单位 id，保序）/
+   * {@code text}（自然语言过程与结局）/ {@code losses}（自然语义键 → 非负损失量；空表也发）。★ 列表读口与详情读口都调本方法 ⇒
+   * "同一资源的两个形状"在结构上不可能（AGENT.md §8.3 的纪律）。
+   *
+   * <p>★ <b>不发 {@code participantsAtHex} 那类派生量</b>：交战记录是**历史**（写记录时单位在哪就是哪），而不是"此刻谁在哪"—— 与 sd 的
+   * {@code CombatState} 不同，这里没有"现算"的一栏。
+   */
+  public static Map<String, Object> armyCombat(CombatRecord record) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("id", record.id().value());
+    view.put("tick", record.tick());
+    view.put("hex", hexCoord(record.hex()));
+    view.put("participants", unitIdValues(record.participants()));
+    view.put("text", record.text());
+    view.put("losses", new LinkedHashMap<>(record.losses()));
+    return view;
   }
 
   /**
@@ -5818,6 +5849,23 @@ public final class ApiViews {
       throw new IllegalArgumentException("sd 模块切片不是 SdSnapshot：" + snapshot.getClass().getName());
     }
     return sdSnapshot.state();
+  }
+
+  /**
+   * army 切片（阶段 D1 / 用户设计 D-012）：交战记录的唯一只读来源；GUI / MCP 读工具 / 可见性判定共用这一份提取。
+   *
+   * <p>★ 缺席或类型不对是装配故障，不是"没有候选"（与 {@link #sdState}/{@link #unitState} 同口径），当场抛。
+   */
+  public static ArmyData armyData(SimulationState state) {
+    Snapshot snapshot =
+        state
+            .module("army")
+            .orElseThrow(() -> new IllegalArgumentException("状态里没有 army 模块切片——装配故障"));
+    if (!(snapshot instanceof ArmySnapshot armySnapshot)) {
+      throw new IllegalArgumentException(
+          "army 模块切片不是 ArmySnapshot：" + snapshot.getClass().getName());
+    }
+    return armySnapshot.data();
   }
 
   /** social 切片（GUI / MCP 读工具 / 渲染层共用同一份提取）。 */

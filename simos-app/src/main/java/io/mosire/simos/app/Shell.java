@@ -49,6 +49,9 @@ import io.mosire.simos.app.skill.SkillLibrary;
 import io.mosire.simos.app.time.ClassFirstPopulationEconomyTimeParticipant;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.army.codec.ArmyCodec;
+import io.mosire.simos.army.resolve.ArmyResolver;
+import io.mosire.simos.army.spi.RecordCombatHandler;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
@@ -143,6 +146,7 @@ import io.mosire.simos.unit.spi.SetGovPolicyHandler;
 import io.mosire.simos.unit.spi.SetGovSuperiorHandler;
 import io.mosire.simos.unit.spi.SetJurisdictionHandler;
 import io.mosire.simos.unit.spi.SetRejoinTargetHandler;
+import io.mosire.simos.unit.spi.SetStateDescriptionHandler;
 import io.mosire.simos.unit.spi.SetStatusHandler;
 import io.mosire.simos.unit.spi.SetStrengthHandler;
 import io.mosire.simos.unit.spi.SetTaxRateHandler;
@@ -179,16 +183,17 @@ import org.slf4j.LoggerFactory;
 /**
  * 外壳：**唯一的装配点**（spec §3.2 的 1~7 步）。
  *
- * <p>★ **它是全仓唯一组装 CoreSimos 与领域模块的地方**：Core 的 main scope 看不见任何领域类型（ADR-1），四 codec / 全部 handler / 一
- * participant 必须由组合根注入。审批链（T6）、MCP 服务（T7）与 GUI（T8）都已接上——{@link #start} 走到"世界能提交命令、能重放、 能推进、能查询、能经
- * {@code /api} 与 MCP 工具面读写、写命令要过人审批"为止。
+ * <p>★ **它是全仓唯一组装 CoreSimos 与领域模块的地方**：Core 的 main scope 看不见任何领域类型（ADR-1），全部模块 codec / 全部 handler /
+ * 全部 participant 必须由组合根注入。审批链（T6）、MCP 服务（T7）与 GUI（T8）都已接上——{@link #start} 走到"世界能提交命令、能重放、
+ * 能推进、能查询、能经 {@code /api} 与 MCP 工具面读写、写命令要过人审批"为止。
  *
- * <p>★ **装配清单**（spec §3.2 第 1~7 步）：四 codec（map/social/unit/sd）+ 全部 handler + 一 participant（{@link
- * CoreSimos} 侧，另有一个写前守卫 {@code RegionDeleteGuard}）+ 四 {@code Resolver} （map/social/unit/sd）+ 两
- * {@code FacetProvider}（unitsHere/population）→ {@link QueryService}（查询层，T3）；审批链（T6，S5：{@code
- * PendingApprovals → HttpApprovalChannel → ApprovalCoordinator → ApprovalHttpEndpoint}，无 Superior
- * 判定）→ {@link SimosToolSource}（spec §2.1：**唯一的 MCP 口 = {@link SimosToolSource.Role#GM}** = 读工具 +
- * 通用写 + 全部窄写；**条数以工具面为准**，不在此钉死）经 {@code McpSourceBridge.bind} 同步进 {@link ToolRegistry}（T5）→ {@link
+ * <p>★ **装配清单**（spec §3.2 第 1~7 步）：各模块 codec（map/social/unit/sd/economy/actor/gov/army）+ 全部 handler
+ * + 全部 participant（{@link CoreSimos} 侧，另有一个写前守卫 {@code RegionDeleteGuard}）+ 各域 {@code Resolver}
+ * （map/social/unit/sd/economy/actor/army）+ 两 {@code FacetProvider}（unitsHere/population）→ {@link
+ * QueryService}（查询层，T3）；审批链（T6，S5：{@code PendingApprovals → HttpApprovalChannel →
+ * ApprovalCoordinator → ApprovalHttpEndpoint}，无 Superior 判定）→ {@link SimosToolSource}（spec
+ * §2.1：**唯一的 MCP 口 = {@link SimosToolSource.Role#GM}** = 读工具 + 通用写 + 全部窄写；**条数以工具面为准**，不在此钉死）经
+ * {@code McpSourceBridge.bind} 同步进 {@link ToolRegistry}（T5）→ {@link
  * AgentToMcpServer#startHttp}（**一次**，第 6 步，T7）→ GUI（第 7 步，T8）。
  *
  * <p>★ **本条刻意不钉 handler 条数**：写「四十二」的时候**实际已经是 44**（漏改过两次），而条数由下面那个注册块唯一决定、 看一眼就知道 ⇒
@@ -388,7 +393,7 @@ public final class Shell implements AutoCloseable {
   }
 
   /**
-   * 起壳：建 CoreSimos 并按其装配顺序注册**四 codec + 全部 handler + 一 participant**，再装**查询层**（三个 resolver + 两个真
+   * 起壳：建 CoreSimos 并按其装配顺序注册**各模块 codec + 全部 handler + 全部 participant**，再装**查询层**（各域 resolver + 两个真
    * facet + {@link QueryService}）。
    *
    * <p>★ {@code MovementCost} 由 app 注入（M3 口径）：{@link TerrainMovementCost} 是当前唯一实现，取它的单例 {@link
@@ -439,7 +444,10 @@ public final class Shell implements AutoCloseable {
             // ★ 阶段 10a（2026-09-30 GOV/Army 计划 §2.2）：第七个切片（gov）。★ namespace() 恒 "gov" —— 必须与
             //   GovSnapshot.namespace() 同字面，写歪 SimulationState 构造期当场抛。本阶段只注册 codec
             //   （无 participant/handler，每 tick 结算由阶段 11 并入 actor 写者）。
-            new GovCodec());
+            new GovCodec(),
+            // ★★ D1（2026-10-02 / D-012）：第八个切片（army）——交战记录的唯一载体。★ namespace() 恒 "army" ——
+            //   必须与 ArmySnapshot.namespace() 同字面，写歪 SimulationState 构造期当场抛。
+            new ArmyCodec());
     for (ModuleCodec codec : codecs) {
       coreSimos.register(codec);
     }
@@ -466,6 +474,10 @@ public final class Shell implements AutoCloseable {
                 new CancelRouteHandler(),
                 new DisbandUnitHandler(),
                 new SetStatusHandler(),
+                // ★★ D1（2026-10-02 / D-012）：当前回合状态 ↔ 状态描述地址的 upsert / 删除。★ 非 GmOnly ⇒
+                //   与既有 unit 命令同待遇（可嵌进决策令，目标声明见 handler 自己的 CommandTargets）；
+                //   GM 侧的窄写工具 simos.unit.set-state-description 走这一条 handler。
+                new SetStateDescriptionHandler(),
                 new AttachUnitHandler(),
                 new DetachUnitHandler(),
                 new ReparentSubtreeHandler(),
@@ -567,7 +579,10 @@ public final class Shell implements AutoCloseable {
                 new RunDecisionHandler(),
                 // ★ 第 3 波最后一块：裁决用的状态翻转命令（sd.SetDirectiveStatus）。它不是对外窄工具——
                 //   由 sd.AdjudicateTick 内部编排产生；注册在此是为了它在批里能被 CommandBus 路由到。
-                new SetDirectiveStatusHandler()));
+                new SetDirectiveStatusHandler(),
+                // ★★ D1（2026-10-02 / D-012）：army 切片的第一条命令（写一条单 tick 单场交战记录）。★ 标
+                //   GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交与 GM 窄工具照常可用。
+                new RecordCombatHandler()));
     Set<String> drainableCommandTypes = new LinkedHashSet<>();
     for (CommandHandler handler : handlers) {
       // ★★ E6a：GM-only 标记同样排除出 `sd.RegisterEffect` 的可入队命令白名单 —— 它是**第三条**决策人可间接
@@ -654,6 +669,10 @@ public final class Shell implements AutoCloseable {
     // ★ S1 阶段 2：actor 自己的地址解析器（actor:<mapId>[:actor.<KIND>.<id> | :holding.<key> |
     // :goods.<key>]）——注册它，`/api/resolve` 读口才认识第六个命名空间。
     resolverRegistry.register(new ActorResolver());
+    // ★★ D1（2026-10-02 / D-012）：army 自己的地址解析器（army:combat.<id>）——注册它，
+    //   `simos.state.resolve` / GUI `/api/resolve` 才认识第八个命名空间的交战记录主体
+    //   （可见性由 ToolSupport.subjectVisible 按记录所在格判）。
+    resolverRegistry.register(new ArmyResolver());
 
     FacetRegistry facetRegistry = new FacetRegistry();
     facetRegistry.register(new UnitsHereFacet());
@@ -1043,7 +1062,10 @@ public final class Shell implements AutoCloseable {
                     // ★ R2a：第六个命名空间（economy:<q>_<r>）——不在这里表态，GM 面就落到"未表态"分支。
                     ToolSupport.ECONOMY_NAMESPACE, ResourceScope.unlimited(),
                     // ★ S1 阶段 2：第七个命名空间（actor:<mapId>[:…]）——同款，不表态就回落"未表态"分支。
-                    ToolSupport.ACTOR_NAMESPACE, ResourceScope.unlimited())))
+                    ToolSupport.ACTOR_NAMESPACE, ResourceScope.unlimited(),
+                    // ★★ D1（2026-10-02 / D-012）：第八个命名空间（army:combat.<id>）——写侧表态（GM 的
+                    //   army.RecordCombat 窄工具与通用提交）；读侧的可见性按记录所在格判，不落在这个命名空间上。
+                    ToolSupport.ARMY_NAMESPACE, ResourceScope.unlimited())))
         .build();
   }
 
