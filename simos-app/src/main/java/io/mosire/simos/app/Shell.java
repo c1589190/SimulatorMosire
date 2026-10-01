@@ -770,7 +770,9 @@ public final class Shell implements AutoCloseable {
             llmConfig,
             commandTargets,
             SimosToolSource.Role.GM,
-            decisionAgentService);
+            decisionAgentService,
+            pendingApprovals,
+            approvalCoordinator);
     // ★ T8：GM 交互界面的数据源（`gmToolUsage` 已在上方、两个工具源之前建好）——只包 GM 组的源 ⇒ 记录的就是
     //   "GM MCP 的工具使用"（spec §七.4 C22）。
     ToolRegistry toolRegistry = new ToolRegistry();
@@ -932,6 +934,9 @@ public final class Shell implements AutoCloseable {
    * DecisionCallerFactory} 现算的权限组承担。
    */
   public List<AgentTool> toolsFor(SimosToolSource.Role role) {
+    // ★ P7b：审批控制面两条工具**只在 GM 桶**——决策人角色传 null（那两条根本到不了决策人面；
+    //   这里传 null 让"决策人不接线"成为明确装配，而不是靠状态兜底）。
+    boolean gm = role == SimosToolSource.Role.GM;
     return new SimosToolSource(
             coreSimos,
             queryService,
@@ -946,7 +951,9 @@ public final class Shell implements AutoCloseable {
             llmConfig,
             commandTargets,
             role,
-            decisionAgentService)
+            decisionAgentService,
+            gm ? pendingApprovals : null,
+            gm ? approvalCoordinator : null)
         .listTools();
   }
 

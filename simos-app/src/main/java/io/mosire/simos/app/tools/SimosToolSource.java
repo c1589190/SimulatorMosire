@@ -1,5 +1,7 @@
 package io.mosire.simos.app.tools;
 
+import io.mosire.agentlib.approval.ApprovalCoordinator;
+import io.mosire.agentlib.approval.PendingApprovals;
 import io.mosire.agentlib.plugin.ToolSource;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.simos.app.decision.DecisionAgentService;
@@ -16,6 +18,7 @@ import io.mosire.simos.app.tools.read.DecisionMakersTool;
 import io.mosire.simos.app.tools.read.DecisionResultsTool;
 import io.mosire.simos.app.tools.read.EconomyHexTool;
 import io.mosire.simos.app.tools.read.EconomyOwnershipTool;
+import io.mosire.simos.app.tools.read.GmApprovalsTool;
 import io.mosire.simos.app.tools.read.GmToolUsageTool;
 import io.mosire.simos.app.tools.read.LlmProvidersTool;
 import io.mosire.simos.app.tools.read.MapBlockTool;
@@ -41,6 +44,7 @@ import io.mosire.simos.app.tools.write.AssignArmyGovTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.EconomyAdjustTool;
 import io.mosire.simos.app.tools.write.ForkTool;
+import io.mosire.simos.app.tools.write.GmApproveTool;
 import io.mosire.simos.app.tools.write.GovAbsorbUnitTool;
 import io.mosire.simos.app.tools.write.GovCreateOfficeTool;
 import io.mosire.simos.app.tools.write.GovDismissTool;
@@ -239,6 +243,54 @@ public final class SimosToolSource implements ToolSource {
       Map<String, CommandTargets> commandTargets,
       Role role,
       DecisionAgentService decisionAgent) {
+    // ★ 旧签名（源码兼容）：GM 审批面两条工具仍会进 GM 桶，但装配为「未接入」⇒ 执行期具名 UNAVAILABLE。
+    this(
+        core,
+        query,
+        initiator,
+        mapId,
+        worldgenConfigFile,
+        commandTypes,
+        embeddableCommandTypes,
+        skills,
+        renderService,
+        gmToolUsage,
+        llmConfig,
+        commandTargets,
+        role,
+        decisionAgent,
+        null,
+        null);
+  }
+
+  /**
+   * 全参装配（含 GM 审批面接线）：读工具两档共享；写面各自不同（{@link Role#GM} = 通用写 ∪ 全部窄写）， GM 桶另挂两条审批控制面工具（{@code
+   * simos.gm.approvals} / {@code simos.gm.approve}）。
+   *
+   * <p>★ 审批依赖**只被 {@link Role#GM} 用到**：两条工具标了 {@link GmOnlyRead} / 只加在 {@link #addGmWrites}，
+   * 决策人桶里不出现；{@link Role#DECISION_AGENT} 下传 null 是合法装配（那两条根本不会被构造到可执行面）。
+   *
+   * @param pendingApprovals 进程内唯一的审批登记表（GM 裁决口读写它；null = 未接入 ⇒ 工具回 {@code UNAVAILABLE}）
+   * @param approvalCoordinator 决策人链的审批编排器（成功回执取 {@code effectiveDecision(...)} 算实际生效 scope； null =
+   *     未接入 ⇒ 工具回 {@code UNAVAILABLE}）
+   */
+  public SimosToolSource(
+      CoreSimos core,
+      QueryService query,
+      String initiator,
+      String mapId,
+      Path worldgenConfigFile,
+      Set<String> commandTypes,
+      Set<String> embeddableCommandTypes,
+      SkillLibrary skills,
+      RenderService renderService,
+      GmToolUsage gmToolUsage,
+      AgentLibLlmConfig llmConfig,
+      Map<String, CommandTargets> commandTargets,
+      Role role,
+      DecisionAgentService decisionAgent,
+      PendingApprovals pendingApprovals,
+      ApprovalCoordinator approvalCoordinator) {
     Objects.requireNonNull(core, "core");
     Objects.requireNonNull(query, "query");
     Objects.requireNonNull(initiator, "initiator");
@@ -262,7 +314,8 @@ public final class SimosToolSource implements ToolSource {
                     skills,
                     renderService,
                     gmToolUsage,
-                    llmConfig),
+                    llmConfig,
+                    pendingApprovals),
                 role));
     switch (role) {
       case GM -> {
@@ -276,7 +329,9 @@ public final class SimosToolSource implements ToolSource {
             worldgenConfigFile,
             embeddableCommandTypes,
             commandTargets,
-            requireDecisionAgent(decisionAgent));
+            requireDecisionAgent(decisionAgent),
+            pendingApprovals,
+            approvalCoordinator);
       }
       case DECISION_AGENT -> {
         // ★ 第 3 波第 3 步：决策人**只读**自己能看的决策结果（用户原话「允许决策人查看不同 tick 的不同决策结果」）。
@@ -327,7 +382,9 @@ public final class SimosToolSource implements ToolSource {
       Path worldgenConfigFile,
       Set<String> embeddableCommandTypes,
       Map<String, CommandTargets> commandTargets,
-      DecisionAgentService decisionAgent) {
+      DecisionAgentService decisionAgent,
+      PendingApprovals pendingApprovals,
+      ApprovalCoordinator approvalCoordinator) {
     built.add(new IssueDirectiveTool(core, initiator, mapId));
     built.add(new SubmitVerdictTool(core, initiator, mapId));
     built.add(new SetDecisionMakerAccessTool(core, initiator, mapId));
@@ -470,6 +527,10 @@ public final class SimosToolSource implements ToolSource {
     //   **只在 GM 桶**：决策人桶（addDecisionAgentWrites）没有它，DecisionCallerFactory.WHITELIST 也没有它，
     //   且 economy.GmAdjust 本身标了 GmOnlyCommand（令/RegisterEffect/决策人 catalog 三条路径都排除）。
     built.add(new EconomyAdjustTool(core, query, initiator, mapId));
+    // ★★ P7b（2026-10-01 后端 + MCP 稳定化计划）：GM 审批队列裁决口（控制面，不落世界 revision）。
+    //   **只在 GM 桶**；与读口 simos.gm.approvals 共用同一份 PendingApprovals / ApprovalCoordinator。
+    //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 NONE（不读写世界命名空间）。
+    built.add(new GmApproveTool(pendingApprovals, approvalCoordinator));
   }
 
   /**
@@ -503,7 +564,8 @@ public final class SimosToolSource implements ToolSource {
       SkillLibrary skills,
       RenderService renderService,
       GmToolUsage gmToolUsage,
-      AgentLibLlmConfig llmConfig) {
+      AgentLibLlmConfig llmConfig,
+      PendingApprovals pendingApprovals) {
     return List.of(
         // ★★ E6b：catalog 的**命令清单**取完整注册面（含 GM-only），决策人可见性由显式"可嵌入令"白名单过滤
         //   （CatalogVisibility）—— GM 看得到 economy.SwitchMode / economy.GmAdjust，决策人看不到。
@@ -546,6 +608,9 @@ public final class SimosToolSource implements ToolSource {
         new SdVerdictsTool(query, mapId),
         // ★ GM 面观测/配置读口（只给 GM 桶）：工具使用记录（运行时监督数据）与 LLM provider 掩码配置。
         new GmToolUsageTool(gmToolUsage),
+        // ★★ P7b（2026-10-01 后端 + MCP 稳定化计划）：待裁决审批清单（控制面；只在 GM 桶，GmOnlyRead）。
+        //   读的是传入的 PendingApprovals（null = 未接入 ⇒ 执行期 UNAVAILABLE）；资源声明 NONE、不落 revision。
+        new GmApprovalsTool(pendingApprovals),
         new LlmProvidersTool(llmConfig),
         // ★ Skill 系统（2026-09-23）：方法论与常识（外部 Markdown，改文件即生效）。**两桶共享**——
         //   决策人读它是本职，GM 读它是为了写出与之一致的文档（Docs）。
