@@ -31,7 +31,8 @@ import java.util.Set;
  *           "outcomes":{"options":[{"id":"o1","label":"胜","weight":1}]}}}
  * }</pre>
  *
- * <p>★ 拒绝：交战不存在；**链式条件断裂**（上一 exit ≠ 新 entry，N1）；outcomeTable 权重 ≤0 / 空表（N2）；首阶段缺 {@code
+ * <p>★ 拒绝：交战不存在；**后续阶段**（已有 CombatState）的载荷**出现** {@code combatStateId} 或 {@code hex} 键（含显式 {@code
+ * null}）——这两个参数只在首阶段生效；**链式条件断裂**（上一 exit ≠ 新 entry，N1）；outcomeTable 权重 ≤0 / 空表（N2）； 首阶段缺 {@code
  * combatStateId}/{@code hex}。
  */
 public final class AddStageHandler implements CommandHandler {
@@ -53,6 +54,14 @@ public final class AddStageHandler implements CommandHandler {
       Combat combat = base.combats().get(combatId);
       if (combat == null) {
         return new HandlerOutcome.Rejected("交战不存在: " + combatId);
+      }
+      if (SdCombats.stateOrNull(base, combatId) != null
+          && (payload.has("combatStateId") || payload.has("hex"))) {
+        return new HandlerOutcome.Rejected(
+            "后续阶段不接受 combatStateId/hex；这两个参数只在首阶段生效"
+                + "（交战 "
+                + combatId
+                + " 已有 CombatState，追加阶段不得再指定战斗状态与坐标）");
       }
       java.util.List<CombatStage> stages = CombatStages.append(combat.stages(), stage);
       Combat nextCombat =

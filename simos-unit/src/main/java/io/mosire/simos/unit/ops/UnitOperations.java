@@ -890,9 +890,10 @@ public final class UnitOperations {
   /**
    * 相对偏移（spec §一.3 / P2）：追加一条 `offset` 段（`Optional.empty()` = 清除偏移）。
    *
-   * <p>★★ **编制 v2 起它不再影响任何计算**（2026-09-24，「取消跟随」的连带）：`offset` 原本只服务"跟随时的相对站位" （{@code
-   * effectivePosition} 里"向父取 ⊕ offset"那一支），而那一支已作废 ⇒ 本命令变成**纯记账**。字段与命令都**保留**
-   * （不破老档往返、不改工具面），但工具描述里如实标了"v2 起无作用"——**不静默**。
+   * <p>★★ **编制 v2 起它不再影响任何计算**（2026-09-24，「取消跟随」的连带），**P8 起命令面已具名拒**：`offset` 原本只服务
+   * "跟随时的相对站位"（{@code effectivePosition} 里"向父取 ⊕ offset"那一支），而那一支已作废 ⇒ {@code
+   * unit.SetFormationOffset} 命中即拒、不再调用本操作。本操作与 {@code RelativeOffset} 保留（不破老档往返、旧档/模型仍可能读），
+   * 只是命令面不再接受。
    */
   public static UnitState setOffset(
       UnitState state, UnitId id, Optional<RelativeOffset> offset, SimosTimestamp at) {

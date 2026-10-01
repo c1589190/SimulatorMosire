@@ -33,8 +33,9 @@ public final class UnitSetFormationOffsetTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "设编制偏移：固定 unit.SetFormationOffset，载荷 {id, dq?, dr?}"
-        + "（★ 两者全缺 = 清除偏移；只给一个分量时另一个按 0）。"
-        + "⚠ 编制 v2 起**本命令不再影响任何计算**（「跟随」已取消，偏移没有使用者）——字段保留只为不破老档";
+    return "★ 已退役：固定 unit.SetFormationOffset，载荷 {id, dq?, dr?}；RelativeOffset 当前无任何消费点"
+        + "（移动/编队/战斗都不读），调用会被具名拒、不写状态；字段仅为旧档保留。"
+        + "站位调整请用 unit.PlaceAt / unit.PlanRoute / unit.PlanSparseRoute / unit.AttachUnit / unit.DetachUnit /"
+        + " unit.ReparentUnit；相对父的站位偏移暂无替代";
   }
 }

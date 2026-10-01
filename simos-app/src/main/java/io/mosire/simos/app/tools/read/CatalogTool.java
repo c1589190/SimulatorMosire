@@ -71,7 +71,9 @@ public final class CatalogTool implements AgentTool {
           Map.entry("unit.AttachUnit", "id, parent"),
           Map.entry("unit.DetachUnit", "id"),
           Map.entry("unit.ReparentSubtree", "rootId, parent"),
-          Map.entry("unit.SetFormationOffset", "id, dq?, dr?"),
+          Map.entry(
+              "unit.SetFormationOffset",
+              "id, dq?, dr?（★ 已退役：调用会被具名拒（无消费点）——移动/编队/战斗都不读 RelativeOffset）"),
           Map.entry("unit.SplitFormation", "rootId, subUnitIds[字符串...]"),
           Map.entry("unit.MergeFormation", "childId, parentId"),
           Map.entry("unit.PlanSparseRoute", "id, waypoints[{q,r}...]（非相邻，逐段展开）"),
@@ -313,7 +315,8 @@ public final class CatalogTool implements AgentTool {
               "sd.AddCombatStage",
               "combatId, stage{stageId,name,participants?,entry,exit,minDurationTicks?,"
                   + "maxDurationTicks?,outcomes{options[{id,label,weight,casualties?}]}},"
-                  + " combatStateId?(首阶段必填), hex{q,r}?(首阶段必填；非首阶段时两者都会被忽略)"),
+                  + " combatStateId?(首阶段必填), hex{q,r}?(首阶段必填；"
+                  + "非首阶段时出现任一键（含显式 null）都会被具名拒)"),
           Map.entry(
               "sd.SetStageOutcomeTable",
               "combatId, stageId, outcomes{options[{id,label,weight,casualties?}]}"),

@@ -35,7 +35,7 @@ public final class SdAddCombatStageTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "加战斗阶段：固定 sd.AddCombatStage，载荷 {combatId, stage, combatStateId?, hex?}（combatId/stage 必填；★★ combatStateId 与 hex 只在**该交战的首个阶段**生效——非首阶段时给了会被**静默忽略**，不报错）";
+    return "加战斗阶段：固定 sd.AddCombatStage，载荷 {combatId, stage, combatStateId?, hex?}（combatId/stage 必填；★ combatStateId 与 hex 只在**该交战的首个阶段**生效——非首阶段时给了（含显式 null）会被**具名拒绝**，不再静默忽略）";
   }
 
   @Override

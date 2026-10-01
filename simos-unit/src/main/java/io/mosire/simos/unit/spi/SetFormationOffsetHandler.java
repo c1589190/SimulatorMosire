@@ -1,26 +1,24 @@
 package io.mosire.simos.unit.spi;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.unit.RelativeOffset;
-import io.mosire.simos.unit.UnitId;
-import io.mosire.simos.unit.UnitSnapshot;
-import io.mosire.simos.unit.UnitState;
-import io.mosire.simos.unit.change.UnitChangeSet;
-import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
-import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
- * {@code unit.SetFormationOffset} 命令的处理器（T3 / spec §一.3 / P2）：{@code id, dq?, dr?}。
+ * {@code unit.SetFormationOffset} 命令的处理器（T3 / spec §一.3 / P2；P8 起**具名拒**）。
  *
- * <p>★ 载荷口径：`dq` 与 `dr` **都**缺失（或为 `null`）⇒ **清偏移**（`offset = 空`）；只给一个 ⇒ 另一个按 **0** 补（部分更新，plan §三
- * T3 第 5 步）。★ **不判是否落在地图内**（P2）：相对偏移允许越界，越界是"相对父的站位"的合法取值。
+ * <p>★★ 编制 v2（2026-09-24，取消跟随）起 {@code RelativeOffset} 不再影响任何计算，P8 用户裁定：本命令**命中即** {@link
+ * HandlerOutcome.Rejected}，不再写 {@code offset} 段——不静默忽略、不保留假成功。
+ *
+ * <p>★ 处理面不再解析 {@code dq}/{@code dr}：命令已退役，任何载荷都返回同一条具名拒因。命令类型与目标声明（{@link CommandTargets} 仍按
+ * {@code id} 点名那个单位）不变；{@link io.mosire.simos.unit.ops.UnitOperations#setOffset} 与 {@link
+ * io.mosire.simos.unit.RelativeOffset} 保留（旧档/模型可能仍读），只是命令面不再接受。
+ *
+ * <p>★ 历史口径（旧实现，不再执行）：{@code dq}/{@code dr} 都缺或为 {@code null} ⇒ 清偏移；只给一个 ⇒ 另一个按 0 补；
+ * 偏移允许越界（相对父的站位，不判地图内）。
  */
 public final class SetFormationOffsetHandler implements CommandHandler, CommandTargets {
 
@@ -40,21 +38,11 @@ public final class SetFormationOffsetHandler implements CommandHandler, CommandT
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
-    UnitSnapshot snapshot = UnitSnapshots.of(state);
-    try {
-      JsonNode payload = UnitPayloads.parse(payloadJson);
-      UnitId id = UnitId.parse(UnitPayloads.requireText(payload, "id"));
-      Optional<Integer> dq = UnitPayloads.optionalInt(payload, "dq");
-      Optional<Integer> dr = UnitPayloads.optionalInt(payload, "dr");
-      Optional<RelativeOffset> offset =
-          dq.isEmpty() && dr.isEmpty()
-              ? Optional.empty()
-              : Optional.of(new RelativeOffset(dq.orElse(0), dr.orElse(0)));
-      SimosTimestamp at = state.meta().timestamp();
-      UnitState next = UnitOperations.setOffset(snapshot.state(), id, offset, at);
-      return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
-    } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
-    }
+    return new HandlerOutcome.Rejected(
+        "unit.SetFormationOffset 已退役（具名拒）：RelativeOffset 当前无任何消费点"
+            + "——移动、编队、战斗都不读它（编制 v2 取消跟随，位置永远是各单位自己的）。"
+            + "字段与旧档保留，但命令面不再接受。如需站位调整：绝对落位用 unit.PlaceAt，"
+            + "路径移动用 unit.PlanRoute/unit.PlanSparseRoute，编制归属用 "
+            + "unit.AttachUnit/unit.DetachUnit/unit.ReparentUnit；相对父的站位偏移暂无替代。");
   }
 }
