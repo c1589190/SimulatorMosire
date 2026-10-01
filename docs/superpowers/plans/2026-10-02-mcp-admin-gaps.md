@@ -69,3 +69,35 @@
 - 重新初始化大蜀国时，`simos.province.apply` 显式传 `capitalHex = (44,-68)`；
   新都城市用 `social.CreateCity` 建在 `(44,-68)`；旧生成都城改名并归省。
 - 达到“行政区/中央 GOV/新都城市在新址”的最小效果，人口迁移缺口记录在本文件，后续补命令后再做。
+
+## 四、大蜀国策所需的 map / 迁都补充缺口（2026-10-02 补充）
+
+> 用户给出：铁门坎在 `(34,-55)`，应当用 MCP 命名这个 hex；西陵首都应当在 `(35,-60)`。
+> 本节只记录这两项在当前 MCP/命令面上的可行路径与缺口，不在本轮执行。
+
+### 1. 单格命名（铁门坎 `(34,-55)`）
+- 没有 `map.NameHex` / `map.SetHexLabel` / `map.UpdateHex` 这类“给单个 hex 命名”的命令。
+- 现有最接近的路径是 `map.CreateRegion` 建一个 **1 格 overlay Region**：
+  `{regionId:"铁门坎", name:"铁门坎", hexes:[{q:34,r:-55}], meta:{color:null, tag:"Landmark", description:"…", annexedBy:null}}`。
+- 注意：
+  - 与已有 `西陵__CAP` 重叠不会报错，但 region 列表会多一条；hex 的 `nation` 仍由 `nation:西陵` Region 决定，不会因为 overlay 改归属。
+  - 当前世界已有一座名为“铁门坎”的城市 `c-31_-60`（`(31,-60)`，Town），与用户指定的 `(34,-55)` 冲突；命名前应先用 `social.UpdateCity` 把旧城改名/改归属。
+  - `map.UpdateRegion` 的 `meta` 是整体替换（`color/tag/description/annexedBy` 四键必须给全）；没有单格 label 的原子替换。
+
+### 2. 西陵首都从 `(33,-55)` 移到 `(35,-60)`
+- 现状（head 126 / tick 120）：
+  - `西陵__CAP` 现为 7 格：`(32,-55),(32,-54),(33,-56),(33,-55),(33,-54),(34,-56),(34,-55)`；**不含** `(35,-60)`。
+  - `西陵城`（MajorCity，城镇人口 13,756）在 `(33,-55)`；`Lindenheim`（MarketTown，城镇人口 6,853）在 `(35,-60)`，归属 `西陵__P01`；`西陵-gov-central` 在 `(33,-55)`，辖 `西陵__CAP`，国库账在 `(33,-55)`。
+  - 另有生成器城市“铁门坎” `c-31_-60` 在 `(31,-60)`，归属 `西陵__P02`。
+- 没有 `simos.gov.moveCapital` / `social.MoveCity` / `social.DeleteCity` / `social.MovePopulationLots`；`social.UpdateCity` 不能改 `at`。
+- 可行的多命令 workaround（非原子，需要按顺序执行并逐步核验）：
+  1. `map.UpdateRegion` 改 `西陵__CAP` hexes 加入 `(35,-60)`（并保留/调整旧 hex）；同时改 `西陵__P01` hexes 去掉 `(35,-60)`，避免区域汇总重复。
+  2. `social.UpdateCity`：`c-35_-60` 改名 `西陵城`、region `西陵__CAP`；`c-33_-55` 改名 `旧都·西陵城`（region 视需要）。
+  3. `unit.PlaceAt`：`西陵-gov-central` → `(35,-60)`。
+  4. `actor.RemitGovTreasury`：把中央 GOV 在 `(33,-55)` 的账搬到 `(35,-60)`（grain/cloth/money 逐项；金额需先读实时余额）。
+  5. `unit.SetJurisdiction`：保持 `西陵__CAP`（region id 不变、hexes 变），或按新省界重设。
+  6. `sd.PutInfo`：写迁都审计。
+- 代价 / 不可做：
+  - 新首都 `(35,-60)` 只有现有的 **6,853** 城镇人口；旧都的 **13,756** 城镇人口搬不过去（缺批次读口与 `MovePopulationLots`）。
+  - 没有原子工具；中途失败会留下 hex/城市/GOV/国库不同步，需要人工补。
+  - 若要求“旧都人口随迁”，当前命令面做不到，只能先记录缺口。
