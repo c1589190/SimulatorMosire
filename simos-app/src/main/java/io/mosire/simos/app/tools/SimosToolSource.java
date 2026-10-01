@@ -60,6 +60,7 @@ import io.mosire.simos.app.tools.write.MapSetTerrainTool;
 import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
 import io.mosire.simos.app.tools.write.RaiseUnitTool;
 import io.mosire.simos.app.tools.write.RegionClearDataTool;
+import io.mosire.simos.app.tools.write.RegionClearStructuresTool;
 import io.mosire.simos.app.tools.write.RegionSeedTool;
 import io.mosire.simos.app.tools.write.RejectDirectiveTool;
 import io.mosire.simos.app.tools.write.RepayDebtTool;
@@ -356,6 +357,9 @@ public final class SimosToolSource implements ToolSource {
     // ★★ P1b1（2026-10-01）：区域数据清空（social/actor/economy 三类，固定批序 + 只对有命中域下单）。**只在 GM 桶**；
     //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；map 只读（校验 region 存在），写面声明 social/actor/economy/sd。
     built.add(new RegionClearDataTool(core, query, initiator, mapId));
+    // ★★ P1b2（2026-10-01）：区域结构清空（GOV 单位/对应决策人/建议命名形制的省 Region，固定批序 + 开关 + 只读
+    //   pre-scan）。**只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面声明 map/unit/sd。
+    built.add(new RegionClearStructuresTool(core, query, initiator, mapId));
     built.add(new MapSetTerrainTool(core, initiator, mapId));
     built.add(new MapSetEdgeTool(core, initiator, mapId));
     built.add(new MapCreateRegionTool(core, initiator, mapId));

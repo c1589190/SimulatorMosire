@@ -89,6 +89,7 @@ import io.mosire.simos.sd.spi.CreateArmyHandler;
 import io.mosire.simos.sd.spi.CreateCombatHandler;
 import io.mosire.simos.sd.spi.CreateDecisionMakerHandler;
 import io.mosire.simos.sd.spi.CreateNationHandler;
+import io.mosire.simos.sd.spi.DeleteDecisionMakerHandler;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import io.mosire.simos.sd.spi.IssueDirectiveHandler;
 import io.mosire.simos.sd.spi.PutInfoHandler;
@@ -542,6 +543,9 @@ public final class Shell implements AutoCloseable {
                 //   （handler 标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用）。──
                 new SetArmyMasterGovHandler(),
                 new CreateDecisionMakerHandler(),
+                // ── P1b2（2026-10-01）：GM-only 决策人身份删除（只删 decisionMakers 的一条；不级联历史 Directive /
+                //   文档 / 会话）。标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
+                new DeleteDecisionMakerHandler(),
                 new PutInfoHandler(),
                 new CreateCombatHandler(),
                 new AddStageHandler(),

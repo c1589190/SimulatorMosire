@@ -301,6 +301,10 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "sd.CreateDecisionMaker", "id, affiliation{kind,id}, allowedTools[字符串...], cadence"),
           Map.entry(
+              "sd.DeleteDecisionMaker",
+              "decisionMakerId（必填；不存在 ⇒ 具名拒；只删决策人身份，不级联删历史 Directive / 文档 / 会话；"
+                  + "仍被 Directive 引用时具名拒，不做静默级联；GM-only）"),
+          Map.entry(
               "sd.PutInfo",
               "address, key, value, note?, id?（同类型内唯一）, tags[决策人 id…]?,"
                   + " tick?（缺省=世界当前 tick；记在未来 ⇒ 拒）"),

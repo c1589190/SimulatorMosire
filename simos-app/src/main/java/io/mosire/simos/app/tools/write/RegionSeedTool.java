@@ -57,8 +57,8 @@ import java.util.UUID;
  * social.populations} / {@code PopulationGroup} 落点 / {@code SocialCity.at} 或 city.region / actor 账户
  * location / economy 逐格 industries·markets；任一命中 ⇒ <b>不 submit、零 revision</b>，返回 {@code NEEDS_CLEAR}
  * 具名 JSON（类型 / 数量 / 示例 id），并提示用 {@code simos.region.clearData} / {@code
- * simos.region.clearStructures} 清空后重试（这两个清空工具 <b>待 P1b</b>，尚未实现）。世界级 {@code classFirst}
- * 池是共享世界状态、不作为 Region 命中，只在 {@code warnings} 里警告。
+ * simos.region.clearStructures} 清空后重试。世界级 {@code classFirst} 池是共享世界状态、不作为 Region 命中，只在 {@code
+ * warnings} 里警告。
  *
  * <p>★★ <b>默认带经济与 actor</b>：{@code includeEconomy}/{@code includeActors} 缺省均为 true（用户 2026-10-01 裁定
  * 3）； 低人口 / 零人口（class-first 无法建池）⇒ {@code BAD_REQUEST} 具名拒绝，并提示可显式关掉两个开关只播种人口与城市。
@@ -84,10 +84,9 @@ public final class RegionSeedTool implements AgentTool {
   /** 行动记录在 sd INFO 覆盖层里的 key（地址 = 目标 Region canonical，一次播种一条）。 */
   public static final String INFO_KEY = "regionSeed";
 
-  /** clean gate 命中时的指路文案。★ 两个清空工具**尚未实现（待 P1b）**——文案里必须写清，否则调用方会去调不存在的工具。 */
+  /** clean gate 命中时的指路文案（P1b 后两个清空工具都已可用）。 */
   public static final String NEEDS_CLEAR_HINT =
-      "调用 simos.region.clearData / simos.region.clearStructures 清空当前区域相关数据后重试"
-          + "（这两个清空工具尚未实现，待 P1b）";
+      "调用 simos.region.clearData / simos.region.clearStructures 清空当前区域相关数据后重试";
 
   /** 本工具写五个命名空间（GM 侧五面 unlimited ⇒ 逐条判通过）。 */
   private static final ResourceManifest REGION_SEED_WRITE =
@@ -463,7 +462,7 @@ public final class RegionSeedTool implements AgentTool {
 
   // ── clean gate 命中：NEEDS_CLEAR（零 revision） ─────────────────────────────────────────
 
-  /** clean gate 命中的具名错误：命中类型 / 数量 / 示例 id + 清空指路（两个清空工具待 P1b）。 */
+  /** clean gate 命中的具名错误：命中类型 / 数量 / 示例 id + 清空指路。 */
   private static ToolResult needsClear(
       RegionSeedPlan.Derivation derived, RegionSeedPlan.Params params) {
     Map<String, Object> payload = new LinkedHashMap<>();

@@ -27,7 +27,9 @@ import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -35,49 +37,53 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * ★★ {@code simos.region.clearData}（P1b1，2026-10-01 后端 + MCP 稳定化计划）：<b>GM-only 区域数据清空组合工具</b> ——按
- * regionId 清 social / actor / economy 三类数值与关联记录，<b>不动</b> Region/Unit/GOV/决策人结构。
+ * ★★ {@code simos.region.clearStructures}（P1b2，2026-10-01 后端 + MCP 稳定化计划）：<b>GM-only 区域结构清空组合工具</b>
+ * ——按 regionId 清"生成器创建的结构"：省/中央 GOV 单位、对应 GOV 决策人、建议命名形制且为目标 Region hex 真子集的省 Region； <b>不碰</b>
+ * social/actor/economy 数值与目标 Region 本身。
  *
- * <p>★★ <b>一批 = 一条 revision，固定批序</b>：{@code social.ClearRegion} → {@code actor.ClearRegion} →
- * {@code economy.ClearRegion} → {@code sd.PutInfo}；四个信封共享同一 {@code batchId}（correlationId）与同一
- * branch/expectedRevision ⇒ {@link CoreSimos#submitBatch} 原子落一条 revision。preview 一个字节都不写。
+ * <p>★★ <b>与 {@code simos.region.clearData} 分开</b>：数据清空与结构清空是两个独立动作、各自 preview/apply、各自确认；
+ * 本工具只组批结构命令，不替调用方做"一键清光"。
  *
- * <p>★★ <b>preview / apply 共用同一份只读 pre-scan</b>：唯一语义落点在 {@link RegionClearPlan#scan}（复用 {@code
- * RegionSeedPlan.inspectCleanGate} 的同一次命中扫描）；本类只做四件事——参数形状解析、读 base state、把 Plan 折成视图、组批与折叠结局。
+ * <p>★★ <b>一批 = 一条 revision，固定批序</b>：{@code sd.DeleteDecisionMaker × N → unit.DisbandUnit × N →
+ * map.DeleteRegion × N → sd.PutInfo}；所有信封共享同一 {@code batchId}（correlationId）、branch 与
+ * expectedRevision ⇒ {@link CoreSimos#submitBatch} 原子落一条 revision。preview 一个字节都不写。
  *
- * <p>★★ <b>只对"有命中"的域下单</b>：某域 clean gate 干净 ⇒ 该域的 ClearRegion 不进批；三域都无命中 ⇒ <b>不 submit、零
- * revision</b>，返回具名"没有需要清空的数据"。{@code sd.PutInfo} 只在有任一域命中时追加，记录本次清空的范围与原因。
+ * <p>★★ <b>preview / apply 共用同一份只读 pre-scan</b>：唯一语义落点在 {@link
+ * RegionClearStructuresPlan#scan}；本类只做四件事——参数形状解析、读 base state、把 Plan 折成视图、组批与折叠结局。
  *
- * <p>★ <b>与结构清空分开</b>：{@code
- * simos.region.clearStructures}（Region/Unit/GOV/决策人结构）另行单独确认；本工具不做跨域结构清空。
+ * <p>★★ <b>候选识别（详见 Plan 类注）</b>：GOV 单位按"带 GovFormation + 当刻有效位置在目标 Region hex 集"；决策人按 Gov 归属且
+ * govUnit 在候选单位集；Region 只自动认 {@code sanitize(regionId) + "__P" + 两位以上数字} 且真子集的省， 其余相交 Region 只列
+ * preview + warning，必须显式 {@code regionIds} 才删。显式清单里不满足自动规则的项仍按显式执行， 但会在 warning 里逐条说明。
  *
- * <p>★★ <b>资源声明</b>：social / actor / economy / sd 四个命名空间全部 {@link ResourcePolicy#UNRESTRICTED}（GM 侧
- * Unlimited）；map 只读用于校验 region 存在，不声明写权限。
+ * <p>★★ <b>批内域拒不做前置预演</b>：{@code unit.DisbandUnit} 的"仍有下属 / 仍在命令链"约束由域层在批内真判；本工具 pre-scan 只对这两种形状给
+ * warning。批内任一命令被拒 ⇒ 整批零 revision、{@code REJECTED} 带逐条真拒因。
  *
- * <p>★ <b>失败具名</b>：参数缺失/类型错/region 不存在 ⇒ {@code BAD_REQUEST}（零 revision）；批内域拒 ⇒ {@code REJECTED}
- * 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link ResourceDeniedException}（由唯一入口折资源拒因）。
+ * <p>★ <b>资源声明</b>：map / unit / sd 三个命名空间全部 {@link ResourcePolicy#UNRESTRICTED}（GM 侧 Unlimited）；
+ * 固定断言三个命名空间的粗资源（与既有 GM 组合工具同制）。
+ *
+ * <p>★ <b>失败具名</b>：参数缺失/类型错/region 不存在/显式 id 不存在/显式 Region = 目标本身/显式非 Gov 决策人 ⇒ {@code
+ * BAD_REQUEST}（零 revision）；批内域拒 ⇒ {@code REJECTED}（逐条真拒因）；提交冲突 ⇒ {@code CONFLICT}（真实 head）；资源不匹配 ⇒
+ * 原样抛 {@link ResourceDeniedException}（由唯一入口折资源拒因）。
  */
-public final class RegionClearDataTool implements AgentTool {
+public final class RegionClearStructuresTool implements AgentTool {
 
   /** 工具名（全局唯一）。★ 它不是一条命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
-  public static final String NAME = "simos.region.clearData";
+  public static final String NAME = "simos.region.clearStructures";
 
-  /** 本工具写四个命名空间（GM 侧四面 unlimited ⇒ 逐条判通过）；map 只读、不在此列。 */
-  private static final ResourceManifest CLEAR_WRITE =
+  /** 本工具写 map / unit / sd 三个命名空间（GM 侧三面 unlimited ⇒ 逐条判通过）。 */
+  private static final ResourceManifest CLEAR_STRUCTURES_WRITE =
       ResourceManifest.of(
           Map.of(
-              ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolSupport.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED,
-              ToolSupport.ECONOMY_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolSupport.MAP_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolSupport.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
-  /** 与 {@link #CLEAR_WRITE} 同源的逐命名空间粗断言（顺序 = 批内命令命名空间序：social → actor → economy → sd）。 */
+  /** 与 {@link #CLEAR_STRUCTURES_WRITE} 同源的逐命名空间粗断言（顺序 = 批内命名空间序：sd → unit → map）。 */
   private static final List<ResourceId> WRITE_RESOURCES =
       List.of(
-          ResourceId.of(ToolSupport.SOCIAL_NAMESPACE, "*"),
-          ResourceId.of(ToolSupport.ACTOR_NAMESPACE, "*"),
-          ResourceId.of(ToolSupport.ECONOMY_NAMESPACE, "*"),
-          ResourceId.of(ToolSupport.SD_NAMESPACE, "*"));
+          ResourceId.of(ToolSupport.SD_NAMESPACE, "*"),
+          ResourceId.of(ToolSupport.UNIT_NAMESPACE, "*"),
+          ResourceId.of(ToolSupport.MAP_NAMESPACE, "*"));
 
   private final CoreSimos core;
   private final QueryService query;
@@ -90,7 +96,8 @@ public final class RegionClearDataTool implements AgentTool {
    * @param initiator 落盘时的发起者（{@code <kind>:<id>} 形态）
    * @param mapId 本世界的 map 称谓（只用于把命中日志写进 sd INFO 地址）
    */
-  public RegionClearDataTool(CoreSimos core, QueryService query, String initiator, String mapId) {
+  public RegionClearStructuresTool(
+      CoreSimos core, QueryService query, String initiator, String mapId) {
     this.core = Objects.requireNonNull(core, "core");
     this.query = Objects.requireNonNull(query, "query");
     this.initiator = Objects.requireNonNull(initiator, "initiator");
@@ -104,19 +111,22 @@ public final class RegionClearDataTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 区域数据清空（组合工具，一批 = 一条 revision）：按 regionId 只读 pre-scan（与 simos.region.seed 的 clean"
-        + " gate 同一次扫描），只对命中域按固定批序 social.ClearRegion → actor.ClearRegion → economy.ClearRegion →"
-        + " sd.PutInfo 下单；三域都无命中 ⇒ 不提交、零 revision，返回\"没有需要清空的数据\"。"
-        + "清空边界：social 清目标 Region 格集内的 populations/groups/cities（含 city.region 归属命中）；actor 清目标格内的"
-        + " GoodsAccount，并只删除清账后在任何位置都不再持有账户的主体；economy 至少清目标格 industries/markets 及其"
-        + " unit/relations/classes/memberships 等可靠可定位的连带记录（不动世界级 classFirst/发行审计/在途货物/laborSupply）。"
-        + "本工具只清数据，不动 Region/Unit/GOV/决策人结构（结构清空请单独调用 simos.region.clearStructures）。"
-        + "参数 {regionId(必填，必须在当前 map.regions() 里), preview?(缺省 true=只算不写), branch?(缺省 "
+    return "GM 区域结构清空（组合工具，一批 = 一条 revision）：按 regionId 只读 pre-scan 生成器创建的结构——"
+        + "带 GovFormation 且当刻有效位置在目标 Region hex 集内的 GOV 单位、这些 GOV 的 Gov 归属决策人、以及"
+        + " id = sanitize(regionId)+\"__P\"+两位以上数字 且 hexes 是目标 hex 真子集的省 Region；"
+        + "其它相交 Region 只在 overlappingRegions/warnings 里列出，不自动删。"
+        + "固定批序 sd.DeleteDecisionMaker × N → unit.DisbandUnit × N → map.DeleteRegion × N → sd.PutInfo；"
+        + "只对有候选项且开关打开的类别下单；全部无命令 ⇒ 不 submit、零 revision，返回\"没有需要清空的结构\"。"
+        + "参数 {regionId(必填，必须在当前 map.regions()), regionIds?(显式删除的 Region 数组，必须存在且 != 目标),"
+        + " unitIds?(显式删除的 Unit 数组，必须存在), decisionMakerIds?(显式删除的 DM 数组，必须存在且是 Gov 归属),"
+        + " deleteRegions?(缺省 true), deleteUnits?(缺省 true), deleteDecisionMakers?(缺省 true),"
+        + " preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
-        + "), expectedRevision?(preview=false 必填，>=0；preview 的读数也取它，缺省=该分支 head), reason(必填非空白)}。"
-        + "返回 {preview, submitted, regionId, regionName, hexCount, domains(逐域 clean gate 形状), hitCounts, commands,"
-        + " conflictPreflight, reason, infoText}；apply 另加 submission；无命中另加 message。"
-        + "失败语义：参数/region 不存在 ⇒ BAD_REQUEST（零 revision）；批内域拒 ⇒ REJECTED（逐条真拒因）；"
+        + "), expectedRevision?(preview=false 必填，>=0), reason(必填非空白)}。"
+        + "返回 {preview, submitted, regionId, regionName, hexCount, tick, candidates(逐类 count/ids/sample/autoIds/explicitIds/enabled),"
+        + " overlappingRegions(id/name/tag/overlapHexCount), switches, commands, warnings, conflictPreflight, reason, infoText}；"
+        + "apply 另加 submission；无命令另加 message。"
+        + "失败语义：参数/显式 id 不合法 ⇒ BAD_REQUEST（零 revision）；批内域拒 ⇒ REJECTED（逐条真拒因）；"
         + "冲突 ⇒ CONFLICT（真实 head）；资源不匹配 ⇒ 原样抛资源拒因。";
   }
 
@@ -124,6 +134,14 @@ public final class RegionClearDataTool implements AgentTool {
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put("regionId", ToolSupport.prop("string", "目标 Region id（必填；必须在当前 map.regions() 里）"));
+    props.put(
+        "regionIds", ToolSupport.prop("array", "显式要删的 Region id 数组（可选；每个都必须存在且不得等于目标 Region；缺省空）"));
+    props.put("unitIds", ToolSupport.prop("array", "显式要删的 Unit id 数组（可选；每个都必须存在；缺省空）"));
+    props.put(
+        "decisionMakerIds", ToolSupport.prop("array", "显式要删的决策人 id 数组（可选；每个都必须存在且是 Gov 归属；缺省空）"));
+    props.put("deleteRegions", ToolSupport.prop("boolean", "是否下单删除候选 Region（缺省 true）"));
+    props.put("deleteUnits", ToolSupport.prop("boolean", "是否下单解散候选单位（缺省 true）"));
+    props.put("deleteDecisionMakers", ToolSupport.prop("boolean", "是否下单删除候选决策人（缺省 true）"));
     props.put("preview", ToolSupport.prop("boolean", "true（缺省）= 只算不写；false = 提交同一批"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
@@ -142,7 +160,7 @@ public final class RegionClearDataTool implements AgentTool {
 
   @Override
   public ResourceManifest resources() {
-    return CLEAR_WRITE;
+    return CLEAR_STRUCTURES_WRITE;
   }
 
   @Override
@@ -150,10 +168,16 @@ public final class RegionClearDataTool implements AgentTool {
     Map<String, Object> args = context.arguments();
     return new ToolGate.Ask(
         name(),
-        "Region 数据清空 regionId="
+        "Region 结构清空 regionId="
             + args.get("regionId")
             + " preview="
             + args.getOrDefault("preview", true)
+            + " deleteDecisionMakers="
+            + args.getOrDefault("deleteDecisionMakers", true)
+            + " deleteUnits="
+            + args.getOrDefault("deleteUnits", true)
+            + " deleteRegions="
+            + args.getOrDefault("deleteRegions", true)
             + " branch="
             + args.getOrDefault("branch", ToolSupport.DEFAULT_BRANCH)
             + " reason="
@@ -166,8 +190,8 @@ public final class RegionClearDataTool implements AgentTool {
     try {
       ToolSupport.requireAll(context, Operation.WRITE, WRITE_RESOURCES);
       Map<String, Object> args = context.arguments();
-      String reason = ToolSupport.requiredText(args, "reason");
       String regionId = ToolSupport.requiredText(args, "regionId");
+      String reason = ToolSupport.requiredText(args, "reason");
       boolean preview = ToolSupport.optionalBoolean(args, "preview").orElse(true);
       BranchId branch =
           new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
@@ -180,6 +204,13 @@ public final class RegionClearDataTool implements AgentTool {
             "BAD_REQUEST", "preview=false 时必须给 expectedRevision（提交的乐观并发 base revision）");
       }
       long expectedRevision = expectedRevisionArg == null ? -1L : expectedRevisionArg;
+      List<String> explicitRegionIds = optionalTextArray(args, "regionIds");
+      List<String> explicitUnitIds = optionalTextArray(args, "unitIds");
+      List<String> explicitDecisionMakerIds = optionalTextArray(args, "decisionMakerIds");
+      boolean deleteRegions = ToolSupport.optionalBoolean(args, "deleteRegions").orElse(true);
+      boolean deleteUnits = ToolSupport.optionalBoolean(args, "deleteUnits").orElse(true);
+      boolean deleteDecisionMakers =
+          ToolSupport.optionalBoolean(args, "deleteDecisionMakers").orElse(true);
       // ★ preview / apply 的共同输入：同一坐标上的 base state + 同一份只读扫描。
       SimulationState state =
           query.stateAt(
@@ -187,10 +218,19 @@ public final class RegionClearDataTool implements AgentTool {
                   ? QueryTarget.head(branch)
                   : QueryTarget.at(branch, new RevisionId(expectedRevision)));
       Map<String, Object> conflictPreflight = conflictPreflight(branch, expectedRevisionArg);
-      RegionClearPlan.Plan plan = RegionClearPlan.scan(state, regionId);
+      RegionClearStructuresPlan.Plan plan =
+          RegionClearStructuresPlan.scan(
+              state,
+              regionId,
+              explicitRegionIds,
+              explicitUnitIds,
+              explicitDecisionMakerIds,
+              deleteRegions,
+              deleteUnits,
+              deleteDecisionMakers);
       if (!plan.hasWork()) {
         Map<String, Object> view = planView(plan, reason, preview, false, conflictPreflight);
-        view.put("message", "没有需要清空的数据");
+        view.put("message", plan.hasCandidates() ? "候选结构均被 delete* 开关关闭，本批不下单" : "没有需要清空的结构");
         return ToolSupport.ok(view);
       }
       if (preview) {
@@ -205,7 +245,7 @@ public final class RegionClearDataTool implements AgentTool {
       throw e;
     } catch (RuntimeException e) {
       return ToolResult.error(
-          "TOOL_ERROR", "Region 数据清空失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+          "TOOL_ERROR", "Region 结构清空失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
     }
   }
 
@@ -238,7 +278,7 @@ public final class RegionClearDataTool implements AgentTool {
 
   /** 提交阶段：按 Plan 组批（固定顺序），走唯一批量写入口，把三结局折进同一份视图。 */
   private ToolResult apply(
-      RegionClearPlan.Plan plan,
+      RegionClearStructuresPlan.Plan plan,
       String reason,
       BranchId branch,
       long expectedRevision,
@@ -285,19 +325,31 @@ public final class RegionClearDataTool implements AgentTool {
     return ToolResult.error("REJECTED", ToolSupport.json(view));
   }
 
-  /** 组批（固定顺序，可复现）：只含命中域的 ClearRegion，最后必有 sd.PutInfo（{@code hasWork()} 为真时）。 */
+  /** 组批：类型序由 Plan 给出；本方法按同一序为每类消耗对应 id，最后一条恒为 {@code sd.PutInfo}。 */
   private List<CommandEnvelope> buildBatch(
       String batchId,
-      RegionClearPlan.Plan plan,
+      RegionClearStructuresPlan.Plan plan,
       String reason,
       BranchId branch,
       RevisionId expectedRevision) {
     List<CommandEnvelope> batch = new ArrayList<>(plan.commands().size());
+    Iterator<String> unitIds = plan.units().ids().iterator();
+    Iterator<String> decisionMakerIds = plan.decisionMakers().ids().iterator();
+    Iterator<String> regionIds = plan.regions().ids().iterator();
     for (String type : plan.commands()) {
-      String payload =
-          RegionClearPlan.PUT_INFO_TYPE.equals(type)
-              ? infoPayload(plan, reason)
-              : ToolSupport.json(Map.of("regionId", plan.region().id().value()));
+      String payload;
+      if (RegionClearStructuresPlan.DELETE_DECISION_MAKER_TYPE.equals(type)) {
+        payload = ToolSupport.json(Map.of("decisionMakerId", decisionMakerIds.next()));
+      } else if (RegionClearStructuresPlan.DISBAND_UNIT_TYPE.equals(type)) {
+        payload = ToolSupport.json(Map.of("id", unitIds.next()));
+      } else if (RegionClearStructuresPlan.DELETE_REGION_TYPE.equals(type)) {
+        payload = ToolSupport.json(Map.of("regionId", regionIds.next()));
+      } else if (RegionClearStructuresPlan.PUT_INFO_TYPE.equals(type)) {
+        payload = infoPayload(plan, reason);
+      } else {
+        // ★ Plan 只产四种类型；出现第五种 = 实现漂移，当场炸而不是静默组一条空载荷。
+        throw new IllegalStateException("clearStructures 计划含未知批内命令类型（实现漂移）: " + type);
+      }
       batch.add(envelope(batchId, branch, expectedRevision, type, payload));
     }
     return List.copyOf(batch);
@@ -323,20 +375,21 @@ public final class RegionClearDataTool implements AgentTool {
 
   /**
    * {@code sd.PutInfo} 载荷：目标 Region canonical 地址（{@code map:<mapId>:region.<regionId>}，只用 Address
-   * AST 造） + {@code key="regionClearData"} + {@code value}=JSON 字符串 + {@code note}=人可读摘要 + {@code
-   * tick}=base state 的世界日。
+   * AST 造） + {@code key="regionClearStructures"} + {@code value}=JSON 字符串（regionId + 各类删除清单 +
+   * reason） + {@code note}=人可读摘要 + {@code tick}=base state 的世界当前日。
    *
    * <p>★ {@code id} 不显式给：由 {@code sd.PutInfo} 按"该地址下的第 n 条"合成 ⇒ 同一 Region 的后续清空自然追加序号。
    */
-  private String infoPayload(RegionClearPlan.Plan plan, String reason) {
+  private String infoPayload(RegionClearStructuresPlan.Plan plan, String reason) {
     Map<String, Object> value = new LinkedHashMap<>();
     value.put("regionId", plan.region().id().value());
+    value.put("decisionMakers", plan.decisionMakers().ids());
+    value.put("units", plan.units().ids());
+    value.put("regions", plan.regions().ids());
     value.put("reason", reason);
-    value.put("commands", plan.commands());
-    value.put("hitCounts", plan.hitCounts());
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("address", regionAddress(plan.region().id().value()));
-    payload.put("key", RegionClearPlan.INFO_KEY);
+    payload.put("key", RegionClearStructuresPlan.INFO_KEY);
     payload.put("value", ToolSupport.json(value));
     payload.put("note", infoNote(plan, reason));
     payload.put("tick", plan.tick());
@@ -355,15 +408,15 @@ public final class RegionClearDataTool implements AgentTool {
   }
 
   /** 行动记录 / 工具结果共用的人可读摘要。 */
-  private static String infoNote(RegionClearPlan.Plan plan, String reason) {
-    return "Region 数据清空 region="
+  private static String infoNote(RegionClearStructuresPlan.Plan plan, String reason) {
+    return "Region 结构清空 region="
         + plan.region().id().value()
-        + " social="
-        + plan.social().hitCount()
-        + " actor="
-        + plan.actor().hitCount()
-        + " economy="
-        + plan.economy().hitCount()
+        + " decisionMakers="
+        + plan.decisionMakers().count()
+        + " units="
+        + plan.units().count()
+        + " regions="
+        + plan.regions().count()
         + " commands="
         + plan.commands()
         + " reason="
@@ -374,7 +427,7 @@ public final class RegionClearDataTool implements AgentTool {
 
   /** preview 与 apply 共用的结果视图（{@code preview}/{@code submitted} 指这一次调用的形态）。 */
   private static Map<String, Object> planView(
-      RegionClearPlan.Plan plan,
+      RegionClearStructuresPlan.Plan plan,
       String reason,
       boolean preview,
       boolean submitted,
@@ -385,12 +438,34 @@ public final class RegionClearDataTool implements AgentTool {
     view.put("regionId", plan.region().id().value());
     view.put("regionName", plan.region().name());
     view.put("hexCount", plan.region().hexes().size());
-    view.put("domains", plan.domainsView());
-    view.put("hitCounts", plan.hitCounts());
+    view.put("tick", plan.tick());
+    view.put("candidates", plan.candidatesView());
+    view.put("overlappingRegions", plan.overlappingRegionsView());
+    view.put("switches", plan.switchesView());
     view.put("commands", plan.commands());
+    view.put("warnings", plan.warnings());
     view.put("conflictPreflight", conflictPreflight);
     view.put("reason", reason);
     view.put("infoText", infoNote(plan, reason));
     return view;
+  }
+
+  /** 可选字符串数组：缺省 ⇒ 空列表；给了必须是字符串数组（元素非空白，保序去重）。 */
+  private static List<String> optionalTextArray(Map<String, Object> args, String name) {
+    Object raw = args.get(name);
+    if (raw == null) {
+      return List.of();
+    }
+    if (!(raw instanceof List<?> list)) {
+      throw new IllegalArgumentException("参数 " + name + " 若给出必须是字符串数组");
+    }
+    LinkedHashSet<String> values = new LinkedHashSet<>();
+    for (Object item : list) {
+      if (!(item instanceof String text) || text.isBlank()) {
+        throw new IllegalArgumentException("参数 " + name + " 的元素必须是非空白字符串");
+      }
+      values.add(text);
+    }
+    return List.copyOf(values);
   }
 }
