@@ -119,8 +119,17 @@
 
   // ★ 2026-09-24 交战：sd 的**真实交战记录**（把"哪格在交战"从纯推断升级为以记录为准）。
   //   与 cachedUnits 同款：按 target 记忆化，同一 URL×target 只发一次。
+  //   ★ D2（2026-10-02 / D-012）：它不再是地图交战层的真值来源（改用下面的 cachedArmyCombats），
+  //   但 map.js 的**空回退**与 panels.js 的 hex 详情仍在用它 ⇒ 保留，不删。
   function cachedCombats(target) {
     return cachedGet("/sd/combats", target);
+  }
+
+  // ★ D2（2026-10-02 / D-012）：Army 交战记录——地图交战层的**真值来源**（GET /api/army/combats）。
+  //   服务端缺省只发**世界当前 tick**的记录（历史 tick 要显式传 tick，本函数不传 = 永远读当前 tick）。
+  //   与 cachedCombats / cachedUnits 同款：按 target 记忆化，同一 URL×target 只发一次。
+  function cachedArmyCombats(target) {
+    return cachedGet("/army/combats", target);
   }
 
   // ★ T7：决策人只读查询面（T5 落地的后端端点）——决策模式左栏/右栏共用，按 target 记忆化。
@@ -275,10 +284,12 @@
 
   /**
    * 交战只读面（2026-09-24）：{combats:[{combatId,combatStateId,name,hex,currentStage,currentStageName,
-   * selectedOutcome,participants,participantsAtHex,participantCount,participantsAtHexCount}…]}。
+   * selectedOutcome,participants,participantsAtHex,participantCount,participantsAtHexCount}…]}（sd 的
+   * Combat/CombatState）。
    *
-   * <p>★ 这是"哪格在交战 / 哪支军队属于哪场交战"的**唯一真值来源**（sd 的 Combat/CombatState 记录）——
-   * 前端**不得**再从"同格 ≥2 支军队"自行推断当真值（那是兜底，只在没有记录时用）。
+   * <p>★ D2（2026-10-02 / D-012）：它**不再是地图交战层的真值来源**（那已归 Army 记录的
+   * {@link cachedArmyCombats}）；map.js 只在 Army 为空时**回退**本读口（老世界兼容），panels.js 的 hex 详情仍用它。
+   * ★ 前端**不得**再从"同格 ≥2 支军队"自行推断当真值（那是兜底，只在没有记录时用）。
    */
   function combats(target) {
     return getJson(withTarget("/sd/combats", target));
@@ -555,6 +566,8 @@
     cachedMapOverview: cachedMapOverview,
     cachedUnits: cachedUnits,
     cachedCombats: cachedCombats,
+    // ★ D2（2026-10-02 / D-012）：Army 交战记录（地图交战层的真值来源；缺省 = 世界当前 tick）。
+    cachedArmyCombats: cachedArmyCombats,
     cachedDecisionMakers: cachedDecisionMakers,
     // ★ R2a：逐格经济读数（hex 详情面板的"经济"段）。
     cachedEconomyHex: cachedEconomyHex,

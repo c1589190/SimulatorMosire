@@ -22,6 +22,9 @@ import io.mosire.simos.app.query.RedactingQueryService;
 import io.mosire.simos.app.query.SdQueryService;
 import io.mosire.simos.app.sd.DecisionAdjudicationService;
 import io.mosire.simos.app.tools.read.DecisionResultsTool;
+import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.CombatRecord;
+import io.mosire.simos.army.CombatRecordId;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandEnvelope;
@@ -68,6 +71,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -250,6 +254,22 @@ public final class GuiServer implements AutoCloseable {
   private static final String COMBATS_PATH = "/api/sd/combats";
 
   /**
+   * **军队交战只读面**（阶段 D2 / 用户设计 D-012，2026-10-02）：{@code GET /api/army/combats}——把 Army 切片里
+   * **真实记录在案**的交战（{@code CombatRecord}：id、tick、交战格、参与单位、自然语言过程、损失）发给地图交战层。
+   *
+   * <p>★★ **缺省 {@code tick} = 世界当前 tick**：D-012 的动机正是"地图上看不到当前 tick 在哪里发生了交战"，故不传 {@code tick}
+   * 时只发世界当前日的记录；要读历史就显式传 {@code tick}。★ 这与 MCP 读工具 {@code simos.army.combats}
+   * 的"缺省全部"刻意不同：那边是**查询**（不传即全量，免得读历史被静默截断），这边是**地图当前态**。
+   *
+   * <p>★ 每条都走 {@link ApiViews#armyCombat(CombatRecord)}（与 {@code simos.army.combats} / {@code
+   * simos.army.combat} 同一份形状，本层不另拼字段清单）。纯只读（不经 {@code CoreSimos}、不写盘）；无记录 ⇒ {@code 200
+   * {"combats":[]}}（不是 404/500）。
+   *
+   * <p>★ 与 {@code /api/sd/combats} 同款拒 {@code as=}（未接视角 redaction ⇒ fail-closed，不静默给全量）。
+   */
+  private static final String ARMY_COMBATS_PATH = "/api/army/combats";
+
+  /**
    * ★ F1 城市图层只读面：{@code GET /api/social/cities[?region=<regionId>][?as=<dmId>]}。
    *
    * <p>★ 视图由 {@link ApiViews#cities} 一处装配（GUI 与未来 MCP 共用）；本层只做路由与参数解析。 带 {@code as=} 时逐城按 {@code
@@ -291,6 +311,8 @@ public final class GuiServer implements AutoCloseable {
           "/api/sd/directives",
           "/api/sd/verdicts",
           COMBATS_PATH,
+          // ★ D2（2026-10-02）：Army 交战记录只读面（地图交战层的真值来源；缺省 tick = 世界当前 tick）。
+          ARMY_COMBATS_PATH,
           DECISION_RESULTS_PATH,
           DECISION_DOCS_PATH,
           "/api/gm/tool-usage",
@@ -709,6 +731,11 @@ public final class GuiServer implements AutoCloseable {
     if (path.equals(COMBATS_PATH)) {
       rejectAs(path, asPresent);
       return combatsReply(params);
+    }
+    if (path.equals(ARMY_COMBATS_PATH)) {
+      // ★ D2：军队交战记录只读面——与 /api/sd/combats 同款：未接 redaction ⇒ 带 as= 显式拒绝（fail-closed）。
+      rejectAs(path, asPresent);
+      return armyCombatsReply(params);
     }
     if (path.equals(LLM_PROVIDERS_PATH)) {
       rejectAs(path, asPresent);
@@ -1192,6 +1219,43 @@ public final class GuiServer implements AutoCloseable {
         ApiViews.combats(
             ApiViews.sdState(state), ApiViews.unitState(state), state.meta().timestamp());
     return Reply.of(200, Map.of("combats", views));
+  }
+
+  /**
+   * **军队交战只读面**（阶段 D2 / 用户设计 D-012）：{@code GET /api/army/combats[?tick=<世界日>][?q=&r=]}。响应形状 {@code
+   * {"combats":[{id,tick,hex,participants,text,losses}…]}}——每条都走 {@link
+   * ApiViews#armyCombat(CombatRecord)}。
+   *
+   * <p>★ {@code tick} 缺省 = 世界**当前 tick**（{@code state.meta().timestamp().tick()}）：这就是"当前 tick
+   * 在哪发生交战"的 GUI 读口；历史 tick 显式传参可读。{@code tick} 必须 ≥ 0；非整数 ⇒ 400（{@link #optionalLongParam}）。
+   *
+   * <p>★ {@code q}/{@code r} 可选过滤、必须成对给（半给 ⇒ 400，不静默当"没给"）——与 {@code simos.army.combats}
+   * 同一口径。过滤后按记录 id **字典序**发出（记录表是插入序；不排序则响应字节不可复现，与读工具同款）。
+   *
+   * <p>★ <b>可见性</b>：与 {@code /api/sd/combats} 同款——本端点未接视角 redaction，带 {@code as=} 时由路由层 {@link
+   * #rejectAs} **显式拒绝**（fail-closed，不静默给全量）；不带 {@code as=} 的是 GM 全量面。
+   */
+  private Reply armyCombatsReply(Map<String, String> params) {
+    Long requestedTick = optionalLongParam(params, "tick");
+    requireNonNegative("tick", requestedTick);
+    HexCoord hex = optionalHexFilter(params);
+    SimulationState state = queryService.stateAt(target(params));
+    long tick = requestedTick != null ? requestedTick : state.meta().timestamp().tick();
+    ArmyData data = ApiViews.armyData(state);
+    List<CombatRecordId> ids = new ArrayList<>(data.combats().keySet());
+    ids.sort(Comparator.comparing(CombatRecordId::value));
+    List<Map<String, Object>> combats = new ArrayList<>();
+    for (CombatRecordId id : ids) {
+      CombatRecord record = data.combats().get(id);
+      if (record.tick() != tick) {
+        continue;
+      }
+      if (hex != null && !record.hex().equals(hex)) {
+        continue;
+      }
+      combats.add(ApiViews.armyCombat(record));
+    }
+    return Reply.of(200, Map.of("combats", combats));
   }
 
   /** 决策人详情（T5）：{@code GET /api/sd/decision-makers/{id}}；不存在 ⇒ 404（与 unit/region 详情同口径）。 */
@@ -2042,6 +2106,24 @@ public final class GuiServer implements AutoCloseable {
     } catch (NumberFormatException e) {
       throw new IllegalArgumentException("查询参数 " + name + " 必须是整数: " + value);
     }
+  }
+
+  /**
+   * 可选格过滤（{@code GET /api/army/combats} 的 {@code q}/{@code r}）：两个都不给 ⇒ {@code null}；只给一个 ⇒ 400
+   * （**不静默当"没给"**，与 {@code io.mosire.simos.app.tools.read.ArmyCombatsTool} 同一口径）。
+   */
+  private static HexCoord optionalHexFilter(Map<String, String> params) {
+    String rawQ = params.get("q");
+    String rawR = params.get("r");
+    boolean hasQ = rawQ != null && !rawQ.isBlank();
+    boolean hasR = rawR != null && !rawR.isBlank();
+    if (!hasQ && !hasR) {
+      return null;
+    }
+    if (hasQ != hasR) {
+      throw new IllegalArgumentException("格过滤必须 q 与 r 同时给（当前 q=" + hasQ + ", r=" + hasR + "）");
+    }
+    return new HexCoord(intParam(params, "q"), intParam(params, "r"));
   }
 
   private static QueryTarget target(Map<String, String> params) {

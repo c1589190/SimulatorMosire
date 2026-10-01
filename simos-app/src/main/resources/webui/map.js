@@ -250,18 +250,52 @@
     }
   }
 
+  /**
+   * ★ D2（2026-10-02 / D-012）：Army 交战记录 → renderer `setCombats` 接受的形状。
+   *
+   * <p>Army 记录（`GET /api/army/combats` → `ApiViews.armyCombat`）的字段是
+   * `{id,tick,hex,participants,text,losses}`；renderer 侧 `setCombats` 需要的形状里，有对应物的只有
+   * `id→combatId`、`hex`（直用）、`participants`（直用）。`name/stage/stageName/outcome` 在 Army 记录里
+   * **没有对应物** ⇒ 这里留空（不把 `text`/`losses` 硬塞进去冒充——"不编造字段语义"）。缺 `hex` 的条目返回
+   * null（不编坐标），由调用点滤掉。
+   */
+  function armyCombatForRenderer(record) {
+    if (!record || !record.hex || record.hex.q === undefined || record.hex.r === undefined) {
+      return null;
+    }
+    return {
+      combatId: record.id,
+      hex: record.hex,
+      participants: record.participants || [],
+    };
+  }
+
   async function reloadUnits() {
     try {
-      // ★ 2026-09-24 交战：单位与**真实交战记录**同批载入（renderer 从这一份聚合里读两者）。
-      //   交战取数失败**不拖垮单位列表**（各自兜成空：交战只是叠加层，没有它仍能画图）。
+      // ★ 2026-09-24 交战 / ★ D2（2026-10-02 / D-012）：单位与交战记录同批载入（renderer 从这一份聚合里读两者）。
+      //   · 交战**真值 = Army 记录**（`/api/army/combats`，服务端缺省只发**世界当前 tick**）；
+      //   · 旧 sd 记录仍取一份：Army 为空（老世界 / 还没写过记录）时**回退**它，老世界照旧看得见交战格；
+      //   · 两路交战取数失败**不拖垮单位列表**（各自兜成 null：交战只是叠加层，没有它仍能画图）。
       var results = await Promise.all([
         api.cachedUnits(app.target()),
+        api.cachedArmyCombats(app.target()).catch(function () {
+          return null;
+        }),
         api.cachedCombats(app.target()).catch(function () {
           return null;
         }),
       ]);
       active.setUnits((results[0] && results[0].units) || []);
-      active.setCombats((results[1] && results[1].combats) || []);
+      // ★ D2：地图交战层以 **Army 记录为真值**；Army 返回空 ⇒ 回退旧 sd 列表（老世界兼容）。
+      var armyCombats = (results[1] && results[1].combats) || [];
+      var sdCombats = (results[2] && results[2].combats) || [];
+      active.setCombats(
+        armyCombats.length > 0
+          ? armyCombats.map(armyCombatForRenderer).filter(function (c) {
+              return c !== null;
+            })
+          : sdCombats
+      );
       // ★ F1：搜索索引 / 世界总览需要带 module/parent 的单位列表——与 renderer 同一份服务端读数。
       host.worldUnits = (results[0] && results[0].units) || [];
       // ★ F1：GOV 辖区随单位同批重算（切 target / revision 沿本链自动覆盖旧数据）。
@@ -2694,6 +2728,9 @@
     isAdjacent: isAdjacent,
     remainingPath: remainingPath,
     parseEquipmentText: parseEquipmentText,
+    // ★ D2（2026-10-02 / D-012）：Army 交战记录 → renderer `setCombats` 形状（纯函数、无 DOM/IO；
+    //   门禁可直接断言"id→combatId / participants 直用 / name·stage 留空 / 缺 hex 返回 null"）。
+    armyCombatForRenderer: armyCombatForRenderer,
     // 宿主
     init: initHost,
     unitEditDebug: function () {
