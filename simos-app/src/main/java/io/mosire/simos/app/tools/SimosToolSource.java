@@ -30,6 +30,7 @@ import io.mosire.simos.app.tools.read.MapRenderTool;
 import io.mosire.simos.app.tools.read.PopulationTool;
 import io.mosire.simos.app.tools.read.ProvinceDivideTool;
 import io.mosire.simos.app.tools.read.SdCombatsTool;
+import io.mosire.simos.app.tools.read.SdDirectivesTool;
 import io.mosire.simos.app.tools.read.SdVerdictsTool;
 import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.read.StateFacetsTool;
@@ -602,6 +603,10 @@ public final class SimosToolSource implements ToolSource {
         new DecisionMakersTool(query),
         // ★ 2026-09-25：详情并入 GUI 的 `/{id}/scope`（现算可见范围）——同一资源的两个端点合成一条工具。
         new DecisionMakerTool(query, mapId),
+        // ★★ P7c（2026-10-01 后端 + MCP 稳定化计划）：决策记录清单（GUI GET /api/sd/directives 的 MCP 读口）。
+        //   与 decision-makers/decision-maker 同属"读别人的底牌" ⇒ 只给 GM 桶（GmOnlyRead）；视图直接复用
+        //   ApiViews.directives，不另写一份。
+        new SdDirectivesTool(query),
         // ★ 工具面补齐（2026-09-25）：交战记录（世界状态 ⇒ 四桶共享，复用 ApiViews.combats）。
         new SdCombatsTool(query),
         // ★ 判决（模型原始输出 + meta）：省略 actor = FULL 全量披露 ⇒ 只给 GM 桶（GmOnlyRead），见类注。

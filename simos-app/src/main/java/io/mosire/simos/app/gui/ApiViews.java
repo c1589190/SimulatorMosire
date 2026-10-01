@@ -5011,8 +5011,11 @@ public final class ApiViews {
    *
    * <p>★ **顺序由服务端决定**（{@link SdQueryService#listDirectives} 按 tick 降序、同 tick 按 id 字典序）——本类只做
    * 装配，不重排，否则"同状态两次响应逐字节相同"这条前提会破（与 {@link #decisionMakers} 同口径）。
+   *
+   * <p>★ P7c 起 MCP 读口 {@code simos.sd.directives} 也直接调它（工具在 {@code tools.read} 包）⇒ 公开；装配逻辑与 GUI
+   * 仍是同一行，不另写一份视图。
    */
-  static List<Map<String, Object>> directives(List<SdQueryService.DirectiveInfo> infos) {
+  public static List<Map<String, Object>> directives(List<SdQueryService.DirectiveInfo> infos) {
     List<Map<String, Object>> out = new ArrayList<>(infos.size());
     for (SdQueryService.DirectiveInfo info : infos) {
       out.add(directive(info));
