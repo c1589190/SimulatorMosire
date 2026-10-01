@@ -69,7 +69,7 @@ import java.util.Set;
  *       province}；不设 nation tag）；
  *   <li>{@code map.CreateRegion} × 首都区（仅首都圈非空；id={@code __CAP}，name={@code namingPrefix + "·首都"}）；
  *   <li>{@code unit.CreateUnit} × (N+1)：N = 建议省数（不含首都圈）；中央 {@code -gov-central} + 省 {@code
- *       -gov-P<建议序号>}；{@code member=0, equipment={}, speed=1, mobilityPerMille=500, position=对应
+ *       -gov-P<建议序号>}；{@code manpower=[], equipment=[], speed=1, mobilityPerMille=500, position=对应
  *       center}、无 parent、status 走域层缺省 MOVING；
  *   <li>{@code unit.SetGovFormation} × (N+1)：中央 {@code {level:CENTRAL, staff, policy}}（不给
  *       superiorGov）；省 {@code {level:PROVINCE, superiorGov:中央, staff, policy}}；
@@ -611,8 +611,8 @@ final class ProvinceApplyPlan {
       payload.put("id", gov.unitId());
       payload.put("name", gov.unitName());
       payload.put("position", ToolSupport.hexCoord(gov.at()));
-      payload.put("member", 0);
-      payload.put("equipment", new LinkedHashMap<String, Object>());
+      payload.put("manpower", List.of());
+      payload.put("equipment", List.of());
       payload.put("speed", NEW_UNIT_SPEED);
       payload.put("mobilityPerMille", NEW_UNIT_MOBILITY_PER_MILLE);
       return ToolSupport.json(payload);

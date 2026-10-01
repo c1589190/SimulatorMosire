@@ -1,7 +1,7 @@
 package io.mosire.simos.unit.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.unit.CompositionDelta;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
@@ -15,19 +15,19 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * {@code unit.ApplyCasualties} 命令的处理器（T8 / spec §四；D3a 改为双轨 delta 有序条目列表）： {@code id,
- * manpower[{type,amount≤0}], equipment[{type,amount≤0}]}。
+ * {@code unit.SetComposition} 命令的处理器（阶段 D3a，2026-10-02；原 {@code unit.SetStrength} 的 rename）： {@code
+ * id, manpower[{type,amount}], equipment[{type,amount}]}。
  *
- * <p>★ {@code manpower} 与 {@code equipment} 的值都是 **≤ 0 的增量**（战损只减员），与 {@code unit.SetComposition} 的
- * "整表复写"是两种语义：只扣**提及**的 type，未提及的 type 保持不变；提及了**不存在**的 type ⇒ 拒（P14，不视作 0）。
+ * <p>★ **整表复写**：载荷里的两张表**整体取代**旧表，不是增量合并；**未知 type 不是错误**——给什么就是什么。人数/装备范围 （{@code amount ≥ 0}、同表
+ * type 不重复）由 {@code Unit} 构造期判、折成拒绝。
  *
- * <p>★ **差分不另造路径**：本条命令与其余 handler 一样，产出的变更集是 {@link UnitChangeSet#between}（**绝对值**：目标状态
- * 的新值），不是"增量"——故回退到战损前那一 revision 读回的就是战前值（时间线恢复）。
+ * <p>★ <b>命令类型名改了</b>：旧 {@code unit.SetStrength} 与 {member, equipment-map} 载荷按 D-011/R4 **不留兼容层**；
+ * 旧调用方读不出/提交即被拒是预期行为（世界替换在后续阶段 D6）。
  */
-public final class ApplyCasualtiesHandler implements CommandHandler, CommandTargets {
+public final class SetCompositionHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（信封上的 {@code type}，也是 catalog / 窄工具引用的唯一拼写点）。 */
-  public static final String TYPE = "unit.ApplyCasualties";
+  public static final String TYPE = "unit.SetComposition";
 
   /** ★ 目标资源（{@link CommandTargets}）：本命令点名的**那一个单位**。 */
   @Override
@@ -49,9 +49,9 @@ public final class ApplyCasualtiesHandler implements CommandHandler, CommandTarg
     try {
       JsonNode payload = UnitPayloads.parse(payloadJson);
       UnitId id = UnitId.parse(UnitPayloads.requireText(payload, "id"));
-      List<CompositionDelta> manpower = UnitPayloads.requireCompositionDelta(payload, "manpower");
-      List<CompositionDelta> equipment = UnitPayloads.requireCompositionDelta(payload, "equipment");
-      UnitState next = UnitOperations.applyCasualties(snapshot.state(), id, manpower, equipment);
+      List<CompositionEntry> manpower = UnitPayloads.requireComposition(payload, "manpower");
+      List<CompositionEntry> equipment = UnitPayloads.requireComposition(payload, "equipment");
+      UnitState next = UnitOperations.setComposition(snapshot.state(), id, manpower, equipment);
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

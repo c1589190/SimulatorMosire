@@ -130,6 +130,7 @@ import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.social.population.UrbanRural;
 import io.mosire.simos.unit.ArmyFormation;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Movement;
@@ -5112,8 +5113,10 @@ public final class ApiViews {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", unit.id().value());
     view.put("name", unit.name());
-    view.put("member", unit.member());
-    view.put("equipment", new LinkedHashMap<>(unit.equipment()));
+    // ★★ D3a（2026-10-02 / D-006 + R1）：人力/装备都是**有序条目列表** [{type,amount}…]（不是 member:int /
+    //   equipment:Map）；读侧字段名与新表一致，顺序原样。存量键 `member` 已按 D-011/R4 删除，不留兼容。
+    view.put("manpower", compositionView(unit.manpower()));
+    view.put("equipment", compositionView(unit.equipment()));
     view.put("speed", unit.speed());
     view.put("mobilityPerMille", unit.mobilityPerMille());
     // ★ B9（用户 2026-09-23 实测）：单位**自身**状态（MOVING/RESTING/ENGAGED）此前两处视图都没发 ⇒
@@ -5143,6 +5146,18 @@ public final class ApiViews {
     // ★★ D1（2026-10-02 / D-012）：当前回合状态 ↔ 状态描述地址的链接表**原样透出**（空表也发——与
     //   `equipment` 同款：这栏本身是单位状态的一部分，"没有链接"就用空对象表达；GUI 与 MCP 同源这一份）。
     view.put("stateDescriptions", new LinkedHashMap<>(unit.stateDescriptions()));
+    return view;
+  }
+
+  /** 人力/装备有序表 → JSON 视图（{@code [{type,amount}…]}，顺序原样；D3a 的读侧唯一形状）。 */
+  private static List<Map<String, Object>> compositionView(List<CompositionEntry> entries) {
+    List<Map<String, Object>> view = new ArrayList<>(entries.size());
+    for (CompositionEntry entry : entries) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("type", entry.type());
+      row.put("amount", entry.amount());
+      view.add(row);
+    }
     return view;
   }
 

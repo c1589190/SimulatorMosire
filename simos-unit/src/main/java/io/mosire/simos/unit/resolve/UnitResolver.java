@@ -137,8 +137,8 @@ public final class UnitResolver implements Resolver {
     if (!"equipment".equals(entity.kind().get())) {
       return empty(); // hex.c1 等合法地址，M3 不服务
     }
-    if (!unit.equipment().containsKey(entity.name())) {
-      return empty(); // 合法但没有该装备：空候选，不是错误
+    if (unit.equipment().stream().noneMatch(entry -> entry.type().equals(entity.name()))) {
+      return empty(); // 合法但没有该类型装备：空候选，不是错误
     }
     SubjectId subjectId = new SubjectId("unit.equipment", id.value() + "/" + entity.name());
     Address canonical =

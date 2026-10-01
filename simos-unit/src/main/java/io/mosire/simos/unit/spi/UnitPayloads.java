@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.unit.CompositionDelta;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovLevel;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.StaffRole;
@@ -13,10 +15,12 @@ import io.mosire.simos.util.json.SimosObjectMapper;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * unit 各命令 handler 共用的载荷解析助手（spec §四）。
@@ -25,7 +29,7 @@ import java.util.Optional;
  * HandlerOutcome.Rejected}（理由进 {@code simos.command.rejected} 事件，拒绝不留 revision）。域规则违反由 {@code
  * UnitOperations} / {@code Unit} 构造期抛出的同类异常沿用同一条路径——折算只发生在命令边界这一层。
  *
- * <p>★ **本类只管形状与类型**（字段在不在、类型对不对）；数值范围（`member ≥ 0`、`speed ≥ 1` …）与编制树不变量留给领域类型， 两处不重复实现——领域异常同样被
+ * <p>★ **本类只管形状与类型**（字段在不在、类型对不对）；数值范围（`amount ≥ 0`、`speed ≥ 1` …）与编制树不变量留给领域类型， 两处不重复实现——领域异常同样被
  * handler 折成拒绝。载荷字段名与 spec §四的表一一对应。
  *
  * <p>★ 载荷形态是本模块的私事（C26）：Core 只转交 {@code payloadJson} 字节串，从不理解它的结构。
@@ -286,24 +290,60 @@ final class UnitPayloads {
     return Optional.of(hexFrom(value, field));
   }
 
-  /** 必填的 {@code {字符串:整数}} 装备对象（空对象合法，范围由 {@code Unit} 判）。 */
-  static Map<String, Integer> requireEquipment(JsonNode payload, String field) {
+  /**
+   * 必填的人力/装备**状态表**：JSON 数组 {@code [{type,amount}…]}（空数组合法）。每条：{@code type} 非空白、{@code amount}
+   * 非负整数（long 量纲）；同表重复 type ⇒ 具名拒（一张表里同一 type 两条会让"加/减值"歧义）。
+   *
+   * <p>★ 本方法只管**形状与类型**；表级不变量（非 null、重复 type）由 {@link io.mosire.simos.unit.Unit} 构造期再判一遍—— handler
+   * 边界要可读拒因，领域类型是最后一道，两处不重复实现数值规则（amount ≥ 0 由 {@link CompositionEntry} 判）。
+   */
+  static List<CompositionEntry> requireComposition(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
-    if (value == null || value.isNull() || !value.isObject()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是 {字符串:整数} 对象: " + payload);
+    if (value == null || value.isNull() || !value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 [{type,amount}…] 数组: " + payload);
     }
-    Map<String, Integer> equipment = new LinkedHashMap<>();
-    Iterator<Map.Entry<String, JsonNode>> fields = value.fields();
-    while (fields.hasNext()) {
-      Map.Entry<String, JsonNode> entry = fields.next();
-      JsonNode number = entry.getValue();
-      if (!number.isIntegralNumber() || !number.canConvertToInt()) {
-        throw new IllegalArgumentException(
-            "字段 " + field + " 的值必须是整数: " + entry.getKey() + "=" + number);
+    List<CompositionEntry> entries = new ArrayList<>(value.size());
+    Set<String> seen = new LinkedHashSet<>();
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是 {type,amount} 对象: " + element);
       }
-      equipment.put(entry.getKey(), number.asInt());
+      String type = requireText(element, "type");
+      long amount = requireLong(element, "amount");
+      if (!seen.add(type)) {
+        throw new IllegalArgumentException("字段 " + field + " 不得有重复 type: " + type);
+      }
+      entries.add(new CompositionEntry(type, amount));
     }
-    return equipment;
+    return entries;
+  }
+
+  /**
+   * 必填的人力/装备**有符号增量表**：JSON 数组 {@code [{type,amount}…]}（空数组合法）。每条：{@code type} 非空白、{@code amount}
+   * 为可负整数（long 量纲）；同表重复 type ⇒ 具名拒。
+   *
+   * <p>★ 符号语义不在本方法：{@code ApplyCasualties} 的 ≤ 0、{@code AdjustComposition} 的有符号规则都由 {@code
+   * UnitOperations} 按当前状态判（越界/存在性要看单位本体，载荷层看不到）。
+   */
+  static List<CompositionDelta> requireCompositionDelta(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 [{type,amount}…] 数组: " + payload);
+    }
+    List<CompositionDelta> deltas = new ArrayList<>(value.size());
+    Set<String> seen = new LinkedHashSet<>();
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是 {type,amount} 对象: " + element);
+      }
+      String type = requireText(element, "type");
+      long amount = requireLong(element, "amount");
+      if (!seen.add(type)) {
+        throw new IllegalArgumentException("字段 " + field + " 不得有重复 type: " + type);
+      }
+      deltas.add(new CompositionDelta(type, amount));
+    }
+    return deltas;
   }
 
   /** 必填的非空字符串数组（T4：{@code SplitFormation} 的 {@code subUnitIds}）；空数组合法，由领域层判。 */

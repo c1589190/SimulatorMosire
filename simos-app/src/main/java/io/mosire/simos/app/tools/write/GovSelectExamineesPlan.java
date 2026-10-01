@@ -7,6 +7,7 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
@@ -46,12 +47,12 @@ import java.util.Set;
  *       io.mosire.simos.social.population.AgeBracket#ADULT}、count 降序 / id 升序瀑布），本类不另写 排序、过滤或扣减；
  *   <li><b>不足 ⇒ 整条拒</b>：先扫全部辖区 Region 得到 available 合计；不足时抛具名 {@link IllegalArgumentException}（带
  *       requested / available / 缺口），<b>不部分抽取、不截断</b>；
- *   <li><b>守恒</b>：Σ来源扣人 == {@code count} == 新单位 {@code member}；三个数字在 Plan 构造期逐值互校。
+ *   <li><b>守恒</b>：Σ来源扣人 == {@code count} == 新单位 manpower 的 amount；三个数字在 Plan 构造期逐值互校。
  * </ol>
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SeedGroups}（逐批整组覆盖，带 {@code ageDays/anchorTick/stress}
- * 保真）→ {@code unit.CreateUnit}（<b>无 module 的纯人员单位</b>：
- * member=count、equipment={}、speed=4、mobilityPerMille=800、position=来源 GOV 当刻有效位置）→（给了
+ * 保真）→ {@code unit.CreateUnit}（<b>无 module 的纯人员单位</b>： manpower=[{type=role,
+ * amount=count}]、equipment=[]、speed=4、mobilityPerMille=800、position=来源 GOV 当刻有效位置）→（给了
  * targetGovUnitId 且不同格时）{@code unit.PlanRoute}（waypoints = A* 逐格路径，首点 = 新单位落点、末点 = 目标 GOV 当刻有效位置）→
  * {@code sd.PutInfo}（地址 = 来源 GOV canonical，key={@code selectExaminees}，value 含来源/目的/角色，note 人可读）。
  *
@@ -60,9 +61,9 @@ import java.util.Set;
  * id；纯状态函数，不用随机量/墙钟）。
  *
  * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：来源单位存在且带 {@link
- * GovFormation}；{@code count ≥ 1} 且 ≤ {@code Integer.MAX_VALUE}（{@code unit.CreateUnit.member} 是
- * int）；来源 GOV 当刻必须有有效位置（否则新单位没有落点）；{@code targetGovUnitId} 若给必须是存在的 GOV，且可达 （A* 无路 ⇒ 具名拒）；无
- * jurisdiction / 辖区 Region 在地图里查无 ⇒ 具名拒；辖区 Region hex 重叠导致同一批次被 两个 Region 选中 ⇒ 具名拒（判据与 recruit 同款）。
+ * GovFormation}；{@code count ≥ 1}（{@code unit.CreateUnit} 的 manpower amount 是 long，不再有 int 上限）；来源
+ * GOV 当刻必须有有效位置（否则新单位没有落点）；{@code targetGovUnitId} 若给必须是存在的 GOV，且可达 （A* 无路 ⇒ 具名拒）；无 jurisdiction /
+ * 辖区 Region 在地图里查无 ⇒ 具名拒；辖区 Region hex 重叠导致同一批次被 两个 Region 选中 ⇒ 具名拒（判据与 recruit 同款）。
  *
  * <p>★ <b>确定性 / 保序不可变</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；来源表沿用 {@link
  * GovRecruitPlan.GroupSource}（唯一一份“批次 + 抽走人数”的形状），以 {@link List#copyOf} 冻住。
@@ -117,14 +118,6 @@ final class GovSelectExamineesPlan {
     requireNonBlank(unitId, "unitId");
     if (count < 1L) {
       throw new IllegalArgumentException("选送人数 count 必须 ≥ 1: " + count);
-    }
-    if (count > Integer.MAX_VALUE) {
-      throw new IllegalArgumentException(
-          "选送人数 count 超过 unit.CreateUnit 的 member（int）上限: "
-              + count
-              + "（最多 "
-              + Integer.MAX_VALUE
-              + "）");
     }
     String role = roleText.orElse(DEFAULT_ROLE);
     requireNonBlank(role, "role");
@@ -323,8 +316,8 @@ final class GovSelectExamineesPlan {
         new SegmentedSeries<>(
             List.of(new Segment<>(at, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(at, Optional.of(start))), List.of(), null),
-        0,
-        Map.<String, Integer>of(),
+        List.of(),
+        List.of(),
         NEW_UNIT_SPEED,
         NEW_UNIT_MOBILITY_PER_MILLE,
         Optional.empty(),
@@ -364,7 +357,7 @@ final class GovSelectExamineesPlan {
    * @param unitName 新单位名
    * @param at 新单位落点 = 来源 GOV 当刻有效位置
    * @param tick 推导时的世界日
-   * @param count 选送人数（= Σ来源扣人 = 新单位 member）
+   * @param count 选送人数（= Σ来源扣人 = 新单位 manpower 单条的 amount；type=role）
    * @param role 行动记录里的角色标签
    * @param targetGovUnitId 目的 GOV（可选）
    * @param targetAt 目的 GOV 当刻有效位置（仅给了目标时有值）
@@ -469,8 +462,10 @@ final class GovSelectExamineesPlan {
       payload.put("id", newUnitId);
       payload.put("name", unitName);
       payload.put("position", ToolSupport.hexCoord(at));
-      payload.put("member", (int) count);
-      payload.put("equipment", new LinkedHashMap<String, Object>());
+      // ★ D3a：type 取行动记录里的角色标签（缺省 EXAMINEE）——它是这一批人的自然语义身份。
+      payload.put(
+          "manpower", ToolSupport.compositionView(List.of(new CompositionEntry(role, count))));
+      payload.put("equipment", List.of());
       payload.put("speed", NEW_UNIT_SPEED);
       payload.put("mobilityPerMille", NEW_UNIT_MOBILITY_PER_MILLE);
       return ToolSupport.json(payload);

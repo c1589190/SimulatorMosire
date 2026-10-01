@@ -42,10 +42,20 @@ import java.util.function.Function;
  *
  * <p>★★ <b>阶段 D1 的线格式</b>：{@code Unit} 再多一个 {@code "stateDescriptions"} 键（第 17 组件，紧接 {@code
  * "module"}）， 值就是普通 JSON 对象 {@code {状态:canonical 地址}}。★ <b>它的键与值都是 {@link String}</b> ⇒
- * <b>不需要</b>注册任何键反序列化器 （与 {@code equipment} 的 {@code String} 键同款；Jackson 的默认 {@code String}
- * 键绑定就对了），本类<b>一字未改</b>。旧档没有该键 ⇒ Jackson 对 record 缺参给 {@code null} ⇒ {@code Unit}
- * 紧凑构造器归一成空表，行为逐字不变。★ 变更集侧同样自动覆盖：{@code UnitChangeSet} 的组件是 {@code FieldDelta<Unit>}（值就是整份
- * Unit），record 的 {@code equals} 含新组件 ⇒ "新组件不进变更集"这类漂移在这里结构上不可能发生（判别力仍由往返测试的反射枚举把守）。
+ * <b>不需要</b>注册任何键反序列化器（Jackson 的默认 {@code String} 键绑定就对了），本类<b>一字未改</b>。旧档没有该键 ⇒ Jackson 对 record
+ * 缺参给 {@code null} ⇒ {@code Unit} 紧凑构造器归一成空表，行为逐字不变。
+ *
+ * <p>★★ <b>阶段 D3a 的线格式</b>：第 5/6 组件从 {@code int member} + {@code Map<String,Integer> equipment} 换成
+ * **有序条目列表** {@code List<CompositionEntry> manpower} / {@code equipment}：
+ *
+ * <ul>
+ *   <li>JSON 形态 = 数组 {@code [{"type":"…","amount":…}, …]}；{@code CompositionEntry} 是 record、{@code
+ *       type} 是 String，**不需要**键反序列化器（与 D1 的 String 键同款），本类不注册新模块；
+ *   <li>D-011/R4 不写兼容层：旧档的 {@code "member"} 是未知字段（严格模式当场拒）、旧 {@code "equipment"} 是对象而不是数组
+ *       （类型不符当场拒）⇒ 旧档读不出就让它读不出，不在这里做迁移 shim；
+ *   <li>变更集侧同样自动覆盖：{@code UnitChangeSet} 的组件是 {@code FieldDelta<Unit>}（值就是整份 Unit），record 的 {@code
+ *       equals} 含新列表组件 ⇒ "新组件不进变更集"这类漂移在这里结构上不可能发生（判别力仍由往返测试的反射枚举把守）。
+ * </ul>
  *
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
  *

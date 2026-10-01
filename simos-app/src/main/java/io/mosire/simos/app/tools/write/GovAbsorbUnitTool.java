@@ -36,17 +36,18 @@ import java.util.UUID;
  * <p>★★ <b>源单位口径（用户裁定 3/10）</b>：默认拒带 {@code ArmyFormation} 的源（军队单位不是人口容器），带 {@code GovFormation}
  * 的同样拒；<b>只有无 module 的纯人员单位才能被吸收</b>。拒因具名（点名是哪种编制）。
  *
- * <p>★★ <b>批顺序（固定，一条 revision）</b>：{@code unit.ApplyCasualties}（源 {@code personnel=-count}、 {@code
- * equipment={}}）→ {@code unit.RecruitStaff}（{@code sources=[{kind:"unit", id, count}]}）→（{@code
- * disbandSource} 且吸收后源 member==0）{@code unit.DisbandUnit} → {@code sd.PutInfo}（key={@value
- * #INFO_KEY}）。
+ * <p>★★ <b>批顺序（固定，一条 revision）</b>：{@code unit.ApplyCasualties}（源 {@code manpower=[{type,−count}]}、
+ * {@code equipment=[]}）→ {@code unit.RecruitStaff}（{@code sources=[{kind:"unit", id,
+ * count}]}）→（{@code disbandSource} 且吸收后源人力合计==0）{@code unit.DisbandUnit} → {@code
+ * sd.PutInfo}（key={@value #INFO_KEY}）。
  *
- * <p>★ <b>守恒</b>：源 member 前 − count == 源 member 后；GOV roster 前 + count == roster 后；Plan 构造期逐值互校。
+ * <p>★ <b>守恒</b>：源人力合计前 − count == 源人力合计后；GOV roster 前 + count == roster 后；Plan 构造期逐值互校。源有
+ * 多种人力时按**源表序**逐 type 扣（min(条目余额, 剩余)），不跳到后面的 type 补。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字不是命令类型 ⇒ 不进 catalog / {@code
  * PAYLOAD_HINTS}。★ 资源声明：只写 {@code unit}/{@code sd} 两个命名空间。
  *
- * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / role 不在词表 / count &lt; 1 / GOV 或源单位不存在 / 源不是纯人员单位 / 源 member 不足 / 超
+ * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / role 不在词表 / count &lt; 1 / GOV 或源单位不存在 / 源不是纯人员单位 / 源人力合计不足 / 超
  * staffCap ⇒ {@link IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒 ⇒ {@code
  * REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link ResourceDeniedException}。
  */
@@ -96,10 +97,10 @@ public final class GovAbsorbUnitTool implements AgentTool {
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
         + "★ 源带 ArmyFormation（军队不是人口容器）或 GovFormation ⇒ 默认具名拒。"
-        + "批：unit.ApplyCasualties（personnel=-count、equipment={}）→ unit.RecruitStaff（sources=[{kind:\"unit\","
+        + "批：unit.ApplyCasualties（manpower=[{type,−taken}]、equipment=[]）→ unit.RecruitStaff（sources=[{kind:\"unit\","
         + "id:sourceUnitId,count}]）→（disbandSource 且源已空）unit.DisbandUnit → sd.PutInfo(key="
         + INFO_KEY
-        + ")。守恒：源 member 前−count == 源 member 后；GOV roster 前+count == roster 后。"
+        + ")。守恒：源人力合计前−count == 后；GOV roster 前+count == 后；源多类型时按源表序逐 type 扣。"
         + "返回 {preview, submitted, tick, unitId, sourceUnitId, role, count, sourceMemberBefore, "
         + "sourceMemberAfter, staffBefore, staffAfter, disbandSource, disbanded, disbandSkippedReason, commands, "
         + "infoText}；apply 另加 submission。";
@@ -111,8 +112,8 @@ public final class GovAbsorbUnitTool implements AgentTool {
     props.put("unitId", ToolSupport.prop("string", "吸收方：带 GovFormation 的 GOV 单位 id"));
     props.put("role", ToolSupport.prop("string", "入编角色：SCRIBE（书吏）|YAMEN（衙门）|POST（驿传）"));
     props.put("sourceUnitId", ToolSupport.prop("string", "源人口单位 id（必须无 module：纯人员单位）"));
-    props.put("count", ToolSupport.prop("integer", "吸收人数（≥ 1；不得超过源单位 member 与 staffCap 余额）"));
-    props.put("disbandSource", ToolSupport.prop("boolean", "缺省 false；true 且吸收后源 member=0 才同批解散源"));
+    props.put("count", ToolSupport.prop("integer", "吸收人数（≥ 1；不得超过源单位人力合计与 staffCap 余额）"));
+    props.put("disbandSource", ToolSupport.prop("boolean", "缺省 false；true 且吸收后源人力合计=0 才同批解散源"));
     props.put("reason", ToolSupport.prop("string", "吸收原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSupport.prop("boolean", "true（缺省）= 只算不写；false = 提交同一批命令"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));

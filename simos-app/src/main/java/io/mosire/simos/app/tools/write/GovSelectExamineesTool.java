@@ -43,7 +43,7 @@ import java.util.UUID;
  * RegionAllocations#allocateManpower} 同一份，不另写第二份。
  *
  * <p>★★ <b>批（固定顺序，一条 revision）</b>：{@code social.SeedGroups}（逐批整组覆盖，带 ageDays/anchorTick/stress
- * 保真）→ {@code unit.CreateUnit}（untagged、member=count、equipment={}、speed=4、
+ * 保真）→ {@code unit.CreateUnit}（untagged、manpower=[{type=role, amount=count}]、equipment=[]、speed=4、
  * mobilityPerMille=800、position=来源 GOV 当刻有效位置）→（目的 GOV 给了且不同格）{@code unit.PlanRoute} （waypoints =
  * A* 逐格路径）→ {@code sd.PutInfo}（key={@value #INFO_KEY}，value 含来源/目的/角色）。
  *
@@ -107,10 +107,10 @@ public final class GovSelectExamineesTool implements AgentTool {
         + "来源：按来源 GOV jurisdiction 的 Region 键序逐个用 RegionAllocations 的 MALE+ADULT 瀑布分配直到满额；"
         + "不足 ⇒ 整条拒（带 requested/available/缺口），不部分抽取。"
         + "批：social.SeedGroups（逐批整组覆盖，带 ageDays/anchorTick/stress 保真）→ unit.CreateUnit（untagged："
-        + "member=count、equipment={}、speed=4、mobilityPerMille=800、position=来源 GOV 当刻有效位置）→"
+        + "manpower=[{type=role, amount=count}]、equipment=[]、speed=4、mobilityPerMille=800、position=来源 GOV 当刻有效位置）→"
         + "（目的 GOV 给了且不同格）unit.PlanRoute（waypoints=A* 逐格路径）→ sd.PutInfo(key="
         + INFO_KEY
-        + ")。守恒：Σ来源扣人 == count == 新单位 member。"
+        + ")。守恒：Σ来源扣人 == count == 新单位 manpower 的 count。"
         + "返回 {preview, submitted, tick, unitId, newUnitId, count, role, targetGovUnitId, at, available, "
         + "route, sources, commands, infoText}；apply 另加 submission。";
   }

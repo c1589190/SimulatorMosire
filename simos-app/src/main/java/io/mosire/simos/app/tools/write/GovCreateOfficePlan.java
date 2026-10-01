@@ -32,7 +32,7 @@ import java.util.Set;
  * 切片，单条命令只能落一个命名空间。本工具走 {@link io.mosire.simos.core.CoreSimos#submitBatch}（同 branch + 同
  * expectedRevision ⇒ 一批 = 一条 revision，原子）。
  *
- * <p>★★ <b>新单位参数（控制方口径，逐值写死；不在类外再拼一份）</b>：{@code member=0}、{@code equipment={}}、{@code
+ * <p>★★ <b>新单位参数（控制方口径，逐值写死；不在类外再拼一份）</b>：{@code manpower=[]}、{@code equipment=[]}、{@code
  * speed=1}、{@code mobilityPerMille=500}、{@code position=(q,r)}、<b>无 parent</b>（顶层，{@code
  * attached=false}）、{@code status} 走 {@code unit.CreateUnit} 的缺省 {@code MOVING}、{@code module} 由同批
  * {@code unit.SetGovFormation} 落。{@code jurisdiction}：{@code regions} 非空时由同批 {@code
@@ -341,8 +341,8 @@ final class GovCreateOfficePlan {
       payload.put("id", unitId);
       payload.put("name", name);
       payload.put("position", ToolSupport.hexCoord(at));
-      payload.put("member", 0);
-      payload.put("equipment", new LinkedHashMap<String, Object>());
+      payload.put("manpower", List.of());
+      payload.put("equipment", List.of());
       payload.put("speed", NEW_UNIT_SPEED);
       payload.put("mobilityPerMille", NEW_UNIT_MOBILITY_PER_MILLE);
       return ToolSupport.json(payload);

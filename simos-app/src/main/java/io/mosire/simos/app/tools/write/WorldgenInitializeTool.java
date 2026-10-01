@@ -41,6 +41,7 @@ import io.mosire.simos.social.gen.TerrainView;
 import io.mosire.simos.social.gen.ValueRange;
 import io.mosire.simos.social.gen.WorldgenConfig;
 import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
@@ -102,10 +103,11 @@ import java.util.UUID;
  *       ⇒ **跳过**（幂等）。
  *   <li>{@code sd.CreateNation}（{@code nationId = regionId 字面值}）。★ {@code adminBudgetPerTick} **置
  *       0**：行政预算属后续 政治-经济模型，冻结输入**没有**它的依据，本笔不臆造（{@code Nation} 允许 0）。
- *   <li>**根单位**一条 + **每个兵种一条** {@code unit.CreateUnit}：{@code member} 取编制人数、{@code equipment} 按
- *       {@code armKits} 的"每百人件数"换算（{@code ceil(人数 × 件数 / 100)}，键名原样）、{@code speed}/{@code
- *       mobilityPerMille} 取 {@link #ARMY_SPEED}/{@link #ARMY_MOBILITY_PER_MILLE}、{@code status =
- *       RESTING}、兵种单位的 {@code parent} 指向根单位。
+ *   <li>**根单位**一条 + **每个兵种一条** {@code unit.CreateUnit}：{@code manpower} 是编制表（根单位 = 全部兵种逐条、兵种单位 =
+ *       自己那一条；type 取兵种名、amount 取编制人数）、{@code equipment} 按 {@code armKits} 的"每百人件数"换算（{@code ceil(人数
+ *       × 件数 / 100)}，键名原样；装备同形有序表）、{@code speed}/{@code mobilityPerMille} 取 {@link
+ *       #ARMY_SPEED}/{@link #ARMY_MOBILITY_PER_MILLE}、{@code status = RESTING}、兵种单位的 {@code parent}
+ *       指向根单位。
  *   <li>{@code unit.CreateCommandChain}：{@code commander = 根单位}，{@code members}
  *       **含根单位与全部兵种单位**（{@code CommandChain} 构造期硬要求 {@code commander ∈ members}）。
  *   <li>{@code sd.CreateArmy}：{@code rootUnitId = 根单位}；{@code masterGovUnitId} <b>省略</b>——本批尚不建 GOV
@@ -932,8 +934,8 @@ public final class WorldgenInitializeTool implements AgentTool {
                 rootId,
                 displayName + ARMY_NAME_SUFFIX,
                 at,
-                establishmentTotal(army),
-                Map.of(),
+                manpowerForAll(army),
+                List.of(),
                 null)));
     List<String> armUnitIds = new ArrayList<>(army.establishment().size());
     for (Map.Entry<String, Integer> entry : army.establishment().entrySet()) {
@@ -950,7 +952,7 @@ public final class WorldgenInitializeTool implements AgentTool {
                   armId,
                   entry.getKey(),
                   at,
-                  entry.getValue(),
+                  List.of(new CompositionEntry(entry.getKey(), entry.getValue())),
                   equipmentFor(army, entry.getKey()),
                   rootId)));
     }
@@ -1042,15 +1044,15 @@ public final class WorldgenInitializeTool implements AgentTool {
       String id,
       String name,
       HexCoord at,
-      int member,
-      Map<String, Integer> equipment,
+      List<CompositionEntry> manpower,
+      List<CompositionEntry> equipment,
       String parent) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("id", id);
     payload.put("name", name);
     payload.put("position", ToolSupport.hexCoord(at));
-    payload.put("member", member);
-    payload.put("equipment", equipment);
+    payload.put("manpower", ToolSupport.compositionView(manpower));
+    payload.put("equipment", ToolSupport.compositionView(equipment));
     payload.put("speed", ARMY_SPEED);
     payload.put("mobilityPerMille", ARMY_MOBILITY_PER_MILLE);
     payload.put("status", ARMY_STATUS);
@@ -1086,18 +1088,32 @@ public final class WorldgenInitializeTool implements AgentTool {
   }
 
   /**
-   * 某兵种的装备表：对 {@code armKits} 的每件装备取 {@code ceil(人数 × 每百人件数 / 100)}。兵种不在 {@code armKits} 里
-   * （如德意志的「仆从兵」）⇒ 空表（{@code unit.CreateUnit} 的 {@code equipment} 允许空对象）。
+   * 根单位的人力表：把 {@code establishment} 的每个兵种按原顺序转成一条 {@link CompositionEntry}（数量是人数）。
+   *
+   * <p>★ D3a 口径：根单位仍是"全军壳体"，它的 {@code manpower} 就是全部兵种人力（与旧 {@code member = establishmentTotal}
+   * 的总量语义一致，只是从单一 int 变成有序多类型表）。兵种单位各自只有自己那一条人力。
    */
-  private static Map<String, Integer> equipmentFor(ArmyPlan army, String arm) {
-    Map<String, Integer> equipment = new LinkedHashMap<>();
+  private static List<CompositionEntry> manpowerForAll(ArmyPlan army) {
+    List<CompositionEntry> manpower = new ArrayList<>(army.establishment().size());
+    for (Map.Entry<String, Integer> entry : army.establishment().entrySet()) {
+      manpower.add(new CompositionEntry(entry.getKey(), entry.getValue()));
+    }
+    return manpower;
+  }
+
+  /**
+   * 某兵种的装备表：对 {@code armKits} 的每件装备取 {@code ceil(人数 × 每百人件数 / 100)}。兵种不在 {@code armKits} 里
+   * （如德意志的「仆从兵」）⇒ 空表（{@code unit.CreateUnit} 的 {@code equipment} 允许空数组）。
+   */
+  private static List<CompositionEntry> equipmentFor(ArmyPlan army, String arm) {
+    List<CompositionEntry> equipment = new ArrayList<>();
     Map<String, Integer> kit = army.armKits().get(arm);
     if (kit == null) {
       return equipment;
     }
     int member = army.establishment().get(arm);
     for (Map.Entry<String, Integer> item : kit.entrySet()) {
-      equipment.put(item.getKey(), ceilPerHundred(member, item.getValue()));
+      equipment.add(new CompositionEntry(item.getKey(), ceilPerHundred(member, item.getValue())));
     }
     return equipment;
   }
@@ -1239,7 +1255,7 @@ public final class WorldgenInitializeTool implements AgentTool {
 
   /**
    * {@code army} 摘要段（{@code dryRun} 时只是不落盘）：由编制与驻地算出，各 id 与 {@link #appendArmyCommands} 逐字一致。
-   * {@code units} 表首行是根单位（{@code member = establishmentTotal}），随后每个兵种一行。
+   * {@code units} 表首行是根单位（{@code manpower} = 全部兵种逐条），随后每个兵种一行（各带自己的装备表）。
    */
   private static Map<String, Object> armySummary(
       String nationId, String displayName, ArmyPlan army, HexCoord at) {
@@ -1256,20 +1272,29 @@ public final class WorldgenInitializeTool implements AgentTool {
     view.put("armyId", armyId(nationId));
     view.put("position", ToolSupport.hexCoord(at));
     List<Map<String, Object>> units = new ArrayList<>(1 + army.establishment().size());
-    units.add(unitRow(rootId, displayName + ARMY_NAME_SUFFIX, total));
+    units.add(unitRow(rootId, displayName + ARMY_NAME_SUFFIX, manpowerForAll(army), List.of()));
     for (Map.Entry<String, Integer> entry : army.establishment().entrySet()) {
-      units.add(unitRow(armUnitId(nationId, entry.getKey()), entry.getKey(), entry.getValue()));
+      units.add(
+          unitRow(
+              armUnitId(nationId, entry.getKey()),
+              entry.getKey(),
+              List.of(new CompositionEntry(entry.getKey(), entry.getValue())),
+              equipmentFor(army, entry.getKey())));
     }
     view.put("units", units);
     return view;
   }
 
-  /** 编制单位行：{@code {id,name,member}}。 */
-  private static Map<String, Object> unitRow(String id, String name, int member) {
+  /**
+   * 编制单位行：{@code {id,name,manpower:[{type,amount}],equipment:[{type,amount}]}}（D3a 起与 Unit 新表同形）。
+   */
+  private static Map<String, Object> unitRow(
+      String id, String name, List<CompositionEntry> manpower, List<CompositionEntry> equipment) {
     Map<String, Object> row = new LinkedHashMap<>();
     row.put("id", id);
     row.put("name", name);
-    row.put("member", member);
+    row.put("manpower", ToolSupport.compositionView(manpower));
+    row.put("equipment", ToolSupport.compositionView(equipment));
     return row;
   }
 

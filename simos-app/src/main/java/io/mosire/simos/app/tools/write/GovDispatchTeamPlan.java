@@ -2,6 +2,7 @@ package io.mosire.simos.app.tools.write;
 
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
@@ -31,12 +32,12 @@ import java.util.Optional;
  * canonical，key={@code dispatchTeam}，value 含 armed 标记）。
  *
  * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：来源 GOV 存在且带 {@link
- * GovFormation}；{@code count ≥ 1} 且 ≤ {@code Integer.MAX_VALUE}（{@code unit.CreateUnit.member} 是
- * int）；{@code roster[role] ≥ count}（缺省 role = SCRIBE）否则具名拒（带现有/请求数字）；来源 GOV 当刻必须有有效 位置；{@code
- * newUnitId} 给了且已存在 ⇒ 具名拒（缺省确定性生成）。
+ * GovFormation}；{@code count ≥ 1}（{@code unit.CreateUnit} 的 manpower amount 是 long，不再有 int 上限）；
+ * {@code roster[role] ≥ count}（缺省 role = SCRIBE）否则具名拒（带现有/请求数字）；来源 GOV 当刻必须有有效 位置；{@code newUnitId}
+ * 给了且已存在 ⇒ 具名拒（缺省确定性生成）。
  *
- * <p>★ <b>守恒</b>：{@code roster[role] − count == 出人后 roster}，且 {@code count == 新单位 member}；Plan
- * 构造期逐值互校。
+ * <p>★ <b>守恒</b>：{@code roster[role] − count == 出人后 roster}，且 {@code count == 新单位 manpower 的
+ * amount}；Plan 构造期逐值互校。
  */
 final class GovDispatchTeamPlan {
 
@@ -90,14 +91,6 @@ final class GovDispatchTeamPlan {
     requireNonBlank(unitId, "unitId");
     if (count < 1L) {
       throw new IllegalArgumentException("出人数量 count 必须 ≥ 1: " + count);
-    }
-    if (count > Integer.MAX_VALUE) {
-      throw new IllegalArgumentException(
-          "出人数量 count 超过 unit.CreateUnit 的 member（int）上限: "
-              + count
-              + "（最多 "
-              + Integer.MAX_VALUE
-              + "）");
     }
     StaffRole role = roleText.map(GovDispatchTeamPlan::parseRole).orElse(DEFAULT_ROLE);
     UnitState units = ToolSupport.unitState(state);
@@ -166,7 +159,7 @@ final class GovDispatchTeamPlan {
    * @param unitName 新单位名
    * @param at 新单位落点 = 来源 GOV 当刻有效位置
    * @param tick 推导时的世界日
-   * @param count 出人数量（= roster 减量 = 新单位 member）
+   * @param count 出人数量（= roster 减量 = 新单位 manpower 单条的 amount；type=role.name()）
    * @param role 出人角色
    * @param staffBefore 该角色出人前在编
    * @param staffAfter 该角色出人后在编（= staffBefore − count）
@@ -234,8 +227,11 @@ final class GovDispatchTeamPlan {
       payload.put("id", newUnitId);
       payload.put("name", unitName);
       payload.put("position", ToolSupport.hexCoord(at));
-      payload.put("member", (int) count);
-      payload.put("equipment", new LinkedHashMap<String, Object>());
+      // ★ D3a：出人来自 GOV roster[role]，type 用角色的自然语义名（roles 是受控词表，天然是好的 type）。
+      payload.put(
+          "manpower",
+          ToolSupport.compositionView(List.of(new CompositionEntry(role.name(), count))));
+      payload.put("equipment", List.of());
       payload.put("speed", NEW_UNIT_SPEED);
       payload.put("mobilityPerMille", NEW_UNIT_MOBILITY_PER_MILLE);
       return ToolSupport.json(payload);

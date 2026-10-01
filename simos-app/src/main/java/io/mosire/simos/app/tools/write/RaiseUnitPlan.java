@@ -15,13 +15,13 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -59,15 +59,16 @@ import java.util.Optional;
  *       （不部分、不截断）；
  *   <li><b>国库落点 = {@code at}</b>：新单位国库账 = {@code ActorRef(UNIT, newUnitId)} @ {@code at}，与 levy /
  *       债同族；
- *   <li><b>产出</b>：新 {@code Unit.member = 实抽人力}；粮 / 钱进新单位国库；来源逐键进 {@code actor.AdjustAccounts} /
- *       {@code social.SeedGroups}，行动记录进 {@code sd.PutInfo}；<b>不另造第二份账</b>。
+ *   <li><b>产出</b>：新 {@code Unit} 的人力表 = 单条 {@code {type:"人员", amount:实抽人力}}；粮 / 钱进新单位国库；来源逐键进
+ *       {@code actor.AdjustAccounts} / {@code social.SeedGroups}，行动记录进 {@code
+ *       sd.PutInfo}；<b>不另造第二份账</b>。
  * </ol>
  *
  * <p>★ <b>为什么载荷组装也在这个类</b>：四条命令的载荷都是这份计划的纯函数（照 {@link UnitDebtPlan} 的拆法）——把载荷留在 工具里会多出一条"视图与载荷各读一次
  * Plan 字段"的缝，漏一个字段没有症状。载荷一律 {@link LinkedHashMap} 保序构造、 {@link ToolSupport#json} 序列化 ⇒ 同状态同参数逐字节相同。
  *
  * <p>★ <b>确定性 / 保序不可变</b>：本类不碰墙钟、不用随机量（{@code tick} 是状态 meta 的函数）；来源表由 {@link RegionAllocations}
- * 冻住，equipment 冻在 Plan 的赋值处（{@code Collections.unmodifiableMap} + 保序拷贝，不用 {@code Map.copyOf}）。
+ * 冻住，equipment 冻在 Plan 的赋值处（{@code List.copyOf} + 保序转表，不用 {@code Map.copyOf}）。
  */
 final class RaiseUnitPlan {
 
@@ -85,6 +86,15 @@ final class RaiseUnitPlan {
 
   /** 粮的商品 id（{@link PilotModel#GRAIN} 的<b>唯一</b>字面量来源；本类不另写 {@code "grain"}）。 */
   private static final CommodityId GRAIN = new CommodityId(PilotModel.GRAIN);
+
+  /**
+   * 从地方抽取人力时，新单位人力表的 type 字面量（D3a 无受控词表，取自然语义）。
+   *
+   * <p>★ 为什么是固定 {@code "人员"} 而不是让调用方给 type：本工具抽取的是"region 内 MALE + 成年档"的人口，不是某个兵种；
+   * 抽来的人尚未分兵种，给它一个中性的自然语义类型最诚实。需要任意的多类型人力搭配时，走 {@code simos.unit.create} 窄工具或 {@code
+   * simos.army.formatUnit}。
+   */
+  static final String DEFAULT_MANPOWER_TYPE = "人员";
 
   private RaiseUnitPlan() {}
 
@@ -128,14 +138,6 @@ final class RaiseUnitPlan {
     }
     if (manpower < 1L) {
       throw new IllegalArgumentException("manpower 必须 ≥ 1: " + manpower);
-    }
-    if (manpower > Integer.MAX_VALUE) {
-      throw new IllegalArgumentException(
-          "manpower 超过 unit.CreateUnit 的 member（int）上限: "
-              + manpower
-              + "（最多 "
-              + Integer.MAX_VALUE
-              + "）");
     }
     requireNonNegative(grain, "grain");
     requireNonNegative(money, "money");
@@ -194,13 +196,13 @@ final class RaiseUnitPlan {
         regionId,
         at,
         tick,
-        (int) manpower,
+        manpower,
         grainAllocation,
         moneyAllocation,
         manpowerAllocation,
         speed,
         mobilityPerMille,
-        equipment,
+        ToolSupport.compositionEntries(equipment),
         parent);
   }
 
@@ -285,13 +287,13 @@ final class RaiseUnitPlan {
    * @param regionId 来源区域
    * @param at 新单位落点 = 国库落点
    * @param tick 推导时的世界日（行动记录用）
-   * @param member 新单位人数（= 实抽人力）
+   * @param manpowerCount 新单位实抽人数（= 新单位 manpower 表中 {@value #DEFAULT_MANPOWER_TYPE} 的 amount）
    * @param grain 粮来源分摊（requested = 0 = 本维度整段跳过）
    * @param money 钱来源分摊（requested = 0 = 本维度整段跳过）
    * @param manpower 人力来源分摊（manpower ≥ 1 ⇒ 恒有实际来源）
    * @param speed 新单位速度（&ge; 1）
    * @param mobilityPerMille 新单位机动性（[1,1000]）
-   * @param equipment 新单位装备（保序不可变；缺省空表）
+   * @param equipment 新单位装备（输入 map 按其迭代序转成有序表；缺省空表）
    * @param parent 父单位 id（可选；给了必与 {@code at} 同格）
    */
   record Plan(
@@ -300,13 +302,13 @@ final class RaiseUnitPlan {
       String regionId,
       HexCoord at,
       long tick,
-      int member,
+      long manpowerCount,
       RegionAllocations.AccountAllocation grain,
       RegionAllocations.AccountAllocation money,
       RegionAllocations.ManpowerAllocation manpower,
       int speed,
       int mobilityPerMille,
-      Map<String, Integer> equipment,
+      List<CompositionEntry> equipment,
       Optional<String> parent) {
 
     Plan {
@@ -319,15 +321,18 @@ final class RaiseUnitPlan {
       if (tick < 0L) {
         throw new IllegalArgumentException("tick 不得为负: " + tick);
       }
-      if (member < 1) {
-        throw new IllegalArgumentException("member 必须 ≥ 1: " + member);
+      if (manpowerCount < 1L) {
+        throw new IllegalArgumentException("manpowerCount 必须 ≥ 1: " + manpowerCount);
       }
       Objects.requireNonNull(grain, "grain");
       Objects.requireNonNull(money, "money");
       Objects.requireNonNull(manpower, "manpower");
-      if (manpower.requested() != (long) member) {
+      if (manpower.requested() != manpowerCount) {
         throw new IllegalArgumentException(
-            "manpower.requested 必须等于 member: " + manpower.requested() + " vs " + member);
+            "manpower.requested 必须等于 manpowerCount: "
+                + manpower.requested()
+                + " vs "
+                + manpowerCount);
       }
       if (speed < 1) {
         throw new IllegalArgumentException("speed 必须 ≥ 1: " + speed);
@@ -337,21 +342,14 @@ final class RaiseUnitPlan {
       }
       Objects.requireNonNull(parent, "parent");
       parent.ifPresent(parentId -> requireNonBlank(parentId, "parent"));
-      // ★ 装备冻在赋值处（SpotBugs 的 EI_EXPOSE_REP 只认它看得见的 Collections.unmodifiable*）；
-      //   不用 Map.copyOf（它不承诺保序）。
-      Map<String, Integer> equipmentCopy = new LinkedHashMap<>();
-      for (Map.Entry<String, Integer> entry :
-          Objects.requireNonNull(equipment, "equipment").entrySet()) {
-        if (entry.getKey() == null || entry.getKey().isBlank()) {
-          throw new IllegalArgumentException("equipment 的键不得空白");
-        }
-        if (entry.getValue() == null || entry.getValue() < 0) {
-          throw new IllegalArgumentException(
-              "equipment 的值必须 ≥ 0: " + entry.getKey() + "=" + entry.getValue());
-        }
-        equipmentCopy.put(entry.getKey(), entry.getValue());
-      }
-      equipment = Collections.unmodifiableMap(equipmentCopy);
+      // ★ 装备冻在赋值处（SpotBugs 的 EI_EXPOSE_REP 只认它看得见的 Collections.unmodifiableList）；
+      //   输入 map 已由 plan() 的 requireEquipment 校过，这里按迭代序转成有序条目表。
+      equipment = List.copyOf(Objects.requireNonNull(equipment, "equipment"));
+    }
+
+    /** 新单位的人力表：单条 {@value RaiseUnitPlan#DEFAULT_MANPOWER_TYPE}（抽取来的人尚未分兵种）。 */
+    List<CompositionEntry> manpowerEntries() {
+      return List.of(new CompositionEntry(DEFAULT_MANPOWER_TYPE, manpowerCount));
     }
 
     /** 是否需要落 {@code actor.AdjustAccounts}（粮 / 钱任一 &gt; 0）。 */
@@ -373,7 +371,7 @@ final class RaiseUnitPlan {
 
     /**
      * {@code unit.CreateUnit} 载荷（字段名逐字照 handler 的 {@code UnitPayloads}：{@code
-     * id/name/position/member/equipment/speed/mobilityPerMille/parent?}）。
+     * id/name/position/manpower/equipment/speed/mobilityPerMille/parent?}）。
      *
      * <p>★ {@code jurisdiction} 不在载荷里：{@code CreateUnitHandler} 对新建单位一律取 {@code Optional.empty()}
      * （新单位尚无管辖），本工具不发明第二个字段。
@@ -383,8 +381,8 @@ final class RaiseUnitPlan {
       payload.put("id", unitId);
       payload.put("name", name);
       payload.put("position", ToolSupport.hexCoord(at));
-      payload.put("member", member);
-      payload.put("equipment", new LinkedHashMap<>(equipment));
+      payload.put("manpower", ToolSupport.compositionView(manpowerEntries()));
+      payload.put("equipment", ToolSupport.compositionView(equipment));
       payload.put("speed", speed);
       payload.put("mobilityPerMille", mobilityPerMille);
       parent.ifPresent(parentId -> payload.put("parent", parentId));
@@ -484,7 +482,8 @@ final class RaiseUnitPlan {
       value.put("unitId", unitId);
       value.put("regionId", regionId);
       value.put("at", ToolSupport.hexCoord(at));
-      value.put("manpower", manpower.requested());
+      value.put("manpower", ToolSupport.compositionView(manpowerEntries()));
+      value.put("manpowerRequested", manpower.requested());
       value.put("grain", grain.requested());
       value.put("money", money.requested());
       Map<String, Object> sourceCounts = new LinkedHashMap<>();

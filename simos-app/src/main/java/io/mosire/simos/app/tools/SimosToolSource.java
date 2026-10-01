@@ -48,6 +48,7 @@ import io.mosire.simos.app.tools.write.AssignArmyGovTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.EconomyAdjustTool;
 import io.mosire.simos.app.tools.write.ForkTool;
+import io.mosire.simos.app.tools.write.FormatUnitTool;
 import io.mosire.simos.app.tools.write.GmApproveTool;
 import io.mosire.simos.app.tools.write.GovAbsorbUnitTool;
 import io.mosire.simos.app.tools.write.GovApplyStaffingTool;
@@ -98,6 +99,7 @@ import io.mosire.simos.app.tools.write.SocialUpdateCityTool;
 import io.mosire.simos.app.tools.write.SpawnArmyTool;
 import io.mosire.simos.app.tools.write.StartDecisionTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
+import io.mosire.simos.app.tools.write.UnitAdjustCompositionTool;
 import io.mosire.simos.app.tools.write.UnitApplyCasualtiesTool;
 import io.mosire.simos.app.tools.write.UnitAttachTool;
 import io.mosire.simos.app.tools.write.UnitCancelRouteTool;
@@ -113,6 +115,7 @@ import io.mosire.simos.app.tools.write.UnitRenameTool;
 import io.mosire.simos.app.tools.write.UnitReparentSubtreeTool;
 import io.mosire.simos.app.tools.write.UnitReparentTool;
 import io.mosire.simos.app.tools.write.UnitSetArmyFormationTool;
+import io.mosire.simos.app.tools.write.UnitSetCompositionTool;
 import io.mosire.simos.app.tools.write.UnitSetFormationOffsetTool;
 import io.mosire.simos.app.tools.write.UnitSetGovFormationTool;
 import io.mosire.simos.app.tools.write.UnitSetGovPolicyTool;
@@ -121,7 +124,6 @@ import io.mosire.simos.app.tools.write.UnitSetJurisdictionTool;
 import io.mosire.simos.app.tools.write.UnitSetRejoinTargetTool;
 import io.mosire.simos.app.tools.write.UnitSetStateDescriptionTool;
 import io.mosire.simos.app.tools.write.UnitSetStatusTool;
-import io.mosire.simos.app.tools.write.UnitSetStrengthTool;
 import io.mosire.simos.app.tools.write.UnitSetTaxRateTool;
 import io.mosire.simos.app.tools.write.UnitSplitFormationTool;
 import io.mosire.simos.app.tools.write.UnitUpdateCommandChainTool;
@@ -457,7 +459,7 @@ public final class SimosToolSource implements ToolSource {
     built.add(new UnitRenameTool(core, initiator, mapId));
     built.add(new UnitCreateTool(core, initiator, mapId));
     built.add(new UnitReparentTool(core, initiator, mapId));
-    built.add(new UnitSetStrengthTool(core, initiator, mapId));
+    built.add(new UnitSetCompositionTool(core, initiator, mapId));
     built.add(new UnitPlaceAtTool(core, initiator, mapId));
     built.add(new UnitPlanRouteTool(core, initiator, mapId));
     built.add(new UnitCancelRouteTool(core, initiator, mapId));
@@ -477,6 +479,9 @@ public final class SimosToolSource implements ToolSource {
     built.add(new UnitCreateCommandChainTool(core, initiator, mapId));
     built.add(new UnitUpdateCommandChainTool(core, initiator, mapId));
     built.add(new UnitApplyCasualtiesTool(core, initiator, mapId));
+    // ★★ D3a（2026-10-02 / D-009 补裁）：GM 对单独 Unit 人力/装备直接变动的调试直通口（有符号增量，一条命令原子）。
+    //   **只在 GM 桶**；命令本身非 GmOnly（与既有 unit 命令同待遇）。★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
+    built.add(new UnitAdjustCompositionTool(core, initiator, mapId));
     // 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率。**只在 GM 桶**（与既有 unit 窄写同待遇）。
     built.add(new UnitSetJurisdictionTool(core, initiator, mapId));
     built.add(new UnitSetTaxRateTool(core, initiator, mapId));
@@ -560,6 +565,10 @@ public final class SimosToolSource implements ToolSource {
     // ★★ D1（2026-10-02 / D-012）：army 切片的交战记录写入（GM-only 命令 army.RecordCombat 的窄封装）。
     //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 army 命名空间。
     built.add(new ArmyRecordCombatTool(core, initiator, mapId));
+    // ★★ D3a（2026-10-02 / D-010 + 补裁 R2 最小环）：Army 侧"按统一格式整表复写单位人力/装备"的工具链入口——
+    //   按格式（有序条目 + 可选 jitter/上下限 + 可选 seed）算出目标表，经 unit.SetComposition 整表复写，
+    //   同批写 sd.PutInfo（含生效 seed，可复现证据）。**只在 GM 桶**；工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
+    built.add(new FormatUnitTool(core, query, initiator));
     // ★★ E6b：GM 经济调整（economy.GmAdjust 的窄封装：预览 / 原因 / 前后差异 / 审计）。
     //   **只在 GM 桶**：决策人桶（addDecisionAgentWrites）没有它，DecisionCallerFactory.WHITELIST 也没有它，
     //   且 economy.GmAdjust 本身标了 GmOnlyCommand（令/RegisterEffect/决策人 catalog 三条路径都排除）。

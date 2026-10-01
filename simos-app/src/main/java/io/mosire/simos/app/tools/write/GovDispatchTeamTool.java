@@ -41,7 +41,8 @@ import java.util.UUID;
  * simos.gov.dismiss} 的付款逻辑——退休待遇只在 {@code simos.gov.retireStaff} 那条链路里支付。
  *
  * <p>★★ <b>批顺序（固定，一条 revision）</b>：{@code unit.DismissStaff} → {@code
- * unit.CreateUnit}（member=count、 equipment={}、speed=6、mobilityPerMille=900、position=来源 GOV
+ * unit.CreateUnit}（manpower=[{type=role.name(),
+ * amount=count}]、equipment=[]、speed=6、mobilityPerMille=900、position=来源 GOV
  * 当刻有效位置）→（armed=true）{@code unit.SetArmyFormation}（masterGov=来源 GOV、role="armed-team"）→ {@code
  * sd.PutInfo}（key={@value #INFO_KEY}， 含 armed 标记）。
  *
@@ -98,10 +99,10 @@ public final class GovDispatchTeamTool implements AgentTool {
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
         + "出人不付退休待遇（直接 unit.DismissStaff，只减 roster）。"
-        + "批：unit.DismissStaff → unit.CreateUnit（untagged 纯人员单位：member=count、equipment={}、speed=6、"
-        + "mobilityPerMille=900、position=来源 GOV 当刻有效位置）→（armed）unit.SetArmyFormation → sd.PutInfo(key="
+        + "批：unit.DismissStaff → unit.CreateUnit（untagged 纯人员单位：manpower=[{type=role.name(), amount=count}]、"
+        + "equipment=[]、speed=6、mobilityPerMille=900、position=来源 GOV 当刻有效位置）→（armed）unit.SetArmyFormation → sd.PutInfo(key="
         + INFO_KEY
-        + ")。守恒：roster−count == 出人后 roster == 新单位 member 对应。"
+        + ")。守恒：roster−count == 出人后 roster == 新单位 manpower 的 count。"
         + "返回 {preview, submitted, tick, unitId, newUnitId, count, role, staffBefore, staffAfter, armed, at, "
         + "commands, infoText}；apply 另加 submission。";
   }

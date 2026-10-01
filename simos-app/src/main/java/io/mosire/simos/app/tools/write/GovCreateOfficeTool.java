@@ -51,8 +51,8 @@ import java.util.UUID;
  * <p>★★ <b>批顺序（固定，可复现）</b>：
  *
  * <ol>
- *   <li>{@code unit.CreateUnit}（恒有）：{@code member=0, equipment={}, speed=1, mobilityPerMille=500,
- *       position=(q,r)}，无 parent、status 缺省 MOVING；
+ *   <li>{@code unit.CreateUnit}（恒有）：{@code manpower=[], equipment=[], speed=1,
+ *       mobilityPerMille=500, position=(q,r)}，无 parent、status 缺省 MOVING；
  *   <li>{@code unit.SetGovFormation}（恒有）：{@code level/superiorGov?/staff/policy}；
  *   <li>{@code unit.SetJurisdiction}（仅 {@code regions} 非空才落）：{@code {unitId, regions:[…]}}，不带 levy
  *       caps；
@@ -141,7 +141,7 @@ public final class GovCreateOfficeTool implements AgentTool {
         + "纯推导前置：unitId/decisionMakerId 必须不存在；level 词表；regions 每个必须存在于当前地图（具名拒，不静默丢）；"
         + "level=PROVINCE 时 regions 必须非空，level=CENTRAL 时可为空（缺省空 = 不落 SetJurisdiction、无管辖）；"
         + "superiorGov 非空须存在且带 GovFormation。"
-        + "新单位固定 member=0/equipment={}/speed=1/mobilityPerMille=500/position=(q,r)/无 parent。"
+        + "新单位固定 manpower=[]/equipment=[]/speed=1/mobilityPerMille=500/position=(q,r)/无 parent。"
         + "批顺序：unit.CreateUnit → unit.SetGovFormation → [regions 非空: unit.SetJurisdiction] → "
         + "sd.CreateDecisionMaker → [provider] → [access] → sd.PutInfo(key="
         + INFO_KEY

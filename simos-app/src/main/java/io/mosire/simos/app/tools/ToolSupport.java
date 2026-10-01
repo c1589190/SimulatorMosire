@@ -26,6 +26,8 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.unit.CompositionDelta;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -751,6 +753,51 @@ public final class ToolSupport {
           "unit 模块切片不是 UnitSnapshot：" + snapshot.getClass().getName());
     }
     return unitSnapshot.state();
+  }
+
+  /**
+   * 人力/装备有序表 → JSON 视图（{@code [{type,amount}…]}，顺序原样）。
+   *
+   * <p>★ **全仓工具面的唯一转换点**（D3a，2026-10-02）：命令载荷与读视图都从 {@link CompositionEntry} 列表走这一条，避免每个 Plan/Tool
+   * 各拼一份 {@code {type,amount}}，形状漂移没有症状。
+   */
+  public static List<Map<String, Object>> compositionView(List<CompositionEntry> entries) {
+    List<Map<String, Object>> view = new ArrayList<>(entries.size());
+    for (CompositionEntry entry : entries) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("type", entry.type());
+      row.put("amount", entry.amount());
+      view.add(row);
+    }
+    return view;
+  }
+
+  /**
+   * 工具入参 {@code {type:数量}} → 有序 {@link CompositionEntry} 表（{@link LinkedHashMap} 的迭代序原样保留）。
+   *
+   * <p>这是 combo 工具输入面（{@code raiseUnit}/{@code spawnArmy} 的 {@code equipment}）到新 Unit 表形状的唯一桥；计数为
+   * {@code int} 的既有输入面不因此放宽（值的范围仍按各自工具的口径判）。
+   */
+  public static List<CompositionEntry> compositionEntries(Map<String, Integer> counts) {
+    List<CompositionEntry> entries = new ArrayList<>(counts.size());
+    for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+      entries.add(new CompositionEntry(entry.getKey(), entry.getValue()));
+    }
+    return entries;
+  }
+
+  /**
+   * 有符号增量表 → JSON 视图（{@code [{type,amount}…]}；amount 可负，供 ApplyCasualties/AdjustComposition 载荷）。
+   */
+  public static List<Map<String, Object>> compositionDeltaView(List<CompositionDelta> deltas) {
+    List<Map<String, Object>> view = new ArrayList<>(deltas.size());
+    for (CompositionDelta delta : deltas) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("type", delta.type());
+      row.put("amount", delta.amount());
+      view.add(row);
+    }
+    return view;
   }
 
   public static SocialData socialData(SimulationState state) {

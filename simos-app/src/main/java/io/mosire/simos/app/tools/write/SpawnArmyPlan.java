@@ -4,6 +4,7 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.id.ArmyId;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -13,7 +14,6 @@ import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,8 +33,9 @@ import java.util.Optional;
  * unit.SetArmyFormation} → {@code sd.CreateArmy} → {@code sd.PutInfo}。后三条都看得见前一条累积后的候选态，故 {@code
  * sd.CreateArmy} 的 {@code rootUnitId} 就是同批刚创建的 root 单位。
  *
- * <p>★★ <b>GM 特权口径</b>：直接建军<b>不抽人口、不抽粮饷</b>（用户 2026-10-01 裁定 6）；{@code member} 直接写进新单位，
- * 允许无人口、无国库；{@code member} 仍须 ≥ 1（P5 计划明文）。{@code raiseUnit} 保持抽取语义，一个字不动。
+ * <p>★★ <b>GM 特权口径</b>：直接建军<b>不抽人口、不抽粮饷</b>（用户 2026-10-01 裁定 6）；{@code member} 直接写进新单位 的人力表（单条
+ * {@code {type:"士兵", amount=member}}），允许无人口、无国库；{@code member} 仍须 ≥ 1（P5 计划明文）。 {@code raiseUnit}
+ * 保持抽取语义，一个字不动。
  *
  * <p>★★ <b>{@code masterGov} 的双边语义</b>：{@code masterGov} 给了 ⇒ 必须存在且带 {@link GovFormation}；同批写入
  * {@code sd.CreateArmy.masterGovUnitId}。{@code role} 非空 ⇒ 同批再落 {@code unit.SetArmyFormation}，并把同一个
@@ -50,8 +51,7 @@ import java.util.Optional;
  * REJECTED}。
  *
  * <p>★ <b>确定性 / 保序不可变</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；{@code equipment} 用 {@link
- * LinkedHashMap} 拷贝 + 赋值处冻结（{@code Collections.unmodifiableMap}，<b>不用</b> {@code Map.copyOf}——它不承诺
- * 保序）。
+ * LinkedHashMap} 输入序 + 赋值处 {@code List.copyOf}（<b>不用</b> {@code Map.copyOf}——它不承诺保序）。
  */
 final class SpawnArmyPlan {
 
@@ -75,6 +75,14 @@ final class SpawnArmyPlan {
 
   /** 新单位状态缺省值（P5 计划：{@code status} 可选，缺省 {@code RESTING}）。 */
   static final UnitStatus DEFAULT_STATUS = UnitStatus.RESTING;
+
+  /**
+   * 新单位人力表的 type 字面量（D3a：{@code member} 这个单一人数在命令载荷里已变成有序条目表；本工具取自然语义 {@code "士兵"}）。
+   *
+   * <p>★ 本工具输入仍是单一 {@code member}（GM 直接建军的人数），故只能落一条同 type 的条目；需要任意多类型人力时走 {@code
+   * simos.unit.create} 窄工具或 {@code simos.army.formatUnit}。是否给 type 可配参数**本阶段未裁定**，不发明。
+   */
+  static final String DEFAULT_MANPOWER_TYPE = "士兵";
 
   private SpawnArmyPlan() {}
 
@@ -154,7 +162,7 @@ final class SpawnArmyPlan {
         name,
         at,
         member,
-        equipment,
+        ToolSupport.compositionEntries(equipment),
         speed,
         mobilityPerMille,
         parent,
@@ -241,8 +249,8 @@ final class SpawnArmyPlan {
    * @param unitId root 单位 id
    * @param name 新单位名
    * @param at 新单位落点
-   * @param member 新单位人数（≥ 1）
-   * @param equipment 新单位装备（保序不可变；缺省空表）
+   * @param member 新单位人数（≥ 1；GM 直接建军不抽人口）
+   * @param equipment 新单位装备（输入 map 按其迭代序转成有序表；缺省空表）
    * @param speed 新单位速度（≥ 1）
    * @param mobilityPerMille 新单位机动性（[1,1000]）
    * @param parent 父单位 id（可选）
@@ -257,7 +265,7 @@ final class SpawnArmyPlan {
       String name,
       HexCoord at,
       int member,
-      Map<String, Integer> equipment,
+      List<CompositionEntry> equipment,
       int speed,
       int mobilityPerMille,
       Optional<String> parent,
@@ -291,21 +299,14 @@ final class SpawnArmyPlan {
       parent.ifPresent(value -> requireNonBlank(value, "parent"));
       role.ifPresent(value -> requireNonBlank(value, "role"));
       masterGov.ifPresent(value -> requireNonBlank(value, "masterGov"));
-      // ★ 装备冻在赋值处（SpotBugs 的 EI_EXPOSE_REP 只认它看得见的 Collections.unmodifiable*）；
-      //   不用 Map.copyOf（它不承诺保序）。
-      Map<String, Integer> copy = new LinkedHashMap<>();
-      for (Map.Entry<String, Integer> entry :
-          Objects.requireNonNull(equipment, "equipment").entrySet()) {
-        if (entry.getKey() == null || entry.getKey().isBlank()) {
-          throw new IllegalArgumentException("equipment 的键不得空白");
-        }
-        if (entry.getValue() == null || entry.getValue() < 0) {
-          throw new IllegalArgumentException(
-              "equipment 的值必须 ≥ 0: " + entry.getKey() + "=" + entry.getValue());
-        }
-        copy.put(entry.getKey(), entry.getValue());
-      }
-      equipment = Collections.unmodifiableMap(copy);
+      // ★ 装备冻在赋值处（SpotBugs 的 EI_EXPOSE_REP 只认它看得见的 Collections.unmodifiableList）；
+      //   输入 map 已由 plan() 的 requireEquipment 校过，这里按迭代序转成有序条目表。
+      equipment = List.copyOf(Objects.requireNonNull(equipment, "equipment"));
+    }
+
+    /** 新单位的人力表：单条 {@value #DEFAULT_MANPOWER_TYPE}（输入 member 是单一人数）。 */
+    List<CompositionEntry> manpowerEntries() {
+      return List.of(new CompositionEntry(DEFAULT_MANPOWER_TYPE, member));
     }
 
     /** 是否要落 {@code unit.SetArmyFormation}（只有 {@code role} 给了才落）。 */
@@ -333,8 +334,8 @@ final class SpawnArmyPlan {
       payload.put("id", unitId);
       payload.put("name", name);
       payload.put("position", ToolSupport.hexCoord(at));
-      payload.put("member", member);
-      payload.put("equipment", new LinkedHashMap<>(equipment));
+      payload.put("manpower", ToolSupport.compositionView(manpowerEntries()));
+      payload.put("equipment", ToolSupport.compositionView(equipment));
       payload.put("speed", speed);
       payload.put("mobilityPerMille", mobilityPerMille);
       payload.put("status", status.name());
@@ -374,8 +375,8 @@ final class SpawnArmyPlan {
       value.put("unitId", unitId);
       value.put("armyId", armyId);
       value.put("hex", ToolSupport.hexCoord(at));
-      value.put("member", member);
-      value.put("equipment", new LinkedHashMap<>(equipment));
+      value.put("manpower", ToolSupport.compositionView(manpowerEntries()));
+      value.put("equipment", ToolSupport.compositionView(equipment));
       value.put("speed", speed);
       value.put("mobility", mobilityPerMille);
       value.put("masterGov", masterGov.orElse(null));

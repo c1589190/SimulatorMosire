@@ -11,6 +11,7 @@ import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatState;
 import io.mosire.simos.sd.model.LossRecord;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -105,15 +106,35 @@ public final class RecordCasualtiesHandler implements CommandHandler {
     }
   }
 
+  /**
+   * 上界校验（N3 / P14）：人员按**人力合计**判（sd 这代战损记录仍是单一 {@code personnel}，不区分人力类型），装备按 {@link
+   * Unit#equipment()} 的 type 逐项判。
+   *
+   * <p>★ D3a 适配（2026-10-02）：Unit 的 {@code equipment} 从 Map 改为有序条目列表 ⇒ 这里从"按键取值"改成"按 type 线性查"； sd
+   * 的损失记录模型与命令载荷形状本阶段**不动**（D-012：旧 sd 战斗命令族清理另批），故 {@code personnel} 仍只报一个总量。
+   */
   private static void requireWithinBound(CasualtyDelta delta, Unit unit) {
-    if (delta.personnel() < -unit.member()) {
+    long manpowerTotal = 0L;
+    for (CompositionEntry entry : unit.manpower()) {
+      manpowerTotal =
+          manpowerTotal > Long.MAX_VALUE - entry.amount()
+              ? Long.MAX_VALUE
+              : manpowerTotal + entry.amount();
+    }
+    if (delta.personnel() < -manpowerTotal) {
       throw new IllegalArgumentException(
-          "人员战损超出当前值: " + unit.member() + " + (" + delta.personnel() + ")");
+          "人员战损超出当前值: " + manpowerTotal + " + (" + delta.personnel() + ")");
     }
     for (Map.Entry<String, Integer> entry : delta.equipment().entrySet()) {
-      Integer current = unit.equipment().get(entry.getKey());
+      Long current = null;
+      for (CompositionEntry equip : unit.equipment()) {
+        if (equip.type().equals(entry.getKey())) {
+          current = equip.amount();
+          break;
+        }
+      }
       if (current == null) {
-        throw new IllegalArgumentException("未知装备键: " + entry.getKey());
+        throw new IllegalArgumentException("未知装备类型: " + entry.getKey());
       }
       if (entry.getValue() < -current) {
         throw new IllegalArgumentException(

@@ -2,6 +2,8 @@ package io.mosire.simos.app.tools.write;
 
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.unit.ArmyFormation;
+import io.mosire.simos.unit.CompositionDelta;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
@@ -20,22 +22,22 @@ import java.util.Optional;
  * 编制（可顺带解散已空的源单位）+ 留行动记录，一批落一条 revision——<b>不碰</b> {@link
  * io.mosire.agentlib.tool.ToolContext}/{@code CoreSimos}。
  *
- * <p>★★ <b>批顺序（固定，可复现）</b>：{@code unit.ApplyCasualties}（源单位 {@code personnel=-count}、 {@code
- * equipment={}}）→ {@code unit.RecruitStaff}（{@code sources=[{kind:"unit", id, count}]}）→（{@code
- * disbandSource} 且吸收后源 member==0）{@code unit.DisbandUnit} → {@code sd.PutInfo}（地址 = GOV canonical，
- * key={@code absorbUnit}）。
+ * <p>★★ <b>批顺序（固定，可复现）</b>：{@code unit.ApplyCasualties}（源单位 {@code manpower=[{type,−taken}]}、
+ * {@code equipment=[]}）→ {@code unit.RecruitStaff}（{@code sources=[{kind:"unit", id,
+ * count}]}）→（{@code disbandSource} 且吸收后源人力合计==0）{@code unit.DisbandUnit} → {@code sd.PutInfo}（地址 =
+ * GOV canonical， key={@code absorbUnit}）。
  *
  * <p>★★ <b>源单位口径（用户裁定 3/10）</b>：<b>默认拒</b>带 ArmyFormation 的源单位（军队单位不是人口容器），<b>除非 源是无 module
  * 的纯人员单位</b>；带 GovFormation 的源同样拒。⇒ 本计划要求 {@code source.module().isEmpty()}， 两类编制都给出各自的具名拒因。
  *
- * <p>★★ <b>守恒</b>：{@code 源 member 前 − count == 源 member 后} 且 {@code GOV roster[role] 前 + count ==
- * roster 后}；Plan 构造期逐值互校。
+ * <p>★★ <b>守恒</b>：{@code 源人力合计前 − count == 源人力合计后} 且 {@code GOV roster[role] 前 + count == roster
+ * 后}；源有多个 type 时按源表序逐条扣；Plan 构造期逐值互校。
  *
- * <p>★ <b>disbandSource 的条件语义</b>：只有“吸收后源 member==0”才落 {@code unit.DisbandUnit}；若源仍有剩余人员，
+ * <p>★ <b>disbandSource 的条件语义</b>：只有“吸收后源人力合计==0”才落 {@code unit.DisbandUnit}；若源仍有剩余人员，
  * 本工具<b>不自动解散</b>（那会丢掉剩下的人），并在行动记录里具名说明 {@code disbandSkippedReason}。
  *
- * <p>★ <b>校验</b>：GOV 存在且带 {@link GovFormation}；源单位存在且 {@code member ≥ count}；{@code count ≥ 1}；
- * {@code staffCap[role]} 超限 ⇒ 具名拒（带现有 / 上限 / 请求，不截断）。
+ * <p>★ <b>校验</b>：GOV 存在且带 {@link GovFormation}；源单位存在且人力合计 {@code ≥ count}；{@code count ≥ 1}； {@code
+ * staffCap[role]} 超限 ⇒ 具名拒（带现有 / 上限 / 请求，不截断）。
  */
 final class GovAbsorbUnitPlan {
 
@@ -88,9 +90,10 @@ final class GovAbsorbUnitPlan {
     if (source == null) {
       throw new IllegalArgumentException("源人口单位不存在: " + sourceUnitId);
     }
-    if (source.member() < count) {
+    long sourceMemberBefore = manpowerTotal(source);
+    if (sourceMemberBefore < count) {
       throw new IllegalArgumentException(
-          "吸收 " + count + " 人超过源单位现有 member: 源 " + sourceUnitId + " 现有 " + source.member());
+          "吸收 " + count + " 人超过源单位现有人力合计: 源 " + sourceUnitId + " 现有 " + sourceMemberBefore);
     }
     var module = source.module().orElse(null);
     if (module instanceof ArmyFormation) {
@@ -128,7 +131,8 @@ final class GovAbsorbUnitPlan {
               + cap
               + "（不截断；先 unit.SetGovPolicy 提上限或减少 count）");
     }
-    long sourceMemberAfter = source.member() - count;
+    long sourceMemberAfter = sourceMemberBefore - count;
+    List<CompositionDelta> manpowerDeltas = allocateManpowerDeltas(source, count);
     boolean disband = disbandSource && sourceMemberAfter == 0L;
     Optional<String> disbandSkippedReason =
         disbandSource && !disband
@@ -142,14 +146,50 @@ final class GovAbsorbUnitPlan {
         sourceUnitId,
         role,
         count,
-        source.member(),
+        sourceMemberBefore,
         sourceMemberAfter,
+        manpowerDeltas,
         staffBefore,
         staffBefore + count,
         disbandSource,
         disband,
         disbandSkippedReason,
         state.meta().timestamp().tick());
+  }
+
+  /** 源单位的现有人力合计（饱和加法：本类只用它做"够不够"与视图，不参与逐值扣减；表是合法 Unit ⇒ 每项 {@code ≥ 0}）。 */
+  private static long manpowerTotal(Unit unit) {
+    long total = 0L;
+    for (CompositionEntry entry : unit.manpower()) {
+      total = total > Long.MAX_VALUE - entry.amount() ? Long.MAX_VALUE : total + entry.amount();
+    }
+    return total;
+  }
+
+  /**
+   * 从源单位的多条人力里按**表序**扣 {@code count} 人，逐 type 生成负增量。
+   *
+   * <p>★ 口径：先扣表里靠前的 type，扣完再下一个；每 type 至多扣光、不越界。调用方已保证 {@code Σ amount ≥
+   * count}，故这里不会出现"扣不满"；真出现就是夹具坏了，抛 {@link IllegalStateException}（不是可拒的坏命令）。
+   */
+  private static List<CompositionDelta> allocateManpowerDeltas(Unit source, long count) {
+    List<CompositionDelta> deltas = new ArrayList<>();
+    long remaining = count;
+    for (CompositionEntry entry : source.manpower()) {
+      if (remaining == 0L) {
+        break;
+      }
+      long taken = Math.min(entry.amount(), remaining);
+      if (taken > 0L) {
+        deltas.add(new CompositionDelta(entry.type(), -taken));
+        remaining -= taken;
+      }
+    }
+    if (remaining != 0L) {
+      throw new IllegalStateException(
+          "内部分摊不自洽：源 " + source.id() + " 人力合计不足 " + count + "（余 " + remaining + "）");
+    }
+    return List.copyOf(deltas);
   }
 
   /** 角色词表：只认 SCRIBE|YAMEN|POST，别的词给具名拒（不静默当缺省）。 */
@@ -185,9 +225,10 @@ final class GovAbsorbUnitPlan {
    * @param govUnitId 吸收方 GOV
    * @param sourceUnitId 源纯人员单位
    * @param role 入编角色
-   * @param count 吸收人数（= 源 member 减量 = roster 增量）
-   * @param sourceMemberBefore 源吸收前 member
-   * @param sourceMemberAfter 源吸收后 member（= before − count）
+   * @param count 吸收人数（= 源人力合计减量 = roster 增量）
+   * @param sourceMemberBefore 源吸收前人力合计
+   * @param sourceMemberAfter 源吸收后人力合计（= before − count）
+   * @param manpowerDeltas 源人力表上的负增量（按源表序逐 type 扣，Σ(−amount) == count）
    * @param staffBefore 该角色吸收前在编
    * @param staffAfter 该角色吸收后在编（= before + count）
    * @param disbandSource 调用方是否请求“源空则解散”
@@ -202,6 +243,7 @@ final class GovAbsorbUnitPlan {
       long count,
       long sourceMemberBefore,
       long sourceMemberAfter,
+      List<CompositionDelta> manpowerDeltas,
       long staffBefore,
       long staffAfter,
       boolean disbandSource,
@@ -218,12 +260,19 @@ final class GovAbsorbUnitPlan {
       }
       if (sourceMemberBefore < count || sourceMemberAfter != sourceMemberBefore - count) {
         throw new IllegalArgumentException(
-            "守恒破坏：源 member "
-                + sourceMemberBefore
-                + " − count "
-                + count
-                + " != "
-                + sourceMemberAfter);
+            "守恒破坏：源人力 " + sourceMemberBefore + " − count " + count + " != " + sourceMemberAfter);
+      }
+      manpowerDeltas = List.copyOf(Objects.requireNonNull(manpowerDeltas, "manpowerDeltas"));
+      long deltaTotal = 0L;
+      for (CompositionDelta delta : manpowerDeltas) {
+        if (delta.amount() >= 0L) {
+          throw new IllegalArgumentException("吸收载荷的增量必须为负: " + delta.type() + "=" + delta.amount());
+        }
+        deltaTotal += -delta.amount();
+      }
+      if (deltaTotal != count) {
+        throw new IllegalArgumentException(
+            "守恒破坏：Σ源人力扣减 " + deltaTotal + " != count " + count + "（批载荷必须逐值对应）");
       }
       if (staffAfter != staffBefore + count) {
         throw new IllegalArgumentException(
@@ -260,12 +309,12 @@ final class GovAbsorbUnitPlan {
       return List.copyOf(types);
     }
 
-    /** {@code unit.ApplyCasualties} 载荷：源单位按人数减员，装备不动（{@code equipment={}}）。 */
+    /** {@code unit.ApplyCasualties} 载荷：源单位按**人力表逐 type** 减员（D3a 的双轨 delta 有序表），装备不动（空数组）。 */
     String applyCasualtiesPayloadJson() {
       Map<String, Object> payload = new LinkedHashMap<>();
       payload.put("id", sourceUnitId);
-      payload.put("personnel", Math.toIntExact(-count));
-      payload.put("equipment", new LinkedHashMap<String, Object>());
+      payload.put("manpower", ToolSupport.compositionDeltaView(manpowerDeltas));
+      payload.put("equipment", List.of());
       return ToolSupport.json(payload);
     }
 

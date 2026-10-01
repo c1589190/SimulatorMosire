@@ -123,6 +123,7 @@ import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.unit.facet.UnitsHereFacet;
 import io.mosire.simos.unit.move.TerrainMovementCost;
 import io.mosire.simos.unit.resolve.UnitResolver;
+import io.mosire.simos.unit.spi.AdjustCompositionHandler;
 import io.mosire.simos.unit.spi.ApplyCasualtiesHandler;
 import io.mosire.simos.unit.spi.AttachUnitHandler;
 import io.mosire.simos.unit.spi.CancelRouteHandler;
@@ -140,6 +141,7 @@ import io.mosire.simos.unit.spi.RenameUnitHandler;
 import io.mosire.simos.unit.spi.ReparentSubtreeHandler;
 import io.mosire.simos.unit.spi.ReparentUnitHandler;
 import io.mosire.simos.unit.spi.SetArmyFormationHandler;
+import io.mosire.simos.unit.spi.SetCompositionHandler;
 import io.mosire.simos.unit.spi.SetFormationOffsetHandler;
 import io.mosire.simos.unit.spi.SetGovFormationHandler;
 import io.mosire.simos.unit.spi.SetGovPolicyHandler;
@@ -148,7 +150,6 @@ import io.mosire.simos.unit.spi.SetJurisdictionHandler;
 import io.mosire.simos.unit.spi.SetRejoinTargetHandler;
 import io.mosire.simos.unit.spi.SetStateDescriptionHandler;
 import io.mosire.simos.unit.spi.SetStatusHandler;
-import io.mosire.simos.unit.spi.SetStrengthHandler;
 import io.mosire.simos.unit.spi.SetTaxRateHandler;
 import io.mosire.simos.unit.spi.SplitFormationHandler;
 import io.mosire.simos.unit.spi.UnitTimeParticipant;
@@ -468,7 +469,7 @@ public final class Shell implements AutoCloseable {
                 new RenameUnitHandler(),
                 new CreateUnitHandler(),
                 new ReparentUnitHandler(),
-                new SetStrengthHandler(),
+                new SetCompositionHandler(),
                 new PlaceAtHandler(),
                 new PlanRouteHandler(),
                 new CancelRouteHandler(),
@@ -489,6 +490,10 @@ public final class Shell implements AutoCloseable {
                 new CreateCommandChainHandler(),
                 new UpdateCommandChainHandler(),
                 new ApplyCasualtiesHandler(),
+                // ★★ D3a（2026-10-02 / D-009 补裁）：单单位人力/装备的 GM 调试直改原语（有符号增量，一条命令原子）。
+                //   GmOnly（控制器 2026-10-02 收紧）⇒ 不进决策令 / RegisterEffect 白名单；GM 直通口是窄工具
+                //   simos.unit.adjust-composition（只在 GM 桶），以及 GM 的 simos.command.submit。──
+                new AdjustCompositionHandler(),
                 // ── 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率两条窄写。非 GmOnly ⇒ 与既有 unit 命令同待遇
                 //   （仍可嵌入决策人令；"只在 GM 桶"说的是配套窄工具）。──
                 new SetJurisdictionHandler(),

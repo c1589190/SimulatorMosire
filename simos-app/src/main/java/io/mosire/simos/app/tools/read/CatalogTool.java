@@ -59,10 +59,15 @@ public final class CatalogTool implements AgentTool {
           Map.entry("unit.RenameUnit", "id, name"),
           Map.entry(
               "unit.CreateUnit",
-              "id, name, position{q,r}?, member, equipment, speed, mobilityPerMille, parent?"
-                  + "（省略 position ⇒ 无自身位置、跟随父，此时 parent 必填）"),
+              "id, name, position{q,r}?, manpower[{type,amount}], equipment[{type,amount}], speed,"
+                  + " mobilityPerMille, parent?（省略 position ⇒ 无自身位置、跟随父，此时 parent 必填；"
+                  + "manpower/equipment 必填数组，空数组合法；同表 type 不得重复）"),
           Map.entry("unit.ReparentUnit", "id, parent?（null=清根）"),
-          Map.entry("unit.SetStrength", "id, member, equipment"),
+          Map.entry(
+              "unit.SetComposition",
+              "id, manpower[{type,amount}], equipment[{type,amount}]"
+                  + "（★ D3a：整表复写——两张表整体取代旧表、不是增量；未知 type 合法（给什么就是什么）；"
+                  + "amount ≥ 0、同表 type 不重复，越界由 Unit 构造期拒。旧 unit.SetStrength 已按 D-011 删除，不留兼容）"),
           Map.entry("unit.PlaceAt", "id, hex{q,r}?（null=撤销位置）"),
           Map.entry("unit.PlanRoute", "id, waypoints[{q,r}...]"),
           Map.entry("unit.CancelRoute", "id"),
@@ -86,7 +91,16 @@ public final class CatalogTool implements AgentTool {
           Map.entry("unit.SetRejoinTarget", "id, target?（null=清回归意图）"),
           Map.entry("unit.CreateCommandChain", "chainId, name, commander, members[字符串...]"),
           Map.entry("unit.UpdateCommandChain", "chainId, name?, commander?, members?"),
-          Map.entry("unit.ApplyCasualties", "id, personnel(负增量), equipment{键:负增量}"),
+          Map.entry(
+              "unit.ApplyCasualties",
+              "id, manpower[{type,amount≤0}], equipment[{type,amount≤0}]"
+                  + "（★ D3a：双轨有序 delta；只扣提及的 type，未提及的 type 保持不变；"
+                  + "提及不存在的 type ⇒ 具名拒（P14，不视作 0）；|Δ| ≤ 当前值）"),
+          Map.entry(
+              "unit.AdjustComposition",
+              "id, manpower[{type,amount(有符号)}], equipment[{type,amount(有符号)}]"
+                  + "（★ D3a / D-009 补裁：GM 调试直改原语；正增量可新建 type（追加表尾），"
+                  + "负增量要求 type 已存在且 |Δ| ≤ 当前值；同表 type 不重复、零增量合法 no-op；非 GmOnly）"),
           Map.entry(
               "unit.SetJurisdiction",
               "unitId, regions[regionId...]（必填；空数组 = 撤销全部管辖）,"

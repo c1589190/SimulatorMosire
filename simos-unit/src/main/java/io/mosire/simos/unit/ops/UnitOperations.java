@@ -6,6 +6,8 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
+import io.mosire.simos.unit.CompositionDelta;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Movement;
@@ -88,7 +90,7 @@ public final class UnitOperations {
             unit.name(),
             setOrAppend(unit.parent(), at, newParent),
             unit.position(),
-            unit.member(),
+            unit.manpower(),
             unit.equipment(),
             unit.speed(),
             unit.mobilityPerMille(),
@@ -104,15 +106,25 @@ public final class UnitOperations {
             name,
             unit.parent(),
             unit.position(),
-            unit.member(),
+            unit.manpower(),
             unit.equipment(),
             unit.speed(),
             unit.mobilityPerMille(),
             unit.movement()));
   }
 
-  public static UnitState setStrength(
-      UnitState state, UnitId id, int member, Map<String, Integer> equipment) {
+  /**
+   * ★ <b>整表复写人力/装备</b>（{@code unit.SetComposition} 的领域实现；原 {@code setStrength} 的 rename，D3a）：
+   * 载荷给出的两张表**整体取代**旧表，不是增量合并。★ <b>未知 type 不是错误</b>——整表语义就是"给什么就是什么"；数值范围 （{@code amount ≥ 0}、同表
+   * type 不重复）由 {@link Unit} 构造期判，本方法不重复实现。
+   *
+   * <p>★ 纯函数：结果单位走 canonical 17 参拷贝，其余 15 个组件一个不丢。
+   */
+  public static UnitState setComposition(
+      UnitState state,
+      UnitId id,
+      List<CompositionEntry> manpower,
+      List<CompositionEntry> equipment) {
     Unit unit = require(state, id);
     return withUnit(
         state,
@@ -121,7 +133,7 @@ public final class UnitOperations {
             unit.name(),
             unit.parent(),
             unit.position(),
-            member,
+            manpower,
             equipment,
             unit.speed(),
             unit.mobilityPerMille(),
@@ -129,20 +141,63 @@ public final class UnitOperations {
   }
 
   /**
-   * ★ **战损增量**（T8 / spec §四 表 / E4 / N3 / P14）：{@code personnelDelta} 与 {@code equipmentDeltas} 都是
-   * **≤ 0 的 增量**，逐项**落在当前值上**——与 {@link #setStrength} 的"整份替换"是两种语义，绝不混用。
+   * ★ <b>有符号直改人力/装备</b>（{@code unit.AdjustComposition} 的领域实现，D-009 补裁的 GM 调试原语）：两条增量表都**有序**，
+   * 一条命令原子地把它们落在当前表上。
+   *
+   * <p>★ <b>符号语义</b>：
+   *
+   * <ul>
+   *   <li><b>正增量</b>：type 已存在 ⇒ 加上去（long 溢出 ⇒ 具名拒）；不存在 ⇒ <b>新建</b>一条并追加在表尾；
+   *   <li><b>负增量</b>：type 必须已存在（不存在 ⇒ 具名拒，不视作 0）且 {@code |Δ| ≤ 当前值}（越界 ⇒ 具名拒）；减到 0 的条目**保留** （值
+   *       0，顺序不变）；
+   *   <li><b>零增量</b>：合法 no-op（本操作面不判"无变化命令"，与既有 attach/updateChain 同口径）。
+   * </ul>
+   *
+   * <p>★ <b>同表重复 type 一律拒</b>（两张输入表各自判）：一条 type 两条增量会让"先加后减"与"先减后加"产生不同结果，超出"一张表"的语义。
+   *
+   * <p>★ 纯函数；结果走 canonical 17 参拷贝（其余 15 个组件一个不丢）。变更集仍由 {@code UnitChangeSet.between} 派生，不做第二条增量通道。
+   */
+  public static UnitState adjustComposition(
+      UnitState state,
+      UnitId id,
+      List<CompositionDelta> manpowerDeltas,
+      List<CompositionDelta> equipmentDeltas) {
+    Objects.requireNonNull(manpowerDeltas, "manpowerDeltas");
+    Objects.requireNonNull(equipmentDeltas, "equipmentDeltas");
+    Unit unit = require(state, id);
+    requireNoDuplicateDeltaTypes(manpowerDeltas, "manpower");
+    requireNoDuplicateDeltaTypes(equipmentDeltas, "equipment");
+    List<CompositionEntry> manpower = applyAdjustDeltas(unit.manpower(), manpowerDeltas, "人力");
+    List<CompositionEntry> equipment = applyAdjustDeltas(unit.equipment(), equipmentDeltas, "装备");
+    return withUnit(
+        state,
+        copy(
+            unit,
+            unit.name(),
+            unit.parent(),
+            unit.position(),
+            manpower,
+            equipment,
+            unit.speed(),
+            unit.mobilityPerMille(),
+            unit.movement()));
+  }
+
+  /**
+   * ★ **战损增量**（T8 / spec §四 表 / E4 / N3 / P14；D3a 改为双轨有序条目列表）：{@code manpowerDeltas} 与 {@code
+   * equipmentDeltas} 都是**≤ 0 的增量**，逐项**落在当前值上**——与 {@link #setComposition} 的"整表复写"是两种语义，绝不混用。
    *
    * <p>三条判据（都抛 {@link IllegalArgumentException}，由 handler 在命令边界折成拒绝）：
    *
    * <ol>
-   *   <li><b>增量必须 ≤ 0</b>：正数 ⇒ 抛（战损只减员；"把 −30 当绝对值"是 m1 的靶子，本操作不接这种解释）。
-   *   <li><b>逐项上界 {@code |Δ| ≤ 当前值}</b>：人员与**每一件**装备各自独立判（P14 的"逐项"面）；越界 ⇒ 抛， 消息里带当前值与本条增量。判据写成
-   *       {@code delta < -current}（**不取负号**：`-Integer.MIN_VALUE` 会溢出成自身、 把越界悄悄放过去）。
-   *   <li><b>未知装备键 ⇒ 抛</b>（P14）：未提及的键**保持不变**，但**提及**了一个不存在的键是**错误**，绝不"视作 0 忽略"（那是 m4
-   *       的靶子）。判定在增量符号之前 ⇒ 未知键**无论**带什么值都拒。
+   *   <li><b>增量必须 ≤ 0</b>：正数 ⇒ 抛（战损只减员；"把 −30 当绝对值"的旧靶子，本操作不接这种解释）。
+   *   <li><b>逐项上界 {@code |Δ| ≤ 当前值}</b>：人力与**每一件**装备各自独立判（P14 的"逐项"面）；越界 ⇒ 抛， 消息里带当前值与本条增量。判据写成
+   *       {@code delta < -current}（**不取负号**：`-Long.MIN_VALUE` 会溢出成自身、把越界悄悄放过去）。
+   *   <li><b>未提及的 type 不变；提及一个不存在的 type ⇒ 抛</b>（P14）：绝不"视作 0 忽略"（那是 m4 的靶子）。判定在增量符号之前 ⇒ 未知
+   *       type**无论**带什么值都拒。
    * </ol>
    *
-   * <p>★ 结果的不变量（`member ≥ 0`、装备值 `≥ 0`）由上面的逐项上界**先行保证**，{@code Unit} 构造期继续把守同一件事（两道
+   * <p>★ 结果的不变量（每条 {@code amount ≥ 0}）由上面的逐项上界**先行保证**，{@code Unit} 构造期继续把守同一件事（两道
    * 不重复实现：上界判据给出可读的领域理由，构造期是最后一道）。
    *
    * <p>★ **绝对值落 revision**：本操作只产新 {@code UnitState}，命令层用 {@code UnitChangeSet.between(base, next)}
@@ -152,40 +207,17 @@ public final class UnitOperations {
    * 必须原样带过，绝不写 `new UnitState(units)`。
    */
   public static UnitState applyCasualties(
-      UnitState state, UnitId id, int personnelDelta, Map<String, Integer> equipmentDeltas) {
+      UnitState state,
+      UnitId id,
+      List<CompositionDelta> manpowerDeltas,
+      List<CompositionDelta> equipmentDeltas) {
+    Objects.requireNonNull(manpowerDeltas, "manpowerDeltas");
     Objects.requireNonNull(equipmentDeltas, "equipmentDeltas");
     Unit unit = require(state, id);
-    if (personnelDelta > 0) {
-      throw new IllegalArgumentException("人员增量必须 ≤ 0（战损只减员）: " + personnelDelta);
-    }
-    if (personnelDelta < -unit.member()) {
-      throw new IllegalArgumentException(
-          "人员战损超出当前值: " + unit.member() + " + (" + personnelDelta + ")");
-    }
-    Map<String, Integer> equipment = new LinkedHashMap<>(unit.equipment());
-    for (Map.Entry<String, Integer> entry : equipmentDeltas.entrySet()) {
-      String key = entry.getKey();
-      Integer delta = entry.getValue();
-      if (key == null || key.isBlank()) {
-        throw new IllegalArgumentException("装备增量键不得空白");
-      }
-      if (delta == null) {
-        throw new IllegalArgumentException("装备增量不得为 null: " + key);
-      }
-      Integer current = equipment.get(key);
-      if (current == null) {
-        // ★ P14：未知键**拒绝**，不视作 0（"没有这件装备"不是"这件装备是 0"）。
-        throw new IllegalArgumentException("未知装备键: " + key);
-      }
-      if (delta > 0) {
-        throw new IllegalArgumentException("装备增量必须 ≤ 0（战损只减员）: " + key + "=" + delta);
-      }
-      if (delta < -current) {
-        throw new IllegalArgumentException(
-            "装备战损超出当前值: " + key + "=" + current + " + (" + delta + ")");
-      }
-      equipment.put(key, current + delta);
-    }
+    requireNoDuplicateDeltaTypes(manpowerDeltas, "manpower");
+    requireNoDuplicateDeltaTypes(equipmentDeltas, "equipment");
+    List<CompositionEntry> manpower = applyCasualtyDeltas(unit.manpower(), manpowerDeltas, "人员");
+    List<CompositionEntry> equipment = applyCasualtyDeltas(unit.equipment(), equipmentDeltas, "装备");
     return withUnit(
         state,
         copy(
@@ -193,11 +225,92 @@ public final class UnitOperations {
             unit.name(),
             unit.parent(),
             unit.position(),
-            unit.member() + personnelDelta,
+            manpower,
             equipment,
             unit.speed(),
             unit.mobilityPerMille(),
             unit.movement()));
+  }
+
+  /** 直改增量的逐项落表：正增量可新建 type（追加表尾），负增量要求存在且不越界；零增量 no-op。 */
+  private static List<CompositionEntry> applyAdjustDeltas(
+      List<CompositionEntry> current, List<CompositionDelta> deltas, String field) {
+    List<CompositionEntry> next = new ArrayList<>(current);
+    Map<String, Integer> indexByType = indexByType(next);
+    for (CompositionDelta delta : deltas) {
+      Integer at = indexByType.get(delta.type());
+      if (delta.amount() > 0L) {
+        if (at == null) {
+          next.add(new CompositionEntry(delta.type(), delta.amount()));
+          indexByType.put(delta.type(), next.size() - 1);
+          continue;
+        }
+        long amount = next.get(at).amount();
+        if (amount > Long.MAX_VALUE - delta.amount()) {
+          throw new IllegalArgumentException(
+              field + "增量溢出 long: " + delta.type() + "=" + amount + " + " + delta.amount());
+        }
+        next.set(at, new CompositionEntry(delta.type(), amount + delta.amount()));
+      } else if (delta.amount() < 0L) {
+        if (at == null) {
+          // ★ 负增量指向一个不存在的 type 是错误（不视作 0 新建——那会让"损失"变成"负资产"，无意义）。
+          throw new IllegalArgumentException("未知" + field + "类型: " + delta.type());
+        }
+        long amount = next.get(at).amount();
+        if (delta.amount() < -amount) {
+          throw new IllegalArgumentException(
+              field + "减少超出当前值: " + delta.type() + "=" + amount + " + (" + delta.amount() + ")");
+        }
+        next.set(at, new CompositionEntry(delta.type(), amount + delta.amount()));
+      }
+      // amount == 0：合法 no-op（type 不存在也不新建——"无变化"不该凭空造条目）。
+    }
+    return next;
+  }
+
+  /** 战损增量的逐项落表：≤ 0、未知 type 拒、|Δ| ≤ 当前值；未提及的条目原样保留（含顺序）。 */
+  private static List<CompositionEntry> applyCasualtyDeltas(
+      List<CompositionEntry> current, List<CompositionDelta> deltas, String field) {
+    List<CompositionEntry> next = new ArrayList<>(current);
+    Map<String, Integer> indexByType = indexByType(next);
+    for (CompositionDelta delta : deltas) {
+      Integer at = indexByType.get(delta.type());
+      if (at == null) {
+        // ★ P14：未知 type**拒绝**，不视作 0（"没有这个 type"不是"这个 type 是 0"）；
+        //   判定在增量符号之前 ⇒ 未知 type **无论**带什么值都拒。
+        throw new IllegalArgumentException("未知" + field + "类型: " + delta.type());
+      }
+      if (delta.amount() > 0L) {
+        throw new IllegalArgumentException(
+            field + "增量必须 ≤ 0（战损只减员）: " + delta.type() + "=" + delta.amount());
+      }
+      long amount = next.get(at).amount();
+      if (delta.amount() < -amount) {
+        throw new IllegalArgumentException(
+            field + "战损超出当前值: " + delta.type() + "=" + amount + " + (" + delta.amount() + ")");
+      }
+      next.set(at, new CompositionEntry(delta.type(), amount + delta.amount()));
+    }
+    return next;
+  }
+
+  /** 表的 type → 下标索引（{@code LinkedHashMap}，顺序只为可读；值域判据只看存在性）。 */
+  private static Map<String, Integer> indexByType(List<CompositionEntry> entries) {
+    Map<String, Integer> index = new LinkedHashMap<>();
+    for (int i = 0; i < entries.size(); i++) {
+      index.put(entries.get(i).type(), i);
+    }
+    return index;
+  }
+
+  /** 两张增量表各自不得有重复 type（先判完再动手，避免"先加后减"的中间态被当成规则）。 */
+  private static void requireNoDuplicateDeltaTypes(List<CompositionDelta> deltas, String field) {
+    Set<String> seen = new LinkedHashSet<>();
+    for (CompositionDelta delta : deltas) {
+      if (!seen.add(delta.type())) {
+        throw new IllegalArgumentException(field + " 增量不得有重复 type: " + delta.type());
+      }
+    }
   }
 
   /** 位置设置：追加一条 `position` 段；**顺带清空在途路线**（改了位置，旧路线不再有意义）。 */
@@ -212,7 +325,7 @@ public final class UnitOperations {
             unit.name(),
             unit.parent(),
             append(unit.position(), at, hex),
-            unit.member(),
+            unit.manpower(),
             unit.equipment(),
             unit.speed(),
             unit.mobilityPerMille(),
@@ -255,7 +368,7 @@ public final class UnitOperations {
             unit.name(),
             unit.parent(),
             unit.position(),
-            unit.member(),
+            unit.manpower(),
             unit.equipment(),
             unit.speed(),
             unit.mobilityPerMille(),
@@ -389,7 +502,7 @@ public final class UnitOperations {
             unit.name(),
             unit.parent(),
             unit.position(),
-            unit.member(),
+            unit.manpower(),
             unit.equipment(),
             unit.speed(),
             unit.mobilityPerMille(),
@@ -1307,8 +1420,9 @@ public final class UnitOperations {
   }
 
   /**
-   * 改单个单位的**唯一**入口（面最宽）：`rename` / `setStrength` / `placeAt` / `planRoute` / `setStatus` /
-   * `cancelRoute` / `setOffset` / `create` / `reparent` / `detachUnit` 十个操作都经这里落盘。
+   * 改单个单位的**唯一**入口（面最宽）：`rename` / `setComposition` / `adjustComposition` / `applyCasualties` /
+   * `placeAt` / `planRoute` / `setStatus` / `cancelRoute` / `setOffset` / `create` / `reparent` /
+   * `detachUnit` 十个操作都经这里落盘。
    *
    * <p>★ **T5-U2**：`commandChains` 用 {@link UnitState#withUnits(Map)} 带过。此前这里用 1 参兼容构造器 （`new
    * UnitState(next)`）⇒ **十个操作的任何一次调用都会把全部链静默清空**；链是**无时刻的具名集合**，改某个单位的字段
@@ -1400,18 +1514,18 @@ public final class UnitOperations {
   }
 
   /**
-   * ★ **canonical 拷贝点**：9 个可变字段由调用方给，T1 的四个新字段（{@code status}/{@code attached}/{@code
-   * offset}/{@code rejoinTarget}）、Task 1 的 {@code visionRadius}、辖区阶段 5 的 {@code jurisdiction} 与阶段 9
-   * 的 {@code module} 一律**原样带过**——不用兼容构造器（那会把新字段重置成默认值，正是 R1 的残留风险）。 只动编队三件套（{@code parent}/{@code
-   * attached}/{@code offset}）的操作用同族的 {@link #copyFormation}。
+   * ★ **canonical 拷贝点**：9 个可变字段（含人力/装备两张新表）由调用方给，T1 的四个新字段（{@code status}/{@code attached}/{@code
+   * offset}/{@code rejoinTarget}）、Task 1 的 {@code visionRadius}、辖区阶段 5 的 {@code jurisdiction}、阶段 9
+   * 的 {@code module} 与 D1 的 {@code stateDescriptions} 一律**原样带过**——不用兼容构造器（那会把新字段重置成默认值， 正是 R1
+   * 的残留风险）。 只动编队三件套（{@code parent}/{@code attached}/{@code offset}）的操作用同族的 {@link #copyFormation}。
    */
   private static Unit copy(
       Unit unit,
       String name,
       SegmentedSeries<Optional<UnitId>> parent,
       SegmentedSeries<Optional<HexCoord>> position,
-      int member,
-      Map<String, Integer> equipment,
+      List<CompositionEntry> manpower,
+      List<CompositionEntry> equipment,
       int speed,
       int mobilityPerMille,
       Optional<Movement> movement) {
@@ -1420,7 +1534,7 @@ public final class UnitOperations {
         name,
         parent,
         position,
-        member,
+        manpower,
         equipment,
         speed,
         mobilityPerMille,
@@ -1457,7 +1571,7 @@ public final class UnitOperations {
         unit.name(),
         parent,
         position,
-        unit.member(),
+        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),
@@ -1482,7 +1596,7 @@ public final class UnitOperations {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.member(),
+        unit.manpower(),
         unit.equipment(),
         speed,
         unit.mobilityPerMille(),
@@ -1504,7 +1618,7 @@ public final class UnitOperations {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.member(),
+        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),
@@ -1531,7 +1645,7 @@ public final class UnitOperations {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.member(),
+        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),
@@ -1557,7 +1671,7 @@ public final class UnitOperations {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.member(),
+        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),
@@ -1588,7 +1702,7 @@ public final class UnitOperations {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.member(),
+        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),
@@ -1618,7 +1732,7 @@ public final class UnitOperations {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.member(),
+        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),

@@ -6,11 +6,14 @@ import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
 import io.mosire.simos.util.time.TemporalSeries;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 单位（M3 spec §4.1）：严格树的一个节点。{@code parent} 与 {@code position} 是**时态序列**（军队会改编、会调动）， 其余是普通值（C3；历史由
@@ -32,7 +35,7 @@ import java.util.Optional;
  * <p>★ **视野半径（权限阶段 Task 1 / spec §4.1）**：{@code visionRadius} = 六角圈数，**缺省 1**（用户裁定⑤），{@code 0}
  * 表示只看自身格。**本轮只加字段**——迷雾/探测/遮挡不在本轮（用户："具体的视野功能后面再在 unit 里面写"）；它当前唯一的读者是 军队决策人的可见范围函数（{@code
  * ArmyScope}，按军队位置 + 本半径算可见 hex）。 与 T1 四字段同一条纪律：兼容构造器取 {@link #DEFAULT_VISION_RADIUS}，**生产拷贝点一律走
- * canonical 16 参形态**（漏传 = 静默丢字段——包括后来加的第 15/16 组件，本仓最贵的教训形态）。
+ * canonical 17 参形态**（漏传 = 静默丢字段——包括后来加的第 15/16/17 组件，本仓最贵的教训形态）。
  *
  * <p>★ **管辖（辖区阶段 5，2026-09-30）**：第 15 组件 {@code jurisdiction} = 单位侧的管辖富结构（管辖区域 + 每区域长期税率 + 一次性抽取上限
  * + 行政能力）。缺省 {@link Optional#empty()} ⇒ 旧档/旧调用点行为逐字不变；**所有重建既有 Unit 的拷贝点都必须原样带过 {@code
@@ -48,14 +51,35 @@ import java.util.Optional;
  * util 的 {@link Address}，全仓唯一拼写点），"这个地址指向什么"由读侧/各域解析器回答——交战记录、公文处理状态等都只是 "某个地址"，Unit 对此一无所知。缺省空表 ⇒
  * 旧档/旧调用点行为逐字不变；**所有重建既有 Unit 的拷贝点都必须原样带过 {@code before.stateDescriptions()}**（漏传 =
  * 静默丢链接，同一条最贵教训）；创建点显式给空表。
+ *
+ * <p>★★ **通用人力/装备表（阶段 D3a，2026-10-02 / D-006 + 补裁 R1）**：第 5/6 组件不再是 {@code int member} + {@code
+ * Map<String,Integer> equipment}，而是**有序条目列表**：
+ *
+ * <ul>
+ *   <li>{@code manpower}：{@link CompositionEntry} 的**有序**列表（每条 = {@code type} + {@code
+ *       amount}）；一个单位可拥有**多种人力**；
+ *   <li>{@code equipment}：**同构**的 {@link CompositionEntry} 有序列表（类型当前是自然语义 {@link
+ *       String}，将来可放宽为结构化数据）；
+ *   <li><b>不变量</b>：两者**不得为 null**（空列表合法）；每条 {@code type} 非空白、{@code amount ≥ 0}；**同一张表内不得有重复
+ *       type**（"同 type 两条"会让"加/减值"歧义，拒绝是刻意的）；顺序是内容的一部分，一律 `List.copyOf` 风格的保序不可变拷贝（**不用**
+ *       `Map.copyOf`——它不承诺保序）；
+ *   <li><b>不背旧档</b>（D-011 / R4）：{@code member:int} 与 {@code equipment:Map}
+ *       的字段与构造器语义**全部删除**，旧档读不出就让它读不出； 世界替换在后续阶段 D6 做，本类不写迁移 shim、不留"双轨"。
+ * </ul>
+ *
+ * 变更集侧不另写通道：{@code UnitChangeSet} 按 record 组件整份派生（铁律 5），新列表组件自动随 {@code equals} 进往返断言。
+ *
+ * <p>★ **构造器矩阵（D3a 收敛）**：canonical = 17 参（record 自动生成、紧凑构造器校验）；另有 9/13/14/15/16 参兼容形态，均为**新表形态** （前
+ * 9/13/14/15/16 个组件同 canonical），不提供任何 {member, equipment-map} 语义的构造器。五条兼容形态只补"后加的字段"（T1 四件套、视野半径、
+ * 管辖、编制、状态链接）的缺省值；**生产拷贝点一律走 canonical 17 参**，兼容构造器只服务"那些后加字段没有来源"的创建/测试调用点。
  */
 public record Unit(
     UnitId id,
     String name,
     SegmentedSeries<Optional<UnitId>> parent,
     SegmentedSeries<Optional<HexCoord>> position,
-    int member,
-    Map<String, Integer> equipment,
+    List<CompositionEntry> manpower,
+    List<CompositionEntry> equipment,
     int speed,
     int mobilityPerMille,
     Optional<Movement> movement,
@@ -85,12 +109,17 @@ public record Unit(
         throw new IllegalArgumentException("parent 不得指向自身: " + id);
       }
     }
-    if (member < 0) {
-      throw new IllegalArgumentException("member 必须 ≥ 0: " + member);
+    if (manpower == null) {
+      // ★ 不做旧档归一（D-011 / R4）：缺 manpower 键就是坏数据，让它当场读不出，而不是静默变成空表。
+      throw new IllegalArgumentException("manpower 不得为 null（空列表合法）");
     }
-    equipment =
-        Collections.unmodifiableMap(
-            copyEquipment(equipment)); // ★ 冻在赋值处（SpotBugs 的 EI_EXPOSE_REP 只认它看得见的）
+    if (equipment == null) {
+      // ★ 同上：equipment 已从 Map 改成有序条目列表，旧档的 {键:值} 对象会在此之前被 Jackson 拒掉。
+      throw new IllegalArgumentException("equipment 不得为 null（空列表合法）");
+    }
+    // ★ 冻在赋值处（SpotBugs 的 EI_EXPOSE_REP 只认它看得见的 Collections.unmodifiable*）。
+    manpower = Collections.unmodifiableList(copyComposition(manpower, "manpower"));
+    equipment = Collections.unmodifiableList(copyComposition(equipment, "equipment"));
     if (speed < 1) {
       throw new IllegalArgumentException("speed 必须 ≥ 1: " + speed);
     }
@@ -142,22 +171,21 @@ public record Unit(
   }
 
   /**
-   * ★ **兼容构造器**（T1，R1 的对策）：旧 9 参签名 ⇒ 以 {@code parent} 的锚段时刻造 {@code attached}/{@code offset}
-   * 的锚段，{@code status = MOVING}、{@code rejoinTarget = empty}、{@code visionRadius = }{@link
-   * #DEFAULT_VISION_RADIUS}、{@code jurisdiction = empty}、{@code module = empty}、 {@code
+   * ★ **9 参兼容构造器**（T1，R1 的对策）：旧 9 参签名（**前 9 个组件**）⇒ {@code status = MOVING}、{@code attached} = 父序列
+   * anchor 时刻的 {@code true}、{@code offset} = 空、{@code rejoinTarget = empty}、{@code visionRadius =
+   * }{@link #DEFAULT_VISION_RADIUS}、{@code jurisdiction = empty}、{@code module = empty}、 {@code
    * stateDescriptions = 空表}。
    *
-   * <p>它让全仓约 40 处既有 {@code new Unit(…)} 调用点零改动编过；**生产拷贝点不要用它**（那会丢新字段），一律走 canonical 17 参形态——{@code
-   * UnitOperations.copy} / {@code UnitMoves.evaluate} 的 frozen 视图 / {@code
-   * UnitTimeParticipant.withPositionAndMovement} 都已改直。
+   * <p>★★ <b>它不是 {member, equipment-map} 语义的旧构造器</b>：第 5/6 个参数已经是新表形态（{@link CompositionEntry} 列表）。
+   * 旧字段语义（单一人数、装备 map）在 D3a **全部删除**，本构造器只保留"后加的字段没有来源"这一条便民口径。
    */
   public Unit(
       UnitId id,
       String name,
       SegmentedSeries<Optional<UnitId>> parent,
       SegmentedSeries<Optional<HexCoord>> position,
-      int member,
-      Map<String, Integer> equipment,
+      List<CompositionEntry> manpower,
+      List<CompositionEntry> equipment,
       int speed,
       int mobilityPerMille,
       Optional<Movement> movement) {
@@ -166,7 +194,7 @@ public record Unit(
         name,
         parent,
         position,
-        member,
+        manpower,
         equipment,
         speed,
         mobilityPerMille,
@@ -183,12 +211,11 @@ public record Unit(
   }
 
   /**
-   * ★ **第二兼容构造器**（权限阶段 Task 1 / spec §4.1）：T1 的 13 参形态 ⇒ 只补 {@code visionRadius = }{@link
-   * #DEFAULT_VISION_RADIUS}、{@code jurisdiction = empty}、{@code module = empty} 与 {@code
-   * stateDescriptions = 空表}。
+   * ★ **13 参兼容构造器**（权限阶段 Task 1 / spec §4.1）：前 13 个组件（截至 {@code rejoinTarget}）⇒ 只补 {@code
+   * visionRadius = }{@link #DEFAULT_VISION_RADIUS}、{@code jurisdiction = empty}、{@code module =
+   * empty} 与 {@code stateDescriptions = 空表}。
    *
-   * <p>**为什么需要它**：T1 那批调用点（夹具与测试里的 13 参规范形态）不是"忘了新字段"的拷贝点——{@code visionRadius}
-   * 对它们而言没有来源，取缺省正是**唯一正确**的语义。有了它，新字段不会把既有 13 参调用点逼成编译错误。
+   * <p>**为什么需要它**：这些调用点不是"忘了新字段"的拷贝点——视野半径对它们而言没有来源，取缺省正是**唯一正确**的语义。
    *
    * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.visionRadius()} / {@code 原.jurisdiction()} / {@code
    * 原.module()} / {@code 原.stateDescriptions()}），走 canonical 17 参。
@@ -198,8 +225,8 @@ public record Unit(
       String name,
       SegmentedSeries<Optional<UnitId>> parent,
       SegmentedSeries<Optional<HexCoord>> position,
-      int member,
-      Map<String, Integer> equipment,
+      List<CompositionEntry> manpower,
+      List<CompositionEntry> equipment,
       int speed,
       int mobilityPerMille,
       Optional<Movement> movement,
@@ -212,7 +239,7 @@ public record Unit(
         name,
         parent,
         position,
-        member,
+        manpower,
         equipment,
         speed,
         mobilityPerMille,
@@ -225,11 +252,10 @@ public record Unit(
   }
 
   /**
-   * ★ **第三兼容构造器**（辖区阶段 5，2026-09-30）：扩容后旧的 14 参 canonical 形态（截至 {@code visionRadius}）⇒ 只补 {@code
-   * jurisdiction = empty} 与 {@code module = empty}。
+   * ★ **14 参兼容构造器**（辖区阶段 5，2026-09-30）：前 14 个组件（截至 {@code visionRadius}）⇒ 只补 {@code jurisdiction =
+   * empty} 与 {@code module = empty}、{@code stateDescriptions = 空表}。
    *
-   * <p>**为什么需要它**：既有测试/夹具与少量调用点按 14 参规范形态写（它们不是"忘了新字段"的生产拷贝点——管辖对它们而言没有来源），
-   * 取空管辖正是**唯一正确**的语义；有了它，新增第 15 组件不会把既有 14 参调用点逼成编译错误。
+   * <p>**为什么需要它**：辖区对它们而言没有来源，取空管辖正是**唯一正确**的语义。
    *
    * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.jurisdiction()} / {@code 原.module()} / {@code
    * 原.stateDescriptions()}），走 canonical 17 参——漏传 = 静默丢管辖/编制/链接。
@@ -239,8 +265,8 @@ public record Unit(
       String name,
       SegmentedSeries<Optional<UnitId>> parent,
       SegmentedSeries<Optional<HexCoord>> position,
-      int member,
-      Map<String, Integer> equipment,
+      List<CompositionEntry> manpower,
+      List<CompositionEntry> equipment,
       int speed,
       int mobilityPerMille,
       Optional<Movement> movement,
@@ -254,7 +280,7 @@ public record Unit(
         name,
         parent,
         position,
-        member,
+        manpower,
         equipment,
         speed,
         mobilityPerMille,
@@ -268,11 +294,10 @@ public record Unit(
   }
 
   /**
-   * ★ **第四兼容构造器**（阶段 9，2026-09-30）：扩容后旧的 15 参 canonical 形态（截至 {@code jurisdiction}）⇒ 只补 {@code
-   * module = empty}。
+   * ★ **15 参兼容构造器**（阶段 9，2026-09-30）：前 15 个组件（截至 {@code jurisdiction}）⇒ 只补 {@code module = empty} 与
+   * {@code stateDescriptions = 空表}。
    *
-   * <p>**为什么需要它**：第 16 组件落地前写的调用点/夹具按"15 参规范形态"写（{@code jurisdiction} 有来源、编制模块没有），
-   * 取空编制正是**唯一正确**的语义；有了它，新增第 16 组件不会把既有 15 参调用点逼成编译错误。
+   * <p>**为什么需要它**：编制模块对它们而言没有来源，取空编制正是**唯一正确**的语义。
    *
    * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.module()} / {@code 原.stateDescriptions()}），走 canonical
    * 17 参——漏传 = 静默丢编制/链接。
@@ -282,8 +307,8 @@ public record Unit(
       String name,
       SegmentedSeries<Optional<UnitId>> parent,
       SegmentedSeries<Optional<HexCoord>> position,
-      int member,
-      Map<String, Integer> equipment,
+      List<CompositionEntry> manpower,
+      List<CompositionEntry> equipment,
       int speed,
       int mobilityPerMille,
       Optional<Movement> movement,
@@ -298,7 +323,7 @@ public record Unit(
         name,
         parent,
         position,
-        member,
+        manpower,
         equipment,
         speed,
         mobilityPerMille,
@@ -313,10 +338,10 @@ public record Unit(
   }
 
   /**
-   * ★ **第五兼容构造器**（阶段 D1，2026-10-02）：扩容后旧的 16 参 canonical 形态（截至 {@code module}）⇒ 只补 {@code
-   * stateDescriptions = 空表}。
+   * ★ **16 参兼容构造器**（阶段 D1，2026-10-02）：前 16 个组件（截至 {@code module}）⇒ 只补 {@code stateDescriptions =
+   * 空表}。
    *
-   * <p>**为什么需要它**：第 17 组件落地前写的调用点/夹具按"16 参规范形态"写（{@code jurisdiction}/{@code module}
+   * <p>**为什么需要它**：第 17 组件落地前写的调用点按"16 参规范形态"写（{@code jurisdiction}/{@code module}
    * 有来源、状态链接没有），取空表正是**唯一正确**的语义；有了它，新增第 17 组件不会把既有 16 参调用点逼成编译错误。
    *
    * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.stateDescriptions()}），走 canonical 17 参——漏传 = 静默丢链接。
@@ -326,8 +351,8 @@ public record Unit(
       String name,
       SegmentedSeries<Optional<UnitId>> parent,
       SegmentedSeries<Optional<HexCoord>> position,
-      int member,
-      Map<String, Integer> equipment,
+      List<CompositionEntry> manpower,
+      List<CompositionEntry> equipment,
       int speed,
       int mobilityPerMille,
       Optional<Movement> movement,
@@ -343,7 +368,7 @@ public record Unit(
         name,
         parent,
         position,
-        member,
+        manpower,
         equipment,
         speed,
         mobilityPerMille,
@@ -377,30 +402,29 @@ public record Unit(
   }
 
   /**
-   * 拷贝 + 逐键值查 null（不做冻结）。★ 取代说明（R-6-a，有 M2 Task 5 实测先例）：计划原稿的 {@code frozenEquipment} 在 helper
-   * **里** {@code unmodifiableMap} 并返回——SpotBugs 只认赋值处 看得见的 {@code
-   * Collections.unmodifiable*}，藏在私有方法里就报 {@code EI_EXPOSE_REP}（实测 verify 报 1 条）。照 GameMap
-   * 先例改为"helper 只拷贝校验、赋值处冻结"，行为一字不变。
+   * 拷贝 + 校验人力/装备表（不做冻结，赋值处冻结——同原先 {@code copyEquipment} 的 SpotBugs 口径）。
+   *
+   * <p>三条不变量在这里落一次、{@link CompositionEntry} 自己落一次（{@code type} 非空白、{@code amount ≥ 0}）：同 type 重复是
+   * 本方法特有的判据——"同一张表里两条同 type"会让后续"加/减值"语义歧义，**刻意拒绝**（D3a 任务书建议项，写进类注）。
    */
-  private static Map<String, Integer> copyEquipment(Map<String, Integer> equipment) {
-    if (equipment == null) {
-      throw new IllegalArgumentException("equipment 不得为 null");
-    }
-    Map<String, Integer> copy = new LinkedHashMap<>();
-    for (Map.Entry<String, Integer> entry : equipment.entrySet()) {
-      if (entry.getKey() == null || entry.getKey().isBlank()) {
-        throw new IllegalArgumentException("equipment 的键不得空白");
+  private static List<CompositionEntry> copyComposition(
+      List<CompositionEntry> entries, String field) {
+    List<CompositionEntry> copy = new ArrayList<>(entries.size());
+    Set<String> seen = new HashSet<>();
+    for (CompositionEntry entry : entries) {
+      if (entry == null) {
+        throw new IllegalArgumentException(field + " 的元素不得为 null");
       }
-      if (entry.getValue() == null || entry.getValue() < 0) {
-        throw new IllegalArgumentException("equipment 的值必须 ≥ 0: " + entry.getKey());
+      if (!seen.add(entry.type())) {
+        throw new IllegalArgumentException(field + " 不得有重复 type: " + entry.type());
       }
-      copy.put(entry.getKey(), entry.getValue());
+      copy.add(entry);
     }
-    return Collections.unmodifiableMap(copy);
+    return copy;
   }
 
   /**
-   * 拷贝 + 校验状态描述链接（不做冻结，赋值处冻结——同 {@link #copyEquipment} 的 SpotBugs 口径）。
+   * 拷贝 + 校验状态描述链接（不做冻结，赋值处冻结——同 {@link #copyComposition} 的 SpotBugs 口径）。
    *
    * <p>★ 校验只到**文本形状**这一层：键（状态）非空白；值（地址）非空白且是 canonical 地址文本。地址语法委托 util 的 {@link
    * Address#parse}（全仓唯一拼写点），**不解析目标域**——本模块不知道 {@code army:combat.x} 是交战记录、也不知道 {@code gov:...}

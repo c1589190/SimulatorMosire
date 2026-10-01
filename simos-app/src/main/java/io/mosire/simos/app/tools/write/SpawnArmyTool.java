@@ -111,8 +111,11 @@ public final class SpawnArmyTool implements AgentTool {
   @Override
   public String description() {
     return "GM 按格直接建军（组合工具，一批 = 一条 revision；GM 特权：不抽人口、不抽粮饷）："
-        + "参数 {unitId(必填), name(必填), q(必填 int), r(必填 int), member(必填 int, >=1), "
-        + "equipment?(可选 {字符串:整数}，缺省 {}，值 >=0), speed?(可选，缺省 3，>=1), "
+        + "参数 {unitId(必填), name(必填), q(必填 int), r(必填 int), member(必填 int, >=1；新单位人力表落成单条 "
+        + "{type=\""
+        + SpawnArmyPlan.DEFAULT_MANPOWER_TYPE
+        + "\", amount=member}), equipment?(可选 {字符串:整数}，缺省 {}，值 >=0；按输入序转成装备表), "
+        + "speed?(可选，缺省 3，>=1), "
         + "mobilityPerMille?(可选，缺省 1000，必须在 1..1000), "
         + "parent?(可选; 给了必须存在且当刻有效位置与 (q,r) 同格), "
         + "status?(可选 MOVING|RESTING|ENGAGED，缺省 RESTING), "
@@ -129,9 +132,9 @@ public final class SpawnArmyTool implements AgentTool {
         + "★ 若 role 为空但 masterGov 给了：只写 sd 侧 masterGov，unit 侧未设 ArmyFormation.masterGov（preview 会明确说明）。"
         + "失败具名：坏参数/前置不满足 ⇒ BAD_REQUEST（零 revision）；批内域拒 ⇒ REJECTED（逐条真拒因）；"
         + "提交冲突 ⇒ CONFLICT（真实 head）；资源不匹配 ⇒ 原样抛资源拒因。"
-        + "返回 {preview, submitted, tick, unitId, name, armyId, hex, member, equipment, speed, mobility, parent, "
-        + "status, role, masterGov, unitSetArmyFormation, armyFormationNote, commands, infoText, conflictPreflight}；"
-        + "apply 另加 submission。";
+        + "返回 {preview, submitted, tick, unitId, name, armyId, hex, manpower[{type,amount}], equipment[{type,amount}], "
+        + "speed, mobility, parent, status, role, masterGov, unitSetArmyFormation, armyFormationNote, commands, "
+        + "infoText, conflictPreflight}；apply 另加 submission。";
   }
 
   @Override
@@ -141,8 +144,16 @@ public final class SpawnArmyTool implements AgentTool {
     props.put("name", ToolSupport.prop("string", "新单位名（非空白）"));
     props.put("q", ToolSupport.prop("integer", "新单位落点 q（int）"));
     props.put("r", ToolSupport.prop("integer", "新单位落点 r（int）"));
-    props.put("member", ToolSupport.prop("integer", "新单位人数（>= 1；GM 直接建军不抽人口）"));
-    props.put("equipment", ToolSupport.prop("object", "装备 {字符串:整数}（可选，缺省空表；值 >= 0）"));
+    props.put(
+        "member",
+        ToolSupport.prop(
+            "integer",
+            "新单位人数（>= 1；GM 直接建军不抽人口）；新单位人力表落成单条 {type=\""
+                + SpawnArmyPlan.DEFAULT_MANPOWER_TYPE
+                + "\", amount=member}"));
+    props.put(
+        "equipment",
+        ToolSupport.prop("object", "装备 {字符串:整数}（可选，缺省空表；值 >= 0；按输入 map 迭代序转成 [{type,amount}] 表）"));
     props.put("speed", ToolSupport.prop("integer", "速度（可选，缺省 3；>= 1）"));
     props.put("mobilityPerMille", ToolSupport.prop("integer", "机动性（可选，缺省 1000；必须在 1..1000）"));
     props.put("parent", ToolSupport.prop("string", "父单位 id（可选；给了必须存在且当刻有效位置与 (q,r) 同格）"));
@@ -566,8 +577,8 @@ public final class SpawnArmyTool implements AgentTool {
     view.put("name", plan.name());
     view.put("armyId", plan.armyId());
     view.put("hex", ToolSupport.hexCoord(plan.at()));
-    view.put("member", plan.member());
-    view.put("equipment", new LinkedHashMap<>(plan.equipment()));
+    view.put("manpower", ToolSupport.compositionView(plan.manpowerEntries()));
+    view.put("equipment", ToolSupport.compositionView(plan.equipment()));
     view.put("speed", plan.speed());
     view.put("mobility", plan.mobilityPerMille());
     view.put("parent", plan.parent().orElse(null));

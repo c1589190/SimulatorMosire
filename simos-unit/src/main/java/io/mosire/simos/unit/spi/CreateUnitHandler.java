@@ -2,6 +2,7 @@ package io.mosire.simos.unit.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -43,6 +44,9 @@ import java.util.Optional;
  */
 public final class CreateUnitHandler implements CommandHandler, CommandTargets {
 
+  /** 命令类型（信封上的 {@code type}，也是 catalog / 窄工具引用的唯一拼写点）。 */
+  public static final String TYPE = "unit.CreateUnit";
+
   /** ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：按载荷里点名的**新**单位 id 判（建之后它才存在，见契约的创建型口径）。 */
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {
@@ -52,7 +56,7 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
 
   @Override
   public String type() {
-    return "unit.CreateUnit";
+    return TYPE;
   }
 
   @Override
@@ -66,8 +70,8 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
       String name = UnitPayloads.requireText(payload, "name");
       // ★ position 可选：省略/null ⇒ 无自身位置（跟随父）；但那时必须给 parent（否则单位不在图上，是坏输入）。
       Optional<HexCoord> position = UnitPayloads.optionalHex(payload, "position");
-      int member = UnitPayloads.requireInt(payload, "member");
-      Map<String, Integer> equipment = UnitPayloads.requireEquipment(payload, "equipment");
+      List<CompositionEntry> manpower = UnitPayloads.requireComposition(payload, "manpower");
+      List<CompositionEntry> equipment = UnitPayloads.requireComposition(payload, "equipment");
       int speed = UnitPayloads.requireInt(payload, "speed");
       int mobilityPerMille = UnitPayloads.requireInt(payload, "mobilityPerMille");
       Optional<UnitId> parent = UnitPayloads.optionalId(payload, "parent");
@@ -100,7 +104,7 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
               name,
               new SegmentedSeries<>(List.of(new Segment<>(at, parent)), List.of(), null),
               new SegmentedSeries<>(List.of(new Segment<>(at, position)), List.of(), null),
-              member,
+              manpower,
               equipment,
               speed,
               mobilityPerMille,

@@ -50,7 +50,7 @@ import java.util.UUID;
  *
  * <ol>
  *   <li>{@code unit.CreateUnit}（恒有）：{@code
- *       id/name/position=at/member=manpower/equipment/speed/mobilityPerMille/parent?}；{@code
+ *       id/name/position=at/manpower=[{type,amount}]/equipment=[{type,amount}]/speed/mobilityPerMille/parent?}；{@code
  *       jurisdiction} 不进载荷 ——{@code CreateUnitHandler} 对新建单位一律取 {@code Optional.empty()}；
  *   <li>{@code actor.AdjustAccounts}（仅粮/钱任一 &gt; 0 时）：各来源家户账的<b>负增量</b>（粮与钱合并进同一 {@code (owner,格)}
  *       条目，避免同键重复）+ 新单位国库账户（{@code ActorRef(UNIT, newUnitId)} @ {@code at}）的 <b>正增量</b>；逐值相等（Σ 扣减
@@ -75,9 +75,10 @@ import java.util.UUID;
  * 窄写同制。
  *
  * <p>★ <b>工具结果（preview 与 apply 同形）</b>：{@code
- * preview/submitted/tick/unitId/name/regionId/at/parent/member/ speed/mobilityPerMille/equipment} +
- * 逐维度 {@code grain}/{@code money}/{@code manpower} 各 {@code {requested, available, sources[]}}（账来源带
- * owner + 格 + amount；人力来源带批次 id + 格 + before/taken/after）+ {@code commands}（将落的命令类型顺序）+ {@code
+ * preview/submitted/tick/unitId/name/regionId/at/parent/manpower[{type,amount}]/equipment[{type,amount}]/
+ * speed/mobilityPerMille} + 逐维度 {@code grain}/{@code money} 各 {@code {requested, available,
+ * sources[]}}（账来源带 owner + 格 + amount）+ {@code manpowerAllocation {requested, available,
+ * sources[]}}（人力来源带批次 id + 格 + before/taken/after）+ {@code commands}（将落的命令类型顺序）+ {@code
  * infoText}；apply 另加 {@code submission}（committed / conflict / rejected + 逐条拒因）。
  *
  * <p>★ <b>失败具名</b>：参数缺失 / 负值 / manpower &lt; 1 / 非法速度或机动性 / 装备为负 / newUnitId 已存在 / region 不存在 /
@@ -153,11 +154,13 @@ public final class RaiseUnitTool implements AgentTool {
   @Override
   public String description() {
     return "GM 组军（组合工具，一批 = 一条 revision）：从 region 的合格批次抽 manpower、从 region 各 hex 的 HOUSEHOLD 账抽"
-        + " grain/money，同批建出新单位（member = 实抽人力）、把粮/钱落进新单位国库，并落一条 sd.PutInfo 行动记录。"
+        + " grain/money，同批建出新单位（新单位人力表 = 单条 {type=\""
+        + RaiseUnitPlan.DEFAULT_MANPOWER_TYPE
+        + "\", amount=实抽人力}）、把粮/钱落进新单位国库，并落一条 sd.PutInfo 行动记录。"
         + "载荷 {newUnitId(必填), name(必填), regionId(必填), at{q,r}(必填, 必须在该 region 的 hex 集里), "
-        + "manpower(必填 long, >=1), grain?(缺省 0), money?(缺省 0), speed(必填, >=1), "
-        + "mobilityPerMille(必填, 1..1000), equipment?(缺省空表, 值 >=0), parent?(可选, 必须存在且与 at 同格), "
-        + "reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
+        + "manpower(必填 long, >=1；抽取人数), grain?(缺省 0), money?(缺省 0), speed(必填, >=1), "
+        + "mobilityPerMille(必填, 1..1000), equipment?(缺省空表, 值 >=0；输入 map 按迭代序转成装备表), "
+        + "parent?(可选, 必须存在且与 at 同格), reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
         + "★ 不实现 tools：载荷出现 tools 键一律具名拒（actor 账只有商品/货币两维；本批不做用具来源）。"
@@ -170,8 +173,9 @@ public final class RaiseUnitTool implements AgentTool {
         + " → sd.PutInfo（单位 canonical 地址、key="
         + INFO_KEY
         + "、value=JSON 字符串的行动记录）。"
-        + "返回 {preview, submitted, tick, unitId, name, regionId, at, parent, member, speed, mobilityPerMille, "
-        + "equipment, grain/money/manpower 各 {requested, available, sources[]}, commands, infoText}；"
+        + "返回 {preview, submitted, tick, unitId, name, regionId, at, parent, manpower[{type,amount}], "
+        + "equipment[{type,amount}], speed, mobilityPerMille, grain/money 各 {requested, available, sources[]}, "
+        + "manpowerAllocation {requested, available, sources[]}, commands, infoText}；"
         + "apply 另加 submission。";
   }
 
@@ -185,13 +189,21 @@ public final class RaiseUnitTool implements AgentTool {
         "at",
         ToolSupport.prop(
             "object", "新单位落点 {\"q\":整数,\"r\":整数} = 国库落点；必须在 region.hexes() 里（不默认、不猜中心）"));
-    props.put("manpower", ToolSupport.prop("integer", "抽人力（人；>=1；只抽 MALE 且当前 tick 成年档的批次）"));
+    props.put(
+        "manpower",
+        ToolSupport.prop(
+            "integer",
+            "抽人力（人；>=1；只抽 MALE 且当前 tick 成年档的批次）；新单位落成单条 {type=\""
+                + RaiseUnitPlan.DEFAULT_MANPOWER_TYPE
+                + "\", amount=实抽人数}"));
     props.put("grain", ToolSupport.prop("integer", "抽粮（最小计量单位；可选，缺省 0 = 本维度整段跳过；不得为负）"));
     props.put("money", ToolSupport.prop("integer", "抽钱（毫银；可选，缺省 0 = 本维度整段跳过；不得为负）"));
     props.put("speed", ToolSupport.prop("integer", "新单位速度（>=1；必填，不发明默认值）"));
     props.put("mobilityPerMille", ToolSupport.prop("integer", "新单位机动性（千分；1..1000；必填，不发明默认值）"));
     props.put(
-        "equipment", ToolSupport.prop("object", "装备 {字符串:整数}（可选，缺省空表；值 >=0，原样记进新 Unit，不从账本抽）"));
+        "equipment",
+        ToolSupport.prop(
+            "object", "装备 {字符串:整数}（可选，缺省空表；值 >=0，按输入 map 迭代序转成新 Unit 的 [{type,amount}] 表，不从账本抽）"));
     props.put("parent", ToolSupport.prop("string", "父单位 id（可选；必须存在且当刻有效位置与 at 同格）"));
     props.put("reason", ToolSupport.prop("string", "组军原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSupport.prop("boolean", "true（缺省）= 只算不写；false = 提交四条命令的同一批"));
@@ -545,13 +557,14 @@ public final class RaiseUnitTool implements AgentTool {
     view.put("regionId", plan.regionId());
     view.put("at", ToolSupport.hexCoord(plan.at()));
     view.put("parent", plan.parent().orElse(null));
-    view.put("member", plan.member());
+    view.put("manpower", ToolSupport.compositionView(plan.manpowerEntries()));
     view.put("speed", plan.speed());
     view.put("mobilityPerMille", plan.mobilityPerMille());
-    view.put("equipment", new LinkedHashMap<>(plan.equipment()));
+    view.put("equipment", ToolSupport.compositionView(plan.equipment()));
     view.put("grain", accountDimensionView(plan.grain()));
     view.put("money", accountDimensionView(plan.money()));
-    view.put("manpower", manpowerView(plan.manpower()));
+    // ★ D3a：新单位的人力表已发在 `manpower`；抽取来源仍发，但挪到 `manpowerAllocation`，避免同名字段两个形状。
+    view.put("manpowerAllocation", manpowerView(plan.manpower()));
     view.put("commands", plan.commandTypes());
     view.put("infoText", plan.infoNote(reason));
     return view;
