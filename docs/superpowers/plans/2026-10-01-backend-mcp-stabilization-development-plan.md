@@ -88,6 +88,8 @@
 - MCP 工具：`simos.gm.approvals`（只读 list）、`simos.gm.approve`（decide；按 AgentLib `PendingApprovals.decide` + `ApprovalCoordinator.effectiveDecision`；非世界 revision，但需审计）。
 - `simos.sd.run-due`：preview 只算 due 名单（0 rev）；apply 逐 DM 调 `sd.RunDecision`、非原子、返回每 DM 状态/轨迹；与 GUI run 共享并发锁（建议引入 `DecisionRunRegistry` 或等价单飞锁）。
 - `sd.AdjudicateTick`：补 dryRun/preview 或独立 preview 工具；禁止同一 tick 重复落 `EFFECTIVE` 记录（先 void 再裁或显式拒绝）。
+- 修 `AdjudicateTickTool` 资源 manifest：DirectiveWhitelist 允许的 `actor.Seed`/`economy.Seed` 等可嵌令当前会被静默拒；先裁定“决策人令是否允许写 economy/actor”，再把语义落进 `DecisionScopeFunctions`/manifest，修完由端到端脚本验证。
+- `CommandSubmitTool`/`AdvanceTool` 的动态/多命名空间资源声明单独记档；timeline/branch 面若资源 SPI 表达不了，不瞎猜，留到时间轴/参与者资源面一起定义。
 - `simos.advance`：接线 `Shell.advanceAndDrain`，确保 sd effect 队列在回合边界被处理。
 
 ### P8 数值风险与假旋钮

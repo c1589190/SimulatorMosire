@@ -199,6 +199,8 @@ map.CreateRegion × N
 | G10 | MCP 工具元数据对齐 + 逐工具可达性测试 | 无 | P0 |
 | G11 | 假旋钮清理（SetFormationOffset / AddCombatStage 静默参数） | 无 | P2 |
 | G12 | GovDaily 粮耗口径 120× 风险 | 无 | P1（数值） |
+| G13 | `AdjudicateTickTool` 的资源 manifest 只声明 map/social/unit/sd，但 DirectiveWhitelist 允许 `actor.Seed`/`economy.Seed` 等可嵌令 ⇒ 这些令会被静默拒；需裁定决策人令是否允许写 economy/actor | G6 前 | P1 |
+| G14 | `CommandSubmitTool`/`AdvanceTool` 的动态/多命名空间资源未建模；timeline 面无法用现有资源 SPI 表达 | 无 | P2 |
 
 ---
 
