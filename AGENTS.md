@@ -431,18 +431,19 @@ tools/run-shaded.sh simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar \
 
 ### 8.3 MCP 口与审批链（2026-09-24 起）
 
-- **MCP 口 = GM 组**（用户裁定："MCP 和 GM Agent 处于同一权限级，想改什么改什么"），当前 **98 条工具**
-  （2026-10-01 实测：读 23 + 窄写 53 + 通用/组合写 22；窄写 = 19 sd + 7 map + 26 unit + 1 actor；组合写含 P5 的
-  `simos.unit.spawnArmy`、army 主子改派补丁的 `simos.army.assignGov` 与 P1a1 的 `simos.region.seed`）。就绪判据：启动日志里 `外发工具 N 个`；工具面与桶的对齐由
+- **MCP 口 = GM 组**（用户裁定："MCP 和 GM Agent 处于同一权限级，想改什么改什么"），当前 **99 条工具**
+  （2026-10-01 实测：读 24 + 窄写 53 + 通用/组合写 22；窄写 = 19 sd + 7 map + 26 unit + 1 actor；组合写含 P5 的
+  `simos.unit.spawnArmy`、army 主子改派补丁的 `simos.army.assignGov` 与 P1a1 的 `simos.region.seed`；读工具含 P3 的
+  `simos.province.divide`）。就绪判据：启动日志里 `外发工具 N 个`；工具面与桶的对齐由
   `SimosToolsTest`/`McpServerTest`/`McpPortTopologyTest` 三处名单断言把守。
 - **审批链两条**：**GM 面（MCP 口）的写"无脑过"**（`GmAutoApproveGate` ⇒ 直接批准、不登记待批）；
   **决策人链仍要人批**（`AutoApproveGate → ConfirmGate`，GM 在「决策 → 审批」点头）。
   ★ 两张面的 caller 桶都是 `DEFAULT` ⇒ **从请求字段上分不开**，只能按"用哪条 authorizer"分。
   ★ `scope=session` 会被 AgentLib 收窄成 `once`（`DEFAULT` 桶非 `sessionGrantable`）。
 - 读工具默认**四桶共享**；只给 GM 的那些在类上标 `app.tools.GmOnlyRead`
-  （2026-10-01 实测 8 条：`simos.map.path`、`simos.map.block`、`simos.sd.decision-makers`、
+  （2026-10-01 实测 9 条：`simos.map.path`、`simos.map.block`、`simos.sd.decision-makers`、
   `simos.sd.decision-maker`、`simos.sd.verdicts`、`simos.economy.ownership`、`simos.gm.tool-usage`、
-  `simos.llm.providers`）。
+  `simos.llm.providers`、`simos.province.divide`）。
 - ★ **GUI 与 MCP 读工具共用同一份视图**（`app/gui/ApiViews` 是公开的视图层）——别再各写一份
   （那正是"同一资源的两个形状"的由来，见 `.superpowers/sdd/2026-09-22-tool-surface/m4-inventory.md` §二-6）。
 - ★★ **追加（2026-09-27，M0.3）：`ApiViews.economyHex` 里多了一栏 `grainDiagnosis`**（逐格粮食诊断）。

@@ -25,6 +25,7 @@ import io.mosire.simos.app.tools.read.MapPathTool;
 import io.mosire.simos.app.tools.read.MapRegionTool;
 import io.mosire.simos.app.tools.read.MapRenderTool;
 import io.mosire.simos.app.tools.read.PopulationTool;
+import io.mosire.simos.app.tools.read.ProvinceDivideTool;
 import io.mosire.simos.app.tools.read.SdCombatsTool;
 import io.mosire.simos.app.tools.read.SdVerdictsTool;
 import io.mosire.simos.app.tools.read.SkillTool;
@@ -498,6 +499,9 @@ public final class SimosToolSource implements ToolSource {
         new MapOverviewTool(query, mapId),
         new MapHexTool(query, mapId),
         new MapRegionTool(query, mapId),
+        // ★ P3（2026-10-01）：省份划分建议（只出建议、零写入）——递归主轴二分 + 可选首都圈 + 相交 Region 清单。
+        //   只给 GM 桶（GmOnlyRead）：划分是 GM 的规划动作，决策人不做行政区划。
+        new ProvinceDivideTool(query, mapId),
         new MapPathTool(query),
         // ★ 工具面补齐（2026-09-25）：GUI `/api/map/block` 的对应读口——某格所在的**整块地形**（成员格清单）。
         //   与 hex（单格）/ overview（全块多边形）不同形；GUI 该端点拒 as= ⇒ 只给 GM 桶（GmOnlyRead）。
