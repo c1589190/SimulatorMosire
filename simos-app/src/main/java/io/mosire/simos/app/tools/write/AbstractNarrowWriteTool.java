@@ -94,6 +94,12 @@ abstract class AbstractNarrowWriteTool implements AgentTool {
   protected static final ResourceManifest ACTOR_NAMESPACE_WRITE =
       ResourceManifest.of(ToolSupport.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED);
 
+  /**
+   * 同 {@link #SD_NAMESPACE_WRITE}，用于 {@code social.UpdateCity}（handler 只产 {@code SocialChangeSet}）。
+   */
+  protected static final ResourceManifest SOCIAL_NAMESPACE_WRITE =
+      ResourceManifest.of(ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED);
+
   /** GM 专用 sd 窄写的写资源断言（{@code sd:*}；GM 侧 sd 是 unlimited）。 */
   protected static List<ResourceId> sdNamespaceWriteResources() {
     return List.of(ResourceId.of(ToolSupport.SD_NAMESPACE, "*"));
@@ -102,6 +108,11 @@ abstract class AbstractNarrowWriteTool implements AgentTool {
   /** GM 专用 actor 窄写的写资源断言（{@code actor:*}；GM 侧 actor 是 unlimited）。 */
   protected static List<ResourceId> actorNamespaceWriteResources() {
     return List.of(ResourceId.of(ToolSupport.ACTOR_NAMESPACE, "*"));
+  }
+
+  /** GM 专用 social 窄写的写资源断言（{@code social:*}；GM 侧 social 是 unlimited）。 */
+  protected static List<ResourceId> socialNamespaceWriteResources() {
+    return List.of(ResourceId.of(ToolSupport.SOCIAL_NAMESPACE, "*"));
   }
 
   /**

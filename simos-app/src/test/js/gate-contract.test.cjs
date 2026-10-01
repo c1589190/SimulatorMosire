@@ -11,6 +11,8 @@ const REQUIRED_FILES = [
   "decision-docs.test.cjs",
   "decision-mode.test.cjs",
   "economy-panel.test.cjs",
+  "f1-map-first.test.cjs",
+  "f2-heatmap.test.cjs",
   "gate-contract.test.cjs",
   "gm-panel.test.cjs",
   "map-edit-suboptions.test.cjs",
@@ -80,7 +82,11 @@ const REQUIRED_FILES = [
 //     （粮库存/日耗/本期流水逐值来自服务端 + 缺 flow 降级为「无」）。
 //   2026-09-25 §十一（推进允许一次 N 天，撤销前端逐日循环）起 296 → 297：timeline.test.cjs 的"逐日循环"
 //     两条改写为"一条命令 to = from + N"，并新增 1 条（返回里没有新 revision ⇒ 不编造成功），合计 +1。
-const MIN_ASSERTIONS = 297;
+//   2026-10-01 F1/F2 收尾起 297 → 318：新增 f1-map-first.test.cjs 的 11 条（图层缺省/预设/城市 LOD/搜索/
+//     国家汇总/GOV 归属/class-first 读数/renderer 接线）与 f2-heatmap.test.cjs 的 10 条（指标词表/色标/图例/
+//     不可用层不填 0/数据组接线/api 缓存）；webui-fix2.test.cjs 的「右栏 view 模式 hidden」断言按 F1 语义改写
+//     （条数不变：常规模式承载世界总览）。
+const MIN_ASSERTIONS = 318;
 
 function testFiles() {
   return fs

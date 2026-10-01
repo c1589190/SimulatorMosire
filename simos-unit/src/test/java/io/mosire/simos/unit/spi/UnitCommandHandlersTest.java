@@ -741,44 +741,53 @@ class UnitCommandHandlersTest {
     assertThat(reason(DETACH, worldAt(T5, attachedLine()), "{\"id\":\"u-404\"}")).contains("单位不存在");
   }
 
-  // ── unit.SetFormationOffset（T3 / spec §一.3 / P2） ──────────────
+  // ── unit.SetFormationOffset（P8 起具名拒：假旋钮退役） ──────────────
 
   /**
-   * ★★ 判据（**v2：偏移只落段、不再影响位置**）：设偏移 ⇒ `offset` 段有值，但有效位置**不变**；两分量皆缺 ⇒ 清偏移。
+   * ★★ P8（2026-10-01 用户裁定）：`RelativeOffset` 已无消费点（移动/编队/战斗都不读），命令面**不再接受**
+   * `unit.SetFormationOffset`——旧行为（设偏移 / 只给一个分量 / 清偏移）一律返回同一条具名拒因，不写 offset 段、不假成功。
    *
-   * <p>★ 判别力：把 `effectivePosition` 改回"父位 ⊕ 偏移" ⇒ 第一条位置断言红。
+   * <p>★ 判别力：把 handler 改回写 `offset` 段 ⇒ 本用例的 Rejected 断言当场红。
    */
   @Test
-  void setFormationOffsetAppliesAndClears() {
+  void setFormationOffsetIsRetiredAndRejectsAWellFormedSet() {
+    for (String payload :
+        List.of(
+            "{\"id\":\"u-3\",\"dq\":1,\"dr\":0}",
+            "{\"id\":\"u-3\",\"dr\":-2}",
+            "{\"id\":\"u-3\"}")) {
+      assertThat(reason(SET_OFFSET, worldAt(T5, attachedLine()), payload))
+          .as("旧行为现在一律具名拒：" + payload)
+          .contains("unit.SetFormationOffset 已退役")
+          .contains("unit.PlaceAt");
+    }
+    // handler 不产生 UnitChangeSet ⇒ 世界里的 offset 段保持原值（这里基线本来就是空）。
     UnitState base = attachedLine();
-    UnitState shifted =
-        applied(SET_OFFSET, worldAt(T5, base), "{\"id\":\"u-3\",\"dq\":1,\"dr\":0}");
-    assertThat(shifted.units().get(U3).offset().valueAt(T5)).contains(new RelativeOffset(1, 0));
-    assertThat(shifted.effectivePosition(U3, T5))
-        .as("v2：偏移不参与位置计算（仍是它自己的 H11）")
-        .contains(SpiFixture.H11);
-
-    UnitState cleared = applied(SET_OFFSET, worldAt(T6, shifted), "{\"id\":\"u-3\"}");
-    assertThat(cleared.units().get(U3).offset().valueAt(T6)).as("两者皆缺 ⇒ 清").isEmpty();
-    assertThat(cleared.effectivePosition(U3, T6)).contains(SpiFixture.H11);
-    assertThat(cleared.effectivePosition(U3, T5)).as("位置本来就没被偏移动过").contains(SpiFixture.H11);
+    assertThat(reason(SET_OFFSET, worldAt(T5, base), "{\"id\":\"u-3\",\"dq\":1,\"dr\":0}"))
+        .contains("已退役");
+    assertThat(base.units().get(U3).offset().valueAt(T5)).isEmpty();
   }
 
-  /** ★ 只给一个分量 ⇒ 另一个按 0 补（部分更新，不是清）。 */
+  /** ★ 只给一个分量也不行：退役后它同样命中具名拒，不再有"另一个按 0 补"的部分更新。 */
   @Test
-  void setFormationOffsetAcceptsAPartialComponent() {
-    UnitState next = applied(SET_OFFSET, worldAt(T5, attachedLine()), "{\"id\":\"u-3\",\"dr\":-2}");
-    assertThat(next.units().get(U3).offset().valueAt(T5)).contains(new RelativeOffset(0, -2));
+  void setFormationOffsetIsRetiredAndRejectsAPartialComponent() {
+    assertThat(reason(SET_OFFSET, worldAt(T5, attachedLine()), "{\"id\":\"u-3\",\"dr\":-2}"))
+        .contains("unit.SetFormationOffset 已退役");
   }
 
   @Test
-  void setFormationOffsetRejectsBadShapesAndUnknownIds() {
-    assertThat(reason(SET_OFFSET, worldAt(T5, attachedLine()), "{\"id\":\"u-3\",\"dq\":\"1\"}"))
-        .contains("整数");
-    assertThat(reason(SET_OFFSET, worldAt(T5, attachedLine()), "{\"id\":\"u-3\",\"dr\":1.5}"))
-        .contains("整数");
-    assertThat(reason(SET_OFFSET, worldAt(T5, attachedLine()), "{\"id\":\"u-404\",\"dq\":1}"))
-        .contains("单位不存在");
+  void setFormationOffsetRejectsBadShapesAndUnknownIdsWithRetirementReason() {
+    for (String payload :
+        List.of(
+            "{\"id\":\"u-3\",\"dq\":\"1\"}",
+            "{\"id\":\"u-3\",\"dr\":1.5}",
+            "{\"id\":\"u-404\",\"dq\":1}",
+            "{}",
+            "[1,2,3]")) {
+      assertThat(reason(SET_OFFSET, worldAt(T5, attachedLine()), payload))
+          .as("退役命令不解析形状/不存在 id，统一具名拒：" + payload)
+          .contains("unit.SetFormationOffset 已退役");
+    }
   }
 
   /**
@@ -787,6 +796,9 @@ class UnitCommandHandlersTest {
    * <p>★ **T10-b：断言必须钉"哪一层拒的"**（原为 token 级 `.contains("id")` 等）。凡载荷层与域层都会提到同一字段名的命令，token
    * 断言**判不出**是哪一层——删掉载荷层守卫后域层兜底消息仍含该 token ⇒ 用例照样绿。⇒ 这里一律断言 {@link UnitPayloads} 的**完整载荷层消息前缀**（`字段
    * &lt;名&gt; 必须是…`），使"载荷层真的响了"成为可判别命题。
+   *
+   * <p>★ **P8 例外**：{@code unit.SetFormationOffset} 已退役，handler 在任何载荷之前就返回具名拒 ⇒ 它不参加"载荷层消息前缀"这条；
+   * 该命令的判别力由上面三条退役用例承担（同样要求 Rejected + 指定理由片段）。
    */
   @Test
   void everyHandlerRejectsMalformedPayload() {
@@ -802,7 +814,9 @@ class UnitCommandHandlersTest {
         .contains("字段 status 必须是字符串");
     assertThat(reason(ATTACH, worldAt(T5, detachedPair()), "{}")).contains("字段 id 必须是字符串");
     assertThat(reason(DETACH, worldAt(T5, attachedLine()), "{}")).contains("字段 id 必须是字符串");
-    assertThat(reason(SET_OFFSET, worldAt(T5, attachedLine()), "[1,2,3]")).contains("JSON 对象");
+    // ★ P8：SetFormationOffset 已退役 ⇒ 畸形载荷也走同一条具名拒（不解析 dq/dr），见上面三条专用用例。
+    assertThat(reason(SET_OFFSET, worldAt(T5, attachedLine()), "[1,2,3]"))
+        .contains("unit.SetFormationOffset 已退役");
     assertThat(reason(REPARENT_SUBTREE, worldAt(T5, detachedPair()), "{}"))
         .contains("字段 rootId 必须是字符串");
     assertThat(reason(SPLIT, worldAt(T5, attachedLine()), "{}")).contains("字段 rootId 必须是字符串");

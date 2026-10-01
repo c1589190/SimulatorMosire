@@ -1,5 +1,6 @@
 package io.mosire.simos.app.access;
 
+import io.mosire.agentlib.permission.ResourceScope;
 import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.map.GameMap;
@@ -34,9 +35,10 @@ import java.util.TreeSet;
  * <p>★ **无匹配区域 ⇒ 显式 deny-all**（{@link DecisionScopeFunction#scopeOfPrefixes}）：
  * 国家还没圈地、或区域全被删掉时，这个决策人**什么都看不见**，而不是"回落到不设限"。
  *
- * <p>★ **三个命名空间各自表态**（T10 起）：{@code map} = 本国区域、{@code unit} = 位置落在本国区域内的单位、 {@code social} =
- * 本国区域内的 hex（spec §3.2 逐条）。三者**必须同时配**——只配 {@code map} 会让 {@code unit}/{@code social}
- * 回落到工具缺省策略（{@code READ_ONLY}）⇒ **静默全放行**（spec §5.2 第 3 条："空 = 不表态"与"够不着"方向相反）。
+ * <p>★ **四个命名空间各自表态**（T10 起；R3b 补 {@code actor}）：{@code map} = 本国区域、{@code unit} = 位置落在本国区域内的单位、
+ * {@code social} = 本国区域内的 hex（spec §3.2 逐条）、{@code actor} = 显式 {@code none()}（国家决策人不走 GOV 国库上缴，
+ * {@code actor.RemitGovTreasury} 只对 GOV 决策人开放）。四者**必须同时配**——只配 {@code map} 会让其余命名空间回落到工具缺省策略（{@code
+ * READ_ONLY}）⇒ **静默全放行**（spec §5.2 第 3 条："空 = 不表态"与"够不着"方向相反）。
  *
  * <p>★ **读侧的细粒度化必须与这里的配前缀成对上线**（spec §5.2 第 2 条）：粗断言（{@code unit:"*"}）撞上这里的 逐 id
  * 前缀会**整调被拒**——两者是同一轮（T10）的两半。
@@ -95,13 +97,14 @@ public final class NationScope implements DecisionScopeFunction {
       }
     }
 
-    // ★ 三个命名空间**都要表态**：只配 map 会让 unit/social 回落到工具缺省策略（READ_ONLY）⇒ **静默全放行**
+    // ★ 四个命名空间**都要表态**：只配 map 会让 unit/social/actor 回落到工具缺省策略（READ_ONLY）⇒ **静默全放行**
     //   （spec §5.2 第 3 条：空 = 不表态 = 放行，"够不着"必须显式 none()）。
     return ResourceScopeMap.of(
             ToolSupport.MAP_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(regionPrefixes))
         .withNamespace(
             ToolSupport.UNIT_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(unitPrefixes))
         .withNamespace(
-            ToolSupport.SOCIAL_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(socialPrefixes));
+            ToolSupport.SOCIAL_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(socialPrefixes))
+        .withNamespace(ToolSupport.ACTOR_NAMESPACE, ResourceScope.none());
   }
 }

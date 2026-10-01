@@ -116,6 +116,35 @@ class GovDailyTest {
     assertThat(office.bonusPerMille()).isZero();
   }
 
+  /**
+   * ★★ G12 防 120× 回归（2026-10-01）：{@link OfficePolicy#defaults()} 的粮定额是**每人每日** 83 毫粮 （{@code
+   * EconomyVocabulary.dailyRationMilli(1,1)}），不是每人每 120 天的 10,000。旧默认值直接进 {@code totalStaff ×
+   * grainPerStaffPerTick} ⇒ 1 人编制当日就评估 10,000 毫粮（120×）。
+   */
+  @Test
+  void defaultPolicyChargesDailyRationAndNotThe120DayConstant() {
+    GovFormation gov = gov(staff(1L, 0L, 0L), OfficePolicy.defaults());
+    UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
+    RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
+
+    GovDaily.Outcome outcome =
+        GovDaily.settle(
+            state(GovOfficeState.empty(U1, 0L)), units, map(), SocialData.empty(), 1L, oracle);
+
+    assertThat(oracle.calls())
+        .as("默认政策 + 1 名编制：当日粮需求 = 83 毫粮（120 天常量 10000 ⇒ 本断言红）")
+        .containsExactly(new Call(U1, H1, "grain", 83L), new Call(U1, H1, "cloth", 2L));
+    assertThat(outcome.dues())
+        .as("评估量写成 dailyRationMilli(1,1)=83；布按每人每日 floor(1000/365)=2 折")
+        .containsExactly(
+            new GovDaily.UpkeepDue(U1, H1, new GovDaily.Commodity(GRAIN), 83L, 83L, 0L),
+            new GovDaily.UpkeepDue(U1, H1, new GovDaily.Commodity(CLOTH), 2L, 2L, 0L),
+            new GovDaily.UpkeepDue(U1, H1, new GovDaily.Money(SILVER), 0L, 0L, 0L));
+    assertThat(OfficePolicy.defaults().grainPerStaffPerTick())
+        .as("默认政策常量本身也必须等于 dailyRationMilli(1,1)")
+        .isEqualTo(EconomyVocabulary.dailyRationMilli(1L, 1L));
+  }
+
   @Test
   void zeroNeedResourceIsNotSentToOracle() {
     GovFormation gov = gov(staff(2L, 0L, 0L), policy(10L, 0L, 0L, 0L));

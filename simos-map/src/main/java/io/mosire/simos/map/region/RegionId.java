@@ -32,6 +32,17 @@ public record RegionId(String value) {
     if (text == null || text.isBlank()) {
       throw new IllegalArgumentException("RegionId 不得为空白: " + text);
     }
+    // ★ 接受仓内 canonical 地址形态 map:<mapId>:region.<裸值>（读口/resolve 给决策人的常见形态）——
+    //   去掉前缀后按裸值建 id；否则决策人把地址原样写回命令时会查无区域（2026-10-01 R5 实测）。
+    if (text.startsWith("map:")) {
+      int marker = text.indexOf(":region.");
+      if (marker > 0) {
+        text = text.substring(marker + ":region.".length());
+      }
+    }
+    if (text.isBlank()) {
+      throw new IllegalArgumentException("RegionId 去掉 canonical 前缀后不得为空白");
+    }
     return new RegionId(text);
   }
 }

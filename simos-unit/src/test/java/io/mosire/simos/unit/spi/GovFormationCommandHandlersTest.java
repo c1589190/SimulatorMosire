@@ -120,8 +120,10 @@ class GovFormationCommandHandlersTest {
     assertThat(gov.staff())
         .containsExactly(Map.entry(StaffRole.SCRIBE, 3L), Map.entry(StaffRole.YAMEN, 2L));
     assertThat(gov.policy().grainPerStaffPerTick())
-        .as("policy 部分覆盖：没给的字段取 OfficePolicy.defaults()")
-        .isEqualTo(EconomyVocabulary.RATION_MILLI_PER_PERSON);
+        .as("policy 部分覆盖：没给的字段取 OfficePolicy.defaults()（每人每日 83 毫粮，不是 120 天口粮 10000）")
+        .isEqualTo(EconomyVocabulary.dailyRationMilli(1L, 1L))
+        .isEqualTo(83L)
+        .isNotEqualTo(EconomyVocabulary.RATION_MILLI_PER_PERSON);
     assertThat(gov.policy().clothPerStaffPerCycle())
         .isEqualTo(EconomyVocabulary.CLOTH_MILLI_PER_PERSON);
     assertThat(gov.policy().moneyPerStaffPerTick()).as("给了 ⇒ 覆盖").isEqualTo(4L);

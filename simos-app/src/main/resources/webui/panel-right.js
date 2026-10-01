@@ -404,10 +404,18 @@
       var cardNode = app.el("div", { class: "nation-card" });
       cardNode.appendChild(app.el("h3", { text: card.name + "（" + card.id + "）" }));
       var cdl = app.el("dl");
+      // ★ R2b：城市计数/人口走国家 Region 的 containedCity*（按落点 at 统计，城市可归属省）。
+      var cityBasisHint =
+        "城市按落点统计（城市可归属省）：国家 Region hex 集内的城市 at；旧后端缺 containedCity* 时回退旧口径。";
       appendRow(cdl, "人口", card.population === null ? "—" : card.population);
       appendRow(cdl, "区域", card.regionCount);
-      appendRow(cdl, "城市", card.cityCount);
-      appendRow(cdl, "城市人口", card.cityPopulation === null ? "—" : card.cityPopulation);
+      appendRow(cdl, "城市", card.cityCount, cityBasisHint);
+      appendRow(
+        cdl,
+        "城市人口",
+        card.cityPopulation === null ? "—" : card.cityPopulation,
+        cityBasisHint
+      );
       // ★ F2：区域汇总新增字段（逐格口径；缺字段如实显示 “—”，不拿 0 冒充）。
       appendRow(
         cdl,
@@ -443,7 +451,7 @@
     cardsNode.appendChild(
       app.el("p", {
         class: "muted world-overview-caveat",
-        text: "国家卡片按 meta.tag=nation:<id> 的区域逐格求和；区域重叠会重复计入。粮食/银为 actor 账本位时点读数，不混入 class-first 世界级池。",
+        text: "国家卡片按 meta.tag=nation:<id> 的区域逐格求和；区域重叠会重复计入。城市数/人口按国家区域 hex 集内的城市落点统计（城市可归属省）。粮食/银为 actor 账本位时点读数，不混入 class-first 世界级池。",
       })
     );
     wrap.appendChild(cardsNode);

@@ -368,17 +368,16 @@ public final class ApiViews {
   /**
    * ★ F1：**社交城市列表**（{@code GET /api/social/cities} 的视图；GUI 与未来 MCP 共用同一份装配）。
    *
-   * <p>★ 数据源是 {@link SocialData#cities()}（social 侧城市），**不是** {@code GameMap.cities()} ——
-   * 后者在 worldgen 之后仍为空，拿它当城市源会得到一张永远没有城市的地图。{@code population} 走 {@link
+   * <p>★ 数据源是 {@link SocialData#cities()}（social 侧城市），**不是** {@code GameMap.cities()} —— 后者在
+   * worldgen 之后仍为空，拿它当城市源会得到一张永远没有城市的地图。{@code population} 走 {@link
    * SocialData#urbanPopulationAt(io.mosire.simos.map.CityId)} **现算**（social 侧不存该字段）。
    *
-   * <p>★ {@code tier} 只认 {@code props.tier}；缺失 ⇒ {@code null}（不猜等级）。{@code props} 原样透出
-   * （worldgen 写的 {@code tier} / {@code catchmentHexes} / … 都在里面）。排序按 city id 字典序。
+   * <p>★ {@code tier} 只认 {@code props.tier}；缺失 ⇒ {@code null}（不猜等级）。{@code props} 原样透出 （worldgen 写的
+   * {@code tier} / {@code catchmentHexes} / … 都在里面）。排序按 city id 字典序。
    *
    * @param social 社会切片
    * @param regionFilter 只列 {@code SocialCity.region} 逐字等于它的城；null/空白 = 不筛（**不按落点猜归属**）
-   * @param visible 资源级可见谓词（非 null 时逐城按 {@code at} 过滤，口径与 {@code seesHex} 相同）；null =
-   *     全量
+   * @param visible 资源级可见谓词（非 null 时逐城按 {@code at} 过滤，口径与 {@code seesHex} 相同）；null = 全量
    */
   public static Map<String, Object> cities(
       SocialData social, String regionFilter, Predicate<HexCoord> visible) {
@@ -420,15 +419,17 @@ public final class ApiViews {
    * <ul>
    *   <li>{@code population} = Region 的 hex 集合逐格 {@link SocialData#populationAt(HexCoord)} 之和。
    *       区域可以重叠 ⇒ 同一格会在两个区域里各计一次；**这不是世界守恒量**，是"区域格集求和"（F1 有意如此）。
-   *   <li>{@code cityCount} / {@code cityPopulation} **只认** {@code SocialCity.region == id}；region 为空的城
-   *       不按落点猜归属（缺 region 的城不进入任何区域汇总）。
+   *   <li>{@code cityCount} / {@code cityPopulation} **只认** {@code SocialCity.region == id}；region
+   *       为空的城 不按落点猜归属（缺 region 的城不进入任何区域汇总）。
+   *   <li>★ R2a 追加：{@code containedCityCount} / {@code containedCityPopulation} = 该 Region 的 hex 集内
+   *       <b>按城市落点</b>（{@code SocialCity.at}）统计的城市数与城市人口（人口仍现算）；国家/省/首都区各自按自己的 hex 集计，重叠区域各自计数。旧
+   *       {@code cityCount} / {@code cityPopulation} 口径与字段名一字不变。
    *   <li>{@code unitCount} = 该单位在 {@code at} 时刻的 {@link UnitState#effectivePosition} 落在 Region hex
-   *       集合内的数量（含 GOV）；{@code govCount} 是其中 {@code unit.module()} 为 {@link GovFormation}
-   *       的数量。
-   *   <li>★ F2 追加：{@code ruralPopulation} / {@code urbanPopulation} = region hex 集内**有
-   *       {@link PopulationGroup}** 的格按城乡二分求和（旧序列格无法二分、不计入）；{@code grainStock} /
-   *       {@code silverMoney} / {@code goodsTotal} = region hex 集内 actor 账本的粮 / silver / 逐商品余额
-   *       合计（键按商品 id 字典序）。区域重叠口径同上：逐区域格集求和，不是世界守恒量。
+   *       集合内的数量（含 GOV）；{@code govCount} 是其中 {@code unit.module()} 为 {@link GovFormation} 的数量。
+   *   <li>★ F2 追加：{@code ruralPopulation} / {@code urbanPopulation} = region hex 集内**有 {@link
+   *       PopulationGroup}** 的格按城乡二分求和（旧序列格无法二分、不计入）；{@code grainStock} / {@code silverMoney} /
+   *       {@code goodsTotal} = region hex 集内 actor 账本的粮 / silver / 逐商品余额 合计（键按商品 id
+   *       字典序）。区域重叠口径同上：逐区域格集求和，不是世界守恒量。
    * </ul>
    *
    * <p>★ 按 region id 字典序发；同一份状态两次调用逐字节相同。
@@ -455,8 +456,7 @@ public final class ApiViews {
       if (current != null) {
         populationByHex.put(group.residence(), current + group.count());
       }
-      long[] counts =
-          urbanRuralByHex.computeIfAbsent(group.residence(), ignored -> new long[2]);
+      long[] counts = urbanRuralByHex.computeIfAbsent(group.residence(), ignored -> new long[2]);
       if (PopulationLots.isUrban(group)) {
         counts[0] += group.count();
       } else {
@@ -489,6 +489,13 @@ public final class ApiViews {
       aggregate[0] += 1L;
       aggregate[1] += social.urbanPopulationAt(city.id());
     }
+    // ★ R2a：containedCityCount / containedCityPopulation 按**落点** at 预聚合一次；区域可重叠 ⇒ 各自计数。
+    Map<HexCoord, long[]> containedCityByHex = new LinkedHashMap<>();
+    for (SocialCity city : social.cities().values()) {
+      long[] aggregate = containedCityByHex.computeIfAbsent(city.at(), ignored -> new long[2]);
+      aggregate[0] += 1L;
+      aggregate[1] += social.urbanPopulationAt(city.id());
+    }
     List<RegionId> ordered = new ArrayList<>(map.regions().keySet());
     ordered.sort(Comparator.comparing(RegionId::value));
     List<Map<String, Object>> out = new ArrayList<>(ordered.size());
@@ -497,6 +504,8 @@ public final class ApiViews {
       long population = 0L;
       long ruralPopulation = 0L;
       long urbanPopulation = 0L;
+      long containedCityCount = 0L;
+      long containedCityPopulation = 0L;
       long grainStock = 0L;
       long silverMoney = 0L;
       // 逐商品合计只收 region 格集里出现的键；TreeMap 保证商品 id 字典序（与状态插入序无关）。
@@ -510,6 +519,11 @@ public final class ApiViews {
         if (urbanRural != null) {
           urbanPopulation += urbanRural[0];
           ruralPopulation += urbanRural[1];
+        }
+        long[] containedCity = containedCityByHex.get(hex);
+        if (containedCity != null) {
+          containedCityCount += containedCity[0];
+          containedCityPopulation += containedCity[1];
         }
         Long grain = grainStockByHex.get(hex);
         if (grain != null) {
@@ -547,6 +561,9 @@ public final class ApiViews {
       item.put("population", population);
       item.put("cityCount", cityAggregate[0]);
       item.put("cityPopulation", cityAggregate[1]);
+      // ★ R2a 追加：按落点 at 统计的 contained 口径（旧 cityCount/cityPopulation 一字不动，只追加）。
+      item.put("containedCityCount", containedCityCount);
+      item.put("containedCityPopulation", containedCityPopulation);
       item.put("unitCount", unitCount);
       item.put("govCount", govCount);
       // ★ F2 新增字段（既有字段名与形状一字不动，只追加）：城乡人口 / 粮库存 / 银货币 / 逐商品合计。
@@ -565,11 +582,11 @@ public final class ApiViews {
   /**
    * ★ F2：**地图热力图**（{@code GET /api/map/heatmap} 的视图）。
    *
-   * <p>★ 只读、紧凑聚合：每个指标只发**有事实**的格（{@code cells}），不整份发 {@code economyHex} 的 84 KB 逐格视图。
-   * {@code cells} 按 {@link HexCoord} 自然序（先 {@code q} 后 {@code r}）发；同状态两次调用逐字节相同。
+   * <p>★ 只读、紧凑聚合：每个指标只发**有事实**的格（{@code cells}），不整份发 {@code economyHex} 的 84 KB 逐格视图。 {@code cells}
+   * 按 {@link HexCoord} 自然序（先 {@code q} 后 {@code r}）发；同状态两次调用逐字节相同。
    *
-   * <p>★★ **算不出的整层具名不可用**（{@code cells: []}、{@code unavailable} 写明原因，绝不填 0 冒充）：未知 id、
-   * 以及 class-first 没有逐格来源的 {@code grainCycleUnmet}。
+   * <p>★★ **算不出的整层具名不可用**（{@code cells: []}、{@code unavailable} 写明原因，绝不填 0 冒充）：未知 id、 以及
+   * class-first 没有逐格来源的 {@code grainCycleUnmet}。
    *
    * <p>口径逐条对上 F2 设计增补（用户 2026-10-01 已确认）：
    *
@@ -581,8 +598,8 @@ public final class ApiViews {
    *   <li>{@code grainCycleUnmet}：R3a 起旧市场报告组件已删除，class-first 不产生逐格周期缺口 ⇒ 整层 unavailable。
    * </ul>
    *
-   * <p>★ {@code stats.median} 的算法是确定的：排序后奇数取中位、偶数取两中位平均（double）；空 {@code cells} ⇒
-   * {@code count=0} 且 min/median/max 为 {@code null}（不填 0 冒充）。
+   * <p>★ {@code stats.median} 的算法是确定的：排序后奇数取中位、偶数取两中位平均（double）；空 {@code cells} ⇒ {@code count=0} 且
+   * min/median/max 为 {@code null}（不填 0 冒充）。
    *
    * @param metric 指标 id；未知 id ⇒ {@code unavailable} 具名、{@code cells: []}
    */
@@ -606,13 +623,11 @@ public final class ApiViews {
               "粮食·周期缺口",
               "毫粮",
               "本周期累计（旧 MarketReport 口径）；class-first 无逐格来源",
-              "R3a 起旧市场报告组件已删除；class-first 不产生逐格周期缺口"
-                  + "（旧 FlowRow.unmetNeed 不作为代理，避免把 0 读成没有缺口）",
+              "R3a 起旧市场报告组件已删除；class-first 不产生逐格周期缺口" + "（旧 FlowRow.unmetNeed 不作为代理，避免把 0 读成没有缺口）",
               new LinkedHashMap<>());
       case HEATMAP_MONEY_SILVER -> moneySilverHeatmap(state, id);
       default ->
-          unavailableHeatmap(
-              state, id, null, null, null, "未知指标: " + id, new LinkedHashMap<>());
+          unavailableHeatmap(state, id, null, null, null, "未知指标: " + id, new LinkedHashMap<>());
     };
   }
 
@@ -662,8 +677,7 @@ public final class ApiViews {
         kind == PopulationHeatmapMetric.TOTAL
             ? "无批次的格按 headlinePopulationAt 回退旧序列；有批次的格用批次求和"
             : "旧序列格无法城乡二分（仅旧 populations 序列、没有 PopulationGroup 的格未计入本层）");
-    return longHeatmap(
-        state, id, label, "人", "批次口径（有批次的格）；时点快照", values, notes);
+    return longHeatmap(state, id, label, "人", "批次口径（有批次的格）；时点快照", values, notes);
   }
 
   /** F2 粮食库存：逐格 actor GoodsAccount 的 grain 余额合计（有账户的格全发，0 也是事实）。 */
@@ -673,13 +687,7 @@ public final class ApiViews {
       values.merge(account.key().location(), account.balances().getOrDefault(GRAIN, 0L), Long::sum);
     }
     return longHeatmap(
-        state,
-        id,
-        "粮食·库存",
-        "毫粮",
-        "逐格 actor GoodsAccount 粮余额合计（时点）",
-        values,
-        new LinkedHashMap<>());
+        state, id, "粮食·库存", "毫粮", "逐格 actor GoodsAccount 粮余额合计（时点）", values, new LinkedHashMap<>());
   }
 
   /** F2 粮食日耗：逐格 ClassRow.naturalNeeds 的 grain 合计（与 economyHex.grainDailyConsumption 同源）。 */
@@ -1452,11 +1460,11 @@ public final class ApiViews {
   /**
    * ★ F1：**世界级经济总览**（{@code GET /api/economy/overview} 的视图）。
    *
-   * <p>★ <b>它不逐格</b>：class-first 的 4 池、货币发行/回笼、actor kind / 家户阶层聚合都是**世界级**量；逐格读仍走
-   * {@link #economyHex}。本方法只是把 {@code economyHex} 用的同一批私有装配函数（{@link #classFirstView} /
-   * {@link #moneyIssuanceView} / {@link #moneyByActorKind} / {@link #moneyByHouseholdClass} /
-   * {@link #moneyLayers} / {@link #currencyDefViews} / {@link #moneyInstrumentViews}）按**同一口径**组装一次
-   * —— 不复制第二份公式，两个读口的数字不会漂移。
+   * <p>★ <b>它不逐格</b>：class-first 的 4 池、货币发行/回笼、actor kind / 家户阶层聚合都是**世界级**量；逐格读仍走 {@link
+   * #economyHex}。本方法只是把 {@code economyHex} 用的同一批私有装配函数（{@link #classFirstView} / {@link
+   * #moneyIssuanceView} / {@link #moneyByActorKind} / {@link #moneyByHouseholdClass} / {@link
+   * #moneyLayers} / {@link #currencyDefViews} / {@link #moneyInstrumentViews}）按**同一口径**组装一次 ——
+   * 不复制第二份公式，两个读口的数字不会漂移。
    *
    * <p>★ {@code activated} / {@code tick} 来自 economy 切片；{@code scope} 具名写出"世界级"，避免读者把 4 池
    * 当成某一格或某一国的量。

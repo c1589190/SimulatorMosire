@@ -222,12 +222,17 @@ class UnitModuleTest {
   void defaultsComeFromEconomyVocabularyAndEverythingElseIsZeroOrEmpty() {
     OfficePolicy defaults = OfficePolicy.defaults();
 
+    // ★ G12 修正（2026-10-01）：旧值 RATION_MILLI_PER_PERSON=10000 是"每人每 120 天"的口径，
+    //   而 GovDaily 按每 tick 乘 ⇒ 120× 超支。默认必须是"每人每日"的 83 毫粮（120 天 = 9,960）。
     assertThat(defaults.grainPerStaffPerTick())
-        .as("粮的单一拼写点是 EconomyVocabulary.RATION_MILLI_PER_PERSON")
-        .isEqualTo(EconomyVocabulary.RATION_MILLI_PER_PERSON);
+        .as("粮的单一拼写点是 EconomyVocabulary.dailyRationMilli(1,1)")
+        .isEqualTo(EconomyVocabulary.dailyRationMilli(1L, 1L))
+        .isEqualTo(83L)
+        .isNotEqualTo(EconomyVocabulary.RATION_MILLI_PER_PERSON);
     assertThat(defaults.clothPerStaffPerCycle())
         .as("布的单一拼写点是 EconomyVocabulary.CLOTH_MILLI_PER_PERSON")
-        .isEqualTo(EconomyVocabulary.CLOTH_MILLI_PER_PERSON);
+        .isEqualTo(EconomyVocabulary.CLOTH_MILLI_PER_PERSON)
+        .isEqualTo(1000L);
     assertThat(defaults.moneyPerStaffPerTick()).as("俸禄默认 0").isZero();
     assertThat(defaults.retirementPerStaff()).as("退休待遇默认 0（由决策人政策定）").isZero();
     assertThat(defaults.staffCap()).as("编制上限默认空表 = 不设限").isEmpty();

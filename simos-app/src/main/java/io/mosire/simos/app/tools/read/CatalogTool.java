@@ -135,6 +135,10 @@ public final class CatalogTool implements AgentTool {
           Map.entry("map.SetTerrain", "hexes[{q,r}...], terrain"),
           Map.entry("map.CreateRegion", "regionId, name, hexes[{q,r}...], meta?"),
           Map.entry("map.UpdateRegion", "regionId, hexes?, meta?"),
+          Map.entry(
+              "map.RenameRegion",
+              "regionId, name（都是必填非空白；regionId 必须已是当前地图里的 Region——改名不是 upsert，查无 ⇒ 具名拒；"
+                  + "只改显示名，不动 hex 内容与边界；★ GM-only：决策人只能提出，实际执行由 GM 走窄工具或直接提交）"),
           Map.entry("map.DeleteRegion", "regionId"),
           Map.entry("map.SetEdge", "kind, edges[字符串...], mode"),
           Map.entry(
@@ -145,8 +149,13 @@ public final class CatalogTool implements AgentTool {
               "entries[{q,r,population}...]（population ≥ 0；重复坐标后出现者覆盖）,"
                   + " anchorTick?（缺省=世界当前 tick）"),
           Map.entry(
-              "social.CreateCity", "id, name, at{q,r}, region?（缺省=无归属）, population（≥ 0）, props?"),
-          Map.entry("social.UpdateCity", "id, name?, population?, props?（props 为合并语义）"),
+              "social.CreateCity",
+              "id, name, at{q,r}, region?（缺省=无归属）, props?"
+                  + "（★ population 字段已退役并明确拒收：城的城镇人口是派生量=该城名下各批次之和，"
+                  + "改人口请改批次 social.SeedGroups）"),
+          Map.entry(
+              "social.UpdateCity",
+              "id, name?, props?（props 为合并语义）, region?（string 或 null：null=清空归属；缺省=保持原值）"),
           Map.entry(
               "social.SeedGroups",
               "entries[{id, q, r, sex(MALE|FEMALE), count, ageDays, anchorTick?}...]"
@@ -283,6 +292,14 @@ public final class CatalogTool implements AgentTool {
                   + "goods/money 至少一个非空、值不得为 0；同一 (owner,q,r) 不得重复；"
                   + "缺账 + 纯正增量 ⇒ 新建，缺账 + 任何负增量 ⇒ 拒；"
                   + "负增量使余额 < 0 或侵占冻结额（可支配 = 余额 − 冻结）⇒ 拒；整条原子）"),
+          Map.entry(
+              "actor.RemitGovTreasury",
+              "fromUnitId, fromQ, fromR, toUnitId, toQ, toR, grain?, cloth?, money?, reason?"
+                  + "（★ R3a：显式 GOV 国库上缴 / 转移，源/目标账键 = "
+                  + "(ActorRef(UNIT,unitId), q_r)；两个 unit id 必填非空白、坐标必填 int、from/to 账键不得相同；"
+                  + "三个金额可选缺省 0、不得为负、至少一个 > 0；源账必须存在、逐资源走 AvailableStock"
+                  + "（可支配 = 余额 − 冻结）判足量；整条原子，任一违例全拒；"
+                  + "★ 非 GmOnly：省份决策人可嵌进 sd.IssueDirective；目标必须是源 superiorGov 的规则在 app scope（R3b））"),
           Map.entry(
               "actor.ClearRegion",
               "regionId（必填；必须在当前 map.regions() 里）"

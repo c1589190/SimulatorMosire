@@ -34,11 +34,12 @@ import java.util.TreeSet;
  *
  * <p>★ **算不出来就是"看不见"**（deny-all，fail-closed）：军队不在 sd 切片里、单位根不在 unit 切片里、 单位没有有效位置（"不知道在哪"）三种情形都给
  * {@code ResourceScope.none()}—— 与 {@code RedactingQueryService} 对未知
- * actor/军队的既有口径一致（那里同样给空集，不是给全量）。★ T10 起 deny-all 覆盖**三个**命名空间（只 deny map 会让 unit/social 回落工具缺省 ⇒
- * 静默全放行）。
+ * actor/军队的既有口径一致（那里同样给空集，不是给全量）。★ T10 起 deny-all 覆盖**四个**命名空间（只 deny map 会让 unit/social/actor
+ * 回落工具缺省 ⇒ 静默全放行）。
  *
- * <p>★ **T10 补齐的三维**：{@code map} = 圈内格（逐格前缀）、{@code social} = 圈内格（人口按 hex）、{@code unit} =
- * 位置落在圈内的单位——后两者与国家实现**同一套口径**（"范围内的格/格上的单位"），只是"范围"从区域换成视野圈。
+ * <p>★ **T10 补齐的三维 + R3b 的 actor**：{@code map} = 圈内格（逐格前缀）、{@code social} = 圈内格（人口按 hex）、{@code
+ * unit} = 位置落在圈内的单位——后两者与国家实现**同一套口径**（"范围内的格/格上的单位"），只是"范围"从区域换成视野圈； {@code actor} = 显式 {@code
+ * none()}（军队不走 GOV 国库上缴，{@code actor.RemitGovTreasury} 只对 GOV 决策人开放）。
  */
 public final class ArmyScope implements DecisionScopeFunction {
 
@@ -88,19 +89,21 @@ public final class ArmyScope implements DecisionScopeFunction {
       }
     }
 
-    // ★ 三个命名空间**都要表态**（同 NationScope）：只配 map ⇒ unit/social 回落工具缺省 ⇒ 静默全放行。
+    // ★ 四个命名空间**都要表态**（同 NationScope）：只配 map ⇒ unit/social/actor 回落工具缺省 ⇒ 静默全放行。
     return ResourceScopeMap.of(
             ToolSupport.MAP_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(prefixes))
         .withNamespace(
             ToolSupport.UNIT_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(unitPrefixes))
         .withNamespace(
-            ToolSupport.SOCIAL_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(socialPrefixes));
+            ToolSupport.SOCIAL_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(socialPrefixes))
+        .withNamespace(ToolSupport.ACTOR_NAMESPACE, ResourceScope.none());
   }
 
   private static ResourceScopeMap denyAll() {
     return ResourceScopeMap.of(ToolSupport.MAP_NAMESPACE, ResourceScope.none())
         .withNamespace(ToolSupport.UNIT_NAMESPACE, ResourceScope.none())
-        .withNamespace(ToolSupport.SOCIAL_NAMESPACE, ResourceScope.none());
+        .withNamespace(ToolSupport.SOCIAL_NAMESPACE, ResourceScope.none())
+        .withNamespace(ToolSupport.ACTOR_NAMESPACE, ResourceScope.none());
   }
 
   /** sd 切片（缺切片/类型不对 = 装配故障，当场炸——与 {@code ToolSupport#unitState} 同口径）。 */

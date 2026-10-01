@@ -966,11 +966,14 @@
   }
 
   /**
-   * ★ F1：城市详情（selection.kind === "city"）——名称 / 等级 / 人口 / 位置 / 区域 / 父国 / props /
+   * ★ F1：城市详情（selection.kind === "city"）——名称 / 等级 / 人口 / 位置 / 省·区域 / 父国 / props /
    * 周边单位与 GOV。
    *
-   * <p>★ 数据只来自 `/api/social/cities`（social 侧城市）、`/api/map/regions/summary`（区域 → 国家 tag）与
+   * <p>★ 数据只来自 `/api/social/cities`（social 侧城市）、`/api/map/regions/summary`（区域 → 省名/国家 tag）与
    * `/api/units`（周边单位）；不拿地图 overview 的 `cities` 当城市源（worldgen 后为空）。
+   * <p>★ R2b：城市 `region` 可指向省 ⇒ "省/区域"显示区域 `name (id)`；"父国"先看该省 `meta.tag`，
+   * 不是 `nation:` 时再按城市落点 `at` 走一次可选的 `/api/map/hex` 解析 —— 该请求失败只让父国显示 "—"，
+   * 不拖垮整段详情。
    */
   function renderCity(selection, token) {
     var status = app.byId("left-status");
@@ -1009,9 +1012,6 @@
             regionSummary = item;
           }
         });
-        var tag = regionSummary && regionSummary.meta ? regionSummary.meta.tag : null;
-        var nation =
-          typeof tag === "string" && tag.indexOf("nation:") === 0 ? tag.slice("nation:".length) : null;
         var unitsHere = ((results[2] && results[2].units) || []).filter(function (unit) {
           return (
             unit.position &&
@@ -1020,39 +1020,120 @@
             unit.position.r === city.at.r
           );
         });
-        appendRowGroup(detail, "城市", function (dl) {
-          appendRow(dl, "id", city.id);
-          appendRow(dl, "name", city.name);
-          appendRow(
-            dl,
-            "等级",
-            city.tier === null || city.tier === undefined ? "—（props 未标 tier）" : city.tier
-          );
-          appendRow(dl, "人口", numberOrZero(city.population));
-          appendRow(dl, "位置", city.at ? hexLabel(city.at) : "—");
-          appendRow(dl, "区域", city.region === null || city.region === undefined ? "无区域" : city.region);
-          appendRow(
-            dl,
-            "父国",
-            nation === null ? "—（所属区域没有 nation: tag）" : nation
-          );
-          appendRow(dl, "props", propsText(city.props));
-        });
-        appendRowGroup(detail, "周边单位/GOV", function (dl) {
-          if (!unitsHere.length) {
-            appendRow(dl, "单位", "无");
+        /**
+         * 城市详情主体：在可选的落点格查询落定后**只调用一次**。
+         *
+         * `parentNation` = 父国 id 文本；null ⇒ "—"（解析不出 / 查询失败都不伪造）。口径：`regionSummary.meta.tag`
+         * 以 `nation:` 开头 ⇒ 直接用；否则按 `city.at` 调 `/api/map/hex` 取该格 region ids，再从 `summaries`
+         * 里找带 `nation:` tag 的区域 —— 多个国家按 id 字典序、以「、」连接。
+         */
+        function renderCityDetail(parentNation) {
+          if (token !== requestToken) {
             return;
           }
-          unitsHere.forEach(function (unit) {
-            var isGov = !!(unit.module && unit.module.kind === "gov");
+          var regionText;
+          if (city.region === null || city.region === undefined) {
+            regionText = "无区域";
+          } else if (regionSummary) {
+            var regionName =
+              regionSummary.name === null ||
+              regionSummary.name === undefined ||
+              String(regionSummary.name) === ""
+                ? ""
+                : String(regionSummary.name);
+            regionText =
+              regionName === ""
+                ? String(regionSummary.id)
+                : regionName + " (" + String(regionSummary.id) + ")";
+          } else {
+            regionText = String(city.region);
+          }
+          appendRowGroup(detail, "城市", function (dl) {
+            appendRow(dl, "id", city.id);
+            appendRow(dl, "name", city.name);
             appendRow(
               dl,
-              (isGov ? "GOV " : "军队 ") + unit.id,
-              app.text(unit.name) + (unit.status ? "（" + unit.status + "）" : "")
+              "等级",
+              city.tier === null || city.tier === undefined ? "—（props 未标 tier）" : city.tier
             );
+            appendRow(dl, "人口", numberOrZero(city.population));
+            appendRow(dl, "位置", city.at ? hexLabel(city.at) : "—");
+            appendRow(dl, "省/区域", regionText, "城市 region 指向的区域；有条目时显示 name (id)。");
+            appendRow(
+              dl,
+              "父国",
+              parentNation === null ? "—" : parentNation,
+              "区域自身 meta.tag=nation:<id> 时直接用；否则按城市落点格查该格 region ids，取带 nation: tag 的国家（多个按 id 字典序、以「、」连接）。"
+            );
+            appendRow(dl, "props", propsText(city.props));
           });
-        });
-        app.statusMessage(status, "城市 " + app.text(city.name) + " · " + targetLabel(), "ok");
+          appendRowGroup(detail, "周边单位/GOV", function (dl) {
+            if (!unitsHere.length) {
+              appendRow(dl, "单位", "无");
+              return;
+            }
+            unitsHere.forEach(function (unit) {
+              var isGov = !!(unit.module && unit.module.kind === "gov");
+              appendRow(
+                dl,
+                (isGov ? "GOV " : "军队 ") + unit.id,
+                app.text(unit.name) + (unit.status ? "（" + unit.status + "）" : "")
+              );
+            });
+          });
+          app.statusMessage(status, "城市 " + app.text(city.name) + " · " + targetLabel(), "ok");
+        }
+        var tag = regionSummary && regionSummary.meta ? regionSummary.meta.tag : null;
+        if (typeof tag === "string" && tag.indexOf("nation:") === 0) {
+          // 区域自身就带国家 tag（旧世界 / 省上一个层级）⇒ 不必再查落点格。
+          var directNationId = tag.slice("nation:".length);
+          renderCityDetail(directNationId === "" ? null : directNationId);
+          return;
+        }
+        if (
+          !city.at ||
+          typeof city.at.q !== "number" ||
+          typeof city.at.r !== "number" ||
+          !isFinite(city.at.q) ||
+          !isFinite(city.at.r)
+        ) {
+          renderCityDetail(null);
+          return;
+        }
+        // ★ R2b：可选请求 —— 失败只影响"父国"一行，不让整段城市详情变黄。
+        return api.mapHex(city.at.q, city.at.r, app.target()).then(
+          function (body) {
+            if (token !== requestToken) {
+              return;
+            }
+            var regionIds = Array.isArray(body && body.regions) ? body.regions : [];
+            var nationIds = [];
+            regionIds.forEach(function (regionId) {
+              var summary = null;
+              summaries.forEach(function (item) {
+                if (String(item.id) === String(regionId)) {
+                  summary = item;
+                }
+              });
+              var summaryTag = summary && summary.meta ? summary.meta.tag : null;
+              if (typeof summaryTag !== "string" || summaryTag.indexOf("nation:") !== 0) {
+                return;
+              }
+              var nationId = summaryTag.slice("nation:".length);
+              if (nationId !== "" && nationIds.indexOf(nationId) < 0) {
+                nationIds.push(nationId);
+              }
+            });
+            nationIds.sort(function (a, b) {
+              return a.localeCompare(b);
+            });
+            renderCityDetail(nationIds.length ? nationIds.join("、") : null);
+          },
+          function () {
+            // 请求失败 / 目标失效 ⇒ 父国显示 "—"，不伪造。
+            renderCityDetail(null);
+          }
+        );
       })
       .catch(function (e) {
         if (token !== requestToken) {

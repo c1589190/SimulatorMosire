@@ -9,7 +9,10 @@
       "model": "deepseek-flash",
       "apiKey": "sk-vLmH2nMxBPsru5UNbGixWP4TaeAm42hSq1Yq1zTUHdypXSpC",
       "timeoutMs": 300000,
-      "echoReasoningContent": true
+      "echoReasoningContent": true,
+      "capabilities": {
+        "toolCalling": true
+      }
     }
   ]
 }

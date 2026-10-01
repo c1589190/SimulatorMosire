@@ -304,16 +304,34 @@ test("loadRegionNamesAndDimDefaultsDoNotThrowUnderNodeHost", () => {
 
 // ── U5：详情页三栏布局 ───────────────────────────────────────────────────
 
-test("right-panel-has-data-modes-and-never-shows-in-view-mode", () => {
+test("right-panel-carries-world-overview-in-view-mode-and-yields-when-selected", () => {
   const html = readWebui("index.html");
   const match = html.match(/<section[^>]*id="right-panel"[^>]*>/);
   assert.ok(match, "取到 #right-panel 开始标签");
   const modesMatch = /data-modes="([^"]*)"/.exec(match[0]);
-  assert.ok(modesMatch, "★ 根因：右栏必须有 data-modes（否则永不隐藏 ⇒ 空卡片）");
+  assert.ok(modesMatch, "右栏必须有 data-modes（否则永不隐藏 ⇒ 空卡片）");
   const modes = modesMatch[1].split(/\s+/);
   assert.ok(modes.includes("region") && modes.includes("region-edit") && modes.includes("decision"));
-  assert.ok(!modes.includes("view"), "常规模式下右栏必须是 hidden（这就是空卡片的修复）");
+  assert.ok(modes.includes("view"), "★ F1 起常规模式右栏承载「世界总览」，不能再整体 hidden");
   assert.ok(!modes.includes("map-edit") && !modes.includes("unit"), "这两个模式下右栏也没有内容");
+
+  const overview = html.match(/<div[^>]*id="world-overview-section"[^>]*>/);
+  assert.ok(overview, "世界总览容器必须在右栏里");
+  const overviewModes = /data-modes="([^"]*)"/.exec(overview[0]);
+  assert.ok(overviewModes, "世界总览容器必须有 data-modes");
+  assert.ok(
+    overviewModes[1].split(/\s+/).includes("view") && overviewModes[1].split(/\s+/).includes("region"),
+    "世界总览的显示模式 = view / region"
+  );
+  assert.ok(html.indexOf('id="world-overview-mount"') >= 0, "世界总览必须有挂载点");
+
+  const panelRight = readWebui("panel-right.js");
+  assert.ok(
+    panelRight.indexOf('state.mode === "view" || state.mode === "region"') >= 0,
+    "★ 无选中时 view/region 显示总览"
+  );
+  assert.ok(panelRight.indexOf("!state.selection") >= 0, "★ 有选中时让位给 hex/城市/区域详情");
+  assert.ok(panelRight.indexOf("section.hidden = !show") >= 0, "显示开关必须落到 section.hidden（不靠 CSS 猜）");
 });
 
 test("side-columns-have-a-usable-stable-width", () => {

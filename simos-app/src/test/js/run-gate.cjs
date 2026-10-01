@@ -63,7 +63,10 @@ const JS_DIR = __dirname;
 //     （粮库存/日耗/本期流水逐值来自服务端 + 缺 flow 降级为「无」）。
 //   2026-09-25 §十一（推进允许一次 N 天，撤销前端逐日循环）起 296 → 297：timeline.test.cjs 的"逐日循环"
 //     两条改写为"一条命令 to = from + N"，并新增 1 条（返回里没有新 revision ⇒ 不编造成功），合计 +1。
-const MIN_TESTS = 297;
+//   2026-10-01 F1/F2 收尾起 297 → 318：新增 f1-map-first.test.cjs（图层/城市 LOD/搜索/国家汇总/GOV 归属/
+//     class-first 读数/renderer 接线）与 f2-heatmap.test.cjs（指标词表/色标/图例/不可用层不填 0/数据组接线/
+//     api 缓存）；webui-fix2.test.cjs 的过期右栏断言按 F1 语义改写，条数不变。
+const MIN_TESTS = 318;
 
 function discoverTests() {
   return fs

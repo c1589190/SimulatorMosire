@@ -37,6 +37,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
 
 /**
  * ★★ {@code simos.sd.run-decision-makers}（P7a，2026-10-01 后端 + MCP 稳定化计划）：<b>GM-only 显式名单批量派决策人</b>
@@ -80,6 +85,12 @@ public final class RunDecisionMakersTool implements AgentTool {
   /** 每条轨迹摘要的上限（沿用 AgentLib 的截断惯例；与 {@link RunDecisionTool} 同一份阈值）。 */
   private static final int SUMMARY_MAX_CHARS = ToolResultTruncator.DEFAULT_MAX_CHARS;
 
+  /** 默认串行（= 既有行为）；并发只影响“跑轮”这一段的墙钟时间，不影响触发批与裁决语义。 */
+  private static final int DEFAULT_CONCURRENCY = 1;
+
+  /** 并发上限：再高只会把 provider 限流/会话库写锁变成重试，收益递减。 */
+  private static final int MAX_CONCURRENCY = 16;
+
   /** 本工具只碰 sd 命名空间；GM 侧 sd 表态 unlimited。 */
   private static final ResourceManifest SD_WRITE =
       ResourceManifest.of(ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED);
@@ -119,13 +130,17 @@ public final class RunDecisionMakersTool implements AgentTool {
   public String description() {
     return "GM 显式名单批量派决策人（组合工具；不按 due 自动筛选）："
         + "decisionMakerIds(必填、非空、保序去重、每项非空白) + preview?(缺省 true) + continueOnError?(缺省 true) + "
-        + "branch?(缺省 "
+        + "concurrency?(缺省 "
+        + DEFAULT_CONCURRENCY
+        + "，取值 1.."
+        + MAX_CONCURRENCY
+        + "；>1 时并发跑轮，仅支持 continueOnError=true) + branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + ") + expectedRevision?(preview=false 必填，>=0) + reason(必填非空白)。"
         + "preview=true：零 revision，读 base state 逐个校验存在，返回每人 id/exists/providerId/cadence/due(仅展示)/"
         + "allowedTools 概要 + commandsPreview(每人一条 sd.RunDecision)，缺失任意 DM ⇒ BAD_REQUEST 具名列表；"
         + "preview=false：先同批提交 N 条 sd.RunDecision 触发事实（批成功恰一条 revision；批拒/冲突均零 revision、"
-        + "逐条真因、不跑 LLM），成功后按名单顺序逐个调用决策人运行流跑真轮，返回逐人 "
+        + "逐条真因、不跑 LLM），成功后按名单顺序（concurrency=1）或并发（concurrency>1）调用决策人运行流跑真轮，返回逐人 "
         + "{decisionMakerId,status,finalText,llmCalls,toolCalls,conversationId,...}；continueOnError=false 时首个失败后停止并给 "
         + "stoppedAfter。本工具不做跨调用锁、不做自动重试，也不在这里提交 sd.IssueDirective/其他命令"
         + "（决策人轮内的产出仍走既有链路与人工审批）。";
@@ -141,6 +156,15 @@ public final class RunDecisionMakersTool implements AgentTool {
     props.put(
         "continueOnError",
         ToolSupport.prop("boolean", "true（缺省）= 某决策人失败后继续后续；false = 首个失败即停，记 stoppedAfter"));
+    props.put(
+        "concurrency",
+        ToolSupport.prop(
+            "integer",
+            "跑轮并发度（缺省 "
+                + DEFAULT_CONCURRENCY
+                + "，取值 1.."
+                + MAX_CONCURRENCY
+                + "；>1 仅支持 continueOnError=true，已在跑的任务无法撤回）"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
@@ -172,6 +196,8 @@ public final class RunDecisionMakersTool implements AgentTool {
             + args.getOrDefault("preview", true)
             + " continueOnError="
             + args.getOrDefault("continueOnError", true)
+            + " concurrency="
+            + args.getOrDefault("concurrency", DEFAULT_CONCURRENCY)
             + " branch="
             + args.getOrDefault("branch", ToolSupport.DEFAULT_BRANCH)
             + " expectedRevision="
@@ -190,6 +216,18 @@ public final class RunDecisionMakersTool implements AgentTool {
       String reason = ToolSupport.requiredText(args, "reason");
       boolean preview = ToolSupport.optionalBoolean(args, "preview").orElse(true);
       boolean continueOnError = ToolSupport.optionalBoolean(args, "continueOnError").orElse(true);
+      Long concurrencyArgRaw = ToolSupport.optionalLong(args, "concurrency");
+      long concurrencyArg =
+          concurrencyArgRaw == null ? (long) DEFAULT_CONCURRENCY : concurrencyArgRaw;
+      if (concurrencyArg < 1L || concurrencyArg > MAX_CONCURRENCY) {
+        return ToolResult.error(
+            "BAD_REQUEST", "concurrency 必须 ∈ [1," + MAX_CONCURRENCY + "]: " + concurrencyArg);
+      }
+      if (concurrencyArg > 1L && !continueOnError) {
+        return ToolResult.error(
+            "BAD_REQUEST", "concurrency>1 只支持 continueOnError=true（已在跑的任务无法按首败撤回）");
+      }
+      int concurrency = (int) concurrencyArg;
       BranchId branch =
           new BranchId(ToolSupport.optionalText(args, "branch", ToolSupport.DEFAULT_BRANCH));
       Long expectedRevisionArg = ToolSupport.optionalLong(args, "expectedRevision");
@@ -203,8 +241,9 @@ public final class RunDecisionMakersTool implements AgentTool {
       // apply 分支已保证非 null；显式三目兜底只是避免把可空 Long 直接拆箱（与既有组合工具同写法）。
       long expectedRevision = expectedRevisionArg == null ? -1L : expectedRevisionArg;
       return preview
-          ? preview(branch, expectedRevisionArg, decisionMakerIds, reason, continueOnError)
-          : apply(branch, expectedRevision, decisionMakerIds, reason, continueOnError);
+          ? preview(
+              branch, expectedRevisionArg, decisionMakerIds, reason, continueOnError, concurrency)
+          : apply(branch, expectedRevision, decisionMakerIds, reason, continueOnError, concurrency);
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {
@@ -227,7 +266,8 @@ public final class RunDecisionMakersTool implements AgentTool {
       Long expectedRevision,
       List<String> decisionMakerIds,
       String reason,
-      boolean continueOnError) {
+      boolean continueOnError,
+      int concurrency) {
     QueryTarget target =
         expectedRevision == null
             ? QueryTarget.head(branch)
@@ -284,6 +324,7 @@ public final class RunDecisionMakersTool implements AgentTool {
     view.put("selection", "explicit-decisionMakerIds");
     view.put("dueNote", DUE_NOTE);
     view.put("continueOnError", continueOnError);
+    view.put("concurrency", concurrency);
     view.put("reason", reason);
     if (!missing.isEmpty()) {
       view.put("missingDecisionMakerIds", missing);
@@ -297,7 +338,9 @@ public final class RunDecisionMakersTool implements AgentTool {
         "note",
         "preview 只读：零 revision；apply 时这 "
             + decisionMakerIds.size()
-            + " 条 sd.RunDecision 触发命令同批落一条 revision，随后按名单顺序逐个跑轮");
+            + " 条 sd.RunDecision 触发命令同批落一条 revision，随后按名单"
+            + (concurrency <= 1 ? "顺序逐个" : ("并发（" + concurrency + "）"))
+            + "跑轮");
     return ToolResult.ok(ToolSupport.json(view));
   }
 
@@ -331,7 +374,8 @@ public final class RunDecisionMakersTool implements AgentTool {
       long expectedRevision,
       List<String> decisionMakerIds,
       String reason,
-      boolean continueOnError) {
+      boolean continueOnError,
+      int concurrency) {
     RevisionId expected = new RevisionId(expectedRevision);
     String batchId = UUID.randomUUID().toString();
     List<CommandEnvelope> batch = buildTriggerBatch(batchId, branch, expected, decisionMakerIds);
@@ -350,7 +394,8 @@ public final class RunDecisionMakersTool implements AgentTool {
     }
     BatchResult.Committed committed = (BatchResult.Committed) result;
     StateRef triggerRef = committed.ref();
-    List<Map<String, Object>> results = runRounds(triggerRef, decisionMakerIds, continueOnError);
+    List<Map<String, Object>> results =
+        runRounds(triggerRef, decisionMakerIds, continueOnError, concurrency);
     String stoppedAfter = stoppedAfter(results, decisionMakerIds, continueOnError);
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("preview", false);
@@ -359,11 +404,12 @@ public final class RunDecisionMakersTool implements AgentTool {
     view.put("decisionMakerIds", decisionMakerIds);
     view.put("results", results);
     view.put("continueOnError", continueOnError);
+    view.put("concurrency", concurrency);
     view.put("reason", reason);
     if (stoppedAfter != null) {
       view.put("stoppedAfter", stoppedAfter);
     }
-    view.put("note", applyNote(decisionMakerIds.size(), results, stoppedAfter));
+    view.put("note", applyNote(decisionMakerIds.size(), results, stoppedAfter, concurrency));
     return ToolResult.ok(ToolSupport.json(view));
   }
 
@@ -449,29 +495,91 @@ public final class RunDecisionMakersTool implements AgentTool {
     return view;
   }
 
-  /** 按名单顺序逐个跑轮；continueOnError=false 时首败即停。 */
+  /**
+   * 跑轮：{@code concurrency == 1} 时按名单顺序逐个跑（continueOnError=false 首败即停，既有行为逐字不变）； {@code concurrency
+   * > 1} 时用固定线程池并发跑到每个人，结果仍按名单顺序回收。
+   *
+   * <p>★ 并发只发生在这一层：每个 DM 的 {@link DecisionAgentService#runRound} 各自 {@code core.replay}、各自会话
+   * id、各自范围； 触发批已在前面同一条 revision 落盘。会话库自身有锁，revision 冲突由决策人运行流的重读逻辑承担，工具不做自动重试。
+   */
   private List<Map<String, Object>> runRounds(
+      StateRef triggerRef,
+      List<String> decisionMakerIds,
+      boolean continueOnError,
+      int concurrency) {
+    if (concurrency <= 1 || decisionMakerIds.size() <= 1) {
+      return runRoundsSequential(triggerRef, decisionMakerIds, continueOnError);
+    }
+    return runRoundsConcurrent(triggerRef, decisionMakerIds, concurrency);
+  }
+
+  /** 串行跑轮（既有行为）。 */
+  private List<Map<String, Object>> runRoundsSequential(
       StateRef triggerRef, List<String> decisionMakerIds, boolean continueOnError) {
     List<Map<String, Object>> results = new ArrayList<>(decisionMakerIds.size());
     for (String id : decisionMakerIds) {
-      try {
-        DecisionAgentRunner.DecisionTurn turn =
-            decisionAgent.runRound(
-                triggerRef.branch(), triggerRef.revision(), new DecisionMakerId(id));
-        results.add(turnView(id, turn));
-      } catch (DecisionAgentRunner.TurnBudgetExceeded e) {
-        results.add(budgetView(triggerRef, id, e));
-        if (!continueOnError) {
-          break;
-        }
-      } catch (RuntimeException e) {
-        results.add(failureView(triggerRef, id, e));
-        if (!continueOnError) {
-          break;
-        }
+      Map<String, Object> row = runOne(triggerRef, id);
+      results.add(row);
+      if (!continueOnError && !"ok".equals(row.get("status"))) {
+        break;
       }
     }
     return List.copyOf(results);
+  }
+
+  /** 并发跑轮：固定线程池 + 按名单顺序回收；每个 DM 一个独立任务，失败/中止照常落成逐人结果。 */
+  private List<Map<String, Object>> runRoundsConcurrent(
+      StateRef triggerRef, List<String> decisionMakerIds, int concurrency) {
+    ThreadFactory factory =
+        runnable -> {
+          Thread thread = new Thread(runnable, "run-decision-makers-worker");
+          thread.setDaemon(true);
+          return thread;
+        };
+    ExecutorService pool =
+        Executors.newFixedThreadPool(Math.min(concurrency, decisionMakerIds.size()), factory);
+    try {
+      List<Future<Map<String, Object>>> futures = new ArrayList<>(decisionMakerIds.size());
+      for (String id : decisionMakerIds) {
+        futures.add(pool.submit(() -> runOne(triggerRef, id)));
+      }
+      List<Map<String, Object>> results = new ArrayList<>(decisionMakerIds.size());
+      for (int i = 0; i < futures.size(); i++) {
+        String id = decisionMakerIds.get(i);
+        try {
+          results.add(futures.get(i).get());
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          results.add(
+              failureView(
+                  triggerRef, id, new IllegalStateException("并发等待被中断: " + e.getMessage(), e)));
+        } catch (ExecutionException e) {
+          Throwable cause = e.getCause() == null ? e : e.getCause();
+          results.add(
+              failureView(
+                  triggerRef,
+                  id,
+                  new IllegalStateException("并发任务异常: " + cause.getMessage(), cause)));
+        }
+      }
+      return List.copyOf(results);
+    } finally {
+      pool.shutdownNow();
+    }
+  }
+
+  /** 单个人跑一轮：成功/预算中止/运行失败都折成同构的逐人结果（与串行路径同一份视图）。 */
+  private Map<String, Object> runOne(StateRef triggerRef, String id) {
+    try {
+      DecisionAgentRunner.DecisionTurn turn =
+          decisionAgent.runRound(
+              triggerRef.branch(), triggerRef.revision(), new DecisionMakerId(id));
+      return turnView(id, turn);
+    } catch (DecisionAgentRunner.TurnBudgetExceeded e) {
+      return budgetView(triggerRef, id, e);
+    } catch (RuntimeException e) {
+      return failureView(triggerRef, id, e);
+    }
   }
 
   /** 成功一轮的视图（字段与 {@link RunDecisionTool} 同口径：轨迹摘要按既有惯例截断）。 */
@@ -567,7 +675,7 @@ public final class RunDecisionMakersTool implements AgentTool {
 
   /** apply 汇总说明：把触发批的落盘与逐轮结果分开说，不把"触发事实已落盘"写成"世界已按决策执行"。 */
   private static String applyNote(
-      int total, List<Map<String, Object>> results, String stoppedAfter) {
+      int total, List<Map<String, Object>> results, String stoppedAfter, int concurrency) {
     int ok = 0;
     for (Map<String, Object> row : results) {
       if ("ok".equals(row.get("status"))) {
@@ -585,10 +693,25 @@ public final class RunDecisionMakersTool implements AgentTool {
           + total
           + " 轮；失败/中止见 results";
     }
+    String mode = concurrency <= 1 ? "顺序" : ("并发 " + concurrency);
     if (ok == total) {
-      return "触发事实 " + total + " 条同批落一条 revision；" + total + " 轮全部完成（各轮世界写入的 revision 本工具不汇总）";
+      return "触发事实 "
+          + total
+          + " 条同批落一条 revision；"
+          + total
+          + " 轮全部完成（"
+          + mode
+          + "跑轮；各轮世界写入的 revision 本工具不汇总）";
     }
-    return "触发事实 " + total + " 条同批落一条 revision；完成 " + ok + "/" + total + " 轮，失败/中止见 results";
+    return "触发事实 "
+        + total
+        + " 条同批落一条 revision；完成 "
+        + ok
+        + "/"
+        + total
+        + " 轮（"
+        + mode
+        + "），失败/中止见 results";
   }
 
   /**

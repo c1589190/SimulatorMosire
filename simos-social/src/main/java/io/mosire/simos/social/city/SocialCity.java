@@ -75,4 +75,14 @@ public record SocialCity(
   public SocialCity withProps(Map<String, Object> value) {
     return new SocialCity(id, name, at, region, value);
   }
+
+  /**
+   * 换区域归属（身份、显示名、落点、props 都不动）。
+   *
+   * <p>★ {@link Optional#empty()} = **清空归属**（合法状态，见类注）；{@code null} 由构造器守卫拒 —— "无归属"必须显式写成 {@code
+   * Optional.empty()}，不能拿 null 冒充。
+   */
+  public SocialCity withRegion(Optional<RegionId> value) {
+    return new SocialCity(id, name, at, value, props);
+  }
 }

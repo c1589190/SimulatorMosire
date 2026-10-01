@@ -252,9 +252,8 @@ public final class GuiServer implements AutoCloseable {
   /**
    * ★ F1 城市图层只读面：{@code GET /api/social/cities[?region=<regionId>][?as=<dmId>]}。
    *
-   * <p>★ 视图由 {@link ApiViews#cities} 一处装配（GUI 与未来 MCP 共用）；本层只做路由与参数解析。
-   * 带 {@code as=} 时逐城按 {@code at} 走与 {@code /api/social/population} 同款的 {@code seesHex}
-   * 过滤（不可见的城整条不出现，不生成"未探测到"的否定式条目）。
+   * <p>★ 视图由 {@link ApiViews#cities} 一处装配（GUI 与未来 MCP 共用）；本层只做路由与参数解析。 带 {@code as=} 时逐城按 {@code
+   * at} 走与 {@code /api/social/population} 同款的 {@code seesHex} 过滤（不可见的城整条不出现，不生成"未探测到"的否定式条目）。
    */
   private static final String CITIES_PATH = "/api/social/cities";
 
@@ -614,8 +613,7 @@ public final class GuiServer implements AutoCloseable {
       rejectAs(path, asPresent);
       return Reply.of(
           200,
-          ApiViews.heatmap(
-              queryService.stateAt(target(params)), requiredParam(params, "metric")));
+          ApiViews.heatmap(queryService.stateAt(target(params)), requiredParam(params, "metric")));
     }
     if (path.equals("/api/map/hex")) {
       return mapHexReply(params, actor, asPresent);

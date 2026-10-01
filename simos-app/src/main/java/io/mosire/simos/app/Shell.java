@@ -26,6 +26,7 @@ import io.mosire.simos.actor.resolve.ActorResolver;
 import io.mosire.simos.actor.spi.ActorClearRegionHandler;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
 import io.mosire.simos.actor.spi.AdjustAccountsHandler;
+import io.mosire.simos.actor.spi.RemitGovTreasuryHandler;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.GmAutoApproveGate;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
@@ -73,6 +74,7 @@ import io.mosire.simos.map.spi.CreateRegionHandler;
 import io.mosire.simos.map.spi.DeleteRegionHandler;
 import io.mosire.simos.map.spi.RandomizeRegionHandler;
 import io.mosire.simos.map.spi.RegisterPathwayGroupHandler;
+import io.mosire.simos.map.spi.RenameRegionHandler;
 import io.mosire.simos.map.spi.SetEdgeHandler;
 import io.mosire.simos.map.spi.SetTerrainHandler;
 import io.mosire.simos.map.spi.UpdateRegionHandler;
@@ -448,6 +450,9 @@ public final class Shell implements AutoCloseable {
                 new SetTerrainHandler(),
                 new CreateRegionHandler(),
                 new UpdateRegionHandler(),
+                // ★ R4（行政区划修复计划 §1.4）：GM 改区域名。标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect /
+                //   决策人目录；GM 直接提交照常可用。──
+                new RenameRegionHandler(),
                 new DeleteRegionHandler(),
                 new SetEdgeHandler(),
                 new RegisterPathwayGroupHandler(),
@@ -535,6 +540,11 @@ public final class Shell implements AutoCloseable {
                 //   （整条原子；缺账 + 纯正增量新建）。非 sd 前缀 ⇒ 自动进 drainableCommandTypes；
                 //   同时进 commandTypes ⇒ simos.command.submit 的目标声明表（CommandTargets）同源认得它。──
                 new AdjustAccountsHandler(),
+                // ── R3a（2026-10-01 行政区划修复计划 §1.3）：actor.RemitGovTreasury —— 显式 GOV 国库上缴 /
+                //   任意两个 GOV 单位之间转移（整条原子；只动 accounts）。★ **非 GmOnly**：省份决策人可嵌进
+                //   sd.IssueDirective；targetPaths 返回源/目标两个 actor 格路径（决策 scope 在 R3b 贯通）。
+                //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes；同时进 commandTypes ⇒ CommandTargets 同源认得它。──
+                new RemitGovTreasuryHandler(),
                 // ── P1b1（2026-10-01）：GM-only 区域 actor 账本清空（目标格账本 + 清账后不再持有账户的主体）。──
                 new ActorClearRegionHandler(),
                 new CreateNationHandler(),

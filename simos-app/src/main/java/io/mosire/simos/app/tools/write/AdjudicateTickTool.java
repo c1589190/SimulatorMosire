@@ -1,5 +1,8 @@
 package io.mosire.simos.app.tools.write;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.agentlib.approval.AskKind;
 import io.mosire.agentlib.approval.ToolGate;
 import io.mosire.agentlib.permission.AccessToken;
@@ -15,6 +18,7 @@ import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.actor.spi.RemitGovTreasuryHandler;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.tools.ToolSupport;
@@ -23,9 +27,11 @@ import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.model.AdjudicationStatus;
+import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveCommand;
@@ -33,12 +39,18 @@ import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import io.mosire.simos.sd.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.address.Address;
+import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateRef;
+import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -139,14 +151,17 @@ public final class AdjudicateTickTool implements AgentTool {
    */
   private static final String ROLLED_BACK_PREFIX = "整批未提交";
 
+  /** 裁定期解析决策载荷的 JSON 解析器（只判形状；金额语义留给域层 handler，避免第二份口径）。 */
+  private static final ObjectMapper MAPPER = SimosObjectMapper.create();
+
   /**
    * 逐命令资源授权用的**缺省策略**（第 3 波第 2 步的口径，见类注）。
    *
-   * <p>★ **为什么是四个命名空间各自的 {@code UNRESTRICTED}**：本类判的是"**出令决策人自己的可达面**"，
+   * <p>★ **为什么是五个命名空间各自的 {@code UNRESTRICTED}**：本类判的是"**出令决策人自己的可达面**"，
    * 这里没有"工具缺省策略"可言（决策人并没有在调某个工具）。{@code ResourceAuthorizer} 把"调用者未表态"的命名空间回落到 manifest 的策略 ⇒
    * 这张表就是那个回落值，取 {@code UNRESTRICTED} 即 **= "本层不表态 = 不收紧"** （{@code AccessLimit} 与 {@code
-   * ResourceScopeMap} 的类注同口径）。**两个内置范围函数都把 map/unit/social 显式表态** ⇒
-   * 真决策人身上走不到这一格；它只服务"将来某个不表态的范围函数"。
+   * ResourceScopeMap} 的类注同口径）。**三个内置范围函数（Gov/Nation/Army）都把 map/social/unit/actor 显式表态** ⇒
+   * 真决策人身上走不到这一格；它只服务"将来某个不表态的范围函数"（判定"不表态 vs 显式 none"的用例也走这里）。
    */
   private static final ResourceManifest TARGET_MANIFEST =
       ResourceManifest.of(
@@ -154,6 +169,7 @@ public final class AdjudicateTickTool implements AgentTool {
               ToolSupport.MAP_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolSupport.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
   /**
@@ -161,13 +177,17 @@ public final class AdjudicateTickTool implements AgentTool {
    */
   private static final DecisionScopeFunctions SCOPE_FUNCTIONS = DecisionScopeFunctions.defaults();
 
-  /** 本工具自己的资源声明：三个领域命名空间 + {@code sd}（要写决策结果条目）。GM 侧四个都是 unlimited。 */
+  /**
+   * 本工具自己的资源声明：四个领域命名空间（map/social/unit/actor——批里会出现 {@code actor.RemitGovTreasury} 的 actor 目标声明）+
+   * {@code sd}（要写决策结果条目）。GM 侧五个都是 unlimited。
+   */
   private static final ResourceManifest ADJUDICATION_WRITE =
       ResourceManifest.of(
           Map.of(
               ToolSupport.MAP_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolSupport.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
   private final CoreSimos core;
@@ -329,7 +349,8 @@ public final class AdjudicateTickTool implements AgentTool {
               ? ResourceScopeMap.empty()
               : DecisionCallerFactory.resourceScopesFor(SCOPE_FUNCTIONS, maker, state, mapId);
       for (DirectiveCommand command : directive.commands()) {
-        Optional<String> precheck = precheckRejection(fence, maker == null, directive, command);
+        Optional<String> precheck =
+            precheckRejection(fence, maker == null, directive, command, state);
         steps.add(
             new Step(
                 directive.id(),
@@ -446,15 +467,20 @@ public final class AdjudicateTickTool implements AgentTool {
     return status != DirectiveStatus.SUPERSEDED && status != DirectiveStatus.CANCELLED;
   }
 
-  // ── 前置校验（白名单 + 逐条资源授权）─────────────────────────────────────────────────────
+  // ── 前置校验（白名单 + 命令专属层级校验 + 逐条资源授权）────────────────────────────────────
 
   /**
-   * 两类前置校验（不过的记下拒因、**不进批**）：① 白名单；② **按出令决策人可达面**的逐目标资源授权。
+   * 三类前置校验（不过的记下拒因、**不进批**）：① 白名单；② **命令类型专属的层级/归属校验**（今天只有 {@code actor.RemitGovTreasury} 的"省 →
+   * 自己的 {@code superiorGov}"，见 {@link #remitHierarchyRejection}）；③ **按出令决策人可达面**的逐目标资源授权。
    *
-   * <p>★ 顺序有意：白名单先（最便宜、且 sd 自指与未注册类型不该走到资源判定），再解析目标、再逐条判。
+   * <p>★ 顺序有意：白名单先（最便宜、且 sd 自指与未注册类型不该走到资源判定），再做命令专属校验，最后解析目标、逐条判——换单位/换坐标的恶意令在②或③被拒。
    */
   private Optional<String> precheckRejection(
-      ResourceScopeMap fence, boolean makerMissing, Directive directive, DirectiveCommand command) {
+      ResourceScopeMap fence,
+      boolean makerMissing,
+      Directive directive,
+      DirectiveCommand command,
+      SimulationState state) {
     if (makerMissing) {
       return Optional.of("决策人不存在: " + directive.decisionMakerId().value());
     }
@@ -463,6 +489,13 @@ public final class AdjudicateTickTool implements AgentTool {
     }
     if (!whitelist.allows(command.type())) {
       return Optional.of("决策命令不在白名单: " + command.type());
+    }
+    // ★ 命令类型专属校验（放在白名单之后、targetPaths 之前）：其他命令类型的行为一字不动。
+    if (RemitGovTreasuryHandler.TYPE.equals(command.type())) {
+      Optional<String> rejection = remitHierarchyRejection(state, directive, command);
+      if (rejection.isPresent()) {
+        return rejection;
+      }
     }
     CommandTargets targets = commandTargets.get(command.type());
     if (targets == null) {
@@ -491,22 +524,177 @@ public final class AdjudicateTickTool implements AgentTool {
   }
 
   /**
+   * {@code actor.RemitGovTreasury} 的命令类型专属前置校验（R3b）：**只能由 GOV 决策人把自己的国库显式上缴给自己的 {@code
+   * superiorGov}**，且双方坐标必须各自是该单位**当刻有效位置**。
+   *
+   * <p>★ 本层只判**归属与坐标形状**：金额（grain/cloth/money）的符号、全零、余额与冻结**不在这里判**，留给域层 handler ——避免第二份口径。载荷 JSON
+   * 解析失败 / 字段缺失 / 类型不对 ⇒ 具名拒（不抛到外层 TOOL_ERROR）。
+   *
+   * <p>★ 通过后仍要走 {@link CommandTargets#targetPaths} + scope：{@code GovScope} 的 actor
+   * 命名空间已包含源/目标两个国库格； 恶意换单位/换坐标的令会在本层或 scope 层被拒。其他命令类型不经过本方法，行为一字不动。
+   */
+  private static Optional<String> remitHierarchyRejection(
+      SimulationState state, Directive directive, DirectiveCommand command) {
+    DecisionMaker maker =
+        ToolSupport.sdState(state).decisionMakers().get(directive.decisionMakerId());
+    if (maker == null) {
+      // 正常路径前面 makerMissing 已拦；这里是防御（不编第二条语义）。
+      return Optional.of("决策人不存在: " + directive.decisionMakerId().value());
+    }
+    if (!(maker.affiliation() instanceof Affiliation.Gov gov)) {
+      return Optional.of("上缴令只能由 GOV 决策人发（当前归属 " + maker.affiliation() + "）");
+    }
+    RemitTarget target;
+    try {
+      target = parseRemitTarget(command.payloadJson());
+    } catch (IllegalArgumentException e) {
+      return Optional.of("上缴令载荷形状不对，裁定前拒: " + e.getMessage());
+    }
+    UnitState units = ToolSupport.unitState(state);
+    String ownGov = gov.govUnit().value();
+    if (!ownGov.equals(target.fromUnitId())) {
+      return Optional.of(
+          "上缴源必须是出令决策人自己的 GOV（令源=" + target.fromUnitId() + "，决策人 GOV=" + ownGov + "）");
+    }
+    Unit source = units.units().get(gov.govUnit());
+    if (source == null) {
+      return Optional.of("上缴源单位在 unit 切片里不存在: " + ownGov);
+    }
+    if (!(source.module().orElse(null) instanceof GovFormation sourceGov)) {
+      return Optional.of("上缴源单位没有 GovFormation（不是 GOV）: " + ownGov);
+    }
+    Optional<UnitId> superior = sourceGov.superiorGov();
+    if (superior.isEmpty()) {
+      return Optional.of("上缴源 GOV 没有 superiorGov（中央 / 无上级不能上缴）: " + ownGov);
+    }
+    String superiorId = superior.get().value();
+    if (!superiorId.equals(target.toUnitId())) {
+      return Optional.of(
+          "上缴目标必须是源 GOV 的 superiorGov（令目标="
+              + target.toUnitId()
+              + "，源 GOV 的 superiorGov="
+              + superiorId
+              + "）");
+    }
+    if (target.fromUnitId().equals(target.toUnitId())) {
+      return Optional.of(
+          "上缴源与目标不得相同（令源=" + target.fromUnitId() + "，令目标=" + target.toUnitId() + "）");
+    }
+    UnitId targetId;
+    try {
+      targetId = new UnitId(target.toUnitId());
+    } catch (IllegalArgumentException e) {
+      return Optional.of("上缴目标单位 id 非法: " + target.toUnitId());
+    }
+    Unit targetUnit = units.units().get(targetId);
+    if (targetUnit == null) {
+      return Optional.of("上缴目标单位在 unit 切片里不存在: " + target.toUnitId());
+    }
+    if (!(targetUnit.module().orElse(null) instanceof GovFormation)) {
+      return Optional.of("上缴目标单位没有 GovFormation（不是 GOV）: " + target.toUnitId());
+    }
+    SimosTimestamp at = state.meta().timestamp();
+    HexCoord from = new HexCoord(target.fromQ(), target.fromR());
+    Optional<HexCoord> sourceAt = units.effectivePosition(source.id(), at);
+    if (sourceAt.isEmpty() || !sourceAt.get().equals(from)) {
+      return Optional.of(
+          "上缴源坐标必须是源 GOV 当刻有效位置（令坐标="
+              + from
+              + "，源 GOV 当刻有效位置="
+              + sourceAt.map(HexCoord::toString).orElse("无")
+              + "）");
+    }
+    HexCoord to = new HexCoord(target.toQ(), target.toR());
+    Optional<HexCoord> targetAt = units.effectivePosition(targetUnit.id(), at);
+    if (targetAt.isEmpty() || !targetAt.get().equals(to)) {
+      return Optional.of(
+          "上缴目标坐标必须是目标 GOV 当刻有效位置（令坐标="
+              + to
+              + "，目标 GOV 当刻有效位置="
+              + targetAt.map(HexCoord::toString).orElse("无")
+              + "）");
+    }
+    return Optional.empty();
+  }
+
+  /** 上缴令只需形状的六个字段（金额不在本层解析——域层 handler 才有唯一口径）。 */
+  private record RemitTarget(
+      String fromUnitId, int fromQ, int fromR, String toUnitId, int toQ, int toR) {}
+
+  /** 解析上缴令形状：JSON 不是对象 / 字段缺失 / 类型不对都抛可读的 {@link IllegalArgumentException}。 */
+  private static RemitTarget parseRemitTarget(String payloadJson) {
+    JsonNode payload;
+    try {
+      payload = MAPPER.readTree(payloadJson);
+    } catch (JsonProcessingException e) {
+      throw new IllegalArgumentException("载荷不是合法 JSON: " + e.getOriginalMessage(), e);
+    }
+    if (payload == null || !payload.isObject()) {
+      throw new IllegalArgumentException("载荷必须是 JSON 对象");
+    }
+    return new RemitTarget(
+        normalizeUnitId(requireRemitText(payload, "fromUnitId")),
+        requireRemitInt(payload, "fromQ"),
+        requireRemitInt(payload, "fromR"),
+        normalizeUnitId(requireRemitText(payload, "toUnitId")),
+        requireRemitInt(payload, "toQ"),
+        requireRemitInt(payload, "toR"));
+  }
+
+  /** 上缴令的文本字段：缺失 / 非文本 / 空白都拒。 */
+  private static String requireRemitText(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || !value.isTextual() || value.asText().isBlank()) {
+      throw new IllegalArgumentException("字段 " + field + " 缺失或不是非空白文本");
+    }
+    return value.asText();
+  }
+
+  /** 单位 id 文本：接受 canonical {@code unit:<裸值>}，去掉前缀后按裸值使用；只剩前缀 ⇒ 拒。 */
+  private static String normalizeUnitId(String text) {
+    String value = text.startsWith("unit:") ? text.substring("unit:".length()) : text;
+    if (value.isBlank()) {
+      throw new IllegalArgumentException("单位 id 去掉 unit: 前缀后不得为空白");
+    }
+    return value;
+  }
+
+  /** 上缴令的坐标字段：缺失 / 非 int 都拒。 */
+  private static int requireRemitInt(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || !value.isInt()) {
+      throw new IllegalArgumentException("字段 " + field + " 缺失或不是 int");
+    }
+    return value.intValue();
+  }
+
+  /**
    * 逐条判目标是否落在该决策人的可达面内，返回**越界的那几条资源**（空 = 全部放行）。
    *
    * <p>★ **包内可见**：第 3 波第 2 步的用例要在这里钉住"**不表态**（{@code declaredScope} 返 null）与**显式 {@code
    * none()}**"两条**方向相反**的语义——前者按既有语义回落到 {@link #TARGET_MANIFEST}（不收紧），后者必须拒。
-   * 端到端路径上今天走不到"不表态"（两个内置范围函数都把 map/unit/social 显式表态），故必须在这一层可测。
+   * 端到端路径上今天走不到"不表态"（三个内置范围函数都把 map/social/unit/actor 显式表态），故必须在这一层可测。
    */
   static List<String> violations(ResourceScopeMap fence, String namespace, List<String> paths) {
     ResourceAuthorizer authorizer = ResourceAuthorizer.of(permissionSetOf(fence), TARGET_MANIFEST);
     List<String> violations = new ArrayList<>();
     for (String path : paths) {
-      ResourceId id = ResourceId.of(namespace, path);
+      ResourceId id = ResourceId.of(namespace, normalizeTargetPath(namespace, path));
       if (!authorizer.allows(Operation.WRITE, id)) {
         violations.add(id.fullId());
       }
     }
     return List.copyOf(violations);
+  }
+
+  /**
+   * 决策人常从读口拿到 canonical 地址（如 {@code unit:<裸 id>}）并原样塞回命令载荷；{@code CommandTargets} 返回的 localId
+   * 约定是不带命名空间前缀的裸路径。这里只去掉**与命令命名空间同名的前缀**（{@code "unit:"}/{@code "social:"}…）， 不改其余任何字符——否则 {@code
+   * unit:unit:<id>} 会撞不上围栏（2026-10-01 R5 真实决策轮实测）。
+   */
+  private static String normalizeTargetPath(String namespace, String path) {
+    String prefix = namespace + ":";
+    return path.startsWith(prefix) ? path.substring(prefix.length()) : path;
   }
 
   /**

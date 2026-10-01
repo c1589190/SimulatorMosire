@@ -47,10 +47,12 @@ import io.mosire.simos.app.tools.write.EconomyAdjustTool;
 import io.mosire.simos.app.tools.write.ForkTool;
 import io.mosire.simos.app.tools.write.GmApproveTool;
 import io.mosire.simos.app.tools.write.GovAbsorbUnitTool;
+import io.mosire.simos.app.tools.write.GovApplyStaffingTool;
 import io.mosire.simos.app.tools.write.GovCreateOfficeTool;
 import io.mosire.simos.app.tools.write.GovDismissTool;
 import io.mosire.simos.app.tools.write.GovDispatchTeamTool;
 import io.mosire.simos.app.tools.write.GovRecruitTool;
+import io.mosire.simos.app.tools.write.GovRemitTool;
 import io.mosire.simos.app.tools.write.GovRetireStaffTool;
 import io.mosire.simos.app.tools.write.GovSelectExamineesTool;
 import io.mosire.simos.app.tools.write.IssueDebtTool;
@@ -60,10 +62,12 @@ import io.mosire.simos.app.tools.write.MapCreateRegionTool;
 import io.mosire.simos.app.tools.write.MapDeleteRegionTool;
 import io.mosire.simos.app.tools.write.MapRandomizeRegionTool;
 import io.mosire.simos.app.tools.write.MapRegisterPathwayGroupTool;
+import io.mosire.simos.app.tools.write.MapRenameRegionTool;
 import io.mosire.simos.app.tools.write.MapSetEdgeTool;
 import io.mosire.simos.app.tools.write.MapSetTerrainTool;
 import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
 import io.mosire.simos.app.tools.write.ProvinceApplyTool;
+import io.mosire.simos.app.tools.write.ProvinceAssignCitiesTool;
 import io.mosire.simos.app.tools.write.RaiseUnitTool;
 import io.mosire.simos.app.tools.write.RegionClearDataTool;
 import io.mosire.simos.app.tools.write.RegionClearStructuresTool;
@@ -87,6 +91,7 @@ import io.mosire.simos.app.tools.write.SdSetArmyMasterGovTool;
 import io.mosire.simos.app.tools.write.SdSetDecisionMakerProviderTool;
 import io.mosire.simos.app.tools.write.SdSetStageOutcomeTableTool;
 import io.mosire.simos.app.tools.write.SetDecisionMakerAccessTool;
+import io.mosire.simos.app.tools.write.SocialUpdateCityTool;
 import io.mosire.simos.app.tools.write.SpawnArmyTool;
 import io.mosire.simos.app.tools.write.StartDecisionTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
@@ -429,10 +434,18 @@ public final class SimosToolSource implements ToolSource {
     //   Region + GOV Unit + 决策人；相关结构门 NEEDS_CLEAR / 重叠门 OVERLAP_OVERRIDE_REQUIRED，零 revision）。
     //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面声明 map/unit/sd。
     built.add(new ProvinceApplyTool(core, query, initiator, mapId));
+    // ★★ R2a（2026-10-01 行政区划修复计划 §1.2/§R4）：按 SocialCity.at 批量归省——候选省/首都区取
+    //   hexCount 最小、并列按 regionId 字典序；一批 social.UpdateCity 共享 batchId ⇒ 恰一条 revision。
+    //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 social。
+    built.add(new ProvinceAssignCitiesTool(core, query, initiator));
     built.add(new MapSetTerrainTool(core, initiator, mapId));
     built.add(new MapSetEdgeTool(core, initiator, mapId));
     built.add(new MapCreateRegionTool(core, initiator, mapId));
     built.add(new MapUpdateRegionTool(core, initiator, mapId));
+    // ★★ R4（2026-10-01 行政区划修复计划 §1.4）：GM 改区域名的窄面——命令 map.RenameRegion 标 GmOnlyCommand
+    //   ⇒ 决策人令 / RegisterEffect / 决策人 catalog 三条路径都到不了；GM 直接提交与这条窄工具照常可用。
+    //   **只在 GM 桶**；改名只动 name，不动内容与边界。──
+    built.add(new MapRenameRegionTool(core, initiator, mapId));
     built.add(new MapDeleteRegionTool(core, initiator, mapId));
     built.add(new MapRandomizeRegionTool(core, initiator, mapId));
     built.add(new MapRegisterPathwayGroupTool(core, initiator, mapId));
@@ -460,6 +473,9 @@ public final class SimosToolSource implements ToolSource {
     // 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率。**只在 GM 桶**（与既有 unit 窄写同待遇）。
     built.add(new UnitSetJurisdictionTool(core, initiator, mapId));
     built.add(new UnitSetTaxRateTool(core, initiator, mapId));
+    // ★★ R2a（2026-10-01 行政区划修复计划 §1.2/§R4）：social 域窄写——改城市 name/props/region 的唯一窄面
+    //   （region 键缺席=保持、字符串=设值、null=清空）。**只在 GM 桶**；命令 handler 的 targetPaths 仍为空。
+    built.add(new SocialUpdateCityTool(core, initiator, mapId));
     // 阶段 10a（2026-09-30 GOV/Army 计划）：两条"立编制"命令的窄封装（编制字段在 Unit.module ⇒ 是 unit 域命令）。
     //   **只在 GM 桶**；决策人侧要改编制仍走 sd.IssueDirective 的审批链（这两条命令非 GmOnly，可嵌入令）。
     built.add(new UnitSetGovFormationTool(core, initiator, mapId));
@@ -488,6 +504,16 @@ public final class SimosToolSource implements ToolSource {
     // 辖区阶段 6（2026-09-30 / 计划 §6.2）：actor 净增量账原语（app 级抽取/组军组合工具的落账腿）。
     //   **只在 GM 桶**：命令类型固定，模型只能给载荷；整条原子由域层判。
     built.add(new ActorAdjustAccountsTool(core, initiator, mapId));
+    // ★★ R3a（2026-10-01 行政区划修复计划 §1.3/§R4）：GM 显式 GOV 国库上缴 / 转移窄工具——
+    //   两个 GOV 当刻有效位置的国库账之间一条 actor.RemitGovTreasury（源扣目标加、一条 revision、整条原子）。
+    //   **只在 GM 桶**；允许任意两个 GOV（不要求 to 是 from.superiorGov）；工具名不是命令类型 ⇒ 不进 catalog。
+    //   写面只声明 actor 命名空间（GM 侧 unlimited）。
+    built.add(new GovRemitTool(core, query, initiator));
+    // ★★ R4 / R5 步骤 4（2026-10-01 行政区划修复计划）：GM 按辖区行政需求精确配满编组合工具——逐 GOV 调
+    //   GovDemand.of 求 security/paperwork 总量，目标 staff{YAMEN=security, SCRIBE=paperwork}，每个要改的 GOV
+    //   一条 unit.SetGovFormation（policy 五字段原样带全），一批共享 batchId ⇒ 恰一条 revision。
+    //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 unit。
+    built.add(new GovApplyStaffingTool(core, query, initiator));
     // 辖区阶段 6（2026-09-30 / 计划 §6.1）：GM 组合工具——一次抽粮/钱/人力，三条命令同批落一条 revision。
     //   **只在 GM 桶**；★ 它不是一条命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。actor.AdjustAccounts 已标
     //   GmOnlyCommand ⇒ 这条组合工具的上限/管辖区口径不会被"嵌进决策令"绕过。

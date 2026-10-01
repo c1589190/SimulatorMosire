@@ -12,6 +12,7 @@ import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.LinkedHashSet;
@@ -24,19 +25,22 @@ import java.util.TreeSet;
  * **政府决策人**的可见范围（阶段 10a，用户裁定 4：<b>直辖</b>）。
  *
  * <p>链路：{@code Affiliation.Gov(govUnitId)} → unit 切片里那个单位（<b>必须存在且带 {@link GovFormation}，否则
- * deny-all 三命名空间</b>，照 {@code ArmyScope} 的 fail-closed）→ 本级 {@code Unit.jurisdiction} 的 Region 集合 ⇒
+ * deny-all 四命名空间</b>，照 {@code ArmyScope} 的 fail-closed）→ 本级 {@code Unit.jurisdiction} 的 Region 集合 ⇒
  * 这些 Region 的<b>逐格</b> hex 前缀 + Region 级前缀 + 自己所在格。
  *
  * <p>★★ <b>这里只算"直辖"</b>：中央决策人读不到省的数据，除非中央自己的 {@code jurisdiction} 里就有那个 Region（or 用 {@code
  * sd.IssueDirective} 的审批链）。<b>名义全境</b>（沿 {@code superiorGov} 聚合下级 GOV 的管辖）在 {@link
  * io.mosire.simos.app.gov.GovTerritory}，<b>绝不进任何授权判定</b>——用户裁定 4 明令它是显示/后续 NationSummary 的只读派生。
  *
- * <p>★ <b>三个命名空间各自表态</b>（与 {@code NationScope}/{@code ArmyScope} 同一条纪律，spec §5.2 第 3 条）：
+ * <p>★ <b>四个命名空间各自表态</b>（与 {@code NationScope}/{@code ArmyScope} 同一条纪律，spec §5.2 第 3 条）：
  *
  * <ul>
  *   <li>{@code map} = 管辖 Region 的逐格 hex 前缀 + {@code map:<mapId>/region/<rid>} 前缀 + 自己所在格；
  *   <li>{@code social} = 上述 hex 的 {@code <q>_<r>}（人口按格取，路径不带 mapId）；
- *   <li>{@code unit} = 自己 + 位置落在上述 hex 的单位。
+ *   <li>{@code unit} = 自己 + 位置落在上述 hex 的单位；
+ *   <li>{@code actor} = <b>只授自己 GOV 与 {@code superiorGov} 两个 GOV 的国库格路径</b>（ {@link
+ *       ResourcePaths#actor(int, int)}，即 {@code q_r}），供显式 {@code actor.RemitGovTreasury}
+ *       上缴；<b>不是</b>全辖区 actor，也不把辖区里的其他账列进来。
  * </ul>
  *
  * <p>★★ <b>两条边界（控制方口径，逐条实现）</b>：
@@ -45,8 +49,8 @@ import java.util.TreeSet;
  *   <li><b>{@code Unit.jurisdiction} 为空</b> ⇒ 只授"自己所在格 + 自己"（集中办公的直辖最小集）：不 deny-all（那会让新建
  *       中央的决策人当场变瞎），也不放全量；{@code unit} 命名空间<b>只含自己</b>——同格的其他单位不因"集中办公"自动进入直辖 （它们要进范围，得由本级
  *       jurisdiction 定义，或由另一条命令授权）。
- *   <li><b>单位没有有效位置</b> ⇒ <b>只授 unit 命名空间里自己那一条前缀</b>：{@code map}/{@code social} 显式 {@code
- *       none()}（不是回落缺省、也不是全放行）。管辖 Region 此刻**不参与**授权——"不知道自己在哪"是 fail-closed
+ *   <li><b>单位没有有效位置</b> ⇒ <b>只授 unit 命名空间里自己那一条前缀</b>：{@code map}/{@code social}/{@code actor} 显式
+ *       {@code none()}（不是回落缺省、也不是全放行）。管辖 Region 此刻**不参与**授权——"不知道自己在哪"是 fail-closed
  *       信号，先授最小身份面，等有了位置再按位置+管辖现算。
  * </ol>
  *
@@ -81,15 +85,18 @@ public final class GovScope implements DecisionScopeFunction {
     SimosTimestamp at = state.meta().timestamp();
     Optional<HexCoord> own = units.effectivePosition(govUnit.id(), at);
     if (own.isEmpty()) {
-      // ★ 边界二：无位置 ⇒ 只授 unit 前缀（map/social 显式 none，管辖不参与）。
+      // ★ 边界二：无位置 ⇒ 只授 unit 前缀（map/social/actor 显式 none，管辖不参与）。
       return ResourceScopeMap.of(ToolSupport.MAP_NAMESPACE, ResourceScope.none())
           .withNamespace(
               ToolSupport.UNIT_NAMESPACE,
               DecisionScopeFunction.scopeOfPrefixes(
                   Set.of(ToolSupport.resourceUnit(govUnit.id().value()).path())))
-          .withNamespace(ToolSupport.SOCIAL_NAMESPACE, ResourceScope.none());
+          .withNamespace(ToolSupport.SOCIAL_NAMESPACE, ResourceScope.none())
+          .withNamespace(ToolSupport.ACTOR_NAMESPACE, ResourceScope.none());
     }
 
+    // ★ 前置检查已确认 module 是 GovFormation；superiorGov 是"显式上缴"的授权链（类注四个命名空间）。
+    GovFormation govFormation = (GovFormation) govUnit.module().orElseThrow();
     GameMap map = ToolSupport.gameMap(state);
     Set<RegionId> jurisdictionRegions =
         govUnit
@@ -122,6 +129,17 @@ public final class GovScope implements DecisionScopeFunction {
       socialPrefixes.add(ToolSupport.resourceSocial(coord.q(), coord.r()).path());
     }
 
+    // ★ actor：只授自己 + superiorGov 两个 GOV 的国库格路径（显式上缴 actor.RemitGovTreasury 的目标声明）。
+    //   superiorGov 不存在 / 不在 unit 切片 / 当刻无位置 ⇒ 不加那一条（不整体 deny-all、也不放全量）。
+    Set<String> actorPrefixes = new TreeSet<>();
+    actorPrefixes.add(ResourcePaths.actor(own.get().q(), own.get().r()));
+    govFormation
+        .superiorGov()
+        .filter(units.units()::containsKey)
+        .flatMap(superiorId -> units.effectivePosition(superiorId, at))
+        .ifPresent(
+            superiorAt -> actorPrefixes.add(ResourcePaths.actor(superiorAt.q(), superiorAt.r())));
+
     Set<String> unitPrefixes = new TreeSet<>();
     unitPrefixes.add(ToolSupport.resourceUnit(govUnit.id().value()).path());
     if (!jurisdictionRegions.isEmpty()) {
@@ -134,19 +152,22 @@ public final class GovScope implements DecisionScopeFunction {
       }
     }
 
-    // ★ 三个命名空间**都要表态**：只配 map 会让 unit/social 回落到工具缺省策略（READ_ONLY）⇒ 静默全放行。
+    // ★ 四个命名空间**都要表态**：只配 map 会让 unit/social/actor 回落到工具缺省策略（READ_ONLY）⇒ 静默全放行。
     return ResourceScopeMap.of(
             ToolSupport.MAP_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(mapPrefixes))
         .withNamespace(
             ToolSupport.UNIT_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(unitPrefixes))
         .withNamespace(
-            ToolSupport.SOCIAL_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(socialPrefixes));
+            ToolSupport.SOCIAL_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(socialPrefixes))
+        .withNamespace(
+            ToolSupport.ACTOR_NAMESPACE, DecisionScopeFunction.scopeOfPrefixes(actorPrefixes));
   }
 
-  /** 三命名空间显式 deny-all（照 {@code ArmyScope.denyAll}）：单位不存在 / 不是 GOV 时使用。 */
+  /** 四命名空间显式 deny-all（照 {@code ArmyScope.denyAll}）：单位不存在 / 不是 GOV 时使用。 */
   private static ResourceScopeMap denyAll() {
     return ResourceScopeMap.of(ToolSupport.MAP_NAMESPACE, ResourceScope.none())
         .withNamespace(ToolSupport.UNIT_NAMESPACE, ResourceScope.none())
-        .withNamespace(ToolSupport.SOCIAL_NAMESPACE, ResourceScope.none());
+        .withNamespace(ToolSupport.SOCIAL_NAMESPACE, ResourceScope.none())
+        .withNamespace(ToolSupport.ACTOR_NAMESPACE, ResourceScope.none());
   }
 }

@@ -356,8 +356,22 @@
   /**
    * 搜索索引（纯函数）：把区域（map overview.regions）、城市、单位、决策人拉平成同一种项。
    * 项形：`{kind,id,name,subtitle,at:{q,r}|null}`；排序按 kind 档、再 id 字典序（确定性）。
+   *
+   * <p>★ R2b：城市 `region` 可指向省（`meta.tag="province"`）。城市 subtitle 用 `overview.regions` 的
+   * `id → {name, meta.tag}` 映射把省 id 换成省名；解析不到 / 非省 / 省无名字 ⇒ 维持旧行为原样显示 region id。
+   * 匹配只看 `id` / `name`（{@link matchRank}）⇒ 旧搜索行为不回归。
    */
   function searchIndex(overview, cities, units, decisionMakers) {
+    var regionInfoById = {};
+    ((overview && overview.regions) || []).forEach(function (region) {
+      if (!region || region.id === null || region.id === undefined) {
+        return;
+      }
+      regionInfoById[String(region.id)] = {
+        name: region.name,
+        tag: region.meta ? region.meta.tag : null,
+      };
+    });
     var out = [];
     ((overview && overview.regions) || []).forEach(function (region) {
       if (!region || region.id === null || region.id === undefined) {
@@ -375,6 +389,18 @@
       if (!validCity(city)) {
         return;
       }
+      var regionSuffix = "";
+      if (city.region) {
+        var regionInfo = regionInfoById[String(city.region)];
+        // ★ R2b：省有名字 ⇒ 城市 subtitle 显示省名；其余情况维持旧行为显示 region id。
+        var isNamedProvince =
+          !!regionInfo &&
+          regionInfo.tag === "province" &&
+          regionInfo.name !== null &&
+          regionInfo.name !== undefined &&
+          String(regionInfo.name) !== "";
+        regionSuffix = " · " + (isNamedProvince ? String(regionInfo.name) : textOf(city.region));
+      }
       out.push({
         kind: "city",
         id: String(city.id),
@@ -382,7 +408,7 @@
         subtitle:
           "城市 · " +
           textOf(city.tier === null || city.tier === undefined ? "未标等级" : city.tier) +
-          (city.region ? " · " + textOf(city.region) : ""),
+          regionSuffix,
         at: { q: city.at.q, r: city.at.r },
       });
     });
@@ -819,6 +845,13 @@
    * region 补城市计数"的降级路径（有汇总时以汇总为准，不重复计）。人口/单位允许多区域重叠重复计入 —— 与后端
    * `population` 的"区域格集求和"口径一致，卡片 hint 会写明。
    *
+   * <p>★ R2b：`cityCount` / `cityPopulation` **优先**用各国家 Region 的 `containedCityCount` /
+   * `containedCityPopulation` 求和（`sumKnown`）—— 这是"国家 Region 的 hex 集内按城市落点 `at` 统计"的口径，
+   * 城市 `region` 改指省后依然正确，不再依赖城市归属哪个 Region。仅当这些字段在**所有**国家 Region 上都缺失
+   * （旧后端降级路径）才回退旧口径：`cityCount` 先取各 `region.cityCount`，再无区域字段时按
+   * `city.region == 国家 Region.id` 兜底；`cityPopulation` 回退各 `region.cityPopulation`。字段缺失只跳过、
+   * **不当作 0** 混入求和。
+   *
    * @return `[{id,name,hexCount,population,ruralPopulation,urbanPopulation,cityCount,cityPopulation,
    *     unitCount,govCount,grainStock,silverMoney,goodsTotal,regionCount,decisionMakerCount}…]`，按 id 字典序；
    *     无国家区域 ⇒ 空数组。新增字段缺数据 ⇒ `null`（不拿 0 冒充）；`goodsTotal` 为“商品 id → 合计”。
@@ -865,15 +898,32 @@
       var name = nationRegions[0].name === null || nationRegions[0].name === undefined
         ? id
         : nationRegions[0].name;
-      var cityCount =
-        sumKnown(nationRegions, function (region) {
-          return region.cityCount;
-        }) || 0;
-      if (!nationRegions.some(function (region) {
-        return typeof region.cityCount === "number";
-      })) {
-        nationRegions.forEach(function (region) {
-          cityCount += cityCountFallback[String(region.id)] || 0;
+      // ★ R2b：城市按落点统计优先（城市 region 指省也仍落在国家 Region hex 集内）。
+      var containedCityCount = sumKnown(nationRegions, function (region) {
+        return region.containedCityCount;
+      });
+      var containedCityPopulation = sumKnown(nationRegions, function (region) {
+        return region.containedCityPopulation;
+      });
+      // 所有国家 Region 都缺 containedCityCount ⇒ 旧后端降级：先 region.cityCount，再无区域字段时按 city.region 兜底。
+      var cityCount = containedCityCount;
+      if (cityCount === null) {
+        cityCount =
+          sumKnown(nationRegions, function (region) {
+            return region.cityCount;
+          }) || 0;
+        if (!nationRegions.some(function (region) {
+          return typeof region.cityCount === "number";
+        })) {
+          nationRegions.forEach(function (region) {
+            cityCount += cityCountFallback[String(region.id)] || 0;
+          });
+        }
+      }
+      var cityPopulation = containedCityPopulation;
+      if (cityPopulation === null) {
+        cityPopulation = sumKnown(nationRegions, function (region) {
+          return region.cityPopulation;
         });
       }
       return {
@@ -893,9 +943,7 @@
           return region.urbanPopulation;
         }),
         cityCount: cityCount,
-        cityPopulation: sumKnown(nationRegions, function (region) {
-          return region.cityPopulation;
-        }),
+        cityPopulation: cityPopulation,
         unitCount: sumKnown(nationRegions, function (region) {
           return region.unitCount;
         }),

@@ -81,6 +81,10 @@ import java.util.Set;
  *       字符串，tick=base 世界当前日。
  * </ol>
  *
+ * <p>★ <b>R2a 接缝</b>（2026-10-01 行政区划修复计划）：本工具只落 {@code Region} + {@code GOV} + 决策人， <b>不</b>改任何
+ * {@code SocialCity.region}；落盘后建议调用 {@code simos.province.assignCities}，把 {@code at}
+ * 落在新省/首都区的城市批量归省（R5 重建流程会显式调用）。
+ *
  * <p>★ <b>确定性</b>：不碰墙钟（tick 是 base state 的函数）、不用随机量；省/unit/dm 顺序取建议顺序，扫描命中一律先按 id
  * 排序；staff/allowedTools 用 {@code LinkedHashMap}/{@code LinkedHashSet} 保序冻结（<b>不用</b> {@code
  * Map.copyOf}）。
