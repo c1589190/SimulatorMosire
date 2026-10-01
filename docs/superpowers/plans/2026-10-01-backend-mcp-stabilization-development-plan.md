@@ -2,7 +2,7 @@
 
 > 日期：2026-10-01
 > 依据：`docs/superpowers/reports/2026-10-01-backend-mcp-stabilization-investigation.md`
-> 状态：**待用户确认 §6 裁定项后实施；本文不写生产代码**
+> 状态：**用户裁定已记录（2026-10-01）；本文不写生产代码**
 > 总原则：先后端、后 GUI；所有写入 `Command → ChangeSet → Revision`；生成器/初始化/组合工具 preview 先行；一键落盘必须 clean gate；一轮一个写代码代理，测试统一留最后；控制方审后提交。
 
 ---
@@ -36,6 +36,8 @@
 ---
 
 ## 2. 各批次范围与判据
+
+> ★ 本节为批次范围草案；与 §6 用户裁定冲突之处，以 §6 为准（尤其 P1/P2/P3/P5/P6/P7/P8）。
 
 ### P0 基线冻结与工具面自证
 - 清掉旧数字漂移：`AGENTS.md:434/441`、`SimosToolsTest`、`McpServerTest`、`McpPortTopologyTest` 中 67/90/非窄 12/unit 22 等。
@@ -143,24 +145,30 @@
 - 跨 Region 市场/运输、逐格市场恢复、市场结算重接线。
 - 新商品、新生产公式。
 - MCP 协议级 batch/Tasks 作为第二写入口。
-- 决策人显式行动名册世界状态（MVP 先用 due + run-due）。
+- 决策人自动筛选/自动派出（用户裁定：必须由 GM Agent 显式给名单；due 只作只读展示）。
 
 ---
 
-## 6. 需用户确认的裁定项（实施前）
+## 6. 用户裁定结果（2026-10-01，覆盖前文相应批次描述）
 
-1. **城市 clean gate**：人口序列 0 值 / 空批次 / 空账是否算“已有元素”？（建议：存在记录即拒，含 0/空。）
-2. **省份 clean gate 的“相关元素”**：
-   - A 任何相交 Region（父自身除外）即拒；
-   - B 只拒完全落在目标 Region 内的子 Region + GOV/DM/jurisdiction（推荐）；
-   - C 列出相交、要求显式 override。
-3. **城市一键落盘默认范围**：A 只 social（推荐）；B social+economy+actor。
-4. **省份一键落盘是否同时建 N+1 决策人**：建议是，可关闭。
-5. **中央 GOV jurisdiction**：建议空 `regions:[]`；若需首都行政，单独建首都圈 Region。
-6. **直接建军**：允许无人口/无国库（GM 特权）？`masterGov` 只写 sd 还是双边？建议允许、只写 sd。
-7. **allowedTools 空名单语义**：A 空=全局 WHITELIST（推荐兼容）；B 空=无工具（严格 N9）。
-8. **“本 tick 必须行动”**：MVP 只读 due + `run-due`（推荐）；显式名册后续。
-9. **审批 MCP 化**：允许外部 GM MCP 口 list/decide 审批队列吗？建议允许（GM-only、审计留痕）。
-10. **preview 标准化范围**：只对生成器/初始化/组合工具强制 preview（推荐），primitive 窄写保持 apply-only + expectedRevision。
-11. **假旋钮处理**：`SetFormationOffset` 与 `SdAddCombatStage` 静默参数：删除 / 具名拒 / 显式记账？
-12. **GovDaily 粮耗 120× 风险**：是否纳入本轮 P8？
+1. **一键清空 + 提示**：城市/省份工具检测到目标区域已有相关数据时，不默认硬拒死。新增 GM-only 的“一键清空”工具（暂名 `simos.region.clear`），或由生成器返回 `NEEDS_CLEAR` 并明确提示“清空当前区域所有相关数值”后重试。清空工具必须 preview/apply、具名确认、同批一条 revision。真正的一键落盘仍要求清空后的干净状态。
+2. **区域重叠 ≠ 省份相关**：省份工具发现目标 Region 与其他 Region 相交时，列出每个相交 Region（id/name/tag/相交格数），要求调用方**显式 override**；不能仅因“有重叠”就判为已有省份。相关元素仍指 GOV/决策人/jurisdiction/已建省子 Region 等。
+3. **城市一键落盘默认包含 social + economy + actor**（选 B）；但必须做最小人口 / class-first 可行前置检查，不可行时具名拒绝并提示可用的降级开关。
+4. **省份一键落盘默认同时创建 N+1 个决策人**（每省 1 + 中央 1），允许参数关闭。
+5. **中央 GOV 默认设一个独立首都区 Region**，jurisdiction 只授该首都区；GM 可视情况后续用 `unit.SetJurisdiction` 扩大为大首都辖区。省份划分器把首都区单独处理。
+6. **直接建军**允许无人口、无国库（GM 特权）；必须支持后续赋值/调整操作（member/equipment/position/masterGov 等），缺的 army 归属与 unit.Gov 关系要补齐；`spawnArmy` 仍是同批一条 revision。
+7. **allowedTools 语义采用 A**：空 = 沿用全局 `WHITELIST`（兼容旧档/夹具）；非空 = `WHITELIST ∩ allowedTools`。
+8. **不搞自动筛选/自动派出**：GOV 决策人要有行政能力才允许行动（当前未体现），军队无令理论上不能行动；本 tick 必须行动的人由 **GM Agent 显式给名单**，工具只接受 `decisionMakerIds` 列表。`due` 可保留为只读展示，但不作为行动触发条件。行政能力/军令门作为后续缺口立项。
+9. **审批 MCP 化**：允许外部 GM MCP 口 list/decide 审批队列（GM-only、审计留痕）。
+10. **preview + 图像渲染确认**：生成器/初始化/组合工具必须 preview；并加图像渲染确认（preview/apply 可返回地图渲染资产，或先调 `simos.map.render` 让 GM 确认）。primitive 窄写仍可 apply-only + `expectedRevision`。
+11. **#11 解释**：`unit.SetFormationOffset` 目前只写偏移、已不参与移动/战斗计算，是“改了不生效”的假旋钮；`sd.AddCombatStage` 非首阶段会静默忽略 `combatStateId/hex`，是“看起来在记、实际不生效”。处理方向待你选：删除 / 具名拒绝 / 降级为显式记账并在描述里注明无效果。
+12. **经济真实长跑/数值校准本轮不做**：`GovDaily` 粮耗 120× 风险只记录，不在 P8 做经济真实性测试；等国家数据初始化与 MCP 闭环稳定后再单独排期。
+
+---
+
+## 7. 仍需确认（实施前）
+
+1. **“一键清空”清到哪一层**：只清 social/economy/actor 相关数值，还是连目标区域内的 Region/GOV/Unit/决策人一起清？这决定 destructive 范围。
+2. **首都区默认大小/形状**：半径？固定 hex 上限？还是由省份划分器一起给建议，再由 GM 确认。
+3. **#11 假旋钮**选删除、具名拒绝、还是显式记账（描述注明无效果）。
+4. 确认 **P9 端到端不做经济真实长跑**，只验数据初始化、GOV/军队/回合闭环与 MCP 可达性。

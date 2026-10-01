@@ -236,3 +236,28 @@ map.CreateRegion × N
 - 未逐篇精读外部资料；部分 URL 来自搜索聚合页，未逐一打开验证。
 - 未验证 `AdjudicateTick` 二次生效在真实世界上的数值后果；未验证 `advance` drain 缺口的实际影响。
 - 未验证 `OfficePolicy.defaults()` 的 120× 粮耗是否真的在真实档上发生；只从常量与 `GovDaily` 代码推断。
+
+---
+
+## 12. 用户裁定结果（2026-10-01）
+
+本章是用户对 §10 十二项的最终答复，优先于 §10 的建议：
+
+1. 城市/省份工具检测到目标区域已有相关数据时，不默认硬拒死；新增“一键清空”工具（暂名 `simos.region.clear`），并在检测结果里由 Tool 明确提示清空当前区域所有相关数值后重试。清空只处理需要清的相关数值；清空后一键落盘才可执行。
+2. **区域重叠 ≠ 省份相关**：取选项 **C**。列出所有相交 Region（id/name/tag/相交格数），要求显式 override；不能仅凭重叠就判为已有省份（目标 Region 本身可能不是省份）。
+3. 城市一键落盘默认取 **B**：`social + economy + actor` 一起落；但必须有最小人口 / class-first 可行性前置检查，不可行时具名拒绝并提示降级开关。
+4. 省份一键落盘**同时创建 N+1 个决策人**（每省 1 + 中央 1），允许参数关闭。
+5. 中央 GOV 默认使用**独立首都区 Region**；先建首都区、GM 视实际情况再决定是否通过 `unit.SetJurisdiction` 扩大为大首都辖区。
+6. 直接建军允许无人口、无国库（GM 特权）；**后续赋值/调整操作也要有**（member/equipment/position/masterGov 等），并补齐 army 归属与 unit.Gov 关系。
+7. `allowedTools` 语义取 **A**：空 = 全局 `WHITELIST`；非空 = `WHITELIST ∩ allowedTools`。
+8. **不做自动筛选/自动派出**：GOV 决策人要有行政能力才允许行动（当前未体现），军队无令理论上不能行动；本 tick 行动名单由 **GM Agent 显式指定**。`due` 只作只读展示，不作为行动触发条件。
+9. 审批 MCP 化：**允许**外部 GM MCP 口 list/decide（GM-only、审计留痕）。
+10. preview：生成器/初始化/组合工具必须 preview；并加**图像渲染确认**（可返回地图渲染资产或先调 `simos.map.render`）。primitive 窄写可保持 apply-only + `expectedRevision`。
+11. 假旋钮解释：`unit.SetFormationOffset` 已不参与移动/战斗计算（纯记账、改了不生效）；`sd.AddCombatStage` 非首阶段会静默忽略 `combatStateId/hex`（看似记录、实际不生效）。处理方向待选：删除 / 具名拒绝 / 显式记账并注明无效果。
+12. **经济真实长跑/数值校准本轮不做**：`GovDaily` 粮耗 120× 风险只记录，不在本轮做经济真实性测试；等国家初始化与 MCP 闭环稳定后再单独排期。
+
+仍需确认（详见开发计划 §7）：
+1. “一键清空”清到哪一层：只清 social/economy/actor 相关数值，还是连 Region/GOV/Unit/决策人一起清。
+2. 首都区默认大小/形状（半径、固定 hex 上限，或由省份划分器一起给建议）。
+3. #11 假旋钮处理方向。
+4. 确认 P9 端到端不做经济真实长跑。
