@@ -36,6 +36,7 @@ import io.mosire.simos.app.tools.read.UnitListTool;
 import io.mosire.simos.app.tools.write.ActorAdjustAccountsTool;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.app.tools.write.AdvanceTool;
+import io.mosire.simos.app.tools.write.AssignArmyGovTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.EconomyAdjustTool;
 import io.mosire.simos.app.tools.write.ForkTool;
@@ -71,6 +72,7 @@ import io.mosire.simos.app.tools.write.SdCreateNationTool;
 import io.mosire.simos.app.tools.write.SdPutInfoTool;
 import io.mosire.simos.app.tools.write.SdRecordCasualtiesTool;
 import io.mosire.simos.app.tools.write.SdRegisterEffectTool;
+import io.mosire.simos.app.tools.write.SdSetArmyMasterGovTool;
 import io.mosire.simos.app.tools.write.SdSetDecisionMakerProviderTool;
 import io.mosire.simos.app.tools.write.SdSetStageOutcomeTableTool;
 import io.mosire.simos.app.tools.write.SetDecisionMakerAccessTool;
@@ -421,9 +423,14 @@ public final class SimosToolSource implements ToolSource {
     // revision。
     //   **只在 GM 桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；raiseUnit 的抽取语义不变。
     built.add(new SpawnArmyTool(core, query, initiator, mapId));
+    // 阶段 12 后续赋值缺口（2026-10-01）：Army 创建后的主子改派/解除 GM 组合工具——unit.SetArmyFormation
+    //   → sd.SetArmyMasterGov → sd.PutInfo 同批落一条 revision，避免 sd / unit 两侧主子漂移。**只在 GM
+    //   桶**；★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
+    built.add(new AssignArmyGovTool(core, query, initiator, mapId));
     // M3（spec §八.3）：sd 域余下的写命令 —— ★ **只在 GM 桶**（决策人桶有意不含这批）。
     built.add(new SdCreateNationTool(core, initiator, mapId));
     built.add(new SdCreateArmyTool(core, initiator, mapId));
+    built.add(new SdSetArmyMasterGovTool(core, initiator, mapId));
     built.add(new SdCreateDecisionMakerTool(core, initiator, mapId));
     built.add(new SdPutInfoTool(core, initiator, mapId));
     built.add(new SdCreateCombatTool(core, initiator, mapId));

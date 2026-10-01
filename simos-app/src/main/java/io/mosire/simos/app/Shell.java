@@ -94,6 +94,7 @@ import io.mosire.simos.sd.spi.RecordCasualtiesHandler;
 import io.mosire.simos.sd.spi.RegisterEffectHandler;
 import io.mosire.simos.sd.spi.ResetDecisionMakerConversationHandler;
 import io.mosire.simos.sd.spi.RunDecisionHandler;
+import io.mosire.simos.sd.spi.SetArmyMasterGovHandler;
 import io.mosire.simos.sd.spi.SetDecisionMakerAccessHandler;
 import io.mosire.simos.sd.spi.SetDecisionMakerProviderHandler;
 import io.mosire.simos.sd.spi.SetDirectiveStatusHandler;
@@ -526,6 +527,9 @@ public final class Shell implements AutoCloseable {
                 new AdjustAccountsHandler(),
                 new CreateNationHandler(),
                 new CreateArmyHandler(),
+                // ── 阶段 12 后续赋值（2026-10-01 Army 主子改派缺口）：Army 创建后的主子改派/解除。★ GM-only
+                //   （handler 标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用）。──
+                new SetArmyMasterGovHandler(),
                 new CreateDecisionMakerHandler(),
                 new PutInfoHandler(),
                 new CreateCombatHandler(),
