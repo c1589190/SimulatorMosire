@@ -15,7 +15,9 @@ import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.query.SdQueryService;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmySnapshot;
+import io.mosire.simos.army.CombatOutcome;
 import io.mosire.simos.army.CombatRecord;
+import io.mosire.simos.army.CombatUnitLoss;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -130,6 +132,7 @@ import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.social.population.UrbanRural;
 import io.mosire.simos.unit.ArmyFormation;
+import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.Jurisdiction;
@@ -5350,11 +5353,14 @@ public final class ApiViews {
   }
 
   /**
-   * 单条交战记录视图（阶段 D1 / 用户设计 D-012，2026-10-02）：**GUI / MCP 读工具共用这一份形状**。
+   * 单条交战记录视图（阶段 D1 落地、阶段 D4 扩展 / 用户设计 D-009 补裁 + D-010 + D-012，2026-10-02）：**GUI / MCP
+   * 读工具共用这一份形状**。
    *
-   * <p>字段：{@code id} / {@code tick}（世界日）/ {@code hex}（交战格）/ {@code participants}（参与单位 id，保序）/
-   * {@code text}（自然语言过程与结局）/ {@code losses}（自然语义键 → 非负损失量；空表也发）。★ 列表读口与详情读口都调本方法 ⇒
-   * "同一资源的两个形状"在结构上不可能（AGENT.md §8.3 的纪律）。
+   * <p>字段：{@code id} / {@code kind}（自定义交战状态，自由文本，如"野战"/"轰城"）/ {@code tick}（世界日）/ {@code hex}（交战格）/
+   * {@code participants}（参与单位 id，保序）/ {@code text}（自然语言过程与结局）/ {@code
+   * stages}（有序阶段：id/name/participants/text/ outcomes/selectedOutcomeId/rollSeed/resolved/losses）/
+   * {@code losses}（**已判定阶段**的选中结局损失，扁平行 {@code {stageId,unit,manpower,equipment}}，保序；未判定 ⇒ 空数组）。★
+   * 列表读口与详情读口都调本方法 ⇒ "同一资源的两个形状"在结构上不可能（AGENT.md §8.3 的纪律）。
    *
    * <p>★ <b>不发 {@code participantsAtHex} 那类派生量</b>：交战记录是**历史**（写记录时单位在哪就是哪），而不是"此刻谁在哪"—— 与 sd 的
    * {@code CombatState} 不同，这里没有"现算"的一栏。
@@ -5362,12 +5368,112 @@ public final class ApiViews {
   public static Map<String, Object> armyCombat(CombatRecord record) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", record.id().value());
+    view.put("kind", record.kind());
     view.put("tick", record.tick());
     view.put("hex", hexCoord(record.hex()));
     view.put("participants", unitIdValues(record.participants()));
     view.put("text", record.text());
-    view.put("losses", new LinkedHashMap<>(record.losses()));
+    List<Map<String, Object>> stages = new ArrayList<>(record.stages().size());
+    for (io.mosire.simos.army.CombatStage stage : record.stages()) {
+      stages.add(combatStage(stage));
+    }
+    view.put("stages", List.copyOf(stages));
+    List<Map<String, Object>> losses = new ArrayList<>();
+    for (io.mosire.simos.army.CombatStage stage : record.stages()) {
+      stage
+          .selectedOutcome()
+          .ifPresent(
+              outcome -> {
+                for (CombatUnitLoss loss : outcome.losses()) {
+                  losses.add(combatLossRow(stage.id().value(), loss));
+                }
+              });
+    }
+    view.put("losses", List.copyOf(losses));
     return view;
+  }
+
+  /**
+   * 阶段视图：{@code
+   * {id,name,participants,text,outcomes,selectedOutcomeId,selectedOutcome,rollSeed,resolved,losses}}
+   * （{@code selectedOutcome} 与 {@code selectedOutcomeId} 同值：前者是读口惯用名、后者是记录字段名）。
+   *
+   * <p>★ 本方法与 {@code selectedOutcomeId} 的拼写用**全限定名**：本类同时 import 了 sd 的 {@code CombatStage} /
+   * {@code CombatOutcomeId}（另一场交战的视图），简单名会撞（编译期实测）。
+   */
+  private static Map<String, Object> combatStage(io.mosire.simos.army.CombatStage stage) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("id", stage.id().value());
+    view.put("name", stage.name());
+    view.put("participants", unitIdValues(stage.participants()));
+    view.put("text", stage.text());
+    List<Map<String, Object>> outcomes = new ArrayList<>(stage.outcomes().size());
+    for (CombatOutcome outcome : stage.outcomes()) {
+      outcomes.add(combatOutcome(outcome));
+    }
+    view.put("outcomes", List.copyOf(outcomes));
+    String selectedOutcomeId =
+        stage.selectedOutcomeId().map(io.mosire.simos.army.CombatOutcomeId::value).orElse(null);
+    view.put("selectedOutcomeId", selectedOutcomeId);
+    // ★ 与 sd 的交战视图同名的键（D4 任务书列的形状）：值就是选中的 outcome id；两个键同值，不各算一份。
+    view.put("selectedOutcome", selectedOutcomeId);
+    view.put("rollSeed", stage.rollSeed().orElse(null));
+    view.put("resolved", stage.resolved());
+    List<Map<String, Object>> losses = new ArrayList<>();
+    stage
+        .selectedOutcome()
+        .ifPresent(
+            outcome -> {
+              for (CombatUnitLoss loss : outcome.losses()) {
+                losses.add(combatLossRow(stage.id().value(), loss));
+              }
+            });
+    view.put("losses", List.copyOf(losses));
+    return view;
+  }
+
+  /** 结局视图：{@code {id,label,weight,losses}}（losses 的形状见 {@link #combatLossRow}）。 */
+  private static Map<String, Object> combatOutcome(CombatOutcome outcome) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("id", outcome.id().value());
+    view.put("label", outcome.label());
+    view.put("weight", outcome.weight());
+    List<Map<String, Object>> losses = new ArrayList<>(outcome.losses().size());
+    for (CombatUnitLoss loss : outcome.losses()) {
+      losses.add(combatLossRow(null, loss));
+    }
+    view.put("losses", List.copyOf(losses));
+    return view;
+  }
+
+  /**
+   * 单位损失视图：{@code {stageId?,unit,manpower,equipment,empty}}。{@code amount} 是**有符号增量**（负 = 损失，正 =
+   * 补充/新建）， 不是绝对值——与 {@code unit.AdjustComposition} 载荷同形（工具的结算原样提交这一份）。
+   */
+  private static Map<String, Object> combatLossRow(String stageId, CombatUnitLoss loss) {
+    Map<String, Object> row = new LinkedHashMap<>();
+    if (stageId != null) {
+      row.put("stageId", stageId);
+    }
+    row.put("unit", loss.unit().value());
+    List<Map<String, Object>> manpower = new ArrayList<>(loss.manpower().size());
+    for (CompositionDelta delta : loss.manpower()) {
+      Map<String, Object> entry = new LinkedHashMap<>();
+      entry.put("type", delta.type());
+      entry.put("amount", delta.amount());
+      manpower.add(entry);
+    }
+    List<Map<String, Object>> equipment = new ArrayList<>(loss.equipment().size());
+    for (CompositionDelta delta : loss.equipment()) {
+      Map<String, Object> entry = new LinkedHashMap<>();
+      entry.put("type", delta.type());
+      entry.put("amount", delta.amount());
+      equipment.add(entry);
+    }
+    row.put("manpower", List.copyOf(manpower));
+    row.put("equipment", List.copyOf(equipment));
+    row.put("empty", loss.empty());
+    return row;
   }
 
   /**

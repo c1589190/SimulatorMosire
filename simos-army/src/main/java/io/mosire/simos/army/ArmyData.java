@@ -62,8 +62,11 @@ public record ArmyData(Map<CombatRecordId, CombatRecord> combats) {
    * {@code parse} 还原，而"键与值内 id 一致"由构造器判。若只把表暴露成 {@code Map}，调用方就得自己拼键——同一个聚合键就有了第二个拼写点（照 {@code
    * ActorData.withActor} 的同一条理由）。
    *
-   * <p>★ 同一个键写两次 = 后写覆盖前写（{@code LinkedHashMap} 的 {@code put} 保留首次插入位置、只换值）；但**命令层对本阶段的新记录
-   * 选择"已存在即拒"**（不可变历史），故这条覆盖语义只对"手工拼装修复"开放。
+   * <p>★ 同一个键写两次 = 后写覆盖前写（{@code LinkedHashMap} 的 {@code put} 保留首次插入位置、只换值）。**命令层的口径（D4 定）**：
+   * {@code army.RecordCombat} 对已存在的记录 id **具名拒**（id 是一次性身份），但 {@code army.AppendCombatStage} /
+   * {@code army.ResolveCombatStage} 会用**同 id、新 stages** 的记录整条替换（阶段可追加/判定）——每次替换都由 {@link
+   * io.mosire.simos.army.change.ArmyChangeSet#between} 落成新 revision，旧 revision 的历史原样保留。这条 {@code
+   * withCombat} 只是那一层的公共写口。
    */
   public ArmyData withCombat(CombatRecord combat) {
     Objects.requireNonNull(combat, "combat");

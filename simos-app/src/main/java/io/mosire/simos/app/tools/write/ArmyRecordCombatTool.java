@@ -60,8 +60,10 @@ public final class ArmyRecordCombatTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "写一条单 tick 单场交战记录：固定 army.RecordCombat，载荷 {id, tick?, hex{q,r}, participants[unitId...],"
-        + " text, losses?{自然语义键:非负整数}}——tick 缺省 = 当前 tick、不得记在未来；同 id 已存在 ⇒ 具名拒"
-        + "（交战记录是不可变历史）；participants 至少一个且不重复；本阶段只写 army 切片，不替代 sd 战斗命令。";
+    return "写一条单 tick 单场交战记录：固定 army.RecordCombat，载荷 {id, kind(自定义交战状态，如野战/轰城), tick?,"
+        + " hex{q,r}, participants[unitId...], text, initialStage?{id,name,participants?,text,outcomes?[{id,label,"
+        + "weight,losses?[{unit,manpower?[{type,amount(有符号)}],equipment?[]}]}]}}——tick 缺省 = 当前 tick、不得记在未来；"
+        + "同 id 已存在 ⇒ 具名拒（记录 id 一次性；阶段追加走 army.AppendCombatStage、判定走 army.ResolveCombatStage）；"
+        + "participants 至少一个且不重复；weight 必须 > 0、阶段/结局 id 不得重复；旧 D1 的 losses{键:值} 字段已删除（D-011）。";
   }
 }

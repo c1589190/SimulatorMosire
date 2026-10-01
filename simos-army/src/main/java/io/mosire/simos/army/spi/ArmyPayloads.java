@@ -3,26 +3,33 @@ package io.mosire.simos.army.spi;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.army.CombatOutcome;
+import io.mosire.simos.army.CombatOutcomeId;
+import io.mosire.simos.army.CombatStage;
+import io.mosire.simos.army.CombatStageId;
+import io.mosire.simos.army.CombatUnitLoss;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
 /**
- * army 各命令 handler 共用的载荷解析助手（阶段 D1 / D-012）：与 unit 的 {@code UnitPayloads}、sd 的 {@code SdPayloads}
- * 同制——<b>只管线格式这一层</b>（字段在不在、类型对不对）。
+ * army 各命令 handler 共用的载荷解析助手（阶段 D1 落地、阶段 D4 扩展 / D-009 补裁 + D-010）：与 unit 的 {@code UnitPayloads}、sd
+ * 的 {@code SdPayloads} 同制——<b>只管线格式这一层</b>（字段在不在、类型对不对）。
  *
  * <p>★ 坏载荷一律以 {@link IllegalArgumentException} 面世、带可读中文原因；handler 在命令边界折成 {@code
- * HandlerOutcome.Rejected}。数值范围与跨字段不变量（{@code tick ≥ 0}、{@code participants} 至少一个/不重复、损失量 ≥ 0）留给
- * {@link io.mosire.simos.army.CombatRecord} 构造期，两处不重复实现。
+ * HandlerOutcome.Rejected}。数值范围与跨字段不变量（{@code tick ≥ 0}、{@code participants} 至少一个/不重复、{@code weight
+ * > 0}、 {@code selectedOutcomeId} ∈ outcomes、同表 type 不重复）留给领域 record 的构造期，两处不重复实现。
  *
  * <p>★ 载荷形态是 army 模块自己的私事（C26）：Core 只转交 {@code payloadJson} 字节串，从不理解它的结构。
+ *
+ * <p>★ <b>阶段解析的缺省口径</b>：{@code participants} 缺省 = 本条记录的 {@code participants}（调用方把缺省列表传进来）；{@code
+ * outcomes} / {@code losses} 缺省 = 空数组。★ 阶段载荷里**不允许**出现 {@code selectedOutcomeId}/{@code
+ * rollSeed}：判定只能走 {@code army.ResolveCombatStage}，见 {@link #requireStage}。
  */
 final class ArmyPayloads {
 
@@ -55,7 +62,19 @@ final class ArmyPayloads {
     return value.asText();
   }
 
-  /** 可选整数字段（long 量纲：{@code tick}）：缺失或 {@code null} ⇒ 空 Optional。 */
+  /** 可选字符串字段：缺失或 {@code null} ⇒ 空 Optional；给出但非文本/空白 ⇒ 抛。 */
+  static Optional<String> optionalText(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return Optional.empty();
+    }
+    if (!value.isTextual() || value.asText().isBlank()) {
+      throw new IllegalArgumentException("字段 " + field + " 若给出必须是非空白字符串: " + payload);
+    }
+    return Optional.of(value.asText());
+  }
+
+  /** 可选整数字段（long 量纲：{@code tick}/{@code seed}）：缺失或 {@code null} ⇒ 空 Optional；非整数 ⇒ 抛。 */
   static Optional<Long> optionalLong(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull()) {
@@ -65,6 +84,36 @@ final class ArmyPayloads {
       throw new IllegalArgumentException("字段 " + field + " 必须是整数或 null: " + payload);
     }
     return Optional.of(value.asLong());
+  }
+
+  /** 必填整数字段（long 量纲；允许负数，如损失增量与 seed）。 */
+  static long requireLong(JsonNode payload, String field) {
+    Optional<Long> value = optionalLong(payload, field);
+    if (value.isEmpty()) {
+      throw new IllegalArgumentException("字段 " + field + " 必填且为整数: " + payload);
+    }
+    return value.get();
+  }
+
+  /** 必填的 JSON 对象字段。 */
+  static JsonNode requireObject(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isObject()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 JSON 对象: " + payload);
+    }
+    return value;
+  }
+
+  /** 可选的 JSON 对象字段：缺失或 {@code null} ⇒ null；其它类型 ⇒ 抛。 */
+  static JsonNode optionalObject(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return null;
+    }
+    if (!value.isObject()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 JSON 对象或 null: " + payload);
+    }
+    return value;
   }
 
   /** 必填的 {@code {q,r}} 坐标对象。 */
@@ -95,39 +144,139 @@ final class ArmyPayloads {
     if (value == null || value.isNull() || !value.isArray()) {
       throw new IllegalArgumentException("字段 " + field + " 必须是 [unitId...] 数组: " + payload);
     }
-    List<UnitId> participants = new ArrayList<>();
+    List<UnitId> units = new ArrayList<>();
     for (JsonNode element : value) {
       if (!element.isTextual() || element.asText().isBlank()) {
         throw new IllegalArgumentException("字段 " + field + " 的元素必须是非空白 unitId: " + element);
       }
-      participants.add(UnitId.parse(element.asText()));
+      units.add(UnitId.parse(element.asText()));
     }
-    return participants;
+    return units;
+  }
+
+  /** 可选 {@code [unitId...]} 数组：缺失或 {@code null} ⇒ {@code fallback}；给出则按必填口径解析。 */
+  static List<UnitId> optionalUnitIdList(JsonNode payload, String field, List<UnitId> fallback) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return fallback;
+    }
+    return requireUnitIdList(payload, field);
   }
 
   /**
-   * 可选的 {@code {自然语义键:损失量}} 对象：缺失或 {@code null} ⇒ 空表（D-012 的"可选损失"）。值只判整数形状， <b>非负范围由 {@link
-   * io.mosire.simos.army.CombatRecord} 判</b>（两处不重复实现）。
+   * 可选阶段对象：缺失或 {@code null} ⇒ null；给出 ⇒ {@link #stageOf}。
+   *
+   * @param defaultParticipants 阶段载荷未给 {@code participants} 时沿用的参与单位（通常是记录级 participants）
    */
-  static Map<String, Long> optionalLosses(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
+  static CombatStage optionalStage(
+      JsonNode payload, String field, List<UnitId> defaultParticipants) {
+    JsonNode stage = optionalObject(payload, field);
+    if (stage == null) {
+      return null;
+    }
+    return stageOf(stage, field, defaultParticipants);
+  }
+
+  /** 必填阶段对象（{@code army.AppendCombatStage} 的 {@code stage}）：按 {@link #stageOf} 解析。 */
+  static CombatStage requireStage(
+      JsonNode payload, String field, List<UnitId> defaultParticipants) {
+    JsonNode stage = requireObject(payload, field);
+    return stageOf(stage, field, defaultParticipants);
+  }
+
+  /** 阶段对象解析（形状层；表内不变量留给 {@link CombatStage} 构造期）。 */
+  private static CombatStage stageOf(
+      JsonNode stage, String where, List<UnitId> defaultParticipants) {
+    if (stage.has("selectedOutcomeId") || stage.has("rollSeed")) {
+      throw new IllegalArgumentException(
+          "字段 "
+              + where
+              + " 不得携带 selectedOutcomeId/rollSeed：阶段创建只落「未判定」形态，判定走 army.ResolveCombatStage");
+    }
+    CombatStageId id = CombatStageId.parse(requireText(stage, "id"));
+    String name = requireText(stage, "name");
+    List<UnitId> participants = optionalUnitIdList(stage, "participants", defaultParticipants);
+    String text = requireText(stage, "text");
+    List<CombatOutcome> outcomes = optionalOutcomes(stage);
+    return new CombatStage(
+        id, name, participants, text, outcomes, Optional.empty(), Optional.empty());
+  }
+
+  /** 可选 {@code outcomes} 数组：缺失或 {@code null} ⇒ 空表；给出 ⇒ 逐项按 {@link #outcomeOf} 解析。 */
+  private static List<CombatOutcome> optionalOutcomes(JsonNode stage) {
+    JsonNode value = stage.get("outcomes");
     if (value == null || value.isNull()) {
-      return Map.of();
+      return List.of();
     }
-    if (!value.isObject()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是 {自然语义键:非负整数} 对象或 null: " + payload);
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 outcomes 必须是 [结局...] 数组或 null: " + stage);
     }
-    Map<String, Long> losses = new LinkedHashMap<>();
-    Iterator<Map.Entry<String, JsonNode>> fields = value.fields();
-    while (fields.hasNext()) {
-      Map.Entry<String, JsonNode> entry = fields.next();
-      JsonNode number = entry.getValue();
-      if (!number.isIntegralNumber() || !number.canConvertToLong()) {
+    List<CombatOutcome> outcomes = new ArrayList<>();
+    for (JsonNode node : value) {
+      if (node == null || !node.isObject()) {
         throw new IllegalArgumentException(
-            "字段 " + field + " 的值必须是整数: " + entry.getKey() + "=" + number);
+            "outcomes 的元素必须是 {\"id\",\"label\",\"weight\",\"losses?\"} 对象: " + node);
       }
-      losses.put(entry.getKey(), number.asLong());
+      outcomes.add(outcomeOf(node));
+    }
+    return outcomes;
+  }
+
+  /** 单个结局：{@code id}/{@code label}/{@code weight}/{@code losses?}。 */
+  private static CombatOutcome outcomeOf(JsonNode node) {
+    CombatOutcomeId id = CombatOutcomeId.parse(requireText(node, "id"));
+    String label = requireText(node, "label");
+    long weight = requireLong(node, "weight");
+    List<CombatUnitLoss> losses = optionalUnitLosses(node);
+    return new CombatOutcome(id, label, weight, losses);
+  }
+
+  /** 可选 {@code losses} 数组：缺失或 {@code null} ⇒ 空表；给出 ⇒ 逐项按 {@link #lossOf} 解析。 */
+  private static List<CombatUnitLoss> optionalUnitLosses(JsonNode outcome) {
+    JsonNode value = outcome.get("losses");
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 losses 必须是 [单位损失...] 数组或 null: " + outcome);
+    }
+    List<CombatUnitLoss> losses = new ArrayList<>();
+    for (JsonNode node : value) {
+      if (node == null || !node.isObject()) {
+        throw new IllegalArgumentException(
+            "losses 的元素必须是 {\"unit\",\"manpower?\",\"equipment?\"} 对象: " + node);
+      }
+      losses.add(lossOf(node));
     }
     return losses;
+  }
+
+  /** 单个单位的损失：{@code unit}/{@code manpower?}/{@code equipment?}（两条增量表缺省为空）。 */
+  private static CombatUnitLoss lossOf(JsonNode node) {
+    UnitId unit = UnitId.parse(requireText(node, "unit"));
+    List<CompositionDelta> manpower = optionalCompositionDeltas(node, "manpower");
+    List<CompositionDelta> equipment = optionalCompositionDeltas(node, "equipment");
+    return new CombatUnitLoss(unit, manpower, equipment);
+  }
+
+  /** 可选 {@code [{type,amount}]} 增量表：缺失或 {@code null} ⇒ 空表；给出 ⇒ 逐项解析（符号不限）。 */
+  static List<CompositionDelta> optionalCompositionDeltas(JsonNode container, String field) {
+    JsonNode value = container.get(field);
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException(
+          "字段 " + field + " 必须是 [{\"type\",\"amount\"}...] 数组或 null: " + container);
+    }
+    List<CompositionDelta> deltas = new ArrayList<>();
+    for (JsonNode node : value) {
+      if (node == null || !node.isObject()) {
+        throw new IllegalArgumentException(
+            "字段 " + field + " 的元素必须是 {\"type\",\"amount\"} 对象: " + node);
+      }
+      deltas.add(new CompositionDelta(requireText(node, "type"), requireLong(node, "amount")));
+    }
+    return deltas;
   }
 }

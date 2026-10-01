@@ -390,10 +390,30 @@ public final class CatalogTool implements AgentTool {
                   + " sd.AdjudicateTick 内部编排产生；不对外提供窄工具）"),
           Map.entry(
               "army.RecordCombat",
-              "id, tick?, hex{q,r}, participants[unitId...]（至少一个、不重复）, text（自然语言过程/结局，非空白）,"
-                  + " losses?{自然语义键:非负整数}（★ 阶段 D1 / D-012：单 tick 单场交战记录；"
-                  + "tick 缺省 = 当前 tick、不得记在未来；同 id 已存在 ⇒ 具名拒（不可变历史）；"
-                  + "参与者不查 unit 切片是否存在；★ GmOnly：决策人不得凭空写战果）"));
+              "id, kind（自定义交战状态自由文本，如野战/轰城）, tick?, hex{q,r}, participants[unitId...]"
+                  + "（至少一个、不重复）, text（自然语言过程，非空白）,"
+                  + " initialStage?{id,name,participants?,text,outcomes?[{id,label,weight,losses?["
+                  + "{unit,manpower?[{type,amount(有符号)}],equipment?[{type,amount(有符号)}]}]}]}}"
+                  + "（★ 阶段 D4 / D-009 补裁 + D-010：单 tick 单场交战记录 + 初始阶段；initialStage 缺省 ="
+                  + " handler 合成 id=start/name=初始阶段/participants=记录级/text=记录级/outcomes 空表；"
+                  + "tick 缺省 = 当前 tick、不得记在未来；同 id 已存在 ⇒ 具名拒（记录 id 是一次性身份，阶段演进走"
+                  + " army.AppendCombatStage / army.ResolveCombatStage）；weight 必须 > 0、阶段/结局 id 不得重复；"
+                  + "参与者不查 unit 切片是否存在；★ GmOnly：决策人不得凭空写战果）"),
+          Map.entry(
+              "army.AppendCombatStage",
+              "combatId, stage{id,name,participants?,text,outcomes?[{id,label,weight,losses?["
+                  + "{unit,manpower?[{type,amount(有符号)}],equipment?[{type,amount(有符号)}]}]}]}}"
+                  + "（★ 阶段 D4：给已存在的交战记录追加一个阶段——同 id 记录整条替换、落新 revision；"
+                  + "阶段 id 已存在 ⇒ 具名拒；participants 缺省 = 记录级；outcomes 缺省 = 空表；"
+                  + "阶段载荷不得携带 selectedOutcomeId/rollSeed（判定走 army.ResolveCombatStage）；★ GmOnly）"),
+          Map.entry(
+              "army.ResolveCombatStage",
+              "combatId, stageId, outcomeId?, seed?"
+                  + "（★ 阶段 D4：给一个阶段投骰判定并写进记录；只给 outcomeId = 不投骰（记录 rollSeed 空）；"
+                  + "只给 seed = 用该 seed 投骰；都不给 = 由 combatId+stageId+tick+概率表 确定性派生 seed；"
+                  + "两者同给 = 按 seed 复核 outcome（不一致 ⇒ 具名拒）；已判定的阶段不可重复判定；"
+                  + "本命令只写记录、不动单位——损失写进单位由组合工具 simos.army.resolveCombat 用同批"
+                  + " unit.AdjustComposition 完成；★ GmOnly）"));
 
   /** {@code regime→种类} 的 ` / ` 连接串（登记表序；见 {@link #OPERATOR_HINT}）。 */
   private static String operatorHint() {

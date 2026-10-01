@@ -1222,9 +1222,10 @@ public final class GuiServer implements AutoCloseable {
   }
 
   /**
-   * **军队交战只读面**（阶段 D2 / 用户设计 D-012）：{@code GET /api/army/combats[?tick=<世界日>][?q=&r=]}。响应形状 {@code
-   * {"combats":[{id,tick,hex,participants,text,losses}…]}}——每条都走 {@link
-   * ApiViews#armyCombat(CombatRecord)}。
+   * **军队交战只读面**（阶段 D2 / 用户设计 D-012，阶段 D4 补字段）：{@code GET
+   * /api/army/combats[?tick=<世界日>][?q=&r=]}。响应形状 {@code
+   * {"combats":[{id,kind,tick,hex,participants,text,stages,losses}…]}}——每条都走 {@link
+   * ApiViews#armyCombat(CombatRecord)}（kind=自定义交战状态；stages=有序阶段与概率表/判定；losses=已判定阶段命中结局的逐单位有符号增量）。
    *
    * <p>★ {@code tick} 缺省 = 世界**当前 tick**（{@code state.meta().timestamp().tick()}）：这就是"当前 tick
    * 在哪发生交战"的 GUI 读口；历史 tick 显式传参可读。{@code tick} 必须 ≥ 0；非整数 ⇒ 400（{@link #optionalLongParam}）。

@@ -51,7 +51,9 @@ import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.army.codec.ArmyCodec;
 import io.mosire.simos.army.resolve.ArmyResolver;
+import io.mosire.simos.army.spi.AppendCombatStageHandler;
 import io.mosire.simos.army.spi.RecordCombatHandler;
+import io.mosire.simos.army.spi.ResolveCombatStageHandler;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.AdvanceTime;
@@ -587,7 +589,11 @@ public final class Shell implements AutoCloseable {
                 new SetDirectiveStatusHandler(),
                 // ★★ D1（2026-10-02 / D-012）：army 切片的第一条命令（写一条单 tick 单场交战记录）。★ 标
                 //   GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交与 GM 窄工具照常可用。
-                new RecordCombatHandler()));
+                new RecordCombatHandler(),
+                // ★★ D4（2026-10-02 / D-009 补裁 + D-010）：记录演进的两条命令——追加阶段与投骰判定。★ 都标
+                //   GmOnlyCommand（同 D1 的边界）；判定算法在 CombatResolution（唯一拼写点），本注册只负责路由。
+                new AppendCombatStageHandler(),
+                new ResolveCombatStageHandler()));
     Set<String> drainableCommandTypes = new LinkedHashSet<>();
     for (CommandHandler handler : handlers) {
       // ★★ E6a：GM-only 标记同样排除出 `sd.RegisterEffect` 的可入队命令白名单 —— 它是**第三条**决策人可间接

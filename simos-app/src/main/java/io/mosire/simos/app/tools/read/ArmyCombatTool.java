@@ -44,7 +44,9 @@ public final class ArmyCombatTool implements AgentTool {
 
   @Override
   public String description() {
-    return "按 id 查单条交战记录详情：{id,tick,hex,participants,text,losses}；不可见与不存在同款 NOT_FOUND。";
+    return "按 id 查单条交战记录详情：{id,kind,tick,hex,participants,text,stages,losses}；"
+        + "kind=自定义交战状态（如野战/轰城）；stages=有序阶段（含概率表 outcomes 与 selectedOutcomeId/rollSeed）；"
+        + "losses=已判定阶段命中结局的逐单位有符号增量；不可见与不存在同款 NOT_FOUND。";
   }
 
   @Override

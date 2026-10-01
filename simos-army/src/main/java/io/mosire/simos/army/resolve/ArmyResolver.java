@@ -1,12 +1,12 @@
 package io.mosire.simos.army.resolve;
 
+import io.mosire.simos.army.ArmyAddresses;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.CombatRecordId;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.AddressSegment;
 import io.mosire.simos.util.address.Entity;
-import io.mosire.simos.util.address.Namespace;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.identity.ResolvedSubject;
 import io.mosire.simos.util.identity.SubjectId;
@@ -32,7 +32,7 @@ import java.util.Objects;
  */
 public final class ArmyResolver implements Resolver {
 
-  private static final String NAMESPACE = "army";
+  private static final String NAMESPACE = ArmyAddresses.NAMESPACE;
 
   @Override
   public String namespace() {
@@ -51,7 +51,7 @@ public final class ArmyResolver implements Resolver {
     if (segments.size() != 2 || !(segments.get(1) instanceof Entity root)) {
       return empty();
     }
-    if (root.kind().isEmpty() || !"combat".equals(root.kind().get())) {
+    if (root.kind().isEmpty() || !ArmyAddresses.COMBAT_KIND.equals(root.kind().get())) {
       return empty();
     }
     CombatRecordId id = CombatRecordId.parse(root.name());
@@ -60,7 +60,7 @@ public final class ArmyResolver implements Resolver {
     }
     return single(
         new SubjectId(NAMESPACE, "combat." + root.name()),
-        address("combat", root.name()),
+        ArmyAddresses.combat(id),
         "CombatRecord");
   }
 
@@ -82,10 +82,6 @@ public final class ArmyResolver implements Resolver {
 
   private static QueryResult single(SubjectId id, Address canonical, String typeName) {
     return new QueryResult(List.of(new ResolvedSubject(id, canonical.canonical(), typeName)));
-  }
-
-  private static Address address(String kind, String name) {
-    return new Address(List.of(new Namespace(NAMESPACE), Entity.of(kind, name)));
   }
 
   private static QueryResult empty() {

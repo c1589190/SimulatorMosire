@@ -24,18 +24,21 @@ import java.util.function.Function;
  * io.mosire.simos.army.ArmySnapshot#namespace()} <b>同字面</b>——{@code SimulationState} 构造期校验"modules
  * 的键 == snapshot.namespace()"，写歪当场抛（装配期那处有牙）。改一处必须同时改另一处。
  *
- * <p>★ <b>树里的自定义键只有一个</b>：{@code CombatRecordId}（{@code combats} 的键）。{@link
- * io.mosire.simos.army.CombatRecord} 里的 {@code HexCoord}（交战格）与 {@code UnitId}（参与单位）都是**值**不是 Map 键
- * ⇒ 按 record 值绑定，**不需要**也不应该注册。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
+ * <p>★ <b>树里的自定义键只有一个</b>：{@code CombatRecordId}（{@code combats} 的键）。{@code CombatRecord} 里的 {@code
+ * HexCoord}（交战格）、{@code UnitId}（参与单位）、阶段/结局/损失 id（{@code CombatStageId} / {@code
+ * CombatOutcomeId}）都是**值** 不是 Map 键 ⇒ 按 record 值绑定，**不需要**也不应该注册。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
  *
  * <p>★ <b>键的（反）序列化走各类型自带的"裸 {@code toString()} + 单参 {@code parse}"配对</b>（裁定 R-48-f）：写侧 Jackson
  * 的默认键序列化器调 {@code toString()} 恰好就对了，故<b>只注册读侧</b>（与 {@code ActorCodec} 同口径）。
  *
- * <p>★ <b>值类型一个注解都不加</b>：{@code CombatRecord} / {@code HexCoord} / {@code UnitId} 都是零 Jackson 注解的
- * record，走默认的 record 序列化；{@code losses} 是 {@code Map<String,Long>}（键是 {@code String} ⇒ 无需注册）。
+ * <p>★ <b>值类型一个注解都不加</b>：{@code CombatRecord} / {@code CombatStage} / {@code CombatOutcome} /
+ * {@code CombatUnitLoss} / {@code HexCoord} / {@code UnitId} / {@code CompositionDelta} 都是零 Jackson
+ * 注解的 record，走默认的 record 序列化；两个 {@link java.util.Optional} 组件（{@code selectedOutcomeId} / {@code
+ * rollSeed}）由共享基座的 {@code Jdk8Module} 承载（与 unit 快照同一条依赖，见 {@code SimosObjectMapper} 的类注）。
  *
- * <p>★ <b>字节是内容的纯函数</b>：{@code combats} 与每条记录的 {@code losses} 一律 {@code LinkedHashMap}
- * 保插入序（构造器冻在赋值处）； 共享基座没有开 {@code ORDER_MAP_ENTRIES_BY_KEYS} ⇒ 同一份状态编码两次逐字节相同。
+ * <p>★ <b>字节是内容的纯函数</b>：{@code combats} 是 {@code LinkedHashMap} 保插入序、各记录的 {@code
+ * participants/stages/outcomes/losses} 一律保序 {@code List.copyOf}（构造器冻在赋值处）；共享基座没有开 {@code
+ * ORDER_MAP_ENTRIES_BY_KEYS} ⇒ 同一份状态编码两次逐字节相同。
  *
  * <p>★ 同时实现 {@link ModuleDiffer}（"一批命令 = 一条 revision"的批量提交需要）：语义委托 {@link
  * ArmyChangeSet#between(io.mosire.simos.army.ArmyData, io.mosire.simos.army.ArmyData)}。

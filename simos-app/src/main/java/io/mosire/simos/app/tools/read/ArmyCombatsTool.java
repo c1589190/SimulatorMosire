@@ -53,8 +53,9 @@ public final class ArmyCombatsTool implements AgentTool {
 
   @Override
   public String description() {
-    return "交战记录清单（可选按 tick / 格过滤）：{combats:[{id,tick,hex,participants,text,losses}]}；"
-        + "只发调用者看得见的格上的记录；按 id 字典序。";
+    return "交战记录清单（可选按 tick / 格过滤）：{combats:[{id,kind,tick,hex,participants,text,stages,losses}]}；"
+        + "kind=自定义交战状态（如野战/轰城）；stages=有序阶段（含概率表 outcomes 与 selectedOutcomeId/rollSeed）；"
+        + "losses=已判定阶段命中结局的逐单位有符号增量；只发调用者看得见的格上的记录；按 id 字典序。";
   }
 
   @Override
