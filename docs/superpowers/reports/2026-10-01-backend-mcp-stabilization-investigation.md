@@ -256,8 +256,8 @@ map.CreateRegion × N
 11. 假旋钮解释：`unit.SetFormationOffset` 已不参与移动/战斗计算（纯记账、改了不生效）；`sd.AddCombatStage` 非首阶段会静默忽略 `combatStateId/hex`（看似记录、实际不生效）。处理方向待选：删除 / 具名拒绝 / 显式记账并注明无效果。
 12. **经济真实长跑/数值校准本轮不做**：`GovDaily` 粮耗 120× 风险只记录，不在本轮做经济真实性测试；等国家初始化与 MCP 闭环稳定后再单独排期。
 
-仍需确认（详见开发计划 §7）：
-1. “一键清空”清到哪一层：只清 social/economy/actor 相关数值，还是连 Region/GOV/Unit/决策人一起清。
-2. 首都区默认大小/形状（半径、固定 hex 上限，或由省份划分器一起给建议）。
-3. #11 假旋钮处理方向。
-4. 确认 P9 端到端不做经济真实长跑。
+用户最终补充裁定（同日后续）：
+1. “一键清空”拆成 `clearData`（只清 social/economy/actor 数值与关联记录）与 `clearStructures`（清省 Region、省/中央 GOV、对应决策人等生成器结构），二者分别 preview/apply、分别确认。
+2. 首都区默认半径 1（7 格）；GM 后续可用 `unit.SetJurisdiction` 扩大。
+3. 假旋钮的处理方向待用户理解解释后再选（删除 / 具名拒绝 / 显式记账并注明无效果），不阻塞 P0–P2。
+4. P9 允许适当跑几个 tick（建议 3–10 tick 烟测），不做一年长跑与经济真实性校准。
