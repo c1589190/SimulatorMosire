@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -189,6 +190,15 @@ public final class DecisionAgentRunner {
    */
   private final Map<String, Object> toolConfig;
 
+  /**
+   * **本 runner 构建工具面所用的白名单**（P6a）：生产路径 = {@code callerFactory.whitelistFor(dm)}（per-DM）， 旧构造器 =
+   * {@code callerFactory.whitelist()}（全局，兼容旧档/夹具）。
+   *
+   * <p>★ 它与执行期 {@code callerFactory.permissionsFor(dm)} 用的是同一份 {@code whitelistFor(dm)} ⇒ "模型能看到的"与
+   * "权限组放行的"不会错位（spec §2.3 要点 1）。
+   */
+  private final Set<String> toolWhitelist;
+
   /** **送给模型的那一份工具面**（名字是线格式；描述与 schema 逐字来自真工具）。 */
   private final List<ToolDef> toolDefs;
 
@@ -196,7 +206,8 @@ public final class DecisionAgentRunner {
   private final LlmToolNames toolNames;
 
   /**
-   * @param callerFactory 决策人调用者工厂（范围**每次现算**；其 {@code whitelist()} 同时是"给模型看的工具面"的来源）
+   * @param callerFactory 决策人调用者工厂（范围**每次现算**；本条旧构造器仍用其 {@code whitelist()}——全局白名单， 兼容旧档/夹具；per-DM
+   *     走显式白名单那条）
    * @param registry **决策人桶**的注册表（{@code Shell.toolsFor(Role.DECISION_AGENT)}）——工具面与执行都从它取
    * @param llmClient 模型客户端（生产路径是真 LLM；用例给 {@code FakeLlmClient}）
    * @param conversations 会话存储（{@code SqliteConversationStore} 落 {@code <store>} 下 ⇒ 跨 tick / 跨重启沿用）
@@ -209,6 +220,36 @@ public final class DecisionAgentRunner {
       ConversationStore conversations,
       String mapId) {
     this(callerFactory, registry, llmClient, conversations, mapId, DEFAULT_MAX_LLM_CALLS);
+  }
+
+  /**
+   * ★★ **显式白名单**的便利形态（P6a 的接缝）：其余分量全走缺省（回合上限 {@link #DEFAULT_MAX_LLM_CALLS}、无监听、无视觉、
+   * 不快照），只有"给模型看的工具面"用调用方给的白名单。
+   *
+   * <p>★ **旧构造器不受影响**：不带 {@code Set<String>} 的那几条仍在内部交 {@code callerFactory.whitelist()}（全局）。 生产
+   * {@code DecisionAgentService} 走全参并把 {@code callerFactory.whitelistFor(dm)} 传进来。
+   *
+   * @param toolWhitelist 本 runner 的工具面白名单（**非空校验**；空集合 = 给模型一个空工具面，不是"回落到全局"——回落由 构造方决定，见 {@link
+   *     DecisionCallerFactory#whitelistFor(DecisionMaker)}）
+   */
+  public DecisionAgentRunner(
+      DecisionCallerFactory callerFactory,
+      ToolRegistry registry,
+      LlmClient llmClient,
+      ConversationStore conversations,
+      String mapId,
+      Set<String> toolWhitelist) {
+    this(
+        callerFactory,
+        registry,
+        llmClient,
+        conversations,
+        mapId,
+        DEFAULT_MAX_LLM_CALLS,
+        ProgressListener.NONE,
+        false,
+        OpeningSnapshot.NONE,
+        toolWhitelist);
   }
 
   /** 显式给回合上限的形态（用例要测"跑飞会被中止"就得把它压小）。 */
@@ -256,10 +297,10 @@ public final class DecisionAgentRunner {
   }
 
   /**
-   * **全参**（P4 生产路径）：另给"该 provider 有没有视觉能力"与开场快照来源。
+   * **全参（旧调用点兼容形态）**（P4 生产路径）：另给"该 provider 有没有视觉能力"与开场快照来源。
    *
-   * <p>★ 新增项一律**往后排**（老调用点不用动），且四个位置参数的类型互不相同（{@code int} / {@code ProgressListener} / {@code
-   * boolean} / {@code OpeningSnapshot}）⇒ 传错位会被编译器挡住。
+   * <p>★ 这条**不带**显式白名单 ⇒ 交 {@code callerFactory.whitelist()}（全局白名单），逐字保留 P6a 之前的旧行为。 per-DM 的
+   * {@code allowedTools} 走下面那条十参重载。
    *
    * @param vision 该 provider 的模型有没有视觉能力（{@code
    *     LlmRouteLoader.capabilities(...).vision()}）：它**同时**决定 "工具结果里的图发不发"与"渲染工具的 {@code auto}
@@ -276,6 +317,44 @@ public final class DecisionAgentRunner {
       ProgressListener progressListener,
       boolean vision,
       OpeningSnapshot openingSnapshot) {
+    this(
+        callerFactory,
+        registry,
+        llmClient,
+        conversations,
+        mapId,
+        maxLlmCalls,
+        progressListener,
+        vision,
+        openingSnapshot,
+        globalWhitelistOf(callerFactory));
+  }
+
+  /**
+   * ★★ **全参 + 显式工具白名单**（P6a 生产路径）：给模型看的工具面用调用方给的白名单构建（生产 = {@code
+   * callerFactory.whitelistFor(maker)}）。
+   *
+   * <p>★ **"用哪份白名单建 face，就检查哪份白名单"**：{@link DecisionToolDefs#requireAll} 拿到的就是这里的 {@code
+   * toolWhitelist} ⇒ 它里面每一条都必须在注册表里，缺一条**装配期当场炸**（per-DM 也 fail-closed，不静默少能力、 也不静默兜底到全局）。★
+   * 落在全局白名单之外的 {@code allowedTools} 条目不会出现在这里（交集在 {@link DecisionCallerFactory#whitelistFor}
+   * 里完成），故"未知项"只可能表现为**能力收窄**，不可能表现为提权。
+   *
+   * <p>★ 其余参数语义与上面那条旧全参**逐字相同**（同一个构造器体，不复制字段赋值）。
+   *
+   * @param toolWhitelist 本 runner 的工具面白名单（**非空引用校验**；空集合 = 空工具面，不是"回落到全局"——回落由构造方 决定，生产走 {@code
+   *     whitelistFor} 的空名单兼容语义）
+   */
+  public DecisionAgentRunner(
+      DecisionCallerFactory callerFactory,
+      ToolRegistry registry,
+      LlmClient llmClient,
+      ConversationStore conversations,
+      String mapId,
+      int maxLlmCalls,
+      ProgressListener progressListener,
+      boolean vision,
+      OpeningSnapshot openingSnapshot,
+      Set<String> toolWhitelist) {
     this.callerFactory = Objects.requireNonNull(callerFactory, "callerFactory");
     this.registry = Objects.requireNonNull(registry, "registry");
     this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
@@ -289,13 +368,22 @@ public final class DecisionAgentRunner {
     this.vision = vision;
     this.openingSnapshot = Objects.requireNonNull(openingSnapshot, "openingSnapshot");
     this.toolConfig = Map.of(MapRenderTool.VISION_CONFIG_KEY, vision);
+    this.toolWhitelist = Set.copyOf(Objects.requireNonNull(toolWhitelist, "toolWhitelist"));
     // ★★ 工具面在**装配期**建一次（不随世界变：它只取决于注册表与白名单），并当场建好名字映射：
-    //   ① 白名单里有工具不在注册表 ⇒ requireAll 抛（旧行为，只是提前到构造期）；
+    //   ① 白名单里有工具不在注册表 ⇒ requireAll 抛（旧行为，只是提前到构造期；per-DM 白名单同样适用）；
     //   ② 转义碰撞 / 转义结果不合供应商文法 ⇒ LlmToolNames 抛（**真 LLM 实测缺陷**的护栏，2026-09-22）。
     //   两条都是装配故障，都不该等到"模型第一轮已经花掉"才发现。
-    List<ToolDef> face = DecisionToolDefs.requireAll(registry, callerFactory.whitelist());
+    List<ToolDef> face = DecisionToolDefs.requireAll(registry, this.toolWhitelist);
     this.toolNames = LlmToolNames.of(face.stream().map(ToolDef::name).toList());
     this.toolDefs = toolNames.wireDefs(face);
+  }
+
+  /**
+   * **缺省全局白名单的取值点**（旧构造器专用）：显式保留 {@code callerFactory} 的 null 校验语义，同时让旧构造器与 P6a 之前逐字同源（{@code
+   * callerFactory.whitelist()}）。
+   */
+  private static Set<String> globalWhitelistOf(DecisionCallerFactory callerFactory) {
+    return Objects.requireNonNull(callerFactory, "callerFactory").whitelist();
   }
 
   /**

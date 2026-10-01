@@ -37,6 +37,8 @@ import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -141,7 +143,10 @@ public final class DecisionCallerFactory {
       DecisionScopeFunctions scopeFunctions, ToolCallAuthorizer authorizer, Set<String> whitelist) {
     this.scopeFunctions = Objects.requireNonNull(scopeFunctions, "scopeFunctions");
     this.authorizer = Objects.requireNonNull(authorizer, "authorizer");
-    this.whitelist = Set.copyOf(Objects.requireNonNull(whitelist, "whitelist"));
+    // ★ 按传入顺序冻在赋值处：whitelistFor 非空时按这份顺序求交，结果顺序是"全局白名单"的纯函数。
+    this.whitelist =
+        Collections.unmodifiableSet(
+            new LinkedHashSet<>(Objects.requireNonNull(whitelist, "whitelist")));
   }
 
   /** 按 spec §2.2 装配：范围函数取两个内置实现（国家 / 军队），执行走调用方给的 authorizer（**带审批编排器**的那个）。 */
@@ -150,18 +155,47 @@ public final class DecisionCallerFactory {
   }
 
   /**
-   * 本工厂给决策人的工具白名单（T11B：运行流**必须**用它当"模型能看到的工具面"）。
+   * 本工厂的**全局**工具白名单（T11B 的旧读口；生产路径 = {@link #WHITELIST}）。
    *
-   * <p>★ **为什么要有这个读口**：spec §2.3 要点 1 要求"工具面 = 决策人权限组下的工具"⇒ 给模型看的 {@code ToolDef} 列表与
-   * 权限组白名单**必须是同一份数据**。分成两份（一处写死工具名、一处另有一张表）就会出现"模型看得见、调了却被拒"或反过来"能调但没露出来"
-   * 的错位，而两者都不会报错。这里把它交出去，让运行流只有这一个来源。
+   * <p>★ **为什么保留它**：它仍是"全局默认面"的读口——旧档/旧夹具的空 {@code allowedTools} 要沿用它，旧调用点（尤其用例）也不该 因为 P6a 而破坏。★
+   * **per-DM 的运行路径不要直接用它**：给模型看的工具面与权限组都走 {@link #whitelistFor(DecisionMaker)}， 否则 {@code
+   * allowedTools} 又退回"展示字段"。
    */
   public Set<String> whitelist() {
     return whitelist;
   }
 
   /**
-   * 建这次调用的上下文：白名单（{@link #WHITELIST}）+ **现算**的资源范围 + 子 agent 身份。
+   * ★★ **某个决策人实际生效的工具白名单**（P6a / N9 修复）：空 {@code allowedTools} ⇒ 沿用本工厂的全局白名单 （兼容旧档与夹具；见 {@link
+   * #whitelist()}）；非空 ⇒ {@code 全局白名单 ∩ dm.allowedTools()}。
+   *
+   * <p>★★ **为什么必须是交集**：{@code allowedTools} 只能**再收窄**——它不能把全局白名单里没有的工具放进来（那就是静默提权）。落在
+   * 全局白名单外的条目自然失效；若某个全局工具名**同时**出现在 {@code allowedTools} 里但不在注册表，则由工具面装配期的 {@code
+   * DecisionToolDefs.requireAll} 响亮失败（fail-closed，见该类的类注）。
+   *
+   * <p>★ **顺序/不可变语义与全局白名单一致**：结果按全局白名单的迭代序收窄并冻结（给模型看的 {@code ToolDef} 另外按名字排序， 见 {@code
+   * DecisionToolDefs}）；空名单直接返回全局白名单本身（它已经是不可变集合）。
+   *
+   * <p>★ **权限组与工具面只从这里取**：{@link #permissionsFor} 用它是权限那一半，{@code DecisionAgentRunner} 用它建
+   * "给模型看的工具面"；两处同源才不会出现"看得见调不动"或反过来（spec §2.3 要点 1）。
+   */
+  public Set<String> whitelistFor(DecisionMaker dm) {
+    Objects.requireNonNull(dm, "dm");
+    Set<String> allowed = dm.allowedTools();
+    if (allowed.isEmpty()) {
+      return whitelist;
+    }
+    Set<String> narrowed = new LinkedHashSet<>();
+    for (String tool : whitelist) {
+      if (allowed.contains(tool)) {
+        narrowed.add(tool);
+      }
+    }
+    return Collections.unmodifiableSet(narrowed);
+  }
+
+  /**
+   * 建这次调用的上下文：**该决策人实际生效的白名单**（{@link #whitelistFor(DecisionMaker)}）+ **现算**的资源范围 + 子 agent 身份。
    *
    * <p>★ **GM 的额外限制来自决策人自己**（{@code dm.accessLimit()}，T9）：它随 revision 落盘 ⇒ 回放/分叉后
    * 逐字复原，不需要调用方另外传一份（"两份真相"是漏配的来源）。
@@ -192,9 +226,9 @@ public final class DecisionCallerFactory {
         AgentIdentity.subagent(INSTANCE_ID_PREFIX + dm.id().value(), CommandMode.LIMITED, GOAL, 1));
   }
 
-  /** 决策人的权限组（spec §2.2）：白名单 + **现算范围 ∩ GM 额外限制**。 */
+  /** 决策人的权限组（spec §2.2）：**该决策人实际生效的白名单**（{@link #whitelistFor(DecisionMaker)}）+ 现算范围 ∩ GM 额外限制。 */
   public AgentPermissionSet permissionsFor(DecisionMaker dm, SimulationState state, String mapId) {
-    return permissionSetOf(scopeFunctions, whitelist, dm, state, mapId);
+    return permissionSetOf(scopeFunctions, whitelistFor(dm), dm, state, mapId);
   }
 
   /**

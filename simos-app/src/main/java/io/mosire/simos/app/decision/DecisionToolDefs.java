@@ -16,8 +16,9 @@ import java.util.TreeSet;
  * DecisionCallerFactory} 的**权限组白名单同源**。
  *
  * <p>★ **为什么"看得见的"必须等于"调得动的"**：模型只会请求它看得见的工具；如果这里多给了（比如把 GM 的通用写也塞进来），
- * 模型会去调、然后在权限层被拒——一轮对话就此浪费且暴露了工具面的形状；如果这里少给了，能力静默消失、**不报错**。两种错位都没有症状， 故唯一的解法是**同一份数据**（{@code
- * callerFactory.whitelist()}）。
+ * 模型会去调、然后在权限层被拒——一轮对话就此浪费且暴露了工具面的形状；如果这里少给了，能力静默消失、**不报错**。两种错位都没有症状， 故唯一的解法是**同一份数据**（生产路径 =
+ * {@code callerFactory.whitelistFor(dm)}；静态缺省 = {@code DecisionCallerFactory.WHITELIST}，见 {@link
+ * #of(ToolRegistry)}）。
  *
  * <p>★ **交集形态 vs 响亮形态**：{@link #of} 取"白名单 ∩ 注册表"（静默取交）；{@link #requireAll}
  * 在此之上**要求白名单里每一条都在注册表里**，缺一条就抛。
@@ -35,7 +36,7 @@ public final class DecisionToolDefs {
 
   private DecisionToolDefs() {}
 
-  /** 决策人默认工具面（{@link DecisionCallerFactory#WHITELIST} ∩ 注册表）。 */
+  /** 决策人**默认**工具面（{@link DecisionCallerFactory#WHITELIST} ∩ 注册表）：静态缺省，不是 per-DM 路径。 */
   public static List<ToolDef> of(ToolRegistry registry) {
     return of(registry, DecisionCallerFactory.WHITELIST);
   }
@@ -44,7 +45,8 @@ public final class DecisionToolDefs {
    * 白名单 ∩ 注册表。
    *
    * @param registry 工具注册表（生产路径给**决策人桶**）
-   * @param allowed 允许出现的工具名（生产路径给 {@link DecisionCallerFactory#whitelist()}）
+   * @param allowed 允许出现的工具名（生产路径给 {@code callerFactory.whitelistFor(dm)}；旧静态缺省见 {@link
+   *     #of(ToolRegistry)}）
    */
   public static List<ToolDef> of(ToolRegistry registry, Set<String> allowed) {
     Objects.requireNonNull(registry, "registry");

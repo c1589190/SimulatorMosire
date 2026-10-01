@@ -89,7 +89,8 @@ public final class DecisionAgentService {
   /**
    * @param core 唯一写入口（读状态经它的只读 {@code replay}；写仍只发生在运行流内部的 {@code CoreSimos.submit}）
    * @param llmClients providerId ⇒ 客户端 + 能力（生产路径 = {@link LlmProviderResolver}）
-   * @param callerFactory 决策人调用者工厂（范围**每次现算**；其 {@code whitelist()} 同时是"给模型看的工具面"的来源）
+   * @param callerFactory 决策人调用者工厂（范围**每次现算**；per-DM 白名单经 {@link
+   *     DecisionCallerFactory#whitelistFor(DecisionMaker)} 取，工具面与权限组同一份数据）
    * @param decisionTools **决策人桶**的注册表（工具面与执行都从它取）
    * @param conversations 会话存储（跨 tick / 跨重启沿用同一段会话）
    * @param mapId 本世界的 map 称谓（范围函数要它拼资源前缀）
@@ -192,6 +193,8 @@ public final class DecisionAgentService {
     ProviderLlm provider = llmClients.providerFor(requireProviderId(maker));
     // ★★ P4：vision 与快照都从这一个值里出（能力与客户端同源，见 LlmClients 的类注）——图发不发、
     //   渲染工具的 auto 落在图还是字符图、开场快照注不注，三处**同一位**说了算。
+    // ★★ P6a / N9：工具面按**这个决策人**的 allowedTools 收窄（空名单 = 沿用全局 WHITELIST）。
+    //   执行期权限组由 callerFactory.permissionsFor(maker) 现算，两边都走 whitelistFor(maker) ⇒ 同源。
     DecisionAgentRunner runner =
         new DecisionAgentRunner(
             callerFactory,
@@ -202,7 +205,8 @@ public final class DecisionAgentService {
             maxLlmCalls,
             listener,
             provider.vision(),
-            openingSnapshot);
+            openingSnapshot,
+            callerFactory.whitelistFor(maker));
     try {
       DecisionAgentRunner.DecisionTurn turn = runner.run(maker, state);
       // ★ 一轮的**一行留痕**（运维/验收要看"哪个 provider 真被调、用了几轮、调了什么"）：只打名字与计数，不打内容
