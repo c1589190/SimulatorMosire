@@ -431,10 +431,10 @@ tools/run-shaded.sh simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar \
 
 ### 8.3 MCP 口与审批链（2026-09-24 起）
 
-- **MCP 口 = GM 组**（用户裁定："MCP 和 GM Agent 处于同一权限级，想改什么改什么"），当前 **101 条工具**
-  （2026-10-01 实测：读 24 + 窄写 53 + 通用/组合写 24；窄写 = 19 sd + 7 map + 26 unit + 1 actor；组合写含 P5 的
+- **MCP 口 = GM 组**（用户裁定："MCP 和 GM Agent 处于同一权限级，想改什么改什么"），当前 **102 条工具**
+  （2026-10-01 实测：读 24 + 窄写 53 + 通用/组合写 25；窄写 = 19 sd + 7 map + 26 unit + 1 actor；组合写含 P5 的
   `simos.unit.spawnArmy`、army 主子改派补丁的 `simos.army.assignGov`、P1a1 的 `simos.region.seed`、P1b1 的
-  `simos.region.clearData` 与 P1b2 的 `simos.region.clearStructures`；读工具含 P3 的
+  `simos.region.clearData`、P1b2 的 `simos.region.clearStructures` 与 P3 落盘的 `simos.province.apply`；读工具含 P3 的
   `simos.province.divide`）。就绪判据：启动日志里 `外发工具 N 个`；工具面与桶的对齐由
   `SimosToolsTest`/`McpServerTest`/`McpPortTopologyTest` 三处名单断言把守。
 - **审批链两条**：**GM 面（MCP 口）的写"无脑过"**（`GmAutoApproveGate` ⇒ 直接批准、不登记待批）；

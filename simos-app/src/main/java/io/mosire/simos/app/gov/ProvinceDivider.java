@@ -261,25 +261,23 @@ public final class ProvinceDivider {
     Draft capitalDraft = capitalDistrictDraft(region, params);
     List<HexCoord> remaining = new ArrayList<>(target);
     if (capitalDraft != null) {
-      // 首都圈单列一省：从剩余格里剔除，剩余格保持自然序。
+      // 首都圈单列一个区（不进 provinces 列表）：从剩余格里剔除，剩余格保持自然序。
       Set<HexCoord> district = new HashSet<>(capitalDraft.hexes());
       remaining.removeIf(district::contains);
+      if (capitalDraft.hexes().size() < params.minHexPerProvince()
+          || capitalDraft.hexes().size() > params.maxHexPerProvince()) {
+        stats.capitalOutOfBand = true;
+      }
     }
 
-    List<Draft> drafts = new ArrayList<>();
-    if (capitalDraft != null) {
-      drafts.add(capitalDraft);
-    }
-    drafts.addAll(divideRecursive(remaining, stats, params));
-
+    List<Draft> drafts = new ArrayList<>(divideRecursive(remaining, stats, params));
     List<Province> provinces = new ArrayList<>(drafts.size());
     int number = 0;
     for (Draft draft : drafts) {
       number++;
       String suffix = String.format(Locale.ROOT, "%02d", number);
-      String name =
-          draft.capital() ? params.namingPrefix() + "·首都" : params.namingPrefix() + "·" + suffix;
-      HexCoord center = draft.capital() ? params.capitalHex() : centroid(draft.hexes());
+      String name = params.namingPrefix() + "·" + suffix;
+      HexCoord center = centroid(draft.hexes());
       List<String> warnings = new ArrayList<>(draft.warnings());
       int reached = connectedReached(draft.hexes());
       boolean contiguous = reached == draft.hexes().size();
@@ -289,9 +287,6 @@ public final class ProvinceDivider {
       if (draft.hexes().size() < params.minHexPerProvince()
           || draft.hexes().size() > params.maxHexPerProvince()) {
         stats.bandViolations++;
-        if (draft.capital()) {
-          stats.capitalOutOfBand = true;
-        }
       }
       if (!contiguous) {
         stats.nonContiguous++;
