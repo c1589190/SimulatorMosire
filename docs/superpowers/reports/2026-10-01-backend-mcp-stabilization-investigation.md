@@ -255,11 +255,11 @@ map.CreateRegion × N
 8. **不做自动筛选/自动派出**：GOV 决策人要有行政能力才允许行动（当前未体现），军队无令理论上不能行动；本 tick 行动名单由 **GM Agent 显式指定**。`due` 只作只读展示，不作为行动触发条件。
 9. 审批 MCP 化：**允许**外部 GM MCP 口 list/decide（GM-only、审计留痕）。
 10. preview：生成器/初始化/组合工具必须 preview；并加**图像渲染确认**（可返回地图渲染资产或先调 `simos.map.render`）。primitive 窄写可保持 apply-only + `expectedRevision`。
-11. 假旋钮解释：`unit.SetFormationOffset` 已不参与移动/战斗计算（纯记账、改了不生效）；`sd.AddCombatStage` 非首阶段会静默忽略 `combatStateId/hex`（看似记录、实际不生效）。处理方向待选：删除 / 具名拒绝 / 显式记账并注明无效果。
+11. 假旋钮解释：`unit.SetFormationOffset` 已不参与移动/战斗计算（纯记账、改了不生效）；`sd.AddCombatStage` 非首阶段会静默忽略 `combatStateId/hex`（看似记录、实际不生效）。**用户裁定：两处都改为具名拒绝**。
 12. **经济真实长跑/数值校准本轮不做**：`GovDaily` 粮耗 120× 风险只记录，不在本轮做经济真实性测试；等国家初始化与 MCP 闭环稳定后再单独排期。
 
 用户最终补充裁定（同日后续）：
 1. “一键清空”拆成 `clearData`（只清 social/economy/actor 数值与关联记录）与 `clearStructures`（清省 Region、省/中央 GOV、对应决策人等生成器结构），二者分别 preview/apply、分别确认。
 2. 首都区默认半径 1（7 格）；GM 后续可用 `unit.SetJurisdiction` 扩大。
-3. 假旋钮的处理方向待用户理解解释后再选（删除 / 具名拒绝 / 显式记账并注明无效果），不阻塞 P0–P2。
+3. 假旋钮已裁定：`unit.SetFormationOffset` 与 `sd.AddCombatStage` 的无消费点语义改为**具名拒绝**；不阻塞 P0–P2，排在 P8。
 4. P9 允许适当跑几个 tick（建议 3–10 tick 烟测），不做一年长跑与经济真实性校准。

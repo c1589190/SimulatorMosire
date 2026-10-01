@@ -94,8 +94,8 @@
 
 ### P8 数值风险与假旋钮
 - `GovDaily` 粮耗：与 `EconomyVocabulary` 的 per-capita/per-cycle 定义对拍；修正 120× 或改默认 policy，二者选一。
-- `unit.SetFormationOffset`：已不影响计算 → 删除、具名拒绝或降级为纯记账（需在描述里诚实标注）。
-- `sd.AddCombatStage` 非首阶段静默忽略参数 → 具名拒或明确 merge 语义。
+- `unit.SetFormationOffset`：已不影响计算 → 用户裁定改为**具名拒绝**（传偏移即返回可读理由：当前无消费点）。
+- `sd.AddCombatStage` 非首阶段的 `combatStateId`/`hex`：用户裁定改为**具名拒绝**，不再静默忽略。
 - class-first 低人口硬失败：`EconomySeeder.planClassFirst` 对“有地无家户”的情况给具名前置检查，避免 P1/P2 一键落盘时才炸。
 
 ### P9 后端端到端验收
@@ -163,7 +163,7 @@
 8. **不搞自动筛选/自动派出**：GOV 决策人要有行政能力才允许行动（当前未体现），军队无令理论上不能行动；本 tick 必须行动的人由 **GM Agent 显式给名单**，工具只接受 `decisionMakerIds` 列表。`due` 可保留为只读展示，但不作为行动触发条件。行政能力/军令门作为后续缺口立项。
 9. **审批 MCP 化**：允许外部 GM MCP 口 list/decide 审批队列（GM-only、审计留痕）。
 10. **preview + 图像渲染确认**：生成器/初始化/组合工具必须 preview；并加图像渲染确认（preview/apply 可返回地图渲染资产，或先调 `simos.map.render` 让 GM 确认）。primitive 窄写仍可 apply-only + `expectedRevision`。
-11. **#11 解释**：`unit.SetFormationOffset` 目前只写偏移、已不参与移动/战斗计算，是“改了不生效”的假旋钮；`sd.AddCombatStage` 非首阶段会静默忽略 `combatStateId/hex`，是“看起来在记、实际不生效”。处理方向待你选：删除 / 具名拒绝 / 降级为显式记账并在描述里注明无效果。
+11. **假旋钮解释**：`unit.SetFormationOffset` 目前只写偏移、已不参与移动/战斗计算，是“改了不生效”的假旋钮；`sd.AddCombatStage` 非首阶段会静默忽略 `combatStateId/hex`，是“看起来在记、实际不生效”。**用户裁定：两处都改为具名拒绝**（参数/阶段形态一旦命中无消费点语义就返回可读拒绝，不静默忽略、不保留假成功）。
 12. **经济真实长跑/数值校准本轮不做**：`GovDaily` 粮耗 120× 风险只记录，不在 P8 做经济真实性测试；等国家数据初始化与 MCP 闭环稳定后再单独排期。
 
 ---
@@ -175,5 +175,5 @@
    - `clearStructures`：清生成器创建的结构（省 Region、省/中央 GOV、对应决策人）；
    - 两者都 preview/apply，**各自单独确认**，同批一条 revision；不提供“一步清光所有东西”的模糊按钮。
 2. **首都区默认半径 1**（`HexGrid.withinRadius(capital, 1)` = 7 格），GM 后续可用 `unit.SetJurisdiction` 扩大。
-3. **假旋钮解释后处理方向待定**（见 §6 第 11 条与聊天里的解释）；不阻塞 P0–P2，留到 P8 前再选“删除 / 具名拒绝 / 显式记账并注明无效果”。
+3. 假旋钮已裁定为**具名拒绝**（`unit.SetFormationOffset` 与 `sd.AddCombatStage` 的无消费点语义）；不阻塞 P0–P2，排在 P8。
 4. **P9 允许适当跑几个 tick**（建议 3–10 tick 烟测），不做一年长跑、不做经济真实性校准；经济长跑等数据初始化与 MCP 闭环稳定后再单独排期。
