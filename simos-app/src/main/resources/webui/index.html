@@ -72,12 +72,18 @@
       </div>
       <div class="layer-group">
         <span>政府</span>
-        <label><input type="checkbox" data-layer="gov" checked> 政府单位</label>
+        <label><input type="checkbox" data-layer="gov"> 政府单位</label>
         <label><input type="checkbox" data-layer="govJurisdiction"> 政府辖区</label>
       </div>
       <div class="layer-group">
         <span>人物</span>
         <label><input type="checkbox" data-layer="decisionMakers" checked> 决策人徽标</label>
+      </div>
+      <!-- ★ F2：数据组（选项由 map.js 从 worldmodel.HEATMAP_METRICS 生成；<select> 初始为空）。 -->
+      <div class="layer-group">
+        <span>数据</span>
+        <label>热力图 <select id="heatmap-metric"></select></label>
+        <label>不透明度 <input type="range" id="heatmap-opacity" min="15" max="85" value="55"></label>
       </div>
     </div>
 
@@ -480,6 +486,9 @@
       <div id="map-status" class="status muted">地图骨架。</div>
       <div id="legend" class="muted"></div>
     </div>
+
+    <!-- ★ F2：热力图图例（默认 hidden；只在选中数据指标时由 map.js 显示，纯展示层）。 -->
+    <div id="heatmap-legend" class="heatmap-legend" hidden></div>
 
     <footer class="timeline-bar" id="timeline-bar">
       <div id="timeline-mount" class="timeline-track"></div>

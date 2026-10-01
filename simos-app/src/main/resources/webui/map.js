@@ -149,6 +149,12 @@
     searchIndex: [],
     // ★ F1：图层开关的 localStorage 降级内存态（无 localStorage 宿主用；键名与持久化一致）。
     layerMemory: null,
+    // ★ F2：热力层持久化降级内存态 / 轮次 token（挡过期响应）/ 最近一次成功计划与原文（透明度拖动复用）。
+    heatmapMemory: null,
+    heatmapToken: 0,
+    heatmapPlan: null,
+    heatmapPayload: null,
+    heatmapScale: null,
     mapEditBusy: false,
     mapEditTool: "terrain",
     mapEditSubtool: "terrain",
@@ -172,6 +178,11 @@
     decisionScope: null,
     lastDecisionFocus: undefined,
   };
+
+  // ★ F2：热力层当前选择（模块级可变绑定；持久化键见 HEATMAP_STORAGE_KEY 一节）。
+  //   ★ 不透明度统一走**真·千分比**：持久化 150..850（默认 550），滑块刻度 15..85，渲染 opacity = 千分比/1000。
+  var heatmapMetric = "";
+  var heatmapOpacityPerMille = 550;
 
   function targetKey() {
     var t = app.target();
@@ -1063,7 +1074,9 @@
   //
   // ★ 图层状态持久化键与格式都是世界视图的一部分（localStorage 不可用 ⇒ 内存态，不报错）；
   //   渲染器只认 worldmodel.layerVisibility 归一后的键，未知键不会打开一个图层。
-  var LAYERS_STORAGE_KEY = "simos.layers.v1";
+  // ★ 2026-10-01：v1 → v2 —— 用户实测“显示国家名时政府也一起显示”。新缺省把 gov / govJurisdiction
+  //   关掉；旧 v1 里用户点开的 gov=true 不能继续生效（否则新缺省被旧存档顶掉）⇒ 换键重来。
+  var LAYERS_STORAGE_KEY = "simos.layers.v2";
 
   function layerPrefsFromDom() {
     var out = {};
@@ -1167,6 +1180,454 @@
           });
         }
       );
+    }
+  }
+
+  // ── F2：热力层（数据组控件 / 取数 / 图例 / 持久化）──────────────────────
+  //
+  // ★ 叠加语义：一次只画一个指标；不选（metric=""）时与 F1 渲染完全一致。
+  // ★ 数据只来自 /api/map/heatmap（经 api.cachedHeatmap，键含 metric×target）；前端不补 0、不重算。
+  // ★ 旧页 /map 没有 #heatmap-metric 等 DOM ⇒ wireHeatmapControls 静默跳过，不注册事件、不取数。
+  // ★ 不透明度：持久化键 / 字段名 `opacityPerMille` 一律**真·千分比**（150..850，默认 550）；
+  //   滑块刻度是百分比（15..85）；落给渲染器严格 `opacity = opacityPerMille / 1000` ⇒ 0.15..0.85，
+  //   默认 0.55（与设计 plan §3.1 的“0.15–0.85，默认 0.55”一致）。
+
+  var HEATMAP_STORAGE_KEY = "simos.heatmap.v1";
+  var HEATMAP_OPACITY_MIN = 15;
+  var HEATMAP_OPACITY_MAX = 85;
+  var HEATMAP_OPACITY_DEFAULT = 55;
+  var HEATMAP_OPACITY_PERMILLE_MIN = HEATMAP_OPACITY_MIN * 10;
+  var HEATMAP_OPACITY_PERMILLE_MAX = HEATMAP_OPACITY_MAX * 10;
+  var HEATMAP_OPACITY_PERMILLE_DEFAULT = HEATMAP_OPACITY_DEFAULT * 10;
+
+  /** 指标词表项；未知 id ⇒ null（不猜 label/unit）。 */
+  function heatmapMetricInfo(id) {
+    var metrics =
+      worldModel && Array.isArray(worldModel.HEATMAP_METRICS) ? worldModel.HEATMAP_METRICS : [];
+    for (var i = 0; i < metrics.length; i += 1) {
+      if (metrics[i] && metrics[i].id === id) {
+        return metrics[i];
+      }
+    }
+    return null;
+  }
+
+  /** 持久化/下拉值的 fail-closed 归一：只认词表里的 id，未知 ⇒ ""（不显示）。 */
+  function normalizeHeatmapMetric(value) {
+    return typeof value === "string" && heatmapMetricInfo(value) ? value : "";
+  }
+
+  /** 解析数字输入（number / 数字字符串）；解析不出 / 非有限 ⇒ null。 */
+  function parseHeatmapNumber(value) {
+    var parsed;
+    if (typeof value === "number") {
+      parsed = value;
+    } else if (typeof value === "string" && value.trim() !== "") {
+      parsed = Number(value);
+    } else {
+      return null;
+    }
+    return typeof parsed === "number" && isFinite(parsed) ? parsed : null;
+  }
+
+  /** 不透明度滑块刻度归一：有限数字就地取整并夹到 [15,85]；其余 ⇒ 55。 */
+  function normalizeHeatmapOpacitySlider(value) {
+    var parsed = parseHeatmapNumber(value);
+    if (parsed === null) {
+      return HEATMAP_OPACITY_DEFAULT;
+    }
+    parsed = Math.round(parsed);
+    if (parsed < HEATMAP_OPACITY_MIN) {
+      return HEATMAP_OPACITY_MIN;
+    }
+    if (parsed > HEATMAP_OPACITY_MAX) {
+      return HEATMAP_OPACITY_MAX;
+    }
+    return parsed;
+  }
+
+  /**
+   * 持久化不透明度归一：真·千分比，取到 10 的整数倍并夹到 [150,850]（对应滑块 15..85）；
+   * 其余 ⇒ 550。存储与渲染统一走千分比（渲染 opacity = opacityPerMille / 1000）。
+   */
+  function normalizeHeatmapOpacityPerMille(value) {
+    var parsed = parseHeatmapNumber(value);
+    if (parsed === null) {
+      return HEATMAP_OPACITY_PERMILLE_DEFAULT;
+    }
+    parsed = Math.round(parsed / 10) * 10;
+    if (parsed < HEATMAP_OPACITY_PERMILLE_MIN) {
+      return HEATMAP_OPACITY_PERMILLE_MIN;
+    }
+    if (parsed > HEATMAP_OPACITY_PERMILLE_MAX) {
+      return HEATMAP_OPACITY_PERMILLE_MAX;
+    }
+    return parsed;
+  }
+
+  function normalizeHeatmapPrefs(raw) {
+    var parsed = raw && typeof raw === "object" ? raw : {};
+    return {
+      metric: normalizeHeatmapMetric(parsed.metric),
+      opacityPerMille: normalizeHeatmapOpacityPerMille(parsed.opacityPerMille),
+    };
+  }
+
+  function loadHeatmapPrefs() {
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        var raw = window.localStorage.getItem(HEATMAP_STORAGE_KEY);
+        if (raw) {
+          return normalizeHeatmapPrefs(JSON.parse(raw));
+        }
+      }
+    } catch (e) {
+      // 无 localStorage / 坏 JSON ⇒ 用内存态（不把坏缓存当成用户选择）。
+    }
+    return normalizeHeatmapPrefs(host.heatmapMemory);
+  }
+
+  function persistHeatmapPrefs(prefs) {
+    host.heatmapMemory = normalizeHeatmapPrefs(prefs);
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        window.localStorage.setItem(HEATMAP_STORAGE_KEY, JSON.stringify(host.heatmapMemory));
+      }
+    } catch (e) {
+      // 持久化失败只丢"下次打开还记着"这一条，不影响本次绘制。
+    }
+  }
+
+  /** 图例数值短文本：整数原样；小数 4 位；非有限 ⇒ “—”。 */
+  function heatmapNumberText(value) {
+    if (value === null || value === undefined || typeof value !== "number" || !isFinite(value)) {
+      return "—";
+    }
+    if (Number.isInteger(value)) {
+      return String(value);
+    }
+    return String(Math.round(value * 10000) / 10000);
+  }
+
+  function heatmapLegendNode() {
+    return app.byId("heatmap-legend");
+  }
+
+  function hideHeatmapLegend() {
+    var node = heatmapLegendNode();
+    if (node) {
+      node.hidden = true;
+      app.clear(node);
+    }
+  }
+
+  /**
+   * 画热力图例（标题 / 单位 / scope / 分档色块行 / count-min-median-max / 不可用原因 / caveat）。
+   * 取值走 worldmodel.heatmapLegend（缺席时同口径兜底）；服务端文本一律经 textContent 落 DOM，不用 innerHTML。
+   */
+  function renderHeatmapLegend(payload, scalePlan, reasonText) {
+    var node = heatmapLegendNode();
+    if (!node) {
+      return;
+    }
+    var model;
+    if (worldModel && worldModel.heatmapLegend) {
+      model = worldModel.heatmapLegend(payload, scalePlan);
+    } else {
+      var p = payload && typeof payload === "object" ? payload : {};
+      model = {
+        title: p.label || p.metric || "热力图",
+        unit: p.unit === undefined ? null : p.unit,
+        scope: p.scope === undefined ? null : p.scope,
+        lines: [],
+        unavailable: p.unavailable === undefined ? null : p.unavailable,
+        footnote: "缺失数据格不着色、不填 0。",
+      };
+    }
+    if (reasonText) {
+      model.unavailable = reasonText;
+    }
+    app.clear(node);
+    node.hidden = false;
+    node.appendChild(
+      app.el("div", { class: "heatmap-legend-title", text: app.text(model.title) })
+    );
+    if (model.unit !== null && model.unit !== undefined && String(model.unit) !== "") {
+      node.appendChild(
+        app.el("div", { class: "heatmap-legend-meta", text: "单位：" + model.unit })
+      );
+    }
+    if (model.scope !== null && model.scope !== undefined && String(model.scope) !== "") {
+      node.appendChild(
+        app.el("div", { class: "heatmap-legend-scope", text: String(model.scope) })
+      );
+    }
+    if (model.lines && model.lines.length) {
+      var lines = app.el("div", { class: "heatmap-legend-lines" });
+      model.lines.forEach(function (line) {
+        var row = app.el("div", { class: "heatmap-legend-line" });
+        var swatch = app.el("span", { class: "heatmap-legend-swatch" });
+        swatch.style.backgroundColor = line.color || "#000000";
+        row.appendChild(swatch);
+        row.appendChild(
+          app.el("span", {
+            class: "heatmap-legend-line-label",
+            text: app.text(line.label) + "（" + app.text(line.count) + " 格）",
+          })
+        );
+        lines.appendChild(row);
+      });
+      node.appendChild(lines);
+    }
+    if (scalePlan && scalePlan.stats) {
+      node.appendChild(
+        app.el("div", {
+          class: "heatmap-legend-stats",
+          text:
+            "格 " +
+            app.text(scalePlan.stats.count) +
+            " · min " +
+            heatmapNumberText(scalePlan.stats.min) +
+            " · median " +
+            heatmapNumberText(scalePlan.stats.median) +
+            " · max " +
+            heatmapNumberText(scalePlan.stats.max),
+        })
+      );
+    }
+    if (
+      model.unavailable !== null &&
+      model.unavailable !== undefined &&
+      String(model.unavailable) !== ""
+    ) {
+      node.appendChild(
+        app.el("div", {
+          class: "heatmap-legend-unavailable",
+          text: "不可用：" + model.unavailable,
+        })
+      );
+    }
+    node.appendChild(
+      app.el("div", { class: "heatmap-legend-footnote", text: app.text(model.footnote) })
+    );
+  }
+
+  /** 清掉旧热力层（换指标 / 失败 / 不可用 / 空数据时必须清，不能留上一指标的颜色）。 */
+  function clearHeatmapLayer() {
+    host.heatmapPlan = null;
+    host.heatmapPayload = null;
+    host.heatmapScale = null;
+    if (active && active.setHeatmap) {
+      active.setHeatmap(null);
+    }
+  }
+
+  /** 选指标：持久化 + 作废旧轮次 + 清旧层；空值 = 不显示，非空 = 立即重取。 */
+  function setHeatmapMetric(value) {
+    var metric = normalizeHeatmapMetric(value);
+    heatmapMetric = metric;
+    var select = app.byId("heatmap-metric");
+    if (select && select.value !== metric) {
+      select.value = metric;
+    }
+    persistHeatmapPrefs({ metric: metric, opacityPerMille: heatmapOpacityPerMille });
+    host.heatmapToken += 1; // 换指标 / 关闭：旧响应作废，不得覆盖新状态。
+    clearHeatmapLayer();
+    if (!metric) {
+      hideHeatmapLegend();
+      return;
+    }
+    reloadHeatmap();
+  }
+
+  /** 拖不透明度：只改持久化 + 当前层透明度并重画（不重新请求；图例按同一份 payload 重画保持 DOM 同源）。 */
+  function setHeatmapOpacity(value) {
+    var slider = normalizeHeatmapOpacitySlider(value);
+    var perMille = slider * 10;
+    heatmapOpacityPerMille = perMille;
+    var input = app.byId("heatmap-opacity");
+    if (input && Number(input.value) !== slider) {
+      input.value = String(slider);
+    }
+    persistHeatmapPrefs({ metric: heatmapMetric, opacityPerMille: perMille });
+    if (host.heatmapPlan && active && active.setHeatmap) {
+      active.setHeatmap(Object.assign({}, host.heatmapPlan, { opacity: perMille / 1000 }));
+      renderHeatmapLegend(host.heatmapPayload, host.heatmapScale);
+    }
+  }
+
+  /**
+   * 取当前指标（带当前 target）并落图：`scalePlan = worldModel.heatmapColorScale(cells)` 给每格配色；
+   * 失败 / 空 / 不可用一律清旧层并在图例写明 HTTP / 服务端原因；token 挡换指标/换目标时的过期响应。
+   */
+  async function reloadHeatmap() {
+    if (!app.byId("heatmap-metric")) {
+      return; // 旧页 /map 没有数据组 DOM：静默跳过，不取数、不动渲染。
+    }
+    var metric = heatmapMetric;
+    if (!metric) {
+      clearHeatmapLayer();
+      hideHeatmapLegend();
+      return;
+    }
+    var info = heatmapMetricInfo(metric);
+    var label = info && info.label ? info.label : metric;
+    var token = (host.heatmapToken += 1);
+    var switching = !host.heatmapPlan || host.heatmapPlan.metric !== metric;
+    if (switching) {
+      clearHeatmapLayer();
+      renderHeatmapLegend(
+        {
+          metric: metric,
+          label: label,
+          unit: info ? info.unit : null,
+          scope: info ? info.help : null,
+        },
+        null,
+        "载入中…"
+      );
+    }
+    try {
+      var payload = await api.cachedHeatmap(metric, app.target());
+      if (token !== host.heatmapToken || metric !== heatmapMetric) {
+        return; // 过期轮次（换指标 / 换目标后的旧响应）一律丢弃。
+      }
+      var cells = payload && Array.isArray(payload.cells) ? payload.cells : [];
+      var scalePlan =
+        worldModel && worldModel.heatmapColorScale ? worldModel.heatmapColorScale(cells) : null;
+      var unavailable = payload && payload.unavailable !== undefined ? payload.unavailable : null;
+      if (unavailable) {
+        clearHeatmapLayer();
+        renderHeatmapLegend(payload, scalePlan);
+        return;
+      }
+      if (!cells.length) {
+        clearHeatmapLayer();
+        renderHeatmapLegend(
+          payload,
+          scalePlan,
+          "该指标当前没有可用数据格（缺失格不着色、不填 0）"
+        );
+        return;
+      }
+      var colorOf =
+        scalePlan && typeof scalePlan.colorOf === "function" ? scalePlan.colorOf : null;
+      var colored = [];
+      cells.forEach(function (cell) {
+        if (!cell) {
+          return;
+        }
+        if (
+          typeof cell.q !== "number" ||
+          typeof cell.r !== "number" ||
+          !isFinite(cell.q) ||
+          !isFinite(cell.r)
+        ) {
+          return;
+        }
+        if (typeof cell.value !== "number" || !isFinite(cell.value)) {
+          return;
+        }
+        var color =
+          typeof cell.color === "string" && cell.color !== ""
+            ? cell.color
+            : colorOf
+              ? colorOf(cell.value)
+              : null;
+        if (!color) {
+          return;
+        }
+        colored.push({ q: cell.q, r: cell.r, value: cell.value, color: color });
+      });
+      if (!colored.length) {
+        clearHeatmapLayer();
+        renderHeatmapLegend(payload, scalePlan, "没有可着色的有效数据格");
+        return;
+      }
+      var plan = {
+        metric: payload.metric || metric,
+        label: payload.label === undefined || payload.label === null ? label : payload.label,
+        unit: payload.unit === undefined ? (info ? info.unit : null) : payload.unit,
+        scope: payload.scope === undefined ? (info ? info.help : null) : payload.scope,
+        tick: payload.tick === undefined ? null : payload.tick,
+        cells: colored,
+        scale: scalePlan,
+        opacity: heatmapOpacityPerMille / 1000,
+        unavailable: null,
+      };
+      host.heatmapPayload = payload;
+      host.heatmapScale = scalePlan;
+      host.heatmapPlan = Object.assign({}, plan);
+      if (active && active.setHeatmap) {
+        active.setHeatmap(plan);
+      }
+      renderHeatmapLegend(payload, scalePlan);
+    } catch (e) {
+      if (token !== host.heatmapToken || metric !== heatmapMetric) {
+        return;
+      }
+      clearHeatmapLayer();
+      var reason =
+        (e && e.status ? "HTTP " + e.status + "：" : "") +
+        (e && e.message ? e.message : String(e));
+      renderHeatmapLegend(
+        {
+          metric: metric,
+          label: label,
+          unit: info ? info.unit : null,
+          scope: info ? info.help : null,
+        },
+        null,
+        "加载失败：" + reason
+      );
+    }
+  }
+
+  /** 工作台数据组接线：生成 option、恢复持久化、挂事件。旧页缺 #heatmap-metric ⇒ 立即静默返回。 */
+  function wireHeatmapControls() {
+    var select = app.byId("heatmap-metric");
+    if (!select) {
+      return;
+    }
+    var opacityInput = app.byId("heatmap-opacity");
+    var prefs = loadHeatmapPrefs();
+    heatmapMetric = prefs.metric;
+    heatmapOpacityPerMille = prefs.opacityPerMille;
+    app.clear(select);
+    select.appendChild(
+      app.el("option", { value: "", text: "不显示", title: "关闭热力层，只显示 F1 图层" })
+    );
+    var metrics =
+      worldModel && Array.isArray(worldModel.HEATMAP_METRICS) ? worldModel.HEATMAP_METRICS : [];
+    metrics.forEach(function (metric) {
+      if (!metric || !metric.id) {
+        return;
+      }
+      select.appendChild(
+        app.el("option", {
+          value: metric.id,
+          text: metric.label || metric.id,
+          title: metric.help || "",
+        })
+      );
+    });
+    select.value = heatmapMetric;
+    if (opacityInput) {
+      opacityInput.value = String(heatmapOpacityPerMille / 10);
+    }
+    select.addEventListener("change", function () {
+      setHeatmapMetric(select.value);
+    });
+    if (opacityInput) {
+      opacityInput.addEventListener("input", function () {
+        setHeatmapOpacity(opacityInput.value);
+      });
+    }
+    if (heatmapMetric) {
+      reloadHeatmap();
+    } else {
+      clearHeatmapLayer();
+      hideHeatmapLegend();
     }
   }
 
@@ -1319,6 +1780,10 @@
       host.targetTimer = null;
       host.regionCache = {};
       reloadOverview();
+      // ★ F2：目标变了 ⇒ 热力层按 metric×target 重取（token 在 reloadHeatmap 里挡旧目标响应）。
+      if (heatmapMetric) {
+        reloadHeatmap();
+      }
       if (app.getState().mode === "region-edit") {
         reloadRegionEditHighlight();
       } else {
@@ -2030,6 +2495,8 @@
       // ★ F1：图层抽屉与搜索框（旧页没有这两个 DOM ⇒ 接线函数内部静默跳过，不报错）。
       wireLayerDrawer();
       wireSearchBox();
+      // ★ F2：数据组（热力图指标 + 不透明度；旧页没有该 DOM ⇒ 函数内静默跳过）。
+      wireHeatmapControls();
       app.onStateChange(onStateChange);
       onStateChange(app.getState());
       window.SimosMapUnitEditor.wireUnitEditor();
@@ -2429,6 +2896,9 @@
         // ★ F1：GOV 辖区条数 / hex 总数——单一真相在 renderer.debug()，这里只是同源转出。
         govJurisdictions: debug.govJurisdictionCount || 0,
         govJurisdictionHexes: debug.govJurisdictionHexCount || 0,
+        // ★ F2：热力层只读投影（与 renderer.debug() 同源；未选指标 ⇒ null / 0）。
+        heatmapMetric: debug.heatmapMetric || null,
+        heatmapCellCount: debug.heatmapCellCount || 0,
       };
     },
     // ★ F1：决策范围等级标签（gov ⇒ 政府级），纯函数、门禁可直接断言。

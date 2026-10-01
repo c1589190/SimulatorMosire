@@ -164,6 +164,19 @@
   }
 
   /**
+   * ★ F2：逐格热力图读数（`GET /api/map/heatmap?metric=<id>`）。**不设指标白名单**——未知 metric 由服务端
+   * 返回 HTTP 200 + `unavailable` 具名原因，前端 fail-closed 展示，不猜。原始版给一次性取数；缓存版按键
+   * `(metric,target)` 记忆化，切指标/目标不串数据。
+   */
+  function heatmap(metric, target) {
+    return getJson(withTarget("/map/heatmap?metric=" + encodeURIComponent(metric), target));
+  }
+
+  function cachedHeatmap(metric, target) {
+    return cachedGet("/map/heatmap?metric=" + encodeURIComponent(metric), target);
+  }
+
+  /**
    * ★ F1：世界经济总览（`GET /api/economy/overview`）——class-first / 货币发行 / 账户守恒的**世界级**
    * 读数；逐格经济仍走 {@link cachedEconomyHex}。
    */
@@ -534,6 +547,9 @@
     cachedCities: cachedCities,
     regionSummaries: regionSummaries,
     cachedRegionSummaries: cachedRegionSummaries,
+    // ★ F2：逐格热力图（原始 + 按 metric×target 缓存两套；指标词表在前端由 worldmodel 收口，API 层不硬编码）。
+    heatmap: heatmap,
+    cachedHeatmap: cachedHeatmap,
     economyOverview: economyOverview,
     cachedEconomyOverview: cachedEconomyOverview,
     cachedMapOverview: cachedMapOverview,

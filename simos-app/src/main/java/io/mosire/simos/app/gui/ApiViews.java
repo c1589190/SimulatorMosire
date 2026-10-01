@@ -122,6 +122,7 @@ import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationHeadline;
+import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.social.population.UrbanRural;
@@ -200,6 +201,24 @@ public final class ApiViews {
 
   /** ★ M0.3：衣着（粮布换算比用；唯一拼写点在 {@code EconomyVocabulary}）。 */
   private static final CommodityId CLOTH = new CommodityId(EconomyVocabulary.CLOTH_COMMODITY_ID);
+
+  // ── F2 热力图指标 id（前端按 id 选层；这里是 id 的唯一拼写点）──────────────────────────────
+
+  private static final String HEATMAP_POPULATION_TOTAL = "populationTotal";
+  private static final String HEATMAP_POPULATION_RURAL = "populationRural";
+  private static final String HEATMAP_POPULATION_URBAN = "populationUrban";
+  private static final String HEATMAP_GRAIN_STOCK = "grainStock";
+  private static final String HEATMAP_GRAIN_DAILY_NEED = "grainDailyNeed";
+  private static final String HEATMAP_GRAIN_COVERAGE_DAYS = "grainCoverageDays";
+  private static final String HEATMAP_GRAIN_CYCLE_UNMET = "grainCycleUnmet";
+  private static final String HEATMAP_MONEY_SILVER = "moneySilver";
+
+  /** F2 人口热力图的三种取法（与 {@link #heatmap} 的三个 id 一一对应）。 */
+  private enum PopulationHeatmapMetric {
+    TOTAL,
+    RURAL,
+    URBAN
+  }
 
   private ApiViews() {}
 
@@ -406,15 +425,20 @@ public final class ApiViews {
    *   <li>{@code unitCount} = 该单位在 {@code at} 时刻的 {@link UnitState#effectivePosition} 落在 Region hex
    *       集合内的数量（含 GOV）；{@code govCount} 是其中 {@code unit.module()} 为 {@link GovFormation}
    *       的数量。
+   *   <li>★ F2 追加：{@code ruralPopulation} / {@code urbanPopulation} = region hex 集内**有
+   *       {@link PopulationGroup}** 的格按城乡二分求和（旧序列格无法二分、不计入）；{@code grainStock} /
+   *       {@code silverMoney} / {@code goodsTotal} = region hex 集内 actor 账本的粮 / silver / 逐商品余额
+   *       合计（键按商品 id 字典序）。区域重叠口径同上：逐区域格集求和，不是世界守恒量。
    * </ul>
    *
    * <p>★ 按 region id 字典序发；同一份状态两次调用逐字节相同。
    */
   public static Map<String, Object> regionSummaries(
-      GameMap map, SocialData social, UnitState units, SimosTimestamp at) {
+      GameMap map, SocialData social, UnitState units, ActorData actors, SimosTimestamp at) {
     Objects.requireNonNull(map, "map");
     Objects.requireNonNull(social, "social");
     Objects.requireNonNull(units, "units");
+    Objects.requireNonNull(actors, "actors");
     Objects.requireNonNull(at, "at");
     // ★ 人口按格预聚合一次（region 总格数可能上万，逐区域逐格调 populationAt 会退化成 O(格 × 批次)）。
     Map<HexCoord, Long> populationByHex = new LinkedHashMap<>();
@@ -423,10 +447,35 @@ public final class ApiViews {
         populationByHex.putIfAbsent(hex, 0L);
       }
     }
+    // ★ F2：城乡人口与人口总量在同一趟 groups 遍历里预聚合（与 SocialData.urbanRuralAt 同判 ——
+    //   PopulationLots.isUrban 是城乡归属的唯一拼写点）。long[2] = [urban, rural]。
+    Map<HexCoord, long[]> urbanRuralByHex = new LinkedHashMap<>();
     for (PopulationGroup group : social.groups().values()) {
       Long current = populationByHex.get(group.residence());
       if (current != null) {
         populationByHex.put(group.residence(), current + group.count());
+      }
+      long[] counts =
+          urbanRuralByHex.computeIfAbsent(group.residence(), ignored -> new long[2]);
+      if (PopulationLots.isUrban(group)) {
+        counts[0] += group.count();
+      } else {
+        counts[1] += group.count();
+      }
+    }
+    // ★ F2：actor 账本按 hex 预聚合一次（粮库存 / 银货币 / 逐商品合计），region 只在自己的 hex 集上查表——
+    //   不为每个 region 重扫全表。
+    Map<HexCoord, Long> grainStockByHex = new LinkedHashMap<>();
+    Map<HexCoord, Long> silverByHex = new LinkedHashMap<>();
+    Map<HexCoord, Map<String, Long>> goodsByHex = new LinkedHashMap<>();
+    for (GoodsAccount account : actors.accounts().values()) {
+      HexCoord hex = account.key().location();
+      grainStockByHex.merge(hex, account.balances().getOrDefault(GRAIN, 0L), Long::sum);
+      silverByHex.merge(
+          hex, account.money().getOrDefault(MoneyVocabulary.SILVER_CURRENCY, 0L), Long::sum);
+      Map<String, Long> goods = goodsByHex.computeIfAbsent(hex, ignored -> new LinkedHashMap<>());
+      for (Map.Entry<CommodityId, Long> entry : account.balances().entrySet()) {
+        goods.merge(entry.getKey().value(), entry.getValue(), Long::sum);
       }
     }
     // 城市数 / 城市人口按**显式 region 归属**预聚合；region 缺失的城不进任何区域。
@@ -446,10 +495,35 @@ public final class ApiViews {
     for (RegionId id : ordered) {
       Region region = map.regions().get(id);
       long population = 0L;
+      long ruralPopulation = 0L;
+      long urbanPopulation = 0L;
+      long grainStock = 0L;
+      long silverMoney = 0L;
+      // 逐商品合计只收 region 格集里出现的键；TreeMap 保证商品 id 字典序（与状态插入序无关）。
+      Map<String, Long> goodsTotal = new TreeMap<>();
       for (HexCoord hex : region.hexes()) {
         Long value = populationByHex.get(hex);
         if (value != null) {
           population += value;
+        }
+        long[] urbanRural = urbanRuralByHex.get(hex);
+        if (urbanRural != null) {
+          urbanPopulation += urbanRural[0];
+          ruralPopulation += urbanRural[1];
+        }
+        Long grain = grainStockByHex.get(hex);
+        if (grain != null) {
+          grainStock += grain;
+        }
+        Long silver = silverByHex.get(hex);
+        if (silver != null) {
+          silverMoney += silver;
+        }
+        Map<String, Long> goods = goodsByHex.get(hex);
+        if (goods != null) {
+          for (Map.Entry<String, Long> entry : goods.entrySet()) {
+            goodsTotal.merge(entry.getKey(), entry.getValue(), Long::sum);
+          }
         }
       }
       long[] cityAggregate = cityByRegion.getOrDefault(id.value(), new long[2]);
@@ -475,11 +549,346 @@ public final class ApiViews {
       item.put("cityPopulation", cityAggregate[1]);
       item.put("unitCount", unitCount);
       item.put("govCount", govCount);
+      // ★ F2 新增字段（既有字段名与形状一字不动，只追加）：城乡人口 / 粮库存 / 银货币 / 逐商品合计。
+      item.put("ruralPopulation", ruralPopulation);
+      item.put("urbanPopulation", urbanPopulation);
+      item.put("grainStock", grainStock);
+      item.put("silverMoney", silverMoney);
+      item.put("goodsTotal", goodsTotal);
       out.add(item);
     }
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("regions", out);
     return view;
+  }
+
+  /**
+   * ★ F2：**地图热力图**（{@code GET /api/map/heatmap} 的视图）。
+   *
+   * <p>★ 只读、紧凑聚合：每个指标只发**有事实**的格（{@code cells}），不整份发 {@code economyHex} 的 84 KB 逐格视图。
+   * {@code cells} 按 {@link HexCoord} 自然序（先 {@code q} 后 {@code r}）发；同状态两次调用逐字节相同。
+   *
+   * <p>★★ **算不出的整层具名不可用**（{@code cells: []}、{@code unavailable} 写明原因，绝不填 0 冒充）：未知 id、
+   * 以及 class-first 没有逐格来源的 {@code grainCycleUnmet}。
+   *
+   * <p>口径逐条对上 F2 设计增补（用户 2026-10-01 已确认）：
+   *
+   * <ul>
+   *   <li>人口：{@code populations} ∪ {@code groups.residence()}；有批次的格用批次求和，无批次的旧序列格按 {@link
+   *       SocialData#headlinePopulationAt} 回退；城乡二分只对有 {@link PopulationGroup} 的格。
+   *   <li>粮食库存 / 日耗 / 覆盖天数：逐格 actor {@code GoodsAccount} 与 {@code ClassRow.naturalNeeds} 同源。
+   *   <li>银货币：逐格 actor {@code GoodsAccount.money} 的 silver 分栏。
+   *   <li>{@code grainCycleUnmet}：R3a 起旧市场报告组件已删除，class-first 不产生逐格周期缺口 ⇒ 整层 unavailable。
+   * </ul>
+   *
+   * <p>★ {@code stats.median} 的算法是确定的：排序后奇数取中位、偶数取两中位平均（double）；空 {@code cells} ⇒
+   * {@code count=0} 且 min/median/max 为 {@code null}（不填 0 冒充）。
+   *
+   * @param metric 指标 id；未知 id ⇒ {@code unavailable} 具名、{@code cells: []}
+   */
+  public static Map<String, Object> heatmap(SimulationState state, String metric) {
+    Objects.requireNonNull(state, "state");
+    String id = metric == null ? "" : metric;
+    return switch (id) {
+      case HEATMAP_POPULATION_TOTAL ->
+          populationHeatmap(state, id, "人口·总", PopulationHeatmapMetric.TOTAL);
+      case HEATMAP_POPULATION_RURAL ->
+          populationHeatmap(state, id, "人口·农村", PopulationHeatmapMetric.RURAL);
+      case HEATMAP_POPULATION_URBAN ->
+          populationHeatmap(state, id, "人口·城市", PopulationHeatmapMetric.URBAN);
+      case HEATMAP_GRAIN_STOCK -> grainStockHeatmap(state, id);
+      case HEATMAP_GRAIN_DAILY_NEED -> grainDailyNeedHeatmap(state, id);
+      case HEATMAP_GRAIN_COVERAGE_DAYS -> grainCoverageDaysHeatmap(state, id);
+      case HEATMAP_GRAIN_CYCLE_UNMET ->
+          unavailableHeatmap(
+              state,
+              id,
+              "粮食·周期缺口",
+              "毫粮",
+              "本周期累计（旧 MarketReport 口径）；class-first 无逐格来源",
+              "R3a 起旧市场报告组件已删除；class-first 不产生逐格周期缺口"
+                  + "（旧 FlowRow.unmetNeed 不作为代理，避免把 0 读成没有缺口）",
+              new LinkedHashMap<>());
+      case HEATMAP_MONEY_SILVER -> moneySilverHeatmap(state, id);
+      default ->
+          unavailableHeatmap(
+              state, id, null, null, null, "未知指标: " + id, new LinkedHashMap<>());
+    };
+  }
+
+  /** F2 人口三指标（总 / 农村 / 城市）：同一份 groups 预聚合，只改取值那一步。 */
+  private static Map<String, Object> populationHeatmap(
+      SimulationState state, String id, String label, PopulationHeatmapMetric kind) {
+    SocialData social = socialData(state);
+    SimosTimestamp at = state.meta().timestamp();
+    // 一趟 groups 预聚合：long[2] = [urban, rural]（与 SocialData.urbanRuralAt 同判）。
+    Map<HexCoord, long[]> groupsByHex = new LinkedHashMap<>();
+    for (PopulationGroup group : social.groups().values()) {
+      long[] counts = groupsByHex.computeIfAbsent(group.residence(), ignored -> new long[2]);
+      if (PopulationLots.isUrban(group)) {
+        counts[0] += group.count();
+      } else {
+        counts[1] += group.count();
+      }
+    }
+    long legacySeriesHexes = 0L;
+    for (HexCoord hex : social.populations().keySet()) {
+      if (!groupsByHex.containsKey(hex)) {
+        legacySeriesHexes++;
+      }
+    }
+    TreeMap<HexCoord, Long> values = new TreeMap<>();
+    if (kind == PopulationHeatmapMetric.TOTAL) {
+      for (Map.Entry<HexCoord, PopulationSeries> entry : social.populations().entrySet()) {
+        PopulationHeadline headline =
+            social.headlinePopulationAt(entry.getKey(), entry.getValue(), at);
+        values.put(entry.getKey(), headline.value());
+      }
+      // 只有 groups、没有旧序列的格（构造期不变式之外，防御性保留）：值 = 批次求和。
+      for (Map.Entry<HexCoord, long[]> entry : groupsByHex.entrySet()) {
+        values.computeIfAbsent(
+            entry.getKey(), ignored -> entry.getValue()[0] + entry.getValue()[1]);
+      }
+    } else {
+      int index = kind == PopulationHeatmapMetric.URBAN ? 0 : 1;
+      for (Map.Entry<HexCoord, long[]> entry : groupsByHex.entrySet()) {
+        values.put(entry.getKey(), entry.getValue()[index]);
+      }
+    }
+    Map<String, Object> notes = new LinkedHashMap<>();
+    notes.put("legacySeriesHexes", legacySeriesHexes);
+    notes.put(
+        "legacySeriesNote",
+        kind == PopulationHeatmapMetric.TOTAL
+            ? "无批次的格按 headlinePopulationAt 回退旧序列；有批次的格用批次求和"
+            : "旧序列格无法城乡二分（仅旧 populations 序列、没有 PopulationGroup 的格未计入本层）");
+    return longHeatmap(
+        state, id, label, "人", "批次口径（有批次的格）；时点快照", values, notes);
+  }
+
+  /** F2 粮食库存：逐格 actor GoodsAccount 的 grain 余额合计（有账户的格全发，0 也是事实）。 */
+  private static Map<String, Object> grainStockHeatmap(SimulationState state, String id) {
+    TreeMap<HexCoord, Long> values = new TreeMap<>();
+    for (GoodsAccount account : actorData(state).accounts().values()) {
+      values.merge(account.key().location(), account.balances().getOrDefault(GRAIN, 0L), Long::sum);
+    }
+    return longHeatmap(
+        state,
+        id,
+        "粮食·库存",
+        "毫粮",
+        "逐格 actor GoodsAccount 粮余额合计（时点）",
+        values,
+        new LinkedHashMap<>());
+  }
+
+  /** F2 粮食日耗：逐格 ClassRow.naturalNeeds 的 grain 合计（与 economyHex.grainDailyConsumption 同源）。 */
+  private static Map<String, Object> grainDailyNeedHeatmap(SimulationState state, String id) {
+    TreeMap<HexCoord, Long> values = new TreeMap<>();
+    for (ClassRow row : economyData(state).classes().values()) {
+      values.merge(row.view().hex(), row.naturalNeeds().getOrDefault(GRAIN, 0L), Long::sum);
+    }
+    return longHeatmap(
+        state,
+        id,
+        "粮食·日耗",
+        "毫粮/日",
+        "最近一次结算日 naturalNeeds；与 economyHex.grainDailyConsumption 同源",
+        values,
+        new LinkedHashMap<>());
+  }
+
+  /** F2 粮食覆盖天数：同一趟聚合 stock 与 dailyNeed；分母 ≤ 0 或库存账缺失的格不入层，notes 记数。 */
+  private static Map<String, Object> grainCoverageDaysHeatmap(SimulationState state, String id) {
+    TreeMap<HexCoord, Long> stockByHex = new TreeMap<>();
+    for (GoodsAccount account : actorData(state).accounts().values()) {
+      stockByHex.merge(
+          account.key().location(), account.balances().getOrDefault(GRAIN, 0L), Long::sum);
+    }
+    TreeMap<HexCoord, Long> dailyNeedByHex = new TreeMap<>();
+    for (ClassRow row : economyData(state).classes().values()) {
+      dailyNeedByHex.merge(row.view().hex(), row.naturalNeeds().getOrDefault(GRAIN, 0L), Long::sum);
+    }
+    TreeMap<HexCoord, Double> values = new TreeMap<>();
+    long skippedDailyNeedZero = 0L;
+    long skippedNoGrainAccount = 0L;
+    for (Map.Entry<HexCoord, Long> entry : dailyNeedByHex.entrySet()) {
+      long dailyNeed = entry.getValue();
+      if (dailyNeed <= 0L) {
+        skippedDailyNeedZero++;
+        continue;
+      }
+      Long grain = stockByHex.get(entry.getKey());
+      if (grain == null) {
+        skippedNoGrainAccount++;
+        continue;
+      }
+      values.put(entry.getKey(), (double) grain / (double) dailyNeed);
+    }
+    Map<String, Object> notes = new LinkedHashMap<>();
+    notes.put("skippedDailyNeedZero", skippedDailyNeedZero);
+    notes.put("skippedNoGrainAccount", skippedNoGrainAccount);
+    return doubleHeatmap(
+        state,
+        id,
+        "粮食·覆盖天数",
+        "天",
+        "派生：grainStock ÷ grainDailyNeed（仅 dailyNeed > 0 的格）；库存时点、日耗取最近一次结算日",
+        values,
+        notes);
+  }
+
+  /** F2 银货币：逐格 actor GoodsAccount.money 的 silver 余额合计（有账户的格全发，0 也是事实）。 */
+  private static Map<String, Object> moneySilverHeatmap(SimulationState state, String id) {
+    TreeMap<HexCoord, Long> values = new TreeMap<>();
+    for (GoodsAccount account : actorData(state).accounts().values()) {
+      values.merge(
+          account.key().location(),
+          account.money().getOrDefault(MoneyVocabulary.SILVER_CURRENCY, 0L),
+          Long::sum);
+    }
+    return longHeatmap(
+        state,
+        id,
+        "货币·银",
+        "毫银",
+        "逐格 actor GoodsAccount silver 余额合计（时点）",
+        values,
+        new LinkedHashMap<>());
+  }
+
+  /** 整层不可用（未知 id / 结构性缺源）：cells=[]、stats 全 null、unavailable 具名，绝不填 0。 */
+  private static Map<String, Object> unavailableHeatmap(
+      SimulationState state,
+      String id,
+      String label,
+      String unit,
+      String scope,
+      String reason,
+      Map<String, Object> notes) {
+    Map<String, Object> view = heatmapBase(state, id, label, unit, scope);
+    view.put("cells", List.of());
+    view.put("stats", emptyStats());
+    view.put("unavailable", reason);
+    view.put("notes", notes);
+    return view;
+  }
+
+  /** 热力图公共头：键序 metric,label,unit,scope,tick。 */
+  private static Map<String, Object> heatmapBase(
+      SimulationState state, String id, String label, String unit, String scope) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("metric", id);
+    view.put("label", label);
+    view.put("unit", unit);
+    view.put("scope", scope);
+    view.put("tick", state.meta().timestamp().tick());
+    return view;
+  }
+
+  /** 整数格值的最终装配：cells 已按 (q,r) 有序，值为 Long 原样发（不折 double）。 */
+  private static Map<String, Object> longHeatmap(
+      SimulationState state,
+      String id,
+      String label,
+      String unit,
+      String scope,
+      TreeMap<HexCoord, Long> values,
+      Map<String, Object> notes) {
+    List<Map<String, Object>> cells = new ArrayList<>(values.size());
+    List<Long> allValues = new ArrayList<>(values.size());
+    for (Map.Entry<HexCoord, Long> entry : values.entrySet()) {
+      cells.add(heatmapCell(entry.getKey(), entry.getValue()));
+      allValues.add(entry.getValue());
+    }
+    Map<String, Object> view = heatmapBase(state, id, label, unit, scope);
+    view.put("cells", cells);
+    view.put("stats", longStats(allValues));
+    view.put("unavailable", null);
+    view.put("notes", notes);
+    return view;
+  }
+
+  /** 派生（double）格值的最终装配：cells 已按 (q,r) 有序。 */
+  private static Map<String, Object> doubleHeatmap(
+      SimulationState state,
+      String id,
+      String label,
+      String unit,
+      String scope,
+      TreeMap<HexCoord, Double> values,
+      Map<String, Object> notes) {
+    List<Map<String, Object>> cells = new ArrayList<>(values.size());
+    List<Double> allValues = new ArrayList<>(values.size());
+    for (Map.Entry<HexCoord, Double> entry : values.entrySet()) {
+      cells.add(heatmapCell(entry.getKey(), entry.getValue()));
+      allValues.add(entry.getValue());
+    }
+    Map<String, Object> view = heatmapBase(state, id, label, unit, scope);
+    view.put("cells", cells);
+    view.put("stats", doubleStats(allValues));
+    view.put("unavailable", null);
+    view.put("notes", notes);
+    return view;
+  }
+
+  /** 一个热力格：{@code {q,r,value}}（键序固定）。 */
+  private static Map<String, Object> heatmapCell(HexCoord hex, Number value) {
+    Map<String, Object> cell = new LinkedHashMap<>();
+    cell.put("q", hex.q());
+    cell.put("r", hex.r());
+    cell.put("value", value);
+    return cell;
+  }
+
+  /** 空 stats：count=0，min/median/max = null（不填 0 冒充）。 */
+  private static Map<String, Object> emptyStats() {
+    Map<String, Object> stats = new LinkedHashMap<>();
+    stats.put("count", 0);
+    stats.put("min", null);
+    stats.put("median", null);
+    stats.put("max", null);
+    return stats;
+  }
+
+  /** 整数指标的 stats：median 为 double（偶数取两中位平均）。 */
+  private static Map<String, Object> longStats(List<Long> values) {
+    if (values.isEmpty()) {
+      return emptyStats();
+    }
+    List<Long> sorted = new ArrayList<>(values);
+    sorted.sort(Comparator.naturalOrder());
+    int size = sorted.size();
+    double median =
+        size % 2 == 1
+            ? sorted.get(size / 2).doubleValue()
+            : ((double) sorted.get(size / 2 - 1) + (double) sorted.get(size / 2)) / 2.0;
+    Map<String, Object> stats = new LinkedHashMap<>();
+    stats.put("count", size);
+    stats.put("min", sorted.get(0));
+    stats.put("median", median);
+    stats.put("max", sorted.get(size - 1));
+    return stats;
+  }
+
+  /** 派生指标的 stats（值本就是 double）。 */
+  private static Map<String, Object> doubleStats(List<Double> values) {
+    if (values.isEmpty()) {
+      return emptyStats();
+    }
+    List<Double> sorted = new ArrayList<>(values);
+    sorted.sort(Comparator.naturalOrder());
+    int size = sorted.size();
+    double median =
+        size % 2 == 1
+            ? sorted.get(size / 2)
+            : (sorted.get(size / 2 - 1) + sorted.get(size / 2)) / 2.0;
+    Map<String, Object> stats = new LinkedHashMap<>();
+    stats.put("count", size);
+    stats.put("min", sorted.get(0));
+    stats.put("median", median);
+    stats.put("max", sorted.get(size - 1));
+    return stats;
   }
 
   /**

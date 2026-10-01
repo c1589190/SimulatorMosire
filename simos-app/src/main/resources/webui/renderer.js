@@ -148,6 +148,8 @@
     var nationRegions = [];
     // ★ F1：GOV 辖区覆盖层（每项 {govId,name,hexes,rings,color}，见 setGovJurisdictions）；仅工作台、图层开启时画。
     var govJurisdictions = [];
+    // ★ F2：当前热力层（归一化副本；null = 不画。只影响绘制，不参与取数）。
+    var heatmap = null;
     // ★ F1：决策人（军队 rootUnit / GOV 单位 id 匹配 ⇒ 在标记上画金色徽标；决策人图层开关控制）。
     var decisionMakers = [];
     var selectedCity = null;
@@ -229,7 +231,7 @@
         regionNames: true,
         cities: true,
         army: true,
-        gov: true,
+        gov: false,
         govJurisdiction: false,
         decisionMakers: true,
         combats: true,
@@ -746,6 +748,81 @@
         .filter(function (item) {
           return !!item;
         });
+      scheduleRender();
+    }
+
+    /**
+     * ★ F2：装载热力层（`plan = {metric,label,unit,scope,tick,cells,scale,opacity,unavailable}`）。
+     *
+     * <p>空 plan / 无 metric / 无 cells ⇒ `heatmap = null`（清层）。否则存归一化副本：非法 `q/r/value` 格
+     * 丢弃（不画错格、不补 0）；cells 无 `color` 时用 `plan.scale.colorOf(value)` 补齐，仍无色的格丢弃；
+     * `opacity` 夹到 [0,1]（非有限 ⇒ 0.55）。装载只改本层状态并 `scheduleRender()`，不触发任何取数。
+     */
+    function setHeatmap(plan) {
+      if (!plan || typeof plan !== "object") {
+        heatmap = null;
+        scheduleRender();
+        return;
+      }
+      var metric =
+        plan.metric === null || plan.metric === undefined ? "" : String(plan.metric);
+      var cells = Array.isArray(plan.cells) ? plan.cells : null;
+      if (metric === "" || !cells || !cells.length) {
+        heatmap = null;
+        scheduleRender();
+        return;
+      }
+      var opacity =
+        typeof plan.opacity === "number" && isFinite(plan.opacity) ? plan.opacity : 0.55;
+      if (opacity < 0) {
+        opacity = 0;
+      } else if (opacity > 1) {
+        opacity = 1;
+      }
+      var colorOf =
+        plan.scale && typeof plan.scale.colorOf === "function" ? plan.scale.colorOf : null;
+      var normalized = [];
+      cells.forEach(function (cell) {
+        if (!cell) {
+          return;
+        }
+        if (
+          typeof cell.q !== "number" ||
+          typeof cell.r !== "number" ||
+          !isFinite(cell.q) ||
+          !isFinite(cell.r)
+        ) {
+          return;
+        }
+        if (typeof cell.value !== "number" || !isFinite(cell.value)) {
+          return;
+        }
+        var color =
+          typeof cell.color === "string" && cell.color !== ""
+            ? cell.color
+            : colorOf
+              ? colorOf(cell.value)
+              : null;
+        if (!color) {
+          return; // 无 color 的格跳过（不猜色、不拿黑块冒充）。
+        }
+        normalized.push({ q: cell.q, r: cell.r, value: cell.value, color: color });
+      });
+      if (!normalized.length) {
+        heatmap = null;
+        scheduleRender();
+        return;
+      }
+      heatmap = {
+        metric: metric,
+        label: plan.label === undefined ? null : plan.label,
+        unit: plan.unit === undefined ? null : plan.unit,
+        scope: plan.scope === undefined ? null : plan.scope,
+        tick: plan.tick === undefined ? null : plan.tick,
+        opacity: opacity,
+        unavailable: plan.unavailable === undefined ? null : plan.unavailable,
+        cells: normalized,
+      };
       scheduleRender();
     }
 
@@ -1497,6 +1574,32 @@
     }
 
     /**
+     * ★ F2：热力层（工作台/旧页共用同一条绘制路径，但只有宿主推了非空 plan 才有内容）。
+     *
+     * <p>逐格画满格六边形（`addHexPath`，radius = cellSize）并 `fill`；整体用 `save()/restore()` 套
+     * `globalAlpha = heatmap.opacity`，绘制结束恢复 alpha。**缺失格不画、不补 0；无 color 的格跳过**。
+     * 画面顺序由 {@link render} 固定：GOV 辖区之后、地形压暗/区域高亮/城市/单位/标签之前。
+     */
+    function drawHeatmap(targetCtx) {
+      if (!heatmap || !heatmap.cells.length) {
+        return;
+      }
+      targetCtx.save();
+      targetCtx.globalAlpha = heatmap.opacity;
+      heatmap.cells.forEach(function (cell) {
+        if (!cell.color) {
+          return;
+        }
+        var p = hexToPixel(cell.q, cell.r, cellSize);
+        targetCtx.beginPath();
+        addHexPath(targetCtx, p.x, p.y, cellSize);
+        targetCtx.fillStyle = cell.color;
+        targetCtx.fill();
+      });
+      targetCtx.restore();
+    }
+
+    /**
      * ★ U1：区域查看 / 区域编辑模式下压暗地形底图（全画布深色 scrim，屏幕空间画、不随缩放变强度）。
      *
      * <p>插入点是**地形之后、高亮之前** —— 否则区域填充会被一起压暗、或地形盖住压暗层。
@@ -1782,6 +1885,8 @@
       paintNationFills(ctx);
       // ★ F1：GOV 辖区覆盖层（国家着色之上、地形压暗/高亮之下；只画工作台，见图层开关）。
       paintGovJurisdictions(ctx);
+      // ★ F2：热力层（地形/国家/GOV 之后，地形压暗/高亮/城市/单位/标签之前；不盖住标记与标签）。
+      drawHeatmap(ctx);
       // ★ U1：区域模式先把地形压暗（屏幕空间全覆盖），再叠区域填充/边界 ⇒ 区域成为视觉主体。
       paintTerrainDim(ctx, app.getState().mode);
       paintHighlights(ctx);
@@ -2663,6 +2768,9 @@
         govJurisdictionHexCount: govJurisdictions.reduce(function (sum, item) {
           return sum + item.hexes.length;
         }, 0),
+        // ★ F2：热力层只读投影（无选中指标 ⇒ metric=null、count=0；供 worldViewDebug 同源转出）。
+        heatmapMetric: heatmap ? heatmap.metric : null,
+        heatmapCellCount: heatmap ? heatmap.cells.length : 0,
         colorByTerrain: Object.assign({}, colorByTerrain),
         fallbackColor: FALLBACK_COLOR,
         fallbackWarned: fallbackWarned,
@@ -2829,6 +2937,8 @@
       setNationRegions: setNationRegions,
       // ★ F1：GOV 辖区覆盖层（切 target / 取数失败时调用方推空数组清空）。
       setGovJurisdictions: setGovJurisdictions,
+      // ★ F2：热力层装载入口（null / 空 cells ⇒ 清层；只重绘，不取数）。
+      setHeatmap: setHeatmap,
       setDecisionMakers: setDecisionMakers,
       setSelectedCity: setSelectedCity,
       cityPositionOf: cityPositionOf,

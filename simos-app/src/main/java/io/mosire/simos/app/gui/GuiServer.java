@@ -261,6 +261,9 @@ public final class GuiServer implements AutoCloseable {
   /** ★ F1 区域汇总只读面：{@code GET /api/map/regions/summary}；未接 redaction ⇒ 带 {@code as=} fail-closed。 */
   private static final String REGION_SUMMARY_PATH = "/api/map/regions/summary";
 
+  /** ★ F2 热力图只读面：{@code GET /api/map/heatmap}；未接 redaction ⇒ 带 {@code as=} fail-closed。 */
+  private static final String HEATMAP_PATH = "/api/map/heatmap";
+
   /** ★ F1 世界经济总览只读面：{@code GET /api/economy/overview}；未接 redaction ⇒ 带 {@code as=} fail-closed。 */
   private static final String ECONOMY_OVERVIEW_PATH = "/api/economy/overview";
 
@@ -277,6 +280,8 @@ public final class GuiServer implements AutoCloseable {
           // ★ F1（2026-10-01）：城市图层 / 区域汇总 / 世界经济总览（三个只读口，视图全在 ApiViews）。
           CITIES_PATH,
           REGION_SUMMARY_PATH,
+          // ★ F2（2026-10-01）：地图热力图（紧凑聚合，视图全在 ApiViews.heatmap）。
+          HEATMAP_PATH,
           ECONOMY_OVERVIEW_PATH,
           // ★ R2a（2026-09-25）：逐格经济读数（G1 最小读口，与 simos.economy.hex 共用 ApiViews.economyHex）。
           "/api/economy/hex",
@@ -601,7 +606,16 @@ public final class GuiServer implements AutoCloseable {
               ApiViews.gameMap(state),
               ApiViews.socialData(state),
               ApiViews.unitState(state),
+              ApiViews.actorData(state),
               state.meta().timestamp()));
+    }
+    if (path.equals(HEATMAP_PATH)) {
+      // ★ F2：热力图未接 redaction ⇒ 带 as= 显式拒绝（fail-closed）；metric 缺失/空白 ⇒ 400（requiredParam）。
+      rejectAs(path, asPresent);
+      return Reply.of(
+          200,
+          ApiViews.heatmap(
+              queryService.stateAt(target(params)), requiredParam(params, "metric")));
     }
     if (path.equals("/api/map/hex")) {
       return mapHexReply(params, actor, asPresent);

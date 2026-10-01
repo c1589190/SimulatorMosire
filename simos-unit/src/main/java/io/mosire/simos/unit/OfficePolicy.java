@@ -59,15 +59,20 @@ public record OfficePolicy(
   }
 
   /**
-   * ★ <b>出厂默认政策</b>：粮 = {@link EconomyVocabulary#RATION_MILLI_PER_PERSON}、布 = {@link
-   * EconomyVocabulary#CLOTH_MILLI_PER_PERSON}（都是 util 词表里"每人每周期"的既有常量）、俸禄与退休待遇 = 0、编制上限 = 空表（不设限）。
+   * ★ <b>出厂默认政策</b>：粮 = {@link EconomyVocabulary#dailyRationMilli(long, long)} 的"1 人第 1 天"= 83
+   * 毫粮/人·tick（G12 修正：旧值直接用了 {@code RATION_MILLI_PER_PERSON=10,000}，那是"每人每 120 天"的口径，而 {@code
+   * GovDaily} 按每 tick 乘 ⇒ 120× 超支）；布 = {@link EconomyVocabulary#CLOTH_MILLI_PER_PERSON}（每人每 365
+   * 天的周期常量，由 {@code GovDaily} 除以 {@code CLOTH_CYCLE_DAYS} 后再按 tick 发）；俸禄与退休待遇 = 0、编制上限 = 空表（不设限）。
    *
    * <p>★ <b>常量来源刻意只有一处</b>：口径住在 {@code simos-util} 的 {@link EconomyVocabulary}——{@code simos-unit}
    * 已依赖 util，故军/政两边读同一份"人吃多少粮、穿多少布"，<b>不引 economy 主模块</b>（阶段 9 硬约束）。
+   *
+   * <p>★ 粮这个默认值是"每日口粮"的**整数下取整**（83 而非 83.33）：120 天累计为 9,960 毫粮，比 10,000 少 40
+   * 毫粮（0.4%）。这是本批明确接受的残差；需要精确周期守恒时由调用方显式设置政策，不由默认值承担。
    */
   public static OfficePolicy defaults() {
     return new OfficePolicy(
-        EconomyVocabulary.RATION_MILLI_PER_PERSON,
+        EconomyVocabulary.dailyRationMilli(1L, 1L),
         EconomyVocabulary.CLOTH_MILLI_PER_PERSON,
         0L,
         0L,

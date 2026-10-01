@@ -155,6 +155,12 @@
     return known ? total : null;
   }
 
+  /** ★ F2：求和读数 → 展示值；无一格有该字段 ⇒ “—”（不拿 0 冒充）。 */
+  function totalOrDash(list, pick) {
+    var total = sumNumbers(list, pick);
+    return total === null ? "—" : total;
+  }
+
   /** map.js 取数后推来的世界数据（同一 target）；右栏不因此再发请求。 */
   function setWorldData(data) {
     worldKey = targetLabel();
@@ -295,6 +301,39 @@
             return city.population;
           })
     );
+    // ★ F2：区域汇总的世界总计（逐格口径；区域重叠会重复计入，见下方 caveat；不混入 class-first 世界级池）。
+    appendRow(
+      dl,
+      "农村人口",
+      totalOrDash(regionSummaries, function (region) {
+        return region.ruralPopulation;
+      }),
+      "区域汇总逐格求和（区域重叠会重复计入）。"
+    );
+    appendRow(
+      dl,
+      "城市人口·区域",
+      totalOrDash(regionSummaries, function (region) {
+        return region.urbanPopulation;
+      }),
+      "区域汇总逐格求和（区域重叠会重复计入）；与上方城市表人口口径不同。"
+    );
+    appendRow(
+      dl,
+      "粮食库存",
+      totalOrDash(regionSummaries, function (region) {
+        return region.grainStock;
+      }),
+      "区域所含格 actor 账本位合计（时点）；区域重叠会重复计入。"
+    );
+    appendRow(
+      dl,
+      "银货币",
+      totalOrDash(regionSummaries, function (region) {
+        return region.silverMoney;
+      }),
+      "区域所含格 actor 账本位合计（时点）；区域重叠会重复计入。"
+    );
     appendRow(dl, "单位", units.length);
     appendRow(dl, "GOV", govCount);
     appendRow(dl, "决策人", makers.length);
@@ -345,6 +384,13 @@
       }
     }
     wrap.appendChild(dl);
+    // ★ F2：世界总计与下方国家卡片都是“区域逐格求和”口径；区域可重叠 ⇒ 必须写明重复计入的 caveat。
+    wrap.appendChild(
+      app.el("p", {
+        class: "muted world-overview-caveat",
+        text: "世界总计按区域逐格求和；区域重叠会重复计入。粮食/银为 actor 账本位时点读数，不含 class-first 世界级池。",
+      })
+    );
     var cards = worldModel && worldModel.nationSummaries
       ? worldModel.nationSummaries(regionSummaries, cities, units, makers)
       : [];
@@ -362,12 +408,44 @@
       appendRow(cdl, "区域", card.regionCount);
       appendRow(cdl, "城市", card.cityCount);
       appendRow(cdl, "城市人口", card.cityPopulation === null ? "—" : card.cityPopulation);
+      // ★ F2：区域汇总新增字段（逐格口径；缺字段如实显示 “—”，不拿 0 冒充）。
+      appendRow(
+        cdl,
+        "农村人口",
+        card.ruralPopulation === null ? "—" : card.ruralPopulation,
+        "该国家区域逐格求和；区域重叠会重复计入。"
+      );
+      appendRow(
+        cdl,
+        "城市人口·区域",
+        card.urbanPopulation === null ? "—" : card.urbanPopulation,
+        "该国家区域逐格求和；区域重叠会重复计入；与城市表人口口径不同。"
+      );
+      appendRow(
+        cdl,
+        "粮食库存",
+        card.grainStock === null ? "—" : card.grainStock,
+        "区域所含格 actor 账本位合计（时点）；区域重叠会重复计入。"
+      );
+      appendRow(
+        cdl,
+        "银货币",
+        card.silverMoney === null ? "—" : card.silverMoney,
+        "区域所含格 actor 账本位合计（时点）；区域重叠会重复计入。"
+      );
       appendRow(cdl, "单位", card.unitCount === null ? "—" : card.unitCount);
       appendRow(cdl, "GOV", card.govCount === null ? "—" : card.govCount);
       appendRow(cdl, "决策人", card.decisionMakerCount);
       cardNode.appendChild(cdl);
       cardsNode.appendChild(cardNode);
     });
+    // ★ F2：国家卡片口径 caveat（区域重叠会重复计入；粮食/银来自 actor 账本位，不是 class-first 世界级池）。
+    cardsNode.appendChild(
+      app.el("p", {
+        class: "muted world-overview-caveat",
+        text: "国家卡片按 meta.tag=nation:<id> 的区域逐格求和；区域重叠会重复计入。粮食/银为 actor 账本位时点读数，不混入 class-first 世界级池。",
+      })
+    );
     wrap.appendChild(cardsNode);
     mount.appendChild(wrap);
     refreshPendingCount();

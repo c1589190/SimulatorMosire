@@ -2193,3 +2193,109 @@ body.workbench-page .search-result-id {
   margin: 0;
   text-align: right;
 }
+
+/* ── F2：热力层（数据组控件 + 地图图例）────────────────────────────────
+   沿用既有深色主题变量（--panel / --panel-2 / --line / --accent / --muted / --warn），不新造主题；
+   图例是 fixed 浮层且默认 hidden ⇒ 不参与文档流，不改 F1 抽屉/三栏的响应式布局。 */
+
+body.workbench-page .layer-panel .layer-group select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px 4px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 11px;
+}
+
+body.workbench-page .layer-panel .layer-group input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+body.workbench-page .heatmap-legend {
+  position: fixed;
+  left: 12px;
+  bottom: 108px;
+  z-index: 4;
+  max-width: min(340px, calc(100vw - 24px));
+  max-height: 46vh;
+  overflow: auto;
+  padding: 8px 10px;
+  color: var(--text);
+  background: rgba(27, 32, 39, 0.92);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.38);
+  font-size: 12px;
+  pointer-events: auto;
+}
+
+body.workbench-page .heatmap-legend[hidden] {
+  display: none;
+}
+
+body.workbench-page .heatmap-legend .heatmap-legend-title {
+  margin: 0 0 2px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+body.workbench-page .heatmap-legend .heatmap-legend-meta,
+body.workbench-page .heatmap-legend .heatmap-legend-scope,
+body.workbench-page .heatmap-legend .heatmap-legend-stats,
+body.workbench-page .heatmap-legend .heatmap-legend-footnote {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+body.workbench-page .heatmap-legend .heatmap-legend-scope {
+  margin-bottom: 4px;
+}
+
+body.workbench-page .heatmap-legend .heatmap-legend-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0;
+}
+
+body.workbench-page .heatmap-legend .heatmap-legend-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+body.workbench-page .heatmap-legend .heatmap-legend-swatch {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(230, 235, 242, 0.35);
+  border-radius: 2px;
+}
+
+body.workbench-page .heatmap-legend .heatmap-legend-unavailable {
+  margin: 4px 0;
+  padding: 4px 6px;
+  color: var(--warn);
+  background: rgba(224, 179, 76, 0.08);
+  border-left: 2px solid var(--warn);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+body.workbench-page .heatmap-legend .heatmap-legend-footnote {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--line);
+}
+
+.world-overview .world-overview-caveat {
+  margin: 4px 0 0;
+  font-size: 11px;
+}

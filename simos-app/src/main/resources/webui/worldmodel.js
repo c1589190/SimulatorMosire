@@ -23,13 +23,17 @@
     "routes", // 路线
   ];
 
-  /** 缺省：绝大多数图层开，`govJurisdiction` 例外（默认关）；未知键不出现、未知值保持缺省（fail-closed）。 */
+  /**
+   * 缺省：底图/聚落/军事/事件默认开；**政府相关默认关**（`gov` / `govJurisdiction`）——
+   * 用户 2026-10-01 实测“显示国家名时具体的政府也一起显示”⇒ 政府信息只在政府图层/预设里出现。
+   * 未知键不出现、未知值保持缺省（fail-closed）。
+   */
   var DEFAULT_LAYERS = {
     nation: true,
     regionNames: true,
     cities: true,
     army: true,
-    gov: true,
+    gov: false,
     govJurisdiction: false,
     decisionMakers: true,
     combats: true,
@@ -479,7 +483,321 @@
     });
   }
 
+  // ── F2：热力图（指标词表 / 分位数色标 / 图例模型；全部纯函数）────────────
+  //
+  // ★ 与后端 `GET /api/map/heatmap` 的契约同源：id/label/unit/help 的顺序固定；API 取数层不另设白名单。
+  // ★ 未知输入一律 fail-closed：非法 method / bins 归一为分位数默认 7 档；非有限 value 不入统计、不着色。
+
+  /** 8 个热力指标的**固定顺序**词表（`index.html` 的 option 由 map.js 从本表生成，不在 HTML 里另抄一份）。 */
+  var HEATMAP_METRICS = [
+    {
+      id: "populationTotal",
+      label: "人口·总",
+      unit: "人",
+      help: "批次口径（有批次的格）；时点快照",
+    },
+    {
+      id: "populationRural",
+      label: "人口·农村",
+      unit: "人",
+      help: "批次口径（有批次的格）；时点快照",
+    },
+    {
+      id: "populationUrban",
+      label: "人口·城市",
+      unit: "人",
+      help: "批次口径（有批次的格）；时点快照",
+    },
+    {
+      id: "grainStock",
+      label: "粮食·库存",
+      unit: "毫粮",
+      help: "逐格 actor GoodsAccount 粮余额合计（时点）",
+    },
+    {
+      id: "grainDailyNeed",
+      label: "粮食·日耗",
+      unit: "毫粮/日",
+      help: "最近一次结算日 naturalNeeds；与 economyHex.grainDailyConsumption 同源",
+    },
+    {
+      id: "grainCoverageDays",
+      label: "粮食·覆盖天数",
+      unit: "天",
+      help: "派生 grainStock ÷ grainDailyNeed（仅 dailyNeed>0）",
+    },
+    {
+      id: "grainCycleUnmet",
+      label: "粮食·周期缺口",
+      unit: "毫粮",
+      help: "整层不可用：unavailable 非空字符串、cells=[]（不要填 0；UI 显示原因）",
+    },
+    {
+      id: "moneySilver",
+      label: "货币·银",
+      unit: "毫银",
+      help: "逐格 actor GoodsAccount silver 余额合计（时点）",
+    },
+  ];
+
+  /** 固定 7 色顺序调色板（低值 → 高值）。 */
+  var HEATMAP_PALETTE = [
+    "#1f2c56",
+    "#28527a",
+    "#2f8f9d",
+    "#5bbf7a",
+    "#b7d84b",
+    "#f2c14e",
+    "#e4572e",
+  ];
+
+  var HEATMAP_DEFAULT_BINS = 7;
+
+  /** 数值 → 图例短文本：整数原样；小数保留 4 位（去掉尾零）；非有限 ⇒ “—”。 */
+  function heatmapNumberText(value) {
+    if (typeof value !== "number" || !isFinite(value)) {
+      return "—";
+    }
+    if (Number.isInteger(value)) {
+      return String(value);
+    }
+    return String(Math.round(value * 10000) / 10000);
+  }
+
+  /** 任意 notes 值 → 短文本（数字走 heatmapNumberText，其余 String；null/undefined ⇒ “—”）。 */
+  function heatmapValueText(value) {
+    if (value === null || value === undefined) {
+      return "—";
+    }
+    if (typeof value === "number") {
+      return heatmapNumberText(value);
+    }
+    return String(value);
+  }
+
+  /** notes（对象 / 数组 / 标量）→ 确定性的单行文本；无内容 ⇒ 空串。 */
+  function heatmapNotesText(notes) {
+    if (notes === null || notes === undefined) {
+      return "";
+    }
+    if (Array.isArray(notes)) {
+      return notes.map(heatmapValueText).join("；");
+    }
+    if (typeof notes === "object") {
+      var keys = Object.keys(notes);
+      if (!keys.length) {
+        return "";
+      }
+      return keys
+        .map(function (key) {
+          return key + "=" + heatmapValueText(notes[key]);
+        })
+        .join("；");
+    }
+    return heatmapValueText(notes);
+  }
+
+  /**
+   * 归一化色标选项（fail-closed，不抛）：`method` 只认 `quantile`、`bins` 只认 1..7 的整数；
+   * 未知 method / 非法 bins 一律回落分位数默认 7 档。返回 `{method,bins}`。
+   */
+  function normalizeHeatmapOptions(options) {
+    var opts = options && typeof options === "object" ? options : {};
+    var methodOk = opts.method === undefined || opts.method === "quantile";
+    var binsOk =
+      typeof opts.bins === "number" &&
+      isFinite(opts.bins) &&
+      Math.floor(opts.bins) === opts.bins &&
+      opts.bins >= 1 &&
+      opts.bins <= HEATMAP_PALETTE.length;
+    if (!methodOk || !binsOk) {
+      return { method: "quantile", bins: HEATMAP_DEFAULT_BINS };
+    }
+    return { method: "quantile", bins: opts.bins };
+  }
+
+  /** 只取有限数值 value（`cells[].value`）；非有限 / 非数值一律不计入统计。 */
+  function heatmapFiniteValues(cells) {
+    var values = [];
+    (Array.isArray(cells) ? cells : []).forEach(function (cell) {
+      if (!cell) {
+        return;
+      }
+      var value = cell.value;
+      if (typeof value === "number" && isFinite(value)) {
+        values.push(value);
+      }
+    });
+    return values;
+  }
+
+  /** 统计：count/min/median/max；空输入 ⇒ min/median/max 为 null（不拿 0 冒充）。 */
+  function heatmapStats(values) {
+    var count = values.length;
+    if (!count) {
+      return { count: 0, min: null, median: null, max: null };
+    }
+    var sorted = values.slice().sort(function (a, b) {
+      return a - b;
+    });
+    var median =
+      count % 2 === 1
+        ? sorted[(count - 1) / 2]
+        : (sorted[count / 2 - 1] + sorted[count / 2]) / 2;
+    return { count: count, min: sorted[0], median: median, max: sorted[count - 1] };
+  }
+
+  /**
+   * 分位数分档（确定性）：先对排序后的有限值按**相同值**合并成 run，再把 run 列表均分成
+   * `min(bins, run 数)` 组 ⇒ 同值永不裂成多档、也不编造空档。档边界用真实值（min/max 是数值）；
+   * 颜色沿固定调色板按序铺开（最少 2 档时首档/末档一定命中调色板两端）。
+   */
+  function heatmapQuantileBins(values, binCount) {
+    var sorted = values.slice().sort(function (a, b) {
+      return a - b;
+    });
+    if (!sorted.length) {
+      return [];
+    }
+    var runs = [];
+    sorted.forEach(function (value) {
+      var last = runs.length ? runs[runs.length - 1] : null;
+      if (last && last.max === value) {
+        last.count += 1;
+      } else {
+        runs.push({ min: value, max: value, count: 1 });
+      }
+    });
+    var groupCount = Math.min(binCount, runs.length);
+    var bins = [];
+    var start = 0;
+    for (var i = 0; i < groupCount; i += 1) {
+      var end = i === groupCount - 1
+        ? runs.length
+        : Math.round(((i + 1) * runs.length) / groupCount);
+      var bin = { min: runs[start].min, max: runs[end - 1].max, color: null, count: 0 };
+      for (var j = start; j < end; j += 1) {
+        bin.count += runs[j].count;
+      }
+      var colorIndex = groupCount <= 1
+        ? 0
+        : Math.round((i * (HEATMAP_PALETTE.length - 1)) / (groupCount - 1));
+      bin.color = HEATMAP_PALETTE[colorIndex];
+      bins.push(bin);
+      start = end;
+    }
+    return bins;
+  }
+
+  /**
+   * 热力图色标（纯函数）：返回 `{method,bins,colorOf,stats}`。
+   *
+   * <p>`bins` 每项 `{min,max,color,count}`（按值升序、同值不裂档、不编造空档，count 之和 == 参与统计格数）；
+   * `colorOf(value)` 对非有限值 / 空 bins 恒 `null`，低于首档取首色、高于末档取末色，其余命中所在档；
+   * 同一输入两次调用结果深比较一致。
+   */
+  function heatmapColorScale(cells, options) {
+    var normalized = normalizeHeatmapOptions(options);
+    var values = heatmapFiniteValues(cells);
+    var bins = values.length ? heatmapQuantileBins(values, normalized.bins) : [];
+    function colorOf(value) {
+      if (typeof value !== "number" || !isFinite(value) || !bins.length) {
+        return null;
+      }
+      for (var i = 0; i < bins.length; i += 1) {
+        if (value <= bins[i].max) {
+          return bins[i].color;
+        }
+      }
+      return bins[bins.length - 1].color;
+    }
+    return {
+      method: normalized.method,
+      bins: bins,
+      colorOf: colorOf,
+      stats: heatmapStats(values),
+    };
+  }
+
+  /** 由色标计划取色（第 4 项导出；`plan.colorOf` 缺席 ⇒ null，不猜颜色）。 */
+  function heatmapColorFor(plan, value) {
+    return plan && typeof plan.colorOf === "function" ? plan.colorOf(value) : null;
+  }
+
+  /** 档位文本：单值 ⇒ “123”；区间 ⇒ “1–10”。 */
+  function heatmapRangeLabel(min, max) {
+    var minText = heatmapNumberText(min);
+    var maxText = heatmapNumberText(max);
+    return minText === maxText ? minText : minText + "–" + maxText;
+  }
+
+  /**
+   * 图例模型（纯函数、不碰 DOM）：返回 `{title,unit,scope,lines,unavailable,footnote}`。
+   *
+   * <p>`lines` 来自 `scalePlan.bins`（label = 数值区间/单值，count 随行）；`footnote` 含 count/min/median/max、
+   * notes 文本、`unavailable` 原因（在场时）与“缺失数据格不着色、不填 0”的 caveat。空 payload / 空计划也确定性返回，不抛。
+   */
+  function heatmapLegend(payload, scalePlan) {
+    var p = payload && typeof payload === "object" ? payload : {};
+    var plan = scalePlan && typeof scalePlan === "object" ? scalePlan : {};
+    var stats = plan.stats && typeof plan.stats === "object" ? plan.stats : null;
+    var count = stats && typeof stats.count === "number" ? stats.count : 0;
+    var lines = (Array.isArray(plan.bins) ? plan.bins : []).map(function (bin) {
+      return {
+        color: bin.color,
+        label: heatmapRangeLabel(bin.min, bin.max),
+        count: typeof bin.count === "number" ? bin.count : 0,
+      };
+    });
+    var parts = [
+      "统计：count=" +
+        count +
+        "，min=" +
+        heatmapNumberText(stats ? stats.min : null) +
+        "，median=" +
+        heatmapNumberText(stats ? stats.median : null) +
+        "，max=" +
+        heatmapNumberText(stats ? stats.max : null),
+    ];
+    var notesText = heatmapNotesText(p.notes);
+    if (notesText) {
+      parts.push("notes：" + notesText);
+    }
+    var unavailable = p.unavailable === undefined ? null : p.unavailable;
+    if (unavailable !== null && unavailable !== undefined && String(unavailable) !== "") {
+      parts.push("不可用：" + unavailable);
+    }
+    parts.push("缺失数据格不着色、不填 0。");
+    return {
+      title: String(p.label || p.metric || "热力图"),
+      unit: p.unit === undefined ? null : p.unit,
+      scope: p.scope === undefined ? null : p.scope,
+      lines: lines,
+      unavailable: unavailable,
+      footnote: parts.join("；"),
+    };
+  }
+
   // ── 国家汇总（世界总览的三国卡片）────────────────────────────────────
+
+  function sumGoodsTotal(rows) {
+    var totals = {};
+    var known = false;
+    rows.forEach(function (row) {
+      var goods = row && row.goodsTotal;
+      if (!goods || typeof goods !== "object" || Array.isArray(goods)) {
+        return;
+      }
+      Object.keys(goods).forEach(function (id) {
+        var value = goods[id];
+        if (typeof value === "number" && isFinite(value)) {
+          totals[id] = (totals[id] || 0) + value;
+          known = true;
+        }
+      });
+    });
+    return known ? totals : null;
+  }
 
   function sumKnown(rows, pick) {
     var total = 0;
@@ -501,8 +819,9 @@
    * region 补城市计数"的降级路径（有汇总时以汇总为准，不重复计）。人口/单位允许多区域重叠重复计入 —— 与后端
    * `population` 的"区域格集求和"口径一致，卡片 hint 会写明。
    *
-   * @return `[{id,name,hexCount,population,cityCount,cityPopulation,unitCount,govCount,regionCount,
-   *     decisionMakerCount}…]`，按 id 字典序；无国家区域 ⇒ 空数组。
+   * @return `[{id,name,hexCount,population,ruralPopulation,urbanPopulation,cityCount,cityPopulation,
+   *     unitCount,govCount,grainStock,silverMoney,goodsTotal,regionCount,decisionMakerCount}…]`，按 id 字典序；
+   *     无国家区域 ⇒ 空数组。新增字段缺数据 ⇒ `null`（不拿 0 冒充）；`goodsTotal` 为“商品 id → 合计”。
    */
   function nationSummaries(regions, cities, units, makers) {
     var rows = Array.isArray(regions) ? regions : [];
@@ -566,6 +885,13 @@
         population: sumKnown(nationRegions, function (region) {
           return region.population;
         }),
+        // ★ F2：区域汇总新增的逐格口径字段（同一 meta.tag=nation:<id> 的区域求和；缺 ⇒ null）。
+        ruralPopulation: sumKnown(nationRegions, function (region) {
+          return region.ruralPopulation;
+        }),
+        urbanPopulation: sumKnown(nationRegions, function (region) {
+          return region.urbanPopulation;
+        }),
         cityCount: cityCount,
         cityPopulation: sumKnown(nationRegions, function (region) {
           return region.cityPopulation;
@@ -576,6 +902,13 @@
         govCount: sumKnown(nationRegions, function (region) {
           return region.govCount;
         }),
+        grainStock: sumKnown(nationRegions, function (region) {
+          return region.grainStock;
+        }),
+        silverMoney: sumKnown(nationRegions, function (region) {
+          return region.silverMoney;
+        }),
+        goodsTotal: sumGoodsTotal(nationRegions),
         regionCount: nationRegions.length,
         decisionMakerCount: makerCount[id] || 0,
       };
@@ -602,5 +935,11 @@
     searchIndex: searchIndex,
     searchMatches: searchMatches,
     nationSummaries: nationSummaries,
+    // ★ F2：热力图词表 / 色标 / 图例 / 取色（纯函数；API 层不另设指标白名单）。
+    HEATMAP_METRICS: HEATMAP_METRICS,
+    HEATMAP_PALETTE: HEATMAP_PALETTE,
+    heatmapColorScale: heatmapColorScale,
+    heatmapLegend: heatmapLegend,
+    heatmapColorFor: heatmapColorFor,
   };
 })();
