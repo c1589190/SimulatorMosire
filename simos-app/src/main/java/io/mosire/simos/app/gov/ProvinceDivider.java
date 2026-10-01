@@ -37,8 +37,8 @@ import java.util.TreeSet;
  *
  * <ol>
  *   <li>子集 {@code |S| <= max} ⇒ 直接成省（大小不在 {@code [min, max]} 内时带 warning）；
- *   <li>否则按固定轴序 {@code q → r → s=q+r → d=q-r} 找第一个「可切分轴」：把子集按 {@code (投影值, q, r)} 排序后枚举切点
- *       k（优先两侧大小差最小），第一个两侧都非空且各自六邻接连通的 k 即选中； 某轴枚举完仍无可切点 ⇒ 试下一轴；
+ *   <li>否则按投影跨度降序（并列按枚举序 {@code q → r → s=q+r → d=q-r}）找第一个「可切分轴」：把子集按 {@code (投影值, q, r)}
+ *       排序后枚举切点 k（优先两侧大小差最小），第一个两侧都非空且各自六邻接连通的 k 即选中； 某轴枚举完仍无可切点 ⇒ 试下一轴；
  *   <li>若选中的切分产生 {@code < min/2} 的碎片（即 {@code 2*side < min}），整个子集**保持单省**并加 warning （不再递归、也不回退
  *       BFS）；
  *   <li>四个轴都切不了（极怪形状 / 不连通）⇒ 确定性 BFS 区域生长：每次取剩余格自然序最小者为种子，沿六邻接 在剩余集里长到容量 {@code max} 为新省，并加
@@ -387,9 +387,12 @@ public final class ProvinceDivider {
     return fallback;
   }
 
-  /** 选轴与切点：固定轴序下第一个「两侧非空且各自连通」的切点；碎片切分立即返回 fragment。 */
+  /**
+   * 选轴与切点：轴按当前 {@code cells} 的投影跨度降序（并列按 {@link Axis} 枚举序 q→r→s→d）尝试；每个轴内取第一条
+   * 「两侧非空且各自连通」的切点；碎片切分立即返回 fragment。
+   */
   private static CutResult chooseCut(List<HexCoord> cells, Params params) {
-    for (Axis axis : Axis.values()) {
+    for (Axis axis : axesBySpan(cells)) {
       List<HexCoord> ordered = new ArrayList<>(cells);
       ordered.sort(axis.order());
       int n = ordered.size();
@@ -412,6 +415,28 @@ public final class ProvinceDivider {
       }
     }
     return new CutResult(null, false);
+  }
+
+  /** 按当前 {@code cells} 的投影跨度降序排列四轴；跨度相同按 {@link Axis} 枚举序 q→r→s→d（确定性的全序）。 */
+  private static List<Axis> axesBySpan(List<HexCoord> cells) {
+    List<Axis> axes = new ArrayList<>(List.of(Axis.values()));
+    axes.sort(
+        Comparator.<Axis>comparingLong(axis -> spanOf(cells, axis))
+            .reversed()
+            .thenComparingInt(axis -> axis.ordinal()));
+    return axes;
+  }
+
+  /** 子集在给定轴上的投影跨度 {@code max(project) - min(project)}；调用方保证 {@code cells} 非空。 */
+  private static long spanOf(List<HexCoord> cells, Axis axis) {
+    int min = Integer.MAX_VALUE;
+    int max = Integer.MIN_VALUE;
+    for (HexCoord hex : cells) {
+      int value = axis.project(hex);
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    }
+    return (long) max - (long) min;
   }
 
   /** 确定性 BFS 区域生长回退：每次取剩余格自然序最小者为种子，沿六邻接长到容量 max。 */
