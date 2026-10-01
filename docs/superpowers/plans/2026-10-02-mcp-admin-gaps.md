@@ -101,3 +101,16 @@
   - 新首都 `(35,-60)` 只有现有的 **6,853** 城镇人口；旧都的 **13,756** 城镇人口搬不过去（缺批次读口与 `MovePopulationLots`）。
   - 没有原子工具；中途失败会留下 hex/城市/GOV/国库不同步，需要人工补。
   - 若要求“旧都人口随迁”，当前命令面做不到，只能先记录缺口。
+
+### 3. Seed 生成模式无法指定首都/城市 hex
+- `simos.region.seed` 的 `capital` 参数只有 `{name, targetPopulation?}`：**没有 `hex` / `at`**。首都锚点 `CapitalAnchor` 不带坐标，生成器自行选城址；本工具不发明 hex。
+- 实测后果：
+  - 大蜀北谷占领区 seed 出来的「北谷城」在 `(38,-47)`，而档案北谷都城是 `(36,-53)`；
+  - 西陵 seed 出来的「西陵城」在 `(33,-55)`，而用户指定首都 `(35,-60)`；
+  - 西陵还有一座生成城市「铁门坎」在 `(31,-60)`，与档案铁门坎 `(34,-55)` 同名冲突。
+- `simos.region.seed` 只有生成模式，没有 explicit 逐格/逐城 entries 参数。
+- 缺：
+  - `capitalHex` / `anchorHex` 参数（或 explicit city entries）；
+  - `social.MoveCity` / `social.DeleteCity` / 批量改名；
+  - 城市人口可迁移（`social.MovePopulationLots`）或建城时指定人口（`social.CreateCity` 目前明确拒收 `population`，人口只能由 `social.SeedGroups` 派生）。
+- 因此“种子生成后把首都/城市挪到档案坐标”目前只能多命令 workaround，且人口搬不动。

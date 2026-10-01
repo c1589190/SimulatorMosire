@@ -76,3 +76,29 @@
   - ArmyScope 军队决策人只有“当前位置 + 视野半径”圈（默认 R=1 ⇒ 7 格），不适合跨战区外交回应。
 - [ ] **DM 出令审批链**
   - 决策人 `sd.IssueDirective` 走审批时可能停在 pending；需要审批 watcher/GM 批准。批处理 `simos.sd.run-decision-makers` 只跑 LLM 轮，不代批。
+
+### 补充：本次调查中发现的其他通用缺口
+- [ ] **GM 没有通用原子批提交**
+  - `simos.command.submit` 一次只提交一条命令；只有特定组合工具（`simos.region.seed` / `clearData` / `clearStructures` / `raiseUnit` / `absorbUnit` / `province.apply` / `gov.createOffice` 等）能同批一 revision。
+  - 因此“兵力转移 + 守备拆出”“迁都 + 搬账 + 改城籍”这类组合只能多 revision 分步做，中途失败会留下半成品。缺 `simos.command.submitBatch`（调用方给命令数组，同 base revision 原子落一条）。
+- [ ] **social 城市 MCP 读口缺失**
+  - `simos.map.overview.cities` 为空（map 模块不存 social 城市）；social 城市目前只能通过 GUI `GET /api/social/cities`（只读）查看，MCP 工具目录没有 `simos.social.cities`。
+  - 写侧却需要城市 id 来 `social.UpdateCity`；纯 MCP 流程拿不到城市清单。
+- [ ] **sd.Nation / sd.Army MCP 读口缺失**
+  - `simos.state.resolve` 对 `sd:nation/...` 未返回候选；`simos.sd.decision-makers` 只列 DM。
+  - 建 Nation 归属 DM 前无法用 MCP 读确认 Nation 是否存在/名称/主区域；本次只能读 checkpoint/DB（只读）验证。缺 `simos.sd.nations` / `simos.sd.armies` 读工具。
+- [ ] **seed 生成模式不能指定城市 hex / 明细**
+  - `simos.region.seed` 只有生成模式（`totalPopulation + seed`），没有 explicit 逐格/逐城 entries；`capital` 只有 `{name,targetPopulation?}`，没有 `capitalHex` / `at`。
+  - 所以 北谷城 (38,-47)、西陵城 (33,-55) 与档案坐标不一致时，无法用一条 seed 落对；补 `social.MoveCity` / `capitalHex` / explicit seed 模式才能解决。
+- [ ] **城市创建不能带目标人口**
+  - `social.CreateCity` 明确拒收 `population`；城镇人口是 `PopulationGroup` 派生量，需要 `social.SeedGroups`，且目标格必须有既有农村人口序列。
+  - 因此“在指定 hex 新建有人口的城市”没有单命令；要么 seed 生成后改名，要么手工建城 + 造批次。
+- [ ] **无军队视野半径命令**
+  - `ArmyScope` 用 unit 的 `visionRadius`（默认 R=1 ⇒ 7 格）；没有 `unit.SetVisionRadius` 命令。军队决策人无法获得跨战区视野，进一步限制“中央政府/军队紧急回应”。
+- [ ] **装备无目录/语义**
+  - `unit.equipment` 是自由 `Map<String,Integer>`（经 `unit.SetStrength` 改），没有装备目录、没有炮/攻城器械/甲胄语义校验；“轰城”所需的炮队/攻具无法作为有规则对象表达。
+- [ ] **无事件/通知模型**
+  - `sd.PutInfo` 是静态记录；DM 运行轮只读世界状态，没有“紧急事件”结构化通知/优先级队列。
+  - n→n+1 的“紧急回应”只能靠 GM 手动触发 `run-decision-makers`，并把事件写进世界可见信息。
+- [ ] **无多边谈判/联动裁决**
+  - DM 各自跑轮、各自出令，没有“多方同时谈判 / 条件反射 / 联动结果”的原子协议；外交交互只能逐方出令 + GM 裁决。
