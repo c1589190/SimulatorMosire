@@ -325,3 +325,14 @@
   - `GET /api/map/hex` 增 `date` + `season`（含 `phase/name/zone/zoneSource`；可带 `solarTerm`）；
   - 仍**不落 revision、不加状态组件**；历史 revision 的点选按其 tick 算日期/季节。
 - **边界**：本批不做“按季节给地图上色/图层”；战斗事件浮层（D-017）不动。
+
+### D-018~D-020 关联实现（2026-10-02 年份系统 C1~C7 完成）
+
+- **提交链**：设计冻结 `3b89d527`；C1 `caab6276`、C2 `c2ea7a85`、C3 `134b7e38`、C4a `53bf89ee`、C4b `9172bfd0`、
+  C5a `3e380d15`、C5b `73fdfb02`、C6a `4d1928d0`、C6b `b1151dcb`；C7 生产修复 `ddcc9f17`（A+B）、`d7e5ef17`
+  （core SpotBugs）、`0e467c88`（app SpotBugs）；C7 测试 `18c51f04`（后端）、`7934f4e3`（前端）；待调查记录 `fcac74ab`。
+- **关账真数**（`tools/mvn-lock.sh clean verify`，BUILD SUCCESS 15/15）：**14 个模块 / 3006 条 / 0 失败 / 0 错误 / 5 跳过**
+  （app 812、map 379、unit 458、sd 226、core 223、util 211、social 194、economy 146、actor 125、army 91、gov 62、
+  economy-api 38、calendar 33、actor-api 8）；前端门禁 **402/402**。
+- **实测锚点**：儒略 `1445-01-01 = JDN 2248845`；`tick 120 = 1445-05-01`；默认季界（24 节气）= 夏 6/95；
+  GM 配 `northMax=-40/southMin=40` 后 `r=-100` 夏 / `r=+100` 冬 / `r=0` 雨季 6/126；2024 立春边界日 `2460345`（02-04）。

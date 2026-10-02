@@ -163,3 +163,16 @@
    含前端门禁与两宿主页。
 2. `./mvnw clean verify` 全绿；提交信息中文，写清改了什么/为什么/实际数字/未验部分。
 3. AGENTS §〇 模块表、D-018/补裁/D-019/D-020 的「关联实现」回填提交号；默认算法 `CalendarDefaults` 与设计稿 §九 对齐。
+
+---
+
+## 关账记录（2026-10-02，年份系统）
+
+- C1~C6 生产代码全部落地（提交见架构原稿 **D-018~D-020 关联实现**）；C4 按可独立编译层拆 **C4a 衣着 / C4b 年龄+育龄**，
+  C7 按层拆 **C7a 后端测试 / C7b 前端测试** + 控制器全仓 `clean verify`。
+- 测试真数：**3006/0/0/5 skip**（app 812、calendar 33…），前端门禁 **402/402**；详见 `AGENTS.md` §七新增真数行。
+- C7 发现并已修：决策人白名单漏 `simos.calendar.info`、`configure` 静默忽略参数、core `Timeline` EI_EXPOSE_REP2、
+  app 7 条 SpotBugs（CalendarService 私有锁 + 删多余抑制）。
+- 未做/留待：`INV-2026-10-02-02/03`（participant day/tick 混用、EconomySeeder 非零 anchor）；open-bugs 的 C/D/
+  agentlib-null 边界；本批不接农业季节结算（只给 `SeasonState` 钩子）；`EconomySeeder.GENESIS_CLOCK` 未接
+  `CalendarService`；MCP `simos.map.hex` 未加 date/season（GUI 已加）。

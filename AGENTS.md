@@ -65,7 +65,7 @@ app（组合根）依赖全部领域模块 + core + agentlib + MCP —— **唯�
 | `simos-economy-api` | **actor-api** + util + map（util 与 jackson 实际**零 import**：前者是死依赖；★ map：**2026-09-27 回代码更正**——不是"只有 `LotChange` 一处"，实测 **4 个文件**用 `HexCoord`：`CohortKey` / `HouseholdActors` / `Transfer` / `LotChange`） | 只放**经济切片共用的稳定契约**（各类稳定 ID / `CommodityId`）；无 Snapshot、无存储、无公式。★ `ActorRef` / `ActorKind` **已不在本模块**（上移到更底层的 `simos-actor-api`，本模块只**引用**它们——`LaborAllocation.actor`）。禁一切领域/编排模块 |
 | `simos-economy` | util + economy-api + **map** + **actor-api** | 聚合式经济切片（产业 / 阶层行 / 债务 / 流水）。禁 social/unit/sd/core/app/agentlib/**ledger**（切片间互不依赖）。★ **2026-09-27 回 pom 更正**：本行原写"util + economy-api"——**漏了 map 与 actor-api**；实测 `simos-economy/pom.xml:34-37` 显式声明 `simos-map`（H4 起市场表键 = `HexCoord`，`pom` 自述见 `:19-21`）、`main` 里有 **9 文件 / 11 处** `import io.mosire.simos.map.hex.HexCoord`。★ 另记一句自相矛盾：同 pom `:77` 的 ban `<message>` 仍写"economy 只依赖 economy-api/util"（**文案陈旧，不是禁令**；事实以依赖块为准） |
 | ~~`simos-ledger`~~ | —— | ★★ **已于 2026-09-27 退役**（裁定 D2-A）：它零外部引用、无 handler、无人依赖；`Transfer` 的**形状**（不是它的 `ActorRef` 主体类型）已搬进 `simos-economy-api` 的 `transfer` 包。原模块连同 `Account`/`Claim`/三个测试一并删除；`economy-api` 的 ID 契约（`TransferId`/`ClaimId`/`AccountId`…）**保留**。★ 全仓对它的引用现在只剩历史叙述（设计文档与若干类注的留痕） |
-| `simos-app`（组合根） | core + map + social + unit + sd + economy + agentlib + mcp-core + mcp-json-jackson2 + jackson + 日志实现 | **不设 enforcer**：按 `/map` `/social` `/unit` 路由 ⇒ 天然认识各模块。`Shell`/`ShellConfig`/`ShellMain`、`gui/`(5711)、`query/`、`tools/`、`binding/`、`demo/`。★ 它**用了** `util`（56 个 main 文件）与 `economy-api`（2 个）却**未声明**，靠传递依赖（2026-09-26 查实；同款情形在 `simos-core/pom.xml:33-36` 曾被定性为缺陷并修过——**"依赖传递不是契约"**） |
+| `simos-app`（组合根） | core + map + social + unit + sd + economy + **calendar** + agentlib + mcp-core + mcp-json-jackson2 + jackson + 日志实现 | **不设 enforcer**：按 `/map` `/social` `/unit` 路由 ⇒ 天然认识各模块。`Shell`/`ShellConfig`/`ShellMain`、`gui/`(5711)、`query/`、`tools/`、`binding/`、`demo/`。★ 2026-10-02 年份系统起 `calendar` **显式声明**（C4a：`CalendarClock`/`CalendarService`；不靠传递依赖）。★ 它**用了** `util`（56 个 main 文件）与 `economy-api`（2 个）却**未声明**，靠传递依赖（2026-09-26 查实；同款情形在 `simos-core/pom.xml:33-36` 曾被定性为缺陷并修过——**"依赖传递不是契约"**） |
 
 - 上表的边界**由 `maven-enforcer-plugin` 的 `bannedDependencies` 在构建期强制**——越界 = 构建失败，不是 code review 的事。
   ★ **这份强制长期是不完整的**：`util/map/social/unit` 的 ban 列表停留在 **M0（2026-09-16，当时全仓只有 5 个模块）**，
@@ -337,12 +337,12 @@ app（组合根）依赖全部领域模块 + core + agentlib + MCP —— **唯�
 3. **可变绑定跨文件必须走 getter**（`active`、`regionNamesEnabled`）；取快照会恒为初始值。
 4. 两个宿主页（`map.html` 旧页 / `index.html` 工作台）**都要同步**；旧页也加载 `map*.js` 与 `renderer.js`。
 5. 前端门禁下界**两处同值、改一处必须改两处**：`simos-app/src/test/js/run-gate.cjs` 的 `MIN_TESTS` 与
-   `gate-contract.test.cjs` 的 `MIN_ASSERTIONS`（当前 **275**；新增 `.test.cjs` 文件还要进 `REQUIRED_FILES`）。
+   `gate-contract.test.cjs` 的 `MIN_ASSERTIONS`（当前 **402**，2026-10-02 年份系统 C7b 后；新增 `.test.cjs` 文件还要进 `REQUIRED_FILES`）。
 
 ## 七、门禁与关账的常用命令
 
 ```bash
-node simos-app/src/test/js/run-gate.cjs          # 前端门禁（下界见 run-gate.cjs，当前 275）
+node simos-app/src/test/js/run-gate.cjs          # 前端门禁（下界见 run-gate.cjs，当前 402）
 ./mvnw test -pl simos-app -am                    # 全量测试（含前端门禁那一步；不动 jar）
 ./mvnw -q -Dspotless.check.skip=true -DskipTests package 2>/dev/null   # 见 §二「产物」——本仓无 shade 开关
 ./mvnw clean verify                              # ★ 关账：Spotless+Checkstyle+SpotBugs+Surefire+前端门禁
@@ -352,7 +352,11 @@ node simos-app/src/test/js/run-gate.cjs          # 前端门禁（下界见 run-
 ★★ **真数（2026-09-27，M1.0+M1.1 之后，全仓 `clean verify` 后逐模块清点 surefire 报告）**：
 **11 个模块 / 2483 条 / 0 失败 / 0 错误**（app 685、map 379、unit 305、core 215、util 201、sd 188、social 188、
 economy 171、actor 105、economy-api 38、actor-api 8），前端门禁 **297/297**。
-★ 历史：H6 收口轮 2460 → M0 批 2467 → **M1.0+M1.1 后 2483**（util +2、economy-api +12、actor +1、app +1）。**以本行为准**。
+★ 历史：H6 收口轮 2460 → M0 批 2467 → **M1.0+M1.1 后 2483**（util +2、economy-api +12、actor +1、app +1）。**以本行为准**（★ 已被下一行 2026-10-02 真数取代）。
+★★ **真数（2026-10-02，年份系统 C1~C7 之后，全仓 `clean verify` 后逐模块清点 surefire 报告）**：
+**14 个模块 / 3006 条 / 0 失败 / 0 错误 / 5 跳过**（app 812、map 379、unit 458、sd 226、core 223、util 211、
+social 194、economy 146、actor 125、army 91、gov 62、economy-api 38、calendar 33、actor-api 8），前端门禁
+**402/402**；5 条跳过为既有 `RealLlm*` 用例。**后续以本行为准**（旧行留作历史）。
 ★ 报"测试数"之前**先 `rm -rf */target/surefire-reports`**（否则读到两轮的并集，见 §三.1）；
 ★ `simos-app/target/surefire-reports/` **可能整个目录不存在** —— 那说明 app 侧这一轮**没跑到 test 阶段**
 （编译或前置模块失败、或被中断），**不能读成"app 没有测试"**，更不能拿上游 10 个模块的绿当 app 的绿。
@@ -432,8 +436,9 @@ tools/run-shaded.sh simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar \
 
 ### 8.3 MCP 口与审批链（2026-09-24 起）
 
-- **MCP 口 = GM 组**（用户裁定："MCP 和 GM Agent 处于同一权限级，想改什么改什么"），当前 **106 条工具**
-  （2026-10-01 实测：读 26 + 窄写 53 + 通用/组合写 27；窄写 = 19 sd + 7 map + 26 unit + 1 actor；组合写含 P5 的
+- **MCP 口 = GM 组**（用户裁定："MCP 和 GM Agent 处于同一权限级，想改什么改什么"），当前 **126 条工具**
+  （2026-10-02 年份系统 C5b 后实测：读 32 + 窄写 60 + 通用/组合写 34；GM 桶 126、决策人桶 27；年份系统新增读
+  `simos.calendar.info` 与 GM 写 `simos.calendar.configure`；窄写/组合写名单以 `SimosToolsTest` 为准；组合写含 P5 的
   `simos.unit.spawnArmy`、army 主子改派补丁的 `simos.army.assignGov`、P1a1 的 `simos.region.seed`、P1b1 的
   `simos.region.clearData`、P1b2 的 `simos.region.clearStructures`、P3 落盘的 `simos.province.apply`、P7a 的
   `simos.sd.run-decision-makers` 与 P7b 的 `simos.gm.approve`；读工具含 P3 的
@@ -445,9 +450,10 @@ tools/run-shaded.sh simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar \
   ★ 两张面的 caller 桶都是 `DEFAULT` ⇒ **从请求字段上分不开**，只能按"用哪条 authorizer"分。
   ★ `scope=session` 会被 AgentLib 收窄成 `once`（`DEFAULT` 桶非 `sessionGrantable`）。
 - 读工具默认**四桶共享**；只给 GM 的那些在类上标 `app.tools.GmOnlyRead`
-  （2026-10-01 实测 11 条：`simos.map.path`、`simos.map.block`、`simos.sd.decision-makers`、
-  `simos.sd.decision-maker`、`simos.sd.verdicts`、`simos.economy.ownership`、`simos.gm.tool-usage`、
-  `simos.llm.providers`、`simos.province.divide`、`simos.gm.approvals`、`simos.sd.directives`）。
+  （2026-10-02 实测 12 条：`simos.map.path`、`simos.map.block`、`simos.map.overlaps`、
+  `simos.sd.decision-makers`、`simos.sd.decision-maker`、`simos.sd.directives`、`simos.sd.verdicts`、
+  `simos.economy.ownership`、`simos.gm.tool-usage`、`simos.gm.approvals`、`simos.llm.providers`、
+  `simos.province.divide`）。
 - ★ **GUI 与 MCP 读工具共用同一份视图**（`app/gui/ApiViews` 是公开的视图层）——别再各写一份
   （那正是"同一资源的两个形状"的由来，见 `.superpowers/sdd/2026-09-22-tool-surface/m4-inventory.md` §二-6）。
 - ★★ **追加（2026-09-27，M0.3）：`ApiViews.economyHex` 里多了一栏 `grainDiagnosis`**（逐格粮食诊断）。
