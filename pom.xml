@@ -16,6 +16,7 @@
   <modules>
     <module>simos-util</module>
     <module>simos-map</module>
+    <module>simos-calendar</module>
     <module>simos-social</module>
     <module>simos-unit</module>
     <module>simos-core</module>

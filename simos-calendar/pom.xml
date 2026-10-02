@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.mosire</groupId>
+    <artifactId>simos-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>simos-calendar</artifactId>
+  <name>CalendarSimos</name>
+  <description>儒略历/节气/季节的纯计算模块；无状态、无存储、无 Codec/ChangeSet；依赖 util + map</description>
+
+  <!-- ★ C1（2026-10-02）：依赖方向固定为 util → map → calendar（D-019 用户裁定）。
+       util 供共享 YearFraction 值类型，map 供 HexCoord（季节分带读 .r()）；
+       二者**显式声明**，不靠任何传递依赖。本模块无 Snapshot/Codec/ChangeSet/handler/存储，
+       不 import Jackson、不碰文件系统。 -->
+  <dependencies>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
+    </dependency>
+
+    <!-- 测试依赖形态照 simos-actor-api / simos-map：junit/assertj 的版本与 test scope
+         由父 POM 的 dependencyManagement 提供；spotbugs-annotations 与 spotbugs 插件同代。 -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.github.spotbugs</groupId><artifactId>spotbugs-annotations</artifactId>
+      <version>4.10.4</version><scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-module-boundaries</id>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>io.mosire:simos-social</exclude>
+                    <exclude>io.mosire:simos-unit</exclude>
+                    <exclude>io.mosire:simos-sd</exclude>
+                    <exclude>io.mosire:simos-core</exclude>
+                    <exclude>io.mosire:simos-app</exclude>
+                    <exclude>io.mosire:simos-economy-api</exclude>
+                    <exclude>io.mosire:simos-economy</exclude>
+                    <exclude>io.mosire:simos-actor-api</exclude>
+                    <exclude>io.mosire:simos-actor</exclude>
+                    <exclude>io.mosire:simos-gov</exclude>
+                    <exclude>io.mosire:simos-army</exclude>
+                    <exclude>io.mosire:agentlib-mosire</exclude>
+                  </excludes>
+                  <message>simos-calendar 只许依赖 util + map（D-019）：util 供共享 YearFraction 值类型，map 供 HexCoord（季节分带读 r）；禁一切领域/编排模块（social/unit/sd/core/app/economy*/actor*/gov/army/agentlib），不碰 Jackson/文件系统。</message>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

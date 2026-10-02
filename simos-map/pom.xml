@@ -49,6 +49,8 @@
                          `simos-actor` 依赖 map（产权"到格"⇒ 它的键就是 HexCoord），地图侧永远不知道切片存在。
                          ★ `simos-actor-api` **不在此列**（契约层，与 `economy-api` 同待遇）。 -->
                     <exclude>io.mosire:simos-actor</exclude>
+                    <!-- ★ C1（2026-10-02，D-019）：防反向依赖 calendar（依赖方向 util → map → calendar）。 -->
+                    <exclude>io.mosire:simos-calendar</exclude>
                   </excludes>
                   <message>MapSimos 永远不知道 SocialSimos / UnitSimos / ActorSimos 存在，也不依赖 AgentLibMosire（spec §3.1 / G7；Task 10 回填 actor）</message>
                 </bannedDependencies>

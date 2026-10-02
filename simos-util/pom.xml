@@ -61,6 +61,8 @@
                          ★ `simos-actor-api` **不在此列**：它是**契约层**（与 `economy-api` 同待遇，
                          文档明文允许被领域模块依赖），禁一个契约层没有出处。 -->
                     <exclude>io.mosire:simos-actor</exclude>
+                    <!-- ★ C1（2026-10-02，D-019）：防反向依赖 calendar（依赖方向 util → map → calendar）。 -->
+                    <exclude>io.mosire:simos-calendar</exclude>
                   </excludes>
                   <message>UtilSimos 是零依赖地基：不得依赖 AgentLibMosire 或任何 simos 模块（spec §3.1 / G6）</message>
                 </bannedDependencies>
