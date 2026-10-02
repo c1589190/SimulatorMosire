@@ -528,6 +528,11 @@ tools/run-shaded.sh simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar \
   （与旧 `dashu-v2` 的 5827/5727/5723 错开）；来历/映射/md5/判活见 `~/Simos-18Lvt/README.md`。
 - 重建装置：`tools/gsimap_import.py --regen-samples`；地形映射 `plains(山区/高原)→plateau`、
   `mountain→mountains` 等；底图与重建备份在 `~/simos-testspace/backups/20261002-150321-map-backup/`。
+- **仓内代码测试副本（2026-10-02 用户指示，隔离）**：`test-world/`（Simos 仓内，`.gitignore` 排除）=
+  全真世界的**副本**，专用于代码测试：独立 store（`test-world/store/`）、独立端口 **GUI 5867 / MCP 5767 / 审批 5763**、
+  独立 systemd 单元 **`simos-testworld`**、独立日志；jar 用**本仓当前代码**构建（现为 `d53d2ce1`）。
+  起停 `test-world/scripts/{start.sh,stop.sh}`；夹在两边测试时**不要**把它的 store 指到 `~/Simos-18Lvt/world`、
+  也不要复用端口——那就不是隔离了。详见 `test-world/README.md`。
 - **世界内容尚未初始化**（units 空 / cities 0），等用户指示；旧 `dashu-v2`（5827/5727）用户已表示**可退役**。
 
 ## 九、实现与评审期间**实测**到的失败形态（2026-09-25，经济线 plan1/plan2）
