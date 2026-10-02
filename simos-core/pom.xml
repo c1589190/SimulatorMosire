@@ -70,6 +70,12 @@
     <dependency>
       <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
     </dependency>
+
+    <!-- SpotBugs 抑制注解是编译期注解、provided，不传递/不进运行时。 -->
+    <dependency>
+      <groupId>com.github.spotbugs</groupId><artifactId>spotbugs-annotations</artifactId>
+      <version>4.10.4</version><scope>provided</scope>
+    </dependency>
   </dependencies>
 
   <build>

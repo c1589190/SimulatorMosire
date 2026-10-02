@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.EventRow;
 import io.mosire.simos.core.store.EventStore;
@@ -132,6 +133,11 @@ public final class Timeline {
    * @param store 已打开的存储底座（DDL 已由它建好）；生命周期归调用方，本类不关闭它
    * @param checkpointInterval C19 第①项的周期 N，必须 ≥ 1
    */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP2",
+      justification =
+          "SqliteStore 是共享存储底座（生命周期归调用方，本类只经它 inTransaction 读写、不关闭它），"
+              + "不是内部可变表示外泄；与 CoreSimos / CalendarService 等共享协作者同口径豁免")
   public Timeline(SqliteStore store, long checkpointInterval) {
     if (checkpointInterval < 1) {
       throw new IllegalArgumentException(
