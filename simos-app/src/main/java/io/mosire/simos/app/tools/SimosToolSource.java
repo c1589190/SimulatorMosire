@@ -14,6 +14,7 @@ import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.read.ArmyCombatTool;
 import io.mosire.simos.app.tools.read.ArmyCombatsTool;
 import io.mosire.simos.app.tools.read.BranchListTool;
+import io.mosire.simos.app.tools.read.CalendarInfoTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.tools.read.DecisionDocsTool;
 import io.mosire.simos.app.tools.read.DecisionMakerTool;
@@ -49,6 +50,7 @@ import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.app.tools.write.AdvanceTool;
 import io.mosire.simos.app.tools.write.ArmyRecordCombatTool;
 import io.mosire.simos.app.tools.write.AssignArmyGovTool;
+import io.mosire.simos.app.tools.write.CalendarConfigureTool;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.EconomyAdjustTool;
 import io.mosire.simos.app.tools.write.ForkTool;
@@ -413,6 +415,7 @@ public final class SimosToolSource implements ToolSource {
             readToolsFor(
                 readTools(
                     core,
+                    calendarService,
                     query,
                     mapId,
                     commandTypes,
@@ -685,6 +688,12 @@ public final class SimosToolSource implements ToolSource {
     //   **只在 GM 桶**；与读口 simos.gm.approvals 共用同一份 PendingApprovals / ApprovalCoordinator。
     //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 NONE（不读写世界命名空间）。
     built.add(new GmApproveTool(pendingApprovals, approvalCoordinator));
+    // ★★ C5b（2026-10-02 年份系统）：历法/气候配置写口（store_meta.calendar，**不落 revision**）。
+    //   **只在 GM 桶**（注册点就是这里）：改锚点会让所有历史日期整体平移、改分带会改全世界的季节判定，是"世界级配置"。
+    //   ★ 它**不继承** AbstractNarrowWriteTool、不调 core.submit（库级元数据与 time_base 同类）⇒ 工具名也不是命令类型，
+    //     不进 catalog/PAYLOAD_HINTS；资源声明 NONE（没有对应的世界命名空间，见 CalendarConfigureTool 类注）。
+    //   ★ 敏感写 + ToolGate.Ask（classKey = 工具名）；GM 面的审批放行与 GmToolUsage 留痕见类注。
+    built.add(new CalendarConfigureTool(query, calendarService));
   }
 
   /**
@@ -720,6 +729,7 @@ public final class SimosToolSource implements ToolSource {
 
   private static List<AgentTool> readTools(
       CoreSimos core,
+      CalendarService calendarService,
       QueryService query,
       String mapId,
       Set<String> commandTypes,
@@ -740,6 +750,10 @@ public final class SimosToolSource implements ToolSource {
         //   决策人清单 / 决策人详情。（`timeline.branches` 只给"有哪些分支、head 在哪"，看不到节点；sd 侧此前
         //   只能 CreateDecisionMaker 写、写完看不见。）
         new TimelineRevisionsTool(core),
+        // ★★ C5b（2026-10-02 年份系统）：历法/气候配置 + 指定 tick 的日期/节气（可选季节）。**四桶共享**——
+        //   历法只是"今天几号、什么节气"，不含可见性侧信道（配置是 store_meta 库级元数据、不落 revision）。
+        //   ★ 不标 GmOnlyRead、**不进** PAYLOAD_HINTS（它不是命令类型）。
+        new CalendarInfoTool(query, calendarService),
         new MapOverviewTool(query, mapId),
         new MapHexTool(query, mapId),
         new MapRegionTool(query, mapId),
