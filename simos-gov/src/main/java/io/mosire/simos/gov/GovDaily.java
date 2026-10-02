@@ -49,8 +49,8 @@ import java.util.Optional;
  * kind</b>——"没有座位"由调用方读日志/证据裁定如何处理。
  *
  * <p>★★ <b>布料折算口径</b>：{@code clothNeed = totalStaff × floor(policy.clothPerStaffPerCycle /
- * CLOTH_CYCLE_DAYS)}。<b>不足一昼夜的余量不跨日累计</b>（本批口径；逐日 floor 的残差丢掉，不建"周期余额"账本）。周期常量取 {@link
- * EconomyVocabulary#CLOTH_CYCLE_DAYS}（util 词表的唯一拼写点），不在 gov 侧再造第二个"一年多少天"。
+ * daysInYearAtSettlement)}。<b>不足一昼夜的余量不跨日累计</b>（本批口径；逐日 floor 的残差丢掉，不建"周期余额"账本）。年长由调用方按 {@code
+ * CalendarClock.daysInYearAtTick(该日 tick)} 传入（365 或 366）；gov 侧不依赖 calendar 模块、不自造第二个"一年多少天"。
  *
  * <p>★★ <b>{@link SignalDraft} 的口径</b>：
  *
@@ -110,6 +110,8 @@ public final class GovDaily {
    * @param map 地图（{@link GovDemand} 查 Region）；不得为 null
    * @param social 社会数据（人口/城市）；不得为 null
    * @param tick 本日 tick（≥ 0）；写进新读数
+   * @param daysInYearAtSettlement 本日所在历法年的天数（只接受 365 或 366；调用方按 {@code
+   *     CalendarClock.daysInYearAtTick(该日 tick)} 传入）
    * @param oracle 付款回调（{@code requested > 0} 才会被调）；不得为 null
    * @return 新状态 + 当日 dues/signals + {@code changed}（新状态是否与旧状态不等）
    */
@@ -119,6 +121,7 @@ public final class GovDaily {
       GameMap map,
       SocialData social,
       long tick,
+      long daysInYearAtSettlement,
       PaymentOracle oracle) {
     requireNonNull(govState, "govState");
     requireNonNull(units, "units");
@@ -127,6 +130,10 @@ public final class GovDaily {
     requireNonNull(oracle, "oracle");
     if (tick < 0L) {
       throw new IllegalArgumentException("tick 必须 ≥ 0: " + tick);
+    }
+    if (daysInYearAtSettlement != 365L && daysInYearAtSettlement != 366L) {
+      throw new IllegalArgumentException(
+          "daysInYearAtSettlement 只接受 365 或 366（拒绝臆造年长）: " + daysInYearAtSettlement);
     }
 
     // ★ 返回的 offices 保持输入键序（未被覆盖的部分"原样"），但**处理顺序**按下而排序 ⇒ dues/signals/oracle 调用次序确定。
@@ -164,8 +171,7 @@ public final class GovDaily {
       long totalStaff = totalStaff(gov);
       long grainNeed = totalStaff * policy.grainPerStaffPerTick();
       long clothNeed =
-          totalStaff
-              * Math.floorDiv(policy.clothPerStaffPerCycle(), EconomyVocabulary.CLOTH_CYCLE_DAYS);
+          totalStaff * Math.floorDiv(policy.clothPerStaffPerCycle(), daysInYearAtSettlement);
       long moneyNeed = totalStaff * policy.moneyPerStaffPerTick();
 
       long grainPaid = pay(oracle, unitId, at, GRAIN_RESOURCE, grainNeed);

@@ -1,5 +1,6 @@
 package io.mosire.simos.app.crisis;
 
+import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.HouseholdId;
@@ -85,9 +86,10 @@ public final class CrisisMonitor {
    * @param economy 经济切片（需求、满足、借贷、劳动都在这里）
    * @param social 社会切片（批次：生理压力按年龄档分组读）
    * @param atTick 读的时刻（世界日）：批次落在哪一档由 {@code ageDaysAt(atTick)} 现算（年龄没有档，只有逐日精度）
+   * @param clock 历法时钟（衣着需求按历法年分数算；C5 起由 CalendarService 注入）
    */
   public static Map<HexCoord, List<Light>> lights(
-      EconomyData economy, SocialData social, long atTick) {
+      EconomyData economy, SocialData social, long atTick, CalendarClock clock) {
     // ★★ H0.2：**格直接住在行键里**（{@code CohortKey.hex()}）—— 旧版要靠"行属于哪个产业、产业 id 里带哪一格"
     //   反解两次，现在一次都不必（"行在哪一格"与"产业在哪一格"从此是两件事，各读各的）。
     //   ★ 分组键仍是 {@code <q>_<r>} 字符串（{@link IndustryHexKeys#hexKey}），排序口径与旧版逐字相同（字典序）。
@@ -102,7 +104,7 @@ public final class CrisisMonitor {
     Map<HexCoord, List<Light>> out = new LinkedHashMap<>();
     for (String hexKey : hexKeys) {
       HexCoord coord = HexCoord.parse(hexKey);
-      List<Light> lights = lightsAt(coord, byHex.get(hexKey), economy, social, atTick);
+      List<Light> lights = lightsAt(coord, byHex.get(hexKey), economy, social, atTick, clock);
       if (!lights.isEmpty()) {
         out.put(coord, lights);
       }
@@ -110,20 +112,29 @@ public final class CrisisMonitor {
     return out;
   }
 
-  /** 单格的红灯（空清单 = 没有红灯）。 */
+  /**
+   * 单格的红灯（空清单 = 没有红灯）。
+   *
+   * @param clock 历法时钟（衣着需求按历法年分数算；C5 起由 CalendarService 注入）
+   */
   public static List<Light> lightsAt(
-      HexCoord coord, EconomyData economy, SocialData social, long atTick) {
+      HexCoord coord, EconomyData economy, SocialData social, long atTick, CalendarClock clock) {
     List<HouseholdId> keys = new ArrayList<>();
     for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
       if (entry.getValue().view().hex().equals(coord)) {
         keys.add(entry.getKey());
       }
     }
-    return lightsAt(coord, keys, economy, social, atTick);
+    return lightsAt(coord, keys, economy, social, atTick, clock);
   }
 
   private static List<Light> lightsAt(
-      HexCoord coord, List<HouseholdId> keys, EconomyData economy, SocialData social, long atTick) {
+      HexCoord coord,
+      List<HouseholdId> keys,
+      EconomyData economy,
+      SocialData social,
+      long atTick,
+      CalendarClock clock) {
     long grainNeed = 0L;
     long grainUnmet = 0L;
     long clothNeed = 0L;
@@ -150,7 +161,11 @@ public final class CrisisMonitor {
       elapsedDaysSeen = Math.max(elapsedDaysSeen, elapsedDays);
       cycleDaysSeen = Math.max(cycleDaysSeen, cycleDaysOf(economy, key));
       grainNeed += EconomyVocabulary.cumulativeRationMilli(row.population(), elapsedDays);
-      clothNeed += EconomyVocabulary.cumulativeClothMilli(row.population(), elapsedDays);
+      // C4a：衣着按历法年分数精确折算：区间 [atTick - elapsedDays, atTick) 由 CalendarClock 按历年逐段求和；
+      // 不夹取负 tick —— yearFraction 本身支持负数 tick。
+      clothNeed +=
+          EconomyVocabulary.cumulativeClothMilli(
+              row.population(), clock.yearFraction(atTick - elapsedDays, atTick));
       if (flow != null) {
         grainUnmet += flow.unmetNeed().getOrDefault(commodityGrain(), 0L);
         clothUnmet += flow.unmetNeed().getOrDefault(commodityCloth(), 0L);

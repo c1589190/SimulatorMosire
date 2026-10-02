@@ -12,8 +12,8 @@ import java.util.Map;
  * 这也是用户裁定 1/2 的落点：unit 侧只有编制/位置/移动，政策是编制成分，力量与产出都不在这里。
  *
  * <p>★ <b>量纲口径</b>：{@code grainPerStaffPerTick} / {@code moneyPerStaffPerTick} 是"每人每 tick"， {@code
- * clothPerStaffPerCycle} 是"每人每周期"（周期由 gov 侧定义）；{@link #defaults()} 直接复用 {@code EconomyVocabulary}
- * 的每人常量，<b>本类型不做 tick/周期折算</b>（折算只在结算公式里做一处）。
+ * clothPerStaffPerCycle} 是"每人每历法年（365/366，由 {@code GovDaily} 按日折算）"；{@link #defaults()} 直接复用 {@code
+ * EconomyVocabulary} 的每人常量，<b>本类型不做 tick/周期折算</b>（折算只在结算公式里做一处）。
  *
  * <p>★ <b>保序不可变</b>：{@code staffCap} 用 {@code LinkedHashMap} 拷贝 + 在赋值处 {@code
  * Collections.unmodifiableMap} 冻结（与 {@code Unit.equipment} / {@code Jurisdiction} 同形制）；<b>不用</b>
@@ -23,7 +23,7 @@ import java.util.Map;
  * IllegalArgumentException}，不静默钳制。空 map = 不设上限。
  *
  * @param grainPerStaffPerTick 每编制人员每 tick 的粮食定额（毫粮；≥ 0）
- * @param clothPerStaffPerCycle 每编制人员每周期的布料定额（毫布；≥ 0）
+ * @param clothPerStaffPerCycle 每编制人员每历法年的布料定额（毫布；D-018 补裁：365/366 由 gov 按日折算；≥ 0）
  * @param moneyPerStaffPerTick 每编制人员每 tick 的俸禄（最小币值；默认 0）
  * @param retirementPerStaff 退休/遣散的一次性安置（最小币值/人；默认 0，待遇由决策人政策定）
  * @param staffCap 各角色编制上限（空 map = 不设上限；保序不可变）
@@ -61,8 +61,9 @@ public record OfficePolicy(
   /**
    * ★ <b>出厂默认政策</b>：粮 = {@link EconomyVocabulary#dailyRationMilli(long, long)} 的"1 人第 1 天"= 83
    * 毫粮/人·tick（G12 修正：旧值直接用了 {@code RATION_MILLI_PER_PERSON=10,000}，那是"每人每 120 天"的口径，而 {@code
-   * GovDaily} 按每 tick 乘 ⇒ 120× 超支）；布 = {@link EconomyVocabulary#CLOTH_MILLI_PER_PERSON}（每人每 365
-   * 天的周期常量，由 {@code GovDaily} 除以 {@code CLOTH_CYCLE_DAYS} 后再按 tick 发）；俸禄与退休待遇 = 0、编制上限 = 空表（不设限）。
+   * GovDaily} 按每 tick 乘 ⇒ 120× 超支）；布 = {@link
+   * EconomyVocabulary#CLOTH_MILLI_PER_PERSON}（每人每历法年（365/366）， 由 {@code GovDaily} 按 {@code
+   * daysInYearAtSettlement} 折算后再按 tick 发）；俸禄与退休待遇 = 0、编制上限 = 空表（不设限）。
    *
    * <p>★ <b>常量来源刻意只有一处</b>：口径住在 {@code simos-util} 的 {@link EconomyVocabulary}——{@code simos-unit}
    * 已依赖 util，故军/政两边读同一份"人吃多少粮、穿多少布"，<b>不引 economy 主模块</b>（阶段 9 硬约束）。

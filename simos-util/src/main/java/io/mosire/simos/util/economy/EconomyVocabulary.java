@@ -1,7 +1,9 @@
 package io.mosire.simos.util.economy;
 
+import io.mosire.simos.util.time.YearFraction;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 跨模块共用的**经济词表**：全仓恰一份，由源扫描护栏钉住（{@code EconomyVocabularyGuardTest}）。
@@ -19,7 +21,8 @@ import java.util.Map;
  *
  * <ul>
  *   <li>**粮**：每人每 {@link #RATION_CYCLE_DAYS} 天 {@link #RATION_MILLI_PER_PERSON} 毫粮（= 10 粮/周期）；
- *   <li>**布**：每人每 {@link #CLOTH_CYCLE_DAYS} 天 {@link #CLOTH_MILLI_PER_PERSON} 毫布（= 1 匹/年）。
+ *   <li>**布**：每人每**历法年**（365/366 天）1 匹布 = {@link #CLOTH_MILLI_PER_PERSON} 毫布；年长由 {@code
+ *       CalendarClock.yearFraction} 注入。
  * </ul>
  *
  * ★ **本轮只把"每商品一条需求"的形状做出来**：{@link #dailyNeedsMilli} 逐商品给出当日毫单位，结算把它写进 {@code
@@ -76,18 +79,16 @@ public final class EconomyVocabulary {
   public static final long RATION_CYCLE_DAYS = 120L;
 
   /**
-   * ★★ **衣着口径的分子**（毫布/人）：每人每 {@link #CLOTH_CYCLE_DAYS} 天 1 匹布 = 1,000 毫布。
+   * ★★ **衣着口径的分子**（毫布/人·**历法年**）：每人每历法年（365/366 天）1 匹布 = 1,000 毫布。
    *
-   * <p>★ **为什么是"1 匹/年"**：前现代一户人家一年添一身衣裳的量级；它是**判断结果**（spec §十一：出生率/死亡率的默认值都给不出， 属 GM 可调参数）⇒
+   * <p>★ **为什么是"1 匹/历法年"**：前现代一户人家一年添一身衣裳的量级；它是**判断结果**（spec §十一：出生率/死亡率的默认值都给不出， 属 GM 可调参数）⇒
    * 这里只钉一个**量级合理、可被 R4 改**的默认值，并明说它**不参与任何结算**（本轮只写进 {@code naturalNeeds}）。
    *
-   * <p>★ **为什么与粮的口粮周期不同（365 ≠ 120）**：这正是 spec §七 那句话的落点 —— 粮食不足与衣物不足对死亡的时间尺度
-   * 本来就不一样，两条口径各带自己的周期，不许共用一个"每人每周期吃/穿多少"的常量。
+   * <p>★ **为什么与粮的口粮周期不同（历法年 ≠ 120 天）**：这正是 spec §七 那句话的落点 —— 粮食不足与衣物不足对死亡的时间尺度
+   * 本来就不一样，两条口径各带自己的时间尺度，不许共用一个"每人每周期吃/穿多少"的常量。★ 历法年长不再固定为 365：由调用方从 {@code
+   * CalendarClock.yearFraction} / {@code CalendarClock.daysInYearAtTick} 注入（365 或 366）。
    */
   public static final long CLOTH_MILLI_PER_PERSON = 1_000L;
-
-  /** 衣着口径的分母（天）：一年（365 天）。★ 与 {@link #RATION_CYCLE_DAYS} **刻意不同**，见上。 */
-  public static final long CLOTH_CYCLE_DAYS = 365L;
 
   private EconomyVocabulary() {}
 
@@ -165,61 +166,68 @@ public final class EconomyVocabulary {
   }
 
   /**
-   * **累计衣着需求**（毫布）：{@code population} 人 **{@code days} 天** = {@code 人口 × 1,000 × 天 ÷ 365}（向下取整）。
+   * **累计衣着需求**（毫布）：{@code population} 人在 {@code yearFraction} 这段历法年区间内的总需求 = {@code floor(人口 ×
+   * 1,000 × yearFraction)}（向下取整）。
    *
-   * <p>★ 与 {@link #cumulativeRationMilli} **同制**（累计 + 逐日差分），只是换了一套口径的分子/分母 —— 两个函数共用一条纪律： 需求是"人 ×
-   * 天"的函数，**不是**"每人每天多少"乘天数。
+   * <p>★ **年长是历法派生量，不再有固定 365**：{@code yearFraction} 由 {@code CalendarClock.yearFraction(fromTick,
+   * toTick)} 按区间跨过的历年逐段精确求和 —— 整年 = {@link YearFraction#ONE}、闰年窗口用 366 作分母。本方法不接收"天数"，也不许再有任何固定 365
+   * 的除法。
+   *
+   * <p>★ 与 {@link #cumulativeRationMilli} **同制**（累计 + 逐日差分），只是衣着的时间尺度是**历法年**而不是 120 天业务周期 ——
+   * 两个函数共用一条纪律：需求是"人 × 时间分数"的函数，**不是**"每人每天多少"乘天数。
    *
    * @param population 人口（人）；不得为负
-   * @param days 天数（天）；不得为负
-   * @throws IllegalArgumentException 人口或天数为负
+   * @param yearFraction 区间跨过的历法年分数（非 null；{@link YearFraction#ZERO} ⇒ 0）
+   * @throws IllegalArgumentException 人口为负
    */
-  public static long cumulativeClothMilli(long population, long days) {
+  public static long cumulativeClothMilli(long population, YearFraction yearFraction) {
     if (population < 0L) {
       throw new IllegalArgumentException("累计衣着需求的人口不得为负: " + population);
     }
-    if (days < 0L) {
-      throw new IllegalArgumentException("累计衣着需求的天数不得为负: " + days);
-    }
-    return population * CLOTH_MILLI_PER_PERSON * days / CLOTH_CYCLE_DAYS;
+    Objects.requireNonNull(yearFraction, "累计衣着需求的年分数不得为 null");
+    return yearFraction.multiplyFloor(Math.multiplyExact(population, CLOTH_MILLI_PER_PERSON));
   }
 
   /**
-   * **第 {@code day} 天的当日衣着需求**（毫布）= {@code 累计(day) − 累计(day − 1)} —— 与 {@link #dailyRationMilli}
-   * 同制的逐日差分。
+   * **某一天（或任意一天长的子区间）的当日衣着需求**（毫布）= {@code floor(人口 × 1,000 × dayFraction)}。
+   *
+   * <p>★ **日长也是历法派生量**：调用方传 {@code clock.yearFraction(tick, tick + 1)} —— 平年日是 1/365、闰年日是
+   * 1/366。本方法不接收"第几天"，也不许再有固定 365 的除法。
    *
    * @param population 人口（人）；不得为负
-   * @param day **绝对日号**（1 起）
-   * @throws IllegalArgumentException 人口为负或 {@code day < 1}
+   * @param dayFraction 该日的历法年分数（非 null；通常 = {@code clock.yearFraction(tick, tick + 1)}）
+   * @throws IllegalArgumentException 人口为负
    */
-  public static long dailyClothNeedMilli(long population, long day) {
-    if (day < 1L) {
-      throw new IllegalArgumentException("当日衣着需求的日号必须 ≥ 1: " + day);
-    }
-    return cumulativeClothMilli(population, day) - cumulativeClothMilli(population, day - 1L);
+  public static long dailyClothNeedMilli(long population, YearFraction dayFraction) {
+    return cumulativeClothMilli(population, dayFraction);
   }
 
   /**
    * ★★ **第 {@code day} 天的全套自然需求**（R3 的 T1：**每一商品一条需求**）：{@code 商品 id → 当日毫单位}。
    *
    * <pre>
-   * { "grain": dailyRationMilli(人口, day), "cloth": dailyClothNeedMilli(人口, day) }
+   * { "grain": dailyRationMilli(人口, day), "cloth": dailyClothNeedMilli(人口, clothDayFraction) }
    * </pre>
    *
    * <p>★★ **它是结算写 {@code ClassRow.naturalNeeds} 的唯一入口**（v2 spec §八.8 的"读数与结算同源"）：读口因此看得见"这一格
    * 的人一天要几毫粮、几毫布"，而不是只有粮一个数。★ 返回的是**保序**的 {@code LinkedHashMap}（词表序 = 粮、布）：冻结与迭代序
    * 都由调用方负责，本方法只保证"同一个入参给出同一个序"。
    *
+   * <p>★ **粮与布的时间尺度不同**（D-018 补裁：120 天业务节律不动）：粮按绝对日号逐日差分；布按**历法年分数**折算 ⇒ 两个入参都要， 调用方不能拿 {@code day}
+   * 去顶 {@code clothDayFraction}。
+   *
    * <p>★ **本轮这张表里只有粮与布**：工具/铁/木是**生产资料与中间品**，不是"自然需求"（spec §三 的 naturalNeeds 只作
    * "生存/再生产"两档；更高档的需求要等市场与价格 = R4+）。新增一档就在这里加一行 —— 那是本方法存在的理由。
    *
    * @param population 人口（人）；不得为负
-   * @param day **绝对日号**（1 起）
+   * @param day **绝对日号**（1 起；粮按 120 天业务周期逐日差分）
+   * @param clothDayFraction 该日的历法年分数（非 null；通常 = {@code clock.yearFraction(tick, tick + 1)}）
    */
-  public static Map<String, Long> dailyNeedsMilli(long population, long day) {
+  public static Map<String, Long> dailyNeedsMilli(
+      long population, long day, YearFraction clothDayFraction) {
     Map<String, Long> needs = new LinkedHashMap<>();
     needs.put(GRAIN_COMMODITY_ID, dailyRationMilli(population, day));
-    needs.put(CLOTH_COMMODITY_ID, dailyClothNeedMilli(population, day));
+    needs.put(CLOTH_COMMODITY_ID, dailyClothNeedMilli(population, clothDayFraction));
     return needs;
   }
 }

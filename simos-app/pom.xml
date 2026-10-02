@@ -45,6 +45,11 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
     </dependency>
+    <!-- ★ C4a（2026-10-02）：组合根直接使用 CalendarClock 按历法年折算衣着（participant / CrisisMonitor / ApiViews）；
+         ★★ 显式声明，不靠传递依赖（同下方 actor/gov/army 的纪律）。C5 起换 CalendarService 的时钟。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-calendar</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-social</artifactId>
     </dependency>

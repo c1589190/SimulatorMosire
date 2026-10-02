@@ -18,6 +18,7 @@ import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.CombatOutcome;
 import io.mosire.simos.army.CombatRecord;
 import io.mosire.simos.army.CombatUnitLoss;
+import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -5649,7 +5650,9 @@ public final class ApiViews {
     // ★★ R4（T3）：**危机红灯** —— 这一格有没有触发生活资料/社会再生产危机，以及**是哪一类**（不是概率）。
     //   ★ 它挂在本读口上（**沿用既有权限判定**：该格有 populations 序列 + 人口可见），不另开更宽的判据。
     List<Map<String, Object>> crisis = new ArrayList<>();
-    for (CrisisMonitor.Light light : CrisisMonitor.lightsAt(coord, economy, data, at.tick())) {
+    // C5 过渡：换成 CalendarService 的时钟（缺省值相同，julianDefault = 儒略 1445-01-01）
+    for (CrisisMonitor.Light light :
+        CrisisMonitor.lightsAt(coord, economy, data, at.tick(), CalendarClock.julianDefault())) {
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("kind", light.kind().name());
       entry.put("evidence", new LinkedHashMap<>(light.evidence()));

@@ -8,6 +8,7 @@ import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
@@ -280,8 +281,11 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
         // ⑥ GovDaily.settle：付款 oracle 从 currentActor 的国库账扣 grain/cloth/silver（AvailableStock 可用量；缺账
         // paid=0）。
         TreasuryPaymentOracle oracle = new TreasuryPaymentOracle(currentActor);
+        // day 是 1 起日号 ⇒ 该日对应的 tick = day - 1L。
+        // C5 过渡：换成 CalendarService 的时钟（缺省值相同，julianDefault = 儒略 1445-01-01）
+        int daysInYear = CalendarClock.julianDefault().daysInYearAtTick(day - 1L);
         GovDaily.Outcome settled =
-            GovDaily.settle(currentGov, units, map, currentSocial, day, oracle);
+            GovDaily.settle(currentGov, units, map, currentSocial, day, daysInYear, oracle);
         currentActor = oracle.actor();
         currentGov = settled.next();
         adminAudit.record(settled);
