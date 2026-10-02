@@ -33,7 +33,9 @@
 """
 
 import argparse
+import hashlib
 import json
+import math
 import os
 import sqlite3
 import sys
@@ -58,6 +60,28 @@ TERRAIN_MAP = {
 #: ★ T11 补入 `lowland`：simos 的 7 类地形是**纯高度带**的，没有低地/湿地两档。
 #: `v17levant` 里 `lowland` 有 16933 格（28.6%）——不标 LOSSY 就是"未声明的静默丢失"。
 LOSSY_KEYS = {"swamp", "lowland"}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1b. 重建模式（D-013 / D-011-R4 前置）：源是 GSim `ContourQueryEngine` 的**再生词表**，
+#     与旧图词表**语义相反**——GSim 当前的 `plains` 是"山区/高原"、`mountain` 是"高山"。
+#     ★ 重建模式的高度**逐格取自 `RegenSamples` 的 `height`**（不再用高度带中点）；
+#       旧图词表的 `plains→plains` 映射在重建里必须改成 `plains→plateau`，否则高原仍会消失。
+# ─────────────────────────────────────────────────────────────────────────────
+
+REBUILD_TERRAIN_MAP = {
+    "water": "ocean",
+    "lowland": "plains",
+    "hills": "low_hills",
+    "plains": "plateau",      # ★ 关键差别：GSim 当前 plains = 山区/高原
+    "mountain": "mountains",
+    "desert": "desert",
+    "swamp": "plains",        # ★ lossy（simos 词表无湿地）
+    "forest": "plains",       # ★ lossy（simos 词表无森林）
+    "tundra": "plains",       # ★ lossy（simos 词表无冻土）
+}
+
+#: 重建模式的 lossy 映射（逐类打印计数）。
+REBUILD_LOSSY_KEYS = {"swamp", "forest", "tundra"}
 
 #: simos 的 7 类地形，整套取自 TerrainCatalog.defaults()（键序 = 高度升序 = 落盘顺序）。
 #: 字段名与 TerrainType 的 record 组件一一对应。
@@ -216,6 +240,48 @@ def region_boundary(hex_set):
     rings.sort(key=lambda r: r[0])  # 环表按各自首顶点字典序
     return rings
 
+
+def terrain_blocks_from_map(terrain_by_hex):
+    """把 hex → simos terrain key 切成**同地形六邻连通分量**的权威块（Java TerrainBlocks.split 的移植）。
+
+    ★ 线格式与 `MapCodec`/`GameMap`/`TerrainBlock` 逐字段对齐：
+      block_id（`<terrain>@q_r`，minHex 为自然序最小格）→
+      `{"terrain":…, "hexes":[{"q","r"}…], "boundary":{"rings":[[{"u","w"}…]]}}`。
+    ★ 保序：按 (terrain, min_hex) 排序（= Java `TreeMap<BlockId>` 的 `BlockId.compareTo`），
+      块内 hexes 按 (q, r) 自然序 —— 同一输入 ⇒ 同一份字节。
+    """
+    ordered = sorted(terrain_by_hex.keys())  # HexCoord 自然序（q 升、r 升）
+    visited = set()
+    blocks = {}
+    for start in ordered:
+        if start in visited:
+            continue
+        terrain = terrain_by_hex[start]
+        component = []
+        stack = [start]
+        visited.add(start)
+        while stack:
+            at = stack.pop()
+            component.append(at)
+            for dq, dr in DIRECTIONS:
+                nb = (at[0] + dq, at[1] + dr)
+                if nb in visited or terrain_by_hex.get(nb) != terrain:
+                    continue  # 图外（None）或异地形 ⇒ 边界
+                visited.add(nb)
+                stack.append(nb)
+        hex_set = set(component)
+        min_hex = min(hex_set)
+        rings = region_boundary(hex_set)
+        blocks[(terrain, min_hex)] = {
+            "terrain": terrain,
+            "hexes": [{"q": q, "r": r} for (q, r) in sorted(hex_set)],
+            "boundary": {"rings": [[{"u": u, "w": w} for (u, w) in ring] for ring in rings]},
+        }
+    out = {}
+    for (terrain, min_hex) in sorted(blocks):
+        out["{}@{}_{}".format(terrain, min_hex[0], min_hex[1])] = blocks[(terrain, min_hex)]
+    return out
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. 常量：信封 / DB / spec
 # ─────────────────────────────────────────────────────────────────────────────
@@ -302,6 +368,25 @@ CREATE TABLE IF NOT EXISTS store_meta (
 TIME_BASE_DAY = "DAY"
 
 FORMAT_VERSION_DAY_BASE = "1"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3b. 重建模式的 8 模块空切片载荷（baseline 4bf60478）
+# ─────────────────────────────────────────────────────────────────────────────
+#: 由当前 baseline 各模块自己的 codec `encodeSnapshot(empty)` 生成（生成器 EmptySlices.java +
+#: 逐字节证据见重建目录 `samples/empty_module_slices.json`）。`map` 由重建器自己产出，不在此列。
+#: ★ 只写 map/social/unit 三个切片时，`/api/units` 等读路径会因缺 `sd` 切片报 400
+#:   （2026-10-02 实测：`状态里没有 sd 模块切片——装配故障`）——故重建档补齐全部 8 模块；
+#:   旧模式（无 --regen-samples）**不补**，保持 M6 逐字节不变。
+EMPTY_MODULE_PAYLOADS = json.loads(r'''{
+  "actor": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"data\":{\"meta\":null,\"actors\":{},\"accounts\":{}}}",
+  "army": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"data\":{\"combats\":{}}}",
+  "economy": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"data\":{\"meta\":null,\"industries\":{},\"classes\":{},\"debtContracts\":{},\"flows\":{},\"laborSupply\":{},\"allocations\":{},\"relations\":{},\"markets\":{},\"shipments\":{},\"memberships\":{},\"assetShares\":{},\"operatorConditions\":{},\"units\":{},\"demands\":{},\"candidates\":{},\"modes\":{},\"classStructures\":{},\"classPositions\":{},\"classStandings\":{},\"productionOrganizations\":{},\"assetRules\":{},\"governments\":{},\"moneyIssuances\":{},\"pledges\":{},\"liquidationPolicies\":{},\"crisisSignals\":{},\"modeTransitions\":{},\"classShares\":{},\"classFirst\":{\"modeParticipations\":{},\"classPools\":{},\"householdAccounts\":{},\"assetStateSchemas\":{},\"classBounds\":{},\"mobilityPolicies\":{},\"classFlowEvents\":{},\"accounts\":{},\"lenders\":{},\"meta\":{\"tick\":0,\"landForSale\":0,\"landMarketEscrowGrain\":0,\"landMarketEscrowMoney\":0,\"totalLeaseHolding\":0,\"config\":null,\"totals\":{\"producedGrainTotal\":0,\"seedUsedTotal\":0,\"rationConsumedTotal\":0,\"clothConsumedTotal\":0,\"borrowedGrainTotal\":0,\"borrowedMoneyTotal\":0,\"boughtGrainTotal\":0,\"liquidSeizedTotal\":0,\"landSeizedTotal\":0,\"capitalizedTotal\":0,\"redLightTotal\":0,\"collectionEventCount\":0,\"interestChargedTotal\":0,\"rentPaidTotal\":0,\"wagePaidTotal\":0,\"externalSeedPaidTotal\":0,\"residualPaidTotal\":0,\"taxPaidTotal\":0},\"initial\":{\"grainTotal\":0,\"clothTotal\":0,\"householdMoneyTotal\":0,\"lenderMoneyTotal\":0,\"populationTotal\":0,\"ownedLandTotal\":0,\"toolsTotal\":0,\"claimGrainMilli\":0},\"stockEnrichmentViolations\":0}}}}",
+  "gov": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"state\":{\"offices\":{}}}",
+  "sd": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"state\":{\"nations\":{},\"armies\":{},\"combats\":{},\"combatStates\":{},\"decisionMakers\":{},\"directives\":{},\"effects\":{},\"verdicts\":{},\"lossRecords\":{},\"info\":{},\"diplomaticRelations\":{},\"diplomaticEvents\":{}}}",
+  "social": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"data\":{\"populations\":{},\"cities\":{},\"groups\":{}}}",
+  "unit": "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},\"timestamp\":{\"tick\":0,\"calendarLabel\":null},\"state\":{\"units\":{},\"commandChains\":{}}}"
+}''')
 
 
 class ImportRejected(Exception):
@@ -452,25 +537,66 @@ def resolve_edges(data, hexes_src, edge_tags_by_hex, river_mask_by_hex):
     return {}, "none"
 
 
-def build_map_payload(data, report):
-    """把一份旧 root full map 转成 MapSnapshot 的 JSON 对象。"""
+def build_map_payload(data, report, regen_samples=None):
+    """把一份旧 root full map 转成 MapSnapshot 的 JSON 对象。
+
+    ★ 重建模式（`regen_samples` 非 None，D-013/D-011-R4 前置）：高度**逐格取自再生样本**；
+      地形按 {@link REBUILD_TERRAIN_MAP} 映射（GSim 当前 `plains` = 高原 ⇒ `plateau`）；
+      快照发**权威 terrainBlocks**（新形状：`hexes` 只存 `height`）。
+    ★ 旧模式（`regen_samples` 为 None）：行为与 M6 逐字节一致（旧形状：`hexes` 带 `terrain`，
+      地形由 `MapCodec` 读入时就地迁移成块）。
+    """
     hexes_src = data.get("hexes")
     if not isinstance(hexes_src, dict):
         raise ImportRejected("hexes 缺失或不是对象（这不是一份 full map）")
 
+    rebuild = regen_samples is not None
+    mapping = REBUILD_TERRAIN_MAP if rebuild else TERRAIN_MAP
+    lossy_keys = REBUILD_LOSSY_KEYS if rebuild else LOSSY_KEYS
+    sample_hexes = None
+    if rebuild:
+        sample_hexes = regen_samples.get("hexes")
+        if not isinstance(sample_hexes, dict):
+            raise ImportRejected("再生样本缺 hexes 对象")
+        base_keys = set(hexes_src)
+        sample_keys = set(sample_hexes)
+        if base_keys != sample_keys:
+            only_base = sorted(base_keys - sample_keys)
+            only_sample = sorted(sample_keys - base_keys)
+            raise ImportRejected(
+                "再生样本 hex 键集与底图不一致：底图 {} / 样本 {} / 仅底图 {}（示例 {}）/ 仅样本 {}（示例 {}）"
+                .format(len(base_keys), len(sample_keys), len(only_base), only_base[:5],
+                        len(only_sample), only_sample[:5]))
+
     # ── 逐格：收集 terrain + 连通性三份表示 ──
-    old_key_counts = {}
+    old_key_counts = {}      # 重建模式下 = GSim 再生词表
+    base_key_counts = {}     # 底图原词表（报告对照用）
     new_hexes = {}
-    edge_tags_by_hex = {}   # coord_text -> set(方向码)
-    river_mask_by_hex = {}  # coord_text -> set(方向码)
+    terrain_by_hex = {}
+    edge_tags_by_hex = {}    # coord_text -> set(方向码)
+    river_mask_by_hex = {}   # coord_text -> set(方向码)
+    height_min = None
+    height_max = None
+    height_clamped = 0
 
     for coord_text, cell in hexes_src.items():
-        coord = parse_hex(coord_text)
+        parse_hex(coord_text)
         if not isinstance(cell, dict):
             raise ImportRejected("hex {} 的值不是对象: {!r}".format(coord_text, cell))
-        old_key = cell.get("terrain")
-        if old_key is None:
-            raise ImportRejected("hex {} 缺 terrain".format(coord_text))
+
+        if rebuild:
+            sample = sample_hexes[coord_text]
+            if not isinstance(sample, dict):
+                raise ImportRejected("样本 hex {} 的值不是对象".format(coord_text))
+            old_key = sample.get("terrain")
+            if old_key is None:
+                raise ImportRejected("样本 hex {} 缺 terrain".format(coord_text))
+        else:
+            old_key = cell.get("terrain")
+            if old_key is None:
+                raise ImportRejected("hex {} 缺 terrain".format(coord_text))
+        base_key = cell.get("terrain", "<missing>")
+        base_key_counts[base_key] = base_key_counts.get(base_key, 0) + 1
 
         tags = cell.get("edgeTags") or {}
         if tags:
@@ -482,7 +608,7 @@ def build_map_payload(data, report):
         old_key_counts[old_key] = old_key_counts.get(old_key, 0) + 1
 
     # 表外的在用 key ⇒ fail-closed
-    unknown = {k: c for k, c in old_key_counts.items() if k not in TERRAIN_MAP}
+    unknown = {k: c for k, c in old_key_counts.items() if k not in mapping}
     if unknown:
         raise ImportRejected(
             "地形 key 不在显式映射表内（fail-closed，不编造语义）: " + ", ".join(
@@ -491,17 +617,37 @@ def build_map_payload(data, report):
     # ── 实际用到的 simos key（只输出用到的） ──
     used_simos = {}
     for old_key, count in old_key_counts.items():
-        simos_key = TERRAIN_MAP[old_key]
+        simos_key = mapping[old_key]
         used_simos.setdefault(simos_key, 0)
         used_simos[simos_key] += count
 
     for coord_text, cell in hexes_src.items():
         coord = parse_hex(coord_text)
-        simos_key = TERRAIN_MAP[cell["terrain"]]
-        new_hexes["{}_{}".format(coord[0], coord[1])] = {
-            "terrain": simos_key,
-            "height": representative_height(simos_key),
-        }
+        if rebuild:
+            sample = sample_hexes[coord_text]
+            simos_key = mapping[sample["terrain"]]
+            raw_height = sample.get("height")
+            if not isinstance(raw_height, (int, float)) or isinstance(raw_height, bool) \
+                    or not math.isfinite(float(raw_height)):
+                raise ImportRejected(
+                    "再生样本 hex {} 的 height 非有限数: {!r}".format(coord_text, raw_height))
+            height = float(raw_height)
+            if height < 0.0 or height > 1.0:
+                height_clamped += 1
+                height = min(1.0, max(0.0, height))
+            height_min = height if height_min is None else min(height_min, height)
+            height_max = height if height_max is None else max(height_max, height)
+            new_hexes["{}_{}".format(coord[0], coord[1])] = {"height": height}
+            terrain_by_hex[coord] = simos_key  # ★ 键是 (q,r) 元组：块切分按坐标邻接
+        else:
+            simos_key = TERRAIN_MAP[cell["terrain"]]
+            new_hexes["{}_{}".format(coord[0], coord[1])] = {
+                "terrain": simos_key,
+                "height": representative_height(simos_key),
+            }
+
+    # ── 地形块（仅重建模式）：同地形六邻连通分量，与 Java TerrainBlocks.split 同算法 ──
+    terrain_blocks = terrain_blocks_from_map(terrain_by_hex) if rebuild else {}
 
     # ── terrainTypes：在用的 + ALWAYS_EMITTED（键序 = TerrainCatalog.KEYS 的高度升序） ──
     terrain_types = {}
@@ -514,6 +660,8 @@ def build_map_payload(data, report):
     provinces = data.get("provinces") or {}
     regions = {}
     ring_total = 0
+    region_ring_counts = {}
+    region_hex_counts = {}
     for province_id, province in provinces.items():
         if not isinstance(province, dict):
             raise ImportRejected("province {} 的值不是对象".format(province_id))
@@ -523,6 +671,8 @@ def build_map_payload(data, report):
         hex_set = set(parse_hex(h) for h in raw_hexes)
         rings = region_boundary(hex_set)
         ring_total += len(rings)
+        region_ring_counts[province_id] = len(rings)
+        region_hex_counts[province_id] = len(hex_set)
         # Region.hexes 是 JSON 数组、元素是 {q,r} 对象（与 Map 键的 'q_r' 不对称，照做）
         hex_list = [{"q": q, "r": r} for (q, r) in sorted(hex_set)]
         regions[province_id] = {
@@ -565,8 +715,12 @@ def build_map_payload(data, report):
     # ── 连通性：融合优先级 edges > edgeTags > riverMask（spec §五.2 / 裁定 D12） ──
     edges, edge_source = resolve_edges(data, hexes_src, edge_tags_by_hex, river_mask_by_hex)
 
-    map_obj = {
-        "hexes": new_hexes,
+    # 键序与 GameMap record 组件序一致（hexes, terrainBlocks, regions, cities, terrainTypes,
+    # pathways, pathwayGroups, edges, spec）；旧模式**不含** terrainBlocks（保持 M6 字节不变）。
+    map_obj = {"hexes": new_hexes}
+    if rebuild:
+        map_obj["terrainBlocks"] = terrain_blocks
+    map_obj.update({
         "regions": regions,
         "cities": {},              # 旧 cities 非空在调用方已 fail-closed
         "terrainTypes": terrain_types,
@@ -574,27 +728,46 @@ def build_map_payload(data, report):
         "pathwayGroups": pathway_groups,
         "edges": edges,
         "spec": DEFAULT_SPEC,
-    }
+    })
 
     # 报告数据
     report.update({
+        "mode": "rebuild" if rebuild else "legacy",
         "hex_total": len(new_hexes),
         "old_key_counts": old_key_counts,
+        "base_key_counts": base_key_counts,
         "used_simos": used_simos,
         "terrain_types_keys": list(terrain_types.keys()),
         "provinces": len(regions),
         "rings": ring_total,
+        "region_ring_counts": region_ring_counts,
+        "region_hex_counts": region_hex_counts,
         "edges": len(edges),
         "edge_source": edge_source,
         "edge_tags_hexes": len(edge_tags_by_hex),
         "river_mask_hexes": len(river_mask_by_hex),
-        "lossy_counts": {k: old_key_counts[k] for k in LOSSY_KEYS if k in old_key_counts},
+        "lossy_counts": {k: old_key_counts[k] for k in lossy_keys if k in old_key_counts},
     })
+    if rebuild:
+        report.update({
+            "regen_terrain_counts": dict(old_key_counts),
+            "terrain_blocks": len(terrain_blocks),
+            "terrain_block_hex_total": sum(len(b["hexes"]) for b in terrain_blocks.values()),
+            "height_min": height_min,
+            "height_max": height_max,
+            "height_clamped": height_clamped,
+            "regen_water_hexes": old_key_counts.get("water", 0),
+            "regen_land_hexes": len(new_hexes) - old_key_counts.get("water", 0),
+        })
     return map_obj
 
 
-def build_checkpoint(map_obj):
-    """组装信封（modules 的 value 是**字符串**）。"""
+def build_checkpoint(map_obj, extra_modules=None):
+    """组装信封（modules 的 value 是**字符串**）。
+
+    `extra_modules`：namespace → 载荷 JSON 文本；重建模式传 {@link EMPTY_MODULE_PAYLOADS}，
+    使档补齐全 8 模块；旧模式传 None（保持 map/social/unit 三模块的 M6 字节）。
+    """
     nested_ref = {"branch": {"value": BRANCH}, "revision": {"value": REVISION}}
     ts = {"tick": 0, "calendarLabel": None}
 
@@ -611,11 +784,15 @@ def build_checkpoint(map_obj):
 
     # 模块表按 namespace 字典序（map < social < unit），与 CheckpointEncoder 的 TreeMap 一致
     # ★ timeBase 是 2026-09-24 日制裁定的**必填**标签（Envelope.decode 缺它即拒）：新档一律 DAY。
+    modules = {"map": map_payload, "social": social_payload, "unit": unit_payload}
+    if extra_modules:
+        modules.update(extra_modules)
     envelope = {
         "ref": {"branch": BRANCH, "revision": REVISION},
         "timestamp": ts,
         "timeBase": "DAY",
-        "modules": {"map": map_payload, "social": social_payload, "unit": unit_payload},
+        # 与 CheckpointEncoder 的 TreeMap 一致：namespace 字典序
+        "modules": {name: modules[name] for name in sorted(modules)},
         "info": {"bySubject": {}},
     }
     return compact_json(envelope)
@@ -654,35 +831,62 @@ def write_db(db_path):
         conn.close()
 
 
-def print_report(input_path, out_dir, report, rejected=None):
+def _md5_file(path):
+    digest = hashlib.md5()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def print_report(input_path, out_dir, report, rejected=None, samples_path=None):
     print("=" * 72)
     print("[gsimap_import] 输入文件 : {}".format(input_path))
+    if samples_path:
+        print("[gsimap_import] 再生样本 : {}".format(samples_path))
     print("[gsimap_import] 输出目录 : {}".format(out_dir))
     if rejected is not None:
         print("[gsimap_import] 结果     : REJECTED (fail-closed)")
         print("[gsimap_import] 拒绝理由 : {}".format(rejected))
         print("=" * 72)
         return
+    rebuild = report.get("mode") == "rebuild"
+    mapping = REBUILD_TERRAIN_MAP if rebuild else TERRAIN_MAP
+    lossy_keys = REBUILD_LOSSY_KEYS if rebuild else LOSSY_KEYS
+    print("[gsimap_import] 模式     : {}".format(report.get("mode", "legacy")))
     print("[gsimap_import] hex 总数 : {}".format(report["hex_total"]))
-    print("[gsimap_import] 地形逐 key 映射（含 lossy 标记）:")
+    print("[gsimap_import] 地形逐 key 映射（含 lossy 标记）{}:".format(
+        "（源 = GSim ContourQueryEngine 再生词表）" if rebuild else ""))
     for old_key in sorted(report["old_key_counts"]):
-        simos_key = TERRAIN_MAP[old_key]
-        flag = "  ★lossy" if old_key in LOSSY_KEYS else ""
-        print("    {:<9} -> {:<14} {:>6} 格   代表高度={}{}".format(
-            old_key, simos_key, report["old_key_counts"][old_key],
-            representative_height(simos_key), flag))
+        simos_key = mapping[old_key]
+        flag = "  ★lossy" if old_key in lossy_keys else ""
+        if rebuild:
+            print("    {:<9} -> {:<14} {:>6} 格（再生）{}".format(
+                old_key, simos_key, report["old_key_counts"][old_key], flag))
+        else:
+            print("    {:<9} -> {:<14} {:>6} 格   代表高度={}{}".format(
+                old_key, simos_key, report["old_key_counts"][old_key],
+                representative_height(simos_key), flag))
+    if rebuild and report.get("base_key_counts"):
+        print("[gsimap_import] 底图 n0000 旧词表分布（对照；不参与重建映射）:")
+        for old_key in sorted(report["base_key_counts"]):
+            print("    {:<9} {:>6} 格".format(old_key, report["base_key_counts"][old_key]))
     print("[gsimap_import] 输出 terrainTypes 键集: {}（= 在用者 ∪ {})".format(
         report["terrain_types_keys"], list(ALWAYS_EMITTED_TERRAIN_KEYS)))
     print("[gsimap_import] LOSSY 映射（★ 有损：simos 词表无对应，合并入 plains）:")
     if report["lossy_counts"]:
         for old_key, count in sorted(report["lossy_counts"].items()):
-            print("    {:<9} -> {:<14} {:>6} 格".format(old_key, TERRAIN_MAP[old_key], count))
+            print("    {:<9} -> {:<14} {:>6} 格".format(old_key, mapping[old_key], count))
     else:
         print("    （无）")
     print("[gsimap_import] 丢弃的键 + 理由:")
     print("    compressedRegions — 旧仓 CompressionService 明说它是纯渲染缓存，hexes 才是权威")
     print("    rivers / roads    — 旧仓已标 @Deprecated，被 edges+pathwayGroups 取代")
-    print("    terrainBlocks     — 旧仓 TerrainBlockProcessor 已 @Deprecated，以 hex 上的 terrain 为权威")
+    if rebuild:
+        print("    （底图 terrainBlocks 为空也没用：旧仓 TerrainBlockProcessor 已 @Deprecated；"
+              "本次由 RebuildSamples 重算权威块）")
+    else:
+        print("    terrainBlocks     — 旧仓 TerrainBlockProcessor 已 @Deprecated，以 hex 上的 terrain 为权威")
     print("    gridSize          — simos 无对应（恒 30 的死值，与真实半径 80 矛盾）")
     print("    hexOrientation    — simos 无对应；已校验为 false（flat-top 假定）")
     print("[gsimap_import] provinces 数 : {}   环数 : {}".format(
@@ -690,17 +894,36 @@ def print_report(input_path, out_dir, report, rejected=None):
     print("[gsimap_import] edges 条数   : {}（来源={}；edgeTags 非空格 {} / riverMask 非零格 {}）".format(
         report["edges"], report["edge_source"],
         report["edge_tags_hexes"], report["river_mask_hexes"]))
-    print("[gsimap_import] 合成项       : spec 为 GenerationSpec.defaults(0) 的占位；"
-          "height 为所映射地形高度带中点（★ 沙漠取平原中点 + 0.005，2026-09-24）")
+    if rebuild:
+        print("[gsimap_import] terrainBlocks : {} 块 / 覆盖 {} 格"
+              "（同地形六邻连通分量；hexes 只存 height，块表为地形权威）".format(
+                  report["terrain_blocks"], report["terrain_block_hex_total"]))
+        print("[gsimap_import] height       : min={} max={} 越界 clamp={}（逐格取自再生样本）".format(
+            report["height_min"], report["height_max"], report["height_clamped"]))
+        print("[gsimap_import] 再生水陆比   : water={} ({}%) / land={} ({}%)；contour.landRatio={}".format(
+            report["regen_water_hexes"], round(100.0 * report["regen_water_hexes"] / report["hex_total"], 4),
+            report["regen_land_hexes"], round(100.0 * report["regen_land_hexes"] / report["hex_total"], 4),
+            report.get("sample_landRatio")))
+        print("[gsimap_import] 合成项       : spec 为 GenerationSpec.defaults(0) 的占位"
+              "（contour→GenerationSpec 映射口径未裁决，未编造）")
+    else:
+        print("[gsimap_import] 合成项       : spec 为 GenerationSpec.defaults(0) 的占位；"
+              "height 为所映射地形高度带中点（★ 沙漠取平原中点 + 0.005，2026-09-24）")
     print("[gsimap_import] 结果         : OK")
     print("=" * 72)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="旧 GSimulator *_map.json → simos 可读数据集（simos.db + checkpoints/main/1.json）")
+        description="旧 GSimulator *_map.json → simos 可读数据集（simos.db + checkpoints/main/1.json）；"
+                    "传 --regen-samples 走 D-013 重建模式（再生高度 + 新地形映射 + 权威 terrainBlocks）")
     parser.add_argument("input", help="旧 *_map.json 路径（必须是 root full map，不是 MapDiff）")
     parser.add_argument("out_dir", help="输出目录（不存在则创建）")
+    parser.add_argument("--regen-samples", metavar="PATH", default=None,
+                        help="重建模式：RegenSamples 产出的样本 JSON"
+                             "（hex 键集必须与底图完全一致；高度逐格取它、地形按重建映射）")
+    parser.add_argument("--report-json", metavar="PATH", default=None,
+                        help="统计落盘 JSON（重建模式缺省写 <out_dir>/report.json）")
     args = parser.parse_args(argv)
 
     report = {}
@@ -725,25 +948,63 @@ def main(argv=None):
             raise ImportRejected(
                 "cities 非空（{} 座）——simos 有 City 类型但映射规则未裁决，不猜".format(len(cities)))
 
-        map_obj = build_map_payload(data, report)
+        regen_samples = None
+        if args.regen_samples:
+            with open(args.regen_samples, "r", encoding="utf-8") as fh:
+                regen_samples = json.load(fh)
+            if not isinstance(regen_samples, dict):
+                raise ImportRejected("再生样本顶层不是对象")
+            for field in ("seed", "radius", "landRatio"):
+                if field not in regen_samples:
+                    raise ImportRejected("再生样本缺 {} 字段".format(field))
+
+        map_obj = build_map_payload(data, report, regen_samples)
 
         out_dir = os.path.abspath(args.out_dir)
         os.makedirs(os.path.join(out_dir, "checkpoints", BRANCH), exist_ok=True)
 
         checkpoint_path = os.path.join(out_dir, "checkpoints", BRANCH, "{}.json".format(REVISION))
+        extra_modules = EMPTY_MODULE_PAYLOADS if regen_samples is not None else None
         with open(checkpoint_path, "w", encoding="utf-8") as fh:
-            fh.write(build_checkpoint(map_obj))
+            fh.write(build_checkpoint(map_obj, extra_modules))
 
         write_db(os.path.join(out_dir, DB_FILE_NAME))
 
-        print_report(args.input, out_dir, report)
+        report["input_map"] = os.path.abspath(args.input)
+        report["out_dir"] = out_dir
+        report["checkpoint_path"] = checkpoint_path
+        report["checkpoint_bytes"] = os.path.getsize(checkpoint_path)
+        report["checkpoint_md5"] = _md5_file(checkpoint_path)
+        report["modules"] = (["map"] + sorted(EMPTY_MODULE_PAYLOADS)
+                             if regen_samples is not None else ["map", "social", "unit"])
+        if regen_samples is not None:
+            report["regen_samples_path"] = os.path.abspath(args.regen_samples)
+            report["regen_samples_md5"] = _md5_file(args.regen_samples)
+            report["sample_seed"] = regen_samples["seed"]
+            report["sample_radius"] = regen_samples["radius"]
+            report["sample_landRatio"] = regen_samples["landRatio"]
+            report["regen_actual_water_ratio"] = (
+                report["regen_water_hexes"] / report["hex_total"])
+            report["regen_actual_land_ratio"] = (
+                report["regen_land_hexes"] / report["hex_total"])
+        if args.report_json or regen_samples is not None:
+            report_path = args.report_json or os.path.join(out_dir, "report.json")
+            with open(report_path, "w", encoding="utf-8") as fh:
+                json.dump(report, fh, ensure_ascii=False, indent=2, sort_keys=True)
+                fh.write("\n")
+            print("[gsimap_import] report.json : {} (md5={})".format(
+                os.path.abspath(report_path), _md5_file(report_path)))
+
+        print_report(args.input, out_dir, report, samples_path=args.regen_samples)
         return 0
     except ImportRejected as exc:
-        print_report(args.input, args.out_dir, report, rejected=str(exc))
+        print_report(args.input, args.out_dir, report, rejected=str(exc),
+                     samples_path=args.regen_samples)
         return 2
     except (OSError, ValueError, KeyError, AssertionError) as exc:
         print_report(args.input, args.out_dir, report,
-                     rejected="{}: {}".format(type(exc).__name__, exc))
+                     rejected="{}: {}".format(type(exc).__name__, exc),
+                     samples_path=args.regen_samples)
         return 3
 
 
