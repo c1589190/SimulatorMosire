@@ -21,6 +21,7 @@ import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.query.RedactingQueryService;
 import io.mosire.simos.app.query.SdQueryService;
 import io.mosire.simos.app.sd.DecisionAdjudicationService;
+import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.read.DecisionResultsTool;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.CombatRecord;
@@ -340,6 +341,13 @@ public final class GuiServer implements AutoCloseable {
   private final CoreSimos core;
   private final String mapId;
 
+  /**
+   * 世界唯一的历法/气候配置服务（C6a/D-020）：{@code /api/state}、{@code /api/timeline}、{@code /api/map/hex}
+   * 的日期/季节都由它算好下发；生产路径由 {@code Shell} 传 {@link CalendarService#load} 的**同一实例**，旧构造器走 {@link
+   * CalendarService#defaults()}（测试/旧路径）。
+   */
+  private final CalendarService calendarService;
+
   /** GM 口工具使用记录（T8）：{@code GET /api/gm/tool-usage} 的唯一数据源；由 {@code Shell} 注入。 */
   private final GmToolUsage gmToolUsage;
 
@@ -382,7 +390,16 @@ public final class GuiServer implements AutoCloseable {
    */
   public GuiServer(
       QueryService queryService, CoreSimos core, String mapId, String approvalBaseUrl) {
-    this(queryService, core, mapId, approvalBaseUrl, new GmToolUsage(), null, null);
+    this(
+        queryService,
+        core,
+        mapId,
+        approvalBaseUrl,
+        new GmToolUsage(),
+        null,
+        null,
+        null,
+        CalendarService.defaults());
   }
 
   /**
@@ -396,7 +413,16 @@ public final class GuiServer implements AutoCloseable {
       String mapId,
       String approvalBaseUrl,
       GmToolUsage gmToolUsage) {
-    this(queryService, core, mapId, approvalBaseUrl, gmToolUsage, null, null);
+    this(
+        queryService,
+        core,
+        mapId,
+        approvalBaseUrl,
+        gmToolUsage,
+        null,
+        null,
+        null,
+        CalendarService.defaults());
   }
 
   /**
@@ -404,8 +430,6 @@ public final class GuiServer implements AutoCloseable {
    *
    * @param llmConfig LLM provider 配置门面（{@code /api/llm/providers*} 的唯一数据源）；null = 未接入
    * @param decisionAdjudicationService 决策编排（{@code /api/sd/start-decision} 提交后跑判决）；null = 不裁决
-   *     <p>★ **本构造器刻意不设 {@code EI_EXPOSE_REP2} 抑制**：它只委派给全参那个、自己不碰字段 ⇒ 留一条"不必要的抑制" 恰好会被 SpotBugs 的
-   *     {@code US_USELESS_SUPPRESSION_ON_METHOD} 抓出来（2026-09-23 门禁实测，1 bug）。
    */
   public GuiServer(
       QueryService queryService,
@@ -423,17 +447,18 @@ public final class GuiServer implements AutoCloseable {
         gmToolUsage,
         llmConfig,
         decisionAdjudicationService,
-        null);
+        null,
+        CalendarService.defaults());
   }
 
   /**
-   * 全参构造（决策运行流对接版）：多一个 {@link DecisionAgentService}（{@code /api/sd/run-decision} 的那一轮）。
+   * 旧全参构造（决策运行流对接版）：历法服务缺省 {@link CalendarService#defaults()}（测试/旧路径）。
+   *
+   * <p>★ **本构造器刻意不设 {@code EI_EXPOSE_REP2} 抑制**：它只委派给全参那个、自己不碰字段 ⇒ 留一条"不必要的抑制" 恰好会被 SpotBugs 的
+   * {@code US_USELESS_SUPPRESSION_ON_METHOD} 抓出来（2026-09-23 门禁实测，1 bug）。
    *
    * @param decisionAgentService 决策人 agent 运行流；null = 未接入（该端点只落触发事实、不跑那一轮）
    */
-  @SuppressFBWarnings(
-      value = "EI_EXPOSE_REP2",
-      justification = "GUI 是组合根装配出来的请求处理器，持有配置门面即其职责本身（只读/写 AgentLib 配置），非内部表示外泄")
   public GuiServer(
       QueryService queryService,
       CoreSimos core,
@@ -443,14 +468,47 @@ public final class GuiServer implements AutoCloseable {
       AgentLibLlmConfig llmConfig,
       DecisionAdjudicationService decisionAdjudicationService,
       DecisionAgentService decisionAgentService) {
+    this(
+        queryService,
+        core,
+        mapId,
+        approvalBaseUrl,
+        gmToolUsage,
+        llmConfig,
+        decisionAdjudicationService,
+        decisionAgentService,
+        CalendarService.defaults());
+  }
+
+  /**
+   * 全参构造（C6a/D-020 历法接入版）：多一个世界唯一的 {@link CalendarService}。
+   *
+   * @param decisionAgentService 决策人 agent 运行流；null = 未接入（该端点只落触发事实、不跑那一轮）
+   * @param calendarService 世界历法/气候配置服务；生产路径必须由 {@code Shell} 传 {@link CalendarService#load} 的同一实例
+   */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP2",
+      justification = "GUI 是组合根装配出来的请求处理器，持有配置门面与历法服务即其职责本身（只读/写配置、算日期季节），非内部表示外泄")
+  public GuiServer(
+      QueryService queryService,
+      CoreSimos core,
+      String mapId,
+      String approvalBaseUrl,
+      GmToolUsage gmToolUsage,
+      AgentLibLlmConfig llmConfig,
+      DecisionAdjudicationService decisionAdjudicationService,
+      DecisionAgentService decisionAgentService,
+      CalendarService calendarService) {
     this.decisionAgentService = decisionAgentService;
     this.queryService = Objects.requireNonNull(queryService, "queryService");
     this.core = Objects.requireNonNull(core, "core");
     this.mapId = Objects.requireNonNull(mapId, "mapId");
+    this.calendarService = Objects.requireNonNull(calendarService, "calendarService");
     // ★ T9：范围函数与决策人路径**同一份**（{@code DecisionScopeFunctions.defaults()} 是无状态注册表）——
-    //   GUI 的 as= 与 MCP 看到的可见性由同一段装配决定。
+    //   GUI 的 as= 与 MCP 看到的可见性由同一段装配决定。★ C6a：历法服务也传同一实例（读口日期/季节一致）。
     this.redactingQueryService =
-        new RedactingQueryService(queryService, DecisionScopeFunctions.defaults(), mapId);
+        new RedactingQueryService(
+            queryService, DecisionScopeFunctions.defaults(), mapId, calendarService);
     this.sdQueryService = new SdQueryService(queryService);
     this.gmToolUsage = Objects.requireNonNull(gmToolUsage, "gmToolUsage");
     this.approvalBaseUrl = approvalBaseUrl;
@@ -670,7 +728,8 @@ public final class GuiServer implements AutoCloseable {
                   units,
                   state.meta().timestamp(),
                   ApiViews.gameMap(state),
-                  ApiViews.sdState(state))));
+                  ApiViews.sdState(state),
+                  calendarService)));
     }
     if (isUnitDetail(path)) {
       return unitReply(
@@ -947,7 +1006,7 @@ public final class GuiServer implements AutoCloseable {
     Map<String, Object> meta = new LinkedHashMap<>();
     meta.put("branch", branchName);
     meta.put("revision", revision.value());
-    meta.put("timestamp", ApiViews.timestamp(state.meta().timestamp()));
+    meta.put("timestamp", ApiViews.timestamp(state.meta().timestamp(), calendarService));
     return meta;
   }
 
@@ -1043,7 +1102,17 @@ public final class GuiServer implements AutoCloseable {
         actor,
         params,
         Reply.of(
-            200, ApiViews.mapHex(coord, cell, terrain, facets, regions, terrainType, map.edges())));
+            200,
+            ApiViews.mapHex(
+                coord,
+                cell,
+                terrain,
+                facets,
+                regions,
+                terrainType,
+                map.edges(),
+                state.meta().timestamp(),
+                calendarService)));
   }
 
   /**
@@ -1107,7 +1176,7 @@ public final class GuiServer implements AutoCloseable {
       return Reply.of(404, Map.of("error", "branch not found", "branch", branch.value()));
     }
     List<RevisionRow> rows = core.revisions(branch);
-    return Reply.of(200, ApiViews.timeline(branch, head.get().value(), rows));
+    return Reply.of(200, ApiViews.timeline(branch, head.get().value(), rows, calendarService));
   }
 
   private Reply unitReply(
@@ -1134,7 +1203,8 @@ public final class GuiServer implements AutoCloseable {
                 units,
                 state.meta().timestamp(),
                 ApiViews.gameMap(state),
-                ApiViews.sdState(state))));
+                ApiViews.sdState(state),
+                calendarService)));
   }
 
   private Reply populationReply(
@@ -1163,7 +1233,11 @@ public final class GuiServer implements AutoCloseable {
         Reply.of(
             200,
             ApiViews.population(
-                social, ApiViews.economyData(state), coord, state.meta().timestamp())));
+                social,
+                ApiViews.economyData(state),
+                coord,
+                state.meta().timestamp(),
+                calendarService)));
   }
 
   /**

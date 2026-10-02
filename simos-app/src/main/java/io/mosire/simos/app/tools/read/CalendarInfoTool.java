@@ -5,16 +5,13 @@ import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.time.CalendarConfig;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.calendar.CalendarDate;
-import io.mosire.simos.calendar.ClimatePhase;
-import io.mosire.simos.calendar.JulianCalendar;
-import io.mosire.simos.calendar.SeasonState;
-import io.mosire.simos.calendar.SolarTerm;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
@@ -37,8 +34,9 @@ import java.util.Map;
  * 单开一个不存在的命名空间反而会与 Shell 的逐命名空间表态对不上（新命名空间不进 {@code gmPermissionSet} 就会回落成未表态）。 声明 ALL_READ
  * 只表示"本工具与那些世界读面同制"，不表示本工具会读它们。
  *
- * <p>★ <b>形状与 C6 读口同源</b>：{@code date}/{@code solarTerm}/{@code season} 的字段名照设计稿 §八（C6 的 {@code
- * ApiViews.timestamp} 必须与本工具一致），来源标记照 C5a 的三个 getter（{@code store|default|fallback}）。
+ * <p>★ <b>形状与 C6a 读口同源</b>：{@code date}/{@code solarTerm}/{@code season} 直接复用 {@link
+ * ApiViews#dateView}/{@link ApiViews#solarTermView}/{@link ApiViews#seasonView}（设计稿 §八的字段口径，含
+ * {@code date.calendar}）；来源标记照 C5a 的三个 getter（{@code store|default|fallback}）。
  */
 public final class CalendarInfoTool implements AgentTool {
 
@@ -68,7 +66,7 @@ public final class CalendarInfoTool implements AgentTool {
     return "查历法/气候配置与某 tick 的日期：{branch?, revision?, tick?, q?, r?}。"
         + "tick 缺省 = 目标 state 当前 tick；q/r 必须成对——只给一个 ⇒ BAD_REQUEST。"
         + "回 {config（含 version）, sources{calendarSource,seasonSource,zoneSource}(store|default|fallback),"
-        + " date{year,month,day,dayOfYear}, solarTerm{key,name,longitude}，成对给 q/r 时才带"
+        + " date{calendar,year,month,day,dayOfYear}, solarTerm{key,name,longitude}，成对给 q/r 时才带"
         + " season{phase,key,name,dayOfSeason,daysInSeason,progressPerMille,zone,zoneSource}，"
         + " notes[]}。只读：不写状态、不落 revision";
   }
@@ -106,8 +104,8 @@ public final class CalendarInfoTool implements AgentTool {
       view.put("tick", tick);
       view.put("config", configView(calendarService.config()));
       view.put("sources", sourcesView(calendarService));
-      view.put("date", dateView(date));
-      view.put("solarTerm", solarTermView(calendarService.solarTermAt(tick)));
+      view.put("date", ApiViews.dateView(date));
+      view.put("solarTerm", ApiViews.solarTermView(calendarService.solarTermAt(tick)));
       List<String> notes = new ArrayList<>(1);
       if (qArg == null) {
         // ★ 不给坐标 ⇒ season 字段**省略**，理由写进 notes（设计稿 §七的"季节不适用"是显式事实，不静默省略）。
@@ -115,7 +113,8 @@ public final class CalendarInfoTool implements AgentTool {
       } else {
         HexCoord coord = new HexCoord(Math.toIntExact(qArg), Math.toIntExact(rArg));
         view.put(
-            "season", seasonView(calendarService, calendarService.seasonAt(tick, coord), coord));
+            "season",
+            ApiViews.seasonView(calendarService, calendarService.seasonAt(tick, coord), coord));
       }
       view.put("notes", notes);
       return ToolResult.ok(ToolSupport.json(view));
@@ -147,46 +146,5 @@ public final class CalendarInfoTool implements AgentTool {
     view.put("seasonSource", service.seasonSource().key());
     view.put("zoneSource", service.zoneSource().key());
     return view;
-  }
-
-  /** 日期四件套（{@code dayOfYear} 用 {@link JulianCalendar#dayOfYear}）。 */
-  private static Map<String, Object> dateView(CalendarDate date) {
-    Map<String, Object> view = new LinkedHashMap<>();
-    view.put("year", date.year());
-    view.put("month", date.month());
-    view.put("day", date.day());
-    view.put("dayOfYear", JulianCalendar.INSTANCE.dayOfYear(date));
-    return view;
-  }
-
-  /** 当天节气（{@link SolarTerm} 的 key/中文名/黄经）。 */
-  private static Map<String, Object> solarTermView(SolarTerm term) {
-    Map<String, Object> view = new LinkedHashMap<>();
-    view.put("key", term.key());
-    view.put("name", term.chineseName());
-    view.put("longitude", term.longitude());
-    return view;
-  }
-
-  /** 季节状态 + 该格所在纬度带 + 分带来源（设计稿 §八的字段口径）。 */
-  private static Map<String, Object> seasonView(
-      CalendarService service, SeasonState season, HexCoord at) {
-    ClimatePhase phase = season.phase();
-    Map<String, Object> view = new LinkedHashMap<>();
-    view.put("phase", phase.getClass().getSimpleName());
-    view.put("key", phase.key());
-    view.put("name", phase.chineseName());
-    view.put("dayOfSeason", season.dayOfSeason());
-    view.put("daysInSeason", season.daysInSeason());
-    view.put("progressPerMille", progressPerMille(season.progress()));
-    // ★ 分带与来源必须成对：分带未配置 ⇒ zoneSource=fallback 且 zone 恒 NORTH_TEMPERATE（不假装已分带）。
-    view.put("zone", service.bands().zoneOf(at).name());
-    view.put("zoneSource", service.zoneSource().key());
-    return view;
-  }
-
-  /** 进度千分位（四舍五入；{@code progress ∈ [0,1)} ⇒ 值域 0..999，读口只出可比的整数）。 */
-  private static int progressPerMille(double progress) {
-    return (int) Math.round(progress * 1000.0);
   }
 }

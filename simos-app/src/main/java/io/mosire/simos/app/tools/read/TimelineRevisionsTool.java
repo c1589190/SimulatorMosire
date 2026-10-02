@@ -6,6 +6,7 @@ import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.gui.ApiViews;
+import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.timeline.RevisionRow;
@@ -24,8 +25,8 @@ import java.util.Optional;
  * Agent 看得到"有几条 revision"，看不到"每条 revision 是什么命令、谁提交的、父是谁"。 数据早就在 {@link
  * CoreSimos#revisions(BranchId)} 里，缺的只是这一个读口。
  *
- * <p>★ **形状与 GUI 同源**：{@link ApiViews#timeline(BranchId, long, List)} —— GUI {@code /api/timeline}
- * 用的就是它。
+ * <p>★ **形状与 GUI 同源**：{@link ApiViews#timeline(BranchId, long, List, CalendarService)} —— GUI
+ * {@code /api/timeline} 用的就是它（C6a 起节点带 {@code date}）。
  *
  * <p>★ **只读**：{@code core.head} / {@code core.revisions} 都不触发封存与写盘（R1 口径）。分支不存在 ⇒ {@code
  * NOT_FOUND}（与 GUI 的 404 同口径：不给"空分支"这种含糊结果）。
@@ -36,12 +37,21 @@ public final class TimelineRevisionsTool implements AgentTool {
   public static final String NAME = "simos.timeline.revisions";
 
   private final CoreSimos core;
+  private final CalendarService calendarService;
 
-  // ★ CoreSimos 是本工具的唯一读入口（只调 head/replay 等只读面），不是"可变内部表示外泄"：
-  //   与同族的写工具（AdvanceTool 的 EI_EXPOSE_REP2）同口径豁免。
-  @SuppressFBWarnings(value = "EI_EXPOSE_REP2", justification = "CoreSimos 是共享读入口（只调只读面），非内部表示外泄")
+  /** 旧构造器（测试/旧路径）：历法走 {@link CalendarService#defaults()}。 */
   public TimelineRevisionsTool(CoreSimos core) {
+    this(core, CalendarService.defaults());
+  }
+
+  // ★ CoreSimos 是本工具的唯一读入口（只调 head/replay 等只读面）/ CalendarService 是共享只读协作者，
+  //   不是"可变内部表示外泄"：与同族的写工具（AdvanceTool 的 EI_EXPOSE_REP2）同口径豁免。
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP2",
+      justification = "CoreSimos 是共享读入口、CalendarService 是共享只读协作者（只调只读面），非内部表示外泄")
+  public TimelineRevisionsTool(CoreSimos core, CalendarService calendarService) {
     this.core = core;
+    this.calendarService = calendarService;
   }
 
   @Override
@@ -51,7 +61,7 @@ public final class TimelineRevisionsTool implements AgentTool {
 
   @Override
   public String description() {
-    return "时间轴节点清单：{branch, head, nodes:[{revision,tick,commandType,initiator,parent}]}";
+    return "时间轴节点清单：{branch, head, nodes:[{revision,tick,date,commandType,initiator,parent}]}";
   }
 
   @Override
@@ -77,7 +87,7 @@ public final class TimelineRevisionsTool implements AgentTool {
         return ToolResult.error("NOT_FOUND", "分支不存在: " + branch.value());
       }
       List<RevisionRow> rows = core.revisions(branch);
-      return ToolSupport.ok(ApiViews.timeline(branch, head.get().value(), rows));
+      return ToolSupport.ok(ApiViews.timeline(branch, head.get().value(), rows, calendarService));
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }

@@ -879,7 +879,10 @@ public final class Shell implements AutoCloseable {
             decisionAdjudicationService,
             // ★ T11C 的运行流（不是判决定编）：/api/sd/run-decision 落地时就是拿它跑那一轮——与 GM 侧的
             //   sd.RunDecision 窄工具**同一个实例**（同一个会话库、同一条 provider 解析链）。
-            decisionAgentService);
+            decisionAgentService,
+            // ★ C6a/D-020：GUI 三条读口与 MCP 单位/人口读口共用启动期 CalendarService.load 的**同一实例**——
+            //   GM 改历法/分带后日期与季节当场整体切换，不需重启。
+            calendarService);
     boolean guiUp = false;
     try {
       guiServer.start(config.bindAddress(), config.guiPort());

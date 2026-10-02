@@ -13,12 +13,18 @@ import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.query.SdQueryService;
+import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.CombatOutcome;
 import io.mosire.simos.army.CombatRecord;
 import io.mosire.simos.army.CombatUnitLoss;
 import io.mosire.simos.calendar.CalendarClock;
+import io.mosire.simos.calendar.CalendarDate;
+import io.mosire.simos.calendar.ClimatePhase;
+import io.mosire.simos.calendar.JulianCalendar;
+import io.mosire.simos.calendar.SeasonState;
+import io.mosire.simos.calendar.SolarTerm;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -243,12 +249,72 @@ public final class ApiViews {
     return view;
   }
 
-  /** {@code {tick,calendarLabel}}。 */
-  static Map<String, Object> timestamp(SimosTimestamp at) {
+  /**
+   * {@code {tick,calendarLabel,date}}（设计稿 §八；D-020：日期由服务端算好随只读口下发）。
+   *
+   * <p>★ 本方法**只认 tick、不认坐标** ⇒ 只发 {@code date}，不假装能算季节；季节只有拿到格子的 {@link #mapHex}
+   * 那条路才发。日历/锚点一律来自世界唯一的 {@link CalendarService}，本类不自造缺省时钟。
+   */
+  public static Map<String, Object> timestamp(SimosTimestamp at, CalendarService calendars) {
+    Objects.requireNonNull(at, "at");
+    Objects.requireNonNull(calendars, "calendars");
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("tick", at.tick());
     view.put("calendarLabel", at.calendarLabel().orElse(null));
+    view.put("date", dateView(calendars.dateOfTick(at.tick())));
     return view;
+  }
+
+  /** 历法日期四件套（设计稿 §八）：{@code {calendar,year,month,day,dayOfYear}}。 */
+  public static Map<String, Object> dateView(CalendarDate date) {
+    Objects.requireNonNull(date, "date");
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("calendar", JulianCalendar.ID);
+    view.put("year", date.year());
+    view.put("month", date.month());
+    view.put("day", date.day());
+    view.put("dayOfYear", JulianCalendar.INSTANCE.dayOfYear(date));
+    return view;
+  }
+
+  /** 当天节气（设计稿 §八）：{@code {key,name,longitude}}。 */
+  public static Map<String, Object> solarTermView(SolarTerm term) {
+    Objects.requireNonNull(term, "term");
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("key", term.key());
+    view.put("name", term.chineseName());
+    view.put("longitude", term.longitude());
+    return view;
+  }
+
+  /**
+   * 某格季节（设计稿 §八；D-020）：{@code
+   * {phase,key,name,dayOfSeason,daysInSeason,progressPerMille,zone,zoneSource}}。
+   *
+   * <p>★ 分带与来源**成对**：分带未配置 ⇒ {@code zoneSource=fallback} 且 {@code zone} 恒 {@code
+   * NORTH_TEMPERATE}（不假装已分带）；配置过 ⇒ {@code zoneSource=store}。判带读的是 {@code at.r()}。
+   */
+  public static Map<String, Object> seasonView(
+      CalendarService calendars, SeasonState season, HexCoord at) {
+    Objects.requireNonNull(calendars, "calendars");
+    Objects.requireNonNull(season, "season");
+    Objects.requireNonNull(at, "at");
+    ClimatePhase phase = season.phase();
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("phase", phase.getClass().getSimpleName());
+    view.put("key", phase.key());
+    view.put("name", phase.chineseName());
+    view.put("dayOfSeason", season.dayOfSeason());
+    view.put("daysInSeason", season.daysInSeason());
+    view.put("progressPerMille", progressPerMille(season.progress()));
+    view.put("zone", calendars.bands().zoneOf(at).name());
+    view.put("zoneSource", calendars.zoneSource().key());
+    return view;
+  }
+
+  /** 进度千分位（四舍五入；{@code progress ∈ [0,1)} ⇒ 值域 0..999）。 */
+  private static int progressPerMille(double progress) {
+    return (int) Math.round(progress * 1000.0);
   }
 
   /** {@code {branch,revision}}。 */
@@ -312,10 +378,15 @@ public final class ApiViews {
   }
 
   /**
-   * 时间轴节点清单（spec §3.1，M7 T1）：{@code {branch,head,nodes:[…]}}。节点**不含 {@code changesetJson}**（体积大且对
-   * UI 无用），{@code parent} 为 {@code {branch,revision}} 或 {@code null}。
+   * 时间轴节点清单（spec §3.1，M7 T1；★ C6a 加 {@code date}）：{@code {branch,head,nodes:[…]}}。节点**不含 {@code
+   * changesetJson}**（体积大且对 UI 无用），{@code parent} 为 {@code {branch,revision}} 或 {@code null}。
+   *
+   * <p>★ 日期一律由**该 row 自己的 tick** 纯算（不看 head state）⇒ 同 tick 多条 revision 必同日；历史节点不会跟着 head
+   * 的锚点之外的东西漂移。
    */
-  public static Map<String, Object> timeline(BranchId branch, long head, List<RevisionRow> rows) {
+  public static Map<String, Object> timeline(
+      BranchId branch, long head, List<RevisionRow> rows, CalendarService calendars) {
+    Objects.requireNonNull(calendars, "calendars");
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("branch", branch.value());
     view.put("head", head);
@@ -324,6 +395,7 @@ public final class ApiViews {
       Map<String, Object> node = new LinkedHashMap<>();
       node.put("revision", row.revision().value());
       node.put("tick", row.timestamp().tick());
+      node.put("date", dateView(calendars.dateOfTick(row.timestamp().tick())));
       node.put("commandType", row.commandType());
       node.put("initiator", row.initiator());
       node.put("parent", row.parent().map(ApiViews::stateRef).orElse(null));
@@ -4957,6 +5029,10 @@ public final class ApiViews {
    * <p>★ {@code edges}（T11 新增）是**只读**增量：连通性此前在 app 层**没有任何读路径**（overview 只有块， mapHex
    * 只有地形），于是"`merge` 后既有 tag 仍在 / `replace` 后只剩新的"这条判据在**浏览器里根本观测不到** （断不了言 = 装饰）。字段形如 {@code
    * [{edge:"1_1|1_2", pathways:["river","road"]}]}，语义照 {@link EdgeTags#byPathway()} 的键。
+   *
+   * <p>★ <b>C6a（D-020）</b>：末尾追加 {@code date} 与 {@code season}——两者都用**该 state 的 tick**；季节按**该格
+   * {@code coord.r()}** 判带（{@link CalendarService#seasonAt}），未配置分带时 {@code zoneSource=fallback}。 旧页
+   * {@code map.html} 与工作台 {@code index.html} 共用这一份响应，前端只渲染、不重算。
    */
   static Map<String, Object> mapHex(
       HexCoord coord,
@@ -4965,7 +5041,11 @@ public final class ApiViews {
       List<FacetEntry> facets,
       List<RegionId> regions,
       TerrainType terrainType,
-      Map<EdgeRef, EdgeTags> edges) {
+      Map<EdgeRef, EdgeTags> edges,
+      SimosTimestamp at,
+      CalendarService calendars) {
+    Objects.requireNonNull(at, "at");
+    Objects.requireNonNull(calendars, "calendars");
     Map<String, Object> view = hexCoord(coord);
     view.put("terrain", terrain);
     view.put("height", cell.height());
@@ -4977,6 +5057,8 @@ public final class ApiViews {
     view.put("terrainType", terrainType);
     view.put("facets", facets(facets));
     view.put("edges", incidentEdges(coord, edges));
+    view.put("date", dateView(calendars.dateOfTick(at.tick())));
+    view.put("season", seasonView(calendars, calendars.seasonAt(at.tick(), coord), coord));
     return view;
   }
 
@@ -5090,12 +5172,20 @@ public final class ApiViews {
 
   /** 单位列表（每个单位带 head 时刻的有效位置与在途移动视图；★ 2026-09-24 起带所属交战）。 */
   static List<Map<String, Object>> units(
-      UnitState units, SimosTimestamp at, GameMap map, SdState sd) {
+      UnitState units, SimosTimestamp at, GameMap map, SdState sd, CalendarService calendars) {
     List<Map<String, Object>> out = new ArrayList<>(units.units().size());
     for (Unit unit : units.units().values()) {
-      out.add(unit(unit, units, at, map, sd));
+      out.add(unit(unit, units, at, map, sd, calendars));
     }
     return out;
+  }
+
+  /**
+   * 旧签名兼容（测试/旧路径）：缺省历法配置；生产路径由 {@code GuiServer}/{@code ToolSupport} 传世界的 {@link CalendarService}。
+   */
+  static List<Map<String, Object>> units(
+      UnitState units, SimosTimestamp at, GameMap map, SdState sd) {
+    return units(units, at, map, sd, CalendarService.defaults());
   }
 
   /**
@@ -5118,7 +5208,13 @@ public final class ApiViews {
    * 读侧不必分"字段缺席"与"空表"两态。
    */
   public static Map<String, Object> unit(
-      Unit unit, UnitState units, SimosTimestamp at, GameMap map, SdState sd) {
+      Unit unit,
+      UnitState units,
+      SimosTimestamp at,
+      GameMap map,
+      SdState sd,
+      CalendarService calendars) {
+    Objects.requireNonNull(calendars, "calendars");
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", unit.id().value());
     view.put("name", unit.name());
@@ -5134,7 +5230,7 @@ public final class ApiViews {
     view.put("parent", unit.parent().valueAt(at).map(UnitId::value).orElse(null));
     view.put(
         "position", units.effectivePosition(unit.id(), at).map(ApiViews::hexCoord).orElse(null));
-    view.put("movement", movement(unit, at, map));
+    view.put("movement", movement(unit, at, map, calendars));
     // ★ 所属交战（2026-09-24）：真实 {@code CombatState} 记录优先；不在任何交战 ⇒ null。
     view.put("combat", combatOf(unit.id(), sd, units, at));
     // ★★ 编制 v2（2026-09-24）：`attached` = 我是不是跟别人一起走；`formationRootId` = 该对谁下令；
@@ -5156,6 +5252,14 @@ public final class ApiViews {
     //   `equipment` 同款：这栏本身是单位状态的一部分，"没有链接"就用空对象表达；GUI 与 MCP 同源这一份）。
     view.put("stateDescriptions", new LinkedHashMap<>(unit.stateDescriptions()));
     return view;
+  }
+
+  /**
+   * 旧签名兼容（测试/旧路径）：缺省历法配置；生产路径由 {@code GuiServer}/{@code ToolSupport} 传世界的 {@link CalendarService}。
+   */
+  public static Map<String, Object> unit(
+      Unit unit, UnitState units, SimosTimestamp at, GameMap map, SdState sd) {
+    return unit(unit, units, at, map, sd, CalendarService.defaults());
   }
 
   /** 人力/装备有序表 → JSON 视图（{@code [{type,amount}…]}，顺序原样；D3a 的读侧唯一形状）。 */
@@ -5553,7 +5657,8 @@ public final class ApiViews {
    * UnitMoves#evaluate} 现算**——app 层不重写"预算 / 每格成本 / 付清到哪一段"的算法，那是第二份真相（与位置走 {@code
    * effectivePosition} 同一条纪律）。
    */
-  private static Object movement(Unit unit, SimosTimestamp at, GameMap map) {
+  private static Object movement(
+      Unit unit, SimosTimestamp at, GameMap map, CalendarService calendars) {
     if (unit.movement().isEmpty()) {
       return null;
     }
@@ -5561,7 +5666,7 @@ public final class ApiViews {
     MovementState state = UnitMoves.evaluate(unit, at, map, TerrainMovementCost.INSTANCE);
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("route", route(movement.route()));
-    view.put("departedAt", timestamp(movement.departedAt()));
+    view.put("departedAt", timestamp(movement.departedAt(), calendars));
     view.put("speedAtDeparture", movement.speedAtDeparture());
     view.put("mobilityPerMilleAtDeparture", movement.mobilityAtDeparture());
     view.put("status", state.status().name());
@@ -5628,15 +5733,20 @@ public final class ApiViews {
    * <p>★ **该格没有人口序列 ⇒ 抛**（fail-closed）：调用方（路由 / 读工具）本就在此之前把它折成 {@code NOT_FOUND}， 走不到这里；静默给一个 0
    * 会让"id 拼错 / 格不存在"看起来像"这格没人"。
    *
-   * @param at 查询时刻；{@code at.tick()} 同时是年龄档的现算输入（世界日），也是回退旧序列时的取值时刻。★ <b>具名缺口（C6 读口/GUI 工作）</b>：本批
-   *     ApiViews 还没有 CalendarService 注入，tick→JDN 的换算仍用缺省时钟 {@link CalendarClock#julianDefault()}；C6
-   *     把 CalendarService 接进来后替换，不静默假装已接
+   * @param at 查询时刻；{@code at.tick()} 同时是年龄档的现算输入（世界日），也是回退旧序列时的取值时刻。
+   * @param calendars 世界唯一的历法/气候配置服务：{@code at} 的日期与年龄档的 tick→历法年换算都用**它的时钟** （C6a 起不再有旧占位时钟）；生产路径由
+   *     {@code GuiServer}/{@code ToolSupport} 传入。
    * @param economy 经济切片（R2 的 T4：劳动分配读口要从它取"这一格的劳动被哪个主体占了多少"）
    */
   public static Map<String, Object> population(
-      SocialData data, EconomyData economy, HexCoord coord, SimosTimestamp at) {
+      SocialData data,
+      EconomyData economy,
+      HexCoord coord,
+      SimosTimestamp at,
+      CalendarService calendars) {
+    Objects.requireNonNull(calendars, "calendars");
     Map<String, Object> view = hexCoord(coord);
-    view.put("at", timestamp(at));
+    view.put("at", timestamp(at, calendars));
     PopulationSeries series = data.populations().get(coord);
     if (series == null) {
       throw new IllegalArgumentException("该格没有人口序列: " + coord.q() + "_" + coord.r());
@@ -5645,9 +5755,7 @@ public final class ApiViews {
     PopulationHeadline headline = data.headlinePopulationAt(coord, series, at);
     view.put("population", headline.value());
     view.put("source", headline.source().key());
-    // ★ 具名缺口（C6 读口/GUI 工作）：ApiViews 本批尚无 CalendarService 注入，这里保留缺省时钟；
-    //   C6 把 CalendarService 接进来后替换（缺省值相同，julianDefault = 儒略 1445-01-01）。
-    CalendarClock clock = CalendarClock.julianDefault();
+    CalendarClock clock = calendars.clock();
     Map<String, Object> groups = groupsView(data, coord, at, clock);
     view.put("groups", groups);
     // ★ R2（T4）：劳动分配一维（各主体占用劳动 / 该格可用劳动 / 占用率）。
@@ -5664,6 +5772,14 @@ public final class ApiViews {
     }
     view.put("crisis", crisis);
     return view;
+  }
+
+  /**
+   * 旧签名兼容（测试/旧路径）：缺省历法配置；生产路径由 {@code GuiServer}/{@code ToolSupport} 传世界的 {@link CalendarService}。
+   */
+  public static Map<String, Object> population(
+      SocialData data, EconomyData economy, HexCoord coord, SimosTimestamp at) {
+    return population(data, economy, coord, at, CalendarService.defaults());
   }
 
   /** {@code groups} 块（R1.5 的形状，一字不动）：{@code total,urban,rural,ageBrackets,sex}。 */

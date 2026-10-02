@@ -10,6 +10,7 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.army.CombatRecord;
 import io.mosire.simos.army.CombatRecordId;
 import io.mosire.simos.core.command.CommandResult;
@@ -578,11 +579,14 @@ public final class ToolSupport {
     return view;
   }
 
-  public static Map<String, Object> timestamp(SimosTimestamp at) {
-    Map<String, Object> view = new LinkedHashMap<>();
-    view.put("tick", at.tick());
-    view.put("calendarLabel", at.calendarLabel().orElse(null));
-    return view;
+  /**
+   * 工具面的只读时间戳：与 {@link ApiViews#timestamp} **同一份**（C6a 起带 {@code date}）。
+   *
+   * <p>★ 有 tick 无坐标 ⇒ 只发 {@code date}、不发 season；世界历法一律由调用方传 {@link CalendarService}（生产路径从 {@code
+   * SimosToolSource} 的同一实例透传），本类不自造缺省时钟。
+   */
+  public static Map<String, Object> timestamp(SimosTimestamp at, CalendarService calendars) {
+    return ApiViews.timestamp(at, calendars);
   }
 
   /** 不过滤的总览（既有调用点：{@code RedactingQueryService} 自己的脱敏路径）。 */
@@ -673,19 +677,24 @@ public final class ToolSupport {
   }
 
   public static List<Map<String, Object>> units(
-      UnitState units, SimosTimestamp at, GameMap map, SdState sd) {
-    return units(units, at, map, sd, any -> true);
+      UnitState units, SimosTimestamp at, GameMap map, SdState sd, CalendarService calendars) {
+    return units(units, at, map, sd, any -> true, calendars);
   }
 
   /** **按可见性过滤**的单位清单（T10）：越界的单位不进结果（与 {@code unit.get} 的"不可见 ⇒ NOT_FOUND"同一口径）。 */
   public static List<Map<String, Object>> units(
-      UnitState units, SimosTimestamp at, GameMap map, SdState sd, Predicate<UnitId> unitVisible) {
+      UnitState units,
+      SimosTimestamp at,
+      GameMap map,
+      SdState sd,
+      Predicate<UnitId> unitVisible,
+      CalendarService calendars) {
     List<Map<String, Object>> out = new ArrayList<>(units.units().size());
     for (Unit unit : units.units().values()) {
       if (!unitVisible.test(unit.id())) {
         continue;
       }
-      out.add(unit(unit, units, at, map, sd));
+      out.add(unit(unit, units, at, map, sd, calendars));
     }
     return out;
   }
@@ -696,11 +705,17 @@ public final class ToolSupport {
    * <p>★★ **委托给 {@link ApiViews#unit}**（2026-09-24 合一）：GUI 与 MCP 两面此前各写一份同形视图，加字段就得记得改两处 ——AGENT.md
    * §8.3 的纪律是"共用同一份视图层（ApiViews）"。这里只留转调，不再有第二份字段清单。
    *
-   * <p>★ {@code sd} 供装配 {@code combat}（所属交战）——与 GUI 同一份真值（铁律 3：不在这里另推一份）。
+   * <p>★ {@code sd} 供装配 {@code combat}（所属交战）——与 GUI 同一份真值（铁律 3：不在这里另推一份）。 ★ {@code calendars} 供在途移动
+   * {@code departedAt} 的日期（C6a）；生产路径由 {@code SimosToolSource} 传世界同一实例。
    */
   public static Map<String, Object> unit(
-      Unit unit, UnitState units, SimosTimestamp at, GameMap map, SdState sd) {
-    return ApiViews.unit(unit, units, at, map, sd);
+      Unit unit,
+      UnitState units,
+      SimosTimestamp at,
+      GameMap map,
+      SdState sd,
+      CalendarService calendars) {
+    return ApiViews.unit(unit, units, at, map, sd, calendars);
   }
 
   public static List<Map<String, Object>> facets(List<FacetEntry> entries) {
@@ -727,11 +742,16 @@ public final class ToolSupport {
    * 而序列只是其中一项（旧账口径的那一项）。"该格没有人口序列 ⇒ 抛"由 {@code ApiViews} 一处判。
    *
    * <p>★ **R2 起还要一片 economy**（T0 的口径：{@code population} = 有批次 ⇒ 批次求和 / 无批次 ⇒ 回退旧序列； T4 的 {@code
-   * labor} 块：该格各主体占用劳动 / 可用劳动 / 占用率）——两者都在同一个响应里，故经济切片与 social 一起传进来。
+   * labor} 块：该格各主体占用劳动 / 可用劳动 / 占用率）——两者都在同一个响应里，故经济切片与 social 一起传进来。 ★ C6a：再传世界 {@link
+   * CalendarService}——{@code at} 的日期与年龄档的 tick→历法年换算同源。
    */
   public static Map<String, Object> population(
-      SocialData data, EconomyData economy, HexCoord coord, SimosTimestamp at) {
-    return ApiViews.population(data, economy, coord, at);
+      SocialData data,
+      EconomyData economy,
+      HexCoord coord,
+      SimosTimestamp at,
+      CalendarService calendars) {
+    return ApiViews.population(data, economy, coord, at, calendars);
   }
 
   public static GameMap gameMap(SimulationState state) {

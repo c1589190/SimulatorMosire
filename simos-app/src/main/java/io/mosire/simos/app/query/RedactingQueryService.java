@@ -1,11 +1,13 @@
 package io.mosire.simos.app.query;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.docs.DecisionDoc;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
 import io.mosire.simos.map.GameMap;
@@ -64,11 +66,31 @@ public final class RedactingQueryService {
   private final DecisionScopeFunctions scopeFunctions;
   private final String mapId;
 
+  /**
+   * 世界历法/气候服务（C6a）：单位视图里的 {@code departedAt} 日期由它算；生产路径由 {@code GuiServer} 传 {@link
+   * CalendarService#load} 的同一实例，旧构造器走 {@link CalendarService#defaults()}（测试/旧路径）。
+   */
+  private final CalendarService calendarService;
+
   public RedactingQueryService(
       QueryService query, DecisionScopeFunctions scopeFunctions, String mapId) {
+    this(query, scopeFunctions, mapId, CalendarService.defaults());
+  }
+
+  // ★ CalendarService 是共享只读协作者（只调 dateOfTick 等读侧方法），与 GuiServer/CalendarInfoTool 同口径豁免
+  //   EI_EXPOSE_REP2。
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP2",
+      justification = "CalendarService 是共享只读协作者（只调读侧方法），非内部表示外泄")
+  public RedactingQueryService(
+      QueryService query,
+      DecisionScopeFunctions scopeFunctions,
+      String mapId,
+      CalendarService calendarService) {
     this.query = Objects.requireNonNull(query, "query");
     this.scopeFunctions = Objects.requireNonNull(scopeFunctions, "scopeFunctions");
     this.mapId = Objects.requireNonNull(mapId, "mapId");
+    this.calendarService = Objects.requireNonNull(calendarService, "calendarService");
   }
 
   /**
@@ -144,7 +166,8 @@ public final class RedactingQueryService {
     Optional<ToolContext> context = readContextOf(actor, target);
     AccessLimit limit = accessLimitOf(actor, target);
     List<Map<String, Object>> out = new ArrayList<>();
-    for (Map<String, Object> unit : ToolSupport.units(units, at, map, ToolSupport.sdState(state))) {
+    for (Map<String, Object> unit :
+        ToolSupport.units(units, at, map, ToolSupport.sdState(state), calendarService)) {
       UnitId id = new UnitId(String.valueOf(unit.get("id")));
       if (context.map(c -> ToolSupport.unitVisible(c, id)).orElse(false)) {
         out.add(asMap(applyRedactedFields(unit, limit)));

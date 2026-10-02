@@ -749,7 +749,7 @@ public final class SimosToolSource implements ToolSource {
         // ★ 工具面 M4（2026-09-24）：补五条缺口的读口 —— 时间轴节点清单 / 区域详情 / 寻路试算 /
         //   决策人清单 / 决策人详情。（`timeline.branches` 只给"有哪些分支、head 在哪"，看不到节点；sd 侧此前
         //   只能 CreateDecisionMaker 写、写完看不见。）
-        new TimelineRevisionsTool(core),
+        new TimelineRevisionsTool(core, calendarService),
         // ★★ C5b（2026-10-02 年份系统）：历法/气候配置 + 指定 tick 的日期/节气（可选季节）。**四桶共享**——
         //   历法只是"今天几号、什么节气"，不含可见性侧信道（配置是 store_meta 库级元数据、不落 revision）。
         //   ★ 不标 GmOnlyRead、**不进** PAYLOAD_HINTS（它不是命令类型）。
@@ -767,9 +767,10 @@ public final class SimosToolSource implements ToolSource {
         // ★ 工具面补齐（2026-09-25）：GUI `/api/map/block` 的对应读口——某格所在的**整块地形**（成员格清单）。
         //   与 hex（单格）/ overview（全块多边形）不同形；GUI 该端点拒 as= ⇒ 只给 GM 桶（GmOnlyRead）。
         new MapBlockTool(query),
-        new UnitListTool(query),
-        new UnitGetTool(query),
-        new PopulationTool(query),
+        // ★ C6a：单位/人口的只读时间戳（movement.departedAt / at）要带日期 ⇒ 三件都传世界同一份 CalendarService。
+        new UnitListTool(query, calendarService),
+        new UnitGetTool(query, calendarService),
+        new PopulationTool(query, calendarService),
         // ★ R2a（2026-09-25）：逐格经济读数（GUI `/api/economy/hex` 的对应读口；**四桶共享**——经济是世界状态，
         //   决策人该看得见辖地的产出与库存；视野由 ToolSupport.hexVisible 收窄）。
         new EconomyHexTool(query, mapId),
