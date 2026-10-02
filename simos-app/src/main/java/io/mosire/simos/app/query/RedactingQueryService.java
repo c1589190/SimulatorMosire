@@ -1,6 +1,5 @@
 package io.mosire.simos.app.query;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.simos.app.access.DecisionCallerFactory;
@@ -77,11 +76,6 @@ public final class RedactingQueryService {
     this(query, scopeFunctions, mapId, CalendarService.defaults());
   }
 
-  // ★ CalendarService 是共享只读协作者（只调 dateOfTick 等读侧方法），与 GuiServer/CalendarInfoTool 同口径豁免
-  //   EI_EXPOSE_REP2。
-  @SuppressFBWarnings(
-      value = "EI_EXPOSE_REP2",
-      justification = "CalendarService 是共享只读协作者（只调读侧方法），非内部表示外泄")
   public RedactingQueryService(
       QueryService query,
       DecisionScopeFunctions scopeFunctions,

@@ -40,8 +40,10 @@ import java.util.regex.Pattern;
  *
  * <p><b>并发口径</b>：读侧一次读取 {@code volatile} 快照字段、不加锁——{@link #config()} / {@link #clock()} / {@link
  * #seasonAt(long, HexCoord)} 等全部基于同一份不可变 {@link Snapshot}；写侧 {@link #apply(CalendarConfig, boolean,
- * long, HexCoord)} 是 {@code synchronized}，<b>先落盘、后换快照</b>（volatile 引用赋值即原子换），故两个并发 apply 不会出现
- * “内存与落盘次序颠倒”；落盘失败不换内存。
+ * long, HexCoord)} 在私有锁对象 {@code applyLock} 上同步（类经静态工厂 {@link #defaults()} / {@link
+ * #load(CoreSimos)} 暴露 ⇒ 不用 intrinsic lock，SpotBugs
+ * USO_UNSAFE_METHOD_SYNCHRONIZATION），<b>先落盘、后换快照</b>（volatile 引用赋值即原子换），故两个并发 apply
+ * 不会出现“内存与落盘次序颠倒”；落盘失败不换内存。
  *
  * <p><b>core 不认识历法</b>：持久化只走 {@link CoreSimos#readStoreMeta}/{@link CoreSimos#writeStoreMeta}
  * 的不透明字符串口；单条元数据写不落 revision（设计稿 §七）。
@@ -87,6 +89,12 @@ public final class CalendarService {
 
   /** 不可变快照，volatile 引用赋值即原子换；读侧一次读取后不加锁。 */
   private volatile Snapshot snapshot;
+
+  /**
+   * 写侧互斥锁：类经静态工厂 {@link #defaults()} / {@link #load(CoreSimos)} 暴露，锁用私有 {@code Object} 而非 {@code
+   * synchronized} 修饰符（否则外部持锁者能干扰内部互斥，SpotBugs USO_UNSAFE_METHOD_SYNCHRONIZATION）。
+   */
+  private final Object applyLock = new Object();
 
   private CalendarService(CoreSimos core, Snapshot snapshot) {
     this.core = core;
@@ -202,7 +210,7 @@ public final class CalendarService {
     return config().zoneSource();
   }
 
-  // ── 写侧：synchronized；先落盘、后换快照 ─────────────────────────────────────────────
+  // ── 写侧：私有 applyLock 同步；先落盘、后换快照 ──────────────────────────────────────
 
   /** {@code apply(candidate, dryRun)} 的缺省坐标重载（atTick=0、at={@link #DEFAULT_AT}）。 */
   public ApplyResult apply(CalendarConfig candidate, boolean dryRun) {
@@ -216,38 +224,41 @@ public final class CalendarService {
    * <p>★ 换取入内存的快照按归一化后的 {@code effective} 建：来源标记必须与落盘后的真相一致（否则 apply 后读侧仍报
    * default）。时钟/季界只由数值字段决定，来源归一不影响它们的构造与校验。
    *
+   * <p>方法体整体在私有锁对象 {@code applyLock} 内执行（类经静态工厂暴露 ⇒ 不用 intrinsic lock，见类注“并发口径”）。
+   *
    * @param candidate 已由 {@link CalendarConfig} compact 构造器校验收口的新配置
    * @param dryRun true = 只预览：不写 store、不动 snapshot
    * @param atTick 预览/返回日期所用的 tick
    * @param at 预览/返回季节所用的格子坐标
    * @throws IllegalStateException {@code core == null} 时的正式 apply（{@link #defaults()} 造的服务）
    */
-  public synchronized ApplyResult apply(
-      CalendarConfig candidate, boolean dryRun, long atTick, HexCoord at) {
-    Objects.requireNonNull(candidate, "candidate");
-    Objects.requireNonNull(at, "at");
-    // 正式/预览统一归一成“落盘后的来源”：配置全量写盘 ⇒ 历法/季节 = store；分带未配置 = fallback。
-    CalendarConfig effective =
-        candidate.withSources(
-            CalendarConfig.Source.STORE,
-            CalendarConfig.Source.STORE,
-            candidate.bandsConfigured()
-                ? CalendarConfig.Source.STORE
-                : CalendarConfig.Source.FALLBACK);
-    Snapshot next = snapshotOf(effective);
-    CalendarDate date = next.clock().dateOfTick(atTick);
-    SeasonState season = next.seasonSystem().seasonOf(next.clock().dayNumberOfTick(atTick), at);
-    List<String> warnings = warnings(candidate, dryRun);
-    if (dryRun) {
-      return new ApplyResult(false, effective, date, season, warnings);
+  public ApplyResult apply(CalendarConfig candidate, boolean dryRun, long atTick, HexCoord at) {
+    synchronized (applyLock) {
+      Objects.requireNonNull(candidate, "candidate");
+      Objects.requireNonNull(at, "at");
+      // 正式/预览统一归一成“落盘后的来源”：配置全量写盘 ⇒ 历法/季节 = store；分带未配置 = fallback。
+      CalendarConfig effective =
+          candidate.withSources(
+              CalendarConfig.Source.STORE,
+              CalendarConfig.Source.STORE,
+              candidate.bandsConfigured()
+                  ? CalendarConfig.Source.STORE
+                  : CalendarConfig.Source.FALLBACK);
+      Snapshot next = snapshotOf(effective);
+      CalendarDate date = next.clock().dateOfTick(atTick);
+      SeasonState season = next.seasonSystem().seasonOf(next.clock().dayNumberOfTick(atTick), at);
+      List<String> warnings = warnings(candidate, dryRun);
+      if (dryRun) {
+        return new ApplyResult(false, effective, date, season, warnings);
+      }
+      if (core == null) {
+        throw new IllegalStateException("CalendarService.defaults() 未绑定 CoreSimos，不能正式 apply");
+      }
+      // ★ 先落盘：写失败（core 抛）会在这里逃出，内存快照保持旧值；成功后才换引用。
+      core.writeStoreMeta(STORE_META_KEY, serialize(effective));
+      snapshot = next;
+      return new ApplyResult(true, effective, date, season, warnings);
     }
-    if (core == null) {
-      throw new IllegalStateException("CalendarService.defaults() 未绑定 CoreSimos，不能正式 apply");
-    }
-    // ★ 先落盘：写失败（core 抛）会在这里逃出，内存快照保持旧值；成功后才换引用。
-    core.writeStoreMeta(STORE_META_KEY, serialize(effective));
-    snapshot = next;
-    return new ApplyResult(true, effective, date, season, warnings);
   }
 
   /** 来源：{@code apply} 返回的结果；{@code warnings} 已用 {@link List#copyOf} 防外泄可变表。 */

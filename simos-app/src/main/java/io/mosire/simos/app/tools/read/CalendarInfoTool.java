@@ -1,6 +1,5 @@
 package io.mosire.simos.app.tools.read;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
@@ -46,11 +45,6 @@ public final class CalendarInfoTool implements AgentTool {
   private final QueryService query;
   private final CalendarService calendarService;
 
-  // ★ CalendarService 是**共享只读协作者**（本类只调读侧 getter，不调 apply、不外泄引用）：与
-  //   TimelineRevisionsTool 的 CoreSimos 同口径豁免 EI_EXPOSE_REP2。
-  @SuppressFBWarnings(
-      value = "EI_EXPOSE_REP2",
-      justification = "CalendarService 是共享只读协作者（只调 config/clock/solarTermAt/seasonAt），非内部表示外泄")
   public CalendarInfoTool(QueryService query, CalendarService calendarService) {
     this.query = query;
     this.calendarService = calendarService;

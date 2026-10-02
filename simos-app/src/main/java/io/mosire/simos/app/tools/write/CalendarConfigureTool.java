@@ -1,6 +1,5 @@
 package io.mosire.simos.app.tools.write;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.approval.AskKind;
 import io.mosire.agentlib.approval.ToolGate;
 import io.mosire.agentlib.permission.AccessToken;
@@ -90,11 +89,6 @@ public final class CalendarConfigureTool implements AgentTool {
   private final QueryService query;
   private final CalendarService calendarService;
 
-  // ★ CalendarService 是**共享协作者**（本类只调它，不拥有、不把它暴露出去；构造期注入是设计本身）：与
-  //   LevyRegionTool 的 CalendarService 同口径豁免 EI_EXPOSE_REP2。
-  @SuppressFBWarnings(
-      value = "EI_EXPOSE_REP2",
-      justification = "CalendarService 是共享协作者（唯一写口 apply），只调用不拥有、不外泄引用")
   public CalendarConfigureTool(QueryService query, CalendarService calendarService) {
     this.query = query;
     this.calendarService = calendarService;

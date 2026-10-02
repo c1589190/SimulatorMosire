@@ -1,6 +1,5 @@
 package io.mosire.simos.app.tools.read;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
@@ -40,10 +39,6 @@ public final class PopulationTool implements AgentTool {
     this(query, CalendarService.defaults());
   }
 
-  // ★ CalendarService 是共享只读协作者（只调读侧方法），与 CalendarInfoTool 同口径豁免 EI_EXPOSE_REP2。
-  @SuppressFBWarnings(
-      value = "EI_EXPOSE_REP2",
-      justification = "CalendarService 是共享只读协作者（只调 dateOfTick/seasonAt 等读侧方法），非内部表示外泄")
   public PopulationTool(QueryService query, CalendarService calendarService) {
     this.query = query;
     this.calendarService = calendarService;
