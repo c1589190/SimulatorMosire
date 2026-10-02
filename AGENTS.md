@@ -515,6 +515,21 @@ tools/run-shaded.sh simos-app/target/simos-app-0.1.0-SNAPSHOT-shaded.jar \
    ★ 本仓常同时有主检出与 worktree，**同名文件分属不同分支**（`CLAUDE.md` 曾是重灾区：拿主检出的绝对路径去改，
    编辑成功了、改的却是另一棵树里的旧版）⇒ 改文件一律用**本树**的绝对路径，改完 `git status` 确认变的是本树。
 
+### 8.7 ★ 全真推演测试世界 = **隔壁独立仓库** `~/Simos-18Lvt`（2026-10-02 用户裁定）
+
+- **世界在隔壁，不在本仓**：全真推演测试世界是独立 git 仓库 **`~/Simos-18Lvt`**
+  （`git@github.com:c1589190/Simos-18Lvt.git`）。世界本体 = v17levant 的 **n0008 重建态**：
+  底图 `n0000_map.json` + n0001~n0007 全部 `_map_diff.json`（changed/removed + provinces + rivers）叠加；
+  **59,223 hex / 252 区域 / 447 河流边 / 1,270 地形块**；地形 plateau 9,708、low_hills 16,489、
+  plains 16,370、ocean 14,876、mountains 1,034、desert 746。
+- **本仓内置资源不换**：`simos-app/src/main/resources/worlds/v17levant.json` 仍是**旧的内置样例**（仅供空库
+  bootstrap 与既有测试）——**不要**把它替换成隔壁世界（2026-10-02 曾试换、随后按用户指示回退）。
+- **起停**：`cd ~/Simos-18Lvt && scripts/start.sh` / `scripts/stop.sh`；端口 **GUI 5857 / MCP 5757 / 审批 5753**
+  （与旧 `dashu-v2` 的 5827/5727/5723 错开）；来历/映射/md5/判活见 `~/Simos-18Lvt/README.md`。
+- 重建装置：`tools/gsimap_import.py --regen-samples`；地形映射 `plains(山区/高原)→plateau`、
+  `mountain→mountains` 等；底图与重建备份在 `~/simos-testspace/backups/20261002-150321-map-backup/`。
+- **世界内容尚未初始化**（units 空 / cities 0），等用户指示；旧 `dashu-v2`（5827/5727）用户已表示**可退役**。
+
 ## 九、实现与评审期间**实测**到的失败形态（2026-09-25，经济线 plan1/plan2）
 
 > ★★ 本节全部**真发生过**，不是推演。载体：`docs/superpowers/plans/2026-09-25-aggregate-economy-v2-plan{1,2}.md`、
