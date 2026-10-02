@@ -58,7 +58,6 @@ import io.mosire.simos.unit.spi.CreateUnitHandler;
 import io.mosire.simos.unit.spi.SetGovFormationHandler;
 import io.mosire.simos.unit.spi.SetJurisdictionHandler;
 import io.mosire.simos.unit.spi.SetTaxRateHandler;
-import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.ModuleCodec;
@@ -121,6 +120,9 @@ class ClassFirstPopulationEconomyTimeParticipantGovTest {
 
   /** 与 Tax 测试一致：worldgen 根单位 = {@code <nationId>-army}。 */
   private static final UnitId ROOT_UNIT = new UnitId(TAXED_REGION.value() + "-army");
+
+  /** 本用例推进的日号都落在默认锚点（儒略 1445-01-01）的 1445 平年内 ⇒ GovDaily 的历法年分母 = 365。 */
+  private static final long DAYS_IN_1445 = 365L;
 
   /** 国库预置额：远超政策定额 ⇒ 俸禄必须全额支付。 */
   private static final long TREASURY_PREFUND = 10_000_000L;
@@ -374,17 +376,15 @@ class ClassFirstPopulationEconomyTimeParticipantGovTest {
     long totalStaff = totalStaff(formation);
     long expectedGrainNeed = totalStaff * formation.policy().grainPerStaffPerTick();
     long expectedClothNeed =
-        totalStaff
-            * Math.floorDiv(
-                formation.policy().clothPerStaffPerCycle(), EconomyVocabulary.CLOTH_CYCLE_DAYS);
+        totalStaff * Math.floorDiv(formation.policy().clothPerStaffPerCycle(), DAYS_IN_1445);
     long expectedMoneyNeed = totalStaff * formation.policy().moneyPerStaffPerTick();
 
     assertThat(formation.policy().grainPerStaffPerTick())
         .as("本用例 policy 粮定额 = 1/人/tick")
         .isEqualTo(1L);
     assertThat(formation.policy().clothPerStaffPerCycle())
-        .as("本用例 policy 布周期额 == 周期天数（floor 折日 == 1/人）")
-        .isEqualTo(EconomyVocabulary.CLOTH_CYCLE_DAYS);
+        .as("本用例 policy 布周期额 == 1445 历年长（floor 折日 == 1/人）")
+        .isEqualTo(DAYS_IN_1445);
     assertThat(formation.policy().moneyPerStaffPerTick())
         .as("本用例 policy 银定额 = 1/人/tick")
         .isEqualTo(1L);
@@ -578,9 +578,7 @@ class ClassFirstPopulationEconomyTimeParticipantGovTest {
     long totalStaff = totalStaff(formation);
     long expectedGrainNeed = totalStaff * formation.policy().grainPerStaffPerTick();
     long expectedClothNeed =
-        totalStaff
-            * Math.floorDiv(
-                formation.policy().clothPerStaffPerCycle(), EconomyVocabulary.CLOTH_CYCLE_DAYS);
+        totalStaff * Math.floorDiv(formation.policy().clothPerStaffPerCycle(), DAYS_IN_1445);
     long expectedMoneyNeed = totalStaff * formation.policy().moneyPerStaffPerTick();
     long paid = firstDay ? day1Paid : 0L;
 
@@ -779,9 +777,7 @@ class ClassFirstPopulationEconomyTimeParticipantGovTest {
       long totalStaff = totalStaff(formation);
       long grainPerDay = totalStaff * formation.policy().grainPerStaffPerTick();
       long clothPerDay =
-          totalStaff
-              * Math.floorDiv(
-                  formation.policy().clothPerStaffPerCycle(), EconomyVocabulary.CLOTH_CYCLE_DAYS);
+          totalStaff * Math.floorDiv(formation.policy().clothPerStaffPerCycle(), DAYS_IN_1445);
       long moneyPerDay = totalStaff * formation.policy().moneyPerStaffPerTick();
       assertThat(grainPerDay).as("每日粮定额为正（否则多天递减断言空洞）").isPositive();
       assertThat(clothPerDay).as("每日布定额为正").isPositive();

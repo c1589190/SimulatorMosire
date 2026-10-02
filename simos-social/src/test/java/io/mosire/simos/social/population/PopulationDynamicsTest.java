@@ -3,6 +3,9 @@ package io.mosire.simos.social.population;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.calendar.CalendarClock;
+import io.mosire.simos.calendar.CalendarDate;
+import io.mosire.simos.calendar.JulianCalendar;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.map.CityId;
@@ -26,7 +29,17 @@ import org.junit.jupiter.api.Test;
 class PopulationDynamicsTest {
 
   private static final HexCoord HEX = new HexCoord(3, 4);
-  private static final long YEAR = 365L;
+
+  /** 历法时钟：{@code tick→JDN} 的唯一换算点（C4b 起 {@code monthly} 必传，social 内部不造默认时钟）。 */
+  private static final CalendarClock CLOCK = CalendarClock.julianDefault();
+
+  private static final JulianCalendar CALENDAR = JulianCalendar.INSTANCE;
+
+  /** 本用例集统一的结算 tick（{@code 30} = 第一个月度结算日）。 */
+  private static final long SETTLEMENT_TICK = 30L;
+
+  /** 结算日的 JDN（由 {@link CalendarClock} 换算，不手算 365）。 */
+  private static final long SETTLEMENT_DAY_NUMBER = CLOCK.dayNumberOfTick(SETTLEMENT_TICK);
 
   /** 满额（‰）。 */
   private static final long FULL = 1000L;
@@ -128,12 +141,13 @@ class PopulationDynamicsTest {
   @Test
   void birthsComeOnlyFromFertileFemaleBatches() {
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
-    groups.put(lot("f-30"), group(lot("f-30"), Sex.FEMALE, 1_000L, 30L * YEAR));
-    groups.put(lot("m-30"), group(lot("m-30"), Sex.MALE, 1_000L, 30L * YEAR));
-    groups.put(lot("f-5"), group(lot("f-5"), Sex.FEMALE, 1_000L, 5L * YEAR));
-    groups.put(lot("f-70"), group(lot("f-70"), Sex.FEMALE, 1_000L, 70L * YEAR));
+    groups.put(lot("f-30"), groupAtYears(lot("f-30"), Sex.FEMALE, 1_000L, 30L));
+    groups.put(lot("m-30"), groupAtYears(lot("m-30"), Sex.MALE, 1_000L, 30L));
+    groups.put(lot("f-5"), groupAtYears(lot("f-5"), Sex.FEMALE, 1_000L, 5L));
+    groups.put(lot("f-70"), groupAtYears(lot("f-70"), Sex.FEMALE, 1_000L, 70L));
 
-    PopulationDynamics.Outcome outcome = PopulationDynamics.monthly(withGroups(groups), 30L);
+    PopulationDynamics.Outcome outcome =
+        PopulationDynamics.monthly(withGroups(groups), SETTLEMENT_TICK, CLOCK);
 
     assertThat(outcome.births()).as("★ 只有育龄女性那一条生：1,000 × 20‰ = 20 人").isEqualTo(20L);
     assertThat(outcome.changes().get(lot("f-30")).births()).as("30 岁女性：生 20").isEqualTo(20L);
@@ -148,35 +162,36 @@ class PopulationDynamicsTest {
    */
   @Test
   void longTermHardshipSuppressesBirths() {
-    PopulationGroup wellFed =
-        new PopulationGroup(lot("f-30"), HEX, Sex.FEMALE, 1_000L, 30L * YEAR, 0L, 0L);
-    PopulationGroup hungry =
-        new PopulationGroup(lot("f-30"), HEX, Sex.FEMALE, 1_000L, 30L * YEAR, 0L, 500L);
-    PopulationGroup halfHungry =
-        new PopulationGroup(lot("f-30"), HEX, Sex.FEMALE, 1_000L, 30L * YEAR, 0L, 250L);
+    PopulationGroup wellFed = groupAtYears(lot("f-30"), Sex.FEMALE, 1_000L, 30L, 0L);
+    PopulationGroup hungry = groupAtYears(lot("f-30"), Sex.FEMALE, 1_000L, 30L, 500L);
+    PopulationGroup halfHungry = groupAtYears(lot("f-30"), Sex.FEMALE, 1_000L, 30L, 250L);
+    long ageDays = ageDaysAtSettlement(30L);
 
-    assertThat(PopulationDynamics.birthsOf(wellFed, 30L * YEAR)).as("吃得饱：20").isEqualTo(20L);
-    assertThat(PopulationDynamics.birthsOf(halfHungry, 30L * YEAR))
+    assertThat(PopulationDynamics.birthsOf(wellFed, ageDays, CALENDAR, SETTLEMENT_DAY_NUMBER))
+        .as("吃得饱：20")
+        .isEqualTo(20L);
+    assertThat(PopulationDynamics.birthsOf(halfHungry, ageDays, CALENDAR, SETTLEMENT_DAY_NUMBER))
         .as("中等压力（250）：打对折 ⇒ 10")
         .isEqualTo(10L);
-    assertThat(PopulationDynamics.birthsOf(hungry, 30L * YEAR)).as("长期吃不饱（压力 500）：生不出来").isZero();
+    assertThat(PopulationDynamics.birthsOf(hungry, ageDays, CALENDAR, SETTLEMENT_DAY_NUMBER))
+        .as("长期吃不饱（压力 500）：生不出来")
+        .isZero();
   }
 
   /** ★ **新生儿落成"当月出生"的新批次**（年龄 0、锚点 = 结算日，性别各半）⇒ 年龄结构随推进演化。 */
   @Test
   void newbornsBecomeTheirOwnBatchSoTheAgeStructureEvolves() {
-    SocialData base =
-        worldOf(new PopulationGroup(lot("f-30"), HEX, Sex.FEMALE, 101L, 30L * YEAR, 0L, 0L));
+    SocialData base = worldOf(groupAtYears(lot("f-30"), Sex.FEMALE, 101L, 30L));
 
-    PopulationDynamics.Outcome outcome = PopulationDynamics.monthly(base, 30L);
+    PopulationDynamics.Outcome outcome = PopulationDynamics.monthly(base, SETTLEMENT_TICK, CLOCK);
 
     assertThat(outcome.births()).as("101 × 20‰ = 2 人").isEqualTo(2L);
     assertThat(outcome.data().groups()).as("原批次之外多出**当月出生**的批次").hasSizeGreaterThan(1);
     boolean newbornFound = false;
     for (PopulationGroup group : outcome.data().groups().values()) {
       if (!group.id().equals(lot("f-30"))) {
-        assertThat(group.ageDaysAt(30L)).as("新生批次的年龄 = 0 天（锚点就是结算日）").isZero();
-        assertThat(group.anchorTick()).as("锚点 = 结算日").isEqualTo(30L);
+        assertThat(group.ageDaysAt(SETTLEMENT_TICK)).as("新生批次的年龄 = 0 天（锚点就是结算日）").isZero();
+        assertThat(group.anchorTick()).as("锚点 = 结算日").isEqualTo(SETTLEMENT_TICK);
         assertThat(PopulationLots.isUrban(group)).as("★ 城乡归属按母亲批次的前缀继承（不是另起一套命名）").isFalse();
         newbornFound = true;
       }
@@ -194,9 +209,9 @@ class PopulationDynamicsTest {
    */
   @Test
   void mortalityUsesBothTheAgeBracketAndTheSexCoefficient() {
-    PopulationGroup young = group(lot("f-30"), Sex.FEMALE, 1_000L, 30L * YEAR);
-    PopulationGroup child = group(lot("c"), Sex.MALE, 1_000L, 5L * YEAR);
-    PopulationGroup elder = group(lot("e"), Sex.MALE, 1_000L, 70L * YEAR);
+    PopulationGroup young = groupAtYears(lot("f-30"), Sex.FEMALE, 1_000L, 30L);
+    PopulationGroup child = groupAtYears(lot("c"), Sex.MALE, 1_000L, 5L);
+    PopulationGroup elder = groupAtYears(lot("e"), Sex.MALE, 1_000L, 70L);
 
     assertThat(deathsOf(young)).as("青壮 1‰/月 ⇒ 1 人").isEqualTo(1L);
     assertThat(deathsOf(child)).as("未成年 2‰/月 ⇒ 2 人").isEqualTo(2L);
@@ -206,23 +221,88 @@ class PopulationDynamicsTest {
         young.count()
             * PopulationDynamics.mortalityPerMille(
                 young,
-                30L * YEAR,
+                ageDaysAtSettlement(30L),
+                CALENDAR,
+                SETTLEMENT_DAY_NUMBER,
                 PopulationDynamics.BASE_MORTALITY_PER_MILLE_PER_MONTH,
                 Map.of(Sex.MALE, 1000, Sex.FEMALE, 2000))
             / FULL;
     assertThat(femaleDoubled).as("★ 性别系数可注入：女性 2,000‰ ⇒ 死亡逐值翻倍（性别真的进了折算）").isEqualTo(2L);
   }
 
+  /**
+   * ★★ **死亡档位同样按整历法年生日现算**（与 {@link AgeBracket} 同一口径）：15 岁生日当天从 2‰（未成年）落到 1‰（青壮）、60 岁生日当天从 1‰ 升到
+   * 20‰（老年）；生日前一天各还是旧档。判别力：把档位换算退回"固定 365 天" ⇒ 这四条逐值红。
+   */
+  @Test
+  void mortalityBracketEdgesUseWholeCalendarYearBirthdays() {
+    long birthday = dayOf(2000, 4, 11);
+    long birthOf15 = dayOf(1985, 4, 11);
+    long birthOf60 = dayOf(1940, 4, 11);
+    PopulationGroup male = new PopulationGroup(lot("m-edge"), HEX, Sex.MALE, 1_000L, 0L, 0L, 0L);
+    Map<Sex, Integer> sexFactor = Map.of(Sex.MALE, 1000);
+
+    assertThat(
+            PopulationDynamics.mortalityPerMille(
+                male, (birthday - 1L) - birthOf15, CALENDAR, birthday - 1L, sexFactor))
+        .as("15 岁生日前一天 ⇒ 0-14 档基础死亡率 2‰")
+        .isEqualTo(2L);
+    assertThat(
+            PopulationDynamics.mortalityPerMille(
+                male, birthday - birthOf15, CALENDAR, birthday, sexFactor))
+        .as("15 岁生日当天 ⇒ 15-59 档基础死亡率 1‰")
+        .isEqualTo(1L);
+    assertThat(
+            PopulationDynamics.mortalityPerMille(
+                male, (birthday - 1L) - birthOf60, CALENDAR, birthday - 1L, sexFactor))
+        .as("60 岁生日前一天 ⇒ 15-59 档基础死亡率 1‰")
+        .isEqualTo(1L);
+    assertThat(
+            PopulationDynamics.mortalityPerMille(
+                male, birthday - birthOf60, CALENDAR, birthday, sexFactor))
+        .as("60 岁生日当天 ⇒ 60+ 档基础死亡率 20‰")
+        .isEqualTo(20L);
+  }
+
+  /**
+   * ★★ **月度结算真的把历法时钟用在了 15/60 边界上**（不只 {@code mortalityPerMille} 这个包内函数）：同一批女性，只把结算日从生日
+   * **前一天**挪到**生日当天**，出生与死亡**同时**跨档 —— 15 岁：0 出生/2‰（CHILD）→ 20 出生/1‰（ADULT）；60 岁：1‰（ADULT）→
+   * 20‰（ELDER）。判别力：{@code monthly} 若漏传 {@code clock.system()}/{@code currentDayNumber}（或退回按天数除）⇒
+   * 四条逐值红。
+   */
+  @Test
+  void monthlyUsesTheCalendarAwareEdgesForBirthsAndDeaths() {
+    PopulationGroup at15 = groupAtBirthday("f-15th", dayOf(1430, 1, 31));
+    PopulationDynamics.Outcome before15 =
+        PopulationDynamics.monthly(worldOf(at15), SETTLEMENT_TICK - 1L, CLOCK);
+    assertThat(before15.births()).as("15 岁生日前一天（14 岁）⇒ 不生").isZero();
+    assertThat(before15.deaths()).as("15 岁生日前一天 ⇒ 0-14 档 2‰ ⇒ 2 人").isEqualTo(2L);
+    PopulationDynamics.Outcome on15 =
+        PopulationDynamics.monthly(worldOf(at15), SETTLEMENT_TICK, CLOCK);
+    assertThat(on15.births()).as("15 岁生日当天进育龄 ⇒ 1,000 × 20‰ = 20").isEqualTo(20L);
+    assertThat(on15.deaths()).as("15 岁生日当天 ⇒ 15-59 档 1‰ ⇒ 1 人").isEqualTo(1L);
+
+    PopulationGroup at60 = groupAtBirthday("f-60th", dayOf(1385, 1, 31));
+    PopulationDynamics.Outcome before60 =
+        PopulationDynamics.monthly(worldOf(at60), SETTLEMENT_TICK - 1L, CLOCK);
+    assertThat(before60.births()).as("59 岁已在育龄上界之外 ⇒ 不生").isZero();
+    assertThat(before60.deaths()).as("60 岁生日前一天 ⇒ 15-59 档 1‰ ⇒ 1 人").isEqualTo(1L);
+    PopulationDynamics.Outcome on60 =
+        PopulationDynamics.monthly(worldOf(at60), SETTLEMENT_TICK, CLOCK);
+    assertThat(on60.births()).as("60 岁当天仍不在育龄 ⇒ 不生").isZero();
+    assertThat(on60.deaths()).as("60 岁生日当天 ⇒ 60+ 档 20‰ ⇒ 20 人").isEqualTo(20L);
+  }
+
   /** ★ **人口守恒**：{@code Σ新人口 == Σ旧人口 + 出生 − 死亡}，且两条账都逐值可核。 */
   @Test
   void birthsAndDeathsKeepThePopulationAccountExact() {
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
-    groups.put(lot("f-30"), group(lot("f-30"), Sex.FEMALE, 1_000L, 30L * YEAR));
-    groups.put(lot("e"), group(lot("e"), Sex.MALE, 500L, 70L * YEAR));
+    groups.put(lot("f-30"), groupAtYears(lot("f-30"), Sex.FEMALE, 1_000L, 30L));
+    groups.put(lot("e"), groupAtYears(lot("e"), Sex.MALE, 500L, 70L));
     SocialData base = withGroups(groups);
     long before = totalCount(base);
 
-    PopulationDynamics.Outcome outcome = PopulationDynamics.monthly(base, 30L);
+    PopulationDynamics.Outcome outcome = PopulationDynamics.monthly(base, SETTLEMENT_TICK, CLOCK);
     long after = totalCount(outcome.data());
 
     assertThat(outcome.births()).as("育龄女性 1,000 × 20‰ = 20").isEqualTo(20L);
@@ -246,10 +326,69 @@ class PopulationDynamicsTest {
         .hasMessageContaining("布满足率");
   }
 
+  // ── ⑤ 育龄窗口：整历法年 15/45（C4b；2/29 出生平年 3/1 长岁）──────────────────────────
+
+  /**
+   * ★★ **育龄窗口 = [15, 45) 整历法年**（不再是 {@code 15×365/45×365} 天）：15 岁生日当天开始、45 岁生日当天结束；
+   * 两侧各钉"生日前一天"与"生日当天"。判别力：把边界退回固定天数 ⇒ 逐值红。
+   */
+  @Test
+  void fertileWindowUsesWholeCalendarYearsAtFifteenAndFortyFive() {
+    assertThat(PopulationDynamics.FERTILE_MIN_YEARS).isEqualTo(15L);
+    assertThat(PopulationDynamics.FERTILE_MAX_YEARS).isEqualTo(45L);
+
+    long birthday = dayOf(2000, 4, 11);
+    long birthOf15 = dayOf(1985, 4, 11);
+    long birthOf45 = dayOf(1955, 4, 11);
+    PopulationGroup female = femaleAtCount(lot("f-fertile-edge"), 1_000L);
+
+    assertThat(
+            PopulationDynamics.birthsOf(
+                female, (birthday - 1L) - birthOf15, CALENDAR, birthday - 1L))
+        .as("15 岁生日前一天（14 岁）⇒ 不在育龄")
+        .isZero();
+    assertThat(PopulationDynamics.birthsOf(female, birthday - birthOf15, CALENDAR, birthday))
+        .as("15 岁生日当天 ⇒ 进育龄：1,000 × 20‰ = 20")
+        .isEqualTo(20L);
+
+    assertThat(
+            PopulationDynamics.birthsOf(
+                female, (birthday - 1L) - birthOf45, CALENDAR, birthday - 1L))
+        .as("45 岁生日前一天（44 岁）⇒ 仍在育龄：20")
+        .isEqualTo(20L);
+    assertThat(PopulationDynamics.birthsOf(female, birthday - birthOf45, CALENDAR, birthday))
+        .as("45 岁生日当天 ⇒ 上界不含，退出育龄")
+        .isZero();
+  }
+
+  /**
+   * ★★ **2/29 出生的育龄边界**：平年 2/28 未过长岁、3/1 才长岁 ⇒ 2000-02-29 出生的人在平年 2015 的 2/28 还是 14 岁 （不生育）、3/1 才是
+   * 15 岁（生育）。判别力：把 2/29 钳成"平年 2/28 提前长岁" ⇒ 2/28 那条变 15 岁 ⇒ 红。
+   */
+  @Test
+  void leapDayBirthEntersFertileWindowOnMarchFirstOfACommonYear() {
+    long leapDayBirth = dayOf(2000, 2, 29);
+    long feb28InCommonYear = dayOf(2015, 2, 28);
+    long mar1InCommonYear = dayOf(2015, 3, 1);
+    PopulationGroup female = femaleAtCount(lot("f-leap"), 1_000L);
+
+    assertThat(
+            PopulationDynamics.birthsOf(
+                female, feb28InCommonYear - leapDayBirth, CALENDAR, feb28InCommonYear))
+        .as("平年 2/28：尚未过长岁（14 岁）⇒ 不生")
+        .isZero();
+    assertThat(
+            PopulationDynamics.birthsOf(
+                female, mar1InCommonYear - leapDayBirth, CALENDAR, mar1InCommonYear))
+        .as("平年 3/1：已过长岁（15 岁）⇒ 生 20")
+        .isEqualTo(20L);
+  }
+
   // ── 夹具 ────────────────────────────────────────────────────────────────────────────
 
   private static long deathsOf(PopulationGroup group) {
-    PopulationDynamics.Outcome outcome = PopulationDynamics.monthly(worldOf(group), 30L);
+    PopulationDynamics.Outcome outcome =
+        PopulationDynamics.monthly(worldOf(group), SETTLEMENT_TICK, CLOCK);
     LotChange change = outcome.changes().get(group.id());
     return change == null ? 0L : change.deaths();
   }
@@ -258,12 +397,51 @@ class PopulationDynamicsTest {
     return PopulationLots.rural(HEX, Sex.FEMALE, tag);
   }
 
-  private static PopulationGroup group(PeopleLotId id, Sex sex, long count, long ageDays) {
-    return new PopulationGroup(id, HEX, sex, count, ageDays, 0L, 0L);
+  /**
+   * 在结算日**恰好 {@code ageYears} 整历法岁**的批次（生日 = 结算日当天的年号回退 {@code ageYears} 年）： ★ 不再用 {@code
+   * ageYears×365} 造年龄 —— 闰年差一天会让 15/45/60 的档位边界漂出档外。
+   */
+  private static PopulationGroup groupAtYears(PeopleLotId id, Sex sex, long count, long ageYears) {
+    return groupAtYears(id, sex, count, ageYears, 0L);
+  }
+
+  private static PopulationGroup groupAtYears(
+      PeopleLotId id, Sex sex, long count, long ageYears, long stress) {
+    return new PopulationGroup(
+        id, HEX, sex, count, ageDaysAtSettlement(ageYears), SETTLEMENT_TICK, stress);
+  }
+
+  /** 结算日恰好 {@code ageYears} 岁的年龄（天）：生日 = 结算日当天日期的年号回退 {@code ageYears} 年。 */
+  private static long ageDaysAtSettlement(long ageYears) {
+    CalendarDate at = CLOCK.dateOfTick(SETTLEMENT_TICK);
+    long birthDayNumber =
+        CALENDAR.dayNumberOf(new CalendarDate(at.year() - ageYears, at.month(), at.day()));
+    return SETTLEMENT_DAY_NUMBER - birthDayNumber;
+  }
+
+  /** 生日 = {@code birthDayNumber} 的 1,000 人女性批次，锚点 = 结算日（生日落在结算日时年龄正好整岁）。 */
+  private static PopulationGroup groupAtBirthday(String tag, long birthDayNumber) {
+    return new PopulationGroup(
+        lot(tag),
+        HEX,
+        Sex.FEMALE,
+        1_000L,
+        SETTLEMENT_DAY_NUMBER - birthDayNumber,
+        SETTLEMENT_TICK,
+        0L);
+  }
+
+  /** 只喂给 {@code birthsOf}/{@code mortalityPerMille} 的批次：真实年龄由调用方显式传 {@code ageDays}。 */
+  private static PopulationGroup femaleAtCount(PeopleLotId id, long count) {
+    return new PopulationGroup(id, HEX, Sex.FEMALE, count, 0L, 0L, 0L);
+  }
+
+  private static long dayOf(int year, int month, int day) {
+    return CALENDAR.dayNumberOf(new CalendarDate(year, month, day));
   }
 
   private static PopulationGroup adultFemale(long count) {
-    return group(PopulationLots.rural(HEX, Sex.FEMALE, "adult"), Sex.FEMALE, count, 30L * YEAR);
+    return groupAtYears(PopulationLots.rural(HEX, Sex.FEMALE, "adult"), Sex.FEMALE, count, 30L);
   }
 
   private static PopulationGroup withStress(PopulationGroup group, long stress) {

@@ -3,6 +3,9 @@ package io.mosire.simos.social;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.calendar.CalendarClock;
+import io.mosire.simos.calendar.CalendarDate;
+import io.mosire.simos.calendar.JulianCalendar;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
@@ -30,6 +33,11 @@ class SocialDataTest {
   private static final HexCoord H00 = new HexCoord(0, 0);
   private static final CityId C1 = new CityId("c1");
   private static final CityId C2 = new CityId("c2");
+
+  /** 历法时钟：{@code tick→JDN} 的唯一换算点（C4b 起 {@code ageStructureAt} 必传，social 内部不造默认时钟）。 */
+  private static final CalendarClock CLOCK = CalendarClock.julianDefault();
+
+  private static final JulianCalendar CALENDAR = JulianCalendar.INSTANCE;
 
   /** 一条落在 {@code H00} 的农村批次（该格必须有 {@code populations} 序列，见跨组件校验那条用例）。 */
   private static PeopleLotId ruralLot() {
@@ -258,10 +266,33 @@ class SocialDataTest {
   /** 有序列、但批次全是 {@code count=0} 的格（创世播种器就长这样，见 {@code PopulationSeeder}）。 */
   private static final HexCoord H99 = new HexCoord(9, 9);
 
-  private static final long DAYS_PER_YEAR = 365L;
-
   /** 创世锚点（本夹具统一用 100，好让"现算"的用例把 {@code nowTick} 挪一格就跨档）。 */
   private static final long ANCHOR = 100L;
+
+  /**
+   * 在 {@code tick} 时刻**恰好满 {@code years} 历法年**的批次年龄（天）：生日 = 该 tick 当天日期的年号回退 {@code years} 年。
+   *
+   * <p>★ 不再用 {@code years×365}：整历法年的天数随闰年变化，旧字面量会把"5 岁"造出 4/5 岁之间的边界值（见 AGENTS §九.3）。
+   */
+  private static long ageDaysAtTick(long tick, long years) {
+    CalendarDate at = CLOCK.dateOfTick(tick);
+    long currentDayNumber = CLOCK.dayNumberOfTick(tick);
+    long birthDayNumber =
+        CALENDAR.dayNumberOf(new CalendarDate(at.year() - years, at.month(), at.day()));
+    return currentDayNumber - birthDayNumber;
+  }
+
+  /**
+   * 生日落在 {@code birthdayTick} 当天的批次在 {@code birthdayTick − 1} 的年龄（天）：供"只挪一天就跨档"的边界用例使用 （{@code
+   * ageDaysAtTick(birthdayTick, years)} 比它恰好多 1 天）。
+   */
+  private static long ageDaysBeforeBirthdayAt(long birthdayTick, long years) {
+    CalendarDate birthday = CLOCK.dateOfTick(birthdayTick);
+    long birthDayNumber =
+        CALENDAR.dayNumberOf(
+            new CalendarDate(birthday.year() - years, birthday.month(), birthday.day()));
+    return CLOCK.dayNumberOfTick(birthdayTick - 1L) - birthDayNumber;
+  }
 
   /**
    * ★★ **刻意混合的夹具**（R1.5 的硬要求）：**每一个有批次的格**都同时有**男有女、有城有乡、三个年龄档各有**。
@@ -275,36 +306,66 @@ class SocialDataTest {
   private static Map<PeopleLotId, PopulationGroup> mixedGroups() {
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
     // H00（城乡 + 两性 + 三档齐全）：农村 100(男,5岁) + 200(女,20岁) + 50(男,70岁)；城镇 700(女,30岁) + 300(男,10岁)。
-    put(groups, PopulationLots.rural(H00, Sex.MALE, "0"), H00, Sex.MALE, 100L, 5L * DAYS_PER_YEAR);
+    put(
+        groups,
+        PopulationLots.rural(H00, Sex.MALE, "0"),
+        H00,
+        Sex.MALE,
+        100L,
+        ageDaysAtTick(ANCHOR, 5L));
     put(
         groups,
         PopulationLots.rural(H00, Sex.FEMALE, "1"),
         H00,
         Sex.FEMALE,
         200L,
-        20L * DAYS_PER_YEAR);
-    put(groups, PopulationLots.rural(H00, Sex.MALE, "2"), H00, Sex.MALE, 50L, 70L * DAYS_PER_YEAR);
+        ageDaysAtTick(ANCHOR, 20L));
+    put(
+        groups,
+        PopulationLots.rural(H00, Sex.MALE, "2"),
+        H00,
+        Sex.MALE,
+        50L,
+        ageDaysAtTick(ANCHOR, 70L));
     put(
         groups,
         PopulationLots.urban(C1, Sex.FEMALE, "1"),
         H00,
         Sex.FEMALE,
         700L,
-        30L * DAYS_PER_YEAR);
-    put(groups, PopulationLots.urban(C1, Sex.MALE, "0"), H00, Sex.MALE, 300L, 10L * DAYS_PER_YEAR);
+        ageDaysAtTick(ANCHOR, 30L));
+    put(
+        groups,
+        PopulationLots.urban(C1, Sex.MALE, "0"),
+        H00,
+        Sex.MALE,
+        300L,
+        ageDaysAtTick(ANCHOR, 10L));
     // H10：农村 11(男,40岁) + 城镇 22(女,65岁) —— 与 H00 的分布**不同**（只看 H00 的实现会在这一格错）。
-    put(groups, PopulationLots.rural(H10, Sex.MALE, "1"), H10, Sex.MALE, 11L, 40L * DAYS_PER_YEAR);
+    put(
+        groups,
+        PopulationLots.rural(H10, Sex.MALE, "1"),
+        H10,
+        Sex.MALE,
+        11L,
+        ageDaysAtTick(ANCHOR, 40L));
     put(
         groups,
         PopulationLots.urban(C2, Sex.FEMALE, "2"),
         H10,
         Sex.FEMALE,
         22L,
-        65L * DAYS_PER_YEAR);
+        ageDaysAtTick(ANCHOR, 65L));
     // H99：6 条 count=0 的批次（创世播种器对"零人口的格"就是这个形状）⇒ 各维度全 0，但**键必须齐**。
     for (Sex sex : Sex.values()) {
       for (String cohort : List.of("0", "1", "2")) {
-        put(groups, PopulationLots.rural(H99, sex, cohort), H99, sex, 0L, 7L * DAYS_PER_YEAR);
+        put(
+            groups,
+            PopulationLots.rural(H99, sex, cohort),
+            H99,
+            sex,
+            0L,
+            ageDaysAtTick(ANCHOR, 7L));
       }
     }
     return groups;
@@ -352,7 +413,7 @@ class SocialDataTest {
   void ageStructureAtBucketsEveryLotOnTheHex() {
     SocialData data = mixedData();
 
-    Map<AgeBracket, Long> h00 = data.ageStructureAt(H00, ANCHOR);
+    Map<AgeBracket, Long> h00 = data.ageStructureAt(H00, ANCHOR, CLOCK);
     assertThat(h00.keySet())
         .as("键序 = 词表序（0-14 → 15-59 → 60+）——读口的字节序因此是内容的纯函数")
         .containsExactly(AgeBracket.CHILD, AgeBracket.ADULT, AgeBracket.ELDER);
@@ -360,17 +421,17 @@ class SocialDataTest {
     assertThat(h00.get(AgeBracket.ADULT)).as("女 200（20 岁）+ 女 700（30 岁）").isEqualTo(900L);
     assertThat(h00.get(AgeBracket.ELDER)).as("男 50（70 岁）").isEqualTo(50L);
 
-    Map<AgeBracket, Long> h10 = data.ageStructureAt(H10, ANCHOR);
+    Map<AgeBracket, Long> h10 = data.ageStructureAt(H10, ANCHOR, CLOCK);
     assertThat(h10.get(AgeBracket.CHILD)).as("这一格没有未成年人：0 但键在").isZero();
     assertThat(h10.get(AgeBracket.ADULT)).as("男 11（40 岁）").isEqualTo(11L);
     assertThat(h10.get(AgeBracket.ELDER)).as("女 22（65 岁）").isEqualTo(22L);
 
     // ★ 这两条只判"值对且键齐"（键**序**由上一条 keySet 断言承担，这里用 anyOrder 是因为 Map.of 本身没有序）。
-    assertThat(data.ageStructureAt(H99, ANCHOR))
+    assertThat(data.ageStructureAt(H99, ANCHOR, CLOCK))
         .as("全是 0 人批次 ⇒ 三个 0（不是缺键）")
         .containsExactlyInAnyOrderEntriesOf(
             Map.of(AgeBracket.CHILD, 0L, AgeBracket.ADULT, 0L, AgeBracket.ELDER, 0L));
-    assertThat(data.ageStructureAt(H01, ANCHOR))
+    assertThat(data.ageStructureAt(H01, ANCHOR, CLOCK))
         .as("一条批次都没有的格 ⇒ 同样是三个 0（读侧不因'没有批次'少发键）")
         .containsExactlyInAnyOrderEntriesOf(
             Map.of(AgeBracket.CHILD, 0L, AgeBracket.ADULT, 0L, AgeBracket.ELDER, 0L));
@@ -379,21 +440,20 @@ class SocialDataTest {
   /**
    * ★★ **年龄档的边与"现算"**：{@code 14→15}、{@code 59→60} 两条边各用**同一个批次、只把 {@code nowTick} 挪一天**来钉。
    *
-   * <p>★ 算式（夹具 {@code anchorTick = 100}）：
+   * <p>★ 算式（夹具 {@code anchorTick = 100}，生日落在 {@code ANCHOR+1 = 101} 那天）：
    *
    * <pre>
-   * 十四岁零 364 天（= 15×365 − 1 天）的那一批：
-   *   ageDaysAt(100) = 5,474 &lt; 15×365=5,475 ⇒ 0-14
-   *   ageDaysAt(101) = 5,475           ⇒ 15-59      ← 只挪一天就跨档
-   * 五十九岁零 364 天（= 60×365 − 1 天）的那一批：
-   *   ageDaysAt(100) = 21,899 &lt; 60×365=21,900 ⇒ 15-59
-   *   ageDaysAt(101) = 21,900                  ⇒ 60+
+   * 十五岁生日（JDN = CLOCK.dayNumberOfTick(101)）的那一批：
+   *   ageDaysAt(100) = 生日 JDN − 出生 JDN − 1 ⇒ 14 岁（0-14）
+   *   ageDaysAt(101) = 生日 JDN − 出生 JDN     ⇒ 15 岁（15-59）  ← 只挪一天就跨档
+   * 六十岁生日（JDN 同上）的那一批：
+   *   ageDaysAt(100) ⇒ 59 岁（15-59）
+   *   ageDaysAt(101) ⇒ 60 岁（60+）
    * </pre>
    *
-   * <p>★ **判别力由"档位必须是现算"承担**（这是本条存在的全部理由）：把 {@code ageStructureAt} 改成读批次的 {@code
-   * ageAtAnchorDays}（"存一个档位字段"的等价物）⇒ 两条 {@code nowTick=101} 的断言当场红（它们会停在 CHILD / ADULT）。★ 边界本身由
-   * {@code 15×365 − 1 / 15×365} 与 {@code 60×365 − 1 / 60×365} 两侧各钉一次 （少算一边、把 {@code <} 写成 {@code ≤}
-   * 都会红）。
+   * <p>★ **不再用 {@code N×365} 造边界**：整历法年的边界是**生日**，闰年天数由 {@link CalendarClock}/{@code
+   * JulianCalendar} 现算（C4b）。★ **判别力由"档位必须是现算"承担**（这是本条存在的全部理由）：把 {@code ageStructureAt} 改成读批次的
+   * {@code ageAtAnchorDays}（"存一个档位字段"的等价物）⇒ 两条 {@code nowTick=101} 的断言当场红（它们会停在 CHILD / ADULT）。
    */
   @Test
   void ageBracketBoundariesAreRecomputedFromTheQueryTick() {
@@ -402,30 +462,35 @@ class SocialDataTest {
     PeopleLotId adult = PopulationLots.rural(hex, Sex.FEMALE, "1");
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
     groups.put(
-        child, new PopulationGroup(child, hex, Sex.MALE, 1L, 15L * DAYS_PER_YEAR - 1L, ANCHOR));
+        child,
+        new PopulationGroup(
+            child, hex, Sex.MALE, 1L, ageDaysBeforeBirthdayAt(ANCHOR + 1L, 15L), ANCHOR));
     groups.put(
-        adult, new PopulationGroup(adult, hex, Sex.FEMALE, 1L, 60L * DAYS_PER_YEAR - 1L, ANCHOR));
+        adult,
+        new PopulationGroup(
+            adult, hex, Sex.FEMALE, 1L, ageDaysBeforeBirthdayAt(ANCHOR + 1L, 60L), ANCHOR));
     SocialData data = new SocialData(Map.of(hex, population()), Map.of(), groups);
 
     // ★ **锚点那一刻**的整张结构（两条边各钉下侧）——★ **如实记：这一条对"现算"没有判别力**
     //   （{@code nowTick == anchorTick} 时 {@code ageDaysAt} 与 {@code ageAtAnchorDays}
     // **同值**，两种写法都给这个结果）。
-    //   它守的是"14 岁零 364 天仍在 0-14、59 岁零 364 天仍在 15-59"这两条下侧边；判别力所在是下面那一条。
-    assertThat(data.ageStructureAt(hex, ANCHOR))
-        .as("锚点处：14 岁零 364 天 ⇒ 0-14；59 岁零 364 天 ⇒ 15-59；末档空")
+    //   它守的是"15 岁生日前一天仍在 0-14、60 岁生日前一天仍在 15-59"这两条下侧边；判别力所在是下面那一条。
+    assertThat(data.ageStructureAt(hex, ANCHOR, CLOCK))
+        .as("锚点处：15 岁生日前一天 ⇒ 0-14；60 岁生日前一天 ⇒ 15-59；末档空")
         .containsExactlyInAnyOrderEntriesOf(
             Map.of(AgeBracket.CHILD, 1L, AgeBracket.ADULT, 1L, AgeBracket.ELDER, 0L));
     // ★★ **只挪一天**：两批**各自**跨过自己那条边（0-14 → 15-59、15-59 → 60+）——断言**整张结构**，
     //   不单挑某一个键：单挑会被"另一批恰好在那一档"掩盖（本用例初稿实测踩过：`ADULT == 1` 那条在变异体下**照样绿**，
     //   因为 59 岁那批本来就是 ADULT）。
-    assertThat(data.ageStructureAt(hex, ANCHOR + 1L))
-        .as("15×365 天 ⇒ 15-59；60×365 天 ⇒ 60+（两条边都是 `age < 上界`；整个结构挪了一格）")
+    assertThat(data.ageStructureAt(hex, ANCHOR + 1L, CLOCK))
+        .as("生日当天 ⇒ 15-59 / 60+（两条边都是 `age < 上界`；整个结构挪了一格）")
         .containsExactlyInAnyOrderEntriesOf(
             Map.of(AgeBracket.CHILD, 0L, AgeBracket.ADULT, 1L, AgeBracket.ELDER, 1L));
   }
 
   /**
-   * ★ **查询早于"出生之前"** ⇒ {@link AgeBracket#of(long)} 对负年龄 fail-closed（不静默归档）。
+   * ★ **查询早于"出生之前"** ⇒ {@link AgeBracket#of(io.mosire.simos.calendar.CalendarSystem, long, long)}
+   * 对负年龄 fail-closed（不静默归档）。
    *
    * <p>★ 这条把 {@code SocialData.ageStructureAt} 的 javadoc 里那句"负年龄 ⇒ 抛"钉成事实：{@code ageDaysAt} 本身
    * **不夹取、不抛**（往回推是重放/分支比较的正常查询），但"这一批人当时多大"在出生之前**没有答案** ⇒ 宁可当场出错。
@@ -438,7 +503,7 @@ class SocialDataTest {
         new LinkedHashMap<>(Map.of(lot, new PopulationGroup(lot, hex, Sex.MALE, 1L, 0L, ANCHOR)));
     SocialData data = new SocialData(Map.of(hex, population()), Map.of(), groups);
 
-    assertThatThrownBy(() -> data.ageStructureAt(hex, ANCHOR - 1L))
+    assertThatThrownBy(() -> data.ageStructureAt(hex, ANCHOR - 1L, CLOCK))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("ageDays 不得为负");
   }

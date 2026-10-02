@@ -58,7 +58,8 @@ import org.junit.jupiter.api.Test;
  *   <li>无位置 ⇒ dues/signals 空、六表空、efficiency/tick 仍更新；状态损坏（缺单位/缺 GovFormation）⇒
  *       IllegalStateException；oracle 越界 ⇒ IllegalArgumentException；
  *   <li>确定性：同输入两次 Outcome 逐字段相等；{@link GovState#empty()} ⇒ changed=false；
- *   <li>布料折日：{@code clothNeed = totalStaff × floor(clothPerStaffPerCycle/365)}，逐值钉 floor。
+ *   <li>布料折日：{@code clothNeed = totalStaff ×
+ *       floor(clothPerStaffPerCycle/daysInYearAtSettlement)}（365/366 必须显式传参），逐值钉 floor。
  * </ul>
  *
  * <p>★ 判别力：每个用例都断到具体数字/键序/调用序；不用“非 null、不抛”代替语义断言。
@@ -83,7 +84,8 @@ class GovDailyTest {
     GovState base = state(GovOfficeState.empty(U1, 0L));
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
-    GovDaily.Outcome outcome = GovDaily.settle(base, units, map(), SocialData.empty(), 7L, oracle);
+    GovDaily.Outcome outcome =
+        GovDaily.settle(base, units, map(), SocialData.empty(), 7L, 365L, oracle);
 
     // totalStaff=3 ⇒ grain 30；cloth = 3×floor(500/365)=3×1=3（若误写成 3×500/365 会是 4）；money 9。
     assertThat(oracle.calls())
@@ -130,7 +132,13 @@ class GovDailyTest {
 
     GovDaily.Outcome outcome =
         GovDaily.settle(
-            state(GovOfficeState.empty(U1, 0L)), units, map(), SocialData.empty(), 1L, oracle);
+            state(GovOfficeState.empty(U1, 0L)),
+            units,
+            map(),
+            SocialData.empty(),
+            1L,
+            365L,
+            oracle);
 
     assertThat(oracle.calls())
         .as("默认政策 + 1 名编制：当日粮需求 = 83 毫粮（120 天常量 10000 ⇒ 本断言红）")
@@ -154,7 +162,13 @@ class GovDailyTest {
 
     GovDaily.Outcome outcome =
         GovDaily.settle(
-            state(GovOfficeState.empty(U1, 0L)), units, map(), SocialData.empty(), 1L, oracle);
+            state(GovOfficeState.empty(U1, 0L)),
+            units,
+            map(),
+            SocialData.empty(),
+            1L,
+            365L,
+            oracle);
 
     assertThat(oracle.calls())
         .as("0 需求不发、不跳号：只有 grain 一次调用")
@@ -184,7 +198,13 @@ class GovDailyTest {
 
     GovDaily.Outcome outcome =
         GovDaily.settle(
-            state(GovOfficeState.empty(U1, 0L)), units, map(), SocialData.empty(), 3L, oracle);
+            state(GovOfficeState.empty(U1, 0L)),
+            units,
+            map(),
+            SocialData.empty(),
+            3L,
+            365L,
+            oracle);
 
     assertThat(outcome.dues())
         .as("dues 的 paid/shortfall 逐资源对账（assessed = paid + shortfall）")
@@ -218,7 +238,13 @@ class GovDailyTest {
 
     GovDaily.Outcome outcome =
         GovDaily.settle(
-            state(GovOfficeState.empty(U1, 0L)), units, map(), SocialData.empty(), 2L, oracle);
+            state(GovOfficeState.empty(U1, 0L)),
+            units,
+            map(),
+            SocialData.empty(),
+            2L,
+            365L,
+            oracle);
 
     assertThat(outcome.dues())
         .as("零支付：每资源 paid=0、shortfall=assessed")
@@ -252,6 +278,7 @@ class GovDailyTest {
             map(region(R1, H1)),
             socialWithPopulation(100_000L),
             4L,
+            365L,
             oracle);
 
     assertThat(oracle.calls()).as("policy 全 0 ⇒ 不发付款调用").isEmpty();
@@ -292,6 +319,7 @@ class GovDailyTest {
             map(region(R1, H1)),
             socialWithPopulation(100_000L),
             1L,
+            365L,
             new RecordingOracle((resource, requested) -> requested));
     assertThat(onlyPaper.signals())
         .extracting(GovDaily.SignalDraft::kind)
@@ -306,6 +334,7 @@ class GovDailyTest {
             map(region(R1, H1)),
             socialWithPopulation(100_000L),
             1L,
+            365L,
             new RecordingOracle((resource, requested) -> requested));
     assertThat(onlySecurity.signals())
         .extracting(GovDaily.SignalDraft::kind)
@@ -327,6 +356,7 @@ class GovDailyTest {
             map(region(R1, H1)),
             socialWithPopulation(100_000L),
             5L,
+            365L,
             oracle);
 
     assertThat(oracle.calls()).as("无位置不评估、不付款").isEmpty();
@@ -362,6 +392,7 @@ class GovDailyTest {
                     map(),
                     SocialData.empty(),
                     0L,
+                    365L,
                     new RecordingOracle((resource, requested) -> requested)))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("不存在的单位")
@@ -381,6 +412,7 @@ class GovDailyTest {
                     map(),
                     SocialData.empty(),
                     0L,
+                    365L,
                     new RecordingOracle((resource, requested) -> requested)))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("缺少 GovFormation")
@@ -399,6 +431,7 @@ class GovDailyTest {
                     map(),
                     SocialData.empty(),
                     0L,
+                    365L,
                     new RecordingOracle((resource, requested) -> requested)))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("缺少 GovFormation");
@@ -417,6 +450,7 @@ class GovDailyTest {
                     map(),
                     SocialData.empty(),
                     0L,
+                    365L,
                     new RecordingOracle((resource, requested) -> requested + 1L)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("PaymentOracle 违反契约")
@@ -437,6 +471,7 @@ class GovDailyTest {
                     map(),
                     SocialData.empty(),
                     0L,
+                    365L,
                     new RecordingOracle((resource, requested) -> -1L)))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("PaymentOracle 违反契约")
@@ -455,8 +490,10 @@ class GovDailyTest {
     RecordingOracle second =
         new RecordingOracle((resource, requested) -> Math.max(0L, requested - 1L));
 
-    GovDaily.Outcome a = GovDaily.settle(base, units(plain), map(), SocialData.empty(), 6L, first);
-    GovDaily.Outcome b = GovDaily.settle(base, units(plain), map(), SocialData.empty(), 6L, second);
+    GovDaily.Outcome a =
+        GovDaily.settle(base, units(plain), map(), SocialData.empty(), 6L, 365L, first);
+    GovDaily.Outcome b =
+        GovDaily.settle(base, units(plain), map(), SocialData.empty(), 6L, 365L, second);
 
     assertThat(b.next()).as("next 逐字段相等").isEqualTo(a.next());
     assertThat(b.dues()).as("dues 逐元素/逐值相等").isEqualTo(a.dues());
@@ -488,6 +525,7 @@ class GovDailyTest {
             map(),
             SocialData.empty(),
             0L,
+            365L,
             oracle);
 
     assertThat(outcome.next()).isEqualTo(GovState.empty());
@@ -507,7 +545,13 @@ class GovDailyTest {
 
     GovDaily.Outcome outcome =
         GovDaily.settle(
-            state(GovOfficeState.empty(U1, 0L)), units, map(), SocialData.empty(), 2L, oracle);
+            state(GovOfficeState.empty(U1, 0L)),
+            units,
+            map(),
+            SocialData.empty(),
+            2L,
+            365L,
+            oracle);
 
     assertThat(oracle.calls())
         .as("只有 cloth 一次调用，请求量 = 3（floor 口径）")
@@ -519,6 +563,99 @@ class GovDailyTest {
             new GovDaily.UpkeepDue(U1, H1, new GovDaily.Commodity(GRAIN), 0L, 0L, 0L),
             new GovDaily.UpkeepDue(U1, H1, new GovDaily.Commodity(CLOTH), 3L, 3L, 0L),
             new GovDaily.UpkeepDue(U1, H1, new GovDaily.Money(SILVER), 0L, 0L, 0L));
+  }
+
+  // ── 365/366：布料折日的显式边界（C4a/C4b）──────────────────────────────────────────
+
+  /**
+   * ★★ **显式 366 边界（1 名编制）**：{@code clothPerStaffPerCycle=730}，365 天年 ⇒ 每人每日 {@code
+   * floor(730/365)=2}； 366 天年 ⇒ {@code floor(730/366)=1}。判别力：把年长写死 365（或忽略传参）⇒ 366 那条红。
+   */
+  @Test
+  void clothNeedUsesTheSettlementYearsDayCountForOneStaff() {
+    GovFormation gov = gov(staff(1L, 0L, 0L), policy(0L, 730L, 0L, 0L));
+    UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
+    GovState base = state(GovOfficeState.empty(U1, 0L));
+
+    RecordingOracle commonYearOracle = new RecordingOracle((resource, requested) -> requested);
+    GovDaily.Outcome commonYear =
+        GovDaily.settle(base, units, map(), SocialData.empty(), 1L, 365L, commonYearOracle);
+    assertThat(commonYearOracle.calls())
+        .as("730/365 = 2 ⇒ 1 名编制的日需求 = 2")
+        .containsExactly(new Call(U1, H1, "cloth", 2L));
+    assertThat(commonYear.dues())
+        .containsExactly(
+            new GovDaily.UpkeepDue(U1, H1, new GovDaily.Commodity(GRAIN), 0L, 0L, 0L),
+            new GovDaily.UpkeepDue(U1, H1, new GovDaily.Commodity(CLOTH), 2L, 2L, 0L),
+            new GovDaily.UpkeepDue(U1, H1, new GovDaily.Money(SILVER), 0L, 0L, 0L));
+
+    RecordingOracle leapYearOracle = new RecordingOracle((resource, requested) -> requested);
+    GovDaily.Outcome leapYear =
+        GovDaily.settle(base, units, map(), SocialData.empty(), 1L, 366L, leapYearOracle);
+    assertThat(leapYearOracle.calls())
+        .as("730/366 = 1（floor）⇒ 1 名编制的日需求 = 1")
+        .containsExactly(new Call(U1, H1, "cloth", 1L));
+    assertThat(leapYear.dues())
+        .containsExactly(
+            new GovDaily.UpkeepDue(U1, H1, new GovDaily.Commodity(GRAIN), 0L, 0L, 0L),
+            new GovDaily.UpkeepDue(U1, H1, new GovDaily.Commodity(CLOTH), 1L, 1L, 0L),
+            new GovDaily.UpkeepDue(U1, H1, new GovDaily.Money(SILVER), 0L, 0L, 0L));
+  }
+
+  /**
+   * ★★ **逐位 floor，不是全式除法（3 名编制）**：365 天年 3×floor(730/365)=6；366 天年 3×floor(730/366)=3。 判别力：误写成
+   * {@code totalStaff × cloth / daysInYear} ⇒ {@code 3×730/366 = 5} ⇒ 366 那条红。
+   */
+  @Test
+  void clothNeedFloorsPerStaffBeforeMultiplyingInLeapYears() {
+    GovFormation gov = gov(staff(1L, 1L, 1L), policy(0L, 730L, 0L, 0L));
+    UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
+    GovState base = state(GovOfficeState.empty(U1, 0L));
+
+    RecordingOracle commonYearOracle = new RecordingOracle((resource, requested) -> requested);
+    GovDaily.settle(base, units, map(), SocialData.empty(), 1L, 365L, commonYearOracle);
+    assertThat(commonYearOracle.calls())
+        .as("3×floor(730/365) = 6")
+        .containsExactly(new Call(U1, H1, "cloth", 6L));
+
+    RecordingOracle leapYearOracle = new RecordingOracle((resource, requested) -> requested);
+    GovDaily.settle(base, units, map(), SocialData.empty(), 1L, 366L, leapYearOracle);
+    assertThat(leapYearOracle.calls())
+        .as("3×floor(730/366) = 3；误写成 3×730/366 = 5 时本断言红")
+        .containsExactly(new Call(U1, H1, "cloth", 3L));
+  }
+
+  /** ★ **年长护栏**：{@code daysInYearAtSettlement} 只接受 365/366；364、0 在评估前当场抛（拒绝臆造年长）。 */
+  @Test
+  void settleRejectsDaysInYearOtherThan365Or366() {
+    GovFormation gov = gov(staff(1L, 0L, 0L), policy(0L, 730L, 0L, 0L));
+    UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
+    GovState base = state(GovOfficeState.empty(U1, 0L));
+
+    assertThatThrownBy(
+            () ->
+                GovDaily.settle(
+                    base,
+                    units,
+                    map(),
+                    SocialData.empty(),
+                    0L,
+                    364L,
+                    new RecordingOracle((resource, requested) -> requested)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("365 或 366");
+    assertThatThrownBy(
+            () ->
+                GovDaily.settle(
+                    base,
+                    units,
+                    map(),
+                    SocialData.empty(),
+                    0L,
+                    0L,
+                    new RecordingOracle((resource, requested) -> requested)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("365 或 366");
   }
 
   // ── 夹具 ────────────────────────────────────────────────────────────────────────────

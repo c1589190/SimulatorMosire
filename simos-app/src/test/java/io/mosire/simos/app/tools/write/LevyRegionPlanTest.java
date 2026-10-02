@@ -509,7 +509,7 @@ class LevyRegionPlanTest {
     groups.put(lot("g2"), group("g2", H12, Sex.MALE, 20L, 30L * 365L));
     groups.put(lot("g-female"), group("g-female", H11, Sex.FEMALE, 1000L, 20L * 365L));
     groups.put(lot("g-child"), group("g-child", H11, Sex.MALE, 100L, 10L * 365L));
-    groups.put(lot("g-elder"), group("g-elder", H12, Sex.MALE, 7L, 60L * 365L));
+    groups.put(lot("g-elder"), group("g-elder", H12, Sex.MALE, 7L, 70L * 365L));
     groups.put(lot("g-zero"), group("g-zero", H11, Sex.MALE, 0L, 20L * 365L));
     groups.put(lot("g-out"), group("g-out", H13, Sex.MALE, 1000L, 20L * 365L));
     Map<HexCoord, PopulationSeries> populations = new LinkedHashMap<>();

@@ -157,7 +157,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * 工具集验收（M5 T5；D1–D5 后）：注册表 124 条（GM 桶全量 = 31 读 + 93 写）/ catalog 与注册面一致（R5）/ 写工具身份注入（R4）/ 读工具与
+ * 工具集验收（M5 T5；D1–D5 后）：注册表 126 条（GM 桶全量 = 32 读 + 94 写）/ catalog 与注册面一致（R5）/ 写工具身份注入（R4）/ 读工具与
  * {@code QueryService} 逐值 对拍 / 拒绝与冲突不留 revision。
  *
  * <p>夹具与 {@code QueryServiceTest}/{@code GuiApiTest} 同法：独立 store 种创世 {@code (main,1)} + 含
@@ -183,7 +183,7 @@ class SimosToolsTest {
   /** 与缺省 {@code agent:external-mcp} 不同，让"写死成别的值"这类变异当场现形（R4）。 */
   private static final String TEST_INITIATOR = "agent:t5-test";
 
-  /** 读工具名单（31 条）：读闸**按名字选**，不用索引切片。 */
+  /** 读工具名单（32 条）：读闸**按名字选**，不用索引切片。 */
   private static final List<String> READ_TOOL_NAMES =
       List.of(
           "simos.command.catalog",
@@ -222,7 +222,9 @@ class SimosToolsTest {
           // ★ P7b（2026-10-01）：待裁决审批清单（只给 GM 桶）。
           "simos.gm.approvals",
           "simos.llm.providers",
-          "simos.skill");
+          "simos.skill",
+          // ★ C5b（2026-10-02）：历法/气候信息（四桶共享读）。
+          "simos.calendar.info");
 
   /** ★ **只给 GM 桶的读工具**（实现 {@code GmOnlyRead} 的那些，12 条）。 */
   private static final List<String> GM_ONLY_READ_NAMES =
@@ -241,10 +243,10 @@ class SimosToolsTest {
           "simos.llm.providers");
 
   /**
-   * 非窄写写工具（33 条）：**只有 GM 组有**（MCP 与 GM Agent 同权限级）。
+   * 非窄写写工具（34 条）：**只有 GM 组有**（MCP 与 GM Agent 同权限级）。
    *
    * <p>★ 它们**不是窄写**：不继承 {@code AbstractNarrowWriteTool} ⇒ 窄写扫描器（按 {@code tools/write}
-   * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这 33 条从差集里扣掉。
+   * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这 34 条从差集里扣掉。
    */
   private static final List<String> NON_NARROW_WRITE_NAMES =
       List.of(
@@ -286,7 +288,9 @@ class SimosToolsTest {
           "simos.army.resolveCombat",
           "simos.army.formatUnit",
           "simos.economy.adjust",
-          "simos.gm.approve");
+          "simos.gm.approve",
+          // ★ C5b（2026-10-02）：历法/气候配置（GM 写；不继承窄写基类）。
+          "simos.calendar.configure");
 
   /** M1 的 8 条 map 窄写：**只进 GM 组**（= MCP 口），**不进**决策人组（决策人不能直接改数据）。 */
   private static final List<String> MAP_WRITE_NAMES =
@@ -424,11 +428,11 @@ class SimosToolsTest {
               "social.UpdateCity",
               "actor.AdjustAccounts"));
 
-  /** 写工具全集（93 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的补集。 */
+  /** 写工具全集（94 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的补集。 */
   private static final List<String> WRITE_TOOL_NAMES =
       concat(NON_NARROW_WRITE_NAMES, NARROW_WRITE_NAMES);
 
-  /** **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 31 读 + 93 写 = 124（**33 非窄写** + **60 窄写**）。 */
+  /** **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 32 读 + 94 写 = 126（**34 非窄写** + **60 窄写**）。 */
   private static final List<String> GM_TOOL_NAMES = concat(READ_TOOL_NAMES, WRITE_TOOL_NAMES);
 
   /** catalog 预期的 85 个已注册命令类型（与 Shell 注册的 handler 同源）。 */
@@ -765,8 +769,8 @@ class SimosToolsTest {
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .as("★ D1–D5 后：GM 桶 = 31 读 + 93 写 = 124（33 非窄写 + 60 窄写）")
-        .hasSize(124);
+        .as("★ D1–D5 后 + C5b：GM 桶 = 32 读 + 94 写 = 126（34 非窄写 + 60 窄写）")
+        .hasSize(126);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -788,8 +792,8 @@ class SimosToolsTest {
         .doesNotContainAnyElementsOf(MAP_WRITE_NAMES)
         .doesNotContainAnyElementsOf(SD_WRITE_NAMES)
         .doesNotContainAnyElementsOf(GM_ONLY_READ_NAMES)
-        .as("★ M4 + D5：决策人桶 = 19 共享读 + 2 决策只读 + 5 受限写 = 26")
-        .hasSize(26);
+        .as("★ M4 + D5 + C5b：决策人桶 = 20 共享读 + 2 决策只读 + 5 受限写 = 27")
+        .hasSize(27);
   }
 
   private static List<String> toolNames(List<AgentTool> tools) {
@@ -985,6 +989,8 @@ class SimosToolsTest {
             // ★ P7b（2026-10-01）：待裁决审批清单（只给 GM 桶）。
             new Case("simos.gm.approvals", Map.of(), "pending"),
             new Case("simos.llm.providers", Map.of(), "providers"),
+            // ★ C5b（2026-10-02）：历法/气候信息读工具的最小形状（config+sources+date+solarTerm+notes）。
+            new Case("simos.calendar.info", Map.of(), "sources"),
             new Case(
                 "simos.map.render",
                 Map.of("q", 1L, "r", 1L, "radius", 1L, "format", "text"),
@@ -1498,8 +1504,8 @@ class SimosToolsTest {
   void everyToolClassOnDiskIsRegisteredInSomeBucket() throws Exception {
     Set<String> onDisk = toolNamesFromSources();
     assertThat(onDisk)
-        .as("扫描必须恰为 129 个 *Tool.java 的 NAME（124 条 GM 桶 + 5 条只进决策人桶的条目；扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(129);
+        .as("扫描必须恰为 131 个 *Tool.java 的 NAME（126 条 GM 桶 + 5 条只进决策人桶的条目；扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(131);
 
     List<String> union =
         Stream.concat(

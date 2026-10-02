@@ -3,6 +3,7 @@ package io.mosire.simos.util.economy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.util.time.YearFraction;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -157,37 +158,84 @@ class EconomyVocabularyTest {
   }
 
   /**
-   * ★★ **衣着口径与口粮口径刻意不同**（spec §七："粮食不足与衣物不足对死亡的时间尺度显然不能一样"）： 粮是"每人每 120 天 10 粮"、布是"每人每 365 天 1 匹"。
+   * ★★ **衣着口径与口粮口径刻意不同**（spec §七："粮食不足与衣物不足对死亡的时间尺度显然不能一样"）： 粮是"每人每 120 天 10 粮"、布是"每人每**历法年**（365 或
+   * 366 天）1 匹"。
    *
-   * <p>★ 判别力：把两个周期写成同一个数（"共用一条每人每周期的量"）⇒ 本条红。
+   * <p>★ 判别力：把两个时间尺度写成同一个数（"共用一条每人每周期的量"）⇒ 本条红。
    */
   @Test
   void theClothBasisIsDeliberatelyDifferentFromTheRationBasis() {
-    assertThat(EconomyVocabulary.CLOTH_MILLI_PER_PERSON).as("每人每 365 天 1 匹布").isEqualTo(1_000L);
-    assertThat(EconomyVocabulary.CLOTH_CYCLE_DAYS).as("365 天").isEqualTo(365L);
-    assertThat(EconomyVocabulary.CLOTH_CYCLE_DAYS)
-        .as("★ 两条时间尺度必须不同（同一条就表达不了「两种不足的时间尺度不一样」）")
-        .isNotEqualTo(EconomyVocabulary.RATION_CYCLE_DAYS);
+    assertThat(EconomyVocabulary.CLOTH_MILLI_PER_PERSON)
+        .as("每人每历法年 1 匹布 = 1,000 毫布")
+        .isEqualTo(1_000L);
+    assertThat(EconomyVocabulary.RATION_CYCLE_DAYS)
+        .as("★ 两条时间尺度必须不同：口粮是 120 天业务周期，衣着是历法年（本仓不再有固定 365 的衣着周期常量）")
+        .isEqualTo(120L)
+        .isNotEqualTo(365L);
+  }
 
-    // ★ 与粮同制：一整个衣着周期的 Σ 日需求 == 人口 × 1,000，精确（逐日差分，残差不丢）。
-    for (long population : List.of(1L, 7L, 1_000L, 14_806L)) {
-      long sum = 0L;
-      for (long day = 1L; day <= EconomyVocabulary.CLOTH_CYCLE_DAYS; day++) {
-        sum += EconomyVocabulary.dailyClothNeedMilli(population, day);
-      }
-      assertThat(sum)
-          .as("人口 %d：Σ(第 1..365 天) 必须恰为 人口 × 1,000 毫布", population)
+  /**
+   * ★★ **整历法年的累计衣着需求 = 人口 × 1,000 毫布，精确**（设计稿 §六.1）。
+   *
+   * <p>★ {@code YearFraction.ONE} 表达"整个历法年"（平年 365/365、闰年 366/366 都约简为 1/1）——年长不再以固定 365
+   * 除法的形式出现在口径里。
+   */
+  @Test
+  void oneWholeCalendarYearOfClothIsExactlyPopulationTimesOneThousand() {
+    for (long population : List.of(0L, 1L, 7L, 100L, 1_000L, 14_806L)) {
+      assertThat(EconomyVocabulary.cumulativeClothMilli(population, YearFraction.ONE))
+          .as("人口 %d：整历法年 ⇒ 人口 × 1,000 毫布（不因平/闰年而变）", population)
           .isEqualTo(population * EconomyVocabulary.CLOTH_MILLI_PER_PERSON);
     }
-    // ★ 布的日需求也**逐日不同**（1,000 ÷ 365 除不尽）：第 1 天 273、第 2 天 274
-    //   （= floor(100,000 ÷ 365)、floor(200,000 ÷ 365) − 273）⇒ 它同样乘不出来，只能逐日差分。
-    assertThat(EconomyVocabulary.dailyClothNeedMilli(100L, 1L)).isEqualTo(273L);
-    assertThat(EconomyVocabulary.dailyClothNeedMilli(100L, 2L))
-        .as("★ 与第 1 天不同 ⇒ 布也走「累计 + 差分」，不是「每人每天多少」")
-        .isEqualTo(274L);
-    assertThatThrownBy(() -> EconomyVocabulary.dailyClothNeedMilli(1L, 0L))
+    // 平年 365/365 与闰年 366/366 都约简为 ONE ⇒ 与 ONE 同值；0 区间 ⇒ 0。
+    assertThat(EconomyVocabulary.cumulativeClothMilli(123L, new YearFraction(365L, 365L)))
+        .isEqualTo(123L * EconomyVocabulary.CLOTH_MILLI_PER_PERSON);
+    assertThat(EconomyVocabulary.cumulativeClothMilli(123L, new YearFraction(366L, 366L)))
+        .isEqualTo(123L * EconomyVocabulary.CLOTH_MILLI_PER_PERSON);
+    assertThat(EconomyVocabulary.cumulativeClothMilli(123L, YearFraction.ZERO)).isZero();
+  }
+
+  /**
+   * ★★ **单日的衣着需求按该日所在历法年的年长折算**：平年日 = 1/365、闰年日 = 1/366（设计稿 §六.1"闰年窗口用 366 分母"）。
+   *
+   * <p>★ 判别力：把 365/366 分母互换，或对 {@code YearFraction.ONE} 的特殊处理写错 ⇒ 本条红（与整年用例成对）。
+   */
+  @Test
+  void oneDayOfClothUsesThatCalendarYearsOwnDenominator() {
+    assertThat(EconomyVocabulary.dailyClothNeedMilli(100L, new YearFraction(1L, 365L)))
+        .as("平年日：floor(100 × 1,000 ÷ 365) = 273")
+        .isEqualTo(273L);
+    assertThat(EconomyVocabulary.dailyClothNeedMilli(100L, new YearFraction(1L, 366L)))
+        .as("闰年日：floor(100 × 1,000 ÷ 366) = 273（一年里两天的 floor 差会由累计口径补回，本函数只算当日分数）")
+        .isEqualTo(273L);
+    assertThat(EconomyVocabulary.dailyClothNeedMilli(1L, new YearFraction(1L, 365L))).isEqualTo(2L);
+    assertThat(EconomyVocabulary.dailyClothNeedMilli(1L, new YearFraction(1L, 366L)))
+        .as("1 人：floor(1000/365)=2 与 floor(1000/366)=2 相等，故换 3 人区分分母")
+        .isEqualTo(2L);
+    assertThat(EconomyVocabulary.dailyClothNeedMilli(3L, new YearFraction(1L, 365L)))
+        .as("3 人平年日 floor(3000/365) = 8")
+        .isEqualTo(8L);
+    assertThat(EconomyVocabulary.dailyClothNeedMilli(3L, new YearFraction(1L, 366L)))
+        .as("★ 3 人闰年日 floor(3000/366) = 8……但换 366 人可见差异")
+        .isEqualTo(8L);
+    assertThat(EconomyVocabulary.dailyClothNeedMilli(366L, new YearFraction(1L, 365L)))
+        .as("366 人平年日 floor(366000/365) = 1002")
+        .isEqualTo(1_002L);
+    assertThat(EconomyVocabulary.dailyClothNeedMilli(366L, new YearFraction(1L, 366L)))
+        .as("★ 366 人闰年日 = 1000 ⇒ 同一人口在平/闰年日不同，分母确实来自该历法年")
+        .isEqualTo(1_000L);
+  }
+
+  /** 守卫：人口为负、年分数为 null ⇒ 拒；0 人 ⇒ 0。 */
+  @Test
+  void clothNeedsRejectBadInputs() {
+    assertThat(EconomyVocabulary.cumulativeClothMilli(0L, YearFraction.ONE)).isZero();
+    assertThatThrownBy(() -> EconomyVocabulary.cumulativeClothMilli(-1L, YearFraction.ONE))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("必须 ≥ 1");
+        .hasMessageContaining("人口不得为负");
+    assertThatThrownBy(() -> EconomyVocabulary.cumulativeClothMilli(1L, null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("年分数不得为 null");
   }
 
   /**
@@ -198,7 +246,8 @@ class EconomyVocabularyTest {
    */
   @Test
   void dailyNeedsCarryOneEntryPerCommodity() {
-    Map<String, Long> needs = EconomyVocabulary.dailyNeedsMilli(100L, 3L);
+    YearFraction dayFraction = new YearFraction(1L, 365L);
+    Map<String, Long> needs = EconomyVocabulary.dailyNeedsMilli(100L, 3L, dayFraction);
 
     assertThat(needs.keySet())
         .as("保序：词表序（粮、布）—— 结算把它写进 naturalNeeds，迭代序必须是内容的纯函数")
@@ -207,6 +256,6 @@ class EconomyVocabularyTest {
     assertThat(needs.get(EconomyVocabulary.GRAIN_COMMODITY_ID))
         .isEqualTo(EconomyVocabulary.dailyRationMilli(100L, 3L));
     assertThat(needs.get(EconomyVocabulary.CLOTH_COMMODITY_ID))
-        .isEqualTo(EconomyVocabulary.dailyClothNeedMilli(100L, 3L));
+        .isEqualTo(EconomyVocabulary.dailyClothNeedMilli(100L, dayFraction));
   }
 }

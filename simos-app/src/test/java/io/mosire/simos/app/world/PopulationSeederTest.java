@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.calendar.CalendarClock;
+import io.mosire.simos.calendar.CalendarDate;
+import io.mosire.simos.calendar.JulianCalendar;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.gen.PlannedCity;
 import io.mosire.simos.social.gen.SettlementPlan;
@@ -60,13 +63,44 @@ class PopulationSeederTest {
     }
   }
 
-  /** 档边界口径：14 岁在 0-14、15 岁进 15-59、59 岁仍在 15-59、60 岁进 60+（天数 = 365 × 年）。 */
+  /**
+   * 档边界口径：14 岁在 0-14、15 岁进 15-59、59 岁仍在 15-59、60 岁进 60+；且 15/60 是**整历法年** （14×365 这类按 365
+   * 天近似写的夹具在闰日累计下会错开，必须用日历反推）。
+   */
   @Test
   void bracketBoundariesFollowTheDocumentedZeroFourteenFifteenFiftyNineSixty() {
-    assertThat(EconomySeeder.ageBracketOf(14L * 365L)).isZero();
-    assertThat(EconomySeeder.ageBracketOf(15L * 365L)).isEqualTo(1);
-    assertThat(EconomySeeder.ageBracketOf(59L * 365L)).isEqualTo(1);
-    assertThat(EconomySeeder.ageBracketOf(60L * 365L)).isEqualTo(2);
+    CalendarClock clock = CalendarClock.julianDefault();
+    JulianCalendar julian = JulianCalendar.INSTANCE;
+    long genesisDay = clock.dayNumberOfTick(0L); // 创世 = 儒略 1445-01-01
+    // 精确 N 个历法年前的出生日 → 创世时的逐日年龄；这才是 EconomySeeder.ageBracketOf 的入参口径。
+    assertThat(EconomySeeder.ageBracketOf(ageDaysAtGenesis(genesisDay, julian, 14)))
+        .as("14 岁整：仍 0-14")
+        .isZero();
+    assertThat(EconomySeeder.ageBracketOf(ageDaysAtGenesis(genesisDay, julian, 15)))
+        .as("15 岁整：进 15-59")
+        .isEqualTo(1);
+    assertThat(EconomySeeder.ageBracketOf(ageDaysAtGenesis(genesisDay, julian, 59)))
+        .as("59 岁整：仍在 15-59")
+        .isEqualTo(1);
+    assertThat(EconomySeeder.ageBracketOf(ageDaysAtGenesis(genesisDay, julian, 60)))
+        .as("60 岁整：进 60+")
+        .isEqualTo(2);
+    // 生日差一天必须改变归档：少一天 = 14 / 59 岁。
+    assertThat(EconomySeeder.ageBracketOf(ageDaysAtGenesis(genesisDay, julian, 15) - 1L))
+        .as("离 15 岁生日还差一天：仍在 0-14")
+        .isZero();
+    assertThat(EconomySeeder.ageBracketOf(ageDaysAtGenesis(genesisDay, julian, 60) - 1L))
+        .as("离 60 岁生日还差一天：仍在 15-59")
+        .isEqualTo(1);
+  }
+
+  /** 创世日时已满 {@code years} 个整历法年者的逐日年龄（生日 = 创世日往回 years 个历法年）。 */
+  private static long ageDaysAtGenesis(long genesisDay, JulianCalendar julian, int years) {
+    CalendarDate birthday = julian.dateOf(genesisDay);
+    long birthdayDay =
+        julian.dayNumberOf(
+            new CalendarDate(birthday.year() - years, birthday.month(), birthday.day()));
+    return genesisDay - birthdayDay;
   }
 
   /** ★ 性别比例是**创世 preset**、两性各半；批次列表逐格按 (性别 × 档) 出 6 条，落点 = 该格。 */

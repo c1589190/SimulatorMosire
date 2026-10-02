@@ -9,6 +9,9 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.calendar.CalendarClock;
+import io.mosire.simos.calendar.CalendarDate;
+import io.mosire.simos.calendar.JulianCalendar;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.hex.HexCoord;
@@ -191,7 +194,7 @@ class RegionAllocationsTest {
             group("g-zero", H11, Sex.MALE, 0L, 20L * 365L, 0L));
 
     RegionAllocations.ManpowerAllocation result =
-        RegionAllocations.allocateManpower(social, REGION, 0L, 30L);
+        RegionAllocations.allocateManpower(social, REGION, 0L, 30L, CalendarClock.julianDefault());
 
     assertThat(result.requested()).isEqualTo(30L);
     assertThat(result.available()).as("只有 g-adult 合格 ⇒ 合计 30").isEqualTo(30L);
@@ -201,29 +204,50 @@ class RegionAllocationsTest {
     assertThat(source.countAfter()).as("扣后 count 可为 0（合法空批）").isZero();
   }
 
-  /** ★ 年龄边界**当前 tick 现算**：15×365 恰入 ADULT、60×365 不入（ELDER）； 差一天出生的批次随当前 tick 前进一天后恰好跨进 / 跨出对应档。 */
+  /**
+   * ★ 年龄边界**当前 tick 现算，且 15/60 是整历法年**（不是 15×365 天）：默认锚点下 tick 1 = 1445-01-02， 当天满 15/60
+   * 岁者恰入档；晚一天出生者要到 tick 2 = 01-03 才跨档。
+   *
+   * <p>判别力：夹具若继续按 365 天近似写（15×365 天），在儒略历闰日累计下会错开一天 ⇒ 本用例的来源表逐值红。
+   */
   @Test
-  void manpowerAgeBracketsAreComputedAtTheCurrentTick() {
-    long tick = 1L;
+  void manpowerAgeBracketsAreComputedAtTheCurrentTickInWholeCalendarYears() {
+    CalendarClock clock = CalendarClock.julianDefault();
+    JulianCalendar julian = JulianCalendar.INSTANCE;
+    long anchorDay = clock.dayNumberOfTick(0L); // 儒略 1445-01-01
+    // 生日 = 1445-01-02 往回 15 / 60 个历法年 ⇒ tick 1 当天满 15 / 60 岁。
+    long birthday15OnTick1 = julian.dayNumberOf(new CalendarDate(1430, 1, 2));
+    long birthday60OnTick1 = julian.dayNumberOf(new CalendarDate(1385, 1, 2));
+    // 晚一天出生：tick 1 = 01-02 未过生日，tick 2 = 01-03 才满 15 / 60 岁。
+    long birthday15OnTick2 = julian.dayNumberOf(new CalendarDate(1430, 1, 3));
+    long birthday60OnTick2 = julian.dayNumberOf(new CalendarDate(1385, 1, 3));
+
     SocialData social =
         social(
-            group("g15", H11, Sex.MALE, 20L, 15L * 365L, 0L),
-            group("g60", H11, Sex.MALE, 10L, 60L * 365L, 0L),
-            group("g-just-adult", H11, Sex.MALE, 10L, 15L * 365L - 1L, 0L),
-            group("g-just-elder", H11, Sex.MALE, 10L, 60L * 365L - 1L, 0L));
+            group("g15", H11, Sex.MALE, 20L, anchorDay - birthday15OnTick1, 0L),
+            group("g60", H11, Sex.MALE, 1L, anchorDay - birthday60OnTick1, 0L),
+            group("g-just15", H11, Sex.MALE, 5L, anchorDay - birthday15OnTick2, 0L),
+            group("g-just60", H11, Sex.MALE, 10L, anchorDay - birthday60OnTick2, 0L));
 
-    RegionAllocations.ManpowerAllocation result =
-        RegionAllocations.allocateManpower(social, REGION, tick, 30L);
-
-    assertThat(result.available()).as("只有 15 岁档的两个批次合格 ⇒ 30").isEqualTo(30L);
-    assertThat(result.sources())
-        .as("g15 在 15×365 恰好入 ADULT；g-just-adult 靠当前 tick=1 现算跨进 ADULT；g60 / g-just-elder 都不入")
+    RegionAllocations.ManpowerAllocation atTick1 =
+        RegionAllocations.allocateManpower(social, REGION, 1L, 30L, clock);
+    assertThat(atTick1.available())
+        .as("tick 1（1445-01-02）：g15（20）+ g-just60（10，59 岁）= 30")
+        .isEqualTo(30L);
+    assertThat(atTick1.sources())
+        .as("tick 1：g15 恰满 15 入 ADULT；g-just60 59 岁仍在 ADULT；g-just15 仍 14、g60 已 60 都不入")
         .extracting(source -> source.group().id().value())
-        .containsExactly("g15", "g-just-adult");
-    assertThat(result.sources())
-        .as("count 降序：g15 的 20 人在前，g-just-adult 的 10 人在后")
-        .extracting(RegionAllocations.GroupSource::taken)
-        .containsExactly(20L, 10L);
+        .containsExactly("g15", "g-just60");
+
+    RegionAllocations.ManpowerAllocation atTick2 =
+        RegionAllocations.allocateManpower(social, REGION, 2L, 25L, clock);
+    assertThat(atTick2.available())
+        .as("tick 2（1445-01-03）：g15（20）+ g-just15（5，满 15）= 25")
+        .isEqualTo(25L);
+    assertThat(atTick2.sources())
+        .as("tick 2：g-just15 满 15 进 ADULT、g-just60 满 60 退 ADULT、g60 仍不入")
+        .extracting(source -> source.group().id().value())
+        .containsExactly("g15", "g-just15");
   }
 
   /** ★ 排序全序 + 扣后可为 0：6 个批次 count 降序 / 同量 id 升序（插入序相反），请求恰等于第一批 ⇒ 该批扣后为 0。 */
@@ -236,7 +260,7 @@ class RegionAllocationsTest {
     SocialData social = social(groups);
 
     RegionAllocations.ManpowerAllocation full =
-        RegionAllocations.allocateManpower(social, REGION, 0L, 180L);
+        RegionAllocations.allocateManpower(social, REGION, 0L, 180L, CalendarClock.julianDefault());
     assertThat(full.sources())
         .as("count 降序、同量 id 升序；插入序是反的")
         .extracting(source -> source.group().id().value())
@@ -247,7 +271,7 @@ class RegionAllocationsTest {
     assertThat(full.available()).isEqualTo(180L);
 
     RegionAllocations.ManpowerAllocation firstOnly =
-        RegionAllocations.allocateManpower(social, REGION, 0L, 50L);
+        RegionAllocations.allocateManpower(social, REGION, 0L, 50L, CalendarClock.julianDefault());
     assertThat(firstOnly.sources()).hasSize(1);
     assertThat(firstOnly.sources().get(0).group().id().value()).isEqualTo("g1");
     assertThat(firstOnly.sources().get(0).taken()).isEqualTo(50L);
@@ -262,7 +286,10 @@ class RegionAllocationsTest {
             group("g1", H11, Sex.MALE, 30L, 20L * 365L, 0L),
             group("g2", H12, Sex.MALE, 10L, 20L * 365L, 0L));
 
-    assertThatThrownBy(() -> RegionAllocations.allocateManpower(social, REGION, 0L, 100L))
+    assertThatThrownBy(
+            () ->
+                RegionAllocations.allocateManpower(
+                    social, REGION, 0L, 100L, CalendarClock.julianDefault()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("人力总量不足")
         .hasMessageContaining("requested=100")

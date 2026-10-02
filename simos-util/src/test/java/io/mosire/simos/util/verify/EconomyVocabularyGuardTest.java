@@ -43,6 +43,7 @@ class EconomyVocabularyGuardTest {
       List.of(
           "simos-util",
           "simos-map",
+          "simos-calendar",
           "simos-social",
           "simos-unit",
           "simos-core",
@@ -80,7 +81,7 @@ class EconomyVocabularyGuardTest {
         .as("★ 先证明解析器不是静默返回空（'命中 0 先怀疑自己的读取'：正则/读取坏掉时下面那条会变成恒真）")
         .contains("simos-util", "simos-actor-api", "simos-actor", "simos-app")
         .hasSizeGreaterThanOrEqualTo(
-            13); // ★ 2026-09-30/10-01：simos-gov / simos-army 新增 ⇒ 13（simos-ledger 已退役）
+            14); // ★ 2026-10-02：simos-calendar 新增 ⇒ 14（simos-ledger 已退役；清单与根 pom 必须同步）
     assertThat(MODULES)
         .as("★★ 扫描面必须恰恰等于根 pom 的 <module> 集合——否则下个新模块还会静默漏掉")
         .containsExactlyInAnyOrderElementsOf(declared);
