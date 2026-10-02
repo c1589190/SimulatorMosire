@@ -62,15 +62,14 @@ class SdRoundTripTest {
   /**
    * ★ D5 / R6 新增的两个组件**逐字段**往返：外交关系边（键的方向 + kind/text/updatedTick）与外交事件（id/tick/participants/text）。
    *
-   * <p>★ 判别力来自目标态里**新加的条目本身**：反射枚举那条只判"整个组件进变更集 + 整态相等"，这里把新组件的每个字段单独钉住——
-   * 任何"重建时丢一个字段、但整态 equals 恰好被别的字段掩盖"都不会发生，因为目标态与重建态是逐字段对照。
+   * <p>★ 判别力来自目标态里**新加的条目本身**：反射枚举那条只判"整个组件进变更集 + 整态相等"，这里把新组件的每个字段单独钉住—— 任何"重建时丢一个字段、但整态 equals
+   * 恰好被别的字段掩盖"都不会发生，因为目标态与重建态是逐字段对照。
    */
   @Test
   void theTwoNewDiplomaticComponentsSurviveTheRoundTripFieldByField() {
     SdState base = SdFixtures.full();
     SdState target =
-        SdFixtures.mutated(
-            SdFixtures.mutated(base, "diplomaticRelations"), "diplomaticEvents");
+        SdFixtures.mutated(SdFixtures.mutated(base, "diplomaticRelations"), "diplomaticEvents");
     SdChangeSet cs = SdChangeSet.between(base, target);
 
     assertThat(cs.diplomaticRelations().changed()).as("新关系边必须被 between 看见").isTrue();

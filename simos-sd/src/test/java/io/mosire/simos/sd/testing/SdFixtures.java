@@ -192,8 +192,7 @@ public final class SdFixtures {
         yield base.withDiplomaticRelations(next);
       }
       case "diplomaticEvents" -> {
-        Map<DiplomaticEventId, DiplomaticEvent> next =
-            new LinkedHashMap<>(base.diplomaticEvents());
+        Map<DiplomaticEventId, DiplomaticEvent> next = new LinkedHashMap<>(base.diplomaticEvents());
         DiplomaticEventId extra = new DiplomaticEventId("de-extra");
         next.put(extra, new DiplomaticEvent(extra, 11L, List.of(N1, N2), "追加外交事件（夹具）"));
         yield base.withDiplomaticEvents(next);

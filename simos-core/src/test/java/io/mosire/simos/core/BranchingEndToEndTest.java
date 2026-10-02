@@ -184,8 +184,7 @@ class BranchingEndToEndTest {
     assertThat(b2Renamed.manpower())
         .as("③ 其余单位字段也被逐值钉住")
         .containsExactly(new CompositionEntry("步兵", 100));
-    assertThat(b2Renamed.equipment())
-        .containsExactly(new CompositionEntry("步枪", 50));
+    assertThat(b2Renamed.equipment()).containsExactly(new CompositionEntry("步枪", 50));
     assertThat(b2Renamed.speed()).isEqualTo(2);
     assertThat(b2Renamed.mobilityPerMille()).isEqualTo(500);
     assertThat(b2Renamed.movement()).isEmpty();

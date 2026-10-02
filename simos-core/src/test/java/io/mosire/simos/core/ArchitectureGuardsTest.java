@@ -43,8 +43,8 @@ class ArchitectureGuardsTest {
 
   /**
    * R1：main 源码里 {@code ChangeSet} 的实现者**恰 9 个**（World / Map / Social / Unit / Sd / Actor / Economy
-   * / Gov / Army）——多一个少一个都是信号： 多一个可能是有人绕过 codec 在 Core 里另造状态形态；少一个说明某个模块的变更集丢了 ChangeSet 身份（Featherweight
-   * 的"契约不空转"断了一根）。
+   * / Gov / Army）——多一个少一个都是信号： 多一个可能是有人绕过 codec 在 Core 里另造状态形态；少一个说明某个模块的变更集丢了 ChangeSet
+   * 身份（Featherweight 的"契约不空转"断了一根）。
    *
    * <p>★ test 侧的 3 个玩具实现者（simos-util 的 {@code RoundTripAssertionsTest} / {@code DriftTest} 里）
    * **不计入**：它们不在 main 源码里，本扫描只枚举各模块的 {@code src/main}——这条例外写在这里， 免得下一个人以为漏扫了。
@@ -56,8 +56,8 @@ class ArchitectureGuardsTest {
    * <p>★ A3（2026-09-20）：第 5 个实现者是 SDSimos 的 {@code SdChangeSet}；方法名由 {@code ...Four...} 改为 {@code
    * ...Five...}（旧名会误导）。★ Task 10（2026-09-26）：第 6~7 个是 {@code actor}/{@code economy}
    * 两片（它们**当时就没进扫描面**， 不是新增的变更集没登记），方法名同款改为 {@code ...Seven...}。★ 阶段 10a（2026-09-30）：{@code
-   * simos-ledger} 退役、 {@code simos-gov} 的 {@code GovChangeSet} 进场 ⇒ 当前恰 8 个。★ 阶段 D4（2026-10-02）：{@code
-   * simos-army} 的 {@code ArmyChangeSet} 进场 ⇒ 当前恰 9 个。
+   * simos-ledger} 退役、 {@code simos-gov} 的 {@code GovChangeSet} 进场 ⇒ 当前恰 8 个。★ 阶段
+   * D4（2026-10-02）：{@code simos-army} 的 {@code ArmyChangeSet} 进场 ⇒ 当前恰 9 个。
    */
   @Test
   void changeSetHasExactlyNineMainSourceImplementors() throws IOException {

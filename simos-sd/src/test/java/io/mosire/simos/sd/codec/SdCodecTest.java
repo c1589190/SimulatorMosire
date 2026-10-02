@@ -55,8 +55,8 @@ class SdCodecTest {
    * ★ D5 / R6 新增的两个组件经**真 JSON 快照往返**逐字段不丢：外交关系边（复合键的方向 + kind/text/updatedTick）
    * 与外交事件（id/tick/participants/text）。
    *
-   * <p>★ 判别力：{@code SdFixtures.full()} 的两张新表都非空，且这里把每个字段单独钉住——编码/解码任何一侧丢组件或丢字段都会红
-   * （只判整快照 equals 也能红，但逐字段能指出丢的是哪一个）。
+   * <p>★ 判别力：{@code SdFixtures.full()} 的两张新表都非空，且这里把每个字段单独钉住——编码/解码任何一侧丢组件或丢字段都会红 （只判整快照 equals
+   * 也能红，但逐字段能指出丢的是哪一个）。
    */
   @Test
   void theTwoNewDiplomaticComponentsSurviveTheJsonSnapshotRoundTripFieldByField() {
@@ -79,7 +79,9 @@ class SdCodecTest {
     assertThat(event).as("DE1 外交事件在 JSON 往返后仍在").isNotNull();
     assertThat(event.id()).as("事件 id 经线格式往返").isEqualTo(SdFixtures.DE1);
     assertThat(event.tick()).as("事件 tick 经线格式往返").isEqualTo(7L);
-    assertThat(event.participants()).as("事件 participants 经线格式往返（保序）").containsExactly(SdFixtures.N1, SdFixtures.N2);
+    assertThat(event.participants())
+        .as("事件 participants 经线格式往返（保序）")
+        .containsExactly(SdFixtures.N1, SdFixtures.N2);
     assertThat(event.text()).as("事件 text 经线格式往返").isEqualTo("N1 与 N2 谈判（夹具）");
   }
 
@@ -215,21 +217,17 @@ class SdCodecTest {
 
     SdSnapshot back = (SdSnapshot) CODEC.decodeSnapshot(treeMapper.writeValueAsString(root));
 
-    assertThat(back.state().diplomaticRelations())
-        .as("★ 缺键 ⇒ 空表（不是 null、不是抛）")
-        .isEmpty();
+    assertThat(back.state().diplomaticRelations()).as("★ 缺键 ⇒ 空表（不是 null、不是抛）").isEmpty();
     assertThat(back.state().diplomaticEvents()).as("★ 缺键 ⇒ 空表").isEmpty();
     assertThat(back.state())
         .as("其余十个组件逐字不变")
         .isEqualTo(
-            SdFixtures.full()
-                .withDiplomaticRelations(Map.of())
-                .withDiplomaticEvents(Map.of()));
+            SdFixtures.full().withDiplomaticRelations(Map.of()).withDiplomaticEvents(Map.of()));
   }
 
   /**
-   * ★★ **老档兼容（D5）**：没有两个外交键的**变更集**字节，必须读成 {@link FieldDelta.Unchanged}（旧档没提该组件 = 没动它），
-   * 而不是 null/NPE；把它应用到 base 上不得清空已有外交表。
+   * ★★ **老档兼容（D5）**：没有两个外交键的**变更集**字节，必须读成 {@link FieldDelta.Unchanged}（旧档没提该组件 = 没动它）， 而不是
+   * null/NPE；把它应用到 base 上不得清空已有外交表。
    *
    * <p>★ 同样先自证两个键真的写进字节。
    */
@@ -245,8 +243,7 @@ class SdCodecTest {
     root.remove("diplomaticRelations");
     root.remove("diplomaticEvents");
 
-    SdChangeSet legacy =
-        (SdChangeSet) CODEC.decodeChangeSet(treeMapper.writeValueAsString(root));
+    SdChangeSet legacy = (SdChangeSet) CODEC.decodeChangeSet(treeMapper.writeValueAsString(root));
 
     assertThat(legacy.diplomaticRelations())
         .as("★ 缺键 ⇒ Unchanged（fail-closed：没提就是没动）")
