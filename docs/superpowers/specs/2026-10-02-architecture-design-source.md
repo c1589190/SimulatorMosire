@@ -254,4 +254,4 @@
   1. 只有 **Army 真实交战记录**（`GET /api/army/combats`，缺省世界当前 tick）能点开详情；仅靠"同格多军队/ENGAGED"推断出来、没有记录的 ⚔ 仍会画，但点它不会开事件（落到格选中）——后续如需把推断事件也做成可看详情需另裁。
   2. 事件面板当前为右下角固定浮层、不可拖动；真实浏览器下的遮挡/手感需用户验收。
   3. 其他状态事件的 provider 形状与图层归属（是共用 `combats` 还是各自新图层）待接入时补裁。
-- **关联实现**：提交 `326e7bc0`（`events.js` + `hexgeom.combatIconAt` + `renderer.pickAt` + `map.js` 接线 + `index.html`/`styles.css`）；测试 `events.test.cjs` 21 条 + `region-edit-select` combat pick 1 条，前端下界 362→384；`clean verify` 全绿（13 模块 2919 tests / 0 失败 / 5 skipped；frontend 384/384）。
+- **关联实现**：提交 `326e7bc0`（`events.js` + `hexgeom.combatIconAt` + `renderer.pickAt` + `map.js` 接线 + `index.html`/`styles.css`）；测试 `events.test.cjs` 21 条 + `region-edit-select` combat pick 1 条，前端下界 362→384；`clean verify` 全绿（13 模块 2919 tests / 0 失败 / 5 skipped；frontend 384/384）。补丁 `c4281e53`：outcomes 表补第 4 列「损失」（`formatOutcomeLosses`；未判定阶段 top-level losses 为空时仍能看到各结局的潜在逐单位损失），测试 +2、下界 384→386；实机副本冒烟（`simos.army.recordCombat` 写一条记录）验证损失列文本 `u-smoke-blue：步兵-10 / 弓-2`。
