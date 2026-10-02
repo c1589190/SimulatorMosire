@@ -37,7 +37,7 @@
           <div id="search-results" class="search-results" role="listbox" hidden></div>
         </div>
         <button type="button" id="layer-toggle" aria-expanded="false" aria-controls="layer-panel"
-          title="图层开关（国家着色 / 区域名与国名 / 城市 / 军队 / 政府单位 / 政府辖区 / 决策人 / 交战 / 路线）">图层</button>
+          title="图层开关（国家着色 / 区域名与国名 / 城市 / 军队 / 政府单位 / 政府辖区 / 决策人 / 战斗事件 / 路线）">图层</button>
       </div>
 
       <span id="shell-state" class="shell-state">状态加载中…</span>
@@ -45,7 +45,7 @@
 
     <!-- ★ F1：图层抽屉（默认 hidden；localStorage 键 simos.layers.v1；无 localStorage 时降级为内存态）。
          9 键分组开关 + 场景预设只影响绘制：国家着色 / 区域名与国名 / 城市 / 军队 / 政府单位 / 政府辖区 /
-         决策人 / 交战 / 路线。 -->
+         决策人 / 战斗事件 / 路线。 -->
     <div id="layer-panel" class="layer-panel" hidden aria-label="图层开关">
       <h3>图层</h3>
       <div class="layer-presets" role="group" aria-label="图层预设">
@@ -67,7 +67,7 @@
       <div class="layer-group">
         <span>军事</span>
         <label><input type="checkbox" data-layer="army" checked> 军队</label>
-        <label><input type="checkbox" data-layer="combats" checked> 交战</label>
+        <label><input type="checkbox" data-layer="combats" checked> 战斗事件</label>
         <label><input type="checkbox" data-layer="routes" checked> 路线</label>
       </div>
       <div class="layer-group">
@@ -545,6 +545,16 @@
       </div>
       <div id="unit-tree-mount" class="unit-tree"></div>
     </section>
+
+    <!-- 事件浮层（2026-10-02 用户）：点地图上的 ⚔ 看该 hex 当前 tick 的战斗详情；也可切到当前 tick 全部。
+         战斗只是第一个 provider（events.js 的注册表），后续状态事件按同一形状接入；图层 combats 关掉即关闭。 -->
+    <section id="event-panel" class="event-panel" hidden role="dialog" aria-modal="false" aria-label="事件详情">
+      <header class="event-panel-head">
+        <h3 id="event-panel-title">事件 · 当前 tick</h3>
+        <button type="button" id="event-panel-close" aria-label="关闭事件面板">关闭</button>
+      </header>
+      <div id="event-panel-mount" class="event-panel-body"></div>
+    </section>
   </div>
 
   <script src="api.js"></script>
@@ -561,6 +571,9 @@
   <script src="panel-right.js"></script>
   <script src="panels.js"></script>
   <script src="unitTree.js"></script>
+  <!-- ★ 2026-10-02 用户：事件浮层（⚔ 点击 ⇒ 该 hex 当前 tick 战斗详情；provider 注册表可扩展）。
+       必须在 app.js / api.js 之后；不依赖地图，故与 map.js 的先后不敏感。 -->
+  <script src="events.js"></script>
   <script src="timeline.js"></script>
   <!-- ★ M12：map.js 的纯几何/颜色/区域边界已拆出；必须在 map.js 之前按依赖顺序引入 -->
   <script src="hexgeom.js"></script>

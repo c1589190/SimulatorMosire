@@ -2323,3 +2323,187 @@ body.workbench-page .heatmap-legend .heatmap-legend-footnote {
   margin: 4px 0 0;
   font-size: 11px;
 }
+
+/* ══ 事件浮层（2026-10-02 用户：点地图 ⚔ 看该 hex 当前 tick 战斗详情；provider 注册表可扩展）══════════
+   只追加新类，不覆盖 .unit-panel 等既有语义；沿用既有主题变量（--panel/--panel-2/--line/--muted/--accent/--err）。
+   ★ 宿主 .wb-overlay 是 pointer-events:none ⇒ 本浮层必须自行 auto，否则按钮点不到（同 .unit-panel 的教训）。 */
+
+.event-panel {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 5;
+  width: min(460px, calc(100vw - 24px));
+  max-height: min(70vh, 640px);
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+/* 显式写出来（同 .unit-panel[hidden]）：别让某条 display 规则盖掉 UA 的 [hidden] 而静默失效。 */
+.event-panel[hidden] {
+  display: none;
+}
+
+.event-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+  cursor: default;
+}
+
+.event-panel-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.event-panel-body {
+  overflow: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.event-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.event-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.event-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.event-card-head:hover {
+  border-color: transparent;
+  background: rgba(78, 161, 255, 0.08);
+}
+
+.event-card-icon {
+  flex: 0 0 auto;
+}
+
+.event-card-title {
+  font-weight: 600;
+}
+
+.event-card-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.event-card-detail {
+  padding: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.event-kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+
+.event-kv dt {
+  color: var(--muted);
+}
+
+.event-kv dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.event-text {
+  margin: 0 0 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.event-stage {
+  margin: 6px 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--line);
+}
+
+.event-stage h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.event-stage-participants,
+.event-stage-text,
+.event-roll-seed {
+  margin: 2px 0;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.event-roll-seed {
+  color: var(--muted);
+}
+
+table.event-outcomes,
+table.event-losses {
+  margin: 4px 0;
+  font-size: 12px;
+}
+
+table.event-outcomes th,
+table.event-outcomes td,
+table.event-losses th,
+table.event-losses td {
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+}
+
+.event-selected {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.event-empty,
+.event-error {
+  margin: 0;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.event-error {
+  color: var(--err);
+}

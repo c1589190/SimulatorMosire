@@ -83,7 +83,12 @@ const JS_DIR = __dirname;
 //     region-edit-select.test.cjs 新增 6 条（编辑/查看按 tag 取末位、无匹配严格不动 focus/高亮、regionTag=null
 //     仍取全图末位、overview 缺 tag 走 api.mapRegion 兜底）。与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值
 //     ——改一处必须改两处。
-const MIN_TESTS = 362;
+//   2026-10-02 战斗事件浮层起 362 → 384：新增 events.test.cjs 的 21 条（normalize/filter/formatDelta/combatIconAt
+//     纯函数 6；面板打开/过滤/展开/图层联动/取数失败/provider/onState 7；renderCombatDetail 2；renderer/map/index/
+//     styles 静态 6）；region-edit-select.test.cjs 新增 combat 点选 1 条并把 region-edit 光标静态用例改为按整条
+//     赋值语句扫描（生产新增 combat 分支致三元式换行，行为不变）。与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值
+//     ——改一处必须改两处。
+const MIN_TESTS = 384;
 
 function discoverTests() {
   return fs

@@ -12,6 +12,7 @@ const REQUIRED_FILES = [
   "decision-docs.test.cjs",
   "decision-mode.test.cjs",
   "economy-panel.test.cjs",
+  "events.test.cjs",
   "f1-map-first.test.cjs",
   "f2-heatmap.test.cjs",
   "gate-contract.test.cjs",
@@ -104,7 +105,11 @@ const REQUIRED_FILES = [
 //     setRegionTag 状态 trim·空转 null 与 setMode 同批清 tag 2 条；panel-right 两个点击点的静态接线 1 条）；
 //     region-edit-select.test.cjs 新增 6 条（编辑/查看按 tag 取末位、无匹配严格不动 focus/高亮、regionTag=null
 //     仍取全图末位、overview 缺 tag 走 api.mapRegion 兜底）。与 run-gate.cjs 的 MIN_TESTS 同值——改一处必须改两处。
-const MIN_ASSERTIONS = 362;
+//   2026-10-02 战斗事件浮层起 362 → 384：新增 events.test.cjs 的 21 条（normalize/filter/formatDelta/combatIconAt
+//     纯函数 6；面板打开/过滤/展开/图层联动/取数失败/provider/onState 7；renderCombatDetail 2；renderer/map/index/
+//     styles 静态 6）；region-edit-select.test.cjs 新增 combat 点选 1 条并把 region-edit 光标静态用例改为按整条
+//     赋值语句扫描（生产新增 combat 分支致三元式换行，行为不变）。与 run-gate.cjs 的 MIN_TESTS 同值——改一处必须改两处。
+const MIN_ASSERTIONS = 384;
 
 function testFiles() {
   return fs

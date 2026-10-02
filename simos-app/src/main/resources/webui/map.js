@@ -1177,6 +1177,10 @@
     if (active && active.setLayerState) {
       active.setLayerState(prefs);
     }
+    // ★ 2026-10-02 用户：战斗事件的显示/关闭由图层开关收口——关掉 combats 时事件面板也关闭。
+    if (window.SimosEvents && typeof window.SimosEvents.onLayerChange === "function") {
+      window.SimosEvents.onLayerChange(prefs);
+    }
   }
 
   function wireLayerDrawer() {
@@ -1934,6 +1938,13 @@
   }
 
   function workbenchSelect(pick) {
+    // ★ 2026-10-02 用户：点地图上的 ⚔ ⇒ 打开事件面板看该 hex 当前 tick 的战斗详情。
+    if (pick.kind === "combat") {
+      if (window.SimosEvents && typeof window.SimosEvents.openForHex === "function") {
+        window.SimosEvents.openForHex(pick.q, pick.r);
+      }
+      return;
+    }
     var mode = app.getState().mode;
     var selId = window.SimosMapUnitEditor.selectedUnitId();
     // ★ F1：城市命中优先只领"选中城市"（不抢模式）：左栏切到城市详情，地图居中由 onStateChange 收口。

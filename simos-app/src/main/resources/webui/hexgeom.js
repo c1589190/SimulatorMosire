@@ -304,6 +304,35 @@
   }
 
   /**
+   * 点是否命中 ⚔ 图标：table 是 "q_r" → … 的表（renderer 的 realCombatHexes 形状）。
+   * 命中返回 {q,r,key}，否则 null；q/r 解析不出有限数就跳过；point/table 缺失 ⇒ null。
+   *
+   * <p>★ 2026-10-02 用户：⚔ 要能点开事件面板。坐标口径与 drawUnits 画 ⚔ **逐字一致**：
+   * 格心 `hexToPixel(q,r,cellSize)` + `combatIconOffset()`；`hitRadius` 是世界像素半径（缺省字号 ×0.7）。
+   * 命中门控（图层开 + `combatLayoutEnabled`）由 renderer.pickAt 先判，本函数只管几何。
+   */
+  function combatIconAt(point, table, cellSize, hitRadius) {
+    if (!point || !table) return null;
+    var radius =
+      typeof hitRadius === "number" && isFinite(hitRadius) && hitRadius > 0
+        ? hitRadius
+        : combatIconFontSize(cellSize) * 0.7;
+    var keys = Object.keys(table);
+    var off = combatIconOffset();
+    for (var i = 0; i < keys.length; i++) {
+      var parts = keys[i].split("_");
+      var q = Number(parts[0]),
+        r = Number(parts[1]);
+      if (!isFinite(q) || !isFinite(r)) continue;
+      var c = hexToPixel(q, r, cellSize);
+      var dx = point.x - (c.x + off.x),
+        dy = point.y - (c.y + off.y);
+      if (dx * dx + dy * dy <= radius * radius) return { q: q, r: r, key: keys[i] };
+    }
+    return null;
+  }
+
+  /**
    * 单位标记的**分组**：同格的单位再按「军队根」分组，**每组只出一个标记**。**纯函数**。
    *
    * <p>★ 2026-09-24 修正 1（上一轮按**单位**摊开是错的）：根单位本身已经是"整支军队"
@@ -603,6 +632,8 @@
     combatSlot: combatSlot,
     combatIconOffset: combatIconOffset,
     combatIconFontSize: combatIconFontSize,
+    // ★ 2026-10-02 用户：⚔ 可点击（pickAt 命中）；与绘制同一坐标口径。
+    combatIconAt: combatIconAt,
     combatLayoutEnabled: combatLayoutEnabled,
     COMBAT_SIDE_GAP: COMBAT_SIDE_GAP,
     STACK_MIN_SCREEN_CELL: STACK_MIN_SCREEN_CELL,

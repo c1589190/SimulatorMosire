@@ -83,10 +83,18 @@ function harness(mode, options) {
   const unitEditor = {
     selectedUnitId: () => (opts.selectedUnitId === undefined ? null : opts.selectedUnitId),
   };
+  // ★ 2026-10-02 用户：地图 ⚔ ⇒ 打开事件面板。这里只做假件记录调用（不加载 events.js，免把 DOM 宿主
+  //   带进 map.js 的行为用例）；map.js 对 window.SimosEvents 是**惰性**调用。
+  const events = {
+    openForHex: (q, r) => {
+      calls.push({ name: "openForHex", args: [q, r] });
+    },
+  };
   const win = loadWebui("map.js", {
     SimosApp: app,
     SimosApi: api,
     SimosMapUnitEditor: unitEditor,
+    SimosEvents: events,
   });
   if (opts.overviewRegions !== undefined) {
     // 生产 map.js 的 regionTagById 读的就是 SimosMapCore.host.overviewRegions。
@@ -200,6 +208,20 @@ test("region-edit-unit-pick-selects-unit-and-still-sets-region-focus", async () 
     "单位标记同理：region-edit 下点单位也要选中所在区域"
   );
   assert.deepEqual(h.callsOf("setHighlightRegions"), []);
+});
+
+// ── 2026-10-02 用户：地图 ⚔ 点选 ⇒ 事件面板，不落选中 / 高亮 / 焦点 ─────────────────
+
+test("combat-pick-opens-the-events-panel-and-touches-no-selection-state", () => {
+  const h = harness("region-edit", {});
+
+  h.map.selectPickForTest({ kind: "combat", q: 3, r: 4, inMap: true });
+
+  assert.deepEqual(h.callsOf("openForHex"), [[3, 4]], "★ ⚔ 命中必须把 (3,4) 原样交给 SimosEvents.openForHex");
+  assert.deepEqual(h.callsOf("setSelection"), [], "事件面板不是选中：不得调 setSelection");
+  assert.deepEqual(h.callsOf("setHighlightRegions"), [], "不得调 setHighlightRegions");
+  assert.deepEqual(h.callsOf("setRegionFocus"), [], "不得调 setRegionFocus");
+  assert.deepEqual(h.callsOf("setMode"), [], "点 ⚔ 不得抢模式");
 });
 
 // ── 2026-10-02 用户报障：点格必须按"当前选中 tag"取该 tag 的定义序末位 ──────────────
@@ -339,13 +361,13 @@ test("region-tag-falls-back-to-region-detail-when-overview-lacks-the-tag", async
 
 test("renderer-shows-pointer-cursor-for-region-edit-mode", () => {
   const source = readWebui("renderer.js");
-  const cursorLine = source
-    .split("\n")
-    .find((line) => line.includes('pick.kind === "unit"') && line.includes('mode === "region"'));
-  assert.ok(cursorLine, "renderer 的光标分支必须仍按 mode 区分 pointer/grab");
-  assert.ok(
-    cursorLine.includes('"region-edit"'),
-    "region-edit 必须也在 pointer 档（否则编辑态悬停仍是 grab）"
-  );
-  assert.ok(cursorLine.includes('"pointer" : "grab"'), "pointer/grab 的落点必须保留");
+  // ★ 2026-10-02：光标三元式因新增 combat 分支被格式化成多行 ⇒ 按**整条赋值语句**扫描（而不是按单行），
+  //   判据不变：region/region-edit/unit（以及 combat）走 pointer，其余 grab。
+  const start = source.lastIndexOf("canvas.style.cursor =");
+  assert.ok(start >= 0, "renderer 必须保留 canvas.style.cursor 分支");
+  const statement = source.slice(start, source.indexOf(";", start));
+  assert.ok(statement.includes('pick.kind === "unit"'), "光标分支必须仍按 kind 区分");
+  assert.ok(statement.includes('"region-edit"'), "region-edit 必须也在 pointer 档（否则编辑态悬停仍是 grab）");
+  assert.ok(statement.includes('"pointer"'), "pointer 落点必须保留");
+  assert.ok(statement.includes('"grab"'), "grab 落点必须保留");
 });

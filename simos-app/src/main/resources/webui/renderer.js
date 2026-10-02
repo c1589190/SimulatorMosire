@@ -53,6 +53,8 @@
   var combatSlot = hexGeom.combatSlot;
   var combatIconOffset = hexGeom.combatIconOffset;
   var combatIconFontSize = hexGeom.combatIconFontSize;
+  // ★ 2026-10-02 用户：⚔ 可点击（pickAt 命中；纯几何在 hexgeom.js，与绘制同一坐标口径）。
+  var combatIconAt = hexGeom.combatIconAt;
   var combatRowSpacing = hexGeom.combatRowSpacing;
   // hexcolor.js
   var FALLBACK_COLOR = hexColor.FALLBACK_COLOR;
@@ -2012,6 +2014,15 @@
     function pickAt(point) {
       var world = screenToWorld(point, view);
       var baseHitRadius = Math.max(cellSize * 0.36, 10 / view.scale);
+      // ★ 2026-10-02 用户：⚔ 优先命中（它画在格心、交战布局把单位标记挪到两侧 ⇒ 格心让给 ⚔）。
+      //   与 drawUnits 同一门控：图层开 + 交战布局启用才画、才可点（关掉 ⇒ 不画也不可点）。
+      if (layerState.combats && combatLayoutEnabled(cellSize, cellSize * view.scale)) {
+        var battle = combatIconAt(world, realCombatHexes, cellSize,
+          Math.max(combatIconFontSize(cellSize), 12 / view.scale));
+        if (battle) {
+          return { kind: "combat", q: battle.q, r: battle.r, inMap: true };
+        }
+      }
       // ★ 2026-09-24 修正 1：命中**军队标记**，返回其**代表单位**（leadId）的 id ——
       //   点首都格里的兵种标记，选中的是整支军队的代表（根），与标记画的是同一个单位。
       for (var i = markers.length - 1; i >= 0; i--) {
@@ -2582,9 +2593,13 @@
         return;
       }
       var pick = pickAt(canvasPoint(event));
+      // ★ 2026-10-02 用户：⚔ 与 unit / 区域同档的指针反馈；title 只写"战斗"（不编造记录里没有的字段）。
       canvas.style.cursor =
-        pick.kind === "unit" || mode === "region" || mode === "region-edit" ? "pointer" : "grab";
-      canvas.title = pick.kind === "unit" ? app.text(pick.name) : "";
+        pick.kind === "unit" || pick.kind === "combat" || mode === "region" || mode === "region-edit"
+          ? "pointer"
+          : "grab";
+      canvas.title =
+        pick.kind === "unit" ? app.text(pick.name) : pick.kind === "combat" ? "战斗" : "";
     }
 
     function onPointerUp(event) {
