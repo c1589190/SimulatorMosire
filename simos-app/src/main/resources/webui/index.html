@@ -536,8 +536,12 @@
         <!-- ★ 2026-09-24 可用性修复：把地图居中到该军队（选中单位优先，否则军队根），
              显式动作 ⇒ 强制居中并抬到可见缩放（见 unitTree.js 的 locateCurrentArmy）。 -->
         <button type="button" id="unit-locate" class="unit-panel-locate" title="把地图居中到该军队并放大到看得见">定位到该军队</button>
-        <!-- ★ 2026-09-24 修正 2：自由视图的复位按钮（平移归零，见 unitTree.js 的 resetTreePan）-->
-        <button type="button" id="unit-tree-reset" class="unit-panel-reset" title="复位视图（平移归零）">复位视图</button>
+        <!-- ★ 2026-10-02 用户：树视图缩放（滚轮或按钮；− 缩、＋ 放，读数实时同步；见 unitTree.js zoomTreeAt） -->
+        <button type="button" id="unit-tree-zoom-out" class="unit-panel-zoom-btn" aria-label="缩小编制视图" title="缩小（滚轮也可缩放）">−</button>
+        <span id="unit-tree-zoom" class="unit-panel-zoom" aria-live="polite">100%</span>
+        <button type="button" id="unit-tree-zoom-in" class="unit-panel-zoom-btn" aria-label="放大编制视图" title="放大（滚轮也可缩放）">＋</button>
+        <!-- ★ 2026-09-24 修正 2：自由视图的复位按钮（平移 + 缩放一起归零，见 unitTree.js 的 resetTreePan）-->
+        <button type="button" id="unit-tree-reset" class="unit-panel-reset" title="复位视图（平移与缩放归零）">复位视图</button>
       </div>
       <div id="unit-tree-mount" class="unit-tree"></div>
     </section>

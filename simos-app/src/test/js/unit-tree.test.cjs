@@ -7,6 +7,9 @@
 //   居到哪"）+ UNIT_VISIBLE_MIN_SCALE 的可见性依据 + 定位按钮接线 / 选择收口调用 ensureUnitVisible 的静态断言。
 //   ★ 2026-09-24 编制正向化追加：根在顶（subtree 的 DOM 序，行为级：注入假 SimosApp 后真跑 render 检查结构）
 //   + 竖直可拖（clampPanAxis 对"内容比视口小"的那一轴从"钉死居中"改成"视口内自由摆放"）+ preferredTreePan。
+//   ★ 2026-10-02 编制正方形 + 树缩放追加：clampTreeScale / zoomedTreePan 纯函数（含容错与焦点不变式）
+//   + render 输出 translate(...) scale(...) + 缩放控件/滚轮接线静态 + .unit-panel 两轴同值 /
+//   .tree-canvas transform-origin 0 0 + zoom-in 点击真接线的行为级用例（记录型假宿主）。
 "use strict";
 
 const { test } = require("node:test");
@@ -23,6 +26,11 @@ const {
   clampPanelPosition,
   clampTreePan,
   preferredTreePan,
+  // ★ 2026-10-02 编制正方形 + 树缩放：缩放夹取/焦点缩放纯函数与导出上界（供测试与实现同源对拍）。
+  clampTreeScale,
+  MIN_TREE_SCALE,
+  MAX_TREE_SCALE,
+  zoomedTreePan,
 } = loadWebui("unitTree.js").SimosUnitTree;
 const {
   stackOffset,
@@ -1000,4 +1008,242 @@ test("buildTree-defaults-the-formation-fields-when-the-server-does-not-send-them
   assert.equal(status[0].attached, false);
   assert.equal(status[0].formationRootId, null);
   assert.equal(status[0].formationSize, 1);
+});
+
+// ── 2026-10-02 编制浮层正方形 + 树视图缩放（纯函数 / 行为级 / 静态接线 / CSS）──────────────────
+// 用户原话：「目前的编制视图框非常窄，这个单位它也没法缩放查看，让这个查看框变成正方形，
+// 同时允许其中的单位缩放大小查看」。判据：clampTreeScale 夹 [0.5,3]；zoomedTreePan 焦点不变式；
+// render 输出 translate(...) scale(...)；缩放控件 + wheel 接线；.unit-panel 两轴同一 min(...) 表达式。
+
+test("clampTreeScale-clamps-the-frozen-range-literals", () => {
+  assert.equal(clampTreeScale(0.1), 0.5, "0.1 ⇒ 下界 0.5");
+  assert.equal(clampTreeScale(0.5), 0.5, "下界闭合");
+  assert.equal(clampTreeScale(1), 1, "1 ⇒ 100% 原样");
+  assert.equal(clampTreeScale(3), 3, "上界闭合");
+  assert.equal(clampTreeScale(9), 3, "9 ⇒ 上界 3");
+  assert.equal(clampTreeScale(NaN), 1, "NaN ⇒ 1");
+  assert.equal(clampTreeScale(0), 1, "0 ⇒ 1（≤0 不是合法缩放）");
+  assert.equal(clampTreeScale(-3), 1, "-3 ⇒ 1");
+  assert.equal(clampTreeScale(Infinity), 1, "Infinity ⇒ 1");
+  assert.equal(clampTreeScale(-Infinity), 1, "-Infinity ⇒ 1");
+  assert.equal(clampTreeScale(undefined), 1, "undefined ⇒ 1");
+  assert.equal(clampTreeScale(null), 1, "null ⇒ 1");
+});
+
+test("clampTreeScale-exported-bounds-are-the-function-s-actual-bounds", () => {
+  assert.ok(MIN_TREE_SCALE > 0 && MIN_TREE_SCALE < 1, "MIN_TREE_SCALE ∈ (0,1)：" + MIN_TREE_SCALE);
+  assert.ok(MAX_TREE_SCALE > 1, "MAX_TREE_SCALE > 1：" + MAX_TREE_SCALE);
+  assert.equal(clampTreeScale(MIN_TREE_SCALE), MIN_TREE_SCALE, "导出的下界值原样通过（常量=函数边界）");
+  assert.equal(clampTreeScale(MAX_TREE_SCALE), MAX_TREE_SCALE, "导出的上界值原样通过（常量=函数边界）");
+  assert.equal(clampTreeScale(MIN_TREE_SCALE / 2), MIN_TREE_SCALE, "低于导出下界 ⇒ 夹到导出常量");
+  assert.equal(clampTreeScale(MAX_TREE_SCALE * 2), MAX_TREE_SCALE, "高于导出上界 ⇒ 夹到导出常量");
+});
+
+test("zoomedTreePan-keeps-the-content-point-under-focus-on-the-same-screen-pixel", () => {
+  // 不变式：屏幕点 = pan + scale × 内容点（transform-origin 0 0）。
+  // 取缩放前焦点处的内容坐标 C=(focus−pan)/oldScale，缩放后必须仍满足 newPan + newScale×C = focus。
+  // 判别力：公式写成加号 / 漏乘 ratio / 用 oldScale 乘 C ⇒ 下面每条都不成立（必红）。
+  const cases = [
+    { pan: { x: 100, y: 50 }, oldScale: 1, newScale: 1.2, focus: { x: 200, y: 160 } },
+    { pan: { x: 100, y: 50 }, oldScale: 1.2, newScale: 1, focus: { x: 200, y: 160 } },
+    { pan: { x: -37.5, y: 88 }, oldScale: 2, newScale: 0.5, focus: { x: 12, y: -40 } },
+    { pan: { x: 0, y: 0 }, oldScale: 0.75, newScale: 3, focus: { x: 333.25, y: 17.5 } },
+  ];
+  cases.forEach(function (c, i) {
+    const contentPoint = {
+      x: (c.focus.x - c.pan.x) / c.oldScale,
+      y: (c.focus.y - c.pan.y) / c.oldScale,
+    };
+    const next = zoomedTreePan(c.pan, c.oldScale, c.newScale, c.focus);
+    assert.ok(Number.isFinite(next.x) && Number.isFinite(next.y), "case " + i + "：结果有限");
+    assert.ok(
+      Math.abs(next.x + c.newScale * contentPoint.x - c.focus.x) < 1e-9,
+      "case " + i + "：放大/缩小后焦点 x 处的内容点仍在同一屏幕 x"
+    );
+    assert.ok(
+      Math.abs(next.y + c.newScale * contentPoint.y - c.focus.y) < 1e-9,
+      "case " + i + "：放大/缩小后焦点 y 处的内容点仍在同一屏幕 y"
+    );
+  });
+});
+
+test("zoomedTreePan-tolerates-missing-or-non-finite-pan-and-focus", () => {
+  assert.deepEqual(zoomedTreePan(undefined, undefined, undefined, undefined), { x: 0, y: 0 }, "全缺 ⇒ {0,0}");
+  assert.deepEqual(zoomedTreePan(null, 1, 2, null), { x: 0, y: 0 }, "pan/focus 为 null ⇒ 按 0");
+  const dirty = zoomedTreePan({ x: NaN, y: Infinity }, 1, 2, { x: -Infinity, y: NaN });
+  assert.ok(Number.isFinite(dirty.x) && Number.isFinite(dirty.y), "分量 NaN/±Infinity ⇒ 有限数：" + JSON.stringify(dirty));
+  assert.deepEqual(dirty, { x: 0, y: 0 }, "脏分量一律按 0 的确定结果");
+});
+
+test("zoomedTreePan-treats-missing-non-finite-or-non-positive-old-scale-as-one", () => {
+  // oldScale ≤ 0 / 非有限 / 缺失都按 1（避免除零或 NaN）⇒ ratio = newScale / 1 = 2。
+  const pan = { x: 10, y: 20 };
+  const focus = { x: 30, y: 40 };
+  const expected = { x: -10, y: 0 };
+  [undefined, NaN, Infinity, -Infinity, 0, -3, null].forEach(function (oldScale) {
+    assert.deepEqual(zoomedTreePan(pan, oldScale, 2, focus), expected, "oldScale=" + String(oldScale) + " ⇒ 按 1");
+  });
+});
+
+test("render-writes-translate-then-scale-with-scale-one-on-the-content-layer", () => {
+  // 行为级：假宿主里真跑 render，检查 mount > .tree-canvas 的 transform 既保留平移又带上 scale(1)。
+  const { tree, mount } = loadTreeWithFakeHost();
+  tree.render([{ id: "root", parent: null }]);
+  const canvas = mount.children[0];
+  assert.equal(canvas.attrs.class, "tree-canvas", "mount 的第一个孩子是 .tree-canvas 内容层");
+  const transform = canvas.style.transform;
+  assert.ok(typeof transform === "string" && transform.length > 0, "内容层写了 transform：" + transform);
+  assert.match(transform, /translate\(\s*-?\d+(?:\.\d+)?px,\s*-?\d+(?:\.\d+)?px\)/, "保留 translate(px, px) 平移语义");
+  assert.match(transform, /scale\(1\)/, "初始缩放 = scale(1)（100%）");
+  assert.ok(
+    transform.indexOf("translate(") < transform.indexOf("scale("),
+    "★ translate 必须排在 scale 前（screen = pan + scale × 内容点 的语义；反过来焦点缩放会错）"
+  );
+});
+
+test("unit-panel-zoom-controls-are-present-and-wired-including-wheel", () => {
+  const html = readWebui("index.html");
+  const js = readWebui("unitTree.js");
+  assert.ok(html.includes('id="unit-tree-zoom-out"'), "index.html 有缩小按钮 #unit-tree-zoom-out");
+  assert.ok(html.includes('id="unit-tree-zoom"'), "index.html 有缩放读数 #unit-tree-zoom");
+  assert.ok(html.includes('id="unit-tree-zoom-in"'), "index.html 有放大按钮 #unit-tree-zoom-in");
+  assert.ok(/byId\("unit-tree-zoom-in"\)/.test(js), "unitTree.js 绑定 #unit-tree-zoom-in（click ⇒ zoomTreeAt）");
+  assert.ok(/byId\("unit-tree-zoom-out"\)/.test(js), "unitTree.js 绑定 #unit-tree-zoom-out（click ⇒ zoomTreeAt）");
+  assert.ok(/addEventListener\(\s*"wheel"/.test(js), "树视口挂了 wheel 监听（滚轮缩放）");
+  assert.ok(/\{\s*passive:\s*false\s*\}/.test(js), "wheel 用 passive:false（能 preventDefault，缩放不滚页面）");
+  assert.ok(/Math\.exp\(/.test(js), "滚轮因子是指数形式（deltaY<0 ⇒ 放大）");
+  assert.ok(/scale\(" \+ treeScale/.test(js), "applyTreePan 把 treeScale 真的拼进 scale(...)（不是注释里的字样）");
+  assert.ok(/translate\(" \+ treePan\.x/.test(js), "applyTreePan 把 treePan 真的拼进 translate(...)（平移语义仍在）");
+});
+
+test("zoom-readout-starts-at-100-percent-and-is-aria-live", () => {
+  const span = /<span[^>]*id="unit-tree-zoom"[^>]*>[^<]*<\/span>/.exec(readWebui("index.html"));
+  assert.ok(span, "index.html 的 #unit-tree-zoom 是 span");
+  assert.ok(span[0].includes('aria-live="polite"'), "读数是 aria-live=polite（缩放变化会被播报）");
+  assert.ok(span[0].includes("100%"), "初始读数 100%");
+});
+
+test("reset-view-title-covers-zoom-resetting-too", () => {
+  const lines = readWebui("index.html")
+    .split(/\r?\n/)
+    .filter(function (line) {
+      return line.includes('id="unit-tree-reset"');
+    });
+  assert.equal(lines.length, 1, "index.html 里复位按钮恰一处");
+  assert.ok(lines[0].includes("缩放归零"), "复位按钮 title 含「缩放归零」：" + lines[0].trim());
+});
+
+/** 从 CSS 里抽第一条 `<selector> { ... }` 规则体（选择器按字面量转义；足够本文件用）。 */
+function cssRuleBody(css, selector) {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(escaped + "\\s*\\{([^}]*)\\}").exec(css);
+  assert.ok(match, "styles.css 里有 " + selector + " 规则");
+  return match[1];
+}
+
+test("unit-panel-width-and-height-are-the-same-min-expression", () => {
+  const body = cssRuleBody(readWebui("styles.css"), ".unit-panel");
+  const width = (body.match(/^\s*width\s*:\s*([^;]+);/m) || [])[1];
+  const height = (body.match(/^\s*height\s*:\s*([^;]+);/m) || [])[1];
+  assert.ok(width, ".unit-panel 有 width 声明");
+  assert.ok(height, ".unit-panel 有 height 声明");
+  const norm = function (value) {
+    return value.trim().replace(/\s+/g, " ");
+  };
+  assert.equal(norm(width), norm(height), "width/height 必须是同一个表达式（正方形，判别力：恢复 420/640 ⇒ 当场红）");
+  assert.ok(/^min\(/.test(norm(width)), "边长用 min(...) 自适应，而非固定值");
+  assert.ok(norm(width).includes("100vw") && norm(width).includes("100vh"), "两轴都取视口可用宽/高，窄视口不会溢出");
+});
+
+test("tree-canvas-transform-origin-is-top-left", () => {
+  const body = cssRuleBody(readWebui("styles.css"), ".tree-canvas");
+  assert.match(
+    body,
+    /transform-origin\s*:\s*0\s+0\s*;/,
+    "★ .tree-canvas 的 transform-origin 必须是 0 0；默认中心原点会让 zoomedTreePan 的焦点数学跑偏"
+  );
+});
+
+/** 记录型假宿主：比 loadTreeWithFakeHost 多捕获 addEventListener，且 byId 认识三个缩放控件。 */
+function loadTreeWithZoomHost() {
+  const listeners = new Map(); // "id:type" -> [fn]
+  function capturing(id, tag, attrs) {
+    const node = fakeNode(tag, attrs);
+    node.addEventListener = function (type, fn) {
+      const key = id + ":" + type;
+      if (!listeners.has(key)) {
+        listeners.set(key, []);
+      }
+      listeners.get(key).push(fn);
+    };
+    return node;
+  }
+  const mount = capturing("unit-tree-mount", "div", {});
+  mount.clientWidth = 400;
+  mount.clientHeight = 300;
+  const zoomIn = capturing("unit-tree-zoom-in", "button", {});
+  const zoomOut = capturing("unit-tree-zoom-out", "button", {});
+  const readout = capturing("unit-tree-zoom", "span", {});
+  const nodesById = {
+    "unit-tree-mount": mount,
+    "unit-tree-zoom-in": zoomIn,
+    "unit-tree-zoom-out": zoomOut,
+    "unit-tree-zoom": readout,
+  };
+  const app = {
+    el: function (tag, attrs, children) {
+      const node = fakeNode(tag, attrs);
+      (children || []).forEach(function (child) {
+        node.appendChild(child);
+      });
+      return node;
+    },
+    clear: function (node) {
+      node.children = [];
+      node.textContent = "";
+    },
+    byId: function (id) {
+      return nodesById[id] || null;
+    },
+    getState: function () {
+      return { selection: null };
+    },
+    setSelection: function () {},
+    text: function (value) {
+      return value;
+    },
+    target: function () {
+      return { branch: "main", revision: null };
+    },
+  };
+  // init() 里的 refresh 会取数：给一个永不落定的 Promise，避免异步重渲染干扰同步断言。
+  const api = {
+    cachedUnits: function () {
+      return new Promise(function () {});
+    },
+  };
+  // ★ wireTreePan 末尾会 window.addEventListener("resize", ...)；沙箱的 window 壳默认没有它，
+  //   这里补一个空实现（只影响本用例的宿主，不动共享 loader）。
+  const tree = loadWebui("unitTree.js", {
+    SimosApp: app,
+    SimosApi: api,
+    addEventListener: function () {},
+  }).SimosUnitTree;
+  return { tree: tree, mount: mount, zoomIn: zoomIn, zoomOut: zoomOut, readout: readout, listeners: listeners };
+}
+
+test("zoom-in-button-click-really-raises-the-content-layer-scale-above-one", () => {
+  const { tree, mount, zoomIn, readout, listeners } = loadTreeWithZoomHost();
+  tree.render([{ id: "root", parent: null }]);
+  const canvas = mount.children[0];
+  assert.match(canvas.style.transform, /scale\(1\)/, "起点 100%");
+  tree.init(); // wirePanel 在此把 click 绑到 #unit-tree-zoom-in（被记录型宿主捕到）
+  const clicks = listeners.get("unit-tree-zoom-in:click") || [];
+  assert.equal(clicks.length, 1, "wirePanel 给 #unit-tree-zoom-in 绑了恰一个 click 监听");
+  clicks[0]({});
+  const match = /scale\(([0-9.]+)\)/.exec(canvas.style.transform);
+  assert.ok(match, "点击后 transform 仍带 scale(...)：" + canvas.style.transform);
+  assert.ok(Number(match[1]) > 1, "★ 点击放大后 scale=" + match[1] + " > 1（控件真的接了线）");
+  assert.equal(readout.textContent, "120%", "读数同步到 120%（ZOOM_BUTTON_STEP=1.2）");
+  assert.equal(zoomIn.disabled, false, "1.2 未到 3 倍上限 ⇒ 放大按钮保持可用");
 });

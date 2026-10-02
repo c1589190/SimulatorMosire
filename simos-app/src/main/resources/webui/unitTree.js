@@ -14,8 +14,10 @@
 //   纯函数 clampTreePan **有界**夹取（内容比视口小 ⇒ 居中），渲染/开合/resize 后都用同一函数重夹；
 //   `focusUnit` 由旧的 `scrollIntoView`（自由视图下已是死代码）改为"设 pan 让节点可见"；
 //   带一个复位按钮 #unit-tree-reset。
+// ★ 2026-10-02 用户：编制浮层正方形 + 树视图缩放（滚轮/按钮；焦点缩放；复位含缩放归零）。
+//   内容层 transform 变成 translate(pan) scale(treeScale)，transform-origin:0 0；量取的内容尺寸按缩放后计。
 // ★ 纯函数（不查 IO、不碰 DOM）⇒ 可在 Node 里用冻结夹具直接断言：buildTree / isBranchPoint /
-//   armyOptions / subtreeOf / rootIdOf / clampPanelPosition / clampTreePan。
+//   armyOptions / subtreeOf / rootIdOf / clampPanelPosition / clampTreePan / clampTreeScale / zoomedTreePan。
 
 
 (function () {
@@ -36,6 +38,14 @@
   //   `.tree-canvas` 用 `transform: translate(pan.x, pan.y)` 平移，可鼠标四面八方拖动。
   var treePan = { x: 0, y: 0 };
   var treeCanvas = null; // 当前内容层（render 时重建）
+  // ★ 2026-10-02 用户：树视图缩放状态（1 = 100%）。屏幕点 = pan + scale × 内容点
+  //   （CSS 是 translate(pan) scale(scale)，.tree-canvas 的 transform-origin: 0 0）。
+  //   焦点缩放（滚轮/按钮）的 pan 变换见纯函数 zoomedTreePan；复位按钮连缩放一起归零。
+  var treeScale = 1;
+  var MIN_TREE_SCALE = 0.5;
+  var MAX_TREE_SCALE = 3;
+  var ZOOM_WHEEL_FACTOR = 0.0015; // 滚轮每像素的指数系数（deltaY<0 即上滚 ⇒ 放大）
+  var ZOOM_BUTTON_STEP = 1.2; // 按钮每档 ×1.2（放大）/ ÷1.2（缩小）
   // ★ 2026-09-24：首屏是否已摆过位置（首屏/复位用 preferredTreePan；之后尊重用户拖到哪就是哪）。
   var treePanPlaced = false;
   var panState = null; // {pointerId,startX,startY,originX,originY,active}：拖动平移状态
@@ -300,6 +310,55 @@
     };
   }
 
+  /**
+   * 把树的**缩放倍率**夹到 `[MIN_TREE_SCALE, MAX_TREE_SCALE]`（1 = 100%）。**纯函数**，不碰 DOM、不抛。
+   *
+   * <p>非有限 / ≤ 0（NaN / ±Infinity / undefined / null）⇒ 返回 1（按 100% 容错）。
+   */
+  function clampTreeScale(scale) {
+    var n = Number(scale);
+    if (!isFinite(n) || n <= 0) {
+      return 1;
+    }
+    if (n < MIN_TREE_SCALE) {
+      return MIN_TREE_SCALE;
+    }
+    if (n > MAX_TREE_SCALE) {
+      return MAX_TREE_SCALE;
+    }
+    return n;
+  }
+
+  /**
+   * **焦点缩放**下的 pan 变换：让 `focus`（相对树视口左上角的屏幕坐标）处的内容点在缩放前后
+   * 停留在同一屏幕位置。**纯函数**，不碰 DOM、不抛。
+   *
+   * <p>变换约定：`屏幕点 = pan + scale × 内容点`（CSS `translate(pan) scale(scale)` + `transform-origin: 0 0`）。
+   * 焦点 F 处：缩放前 `F = pan + s0 × C`，缩放后 `F' = pan' + s1 × C`，要求 `F' = F`
+   * ⇒ `pan' = F − (F − pan) × (s1 / s0)`。
+   *
+   * <p>容错：`pan` / `focus` 缺失或分量非有限按 0；`oldScale` / `newScale` 缺失或非有限按 1
+   * （`oldScale ≤ 0` 也按 1，避免除零）。
+   */
+  function zoomedTreePan(pan, oldScale, newScale, focus) {
+    var p = pan || {};
+    var f = focus || {};
+    var px = finiteOr(p.x, 0);
+    var py = finiteOr(p.y, 0);
+    var fx = finiteOr(f.x, 0);
+    var fy = finiteOr(f.y, 0);
+    var oldS = finiteOr(oldScale, 1);
+    var newS = finiteOr(newScale, 1);
+    if (!(oldS > 0)) {
+      oldS = 1;
+    }
+    var ratio = newS / oldS;
+    return {
+      x: fx - (fx - px) * ratio,
+      y: fy - (fy - py) * ratio,
+    };
+  }
+
   function displayName(node) {
     return node.name === null || node.name === undefined || node.name === "" ? node.id : node.name;
   }
@@ -450,19 +509,46 @@
     return { width: mount ? mount.clientWidth || 0 : 0, height: mount ? mount.clientHeight || 0 : 0 };
   }
 
+  /**
+   * 量取内容**缩放后**的尺寸（CSS px）：offsetWidth/Height × treeScale。
+   * 这样 clampTreePan / preferredTreePan 的 content 口径 = 内容在屏幕上实际占的像素，
+   * 现有夹取/首选位逻辑无需改签名与语义，自动带上缩放。
+   */
   function measureTreeContent() {
-    return treeCanvas
-      ? { width: treeCanvas.offsetWidth || 0, height: treeCanvas.offsetHeight || 0 }
-      : { width: 0, height: 0 };
+    if (!treeCanvas) {
+      return { width: 0, height: 0 };
+    }
+    return {
+      width: (treeCanvas.offsetWidth || 0) * treeScale,
+      height: (treeCanvas.offsetHeight || 0) * treeScale,
+    };
   }
 
   function applyTreePan() {
     if (treeCanvas) {
-      treeCanvas.style.transform = "translate(" + treePan.x + "px, " + treePan.y + "px)";
+      treeCanvas.style.transform =
+        "translate(" + treePan.x + "px, " + treePan.y + "px) scale(" + treeScale + ")";
+    }
+    syncZoomControls();
+  }
+
+  /** 把 #unit-tree-zoom 读数与 +/− 按钮的 disabled 同步到当前 treeScale（节点缺席静默跳过）。 */
+  function syncZoomControls() {
+    var readout = app.byId("unit-tree-zoom");
+    if (readout) {
+      readout.textContent = Math.round(treeScale * 100) + "%";
+    }
+    var zoomOutButton = app.byId("unit-tree-zoom-out");
+    if (zoomOutButton) {
+      zoomOutButton.disabled = treeScale <= MIN_TREE_SCALE;
+    }
+    var zoomInButton = app.byId("unit-tree-zoom-in");
+    if (zoomInButton) {
+      zoomInButton.disabled = treeScale >= MAX_TREE_SCALE;
     }
   }
 
-  /** 设置平移量并按**同一纯函数** clampTreePan 夹取（内容/视口尺寸现取）。 */
+  /** 设置平移量并按**同一纯函数** clampTreePan 夹取（内容/视口尺寸现取；内容尺寸按当前缩放量取）。 */
   function setTreePan(desired) {
     treePan = clampTreePan(desired, measureTreeContent(), measureTreeViewport());
     applyTreePan();
@@ -477,14 +563,46 @@
     applyTreePan();
   }
 
-  /** 复位平移：回到**首选**位置（内容比视口小的轴居中、否则贴起始边）——夹取已放开自由度，居中在此显式表达。 */
+  /** 按钮缩放的焦点 = 树视口中心；缺 mount / 尺寸按 0 兜底。 */
+  function treeViewportCenter() {
+    var mount = app.byId("unit-tree-mount");
+    var width = mount ? finiteOr(mount.clientWidth, 0) : 0;
+    var height = mount ? finiteOr(mount.clientHeight, 0) : 0;
+    return { x: width / 2, y: height / 2 };
+  }
+
+  /**
+   * 以 `focus`（相对树视口左上角的屏幕坐标）为焦点缩放 `factor` 倍；夹到 [MIN_TREE_SCALE, MAX_TREE_SCALE]，
+   * 到界（next === treeScale）即无操作。
+   *
+   * <p>★ 顺序是**语义**的一部分：先落 `treeScale = next`，再 `setTreePan` ——
+   * setTreePan 内部的 measureTreeContent 必须按**新** scale 量内容，否则夹取用的还是旧尺寸。
+   */
+  function zoomTreeAt(focus, factor) {
+    var next = clampTreeScale(treeScale * factor);
+    if (next === treeScale) {
+      return;
+    }
+    var previousScale = treeScale;
+    // 先落新缩放，再算 pan：setTreePan → measureTreeContent 才会用新 scale 夹取。
+    treeScale = next;
+    setTreePan(zoomedTreePan(treePan, previousScale, next, focus));
+  }
+
+  /**
+   * 复位**平移 + 缩放**：scale 先归 1，再回到首选位置（内容比视口小的轴居中、否则贴起始边）。
+   * 按钮 #unit-tree-reset 的名字与绑定不变，语义已含缩放归零（测量在 scale=1 下进行）。
+   */
   function resetTreePan() {
+    treeScale = 1;
     setTreePan(preferredTreePan(measureTreeContent(), measureTreeViewport()));
   }
 
   /**
    * 让某节点可见：把 pan 平移一个增量使它落进视口（随后由 setTreePan 夹取）。
    * ★ 2026-09-24 修正 2：取代旧的 `scrollIntoView`——自由视图没有滑条，`scrollIntoView` 已是死代码。
+   * ★ 2026-10-02：**不用改**——screen = pan + scale × content 中对 pan 的增量就是屏幕位移，
+   *   与 scale 无关；`getBoundingClientRect` 差出来的 dx/dy 直接加到 pan 上即可。
    */
   function revealNode(target) {
     var mount = app.byId("unit-tree-mount");
@@ -736,6 +854,8 @@
    * 才起平移**，绝不与标题栏 #unit-panel-drag 的面板拖动互相干扰。拖动超过 {@link PAN_DRAG_THRESHOLD}
    * 才认定为拖动并捕获指针——这样"点节点选中"与"拖动平移"共存（若在 pointerdown 就捕获，节点上的
    * click 会被吞掉、树就点不动了）。
+   *
+   * <p>★ 2026-10-02：同一 mount 上还挂了 wheel（焦点缩放，见 {@link zoomTreeAt}）；本函数一并接线。
    */
   function wireTreePan() {
     var mount = app.byId("unit-tree-mount");
@@ -799,6 +919,26 @@
     }
     mount.addEventListener("pointerup", endPan);
     mount.addEventListener("pointercancel", endPan);
+    // ★ 2026-10-02 用户：滚轮缩放（以光标为焦点）。passive:false 才能 preventDefault ——
+    //   不触发页面滚动/地图缩放；空树（无内容层）不缩放。rect/坐标缺失时按 0 兜底，不抛。
+    mount.addEventListener(
+      "wheel",
+      function (event) {
+        if (!treeCanvas) {
+          return; // 空树不缩放
+        }
+        if (event.preventDefault) {
+          event.preventDefault();
+        }
+        var rect = mount.getBoundingClientRect ? mount.getBoundingClientRect() : null;
+        var focus = {
+          x: finiteOr(event.clientX, 0) - finiteOr(rect && rect.left, 0),
+          y: finiteOr(event.clientY, 0) - finiteOr(rect && rect.top, 0),
+        };
+        zoomTreeAt(focus, Math.exp(-finiteOr(event.deltaY, 0) * ZOOM_WHEEL_FACTOR));
+      },
+      { passive: false }
+    );
     // 面板宽高都是 min(..., 视口) ⇒ 窗口尺寸变了视口也变，须重夹。
     window.addEventListener("resize", reclampTreePan);
   }
@@ -836,7 +976,7 @@
     return true;
   }
 
-  /** 绑定按钮/关闭/军队选择/定位/复位/拖动（元素缺席 ⇒ 静默跳过：其它宿主页不挂这套 UI）。 */
+  /** 绑定按钮/关闭/军队选择/定位/缩放/复位/拖动（元素缺席 ⇒ 静默跳过：其它宿主页不挂这套 UI）。 */
   function wirePanel() {
     var openButton = app.byId("unit-panel-open");
     if (openButton) {
@@ -878,6 +1018,19 @@
     if (locateButton) {
       locateButton.addEventListener("click", locateCurrentArmy);
     }
+    // ★ 2026-10-02 用户：按钮缩放（以视口中心为焦点；缺席静默跳过，与其余按钮同口径）。
+    var zoomInButton = app.byId("unit-tree-zoom-in");
+    if (zoomInButton) {
+      zoomInButton.addEventListener("click", function () {
+        zoomTreeAt(treeViewportCenter(), ZOOM_BUTTON_STEP);
+      });
+    }
+    var zoomOutButton = app.byId("unit-tree-zoom-out");
+    if (zoomOutButton) {
+      zoomOutButton.addEventListener("click", function () {
+        zoomTreeAt(treeViewportCenter(), 1 / ZOOM_BUTTON_STEP);
+      });
+    }
     var resetButton = app.byId("unit-tree-reset");
     if (resetButton) {
       resetButton.addEventListener("click", resetTreePan);
@@ -904,6 +1057,10 @@
     rootIdOf: rootIdOf,
     clampPanelPosition: clampPanelPosition,
     clampTreePan: clampTreePan,
+    MIN_TREE_SCALE: MIN_TREE_SCALE,
+    MAX_TREE_SCALE: MAX_TREE_SCALE,
+    clampTreeScale: clampTreeScale,
+    zoomedTreePan: zoomedTreePan,
     preferredTreePan: preferredTreePan,
     render: render,
     refresh: refresh,

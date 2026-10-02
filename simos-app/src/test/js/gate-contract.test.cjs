@@ -94,7 +94,12 @@ const REQUIRED_FILES = [
 //   2026-10-02 region-edit 点选修复起 330 → 337：新增 region-edit-select.test.cjs 的 7 条
 //     （region-edit 点格/城市/单位 → regionFocus 不 highlight、无区域/取数失败不清 focus、region 查看仍 single、
 //     renderer region-edit pointer 静态）。与 run-gate.cjs 的 MIN_TESTS 同值——改一处必须改两处。
-const MIN_ASSERTIONS = 337;
+//   2026-10-02 编制正方形 + 树视图缩放起 337 → 349：unit-tree.test.cjs 新增 12 条（clampTreeScale 字面量 +
+//     导出常量与函数边界一致 2；zoomedTreePan 焦点不变式/pan-focus 容错/非法 oldScale 1 共 3；render 输出
+//     translate(...) scale(1) 行为级 1；缩放控件与 wheel 接线/读数初始 100%/复位 title 含缩放归零 3；
+//     .unit-panel 两轴同一 min(...) 表达式 1；.tree-canvas transform-origin 0 0 1；zoom-in 点击真接线 1）。
+//     与 run-gate.cjs 的 MIN_TESTS 同值——改一处必须改两处。
+const MIN_ASSERTIONS = 349;
 
 function testFiles() {
   return fs

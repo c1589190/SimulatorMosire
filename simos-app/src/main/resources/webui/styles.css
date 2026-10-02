@@ -1895,8 +1895,9 @@ body.workbench-page .gm-usage-failed {
   pointer-events: auto;
   display: flex;
   flex-direction: column;
-  width: min(420px, calc(100vw - 24px));
-  height: min(640px, calc(100vh - 24px));
+  /* ★ 2026-10-02 用户：编制查看框改成正方形（两轴同值；视口不够时取视口可用边长）。 */
+  width: min(560px, calc(100vw - 24px), calc(100vh - 24px));
+  height: min(560px, calc(100vw - 24px), calc(100vh - 24px));
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -1935,6 +1936,8 @@ body.workbench-page .gm-usage-failed {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* ★ 2026-10-02 用户：正方后按钮 + 下拉更易挤 ⇒ 允许换行，避免把按钮挤没。 */
+  flex-wrap: wrap;
   padding: 8px 12px;
   border-bottom: 1px solid var(--line);
 }
@@ -1946,6 +1949,8 @@ body.workbench-page .gm-usage-failed {
 
 .unit-panel-army select {
   flex: 1 1 auto;
+  /* ★ 2026-10-02：给下拉一个下限基准 160px（等价于 flex: 1 1 160px；min-width:0 ⇒ 仍可收缩），按钮优先不挤没。 */
+  flex-basis: 160px;
   min-width: 0;
 }
 
@@ -1970,11 +1975,14 @@ body.workbench-page .gm-usage-failed {
 }
 
 /* 可平移的**内容层**（unitTree.render 里创建）：一屏内容、尺寸随内容收缩（inline-block），
-   平移量写在其 transform 上。内边距保留原 .unit-panel .unit-tree 的 8px 12px 12px。 */
+   平移量写在其 transform 上。内边距保留原 .unit-panel .unit-tree 的 8px 12px 12px。
+   ★ 2026-10-02 用户：新增缩放（滚轮/按钮）后 transform 变成 translate(...) scale(...)；
+   transform-origin 必须是 0 0，否则默认中心原点会让焦点缩放数学跑偏（见 unitTree.js zoomedTreePan）。 */
 .tree-canvas {
   display: inline-block;
   vertical-align: top;
   padding: 8px 12px 12px;
+  transform-origin: 0 0;
   will-change: transform;
 }
 
@@ -1992,6 +2000,22 @@ body.workbench-page .gm-usage-failed {
 .unit-panel-locate {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+/* ★ 2026-10-02 用户：树视图缩放按钮与读数（沿用既有主题变量，不新造颜色）。 */
+.unit-panel-zoom-btn {
+  flex: 0 0 auto;
+  min-width: 28px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.unit-panel-zoom {
+  flex: 0 0 auto;
+  min-width: 44px;
+  text-align: center;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 
