@@ -8,6 +8,7 @@ const assert = require("node:assert");
 
 const REQUIRED_FILES = [
   "block-codec.test.cjs",
+  "calendar-gui.test.cjs",
   "d3b-composition-army.test.cjs",
   "decision-docs.test.cjs",
   "decision-mode.test.cjs",
@@ -112,7 +113,11 @@ const REQUIRED_FILES = [
 //   2026-10-02 结局损失列（outcomes 第 4 列）起 384 → 386：events.test.cjs 新增 2 条（formatOutcomeLosses
 //     空/非数组/缺 unit 降级与多项精确文本；renderCombatDetail 非空 losses 行第四列文本 = formatOutcomeLosses）。
 //     与 run-gate.cjs 的 MIN_TESTS 同值——改一处必须改两处。
-const MIN_ASSERTIONS = 386;
+//   2026-10-02 C7b（D-020 GUI）起 386 → 402：新增 calendar-gui.test.cjs 的 16 条（formatCalendarDate 格式/年不补零/
+//     缺分量空串；groupByTick 同日·无日期·混日三态；两宿主页 hexSeasonText 缺失/fallback/满季节/千分比/缺进度；
+//     zoneReadableName 已知与未知；两页函数体剥注释逐字一致；timeline/panels/map-hostpage 静态接线；旧后端降级）。
+//     与 run-gate.cjs 的 MIN_TESTS 同值——改一处必须改两处。
+const MIN_ASSERTIONS = 402;
 
 function testFiles() {
   return fs
