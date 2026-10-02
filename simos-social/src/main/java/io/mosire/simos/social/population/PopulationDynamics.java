@@ -1,5 +1,8 @@
 package io.mosire.simos.social.population;
 
+import io.mosire.simos.calendar.CalendarAge;
+import io.mosire.simos.calendar.CalendarClock;
+import io.mosire.simos.calendar.CalendarSystem;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.social.SocialData;
@@ -47,7 +50,7 @@ import java.util.Objects;
  * <pre>
  * births = Σ_{育龄女性批次} count × {@link #FERTILITY_PER_MILLE_PER_MONTH} ÷ 1000
  *                            × max(0, 1000 − 压力 × {@link #FERTILITY_SUPPRESSION_PER_STRESS}) ÷ 1000
- * 育龄 = {@link #FERTILE_MIN_DAYS} ≤ 该批次在结算日的**具体年龄** &lt; {@link #FERTILE_MAX_DAYS}
+ * 育龄 = 15 ≤ 该批次在结算日的**整历法年** &lt; 45（{@link CalendarAge}，与年龄档同一口径；2/29 出生平年按 3/1 长岁）
  * </pre>
  *
  * 三者各自在式子里：**具体年龄**（逐日精度，不是五岁桶）、**人数**（那批育龄女性有几个人）、**历史生活资料满足情况**（压力： 长期吃不饱 ⇒ 生得少甚至不生）。★
@@ -121,11 +124,20 @@ public final class PopulationDynamics {
   static final Map<Sex, Integer> MORTALITY_SEX_FACTOR_PER_MILLE =
       Map.of(Sex.MALE, 1000, Sex.FEMALE, 1000);
 
-  /** **育龄下界**（天）：**15 岁**（与 {@link AgeBracket} 的青壮年下界同口径 —— 但那只是巧合，两者各自独立）。 */
-  public static final long FERTILE_MIN_DAYS = 15L * 365L;
+  /**
+   * **育龄下界**（整历法年，含）：**15 岁**。
+   *
+   * <p>★ **已不是固定 365 天的边界**：本常量是**整历法年**，逐日年龄到整岁的换算由 {@link CalendarAge#ageInYears(CalendarSystem,
+   * long, long)} 按历法年现算；2/29 出生平年按 3/1 长岁（与 {@link AgeBracket} 的 15/60 同一口径）。
+   */
+  public static final long FERTILE_MIN_YEARS = 15L;
 
-  /** **育龄上界**（天，不含）：**45 岁**。 */
-  public static final long FERTILE_MAX_DAYS = 45L * 365L;
+  /**
+   * **育龄上界**（整历法年，不含）：**45 岁**。
+   *
+   * <p>★ **同样已不是固定 365 天的边界**：由 {@link CalendarAge} 按历法年现算；见 {@link #FERTILE_MIN_YEARS} 的说明。
+   */
+  public static final long FERTILE_MAX_YEARS = 45L;
 
   /**
    * **每个育龄女性每月的生育率**（‰）：**20**（≈ 每人每年 0.24 胎）。
@@ -200,26 +212,32 @@ public final class PopulationDynamics {
    * <p>★★ **它同时是"人口守恒"的落点**：{@code Σ新人数 == Σ旧人数 + Σ出生 − Σ死亡}（逐值可核：两条账都显式给出来了）。
    *
    * @param data 当前批次表（人口的真值源）
-   * @param nowTick 结算日（世界日）：新生批次的年龄锚点就是它；育龄按{@code ageDaysAt(nowTick)} 现算
+   * @param nowTick 结算日（世界日）：新生批次的年龄锚点就是它；育龄按{@code ageDaysAt(nowTick)} 经 {@link CalendarAge} 现算整历法年
+   * @param clock 历法时钟：tick→JDN 的唯一换算点（死亡档位按整历法年现算；C4b 起必传，social 内部不造默认时钟）
    */
-  public static Outcome monthly(SocialData data, long nowTick) {
+  public static Outcome monthly(SocialData data, long nowTick, CalendarClock clock) {
     return monthly(
-        data, nowTick, BASE_MORTALITY_PER_MILLE_PER_MONTH, MORTALITY_SEX_FACTOR_PER_MILLE);
+        data, nowTick, clock, BASE_MORTALITY_PER_MILLE_PER_MONTH, MORTALITY_SEX_FACTOR_PER_MILLE);
   }
 
   /**
-   * 同 {@link #monthly(SocialData, long)}，但**两张参数表可注入**（**包内可见**的旋钮）：一条用例据此证明
+   * 同 {@link #monthly(SocialData, long, CalendarClock)}，但**两张参数表可注入**（**包内可见**的旋钮）：一条用例据此证明
    * "年龄档与性别**真的参与了**死亡折算"（改任一张表 ⇒ 死亡数逐值变化）。公开入口恒喂默认值。
    */
   static Outcome monthly(
       SocialData data,
       long nowTick,
+      CalendarClock clock,
       int[] baseMortalityPerBracket,
       Map<Sex, Integer> sexFactorPerMille) {
     Objects.requireNonNull(data, "data");
     if (nowTick < 0L) {
       throw new IllegalArgumentException("结算日不得为负: " + nowTick);
     }
+    if (clock == null) {
+      throw new IllegalArgumentException("clock 不得为 null");
+    }
+    long currentDayNumber = clock.dayNumberOfTick(nowTick);
     Map<PeopleLotId, PopulationGroup> next = new LinkedHashMap<>(data.groups());
     Map<PeopleLotId, LotChange> changes = new LinkedHashMap<>();
     // ★ 新生批次按 (居所, 性别) 聚合：同一个月的婴儿在会计上是**一批**（同性别、同年龄、同锚点 ⇒ 属性确实完全相同）。
@@ -233,8 +251,11 @@ public final class PopulationDynamics {
       long deaths =
           population == 0L
               ? 0L
-              : population * mortalityPerMille(group, ageDays, sexFactorPerMille) / FULL_PER_MILLE;
-      long births = birthsOf(group, ageDays);
+              : population
+                  * mortalityPerMille(
+                      group, ageDays, clock.system(), currentDayNumber, sexFactorPerMille)
+                  / FULL_PER_MILLE;
+      long births = birthsOf(group, ageDays, clock.system(), currentDayNumber);
       if (deaths == 0L && births == 0L) {
         continue;
       }
@@ -258,25 +279,40 @@ public final class PopulationDynamics {
    * ★★ **一个批次的月度死亡率**（‰，封顶 1000）：{@code 年龄 × 性别 × 基础死亡率 × 生理压力} 四维齐备。
    *
    * <pre>
-   * base = 基础死亡率[{@code AgeBracket.of(该批次在结算日的年龄)}] × 性别系数[sex] ÷ 1000
+   * base = 基础死亡率[{@code AgeBracket.of(system, currentDayNumber, 该批次在结算日的年龄)}] × 性别系数[sex] ÷ 1000
    * over = max(0, 压力 − {@link #STRESS_MORTALITY_THRESHOLD}) × {@link #MORTALITY_PER_STRESS} ÷ 1000
    * 死亡率 = min(1000, base + over)
    * </pre>
    *
+   * <p>★ **年龄档按整历法年现算**：{@code system}/{@code currentDayNumber} 由 {@link #monthly} 从 {@link
+   * CalendarClock#dayNumberOfTick(long)} 算出，本方法不手算 365、不另造时钟。
+   *
    * <p>★ **封顶 1000‰**：死亡率超过 1000‰ 意味着"死的人比人还多"，那不是状态而是坏数据 ⇒ 在构造下一个人数之前就夹住。
    */
   static long mortalityPerMille(
-      PopulationGroup group, long ageDays, Map<Sex, Integer> sexFactorPerMille) {
-    return mortalityPerMille(group, ageDays, BASE_MORTALITY_PER_MILLE_PER_MONTH, sexFactorPerMille);
+      PopulationGroup group,
+      long ageDays,
+      CalendarSystem system,
+      long currentDayNumber,
+      Map<Sex, Integer> sexFactorPerMille) {
+    return mortalityPerMille(
+        group,
+        ageDays,
+        system,
+        currentDayNumber,
+        BASE_MORTALITY_PER_MILLE_PER_MONTH,
+        sexFactorPerMille);
   }
 
-  /** 同上的**两张表都可注入**形态（包内可见的旋钮，见 {@link #monthly(SocialData, long, int[], Map)}）。 */
+  /** 同上的**两张表都可注入**形态（包内可见的旋钮，见 {@link #monthly(SocialData, long, CalendarClock, int[], Map)}）。 */
   static long mortalityPerMille(
       PopulationGroup group,
       long ageDays,
+      CalendarSystem system,
+      long currentDayNumber,
       int[] baseMortalityPerBracket,
       Map<Sex, Integer> sexFactorPerMille) {
-    int bracket = AgeBracket.of(ageDays).ordinal();
+    int bracket = AgeBracket.of(system, currentDayNumber, ageDays).ordinal();
     Integer sexFactor = sexFactorPerMille.get(group.sex());
     if (sexFactor == null) {
       throw new IllegalStateException("性别 " + group.sex() + " 不在死亡系数表里（拒绝臆造）");
@@ -293,18 +329,24 @@ public final class PopulationDynamics {
    * ★★ **一个批次的月度出生数**（人）：只有**育龄女性**批次能生，且受**历史生活资料满足情况**（= 生理压力）抑制。
    *
    * <pre>
-   * 育龄：sex == FEMALE 且 {@link #FERTILE_MIN_DAYS} ≤ 该批次的具体年龄 &lt; {@link #FERTILE_MAX_DAYS}
+   * 育龄：sex == FEMALE 且 {@link #FERTILE_MIN_YEARS} ≤ 该批次的**整历法年** &lt; {@link #FERTILE_MAX_YEARS}
    * 抑制：max(0, 1000 − 压力 × {@link #FERTILITY_SUPPRESSION_PER_STRESS} ÷ 1000) ÷ 1000
    * 出生：人数 × {@link #FERTILITY_PER_MILLE_PER_MONTH} ÷ 1000 × 抑制
    * </pre>
    *
-   * <p>★ **"具体年龄"是逐日精度的现算值**（{@code ageDaysAt}），不是年龄档 —— 档只用于死亡与查询聚合，生育看上的是真实年龄。
+   * <p>★ **年龄按整历法年现算**：{@code ageYears = CalendarAge.ageInYears(system, currentDayNumber - ageDays,
+   * currentDayNumber)}；与年龄档（{@link AgeBracket} 的 15/60）同一口径，2/29 出生平年按 3/1 长岁。
+   *
+   * <p>★ **"具体年龄"是逐日精度的现算值**（{@code ageDaysAt} 交给 {@link CalendarAge} 换算整岁），不是年龄档 ——
+   * 档只用于死亡与查询聚合，生育看上的是真实年龄的整历法年。
    */
-  static long birthsOf(PopulationGroup group, long ageDays) {
+  static long birthsOf(
+      PopulationGroup group, long ageDays, CalendarSystem system, long currentDayNumber) {
     if (group.sex() != Sex.FEMALE) {
       return 0L;
     }
-    if (ageDays < FERTILE_MIN_DAYS || ageDays >= FERTILE_MAX_DAYS) {
+    long ageYears = CalendarAge.ageInYears(system, currentDayNumber - ageDays, currentDayNumber);
+    if (ageYears < FERTILE_MIN_YEARS || ageYears >= FERTILE_MAX_YEARS) {
       return 0L;
     }
     long stressPerMille =

@@ -1,6 +1,7 @@
 package io.mosire.simos.app.tools.write;
 
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -213,8 +214,11 @@ final class GovSelectExamineesPlan {
         continue;
       }
       long take = Math.min(remaining, regionAvailable);
+      // C5 过渡：换成 CalendarService 的时钟（缺省值相同）
       for (RegionAllocations.GroupSource sourceGroup :
-          RegionAllocations.allocateManpower(social, region, tick, take).sources()) {
+          RegionAllocations.allocateManpower(
+                  social, region, tick, take, CalendarClock.julianDefault())
+              .sources()) {
         GovRecruitPlan.GroupSource item = GovRecruitPlan.GroupSource.from(sourceGroup);
         if (!seenGroupIds.add(item.group().id().value())) {
           throw new IllegalArgumentException(
@@ -258,7 +262,10 @@ final class GovSelectExamineesPlan {
    */
   private static long regionAvailability(SocialData social, Region region, long tick) {
     try {
-      return RegionAllocations.allocateManpower(social, region, tick, 1L).available();
+      // C5 过渡：换成 CalendarService 的时钟（缺省值相同）
+      return RegionAllocations.allocateManpower(
+              social, region, tick, 1L, CalendarClock.julianDefault())
+          .available();
     } catch (IllegalArgumentException e) {
       if (e.getMessage() != null && e.getMessage().startsWith("人力总量不足")) {
         return 0L;

@@ -7,6 +7,7 @@ import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.classfirst.PilotModel;
@@ -189,7 +190,9 @@ final class RaiseUnitPlan {
                 money,
                 account -> AvailableStock.available(account, MoneyVocabulary.SILVER_CURRENCY));
     RegionAllocations.ManpowerAllocation manpowerAllocation =
-        RegionAllocations.allocateManpower(ToolSupport.socialData(state), region, tick, manpower);
+        RegionAllocations.allocateManpower(
+            // C5 过渡：换成 CalendarService 的时钟（缺省值相同）
+            ToolSupport.socialData(state), region, tick, manpower, CalendarClock.julianDefault());
     return new Plan(
         newUnitId,
         name,

@@ -183,7 +183,7 @@ public final class CrisisMonitor {
       evidence.put("elapsedDays", elapsedDaysSeen);
       evidence.put("cycleDays", cycleDaysSeen);
       // ★ "儿童·青壮年·老年人分别受影响程度"：各档批次**生理压力**的最大值（批次身上只有逐日年龄与压力）。
-      evidence.put("stressByAgeBracket", stressByAgeBracket(coord, social, atTick));
+      evidence.put("stressByAgeBracket", stressByAgeBracket(coord, social, atTick, clock));
       lights.add(new Light(coord, Kind.FOOD, evidence));
     }
     long clothSatisfaction = satisfaction(clothNeed, clothUnmet);
@@ -294,13 +294,14 @@ public final class CrisisMonitor {
 
   /** 该格各年龄档的**最大生理压力**（"儿童·青壮年·老年人分别受影响程度"的唯一现成口径）。 */
   private static Map<String, Long> stressByAgeBracket(
-      HexCoord coord, SocialData social, long atTick) {
+      HexCoord coord, SocialData social, long atTick, CalendarClock clock) {
+    long currentDayNumber = clock.dayNumberOfTick(atTick);
     Map<String, Long> out = new LinkedHashMap<>();
     for (AgeBracket bracket : AgeBracket.values()) {
       out.put(bracket.key(), 0L);
     }
     for (PopulationGroup group : social.groupsAt(coord)) {
-      String key = AgeBracket.of(group.ageDaysAt(atTick)).key();
+      String key = AgeBracket.of(clock.system(), currentDayNumber, group.ageDaysAt(atTick)).key();
       out.merge(key, group.physiologicalStress(), Math::max);
     }
     return out;

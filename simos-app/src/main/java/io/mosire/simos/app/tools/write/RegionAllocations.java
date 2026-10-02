@@ -5,6 +5,7 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.social.SocialData;
@@ -31,8 +32,9 @@ import java.util.function.ToLongFunction;
  * 额度函数由调用方给（粮 / 钱各走 {@link io.mosire.simos.actor.model.AvailableStock} 的对应重载，本类不写减法）。
  *
  * <p>★ <b>人力瀑布</b>（{@link #allocateManpower}）：{@code social.groups()} 里 residence 在 region、{@link
- * Sex#MALE}、 且 {@link AgeBracket#of(long)} == {@link AgeBracket#ADULT} 的批次（年龄按<b>当前 tick
- * 现算</b>，阈值不在本类另写） → count ≤ 0 的不进来源表 → 按“count 降序、id 升序”逐批扣满。
+ * Sex#MALE}、 且 {@code AgeBracket.of(clock.system(), clock.dayNumberOfTick(tick), ageDaysAt(tick))}
+ * == {@link AgeBracket#ADULT} 的批次（年龄按<b>当前 tick + 历法现算</b>，15/60 整历法年、阈值不在本类另写） → count ≤ 0 的不进来源表
+ * → 按“count 降序、id 升序”逐批扣满。
  *
  * <p>★ <b>不足 ⇒ 整条拒</b>：总可用 < requested 时抛具名 {@link IllegalArgumentException}（带 requested /
  * available / 缺口），不做部分抽取、不截断——{@link LevyRegionPlan} 与 {@link RaiseUnitPlan} 因此都在推导期 fail-closed。
@@ -126,12 +128,15 @@ final class RegionAllocations {
    * @param region 来源区域（只取 {@code hexes()} 的格集）
    * @param tick 现算年龄用的当前世界日（年龄口径的唯一拼写点在 {@link PopulationGroup#ageDaysAt(long)}）
    * @param requested 请求量（0 = 本维度整段跳过，返回 {@link ManpowerAllocation#skipped()}，不扫描来源）
+   * @param clock 历法时钟：tick→JDN 的唯一换算点（15/60 是整历法年；app 层允许 C5 过渡期用 {@link
+   *     CalendarClock#julianDefault()}）
    * @throws IllegalArgumentException requested / tick 为负、或合格批次总人数不足（整条拒，不部分抽取）
    */
   static ManpowerAllocation allocateManpower(
-      SocialData social, Region region, long tick, long requested) {
+      SocialData social, Region region, long tick, long requested, CalendarClock clock) {
     Objects.requireNonNull(social, "social");
     Objects.requireNonNull(region, "region");
+    Objects.requireNonNull(clock, "clock");
     if (tick < 0L) {
       throw new IllegalArgumentException("tick 不得为负: " + tick);
     }
@@ -141,6 +146,7 @@ final class RegionAllocations {
     if (requested == 0L) {
       return ManpowerAllocation.skipped();
     }
+    long currentDayNumber = clock.dayNumberOfTick(tick);
     List<PopulationGroup> candidates = new ArrayList<>();
     for (PopulationGroup group : social.groups().values()) {
       if (group.sex() != Sex.MALE) {
@@ -153,7 +159,8 @@ final class RegionAllocations {
         continue; // 空批供不出人，不进来源表（count = 0 的批次本批次也不会被改写）。
       }
       // ★ 成年档的唯一拼写点在 AgeBracket：本类不另写 15/60 岁阈值。
-      if (AgeBracket.of(group.ageDaysAt(tick)) != AgeBracket.ADULT) {
+      if (AgeBracket.of(clock.system(), currentDayNumber, group.ageDaysAt(tick))
+          != AgeBracket.ADULT) {
         continue;
       }
       candidates.add(group);

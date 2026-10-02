@@ -5628,7 +5628,8 @@ public final class ApiViews {
    * <p>★ **该格没有人口序列 ⇒ 抛**（fail-closed）：调用方（路由 / 读工具）本就在此之前把它折成 {@code NOT_FOUND}， 走不到这里；静默给一个 0
    * 会让"id 拼错 / 格不存在"看起来像"这格没人"。
    *
-   * @param at 查询时刻；{@code at.tick()} 同时是年龄档的现算输入（世界日），也是回退旧序列时的取值时刻
+   * @param at 查询时刻；{@code at.tick()} 同时是年龄档的现算输入（世界日），也是回退旧序列时的取值时刻。★ tick→JDN 的换算走本方法内 的 C5
+   *     过渡时钟（缺省值 = {@link CalendarClock#julianDefault()}；C5 起由 CalendarService 注入）
    * @param economy 经济切片（R2 的 T4：劳动分配读口要从它取"这一格的劳动被哪个主体占了多少"）
    */
   public static Map<String, Object> population(
@@ -5643,16 +5644,17 @@ public final class ApiViews {
     PopulationHeadline headline = data.headlinePopulationAt(coord, series, at);
     view.put("population", headline.value());
     view.put("source", headline.source().key());
-    Map<String, Object> groups = groupsView(data, coord, at);
+    // C5 过渡：换成 CalendarService 的时钟（缺省值相同，julianDefault = 儒略 1445-01-01）
+    CalendarClock clock = CalendarClock.julianDefault();
+    Map<String, Object> groups = groupsView(data, coord, at, clock);
     view.put("groups", groups);
     // ★ R2（T4）：劳动分配一维（各主体占用劳动 / 该格可用劳动 / 占用率）。
     view.put("labor", laborView(data, economy, coord));
     // ★★ R4（T3）：**危机红灯** —— 这一格有没有触发生活资料/社会再生产危机，以及**是哪一类**（不是概率）。
     //   ★ 它挂在本读口上（**沿用既有权限判定**：该格有 populations 序列 + 人口可见），不另开更宽的判据。
     List<Map<String, Object>> crisis = new ArrayList<>();
-    // C5 过渡：换成 CalendarService 的时钟（缺省值相同，julianDefault = 儒略 1445-01-01）
     for (CrisisMonitor.Light light :
-        CrisisMonitor.lightsAt(coord, economy, data, at.tick(), CalendarClock.julianDefault())) {
+        CrisisMonitor.lightsAt(coord, economy, data, at.tick(), clock)) {
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("kind", light.kind().name());
       entry.put("evidence", new LinkedHashMap<>(light.evidence()));
@@ -5664,14 +5666,15 @@ public final class ApiViews {
 
   /** {@code groups} 块（R1.5 的形状，一字不动）：{@code total,urban,rural,ageBrackets,sex}。 */
   private static Map<String, Object> groupsView(
-      SocialData data, HexCoord coord, SimosTimestamp at) {
+      SocialData data, HexCoord coord, SimosTimestamp at, CalendarClock clock) {
     Map<String, Object> groups = new LinkedHashMap<>();
     UrbanRural urbanRural = data.urbanRuralAt(coord);
     groups.put("total", urbanRural.total());
     groups.put("urban", urbanRural.urban());
     groups.put("rural", urbanRural.rural());
     Map<String, Object> ageBrackets = new LinkedHashMap<>();
-    for (Map.Entry<AgeBracket, Long> entry : data.ageStructureAt(coord, at.tick()).entrySet()) {
+    for (Map.Entry<AgeBracket, Long> entry :
+        data.ageStructureAt(coord, at.tick(), clock).entrySet()) {
       ageBrackets.put(entry.getKey().key(), entry.getValue());
     }
     groups.put("ageBrackets", ageBrackets);

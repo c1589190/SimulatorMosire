@@ -5,6 +5,7 @@ import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.classfirst.PilotModel;
@@ -49,10 +50,11 @@ import java.util.function.ToLongFunction;
  *   <li><b>分摊 = 瀑布</b>：三个账维度共用 {@link RegionAllocations#allocateAccounts}（可用量降序、同量按账键 {@link
  *       io.mosire.simos.actor.model.GoodsAccountKey#toString()} 升序，逐户扣满为止）；
  *   <li><b>人力来源</b>：{@code social.groups()} 里 residence 在 region 各 hex、{@link
- *       io.mosire.simos.social.population.Sex#MALE}、且 {@link
- *       io.mosire.simos.social.population.AgeBracket#of(long)} == {@link
- *       io.mosire.simos.social.population.AgeBracket#ADULT} 的批次（年龄按<b>当前 tick 现算</b>，阈值不在本类另写）；
- *       同一瀑布（count 降序、id 升序），不足 ⇒ 整条拒；
+ *       io.mosire.simos.social.population.Sex#MALE}、且 {@code
+ *       io.mosire.simos.social.population.AgeBracket.of(clock.system(),
+ *       clock.dayNumberOfTick(tick), ageDaysAt(tick))} == {@link
+ *       io.mosire.simos.social.population.AgeBracket#ADULT} 的批次（年龄按<b>当前 tick + 历法现算</b>，15/60
+ *       整历法年、阈值不在本类另写）； 同一瀑布（count 降序、id 升序），不足 ⇒ 整条拒；
  *   <li><b>四项独立</b>：requested = 0 的维度整段跳过（不扫描、不产生来源条目、不建账）。
  * </ol>
  *
@@ -211,7 +213,9 @@ final class LevyRegionPlan {
   private static Manpower manpowerDimension(
       SimulationState state, Region region, long tick, long requested) {
     RegionAllocations.ManpowerAllocation allocation =
-        RegionAllocations.allocateManpower(ToolSupport.socialData(state), region, tick, requested);
+        // C5 过渡：换成 CalendarService 的时钟（缺省值相同）
+        RegionAllocations.allocateManpower(
+            ToolSupport.socialData(state), region, tick, requested, CalendarClock.julianDefault());
     List<GroupSource> sources = new ArrayList<>(allocation.sources().size());
     for (RegionAllocations.GroupSource source : allocation.sources()) {
       sources.add(new GroupSource(source.group(), source.taken()));

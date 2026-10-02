@@ -20,6 +20,12 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
     </dependency>
+    <!-- ★ C4b / 设计稿 §六.2：年龄档的 15/60 是**整历法年**，逐日年龄 → 整岁的换算走 CalendarAge；
+         故 social 显式依赖 simos-calendar（不靠 app 的传递依赖——"依赖传递不是契约"）。
+         版本由父 POM 的 dependencyManagement 提供。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-calendar</artifactId>
+    </dependency>
     <!-- ★ R1 / 设计稿 §八.1：人口批次的**身份**复用 economy-api 已有的 `PeopleLotId`（它注释自称"该批次的稳定身份"，
          本阶段从"spec v2 列出的死代码"复活）。★ 这是文档**明文允许**的方向，不是破例：
          `economy-api/package-info.java:9-11`「五个经济切片…**与 `simos-social` 可依赖本模块与 util/map**」，

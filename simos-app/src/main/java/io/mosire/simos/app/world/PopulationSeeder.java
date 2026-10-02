@@ -50,7 +50,9 @@ public final class PopulationSeeder {
   public static final Map<Sex, Integer> SEX_SHARE_PER_MILLE =
       Map.of(Sex.MALE, 500, Sex.FEMALE, 500);
 
-  /** 一年的天数（年龄用天表示；本仓日制，不引入闰年——创世 preset 不需要它）。 */
+  /**
+   * 代表年龄字面量的折算天数（**创世 preset 的采样口径**，不代表历法年）。C4b 起年龄档本身按整历法年判定，本常量只用于生成下面那三个 字面量；不要拿它去当"一年"的通用换算。
+   */
   private static final long DAYS_PER_YEAR = 365L;
 
   /**
@@ -59,6 +61,9 @@ public final class PopulationSeeder {
    *
    * <p>★ **代表性年龄必须落在自己那一档里**——否则 {@link EconomySeeder#ageBracketOf} 折算出来的劳动系数会是另一档的。 这条由 {@code
    * PopulationSeederTest} 逐档钉住（两张表的跨表一致性，本仓最忌"注释声称一致、其实不一致"）。
+   *
+   * <p>★ **C4b 起档界按整历法年**；实测这三个字面量仍分别落 CHILD / ADULT / ELDER（{@code 7×365} 天 ≈ 6 岁 363 天、 {@code
+   * 37×365} 天 ≈ 36 岁 356 天、{@code 75×365} 天 ≈ 74 岁 347 天），故本表**未改**（用户裁决：代表年龄先别改，落到别档才当场调）。
    */
   static final long[] AGE_REPRESENTATIVE_DAYS = {
     7L * DAYS_PER_YEAR, 37L * DAYS_PER_YEAR, 75L * DAYS_PER_YEAR

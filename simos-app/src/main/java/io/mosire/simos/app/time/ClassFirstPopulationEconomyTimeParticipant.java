@@ -308,7 +308,11 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
       // ★★ R2c：每 30 天（与旧协调器同一窗口）结算出生/死亡，并把 LotChange 接回 classfirst 池/家户账户。
       //   次序与旧协调器一致：先跑完这一天的经济结算与两条写回，再做月度人口学；出生/死亡不产生商品/货币/土地/债务条目。
       if (day % PopulationDynamics.SETTLEMENT_DAYS == 0L) {
-        PopulationDynamics.Outcome outcome = PopulationDynamics.monthly(currentSocial, day);
+        // C5 过渡：换成 CalendarService 的时钟（缺省值相同）。
+        // ★ 既有语义不动：day 是 1 起日号，monthly 一直把它当 nowTick 用（与 ageDaysAt(day) 同轴）；
+        //   日历换算在 monthly 内走 clock.dayNumberOfTick(nowTick)，不在这里顺手改 day/tick 口径。
+        PopulationDynamics.Outcome outcome =
+            PopulationDynamics.monthly(currentSocial, day, CalendarClock.julianDefault());
         currentSocial = outcome.data();
         if (!outcome.isEmpty()) {
           ClassFirstPopulationWriteback.Applied populationApplied =

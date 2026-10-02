@@ -56,7 +56,7 @@ app（组合根）依赖全部领域模块 + core + agentlib + MCP —— **唯�
 | `simos-util` | 仅 Jackson（databind + datatype-jdk8）+ SLF4J | 不依赖任何 simos 模块，**不碰文件系统**。jdk8 模块是必需的：`Optional` 在快照树里处于**嵌套泛型位置**，裸 databind 会写成 `{"present":…}` 并丢值 |
 | `simos-map` | `simos-util` | **永不** import social/unit/agentlib；**不做任何存储** |
 | `simos-calendar` | `simos-util` + `simos-map` | ★ 2026-10-02 D-019：年份系统 = **儒略历（全期）**历法换算（1 tick = 1 天 → 年/月/日）+ 24 节气/天文（二分二至）季界 + 南/赤道/北分带季节（热带雨季/旱季）。**纯计算、无状态**：无 Snapshot/Codec/ChangeSet/handler/存储，不 import Jackson、不碰文件系统。依赖方向固定 `util → map → calendar`（map 供 `HexCoord` 判带）；`util`/`map` 的 enforcer 已禁 calendar 防反向。禁一切领域/编排模块（social/unit/sd/core/app/economy*/actor*/gov/army/agentlib） |
-| `simos-social` | util + map | 不依赖 UnitSimos |
+| `simos-social` | util + map + economy-api + `simos-calendar` | 不依赖 UnitSimos；★ 2026-10-02 C4b：年龄档 15/60 = **整历法年**，逐日年龄 → 整岁换算走 `CalendarAge`，故显式依赖 calendar（不靠传递依赖） |
 | `simos-unit` | util + map | 不依赖 SocialSimos |
 | `simos-sd` | util + map + social + unit + agentlib-mosire | 领域模块的**下游**；**禁 core/app**（不得认识组合与调度）。★ 它声明了 `simos-social` 但源码**零 import**（死依赖，2026-09-26 查实） |
 | `simos-core` | **main scope**：util + `agentlib-mosire` + jackson-databind + sqlite-jdbc | map/social/unit/**sd** **退到 test scope** ⇒ Core **编译期看不见任何领域类型**（铁律 4 的结构化），想重新实现领域逻辑也无从下手。★ 领域面（map/social/unit/sd）与**经济面 + actor 切片**（economy/economy-api/ledger/**actor**/**actor-api**）**任何 scope 一律禁**，只有 test scope 开五条窄口子（map/social/unit/**economy-api**/**actor-api**——后两条是**传递依赖逼出来的**，见 pom 里那两段注释） |

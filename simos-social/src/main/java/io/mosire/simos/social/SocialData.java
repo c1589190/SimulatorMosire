@@ -1,5 +1,6 @@
 package io.mosire.simos.social;
 
+import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
@@ -237,9 +238,12 @@ public record SocialData(
   /**
    * 该格的**年龄结构**（现算）：{@link AgeBracket} 三档的人数，**键恒为全部三档**（没有人也是 0，不是缺键）。
    *
-   * <p>★★ **人数取自批次，档位取自"锚点 + 时间差"的现算**（{@link PopulationGroup#ageDaysAt(long)} ⇒ {@link
-   * AgeBracket#of(long)}）：本方法**不读**、也不许有任何"当前档位"字段 —— 存了它，"变老"就要每天改状态，档位也变成第二份真相 （设计稿 §三
+   * <p>★★ **人数取自批次，档位取自"锚点 + 时间差按历法现算"**（{@link PopulationGroup#ageDaysAt(long)} ⇒ {@link
+   * AgeBracket#of}）：本方法**不读**、也不许有任何"当前档位"字段 —— 存了它，"变老"就要每天改状态，档位也变成第二份真相 （设计稿 §三
    * 明令："任何'档间转移'都不需要——因为没有档"）。
+   *
+   * <p>★ **tick→JDN 只经 {@link CalendarClock} 换算**（{@code clock.dayNumberOfTick(nowTick)}）：本方法不手算
+   * 365 / 不猜历法；15/60 是**整历法年**，2/29 的生日惯例由 {@code AgeBracket} 委托 {@code CalendarAge}。
    *
    * <p>★ 于是同一份批次在**不同 {@code nowTick} 上给出不同的年龄结构**——这正是"读侧就能看见年龄在走"的判据 （{@code SocialDataTest}
    * 里有一条跨档点的用例钉它）。
@@ -248,20 +252,27 @@ public record SocialData(
    * 是内容的纯函数，不随 map 插入序抖。
    *
    * @param nowTick 查询时刻（世界日）；档位由它现算
-   * @throws IllegalArgumentException {@code residence} 为 null，或某批次的年龄在该时刻为负（往回推到了"还没出生"之前—— {@link
-   *     AgeBracket#of(long)} 对负年龄 fail-closed，不静默归档）
+   * @param clock 历法时钟：tick→JDN 的唯一换算点（C4b 起必传，social 内部不造默认时钟）
+   * @throws IllegalArgumentException {@code residence}/{@code clock} 为
+   *     null，或某批次的年龄在该时刻为负（往回推到了"还没出生"之前—— {@link AgeBracket#of} 对负年龄 fail-closed，不静默归档）
    */
-  public Map<AgeBracket, Long> ageStructureAt(HexCoord residence, long nowTick) {
+  public Map<AgeBracket, Long> ageStructureAt(
+      HexCoord residence, long nowTick, CalendarClock clock) {
     if (residence == null) {
       throw new IllegalArgumentException("residence 不得为 null");
     }
+    if (clock == null) {
+      throw new IllegalArgumentException("clock 不得为 null");
+    }
+    long currentDayNumber = clock.dayNumberOfTick(nowTick);
     Map<AgeBracket, Long> structure = new LinkedHashMap<>();
     for (AgeBracket bracket : AgeBracket.values()) {
       structure.put(bracket, 0L);
     }
     for (PopulationGroup group : groups.values()) {
       if (residence.equals(group.residence())) {
-        AgeBracket bracket = AgeBracket.of(group.ageDaysAt(nowTick));
+        AgeBracket bracket =
+            AgeBracket.of(clock.system(), currentDayNumber, group.ageDaysAt(nowTick));
         structure.put(bracket, structure.get(bracket) + group.count());
       }
     }
@@ -272,7 +283,7 @@ public record SocialData(
    * 该格的**性别构成**（现算）：{@code MALE} / {@code FEMALE} 的人数，**键恒为两个性别**（没有人也是 0，不是缺键）。
    *
    * <p>★ 它**不需要 {@code nowTick}**：批次的人数是**不随时间变**的量（随时间变的是年龄，见 {@link #ageStructureAt(HexCoord,
-   * long)}）——这与 {@link #urbanPopulationAt(CityId)} 同理。
+   * long, CalendarClock)}）——这与 {@link #urbanPopulationAt(CityId)} 同理。
    */
   public Map<Sex, Long> sexRatioAt(HexCoord residence) {
     if (residence == null) {

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -523,20 +524,6 @@ public final class EconomySeeder {
    */
   static final Map<Sex, int[]> AGE_LABOR_COEF_BY_SEX =
       Map.of(Sex.MALE, AGE_LABOR_COEF_PER_MILLE, Sex.FEMALE, AGE_LABOR_COEF_PER_MILLE);
-
-  /**
-   * 年龄档的**上界**（天，不含；与 {@link #AGE_SHARE_PER_MILLE} 的 {0-14, 15-59, 60+} 同口径）：15 岁、60 岁。
-   *
-   * <p>★ 批次带的是**逐日精度的年龄**，具体落在哪一档由 {@link #ageBracketOf(long)} 现算（不存档位、不许出现"档间转移"）。 ★ 它与 {@link
-   * PopulationSeeder#AGE_REPRESENTATIVE_DAYS} 必须互相自洽（代表性年龄要落在自己那一档里）， 由 {@code
-   * PopulationSeederTest} 的跨表用例钉住。
-   *
-   * <p>★★ **R1.5 起本表只是 {@link AgeBracket} 的投影**（原来那两个 {@code 15L * 365L} / {@code 60L * 365L}
-   * 的字面量已搬到 social 的 {@link AgeBracket#boundedMaxExclusiveDays()} 一处）：读口（GUI/MCP）也要按 同一套边算年龄结构，而
-   * social 看不见本模块 ⇒ 边界的唯一定义处只能是 social；否则"批次按一套边造、劳动按另一套边折算、读口按第三套边显示"
-   * 会被三张表悄悄漂开（本仓最忌"注释声称一致、其实不一致"）。
-   */
-  static final long[] AGE_BRACKET_MAX_EXCLUSIVE_DAYS = AgeBracket.boundedMaxExclusiveDays();
 
   // ── 商品 id：唯一拼写点都在 {@link EconomyVocabulary}（v2 spec §六；R3 起商品不止粮）──────────
 
@@ -2195,20 +2182,28 @@ public final class EconomySeeder {
   }
 
   /**
-   * 年龄（天）落在哪一档（0-14 / 15-59 / 60+，与 {@link #AGE_SHARE_PER_MILLE} 同序）。
+   * 创世时钟（C5 过渡：C5 起换成 CalendarService 注入；缺省值相同）：创世的年龄档判定一律在 **tick 0** 折算，缺省 {@link
+   * CalendarClock#julianDefault()}（儒略 1445-01-01）。
+   *
+   * <p>★ **私有静态 final**：{@link #ageBracketOf(long)} 每次调用都走它，不必每次新造一台时钟；它是无状态不可变的，共享安全。
+   */
+  private static final CalendarClock GENESIS_CLOCK = CalendarClock.julianDefault();
+
+  /**
+   * 年龄（天，**创世 tick 0 时的年龄**）落在哪一档（0-14 / 15-59 / 60+，与 {@link #AGE_SHARE_PER_MILLE} 同序）。
    *
    * <p>★ **档是现算的，不存档位**（设计稿 §三：年龄运行时只有逐日精度，"档间转移"因此不存在）。 ★ 超出末档上界一律归末档（年龄没有上界）。
+   *
+   * <p>★★ **边界与换算的唯一定义处都在 social**：本方法把创世 tick 0 的 ageDays 交给 {@link AgeBracket#of}（15/60
+   * 是**整历法年**， 2/29 的生日惯例见 {@code CalendarAge}），本类不再另写 365 天的档界 —— 否则"批次按一套边造、劳动按另一套边折算、读口按第三套边显示"
+   * 会被三张表悄悄漂开（本仓最忌"注释声称一致、其实不一致"）。
    */
   static int ageBracketOf(long ageDays) {
     if (ageDays < 0L) {
       throw new IllegalArgumentException("ageDays 不得为负: " + ageDays);
     }
-    for (int bracket = 0; bracket < AGE_BRACKET_MAX_EXCLUSIVE_DAYS.length; bracket++) {
-      if (ageDays < AGE_BRACKET_MAX_EXCLUSIVE_DAYS[bracket]) {
-        return bracket;
-      }
-    }
-    return AGE_BRACKET_MAX_EXCLUSIVE_DAYS.length;
+    return AgeBracket.of(GENESIS_CLOCK.system(), GENESIS_CLOCK.dayNumberOfTick(0L), ageDays)
+        .ordinal();
   }
 
   /**
