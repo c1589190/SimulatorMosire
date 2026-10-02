@@ -48,7 +48,8 @@ class SetStatusHandlerTest {
 
     assertThat(next.units().get(U1).status()).isEqualTo(UnitStatus.RESTING);
     assertThat(next.units().get(U1).name()).isEqualTo(base.units().get(U1).name());
-    assertThat(next.units().get(U1).member()).isEqualTo(base.units().get(U1).member());
+    assertThat(next.units().get(U1).manpower()).isEqualTo(base.units().get(U1).manpower());
+    assertThat(next.units().get(U1).equipment()).isEqualTo(base.units().get(U1).equipment());
     assertThat(next.units().get(U1).movement()).isEqualTo(base.units().get(U1).movement());
   }
 

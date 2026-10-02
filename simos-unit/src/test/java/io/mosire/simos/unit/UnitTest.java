@@ -9,9 +9,8 @@ import io.mosire.simos.util.time.EventMode;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -32,7 +31,15 @@ class UnitTest {
 
   static Unit unit(UnitId id) {
     return new Unit(
-        id, "第一连", noParent(), positionAt(H11), 100, Map.of("步枪", 50), 2, 1000, Optional.empty());
+        id,
+        "第一连",
+        noParent(),
+        positionAt(H11),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
+        2,
+        1000,
+        Optional.empty());
   }
 
   @Test
@@ -51,8 +58,8 @@ class UnitTest {
         "第一连",
         noParent(),
         positionAt(H11),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         speed,
         1000,
         Optional.empty(),
@@ -91,8 +98,8 @@ class UnitTest {
                         List.of(new Event<>(T0, Optional.<UnitId>empty(), EventMode.SET)),
                         null),
                     positionAt(H11),
-                    100,
-                    Map.of(),
+                    List.of(new CompositionEntry("步兵", 100)),
+                    List.of(),
                     2,
                     1000,
                     Optional.empty()))
@@ -109,8 +116,8 @@ class UnitTest {
                         List.of(new Segment<>(T0, Optional.<HexCoord>empty())),
                         List.of(new Event<>(T0, Optional.of(H11), EventMode.SET)),
                         null),
-                    100,
-                    Map.of(),
+                    List.of(new CompositionEntry("步兵", 100)),
+                    List.of(),
                     2,
                     1000,
                     Optional.empty()))
@@ -129,8 +136,8 @@ class UnitTest {
                     new SegmentedSeries<>(
                         List.of(new Segment<>(T0, Optional.of(id))), List.of(), null),
                     positionAt(H11),
-                    100,
-                    Map.of(),
+                    List.of(new CompositionEntry("步兵", 100)),
+                    List.of(),
                     2,
                     1000,
                     Optional.empty()))
@@ -147,8 +154,8 @@ class UnitTest {
                     "第一连",
                     noParent(),
                     positionAt(H11),
-                    -1,
-                    Map.of(),
+                    List.of(new CompositionEntry("步兵", -1)),
+                    List.of(),
                     2,
                     1000,
                     Optional.empty()))
@@ -160,8 +167,8 @@ class UnitTest {
                     "第一连",
                     noParent(),
                     positionAt(H11),
-                    0,
-                    Map.of(),
+                    List.of(),
+                    List.of(),
                     0,
                     1000,
                     Optional.empty()))
@@ -173,8 +180,8 @@ class UnitTest {
                     "第一连",
                     noParent(),
                     positionAt(H11),
-                    0,
-                    Map.of(),
+                    List.of(),
+                    List.of(),
                     2,
                     0,
                     Optional.empty()))
@@ -182,25 +189,28 @@ class UnitTest {
   }
 
   @Test
-  void equipmentIsFrozenAndValidated() {
-    Map<String, Integer> mutable = new LinkedHashMap<>();
-    mutable.put("步枪", 50);
+  void compositionTablesAreFrozenAndValidated() {
+    List<CompositionEntry> mutable = new ArrayList<>(List.of(new CompositionEntry("步枪", 50)));
     Unit u =
         new Unit(
             new UnitId("u-1"),
             "第一连",
             noParent(),
             positionAt(H11),
-            100,
+            List.of(new CompositionEntry("步兵", 100)),
             mutable,
             2,
             1000,
             Optional.empty());
-    mutable.put("炮", 1);
-    assertThat(u.equipment()).containsOnlyKeys("步枪");
+    mutable.add(new CompositionEntry("炮", 1));
+    assertThat(u.equipment())
+        .as("构造期做保序不可变拷贝：外部后续改动不得漏进来")
+        .containsExactly(new CompositionEntry("步枪", 50));
 
-    Map<String, Integer> negative = new LinkedHashMap<>();
-    negative.put("炮弹", -1);
+    assertThatThrownBy(() -> new CompositionEntry("炮弹", -1))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("amount");
+
     assertThatThrownBy(
             () ->
                 new Unit(
@@ -208,11 +218,29 @@ class UnitTest {
                     "第一连",
                     noParent(),
                     positionAt(H11),
-                    100,
-                    negative,
+                    List.of(new CompositionEntry("步兵", 100), new CompositionEntry("步兵", 50)),
+                    List.of(),
                     2,
                     1000,
                     Optional.empty()))
-        .isInstanceOf(IllegalArgumentException.class);
+        .as("同表重复 type 必须拒（加/减值歧义）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("重复");
+
+    assertThatThrownBy(
+            () ->
+                new Unit(
+                    new UnitId("u-1"),
+                    "第一连",
+                    noParent(),
+                    positionAt(H11),
+                    null,
+                    List.of(),
+                    2,
+                    1000,
+                    Optional.empty()))
+        .as("表不得为 null（空表合法）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("manpower");
   }
 }

@@ -19,6 +19,7 @@ import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
@@ -288,7 +289,7 @@ class UnitTimeParticipantTest {
       Unit right = chained.units().get(id);
       assertThat(left.name()).isEqualTo(right.name());
       assertThat(left.parent()).as("parent 是归属历史，推进不改它").isEqualTo(right.parent());
-      assertThat(left.member()).isEqualTo(right.member());
+      assertThat(left.manpower()).isEqualTo(right.manpower());
       assertThat(left.equipment()).isEqualTo(right.equipment());
       assertThat(left.speed()).isEqualTo(right.speed());
       assertThat(left.mobilityPerMille()).isEqualTo(right.mobilityPerMille());
@@ -331,8 +332,8 @@ class UnitTimeParticipantTest {
         "单位 " + id.value(),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(parent))), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty(),
@@ -398,8 +399,8 @@ class UnitTimeParticipantTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, position)), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         movement,
@@ -610,7 +611,7 @@ class UnitTimeParticipantTest {
             "name",
             "parent",
             "position",
-            "member",
+            "manpower",
             "equipment",
             "speed",
             "mobilityPerMille",
@@ -621,7 +622,8 @@ class UnitTimeParticipantTest {
             "rejoinTarget",
             "visionRadius",
             "jurisdiction",
-            "module");
+            "module",
+            "stateDescriptions");
     assertThat(hexTypedComponentNames(Unit.class))
         .as("★ **名单之外的牙齿**：`position` 是 Unit 上唯一能装 hex 的分量 —— 想塞「回归终点」只能塞在这里，改名换名单都绕不过")
         .containsExactly("position");

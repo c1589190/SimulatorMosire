@@ -7,6 +7,7 @@ import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
@@ -63,8 +64,8 @@ final class SpiFixture {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         movement);

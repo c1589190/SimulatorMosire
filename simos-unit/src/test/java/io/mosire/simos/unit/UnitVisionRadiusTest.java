@@ -69,22 +69,26 @@ class UnitVisionRadiusTest {
   // ── 形状与缺省（spec §4.1 / 用户裁定⑤） ────────────────────────────
 
   @Test
-  void unitDeclaresVisionRadiusBeforeTheLastComponent() {
+  void unitDeclaresVisionRadiusBeforeTheLastComponents() {
     RecordComponent[] components = Unit.class.getRecordComponents();
     List<String> names = componentNames();
     assertThat(names)
-        .as("Unit 应为 16 分量；visionRadius 仍是倒数第三个（辖区阶段 5 的 jurisdiction 与阶段 9 的 module 依次追加在最后）")
-        .hasSize(16);
-    assertThat(names.get(names.size() - 3)).isEqualTo("visionRadius");
-    assertThat(components[components.length - 3].getType()).as("视野半径是 int").isEqualTo(int.class);
-    assertThat(names.get(names.size() - 2)).isEqualTo("jurisdiction");
-    assertThat(components[components.length - 2].getType())
+        .as("Unit 应为 17 分量；visionRadius 是倒数第四个（其后依次为 jurisdiction / module / stateDescriptions）")
+        .hasSize(17);
+    assertThat(names.get(names.size() - 4)).isEqualTo("visionRadius");
+    assertThat(components[components.length - 4].getType()).as("视野半径是 int").isEqualTo(int.class);
+    assertThat(names.get(names.size() - 3)).isEqualTo("jurisdiction");
+    assertThat(components[components.length - 3].getType())
         .as("管辖是 Optional<Jurisdiction>（擦除后 Optional）")
         .isEqualTo(Optional.class);
-    assertThat(names.get(names.size() - 1)).isEqualTo("module");
-    assertThat(components[components.length - 1].getType())
+    assertThat(names.get(names.size() - 2)).isEqualTo("module");
+    assertThat(components[components.length - 2].getType())
         .as("编制是 Optional<UnitModule>（擦除后 Optional）")
         .isEqualTo(Optional.class);
+    assertThat(names.get(names.size() - 1)).isEqualTo("stateDescriptions");
+    assertThat(components[components.length - 1].getType())
+        .as("状态描述链接是 Map<String,String>（擦除后 Map）")
+        .isEqualTo(Map.class);
   }
 
   @Test
@@ -127,15 +131,15 @@ class UnitVisionRadiusTest {
   }
 
   @Test
-  void onlyFourConstructorShapesExist() {
-    // 四条兼容构造器（9/13/14/15 参）都只补缺省、不接受新字段的显式来源 ⇒ 它们不可能绕过构造期校验（这是结构断言，不靠"我记得")。
+  void constructorMatrixIsCanonical17PlusFiveCompatibilityShapes() {
+    // 五条兼容构造器（9/13/14/15/16 参）都只补缺省、不接受新字段的显式来源 ⇒ 它们不可能绕过构造期校验（这是结构断言，不靠"我记得")。
     Set<Integer> arities = new LinkedHashSet<>();
     for (var constructor : Unit.class.getConstructors()) {
       arities.add(constructor.getParameterCount());
     }
     assertThat(arities)
-        .as("恰五种构造形态：16 参 canonical + 9/13/14/15 参兼容（兼容形态没有新增字段的显式来源）")
-        .isEqualTo(Set.of(9, 13, 14, 15, 16));
+        .as("恰六种构造形态：17 参 canonical + 9/13/14/15/16 参兼容（兼容形态没有新增字段的显式来源）")
+        .isEqualTo(Set.of(9, 13, 14, 15, 16, 17));
   }
 
   // ── ★★ 9 处生产拷贝/创建点：逐处不丢字段 ──────────────────────────
@@ -151,13 +155,19 @@ class UnitVisionRadiusTest {
   }
 
   @Test
-  void setStrengthPreservesVisionRadius() {
+  void setCompositionPreservesVisionRadius() {
     UnitState base = stateOf(unit(U1, Optional.empty(), Optional.of(H11), RADIUS));
     assertCopied(
         base.units().get(U1),
-        UnitOperations.setStrength(base, U1, 70, Map.of("步枪", 40)).units().get(U1),
-        "setStrength",
-        "member",
+        UnitOperations.setComposition(
+                base,
+                U1,
+                List.of(new CompositionEntry("步兵", 70)),
+                List.of(new CompositionEntry("步枪", 40)))
+            .units()
+            .get(U1),
+        "setComposition",
+        "manpower",
         "equipment");
   }
 
@@ -166,9 +176,15 @@ class UnitVisionRadiusTest {
     UnitState base = stateOf(unit(U1, Optional.empty(), Optional.of(H11), RADIUS));
     assertCopied(
         base.units().get(U1),
-        UnitOperations.applyCasualties(base, U1, -30, Map.of("步枪", -10)).units().get(U1),
+        UnitOperations.applyCasualties(
+                base,
+                U1,
+                List.of(new CompositionDelta("步兵", -30)),
+                List.of(new CompositionDelta("步枪", -10)))
+            .units()
+            .get(U1),
         "applyCasualties",
-        "member",
+        "manpower",
         "equipment");
   }
 
@@ -363,8 +379,8 @@ class UnitVisionRadiusTest {
         "单位 " + id.value(),
         new SegmentedSeries<>(List.of(new Segment<>(T0, parent)), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, position)), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty(),
@@ -393,8 +409,8 @@ class UnitVisionRadiusTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty());
@@ -407,8 +423,8 @@ class UnitVisionRadiusTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty(),
@@ -425,7 +441,7 @@ class UnitVisionRadiusTest {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.member(),
+        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -36,15 +37,15 @@ class UnitRoundTripTest {
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
   private static final HexCoord H11 = new HexCoord(1, 1);
 
-  private static Unit unit(String id, int member) {
+  private static Unit unit(String id, int manpowerAmount) {
     return new Unit(
         new UnitId(id),
         "单位 " + id,
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        member,
-        Map.of(),
+        List.of(new CompositionEntry("步兵", manpowerAmount)),
+        List.of(),
         2,
         1000,
         Optional.empty());
@@ -102,7 +103,7 @@ class UnitRoundTripTest {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.member(),
+        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),

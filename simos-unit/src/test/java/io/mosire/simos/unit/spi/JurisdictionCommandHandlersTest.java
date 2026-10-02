@@ -424,7 +424,7 @@ class JurisdictionCommandHandlersTest {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.member(),
+        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),

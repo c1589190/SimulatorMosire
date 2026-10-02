@@ -12,6 +12,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Route;
@@ -64,7 +65,7 @@ class UnitCommandHandlersTest {
 
   private static final CreateUnitHandler CREATE = new CreateUnitHandler();
   private static final ReparentUnitHandler REPARENT = new ReparentUnitHandler();
-  private static final SetStrengthHandler SET_STRENGTH = new SetStrengthHandler();
+  private static final SetCompositionHandler SET_COMPOSITION = new SetCompositionHandler();
   private static final PlaceAtHandler PLACE_AT = new PlaceAtHandler();
   private static final PlanRouteHandler PLAN_ROUTE = new PlanRouteHandler();
 
@@ -166,8 +167,8 @@ class UnitCommandHandlersTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(SpiFixture.T0, parent.map(UnitId::new))), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(SpiFixture.T0, position)), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty(),
@@ -230,7 +231,7 @@ class UnitCommandHandlersTest {
   void typeNamesMatchTheSpecTable() {
     assertThat(CREATE.type()).isEqualTo("unit.CreateUnit");
     assertThat(REPARENT.type()).isEqualTo("unit.ReparentUnit");
-    assertThat(SET_STRENGTH.type()).isEqualTo("unit.SetStrength");
+    assertThat(SET_COMPOSITION.type()).isEqualTo("unit.SetComposition");
     assertThat(PLACE_AT.type()).isEqualTo("unit.PlaceAt");
     assertThat(PLAN_ROUTE.type()).isEqualTo("unit.PlanRoute");
     assertThat(CANCEL_ROUTE.type()).isEqualTo("unit.CancelRoute");
@@ -257,14 +258,15 @@ class UnitCommandHandlersTest {
             worldAt(T5, base),
             // ★ v2：有 parent ⇒ 必须与父同格（u-1 在 H11）⇒ 这里的位置也用 H11。
             "{\"id\":\"u-2\",\"name\":\"第二连\",\"position\":{\"q\":1,\"r\":1},"
-                + "\"member\":80,\"equipment\":{\"炮\":4},\"speed\":3,\"mobilityPerMille\":900,"
-                + "\"parent\":\"u-1\"}");
+                + "\"manpower\":[{\"type\":\"步兵\",\"amount\":80}],"
+                + "\"equipment\":[{\"type\":\"炮\",\"amount\":4}],\"speed\":3,"
+                + "\"mobilityPerMille\":900,\"parent\":\"u-1\"}");
 
     assertThat(next.units()).containsKey(U2);
     Unit created = next.units().get(U2);
     assertThat(created.name()).isEqualTo("第二连");
-    assertThat(created.member()).isEqualTo(80);
-    assertThat(created.equipment()).containsOnlyKeys("炮").containsEntry("炮", 4);
+    assertThat(created.manpower()).containsExactly(new CompositionEntry("步兵", 80));
+    assertThat(created.equipment()).containsExactly(new CompositionEntry("炮", 4));
     assertThat(created.speed()).isEqualTo(3);
     assertThat(created.mobilityPerMille()).isEqualTo(900);
     assertThat(created.movement()).isEmpty();
@@ -297,8 +299,9 @@ class UnitCommandHandlersTest {
         applied(
             CREATE,
             worldAt(T5, oneUnit()),
-            "{\"id\":\"u-2\",\"name\":\"第二连\",\"position\":{\"q\":1,\"r\":2},\"member\":80,"
-                + "\"equipment\":{},\"speed\":3,\"mobilityPerMille\":900}");
+            "{\"id\":\"u-2\",\"name\":\"第二连\",\"position\":{\"q\":1,\"r\":2},"
+                + "\"manpower\":[{\"type\":\"步兵\",\"amount\":80}],\"equipment\":[],"
+                + "\"speed\":3,\"mobilityPerMille\":900}");
     assertThat(next.units().get(U2).visionRadius())
         .as("创建点必须给缺省（不是 0、也不是随机值）")
         .isEqualTo(Unit.DEFAULT_VISION_RADIUS);
@@ -310,8 +313,9 @@ class UnitCommandHandlersTest {
         applied(
             CREATE,
             worldAt(T5, oneUnit()),
-            "{\"id\":\"u-2\",\"name\":\"独立连\",\"position\":{\"q\":1,\"r\":3},\"member\":10,"
-                + "\"equipment\":{},\"speed\":1,\"mobilityPerMille\":100}");
+            "{\"id\":\"u-2\",\"name\":\"独立连\",\"position\":{\"q\":1,\"r\":3},"
+                + "\"manpower\":[{\"type\":\"步兵\",\"amount\":10}],\"equipment\":[],"
+                + "\"speed\":1,\"mobilityPerMille\":100}");
     assertThat(next.units().get(U2).parent().valueAt(T5)).isEmpty();
     assertThat(next.units().get(U2).position().valueAt(T5)).contains(SpiFixture.H13);
   }
@@ -322,20 +326,22 @@ class UnitCommandHandlersTest {
             reason(
                 CREATE,
                 worldAt(T5, oneUnit()),
-                "{\"id\":\"u-1\",\"name\":\"重复\",\"position\":{\"q\":1,\"r\":2},\"member\":1,"
-                    + "\"equipment\":{},\"speed\":1,\"mobilityPerMille\":1}"))
+                "{\"id\":\"u-1\",\"name\":\"重复\",\"position\":{\"q\":1,\"r\":2},"
+                    + "\"manpower\":[{\"type\":\"步兵\",\"amount\":1}],\"equipment\":[],"
+                    + "\"speed\":1,\"mobilityPerMille\":1}"))
         .contains("已存在");
   }
 
   @Test
-  void createUnitRejectsNegativeMember() {
+  void createUnitRejectsNegativeManpowerAmount() {
     assertThat(
             reason(
                 CREATE,
                 worldAt(T5, oneUnit()),
-                "{\"id\":\"u-2\",\"name\":\"负员\",\"position\":{\"q\":1,\"r\":2},\"member\":-1,"
-                    + "\"equipment\":{},\"speed\":1,\"mobilityPerMille\":1}"))
-        .contains("member 必须 ≥ 0");
+                "{\"id\":\"u-2\",\"name\":\"负员\",\"position\":{\"q\":1,\"r\":2},"
+                    + "\"manpower\":[{\"type\":\"步兵\",\"amount\":-1}],\"equipment\":[],"
+                    + "\"speed\":1,\"mobilityPerMille\":1}"))
+        .contains("amount 必须 ≥ 0");
   }
 
   /**
@@ -350,8 +356,8 @@ class UnitCommandHandlersTest {
         applied(
             CREATE,
             worldAt(T5, oneUnit()),
-            "{\"id\":\"u-2\",\"name\":\"跟随连\",\"member\":10,\"equipment\":{},\"speed\":1,"
-                + "\"mobilityPerMille\":100,\"parent\":\"u-1\"}");
+            "{\"id\":\"u-2\",\"name\":\"跟随连\",\"manpower\":[{\"type\":\"步兵\",\"amount\":10}],"
+                + "\"equipment\":[],\"speed\":1,\"mobilityPerMille\":100,\"parent\":\"u-1\"}");
     assertThat(created.units().get(U2).position().valueAt(T5)).as("无自身位置").isEmpty();
     assertThat(created.units().get(U2).attached().valueAt(T5)).as("编入 u-1 那一支").isTrue();
     assertThat(created.effectivePosition(U2, T5)).as("★ v2：不在图上（位置不是继承来的）").isEmpty();
@@ -369,8 +375,8 @@ class UnitCommandHandlersTest {
             CREATE,
             worldAt(T5, oneUnit()),
             "{\"id\":\"u-2\",\"name\":\"同格连\",\"position\":{\"q\":1,\"r\":1},"
-                + "\"member\":10,\"equipment\":{},\"speed\":1,"
-                + "\"mobilityPerMille\":100,\"parent\":\"u-1\"}");
+                + "\"manpower\":[{\"type\":\"步兵\",\"amount\":10}],\"equipment\":[],"
+                + "\"speed\":1,\"mobilityPerMille\":100,\"parent\":\"u-1\"}");
     assertThat(created.units().get(U2).attached().valueAt(T5)).isTrue();
     assertThat(created.effectivePosition(U2, T5)).contains(SpiFixture.H11);
   }
@@ -386,8 +392,8 @@ class UnitCommandHandlersTest {
             reason(
                 CREATE,
                 worldAt(T5, oneUnit()),
-                "{\"id\":\"u-2\",\"name\":\"无位\",\"member\":1,\"equipment\":{},\"speed\":1,"
-                    + "\"mobilityPerMille\":1}"))
+                "{\"id\":\"u-2\",\"name\":\"无位\",\"manpower\":[{\"type\":\"步兵\",\"amount\":1}],"
+                    + "\"equipment\":[],\"speed\":1,\"mobilityPerMille\":1}"))
         .contains("position");
   }
 
@@ -403,8 +409,9 @@ class UnitCommandHandlersTest {
         applied(
             CREATE,
             worldAt(T5, oneUnit()),
-            "{\"id\":\"u-2\",\"name\":\"休整连\",\"position\":{\"q\":1,\"r\":2},\"member\":10,"
-                + "\"equipment\":{},\"speed\":1,\"mobilityPerMille\":100,\"status\":\"RESTING\"}");
+            "{\"id\":\"u-2\",\"name\":\"休整连\",\"position\":{\"q\":1,\"r\":2},"
+                + "\"manpower\":[{\"type\":\"步兵\",\"amount\":10}],\"equipment\":[],"
+                + "\"speed\":1,\"mobilityPerMille\":100,\"status\":\"RESTING\"}");
     assertThat(next.units().get(U2).status()).isEqualTo(UnitStatus.RESTING);
   }
 
@@ -415,8 +422,9 @@ class UnitCommandHandlersTest {
             reason(
                 CREATE,
                 worldAt(T5, oneUnit()),
-                "{\"id\":\"u-2\",\"name\":\"幽灵连\",\"position\":{\"q\":1,\"r\":2},\"member\":10,"
-                    + "\"equipment\":{},\"speed\":1,\"mobilityPerMille\":100,\"status\":\"SLEEPING\"}"))
+                "{\"id\":\"u-2\",\"name\":\"幽灵连\",\"position\":{\"q\":1,\"r\":2},"
+                    + "\"manpower\":[{\"type\":\"步兵\",\"amount\":10}],\"equipment\":[],"
+                    + "\"speed\":1,\"mobilityPerMille\":100,\"status\":\"SLEEPING\"}"))
         .contains("不是合法状态");
   }
 
@@ -474,48 +482,104 @@ class UnitCommandHandlersTest {
         .contains("成环");
   }
 
-  // ── unit.SetStrength ───────────────────────────────────────────
+  // ── unit.SetComposition ────────────────────────────────────────
 
   @Test
-  void setStrengthReplacesMemberAndEquipment() {
+  void setCompositionReplacesManpowerAndEquipment() {
     UnitState base = oneUnit();
     UnitState next =
         applied(
-            SET_STRENGTH, world(base), "{\"id\":\"u-1\",\"member\":40,\"equipment\":{\"炮\":4}}");
+            SET_COMPOSITION,
+            world(base),
+            "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"炮兵\",\"amount\":40}],"
+                + "\"equipment\":[{\"type\":\"炮\",\"amount\":4}]}");
     Unit u1 = next.units().get(SpiFixture.U1);
-    assertThat(u1.member()).isEqualTo(40);
-    // ★ equipment 是整份替换，不是合并（m1 的靶子：忽略载荷装备会保留 {"步枪":50}）
-    assertThat(u1.equipment()).containsOnlyKeys("炮").containsEntry("炮", 4);
+    assertThat(u1.manpower()).containsExactly(new CompositionEntry("炮兵", 40));
+    // ★ 两张表都是整份替换，不是合并（m1 的靶子：忽略载荷会保留 步兵:100 / 步枪:50）
+    assertThat(u1.equipment()).containsExactly(new CompositionEntry("炮", 4));
     assertThat(u1.name()).isEqualTo(base.units().get(SpiFixture.U1).name());
     assertThat(u1.speed()).isEqualTo(base.units().get(SpiFixture.U1).speed());
   }
 
+  /** ★ 整表语义：载荷里的 type 即使当前不存在也不是错误——"给什么就是什么"。 */
   @Test
-  void setStrengthRejectsUnknownId() {
+  void setCompositionAcceptsUnknownTypesVerbatim() {
+    UnitState next =
+        applied(
+            SET_COMPOSITION,
+            world(oneUnit()),
+            "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"新兵种\",\"amount\":7}],"
+                + "\"equipment\":[{\"type\":\"新装备\",\"amount\":1}]}");
+    Unit u1 = next.units().get(SpiFixture.U1);
+    assertThat(u1.manpower()).containsExactly(new CompositionEntry("新兵种", 7));
+    assertThat(u1.equipment()).containsExactly(new CompositionEntry("新装备", 1));
+  }
+
+  /** 空表合法：整表复写允许把两张表都清空。 */
+  @Test
+  void setCompositionAcceptsEmptyTables() {
+    UnitState next =
+        applied(
+            SET_COMPOSITION, world(oneUnit()), "{\"id\":\"u-1\",\"manpower\":[],\"equipment\":[]}");
+    Unit u1 = next.units().get(SpiFixture.U1);
+    assertThat(u1.manpower()).isEmpty();
+    assertThat(u1.equipment()).isEmpty();
+  }
+
+  @Test
+  void setCompositionRejectsUnknownId() {
     assertThat(
             reason(
-                SET_STRENGTH, world(oneUnit()), "{\"id\":\"u-404\",\"member\":1,\"equipment\":{}}"))
+                SET_COMPOSITION,
+                world(oneUnit()),
+                "{\"id\":\"u-404\",\"manpower\":[{\"type\":\"步兵\",\"amount\":1}],"
+                    + "\"equipment\":[]}"))
         .contains("单位不存在");
   }
 
   @Test
-  void setStrengthRejectsNegativeMember() {
+  void setCompositionRejectsNegativeAmount() {
     assertThat(
             reason(
-                SET_STRENGTH,
+                SET_COMPOSITION,
                 world(oneUnit()),
-                "{\"id\":\"u-1\",\"member\":-3,\"equipment\":{\"炮\":4}}"))
-        .contains("member 必须 ≥ 0");
+                "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-3}],"
+                    + "\"equipment\":[]}"))
+        .contains("amount 必须 ≥ 0");
   }
 
   @Test
-  void setStrengthRejectsNonIntegerEquipmentValues() {
+  void setCompositionRejectsNonIntegerAmounts() {
     assertThat(
             reason(
-                SET_STRENGTH,
+                SET_COMPOSITION,
                 world(oneUnit()),
-                "{\"id\":\"u-1\",\"member\":1,\"equipment\":{\"炮\":\"many\"}}"))
-        .contains("整数");
+                "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":\"many\"}],"
+                    + "\"equipment\":[]}"))
+        .contains("字段 amount 必须是整数");
+  }
+
+  @Test
+  void setCompositionRejectsDuplicateTypes() {
+    assertThat(
+            reason(
+                SET_COMPOSITION,
+                world(oneUnit()),
+                "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":1},"
+                    + "{\"type\":\"步兵\",\"amount\":2}],\"equipment\":[]}"))
+        .contains("不得有重复 type");
+  }
+
+  /** 旧 {member, equipment-map} 形状按 D-011/R4 **不留兼容**：对象形态当场拒。 */
+  @Test
+  void setCompositionRejectsLegacyEquipmentMapShape() {
+    assertThat(
+            reason(
+                SET_COMPOSITION,
+                world(oneUnit()),
+                "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":1}],"
+                    + "\"equipment\":{\"炮\":4}}"))
+        .contains("字段 equipment 必须是");
   }
 
   // ── unit.PlaceAt ───────────────────────────────────────────────
@@ -803,7 +867,7 @@ class UnitCommandHandlersTest {
   @Test
   void everyHandlerRejectsMalformedPayload() {
     assertThat(reason(REPARENT, worldAt(T5, oneUnit()), "不是 JSON")).contains("不是合法 JSON");
-    assertThat(reason(SET_STRENGTH, world(oneUnit()), "[1,2,3]")).contains("JSON 对象");
+    assertThat(reason(SET_COMPOSITION, world(oneUnit()), "[1,2,3]")).contains("JSON 对象");
     assertThat(reason(PLACE_AT, worldAt(T5, oneUnit()), "{\"id\":\"u-1\",\"hex\":\"H12\"}"))
         .contains("字段 hex 必须是");
     assertThat(reason(PLAN_ROUTE, worldAt(T5, oneUnit()), "{\"id\":\"u-1\",\"waypoints\":{}}"))
@@ -1688,40 +1752,44 @@ class UnitCommandHandlersTest {
     assertThat(APPLY_CASUALTIES.type()).isEqualTo("unit.ApplyCasualties");
   }
 
-  /** 装备双键的基线（`{"步枪":50,"炮":4}`）——由既有 `SetStrength` 造出，不手搓 `Unit`。 */
+  /** 装备双键的基线（`[步枪:50, 炮:4]`）——由既有 `SetComposition` 造出，不手搓 `Unit`。 */
   private static UnitState oneUnitWithTwoEquipmentKeys() {
     return applied(
-        SET_STRENGTH,
+        SET_COMPOSITION,
         world(oneUnit()),
-        "{\"id\":\"u-1\",\"member\":100,\"equipment\":{\"步枪\":50,\"炮\":4}}");
+        "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":100}],"
+            + "\"equipment\":[{\"type\":\"步枪\",\"amount\":50},{\"type\":\"炮\",\"amount\":4}]}");
   }
 
   /**
-   * ★★ 判据（**m1 + m3 的靶子**）：载荷是**增量**（落在当前值上），且装备**只扣提及键**。
+   * ★★ 判据（**m1 + m3 的靶子**）：载荷是**增量**（落在当前值上），且装备**只扣提及 type**。
    *
    * <p>★ 命令边界给的是 `UnitChangeSet.between`（**绝对值**）——所以这里同时钉住两件事：① 应用回 base 后 `100 + (−30) = 70`； ②
-   * 变更集里的装备目标值是 `{步枪:40, 炮:4}`（未提及键**没被整表丢掉**）。
+   * 变更集里的装备目标值是 `[步枪:40, 炮:4]`（未提及 type**没被整表丢掉**，顺序也不变）。
    */
   @Test
   void applyCasualtiesSubtractsIncrementallyAndKeepsUnmentionedEquipment() {
     UnitState base = oneUnitWithTwoEquipmentKeys();
     assertThat(base.units().get(SpiFixture.U1).equipment())
         .as("前提：双键基线")
-        .containsOnlyKeys("步枪", "炮");
+        .containsExactly(new CompositionEntry("步枪", 50), new CompositionEntry("炮", 4));
 
     UnitChangeSet changeSet =
         changeSetOf(
             APPLY_CASUALTIES,
             world(base),
-            "{\"id\":\"u-1\",\"personnel\":-30,\"equipment\":{\"步枪\":-10}}");
+            "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-30}],"
+                + "\"equipment\":[{\"type\":\"步枪\",\"amount\":-10}]}");
     UnitState next = UnitChangeSet.apply(changeSet, base);
 
     assertThat(changeSet.isEmpty()).as("真的改了值").isFalse();
     Unit unit = next.units().get(SpiFixture.U1);
-    assertThat(unit.member()).as("★ 100 + (−30) = 70（当绝对值覆写会得 30）").isEqualTo(70);
-    assertThat(unit.equipment()).as("★ 提及键：50 + (−10) = 40").containsEntry("步枪", 40);
-    assertThat(unit.equipment()).as("★ 未提及键不变（整表替换会丢它）").containsEntry("炮", 4);
-    assertThat(unit.equipment()).containsOnlyKeys("步枪", "炮");
+    assertThat(unit.manpower())
+        .as("★ 100 + (−30) = 70（当绝对值覆写会得 30）")
+        .containsExactly(new CompositionEntry("步兵", 70));
+    assertThat(unit.equipment())
+        .as("★ 提及 type：50 + (−10) = 40；未提及 type 不变且顺序不变（整表替换会丢 炮）")
+        .containsExactly(new CompositionEntry("步枪", 40), new CompositionEntry("炮", 4));
     assertThat(unit.status()).as("其余字段原样带过").isEqualTo(base.units().get(SpiFixture.U1).status());
     assertThat(unit.position()).isEqualTo(base.units().get(SpiFixture.U1).position());
     assertThat(unit.rejoinTarget()).isEqualTo(base.units().get(SpiFixture.U1).rejoinTarget());
@@ -1736,85 +1804,114 @@ class UnitCommandHandlersTest {
   void applyCasualtiesRejectsPositiveAndOutOfRangeDeltas() {
     SimulationState world = world(oneUnitWithTwoEquipmentKeys());
 
-    assertThat(reason(APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"personnel\":5,\"equipment\":{}}"))
+    assertThat(
+            reason(
+                APPLY_CASUALTIES,
+                world,
+                "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":5}],\"equipment\":[]}"))
         .as("正人员 Δ")
         .contains("人员增量必须 ≤ 0");
     assertThat(
-            reason(APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"personnel\":-101,\"equipment\":{}}"))
+            reason(
+                APPLY_CASUALTIES,
+                world,
+                "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-101}],"
+                    + "\"equipment\":[]}"))
         .as("★ 上界：100 + (−101) 越界（删掉上界校验 ⇒ 这里变 Applied，红）")
         .contains("人员战损超出当前值");
     assertThat(
             reason(
                 APPLY_CASUALTIES,
                 world,
-                "{\"id\":\"u-1\",\"personnel\":0,\"equipment\":{\"步枪\":1}}"))
+                "{\"id\":\"u-1\",\"manpower\":[],\"equipment\":[{\"type\":\"步枪\",\"amount\":1}]}"))
         .as("正装备 Δ")
         .contains("装备增量必须 ≤ 0");
     assertThat(
             reason(
                 APPLY_CASUALTIES,
                 world,
-                "{\"id\":\"u-1\",\"personnel\":0,\"equipment\":{\"步枪\":-51}}"))
+                "{\"id\":\"u-1\",\"manpower\":[],\"equipment\":[{\"type\":\"步枪\",\"amount\":-51}]}"))
         .as("★ 装备逐项上界：50 + (−51) 越界")
         .contains("装备战损超出当前值");
     assertThat(
             applied(
                     APPLY_CASUALTIES,
                     world,
-                    "{\"id\":\"u-1\",\"personnel\":-100,\"equipment\":{\"步枪\":-50}}")
+                    "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-100}],"
+                        + "\"equipment\":[{\"type\":\"步枪\",\"amount\":-50}]}")
                 .units()
-                .get(SpiFixture.U1)
-                .member())
-        .as("上界本身合法：恰好扣光 ⇒ 0")
-        .isZero();
-    assertThat(unitSlice(world).units().get(SpiFixture.U1).member())
+                .get(SpiFixture.U1))
+        .as("上界本身合法：恰好扣光 ⇒ 值 0，条目保留（不是整条消失）")
+        .satisfies(
+            u -> {
+              assertThat(u.manpower()).containsExactly(new CompositionEntry("步兵", 0));
+              assertThat(u.equipment())
+                  .containsExactly(new CompositionEntry("步枪", 0), new CompositionEntry("炮", 4));
+            });
+    Unit unchanged = unitSlice(world).units().get(SpiFixture.U1);
+    assertThat(unchanged.manpower())
         .as("拒绝 ⇒ 输入状态不动（纯函数）")
-        .isEqualTo(100);
+        .containsExactly(new CompositionEntry("步兵", 100));
+    assertThat(unchanged.equipment())
+        .containsExactly(new CompositionEntry("步枪", 50), new CompositionEntry("炮", 4));
   }
 
   /**
-   * ★★ 判据（**m4 的靶子** / P14）：提及**不存在**的装备键 ⇒ 拒；**Δ=0 的未知键一样拒**。
+   * ★★ 判据（**m4 的靶子** / P14）：提及**不存在**的 type ⇒ 拒；**Δ=0 的未知 type 一样拒**。
    *
-   * <p>★ 靶子是把未知键**视作 0 忽略**的实现（读起来像"宽容"，实则是把"没有这件装备"当成了"这件装备是 0"）。
+   * <p>★ 靶子是把未知 type**视作 0 忽略**的实现（读起来像"宽容"，实则是把"没有这个 type"当成了"这个 type 是 0"）。
    */
   @Test
-  void applyCasualtiesRejectsUnknownEquipmentKeys() {
+  void applyCasualtiesRejectsUnknownCompositionTypes() {
     SimulationState world = world(oneUnitWithTwoEquipmentKeys());
 
     assertThat(
             reason(
                 APPLY_CASUALTIES,
                 world,
-                "{\"id\":\"u-1\",\"personnel\":-1,\"equipment\":{\"坦克\":-1}}"))
-        .as("★ 未知键 ⇒ 拒（视作 0 忽略会让它静默通过）")
-        .contains("未知装备键")
+                "{\"id\":\"u-1\",\"manpower\":[],\"equipment\":[{\"type\":\"坦克\",\"amount\":-1}]}"))
+        .as("★ 未知 type ⇒ 拒（视作 0 忽略会让它静默通过）")
+        .contains("未知装备类型")
         .contains("坦克");
     assertThat(
             reason(
                 APPLY_CASUALTIES,
                 world,
-                "{\"id\":\"u-1\",\"personnel\":0,\"equipment\":{\"坦克\":0}}"))
-        .as("★ 未知键 + Δ=0：什么都不减也拒（视作 0 忽略 ⇒ 这里变 Applied，红）")
-        .contains("未知装备键")
+                "{\"id\":\"u-1\",\"manpower\":[],\"equipment\":[{\"type\":\"坦克\",\"amount\":0}]}"))
+        .as("★ 未知 type + Δ=0：什么都不减也拒（视作 0 忽略 ⇒ 这里变 Applied，红）")
+        .contains("未知装备类型")
         .contains("坦克");
     assertThat(
-            reason(APPLY_CASUALTIES, world, "{\"id\":\"u-404\",\"personnel\":-1,\"equipment\":{}}"))
+            reason(
+                APPLY_CASUALTIES,
+                world,
+                "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"骑兵\",\"amount\":-1}],"
+                    + "\"equipment\":[]}"))
+        .as("人力侧同样拒未知 type")
+        .contains("未知人员类型")
+        .contains("骑兵");
+    assertThat(
+            reason(
+                APPLY_CASUALTIES,
+                world,
+                "{\"id\":\"u-404\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-1}],"
+                    + "\"equipment\":[]}"))
         .as("命令对象不存在：域层消息")
         .contains("单位不存在");
     assertThat(
             reason(
                 APPLY_CASUALTIES,
                 world,
-                "{\"id\":\"u-1\",\"personnel\":0,\"equipment\":{\" \":-1}}"))
-        .as("空白键")
-        .contains("不得空白");
+                "{\"id\":\"u-1\",\"manpower\":[],\"equipment\":[{\"type\":\" \",\"amount\":-1}]}"))
+        .as("空白 type")
+        .contains("不得为空白");
     assertThat(
             reason(
                 APPLY_CASUALTIES,
                 world,
-                "{\"id\":\"u-1\",\"personnel\":0,\"equipment\":{\"坦克\":-9999}}"))
-        .as("★ 未知键即使数值「看起来越界」：报的是未知键（不存在的键没有当前值可比）")
-        .contains("未知装备键");
+                "{\"id\":\"u-1\",\"manpower\":[],\"equipment\":[{\"type\":\"坦克\",\"amount\":-9999}]}"))
+        .as("★ 未知 type 即使数值「看起来越界」：报的是未知（不存在的 type 没有当前值可比）")
+        .contains("未知装备类型");
   }
 
   /** ★ 判据（spec §五.2 载荷形状 + T5 的载荷口径）：形状坏一律拒，**不逃逸异常**。 */
@@ -1825,28 +1922,46 @@ class UnitCommandHandlersTest {
     assertThat(reason(APPLY_CASUALTIES, world, "[1,2,3]")).contains("必须是 JSON 对象");
     assertThat(reason(APPLY_CASUALTIES, world, "不是 JSON")).contains("不是合法 JSON");
     assertThat(reason(APPLY_CASUALTIES, world, "{}")).contains("id 必须是字符串");
-    assertThat(reason(APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"equipment\":{}}"))
-        .as("personnel 缺失")
-        .contains("personnel");
-    assertThat(reason(APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"personnel\":-1}"))
-        .as("equipment 缺失")
-        .contains("equipment");
-    assertThat(
-            reason(
-                APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"personnel\":\"-1\",\"equipment\":{}}"))
-        .as("personnel 非整数")
-        .contains("personnel");
-    assertThat(
-            reason(APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"personnel\":-1,\"equipment\":[]}"))
-        .as("equipment 非对象")
-        .contains("equipment");
+    assertThat(reason(APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"equipment\":[]}"))
+        .as("manpower 缺失")
+        .contains("字段 manpower 必须是");
     assertThat(
             reason(
                 APPLY_CASUALTIES,
                 world,
-                "{\"id\":\"u-1\",\"personnel\":-1,\"equipment\":{\"步枪\":\"x\"}}"))
-        .as("装备值非整数")
-        .contains("整数");
+                "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-1}]}"))
+        .as("equipment 缺失")
+        .contains("字段 equipment 必须是");
+    assertThat(reason(APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"manpower\":-1,\"equipment\":[]}"))
+        .as("manpower 非数组")
+        .contains("字段 manpower 必须是");
+    assertThat(
+            reason(APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"manpower\":[1],\"equipment\":[]}"))
+        .as("元素非对象")
+        .contains("元素必须是");
+    assertThat(
+            reason(
+                APPLY_CASUALTIES,
+                world,
+                "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":\"-1\"}],"
+                    + "\"equipment\":[]}"))
+        .as("amount 非整数")
+        .contains("字段 amount 必须是整数");
+    assertThat(
+            reason(
+                APPLY_CASUALTIES,
+                world,
+                "{\"id\":\"u-1\",\"manpower\":[{\"amount\":-1}],\"equipment\":[]}"))
+        .as("type 缺失")
+        .contains("字段 type 必须是");
+    assertThat(
+            reason(
+                APPLY_CASUALTIES,
+                world,
+                "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-1},"
+                    + "{\"type\":\"步兵\",\"amount\":-1}],\"equipment\":[]}"))
+        .as("同表重复 type")
+        .contains("不得有重复 type");
   }
 
   /**
@@ -1861,9 +1976,12 @@ class UnitCommandHandlersTest {
         applied(
             APPLY_CASUALTIES,
             worldAt(T5, base),
-            "{\"id\":\"u-1\",\"personnel\":-30,\"equipment\":{\"步枪\":-10}}");
+            "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-30}],"
+                + "\"equipment\":[{\"type\":\"步枪\",\"amount\":-10}]}");
 
-    assertThat(next.units().get(SpiFixture.U1).member()).as("前提：战损真的发生了").isEqualTo(70);
+    assertThat(next.units().get(SpiFixture.U1).manpower())
+        .as("前提：战损真的发生了")
+        .containsExactly(new CompositionEntry("步兵", 70));
     assertThat(next.commandChains()).as("★ T5-L4：链逐值活下来（旧写法会全清）").isEqualTo(base.commandChains());
   }
 }

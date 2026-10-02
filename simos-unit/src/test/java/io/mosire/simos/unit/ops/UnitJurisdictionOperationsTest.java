@@ -13,6 +13,8 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.unit.CompositionDelta;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.RelativeOffset;
@@ -60,7 +62,7 @@ import org.junit.jupiter.api.Test;
  * "jurisdiction"} 自己出现在差集里，红点**直接指名丢的是哪个字段**（本仓最贵的教训：{@code MapData} 加字段时 {@code MapDiff}
  * 没人提醒要跟上，四个字段静默漂移）。本文件的每个拷贝点夹具都要求**非空管辖**，否则用例对"丢字段"是恒真的。
  *
- * <p>★ 覆盖的生产写点：{@code UnitOperations} 的七个 {@code copy} 调用方（reparent / rename / setStrength /
+ * <p>★ 覆盖的生产写点：{@code UnitOperations} 的七个 {@code copy} 调用方（reparent / rename / setComposition /
  * applyCasualties / placeAt / planRoute / cancelRoute）、四个 {@code copyFormation} 调用方（attachSubtree /
  * detachUnit / setOffset / reparentSubtree；splitFormation 经 detachUnit）、{@code
  * withStatus}（setStatus）、{@code withRejoinTarget}（setRejoinTarget）、{@code
@@ -423,8 +425,8 @@ class UnitJurisdictionOperationsTest {
             "第一连",
             parentSeries(Optional.empty()),
             positionSeries(Optional.of(H11)),
-            100,
-            Map.of("步枪", 50),
+            List.of(new CompositionEntry("步兵", 100)),
+            List.of(new CompositionEntry("步枪", 50)),
             2,
             500,
             Optional.empty(),
@@ -458,13 +460,19 @@ class UnitJurisdictionOperationsTest {
   }
 
   @Test
-  void setStrengthPreservesJurisdiction() {
+  void setCompositionPreservesJurisdiction() {
     UnitState base = stateOf(unit(U1, Optional.empty(), Optional.of(H11), sampleJurisdiction()));
     assertCopied(
         base.units().get(U1),
-        UnitOperations.setStrength(base, U1, 70, Map.of("步枪", 40)).units().get(U1),
-        "setStrength",
-        "member",
+        UnitOperations.setComposition(
+                base,
+                U1,
+                List.of(new CompositionEntry("步兵", 70)),
+                List.of(new CompositionEntry("步枪", 40)))
+            .units()
+            .get(U1),
+        "setComposition",
+        "manpower",
         "equipment");
   }
 
@@ -473,9 +481,15 @@ class UnitJurisdictionOperationsTest {
     UnitState base = stateOf(unit(U1, Optional.empty(), Optional.of(H11), sampleJurisdiction()));
     assertCopied(
         base.units().get(U1),
-        UnitOperations.applyCasualties(base, U1, -30, Map.of("步枪", -10)).units().get(U1),
+        UnitOperations.applyCasualties(
+                base,
+                U1,
+                List.of(new CompositionDelta("步兵", -30)),
+                List.of(new CompositionDelta("步枪", -10)))
+            .units()
+            .get(U1),
         "applyCasualties",
-        "member",
+        "manpower",
         "equipment");
   }
 
@@ -752,8 +766,8 @@ class UnitJurisdictionOperationsTest {
         "单位 " + id.value(),
         parentSeries(parent),
         positionSeries(position),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         speed,
         500,
         Optional.empty(),
@@ -798,8 +812,8 @@ class UnitJurisdictionOperationsTest {
         "第一连",
         parentSeries(Optional.empty()),
         positionSeries(Optional.of(H11)),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty());
@@ -811,8 +825,8 @@ class UnitJurisdictionOperationsTest {
         "第一连",
         parentSeries(Optional.empty()),
         positionSeries(Optional.of(H11)),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty(),
@@ -828,8 +842,8 @@ class UnitJurisdictionOperationsTest {
         "第一连",
         parentSeries(Optional.empty()),
         positionSeries(Optional.of(H11)),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty(),
@@ -846,7 +860,7 @@ class UnitJurisdictionOperationsTest {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.member(),
+        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),

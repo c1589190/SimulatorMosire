@@ -13,6 +13,8 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.unit.ArmyFormation;
+import io.mosire.simos.unit.CompositionDelta;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.GovLevel;
 import io.mosire.simos.unit.Jurisdiction;
@@ -67,7 +69,7 @@ import org.junit.jupiter.api.Test;
  * <p>★ 本文件的每个拷贝点夹具都**同时**给非空 {@code module} 与非空 {@code jurisdiction}：丢编制（第 16 分量）或顺手清掉管辖 （第 15
  * 分量）都会当场红。**Gov 与 Army 两种编制都跑**——只测一种的话，"拷贝点只认 GovFormation"这种坏实现会活下来。
  *
- * <p>★ 覆盖的生产写点：{@code UnitOperations} 的 {@code copy} 调用方（reparent / rename / setStrength /
+ * <p>★ 覆盖的生产写点：{@code UnitOperations} 的 {@code copy} 调用方（reparent / rename / setComposition /
  * applyCasualties / placeAt / planRoute / cancelRoute）、{@code copyFormation} 调用方（attachSubtree /
  * detachUnit / splitFormation / setOffset / reparentSubtree）、{@code
  * withSpeed}（mergeFormation）、{@code withStatus}（setStatus）、{@code
@@ -134,15 +136,21 @@ class UnitModuleOperationsTest {
   }
 
   @Test
-  void setStrengthPreservesModule() {
+  void setCompositionPreservesModule() {
     for (UnitModule module : MODULES) {
       UnitState base = stateOf(unit(U1, module));
       assertCopied(
           module,
           base.units().get(U1),
-          UnitOperations.setStrength(base, U1, 70, Map.of("步枪", 40)).units().get(U1),
-          op("setStrength", module),
-          "member",
+          UnitOperations.setComposition(
+                  base,
+                  U1,
+                  List.of(new CompositionEntry("步兵", 70)),
+                  List.of(new CompositionEntry("步枪", 40)))
+              .units()
+              .get(U1),
+          op("setComposition", module),
+          "manpower",
           "equipment");
     }
   }
@@ -154,9 +162,15 @@ class UnitModuleOperationsTest {
       assertCopied(
           module,
           base.units().get(U1),
-          UnitOperations.applyCasualties(base, U1, -30, Map.of("步枪", -10)).units().get(U1),
+          UnitOperations.applyCasualties(
+                  base,
+                  U1,
+                  List.of(new CompositionDelta("步兵", -30)),
+                  List.of(new CompositionDelta("步枪", -10)))
+              .units()
+              .get(U1),
           op("applyCasualties", module),
-          "member",
+          "manpower",
           "equipment");
     }
   }
@@ -656,8 +670,8 @@ class UnitModuleOperationsTest {
         "单位 " + id.value(),
         parentSeries(parent),
         positionSeries(position),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         speed,
         500,
         Optional.empty(),
@@ -677,8 +691,8 @@ class UnitModuleOperationsTest {
         "第一连",
         parentSeries(Optional.empty()),
         positionSeries(Optional.of(H11)),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty(),
@@ -738,7 +752,7 @@ class UnitModuleOperationsTest {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.member(),
+        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),

@@ -268,8 +268,8 @@ class UnitModuleTest {
         .as("module 只出现一次——类型层没有第二个编制分量可以并挂")
         .isEqualTo(1);
     assertThat(
-            Unit.class.getRecordComponents()[Unit.class.getRecordComponents().length - 1].getType())
-        .as("module 是 Optional<UnitModule>（擦除后 Optional）")
+            Unit.class.getRecordComponents()[Unit.class.getRecordComponents().length - 2].getType())
+        .as("module 是 Optional<UnitModule>（擦除后 Optional；末位是 D1 的 stateDescriptions）")
         .isEqualTo(Optional.class);
   }
 
@@ -333,8 +333,8 @@ class UnitModuleTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        10,
-        Map.of("步枪", 5),
+        List.of(new CompositionEntry("步兵", 10)),
+        List.of(new CompositionEntry("步枪", 5)),
         2,
         500,
         Optional.empty());

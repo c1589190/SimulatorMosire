@@ -3,6 +3,7 @@ package io.mosire.simos.unit.facet;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -174,8 +175,8 @@ class UnitsHereFacetTest {
         name,
         new SegmentedSeries<>(List.of(new Segment<>(T0, parent)), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, position)), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty());

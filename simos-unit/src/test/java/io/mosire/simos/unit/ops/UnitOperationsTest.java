@@ -11,6 +11,8 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
+import io.mosire.simos.unit.CompositionDelta;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
@@ -75,8 +77,8 @@ class UnitOperationsTest {
         "单位 " + id,
         new SegmentedSeries<>(List.of(new Segment<>(T0, parent.map(UnitId::new))), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, position)), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         speed,
         1000,
         Optional.empty(),
@@ -166,18 +168,34 @@ class UnitOperationsTest {
   void renameChangesOnlyTheName() {
     UnitState state = UnitOperations.rename(twoUnits(), COMPANY, "一营指挥部");
     assertThat(state.units().get(COMPANY).name()).isEqualTo("一营指挥部");
-    assertThat(state.units().get(COMPANY).member()).isEqualTo(100);
+    assertThat(state.units().get(COMPANY).manpower())
+        .as("改名只动 name：人力表逐条带过")
+        .containsExactly(new CompositionEntry("步兵", 100));
+    assertThat(state.units().get(COMPANY).equipment())
+        .as("改名只动 name：装备表逐条带过")
+        .containsExactly(new CompositionEntry("步枪", 50));
     assertThatThrownBy(() -> UnitOperations.rename(twoUnits(), new UnitId("u-ghost"), "x"))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  void setStrengthReplacesMemberAndEquipment() {
-    UnitState state = UnitOperations.setStrength(twoUnits(), COMPANY, 80, Map.of("炮", 4));
-    assertThat(state.units().get(COMPANY).member()).isEqualTo(80);
-    assertThat(state.units().get(COMPANY).equipment()).containsOnlyKeys("炮");
+  void setCompositionReplacesManpowerAndEquipment() {
+    UnitState state =
+        UnitOperations.setComposition(
+            twoUnits(),
+            COMPANY,
+            List.of(new CompositionEntry("炮兵", 80)),
+            List.of(new CompositionEntry("炮", 4)));
+    assertThat(state.units().get(COMPANY).manpower())
+        .as("整表复写：旧人力表整体消失")
+        .containsExactly(new CompositionEntry("炮兵", 80));
+    assertThat(state.units().get(COMPANY).equipment())
+        .as("整表复写：旧装备表整体消失")
+        .containsExactly(new CompositionEntry("炮", 4));
     assertThatThrownBy(
-            () -> UnitOperations.setStrength(twoUnits(), new UnitId("u-ghost"), 1, Map.of()))
+            () ->
+                UnitOperations.setComposition(
+                    twoUnits(), new UnitId("u-ghost"), List.of(), List.of()))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -308,8 +326,8 @@ class UnitOperationsTest {
             new SegmentedSeries<>(
                 List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
             new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-            100,
-            Map.of(),
+            List.of(new CompositionEntry("步兵", 100)),
+            List.of(),
             speed,
             1000,
             Optional.empty(),
@@ -1293,7 +1311,7 @@ class UnitOperationsTest {
   }
 
   /**
-   * ★★ 判据（T5-U2，**最宽的那一处**）：私有助手 `withUnit` 是 rename / setStrength / placeAt / planRoute /
+   * ★★ 判据（T5-U2，**最宽的那一处**）：私有助手 `withUnit` 是 rename / setComposition / placeAt / planRoute /
    * setStatus / cancelRoute / setOffset 七条操作的公共返回路径——逐个跑一遍，链必须逐值活下来。
    *
    * <p>改回 `new UnitState(next)` 时七条**全部**会清链，本用例（以及命令边界上那条同型用例）当场红。
@@ -1306,8 +1324,14 @@ class UnitOperationsTest {
     assertThat(UnitOperations.rename(base, SUB, "改个名").commandChains())
         .as("rename")
         .isEqualTo(chains);
-    assertThat(UnitOperations.setStrength(base, SUB, 7, Map.of("炮", 1)).commandChains())
-        .as("setStrength")
+    assertThat(
+            UnitOperations.setComposition(
+                    base,
+                    SUB,
+                    List.of(new CompositionEntry("炮兵", 7)),
+                    List.of(new CompositionEntry("炮", 1)))
+                .commandChains())
+        .as("setComposition")
         .isEqualTo(chains);
     assertThat(UnitOperations.placeAt(base, SUB, Optional.of(H12), T10).commandChains())
         .as("placeAt")
@@ -1524,7 +1548,7 @@ class UnitOperationsTest {
     assertThat(base.units().get(ROOT).movement()).as("纯函数：旧状态不变").isEmpty();
   }
 
-  // ── 战损增量（T8 / spec §四 / E4 / N3 / P14） ──────────────────────
+  // ── 战损增量（T8 / spec §四 / E4 / N3 / P14；D3a 双轨有序条目） ──────
 
   /**
    * ★★ 判据（**m1 的靶子**）：Δ 是**增量**、落在当前值上——`100 + (−30) = 70`。
@@ -1534,33 +1558,56 @@ class UnitOperationsTest {
   @Test
   void applyCasualtiesSubtractsFromTheCurrentValueInsteadOfOverwriting() {
     UnitState base = twoUnits();
-    UnitState next = UnitOperations.applyCasualties(base, BRIGADE, -30, Map.of("步枪", -10));
+    UnitState next =
+        UnitOperations.applyCasualties(
+            base,
+            BRIGADE,
+            List.of(new CompositionDelta("步兵", -30)),
+            List.of(new CompositionDelta("步枪", -10)));
 
     Unit brigade = next.units().get(BRIGADE);
-    assertThat(brigade.member()).as("★ 100 + (−30) = 70（不是 30、不是覆写）").isEqualTo(70);
-    assertThat(brigade.equipment()).as("★ 装备同样是增量：50 + (−10) = 40").containsEntry("步枪", 40);
+    assertThat(brigade.manpower())
+        .as("★ 100 + (−30) = 70（不是 30、不是覆写）")
+        .containsExactly(new CompositionEntry("步兵", 70));
+    assertThat(brigade.equipment())
+        .as("★ 装备同样是增量：50 + (−10) = 40")
+        .containsExactly(new CompositionEntry("步枪", 40));
     assertThat(brigade.name()).as("其余字段原样带过").isEqualTo(base.units().get(BRIGADE).name());
     assertThat(brigade.position()).isEqualTo(base.units().get(BRIGADE).position());
     assertThat(next.units().get(COMPANY)).as("未受战损的单位一字不动").isEqualTo(base.units().get(COMPANY));
-    assertThat(base.units().get(BRIGADE).member()).as("纯函数：旧状态不变").isEqualTo(100);
+    assertThat(base.units().get(BRIGADE).manpower())
+        .as("纯函数：旧状态不变")
+        .containsExactly(new CompositionEntry("步兵", 100));
   }
 
   /**
-   * ★★ 判据（**m3 的靶子**）：装备是**双轨增量**——只扣**提及**的键，未提及的键**保持不变**。
+   * ★★ 判据（**m3 的靶子**）：两张表都是**增量**——只扣**提及**的 type，未提及的 type **逐条、逐位不变**。
    *
-   * <p>整表替换（`setStrength` 的语义）会把 `炮` 整条丢掉，本用例当场红。
+   * <p>整表替换（{@code setComposition} 的语义）会把 `骑兵` / `炮` 整条丢掉，本用例当场红。
    */
   @Test
-  void applyCasualtiesLeavesUnmentionedEquipmentKeysUntouched() {
-    // 两键基线由既有操作面造出：{步枪:50, 炮:4}（不手搓 Unit，免得绕过构造期校验）
-    UnitState base = UnitOperations.setStrength(twoUnits(), BRIGADE, 100, Map.of("步枪", 50, "炮", 4));
-    UnitState next = UnitOperations.applyCasualties(base, BRIGADE, 0, Map.of("步枪", -10));
+  void applyCasualtiesLeavesUnmentionedCompositionTypesUntouched() {
+    // 两键基线由既有操作面造出：人力 {步兵:100, 骑兵:30}、装备 {步枪:50, 炮:4}
+    UnitState base =
+        UnitOperations.setComposition(
+            twoUnits(),
+            BRIGADE,
+            List.of(new CompositionEntry("步兵", 100), new CompositionEntry("骑兵", 30)),
+            List.of(new CompositionEntry("步枪", 50), new CompositionEntry("炮", 4)));
+    UnitState next =
+        UnitOperations.applyCasualties(
+            base,
+            BRIGADE,
+            List.of(new CompositionDelta("骑兵", -5)),
+            List.of(new CompositionDelta("步枪", -10)));
 
     Unit brigade = next.units().get(BRIGADE);
-    assertThat(brigade.equipment()).as("★ 只扣提及键").containsEntry("步枪", 40);
-    assertThat(brigade.equipment()).as("★ 未提及键不变（整表替换会丢它）").containsEntry("炮", 4);
-    assertThat(brigade.equipment()).containsOnlyKeys("步枪", "炮");
-    assertThat(brigade.member()).as("人员 Δ=0 ⇒ 不动").isEqualTo(100);
+    assertThat(brigade.manpower())
+        .as("★ 只扣提及 type，未提及 type 逐条逐位不变（整表替换会丢 骑兵）")
+        .containsExactly(new CompositionEntry("步兵", 100), new CompositionEntry("骑兵", 25));
+    assertThat(brigade.equipment())
+        .as("★ 只扣提及 type，未提及 type 逐条逐位不变（整表替换会丢 炮）")
+        .containsExactly(new CompositionEntry("步枪", 40), new CompositionEntry("炮", 4));
   }
 
   /** ★★ 判据（**m2 的靶子**）：逐项上界 `|Δ| ≤ 当前值`；正 Δ 与越界都拒（战损只减员）。 */
@@ -1568,48 +1615,81 @@ class UnitOperationsTest {
   void applyCasualtiesRejectsPositiveDeltasAndOutOfRangeAmounts() {
     UnitState base = twoUnits();
 
-    assertThatThrownBy(() -> UnitOperations.applyCasualties(base, BRIGADE, 5, Map.of()))
+    assertThatThrownBy(
+            () ->
+                UnitOperations.applyCasualties(
+                    base, BRIGADE, List.of(new CompositionDelta("步兵", 5)), List.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("人员增量必须 ≤ 0");
-    assertThatThrownBy(() -> UnitOperations.applyCasualties(base, BRIGADE, -101, Map.of()))
+    assertThatThrownBy(
+            () ->
+                UnitOperations.applyCasualties(
+                    base, BRIGADE, List.of(new CompositionDelta("步兵", -101)), List.of()))
         .as("★ 100 + (−101) 越界 ⇒ 拒（删掉上界校验会让它通过）")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("人员战损超出当前值");
     assertThat(
-            UnitOperations.applyCasualties(base, BRIGADE, -100, Map.of())
+            UnitOperations.applyCasualties(
+                    base, BRIGADE, List.of(new CompositionDelta("步兵", -100)), List.of())
                 .units()
                 .get(BRIGADE)
-                .member())
-        .as("上界本身合法：恰好 −100 ⇒ 0")
-        .isZero();
-    assertThatThrownBy(() -> UnitOperations.applyCasualties(base, BRIGADE, 0, Map.of("步枪", 1)))
+                .manpower())
+        .as("上界本身合法：恰好 −100 ⇒ 值 0，条目保留（不是整条消失）")
+        .containsExactly(new CompositionEntry("步兵", 0));
+    assertThatThrownBy(
+            () ->
+                UnitOperations.applyCasualties(
+                    base, BRIGADE, List.of(), List.of(new CompositionDelta("步枪", 1))))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("装备增量必须 ≤ 0");
-    assertThatThrownBy(() -> UnitOperations.applyCasualties(base, BRIGADE, 0, Map.of("步枪", -51)))
+    assertThatThrownBy(
+            () ->
+                UnitOperations.applyCasualties(
+                    base, BRIGADE, List.of(), List.of(new CompositionDelta("步枪", -51))))
         .as("★ 装备逐项上界：50 + (−51) 越界 ⇒ 拒")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("装备战损超出当前值");
   }
 
   /**
-   * ★★ 判据（**m4 的靶子** / P14）：**提及**一个不存在的装备键 ⇒ 拒（**不视作 0**）。
+   * ★★ 判据（**m4 的靶子** / P14）：**提及**一个不存在的 type ⇒ 拒（**不视作 0**）。
    *
-   * <p>含 Δ=0 的形态：未知键即使"什么都不减"也是错误——它说明调用方对装备表的心智模型是错的。
+   * <p>含 Δ=0 与正 Δ 的形态：未知 type 即使"什么都不减"（甚至想加）也是错误——存在性判定在增量符号之前， 它说明调用方对表的 心智模型是错的。
    */
   @Test
-  void applyCasualtiesRejectsUnknownEquipmentKeys() {
+  void applyCasualtiesRejectsUnknownCompositionTypes() {
     UnitState base = twoUnits();
 
-    assertThatThrownBy(() -> UnitOperations.applyCasualties(base, BRIGADE, 0, Map.of("炮", -1)))
-        .as("★ 未知键 ⇒ 拒（视作 0 忽略会让它静默通过）")
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("未知装备键");
-    assertThatThrownBy(() -> UnitOperations.applyCasualties(base, BRIGADE, 0, Map.of("炮", 0)))
-        .as("未知键 + Δ=0 一样拒")
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("未知装备键");
     assertThatThrownBy(
-            () -> UnitOperations.applyCasualties(base, new UnitId("u-ghost"), -1, Map.of()))
+            () ->
+                UnitOperations.applyCasualties(
+                    base, BRIGADE, List.of(), List.of(new CompositionDelta("炮", -1))))
+        .as("★ 未知 type ⇒ 拒（视作 0 忽略会让它静默通过）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("未知装备类型");
+    assertThatThrownBy(
+            () ->
+                UnitOperations.applyCasualties(
+                    base, BRIGADE, List.of(), List.of(new CompositionDelta("炮", 0))))
+        .as("未知 type + Δ=0 一样拒")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("未知装备类型");
+    assertThatThrownBy(
+            () ->
+                UnitOperations.applyCasualties(
+                    base, BRIGADE, List.of(), List.of(new CompositionDelta("炮", 1))))
+        .as("未知 type 判定在符号之前：正 Δ 也报'未知'而不是'必须 ≤ 0'")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("未知装备类型");
+    assertThatThrownBy(
+            () ->
+                UnitOperations.applyCasualties(
+                    base, BRIGADE, List.of(new CompositionDelta("骑兵", -1)), List.of()))
+        .as("人力侧同样拒未知 type")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("未知人员类型");
+    assertThatThrownBy(
+            () -> UnitOperations.applyCasualties(base, new UnitId("u-ghost"), List.of(), List.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("单位不存在");
   }
@@ -1624,9 +1704,16 @@ class UnitOperationsTest {
   @Test
   void applyCasualtiesKeepsTheCommandChains() {
     UnitState base = chained();
-    UnitState next = UnitOperations.applyCasualties(base, ROOT, -30, Map.of("步枪", -10));
+    UnitState next =
+        UnitOperations.applyCasualties(
+            base,
+            ROOT,
+            List.of(new CompositionDelta("步兵", -30)),
+            List.of(new CompositionDelta("步枪", -10)));
 
-    assertThat(next.units().get(ROOT).member()).as("前提：战损真的发生了").isEqualTo(70);
+    assertThat(next.units().get(ROOT).manpower())
+        .as("前提：战损真的发生了")
+        .containsExactly(new CompositionEntry("步兵", 70));
     assertThat(next.commandChains()).as("★ T5-L4：链逐值活下来").isEqualTo(base.commandChains());
     assertThat(base.commandChains()).as("纯函数：旧状态不变").isEqualTo(chained().commandChains());
   }

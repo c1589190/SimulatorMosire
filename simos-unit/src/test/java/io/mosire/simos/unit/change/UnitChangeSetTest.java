@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -25,24 +26,24 @@ class UnitChangeSetTest {
   private static final HexCoord H22 = new HexCoord(2, 2);
 
   /** 两个根单位（无父 ⇒ 天然合法树；变更集不校验编制树，但夹具必须是合法的）。 */
-  private static Unit unit(String id, int member, HexCoord position) {
+  private static Unit unit(String id, int manpowerAmount, HexCoord position) {
     return new Unit(
         new UnitId(id),
         "单位 " + id,
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
-        member,
-        Map.of(),
+        List.of(new CompositionEntry("步兵", manpowerAmount)),
+        List.of(),
         2,
         1000,
         Optional.empty());
   }
 
-  private static Map<UnitId, Unit> twoUnits(int member1, int member2) {
+  private static Map<UnitId, Unit> twoUnits(int manpowerAmount1, int manpowerAmount2) {
     Map<UnitId, Unit> units = new LinkedHashMap<>();
-    units.put(new UnitId("u-1"), unit("u-1", member1, H11));
-    units.put(new UnitId("u-2"), unit("u-2", member2, H22));
+    units.put(new UnitId("u-1"), unit("u-1", manpowerAmount1, H11));
+    units.put(new UnitId("u-2"), unit("u-2", manpowerAmount2, H22));
     return units;
   }
 
@@ -53,7 +54,7 @@ class UnitChangeSetTest {
     assertThat(UnitChangeSet.between(base, base).units()).isInstanceOf(FieldDelta.Unchanged.class);
   }
 
-  /** ★ 只改一条记录（member）⇒ 非空。这一条就是 GSimulator"只改了一条边产生空 diff"的逆否形态。 */
+  /** ★ 只改一条记录（manpower 表的一条）⇒ 非空。这一条就是 GSimulator"只改了一条边产生空 diff"的逆否形态。 */
   @Test
   void aSingleChangedUnitIsNotAnEmptyChangeSet() {
     UnitState base = new UnitState(twoUnits(100, 200));
@@ -143,7 +144,8 @@ class UnitChangeSetTest {
     UnitState state = new UnitState(mutable);
     mutable.put(new UnitId("u-2"), unit("u-2", 200, H22));
     assertThat(state.units()).as("构造期已冻结").containsOnlyKeys(new UnitId("u-1"));
-    assertThat(state.units().get(new UnitId("u-1")).member()).isEqualTo(100);
+    assertThat(state.units().get(new UnitId("u-1")).manpower())
+        .containsExactly(new CompositionEntry("步兵", 100));
 
     mutable.put(new UnitId("u-1"), null);
     assertThatThrownBy(() -> new UnitState(mutable)).isInstanceOf(IllegalArgumentException.class);
