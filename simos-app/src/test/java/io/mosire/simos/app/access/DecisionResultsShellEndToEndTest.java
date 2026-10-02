@@ -47,6 +47,7 @@ import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -317,8 +318,8 @@ class DecisionResultsShellEndToEndTest {
             new SegmentedSeries<>(
                 List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
             new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-            100,
-            Map.of("步枪", 50),
+            List.of(new CompositionEntry("步兵", 100)),
+            List.of(new CompositionEntry("步枪", 50)),
             2,
             500,
             Optional.empty());

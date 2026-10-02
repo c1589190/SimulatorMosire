@@ -80,6 +80,7 @@ import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
@@ -2009,7 +2010,7 @@ class RealLlmGovScenarioTest {
       return 0L;
     }
     Unit unit = CompactThreeNationsWorld.unitOf(state).units().get(new UnitId(unitId));
-    return unit == null ? 0L : unit.member();
+    return unit == null ? 0L : unit.manpower().stream().mapToLong(CompositionEntry::amount).sum();
   }
 
   private static long govStaff(SimulationState state, UnitId govUnit, StaffRole role) {

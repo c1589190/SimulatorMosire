@@ -154,7 +154,7 @@ class ArmyScopeTest {
 
     assertThat(scopes.namespaces())
         .as("★ 三个命名空间都要**表过态**（T10 起 unit/social 也配了前缀：不表态 ⇒ 回落到工具缺省 ⇒ 静默全放行）")
-        .containsExactlyInAnyOrder("map", "social", "unit");
+        .containsExactlyInAnyOrder("map", "social", "unit", "actor");
     assertThat(scopes.declaredScope("map")).isEqualTo(ResourceScope.none());
     assertThat(scopes.declaredScope("unit")).isEqualTo(ResourceScope.none());
     assertThat(scopes.declaredScope("social")).isEqualTo(ResourceScope.none());

@@ -15,6 +15,7 @@ import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.GovLevel;
 import io.mosire.simos.unit.Jurisdiction;
@@ -241,8 +242,8 @@ class GovTerritoryTest {
             List.of(new Segment<>(ScopeFixtures.T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(
             List.of(new Segment<>(ScopeFixtures.T0, Optional.of(position))), List.of(), null),
-        100,
-        Map.of(),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(),
         2,
         500,
         Optional.empty(),

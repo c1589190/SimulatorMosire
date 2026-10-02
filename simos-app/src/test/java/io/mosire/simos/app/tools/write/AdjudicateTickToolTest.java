@@ -56,6 +56,7 @@ import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -526,7 +527,9 @@ class AdjudicateTickToolTest {
     Set<String> missing = new LinkedHashSet<>(tool.allowedCommandTypes());
     missing.removeAll(targets.keySet());
     assertThat(missing)
-        .as("★ 有意无目标的 10 条（语义对象不是资源命名空间；E1–E6 的 6 条 economy 命令同族）——缺口在册可查，不静默")
+        .as(
+            "★ 有意无目标的 10 条（语义对象不是资源命名空间；economy 账/人口迁移 6 条同族）——缺口在册可查，不静默。"
+                + " sd.* 整族被 DirectiveWhitelist 禁自指，不进本白名单 ⇒ 不在 missing 里。")
         .containsExactlyInAnyOrder(
             "unit.CreateCommandChain",
             "unit.UpdateCommandChain",
@@ -540,28 +543,47 @@ class AdjudicateTickToolTest {
             "economy.TransferAssetShare");
     assertThat(tool.allowedCommandTypes())
         .as(
-            "白名单 = unit 22（20 + 辖区阶段 5 的 SetJurisdiction/SetTaxRate）+ map 7 + social 4"
-                + " + economy 7 + actor 1（actor.Seed）⇒ 41，阶段 9–12 的 6 条 unit 命令再 +6 ⇒ 47")
-        .hasSize(47);
+            "白名单 = 注册面（85）− GmOnly（15）− sd 自指（21）= 49（旧 47：SetStrength→SetComposition 换名，"
+                + "D1 的 SetStateDescription 与 R3a 的 actor.RemitGovTreasury 各 +1）")
+        .hasSize(49);
 
-    // ② 其余 37 条白名单类型 + 5 条 GM-only = 42 条样本：逐条给真载荷、钉死输出路径。
-    //   ★ 5 条 GM-only 里 4 条（SwitchMode/GmAdjust/UnitBorrow/UnitRepay）有意返回空目标；
-    //     actor.AdjustAccounts 实现 CommandTargets 且返回**落格**目标（entries[] 的 q/r）。
+    // ② 其余 39 条白名单类型 + 10 条 GM-only（实现 CommandTargets 的）= 49 条样本：逐条给真载荷、钉死输出路径。
+    //   ★ 10 条 GM-only 里 4 条经济命令（SwitchMode/GmAdjust/UnitBorrow/UnitRepay）与三条区域清空
+    //     （actor/economy/social.ClearRegion）有意返回空目标；actor.AdjustAccounts 返回**落格**目标
+    //     （entries[] 的 q/r），actor.RemitGovTreasury 返回源/目标两格，unit.AdjustComposition 返回载荷点名的
+    //     unitId，map.RenameRegion 返回 mapId/region/<id>。
     Map<String, List<String>> samples = new LinkedHashMap<>();
     samples.put("unit.RenameUnit", List.of("{\"id\":\"u-1\",\"name\":\"x\"}", "u-1"));
     samples.put(
         "unit.CreateUnit",
         List.of(
-            "{\"id\":\"u-9\",\"name\":\"x\",\"position\":{\"q\":1,\"r\":1},\"member\":1,\"equipment\":{},\"speed\":1,\"mobilityPerMille\":500}",
+            "{\"id\":\"u-9\",\"name\":\"x\",\"position\":{\"q\":1,\"r\":1},"
+                + "\"manpower\":[{\"type\":\"步兵\",\"amount\":1}],\"equipment\":[],"
+                + "\"speed\":1,\"mobilityPerMille\":500}",
             "u-9"));
     samples.put("unit.CancelRoute", List.of("{\"id\":\"u-1\"}", "u-1"));
     samples.put("unit.DisbandUnit", List.of("{\"id\":\"u-1\"}", "u-1"));
     samples.put(
-        "unit.SetStrength", List.of("{\"id\":\"u-1\",\"member\":1,\"equipment\":{}}", "u-1"));
+        "unit.SetComposition",
+        List.of(
+            "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":1}]," + "\"equipment\":[]}",
+            "u-1"));
     samples.put("unit.SetStatus", List.of("{\"id\":\"u-1\",\"status\":\"RESTING\"}", "u-1"));
+    // ★ D1/D3a：状态描述链接与有符号直改都按载荷点名的 unitId 给目标（AdjustComposition 是 GM-only，
+    //   但同样实现 CommandTargets ⇒ 必须在 samples 里钉住输出路径）。
+    samples.put(
+        "unit.SetStateDescription",
+        List.of("{\"id\":\"u-1\",\"state\":\"交战\",\"address\":\"map:Map1\"}", "u-1"));
+    samples.put(
+        "unit.AdjustComposition",
+        List.of(
+            "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-1}]," + "\"equipment\":[]}",
+            "u-1"));
     samples.put(
         "unit.ApplyCasualties",
-        List.of("{\"id\":\"u-1\",\"personnel\":-1,\"equipment\":{}}", "u-1"));
+        List.of(
+            "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-1}]," + "\"equipment\":[]}",
+            "u-1"));
     samples.put("unit.DetachUnit", List.of("{\"id\":\"u-3\"}", "u-3"));
     samples.put("unit.SetFormationOffset", List.of("{\"id\":\"u-3\",\"dq\":1,\"dr\":0}", "u-3"));
     samples.put("unit.PlaceAt", List.of("{\"id\":\"u-1\",\"hex\":{\"q\":1,\"r\":2}}", "u-1"));
@@ -662,6 +684,21 @@ class AdjudicateTickToolTest {
             "{\"entries\":[{\"owner\":{\"kind\":\"UNIT\",\"id\":\"u-1\"},\"q\":1,\"r\":1,"
                 + "\"goods\":{\"grain\":1}}]}",
             "1_1"));
+    // ★ R3a：国库上缴按源/目标两格给目标（actor 路径 = `<q>_<r>`，不带 mapId）。
+    samples.put(
+        "actor.RemitGovTreasury",
+        List.of(
+            "{\"fromUnitId\":\"u-1\",\"fromQ\":1,\"fromR\":1,\"toUnitId\":\"u-3\","
+                + "\"toQ\":2,\"toR\":2,\"grain\":1}",
+            "1_1",
+            "2_2"));
+    // ★ P1b1/P1b2/R4：三条区域清空 + map.RenameRegion（都实现 CommandTargets）。
+    samples.put("actor.ClearRegion", List.of("{\"regionId\":\"701\"}"));
+    samples.put("economy.ClearRegion", List.of("{\"regionId\":\"701\"}"));
+    samples.put("social.ClearRegion", List.of("{\"regionId\":\"701\"}"));
+    samples.put(
+        "map.RenameRegion",
+        List.of("{\"regionId\":\"701\",\"name\":\"新名\"}", MAP_ID + "/region/701"));
     // E6b + 辖区阶段 7 的 4 条 GM-only：实现 CommandTargets 但**有意返回空目标**（不进入决策人令），
     // 故也在 samples 表面登记为"无路径"（空列表的另一半判据）。
     samples.put(
@@ -694,10 +731,8 @@ class AdjudicateTickToolTest {
           .containsExactlyInAnyOrderElementsOf(expected.subList(1, expected.size()));
     }
     assertThat(samples.keySet())
-        .as(
-            "42 条样本一条不漏（37 条白名单目标 + 5 条 GM-only：4 条有意空目标 + actor.AdjustAccounts 的落格目标；"
-                + "少一条 ⇒ 上面那条断言根本不会跑）")
-        .hasSize(42);
+        .as("49 条样本一条不漏（39 条白名单目标 + 10 条 GM-only；少一条 ⇒ 上面那条断言根本不会跑）")
+        .hasSize(49);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());
@@ -1220,8 +1255,8 @@ class AdjudicateTickToolTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty());

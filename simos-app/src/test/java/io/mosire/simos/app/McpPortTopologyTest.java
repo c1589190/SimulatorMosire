@@ -48,88 +48,95 @@ class McpPortTopologyTest {
           "simos.state.resolve",
           "simos.state.facets",
           "simos.timeline.branches",
-          // ★ 工具面 M4（2026-09-24）：五条新读口（三条 GM-only，见下）。
           "simos.timeline.revisions",
           "simos.map.overview",
           "simos.map.hex",
           "simos.map.region",
+          "simos.province.divide",
           "simos.map.path",
-          // ★ 工具面补齐（2026-09-25）：combats 四桶共享；map.block / sd.verdicts / gm.tool-usage /
-          // llm.providers GM-only。
           "simos.map.block",
-          "simos.sd.combats",
-          "simos.sd.verdicts",
-          "simos.gm.tool-usage",
-          "simos.llm.providers",
           "simos.unit.list",
           "simos.unit.get",
           "simos.social.population",
-          // ★ R2a（2026-09-25）：逐格经济读数（四桶共享）。
           "simos.economy.hex",
-          // ★ H0.6（2026-09-27）：逐格产权读数（GM-only）。
           "simos.economy.ownership",
+          "simos.map.render",
           "simos.sd.decision-makers",
           "simos.sd.decision-maker",
-          "simos.skill",
-          // ★ P3（2026-09-24）：把世界渲染成图。
-          "simos.map.render");
+          "simos.sd.directives",
+          "simos.sd.combats",
+          "simos.sd.diplomacy",
+          "simos.sd.diplomatic-events",
+          "simos.army.combats",
+          "simos.army.combat",
+          "simos.sd.verdicts",
+          "simos.gm.tool-usage",
+          "simos.gm.approvals",
+          "simos.llm.providers",
+          "simos.skill");
 
-  /**
-   * **非窄写**的写工具（7 条）：3 条通用写（自选命令类型）+ 第 3 波第 2 步的批裁决 {@code sd.AdjudicateTick}
-   * （命令类型由它要裁决的令决定，不是固定一条）+ GM 打回 {@code sd.RejectDirective}（同批两条既有命令 + 会话旁路写） + {@code
-   * sd.VoidAdjudication}（作废裁决）+ 世界初始化 {@code simos.worldgen.initialize}（一批 social 命令）——它们都不继承
-   * {@code AbstractNarrowWriteTool}。
-   */
+  /** **非窄写**的写工具（33 条）：3 条通用写 + D1–P7 的组合/编排写（都不继承 AbstractNarrowWriteTool）。 */
   private static final List<String> NON_NARROW_WRITES =
       List.of(
           "simos.command.submit",
           "simos.advance",
           "simos.fork",
-          "simos.worldgen.initialize",
+          "simos.sd.run-decision-makers",
           "sd.AdjudicateTick",
           "sd.RejectDirective",
           "sd.VoidAdjudication",
-          // ★ 辖区阶段 5–8（2026-09-30）：4 条 GM 组合写（批内固定命令类型组合，不继承
-          //   AbstractNarrowWriteTool ⇒ 与上面 7 条同族）。
-          "simos.unit.levyRegion",
-          "simos.unit.issueDebt",
-          "simos.unit.repayDebt",
-          "simos.unit.raiseUnit",
-          // ★ 阶段 9–12（2026-10-01）：3 条 GOV 组合写（建 GOV + 绑决策人 / 招募 / 离编 + 退休待遇）。
+          "simos.worldgen.initialize",
+          "simos.region.seed",
+          "simos.region.clearData",
+          "simos.region.clearStructures",
+          "simos.province.apply",
+          "simos.province.assignCities",
           "simos.gov.createOffice",
           "simos.gov.recruit",
           "simos.gov.dismiss",
           "simos.gov.selectExaminees",
           "simos.gov.dispatchTeam",
           "simos.gov.absorbUnit",
-          "simos.gov.retireStaff");
+          "simos.gov.retireStaff",
+          "simos.gov.remit",
+          "simos.gov.applyStaffing",
+          "simos.unit.levyRegion",
+          "simos.unit.issueDebt",
+          "simos.unit.repayDebt",
+          "simos.unit.raiseUnit",
+          "simos.unit.spawnArmy",
+          "simos.army.assignGov",
+          "simos.army.startCombat",
+          "simos.army.resolveCombat",
+          "simos.army.formatUnit",
+          "simos.economy.adjust",
+          "simos.gm.approve");
 
-  /** M1 的 7 条 map 窄写（进 GM 桶）：决策人口**不得**含其中任何一条。 */
+  /** M1 的 8 条 map 窄写（进 GM 桶）：决策人口**不得**含其中任何一条。 */
   private static final List<String> MAP_WRITES =
       List.of(
           "map.SetTerrain",
           "map.SetEdge",
           "map.CreateRegion",
           "map.UpdateRegion",
+          "map.RenameRegion",
           "map.DeleteRegion",
           "map.RandomizeRegion",
           "map.RegisterPathwayGroup");
 
-  /**
-   * M2 的 20 条 unit 窄写：**只在 GM 组**（= 唯一的 MCP 口）。★ 旧 D-1 裁定曾让它们也挂决策人桶，**2026-09-22 已撤销**（用户：
-   * 「决策人不能直接改地图等数据」）。★ 名单与 {@code SimosToolSource.addGmWrites} 的登记逐条同源。
-   */
+  /** unit 的 28 条窄写（进 GM 桶；D3a/D1 三条按用户给定工具名，不是命令类型）。 */
   private static final List<String> UNIT_WRITES =
       List.of(
           "unit.RenameUnit",
           "unit.CreateUnit",
           "unit.ReparentUnit",
-          "unit.SetStrength",
+          "simos.unit.set-composition",
           "unit.PlaceAt",
           "unit.PlanRoute",
           "unit.CancelRoute",
           "unit.DisbandUnit",
           "unit.SetStatus",
+          "simos.unit.set-state-description",
           "unit.AttachUnit",
           "unit.DetachUnit",
           "unit.ReparentSubtree",
@@ -141,48 +148,46 @@ class McpPortTopologyTest {
           "unit.CreateCommandChain",
           "unit.UpdateCommandChain",
           "unit.ApplyCasualties",
-          // ★ 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率两条窄写。
+          "simos.unit.adjust-composition",
           "unit.SetJurisdiction",
           "unit.SetTaxRate",
-          // ★ 阶段 9–12（2026-10-01）：编制 / 政策 / 上级四条窄写。
           "unit.SetGovFormation",
           "unit.SetArmyFormation",
           "unit.SetGovPolicy",
           "unit.SetGovSuperior");
 
-  /** ★ 辖区阶段 6a：actor 域唯一的窄写（账目净增量原语）。 */
-  private static final List<String> ACTOR_WRITES = List.of("actor.AdjustAccounts");
+  /** sd 的 21 条窄写（进 GM 桶；D5 两条外交工具名不是命令类型）。 */
+  private static final List<String> SD_NARROW_WRITES =
+      List.of(
+          "sd.IssueDirective",
+          "sd.SubmitVerdict",
+          "sd.SetDecisionMakerAccess",
+          "sd.ResetDecisionMakerConversation",
+          "sd.StartDecision",
+          "sd.RunDecision",
+          "sd.CreateNation",
+          "sd.CreateArmy",
+          "sd.SetArmyMasterGov",
+          "sd.CreateDecisionMaker",
+          "sd.PutInfo",
+          "simos.sd.set-diplomatic-relation",
+          "simos.sd.record-diplomatic-event",
+          "sd.CreateCombat",
+          "sd.AddCombatStage",
+          "sd.SetStageOutcomeTable",
+          "sd.CommitCombatOutcome",
+          "sd.RecordCasualties",
+          "sd.RegisterEffect",
+          "sd.CancelEffect",
+          "sd.SetDecisionMakerProvider");
 
-  /**
-   * GM 窄写（M1 起 11 条、M2 起 31 条、M3 起 43 条、T11C 起 44 条、会话重置起 45 条、E6b 起 46 条、辖区阶段 5–8 起 49 条、 **阶段
-   * 9–12 起 53 条**）：1 条 economy GM 调整 + 18 条 sd 窄写 + 7 条 map 窄写 + 26 条 unit 窄写 + 1 条 actor 窄写；
-   * **都不是**通用写。
-   */
+  /** 其余 3 条窄写：D1 的 army 记录 + social 城市 + actor 账。 */
+  private static final List<String> OTHER_NARROW_WRITES =
+      List.of("simos.army.recordCombat", "social.UpdateCity", "actor.AdjustAccounts");
+
+  /** GM 组的 60 条窄写：21 sd + 8 map + 28 unit + 3 其他；**都不是**通用写。 */
   private static final List<String> GM_NARROW_WRITES =
-      concat(
-          List.of(
-              "sd.IssueDirective",
-              "sd.SubmitVerdict",
-              "sd.SetDecisionMakerAccess",
-              "sd.ResetDecisionMakerConversation",
-              "sd.StartDecision",
-              "sd.RunDecision",
-              "sd.CreateNation",
-              "sd.CreateArmy",
-              "sd.CreateDecisionMaker",
-              "sd.PutInfo",
-              "sd.CreateCombat",
-              "sd.AddCombatStage",
-              "sd.SetStageOutcomeTable",
-              "sd.CommitCombatOutcome",
-              "sd.RecordCasualties",
-              "sd.RegisterEffect",
-              "sd.CancelEffect",
-              "sd.SetDecisionMakerProvider",
-              "simos.economy.adjust"),
-          MAP_WRITES,
-          UNIT_WRITES,
-          ACTOR_WRITES);
+      concat(SD_NARROW_WRITES, MAP_WRITES, UNIT_WRITES, OTHER_NARROW_WRITES);
 
   private static final Duration PORT_RELEASE_WAIT = Duration.ofSeconds(5);
 
@@ -202,7 +207,7 @@ class McpPortTopologyTest {
     }
   }
 
-  /** J1：**唯一的 MCP 口 = GM 组**（读 23 + 非窄写 18 + 窄写 53 = 94）。 */
+  /** J1：**唯一的 MCP 口 = GM 组**（读 30 + 非窄写 33 + 窄写 60 = 123）。 */
   @Test
   void theSingleMcpPortExposesTheGmToolFace() {
     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
@@ -210,7 +215,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（23 读 + 18 非窄写 + 53 窄写 = 94）")
+          .as("J1：唯一口 = GM 组（30 读 + 33 非窄写 + 60 窄写 = 123）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }

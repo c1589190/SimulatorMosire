@@ -24,6 +24,7 @@ import io.mosire.simos.sd.model.Nation;
 import io.mosire.simos.sd.spi.NationTag;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -124,8 +125,8 @@ public final class ScopeFixtures {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty());
@@ -145,8 +146,8 @@ public final class ScopeFixtures {
             List.of(new Segment<>(T0, Optional.of(new UnitId(parentId)))), List.of(), null),
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<HexCoord>empty())), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty());
@@ -161,8 +162,8 @@ public final class ScopeFixtures {
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<HexCoord>empty())), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty());
@@ -179,7 +180,7 @@ public final class ScopeFixtures {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.member(),
+        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),

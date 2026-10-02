@@ -41,6 +41,7 @@ import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -282,8 +283,8 @@ class ShellEndToEndTest {
 
     // 其余单位字段不因改名而变（证明重放整棵树、不是只搬了名字）。
     Unit afterAgent = unitOf(shell.coreSimos().replay(ref("main", 3)));
-    assertThat(afterAgent.member()).isEqualTo(100);
-    assertThat(afterAgent.equipment()).isEqualTo(Map.of("步枪", 50));
+    assertThat(afterAgent.manpower()).containsExactly(new CompositionEntry("步兵", 100));
+    assertThat(afterAgent.equipment()).containsExactly(new CompositionEntry("步枪", 50));
     assertThat(afterAgent.speed()).isEqualTo(2);
     assertThat(afterAgent.position().valueAt(T0)).contains(H11);
 
@@ -440,8 +441,8 @@ class ShellEndToEndTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty());

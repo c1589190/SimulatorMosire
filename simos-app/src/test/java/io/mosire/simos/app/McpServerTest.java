@@ -33,6 +33,7 @@ import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -97,78 +98,79 @@ class McpServerTest {
    * 条 GOV 组合写，以及第 3 波第 2 步的 sd.AdjudicateTick、2026-09-23 的 sd.RejectDirective、 2026-09-25 补的五条读口与
    * H0.6 的 simos.economy.ownership）。
    */
+  /**
+   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 30 读 + 93 写 = 123 条（spec §七.2 的 C6；含 D1–D5 的 unit/sd/army 新读写口与
+   * P1b1/P1b2/P3/R3a/P7a/P7b/P7c 的各项补齐）。
+   */
   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
       List.of(
           "simos.command.catalog",
           "simos.state.resolve",
           "simos.state.facets",
           "simos.timeline.branches",
-          // ★ 工具面 M4（2026-09-24）：五条新读口（含三条 GM-only）。
           "simos.timeline.revisions",
           "simos.map.overview",
           "simos.map.hex",
           "simos.map.region",
+          "simos.province.divide",
           "simos.map.path",
-          // ★ 工具面补齐（2026-09-25）：新增五条读口（combats 四桶共享；其余四条 GM-only）。
           "simos.map.block",
-          "simos.sd.combats",
-          "simos.sd.verdicts",
-          "simos.gm.tool-usage",
-          "simos.llm.providers",
           "simos.unit.list",
           "simos.unit.get",
           "simos.social.population",
-          // ★ R2a（2026-09-25）：逐格经济读数（四桶共享）。
           "simos.economy.hex",
-          // ★ H0.6（2026-09-27）：逐格产权读数（GM-only）。
           "simos.economy.ownership",
+          "simos.map.render",
           "simos.sd.decision-makers",
           "simos.sd.decision-maker",
+          "simos.sd.directives",
+          "simos.sd.combats",
+          "simos.sd.diplomacy",
+          "simos.sd.diplomatic-events",
+          "simos.army.combats",
+          "simos.army.combat",
+          "simos.sd.verdicts",
+          "simos.gm.tool-usage",
+          "simos.gm.approvals",
+          "simos.llm.providers",
           "simos.skill",
-          // ★ P3（2026-09-24）：把世界渲染成图。
-          "simos.map.render",
           "simos.command.submit",
           "simos.advance",
           "simos.fork",
-          "simos.worldgen.initialize",
-          "simos.economy.adjust",
           "sd.IssueDirective",
           "sd.SubmitVerdict",
           "sd.SetDecisionMakerAccess",
           "sd.ResetDecisionMakerConversation",
           "sd.StartDecision",
           "sd.RunDecision",
+          "simos.sd.run-decision-makers",
           "sd.AdjudicateTick",
-          "sd.RejectDirective",
           "sd.VoidAdjudication",
-          "sd.CreateNation",
-          "sd.CreateArmy",
-          "sd.CreateDecisionMaker",
-          "sd.PutInfo",
-          "sd.CreateCombat",
-          "sd.AddCombatStage",
-          "sd.SetStageOutcomeTable",
-          "sd.CommitCombatOutcome",
-          "sd.RecordCasualties",
-          "sd.RegisterEffect",
-          "sd.CancelEffect",
-          "sd.SetDecisionMakerProvider",
+          "sd.RejectDirective",
+          "simos.worldgen.initialize",
+          "simos.region.seed",
+          "simos.region.clearData",
+          "simos.region.clearStructures",
+          "simos.province.apply",
+          "simos.province.assignCities",
           "map.SetTerrain",
           "map.SetEdge",
           "map.CreateRegion",
           "map.UpdateRegion",
+          "map.RenameRegion",
           "map.DeleteRegion",
           "map.RandomizeRegion",
           "map.RegisterPathwayGroup",
           "unit.RenameUnit",
           "unit.CreateUnit",
           "unit.ReparentUnit",
-          "unit.SetStrength",
+          "simos.unit.set-composition",
           "unit.PlaceAt",
           "unit.PlanRoute",
           "unit.CancelRoute",
           "unit.DisbandUnit",
           "unit.SetStatus",
+          "simos.unit.set-state-description",
           "unit.AttachUnit",
           "unit.DetachUnit",
           "unit.ReparentSubtree",
@@ -180,26 +182,51 @@ class McpServerTest {
           "unit.CreateCommandChain",
           "unit.UpdateCommandChain",
           "unit.ApplyCasualties",
-          // ★ 辖区阶段 5–8（2026-09-30）：3 条窄写 + 4 条 GM 组合写。
+          "simos.unit.adjust-composition",
           "unit.SetJurisdiction",
           "unit.SetTaxRate",
-          // ★ 阶段 9–12（2026-10-01）：4 条 unit 编制/政策窄写 + 3 条 GOV 组合写。
+          "social.UpdateCity",
           "unit.SetGovFormation",
           "unit.SetArmyFormation",
           "unit.SetGovPolicy",
           "unit.SetGovSuperior",
-          "actor.AdjustAccounts",
-          "simos.unit.levyRegion",
-          "simos.unit.issueDebt",
-          "simos.unit.repayDebt",
-          "simos.unit.raiseUnit",
           "simos.gov.createOffice",
           "simos.gov.recruit",
           "simos.gov.dismiss",
           "simos.gov.selectExaminees",
           "simos.gov.dispatchTeam",
           "simos.gov.absorbUnit",
-          "simos.gov.retireStaff");
+          "simos.gov.retireStaff",
+          "actor.AdjustAccounts",
+          "simos.gov.remit",
+          "simos.gov.applyStaffing",
+          "simos.unit.levyRegion",
+          "simos.unit.issueDebt",
+          "simos.unit.repayDebt",
+          "simos.unit.raiseUnit",
+          "simos.unit.spawnArmy",
+          "simos.army.assignGov",
+          "sd.CreateNation",
+          "sd.CreateArmy",
+          "sd.SetArmyMasterGov",
+          "sd.CreateDecisionMaker",
+          "sd.PutInfo",
+          "simos.sd.set-diplomatic-relation",
+          "simos.sd.record-diplomatic-event",
+          "sd.CreateCombat",
+          "sd.AddCombatStage",
+          "sd.SetStageOutcomeTable",
+          "sd.CommitCombatOutcome",
+          "sd.RecordCasualties",
+          "sd.RegisterEffect",
+          "sd.CancelEffect",
+          "sd.SetDecisionMakerProvider",
+          "simos.army.recordCombat",
+          "simos.army.startCombat",
+          "simos.army.resolveCombat",
+          "simos.army.formatUnit",
+          "simos.economy.adjust",
+          "simos.gm.approve");
 
   private static final Duration WAIT = Duration.ofSeconds(10);
 
@@ -254,10 +281,7 @@ class McpServerTest {
     McpSchema.ListToolsResult tools = client.listTools();
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
-        .as(
-            "现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 90 条（C6：含通用写、sd 窄工具、7 条 map 窄写、26 条 unit 窄写与 1 条 economy 读口，"
-                + "以及第 3 波第 2 步的 sd.AdjudicateTick、2026-09-23 的 sd.RejectDirective 与"
-                + " simos.worldgen.initialize、2026-09-25 补的五条读口）")
+        .as("现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 123 条（30 读 + 93 写；D1–D5 后逐条同源）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 
@@ -310,7 +334,16 @@ class McpServerTest {
 
     assertThat(unit.get("id").asText()).isEqualTo(expected.id().value());
     assertThat(unit.get("name").asText()).isEqualTo(expected.name());
-    assertThat(unit.get("member").asInt()).isEqualTo(expected.member());
+    assertThat(unit.get("manpower")).hasSize(expected.manpower().size());
+    assertThat(unit.get("manpower").get(0).get("type").asText())
+        .isEqualTo(expected.manpower().get(0).type());
+    assertThat(unit.get("manpower").get(0).get("amount").asLong())
+        .isEqualTo(expected.manpower().get(0).amount());
+    assertThat(unit.get("equipment")).hasSize(expected.equipment().size());
+    assertThat(unit.get("equipment").get(0).get("type").asText())
+        .isEqualTo(expected.equipment().get(0).type());
+    assertThat(unit.get("equipment").get(0).get("amount").asLong())
+        .isEqualTo(expected.equipment().get(0).amount());
     assertThat(unit.get("position").get("q").asInt()).isEqualTo(expectedPosition.q());
     assertThat(unit.get("position").get("r").asInt()).isEqualTo(expectedPosition.r());
   }
@@ -474,8 +507,8 @@ class McpServerTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty());

@@ -222,8 +222,10 @@ class DecisionCallerFactoryTest {
 
       Set<String> whitelist =
           factory().callerFor(FRA, STATE, ScopeFixtures.MAP_ID).permissions().allowedTools();
+      // ★ T1c 生产缺陷 DEF-T1c-01 已修（DecisionCallerFactory.WHITELIST 补齐两条 army 读口）：
+      //   白名单与决策人桶**逐条精确相等**，不再有豁免。
       assertThat(whitelist)
-          .as("白名单 == 决策人桶的工具面（读 + 两条决策窄写）")
+          .as("白名单 == 决策人桶的工具面（逐条精确相等；桶与白名单两处同源）")
           .containsExactlyInAnyOrderElementsOf(decisionFace);
       assertThat(whitelist)
           .as("★ 判据 J3：GM 面上**除决策人桶之外的每一条**工具都不在白名单里（写工具一条都不给）")

@@ -70,7 +70,10 @@ test("unit-allows-route-and-editor-writes", () => {
   assert.equal(M.isWriteAllowed("unit", "unit.PlanRoute"), true);
   assert.equal(M.isWriteAllowed("unit", "unit.CancelRoute"), true);
   assert.equal(M.isWriteAllowed("unit", "unit.ReparentUnit"), true);
-  assert.equal(M.isWriteAllowed("unit", "unit.SetStrength"), true);
+  // ★ D3b（2026-10-02 / D3a 命令 rename）：整表复写命令是 unit.SetComposition；旧 unit.SetStrength
+  //   已按 D-011/R4 删除，白名单不得再放行它（放行 = 工作台发出一条已不存在的命令）。
+  assert.equal(M.isWriteAllowed("unit", "unit.SetComposition"), true);
+  assert.equal(M.isWriteAllowed("unit", "unit.SetStrength"), false);
   assert.equal(M.isWriteAllowed("unit", "unit.DisbandUnit"), true);
   assert.equal(M.isWriteAllowed("unit", "unit.CreateUnit"), true);
   assert.equal(
@@ -80,6 +83,17 @@ test("unit-allows-route-and-editor-writes", () => {
   );
   assert.equal(M.isWriteAllowed("unit", "unit.DetachUnit"), true, "「脱离编队」是工作台真写入口");
   assert.equal(M.isWriteAllowed("unit", "map.SetTerrain"), false);
+  // ★ 白名单逐条冻结（八条真写入口；名单加/减一条都在这里红）。
+  assert.deepEqual(M.allowedWrites("unit"), [
+    "unit.PlanRoute",
+    "unit.CancelRoute",
+    "unit.ReparentUnit",
+    "unit.SetComposition",
+    "unit.DisbandUnit",
+    "unit.CreateUnit",
+    "unit.AttachUnit",
+    "unit.DetachUnit",
+  ]);
 });
 
 test("decision-allows-exactly-start-decision", () => {

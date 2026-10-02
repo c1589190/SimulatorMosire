@@ -8,6 +8,7 @@ const assert = require("node:assert");
 
 const REQUIRED_FILES = [
   "block-codec.test.cjs",
+  "d3b-composition-army.test.cjs",
   "decision-docs.test.cjs",
   "decision-mode.test.cjs",
   "economy-panel.test.cjs",
@@ -86,7 +87,10 @@ const REQUIRED_FILES = [
 //     国家汇总/GOV 归属/class-first 读数/renderer 接线）与 f2-heatmap.test.cjs 的 10 条（指标词表/色标/图例/
 //     不可用层不填 0/数据组接线/api 缓存）；webui-fix2.test.cjs 的「右栏 view 模式 hidden」断言按 F1 语义改写
 //     （条数不变：常规模式承载世界总览）。
-const MIN_ASSERTIONS = 318;
+//   2026-10-02 D2/D3b 起 318 → 330：新增 d3b-composition-army.test.cjs 的 12 条（parseCompositionText 5 +
+//     compositionText 1 + armyCombatForRenderer 2 + cachedArmyCombats 端点 1 + Army 优先/sd 空回退 1 +
+//     工作台 parseCompositionText 接线 1 + index.html 新输入框 1）。
+const MIN_ASSERTIONS = 330;
 
 function testFiles() {
   return fs

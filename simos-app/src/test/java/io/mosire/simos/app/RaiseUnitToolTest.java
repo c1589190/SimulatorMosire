@@ -53,6 +53,7 @@ import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.Sex;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -197,11 +198,14 @@ class RaiseUnitToolTest {
     assertThat(view.get("regionId").asText()).isEqualTo(NATION.value());
     assertThat(view.get("at").get("q").asInt()).isEqualTo(1);
     assertThat(view.get("at").get("r").asInt()).isEqualTo(1);
-    assertThat(view.get("member").asInt()).isEqualTo(40);
+    assertThat(view.get("manpower").get(0).get("type").asText()).isEqualTo("人员");
+    assertThat(view.get("manpower").get(0).get("amount").asLong()).isEqualTo(40L);
     assertThat(view.get("speed").asInt()).isEqualTo(4);
     assertThat(view.get("mobilityPerMille").asInt()).isEqualTo(700);
-    assertThat(view.get("equipment").get("rifle").asInt()).isEqualTo(12);
-    assertThat(view.get("equipment").get("shield").asInt()).isEqualTo(3);
+    assertThat(view.get("equipment").get(0).get("type").asText()).isEqualTo("rifle");
+    assertThat(view.get("equipment").get(0).get("amount").asInt()).isEqualTo(12);
+    assertThat(view.get("equipment").get(1).get("type").asText()).isEqualTo("shield");
+    assertThat(view.get("equipment").get(1).get("amount").asInt()).isEqualTo(3);
     assertThat(view.get("grain").get("requested").asLong()).isEqualTo(120L);
     assertThat(view.get("grain").get("available").asLong()).isEqualTo(120L);
     assertThat(view.get("grain").get("sources")).hasSize(2);
@@ -211,16 +215,25 @@ class RaiseUnitToolTest {
     assertThat(view.get("money").get("available").asLong()).isEqualTo(130L);
     assertThat(view.get("money").get("sources").get(0).get("amount").asLong()).isEqualTo(80L);
     assertThat(view.get("money").get("sources").get(1).get("amount").asLong()).isEqualTo(20L);
-    assertThat(view.get("manpower").get("requested").asLong()).isEqualTo(40L);
-    assertThat(view.get("manpower").get("available").asLong()).isEqualTo(50L);
-    assertThat(view.get("manpower").get("sources").get(0).get("id").asText()).isEqualTo("g1");
-    assertThat(view.get("manpower").get("sources").get(0).get("before").asLong()).isEqualTo(30L);
-    assertThat(view.get("manpower").get("sources").get(0).get("taken").asLong()).isEqualTo(30L);
-    assertThat(view.get("manpower").get("sources").get(0).get("after").asLong()).isZero();
-    assertThat(view.get("manpower").get("sources").get(1).get("id").asText()).isEqualTo("g2");
-    assertThat(view.get("manpower").get("sources").get(1).get("before").asLong()).isEqualTo(20L);
-    assertThat(view.get("manpower").get("sources").get(1).get("taken").asLong()).isEqualTo(10L);
-    assertThat(view.get("manpower").get("sources").get(1).get("after").asLong()).isEqualTo(10L);
+    // ★ D3a：`manpower` 键已改成"新单位的目标表"（array）；抽取来源挪到 `manpowerAllocation`（避免同名字段
+    //   两个形状）——按新口径逐值断言。
+    assertThat(view.get("manpowerAllocation").get("requested").asLong()).isEqualTo(40L);
+    assertThat(view.get("manpowerAllocation").get("available").asLong()).isEqualTo(50L);
+    assertThat(view.get("manpowerAllocation").get("sources").get(0).get("id").asText())
+        .isEqualTo("g1");
+    assertThat(view.get("manpowerAllocation").get("sources").get(0).get("before").asLong())
+        .isEqualTo(30L);
+    assertThat(view.get("manpowerAllocation").get("sources").get(0).get("taken").asLong())
+        .isEqualTo(30L);
+    assertThat(view.get("manpowerAllocation").get("sources").get(0).get("after").asLong()).isZero();
+    assertThat(view.get("manpowerAllocation").get("sources").get(1).get("id").asText())
+        .isEqualTo("g2");
+    assertThat(view.get("manpowerAllocation").get("sources").get(1).get("before").asLong())
+        .isEqualTo(20L);
+    assertThat(view.get("manpowerAllocation").get("sources").get(1).get("taken").asLong())
+        .isEqualTo(10L);
+    assertThat(view.get("manpowerAllocation").get("sources").get(1).get("after").asLong())
+        .isEqualTo(10L);
     assertThat(commandTypes(view))
         .containsExactly(
             "unit.CreateUnit", "actor.AdjustAccounts", "social.SeedGroups", "sd.PutInfo");
@@ -266,8 +279,12 @@ class RaiseUnitToolTest {
     Unit created = unitState(after).units().get(NEW_UNIT);
     assertThat(created).as("新单位必须出现").isNotNull();
     assertThat(created.name()).isEqualTo("新军");
-    assertThat(created.member()).as("member == 实抽人力 == 请求人力").isEqualTo(40);
-    assertThat(created.equipment()).as("equipment 原样进新单位").isEqualTo(equipment());
+    assertThat(created.manpower())
+        .as("manpower == 实抽人力 == 请求人力")
+        .containsExactly(new CompositionEntry("人员", 40));
+    assertThat(created.equipment())
+        .as("equipment 原样进新单位（按 Map 迭代序转成有序表）")
+        .containsExactly(new CompositionEntry("rifle", 12), new CompositionEntry("shield", 3));
     assertThat(created.position().valueAt(T7)).as("position == at").contains(H11);
     assertThat(created.speed()).isEqualTo(4);
     assertThat(created.mobilityPerMille()).isEqualTo(700);
@@ -276,7 +293,7 @@ class RaiseUnitToolTest {
     assertThat(created.status()).isEqualTo(UnitStatus.MOVING);
 
     assertGrainAndMoneyConservation(actorsBefore, actorData(after));
-    assertManpowerConservationAndFidelity(socialBefore, socialData(after), created.member());
+    assertManpowerConservationAndFidelity(socialBefore, socialData(after), 40L);
     assertInfoRecord(after);
 
     // 失败方向也钉住：国库不在 H12、未涉及的家户/批次不得动。
@@ -315,7 +332,8 @@ class RaiseUnitToolTest {
     assertThat(head()).isEqualTo(2L);
 
     SimulationState after = stateAt(2L);
-    assertThat(unitState(after).units().get(NEW_UNIT).member()).isEqualTo(40);
+    assertThat(unitState(after).units().get(NEW_UNIT).manpower())
+        .containsExactly(new CompositionEntry("人员", 40));
     assertThat(actorData(after)).as("纯人力不得碰 actor 账").isEqualTo(actorsBefore);
     long taken = 0L;
     for (Map.Entry<PeopleLotId, PopulationGroup> entry : socialBefore.groups().entrySet()) {
@@ -672,7 +690,9 @@ class RaiseUnitToolTest {
     assertThat(value.get("regionId").asText()).isEqualTo(NATION.value());
     assertThat(value.get("at").get("q").asInt()).isEqualTo(1);
     assertThat(value.get("at").get("r").asInt()).isEqualTo(1);
-    assertThat(value.get("manpower").asLong()).isEqualTo(40L);
+    assertThat(value.get("manpower").get(0).get("type").asText()).isEqualTo("人员");
+    assertThat(value.get("manpower").get(0).get("amount").asLong()).isEqualTo(40L);
+    assertThat(value.get("manpowerRequested").asLong()).isEqualTo(40L);
     assertThat(value.get("grain").asLong()).isEqualTo(grain);
     assertThat(value.get("money").asLong()).isEqualTo(money);
     assertThat(value.get("sourceCounts").get("grain").asInt()).isEqualTo(grainSources);
@@ -808,8 +828,8 @@ class RaiseUnitToolTest {
             new SegmentedSeries<>(
                 List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
             new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-            100,
-            Map.of("步枪", 50),
+            List.of(new CompositionEntry("步兵", 100)),
+            List.of(new CompositionEntry("步枪", 50)),
             2,
             500,
             Optional.empty(),

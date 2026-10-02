@@ -76,6 +76,7 @@ import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.Sex;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
@@ -1214,8 +1215,8 @@ class RealLlmUnitDecisionLoopTest {
         "第一连",
         emptyParent(),
         fixedPosition(H11),
-        500,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 500)),
+        List.of(new CompositionEntry("步枪", 50)),
         4,
         500,
         Optional.empty(),
@@ -1234,8 +1235,8 @@ class RealLlmUnitDecisionLoopTest {
         "外围支队",
         emptyParent(),
         fixedPosition(H22),
-        200,
-        Map.of("步枪", 20),
+        List.of(new CompositionEntry("步兵", 200)),
+        List.of(new CompositionEntry("步枪", 20)),
         4,
         500,
         Optional.empty(),

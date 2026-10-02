@@ -14,6 +14,7 @@ import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.ArmyFormation;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.GovLevel;
 import io.mosire.simos.unit.Jurisdiction;
@@ -157,7 +158,7 @@ class GovScopeTest {
 
     assertThat(scopes.namespaces())
         .as("三命名空间都要表态（只配 map 会让 unit/social 回落工具缺省）")
-        .containsExactlyInAnyOrder("map", "social", "unit");
+        .containsExactlyInAnyOrder("map", "social", "unit", "actor");
     assertThat(scopes.declaredScope("map"))
         .as("不知道自己在哪 ⇒ map 显式 none()，不是看全图")
         .isEqualTo(ResourceScope.none());
@@ -187,7 +188,7 @@ class GovScopeTest {
       ResourceScopeMap scopes = scopesFor(govId, state);
       assertThat(scopes.namespaces())
           .as("%s：三命名空间都要表态", govId)
-          .containsExactlyInAnyOrder("map", "social", "unit");
+          .containsExactlyInAnyOrder("map", "social", "unit", "actor");
       assertThat(scopes.declaredScope("map"))
           .as("%s：map deny-all", govId)
           .isEqualTo(ResourceScope.none());
@@ -319,8 +320,8 @@ class GovScopeTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(ScopeFixtures.T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(ScopeFixtures.T0, position)), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty(),

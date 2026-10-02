@@ -13,6 +13,7 @@ import io.mosire.simos.sd.spi.RegisterEffectHandler;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.sd.time.SdTimeParticipant;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -93,7 +94,11 @@ class SdCommandDrainTest {
   void rejectedDrainLeavesTheIntermediateStateVisible() {
     CoreSimos core = start();
     core.submit(
-        registerEffect(1, "e1", 5, "{\"id\":\"u-1\",\"personnel\":-9999,\"equipment\":{}}"));
+        registerEffect(
+            1,
+            "e1",
+            5,
+            "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-9999}],\"equipment\":[]}"));
     // ★ 日制裁定：到 tick 5 = 连续 5 次单日推进（revision 2 → 7）。
     long atTick5 = advanceDays(2, 5);
     long beforeDrain = revisionRowCount();
@@ -141,7 +146,7 @@ class SdCommandDrainTest {
   }
 
   private static String boundPayload() {
-    return "{\"id\":\"u-1\",\"personnel\":-10,\"equipment\":{\"步枪\":-5}}";
+    return "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-10}],\"equipment\":[{\"type\":\"步枪\",\"amount\":-5}]}";
   }
 
   private static String jsonString(String text) {
@@ -196,8 +201,10 @@ class SdCommandDrainTest {
     }
   }
 
-  private static int unitMember(CoreSimos core, long revision) {
-    return unitState(core, revision).units().get(U1).member();
+  private static long unitMember(CoreSimos core, long revision) {
+    return unitState(core, revision).units().get(U1).manpower().stream()
+        .mapToLong(CompositionEntry::amount)
+        .sum();
   }
 
   private static String effectStatus(CoreSimos core, long revision, String effectId) {
@@ -238,8 +245,8 @@ class SdCommandDrainTest {
                 List.of(new Segment<>(T, Optional.of(new io.mosire.simos.map.hex.HexCoord(0, 0)))),
                 List.of(),
                 null),
-            100,
-            Map.of("步枪", 50),
+            List.of(new CompositionEntry("步兵", 100)),
+            List.of(new CompositionEntry("步枪", 50)),
             2,
             500,
             Optional.empty());

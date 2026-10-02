@@ -77,6 +77,7 @@ import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.Sex;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -456,7 +457,8 @@ class GuiApiTest {
 
     JsonNode detail = getJson("/api/unit/u-1");
     assertThat(detail.get("name").asText()).isEqualTo("第一连");
-    assertThat(detail.get("member").asInt()).isEqualTo(100);
+    assertThat(detail.get("manpower").get(0).get("type").asText()).isEqualTo("步兵");
+    assertThat(detail.get("manpower").get(0).get("amount").asLong()).isEqualTo(100L);
     // ★ B9：单位自身状态要真发出来（此前两处视图都没发；新建单位缺省 MOVING，见 Unit 的缺省）。
     assertThat(detail.get("status").asText()).isEqualTo("MOVING");
     assertThat(detail.get("position").get("q").asInt()).isEqualTo(1);
@@ -1346,8 +1348,8 @@ class GuiApiTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty());

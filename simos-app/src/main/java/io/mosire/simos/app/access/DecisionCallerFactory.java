@@ -12,6 +12,8 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.app.tools.read.ArmyCombatTool;
+import io.mosire.simos.app.tools.read.ArmyCombatsTool;
 import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.tools.read.DecisionDocsTool;
@@ -114,6 +116,10 @@ public final class DecisionCallerFactory {
           DecisionDocsTool.NAME,
           // ★ 工具面补齐（2026-09-25）：交战记录是**世界状态**（四桶共享）⇒ 决策人也该看得见。
           SdCombatsTool.NAME,
+          // ★ T1c（2026-10-02，修 DEF-T1c-01）：两条 army 交战读口同属"世界状态·四桶共享"——
+          //   决策人桶（SimosToolSource.readToolsFor）已含它们，白名单必须两处同源。
+          ArmyCombatsTool.NAME,
+          ArmyCombatTool.NAME,
           // ★ R2a（2026-09-25）：逐格经济读数是**世界状态**（四桶共享，同 combats 的判据）——决策人要看得见
           //   辖地的产出与库存；它走 ToolSupport.hexVisible 收窄视野，故不越界。
           EconomyHexTool.NAME,

@@ -32,10 +32,10 @@ class GmPermissionGroupTest {
 
   /**
    * GM 资源可达面的逐命名空间表态清单（与 {@code Shell#gmPermissionSet} 实际表态的命名空间同源，见 {@code ToolSupport} 的 manifest
-   * 常量）：map / social / unit / sd / economy（R2a 起）/ actor（S1 阶段 2 起）。
+   * 常量）：map / social / unit / sd / economy（R2a 起）/ actor（S1 阶段 2 起）/ army（D1 起）。
    */
   private static final List<String> GM_NAMESPACES =
-      List.of("map", "social", "unit", "sd", "economy", "actor");
+      List.of("map", "social", "unit", "sd", "economy", "actor", "army");
 
   @Test
   void gmCallerDeclaresEveryNamespaceInsteadOfLeavingTheResourceDimensionSilent() {

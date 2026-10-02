@@ -80,7 +80,7 @@ class NationScopeTest {
 
     assertThat(scopes.namespaces())
         .as("★ 三个命名空间都要**表过态**（T10 起 unit/social 也配了前缀：不表态 ⇒ 回落到工具缺省 ⇒ 静默全放行）")
-        .containsExactlyInAnyOrder("map", "social", "unit");
+        .containsExactlyInAnyOrder("map", "social", "unit", "actor");
     assertThat(scopes.declaredScope("map")).isEqualTo(ResourceScope.none());
     assertThat(scopes.declaredScope("map").allows("demo/region/701")).isFalse();
     assertThat(scopes.declaredScope("unit")).as("没圈地就没单位").isEqualTo(ResourceScope.none());

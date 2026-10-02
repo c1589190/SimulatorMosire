@@ -34,6 +34,7 @@ import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.unit.CommandChainId;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -326,19 +327,24 @@ class UnitExtensionEndToEndTest {
     assertThat(
             submit(
                 "unit.ApplyCasualties",
-                "{\"id\":\"u-1\",\"personnel\":-30,\"equipment\":{\"步枪\":-10}}",
+                "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-30}],\"equipment\":[{\"type\":\"步枪\",\"amount\":-10}]}",
                 1))
         .isEqualTo(new CommandResult.Committed(ref("main", 2)));
 
     Unit after = unitSlice(shell.coreSimos().replay(ref("main", 2))).units().get(U1);
-    assertThat(after.member()).as("★ 100 + (−30) = 70（把 Δ 当绝对值会得 30）").isEqualTo(70);
+    assertThat(after.manpower())
+        .as("★ 100 + (−30) = 70（把 Δ 当绝对值会得 30）")
+        .containsExactly(new CompositionEntry("步兵", 70));
     assertThat(after.equipment())
         .as("装备双轨：提及键扣 10、未提及键原样")
-        .containsExactlyInAnyOrderEntriesOf(Map.of("步枪", 40, "炮", 4));
+        .containsExactly(new CompositionEntry("步枪", 40), new CompositionEntry("炮", 4));
 
     Unit before = unitSlice(shell.coreSimos().replay(ref("main", 1))).units().get(U1);
-    assertThat(before.member()).as("★ 回退到战损前 ⇒ 100（历史若被覆写，这里读到 70）").isEqualTo(100);
-    assertThat(before.equipment()).containsExactlyInAnyOrderEntriesOf(Map.of("步枪", 50, "炮", 4));
+    assertThat(before.manpower())
+        .as("★ 回退到战损前 ⇒ 100（历史若被覆写，这里读到 70）")
+        .containsExactly(new CompositionEntry("步兵", 100));
+    assertThat(before.equipment())
+        .containsExactly(new CompositionEntry("步枪", 50), new CompositionEntry("炮", 4));
   }
 
   // ────────────────────────────── 助手与夹具 ──────────────────────────────
@@ -450,13 +456,16 @@ class UnitExtensionEndToEndTest {
   /** 创世单位（canonical 13 参）：MOVING、attached=true、无偏移、无回归意图；u-1 带"步枪/炮"两键（装备双轨判据的载体）。 */
   private static Unit genesisUnit(
       UnitId id, String name, HexCoord position, Optional<UnitId> parent) {
-    Map<String, Integer> equipment = id.equals(U1) ? Map.of("步枪", 50, "炮", 4) : Map.of("步枪", 50);
+    List<CompositionEntry> equipment =
+        id.equals(U1)
+            ? List.of(new CompositionEntry("步枪", 50), new CompositionEntry("炮", 4))
+            : List.of(new CompositionEntry("步枪", 50));
     return new Unit(
         id,
         name,
         new SegmentedSeries<>(List.of(new Segment<>(T0, parent)), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
-        100,
+        List.of(new CompositionEntry("步兵", 100)),
         equipment,
         2,
         500,
@@ -480,8 +489,8 @@ class UnitExtensionEndToEndTest {
         name,
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(parent))), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty(),

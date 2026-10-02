@@ -33,6 +33,7 @@ import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
@@ -110,10 +111,10 @@ class ShellSmokeTest {
     try (Shell shell = Shell.start(shellConfig())) {
       assertThat(shell.registeredModuleCount())
           .as(
-              "壳应注册 map/social/unit/sd/economy/actor/gov 七个 codec"
+              "壳应注册 map/social/unit/sd/economy/actor/gov/army 八个 codec"
                   + "（R2a 起第 5 个是 EconomyCodec，S1 阶段 2 起第 6 个是 ActorCodec，"
-                  + "阶段 10a 起第 7 个是 gov.codec.GovCodec）")
-          .isEqualTo(7);
+                  + "阶段 10a 起第 7 个是 gov.codec.GovCodec，D1 起第 8 个是 army.codec.ArmyCodec）")
+          .isEqualTo(8);
 
       CommandResult result =
           shell.coreSimos().submit(rename(1L, "{\"id\":\"u-1\",\"name\":\"改名后的第一连\"}"));
@@ -283,8 +284,8 @@ class ShellSmokeTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.of(movement));

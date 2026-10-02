@@ -11,6 +11,7 @@ import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.Sex;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.GovLevel;
 import io.mosire.simos.unit.Jurisdiction;
@@ -188,8 +189,8 @@ class NationSummaryTest {
             List.of(new Segment<>(ScopeFixtures.T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(
             List.of(new Segment<>(ScopeFixtures.T0, Optional.of(H11))), List.of(), null),
-        100,
-        Map.of(),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(),
         2,
         500,
         Optional.empty(),

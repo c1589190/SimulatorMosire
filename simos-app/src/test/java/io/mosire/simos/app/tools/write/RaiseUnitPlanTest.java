@@ -32,6 +32,7 @@ import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.Sex;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -154,7 +155,7 @@ class RaiseUnitPlanTest {
   // ── 逐条拒：数值与装备 ───────────────────────────────────────────────────────────────
 
   @Test
-  void rejectsManpowerBelowOneAndAboveInt() {
+  void rejectsManpowerBelowOneAndAboveAvailable() {
     assertThatThrownBy(() -> plan(0L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("manpower 必须 ≥ 1: 0");
@@ -162,12 +163,13 @@ class RaiseUnitPlanTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("manpower 必须 ≥ 1: -1");
 
-    long aboveInt = (long) Integer.MAX_VALUE + 1L;
+    // ★ D3a：member:int 上限已删除；越界现在只有"来源总量不足"这一种语义（long 量纲）。
+    long aboveAvailable = (long) Integer.MAX_VALUE + 1L;
     assertThatThrownBy(
-            () -> plan("u-new", "r-nation", H11, aboveInt, 0L, 0L, 4, 700, equipment(), null))
+            () -> plan("u-new", "r-nation", H11, aboveAvailable, 0L, 0L, 4, 700, equipment(), null))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("超过 unit.CreateUnit 的 member")
-        .hasMessageContaining(String.valueOf(aboveInt));
+        .hasMessageContaining("人力总量不足")
+        .hasMessageContaining("requested=" + aboveAvailable);
   }
 
   @Test
@@ -254,10 +256,11 @@ class RaiseUnitPlanTest {
     assertThat(plan.regionId()).isEqualTo("r-nation");
     assertThat(plan.at()).isEqualTo(H11);
     assertThat(plan.tick()).as("tick 取状态时刻（INFO 与批次年龄现算都用它）").isEqualTo(7L);
-    assertThat(plan.member()).as("member = 实抽人力（不是请求值再抄一份）").isEqualTo(40);
+    assertThat(plan.manpowerCount()).as("manpowerCount = 实抽人力（不是请求值再抄一份）").isEqualTo(40);
     assertThat(plan.speed()).isEqualTo(4);
     assertThat(plan.mobilityPerMille()).isEqualTo(700);
-    assertThat(plan.equipment()).isEqualTo(equipment());
+    assertThat(plan.equipment())
+        .containsExactly(new CompositionEntry("rifle", 12), new CompositionEntry("shield", 3));
     assertThat(plan.parent()).isEmpty();
     assertThat(plan.commandTypes())
         .containsExactly(
@@ -300,9 +303,12 @@ class RaiseUnitPlanTest {
     assertThat(create.get("name").asText()).isEqualTo("新军");
     assertThat(create.get("position").get("q").asInt()).isEqualTo(1);
     assertThat(create.get("position").get("r").asInt()).isEqualTo(1);
-    assertThat(create.get("member").asInt()).isEqualTo(40);
-    assertThat(create.get("equipment").get("rifle").asInt()).isEqualTo(12);
-    assertThat(create.get("equipment").get("shield").asInt()).isEqualTo(3);
+    assertThat(create.get("manpower").get(0).get("type").asText()).isEqualTo("人员");
+    assertThat(create.get("manpower").get(0).get("amount").asLong()).isEqualTo(40L);
+    assertThat(create.get("equipment").get(0).get("type").asText()).isEqualTo("rifle");
+    assertThat(create.get("equipment").get(0).get("amount").asInt()).isEqualTo(12);
+    assertThat(create.get("equipment").get(1).get("type").asText()).isEqualTo("shield");
+    assertThat(create.get("equipment").get(1).get("amount").asInt()).isEqualTo(3);
     assertThat(create.get("speed").asInt()).isEqualTo(4);
     assertThat(create.get("mobilityPerMille").asInt()).isEqualTo(700);
     assertThat(create.has("parent")).as("无 parent ⇒ 载荷不得出现该键").isFalse();
@@ -327,7 +333,9 @@ class RaiseUnitPlanTest {
     assertThat(info.get("regionId").asText()).isEqualTo("r-nation");
     assertThat(info.get("at").get("q").asInt()).isEqualTo(1);
     assertThat(info.get("at").get("r").asInt()).isEqualTo(1);
-    assertThat(info.get("manpower").asLong()).isEqualTo(40L);
+    assertThat(info.get("manpower").get(0).get("type").asText()).isEqualTo("人员");
+    assertThat(info.get("manpower").get(0).get("amount").asLong()).isEqualTo(40L);
+    assertThat(info.get("manpowerRequested").asLong()).isEqualTo(40L);
     assertThat(info.get("grain").asLong()).isEqualTo(120L);
     assertThat(info.get("money").asLong()).isEqualTo(100L);
     assertThat(info.get("sourceCounts").get("grain").asInt()).isEqualTo(2);
@@ -380,7 +388,7 @@ class RaiseUnitPlanTest {
     assertThat(second.regionId()).isEqualTo(first.regionId());
     assertThat(second.at()).isEqualTo(first.at());
     assertThat(second.tick()).isEqualTo(first.tick());
-    assertThat(second.member()).isEqualTo(first.member());
+    assertThat(second.manpowerCount()).isEqualTo(first.manpowerCount());
     assertThat(second.grain()).isEqualTo(first.grain());
     assertThat(second.money()).isEqualTo(first.money());
     assertThat(second.manpower()).isEqualTo(first.manpower());
@@ -542,8 +550,8 @@ class RaiseUnitPlanTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(at))), List.of(), null),
-        100,
-        Map.of("步枪", 50),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty(),

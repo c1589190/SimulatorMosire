@@ -66,7 +66,11 @@ const JS_DIR = __dirname;
 //   2026-10-01 F1/F2 收尾起 297 → 318：新增 f1-map-first.test.cjs（图层/城市 LOD/搜索/国家汇总/GOV 归属/
 //     class-first 读数/renderer 接线）与 f2-heatmap.test.cjs（指标词表/色标/图例/不可用层不填 0/数据组接线/
 //     api 缓存）；webui-fix2.test.cjs 的过期右栏断言按 F1 语义改写，条数不变。
-const MIN_TESTS = 318;
+//   2026-10-02 D2/D3b 起 318 → 330：新增 d3b-composition-army.test.cjs 的 12 条（parseCompositionText 5 +
+//     compositionText 1 + armyCombatForRenderer 2 + cachedArmyCombats 端点 1 + Army 优先/sd 空回退 1 +
+//     工作台 parseCompositionText 接线 1 + index.html 新输入框 1）。与 gate-contract.test.cjs 的
+//     MIN_ASSERTIONS 同值——改一处必须改两处。
+const MIN_TESTS = 330;
 
 function discoverTests() {
   return fs

@@ -10,6 +10,7 @@ import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -123,8 +124,8 @@ final class RenderFixtures {
                 null),
             new SegmentedSeries<>(
                 List.of(new Segment<>(T0, Optional.of(SOUTH_EAST))), List.of(), null),
-            300,
-            Map.of(),
+            List.of(new CompositionEntry("步兵", 300)),
+            List.of(),
             2,
             1000,
             Optional.empty());
@@ -143,8 +144,8 @@ final class RenderFixtures {
                 null),
             new SegmentedSeries<>(
                 List.of(new Segment<>(T0, Optional.of(new HexCoord(9, 9)))), List.of(), null),
-            100,
-            Map.of(),
+            List.of(new CompositionEntry("步兵", 100)),
+            List.of(),
             2,
             1000,
             Optional.empty());
