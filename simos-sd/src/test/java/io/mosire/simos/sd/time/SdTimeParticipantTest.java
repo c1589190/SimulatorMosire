@@ -233,7 +233,9 @@ class SdTimeParticipantTest {
             EffectKind.SCHEDULED,
             new Trigger.AtOrAfterTick(5),
             new Action.EnqueueUnitCommand(
-                "unit.ApplyCasualties", "{\"id\":\"u-1\",\"personnel\":-1,\"equipment\":{}}"),
+                "unit.ApplyCasualties",
+                "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-1}],"
+                    + "\"equipment\":[]}"),
             status,
             0);
     return SdState.empty().withEffects(Map.of(E1, effect));

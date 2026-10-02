@@ -8,6 +8,7 @@ import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStageId;
 import io.mosire.simos.sd.id.CombatStateId;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.id.DiplomaticEventId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
@@ -25,6 +26,9 @@ import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.CombatState;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.sd.model.DiplomaticEvent;
+import io.mosire.simos.sd.model.DiplomaticRelation;
+import io.mosire.simos.sd.model.DiplomaticRelationKey;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.model.Effect;
@@ -50,7 +54,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-/** A3 的共享测试夹具：一份**十个组件全非空**的合法 {@link SdState}，以及逐组件变体。 */
+/** A3 的共享测试夹具：一份**十二个组件全非空**的合法 {@link SdState}，以及逐组件变体。 */
 public final class SdFixtures {
 
   public static final SimosTimestamp T0 = SimosTimestamp.of(0);
@@ -79,6 +83,10 @@ public final class SdFixtures {
   public static final VerdictId V2 = new VerdictId("v2");
   public static final LossRecordId L1 = new LossRecordId("l1");
   public static final LossRecordId L2 = new LossRecordId("l2");
+  public static final DiplomaticRelationKey DR12 = new DiplomaticRelationKey(N1, N2);
+  public static final DiplomaticRelationKey DR21 = new DiplomaticRelationKey(N2, N1);
+  public static final DiplomaticEventId DE1 = new DiplomaticEventId("de1");
+  public static final DiplomaticEventId DE2 = new DiplomaticEventId("de2");
   public static final UnitId U1 = new UnitId("u-1");
   public static final RegionId R1 = new RegionId("r1");
   public static final RegionId R2 = new RegionId("r2");
@@ -91,7 +99,7 @@ public final class SdFixtures {
     return SdState.empty();
   }
 
-  /** 十个组件全非空的合法状态。 */
+  /** 十二个组件全非空的合法状态。 */
   public static SdState full() {
     return new SdState(
         Map.of(N1, nation(N1, R1), N2, nation(N2, R2)),
@@ -107,7 +115,17 @@ public final class SdFixtures {
         Map.of(E1, effect(E1), E2, effect(E2)),
         Map.of(V1, verdict(V1), V2, verdict(V2)),
         Map.of(L1, lossRecord(L1), L2, lossRecord(L2)),
-        Map.of(INFO_ADDR.canonical(), List.of(infoEntry("k1"))));
+        Map.of(INFO_ADDR.canonical(), List.of(infoEntry("k1"))),
+        Map.of(
+            DR12,
+            new DiplomaticRelation(Optional.of("称臣纳贡"), "N1 向 N2 称臣纳贡（夹具）", 7L),
+            DR21,
+            new DiplomaticRelation(Optional.empty(), "N2 与 N1 互市（夹具）", 9L)),
+        Map.of(
+            DE1,
+            new DiplomaticEvent(DE1, 7L, List.of(N1, N2), "N1 与 N2 谈判（夹具）"),
+            DE2,
+            new DiplomaticEvent(DE2, 9L, List.of(N2, N1), "N2 与 N1 联动裁决（夹具）")));
   }
 
   /** 在 {@code base} 上只让指定组件多出一个条目；其余组件原样。 */
@@ -164,6 +182,21 @@ public final class SdFixtures {
         Map<String, List<SdInfoEntry>> next = new LinkedHashMap<>(base.info());
         next.put("unit:u-1", List.of(infoEntry("k2")));
         yield base.withInfo(next);
+      }
+      case "diplomaticRelations" -> {
+        Map<DiplomaticRelationKey, DiplomaticRelation> next =
+            new LinkedHashMap<>(base.diplomaticRelations());
+        next.put(
+            new DiplomaticRelationKey(N1, new NationId("n-extra")),
+            new DiplomaticRelation(Optional.of("互市"), "新增外交边（夹具）", 11L));
+        yield base.withDiplomaticRelations(next);
+      }
+      case "diplomaticEvents" -> {
+        Map<DiplomaticEventId, DiplomaticEvent> next =
+            new LinkedHashMap<>(base.diplomaticEvents());
+        DiplomaticEventId extra = new DiplomaticEventId("de-extra");
+        next.put(extra, new DiplomaticEvent(extra, 11L, List.of(N1, N2), "追加外交事件（夹具）"));
+        yield base.withDiplomaticEvents(next);
       }
       default -> throw new IllegalStateException("未登记的组件: " + component);
     };

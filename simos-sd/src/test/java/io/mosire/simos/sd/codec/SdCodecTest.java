@@ -10,6 +10,9 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.id.SdInfoId;
+import io.mosire.simos.sd.model.DiplomaticEvent;
+import io.mosire.simos.sd.model.DiplomaticRelation;
+import io.mosire.simos.sd.model.DiplomaticRelationKey;
 import io.mosire.simos.sd.model.Nation;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
@@ -46,6 +49,38 @@ class SdCodecTest {
             SdFixtures.full());
     SdSnapshot back = (SdSnapshot) CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshot));
     assertThat(back).isEqualTo(snapshot);
+  }
+
+  /**
+   * ★ D5 / R6 新增的两个组件经**真 JSON 快照往返**逐字段不丢：外交关系边（复合键的方向 + kind/text/updatedTick）
+   * 与外交事件（id/tick/participants/text）。
+   *
+   * <p>★ 判别力：{@code SdFixtures.full()} 的两张新表都非空，且这里把每个字段单独钉住——编码/解码任何一侧丢组件或丢字段都会红
+   * （只判整快照 equals 也能红，但逐字段能指出丢的是哪一个）。
+   */
+  @Test
+  void theTwoNewDiplomaticComponentsSurviveTheJsonSnapshotRoundTripFieldByField() {
+    SdSnapshot snapshot = snapshot(SdFixtures.full());
+    SdSnapshot back = (SdSnapshot) CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshot));
+
+    assertThat(back).as("整快照 JSON 往返").isEqualTo(snapshot);
+
+    DiplomaticRelationKey key = SdFixtures.DR12;
+    DiplomaticRelation relation = back.state().diplomaticRelations().get(key);
+    assertThat(relation).as("N1→N2 关系边在 JSON 往返后仍在").isNotNull();
+    assertThat(relation.kind()).as("关系边 kind 经线格式往返").contains("称臣纳贡");
+    assertThat(relation.text()).as("关系边 text 经线格式往返").isEqualTo("N1 向 N2 称臣纳贡（夹具）");
+    assertThat(relation.updatedTick()).as("关系边 updatedTick 经线格式往返").isEqualTo(7L);
+    assertThat(back.state().diplomaticRelations().get(SdFixtures.DR21).kind())
+        .as("反向边 N2→N1 经线格式往返仍是另一个键")
+        .isEmpty();
+
+    DiplomaticEvent event = back.state().diplomaticEvents().get(SdFixtures.DE1);
+    assertThat(event).as("DE1 外交事件在 JSON 往返后仍在").isNotNull();
+    assertThat(event.id()).as("事件 id 经线格式往返").isEqualTo(SdFixtures.DE1);
+    assertThat(event.tick()).as("事件 tick 经线格式往返").isEqualTo(7L);
+    assertThat(event.participants()).as("事件 participants 经线格式往返（保序）").containsExactly(SdFixtures.N1, SdFixtures.N2);
+    assertThat(event.text()).as("事件 text 经线格式往返").isEqualTo("N1 与 N2 谈判（夹具）");
   }
 
   /**
@@ -158,6 +193,70 @@ class SdCodecTest {
     assertThat(entry.id())
         .as("★ 缺省 id = 内容派生 legacy:<key>@<at>")
         .isEqualTo(new SdInfoId("legacy:k1@1"));
+  }
+
+  /**
+   * ★★ **老档兼容（D5）**：没有 {@code diplomaticRelations} / {@code diplomaticEvents} 两个键的快照字节，必须读成**空表**，
+   * 而不是整个世界打不开。其余十个组件一个不少。
+   *
+   * <p>★ 做法与既有的老档用例同源：在**真字节**上删键（先自证两个键确实写进线格式，否则本用例恒真）。
+   */
+  @Test
+  void aLegacySnapshotWithoutTheDiplomaticKeysReadsThemAsEmpty() throws Exception {
+    SdSnapshot snapshot = snapshot(SdFixtures.full());
+    String json = CODEC.encodeSnapshot(snapshot);
+    ObjectMapper treeMapper = SimosObjectMapper.create();
+    JsonNode root = treeMapper.readTree(json);
+    ObjectNode state = (ObjectNode) root.get("state");
+    assertThat(state.has("diplomaticRelations")).as("★ 先证明 diplomaticRelations 键真的写进字节").isTrue();
+    assertThat(state.has("diplomaticEvents")).as("★ 先证明 diplomaticEvents 键真的写进字节").isTrue();
+    state.remove("diplomaticRelations");
+    state.remove("diplomaticEvents");
+
+    SdSnapshot back = (SdSnapshot) CODEC.decodeSnapshot(treeMapper.writeValueAsString(root));
+
+    assertThat(back.state().diplomaticRelations())
+        .as("★ 缺键 ⇒ 空表（不是 null、不是抛）")
+        .isEmpty();
+    assertThat(back.state().diplomaticEvents()).as("★ 缺键 ⇒ 空表").isEmpty();
+    assertThat(back.state())
+        .as("其余十个组件逐字不变")
+        .isEqualTo(
+            SdFixtures.full()
+                .withDiplomaticRelations(Map.of())
+                .withDiplomaticEvents(Map.of()));
+  }
+
+  /**
+   * ★★ **老档兼容（D5）**：没有两个外交键的**变更集**字节，必须读成 {@link FieldDelta.Unchanged}（旧档没提该组件 = 没动它），
+   * 而不是 null/NPE；把它应用到 base 上不得清空已有外交表。
+   *
+   * <p>★ 同样先自证两个键真的写进字节。
+   */
+  @Test
+  void aLegacyChangeSetWithoutTheDiplomaticKeysReadsThemAsUnchanged() throws Exception {
+    SdState full = SdFixtures.full();
+    SdChangeSet changeSet = SdChangeSet.between(SdFixtures.empty(), full);
+    String json = CODEC.encodeChangeSet(changeSet);
+    ObjectMapper treeMapper = SimosObjectMapper.create();
+    ObjectNode root = (ObjectNode) treeMapper.readTree(json);
+    assertThat(root.has("diplomaticRelations")).as("★ 先证明 diplomaticRelations 键真的写进字节").isTrue();
+    assertThat(root.has("diplomaticEvents")).as("★ 先证明 diplomaticEvents 键真的写进字节").isTrue();
+    root.remove("diplomaticRelations");
+    root.remove("diplomaticEvents");
+
+    SdChangeSet legacy =
+        (SdChangeSet) CODEC.decodeChangeSet(treeMapper.writeValueAsString(root));
+
+    assertThat(legacy.diplomaticRelations())
+        .as("★ 缺键 ⇒ Unchanged（fail-closed：没提就是没动）")
+        .isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(legacy.diplomaticEvents())
+        .as("★ 缺键 ⇒ Unchanged（fail-closed：没提就是没动）")
+        .isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(SdChangeSet.apply(legacy, full))
+        .as("旧变更集应用到含外交表的 base ⇒ 两张表原样保留，整态等于 base")
+        .isEqualTo(full);
   }
 
   @Test

@@ -2,6 +2,11 @@ package io.mosire.simos.sd.change;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.sd.id.DiplomaticEventId;
+import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.model.DiplomaticEvent;
+import io.mosire.simos.sd.model.DiplomaticRelation;
+import io.mosire.simos.sd.model.DiplomaticRelationKey;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.sd.testing.SdFixtures;
@@ -44,14 +49,62 @@ class SdRoundTripTest {
   }
 
   @Test
-  void changeSetHasExactlyTenComponentsMatchingTheState() {
-    assertThat(SdChangeSet.class.getRecordComponents()).hasSize(10);
+  void changeSetHasExactlyTwelveComponentsMatchingTheState() {
+    assertThat(SdChangeSet.class.getRecordComponents()).hasSize(12);
     assertThat(componentNames(SdChangeSet.class))
         .as("变更集的每个组件都必须在 SdState 里有同名的 record 组件")
         .isSubsetOf(componentNames(SdState.class));
     assertThat(componentNames(SdState.class))
         .as("反向也成立 ⇒ 两边组件集相同")
         .isSubsetOf(componentNames(SdChangeSet.class));
+  }
+
+  /**
+   * ★ D5 / R6 新增的两个组件**逐字段**往返：外交关系边（键的方向 + kind/text/updatedTick）与外交事件（id/tick/participants/text）。
+   *
+   * <p>★ 判别力来自目标态里**新加的条目本身**：反射枚举那条只判"整个组件进变更集 + 整态相等"，这里把新组件的每个字段单独钉住——
+   * 任何"重建时丢一个字段、但整态 equals 恰好被别的字段掩盖"都不会发生，因为目标态与重建态是逐字段对照。
+   */
+  @Test
+  void theTwoNewDiplomaticComponentsSurviveTheRoundTripFieldByField() {
+    SdState base = SdFixtures.full();
+    SdState target =
+        SdFixtures.mutated(
+            SdFixtures.mutated(base, "diplomaticRelations"), "diplomaticEvents");
+    SdChangeSet cs = SdChangeSet.between(base, target);
+
+    assertThat(cs.diplomaticRelations().changed()).as("新关系边必须被 between 看见").isTrue();
+    assertThat(cs.diplomaticEvents().changed()).as("新外交事件必须被 between 看见").isTrue();
+
+    SdState rebuilt = SdChangeSet.apply(cs, base);
+    assertThat(rebuilt).as("逐字段重建出 target").isEqualTo(target);
+
+    DiplomaticRelationKey extraKey =
+        new DiplomaticRelationKey(SdFixtures.N1, new NationId("n-extra"));
+    DiplomaticRelation extraRelation = rebuilt.diplomaticRelations().get(extraKey);
+    assertThat(extraRelation).as("新增关系边本身在重建态里").isNotNull();
+    assertThat(extraRelation.kind()).as("关系边 kind 往返").contains("互市");
+    assertThat(extraRelation.text()).as("关系边 text 往返").isEqualTo("新增外交边（夹具）");
+    assertThat(extraRelation.updatedTick()).as("关系边 updatedTick 往返").isEqualTo(11L);
+
+    DiplomaticRelation forward = rebuilt.diplomaticRelations().get(SdFixtures.DR12);
+    assertThat(forward).as("既有 N1→N2 边原样保留").isNotNull();
+    assertThat(forward.kind()).contains("称臣纳贡");
+    assertThat(forward.text()).isEqualTo("N1 向 N2 称臣纳贡（夹具）");
+    assertThat(forward.updatedTick()).isEqualTo(7L);
+    assertThat(rebuilt.diplomaticRelations().get(SdFixtures.DR21).kind())
+        .as("反向边 N2→N1 与 N1→N2 是两个不同的键（方向不丢）")
+        .isEmpty();
+
+    DiplomaticEventId extraEventId = new DiplomaticEventId("de-extra");
+    DiplomaticEvent extraEvent = rebuilt.diplomaticEvents().get(extraEventId);
+    assertThat(extraEvent).as("新增外交事件本身在重建态里").isNotNull();
+    assertThat(extraEvent.id()).as("事件 id 往返").isEqualTo(extraEventId);
+    assertThat(extraEvent.tick()).as("事件 tick 往返").isEqualTo(11L);
+    assertThat(extraEvent.participants())
+        .as("事件 participants 往返（保序）")
+        .containsExactly(SdFixtures.N1, SdFixtures.N2);
+    assertThat(extraEvent.text()).as("事件 text 往返").isEqualTo("追加外交事件（夹具）");
   }
 
   @Test
@@ -129,6 +182,8 @@ class SdRoundTripTest {
       case "verdicts" -> cs.verdicts().changed();
       case "lossRecords" -> cs.lossRecords().changed();
       case "info" -> cs.info().changed();
+      case "diplomaticRelations" -> cs.diplomaticRelations().changed();
+      case "diplomaticEvents" -> cs.diplomaticEvents().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }

@@ -168,9 +168,10 @@ class IssueDirectiveHandlerTest {
   @Test
   void rejectsCommandOutsideWhitelist() {
     SdState base = withDecisionMaker(SdState.empty());
+    // ★ D3a：原 unit.SetStrength 已 rename 为 unit.SetComposition；本用例只需要一个**已注册但不在白名单**的领域命令类型。
     HandlerOutcome outcome =
-        handle(base, payload("d1", "dm1", 0, "[{\"type\":\"unit.SetStrength\"}]"));
-    assertThat(rejected(outcome)).contains("不在白名单").contains("unit.SetStrength");
+        handle(base, payload("d1", "dm1", 0, "[{\"type\":\"unit.SetComposition\"}]"));
+    assertThat(rejected(outcome)).contains("不在白名单").contains("unit.SetComposition");
   }
 
   @Test

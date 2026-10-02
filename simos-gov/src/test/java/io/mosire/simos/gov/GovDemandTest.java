@@ -20,6 +20,7 @@ import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.Sex;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
@@ -202,8 +203,8 @@ class GovDemandTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H1))), List.of(), null),
-        1,
-        Map.of(),
+        List.of(new CompositionEntry("官员", 1)),
+        List.of(),
         1,
         1000,
         Optional.empty(),

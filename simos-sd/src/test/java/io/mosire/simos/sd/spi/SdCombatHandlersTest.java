@@ -17,6 +17,7 @@ import io.mosire.simos.sd.model.OutcomeTable;
 import io.mosire.simos.sd.model.Trigger;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.sd.testing.SdWorlds;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -223,7 +224,7 @@ class SdCombatHandlersTest {
             combatState(twoStages()),
             "{\"combatId\":\"c1\",\"stageId\":\"s1\",\"deltas\":[{\"unit\":\"u-1\","
                 + "\"equipment\":{\"坦克\":-1},\"lossClass\":\"RECOVERABLE\"}]}");
-    assertThat(rejected(outcome)).contains("未知装备键");
+    assertThat(rejected(outcome)).contains("未知装备类型");
   }
 
   @Test
@@ -258,8 +259,8 @@ class SdCombatHandlersTest {
                 List.of(new Segment<>(SdWorlds.T0, Optional.<UnitId>empty())), List.of(), null),
             new SegmentedSeries<>(
                 List.of(new Segment<>(SdWorlds.T0, Optional.of(SdWorlds.HEX))), List.of(), null),
-            100,
-            Map.of("步枪", 50),
+            List.of(new CompositionEntry("步兵", 100)),
+            List.of(new CompositionEntry("步枪", 50)),
             2,
             500,
             Optional.empty());

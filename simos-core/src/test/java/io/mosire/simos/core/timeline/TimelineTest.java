@@ -15,6 +15,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -373,8 +374,8 @@ class TimelineTest {
                         List.of(new Segment<>(t0, Optional.of(new HexCoord(1, 1)))),
                         List.of(),
                         null),
-                    500,
-                    Map.of("旗帜", 3),
+                    List.of(new CompositionEntry("士兵", 500)),
+                    List.of(new CompositionEntry("旗帜", 3)),
                     2,
                     1000,
                     Optional.empty())));

@@ -23,6 +23,7 @@ import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.unit.ArmyFormation;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.GovLevel;
 import io.mosire.simos.unit.Jurisdiction;
@@ -573,8 +574,8 @@ class GovDailyTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, position)), List.of(), null),
-        1,
-        Map.of(),
+        List.of(new CompositionEntry("官员", 1)),
+        List.of(),
         1,
         1000,
         Optional.empty(),

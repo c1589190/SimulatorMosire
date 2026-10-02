@@ -95,7 +95,8 @@ class CoreSimosBatchEndToEndTest {
                   envelope(
                       "unit.CreateUnit",
                       "{\"id\":\"u-2\",\"name\":\"第二连\",\"position\":{\"q\":0,\"r\":0},"
-                          + "\"member\":80,\"equipment\":{},\"speed\":3,\"mobilityPerMille\":900}")));
+                          + "\"manpower\":[{\"type\":\"步兵\",\"amount\":80}],\"equipment\":[],"
+                          + "\"speed\":3,\"mobilityPerMille\":900}")));
 
       assertThat(result).isInstanceOf(BatchResult.Committed.class);
       assertThat(((BatchResult.Committed) result).ref()).isEqualTo(ref(2));
@@ -182,7 +183,8 @@ class CoreSimosBatchEndToEndTest {
                   envelope(
                       "unit.CreateUnit",
                       "{\"id\":\"u-2\",\"name\":\"第二连\",\"position\":{\"q\":0,\"r\":0},"
-                          + "\"member\":80,\"equipment\":{},\"speed\":3,\"mobilityPerMille\":900}"),
+                          + "\"manpower\":[{\"type\":\"步兵\",\"amount\":80}],\"equipment\":[],"
+                          + "\"speed\":3,\"mobilityPerMille\":900}"),
                   envelope("unit.RenameUnit", "{\"id\":\"u-2\",\"name\":\"改名\"}")));
 
       assertThat(result).as("第二条通过了 ⇒ 它看见的是第一条之后的候选态").isInstanceOf(BatchResult.Committed.class);

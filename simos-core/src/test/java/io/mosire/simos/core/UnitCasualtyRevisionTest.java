@@ -15,6 +15,7 @@ import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -66,9 +67,10 @@ class UnitCasualtyRevisionTest {
   /** T8 冻结的命令类型（spec §五.2 / §四 表）。 */
   private static final String CASUALTY_TYPE = "unit.ApplyCasualties";
 
-  /** ★ 战损载荷：人员 −30、装备只扣**提及**的 `步枪`（`炮` 必须留在原地）。 */
+  /** ★ 战损载荷：人力 −30、装备只扣**提及**的 `步枪`（`炮` 必须留在原地）。 */
   private static final String CASUALTY_PAYLOAD =
-      "{\"id\":\"u-1\",\"personnel\":-30,\"equipment\":{\"步枪\":-10}}";
+      "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-30}],"
+          + "\"equipment\":[{\"type\":\"步枪\",\"amount\":-10}]}";
 
   /** 与 {@code BranchingEndToEndTest} 同一口径：{@code CoreConfig.mapper} 无消费者，但也不许传 null。 */
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
@@ -95,30 +97,30 @@ class UnitCasualtyRevisionTest {
 
       // ── 战损后那一 revision：绝对值落盘 ⇒ 70 / 40（`炮` 未提及 ⇒ 4 留在原地）────────────
       UnitSnapshot afterBattle = unitOf(core.replay(ref("main", 2)));
-      assertThat(afterBattle.state().units().get(U1).member())
-          .as("R2：100 + (−30) = 70")
-          .isEqualTo(70);
+      assertThat(afterBattle.state().units().get(U1).manpower())
+          .as("R2：100 + (−30) = 70（有序条目表，人力条目留在原地）")
+          .containsExactly(new CompositionEntry("步兵", 70));
       assertThat(afterBattle.state().units().get(U1).equipment())
-          .as("R2：装备双轨——提及键 40、未提及键 4")
-          .containsExactlyInAnyOrderEntriesOf(Map.of("步枪", 40, "炮", 4));
+          .as("R2：装备双轨——提及条目 40、未提及条目 4（保序）")
+          .containsExactly(new CompositionEntry("步枪", 40), new CompositionEntry("炮", 4));
       assertThat(afterBattle.ref()).as("切片的 ref 是它自己那一 revision").isEqualTo(ref("main", 2));
 
       // ── ★★ 回退到战损前那一 revision：战前值（m5 的咬点）─────────────────────────────
       UnitSnapshot beforeBattle = unitOf(core.replay(ref("main", 1)));
-      assertThat(beforeBattle.state().units().get(U1).member())
+      assertThat(beforeBattle.state().units().get(U1).manpower())
           .as("★ 回退 R1 ⇒ 战前值 100（历史若被覆写，这里读到的是 70）")
-          .isEqualTo(100);
+          .containsExactly(new CompositionEntry("步兵", 100));
       assertThat(beforeBattle.state().units().get(U1).equipment())
-          .as("★ 回退 R1 ⇒ 战前装备（50 / 4）")
-          .containsExactlyInAnyOrderEntriesOf(Map.of("步枪", 50, "炮", 4));
+          .as("★ 回退 R1 ⇒ 战前装备（步枪 50 / 炮 4，保序）")
+          .containsExactly(new CompositionEntry("步枪", 50), new CompositionEntry("炮", 4));
 
       // ── 再回一次、再取一次：重放是纯函数，历史行不被读操作改写 ────────────────────────
-      assertThat(unitOf(core.replay(ref("main", 1))).state().units().get(U1).member())
+      assertThat(unitOf(core.replay(ref("main", 1))).state().units().get(U1).manpower())
           .as("重复回退仍是战前值")
-          .isEqualTo(100);
-      assertThat(unitOf(core.replay(ref("main", 2))).state().units().get(U1).member())
+          .containsExactly(new CompositionEntry("步兵", 100));
+      assertThat(unitOf(core.replay(ref("main", 2))).state().units().get(U1).manpower())
           .as("重复取战损后仍是战损值")
-          .isEqualTo(70);
+          .containsExactly(new CompositionEntry("步兵", 70));
 
       assertThat(core.revisions(main()))
           .as("两条各自独立的行（创世 + 战损）")
@@ -134,13 +136,15 @@ class UnitCasualtyRevisionTest {
     assertThat(casualtyRow.commandType()).isEqualTo(CASUALTY_TYPE);
     assertThat(casualtyRow.timestamp()).isEqualTo(T0);
     assertThat(casualtyRow.changesetJson())
-        .as("★ 落盘的是变更集（绝对值），不是命令载荷的 delta 明文（`personnel` 只是载荷字段名）")
-        .doesNotContain("personnel")
-        .doesNotContain("-30");
+        .as("★ 落盘的是变更集（绝对值），不是命令载荷的 delta 明文")
+        .contains("\"amount\":70")
+        .contains("\"amount\":40")
+        .doesNotContain("\"amount\":-30")
+        .doesNotContain("\"amount\":-10");
   }
 
   /**
-   * ★★ 判据（**m2 的行数面**）：被拒的战损命令 —— 越界 / 正 Δ / 未知装备键 —— **一条 revision 都不落**，
+   * ★★ 判据（**m2 的行数面**）：被拒的战损命令 —— 越界 / 正 Δ / 未知装备类型 —— **一条 revision 都不落**，
    * 且世界逐值不动（三条拒绝的理由各不相同，说明它们真被域层各自判过，不是"一律拒"）。
    *
    * <p>★ 域层的上界本身（`100 + (−101)` ⇒ 抛）在 {@code UnitOperationsTest} 判；这里判的是**命令边界之后**的落盘面。
@@ -155,27 +159,39 @@ class UnitCasualtyRevisionTest {
       CommandResult outOfRange =
           core.submit(
               casualtyPayload(
-                  "cmd-over", 1, "{\"id\":\"u-1\",\"personnel\":-101,\"equipment\":{}}"));
+                  "cmd-over",
+                  1,
+                  "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-101}],"
+                      + "\"equipment\":[]}"));
       CommandResult positive =
           core.submit(
-              casualtyPayload("cmd-plus", 1, "{\"id\":\"u-1\",\"personnel\":5,\"equipment\":{}}"));
+              casualtyPayload(
+                  "cmd-plus",
+                  1,
+                  "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":5}],"
+                      + "\"equipment\":[]}"));
       CommandResult unknownKey =
           core.submit(
               casualtyPayload(
-                  "cmd-unknown", 1, "{\"id\":\"u-1\",\"personnel\":-1,\"equipment\":{\"坦克\":-1}}"));
+                  "cmd-unknown",
+                  1,
+                  "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-1}],"
+                      + "\"equipment\":[{\"type\":\"坦克\",\"amount\":-1}]}"));
 
       assertThat(outOfRange).as("★ 上界：100 + (−101) ⇒ 拒").isInstanceOf(CommandResult.Rejected.class);
       assertThat(((CommandResult.Rejected) outOfRange).reason()).contains("人员战损超出当前值");
       assertThat(((CommandResult.Rejected) positive).reason()).contains("人员增量必须 ≤ 0");
       assertThat(((CommandResult.Rejected) unknownKey).reason())
-          .as("★ P14：未知键 ⇒ 拒（不视作 0）")
-          .contains("未知装备键");
+          .as("★ P14：未知类型 ⇒ 拒（不视作 0）")
+          .contains("未知装备类型");
 
       assertThat(core.revisions(main())).as("★ 三条拒绝之后，revisions 行数仍是一（拒绝不落 revision）").hasSize(1);
       UnitSnapshot still = unitOf(core.replay(ref("main", 1)));
-      assertThat(still.state().units().get(U1).member()).as("世界逐值不动").isEqualTo(100);
+      assertThat(still.state().units().get(U1).manpower())
+          .as("世界逐值不动")
+          .containsExactly(new CompositionEntry("步兵", 100));
       assertThat(still.state().units().get(U1).equipment())
-          .containsExactlyInAnyOrderEntriesOf(Map.of("步枪", 50, "炮", 4));
+          .containsExactly(new CompositionEntry("步枪", 50), new CompositionEntry("炮", 4));
     }
   }
 
@@ -215,7 +231,7 @@ class UnitCasualtyRevisionTest {
         .containsPattern("\"payloadDigest\":\"sha256:[0-9a-f]{32}\"");
     assertThat(payload)
         .as("★ m6：delta 的字段名不进事件载荷")
-        .doesNotContain("personnel")
+        .doesNotContain("manpower")
         .doesNotContain("equipment");
     assertThat(payload)
         .as("★ m6：delta 的数值不进事件载荷（负数一定带 `-`，十六进制里不可能出现）")
@@ -283,7 +299,7 @@ class UnitCasualtyRevisionTest {
         .write(ref("main", 1), CheckpointEncoder.encode(genesis, List.of(new UnitCodec())));
   }
 
-  /** 创世单位：100 人、**两件装备**（`炮` 是"未被提及的键必须留在原地"那半条的载体）。 */
+  /** 创世单位：100 人、**两件装备**（`炮` 是"未被提及的条目必须留在原地"那半条的载体）。 */
   private static Unit unit() {
     return new Unit(
         U1,
@@ -291,8 +307,8 @@ class UnitCasualtyRevisionTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        100,
-        Map.of("步枪", 50, "炮", 4),
+        List.of(new CompositionEntry("步兵", 100)),
+        List.of(new CompositionEntry("步枪", 50), new CompositionEntry("炮", 4)),
         2,
         500,
         Optional.empty());
