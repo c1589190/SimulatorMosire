@@ -1,5 +1,6 @@
 package io.mosire.simos.app.tools.write;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.agentlib.tool.ToolContext;
@@ -96,7 +97,7 @@ final class DiplomaticWriteSignature {
     JsonNode payload;
     try {
       payload = MAPPER.readTree(ToolSupport.optionalText(context.arguments(), "payloadJson", "{}"));
-    } catch (Exception e) {
+    } catch (JsonProcessingException e) {
       return Optional.empty(); // 形状坏 ⇒ 交给命令 handler 的既有坏输入路径
     }
     if (payload == null || !payload.isObject()) {

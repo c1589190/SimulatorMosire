@@ -140,7 +140,8 @@ public final class ProvinceDivider {
       Objects.requireNonNull(center, "center");
       Objects.requireNonNull(hexes, "hexes");
       Objects.requireNonNull(warnings, "warnings");
-      hexes = naturalSorted(hexes);
+      // ★ T2 收尾：List.copyOf 在赋值处（SpotBugs EI_EXPOSE_REP 只认看得见的冻结）。
+      hexes = List.copyOf(naturalSorted(hexes));
       warnings = List.copyOf(warnings);
     }
 
@@ -161,7 +162,8 @@ public final class ProvinceDivider {
     public CapitalDistrict {
       Objects.requireNonNull(center, "center");
       Objects.requireNonNull(hexes, "hexes");
-      hexes = naturalSorted(hexes);
+      // ★ T2 收尾：List.copyOf 在赋值处（SpotBugs EI_EXPOSE_REP 只认看得见的冻结）。
+      hexes = List.copyOf(naturalSorted(hexes));
     }
 
     /** 成员格数（派生值，不单独存）。 */
@@ -752,7 +754,8 @@ public final class ProvinceDivider {
   private record Draft(List<HexCoord> hexes, List<String> warnings, boolean capital) {
 
     private Draft {
-      hexes = naturalSorted(hexes);
+      // ★ T2 收尾：List.copyOf 在赋值处（SpotBugs EI_EXPOSE_REP 只认看得见的冻结）。
+      hexes = List.copyOf(naturalSorted(hexes));
       warnings = List.copyOf(warnings);
     }
   }

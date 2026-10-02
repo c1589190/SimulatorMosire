@@ -34,8 +34,10 @@ public record CombatUnitLoss(
     if (equipment == null) {
       throw new IllegalArgumentException("equipment 不得为 null（空表合法）");
     }
-    manpower = copyDeltas(manpower, "manpower");
-    equipment = copyDeltas(equipment, "equipment");
+    // ★ T2 收尾：List.copyOf 必须在**赋值处**看得见——SpotBugs 的 EI_EXPOSE_REP 只认它看得见的冻结；
+    //   包在 copyDeltas 里（helper 返回 List.copyOf）它看不见，会误报两条 Medium。
+    manpower = List.copyOf(copyDeltas(manpower, "manpower"));
+    equipment = List.copyOf(copyDeltas(equipment, "equipment"));
   }
 
   /** 两条表都为空 ⇒ 这个单位在本结局里没有变动（结算时不会生成 unit.AdjustComposition 命令）。 */

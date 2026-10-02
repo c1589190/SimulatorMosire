@@ -1,5 +1,6 @@
 package io.mosire.simos.app.tools.write;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.approval.ApprovalCoordinator;
 import io.mosire.agentlib.approval.ApprovalDecision;
 import io.mosire.agentlib.approval.ApprovalRequest;
@@ -65,6 +66,11 @@ public final class GmApproveTool implements AgentTool {
    * {@code pending}/{@code coordinator} 允许为 null（未接入审批面的装配）⇒ 执行期回可读的 {@code UNAVAILABLE}，
    * 不静默当"没有待裁决项 / 已裁决"。
    */
+  // ★ T2 收尾：ApprovalCoordinator 是**共享协作者**（审批面的唯一编排器），本类只调用不拥有、
+  //   也不把它暴露出去；构造期注入是设计本身。SpotBugs 的 EI_EXPOSE_REP2 在这里是误报 ⇒ 精确豁免。
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP2",
+      justification = "ApprovalCoordinator 是共享协作者（只调用、不拥有、不外泄），构造期注入是设计本身")
   public GmApproveTool(PendingApprovals pending, ApprovalCoordinator coordinator) {
     this.pending = pending;
     this.coordinator = coordinator;

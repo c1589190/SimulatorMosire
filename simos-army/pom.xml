@@ -18,6 +18,13 @@
          —— 本模块一期只有纯几何派生，没有跨切片读取。
        ★ 依赖由下面的 enforcer 构建期强制。 -->
   <dependencies>
+    <!-- ★ T2 收尾（2026-10-02，照 simos-app 先例）：CombatResolution 的“每阶段一次投骰必须可复现”
+         与 SpotBugs 的 DMI_RANDOM_USED_ONLY_ONCE 冲突 ⇒ 精确豁免需要 @SuppressFBWarnings。
+         provided、不进产物；版本与 spotbugs 插件同代（4.10.4）。 -->
+    <dependency>
+      <groupId>com.github.spotbugs</groupId><artifactId>spotbugs-annotations</artifactId>
+      <version>4.10.4</version><scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
     </dependency>

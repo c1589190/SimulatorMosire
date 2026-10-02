@@ -1,5 +1,6 @@
 package io.mosire.simos.army;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -106,7 +107,16 @@ public final class CombatResolution {
     return new Selection(roll(seed, outcomes), Optional.of(seed));
   }
 
-  /** 按权重投骰（遍历序 = 表序；口径见类注）。 */
+  /**
+   * 按权重投骰（遍历序 = 表序；口径见类注）。
+   *
+   * <p>★ <b>@SuppressFBWarnings 的理由</b>（DMI_RANDOM_USED_ONLY_ONCE）：本方法**每次投骰新建一个 {@link
+   * java.util.Random}(seed) 并只抽一次** —— 这是“同 seed 同结果”的实现本身：复用同一个 Random
+   * 跨次投骰会让结果依赖调用历史，破坏可复现与测试预言机。豁免写在这一处，精确到该告警。
+   */
+  @SuppressFBWarnings(
+      value = "DMI_RANDOM_USED_ONLY_ONCE",
+      justification = "每次投骰必须由 seed 确定性重放；复用 Random 会引入调用历史依赖，破坏可复现")
   public static CombatOutcome roll(long seed, List<CombatOutcome> outcomes) {
     Objects.requireNonNull(outcomes, "outcomes");
     if (outcomes.isEmpty()) {
