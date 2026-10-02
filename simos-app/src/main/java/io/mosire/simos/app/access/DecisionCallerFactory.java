@@ -15,6 +15,7 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.read.ArmyCombatTool;
 import io.mosire.simos.app.tools.read.ArmyCombatsTool;
 import io.mosire.simos.app.tools.read.BranchListTool;
+import io.mosire.simos.app.tools.read.CalendarInfoTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.tools.read.DecisionDocsTool;
 import io.mosire.simos.app.tools.read.DecisionResultsTool;
@@ -105,6 +106,10 @@ public final class DecisionCallerFactory {
           UnitListTool.NAME,
           UnitGetTool.NAME,
           PopulationTool.NAME,
+          // ★ C7a（2026-10-02，确认缺陷）：历法读口是**四桶共享读**——SimosToolSource.readTools 里
+          //   new CalendarInfoTool(...) 未标 GmOnlyRead，故决策人桶已含它；白名单必须与工具面两处同源
+          //   （同 DEF-T1c-01 的 army 两条）。
+          CalendarInfoTool.NAME,
           // ★ 工具面 M4（2026-09-24）：两条**共享**新读口（时间轴节点清单 / 区域详情）。
           //   ★ 另三条新读口（map.path / sd.decision-makers / sd.decision-maker）**有意不在**本白名单里：
           //   它们标了 GmOnlyRead（地形探测 / 别人的底牌），只进 GM 桶。

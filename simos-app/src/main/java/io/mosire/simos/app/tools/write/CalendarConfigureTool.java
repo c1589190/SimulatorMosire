@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -61,6 +62,31 @@ public final class CalendarConfigureTool implements AgentTool {
   /** {@code epoch} 文本形状：{@code y-m-d}，年可负（月/日位数 1~2；月内合法性交给 CalendarDate/JulianCalendar 当场抛）。 */
   private static final Pattern EPOCH_PATTERN = Pattern.compile("^(-?\\d+)-(\\d{1,2})-(\\d{1,2})$");
 
+  /**
+   * 本工具**实际声明/读取**的参数名全集（C7a）：配置字段（含新增的 {@code calendar}）+ {@code dryRun} + {@link
+   * ToolSupport#targetProps()} 的 {@code branch/revision} + 可选预览坐标 {@code q/r}。
+   *
+   * <p>★ <b>未知参数 fail-closed</b>：schema 之外的 key 一律具名 {@code BAD_REQUEST}，不得静默 merge 忽略。框架注入的键走
+   * {@link ToolContext#config()}（宿主通道），不混进 {@code arguments()}，故这份集合就是本工具参数面的全集；它必须与 {@code
+   * jsonSchema().get("properties")} 逐键同源。
+   */
+  private static final Set<String> ACCEPTED_ARGS =
+      Set.of(
+          "calendar",
+          "epoch",
+          "seasonBoundary",
+          "tropicalModel",
+          "tropicalRainyStartLongitude",
+          "tropicalRainyEndLongitude",
+          "northIsNegative",
+          "northMax",
+          "southMin",
+          "dryRun",
+          "branch",
+          "revision",
+          "q",
+          "r");
+
   private final QueryService query;
   private final CalendarService calendarService;
 
@@ -82,10 +108,13 @@ public final class CalendarConfigureTool implements AgentTool {
   @Override
   public String description() {
     return "配置历法/气候（GM 专用，库级元数据，**不落世界 revision**）：字段全部可选、部分合并（缺省沿用当前值）："
-        + "epoch(y-m-d) / seasonBoundary(SOLAR_TERM|ASTRONOMICAL) / tropicalModel(RAINY_DRY|TEMPERATE_LIKE) /"
+        + "calendar(历法 id；本批**只认 julian**，缺省=沿用当前配置) / epoch(y-m-d) /"
+        + " seasonBoundary(SOLAR_TERM|ASTRONOMICAL) / tropicalModel(RAINY_DRY|TEMPERATE_LIKE) /"
         + " tropicalRainyStartLongitude / tropicalRainyEndLongitude(0 ≤ start < end ≤ 360) /"
         + " northIsNegative / northMax / southMin(必须成对、northMax < southMin，缺省 null=未配置) /"
-        + " dryRun(缺省 false)。正式 apply 落 store_meta.calendar 并换内存快照（sources=store）；"
+        + " dryRun(缺省 false) / 预览坐标 q,r(必须成对，缺省 (0,0))。"
+        + "只接受以上字段 + branch/revision(目标 state 选择)；schema 之外的未知参数 ⇒ 具名 BAD_REQUEST，不静默忽略。"
+        + "正式 apply 落 store_meta.calendar 并换内存快照（sources=store）；"
         + "dryRun=true 只预览（applied=false，不落盘不换内存）。非法值 ⇒ BAD_REQUEST。"
         + "锚点变更会让所有历史显示日期整体平移（warnings 里给出）；建议在创世期配置";
   }
@@ -93,6 +122,10 @@ public final class CalendarConfigureTool implements AgentTool {
   @Override
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = ToolSupport.targetProps();
+    Map<String, Object> calendarProp =
+        ToolSupport.prop("string", "历法 id：本批只认 \"julian\"；缺省 = 沿用当前配置");
+    calendarProp.put("enum", List.of(JulianCalendar.ID));
+    props.put("calendar", calendarProp);
     props.put("epoch", ToolSupport.prop("string", "tick 0 的儒略历锚点，y-m-d（如 1445-01-01；年可负）"));
     props.put(
         "seasonBoundary", ToolSupport.prop("string", "季界族：SOLAR_TERM（24 节气）| ASTRONOMICAL（二分二至）"));
@@ -160,6 +193,8 @@ public final class CalendarConfigureTool implements AgentTool {
   public ToolResult execute(ToolContext context) {
     try {
       Map<String, Object> args = context.arguments();
+      // ★ C7a：未知参数 fail-closed 拒在前（先于任何解析/落盘）；只接受本工具实际声明/读取的 key 全集。
+      rejectUnknownArgs(args);
       // ★ q/r 必须成对：只给一个 ⇒ 具名 BAD_REQUEST（两处工具同一口径，不静默按 (0,0) 办）。
       Long qArg = ToolSupport.optionalLong(args, "q");
       Long rArg = ToolSupport.optionalLong(args, "r");
@@ -201,11 +236,43 @@ public final class CalendarConfigureTool implements AgentTool {
   }
 
   /**
+   * C7a 未知参数 fail-closed：只接受 {@link #ACCEPTED_ARGS}（= {@code jsonSchema()} 的声明面 + 本类实际读取面）。
+   *
+   * <p>★ 模型给 schema 之外的 key 时不得静默 merge 忽略；拒因只报未知 key 名（排序后输出，回显值不必要）。
+   */
+  private static void rejectUnknownArgs(Map<String, Object> args) {
+    List<String> unknown = new ArrayList<>();
+    for (String name : args.keySet()) {
+      if (!ACCEPTED_ARGS.contains(name)) {
+        unknown.add(name);
+      }
+    }
+    if (unknown.isEmpty()) {
+      return;
+    }
+    List<String> accepted = new ArrayList<>(ACCEPTED_ARGS);
+    accepted.sort(null);
+    unknown.sort(null);
+    throw new IllegalArgumentException(
+        "不支持的参数：" + String.join(", ", unknown) + "；本工具只接受 " + String.join(" / ", accepted));
+  }
+
+  /**
    * 部分合并：只覆盖**显式给出**的字段（缺省沿用 {@code current}）；所有解析/校验在构造 {@link CalendarConfig} 与 {@link
    * CalendarService#apply} 里收口，非法值 fail-closed。
    */
   private static CalendarConfig merge(Map<String, Object> args, CalendarConfig current) {
+    // ★ C7a：calendar 是显式可选入参（schema 已声明）。键缺席 ⇒ 沿用当前配置；只要给出（含 JSON null）
+    //   就必须逐字等于 julian，否则具名 BAD_REQUEST，绝不静默忽略。
     String calendar = current.calendar();
+    if (args.containsKey("calendar")) {
+      Object raw = args.get("calendar");
+      if (!(raw instanceof String text) || !JulianCalendar.ID.equals(text)) {
+        throw new IllegalArgumentException(
+            "calendar 必须是非空历法 id 且只认 \"" + JulianCalendar.ID + "\"：" + raw);
+      }
+      calendar = text;
+    }
     CalendarDate epoch =
         ToolSupport.has(args, "epoch")
             ? parseEpoch(ToolSupport.requiredText(args, "epoch"))
