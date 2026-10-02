@@ -81,8 +81,20 @@ final class GovRecruitPlan {
    * @param count 招募人数（≥ 1）
    * @throws IllegalArgumentException 任一具名前置不满足（工具折 {@code BAD_REQUEST}）
    */
+  // ★ 测试/旧路径：全缺省儒略历时钟；生产路径由 CalendarService.clock() 传入。
   static Plan plan(SimulationState state, String unitId, String roleText, long count) {
+    return plan(state, unitId, roleText, count, CalendarClock.julianDefault());
+  }
+
+  /**
+   * 生产入口：历法时钟由调用方传入（本类的年龄档判定只认这台钟）。
+   *
+   * @param clock 历法时钟（非空；生产路径 = CalendarService.clock()）
+   */
+  static Plan plan(
+      SimulationState state, String unitId, String roleText, long count, CalendarClock clock) {
     Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(clock, "clock");
     if (unitId == null || unitId.isBlank()) {
       throw new IllegalArgumentException("unitId 必须是非空文本");
     }
@@ -143,16 +155,14 @@ final class GovRecruitPlan {
                 + unitId
                 + " 的 jurisdiction 指向了一个已不存在的 Region；先 map.CreateRegion 或调整管辖）");
       }
-      long regionAvailable = regionAvailability(social, region, tick);
+      long regionAvailable = regionAvailability(social, region, tick, clock);
       available = saturatedAdd(available, regionAvailable);
       if (remaining == 0L || regionAvailable == 0L) {
         continue;
       }
       long take = Math.min(remaining, regionAvailable);
       RegionAllocations.ManpowerAllocation allocation =
-          RegionAllocations.allocateManpower(
-              // C5 过渡：换成 CalendarService 的时钟（缺省值相同）
-              social, region, tick, take, CalendarClock.julianDefault());
+          RegionAllocations.allocateManpower(social, region, tick, take, clock);
       sources.addAll(allocation.sources().stream().map(GroupSource::from).toList());
       remaining -= take;
     }
@@ -178,12 +188,10 @@ final class GovRecruitPlan {
    * <p>★★ {@code requested=1} 且其余入参合法时，唯一的 {@link IllegalArgumentException} 是"人力总量不足"（合格来源 0 人）； 其它
    * IAE（如未来锚点导致年龄为负的坏数据）必须原样重抛，<b>不静默当 0</b>——被吞掉的异常会把"数据坏了"伪装成"这里没人"。
    */
-  private static long regionAvailability(SocialData social, Region region, long tick) {
+  private static long regionAvailability(
+      SocialData social, Region region, long tick, CalendarClock clock) {
     try {
-      // C5 过渡：换成 CalendarService 的时钟（缺省值相同）
-      return RegionAllocations.allocateManpower(
-              social, region, tick, 1L, CalendarClock.julianDefault())
-          .available();
+      return RegionAllocations.allocateManpower(social, region, tick, 1L, clock).available();
     } catch (IllegalArgumentException e) {
       if (e.getMessage() != null && e.getMessage().startsWith("人力总量不足")) {
         return 0L;

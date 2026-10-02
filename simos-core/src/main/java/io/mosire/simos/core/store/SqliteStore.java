@@ -6,9 +6,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * SQLite 存储底座（spec §6.1，U16 甲）：一个库、两张表（{@code revisions} + {@code events}），同库同事务——
@@ -101,6 +104,17 @@ public final class SqliteStore implements AutoCloseable {
 
   /** 格式版本：日制底座落地的第一版；将来改 schema 再逐版加。 */
   private static final String FORMAT_VERSION_KEY = "format_version";
+
+  /**
+   * 通用键值 API（{@link #readMeta}/{@link #writeMeta}）的保留键：这两个是库级门禁键，只走 {@link #ensureTimeBase} 自己的
+   * SQL；通用口读也拒，避免通用 API 误碰库级语义。
+   */
+  private static final Set<String> RESERVED_META_KEYS = Set.of(TIME_BASE_KEY, FORMAT_VERSION_KEY);
+
+  private static final String SELECT_META = "SELECT value FROM store_meta WHERE key = ?";
+
+  private static final String UPSERT_META =
+      "INSERT INTO store_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value";
 
   private static final String FORMAT_VERSION_DAY_BASE = "1";
 
@@ -249,7 +263,9 @@ public final class SqliteStore implements AutoCloseable {
    * 在一个事务里执行 {@code work}：{@code BEGIN IMMEDIATE} 起步拿写锁，{@code work} 收到本连接， 正常返回即 {@code
    * COMMIT}，任何异常即回滚（清理自身失败不顶掉原异常）。
    *
-   * <p>这是本类唯一的公开入口——上层（Timeline 等）的一切读写都从这里过， 保证 revision 行与它的全部事件行同生同死。
+   * <p>这是本类**世界状态事务**的公开入口——上层（Timeline 等）的 revision/事件读写都从这里过， 保证 revision
+   * 行与它的全部事件行同生同死。库级元数据的单条键值另有 {@link #readMeta}/{@link #writeMeta}（同锁；它们是单条 upsert，不经过本事务、不落
+   * revision）。
    *
    * @param work 事务体，参数是本 store 的连接（不得在该事务外继续使用它）
    * @param <T> work 的返回类型
@@ -271,6 +287,76 @@ public final class SqliteStore implements AutoCloseable {
         rollbackQuietly();
         throw new IllegalStateException("事务失败，已回滚", e);
       }
+    }
+  }
+
+  /**
+   * 读取一条库级元数据（{@code store_meta} 通用键值 API，2026-10-02 C5）：值是不透明字符串，core 不解析任何领域语义。
+   *
+   * <p>与 {@link #inTransaction} 同锁（同一个私有 {@code lock}）、进入时 {@link #ensureOpen()}，prepared statement
+   * 走参数 绑定；无该键 ⇒ {@link Optional#empty()}。
+   *
+   * @param key 非空非空白；保留键（{@code time_base} / {@code format_version}）读也拒绝，避免通用 API 误碰库级门禁键
+   * @throws IllegalArgumentException key 为 null/blank，或为保留键
+   * @throws IllegalStateException 存储已关闭，或 SQL 失败
+   */
+  public Optional<String> readMeta(String key) {
+    requireUsableMetaKey(key);
+    synchronized (lock) {
+      ensureOpen();
+      try (PreparedStatement statement = connection.prepareStatement(SELECT_META)) {
+        statement.setString(1, key);
+        try (ResultSet rows = statement.executeQuery()) {
+          return rows.next() ? Optional.ofNullable(rows.getString(1)) : Optional.empty();
+        }
+      } catch (SQLException e) {
+        throw new IllegalStateException("读取 store_meta 失败: key=" + key, e);
+      }
+    }
+  }
+
+  /**
+   * 写一条库级元数据（{@code store_meta} 通用键值 API，2026-10-02 C5）：单条 upsert，<b>不落 revision</b>——不经过
+   * Timeline、不碰 {@code revisions}/{@code events}。
+   *
+   * <p>与 {@link #inTransaction} 同锁（同一个私有 {@code lock}）、进入时 {@link #ensureOpen()}，prepared statement
+   * 走参数 绑定。库级元数据不是世界状态事实，改它不产生 revision（设计稿 §七）。
+   *
+   * @param key 非空非空白；保留键（{@code time_base} / {@code format_version}）拒绝
+   * @param value 非 null（null 是调用方传参错误，抛 {@link IllegalArgumentException} 而不是 NPE）
+   * @throws IllegalArgumentException key 为 null/blank 或是保留键，或 value 为 null
+   * @throws IllegalStateException 存储已关闭，或 SQL 失败
+   */
+  public void writeMeta(String key, String value) {
+    requireUsableMetaKey(key);
+    if (value == null) {
+      throw new IllegalArgumentException("store_meta value 不得为 null: key=" + key);
+    }
+    synchronized (lock) {
+      ensureOpen();
+      try (PreparedStatement statement = connection.prepareStatement(UPSERT_META)) {
+        statement.setString(1, key);
+        statement.setString(2, value);
+        statement.executeUpdate();
+      } catch (SQLException e) {
+        throw new IllegalStateException("写入 store_meta 失败: key=" + key, e);
+      }
+    }
+  }
+
+  /** 通用键值 API 的入参门禁：key 非空非空白，且不是库级保留键（拒因文案点名两个保留键）。 */
+  private static void requireUsableMetaKey(String key) {
+    if (key == null || key.isBlank()) {
+      throw new IllegalArgumentException("store_meta key 必须是非空文本: " + key);
+    }
+    if (RESERVED_META_KEYS.contains(key)) {
+      throw new IllegalArgumentException(
+          "store_meta key 是保留键（"
+              + TIME_BASE_KEY
+              + " / "
+              + FORMAT_VERSION_KEY
+              + "），通用键值 API 不得读写: "
+              + key);
     }
   }
 

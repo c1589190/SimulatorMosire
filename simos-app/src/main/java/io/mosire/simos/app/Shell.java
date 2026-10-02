@@ -46,6 +46,7 @@ import io.mosire.simos.app.sd.channel.CliDecisionChannel;
 import io.mosire.simos.app.sd.channel.GuiDecisionChannel;
 import io.mosire.simos.app.sd.channel.HttpDecisionChannel;
 import io.mosire.simos.app.skill.SkillLibrary;
+import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.time.ClassFirstPopulationEconomyTimeParticipant;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
@@ -232,6 +233,9 @@ public final class Shell implements AutoCloseable {
   private final ShellConfig config;
   private final CoreSimos coreSimos;
 
+  /** 历法/气候配置服务（C5）：启动时从 {@code store_meta.calendar} 装载，participant 与四个 gov 写工具共用同一实例。 */
+  private final CalendarService calendarService;
+
   /** 查询层（T3）：GUI 与工具集唯一的只读入口（spec §5.1）。 */
   private final QueryService queryService;
 
@@ -343,6 +347,7 @@ public final class Shell implements AutoCloseable {
   private Shell(
       ShellConfig config,
       CoreSimos coreSimos,
+      CalendarService calendarService,
       QueryService queryService,
       ToolRegistry toolRegistry,
       McpSourceBridge toolBridge,
@@ -370,6 +375,7 @@ public final class Shell implements AutoCloseable {
       SqliteConversationStore decisionConversations) {
     this.config = config;
     this.coreSimos = coreSimos;
+    this.calendarService = Objects.requireNonNull(calendarService, "calendarService");
     this.queryService = queryService;
     this.toolRegistry = toolRegistry;
     this.toolBridge = toolBridge;
@@ -435,6 +441,8 @@ public final class Shell implements AutoCloseable {
         new CoreSimos(
             new CoreConfig(
                 config.storeDir(), config.checkpointInterval(), SimosObjectMapper.create()));
+    // ★ C5：历法配置随 core 立刻装载（store_meta.calendar；缺省不写盘）；解析/校验失败即启动 fail-closed。
+    CalendarService calendarService = CalendarService.load(coreSimos);
 
     List<ModuleCodec> codecs =
         List.of(
@@ -668,7 +676,8 @@ public final class Shell implements AutoCloseable {
             new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId()),
             new SdTimeParticipant(config.mapId()),
             // ★ R2b：唯一的经济—人口协调器 = class-first 单日入口；不再传入 economyWorkerCount（classfirst 引擎无并行池）。
-            new ClassFirstPopulationEconomyTimeParticipant(config.mapId()));
+            // ★ C5：历法与人口/经济同取一份 CalendarService 快照（生产路径必须由 CalendarService.load 注入）。
+            new ClassFirstPopulationEconomyTimeParticipant(config.mapId(), calendarService));
     for (TimeParticipant participant : participants) {
       coreSimos.register(participant);
     }
@@ -766,6 +775,7 @@ public final class Shell implements AutoCloseable {
     decisionTools.registerAll(
         new SimosToolSource(
                 coreSimos,
+                calendarService,
                 queryService,
                 config.mcpInitiator(),
                 config.mapId(),
@@ -805,6 +815,7 @@ public final class Shell implements AutoCloseable {
     SimosToolSource toolSource =
         new SimosToolSource(
             coreSimos,
+            calendarService,
             queryService,
             config.mcpInitiator(),
             config.mapId(),
@@ -903,6 +914,7 @@ public final class Shell implements AutoCloseable {
     return new Shell(
         config,
         coreSimos,
+        calendarService,
         queryService,
         toolRegistry,
         toolBridge,
@@ -986,6 +998,7 @@ public final class Shell implements AutoCloseable {
     boolean gm = role == SimosToolSource.Role.GM;
     return new SimosToolSource(
             coreSimos,
+            calendarService,
             queryService,
             config.mcpInitiator(),
             config.mapId(),

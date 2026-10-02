@@ -354,6 +354,41 @@ public final class CoreSimos implements AutoCloseable {
   }
 
   /**
+   * 读取一条库级元数据（{@code store_meta} 通用键值 API 的薄委托，2026-10-02 C5）。
+   *
+   * <p>★ <b>值是不透明字符串</b>：core 不解析历法/气候/任何领域语义——解析与校验归 app 层的配置服务。
+   *
+   * <p>★ <b>单条元数据读写不落 revision</b>：库级元数据不是世界状态事实，不走 Timeline、不碰 {@code revisions}/{@code
+   * events}（设计稿 §七）。
+   *
+   * <p>★ 保留键（{@code time_base} / {@code format_version}）读也拒绝：通用 API 不得误碰库级门禁键。
+   *
+   * @param key 非空非空白、且不是保留键
+   * @throws IllegalArgumentException key 为 null/blank，或为保留键
+   * @throws IllegalStateException 存储已关闭，或 SQL 失败
+   */
+  public Optional<String> readStoreMeta(String key) {
+    return store.readMeta(key);
+  }
+
+  /**
+   * 写一条库级元数据（{@code store_meta} 通用键值 API 的薄委托，2026-10-02 C5）。
+   *
+   * <p>★ 值是不透明字符串（core 不解析）；<b>单条 upsert、不落 revision</b>（不经过 Timeline，不碰 {@code revisions}/{@code
+   * events}）。
+   *
+   * <p>★ 保留键（{@code time_base} / {@code format_version}）拒绝写：库级门禁键只走 {@link SqliteStore} 自己的 SQL。
+   *
+   * @param key 非空非空白、且不是保留键
+   * @param value 非 null（null 抛 {@link IllegalArgumentException}，不是 NPE）
+   * @throws IllegalArgumentException key 为 null/blank 或是保留键，或 value 为 null
+   * @throws IllegalStateException 存储已关闭，或 SQL 失败
+   */
+  public void writeStoreMeta(String key, String value) {
+    store.writeMeta(key, value);
+  }
+
+  /**
    * 关闭底层存储。
    *
    * <p>★ 其余组件（{@code Timeline} / {@code Replay} / {@code CommandBus} / {@code TimeAdvance} /

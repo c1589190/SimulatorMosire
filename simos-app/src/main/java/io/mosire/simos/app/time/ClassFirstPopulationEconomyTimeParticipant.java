@@ -173,8 +173,17 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
 
   private final String mapId;
 
-  public ClassFirstPopulationEconomyTimeParticipant(String mapId) {
+  /** 历法/气候配置服务：一次推进取一次快照（见 {@link #simulateWorld} 开头）。 */
+  private final CalendarService calendarService;
+
+  public ClassFirstPopulationEconomyTimeParticipant(String mapId, CalendarService calendarService) {
     this.mapId = Objects.requireNonNull(mapId, "mapId");
+    this.calendarService = Objects.requireNonNull(calendarService, "calendarService");
+  }
+
+  /** 测试/旧路径：全缺省，不读 store；生产 Shell 必须用两参数构造器（{@link CalendarService#load}）。 */
+  public ClassFirstPopulationEconomyTimeParticipant(String mapId) {
+    this(mapId, CalendarService.defaults());
   }
 
   @Override
@@ -186,6 +195,8 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
   public WorldTimeProposal simulateWorld(SimulationState state, TimeRange range) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(range, "range");
+    // ★ C5：一次推进取一次快照——整轮（含 30 天月度人口学）用同一台时钟，不与中途的 apply 混用。
+    CalendarClock clock = calendarService.clock();
     EconomyData economy = economyOf(state);
     SocialData social = socialOf(state);
     ActorData actor = actorOf(state);
@@ -282,8 +293,7 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
         // paid=0）。
         TreasuryPaymentOracle oracle = new TreasuryPaymentOracle(currentActor);
         // day 是 1 起日号 ⇒ 该日对应的 tick = day - 1L。
-        // C5 过渡：换成 CalendarService 的时钟（缺省值相同，julianDefault = 儒略 1445-01-01）
-        int daysInYear = CalendarClock.julianDefault().daysInYearAtTick(day - 1L);
+        int daysInYear = clock.daysInYearAtTick(day - 1L);
         GovDaily.Outcome settled =
             GovDaily.settle(currentGov, units, map, currentSocial, day, daysInYear, oracle);
         currentActor = oracle.actor();
@@ -308,11 +318,9 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
       // ★★ R2c：每 30 天（与旧协调器同一窗口）结算出生/死亡，并把 LotChange 接回 classfirst 池/家户账户。
       //   次序与旧协调器一致：先跑完这一天的经济结算与两条写回，再做月度人口学；出生/死亡不产生商品/货币/土地/债务条目。
       if (day % PopulationDynamics.SETTLEMENT_DAYS == 0L) {
-        // C5 过渡：换成 CalendarService 的时钟（缺省值相同）。
         // ★ 既有语义不动：day 是 1 起日号，monthly 一直把它当 nowTick 用（与 ageDaysAt(day) 同轴）；
         //   日历换算在 monthly 内走 clock.dayNumberOfTick(nowTick)，不在这里顺手改 day/tick 口径。
-        PopulationDynamics.Outcome outcome =
-            PopulationDynamics.monthly(currentSocial, day, CalendarClock.julianDefault());
+        PopulationDynamics.Outcome outcome = PopulationDynamics.monthly(currentSocial, day, clock);
         currentSocial = outcome.data();
         if (!outcome.isEmpty()) {
           ClassFirstPopulationWriteback.Applied populationApplied =

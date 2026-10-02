@@ -16,6 +16,7 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.BatchResult;
@@ -121,6 +122,9 @@ public final class LevyRegionTool implements AgentTool {
   private final QueryService query;
   private final String initiator;
 
+  /** 历法/气候服务：四个 gov 写工具按它取时钟（生产路径 = CalendarService.load；旧路径 = 全缺省）。 */
+  private final CalendarService calendarService;
+
   /**
    * @param core 唯一写入口（本工具走 {@code submitBatch}；preview=true 时一个字节都不写）
    * @param query 只读入口（读 branch/revision 的当前 {@link SimulationState}；preview 与同一份推导共用它）
@@ -128,11 +132,23 @@ public final class LevyRegionTool implements AgentTool {
    * @param mapId 本世界的 map 称谓（★ 保留在装配签名里以与 {@code EconomyAdjustTool} 等同制；本工具的资源声明是三个命名空间的 粗断言、单位
    *     address 也按单位 id 定位，不当路径用）
    */
+  // ★ 测试/旧路径：全缺省时钟，不读 store；生产 Shell 必须用带 CalendarService 的重载（CalendarService.load）。
   public LevyRegionTool(CoreSimos core, QueryService query, String initiator, String mapId) {
+    this(core, query, initiator, mapId, CalendarService.defaults());
+  }
+
+  /** 生产构造器：历法时钟来自启动期 {@link CalendarService#load} 的同一实例。 */
+  public LevyRegionTool(
+      CoreSimos core,
+      QueryService query,
+      String initiator,
+      String mapId,
+      CalendarService calendarService) {
     this.core = Objects.requireNonNull(core, "core");
     this.query = Objects.requireNonNull(query, "query");
     this.initiator = Objects.requireNonNull(initiator, "initiator");
     Objects.requireNonNull(mapId, "mapId");
+    this.calendarService = Objects.requireNonNull(calendarService, "calendarService");
   }
 
   @Override
@@ -260,7 +276,8 @@ public final class LevyRegionTool implements AgentTool {
                   ? QueryService.QueryTarget.head(branch)
                   : QueryService.QueryTarget.at(branch, new RevisionId(expectedRevision)));
       LevyRegionPlan.Plan plan =
-          LevyRegionPlan.plan(state, unitId, regionId, grain, money, cloth, manpower);
+          LevyRegionPlan.plan(
+              state, unitId, regionId, grain, money, cloth, manpower, calendarService.clock());
       if (preview) {
         return ToolSupport.ok(planView(plan, reason, true, false));
       }

@@ -116,6 +116,7 @@ final class RaiseUnitPlan {
    * @param parent 父单位 id（可选；给了就必须存在且当刻有效位置与 {@code at} 同格）
    * @throws IllegalArgumentException 任一具名拒（工具折成 {@code BAD_REQUEST}）
    */
+  // ★ 测试/旧路径：全缺省儒略历时钟；生产路径由 CalendarService.clock() 传入。
   static Plan plan(
       SimulationState state,
       String newUnitId,
@@ -129,7 +130,43 @@ final class RaiseUnitPlan {
       int mobilityPerMille,
       Map<String, Integer> equipment,
       Optional<String> parent) {
+    return plan(
+        state,
+        newUnitId,
+        name,
+        regionId,
+        at,
+        manpower,
+        grain,
+        money,
+        speed,
+        mobilityPerMille,
+        equipment,
+        parent,
+        CalendarClock.julianDefault());
+  }
+
+  /**
+   * 生产入口：历法时钟由调用方传入（本类的人力年龄档判定只认这台钟）。
+   *
+   * @param clock 历法时钟（非空；生产路径 = CalendarService.clock()）
+   */
+  static Plan plan(
+      SimulationState state,
+      String newUnitId,
+      String name,
+      String regionId,
+      HexCoord at,
+      long manpower,
+      long grain,
+      long money,
+      int speed,
+      int mobilityPerMille,
+      Map<String, Integer> equipment,
+      Optional<String> parent,
+      CalendarClock clock) {
     Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(clock, "clock");
     Objects.requireNonNull(parent, "parent");
     requireNonBlank(newUnitId, "newUnitId");
     requireNonBlank(name, "name");
@@ -191,8 +228,7 @@ final class RaiseUnitPlan {
                 account -> AvailableStock.available(account, MoneyVocabulary.SILVER_CURRENCY));
     RegionAllocations.ManpowerAllocation manpowerAllocation =
         RegionAllocations.allocateManpower(
-            // C5 过渡：换成 CalendarService 的时钟（缺省值相同）
-            ToolSupport.socialData(state), region, tick, manpower, CalendarClock.julianDefault());
+            ToolSupport.socialData(state), region, tick, manpower, clock);
     return new Plan(
         newUnitId,
         name,

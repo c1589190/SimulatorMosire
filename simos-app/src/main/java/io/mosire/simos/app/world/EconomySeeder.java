@@ -2182,7 +2182,9 @@ public final class EconomySeeder {
   }
 
   /**
-   * 创世时钟（C5 过渡：C5 起换成 CalendarService 注入；缺省值相同）：创世的年龄档判定一律在 **tick 0** 折算，缺省 {@link
+   * 创世时钟（★ <b>具名缺口：创世年龄档仍未随 GM 配置走</b>）：{@link EconomySeeder} 的静态入口（如 {@code plan(...)}）没有
+   * CalendarService——{@code WorldgenInitializeTool} 与 {@code RegionSeedPlan} 都是静态调用，
+   * 装配链是静态的；本批不硬塞，留给后续工具面接线。当前创世的年龄档判定一律在 <b>tick 0</b> 折算，缺省 {@link
    * CalendarClock#julianDefault()}（儒略 1445-01-01）。
    *
    * <p>★ **私有静态 final**：{@link #ageBracketOf(long)} 每次调用都走它，不必每次新造一台时钟；它是无状态不可变的，共享安全。

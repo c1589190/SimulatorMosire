@@ -128,8 +128,8 @@ final class RegionAllocations {
    * @param region 来源区域（只取 {@code hexes()} 的格集）
    * @param tick 现算年龄用的当前世界日（年龄口径的唯一拼写点在 {@link PopulationGroup#ageDaysAt(long)}）
    * @param requested 请求量（0 = 本维度整段跳过，返回 {@link ManpowerAllocation#skipped()}，不扫描来源）
-   * @param clock 历法时钟：tick→JDN 的唯一换算点（15/60 是整历法年；app 层允许 C5 过渡期用 {@link
-   *     CalendarClock#julianDefault()}）
+   * @param clock 历法时钟：tick→JDN 的唯一换算点（15/60 是整历法年）；生产路径由 {@code CalendarService.clock()}
+   *     传入，本类不自造默认时钟
    * @throws IllegalArgumentException requested / tick 为负、或合格批次总人数不足（整条拒，不部分抽取）
    */
   static ManpowerAllocation allocateManpower(

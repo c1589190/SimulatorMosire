@@ -10,6 +10,7 @@ import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.skill.SkillLibrary;
+import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.read.ArmyCombatTool;
 import io.mosire.simos.app.tools.read.ArmyCombatsTool;
 import io.mosire.simos.app.tools.read.BranchListTool;
@@ -195,7 +196,9 @@ public final class SimosToolSource implements ToolSource {
   private final List<AgentTool> tools;
 
   /**
-   * 决策人桶的装配（**不带目标表**）：{@link Role#DECISION_AGENT} 走这条——本桶不含 {@code sd.AdjudicateTick}（它是 GM
+   * 测试/旧路径：全缺省时钟（不读 store）；生产 Shell 必须用带 {@link CalendarService} 的重载（{@link CalendarService#load}）。
+   *
+   * <p>决策人桶的装配（**不带目标表**）：{@link Role#DECISION_AGENT} 走这条——本桶不含 {@code sd.AdjudicateTick}（它是 GM
    * 的活），故不需要 {@link CommandTargets}，也不需要运行流。
    *
    * <p>★ GM 桶请用带 {@code commandTargets} 的那条：缺了它 {@code sd.AdjudicateTick} 会因"没有任何命令有目标声明"
@@ -221,6 +224,38 @@ public final class SimosToolSource implements ToolSource {
       Role role) {
     this(
         core,
+        CalendarService.defaults(),
+        query,
+        initiator,
+        mapId,
+        worldgenConfigFile,
+        commandTypes,
+        embeddableCommandTypes,
+        skills,
+        renderService,
+        gmToolUsage,
+        llmConfig,
+        role);
+  }
+
+  /** 决策人桶的生产装配：历法时钟来自启动期 {@link CalendarService#load} 的同一实例。 */
+  public SimosToolSource(
+      CoreSimos core,
+      CalendarService calendarService,
+      QueryService query,
+      String initiator,
+      String mapId,
+      Path worldgenConfigFile,
+      Set<String> commandTypes,
+      Set<String> embeddableCommandTypes,
+      SkillLibrary skills,
+      RenderService renderService,
+      GmToolUsage gmToolUsage,
+      AgentLibLlmConfig llmConfig,
+      Role role) {
+    this(
+        core,
+        calendarService,
         query,
         initiator,
         mapId,
@@ -233,11 +268,15 @@ public final class SimosToolSource implements ToolSource {
         llmConfig,
         Map.of(),
         role,
+        null,
+        null,
         null);
   }
 
   /**
-   * 全参装配：读工具两档共享；写面各自不同（{@link Role#GM} = 通用写 ∪ 全部窄写）。
+   * 测试/旧路径（源码兼容）：全缺省时钟、审批面装配为「未接入」；生产 Shell 必须用带 {@link CalendarService} 的全参重载。
+   *
+   * <p>全参装配：读工具两档共享；写面各自不同（{@link Role#GM} = 通用写 ∪ 全部窄写）。
    *
    * @param commandTypes catalog 可见的完整注册面（含 GM-only；E6b 起与 embeddableCommandTypes 拆开）
    * @param embeddableCommandTypes 可嵌入令白名单的输入集（注册面 − GM-only；E6b 起供 {@code CatalogTool} 的决策人过滤与
@@ -265,7 +304,8 @@ public final class SimosToolSource implements ToolSource {
       Map<String, CommandTargets> commandTargets,
       Role role,
       DecisionAgentService decisionAgent) {
-    // ★ 旧签名（源码兼容）：GM 审批面两条工具仍会进 GM 桶，但装配为「未接入」⇒ 执行期具名 UNAVAILABLE。
+    // ★ 测试/旧路径（源码兼容）：全缺省时钟、审批面装配为「未接入」（执行期具名 UNAVAILABLE）；
+    //   生产 Shell 必须用带 CalendarService 的全参构造器（CalendarService.load）。
     this(
         core,
         query,
@@ -286,15 +326,8 @@ public final class SimosToolSource implements ToolSource {
   }
 
   /**
-   * 全参装配（含 GM 审批面接线）：读工具两档共享；写面各自不同（{@link Role#GM} = 通用写 ∪ 全部窄写）， GM 桶另挂两条审批控制面工具（{@code
-   * simos.gm.approvals} / {@code simos.gm.approve}）。
-   *
-   * <p>★ 审批依赖**只被 {@link Role#GM} 用到**：两条工具标了 {@link GmOnlyRead} / 只加在 {@link #addGmWrites}，
-   * 决策人桶里不出现；{@link Role#DECISION_AGENT} 下传 null 是合法装配（那两条根本不会被构造到可执行面）。
-   *
-   * @param pendingApprovals 进程内唯一的审批登记表（GM 裁决口读写它；null = 未接入 ⇒ 工具回 {@code UNAVAILABLE}）
-   * @param approvalCoordinator 决策人链的审批编排器（成功回执取 {@code effectiveDecision(...)} 算实际生效 scope； null =
-   *     未接入 ⇒ 工具回 {@code UNAVAILABLE}）
+   * 测试/旧路径（源码兼容）：全缺省时钟（不读 store）、审批面装配为「未接入」⇒ 执行期具名 UNAVAILABLE； 生产 Shell 必须用带 {@link
+   * CalendarService} 的重载（{@link CalendarService#load}）。
    */
   public SimosToolSource(
       CoreSimos core,
@@ -313,7 +346,58 @@ public final class SimosToolSource implements ToolSource {
       DecisionAgentService decisionAgent,
       PendingApprovals pendingApprovals,
       ApprovalCoordinator approvalCoordinator) {
+    this(
+        core,
+        CalendarService.defaults(),
+        query,
+        initiator,
+        mapId,
+        worldgenConfigFile,
+        commandTypes,
+        embeddableCommandTypes,
+        skills,
+        renderService,
+        gmToolUsage,
+        llmConfig,
+        commandTargets,
+        role,
+        decisionAgent,
+        pendingApprovals,
+        approvalCoordinator);
+  }
+
+  /**
+   * 生产全参装配（含 GM 审批面接线）：读工具两档共享；写面各自不同（{@link Role#GM} = 通用写 ∪ 全部窄写）， GM 桶另挂两条审批控制面工具（{@code
+   * simos.gm.approvals} / {@code simos.gm.approve}）；历法时钟来自启动期 {@link CalendarService#load} 的同一实例。
+   *
+   * <p>★ 审批依赖**只被 {@link Role#GM} 用到**：两条工具标了 {@link GmOnlyRead} / 只加在 {@link #addGmWrites}，
+   * 决策人桶里不出现；{@link Role#DECISION_AGENT} 下传 null 是合法装配（那两条根本不会被构造到可执行面）。
+   *
+   * @param calendarService 启动期装载的历法服务（非空；四个 gov 写工具按它取时钟）
+   * @param pendingApprovals 进程内唯一的审批登记表（GM 裁决口读写它；null = 未接入 ⇒ 工具回 {@code UNAVAILABLE}）
+   * @param approvalCoordinator 决策人链的审批编排器（成功回执取 {@code effectiveDecision(...)} 算实际生效 scope； null =
+   *     未接入 ⇒ 工具回 {@code UNAVAILABLE}）
+   */
+  public SimosToolSource(
+      CoreSimos core,
+      CalendarService calendarService,
+      QueryService query,
+      String initiator,
+      String mapId,
+      Path worldgenConfigFile,
+      Set<String> commandTypes,
+      Set<String> embeddableCommandTypes,
+      SkillLibrary skills,
+      RenderService renderService,
+      GmToolUsage gmToolUsage,
+      AgentLibLlmConfig llmConfig,
+      Map<String, CommandTargets> commandTargets,
+      Role role,
+      DecisionAgentService decisionAgent,
+      PendingApprovals pendingApprovals,
+      ApprovalCoordinator approvalCoordinator) {
     Objects.requireNonNull(core, "core");
+    Objects.requireNonNull(calendarService, "calendarService");
     Objects.requireNonNull(query, "query");
     Objects.requireNonNull(initiator, "initiator");
     Objects.requireNonNull(mapId, "mapId");
@@ -345,6 +429,7 @@ public final class SimosToolSource implements ToolSource {
         addGmWrites(
             built,
             core,
+            calendarService,
             query,
             initiator,
             mapId,
@@ -398,6 +483,7 @@ public final class SimosToolSource implements ToolSource {
   private static void addGmWrites(
       List<AgentTool> built,
       CoreSimos core,
+      CalendarService calendarService,
       QueryService query,
       String initiator,
       String mapId,
@@ -512,14 +598,14 @@ public final class SimosToolSource implements ToolSource {
     //   **只在 GM 桶**；★ 三个工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；各自走 CoreSimos.submitBatch
     //   一批一条 revision（批内固定顺序与载荷见各自 *Plan 类）。
     built.add(new GovCreateOfficeTool(core, query, initiator, mapId));
-    built.add(new GovRecruitTool(core, query, initiator, mapId));
+    built.add(new GovRecruitTool(core, query, initiator, mapId, calendarService));
     built.add(new GovDismissTool(core, query, initiator, mapId));
     // 阶段 13A（2026-10-01 GOV/Army 计划 §2.6 人员流转）：四条 GOV 组合工具——
     //   selectExaminees（辖区选人 → 无标签纯人员单位，可规划到目的 GOV）、dispatchTeam（GOV 编制出人 → 纯人员单位，
     //   armed 时加 ArmyFormation）、absorbUnit（吸收纯人员单位进编制，可解散已空源）、retireStaff（离编 + 退休待遇 +
     //   社会回写）。**只在 GM 桶**；★ 四个工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；各自走
     //   CoreSimos.submitBatch 一批一条 revision（批内固定顺序与载荷见各自 *Plan 类）。
-    built.add(new GovSelectExamineesTool(core, query, initiator, mapId));
+    built.add(new GovSelectExamineesTool(core, query, initiator, mapId, calendarService));
     built.add(new GovDispatchTeamTool(core, query, initiator, mapId));
     built.add(new GovAbsorbUnitTool(core, query, initiator, mapId));
     built.add(new GovRetireStaffTool(core, query, initiator, mapId));
@@ -539,7 +625,7 @@ public final class SimosToolSource implements ToolSource {
     // 辖区阶段 6（2026-09-30 / 计划 §6.1）：GM 组合工具——一次抽粮/钱/人力，三条命令同批落一条 revision。
     //   **只在 GM 桶**；★ 它不是一条命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。actor.AdjustAccounts 已标
     //   GmOnlyCommand ⇒ 这条组合工具的上限/管辖区口径不会被"嵌进决策令"绕过。
-    built.add(new LevyRegionTool(core, query, initiator, mapId));
+    built.add(new LevyRegionTool(core, query, initiator, mapId, calendarService));
     // 辖区阶段 7 第二段（2026-09-30 / 计划 §4）：地方债 GM 组合工具——economy.UnitBorrow/UnitRepay + 国库
     //   入/出账 + sd.PutInfo 行动记录，三条命令同批落一条 revision（单提原语会造成悬空腿）。
     //   **只在 GM 桶**；★ 两个工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。
@@ -548,7 +634,7 @@ public final class SimosToolSource implements ToolSource {
     // 辖区阶段 8（2026-09-30 / 计划 §5）：组军 GM 组合工具——从地方抽人力 + 抽粮/钱，同批 unit.CreateUnit +
     //   actor.AdjustAccounts + social.SeedGroups + sd.PutInfo，四条命令同批落一条 revision。**只在 GM 桶**；
     //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；分摊与 levyRegion 共用 RegionAllocations 一份瀑布。
-    built.add(new RaiseUnitTool(core, query, initiator, mapId));
+    built.add(new RaiseUnitTool(core, query, initiator, mapId, calendarService));
     // P5（2026-10-01 后端 + MCP 稳定化计划）：按格直接建军 GM 组合工具——GM 特权不抽人口/粮饷，同批
     //   unit.CreateUnit + [role 非空: unit.SetArmyFormation] + sd.CreateArmy + sd.PutInfo，一条
     // revision。

@@ -91,6 +91,7 @@ final class LevyRegionPlan {
    * @param manpower 人力请求量（&ge; 0；0 = 本维度整段跳过）
    * @throws IllegalArgumentException 任一具名拒（工具折成 {@code BAD_REQUEST}）
    */
+  // ★ 测试/旧路径：全缺省儒略历时钟；生产路径由 CalendarService.clock() 传入。
   static Plan plan(
       SimulationState state,
       String unitId,
@@ -99,7 +100,26 @@ final class LevyRegionPlan {
       long money,
       long cloth,
       long manpower) {
+    return plan(
+        state, unitId, regionId, grain, money, cloth, manpower, CalendarClock.julianDefault());
+  }
+
+  /**
+   * 生产入口：历法时钟由调用方传入（本类的人力年龄档判定只认这台钟）。
+   *
+   * @param clock 历法时钟（非空；生产路径 = CalendarService.clock()）
+   */
+  static Plan plan(
+      SimulationState state,
+      String unitId,
+      String regionId,
+      long grain,
+      long money,
+      long cloth,
+      long manpower,
+      CalendarClock clock) {
     Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(clock, "clock");
     requireNonNegative(grain, "grain");
     requireNonNegative(money, "money");
     requireNonNegative(cloth, "cloth");
@@ -168,7 +188,9 @@ final class LevyRegionPlan {
             : accountDimension(
                 state, region, "布", cloth, account -> AvailableStock.available(account, CLOTH));
     Manpower manpowerDimension =
-        manpower == 0L ? Manpower.skipped() : manpowerDimension(state, region, tick, manpower);
+        manpower == 0L
+            ? Manpower.skipped()
+            : manpowerDimension(state, region, tick, manpower, clock);
     return new Plan(
         unitId,
         regionId,
@@ -211,11 +233,10 @@ final class LevyRegionPlan {
    * 本类只做结果类型转换，保证 {@link Manpower}/{@link GroupSource} 的对外形状逐字不变。
    */
   private static Manpower manpowerDimension(
-      SimulationState state, Region region, long tick, long requested) {
+      SimulationState state, Region region, long tick, long requested, CalendarClock clock) {
     RegionAllocations.ManpowerAllocation allocation =
-        // C5 过渡：换成 CalendarService 的时钟（缺省值相同）
         RegionAllocations.allocateManpower(
-            ToolSupport.socialData(state), region, tick, requested, CalendarClock.julianDefault());
+            ToolSupport.socialData(state), region, tick, requested, clock);
     List<GroupSource> sources = new ArrayList<>(allocation.sources().size());
     for (RegionAllocations.GroupSource source : allocation.sources()) {
       sources.add(new GroupSource(source.group(), source.taken()));

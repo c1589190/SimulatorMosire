@@ -13,6 +13,7 @@ import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.query.QueryService;
+import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.BatchResult;
@@ -83,12 +84,27 @@ public final class GovSelectExamineesTool implements AgentTool {
   private final QueryService query;
   private final String initiator;
 
+  /** 历法/气候服务：四个 gov 写工具按它取时钟（生产路径 = CalendarService.load；旧路径 = 全缺省）。 */
+  private final CalendarService calendarService;
+
+  // ★ 测试/旧路径：全缺省时钟，不读 store；生产 Shell 必须用带 CalendarService 的重载（CalendarService.load）。
   public GovSelectExamineesTool(
       CoreSimos core, QueryService query, String initiator, String mapId) {
+    this(core, query, initiator, mapId, CalendarService.defaults());
+  }
+
+  /** 生产构造器：历法时钟来自启动期 {@link CalendarService#load} 的同一实例。 */
+  public GovSelectExamineesTool(
+      CoreSimos core,
+      QueryService query,
+      String initiator,
+      String mapId,
+      CalendarService calendarService) {
     this.core = Objects.requireNonNull(core, "core");
     this.query = Objects.requireNonNull(query, "query");
     this.initiator = Objects.requireNonNull(initiator, "initiator");
     Objects.requireNonNull(mapId, "mapId");
+    this.calendarService = Objects.requireNonNull(calendarService, "calendarService");
   }
 
   @Override
@@ -191,7 +207,8 @@ public final class GovSelectExamineesTool implements AgentTool {
                   ? QueryService.QueryTarget.head(branch)
                   : QueryService.QueryTarget.at(branch, new RevisionId(expectedRevision)));
       GovSelectExamineesPlan.Plan plan =
-          GovSelectExamineesPlan.plan(state, unitId, count, targetGovUnitId, role, newUnitId);
+          GovSelectExamineesPlan.plan(
+              state, unitId, count, targetGovUnitId, role, newUnitId, calendarService.clock());
       if (preview) {
         return ToolSupport.ok(planView(plan, reason, true, false));
       }
