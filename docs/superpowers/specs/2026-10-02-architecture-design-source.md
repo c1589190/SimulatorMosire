@@ -241,3 +241,17 @@
   1. "该格没有任何选中 tag 的区域"时的行为用户未口述；本次实现取**严格口径**：不改变当前选中（不清高亮/focus）只发状态说明；若用户要"回退全图最顶层"需另裁。
   2. tag 比较为 trim 后逐字相等；"未标注"（无 tag）不参与筛选。
 - **关联实现**：提交 `71fb6cb0`（`app.js` regionTag + `panel-right.js` 两接线点 + `map.js` `taggedTopRegionId`/`normalizedTag` 与严格无匹配）；测试见 `BUG-2026-10-02-05`；`clean verify` 全绿（frontend 362/362）。
+
+## D-017 当前 tick 战斗事件浮层（用户 2026-10-02 口述）
+- **日期**：2026-10-02
+- **来源（用户原话）**：「继续开发功能，允许在地图上额外显示当前tick发生过的战斗详情，可以在GUI上做一个额外的事件显示页面，用Emoji按钮点击特定hex上代表战斗的图标，就能看这场战斗的详情——后面也应当适配其他状态事件；战斗事件也可以通过那个图层调整来显示、关闭」
+- **设计裁定（用户给定，最终版）**：
+  1. 地图上当前 tick 发生过的战斗要能**额外显示详情**；GUI 做一个**事件显示浮层**（本次实现为工作台右下角可滚动浮层）。
+  2. 用地图上代表战斗的 **Emoji ⚔ 图标**（点击该图标）查看**该 hex** 的战斗详情；面板内可切换「当前 tick 全部」。
+  3. 事件面板要能**适配其他状态事件**：本次实现为 **provider 注册表**（`registerProvider({id,label,icon,load,normalize,renderDetail})`），战斗只是第一个 provider。
+  4. 战斗事件的**显示/关闭**由既有图层抽屉的 `combats` 开关收口（label 改「战斗事件」）：勾掉即不画 ⚔、不可点、并关闭事件面板。
+- **边界与未定项**：
+  1. 只有 **Army 真实交战记录**（`GET /api/army/combats`，缺省世界当前 tick）能点开详情；仅靠"同格多军队/ENGAGED"推断出来、没有记录的 ⚔ 仍会画，但点它不会开事件（落到格选中）——后续如需把推断事件也做成可看详情需另裁。
+  2. 事件面板当前为右下角固定浮层、不可拖动；真实浏览器下的遮挡/手感需用户验收。
+  3. 其他状态事件的 provider 形状与图层归属（是共用 `combats` 还是各自新图层）待接入时补裁。
+- **关联实现**：提交 `326e7bc0`（`events.js` + `hexgeom.combatIconAt` + `renderer.pickAt` + `map.js` 接线 + `index.html`/`styles.css`）；测试 `events.test.cjs` 21 条 + `region-edit-select` combat pick 1 条，前端下界 362→384；`clean verify` 全绿（13 模块 2919 tests / 0 失败 / 5 skipped；frontend 384/384）。
