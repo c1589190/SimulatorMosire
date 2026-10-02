@@ -139,6 +139,308 @@
     return parts.length ? parts.join("；") : "—";
   }
 
+  /** valueText 的"空串也算空"版本：null/undefined/"" ⇒ "—"（纯函数）。 */
+  function orDash(value) {
+    var text = valueText(value);
+    return text === "" ? "—" : text;
+  }
+
+  /** 取第一个非 null/undefined/"" 的值；全空 ⇒ undefined（0 / false 是有效值）。 */
+  function firstFilled(values) {
+    for (var i = 0; i < values.length; i++) {
+      var value = values[i];
+      if (value !== null && value !== undefined && value !== "") return value;
+    }
+    return undefined;
+  }
+
+  /** 事件与 raw 里任一完整 hex ⇒ 该 hex；都缺 q/r ⇒ null（不编坐标）。 */
+  function pickHex(source, raw) {
+    var candidates = [source.hex, raw.hex];
+    for (var i = 0; i < candidates.length; i++) {
+      var hex = candidates[i];
+      if (
+        hex &&
+        typeof hex === "object" &&
+        hex.q !== null &&
+        hex.q !== undefined &&
+        hex.r !== null &&
+        hex.r !== undefined
+      ) {
+        return hex;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 阶段 → 纯文本块（combatEventText 内部用；纯函数）：
+   *   —— 阶段 名（已判定/未判定）
+   *   participants：…
+   *   过程：…
+   *   结局：
+   *     ✓ label（weight w）损失：…
+   *   rollSeed：…
+   * 选中结局 ✓、未选中 ·；无 outcomes ⇒ 占位行 "  —"。
+   */
+  function stageText(stage) {
+    var value = stage || {};
+    var outcomes = Array.isArray(value.outcomes) ? value.outcomes : [];
+    var lines = [
+      "—— 阶段 " + orDash(value.name) + "（" + (value.resolved ? "已判定" : "未判定") + "）",
+      "participants：" + idListText(value.participants),
+      "过程：" + orDash(value.text),
+      "结局：",
+    ];
+    if (outcomes.length) {
+      for (var i = 0; i < outcomes.length; i++) {
+        var outcome = outcomes[i] || {};
+        var selected =
+          outcome.id === value.selectedOutcomeId || outcome.id === value.selectedOutcome;
+        lines.push(
+          "  " +
+            (selected ? "✓" : "·") +
+            " " +
+            orDash(outcome.label) +
+            "（weight " +
+            orDash(outcome.weight) +
+            "）损失：" +
+            formatOutcomeLosses(outcome.losses)
+        );
+      }
+    } else {
+      lines.push("  —");
+    }
+    lines.push("rollSeed：" + orDash(value.rollSeed));
+    return lines.join("\n");
+  }
+
+  /**
+   * 一条事件 → 纯文本战况（发推演群用）。形状同 normalizeCombatEvent：
+   * {type,id,tick,hex,title,summary,raw}；raw 为 Army 交战记录（kind/participants/text/stages/losses…）。
+   * 字段顺序固定：标题(id) / kind / tick / hex / participants / 过程 / 阶段 / 结局 / 损失。
+   * 空值一律 "—"；无阶段 ⇒ 一行 "—— 阶段：—"；无损失 ⇒ 损失块一行 "—"。
+   * 纯函数：不碰 DOM、不读闭包状态（只复用 valueText/idListText/formatDelta/formatOutcomeLosses）。
+   */
+  function combatEventText(event) {
+    var source = event || {};
+    var raw = source.raw && typeof source.raw === "object" ? source.raw : {};
+    var title = firstFilled([source.title]);
+    var id = firstFilled([source.id, raw.id]);
+    var hex = pickHex(source, raw);
+    var stages = Array.isArray(raw.stages)
+      ? raw.stages
+      : Array.isArray(source.stages)
+        ? source.stages
+        : [];
+    var losses = Array.isArray(raw.losses)
+      ? raw.losses
+      : Array.isArray(source.losses)
+        ? source.losses
+        : [];
+    var narrative = firstFilled([raw.text, source.summary, source.text]);
+    var participants =
+      raw.participants === null || raw.participants === undefined
+        ? source.participants
+        : raw.participants;
+
+    var blocks = [
+      [
+        "【" + (title === undefined ? "战斗 " + orDash(id) : orDash(title)) + "】",
+        "kind：" + orDash(firstFilled([raw.kind, source.kind])),
+        "tick：" + orDash(firstFilled([source.tick, raw.tick])),
+        "hex：" + (hex ? "(" + orDash(hex.q) + "," + orDash(hex.r) + ")" : "—"),
+        "participants：" + idListText(participants),
+        "过程：" + orDash(narrative),
+      ].join("\n"),
+    ];
+
+    if (stages.length) {
+      for (var i = 0; i < stages.length; i++) {
+        blocks.push(stageText(stages[i]));
+      }
+    } else {
+      blocks.push("—— 阶段：—");
+    }
+
+    var lossLines = ["—— 损失"];
+    if (losses.length) {
+      for (var j = 0; j < losses.length; j++) {
+        var loss = losses[j] || {};
+        lossLines.push(
+          orDash(loss.stageId) +
+            " / " +
+            orDash(loss.unit) +
+            "：" +
+            formatDelta(loss.manpower) +
+            " / " +
+            formatDelta(loss.equipment)
+        );
+      }
+    } else {
+      lossLines.push("—");
+    }
+    blocks.push(lossLines.join("\n"));
+    return blocks.join("\n\n");
+  }
+
+  /** 事件数组 → 每条 combatEventText，以空行连接；空数组/非数组 ⇒ ""（纯函数）。 */
+  function eventsToText(events) {
+    if (!Array.isArray(events) || !events.length) return "";
+    var parts = [];
+    for (var i = 0; i < events.length; i++) {
+      parts.push(combatEventText(events[i]));
+    }
+    return parts.join("\n\n");
+  }
+
+  // ── 剪贴板（宽容：不可用 / 失败 ⇒ false，绝不抛）─────────────────────
+
+  /**
+   * 降级复制：临时 <textarea> + document.execCommand("copy")。
+   * 无 document / 无 execCommand / body 不可挂 / 任一步失败 ⇒ false。
+   */
+  function fallbackCopyText(text) {
+    if (typeof document === "undefined" || !document) return false;
+    if (typeof document.createElement !== "function") return false;
+    if (typeof document.execCommand !== "function") return false;
+    var area = null;
+    try {
+      area = document.createElement("textarea");
+      area.value = text;
+      if (typeof area.setAttribute === "function") area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.top = "-9999px";
+      area.style.left = "-9999px";
+      var body = document.body;
+      if (!body || typeof body.appendChild !== "function") return false;
+      body.appendChild(area);
+      if (typeof area.focus === "function") area.focus();
+      if (typeof area.select === "function") area.select();
+      if (typeof area.setSelectionRange === "function") {
+        area.setSelectionRange(0, area.value.length);
+      }
+      try {
+        return document.execCommand("copy") === true;
+      } catch (execErr) {
+        return false;
+      }
+    } catch (err) {
+      return false;
+    } finally {
+      var parent = area && area.parentNode;
+      if (parent && typeof parent.removeChild === "function") {
+        try {
+          parent.removeChild(area);
+        } catch (removeErr) {
+          // 清理失败不影响复制结果
+        }
+      }
+    }
+  }
+
+  /**
+   * 复制文本：优先 navigator.clipboard.writeText；不可用或拒绝 ⇒ textarea + execCommand 降级。
+   * 始终返回 Promise<boolean>（全失败 ⇒ false），不抛。
+   */
+  function copyTextToClipboard(text) {
+    var value = text === null || text === undefined ? "" : String(text);
+    var clipboard = null;
+    try {
+      if (typeof navigator !== "undefined" && navigator) clipboard = navigator.clipboard || null;
+    } catch (navigatorErr) {
+      clipboard = null;
+    }
+    if (clipboard && typeof clipboard.writeText === "function") {
+      try {
+        return Promise.resolve(clipboard.writeText(value)).then(
+          function () {
+            return true;
+          },
+          function () {
+            return fallbackCopyText(value);
+          }
+        );
+      } catch (syncErr) {
+        // 同步抛（某些壳）⇒ 走降级
+      }
+    }
+    return Promise.resolve(fallbackCopyText(value));
+  }
+
+  var COPY_FEEDBACK_MS = 1200;
+
+  /** 按钮文案短暂反馈（~1.2s 后恢复原文案）；重复点击重置计时，不叠加。 */
+  function flashButtonText(button, message) {
+    if (!button) return;
+    if (button.__simosCopyResetTimer) {
+      clearTimeout(button.__simosCopyResetTimer);
+    }
+    if (button.__simosCopyLabel === undefined) {
+      button.__simosCopyLabel =
+        button.textContent === null || button.textContent === undefined
+          ? ""
+          : String(button.textContent);
+    }
+    button.textContent = message;
+    button.__simosCopyResetTimer = setTimeout(function () {
+      button.__simosCopyResetTimer = null;
+      button.textContent = button.__simosCopyLabel;
+    }, COPY_FEEDBACK_MS);
+  }
+
+  /** 执行复制并给按钮回显：成功「已复制」/ 失败「复制失败」。 */
+  function copyWithFeedback(button, text) {
+    var pending;
+    try {
+      pending = copyTextToClipboard(text);
+    } catch (err) {
+      flashButtonText(button, "复制失败");
+      return;
+    }
+    if (!pending || typeof pending.then !== "function") {
+      flashButtonText(button, pending === true ? "已复制" : "复制失败");
+      return;
+    }
+    pending.then(
+      function (ok) {
+        flashButtonText(button, ok ? "已复制" : "复制失败");
+      },
+      function () {
+        flashButtonText(button, "复制失败");
+      }
+    );
+  }
+
+  /** 工具栏「复制当前 tick 战况」：无事件 ⇒ 只回显「无事件」，不调剪贴板。 */
+  function copyEventsToText(button, events) {
+    var list = Array.isArray(events) ? events : [];
+    if (!list.length) {
+      flashButtonText(button, "无事件");
+      return;
+    }
+    var text;
+    try {
+      text = eventsToText(list);
+    } catch (err) {
+      flashButtonText(button, "复制失败");
+      return;
+    }
+    copyWithFeedback(button, text);
+  }
+
+  /** 单条详情「📋 复制这条战况」。 */
+  function copyOneEventText(button, event) {
+    var text;
+    try {
+      text = combatEventText(event);
+    } catch (err) {
+      flashButtonText(button, "复制失败");
+      return;
+    }
+    copyWithFeedback(button, text);
+  }
+
   // ── provider 注册表 ─────────────────────────────────────────────────
 
   var combatProvider = {
@@ -364,6 +666,16 @@
         })
       );
     }
+    // 一键复制**当前渲染的这份 events**（已按 scopeHex 过滤）；无事件 ⇒ 只回显「无事件」。
+    var copyAllButton = app.el("button", {
+      type: "button",
+      id: "event-panel-copy-all",
+      text: "复制当前 tick 战况",
+    });
+    copyAllButton.onclick = function () {
+      copyEventsToText(copyAllButton, events);
+    };
+    toolbarChildren.push(copyAllButton);
     mount.appendChild(app.el("div", { class: "event-toolbar" }, toolbarChildren));
     if (lastErrors.length) {
       mount.appendChild(
@@ -461,6 +773,17 @@
     var raw = (event && event.raw) || {};
     clearNode(container);
 
+    // 单条一键复制：文案与战况纯文本由同一个 combatEventText 渲染，避免两处格式漂移。
+    var copyButton = app.el("button", {
+      type: "button",
+      class: "event-copy-one",
+      text: "📋 复制这条战况",
+    });
+    copyButton.onclick = function () {
+      copyOneEventText(copyButton, event);
+    };
+    container.appendChild(copyButton);
+
     var kv = app.el("dl", { class: "event-kv" }, []);
     appendKv(kv, "id", valueText(raw.id));
     appendKv(kv, "kind", valueText(raw.kind));
@@ -509,6 +832,10 @@
     filterEventsForHex: filterEventsForHex,
     formatDelta: formatDelta,
     formatOutcomeLosses: formatOutcomeLosses,
+    combatEventText: combatEventText,
+    eventsToText: eventsToText,
+    // 剪贴板（宽容：不可用 / 失败 ⇒ Promise<false>，不抛）
+    copyTextToClipboard: copyTextToClipboard,
     // 面板
     openForHex: openForHex,
     openAll: openAll,

@@ -2370,6 +2370,8 @@ body.workbench-page .heatmap-legend .heatmap-legend-footnote {
 }
 
 .event-panel-head {
+  /* ★ D-021：头是固定行，不参与收缩（面板 max-height + overflow:hidden 时别把标题裁掉）。 */
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2386,6 +2388,11 @@ body.workbench-page .heatmap-legend .heatmap-legend-footnote {
 }
 
 .event-panel-body {
+  /* ★ D-021：body 作为滚动区必须能缩进 max-height 面板。部分引擎（overflow:auto 的自动最小尺寸
+     已归零）本就收缩，但显式 flex:1 1 auto + min-height:0 才能跨引擎保证"body 收缩、溢出交给
+     自身滚动条"，而不是被 .event-panel 的 max-height + overflow:hidden 裁掉。 */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   padding: 10px 12px;
   display: flex;
@@ -2403,10 +2410,17 @@ body.workbench-page .heatmap-legend .heatmap-legend-footnote {
 }
 
 .event-card {
+  /* ★ D-021 根因修复（Chromium 实测）：.event-panel-body 是 column flex，卡片默认 flex:0 1 auto；
+     卡片自身 overflow:hidden 又令其自动最小高度=0 ⇒ 卡片被压扁、详情被卡片二次裁掉，隐藏内容也
+     不进 body 的 scrollable overflow（scrollHeight==clientHeight），表现就是完全拉不动。
+     flex:0 0 auto 让卡片按内容高度参与 body 纵向滚动。 */
+  flex: 0 0 auto;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel-2);
-  overflow: hidden;
+  /* ★ D-021：同时不再 overflow:hidden —— 卡片的宽 outcome/losses 表会被它横向裁掉，且 body 的
+     滚动条看不到右列；改成 visible 后由 .event-panel-body 作为唯一滚动/裁切容器。 */
+  overflow: visible;
 }
 
 .event-card-head {
@@ -2449,6 +2463,13 @@ body.workbench-page .heatmap-legend .heatmap-legend-footnote {
 .event-card-detail {
   padding: 8px;
   border-top: 1px solid var(--line);
+}
+
+/* ★ D-021 单条一键复制：独占一行、不与下方 kv/正文挤在同一行。 */
+.event-copy-one {
+  display: block;
+  width: 100%;
+  margin: 0 0 8px;
 }
 
 .event-kv {
