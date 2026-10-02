@@ -99,8 +99,8 @@ class McpServerTest {
    * H0.6 的 simos.economy.ownership）。
    */
   /**
-   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 30 读 + 93 写 = 123 条（spec §七.2 的 C6；含 D1–D5 的 unit/sd/army 新读写口与
-   * P1b1/P1b2/P3/R3a/P7a/P7b/P7c 的各项补齐）。
+   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 31 读 + 93 写 = 124 条（spec §七.2 的 C6；含 D1–D5 的 unit/sd/army 新读写口与
+   * P1b1/P1b2/P3/R3a/P7a/P7b/P7c 的各项补齐，以及用户 2026-10-02 的 {@code simos.map.overlaps}）。
    */
   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
       List.of(
@@ -112,6 +112,8 @@ class McpServerTest {
           "simos.map.overview",
           "simos.map.hex",
           "simos.map.region",
+          // ★ 用户 2026-10-02：区域重合检测（GM 专用读）。
+          "simos.map.overlaps",
           "simos.province.divide",
           "simos.map.path",
           "simos.map.block",
@@ -281,7 +283,7 @@ class McpServerTest {
     McpSchema.ListToolsResult tools = client.listTools();
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
-        .as("现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 123 条（30 读 + 93 写；D1–D5 后逐条同源）")
+        .as("现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 124 条（31 读 + 93 写；D1–D5 后逐条同源）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 

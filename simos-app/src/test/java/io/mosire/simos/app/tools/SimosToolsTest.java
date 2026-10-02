@@ -29,6 +29,7 @@ import io.mosire.simos.app.render.RenderCache;
 import io.mosire.simos.app.render.RenderRequest;
 import io.mosire.simos.app.render.RenderService;
 import io.mosire.simos.app.tools.read.CatalogTool;
+import io.mosire.simos.app.tools.read.MapOverlapsTool;
 import io.mosire.simos.app.tools.read.MapRenderTool;
 import io.mosire.simos.app.tools.write.MapCreateRegionTool;
 import io.mosire.simos.app.tools.write.MapDeleteRegionTool;
@@ -156,7 +157,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * 工具集验收（M5 T5；D1–D5 后）：注册表 123 条（GM 桶全量 = 30 读 + 93 写）/ catalog 与注册面一致（R5）/ 写工具身份注入（R4）/ 读工具与
+ * 工具集验收（M5 T5；D1–D5 后）：注册表 124 条（GM 桶全量 = 31 读 + 93 写）/ catalog 与注册面一致（R5）/ 写工具身份注入（R4）/ 读工具与
  * {@code QueryService} 逐值 对拍 / 拒绝与冲突不留 revision。
  *
  * <p>夹具与 {@code QueryServiceTest}/{@code GuiApiTest} 同法：独立 store 种创世 {@code (main,1)} + 含
@@ -182,7 +183,7 @@ class SimosToolsTest {
   /** 与缺省 {@code agent:external-mcp} 不同，让"写死成别的值"这类变异当场现形（R4）。 */
   private static final String TEST_INITIATOR = "agent:t5-test";
 
-  /** 读工具名单（30 条）：读闸**按名字选**，不用索引切片。 */
+  /** 读工具名单（31 条）：读闸**按名字选**，不用索引切片。 */
   private static final List<String> READ_TOOL_NAMES =
       List.of(
           "simos.command.catalog",
@@ -193,6 +194,8 @@ class SimosToolsTest {
           "simos.map.overview",
           "simos.map.hex",
           "simos.map.region",
+          // ★ 用户 2026-10-02：区域重合检测（只给 GM 桶，见 GM_ONLY_READ_NAMES）。
+          "simos.map.overlaps",
           // ★ P3（2026-10-01）：省份划分建议（只给 GM 桶，见 GM_ONLY_READ_NAMES）。
           "simos.province.divide",
           "simos.map.path",
@@ -221,11 +224,12 @@ class SimosToolsTest {
           "simos.llm.providers",
           "simos.skill");
 
-  /** ★ **只给 GM 桶的读工具**（实现 {@code GmOnlyRead} 的那些，11 条）。 */
+  /** ★ **只给 GM 桶的读工具**（实现 {@code GmOnlyRead} 的那些，12 条）。 */
   private static final List<String> GM_ONLY_READ_NAMES =
       List.of(
           "simos.map.path",
           "simos.map.block",
+          "simos.map.overlaps",
           "simos.province.divide",
           "simos.sd.decision-makers",
           "simos.sd.decision-maker",
@@ -424,7 +428,7 @@ class SimosToolsTest {
   private static final List<String> WRITE_TOOL_NAMES =
       concat(NON_NARROW_WRITE_NAMES, NARROW_WRITE_NAMES);
 
-  /** **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 30 读 + 93 写 = 123（**33 非窄写** + **60 窄写**）。 */
+  /** **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 31 读 + 93 写 = 124（**33 非窄写** + **60 窄写**）。 */
   private static final List<String> GM_TOOL_NAMES = concat(READ_TOOL_NAMES, WRITE_TOOL_NAMES);
 
   /** catalog 预期的 85 个已注册命令类型（与 Shell 注册的 handler 同源）。 */
@@ -761,8 +765,8 @@ class SimosToolsTest {
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .as("★ D1–D5 后：GM 桶 = 30 读 + 93 写 = 123（33 非窄写 + 60 窄写）")
-        .hasSize(123);
+        .as("★ D1–D5 后：GM 桶 = 31 读 + 93 写 = 124（33 非窄写 + 60 窄写）")
+        .hasSize(124);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -955,6 +959,8 @@ class SimosToolsTest {
             new Case("simos.map.overview", Map.of(), "hexCount"),
             new Case("simos.map.hex", Map.of("q", 1L, "r", 1L), "terrain"),
             new Case("simos.map.region", Map.of("regionId", REGION.value()), "hexCount"),
+            // ★ 用户 2026-10-02：区域重合检测（GM 专用；创世只有 r-m4 ⇒ 空 overlaps 也是合法最小形状）。
+            new Case("simos.map.overlaps", Map.of(), "overlaps"),
             // ★ P3（2026-10-01）：省份划分建议（只给 GM 桶）。
             new Case("simos.province.divide", Map.of("regionId", REGION.value()), "provinces"),
             new Case("simos.map.path", Map.of("unit", U1.value(), "q", 1L, "r", 2L), "reachable"),
@@ -1008,6 +1014,376 @@ class SimosToolsTest {
     assertThat(covered)
         .as("本表必须逐条覆盖读工具全集（新增读工具却没加进本表 ⇒ 红）")
         .containsExactlyInAnyOrderElementsOf(READ_TOOL_NAMES);
+  }
+
+  // ── ★ simos.map.overlaps（用户 2026-10-02 的新读工具）────────────────────
+
+  /**
+   * ★ 行为主用例：造 5 个区域（创世 r-m4 + 四个新建），覆盖 equal / aContainsB / bContainsA / partial 四种 relation，
+   * 并逐值校验聚合计数、行序、行上的 tag/sameTag/hexCount。
+   *
+   * <p>★ 判别力：把 relation 的任一分支写错 ⇒ 行上的 relation 或 equal/containment/partialPairCount 当场红；把 tag 过滤放宽
+   * ⇒ {@link #mapOverlapsToolFiltersByTagSameTagWholeOnlyAndMinOverlap()} 红。
+   */
+  @Test
+  void mapOverlapsToolReportsEveryRelationAndExactAggregates() throws Exception {
+    seedOverlapRegions();
+
+    ToolResult result = call("simos.map.overlaps", Map.of());
+
+    assertThat(result.success()).as(result.message()).isTrue();
+    JsonNode body = JSON.readTree(result.message());
+    assertThat(fieldNames(body))
+        .as("顶层键必须与 spec 逐条一致（少一个键 = 契约破相）")
+        .containsExactlyInAnyOrder(
+            "mapId",
+            "branch",
+            "revision",
+            "regionCount",
+            "candidateRegionCount",
+            "pairCount",
+            "returnedPairCount",
+            "truncated",
+            "involvedRegionCount",
+            "overlappingHexCount",
+            "equalPairCount",
+            "containmentPairCount",
+            "partialPairCount",
+            "sameTagPairCount",
+            "filters",
+            "overlaps");
+    assertThat(body.get("mapId").asText()).isEqualTo("Map1");
+    assertThat(body.get("branch").asText()).isEqualTo("main");
+    assertThat(body.get("revision").asLong()).isEqualTo(5L);
+    assertThat(body.get("regionCount").asInt()).isEqualTo(5);
+    assertThat(body.get("candidateRegionCount").asInt()).isEqualTo(5);
+    assertThat(body.get("pairCount").asInt()).isEqualTo(9);
+    assertThat(body.get("returnedPairCount").asInt()).isEqualTo(9);
+    assertThat(body.get("truncated").asBoolean()).isFalse();
+    assertThat(body.get("involvedRegionCount").asInt()).isEqualTo(5);
+    assertThat(body.get("overlappingHexCount").asInt()).isEqualTo(3);
+    assertThat(body.get("equalPairCount").asInt()).isEqualTo(1);
+    assertThat(body.get("containmentPairCount").asInt()).isEqualTo(6);
+    assertThat(body.get("partialPairCount").asInt()).isEqualTo(2);
+    assertThat(body.get("sameTagPairCount").asInt()).isEqualTo(1);
+
+    JsonNode filters = body.get("filters");
+    assertThat(filters.has("regionId")).isFalse();
+    assertThat(filters.has("tag")).isFalse();
+    assertThat(filters.get("sameTagOnly").asBoolean()).isFalse();
+    assertThat(filters.get("minOverlapHexes").asLong()).isEqualTo(1L);
+    assertThat(filters.get("wholeOnly").asBoolean()).isFalse();
+    assertThat(filters.get("includeHexes").asBoolean()).isFalse();
+    assertThat(filters.get("limit").asLong()).isEqualTo(50L);
+
+    record ExpectedPair(
+        String a,
+        int aHex,
+        String aTag,
+        String b,
+        int bHex,
+        String bTag,
+        int overlap,
+        String relation,
+        boolean sameTag) {}
+    List<ExpectedPair> expected =
+        List.of(
+            new ExpectedPair("r-eq", 2, "Nation", "r-m4", 2, null, 2, "equal", false),
+            new ExpectedPair("r-eq", 2, "Nation", "r-super", 3, "", 2, "bContainsA", false),
+            new ExpectedPair("r-m4", 2, null, "r-super", 3, "", 2, "bContainsA", false),
+            new ExpectedPair("r-part", 2, "Nation", "r-super", 3, "", 2, "bContainsA", false),
+            new ExpectedPair("r-eq", 2, "Nation", "r-part", 2, "Nation", 1, "partial", true),
+            new ExpectedPair("r-eq", 2, "Nation", "r-small", 1, null, 1, "aContainsB", false),
+            new ExpectedPair("r-m4", 2, null, "r-part", 2, "Nation", 1, "partial", false),
+            new ExpectedPair("r-m4", 2, null, "r-small", 1, null, 1, "aContainsB", false),
+            new ExpectedPair("r-small", 1, null, "r-super", 3, "", 1, "bContainsA", false));
+
+    JsonNode rows = body.get("overlaps");
+    assertThat(rows).hasSize(expected.size());
+    assertThat(fieldNames(rows.get(0)))
+        .as("行键（未请求 includeHexes 时恰好 11 个）")
+        .containsExactlyInAnyOrder(
+            "aRegionId",
+            "aName",
+            "aTag",
+            "aHexCount",
+            "bRegionId",
+            "bName",
+            "bTag",
+            "bHexCount",
+            "overlapHexCount",
+            "relation",
+            "sameTag");
+    for (int i = 0; i < expected.size(); i++) {
+      JsonNode row = rows.get(i);
+      ExpectedPair pair = expected.get(i);
+      String where = "第 " + i + " 行（" + pair.a() + " / " + pair.b() + "）";
+      assertThat(row.get("aRegionId").asText()).as(where + " aRegionId").isEqualTo(pair.a());
+      assertThat(row.get("aHexCount").asInt()).as(where + " aHexCount").isEqualTo(pair.aHex());
+      assertThat(optionalTag(row, "aTag")).as(where + " aTag").isEqualTo(pair.aTag());
+      assertThat(row.get("bRegionId").asText()).as(where + " bRegionId").isEqualTo(pair.b());
+      assertThat(row.get("bHexCount").asInt()).as(where + " bHexCount").isEqualTo(pair.bHex());
+      assertThat(optionalTag(row, "bTag")).as(where + " bTag").isEqualTo(pair.bTag());
+      assertThat(row.get("overlapHexCount").asInt())
+          .as(where + " overlap")
+          .isEqualTo(pair.overlap());
+      assertThat(row.get("relation").asText()).as(where + " relation").isEqualTo(pair.relation());
+      assertThat(row.get("sameTag").asBoolean()).as(where + " sameTag").isEqualTo(pair.sameTag());
+      assertThat(row.has("overlapHexes")).as(where + " 未请求 includeHexes ⇒ 不得夹带交集格").isFalse();
+    }
+  }
+
+  /**
+   * ★ 过滤面逐值：tag / sameTagOnly / wholeOnly / minOverlapHexes 必须在**候选集与计数**上同时生效。
+   *
+   * <p>★ 判别力：把同一 tag 过滤放宽成"任一匹配" ⇒ tag 用例的 pairCount=1 / candidateRegionCount=2 红；sameTagOnly 若把空
+   * tag 也算同 tag ⇒ 会多出空 tag 对，pairCount 不再是 1；wholeOnly 若把 partial 也留下 ⇒ pairCount=7 /
+   * partialPairCount=0 红。
+   */
+  @Test
+  void mapOverlapsToolFiltersByTagSameTagWholeOnlyAndMinOverlap() throws Exception {
+    seedOverlapRegions();
+
+    JsonNode tagged = executeOverlaps(Map.of("tag", "Nation"));
+    assertThat(tagged.get("candidateRegionCount").asInt()).isEqualTo(2);
+    assertThat(tagged.get("pairCount").asInt()).isEqualTo(1);
+    assertThat(tagged.get("equalPairCount").asInt()).isZero();
+    assertThat(tagged.get("containmentPairCount").asInt()).isZero();
+    assertThat(tagged.get("partialPairCount").asInt()).isEqualTo(1);
+    assertThat(tagged.get("sameTagPairCount").asInt()).isEqualTo(1);
+    assertThat(tagged.get("involvedRegionCount").asInt()).isEqualTo(2);
+    assertThat(tagged.get("overlappingHexCount").asInt()).isEqualTo(1);
+    assertThat(tagged.get("filters").get("tag").asText()).isEqualTo("Nation");
+    JsonNode onlyPair = tagged.get("overlaps").get(0);
+    assertThat(onlyPair.get("aRegionId").asText()).isEqualTo("r-eq");
+    assertThat(onlyPair.get("bRegionId").asText()).isEqualTo("r-part");
+    assertThat(onlyPair.get("overlapHexCount").asInt()).isEqualTo(1);
+    assertThat(onlyPair.get("relation").asText()).isEqualTo("partial");
+    assertThat(onlyPair.get("sameTag").asBoolean()).isTrue();
+
+    JsonNode sameTagOnly = executeOverlaps(Map.of("sameTagOnly", true));
+    assertThat(sameTagOnly.get("candidateRegionCount").asInt())
+        .as("空白/null tag 的区域必须整批挡在候选外")
+        .isEqualTo(2);
+    assertThat(sameTagOnly.get("pairCount").asInt())
+        .as("空 tag 对（r-m4 / r-super）不得被算作同 tag")
+        .isEqualTo(1);
+    assertThat(sameTagOnly.get("sameTagPairCount").asInt()).isEqualTo(1);
+    assertThat(sameTagOnly.get("overlaps")).hasSize(1);
+    assertThat(sameTagOnly.get("overlaps").get(0).get("sameTag").asBoolean()).isTrue();
+    assertThat(sameTagOnly.get("filters").get("sameTagOnly").asBoolean()).isTrue();
+
+    JsonNode wholeOnly = executeOverlaps(Map.of("wholeOnly", true));
+    assertThat(wholeOnly.get("pairCount").asInt()).isEqualTo(7);
+    assertThat(wholeOnly.get("equalPairCount").asInt()).isEqualTo(1);
+    assertThat(wholeOnly.get("containmentPairCount").asInt()).isEqualTo(6);
+    assertThat(wholeOnly.get("partialPairCount").asInt()).isZero();
+    assertThat(wholeOnly.get("involvedRegionCount").asInt()).isEqualTo(5);
+    assertThat(wholeOnly.get("truncated").asBoolean()).isFalse();
+    assertThat(wholeOnly.get("overlaps")).hasSize(7);
+    for (JsonNode row : wholeOnly.get("overlaps")) {
+      assertThat(row.get("relation").asText())
+          .as("wholeOnly 输出里不得再出现 partial")
+          .isNotEqualTo("partial");
+    }
+    assertThat(wholeOnly.get("filters").get("wholeOnly").asBoolean()).isTrue();
+
+    JsonNode minTwo = executeOverlaps(Map.of("minOverlapHexes", 2));
+    assertThat(minTwo.get("pairCount").asInt()).isEqualTo(4);
+    assertThat(minTwo.get("equalPairCount").asInt()).isEqualTo(1);
+    assertThat(minTwo.get("containmentPairCount").asInt()).isEqualTo(3);
+    assertThat(minTwo.get("partialPairCount").asInt()).isZero();
+    assertThat(minTwo.get("sameTagPairCount").asInt())
+        .as("唯一同 tag 对只有 1 格交集 —— 下界 2 必须把它滤掉，计数不得停留在旧值")
+        .isZero();
+    assertThat(minTwo.get("filters").get("minOverlapHexes").asLong()).isEqualTo(2L);
+  }
+
+  /**
+   * ★ regionId 只留涉及它的对；includeHexes 的交集格必须是真实交集、(q,r) 升序、且与 overlapHexCount 一致；limit 真截断但 pairCount
+   * 保持真值。
+   */
+  @Test
+  void mapOverlapsToolFiltersByRegionAndProjectsIntersectionHexes() throws Exception {
+    seedOverlapRegions();
+
+    JsonNode region = executeOverlaps(Map.of("regionId", "r-part"));
+    assertThat(region.get("regionCount").asInt()).isEqualTo(5);
+    assertThat(region.get("candidateRegionCount").asInt()).as("regionId 不再收窄候选集本身的定义").isEqualTo(5);
+    assertThat(region.get("pairCount").asInt()).isEqualTo(3);
+    assertThat(region.get("equalPairCount").asInt()).isZero();
+    assertThat(region.get("containmentPairCount").asInt()).isEqualTo(1);
+    assertThat(region.get("partialPairCount").asInt()).isEqualTo(2);
+    assertThat(region.get("sameTagPairCount").asInt()).isEqualTo(1);
+    assertThat(region.get("involvedRegionCount").asInt())
+        .as("涉及 r-part 的三对还牵出 r-eq / r-m4 / r-super ⇒ 共 4 个区域")
+        .isEqualTo(4);
+    assertThat(region.get("overlappingHexCount").asInt()).isEqualTo(2);
+    assertThat(region.get("filters").get("regionId").asText()).isEqualTo("r-part");
+    for (JsonNode row : region.get("overlaps")) {
+      assertThat(
+              "r-part".equals(row.get("aRegionId").asText())
+                  || "r-part".equals(row.get("bRegionId").asText()))
+          .as("regionId 过滤后每一行都必须涉及 r-part")
+          .isTrue();
+    }
+
+    JsonNode hexes = executeOverlaps(Map.of("includeHexes", true));
+    assertThat(hexList(overlapRow(hexes, "r-eq", "r-super").get("overlapHexes")))
+        .as("bContainsA 的交集 = 被包含区域的全部格，按 (q,r) 升序")
+        .containsExactly("1,1", "1,2");
+    assertThat(hexList(overlapRow(hexes, "r-part", "r-super").get("overlapHexes")))
+        .containsExactly("1,2", "1,3");
+    assertThat(hexList(overlapRow(hexes, "r-eq", "r-part").get("overlapHexes")))
+        .as("partial 的交集恰是真实共有格（H12）")
+        .containsExactly("1,2");
+    assertThat(hexList(overlapRow(hexes, "r-small", "r-super").get("overlapHexes")))
+        .containsExactly("1,1");
+    for (JsonNode row : hexes.get("overlaps")) {
+      assertThat(row.get("overlapHexes").size())
+          .as("交集格清单长度 == overlapHexCount")
+          .isEqualTo(row.get("overlapHexCount").asInt());
+      assertThat(row.get("overlapHexesTruncated").asBoolean()).isFalse();
+      assertThat(fieldNames(row))
+          .as("includeHexes=true ⇒ 每行必须多出这两个键")
+          .contains("overlapHexes", "overlapHexesTruncated");
+    }
+    assertThat(hexes.get("filters").get("includeHexes").asBoolean()).isTrue();
+    assertThat(
+            JSON.readTree(call("simos.map.overlaps", Map.of()).message())
+                .get("overlaps")
+                .get(0)
+                .has("overlapHexes"))
+        .as("未请求 includeHexes ⇒ 行上不得夹带交集格")
+        .isFalse();
+
+    JsonNode limited = executeOverlaps(Map.of("limit", 2));
+    assertThat(limited.get("pairCount").asInt()).as("pairCount 是真值，不随 limit 变小").isEqualTo(9);
+    assertThat(limited.get("returnedPairCount").asInt()).isEqualTo(2);
+    assertThat(limited.get("truncated").asBoolean()).isTrue();
+    assertThat(limited.get("overlaps")).hasSize(2);
+    assertThat(limited.get("overlaps").get(0).get("aRegionId").asText()).isEqualTo("r-eq");
+    assertThat(limited.get("overlaps").get(0).get("bRegionId").asText()).isEqualTo("r-m4");
+    assertThat(limited.get("overlaps").get(1).get("aRegionId").asText()).isEqualTo("r-eq");
+    assertThat(limited.get("overlaps").get(1).get("bRegionId").asText()).isEqualTo("r-super");
+    assertThat(executeOverlaps(Map.of("limit", 500)).get("returnedPairCount").asInt())
+        .as("limit=500 是上界内合法值")
+        .isEqualTo(9);
+  }
+
+  /**
+   * ★ 错误路径 + 桶归属：{@code limit>500} / {@code limit<=0} / {@code minOverlapHexes<1} ⇒
+   * BAD_REQUEST（不静默截断）； 未知 regionId ⇒ NOT_FOUND；工具只进 GM 桶（{@code GmOnlyRead} + map 只读资源）。
+   */
+  @Test
+  void mapOverlapsToolRejectsBadBoundsAndIsGmOnly() {
+    ToolResult tooMany = call("simos.map.overlaps", Map.of("limit", 501L));
+    assertThat(tooMany.success()).isFalse();
+    assertThat(tooMany.code()).isEqualTo("BAD_REQUEST");
+    assertThat(tooMany.message()).contains("500");
+
+    ToolResult zeroLimit = call("simos.map.overlaps", Map.of("limit", 0L));
+    assertThat(zeroLimit.success()).isFalse();
+    assertThat(zeroLimit.code()).isEqualTo("BAD_REQUEST");
+    assertThat(zeroLimit.message()).contains("limit");
+
+    ToolResult negativeLimit = call("simos.map.overlaps", Map.of("limit", -1L));
+    assertThat(negativeLimit.success()).isFalse();
+    assertThat(negativeLimit.code()).isEqualTo("BAD_REQUEST");
+
+    ToolResult zeroMin = call("simos.map.overlaps", Map.of("minOverlapHexes", 0L));
+    assertThat(zeroMin.success()).isFalse();
+    assertThat(zeroMin.code()).isEqualTo("BAD_REQUEST");
+    assertThat(zeroMin.message()).contains("minOverlapHexes");
+
+    ToolResult missing = call("simos.map.overlaps", Map.of("regionId", "r-none"));
+    assertThat(missing.success()).isFalse();
+    assertThat(missing.code()).isEqualTo("NOT_FOUND");
+    assertThat(missing.message()).contains("r-none");
+
+    AgentTool tool = shell.toolRegistry().find("simos.map.overlaps").orElseThrow();
+    // ★ 注册表里的 GM 面是 RecordingToolSource.RecordingTool 装饰器，标记要看生产类本身。
+    assertThat(new MapOverlapsTool(shell.queryService(), ShellConfig.defaults(tempDir).mapId()))
+        .as("生产类必须实现 GmOnlyRead（只进 GM 桶的标记来源）")
+        .isInstanceOf(GmOnlyRead.class);
+    assertThat(tool.resources()).isEqualTo(ToolSupport.MAP_READ);
+    assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.GM))).contains("simos.map.overlaps");
+    assertThat(toolNames(shell.toolsFor(SimosToolSource.Role.DECISION_AGENT)))
+        .as("决策人桶不得有全图区域几何读口（GM_ONLY_READ_NAMES 的身份）")
+        .doesNotContain("simos.map.overlaps");
+  }
+
+  /** 执行 {@code simos.map.overlaps} 并要求成功，返回 JSON 体。 */
+  private JsonNode executeOverlaps(Map<String, Object> args) throws Exception {
+    ToolResult result = call("simos.map.overlaps", args);
+    assertThat(result.success()).as(result.message()).isTrue();
+    return JSON.readTree(result.message());
+  }
+
+  /** 按 (aRegionId, bRegionId) 取行；取不到直接抛（空集合上的断言不许变成恒真）。 */
+  private static JsonNode overlapRow(JsonNode body, String a, String b) {
+    for (JsonNode row : body.get("overlaps")) {
+      if (a.equals(row.get("aRegionId").asText()) && b.equals(row.get("bRegionId").asText())) {
+        return row;
+      }
+    }
+    throw new AssertionError("没有重合对 " + a + " / " + b + ": " + body);
+  }
+
+  /** 行上的 tag：JSON null（缺 meta / meta.tag=null）读回 Java null，空串仍是空串。 */
+  private static String optionalTag(JsonNode row, String field) {
+    JsonNode node = row.get(field);
+    return node == null || node.isNull() ? null : node.asText();
+  }
+
+  /** JSON 对象的键清单（形状断言用；键集合变多/变少都要当场可见）。 */
+  private static List<String> fieldNames(JsonNode node) {
+    List<String> names = new ArrayList<>();
+    node.fieldNames().forEachRemaining(names::add);
+    return names;
+  }
+
+  /** 交集格清单 → ["q,r", …]，便于钉升序与逐值。 */
+  private static List<String> hexList(JsonNode hexes) {
+    List<String> out = new ArrayList<>();
+    for (JsonNode hex : hexes) {
+      out.add(hex.get("q").asInt() + "," + hex.get("r").asInt());
+    }
+    return out;
+  }
+
+  /**
+   * 造 4 个与创世 r-m4（H11+H12）成关系的区域：
+   *
+   * <pre>
+   * r-eq    {H11,H12}     tag=Nation ⇒ 与 r-m4 equal
+   * r-part  {H12,H13}     tag=Nation ⇒ 与 r-m4 partial
+   * r-super {H11,H12,H13} tag=""     ⇒ 包含 r-m4（bContainsA；空白 tag 必须被 sameTagOnly 当空）
+   * r-small {H11}         tag=null   ⇒ 被 r-m4 包含（aContainsB）
+   * </pre>
+   */
+  private void seedOverlapRegions() {
+    createRegion(
+        "{\"regionId\":\"r-eq\",\"name\":\"相等区\","
+            + "\"hexes\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":2}],\"meta\":{\"tag\":\"Nation\"}}");
+    createRegion(
+        "{\"regionId\":\"r-part\",\"name\":\"部分区\","
+            + "\"hexes\":[{\"q\":1,\"r\":2},{\"q\":1,\"r\":3}],\"meta\":{\"tag\":\"Nation\"}}");
+    createRegion(
+        "{\"regionId\":\"r-super\",\"name\":\"超集区\","
+            + "\"hexes\":[{\"q\":1,\"r\":1},{\"q\":1,\"r\":2},{\"q\":1,\"r\":3}],"
+            + "\"meta\":{\"tag\":\"\"}}");
+    createRegion("{\"regionId\":\"r-small\",\"name\":\"小子集区\",\"hexes\":[{\"q\":1,\"r\":1}]}");
+  }
+
+  /** 窄写：expectedRevision 现取 head（与其它窄写用例同一纪律），失败当场红。 */
+  private void createRegion(String payloadJson) {
+    ToolResult created =
+        callNarrowWrite(
+            MapCreateRegionTool.NAME,
+            payloadJson,
+            shell.coreSimos().head(main()).orElseThrow().value());
+    assertThat(created.success()).as("建区域必须成功: %s", created.message()).isTrue();
   }
 
   /**
@@ -1122,8 +1498,8 @@ class SimosToolsTest {
   void everyToolClassOnDiskIsRegisteredInSomeBucket() throws Exception {
     Set<String> onDisk = toolNamesFromSources();
     assertThat(onDisk)
-        .as("扫描必须恰为 128 个 *Tool.java 的 NAME（123 条 GM 桶 + 5 条只进决策人桶的条目；扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(128);
+        .as("扫描必须恰为 129 个 *Tool.java 的 NAME（124 条 GM 桶 + 5 条只进决策人桶的条目；扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(129);
 
     List<String> union =
         Stream.concat(

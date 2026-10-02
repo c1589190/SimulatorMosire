@@ -1937,6 +1937,11 @@
     // ★ F1：城市命中优先只领"选中城市"（不抢模式）：左栏切到城市详情，地图居中由 onStateChange 收口。
     if (pick.kind === "city") {
       app.setSelection({ kind: "city", id: pick.id });
+      // ★ 用户 2026-10-02 报的缺陷修复：城市标记也落在某格上——区域编辑模式下点区域里贴着城市标记的
+      //   位置，也要选中该区域（复用同一取数与"顶层区域"判定）。
+      if (mode === "region-edit") {
+        selectRegionOfHex(pick.q, pick.r);
+      }
       return;
     }
     // ★ M7e T1（用户裁定，§2「一下选中、两下取消」）：左键点**已选中**的单位标记 ⇒ 取消移动；
@@ -1960,6 +1965,11 @@
       app.setSelection({ kind: "unit", id: pick.id });
       if (mode === "unit") {
         window.SimosMapUnitEditor.resetRoute();
+      }
+      // ★ 用户 2026-10-02 报的缺陷修复：单位标记也落在某格上——区域编辑模式下点区域里的单位标记，
+      //   同样要选中该区域（复用同一取数与"顶层区域"判定）。
+      if (mode === "region-edit") {
+        selectRegionOfHex(pick.q, pick.r);
       }
       return;
     }
@@ -1985,7 +1995,9 @@
     // ★ M7c T1（用户裁定）：左键点格**不再瞬移**（unit.PlaceAt 已从本路径移除）——落到常规 hex 选中；
     //   移动只由右键发起（handleContextMenu → A* → unit.PlanRoute）。
     app.setSelection({ kind: "hex", q: pick.q, r: pick.r });
-    if (mode === "region") {
+    // ★ 用户 2026-10-02 报的缺陷修复：区域查看与区域编辑共用同一取数与"顶层区域"判定，落点不同
+    //   （view ⇒ highlightRegions，region-edit ⇒ regionFocus）。
+    if (mode === "region" || mode === "region-edit") {
       selectRegionOfHex(pick.q, pick.r);
     } else if (mode === "decision" && decisionViewSubpageActive()) {
       // ★ T7：决策模式（子页「决策人查看」）点格 ⇒ 该格所属**国家区域的全部区域**一起高亮（C12）。
@@ -2027,8 +2039,20 @@
       var regionIds = Array.isArray(body.regions) ? body.regions : [];
       var top = topRegionId(regionIds);
       if (top !== null) {
-        // ★ V3：单/多从属一律只取顶层那一个 ⇒ single（更亮 + 只压同 tag）。
-        app.setHighlightRegions([top], "single");
+        if (app.getState().mode === "region-edit") {
+          // ★ 用户 2026-10-02 报的缺陷修复：区域编辑的落点是 regionFocus，不是临时高亮。
+          app.setRegionFocus(top);
+        } else {
+          // ★ V3：单/多从属一律只取顶层那一个 ⇒ single（更亮 + 只压同 tag）。
+          app.setHighlightRegions([top], "single");
+        }
+      } else if (app.getState().mode === "region-edit") {
+        // ★ 用户 2026-10-02：编辑目标不因点到空白格被清掉。
+        app.statusMessage(
+          app.byId("map-status"),
+          "q=" + q + ", r=" + r + " 不属于任何区域（保持当前编辑目标）",
+          "muted"
+        );
       } else {
         app.setHighlightRegions([]);
         app.statusMessage(
@@ -2038,7 +2062,16 @@
         );
       }
     } catch (e) {
-      app.setHighlightRegions([]);
+      if (app.getState().mode === "region-edit") {
+        // ★ 用户 2026-10-02：读取失败也不清当前编辑目标。
+        app.statusMessage(
+          app.byId("map-status"),
+          "区域读取失败：" + e.message + "（保持当前编辑目标）",
+          "warn"
+        );
+      } else {
+        app.setHighlightRegions([]);
+      }
     }
   }
 
@@ -2806,6 +2839,10 @@
         host.brushTerrain = terrain;
       }
       return window.SimosMapEditor.commitBrush(hexes || []);
+    },
+    /** ★ 用户 2026-10-02：仅供 node 门禁驱动真实点选路径（区域编辑模式点格/城市/单位选中区域）。 */
+    selectPickForTest: function (pick) {
+      return workbenchSelect(pick);
     },
     regionEditDebug: function () {
       var debug = active && active.debug ? active.debug() : {};

@@ -25,6 +25,7 @@ const REQUIRED_FILES = [
   "provider-config.test.cjs",
   "readout.test.cjs",
   "region-boundary.test.cjs",
+  "region-edit-select.test.cjs",
   "region-view.test.cjs",
   "timeline.test.cjs",
   "unit-tree.test.cjs",
@@ -90,7 +91,10 @@ const REQUIRED_FILES = [
 //   2026-10-02 D2/D3b 起 318 → 330：新增 d3b-composition-army.test.cjs 的 12 条（parseCompositionText 5 +
 //     compositionText 1 + armyCombatForRenderer 2 + cachedArmyCombats 端点 1 + Army 优先/sd 空回退 1 +
 //     工作台 parseCompositionText 接线 1 + index.html 新输入框 1）。
-const MIN_ASSERTIONS = 330;
+//   2026-10-02 region-edit 点选修复起 330 → 337：新增 region-edit-select.test.cjs 的 7 条
+//     （region-edit 点格/城市/单位 → regionFocus 不 highlight、无区域/取数失败不清 focus、region 查看仍 single、
+//     renderer region-edit pointer 静态）。与 run-gate.cjs 的 MIN_TESTS 同值——改一处必须改两处。
+const MIN_ASSERTIONS = 337;
 
 function testFiles() {
   return fs

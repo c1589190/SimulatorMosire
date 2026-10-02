@@ -25,6 +25,7 @@ import io.mosire.simos.app.tools.read.GmToolUsageTool;
 import io.mosire.simos.app.tools.read.LlmProvidersTool;
 import io.mosire.simos.app.tools.read.MapBlockTool;
 import io.mosire.simos.app.tools.read.MapHexTool;
+import io.mosire.simos.app.tools.read.MapOverlapsTool;
 import io.mosire.simos.app.tools.read.MapOverviewTool;
 import io.mosire.simos.app.tools.read.MapPathTool;
 import io.mosire.simos.app.tools.read.MapRegionTool;
@@ -656,6 +657,9 @@ public final class SimosToolSource implements ToolSource {
         new MapOverviewTool(query, mapId),
         new MapHexTool(query, mapId),
         new MapRegionTool(query, mapId),
+        // ★ 用户 2026-10-02：GM 专用只读重合检测——同一 tag（如 Nation）下找区域的部分重合 / 完全重合 /
+        //   包含；决策人不给，避免越过视野泄露全图区域几何。
+        new MapOverlapsTool(query, mapId),
         // ★ P3（2026-10-01）：省份划分建议（只出建议、零写入）——递归主轴二分 + 可选首都圈 + 相交 Region 清单。
         //   只给 GM 桶（GmOnlyRead）：划分是 GM 的规划动作，决策人不做行政区划。
         new ProvinceDivideTool(query, mapId),

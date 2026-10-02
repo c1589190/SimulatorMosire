@@ -2582,7 +2582,8 @@
         return;
       }
       var pick = pickAt(canvasPoint(event));
-      canvas.style.cursor = pick.kind === "unit" ? "pointer" : mode === "region" ? "pointer" : "grab";
+      canvas.style.cursor =
+        pick.kind === "unit" || mode === "region" || mode === "region-edit" ? "pointer" : "grab";
       canvas.title = pick.kind === "unit" ? app.text(pick.name) : "";
     }
 
