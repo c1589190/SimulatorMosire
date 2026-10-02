@@ -117,6 +117,28 @@
     return parts.length ? parts.join("；") : "—";
   }
 
+  /**
+   * 结局损失列表 → 一行文本：`"unit：步兵-10 / 弓-2；unit2：— / —"`。
+   * losses 为 [{unit,manpower,equipment}]；空/非数组 ⇒ "—"；单个 loss 的 unit 缺失 ⇒ "—"。
+   * manpower/equipment 复用 formatDelta（有符号增量）。
+   */
+  function formatOutcomeLosses(losses) {
+    var list = Array.isArray(losses) ? losses : [];
+    var parts = [];
+    for (var i = 0; i < list.length; i++) {
+      var loss = list[i];
+      if (!loss) continue;
+      parts.push(
+        valueText(loss.unit) +
+          "：" +
+          formatDelta(loss.manpower) +
+          " / " +
+          formatDelta(loss.equipment)
+      );
+    }
+    return parts.length ? parts.join("；") : "—";
+  }
+
   // ── provider 注册表 ─────────────────────────────────────────────────
 
   var combatProvider = {
@@ -380,6 +402,8 @@
         app.el("td", { class: "event-outcome-mark", text: selected ? "✓" : "" }),
         app.el("td", { text: valueText(outcome.label) }),
         app.el("td", { text: valueText(outcome.weight) }),
+        // outcome.losses 是该结局的**潜在损失**：未判定阶段 top-level losses 为空，不代表没有这部分。
+        app.el("td", { class: "event-outcome-losses", text: formatOutcomeLosses(outcome.losses) }),
       ]);
     });
     var table = app.el("table", { class: "event-outcomes" }, [
@@ -388,6 +412,7 @@
           app.el("th", { text: "选中标记" }),
           app.el("th", { text: "label" }),
           app.el("th", { text: "weight" }),
+          app.el("th", { text: "损失" }),
         ]),
       ]),
       app.el("tbody", {}, rows),
@@ -483,6 +508,7 @@
     normalizeCombatEvent: normalizeCombatEvent,
     filterEventsForHex: filterEventsForHex,
     formatDelta: formatDelta,
+    formatOutcomeLosses: formatOutcomeLosses,
     // 面板
     openForHex: openForHex,
     openAll: openAll,

@@ -88,7 +88,10 @@ const JS_DIR = __dirname;
 //     styles 静态 6）；region-edit-select.test.cjs 新增 combat 点选 1 条并把 region-edit 光标静态用例改为按整条
 //     赋值语句扫描（生产新增 combat 分支致三元式换行，行为不变）。与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值
 //     ——改一处必须改两处。
-const MIN_TESTS = 384;
+//   2026-10-02 结局损失列（outcomes 第 4 列）起 384 → 386：events.test.cjs 新增 2 条（formatOutcomeLosses
+//     空/非数组/缺 unit 降级与多项精确文本；renderCombatDetail 非空 losses 行第四列文本 = formatOutcomeLosses）。
+//     与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——改一处必须改两处。
+const MIN_TESTS = 386;
 
 function discoverTests() {
   return fs

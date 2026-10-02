@@ -109,7 +109,10 @@ const REQUIRED_FILES = [
 //     纯函数 6；面板打开/过滤/展开/图层联动/取数失败/provider/onState 7；renderCombatDetail 2；renderer/map/index/
 //     styles 静态 6）；region-edit-select.test.cjs 新增 combat 点选 1 条并把 region-edit 光标静态用例改为按整条
 //     赋值语句扫描（生产新增 combat 分支致三元式换行，行为不变）。与 run-gate.cjs 的 MIN_TESTS 同值——改一处必须改两处。
-const MIN_ASSERTIONS = 384;
+//   2026-10-02 结局损失列（outcomes 第 4 列）起 384 → 386：events.test.cjs 新增 2 条（formatOutcomeLosses
+//     空/非数组/缺 unit 降级与多项精确文本；renderCombatDetail 非空 losses 行第四列文本 = formatOutcomeLosses）。
+//     与 run-gate.cjs 的 MIN_TESTS 同值——改一处必须改两处。
+const MIN_ASSERTIONS = 386;
 
 function testFiles() {
   return fs

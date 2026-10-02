@@ -257,6 +257,33 @@ test("format-delta-signs-types-and-empty-fallback", () => {
   assert.equal(E.formatDelta([{ type: null, amount: 0 }]), "—+0", "type 缺失降级为 —，不抛");
 });
 
+test("format-outcome-losses-exact-multi-entry-text-and-non-array-fallback", () => {
+  assert.equal(E.formatOutcomeLosses([]), "—");
+  assert.equal(E.formatOutcomeLosses(null), "—");
+  assert.equal(E.formatOutcomeLosses(undefined), "—");
+  assert.equal(E.formatOutcomeLosses("u-1"), "—", "非数组 ⇒ —");
+  assert.equal(E.formatOutcomeLosses({ unit: "u-1" }), "—", "对象不是数组 ⇒ —");
+  const losses = Object.freeze([
+    Object.freeze({
+      unit: "u-1",
+      manpower: Object.freeze([{ type: "步兵", amount: -10 }]),
+      equipment: Object.freeze([{ type: "弓", amount: -2 }]),
+    }),
+    Object.freeze({
+      unit: "u-2",
+      manpower: Object.freeze([{ type: "骑兵", amount: 5 }]),
+      equipment: Object.freeze([]),
+    }),
+  ]);
+  assert.equal(
+    E.formatOutcomeLosses(losses),
+    "u-1：步兵-10 / 弓-2；u-2：骑兵+5 / —",
+    "多项以 ；连接，manpower/equipment 各自复用 formatDelta"
+  );
+  assert.doesNotThrow(() => E.formatOutcomeLosses([{ manpower: [], equipment: [] }]), "缺 unit 不抛");
+  assert.equal(E.formatOutcomeLosses([{ manpower: [], equipment: [] }]), "—：— / —", "缺 unit 降级为 —");
+});
+
 test("combat-icon-at-hits-cell-center-and-misses-far-points", () => {
   const cellSize = 34;
   const table = { "3_-2": { combatId: "c-1" } };
@@ -445,20 +472,30 @@ test("render-combat-detail-builds-kv-selected-outcome-and-loss-deltas", () => {
 
   const outcomeTable = byClass(container, "event-outcomes")[0];
   assert.ok(outcomeTable, "必须有 outcomes 表");
+  assert.deepEqual(
+    findAll(outcomeTable, (node) => node.tag === "th").map((cell) => cell.textContent),
+    ["选中标记", "label", "weight", "损失"],
+    "outcomes 表头必须是 4 列，第四列 = 损失"
+  );
   const outcomeRows = findAll(outcomeTable, (node) => node.tag === "tbody")[0].children;
   assert.equal(outcomeRows.length, 2);
   const selectedRow = outcomeRows.filter((row) => String(row.attrs.class).indexOf("event-selected") >= 0)[0];
   assert.ok(selectedRow, "选中 outcome 行必须带 event-selected");
   assert.deepEqual(
     selectedRow.children.map((cell) => cell.textContent),
-    ["✓", "僵持", "7"],
-    "选中行 = selectedOutcomeId 指向的 outcome"
+    ["✓", "僵持", "7", "—"],
+    "选中行 = selectedOutcomeId 指向的 outcome，且无 losses ⇒ 第四列 —"
   );
+  assert.equal(selectedRow.children.length, 4, "选中 outcome 行必须是 4 个 cell");
+  assert.equal(selectedRow.children[3].attrs.class, "event-outcome-losses");
   const unselected = outcomeRows.filter((row) => String(row.attrs.class).indexOf("event-selected") < 0)[0];
   assert.deepEqual(
     unselected.children.map((cell) => cell.textContent),
-    ["", "击退", "3"]
+    ["", "击退", "3", "—"],
+    "未选中行同为 4 个 cell，无 losses ⇒ 第四列 —"
   );
+  assert.equal(unselected.children.length, 4, "未选中 outcome 行必须是 4 个 cell");
+  assert.equal(unselected.children[3].attrs.class, "event-outcome-losses");
 
   const lossRows = findAll(byClass(container, "event-losses")[0], (node) => node.tag === "tbody")[0].children;
   assert.equal(lossRows.length, 1);
@@ -498,6 +535,65 @@ test("render-combat-detail-uses-app-el-only-and-handles-empty-losses", () => {
   const source = readWebui("events.js");
   assert.ok(!source.includes(".innerHTML"), "events.js 不得写 .innerHTML（只用 app.el / textContent）");
   assert.ok(!/\binnerHTML\b/.test(source), "连裸 innerHTML 也不得出现");
+});
+
+test("render-combat-detail-fills-outcome-losses-cell-from-format-outcome-losses", () => {
+  const h = panelHarness({ combats: [] });
+  const container = h.app.el("div", { class: "event-card-detail" });
+  const firstLosses = Object.freeze([
+    Object.freeze({
+      unit: "u-2",
+      manpower: Object.freeze([{ type: "骑兵", amount: 5 }]),
+      equipment: Object.freeze([]),
+    }),
+  ]);
+  const secondLosses = Object.freeze([
+    Object.freeze({
+      unit: "u-1",
+      manpower: Object.freeze([{ type: "步兵", amount: -10 }]),
+      equipment: Object.freeze([{ type: "弓", amount: -2 }]),
+    }),
+    Object.freeze({
+      unit: "u-3",
+      manpower: Object.freeze([{ type: "矛兵", amount: -1 }]),
+      equipment: Object.freeze([{ type: "盾", amount: 3 }]),
+    }),
+  ]);
+  const raw = {
+    id: "c-99",
+    stages: [
+      {
+        name: "损失波",
+        resolved: true,
+        selectedOutcomeId: "o-9",
+        outcomes: [
+          { id: "o-8", label: "溃败", weight: 1, losses: firstLosses },
+          { id: "o-9", label: "惨胜", weight: 2, losses: secondLosses },
+        ],
+      },
+    ],
+  };
+  h.E.renderCombatDetail({ type: "combat", id: "c-99", raw: raw }, container);
+
+  assert.equal(typeof container.innerHTML, "undefined", "renderCombatDetail 仍只走 app.el（假 DOM 无 innerHTML 通道）");
+  const lossCells = byClass(container, "event-outcome-losses");
+  assert.equal(lossCells.length, 2, "每个 outcome 行恰一个第四列 cell");
+  assert.deepEqual(lossCells.map((cell) => cell.tag), ["td", "td"]);
+  assert.equal(
+    lossCells[0].textContent,
+    h.E.formatOutcomeLosses(firstLosses),
+    "outcomes[].losses 非空 ⇒ 第四列走 formatOutcomeLosses"
+  );
+  assert.equal(lossCells[0].textContent, "u-2：骑兵+5 / —");
+  assert.notEqual(lossCells[0].textContent, "—");
+  assert.equal(lossCells[1].textContent, h.E.formatOutcomeLosses(secondLosses));
+  assert.equal(lossCells[1].textContent, "u-1：步兵-10 / 弓-2；u-3：矛兵-1 / 盾+3");
+  assert.notEqual(lossCells[1].textContent, "—");
+  const outcomeRows = findAll(byClass(container, "event-outcomes")[0], (node) => node.tag === "tbody")[0].children;
+  assert.ok(
+    outcomeRows.every((row) => row.children.length === 4 && row.children[3].attrs.class === "event-outcome-losses"),
+    "非空 losses 行仍是 4 列，第四列带 event-outcome-losses"
+  );
 });
 
 // ── renderer / map / 页面静态接线 ────────────────────────────────────────
