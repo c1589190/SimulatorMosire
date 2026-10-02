@@ -17,6 +17,10 @@
 //   "一条线 + 多个小点"，节点的具体信息改为**鼠标悬停（title）**时显示——视觉上不再铺命令明细。
 // ★ B18：读数口径随之澄清——悬停文案写成「该 tick 下 N 条命令 / N 条 revision」，
 //   **不**写成「tick N 发生了 N 次」（那会被读成"N 次决策落在 tick N"）。
+// ★ C6b（D-020，2026-10-02）：节点在 tick 数字下再加一行**具体日期**（`.tl-date`，如 `1445-05-01`），
+//   `title`/`aria-label` 与 `#timeline-meta` 同带日期。日期一律来自服务端已算好的 `date`
+//   （`/api/state` 的 `meta.timestamp.date`、`/api/timeline` 每个 node 的 `date`）——前端**不重算历法**；
+//   取不到日期就**不显示**（不编造）。纯函数 `formatCalendarDate` 挂在导出对象上供 C7 门禁使用。
 
 (function () {
   "use strict";
@@ -53,6 +57,42 @@
     }
     var parts = String(commandType).split(".");
     return parts[parts.length - 1];
+  }
+
+  /** 两位补零（月/日；年不补位）。 */
+  function pad2(value) {
+    return (Number(value) < 10 ? "0" : "") + Number(value);
+  }
+
+  /**
+   * ★ C6b（D-020）纯函数：服务端日期对象 → `YYYY-MM-DD` 显示串。
+   * 形如 `{calendar:"julian", year:1445, month:5, day:1, dayOfYear:…}`（`/api/state` 的
+   * `meta.timestamp.date` 与 `/api/timeline` 每个 node 的 `date`）。**前端不重算历法**。
+   *
+   * <p>null / 缺失 / 任一分量非数值 ⇒ `""`（调用方据此不渲染日期行，不编造）。月/日补两位；
+   * 年按原值输出、**不补足 4 位**（缺省锚点 1445 本身已是 4 位，报告已写明）。
+   */
+  function formatCalendarDate(dateObj) {
+    if (!dateObj || typeof dateObj !== "object") {
+      return "";
+    }
+    if (
+      dateObj.year === null ||
+      dateObj.year === undefined ||
+      dateObj.month === null ||
+      dateObj.month === undefined ||
+      dateObj.day === null ||
+      dateObj.day === undefined
+    ) {
+      return "";
+    }
+    var year = Number(dateObj.year);
+    var month = Number(dateObj.month);
+    var day = Number(dateObj.day);
+    if (!isFinite(year) || !isFinite(month) || !isFinite(day)) {
+      return "";
+    }
+    return year + "-" + pad2(month) + "-" + pad2(day);
   }
 
   /** 自动分支名：在已有名之上取最小的空位 b2/b3…（避开 main 与既有分支）。 */
@@ -92,8 +132,12 @@
   }
 
   /**
-   * tick 归并（M7f T1）：把按 revision 升序的节点按 tick 聚成一个 tick 节点。
-   * 返回 `[{tick, nodes:[…], firstRevision, lastRevision, commands:[commandType…]}]`（出现顺序）。
+   * tick 归并（M7f T1；★ C6b/D-020 带日期）：把按 revision 升序的节点按 tick 聚成一个 tick 节点。
+   * 返回 `[{tick, nodes:[…], firstRevision, lastRevision, commands:[commandType…], date, dates}]`（出现顺序）。
+   *
+   * <p>★ C6b：`date` = 该 tick **第一条 revision** 的 `date` 对象（同 tick 多条 revision 必然同日；若偶发不同
+   * 日期，仍**以第一条为准**，`dates` 如实记下该 tick 出现过的所有不同日期串供 title 提示——不编造）。
+   * 旧后端/缓存没有 `date` ⇒ `date` 为 `null`、`dates` 为空。
    */
   function groupByTick(nodes) {
     var groups = [];
@@ -108,6 +152,9 @@
           firstRevision: node.revision,
           lastRevision: node.revision,
           commands: [],
+          // ★ C6b：同 tick 多条 revision 同日 ⇒ 取第一条即可（后面不覆盖）。
+          date: node.date || null,
+          dates: [],
         };
         index[key] = group;
         groups.push(group);
@@ -118,6 +165,11 @@
         group.firstRevision = node.revision;
       }
       group.commands.push(node.commandType);
+      // ★ C6b：如实记下该 tick 出现过的不同日期串（正常只有一条）。
+      var dateText = formatCalendarDate(node.date);
+      if (dateText && group.dates.indexOf(dateText) < 0) {
+        group.dates.push(dateText);
+      }
     });
     return groups;
   }
@@ -203,6 +255,10 @@
     tickGroups: {},
     tickAtHead: {},
     tickByRevision: {},
+    // ★ C6b 收口：`/api/timeline` 每个 node 的 `date`，按 `{branch: {revision: date}}` 查（照 tickByRevision）。
+    dateByRevision: {},
+    // ★ C6b：`/api/state` 的 `meta.timestamp.date`（head 日期；游标节点查不到日期时回退，取不到为 null）。
+    stateDate: null,
     loading: false,
     busy: false,
     error: null,
@@ -233,16 +289,19 @@
       var tickGroups = {};
       var tickAtHead = {};
       var tickByRevision = {};
+      var dateByRevision = {};
       for (var i = 0; i < branches.length; i++) {
         var branch = branches[i];
         var timeline = await window.SimosApi.timeline(branch);
         nodes[branch] = timeline.nodes || [];
         tickGroups[branch] = groupByTick(nodes[branch]);
         tickByRevision[branch] = {};
+        dateByRevision[branch] = {};
         var head = Number(heads[branch]);
         for (var j = 0; j < nodes[branch].length; j++) {
           var revision = Number(nodes[branch][j].revision);
           tickByRevision[branch][revision] = nodes[branch][j].tick;
+          dateByRevision[branch][revision] = nodes[branch][j].date || null;
           if (revision === head) {
             tickAtHead[branch] = nodes[branch][j].tick;
           }
@@ -254,6 +313,12 @@
       model.tickGroups = tickGroups;
       model.tickAtHead = tickAtHead;
       model.tickByRevision = tickByRevision;
+      model.dateByRevision = dateByRevision;
+      // ★ C6b（D-020）：head 日期来自 /api/state 的 meta.timestamp.date（旧后端没有 ⇒ null，不编造）。
+      model.stateDate =
+        body.meta && body.meta.timestamp && body.meta.timestamp.date
+          ? body.meta.timestamp.date
+          : null;
       model.error = null;
       renderTrack();
     } catch (e) {
@@ -272,10 +337,12 @@
   // ── 渲染 ──────────────────────────────────────────────────────────
 
   /**
-   * 一个 tick 节点的 DOM（B7 新形态）：线上一个**小点**（.tl-node 本体即圆点），点下方一行极小的 tick 刻度数字，
+   * 一个 tick 节点的 DOM（B7 新形态）：线上一个**小点**（.tl-node 本体即圆点），点下方两行小字——
+   * `.tl-tick`（tick 刻度数字）+ ★ C6b 的 `.tl-date`（该 tick 的具体日期，如 `1445-05-01`）；
    * 节点的具体信息（命令名 / rev / initiator 逐条）放 **title**——鼠标悬停即显示（不再内联铺明细）。
    * ★ 一个节点 = 一个 tick：同 tick 的多条命令已在 groupByTick 里归并 ⇒ 这里只画**一个点**，只有 tick 变化才长新点。
    * ★ B18 读数口径：title 与 aria-label 都写成「该 tick 下 N 条命令 / N 条 revision」，避免被读成"N 次决策落在该 tick"。
+   * ★ C6b（D-020）：title / aria-label 也带日期；日期来自 group.date（服务端算好），取不到就**不显示日期**（不编造）。
    * `data-tick` / `data-count` / `data-commands` / `data-first-revision` 供 e2e 断言。
    * ★ `data-revision` = 该 tick 的**最后一个 revision**（游标语义：点它 = 看到该 tick 结束时的状态）。
    */
@@ -287,6 +354,14 @@
     var lines = group.nodes.map(function (node) {
       return "· " + shortCommandType(node.commandType) + " · rev " + node.revision + " · " + app.text(node.initiator);
     });
+    // ★ C6b：日期串（取不到 ⇒ ""，不渲染日期行、title 里也不编造）。
+    var dateText = formatCalendarDate(group.date);
+    var dateSuffix = dateText ? " · " + dateText : "";
+    var dateNote = "";
+    if (group.dates && group.dates.length > 1) {
+      // 理论上同 tick 必同日；真出现不一致时以第一条为准，并在 title 里如实列出全部日期。
+      dateNote = "★ 同 tick 出现不同日期（以第一条为准）：" + group.dates.join(" / ");
+    }
     var button = app.el("button", {
       type: "button",
       class: "tl-node",
@@ -296,11 +371,15 @@
       "data-first-revision": group.firstRevision,
       "data-count": count,
       "data-commands": group.commands.join(","),
-      "aria-label": "tick " + group.tick + " · " + readout,
-      title: "tick " + group.tick + " · " + readout + "\n" + lines.join("\n"),
+      "aria-label": "tick " + group.tick + dateSuffix + " · " + readout + (dateNote ? " · " + dateNote : ""),
+      title:
+        "tick " + group.tick + dateSuffix + " · " + readout + "\n" + lines.join("\n") + (dateNote ? "\n" + dateNote : ""),
     });
-    // 小点本体：点下方的极简刻度数字（只是刻度，不是被退场的"胶囊"明细）。
+    // 小点本体：点下方的极简刻度数字（只是刻度，不是被退场的"胶囊"明细）；★ C6b 其下再加一行日期。
     button.appendChild(app.el("span", { class: "tl-tick", text: String(group.tick) }));
+    if (dateText) {
+      button.appendChild(app.el("span", { class: "tl-date", text: dateText }));
+    }
     button.style.left = columnX(columnOfTick(branch, group.tick)) + "px";
     return button;
   }
@@ -456,6 +535,18 @@
       if (tick === null || tick === undefined) {
         tick = model.tickAtHead[state.branch];
       }
+      // ★ C6b 收口（D-020）：日期优先跟随**游标 revision 自己的 tick**（节点表按 revision 查）；
+      //   表里没有（旧后端/缓存/节点缺失）才回退 /api/state 的 head 日期（state.meta 或 model.stateDate）；
+      //   两者都没有 ⇒ formatCalendarDate 得 ""，不追加日期（不编造）。
+      var dateMap = (model.dateByRevision && model.dateByRevision[state.branch]) || {};
+      var dateObj = dateMap[state.revision];
+      if (dateObj === null || dateObj === undefined) {
+        dateObj =
+          state.meta && state.meta.timestamp && state.meta.timestamp.date
+            ? state.meta.timestamp.date
+            : model.stateDate;
+      }
+      var dateText = formatCalendarDate(dateObj);
       meta.textContent =
         "分支 " +
         app.text(state.branch) +
@@ -463,7 +554,8 @@
         app.text(state.revision) +
         " · head " +
         app.text(head) +
-        (tick === null || tick === undefined ? "" : " · tick " + tick);
+        (tick === null || tick === undefined ? "" : " · tick " + tick) +
+        (dateText ? " · " + dateText : "");
     }
   }
 
@@ -817,6 +909,8 @@
     refresh: refresh,
     isAtTip: isAtTip,
     shortCommandType: shortCommandType,
+    // ★ C6b（D-020）：服务端 date 对象 → `YYYY-MM-DD`（C7 门禁的纯函数入口；null/缺失 ⇒ ""）。
+    formatCalendarDate: formatCalendarDate,
     nextBranchName: nextBranchName,
     columnX: columnX,
     columnOf: columnOf,

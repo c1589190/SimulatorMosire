@@ -504,8 +504,9 @@ body.workbench-page .col-right {
 
 .timeline-line {
   position: relative;
-  /* B7：留出小点下方那行 tick 刻度数字的高度（原来胶囊形态 34px 就够）。 */
-  height: 40px;
+  /* B7：留出小点下方那行 tick 刻度数字的高度（原来胶囊形态 34px 就够）；
+     ★ C6b（D-020）其下再加一行日期 ⇒ 40px → 56px（两行小字，点本身仍在 50% 处）。 */
+  height: 56px;
   flex: 0 0 auto;
 }
 
@@ -639,6 +640,24 @@ body.workbench-page .col-right {
 }
 
 .tl-node.active .tl-tick {
+  color: var(--text);
+}
+
+/* ★ C6b（D-020）：`.tl-tick` 之下再一行日期（服务端算好的 `YYYY-MM-DD`，如 `1445-05-01`）。
+   绝对定位、不参与布局；小号 muted、居中、nowrap ⇒ 不撑破节点/不影响列宽与点选命中。 */
+.tl-node .tl-date {
+  position: absolute;
+  top: 23px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  line-height: 1;
+  color: var(--muted);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.tl-node.active .tl-date {
   color: var(--text);
 }
 

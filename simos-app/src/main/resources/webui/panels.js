@@ -630,6 +630,66 @@
     });
   }
 
+  /**
+   * ★ C6b（D-020）：纬度带的**可读名**（口径同 simos-calendar 的 LatitudeZone 注释：北温带 / 赤道附近 /
+   * 南温带）。未知值**原样**返回（不编造）；null/缺失 ⇒ `app.text` 的"—"。
+   */
+  function zoneReadableName(zone) {
+    if (zone === "NORTH_TEMPERATE") {
+      return "北温带";
+    }
+    if (zone === "TROPICS") {
+      return "赤道附近";
+    }
+    if (zone === "SOUTH_TEMPERATE") {
+      return "南温带";
+    }
+    return app.text(zone);
+  }
+
+  /**
+   * ★ C6b（D-020）：该格季节的一行可读文本。口径与旧页 `map-hostpage.js` 的同名函数**逐字一致**
+   * （两份是**有意复制**的小函数：`map.html` 不加载本文件，共享要新增 JS 文件/改加载顺序，见 AGENTS.md §六）。
+   *
+   * <ul>
+   *   <li>服务端给了 season（`/api/map/hex`）⇒「夏（北温带 · 第 6/95 天 · 53%）」；
+   *   <li>`zoneSource === "fallback"`（未配置分带）⇒「夏（未配置分带，按北半球四季）」；
+   *   <li>season 缺失（旧后端/缓存）⇒「—（后端未提供季节）」——**不编造**。
+   * </ul>
+   *
+   * <p>`progressPerMille`（0..999）⇒ 百分数四舍五入到整数（530 ⇒ 53%）。
+   */
+  function hexSeasonText(season) {
+    if (!season || typeof season !== "object") {
+      return "—（后端未提供季节）";
+    }
+    var name = season.name === null || season.name === undefined ? "" : String(season.name);
+    if (!name) {
+      // 连季节名都没有 ⇒ 与"后端未提供"同形，不编造一个季节名。
+      return "—（后端未提供季节）";
+    }
+    if (season.zoneSource === "fallback") {
+      return name + "（未配置分带，按北半球四季）";
+    }
+    var perMille =
+      season.progressPerMille === null || season.progressPerMille === undefined
+        ? NaN
+        : Number(season.progressPerMille);
+    var percent = isFinite(perMille) ? Math.round(perMille / 10) + "%" : app.text(season.progressPerMille);
+    return (
+      name +
+      "（" +
+      zoneReadableName(season.zone) +
+      " · 第 " +
+      app.text(season.dayOfSeason) +
+      "/" +
+      app.text(season.daysInSeason) +
+      " 天 · " +
+      percent +
+      "）"
+    );
+  }
+
   function renderHex(selection, token) {
     var status = app.byId("left-status");
     var detail = app.clear(app.byId("selection-detail"));
@@ -679,6 +739,9 @@
         appendRow(detail, "regions", regionIds.length ? regionIds.join("、") : "无区域");
         // ★ M8 T9：每个区域给出**它自己的** hexCount，合计是**真并集**（不是求和 —— 裁定 72.1）。
         renderRegionMembership(detail, regionIds, token);
+        // ★ C6b（D-020）：地形/高度/区域等行之后加一行季节；值来自 `results[0].season`（`/api/map/hex`），
+        //   旧后端没有该字段 ⇒「—（后端未提供季节）」，不编造。取数顺序与其它行不变。
+        appendRow(detail, "季节", hexSeasonText(hex.season));
         // ★ F1：城市段（social 侧城市；点击进入城市详情）。
         var citiesHere = ((results[5] && results[5].cities) || []).filter(function (city) {
           return city && city.at && city.at.q === selection.q && city.at.r === selection.r;
@@ -3081,6 +3144,9 @@
     // ★ M8 T9：左栏"从属区域"读数（纯函数）——门禁直接对它下断言（并集 ≠ 求和）。
     regionMembershipSummary: regionMembershipSummary,
     UNTAGGED_LABEL: UNTAGGED_LABEL,
+    // ★ C6b（D-020）：该格季节行的显示文本 + 纬度带可读名（纯函数；与 map-hostpage.js 的同名实现逐字一致）。
+    hexSeasonText: hexSeasonText,
+    zoneReadableName: zoneReadableName,
     // ★ T7：决策模式的纯函数（门禁直接断言；无 DOM/IO）——子页、分类分组、国家/单位解析、待决文本。
     DECISION_SUBPAGES: DECISION_SUBPAGES,
     DECISION_SCOPE_SUMMARY_ID: DECISION_SCOPE_SUMMARY_ID,

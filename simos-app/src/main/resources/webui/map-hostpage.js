@@ -64,6 +64,68 @@
     }
   }
 
+  /**
+   * ★ C6b（D-020）：纬度带的**可读名**（口径同 simos-calendar 的 LatitudeZone 注释：北温带 / 赤道附近 /
+   * 南温带）。未知值**原样**返回（不编造）；null/缺失 ⇒ `app.text` 的"—"。
+   *
+   * <p>★ 与工作台 `panels.js` 的同名函数**有意复制**（map.html 不加载 panels.js，共享要新增 JS 文件并改
+   * AGENTS.md §六的加载顺序）——两份必须保持**逐字一致**；改一处必须同改另一处。
+   */
+  function zoneReadableName(zone) {
+    if (zone === "NORTH_TEMPERATE") {
+      return "北温带";
+    }
+    if (zone === "TROPICS") {
+      return "赤道附近";
+    }
+    if (zone === "SOUTH_TEMPERATE") {
+      return "南温带";
+    }
+    return app.text(zone);
+  }
+
+  /**
+   * ★ C6b（D-020）：该格季节的一行可读文本。口径与工作台 `panels.js` 的同名函数**逐字一致**（见上一条注释）。
+   *
+   * <ul>
+   *   <li>服务端给了 season（`/api/map/hex`）⇒「夏（北温带 · 第 6/95 天 · 53%）」；
+   *   <li>`zoneSource === "fallback"`（未配置分带）⇒「夏（未配置分带，按北半球四季）」；
+   *   <li>season 缺失（旧后端/缓存）⇒「—（后端未提供季节）」——**不编造**。
+   * </ul>
+   *
+   * <p>`progressPerMille`（0..999）⇒ 百分数四舍五入到整数（530 ⇒ 53%）。
+   */
+  function hexSeasonText(season) {
+    if (!season || typeof season !== "object") {
+      return "—（后端未提供季节）";
+    }
+    var name = season.name === null || season.name === undefined ? "" : String(season.name);
+    if (!name) {
+      // 连季节名都没有 ⇒ 与"后端未提供"同形，不编造一个季节名。
+      return "—（后端未提供季节）";
+    }
+    if (season.zoneSource === "fallback") {
+      return name + "（未配置分带，按北半球四季）";
+    }
+    var perMille =
+      season.progressPerMille === null || season.progressPerMille === undefined
+        ? NaN
+        : Number(season.progressPerMille);
+    var percent = isFinite(perMille) ? Math.round(perMille / 10) + "%" : app.text(season.progressPerMille);
+    return (
+      name +
+      "（" +
+      zoneReadableName(season.zone) +
+      " · 第 " +
+      app.text(season.dayOfSeason) +
+      "/" +
+      app.text(season.daysInSeason) +
+      " 天 · " +
+      percent +
+      "）"
+    );
+  }
+
   function showHex(body, statusLabel) {
     var detail = app.clear(app.byId("hex-detail"));
     var status = app.byId("hex-status");
@@ -80,6 +142,11 @@
       detail.appendChild(app.el("dt", { text: pair[0] }));
       detail.appendChild(app.el("dd", { text: app.text(pair[1]) }));
     });
+
+    // ★ C6b（D-020）：地形/高度行之后加一行季节；值来自同一份 `/api/map/hex` 的 `season`
+    //   （旧后端没有该字段 ⇒「—（后端未提供季节）」，不编造）。文本口径与工作台逐字一致。
+    detail.appendChild(app.el("dt", { text: "季节" }));
+    detail.appendChild(app.el("dd", { text: hexSeasonText(body.season) }));
 
     var facetsNode = app.clear(app.byId("hex-facets"));
     if (!facetsNode) {
@@ -206,6 +273,9 @@
     oldPageSelect: oldPageSelect,
     loadHex: loadHex,
     showHex: showHex,
+    // ★ C6b（D-020）：旧页季节行的显示文本 + 纬度带可读名（纯函数；与 panels.js 的同名实现逐字一致）。
+    hexSeasonText: hexSeasonText,
+    zoneReadableName: zoneReadableName,
     bindActive: bindActive,
     resetToWorldCenter: resetToWorldCenter,
     wirePanelToggle: wirePanelToggle,
