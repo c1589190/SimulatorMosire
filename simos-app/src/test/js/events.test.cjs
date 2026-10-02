@@ -660,3 +660,212 @@ test("styles-css-adds-event-panel-and-explicit-hidden-rule", () => {
   assert.ok(/\.event-panel\s*\{/.test(css), "必须有 .event-panel 样式");
   assert.ok(/\.event-panel\[hidden\]\s*\{/.test(css), "必须显式声明 .event-panel[hidden]（防 display 规则盖掉 hidden）");
 });
+
+// ── D-021：一键复制纯文本投影 + 剪贴板宽容 + 滚动修复静态守卫 ──────────────
+
+/** 冻结夹具：2 阶段（已判定/未判定）+ selectedOutcomeId/outcomes[].losses + 事件级 2 条 losses。 */
+const TEXT_RAW = Object.freeze({
+  id: "c-100",
+  kind: "battle",
+  tick: 33,
+  hex: Object.freeze({ q: -2, r: 7 }),
+  participants: Object.freeze(["u-1", "u-2"]),
+  text: "遭遇战",
+  stages: Object.freeze([
+    Object.freeze({
+      name: "第一波",
+      resolved: true,
+      participants: Object.freeze(["u-1", "u-2"]),
+      text: "丘陵对射",
+      rollSeed: 77,
+      selectedOutcomeId: "o-2",
+      outcomes: Object.freeze([
+        Object.freeze({ id: "o-1", label: "击退", weight: 3 }),
+        Object.freeze({
+          id: "o-2",
+          label: "僵持",
+          weight: 7,
+          losses: Object.freeze([
+            Object.freeze({
+              unit: "u-1",
+              manpower: Object.freeze([{ type: "步兵", amount: -100 }]),
+              equipment: Object.freeze([{ type: "刀", amount: -2 }]),
+            }),
+          ]),
+        }),
+      ]),
+    }),
+    Object.freeze({
+      name: "第二波",
+      resolved: false,
+      selectedOutcome: "o-3",
+      outcomes: Object.freeze([Object.freeze({ id: "o-3", label: "撤退", weight: 5 })]),
+    }),
+  ]),
+  losses: Object.freeze([
+    Object.freeze({
+      stageId: "s-1",
+      unit: "u-1",
+      manpower: Object.freeze([{ type: "步兵", amount: -100 }]),
+      equipment: Object.freeze([{ type: "刀", amount: -2 }]),
+    }),
+    Object.freeze({
+      unit: "u-9",
+      manpower: Object.freeze([{ type: "骑兵", amount: 5 }]),
+      equipment: Object.freeze([]),
+    }),
+  ]),
+});
+
+const TEXT_EXPECTED_BLOCKS = Object.freeze([
+  "【战斗 c-100】\nkind：battle\ntick：33\nhex：(-2,7)\nparticipants：u-1、u-2\n过程：遭遇战",
+  "—— 阶段 第一波（已判定）\nparticipants：u-1、u-2\n过程：丘陵对射\n结局：\n  · 击退（weight 3）损失：—\n" +
+    "  ✓ 僵持（weight 7）损失：u-1：步兵-100 / 刀-2\nrollSeed：77",
+  "—— 阶段 第二波（未判定）\nparticipants：—\n过程：—\n结局：\n  ✓ 撤退（weight 5）损失：—\nrollSeed：—",
+  "—— 损失\ns-1 / u-1：步兵-100 / 刀-2\n— / u-9：骑兵+5 / —",
+]);
+
+test("combat-event-text-full-event-emits-fixed-blocks-and-selected-markers", () => {
+  const event = E.normalizeCombatEvent(TEXT_RAW);
+  const text = E.combatEventText(event);
+  const blocks = text.split("\n\n");
+  assert.deepEqual(blocks, TEXT_EXPECTED_BLOCKS, "逐段（标题/kind/tick/hex/participants/过程/阶段/损失）必须逐字一致");
+  assert.equal(text, TEXT_EXPECTED_BLOCKS.join("\n\n"), "字段顺序与空行分隔固定（整体逐字）");
+  assert.equal(blocks[0].split("\n")[0], "【战斗 c-100】", "固定标题 = 【战斗 id】");
+  assert.ok(blocks[1].includes("  · 击退（weight 3）损失：—"), "未选中结局标 ·");
+  assert.ok(
+    blocks[1].includes("  ✓ 僵持（weight 7）损失：u-1：步兵-100 / 刀-2"),
+    "选中结局标 ✓ 且损失走 formatOutcomeLosses"
+  );
+  assert.ok(blocks[2].includes("—— 阶段 第二波（未判定）"), "resolved:false ⇒ 未判定");
+  assert.ok(blocks[2].includes("  ✓ 撤退（weight 5）损失：—"), "selectedOutcome（非 Id 字段）也能标 ✓");
+  assert.ok(blocks[3].startsWith("—— 损失\n"), "损失块标题固定");
+  assert.ok(blocks[3].includes("s-1 / u-1：步兵-100 / 刀-2"), "事件级逐条损失文本");
+  assert.ok(blocks[3].includes("— / u-9：骑兵+5 / —"), "缺 stageId 降级 —，equipment 空 ⇒ —");
+});
+
+test("combat-event-text-minimal-event-uses-dashes-for-missing-fields", () => {
+  const text = E.combatEventText({});
+  assert.deepEqual(
+    text.split("\n\n"),
+    ["【战斗 —】\nkind：—\ntick：—\nhex：—\nparticipants：—\n过程：—", "—— 阶段：—", "—— 损失\n—"],
+    "最小事件：空字段 —、无阶段一行 —、损失块一行 —"
+  );
+  assert.equal(
+    text,
+    "【战斗 —】\nkind：—\ntick：—\nhex：—\nparticipants：—\n过程：—\n\n—— 阶段：—\n\n—— 损失\n—",
+    "最小事件整体逐字"
+  );
+  assert.equal(E.combatEventText({ id: "e-1", raw: {} }).split("\n")[0], "【战斗 e-1】", "无 title 时标题回落 event.id");
+  const rawOnly = E.combatEventText({ raw: { kind: "battle" } });
+  assert.equal(rawOnly.split("\n\n")[1], "—— 阶段：—", "raw 无 stages ⇒ 占位行");
+  assert.equal(rawOnly.split("\n\n")[2], "—— 损失\n—", "raw 无 losses ⇒ 损失块只有 —");
+});
+
+test("events-to-text-joins-two-events-with-blank-line-and-empty-inputs", () => {
+  const first = { id: "c-1", raw: { kind: "battle", text: "甲" } };
+  const second = { id: "c-2", raw: { kind: "battle", text: "乙" } };
+  const firstText = E.combatEventText(first);
+  const secondText = E.combatEventText(second);
+  const joined = E.eventsToText([first, second]);
+  assert.equal(joined, firstText + "\n\n" + secondText, "两条之间用空行连接");
+  assert.ok(joined.startsWith("【战斗 c-1】"), "第一条正文在前");
+  assert.ok(joined.endsWith(secondText), "第二条正文在后");
+  assert.equal(joined.split("\n\n【战斗 c-2】").length, 2, "两条之间恰一个空行");
+  assert.equal(E.eventsToText([]), "", "空数组 ⇒ 空串");
+  assert.equal(E.eventsToText(null), "", "null ⇒ 空串");
+  assert.equal(E.eventsToText(undefined), "", "undefined ⇒ 空串");
+  assert.equal(E.eventsToText("c-1"), "", "字符串（非数组）⇒ 空串");
+  assert.equal(E.eventsToText({ 0: first }), "", "类数组对象（非数组）⇒ 空串");
+});
+
+test("copy-text-to-clipboard-shell-without-navigator-or-document-resolves-false", async () => {
+  const win = loadWebui("events.js", { document: undefined });
+  let result = null;
+  await assert.doesNotReject(async () => {
+    result = await win.SimosEvents.copyTextToClipboard("原文");
+  });
+  assert.equal(result, false, "无 navigator.clipboard 且无 document ⇒ false（不抛）");
+  assert.equal(await loadWebui("events.js").SimosEvents.copyTextToClipboard("原文"), false, "默认壳无 execCommand ⇒ 也 false");
+});
+
+test("copy-text-to-clipboard-prefers-writeText-and-passes-original-text", async () => {
+  const writes = [];
+  const win = loadWebui("events.js", {
+    navigator: {
+      clipboard: {
+        writeText(value) {
+          writes.push(value);
+          return Promise.resolve();
+        },
+      },
+    },
+  });
+  const original = "原样 文本\n第二行";
+  assert.equal(await win.SimosEvents.copyTextToClipboard(original), true, "writeText 成功 ⇒ resolve true");
+  assert.deepEqual(writes, [original], "writeText 必须收到原文");
+});
+
+test("copy-text-to-clipboard-writeText-rejection-without-document-resolves-false", async () => {
+  const win = loadWebui("events.js", {
+    document: undefined,
+    navigator: {
+      clipboard: {
+        writeText() {
+          return Promise.reject(new Error("剪贴板不可用"));
+        },
+      },
+    },
+  });
+  let result = null;
+  await assert.doesNotReject(async () => {
+    result = await win.SimosEvents.copyTextToClipboard("原文");
+  });
+  assert.equal(result, false, "writeText 拒绝且 document 也缺 ⇒ false（不抛）");
+});
+
+/** 先剥注释，再按「选择器恰为该串」取括号配对内的规则块体（不跨块 includes 误命中）。 */
+function cssRuleBody(css, selector) {
+  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const matcher = new RegExp("(?:^|})\\s*" + escapedSelector + "\\s*\\{", "m");
+  const match = matcher.exec(stripped);
+  assert.ok(match, "styles.css 缺少规则 " + selector);
+  const bodyStart = match.index + match[0].length;
+  let depth = 1;
+  for (let i = bodyStart; i < stripped.length; i += 1) {
+    if (stripped[i] === "{") {
+      depth += 1;
+    } else if (stripped[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return stripped.slice(bodyStart, i);
+    }
+  }
+  assert.fail("规则 " + selector + " 的括号不平衡");
+}
+
+test("styles-css-d021-event-panel-body-is-the-shrinkable-scroll-block", () => {
+  const body = cssRuleBody(readWebui("styles.css"), ".event-panel-body");
+  assert.match(body, /(?:^|;)\s*flex\s*:\s*1\s+1\s+auto\s*;/, "D-021：body 必须显式 flex: 1 1 auto");
+  assert.match(body, /(?:^|;)\s*min-height\s*:\s*0\s*;/, "D-021：body 必须显式 min-height: 0");
+});
+
+test("styles-css-d021-event-card-does-not-shrink", () => {
+  const card = cssRuleBody(readWebui("styles.css"), ".event-card");
+  assert.match(card, /(?:^|;)\s*flex\s*:\s*0\s+0\s+auto\s*;/, "D-021 根因修复：.event-card 必须 flex: 0 0 auto");
+});
+
+test("events-js-copy-buttons-are-wired-to-the-toolbar-and-detail", () => {
+  const source = readWebui("events.js");
+  assert.ok(source.includes('id: "event-panel-copy-all"'), "工具栏复制按钮必须有 id: event-panel-copy-all");
+  assert.ok(source.includes('"复制当前 tick 战况"'), "工具栏复制按钮文案固定");
+  assert.ok(source.includes("event-copy-one"), "单条复制按钮 class 必须是 event-copy-one");
+  assert.ok(source.includes('"📋 复制这条战况"'), "单条复制按钮文案固定");
+});
+
+test("events-exports-combat-text-and-clipboard-functions", () => {
+  const events = loadWebui("events.js").SimosEvents;
+  assert.equal(typeof events.combatEventText, "function", "必须导出 combatEventText");
+  assert.equal(typeof events.eventsToText, "function", "必须导出 eventsToText");
+  assert.equal(typeof events.copyTextToClipboard, "function", "必须导出 copyTextToClipboard");
+});

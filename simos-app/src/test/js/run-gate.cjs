@@ -95,7 +95,11 @@ const JS_DIR = __dirname;
 //     缺分量空串；groupByTick 同日·无日期·混日三态；两宿主页 hexSeasonText 缺失/fallback/满季节/千分比/缺进度；
 //     zoneReadableName 已知与未知；两页函数体剥注释逐字一致；timeline/panels/map-hostpage 静态接线；旧后端降级）。
 //     与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——改一处必须改两处。
-const MIN_TESTS = 402;
+//   2026-10-02 D-021（滚动修复 + 一键复制）起 402 → 412：events.test.cjs 新增 10 条
+//     （combatEventText 完整/最小逐段 2；eventsToText 空行连接与空输入 1；copyTextToClipboard
+//     测试壳/成功原文/拒绝降级 3；styles.css 滚动修复静态守卫 2；复制按钮接线与导出函数 2）。
+//     与 gate-contract.test.cjs 的 MIN_ASSERTIONS 同值——改一处必须改两处。
+const MIN_TESTS = 412;
 
 function discoverTests() {
   return fs
