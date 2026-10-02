@@ -99,7 +99,12 @@ const REQUIRED_FILES = [
 //     translate(...) scale(1) 行为级 1；缩放控件与 wheel 接线/读数初始 100%/复位 title 含缩放归零 3；
 //     .unit-panel 两轴同一 min(...) 表达式 1；.tree-canvas transform-origin 0 0 1；zoom-in 点击真接线 1）。
 //     与 run-gate.cjs 的 MIN_TESTS 同值——改一处必须改两处。
-const MIN_ASSERTIONS = 349;
+//   2026-10-02 区域 tag 点选筛选起 349 → 362：webui-fix2.test.cjs 新增 7 条（taggedTopRegionId 无筛选逐值等于
+//     topRegionId / 按 tag 取定义序末位且 trim·大小写敏感 / 无匹配与非数组 null / normalizedTag 空白归一化 4 条；
+//     setRegionTag 状态 trim·空转 null 与 setMode 同批清 tag 2 条；panel-right 两个点击点的静态接线 1 条）；
+//     region-edit-select.test.cjs 新增 6 条（编辑/查看按 tag 取末位、无匹配严格不动 focus/高亮、regionTag=null
+//     仍取全图末位、overview 缺 tag 走 api.mapRegion 兜底）。与 run-gate.cjs 的 MIN_TESTS 同值——改一处必须改两处。
+const MIN_ASSERTIONS = 362;
 
 function testFiles() {
   return fs

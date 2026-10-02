@@ -27,6 +27,9 @@
     // ★ M8 T10：区域编辑的**当前目标区域**（focus）。null = 未选；编辑中它正常色、其它区域淡色。
     //   与 highlightRegions 分开：那个是"区域查看"的临时高亮，这个是编辑会话的目标（可删除/改 hex）。
     regionFocus: null,
+    // ★ 2026-10-02 用户报障：区域查看/编辑时，地图点格应只在该 tag 覆盖的区域里取"最后覆盖"。
+    //   null = 未选 tag（无筛选，沿用 V3 全图最顶层）。
+    regionTag: null,
     // ★ T7：决策模式的**子页**（`view`=决策人查看 / `approval`=审批）与**列表聚焦的决策人**。
     //   focus 只由右栏列表点击设置；地图点选（setSelection）会清掉它 ⇒ 两种来源互斥、左栏只显示一个。
     decisionSubpage: "view",
@@ -53,6 +56,7 @@
     state.highlightRegions = [];
     state.highlightKind = "group";
     state.regionFocus = null;
+    state.regionTag = null;
     state.decisionMakerFocus = null;
     applyMode();
     notify();
@@ -96,6 +100,22 @@
     }
     state.regionFocus = next;
     applyMode();
+    notify();
+  }
+
+  /**
+   * ★ 2026-10-02 用户报障：右栏点 tag / 区域时记录的"当前筛选 tag"（trim 后空 ⇒ null）。
+   * map.js 点格据此只在**该 tag** 覆盖的区域里取"最后覆盖"；null = 未选 tag（沿用 V3 全图末位）。
+   */
+  function setRegionTag(tag) {
+    var next = tag === undefined || tag === null ? null : String(tag).trim();
+    if (next === "") {
+      next = null;
+    }
+    if (next === state.regionTag) {
+      return;
+    }
+    state.regionTag = next;
     notify();
   }
 
@@ -521,6 +541,7 @@
     setSelection: setSelection,
     setHighlightRegions: setHighlightRegions,
     setRegionFocus: setRegionFocus,
+    setRegionTag: setRegionTag,
     setDecisionSubpage: setDecisionSubpage,
     setDecisionMakerFocus: setDecisionMakerFocus,
     onStateChange: onStateChange,

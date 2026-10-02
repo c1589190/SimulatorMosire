@@ -15,6 +15,7 @@
   var api = window.SimosApi;
   var worldModel = window.SimosWorldModel || null;
   var groupByTag = window.SimosReadout.groupByTag;
+  var UNTAGGED_LABEL = window.SimosReadout.UNTAGGED_LABEL;
   var loadOverview = window.SimosPanelDom.loadOverview;
   var targetLabel = window.SimosPanelDom.targetLabel;
   var appendRow = window.SimosPanelDom.appendRow;
@@ -82,6 +83,9 @@
       tagButton.appendChild(app.el("span", { class: "region-tag-count", text: String(ids.length) }));
       tagButton.addEventListener("click", function () {
         selectedRegion = null;
+        // ★ 2026-10-02 用户报障：点 tag ⇒ 该 tag 成为地图点选的筛选 tag；
+        //   "未标注"（groupByTag 的显示口径）⇒ null，恢复地图点格的全图末位语义。
+        app.setRegionTag(group.tag === UNTAGGED_LABEL ? null : group.tag);
         // ★ U3：点 tag ⇒ 该 tag 下所有区域**等亮度**（group）。
         app.setHighlightRegions(ids.slice(), "group");
       });
@@ -103,6 +107,13 @@
         );
         item.addEventListener("click", function () {
           selectedRegion = region;
+          // ★ 2026-10-02 用户报障：点单个区域 ⇒ 它的 tag 成为地图点选的筛选 tag（trim；空 ⇒ null，
+          //   即恢复无筛选）。与上方 groupByTag 的显示口径同源，只是不把空串写成 "未标注"。
+          var rawTag =
+            region.meta && region.meta.tag !== undefined && region.meta.tag !== null
+              ? String(region.meta.tag).trim()
+              : "";
+          app.setRegionTag(rawTag === "" ? null : rawTag);
           if (app.getState().mode === "region-edit") {
             app.setRegionFocus(region.id);
           } else {

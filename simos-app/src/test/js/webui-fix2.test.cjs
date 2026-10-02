@@ -262,6 +262,36 @@ test("setHighlightRegions-infers-kind-and-honours-explicit-kind", () => {
   assert.equal(A.getState().highlightKind, "group", "setMode 重置 highlightKind");
 });
 
+test("setRegionTag-trims-and-normalizes-blank-to-null", () => {
+  // ★ 2026-10-02 用户报障：regionTag 生产者（右栏/搜索定位）可能带空白；状态层必须与自己 map.js 的
+  //   normalizedTag 同口径 —— trim 后空 ⇒ null。
+  A.setMode("region");
+  A.setRegionTag(" Nation ");
+  assert.equal(A.getState().regionTag, "Nation", "首尾空白 trim 后存");
+  A.setRegionTag("Nation");
+  assert.equal(A.getState().regionTag, "Nation", "同值重复设置不改变状态");
+  A.setRegionTag("");
+  assert.equal(A.getState().regionTag, null, "空串 ⇒ null（不是空串筛选）");
+  A.setRegionTag("Nation");
+  A.setRegionTag(null);
+  assert.equal(A.getState().regionTag, null, "null ⇒ null");
+  A.setRegionTag("Nation");
+  A.setRegionTag(undefined);
+  assert.equal(A.getState().regionTag, null, "undefined ⇒ null");
+  A.setRegionTag("   ");
+  assert.equal(A.getState().regionTag, null, "纯空白 ⇒ null");
+});
+
+test("setMode-clears-regionTag-in-the-same-batch", () => {
+  A.setRegionTag("Nation");
+  assert.equal(A.getState().regionTag, "Nation", "前置：tag 已选中");
+  A.setMode("view");
+  assert.equal(A.getState().regionTag, null, "★ setMode 必须同批清 regionTag（与 highlightRegions/regionFocus 同批）");
+  A.setRegionTag("Nation");
+  A.setMode("region-edit");
+  assert.equal(A.getState().regionTag, null, "任何模式切换都清，不只 view");
+});
+
 test("topRegionId-picks-the-definition-order-last-not-the-lexicographic-max", () => {
   // ★ V3 杀点：服务端按**定义序**给 regions ⇒ 顶层 = **末位**。夹具让字典序末位与之**分叉**
   //   （"zz_first" 字典序最大、却在定义序里在前）⇒ 一旦有人"顺手 .sort()"（退回字典序）这条红。
@@ -273,6 +303,63 @@ test("topRegionId-picks-the-definition-order-last-not-the-lexicographic-max", ()
   assert.equal(M.topRegionId(null), null, "非数组 ⇒ null");
 });
 
+test("taggedTopRegionId-falls-back-to-global-last-when-active-tag-is-null", () => {
+  // ★ 2026-10-02 用户报障修复的回归边界：未选 tag（null/undefined/""）时逐值等于 V3 的 topRegionId。
+  //   夹具让"同 tag 末位"与"全图末位"分叉：r-admin2 是全图末位、但不是 Nation 的末位。
+  const ids = ["r-nation", "r-admin2"];
+  const tagOf = (id) => (id === "r-nation" ? "Nation" : "province");
+  assert.equal(M.topRegionId(ids), "r-admin2", "前置：全图末位 = r-admin2");
+  assert.equal(M.taggedTopRegionId(ids, "Nation", tagOf), "r-nation", "前置：Nation 末位 = r-nation（刻意分叉）");
+  const fixtures = [ids, ["r-admin", "r-nation"], ["zz_first", "aa_second"], ["only"], []];
+  fixtures.forEach((regionIds) => {
+    assert.equal(
+      M.taggedTopRegionId(regionIds, null, tagOf),
+      M.topRegionId(regionIds),
+      "activeTag=null ⇒ 逐值等于 topRegionId：" + JSON.stringify(regionIds)
+    );
+  });
+  assert.equal(M.taggedTopRegionId(ids, undefined, tagOf), M.topRegionId(ids), "undefined 也走全图末位");
+  assert.equal(M.taggedTopRegionId(ids, "", tagOf), M.topRegionId(ids), "空串（假值）也走全图末位");
+  assert.equal(M.taggedTopRegionId(null, null, tagOf), null, "非数组在无筛选下沿用 topRegionId 的 null");
+});
+
+test("taggedTopRegionId-picks-the-last-of-the-active-tag-not-the-global-last", () => {
+  const ids = ["r-admin", "r-nation", "r-admin2", "r-nation2"];
+  const tags = { "r-admin": "province", "r-nation": "Nation", "r-admin2": "province", "r-nation2": "Nation" };
+  const tagOf = (id) => tags[id];
+  assert.equal(M.topRegionId(ids), "r-nation2", "前置：全图末位恰是 Nation 末位 ⇒ 下面换一个全图末位不在该 tag 的夹具");
+  const mixed = ["r-admin", "r-nation", "r-admin2"];
+  assert.equal(M.taggedTopRegionId(mixed, "Nation", tagOf), "r-nation", "取该 tag 的定义序末位");
+  assert.notEqual(M.taggedTopRegionId(mixed, "Nation", tagOf), "r-admin2", "★ 不是全图末位（bug 原形）");
+  assert.equal(M.taggedTopRegionId(ids, "Nation", tagOf), "r-nation2", "多个同 tag ⇒ 仍取定义序最后那个");
+  // tagOf 的返回值按严格相等比较：trim / 大小写不自动兜——归一化是调用方 normalizedTag 的职责。
+  assert.equal(M.taggedTopRegionId(["r-nation"], "Nation", () => " Nation "), null, "tagOf 返回值首尾空白不自动 trim");
+  assert.equal(M.taggedTopRegionId(["r-nation"], "Nation", () => "nation"), null, "大小写敏感");
+  assert.equal(M.taggedTopRegionId(["r-nation"], " Nation ", () => "Nation"), null, "activeTag 自身也要先归一化");
+});
+
+test("taggedTopRegionId-returns-null-on-no-match-or-non-array", () => {
+  assert.equal(
+    M.taggedTopRegionId(["r-a", "r-b"], "Nation", () => "province"),
+    null,
+    "无匹配 ⇒ null（严格口径：不许回落到全图末位）"
+  );
+  assert.equal(M.taggedTopRegionId(["r-nation"], "Nation", () => null), null, "tagOf 查不到 ⇒ null");
+  assert.equal(M.taggedTopRegionId(["r-nation"], "Nation", () => undefined), null, "tagOf 返回 undefined ⇒ null");
+  assert.equal(M.taggedTopRegionId("r-nation", "Nation", () => "Nation"), null, "非数组 ⇒ null");
+  assert.equal(M.taggedTopRegionId(null, "Nation", () => "Nation"), null, "null ⇒ null");
+});
+
+test("normalizedTag-trims-and-folds-blank-to-null", () => {
+  assert.equal(M.normalizedTag(null), null);
+  assert.equal(M.normalizedTag(undefined), null);
+  assert.equal(M.normalizedTag(""), null);
+  assert.equal(M.normalizedTag("   "), null, "纯空白 ⇒ null（不是空串空 tag）");
+  assert.equal(M.normalizedTag(" Nation "), "Nation", "首尾空白 trim");
+  assert.equal(M.normalizedTag("Nation"), "Nation");
+  assert.equal(M.normalizedTag("nation"), "nation", "大小写原样保留");
+});
+
 test("sources-split-single-vs-group-at-the-three-call-sites", () => {
   // ★ M12 第四波：右栏（含 tag 点击 / 右栏单项两个调用点）已搬到 panel-right.js ⇒ 扫描对象随之改。
   const right = readWebui("panel-right.js");
@@ -280,12 +367,53 @@ test("sources-split-single-vs-group-at-the-three-call-sites", () => {
   assert.ok(right.indexOf('app.setHighlightRegions([region.id], "single")') >= 0, "右栏单项 ⇒ single");
   const map = readWebui("map.js");
   // ★ V3：地图点格**不再**按从属数分档（那是 U3-2，已推翻）——改为取定义序末位那一个、恒 single。
-  assert.ok(map.indexOf("var top = topRegionId(regionIds)") >= 0, "地图点格取顶层（定义序末位）");
+  // ★ 2026-10-02 用户报障修复：选中 tag 时先按 `taggedTopRegionId(regionIds, activeTag, …)` 取**该 tag 的**
+  //   定义序末位；无 tag（activeTag 空）才退回 V3 全图末位。
+  assert.ok(
+    map.indexOf("function taggedTopRegionId(regionIds, activeTag, tagOf)") >= 0,
+    "按 tag 取末位的纯函数必须在（含三个形参）"
+  );
+  assert.ok(
+    map.indexOf("taggedTopRegionId(regionIds, activeTag") >= 0,
+    "地图点格的调用点必须把 regionIds 与 activeTag 传进 taggedTopRegionId"
+  );
+  const taggedStart = map.indexOf("function taggedTopRegionId(regionIds, activeTag, tagOf)");
+  const taggedEnd = map.indexOf("function selectRegionOfHex(", taggedStart);
+  assert.ok(taggedStart >= 0 && taggedEnd > taggedStart, "取到 taggedTopRegionId 函数体");
+  assert.ok(
+    map.slice(taggedStart, taggedEnd).indexOf("return topRegionId(regionIds);") >= 0,
+    "activeTag 空时必须退回 topRegionId（V3 全图末位不被破坏）"
+  );
   assert.ok(map.indexOf('app.setHighlightRegions([top], "single")') >= 0, "顶层那一个 ⇒ single（恒单区域）");
   assert.equal(
     map.indexOf('regionIds.length === 1 ? "single" : "group"'),
     -1,
     "旧的『多从属 ⇒ group』分档必须已经不在了（V3 取代 U3-2）"
+  );
+});
+
+test("panel-right-wires-region-tag-at-both-click-sites", () => {
+  // ★ 2026-10-02 用户报障：右栏点 tag / 点单个区域都必须把筛选 tag 写回 app（否则地图点格仍按全图末位选）。
+  const src = readWebui("panel-right.js");
+  const first = src.indexOf("app.setRegionTag(");
+  const second = src.indexOf("app.setRegionTag(", first + 1);
+  assert.ok(first >= 0 && second > first, "app.setRegionTag 必须出现两处（tag 组点击 + 区域单项点击）");
+  assert.equal(src.indexOf("app.setRegionTag(", second + 1), -1, "恰两处：多出来的调用点会绕过 tag 归一化口径");
+  // tag 组那处：groupByTag 的「未标注」是显示标签，必须映射成 null，不能当 tag 写进去。
+  const groupEnd = src.indexOf('app.setHighlightRegions(ids.slice(), "group")', first);
+  assert.ok(groupEnd > first, "取到 tag 组点击块");
+  assert.ok(
+    src.slice(first, groupEnd).indexOf("UNTAGGED_LABEL") >= 0,
+    "tag 组那处必须含 UNTAGGED_LABEL（未标注 ⇒ null）"
+  );
+  // 区域单项那处：tag 来自 region.meta.tag（trim 后空 ⇒ null）。
+  const itemEnd = src.indexOf('app.setHighlightRegions([region.id], "single")', second);
+  assert.ok(itemEnd > second, "取到区域单项点击块");
+  const itemStart = src.lastIndexOf("item.addEventListener", second);
+  assert.ok(itemStart >= 0 && itemStart < second, "取到区域单项点击处理器起点");
+  assert.ok(
+    src.slice(itemStart, itemEnd).indexOf("region.meta.tag") >= 0,
+    "区域单项那处必须按 region.meta.tag 归一化"
   );
 });
 

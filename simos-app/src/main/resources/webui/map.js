@@ -1721,6 +1721,8 @@
       if (state.mode !== "region") {
         app.setMode("region");
       }
+      // ★ 2026-10-02 用户报障：搜索定位一个区域后，地图点格也按它的 tag 筛选（与右栏点区域同源）。
+      app.setRegionTag(normalizedTag(regionTagById(item.id)));
       app.setHighlightRegions([String(item.id)], "single");
       if (item.at) {
         active.ensureCityVisible(item.at.q, item.at.r, 0.3, true);
@@ -2021,9 +2023,37 @@
   }
 
   /**
+   * ★ 2026-10-02 用户报障：tag 归一化 —— null/undefined/纯空白 ⇒ null；其余 trim 后原样
+   *（与右栏 groupByTag 的显示口径同源）。
+   */
+  function normalizedTag(tag) {
+    if (tag === null || tag === undefined) {
+      return null;
+    }
+    var text = String(tag).trim();
+    return text === "" ? null : text;
+  }
+
+  /**
+   * 区域 id ⇒ 它的 tag（先查 host.overviewRegions；查不到 ⇒ null；原样返回后再由调用方 normalizedTag）。
+   * overview 条目形状与右栏一致：{id, meta:{tag…}}（本文件已有 regionTag(region) 读 `tag`/`meta.tag`）。
+   */
+  function regionTagById(id) {
+    var list = host.overviewRegions || [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && String(list[i].id) === String(id)) {
+        return regionTag(list[i]);
+      }
+    }
+    return null;
+  }
+
+  /**
    * ★ V3 纯函数：拥有该 hex 的**最顶层区域** = 服务端 `regions` 里的**最后一个**（服务端按 `GameMap.regions`
    * 定义序发出，"后定义者在上"）。本函数**只取末位、绝不重排**——退回字典序（如 `.sort()`）会取错区域。
    * 空/非数组 ⇒ null（调用方清高亮）。
+   * ★ 2026-10-02 用户报障：选中 tag（`state.regionTag`）时改用 `taggedTopRegionId` 取该 tag 的末位；
+   * 无筛选（null）才退回本函数的全图末位。
    */
   function topRegionId(regionIds) {
     if (!Array.isArray(regionIds) || !regionIds.length) {
@@ -2032,12 +2062,68 @@
     return regionIds[regionIds.length - 1];
   }
 
-  /** 区域查看模式：点格 ⇒ 选中**拥有该格的最顶层区域**（V3，取代 U3-2 的"多从属退回 group"）。 */
+  /**
+   * ★ 2026-10-02 用户报障：选中 tag 时，hex 取"该 tag 的最后覆盖区域"而不是全图末位。
+   * activeTag 为 null/空 ⇒ 退回 topRegionId（V3 原语义）；非数组 ⇒ null；
+   * 否则返回 regionIds 里 tagOf(id) === activeTag 的**最后一个**（定义序末位）；无匹配 ⇒ null。
+   */
+  function taggedTopRegionId(regionIds, activeTag, tagOf) {
+    if (!activeTag) {
+      return topRegionId(regionIds);
+    }
+    if (!Array.isArray(regionIds)) {
+      return null;
+    }
+    var found = null;
+    for (var i = 0; i < regionIds.length; i++) {
+      var id = regionIds[i];
+      if (tagOf(id) === activeTag) {
+        found = id;
+      }
+    }
+    return found;
+  }
+
+  /**
+   * 区域查看模式：点格 ⇒ 选中**拥有该格的最顶层区域**（V3，取代 U3-2 的"多从属退回 group"）。
+   * ★ 2026-10-02 用户报障：若右栏已选 tag（`state.regionTag`，含点 tag / 点区域 / 搜索定位记录的筛选），
+   *   只在该 tag 覆盖的区域里取定义序末位；该格没有这个 tag 的区域 ⇒ **不改当前选中**，只发 status 说明。
+   *   `state.regionTag` 为 null（未选 tag）⇒ 完全沿用 V3 全图末位语义。
+   */
   async function selectRegionOfHex(q, r) {
     try {
       var body = await api.mapHex(q, r, app.target());
       var regionIds = Array.isArray(body.regions) ? body.regions : [];
-      var top = topRegionId(regionIds);
+      var activeTag = normalizedTag(app.getState().regionTag);
+      var tagById = {};
+      if (activeTag !== null) {
+        // overview 解析不出 tag（查不到或 tag 为空）⇒ 逐 id 拉详情兜底（单 id 失败 ⇒ null，不整块崩）。
+        for (var i = 0; i < regionIds.length; i++) {
+          var id = regionIds[i];
+          var tag = normalizedTag(regionTagById(id));
+          if (tag === null) {
+            try {
+              var region = await fetchRegionCached(String(id));
+              tag = normalizedTag(regionTag(region));
+            } catch (e) {
+              tag = null;
+            }
+          }
+          tagById[id] = tag;
+        }
+      }
+      var top = taggedTopRegionId(regionIds, activeTag, function (id) {
+        return tagById[id] === undefined ? null : tagById[id];
+      });
+      if (activeTag !== null && top === null) {
+        // ★ 严格无匹配口径：不落全图最顶层、不清高亮/focus，只说明"当前选中保持不变"。
+        app.statusMessage(
+          app.byId("map-status"),
+          "q=" + q + ", r=" + r + " 处没有 tag「" + activeTag + "」的区域（当前选中保持不变；可在右栏改选 tag/区域）",
+          "muted"
+        );
+        return null;
+      }
       if (top !== null) {
         if (app.getState().mode === "region-edit") {
           // ★ 用户 2026-10-02 报的缺陷修复：区域编辑的落点是 regionFocus，不是临时高亮。
@@ -2746,6 +2832,9 @@
     buildDecisionScopeHighlight: buildDecisionScopeHighlight,
     // ★ V3：拥有该 hex 的最顶层区域（定义序末位，纯函数）——门禁直接断言"取末位、不重排"。
     topRegionId: topRegionId,
+    // ★ 2026-10-02 用户报障：按 tag 取末位（纯函数）与 tag 归一化——门禁直接断言筛选语义。
+    taggedTopRegionId: taggedTopRegionId,
+    normalizedTag: normalizedTag,
     // ★ T7：决策模式的国家 tag ⇒ 区域集合（纯函数，C12）——门禁直接断言"集合相等、不是子集"。
     NATION_TAG_PREFIX: NATION_TAG_PREFIX,
     nationTagOf: nationTagOf,

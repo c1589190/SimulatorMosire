@@ -23,11 +23,20 @@ function flush() {
 /**
  * 假宿主：extraGlobals 会同时挂到 vm sandbox 与 win（webui-loader.cjs 的约定），故 map.js 顶层
  * `var app = window.SimosApp; var api = window.SimosApi;` 拿到的是这里的两份假对象。
+ *
+ * ★ 2026-10-02 用户报障（点格按 tag 筛选）扩展：
+ *   - state 增加 regionTag（缺省 null ⇒ 旧 7 条用例语义不变）；
+ *   - api 增加 mapRegion 桩（覆盖"overview 查不到 tag ⇒ fetchRegionCached 兜底"）；
+ *   - overviewRegions 通过 loadWebui 返回的 win.SimosMapCore.host 注入（生产就是读这个 host）。
  */
 function harness(mode, options) {
   const opts = options || {};
   const calls = [];
-  const state = { mode: mode, regionFocus: opts.regionFocus === undefined ? null : opts.regionFocus };
+  const state = {
+    mode: mode,
+    regionFocus: opts.regionFocus === undefined ? null : opts.regionFocus,
+    regionTag: opts.regionTag === undefined ? null : opts.regionTag,
+  };
   const app = {
     getState: () => state,
     setSelection: (selection) => {
@@ -37,6 +46,10 @@ function harness(mode, options) {
     setRegionFocus: (id) => {
       calls.push({ name: "setRegionFocus", args: [id] });
       state.regionFocus = id;
+    },
+    setRegionTag: (tag) => {
+      calls.push({ name: "setRegionTag", args: [tag] });
+      state.regionTag = tag;
     },
     setHighlightRegions: (ids, kind) => {
       calls.push({ name: "setHighlightRegions", args: [ids, kind] });
@@ -59,6 +72,13 @@ function harness(mode, options) {
       }
       return Promise.resolve({ regions: opts.regions === undefined ? [] : opts.regions });
     },
+    mapRegion: (id, target) => {
+      calls.push({ name: "mapRegion", args: [id, target] });
+      if (opts.mapRegion) {
+        return Promise.resolve(opts.mapRegion(id, target));
+      }
+      return Promise.reject(new Error("mapRegion 未打桩-测试"));
+    },
   };
   const unitEditor = {
     selectedUnitId: () => (opts.selectedUnitId === undefined ? null : opts.selectedUnitId),
@@ -68,8 +88,14 @@ function harness(mode, options) {
     SimosApi: api,
     SimosMapUnitEditor: unitEditor,
   });
+  if (opts.overviewRegions !== undefined) {
+    // 生产 map.js 的 regionTagById 读的就是 SimosMapCore.host.overviewRegions。
+    win.SimosMapCore.host.overviewRegions = opts.overviewRegions;
+  }
   return {
     map: win.SimosMap,
+    core: win.SimosMapCore,
+    host: win.SimosMapCore.host,
     app: app,
     api: api,
     state: state,
@@ -174,6 +200,141 @@ test("region-edit-unit-pick-selects-unit-and-still-sets-region-focus", async () 
     "单位标记同理：region-edit 下点单位也要选中所在区域"
   );
   assert.deepEqual(h.callsOf("setHighlightRegions"), []);
+});
+
+// ── 2026-10-02 用户报障：点格必须按"当前选中 tag"取该 tag 的定义序末位 ──────────────
+//
+// 数据夹具：全图末位 = r-admin2（province），Nation 末位 = r-nation ⇒ 两者刻意分叉。
+const TAGGED_REGIONS = ["r-admin", "r-nation", "r-admin2"];
+const TAGGED_OVERVIEW = [
+  { id: "r-admin", meta: { tag: "province" } },
+  { id: "r-nation", meta: { tag: "Nation" } },
+  { id: "r-admin2", meta: { tag: "province" } },
+];
+
+test("region-edit-hex-pick-honours-region-tag-filter", async () => {
+  const h = harness("region-edit", {
+    regionTag: "Nation",
+    regions: TAGGED_REGIONS,
+    overviewRegions: TAGGED_OVERVIEW,
+  });
+
+  h.map.selectPickForTest({ kind: "hex", q: 3, r: 4, inMap: true });
+  await flush();
+
+  assert.deepEqual(
+    h.callsOf("setRegionFocus"),
+    [["r-nation"]],
+    "★ activeTag=Nation ⇒ 取该 tag 的定义序末位 r-nation（不是全图末位 r-admin2）"
+  );
+  assert.ok(
+    !h.callsOf("setRegionFocus").some((args) => args[0] === "r-admin2"),
+    "全图末位 r-admin2 不得被选中（用户报障原形）"
+  );
+  assert.deepEqual(h.callsOf("setHighlightRegions"), [], "region-edit 落点仍是 regionFocus，不走临时高亮");
+  // overview 覆盖了全部三个 id ⇒ 不许做多余的详情兜底。
+  assert.deepEqual(h.callsOf("mapRegion"), [], "overview 能解析出 tag ⇒ 不拉详情");
+});
+
+test("region-view-hex-pick-honours-region-tag-filter", async () => {
+  const h = harness("region", {
+    regionTag: "Nation",
+    regions: TAGGED_REGIONS,
+    overviewRegions: TAGGED_OVERVIEW,
+  });
+
+  h.map.selectPickForTest({ kind: "hex", q: 1, r: 1, inMap: true });
+  await flush();
+
+  assert.deepEqual(
+    h.callsOf("setHighlightRegions"),
+    [[["r-nation"], "single"]],
+    "★ 查看模式也取该 tag 的末位 r-nation（single），不是 r-admin2"
+  );
+  assert.deepEqual(h.callsOf("setRegionFocus"), [], "查看模式不得写编辑焦点");
+});
+
+test("region-edit-tag-without-matching-region-keeps-current-focus", async () => {
+  const h = harness("region-edit", {
+    regionTag: "Nation",
+    regions: ["r-admin"],
+    overviewRegions: [{ id: "r-admin", meta: { tag: "province" } }],
+    regionFocus: "r-keep",
+  });
+
+  h.map.selectPickForTest({ kind: "hex", q: 7, r: 8, inMap: true });
+  await flush();
+
+  assert.equal(h.state.regionFocus, "r-keep", "★ 严格无匹配不得清掉当前编辑目标");
+  assert.deepEqual(h.callsOf("setRegionFocus"), [], "连 setRegionFocus(null) 都不许发");
+  assert.deepEqual(h.callsOf("setHighlightRegions"), [], "严格口径下也不许落到查看高亮");
+  const status = h.callsOf("statusMessage");
+  assert.equal(status.length, 1, "必须给一条 status 说明为什么选中不变");
+  assert.match(status[0][1], /Nation/, "status 要点名缺失的 tag");
+  assert.match(status[0][1], /保持不变/, "status 要说明当前选中保持不变");
+});
+
+test("region-view-tag-without-matching-region-does-not-clear-highlight", async () => {
+  const h = harness("region", {
+    regionTag: "Nation",
+    regions: ["r-admin"],
+    overviewRegions: [{ id: "r-admin", meta: { tag: "province" } }],
+  });
+
+  h.map.selectPickForTest({ kind: "hex", q: 7, r: 8, inMap: true });
+  await flush();
+
+  // 旧路径（top=null）会 setHighlightRegions([]) 清高亮；新严格口径必须整条 return、不碰选中。
+  assert.deepEqual(h.callsOf("setHighlightRegions"), [], "★ 严格无匹配不得清当前高亮");
+  assert.deepEqual(h.callsOf("setRegionFocus"), []);
+  const status = h.callsOf("statusMessage");
+  assert.equal(status.length, 1);
+  assert.match(status[0][1], /Nation/);
+  assert.match(status[0][1], /保持不变/);
+});
+
+test("region-tag-null-still-picks-the-global-last-region", async () => {
+  const h = harness("region", {
+    regionTag: null,
+    regions: TAGGED_REGIONS,
+    overviewRegions: TAGGED_OVERVIEW,
+  });
+
+  h.map.selectPickForTest({ kind: "hex", q: 2, r: 2, inMap: true });
+  await flush();
+
+  assert.deepEqual(
+    h.callsOf("setHighlightRegions"),
+    [[["r-admin2"], "single"]],
+    "★ regionTag=null 时仍取全图定义序末位 r-admin2（V3 旧行为不被破坏）"
+  );
+  assert.deepEqual(h.callsOf("setRegionFocus"), []);
+  assert.deepEqual(h.callsOf("mapRegion"), [], "无 tag 筛选时不做兜底 IO");
+});
+
+test("region-tag-falls-back-to-region-detail-when-overview-lacks-the-tag", async () => {
+  const h = harness("region", {
+    regionTag: "Nation",
+    regions: ["r-admin", "r-nation"],
+    overviewRegions: [{ id: "r-admin", meta: { tag: "province" } }], // r-nation 缺失 ⇒ 走 fetchRegionCached
+    mapRegion: (id) => ({ id: id, meta: { tag: "Nation" } }),
+  });
+
+  h.map.selectPickForTest({ kind: "hex", q: 5, r: 5, inMap: true });
+  await flush();
+  await flush();
+
+  assert.deepEqual(
+    h.callsOf("mapRegion"),
+    [["r-nation", { branch: "main", revision: 1 }]],
+    "overview 查不到 tag ⇒ 逐 id 拉详情兜底（只拉缺的那个）"
+  );
+  assert.deepEqual(
+    h.callsOf("setHighlightRegions"),
+    [[["r-nation"], "single"]],
+    "兜底拿到 tag=Nation 后仍按该 tag 选中末位"
+  );
+  assert.deepEqual(h.callsOf("setRegionFocus"), []);
 });
 
 test("renderer-shows-pointer-cursor-for-region-edit-mode", () => {
