@@ -280,7 +280,7 @@ public final class WorldgenInitializeTool implements AgentTool {
         + " + sd.CreateArmy）。"
         + "载荷 {nation(regionId，必填), seed?(缺省=配置), randomize?(缺省=配置 randomization.enabled),"
         + " dryRun?(缺省 true=只算不写), army?(缺省 true=连军队编制一起建；false=只做人口+城市), branch?(缺省 main),"
-        + " economyProfile?(R3a 起只有 class-first，缺省 class-first),"
+        + " economyProfile?(class-first 或 production-runtime，缺省 class-first),"
         + " economyTestConditions?(JSON 文本，缺省 null=无条件：初始债务/质押/资产拆分/外部库存货币注入),"
         + " cityLimit?(缺省 "
         + DEFAULT_CITY_LIMIT
@@ -311,7 +311,9 @@ public final class WorldgenInitializeTool implements AgentTool {
     props.put(
         "economyProfile",
         ToolSupport.prop(
-            "string", "经济地基 profile：R3a 起只有 class-first（缺省；只种阶层池状态 + 最小人口/市场壳，不种旧生产结构）"));
+            "string",
+            "经济地基 profile：class-first（缺省；只种阶层池状态 + 最小人口/市场壳，不种旧生产结构）/ "
+                + "production-runtime（同一份 class-first 基础，另发默认生产方式/阶层结构/位置/家户归属，P1 只种状态不结算）"));
     props.put(
         "economyTestConditions",
         ToolSupport.prop(
@@ -375,7 +377,7 @@ public final class WorldgenInitializeTool implements AgentTool {
       }
       long genesisMoneyMilliPerCapita =
           genesisMoneyArg == null ? EconomySeeder.genesisMoneyMilliPerCapita() : genesisMoneyArg;
-      // ★★ P1：经济地基 profile（GM 可传参数；R3a 起缺省/唯一合法值 = class-first）。不用 System property。
+      // ★★ P1：经济地基 profile（GM 可传参数；缺省 class-first，P1 起另接受 production-runtime）。不用 System property。
       EconomySeeder.FoundationProfile economyProfile =
           EconomySeeder.FoundationProfile.parse(
               ToolSupport.optionalText(args, "economyProfile", "class-first"));
