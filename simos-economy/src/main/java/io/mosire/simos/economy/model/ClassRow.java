@@ -175,6 +175,26 @@ public record ClassRow(
   }
 
   /**
+   * ★★ <b>P8 迁移：只换人口与劳动，别的字段一字不动</b>——身份、视图、参与率、货币、债务引用、两类需求与周期累计自然需要 全部原样保留。
+   *
+   * <p>★★ <b>与 {@link #withView} 同族的理由</b>：迁移的源/目标行都要改人口与劳动（劳动按迁出人数比例缩/增）， 若调用点逐字段手抄，任何一次 {@code
+   * ClassRow} 加字段都会让迁移写口静默丢字段；本方法把“只改这两个字段”的承诺 钉在类型内部。人口/劳动为负由规范构造器当场拒（迁移不得把行抽到负数）。
+   */
+  public ClassRow withPopulationAndLabor(long newPopulation, long newLaborMilli) {
+    return new ClassRow(
+        id,
+        view,
+        newPopulation,
+        newLaborMilli,
+        participationPerMille,
+        money,
+        debts,
+        naturalNeeds,
+        effectiveDemand,
+        cycleNaturalNeedMilli);
+  }
+
+  /**
    * ★★ <b>M1.8：按阶层参与率折算后的每日可用劳动</b>（千分劳动/日）= {@code laborMilli × participationPerMille ÷
    * 1000}（整数、向下取整）。
    *

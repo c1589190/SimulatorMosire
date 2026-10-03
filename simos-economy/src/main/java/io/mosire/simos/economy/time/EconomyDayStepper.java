@@ -7,6 +7,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.population.LotChange;
+import io.mosire.simos.economy.api.population.LotMigration;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Membership;
@@ -232,6 +233,17 @@ public final class EconomyDayStepper implements AutoCloseable {
   public void applyPopulationChange(List<LotChange> changes) {
     Objects.requireNonNull(changes, "changes");
     EconomySettlement.applyPopulationChangeInto(session, changes);
+  }
+
+  /**
+   * ★★ <b>P8：把一份迁移计划落进本会话的经济侧工作副本</b>（人口 / 劳动 / 债务；见 {@link LotMigrationBook}）。
+   *
+   * <p>★ 本方法只转发经济侧写口；<b>不</b>动 social 批次、{@code Membership}、{@code LaborAllocation}/{@code
+   * LaborSupply} 与 actor 账户（那是 P9 跨切片协调器的接线内容）。空计划 ⇒ 一字不改。
+   */
+  public void applyMigrations(List<LotMigration> migrations, long day) {
+    Objects.requireNonNull(migrations, "migrations");
+    LotMigrationBook.applyInto(session, migrations, day);
   }
 
   /** ★★ 最近一次 {@link #step(long)} 的区域市场报告（没开市 ⇒ {@link Optional#empty()}）。 */

@@ -13,10 +13,12 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.economy.api.population.LotMigration;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.MigrationPolicy;
 import io.mosire.simos.economy.time.AccountPartitionKey;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
@@ -281,6 +283,24 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               //   ★ 放在月度回写之后、且**在条目落账之后**：全部账户以会话的绝对值收尾（顺序反了会把条目加两遍）。
               currentBooks = OwnershipBooks.landAccountSession(currentBooks, stepper.accounts());
             }
+            // ★★ P8 迁移接线位（**默认 no-op**）：`planMigrations` 目前传空读数表 ⇒ 规划器恒返回空表 ⇒
+            //   不改任何状态、不动任何数值。P9 启用时的顺序必须在这里（月度人口回写 + 份额对账之后、
+            //   `landAccountSession`/`stepper.finish()` 之前）：
+            //     ① 读数：从 MarketReportFeed / CityLandBook / social.urbanPopulationAt 现算
+            //        List<CityMigrationReading>（本参与者已在 reads 里声明 map/social 根地址）；
+            //     ② social 侧：按 planned 拆/合 PopulationGroup（换 residence，id 不变），得到新的 SocialData；
+            //     ③ 经济侧：stepper.applyMigrations(planned, day)（行人口/劳动/债务；唯一写口见 LotMigrationBook，
+            //        它有意不碰 Membership —— 份额由下一步的 reconcile 按行人口重建/削平）；
+            //     ④ 对账：MembershipWriteback.reconcile(stepper.classRows(), stepper.memberships(), 新
+            // SocialData)
+            //        逐 lot 硬校验；⑤ 再落 actor 账户（若迁移不碰账户可省略，但顺序必须早于 finish()）。
+            List<LotMigration> plannedMigrations = planMigrations(currentSocial, day);
+            if (!plannedMigrations.isEmpty()) {
+              throw new IllegalStateException(
+                  "P8 迁移执行尚未接线：规划器返回了 "
+                      + plannedMigrations.size()
+                      + " 笔迁移，但 social/economy 双写与对账顺序未实现（默认空读数表 ⇒ 正常不会到达这里）");
+            }
           }
         }
         EconomyData currentEconomy = stepper.finish();
@@ -300,6 +320,24 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       parallelism.close();
       throw failure;
     }
+  }
+
+  // ── P8 迁移规划接线位（默认 no-op）──────────────────────────────────────────────────────────
+
+  /**
+   * ★★ <b>P8 人口迁移规划器调用位（默认 no-op）</b>：当前显式传空读数表 ⇒ {@link PopulationMigrationPlanner#plan} 恒返回
+   * {@code List.of()}，调用点 {@code if (!plannedMigrations.isEmpty())} 不进入 ⇒ <b>不改任何状态、不改任何数值</b>。
+   *
+   * <p>★★ <b>为什么必须住这里</b>：迁移计划同时看得见 social（批次）与 economy（城市/市场读数），而只有组合根同时认识 两片；plan 本身仍是纯函数（见
+   * {@link PopulationMigrationPlanner}）。
+   *
+   * <p>★★ <b>P9 接线点（本方法就是那个唯一入口）</b>：把空表替换成按城现算的 {@link CityMigrationReading} 列表—— 数据源 = {@link
+   * MarketReportFeed}（本轮交易/利润读数）、P6 {@code CityLandBook}（承载/拥挤）与 {@code
+   * SocialData.urbanPopulationAt(cityId)}（人口分母）；然后把调用点改造成上面的 ①②③④⑤ 顺序。
+   */
+  private static List<LotMigration> planMigrations(SocialData social, long day) {
+    // ★ 默认空读数表：不是“还没写”，是 P8 明确只做契约/纯规划器/接线点；P9 统一接读数与测试。
+    return PopulationMigrationPlanner.plan(social, List.of(), MigrationPolicy.defaults(), day);
   }
 
   // ── 逐日生理压力（社会侧唯一的日常写点）────────────────────────────────────────────────

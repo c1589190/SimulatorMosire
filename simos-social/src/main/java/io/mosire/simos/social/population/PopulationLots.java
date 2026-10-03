@@ -131,6 +131,29 @@ public final class PopulationLots {
     return URBAN_PREFIX + city + ":";
   }
 
+  /**
+   * ★★ <b>从批次 id 取回细分短名（{@code <前缀>:<性别>:<细分>} 的最后一段）</b>：P8 迁移规划器据此把 {@code rural:<格>:<SEX>:<细分>}
+   * 映射成 {@code urban:<城>:<SEX>:<细分>}，<b>不另拼一套批次格式</b>。
+   *
+   * <p>★ 它只认“最后一个 {@code ':'} 之后”的形状，与 {@link #born(PopulationGroup, Sex, String)} 的继承规则同源；
+   * 段数不足/末段为空 ⇒ 抛（fail-closed，静默返回空串会让迁移目标的批次 id 变成非法拼写）。
+   */
+  public static String cohortOf(PeopleLotId lot) {
+    if (lot == null) {
+      throw new IllegalArgumentException("PopulationLots.cohortOf 的 lot 不得为 null");
+    }
+    String id = lot.value();
+    int lastSeparator = id.lastIndexOf(':');
+    if (lastSeparator <= 0 || lastSeparator == id.length() - 1) {
+      throw new IllegalArgumentException("批次 id 必须形如 <前缀>:<性别>:<细分>，取不到细分短名: " + id);
+    }
+    int sexSeparator = id.lastIndexOf(':', lastSeparator - 1);
+    if (sexSeparator <= 0 || sexSeparator == lastSeparator - 1) {
+      throw new IllegalArgumentException("批次 id 必须形如 <前缀>:<性别>:<细分>（性别段缺失/为空），取不到细分短名: " + id);
+    }
+    return id.substring(lastSeparator + 1);
+  }
+
   /** 细分短名：非空、不含分隔符（同上，含它会让 id 的段数不定）。 */
   private static String requireCohort(String cohort) {
     if (cohort == null || cohort.isBlank()) {
