@@ -401,6 +401,15 @@ public final class EconomySettlement {
   public static final int FAMINE_MORTALITY_PER_MILLE = 0;
 
   /**
+   * ★★ <b>P5：死亡按人口比例删债的具名原因</b>（唯一拼写点）：写入 {@link DebtContractBook#forgive} 的 {@code reason}，
+   * 供审计/读口把这一族本金下降与偿还（还款）、GM 减免分开。
+   *
+   * <p>★ 口径与探针一致（探针只记 {@code debtDeleted} 发生额，不记原因）：数值行为 = 逐笔 {@code newPrincipal = ⌊principal ×
+   * survivors ÷ population⌋}；本常量只命名"为什么少了"。★ 不改债的计量单位、 不搬粮/钱、不产生利息 —— 它只写合同本金与状态。
+   */
+  public static final String DEATH_DEBT_WRITE_OFF_REASON = "death:proportionalWriteOff";
+
+  /**
    * ★★ **播种是否先于当日消费扣种**（v2 spec §3.2 的行为预设；用户 2026-09-25 定案：先用常量，默认 {@code true}）。
    *
    * <p>★ **V7 参数目录（spec §四）落地后，它迁入 {@code economy} 切片的参数表并成为 GM 可调**（spec §3.2：
@@ -2303,6 +2312,9 @@ public final class EconomySettlement {
    *   ② 出生/死亡按**行人口**权重摊到那些家户行上；行人口 ∓、**行的 laborMilli 按存活比例缩**（新生儿不干活）
    *   ③ 该批次名下的**全部配额与劳动供给**按同一个存活比例缩（"人死了劳动没减"的收口，见 scaleLaborOfGroup）
    *   ④ 出生/死亡**逐行落进流水**（{@code FlowRow.births} / {@code FlowRow.deaths}）—— 人口守恒因此逐值可核
+   *   ⑤ ★ P5：**死亡按人口比例删债** —— 每个 {@code deathsParts[j] > 0} 的债务人行，把它**作为债务人**的全部活跃合同
+   *      逐笔按 {@code floor(本金 × 存活 ÷ 死亡前人口)} 缩减（走唯一写口 {@link DebtContractBook#forgive}；
+   *      {@code 存活 == 0} ⇒ 全额减免），只动本金/状态、**不搬任何粮/钱、不产生利息**；删债额记进会话瞬态累加器。
    * </pre>
    *
    * <p>★★ **为什么经济侧必须跟着动**（而不是"人死了只在社会侧少几个人"）：行人口是**口粮需求**与**分配权重**的来源 （{@code
@@ -2343,6 +2355,11 @@ public final class EconomySettlement {
     //   但日结算必须交出**同一份**状态，不能让两个组件在终态里漂开）。
     LinkedHashMap<MembershipId, Membership> memberships = session.sheet().memberships();
     LinkedHashMap<AssetShareId, AssetShare> assetShares = session.sheet().assetShares();
+    // ★★ P5：死亡删债的两个工作输入 —— 合同表工作副本与「债务人 → 合同 id」的只读索引。
+    //   索引只在这里建一次（月度调用）；合同本金在下面逐笔改写时，索引里的 id 仍有效（forgive 只换值不删键）。
+    LinkedHashMap<DebtContractId, DebtContract> debts = session.sheet().debtContracts();
+    Map<HouseholdId, List<DebtContractId>> debtsByDebtor =
+        debts.isEmpty() ? Map.of() : DebtIndex.byDebtor(debts);
     // ★★ R4-B.3a-perf：人口回写是“逐 LotChange 摊到目标家户”，旧实现对每条 change 扫全量配额
     //   （真档月度 6,000+ 条 × 44,000+ 配额）。这里在入口建一次只读索引：批次→unit、格→unit、
     //   unit→配额，随后每条 change 只碰与自己目标集合相关的行。
@@ -2403,6 +2420,17 @@ public final class EconomySettlement {
         if (birthsParts[j] != 0L || deathsParts[j] != 0L) {
           flows.put(key, withLifecycle(flows.get(key), key, birthsParts[j], deathsParts[j]));
         }
+        // ★★ P5：死亡按人口比例删债 —— 用**死亡前**的 population 与 survivors = population − deathsParts[j]，
+        //   只缩减「debtor == 本行」的活跃合同（逐笔 floor；survivors == 0 ⇒ 全额减免）。不搬粮/钱、不碰账户。
+        if (deathsParts[j] > 0L) {
+          writeOffDebtsForDeaths(
+              debts,
+              debtsByDebtor.getOrDefault(key, List.of()),
+              key,
+              population,
+              deathsParts[j],
+              session.debtWriteOffs());
+        }
       }
       scaleLaborOfGroup(
           change.group(),
@@ -2417,6 +2445,96 @@ public final class EconomySettlement {
       applyMembershipChange(memberships, change.group(), change.births(), change.deaths());
     }
     // ★ 工作表与流水都在 session 里就地更新；构造与全量守卫由 revision 边界（build）负责（P1.5a）。
+  }
+
+  /**
+   * ★★ <b>P5：死亡按人口比例删债（逐笔整数口径）</b>——只缩减「{@code debtor ==} 本行」的全部活跃合同。
+   *
+   * <pre>
+   * survivors   = population − deaths                     // population = 本行死亡前人口
+   * newPrincipal = survivors == 0 ? 0 : ⌊principal × survivors ÷ population⌋   // 逐笔向下取整
+   * forgiven     = principal − newPrincipal                // 0 本金合同不产生"空减免"
+   * </pre>
+   *
+   * <p>★★ <b>为什么逐笔算、不先合计再摊</b>：合同是各自独立的连续欠账，逐笔 floor 是探针口径的逐值投影 （探针 {@code household.debt = debt ×
+   * afterPop ÷ beforePop} 也是整户一笔、直接乘除）。同一家户多笔合同用 <b>同一个</b> survivors/population ⇒ 比例一致；合计删债 = Σ
+   * 逐笔差值（由调用方逐笔累加，不再二次取整）。
+   *
+   * <p>★★ <b>只走唯一写口</b>：{@link DebtContractBook#forgive} 负责本金下溢守卫、状态迁移（减到 0 ⇒ {@code
+   * FORGIVEN}）与具名原因；本方法<b>不碰</b>账户、库存、流水或任何发行审计 —— 死亡删债不是还款、也不是发行。
+   *
+   * <p>★ <b>确定性</b>：{@code debtorContracts} 来自只读索引（按 id 规范串排序，见 {@link DebtIndex#byDebtor}），
+   * 且逐笔只依赖自己的本金；因此同一份输入无论分区/迭代序都给出同一组删债额。
+   *
+   * @param debts 合同表工作副本（就地更新；唯一写口）
+   * @param debtorContracts 该债务人的合同 id 清单（只读派生；合同表仍是权威）
+   * @param debtor 本行家户（＝债务人）
+   * @param population 本行死亡前人口（&gt; 0）
+   * @param deaths 本行的死亡数（≤ population；来自 {@link #allocate}）
+   * @param debtWriteOffs 会话瞬态删债累加器（就地更新；键 = 债务人）
+   */
+  private static void writeOffDebtsForDeaths(
+      Map<DebtContractId, DebtContract> debts,
+      List<DebtContractId> debtorContracts,
+      HouseholdId debtor,
+      long population,
+      long deaths,
+      LinkedHashMap<HouseholdId, Long> debtWriteOffs) {
+    Objects.requireNonNull(debts, "debts");
+    Objects.requireNonNull(debtor, "debtor");
+    Objects.requireNonNull(debtWriteOffs, "debtWriteOffs");
+    if (deaths <= 0L || debtorContracts.isEmpty()) {
+      return;
+    }
+    if (population <= 0L) {
+      throw new IllegalStateException(
+          "死亡删债的死亡前人口必须 > 0：家户=" + debtor + " 人口=" + population + " 死亡=" + deaths);
+    }
+    long survivors =
+        population - deaths; // 调用方保证 deaths ≤ population（allocate 按人口权重切，见 allocate 的注释）
+    for (DebtContractId id : debtorContracts) {
+      DebtContract debt = debts.get(id);
+      if (debt == null || !debt.debtor().equals(debtor)) {
+        continue; // 索引是只读派生；合同表是权威。取不到/债务人漂开都不在这里"顺手修"
+      }
+      long principal = debt.principal();
+      if (principal <= 0L) {
+        continue; // 已结清/已减免/无本金：没有可删的活跃本金
+      }
+      long after =
+          survivors <= 0L ? 0L : proportionalPrincipalAfterDeaths(principal, survivors, population);
+      long forgiven = principal - after;
+      if (forgiven <= 0L) {
+        continue; // 人口太小、floor 后本金未变：不写 0 减免（forgive 的 amount 必须 > 0）
+      }
+      DebtContractBook.forgive(debts, id, forgiven, DEATH_DEBT_WRITE_OFF_REASON);
+      debtWriteOffs.merge(debtor, forgiven, Math::addExact);
+    }
+  }
+
+  /**
+   * ★ P5：{@code ⌊principal × survivors ÷ population⌋} 的**不溢出**逐笔整数算法（结果与探针的直接乘除逐值相同）。
+   *
+   * <pre>
+   * whole = principal ÷ population；remainder = principal mod population
+   * result = whole × survivors + ⌊remainder × survivors ÷ population⌋
+   * </pre>
+   *
+   * <p>{@code whole × survivors ≤ principal}（因 {@code survivors ≤ population}）⇒ 主项不溢出；尾项 {@code
+   * remainder × survivors} 用 {@link Math#multiplyExact} 在极端值上 fail-closed（不静默绕回）。
+   */
+  private static long proportionalPrincipalAfterDeaths(
+      long principal, long survivors, long population) {
+    if (survivors <= 0L) {
+      return 0L;
+    }
+    if (survivors >= population) {
+      return principal;
+    }
+    long whole = principal / population;
+    long remainder = principal % population;
+    long tail = Math.multiplyExact(remainder, survivors) / population;
+    return Math.addExact(Math.multiplyExact(whole, survivors), tail);
   }
 
   /**
@@ -5754,27 +5872,51 @@ public final class EconomySettlement {
   }
 
   /**
+   * ★★ <b>P5：回笼（WITHDRAWAL）写口的包内入口</b> —— 薄转发到唯一实现 {@link TreasuryWithdrawal#withdraw}；
+   * 发行授权、余额/冻结守卫、审计 id 与重放幂等全部在那一处，本方法不再写第二份算式。
+   *
+   * <p>★ <b>为什么保留这个入口</b>：日结算/命令层的同包代码与 P7 的 GM 编辑工具可以只依赖 {@code EconomySettlement} 这一个门面；跨包调用方直接走
+   * {@link TreasuryWithdrawal}（public）。两条路落到同一实现、 同一张发行审计表。★ P7/GM 接上之前，本批没有自动调用方。
+   */
+  static MoneyIssuanceRecord withdrawFromTreasury(
+      EconomySession session,
+      AccountSession accounts,
+      GovernmentId governmentId,
+      CurrencyId currency,
+      long amount,
+      long day,
+      String operationRef) {
+    return TreasuryWithdrawal.withdraw(
+        session, accounts, governmentId, currency, amount, day, operationRef);
+  }
+
+  /**
    * ★★ <b>E3：一次结算会话的发行审计收集器</b>（线程安全，供并行分区提交发行腿）。id 由 {@link
    * MoneyIssuanceId#forTransfer(TransferId, CurrencyId)} 确定性派生，因此重放/分支不会因线程调度产生不同记录。
+   *
+   * <p>★★ <b>P5 补强的授权校验</b>：{@link #recordIssuance} 不再只按国库 actor 找到政府就记 —— 它还显式要求 {@code
+   * government.issuable()} <b>包含</b>这次记录的币种（具名拒绝）。跑在前面的 {@code
+   * MoneyIssuance.requireIssuerOf(currency)} 只保证"这个付方是某个已登记发行人"，本检查把"该政府的币种集合也必须
+   * 授权这个币种"钉在同一处；两道闸同时成立才写 FISCAL_ISSUE。
    */
   static final class MoneyIssuanceJournal {
 
     private final long period;
-    private final Map<ActorRef, GovernmentId> governmentByTreasury;
+    private final Map<ActorRef, Government> governmentByTreasury;
     private final ConcurrentLinkedQueue<MoneyIssuanceRecord> records =
         new ConcurrentLinkedQueue<>();
 
     MoneyIssuanceJournal(Map<GovernmentId, Government> governments, long period) {
       this.period = period;
-      LinkedHashMap<ActorRef, GovernmentId> byTreasury = new LinkedHashMap<>();
+      LinkedHashMap<ActorRef, Government> byTreasury = new LinkedHashMap<>();
       for (Government government : governments.values()) {
-        GovernmentId previous = byTreasury.putIfAbsent(government.treasury(), government.id());
-        if (previous != null && !previous.equals(government.id())) {
+        Government previous = byTreasury.putIfAbsent(government.treasury(), government);
+        if (previous != null && !previous.id().equals(government.id())) {
           throw new IllegalStateException(
               "同一个国库 actor 对应两个政府，无法写发行审计："
                   + government.treasury()
                   + " → "
-                  + previous
+                  + previous.id()
                   + " / "
                   + government.id());
         }
@@ -5782,20 +5924,32 @@ public final class EconomySettlement {
       this.governmentByTreasury = Map.copyOf(byTreasury);
     }
 
-    /** 记录一条单边发行差额（金额 &gt; 0；发行主体必须是当前政府表里的国库）。 */
+    /** 记录一条单边发行差额（金额 &gt; 0；发行主体必须是当前政府表里的国库，且该政府的 {@code issuable} 必须包含币种）。 */
     void recordIssuance(Transfer transfer, CurrencyId currency, long amount) {
+      Objects.requireNonNull(currency, "currency");
       if (amount <= 0L) {
         throw new IllegalArgumentException("发行差额必须 > 0: " + amount);
       }
-      GovernmentId governmentId = governmentByTreasury.get(transfer.from());
-      if (governmentId == null) {
+      Government government = governmentByTreasury.get(transfer.from());
+      if (government == null) {
         throw new IllegalStateException(
             "发行腿的付方不在当前政府表里（说不出是哪届政府在发行）：" + transfer.from() + "；转移=" + transfer);
+      }
+      if (!government.issuable().contains(currency)) {
+        throw new IllegalArgumentException(
+            "发行审计的币种不在该政府的 issuable 集合内（拒绝按国库归属静默记一笔它无权发行的币种）：政府="
+                + government.id()
+                + " 币种="
+                + currency
+                + " issuable="
+                + government.issuable()
+                + "；转移="
+                + transfer);
       }
       records.add(
           new MoneyIssuanceRecord(
               MoneyIssuanceId.forTransfer(transfer.id(), currency),
-              governmentId,
+              government.id(),
               transfer.day(),
               period,
               currency,

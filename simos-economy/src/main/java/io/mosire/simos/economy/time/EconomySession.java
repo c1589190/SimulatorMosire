@@ -26,6 +26,15 @@ public final class EconomySession {
   private final EconomyStateBuilder sheet;
   private final LinkedHashMap<HouseholdId, FlowRow> flows;
 
+  /**
+   * ★★ <b>P5：本会话的死亡按人口比例删债累加器</b>（瞬态；键 = 债务人，值 = Σ 逐笔 {@code forgive} 的本金差）。
+   *
+   * <p>★★ <b>为什么不进 {@link EconomyData}/变更集/{@code Codec}</b>：删债不是新的持久组件 —— 合同表里该条的 {@code
+   * principal} 已经减少、本金为 0 的条处于 {@code FORGIVEN/SETTLED}，这就是权威事实；本表只是<b>本会话发生额</b> 的进程内累加器，供
+   * P9/协调器核对守恒式 {@code 债务 = 发行 − 还款 − 删债（利息另列）}。
+   */
+  private final LinkedHashMap<HouseholdId, Long> debtWriteOffs = new LinkedHashMap<>();
+
   public EconomySession(EconomyData base) {
     this.base = Objects.requireNonNull(base, "base");
     this.sheet = new EconomyStateBuilder(base);
@@ -61,5 +70,19 @@ public final class EconomySession {
   /** 只读视图（防调用方替换流水表）。 */
   public Map<HouseholdId, FlowRow> flowsView() {
     return java.util.Collections.unmodifiableMap(flows);
+  }
+
+  /**
+   * ★ P5：删债累加器的**可变视图**（包内写口：只服务 {@code EconomySettlement.applyPopulationChangeInto}）。
+   *
+   * <p>★ 不对外公开：公开的是 {@link #debtWriteOffsView()}（只读，{@link EconomyDayStepper} 转发给协调器/P9）。
+   */
+  LinkedHashMap<HouseholdId, Long> debtWriteOffs() {
+    return debtWriteOffs;
+  }
+
+  /** ★ P5：删债累加器的**只读视图**（键序 = 首次发生序；值 = 该家户累计删债本金）。 */
+  public Map<HouseholdId, Long> debtWriteOffsView() {
+    return java.util.Collections.unmodifiableMap(debtWriteOffs);
   }
 }

@@ -147,6 +147,16 @@ public final class EconomyDayStepper implements AutoCloseable {
   }
 
   /**
+   * ★★ <b>P5：本会话的死亡按人口比例删债读数</b>（瞬态；键 = 债务人，值 = Σ 逐笔删债本金）——只读视图。
+   *
+   * <p>★★ <b>它不是第二本账</b>：合同表的本金下降才是权威事实；本读口只回答"这次推进里删掉多少债"（按家户）， 供 app 侧/P9 核对 {@code 债务 = 发行 − 还款
+   * − 删债}（利息另列）。它不进 {@link EconomyData}/变更集/{@code Codec}； 会话结束（{@link #finish()}）后随对象一起丢弃。
+   */
+  public Map<HouseholdId, Long> debtWriteOffs() {
+    return session.debtWriteOffsView();
+  }
+
+  /**
    * ★★ <b>八个协调器账户视图（M1：包内可见，不是 public API）</b> —— 只服务同包日结算代码的既有"键 → 内层表"写法。
    *
    * <p>★ <b>为什么不 public</b>：这些视图经 {@link AccountSession} 的 owner 守卫访问活表；把它们开成 public，等于给 app/worker
