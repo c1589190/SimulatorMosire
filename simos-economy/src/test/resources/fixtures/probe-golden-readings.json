@@ -1,0 +1,2868 @@
+{
+  "version": 1,
+  "generatedOn": "2026-10-06",
+  "description": "P0 探针黄金读数 parity fixture：把四份探针报告的关键读数固化，供 P9 probe → runtime 对拍。expected 中的每个数字都必须能在 sourceReports 的四份报告中找到出处；不得由实现 Agent 修改 expected。",
+  "sourceReports": [
+    "docs/superpowers/reports/2026-10-04-market-probe-longrun.md",
+    "docs/superpowers/reports/2026-10-05-tenancy-wage-cycle-results.md",
+    "docs/superpowers/reports/2026-10-05-diversified-transport-handicraft-results.md",
+    "docs/superpowers/reports/2026-10-05-city-merchant-probe-results.md"
+  ],
+  "toleranceSemantics": {
+    "default": "expected 的每个叶子键默认 exact（absolute=0, relativePerMille=0）。",
+    "override": "overrides 以 expected 的键名（或点路径）为键；mode=absolute 时 |actual-expected| ≤ absolute；mode=relative 时 |actual-expected| ≤ |expected| × relativePerMille / 1000。",
+    "unit": "fixture 冻结探针口径整数（粮/布/纤维/钱/劳动）。正式运行时若以毫单位结算，比较前须按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT = 1000 等既有换算点折算。",
+    "changeControl": "P9 如需放宽 tolerance，必须单独提交 fixture override 并写明裁定理由；不允许实现 Agent 改 expected 来迁就实现。"
+  },
+  "scenarios": [
+    {
+      "id": "long_run_famine_3000",
+      "probeTest": "io.mosire.simos.economy.market.LongRunMortalityProbeTest#mortalityDeletesDebtButStockNeedsIncomeOrCreditLimit",
+      "sourceReport": "docs/superpowers/reports/2026-10-04-market-probe-longrun.md",
+      "inputs": {
+        "rounds": 3000,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 100,
+          "laborPerCapitaPerMille": 500,
+          "foodPerCapita": 10,
+          "baseTransportPerMille": 50,
+          "perHexTransportPerMille": 50,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 200
+          }
+        },
+        "households": [
+          {
+            "id": "L",
+            "hex": "H",
+            "population": 10,
+            "grainStock": 10000,
+            "grainNeedPerCapita": 0,
+            "money": 0,
+            "grainCost": 10,
+            "recipe": {
+              "output": "GRAIN",
+              "outputPerUnit": 1,
+              "laborPerUnit": 0,
+              "desiredScale": 100,
+              "inputPerUnit": {}
+            }
+          },
+          {
+            "id": "W",
+            "hex": "H",
+            "population": 500,
+            "grainStock": 100,
+            "grainNeedPerCapita": 10,
+            "money": 100
+          }
+        ]
+      },
+      "expected": {
+        "round1Population": 510,
+        "round1Deaths": 0,
+        "round1Issuance": 514500,
+        "round1Debt": 514500,
+        "round1GrainRef": 96,
+        "round2Debt": 964400,
+        "round2Repayment": 100,
+        "round2GrainRef": 87,
+        "round3Population": 463,
+        "round3Deaths": 47,
+        "round3Issuance": 24300,
+        "round3DebtDeleted": 92938,
+        "round3Debt": 895762,
+        "round10Population": 234,
+        "round10Deaths": 23,
+        "round10Debt": 540715,
+        "round10GrainRef": 369,
+        "round500Population": 29,
+        "round500Debt": 491378227,
+        "round500GrainRef": 10000,
+        "round1000Debt": 1016378227,
+        "round3000Population": 29,
+        "round3000DeathsThisRound": 0,
+        "round3000Debt": 3116378227,
+        "round3000GrainRef": 10000,
+        "totalDeaths": 481,
+        "totalDebtDeleted": 10881973,
+        "totalRepaid": 100,
+        "finalPopulation": 29,
+        "earlyIssuance200Rounds": 186745800,
+        "lateIssuance200Rounds": 210000000,
+        "lateIssuancePerRound": 1050000
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "长程断粮场景；死亡删债后第 3 轮总债务下降（964400→895762），但无收入闭环使存量债务继续线性增长。所有 expected 均取自报告 §3 的 [LONG] 打印行。"
+    },
+    {
+      "id": "circular_flow_credit_3000",
+      "probeTest": "io.mosire.simos.economy.market.CircularFlowCreditProbeTest#circularIncomeLetsRepaymentStabilizeCredit",
+      "sourceReport": "docs/superpowers/reports/2026-10-04-market-probe-longrun.md",
+      "inputs": {
+        "rounds": 3000,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 0,
+          "laborPerCapitaPerMille": 500,
+          "foodPerCapita": 2,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 400
+          }
+        },
+        "households": [
+          {
+            "id": "L",
+            "hex": "H",
+            "population": 10,
+            "grainStock": 1000,
+            "grainNeedPerCapita": 0,
+            "clothNeedPerCapita": 25,
+            "recipe": {
+              "output": "GRAIN",
+              "outputPerUnit": 1,
+              "laborPerUnit": 0,
+              "desiredScale": 1000,
+              "inputPerUnit": {}
+            }
+          },
+          {
+            "id": "W",
+            "hex": "H",
+            "population": 500,
+            "clothStock": 250,
+            "grainNeedPerCapita": 2,
+            "recipe": {
+              "output": "CLOTH",
+              "outputPerUnit": 1,
+              "laborPerUnit": 1,
+              "desiredScale": 250,
+              "inputPerUnit": {}
+            }
+          }
+        ]
+      },
+      "expected": {
+        "round1Population": 510,
+        "round1Issuance": 200000,
+        "round1Repayment": 0,
+        "round1Debt": 200000,
+        "round1Money": 200000,
+        "round1GrainRef": 100,
+        "round1ClothRef": 400,
+        "round2Population": 510,
+        "round2Issuance": 200000,
+        "round2Repayment": 200000,
+        "round2Debt": 200000,
+        "round2Money": 200000,
+        "round2GrainRef": 100,
+        "round2ClothRef": 400,
+        "round3000Population": 510,
+        "round3000Issuance": 200000,
+        "round3000Repayment": 200000,
+        "round3000Debt": 200000,
+        "round3000Money": 200000,
+        "round3000GrainRef": 100,
+        "round3000ClothRef": 400,
+        "totalDeaths": 0
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "闭环收入正面对照；expected 取自报告 §5.5 的 [CIRCLE] 打印行。3000 轮人口/发行/还款/债务/货币/价格全不变。"
+    },
+    {
+      "id": "food_labor_shortage",
+      "probeTest": "io.mosire.simos.economy.market.FoodLaborProductionProbeTest#foodShortageLowersEfficiencyAndLaborLimitedOutput",
+      "sourceReport": "docs/superpowers/reports/2026-10-04-market-probe-longrun.md",
+      "inputs": {
+        "rounds": 1,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 0,
+          "laborPerCapitaPerMille": 1000,
+          "foodPerCapita": 5,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 200
+          }
+        },
+        "households": [
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 100,
+            "grainStock": 0,
+            "grainNeedPerCapita": 5,
+            "grainCost": 10,
+            "recipe": {
+              "output": "GRAIN",
+              "outputPerUnit": 1,
+              "laborPerUnit": 1,
+              "desiredScale": 100,
+              "inputPerUnit": {}
+            }
+          }
+        ]
+      },
+      "expected": {
+        "foodNeed": 500,
+        "foodEaten": 0,
+        "efficiencyPerMille": 300,
+        "effectiveLabor": 30,
+        "produced": 30,
+        "trades": 0
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §5.2：口粮 0 ⇒ 效率保底 300‰ ⇒ 有效劳动 30 ⇒ 产出 30。"
+    },
+    {
+      "id": "food_labor_full",
+      "probeTest": "io.mosire.simos.economy.market.FoodLaborProductionProbeTest#fullFoodAllowsFullLaborAndOutput",
+      "sourceReport": "docs/superpowers/reports/2026-10-04-market-probe-longrun.md",
+      "inputs": {
+        "rounds": 1,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 0,
+          "laborPerCapitaPerMille": 1000,
+          "foodPerCapita": 5,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 200
+          }
+        },
+        "households": [
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 100,
+            "grainStock": 500,
+            "grainNeedPerCapita": 5,
+            "grainCost": 10,
+            "recipe": {
+              "output": "GRAIN",
+              "outputPerUnit": 1,
+              "laborPerUnit": 1,
+              "desiredScale": 100,
+              "inputPerUnit": {}
+            }
+          }
+        ]
+      },
+      "expected": {
+        "foodNeed": 500,
+        "foodEaten": 500,
+        "efficiencyPerMille": 1000,
+        "effectiveLabor": 100,
+        "produced": 100,
+        "trades": 0
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §5.3：口粮 500 ⇒ 吃饱度 1000‰ ⇒ 满效率 ⇒ 产出 100。"
+    },
+    {
+      "id": "food_labor_c1_reserve",
+      "probeTest": "io.mosire.simos.economy.market.FoodLaborProductionProbeTest#c1ReservesFoodAndProductionInputSoTheyAreNotSold",
+      "sourceReport": "docs/superpowers/reports/2026-10-04-market-probe-longrun.md",
+      "inputs": {
+        "rounds": 1,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 0,
+          "laborPerCapitaPerMille": 1000,
+          "foodPerCapita": 5,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 200
+          }
+        },
+        "households": [
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 100,
+            "grainStock": 600,
+            "grainNeedPerCapita": 5,
+            "clothCost": 50,
+            "recipe": {
+              "output": "CLOTH",
+              "outputPerUnit": 1,
+              "laborPerUnit": 0,
+              "desiredScale": 100,
+              "inputPerUnit": {
+                "GRAIN": 1
+              }
+            }
+          },
+          {
+            "id": "B",
+            "hex": "H",
+            "population": 10,
+            "grainNeedPerCapita": 10
+          }
+        ]
+      },
+      "expected": {
+        "c1Reserve": 600,
+        "foodReserved": 500,
+        "inputReserved": 100,
+        "trades": 0,
+        "buyerBorrowed": 0,
+        "producerFoodEaten": 500,
+        "producerClothProduced": 100
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §5.1：C1 = 口粮 500 + 投入 100 = 600；库存 600 无可售余粮，买家借不到粮；100 粮投入→100 布。"
+    },
+    {
+      "id": "labor_priority_normal",
+      "probeTest": "io.mosire.simos.economy.market.LaborPriorityProbeTest#laborIsAllocatedInPriorityOrderAcrossRecipes",
+      "sourceReport": "docs/superpowers/reports/2026-10-04-market-probe-longrun.md",
+      "inputs": {
+        "rounds": 1,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 0,
+          "laborPerCapitaPerMille": 1000,
+          "foodPerCapita": 0,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 200
+          }
+        },
+        "households": [
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 100,
+            "grainStock": 0,
+            "costs": {
+              "GRAIN": 10,
+              "CLOTH": 10
+            },
+            "recipes": [
+              {
+                "output": "GRAIN",
+                "outputPerUnit": 1,
+                "laborPerUnit": 1,
+                "desiredScale": 60,
+                "inputPerUnit": {}
+              },
+              {
+                "output": "CLOTH",
+                "outputPerUnit": 1,
+                "laborPerUnit": 1,
+                "desiredScale": 60,
+                "inputPerUnit": {}
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "grainProduced": 60,
+        "clothProduced": 40,
+        "totalProduced": 100,
+        "laborUsed": 100
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §5.4：100 劳动、两个各要 60 劳动的 recipe ⇒ 高优先级 60、低优先级 40。顺序即优先级（主 recipe 在前，追加 recipe 按加入顺序）。"
+    },
+    {
+      "id": "labor_priority_hunger",
+      "probeTest": "io.mosire.simos.economy.market.LaborPriorityProbeTest#hungerShrinksLaborBudgetAndPriorityKeepsFirstRecipeAlive",
+      "sourceReport": "docs/superpowers/reports/2026-10-04-market-probe-longrun.md",
+      "inputs": {
+        "rounds": 1,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 0,
+          "laborPerCapitaPerMille": 1000,
+          "foodPerCapita": 0,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 200
+          }
+        },
+        "households": [
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 100,
+            "grainStock": 0,
+            "costs": {
+              "GRAIN": 10,
+              "CLOTH": 10
+            },
+            "recipes": [
+              {
+                "output": "GRAIN",
+                "outputPerUnit": 1,
+                "laborPerUnit": 1,
+                "desiredScale": 60,
+                "inputPerUnit": {}
+              },
+              {
+                "output": "CLOTH",
+                "outputPerUnit": 1,
+                "laborPerUnit": 1,
+                "desiredScale": 60,
+                "inputPerUnit": {}
+              }
+            ],
+            "grainNeedPerCapita": 5
+          }
+        ]
+      },
+      "expected": {
+        "foodEaten": 0,
+        "efficiencyPerMille": 300,
+        "effectiveLabor": 30,
+        "grainProduced": 30,
+        "clothProduced": 0,
+        "totalProduced": 30
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §5.4：断粮使有效劳动降到 30，低优先级 recipe 完全分不到劳动。"
+    },
+    {
+      "id": "labor_priority_input_release",
+      "probeTest": "io.mosire.simos.economy.market.LaborPriorityProbeTest#inputLimitedRecipeReleasesLaborToNextRecipe",
+      "sourceReport": "docs/superpowers/reports/2026-10-04-market-probe-longrun.md",
+      "inputs": {
+        "rounds": 1,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 0,
+          "laborPerCapitaPerMille": 1000,
+          "foodPerCapita": 0,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 200
+          }
+        },
+        "households": [
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 100,
+            "grainStock": 20,
+            "costs": {
+              "GRAIN": 10,
+              "CLOTH": 10
+            },
+            "recipes": [
+              {
+                "output": "CLOTH",
+                "outputPerUnit": 1,
+                "laborPerUnit": 1,
+                "desiredScale": 50,
+                "inputPerUnit": {
+                  "GRAIN": 1
+                }
+              },
+              {
+                "output": "GRAIN",
+                "outputPerUnit": 1,
+                "laborPerUnit": 1,
+                "desiredScale": 50,
+                "inputPerUnit": {}
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "highPriorityLaborUsed": 20,
+        "releasedLabor": 80
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §5.4：高优先级 recipe 因投入不足只用到 20 劳动时，剩余 80 劳动让给下一个 recipe。探针测试还断言下一条 recipe 产出 50，但报告只印出 20/80，故 fixture 只冻结这两个数。"
+    },
+    {
+      "id": "tenancy_fixed_kind_baseline_120",
+      "probeTest": "io.mosire.simos.economy.market.ProductionModeEconomyProbeTest#fixedKindTenancyRunsClosedCycle",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-tenancy-wage-cycle-results.md",
+      "inputs": {
+        "rounds": 120,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 100,
+          "laborPerCapitaPerMille": 700,
+          "foodPerCapita": 1,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 400
+          }
+        },
+        "households": [
+          {
+            "id": "L",
+            "hex": "H",
+            "population": 10,
+            "grainStock": 410,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 10,
+            "costs": {
+              "GRAIN": 10,
+              "CLOTH": 10
+            }
+          },
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 300,
+            "grainStock": 1500,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "costs": {
+              "GRAIN": 10
+            }
+          },
+          {
+            "id": "W",
+            "hex": "H",
+            "population": 800,
+            "clothStock": 400,
+            "grainNeedPerCapita": 2,
+            "costs": {
+              "CLOTH": 10
+            },
+            "recipe": {
+              "output": "CLOTH",
+              "outputPerUnit": 1,
+              "laborPerUnit": 1,
+              "desiredScale": 400,
+              "inputPerUnit": {}
+            }
+          }
+        ],
+        "tenancy": {
+          "id": "tenancy-fixed",
+          "rentForm": "FIXED_KIND",
+          "fixedKind": 410,
+          "landlordSharePerMille": 0,
+          "fixedCash": 0,
+          "recipe": {
+            "output": "GRAIN",
+            "outputPerUnit": 10,
+            "laborPerUnit": 1,
+            "desiredScale": 191,
+            "inputPerUnit": {}
+          }
+        }
+      },
+      "expected": {
+        "output": 1910,
+        "rentPaid": 410,
+        "landlordGrain": 410,
+        "landlordMoney": 40000,
+        "farmerGrain": 1500,
+        "farmerMoney": 120000,
+        "totalDebt": 320000,
+        "totalMoney": 320000,
+        "deaths": 0
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §3 表格第一行（120 轮基准）。探针测试实际循环 1460 轮，报告 §4.5 确认无冲击基准跑满 1460 轮后与 120 轮读数完全一致。"
+    },
+    {
+      "id": "tenancy_share_215_baseline_120",
+      "probeTest": "io.mosire.simos.economy.market.ProductionModeEconomyProbeTest#shareTenancyRunsClosedCycle",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-tenancy-wage-cycle-results.md",
+      "inputs": {
+        "rounds": 120,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 100,
+          "laborPerCapitaPerMille": 700,
+          "foodPerCapita": 1,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 400
+          }
+        },
+        "households": [
+          {
+            "id": "L",
+            "hex": "H",
+            "population": 10,
+            "grainStock": 410,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 10,
+            "costs": {
+              "GRAIN": 10,
+              "CLOTH": 10
+            }
+          },
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 300,
+            "grainStock": 1500,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "costs": {
+              "GRAIN": 10
+            }
+          },
+          {
+            "id": "W",
+            "hex": "H",
+            "population": 800,
+            "clothStock": 400,
+            "grainNeedPerCapita": 2,
+            "costs": {
+              "CLOTH": 10
+            },
+            "recipe": {
+              "output": "CLOTH",
+              "outputPerUnit": 1,
+              "laborPerUnit": 1,
+              "desiredScale": 400,
+              "inputPerUnit": {}
+            }
+          }
+        ],
+        "tenancy": {
+          "id": "tenancy-share",
+          "rentForm": "SHARE",
+          "fixedKind": 0,
+          "landlordSharePerMille": 215,
+          "fixedCash": 0,
+          "recipe": {
+            "output": "GRAIN",
+            "outputPerUnit": 10,
+            "laborPerUnit": 1,
+            "desiredScale": 191,
+            "inputPerUnit": {}
+          }
+        }
+      },
+      "expected": {
+        "output": 1910,
+        "rentPaid": 410,
+        "landlordGrain": 410,
+        "landlordMoney": 40000,
+        "farmerGrain": 1500,
+        "farmerMoney": 120000,
+        "totalDebt": 320000,
+        "totalMoney": 320000,
+        "deaths": 0
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §3 表格第二行（120 轮基准）；分成 215‰ 在基准产量下恰等于 410 粮，故读数与定额租同值。"
+    },
+    {
+      "id": "tenancy_cash_baseline_120",
+      "probeTest": "io.mosire.simos.economy.market.ProductionModeEconomyProbeTest#cashTenancyRunsClosedCycle",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-tenancy-wage-cycle-results.md",
+      "inputs": {
+        "rounds": 120,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 100,
+          "laborPerCapitaPerMille": 700,
+          "foodPerCapita": 1,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 400
+          }
+        },
+        "households": [
+          {
+            "id": "L",
+            "hex": "H",
+            "population": 10,
+            "grainStock": 0,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 10,
+            "costs": {
+              "GRAIN": 10,
+              "CLOTH": 10
+            }
+          },
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 300,
+            "grainStock": 1910,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "costs": {
+              "GRAIN": 10
+            }
+          },
+          {
+            "id": "W",
+            "hex": "H",
+            "population": 800,
+            "clothStock": 400,
+            "grainNeedPerCapita": 2,
+            "costs": {
+              "CLOTH": 10
+            },
+            "recipe": {
+              "output": "CLOTH",
+              "outputPerUnit": 1,
+              "laborPerUnit": 1,
+              "desiredScale": 400,
+              "inputPerUnit": {}
+            }
+          }
+        ],
+        "tenancy": {
+          "id": "tenancy-cash",
+          "rentForm": "FIXED_CASH",
+          "fixedKind": 0,
+          "landlordSharePerMille": 0,
+          "fixedCash": 41000,
+          "recipe": {
+            "output": "GRAIN",
+            "outputPerUnit": 10,
+            "laborPerUnit": 1,
+            "desiredScale": 191,
+            "inputPerUnit": {}
+          }
+        }
+      },
+      "expected": {
+        "output": 1910,
+        "rentPaidMoney": 41000,
+        "landlordGrain": 0,
+        "landlordMoney": 41000,
+        "farmerGrain": 1910,
+        "farmerMoney": 120000,
+        "totalDebt": 321000,
+        "totalMoney": 321000,
+        "deaths": 0
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §3 表格第三行（120 轮基准）；货币租 41,000 钱，粮价风险由佃农承担。"
+    },
+    {
+      "id": "wage_farm_baseline_120",
+      "probeTest": "io.mosire.simos.economy.market.ProductionModeEconomyProbeTest#wageFarmRunsClosedCycle",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-tenancy-wage-cycle-results.md",
+      "inputs": {
+        "rounds": 120,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 100,
+          "laborPerCapitaPerMille": 700,
+          "foodPerCapita": 1,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 400
+          }
+        },
+        "households": [
+          {
+            "id": "L",
+            "hex": "H",
+            "population": 10,
+            "grainStock": 1528,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 10,
+            "costs": {
+              "GRAIN": 10,
+              "CLOTH": 10
+            }
+          },
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 300,
+            "grainStock": 382,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "costs": {
+              "GRAIN": 10
+            }
+          },
+          {
+            "id": "W",
+            "hex": "H",
+            "population": 800,
+            "clothStock": 400,
+            "grainNeedPerCapita": 2,
+            "costs": {
+              "CLOTH": 10
+            },
+            "recipe": {
+              "output": "CLOTH",
+              "outputPerUnit": 1,
+              "laborPerUnit": 1,
+              "desiredScale": 400,
+              "inputPerUnit": {}
+            }
+          }
+        ],
+        "wageFarm": {
+          "id": "wage-farm",
+          "operator": "L",
+          "laborer": "P",
+          "recipe": {
+            "output": "GRAIN",
+            "outputPerUnit": 10,
+            "laborPerUnit": 1,
+            "desiredScale": 191,
+            "inputPerUnit": {}
+          },
+          "cashPerLabor": 585,
+          "grainPerLabor": 2,
+          "fixedCashPerRound": 65
+        }
+      },
+      "expected": {
+        "output": 1910,
+        "grainWagePaid": 382,
+        "cashWagePaid": 111800,
+        "landlordGrain": 1528,
+        "landlordMoney": 40000,
+        "laborerGrain": 382,
+        "laborerMoney": 120000,
+        "totalDebt": 320000,
+        "totalMoney": 320000,
+        "deaths": 0
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §3 表格第四行（120 轮基准）：粮工资 382 + 钱工资 111,800；终局债务=货币=320,000。"
+    },
+    {
+      "id": "harvest_shock_240_fixed_kind",
+      "probeTest": "io.mosire.simos.economy.market.ProductionModeEconomyProbeTest#fixedKindTenancyBearsHarvestRiskButKeepsPayingFixedRent",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-tenancy-wage-cycle-results.md",
+      "inputs": {
+        "rounds": 240,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 100,
+          "laborPerCapitaPerMille": 700,
+          "foodPerCapita": 1,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 400
+          }
+        },
+        "households": [
+          {
+            "id": "L",
+            "hex": "H",
+            "population": 10,
+            "grainStock": 410,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 10,
+            "costs": {
+              "GRAIN": 10,
+              "CLOTH": 10
+            }
+          },
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 300,
+            "grainStock": 1500,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "costs": {
+              "GRAIN": 10
+            }
+          },
+          {
+            "id": "W",
+            "hex": "H",
+            "population": 800,
+            "clothStock": 400,
+            "grainNeedPerCapita": 2,
+            "costs": {
+              "CLOTH": 10
+            },
+            "recipe": {
+              "output": "CLOTH",
+              "outputPerUnit": 1,
+              "laborPerUnit": 1,
+              "desiredScale": 400,
+              "inputPerUnit": {}
+            }
+          }
+        ],
+        "tenancy": {
+          "id": "tenancy-fixed-shock",
+          "rentForm": "FIXED_KIND",
+          "fixedKind": 410,
+          "landlordSharePerMille": 0,
+          "fixedCash": 0,
+          "recipe": {
+            "output": "GRAIN",
+            "outputPerUnit": 10,
+            "laborPerUnit": 1,
+            "desiredScale": 191,
+            "inputPerUnit": {}
+          }
+        },
+        "harvestShock": {
+          "type": "single",
+          "shockRounds": [
+            51,
+            90
+          ],
+          "harvestPerMille": 400
+        }
+      },
+      "expected": {
+        "shockRentPaid": 410,
+        "shockRentArrears": 0,
+        "tenantFoodEaten": 300,
+        "tenantFoodNeed": 300,
+        "landlordGrainAtShockEnd": 410,
+        "shockDeaths": 559,
+        "finalPopulation": 550,
+        "finalDebt": 265440436
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §4（240 轮、第 51–90 轮收成 400‰ 的单次冲击表）。当前探针测试方法实际循环 1460 轮、每年重复歉收，故 240 轮单冲击读数只能从报告 §4 冻结；P9 必须先裁定正式运行时采用单次冲击还是年度冲击。"
+    },
+    {
+      "id": "harvest_shock_240_share_215",
+      "probeTest": "io.mosire.simos.economy.market.ProductionModeEconomyProbeTest#shareTenancySplitsHarvestRiskWithLandlord",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-tenancy-wage-cycle-results.md",
+      "inputs": {
+        "rounds": 240,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 100,
+          "laborPerCapitaPerMille": 700,
+          "foodPerCapita": 1,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 400
+          }
+        },
+        "households": [
+          {
+            "id": "L",
+            "hex": "H",
+            "population": 10,
+            "grainStock": 410,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 10,
+            "costs": {
+              "GRAIN": 10,
+              "CLOTH": 10
+            }
+          },
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 300,
+            "grainStock": 1500,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "costs": {
+              "GRAIN": 10
+            }
+          },
+          {
+            "id": "W",
+            "hex": "H",
+            "population": 800,
+            "clothStock": 400,
+            "grainNeedPerCapita": 2,
+            "costs": {
+              "CLOTH": 10
+            },
+            "recipe": {
+              "output": "CLOTH",
+              "outputPerUnit": 1,
+              "laborPerUnit": 1,
+              "desiredScale": 400,
+              "inputPerUnit": {}
+            }
+          }
+        ],
+        "tenancy": {
+          "id": "tenancy-share-shock",
+          "rentForm": "SHARE",
+          "fixedKind": 0,
+          "landlordSharePerMille": 215,
+          "fixedCash": 0,
+          "recipe": {
+            "output": "GRAIN",
+            "outputPerUnit": 10,
+            "laborPerUnit": 1,
+            "desiredScale": 191,
+            "inputPerUnit": {}
+          }
+        },
+        "harvestShock": {
+          "type": "single",
+          "shockRounds": [
+            51,
+            90
+          ],
+          "harvestPerMille": 400
+        }
+      },
+      "expected": {
+        "shockRentPaid": 164,
+        "shockRentArrears": 0,
+        "tenantFoodEaten": 300,
+        "tenantFoodNeed": 300,
+        "landlordGrainAtShockEnd": 164,
+        "shockDeaths": 559,
+        "finalPopulation": 550,
+        "finalDebt": 265440436
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §4：分成租随歉收降到 164；冲击期死亡/终局人口/终局债务与定额租相同（559/550/265,440,436）。"
+    },
+    {
+      "id": "harvest_shock_240_wage_farm",
+      "probeTest": "io.mosire.simos.economy.market.ProductionModeEconomyProbeTest#wageFarmKeepsPayingTheLongTermWorkerWhileOperatorBearsLoss",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-tenancy-wage-cycle-results.md",
+      "inputs": {
+        "rounds": 240,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 100,
+          "laborPerCapitaPerMille": 700,
+          "foodPerCapita": 1,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 400
+          }
+        },
+        "households": [
+          {
+            "id": "L",
+            "hex": "H",
+            "population": 10,
+            "grainStock": 1528,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 10,
+            "costs": {
+              "GRAIN": 10,
+              "CLOTH": 10
+            }
+          },
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 300,
+            "grainStock": 382,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "costs": {
+              "GRAIN": 10
+            }
+          },
+          {
+            "id": "W",
+            "hex": "H",
+            "population": 800,
+            "clothStock": 400,
+            "grainNeedPerCapita": 2,
+            "costs": {
+              "CLOTH": 10
+            },
+            "recipe": {
+              "output": "CLOTH",
+              "outputPerUnit": 1,
+              "laborPerUnit": 1,
+              "desiredScale": 400,
+              "inputPerUnit": {}
+            }
+          }
+        ],
+        "wageFarm": {
+          "id": "wage-farm-shock",
+          "operator": "L",
+          "laborer": "P",
+          "recipe": {
+            "output": "GRAIN",
+            "outputPerUnit": 10,
+            "laborPerUnit": 1,
+            "desiredScale": 191,
+            "inputPerUnit": {}
+          },
+          "cashPerLabor": 585,
+          "grainPerLabor": 2,
+          "fixedCashPerRound": 65
+        },
+        "harvestShock": {
+          "type": "single",
+          "shockRounds": [
+            51,
+            90
+          ],
+          "harvestPerMille": 400
+        }
+      },
+      "expected": {
+        "shockGrainWagePaid": 382,
+        "shockCashArrearsMax": 74600,
+        "shockCashArrearsFinal": 81080,
+        "workerFoodEaten": 300,
+        "workerFoodNeed": 300,
+        "operatorGrainAtShockEnd": 382,
+        "shockDeaths": 559,
+        "finalPopulation": 550,
+        "finalDebt": 274508108
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §4：粮工资仍 382，冲击期最高欠薪 74,600，终局欠薪 81,080，终局债务 274,508,108。"
+    },
+    {
+      "id": "annual_harvest_shock_1460_fixed_kind",
+      "probeTest": "io.mosire.simos.economy.market.ProductionModeEconomyProbeTest#fixedKindTenancyBearsHarvestRiskButKeepsPayingFixedRent",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-tenancy-wage-cycle-results.md",
+      "inputs": {
+        "rounds": 1460,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 100,
+          "laborPerCapitaPerMille": 700,
+          "foodPerCapita": 1,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 400
+          }
+        },
+        "households": [
+          {
+            "id": "L",
+            "hex": "H",
+            "population": 10,
+            "grainStock": 410,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 10,
+            "costs": {
+              "GRAIN": 10,
+              "CLOTH": 10
+            }
+          },
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 300,
+            "grainStock": 1500,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "costs": {
+              "GRAIN": 10
+            }
+          },
+          {
+            "id": "W",
+            "hex": "H",
+            "population": 800,
+            "clothStock": 400,
+            "grainNeedPerCapita": 2,
+            "costs": {
+              "CLOTH": 10
+            },
+            "recipe": {
+              "output": "CLOTH",
+              "outputPerUnit": 1,
+              "laborPerUnit": 1,
+              "desiredScale": 400,
+              "inputPerUnit": {}
+            }
+          }
+        ],
+        "tenancy": {
+          "id": "tenancy-fixed-shock",
+          "rentForm": "FIXED_KIND",
+          "fixedKind": 410,
+          "landlordSharePerMille": 0,
+          "fixedCash": 0,
+          "recipe": {
+            "output": "GRAIN",
+            "outputPerUnit": 10,
+            "laborPerUnit": 1,
+            "desiredScale": 191,
+            "inputPerUnit": {}
+          }
+        },
+        "harvestShock": {
+          "type": "annual",
+          "shockRoundsPerYear": [
+            51,
+            90
+          ],
+          "harvestPerMille": 400
+        }
+      },
+      "expected": {
+        "firstYearDeaths": 559,
+        "weaverPopulationAfterFirstYear": 240,
+        "totalDeaths": 560,
+        "finalPopulation": 550,
+        "annualShockRentPaid": 410,
+        "finalDebt": 2297110036,
+        "finalMoney": 2297302376,
+        "landlordGrain": 810,
+        "landlordMoney": 0,
+        "farmerGrain": 585110,
+        "farmerMoney": 9120
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §4.5 年度歉收（每年第 51–90 天收成 400‰）长程终局；与当前探针测试方法的 1460 轮循环口径一致。"
+    },
+    {
+      "id": "annual_harvest_shock_1460_share_215",
+      "probeTest": "io.mosire.simos.economy.market.ProductionModeEconomyProbeTest#shareTenancySplitsHarvestRiskWithLandlord",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-tenancy-wage-cycle-results.md",
+      "inputs": {
+        "rounds": 1460,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 100,
+          "laborPerCapitaPerMille": 700,
+          "foodPerCapita": 1,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 400
+          }
+        },
+        "households": [
+          {
+            "id": "L",
+            "hex": "H",
+            "population": 10,
+            "grainStock": 410,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 10,
+            "costs": {
+              "GRAIN": 10,
+              "CLOTH": 10
+            }
+          },
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 300,
+            "grainStock": 1500,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "costs": {
+              "GRAIN": 10
+            }
+          },
+          {
+            "id": "W",
+            "hex": "H",
+            "population": 800,
+            "clothStock": 400,
+            "grainNeedPerCapita": 2,
+            "costs": {
+              "CLOTH": 10
+            },
+            "recipe": {
+              "output": "CLOTH",
+              "outputPerUnit": 1,
+              "laborPerUnit": 1,
+              "desiredScale": 400,
+              "inputPerUnit": {}
+            }
+          }
+        ],
+        "tenancy": {
+          "id": "tenancy-share-shock",
+          "rentForm": "SHARE",
+          "fixedKind": 0,
+          "landlordSharePerMille": 215,
+          "fixedCash": 0,
+          "recipe": {
+            "output": "GRAIN",
+            "outputPerUnit": 10,
+            "laborPerUnit": 1,
+            "desiredScale": 191,
+            "inputPerUnit": {}
+          }
+        },
+        "harvestShock": {
+          "type": "annual",
+          "shockRoundsPerYear": [
+            51,
+            90
+          ],
+          "harvestPerMille": 400
+        }
+      },
+      "expected": {
+        "firstYearDeaths": 559,
+        "weaverPopulationAfterFirstYear": 240,
+        "totalDeaths": 560,
+        "finalPopulation": 550,
+        "annualShockRentPaid": 164,
+        "finalDebt": 2297248136,
+        "finalMoney": 2297440476,
+        "landlordGrain": 810,
+        "landlordMoney": 138100,
+        "farmerGrain": 585110,
+        "farmerMoney": 9120
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §4.5 年度歉收长程终局；分成租每次歉收租额随产量下降（基准 215‰ 时 410→164）。"
+    },
+    {
+      "id": "annual_harvest_shock_1460_wage_farm",
+      "probeTest": "io.mosire.simos.economy.market.ProductionModeEconomyProbeTest#wageFarmKeepsPayingTheLongTermWorkerWhileOperatorBearsLoss",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-tenancy-wage-cycle-results.md",
+      "inputs": {
+        "rounds": 1460,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 100,
+          "laborPerCapitaPerMille": 700,
+          "foodPerCapita": 1,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 400
+          }
+        },
+        "households": [
+          {
+            "id": "L",
+            "hex": "H",
+            "population": 10,
+            "grainStock": 1528,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 10,
+            "costs": {
+              "GRAIN": 10,
+              "CLOTH": 10
+            }
+          },
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 300,
+            "grainStock": 382,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "costs": {
+              "GRAIN": 10
+            }
+          },
+          {
+            "id": "W",
+            "hex": "H",
+            "population": 800,
+            "clothStock": 400,
+            "grainNeedPerCapita": 2,
+            "costs": {
+              "CLOTH": 10
+            },
+            "recipe": {
+              "output": "CLOTH",
+              "outputPerUnit": 1,
+              "laborPerUnit": 1,
+              "desiredScale": 400,
+              "inputPerUnit": {}
+            }
+          }
+        ],
+        "wageFarm": {
+          "id": "wage-farm-shock",
+          "operator": "L",
+          "laborer": "P",
+          "recipe": {
+            "output": "GRAIN",
+            "outputPerUnit": 10,
+            "laborPerUnit": 1,
+            "desiredScale": 191,
+            "inputPerUnit": {}
+          },
+          "cashPerLabor": 585,
+          "grainPerLabor": 2,
+          "fixedCashPerRound": 65
+        },
+        "harvestShock": {
+          "type": "annual",
+          "shockRoundsPerYear": [
+            51,
+            90
+          ],
+          "harvestPerMille": 400
+        }
+      },
+      "expected": {
+        "firstYearDeaths": 559,
+        "weaverPopulationAfterFirstYear": 240,
+        "totalDeaths": 560,
+        "finalPopulation": 550,
+        "finalDebt": 2380612788,
+        "finalMoney": 2297302376,
+        "landlordGrain": 584882,
+        "landlordMoney": 0,
+        "farmerGrain": 1038,
+        "farmerMoney": 9120,
+        "finalCashArrears": 102680
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §4.5：雇农制每年歉收继续出现欠薪，终局欠薪 102,680；终局债务 2,380,612,788。"
+    },
+    {
+      "id": "transport_full_capacity",
+      "probeTest": "io.mosire.simos.economy.market.TransportTeamProbeTest#transportFeeGoesToCarrierInsteadOfEscrow",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-diversified-transport-handicraft-results.md",
+      "inputs": {
+        "rounds": 1,
+        "hexes": [
+          {
+            "id": "H0-grain",
+            "q": 0,
+            "r": 0
+          },
+          {
+            "id": "H2-buyer",
+            "q": 2,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 0,
+          "laborPerCapitaPerMille": 500,
+          "foodPerCapita": 0,
+          "baseTransportPerMille": 50,
+          "perHexTransportPerMille": 50,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 200,
+            "FIBER": 100
+          }
+        },
+        "households": [
+          {
+            "id": "G",
+            "hex": "H0-grain",
+            "population": 0,
+            "grainStock": 100
+          },
+          {
+            "id": "B",
+            "hex": "H2-buyer",
+            "population": 1,
+            "grainNeedPerCapita": 30
+          },
+          {
+            "id": "T",
+            "hex": "H2-buyer",
+            "population": 0,
+            "grainNeedPerCapita": 0
+          }
+        ],
+        "transportTeams": [
+          {
+            "id": "T1",
+            "carrier": "T",
+            "fromHex": "H0-grain",
+            "toHex": "H2-buyer",
+            "capacityPerRound": 100
+          }
+        ]
+      },
+      "expected": {
+        "unitsMoved": 30,
+        "feeEarned": 450,
+        "carrierMoney": 450,
+        "transportEscrow": 0
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §1：H0→H2 运 30 粮，运费 450 全部进运输队家户，escrow=0。"
+    },
+    {
+      "id": "transport_capacity_shortage",
+      "probeTest": "io.mosire.simos.economy.market.TransportTeamProbeTest#capacityShortageFallsBackToEscrowForTheRemainder",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-diversified-transport-handicraft-results.md",
+      "inputs": {
+        "rounds": 1,
+        "hexes": [
+          {
+            "id": "H0-grain",
+            "q": 0,
+            "r": 0
+          },
+          {
+            "id": "H2-buyer",
+            "q": 2,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 0,
+          "laborPerCapitaPerMille": 500,
+          "foodPerCapita": 0,
+          "baseTransportPerMille": 50,
+          "perHexTransportPerMille": 50,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 200,
+            "FIBER": 100
+          }
+        },
+        "households": [
+          {
+            "id": "G",
+            "hex": "H0-grain",
+            "population": 0,
+            "grainStock": 100
+          },
+          {
+            "id": "B",
+            "hex": "H2-buyer",
+            "population": 1,
+            "grainNeedPerCapita": 40
+          },
+          {
+            "id": "T",
+            "hex": "H2-buyer",
+            "population": 0,
+            "grainNeedPerCapita": 0
+          }
+        ],
+        "transportTeams": [
+          {
+            "id": "T1",
+            "carrier": "T",
+            "fromHex": "H0-grain",
+            "toHex": "H2-buyer",
+            "capacityPerRound": 10
+          }
+        ]
+      },
+      "expected": {
+        "unitsMoved": 10,
+        "feeEarned": 150,
+        "carrierMoney": 150,
+        "unservedQuantity": 30,
+        "transportEscrow": 450
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §1：只承运 10 粮 ⇒ 运输队拿 150；剩余 30 粮的 450 落 escrow。"
+    },
+    {
+      "id": "handicraft_workshop",
+      "probeTest": "io.mosire.simos.economy.market.HandicraftProbeTest#workshopTurnsFiberIntoClothAndPaysCashWage",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-diversified-transport-handicraft-results.md",
+      "inputs": {
+        "rounds": 2,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 0,
+          "laborPerCapitaPerMille": 700,
+          "foodPerCapita": 1,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "initialPrices": {
+            "GRAIN": 100,
+            "FIBER": 100,
+            "CLOTH": 300
+          }
+        },
+        "households": [
+          {
+            "id": "S",
+            "hex": "H",
+            "population": 0,
+            "grainStock": 6000,
+            "grainCost": 10
+          },
+          {
+            "id": "F",
+            "hex": "H",
+            "population": 100,
+            "fiberStock": 400,
+            "fiberCost": 10,
+            "grainNeedPerCapita": 1,
+            "recipe": {
+              "output": "FIBER",
+              "outputPerUnit": 10,
+              "laborPerUnit": 1,
+              "desiredScale": 40,
+              "inputPerUnit": {}
+            }
+          },
+          {
+            "id": "O",
+            "hex": "H",
+            "population": 10,
+            "money": 60000,
+            "clothCost": 10,
+            "fiberCost": 10,
+            "grainNeedPerCapita": 0
+          },
+          {
+            "id": "A",
+            "hex": "H",
+            "population": 600,
+            "grainNeedPerCapita": 1,
+            "grainCost": 10
+          },
+          {
+            "id": "C",
+            "hex": "H",
+            "population": 1,
+            "clothNeedPerCapita": 400,
+            "grainNeedPerCapita": 0
+          }
+        ],
+        "wageFarm": {
+          "id": "workshop",
+          "operator": "O",
+          "laborer": "A",
+          "recipe": {
+            "output": "CLOTH",
+            "outputPerUnit": 1,
+            "laborPerUnit": 1,
+            "desiredScale": 400,
+            "inputPerUnit": {
+              "FIBER": 1
+            }
+          },
+          "cashPerLabor": 150,
+          "grainPerLabor": 0,
+          "fixedCashPerRound": 0
+        }
+      },
+      "expected": {
+        "roundsObserved": 2,
+        "fiberHouseholdPopulation": 100,
+        "fiberProduced": 400,
+        "fiberHouseholdFoodEaten": 100,
+        "workshopOutput": 400,
+        "workshopOutputRound1": 400,
+        "workshopOutputRound2": 400,
+        "cashWage": 60000,
+        "cashWageRound1": 60000,
+        "cashWageRound2": 60000,
+        "grainWage": 0,
+        "arrears": 0,
+        "artisanFoodEaten": 600,
+        "artisanFoodNeed": 600
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §2：纤维户 100 人产 400 纤维、吃 100 粮；作坊主买 400 纤维、雇 600 人匠户（400 劳动）产 400 布；150 钱/劳动工资=60,000；连续两轮产出与工资稳定、欠薪 0。"
+    },
+    {
+      "id": "natural_mortality_1460",
+      "probeTest": "io.mosire.simos.economy.market.NaturalMortalityProbeTest#naturalMortalityAndBirthsRunForFourYears",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-diversified-transport-handicraft-results.md",
+      "inputs": {
+        "rounds": 1460,
+        "hexes": [
+          {
+            "id": "H",
+            "q": 0,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 0,
+          "laborPerCapitaPerMille": 700,
+          "foodPerCapita": 1,
+          "baseTransportPerMille": 0,
+          "perHexTransportPerMille": 0,
+          "naturalMortalityPerMillion": 68,
+          "birthsPerMillion": 82,
+          "initialPrices": {
+            "GRAIN": 100,
+            "CLOTH": 200,
+            "FIBER": 100
+          }
+        },
+        "households": [
+          {
+            "id": "P",
+            "hex": "H",
+            "population": 1000,
+            "grainStock": 1000,
+            "grainNeedPerCapita": 1,
+            "grainCost": 0,
+            "recipe": {
+              "output": "GRAIN",
+              "outputPerUnit": 2,
+              "laborPerUnit": 1,
+              "desiredScale": 700,
+              "inputPerUnit": {}
+            }
+          }
+        ]
+      },
+      "expected": {
+        "naturalDeaths": 100,
+        "births": 120,
+        "finalPopulation": 1020
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §3.1：1000 人跑 1460 轮 → 自然死亡 100、出生 120、终局 1020，全程吃饱。探针用百万分率逐轮累计余数的粗出生/死亡率版本；正式 PopulationDynamics.monthly 更细（年龄档×性别×压力）。"
+    },
+    {
+      "id": "diversified_three_sector_1460",
+      "probeTest": "io.mosire.simos.economy.market.DiversifiedEconomyProbeTest#diversifiedThreeSectorEconomyRunsFourYears",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-diversified-transport-handicraft-results.md",
+      "inputs": {
+        "rounds": 1460,
+        "hexes": [
+          {
+            "id": "H0-rural",
+            "q": 0,
+            "r": 0
+          },
+          {
+            "id": "H1-town",
+            "q": 1,
+            "r": 0
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 100,
+          "laborPerCapitaPerMille": 700,
+          "foodPerCapita": 1,
+          "baseTransportPerMille": 5,
+          "perHexTransportPerMille": 5,
+          "naturalMortalityPerMillion": 68,
+          "birthsPerMillion": 82,
+          "initialPrices": {
+            "GRAIN": 100,
+            "FIBER": 25,
+            "CLOTH": 176
+          }
+        },
+        "households": [
+          {
+            "id": "L",
+            "hex": "H0-rural",
+            "population": 10,
+            "grainStock": 410,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 10,
+            "costs": {
+              "GRAIN": 10,
+              "CLOTH": 10
+            }
+          },
+          {
+            "id": "P",
+            "hex": "H0-rural",
+            "population": 300,
+            "grainStock": 610,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "costs": {
+              "GRAIN": 0
+            }
+          },
+          {
+            "id": "F",
+            "hex": "H0-rural",
+            "population": 100,
+            "fiberStock": 400,
+            "grainNeedPerCapita": 1,
+            "costs": {
+              "FIBER": 0
+            },
+            "recipe": {
+              "output": "FIBER",
+              "outputPerUnit": 10,
+              "laborPerUnit": 1,
+              "desiredScale": 40,
+              "inputPerUnit": {}
+            }
+          },
+          {
+            "id": "O",
+            "hex": "H1-town",
+            "population": 10,
+            "money": 66000,
+            "grainNeedPerCapita": 0,
+            "costs": {
+              "CLOTH": 0,
+              "FIBER": 0
+            }
+          },
+          {
+            "id": "A",
+            "hex": "H1-town",
+            "population": 600,
+            "grainNeedPerCapita": 1,
+            "costs": {
+              "GRAIN": 0
+            }
+          },
+          {
+            "id": "T",
+            "hex": "H1-town",
+            "population": 10,
+            "grainNeedPerCapita": 1
+          }
+        ],
+        "tenancy": {
+          "id": "tenancy-rural",
+          "rentForm": "FIXED_KIND",
+          "fixedKind": 410,
+          "landlordSharePerMille": 0,
+          "fixedCash": 0,
+          "recipe": {
+            "output": "GRAIN",
+            "outputPerUnit": 10,
+            "laborPerUnit": 1,
+            "desiredScale": 102,
+            "inputPerUnit": {}
+          }
+        },
+        "wageFarm": {
+          "id": "workshop",
+          "operator": "O",
+          "laborer": "A",
+          "recipe": {
+            "output": "CLOTH",
+            "outputPerUnit": 1,
+            "laborPerUnit": 1,
+            "desiredScale": 400,
+            "inputPerUnit": {
+              "FIBER": 1
+            }
+          },
+          "cashPerLabor": 150,
+          "grainPerLabor": 0,
+          "fixedCashPerRound": 0
+        },
+        "transportTeams": [
+          {
+            "id": "T-rural-to-town",
+            "carrier": "T",
+            "fromHex": "H0-rural",
+            "toHex": "H1-town",
+            "capacityPerRound": 3000
+          },
+          {
+            "id": "T-town-to-rural",
+            "carrier": "T",
+            "fromHex": "H1-town",
+            "toHex": "H0-rural",
+            "capacityPerRound": 1000
+          }
+        ]
+      },
+      "expected": {
+        "initialPopulation": 1030,
+        "finalPopulation": 1038,
+        "deaths": 115,
+        "births": 123,
+        "totalDebt": 31087061,
+        "totalMoney": 32798486,
+        "escrow": 0,
+        "creditIssued": 221884895,
+        "creditRepaid": 189152409,
+        "deathDebtDeleted": 1645425,
+        "initialCash": 66000,
+        "avgIssuancePerRound": 151976,
+        "avgRepaymentPerRound": 129556,
+        "farmOutput": 1020,
+        "rent": 410,
+        "farmerGrain": 610,
+        "farmerMoney": 31000,
+        "fiberHouseholdFiber": 400,
+        "fiberHouseholdMoney": 10000,
+        "workshopOutput": 400,
+        "workshopWage": 60000,
+        "workshopArrears": 0,
+        "ownerCloth": 400,
+        "ownerMoney": 506834,
+        "artisanFoodEaten": 592,
+        "artisanFoodNeed": 600,
+        "artisanMoney": 60000,
+        "transportRuralToTownMoved": 602,
+        "transportRuralToTownFee": 602,
+        "transportTownToRuralMoved": 400,
+        "transportTownToRuralFee": 400,
+        "carrierMoney": 1672,
+        "h0GrainPrice": 100,
+        "h0FiberPrice": 25,
+        "h0ClothPrice": 189,
+        "h1GrainPrice": 121,
+        "h1FiberPrice": 25,
+        "h1ClothPrice": 157
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {
+          "avgIssuancePerRound": {
+            "mode": "absolute",
+            "absolute": 1,
+            "relativePerMille": 0
+          },
+          "avgRepaymentPerRound": {
+            "mode": "absolute",
+            "absolute": 1,
+            "relativePerMille": 0
+          }
+        },
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §3 表格与 §3.2：三部门 + 运输连续跑 4 年，运输费全归承运队、escrow=0；系统货币/债务按信用发行守恒。avg* 两值报告用 ≈ 给出，故允许 ±1。测试类顶注写初始布价 205、工资 165/劳动，但代码实际为 176 与 150；fixture 以代码和报告终局读数（H0 布 189 / H1 布 157、工资 60,000）为准。"
+    },
+    {
+      "id": "seven_hex_city_3650",
+      "probeTest": "io.mosire.simos.economy.market.SevenHexCityMerchantProbeTest#sevenHexCityMerchantsAndSlowExpansionRunTenYears",
+      "sourceReport": "docs/superpowers/reports/2026-10-05-city-merchant-probe-results.md",
+      "inputs": {
+        "rounds": 3650,
+        "hexes": [
+          {
+            "id": "C",
+            "q": 0,
+            "r": 0
+          },
+          {
+            "id": "R0",
+            "q": 1,
+            "r": 0
+          },
+          {
+            "id": "R1",
+            "q": 0,
+            "r": 1
+          },
+          {
+            "id": "R2",
+            "q": -1,
+            "r": 1
+          },
+          {
+            "id": "R3",
+            "q": -1,
+            "r": 0
+          },
+          {
+            "id": "R4",
+            "q": 0,
+            "r": -1
+          },
+          {
+            "id": "R5",
+            "q": 1,
+            "r": -1
+          },
+          {
+            "id": "O0",
+            "q": 2,
+            "r": 0
+          },
+          {
+            "id": "O1",
+            "q": 1,
+            "r": 1
+          },
+          {
+            "id": "O2",
+            "q": 0,
+            "r": 2
+          },
+          {
+            "id": "O3",
+            "q": -1,
+            "r": 2
+          },
+          {
+            "id": "O4",
+            "q": -2,
+            "r": 2
+          },
+          {
+            "id": "O5",
+            "q": -2,
+            "r": 1
+          },
+          {
+            "id": "O6",
+            "q": -2,
+            "r": 0
+          },
+          {
+            "id": "O7",
+            "q": -1,
+            "r": -1
+          },
+          {
+            "id": "O8",
+            "q": 0,
+            "r": -2
+          },
+          {
+            "id": "O9",
+            "q": 1,
+            "r": -2
+          },
+          {
+            "id": "O10",
+            "q": 2,
+            "r": -2
+          },
+          {
+            "id": "O11",
+            "q": 2,
+            "r": -1
+          }
+        ],
+        "params": {
+          "alphaUpPerMille": 200,
+          "alphaDownPerMille": 100,
+          "undercutPerMille": 100,
+          "pMax": 10000,
+          "interestPerMille": 0,
+          "mortalityPerMille": 100,
+          "laborPerCapitaPerMille": 700,
+          "foodPerCapita": 1,
+          "baseTransportPerMille": 5,
+          "perHexTransportPerMille": 5,
+          "initialPrices": {
+            "GRAIN": 100,
+            "FIBER": 25,
+            "CLOTH": 185
+          },
+          "radialCostPerHexPerMille": 20,
+          "roadDiscountPerLevelPerMille": 50,
+          "ruralMerchantCostGrowthPerMille": 2,
+          "ruralMerchantCostCapPerMille": 100
+        },
+        "city": {
+          "id": "C-city",
+          "hex": "C",
+          "capacity": 10,
+          "radiusHex": 4
+        },
+        "households": [
+          {
+            "id": "L",
+            "hex": "R0",
+            "population": 10,
+            "grainStock": 410,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 10,
+            "costs": {
+              "GRAIN": 0,
+              "CLOTH": 0
+            }
+          },
+          {
+            "id": "P",
+            "hex": "R0",
+            "population": 300,
+            "grainStock": 610,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "costs": {
+              "GRAIN": 0
+            }
+          },
+          {
+            "id": "F",
+            "hex": "R0",
+            "population": 100,
+            "fiberStock": 400,
+            "grainNeedPerCapita": 1,
+            "costs": {
+              "FIBER": 0
+            },
+            "recipe": {
+              "output": "FIBER",
+              "outputPerUnit": 10,
+              "laborPerUnit": 1,
+              "desiredScale": 40,
+              "inputPerUnit": {}
+            }
+          },
+          {
+            "id": "O",
+            "hex": "C",
+            "population": 10,
+            "money": 66000,
+            "grainNeedPerCapita": 0,
+            "costs": {
+              "CLOTH": 0,
+              "FIBER": 0
+            }
+          },
+          {
+            "id": "A",
+            "hex": "C",
+            "population": 755,
+            "grainNeedPerCapita": 1,
+            "costs": {
+              "GRAIN": 0
+            }
+          },
+          {
+            "id": "M-city",
+            "hex": "C",
+            "population": 10,
+            "grainNeedPerCapita": 1
+          },
+          {
+            "id": "W-city",
+            "hex": "C",
+            "population": 0,
+            "grainNeedPerCapita": 1
+          },
+          {
+            "id": "H-r1",
+            "hex": "R1",
+            "population": 50,
+            "grainStock": 500,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "recipes": [
+              {
+                "output": "GRAIN",
+                "outputPerUnit": 10,
+                "laborPerUnit": 1,
+                "desiredScale": 5,
+                "inputPerUnit": {}
+              },
+              {
+                "output": "FIBER",
+                "outputPerUnit": 10,
+                "laborPerUnit": 1,
+                "desiredScale": 5,
+                "inputPerUnit": {}
+              }
+            ]
+          },
+          {
+            "id": "H-r2",
+            "hex": "R2",
+            "population": 50,
+            "grainStock": 500,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "recipes": [
+              {
+                "output": "GRAIN",
+                "outputPerUnit": 10,
+                "laborPerUnit": 1,
+                "desiredScale": 5,
+                "inputPerUnit": {}
+              },
+              {
+                "output": "FIBER",
+                "outputPerUnit": 10,
+                "laborPerUnit": 1,
+                "desiredScale": 5,
+                "inputPerUnit": {}
+              }
+            ]
+          },
+          {
+            "id": "H-r3",
+            "hex": "R3",
+            "population": 50,
+            "grainStock": 500,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "recipes": [
+              {
+                "output": "GRAIN",
+                "outputPerUnit": 10,
+                "laborPerUnit": 1,
+                "desiredScale": 5,
+                "inputPerUnit": {}
+              },
+              {
+                "output": "FIBER",
+                "outputPerUnit": 10,
+                "laborPerUnit": 1,
+                "desiredScale": 5,
+                "inputPerUnit": {}
+              }
+            ]
+          },
+          {
+            "id": "H-r4",
+            "hex": "R4",
+            "population": 50,
+            "grainStock": 500,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "recipes": [
+              {
+                "output": "GRAIN",
+                "outputPerUnit": 10,
+                "laborPerUnit": 1,
+                "desiredScale": 5,
+                "inputPerUnit": {}
+              },
+              {
+                "output": "FIBER",
+                "outputPerUnit": 10,
+                "laborPerUnit": 1,
+                "desiredScale": 5,
+                "inputPerUnit": {}
+              }
+            ]
+          },
+          {
+            "id": "H-r5",
+            "hex": "R5",
+            "population": 50,
+            "grainStock": 500,
+            "grainNeedPerCapita": 1,
+            "clothNeedPerCapita": 1,
+            "recipes": [
+              {
+                "output": "GRAIN",
+                "outputPerUnit": 10,
+                "laborPerUnit": 1,
+                "desiredScale": 5,
+                "inputPerUnit": {}
+              },
+              {
+                "output": "FIBER",
+                "outputPerUnit": 10,
+                "laborPerUnit": 1,
+                "desiredScale": 5,
+                "inputPerUnit": {}
+              }
+            ]
+          },
+          {
+            "id": "S-outer",
+            "hex": "O0",
+            "population": 10,
+            "grainStock": 100000,
+            "grainNeedPerCapita": 0,
+            "costs": {
+              "GRAIN": 0
+            },
+            "recipe": {
+              "output": "GRAIN",
+              "outputPerUnit": 10,
+              "laborPerUnit": 1,
+              "desiredScale": 1,
+              "inputPerUnit": {}
+            }
+          },
+          {
+            "id": "B-outer",
+            "hex": "O1",
+            "population": 10,
+            "grainNeedPerCapita": 10
+          },
+          {
+            "id": "M-rural",
+            "hex": "R1",
+            "population": 0
+          }
+        ],
+        "roads": [
+          {
+            "hexA": "C",
+            "hexB": "R0",
+            "level": 2
+          },
+          {
+            "hexA": "R0",
+            "hexB": "O0",
+            "level": 2
+          },
+          {
+            "hexA": "O0",
+            "hexB": "O1",
+            "level": 1
+          },
+          {
+            "hexA": "O1",
+            "hexB": "O2",
+            "level": 1
+          }
+        ],
+        "transportTeams": [
+          {
+            "id": "rural-porter",
+            "carrier": "M-rural",
+            "fromHex": "R0",
+            "toHex": "C",
+            "capacityPerRound": 300,
+            "tier": "PORTER",
+            "homeIsCity": false
+          },
+          {
+            "id": "city-pool",
+            "carrier": "M-city",
+            "fromHex": "*",
+            "toHex": "*",
+            "capacityPerRound": 20000,
+            "tier": "BOSS",
+            "homeIsCity": true,
+            "homeHex": "C",
+            "serviceRadiusHex": 2
+          }
+        ],
+        "tenancy": {
+          "id": "tenancy-r0",
+          "rentForm": "FIXED_KIND",
+          "fixedKind": 410,
+          "landlordSharePerMille": 0,
+          "fixedCash": 0,
+          "landPerUnit": 22,
+          "recipe": {
+            "output": "GRAIN",
+            "outputPerUnit": 10,
+            "laborPerUnit": 1,
+            "desiredScale": 142,
+            "inputPerUnit": {}
+          }
+        },
+        "wageFarm": {
+          "id": "workshop-city",
+          "operator": "O",
+          "laborers": [
+            "A",
+            "W-city"
+          ],
+          "recipe": {
+            "output": "CLOTH",
+            "outputPerUnit": 1,
+            "laborPerUnit": 1,
+            "desiredScale": 650,
+            "inputPerUnit": {
+              "FIBER": 1
+            }
+          },
+          "cashPerLabor": 160,
+          "grainPerLabor": 0,
+          "fixedCashPerRound": 0
+        },
+        "migration": {
+          "startRound": 5,
+          "peripheralHouseholds": [
+            "H-r1",
+            "H-r2",
+            "H-r3",
+            "H-r4",
+            "H-r5"
+          ],
+          "target": "W-city",
+          "keepPerHousehold": 15,
+          "maxPerRoundPerHousehold": 5,
+          "needPeopleRoundedUp": true
+        }
+      },
+      "expected": {
+        "pop": 1455,
+        "deaths": 0,
+        "r0ToCInitialCostPerMille": 0,
+        "r0ToCFinalCostPerMille": 67,
+        "r1ToCInitialCostPerMille": 0,
+        "r1ToCFinalCostPerMille": 0,
+        "ruralPenaltyPerMille": 100,
+        "cityPoolMoved": 1965,
+        "cityPoolProfit": -400,
+        "cityPoolCapacity": 20780,
+        "cityCapacityInitial": 10,
+        "cityCapacityFinal": 370,
+        "cityUsedCapacity": 7549,
+        "cityExpansions": 18,
+        "cityBuiltAreaPerMille": 360,
+        "arableC": 2999,
+        "arableR0": 3019,
+        "cumulativeTradeVolume": 7534716,
+        "r1ToR2CostPerMille": 14,
+        "r1ToR2AfterRoadLevel1CostPerMille": 0,
+        "o0ToO1RoadCostPerMille": 0,
+        "o2ToO11OffRoadCostPerMille": 70,
+        "cToO2RoadCostPerMille": 0,
+        "cToO11OffRoadCostPerMille": 20,
+        "outerBuyerDebt": 11341300,
+        "migratedToCity": 175,
+        "cityLaborer": 175,
+        "workshopOutput": 650,
+        "farmOutput": 1370,
+        "rent": 410
+      },
+      "tolerance": {
+        "default": {
+          "mode": "exact",
+          "absolute": 0,
+          "relativePerMille": 0
+        },
+        "overrides": {},
+        "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
+        "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
+      },
+      "notes": "报告 §2 的 3650 tick 终局读数。⚠️ 报告 §1.2 文字写城市商人总池 serviceRadiusHex=4，但探针代码 line 147 传的是 2；用当前公式代入 4 会得到 R0→C=60、O2→O11=50、C→O11=0，与报告读数 67/70/20 不符。fixture 的 inputs 冻结探针代码值 2，并把报告文字值 4 记入‘已知不一致’；P9 必须先裁定正式口径，不得静默取一个。"
+    }
+  ]
+}
