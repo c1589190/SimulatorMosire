@@ -6,6 +6,7 @@ import io.mosire.simos.economy.api.market.MarketNode;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.TransportTariff;
 import io.mosire.simos.economy.time.MarketTopology;
 import io.mosire.simos.map.City;
 import io.mosire.simos.map.GameMap;
@@ -52,6 +53,10 @@ import java.util.Set;
  *
  * <p>★ <b>M2.7 起 {@link MarketReadoutAssembly}（同包）复用本类</b>：逐格市场读数与结算读的是同一份拓扑
  * （不许在视图层另算一套区域）；它仍是纯派生件、不是状态。
+ *
+ * <p>★★ <b>P4 的道路/辐射装配</b>：{@link RoadNetwork} 从同一张 {@code GameMap.pathways()}/{@code edges()}
+ * 现算道路瓶颈； 辐射距离 = 拓扑节点 anchor 集的最小 {@link HexCoord#distanceTo}；运输费率取 {@link
+ * TransportTariff#probeDefaults()}。三者 都以只读函数（方法引用/lambda）交给 {@link MarketTopology}，地图不泄漏进 economy。
  *
  * <p>★★ <b>R0 / P1.1：地形索引在本类里只建一次</b>（{@link #terrainCostIndex(GameMap)}），交给 {@link MarketTopology}
  * 的 lambda 只查表 —— 消除每次调用 {@code GameMap.terrainIndex()} 重建 59,223 条 的主项（见 {@code
@@ -116,11 +121,39 @@ final class MarketTopologyBook {
     // ★★ R0 / P1.1：地形索引**一次构建、之后查表**。`GameMap.terrainIndex()` 每次调用都会重建
     //   59,223 条（实测占市场轮 22.66%），而旧写法在 `moveCostAt` 里**逐格调用**它 ⇒ O(格数²)。
     Map<HexCoord, Integer> terrainCost = terrainCostIndex(gameMap);
+    // ★★ P4：道路子图从 map.pathways()/map.edges() 现算；辐射距离 = 拓扑节点 anchor 集的最小 hex 距离。
+    //   两者都只在这里（组合根）装配，economy 侧只收方法引用。
+    RoadNetwork roadNetwork = RoadNetwork.from(gameMap);
+    List<HexCoord> nodeAnchors = new ArrayList<>(nodes.size());
+    for (MarketNode node : nodes) {
+      nodeAnchors.add(node.anchor());
+    }
     return MarketTopology.of(
         nodes,
         economy.markets(),
         economy.markets().keySet(),
-        hex -> terrainCostOf(terrainCost, hex));
+        hex -> terrainCostOf(terrainCost, hex),
+        roadNetwork::roadBottleneckBetween,
+        hex -> nearestAnchorDistance(nodeAnchors, hex),
+        TransportTariff.probeDefaults());
+  }
+
+  /**
+   * 一个 hex 到拓扑节点 anchor 集的<b>最小 hex 距离</b>（P4 的辐射项口径，取 from/to 两端较小者；见 {@code
+   * MarketTopology.freightPerMilleBetween}）。没有节点 ⇒ 0（退化路径不会走到这里，仍按 0 兜底）。
+   */
+  private static int nearestAnchorDistance(List<HexCoord> anchors, HexCoord hex) {
+    if (hex == null || anchors.isEmpty()) {
+      return 0;
+    }
+    int best = Integer.MAX_VALUE;
+    for (HexCoord anchor : anchors) {
+      int distance = hex.distanceTo(anchor);
+      if (distance < best) {
+        best = distance;
+      }
+    }
+    return best == Integer.MAX_VALUE ? 0 : best;
   }
 
   /** 一个节点：锚格必须有市场（否则没有报价币种可用）；非 silver 市场本批跳过（单一货币工具）。 */

@@ -153,11 +153,12 @@ final class MarketSettlement {
   /** ★ 运力随距离衰减的参考距离（hex）：{@code capacity = 出厂值 × 参考 / max(1, distance)}（R8 满额、R16 半额）。 */
   static final long MARKET_ROUTE_CAPACITY_REFERENCE_DISTANCE_HEX = 8L;
 
-  /**
-   * ★ <b>运费的千分费率</b>：每 hex 收"货款价值的 10‰"（8 格 ≈ 货款 8%）。★ 它与"实际投入" （{@link TradeRoute#costPerUnit()} =
-   * {@code 距离 × moveCost}）**是两个独立的数**（M2.4 不许一个系数兼三职）。 ★ GM 可调默认值。
+  /*
+   * ★★ P4：运费的千分费率不再出自本类的"每 hex 10‰"常量，而是唯一来自
+   * {@link MarketTopology#freightPerMilleBetween(HexCoord, HexCoord)}（基础距离费 + 离城辐射 − 道路瓶颈折扣；城市折扣/
+   * 农村惩罚在 P6 前恒 0）。它仍与"实际投入"（{@link TradeRoute#costPerUnit()} = 距离 × moveCost）**是两个独立的数**
+   * （M2.4 不许一个系数兼三职）。
    */
-  static final long MARKET_FREIGHT_PER_MILLE_PER_HEX = 10L;
 
   /** ★ <b>在途损耗率出厂值</b>（千分数）：每程 5‰，逐票由买方承担（M2.5 基线合同）。★ GM 可调默认值。 */
   static final int MARKET_TRANSPORT_LOSS_PER_MILLE = 5;
@@ -1863,6 +1864,9 @@ final class MarketSettlement {
                 / Math.max(1L, distance));
     long costPerUnit = distance * moveCost;
     long travelTicks = Math.max(1L, distance);
+    // ★★ P4：费率唯一来源 = 拓扑的 road/radial/基础费公式（城市折扣/农村惩罚在 P6 前恒 0）。
+    //   注意它与上面的 costPerUnit（距离 × moveCost）是两个独立的数。
+    long freightRatePerMille = ctx.topology.freightPerMilleBetween(sellerHex, buyerHex);
     String routeKey = sellerHex + "->" + buyerHex + "#" + commodity.value();
     RouteAccumulator acc =
         ctx.routes.computeIfAbsent(
@@ -1889,12 +1893,13 @@ final class MarketSettlement {
       }
       long arrivalTick = ctx.round.day + travelTicks + round;
       long unitPrice = unitPriceOf(sells, commodity);
-      long freightPerUnit = freightPerUnitOf(unitPrice, travelTicks);
+      long freightPerUnit = freightPerUnitOf(unitPrice, freightRatePerMille);
       RouteContext route =
           new RouteContext(
               sellerHex,
               buyerHex,
               unitPrice,
+              freightRatePerMille,
               freightPerUnit,
               travelTicks,
               costPerUnit,
@@ -2064,7 +2069,7 @@ final class MarketSettlement {
     HexCoord location = route == null ? sell.hex : route.from;
     long payment = ceilDiv(quantity * unitPrice, EconomySettlement.MILLI_PER_GRAIN);
     long nominalFreight =
-        route == null ? 0L : freightOf(quantity, route.unitPrice, route.travelTicks);
+        route == null ? 0L : freightOf(quantity, route.unitPrice, route.freightRatePerMille);
     long freight = route != null && ctx.carrier.isPresent() ? nominalFreight : 0L;
 
     // ① 卖方把已冻结的那一份放出来，再走唯一 applier（货腿：卖方 → 买方）。
@@ -2306,14 +2311,21 @@ final class MarketSettlement {
     return price;
   }
 
-  private static long freightPerUnitOf(long unitPrice, long travelTicks) {
-    return unitPrice * travelTicks * MARKET_FREIGHT_PER_MILLE_PER_HEX / 1000L;
+  /**
+   * 单位运费（毫计价货币 / 商品单位）：{@code ⌊单价 × 费率‰ ÷ 1000⌋} —— 与探针 {@code landed = base × (1000+rate)/1000}
+   * 的向下取整同口径。★ 费率唯一来源 = {@link MarketTopology#freightPerMilleBetween(HexCoord, HexCoord)}。
+   */
+  private static long freightPerUnitOf(long unitPrice, long ratePerMille) {
+    return Math.multiplyExact(unitPrice, ratePerMille) / 1000L;
   }
 
-  /** 一条成交量的运费：{@code ⌈数量 × 单价 × 天数 × 10‰ ÷ 1000⌉}（毫计价货币）。 */
-  private static long freightOf(long quantity, long unitPrice, long travelTicks) {
+  /**
+   * 一条成交量的运费：{@code ⌈数量 × 单价 × 费率‰ ÷ 1,000,000⌉}（毫计价货币；数量是毫商品、单价是毫计价货币/商品单位）。 ★ 与 {@link
+   * #freightPerUnitOf} 同源（同一个 {@code ratePerMille}），保留既有的向上取整毫单位口径。
+   */
+  private static long freightOf(long quantity, long unitPrice, long ratePerMille) {
     return ceilDiv(
-        quantity * unitPrice * travelTicks * MARKET_FREIGHT_PER_MILLE_PER_HEX, 1_000_000L);
+        Math.multiplyExact(Math.multiplyExact(quantity, unitPrice), ratePerMille), 1_000_000L);
   }
 
   /**
@@ -2371,8 +2383,7 @@ final class MarketSettlement {
     }
     long rawFreight;
     try {
-      rawFreight = Math.multiplyExact(scaled, route.travelTicks);
-      rawFreight = Math.multiplyExact(rawFreight, MARKET_FREIGHT_PER_MILLE_PER_HEX);
+      rawFreight = Math.multiplyExact(scaled, route.freightRatePerMille);
     } catch (ArithmeticException overflow) {
       return false;
     }
@@ -3462,11 +3473,15 @@ final class MarketSettlement {
     }
   }
 
-  /** 一条路线的运输参数（区内即时 {@code null}）。 */
+  /**
+   * 一条路线的运输参数（区内即时 {@code null}）；{@code freightRatePerMille} 是 {@link
+   * MarketTopology#freightPerMilleBetween(HexCoord, HexCoord)} 给出的唯一费率来源。
+   */
   private record RouteContext(
       HexCoord from,
       HexCoord to,
       long unitPrice,
+      long freightRatePerMille,
       long freightPerUnit,
       long travelTicks,
       long costPerUnit,

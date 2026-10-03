@@ -4,6 +4,7 @@ import io.mosire.simos.economy.api.market.MarketNode;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.TransportTariff;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
 import java.util.ArrayList;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.ToIntBiFunction;
 import java.util.function.ToIntFunction;
 
 /**
@@ -40,6 +42,10 @@ import java.util.function.ToIntFunction;
  * economy）以 {@link ToIntFunction} 只读传入；economy 侧只消费、不反查地图。★ 口径与 {@code SettlementGenerator}
  * 的腹地竞争逐字同源：{@code cost = hexDistance × moveCost(目标格)}（平原 1 … 山地 6 … 高原山地 12；海洋 999 = 不可通行）。
  *
+ * <p>★★ <b>运输费率入口</b>（P4；铁律 3/4 同款）：道路瓶颈查询与最近城市距离也由组合根以 {@link ToIntBiFunction} / {@link
+ * ToIntFunction} 只读传入；本类把它们与 hex 距离喂进 {@link TransportTariff}，用 {@link #freightPerMilleBetween} 回答
+ * {@code from→to} 的费率（‰）。economy 侧同样不反查 {@code GameMap}。
+ *
  * <p>★ <b>本类不可变</b>：成员表、索引、节点表都在构造期冻结（{@code Collections.unmodifiable*}），可在一次结算里安全共享。
  */
 public final class MarketTopology {
@@ -52,19 +58,42 @@ public final class MarketTopology {
    */
   static final int MARKET_REGION_ADJACENCY_GAP_HEX = 1;
 
+  /** 旧入口的"无路"查询：任何 lane 的道路瓶颈都是 0（没有折扣）。 */
+  private static final ToIntBiFunction<HexCoord, HexCoord> NO_ROADS = (from, to) -> 0;
+
+  /** 旧入口的"没有城市距离"查询：任何格到最近节点的距离都是 0（没有辐射成本）。 */
+  private static final ToIntFunction<HexCoord> NO_NEAREST_NODE_DISTANCE = hex -> 0;
+
   private final List<MarketRegion> regions;
   private final Map<HexCoord, MarketRegion> regionByHex;
   private final ToIntFunction<HexCoord> moveCostAt;
+
+  /** 道路瓶颈查询（组合根从地图派生；旧入口恒 0）。 */
+  private final ToIntBiFunction<HexCoord, HexCoord> roadBottleneckBetween;
+
+  /** 到最近城市节点 anchor 的 hex 距离（组合根装配；没有节点 ⇒ 0）。 */
+  private final ToIntFunction<HexCoord> nearestNodeDistance;
+
+  /** 运输费率函数；默认 {@link TransportTariff#probeDefaults()}。 */
+  private final TransportTariff tariff;
+
   private final boolean regional;
 
   private MarketTopology(
       List<MarketRegion> regions,
       Map<HexCoord, MarketRegion> regionByHex,
       ToIntFunction<HexCoord> moveCostAt,
+      ToIntBiFunction<HexCoord, HexCoord> roadBottleneckBetween,
+      ToIntFunction<HexCoord> nearestNodeDistance,
+      TransportTariff tariff,
       boolean regional) {
     this.regions = Collections.unmodifiableList(new ArrayList<>(regions));
     this.regionByHex = Collections.unmodifiableMap(new LinkedHashMap<>(regionByHex));
     this.moveCostAt = Objects.requireNonNull(moveCostAt, "moveCostAt");
+    this.roadBottleneckBetween =
+        Objects.requireNonNull(roadBottleneckBetween, "roadBottleneckBetween");
+    this.nearestNodeDistance = Objects.requireNonNull(nearestNodeDistance, "nearestNodeDistance");
+    this.tariff = Objects.requireNonNull(tariff, "tariff");
     this.regional = regional;
   }
 
@@ -77,13 +106,64 @@ public final class MarketTopology {
     return of(List.of(), markets, markets.keySet(), hex -> 1, false);
   }
 
-  /** 正常入口：城市节点 + 半径 + 地图格集 + 逐格地形代价。 */
+  /**
+   * 旧入口：城市节点 + 半径 + 地图格集 + 逐格地形代价。★ 道路/辐射/费率取"无路、最近城市距离 0、默认费率" —— 没有新数据的调用方行为保持可达；数值口径见 {@link
+   * #freightPerMilleBetween}。
+   */
   public static MarketTopology of(
       List<MarketNode> nodes,
       Map<HexCoord, Market> markets,
       Set<HexCoord> hexes,
       ToIntFunction<HexCoord> moveCostAt) {
-    return of(nodes, markets, hexes, moveCostAt, true);
+    return of(
+        nodes,
+        markets,
+        hexes,
+        moveCostAt,
+        NO_ROADS,
+        NO_NEAREST_NODE_DISTANCE,
+        TransportTariff.probeDefaults());
+  }
+
+  /**
+   * 正常入口（P4 起）：城市节点 + 半径 + 地图格集 + 逐格地形代价 + <b>道路瓶颈查询</b> + <b>最近节点距离查询</b> +
+   * <b>运输费率</b>。前四个参数语义与旧入口逐字相同；后三个由组合根（同时看得见地图与经济）装配。
+   */
+  public static MarketTopology of(
+      List<MarketNode> nodes,
+      Map<HexCoord, Market> markets,
+      Set<HexCoord> hexes,
+      ToIntFunction<HexCoord> moveCostAt,
+      ToIntBiFunction<HexCoord, HexCoord> roadBottleneckBetween,
+      ToIntFunction<HexCoord> nearestNodeDistance,
+      TransportTariff tariff) {
+    return of(
+        nodes,
+        markets,
+        hexes,
+        moveCostAt,
+        roadBottleneckBetween,
+        nearestNodeDistance,
+        tariff,
+        true);
+  }
+
+  /** 退化入口：旧语义 + 显式 regional 位（{@link #singleHex} 专用）。 */
+  private static MarketTopology of(
+      List<MarketNode> nodes,
+      Map<HexCoord, Market> markets,
+      Set<HexCoord> hexes,
+      ToIntFunction<HexCoord> moveCostAt,
+      boolean regional) {
+    return of(
+        nodes,
+        markets,
+        hexes,
+        moveCostAt,
+        NO_ROADS,
+        NO_NEAREST_NODE_DISTANCE,
+        TransportTariff.probeDefaults(),
+        regional);
   }
 
   private static MarketTopology of(
@@ -91,11 +171,17 @@ public final class MarketTopology {
       Map<HexCoord, Market> markets,
       Set<HexCoord> hexes,
       ToIntFunction<HexCoord> moveCostAt,
+      ToIntBiFunction<HexCoord, HexCoord> roadBottleneckBetween,
+      ToIntFunction<HexCoord> nearestNodeDistance,
+      TransportTariff tariff,
       boolean regional) {
     Objects.requireNonNull(nodes, "nodes");
     Objects.requireNonNull(markets, "markets");
     Objects.requireNonNull(hexes, "hexes");
     Objects.requireNonNull(moveCostAt, "moveCostAt");
+    Objects.requireNonNull(roadBottleneckBetween, "roadBottleneckBetween");
+    Objects.requireNonNull(nearestNodeDistance, "nearestNodeDistance");
+    Objects.requireNonNull(tariff, "tariff");
 
     // ★ 去重：同 nodeId 只认第一条（保序）；并跳过"锚格没有市场"的节点（没有报价币种的区不能交易）。
     Map<String, MarketNode> byId = new LinkedHashMap<>();
@@ -170,7 +256,13 @@ public final class MarketTopology {
     // ★ 没有显式城市节点 ⇒ 不构造跨区候选（退化成单格区；与 singleHex 同语义）：否则"相邻单格区"
     //   会被当成跨区路线，凭空造出 ETA/运力/在途 —— 那正是"没有城市信息的世界"不该有的行为。
     return new MarketTopology(
-        built, byHex, moveCostAt, regional && !byId.isEmpty() && built.size() > 1);
+        built,
+        byHex,
+        moveCostAt,
+        roadBottleneckBetween,
+        nearestNodeDistance,
+        tariff,
+        regional && !byId.isEmpty() && built.size() > 1);
   }
 
   /** 全部区（保序：节点声明序；退化单格区接在其后）。 */
@@ -219,5 +311,63 @@ public final class MarketTopology {
   /** 单程天数：1 天/格（与单位移动的平原口径一致）；同格为 0（区内即时不走 TradeRoute）。 */
   public long travelTicks(HexCoord from, HexCoord to) {
     return Math.max(0L, from.distanceTo(to));
+  }
+
+  /**
+   * {@code from→to} 道路路径的<b>最大瓶颈等级</b>（P4；正式版探针 {@code roadPathMinLevel}）：没有可达道路/缺图/同格 ⇒ 0。
+   *
+   * <p>★ 与探针的具名差异：探针不可达回 {@code -1}；正式版回 0，因为费率只把等级用作折扣，0 与"无路"折扣同效。查询函数由组合根装配 （{@code
+   * RoadNetwork::roadBottleneckBetween}）；旧入口装配的是恒 0 查询。
+   */
+  public int roadBottleneckBetween(HexCoord from, HexCoord to) {
+    if (from == null || to == null || from.equals(to)) {
+      return 0;
+    }
+    return Math.max(0, roadBottleneckBetween.applyAsInt(from, to));
+  }
+
+  /**
+   * 到最近城市节点 anchor 的 hex 距离（P4 的辐射项输入）：{@code hex} 缺图/查询函数缺席 ⇒ 0。
+   *
+   * <p>★ 口径与探针一致：取 {@code from}/{@code to} 两端到最近城市的<b>较小者</b>（不是贸易中点）；距离用 {@link
+   * HexCoord#distanceTo}（正式六边形距离）。★ 探针 {@code ProbeEconomy.hexDistance} 用的是 {@code |Δq|+|Δr|}（轴向
+   * 曼哈顿），与正式六边形距离在部分格对上不同；这处差异见 P4 报告，P9 对拍时逐 scenario 裁定。
+   */
+  public int nearestNodeDistance(HexCoord hex) {
+    if (hex == null) {
+      return 0;
+    }
+    return Math.max(0, nearestNodeDistance.applyAsInt(hex));
+  }
+
+  /** 本拓扑装配的运输费率函数（只读；默认 {@link TransportTariff#probeDefaults()}）。 */
+  public TransportTariff tariff() {
+    return tariff;
+  }
+
+  /**
+   * ★★ <b>{@code from→to} 的运输费率（‰）</b>（P4 的唯一费率入口）：
+   *
+   * <pre>
+   * freightPerMilleBetween = tariff.perMille(hexDistance(from, to),
+   *                                          min(nearestNodeDistance(from), nearestNodeDistance(to)),
+   *                                          roadBottleneckBetween(from, to),
+   *                                          0, 0)
+   * </pre>
+   *
+   * <p>同格/缺图/越界（hex 不属于本拓扑的成员表）⇒ 0，且不抛异常。★ 城市折扣与农村惩罚在本阶段恒 0：商人 tier/服务半径/农村累积成本归 P6； {@link
+   * TransportTariff#perMille} 已预留这两个参数。★ 费率是"货款价值的千分比"，把货款乘上它再除以 1000 得到运费由调用方负责。
+   */
+  public long freightPerMilleBetween(HexCoord from, HexCoord to) {
+    if (from == null || to == null || from.equals(to)) {
+      return 0L;
+    }
+    if (!regionByHex.containsKey(from) || !regionByHex.containsKey(to)) {
+      return 0L;
+    }
+    long distance = from.distanceTo(to);
+    long radialDistance = Math.min(nearestNodeDistance(from), nearestNodeDistance(to));
+    long roadLevel = roadBottleneckBetween(from, to);
+    return tariff.perMille(distance, radialDistance, roadLevel, 0L, 0L);
   }
 }
