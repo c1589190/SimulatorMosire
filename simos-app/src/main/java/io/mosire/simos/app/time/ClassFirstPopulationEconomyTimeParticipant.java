@@ -198,6 +198,10 @@ public final class ClassFirstPopulationEconomyTimeParticipant implements TimePar
     // ★ C5：一次推进取一次快照——整轮（含 30 天月度人口学）用同一台时钟，不与中途的 apply 混用。
     CalendarClock clock = calendarService.clock();
     EconomyData economy = economyOf(state);
+    if (economy.classFirst().isEmpty() && !economy.modes().isEmpty()) {
+      // production-runtime：正式生产/市场运行时由旧结算协调器承担
+      return new PopulationEconomyTimeParticipant(mapId).simulateWorld(state, range);
+    }
     SocialData social = socialOf(state);
     ActorData actor = actorOf(state);
     // ★ 阶段 6.3：长期税只读 unit/map（管辖、区域 hex、单位有效位置）——缺切片/类型不符照既有切片读取器当场抛。

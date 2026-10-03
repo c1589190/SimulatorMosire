@@ -1,0 +1,255 @@
+package io.mosire.simos.app.time;
+
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.actor.change.ActorChangeSet;
+import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.economy.time.AccountPartitionKey;
+import io.mosire.simos.economy.time.AccountSession;
+import io.mosire.simos.economy.time.EconomyDayStepper;
+import io.mosire.simos.economy.time.ProductionLedger;
+import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
+import io.mosire.simos.util.address.Address;
+import io.mosire.simos.util.address.Entity;
+import io.mosire.simos.util.address.Namespace;
+import io.mosire.simos.util.spi.TimeParticipant;
+import io.mosire.simos.util.spi.WorldTimeProposal;
+import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.Snapshot;
+import io.mosire.simos.util.time.SimosTimestamp;
+import io.mosire.simos.util.time.TimeRange;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+
+/**
+ * ★★ <b>经济 × 产权的协调器</b>（S1 阶段 4+5 Task 5）：<b>唯一同时看得见 {@code economy} 与 {@code actor} 的推进参与者</b> ——
+ * 于是"产出离开 {@code ClassRow} 之后落到谁的账上"第一次真的发生。
+ *
+ * <p>★★ <b>它存在的理由（裁定 E7 / 计划 R4）</b>：产出自本阶段起<b>不再写进阶层行</b> —— 它变成产权条目 （{@code +净产 → operator}
+ * 与关系规则的转出/收入）。产权条目由 <b>economy</b> 算（{@link ProductionLedger}）， 而账本住在 <b>{@code actor}</b>
+ * 切片；两个切片<b>互不认识</b>（铁律 3），Core 也看不见任何领域类型（铁律 4） ⇒ 会合点只能在<b>组合根</b>。★
+ * 少了它，产出<b>在账上静默消失</b>（行里那份还在，operator 那份没了）。
+ *
+ * <p>★★ <b>它服务"有 economy、没有 social"的世界</b>（既有夹具正是这一形态）：
+ *
+ * <ul>
+ *   <li>{@code PopulationEconomyTimeParticipant}（有 social 的真档）—— <b>加第三片 {@code
+ *       actor}</b>，两者<b>从不同时注册</b> （同时注册 ⇒ Core 的写-写检查当场拒，响亮）；
+ *   <li>本类（只有 economy + actor）—— 与上面那个<b>共用</b>同一个 {@link OwnershipBooks}。
+ * </ul>
+ *
+ * <p>★ <b>一天的次序</b>（与人口那个协调器同款）：
+ *
+ * <pre>
+ * 经济结算一天（{@code EconomyDayStepper.step(day)}）⇒ 它交回当天的 ProductionLedger
+ * 产权落账（{@link OwnershipBooks#apply}）⇒ actor 账本 += 当天的条目（operator 那一路）
+ * 家户账落回（{@link OwnershipBooks#landHouseholdGoods}）⇒ 家户账 = 会话副本的**绝对值**
+ * 货币账落回（{@link OwnershipBooks#landHouseholdMoney}）⇒ 同一本账的第二个余额表 = 货币副本的**绝对值**
+ * </pre>
+ *
+ * <p>★★ <b>H4：两份副本、同一顺序</b>（载入 → step → 条目落账 → 两份副本按绝对值落回）：货币副本**必须**紧跟商品副本 之后落（写的是同一本 {@code
+ * GoodsAccount} 的另一个余额表，它要把商品那一半原样带过）。
+ *
+ * <p>★★ <b>H1：家户账是会话副本</b>（裁定 K1 / D3-C）—— 日耗 / 投入 / 同格取材只写副本（不是产权条目）， 而关系实付给家户既是条目、也计进了副本 ⇒
+ * 两条路在"按绝对值落回"这一步合成一本账（顺序：条目先、副本后）。 ★ 本参与者因此在推进前也要从 actor 侧**载入**副本（{@link
+ * OwnershipBooks#loadHouseholdGoods}）—— 消费与投入都要读它。
+ *
+ * <p>★ <b>逐日而不是一次算完</b>：{@code ProductionLedger} 是<b>一天一本</b>的（见它的类注）⇒ 逐日落账才不重不漏； §十一 的"一次 N 天 == N
+ * 次单日"因此也落在同一个循环里。
+ *
+ * <p>★ <b>读写集是 canonical 地址</b>（{@link Address} AST 构造）：{@code economy:<mapId>:...} 照 {@code
+ * PopulationEconomyTimeParticipant} 的形制；{@code actor:<mapId>:goods.<key>} 照 {@code ActorResolver}
+ * 的形制（★ 本切片只写"库存"这一类 actor 数据 —— 主体/产权本阶段都不动）。
+ *
+ * <p>★ <b>两个边界</b>（照既有参与者）：
+ *
+ * <ul>
+ *   <li>{@code range.to} 缺省（无上界推进）⇒ <b>零变更提案、不抛</b>（该推进随后必被 Core 的 Validate 拒绝）；
+ *   <li>状态里没有 economy / actor 切片 ⇒ <b>装配故障当场炸</b>（静默兜底会把装配错误伪装成"这一天无事"）。
+ * </ul>
+ *
+ * <p>★ <b>未激活</b>（{@code meta} 空）：交一份"两边都不变"的提案（经济还没播种，这一天没有公式要跑）。
+ *
+ * @deprecated ★★ <b>已退役的注册入口（2026-09-28 评审 Minor-1）</b>：本类已不在 {@code Shell} 注册（真档由 {@link
+ *     PopulationEconomyTimeParticipant} 承担 economy+social+actor 三片协调），且<b>不执行</b> {@code
+ *     MembershipWriteback.reconcile}。保留它是为了不破坏既有测试/旧夹具的编译；<b>新生产代码不得再注册本参与者</b>， 需要"只有 economy +
+ *     actor"的世界时先确认份额回写由谁负责。删除会牵动测试编译，留到 V 阶段统一适配。
+ */
+@Deprecated
+public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
+
+  /** 参与者身份（**不是模块名**：它同时写 {@code economy} 与 {@code actor} 两个模块）。 */
+  public static final String NAMESPACE = "ownership";
+
+  private static final String ECONOMY = "economy";
+  private static final String ACTOR = "actor";
+
+  private final String mapId;
+
+  public EconomyOwnershipTimeParticipant(String mapId) {
+    this.mapId = Objects.requireNonNull(mapId, "mapId");
+  }
+
+  @Override
+  public String namespace() {
+    return NAMESPACE;
+  }
+
+  @Override
+  public WorldTimeProposal simulateWorld(SimulationState state, TimeRange range) {
+    Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(range, "range");
+    EconomyData economy = economyOf(state);
+    ActorData actor = actorOf(state);
+
+    LinkedHashSet<String> reads = new LinkedHashSet<>();
+    LinkedHashSet<String> writes = new LinkedHashSet<>();
+    reads.add(economyAddressRoot());
+    writes.add(economyAddressRoot());
+    for (IndustryId id : economy.industries().keySet()) {
+      reads.add(economyAddress("industry", id.value()));
+      writes.add(economyAddress("industry", id.value()));
+    }
+    // ★★ H0.2：class/flow 的地址局部名 = {@link CohortKey#toString()} 的**规范串**（{@code
+    // 0_0|rural|poor_peasant}）。
+    //   行键里已经没有产业，旧版内联拼的 {@code <industryId>.<slotId>} 是同一格式的第二处拼写点（已删）。
+    //   ★ 必须与 {@code EconomyResolver} 的 class/flow 地址逐字同串。
+    for (HouseholdId key : economy.classes().keySet()) {
+      reads.add(economyAddress("class", key.toString()));
+      writes.add(economyAddress("class", key.toString()));
+    }
+    for (HouseholdId key : economy.flows().keySet()) {
+      writes.add(economyAddress("flow", key.toString()));
+    }
+    reads.add(actorAddressRoot());
+    if (state.module("map").isPresent()) {
+      // ★ M2.3：区域拓扑读地图（城市/地形）—— 只读声明，避免与地图写者同轮冲突时静默。
+      reads.add(mapAddressRoot());
+    }
+    writes.add(actorAddressRoot());
+    for (GoodsAccountKey key : actor.accounts().keySet()) {
+      reads.add(accountAddress(key));
+      writes.add(accountAddress(key));
+    }
+
+    Optional<SimosTimestamp> to = range.to();
+    if (to.isEmpty() || economy.meta().isEmpty()) {
+      // 无上界推进 / 经济未激活 ⇒ 两边都不动（交的是**不变变更集**，不是空提案：契约原文）。
+      return new WorldTimeProposal(
+          NAMESPACE,
+          Map.of(
+              ECONOMY, EconomyChangeSet.between(economy, economy),
+              ACTOR, ActorChangeSet.between(actor, actor)),
+          reads,
+          writes);
+    }
+
+    // ★★ S1：唯一账户会话（家户 + 经营者；商品 + 货币 + 冻结）一次装载。
+    //   ★ S1.5 旧档：先把旧三段 actor id 上的账搬到新身份键（移动，不是复制 —— 否则一笔粮变两本账）。
+    ActorData migratedBooks = OwnershipBooks.migrateLegacyHouseholdAccounts(actor, economy);
+    for (GoodsAccountKey key : migratedBooks.accounts().keySet()) {
+      reads.add(accountAddress(key));
+      writes.add(accountAddress(key));
+    }
+    AccountSession session = OwnershipBooks.loadAccountSession(economy, migratedBooks);
+    // ★★ S3 缺陷修复：会话负责的账户由绝对值落回收尾，ledger 条目不再对 actor 基准叠一遍（同 PopulationEconomyTimeParticipant）。
+    Set<AccountPartitionKey> sessionAccounts = new LinkedHashSet<>(session.accounts().keySet());
+    EconomyDayStepper stepper =
+        new EconomyDayStepper(
+            economy,
+            session,
+            // ★ M2.3：区域拓扑由组合根从地图/城市现算（Map + SocialCity/City）；不得让 economy 反查 social。
+            MarketTopologyBook.from(state));
+    ActorData books = migratedBooks;
+    for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
+      ProductionLedger ledger = stepper.step(day);
+      // ★★ M2.7：把"最近一轮市场报告"投递给读口（进程内、不落盘、只在同一 tick 内可信；见 MarketReportFeed 的类注）。
+      MarketReportFeed.publish(mapId, stepper.lastMarketReport(), day);
+      // ★★ 落账：当天的条目只落一次（ledger 是**一天一本**的）；落出来的新账户也要进写集。
+      //   ★★ M2 守恒收口：**市场成交（MARKET_TRADE）不折** —— 双方都是本轮参与者（家户账必被载入；经营者只在
+      //   副本有账时才入市）⇒ 市场成交落在账户上的那一份已由会话副本的绝对值落回覆盖，在途那一份由
+      //   ShipmentBatch 承载；再叠一遍只会在"买方 × 卖方格"这个异地键上造幽灵账（理由逐条见
+      //   {@link OwnershipBooks#REASONS_NOT_FOLDED}）。
+      List<ActorEntry> entries = OwnershipBooks.fold(ledger, OwnershipBooks.REASONS_NOT_FOLDED);
+      if (!entries.isEmpty()) {
+        books = OwnershipBooks.apply(books, entries, sessionAccounts);
+        for (GoodsAccountKey key : books.accounts().keySet()) {
+          writes.add(accountAddress(key));
+        }
+      }
+      // ★★ S1：全部账户（家户 + 经营者；商品 + 货币 + 冻结）按会话绝对值一次落回
+      //   （条目先落、会话收尾；顺序反了同一笔粮会记两遍）。
+      books = OwnershipBooks.landAccountSession(books, stepper.accounts());
+    }
+    EconomyData currentEconomy = stepper.finish();
+    return new WorldTimeProposal(
+        NAMESPACE,
+        Map.of(
+            ECONOMY, EconomyChangeSet.between(economy, currentEconomy),
+            ACTOR, ActorChangeSet.between(actor, books)),
+        reads,
+        writes);
+  }
+
+  // ── 切片读取与地址 ────────────────────────────────────────────────────────────────────
+
+  private static EconomyData economyOf(SimulationState state) {
+    Snapshot snapshot =
+        state
+            .module(ECONOMY)
+            .orElseThrow(() -> new IllegalStateException("state 里没有 economy 切片（装配故障：日推进要求切片在场）"));
+    if (!(snapshot instanceof EconomySnapshot economySnapshot)) {
+      throw new IllegalStateException(
+          "state 的 economy 切片不是 EconomySnapshot: " + snapshot.getClass().getName());
+    }
+    return economySnapshot.data();
+  }
+
+  private static ActorData actorOf(SimulationState state) {
+    Snapshot snapshot =
+        state
+            .module(ACTOR)
+            .orElseThrow(() -> new IllegalStateException("state 里没有 actor 切片（装配故障：产权落账口要求切片在场）"));
+    if (!(snapshot instanceof ActorSnapshot actorSnapshot)) {
+      throw new IllegalStateException(
+          "state 的 actor 切片不是 ActorSnapshot: " + snapshot.getClass().getName());
+    }
+    return actorSnapshot.data();
+  }
+
+  private String economyAddressRoot() {
+    return new Address(List.of(new Namespace(ECONOMY), Entity.of(mapId))).canonical();
+  }
+
+  private String actorAddressRoot() {
+    return new Address(List.of(new Namespace(ACTOR), Entity.of(mapId))).canonical();
+  }
+
+  private String economyAddress(String kind, String localId) {
+    return new Address(List.of(new Namespace(ECONOMY), Entity.of(mapId), Entity.of(kind, localId)))
+        .canonical();
+  }
+
+  private String mapAddressRoot() {
+    return new Address(List.of(new Namespace("map"), Entity.of(mapId))).canonical();
+  }
+
+  /**
+   * 一本产权账的地址：{@code actor:<mapId>:goods.<key>} —— ★ 形制照 {@code ActorResolver}（它的第三段 kind 就是 {@code
+   * goods}）。本类**只委托、不复述格式**：{@code <key>} 是 {@link GoodsAccountKey#toString()} 的产物。
+   */
+  private String accountAddress(GoodsAccountKey key) {
+    return new Address(
+            List.of(new Namespace(ACTOR), Entity.of(mapId), Entity.of("goods", key.toString())))
+        .canonical();
+  }
+}
