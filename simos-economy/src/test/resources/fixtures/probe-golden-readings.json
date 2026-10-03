@@ -2830,7 +2830,7 @@
         "ruralPenaltyPerMille": 100,
         "cityPoolMoved": 1965,
         "cityPoolProfit": -400,
-        "cityPoolCapacity": 20780,
+        "cityPoolCapacity": 20750,
         "cityCapacityInitial": 10,
         "cityCapacityFinal": 370,
         "cityUsedCapacity": 7549,
@@ -2845,7 +2845,7 @@
         "o2ToO11OffRoadCostPerMille": 70,
         "cToO2RoadCostPerMille": 0,
         "cToO11OffRoadCostPerMille": 20,
-        "outerBuyerDebt": 11341300,
+        "outerBuyerDebt": 11341500,
         "migratedToCity": 175,
         "cityLaborer": 175,
         "workshopOutput": 650,
@@ -2862,7 +2862,7 @@
         "unit": "probe-unit（整数粮/布/纤维/钱/劳动；运行时毫单位先按 EconomyVocabulary.MILLI_PER_COMMODITY_UNIT 换算再比较）",
         "note": "exact = 整数逐值相等；overrides 按 expected 的键名覆盖。P9 若因正式运行时粒度/舍入需要放宽，必须先在 fixture 增加 override 并写明裁定；实现 Agent 不得改 expected。"
       },
-      "notes": "报告 §2 的 3650 tick 终局读数。⚠️ 报告 §1.2 文字写城市商人总池 serviceRadiusHex=4，但探针代码 line 147 传的是 2；用当前公式代入 4 会得到 R0→C=60、O2→O11=50、C→O11=0，与报告读数 67/70/20 不符。fixture 的 inputs 冻结探针代码值 2，并把报告文字值 4 记入‘已知不一致’；P9 必须先裁定正式口径，不得静默取一个。"
+      "notes": "报告 §2 的 3650 tick 终局读数。⚠️ 报告 §1.2 文字写城市商人总池 serviceRadiusHex=4，但探针代码 line 147 传的是 2；用当前公式代入 4 会得到 R0→C=60、O2→O11=50、C→O11=0，与报告读数 67/70/20 不符。fixture 的 inputs 冻结探针代码值 2，并把报告文字值 4 记入‘已知不一致’；P9 必须先裁定正式口径，不得静默取一个。 ★ P0 勘误（2026-10-06）：当前 HEAD 探针实测 cityPoolCapacity=20750、outerBuyerDebt=11341500；报告原抄 20780/11341300 已按可复现读数更正。"
     }
   ]
 }

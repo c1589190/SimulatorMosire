@@ -80,7 +80,7 @@ JSON 中每个 scenario 的 `tolerance` 形如：
 | `Hex.ref`、`currentPrice(hex, good)` | `Market.prices`（`EconomyData.markets` 的 `Map<HexCoord, Market>`）；`MarketNode`/`MarketRegion`；P4 `MarketReport.ref` 读口 | D1：H0 粮/纤维/布 `100/25/189`，H1 `121/25/157`（R-DIV §3） | exact（单位换算后） |
 | 规则 C：本轮无成交 ⇒ `ref=0`；下一次用初始价重新定价 | P4 `MarketSettlement` 规则 C；`MarketReport.ref`；`ApiViews` 读口 | 无印出具体数字；P9 用 `RuleCNoTransactionProbeTest` 对拍 | P0 未冻结数字 |
 | `recipeStopped`：`ref > 0` 且 `ref < cost` ⇒ 停产；`ref > cost` 继续 | P3 `ProductionSettlement`（计划重建）、`ProductionUnitBook` 容量/资产约束、`StressPolicy` 停产/收缩判定 | 无印出具体数字；P9 用 `ProductionExitOnLossProbeTest` 对拍 | P0 未冻结数字 |
-| 买家按总财富降序；无出价方被跳过；按“最低到货价”选卖方 | P4 `MarketSettlement` 撮合：`BuyOrder`/`SellOrder` + `Budget` + `Recipient` + `MarketReport`；plan §2 的“买家财富降序、无出价、最低到货价” | D1/7HEX2 的跨格成交与 `outerBuyerDebt=11341300` 是行为样例；报告未单列排序读数 | P0 不冻结数字；P9 用独立用例验证排序与“无出价”行为 |
+| 买家按总财富降序；无出价方被跳过；按“最低到货价”选卖方 | P4 `MarketSettlement` 撮合：`BuyOrder`/`SellOrder` + `Budget` + `Recipient` + `MarketReport`；plan §2 的“买家财富降序、无出价、最低到货价” | D1/7HEX2 的跨格成交与 `outerBuyerDebt=11341500` 是行为样例（★ P0 勘误见 §6.4）；报告未单列排序读数 | P0 不冻结数字；P9 用独立用例验证排序与“无出价”行为 |
 
 ### 2.2 生产、劳动与土地
 
@@ -121,7 +121,7 @@ JSON 中每个 scenario 的 `tolerance` 形如：
 | `CityState.capacity/usedCapacity/expansionCount/builtAreaPerMille/cumulativeTradeVolume` | `simos-map/City.props`（或新 `CityLand`）；`MarketNode.radiusHex`；P6 `SettlementGenerator`/`EconomySeeder.landMilliMuOf`；`availableArableMu = arableMu − cityBuiltAreaMu` | 城市承载 10→370、`used=7549`、`expansions=18`、`builtAreaPerMille=360`、`cumulativeTrade=7534716`、`arableC=2999`、`arableR0=3019`（R-CITY §2） | exact（探针口径）；正式城市字段由 P6 裁定 |
 | `migratePopulation(from,to,count)`（人口与债务随人走；每户至少留 15 人） | `PopulationGroup` 拆/合 + P8 新 `LotMigration`（源 lot → 目标城市 lot、人数、债务/劳动随行）；`ClassFirstPopulationWriteback` | 7HEX2：`migratedToCity=175`、`cityLaborer=175`（R-CITY §2） | exact |
 | 手工业 `Recipe`（FIBER + 劳动 → CLOTH）、`WageFarm` 作坊工资 | P2 `handicraft_workshop` `ProductionMode`；`ProductionRecipe`（`inputPerUnit[FIBER]`、`outputPerUnit[CLOTH]`、`laborPerUnit`）；`ProductionOrganization`；`AssetRule`（WORKSHOP/TOOL）；`CompensationRule` 货币工资 | H1：作坊产 400 布、工资 60,000、欠薪 0；纤维户 100 人产 400 纤维、吃 100 粮；雇工吃满 600（R-DIV §2） | exact |
-| 商人层级/城市池运力自增长（盈利 +5/轮，亏损 −5/轮） | P6 商人层级（脚夫/个体户/老板）+ `ProductionOrganization`；`City` 城区占用；P4 `TradeRoute.capacityPerWindow` | 7HEX2：`cityPoolMoved=1965`、`cityPoolProfit=-400`、`cityPoolCapacity=20780`（R-CITY §2） | exact（探针口径；radius 冲突见 §6.1） |
+| 商人层级/城市池运力自增长（盈利 +5/轮，亏损 −5/轮） | P6 商人层级（脚夫/个体户/老板）+ `ProductionOrganization`；`City` 城区占用；P4 `TradeRoute.capacityPerWindow` | 7HEX2：`cityPoolMoved=1965`、`cityPoolProfit=-400`、`cityPoolCapacity=20750`（R-CITY §2；★ P0 勘误见 §6.4） | exact（探针口径；radius 冲突见 §6.1） |
 
 ### 2.6 GM 编辑生产方式（plan §2 最后一行）
 
@@ -287,7 +287,7 @@ fixture 的四个 benchmark scenario 把 `rounds=120` 冻结为报告 §3 的基
 | 人口 / 死亡 | 1455 / 0 | R-CITY §2 |
 | R0→C 运输费率 | 0 → 67（`ruralPenalty=100`） | R-CITY §2 |
 | R1→C 运输费率 | 0 → 0 | R-CITY §2 |
-| 城市商人池 | `moved=1965`、`profit=-400`、`capacity=20780` | R-CITY §2 |
+| 城市商人池 | `moved=1965`、`profit=-400`、`capacity=20750` | R-CITY §2（★ 见 §6.4 勘误） |
 | 城市 | `capacity=10→370`、`used=7549`、`expansions=18`、`builtAreaPerMille=360` | R-CITY §2 |
 | 可耕地 | `arableC=2999`、`arableR0=3019` | R-CITY §2 |
 | 累计贸易量 | 7,534,716 | R-CITY §2 |
@@ -375,3 +375,15 @@ python3 -m json.tool simos-economy/src/test/resources/fixtures/probe-golden-read
 | `tenancy_*`、`wage_farm_baseline_120`、`harvest_shock_240_*`、`annual_harvest_shock_1460_*` | R-TEN |
 | `transport_*`、`handicraft_workshop`、`natural_mortality_1460`、`diversified_three_sector_1460` | R-DIV |
 | `seven_hex_city_3650` | R-CITY |
+
+
+## 6.4 P0 勘误（2026-10-06 控制方裁定）
+
+- 当前 HEAD 的 `SevenHexCityMerchantProbeTest` 两次独立运行一致打印：
+  `cityPoolMoved=1965`、`cityPoolProfit=-400`、`cityPoolCapacity=20750`、`outerBuyerDebt=11341500`；
+  其余 7HEX2 读数（pop=1455、capacity=370、used=7549、expansions=18、builtAreaPerMille=360、
+  arableC=2999、arableR0=3019、migratedToCity=175、workshopOutput=650、farmOutput=1370、rent=410）与本文一致。
+- 本文/`2026-10-05-city-merchant-probe-results.md` 原抄的 `cityPoolCapacity=20780`、`outerBuyerDebt=11341300`
+  无法由当前探针代码复现，故按可复现读数更正为 **20750 / 11341500**；机器可读 fixture
+  `simos-economy/src/test/resources/fixtures/probe-golden-readings.json` 已同步。
+- 这是一次**只改读数、不改公式/探针**的勘误；P9 的 `ProbeGoldenReadingsFixtureTest` 以更正后的值为准。
