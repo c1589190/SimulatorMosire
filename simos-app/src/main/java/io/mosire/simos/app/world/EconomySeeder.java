@@ -12,6 +12,7 @@ import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
+import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -21,20 +22,28 @@ import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
+import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.money.GovernmentActors;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.LaborSource;
+import io.mosire.simos.economy.api.relation.Pool;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.classfirst.ClassFirstPilotEngine;
 import io.mosire.simos.economy.classfirst.ClassFirstState;
 import io.mosire.simos.economy.classfirst.PilotConfig;
 import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.economy.codec.EconomyCodec;
-import io.mosire.simos.economy.migrate.LegacyClassStructure;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassPosition;
 import io.mosire.simos.economy.model.ClassRow;
@@ -42,11 +51,13 @@ import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
+import io.mosire.simos.economy.model.RentRule;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
@@ -59,6 +70,7 @@ import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -66,6 +78,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -114,28 +127,28 @@ import java.util.function.Function;
 public final class EconomySeeder {
 
   /**
-   * ★★ <b>经济地基 profile</b>（R3a 起两个值；P1 追加 {@link #PRODUCTION_RUNTIME}）。
+   * ★★ <b>经济地基 profile</b>（P2 起两个公开值：{@link #CLASS_FIRST} 与 {@link #PRODUCTION_RUNTIME}）。
    *
-   * <p>★ <b>R3a 删除</b>了旧的 {@code legacy} / {@code complete} 两个 profile 与全部旧生产 payload 分支：{@code
-   * entries} 里不再有 {@code industries}（恒空数组，只是 payload 解析器的必填壳）、{@code laborSupply} / {@code
-   * allocations} / {@code assetShares} / {@code units} / {@code memberships}；阶层池状态由顶层 {@code
-   * classFirst}（{@link ClassFirstState}）承担，它是唯一的生产结算权威。旧档若带这些旧键，读入时按"只读迁移数据"处理， <b>绝不回到旧结算路径</b>。
-   *
-   * <p>★★ <b>P1 的两个 profile</b>：
+   * <p>★★ <b>两个 profile 的职责</b>：
    *
    * <ul>
-   *   <li>{@link #CLASS_FIRST}：旧口径逐字节不变 —— 只种阶层池状态 + 最小人口/市场壳，不发 {@code modes} / {@code
-   *       classStructures} / {@code classPositions} / {@code classStandings}；
-   *   <li>{@link #PRODUCTION_RUNTIME}：复用 class-first 的人口/库存/货币/ClassFirstState 播种路径，并在 {@code
-   *       economy.Seed} 顶层追加 {@code modes} / {@code classStructures} / {@code classPositions} /
-   *       {@code classStandings} 四个键（默认目录来自 {@code DefaultProductionModes}）。
+   *   <li>{@link #CLASS_FIRST}：class-first 的生产权威路径 —— 只种阶层池状态 + 最小人口/市场壳，不发 {@code modes} / {@code
+   *       classStructures} / {@code classPositions} / {@code classStandings}；顶层 {@code classFirst}
+   *       键是它的正式状态。
+   *   <li>{@link #PRODUCTION_RUNTIME}：P2 恢复的旧完整生产路径 —— {@code entries[]} 带 {@code industries} /
+   *       {@code laborSupply} / {@code allocations} / {@code assetShares} / {@code units} / {@code
+   *       memberships}，并追加 {@code modes} / {@code classStructures} / {@code classPositions} /
+   *       {@code classStandings} / {@code assetRules}（+ 可对上的 {@code liquidationPolicies}）；{@code
+   *       classFirst} 为空（生产权威是 entries 的旧生产结构）。
    * </ul>
+   *
+   * <p>★ 旧 {@code legacy} / {@code complete} 两个线格式名不再可解析（P2 起 fail-closed，不把缺省猜成旧 profile）。
    */
   public enum FoundationProfile {
-    /** ★★ 旧口径 profile：只种阶层池状态 + 最小人口/市场壳；不种旧生产结构，也不发生产方式目录。 */
+    /** ★★ class-first：阶层池状态 + 最小人口/市场壳；不种旧生产结构，也不发生产方式目录。 */
     CLASS_FIRST("class-first"),
 
-    /** ★★ P1 新 profile：class-first 基础 + 默认生产方式/阶层结构/位置/家户归属（P1 只种状态，不接线结算）。 */
+    /** ★★ P2 正式生产运行时：旧完整生产 entries + 默认生产方式目录/资产规则。 */
     PRODUCTION_RUNTIME("production-runtime");
 
     private final String wireName;
@@ -149,12 +162,19 @@ public final class EconomySeeder {
       return wireName;
     }
 
-    /** ★ 该 profile 是否复用 class-first 的人口/库存/货币/{@link ClassFirstState} 播种路径（当前两个 profile 都为真）。 */
+    /** ★ 该 profile 的正式状态是顶层 {@code classFirst}（且必须非空）；只有 CLASS_FIRST 为真。 */
     public boolean seedsClassFirstFoundation() {
-      return this == CLASS_FIRST || this == PRODUCTION_RUNTIME;
+      return this == CLASS_FIRST;
     }
 
-    /** ★ 该 profile 是否在 {@code economy.Seed} 顶层追加默认生产方式目录四键。 */
+    /**
+     * ★ 该 profile 走旧完整生产路径（entries 的 industries/units/assetShares/labor/allocations/memberships）。
+     */
+    public boolean seedsProductionStructure() {
+      return this == PRODUCTION_RUNTIME;
+    }
+
+    /** ★ 该 profile 在 {@code economy.Seed} 顶层追加默认生产方式目录/阶层/资产规则。 */
     public boolean seedsProductionCatalog() {
       return this == PRODUCTION_RUNTIME;
     }
@@ -743,8 +763,8 @@ public final class EconomySeeder {
       List<Map<String, Object>> pledges,
       List<Map<String, Object>> extraMoneyIssuances,
       TestConditions.Report conditionReport,
-      // ★★ R2a/P1：class-first 系 profile（CLASS_FIRST / PRODUCTION_RUNTIME）的正式状态；顶层 classFirst 键只在
-      //    该 profile 需要它且状态非空时发出（见 FoundationProfile.seedsClassFirstFoundation）。
+      // ★★ R2a/P2：CLASS_FIRST 的正式状态；顶层 classFirst 键只在该 profile 需要它且状态非空时发出
+      //    （见 FoundationProfile.seedsClassFirstFoundation）。PRODUCTION_RUNTIME 的生产权威是 entries 旧结构。
       ClassFirstState classFirst) {
 
     /**
@@ -832,7 +852,8 @@ public final class EconomySeeder {
       }
       extraMoneyIssuances = Collections.unmodifiableList(extraMoneyIssuancesCopy);
       conditionReport = conditionReport == null ? TestConditions.Report.EMPTY : conditionReport;
-      // ★★ R2a/P1：class-first 系 profile 必须真的种出池与账户 —— 这里 fail-closed，不把"classFirst 留空"的载荷发出去。
+      // ★★ R2a/P2：CLASS_FIRST 必须真的种出池与账户 —— 这里 fail-closed，不把"classFirst 留空"的载荷发出去；
+      //    PRODUCTION_RUNTIME 的 classFirst 为空态（它不发顶层 classFirst 键）。
       classFirst = classFirst == null ? ClassFirstState.empty() : classFirst;
       if (profile.seedsClassFirstFoundation() && classFirst.isEmpty()) {
         throw new IllegalArgumentException(
@@ -843,9 +864,10 @@ public final class EconomySeeder {
     /**
      * {@code economy.Seed} 的载荷文本（{@code mapId} / {@code rulesVersion} / {@code entries} / {@code
      * markets} 都在顶层）。CLASS_FIRST 的键集与键序逐字节不变（追加一个顶层 {@code classFirst}，不发旧生产结构）； PRODUCTION_RUNTIME
-     * 在 CLASS_FIRST 的键集之后<b>追加</b> {@code modes} / {@code classStructures} / {@code classPositions}
-     * / {@code classStandings} 四个键（见 {@link #jsonOf}）。★ P3：无 conditions 时 {@code
-     * debtContracts}/{@code pledges} 仍是空表、也不出现 {@code testConditions} 键。
+     * 的 entries 是恢复的旧完整生产结构，并在其后<b>追加</b> {@code modes} / {@code classStructures} / {@code
+     * classPositions} / {@code classStandings} / {@code assetRules} / {@code liquidationPolicies}
+     * 六个键 （见 {@link #jsonOf}）。★ P3：无 conditions 时 {@code debtContracts}/{@code pledges} 仍是空表、也不出现
+     * {@code testConditions} 键。
      */
     public String economyPayload() {
       return jsonOf(
@@ -938,7 +960,7 @@ public final class EconomySeeder {
 
   /**
    * 真地图重载（{@code terrainIndex()} 一次物化后 O(1) 查）—— 见 {@link #payload(String, List,
-   * GameMap)}；初始禀赋取默认值，profile 缺省 {@link FoundationProfile#LEGACY}。
+   * GameMap)}；初始禀赋取默认值，profile 缺省 {@link FoundationProfile#CLASS_FIRST}。
    */
   public static Seed plan(String mapId, List<PopulationGroup> groups, GameMap map) {
     return plan(mapId, groups, map, genesisMoneyMilliPerCapita(), FoundationProfile.CLASS_FIRST);
@@ -946,14 +968,14 @@ public final class EconomySeeder {
 
   /**
    * ★★ E3：真地图重载 + **初始禀赋参数**（毫/人）。默认重载逐值等于旧行为；本重载只改 {@code INITIAL_ENDOWMENT}
-   * 的每人金额，商品/人口/劳动/资产口径一字不动。profile 缺省 {@link FoundationProfile#LEGACY}。
+   * 的每人金额，商品/人口/劳动/资产口径一字不动。profile 缺省 {@link FoundationProfile#CLASS_FIRST}。
    */
   public static Seed plan(
       String mapId, List<PopulationGroup> groups, GameMap map, long genesisMoneyMilliPerCapita) {
     return plan(mapId, groups, map, genesisMoneyMilliPerCapita, FoundationProfile.CLASS_FIRST);
   }
 
-  /** ★ P1：真地图 + profile（初始禀赋取默认值）；{@link FoundationProfile#LEGACY} 逐值等于旧行为。 */
+  /** ★ P1/P2：真地图 + profile（初始禀赋取默认值）；{@link FoundationProfile#CLASS_FIRST} 逐值等于当前 HEAD 行为。 */
   public static Seed plan(
       String mapId, List<PopulationGroup> groups, GameMap map, FoundationProfile profile) {
     return plan(mapId, groups, map, genesisMoneyMilliPerCapita(), profile, TestConditions.EMPTY);
@@ -1034,11 +1056,11 @@ public final class EconomySeeder {
    * <p>★★ <b>无 conditions 的路径逐字节不变</b>：三张条件表为空 + 报告为空 ⇒ 不出现 {@code testConditions} 键， {@code
    * debtContracts}/{@code pledges} 仍是空数组，与本方法 P1 版本的输出逐字节相同。
    *
-   * <p>★★ <b>R2a：{@code classFirst} 在 class-first 系 profile（{@link FoundationProfile#CLASS_FIRST} /
-   * {@link FoundationProfile#PRODUCTION_RUNTIME}）下发出</b>，且为空时 fail-closed（"必须真的有池和账户"）；
-   * PRODUCTION_RUNTIME 还在<b>本方法末尾追加</b> {@code modes} / {@code classStructures} / {@code
-   * classPositions} / {@code classStandings} 四个顶层键（默认目录来自 {@code DefaultProductionModes}）；
-   * CLASS_FIRST 的键集/键序/值逐字节不变（下面每个分支都按 profile 原样比较，不重排既有键）。
+   * <p>★★ <b>R2a/P2：{@code classFirst} 只在 {@link FoundationProfile#CLASS_FIRST} 下发出</b>，且为空时
+   * fail-closed（"必须真的有池和账户"）；PRODUCTION_RUNTIME 在<b>本方法末尾追加</b>六个顶层键：{@code modes} / {@code
+   * classStructures} / {@code classPositions} / {@code classStandings} / {@code assetRules} /
+   * {@code liquidationPolicies}（默认目录来自 {@code DefaultProductionModes}）。 CLASS_FIRST
+   * 的键集/键序/值逐字节不变（下面每个分支都按 profile 原样比较，不重排既有键）。
    */
   static String jsonOf(
       String mapId,
@@ -1070,7 +1092,7 @@ public final class EconomySeeder {
         throw new IllegalArgumentException(
             profile.name() + " 的 economy.Seed 必须带非空 classFirst（拒绝发出空壳载荷）");
       }
-      // ★★ R2a：阶层池状态是 class-first 系 profile 的生产权威；线格式的唯一拼写点是 economy 的持久 codec。
+      // ★★ R2a：阶层池状态是 CLASS_FIRST 的生产权威；线格式的唯一拼写点是 economy 的持久 codec。
       payload.put("classFirst", classFirstNode(classFirst));
     }
     // ★★ E3：政府与 INITIAL_ENDOWMENT 发行记录（缺省长（ENDOWMENT=零）时只有 governments；旧载荷缺这两个键 ⇒ 空表）。
@@ -1091,13 +1113,17 @@ public final class EconomySeeder {
       // ★ 条件应用的可读报告（条数 + 外部注入总量 + 具名 reason）：随载荷走，读口/审计可核。
       payload.put("testConditions", conditionReport.toWireMap());
     }
-    // ★★ P1：PRODUCTION_RUNTIME 在既有键集之后**追加**生产方式目录四键 —— 顺序固定为 modes / classStructures /
-    //   classPositions / classStandings；CLASS_FIRST 不进这个分支，输出因此逐字节不变。
+    // ★★ P2：PRODUCTION_RUNTIME 在既有键集之后**追加**六个顶层键 —— 顺序固定为 modes / classStructures /
+    //   classPositions / classStandings / assetRules / liquidationPolicies；CLASS_FIRST 不进这个分支，
+    //   输出因此逐字节不变。
     if (profile.seedsProductionCatalog()) {
+      // ★★ P2：基础六表（mode/结构/位置/standing）后追加资产规则；清算政策与规则 id 同源派生 ⇒ 引用必然对得上。
       payload.put("modes", productionModeNodes());
       payload.put("classStructures", classStructureNodes());
       payload.put("classPositions", classPositionNodes());
       payload.put("classStandings", productionRuntimeClassStandings(entries));
+      payload.put("assetRules", productionRuntimeAssetRuleNodes());
+      payload.put("liquidationPolicies", productionRuntimeLiquidationPolicyNodes());
     }
     return ToolSupport.json(payload);
   }
@@ -1440,9 +1466,9 @@ public final class EconomySeeder {
   }
 
   /**
-   * ★★ <b>P1：纯函数主入口 + 初始禀赋 + profile</b>。两个 profile 都复用同一条入口：{@link FoundationProfile#CLASS_FIRST}
-   * 只发 class-first 键集（旧口径逐字节不变）；{@link FoundationProfile#PRODUCTION_RUNTIME} 在此基础上让 {@code
-   * Seed.economyPayload()} 追加生产方式目录四键。 entries/库存/货币/发行记录逐值不变。
+   * ★★ <b>P2：纯函数主入口 + 初始禀赋 + profile</b>。{@link FoundationProfile#CLASS_FIRST} 只发 class-first
+   * 键集（旧口径逐字节不变）；{@link FoundationProfile#PRODUCTION_RUNTIME} 走恢复的旧完整生产 entries，并在 {@code
+   * Seed.economyPayload()} 追加生产方式目录/阶层/资产规则。
    */
   static Seed plan(
       String mapId,
@@ -1470,22 +1496,22 @@ public final class EconomySeeder {
     }
     // ★ P3：缺省/空 conditions = P1 路径（不新增任何键、不碰任何账）。
     conditions = conditions == null ? TestConditions.EMPTY : conditions;
-    // ★★ R2a/P1：两个 profile 都走同一条 class-first 播种路径 —— 只种阶层池状态 + 最小人口/市场壳，不生成旧产业/
-    //   关系/unit/资产份额/劳动配额/成员份额；PRODUCTION_RUNTIME 只是在载荷出口追加默认生产方式目录（见 jsonOf）。
-    if (!profile.seedsClassFirstFoundation()) {
-      throw new IllegalArgumentException(
-          "只支持 class-first / production-runtime profile: " + profile);
-    }
-    return planClassFirst(
-        mapId, groups, terrainOf, genesisMoneyMilliPerCapita, profile, conditions);
+    // ★★ P2：两个 profile 走两条正式路径 —— CLASS_FIRST = 阶层池状态；PRODUCTION_RUNTIME = 恢复的旧完整生产
+    //   entries + 出口追加默认生产方式目录/资产规则（见 jsonOf）。两条路径都不再共用同一条人口壳。
+    return switch (profile) {
+      case CLASS_FIRST ->
+          planClassFirst(mapId, groups, terrainOf, genesisMoneyMilliPerCapita, profile, conditions);
+      case PRODUCTION_RUNTIME ->
+          planProductionRuntime(
+              mapId, groups, terrainOf, genesisMoneyMilliPerCapita, profile, conditions);
+    };
   }
 
-  // ── R2a/P1：class-first 系 profile 的播种路径（只种阶层池 + 最小人口/市场壳）────────────────────
+  // ── R2a/P2：CLASS_FIRST 的播种路径（只种阶层池 + 最小人口/市场壳）────────────────────────────
 
   /**
-   * ★★ <b>class-first 系 profile 的纯函数播种路径</b>（{@link FoundationProfile#CLASS_FIRST} 与 {@link
-   * FoundationProfile#PRODUCTION_RUNTIME} 共用；profile 只影响 {@link Seed#profile()} 与 {@code
-   * applyTestConditions} 的分支，人口/库存/货币/ClassFirstState 逐值同源）。
+   * ★★ <b>CLASS_FIRST 的纯函数播种路径</b>（{@link FoundationProfile#PRODUCTION_RUNTIME} 已改为旧完整生产路径，
+   * 不再进入本方法）。
    *
    * <p>它复用旧路径的人口聚合与开缸库存/货币算法（{@link #ruralCohort} / {@link #urbanCohort}），但出口完全不同：
    *
@@ -1510,8 +1536,7 @@ public final class EconomySeeder {
    * 只带人口/劳动/份额（<b>没有库存字段</b>，因此不存在池内第二本货账）； actor 家户 {@code GoodsAccount} 是与池同源、逐家户展开的账本（R2b 把
    * {@code settleOneDay} 的账户增量写回它）。
    *
-   * @param profile 播种 profile（只允许 {@link FoundationProfile#CLASS_FIRST} / {@link
-   *     FoundationProfile#PRODUCTION_RUNTIME}；进入本方法前已由 {@link #plan} fail-closed 判过）
+   * @param profile 播种 profile（只允许 {@link FoundationProfile#CLASS_FIRST}；由 {@link #plan} 分派）
    */
   static Seed planClassFirst(
       String mapId,
@@ -2859,29 +2884,26 @@ public final class EconomySeeder {
                 + "，份额数量="
                 + share.quantity());
       }
-      if (profile == FoundationProfile.CLASS_FIRST) {
-        throw new IllegalArgumentException(
-            "test-condition: "
-                + where
-                + " 需要 complete profile 的旧资产规则；R3a 起只支持 CLASS_FIRST"
-                + "（不种旧 mode/资产规则，质押没有落点）—— 该条件在 class-first 世界不适用");
-      }
-      if (profile == FoundationProfile.PRODUCTION_RUNTIME) {
-        throw new IllegalArgumentException(
-            "test-condition: "
-                + where
-                + " 需要旧资产规则/已种 mode 的 profile；PRODUCTION_RUNTIME（P1）只种默认生产方式目录，"
-                + "不种旧 mode/资产规则，质押没有落点 —— 该条件在 production-runtime 世界不适用");
-      }
-      ProductionModeId defaultMode = LegacyClassStructure.defaultModeId();
-      if (!pledge.modeId().equals(defaultMode)) {
-        throw new IllegalArgumentException(
-            "test-condition: "
-                + where
-                + " 指名的 mode 不存在（本 profile 只种 "
-                + defaultMode.value()
-                + "）: "
-                + pledge.modeId());
+      switch (profile) {
+        case CLASS_FIRST ->
+            throw new IllegalArgumentException(
+                "test-condition: "
+                    + where
+                    + " 需要 complete profile 的旧资产规则；R3a 起只支持 CLASS_FIRST"
+                    + "（不种旧 mode/资产规则，质押没有落点）—— 该条件在 class-first 世界不适用");
+        case PRODUCTION_RUNTIME -> {
+          // ★★ P2：旧路径的 LegacyClassStructure.defaultModeId() 单值硬编码改成 DefaultProductionModes
+          //   目录查询 —— 目录外的 mode 具名拒绝，不静默通过（目录是唯一 mode 来源）。
+          if (DefaultProductionModes.mode(pledge.modeId()).isEmpty()) {
+            throw new IllegalArgumentException(
+                "test-condition: "
+                    + where
+                    + " 指名的 mode 不在 PRODUCTION_RUNTIME 的默认生产方式目录里（拒绝凭空引用）: "
+                    + pledge.modeId()
+                    + "；合法 mode: "
+                    + DefaultProductionModes.modes().keySet());
+          }
+        }
       }
       pledgeNodes.add(pledgeNode(pledgeIdFor(i, pledge), pledge));
     }
@@ -3237,4 +3259,1202 @@ public final class EconomySeeder {
     }
     return matches.get(0);
   }
+
+  /**
+   * ★★ <b>PRODUCTION_RUNTIME：P2 恢复的旧完整生产播种路径</b>（旧 {@code b243e3d9^} 的 LEGACY/COMPLETE 共同生产段）。
+   *
+   * <p>它与 {@link #planClassFirst} 是两条并列的正式路径：本方法逐格生成 {@code industries}（farm/weave/craft）、 {@code
+   * units} / {@code assetShares} / {@code laborSupply} / {@code allocations} / {@code memberships}
+   * / 经营者开缸账；阶层池 {@link ClassFirstState} 为空态（生产权威是 entries 的旧生产结构）。
+   *
+   * <p>★ 载荷出口的 {@code modes} / {@code classStructures} / {@code classPositions} / {@code
+   * classStandings} / {@code assetRules} / {@code liquidationPolicies} 由 {@link #jsonOf} 的 {@link
+   * FoundationProfile#seedsProductionCatalog()} 分支追加（mode 目录来自 {@code DefaultProductionModes}）。
+   */
+  private static Seed planProductionRuntime(
+      String mapId,
+      List<PopulationGroup> groups,
+      Function<HexCoord, String> terrainOf,
+      long genesisMoneyMilliPerCapita,
+      FoundationProfile profile,
+      TestConditions conditions) {
+    Map<HexCoord, List<PopulationGroup>> ruralByHex = new LinkedHashMap<>();
+    Map<HexCoord, List<PopulationGroup>> urbanByHex = new LinkedHashMap<>();
+    for (PopulationGroup group : groups) {
+      Map<HexCoord, List<PopulationGroup>> target =
+          PopulationLots.isUrban(group) ? urbanByHex : ruralByHex;
+      target.computeIfAbsent(group.residence(), hex -> new ArrayList<>()).add(group);
+    }
+    List<HexCoord> hexes = new ArrayList<>(ruralByHex.keySet());
+    for (HexCoord hex : urbanByHex.keySet()) {
+      if (!ruralByHex.containsKey(hex)) {
+        hexes.add(hex); // 有城市却无农村人口的格也要有经济状态（否则那座城的人口凭空消失）
+      }
+    }
+    hexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
+
+    List<Map<String, Object>> entries = new ArrayList<>(hexes.size());
+    Map<HouseholdId, Map<CommodityId, Long>> householdStocks = new LinkedHashMap<>();
+    // ★ S1：家户 id → 账所在格（去重表：id 由 ofSeed 生成 ⇒ 同 (格,居住,阶层) 恒同一 id）。
+    Map<HouseholdId, HexCoord> householdLocations = new LinkedHashMap<>();
+    // ★★ H4：创世货币禀赋（裁定 K14）走**同一处接缝** —— 与 householdStocks 同一次循环算出、同一份交给
+    //   {@link HouseholdSeeder}（两处各算一遍必然漂开）。★ 它是**初始条件**，不是发行：见 {@link #householdMoney}。
+    Map<HouseholdId, Map<CurrencyId, Long>> householdMoney = new LinkedHashMap<>();
+    // ★★ H4：逐格市场的载荷（M1-A 每格单一计价货币 + 固定价）。本批逐格价格无差异 ⇒ 共享同一个不可变 {@link Market}。
+    Map<HexCoord, Market> markets = new LinkedHashMap<>();
+    // ★★ H5：逐格逐产业的**经营主体开缸账**（键序 = 产业生成序 = farm → weave → craft ⇒ 内容的纯函数）。
+    List<OperatorSeed> operators = new ArrayList<>();
+    // ★ S1.4：全部格的成员份额集中一份，供出口守恒自检（逐 lot Σcount == 该批次的 social 人数）。
+    List<Map<String, Object>> allMemberships = new ArrayList<>();
+    for (HexCoord hex : hexes) {
+      List<PopulationGroup> ruralPool = ruralByHex.getOrDefault(hex, List.of());
+      List<PopulationGroup> urbanPool = urbanByHex.getOrDefault(hex, List.of());
+      IndustryId farmId = IndustryHexKeys.id(FARM, hex.q(), hex.r());
+      IndustryId craftId = IndustryHexKeys.id(CRAFT, hex.q(), hex.r());
+      IndustryId weaveId = IndustryHexKeys.id(WEAVE, hex.q(), hex.r());
+      // ★★ R3B.2：新载荷显式产生 unit —— 先建 plan（模板 + 经营者 + 产能），再逐 unit/份额落载荷。
+      // ★★ **本格的产能与人口派生量**（H0.3：产能从"行"搬到"产业"，故它们在这里一次算好）：
+      //   亩 = 地形系数决定（**与人口无关**：没人种的格，地还在）；织机/作坊 = 人口 ÷ 场景参数。
+      long landMilliMu = landMilliMuOf(terrainOf.apply(hex));
+      long looms = populationOf(ruralPool) / RURAL_CAPITA_PER_LOOM;
+      long workshops = populationOf(urbanPool) / URBAN_CAPITA_PER_WORKSHOP;
+      List<IndustryPlan> plans = new ArrayList<>(3);
+      plans.add(agriculture(hex, landMilliMu));
+      boolean hasRural = populationOf(ruralPool) > 0L;
+      if (hasRural) {
+        // ★★ R3（T4）：农村家庭纺织 —— 配方 FIBER + LABOR + TOOL → CLOTH，由**同一批农村人**承担（见 appendAllocation）。
+        //   ★ 它**没有自己的阶层行**（H0.2 起织机住在本产业的 {@code capacity}，纤维住在农村四行）⇒ 只有"有农村人口"
+        //     的格才建它（没有农村人口的格既无织机也无农村劳动配额 ⇒ 建出来是一具空壳）。
+        plans.add(householdWeaving(hex, looms));
+      }
+      boolean hasCraft = populationOf(urbanPool) > 0L;
+      if (hasCraft) {
+        plans.add(handicraft(hex, workshops));
+      }
+      List<Map<String, Object>> industries = new ArrayList<>(plans.size());
+      for (IndustryPlan plan : plans) {
+        industries.add(plan.payload());
+      }
+      // ★★ H5 ⑤：**经营者自己持账** —— 有产业才有经营主体，故这一份与上面三个产业**逐条对齐**：
+      //   · farm（恒有，ESTATE）：开缸商品空（它的种子在**出料主体**的账上 —— feudal 档的 inputSupplier 就是它自己，
+      //     而它的缸空 ⇒ H3 的家户代理那一层照旧供种，逐值不变）；无货币档 ⇒ 空钱包；
+      //   · weave（有农村人口才有，HOUSEHOLD）：开缸商品空（纤维在**农村家户**的账上，H0.2 的既定分工）；无货币档；
+      //   · craft（有城镇人口才有，WORKSHOP）：开缸商品 = **一个周期的工具用量 / 座**（H5 ④：工具是它自己的产品，
+      //     故这份周转料交给它自己 —— 若仍留在城镇家户账上，"作坊吃自己产的工具"这条通道就断在别人的缸里）；
+      //     钱包 = 工资周转金（见 {@link #operatorWageReserveMilli}）。
+      operators.add(operatorSeed(farmId, REGIME_FEUDAL, hex, Map.of()));
+      if (hasRural) {
+        operators.add(operatorSeed(weaveId, REGIME_HOUSEHOLD, hex, Map.of()));
+      }
+      if (hasCraft) {
+        operators.add(
+            operatorSeed(
+                craftId,
+                REGIME_HANDICRAFT,
+                hex,
+                Map.of(new CommodityId(COMMODITY_TOOL), workshops * toolPerWorkshopMilli())));
+      }
+      // ★★ **R2：该格的劳动供给与配额**（第三阶段设计稿 §四）—— 创世按"农村批次 → 农业（庄园）/ 城镇批次 →
+      //   手工业（作坊）"初始化配额；**R3 起农村那 1000‰ 拆成"农业 900‰ + 家庭纺织 100‰"**（同一批人两条配额，
+      //   总和仍 ≤ 该批次的可用劳动 —— 由 {@code EconomyData} 的构造期守卫判死）。
+      //   ★ **供给行每池只发一次**（{@link #appendSupply}）；配额按 (池, 产业) 各发一条（{@link #appendAllocation}）。
+      List<Map<String, Object>> laborSupply = new ArrayList<>();
+      List<Map<String, Object>> allocations = new ArrayList<>();
+      // ★★ S1：成员份额（逐 lot → 家户）：由 cohortGroup 按 row population × pool 各批次人数权重拆出。
+      List<Map<String, Object>> memberships = new ArrayList<>();
+      appendSupply(laborSupply, ruralPool);
+      appendSupply(laborSupply, urbanPool);
+      IndustryPlan farmPlan = planOf(plans, farmId);
+      if (hasRural) {
+        IndustryPlan weavePlan = planOf(plans, weaveId);
+        long ruralDaily = industryDailyLabor(ruralPool);
+        long weaveQuota = ruralDaily * WEAVE_SHARE_PER_MILLE / 1000L;
+        // ★ 残差归农业（"农业 = ruralDaily − weaveQuota"⇒ **要切的总量**之和恒等于本池日劳动（折扣后口径））。
+        //   ★★ M1.8 起不等于"实际发出的配额之和"：预算按**逐批次折扣后的可用劳动**封顶，性别权重偏斜时某些批次会
+        //      被压到上限 ⇒ 总配额可以**分不满**（合法状态；见 appendAllocation / laborBudget 的类注）。
+        Map<PeopleLotId, Long> budget = laborBudget(ruralPool);
+        appendAllocation(
+            allocations,
+            budget,
+            ruralPool,
+            hex,
+            farmPlan.unitId(),
+            farmPlan.operator(),
+            FARM,
+            ruralDaily - weaveQuota);
+        appendAllocation(
+            allocations,
+            budget,
+            ruralPool,
+            hex,
+            weavePlan.unitId(),
+            weavePlan.operator(),
+            ACTIVITY_WEAVE,
+            weaveQuota);
+      }
+      if (hasCraft) {
+        IndustryPlan craftPlan = planOf(plans, craftId);
+        appendAllocation(
+            allocations,
+            laborBudget(urbanPool),
+            urbanPool,
+            hex,
+            craftPlan.unitId(),
+            craftPlan.operator(),
+            CRAFT,
+            industryDailyLabor(urbanPool));
+      }
+      // ★★ **R4-B.3a：把上面的"整额配额 + 整份 capacity"确定性地拆成主 unit + 家户副 unit** ——
+      //   劳动行已经按现有规则发完（逐值不动），这里只做"把已有的拆成两笔"：
+      //   · 副 unit 合计拿 ⌊总量 × SECONDARY_PER_MILLE ÷ 1000⌋，主 unit 拿剩余；
+      //   · 分不出 ≥ 一份 capacityPerUnit 的家户跳过（其劳动与份额都留在主 unit）；
+      //   · Σ 份额逐 asset 不变、Σ 配额逐 (批次, 家户) 不变（见 splitIndustry 的守恒注）。
+      //   ★ 必须在 allocations 发完之后做：候选家户 = "在本格配额里出现过的家户"，只有发完才知道。
+      long landlordPopulation =
+          hasRural
+              ? splitByShares(populationOf(ruralPool), CLASS_SHARE_PER_MILLE)[LANDLORD_SLOT_INDEX]
+              : 0L;
+      List<IndustrySplit> splits = new ArrayList<>(plans.size());
+      for (IndustryPlan plan : plans) {
+        splits.add(splitIndustry(plan, allocations, hex, landlordPopulation));
+      }
+      List<Map<String, Object>> units = new ArrayList<>();
+      List<Map<String, Object>> assetShares = new ArrayList<>();
+      List<Map<String, Object>> splitAllocations = new ArrayList<>();
+      for (IndustrySplit split : splits) {
+        IndustryPlan plan = split.plan();
+        // 主 unit：载荷逐字段与 B.2 同形（operator 不变），capacity 变成"剩余"量（体现在 assetShares）。
+        units.add(unitOf(plan));
+        assetShares.addAll(assetSharesOf(plan, split.mainCapacity()));
+        // 副 unit：owner/operator/kind 显式落 assetShares；relation 显式随 unit 发出。
+        for (HouseholdUnit secondary : split.secondaries()) {
+          units.add(unitOf(plan, secondary));
+          for (Map.Entry<String, Long> asset : secondary.quantities().entrySet()) {
+            assetShares.add(
+                assetShareNode(
+                    plan.id(),
+                    asset.getKey(),
+                    secondary.owner(),
+                    secondary.operator(),
+                    secondary.kind(),
+                    asset.getValue()));
+          }
+        }
+        // 劳动：主行减 moved、副 unit 新发一条；Σ 逐批次不变。
+        for (LaborMove move : split.laborMoves()) {
+          long laborMilli = ((Number) move.row().get("laborMilli")).longValue();
+          move.row().put("laborMilli", laborMilli - move.moved());
+          splitAllocations.add(secondaryAllocation(plan, move));
+        }
+      }
+      allocations.addAll(splitAllocations);
+      // ★★ **H0.2：本格的阶层行 = 两组四行（家户）** —— 行的身份是 {@code (格, 居住类型, 阶层)}，
+      //   **不再挂在任何产业下**（产业只留"制度 + 配方 + 产能"）。这与"行 = 家户、产业 = 生产活动"的分工一一对应：
+      //   一格的农村四行是**同一批农村人**，他们既供给农业（900‰）、也供给家庭纺织（100‰）；城镇四行同理只供给作坊。
+      //   ★ **两组恒在**（即使某池人口为 0）：格集本身由批次落点决定，而"这一格有没有城镇家户"是一件事、
+      //     "这一格此刻有没有城镇人口"是另一件事（H1 的家户 actor 按 格 × 居住 × 阶层 播，形状必须与行集一致）。
+      //     人口为 0 的行是**合法的空账**（人口/劳动/需求全 0），不是噪声：它是"这一格有这个家户、只是没人"。
+      List<Map<String, Object>> classes = new ArrayList<>(2 * CLASS_IDS.length);
+      // ★★ **H1：开缸库存的去处 = 家户账**（actor 侧的 {@code GoodsAccount}）。本方法把它**一次算好**并交回
+      //   （{@code Seed.householdStocks}），载荷里的阶层行**不再带 {@code goods}** —— 行里没有商品这件事
+      //   在"一本账"的判据（守恒式无 ΔΣRowGoods）里是必须的。
+      //   ★★ H4：**创世货币禀赋与它同源**（同一处循环、同一份人口口径）⇒ 商品与货币两本账在同一次 plan 里算定。
+      classes.addAll(
+          ruralCohort(
+              hex,
+              ruralPool,
+              landMilliMu,
+              householdLocations,
+              householdStocks,
+              householdMoney,
+              memberships,
+              genesisMoneyMilliPerCapita));
+      classes.addAll(
+          urbanCohort(
+              hex,
+              urbanPool,
+              workshops,
+              householdLocations,
+              householdStocks,
+              householdMoney,
+              memberships,
+              genesisMoneyMilliPerCapita));
+      Map<String, Object> entry = new LinkedHashMap<>();
+      entry.put("q", hex.q());
+      entry.put("r", hex.r());
+      entry.put("industries", industries);
+      entry.put("classes", classes);
+      entry.put("laborSupply", laborSupply);
+      entry.put("allocations", allocations);
+      // ★★ S1/R3B.2：本格各产业的资产份额由 plan 显式发出（容量整额 OWNED 给 unit.operator）。
+      entry.put("assetShares", assetShares);
+      entry.put("units", units);
+      entry.put("memberships", memberships);
+      allMemberships.addAll(memberships);
+      entries.add(entry);
+      // ★★ H4：本格的市场（M1-A：每格一个计价货币 + 一张价表）。★ **有 entry 才有市场** ——
+      //   "这一格没有市场"（格不在本表的键集里）是合法状态，不是缺数据。
+      markets.put(hex, MARKET_FACTORY);
+    }
+    // ★★ S1.4 出口自检：tick0 seed 是"人工造份额"的唯一入口 ⇒ 这里逐 lot 对账，不等就播不出去（fail-closed）。
+    requireMembershipConservation(groups, allMemberships);
+    Map<GovernmentId, Government> governments = Map.of(GENESIS_GOVERNMENT_ID, genesisGovernment());
+    // ★★ P3：INITIAL_ENDOWMENT 的总量取**条件注入之前**的家户+经营者钱包 —— 外部注入的货币走独立
+    //   FISCAL_ISSUE 审计（见 applyTestConditions），绝不混进"每人禀赋"这条记录。
+    Map<CurrencyId, Long> genesisEndowment = genesisEndowmentOf(householdMoney, operators);
+    AppliedConditions applied =
+        applyTestConditions(mapId, entries, householdStocks, householdMoney, profile, conditions);
+    return new Seed(
+        mapId,
+        entries,
+        markets,
+        householdLocations,
+        householdStocks,
+        householdMoney,
+        operators,
+        governments,
+        genesisEndowment,
+        genesisMoneyMilliPerCapita,
+        profile,
+        applied.debtContracts(),
+        applied.pledges(),
+        applied.extraMoneyIssuances(),
+        applied.report(),
+        ClassFirstState.empty());
+  }
+
+  // ── P2：PRODUCTION_RUNTIME 的资产规则 / 清算政策（DefaultProductionModes 是唯一 mode 来源）──────────
+
+  /** PRODUCTION_RUNTIME 基线覆盖的生产资料种类（SHIP/CATTLE 待 P4/P6 有资产来源后再补）。 */
+  private static final List<AssetKind> PRODUCTION_RUNTIME_ASSET_KINDS =
+      List.of(AssetKind.LAND, AssetKind.TOOL, AssetKind.WORKSHOP);
+
+  /** P2 基线资产规则的默认租金分成率（‰；沿用旧 COMPLETE 地基的 300‰ 制度量级）。 */
+  private static final int PRODUCTION_RUNTIME_RENT_SHARE_PER_MILLE = 300;
+
+  /**
+   * ★★ <b>PRODUCTION_RUNTIME：{@code assetRules[]} 节点</b>：{@code DefaultProductionModes} 的<b>每个
+   * mode</b> × LAND/TOOL/WORKSHOP。
+   *
+   * <p>★★ <b>id 是派生值、不是手写第二份身份</b>：逐条经 {@link AssetRuleId#idOf(ProductionModeId, AssetKind)} 生成（与
+   * {@code EconomyPayloads.parseAssetRules} 的判据同一处），并有 {@code idMatchesIdentity} 的同一条 {@code (mode,
+   * assetKind)} 唯一性。{@code rentRule}/{@code transferRule} 的形状与旧 COMPLETE 地基逐字段同源： LAND
+   * 分成粮、TOOL/WORKSHOP 分成布；转移需所有权人同意、不许转租。
+   *
+   * <p>★ 键序 = mode 目录序 × {@link #PRODUCTION_RUNTIME_ASSET_KINDS} 声明序；纯函数、可复现。
+   */
+  static List<Map<String, Object>> productionRuntimeAssetRuleNodes() {
+    List<Map<String, Object>> nodes = new ArrayList<>();
+    for (ProductionMode mode : DefaultProductionModes.modes().values()) {
+      for (AssetKind assetKind : PRODUCTION_RUNTIME_ASSET_KINDS) {
+        AssetRuleId ruleId = AssetRuleId.idOf(mode.id(), assetKind);
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("id", ruleId.value());
+        node.put("modeId", mode.id().value());
+        node.put("assetKind", assetKind.name());
+        node.put("isCoreMeans", true);
+        node.put("pledgeable", true);
+        // LAND/WORKSHOP = 1、TOOL = 2：土地/作坊先于工具处置（旧 COMPLETE 地基的显式制度参数）。
+        node.put("liquidationPriority", assetKind == AssetKind.TOOL ? 2 : 1);
+        node.put("rentRule", productionRuntimeRentRuleNode(assetKind));
+        node.put("transferRule", productionRuntimeTransferRuleNode());
+        nodes.add(node);
+      }
+    }
+    return nodes;
+  }
+
+  /** 一条资产规则的租金模板：产出分成 300‰；LAND 分成粮，TOOL/WORKSHOP 分成布。 */
+  private static Map<String, Object> productionRuntimeRentRuleNode(AssetKind assetKind) {
+    String commodity = assetKind == AssetKind.LAND ? COMMODITY_GRAIN : COMMODITY_CLOTH;
+    Map<String, Object> leg = new LinkedHashMap<>();
+    leg.put("kind", RentRule.RentType.SHARE.name());
+    leg.put("ratePerMille", PRODUCTION_RUNTIME_RENT_SHARE_PER_MILLE);
+    leg.put("fixedAmount", 0L);
+    leg.put("commodity", commodity);
+    Map<String, Object> rule = new LinkedHashMap<>();
+    rule.put("type", RentRule.RentType.SHARE.name());
+    rule.put("priority", 10);
+    rule.put("legs", List.of(leg));
+    return rule;
+  }
+
+  /** 一条资产规则的转移模板：可转移、需所有权人同意、不许转租（旧 COMPLETE 地基的三个制度布尔）。 */
+  private static Map<String, Object> productionRuntimeTransferRuleNode() {
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("transferable", true);
+    node.put("requiresOwnerConsent", true);
+    node.put("allowSublease", false);
+    return node;
+  }
+
+  /**
+   * ★★ <b>PRODUCTION_RUNTIME：{@code liquidationPolicies[]} 节点</b>：与 {@link
+   * #productionRuntimeAssetRuleNodes()} 同一次 {@code (mode, assetKind)} 循环派生 ⇒ 每条政策的 {@code ruleId}
+   * 都指向本载荷真实发出的 {@code AssetRule}（引用完整性构造性成立，不伪造无规则的政策）。
+   *
+   * <p>★ 数值沿用旧 COMPLETE 地基：每次最多处置 500‰、保护量 1000 单位、POLICY 制度价 4 毫/单位、先给债权人。
+   */
+  static List<Map<String, Object>> productionRuntimeLiquidationPolicyNodes() {
+    List<Map<String, Object>> nodes = new ArrayList<>();
+    for (ProductionMode mode : DefaultProductionModes.modes().values()) {
+      for (AssetKind assetKind : PRODUCTION_RUNTIME_ASSET_KINDS) {
+        AssetRuleId ruleId = AssetRuleId.idOf(mode.id(), assetKind);
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("ruleId", ruleId.value());
+        node.put("maxLiquidatePerMille", 500);
+        node.put("protectedReserve", 1000L);
+        node.put("priceSource", LiquidationPolicy.PriceSource.POLICY.name());
+        node.put("policyValuePerUnitMilli", 4L);
+        node.put("recipientRule", LiquidationPolicy.RecipientRule.CREDITOR_FIRST.name());
+        nodes.add(node);
+      }
+    }
+    return nodes;
+  }
+
+  /**
+   * ★★ <b>经营者的创世<strong>工资周转金</strong></b>（毫计价货币；H5 ⑤）：<b>它自己那条制度里全部货币档规则的 每周期应付之和 × {@link
+   * #GENESIS_MONEY_BUFFER_PER_MILLE}÷1000</b>。
+   *
+   * <pre>
+   * handicraft：4 条 FIXED_MONEY_WAGE × 1,000 毫/周期 = 4,000 毫银/周期
+   *             × 1200‰（与家户禀赋同一个缓冲）= **4,800 毫银**（= 1.2 个周期的工资）
+   * 其余三档（feudal / household / tenant）：没有货币档规则 ⇒ 0 ⇒ 空钱包
+   * </pre>
+   *
+   * <p>★★ <b>为什么口径取自"制度里的货币档"而不是另拍一个数</b>：{@code RegimeRelations} 是"每周期该付多少"的**唯一拼写点** ——
+   * 播种器另写一份必然与它对不上（改一个数要改两处，而漏改不会报错）。
+   *
+   * <p>★★ <b>如实记的边界（本批没做的事）</b>：本批**没有任何钱回流到经营者的通道**（同格市场只在家户之间；经营者作为市场 参与者是后续批次）⇒
+   * 这笔周转金是**一次性的**：它付完 N=1.2 个周期的工资就见底（此后货币工资回到"实付 0"， 读数里 {@code due > 0 && paid == 0} 看得见）。★
+   * 这不是"静默付 0"：付不出是**账面上读得出来**的状态； 要让它长期成立，得让经营者**卖得掉它的布与工具**（市场参与者扩容）。
+   */
+  static long operatorWageReserveMilli(String regime, IndustryId id, ActorRef owner) {
+    ProductionRelation relation =
+        RegimeRelations.defaultRelation(
+            new RegimeId(regime),
+            ProductionUnitId.idOf(id, owner),
+            id,
+            owner,
+            Set.of(ResidenceKind.URBAN));
+    long perCycle = 0L;
+    for (CompensationRule rule : relation.rules()) {
+      if (rule.type().money()) {
+        perCycle += rule.fixedAmount();
+      }
+    }
+    return perCycle * GENESIS_MONEY_BUFFER_PER_MILLE / 1000L;
+  }
+
+  /** 一个经营者的开缸钱包（毫计价货币；0 ⇒ 空钱包）—— 逐字照 {@link #genesisMoney(long)} 的"只落正的量"。 */
+  static Map<CurrencyId, Long> operatorWallet(long milli) {
+    Map<CurrencyId, Long> wallet = new LinkedHashMap<>();
+    if (milli > 0L) {
+      wallet.put(MARKET_NUMERAIRE, milli);
+    }
+    return wallet;
+  }
+
+  /**
+   * 一个产业的**经营主体开缸账**（H5 ⑤）：主体由 {@code regime} 推导（{@link RegimeOperators#defaultOperator}，
+   * 与载荷边缘**同一条**规则 ⇒ 命令播出来的主体与这里算的是同一个），钱包由 {@link #operatorWageReserveMilli} 给出。
+   *
+   * @param id 产业 id（主体的 id 就是它 —— 见 {@code RegimeOperators} 的裁定 R3）
+   * @param regime 该产业的制度（决定主体的种类与货币档）
+   * @param hex 该产业所在的那一格（= 主体账户的第二段）
+   * @param goods 开缸商品（逐商品；0 项不落键）
+   */
+  static OperatorSeed operatorSeed(
+      IndustryId id, String regime, HexCoord hex, Map<CommodityId, Long> goods) {
+    ActorRef owner = RegimeOperators.defaultOperator(new RegimeId(regime), id);
+    return new OperatorSeed(
+        owner,
+        hex,
+        id.value() + " 经营者",
+        goods,
+        operatorWallet(operatorWageReserveMilli(regime, id, owner)));
+  }
+
+  /**
+   * ★★ **给一个池的每个批次发一条劳动供给**（R2）：{@code {group, period, grossLaborMilli, servedLaborMilli=0,
+   * committedLaborMilli=0}} —— 每批次**至多一条**（{@code EconomyData.laborSupply} 以批次 id 为键）。
+   *
+   * <p>★★ **为什么它与配额分家**（R3）：R2 时"一池一产业"⇒ 发配额时顺手发供给是等价的；R3 起**同一个农村池供给两个产业** （农业 +
+   * 家庭纺织），若仍由发配额的函数发供给，第二条配额会让同一批次出现**两份供给记录**（载荷解析当场拒： "同一份载荷里劳动供给重复"）。 ⇒ 供给按**池**发一次、配额按 **(池,
+   * 产业)** 各发一条，两者各自幂等。
+   *
+   * <p>★ **零毛劳动的批次不发供给**（未成年批次：D4 preset 的系数为 0）：发一条 0 的供给只是噪声， 而"没有供给"与"毛额 0
+   * 的供给"在结算与读口上**逐值同效**（两者都贡献 0，且都发不出配额）。
+   *
+   * @param laborSupply 出参：本格的供给行（每批次至多一条）
+   */
+  static void appendSupply(List<Map<String, Object>> laborSupply, List<PopulationGroup> pool) {
+    for (PopulationGroup group : pool) {
+      long gross = grossLaborMilli(group);
+      if (gross <= 0L) {
+        continue;
+      }
+      Map<String, Object> supply = new LinkedHashMap<>();
+      supply.put("group", group.id().value());
+      supply.put("period", FIRST_PERIOD);
+      supply.put("grossLaborMilli", gross);
+      // ★ 两项扣除本轮恒 0，但字段在（设计稿 §四 的公式是三项相减；LaborSupply 照减）。
+      supply.put("servedLaborMilli", 0L);
+      supply.put("committedLaborMilli", 0L);
+      laborSupply.add(supply);
+    }
+  }
+
+  /**
+   * ★★ **给一个产业发配额**（R2；R3 起按活动加性别权重；M1.8 起按**折扣后的可用劳动**加权）：把 {@code total} 按各批次的 **加权可用劳动**成比例切给它们
+   * （最大余数法，{@code Σ 配额 == total}）。
+   *
+   * <pre>
+   * 权重(batch) = 该批次**按阶层参与率折扣后的可用劳动** × ACTIVITY_SEX_WEIGHT_PER_MILLE[活动][该批次性别] ÷ 1000
+   * 配额(batch) = total × 权重 ÷ Σ权重                              // Σ == total（精确，残差按最大余数法）
+   * </pre>
+   *
+   * <p>★★ <b>"同一批次可以供给多个产业"因此是结构上成立的</b>：本方法只写"某一 (批次, 产业) 对"的一条配额，同一批次被另一个活动 再调用一次就会拿到**第二条**配额。
+   * 创世给农村批次发**两条** （农业 900‰ + 家庭纺织 100‰），**这正是 spec §四 那条压力测试**（"同一批人口能否同时参与多个生产过程，并保持劳动力守恒"）。
+   *
+   * <p>★★ **性别在这里进入配置**：权重按批次性别取 {@link #ACTIVITY_SEX_WEIGHT_PER_MILLE} ⇒ 纺织的配额默认偏向女性
+   * （"男耕女织"），而**不是**"女 = 纺织"的硬编码（男人照样有一条非零的纺织配额，只是权重低）。
+   *
+   * <p>★★ **每一批次的配额受 {@code budget} 约束**（见 {@link #laborBudget}）：切出来的份额若超过该批次**剩下的** 可支配劳动，
+   * 就压到上限（**多出来的部分留在预算里，也就是"分不满"** —— R2 明说配额之和可以小于可用劳动）。 ⇒ "Σ 该批次在各产业的配额 ≤
+   * 其可用劳动"**构造性成立**，不依赖"默认权重恰好不越界"。★ 这道预算是实测出来的： 把 {@link #WEAVE_SHARE_PER_MILLE} 改成 0（一个完全合理的 GM
+   * 配置）时，性别权重的偏斜会让男性青壮批次要 4,202,381 —— 改前（预算 = 毛额 4,072,000）它被压到毛额；★ M1.8 起预算 = 折扣后的可用
+   * 3,501,920，压得更早、更紧（这正是"参与率进计算"的落点）。★ 没有预算时载荷会被 {@code EconomyData} 的构造期守卫**当场拒**（世界播不出来）。
+   *
+   * <p>★ **{@code total ≤ 0} 时不发**（该池没活干，或该活动拿到的份额取整为 0）；**权重为 0 的批次也不发**（"没有配额"与"0 的配额"逐值同效）。
+   *
+   * @param allocations 出参：本格的配额行（每 (批次, 产业) 一条）
+   * @param budget 该池各批次的**剩余可支配劳动**（{@link #laborBudget}；**就地扣减**）
+   * @param total 该 unit 本次要切出去的劳动总量（千分劳动；= 该池日劳动 × 该活动的份额）
+   * @param unitId 收劳动的生产单元（R3B.2 起配额的 id 与 activity 都按它拼；见 {@code LaborAllocation.idOf}）
+   * @param operator 该 unit 的经营者（收劳动的主体；actor 列按它落载荷）
+   * @param activity 这笔劳动干什么的**标签**（本仓当前用产业种类标签：{@code farm} / {@code weave} / {@code craft}；
+   *     只有性别权重表读它，载荷的 activity 列写的是 unit id）
+   */
+  static void appendAllocation(
+      List<Map<String, Object>> allocations,
+      Map<PeopleLotId, Long> budget,
+      List<PopulationGroup> pool,
+      HexCoord hex,
+      ProductionUnitId unitId,
+      ActorRef operator,
+      String activity,
+      long total) {
+    if (total <= 0L) {
+      return;
+    }
+    Map<Sex, Integer> sexWeights = ACTIVITY_SEX_WEIGHT_PER_MILLE.get(activity);
+    if (sexWeights == null) {
+      throw new IllegalStateException("活动 " + activity + " 不在性别权重表里（拒绝臆造）");
+    }
+    List<PopulationGroup> workers = new ArrayList<>(pool.size());
+    List<Long> weights = new ArrayList<>(pool.size());
+    for (PopulationGroup group : pool) {
+      // ★★ M1.8：权重 = **按阶层参与率折扣后的**可用劳动（不是毛额）—— 与 total（也是折扣后的口径）同侧。
+      long available = participationAdjustedLaborMilli(group);
+      if (available > 0L) {
+        workers.add(group);
+        weights.add(available * sexWeightOf(sexWeights, group.sex()) / 1000L);
+      }
+    }
+    if (workers.isEmpty()) {
+      return; // 池里没有能干活的人（毛劳动全 0）⇒ total 必为 0，上面已经挡掉；这里是防御性的第二道
+    }
+    long[] weightArray = new long[weights.size()];
+    for (int i = 0; i < weightArray.length; i++) {
+      weightArray[i] = weights.get(i);
+    }
+    long[] shares = splitProportional(total, weightArray); // Σ shares == total（最大余数法，一个人不丢）
+    ResidenceKind residence = ResidenceKind.ofLot(pool.get(0).id());
+    for (int i = 0; i < workers.size(); i++) {
+      PopulationGroup group = workers.get(i);
+      // ★★ 预算约束（见方法注释）：份额超过该批次**剩下的**可支配劳动 ⇒ 压到上限，多出来的留在预算里。
+      long share = Math.min(shares[i], budget.getOrDefault(group.id(), 0L));
+      budget.put(group.id(), budget.getOrDefault(group.id(), 0L) - share);
+      if (share <= 0L) {
+        continue; // 该批次在这一活动上的权重为 0 / 取整为 0 / 预算已用尽 ⇒ 不发 0 配额
+      }
+      // ★★ S1：同一批次的这一份劳动按**阶层份额**拆到该居住类型的四个家户（与行的 CLASS_SHARE 同源），
+      //   于是每条配额都显式指名家户（不再有"pending 占位"这一运行期形态）。
+      long[] byHousehold = splitByShares(share, CLASS_SHARE_PER_MILLE);
+      for (int stratum = 0; stratum < CLASS_IDS.length; stratum++) {
+        long householdShare = byHousehold[stratum];
+        if (householdShare <= 0L) {
+          continue;
+        }
+        HouseholdId household =
+            HouseholdId.ofSeed(hex, residence, new SocialClassId(CLASS_IDS[stratum]));
+        Map<String, Object> allocation = new LinkedHashMap<>();
+        // ★★ R3B.2：id 与 activity 都按 **unit** 拼；actor = unit.operator（收劳动的主体）。
+        allocation.put("id", LaborAllocation.idOf(unitId, group.id(), household).value());
+        allocation.put("group", group.id().value());
+        allocation.put("household", household.value());
+        Map<String, Object> actor = new LinkedHashMap<>();
+        actor.put("kind", operator.kind().name());
+        actor.put("id", operator.id());
+        allocation.put("actor", actor);
+        allocation.put("activity", unitId.value());
+        allocation.put("laborMilli", householdShare);
+        allocation.put("period", FIRST_PERIOD);
+        allocations.add(allocation);
+      }
+    }
+  }
+
+  /**
+   * ★★ <b>S1.4：tick0 份额守恒自检</b>：逐 lot 的 {@code Σ membership.count} 必须等于该 {@link PopulationGroup}
+   * 的人数。
+   *
+   * <p>★ seed 是份额的**构造点**（拆分的最大余数法在 {@link #appendMemberships} 里）⇒ 出口这一道是"拆分没丢/没多" 的判别力所在：不等 ⇒
+   * 当场抛，把坏载荷挡在命令面之前（播进去的状态再想对账就晚了）。
+   */
+  private static void requireMembershipConservation(
+      List<PopulationGroup> groups, List<Map<String, Object>> memberships) {
+    Map<String, Long> expected = new LinkedHashMap<>();
+    for (PopulationGroup group : groups) {
+      expected.merge(group.id().value(), group.count(), Math::addExact);
+    }
+    Map<String, Long> actual = new LinkedHashMap<>();
+    for (Map<String, Object> membership : memberships) {
+      Object lot = membership.get("lot");
+      Object count = membership.get("count");
+      if (!(lot instanceof String lotId) || !(count instanceof Number number)) {
+        throw new IllegalStateException("成员份额载荷形状非法（lot/count）: " + membership);
+      }
+      actual.merge(lotId, number.longValue(), Math::addExact);
+    }
+    java.util.LinkedHashSet<String> lots = new java.util.LinkedHashSet<>(expected.keySet());
+    lots.addAll(actual.keySet());
+    List<String> mismatches = new ArrayList<>();
+    for (String lot : lots) {
+      long want = expected.getOrDefault(lot, 0L);
+      long got = actual.getOrDefault(lot, 0L);
+      if (want != got) {
+        mismatches.add("lot=" + lot + "：份额=" + got + " ≠ 社会人数=" + want);
+      }
+    }
+    if (!mismatches.isEmpty()) {
+      throw new IllegalStateException(
+          "tick0 seed 的 Σ Membership.count(lot) 必须等于 PopulationGroup.count(lot)（S1.4）："
+              + mismatches.subList(0, Math.min(5, mismatches.size())));
+    }
+  }
+
+  /**
+   * ★★ **M1.8：一个池的劳动预算**：每批次**按阶层参与率折扣后的可用劳动**（{@link
+   * #participationAdjustedLaborMilli(PopulationGroup)}） —— 不再是毛额。
+   *
+   * <p>★★ <b>为什么要有它</b>：{@link #appendAllocation} 按"性别权重 ×
+   * 可用劳动"切活动总量，而**一个池的日劳动本身已经是各行的参与率折扣后的数**（≈ 毛额的 86%）—— 两个活动先后发配额时，偏重的那一性完全可能被分到超过自己那份**可用**劳动
+   * （{@link #WEAVE_SHARE_PER_MILLE} 设 0 时男性青壮批次实测 4,202,381 &gt; 它的毛额 4,072,000，更远超它的折扣后可用
+   * 3,501,920）。 那时载荷会被 {@code EconomyData} 的构造期守卫拒 ⇒ **世界直接播不出来**。有了预算，那种配置退化成"分不满"（合法状态）。
+   *
+   * <p>★★ <b>M1.8 修的是什么</b>：改前预算是**毛额** ⇒ "地主 100‰ / 贫农 950‰"的差别只在产业**总量**里出现过一次，逐批次上限里完全不存在
+   * （真档实测四阶层 {@code labor/pop} 全 = 562.0‰）。现在预算与权重都走**同一个折扣后的可用劳动** ⇒ 参与率的差别在配额这一步就咬合。
+   *
+   * <p>★ <b>两条网各自的口径（如实记）</b>：本预算 = <b>紧</b>的那道（按参与率折扣，配额的实际上限）；{@code EconomyData} 的构造期守卫仍以 {@code
+   * LaborSupply.availableLabor()} = <b>毛额</b>为上限（宽的那道，零契约改动的代价）。 两者不矛盾：折扣后的配额必然 ≤
+   * 毛额，故守卫保持绿；"同一份劳动不得被两个产业各算一次满额"这条不变量由守卫守， 而"不得超过参与率折扣后的可用"由本预算守。
+   */
+  static Map<PeopleLotId, Long> laborBudget(List<PopulationGroup> pool) {
+    Map<PeopleLotId, Long> budget = new LinkedHashMap<>();
+    for (PopulationGroup group : pool) {
+      long available = participationAdjustedLaborMilli(group);
+      if (available > 0L) {
+        budget.put(group.id(), available);
+      }
+    }
+    return budget;
+  }
+
+  /** 某性别在某活动上的默认权重（‰）；表缺 ⇒ fail-closed（拒绝臆造）。 */
+  static int sexWeightOf(Map<Sex, Integer> weights, Sex sex) {
+    Integer weight = weights.get(sex);
+    if (weight == null) {
+      throw new IllegalStateException("性别 " + sex + " 不在活动权重表里（拒绝臆造）");
+    }
+    return weight;
+  }
+
+  /**
+   * 农业（**恒有**，§十）：制度 = **领主自营庄园**（{@link #REGIME_FEUDAL}）；★★ **H0.3 起产能 = 本格可耕地**， 不再按人口切进四行。
+   *
+   * <p>★ 本注原写"制度 = 封建租佃" —— 那是**同词两义**：租佃（佃农家户）是另立的 {@code tenant} 档，而本方法写进载荷的是 {@link
+   * #REGIME_FEUDAL}（**领主自营庄园**）。它原与同文件里 {@code REGIME_FEUDAL} 常量注**直接矛盾**， 已在 S1 阶段 3 D8 就地改对（同 D7
+   * 的口径）。
+   *
+   * <p>★★ **H0.2：它名下不再有四行** —— 那一格的四行农村家户搬到 entry 级（{@link #ruralCohort}），
+   * 因为"这一格有多少地"是**产业**的事、"这一格的人有多少粮/多少活"是**家户**的事（K2/K3 的分工）。
+   */
+  private static IndustryPlan agriculture(HexCoord hex, long landMilliMu) {
+    return industry(
+        FARM,
+        IndustryHexKeys.id(FARM, hex.q(), hex.r()).value(),
+        "农业",
+        REGIME_FEUDAL,
+        // ★★ **K3：产能从"行"搬到"产业"** —— 本格农业的产能总量 = 本格可耕地（千分亩）。
+        //   旧版是"按各行人口切成四份、每行写一份 LAND"（Σ 才等于格土地）；现在总量只有一处真相，
+        //   而"地归谁"由产权读口回答，不再与经济结算抢同一个字段。
+        //   ★ 值**允许 0**（沙漠/山地/海洋格：可耕地 0）—— 0 是合法产能（"这格没有地"），不是缺键。
+        Map.of("LAND", landMilliMu),
+        Map.of("meansWeightPerMille", 700, "laborWeightPerMille", 300),
+        // ★★ **V7 配方**：规模单位 = **亩**（每 1 亩要 1,000 千分亩，故 {@code 规模 == 产能的亩数}）；
+        //   每一亩需要 {@link #LABOR_MILLI_PER_MU} 千分劳动；每亩产 67 粮 + {@link #FIBER_OUTPUT_PER_MU} 单位纤维
+        //   （**田里同时出粮与纤维** —— 纤维是副产物，故不需要新的种植流程）；每亩下种 8 粮。
+        Map.of("LAND", MILLI_MU_PER_MU),
+        LABOR_MILLI_PER_MU,
+        Map.of(COMMODITY_GRAIN, GRAIN_OUTPUT_PER_MU, COMMODITY_FIBER, FIBER_OUTPUT_PER_MU),
+        Map.of("LAND", Map.of(COMMODITY_GRAIN, SEED_MILLI_PER_MU)));
+  }
+
+  /**
+   * ★★ **农村家庭纺织**（R3 的 T4；每个有农村人口的格一个）：配方 {@code FIBER + LABOR + TOOL → CLOTH}（spec §四 的压力测试），制度 =
+   * {@link #REGIME_HOUSEHOLD}，收劳动的主体是 {@code ActorKind.HOUSEHOLD} 家户。
+   *
+   * <p>★★ **H0.2：它不再有四行**（旧版那四行人口恒 0、劳动恒 0，是"同一批人的第二本账"）。旧版那四行上的东西**逐项去处**：
+   *
+   * <ul>
+   *   <li>**织机**（旧：四行各持一份 {@code meansOfProduction.TOOL}）⇒ 并成**总数**写进本产业的 {@code capacity} （{@link
+   *       #RURAL_CAPITA_PER_LOOM} 人一台）。理由：织机是**产能**（"单位规模 = 1 台织机"，见 {@code capacityPerUnit}），K3
+   *       把它从家户账上收归产业；旧版"Σ 四行 = 本格织机数"这条守恒， 现在由**一个数**直接成立；
+   *   <li>**纤维**（旧：四行各持一份 {@code goods.fiber}）⇒ 并入**农村四行**（见 {@link #ruralCohort}）。
+   *       理由：那是**农村池的活**（同一批人农闲织布），家户账只能记在自家户名下 —— 记在"纺织"名下等于 给同一批人开第二本账；
+   *   <li>**人口与劳动**（旧：恒 0）⇒ 本来就住在农村四行里，**一个数都不动**。农闲织布是同一批人的第二份活， 支撑它的是劳动配额那 100‰（{@link
+   *       #WEAVE_SHARE_PER_MILLE}），不是第二份人口。
+   * </ul>
+   *
+   * <p>★★ **纤维从哪来**（**留白，不是遗漏**）：创世给这四行各一份**纤维**（= 本格农业**一个周期**的纤维副产，见 {@link #fiberStockMilli}）。★
+   * 把它从"田里"搬到"织机上"是**跨行的实物转移**，正是 spec §六 V8（统一转移）的活， 而 brief 明说"**不建议本轮做跨行实物转移**" ⇒
+   * 本轮织机吃的是这份**明标为"估计来源"**的创世库存； 农业自己产的那份照常累积在农业行里（读口看得见）。★ **后果如实记**：一个周期之后织机没有原料 ⇒ 停工，等 V8
+   * 把田里的纤维送过来。
+   */
+  private static IndustryPlan householdWeaving(HexCoord hex, long looms) {
+    return industry(
+        WEAVE,
+        IndustryHexKeys.id(WEAVE, hex.q(), hex.r()).value(),
+        "家庭纺织",
+        REGIME_HOUSEHOLD,
+        // ★★ 产能 = 本格**织机总数**（旧版四行各一份、Σ 才是总数）。★ 值允许 0（农村人口 < 20 的格一台也没有）。
+        Map.of("TOOL", looms),
+        // 分配：家户自给 ⇒ 劳动权重为主（没有土地可摊；织机按户头摊）。
+        Map.of("meansWeightPerMille", 300, "laborWeightPerMille", 700),
+        Map.of("TOOL", 1L),
+        LABOR_MILLI_PER_LOOM,
+        Map.of(COMMODITY_CLOTH, CLOTH_PER_LOOM_PER_CYCLE),
+        Map.of("TOOL", Map.of(COMMODITY_FIBER, CLOTH_PER_LOOM_PER_CYCLE * FIBER_MILLI_PER_CLOTH)));
+  }
+
+  /**
+   * ★★ **城市作坊**（T5；城市格追加，§十）：制度 = 手工业；★★ **H0.3 起产能 = 本格作坊总座数**。
+   *
+   * <p>★★ **配方 = {@code FIBER + IRON + LABOR + WORKSHOP → CLOTH + TOOL}**（两条变换合在一座作坊里；"消耗 IRON"
+   * 这种话正是 R3 换型要表达的东西）—— 它同时证明两件事（spec §六 给 T5 定的目的）：**非 LAND 生产成立**、**城市能产出自己的产品**。 ★
+   * 城乡交换（布换粮）不在本轮（那要 R4 的 V8）。
+   *
+   * <p>★★ **H0.2：它也不再有四行**。旧版那四行上的东西**逐项去处**：
+   *
+   * <ul>
+   *   <li>**作坊**（旧：四行各持一份 {@code meansOfProduction.WORKSHOP}）⇒ 并成**总数**写进本产业的 {@code capacity}
+   *       （{@link #URBAN_CAPITA_PER_WORKSHOP} 人一座）；
+   *   <li>**原料库存：纤维 + 铁**（旧：四行各按"该行作坊数 × 一座作坊一个周期的用量"持有）⇒ 并入**城镇四行** （见 {@link
+   *       #urbanCohort}）。理由同纺织：这是**城镇池的活**，只能记在城镇家户名下；
+   *   <li>**人口与劳动** ⇒ 搬到城镇四行，**逐值不变**（旧版就在 craft 行上，不在 weave 行上）。
+   * </ul>
+   *
+   * <p>★★ **原料从哪来**：创世给这四行各一份**初始库存**（纤维 + 铁，均明标"估计来源"）—— 与家庭纺织同一处置，理由见它的注释。
+   */
+  private static IndustryPlan handicraft(HexCoord hex, long workshops) {
+    return industry(
+        CRAFT,
+        IndustryHexKeys.id(CRAFT, hex.q(), hex.r()).value(),
+        "手工业",
+        REGIME_HANDICRAFT,
+        // ★★ 产能 = 本格**作坊总座数**（旧版四行各一份、Σ 才是总数）。★ 值允许 0。
+        Map.of("WORKSHOP", workshops),
+        Map.of("meansWeightPerMille", 400, "laborWeightPerMille", 600),
+        Map.of("WORKSHOP", 1L),
+        LABOR_MILLI_PER_WORKSHOP,
+        Map.of(
+            COMMODITY_CLOTH,
+            CLOTH_PER_WORKSHOP_PER_CYCLE,
+            COMMODITY_TOOL,
+            TOOL_PER_WORKSHOP_PER_CYCLE),
+        // ★★ H5 ④：投入 = **纤维 + 工具**（改前是纤维 + 铁）—— 工具是作坊**自己的产品**（净产为正）
+        //   ⇒ 存量可再生，"创世一箱铁 → 用完永久停工"这个外生断点消失。逐条算式见
+        //   {@link #TOOL_MILLI_PER_WORKSHOP_CYCLE}。
+        Map.of(
+            "WORKSHOP",
+            Map.of(
+                COMMODITY_FIBER, fiberPerWorkshopMilli(),
+                COMMODITY_TOOL, toolPerWorkshopMilli())));
+  }
+
+  /**
+   * 一个产业对象（与 §3.1 {@code Industry} 逐字段对应；**R3 起含 V7 的四个配方分量**；**H0.3 起含产能总量**）。
+   *
+   * <p>{@code dailyInputPerUnit}/{@code dailyLaborPerUnit} 置 0：§十 没给这两项的依据（那是 R3a 的事），**不臆造**；
+   * {@code cycleDays} = {@link #CYCLE_DAYS}。★★ R3B.2 起返回 {@link IndustryPlan}：模板载荷 + 经营者 + 产能， unit
+   * 与资产份额从它派生（模板本身不再带 operator/capacity/progress/cycleState）。
+   *
+   * <p>★★ **它名下没有 {@code classes}**（H0.2）：阶层行按 {@code (格, 居住类型, 阶层)} 挂在 entry 级 —— 一个产业的 {@code
+   * slots} 只说"这个制度允许哪些角色"，不再说"这些行归它"。
+   *
+   * @param capacity 本格该产业的**产能总量**（§3.1 的 {@code capacity}；旧版住在 {@code ClassRow.meansOfProduction}）
+   * @param capacityPerUnit 每 1 单位规模需要多少生产资料（农业 = 1 亩；织机/作坊 = 1 台/座）
+   * @param laborPerUnit 每 1 单位规模需要多少劳动（千分劳动）
+   * @param outputPerUnit 每 1 单位规模的产出（商品单位）
+   * @param cycleInputPerUnit 每 1 单位规模每周期消耗的商品（毫单位；按生产资料种类归类）
+   */
+  private static IndustryPlan industry(
+      String kind,
+      String id,
+      String name,
+      String regime,
+      Map<String, Object> capacity,
+      Map<String, Object> split,
+      Map<String, Object> capacityPerUnit,
+      long laborPerUnit,
+      Map<String, Object> outputPerUnit,
+      Map<String, Object> cycleInputPerUnit) {
+    List<Map<String, Object>> slots = new ArrayList<>(CLASS_IDS.length);
+    for (int i = 0; i < CLASS_IDS.length; i++) {
+      Map<String, Object> slot = new LinkedHashMap<>();
+      slot.put("id", CLASS_IDS[i]);
+      slot.put("name", CLASS_NAMES[i]);
+      slot.put("laborParticipationPerMille", CLASS_LABOR_PER_MILLE[i]);
+      slots.add(slot);
+    }
+    Map<String, Object> allocation = new LinkedHashMap<>(split);
+    allocation.put("@class", "split");
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("id", id);
+    payload.put("name", name);
+    payload.put("regime", regime);
+    payload.put("cycleDays", CYCLE_DAYS);
+    // ★★ R3（V7）：配方的两个新分量 —— "每 1 单位规模需要多少生产资料 / 多少劳动"。
+    payload.put("capacityPerUnit", capacityPerUnit);
+    payload.put("laborPerUnit", laborPerUnit);
+    payload.put("dailyInputPerUnit", Map.of());
+    payload.put("dailyLaborPerUnit", 0);
+    payload.put("outputPerUnit", outputPerUnit);
+    // ★★ 一次性投入（v2 spec §3.3：**周期第一天**现扣的原料）：值侧带商品维度（R3 换型）。
+    payload.put("cycleInputPerUnit", cycleInputPerUnit);
+    payload.put("allocation", allocation);
+    payload.put("slots", slots);
+    // ★★ R3B.2：**模板不再带 operator/capacity/progress/cycleState** —— 这些是 unit/份额的事实：
+    //   经营者 = RegimeOperators 的默认（与 operatorSeed 同源）；进度/劳动/投入由 unitOf(plan) 显式发出；
+    //   产能总量由 assetSharesOf(plan) 整额 OWNED 物化。这样新载荷不会触发"旧形状"兼容路径。
+    Map<String, Long> capacityLongs = new LinkedHashMap<>();
+    for (Map.Entry<String, Object> entry : capacity.entrySet()) {
+      if (!(entry.getValue() instanceof Number number)) {
+        throw new IllegalStateException("capacity 的值必须是整数: " + entry);
+      }
+      capacityLongs.put(entry.getKey(), number.longValue());
+    }
+    // ★★ R4-B.3a：capacityPerUnit 也留一份**定点整数**形态进 plan —— 副 unit 的"至少一份"判据
+    //   （每资产至少 capacityPerUnit）读它；载荷那一份仍原样发出（形状不变）。
+    Map<String, Long> capacityPerUnitLongs = new LinkedHashMap<>();
+    for (Map.Entry<String, Object> entry : capacityPerUnit.entrySet()) {
+      if (!(entry.getValue() instanceof Number number)) {
+        throw new IllegalStateException("capacityPerUnit 的值必须是整数: " + entry);
+      }
+      capacityPerUnitLongs.put(entry.getKey(), number.longValue());
+    }
+    ActorRef operator = RegimeOperators.defaultOperator(new RegimeId(regime), new IndustryId(id));
+    return new IndustryPlan(
+        kind, id, regime, operator, capacityLongs, capacityPerUnitLongs, payload);
+  }
+
+  /**
+   * ★★ <b>R3B.2：一个产业 plan → 一条默认 unit 载荷</b>（一产业一 unit；多 unit 拆分留给 B.3）。
+   *
+   * <pre>
+   * id            = ProductionUnitId.idOf(industry, operator)
+   * modeKey       = industry.id().value()（旧档口径；候选预设留给 E2）
+   * progressDays/cycleLaborMilli/cycleInputUsedMilli = 0/0/{}（周期刚起）
+   * </pre>
+   */
+  private static Map<String, Object> unitOf(IndustryPlan plan) {
+    return unitOf(plan, plan.operator(), null);
+  }
+
+  /**
+   * ★★ <b>R4-B.3a：一个家户副 unit 的载荷</b>：与主 unit 逐字段同形（{@code id/industry/operator/modeKey/
+   * progressDays/cycleLaborMilli/cycleInputUsedMilli}），额外显式发 {@code relation}（副 unit 的规则不靠制度默认）。
+   */
+  private static Map<String, Object> unitOf(IndustryPlan plan, HouseholdUnit secondary) {
+    return unitOf(plan, secondary.operator(), secondary.relation());
+  }
+
+  /**
+   * 一条 unit 载荷的共同构造（主 unit 与副 unit 的唯一拼写点）：{@code id} 由契约层工厂按 {@code (产业, 经营者)} 算； {@code modeKey =
+   * 产业 id}（旧档口径；候选预设留给 E2）；周期状态全部从 0 起（创世）。
+   *
+   * @param relation 只在副 unit 上显式发出（主 unit 仍走制度默认关系）；主 unit 传 {@code null}
+   */
+  private static Map<String, Object> unitOf(
+      IndustryPlan plan, ActorRef operator, ProductionRelation relation) {
+    Map<String, Object> unit = new LinkedHashMap<>();
+    unit.put("id", ProductionUnitId.idOf(new IndustryId(plan.id()), operator).value());
+    unit.put("industry", plan.id());
+    unit.put("operator", actorNode(operator));
+    unit.put("modeKey", plan.id());
+    unit.put("progressDays", 0);
+    unit.put("cycleLaborMilli", 0);
+    unit.put("cycleInputUsedMilli", Map.of());
+    if (relation != null) {
+      unit.put("relation", relationNode(relation));
+    }
+    return unit;
+  }
+
+  /** 一个受方的载荷节点（{@code actor|household|cohort} 恰其一）——与 {@code EconomyPayloads.recipient} 同一形状。 */
+  private static Map<String, Object> recipientNode(Recipient recipient) {
+    Map<String, Object> node = new LinkedHashMap<>();
+    if (recipient instanceof Recipient.ToActor toActor) {
+      node.put("actor", actorNode(toActor.actor()));
+    } else if (recipient instanceof Recipient.ToHousehold toHousehold) {
+      node.put("household", toHousehold.household().value());
+    } else if (recipient instanceof Recipient.ToCohort toCohort) {
+      node.put("cohort", toCohort.cohort().toString());
+    } else {
+      throw new IllegalStateException("未知 Recipient 变体：" + recipient);
+    }
+    return node;
+  }
+
+  /** 一条显式生产关系 → 载荷节点（{@code operator/inputSupplier/residualOwner/rules/laborSource}）。 */
+  private static Map<String, Object> relationNode(ProductionRelation relation) {
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("operator", actorNode(relation.operator()));
+    node.put("inputSupplier", recipientNode(relation.inputSupplier()));
+    node.put("residualOwner", actorNode(relation.residualOwner()));
+    List<Map<String, Object>> rules = new ArrayList<>(relation.rules().size());
+    for (CompensationRule rule : relation.rules()) {
+      rules.add(ruleNode(rule));
+    }
+    node.put("rules", rules);
+    node.put("laborSource", relation.laborSource().name());
+    return node;
+  }
+
+  /** 一条补偿规则 → 载荷节点（{@code EconomyPayloads.compensationRule} 的逆形状）。 */
+  private static Map<String, Object> ruleNode(CompensationRule rule) {
+    Map<String, Object> node = new LinkedHashMap<>();
+    node.put("type", rule.type().name());
+    node.put("recipient", recipientNode(rule.recipient()));
+    node.put("pool", rule.pool().name());
+    node.put("weight", rule.weight().name());
+    node.put("ratePerMille", rule.ratePerMille());
+    node.put("fixedAmount", rule.fixedAmount());
+    rule.commodity().ifPresent(commodity -> node.put("commodity", commodity.value()));
+    rule.currency().ifPresent(currency -> node.put("currency", currency.value()));
+    node.put("priority", rule.priority());
+    return node;
+  }
+
+  /** 同一格内按产业 id 找 plan（三产业固定集合；找不到 = 该产业本格不存在）。 */
+  private static IndustryPlan planOf(List<IndustryPlan> plans, IndustryId id) {
+    for (IndustryPlan plan : plans) {
+      if (plan.id().equals(id.value())) {
+        return plan;
+      }
+    }
+    throw new IllegalStateException("本格没有产业 plan: " + id);
+  }
+
+  /** ★★ R3B.2 的产业播种中间体：模板载荷 + 经营者 + 产能总量（unit 与资产份额都从它派生）。 */
+  private record IndustryPlan(
+      String kind,
+      String id,
+      String regime,
+      ActorRef operator,
+      Map<String, Long> capacity,
+      Map<String, Long> capacityPerUnit,
+      Map<String, Object> payload) {
+
+    /** 新 id 的唯一拼写点（契约层工厂）。 */
+    ProductionUnitId unitId() {
+      return ProductionUnitId.idOf(new IndustryId(id), operator);
+    }
+  }
+
+  /**
+   * ★★ <b>R3B.2：一个产业 plan → 它的整额 OWNED 实物资产份额</b>（capacity 的逐项；{@code owner} 与 {@code operator} 都 =
+   * plan.operator，即新世界播种的"自有自营"档）。
+   *
+   * <p>★ <b>逐项含 0 值</b>：0 产能是合法形态（沙漠格 LAND=0），但"非 EXITED/ABANDONED 的 unit 必须至少有一条同 industry 的
+   * AssetShare"这条守卫要求 0 也登记；数量 0 不改变规模（capacityScale 对每键读到 0 ⇒ 规模 0，与旧档 capacity 0 等价）。 {@code kind
+   * = OWNED} 是创世默认档。★ B.2 不拆多 unit：一块 capacity 只发一条整额份额。
+   */
+  private static List<Map<String, Object>> assetSharesOf(
+      IndustryPlan plan, Map<String, Long> quantities) {
+    List<Map<String, Object>> shares = new ArrayList<>();
+    for (Map.Entry<String, Long> entry : quantities.entrySet()) {
+      // ★★ 逐项**含 0 值**：0 产能是合法形态（沙漠格 LAND=0），但"非退出 unit 必须有至少一条同 industry 的
+      //   AssetShare"这条守卫要求 0 也要登记（数量 0 不改变规模：capacityScale 对每键读到 0 ⇒ 规模 0）。
+      shares.add(
+          assetShareNode(
+              plan.id(),
+              entry.getKey(),
+              plan.operator(),
+              plan.operator(),
+              AssetShare.RightKind.OWNED,
+              entry.getValue()));
+    }
+    return shares;
+  }
+
+  /**
+   * ★★ <b>R4-B.3a：把一个产业的现有配额行拆成"主 unit 余量 + 家户副 unit"</b>（只做静态初值，不改运行期结算）。
+   *
+   * <pre>
+   * 劳动：moved = ⌊laborMilli × SECONDARY_PER_MILLE ÷ 1000⌋
+   *       主行减 moved；副 unit 新发一条 (unit, group, household) 的配额（Σ 逐批次不变）
+   * 资产：secondaryTotal = ⌊capacity × SECONDARY_PER_MILLE ÷ 1000⌋
+   *       按各户 moved 劳动为权重用最大余数法切给候选户；每户每个 asset 都 ≥ capacityPerUnit 才建副 unit
+   *       被跳过的户：份额与劳动都留在主 unit（只拆不加；主 unit 拿 total − 已建成副 unit 份额）
+   * </pre>
+   *
+   * <p>★★ <b>守恒由构造保证</b>：{@code Σ 主+副 assetShares == plan.capacity}、{@code Σ 主行+副行 laborMilli ==
+   * 原行}。 ★ <b>确定性</b>：候选户按 {@link HouseholdId#value()} 升序（{@code ProportionalSplit} 的"同余数按下标序"
+   * 因此正好是 canonical id 升序）；不读 {@code HashMap} 迭代序，不用随机数/时间。
+   *
+   * @param landlordPopulation 该格农村地主阶层的人数（0 ⇒ 佃 unit 的 owner 退回主 unit 的 ESTATE actor； 见 {@link
+   *     #farmTenantUnit}）
+   */
+  private static IndustrySplit splitIndustry(
+      IndustryPlan plan,
+      List<Map<String, Object>> allocations,
+      HexCoord hex,
+      long landlordPopulation) {
+    String mainUnitId = plan.unitId().value();
+    // ① 只拆"指向主 unit"的行；moved ≤ 0 的行原样留下（小配额不拆 = 合法，不是丢数据）。
+    Map<HouseholdId, Long> movedLaborByHousehold = new LinkedHashMap<>();
+    List<MovedRow> movedRows = new ArrayList<>();
+    for (Map<String, Object> allocation : allocations) {
+      if (!mainUnitId.equals(allocation.get("activity"))) {
+        continue;
+      }
+      long laborMilli = ((Number) allocation.get("laborMilli")).longValue();
+      long moved = laborMilli * SECONDARY_PER_MILLE / 1000L;
+      if (moved <= 0L) {
+        continue;
+      }
+      HouseholdId household = HouseholdId.parse((String) allocation.get("household"));
+      movedLaborByHousehold.merge(household, moved, Math::addExact);
+      movedRows.add(new MovedRow(allocation, household, moved));
+    }
+    if (movedLaborByHousehold.isEmpty()) {
+      // 没有可拆的劳动 ⇒ 一产业一 unit（与 B.2 逐值相同）；主 unit 仍拿整份 capacity。
+      return new IndustrySplit(plan, plan.capacity(), List.of(), List.of());
+    }
+    List<HouseholdId> households = new ArrayList<>(movedLaborByHousehold.keySet());
+    households.sort(Comparator.comparing(HouseholdId::value));
+    long[] weights = new long[households.size()];
+    for (int i = 0; i < households.size(); i++) {
+      weights[i] = movedLaborByHousehold.get(households.get(i));
+    }
+    // ② 逐 asset 切副 unit 总量；"至少一份"不满足的户整体不建（份额与劳动都退回主 unit）。
+    Map<String, long[]> sharesByAsset = new LinkedHashMap<>();
+    boolean[] kept = new boolean[households.size()];
+    Arrays.fill(kept, true);
+    for (Map.Entry<String, Long> capacity : plan.capacity().entrySet()) {
+      long secondaryTotal = capacity.getValue() * SECONDARY_PER_MILLE / 1000L;
+      long[] shares = splitProportional(secondaryTotal, weights);
+      sharesByAsset.put(capacity.getKey(), shares);
+      Long capacityPerUnit = plan.capacityPerUnit().get(capacity.getKey());
+      if (capacityPerUnit == null) {
+        throw new IllegalStateException(
+            "产业 " + plan.id() + " 的资产 " + capacity.getKey() + " 没有 capacityPerUnit（无法判一份最小规模）");
+      }
+      for (int i = 0; i < households.size(); i++) {
+        if (shares[i] < capacityPerUnit) {
+          kept[i] = false;
+        }
+      }
+    }
+    // ③ 主 unit 剩余 = capacity − 已建成副 unit 的份额；被跳过户的份额不动（就在主 unit 里）。
+    Map<String, Long> mainCapacity = new LinkedHashMap<>(plan.capacity());
+    List<HouseholdUnit> secondaries = new ArrayList<>();
+    for (int i = 0; i < households.size(); i++) {
+      if (!kept[i]) {
+        continue;
+      }
+      HouseholdId household = households.get(i);
+      Map<String, Long> quantities = new LinkedHashMap<>();
+      for (Map.Entry<String, Long> capacity : plan.capacity().entrySet()) {
+        long quantity = sharesByAsset.get(capacity.getKey())[i];
+        quantities.put(capacity.getKey(), quantity);
+        mainCapacity.merge(capacity.getKey(), -quantity, Math::addExact);
+      }
+      secondaries.add(householdUnit(plan, hex, household, quantities, landlordPopulation));
+    }
+    // ④ 只把"建成了副 unit"的家户的劳动行移过去；其余行原样留在主 unit。
+    Map<HouseholdId, HouseholdUnit> secondaryByHousehold = new LinkedHashMap<>();
+    for (HouseholdUnit secondary : secondaries) {
+      secondaryByHousehold.put(secondary.household(), secondary);
+    }
+    List<LaborMove> laborMoves = new ArrayList<>();
+    for (MovedRow movedRow : movedRows) {
+      HouseholdUnit secondary = secondaryByHousehold.get(movedRow.household());
+      if (secondary != null) {
+        laborMoves.add(new LaborMove(movedRow.row(), secondary, movedRow.moved()));
+      }
+    }
+    return new IndustrySplit(plan, mainCapacity, secondaries, laborMoves);
+  }
+
+  /**
+   * 一条副 unit 的劳动配额载荷：{@code id = LaborAllocation.idOf(副 unit, 批次, 家户)}、{@code actor = 家户 actor}、
+   * {@code activity = 副 unit id}，其余字段（group/household/period）照原行。★ 调用方先把主行的 {@code laborMilli} 减掉
+   * moved。
+   */
+  private static Map<String, Object> secondaryAllocation(IndustryPlan plan, LaborMove move) {
+    HouseholdUnit unit = move.unit();
+    ProductionUnitId unitId = ProductionUnitId.idOf(new IndustryId(plan.id()), unit.operator());
+    Map<String, Object> row = move.row();
+    Map<String, Object> allocation = new LinkedHashMap<>();
+    allocation.put(
+        "id",
+        LaborAllocation.idOf(unitId, PeopleLotId.parse((String) row.get("group")), unit.household())
+            .value());
+    allocation.put("group", row.get("group"));
+    allocation.put("household", unit.household().value());
+    allocation.put("actor", actorNode(unit.operator()));
+    allocation.put("activity", unitId.value());
+    allocation.put("laborMilli", move.moved());
+    allocation.put("period", row.get("period"));
+    return allocation;
+  }
+
+  /**
+   * ★★ <b>一个家户副 unit 的完整形态</b>（owner/kind/relation 按产业档位显式给出，<b>不靠制度默认关系猜</b>）。
+   *
+   * <pre>
+   * farm  ⇒ operator=家户 · owner=该格农村地主家户（0 人口 / 自租 ⇒ ESTATE 主 unit） · TENANCY · relation=TENANT + 300‰ 粮租
+   * weave ⇒ operator=owner=家户 · OWNED · relation 空 rules（全自留） + FAMILY
+   * craft ⇒ operator=家户 · owner=WORKSHOP 主 unit · TENANCY · relation=TENANT + 300‰ 布给作坊主
+   * </pre>
+   *
+   * <p>★ <b>家户 actor 的身份拼写点</b> = {@link HouseholdActors#of(HouseholdId)}（本类不另拼 actor id）。
+   */
+  private static HouseholdUnit householdUnit(
+      IndustryPlan plan,
+      HexCoord hex,
+      HouseholdId household,
+      Map<String, Long> quantities,
+      long landlordPopulation) {
+    ActorRef operator = HouseholdActors.of(household);
+    return switch (plan.kind()) {
+      case FARM -> farmTenantUnit(plan, hex, household, operator, quantities, landlordPopulation);
+      case WEAVE ->
+          new HouseholdUnit(
+              household,
+              operator,
+              operator,
+              AssetShare.RightKind.OWNED,
+              quantities,
+              new ProductionRelation(
+                  ProductionUnitId.idOf(new IndustryId(plan.id()), operator),
+                  operator,
+                  new Recipient.ToHousehold(household),
+                  List.of(),
+                  operator,
+                  LaborSource.FAMILY));
+      case CRAFT ->
+          new HouseholdUnit(
+              household,
+              operator,
+              plan.operator(),
+              AssetShare.RightKind.TENANCY,
+              quantities,
+              new ProductionRelation(
+                  ProductionUnitId.idOf(new IndustryId(plan.id()), operator),
+                  operator,
+                  new Recipient.ToActor(plan.operator()),
+                  List.of(outputShareRule(new Recipient.ToActor(plan.operator()), COMMODITY_CLOTH)),
+                  operator,
+                  LaborSource.TENANT));
+      default -> throw new IllegalStateException("未知产业 kind：" + plan.kind());
+    };
+  }
+
+  /**
+   * 佃耕 unit：{@code owner = 该格农村 landlord 家户 actor}，在两种退化情形下退回主 unit 的 ESTATE actor： ① 地主阶层人口为
+   * 0（或该行不存在）；② **operator 就是 landlord 家户本人**（自己租给自己）—— 后者若仍把 owner/受方写成该家户，收获时那条 {@code
+   * OUTPUT_SHARE} 会铸出"两端相等"的转移，被 {@code Transfer} 的 fail-closed 守卫当场拒（实测：799 个格各一条，见 B3a 报告）。显式
+   * relation 把毛产的 {@link #TENANT_RENT_PER_MILLE}‰ 以粮付给 owner，其余归佃农家户（{@code residualOwner}）。
+   *
+   * <p>★★ <b>受方可解析</b>：owner 是家户时用 {@code ToHousehold(landlord)}（该家户行由 {@code ruralCohort} 恒建， 0
+   * 人口行也合法）；退回 ESTATE 时用 {@code ToActor(ESTATE)}（经营者开缸账由 {@code operators} 建）。
+   */
+  private static HouseholdUnit farmTenantUnit(
+      IndustryPlan plan,
+      HexCoord hex,
+      HouseholdId household,
+      ActorRef operator,
+      Map<String, Long> quantities,
+      long landlordPopulation) {
+    HouseholdId landlord =
+        HouseholdId.ofSeed(
+            hex, ResidenceKind.RURAL, new SocialClassId(CLASS_IDS[LANDLORD_SLOT_INDEX]));
+    // ★ 自租退化（operator == landlord）必须与"没有地主"同档：转移的两端不许相等（Transfer 构造期守卫）。
+    boolean hasLandlord = landlordPopulation > 0L && !landlord.equals(household);
+    ActorRef owner = hasLandlord ? HouseholdActors.of(landlord) : plan.operator();
+    Recipient rentRecipient =
+        hasLandlord ? new Recipient.ToHousehold(landlord) : new Recipient.ToActor(plan.operator());
+    ProductionRelation relation =
+        new ProductionRelation(
+            ProductionUnitId.idOf(new IndustryId(plan.id()), operator),
+            operator,
+            new Recipient.ToHousehold(household),
+            List.of(outputShareRule(rentRecipient, COMMODITY_GRAIN)),
+            operator,
+            LaborSource.TENANT);
+    return new HouseholdUnit(
+        household, operator, owner, AssetShare.RightKind.TENANCY, quantities, relation);
+  }
+
+  /** 一条 {@code OUTPUT_SHARE × GROSS_OUTPUT} 实物分成规则（佃租/匠户分成共用这一处拼写）。 */
+  private static CompensationRule outputShareRule(Recipient recipient, String commodity) {
+    return new CompensationRule(
+        RuleType.OUTPUT_SHARE,
+        recipient,
+        Pool.GROSS_OUTPUT,
+        Weight.NONE,
+        TENANT_RENT_PER_MILLE,
+        0L,
+        Optional.of(new CommodityId(commodity)),
+        Optional.empty(),
+        10);
+  }
+
+  /** 一个产业的拆分结果：主 unit 剩余容量 + 家户副 unit（保 canonical 序）+ 移到副 unit 的劳动行。 */
+  private record IndustrySplit(
+      IndustryPlan plan,
+      Map<String, Long> mainCapacity,
+      List<HouseholdUnit> secondaries,
+      List<LaborMove> laborMoves) {}
+
+  /** 一个家户副 unit：身份、产权、份额与显式关系（逐产业不同，见 {@link #householdUnit}）。 */
+  private record HouseholdUnit(
+      HouseholdId household,
+      ActorRef operator,
+      ActorRef owner,
+      AssetShare.RightKind kind,
+      Map<String, Long> quantities,
+      ProductionRelation relation) {}
+
+  /** 拆分**中间态**：一条候选配额行（household/moved 已算好，副 unit 是否建尚未定）。 */
+  private record MovedRow(Map<String, Object> row, HouseholdId household, long moved) {}
+
+  /** 一条**已决定**要移到副 unit 的配额行（unit 已绑定，{@code moved ≤ 原行 laborMilli}）。 */
+  private record LaborMove(Map<String, Object> row, HouseholdUnit unit, long moved) {}
 }

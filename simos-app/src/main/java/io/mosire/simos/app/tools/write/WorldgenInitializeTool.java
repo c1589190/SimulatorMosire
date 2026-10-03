@@ -313,7 +313,9 @@ public final class WorldgenInitializeTool implements AgentTool {
         ToolSupport.prop(
             "string",
             "经济地基 profile：class-first（缺省；只种阶层池状态 + 最小人口/市场壳，不种旧生产结构）/ "
-                + "production-runtime（同一份 class-first 基础，另发默认生产方式/阶层结构/位置/家户归属，P1 只种状态不结算）"));
+                + "production-runtime（旧完整生产播种路径：entries 带 farm/weave/craft industries、units、"
+                + "assetShares、劳动配额、memberships 与经营者开缸账，另发默认生产方式/阶层结构/位置/家户归属/"
+                + "资产规则；P3 起据此结算）"));
     props.put(
         "economyTestConditions",
         ToolSupport.prop(
@@ -377,7 +379,8 @@ public final class WorldgenInitializeTool implements AgentTool {
       }
       long genesisMoneyMilliPerCapita =
           genesisMoneyArg == null ? EconomySeeder.genesisMoneyMilliPerCapita() : genesisMoneyArg;
-      // ★★ P1：经济地基 profile（GM 可传参数；缺省 class-first，P1 起另接受 production-runtime）。不用 System property。
+      // ★★ P1/P2：经济地基 profile（GM 可传参数；缺省 class-first，P2 起 production-runtime = 旧完整生产路径）。不用 System
+      // property。
       EconomySeeder.FoundationProfile economyProfile =
           EconomySeeder.FoundationProfile.parse(
               ToolSupport.optionalText(args, "economyProfile", "class-first"));
