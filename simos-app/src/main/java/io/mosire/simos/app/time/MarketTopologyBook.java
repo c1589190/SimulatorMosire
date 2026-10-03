@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.ToLongBiFunction;
 
 /**
  * ★★ <b>区域拓扑的组合根装配</b>（M2.3）：把"城市节点（social/map 的权威）+ tier 半径 + 地图"现算成 {@link MarketTopology} 交给
@@ -58,6 +59,11 @@ import java.util.Set;
  * 现算道路瓶颈； 辐射距离 = 拓扑节点 anchor 集的最小 {@link HexCoord#distanceTo}；运输费率取 {@link
  * TransportTariff#probeDefaults()}。三者 都以只读函数（方法引用/lambda）交给 {@link MarketTopology}，地图不泄漏进 economy。
  *
+ * <p>★★ <b>P6 的商人调整量装配口</b>：本类新增一个带两个 {@link ToLongBiFunction} 的 {@code from} 重载， 返回给定 lane 的
+ * {@code cityDiscountPerMille}/{@code ruralPenaltyPerMille}；旧 {@code from(state)} 传恒 0 函数 ⇒
+ * 旧行为逐值不变。★ P6 没有稳定的“商人组织/政策 → 每城每队”来源，故默认不注入任何折扣/惩罚；P9/P7 在组合根把 {@code
+ * MerchantPolicy.cityDiscountForLane/ruralPenaltyForLane} 汇总成这两个函数后，从新重载注入。
+ *
  * <p>★★ <b>R0 / P1.1：地形索引在本类里只建一次</b>（{@link #terrainCostIndex(GameMap)}），交给 {@link MarketTopology}
  * 的 lambda 只查表 —— 消除每次调用 {@code GameMap.terrainIndex()} 重建 59,223 条 的主项（见 {@code
  * from(SimulationState)} 的注释）。语义逐值不变。
@@ -77,9 +83,28 @@ final class MarketTopologyBook {
 
   private MarketTopologyBook() {}
 
-  /** 从当前状态现算区域拓扑。★ 地图切片缺席（单模块夹具）⇒ 退化成"每格一区、不跨区"，与 M2-L1 的既有行为一致。 */
+  /** 从当前状态现算区域拓扑（商人调整量默认恒 0）。★ 地图切片缺席（单模块夹具）⇒ 退化成"每格一区、不跨区"，与 M2-L1 的既有行为一致。 */
   static MarketTopology from(SimulationState state) {
+    return from(
+        state,
+        MarketTopology.NO_CITY_DISCOUNT_PER_MILLE,
+        MarketTopology.NO_RURAL_PENALTY_PER_MILLE);
+  }
+
+  /**
+   * ★★ <b>P6：带商人调整量的装配入口</b>：两个只读函数按 {@code from→to} 返回城市折扣/农村惩罚（‰）。
+   *
+   * <p>★ P6 没有稳定来源时传 {@link MarketTopology#NO_CITY_DISCOUNT_PER_MILLE}/{@link
+   * MarketTopology#NO_RURAL_PENALTY_PER_MILLE}（= 旧 {@link #from(SimulationState)}）；P9/P7 在组合根按
+   * {@code MerchantPolicy} 汇总后注入。
+   */
+  static MarketTopology from(
+      SimulationState state,
+      ToLongBiFunction<HexCoord, HexCoord> cityDiscountPerMilleBetween,
+      ToLongBiFunction<HexCoord, HexCoord> ruralPenaltyPerMilleBetween) {
     Objects.requireNonNull(state, "state");
+    Objects.requireNonNull(cityDiscountPerMilleBetween, "cityDiscountPerMilleBetween");
+    Objects.requireNonNull(ruralPenaltyPerMilleBetween, "ruralPenaltyPerMilleBetween");
     EconomyData economy = economyOf(state);
     Snapshot mapSnapshot = state.module("map").orElse(null);
     if (!(mapSnapshot instanceof MapSnapshot map)) {
@@ -135,7 +160,9 @@ final class MarketTopologyBook {
         hex -> terrainCostOf(terrainCost, hex),
         roadNetwork::roadBottleneckBetween,
         hex -> nearestAnchorDistance(nodeAnchors, hex),
-        TransportTariff.probeDefaults());
+        TransportTariff.probeDefaults(),
+        cityDiscountPerMilleBetween,
+        ruralPenaltyPerMilleBetween);
   }
 
   /**

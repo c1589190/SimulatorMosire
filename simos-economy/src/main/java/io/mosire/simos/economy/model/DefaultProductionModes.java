@@ -22,7 +22,7 @@ import java.util.Optional;
  * ClassPosition}；{@code EconomySeeder} 的 {@code production-runtime} profile 直接以本目录为唯一拼写点发 {@code
  * modes} / {@code classStructures} / {@code classPositions} / {@code classStandings} 四个顶层键。
  *
- * <p>★★ <b>六个 mode 与位置角色（计划 P1 的唯一裁决表）</b>：
+ * <p>★★ <b>七个 mode 与位置角色（P1 的六个 + P6 追加的商人 mode；本表是唯一裁决表）</b>：
  *
  * <pre>
  * mode                   结构 id                        位置 role → relationToMeans / laborRole / surplusRole
@@ -37,12 +37,19 @@ import java.util.Optional;
  * handicraft_workshop    handicraft-workshop-structure  workshop_owner  OWNER          ORGANIZER   SURPLUS_RECEIVER
  *                                                       artisan         DIRECT_LABORER PROVIDER    WAGE_EARNER
  * family_farm            family-farm-structure          family_farmer   MIXED          BOTH        SELF_SUBSISTENCE
+ * merchant               merchant-structure             principal       OWNER          ORGANIZER   SURPLUS_RECEIVER
+ *                                                       porter          DIRECT_LABORER PROVIDER    WAGE_EARNER
+ *                                                       self_employed   MIXED          BOTH        SELF_SUBSISTENCE
  * </pre>
  *
  * <p>★★ <b>为什么有 {@code family_farm} 这个桥接 mode</b>：旧 {@code class-first} 的 {@code middle_peasant} /
  * {@code rich_peasant} 家户在 P1 还没有正式的自耕农 mode；{@code production-runtime} 的 {@code classStandings}
  * 需要一个稳定位置可指。{@code family_farm} 只承载“家户自耕农”的结构位置，不是探针五模式之一； 它的角色三档与 {@code LegacyClassStructure}
  * 的中农/富农位置一致（MIXED / BOTH / SELF_SUBSISTENCE）， 不发明新的分配规则。
+ *
+ * <p>★★ <b>P6 的 {@code merchant} mode</b>：把探针 {@code TransportTeam}/{@code MerchantTier} 的三档
+ * （脚夫/个体户/老板）落成正式结构位置；层次、城市折扣、农村累积成本与运力自增长的政策值在 {@code MerchantPolicy}。 ★ P6 只让目录/结构/位置能进 {@code
+ * EconomyData} 并通过构造期守卫，<b>不</b>生成商人组织（组织生成是 P6 后续/P9）。
  *
  * <p>★★ <b>ID 三条硬约束</b>：
  *
@@ -52,10 +59,10 @@ import java.util.Optional;
  *       -} + role（下划线换连字符）。全部不含 {@code "."}（地址在第一个点处切段，含点即被 ID 构造期拒绝）。
  *   <li><b>每个 mode 独立结构 + 独立位置 id</b>：{@link ClassPosition#modeId()} 在构造期判“同一个位置 id 不能在两个 mode
  *       下有两种形状”，故 {@code landlord} / {@code tenant_operator} 这类同形角色也按 mode 前缀各拿一个 id，不跨 mode 复用。
- *   <li><b>不留孤儿位置</b>：{@code classPositions()} 里的每个位置都恰属于本目录的一个 {@code ClassStructure}。P1 没有 {@code
- *       merchant} mode ⇒ <b>不定义</b> {@code merchant_principal}/{@code porter}/{@code self_employed}
- *       位置；否则它们会落在 {@code classPositions()} 里却没有任何结构引用，触发 {@code EconomyData} 的 “位置必须至少属于一个
- *       ClassStructure”守卫。待 P6 定下商人 mode 后由那张表引入。
+ *   <li><b>不留孤儿位置</b>：{@code classPositions()} 里的每个位置都恰属于本目录的一个 {@code ClassStructure}。 P1 曾因为没有
+ *       {@code merchant} mode 而不定义商人位置；P6 追加 {@code merchant} mode 后，{@code
+ *       merchant-principal}/{@code merchant-porter}/{@code merchant-self-employed} 由该 mode 的结构引用 ⇒
+ *       仍无孤儿位置，不触发 {@code EconomyData} 的“位置必须至少属于一个 ClassStructure”守卫。
  * </ol>
  *
  * <p>★★ <b>{@code defaultSharesPerMille}：全零，P1 不携带人口份额意见。</b>真人口份额是 {@code EconomySeeder} 的创世参数（由实际
@@ -91,6 +98,9 @@ public final class DefaultProductionModes {
   /** ★ 桥接 mode：旧 class-first 的中农/富农家户在 P1 的默认“家户自耕”位置（不是探针五模式之一）。 */
   public static final ProductionModeId FAMILY_FARM = new ProductionModeId("family_farm");
 
+  /** ★ P6 商人：探针 {@code TransportTeam}/{@code MerchantTier} 的正式 mode（脚夫/个体户/老板三档）。 */
+  public static final ProductionModeId MERCHANT = new ProductionModeId("merchant");
+
   /** ★ 位置角色名：地主（佃农制三个 mode 共用角色名，但各自有独立位置 id）。 */
   public static final String ROLE_LANDLORD = "landlord";
 
@@ -111,6 +121,18 @@ public final class DefaultProductionModes {
 
   /** ★ 位置角色名：家户自耕农（{@code family_farm} 桥接模式的位置）。 */
   public static final String ROLE_FAMILY_FARMER = "family_farmer";
+
+  /** ★ 位置角色名：商人本金主（P6；位置 id = {@code merchant-principal}）。 */
+  public static final String ROLE_MERCHANT_PRINCIPAL = "principal";
+
+  /** ★ {@link #ROLE_MERCHANT_PRINCIPAL} 的角色词表别名（同一个值，便于按角色名引用；不是第二处拼写点）。 */
+  public static final String ROLE_PRINCIPAL = ROLE_MERCHANT_PRINCIPAL;
+
+  /** ★ 位置角色名：脚夫（P6；位置 id = {@code merchant-porter}）。 */
+  public static final String ROLE_PORTER = "porter";
+
+  /** ★ 位置角色名：个体商户（P6；位置 id = {@code merchant-self-employed}）。 */
+  public static final String ROLE_SELF_EMPLOYED = "self_employed";
 
   /** ★ 目录的稳定顺序（声明序 = mode 列表序 = 结构列表序 = 位置在本结构内的声明序）。 */
   private static final List<ModeSpec> MODE_SPECS = buildModeSpecs();
@@ -135,7 +157,8 @@ public final class DefaultProductionModes {
   /**
    * ★ 默认生产方式目录（键 = {@link ProductionMode#id()}；保序）。
    *
-   * <p>返回每次新建的防御性副本（仍是不可变包装）；顺序 = 本类声明的 mode 顺序（佃农制三形态 → 雇农制 → 手工业 → 桥接 {@code family_farm}）。
+   * <p>返回每次新建的防御性副本（仍是不可变包装）；顺序 = 本类声明的 mode 顺序（佃农制三形态 → 雇农制 → 手工业 → 桥接 {@code family_farm} → P6
+   * {@code merchant}）。
    */
   public static Map<ProductionModeId, ProductionMode> modes() {
     return Collections.unmodifiableMap(new LinkedHashMap<>(MODES));
@@ -192,7 +215,7 @@ public final class DefaultProductionModes {
     return position(modeId, role).map(ClassPosition::id);
   }
 
-  /** 目录的稳定声明序：五模式（计划序）+ 桥接 family_farm。每项自带 mode / 结构 / 位置。 */
+  /** 目录的稳定声明序：P1 五模式（计划序）+ 桥接 family_farm + P6 merchant（追加在末尾）。每项自带 mode / 结构 / 位置。 */
   private static List<ModeSpec> buildModeSpecs() {
     List<ModeSpec> specs = new ArrayList<>();
     specs.add(
@@ -282,6 +305,30 @@ public final class DefaultProductionModes {
             positionSpec(
                 ROLE_FAMILY_FARMER,
                 "家户自耕农",
+                RelationToMeans.MIXED,
+                LaborRole.BOTH,
+                SurplusRole.SELF_SUBSISTENCE)));
+    // ★★ P6：merchant 追加在**末尾**，P1 的六个 mode / 结构 / 位置声明序逐项不变（旧 payload 是
+    //   前缀不变的，新条目只落在尾部）。
+    specs.add(
+        modeSpec(
+            MERCHANT,
+            "商人承运",
+            positionSpec(
+                ROLE_MERCHANT_PRINCIPAL,
+                "商人本金主",
+                RelationToMeans.OWNER,
+                LaborRole.ORGANIZER,
+                SurplusRole.SURPLUS_RECEIVER),
+            positionSpec(
+                ROLE_PORTER,
+                "脚夫",
+                RelationToMeans.DIRECT_LABORER,
+                LaborRole.PROVIDER,
+                SurplusRole.WAGE_EARNER),
+            positionSpec(
+                ROLE_SELF_EMPLOYED,
+                "个体商户",
                 RelationToMeans.MIXED,
                 LaborRole.BOTH,
                 SurplusRole.SELF_SUBSISTENCE)));

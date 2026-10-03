@@ -154,9 +154,10 @@ final class MarketSettlement {
   static final long MARKET_ROUTE_CAPACITY_REFERENCE_DISTANCE_HEX = 8L;
 
   /*
-   * ★★ P4：运费的千分费率不再出自本类的"每 hex 10‰"常量，而是唯一来自
-   * {@link MarketTopology#freightPerMilleBetween(HexCoord, HexCoord)}（基础距离费 + 离城辐射 − 道路瓶颈折扣；城市折扣/
-   * 农村惩罚在 P6 前恒 0）。它仍与"实际投入"（{@link TradeRoute#costPerUnit()} = 距离 × moveCost）**是两个独立的数**
+   * ★★ P4/P6：运费的千分费率不再出自本类的"每 hex 10‰"常量，而是唯一来自
+   * {@link MarketTopology#freightPerMilleBetween(HexCoord, HexCoord)}（基础距离费 + 离城辐射 − 道路瓶颈折扣 −
+   * 城市折扣 + 农村惩罚；P6 的两个调整量默认 0，由组合根注入的只读函数给出）。它仍与"实际投入"（{@link
+   * TradeRoute#costPerUnit()} = 距离 × moveCost）**是两个独立的数**
    * （M2.4 不许一个系数兼三职）。
    */
 
@@ -1864,9 +1865,15 @@ final class MarketSettlement {
                 / Math.max(1L, distance));
     long costPerUnit = distance * moveCost;
     long travelTicks = Math.max(1L, distance);
-    // ★★ P4：费率唯一来源 = 拓扑的 road/radial/基础费公式（城市折扣/农村惩罚在 P6 前恒 0）。
-    //   注意它与上面的 costPerUnit（距离 × moveCost）是两个独立的数。
-    long freightRatePerMille = ctx.topology.freightPerMilleBetween(sellerHex, buyerHex);
+    // ★★ P4/P6：费率唯一来源 = 拓扑的 road/radial/基础费公式；P6 的两个商人调整量先从拓扑的只读函数取出
+    //   （默认入口恒 0，旧行为逐值不变），再显式传给同一条 TransportTariff.perMille 算式。P9/P7 在组合根按
+    //   MerchantPolicy.cityDiscountForLane/ruralPenaltyForLane 汇总后注入这两个函数。
+    //   注意费率与上面的 costPerUnit（距离 × moveCost）是两个独立的数。
+    long cityDiscountPerMille = ctx.topology.cityDiscountPerMilleBetween(sellerHex, buyerHex);
+    long ruralPenaltyPerMille = ctx.topology.ruralPenaltyPerMilleBetween(sellerHex, buyerHex);
+    long freightRatePerMille =
+        ctx.topology.freightPerMilleBetween(
+            sellerHex, buyerHex, cityDiscountPerMille, ruralPenaltyPerMille);
     String routeKey = sellerHex + "->" + buyerHex + "#" + commodity.value();
     RouteAccumulator acc =
         ctx.routes.computeIfAbsent(

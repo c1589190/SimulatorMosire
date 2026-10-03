@@ -18,6 +18,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.ToIntBiFunction;
 import java.util.function.ToIntFunction;
+import java.util.function.ToLongBiFunction;
 
 /**
  * ★★ <b>区域市场的只读拓扑</b>（M2.3 的派生层）：把"城市节点 + 半径 + 地图格集 + 逐格地形代价"现算成 <b>一个 hex 恰属一个区</b>的成员表 +
@@ -42,9 +43,11 @@ import java.util.function.ToIntFunction;
  * economy）以 {@link ToIntFunction} 只读传入；economy 侧只消费、不反查地图。★ 口径与 {@code SettlementGenerator}
  * 的腹地竞争逐字同源：{@code cost = hexDistance × moveCost(目标格)}（平原 1 … 山地 6 … 高原山地 12；海洋 999 = 不可通行）。
  *
- * <p>★★ <b>运输费率入口</b>（P4；铁律 3/4 同款）：道路瓶颈查询与最近城市距离也由组合根以 {@link ToIntBiFunction} / {@link
- * ToIntFunction} 只读传入；本类把它们与 hex 距离喂进 {@link TransportTariff}，用 {@link #freightPerMilleBetween} 回答
- * {@code from→to} 的费率（‰）。economy 侧同样不反查 {@code GameMap}。
+ * <p>★★ <b>运输费率入口</b>（P4；P6 追加商人调整量；铁律 3/4 同款）：道路瓶颈查询与最近城市距离由组合根以 {@link ToIntBiFunction} / {@link
+ * ToIntFunction} 只读传入；P6 的<b>城市折扣</b>与<b>农村累积惩罚</b>由另外两个 {@link ToLongBiFunction} 只读传入（默认 {@link
+ * #NO_CITY_DISCOUNT_PER_MILLE}/{@link #NO_RURAL_PENALTY_PER_MILLE} 恒 0，旧行为逐值不变）。本类把它们与 hex 距离喂进
+ * {@link TransportTariff}，用 {@link #freightPerMilleBetween} 回答 {@code from→to} 的费率（‰）。economy 侧不反查
+ * {@code GameMap}，也不认识 {@code MerchantPolicy} 的存储形态；P9/P7 在组合根把政策翻成只读函数后注入。
  *
  * <p>★ <b>本类不可变</b>：成员表、索引、节点表都在构造期冻结（{@code Collections.unmodifiable*}），可在一次结算里安全共享。
  */
@@ -64,6 +67,24 @@ public final class MarketTopology {
   /** 旧入口的"没有城市距离"查询：任何格到最近节点的距离都是 0（没有辐射成本）。 */
   private static final ToIntFunction<HexCoord> NO_NEAREST_NODE_DISTANCE = hex -> 0;
 
+  /**
+   * ★ <b>默认城市商人折扣函数：恒 0</b>（旧行为逐值不变）。
+   *
+   * <p>P6 不落地“商人组织/政策 → 每城每队”的稳定来源；P9/P7 在组合根按 {@code MerchantPolicy} 的 {@code
+   * cityDiscountForLane(from,to)} 求和后，用 {@link MarketTopology#of} 的九参入口替换本函数。★ 默认 0
+   * 不是“给每个城市商队加折扣”，而是“没有显式政策时不做任何折价”。
+   */
+  public static final ToLongBiFunction<HexCoord, HexCoord> NO_CITY_DISCOUNT_PER_MILLE =
+      (from, to) -> 0L;
+
+  /**
+   * ★ <b>默认农村商人惩罚函数：恒 0</b>（旧行为逐值不变）。
+   *
+   * <p>与 {@link #NO_CITY_DISCOUNT_PER_MILLE} 同款：没有显式 {@code MerchantPolicy} 来源时不加任何惩罚。
+   */
+  public static final ToLongBiFunction<HexCoord, HexCoord> NO_RURAL_PENALTY_PER_MILLE =
+      (from, to) -> 0L;
+
   private final List<MarketRegion> regions;
   private final Map<HexCoord, MarketRegion> regionByHex;
   private final ToIntFunction<HexCoord> moveCostAt;
@@ -77,6 +98,12 @@ public final class MarketTopology {
   /** 运输费率函数；默认 {@link TransportTariff#probeDefaults()}。 */
   private final TransportTariff tariff;
 
+  /** P6 城市商人折扣（‰），按 lane 查询；默认 {@link #NO_CITY_DISCOUNT_PER_MILLE}。 */
+  private final ToLongBiFunction<HexCoord, HexCoord> cityDiscountPerMilleBetween;
+
+  /** P6 农村商人累积惩罚（‰），按 lane 查询；默认 {@link #NO_RURAL_PENALTY_PER_MILLE}。 */
+  private final ToLongBiFunction<HexCoord, HexCoord> ruralPenaltyPerMilleBetween;
+
   private final boolean regional;
 
   private MarketTopology(
@@ -86,6 +113,8 @@ public final class MarketTopology {
       ToIntBiFunction<HexCoord, HexCoord> roadBottleneckBetween,
       ToIntFunction<HexCoord> nearestNodeDistance,
       TransportTariff tariff,
+      ToLongBiFunction<HexCoord, HexCoord> cityDiscountPerMilleBetween,
+      ToLongBiFunction<HexCoord, HexCoord> ruralPenaltyPerMilleBetween,
       boolean regional) {
     this.regions = Collections.unmodifiableList(new ArrayList<>(regions));
     this.regionByHex = Collections.unmodifiableMap(new LinkedHashMap<>(regionByHex));
@@ -94,6 +123,10 @@ public final class MarketTopology {
         Objects.requireNonNull(roadBottleneckBetween, "roadBottleneckBetween");
     this.nearestNodeDistance = Objects.requireNonNull(nearestNodeDistance, "nearestNodeDistance");
     this.tariff = Objects.requireNonNull(tariff, "tariff");
+    this.cityDiscountPerMilleBetween =
+        Objects.requireNonNull(cityDiscountPerMilleBetween, "cityDiscountPerMilleBetween");
+    this.ruralPenaltyPerMilleBetween =
+        Objects.requireNonNull(ruralPenaltyPerMilleBetween, "ruralPenaltyPerMilleBetween");
     this.regional = regional;
   }
 
@@ -127,7 +160,9 @@ public final class MarketTopology {
 
   /**
    * 正常入口（P4 起）：城市节点 + 半径 + 地图格集 + 逐格地形代价 + <b>道路瓶颈查询</b> + <b>最近节点距离查询</b> +
-   * <b>运输费率</b>。前四个参数语义与旧入口逐字相同；后三个由组合根（同时看得见地图与经济）装配。
+   * <b>运输费率</b>。前四个参数语义与旧入口逐字相同；后三个由组合根（同时看得见地图与经济）装配。★ 商人调整量默认恒 0（等价 {@link #of(List, Map, Set,
+   * ToIntFunction, ToIntBiFunction, ToIntFunction, TransportTariff, ToLongBiFunction,
+   * ToLongBiFunction)} 传两个 0 函数）。
    */
   public static MarketTopology of(
       List<MarketNode> nodes,
@@ -145,10 +180,39 @@ public final class MarketTopology {
         roadBottleneckBetween,
         nearestNodeDistance,
         tariff,
-        true);
+        NO_CITY_DISCOUNT_PER_MILLE,
+        NO_RURAL_PENALTY_PER_MILLE);
   }
 
-  /** 退化入口：旧语义 + 显式 regional 位（{@link #singleHex} 专用）。 */
+  /**
+   * ★★ <b>P6 正常入口</b>：在 P4 入口上追加两个只读的商人调整量函数 —— {@code cityDiscountPerMilleBetween} 与 {@code
+   * ruralPenaltyPerMilleBetween}，按 {@code from→to} 返回该 lane 的折扣/惩罚（‰）。默认入口传的是恒 0 函数； P9/P7 在组合根按
+   * {@code MerchantPolicy} 的 {@code cityDiscountForLane/ruralPenaltyForLane} 汇总后注入。
+   */
+  public static MarketTopology of(
+      List<MarketNode> nodes,
+      Map<HexCoord, Market> markets,
+      Set<HexCoord> hexes,
+      ToIntFunction<HexCoord> moveCostAt,
+      ToIntBiFunction<HexCoord, HexCoord> roadBottleneckBetween,
+      ToIntFunction<HexCoord> nearestNodeDistance,
+      TransportTariff tariff,
+      ToLongBiFunction<HexCoord, HexCoord> cityDiscountPerMilleBetween,
+      ToLongBiFunction<HexCoord, HexCoord> ruralPenaltyPerMilleBetween) {
+    return of(
+        nodes,
+        markets,
+        hexes,
+        moveCostAt,
+        roadBottleneckBetween,
+        nearestNodeDistance,
+        tariff,
+        true,
+        cityDiscountPerMilleBetween,
+        ruralPenaltyPerMilleBetween);
+  }
+
+  /** 退化入口：旧语义 + 显式 regional 位（{@link #singleHex} 专用）；商人调整量恒 0。 */
   private static MarketTopology of(
       List<MarketNode> nodes,
       Map<HexCoord, Market> markets,
@@ -163,7 +227,9 @@ public final class MarketTopology {
         NO_ROADS,
         NO_NEAREST_NODE_DISTANCE,
         TransportTariff.probeDefaults(),
-        regional);
+        regional,
+        NO_CITY_DISCOUNT_PER_MILLE,
+        NO_RURAL_PENALTY_PER_MILLE);
   }
 
   private static MarketTopology of(
@@ -174,7 +240,9 @@ public final class MarketTopology {
       ToIntBiFunction<HexCoord, HexCoord> roadBottleneckBetween,
       ToIntFunction<HexCoord> nearestNodeDistance,
       TransportTariff tariff,
-      boolean regional) {
+      boolean regional,
+      ToLongBiFunction<HexCoord, HexCoord> cityDiscountPerMilleBetween,
+      ToLongBiFunction<HexCoord, HexCoord> ruralPenaltyPerMilleBetween) {
     Objects.requireNonNull(nodes, "nodes");
     Objects.requireNonNull(markets, "markets");
     Objects.requireNonNull(hexes, "hexes");
@@ -182,6 +250,8 @@ public final class MarketTopology {
     Objects.requireNonNull(roadBottleneckBetween, "roadBottleneckBetween");
     Objects.requireNonNull(nearestNodeDistance, "nearestNodeDistance");
     Objects.requireNonNull(tariff, "tariff");
+    Objects.requireNonNull(cityDiscountPerMilleBetween, "cityDiscountPerMilleBetween");
+    Objects.requireNonNull(ruralPenaltyPerMilleBetween, "ruralPenaltyPerMilleBetween");
 
     // ★ 去重：同 nodeId 只认第一条（保序）；并跳过"锚格没有市场"的节点（没有报价币种的区不能交易）。
     Map<String, MarketNode> byId = new LinkedHashMap<>();
@@ -262,6 +332,8 @@ public final class MarketTopology {
         roadBottleneckBetween,
         nearestNodeDistance,
         tariff,
+        cityDiscountPerMilleBetween,
+        ruralPenaltyPerMilleBetween,
         regional && !byId.isEmpty() && built.size() > 1);
   }
 
@@ -346,19 +418,60 @@ public final class MarketTopology {
   }
 
   /**
-   * ★★ <b>{@code from→to} 的运输费率（‰）</b>（P4 的唯一费率入口）：
+   * ★ <b>本 lane 的城市商人折扣（‰，只读）</b>：调用构造期注入的函数；默认入口恒 0。返回值语义由组合根注入的 {@code MerchantPolicy}
+   * 汇总决定（探针口径：本轮 {@code lastTradeProfit} 等状态不在本类里）。
+   */
+  public long cityDiscountPerMilleBetween(HexCoord from, HexCoord to) {
+    Objects.requireNonNull(from, "from");
+    Objects.requireNonNull(to, "to");
+    return cityDiscountPerMilleBetween.applyAsLong(from, to);
+  }
+
+  /** ★ <b>本 lane 的农村商人累积惩罚（‰，只读）</b>：调用构造期注入的函数；默认入口恒 0。 */
+  public long ruralPenaltyPerMilleBetween(HexCoord from, HexCoord to) {
+    Objects.requireNonNull(from, "from");
+    Objects.requireNonNull(to, "to");
+    return ruralPenaltyPerMilleBetween.applyAsLong(from, to);
+  }
+
+  /**
+   * ★★ <b>{@code from→to} 的运输费率（‰）—— 唯一费率入口</b>（P4 公式 + P6 两个商人调整量）：
    *
    * <pre>
    * freightPerMilleBetween = tariff.perMille(hexDistance(from, to),
    *                                          min(nearestNodeDistance(from), nearestNodeDistance(to)),
    *                                          roadBottleneckBetween(from, to),
-   *                                          0, 0)
+   *                                          cityDiscountPerMilleBetween(from, to),   // 默认 0
+   *                                          ruralPenaltyPerMilleBetween(from, to))   // 默认 0
    * </pre>
    *
-   * <p>同格/缺图/越界（hex 不属于本拓扑的成员表）⇒ 0，且不抛异常。★ 城市折扣与农村惩罚在本阶段恒 0：商人 tier/服务半径/农村累积成本归 P6； {@link
-   * TransportTariff#perMille} 已预留这两个参数。★ 费率是"货款价值的千分比"，把货款乘上它再除以 1000 得到运费由调用方负责。
+   * <p>同格/缺图/越界（hex 不属于本拓扑的成员表）⇒ 0，且不抛异常。★ 两个商人调整量默认恒 0（旧行为逐值不变）； P9/P7 由组合根按 {@code
+   * MerchantPolicy} 注入后本方法逐值照探针公式折价/加价。★ 费率是"货款价值的千分比"，把货款乘上它再除以 1000 得到运费由调用方负责。
    */
   public long freightPerMilleBetween(HexCoord from, HexCoord to) {
+    if (from == null || to == null || from.equals(to)) {
+      return 0L;
+    }
+    if (!regionByHex.containsKey(from) || !regionByHex.containsKey(to)) {
+      return 0L;
+    }
+    return freightPerMilleBetween(
+        from,
+        to,
+        cityDiscountPerMilleBetween.applyAsLong(from, to),
+        ruralPenaltyPerMilleBetween.applyAsLong(from, to));
+  }
+
+  /**
+   * ★★ <b>显式传两个商人调整量的费率入口</b>：与 {@link #freightPerMilleBetween(HexCoord, HexCoord)} 同一条 {@link
+   * TransportTariff#perMille} 公式/守卫，只是不再从构造期函数取两个值。P6 的 {@code MarketSettlement}
+   * 用它在承运路线构建处把两个读数显式交给费率公式；旧调用方继续用两参入口。
+   *
+   * @param cityDiscountPerMille 城市商人折扣（‰；组合根注入时应保证非负；本方法逐值照探针公式，不额外判负）
+   * @param ruralPenaltyPerMille 农村商人累积惩罚（‰；组合根注入时应保证非负；本方法逐值照探针公式，不额外判负）
+   */
+  public long freightPerMilleBetween(
+      HexCoord from, HexCoord to, long cityDiscountPerMille, long ruralPenaltyPerMille) {
     if (from == null || to == null || from.equals(to)) {
       return 0L;
     }
@@ -368,6 +481,7 @@ public final class MarketTopology {
     long distance = from.distanceTo(to);
     long radialDistance = Math.min(nearestNodeDistance(from), nearestNodeDistance(to));
     long roadLevel = roadBottleneckBetween(from, to);
-    return tariff.perMille(distance, radialDistance, roadLevel, 0L, 0L);
+    return tariff.perMille(
+        distance, radialDistance, roadLevel, cityDiscountPerMille, ruralPenaltyPerMille);
   }
 }
