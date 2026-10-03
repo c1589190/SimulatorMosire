@@ -99,7 +99,7 @@ public final class EconomyAdjustTool implements AgentTool {
   public String description() {
     return "GM 经济调整（economy.GmAdjust 的窄封装）：先用 economy 侧纯函数算好 projected 状态与前后差异，"
         + "preview=true（缺省）只算不写；preview=false 时提交同一条 payload（reason 必填，进载荷/事件与工具结果）。"
-        + "adjustment 白名单（8）：class-first 原生六 kind —— "
+        + "adjustment 白名单（16）：class-first 原生六 kind —— "
         + "setMobilityPolicy（modeId?（缺省=当前 mode）+ gamma/upMinPerMillePerYear/.../extractionTaxPerMille 任一标量/"
         + "absorptionPolicy，按给定字段 upsert 既有 MobilityPolicy；schema/bounds/absorptionCapByEdgePerMille/"
         + "bundleTemplates 给到即拒）、"
@@ -120,7 +120,22 @@ public final class EconomyAdjustTool implements AgentTool {
         + "money 上限=stock；超上限具名拒绝并报 available（不截断）；只改源池与目标 lender，守恒不破）；"
         + "旧表两 kind —— forgiveDebt（debtContractId + amount?，只减/清本金）、setLiquidationPolicy"
         + "（assetRuleId + maxLiquidatePerMille/protectedReserve/priceSource/policyValuePerUnitMilli/recipientRule），"
-        + "只在非 class-first 旧档可用（classFirst 非空 ⇒ 具名拒绝并指路 class-first 原生 kind）。"
+        + "只在非 class-first 旧档可用（classFirst 非空 ⇒ 具名拒绝并指路 class-first 原生 kind）；"
+        + "P7 生产方式编辑八 kind（class-first 世界也可用）—— "
+        + "upsertProductionMode（id + name + version? + classStructureId；version 必须推进，classStructureId 须已存在，"
+        + "class-first 空表首建允许先引用待建结构 id）、"
+        + "deactivateProductionMode（id；被结构/位置/组织/资产规则/变迁/质押引用 ⇒ 具名拒绝）、"
+        + "upsertClassStructure（id + modeId + positions? + defaultSharesPerMille?；位置 upsert 并同步全局表与所有结构副本）、"
+        + "upsertClassPosition（id + modeId + name?/relationToMeans?/laborRole?/surplusRole?/ruleExtensions? + classStructureId?）、"
+        + "upsertProductionRelation（activity + operator? + inputSupplier? + rules? + residualOwner? + laborSource?；"
+        + "operator 必须与 unit.operator 一致）、"
+        + "upsertAssetRule（modeId + assetKind + isCoreMeans?/pledgeable?/liquidationPriority?/rentRule?/transferRule?；"
+        + "id 由 AssetRuleId.idOf 派生）、"
+        + "upsertProductionOrganization（id? + modeId + classPositionId + unitId? + organizer + laborSources?/assetSources?/"
+        + "inputSources? + outputOwnership + relationTemplateRef? + status + statusReason?；ACTIVE/EXITING 必须有 unit，"
+        + "SHORTAGE 必须有具名 reason）、"
+        + "upsertCandidate（按 ProductionCandidate 现有字段；新建需 output/outputPerUnit/cycleDays/regime，"
+        + "修订必须推进 version；★ ProductionCandidate 没有 modeId，本 kind 按现有模型走 regime，显式 modeId 具名拒绝）。"
         + "白名单外 adjustment（flows/demandBook/crisisSignals/classStandings 等派生读数）一律拒："
         + "派生读数不可由 GM 调整工具直写。★ 只在 GM 桶，决策人不可调用。";
   }
@@ -135,6 +150,9 @@ public final class EconomyAdjustTool implements AgentTool {
             "调整名（源状态白名单）：setMobilityPolicy | setClassFirstLender | forgiveClassFirstDebt"
                 + " | setCollectionPolicy | setProductionParameters | levyStock（class-first 原生）；"
                 + "forgiveDebt | setLiquidationPolicy（仅非 class-first 旧档）；"
+                + "upsertProductionMode | deactivateProductionMode | upsertClassStructure | upsertClassPosition"
+                + " | upsertProductionRelation | upsertAssetRule | upsertProductionOrganization | upsertCandidate"
+                + "（P7 生产方式编辑，class-first 世界也可用）；"
                 + "白名单外一律拒（派生读数不可直写）"));
     props.put(
         "parameters",
@@ -158,7 +176,28 @@ public final class EconomyAdjustTool implements AgentTool {
                 + "forgiveDebt={debtContractId, amount?(缺省=全额本金，须 ≤ 本金)}；"
                 + "setLiquidationPolicy={assetRuleId, maxLiquidatePerMille(0..1000), protectedReserve(≥0),"
                 + " priceSource(MARKET|AGREED|POLICY), policyValuePerUnitMilli(≥0；非 POLICY 必须 0),"
-                + " recipientRule(CREDITOR_FIRST|MARKET_FIRST)}"));
+                + " recipientRule(CREDITOR_FIRST|MARKET_FIRST)}；"
+                + "upsertProductionMode={id, name, version?(须 ≥ 现有+1；缺省仅幂等重放), classStructureId(须已存在；"
+                + "class-first 且 classStructures 空时允许先引用待建结构 id，随后 upsertClassStructure 补)}；"
+                + "deactivateProductionMode={id(被 classStructures/classPositions/productionOrganizations/assetRules/"
+                + "modeTransitions/pledges 任一引用 ⇒ 具名拒绝)}；"
+                + "upsertClassStructure={id, modeId, positions?[{id, modeId?, name, relationToMeans, laborRole, surplusRole,"
+                + " ruleExtensions?}], defaultSharesPerMille?{位置:≥0}；至少给一项；位置 upsert-合并并同步全局表与所有结构副本，"
+                + "份额给到即整体替换；新建必须给非空 positions}；"
+                + "upsertClassPosition={id, modeId, name?/relationToMeans?/laborRole?/surplusRole?/ruleExtensions?,"
+                + " classStructureId?(位置不属于任何结构时必填)}；"
+                + "upsertProductionRelation={activity(=unit id), operator?(须与 unit.operator 一致), inputSupplier?{actor|household|cohort},"
+                + " rules?[CompensationRule], residualOwner?, laborSource?(SELF|FAMILY|TENANT|SERF|WAGE)}；"
+                + "upsertAssetRule={modeId, assetKind(LAND|CATTLE|TOOL|WORKSHOP|MACHINE|SHIP), id?(须=派生值),"
+                + " isCoreMeans?, pledgeable?, liquidationPriority?(≥0), rentRule?, transferRule?；新建后四字段必填 (rentRule 可空)}；"
+                + "upsertProductionOrganization={id?, modeId, classPositionId, unitId?, organizer{kind,id}, laborSources?[household],"
+                + " assetSources?[shareId], inputSources?[recipient], outputOwnership{actor|household|cohort}, relationTemplateRef?,"
+                + " status(ACTIVE|SHORTAGE|SUSPENDED|EXITING), statusReason?(ACTIVE 必须空，SHORTAGE 必须非空)；"
+                + "id 缺省需 organizer 是 HOUSEHOLD 且有 unitId}；"
+                + "upsertCandidate={id, version?, output?, outputPerUnit?{商品:>0}, inputPerUnit?{商品:≥0},"
+                + " requiredAssets?{资产:≥0}, laborPerUnit?, buildDays?, cycleDays?, regime?, laborSource?,"
+                + " acceptedRightKinds?[OWNED|TENANCY|COMMUNAL], assetSource?, name?；新建 output/outputPerUnit/cycleDays/regime 必填；"
+                + "修订须推进 version；★ 无 modeId（模型无此字段，显式给 ⇒ 拒）}"));
     props.put("reason", ToolSupport.prop("string", "调整原因（必填非空白；进命令载荷与工具结果/审计）"));
     props.put(
         "preview", ToolSupport.prop("boolean", "true（缺省）= 只算前后差异、不写；false = 提交 economy.GmAdjust"));

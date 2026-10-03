@@ -728,8 +728,23 @@ final class EconomyPayloads {
 
   /** 一个阶层位置节点：id/modeId/name + 三个结构维词表 + 可选 ruleExtensions（缺键 ⇒ 空表）。 */
   private static ClassPosition classPosition(JsonNode node) {
+    return classPosition(node, null);
+  }
+
+  /**
+   * 一个阶层位置节点（同 {@link #classPosition(JsonNode)}），{@code modeId} 可缺省为 {@code defaultModeId}。
+   *
+   * <p>★ P7 起 {@code economy.GmAdjust} 的两个 class 结构编辑 kind 复用本解析：{@code upsertClassStructure} 的每个位置在
+   * {@code classStructure.modeId} 缺省时取结构自身 modeId（给了则逐值参与后续一致性判据）；播种路径仍以 {@code null} 调本方法
+   * ⇒ {@code modeId} 必填的旧行为逐字不变。
+   */
+  static ClassPosition classPosition(JsonNode node, String defaultModeId) {
     ClassPositionId id = ClassPositionId.parse(requireText(node, "id"));
-    ProductionModeId modeId = ProductionModeId.parse(requireText(node, "modeId"));
+    ProductionModeId modeId =
+        node.hasNonNull("modeId")
+            ? ProductionModeId.parse(requireText(node, "modeId"))
+            : ProductionModeId.parse(
+                defaultModeId == null ? requireText(node, "modeId") : defaultModeId);
     ClassPosition.RelationToMeans relationToMeans =
         enumValue(
             ClassPosition.RelationToMeans.class,
@@ -840,7 +855,7 @@ final class EconomyPayloads {
   }
 
   /** 一条租金模板节点：type/priority/legs；leg 的 kind/rate/fixed 与商品/币种二选一由构造期守卫判。 */
-  private static RentRule rentRule(JsonNode node) {
+  static RentRule rentRule(JsonNode node) {
     RentRule.RentType type = RentRule.RentType.parse(requireText(node, "type"));
     int priority = requireInt(node, "priority");
     List<RentRule.RentLeg> legs = new ArrayList<>();
@@ -859,7 +874,7 @@ final class EconomyPayloads {
   }
 
   /** 一条转移规则节点（三个布尔都必填；构造期无额外不变量，形状即语义）。 */
-  private static TransferRule transferRule(JsonNode node) {
+  static TransferRule transferRule(JsonNode node) {
     return new TransferRule(
         requireBoolean(node, "transferable"),
         requireBoolean(node, "requiresOwnerConsent"),
@@ -867,7 +882,7 @@ final class EconomyPayloads {
   }
 
   /** 位置 id → 千分比/数量表（用于 classStructures.defaultSharesPerMille 与 classStandings.retainedShares）。 */
-  private static Map<ClassPositionId, Long> classPositionShareMap(JsonNode object, String field) {
+  static Map<ClassPositionId, Long> classPositionShareMap(JsonNode object, String field) {
     Map<ClassPositionId, Long> out = new LinkedHashMap<>();
     if (object == null) {
       return out;
@@ -883,7 +898,7 @@ final class EconomyPayloads {
   }
 
   /** 字符串表（用于 {@code ClassPosition.ruleExtensions}）；值非文本 ⇒ 抛。 */
-  private static Map<String, String> stringMap(JsonNode object, String field) {
+  static Map<String, String> stringMap(JsonNode object, String field) {
     Map<String, String> out = new LinkedHashMap<>();
     if (object == null) {
       return out;
@@ -976,7 +991,7 @@ final class EconomyPayloads {
    * @param node 受方节点（非 null；调用方已确认它是对象）
    * @param what 字段名（进错误消息；如 {@code "recipient"} / {@code "inputSupplier"}）
    */
-  private static Recipient recipient(JsonNode node, String what) {
+  static Recipient recipient(JsonNode node, String what) {
     JsonNode actorNode = optionalObject(node, "actor");
     boolean hasCohort = node.hasNonNull("cohort");
     boolean hasHousehold = node.hasNonNull("household");
@@ -1005,7 +1020,7 @@ final class EconomyPayloads {
    * <p>★★ <b>H2：{@code pool} × {@code weight} 与旧档的 {@code basis} 都收</b>（详见类注）—— 这是"旧档不许当场抛"
    * 那条纪律的落点：真档的关系载荷全是 {@code basis}，少了这条翻译，整个真档播不出来。
    */
-  private static CompensationRule compensationRule(JsonNode node) {
+  static CompensationRule compensationRule(JsonNode node) {
     JsonNode recipientNode = optionalObject(node, "recipient");
     if (recipientNode == null) {
       throw new IllegalArgumentException("补偿规则的字段 recipient 必须是对象: " + node);

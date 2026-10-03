@@ -18,12 +18,16 @@ import java.util.Objects;
  * <pre>{@code
  * {"adjustment":"setMobilityPolicy"|"setClassFirstLender"|"forgiveClassFirstDebt"
  *              |"setCollectionPolicy"|"setProductionParameters"|"levyStock"
- *              |"forgiveDebt"|"setLiquidationPolicy",
+ *              |"forgiveDebt"|"setLiquidationPolicy"
+ *              |"upsertProductionMode"|"deactivateProductionMode"
+ *              |"upsertClassStructure"|"upsertClassPosition"
+ *              |"upsertProductionRelation"|"upsertAssetRule"
+ *              |"upsertProductionOrganization"|"upsertCandidate",
  *  "parameters":{...},
  *  "reason":"..."}
  * }</pre>
  *
- * <p>★★ <b>八条 adjustment（源状态白名单，唯一语义落点在 {@link EconomyGmAdjustments#project}）</b>：
+ * <p>★★ <b>十六条 adjustment（源状态白名单，唯一语义落点在 {@link EconomyGmAdjustments#project}）</b>：
  *
  * <ul>
  *   <li><b>class-first 原生六</b>：
@@ -73,6 +77,17 @@ import java.util.Objects;
  *             {@code AssetRule} 不存在 ⇒ 具名拒绝。★ {@code classFirst} 非空 ⇒ 二者由 {@link
  *             EconomyGmAdjustments#project} 统一具名拒绝并指路六个 class-first 原生 kind（handler 不重复这道门）。
  *       </ul>
+ *   <li><b>P7 生产方式编辑（八，class-first 世界也可用；classFirst 优先分支不受影响）</b>：
+ *       {@code upsertProductionMode}（{@code id,name,version?,classStructureId}；version 必须推进，classStructureId
+ *       必须已存在，class-first 首建空表例外）、{@code deactivateProductionMode}（被结构/位置/组织/资产规则/变迁/质押引用
+ *       ⇒ 具名拒绝）、{@code upsertClassStructure}（{@code id,modeId,positions?,defaultSharesPerMille?}；
+ *       位置 upsert 并同步全局表与所有结构副本）、{@code upsertClassPosition}（{@code
+ *       id,modeId,字段?,classStructureId?}）、{@code upsertProductionRelation}（{@code activity,operator?,
+ *       inputSupplier?,rules?,residualOwner?,laborSource?}；operator 必须与 unit.operator 一致）、
+ *       {@code upsertAssetRule}（{@code modeId,assetKind,...}；id 由 {@code AssetRuleId.idOf} 派生）、
+ *       {@code upsertProductionOrganization}（引用与四档状态守卫）、{@code upsertCandidate}（按
+ *       ProductionCandidate 现有字段；见 {@link EconomyGmAdjustments#project}）。八个 kind 只做形状校验，
+ *       引用存在性与幂等由 {@code project} 统一判。
  * </ul>
  *
  * <p>★★ <b>派生读数不可直写</b>：{@code flows} / {@code demandBook} / {@code crisisSignals} / {@code
@@ -132,6 +147,21 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
       case EconomyGmAdjustments.SET_PRODUCTION_PARAMETERS ->
           requireProductionParametersShape(label, parameters);
       case EconomyGmAdjustments.LEVY_STOCK -> requireLevyStockShape(label, parameters);
+      case EconomyGmAdjustments.UPSERT_PRODUCTION_MODE ->
+          requireUpsertProductionModeShape(label, parameters);
+      case EconomyGmAdjustments.DEACTIVATE_PRODUCTION_MODE ->
+          EconomyCommandPayloads.requireText(label, parameters, "id");
+      case EconomyGmAdjustments.UPSERT_CLASS_STRUCTURE ->
+          requireUpsertClassStructureShape(label, parameters);
+      case EconomyGmAdjustments.UPSERT_CLASS_POSITION ->
+          requireUpsertClassPositionShape(label, parameters);
+      case EconomyGmAdjustments.UPSERT_PRODUCTION_RELATION ->
+          EconomyCommandPayloads.requireText(label, parameters, "activity");
+      case EconomyGmAdjustments.UPSERT_ASSET_RULE ->
+          requireUpsertAssetRuleShape(label, parameters);
+      case EconomyGmAdjustments.UPSERT_PRODUCTION_ORGANIZATION ->
+          requireUpsertProductionOrganizationShape(label, parameters);
+      case EconomyGmAdjustments.UPSERT_CANDIDATE -> requireUpsertCandidateShape(label, parameters);
       default ->
           throw new IllegalArgumentException(
               EconomyGmAdjustments.DERIVED_REJECTION
@@ -248,6 +278,108 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
     long amount = EconomyCommandPayloads.requireLong(label, parameters, "amount");
     if (amount < 1L) {
       throw new IllegalArgumentException(label + " 的 amount 必须 >= 1: " + amount);
+    }
+  }
+
+  /** {@code upsertProductionMode} 的形状：id/name/classStructureId 必填非空；version 可选但必须是整数。 */
+  private static void requireUpsertProductionModeShape(String label, JsonNode parameters) {
+    EconomyCommandPayloads.requireText(label, parameters, "id");
+    EconomyCommandPayloads.requireText(label, parameters, "name");
+    EconomyCommandPayloads.requireText(label, parameters, "classStructureId");
+    if (hasValue(parameters, "version")) {
+      EconomyCommandPayloads.requireLong(label, parameters, "version");
+    }
+  }
+
+  /** {@code upsertClassStructure} 的形状：id/modeId 必填；positions 可选但必须是对象数组；份额表可选但必须是对象。 */
+  private static void requireUpsertClassStructureShape(String label, JsonNode parameters) {
+    EconomyCommandPayloads.requireText(label, parameters, "id");
+    EconomyCommandPayloads.requireText(label, parameters, "modeId");
+    if (parameters.has("positions") && !parameters.get("positions").isNull()) {
+      JsonNode positions = parameters.get("positions");
+      if (!positions.isArray()) {
+        throw new IllegalArgumentException(label + " 的 positions 必须是数组: " + positions);
+      }
+      for (JsonNode position : positions) {
+        if (!position.isObject()) {
+          throw new IllegalArgumentException(label + " 的 positions 每项必须是对象: " + position);
+        }
+      }
+    }
+    if (parameters.has("defaultSharesPerMille")
+        && !parameters.get("defaultSharesPerMille").isNull()
+        && !parameters.get("defaultSharesPerMille").isObject()) {
+      throw new IllegalArgumentException(
+          label + " 的 defaultSharesPerMille 必须是对象: " + parameters.get("defaultSharesPerMille"));
+    }
+  }
+
+  /** {@code upsertClassPosition} 的形状：id/modeId 必填非空（三个结构维词表与 classStructureId 由 project 统一判）。 */
+  private static void requireUpsertClassPositionShape(String label, JsonNode parameters) {
+    EconomyCommandPayloads.requireText(label, parameters, "id");
+    EconomyCommandPayloads.requireText(label, parameters, "modeId");
+    if (hasValue(parameters, "classStructureId")) {
+      EconomyCommandPayloads.requireText(label, parameters, "classStructureId");
+    }
+  }
+
+  /** {@code upsertAssetRule} 的形状：modeId/assetKind 必填非空；transferRule 可选但必须是对象。 */
+  private static void requireUpsertAssetRuleShape(String label, JsonNode parameters) {
+    EconomyCommandPayloads.requireText(label, parameters, "modeId");
+    EconomyCommandPayloads.requireText(label, parameters, "assetKind");
+    if (parameters.has("transferRule") && !parameters.get("transferRule").isNull()) {
+      if (!parameters.get("transferRule").isObject()) {
+        throw new IllegalArgumentException(
+            label + " 的 transferRule 必须是对象: " + parameters.get("transferRule"));
+      }
+    }
+    if (parameters.has("rentRule") && !parameters.get("rentRule").isNull()) {
+      if (!parameters.get("rentRule").isObject()) {
+        throw new IllegalArgumentException(
+            label + " 的 rentRule 必须是对象: " + parameters.get("rentRule"));
+      }
+    }
+  }
+
+  /**
+   * {@code upsertProductionOrganization} 的形状：modeId/classPositionId/organizer 必填（更新分支的 outputOwnership/
+   * status 等可省略并沿用既有值，故这里不把它们当必填）；id/unitId 给了必须非空，outputOwnership/status 给了必须是正确类型。
+   */
+  private static void requireUpsertProductionOrganizationShape(String label, JsonNode parameters) {
+    if (hasValue(parameters, "id")) {
+      EconomyCommandPayloads.requireText(label, parameters, "id");
+    }
+    EconomyCommandPayloads.requireText(label, parameters, "modeId");
+    EconomyCommandPayloads.requireText(label, parameters, "classPositionId");
+    if (hasValue(parameters, "unitId")) {
+      EconomyCommandPayloads.requireText(label, parameters, "unitId");
+    }
+    EconomyCommandPayloads.requireActor(label, parameters, "organizer");
+    if (hasValue(parameters, "outputOwnership")
+        && !parameters.get("outputOwnership").isObject()) {
+      throw new IllegalArgumentException(
+          label + " 的 outputOwnership 必须是对象（actor/household/cohort 恰给其一）: "
+              + parameters.get("outputOwnership"));
+    }
+    if (hasValue(parameters, "status")) {
+      EconomyCommandPayloads.requireText(label, parameters, "status");
+    }
+  }
+
+  /** {@code upsertCandidate} 的形状：id 必填；version 可选整数；output/cycleDays/regime 在有给时做最小类型判。 */
+  private static void requireUpsertCandidateShape(String label, JsonNode parameters) {
+    EconomyCommandPayloads.requireText(label, parameters, "id");
+    if (hasValue(parameters, "version")) {
+      EconomyCommandPayloads.requireLong(label, parameters, "version");
+    }
+    if (hasValue(parameters, "output")) {
+      EconomyCommandPayloads.requireText(label, parameters, "output");
+    }
+    if (hasValue(parameters, "cycleDays")) {
+      EconomyCommandPayloads.requireLong(label, parameters, "cycleDays");
+    }
+    if (hasValue(parameters, "regime")) {
+      EconomyCommandPayloads.requireText(label, parameters, "regime");
     }
   }
 

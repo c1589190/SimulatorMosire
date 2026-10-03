@@ -2292,6 +2292,51 @@ public record EconomyData(
         classFirst);
   }
 
+  /**
+   * ★★ <b>E1/P7：阶层结构与全局阶层位置表的成对写口</b>（第 18/19 两个组件一次落值）；其余 28 个组件原样带过。
+   *
+   * <p>★ <b>为什么必须成对</b>：{@link ClassStructure#positions()} 与全局 {@code classPositions} 有"逐值相等 +
+   * 每条位置至少属于一个结构"的双向守卫，而现有 {@code withClassStructures}/{@code withClassPositions} 各自只改一个组件 ——
+   * 单独改任一侧都会让中间态过不了守卫（"结构里写一套、全局表里另写一套"）。GM 编辑（{@code economy.GmAdjust} 的
+   * upsertClassStructure/upsertClassPosition）需要同时 upsert 结构与全局位置，故这里提供唯一的成对落值口；
+   * <b>不是第二套状态</b>：两个参数就是那两个既有组件，最终仍走同一个 canonical 构造器与全部守卫。
+   */
+  public EconomyData withClassStructuresAndPositions(
+      Map<ClassStructureId, ClassStructure> structures,
+      Map<ClassPositionId, ClassPosition> positions) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        laborSupply,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        memberships,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        structures,
+        positions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        classFirst);
+  }
+
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withClassStandings(Map<HouseholdId, ClassStanding> value) {
     return new EconomyData(
