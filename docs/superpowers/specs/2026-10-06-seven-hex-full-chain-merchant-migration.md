@@ -33,6 +33,8 @@
 2. 不做旧 class-first 存档、旧 EconomyData、旧载荷的读入兼容。
 3. 不一次实现完整全国/多国经济；7 hex 是正式运行时上的最小全链路验证世界。
 4. 不做城市财政/商税与 GOV 的完整接线（可留接口与具名缺口）。
+5. 不做货币兑换/FX（用户 2026-10-06 D-023：兑换是市场行为，后续结合国家系统）。
+6. 不做“劳动市场主动招募流民”：流民没有工作；他们只能通过自己选择/被吸收转移到其他生产方式的新/已有家户（D-023）。
 
 ## 2. 现状与目标
 
@@ -134,6 +136,17 @@ laborMilli = 本周期实际投入劳动（分母）
 netPerLaborMilli = net / max(1, labor)
 ```
 
+### 4.3 偿还与计息的介质/估值（D-023）
+
+- 利息仍按合同 `interestRatePerMillePerCycle` 计算，可并入合同未偿额；**不按 DebtUnit/币种拆多套账**。
+- 偿还/付款不规定介质：债务人和债权人（含外部放贷主体、政府）都可以“有啥付啥”。
+- 估值顺序：
+  1. 债务人/债权人的**家户价目表**（若该家户有对应价格）；
+  2. 否则用所在**市场区默认价目表**（`Market.prices`）。
+- 支付时把可用商品/货币按上述价目表折成合同计价口径，逐笔 floor；支付腿仍走唯一转移/债务写口。
+- 本批先实现市场区默认价目表路径，并留出家户价目表读取接口与优先级；无任何价格 ⇒ 该腿不折算、必须具名报告（不许静默付 0）。
+- 资产/货币随迁时**按所有币种逐项搬**，不做货币兑换。
+
 ## 5. 接口与契约
 
 ### 5.1 迁移计划
@@ -183,7 +196,12 @@ MigrationMove {
   - 新 `LaborAllocation`/`LaborSupply` 与 `ProductionRelation`（工资/分成规则按目标 mode）；
   - `AssetShare` 必须来自该 hex 的闲置/租赁份额；不足则此目标不可行，计划里不得出现。
 - 债务：对源户作为债务人的活跃合同，按迁移人口比例 `DebtContractBook.reduce`/`upsert` 到目标家户；逐笔 floor，余数留源户；源户人口归零则余数随最后一笔迁走；禁止删债（死亡删债是另一条既有路径）。
-- 货币：只搬账户余额，不新造；账户写回由现有 `AccountSession`/协调器完成。
+- 货币：搬源户**全部币种**余额，逐币种按人口比例 floor、余数留源户；不做 FX/兑换（D-023）；账户写回由现有 `AccountSession`/协调器完成。
+- **资产随迁（D-023，本批必须实现）**：
+  - 可移动资产（TOOL/SHIP/CATTLE 等）：按迁移人口比例拆源户份额；同 hex 同产业直接改 owner/operator 到目标户；跨 hex 时要求目标 hex 有同产业模板，在目标产业下按同 `AssetKind` 重建同量份额，源份额同量减少；
+  - 不可移动资产（LAND/WORKSHOP）：不得跨 hex 传送；默认走“租赁/变卖/留原户并具名”；变卖按 D-023 估值折货币随人；没有价格源时不得拍脑袋折价，必须具名报告并保留/挂租赁债权；
+  - 守恒：可移动资产 Σ数量 守恒；不可移动资产减少量必须对应货币/租赁债权增加，不许凭空消失；
+  - 源户组织/目标户组织的 `assetSources` 必须同步到新份额 id，不得悬空。
 - 消亡：源户人口为 0 且货币/债务为 0 ⇒ 从 `classes`/`classStandings` 移除；有残留 ⇒ 保留空壳并具名报错。
 - 全部写在同一 `EconomySession`/revision 内。
 
@@ -191,7 +209,8 @@ MigrationMove {
 
 - **商号**：`ProductionOrganization{mode=merchant, organizer=merchant principal 家户, laborSources=porter 家户, assetSources=SHIP/CATTLE 份额, unitId=trade@hex}`。
 - **承运选择**：`MarketSettlement` 内每条跨格路线，从 `merchantFirms` 中筛 `servesLane`、`capacityUsed < capacityPerRound` 的商号；按 `TransportTariff` 到货费率升序 → `organizationId` 升序选；扣本周期容量。
-- **收付**：买方 `CARRIER_FEE` 直接付给 merchant principal 家户；无商号可承运时记 `freightUncollectedMilli`，钱不凭空消失。
+- **多承运商分摊**：一条 lane 的运量按服务商号队列分配（费率升序 → id 升序），每家吃满自己的 `capacityPerRound` 余量；总运力仍不足的部分才记 `freightUncollectedMilli`（D-023 第 8 项：先做，降低/消除不必要未收）。
+- **收付**：买方 `CARRIER_FEE` 分别付给实际承运的 merchant principal 家户；无商号可承运时记 `freightUncollectedMilli`，钱不凭空消失。
 - **商号结算**：每周期末
   - 收入 = `lastFeeEarned`；
   - 成本 = porter 工资（`FIXED_MONEY_WAGE`/`FIXED_IN_KIND_PER_LABOR` 实付）+ upkeep（tier districtUse × 100）+ 船畜维护；
@@ -222,6 +241,8 @@ MigrationMove {
 - 真实利润：`OrganizationProfitBook` 至少一个 mode/hex 有非零 `net`，且 `revenue/cost/arrears` 来自真实 ledger。
 - 迁移：发生合并、新建、消亡各至少一次；人口、货币守恒；债务 = 初始 + 流民新增 + 利息等既有路径，迁移本身不改变总量。
 - 模式变化：高真实利润 mode 的人口份额从初始到 3650 tick 显著上升。
+- **自然世界验收（D-023 第 3 项）**：另跑一个不额外种“事件户”的 7hex 世界，仅靠正常家户+真实利润读数，在 3650 tick 内自然出现迁移/合并/新建/消亡/流民吸收；参数标定（D-023 第 9 项）以该世界为准。
+- **资产/币种随迁验收**：迁移前后可移动资产 `Σ数量` 守恒；不可移动资产减少量对应货币/租赁债权增加；源户/目标户组织的 `assetSources` 不悬空；所有币种余额按比例迁移且无 FX。
 - 流民：进入过 `DISPLACED`，并被雇佣/迁出；`DISPLACED` 初期存在、终局不增长失控。
 - A 规则：构造一个负利润且流动性耗尽、且存在更高收益目标家户的户，断言它以 1000‰ 速度把人口转出到目标 mode 家户（已有则合并、没有则新建），**源户 mode 逐字不变**、只缩编/消亡；若当前户自身已是最高收益，断言不发生转移且下一周期债务增加；源户人口清零前，`ClassStanding`/organization mode 不得出现目标 mode 值。
 - 确定性：同输入两次运行终态逐字段相同。
@@ -282,8 +303,12 @@ MigrationMove {
 | A 规则触发 | 预期利润 < 0 且现金+可卖库存 < 下一周期投入 | `ModeMigrationPolicy` |
 | A 规则转移速度 | 触发且存在更高收益目标 ⇒ 1000‰；否则 0（不转移，继续负债生产） | `ModeMigrationPolicy` |
 | 迁移目标排序 | weight 降序 → 距离升序 → id 升序 | `ModeMigrationPolicy` |
+| 偿还估值 | 家户价目表优先；缺省用市场区默认价目表 | `DebtValuation`（本批新增）/`Market.prices` |
+| 币种迁移 | 所有币种逐项按比例，不做 FX | `ModeMigrationSettlement` |
+| 多承运商 | 费率升序→id 升序，按容量分摊；余量才未收 | `MerchantSettlement` |
 
 ## 11. 版本历史
 
 - v1（2026-10-06）：首版。用户已裁定旧档作废、A 规则、人口+债务随迁、流民适配；6 个 mode + displaced；商人承运/工资/运力模型。
 - v2（2026-10-06）：用户澄清——**从不改变当前家户的生产方式**；转变方式只能用“创建/转移到新家户/其他家户”表示。原第 7 条“原地切模式”改为“提高转移速度”；A 规则只加快转出，源户 mode/standing 不变；仓库已有原地自动改 mode 路径必须删除或旁路。
+- v3（2026-10-06）：按 D-023 修订——偿还“有啥付啥”不规定介质；估值家户价目表优先、否则市场区默认；不按 DebtUnit/币种分别核算；资产随人口迁移（可移动随迁、不可移动租赁/变卖）；全部币种余额随迁但不做 FX；流民没有工作、不得主动招募；优先做 3/5/6/7/8/9，4 不急。
