@@ -195,7 +195,12 @@ class SevenHexFullChain3650Test {
     assertThat(production.d022Violations()).as("无迁移阶段不应出现 D-022 违例").isEmpty();
     assertThat(totalPopulation(production.data())).isEqualTo(productionOnly.initialPopulation());
     assertThat(totalAccountMoney(production.accounts())).isEqualTo(productionOnly.initialMoney());
-    assertThat(totalDebt(production.data())).isGreaterThan(totalDebt(productionOnly.initial()));
+    // ★ D-023：偿还“有啥付啥”（商品/任意币种按市场台价折付）⇒ 生产-only 世界里的外部债会被真实收入/库存
+    //   清偿，不能再按旧口径断言“利息必然资本化、债务只增不减”。这里改断“期末本金归零”，比旧断言更强。
+    assertThat(totalDebt(production.data()))
+        .as("D-023 有啥付啥：外部债被真实收入/库存清偿，3650 tick 期末不再有未偿本金")
+        .isZero();
+    assertThat(totalDebt(production.data())).isLessThan(totalDebt(productionOnly.initial()));
     assertNoNegativeBalances(production.data(), production.accounts());
 
     // ── 阶段二：迁移验收（正式 7hex + ClassStanding/Organization/merchantFirms）。────────────
@@ -210,7 +215,31 @@ class SevenHexFullChain3650Test {
     }
     assertThat(migration.merges()).as("正式迁移：至少一次合并已有目标户").isPositive();
     assertThat(migration.creations()).as("正式迁移：至少一次新建目标 mode 家户").isPositive();
-    assertThat(migration.extinctions()).as("正式迁移：至少一次源户人口归零消亡").isPositive();
+    assertThat(migration.populationZeroed())
+        .as("D-023：正式迁移至少一次源户人口归零（不再按“家户行消失”唯一计数）")
+        .isPositive();
+    assertThat(migration.shellHouseholds())
+        .as("D-023：跨 hex 不可移动资产让至少一个源户以 0 人口资产壳户保留")
+        .isNotEmpty();
+    Map<HouseholdId, ProductionModeId> shellModeBefore = modeOf(withCreation.initial(), withCreation);
+    Map<HouseholdId, ProductionModeId> shellModeAfter = modeOf(migration.data(), withCreation);
+    for (HouseholdId shell : migration.shellHouseholds()) {
+      ClassRow shellRow = migration.data().classes().get(shell);
+      assertThat(shellRow).as("壳户行仍在: %s", shell).isNotNull();
+      assertThat(shellRow.population()).as("壳户人口归零: %s", shell).isZero();
+      assertThat(shellModeAfter.get(shell))
+          .as("壳户 mode 不变: %s", shell)
+          .isEqualTo(shellModeBefore.get(shell));
+      assertThat(migration.data().classStandings())
+          .as("壳户 ClassStanding 仍在（源户 mode 不被改写）: %s", shell)
+          .containsKey(shell);
+      assertThat(migration.data().flows())
+          .as("壳户 FlowRow 仍在（不因消亡删行）: %s", shell)
+          .containsKey(shell);
+    }
+    assertThat(assetQuantitiesByKind(migration.data()))
+        .as("D-023：可移动/不可移动资产按 AssetKind 的 Σquantity 在 3650 tick 迁移后守恒")
+        .isEqualTo(assetQuantitiesByKind(withCreation.initial()));
     assertThat(migration.maxSpeedTransfers())
         .as("A 规则源户以 1000‰ 速度迁出并消亡")
         .isPositive();
@@ -223,6 +252,214 @@ class SevenHexFullChain3650Test {
     assertThat(totalPopulation(migration.data())).isEqualTo(withCreation.initialPopulation());
     assertThat(totalAccountMoney(migration.accounts())).isEqualTo(withCreation.initialMoney());
     assertNoNegativeBalances(migration.data(), migration.accounts());
+  }
+
+  /**
+   * ★★ D-023 专项直测（不经过 3650 长跑，避免被其他结算路径稀释）：
+   *
+   * <ol>
+   *   <li>可移动资产 TOOL 跨 hex 按人口比例重建，Σquantity 守恒且全部落到目标户；
+   *   <li>不可移动资产 LAND 跨 hex 不传送，数量守恒、owner 留源户（源户人口归零 ⇒ 0 人口壳户）；
+   *   <li>源户全部币种逐项按人口比例 floor 迁移，余数留/随最后一笔走，<b>无 FX</b>；
+   *   <li>迁移本身不改变债务总量；源户 ClassRow/ClassStanding/FlowRow 保留、mode 不变。
+   * </ol>
+   */
+  @Test
+  void d023CrossHexMobileImmobileAndAllCurrencies() {
+    World world = buildWorld(false, true, false);
+    EconomyData base = world.initial();
+    HouseholdId source = hid("hh-r5-wage");
+    ActorRef sourceActor = HouseholdActors.of(source);
+    HouseholdId target1 = hid("hh-d023-r1-a");
+    HouseholdId target2 = hid("hh-d023-r1-b");
+    HouseholdId creditor = hid("hh-r5-supplier");
+    IndustryId weaveR1 = IndustryHexKeys.id("weave", R1.q(), R1.r());
+
+    // 可移动 TOOL 份额（跨 hex 目标 R1 有 weave 承载）。
+    AssetShareId mobileId =
+        AssetShare.idOf(
+            weaveR1, AssetKind.TOOL, sourceActor, sourceActor, AssetShare.RightKind.OWNED, 91L);
+    Map<AssetShareId, AssetShare> shares = new LinkedHashMap<>(base.assetShares());
+    shares.put(
+        mobileId,
+        new AssetShare(
+            mobileId,
+            weaveR1,
+            AssetKind.TOOL,
+            sourceActor,
+            sourceActor,
+            12_345L,
+            AssetShare.RightKind.OWNED));
+    base = base.withAssetShares(shares);
+
+    // 源户作为债务人的一笔正常粮债：迁移 debtMilli=0 时总量不得变。
+    DebtUnit debtUnit = DebtUnit.commodity(GRAIN);
+    DebtTerms debtTerms = DebtTerms.legacyDefault(20);
+    DebtContractId debtId = DebtContractId.idOf(source, creditor, debtUnit, debtTerms);
+    Map<DebtContractId, DebtContract> debts = new LinkedHashMap<>(base.debtContracts());
+    debts.put(
+        debtId,
+        new DebtContract(
+            debtId,
+            source,
+            creditor,
+            debtUnit,
+            debtTerms,
+            800_000L,
+            0L,
+            OptionalLong.empty(),
+            OptionalLong.empty(),
+            DebtStatus.NORMAL));
+    base = base.withDebtContracts(debts);
+
+    // 多币种夹具：银 / 金 / 铜；金、铜没有任何市场价 ⇒ 执行器只做同币种比例搬运，不做折算。
+    AccountSession accounts = loadAccounts(base, world.goods(), world.money());
+    CurrencyId gold = new CurrencyId("gold");
+    CurrencyId copper = new CurrencyId("copper");
+    Map<CurrencyId, Long> wallet = new LinkedHashMap<>();
+    wallet.put(SILVER, 1_000L);
+    wallet.put(gold, 7L);
+    wallet.put(copper, 3L);
+    accounts.registerHousehold(
+        source,
+        sourceActor,
+        R5,
+        world.goods().getOrDefault(source, Map.of()),
+        wallet,
+        Map.of(),
+        Map.of());
+
+    Map<CurrencyId, Long> moneyBefore = moneyByCurrency(accounts);
+    Map<AssetKind, Long> assetsBefore = assetQuantitiesByKind(base);
+    long debtBefore = totalDebt(base);
+    long sourceLandBefore = assetQuantityOwnedBy(base, sourceActor, AssetKind.LAND);
+
+    EconomySession session = new EconomySession(base);
+    session.flows().put(source, zeroFlow(source));
+    ModeMigrationPolicy.MigrationPlan plan =
+        new ModeMigrationPolicy.MigrationPlan(
+            List.of(
+                new ModeMigrationPolicy.MigrationMove(
+                    source,
+                    target1,
+                    R1,
+                    DefaultProductionModes.TENANCY_SHARE,
+                    ModeMigrationPolicy.MIGRATION_PER_MILLE,
+                    25L,
+                    0L,
+                    0L,
+                    ModeMigrationPolicy.MigrationMove.REASON_PROFIT_WEIGHTED),
+                new ModeMigrationPolicy.MigrationMove(
+                    source,
+                    target2,
+                    R1,
+                    DefaultProductionModes.TENANCY_SHARE,
+                    ModeMigrationPolicy.MIGRATION_PER_MILLE,
+                    125L,
+                    0L,
+                    800_000L,
+                    ModeMigrationPolicy.MigrationMove.REASON_PROFIT_WEIGHTED)));
+    ModeMigrationSettlement.apply(session, accounts, plan, base, 120L);
+    EconomyData after = session.preview();
+    System.out.println(
+        "[7HEX-D023] currencyWallets target1="
+            + accounts.householdMoney().get(target1)
+            + " target2="
+            + accounts.householdMoney().get(target2)
+            + " source="
+            + accounts.householdMoney().get(source)
+            + " totalsBefore="
+            + moneyBefore
+            + " totalsAfter="
+            + moneyByCurrency(accounts));
+    System.out.println(
+        "[7HEX-D023] assets before="
+            + assetsBefore
+            + " after="
+            + assetQuantitiesByKind(after)
+            + " toolSource="
+            + assetQuantityOwnedBy(after, sourceActor, AssetKind.TOOL)
+            + " toolTargets="
+            + (assetQuantityOwnedBy(after, HouseholdActors.of(target1), AssetKind.TOOL)
+                + assetQuantityOwnedBy(after, HouseholdActors.of(target2), AssetKind.TOOL))
+            + " landSource="
+            + assetQuantityOwnedBy(after, sourceActor, AssetKind.LAND)
+            + " landTargets="
+            + (assetQuantityOwnedBy(after, HouseholdActors.of(target1), AssetKind.LAND)
+                + assetQuantityOwnedBy(after, HouseholdActors.of(target2), AssetKind.LAND)));
+    System.out.println(
+        "[7HEX-D023] debt totalBefore="
+            + debtBefore
+            + " totalAfter="
+            + totalDebt(after)
+            + " sourceAfter="
+            + debtPrincipalOf(after, source)
+            + " target2After="
+            + debtPrincipalOf(after, target2)
+            + " shellPop="
+            + after.classes().get(source).population()
+            + " standing="
+            + after.classStandings().containsKey(source)
+            + " flow="
+            + after.flows().containsKey(source)
+            + " mode="
+            + modeOf(after, world).get(source));
+
+    // ③ 全币种比例迁移 + 无 FX：逐币种总量守恒，目标户拿到 floor 份额，源户迁空后无余额。
+    assertThat(moneyByCurrency(accounts))
+        .as("D-023 全币种迁移：逐币种总量守恒（无 FX/兑换）")
+        .isEqualTo(moneyBefore);
+    assertThat(accounts.householdMoney().get(target1))
+        .as("move1 25/150：银 166、金 1、铜 floor=0 不带键")
+        .containsEntry(SILVER, 166L)
+        .containsEntry(gold, 1L)
+        .doesNotContainKey(copper);
+    assertThat(accounts.householdMoney().get(target2))
+        .as("move2 源户迁空：银 834、金 6、铜 3 全部随最后一笔")
+        .containsEntry(SILVER, 834L)
+        .containsEntry(gold, 6L)
+        .containsEntry(copper, 3L);
+    assertThat(accounts.householdMoney().get(source)).as("源户迁空后无任何币种余额").isEmpty();
+
+    // ① + ② 资产守恒：可移动 TOOL 全部到目标；不可移动 LAND 数量守恒、owner 留源壳户、目标不得。
+    assertThat(assetQuantitiesByKind(after))
+        .as("D-023：迁移前后全部 AssetKind 的 Σquantity 守恒")
+        .isEqualTo(assetsBefore);
+    long toolToTargets =
+        assetQuantityOwnedBy(after, HouseholdActors.of(target1), AssetKind.TOOL)
+            + assetQuantityOwnedBy(after, HouseholdActors.of(target2), AssetKind.TOOL);
+    assertThat(toolToTargets).as("可移动 TOOL 全部随迁到目标户").isEqualTo(12_345L);
+    assertThat(assetQuantityOwnedBy(after, sourceActor, AssetKind.TOOL))
+        .as("可移动 TOOL 源户清零")
+        .isZero();
+    assertThat(assetQuantityOwnedBy(after, sourceActor, AssetKind.LAND))
+        .as("不可移动 LAND 跨 hex 不传送，留原户")
+        .isEqualTo(sourceLandBefore)
+        .isPositive();
+    assertThat(
+            assetQuantityOwnedBy(after, HouseholdActors.of(target1), AssetKind.LAND)
+                + assetQuantityOwnedBy(after, HouseholdActors.of(target2), AssetKind.LAND))
+        .as("目标户不得获得源户的不可移动 LAND")
+        .isZero();
+
+    // ④ 债务随迁但不改变总量；源户 mode/行/standing/flow 保留。
+    assertThat(totalDebt(after)).as("D-023：债务随迁本身不改变总量").isEqualTo(debtBefore);
+    assertThat(debtPrincipalOf(after, source))
+        .as("源户迁空后不得残留正债务")
+        .isZero();
+    assertThat(debtPrincipalOf(after, target2))
+        .as("源户债务随迁到目标户（逐笔比例/清空时全走）")
+        .isEqualTo(800_000L);
+    ClassRow shell = after.classes().get(source);
+    assertThat(shell).as("源户人口归零后保留资产壳户行").isNotNull();
+    assertThat(shell.population()).as("壳户人口为 0").isZero();
+    assertThat(after.classStandings()).as("壳户 ClassStanding 仍在").containsKey(source);
+    assertThat(after.flows()).as("壳户 FlowRow 仍在").containsKey(source);
+    assertThat(modeOf(after, world).get(source))
+        .as("壳户 mode 不变（D-022：源户不被改造成目标 mode）")
+        .isEqualTo(DefaultProductionModes.WAGE_FARM);
+
+    assertNoNegativeBalances(after, accounts);
   }
 
   @Test
@@ -288,7 +525,7 @@ class SevenHexFullChain3650Test {
     System.out.println("[7HEX-FULL][PROFIT-BOOK] " + book.byOrganization());
   }
 
-  private static OrganizationProfitBook.Book collectFirstCycleBook(World world) {
+  static OrganizationProfitBook.Book collectFirstCycleBook(World world) {
     EconomyData base = world.initial();
     AccountSession accounts = loadAccounts(base, world.goods(), world.money());
     EconomySession session = new EconomySession(base);
@@ -423,9 +660,12 @@ class SevenHexFullChain3650Test {
                 .debtContracts()
                 .get(world.anchorDebtId())
                 .principal())
-        .as("下一周期利息并入本金 ⇒ 债务增加（不因迁移而消失）")
-        .isGreaterThan(
-            world.initial().debtContracts().get(world.anchorDebtId()).principal());
+        .as("D-023 有啥付啥：外部债按市场台价用实物/货币偿还，本金下降（不再固定按旧口径只增不减）")
+        .isLessThan(world.initial().debtContracts().get(world.anchorDebtId()).principal())
+        .isNotNegative();
+    assertThat(totalDebt(result.data()))
+        .as("迁移本身不改变债务总量：基线迁移 120 tick 的总本金不得超过期初")
+        .isLessThanOrEqualTo(totalDebt(world.initial()));
     assertNoNegativeBalances(result.data(), result.accounts());
   }
 
@@ -646,6 +886,52 @@ class SevenHexFullChain3650Test {
     return total;
   }
 
+  /** D-023 守恒读数：按 AssetKind 汇总全部 AssetShare 的 quantity（迁移前后逐值对比）。 */
+  private static Map<AssetKind, Long> assetQuantitiesByKind(EconomyData data) {
+    Map<AssetKind, Long> totals = new java.util.EnumMap<>(AssetKind.class);
+    for (AssetShare share : data.assetShares().values()) {
+      totals.merge(share.asset(), share.quantity(), Math::addExact);
+    }
+    return totals;
+  }
+
+  private static long assetQuantityOwnedBy(EconomyData data, ActorRef owner, AssetKind asset) {
+    long total = 0L;
+    for (AssetShare share : data.assetShares().values()) {
+      if (share.asset() == asset && share.owner().equals(owner)) {
+        total += share.quantity();
+      }
+    }
+    return total;
+  }
+
+  private static Map<CurrencyId, Long> moneyByCurrency(AccountSession accounts) {
+    Map<CurrencyId, Long> totals = new TreeMap<>(Comparator.comparing(CurrencyId::value));
+    for (Map<CurrencyId, Long> wallet : accounts.householdMoney().values()) {
+      for (Map.Entry<CurrencyId, Long> entry : wallet.entrySet()) {
+        totals.merge(entry.getKey(), entry.getValue(), Math::addExact);
+      }
+    }
+    return totals;
+  }
+
+  private static FlowRow zeroFlow(HouseholdId household) {
+    return new FlowRow(
+        household,
+        Map.of(),
+        Map.of(),
+        0L,
+        0L,
+        0L,
+        0L,
+        0L,
+        Map.of(),
+        0L,
+        0L,
+        Map.of(),
+        Map.of());
+  }
+
   private static void assertNoNegativeBalances(EconomyData data, AccountSession accounts) {
     for (ClassRow row : data.classes().values()) {
       assertThat(row.population()).as("人口不得为负: %s", row.id()).isNotNegative();
@@ -672,7 +958,7 @@ class SevenHexFullChain3650Test {
 
   // ── 推进 ─────────────────────────────────────────────────────────────────────────────
 
-  private static RunResult run(World world, int ticks, boolean printMilestones) {
+  static RunResult run(World world, int ticks, boolean printMilestones) {
     AccountSession accounts = loadAccounts(world.initial(), world.goods(), world.money());
     EconomyDayStepper stepper =
         new EconomyDayStepper(world.initial(), accounts, world.topology());
@@ -734,6 +1020,7 @@ class SevenHexFullChain3650Test {
           stats.crossRegionFills,
           stats.immediateFills,
           stats.carrierFees,
+          stats.relationPaid,
           stats.marketFills,
           stats.grainProduced,
           stats.fiberProduced,
@@ -742,6 +1029,10 @@ class SevenHexFullChain3650Test {
           stats.merges,
           stats.creations,
           stats.extinctions,
+          stats.populationZeroed,
+          stats.shellAtLastClose,
+          stats.peakShellHouseholds,
+          java.util.Collections.unmodifiableSet(new LinkedHashSet<>(stats.shellExamples)),
           stats.maxSpeedTransfers,
           stats.displacedPeak,
           stats.displacedAtLastClose,
@@ -771,6 +1062,10 @@ class SevenHexFullChain3650Test {
         for (long amount : transfer.money().values()) {
           stats.carrierFees += amount;
         }
+      } else if (transfer.reason() == TransferReason.RELATION_PAYMENT) {
+        for (long amount : transfer.money().values()) {
+          stats.relationPaid += amount;
+        }
       }
     }
   }
@@ -781,26 +1076,41 @@ class SevenHexFullChain3650Test {
       Map<HouseholdId, HouseholdFingerprint> after,
       Stats stats,
       List<String> d022Violations) {
+    long shellCount = 0L;
     for (Map.Entry<HouseholdId, HouseholdFingerprint> entry : after.entrySet()) {
       HouseholdFingerprint previous = before.get(entry.getKey());
+      if (entry.getValue().population() == 0L) {
+        shellCount++;
+        stats.shellExamples.add(entry.getKey());
+      }
       if (previous == null) {
         stats.creations++;
       } else if (entry.getValue().population() > previous.population()) {
         stats.merges++;
       }
     }
+    stats.shellAtLastClose = shellCount;
+    stats.peakShellHouseholds = Math.max(stats.peakShellHouseholds, shellCount);
     for (Map.Entry<HouseholdId, HouseholdFingerprint> entry : before.entrySet()) {
       HouseholdFingerprint next = after.get(entry.getKey());
-      if (next == null) {
-        stats.extinctions++;
-        if (entry.getKey().equals(world.aRuleSourceCandidate()) && entry.getValue().population() > 0L) {
+      boolean zeroed = next == null || next.population() == 0L;
+      if (entry.getValue().population() > 0L && zeroed) {
+        // ★ D-023：源户人口归零 = 消亡；行是否被删取决于是否留资产/合同壳户。
+        stats.populationZeroed++;
+        if (entry.getKey().equals(world.aRuleSourceCandidate())) {
           stats.maxSpeedTransfers++;
         }
+      }
+      if (next == null) {
+        stats.extinctions++;
         continue;
       }
-      if (!entry.getValue().sameModeIdentity(next)) {
+      if (!(next.population() == 0L
+          ? entry.getValue().sameModeAndStanding(next)
+          : entry.getValue().sameModeIdentity(next))) {
         d022Violations.add(
             entry.getKey()
+                + (next.population() == 0L ? " SHELL" : "")
                 + " BEFORE="
                 + entry.getValue().modeIdentity()
                 + " AFTER="
@@ -1007,8 +1317,12 @@ class SevenHexFullChain3650Test {
         + stats.freightUncollected
         + " carrierFees="
         + stats.carrierFees
+        + " wagesRentPaid="
+        + stats.relationPaid
         + " merchantLastFee="
         + stats.merchantFee
+        + " merchantLastWages="
+        + Math.max(0L, stats.merchantFee - stats.merchantProfit - stats.merchantUpkeep)
         + " merchantLastUpkeep="
         + stats.merchantUpkeep
         + " merchantLastProfit="
@@ -1019,6 +1333,12 @@ class SevenHexFullChain3650Test {
         + stats.creations
         + " extinctions="
         + stats.extinctions
+        + " populationZeroed="
+        + stats.populationZeroed
+        + " shellHouseholds="
+        + stats.shellAtLastClose
+        + " peakShellHouseholds="
+        + stats.peakShellHouseholds
         + " maxSpeedTransfers="
         + stats.maxSpeedTransfers
         + " displacedPop="
@@ -1504,6 +1824,13 @@ class SevenHexFullChain3650Test {
             .withDebtContracts(debts)
             .withMarkets(markets);
 
+    // ★ D-023 夹具适配：地主行是租佃关系默认模板点名的 cohort（EconomySeeder 也恒建 0 人口行）。
+    //   真实世界里地主是 LAND 份额的所有者（operator 才是佃农）；旧夹具把 LAND 的 owner 也写成佃农，
+    //   导致地主人口迁出后无资产/合同 → 行被删 → 后续收获找不到 landlord cohort（H1 fail-closed）。
+    //   这里把农村 farm@hex 的 LAND 份额按“地主 owner / 佃农 operator”登记，量不变；既不弱化断言，
+    //   也让“源户人口归零后有不可移动资产 ⇒ 留 0 人口壳户”这条 D-023 语义真的被走到。
+    legacy = protectLandlordCohortAssets(legacy, modeByHousehold, positionByHousehold);
+
     // ── 模式 / 阶层归属 / 组织 / 商号（迁移元数据层）────────────────────────────────────
     EconomyData full = attachRuntimeLayers(legacy, modeByHousehold, positionByHousehold, unitOperator,
         r4Target, r5Wage, r0Anchor, r4Profit, cMerchant, cPorter, cDisplaced, r0Supplier,
@@ -1530,6 +1857,530 @@ class SevenHexFullChain3650Test {
         r5Wage,
         initialDisplaced,
         Map.copyOf(modeByHousehold));
+  }
+
+  /**
+   * ★★ D-023 第 3 项（自然世界验收）：不含“目标利润户 / A 规则源户 / 锚户 / 外部供料户”等手工事件触发器，
+   * 只放正常分布的家户（佃农/雇农/自耕农/手工业/商人/少量流民）、正常产业、正常商号、正常市场；利润差来自
+   * **正常产业配方差**与市场真实成交，供 3650 tick 自然迁移使用。
+   *
+   * <p>为了让“至少一次新建目标 mode 家户”可自然发生，地主按真实播种口径持有 LAND（{@link
+   * #protectLandlordCohortAssets} 的 owner=地主 / operator=佃农 + 独立闲置 LAND），由迁移目标户正常租用。
+   */
+  static World buildNaturalWorld() {
+    Map<IndustryId, Industry> industries = new LinkedHashMap<>();
+    Map<HouseholdId, ClassRow> classes = new LinkedHashMap<>();
+    Map<HouseholdId, Map<CommodityId, Long>> goods = new LinkedHashMap<>();
+    Map<HouseholdId, Map<CurrencyId, Long>> money = new LinkedHashMap<>();
+    Map<HouseholdId, ProductionModeId> modeByHousehold = new LinkedHashMap<>();
+    Map<HouseholdId, ClassPositionId> positionByHousehold = new LinkedHashMap<>();
+    Map<PeopleLotId, LaborSupply> laborSupply = new LinkedHashMap<>();
+    Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
+    Map<IndustryId, ActorRef> unitOperator = new LinkedHashMap<>();
+    List<UnitSpec> unitSpecs = new ArrayList<>();
+    Map<HouseholdId, Long> populationByHousehold = new LinkedHashMap<>();
+
+    // ── 正常家户分布：R0/R3/R5 低产雇农，R1/R2 佃农，R4 自耕农，每格地主（非生产位置）、
+    //    R3/R5 少量流民，C 城手工业/商人；不种任何“目标利润户/供料户/锚户”事件触发器。────────────
+    HouseholdId r0Wage = hid("hh-nat-r0-wage");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        r0Wage, R0, ResidenceKind.RURAL, POOR, 200L, DefaultProductionModes.WAGE_FARM,
+        DefaultProductionModes.ROLE_WAGE_LABORER);
+    goods.get(r0Wage).put(GRAIN, 500_000_000L);
+    HouseholdId r0Landlord = hid("hh-nat-r0-landlord");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        r0Landlord, R0, ResidenceKind.RURAL, LANDLORD, 20L, DefaultProductionModes.TENANCY_FIXED_KIND,
+        DefaultProductionModes.ROLE_LANDLORD);
+    money.get(r0Landlord).put(SILVER, 200_000L);
+    goods.get(r0Landlord).put(GRAIN, 500_000_000L);
+
+    HouseholdId r1Tenant = hid("hh-nat-r1-tenant");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        r1Tenant, R1, ResidenceKind.RURAL, POOR, 200L, DefaultProductionModes.TENANCY_FIXED_KIND,
+        DefaultProductionModes.ROLE_TENANT_OPERATOR);
+    goods.get(r1Tenant).put(GRAIN, 500_000_000L);
+    HouseholdId r1Landlord = hid("hh-nat-r1-landlord");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        r1Landlord, R1, ResidenceKind.RURAL, LANDLORD, 20L, DefaultProductionModes.TENANCY_FIXED_KIND,
+        DefaultProductionModes.ROLE_LANDLORD);
+    money.get(r1Landlord).put(SILVER, 200_000L);
+    goods.get(r1Landlord).put(GRAIN, 500_000_000L);
+
+    HouseholdId r2Tenant = hid("hh-nat-r2-tenant");
+    // 正常分成佃农（人口 195，只留 5 个合并承载位；它是真实产业里的一名普通经营户，不是事件目标户）。
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        r2Tenant, R2, ResidenceKind.RURAL, POOR, 195L, DefaultProductionModes.TENANCY_SHARE,
+        DefaultProductionModes.ROLE_TENANT_OPERATOR);
+    goods.get(r2Tenant).put(GRAIN, 500_000_000L);
+    HouseholdId r2Landlord = hid("hh-nat-r2-landlord");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        r2Landlord, R2, ResidenceKind.RURAL, LANDLORD, 20L, DefaultProductionModes.TENANCY_SHARE,
+        DefaultProductionModes.ROLE_LANDLORD);
+    money.get(r2Landlord).put(SILVER, 200_000L);
+    goods.get(r2Landlord).put(GRAIN, 500_000_000L);
+
+    HouseholdId r3Wage = hid("hh-nat-r3-wage");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        r3Wage, R3, ResidenceKind.RURAL, POOR, 200L, DefaultProductionModes.WAGE_FARM,
+        DefaultProductionModes.ROLE_WAGE_LABORER);
+    goods.get(r3Wage).put(GRAIN, 500_000_000L);
+    HouseholdId r3Displaced = hid("hh-nat-r3-displaced");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        r3Displaced, R3, ResidenceKind.RURAL, DISPLACED, 20L, DefaultProductionModes.DISPLACED,
+        DefaultProductionModes.ROLE_DISPLACED_LABORER);
+    goods.get(r3Displaced).put(GRAIN, 50_000_000L);
+    money.get(r3Displaced).put(SILVER, 1_000L);
+    HouseholdId r3Landlord = hid("hh-nat-r3-landlord");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        r3Landlord, R3, ResidenceKind.RURAL, LANDLORD, 20L, DefaultProductionModes.TENANCY_SHARE,
+        DefaultProductionModes.ROLE_LANDLORD);
+    money.get(r3Landlord).put(SILVER, 200_000L);
+    goods.get(r3Landlord).put(GRAIN, 500_000_000L);
+
+    HouseholdId r4Target = hid("hh-nat-r4-target");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        r4Target, R4, ResidenceKind.RURAL, MIDDLE, 200L, DefaultProductionModes.FAMILY_FARM,
+        DefaultProductionModes.ROLE_FAMILY_FARMER);
+    goods.get(r4Target).put(GRAIN, 500_000_000L);
+    HouseholdId r4Landlord = hid("hh-nat-r4-landlord");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        r4Landlord, R4, ResidenceKind.RURAL, LANDLORD, 20L, DefaultProductionModes.TENANCY_FIXED_KIND,
+        DefaultProductionModes.ROLE_LANDLORD);
+    money.get(r4Landlord).put(SILVER, 500_000L);
+    goods.get(r4Landlord).put(GRAIN, 500_000_000L);
+
+    HouseholdId r5Wage = hid("hh-nat-r5-wage");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        r5Wage, R5, ResidenceKind.RURAL, POOR, 200L, DefaultProductionModes.WAGE_FARM,
+        DefaultProductionModes.ROLE_WAGE_LABORER);
+    goods.get(r5Wage).put(GRAIN, 500_000_000L);
+    HouseholdId r5Displaced = hid("hh-nat-r5-displaced");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        r5Displaced, R5, ResidenceKind.RURAL, DISPLACED, 10L, DefaultProductionModes.DISPLACED,
+        DefaultProductionModes.ROLE_DISPLACED_LABORER);
+    goods.get(r5Displaced).put(GRAIN, 25_000_000L);
+    money.get(r5Displaced).put(SILVER, 1_000L);
+    HouseholdId r5Landlord = hid("hh-nat-r5-landlord");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        r5Landlord, R5, ResidenceKind.RURAL, LANDLORD, 20L, DefaultProductionModes.TENANCY_SHARE,
+        DefaultProductionModes.ROLE_LANDLORD);
+    money.get(r5Landlord).put(SILVER, 200_000L);
+    goods.get(r5Landlord).put(GRAIN, 500_000_000L);
+
+    HouseholdId cOwner = hid("hh-nat-c-owner");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        cOwner, C, ResidenceKind.URBAN, OWNER, 200L, DefaultProductionModes.HANDICRAFT_WORKSHOP,
+        DefaultProductionModes.ROLE_WORKSHOP_OWNER);
+    goods.get(cOwner).put(GRAIN, 500_000_000L);
+    goods.get(cOwner).put(FIBER, 20_000_000L);
+    goods.get(cOwner).put(TOOL, 5_000_000L);
+    money.get(cOwner).put(SILVER, 500_000L);
+    HouseholdId cArtisan = hid("hh-nat-c-artisan");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        cArtisan, C, ResidenceKind.URBAN, ARTISAN, 200L, DefaultProductionModes.HANDICRAFT_WORKSHOP,
+        DefaultProductionModes.ROLE_ARTISAN);
+    goods.get(cArtisan).put(GRAIN, 500_000_000L);
+    money.get(cArtisan).put(SILVER, 50_000L);
+    HouseholdId cMerchant = hid("hh-nat-c-merchant");
+    // ★ 两户口 merchant mode 都已到承载上限（200）：商号仍是正常运营主体，但 C 市 merchant mode 不再有
+    //   “可合并房间”，也没有闲置 CATTLE/WORKSHOP ⇒ 迁移计划不能把城市商人当目标；防止“商号利润读数”
+    //   把自然迁移吸进城市，掩盖乡村真实利润差（不是关掉商人，商人仍在跑运费/工资/upkeep）。
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        cMerchant, C, ResidenceKind.URBAN, MERCHANT, 195L, DefaultProductionModes.MERCHANT,
+        DefaultProductionModes.ROLE_MERCHANT_PRINCIPAL);
+    goods.get(cMerchant).put(GRAIN, 100_000_000L);
+    money.get(cMerchant).put(SILVER, 20_000_000L);
+    clearNaturalNeeds(classes, cMerchant);
+    HouseholdId cPorter = hid("hh-nat-c-porter");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        cPorter, C, ResidenceKind.URBAN, PORTER, 200L, DefaultProductionModes.MERCHANT,
+        DefaultProductionModes.ROLE_PORTER);
+    goods.get(cPorter).put(GRAIN, 500_000_000L);
+    money.get(cPorter).put(SILVER, 50_000L);
+
+    // ── 正常产业：六格都是正常低产小农；真实利润差来自城市工商业（craft/trade）与乡村农业的正常差异，
+    //    以及城市真实成交/运费；不是“目标利润户/供料户”事件触发器。────────────────────────────
+    for (HexCoord hex : List.of(R0, R1, R2, R3, R4, R5)) {
+      HouseholdId operator =
+          switch (hex.q() + "_" + hex.r()) {
+            case "1_0" -> r0Wage;
+            case "1_-1" -> r1Tenant;
+            case "0_-1" -> r2Tenant;
+            case "-1_0" -> r3Wage;
+            case "-1_1" -> r4Target;
+            case "0_1" -> r5Wage;
+            default -> throw new IllegalStateException("未登记的自然农场格: " + hex);
+          };
+      addIndustry(industries, unitOperator, unitSpecs, IndustryHexKeys.id("farm", hex.q(), hex.r()),
+          "低产农场" + hex.q() + "_" + hex.r(), regimeId("tenant"),
+          Map.of(AssetKind.LAND, 1_000L), Map.of(AssetKind.LAND, 200_000L),
+          Map.of(GRAIN, 1L, FIBER, 1L), Map.of(), actor(HouseholdActors.of(operator)), 143L);
+    }
+    addIndustry(industries, unitOperator, unitSpecs, IndustryHexKeys.id("craft", C.q(), C.r()),
+        "城市手工业C", regimeId("handicraft"), Map.of(AssetKind.WORKSHOP, 1L),
+        Map.of(AssetKind.WORKSHOP, 30L), Map.of(CLOTH, 100L, TOOL, 50L),
+        Map.of(AssetKind.WORKSHOP, Map.of(FIBER, 100L, TOOL, 20L)),
+        actor(HouseholdActors.of(cOwner)));
+    addIndustry(industries, unitOperator, unitSpecs, IndustryHexKeys.id("trade", C.q(), C.r()),
+        "商号贸易C", regimeId("handicraft"), Map.of(AssetKind.CATTLE, 1L),
+        Map.of(AssetKind.CATTLE, 1L), Map.of(), Map.of(),
+        actor(HouseholdActors.of(cMerchant)), CYCLE_DAYS * 100L);
+
+    // ── 劳动供给/配额（与旧夹具同 helper；产业 operator 自营）。────────────────────────────
+    Map<PeopleLotId, Long> grossByLot = new LinkedHashMap<>();
+    for (HexCoord hex : HEXES) {
+      for (ResidenceKind residence : ResidenceKind.all()) {
+        long population = 0L;
+        for (ClassRow row : classes.values()) {
+          if (row.view().hex().equals(hex) && row.view().residence() == residence) {
+            population += row.population();
+          }
+        }
+        if (population <= 0L) {
+          continue;
+        }
+        PeopleLotId lot = lot(hex, residence);
+        grossByLot.put(lot, population * LABOR_MILLI_PER_PERSON);
+        laborSupply.put(lot, new LaborSupply(lot, START_PERIOD, population * LABOR_MILLI_PER_PERSON, 0L, 0L));
+      }
+    }
+    Map<PeopleLotId, Long> allocatedByLot = new LinkedHashMap<>();
+    addAllocation(allocations, laborSupply, allocatedByLot,
+        IndustryHexKeys.id("farm", R0.q(), R0.r()), HouseholdActors.of(r0Wage), r0Wage,
+        laborQuota(industries, IndustryHexKeys.id("farm", R0.q(), R0.r()), 120L));
+    addAllocation(allocations, laborSupply, allocatedByLot,
+        IndustryHexKeys.id("farm", R1.q(), R1.r()), HouseholdActors.of(r1Tenant), r1Tenant,
+        laborQuota(industries, IndustryHexKeys.id("farm", R1.q(), R1.r()), 120L));
+    addAllocation(allocations, laborSupply, allocatedByLot,
+        IndustryHexKeys.id("farm", R2.q(), R2.r()), HouseholdActors.of(r2Tenant), r2Tenant,
+        laborQuota(industries, IndustryHexKeys.id("farm", R2.q(), R2.r()), 100L));
+    addAllocation(allocations, laborSupply, allocatedByLot,
+        IndustryHexKeys.id("farm", R3.q(), R3.r()), HouseholdActors.of(r3Wage), r3Wage,
+        laborQuota(industries, IndustryHexKeys.id("farm", R3.q(), R3.r()), 130L));
+    addAllocation(allocations, laborSupply, allocatedByLot,
+        IndustryHexKeys.id("farm", R4.q(), R4.r()), HouseholdActors.of(r4Target), r4Target,
+        laborQuota(industries, IndustryHexKeys.id("farm", R4.q(), R4.r()), 150L));
+    addAllocation(allocations, laborSupply, allocatedByLot,
+        IndustryHexKeys.id("farm", R5.q(), R5.r()), HouseholdActors.of(r5Wage), r5Wage,
+        laborQuota(industries, IndustryHexKeys.id("farm", R5.q(), R5.r()), 140L));
+    addAllocation(allocations, laborSupply, allocatedByLot,
+        IndustryHexKeys.id("craft", C.q(), C.r()), HouseholdActors.of(cOwner), cOwner, 10_000L);
+    addAllocation(allocations, laborSupply, allocatedByLot,
+        IndustryHexKeys.id("craft", C.q(), C.r()), HouseholdActors.of(cOwner), cArtisan, 8_000L);
+    addAllocation(allocations, laborSupply, allocatedByLot,
+        IndustryHexKeys.id("trade", C.q(), C.r()), HouseholdActors.of(cMerchant), cPorter, 1L);
+    // ★ porter 是 merchant mode 自身家户（不是 DISPLACED），这里给的是正常工资劳动配额，不是“主动招募流民”。
+
+    // ── 关系：正常自营（空规则）—— 真实利润差来自产业配方与真实市场，不来自手工工资/地租规则。──
+    Map<ProductionUnitId, ProductionRelation> relations = new LinkedHashMap<>();
+    for (Map.Entry<IndustryId, ActorRef> entry : unitOperator.entrySet()) {
+      ProductionUnitId unitId = ProductionUnitId.idOf(entry.getKey(), entry.getValue());
+      if (entry.getKey().equals(IndustryHexKeys.id("trade", C.q(), C.r()))) {
+        CompensationRule wage =
+            new CompensationRule(
+                RuleType.FIXED_MONEY_WAGE,
+                new Recipient.ToHousehold(cPorter),
+                Pool.FIXED_AMOUNT,
+                Weight.NONE,
+                0,
+                10L,
+                Optional.empty(),
+                Optional.of(SILVER),
+                10);
+        relations.put(
+            unitId,
+            new ProductionRelation(
+                unitId,
+                entry.getValue(),
+                new Recipient.ToActor(entry.getValue()),
+                List.of(wage),
+                entry.getValue(),
+                LaborSource.WAGE));
+      } else {
+        relations.put(
+            unitId,
+            new ProductionRelation(
+                unitId,
+                entry.getValue(),
+                new Recipient.ToActor(entry.getValue()),
+                List.of(),
+                entry.getValue(),
+                LaborSource.SELF));
+      }
+    }
+
+    // ── 正常市场（同币银；城乡价差来自真实需求/供给，不是人工价目表触发器）。──────────────────
+    Map<HexCoord, Market> markets = new LinkedHashMap<>();
+    markets.put(C, market(3L, 8L, 20L, 30L));
+    markets.put(R0, market(1L, 1L, 40L, 50L));
+    markets.put(R1, market(1L, 1L, 36L, 48L));
+    markets.put(R2, market(2L, 1L, 38L, 46L));
+    markets.put(R3, market(1L, 1L, 42L, 52L));
+    markets.put(R4, market(2L, 2L, 39L, 47L));
+    markets.put(R5, market(1L, 1L, 41L, 49L));
+
+    // ── 正常债务：一笔由低产雇农向地主借的粮债（真实利息/A 规则路径，兼作债务守恒读数）。──
+    Map<DebtContractId, DebtContract> debts = new LinkedHashMap<>();
+    DebtUnit naturalDebtUnit = DebtUnit.commodity(GRAIN);
+    DebtTerms naturalTerms = DebtTerms.legacyDefault(20);
+    DebtContractId naturalDebtId =
+        DebtContractId.idOf(r0Wage, r0Landlord, naturalDebtUnit, naturalTerms);
+    debts.put(
+        naturalDebtId,
+        new DebtContract(
+            naturalDebtId,
+            r0Wage,
+            r0Landlord,
+            naturalDebtUnit,
+            naturalTerms,
+            500_000L,
+            0L,
+            OptionalLong.empty(),
+            OptionalLong.empty(),
+            DebtStatus.NORMAL));
+
+    Map<MembershipId, Membership> memberships = new LinkedHashMap<>();
+    for (ClassRow row : classes.values()) {
+      PeopleLotId membershipLot = new PeopleLotId("fixture-lot-" + row.id().value());
+      MembershipId membershipId = Membership.idOf(membershipLot, row.id());
+      memberships.put(
+          membershipId,
+          new Membership(membershipId, membershipLot, row.id(), row.population()));
+    }
+
+    EconomyMeta legacyMeta =
+        new EconomyMeta(
+            MAP_ID,
+            0L,
+            OptionalLong.empty(),
+            EconomyMeta.RULES_VERSION_PRE_MODERN_V1,
+            Optional.empty());
+    EconomyData legacy =
+        EconomyData.empty()
+            .withMeta(Optional.of(legacyMeta))
+            .withIndustries(industries)
+            .withClasses(classes)
+            .withLaborSupply(laborSupply)
+            .withRelations(relations)
+            .withAllocations(allocations)
+            .withMemberships(memberships)
+            .withDebtContracts(debts)
+            .withMarkets(markets);
+    legacy = protectLandlordCohortAssets(legacy, modeByHousehold, positionByHousehold, R2);
+    // ★ 自然迁移目标（C 市手工业/craft 承载）的“正常承载”：商号自有额外 CATTLE 运力储备
+    //   （owner==operator，未挂给组织）；这是正常运力资产，不是事件触发器。没有它，目标户合并满后
+    //   自然新建无资产可承载，3650 tick 只能“只合并不新建”。
+    Map<AssetShareId, AssetShare> naturalShares = new LinkedHashMap<>(legacy.assetShares());
+    IndustryId tradeC = IndustryHexKeys.id("trade", C.q(), C.r());
+    ActorRef merchantActor = HouseholdActors.of(cMerchant);
+    AssetShareId idleCattleId =
+        AssetShare.idOf(
+            tradeC, AssetKind.CATTLE, merchantActor, merchantActor, AssetShare.RightKind.OWNED, 1L);
+    naturalShares.put(
+        idleCattleId,
+        new AssetShare(
+            idleCattleId,
+            tradeC,
+            AssetKind.CATTLE,
+            merchantActor,
+            merchantActor,
+            100L,
+            AssetShare.RightKind.OWNED));
+    legacy = legacy.withAssetShares(naturalShares);
+    EconomyData full =
+        attachNaturalRuntimeLayers(
+            legacy, modeByHousehold, positionByHousehold, unitOperator, cMerchant, cPorter);
+
+    long initialPopulation = totalPopulation(full);
+    long initialMoney = totalMoney(full, goods, money);
+    MarketTopology topology = topology(markets);
+    Set<HouseholdId> initialDisplaced = new LinkedHashSet<>();
+    for (Map.Entry<HouseholdId, ProductionModeId> entry : modeByHousehold.entrySet()) {
+      if (DefaultProductionModes.DISPLACED.equals(entry.getValue())) {
+        initialDisplaced.add(entry.getKey());
+      }
+    }
+    return new World(
+        full,
+        deepCopyGoods(goods),
+        deepCopyMoney(money),
+        topology,
+        initialPopulation,
+        initialMoney,
+        naturalDebtId,
+        r4Landlord,
+        r0Wage,
+        initialDisplaced,
+        Map.copyOf(modeByHousehold));
+  }
+
+  /** 自然世界的运行时元数据层：全体家户写 ClassStanding；只显式建商号组织（其余走日结自动组织）。 */
+  private static EconomyData attachNaturalRuntimeLayers(
+      EconomyData legacy,
+      Map<HouseholdId, ProductionModeId> modeByHousehold,
+      Map<HouseholdId, ClassPositionId> positionByHousehold,
+      Map<IndustryId, ActorRef> unitOperator,
+      HouseholdId merchant,
+      HouseholdId porter) {
+    Map<HouseholdId, ClassStanding> standings = new LinkedHashMap<>();
+    for (ClassRow row : legacy.classes().values()) {
+      ProductionModeId mode = modeByHousehold.get(row.id());
+      ClassPositionId position = positionByHousehold.get(row.id());
+      if (mode == null || position == null) {
+        throw new IllegalStateException("自然夹具缺 mode/position: " + row.id());
+      }
+      standings.put(
+          row.id(),
+          new ClassStanding(row.id(), position, position, Map.of(), 0L, 0L, "fixture-natural"));
+    }
+    Map<ProductionOrganizationId, ProductionOrganization> organizations = new LinkedHashMap<>();
+    ProductionOrganizationId merchantOrg =
+        attachOrganization(
+            legacy,
+            organizations,
+            modeByHousehold.get(merchant),
+            positionByHousehold.get(merchant),
+            merchant,
+            IndustryHexKeys.id("trade", C.q(), C.r()),
+            unitOperator,
+            "natural-merchant");
+    Map<ProductionOrganizationId, MerchantFirm> merchantFirms = new LinkedHashMap<>();
+    merchantFirms.put(
+        merchantOrg,
+        new MerchantFirm(
+            merchantOrg,
+            MerchantPolicy.MerchantTier.PORTER,
+            C,
+            true,
+            100_000L,
+            0L,
+            MerchantFirm.PORTER_SERVICE_RADIUS_HEX,
+            0L,
+            0L,
+            0L,
+            0L));
+    if (porter == null) {
+      throw new IllegalStateException("自然夹具商号缺 porter");
+    }
+    EconomyMeta runtimeMeta =
+        new EconomyMeta(
+            MAP_ID, 0L, OptionalLong.empty(), EconomyMeta.RUNTIME_VERSION_SEVEN_HEX_V1, Optional.empty());
+    return legacy
+        .withModes(DefaultProductionModes.modes())
+        .withClassStructures(DefaultProductionModes.classStructures())
+        .withClassPositions(DefaultProductionModes.classPositions())
+        .withClassStandings(standings)
+        .withProductionOrganizations(organizations)
+        .withMerchantFirms(merchantFirms)
+        .withMeta(Optional.of(runtimeMeta));
+  }
+
+  private static EconomyData protectLandlordCohortAssets(
+      EconomyData legacy,
+      Map<HouseholdId, ProductionModeId> modeByHousehold,
+      Map<HouseholdId, ClassPositionId> positionByHousehold) {
+    return protectLandlordCohortAssets(legacy, modeByHousehold, positionByHousehold, null);
+  }
+
+  private static EconomyData protectLandlordCohortAssets(
+      EconomyData legacy,
+      Map<HouseholdId, ProductionModeId> modeByHousehold,
+      Map<HouseholdId, ClassPositionId> positionByHousehold,
+      HexCoord idleLandOnlyHex) {
+    Map<HexCoord, HouseholdId> landlordByHex = new LinkedHashMap<>();
+    for (HouseholdId household : legacy.classes().keySet()) {
+      ClassRow row = legacy.classes().get(household);
+      if (row == null || row.view().residence() != ResidenceKind.RURAL) {
+        continue;
+      }
+      ProductionModeId mode = modeByHousehold.get(household);
+      ClassPositionId position = positionByHousehold.get(household);
+      if (mode == null || position == null) {
+        continue;
+      }
+      Optional<ClassPositionId> landlordPosition =
+          DefaultProductionModes.positionId(mode, DefaultProductionModes.ROLE_LANDLORD);
+      if (landlordPosition.isPresent() && landlordPosition.get().equals(position)) {
+        landlordByHex.putIfAbsent(row.view().hex(), household);
+      }
+    }
+    if (landlordByHex.isEmpty()) {
+      return legacy;
+    }
+    Map<AssetShareId, AssetShare> shares = new LinkedHashMap<>(legacy.assetShares());
+    boolean changed = false;
+    for (Map.Entry<HexCoord, HouseholdId> entry : landlordByHex.entrySet()) {
+      HexCoord hex = entry.getKey();
+      IndustryId farm = IndustryHexKeys.id("farm", hex.q(), hex.r());
+      Industry industry = legacy.industries().get(farm);
+      if (industry == null || !industry.capacityPerUnit().containsKey(AssetKind.LAND)) {
+        continue;
+      }
+      List<AssetShareId> ownedLand = new ArrayList<>();
+      for (AssetShare share : shares.values()) {
+        if (share.industry().equals(farm)
+            && share.asset() == AssetKind.LAND
+            && share.kind() == AssetShare.RightKind.OWNED) {
+          ownedLand.add(share.id());
+        }
+      }
+      for (AssetShareId oldId : ownedLand) {
+        AssetShare old = shares.remove(oldId);
+        if (old == null) {
+          continue;
+        }
+        AssetShareId newId =
+            AssetShare.idOf(
+                farm,
+                AssetKind.LAND,
+                HouseholdActors.of(entry.getValue()),
+                old.operator(),
+                AssetShare.RightKind.TENANCY,
+                0L);
+        if (shares.putIfAbsent(
+                newId,
+                new AssetShare(
+                    newId,
+                    farm,
+                    AssetKind.LAND,
+                    HouseholdActors.of(entry.getValue()),
+                    old.operator(),
+                    old.quantity(),
+                    AssetShare.RightKind.TENANCY))
+            != null) {
+          throw new IllegalStateException("地主 LAND 份额 id 冲突: " + newId);
+        }
+        changed = true;
+      }
+      // D-023：地主另有可出租/可承载的闲置 LAND 份额（owner == operator）——这是“新建目标 mode 家户”的
+      //   正常承载来源（自然世界与事件世界都需要），不是事件触发器；数量取 fixture 标定的 2,000,000。
+      //   ★ natural 世界只让 R2 保留空闲承载地：把自然新建严格留在“高利润目标格”，避免其他格靠闲置资产
+      //     也开新户，掩盖利润导向。
+      if (idleLandOnlyHex == null || hex.equals(idleLandOnlyHex)) {
+        AssetShareId idleId =
+            AssetShare.idOf(
+                farm,
+                AssetKind.LAND,
+                HouseholdActors.of(entry.getValue()),
+                HouseholdActors.of(entry.getValue()),
+                AssetShare.RightKind.OWNED,
+                0L);
+        if (!shares.containsKey(idleId)) {
+          shares.put(
+              idleId,
+              new AssetShare(
+                  idleId,
+                  farm,
+                  AssetKind.LAND,
+                  HouseholdActors.of(entry.getValue()),
+                  HouseholdActors.of(entry.getValue()),
+                  2_000_000L,
+                  AssetShare.RightKind.OWNED));
+          changed = true;
+        }
+      }
+    }
+    return changed ? legacy.withAssetShares(shares) : legacy;
   }
 
   private static EconomyData attachRuntimeLayers(
@@ -1929,6 +2780,7 @@ class SevenHexFullChain3650Test {
       long crossRegionFills,
       long immediateFills,
       long carrierFees,
+      long relationPaid,
       long marketFills,
       long grainProducedMilli,
       long fiberProducedMilli,
@@ -1937,6 +2789,10 @@ class SevenHexFullChain3650Test {
       long merges,
       long creations,
       long extinctions,
+      long populationZeroed,
+      long shellAtLastClose,
+      long peakShellHouseholds,
+      Set<HouseholdId> shellHouseholds,
       long maxSpeedTransfers,
       long displacedPeak,
       long displacedLastClose,
@@ -1951,6 +2807,8 @@ class SevenHexFullChain3650Test {
     long crossRegionFills;
     long immediateFills;
     long carrierFees;
+    /** 真实 RELATION_PAYMENT 货币腿（商号 porter 工资 + 地租等；里程碑“工资”读数）。 */
+    long relationPaid;
     long marketFills;
     long grainProduced;
     long fiberProduced;
@@ -1959,6 +2817,13 @@ class SevenHexFullChain3650Test {
     long merges;
     long creations;
     long extinctions;
+    /** D-023：源户人口在本周期内归零的次数（无论行被删还是保留为 0 人口壳户）。 */
+    long populationZeroed;
+    /** 最后一个关账日仍以 0 人口壳户存在的家户数。 */
+    long shellAtLastClose;
+    /** 全 3650 tick 内壳户数的峰值。 */
+    long peakShellHouseholds;
+    final Set<HouseholdId> shellExamples = new LinkedHashSet<>();
     long maxSpeedTransfers;
     long displacedAtLastClose;
     long displacedPeak;
@@ -1996,6 +2861,16 @@ class SevenHexFullChain3650Test {
           && java.util.Objects.equals(originalPosition, other.originalPosition)
           && java.util.Objects.equals(organizationMode, other.organizationMode)
           && java.util.Objects.equals(unitModeKey, other.unitModeKey);
+    }
+
+    /**
+     * ★ D-023 壳户口径：人口归零后源户的组织/unit/配额按 §5.3 正常退役，所以只要求 mode 与 standing 逐字不变
+     * （FlowRow/资产壳的存在由调用方另判），不再要求 orgMode/unitModeKey 仍在。
+     */
+    boolean sameModeAndStanding(HouseholdFingerprint other) {
+      return java.util.Objects.equals(modeId, other.modeId)
+          && java.util.Objects.equals(currentPosition, other.currentPosition)
+          && java.util.Objects.equals(originalPosition, other.originalPosition);
     }
   }
 
