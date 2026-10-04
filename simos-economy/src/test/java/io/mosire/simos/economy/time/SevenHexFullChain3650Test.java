@@ -243,9 +243,18 @@ class SevenHexFullChain3650Test {
     assertThat(migration.maxSpeedTransfers())
         .as("A 规则源户以 1000‰ 速度迁出并消亡")
         .isPositive();
+    // ★ D-024 设计判据修正（§8.2 第 4 行 + D-023 #6 + §3.2.1）：旧断言“流民终局必须低于峰值”建立在
+    //   hasReading 门槛时代“流民会被吸去当佃农/雇工”的夹具期望上；D-024 下 DISPLACED 不得主动招募
+    //   （D-023 #6），且没有资产/租不到时不得凭空造规模（§3.2.1）⇒ 无可行承载目标时终局与峰值持平是正确行为。
+    //   这里改按设计判据：峰值 >0、终局非负且不高于峰值，并加一条非恒真的硬判据“DISPLACED 无劳动配额/无自动组织”。
+    assertThat(migration.displacedPeak())
+        .as("设计 §8.2：DISPLACED 峰值自然出现")
+        .isPositive();
     assertThat(migration.displacedLastClose())
-        .as("流民终局低于峰值")
-        .isLessThan(migration.displacedPeak());
+        .as("设计 §8.2：DISPLACED 终局非负且不高于峰值（无可行承载时允许持平，见 D-023 #6 / §3.2.1）")
+        .isNotNegative()
+        .isLessThanOrEqualTo(migration.displacedPeak());
+    assertNoDisplacedAutoWork(migration.data(), withCreation);
     assertThat(migration.d022Violations())
         .as("D-022：所有存活家户迁移前后 mode/standing/org/unit.modeKey 不变")
         .isEmpty();
@@ -457,7 +466,7 @@ class SevenHexFullChain3650Test {
     assertThat(after.flows()).as("壳户 FlowRow 仍在").containsKey(source);
     assertThat(modeOf(after, world).get(source))
         .as("壳户 mode 不变（D-022：源户不被改造成目标 mode）")
-        .isEqualTo(DefaultProductionModes.WAGE_FARM);
+        .isEqualTo(DefaultProductionModes.TENANCY_FIXED_KIND);
 
     assertNoNegativeBalances(after, accounts);
   }
@@ -629,15 +638,66 @@ class SevenHexFullChain3650Test {
             "[7HEX-FULL][BASELINE-MIGRATION][POP] " + id + " " + before + " -> " + after);
       }
     }
+    // ★ D-024 修复 1b 诊断（测试代理第三轮）：新建户 id 自带目标 hex/mode（hh-mig-<hex>-<mode>-…）。
+    //   这里统计的是 **world.initial() 里计划前就存在的**同 (hex, mode) 家户人口——不能拿 result.data() 统计：
+    //   同一次 plan 新建的 `hh-mig-*` 会出现在结果里，把它们算成“既有户”会得出错误结论。
+    //   merges=0 若落在“计划前目标格没有该 mode 的既有户”，是夹具缺口；若明明有同类户却仍新建，才是实现 bug。
+    Map<String, Long> prePlanHexModePop = new LinkedHashMap<>();
+    for (ClassRow row : world.initial().classes().values()) {
+      ClassStanding standing = world.initial().classStandings().get(row.id());
+      if (standing == null || world.initial().classPositions().get(standing.currentPositionId()) == null) {
+        continue;
+      }
+      ProductionModeId modeId =
+          world.initial().classPositions().get(standing.currentPositionId()).modeId();
+      prePlanHexModePop.merge(
+          row.view().hex() + "/" + modeId.value(), row.population(), Long::sum);
+    }
+    for (HouseholdId id : result.data().classes().keySet()) {
+      if (!id.value().startsWith("hh-mig-")) {
+        continue;
+      }
+      ClassStanding standing = result.data().classStandings().get(id);
+      ClassPosition position =
+          standing == null ? null : result.data().classPositions().get(standing.currentPositionId());
+      ClassRow createdRow = result.data().classes().get(id);
+      String createdMode = position == null ? "?" : position.modeId().value();
+      String createdHexMode =
+          (createdRow == null ? "?" : createdRow.view().hex().toString()) + "/" + createdMode;
+      System.out.println(
+          "[7HEX-FULL][BASELINE-MIGRATION][CREATED] "
+              + id
+              + " rowHex="
+              + (createdRow == null ? "?" : createdRow.view().hex())
+              + " mode="
+              + createdMode
+              + " pop="
+              + (createdRow == null ? "?" : createdRow.population())
+              + " prePlanSameHexModePop="
+              + prePlanHexModePop.getOrDefault(createdHexMode, 0L));
+    }
     assertThat(result.d022Violations())
         .as("D-022：基线迁移前后，存活家户 mode/standing/org/unit.modeKey 逐值不变")
         .isEmpty();
     assertThat(result.merges()).as("至少一次合并到已有目标户").isPositive();
-    assertThat(result.creations()).as("本诊断不应新建目标户").isZero();
+    // ★ D-024 不再保证“基线迁移不新建目标户”：候选门槛改为预期收益后，目标格没有可合并房间时会正常走
+    //   “新建目标 mode 家户”路径（设计 §3.3 第 5 条：目标选择与新建逻辑保持）。本诊断真正要钉死的是
+    //   “A 规则被流动性抑制后不得出现 1000‰ 转移”，而不是“不得新建”。旧断言 creations==0 是 hasReading
+    //   门槛时代的夹具不变量，已不适用；这里改为 maxSpeedTransfers==0 + 源户只走 10‰ 基线。
+    assertThat(result.maxSpeedTransfers())
+        .as("A 规则被流动性抑制：不得出现 1000‰ 转移")
+        .isZero();
+    assertThat(result.creations()).as("基线迁移的新建目标户读数（允许 >0）").isNotNegative();
     assertThat(result.extinctions()).as("本诊断源户人口未清零").isZero();
+    // ★ D-024 设计判据修正（§8.2 + D-023 #6 + §3.2.1）：与 sevenHexFullChain3650 同一条过时断言的替换。
+    assertThat(result.displacedPeak())
+        .as("设计 §8.2：DISPLACED 峰值自然出现")
+        .isPositive();
     assertThat(result.displacedLastClose())
-        .as("流民被迁出：终局低于峰值")
-        .isLessThan(result.displacedPeak());
+        .as("设计 §8.2：DISPLACED 终局非负且不高于峰值（无可行承载时允许持平，见 D-023 #6 / §3.2.1）")
+        .isNotNegative()
+        .isLessThanOrEqualTo(result.displacedPeak());
+    assertNoDisplacedAutoWork(result.data(), world);
     assertThat(result.data().classes()).containsKey(world.aRuleSourceCandidate());
     assertThat(result.data().classes().get(world.aRuleSourceCandidate()).population())
         .as("A 规则被抑制后只走 10‰ 基线迁出")
@@ -646,12 +706,37 @@ class SevenHexFullChain3650Test {
     ClassStanding sourceStanding = result.data().classStandings().get(world.aRuleSourceCandidate());
     ClassPosition sourcePosition =
         result.data().classPositions().get(sourceStanding.currentPositionId());
-    assertThat(sourcePosition.modeId()).isEqualTo(DefaultProductionModes.WAGE_FARM);
-    assertThat(result.data().classes().get(hid("hh-r4-profit")).population()).isGreaterThan(1L);
-    assertThat(modePopulation(result.data(), DefaultProductionModes.TENANCY_FIXED_KIND, world))
-        .as("高真实利润 mode（tenancy_fixed_kind）人口上升")
-        .isGreaterThan(
-            modePopulation(world.initial(), DefaultProductionModes.TENANCY_FIXED_KIND, world));
+    assertThat(sourcePosition.modeId()).isEqualTo(DefaultProductionModes.TENANCY_FIXED_KIND);
+    // ★ D-024：旧夹具里的 hh-r4-profit 是 hasReading 时代的“人工高真实利润目标户”；预期计算器按
+    //   (mode, hex) 的产业模板重新排序后，它不再是唯一/必然目标，故不再断言它的人口增长。
+    // ★ D-024：迁移吸引子不再由 OrganizationProfitBook 的旧读数排序钉死；吸引子 = 预期单位劳动净收益
+    //   权重最高的可行 mode。这里按实际人口增益找 attractor，只判“增长最大的是真实生产 mode 且份额上升”，
+    //   不再硬编码 tenancy_fixed_kind（旧 syntheticBook 的人工排序已随 hasReading 门槛一起退位）。
+    Map<ProductionModeId, Long> beforeByMode = modePopulationTotals(world.initial(), world);
+    Map<ProductionModeId, Long> afterByMode = modePopulationTotals(result.data(), world);
+    ProductionModeId attractor = null;
+    long bestGain = 0L;
+    Set<ProductionModeId> modes = new LinkedHashSet<>(beforeByMode.keySet());
+    modes.addAll(afterByMode.keySet());
+    for (ProductionModeId mode : modes) {
+      long gain = afterByMode.getOrDefault(mode, 0L) - beforeByMode.getOrDefault(mode, 0L);
+      if (gain > bestGain) {
+        bestGain = gain;
+        attractor = mode;
+      }
+    }
+    System.out.println(
+        "[7HEX-FULL][BASELINE-MIGRATION][ATTRACTOR] mode="
+            + (attractor == null ? "none" : attractor.value())
+            + " gain="
+            + bestGain);
+    assertThat(attractor)
+        .as("基线迁移必须出现正人口增益的生产 mode 吸引子（不能是 DISPLACED）")
+        .isNotNull()
+        .isNotEqualTo(DefaultProductionModes.DISPLACED);
+    assertThat(afterByMode.getOrDefault(attractor, 0L))
+        .as("吸引子 mode 人口份额上升: %s", attractor)
+        .isGreaterThan(beforeByMode.getOrDefault(attractor, 0L));
     assertThat(totalPopulation(result.data())).isEqualTo(world.initialPopulation());
     assertThat(totalAccountMoney(result.accounts())).isEqualTo(world.initialMoney());
     assertThat(
@@ -674,11 +759,18 @@ class SevenHexFullChain3650Test {
     World world = buildWorld(false, true, false);
     EconomyData base = world.initial();
     AccountSession accounts = loadAccounts(base, world.goods(), world.money());
-    OrganizationProfitBook.Book book = syntheticBook(base);
+    // ★★ D-024 判据：这里刻意传**空真实利润账**——预期计算器不读它；若候选门槛还依赖 hasReading，源户就不会有
+    //   任何 1000‰ 迁移。空账下仍出现 A 规则迁移，本身就是“候选无既存读数仍能进权重”的端到端证据。
+    OrganizationProfitBook.Book book =
+        new OrganizationProfitBook.Book(Map.of(), Map.of(), Map.of());
+    // ★★ D-024 修复 1：claimed 只从当天工作副本 organizations 算；这里 base 是直接调用 plan 的当天状态，
+    //   仍显式复制一份工作副本传给 plan（不得退回 ExpectedProfitBook 内部的 base 快照重算——那条路已删）。
+    Map<ProductionOrganizationId, ProductionOrganization> organizations =
+        new LinkedHashMap<>(base.productionOrganizations());
     ModeMigrationPolicy.MigrationPlan first =
         ModeMigrationPolicy.plan(
             base,
-            base.productionOrganizations(),
+            organizations,
             base.units(),
             base.classes(),
             base.classStandings(),
@@ -689,11 +781,13 @@ class SevenHexFullChain3650Test {
             base.debtContracts(),
             accounts,
             book,
-            120L);
+            120L,
+            MarketTopology.singleHex(base.markets()),
+            List.of());
     ModeMigrationPolicy.MigrationPlan second =
         ModeMigrationPolicy.plan(
             base,
-            base.productionOrganizations(),
+            organizations,
             base.units(),
             base.classes(),
             base.classStandings(),
@@ -704,7 +798,9 @@ class SevenHexFullChain3650Test {
             base.debtContracts(),
             accounts,
             book,
-            120L);
+            120L,
+            MarketTopology.singleHex(base.markets()),
+            List.of());
     assertThat(second.moves()).as("计划器确定性：同输入同计划").isEqualTo(first.moves());
     System.out.println(
         "[7HEX-FULL][A-RULE] planMoves="
@@ -733,94 +829,29 @@ class SevenHexFullChain3650Test {
               assertThat(move.reason())
                   .isEqualTo(ModeMigrationPolicy.MigrationMove.REASON_A_RULE_MAX_SPEED);
               assertThat(move.target()).isNotEqualTo(move.source());
-              assertThat(move.targetMode()).isEqualTo(DefaultProductionModes.TENANCY_FIXED_KIND);
+              // ★ D-024：目标 mode 由同一预期计算器的权重选出（不再钉死 tenancy_fixed_kind 的旧真实读数排序）；
+              //   这里只判“目标不是 DISPLACED、不是把源户原地改写”，排序正确性由本测试的 max-speed 触发与
+              //   新单测的手算权重用例共同承担。
+              assertThat(move.targetMode()).isNotEqualTo(DefaultProductionModes.DISPLACED);
             });
+    assertThat(sourceMoves)
+        .as("D-022：A 规则迁移同时覆盖既有目标户（合并）与新建目标户，源户自身不在目标里")
+        .anyMatch(move -> move.target().equals(hid("hh-r4-profit")))
+        .anyMatch(move -> move.target().value().startsWith("hh-mig-"));
+    assertThat(sourceMoves)
+        .as("A 规则迁移的每个目标都是不同的家户（plan 不产生自环）")
+        .extracting(ModeMigrationPolicy.MigrationMove::target)
+        .doesNotHaveDuplicates();
     assertThat(first.moves())
-        .as("R0 已是最优候选 ⇒ 不转移")
+        .as("R0 已是最高预期收益候选 ⇒ 不转移")
         .noneMatch(move -> move.source().equals(world.aNoTransferCandidate()));
 
     ClassStanding sourceStanding = base.classStandings().get(world.aRuleSourceCandidate());
     ClassPosition sourcePosition = base.classPositions().get(sourceStanding.currentPositionId());
     assertThat(sourcePosition.modeId())
         .as("D-022：计划器不改写源户 mode")
-        .isEqualTo(DefaultProductionModes.WAGE_FARM);
+        .isEqualTo(DefaultProductionModes.TENANCY_FIXED_KIND);
     assertThat(base.classStandings().get(world.aRuleSourceCandidate())).isEqualTo(sourceStanding);
-  }
-
-  private static OrganizationProfitBook.Book syntheticBook(EconomyData data) {
-    List<ProductionOrganizationId> ids =
-        new ArrayList<>(data.productionOrganizations().keySet());
-    ids.sort(Comparator.comparing(ProductionOrganizationId::value));
-    Map<ProductionOrganizationId, OrganizationProfitBook.OrganizationProfit> byOrganization =
-        new LinkedHashMap<>();
-    Map<OrganizationProfitBook.ModeHex, long[]> aggregate = new LinkedHashMap<>();
-    for (ProductionOrganizationId id : ids) {
-      ProductionOrganization organization = data.productionOrganizations().get(id);
-      if (organization == null) {
-        continue;
-      }
-      HouseholdId household = householdOfActor(organization.organizer(), data);
-      if (household == null) {
-        continue;
-      }
-      ProductionUnitId unitId =
-          organization.unitId().isPresent() ? organization.unitId().get() : null;
-      HexCoord hex;
-      if (unitId != null) {
-        ProductionUnit unit = data.units().get(unitId);
-        hex = unit == null ? data.classes().get(household).view().hex()
-            : EconomySettlement.hexOfIndustry(unit.industry());
-      } else {
-        hex = data.classes().get(household).view().hex();
-      }
-      long net;
-      long labor;
-      if (DefaultProductionModes.WAGE_FARM.equals(organization.modeId())
-          && (hex.equals(R5) || hex.equals(R0))) {
-        net = -5_000L;
-        labor = 120L;
-      } else if (DefaultProductionModes.TENANCY_FIXED_KIND.equals(organization.modeId())
-          && hex.equals(R4)) {
-        net = 0L;
-        labor = 20_000L;
-      } else if (DefaultProductionModes.MERCHANT.equals(organization.modeId())
-          && hex.equals(C)) {
-        net = -120_000_000L;
-        labor = 120L;
-      } else {
-        net = 0L;
-        labor = 1_000L;
-      }
-      long revenue = net >= 0L ? net : 0L;
-      long cost = net < 0L ? -net : 0L;
-      long perLabor = net / Math.max(1L, labor);
-      OrganizationProfitBook.OrganizationProfit profit =
-          new OrganizationProfitBook.OrganizationProfit(
-              id,
-              organization.modeId(),
-              organization.unitId(),
-              household,
-              hex,
-              revenue,
-              cost,
-              0L,
-              net,
-              labor,
-              perLabor);
-      byOrganization.put(id, profit);
-      OrganizationProfitBook.ModeHex key =
-          new OrganizationProfitBook.ModeHex(organization.modeId(), hex);
-      long[] total = aggregate.computeIfAbsent(key, ignored -> new long[2]);
-      total[0] += net;
-      total[1] += labor;
-    }
-    Map<OrganizationProfitBook.ModeHex, Long> perLaborByModeHex = new LinkedHashMap<>();
-    Map<OrganizationProfitBook.ModeHex, Long> laborByModeHex = new LinkedHashMap<>();
-    for (Map.Entry<OrganizationProfitBook.ModeHex, long[]> entry : aggregate.entrySet()) {
-      perLaborByModeHex.put(entry.getKey(), entry.getValue()[0] / Math.max(1L, entry.getValue()[1]));
-      laborByModeHex.put(entry.getKey(), entry.getValue()[1]);
-    }
-    return new OrganizationProfitBook.Book(byOrganization, perLaborByModeHex, laborByModeHex);
   }
 
   private static String stateFingerprint(EconomyData data) {
@@ -1376,6 +1407,36 @@ class SevenHexFullChain3650Test {
     return result;
   }
 
+  /**
+   * ★ D-023 #6 / D-024 设计 §8.2：DISPLACED 家户不得被自动组织、不得挂劳动配额。
+   *
+   * <p>与 {@code SevenHexNatural3650Test.assertNoDisplacedAutoWork} 同义；这里是全链路夹具侧的同一硬判据，
+   * 用来替代旧“流民终局必须低于峰值”的过时断言。
+   */
+  private static void assertNoDisplacedAutoWork(EconomyData data, World world) {
+    assertThat(data.productionOrganizations().values())
+        .as("DISPLACED 不得有生产组织")
+        .noneMatch(organization -> DefaultProductionModes.DISPLACED.equals(organization.modeId()));
+    assertThat(data.units().values())
+        .as("DISPLACED 不得由自动组织产生 unit")
+        .noneMatch(
+            unit ->
+                (EconomyOrganizationSettlement.MODE_KEY_PREFIX + DefaultProductionModes.DISPLACED.value())
+                    .equals(unit.modeKey()));
+    Set<HouseholdId> displacedHouseholds = new LinkedHashSet<>();
+    Map<HouseholdId, ProductionModeId> modeOf = modeOf(data, world);
+    for (ClassRow row : data.classes().values()) {
+      if (DefaultProductionModes.DISPLACED.equals(modeOf.get(row.id()))) {
+        displacedHouseholds.add(row.id());
+      }
+    }
+    assertThat(data.allocations().values())
+        .as("DISPLACED 家户不得挂劳动配额")
+        .noneMatch(
+            allocation ->
+                displacedHouseholds.contains(allocation.household()) && allocation.laborMilli() > 0L);
+  }
+
   private static long modePopulation(
       EconomyData data, ProductionModeId modeId, World world) {
     Map<HouseholdId, ProductionModeId> modeOf = modeOf(data, world);
@@ -1386,6 +1447,19 @@ class SevenHexFullChain3650Test {
       }
     }
     return total;
+  }
+
+  /** 按 mode 汇总全部存活家户人口（D-024 迁移吸引子的读数口径）。 */
+  private static Map<ProductionModeId, Long> modePopulationTotals(EconomyData data, World world) {
+    Map<HouseholdId, ProductionModeId> modeOf = modeOf(data, world);
+    Map<ProductionModeId, Long> totals = new LinkedHashMap<>();
+    for (ClassRow row : data.classes().values()) {
+      ProductionModeId mode = modeOf.get(row.id());
+      if (mode != null) {
+        totals.merge(mode, row.population(), Long::sum);
+      }
+    }
+    return totals;
   }
 
   private static Map<HouseholdId, Long> populationMap(EconomyData data) {
@@ -1421,10 +1495,13 @@ class SevenHexFullChain3650Test {
 
     // ── 人口/家户 ─────────────────────────────────────────────────────────────────────
     // R0：A 规则“自身已最优、不转移”的候选户 + 大量存粮的放贷户。
+    // ★ D-024 夹具修正：当前户预期必须是**生产者位置**的真实配方收益；旧夹具的 wage_laborer 位置在预期
+    //   计算器里只拿工资规则（没有雇主 ⇒ 不可行、net=0），会让“已最优/不转移”失去载体。这里改成
+    //   同格“anchor-best”产业的租佃经营者（正收益），作为“基期已经最好、不迁移”的锚。
     HouseholdId r0Anchor = hid("hh-r0-anchor");
     addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
-        r0Anchor, R0, ResidenceKind.RURAL, RICH, 200L, DefaultProductionModes.WAGE_FARM,
-        DefaultProductionModes.ROLE_WAGE_LABORER);
+        r0Anchor, R0, ResidenceKind.RURAL, RICH, 200L, DefaultProductionModes.TENANCY_FIXED_KIND,
+        DefaultProductionModes.ROLE_TENANT_OPERATOR);
     goods.get(r0Anchor).put(GRAIN, 100L); // 仅够“还能开工”，远低于配方下次投入
     HouseholdId r0Supplier = hid("hh-r0-supplier");
     addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
@@ -1503,10 +1580,13 @@ class SevenHexFullChain3650Test {
     money.get(r4Landlord).put(SILVER, 100_000L);
 
     // R5：A 规则触发源（150 人、流动性耗尽）+ 普通农场 + 地主。
+    // ★ D-024 夹具修正：A 规则的当前户预期必须来自**生产者位置**（租佃经营者）；旧夹具用的是 wage_laborer，
+    //   而 D-024 的 ExpectedProfitBook 对 WAGE_EARNER 只算工资规则、不把名下亏损农场当自己的净收益
+    //   （设计 §3.2.4）⇒ 旧形状会让 A 规则永远不触发。这里改用同格亏损农场 unit 的经营者位置。
     HouseholdId r5Wage = hid("hh-r5-wage");
     addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
-        r5Wage, R5, ResidenceKind.RURAL, POOR, 150L, DefaultProductionModes.WAGE_FARM,
-        DefaultProductionModes.ROLE_WAGE_LABORER);
+        r5Wage, R5, ResidenceKind.RURAL, POOR, 150L, DefaultProductionModes.TENANCY_FIXED_KIND,
+        DefaultProductionModes.ROLE_TENANT_OPERATOR);
     goods.get(r5Wage).put(GRAIN, 100L);
     HouseholdId r5Farm = hid("hh-r5-farm");
     addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
@@ -1524,6 +1604,18 @@ class SevenHexFullChain3650Test {
         r5Landlord, R5, ResidenceKind.RURAL, LANDLORD, 20L, DefaultProductionModes.TENANCY_SHARE,
         DefaultProductionModes.ROLE_LANDLORD);
     money.get(r5Landlord).put(SILVER, 100_000L);
+    // ★★ D-024 夹具修正（测试代理第三轮，证据见 [BASELINE-MIGRATION][CREATED] 读数）：
+    //   删除 hasReading 门槛后，基线 10‰ 迁移选中的目标 (hex, mode) 是 R5/R1/R2 的 family_farm /
+    //   handicraft_workshop；旧夹具的合并目标 hh-r4-target/hh-r4-profit 已不再是这些 (hex, mode) 的既有户
+    //   ⇒ merges 恒 0。这里按设计 §3.3 第 5 条“目标选择：已有户优先、无户则计划新建”补一个 R5 既有
+    //   family_farm 户（人口 199 = 200 MAX − 1 间空房，保证至少一次合并，又不挤掉 hh-r4-profit 的 A 规则份额）。
+    //   “真正可行”由 baseline 世界本身保证：family_farm@R5 在 A3 语义下已被选为可新建目标，既有户只是把
+    //   同一目标从“新建”改走“合并”路径。
+    HouseholdId r5FamilyTarget = hid("hh-r5-family-existing");
+    addHousehold(classes, goods, money, modeByHousehold, positionByHousehold, populationByHousehold,
+        r5FamilyTarget, R5, ResidenceKind.RURAL, POOR, 199L, DefaultProductionModes.FAMILY_FARM,
+        DefaultProductionModes.ROLE_FAMILY_FARMER);
+    goods.get(r5FamilyTarget).put(GRAIN, 100_000_000L);
 
     // C：商人 principal / porter / 初始流民（同时给商号出脚夫劳动）/ 工匠 / 作坊主。
     HouseholdId cMerchant = hid("hh-c-merchant");
@@ -1619,12 +1711,14 @@ class SevenHexFullChain3650Test {
             Map.of(FIBER, 8_000L, TOOL, 2_000L)),
         actor(HouseholdActors.of(cOwner)));
 
-    // R0 的“预期为负但自身读数不差”候选：外部供料 + 极短劳动配额 ⇒ 实际净收益可为负但可维持开工判定。
-    addIndustry(industries, unitOperator, unitSpecs, IndustryHexKeys.id("anchor-loss", R0.q(), R0.r()),
-        "迁移动锚点损失农场R0", regimeId("tenant"), Map.of(AssetKind.LAND, 1_000L),
-        Map.of(AssetKind.LAND, 1_000L), Map.of(GRAIN, 1L),
-        Map.of(AssetKind.LAND, Map.of(GRAIN, 5_000_000L)), actor(HouseholdActors.of(r0Anchor)),
-        1L);
+    // R0 的“自身已最优、不转移”锚点：正常丰产农场（无外购投入、正单位劳动净收益）——
+    //   D-024 的候选权重 = max(0, target.netPerLaborScaled − current.netPerLaborScaled)，只有当前户
+    //   自身正收益足够高，才可能权重全 0（旧夹具用亏损配方 + 真实账读数，已不适用）。
+    addIndustry(industries, unitOperator, unitSpecs, IndustryHexKeys.id("anchor-best", R0.q(), R0.r()),
+        "丰产锚点农场R0", regimeId("tenant"), Map.of(AssetKind.LAND, 1_000L),
+        Map.of(AssetKind.LAND, 1_000L), Map.of(GRAIN, 67L, FIBER, 6L),
+        Map.of(), actor(HouseholdActors.of(r0Anchor)),
+        143L);
 
     // R5 的 A 规则触发源：产出 1 谷、投入 10,000 毫谷/规模，劳动 1 千分/规模 ⇒ 实际与预期都是负。
     addIndustry(industries, unitOperator, unitSpecs, IndustryHexKeys.id("loss-farm", R5.q(), R5.r()),
@@ -1665,7 +1759,7 @@ class SevenHexFullChain3650Test {
         IndustryHexKeys.id("farm", R0.q(), R0.r()), HouseholdActors.of(r0Anchor), r0Anchor,
         laborQuota(industries, IndustryHexKeys.id("farm", R0.q(), R0.r()), 100L));
     addAllocation(allocations, laborSupply, allocatedByLot,
-        IndustryHexKeys.id("anchor-loss", R0.q(), R0.r()), HouseholdActors.of(r0Anchor), r0Anchor,
+        IndustryHexKeys.id("anchor-best", R0.q(), R0.r()), HouseholdActors.of(r0Anchor), r0Anchor,
         1L);
     addAllocation(allocations, laborSupply, allocatedByLot,
         IndustryHexKeys.id("farm", R1.q(), R1.r()), HouseholdActors.of(r1Farm), r1Farm,
@@ -1699,8 +1793,9 @@ class SevenHexFullChain3650Test {
         IndustryHexKeys.id("craft", C.q(), C.r()), HouseholdActors.of(cOwner), cArtisan, 8_000L);
     addAllocation(allocations, laborSupply, allocatedByLot,
         IndustryHexKeys.id("trade", C.q(), C.r()), HouseholdActors.of(cMerchant), cPorter, 1L);
-    addAllocation(allocations, laborSupply, allocatedByLot,
-        IndustryHexKeys.id("trade", C.q(), C.r()), HouseholdActors.of(cMerchant), cDisplaced, 1L);
+    // ★ D-023 #6 / D-024 §8.2 夹具修正（测试代理第三轮）：旧夹具给 cDisplaced 挂了 1L trade 劳动配额，
+    //   这与“DISPLACED 无劳动配额/无自动组织”的硬判据直接冲突（assertNoDisplacedAutoWork 当场红）。
+    //   流民不参与贸易劳动：删除这条配额，cPorter 的商号搬运/工资路径仍由上面那条配额承载。
 
     // ── 关系（空规则 = 全部自留；商人/外部供料两条特殊）────────────────────────────────
     Map<ProductionUnitId, ProductionRelation> relations = new LinkedHashMap<>();
@@ -1729,10 +1824,10 @@ class SevenHexFullChain3650Test {
                 List.of(wage),
                 operator,
                 LaborSource.WAGE));
-      } else if (industryId.equals(IndustryHexKeys.id("anchor-loss", R0.q(), R0.r()))
+      } else if (industryId.equals(IndustryHexKeys.id("anchor-best", R0.q(), R0.r()))
           || industryId.equals(IndustryHexKeys.id("loss-farm", R5.q(), R5.r()))) {
         HouseholdId supplier =
-            industryId.equals(IndustryHexKeys.id("anchor-loss", R0.q(), R0.r()))
+            industryId.equals(IndustryHexKeys.id("anchor-best", R0.q(), R0.r()))
                 ? r0Supplier
                 : r5Supplier;
         relations.put(
@@ -2422,7 +2517,7 @@ class SevenHexFullChain3650Test {
         IndustryHexKeys.id("profit", R4.q(), R4.r()), unitOperator, "target-profit-r4");
     attachOrganization(legacy, organizations, modeByHousehold.get(r0Anchor),
         positionByHousehold.get(r0Anchor), r0Anchor,
-        IndustryHexKeys.id("anchor-loss", R0.q(), R0.r()), unitOperator, "anchor-r0");
+        IndustryHexKeys.id("anchor-best", R0.q(), R0.r()), unitOperator, "anchor-r0");
     ProductionOrganizationId merchantOrg =
         attachOrganization(legacy, organizations, modeByHousehold.get(cMerchant),
             positionByHousehold.get(cMerchant), cMerchant,

@@ -347,6 +347,7 @@ public final class ModeMigrationSettlement {
         targetUnit =
             createOrganizationAndUnit(
                 move,
+                rows,
                 rows.get(move.target()),
                 newTargetPosition,
                 assetShares,
@@ -817,8 +818,10 @@ public final class ModeMigrationSettlement {
    * 为一个产业模板规划"从该 hex 的闲置份额拆出 TENANCY"的资产移动（{@link AssetShareBook#apply} 唯一写口）； 任一 capacity 种类不足 ⇒
    * null（该模板不可行）。
    *
-   * <p>★★ P10.7：闲置判据的唯一拼写点是 {@link ModeMigrationPolicy#isIdleShare} —— {@code quantity > 0 &&
-   * operator == owner && id ∉ 既有组织 assetSources}。既有商号/组织在用的份额 不是闲置，拆空会让它的 assetSources 指向已删除的份额 id。
+   * <p>★★ P10.7 / D-024 修复 1b：闲置判据的唯一拼写点是 {@link ModeMigrationPolicy#isIdleShare} —— {@code
+   * quantity > 0 && operator == owner && id ∉ claimed}，claimed = 既有组织 assetSources ∪ 在产 unit 占用的份额（同
+   * industry、同 operator、quantity>0）。既有商号/组织/在产 unit 在用的份额不是闲置，拆空会让组织的 assetSources
+   * 指向已删除的份额 id，或在产 unit 的产能凭空消失。
    *
    * <p>★★ D-023：{@code availableByKind} = 本目标户随迁进来、已登记在该产业下的份额（{@code AssetKind → quantity}）。
    * 它们已经是目标户自有的产能 ⇒ 先从需求里抵减，只对缺口租闲置份额，避免同一份资产既随迁又租一遍。
@@ -870,6 +873,7 @@ public final class ModeMigrationSettlement {
 
   private static ProductionUnitId createOrganizationAndUnit(
       ModeMigrationPolicy.MigrationMove move,
+      Map<HouseholdId, ClassRow> rows,
       ClassRow targetRow,
       ClassPositionId positionId,
       LinkedHashMap<AssetShareId, AssetShare> assetShares,
@@ -882,21 +886,24 @@ public final class ModeMigrationSettlement {
       long day,
       ProductionLedger.Accumulator auditLedger) {
     ActorRef targetActor = HouseholdActors.of(move.target());
+    // ★★ D-024：按目标 mode 的默认 regime 选产业模板（与计划期 ModeMigrationPolicy.industriesForMode 同源）——
+    //   merchant 目标只在 trade 模板里找；找不到 ⇒ 空 ⇒ 具名失败（绝不把农场模板当商号）。
     List<IndustryId> industries =
-        new ArrayList<>(
-            IndustryHexKeys.at(base.industries(), move.targetHex().q(), move.targetHex().r()));
-    industries.sort(Comparator.comparing(IndustryId::value));
+        ModeMigrationPolicy.industriesForMode(base, move.targetHex(), move.targetMode());
     if (industries.isEmpty()) {
       throw new IllegalStateException("新建目标 hex 没有产业模板（拒绝凭空造生产）: " + move.targetHex());
     }
     IndustryId industryId = null;
     Industry industry = null;
     List<AssetShareBook.Move> assetMoves = new ArrayList<>();
-    // ★★ P10.7 / P10.8：既有组织 assetSources 正在使用的份额不是闲置。这里与 ModeMigrationPolicy.plan() 顶层
-    //    共用同一个谓词，并读同一份当天工作副本 organizations（含当天自动组织阶段新加、以及本一次 apply 前几笔
-    //    新建的组织），保证"计划可新建 ⇔ 执行可拆到"；随迁新份额也从闲置池里排除（它们已归目标户）。
+    // ★★ P10.7 / P10.8 / D-024 修复 1b：既有组织 assetSources 正在使用的份额不是闲置；seeder 直接以 ESTATE 等
+    //    operator 建立的 farm/weave/craft/trade 主 unit 没有对应组织，故 claimed 还必须并入"在产 unit 占用的份额"
+    //    （同 industry、同 operator、quantity>0）。这里与 ModeMigrationPolicy.plan() 顶层共用同一个三参拼装点，
+    //    并读同一份当天工作副本 organizations/units/assetShares（含当天自动组织阶段新加、以及本一次 apply 前几笔
+    //    新建的组织/unit），保证"计划可新建 ⇔ 执行可拆到"；随迁新份额也从闲置池里排除（它们已归目标户）。
     Set<AssetShareId> claimedByOrganizations =
-        new LinkedHashSet<>(ModeMigrationPolicy.claimedAssetShares(organizations));
+        new LinkedHashSet<>(
+            ModeMigrationPolicy.claimedAssetShares(organizations, units, assetShares));
     claimedByOrganizations.addAll(migratedShareIds);
     for (IndustryId candidate : industries) {
       Industry candidateIndustry = base.industries().get(candidate);
@@ -935,11 +942,29 @@ public final class ModeMigrationSettlement {
       createdShares.addAll(
           AssetShareBook.apply(assetShares, base.industries(), base.pledges(), assetMoves));
     }
-    // ★★ D-023：组织 assetSources 必须指向随迁后的新份额 id（随迁份额在前、租赁份额在后；去重由记录构造期保序做）。
+    // ★★ GAP-2：组织 assetSources 只收 operator == organizer（targetActor）的份额。随迁份额由
+    //    migrateAssetsForMove 按 targetActor 重建（同/跨 hex 都一样）；租赁份额由上方 planAssetMoves
+    //    按 targetActor 新建。这里再做最后一次逐项核对：新建租赁份额对不上是内部错误，当场抛；
+    //    随迁份额对不上（理论上不会发生）不得进 assetSources，也不放进 unit 的可用资产依赖里。
     List<AssetShareId> assetSources =
         new ArrayList<>(migratedShareIds.size() + createdShares.size());
-    assetSources.addAll(migratedShareIds);
-    assetSources.addAll(createdShares);
+    for (AssetShareId migratedShareId : migratedShareIds) {
+      AssetShare migratedShare = assetShares.get(migratedShareId);
+      if (migratedShare != null && migratedShare.operator().equals(targetActor)) {
+        assetSources.add(migratedShareId);
+      }
+    }
+    for (AssetShareId createdShare : createdShares) {
+      AssetShare share = assetShares.get(createdShare);
+      if (share == null || !share.operator().equals(targetActor)) {
+        throw new IllegalStateException(
+            "新建目标户的租赁份额 operator 必须等于 organizer(targetActor): share="
+                + createdShare
+                + " operator="
+                + (share == null ? "<份额不存在>" : share.operator()));
+      }
+      assetSources.add(createdShare);
+    }
     ProductionUnitId unitId = ProductionUnitId.idOf(industryId, targetActor);
     if (units.containsKey(unitId)) {
       throw new IllegalStateException("新建目标 unit id 已存在（拒绝覆盖）: " + unitId);
@@ -951,7 +976,7 @@ public final class ModeMigrationSettlement {
     // ★★ D-023 第 5 项：新家户必须用目标产业 regime + 目标 mode 的**完整关系模板**（不再空规则全归 operator）。
     MigrationRelationPlan relationPlan =
         buildMigrationRelation(
-            move, unitId, industryId, targetActor, targetRow, base, day, auditLedger);
+            move, unitId, industryId, targetActor, rows, targetRow, base, day, auditLedger);
     ProductionRelation relation = relationPlan.relation();
     relations.put(unitId, relation);
     ProductionOrganizationId organizationId =
@@ -1462,12 +1487,18 @@ public final class ModeMigrationSettlement {
    *
    * <p>★ 规则里的受方/工资/租率全部来自 {@link RegimeRelations#defaultRelation}；组织 inputSources/outputOwnership
    * 也取自同一关系。回退空规则时把原因同时写进持久 {@code relationTemplateRef} 与当天瞬态 ledger 审计，绝不静默。
+   *
+   * <p>★★ <b>GAP-3 同源收口</b>：模板里的 {@code ToCohort(view)} 受方必须像 E2 自动组织一样在**落盘前**用当前
+   * rows 归一成 {@link Recipient.ToHousehold}（唯一视图）或退回最小自留关系；否则本关系会在**当天** harvest 时被
+   * {@code requireCohortRows} 的"视图不再是唯一身份"守卫拒绝。归一逻辑不另写一份，直接复用
+   * {@link EconomyOrganizationSettlement} 的唯一拼写点。
    */
   private static MigrationRelationPlan buildMigrationRelation(
       ModeMigrationPolicy.MigrationMove move,
       ProductionUnitId unitId,
       IndustryId industryId,
       ActorRef targetActor,
+      Map<HouseholdId, ClassRow> rows,
       ClassRow targetRow,
       EconomyData base,
       long day,
@@ -1480,8 +1511,19 @@ public final class ModeMigrationSettlement {
         ProductionRelation relation =
             RegimeRelations.defaultRelation(
                 templateRegime.get(), unitId, industryId, targetActor, residences);
+        ProductionRelation normalized =
+            EconomyOrganizationSettlement.normalizeRecipients(
+                relation, rows, targetRow.view().hex());
+        if (normalized != null) {
+          return new MigrationRelationPlan(
+              normalized,
+              "migration:" + move.reason() + ":regime:" + templateRegime.get().value());
+        }
+        String reason = "recipient-unresolved:" + templateRegime.get().value();
+        recordRelationFallbackAudit(auditLedger, day, move, reason);
         return new MigrationRelationPlan(
-            relation, "migration:" + move.reason() + ":regime:" + templateRegime.get().value());
+            fallbackMigrationRelation(unitId, targetActor),
+            "migration:" + move.reason() + ":fallback-empty:" + reason);
       } catch (IllegalArgumentException ignored) {
         String reason = "template-failed:" + templateRegime.get().value();
         recordRelationFallbackAudit(auditLedger, day, move, reason);
@@ -1515,11 +1557,17 @@ public final class ModeMigrationSettlement {
       return Optional.of(new RegimeId(RegimeOperators.HANDICRAFT));
     }
     if (DefaultProductionModes.FAMILY_FARM.equals(mode)) {
+      // ★ family_farm 没有自己的产业模板（复用农场的产业 regime=feudal）；HOUSEHOLD 默认规则的
+      //   CLOTH 不在农场产出表里（harvest 的 E14 会当场拒）⇒ 有已登记产业 regime 时用它，否则退回 household。
+      Industry industry = base.industries().get(industryId);
+      if (industry != null && RegimeRelations.registered().containsKey(industry.regime().value())) {
+        return Optional.of(industry.regime());
+      }
       return Optional.of(new RegimeId(RegimeOperators.HOUSEHOLD));
     }
     if (DefaultProductionModes.MERCHANT.equals(mode)) {
-      return RegimeRelations.registered().containsKey("merchant")
-          ? Optional.of(new RegimeId("merchant"))
+      return RegimeRelations.registered().containsKey(RegimeOperators.MERCHANT)
+          ? Optional.of(new RegimeId(RegimeOperators.MERCHANT))
           : Optional.empty();
     }
     Industry industry = base.industries().get(industryId);

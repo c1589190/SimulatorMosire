@@ -23,8 +23,10 @@ import java.util.Optional;
  * <p>★★ <b>{@link #ofLegacy(CohortKey)} 只许旧档迁移调用</b>（S1.5）：运行期不得从视图再造身份。本类<b>不提供</b>从 {@link
  * CohortKey} 直接构造的公开路径；{@code ofLegacy} 的名字就是把这条限制写在调用点上。
  *
- * <p>★ <b>新档 id 的拼写点在这里</b>（{@link #ofSeed(HexCoord, ResidenceKind, SocialClassId)}）：创世家户的 id
- * 由它一次性给出，不在 seeder 里内联拼串。格式 {@code hh-<q>_<r>-<residence>-<stratum>}（无 {@code |}/{@code .}）。
+ * <p>★ <b>新档 id 的拼写点在这里</b>（{@link #ofSeed(HexCoord, ResidenceKind, SocialClassId)} 与带角色后缀的
+ * {@link #ofSeedRole(HexCoord, ResidenceKind, SocialClassId, String)}）：创世家户的 id 由它们一次性给出，
+ * 不在 seeder 里内联拼串。格式 {@code hh-<q>_<r>-<residence>-<stratum>}（可再带一个 {@code -<roleSuffix>}；
+ * 无 {@code |}/{@code .}）。
  *
  * @param value 非空白规范串
  */
@@ -84,6 +86,39 @@ public record HouseholdId(String value) {
       throw new IllegalArgumentException("HouseholdId.ofSeed 的 stratum 不得为 null");
     }
     return new HouseholdId("hh-" + hex + "-" + residence.value() + "-" + stratum.value());
+  }
+
+  /**
+   * ★★ <b>创世家户 id 的带角色后缀变体</b>（格式 {@code hh-<q>_<r>-<residence>-<stratum>-<roleSuffix>}）：
+   * 只服务 seeder 里"同一 (格, 居住类型, 阶层) 需要第二个确定性家户"的情形（如从最贫一档切出的 {@code displaced} 户）——
+   * 唯一拼写点仍在本类，调用方不内联拼串。
+   *
+   * <p>★ 参数校验与 {@link #ofSeed} 同款（三个引用都不得为 null）；{@code roleSuffix} 另外必须<b>非空白且不含 {@code '.'}</b>
+   * —— 点号是地址 {@code economy:<mapId>:class.<id>} 的切段符，家户 id 不许把它带进地址。后缀与阶层/居住段之间用 {@code '-'} 连接，
+   * 故本工厂产出的 id 天然不含点号与 {@code '|'}。
+   *
+   * <p>★ 本工厂<b>不改变</b> {@link #ofSeed}/{@link #ofLegacy} 的既有行为；两者仍是四行常规家户与旧档迁移的入口。
+   */
+  public static HouseholdId ofSeedRole(
+      HexCoord hex, ResidenceKind residence, SocialClassId stratum, String roleSuffix) {
+    if (hex == null) {
+      throw new IllegalArgumentException("HouseholdId.ofSeedRole 的 hex 不得为 null");
+    }
+    if (residence == null) {
+      throw new IllegalArgumentException("HouseholdId.ofSeedRole 的 residence 不得为 null");
+    }
+    if (stratum == null) {
+      throw new IllegalArgumentException("HouseholdId.ofSeedRole 的 stratum 不得为 null");
+    }
+    if (roleSuffix == null || roleSuffix.isBlank()) {
+      throw new IllegalArgumentException("HouseholdId.ofSeedRole 的 roleSuffix 不得为空白");
+    }
+    if (roleSuffix.indexOf('.') >= 0) {
+      throw new IllegalArgumentException(
+          "HouseholdId.ofSeedRole 的 roleSuffix 不得含 '.'（地址会被第一个点截断）: " + roleSuffix);
+    }
+    return new HouseholdId(
+        "hh-" + hex + "-" + residence.value() + "-" + stratum.value() + "-" + roleSuffix);
   }
 
   /** 迁移期临时占位（见 {@link #PENDING_LEGACY_PREFIX}）；{@code oldAllocationKey} 用于让占位可追溯、不撞车。 */

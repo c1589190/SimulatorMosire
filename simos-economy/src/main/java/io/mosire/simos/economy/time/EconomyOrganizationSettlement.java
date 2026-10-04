@@ -751,6 +751,10 @@ final class EconomyOrganizationSettlement {
 
   /** 位置角色 → 优先 regime（E2 的产业模板选择启发式；只是"先试哪一个"，不是规则权威）。 */
   private static String preferredRegime(ClassPosition position) {
+    // ★★ P11.7 / D-024：merchant 位置优先 regime==merchant 的产业模板（trade）；没有才回退下面的现有顺序。
+    if (DefaultProductionModes.MERCHANT.equals(position.modeId())) {
+      return RegimeOperators.MERCHANT;
+    }
     if (position.surplusRole() == SurplusRole.SELF_SUBSISTENCE) {
       return RegimeOperators.HOUSEHOLD;
     }
@@ -1150,8 +1154,11 @@ final class EconomyOrganizationSettlement {
    * <p>★★ <b>自付规则为什么直接剔除而不是留到转移端</b>：{@code Transfer} 的两端不得相等（自转移是坏数据）。 一条"付给 organizer
    * 自己"的规则对余额是恒等变换：产出已经归 residualOwner = organizer，工资/租金也只是 从自己的一个口袋到另一个口袋。这四档默认模板的 cohort 受方在 E2
    * 里就是 operator 本人时（家户自营）， 对应的份额 <b>本来就该留在 operator 手里</b>，故剔除；其余受方照原率保留。
+   *
+   * <p>★★ <b>GAP-3 共用</b>：{@code ModeMigrationSettlement.buildMigrationRelation} 走同一条模板也必须就地归一
+   * —— 否则迁移新建的关系会在**当天** harvest 时被 {@code requireCohortRows} 的"视图不再是唯一身份"守卫拒绝。归一只有这一份拼写点。
    */
-  private static ProductionRelation normalizeRecipients(
+  static ProductionRelation normalizeRecipients(
       ProductionRelation relation, Map<HouseholdId, ClassRow> rows, HexCoord hex) {
     Map<CohortKey, HouseholdId> householdByView = new LinkedHashMap<>();
     Set<CohortKey> ambiguous = new LinkedHashSet<>();

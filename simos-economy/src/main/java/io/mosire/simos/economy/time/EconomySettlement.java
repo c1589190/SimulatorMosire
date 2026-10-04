@@ -55,6 +55,7 @@ import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.ProductionOrganization;
 import io.mosire.simos.economy.model.ProductionRecipe;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.map.hex.HexCoord;
@@ -1354,6 +1355,7 @@ public final class EconomySettlement {
         settleOperatorExits(
             exits,
             operatorConditions,
+            session.sheet().productionOrganizations(),
             assetShares,
             allocations,
             debts,
@@ -1603,7 +1605,9 @@ public final class EconomySettlement {
               session.sheet().debtContracts(),
               accounts,
               profitBook,
-              day);
+              day,
+              topology,
+              profitCycle.marketReports());
       // ⑨ 迁移执行（只执行计划；源户 mode/standing/org/unit.modeKey 一字不改）。
       //    ★ D-023：把当天的瞬态 ledger 传进去记“留原户资产/关系模板回退”的具名读数（不新增持久组件）。
       ModeMigrationSettlement.apply(session, accounts, migrationPlan, base, day, ledger);
@@ -4435,7 +4439,8 @@ public final class EconomySettlement {
    * <pre>
    * 1. 劳动释放   ：删除 activity == exit.unit 的全部 LaborAllocation（laborSupply 不动），释放量进读数
    * 2. 资产处置   ：unit 名下（industry + operator）份额里，owner != operator 的只把 operator 改回 owner；
-   *                owner == operator 的份额原样留在 owner 名下（unit 已停业，计划系数 0）
+   *                owner == operator 的份额原样留在 owner 名下（unit 已停业，计划系数 0）；
+   *                并同步把退回份额从该 operator 的生产组织 assetSources 里摘掉（GAP-2：不得留下 operator != organizer 的引用）
    * 3. 债务处置   ：只对解析出的 exit.household 执行（null = 聚合主体 ⇒ 跳过，不伪造家户债）：
    *                逐条按 (到期周期, 商品维, id) canonical 升序；paid = min(本金, 可用余额)；
    *                paid > 0 ⇒ 铸 LOAN_REPAYMENT 转移（唯一写口 applyTransfer）；不足才 defaulted=true
@@ -4456,6 +4461,7 @@ public final class EconomySettlement {
   private static void settleOperatorExits(
       List<OperatorSettlement.Exit> exits,
       LinkedHashMap<ProductionUnitId, OperatorCondition> operatorConditions,
+      Map<ProductionOrganizationId, ProductionOrganization> organizations,
       LinkedHashMap<AssetShareId, AssetShare> assetShares,
       LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
       LinkedHashMap<DebtContractId, DebtContract> debts,
@@ -4487,6 +4493,7 @@ public final class EconomySettlement {
       int returnedShares = 0;
       long returnedQuantity = 0L;
       int keptOwnedShares = 0;
+      Set<AssetShareId> returnedShareIds = new LinkedHashSet<>();
       for (AssetShareId shareId : index.assetShareIdsOfUnit(exit.unit())) {
         AssetShare share = assetShares.get(shareId);
         if (share == null
@@ -4507,10 +4514,15 @@ public final class EconomySettlement {
                   share.kind()));
           returnedShares++;
           returnedQuantity += share.quantity();
+          returnedShareIds.add(shareId);
         } else {
           keptOwnedShares++; // owner == operator：本来就是它自己的，unit 不再运行（计划系数 0），份额原样留下
         }
       }
+      // ★★ GAP-2：退回 owner 的份额已不由 exit.operator 经营；该 operator 的生产组织 assetSources
+      //   不得继续指名它们（否则 EconomyData 的 operator==organizer 守卫会在 revision 边界 fail-closed）。
+      detachReturnedSharesFromOrganizations(
+          organizations, exit.operator(), returnedShareIds);
 
       // ── 3. 债务处置：保留既有"剩余库存/货币先偿债、不足才 defaulted"逻辑 ──────────────────────
       HouseholdId debtor = exit.household();
@@ -4643,6 +4655,49 @@ public final class EconomySettlement {
                     + keptMoneyMilli
                     + "}"));
       }
+    }
+  }
+
+  /**
+   * ★★ <b>GAP-2：退出处置后的组织引用清理</b>。{@link #settleOperatorExits} 会把 TENANCY/委托份额的
+   * {@code operator} 改回 {@code owner}；这些份额随即不再由退出 operator 经营，而它的
+   * {@link ProductionOrganization#assetSources()} 里可能仍留着旧引用 ⇒ revision 边界的 {@code EconomyData}
+   * 守卫会以「份额 operator 必须等于 organizer」fail-closed。这里按份额回主的事实把引用摘掉，<b>不改份额本身、
+   * 不改组织身份/unit/laborSources</b>；份额退主后重新成为可租赁的闲置资产，下一期计划可见。
+   */
+  private static void detachReturnedSharesFromOrganizations(
+      Map<ProductionOrganizationId, ProductionOrganization> organizations,
+      ActorRef operator,
+      Set<AssetShareId> returnedShareIds) {
+    if (returnedShareIds.isEmpty()) {
+      return;
+    }
+    List<ProductionOrganizationId> organizationIds = new ArrayList<>(organizations.keySet());
+    organizationIds.sort(Comparator.comparing(ProductionOrganizationId::value));
+    for (ProductionOrganizationId organizationId : organizationIds) {
+      ProductionOrganization organization = organizations.get(organizationId);
+      if (organization == null || !organization.organizer().equals(operator)) {
+        continue;
+      }
+      List<AssetShareId> kept = new ArrayList<>(organization.assetSources());
+      if (!kept.removeIf(returnedShareIds::contains)) {
+        continue; // 该组织没有引用这批退回份额：一字不动
+      }
+      organizations.put(
+          organizationId,
+          new ProductionOrganization(
+              organization.id(),
+              organization.modeId(),
+              organization.classPositionId(),
+              organization.unitId(),
+              organization.organizer(),
+              organization.laborSources(),
+              kept,
+              organization.inputSources(),
+              organization.outputOwnership(),
+              organization.relationTemplateRef(),
+              organization.status(),
+              organization.statusReason()));
     }
   }
 

@@ -27,9 +27,11 @@ import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionOrganization;
 import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.ArrayList;
@@ -45,12 +47,18 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * ★★ <b>P10.2 / P10.5 家户生产方式迁移计划器（架构 §5.2 的 ⑧）</b>：用 {@link OrganizationProfitBook} 的<b>真实</b>
- * 单位劳动净收益做权重，输出确定性的"人/钱/债转移到目标 mode 家户"的计划。
+ * ★★ <b>P10.2 / P10.5 家户生产方式迁移计划器（架构 §5.2 的 ⑧；D-024 起换权重来源）</b>：用
+ * {@link ExpectedProfitBook} 对（家户 × 候选 mode × hex × 市场）现算的<b>预期</b>单位劳动净收益做权重，输出确定性的
+ * "人/钱/债转移到目标 mode 家户"的计划。
+ *
+ * <p>★★ <b>D-024 的两处替换</b>：① 候选门槛不再要求该 (mode, hex) 已有 {@link OrganizationProfitBook} 真实读数
+ * （`hasReading`/`labor>0` 门槛已删）；② A 规则不再读旧 {@code output × 价 − 投入} 的局部公式，改读同一个
+ * {@link ExpectedProfitBook.Prospect}。{@link OrganizationProfitBook} 仍由 {@code collect} 产出、供读数对账，只是
+ * 不再是候选门槛。
  *
  * <pre>
  * 目标权重 weight = max(0, target.netPerLaborScaled − current.netPerLaborScaled)
- *                （同一把百万分之一单位的高精度尺，避免 net/labor 整数截断为 0；真读数，不是外生 π）
+ *                （同一把百万分之一单位的高精度尺；两侧都来自 ExpectedProfitBook）
  * 目标排序       weight 降序 → 距离升序（同格 0、邻格 1）→ (hex, mode) 规范串升序 → 家户 id 升序
  * 基线速度        MIGRATION_PER_MILLE = 10‰/周期（可迁人口 = max(1, ⌊人口×10÷1000⌋)）
  * A 规则        expectedNet(current) < 0 且 cash + sellableInventory − nextCycleInputNeed < 0
@@ -58,10 +66,12 @@ import java.util.TreeSet;
  *                · 当前户已是最优（或没有更高可行目标）⇒ 不转移、继续生产，债务/欠款走现有资本化
  *                · 无法维持生产且没有任何能承载的可行目标 ⇒ 转 DISPLACED（同样 1000‰）
  * 新建可行性      同一 plan() 共享"闲置资产预留账本"（IndustryId × AssetKind）；
- *                available = Σ 闲置(quantity>0 ∧ operator==owner ∧ id∉既有组织 assetSources) − 已预留，
+ *                available = Σ 闲置(quantity>0 ∧ operator==owner ∧ id∉claimed) − 已预留，
+ *                claimed = 既有组织 assetSources ∪ 在产 unit 所占份额（同 industry、同 operator、quantity>0），
  *                任一 required 不足则整笔不预留。
  *                后一个新建户/后一遍 allocate 只看前面计划消费后的剩余，与执行期逐笔拆份额一致。
- *                ★ 闲置判据的唯一拼写点 = {@link #isIdleShare(AssetShare, Set)}（policy/settlement 共用）。
+ *                ★ 闲置判据的唯一拼写点 = {@link #isIdleShare(AssetShare, Set)}（policy/settlement 共用）：
+ *                  只有 owner==operator 且不被任何组织/在产 unit 使用的份额才算闲置（D-024 修复 1b）。
  * </pre>
  *
  * <p>★★ <b>D-022 硬约束</b>：计划里只有 {@code MigrationMove}（源户 → 目标户）；{@code targetMode} 只属于目标家户，
@@ -81,6 +91,9 @@ public final class ModeMigrationPolicy {
 
   /** 单个家户承载上限（架构 §10：新家户 200 人/户；合并目标同样按它判剩余容量）。 */
   public static final long MAX_HOUSEHOLD_POPULATION = 200L;
+
+  /** 需求簿视界的兜底（没有任何产业模板时）：与真实运行时世界的 120 天周期同值。 */
+  private static final long DEFAULT_DEMAND_HORIZON_DAYS = 120L;
 
   /** 一条迁移计划（不可变、保序：按源家户 id、再按目标排序）。 */
   public record MigrationPlan(List<MigrationMove> moves) {
@@ -235,7 +248,9 @@ public final class ModeMigrationPolicy {
       Map<DebtContractId, DebtContract> debts,
       AccountSession accounts,
       OrganizationProfitBook.Book book,
-      long day) {
+      long day,
+      MarketTopology topology,
+      List<MarketReport> marketReports) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(organizations, "organizations");
     Objects.requireNonNull(units, "units");
@@ -248,18 +263,43 @@ public final class ModeMigrationPolicy {
     Objects.requireNonNull(accounts, "accounts");
     Objects.requireNonNull(book, "book");
     Objects.requireNonNull(relations, "relations");
+    Objects.requireNonNull(topology, "topology");
+    Objects.requireNonNull(marketReports, "marketReports（没有报告给空表）");
     // ★★ P10.6：计划期共享的"闲置资产预留账本"。同一 plan() 的所有源户、所有目标新建户、allocate 的两遍
     //    都读写同一份账本 ⇒ 后一个新建户看到的是前面计划已消费后的剩余闲置资产，与执行期逐笔拆份额一致。
     Map<IndustryId, Map<AssetKind, Long>> reservedIdle = new LinkedHashMap<>();
     // ★★ P10.7 / P10.8：既有 ProductionOrganization.assetSources 正在使用的份额不是"闲置"——执行期把它拆/移走后，
     //    组织引用会指向已删除的份额 id，EconomyData 当即以「生产组织使用的资产份额必须已存在」拒绝。
-    //    claimed 必须读调用方传入的当天工作副本 organizations（可能已被当天自动组织阶段加入新组织），
-    //    不能用当天开始时的不可变 base；只在这里构建一次，与预留账本一起透传；谓词与执行期共用
+    //    claimed 必须读调用方传入的当天工作副本 organizations + units + assetShares（可能已被当天自动组织阶段加入
+    //    新组织/新 unit），不能用当天开始时的不可变 base；只在这里构建一次，与预留账本一起透传；谓词与执行期共用
     //    {@link #isIdleShare}，不新增持久组件。
-    Set<AssetShareId> claimedByOrganizations = claimedAssetShares(organizations);
+    //    ★★ D-024 修复 1：同一份集合也作为唯一入参透传给所有 {@link ExpectedProfitBook#prospect} 调用
+    //    （当前户读数 + 候选），prospect 内部不得再从 base.productionOrganizations() 重算（那是过期快照）。
+    //    ★★ D-024 修复 1b：claimed 的"单位占用"格 = 与在产 unit 同 industry、同 operator 且 quantity>0 的份额。
+    //    seeder 直接以 RegimeOperators.defaultOperator(...)（ESTATE 等）建立的 farm/weave/craft/trade 主 unit 没有
+    //    对应 ProductionOrganization，只按组织引用格会把它们的土地/作坊/船畜误判成"闲置可租"。
+    //    单参兼容重载只算组织引用格，生产路径一律走三参版本。
+    Set<AssetShareId> claimedByOrganizations = claimedAssetShares(organizations, units, assetShares);
     if (base.modes().isEmpty()) {
       return MigrationPlan.empty(); // class-first 世界：逐字 no-op
     }
+
+    // ★★ D-024 / 设计 §3.3：需求簿只构建一次，透传给所有源户/候选评估（horizonDays = 世界产业 cycleDays 的统一值；
+    //   多个不同值时取最大者——本轮真实世界都是 120）。
+    long horizonDays = demandHorizonDays(base, units);
+    MarketDemandBook.Book demandBook =
+        MarketDemandBook.build(
+            marketReports,
+            topology,
+            rows,
+            units,
+            base.industries(),
+            assetShares,
+            base.shipments(),
+            accounts,
+            markets,
+            day,
+            horizonDays);
 
     Map<HouseholdId, HouseholdMode> modeByHousehold = new LinkedHashMap<>();
     for (HouseholdId household : sortedHouseholds(rows)) {
@@ -305,11 +345,14 @@ public final class ModeMigrationPolicy {
               units,
               rows,
               assetShares,
+              relations,
               markets,
               accounts,
-              book,
               reservedIdle,
-              claimedByOrganizations);
+              claimedByOrganizations,
+              demandBook,
+              topology,
+              day);
       if (!drafts.isEmpty()) {
         draftsBySource.put(source, drafts);
       }
@@ -373,13 +416,34 @@ public final class ModeMigrationPolicy {
       Map<ProductionUnitId, ProductionUnit> units,
       Map<HouseholdId, ClassRow> rows,
       Map<AssetShareId, AssetShare> assetShares,
+      Map<ProductionUnitId, ProductionRelation> relations,
       Map<HexCoord, Market> markets,
       AccountSession accounts,
-      OrganizationProfitBook.Book book,
       Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
-      Set<AssetShareId> claimedByOrganizations) {
-    // ★★ P10.5：当前收益用高精度同一把尺（百万分之一单位）；无读数/labor<=0 时读口本身返回 0。
-    long currentPerLabor = book.netPerLaborScaled(current.modeId, current.hex);
+      Set<AssetShareId> claimedByOrganizations,
+      MarketDemandBook.Book demandBook,
+      MarketTopology topology,
+      long day) {
+    // ★★ D-024：当前户读数改由同一个预期利润计算器现算（真实利润账退位为事后对账）。
+    Industry currentIndustry =
+        currentIndustryOf(base, source, current, units, organizations);
+    ExpectedProfitBook.Prospect currentProspect =
+        ExpectedProfitBook.prospect(
+            base,
+            source,
+            current.modeId,
+            current.hex,
+            currentIndustry,
+            marketOf(markets, topology, current.hex),
+            demandBook,
+            assetShares,
+            claimedByOrganizations,
+            accounts,
+            units,
+            relations,
+            topology,
+            day);
+    long currentPerLabor = currentProspect.netPerLaborScaled();
     List<Target> targets =
         buildTargets(
             base,
@@ -392,10 +456,19 @@ public final class ModeMigrationPolicy {
             producingPositions,
             modeByHousehold,
             rows,
-            book);
+            units,
+            assetShares,
+            claimedByOrganizations,
+            relations,
+            markets,
+            accounts,
+            demandBook,
+            topology,
+            day);
     ExpectedProfit expected =
         expectedProfit(
-            base, source, sourceRow, current, organizations, units, assetShares, markets, accounts, book);
+            currentProspect,
+            liquidityMilli(accounts, markets, topology, source, current.hex));
     boolean aRule =
         expected.expectedNetMilli() < 0L
             && expected.liquidityMilli() < expected.nextCycleInputNeedMilli();
@@ -463,7 +536,18 @@ public final class ModeMigrationPolicy {
         claimedByOrganizations);
   }
 
-  /** 目标候选（已有家户 + 可新建；同 (hex, mode) 一条，已有家户优先）。 */
+  /**
+   * 目标候选（已有家户 + 可新建；同 (hex, mode) 一条，已有家户优先）。
+   *
+   * <p>★★ <b>D-024</b>：删除"该 (mode, hex) 必须有 {@link OrganizationProfitBook} 真实读数"的门槛，
+   * 对每个 距离≤1 的 hex × 每个 mode 调 {@link ExpectedProfitBook#prospect} 现算；不可行/规模 0 ⇒ 跳过。
+   * 权重仍是同一把百万分之一尺：{@code max(0, target.netPerLaborScaled − current.netPerLaborScaled)}。
+   *
+   * <p>★★ <b>D-024 修复 1 / 1b</b>：{@code claimedByOrganizations} 由 {@link #plan} 从当天工作副本
+   * {@code organizations + units + assetShares} 算出后传入，并原样透传给每个候选 {@code prospect(...)}；本方法不从
+   * {@code base} 重算 claimed，避免周期开始时的过期快照把既有组织/在产 unit 正在使用的份额（含 ESTATE 土地）当
+   * "闲置可租"。
+   */
   private static List<Target> buildTargets(
       EconomyData base,
       HouseholdId source,
@@ -475,7 +559,15 @@ public final class ModeMigrationPolicy {
       Map<ProductionModeId, List<ClassPosition>> producingPositions,
       Map<HouseholdId, HouseholdMode> modeByHousehold,
       Map<HouseholdId, ClassRow> rows,
-      OrganizationProfitBook.Book book) {
+      Map<ProductionUnitId, ProductionUnit> units,
+      Map<AssetShareId, AssetShare> assetShares,
+      Set<AssetShareId> claimedByOrganizations,
+      Map<ProductionUnitId, ProductionRelation> relations,
+      Map<HexCoord, Market> markets,
+      AccountSession accounts,
+      MarketDemandBook.Book demandBook,
+      MarketTopology topology,
+      long day) {
     List<Target> targets = new ArrayList<>();
     for (HexCoord hex : hexes) {
       int distance = sourceRow.view().hex().distanceTo(hex);
@@ -490,16 +582,38 @@ public final class ModeMigrationPolicy {
           continue;
         }
         List<ClassPosition> positions = producingPositions.get(mode.id());
-        if (positions == null || positions.isEmpty() || !hasIndustryTemplate(base, hex)) {
+        if (positions == null || positions.isEmpty()) {
           continue;
         }
-        if (!book.hasReading(mode.id(), hex) || book.labor(mode.id(), hex) <= 0L) {
-          continue; // 没有真实利润读数/没有真实劳动投入的 mode/hex 不作为正收益目标（不凭空造目标）
+        // 允许条件：该 hex 有产业模板；merchant 额外允许"有商号运力"（无 trade 模板仍会在 prospect 里具名失败）。
+        boolean hasIndustry = hasIndustryTemplate(base, hex);
+        boolean merchantCapacity =
+            DefaultProductionModes.MERCHANT.equals(mode.id()) && hasMerchantCapacityAt(base, hex);
+        if (!hasIndustry && !merchantCapacity) {
+          continue;
+        }
+        ExpectedProfitBook.Prospect prospect =
+            ExpectedProfitBook.prospect(
+                base,
+                source,
+                mode.id(),
+                hex,
+                null,
+                marketOf(markets, topology, hex),
+                demandBook,
+                assetShares,
+                claimedByOrganizations,
+                accounts,
+                units,
+                relations,
+                topology,
+                day);
+        if (!prospect.feasible() || prospect.feasibleScale() <= 0L) {
+          continue; // 不可行/规模 0：不凭空造目标（理由在 prospect 里具名）
         }
         long weight =
             Math.max(
-                0L,
-                Math.subtractExact(book.netPerLaborScaled(mode.id(), hex), currentPerLabor));
+                0L, Math.subtractExact(prospect.netPerLaborScaled(), currentPerLabor));
         if (weight <= 0L) {
           continue;
         }
@@ -748,9 +862,9 @@ public final class ModeMigrationPolicy {
         sourceRow.population() <= 0L
             ? take
             : Math.multiplyExact(sourceRow.laborMilli(), take) / sourceRow.population();
-    List<IndustryId> industries = new ArrayList<>(IndustryHexKeys.at(base.industries(), hex.q(), hex.r()));
-    industries.sort(Comparator.comparing(IndustryId::value));
-    for (IndustryId industryId : industries) {
+    // ★ 与执行期（ModeMigrationSettlement.createOrganizationAndUnit）同一份"该 mode 能用哪些产业模板"：
+    //   按 mode 的默认 regime 优先；merchant 找不到 trade 模板 ⇒ 空（绝不把农场模板当商号）。
+    for (IndustryId industryId : industriesForMode(base, hex, mode)) {
       Industry industry = base.industries().get(industryId);
       if (industry != null
           && reserveIdleAssetsFor(
@@ -845,97 +959,80 @@ public final class ModeMigrationPolicy {
     return best;
   }
 
-  // ── 预期收益（A 规则）────────────────────────────────────────────────────────────────────
+  // ── 预期收益（A 规则，D-024：与候选评估共用同一个计算器）──────────────────────────────────
 
+  /**
+   * ★★ <b>D-024</b>：A 规则与"能否维持生产"改读 {@link ExpectedProfitBook.Prospect} —— 不再保留第二套
+   * {@code output × 价 − 投入} 的旧公式（那会与候选门槛漂开）。{@code nextCycleInputNeed} = 同一个 prospect 的
+   * {@code inputCostMilli}；{@code canSustainProduction} = prospect 可行且规模 ≥ 1。
+   */
   private static ExpectedProfit expectedProfit(
+      ExpectedProfitBook.Prospect currentProspect, long liquidityMilli) {
+    return new ExpectedProfit(
+        currentProspect.netMilli(),
+        currentProspect.laborNeedMilli(),
+        currentProspect.inputCostMilli(),
+        liquidityMilli,
+        currentProspect.feasible() && currentProspect.feasibleScale() > 0L,
+        currentProspect.reason());
+  }
+
+  /**
+   * 当前户实际在产的产业模板（组织/unit 优先；找不到 ⇒ null，让 {@link ExpectedProfitBook} 按 mode 默认 regime 挑）。
+   * 这样"当前户读数"用真实在产的配方，而不是"该格第一个模板"。
+   */
+  private static Industry currentIndustryOf(
       EconomyData base,
       HouseholdId household,
-      ClassRow row,
       HouseholdMode current,
-      Map<ProductionOrganizationId, ProductionOrganization> organizations,
       Map<ProductionUnitId, ProductionUnit> units,
-      Map<AssetShareId, AssetShare> assetShares,
-      Map<HexCoord, Market> markets,
-      AccountSession accounts,
-      OrganizationProfitBook.Book book) {
+      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
     ActorRef actor = HouseholdActors.of(household);
-    ProductionOrganization organization = organizationOf(actor, organizations);
-    ProductionUnit unit =
-        organization != null && organization.unitId().isPresent()
-            ? units.get(organization.unitId().get())
-            : null;
-    Industry industry = unit == null ? null : base.industries().get(unit.industry());
-    Market market = markets.get(current.hex);
-    Map<CommodityId, Long> stock = accounts.householdGoods().getOrDefault(household, Map.of());
-    Map<CurrencyId, Long> wallet = accounts.householdMoney().getOrDefault(household, Map.of());
-
-    boolean canSustain = true;
-    long scale = 0L;
-    if (organization == null || unit == null || industry == null) {
-      canSustain = false;
-    } else {
-      long capacityScale = ProductionUnitBook.capacityScaleOf(unit, industry, assetShares);
-      long laborPerUnit = industry.recipe().laborPerUnit();
-      long laborScale =
-          laborPerUnit <= 0L
-              ? Long.MAX_VALUE
-              : row.participationAdjustedLaborMilli() / laborPerUnit;
-      scale = Math.max(0L, Math.min(capacityScale, laborScale));
-      if (capacityScale < 1L || scale <= 0L) {
-        canSustain = false;
+    for (ProductionOrganizationId organizationId : sortedOrganizationIds(organizations)) {
+      ProductionOrganization organization = organizations.get(organizationId);
+      if (organization == null
+          || !organization.organizer().equals(actor)
+          || !current.modeId.equals(organization.modeId())
+          || organization.unitId().isEmpty()) {
+        continue;
       }
-      for (Map.Entry<CommodityId, Long> input : industry.recipe().inputPerUnit().entrySet()) {
-        if (input.getValue() > 0L && stock.getOrDefault(input.getKey(), 0L) <= 0L) {
-          canSustain = false;
+      ProductionUnit unit = units.get(organization.unitId().get());
+      if (unit != null) {
+        Industry industry = base.industries().get(unit.industry());
+        if (industry != null) {
+          return industry;
         }
       }
     }
-
-    long expectedNet;
-    long nextNeed;
-    long expectedLabor;
-    String reason;
-    boolean priced =
-        market != null
-            && industry != null
-            && industry.recipe().outputPerUnit().keySet().stream()
-                .anyMatch(commodity -> market.priceOf(commodity) > 0L);
-    if (priced) {
-      long gross = 0L;
-      for (Map.Entry<CommodityId, Long> output : industry.recipe().outputPerUnit().entrySet()) {
-        gross =
-            Math.addExact(
-                gross,
-                Math.multiplyExact(
-                    Math.multiplyExact(output.getValue(), scale), market.priceOf(output.getKey())));
+    // 兜底：本户名下的 unit（旧档/手工夹具可能没有对应组织行），按 unit id 升序取第一个同格模板。
+    List<ProductionUnitId> unitIds = new ArrayList<>(units.keySet());
+    unitIds.sort(Comparator.comparing(ProductionUnitId::value));
+    for (ProductionUnitId unitId : unitIds) {
+      ProductionUnit unit = units.get(unitId);
+      if (unit == null || !unit.operator().equals(actor)) {
+        continue;
       }
-      long inputCost = 0L;
-      for (Map.Entry<CommodityId, Long> input : industry.recipe().inputPerUnit().entrySet()) {
-        inputCost =
-            Math.addExact(
-                inputCost,
-                Math.multiplyExact(
-                        Math.multiplyExact(input.getValue(), scale), market.priceOf(input.getKey()))
-                    / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT);
+      HexCoord unitHex = unitHexOrNull(unit);
+      if (unitHex != null && unitHex.equals(current.hex)) {
+        Industry industry = base.industries().get(unit.industry());
+        if (industry != null) {
+          return industry;
+        }
       }
-      expectedNet = gross - inputCost;
-      nextNeed = inputCost;
-      expectedLabor =
-          industry.recipe().laborPerUnit() <= 0L
-              ? row.participationAdjustedLaborMilli()
-              : Math.multiplyExact(scale, industry.recipe().laborPerUnit());
-      reason = "localRefPrice";
-    } else {
-      // 缺价：退回本期真实净收益（仍不是未来价，也不是外生 π）。
-      // ★★ P10.5：用原始 Σnet / Σlabor 重建，不经 netPerLabor × labor 的二次截断；无读数时读口返回 0。
-      long net = book.net(current.modeId, current.hex);
-      long labor = book.labor(current.modeId, current.hex);
-      expectedNet = net;
-      expectedLabor = labor;
-      nextNeed = 0L;
-      reason = "noLocalRefPrice:fallbackRealized";
     }
+    return null;
+  }
 
+  /** 流动性（毫计价货币）= 本格计价币现金 + 库存按参考价折算（与旧 A 规则同一口径）。 */
+  private static long liquidityMilli(
+      AccountSession accounts,
+      Map<HexCoord, Market> markets,
+      MarketTopology topology,
+      HouseholdId household,
+      HexCoord hex) {
+    Market market = marketOf(markets, topology, hex);
+    Map<CommodityId, Long> stock = accounts.householdGoods().getOrDefault(household, Map.of());
+    Map<CurrencyId, Long> wallet = accounts.householdMoney().getOrDefault(household, Map.of());
     long cash = market == null ? 0L : wallet.getOrDefault(market.numeraire(), 0L);
     long sellable = 0L;
     if (market != null) {
@@ -949,8 +1046,104 @@ public final class ModeMigrationPolicy {
         }
       }
     }
-    return new ExpectedProfit(
-        expectedNet, expectedLabor, nextNeed, Math.addExact(cash, sellable), canSustain, reason);
+    return Math.addExact(cash, sellable);
+  }
+
+  /** 本格价表：优先本格市场；无则退到该格所在区的集散节点市场（区内同价）；都没有 ⇒ null。 */
+  private static Market marketOf(
+      Map<HexCoord, Market> markets, MarketTopology topology, HexCoord hex) {
+    Market direct = markets.get(hex);
+    if (direct != null) {
+      return direct;
+    }
+    if (topology != null) {
+      try {
+        return markets.get(topology.regionOf(hex).anchor());
+      } catch (IllegalArgumentException ignored) {
+        // 该格不在拓扑里（没有市场）⇒ 没有价
+      }
+    }
+    return null;
+  }
+
+  /** merchant 允许条件用：该格有没有仍在运力的商号（运力 0 不算）。 */
+  private static boolean hasMerchantCapacityAt(EconomyData base, HexCoord hex) {
+    for (MerchantFirm firm : base.merchantFirms().values()) {
+      if (firm != null && firm.homeHex().equals(hex) && firm.capacityPerRound() > 0L) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 需求簿视界：<b>世界现有 unit 所属产业 cycleDays 的最大者</b>（多个不同值时取最大并在此具名说明；本轮真实世界
+   * 所有产业都是 120）。没有 unit（或 unit 模板缺失）时退回"全部产业的最大者"，再没有 ⇒ 120。
+   */
+  private static long demandHorizonDays(
+      EconomyData base, Map<ProductionUnitId, ProductionUnit> units) {
+    long horizon = 0L;
+    for (ProductionUnit unit : units.values()) {
+      Industry industry = base.industries().get(unit.industry());
+      if (industry != null) {
+        horizon = Math.max(horizon, industry.cycleDays());
+      }
+    }
+    if (horizon > 0L) {
+      return horizon;
+    }
+    for (Industry industry : base.industries().values()) {
+      if (industry != null) {
+        horizon = Math.max(horizon, industry.cycleDays());
+      }
+    }
+    return horizon <= 0L ? DEFAULT_DEMAND_HORIZON_DAYS : horizon;
+  }
+
+  /**
+   * ★★ <b>该 mode 在该格能用哪些产业模板</b>（策略/执行/预期利润三处共用，避免各写一份 mode→regime 映射）：
+   *
+   * <ol>
+   *   <li>按 mode 的默认 regime（{@link RegimeOperators#defaultRegimeForMode}）筛；有匹配 ⇒ 只回匹配的（按 id 升序）；
+   *   <li>没有匹配：merchant ⇒ <b>空</b>（绝不把农场模板当商号）；其余 mode/未登记制度 ⇒ 该格全部模板（保持既有回退）。
+   * </ol>
+   */
+  static List<IndustryId> industriesForMode(EconomyData base, HexCoord hex, ProductionModeId modeId) {
+    Objects.requireNonNull(base, "base");
+    Objects.requireNonNull(hex, "hex");
+    Objects.requireNonNull(modeId, "modeId");
+    List<IndustryId> candidates =
+        new ArrayList<>(IndustryHexKeys.at(base.industries(), hex.q(), hex.r()));
+    candidates.sort(Comparator.comparing(IndustryId::value));
+    Optional<String> wanted = RegimeOperators.defaultRegimeForMode(modeId);
+    if (wanted.isEmpty()) {
+      return List.copyOf(candidates);
+    }
+    List<IndustryId> matching = new ArrayList<>();
+    for (IndustryId industryId : candidates) {
+      Industry industry = base.industries().get(industryId);
+      if (industry != null && wanted.get().equals(industry.regime().value())) {
+        matching.add(industryId);
+      }
+    }
+    if (!matching.isEmpty()) {
+      return List.copyOf(matching);
+    }
+    if (DefaultProductionModes.MERCHANT.equals(modeId)) {
+      return List.of();
+    }
+    return List.copyOf(candidates);
+  }
+
+  private static HexCoord unitHexOrNull(ProductionUnit unit) {
+    return IndustryHexKeys.hexKeyOf(unit.industry()).map(HexCoord::parse).orElse(null);
+  }
+
+  private static List<ProductionOrganizationId> sortedOrganizationIds(
+      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
+    List<ProductionOrganizationId> ids = new ArrayList<>(organizations.keySet());
+    ids.sort(Comparator.comparing(ProductionOrganizationId::value));
+    return ids;
   }
 
   // ── 钱/债的比例切分（逐笔 floor；源户人口归零时余数随最后一笔走）────────────────────────────
@@ -1081,27 +1274,6 @@ public final class ModeMigrationPolicy {
 
   // ── 小工具 ────────────────────────────────────────────────────────────────────────────────
 
-  private static ProductionOrganization organizationOf(
-      ActorRef actor, Map<ProductionOrganizationId, ProductionOrganization> organizations) {
-    ProductionOrganization best = null;
-    List<ProductionOrganizationId> ids = new ArrayList<>(organizations.keySet());
-    ids.sort(Comparator.comparing(ProductionOrganizationId::value));
-    for (ProductionOrganizationId id : ids) {
-      ProductionOrganization organization = organizations.get(id);
-      if (organization != null && organization.organizer().equals(actor)) {
-        if (best == null) {
-          best = organization;
-        }
-      }
-    }
-    return best;
-  }
-
-  private static Map<CurrencyId, Long> accountsHouseholdMoney(
-      AccountSession accounts, HouseholdId household) {
-    return accounts.householdMoney().getOrDefault(household, Map.of());
-  }
-
   private static boolean hasIndustryTemplate(EconomyData base, HexCoord hex) {
     return !IndustryHexKeys.at(base.industries(), hex.q(), hex.r()).isEmpty();
   }
@@ -1141,11 +1313,15 @@ public final class ModeMigrationPolicy {
    * <ol>
    *   <li>{@code quantity() > 0}；
    *   <li>{@code operator().equals(owner())}（自有自营；{@code operator != owner} 已被人实际使用）；
-   *   <li>{@code id()} <b>不在</b>既有 {@code ProductionOrganization.assetSources} 的并集 {@code
-   *       claimedByOrganizations} 里 —— 既有商号/组织正在使用的份额不是闲置：执行期若把它整条拆走，源份额行
-   *       会被删除，组织引用会指向不存在的份额 id，{@code EconomyData} 当即以「生产组织使用的资产份额必须已存在」
-   *       fail-closed。
+   *   <li>{@code id()} <b>不在</b> claimed 集合里 —— claimed = 既有 {@code ProductionOrganization.assetSources}
+   *       的并集 ∪ 在产 unit 占用的份额（同 industry、同 operator、{@code quantity>0}，见
+   *       {@link #claimedAssetShares(Map, Map, Map)}）。既有商号/组织/在产 unit 正在使用的份额不是闲置：
+   *       执行期若把它整条拆走，源份额行会被删除，组织引用会指向不存在的份额 id，{@code EconomyData} 当即以
+   *       「生产组织使用的资产份额必须已存在」fail-closed；在产 unit 被抽走资产则会让产能凭空消失。
    * </ol>
+   *
+   * <p>★ 结论一句话：<b>只有 {@code owner==operator} 且不被任何组织/在产 unit 使用的份额才算闲置</b>（与 P10.7 的原始
+   * 意图一致；"unit 占用"是 D-024 修复 1b 新增的显式一格）。
    */
   static boolean isIdleShare(AssetShare share, Set<AssetShareId> claimedByOrganizations) {
     Objects.requireNonNull(share, "share");
@@ -1156,21 +1332,72 @@ public final class ModeMigrationPolicy {
   }
 
   /**
-   * ★★ P10.7 / P10.8：<b>既有组织正在使用的资产份额 id 并集</b>（只读派生，不新增持久组件）。计划期在
-   * {@link #plan} 顶层从传入的 {@code organizations} 工作副本构建一次并透传；执行期在 {@link
+   * ★★ <b>兼容重载：只算"被既有组织引用"这一格</b>，等价于
+   * {@code claimedAssetShares(organizations, Map.of(), Map.of())}。测试/旧调用点可继续用；生产路径
+   * （{@link #plan} 与 {@code ModeMigrationSettlement.createOrganizationAndUnit}）一律走三参版本，把当天工作副本
+   * {@code units}/{@code assetShares} 一并传入。两参/三参共用下面同一个谓词，不存在第二套拼写。
+   */
+  static Set<AssetShareId> claimedAssetShares(
+      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
+    return claimedAssetShares(organizations, Map.of(), Map.of());
+  }
+
+  /**
+   * ★★ P10.7 / P10.8 / D-024 修复 1b：<b>"已被占用、不是闲置"的资产份额 id 并集</b>（只读派生，不新增持久组件）。
+   *
+   * <p>两格显式占用：
+   *
+   * <ol>
+   *   <li>既有 {@link ProductionOrganization#assetSources()} 引用的份额（组织正在用）；
+   *   <li>传入的 {@code units} 里每个在产 unit 所占的份额：满足 {@link #usedByUnit(AssetShare, ProductionUnit)}
+   *       —— 同 {@code industry}、同 {@code operator}、{@code quantity>0}。seeder 直接以
+   *       {@code RegimeOperators.defaultOperator(...)}（ESTATE 等）建立的 {@code farm/weave/craft/trade} 主 unit
+   *       没有对应的 {@code ProductionOrganization}，只靠第 ① 格会漏掉它们，让城市户把 ESTATE 的土地/作坊/船畜当
+   *       "闲置可租"抢占（D-024 第二轮根因 A）。
+   * </ol>
+   *
+   * <p>计划期在 {@link #plan} 顶层从当天工作副本构建一次并透传；执行期在 {@link
    * ModeMigrationSettlement#createOrganizationAndUnit} 从同一份当天工作副本再构建一次。集合只用于
    * {@link #isIdleShare} 的包含判断，不参与排序，故迭代序不影响计划确定性。
    */
   static Set<AssetShareId> claimedAssetShares(
-      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
+      Map<ProductionOrganizationId, ProductionOrganization> organizations,
+      Map<ProductionUnitId, ProductionUnit> units,
+      Map<AssetShareId, AssetShare> assetShares) {
     Objects.requireNonNull(organizations, "organizations");
+    Objects.requireNonNull(units, "units");
+    Objects.requireNonNull(assetShares, "assetShares");
     Set<AssetShareId> claimed = new LinkedHashSet<>();
     for (ProductionOrganization organization : organizations.values()) {
       if (organization != null) {
         claimed.addAll(organization.assetSources());
       }
     }
+    for (ProductionUnit unit : units.values()) {
+      if (unit == null) {
+        continue;
+      }
+      for (AssetShare share : assetShares.values()) {
+        if (usedByUnit(share, unit)) {
+          claimed.add(share.id());
+        }
+      }
+    }
     return claimed;
+  }
+
+  /**
+   * "在产 unit 占用份额"的唯一谓词：{@code share.industry == unit.industry ∧ share.operator == unit.operator ∧
+   * share.quantity > 0}。产业 id 自带格键 ⇒ 不需要另判 hex；不判 {@code modeKey}（同产业下一条在产 unit 就是一种
+   * 占用，mode 只决定生产方式，不决定实物占用）。{@link #claimedAssetShares(Map, Map, Map)} 的两格都经本方法/同一
+   * 循环拼装，别处不得再写一份。
+   */
+  private static boolean usedByUnit(AssetShare share, ProductionUnit unit) {
+    Objects.requireNonNull(share, "share");
+    Objects.requireNonNull(unit, "unit");
+    return share.quantity() > 0L
+        && share.industry().equals(unit.industry())
+        && share.operator().equals(unit.operator());
   }
 
   private static List<ProductionMode> sortedModes(EconomyData base) {

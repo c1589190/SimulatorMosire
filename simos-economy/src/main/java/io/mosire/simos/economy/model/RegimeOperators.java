@@ -3,10 +3,12 @@ package io.mosire.simos.economy.model;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * ★★ **{@code regime} → 默认经营主体（{@code operator}）的唯一拼写点**（S1 阶段 3 Task 1；spec §六 + 裁定 R1/R3）。
@@ -45,6 +47,15 @@ public final class RegimeOperators {
    * <p>它是"**资产所有者 ≠ 经营主体**"的唯一载体（spec §六 末条）—— 没有它就证明不了 §2.1 那条判据。
    */
   public static final String TENANT = "tenant";
+
+  /**
+   * ★★ <b>P11.7 / D-024：商人 regime 的唯一拼写点</b> —— 该制度下的产业是贸易/承运（如 seeder 的 {@code trade}）。
+   *
+   * <p>★ <b>本批只落 regime 字面量</b>：{@code BY_REGIME} 的"默认经营主体"表<b>不</b>登记它（贸易产业的 operator 必须由载荷
+   * 显式给出；未给 ⇒ 既有的 fail-closed），{@code RegimeRelations} 的四档默认关系表也仍不含它（那两个表不在本阶段文件所有权内）。
+   * 它服务的是"按 mode 选产业模板"这条映射（{@link #defaultRegimeForMode(ProductionModeId)}）。
+   */
+  public static final String MERCHANT = "merchant";
 
   /**
    * 登记表：{@code regime 字面量 → 默认经营主体种类}。
@@ -93,5 +104,37 @@ public final class RegimeOperators {
   /** 登记面（**保序**：spec §六 表序）；返回的 Map 不可变。 */
   public static Map<String, ActorKind> registered() {
     return BY_REGIME;
+  }
+
+  /**
+   * ★★ <b>生产方式 → 它默认使用的生产制度（唯一映射点）</b>：{@code tenancy_* → tenant}、{@code wage_farm → feudal}、
+   * {@code handicraft_workshop → handicraft}、{@code family_farm → household}、{@code merchant → merchant}；
+   * 其余（{@code displaced}/GM 自定义 mode）⇒ 空（调用方按自己的 fail-closed 回退）。
+   *
+   * <p>★ 它是"按 mode 选产业模板"的唯一拼写点：{@code EconomyOrganizationSettlement.selectIndustry}、
+   * {@code ModeMigrationPolicy.industriesForMode}、{@code ModeMigrationSettlement} 都读它，免得三处各写一遍 if 链。
+   */
+  public static Optional<String> defaultRegimeForMode(ProductionModeId modeId) {
+    if (modeId == null) {
+      throw new IllegalArgumentException("defaultRegimeForMode 的 modeId 不得为 null");
+    }
+    if (DefaultProductionModes.TENANCY_FIXED_KIND.equals(modeId)
+        || DefaultProductionModes.TENANCY_SHARE.equals(modeId)
+        || DefaultProductionModes.TENANCY_CASH.equals(modeId)) {
+      return Optional.of(TENANT);
+    }
+    if (DefaultProductionModes.WAGE_FARM.equals(modeId)) {
+      return Optional.of(FEUDAL);
+    }
+    if (DefaultProductionModes.HANDICRAFT_WORKSHOP.equals(modeId)) {
+      return Optional.of(HANDICRAFT);
+    }
+    if (DefaultProductionModes.FAMILY_FARM.equals(modeId)) {
+      return Optional.of(HOUSEHOLD);
+    }
+    if (DefaultProductionModes.MERCHANT.equals(modeId)) {
+      return Optional.of(MERCHANT);
+    }
+    return Optional.empty();
   }
 }

@@ -129,13 +129,25 @@ class SevenHexNatural3650Test {
         .isPositive();
     assertThat(result.marketFills()).as("[7HEX-NAT] 真实市场成交").isPositive();
 
-    // ── 流民：自然出现峰值，峰值后下降；DISPLACED 不得被自动组织/劳动配额“雇佣”。────────────
+    // ── 流民：自然出现峰值；DISPLACED 不得被自动组织/劳动配额“雇佣”。────────────
+    // ★ D-024 判据修正（设计 §8.2）：只要求 displacedPeak > 0、displacedLast >= 0。旧的“峰值后下降”
+    //   是 hasReading 门槛 + 人工目标户时代的夹具期望，不是 D-023/D-024 的设计要求：
+    //   D-023 #6 禁止主动招募流民，D-024 §3.2.1 又禁止“没有资产/租不到”时凭空造规模 ⇒ 本自然夹具中
+    //   R3/R5 流民半径 1 内没有可承载的闲置资产（闲置 LAND 只在 R2），正确行为就是留下、不再被吸走。
+    //   下面仍保留“不得自动组织/配额”的硬判据，并如实打印终局读数。
     assertThat(world.initialDisplaced()).as("[7HEX-NAT] 自然世界必须有少量流民").isNotEmpty();
     assertNoDisplacedAutoWork(world.initial());
     assertThat(result.displacedPeak()).as("[7HEX-NAT] DISPLACED 峰值自然出现").isPositive();
     assertThat(result.displacedLastClose())
-        .as("[7HEX-NAT] DISPLACED 峰值后下降")
-        .isLessThan(result.displacedPeak());
+        .as("[7HEX-NAT] DISPLACED 终局读数非负（设计 §8.2；无可行承载目标时允许与峰值持平）")
+        .isNotNegative()
+        .isLessThanOrEqualTo(result.displacedPeak());
+    System.out.println(
+        "[7HEX-NAT] displacedPeak="
+            + result.displacedPeak()
+            + " displacedLast="
+            + result.displacedLastClose()
+            + "（持平 = D-024 下无可行目标承载，非主动招募/资产凭空生成）");
     assertNoDisplacedAutoWork(result.data());
 
     // ── 守恒：人口/货币按币种/资产按 kind；债务无负值且不因迁移凭空增加。────────────────────

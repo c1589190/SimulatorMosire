@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.Optional;
 import java.util.OptionalLong;
 
@@ -32,12 +33,22 @@ public record EconomyMeta(
   public static final String RULES_VERSION_PRE_MODERN_V1 = "pre-modern-v1";
 
   /**
-   * ★★ <b>P10.1：7 hex 全链路运行时的当前规则版本（架构 §6 的唯一拼写点）。</b>
+   * ★★ <b>P10.1：seven-hex 运行时的第一代版本标签（历史常量）。</b>
    *
-   * <p>新世界的 {@code PRODUCTION_RUNTIME} 种子由 {@code EconomySeeder} 写入本值；检测到版本为空 / 不等本值 / 结构不完整时，
-   * 唯一恢复路径是 GM 重置后按新 profile 重播，<b>不做任何旧档迁移兼容</b>（用户 2026-10-06 裁定）。
+   * <p>它只在旧档/旧载荷的拒绝路径里有意义（读到 V1 ⇒ 旧档）；当前写入值与版本门比较目标是
+   * {@link #RUNTIME_VERSION_SEVEN_HEX_V2}。检测到版本为空 / 不等当前版本 / 结构不完整时，唯一恢复路径是 GM 重置后按新 profile
+   * 重播，<b>不做任何旧档迁移兼容</b>（用户 2026-10-06 裁定）。
    */
   public static final String RUNTIME_VERSION_SEVEN_HEX_V1 = "seven-hex-v1";
+
+  /**
+   * ★★ <b>P11.7 / D-024：seven-hex 运行时的第二代版本标签（架构 §3.6）。</b>
+   *
+   * <p>新世界的 PRODUCTION_RUNTIME 种子写本值（{@code EconomySeeder}），旧 V1 载荷/存档按设计一律视为旧档。
+   * <b>版本门（{@link #isCurrentRuntimeVersion()} / {@link #requireCurrentRuntimeVersionTag(String)}）的比较目标已随本批切到
+   * V2</b>：V1 只是历史常量，不再是"当前版本"。
+   */
+  public static final String RUNTIME_VERSION_SEVEN_HEX_V2 = "seven-hex-v2";
 
   public EconomyMeta {
     if (mapId == null || mapId.isBlank()) {
@@ -60,18 +71,25 @@ public record EconomyMeta(
   }
 
   /**
-   * ★★ <b>P10.1 版本门（读侧判据）</b>：本档的 {@code rulesVersion} 是否等于当前 7 hex 运行时版本。
+   * ★★ <b>P10.1 版本门（读侧判据）</b>：本档的 {@code rulesVersion} 是否等于当前 7 hex 运行时版本
+   * （{@link #RUNTIME_VERSION_SEVEN_HEX_V2}）。
    *
    * <p>它只是判据、不改状态；调用方（激活/载入路径）拿到 false 后应走 GM 重置，不许静默按空表继续 （架构 §6："旧档到不了空表静默路径"）。class-first 旧档的
-   * {@code aggregate-v1} 会如实返回 false —— 那正是要拒绝的旧档。
+   * {@code aggregate-v1} 与上一代 {@code seven-hex-v1} 会如实返回 false —— 那正是要拒绝的旧档。
+   *
+   * <p>★★ <b>线格式契约</b>：这是派生判据，不是状态组件 ⇒ 必须在类型上直接 {@link JsonIgnore}。不能只靠
+   * {@code EconomyCodec} 的 mixin：Core 时间线（{@code Timeline.CHANGESET_MAPPER}）与真实 Shell 用的是
+   * {@code SimosObjectMapper.create()} 的裸 mapper，看不见模块私有 mixin；不摘掉本属性会让任何改过
+   * {@code economy.meta} 的 revision 在 replay 时因未知键 {@code currentRuntimeVersion} fail-closed。
    */
+  @JsonIgnore
   public boolean isCurrentRuntimeVersion() {
-    return RUNTIME_VERSION_SEVEN_HEX_V1.equals(rulesVersion);
+    return RUNTIME_VERSION_SEVEN_HEX_V2.equals(rulesVersion);
   }
 
   /** 上一条的字符串形态（给"还没有 EconomyMeta"或缺版本位的最小检查口用）：{@code null}/空白/不等 ⇒ false。 */
   public static boolean isCurrentRuntimeVersion(String rulesVersion) {
-    return RUNTIME_VERSION_SEVEN_HEX_V1.equals(rulesVersion);
+    return RUNTIME_VERSION_SEVEN_HEX_V2.equals(rulesVersion);
   }
 
   /**
@@ -84,14 +102,14 @@ public record EconomyMeta(
   public static void requireCurrentRuntimeVersion(EconomyMeta meta) {
     if (meta == null) {
       throw new IllegalStateException(
-          "旧档/版本不符，需要 GM 重置: 经济元信息缺失（当前版本=" + RUNTIME_VERSION_SEVEN_HEX_V1 + "）");
+          "旧档/版本不符，需要 GM 重置: 经济元信息缺失（当前版本=" + RUNTIME_VERSION_SEVEN_HEX_V2 + "）");
     }
     if (!meta.isCurrentRuntimeVersion()) {
       throw new IllegalStateException(
           "旧档/版本不符，需要 GM 重置: rulesVersion="
               + meta.rulesVersion()
               + "，当前版本="
-              + RUNTIME_VERSION_SEVEN_HEX_V1);
+              + RUNTIME_VERSION_SEVEN_HEX_V2);
     }
   }
 
@@ -107,7 +125,7 @@ public record EconomyMeta(
           "旧档/版本不符，需要 GM 重置: rulesVersion="
               + rulesVersion
               + "，当前版本="
-              + RUNTIME_VERSION_SEVEN_HEX_V1);
+              + RUNTIME_VERSION_SEVEN_HEX_V2);
     }
   }
 }
