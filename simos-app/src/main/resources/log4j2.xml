@@ -2,14 +2,27 @@
 <!-- ★ M5 T1：可执行体的日志配置（spec §2.1 的"日志实现归 app 层"）。
      没有它 log4j2 用默认配置（只出 ERROR），ShellMain 启动时那条"生效配置"就看不见了。
      只挂一个控制台 appender、级别 INFO；不外写文件（避免在 storeDir 之外落盘，也避免把载荷明文写进日志——
-     明文纪律见 CommandBus/TimeAdvance 的 §7.3 注）。 -->
+     明文纪律见 CommandBus/TimeAdvance 的 §7.3 注）。
+
+     ★★ 经济系统日志开关（2026-10-04 用户裁定"经济系统全量 Log 化"；设计见
+     docs/superpowers/specs/2026-10-04-economy-logging.md）：
+       · 默认 io.mosire.simos.economy = INFO（生命周期 + 每轮发生了什么）；
+       · -Dsimos.economy.logLevel=DEBUG  开阶段池子/汇总/理由；
+       · -Dsimos.economy.traceLevel=TRACE 再开逐笔转移/成交槽/债务变动/迁移 move。
+     这两个属性只影响日志输出，不影响任何状态；载荷明文仍然不进日志。 -->
 <Configuration status="WARN">
+  <Properties>
+    <Property name="economyLevel">${sys:simos.economy.logLevel:-INFO}</Property>
+    <Property name="economyTraceLevel">${sys:simos.economy.traceLevel:-INFO}</Property>
+  </Properties>
   <Appenders>
     <Console name="Console" target="SYSTEM_OUT">
       <PatternLayout pattern="%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n"/>
     </Console>
   </Appenders>
   <Loggers>
+    <Logger name="io.mosire.simos.economy" level="${economyLevel}"/>
+    <Logger name="io.mosire.simos.economy.trace" level="${economyTraceLevel}"/>
     <Root level="info">
       <AppenderRef ref="Console"/>
     </Root>

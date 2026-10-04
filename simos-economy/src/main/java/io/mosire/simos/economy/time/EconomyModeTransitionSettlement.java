@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
@@ -67,6 +68,9 @@ import java.util.TreeSet;
  * UUID。本类是协调器单线程阶段：只写调用方交进来的工作副本；一次 revision 的原子性由 {@code EconomySession} 的一次 {@code build()} 承担。
  */
 final class EconomyModeTransitionSettlement {
+
+  /** 变迁逐条日志（settlement 分类；Outcome 计数在调用点另有一条 INFO）。 */
+  private static final org.slf4j.Logger LOG = EconomyLog.settlement();
 
   static final String REASON_ORG_NOT_FOUND = "ORG_NOT_FOUND";
   static final String REASON_ORG_EXITING = "ORG_EXITING";
@@ -173,6 +177,17 @@ final class EconomyModeTransitionSettlement {
             transition.withStatus(ModeTransition.Status.FAILED, plan.failureReason));
         changed = true;
         failed++;
+        if (LOG.isTraceEnabled()) {
+          LOG.trace(
+              "event=MODE_TRANSITION_FAILED day={} transition={} organization={} fromMode={} toMode={} effectiveDay={} reason={}",
+              day,
+              transition.id().value(),
+              transition.organizationId().value(),
+              transition.fromModeId().value(),
+              transition.toModeId().value(),
+              transition.effectiveDay(),
+              plan.failureReason);
+        }
         continue;
       }
       // ★ 规划已全部通过：下面只落工作副本，不再做可失败判断（构造期不变量异常照常抛出，不伪装成 FAILED）。
@@ -185,6 +200,17 @@ final class EconomyModeTransitionSettlement {
       modeTransitions.put(transition.id(), plan.appliedTransition);
       changed = true;
       applied++;
+      if (LOG.isTraceEnabled()) {
+        LOG.trace(
+            "event=MODE_TRANSITION_APPLIED day={} transition={} organization={} fromMode={} toMode={} newOrganization={} unit={}",
+            day,
+            transition.id().value(),
+            transition.organizationId().value(),
+            transition.fromModeId().value(),
+            transition.toModeId().value(),
+            plan.newOrganization.id().value(),
+            plan.updatedUnit.id().value());
+      }
     }
     return new Outcome(applied, failed, changed);
   }

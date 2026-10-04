@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetShareId;
@@ -24,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.slf4j.Logger;
 
 /**
  * ★★ <b>一天结算里"离开 {@code ClassRow} 的那些发生额"</b>（S1 阶段 4+5 Task 4；spec §四 ①→⑤ 的账）。
@@ -626,6 +628,9 @@ public record ProductionLedger(
    */
   static final class Accumulator implements TransferMint {
 
+    /** 逐笔原始事件日志（trace 分类；并行分区下只保证逐行原子，不保证跨分区顺序）。 */
+    private static final Logger RAW = EconomyLog.trace();
+
     private final long day;
     private final Map<IndustryId, Map<CommodityId, Long>> gross = new LinkedHashMap<>();
     private final Map<IndustryId, Map<CommodityId, Long>> losses = new LinkedHashMap<>();
@@ -725,6 +730,19 @@ public record ProductionLedger(
           new Transfer(
               new TransferId(id), day, from, to, location, goods, money, reason, Optional.empty());
       transfers.add(transfer);
+      if (RAW.isTraceEnabled()) {
+        RAW.trace(
+            "event=TRANSFER id={} day={} from={} to={} hex={},{} reason={} goods={} money={}",
+            id,
+            day,
+            from.id(),
+            to.id(),
+            location.q(),
+            location.r(),
+            reason.value(),
+            goods,
+            money);
+      }
       return transfer;
     }
 

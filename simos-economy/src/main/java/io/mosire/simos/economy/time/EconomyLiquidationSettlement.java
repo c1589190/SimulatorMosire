@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -108,6 +109,9 @@ public final class EconomyLiquidationSettlement {
   /** ★ 无 ACTIVE 质押时自动挂质押的确定性 id 前缀（不含 {@code "."}/{@code "|"}）。 */
   private static final String AUTO_PLEDGE_ID_PREFIX = "autopledge-";
 
+  /** 清算/阶层下滑日志（settlement 分类）。 */
+  private static final org.slf4j.Logger LOG = EconomyLog.settlement();
+
   private EconomyLiquidationSettlement() {}
 
   /** ★ 本阶段是否接线：新表（mode/位置/归属/质押/政策/资产规则）任一非空即启用；全空 = 旧档 ⇒ 整段 no-op，旧路径逐值不变。 */
@@ -177,7 +181,22 @@ public final class EconomyLiquidationSettlement {
             industries,
             ledger);
     Plan plan = plan(context);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
+          "event=LIQUIDATION_PLAN day={} stressUpdates={} debtReductions={} pledgeUpdates={} audits={} declines={} explosions={} autoDefaults={}",
+          day,
+          plan.stressUpdates().size(),
+          plan.debtReductions().size(),
+          plan.pledgeUpdates().size(),
+          plan.audits().size(),
+          plan.declines().size(),
+          plan.explosions().size(),
+          plan.autoDefaults().size());
+    }
     apply(context, plan);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("event=LIQUIDATION_APPLIED day={} audits={}", day, plan.audits().size());
+    }
   }
 
   /** planner 的只读输入（所有 Map 都是调用方的当刻工作副本引用；planner 不写它们）。 */

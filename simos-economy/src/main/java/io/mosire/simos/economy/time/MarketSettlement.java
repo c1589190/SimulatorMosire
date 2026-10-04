@@ -2,11 +2,15 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.debt.DebtTerms;
+import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -34,6 +38,7 @@ import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
@@ -59,6 +64,7 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * ★★ <b>区域市场撮合与在途运输（M2.3 + M2.4 + M2.5）</b>：把 M2.1/M2.2 的"订单体系"从"每格一次"扩成 <b>每 5 天一轮、区内优先、邻区稀疏跨区、跨区走
@@ -91,9 +97,9 @@ import java.util.TreeMap;
  * <p>★★ <b>跨区结算暂设即时</b>：{@code MARKET_CROSS_REGION_SETTLEMENT_IMMEDIATE = true} —— 货款与运费在**发运日**
  * 结清，货却在 ETA 之后才到；这是设计允许的简化，L3 的读数契约必须原样标注（M2.0 #4）。
  *
- * <p>★★ <b>价格（M2.6）</b>：参考价仍是格价表里的固定报价（区内成交价 = 集散节点格价、跨区 = 卖方格价）；买卖两侧的 **限价**由 {@code Market}
- * 的两个具名常量现算（bid = 卖方底价、ask = 买方限价），订单按限价过滤 —— 价差没有中间人截留， 成交仍按参考价。可选自适应（{@link
- * #MARKET_ADAPTIVE_PRICING_ENABLED}，<b>默认关</b>）在每轮撮合后按供需 z 改下一轮的 **区价**（成员格同改），改价只经 {@link
+ * <p>★★ <b>价格（M2.6）</b>：参考价是格价表里的报价（区内成交价 = 集散节点格价、跨区 = 卖方格价）；买卖两侧的 **限价**由 {@code Market}
+ * 的两个具名常量现算（bid = 卖方底价、ask = 买方限价），订单按限价过滤 —— 价差没有中间人截留， 成交仍按参考价。自适应（{@link
+ * #MARKET_ADAPTIVE_PRICING_ENABLED}，2026-10-07 用户裁定打开）在每轮撮合后按供需 z 改下一轮的 **区价**（成员格同改），改价只经 {@link
  * #clearOncePerCycle} 返回的 {@code MarketOutcome} 交回 {@code EconomySettlement} ⇒ 走 {@code markets}
  * 这个既有 {@code FieldDelta} 组件的变更集，没有第二处改价。
  *
@@ -181,7 +187,7 @@ final class MarketSettlement {
   static final boolean MARKET_CROSS_REGION_SETTLEMENT_IMMEDIATE = true;
 
   /**
-   * ★★ <b>M2.6 可选自适应价格的开关（默认 {@code false} = 固定报价）</b>：打开后每轮结算<b>结束</b>时按 {@code z =
+   * ★★ <b>M2.6 自适应价格的开关（2026-10-07 用户裁定：打开）</b>：打开后每轮结算<b>结束</b>时按 {@code z =
    * clamp((有预算且合限价的需求 − 可出售供给) / max(需求 + 供给, ε), −1, 1)}、 {@code p_next = max(p_min, round(p × (1
    * + α·z)))} 更新**各区集散节点价**，并把同一区成员格的同商品价一并改到该值 （"每区每商品一个报价"）。
    *
@@ -189,9 +195,10 @@ final class MarketSettlement {
    * {@code EconomyData} —— 于是 {@code markets} 作为既有的 {@code FieldDelta} 组件进变更集。本类<b>不</b>直接改任何
    * {@code EconomyData}，也没有第二处改价。
    *
-   * <p>★ 默认关闭 ⇒ 本常量取 {@code false} 时价格表逐值原样带过（数值行为与 M2.6 之前完全相同）。
+   * <p>★ 固定报价模式仍是可达的：把本常量改回 {@code false}（并提供旧初态/旧档）即可逐值回到 M2.6 之前。
+   * 读侧 {@link MarketReport#priceMode()} / {@link MarketReadout#adaptivePricingEnabled()} 会如实标注本轮模式。
    */
-  static final boolean MARKET_ADAPTIVE_PRICING_ENABLED = false;
+  static final boolean MARKET_ADAPTIVE_PRICING_ENABLED = true;
 
   /**
    * ★★ <b>自适应的步长 α（千分比/轮）</b>：{@code 50‰ = 5%} —— 计划要求的**起步上界 ≤5%/轮**。
@@ -213,12 +220,36 @@ final class MarketSettlement {
   static final long MARKET_ADAPTIVE_Z_EPSILON_MILLI = 1L;
 
   /**
+   * ★★ <b>D-030 §3.1：出借人的人均货币保留额</b>（毫计价货币 / 人）：默认 <b>12</b>。
+   *
+   * <p>★ 它是<b>GM 可调默认值</b>（不是物理常数）：与创世禀赋量级一致 —— 一个出借人必须先把"自己未覆盖的自然需求按市场价折算"
+   * 留出来，再额外留 {@code 12 毫银/人} 的口粮/缓冲钱，剩下的才算可借货币。防的是"把出借人自己的口粮钱借空"，不是禁止
+   * 货币出借。参数目录落地后迁入 GM 参数表。
+   */
+  static final long LENDER_MONEY_BUFFER_PER_CAPITA_MILLI = 12L;
+
+  /**
+   * ★★ <b>D-030：货币出借头寸每轮按余额自动派生（GM 默认开）</b>—— 本批没有显式挂单，出借人保留额之外的余额就是可借
+   * 货币；关掉它 ⇒ 本轮没有货币信用（现金与借实物仍可跑）。★ 它是 GM 默认开关，不是交易规则的一部分。
+   */
+  static final boolean MONEY_LENDING_AUTO_LIST = true;
+
+  /**
+   * ★★ <b>D-030：卖单剩余即可借（GM 默认开）</b>—— 现金成交后卖单剩余直接成为商品可借池，不另建仓库/不复制库存；关掉它
+   * ⇒ 本轮没有实物信用（货币信用仍可跑）。★ 它是 GM 默认开关，与"卖单剩余"这一事实来源无关。
+   */
+  static final boolean MARKET_GOODS_LENDING_ENABLED = true;
+
+  /**
    * ★★ <b>运输损耗的记账账户</b>：{@code ProductionLedger.losses} 的键是 {@code IndustryId}，而运输不是产业 ——
    * 用一个**具名伪账户**把在途损耗与生产损耗分开（两者都进 ΣLoss，但读账分得清是谁的）。
    */
   static final IndustryId TRANSPORT_LOSS_ACCOUNT = new IndustryId("market-transport");
 
   private static final InstrumentId SILVER_SPECIE = MoneyVocabulary.SILVER_SPECIE.id();
+
+  /** 市场日志（market 分类）：开市/闭市/轮次。逐笔成交在 EconomySettlement 从报告产出（同一事实只拼一次）。 */
+  private static final org.slf4j.Logger MARKET = EconomyLog.market();
 
   private MarketSettlement() {}
 
@@ -275,6 +306,31 @@ final class MarketSettlement {
      */
     private final MarketRegulation regulation;
 
+    /**
+     * ★★ <b>D-030/D-031：本轮市场信用的入参</b>（{@code null} = 本入口没有信用能力，逐值退回现金市场）；只带
+     * 到期周期，借款人侧不再有额度上限，唯一上限是放贷人实际可借头寸。
+     */
+    private final CreditConfig creditConfig;
+
+    /**
+     * ★★ <b>D-030：债务工作表</b>（与 {@code EconomySettlement} 的当日工作副本同一个 map；信用合同经 {@link
+     * DebtContractBook#upsert} 写入，市场不另造债务表）。{@code null} = 信用关闭。
+     */
+    private final Map<DebtContractId, DebtContract> debts;
+
+    /**
+     * ★★ <b>D-031：市场信用的一轮入参</b>（借款人侧不再有额度；唯一上限 = 放贷人实际可借头寸）。
+     *
+     * @param dueCycle 新合同的到期周期（本批 = 当前周期 + 1；与 {@code lendDeficitsInHex} 同源）
+     */
+    record CreditConfig(long dueCycle) {
+      CreditConfig {
+        if (dueCycle < 0L) {
+          throw new IllegalArgumentException("CreditConfig.dueCycle 不得为负: " + dueCycle);
+        }
+      }
+    }
+
     MarketRound(
         long day,
         Map<HouseholdId, ClassRow> rows,
@@ -321,14 +377,16 @@ final class MarketSettlement {
           operatorConditions,
           index,
           demands,
-          MarketRegulation.none());
+          MarketRegulation.none(),
+          null,
+          null);
     }
 
     /**
      * ★★ <b>D-027：带区级调控的完整构造器</b>（生产路径用；旧构造器委托 {@link MarketRegulation#none()}）。
      *
      * <p>★ 旧构造器<b>保留且行为不变</b>：{@code regulation = none()} ⇒ 参考价/限价/配额/税费退回原常量与各 hex
-     * {@code Market.prices}。
+     * {@code Market.prices}；{@code creditConfig}/{@code debts} 为 {@code null} ⇒ 信用关闭、逐值退回现金市场。
      */
     MarketRound(
         long day,
@@ -354,6 +412,43 @@ final class MarketSettlement {
         SettlementIndex index,
         Map<DemandId, DemandEntry> demands,
         MarketRegulation regulation) {
+      this(day, rows, householdGoods, householdMoney, householdFrozenGoods, householdFrozenMoney,
+          operatorGoods, operatorMoney, operatorFrozenGoods, operatorFrozenMoney, unmetToday,
+          householdOfActor, industries, units, assetShares, relations, allocations, shipments,
+          ledger, operatorConditions, index, demands, regulation, null, null);
+    }
+
+    /**
+     * ★★ <b>D-030：带市场信用的完整构造器</b>（{@code MarketRound.withCredit} 的唯一出口）。
+     *
+     * <p>★ {@code debts} 是<b>引用</b>：市场信用经 {@link DebtContractBook#upsert} 就地累加，不复制成第二份债务表。
+     */
+    MarketRound(
+        long day,
+        Map<HouseholdId, ClassRow> rows,
+        Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
+        Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
+        Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
+        Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
+        Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
+        Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
+        Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
+        Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
+        Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
+        Map<ActorRef, HouseholdId> householdOfActor,
+        Map<IndustryId, Industry> industries,
+        Map<ProductionUnitId, ProductionUnit> units,
+        Map<AssetShareId, AssetShare> assetShares,
+        Map<ProductionUnitId, ProductionRelation> relations,
+        Map<LaborAllocationId, LaborAllocation> allocations,
+        Map<ShipmentId, ShipmentBatch> shipments,
+        ProductionLedger.Accumulator ledger,
+        Map<ProductionUnitId, OperatorCondition> operatorConditions,
+        SettlementIndex index,
+        Map<DemandId, DemandEntry> demands,
+        MarketRegulation regulation,
+        CreditConfig creditConfig,
+        Map<DebtContractId, DebtContract> debts) {
       this.day = day;
       this.rows = Objects.requireNonNull(rows, "rows");
       this.householdGoods = Objects.requireNonNull(householdGoods, "householdGoods");
@@ -380,6 +475,57 @@ final class MarketSettlement {
       this.index = Objects.requireNonNull(index, "index");
       this.demands = demands == null ? Map.of() : demands;
       this.regulation = regulation == null ? MarketRegulation.none() : regulation;
+      this.creditConfig = creditConfig;
+      this.debts = debts;
+    }
+
+    /** ★★ D-030：本入口有没有市场信用能力（缺一即关闭；旧构造器因此逐值退回现金市场）。 */
+    boolean creditEnabled() {
+      return creditConfig != null && debts != null;
+    }
+
+    /** ★ D-030：信用入参（{@code null} = 信用关闭；订单生成与信用撮合都只读它）。 */
+    CreditConfig creditConfig() {
+      return creditConfig;
+    }
+
+    /** ★ D-030：债务工作表引用（信用关闭时为 {@code null}；市场不复制、不另建第二份）。 */
+    Map<DebtContractId, DebtContract> debts() {
+      return debts;
+    }
+
+    /**
+     * ★★ <b>D-030/D-031：给已构造的市场轮补上信用入参</b>（{@code EconomySettlement} 在判定今天真的开市之后才构造
+     * {@link CreditConfig}；本方法<b>不复制账户表</b>，只换信用字段）。借款人侧不再传入任何容量表。
+     */
+    MarketRound withCredit(long dueCycle, Map<DebtContractId, DebtContract> debts) {
+      Objects.requireNonNull(debts, "debts");
+      return new MarketRound(
+          day,
+          rows,
+          householdGoods,
+          householdMoney,
+          householdFrozenGoods,
+          householdFrozenMoney,
+          operatorGoods,
+          operatorMoney,
+          operatorFrozenGoods,
+          operatorFrozenMoney,
+          unmetToday,
+          householdOfActor,
+          industries,
+          units,
+          assetShares,
+          relations,
+          allocations,
+          shipments,
+          ledger,
+          operatorConditions,
+          index,
+          demands,
+          regulation,
+          new CreditConfig(dueCycle),
+          debts);
     }
 
     /** ★ R4-E2：需求账本（只读；空表 = 没有 GM 需求，订单退回旧基线）。 */
@@ -649,6 +795,17 @@ final class MarketSettlement {
     Objects.requireNonNull(parallelism, "parallelism");
     Objects.requireNonNull(merchantFirms, "merchantFirms");
     Objects.requireNonNull(carrierPool, "carrierPool");
+    if (MARKET.isDebugEnabled()) {
+      MARKET.debug(
+          "event=MARKET_ROUND_START day={} trigger={} markets={} regions={} merchantFirms={} rows={} creditEnabled={}",
+          round.day,
+          trigger,
+          markets.size(),
+          topology.regions().size(),
+          merchantFirms.size(),
+          round.rows.size(),
+          round.creditEnabled());
+    }
     boolean merchantWorld = !merchantFirms.isEmpty();
     Optional<ActorRef> carrier = merchantWorld ? Optional.empty() : carrierOf(round);
     MatchContext ctx =
@@ -781,6 +938,12 @@ final class MarketSettlement {
       releaseAllFreezes(ctx);
     }
 
+    // ── 4b. ★★ D-030 市场信用：现金撮合（含区内/跨区）之后的借钱买货 → 借实物 ───────────────────
+    //   ★ 位置：冻结已释放之后、未成交原因落档之前。冻结释放让"可花货币"回到市场轮的真实可用额（不被本轮临时挂单
+    //     承诺占住）；信用成交消耗的是各主体的真实余额，转移仍全走唯一写口 applyTransfer。
+    //   ★ 顺序：按"买方稳定序"逐户处理；每个买方先货币（钱优先），货币借不到/不够才用商品卖单剩余借实物。
+    creditRound(ctx, indexes);
+
     // ── 5. 未成交原因（不聚合丢失；买卖两侧分开）────────────────────────────────────────
     collectUnfilled(ctx, indexes);
 
@@ -800,7 +963,7 @@ final class MarketSettlement {
     }
     // ── 6. M2.6 可选自适应：只看**本轮计划订单**（有预算且限价内的需求 vs 可出售供给），
     //   在撮合之后改下一轮的参考价。★ 开关判据收在 adaptPrices 内部、这里**无条件调用** ——
-    //   否则 javac 会把默认关（常量 false）的分支连同私有方法一起当死码剔除，SpotBugs 报 UPM_UNCALLED_PRIVATE_METHOD。
+    //   ★ 开关判据收在 adaptPrices 内部、这里**无条件调用**；即使将来把常量改回 false，也能保证方法在字节码里存在。
     AdaptivePrices adapted = adaptPrices(markets, ctx);
     return new MarketOutcome(
         MarketReport.withRegulatedTariff(
@@ -819,11 +982,12 @@ final class MarketSettlement {
             adapted.updates(),
             ctx.sellerOutcomes,
             ctx.buyerOutcomes,
+            ctx.creditFills,
             ctx.tariffByFill),
         adapted.markets());
   }
 
-  /** 本进程当前的报价模式（M2.6 的开关只有一个：默认固定）。 */
+  /** 本进程当前的报价模式（M2.6 的开关只有一个：2026-10-07 起默认自适应）。 */
   static PriceMode priceMode() {
     return MARKET_ADAPTIVE_PRICING_ENABLED ? PriceMode.ADAPTIVE : PriceMode.FIXED;
   }
@@ -842,7 +1006,7 @@ final class MarketSettlement {
   }
 
   /**
-   * ★★ <b>按供需 z 逐区改价</b>（M2.6 可选；开关判据在本方法内，调用点无条件）—— 默认关时立即原样交回入参价格表。
+   * ★★ <b>按供需 z 逐区改价</b>（M2.6 自适应；开关判据在本方法内，调用点无条件）—— 开关关时立即原样交回入参价格表。
    *
    * <pre>
    * z      = clamp((demand − supply) / max(demand + supply, ε), −1, 1)
@@ -858,8 +1022,7 @@ final class MarketSettlement {
    */
   private static AdaptivePrices adaptPrices(Map<HexCoord, Market> markets, MatchContext ctx) {
     if (!MARKET_ADAPTIVE_PRICING_ENABLED) {
-      // ★ 默认固定报价：价格表逐值原样带过、更新表为空。判断放在这里而不是调用点，
-      //   是为了让本方法在字节码里真的存在（见 clearOncePerCycle 第 6 步的注释）。
+      // ★ 固定报价回退：开关关时价格表逐值原样带过、更新表为空。判断放在这里而不是调用点，保证方法在字节码里存在。
       return new AdaptivePrices(List.of(), markets);
     }
     // 逐 (region, commodity) 汇总订单；region 用拓扑对象本身当键（它由 node+members 派生，等值即同区）。
@@ -1069,10 +1232,16 @@ final class MarketSettlement {
       long baseTarget = participant.household != null ? life : necessary;
       long incoming = confirmedIncoming(round, participant.actor, commodity, deadline);
       long budget = spendableMoneyOf(round, participant, market.numeraire());
-      long affordable = budget * EconomySettlement.MILLI_PER_GRAIN / reference;
-      long quantity = allocateQuantity(baseTarget, demandParts, available, incoming, affordable);
+      long cashAffordable = budget * EconomySettlement.MILLI_PER_GRAIN / reference;
+      // ★★ D-031：借款人侧不再有额度上限。家户把"目标缺口 + 需求缺口"整笔挂出来（现金撮合仍只按真实预算付，
+      //    剩余由信用撮合按放贷人实际可借头寸补）；经营者不参与信用 ⇒ 仍按现金买得起量封顶。
+      boolean creditDemand = participant.household != null && round.creditEnabled();
+      long quantity =
+          creditDemand
+              ? desiredQuantity(baseTarget, demandParts, available, incoming)
+              : allocateQuantity(baseTarget, demandParts, available, incoming, cashAffordable);
       if (quantity <= 0L) {
-        continue; // 没缺口 / 没钱的缺口不是有效需求（与旧口径同一条立场）
+        continue; // 没缺口 / 没钱的缺口不是有效需求（经营者仍按现金封顶；家户的缺口由信用补）
       }
       // ★ 买得起多少按**参考价**折算：区内成交价就是它；跨区若卖方到货价更高，{@link #matchRoute} 会按实际
       //   "单价 + 运费"复核预算并缩小成交。★ ask 只做**限价过滤**（买方最多愿付），不在这里折数量 —— 否则
@@ -1090,6 +1259,42 @@ final class MarketSettlement {
               SILVER_SPECIE));
     }
     return new PlannedOrders(buys, sells);
+  }
+
+  /**
+   * ★★ <b>D-031：借款人侧无额度时，一个家户在"目标缺口 + 需求缺口"上的全额挂单量</b>（毫商品）。
+   *
+   * <p>现金撮合仍只按真实预算付钱；这里挂出来的全部缺口由后续信用撮合按放贷人实际可借头寸补。经营者不参与信用 ⇒
+   * 仍走 {@link #allocateQuantity} 的现金封顶口径。
+   */
+  private static long desiredQuantity(
+      long baseTarget, List<Long> demandParts, long available, long incoming) {
+    if (baseTarget < 0L) {
+      throw new IllegalArgumentException("目标量不得为负: " + baseTarget);
+    }
+    long covered = Math.addExact(available, incoming);
+    long baseGap = Math.max(0L, baseTarget - covered);
+    long residualCover = Math.max(0L, covered - baseTarget);
+    long quantity = baseGap;
+    for (long part : demandParts) {
+      if (part < 0L) {
+        throw new IllegalArgumentException("需求分段不得为负: " + part);
+      }
+      long unmet = Math.max(0L, part - residualCover);
+      residualCover = Math.max(0L, residualCover - part);
+      if (unmet > 0L) {
+        quantity = safeAdd(quantity, unmet);
+      }
+    }
+    return quantity;
+  }
+
+  /** 防溢出的加法：真的越过 {@code long} ⇒ 饱和到 {@link Long#MAX_VALUE}（后续 min/配给会自然截回）。 */
+  private static long safeAdd(long left, long right) {
+    if (left <= 0L || right <= 0L) {
+      return Math.addExact(left, right);
+    }
+    return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
   }
 
   /**
@@ -1271,6 +1476,744 @@ final class MarketSettlement {
       throw new IllegalStateException("买冻结轴累计值被扣成负数（槽位与轴账漂开）：轴=" + axis + " 释放=" + released);
     }
     ctx.buyFrozenSums.put(axis, sum);
+  }
+
+  // ── D-030 市场信用：现金撮合之后的"借钱买货 → 借实物" ─────────────────────────────────────
+
+  /** ★ D-030 的市场信用条款（与 {@code lendDeficitsInHex} 同一利率常量、同一 legacy 维；身份 ⇒ 同债权人的借入累加）。 */
+  private static final DebtTerms MARKET_CREDIT_TERMS =
+      DebtTerms.legacyDefault(EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE);
+
+  /**
+   * ★★ <b>D-030 市场信用撮合</b>（在现金买卖之后、未成交归因之前跑一次）：
+   *
+   * <pre>
+   * 每个仍有缺口的家户买方，按现金撮合的稳定序（拓扑区序 × 商品 id 序 × 全局买槽插入序）：
+   *   ① 自己的现金已在现金撮合里花完；
+   *   ② 先借货币：出借人可借额 = max(0, 可花货币 − reserve)，按费率升序 → 可借额降序 →
+   *      出借人 actor id 升序取；借入额 = min(缺口货款, 出借人可借额)；货物必须同时存在
+   *      （原子绑定：没有可买货物就不放贷）；
+   *   ③ 货币借不到/不够时借实物：从现金成交后的卖单剩余（且卖家是家户、能成为债权人）
+   *      按"可借数量降序 → 商品 id 升序 → 卖家 actor id 升序"取；货腿 卖家 → 买方（LOAN_PRINCIPAL）。
+   * ★★ D-031：借款人侧没有额度上限；每笔成交只受"放贷人剩余可借头寸"限制，借空即止。
+   * </pre>
+   *
+   * <p>★★ <b>唯一写口不变</b>：货币/商品换手全部经 {@code EconomySettlement.applyTransfer}；债务经 {@link
+   * DebtContractBook#upsert}；市场只改槽位 remaining / 合同表 / 债务人行的派生引用。借货币买货对卖方仍是一笔现金销售
+   * （连同 {@link MarketReport.Fill} 与 MARKET_TRADE 两条腿），借实物只写货腿与 {@link MarketReport.CreditFill}。
+   *
+   * <p>★ <b>本批口径（与设计文档的差异均在此具名）</b>：① 单区（D-027）：只从买方所在区取货币/商品头寸；② 债权人/债务人
+   * 必须是家户（{@link DebtContract} 的两端是 {@code HouseholdId}，经营者 actor 没有这一身份）⇒ 经营者只参与现金买卖，
+   * 不作为放贷人/借实物卖方/债务人；③ 不跨区、不承运、不聚集。
+   */
+  private static void creditRound(MatchContext ctx, MarketIndexes indexes) {
+    if (!ctx.creditEnabled()) {
+      return;
+    }
+    if (!MONEY_LENDING_AUTO_LIST && !MARKET_GOODS_LENDING_ENABLED) {
+      return;
+    }
+    MarketRound round = ctx.round;
+    // ★★ D-031：借款人侧不再有额度/头寸上限 —— 信用撮合直接以放贷人可借池为唯一上限。
+    CreditPools pools = CreditPools.build(ctx, indexes);
+    // ② 稳定买方序：与 matchWithinRegions 的 (区序 × 商品序 × 买槽插入序) 逐字同源。
+    for (MarketRegion region : ctx.topology.regions()) {
+      Market anchor = ctx.markets.get(region.anchor());
+      if (anchor == null) {
+        continue;
+      }
+      String regionId = region.node().nodeId();
+      Map<CommodityId, List<BuySlot>> buysByCommodity =
+          indexes.buysByRegionCommodity.getOrDefault(regionId, Map.of());
+      for (CommodityId commodity : indexes.commodities) {
+        List<BuySlot> slots = buysByCommodity.getOrDefault(commodity, List.of());
+        if (slots.isEmpty()) {
+          continue;
+        }
+        long price = ctx.referencePriceOf(regionId, anchor, commodity);
+        if (price <= 0L) {
+          continue;
+        }
+        for (BuySlot buy : slots) {
+          if (buy.remaining <= 0L || buy.buyer.household == null) {
+            continue;
+          }
+          if (buy.order.latestArrivalTick() < round.day
+              || buy.order.maxLandedPrice() < price) {
+            continue; // 与现金撮合的 activeBuys 同一组门槛（信用不改变到货时限/买方限价）
+          }
+          creditForBuy(ctx, buy, price, pools);
+        }
+      }
+    }
+    pools.recordRemaining(ctx);
+  }
+
+  /** 一个买方的信用顺序：钱优先；钱不够（或没有）才借实物。 */
+  private static void creditForBuy(MatchContext ctx, BuySlot buy, long price, CreditPools pools) {
+    if (MONEY_LENDING_AUTO_LIST) {
+      moneyCreditForBuy(ctx, buy, price, pools);
+    }
+    if (MARKET_GOODS_LENDING_ENABLED && buy.remaining > 0L) {
+      goodsCreditForBuy(ctx, buy, price, pools);
+    }
+  }
+
+  /**
+   * ★★ <b>D-030 ②a：借钱买货</b>（D-031 起借款人无额度上限）。逐出借人取 {@code amount = min(缺口货款, 出借人可借额)}；
+   * 由 amount 反解能买的量（货款 ceil），货物必须同时在卖方剩余里 ⇒ 三腿原子落地：出借人→买方（LOAN_PRINCIPAL）、
+   * 买方→卖方（MARKET_TRADE 货款）、卖方→买方（MARKET_TRADE 货）。
+   */
+  private static void moneyCreditForBuy(
+      MatchContext ctx, BuySlot buy, long price, CreditPools pools) {
+    HouseholdId borrower = buy.buyer.household;
+    if (borrower == null) {
+      return;
+    }
+    String regionId = buy.regionId;
+    List<MoneyLendOrder> lenders = pools.moneyLenders(regionId);
+    int cursor = pools.moneyCursor(regionId);
+    int index = cursor;
+    while (buy.remaining > 0L) {
+      SellSlot sell = pools.bestCashSeller(regionId, buy.order.commodity());
+      if (sell == null) {
+        break; // 没有可买货物 ⇒ 不放贷（原子绑定）
+      }
+      while (index < lenders.size()) {
+        MoneyLendOrder candidate = lenders.get(index);
+        if (candidate.remaining <= 0L
+            || !candidate.currency.equals(buy.currency)
+            || candidate.lender.household.equals(borrower)) {
+          index++;
+          continue;
+        }
+        break;
+      }
+      if (index >= lenders.size()) {
+        break;
+      }
+      MoneyLendOrder lender = lenders.get(index);
+      long gapPayment = paymentForQuantity(buy.remaining, price);
+      long amount = Math.min(gapPayment, lender.remaining);
+      if (amount <= 0L) {
+        break;
+      }
+      long quantity =
+          Math.min(
+              buy.remaining, Math.min(sell.remaining, maxQuantityForMoney(amount, price)));
+      if (quantity <= 0L) {
+        if (amount == lender.remaining) {
+          index++; // 这个出借人太小，买不起一个最小交易单位；看下一个
+          continue;
+        }
+        break;
+      }
+      long quotaLeft = ctx.quotaRemaining(sell.region, buy.order.commodity());
+      if (quotaLeft <= 0L) {
+        ctx.markQuotaExhausted(sell.region, buy.order.commodity());
+        break;
+      }
+      if (quantity > quotaLeft) {
+        quantity = quotaLeft;
+        if (quantity <= 0L) {
+          ctx.markQuotaExhausted(sell.region, buy.order.commodity());
+          break;
+        }
+      }
+      long payment = paymentForQuantity(quantity, price);
+      if (payment <= 0L || payment > amount) {
+        break; // 理论到不了；到得了就是算法漂开，停在本档不超借
+      }
+      executeMoneyCredit(ctx, buy, sell, lender, payment, quantity, price, pools);
+      while (cursor < lenders.size() && lenders.get(cursor).remaining <= 0L) {
+        cursor++;
+      }
+      if (index < cursor) {
+        index = cursor;
+      }
+    }
+    pools.putMoneyCursor(regionId, cursor);
+  }
+
+  /**
+   * ★★ <b>D-030/D-031 ②b：借实物</b>。从卖单剩余（卖家须是家户，才能成为 {@link DebtContract} 的债权人）按"可借数量
+   * 降序 → 商品 id 升序 → 卖家 actor id 升序"取；量 = min(缺口, 卖单剩余, 配额剩余)，货腿 卖家 → 买方
+   * （{@code LOAN_PRINCIPAL}），无货币腿、也不写普通 sale fill。★ D-031：借款人侧不再设额度上限。
+   */
+  private static void goodsCreditForBuy(
+      MatchContext ctx, BuySlot buy, long price, CreditPools pools) {
+    HouseholdId borrower = buy.buyer.household;
+    if (borrower == null) {
+      return;
+    }
+    String regionId = buy.regionId;
+    CommodityId commodity = buy.order.commodity();
+    Set<SellSlot> skippedForThisBuyer = new LinkedHashSet<>();
+    while (buy.remaining > 0L) {
+      SellSlot sell =
+          pools.bestGoodsSeller(regionId, commodity, skippedForThisBuyer);
+      if (sell == null) {
+        break;
+      }
+      if (sell.seller.household == null || sell.seller.household.equals(borrower)) {
+        skippedForThisBuyer.add(sell); // 不是可成立合同的两端（自借自买不是一笔信用）
+        continue;
+      }
+      long quantity = Math.min(buy.remaining, sell.remaining);
+      long quotaLeft = ctx.quotaRemaining(sell.region, commodity);
+      if (quotaLeft <= 0L) {
+        ctx.markQuotaExhausted(sell.region, commodity);
+        break;
+      }
+      quantity = Math.min(quantity, quotaLeft);
+      if (quantity <= 0L) {
+        skippedForThisBuyer.add(sell); // 配额已空；换个卖家也没用，但保持保守
+        continue;
+      }
+      executeGoodsCredit(ctx, buy, sell, quantity, pools);
+    }
+  }
+
+  /** 借货币买货的三腿 + 债务合同 + 读数（唯一 applier / 唯一债务写口）。 */
+  private static void executeMoneyCredit(
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      MoneyLendOrder lender,
+      long payment,
+      long quantity,
+      long price,
+      CreditPools pools) {
+    MarketRound round = ctx.round;
+    CommodityId commodity = buy.order.commodity();
+    long quota = ctx.quotaRemaining(sell.region, commodity);
+    if (quantity > quota) {
+      throw new IllegalStateException("信用成交越过区级配额（调用方应先封顶）：" + quantity + " > " + quota);
+    }
+    ctx.consumeQuota(sell.region, commodity, quantity);
+    // ① 出借人 → 买方：本金腿（LOAN_PRINCIPAL）。
+    applyMarketLeg(
+        ctx,
+        round.ledger.mint(
+            lender.lender.actor,
+            buy.buyer.actor,
+            lender.hex,
+            Map.of(),
+            Map.of(buy.currency, payment),
+            TransferReason.LOAN_PRINCIPAL));
+    // ② 卖方 → 买方：货腿（MARKET_TRADE，毛量）。
+    applyMarketLeg(
+        ctx,
+        round.ledger.mint(
+            sell.seller.actor,
+            buy.buyer.actor,
+            sell.hex,
+            Map.of(commodity, quantity),
+            Map.of(),
+            TransferReason.MARKET_TRADE));
+    long loss = creditLossMilli(ctx, sell, buy, quantity);
+    if (loss > 0L) {
+      deductBuyerLossNoTransfer(ctx, buy, loss);
+      round.ledger.addLoss(TRANSPORT_LOSS_ACCOUNT, commodity, loss);
+    }
+    // ③ 买方 → 卖方：货款腿（MARKET_TRADE）—— 对卖方就是一笔现金销售。
+    applyMarketLeg(
+        ctx,
+        round.ledger.mint(
+            buy.buyer.actor,
+            sell.seller.actor,
+            sell.hex,
+            Map.of(),
+            Map.of(buy.currency, payment),
+            TransferReason.MARKET_TRADE));
+    // 槽位/头寸/合同。债务合同在转移之后 upsert：生成债务不碰余额，失败时整轮回滚不产生半笔。
+    pools.sellChanged(sell, quantity);
+    buy.remaining -= quantity;
+    lender.remaining -= payment;
+    DebtUnit unit = new DebtUnit.Money(buy.currency);
+    DebtContract contract =
+        DebtContractBook.upsert(
+            ctx.debts,
+            buy.buyer.household,
+            lender.lender.household,
+            unit,
+            MARKET_CREDIT_TERMS,
+            payment,
+            round.day,
+            OptionalLong.of(ctx.creditConfig.dueCycle()));
+    addDebtReference(round, buy.buyer.household, contract.id());
+    ctx.creditFills.add(
+        new MarketReport.CreditFill(
+            sell.hex,
+            commodity,
+            buy.buyer.actor,
+            lender.lender.actor,
+            payment,
+            unit,
+            contract.id(),
+            EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE,
+            ctx.creditConfig.dueCycle()));
+    MarketReport.Fill fill =
+        new MarketReport.Fill(
+            sell.hex,
+            buy.hex,
+            commodity,
+            sell.seller.actor,
+            buy.buyer.actor,
+            quantity,
+            price,
+            0L,
+            payment,
+            0L,
+            round.day,
+            true,
+            "",
+            loss);
+    ctx.fills.add(fill);
+    long tariffPerUnit = ctx.tariffPerUnitOf(sell.regionId, commodity);
+    if (tariffPerUnit > 0L) {
+      ctx.tariffByFill.put(fill, tariffPerUnit);
+    }
+    ctx.immediateFills++;
+    if (buy.buyer.household != null) {
+      reduceUnmet(round.unmetToday, buy.buyer.household, commodity, quantity - loss);
+    }
+  }
+
+  /** 借实物：货腿 卖家 → 买方（LOAN_PRINCIPAL）+ 债务合同 + CreditFill；没有货币腿、不写普通 sale fill。 */
+  private static void executeGoodsCredit(
+      MatchContext ctx,
+      BuySlot buy,
+      SellSlot sell,
+      long quantity,
+      CreditPools pools) {
+    MarketRound round = ctx.round;
+    CommodityId commodity = buy.order.commodity();
+    long quota = ctx.quotaRemaining(sell.region, commodity);
+    if (quantity > quota) {
+      throw new IllegalStateException("借实物越过区级配额（调用方应先封顶）：" + quantity + " > " + quota);
+    }
+    ctx.consumeQuota(sell.region, commodity, quantity);
+    applyMarketLeg(
+        ctx,
+        round.ledger.mint(
+            sell.seller.actor,
+            buy.buyer.actor,
+            sell.hex,
+            Map.of(commodity, quantity),
+            Map.of(),
+            TransferReason.LOAN_PRINCIPAL));
+    long loss = creditLossMilli(ctx, sell, buy, quantity);
+    if (loss > 0L) {
+      deductBuyerLossNoTransfer(ctx, buy, loss);
+      round.ledger.addLoss(TRANSPORT_LOSS_ACCOUNT, commodity, loss);
+    }
+    pools.sellChanged(sell, quantity);
+    buy.remaining -= quantity;
+    DebtUnit unit = new DebtUnit.Commodity(commodity);
+    DebtContract contract =
+        DebtContractBook.upsert(
+            ctx.debts,
+            buy.buyer.household,
+            sell.seller.household,
+            unit,
+            MARKET_CREDIT_TERMS,
+            quantity,
+            round.day,
+            OptionalLong.of(ctx.creditConfig.dueCycle()));
+    addDebtReference(round, buy.buyer.household, contract.id());
+    ctx.creditFills.add(
+        new MarketReport.CreditFill(
+            sell.hex,
+            commodity,
+            buy.buyer.actor,
+            sell.seller.actor,
+            quantity,
+            unit,
+            contract.id(),
+            EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE,
+            ctx.creditConfig.dueCycle()));
+    if (buy.buyer.household != null) {
+      reduceUnmet(round.unmetToday, buy.buyer.household, commodity, quantity - loss);
+    }
+  }
+
+  /** 信用的单 hex 即时损耗（与现金成交逐字同源；损耗不产生货币运费）。 */
+  private static long creditLossMilli(MatchContext ctx, SellSlot sell, BuySlot buy, long quantity) {
+    if (sell.hex.equals(buy.hex)) {
+      return 0L;
+    }
+    return Math.min(
+        quantity,
+        quantity * ctx.hexTradeCost.lossPerMilleBetween(sell.hex, buy.hex) / 1000L);
+  }
+
+  /** 与 {@code executeTrade} 的货款算式同源：{@code ⌈数量 × 单价 ÷ 1000⌉}（毫计价货币）。 */
+  private static long paymentForQuantity(long quantity, long unitPrice) {
+    if (quantity <= 0L || unitPrice <= 0L) {
+      return 0L;
+    }
+    return ceilDivPositive(
+        safeMulDiv(quantity, unitPrice, 1L), EconomySettlement.MILLI_PER_GRAIN);
+  }
+
+  /** {@code amount} 毫计价货币最多能买多少毫商品（保证 ceil(量 × 单价 ÷ 1000) ≤ amount）。 */
+  private static long maxQuantityForMoney(long amountMilli, long unitPrice) {
+    if (amountMilli <= 0L || unitPrice <= 0L) {
+      return 0L;
+    }
+    return safeMulDiv(amountMilli, EconomySettlement.MILLI_PER_GRAIN, unitPrice);
+  }
+
+  /**
+   * ★★ <b>D-030/D-031 §3.1：一个家户出借人的货币保留额</b>（毫计价货币）：
+   *
+   * <pre>
+   * reserve = value(自身未覆盖自然需求，按市场价) + LENDER_MONEY_BUFFER_PER_CAPITA_MILLI × 人口
+   * </pre>
+   *
+   * <p>★ "未覆盖"= {@code max(0, 日自然需求 − (持有 − 冻结))}；缺该商品市场价 ⇒ 该商品需要不入保留额（不硬折、不假装 0
+   * 需要，见交付报告）。人口/行读不到 ⇒ {@link Long#MAX_VALUE}（fail-closed：不把"读不到"当"不用留"）。
+   */
+  private static long moneyReserveOf(MatchContext ctx, Participant participant, Market market) {
+    ClassRow row = ctx.round.rows.get(participant.household);
+    if (row == null || market == null) {
+      return Long.MAX_VALUE;
+    }
+    long reserve = 0L;
+    for (Map.Entry<CommodityId, Long> need : row.naturalNeeds().entrySet()) {
+      if (need.getValue() <= 0L) {
+        continue;
+      }
+      long available =
+          Math.max(
+              0L,
+              stockOf(ctx.round, participant, need.getKey())
+                  - frozenGoodsOf(ctx.round, participant, need.getKey()));
+      long uncovered = Math.max(0L, need.getValue() - available);
+      if (uncovered <= 0L) {
+        continue;
+      }
+      long price = market.priceOf(need.getKey());
+      if (price <= 0L) {
+        continue; // 缺价不硬折：该商品需要不能折成保留额（交付报告具名）
+      }
+      reserve = safeAdd(reserve, safeMulDiv(uncovered, price, EconomySettlement.MILLI_PER_GRAIN));
+    }
+    reserve =
+        safeAdd(
+            reserve,
+            safeMulDiv(
+                row.population(), LENDER_MONEY_BUFFER_PER_CAPITA_MILLI, 1L));
+    return reserve;
+  }
+
+  /** 买方所有格市场（缺则回落该买方所在区的锚格价目表；两者都没有 ⇒ null）。 */
+  private static Market marketForBuy(MatchContext ctx, BuySlot buy) {
+    Market direct = ctx.markets.get(buy.hex);
+    return direct != null ? direct : ctx.markets.get(buy.region.anchor());
+  }
+
+  /** 参与者所在格市场（缺则回落所在区锚格；参与者必在某个市场格里）。 */
+  private static Market marketForParticipant(MatchContext ctx, Participant participant) {
+    HexCoord hex = ctx.participantHex.get(participant.actor);
+    if (hex == null) {
+      return null;
+    }
+    Market direct = ctx.markets.get(hex);
+    if (direct != null) {
+      return direct;
+    }
+    return ctx.topology.contains(hex) ? ctx.markets.get(ctx.topology.regionOf(hex).anchor()) : null;
+  }
+
+  /** 市场信用的转移腿：唯一 applier = {@code EconomySettlement.applyTransfer}（带冻结表的 10 参入口）。 */
+  private static void applyMarketLeg(MatchContext ctx, Transfer transfer) {
+    MarketRound round = ctx.round;
+    EconomySettlement.applyTransfer(
+        round.householdGoods,
+        round.householdMoney,
+        round.operatorGoods,
+        round.operatorMoney,
+        round.householdFrozenGoods,
+        round.householdFrozenMoney,
+        round.operatorFrozenGoods,
+        round.operatorFrozenMoney,
+        round.householdOfActor,
+        transfer);
+  }
+
+  /** 把新合同的派生引用补进债务人行（幂等；权威重建仍在 {@code DebtReferenceReconciler}）。 */
+  private static void addDebtReference(MarketRound round, HouseholdId debtor, DebtContractId id) {
+    ClassRow row = round.rows.get(debtor);
+    if (row == null) {
+      throw new IllegalStateException("信用成交的债务人行不在市场轮里（状态漂开）: " + debtor);
+    }
+    round.rows.put(debtor, DebtContractBook.withDebtReference(row, id));
+  }
+
+  /**
+   * ★★ <b>D-030/D-031：信用撮合结束后、买方剩余的信用归因</b>。
+   *
+   * <pre>
+   * 两个可借池都空且没钱        ⇒ NO_BUDGET
+   * 两个可借池都空但买方还有钱  ⇒ NO_CREDIT_LIMIT（语义已更正：不再表示"借款人额度为 0"）
+   * 无商品可借                  ⇒ NO_LENDABLE_GOODS（原子绑定：没有可成立的商品头寸）
+   * 无货币可借                  ⇒ NO_LENDABLE_MONEY
+   * 两池都还有剩余却凑不成正交易 ⇒ NO_CREDIT_LIMIT
+   * </pre>
+   *
+   * <p>只对家户买方生效；经营者（{@code household == null}）没有合同主体身份 ⇒ 返回 null、走旧分档。
+   */
+  private static MarketUnfilledReason creditUnfilledReason(MatchContext ctx, BuySlot buy) {
+    if (!ctx.creditEnabled() || buy.buyer.household == null) {
+      return null;
+    }
+    if (!MONEY_LENDING_AUTO_LIST && !MARKET_GOODS_LENDING_ENABLED) {
+      return null; // 信用由 GM 开关整体关闭 ⇒ 逐值退回旧分档
+    }
+    long cash =
+        spendableMoneyOf(ctx.round, buy.buyer, buy.currency) + buy.frozenRemaining;
+    boolean goodsLeft =
+        MARKET_GOODS_LENDING_ENABLED
+            && ctx.creditGoodsRemaining(buy.regionId, buy.order.commodity()) > 0L;
+    boolean moneyLeft =
+        MONEY_LENDING_AUTO_LIST
+            && ctx.creditMoneyRemainingByRegion.getOrDefault(buy.regionId, 0L) > 0L;
+    if (!goodsLeft && !moneyLeft) {
+      // 两个可借池都空了：没钱可借时退回 NO_BUDGET；还有自己的现金但买不成 ⇒ NO_CREDIT_LIMIT（语义已更正）。
+      return cash <= 0L ? MarketUnfilledReason.NO_BUDGET : MarketUnfilledReason.NO_CREDIT_LIMIT;
+    }
+    if (moneyLeft && !goodsLeft) {
+      return MarketUnfilledReason.NO_LENDABLE_GOODS;
+    }
+    if (!moneyLeft && goodsLeft) {
+      return MarketUnfilledReason.NO_LENDABLE_MONEY;
+    }
+    // 两个池都还有剩余，但剩余头寸凑不成一笔正交易。★ D-031：不再表示“借款人额度为 0”。
+    return MarketUnfilledReason.NO_CREDIT_LIMIT;
+  }
+
+  /** 一条瞬态货币出借头寸（每轮从余额派生；不落盘；{@code remaining} 在撮合里递减）。 */
+  private static final class MoneyLendOrder {
+    final Participant lender;
+    final CurrencyId currency;
+    final long ratePerMille;
+    final HexCoord hex;
+    long remaining;
+
+    MoneyLendOrder(
+        Participant lender, CurrencyId currency, long ratePerMille, HexCoord hex, long amountMilli) {
+      this.lender = lender;
+      this.currency = currency;
+      this.ratePerMille = ratePerMille;
+      this.hex = hex;
+      this.remaining = amountMilli;
+    }
+  }
+
+  /**
+   * ★★ <b>一轮信用撮合的瞬态池</b>：货币出借单按区（费率升序 → 可借额降序 → actor id 升序）+ 两类卖单池：
+   *
+   * <ul>
+   *   <li>{@code cashSellers}：任意卖家（借钱买货对卖方是现金销售），按现金撮合的 {@code costOrder}；
+   *   <li>{@code goodsLenders}：家户卖家（能成为债权人），按"可借数量降序 → 商品 id 升序 → 卖家 actor id 升序"。
+   * </ul>
+   *
+   * <p>★ 都是本轮瞬态；不新增持久状态、不复制库存。
+   */
+  private static final class CreditPools {
+    private final Map<String, List<MoneyLendOrder>> moneyByRegion = new LinkedHashMap<>();
+    private final Map<String, Integer> moneyCursorByRegion = new LinkedHashMap<>();
+    private final Map<String, Map<CommodityId, TreeSet<SellSlot>>> cashSellers =
+        new LinkedHashMap<>();
+    private final Map<String, Map<CommodityId, TreeSet<SellSlot>>> goodsLenders =
+        new LinkedHashMap<>();
+
+    private static final Comparator<SellSlot> CASH_SELLER_ORDER = costOrder(null);
+    private static final Comparator<MoneyLendOrder> MONEY_ORDER =
+        Comparator.comparingLong((MoneyLendOrder order) -> order.ratePerMille)
+            .thenComparing(
+                Comparator.comparingLong((MoneyLendOrder order) -> order.remaining).reversed())
+            .thenComparing(order -> order.lender.actor.id());
+    private static final Comparator<SellSlot> GOODS_ORDER =
+        Comparator.comparingLong((SellSlot sell) -> sell.remaining)
+            .reversed()
+            .thenComparing(sell -> sell.order.commodity().value())
+            .thenComparing(sell -> sell.seller.actor.id());
+
+    private CreditPools() {}
+
+    static CreditPools build(MatchContext ctx, MarketIndexes indexes) {
+      CreditPools pools = new CreditPools();
+      if (MONEY_LENDING_AUTO_LIST) {
+        for (Participant participant : ctx.participants.values()) {
+          if (participant.household == null) {
+            continue;
+          }
+          Market market = marketForParticipant(ctx, participant);
+          HexCoord hex = ctx.participantHex.get(participant.actor);
+          if (market == null || hex == null || !ctx.topology.contains(hex)) {
+            continue;
+          }
+          CurrencyId currency = market.numeraire();
+          long spendable =
+              Math.max(
+                  0L,
+                  moneyOf(ctx.round, participant, currency)
+                      - frozenMoneyOf(ctx.round, participant, currency));
+          long reserve = moneyReserveOf(ctx, participant, market);
+          long lendable = Math.max(0L, spendable - reserve);
+          if (lendable <= 0L) {
+            continue;
+          }
+          String regionId = ctx.topology.regionOf(hex).node().nodeId();
+          pools
+              .moneyByRegion
+              .computeIfAbsent(regionId, ignored -> new ArrayList<>())
+              .add(
+                  new MoneyLendOrder(
+                      participant,
+                      currency,
+                      EconomySettlement.BORROW_RATE_PER_MILLE_PER_CYCLE,
+                      hex,
+                      lendable));
+        }
+        for (List<MoneyLendOrder> orders : pools.moneyByRegion.values()) {
+          orders.sort(MONEY_ORDER);
+        }
+      }
+      for (MarketRegion region : ctx.topology.regions()) {
+        Market anchor = ctx.markets.get(region.anchor());
+        if (anchor == null) {
+          continue;
+        }
+        String regionId = region.node().nodeId();
+        Map<CommodityId, List<SellSlot>> byCommodity =
+            indexes.sellsByRegionCommodity.getOrDefault(regionId, Map.of());
+        for (CommodityId commodity : indexes.commodities) {
+          long price = ctx.referencePriceOf(regionId, anchor, commodity);
+          if (price <= 0L) {
+            continue;
+          }
+          for (SellSlot sell : byCommodity.getOrDefault(commodity, List.of())) {
+            if (sell.remaining <= 0L
+                || sell.order.minPrice() > price
+                || sell.order.availableFromTick() > ctx.round.day) {
+              continue;
+            }
+            pools.addSeller(regionId, commodity, sell);
+          }
+        }
+      }
+      return pools;
+    }
+
+    private void addSeller(String regionId, CommodityId commodity, SellSlot sell) {
+      cashSellers
+          .computeIfAbsent(regionId, ignored -> new LinkedHashMap<>())
+          .computeIfAbsent(commodity, ignored -> new TreeSet<>(CASH_SELLER_ORDER))
+          .add(sell);
+      if (sell.seller.household != null) {
+        goodsLenders
+            .computeIfAbsent(regionId, ignored -> new LinkedHashMap<>())
+            .computeIfAbsent(commodity, ignored -> new TreeSet<>(GOODS_ORDER))
+            .add(sell);
+      }
+    }
+
+    /**
+     * ★ 一笔信用成交后的卖单池同步：{@code goods} 的排序键读 {@code remaining}，因此先摘旧值、扣减、再按新值放回；
+     * {@code cash} 的排序键是静态成本，只在卖光时移除。
+     */
+    void sellChanged(SellSlot sell, long delta) {
+      if (delta <= 0L) {
+        return;
+      }
+      TreeSet<SellSlot> goods = goodsPool(sell.regionId, sell.order.commodity());
+      TreeSet<SellSlot> cash = cashPool(sell.regionId, sell.order.commodity());
+      if (goods != null) {
+        goods.remove(sell);
+      }
+      sell.remaining -= delta;
+      if (goods != null && sell.remaining > 0L) {
+        goods.add(sell);
+      }
+      if (cash != null && sell.remaining <= 0L) {
+        cash.remove(sell);
+      }
+    }
+
+    List<MoneyLendOrder> moneyLenders(String regionId) {
+      return moneyByRegion.getOrDefault(regionId, List.of());
+    }
+
+    int moneyCursor(String regionId) {
+      return moneyCursorByRegion.getOrDefault(regionId, 0);
+    }
+
+    void putMoneyCursor(String regionId, int cursor) {
+      moneyCursorByRegion.put(regionId, cursor);
+    }
+
+    SellSlot bestCashSeller(String regionId, CommodityId commodity) {
+      TreeSet<SellSlot> pool = cashPool(regionId, commodity);
+      if (pool == null) {
+        return null;
+      }
+      while (!pool.isEmpty() && pool.first().remaining <= 0L) {
+        pool.pollFirst();
+      }
+      return pool.isEmpty() ? null : pool.first();
+    }
+
+    SellSlot bestGoodsSeller(
+        String regionId, CommodityId commodity, Set<SellSlot> skippedForThisBuyer) {
+      TreeSet<SellSlot> pool = goodsPool(regionId, commodity);
+      if (pool == null) {
+        return null;
+      }
+      for (SellSlot sell : pool) {
+        if (sell.remaining > 0L && !skippedForThisBuyer.contains(sell)) {
+          return sell;
+        }
+      }
+      return null;
+    }
+
+    void recordRemaining(MatchContext ctx) {
+      for (Map.Entry<String, List<MoneyLendOrder>> entry : moneyByRegion.entrySet()) {
+        long sum = 0L;
+        for (MoneyLendOrder order : entry.getValue()) {
+          sum += Math.max(0L, order.remaining);
+        }
+        ctx.creditMoneyRemainingByRegion.put(entry.getKey(), sum);
+      }
+      for (Map.Entry<String, Map<CommodityId, TreeSet<SellSlot>>> byRegion :
+          goodsLenders.entrySet()) {
+        Map<CommodityId, Long> byCommodity = new LinkedHashMap<>();
+        for (Map.Entry<CommodityId, TreeSet<SellSlot>> entry : byRegion.getValue().entrySet()) {
+          long sum = 0L;
+          for (SellSlot sell : entry.getValue()) {
+            if (sell.remaining > 0L) {
+              sum += sell.remaining;
+            }
+          }
+          byCommodity.put(entry.getKey(), sum);
+        }
+        ctx.creditGoodsRemainingByRegionCommodity.put(byRegion.getKey(), byCommodity);
+      }
+    }
+
+    private TreeSet<SellSlot> cashPool(String regionId, CommodityId commodity) {
+      Map<CommodityId, TreeSet<SellSlot>> byCommodity = cashSellers.get(regionId);
+      return byCommodity == null ? null : byCommodity.get(commodity);
+    }
+
+    private TreeSet<SellSlot> goodsPool(String regionId, CommodityId commodity) {
+      Map<CommodityId, TreeSet<SellSlot>> byCommodity = goodsLenders.get(regionId);
+      return byCommodity == null ? null : byCommodity.get(commodity);
+    }
   }
 
   // ── P1.2：每轮一次的只读索引（worker 只读；构建序全部来自 canonical 内容）──────────────────────
@@ -1811,7 +2754,11 @@ final class MarketSettlement {
         new ProductionLedger.Accumulator(round.day),
         round.operatorConditions,
         round.index,
-        round.demands);
+        round.demands,
+        // ★ 与旧短构造器逐值同源：worker 的订单生成由调用方显式传 regionRegulation，不读这里的默认值。
+        MarketRegulation.none(),
+        round.creditConfig,
+        round.debts);
   }
 
   /** ★ 区内一笔成交的不可变意向：worker 产出，协调器按区序/成交序回放（索引 = ctx.buys/ctx.sells 的全局下标）。 */
@@ -2885,24 +3832,38 @@ final class MarketSettlement {
       long minSellerPrice =
           minSellerPriceByCommodity.getOrDefault(buy.order.commodity(), Long.MAX_VALUE);
       MarketUnfilledReason reason = buy.blocked;
+      // ★★ D-030：信用可能覆盖"没钱"这一档 ⇒ NO_BUDGET 先让位给信用归因，最后仍没信用再落回 NO_BUDGET。
+      if (reason == MarketUnfilledReason.NO_BUDGET) {
+        reason = null;
+      }
       if (reason == null && ctx.quotaExhausted(buy.region, buy.order.commodity())) {
         // ★★ D-027：区级配额已经用尽 ⇒ 买方剩余是制度原因（不是没钱/没货/路不通），具名 REGULATION_QUOTA。
         reason = MarketUnfilledReason.REGULATION_QUOTA;
       }
       if (reason == null) {
-        if (buy.requestedMoney <= 0L
-            || spendableMoneyOf(ctx.round, buy.buyer, buy.currency) + buy.frozenRemaining <= 0L) {
+        MarketUnfilledReason creditReason = creditUnfilledReason(ctx, buy);
+        long cashSpendable =
+            spendableMoneyOf(ctx.round, buy.buyer, buy.currency) + buy.frozenRemaining;
+        boolean cashBlocked = buy.requestedMoney <= 0L || cashSpendable <= 0L;
+        if (cashBlocked
+            && (creditReason == null || creditReason == MarketUnfilledReason.NO_BUDGET)) {
           reason = MarketUnfilledReason.NO_BUDGET;
         } else if (totalSellRemaining <= 0L) {
           reason =
-              inputShortfallNear(ctx, buy, indexes)
-                  ? MarketUnfilledReason.INPUT_SHORTFALL
-                  : classifyNoSupply(ctx, buy, indexes);
+              creditReason == MarketUnfilledReason.NO_LENDABLE_GOODS
+                  ? creditReason
+                  : inputShortfallNear(ctx, buy, indexes)
+                      ? MarketUnfilledReason.INPUT_SHORTFALL
+                      : classifyNoSupply(ctx, buy, indexes);
         } else if (!hasSupplyNear(buy, indexes)) {
           reason = MarketUnfilledReason.NO_ADJACENT_SUPPLY;
         } else if (minSellerPrice != Long.MAX_VALUE
             && buy.order.maxLandedPrice() < minSellerPrice) {
           reason = MarketUnfilledReason.PRICE_LIMIT;
+        } else if (creditReason != null) {
+          reason = creditReason;
+        } else if (cashBlocked) {
+          reason = MarketUnfilledReason.NO_BUDGET;
         } else {
           reason = MarketUnfilledReason.ALGORITHM_UNCOVERED;
         }
@@ -4032,6 +4993,15 @@ final class MarketSettlement {
     // ★ S3：逐槽位只读结果（不落盘；供 MarketReadout / ApiViews 聚合）。
     final List<MarketReport.SellerOutcome> sellerOutcomes = new ArrayList<>();
     final List<MarketReport.BuyerOutcome> buyerOutcomes = new ArrayList<>();
+    // ★★ D-030 市场信用：入参来自 MarketRound（关闭时为 null）；本表只记录本轮的债务来源与剩额头寸。
+    final MarketRound.CreditConfig creditConfig;
+    final Map<DebtContractId, DebtContract> debts;
+    final List<MarketReport.CreditFill> creditFills = new ArrayList<>();
+    /** 区 id → 本轮结束时货币可借池剩余（毫计价货币；collectUnfilled 的 NO_LENDABLE_MONEY 判据）。 */
+    final Map<String, Long> creditMoneyRemainingByRegion = new LinkedHashMap<>();
+    /** 区 id × 商品 → 本轮结束时商品可借池剩余（毫商品；NO_LENDABLE_GOODS 判据）。 */
+    final Map<String, Map<CommodityId, Long>> creditGoodsRemainingByRegionCommodity =
+        new LinkedHashMap<>();
     final Map<String, RouteAccumulator> routes = new LinkedHashMap<>();
     final Map<ShipmentKey, ShipmentBuilder> shipments = new LinkedHashMap<>();
     // ★ 地形代价的纯记忆化：组合根的 moveCostAt 会重建整张地形索引，同一 buyerHex 在逐卖方路线里只需算一次。
@@ -4071,6 +5041,8 @@ final class MarketSettlement {
       this.markets = markets;
       this.topology = topology;
       this.regulation = regulation == null ? MarketRegulation.none() : regulation;
+      this.creditConfig = round.creditConfig();
+      this.debts = round.debts();
       this.hexTradeCost = new HexTradeCost(topology);
       this.carrier = carrier;
       this.merchantFirms = merchantFirms;
@@ -4095,6 +5067,18 @@ final class MarketSettlement {
         byRegion.put(anchorId, Math.max(0L, entry.getValue()));
         quotas.put(entry.getKey(), byRegion);
       }
+    }
+
+    /** ★★ D-030：本入口有没有市场信用能力（{@code creditConfig} 与债务表必须同时在场；旧构造器 = 关闭）。 */
+    boolean creditEnabled() {
+      return creditConfig != null && debts != null;
+    }
+
+    /** ★★ D-030：某区本轮结束时的商品可借池剩余（毫商品；缺键 ⇒ 0）。 */
+    long creditGoodsRemaining(String regionId, CommodityId commodity) {
+      return creditGoodsRemainingByRegionCommodity
+          .getOrDefault(regionId, Map.of())
+          .getOrDefault(commodity, 0L);
     }
 
     /**

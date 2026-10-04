@@ -113,6 +113,7 @@ class MarketDemandBookTest {
         io.mosire.simos.economy.api.market.PriceMode.FIXED,
         List.of(),
         List.of(),
+        List.of(),
         List.of());
   }
 

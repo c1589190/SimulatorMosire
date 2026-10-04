@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -53,6 +54,9 @@ import java.util.OptionalLong;
  * {@link OrganizationProfitBook} 的成本，<b>不</b>移动任何余额。这是本批具名收窄（见收口报告）。
  */
 public final class MerchantSettlement {
+
+  /** 商人周期日志（settlement 分类：每轮关账的逐商号明细）。 */
+  private static final org.slf4j.Logger LOG = EconomyLog.settlement();
 
   private MerchantSettlement() {}
 
@@ -372,6 +376,9 @@ public final class MerchantSettlement {
     if (firms.isEmpty() || !cycle.cycleClosed()) {
       return;
     }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("event=MERCHANT_CYCLE_START day={} firms={}", day, firms.size());
+    }
     Map<ActorRef, HouseholdId> householdByActor = new LinkedHashMap<>();
     for (HouseholdId household : sortedHouseholds(rows)) {
       householdByActor.put(HouseholdActors.of(household), household);
@@ -508,6 +515,25 @@ public final class MerchantSettlement {
       cycle.recordMerchantUpkeep(organizationId, upkeep);
       cycle.recordMerchantArrears(organizationId, arrears);
       cycle.recordMerchantLabor(organizationId, totalPorterLabor);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug(
+            "event=MERCHANT_FIRM_CYCLE day={} firm={} principal={} revenue={} wagesPaidMoney={} wagesPaidInKindValue={} upkeep={} arrears={} profit={} capacityBefore={} capacityAfter={} porters={}",
+            day,
+            organizationId.value(),
+            principalHousehold.value(),
+            revenue,
+            wagesPaidMoney,
+            wagesPaidInKindValue,
+            upkeep,
+            arrears,
+            profit,
+            firm.capacityPerRound(),
+            capacity,
+            porters.size());
+      }
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("event=MERCHANT_CYCLE_END day={} firms={}", day, firms.size());
     }
   }
 

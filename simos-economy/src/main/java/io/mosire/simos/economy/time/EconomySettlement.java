@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -26,6 +27,7 @@ import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
+import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuance;
@@ -74,6 +76,7 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import org.slf4j.Logger;
 
 /**
  * ★★ **R3a 日结算 + R4a 周期收获与制度分配**（聚合式经济重设计 §四 的日/周期步骤，v1 口径）——纯函数：拿 {@link EconomyData} 交**新**的
@@ -130,9 +133,10 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *       classRowsOfCohort}）<b>整个删除</b>；"哪些行属于这个产业"改由**劳动配额表**推（{@link #householdKeysOf}）。
  *   <li>**计息**（v2 spec §7.1 第三处 + §四 周期结算第 6 步；V6 落地）：全部债务按 {@code principal × ratePerMillePerCycle
  *       ÷ 1000} 计**一次**、**并入本金**（纯数学：不搬运粮、**不动任何库存**），同额记入**债务人**本行流水的 {@code interestDue} —— 见
- *       {@link #chargeInterest}。★ **偿还在计息之前**（关账日、所得到账后）：P11.1 / D-023 起“有啥付啥”——按 **粮债 → 其它商品债 →
- *       货币债** 的稳定序逐条偿还，介质不设限（估值 = 家户价目表优先、否则该格市场默认价目表；见 {@link #repayDebts} 与
- *       {@link DebtValuation}）；粮另扣一日口粮保留、全部币种余额可用、冻结不越，缺价腿具名跳过不静默付 0；不足部分顺延到下一周期。
+ *       {@link #chargeInterest}。★ **偿还在计息之前**（关账日、所得到账后，D-030 §3.5）：逐条债按未偿共同价值升序、
+ *       逐 medium 先全部货币（余额降序）再全部商品（数量降序），任意库存都可折还，估值 = 债务人价目表优先、否则该户市场区
+ *       默认价目表（见 {@link #repayDebts} 与 {@link DebtValuation}）；粮另扣一日口粮保留、全币种余额可用、冻结不越，
+ *       缺价 medium 具名跳过不静默付 0；不足部分顺延到下一周期。
  *   <li>**饿死判据**（2026-09-25 用户点名；**默认不致命**）：按本周期累加的 {@code unmetNeed} 折出"饿满整周期"的人口比例，在这一比例里按 {@code
  *       famineMortalityPerMille}（**默认 {@link #FAMINE_MORTALITY_PER_MILLE} = 0‰**）致死；人口减少、有效劳动同比例缩，
  *       死亡数记入 {@link FlowRow#deaths()}。**顺序**：在收获/分配**之后**（本期产出照分给幸存者，死亡不回溯产量），同一次结算内完成。
@@ -437,7 +441,63 @@ public final class EconomySettlement {
    */
   public static final CommodityId CLOTH = new CommodityId(EconomyVocabulary.CLOTH_COMMODITY_ID);
 
+  /**
+   * ★★ <b>日结算阶段日志</b>（2026-10-04 起走 {@link EconomyLog} 的分类门面）：{@code settlement} 记阶段边界与聚合读数，
+   * {@code trace} 记逐笔原始事件；级别约定与打开方式见 {@link EconomyLog}。
+   *
+   * <p>本常量保留为<b>逐笔 trace logger 名</b>（旧测试/读口的稳定别名）。
+   */
+  public static final String TRACE_LOGGER_NAME = EconomyLog.TRACE_LOGGER_NAME;
+
+  /** 阶段/事件日志：settlement 分类（INFO 生命周期、DEBUG 池子/汇总）。 */
+  private static final Logger TRACE = EconomyLog.settlement();
+
+  /** 逐笔原始事件日志：trace 分类（每笔转移/成交槽/债务变动）。 */
+  private static final Logger RAW = EconomyLog.trace();
+
   private EconomySettlement() {}
+
+  /** 追踪日志辅助：家户 → 商品 → 数量的两层表求和（只在 DEBUG 打开时调用）。 */
+  private static long traceTotalGoods(Map<HouseholdId, Map<CommodityId, Long>> table) {
+    long total = 0L;
+    for (Map<CommodityId, Long> goods : table.values()) {
+      for (long quantity : goods.values()) {
+        total += quantity;
+      }
+    }
+    return total;
+  }
+
+  /** 追踪日志辅助：产业 → 商品 → 数量的两层表求和（只在 DEBUG 打开时调用）。 */
+  private static long traceTotalByIndustry(Map<IndustryId, Map<CommodityId, Long>> table) {
+    long total = 0L;
+    for (Map<CommodityId, Long> goods : table.values()) {
+      for (long quantity : goods.values()) {
+        total += quantity;
+      }
+    }
+    return total;
+  }
+
+  /** 追踪日志辅助：家户 → 标量求和（只在 DEBUG 打开时调用）。 */
+  private static long traceTotalLongs(Map<HouseholdId, Long> table) {
+    long total = 0L;
+    for (long value : table.values()) {
+      total += value;
+    }
+    return total;
+  }
+
+  /** 追踪日志辅助：家户 → 币种 → 余额的两层表求和（只在 DEBUG 打开时调用）。 */
+  private static long traceTotalMoney(Map<HouseholdId, Map<CurrencyId, Long>> table) {
+    long total = 0L;
+    for (Map<CurrencyId, Long> money : table.values()) {
+      for (long quantity : money.values()) {
+        total += quantity;
+      }
+    }
+    return total;
+  }
 
   /**
    * 结算一个**区间** {@code (fromTick, toTick]}：**从 {@code fromTick + 1} 逐日跑到 {@code toTick}**（2026-09-25
@@ -697,6 +757,22 @@ public final class EconomySettlement {
     EconomyMeta meta = session.sheet().meta().orElseThrow();
     long currentCycle = meta.lastClosedCycle().orElse(0L) + 1L; // 正在进行的周期序号
     long dueCycle = currentCycle + 1L; // §四：借粮的到期周期 = 当前周期 + 1
+    // ★★ 2026-10-07 GOV 非生产家户试点：周期开始日的政府铸币。
+    //   位置：在任何转移/市场之前 —— 政府先按政策“印”出本周期可花的钱并落 FISCAL_ISSUE 审计；
+    //   若政策量不够覆盖需求，后面的市场信用路径照常让它向家户借（= 政府发行债务）。
+    if (GovernmentSeigniorage.isCycleStart(base, day)) {
+      long minted = GovernmentSeigniorage.settleCycleStart(base, session, accounts, day, currentCycle);
+      long issued =
+          GovernmentDebtIssuance.issueCycleStart(base, session, accounts, day, currentCycle);
+      if ((minted > 0L || issued > 0L) && TRACE.isDebugEnabled()) {
+        TRACE.debug(
+            "[day={}] 00a GOV_POLICY minted={} debtIssued={} period={}",
+            day,
+            minted,
+            issued,
+            currentCycle);
+      }
+    }
     // ★★ E3：本次 revision 的发行审计收集器（id 由 transfer id + 币种确定性派生；并行分区也安全）。
     //   ★ 发行腿只在付方余额不足且付方 = 当前政府国库时才会用到；旧路径（无 issuer）不产生任何记录。
     MoneyIssuanceJournal issuanceJournal =
@@ -759,6 +835,36 @@ public final class EconomySettlement {
     //   缺键时若继续跑，那一家的可花余额会被当成 0 —— 它当天的有效需求因此是 0、市场买不到粮、
     //   而账面（缺口只多不少）看起来完全正常。⇒ 缺键 ⇒ 当场抛（"没有账"与"账是空的"是两件事）。
     requireHouseholdMoney(rows, householdMoney);
+
+    long dayStartPopulation = 0L;
+    for (ClassRow row : rows.values()) {
+      dayStartPopulation += row.population();
+    }
+    TRACE.info(
+        "event=DAY_START day={} mapId={} rows={} population={} units={} markets={} organizations={} debtContracts={} modes={} topologyRegions={}",
+        day,
+        meta.mapId(),
+        rows.size(),
+        dayStartPopulation,
+        units.size(),
+        markets.size(),
+        session.sheet().productionOrganizations().size(),
+        debts.size(),
+        base.modes().size(),
+        topology.regions().size());
+
+    if (TRACE.isDebugEnabled()) {
+      TRACE.debug(
+          "[day={}] 00 START rows={} units={} markets={} organizations={} debts={} modes={} topologyRegions={}",
+          day,
+          rows.size(),
+          units.size(),
+          markets.size(),
+          session.sheet().productionOrganizations().size(),
+          debts.size(),
+          base.modes().size(),
+          topology.regions().size());
+    }
 
     // ── 0-entry. ★★ R4-E2b：候选预设的实际采用（GM 预设 → 合条件家户 → TRIALING 试产）──────────────
     //   ★ 位置：**在现扣周期投入与劳动再分配之前**（下面 `if (plantingDrawsFirst)` / `else` 两支都会在
@@ -828,6 +934,38 @@ public final class EconomySettlement {
       entryOutcomes = outcomes;
     }
     EntryOutcomeFeed.publish(meta.mapId(), day, entryOutcomes);
+    if (!entryOutcomes.isEmpty()) {
+      TRACE.info(
+          "event=ENTRY day={} outcomes={} enteredUnits={} rejected={}",
+          day,
+          entryOutcomes.size(),
+          enteredToday.size(),
+          entryOutcomes.stream().filter(outcome -> !outcome.accepted()).count());
+    }
+    if (TRACE.isDebugEnabled() && !entryOutcomes.isEmpty()) {
+      TRACE.debug(
+          "[day={}] 01 ENTRY 候选预设 outcomes={} enteredUnits={}",
+          day,
+          entryOutcomes.size(),
+          enteredToday.size());
+    }
+    if (RAW.isTraceEnabled()) {
+      for (EntryOutcome outcome : entryOutcomes) {
+        RAW.trace(
+            "event=ENTRY_OUTCOME day={} household={} candidate={} version={} accepted={} modeKey={} industry={} trialScale={} expectedDay={} laborMilli={} reason={}",
+            day,
+            outcome.household().value(),
+            outcome.candidateId().value(),
+            outcome.version(),
+            outcome.accepted(),
+            outcome.modeKey(),
+            outcome.industryId().value(),
+            outcome.trialScale(),
+            outcome.expectedDay(),
+            outcome.laborMilli(),
+            outcome.reason());
+      }
+    }
 
     // 逐行当日发生额（流水的事后组装）。★ R3 起两张实物表都是**逐商品**的（{@link FlowRow#income()} 由标量改成 Map）。
     LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumedGoods = new LinkedHashMap<>();
@@ -868,17 +1006,32 @@ public final class EconomySettlement {
       }
     }
     if (dueModeTransition) {
-      EconomyModeTransitionSettlement.apply(
-          base,
-          day,
-          rows,
-          session.sheet().productionOrganizations(),
-          units,
-          assetShares,
-          session.sheet().pledges(),
-          session.sheet().classStandings(),
-          session.sheet().modeTransitions(),
-          session.sheet().classShares());
+      EconomyModeTransitionSettlement.Outcome transitionOutcome =
+          EconomyModeTransitionSettlement.apply(
+              base,
+              day,
+              rows,
+              session.sheet().productionOrganizations(),
+              units,
+              assetShares,
+              session.sheet().pledges(),
+              session.sheet().classStandings(),
+              session.sheet().modeTransitions(),
+              session.sheet().classShares());
+      if (transitionOutcome.changed()) {
+        TRACE.info(
+            "event=MODE_TRANSITION day={} applied={} failed={}",
+            day,
+            transitionOutcome.applied(),
+            transitionOutcome.failed());
+      }
+      if (TRACE.isDebugEnabled()) {
+        TRACE.debug(
+            "[day={}] 02 MODE_TRANSITION 到期 PENDING 已执行 applied={} failed={}",
+            day,
+            transitionOutcome.applied(),
+            transitionOutcome.failed());
+      }
     }
 
     // ── 0-entry.5. ★★ E2 自动生产组织（理想架构 §4.2 ①；计划 E2）────────────────────────────
@@ -929,6 +1082,29 @@ public final class EconomySettlement {
         withOrganized.addAll(organizationOutcome.createdUnitIds());
         enteredToday = withOrganized;
       }
+      if (organizationOutcome.changed()) {
+        TRACE.info(
+            "event=ORGANIZE day={} createdUnits={} organizations={} rows={}",
+            day,
+            organizationOutcome.createdUnitIds().size(),
+            session.sheet().productionOrganizations().size(),
+            rows.size());
+      }
+      if (TRACE.isDebugEnabled()) {
+        TRACE.debug(
+            "[day={}] 03 ORGANIZE changed={} createdUnits={} organizations={}",
+            day,
+            organizationOutcome.changed(),
+            organizationOutcome.createdUnitIds().size(),
+            session.sheet().productionOrganizations().size());
+      }
+      if (RAW.isTraceEnabled() && organizationOutcome.changed()) {
+        RAW.trace(
+            "event=ORGANIZE_RESULT day={} createdUnits={} organizations={}",
+            day,
+            organizationOutcome.createdUnitIds(),
+            session.sheet().productionOrganizations().size());
+      }
     }
 
     // ── 0. 现扣周期投入（周期的第一天）：**在当天吃饭之前**把种子/原料划走（v2 spec §3.2）──────
@@ -951,7 +1127,22 @@ public final class EconomySettlement {
     //   ★ 损耗逐票由买方承担（M2.5）：到达时从在途量里扣、记进 ledger 的损耗账户；买方只收到净额。
     //   ★ 迟到（手工搭的状态里 arrivalTick < day）照样补投，不让货卡在在途表里。
     LinkedHashMap<ShipmentId, ShipmentBatch> shipments = session.sheet().shipments();
+    int shipmentsBefore = shipments.size();
     deliverShipments(day, session, accounts, ledger, parallelism);
+    if (shipmentsBefore > 0) {
+      TRACE.info(
+          "event=SHIPMENTS_ARRIVED day={} arrivedBatches={} remainingInTransit={}",
+          day,
+          shipmentsBefore - shipments.size(),
+          shipments.size());
+    }
+    if (TRACE.isDebugEnabled() && shipmentsBefore > 0) {
+      TRACE.debug(
+          "[day={}] 04 SHIPMENTS arrivedBatches={} remainingInTransit={}",
+          day,
+          shipmentsBefore - shipments.size(),
+          shipments.size());
+    }
 
     if (plantingDrawsFirst) {
       drawCycleInputsPartitioned(
@@ -992,6 +1183,23 @@ public final class EconomySettlement {
       reallocateLaborPartitioned(session, parallelism, settlementIndex, enteredToday);
       // ★ 配额被改写 ⇒ 换一份“配额侧”视图（与 plantingDrawsFirst 分支同一条阶段边界）。
       settlementIndex = settlementIndex.withLabor(units, rows, allocations);
+    }
+
+    if (TRACE.isDebugEnabled()) {
+      long deficitHouseholds = 0L;
+      long deficitGrain = 0L;
+      for (long deficit : deficitToday.values()) {
+        if (deficit > 0L) {
+          deficitHouseholds++;
+          deficitGrain += deficit;
+        }
+      }
+      TRACE.debug(
+          "[day={}] 05 INPUTS+CONSUMPTION consumedQuantities={} deficitHouseholds={} deficitGrainMilli={}",
+          day,
+          traceTotalGoods(consumedGoods),
+          deficitHouseholds,
+          deficitGrain);
     }
 
     // ── 3~4. 进度 + 劳动投入；周期末追加收获/分配 + 饿死惩罚 ────────────────────────────
@@ -1115,16 +1323,60 @@ public final class EconomySettlement {
         issuanceJournal,
         day,
         parallelism);
+    if (!harvestWorks.isEmpty()) {
+      ProductionLedger harvestLedger = ledger.toLedger();
+      TRACE.info(
+          "event=HARVEST day={} closedUnits={} gross={} losses={} inputs={} outputAccruals={} transfers={} ruleSettlements={}",
+          day,
+          harvestWorks.size(),
+          traceTotalByIndustry(harvestLedger.gross()),
+          traceTotalByIndustry(harvestLedger.losses()),
+          traceTotalByIndustry(harvestLedger.inputs()),
+          harvestLedger.outputAccruals().size(),
+          harvestLedger.transfers().size(),
+          harvestLedger.ruleSettlements().size());
+      if (TRACE.isDebugEnabled()) {
+        for (Map.Entry<IndustryId, Map<CommodityId, Long>> entry : harvestLedger.gross().entrySet()) {
+          IndustryId industry = entry.getKey();
+          TRACE.debug(
+              "[day={}] 06 HARVEST industry={} gross={} losses={} inputs={}",
+              day,
+              industry.value(),
+              entry.getValue(),
+              harvestLedger.losses().getOrDefault(industry, Map.of()),
+              harvestLedger.inputs().getOrDefault(industry, Map.of()));
+        }
+      }
+    }
 
     // ── 3b. ★★ E4c：欠租/欠薪资本化（生产/租金阶段之后）─────────────────────────────────────
     //   ★★ 只对**本日 ledger 的 Arrear 读数**（owed > 0）执行：把"制度规定未付"落成连续合同债权；
     //     **不移动任何商品/货币库存**（欠款本来就是未付），也**不清零 Arrear 读数**（读数仍是制度事实）。
     //   ★★ P2：端点解析改走 {@link DebtPartyResolver}（唯一解析点）：家户 actor 直取；聚合主体先查
     //     E2 生产组织，再按 ESTATE/WORKSHOP 的人口成分回退；多户按人口最大余数拆分。解析不到 ⇒ 具名跳过（不伪造）。
-    //   ★ 位置在**借粮/偿还之前**：新增的既有债因此同日进入 DebtCapacity（借粮额度）与偿还排序；
+    //   ★ 位置在**借粮/偿还之前**：新增的既有债因此同日进入偿还排序（D-031 起不再进入任何借款额度门）；
     //     但不在当日起始本金快照里 ⇒ 当天不计息（与借粮同口径，见 principalAtDayStart）。
     capitalizeArrears(
         base, settlementIndex, ledger, rows, debts, capitalizedArrearsToday, day, dueCycle);
+    ProductionLedger capitalized = ledger.toLedger();
+    if (!capitalized.debtCapitalizations().isEmpty()
+        || !capitalized.unresolvedDebtCapitalizations().isEmpty()) {
+      TRACE.info(
+          "event=CAPITALIZE_ARREARS day={} capitalized={} unresolved={}",
+          day,
+          capitalized.debtCapitalizations().size(),
+          capitalized.unresolvedDebtCapitalizations().size());
+    }
+    if (TRACE.isDebugEnabled()) {
+      if (!capitalized.debtCapitalizations().isEmpty()
+          || !capitalized.unresolvedDebtCapitalizations().isEmpty()) {
+        TRACE.debug(
+            "[day={}] 07 CAPITALIZE_ARREARS capitalized={} unresolved={}",
+            day,
+            capitalized.debtCapitalizations().size(),
+            capitalized.unresolvedDebtCapitalizations().size());
+      }
+    }
 
     // ── 4. 区域市场清算（M2.3/M2.4：每 5 天一轮 + 低库存追加轮；区内即时 / 跨区 ETA）────────────
     //   ★★ 调度只依赖**绝对世界日 + 当前状态**（M0.1）：两条推进路径在同一天必然同轮。
@@ -1173,7 +1425,18 @@ public final class EconomySettlement {
                 marketMerchants, session.sheet().productionOrganizations());
     MarketTrigger marketTrigger =
         MarketSettlement.triggerFor(day, anyCycleClosed, markets, marketRound);
+    if (TRACE.isDebugEnabled()) {
+      TRACE.debug(
+          "[day={}] 08 MARKET_SCHEDULE trigger={} anyCycleClosed={} markets={}",
+          day,
+          marketTrigger,
+          anyCycleClosed,
+          markets.size());
+    }
     if (marketTrigger != MarketTrigger.NONE) {
+      // ★★ D-031：借款人侧不再有信用额度上限 —— 市场信用只带到期周期与当日债务工作副本；唯一上限 = 放贷人
+      //   实际可借的货币/卖单剩余。`DebtCapacity` 不再是任何借出路径的门。
+      marketRound = marketRound.withCredit(dueCycle, debts);
       MarketSettlement.MarketOutcome outcome =
           MarketSettlement.clearOncePerCycle(
               markets,
@@ -1185,13 +1448,160 @@ public final class EconomySettlement {
               merchantCarrierPool);
       // ★ L2 只把报告留给 L3 的读数组件（不落盘）；不聚合丢失（见 MarketReport 的类注）。
       ledger.recordMarketReport(outcome.report());
+      MarketReport report = outcome.report();
+      long creditMoney = 0L;
+      long creditGoods = 0L;
+      for (MarketReport.CreditFill credit : report.creditFills()) {
+        if (credit.unit() instanceof DebtUnit.Money) {
+          creditMoney++;
+        } else {
+          creditGoods++;
+        }
+      }
+      Map<MarketUnfilledReason, Long> reasonCounts = new TreeMap<>();
+      for (MarketReport.Unfilled unfilled : report.unfilled()) {
+        reasonCounts.merge(unfilled.reason(), 1L, Long::sum);
+      }
+      TRACE.info(
+          "event=MARKET day={} trigger={} fills={} immediateCrossHex={} immediateCrossHexLossMilli={} scheduledLossMilli={} unfilled={} reasons={} creditFills={} creditMoney={} creditGoods={} regulatedTariffMilli={}",
+          day,
+          report.trigger(),
+          report.fills().size(),
+          report.immediateCrossHexFills(),
+          report.immediateCrossHexLossMilli(),
+          report.scheduledLossMilli(),
+          report.unfilled().size(),
+          reasonCounts,
+          report.creditFills().size(),
+          creditMoney,
+          creditGoods,
+          report.regulatedTariffMilli());
+      if (RAW.isTraceEnabled()) {
+        for (MarketReport.Fill fill : report.fills()) {
+          RAW.trace(
+              "event=MARKET_FILL day={} from={},{} to={},{} commodity={} seller={} buyer={} quantity={} unitPriceMilli={} freightMilli={} immediate={} arrivalTick={} shipmentId={} lossMilli={}",
+              day,
+              fill.from().q(),
+              fill.from().r(),
+              fill.to().q(),
+              fill.to().r(),
+              fill.commodity().value(),
+              fill.seller().id(),
+              fill.buyer().id(),
+              fill.quantity(),
+              fill.unitPriceMilli(),
+              fill.freightMilli(),
+              fill.immediate(),
+              fill.arrivalTick(),
+              fill.shipmentId(),
+              fill.lossMilli());
+        }
+        for (MarketReport.Unfilled unfilled : report.unfilled()) {
+          RAW.trace(
+              "event=MARKET_UNFILLED day={} side={} actor={} commodity={} quantity={} reason={} hex={},{}",
+              day,
+              unfilled.buyerSide() ? "buy" : "sell",
+              unfilled.actor().id(),
+              unfilled.commodity().value(),
+              unfilled.quantity(),
+              unfilled.reason(),
+              unfilled.hex().q(),
+              unfilled.hex().r());
+        }
+        for (MarketReport.CreditFill credit : report.creditFills()) {
+          RAW.trace(
+              "event=MARKET_CREDIT_FILL day={} hex={},{} commodity={} borrower={} lenderOrSeller={} quantity={} unit={} debtId={} ratePerMille={} dueCycle={}",
+              day,
+              credit.hex().q(),
+              credit.hex().r(),
+              credit.commodity().value(),
+              credit.borrower().id(),
+              credit.lenderOrSeller().id(),
+              credit.quantityMilli(),
+              credit.unit().key(),
+              credit.debtId().value(),
+              credit.ratePerMille(),
+              credit.dueCycle());
+        }
+        for (MarketReport.SellerOutcome seller : report.sellerOutcomes()) {
+          RAW.trace(
+              "event=MARKET_SELLER_OUTCOME day={} actor={} unit={} hex={},{} commodity={} offered={} filled={} unfilled={} unitPriceMilli={} unitCostEstimateMilli={} freightPerUnitMilli={} bestAcceptedLandedPriceMilli={} costRank={} reason={} outcompetedByActors={} outcompetedQty={} priceMissing={} costKnown={}",
+              day,
+              seller.actor().id(),
+              seller.unitId().map(ProductionUnitId::value).orElse("-"),
+              seller.hex().q(),
+              seller.hex().r(),
+              seller.commodity().value(),
+              seller.offeredQty(),
+              seller.filledQty(),
+              seller.unfilledQty(),
+              seller.unitPriceMilli(),
+              seller.unitCostEstimateMilli(),
+              seller.freightPerUnitMilli(),
+              seller.bestAcceptedLandedPriceMilli(),
+              seller.costRank(),
+              seller.unfilledReason().map(Enum::name).orElse("-"),
+              seller.outcompetedByActorCount(),
+              seller.outcompetedQty(),
+              seller.priceMissing(),
+              seller.costKnown());
+        }
+        for (MarketReport.BuyerOutcome buyer : report.buyerOutcomes()) {
+          RAW.trace(
+              "event=MARKET_BUYER_OUTCOME day={} actor={} household={} hex={},{} commodity={} stockOnHandMilli={} stockCoverDays={} gapQty={} desiredQty={} spendableMoneyMilli={} affordableQty={} orderedQty={} filledQty={} reason={}",
+              day,
+              buyer.actor().id(),
+              buyer.household().map(HouseholdId::value).orElse("-"),
+              buyer.hex().q(),
+              buyer.hex().r(),
+              buyer.commodity().value(),
+              buyer.stockOnHandMilli(),
+              buyer.stockCoverDays(),
+              buyer.gapQty(),
+              buyer.desiredQty(),
+              buyer.spendableMoneyMilli(),
+              buyer.affordableQty(),
+              buyer.orderedQty(),
+              buyer.filledQty(),
+              buyer.unfilledReason().map(Enum::name).orElse("-"));
+        }
+      }
+      if (TRACE.isDebugEnabled()) {
+        TRACE.debug(
+            "[day={}] 10 MARKET_REPORT fills={} immediateCrossHex={} immediateCrossHexLossMilli={} scheduledLossMilli={} unfilled={} reasons={} creditFills={} creditMoney={} creditGoods={} regulatedTariffMilli={}",
+            day,
+            report.fills().size(),
+            report.immediateCrossHexFills(),
+            report.immediateCrossHexLossMilli(),
+            report.scheduledLossMilli(),
+            report.unfilled().size(),
+            reasonCounts,
+            report.creditFills().size(),
+            creditMoney,
+            creditGoods,
+            report.regulatedTariffMilli());
+      }
       // ★★ S3 修复：把本轮的逐卖方证据累加进经营者条件的"本周期累计"字段。一个周期有多轮市场，关账日那轮
       //   很可能已经看不到更早轮里的滞销/被挤出 ⇒ 不在这里累加，状态机的连续计数就永远不涨。
       OperatorSettlement.accumulateMarketEvidence(
           operatorConditions, units, industries, outcome.report());
       // ★★ M2.6：自适应模式把价格表工作副本换成 outcome 交回的新表（默认固定模式下两者逐值相同 ⇒ 无状态变化）。
-      markets = new LinkedHashMap<>(outcome.markets());
+      //   ★★ 2026-10-07 修：`markets` 是 `session.sheet().markets()` 的**工作副本引用**，不能整个重新绑定 ——
+      //     重新绑定只改本地变量，`EconomyStateBuilder` 仍持旧表 ⇒ 自适应价算出来却永远不落盘。
+      //     `outcome.markets()` 在固定模式下就是同一实例；只有真的换了实例才 clear+putAll 回工作副本。
+      Map<HexCoord, Market> updatedMarkets = outcome.markets();
+      if (updatedMarkets != markets) {
+        markets.clear();
+        markets.putAll(updatedMarkets);
+      }
     }
+
+    // ★★ D-030 §3.4/§3.5：本日起所有“债务折价/还款折算”共用同一份家户价目表索引 ——
+    //   有本格市场用本格，否则回落该格所在市场区的锚格默认价目表（单区 = 该区默认价）。
+    //   ★ 这是 EconomySettlement 里唯一构造 debt lookup 的地方；算式在本类之外（DebtValuation）。
+    Map<HouseholdId, Market> marketByHousehold = marketIndexByHousehold(rows, markets, topology);
+    DebtCapacityBook.DebtUnitValueLookup debtUnitValueLookup =
+        DebtCapacityBook.marketPriceLookup(marketByHousehold);
 
     // ── 4b. 借粮（★ H5：**最后手段** —— 自产/分配 → 市场 → 救济(留位) → 借）──────────────────
     //   ★★ 它为什么必须晚于市场：关账日集市之后**手上真的还有粮**的家户不该再借（"只在未来有收入时借"）——
@@ -1203,23 +1613,8 @@ public final class EconomySettlement {
       // ★★ R2：同格借粮按 hex 并行 —— 借贷双方同格（rowsByHex 分组 + requireSupplierHex 同源口径），
       //   债务键含债务人与债权人 ⇒ 跨格不可能撞同一条；每个分区用线程本地债务/行/流水副本，
       //   交出后由协调器按分区序合并（转移仍走唯一写口 applyTransfer，落账走 AccountSession.commit）。
-      // ★★ E4b：信用额度 = DebtCapacity.headroom（唯一算法在 DebtCapacityBook）。三个流量按**本周期终态窗口**取值：
-      //   本周期已实现粮所得 = 上周期末流水余量（新周期翻篇 = 0）+ 今日 earned；consumed 同窗口；taxPaid 照读；
-      //   库存取"到此刻为止"的会话工作副本（关账日收获/分配已在上面发生、市场也已结清）。
-      Map<HouseholdId, DebtCapacity> debtCapacities =
-          debtCapacitiesForDay(
-              rows,
-              flows,
-              newCycleHouseholds,
-              income,
-              consumedGoods,
-              householdGoods,
-              cycleDaysByHousehold,
-              debts,
-              units,
-              industries,
-              assetShares,
-              operatorConditions);
+      // ★★ D-031：同格借粮也不再有借款人额度门 —— 缺口户有多少缺口就借多少，直到本格放贷人的
+      //   `lendableOf` 余粮被借空为止；债务风险由债权人承担，抵押物不再是前置条件。
       lendDeficitsPartitioned(
           rows,
           debts,
@@ -1230,18 +1625,47 @@ public final class EconomySettlement {
           deficitToday,
           dueCycle,
           cycleDaysByHousehold,
-          debtCapacities,
           householdOfActor,
           ledger,
           day,
           parallelism);
+      ProductionLedger borrowed = ledger.toLedger();
+      long loanTransfers = 0L;
+      long lentTotal = 0L;
+      for (Transfer transfer : borrowed.transfers()) {
+        if (transfer.reason() == TransferReason.LOAN_PRINCIPAL) {
+          loanTransfers++;
+          lentTotal += transfer.goods().getOrDefault(GRAIN, 0L);
+        }
+      }
+      if (loanTransfers > 0L) {
+        TRACE.info(
+            "event=DEFICIT_LENDING day={} deficitHouseholds={} loanTransfers={} lentGrainMilli={} borrowingTotalMilli={} debtContracts={} unmetAfter={}",
+            day,
+            deficitToday.size(),
+            loanTransfers,
+            lentTotal,
+            traceTotalLongs(borrowing),
+            debts.size(),
+            traceTotalGoods(unmetToday));
+      }
+      if (TRACE.isDebugEnabled()) {
+        TRACE.debug(
+            "[day={}] 11 DEFICIT_LENDING deficitHouseholds={} borrowingTotal={} loanTransfersToday={} debtContracts={} unmetAfter={}",
+            day,
+            deficitToday.size(),
+            traceTotalLongs(borrowing),
+            loanTransfers,
+            debts.size(),
+            traceTotalGoods(unmetToday));
+      }
     }
 
-    // ── 4c. 偿还（★ P11.1 / D-023：所得到账后、计息前，“有啥付啥”的任意介质偿还）────────────
+    // ── 4c. 偿还（★ P11.1 / D-023 / D-030：所得到账后、计息前，“有啥付啥”的任意介质偿还）────────────
     //   ★★ 它挂在"今天有产业关账"上（利息／市场的同一处日级事实）：所得是**整周期**结算出来的
     //     （收获与分配在本步之前刚发生）⇒ 还债的时点就是所得到手的那一刻。
-    //   ★ 可动用资产 = 全部商品 + **全部币种**余额；粮保留一日口粮、冻结不越；估值 = 家户价目表（可选）→
-    //     该格市场默认价目表 ⇒ 选择能付得最多的实际商品/货币组合（见 {@link DebtValuation}）。
+    //   ★ 可动用资产 = 全部商品 + **全部币种**余额；粮保留一日口粮、冻结不越；介质序 = 货币降序 → 商品降序；
+    //     债序 = 折成共同价值升序（不可定价排最后）；估值 = 家户价目表（可选）→ 该户市场区默认价目表。
     //   ★ 本批没有家户价目表字段 ⇒ {@code householdPrices = null} 走市场默认；外部/政府收款口由
     //     {@link DebtValuation.RepayeeResolver#HOUSEHOLD_ACTORS} 起步（账户在会话/actor 账里可收即可）。
     if (anyCycleClosed) {
@@ -1260,11 +1684,34 @@ public final class EconomySettlement {
           repaidMoneyToday,
           repaidPrincipalByDebt,
           householdOfActor,
-          markets,
+          marketByHousehold,
           DebtValuation.RepayeeResolver.HOUSEHOLD_ACTORS,
           null,
           ledger,
           issuanceJournal);
+      long repaidGrainTotal = traceTotalLongs(repaidToday);
+      long repaidMoneyTotal = traceTotalMoney(repaidMoneyToday);
+      int repaymentSkips = ledger.toLedger().debtRepaymentSkips().size();
+      if (repaidGrainTotal > 0L || repaidMoneyTotal > 0L || repaymentSkips > 0) {
+        TRACE.info(
+            "event=REPAY day={} households={} repaidGrainMilli={} repaidMoneyMilli={} skippedMediums={} debtContracts={}",
+            day,
+            repaidToday.size(),
+            repaidGrainTotal,
+            repaidMoneyTotal,
+            repaymentSkips,
+            debts.size());
+      }
+      if (TRACE.isDebugEnabled()) {
+        TRACE.debug(
+            "[day={}] 12 REPAY households={} repaidGrainMilli={} repaidMoneyMilli={} skippedMediums={} debtContracts={}",
+            day,
+            repaidToday.size(),
+            repaidGrainTotal,
+            repaidMoneyTotal,
+            repaymentSkips,
+            debts.size());
+      }
     }
 
     // ── 4d. 饿死判据（★ H5：**所有救济通道之后** —— 市场（4）→ 借（4b）→ 还（4c）之后才判）────────────
@@ -1283,16 +1730,31 @@ public final class EconomySettlement {
                 : flows.get(key).unmetNeed().getOrDefault(GRAIN, 0L);
         ClassRow beforeFamineRow = rows.get(key);
         long populationBeforeFamine = beforeFamineRow == null ? 0L : beforeFamineRow.population();
+        long famineUnmet =
+            carried + unmetToday.getOrDefault(key, Map.of()).getOrDefault(GRAIN, 0L);
         applyFamine(
             rows,
             deathsToday,
             key,
             rows.get(key),
-            carried + unmetToday.getOrDefault(key, Map.of()).getOrDefault(GRAIN, 0L),
+            famineUnmet,
             day,
             closing.cycleDays(),
             famineMortalityPerMille);
         ClassRow afterFamineRow = rows.get(key);
+        long famineDeaths =
+            populationBeforeFamine - (afterFamineRow == null ? 0L : afterFamineRow.population());
+        if (famineDeaths > 0L) {
+          RAW.trace(
+              "event=FAMINE_DEATH day={} household={} unit={} deaths={} populationBefore={} populationAfter={} unmetGrainMilli={}",
+              day,
+              key.value(),
+              closing.unit().value(),
+              famineDeaths,
+              populationBeforeFamine,
+              afterFamineRow == null ? 0L : afterFamineRow.population(),
+              famineUnmet);
+        }
         if (afterFamineRow != null) {
           // ★ S1：饿死的人同步减少成员份额（Σ Membership == 行人口）。
           scaleMembershipsOfHousehold(
@@ -1315,6 +1777,23 @@ public final class EconomySettlement {
             settlementIndex);
       }
     }
+    long famineDeathsTotal = traceTotalLongs(deathsToday);
+    if (famineDeathsTotal > 0L) {
+      TRACE.info(
+          "event=FAMINE day={} closedUnits={} deaths={} unmetTotalMilli={}",
+          day,
+          closed.size(),
+          famineDeathsTotal,
+          traceTotalGoods(unmetToday));
+    }
+    if (TRACE.isDebugEnabled() && anyCycleClosed) {
+      TRACE.debug(
+          "[day={}] 13 FAMINE closedUnits={} deathsToday={} unmetTotalMilli={}",
+          day,
+          closed.size(),
+          famineDeathsTotal,
+          traceTotalGoods(unmetToday));
+    }
 
     // ── 5. 周期末计息（§7.1③ / §四 周期结算第 6 步）────────────────────────────────────
     //   ★ **一天只计一次**：结算日循环里可能有多个产业在同一天关账（各产业 cycleDays 可以不同）⇒ 计息挂在
@@ -1322,6 +1801,22 @@ public final class EconomySettlement {
     //   ★ 次序：**偿还先于计息**（还掉的那部分本金不再生息 —— 这是"先还后计"的标准序，也是改后债务曲线下降的一半原因）。
     if (anyCycleClosed) {
       chargeInterest(debts, principalAtDayStart, interestToday, day);
+      long interestTotal = traceTotalLongs(interestToday);
+      if (interestTotal > 0L) {
+        TRACE.info(
+            "event=INTEREST day={} households={} interestDueTotalMilli={} debtContracts={}",
+            day,
+            interestToday.size(),
+            interestTotal,
+            debts.size());
+      }
+      if (TRACE.isDebugEnabled()) {
+        TRACE.debug(
+            "[day={}] 14 INTEREST households={} interestDueTotalMilli={}",
+            day,
+            interestToday.size(),
+            interestTotal);
+      }
     }
 
     // ── 5b. S3 经营者状态机（可观察量 → IndustryStatus；退出处置先偿债、不足才 defaulted）──────────
@@ -1371,6 +1866,26 @@ public final class EconomySettlement {
             ledger,
             day,
             issuanceJournal);
+        TRACE.info(
+            "event=OPERATOR_EXITS day={} exits={} households={}",
+            day,
+            exits.size(),
+            exits.stream().map(OperatorSettlement.Exit::household).distinct().count());
+        if (RAW.isTraceEnabled()) {
+          for (OperatorSettlement.Exit exit : exits) {
+            RAW.trace(
+                "event=OPERATOR_EXIT day={} unit={} industry={} operator={} household={} reason={}",
+                day,
+                exit.unit().value(),
+                exit.industry().value(),
+                exit.operator().id(),
+                exit.household().value(),
+                exit.reason());
+          }
+        }
+        if (TRACE.isDebugEnabled()) {
+          TRACE.debug("[day={}] 15 OPERATOR_EXITS exits={}", day, exits.size());
+        }
         // ★ 资产 operator / 劳动配额刚被改写 ⇒ 换一份索引，后面的阶层写回（读 unit 可用资产）不拿旧快照。
         //   这是**退出日的一次重建**（O(unit + 份额 + 配额)），不是逐查询重扫；退出本身是低频事件。
         settlementIndex =
@@ -1390,8 +1905,8 @@ public final class EconomySettlement {
     //   ★ 位置理由：债务结算（4c 偿还 / 5 计息 / 5b 退出处置）已经结束 ⇒ 这里只对"此刻本金 > 0"的合同选路；
     //     5b 已结清的合同本金为 0，天然不会被二次处置（去重口径见 EconomyLiquidationSettlement 类注）。
     //   ★ 只在关账日推进（与 5 计息、5c 阶层写回同窗口）；新表全空 = 旧档 ⇒ 整段 no-op，旧路径逐值不变。
-    //   ★ F/headroom 用 E4b 的唯一算法（DebtCapacityBook）；容量按**当刻债务终态**重算
-    //     （4b 的容量是借粮/偿还之前的口径，不能用它判"本期利息超 F"）。
+    //   ★ F/headroom 用 E4b/D-030 的唯一算法（DebtCapacityBook）；容量按**当刻债务终态**重算，
+    //     且与 4b 共用同一份市场价目表 lookup（可定价债务全部计入；任一不可定价仍由借贷口径 fail-closed）。
     if (anyCycleClosed && EconomyLiquidationSettlement.isActive(base)) {
       Map<HouseholdId, DebtCapacity> closeDebtCapacities =
           debtCapacitiesForDay(
@@ -1406,7 +1921,8 @@ public final class EconomySettlement {
               units,
               industries,
               assetShares,
-              operatorConditions);
+              operatorConditions,
+              debtUnitValueLookup);
       EconomyLiquidationSettlement.settle(
           session,
           day,
@@ -1420,6 +1936,13 @@ public final class EconomySettlement {
           closeDebtCapacities,
           industries,
           ledger);
+      int liquidationAudits = ledger.toLedger().liquidationAudits().size();
+      if (liquidationAudits > 0) {
+        TRACE.info("event=LIQUIDATION day={} audits={}", day, liquidationAudits);
+      }
+      if (TRACE.isDebugEnabled()) {
+        TRACE.debug("[day={}] 16 LIQUIDATION audits={}", day, liquidationAudits);
+      }
     }
 
     // ── 5c. S3 阶层写回（关账日、经营者状态机之后）────────────────────────────────────────
@@ -1471,6 +1994,12 @@ public final class EconomySettlement {
       }
       // ★ 具名审计读数：即使没有写回也投递空表（读口才分得清"这次关账没有变化"与"没读到"）。
       ClassTransitionFeed.publish(meta.mapId(), day, classTransitions);
+      if (!classTransitions.isEmpty()) {
+        TRACE.info("event=CLASS_TRANSITIONS day={} count={}", day, classTransitions.size());
+      }
+      if (TRACE.isDebugEnabled()) {
+        TRACE.debug("[day={}] 17 CLASS_TRANSITIONS count={}", day, classTransitions.size());
+      }
     }
 
     // ── 流水：每行一条（本期发生额；税 v1 恒 0、利息见上一步）────────────────────────────
@@ -1532,6 +2061,13 @@ public final class EconomySettlement {
               (acc == null ? 0L : acc.births()) + dayBirths,
               mergeMoney(acc == null ? null : acc.repaidMoney(), dayRepaidMoney),
               mergeNamedQuantities(acc == null ? null : acc.capitalizedArrears(), dayCapitalized)));
+    }
+    if (TRACE.isDebugEnabled()) {
+      TRACE.debug(
+          "[day={}] 18 FLOWS rows={} newCycleHouseholds={}",
+          day,
+          flows.size(),
+          newCycleHouseholds.size());
     }
 
     OptionalLong lastClosed =
@@ -1613,8 +2149,106 @@ public final class EconomySettlement {
               profitCycle.marketReports());
       // ⑨ 迁移执行（只执行计划；源户 mode/standing/org/unit.modeKey 一字不改）。
       //    ★ D-023：把当天的瞬态 ledger 传进去记“留原户资产/关系模板回退”的具名读数（不新增持久组件）。
+      if (!migrationPlan.moves().isEmpty()) {
+        TRACE.info(
+            "event=MIGRATION_PLAN day={} moves={} organizations={} modeHexProfits={}",
+            day,
+            migrationPlan.moves().size(),
+            profitBook.byOrganization().size(),
+            profitBook.netByModeHex().size());
+        if (RAW.isTraceEnabled()) {
+          for (ModeMigrationPolicy.MigrationMove move : migrationPlan.moves()) {
+            RAW.trace(
+                "event=MIGRATION_MOVE day={} source={} target={} targetHex={},{} targetMode={} population={} moneyMilli={} moneyByCurrency={} debtMilli={} speedPerMille={} reason={}",
+                day,
+                move.source().value(),
+                move.target().value(),
+                move.targetHex().q(),
+                move.targetHex().r(),
+                move.targetMode().value(),
+                move.population(),
+                move.moneyMilli(),
+                move.moneyByCurrency(),
+                move.debtMilli(),
+                move.transferSpeedPerMille(),
+                move.reason());
+          }
+        }
+      }
+      if (TRACE.isDebugEnabled()) {
+        TRACE.debug(
+            "[day={}] 19 PROFIT+MIGRATION_PLAN organizations={} modeHexProfits={} moves={}",
+            day,
+            profitBook.byOrganization().size(),
+            profitBook.netByModeHex().size(),
+            migrationPlan.moves().size());
+      }
+      int rowsBeforeMigration = rows.size();
       ModeMigrationSettlement.apply(session, accounts, migrationPlan, base, day, ledger);
+      if (!migrationPlan.moves().isEmpty()) {
+        TRACE.info(
+            "event=MIGRATION_APPLIED day={} moves={} rowsBefore={} rowsAfter={} transfersToday={}",
+            day,
+            migrationPlan.moves().size(),
+            rowsBeforeMigration,
+            rows.size(),
+            ledger.toLedger().transfers().size());
+      }
+      if (TRACE.isDebugEnabled()) {
+        TRACE.debug(
+            "[day={}] 20 MIGRATION_APPLIED rowsAfter={} transfersToday={}",
+            day,
+            rows.size(),
+            ledger.toLedger().transfers().size());
+      }
       profitCycle.resetForNextCycle();
+    }
+    long dayEndPopulation = 0L;
+    for (ClassRow row : rows.values()) {
+      dayEndPopulation += row.population();
+    }
+    MarketReport dayMarketReport = ledger.marketReport();
+    TRACE.info(
+        "event=DAY_END day={} population={} deaths={} unmet={} borrowedGrainMilli={} repaidGrainMilli={} repaidMoneyMilli={} debtContracts={} transfers={} marketFills={} marketCreditFills={} marketUnfilled={}",
+        day,
+        dayEndPopulation,
+        traceTotalLongs(deathsToday),
+        traceTotalGoods(unmetToday),
+        traceTotalLongs(borrowing),
+        traceTotalLongs(repaidToday),
+        traceTotalMoney(repaidMoneyToday),
+        debts.size(),
+        ledger.toLedger().transfers().size(),
+        dayMarketReport == null ? 0 : dayMarketReport.fills().size(),
+        dayMarketReport == null ? 0 : dayMarketReport.creditFills().size(),
+        dayMarketReport == null ? 0 : dayMarketReport.unfilled().size());
+    if (TRACE.isDebugEnabled()) {
+      Map<TransferReason, Long> transferCounts = new TreeMap<>();
+      Map<TransferReason, Long> transferGoods = new TreeMap<>();
+      Map<TransferReason, Long> transferMoney = new TreeMap<>();
+      for (Transfer transfer : ledger.toLedger().transfers()) {
+        transferCounts.merge(transfer.reason(), 1L, Long::sum);
+        long goods = 0L;
+        for (long quantity : transfer.goods().values()) {
+          goods += quantity;
+        }
+        long money = 0L;
+        for (long quantity : transfer.money().values()) {
+          money += quantity;
+        }
+        transferGoods.merge(transfer.reason(), goods, Long::sum);
+        transferMoney.merge(transfer.reason(), money, Long::sum);
+      }
+      TRACE.debug(
+          "[day={}] 21 END rows={} units={} debts={} transfers={} byReasonCount={} byReasonGoods={} byReasonMoney={}",
+          day,
+          rows.size(),
+          units.size(),
+          debts.size(),
+          ledger.toLedger().transfers().size(),
+          transferCounts,
+          transferGoods,
+          transferMoney);
     }
   }
 
@@ -2282,7 +2916,6 @@ public final class EconomySettlement {
       LinkedHashMap<HouseholdId, Long> deficitToday,
       long dueCycle,
       Map<HouseholdId, Long> cycleDaysByHousehold,
-      Map<HouseholdId, DebtCapacity> debtCapacities,
       Map<ActorRef, HouseholdId> householdOfActor,
       ProductionLedger.Accumulator ledger,
       long day,
@@ -2367,7 +3000,6 @@ public final class EconomySettlement {
                     day,
                     dueCycle,
                     cycleDaysByHousehold,
-                    debtCapacities,
                     householdOfActor,
                     partitionLedger);
               }
@@ -4146,30 +4778,16 @@ public final class EconomySettlement {
    * ⇒ 同一对主体**跨周期命中同一条** {@link DebtContract}（本金递增），不同 unit/terms 必然分开；旧“周期在 id
    * 里、新周期开新条”的行为到此结束（这是本阶段的**有意**行为变化，见交付报告）。
    *
-   * <p>★★ <b>E4b 的额度（三路取小）</b>：
-   *
-   * <pre>
-   * 额度_h = min( 剩余缺口_h ,
-   *              放贷方余粮（逐债权人，见 {@link #lendableOf}）,
-   *              ★ {@link DebtCapacity#headroom()}（唯一算法在 {@link DebtCapacityBook}，由调用方一次算好）
-   *                 − 本周期已借_h )
-   * headroom = max(0, ⌊{@link DebtCapacity#CREDIT_F_MULTIPLE_PER_MILLE} × F ÷ 1000⌋
-   *                   + 可自用余粮 + 政策钩子 − 同 unit（粮）既有本金)
-   * F        = max(0, 本周期已实现粮所得 − 本周期累计口粮 − 下一轮必要投入 − 实缴税)
-   * </pre>
+   * <p>★★ <b>D-031：借款人侧无额度上限</b>：借出量 = {@code min(剩余缺口, 各放贷方实际余粮之和)}；放贷方余粮按
+   * {@link #lendableOf} 逐债权人递减，借空即止。不再读 {@code DebtCapacity}/headroom，也不要求抵押物。债务风险由债权人
+   * 承担；坏账留给既有清算/违约/迁移规则。
    *
    * <p>★★ <b>放贷人不再按阶层白名单选</b>（R3 续修；制度选择，理由与边界写明）：旧实现只认 {@code landlord/rich/middle} 三档当前 view，而 S3
    * 阶层写回把真档绝大多数行改成派生阶层后，"有粮可贷"的家户只要不在白名单里就借不出去，信贷集中到 799 个地主。 本版改为<strong>按可观察余粮选人</strong>：凡
    * {@code lendableOf(row, 库存, cycleDays) > 0} 的家户都可放贷（不按阶层名、不按旧档反推）， 并按可贷额降序、同额按 {@link
    * HouseholdId#value()} 升序作确定性 tie-break。★ 边界：这<b>不</b>凭空造粮；它只回答"谁有粮谁能贷"。
    *
-   * <p>★ <b>为什么要有额度</b>：借粮是"未来有收入"时才成立的事（H5 的题目）—— 没有它，缺口行可以无限借 （一个永远还不上的人借到债权人破产）。★ E4b
-   * 起额度只认<b>已经发生</b>的粮所得扣掉口粮/下一轮投入/税之后剩下的 F、<b>已经存在</b>的可自用余粮、以及<b>已经欠下</b>的同 unit 本金；三项都没有 ⇒
-   * headroom 0（不借），既不凭未来推断发信用卡，也不靠旧信用线放大。
-   *
    * @param cycleDaysByHousehold 每条家户行的 {@code cycleDays}（放贷方**本周期自需**的输入）
-   * @param debtCapacities 每家的 {@link DebtCapacity}（E4b 第三路的唯一算法；见 {@link DebtCapacityBook}）——
-   *     由调用方一次算好；缺键或 headroom 读不到 ⇒ 当场记 0（不静默给额度）
    * @param day 借入发生日（进 {@code DebtContract.openedDay}；首次建条用）
    * @param dueCycle 借粮的到期周期 = 当前周期 + 1（滚动写进合同；连续余额只保留最新一笔的到期）
    */
@@ -4189,7 +4807,6 @@ public final class EconomySettlement {
       long day,
       long dueCycle,
       Map<HouseholdId, Long> cycleDaysByHousehold,
-      Map<HouseholdId, DebtCapacity> debtCapacities,
       Map<ActorRef, HouseholdId> householdOfActor,
       ProductionLedger.TransferMint mint) {
     {
@@ -4210,6 +4827,25 @@ public final class EconomySettlement {
       lenders.sort(
           Comparator.<HouseholdId, Long>comparing(lendableByLender::get, Comparator.reverseOrder())
               .thenComparing(HouseholdId::value));
+      if (TRACE.isDebugEnabled()) {
+        long lendableTotal = 0L;
+        for (long available : lendableByLender.values()) {
+          lendableTotal += available;
+        }
+        long debtorsWithGrainStock = 0L;
+        for (HouseholdId debtor : deficit.keySet()) {
+          if (grainOf(householdGoods, debtor) > 0L) {
+            debtorsWithGrainStock++;
+          }
+        }
+        TRACE.debug(
+            "[day={}] 11a DEFICIT_POOL lendableLenders={} lendableTotalGrainMilli={} debtors={} debtorsWithGrainStock={}",
+            day,
+            lendableByLender.size(),
+            lendableTotal,
+            deficit.size(),
+            debtorsWithGrainStock);
+      }
       // ③ 逐缺口行（阶层 id 序 → 居住类型）借：借到多少累加多少债；没人有**余粮** ⇒ 剩下的只留作未满足的自然需求。
       List<HouseholdId> debtors = new ArrayList<>(deficit.keySet());
       debtors.sort(
@@ -4225,15 +4861,7 @@ public final class EconomySettlement {
           trimUnmet(unmetNeed, debtor, GRAIN, secondMeal);
           remaining -= secondMeal;
         }
-        // ★★ **E4b 信用额度**（第三路）：DebtCapacity.headroom（唯一算法在 DebtCapacityBook）减去**本周期已借**；
-        //   缺键/读不到 ⇒ 0（不偷发额度）。★ 额度只影响“还能借多少”，借入仍必须有真实债权人库存转出。
-        DebtCapacity capacity = debtCapacities.get(debtor);
-        long headroom =
-            capacity == null || capacity.headroom().isEmpty()
-                ? 0L
-                : capacity.headroom().getAsLong();
-        long creditLeft = Math.max(0L, headroom - borrowing.getOrDefault(debtor, 0L));
-        remaining = Math.min(remaining, creditLeft);
+        // ★★ **D-031：借款人侧无额度上限** —— 缺口户按剩余缺口借，直到本轮放贷人余粮全部借空。
         for (HouseholdId lender : lenders) {
           if (remaining <= 0L) {
             break;
@@ -4285,7 +4913,7 @@ public final class EconomySettlement {
           borrowing.merge(debtor, lent, Long::sum);
           remaining -= lent;
         }
-        // remaining > 0 ⇒ 没人有**余粮**（或 E4b 额度用尽）：不造粮、不造债。
+        // remaining > 0 ⇒ 本格放贷人的**余粮**已经借空（D-031 起不再有借款人额度门）：不造粮、不造债。
         // ★★ **H5：这里不再写 unmetNeed** —— 缺口在吃饭那一步（{@link #consumeOwnStockPartitioned}）已经整笔记进去了，
         //   本步每借到一笔/每吃一口自家粮就 {@link #trimUnmet} 冲减一笔 ⇒ 走到这里剩下的那些**已经**留在读数里
         //   （终值 = 改前那个"借完还剩多少"的残差）。★ 少了这条"不写"的说明，后来者会以为漏了一笔，
@@ -4357,6 +4985,10 @@ public final class EconomySettlement {
    * {@code income} 局部量，是另一个窗口 —— 见交付报告）。
    *
    * <p>★ 库存由调用点保证（{@code requireHouseholdAccounts}）⇒ 本方法里每行都“读得到”；读口那边才可能出现空（具名缺失）。
+   *
+   * <p>★★ <b>债务价格钩子由调用方注入</b>（D-030 §3.4）：生产借贷/清算路径传 {@link
+   * DebtCapacityBook#marketPriceLookup(java.util.Map)} 的市场价目表 lookup；旧读口仍可传 {@link
+   * DebtCapacityBook#NO_UNIT_PRICES} 保留旧口径。
    */
   private static Map<HouseholdId, DebtCapacity> debtCapacitiesForDay(
       Map<HouseholdId, ClassRow> rows,
@@ -4370,7 +5002,8 @@ public final class EconomySettlement {
       Map<ProductionUnitId, ProductionUnit> units,
       Map<IndustryId, Industry> industries,
       Map<AssetShareId, AssetShare> assetShares,
-      Map<ProductionUnitId, OperatorCondition> operatorConditions) {
+      Map<ProductionUnitId, OperatorCondition> operatorConditions,
+      DebtCapacityBook.DebtUnitValueLookup debtUnitValueLookup) {
     Map<HouseholdId, Long> cycleToDateIncome = new LinkedHashMap<>();
     Map<HouseholdId, Long> cycleToDateConsumed = new LinkedHashMap<>();
     Map<HouseholdId, Long> taxPaid = new LinkedHashMap<>();
@@ -4401,15 +5034,51 @@ public final class EconomySettlement {
         assetShares,
         operatorConditions,
         DebtCapacity.PLEDGEABLE_ASSET_POLICY_VALUE_NOT_LANDED,
-        DebtCapacityBook.NO_UNIT_PRICES);
+        debtUnitValueLookup);
   }
 
   /*
-   * ★ E4b：旧 creditLinesOf 已删除（不再有第二份信用公式）。
-   *
-   * 新口径的唯一算法在 DebtCapacityBook.capacities（经 DebtCapacity.headroom() 出额度）；借粮路径用 DebtCapacity
-   * 的 headroom 作为三路取小的那一路。旧 LOAN_INCOME_MULTIPLE_PER_MILLE 只留 @Deprecated 别名。
+   * ★ E4b/D-030/D-031：新口径的唯一算法仍在 DebtCapacityBook.capacities，但现在只服务清算/阶层下滑/只读诊断；
+   * 借粮（4b）与市场信用都已不再把 headroom 当借款门（D-031：借款人无上限，唯一上限 = 放贷人实际可借头寸）。
+   * 旧 LOAN_INCOME_MULTIPLE_PER_MILLE 只留 @Deprecated 别名。
    */
+
+  /**
+   * ★★ <b>D-030 §3.4/§3.5 的家户 → 市场区默认价目表索引</b>：
+   *
+   * <pre>
+   * ① 该家户本格有市场条目 ⇒ 用它；
+   * ② 否则若该格在本日拓扑的成员表里 ⇒ 用该区锚格的市场条目（区默认价目表）；
+   * ③ 都没有 ⇒ 缺键（该债 unpriced、identity 腿仍可付）。
+   * </pre>
+   *
+   * <p>★ 只读派生、不写市场表；单区（D-027）时锚格就是规范序第一个市场格。缺格不是坏数据：没有市场默认价目表的家户
+   * 仍可原物原还。
+   */
+  private static Map<HouseholdId, Market> marketIndexByHousehold(
+      Map<HouseholdId, ClassRow> rows, Map<HexCoord, Market> markets, MarketTopology topology) {
+    LinkedHashMap<HouseholdId, Market> byHousehold = new LinkedHashMap<>();
+    for (ClassRow row : rows.values()) {
+      Market market = marketForHex(row.view().hex(), markets, topology);
+      if (market != null) {
+        byHousehold.put(row.id(), market);
+      }
+    }
+    return byHousehold;
+  }
+
+  /** 单格 → 市场区默认价目表：本格优先，缺则区锚格；没有归属 ⇒ null（合法状态）。 */
+  private static Market marketForHex(
+      HexCoord hex, Map<HexCoord, Market> markets, MarketTopology topology) {
+    Market direct = markets.get(hex);
+    if (direct != null) {
+      return direct;
+    }
+    if (topology == null || !topology.contains(hex)) {
+      return null;
+    }
+    return markets.get(topology.regionOf(hex).anchor());
+  }
 
   /**
    * ★ 把某个"逐行 × 逐商品"缺口累加器里的一笔**冲减**掉（封顶 = 已记的量，绝不改成负数、也不凭空抵消历史缺口）。
@@ -4911,17 +5580,21 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ <b>P11.1 / D-023：周期末偿还 —— “有啥付啥”，介质不设限</b>。
+   * ★★ <b>P11.1 / D-023 / D-030：周期末偿还 —— “有啥付啥”，介质不设限</b>。
    *
    * <pre>
    * 债务人序 = HouseholdId.value 升序（稳定）
-   * 合同序   = 粮 unit → 其它商品 unit → 货币 unit；同档 dueCycle（空 = 最后）→ DebtContractId.value
+   * 合同序   = 未偿本金按共同价值升序；不可定价排最后（unit id 升序）
+   *            tie = 债权人 id 升序 → 债的单位 id 升序 → DebtContractId.value
    * 条款闸   = 只走 RepaymentRule.AVAILABLE_SURPLUS_SHARE + InterestTiming.AFTER_REPAYMENT_ON_CLOSE
    *            其它组合 fail-closed 具名抛（不静默当默认档）
    * 可动用   = 商品：max(0, 余额 − 冻结)；粮再扣 max(0, … − 一日口粮 × DEBTOR_SUBSISTENCE_RESERVE_DAYS) × 千分比
    *            货币：max(0, 逐币种余额 − 冻结)（全部币种；不跨币种求和/折换）
-   * 估值     = 单个家户价目表（可选；调用方提供时优先）→ 否则该格 Market.prices 默认价目表
-   * 选择     = 合同自身介质 identity → 其它商品（id 升序）→ 本格 numeraire 货币；每腿整数 floor，最多还清本金
+   * 介质序   = ① 全部货币：余额原始数量降序，tie 币种 id 升序
+   *            ② 全部商品：余额原始数量降序，tie 商品 id 升序
+   *            （钱永远第一位；不是每条债内部先钱后货）
+   * 选择     = 逐条债（合同序）× 逐 medium（介质序）：identity 直接 1:1；否则用债务人价目表折成共同价值、
+   *            整数 floor、最多还清本金；缺价 medium 具名跳过，换下一条
    * 付款     = 一组实际商品/货币腿铸成**唯一一条** LOAN_REPAYMENT 转移 → applyTransfer（带冻结/发行审计）
    * 本金     = 只减合同唯一的 principal（走 DebtContractBook.reduce；无 interest/principal 双账）
    * 缺价     = 持有资产但没有稳定价格 ⇒ 不折算、不静默付 0；记具名 DebtRepaymentSkip
@@ -4942,7 +5615,7 @@ public final class EconomySettlement {
    *
    * @param repaid 本日实际粮腿的逐户累加器（就地更新 ⇒ 进 {@code FlowRow.repaid}）；不得为 null
    * @param repaidMoney 本日实际货币腿的逐户逐币种累加器（就地更新 ⇒ 进 {@code FlowRow.repaidMoney}）；不得为 null
-   * @param markets 当日市场工作副本（键 = 格；缺格 = 没有市场默认价目表 ⇒ 只有 identity 腿可付）
+   * @param marketsByHousehold 债务人 → 其所在市场区默认价目表（缺键 = 没有市场默认价目表 ⇒ 只有 identity 腿可付）
    * @param repayeeResolver 债权人 → 收款 actor 的解析口（默认 {@link DebtValuation.RepayeeResolver#HOUSEHOLD_ACTORS}；
    *     外部放贷主体/政府账户可换一份 resolver）
    * @param householdPrices 单个家户价目表（可选；本批正式状态没有该字段 ⇒ 传 {@code null} 走市场默认）
@@ -4962,7 +5635,7 @@ public final class EconomySettlement {
       LinkedHashMap<HouseholdId, Map<CurrencyId, Long>> repaidMoney,
       LinkedHashMap<DebtContractId, Long> repaidPrincipalByDebt,
       Map<ActorRef, HouseholdId> householdOfActor,
-      Map<HexCoord, Market> markets,
+      Map<HouseholdId, Market> marketsByHousehold,
       DebtValuation.RepayeeResolver repayeeResolver,
       DebtValuation.HouseholdPriceTable householdPrices,
       ProductionLedger.Accumulator ledger,
@@ -4985,23 +5658,28 @@ public final class EconomySettlement {
       if (owed.isEmpty()) {
         continue;
       }
-      owed.sort(repaymentOrder());
+      Market market = marketsByHousehold.get(debtor);
+      owed.sort(repaymentOrder(debtor, market, householdPrices));
+
+      // ★ 可动用资产与介质序都取“本轮还款开始时”的值：介质序按原始余额排序，随后在逐债循环里只做扣减。
       long dailyNeed = row.naturalNeeds().getOrDefault(GRAIN, 0L);
       long grainReserve = Math.multiplyExact(dailyNeed, DEBTOR_SUBSISTENCE_RESERVE_DAYS);
-      Market market = markets.get(row.view().hex());
+      Map<CommodityId, Long> spendableGoods =
+          spendableGoods(debtor, householdGoods, householdFrozenGoods, grainReserve);
+      Map<CurrencyId, Long> spendableMoney =
+          spendableMoney(debtor, householdMoney, householdFrozenMoney);
+      List<DebtUnit> mediumOrder = repaymentMediumOrder(spendableMoney, spendableGoods);
+      Map<DebtUnit, Long> availableByUnit = availableByUnit(spendableMoney, spendableGoods);
+
       for (DebtContract debt : owed) {
         requireRepayableTerms(debt);
-        Map<CommodityId, Long> availableGoods =
-            spendableGoods(debtor, householdGoods, householdFrozenGoods, grainReserve);
-        Map<CurrencyId, Long> availableMoney =
-            spendableMoney(debtor, householdMoney, householdFrozenMoney);
         DebtValuation.PaymentPlan plan =
             DebtValuation.choosePayment(
                 debt.principal(),
                 debt.unit(),
                 debtor,
-                availableGoods,
-                availableMoney,
+                mediumOrder,
+                availableByUnit,
                 market,
                 householdPrices);
         long paid = plan.totalContractUnits();
@@ -5038,6 +5716,7 @@ public final class EconomySettlement {
           DebtContractBook.reduce(debts, debt.id(), paid);
           repaidPrincipalByDebt.merge(debt.id(), paid, Long::sum);
           for (DebtValuation.PaymentLeg leg : plan.legs()) {
+            debitRepaymentMedium(availableByUnit, leg);
             if (leg instanceof DebtValuation.CommodityLeg commodityLeg) {
               if (commodityLeg.commodity().equals(GRAIN)) {
                 repaid.merge(debtor, commodityLeg.quantityMilli(), Long::sum);
@@ -5049,11 +5728,103 @@ public final class EconomySettlement {
             }
           }
         }
+        if (RAW.isTraceEnabled()) {
+          RAW.trace(
+              "event=DEBT_REPAY_DECISION debtor={} creditor={} unit={} outstandingBefore={} paid={} remaining={} goodsLegs={} moneyLegs={}",
+              debtor.value(),
+              debt.creditor().value(),
+              debt.unit().key(),
+              debt.principal(),
+              paid,
+              debt.principal() - paid,
+              plan.goodsLegs(),
+              plan.moneyLegs());
+          if (!plan.unpricedAssets().isEmpty()) {
+            RAW.trace(
+                "event=DEBT_REPAY_UNPRICED debtor={} creditor={} unit={} remaining={} assets={}",
+                debtor.value(),
+                debt.creditor().value(),
+                debt.unit().key(),
+                debt.principal() - paid,
+                plan.unpricedAssets());
+          }
+        }
         // ★ 没有稳定价格 ⇒ 不折算、不静默付 0：持有但缺价的资产落具名 skip（有腿时也报剩余本金）。
         recordUnpricedRepaymentSkipIfNeeded(
             ledger, debtor, debt, debt.principal() - paid, plan.unpricedAssets());
       }
     }
+  }
+
+  /**
+   * ★★ <b>D-030 §3.5 的介质序</b>：全部货币（余额降序、币种 id 升序）→ 全部商品（余额降序、商品 id 升序）。
+   * 钱永远第一位；商品内部按原始数量、不按价值。
+   */
+  private static List<DebtUnit> repaymentMediumOrder(
+      Map<CurrencyId, Long> spendableMoney, Map<CommodityId, Long> spendableGoods) {
+    List<CurrencyId> currencies = new ArrayList<>(spendableMoney.keySet());
+    currencies.sort(
+        Comparator.comparingLong((CurrencyId currency) -> spendableMoney.getOrDefault(currency, 0L))
+            .reversed()
+            .thenComparing(CurrencyId::value));
+    List<CommodityId> commodities = new ArrayList<>(spendableGoods.keySet());
+    commodities.sort(
+        Comparator.comparingLong(
+                (CommodityId commodity) -> spendableGoods.getOrDefault(commodity, 0L))
+            .reversed()
+            .thenComparing(CommodityId::value));
+    List<DebtUnit> order = new ArrayList<>(currencies.size() + commodities.size());
+    for (CurrencyId currency : currencies) {
+      order.add(DebtUnit.money(currency));
+    }
+    for (CommodityId commodity : commodities) {
+      order.add(DebtUnit.commodity(commodity));
+    }
+    return order;
+  }
+
+  /** 可动余额的逐 unit 视图（D-030 §3.5 的逐 medium 扣减表）。 */
+  private static Map<DebtUnit, Long> availableByUnit(
+      Map<CurrencyId, Long> spendableMoney, Map<CommodityId, Long> spendableGoods) {
+    LinkedHashMap<DebtUnit, Long> available = new LinkedHashMap<>();
+    for (Map.Entry<CurrencyId, Long> entry : spendableMoney.entrySet()) {
+      if (entry.getValue() != null && entry.getValue() > 0L) {
+        available.put(DebtUnit.money(entry.getKey()), entry.getValue());
+      }
+    }
+    for (Map.Entry<CommodityId, Long> entry : spendableGoods.entrySet()) {
+      if (entry.getValue() != null && entry.getValue() > 0L) {
+        available.put(DebtUnit.commodity(entry.getKey()), entry.getValue());
+      }
+    }
+    return available;
+  }
+
+  /** 从逐 medium 余额表里扣掉一条已落账的付款腿（必须扣得动；不制造负余额）。 */
+  private static void debitRepaymentMedium(
+      Map<DebtUnit, Long> availableByUnit, DebtValuation.PaymentLeg leg) {
+    DebtUnit unit;
+    long amount;
+    if (leg instanceof DebtValuation.CommodityLeg commodityLeg) {
+      unit = DebtUnit.commodity(commodityLeg.commodity());
+      amount = commodityLeg.quantityMilli();
+    } else if (leg instanceof DebtValuation.MoneyLeg moneyLeg) {
+      unit = DebtUnit.money(moneyLeg.currency());
+      amount = moneyLeg.amountMilli();
+    } else {
+      throw new IllegalStateException("未知偿还腿类型（拒绝静默跳过）: " + leg);
+    }
+    long remaining = availableByUnit.getOrDefault(unit, 0L) - amount;
+    if (remaining < 0L) {
+      throw new IllegalStateException(
+          "偿还介质余额不足（唯一 applier 已落账，拒绝把余额扣成负）: medium="
+              + unit.key()
+              + " 余额="
+              + availableByUnit.getOrDefault(unit, 0L)
+              + " 付款="
+              + amount);
+    }
+    availableByUnit.put(unit, remaining);
   }
 
   /** 可动商品 = max(0, 余额 − 冻结)；粮再扣一日口粮保留 × 千分比（唯一拼写点，与旧 E4c 口径逐值同式）。 */
@@ -5171,22 +5942,47 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ <b>E4c 的偿还顺序</b>：先粮 unit、再其它商品、再货币；同档按 {@code dueCycle}（空 = 最后）再按 {@link
-   * DebtContractId#value()} 稳定排序。
+   * ★★ <b>D-030 §3.5 的债排序</b>：未偿本金按共同价值升序；不可定价的排最后（unit id 升序）；tie = 债权人 id →
+   * 债的单位 id → 合同 id。
    *
-   * <p>★ {@code dueCycle} 是合同当前的滚动到期周期（借入刷新）；空 = 没有写死期限 ⇒ 排在所有有期限的后面。
+   * <p>★ 共同价值用债务人自己的价目表（{@link DebtValuation#commonValueMilli}：家户表优先、市场区默认回退）；无法定价
+   * ⇒ {@link OptionalLong#empty()} ⇒ 排最后。本合同自己的单位不需要 price 吗？需要：排序要拿它和别的债比，故
+   * 仍走同一份价目表；真正“不需要 price”的是付款时的 identity 腿（见 {@link DebtValuation#choosePayment}）。
    */
-  private static Comparator<DebtContract> repaymentOrder() {
-    return Comparator.comparingInt((DebtContract debt) -> repaymentTier(debt.unit()))
-        .thenComparingLong(debt -> debt.dueCycle().orElse(Long.MAX_VALUE))
-        .thenComparing(debt -> debt.id().value());
-  }
-
-  /** 0 = 粮；1 = 其它商品；2 = 货币（顺序的单一拼写点）。 */
-  private static int repaymentTier(DebtUnit unit) {
-    return switch (unit) {
-      case DebtUnit.Commodity commodity -> commodity.commodity().equals(GRAIN) ? 0 : 1;
-      case DebtUnit.Money ignored -> 2;
+  private static Comparator<DebtContract> repaymentOrder(
+      HouseholdId debtor,
+      Market market,
+      DebtValuation.HouseholdPriceTable householdPrices) {
+    return (left, right) -> {
+      OptionalLong leftValue =
+          DebtValuation.commonValueMilli(
+              left.principal(), left.unit(), debtor, market, householdPrices);
+      OptionalLong rightValue =
+          DebtValuation.commonValueMilli(
+              right.principal(), right.unit(), debtor, market, householdPrices);
+      if (leftValue.isPresent() != rightValue.isPresent()) {
+        return leftValue.isPresent() ? -1 : 1;
+      }
+      if (leftValue.isPresent()) {
+        int byValue = Long.compare(leftValue.getAsLong(), rightValue.getAsLong());
+        if (byValue != 0) {
+          return byValue;
+        }
+      } else {
+        int byUnit = left.unit().key().compareTo(right.unit().key());
+        if (byUnit != 0) {
+          return byUnit;
+        }
+      }
+      int byCreditor = left.creditor().value().compareTo(right.creditor().value());
+      if (byCreditor != 0) {
+        return byCreditor;
+      }
+      int byUnit = left.unit().key().compareTo(right.unit().key());
+      if (byUnit != 0) {
+        return byUnit;
+      }
+      return left.id().value().compareTo(right.id().value());
     };
   }
 

@@ -2064,7 +2064,7 @@ final class EconomyPayloads {
   }
 
   /**
-   * 顶层可选 {@code governments}：{@code [{id,nationRef,treasury:{kind,id},issuable:[币种…]}]}。
+   * 顶层可选 {@code governments}：{@code [{id,nationRef,treasury:{kind,id},issuable:[币种…],seignioragePerCycle?,debtIssuePerCycle?}]}。
    *
    * <p>缺键 ⇒ 空表（旧载荷没有政府 ⇒ 零登记，旧 fail-closed 行为逐字不变）；一个币种只能有一个发行主体由 {@code EconomyData} 的构造期守卫判死。
    */
@@ -2085,7 +2085,18 @@ final class EconomyPayloads {
         }
         issuable.add(CurrencyId.parse(currencyNode.asText()));
       }
-      Government government = new Government(id, nationRef, treasury, issuable);
+      long seignioragePerCycle = optionalLong(node, "seignioragePerCycle", 0L);
+      if (seignioragePerCycle < 0L) {
+        throw new IllegalArgumentException(
+            "governments[].seignioragePerCycle 不得为负: " + seignioragePerCycle);
+      }
+      long debtIssuePerCycle = optionalLong(node, "debtIssuePerCycle", 0L);
+      if (debtIssuePerCycle < 0L) {
+        throw new IllegalArgumentException(
+            "governments[].debtIssuePerCycle 不得为负: " + debtIssuePerCycle);
+      }
+      Government government =
+          new Government(id, nationRef, treasury, issuable, seignioragePerCycle, debtIssuePerCycle);
       if (governments.putIfAbsent(id, government) != null) {
         throw new IllegalArgumentException("同一份载荷里政府 id 重复: " + id);
       }

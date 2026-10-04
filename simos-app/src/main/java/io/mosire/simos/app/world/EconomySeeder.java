@@ -130,10 +130,13 @@ import java.util.function.Function;
  */
 public final class EconomySeeder {
 
+  /** 经济播种日志（settlement 分类：播种是经济生命周期的第 0 天）。 */
+  private static final org.slf4j.Logger LOG = io.mosire.simos.economy.EconomyLog.settlement();
+
   /**
-   * ★★ <b>经济地基 profile</b>（P2 起两个公开值：{@link #CLASS_FIRST} 与 {@link #PRODUCTION_RUNTIME}）。
+   * ★★ <b>经济地基 profile</b>（P2 起两个公开值；2026-10-07 追加 GOV 家户试点第三个值）。
    *
-   * <p>★★ <b>两个 profile 的职责</b>：
+   * <p>★★ <b>三个 profile 的职责</b>：
    *
    * <ul>
    *   <li>{@link #CLASS_FIRST}：class-first 的生产权威路径 —— 只种阶层池状态 + 最小人口/市场壳，不发 {@code modes} / {@code
@@ -144,6 +147,9 @@ public final class EconomySeeder {
    *       memberships}，并追加 {@code modes} / {@code classStructures} / {@code classPositions} /
    *       {@code classStandings} / {@code assetRules}（+ 可对上的 {@code liquidationPolicies}）；{@code
    *       classFirst} 为空（生产权威是 entries 的旧生产结构）。
+   *   <li>{@link #PRODUCTION_RUNTIME_GOVERNMENT}：在 PRODUCTION_RUNTIME 上追加一个**不生产**的 GOV 家户（population=0、
+   *       slot={@code official}、无 unit/资产/ClassStanding），并把世界政府的国库指向它的家户账户；{@code
+   *       Government.seignioragePerCycle} 控制周期铸币。它只由显式 {@code economyProfile} 激活。
    * </ul>
    *
    * <p>★ 旧 {@code legacy} / {@code complete} 两个线格式名不再可解析（P2 起 fail-closed，不把缺省猜成旧 profile）。
@@ -153,7 +159,10 @@ public final class EconomySeeder {
     CLASS_FIRST("class-first"),
 
     /** ★★ P2 正式生产运行时：旧完整生产 entries + 默认生产方式目录/资产规则。 */
-    PRODUCTION_RUNTIME("production-runtime");
+    PRODUCTION_RUNTIME("production-runtime"),
+
+    /** ★★ 2026-10-07 GOV 非生产家户试点：production-runtime + 一个 GOV 家户 + 周期铸币政策。 */
+    PRODUCTION_RUNTIME_GOVERNMENT("production-runtime-government");
 
     private final String wireName;
 
@@ -161,7 +170,7 @@ public final class EconomySeeder {
       this.wireName = wireName;
     }
 
-    /** 线格式名（{@code "class-first"} / {@code "production-runtime"}）。 */
+    /** 线格式名（{@code "class-first"} / {@code "production-runtime"} / {@code "production-runtime-government"}）。 */
     public String wireName() {
       return wireName;
     }
@@ -175,16 +184,22 @@ public final class EconomySeeder {
      * ★ 该 profile 走旧完整生产路径（entries 的 industries/units/assetShares/labor/allocations/memberships）。
      */
     public boolean seedsProductionStructure() {
-      return this == PRODUCTION_RUNTIME;
+      return this == PRODUCTION_RUNTIME || this == PRODUCTION_RUNTIME_GOVERNMENT;
     }
 
     /** ★ 该 profile 在 {@code economy.Seed} 顶层追加默认生产方式目录/阶层/资产规则。 */
     public boolean seedsProductionCatalog() {
-      return this == PRODUCTION_RUNTIME;
+      return this == PRODUCTION_RUNTIME || this == PRODUCTION_RUNTIME_GOVERNMENT;
+    }
+
+    /** ★★ 该 profile 追加 GOV 家户主体与国库家户账户（只由显式 profile 激活）。 */
+    public boolean seedsGovernmentHousehold() {
+      return this == PRODUCTION_RUNTIME_GOVERNMENT;
     }
 
     /**
-     * 按线格式名解析：{@code "class-first"} 或 {@code "production-runtime"}；其余/空白一律 fail-closed。
+     * 按线格式名解析：{@code "class-first"}、{@code "production-runtime"} 或
+     * {@code "production-runtime-government"}；其余/空白一律 fail-closed。
      *
      * <p>缺省仍是 {@link #CLASS_FIRST} —— 由调用方（{@code WorldgenInitializeTool}）在缺键时传入 {@code
      * "class-first"}；本方法不把 null/空白猜成某个 profile。
@@ -192,7 +207,7 @@ public final class EconomySeeder {
     public static FoundationProfile parse(String text) {
       if (text == null || text.isBlank()) {
         throw new IllegalArgumentException(
-            "economyProfile 不得为空白；合法值: class-first、production-runtime");
+            "economyProfile 不得为空白；合法值: class-first、production-runtime、production-runtime-government");
       }
       String trimmed = text.trim();
       if ("class-first".equals(trimmed)) {
@@ -201,8 +216,11 @@ public final class EconomySeeder {
       if ("production-runtime".equals(trimmed)) {
         return PRODUCTION_RUNTIME;
       }
+      if ("production-runtime-government".equals(trimmed)) {
+        return PRODUCTION_RUNTIME_GOVERNMENT;
+      }
       throw new IllegalArgumentException(
-          "未知的 economyProfile: " + text + "；合法值: class-first、production-runtime");
+          "未知的 economyProfile: " + text + "；合法值: class-first、production-runtime、production-runtime-government");
     }
   }
 
@@ -771,6 +789,24 @@ public final class EconomySeeder {
 
   /** 世界级政府在 {@code nationRef} 里的引用（当前不是任何真实国家 id，故用保留字面量）。 */
   public static final String GENESIS_GOVERNMENT_NATION_REF = "world";
+
+  /**
+   * ★★ <b>2026-10-07 GOV 非生产家户试点：周期铸币的出厂量</b>（毫计价货币 / 产业周期；{@code 10_000} = 10 银）。
+   *
+   * <p>它是 {@link FoundationProfile#PRODUCTION_RUNTIME_GOVERNMENT} 的**具名 GM 默认值**：只在
+   * {@code production-runtime-government} profile 下写进 {@link Government#seignioragePerCycle()}。当前还没有 GM 实时
+   * 编辑命令；要改本批口径就改这个常量并按新 profile 重播（与其余 seeder 初态参数同制）。
+   */
+  public static final long GOVERNMENT_SEIGNIORAGE_PER_CYCLE_MILLI = 2_000L;
+
+  /**
+   * ★★ <b>2026-10-07 GOV 非生产家户试点：周期发债目标</b>（毫计价货币 / 产业周期；{@code 5_000} = 5 银）。
+   *
+   * <p>周期开始日政府按此目标向家户借入货币（真实余额转移 + {@code DebtContract}，不是新钱）；家户可借额不足时
+   * 只借到实际可借部分并记 shortfall。它与 {@link #GOVERNMENT_SEIGNIORAGE_PER_CYCLE_MILLI} 一起构成“政府缺钱：先印一部分、
+   * 再向家户发一部分债”的试点口径。
+   */
+  public static final long GOVERNMENT_DEBT_ISSUE_PER_CYCLE_MILLI = 5_000L;
 
   private EconomySeeder() {}
 
@@ -1358,6 +1394,12 @@ public final class EconomySeeder {
           throw new IllegalStateException(
               "PRODUCTION_RUNTIME 的家户 id 在 entries 里重复（classStandings 必须一户一条）: " + householdId);
         }
+        // ★★ 2026-10-07 GOV 非生产家户试点：official 槽位的 GOV 家户**没有**阶层位置/ClassStanding ——
+        //   它不生产、不持资产、不出劳动；关账日 HouseholdClassRule 在"无可观察证据"时保留当前 view（official）。
+        //   这里只做 id 去重（上面已做），不发 standing。
+        if (SocialClassId.OFFICIAL.value().equals(slotValue)) {
+          continue;
+        }
         // ★★ P11.7/D-024：位置由 (residence, slot) 共同裁决 —— 同一个 slot 在城乡映射到不同 mode。
         ClassPositionId positionId =
             productionRuntimePositionId(ResidenceKind.parse(residenceText), slot);
@@ -1494,6 +1536,13 @@ public final class EconomySeeder {
         issuable.add(currency.value());
       }
       node.put("issuable", issuable);
+      // ★ 旧行为逐字节不变：两个财政旋钮为 0 时不写键（旧载荷/旧档继续读 0）。
+      if (government.seignioragePerCycle() > 0L) {
+        node.put("seignioragePerCycle", government.seignioragePerCycle());
+      }
+      if (government.debtIssuePerCycle() > 0L) {
+        node.put("debtIssuePerCycle", government.debtIssuePerCycle());
+      }
       nodes.add(node);
     }
     return nodes;
@@ -1655,7 +1704,7 @@ public final class EconomySeeder {
     return switch (profile) {
       case CLASS_FIRST ->
           planClassFirst(mapId, groups, terrainOf, genesisMoneyMilliPerCapita, profile, conditions);
-      case PRODUCTION_RUNTIME ->
+      case PRODUCTION_RUNTIME, PRODUCTION_RUNTIME_GOVERNMENT ->
           planProductionRuntime(
               mapId, groups, terrainOf, genesisMoneyMilliPerCapita, profile, conditions);
     };
@@ -1884,6 +1933,21 @@ public final class EconomySeeder {
     List<Map<String, Object>> extraMoneyIssuances = new ArrayList<>(applied.extraMoneyIssuances());
     if (lenderMoney > 0L) {
       extraMoneyIssuances.add(classFirstLenderIssuance(mapId, entries, lenderMoney));
+    }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
+          "event=ECONOMY_SEED profile={} mapId={} entries={} markets={} householdStocks={} householdMoney={} operators={} debtContracts={} pledges={} extraMoneyIssuances={} genesisEndowment={}",
+          profile,
+          mapId,
+          entries.size(),
+          markets.size(),
+          householdStocks.size(),
+          householdMoney.size(),
+          operators.size(),
+          applied.debtContracts().size(),
+          applied.pledges().size(),
+          extraMoneyIssuances.size(),
+          genesisEndowment);
     }
     return new Seed(
         mapId,
@@ -3839,14 +3903,47 @@ public final class EconomySeeder {
       //   "这一格没有市场"（格不在本表的键集里）是合法状态，不是缺数据。
       markets.put(hex, MARKET_FACTORY);
     }
+    // ★★ 2026-10-07 GOV 非生产家户试点：在全部普通家户之后追加一个 GOV 家户。
+    //   它必须在 genesisEndowmentOf / applyTestConditions **之前**落进 entries 与三张家户表：
+    //   ① 条件注入（extraGoodsByHousehold / extraMoneyByHousehold）才能指向它；
+    //   ② INITIAL_ENDOWMENT 的“条件注入之前”口径才不会被 GOV 政策铸币污染。
+    HouseholdId governmentHousehold =
+        profile.seedsGovernmentHousehold()
+            ? seedGovernmentHousehold(
+                entries,
+                ruralByHex,
+                urbanByHex,
+                householdLocations,
+                householdStocks,
+                householdMoney)
+            : null;
     // ★★ S1.4 出口自检：tick0 seed 是"人工造份额"的唯一入口 ⇒ 这里逐 lot 对账，不等就播不出去（fail-closed）。
     requireMembershipConservation(groups, allMemberships);
-    Map<GovernmentId, Government> governments = Map.of(GENESIS_GOVERNMENT_ID, genesisGovernment());
+    Map<GovernmentId, Government> governments =
+        profile.seedsGovernmentHousehold()
+            ? Map.of(GENESIS_GOVERNMENT_ID, governmentHouseholdGovernment(governmentHousehold))
+            : Map.of(GENESIS_GOVERNMENT_ID, genesisGovernment());
     // ★★ P3：INITIAL_ENDOWMENT 的总量取**条件注入之前**的家户+经营者钱包 —— 外部注入的货币走独立
     //   FISCAL_ISSUE 审计（见 applyTestConditions），绝不混进"每人禀赋"这条记录。
     Map<CurrencyId, Long> genesisEndowment = genesisEndowmentOf(householdMoney, operators);
     AppliedConditions applied =
         applyTestConditions(mapId, entries, householdStocks, householdMoney, profile, conditions);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
+          "event=ECONOMY_SEED profile={} mapId={} entries={} markets={} householdStocks={} householdMoney={} operators={} debtContracts={} pledges={} extraMoneyIssuances={} merchantFirms={} genesisEndowment={}",
+          profile,
+          mapId,
+          entries.size(),
+          markets.size(),
+          householdStocks.size(),
+          householdMoney.size(),
+          operators.size(),
+          applied.debtContracts().size(),
+          applied.pledges().size(),
+          applied.extraMoneyIssuances().size(),
+          merchantFirms.size(),
+          genesisEndowment);
+    }
     return new Seed(
         mapId,
         entries,
@@ -3865,6 +3962,104 @@ public final class EconomySeeder {
         applied.report(),
         ClassFirstState.empty(),
         merchantFirms);
+  }
+
+  // ── 2026-10-07 GOV 非生产家户试点：种子形状 ───────────────────────────────────────────────
+
+  /**
+   * ★★ <b>把 GOV 家户追加进生产运行时 seed</b>：人口最多的格（并列取 (q,r) 字典序最小）里加一条 population=0、
+   * {@code slot=official} 的家户行，并在 {@code householdLocations}/{@code householdStocks}/{@code householdMoney}
+   * 三张表里给它一本空账。
+   *
+   * <p>它<b>不</b>进 laborSupply/allocations/memberships/units/assetShares/merchantFirms —— 不生产、不出劳动、不持资产。
+   * 没有 ClassStanding（{@code productionRuntimeClassStandings} 对 official 槽位显式跳过）：关账日
+   * HouseholdClassRule 在无可观察证据时保留当前 view。
+   */
+  private static HouseholdId seedGovernmentHousehold(
+      List<Map<String, Object>> entries,
+      Map<HexCoord, List<PopulationGroup>> ruralByHex,
+      Map<HexCoord, List<PopulationGroup>> urbanByHex,
+      Map<HouseholdId, HexCoord> householdLocations,
+      Map<HouseholdId, Map<CommodityId, Long>> householdStocks,
+      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney) {
+    HexCoord hex = governmentHex(ruralByHex, urbanByHex);
+    HouseholdId householdId =
+        HouseholdId.ofSeed(hex, ResidenceKind.URBAN, SocialClassId.OFFICIAL);
+    householdLocations.put(householdId, hex);
+    householdStocks.put(householdId, Map.of());
+    householdMoney.put(householdId, Map.of());
+
+    Map<String, Object> row = governmentClassRow(householdId);
+    boolean added = false;
+    for (Map<String, Object> entry : entries) {
+      int q = ((Number) entry.get("q")).intValue();
+      int r = ((Number) entry.get("r")).intValue();
+      if (q != hex.q() || r != hex.r()) {
+        continue;
+      }
+      @SuppressWarnings("unchecked")
+      List<Map<String, Object>> classes = (List<Map<String, Object>>) entry.get("classes");
+      classes.add(row);
+      added = true;
+      break;
+    }
+    if (!added) {
+      throw new IllegalStateException(
+          "GOV 家户找不到落点 entry（seed 内部不一致）：hex=" + hex + " entries=" + entries.size());
+    }
+    return householdId;
+  }
+
+  /** 人口最多的格（并列取 (q,r) 字典序最小）；无人格/无 entry 时 fail-closed。 */
+  private static HexCoord governmentHex(
+      Map<HexCoord, List<PopulationGroup>> ruralByHex,
+      Map<HexCoord, List<PopulationGroup>> urbanByHex) {
+    List<HexCoord> all = new ArrayList<>();
+    all.addAll(ruralByHex.keySet());
+    all.addAll(urbanByHex.keySet());
+    all.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
+    if (all.isEmpty()) {
+      throw new IllegalStateException("GOV 家户需要至少一个有人口的格，但 seed 的格集为空");
+    }
+    HexCoord best = null;
+    long bestPopulation = -1L;
+    for (HexCoord hex : all) {
+      long population =
+          populationOf(ruralByHex.getOrDefault(hex, List.of()))
+              + populationOf(urbanByHex.getOrDefault(hex, List.of()));
+      if (population > bestPopulation) {
+        best = hex;
+        bestPopulation = population;
+      }
+    }
+    return best;
+  }
+
+  /** GOV 家户行：population/labor/participation 全 0、无需求；身份仍由 {@link HouseholdId} 稳定承载。 */
+  private static Map<String, Object> governmentClassRow(HouseholdId householdId) {
+    Map<String, Object> row = new LinkedHashMap<>();
+    row.put("householdId", householdId.value());
+    row.put("residence", ResidenceKind.URBAN.value());
+    row.put("slot", SocialClassId.OFFICIAL.value());
+    row.put("population", 0L);
+    row.put("laborMilli", 0L);
+    row.put("participationPerMille", 0);
+    row.put("money", 0L);
+    row.put("naturalNeeds", Map.of());
+    row.put("effectiveDemand", Map.of());
+    return row;
+  }
+
+  /** GOV 家户政府的国库指向它的家户账户；周期铸币/发债量取本类的两个具名 GM 默认值。 */
+  private static Government governmentHouseholdGovernment(HouseholdId governmentHousehold) {
+    Objects.requireNonNull(governmentHousehold, "governmentHousehold");
+    return new Government(
+        GENESIS_GOVERNMENT_ID,
+        GENESIS_GOVERNMENT_NATION_REF,
+        HouseholdActors.of(governmentHousehold),
+        Set.of(MARKET_NUMERAIRE),
+        GOVERNMENT_SEIGNIORAGE_PER_CYCLE_MILLI,
+        GOVERNMENT_DEBT_ISSUE_PER_CYCLE_MILLI);
   }
 
   // ── P2：PRODUCTION_RUNTIME 的资产规则 / 清算政策（DefaultProductionModes 是唯一 mode 来源）──────────

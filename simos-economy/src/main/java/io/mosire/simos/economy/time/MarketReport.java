@@ -1,7 +1,9 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
@@ -52,6 +54,9 @@ import java.util.OptionalLong;
  * @param priceUpdates ★ M2.6：自适应模式下的逐 (集散节点, 商品) 改价记录；固定模式恒为空表
  * @param sellerOutcomes ★ S3：逐卖方槽位的只读结果（成本估计 / 成交 / 未成交原因 / 被谁挤掉）；空表 = 本轮没有卖方槽
  * @param buyerOutcomes ★ S3：逐买方槽位的只读结果（库存/覆盖/缺口/预算/下单/成交/原因）；空表 = 本轮没有买方槽
+ * @param creditFills ★★ D-030：本轮信用成交的债务来源（钱货销售另在 {@link #fills()} 里一笔；借实物只有本表一笔）。
+ *     它是"信用成交"与"现金成交"的分辨点：同一笔钱货销售同时出现在 {@code fills} 与 {@code creditFills}，纯现金成交
+ *     只在 {@code fills}。
  */
 public record MarketReport(
     long day,
@@ -68,7 +73,8 @@ public record MarketReport(
     PriceMode priceMode,
     List<PriceUpdate> priceUpdates,
     List<SellerOutcome> sellerOutcomes,
-    List<BuyerOutcome> buyerOutcomes) {
+    List<BuyerOutcome> buyerOutcomes,
+    List<CreditFill> creditFills) {
 
   /**
    * ★★ <b>跨区结算暂设即时</b>（M2.0 #4 的具名标记）：货款与运费在发运日结清，货在 ETA 之后到。 ★ L3 的读数契约接这一位；本批不做"到货付款"。★
@@ -95,6 +101,7 @@ public record MarketReport(
     priceUpdates = priceUpdates == null ? List.of() : List.copyOf(priceUpdates);
     sellerOutcomes = sellerOutcomes == null ? List.of() : List.copyOf(sellerOutcomes);
     buyerOutcomes = buyerOutcomes == null ? List.of() : List.copyOf(buyerOutcomes);
+    creditFills = creditFills == null ? List.of() : List.copyOf(creditFills);
   }
 
   /** 只按<b>引用身份</b>相等的外部键（见 {@link #REGULATED_TARIFF_BY_REPORT}）。 */
@@ -142,6 +149,7 @@ public record MarketReport(
       List<PriceUpdate> priceUpdates,
       List<SellerOutcome> sellerOutcomes,
       List<BuyerOutcome> buyerOutcomes,
+      List<CreditFill> creditFills,
       Map<Fill, Long> tariffByFill) {
     MarketReport report =
         new MarketReport(
@@ -159,7 +167,8 @@ public record MarketReport(
             priceMode,
             priceUpdates,
             sellerOutcomes,
-            buyerOutcomes);
+            buyerOutcomes,
+            creditFills);
     if (tariffByFill == null || tariffByFill.isEmpty() || report.fills.isEmpty()) {
       return report;
     }
@@ -239,6 +248,7 @@ public record MarketReport(
         0L,
         0L,
         PriceMode.FIXED, // R3a：旧撮合的 priceMode() 是"默认固定价"（自适应开关出厂 false），此处逐值保留
+        List.of(),
         List.of(),
         List.of(),
         List.of());
@@ -367,6 +377,58 @@ public record MarketReport(
       Objects.requireNonNull(from, "from");
       Objects.requireNonNull(to, "to");
       Objects.requireNonNull(commodity, "commodity");
+    }
+  }
+
+  /**
+   * ★★ <b>D-030：一笔市场信用成交（债务来源读数）</b>。
+   *
+   * <p>★★ <b>量纲</b>：{@code quantityMilli} = 该合同本笔**本金**，单位由 {@code unit} 给出 —— {@code
+   * DebtUnit.Money} 时是毫计价货币（借银买货），{@code DebtUnit.Commodity} 时是毫商品（借实物）。{@code commodity}
+   * 是这笔信用服务的商品：借货币买货 ⇒ 买到的商品；借实物 ⇒ 借出的商品。{@code hex} = 卖方槽位所在格（区内信用成交的
+   * 货物起点；单区世界里就是区内某格）。
+   *
+   * <p>★ <b>与 {@link #fills()} 的关系</b>：借货币买货对卖方仍是一笔现金销售 ⇒ 同一笔同时写一条普通 {@code Fill}
+   * （钱货）与本条（债务来源）；借实物没有货币腿 ⇒ 只写本条，{@code fills} 不伪造一条 0 货款销售。因此"现金成交"与
+   * "信用成交"的分辨点是本表：出现在这里的 {@code (borrower, commodity)} 对应的那笔成交即信用成交。
+   *
+   * @param hex 卖方槽位所在格（区内信用的货物起点）
+   * @param commodity 本笔信用服务的商品（买到的或借出的）
+   * @param borrower 债务人 / 买方主体
+   * @param lenderOrSeller 债权人 / 卖方主体（借货币 = 出借人；借实物 = 卖家）
+   * @param quantityMilli 本笔本金（单位 = {@code unit}；毫钱 或 毫商品）
+   * @param unit 债务计量单位（{@code Money} / {@code Commodity}）
+   * @param debtId 累加后的债务合同稳定身份（同一四元组跨笔恒同一条）
+   * @param ratePerMille 每周期利率（千分数；本批 = {@code BORROW_RATE_PER_MILLE_PER_CYCLE}）
+   * @param dueCycle 到期周期（本批 = 当前周期 + 1）
+   */
+  public record CreditFill(
+      HexCoord hex,
+      CommodityId commodity,
+      ActorRef borrower,
+      ActorRef lenderOrSeller,
+      long quantityMilli,
+      DebtUnit unit,
+      DebtContractId debtId,
+      long ratePerMille,
+      long dueCycle) {
+
+    public CreditFill {
+      Objects.requireNonNull(hex, "hex");
+      Objects.requireNonNull(commodity, "commodity");
+      Objects.requireNonNull(borrower, "borrower");
+      Objects.requireNonNull(lenderOrSeller, "lenderOrSeller");
+      Objects.requireNonNull(unit, "unit");
+      Objects.requireNonNull(debtId, "debtId");
+      if (quantityMilli <= 0L) {
+        throw new IllegalArgumentException("CreditFill.quantityMilli 必须 > 0: " + quantityMilli);
+      }
+      if (ratePerMille < 0L) {
+        throw new IllegalArgumentException("CreditFill.ratePerMille 不得为负: " + ratePerMille);
+      }
+      if (dueCycle < 0L) {
+        throw new IllegalArgumentException("CreditFill.dueCycle 不得为负: " + dueCycle);
+      }
     }
   }
 

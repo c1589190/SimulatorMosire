@@ -221,6 +221,36 @@ app（组合根）依赖全部领域模块 + core + agentlib + MCP —— **唯�
 **门禁**：没有架构文档就派实现 Agent ⇒ 控制方派单无效，子 Agent 有权拒绝并指出缺文档；
 控制方可以自己先写文档，或先派一个"只写设计文档、不写实现"的设计 Agent，文档落盘/提交后再派实现 Agent。
 
+### 一.9 ★★★ 用户 2026-10-04 裁定：**经济系统先全量 Log 化；其他模块暂时没有 Log，经济调试收口后必须补**
+
+> 用户原话：「讨论个屁啊，先把经济系统全量Log化，把日志记录给我做全了，并且在项目文档里写明其他模块没有加Log这次调试完记得加」
+
+**背景（实测，不是感觉）**：在 2026-10-04 之前，`simos-economy` 的 `src/main` 里**一个 `Logger` 都没有**
+（`grep -rl LoggerFactory simos-economy/src/main/java` = 1，且那 1 个是本次刚加的）；经济系统怎么跑、先干什么后干什么，
+只能靠事后读 `ProductionLedger` 猜。这是"市场冻结/借贷不触发"排查被拖长的主因。
+
+**经济系统的 Log 纪律（已落地）**：
+- 唯一门面：`io.mosire.simos.economy.EconomyLog`（`simos-economy/src/main/java/io/mosire/simos/economy/EconomyLog.java`），
+  分类 logger = `io.mosire.simos.economy` 下的 `settlement / market / debt / migration / organization / entry / population / trace`；
+  **禁止**各调用点自己 `LoggerFactory.getLogger("...")` 拼 logger 名。
+- 级别约定：**INFO** = 生命周期与"这一轮发生了什么"（每日 DAY_START/DAY_END、收获/开市/借还/饿死/迁移/建组织等事件）；
+  **DEBUG** = 每阶段池子/汇总/理由（谁有额度、为什么不开市、清算/退出几条）；**TRACE** = 逐笔明细（每笔转移、每个成交/未成交槽、
+  债务建立/减少/计息、迁移 move、逐户饿死）。逐笔事件走 `.trace` 分类，默认关闭、可单独开。
+- 开关（只影响输出，不影响状态）：`simos-app/src/main/resources/log4j2.xml` 读
+  `-Dsimos.economy.logLevel=INFO|DEBUG|TRACE`（主分类）与 `-Dsimos.economy.traceLevel=...`（逐笔分类）。
+- 设计文档：`docs/superpowers/specs/2026-10-04-economy-logging.md`；真实样例：`RealTwelveOneTickTraceTest`。
+- **新增/修改经济阶段时必须同时加日志**：新状态写口至少 INFO 一条"发生了什么 + 具名计数"，关键判据/拒绝路径至少 DEBUG 一条
+  "为什么"，逐条发生额至少 TRACE 一条；否则该阶段视为没做完（用户直接用日志排查，不读代码反推）。
+- 纪律：密钥/载荷明文绝不进日志；日志不写任何状态、不改任何公式；日志失败不得影响结算。
+
+**其他模块的现状（用户要求写明，调试收口后补）**：
+- 实测（2026-10-04）：`simos-map` / `simos-social` / `simos-unit` / `simos-sd` / `simos-actor` / `simos-actor-api` /
+  `simos-economy-api` / `simos-calendar` 的 `src/main/java` 里 **`LoggerFactory` 与 `System.out` 都是 0 命中**；
+  `simos-core` 有 4 个文件、`simos-app` 有 11 个文件有零星日志（启动/检查点/人口/税等），但**没有**"每一步做了什么"的阶段日志。
+- **待办（不是可选）**：本轮经济调试收口（市场冻结/借贷/迁移跑通）之后，按本条的同一套形态给其他模块补日志——
+  每个模块一个 `XxxLog` 门面、同样 INFO/DEBUG/TRACE 三档、同样先写设计文档再派实现（§一.8）。
+  模块补齐前，任何"其他模块为什么没动作"的排查都只能读代码，不能读日志；这条缺口不许再被当成"已经是这样"。
+
 ## 二、产物：别把正在跑的服务的 jar 覆盖掉
 
 - ★ **重建产物前先停服务**（或把新 jar 打到别的路径）。Java 的 classloader 是**惰性加载**的：

@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -24,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * ★★ <b>S3.2 经营者状态机（R3B.2 起主体 = {@link ProductionUnit}）</b>——
@@ -56,6 +58,9 @@ import java.util.Set;
  * 有多个 unit 且产出同一种商品时， 回退口径会把成交证据记到每一个匹配 unit 上 —— 这是本批如实记下的边界（精确到 unit 需要卖方槽位带 unit id，见 B.3）。
  */
 final class OperatorSettlement {
+
+  /** 经营者状态机日志（settlement 分类）。 */
+  private static final org.slf4j.Logger LOG = EconomyLog.settlement();
 
   private OperatorSettlement() {}
 
@@ -421,6 +426,17 @@ final class OperatorSettlement {
               0L, // cycleOutcompetedQty
               0L, // cycleMarketRounds
               shortfall ? 1L : 0L)); // 最近一次关账的投入不足读数，保留到下一个关账日
+    }
+    if (LOG.isDebugEnabled()) {
+      Map<IndustryStatus, Long> statusCounts = new TreeMap<>();
+      for (OperatorCondition condition : conditions.values()) {
+        statusCounts.merge(condition.status(), 1L, Long::sum);
+      }
+      LOG.debug(
+          "event=OPERATOR_ADVANCE_END closingUnits={} exits={} statusCounts={}",
+          closingUnits.size(),
+          exits.size(),
+          statusCounts);
     }
     return exits;
   }

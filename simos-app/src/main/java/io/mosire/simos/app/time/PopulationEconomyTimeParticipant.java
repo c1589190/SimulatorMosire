@@ -193,6 +193,16 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           reads,
           writes);
     }
+    LOG.info(
+        "event=ECONOMY_ADVANCE_START mapId={} fromTick={} toTick={} days={} workerCount={} households={} markets={} debtContracts={}",
+        mapId,
+        range.from().tick(),
+        to.get().tick(),
+        to.get().tick() - range.from().tick(),
+        economyWorkerCount,
+        economy.classes().size(),
+        economy.markets().size(),
+        economy.debtContracts().size());
 
     // ★★ S1：唯一账户会话 —— 家户（商品/货币/冻结）+ 经营者（商品/货币/冻结）一次装载；
     //   键 = (ActorRef, HexCoord)，家户 actor id 由 HouseholdId 唯一派生（不再从 CohortKey 拼）。
@@ -274,6 +284,15 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             currentSocial = outcome.data();
             if (!outcome.isEmpty()) {
               stepper.applyPopulationChange(outcome.changeList());
+              LOG.info(
+                  "event=POPULATION_WRITEBACK day={} births={} deaths={} households={} population={}",
+                  day,
+                  outcome.births(),
+                  outcome.deaths(),
+                  stepper.classRows().size(),
+                  stepper.classRows().values().stream()
+                      .mapToLong(ClassRow::population)
+                      .sum());
               // ★★ S1.4.1 的跨切片收口：出生落在**新的 born lot**（社会侧），存量 lot 只减死亡 ⇒ 在这里按行人口权重
               //   为新批次补建份额，然后逐 lot 硬校验。顺序必须在 landAccountSession 之前（份额不进账户，但它与行人口
               //   同属 economy 工作副本，先收口再构造终态）。
@@ -304,6 +323,19 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           }
         }
         EconomyData currentEconomy = stepper.finish();
+        long finalPopulation = 0L;
+        for (ClassRow row : currentEconomy.classes().values()) {
+          finalPopulation += row.population();
+        }
+        LOG.info(
+            "event=ECONOMY_ADVANCE_END mapId={} toTick={} days={} finalPopulation={} finalHouseholds={} finalDebtContracts={} finalMarkets={}",
+            mapId,
+            to.get().tick(),
+            to.get().tick() - range.from().tick(),
+            finalPopulation,
+            currentEconomy.classes().size(),
+            currentEconomy.debtContracts().size(),
+            currentEconomy.markets().size());
         return new WorldTimeProposal(
             NAMESPACE,
             Map.of(

@@ -58,9 +58,11 @@ import java.util.Set;
  * @param lastSettledDay 经济切片最近一次日结算的世界日；★ 本批由"当前 tick"派生（日结算与状态推进同步）——若手搭一个 未经结算的状态，本值仍等于
  *     tick，调用方须自行核对（{@code provenance} 里写明）
  * @param priceMode 本轮报价模式（固定 / 自适应）；★ 固定模式下也必须显式给出（M2.6 判据③）
- * @param adaptivePricingEnabled 自适应开关的当值（默认 false）
+ * @param adaptivePricingEnabled 自适应开关的当值（2026-10-07 起默认 true）
  * @param crossRegionSettlementImmediate 跨区结算暂设即时（恒 true；M2.0 #4 必须在读数里标注）
  * @param priceUpdates 自适应模式下的逐 (集散节点, 商品) 改价记录；固定模式恒空
+ * @param creditFills ★★ D-030：来自进程内 {@link MarketReport#creditFills()} 的信用成交透传（只读；没有报告 ⇒ 空表，
+ *     不填 0）；{@code deriveFor} 时只含落点在该焦点区成员格上的信用成交
  * @param regions 逐区读数（{@code deriveFor} 时只含焦点区）
  * @param provenance 每个数"从哪来、什么窗口、人口快照是什么"的机器可读标注
  * @param unavailable 读不到的项与**具名原因**（键 = 项名；绝不填 0）
@@ -72,6 +74,7 @@ public record MarketReadout(
     boolean adaptivePricingEnabled,
     boolean crossRegionSettlementImmediate,
     List<MarketReport.PriceUpdate> priceUpdates,
+    List<MarketReport.CreditFill> creditFills,
     List<RegionReadout> regions,
     Map<String, String> provenance,
     Map<String, String> unavailable) {
@@ -80,6 +83,7 @@ public record MarketReadout(
     Objects.requireNonNull(lastSettledDay, "lastSettledDay");
     Objects.requireNonNull(priceMode, "priceMode");
     priceUpdates = priceUpdates == null ? List.of() : List.copyOf(priceUpdates);
+    creditFills = creditFills == null ? List.of() : List.copyOf(creditFills);
     regions = regions == null ? List.of() : List.copyOf(regions);
     provenance = Collections.unmodifiableMap(copyStrings(provenance));
     unavailable = Collections.unmodifiableMap(copyStrings(unavailable));
@@ -338,6 +342,15 @@ public record MarketReadout(
         data.meta().isPresent() && tick >= data.meta().orElseThrow().activatedDay()
             ? OptionalLong.of(tick)
             : OptionalLong.empty();
+    // ★★ D-030：信用成交只读透传（焦点区读口按落点格过滤；没有报告 ⇒ 空表，不填 0）。
+    List<MarketReport.CreditFill> creditFills = new ArrayList<>();
+    if (report.isPresent()) {
+      for (MarketReport.CreditFill fill : report.get().creditFills()) {
+        if (regionByHex.containsKey(fill.hex())) {
+          creditFills.add(fill);
+        }
+      }
+    }
     return new MarketReadout(
         tick,
         lastSettledDay,
@@ -346,6 +359,7 @@ public record MarketReadout(
         MarketSettlement.MARKET_ADAPTIVE_PRICING_ENABLED,
         MarketReport.CROSS_REGION_SETTLEMENT_IMMEDIATE,
         report.map(MarketReport::priceUpdates).orElse(List.of()),
+        creditFills,
         regionReadouts,
         provenance,
         unavailable);
@@ -691,6 +705,6 @@ public record MarketReadout(
   private static final String LAST_SETTLED_DAY_PROVENANCE =
       "lastSettledDay 由当前 state tick 派生（经济日结算与状态推进同步）；手搭状态未经结算时仍等于 tick，读的人自行核对";
   private static final String PRICE_MODE_PROVENANCE =
-      "fixed = 固定报价（默认）；adaptive = 按供需每轮调价（MarketSettlement.MARKET_ADAPTIVE_PRICING_ENABLED）";
+      "fixed = 固定报价（可回退模式）；adaptive = 按供需每轮调价（MarketSettlement.MARKET_ADAPTIVE_PRICING_ENABLED，2026-10-07 起默认 true）";
   private static final String CROSS_REGION_PROVENANCE = "跨区结算暂设即时（M2.0 #4）：货款/运费在发运日结清、货在 ETA 后到";
 }

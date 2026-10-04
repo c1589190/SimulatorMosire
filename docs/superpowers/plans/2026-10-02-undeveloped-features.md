@@ -140,3 +140,11 @@
 
 **实现批次建议**（详见汇总报告 §三）：批次 0 读口+逃生口（城市/国家/军队读口、`submitBatch` 工具、`nameHex`）→
 批次 1 军事转移/拆兵/休整+drain → 批次 2 迁都+人口 → 批次 3 轰城 → 批次 4 外交/附庸/全国视野 → 批次 5 人物/家族 → 批次 6 长程。
+
+## 家户文化 / 基层组织效果（2026-10-04 用户口述）
+- [ ] **给单个家户挂文化/基层组织效果**（例：穆斯林家户放贷额度 −90%；按文化规则禁止/改写有息贷款）。
+- 现状：`EconomyData.classes()` 只有 `HouseholdId → ClassRow`（view = hex/residence/stratum），没有文化、宗教、
+  民族、基层组织字段；市场信用当前对所有家户统一收 `BORROW_RATE_PER_MILLE_PER_CYCLE = 20‰` 利息。
+- 用户 2026-10-04 明确：**只写进规划，不实现**。
+- 详细规划与集成点：`docs/superpowers/plans/2026-10-04-household-culture-and-community-effects-plan.md`
+  （含“当前家户存在哪”的坐标表、未来效果形状、riba/无息合同待裁定项）。

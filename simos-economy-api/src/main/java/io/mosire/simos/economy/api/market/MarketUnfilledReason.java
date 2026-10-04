@@ -95,7 +95,26 @@ public enum MarketUnfilledReason {
    * 的上限，超出的买方需求因此没成交。★ 它是<b>区级制度原因</b>，与逐 hex 的物流成本（{@code HexTradeCost} 的实物损耗）
    * 是两层：这一档不得被用来表达"路远/运力不足"。
    */
-  REGULATION_QUOTA("regulation_quota");
+  REGULATION_QUOTA("regulation_quota"),
+
+  /**
+   * ★★ <b>D-030/D-031 市场信用：可借头寸凑不成正交易</b>—— 两个可借池都还有剩余，但剩余头寸不足以形成一笔正金额的
+   * 贷款/实物借出；或现金与信用都无法覆盖该买方剩余。★ D-031 起它<b>不再表示"借款人额度为 0"</b>（借款人侧已经没有
+   * 额度上限；不存在 headroom 这一道门）。
+   */
+  NO_CREDIT_LIMIT("no_credit_limit"),
+
+  /**
+   * ★★ <b>D-030 市场信用：货币可借池为空</b>—— 买方仍有缺口，但本区没有任何出借人余额扣除保留额后还有可借额
+   * （或可借额不足以形成一笔正金额的贷款）。实物借贷是紧随其后的第二步，本档只在实物也补不上该缺口时落。
+   */
+  NO_LENDABLE_MONEY("no_lendable_money"),
+
+  /**
+   * ★★ <b>D-030 市场信用：商品可借池为空</b>—— 现金成交后该商品的卖单剩余里没有**可成为债权人的卖家**（本批 = 家户
+   * 卖家）的可借头寸，或压根没有剩余；货币借贷必须绑定"买得到这批货"，无货可买 ⇒ 不放贷。
+   */
+  NO_LENDABLE_GOODS("no_lendable_goods");
 
   private final String value;
 

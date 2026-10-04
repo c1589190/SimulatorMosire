@@ -5,7 +5,6 @@ import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtUnit;
-import io.mosire.simos.economy.api.debt.MonetaryConversion;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtContractId;
@@ -22,6 +21,7 @@ import io.mosire.simos.economy.model.DebtIndex;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionUnit;
 import java.util.ArrayList;
@@ -56,14 +56,17 @@ import java.util.function.Function;
  * 切片后给出； economy 自身不认识 {@code ActorData}（铁律 3）。库存读不到（函数返回 {@link OptionalLong#empty()}）⇒ {@link
  * DebtCapacity#pledgeableGrainSurplusValue()} 为空，headroom 也空（读口标具名缺失），不用 0 冒充。
  *
- * <p>★★ <b>既有债务怎么算</b>（E4b 只做粮信用线）：
+ * <p>★★ <b>既有债务怎么算</b>（D-030 §3.4）：
  *
  * <ul>
- *   <li>同 unit（{@code DebtUnit.Commodity(GRAIN)}）= 粮 unit：本金进 {@link
- *       DebtCapacity#existingDebt()}，参与 headroom 减法；
- *   <li>货币／其它商品的债：<b>不硬折</b>。只有 terms 的 {@link MonetaryConversion} 明确允许折偿、且价格钩子给出有效粮等值时， 才折成粮加进
- *       {@code existingDebt}；否则进 {@code unpricedDebtAmount}／{@code unpricedDebtCount}。E4b 两侧调用点传
- *       {@link #NO_UNIT_PRICES}（价格源属 E5）⇒ 当前所有非粮债都落在 unpriced，规则本身已经接线、不是“以后再说”。
+ *   <li>价格源由调用方给的 {@link DebtUnitValueLookup} 决定：缺省重载传 {@link #NO_UNIT_PRICES} 时，粮 unit 按
+ *       identity 原值计入（旧 E4b 行为逐值保留），其它 unit 一律无法折价；
+ *   <li>生产路径改传 {@link #marketPriceLookup(Map)} ⇒ 用该家户所在市场的价格表按 §3.4 公式折算成粮等值：
+ *       {@code Commodity(c): principal × price(c) / price(grain)}；{@code Money(cur): principal × 1000 /
+ *       price(grain)}（只在 {@code cur == market.numeraire} 时；市场缺该单位价 ⇒ 不可定价）；
+ *   <li><b>可定价债务全部进 {@link DebtCapacity#existingDebt()}</b>；仍有任一不可定价债务 ⇒ 该户新信用额度按 0
+ *       fail-closed，见 {@link #newCreditHeadroomMilli(DebtCapacity)}；不可定价的本金原始和与条数仍从 {@link
+ *       DebtCapacity#unpricedDebtAmount()}／{@link DebtCapacity#unpricedDebtCount()} 读出。
  * </ul>
  *
  * <p>★ <b>确定性</b>：输出按输入 {@code rows} 的迭代序（调用方拿 {@code HouseholdId} 键取值，顺序不参与身份）；内部索引 只做“一次派生、逐户
@@ -74,10 +77,10 @@ public final class DebtCapacityBook {
   private DebtCapacityBook() {}
 
   /**
-   * ★★ <b>债务标的价格钩子</b>：返回该债本金折成粮的等值（毫粮）；返回负数 = <b>没有有效价格／不允许折</b> ⇒ 记 unpriced。
+   * ★★ <b>债务标的价格钩子</b>：返回该债本金折成粮的等值（毫粮）；返回负数 = <b>没有有效价格</b> ⇒ 记 unpriced。
    *
-   * <p>E4b 尚无价格源，两个调用点都传 {@link #NO_UNIT_PRICES}；E5 的 {@code LiquidationPolicy}／价格源落地后实现本接口即可， 不需要改
-   * {@link DebtCapacity} 的公式。
+   * <p>生产路径不再传本常量：它只保留给旧读口/旧测试（粮 identity、其它 unit 不折的旧口径）。生产借贷路径用
+   * {@link #marketPriceLookup(Map)} 按市场价目表现算。
    */
   @FunctionalInterface
   public interface DebtUnitValueLookup {
@@ -88,8 +91,47 @@ public final class DebtCapacityBook {
     long grainValueMilliOf(DebtContract debt);
   }
 
-  /** ★ 未落地价格源：任何非粮债都折不了（返回负数 ⇒ 全部计 unpriced，不硬折）。 */
+  /**
+   * ★ 未落地价格源的旧口径：任何 unit 都返回负数（不折）。{@link #capacities} 对 {@code null} 或本常量保留旧
+   * “粮 identity、其它 unit 不折”的行为；直接调用本 lambda 则按契约恒返回负数。
+   */
   public static final DebtUnitValueLookup NO_UNIT_PRICES = debt -> -1L;
+
+  /**
+   * ★★ <b>从市场价目表构造的债务折粮 lookup</b>——D-030 §3.4 的<b>唯一拼写点</b>。
+   *
+   * <p>价格来源 = {@code marketByHousehold} 给该债务人家户的市场；公式复用 {@link
+   * DebtValuation#grainEquivalentMilli(long, DebtUnit, Market)}（毫粮等值），因此与偿还侧的任意 medium 折算是同一套价目表
+   * 口径。家户没有市场、没有 grain 价、没有该单位价 ⇒ 返回负数（该债计 unpriced；该户新信用 fail-closed）。
+   *
+   * @param marketByHousehold 家户 → 其所在市场区默认价目表（缺键或值 null = 没有价目表）
+   */
+  public static DebtUnitValueLookup marketPriceLookup(Map<HouseholdId, Market> marketByHousehold) {
+    Objects.requireNonNull(marketByHousehold, "marketByHousehold 不得为 null");
+    return debt -> {
+      Objects.requireNonNull(debt, "debt 不得为 null");
+      Market market = marketByHousehold.get(debt.debtor());
+      return DebtValuation.grainEquivalentMilli(debt.principal(), debt.unit(), market).orElse(-1L);
+    };
+  }
+
+  /**
+   * ★★ <b>新信用 headroom 的生产口径</b>（D-030 §3.4 的 fail-closed 点）：
+   *
+   * <pre>
+   * unpricedDebtCount > 0 ⇒ 0（任一不可定价债务 ⇒ 该户不借，不超借）
+   * 否则                    ⇒ capacity.headroom()（读不到 ⇒ 0，与旧调用点“缺键/读不到 = 0”一致）
+   * </pre>
+   *
+   * <p>★ {@link DebtCapacity} 的字段与公式未变：headroom 仍只减 “可定价债务合计”；本方法把“仍有不可定价债务” 这一条
+   * fail-closed 规则收在唯一拼写点，借贷调用方必须用它而不是直接读 {@code capacity.headroom()}。
+   */
+  public static long newCreditHeadroomMilli(DebtCapacity capacity) {
+    if (capacity == null || capacity.unpricedDebtCount() > 0) {
+      return 0L;
+    }
+    return capacity.headroom().orElse(0L);
+  }
 
   /**
    * ★★ <b>读口便捷入口</b>：从 {@link EconomyData} 的当前值算全部家户的容量（时点口径；E4b 的库存由 app 传入）。
@@ -211,7 +253,8 @@ public final class DebtCapacityBook {
    * @param assetShares 实物资产总账（只读；规模由它派生）
    * @param operatorConditions 经营者状态（只读；计划规模系数用；缺键按 ACTIVE）
    * @param pledgeableAssetPolicyValue 可质押资产政策价值钩子（毫粮；E4b 恒 0）
-   * @param debtUnitValueLookup 非粮债折粮钩子（E4b 用 {@link #NO_UNIT_PRICES}）
+   * @param debtUnitValueLookup 债务折粮钩子；旧读口用 {@link #NO_UNIT_PRICES}，生产借贷路径用 {@link
+   *     #marketPriceLookup(Map)}
    */
   public static Map<HouseholdId, DebtCapacity> capacities(
       Map<HouseholdId, ClassRow> rows,
@@ -237,6 +280,11 @@ public final class DebtCapacityBook {
     Objects.requireNonNull(industries, "industries 不得为 null");
     Objects.requireNonNull(assetShares, "assetShares 不得为 null");
     Objects.requireNonNull(operatorConditions, "operatorConditions 不得为 null");
+
+    // ★ 旧调用点传 null / NO_UNIT_PRICES 时保留旧 E4b 行为：粮 unit 按 identity 计入，其它 unit 不折；生产路径显式传
+    //   marketPriceLookup（走 §3.4 公式，缺 grain 价/缺单位价一律 unpriced）。
+    boolean legacyGrainIdentity =
+        debtUnitValueLookup == null || debtUnitValueLookup == NO_UNIT_PRICES;
 
     // ★ 两个一次派生的索引：债务人 → 债务、operator → unit。逐户 O(债务 + unit) 查表，不做 O(户 × unit) 全扫。
     Map<HouseholdId, List<DebtContractId>> debtsByDebtor = DebtIndex.byDebtor(debts);
@@ -276,15 +324,15 @@ public final class DebtCapacityBook {
         if (debt == null) {
           continue; // 防御性判空（债务表在本次调用内只读；缺条 = 坏状态 ⇒ 不猜、不计）
         }
-        if (debt.unit() instanceof DebtUnit.Commodity commodity
-            && commodity.commodity().equals(EconomyCommodities.GRAIN)) {
-          existingDebt = Math.addExact(existingDebt, debt.principal());
-          continue;
-        }
-        // ★ 非粮 unit：只认“terms 明确允许折偿 + 价格钩子给出有效价”这一条；否则不硬折、计 unpriced。
+        // ★ D-030 §3.4：市场 lookup 走统一价格钩子；旧 NO_UNIT_PRICES/null 走“粮 identity、其它 unit 不折”的旧口径
+        //   （旧行为逐值保留）。不再读 terms.monetaryConversion（“可定价债务全部进入 existingDebt”）。
         long converted = -1L;
-        if (debtUnitValueLookup != null
-            && debt.terms().monetaryConversion() != MonetaryConversion.NOT_ALLOWED) {
+        if (legacyGrainIdentity) {
+          if (debt.unit() instanceof DebtUnit.Commodity commodity
+              && commodity.commodity().equals(EconomyCommodities.GRAIN)) {
+            converted = debt.principal();
+          }
+        } else {
           converted = debtUnitValueLookup.grainValueMilliOf(debt);
         }
         if (converted >= 0L) {

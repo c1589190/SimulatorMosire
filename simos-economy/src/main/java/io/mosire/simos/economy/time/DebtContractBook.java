@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.time;
 
+import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -44,6 +45,9 @@ import java.util.function.Predicate;
  * ClassRow.debts}。结算会话内每建一条新合同，调用方用 {@link #withDebtReference} 把债务人行的派生引用补上； 持久化时仍以合同表为唯一权威。
  */
 public final class DebtContractBook {
+
+  /** 逐笔债务变动日志（debt 分类；TRACE 用于对账，DEBUG 用于状态/核销）。 */
+  private static final org.slf4j.Logger DEBT = EconomyLog.debt();
 
   private DebtContractBook() {}
 
@@ -129,6 +133,20 @@ public final class DebtContractBook {
               status);
     }
     contracts.put(id, next);
+    if (DEBT.isTraceEnabled()) {
+      DEBT.trace(
+          "event=DEBT_UPSERT new={} id={} debtor={} creditor={} unit={} amount={} principal={} ratePerMille={} dueCycle={} status={}",
+          existing == null,
+          id.value(),
+          debtor.value(),
+          creditor.value(),
+          unit.key(),
+          amount,
+          next.principal(),
+          terms.interestRatePerMillePerCycle(),
+          next.dueCycle(),
+          next.status());
+    }
     return next;
   }
 
@@ -185,6 +203,17 @@ public final class DebtContractBook {
             debt.dueCycle(),
             status);
     contracts.put(id, next);
+    if (DEBT.isTraceEnabled()) {
+      DEBT.trace(
+          "event=DEBT_REDUCE id={} debtor={} creditor={} unit={} amount={} remaining={} status={}",
+          id.value(),
+          debt.debtor().value(),
+          debt.creditor().value(),
+          debt.unit().key(),
+          amount,
+          remaining,
+          status);
+    }
     return next;
   }
 
@@ -236,6 +265,18 @@ public final class DebtContractBook {
             debt.dueCycle(),
             status);
     contracts.put(id, next);
+    if (DEBT.isTraceEnabled()) {
+      DEBT.trace(
+          "event=DEBT_INTEREST id={} debtor={} creditor={} unit={} charged={} principal={} day={} status={}",
+          id.value(),
+          debt.debtor().value(),
+          debt.creditor().value(),
+          debt.unit().key(),
+          charged,
+          principal,
+          day,
+          status);
+    }
     return next;
   }
 
@@ -281,6 +322,17 @@ public final class DebtContractBook {
             debt.dueCycle(),
             status);
     contracts.put(id, next);
+    if (DEBT.isDebugEnabled()) {
+      DEBT.debug(
+          "event=DEBT_STATUS id={} debtor={} creditor={} unit={} principal={} from={} to={}",
+          id.value(),
+          debt.debtor().value(),
+          debt.creditor().value(),
+          debt.unit().key(),
+          debt.principal(),
+          debt.status(),
+          status);
+    }
     return next;
   }
 
@@ -332,6 +384,19 @@ public final class DebtContractBook {
             debt.dueCycle(),
             status);
     contracts.put(id, next);
+    if (DEBT.isDebugEnabled()) {
+      DEBT.debug(
+          "event=DEBT_FORGIVE id={} debtor={} creditor={} unit={} amount={} remaining={} from={} to={} reason={}",
+          id.value(),
+          debt.debtor().value(),
+          debt.creditor().value(),
+          debt.unit().key(),
+          amount,
+          remaining,
+          debt.status(),
+          status,
+          reason);
+    }
     return new Forgiveness(
         id, debt.principal(), amount, remaining, debt.status(), status, remaining == 0L, reason);
   }

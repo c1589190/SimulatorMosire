@@ -7,12 +7,12 @@ import java.util.List;
  * ★★ <b>市场报价模式</b>（M2.6 的第一版与可选自适应）—— 它是<b>读数契约</b>的一部分：报表必须能让读的人分清"这是固定价，还是
  * 结算按供需调过价"，否则同一列数字在两种模式下的含义完全不同。
  *
- * <p>★★ <b>模式只有一个开关</b>：{@code MarketSettlement.MARKET_ADAPTIVE_PRICING_ENABLED}（默认 {@code false} =
- * {@link #FIXED}）。本枚举是那个开关的稳定读侧拼法，GUI / MCP 都读它，不各自解释一个布尔。
+ * <p>★★ <b>模式只有一个开关</b>：{@code MarketSettlement.MARKET_ADAPTIVE_PRICING_ENABLED}（2026-10-07 用户裁定打开 =
+ * {@link #ADAPTIVE}）。本枚举是那个开关的稳定读侧拼法，GUI / MCP 都读它，不各自解释一个布尔。
  *
  * <ul>
- *   <li>{@link #FIXED}（{@code fixed}）—— 本轮固定报价：价格表是 GM 数据，结算只按它过滤/成交，不改它；
- *   <li>{@link #ADAPTIVE}（{@code adaptive}）—— 可选自适应：每轮结算后按 {@code z = clamp((有预算且合限价的需求 − 可出售供给) /
+ *   <li>{@link #FIXED}（{@code fixed}）—— 固定报价：价格表是 GM 数据，结算只按它过滤/成交，不改它；
+ *   <li>{@link #ADAPTIVE}（{@code adaptive}）—— 自适应：每轮结算后按 {@code z = clamp((有预算且合限价的需求 − 可出售供给) /
  *       max(需求 + 供给, ε), −1, 1)}、{@code p_next = max(p_min, round(p × (1 + α·z)))} 写回价格表。
  * </ul>
  *
@@ -21,10 +21,10 @@ import java.util.List;
  */
 public enum PriceMode {
 
-  /** 固定报价：价格表是数据，结算不改价（M2.6 第一版；默认）。 */
+  /** 固定报价：价格表是数据，结算不改价（保留为可回退模式）。 */
   FIXED("fixed"),
 
-  /** 自适应报价：按供需 z 每轮调价（M2.6 可选；默认关；α ≤ 5%/轮、定点整数）。 */
+  /** 自适应报价：按供需 z 每轮调价（2026-10-07 起默认；α ≤ 5%/轮、定点整数）。 */
   ADAPTIVE("adaptive");
 
   private final String value;

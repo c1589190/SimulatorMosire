@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.HouseholdId;
@@ -34,6 +35,9 @@ import java.util.Optional;
  * 一次性挂上。
  */
 public final class EconomyDayStepper implements AutoCloseable {
+
+  /** 会话生命周期日志（settlement 分类；逐日明细由 EconomySettlement 的阶段日志承担）。 */
+  private static final org.slf4j.Logger LOG = EconomyLog.settlement();
 
   private final boolean plantingDrawsFirst;
   private final int famineMortalityPerMille;
@@ -234,12 +238,26 @@ public final class EconomyDayStepper implements AutoCloseable {
     if (report != null) {
       lastMarketReport = report;
     }
-    return ledger.toLedger();
+    ProductionLedger result = ledger.toLedger();
+    if (LOG.isDebugEnabled()) {
+      LOG.debug(
+          "event=STEPPER_STEP day={} rows={} units={} transfers={} marketReport={} shipments={}",
+          day,
+          session.sheet().rows().size(),
+          session.sheet().units().size(),
+          result.transfers().size(),
+          report != null,
+          session.sheet().shipments().size());
+    }
+    return result;
   }
 
   /** ★★ 把逐批次出生/死亡回写经济侧（行人口、成员份额、劳动配额与流水）。 */
   public void applyPopulationChange(List<LotChange> changes) {
     Objects.requireNonNull(changes, "changes");
+    if (!changes.isEmpty()) {
+      LOG.info("event=POPULATION_CHANGE_APPLIED changes={}", changes.size());
+    }
     EconomySettlement.applyPopulationChangeInto(session, changes);
   }
 
@@ -251,6 +269,9 @@ public final class EconomyDayStepper implements AutoCloseable {
    */
   public void applyMigrations(List<LotMigration> migrations, long day) {
     Objects.requireNonNull(migrations, "migrations");
+    if (!migrations.isEmpty()) {
+      LOG.info("event=MIGRATION_APPLIED_INTO_STEPPER day={} count={}", day, migrations.size());
+    }
     LotMigrationBook.applyInto(session, migrations, day);
   }
 
