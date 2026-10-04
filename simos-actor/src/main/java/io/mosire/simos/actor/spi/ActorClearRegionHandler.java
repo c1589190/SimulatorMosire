@@ -2,6 +2,7 @@ package io.mosire.simos.actor.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorLog;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.Actor;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code actor.ClearRegion}（P1b1，2026-10-01 后端 + MCP 稳定化计划）：<b>GM-only 区域 actor 账本清空命令</b>——
@@ -53,6 +55,8 @@ import java.util.Set;
  */
 public final class ActorClearRegionHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
+
+  private static final Logger LOG = ActorLog.account();
 
   /** 命令类型（唯一拼写点：catalog 提示、Shell 注册与组合工具都从这里取/对齐）。 */
   public static final String TYPE = "actor.ClearRegion";
@@ -91,6 +95,14 @@ public final class ActorClearRegionHandler
                   ownersWithAccountsBefore.contains(owner)
                       && !ownersWithAccountsAfter.contains(owner));
       ActorData next = base.withAccounts(accounts).withActors(actors);
+      LOG.info(
+          "event=ACTOR_REGION_CLEARED region={} hexes={} accountsBefore={} accountsAfter={} actorsBefore={} actorsAfter={}",
+          regionId,
+          hexes.size(),
+          base.accounts().size(),
+          accounts.size(),
+          base.actors().size(),
+          actors.size());
       return new HandlerOutcome.Applied(ActorChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
       // ★ 域构造期守卫（若清空边界写错）也在这里折成具名拒绝，不穿成整条推进失败。

@@ -1,6 +1,7 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.AccessLimit;
@@ -17,6 +18,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * {@code sd.CreateDecisionMaker} 命令的处理器（spec §四）。
@@ -34,6 +36,8 @@ import java.util.Set;
  * viewScope.empty()} 那种 deny-all：新语义下空限制 = 不收紧，否则新建的决策人当场变瞎。
  */
 public final class CreateDecisionMakerHandler implements CommandHandler {
+
+  private static final Logger LOG = SdLog.decision();
 
   @Override
   public String type() {
@@ -64,6 +68,12 @@ public final class CreateDecisionMakerHandler implements CommandHandler {
       }
       Map<DecisionMakerId, DecisionMaker> next = new LinkedHashMap<>(base.decisionMakers());
       next.put(id, new DecisionMaker(id, affiliation, allowedTools, AccessLimit.empty(), cadence));
+      LOG.info(
+          "event=SD_DECISION_MAKER_CREATED id={} affiliation={} cadence={} allowedTools={}",
+          id.value(),
+          affiliation,
+          cadence,
+          allowedTools.size());
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDecisionMakers(next)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

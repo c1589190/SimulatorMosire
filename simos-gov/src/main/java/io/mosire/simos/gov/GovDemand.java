@@ -14,6 +14,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * 辖区逐格行政需求（阶段 11a，计划 §2.2 / §3）：给定地图、社会数据与一个 GOV 单位，算出它**管辖区域内每一格**的治安/文书需求。
@@ -43,6 +44,8 @@ import java.util.Set;
  * {@code Map.copyOf}（它不承诺迭代序）。
  */
 public final class GovDemand {
+
+  private static final Logger LOG = GovLog.demand();
 
   private GovDemand() {}
 
@@ -89,6 +92,11 @@ public final class GovDemand {
         }
       }
     }
+    LOG.debug(
+        "event=GOV_DEMAND_COMPUTED unit={} hexes={} jurisdiction={}",
+        unit.id().value(),
+        demand.size(),
+        jurisdiction.isPresent());
     return Collections.unmodifiableMap(demand); // ★ 冻在返回处（保序）
   }
 

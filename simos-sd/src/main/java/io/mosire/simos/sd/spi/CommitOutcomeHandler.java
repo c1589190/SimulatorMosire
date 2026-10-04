@@ -1,6 +1,7 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatOutcomeId;
@@ -18,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.slf4j.Logger;
 
 /**
  * {@code sd.CommitCombatOutcome} 命令的处理器（spec §四，C2）：为某交战选定**唯一**实际结局。
@@ -30,6 +32,8 @@ import java.util.Optional;
  * 恰一个）。
  */
 public final class CommitOutcomeHandler implements CommandHandler {
+
+  private static final Logger LOG = SdLog.combat();
 
   @Override
   public String type() {
@@ -77,6 +81,11 @@ public final class CommitOutcomeHandler implements CommandHandler {
               combatState.participants(),
               Optional.of(outcomeId),
               combatState.losses()));
+      LOG.info(
+          "event=SD_COMBAT_OUTCOME_COMMITTED combat={} stage={} outcome={}",
+          combatId.value(),
+          stageId.value(),
+          outcomeId.value());
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withCombatStates(next)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

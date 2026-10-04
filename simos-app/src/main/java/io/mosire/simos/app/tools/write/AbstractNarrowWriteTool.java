@@ -12,6 +12,7 @@ import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
 
 /**
  * 专用窄工具的共同落点（spec §八.3，N9）：**命令类型固定**、参数只有载荷与坐标，最终仍走 {@code core.submit}（铁律 2）。
@@ -35,6 +37,8 @@ import java.util.UUID;
  * <p>★ 敏感写：{@code spec().sensitive()=true} + {@link ToolGate.Ask}（走审批留痕）。
  */
 abstract class AbstractNarrowWriteTool implements AgentTool {
+
+  private static final Logger TOOL = AppLog.tool();
 
   private final CoreSimos core;
   private final String initiator;
@@ -201,14 +205,23 @@ abstract class AbstractNarrowWriteTool implements AgentTool {
 
   @Override
   public final ToolResult execute(ToolContext context) {
+    TOOL.debug("event=TOOL_CALL tool={} commandType={}", name(), commandType());
     // ★ 署名先于资源判：它最便宜、也最具体（"换个资源就行"与"换个署名就行"是两条不同的纠正方向）。
     Optional<String> violation = signatureViolation(context);
     if (violation.isPresent()) {
+      TOOL.debug("event=TOOL_RESULT tool={} result=Rejected reason=signature", name());
       return ToolResult.error("REJECTED", violation.get());
     }
     try {
       ToolSupport.requireAll(context, Operation.WRITE, writeResources(context));
-      return afterSubmit(context, submit(context));
+      SubmittedCommand submitted = submit(context);
+      ToolResult result = afterSubmit(context, submitted);
+      TOOL.debug(
+          "event=TOOL_RESULT tool={} commandId={} result={}",
+          name(),
+          submitted.commandId(),
+          submitted.result().getClass().getSimpleName());
+      return result;
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     } catch (ResourceDeniedException e) {

@@ -1,6 +1,7 @@
 package io.mosire.simos.sd.time;
 
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatStageId;
@@ -37,6 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * sd 侧的时间推进参与者（spec §五.2，C4）：**每个 sd 命名空间只有一个**（{@code putIfAbsent} 重复即抛）。
@@ -54,6 +56,10 @@ import java.util.Set;
  * <p>★ {@code range.to} 缺省（无上界推进）⇒ **零变更提案、不抛**（照 {@code UnitTimeParticipant} 的边界）。
  */
 public final class SdTimeParticipant implements TimeParticipant {
+
+  private static final Logger LOG = SdLog.time();
+
+  private static final Logger TRACE = SdLog.trace();
 
   private static final String NAMESPACE = "sd";
 
@@ -78,6 +84,14 @@ public final class SdTimeParticipant implements TimeParticipant {
       return new TimeProposal(NAMESPACE, SdChangeSet.between(base, base), Set.of(), Set.of());
     }
     SimosTimestamp end = to.get();
+    LOG.debug(
+        "event=SD_ADVANCE_START from={} to={} effects={} combatStates={}",
+        range.from().tick(),
+        end.tick(),
+        base.effects().size(),
+        base.combatStates().size());
+    long firedEffects = 0L;
+    long advancedStages = 0L;
     RevisionId atRevision = state.meta().ref().revision();
     UnitState units = unitsOf(state);
     Set<String> reads = new LinkedHashSet<>();
@@ -114,6 +128,15 @@ public final class SdTimeParticipant implements TimeParticipant {
                 effect.action(),
                 EffectStatus.FIRED,
                 effect.createdTick()));
+        firedEffects++;
+        if (TRACE.isTraceEnabled()) {
+          TRACE.trace(
+              "event=SD_EFFECT_FIRED day={} id={} kind={} action={}",
+              day,
+              effect.id().value(),
+              effect.kind(),
+              effect.action().getClass().getSimpleName());
+        }
         writes.add(effectAddress(effect.id()));
         applyAction(
             effect.action(), atRevision, at.tick(), todayBegin, combatStates, info, reads, writes);
@@ -153,11 +176,28 @@ public final class SdTimeParticipant implements TimeParticipant {
                 combatState.participants(),
                 combatState.selectedOutcome(),
                 combatState.losses()));
+        advancedStages++;
+        if (TRACE.isTraceEnabled()) {
+          TRACE.trace(
+              "event=SD_COMBAT_STAGE_ADVANCED day={} combat={} from={} to={}",
+              day,
+              combat.id().value(),
+              current.id().value(),
+              next.id().value());
+        }
         writes.add(stageAddress(combat.id(), next.id()));
       }
     }
 
     SdState target = base.withEffects(effects).withCombatStates(combatStates).withInfo(info);
+    LOG.info(
+        "event=SD_ADVANCE_END from={} to={} firedEffects={} advancedStages={} effects={} combatStates={}",
+        range.from().tick(),
+        end.tick(),
+        firedEffects,
+        advancedStages,
+        effects.size(),
+        combatStates.size());
     return new TimeProposal(NAMESPACE, SdChangeSet.between(base, target), reads, writes);
   }
 

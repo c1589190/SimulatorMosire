@@ -1,6 +1,7 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatOutcomeId;
@@ -22,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * {@code sd.RegisterEffect} 命令的处理器（spec §四/§三.6，C4）。
@@ -38,6 +40,8 @@ import java.util.Set;
  * <p>★ **白名单由装配注入**（`Shell` 收全量已注册命令类型后传入，且**排除 `sd.*`**——防自指递归，spec §四）。
  */
 public final class RegisterEffectHandler implements CommandHandler {
+
+  private static final Logger LOG = SdLog.decision();
 
   private final Set<String> allowedCommandTypes;
 
@@ -71,6 +75,8 @@ public final class RegisterEffectHandler implements CommandHandler {
       requireActionReferences(state, base, action);
       Map<EffectId, Effect> next = new LinkedHashMap<>(base.effects());
       next.put(id, new Effect(id, kind, trigger, action, EffectStatus.PLANNED, createdTick));
+      LOG.info(
+          "event=SD_EFFECT_REGISTERED id={} kind={} createdTick={}", id.value(), kind, createdTick);
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withEffects(next)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

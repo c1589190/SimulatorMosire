@@ -1,6 +1,7 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatStageId;
@@ -24,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * {@code sd.RecordCasualties} 命令的处理器（spec §四，C3）：战损以 **delta（事件）** 记入 {@link
@@ -40,6 +42,8 @@ import java.util.Set;
  * <p>★ {@code RECOVERABLE} v1 **只记类别、不设回池**（spec §〇.3）。{@code atRevision} 落 revision ⇒ 可回放且逐值相等。
  */
 public final class RecordCasualtiesHandler implements CommandHandler {
+
+  private static final Logger LOG = SdLog.combat();
 
   @Override
   public String type() {
@@ -102,6 +106,13 @@ public final class RecordCasualtiesHandler implements CommandHandler {
       if (combatState != null) {
         next = next.withCombatStates(nextStates);
       }
+      LOG.info(
+          "event=SD_CASUALTIES_RECORDED record={} combat={} stage={} deltas={} stateLinked={}",
+          recordId.value(),
+          combatId.value(),
+          stageId.value(),
+          deltas.size(),
+          combatState != null);
       return new HandlerOutcome.Applied(SdChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

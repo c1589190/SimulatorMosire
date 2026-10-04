@@ -2,6 +2,7 @@ package io.mosire.simos.actor.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorLog;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.map.hex.HexCoord;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code actor.Seed} 命令的处理器：**一次把逐格的初始 actor 状态种进切片** —— 一条命令、一条 revision（与 {@code economy.Seed}
@@ -47,6 +49,8 @@ import java.util.Set;
  */
 public final class ActorSeedHandler implements CommandHandler, CommandTargets {
 
+  private static final Logger LOG = ActorLog.seed();
+
   @Override
   public String type() {
     return "actor.Seed";
@@ -73,6 +77,10 @@ public final class ActorSeedHandler implements CommandHandler, CommandTargets {
       return new HandlerOutcome.Rejected(e.getMessage());
     }
     if (base.meta().isEmpty()) {
+      LOG.info(
+          "event=ACTOR_SEEDED first=true actors={} accounts={}",
+          seeded.actors().size(),
+          seeded.accounts().size());
       return new HandlerOutcome.Applied(ActorChangeSet.between(base, seeded)); // 首次播种：打标
     }
     // ★ 已激活 ⇒ 按格追加：先逐格判重（任一格已被占用 ⇒ 整份拒绝并点名该格），再并入现有切片。
@@ -91,6 +99,11 @@ public final class ActorSeedHandler implements CommandHandler, CommandTargets {
     ActorData merged =
         base.withActors(merge(base.actors(), seeded.actors()))
             .withAccounts(merge(base.accounts(), seeded.accounts()));
+    LOG.info(
+        "event=ACTOR_SEEDED first=false hexes={} actors={} accounts={}",
+        ActorPayloads.entryHexKeys(payload).size(),
+        merged.actors().size(),
+        merged.accounts().size());
     return new HandlerOutcome.Applied(ActorChangeSet.between(base, merged));
   }
 

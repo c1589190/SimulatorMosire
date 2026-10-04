@@ -1,6 +1,7 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.adjudication.VerdictFreezer;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.VerdictId;
@@ -16,6 +17,7 @@ import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * {@code sd.SubmitVerdict} 命令的处理器（spec §四 / §八.5，D3）：把裁决结果**冻结**成数据、落进 revision。
@@ -33,6 +35,8 @@ import java.util.Objects;
  * <p>拒绝：verdictId 已存在；payload 不过该断点 schema；subject 不在断点裁决面；meta 任一字段空白。
  */
 public final class SubmitVerdictHandler implements CommandHandler {
+
+  private static final Logger LOG = SdLog.decision();
 
   @Override
   public String type() {
@@ -61,6 +65,11 @@ public final class SubmitVerdictHandler implements CommandHandler {
       Verdict verdict = VerdictFreezer.freeze(id, breakpoint, subject, verdictPayload, meta, at);
       Map<VerdictId, Verdict> next = new LinkedHashMap<>(base.verdicts());
       next.put(id, verdict);
+      LOG.info(
+          "event=SD_VERDICT_SUBMITTED id={} breakpoint={} subject={}",
+          id.value(),
+          breakpoint.value(),
+          subject.canonical());
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withVerdicts(next)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DiplomaticEventId;
@@ -26,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code sd.DeleteNation}（P1.2 后端行政）：删除国家实体，<b>严格引用检查、默认不静默级联</b>。
@@ -40,7 +42,8 @@ import java.util.Objects;
  *
  * <ol>
  *   <li>{@link DecisionMaker} 的 {@link Affiliation.Nation} 仍指向该国家 ⇒ 先 {@code
- *       sd.DeleteDecisionMaker}（仅当其名下没有历史 Directive 时可用）或另行处理；★ 若该决策人已被 Directive 引用，当前命令面没有"删历史 Directive"的入口，完整清理路径缺失，见 P1.2 报告；
+ *       sd.DeleteDecisionMaker}（仅当其名下没有历史 Directive 时可用）或另行处理；★ 若该决策人已被 Directive 引用，当前命令面没有"删历史
+ *       Directive"的入口，完整清理路径缺失，见 P1.2 报告；
  *   <li>外交关系边 {@link DiplomaticRelation} 的 from/to 仍指向该国家 ⇒ 可显式给 {@code
  *       clearDiplomaticReferences=true} 随国删除，或先另行清理；
  *   <li>地图上仍有 {@code nation:&lt;id&gt;} tag 的 Region ⇒ 先 {@code map.UpdateRegion} 把 tag 改掉/清掉
@@ -55,6 +58,8 @@ import java.util.Objects;
  * <p>★ <b>GM-only</b>：删国是行政原语，不开放给决策令直调。
  */
 public final class DeleteNationHandler implements CommandHandler, CommandTargets, GmOnlyCommand {
+
+  private static final Logger LOG = SdLog.nation();
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "sd.DeleteNation";
@@ -150,6 +155,7 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
         }
         next = next.withDiplomaticEvents(remainingEvents);
       }
+      LOG.info("event=SD_NATION_DELETED id={} clearDiplomatic={}", id.value(), clearDiplomatic);
       return new HandlerOutcome.Applied(SdChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

@@ -1,6 +1,7 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.model.Combat;
@@ -15,6 +16,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * {@code sd.CreateCombat} 命令的处理器（spec §四，C1）。
@@ -29,6 +31,8 @@ import java.util.Set;
  * <p>★ 拒绝：id 已存在；参与单位不存在（只读 unit 切片，铁律 3）。
  */
 public final class CreateCombatHandler implements CommandHandler {
+
+  private static final Logger LOG = SdLog.combat();
 
   @Override
   public String type() {
@@ -55,6 +59,11 @@ public final class CreateCombatHandler implements CommandHandler {
       }
       Map<CombatId, Combat> next = new LinkedHashMap<>(base.combats());
       next.put(id, new Combat(id, name, List.of(), participants, Optional.empty()));
+      LOG.info(
+          "event=SD_COMBAT_CREATED id={} name={} participants={}",
+          id.value(),
+          name,
+          participants.size());
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withCombats(next)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

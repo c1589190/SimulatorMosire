@@ -2,6 +2,7 @@ package io.mosire.simos.calendar;
 
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * 按纬度分带 + 季界族 + 热带模型的季节系统（设计稿 §5；D-018 补裁/D-019）。
@@ -45,6 +46,8 @@ import java.util.Objects;
  */
 public final class ZonedSeasonSystem implements SeasonSystem {
 
+  private static final Logger LOG = CalendarLog.season();
+
   /** SOLAR_TERM 北半球四季起界（春/夏/秋/冬）的节气枚举序：立春/立夏/立秋/立冬。 */
   private static final int[] SOLAR_TERM_NORTH_START_TERM_INDICES = {21, 3, 9, 15};
 
@@ -70,6 +73,11 @@ public final class ZonedSeasonSystem implements SeasonSystem {
   public ZonedSeasonSystem(LatitudeBands bands, SeasonSettings settings) {
     this.bands = Objects.requireNonNull(bands, "bands");
     this.settings = Objects.requireNonNull(settings, "settings");
+    LOG.debug(
+        "event=CALENDAR_SEASON_CONFIGURED boundary={} tropicalModel={} bandsConfigured={}",
+        settings.boundary(),
+        settings.tropicalModel(),
+        bands.configured());
   }
 
   @Override

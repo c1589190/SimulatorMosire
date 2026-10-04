@@ -1,6 +1,7 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.DiplomaticRelation;
@@ -13,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.slf4j.Logger;
 
 /**
  * {@code sd.SetDiplomaticRelation} 命令的处理器（D-003 / D-005 / R6）：**upsert 一条有向外交关系边**。
@@ -35,6 +37,8 @@ import java.util.Optional;
  * simos.command.submit} / GM 窄工具。{@code sd.*} 本就不进指令白名单（禁自指），不担心嵌令递归。
  */
 public final class SetDiplomaticRelationHandler implements CommandHandler {
+
+  private static final Logger LOG = SdLog.diplomacy();
 
   @Override
   public String type() {
@@ -76,6 +80,12 @@ public final class SetDiplomaticRelationHandler implements CommandHandler {
       Map<DiplomaticRelationKey, DiplomaticRelation> next =
           new LinkedHashMap<>(base.diplomaticRelations());
       next.put(key, new DiplomaticRelation(kind, text, tick));
+      LOG.info(
+          "event=SD_DIPLOMATIC_RELATION_SET from={} to={} kindPresent={} tick={}",
+          from.value(),
+          to.value(),
+          kind.isPresent(),
+          tick);
       return new HandlerOutcome.Applied(
           SdChangeSet.between(base, base.withDiplomaticRelations(next)));
     } catch (IllegalArgumentException e) {

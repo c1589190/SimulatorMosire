@@ -2,6 +2,7 @@ package io.mosire.simos.actor.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorLog;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccount;
@@ -19,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code actor.AdjustAccounts} 命令的处理器（辖区阶段 6 / 计划 §6.2）：**按有符号净增量改 actor 账** —— 一条命令、 一条
@@ -83,6 +85,8 @@ import java.util.Objects;
  */
 public final class AdjustAccountsHandler implements CommandHandler, CommandTargets, GmOnlyCommand {
 
+  private static final Logger LOG = ActorLog.account();
+
   @Override
   public String type() {
     return "actor.AdjustAccounts";
@@ -102,6 +106,11 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
       JsonNode payload = ActorPayloads.parse(payloadJson);
       List<ActorPayloads.AccountAdjustment> entries = ActorPayloads.adjustments(payload);
       ActorData adjusted = apply(base, entries);
+      LOG.info(
+          "event=ACTOR_ACCOUNTS_ADJUSTED entries={} accountsBefore={} accountsAfter={}",
+          entries.size(),
+          base.accounts().size(),
+          adjusted.accounts().size());
       return new HandlerOutcome.Applied(ActorChangeSet.between(base, adjusted));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

@@ -21,7 +21,16 @@
        · 默认 io.mosire.simos.unit = INFO（UNIT_HOUSEHOLDS_SET / UNIT_HOUSEHOLD_ASSIGN / UNIT_HOUSEHOLD_DETACH）；
        · -Dsimos.unit.logLevel=DEBUG  开对账/汇总中间读数；
        · -Dsimos.unit.traceLevel=TRACE 再开逐家户逐项明细。
-     子 logger .household 继承根级别；.trace 单独用 traceLevel。 -->
+     子 logger .household 继承根级别；.trace 单独用 traceLevel。
+
+     ★★ P1.3 全项目 Log 骨架（2026-10-09 用户裁定"Log 必须加"）：
+       map / sd / actor / gov / army / calendar / core / app 八组开关，形态与 economy/social/unit 相同：
+       · 默认 io.mosire.simos.<module> = INFO（生命周期 + 每轮发生了什么）；
+       · -Dsimos.<module>.logLevel=DEBUG  开阶段池/决策/汇总/原因；
+       · -Dsimos.<module>.traceLevel=TRACE 再开逐笔/逐条明细（各模块 .trace 子 logger）。
+       子 logger（.edit/.decision/.account/.daily/.combat/.clock/.command/.advance/.store/.shell/.tool/.time/…）
+       继承模块根级别；core/app 既有的类 logger（如 io.mosire.simos.core.command.CommandBus、
+       io.mosire.simos.app.ShellMain）是模块根 logger 的子 logger，随开关整体升降级。 -->
 <Configuration status="WARN">
   <Properties>
     <Property name="economyLevel">${sys:simos.economy.logLevel:-INFO}</Property>
@@ -30,6 +39,22 @@
     <Property name="socialTraceLevel">${sys:simos.social.traceLevel:-INFO}</Property>
     <Property name="unitLevel">${sys:simos.unit.logLevel:-INFO}</Property>
     <Property name="unitTraceLevel">${sys:simos.unit.traceLevel:-INFO}</Property>
+    <Property name="mapLevel">${sys:simos.map.logLevel:-INFO}</Property>
+    <Property name="mapTraceLevel">${sys:simos.map.traceLevel:-INFO}</Property>
+    <Property name="sdLevel">${sys:simos.sd.logLevel:-INFO}</Property>
+    <Property name="sdTraceLevel">${sys:simos.sd.traceLevel:-INFO}</Property>
+    <Property name="actorLevel">${sys:simos.actor.logLevel:-INFO}</Property>
+    <Property name="actorTraceLevel">${sys:simos.actor.traceLevel:-INFO}</Property>
+    <Property name="govLevel">${sys:simos.gov.logLevel:-INFO}</Property>
+    <Property name="govTraceLevel">${sys:simos.gov.traceLevel:-INFO}</Property>
+    <Property name="armyLevel">${sys:simos.army.logLevel:-INFO}</Property>
+    <Property name="armyTraceLevel">${sys:simos.army.traceLevel:-INFO}</Property>
+    <Property name="calendarLevel">${sys:simos.calendar.logLevel:-INFO}</Property>
+    <Property name="calendarTraceLevel">${sys:simos.calendar.traceLevel:-INFO}</Property>
+    <Property name="coreLevel">${sys:simos.core.logLevel:-INFO}</Property>
+    <Property name="coreTraceLevel">${sys:simos.core.traceLevel:-INFO}</Property>
+    <Property name="appLevel">${sys:simos.app.logLevel:-INFO}</Property>
+    <Property name="appTraceLevel">${sys:simos.app.traceLevel:-INFO}</Property>
   </Properties>
   <Appenders>
     <Console name="Console" target="SYSTEM_OUT">
@@ -47,6 +72,24 @@
          .trace 由 simos.unit.traceLevel 单独控制；Root 保持 INFO。 -->
     <Logger name="io.mosire.simos.unit" level="${unitLevel}"/>
     <Logger name="io.mosire.simos.unit.trace" level="${unitTraceLevel}"/>
+    <!-- ★ P1.3：map / sd / actor / gov / army / calendar / core / app 八组开关（根 + .trace 子 logger）。
+         core/app 的既有类 logger 都挂在各自根之下 ⇒ 随 simos.core.logLevel / simos.app.logLevel 整体升降级。 -->
+    <Logger name="io.mosire.simos.map" level="${mapLevel}"/>
+    <Logger name="io.mosire.simos.map.trace" level="${mapTraceLevel}"/>
+    <Logger name="io.mosire.simos.sd" level="${sdLevel}"/>
+    <Logger name="io.mosire.simos.sd.trace" level="${sdTraceLevel}"/>
+    <Logger name="io.mosire.simos.actor" level="${actorLevel}"/>
+    <Logger name="io.mosire.simos.actor.trace" level="${actorTraceLevel}"/>
+    <Logger name="io.mosire.simos.gov" level="${govLevel}"/>
+    <Logger name="io.mosire.simos.gov.trace" level="${govTraceLevel}"/>
+    <Logger name="io.mosire.simos.army" level="${armyLevel}"/>
+    <Logger name="io.mosire.simos.army.trace" level="${armyTraceLevel}"/>
+    <Logger name="io.mosire.simos.calendar" level="${calendarLevel}"/>
+    <Logger name="io.mosire.simos.calendar.trace" level="${calendarTraceLevel}"/>
+    <Logger name="io.mosire.simos.core" level="${coreLevel}"/>
+    <Logger name="io.mosire.simos.core.trace" level="${coreTraceLevel}"/>
+    <Logger name="io.mosire.simos.app" level="${appLevel}"/>
+    <Logger name="io.mosire.simos.app.trace" level="${appTraceLevel}"/>
     <Root level="info">
       <AppenderRef ref="Console"/>
     </Root>

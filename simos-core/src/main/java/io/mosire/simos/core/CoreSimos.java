@@ -88,6 +88,8 @@ public final class CoreSimos implements AutoCloseable {
 
   private static final Logger LOG = LoggerFactory.getLogger(CoreSimos.class);
 
+  private static final Logger LIFE = CoreLog.life();
+
   private final SqliteStore store;
   private final Timeline timeline;
   private final CheckpointStore checkpoints;
@@ -121,6 +123,7 @@ public final class CoreSimos implements AutoCloseable {
     this.store = SqliteStore.open(config.storeDir().resolve(DB_FILE_NAME));
     this.timeline = new Timeline(store, config.checkpointInterval());
     this.checkpoints = new CheckpointStore(config.storeDir());
+    LIFE.debug("event=CORE_OPENED storeDir={}", config.storeDir());
   }
 
   /**
@@ -293,6 +296,12 @@ public final class CoreSimos implements AutoCloseable {
             BOOTSTRAP_COMMAND_TYPE,
             Timeline.changeSetJson(WorldChangeSet.empty())));
     checkpoints.write(at, CheckpointEncoder.encode(genesis, codecs));
+    LIFE.info(
+        "event=CORE_GENESIS_BOOTSTRAPPED branch={} revision={} modules={} tick={}",
+        at.branch().value(),
+        at.revision().value(),
+        genesis.modules().size(),
+        genesis.meta().timestamp().tick());
   }
 
   // ── 只读面（spec §S8）─────────────────────────────────────────────────────────────────
@@ -398,6 +407,7 @@ public final class CoreSimos implements AutoCloseable {
   @Override
   public void close() {
     store.close();
+    LIFE.debug("event=CORE_CLOSED");
   }
 
   // ── 封存 ────────────────────────────────────────────────────────────────────────────

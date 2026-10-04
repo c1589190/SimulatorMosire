@@ -1,5 +1,6 @@
 package io.mosire.simos.sd.spi;
 
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.SdInfoEntry;
@@ -16,6 +17,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * {@code sd.RunDecision} 命令的处理器（T11C）：**「让某个决策人的 agent 跑一轮」= 一条真命令**。
@@ -52,6 +54,8 @@ import java.util.Set;
  * <p>拒绝：{@code decisionMakerId} 不存在；载荷不是合法 JSON / 缺字段。
  */
 public final class RunDecisionHandler implements CommandHandler {
+
+  private static final Logger LOG = SdLog.decision();
 
   /** 触发记录在 sd INFO 覆盖层里的 key（与 {@link StartDecisionHandler#START_INFO_KEY} 同一地址、不同 key）。 */
   public static final String RUN_INFO_KEY = "run";
@@ -109,6 +113,8 @@ public final class RunDecisionHandler implements CommandHandler {
       entries.add(entry);
       nextInfo.put(address, List.copyOf(entries));
 
+      LOG.info(
+          "event=SD_DECISION_RUN_RECORDED decisionMaker={} tick={}", decisionMakerId.value(), tick);
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withInfo(nextInfo)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

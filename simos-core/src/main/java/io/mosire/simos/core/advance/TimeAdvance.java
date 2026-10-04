@@ -2,6 +2,7 @@ package io.mosire.simos.core.advance;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.core.CoreLog;
 import io.mosire.simos.core.command.AdvanceRoute;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandResult;
@@ -76,6 +77,10 @@ import org.slf4j.LoggerFactory;
 public final class TimeAdvance implements AdvanceRoute {
 
   private static final Logger LOG = LoggerFactory.getLogger(TimeAdvance.class);
+
+  private static final Logger PHASE = CoreLog.advance();
+
+  private static final Logger TRACE = CoreLog.trace();
 
   /**
    * 单次推进的**理智上限**（天）：{@code 1 ≤ N ≤ 36500}（§十一：约 100 年的日步长）。
@@ -198,6 +203,13 @@ public final class TimeAdvance implements AdvanceRoute {
         cmd.expectedRevision().value(),
         newMeta.timestamp(),
         participants.size());
+    PHASE.debug(
+        "event=ADVANCE_PREPARE branch={} from={} to={} spanDays={} participants={}",
+        cmd.branch().value(),
+        fromTick,
+        toTick,
+        spanDays,
+        participants.size());
 
     SimulationState state = stateLoader.load(base);
 
@@ -223,6 +235,17 @@ public final class TimeAdvance implements AdvanceRoute {
       }
       proposals.add(proposal);
     }
+    PHASE.debug("event=ADVANCE_PROPOSE proposals={}", proposals.size());
+    if (TRACE.isTraceEnabled()) {
+      for (WorldTimeProposal proposal : proposals) {
+        TRACE.trace(
+            "event=ADVANCE_PROPOSAL participant={} modules={} reads={} writes={}",
+            proposal.participantId(),
+            proposal.moduleChanges().size(),
+            proposal.reads().size(),
+            proposal.writes().size());
+      }
+    }
     trace.add(started(cmd, newMeta));
     // ★★ 2026-09-30 用户裁定：**module.proposal 只留在内存里**，不再落事件表。
     //   `proposals` 列表继续供 ③ Resolve 判读写冲突；但它的全量地址清单不再逐条持久化——
@@ -245,12 +268,15 @@ public final class TimeAdvance implements AdvanceRoute {
     for (AdvanceConflict warning : resolved.warnings()) {
       trace.add(conflictEvent(cmd, warning)); // 读-写：只留痕，不拒绝
     }
+    PHASE.debug(
+        "event=ADVANCE_RESOLVE blocked=false readWriteWarnings={}", resolved.warnings().size());
 
     // ④ Validate（第 1~4 项；第 0 项在上面）
     Validation validation = validate(state, proposals, newMeta);
     if (validation.failed()) {
       return rejected(cmd, trace, validation.error());
     }
+    PHASE.debug("event=ADVANCE_VALIDATE modules={} ok=true", validation.applied().size());
 
     // ⑤ Commit：1 行 revision + **全部**事件，一个事务（裁定 47：`finished` 也在里面）
     trace.add(finished(cmd, target));
@@ -278,6 +304,11 @@ public final class TimeAdvance implements AdvanceRoute {
       }
       throw e;
     }
+    PHASE.debug(
+        "event=ADVANCE_COMMIT branch={} revision={} events={}",
+        target.branch().value(),
+        target.revision().value(),
+        trace.size());
 
     // ⑥ Post-commit：**只剩 checkpoint**（C19 命中才写）。它失败不影响已落盘的事实。
     writeCheckpointIfDue(target, newMeta, state, validation.applied());

@@ -1,6 +1,7 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
@@ -24,6 +25,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * {@code sd.IssueDirective} 命令的处理器（spec §四，D1）：落一条 {@link Directive}，并把**执行原文**写成 sd 侧 INFO。
@@ -51,6 +53,8 @@ import java.util.Set;
  * 引用的效果不存在。
  */
 public final class IssueDirectiveHandler implements CommandHandler {
+
+  private static final Logger LOG = SdLog.decision();
 
   /** 执行原文在 sd INFO 覆盖层里的 key（spec §二.3："单条决策 = 单条 Command，Command 必须自带 INFO 作为执行原文"）。 */
   public static final String INTENT_INFO_KEY = "intent";
@@ -144,6 +148,14 @@ public final class IssueDirectiveHandler implements CommandHandler {
       supersedeOldVersions(nextDirectives, decisionMakerId, tick);
       nextDirectives.put(id, directive);
       SdState target0 = base.withDirectives(nextDirectives).withInfo(nextInfo);
+      LOG.info(
+          "event=SD_DIRECTIVE_ISSUED id={} decisionMaker={} tick={} commands={} effects={} target={}",
+          id.value(),
+          decisionMakerId.value(),
+          tick,
+          commands.size(),
+          effects.size(),
+          target.map(Address::canonical).orElse("-"));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, target0));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

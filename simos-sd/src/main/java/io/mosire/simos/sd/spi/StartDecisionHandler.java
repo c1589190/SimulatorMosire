@@ -1,6 +1,7 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.SdInfoEntry;
@@ -17,6 +18,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * {@code sd.StartDecision} 命令的处理器（T10，spec §四.5，D5 已裁）：**「开始决策」= 一条真命令**。
@@ -42,6 +44,8 @@ import java.util.Set;
  * <p>拒绝：{@code decisionMakerId} 不存在；载荷不是合法 JSON / 缺字段。
  */
 public final class StartDecisionHandler implements CommandHandler {
+
+  private static final Logger LOG = SdLog.decision();
 
   /** 发起记录在 sd INFO 覆盖层里的 key。 */
   public static final String START_INFO_KEY = "start";
@@ -91,6 +95,11 @@ public final class StartDecisionHandler implements CommandHandler {
       entries.add(entry);
       nextInfo.put(address, List.copyOf(entries));
 
+      LOG.info(
+          "event=SD_DECISION_STARTED decisionMaker={} tick={} note={}",
+          decisionMakerId.value(),
+          tick,
+          note.isPresent());
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withInfo(nextInfo)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

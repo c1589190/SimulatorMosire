@@ -1,6 +1,7 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DiplomaticEventId;
 import io.mosire.simos.sd.id.NationId;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * {@code sd.RecordDiplomaticEvent} 命令的处理器（D-005 / R6）：**追加一条外交事件记录**（多国谈判逐 tick 记录参与国与内容）。
@@ -41,6 +43,8 @@ import java.util.Set;
  * <p>★ **非 GmOnly**：与 {@code sd.SetDiplomaticRelation} 同待遇——身份约束在决策人窄工具层；{@code sd.*} 不进指令白名单。
  */
 public final class RecordDiplomaticEventHandler implements CommandHandler {
+
+  private static final Logger LOG = SdLog.diplomacy();
 
   @Override
   public String type() {
@@ -81,6 +85,11 @@ public final class RecordDiplomaticEventHandler implements CommandHandler {
         }
       }
       next.put(id, new DiplomaticEvent(id, tick, participants, text));
+      LOG.info(
+          "event=SD_DIPLOMATIC_EVENT_RECORDED id={} tick={} participants={}",
+          id.value(),
+          tick,
+          participants.size());
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDiplomaticEvents(next)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

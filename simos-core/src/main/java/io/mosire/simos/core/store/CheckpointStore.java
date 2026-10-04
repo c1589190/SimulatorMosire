@@ -1,5 +1,6 @@
 package io.mosire.simos.core.store;
 
+import io.mosire.simos.core.CoreLog;
 import io.mosire.simos.util.state.StateRef;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -32,6 +33,8 @@ import org.slf4j.LoggerFactory;
 public final class CheckpointStore {
 
   private static final Logger LOG = LoggerFactory.getLogger(CheckpointStore.class);
+
+  private static final Logger EVENT = CoreLog.store();
 
   private static final String CHECKPOINTS_DIR_NAME = "checkpoints";
 
@@ -72,6 +75,11 @@ public final class CheckpointStore {
     try {
       Files.createDirectories(dir);
       Files.writeString(file, envelopeJson, StandardCharsets.UTF_8);
+      EVENT.debug(
+          "event=CHECKPOINT_WRITTEN branch={} revision={} bytes={}",
+          ref.branch().value(),
+          ref.revision().value(),
+          envelopeJson.length());
     } catch (IOException e) {
       throw new UncheckedIOException("checkpoint 写入失败: " + file, e);
     }
@@ -92,7 +100,13 @@ public final class CheckpointStore {
       return Optional.empty();
     }
     try {
-      return Optional.of(Files.readString(file, StandardCharsets.UTF_8));
+      String json = Files.readString(file, StandardCharsets.UTF_8);
+      EVENT.debug(
+          "event=CHECKPOINT_READ branch={} revision={} bytes={}",
+          ref.branch().value(),
+          ref.revision().value(),
+          json.length());
+      return Optional.of(json);
     } catch (IOException e) {
       throw new UncheckedIOException("checkpoint 读取失败（文件在但读不出）: " + file, e);
     }

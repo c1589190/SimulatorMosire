@@ -2,6 +2,7 @@ package io.mosire.simos.calendar;
 
 import io.mosire.simos.util.time.YearFraction;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * 世界绑定的历法时钟：{@code CalendarSystem} + tick 0 锚点（JDN）。
@@ -12,6 +13,8 @@ import java.util.Objects;
  * <p>缺省世界锚点见 {@link CalendarDefaults#EPOCH_DATE}（儒略 1445-01-01 = JDN 2248845）。
  */
 public final class CalendarClock {
+
+  private static final Logger LOG = CalendarLog.clock();
 
   private final CalendarSystem system;
   private final CalendarDate epochDate;
@@ -31,7 +34,13 @@ public final class CalendarClock {
   public static CalendarClock of(CalendarSystem system, CalendarDate epochDate) {
     Objects.requireNonNull(system, "system");
     Objects.requireNonNull(epochDate, "epochDate");
-    return new CalendarClock(system, epochDate, system.dayNumberOf(epochDate));
+    CalendarClock clock = new CalendarClock(system, epochDate, system.dayNumberOf(epochDate));
+    LOG.debug(
+        "event=CALENDAR_CLOCK_BOUND system={} epoch={} epochDayNumber={}",
+        system.id(),
+        epochDate,
+        clock.epochDayNumber());
+    return clock;
   }
 
   /** 缺省世界：{@link JulianCalendar#INSTANCE} + {@link CalendarDefaults#EPOCH_DATE}。 */

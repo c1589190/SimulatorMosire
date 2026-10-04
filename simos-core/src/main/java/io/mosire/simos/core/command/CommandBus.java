@@ -3,6 +3,7 @@ package io.mosire.simos.core.command;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.agentlib.tool.Digest;
+import io.mosire.simos.core.CoreLog;
 import io.mosire.simos.core.observe.EventTypes;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.EventRow;
@@ -140,6 +141,9 @@ public final class CommandBus {
    * {@code correlationId} 一条 SQL 就能查到。
    */
   private static final Logger LOG = LoggerFactory.getLogger(CommandBus.class);
+
+  /** 批提交专用：不挂在类 logger 上，避免改变既有单条命令日志的捕获面（CommandBusLoggingTest）。 */
+  private static final Logger BATCH = CoreLog.command();
 
   /**
    * @param timeline 时间线（读写 revision 行、判 head）
@@ -289,6 +293,11 @@ public final class CommandBus {
       }
     }
 
+    BATCH.debug(
+        "event=COMMAND_BATCH_SUBMIT commands={} branch={} expectedRevision={}",
+        batch.size(),
+        branch.value(),
+        expected.value());
     // ★ 整批在同一把锁内：① 复查 head、② 逐条 handler、③ 派生变更集、④ 落一条 revision，中途没有缝（见方法注）。
     synchronized (commitLock) {
       Optional<RevisionId> head = timeline.head(branch);
@@ -406,6 +415,7 @@ public final class CommandBus {
 
     if (anyRejected) {
       // ★ 整体拒绝、不落任何 revision；每条结局齐全（被接受的标为"随整批复原"）
+      BATCH.info("event=COMMAND_BATCH_REJECTED commands={}", pending.size());
       return new BatchResult.Rejected(rolledBack(pending));
     }
 
@@ -416,6 +426,8 @@ public final class CommandBus {
           differFor(namespace).diff(slice(baseState, namespace), slice(candidate, namespace));
       modules.put(namespace, derived);
     }
+    BATCH.debug(
+        "event=COMMAND_BATCH_EXECUTED commands={} modules={}", pending.size(), modules.size());
     return commitBatch(base, pending, new WorldChangeSet(modules));
   }
 
@@ -437,6 +449,12 @@ public final class CommandBus {
             changeSet);
     StateRef committed = new StateRef(row.branch(), row.revision());
     timeline.appendRevision(row);
+    BATCH.info(
+        "event=COMMAND_BATCH_COMMITTED commandId={} branch={} revision={} modules={}",
+        lead.commandId(),
+        committed.branch().value(),
+        committed.revision().value(),
+        changeSet.modules().size());
     return new BatchResult.Committed(committed, committedAll(pending, committed));
   }
 

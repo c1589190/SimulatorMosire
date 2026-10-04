@@ -2,6 +2,7 @@ package io.mosire.simos.army.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmyLog;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.CombatRecord;
 import io.mosire.simos.army.CombatRecordId;
@@ -12,6 +13,7 @@ import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * {@code army.AppendCombatStage} 命令的处理器（阶段 D4 / 用户设计 D-009 补裁 +
@@ -36,6 +38,8 @@ import java.util.Objects;
  */
 public final class AppendCombatStageHandler implements CommandHandler, GmOnlyCommand {
 
+  private static final Logger LOG = ArmyLog.combat();
+
   /** 命令类型（信封上的 {@code type}）。 */
   public static final String TYPE = "army.AppendCombatStage";
 
@@ -59,6 +63,12 @@ public final class AppendCombatStageHandler implements CommandHandler, GmOnlyCom
       CombatStage stage = ArmyPayloads.requireStage(payload, "stage", record.participants());
       CombatRecord next = record.withAppendedStage(stage);
       ArmyData nextData = snapshot.data().withCombat(next);
+      LOG.info(
+          "event=ARMY_COMBAT_STAGE_APPENDED combat={} stage={} outcomes={} stages={}",
+          combatId.value(),
+          stage.id().value(),
+          stage.outcomes().size(),
+          next.stages().size());
       return new HandlerOutcome.Applied(ArmyChangeSet.between(snapshot.data(), nextData));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

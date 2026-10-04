@@ -9,6 +9,7 @@ import io.mosire.agentlib.llm.ToolDef;
 import io.mosire.agentlib.store.ConversationStore;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.llm.LlmToolNames;
 import io.mosire.simos.app.render.ArtifactStore;
@@ -86,6 +87,8 @@ import org.slf4j.LoggerFactory;
 public final class DecisionAgentRunner {
 
   private static final Logger LOG = LoggerFactory.getLogger(DecisionAgentRunner.class);
+
+  private static final Logger DECISION = AppLog.decision();
 
   /** 会话 id 前缀（与 {@link DecisionCallerFactory#INSTANCE_ID_PREFIX} 同源：都按决策人派生）。 */
   public static final String CONVERSATION_ID_PREFIX = DecisionCallerFactory.INSTANCE_ID_PREFIX;
@@ -542,6 +545,11 @@ public final class DecisionAgentRunner {
     Objects.requireNonNull(dm, "dm");
     Objects.requireNonNull(state, "state");
     String conversationId = conversationIdOf(dm);
+    DECISION.info(
+        "event=DECISION_RUN_START decisionMaker={} tick={} conversation={}",
+        dm.id().value(),
+        state.meta().timestamp().tick(),
+        conversationId);
     // ★ 工具面与权限组**同一份数据**（spec §2.3 要点 1）：两者若各有一张表，错位不会有任何症状。
     //   （那份面在构造期已建好、名字已转义成线格式——见构造器与 LlmToolNames 的类注。）
     List<LlmMessage> history = new ArrayList<>(conversations.load(conversationId));
@@ -565,6 +573,11 @@ public final class DecisionAgentRunner {
     int llmCalls = 0;
     while (true) {
       if (llmCalls >= maxLlmCalls) {
+        DECISION.warn(
+            "event=DECISION_RUN_BUDGET_EXCEEDED decisionMaker={} llmCalls={} tools={}",
+            dm.id().value(),
+            llmCalls,
+            invocations.size());
         throw new TurnBudgetExceeded(
             "决策人 "
                 + dm.id().value()
@@ -585,6 +598,11 @@ public final class DecisionAgentRunner {
       progressListener.progress(llmCalls, List.copyOf(invocations));
       List<ContentPart.ToolCall> requested = toolCallsOf(assistant);
       if (requested.isEmpty()) {
+        DECISION.info(
+            "event=DECISION_RUN_END decisionMaker={} llmCalls={} tools={}",
+            dm.id().value(),
+            llmCalls,
+            invocations.size());
         return new DecisionTurn(conversationId, llmCalls, invocations, response.textPart());
       }
       List<LlmMessage> imageMessages = new ArrayList<>();
@@ -642,6 +660,12 @@ public final class DecisionAgentRunner {
     String feedback = feedbackText(result);
     invocations.add(
         new ToolInvocation(call.id(), toolName, result.success(), result.code(), feedback));
+    DECISION.debug(
+        "event=DECISION_TOOL_CALL decisionMaker={} tool={} success={} code={}",
+        dm.id().value(),
+        toolName,
+        result.success(),
+        result.code());
     // ★ ToolResult 的**两个字段互斥且必居其一**（ContentPart.ToolResult 构造期强制：content 与 error
     //   **恰好一个非 null**）⇒ 成功走 content，失败走 error，且失败时把**码**一起带上——模型据此才知道
     //   该换个资源（RESOURCE_DENIED）还是换个参数（BAD_REQUEST）。

@@ -2,6 +2,7 @@ package io.mosire.simos.actor.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorLog;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.change.ActorChangeSet;
@@ -22,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code actor.RemitGovTreasury} 命令的处理器（行政区划修复计划 R3a / 计划 §1.3）：<b>显式的 GOV 国库上缴 / 任意两个 GOV
@@ -74,6 +76,8 @@ import java.util.Objects;
  */
 public final class RemitGovTreasuryHandler implements CommandHandler, CommandTargets {
 
+  private static final Logger LOG = ActorLog.account();
+
   /** 命令类型（app 工具的拼写点也取它，避免第二处字面量）。 */
   public static final String TYPE = "actor.RemitGovTreasury";
 
@@ -110,6 +114,17 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
     try {
       Remit remit = parse(payloadJson);
       ActorData remitted = apply(base, remit);
+      LOG.info(
+          "event=ACTOR_GOV_TREASURY_REMITTED fromUnit={} toUnit={} fromHex={},{} toHex={},{} grain={} cloth={} money={}",
+          remit.fromUnitId(),
+          remit.toUnitId(),
+          remit.fromQ(),
+          remit.fromR(),
+          remit.toQ(),
+          remit.toR(),
+          remit.grain(),
+          remit.cloth(),
+          remit.money());
       return new HandlerOutcome.Applied(ActorChangeSet.between(base, remitted));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

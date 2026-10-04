@@ -2,6 +2,7 @@ package io.mosire.simos.map.generate;
 
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.MapLog;
 import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.hex.HexGrid;
@@ -11,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import org.slf4j.Logger;
 
 /**
  * 从头生成一张地图。**全项目唯一的生成入口**。
@@ -47,6 +49,8 @@ import java.util.Random;
  * <p>★ {@code spec.contourCacheMax()} **本任务不消费**（没有 contour 引擎可缓存）；留待 M2 关账裁决。
  */
 public final class MapGenerator {
+
+  private static final Logger LOG = MapLog.generate();
 
   /** 水体地形的 key。GSimulator 写作 {@code "water"}，不在 U1 的 7 项词表内，故按词表取 {@code "ocean"}。 */
   private static final String OCEAN = "ocean";
@@ -92,7 +96,17 @@ public final class MapGenerator {
 
   /** 由 spec 完全决定。**同 spec 必然同图**（跨进程、跨机器：本方法不读任何环境量）。 */
   public static GameMap generate(GenerationSpec spec) {
-    return new MapGenerator(spec).build();
+    MapGenerator generator = new MapGenerator(spec);
+    LOG.info("event=MAP_GENERATE_START seed={} radius={}", spec.seed(), spec.mapRadius());
+    GameMap map = generator.build();
+    LOG.info(
+        "event=MAP_GENERATE_END seed={} radius={} hexes={} blocks={} regions={}",
+        spec.seed(),
+        spec.mapRadius(),
+        map.hexes().size(),
+        map.terrainBlocks().size(),
+        map.regions().size());
+    return map;
   }
 
   private GameMap build() {

@@ -4,9 +4,9 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.app.AppLog;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.time.AccountPartitionKey;
@@ -14,6 +14,7 @@ import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
@@ -29,6 +30,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * ★★ <b>经济 × 产权的协调器</b>（S1 阶段 4+5 Task 5）：<b>唯一同时看得见 {@code economy} 与 {@code actor} 的推进参与者</b> ——
@@ -86,6 +88,8 @@ import java.util.Set;
  */
 @Deprecated
 public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
+
+  private static final Logger LOG = AppLog.time();
 
   /** 参与者身份（**不是模块名**：它同时写 {@code economy} 与 {@code actor} 两个模块）。 */
   public static final String NAMESPACE = "ownership";
@@ -153,6 +157,12 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
           writes);
     }
 
+    LOG.debug(
+        "event=OWNERSHIP_ADVANCE_START from={} to={} accounts={} industries={}",
+        range.from().tick(),
+        to.get().tick(),
+        actor.accounts().size(),
+        economy.industries().size());
     // ★★ S1：唯一账户会话（家户 + 经营者；商品 + 货币 + 冻结）一次装载。
     //   ★ S1.5 旧档：先把旧三段 actor id 上的账搬到新身份键（移动，不是复制 —— 否则一笔粮变两本账）。
     ActorData migratedBooks = OwnershipBooks.migrateLegacyHouseholdAccounts(actor, economy);
@@ -191,6 +201,13 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
       books = OwnershipBooks.landAccountSession(books, stepper.accounts());
     }
     EconomyData currentEconomy = stepper.finish();
+    LOG.info(
+        "event=OWNERSHIP_ADVANCE_END from={} to={} days={} accounts={} industries={}",
+        range.from().tick(),
+        to.get().tick(),
+        to.get().tick() - range.from().tick(),
+        books.accounts().size(),
+        currentEconomy.industries().size());
     return new WorldTimeProposal(
         NAMESPACE,
         Map.of(

@@ -2,6 +2,7 @@ package io.mosire.simos.map.ops;
 
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
+import io.mosire.simos.map.MapLog;
 import io.mosire.simos.map.block.BlockId;
 import io.mosire.simos.map.block.TerrainBlock;
 import io.mosire.simos.map.block.TerrainBlocks;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * 地形操作面（M8 spec §二，S4 的"语义化命令"）：**规则放领域模块**，Core 只转发信封（ADR-1 / 铁律 4）。
@@ -40,6 +42,10 @@ import java.util.Set;
  * 类高度带），**词表外拒绝**——不是兜底色。
  */
 public final class TerrainOperations {
+
+  private static final Logger LOG = MapLog.edit();
+
+  private static final Logger TRACE = MapLog.trace();
 
   private TerrainOperations() {}
 
@@ -79,8 +85,16 @@ public final class TerrainOperations {
       }
       terrainByHex.put(hex, terrain);
       nextHexes.put(hex, new HexCell(paintHeight));
+      if (TRACE.isTraceEnabled()) {
+        TRACE.trace("event=MAP_TERRAIN_HEX hex={} terrain={} height={}", hex, terrain, paintHeight);
+      }
     }
     Map<BlockId, TerrainBlock> nextBlocks = TerrainBlocks.split(terrainByHex);
+    LOG.info(
+        "event=MAP_TERRAIN_SET terrain={} hexes={} blocks={}",
+        terrain,
+        ordered.size(),
+        nextBlocks.size());
     // ★ withHexes/withTerrainBlocks 触发 GameMap 构造期的分割不变式；between 逐组件比较，未动的组件恒 Unchanged。
     return MapChangeSet.between(base, base.withHexes(nextHexes).withTerrainBlocks(nextBlocks));
   }

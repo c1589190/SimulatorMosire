@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.slf4j.Logger;
 
 /**
  * 每日行政结算纯函数（阶段 11a，计划 §2.2 / §3）：对一个 {@link GovState} 里的每个 GOV 编制算需求/效率、评估并支付当日行政定额、发出三类缺口信号， 返回新
@@ -75,6 +76,10 @@ import java.util.Optional;
  * SignalDraft}）。
  */
 public final class GovDaily {
+
+  private static final Logger LOG = GovLog.daily();
+
+  private static final Logger TRACE = GovLog.trace();
 
   /** 行政物资/俸禄缺口的信号 kind（字符串；11b 按名折成 {@code HexCrisisSignal.Kind.ADMIN_SUPPLY}）。 */
   public static final String KIND_ADMIN_SUPPLY = "ADMIN_SUPPLY";
@@ -136,6 +141,11 @@ public final class GovDaily {
           "daysInYearAtSettlement 只接受 365 或 366（拒绝臆造年长）: " + daysInYearAtSettlement);
     }
 
+    LOG.debug(
+        "event=GOV_DAILY_START tick={} offices={} daysInYear={}",
+        tick,
+        govState.offices().size(),
+        daysInYearAtSettlement);
     // ★ 返回的 offices 保持输入键序（未被覆盖的部分"原样"），但**处理顺序**按下而排序 ⇒ dues/signals/oracle 调用次序确定。
     Map<UnitId, GovOfficeState> nextOffices = new LinkedHashMap<>(govState.offices());
     List<UpkeepDue> dues = new ArrayList<>();
@@ -257,6 +267,34 @@ public final class GovDaily {
     }
 
     GovState nextState = new GovState(nextOffices);
+    LOG.info(
+        "event=GOV_DAILY_END tick={} offices={} dues={} signals={} changed={}",
+        tick,
+        nextOffices.size(),
+        dues.size(),
+        signals.size(),
+        !nextState.equals(govState));
+    if (TRACE.isTraceEnabled()) {
+      for (UpkeepDue due : dues) {
+        if (due.shortfall() > 0L) {
+          TRACE.trace(
+              "event=GOV_UPKEEP_SHORTFALL unit={} hex={} resource={} assessed={} paid={} shortfall={}",
+              due.unitId().value(),
+              due.at(),
+              due.resource().name(),
+              due.assessed(),
+              due.paid(),
+              due.shortfall());
+        }
+      }
+      for (SignalDraft signal : signals) {
+        TRACE.trace(
+            "event=GOV_SIGNAL_DRAFT hex={} kind={} severity={}",
+            signal.hex(),
+            signal.kind(),
+            signal.severity());
+      }
+    }
     return new Outcome(nextState, dues, signals, !nextState.equals(govState));
   }
 

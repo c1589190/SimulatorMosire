@@ -1,6 +1,7 @@
 package io.mosire.simos.map.ops;
 
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapLog;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.map.pathway.EdgeTags;
@@ -12,6 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * 连通性操作面（M8 spec §二，S4 的"语义化命令"）：**规则放领域模块**，Core 只转发信封（ADR-1 / 铁律 4）。
@@ -35,6 +37,10 @@ import java.util.Set;
  * terrainBlocks} 与其余组件恒 {@code Unchanged}——由 {@link MapChangeSet#between} 逐组件比较保证。
  */
 public final class EdgeOperations {
+
+  private static final Logger LOG = MapLog.edit();
+
+  private static final Logger TRACE = MapLog.trace();
 
   /** 显式模式：整份覆盖该 kind。 */
   private static final String REPLACE = "replace";
@@ -91,6 +97,17 @@ public final class EdgeOperations {
           existing == null ? new LinkedHashMap<>() : new LinkedHashMap<>(existing.byPathway());
       byPathway.putIfAbsent(tagKey, Map.of()); // merge 保留该 kind 既有 props；replace 此刻已摘空
       next.put(edge, new EdgeTags(byPathway));
+    }
+    LOG.info(
+        "event=MAP_EDGES_SET kind={} mode={} edges={} taggedEdges={}",
+        tagKey,
+        operation,
+        ordered.size(),
+        next.size());
+    if (TRACE.isTraceEnabled()) {
+      for (EdgeRef edge : ordered) {
+        TRACE.trace("event=MAP_EDGE_SET kind={} mode={} edge={}", tagKey, operation, edge);
+      }
     }
     return MapChangeSet.between(base, base.withEdges(next));
   }

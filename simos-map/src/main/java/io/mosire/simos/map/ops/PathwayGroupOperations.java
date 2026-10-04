@@ -1,11 +1,13 @@
 package io.mosire.simos.map.ops;
 
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapLog;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.pathway.PathwayGroup;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * 连通性**组定义**的操作面（WebUI 阶段修复 T3，spec §三.6）：给词表**注册一个新组**，返回变更集。
@@ -21,6 +23,8 @@ import java.util.Objects;
  * {@code Unchanged}）。
  */
 public final class PathwayGroupOperations {
+
+  private static final Logger LOG = MapLog.edit();
 
   private PathwayGroupOperations() {}
 
@@ -40,6 +44,7 @@ public final class PathwayGroupOperations {
     }
     Map<String, PathwayGroup> next = new LinkedHashMap<>(base.pathwayGroups());
     next.put(group.id(), group);
+    LOG.info("event=MAP_PATHWAY_GROUP_REGISTERED id={} name={}", group.id(), group.name());
     return MapChangeSet.between(base, base.withPathwayGroups(next));
   }
 }

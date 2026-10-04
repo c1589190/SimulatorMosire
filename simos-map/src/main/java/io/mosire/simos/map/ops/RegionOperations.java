@@ -1,6 +1,7 @@
 package io.mosire.simos.map.ops;
 
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapLog;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * 区域操作面（M8 spec §二，S4 的"语义化命令"）：**规则放领域模块**，Core 只转发信封（ADR-1 / 铁律 4）。
@@ -35,6 +37,10 @@ import java.util.Set;
  * {@code terrainBlocks} 恒 {@code Unchanged}——由 {@link MapChangeSet#between} 逐组件比较保证。
  */
 public final class RegionOperations {
+
+  private static final Logger LOG = MapLog.edit();
+
+  private static final Logger TRACE = MapLog.trace();
 
   private RegionOperations() {}
 
@@ -61,6 +67,7 @@ public final class RegionOperations {
     requireNonEmptyHexesInMap(base, hexes);
     Map<RegionId, Region> next = new LinkedHashMap<>(base.regions());
     next.put(id, Region.of(id, name, hexes, meta));
+    LOG.info("event=MAP_REGION_CREATED id={} name={} hexes={}", id, name, hexes.size());
     return MapChangeSet.between(base, base.withRegions(next));
   }
 
@@ -96,6 +103,11 @@ public final class RegionOperations {
     Map<RegionId, Region> next = new LinkedHashMap<>(base.regions());
     // put 已存在的 key 不改 LinkedHashMap 的插入序（区域名下的位置稳定）。
     next.put(id, Region.of(id, existing.name(), nextHexes, nextMeta));
+    LOG.info(
+        "event=MAP_REGION_UPDATED id={} hexes={} metaChanged={}",
+        id,
+        nextHexes.size(),
+        meta != null);
     return MapChangeSet.between(base, base.withRegions(next));
   }
 
@@ -116,6 +128,7 @@ public final class RegionOperations {
     }
     Map<RegionId, Region> next = new LinkedHashMap<>(base.regions());
     next.remove(id);
+    LOG.info("event=MAP_REGION_DELETED id={}", id);
     return MapChangeSet.between(base, base.withRegions(next));
   }
 
@@ -151,6 +164,8 @@ public final class RegionOperations {
     for (RegionId sourceId : sources) {
       next.remove(sourceId);
     }
+    LOG.info(
+        "event=MAP_REGIONS_MERGED target={} sources={} hexes={}", target, sources, merged.size());
     return MapChangeSet.between(base, base.withRegions(next));
   }
 
@@ -216,6 +231,11 @@ public final class RegionOperations {
       for (RegionPart part : parts) {
         next.put(part.id(), Region.of(part.id(), part.name(), part.hexes(), part.meta()));
       }
+      LOG.info(
+          "event=MAP_REGION_SPLIT source={} parts={} keepSource=true residualHexes={}",
+          sourceId,
+          parts.size(),
+          residual.size());
       return MapChangeSet.between(base, base.withRegions(next));
     }
     if (!covered.equals(source.hexes())) {
@@ -231,6 +251,11 @@ public final class RegionOperations {
     for (RegionPart part : parts) {
       next.put(part.id(), Region.of(part.id(), part.name(), part.hexes(), part.meta()));
     }
+    LOG.info(
+        "event=MAP_REGION_SPLIT source={} parts={} keepSource=false coveredHexes={}",
+        sourceId,
+        parts.size(),
+        covered.size());
     return MapChangeSet.between(base, base.withRegions(next));
   }
 
@@ -298,6 +323,13 @@ public final class RegionOperations {
     LinkedHashSet<HexCoord> targetHexes = new LinkedHashSet<>(targetRegion.hexes());
     targetHexes.addAll(hexes);
     next.put(target, targetRegion.withHexes(Set.copyOf(targetHexes)));
+    LOG.info(
+        "event=MAP_HEXES_REASSIGNED target={} sources={} hexes={}", target, sources, hexes.size());
+    if (TRACE.isTraceEnabled()) {
+      for (HexCoord hex : ordered) {
+        TRACE.trace("event=MAP_HEX_REASSIGNED target={} hex={} sources={}", target, hex, sources);
+      }
+    }
     return MapChangeSet.between(base, base.withRegions(next));
   }
 

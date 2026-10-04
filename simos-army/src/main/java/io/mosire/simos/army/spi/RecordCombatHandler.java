@@ -2,6 +2,7 @@ package io.mosire.simos.army.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmyLog;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.CombatRecord;
 import io.mosire.simos.army.CombatRecordId;
@@ -17,6 +18,7 @@ import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.slf4j.Logger;
 
 /**
  * {@code army.RecordCombat} 命令的处理器（阶段 D1 落地、阶段 D4 升级 / 用户设计 D-009 补裁 + D-010 + D-012，2026-10-02）：
@@ -54,6 +56,8 @@ import java.util.Optional;
  * <p>★ <b>不背旧档</b>（D-011/R4）：旧 D1 载荷的 {@code losses:{自然语义键:数量}} 字段**显式拒**，不留兼容层、也不静默丢。
  */
 public final class RecordCombatHandler implements CommandHandler, GmOnlyCommand {
+
+  private static final Logger LOG = ArmyLog.combat();
 
   /** 命令类型（信封上的 {@code type}）。 */
   public static final String TYPE = "army.RecordCombat";
@@ -112,6 +116,14 @@ public final class RecordCombatHandler implements CommandHandler, GmOnlyCommand 
       CombatRecord record =
           new CombatRecord(id, kind, tick, hex, participants, text, List.of(initialStage));
       ArmyData next = snapshot.data().withCombat(record);
+      LOG.info(
+          "event=ARMY_COMBAT_RECORDED id={} kind={} tick={} hex={} participants={} stages={}",
+          id.value(),
+          kind,
+          tick,
+          hex,
+          participants.size(),
+          record.stages().size());
       return new HandlerOutcome.Applied(ArmyChangeSet.between(snapshot.data(), next));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

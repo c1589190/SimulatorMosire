@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.Nation;
@@ -14,6 +15,7 @@ import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * {@code sd.CreateNation} 命令的处理器（spec §四）。
@@ -28,6 +30,8 @@ import java.util.Objects;
  * Nation}）。
  */
 public final class CreateNationHandler implements CommandHandler {
+
+  private static final Logger LOG = SdLog.nation();
 
   @Override
   public String type() {
@@ -59,6 +63,12 @@ public final class CreateNationHandler implements CommandHandler {
       }
       Map<NationId, Nation> next = new LinkedHashMap<>(base.nations());
       next.put(id, new Nation(id, name, homeRegion, budget));
+      LOG.info(
+          "event=SD_NATION_CREATED id={} name={} homeRegion={} adminBudget={}",
+          id.value(),
+          name,
+          homeRegion.value(),
+          budget);
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withNations(next)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

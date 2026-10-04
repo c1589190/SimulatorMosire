@@ -1,6 +1,7 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.model.Army;
@@ -15,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.slf4j.Logger;
 
 /**
  * {@code sd.CreateArmy} 命令的处理器（阶段 12：Army 去 {@code NationId}、改认 {@code masterGovUnitId}）。
@@ -32,6 +34,8 @@ import java.util.Optional;
  * fail-closed，又不把 {@code nationId} 硬映射成 GOV。
  */
 public final class CreateArmyHandler implements CommandHandler {
+
+  private static final Logger LOG = SdLog.nation();
 
   @Override
   public String type() {
@@ -73,6 +77,12 @@ public final class CreateArmyHandler implements CommandHandler {
       }
       Map<ArmyId, Army> next = new LinkedHashMap<>(base.armies());
       next.put(id, new Army(id, masterGovUnitId, rootUnit, name));
+      LOG.info(
+          "event=SD_ARMY_CREATED id={} masterGov={} rootUnit={} name={}",
+          id.value(),
+          masterGovUnitId.map(UnitId::value).orElse("-"),
+          rootUnit.value(),
+          name);
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withArmies(next)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

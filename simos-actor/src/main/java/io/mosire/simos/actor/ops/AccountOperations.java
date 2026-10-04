@@ -1,6 +1,7 @@
 package io.mosire.simos.actor.ops;
 
 import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorLog;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccount;
@@ -11,6 +12,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * ★★ <b>actor 账户的迁移/转移原语</b>（P1.2 后端行政命令）：纯函数进 {@link ActorData}、出新 {@link ActorData}， 不做任何状态写入；命令
@@ -35,6 +37,10 @@ import java.util.Objects;
  * 由构造期把守；源扣减不侵占冻结额由 {@link AvailableStock} 的唯一算法判）。
  */
 public final class AccountOperations {
+
+  private static final Logger LOG = ActorLog.account();
+
+  private static final Logger TRACE = ActorLog.trace();
 
   private AccountOperations() {}
 
@@ -148,6 +154,30 @@ public final class AccountOperations {
           new GoodsAccount(
               toKey, targetBalances, targetMoney, target.frozenBalances(), target.frozenMoney()));
     }
+    LOG.info(
+        "event=ACTOR_ACCOUNTS_TRANSFERRED from={} to={} goods={} money={}",
+        fromKey,
+        toKey,
+        goods.size(),
+        money.size());
+    if (TRACE.isTraceEnabled()) {
+      for (Map.Entry<CommodityId, Long> entry : goods.entrySet()) {
+        TRACE.trace(
+            "event=ACTOR_TRANSFER_GOODS from={} to={} commodity={} amount={}",
+            fromKey,
+            toKey,
+            entry.getKey(),
+            entry.getValue());
+      }
+      for (Map.Entry<CurrencyId, Long> entry : money.entrySet()) {
+        TRACE.trace(
+            "event=ACTOR_TRANSFER_MONEY from={} to={} currency={} amount={}",
+            fromKey,
+            toKey,
+            entry.getKey(),
+            entry.getValue());
+      }
+    }
     return base.withAccounts(next);
   }
 
@@ -184,6 +214,8 @@ public final class AccountOperations {
               source.money(),
               source.frozenBalances(),
               source.frozenMoney()));
+      LOG.info(
+          "event=ACTOR_ACCOUNT_MOVED owner={} from={} to={} merged=false", owner, fromKey, toKey);
       return base.withAccounts(next);
     }
 
@@ -237,6 +269,7 @@ public final class AccountOperations {
     }
     next.put(toKey, new GoodsAccount(toKey, balances, money, frozenBalances, frozenMoney));
     next.remove(fromKey);
+    LOG.info("event=ACTOR_ACCOUNT_MOVED owner={} from={} to={} merged=true", owner, fromKey, toKey);
     return base.withAccounts(next);
   }
 

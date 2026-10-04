@@ -2,6 +2,7 @@ package io.mosire.simos.army.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmyLog;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.CombatOutcomeId;
 import io.mosire.simos.army.CombatRecord;
@@ -16,6 +17,7 @@ import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.Objects;
 import java.util.Optional;
+import org.slf4j.Logger;
 
 /**
  * {@code army.ResolveCombatStage} 命令的处理器（阶段 D4 / 用户设计 D-009 补裁 +
@@ -40,6 +42,8 @@ import java.util.Optional;
  * <p>★ <b>标 {@link GmOnlyCommand}</b>：与 {@link RecordCombatHandler} 同一条边界。
  */
 public final class ResolveCombatStageHandler implements CommandHandler, GmOnlyCommand {
+
+  private static final Logger LOG = ArmyLog.combat();
 
   /** 命令类型（信封上的 {@code type}）。 */
   public static final String TYPE = "army.ResolveCombatStage";
@@ -85,6 +89,12 @@ public final class ResolveCombatStageHandler implements CommandHandler, GmOnlyCo
       CombatStage resolved = stage.resolvedAs(selection.outcome().id(), selection.seed());
       CombatRecord next = record.withReplacedStage(resolved);
       ArmyData nextData = snapshot.data().withCombat(next);
+      LOG.info(
+          "event=ARMY_COMBAT_STAGE_RESOLVED combat={} stage={} outcome={} seed={}",
+          combatId.value(),
+          stageId.value(),
+          selection.outcome().id().value(),
+          selection.seed());
       return new HandlerOutcome.Applied(ArmyChangeSet.between(snapshot.data(), nextData));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());
