@@ -108,6 +108,10 @@ public final class ModeMigrationPolicy {
    *
    * <p>★ {@code target} 已有家户（合并）或计划新建家户 id（新建）；{@code target != source} 由构造期守卫判死；
    * {@code targetMode} 是<b>目标家户</b>的 mode，源户 mode 在整条执行路径上一字不改。
+   *
+   * <p>★★ <b>D-023：货币随迁按全部币种</b> —— 权威口径是 {@link #moneyByCurrency()}（逐币种按人口比例
+   * floor；源户迁空时该币种余数随最后一笔走；<b>不做 FX</b>）。{@link #moneyMilli()} 只保留为旧读口（计划的主币种
+   * 份额），执行器以 {@code moneyByCurrency} 为准；空 map = 旧/手工计划 ⇒ 执行器就地按人口比例补算全部币种。
    */
   public record MigrationMove(
       HouseholdId source,
@@ -118,7 +122,8 @@ public final class ModeMigrationPolicy {
       long population,
       long moneyMilli,
       long debtMilli,
-      String reason) {
+      String reason,
+      Map<CurrencyId, Long> moneyByCurrency) {
 
     /** 迁移原因词表（规范串）。 */
     public static final String REASON_PROFIT_WEIGHTED = "PROFIT_WEIGHTED";
@@ -126,12 +131,37 @@ public final class ModeMigrationPolicy {
     public static final String REASON_A_RULE_MAX_SPEED = "A_RULE_MAX_SPEED";
     public static final String REASON_DISPLACED_ABSORBED = "DISPLACED_ABSORBED";
 
+    /** 旧读口的 9 参构造（全币种 map 为空 ⇒ 执行器就地按人口比例补算，不静默丢任何币种）。 */
+    public MigrationMove(
+        HouseholdId source,
+        HouseholdId target,
+        HexCoord targetHex,
+        ProductionModeId targetMode,
+        long transferSpeedPerMille,
+        long population,
+        long moneyMilli,
+        long debtMilli,
+        String reason) {
+      this(
+          source,
+          target,
+          targetHex,
+          targetMode,
+          transferSpeedPerMille,
+          population,
+          moneyMilli,
+          debtMilli,
+          reason,
+          Map.of());
+    }
+
     public MigrationMove {
       Objects.requireNonNull(source, "source");
       Objects.requireNonNull(target, "target");
       Objects.requireNonNull(targetHex, "targetHex");
       Objects.requireNonNull(targetMode, "targetMode");
       Objects.requireNonNull(reason, "reason");
+      Objects.requireNonNull(moneyByCurrency, "moneyByCurrency");
       if (source.equals(target)) {
         throw new IllegalArgumentException("MigrationMove.target 不得 == source（D-022：不原地改源户）: " + source);
       }
@@ -152,6 +182,21 @@ public final class ModeMigrationPolicy {
                 + ": "
                 + transferSpeedPerMille);
       }
+      LinkedHashMap<CurrencyId, Long> moneyCopy = new LinkedHashMap<>();
+      for (Map.Entry<CurrencyId, Long> entry : moneyByCurrency.entrySet()) {
+        if (entry.getKey() == null || entry.getValue() == null) {
+          throw new IllegalArgumentException(
+              "MigrationMove.moneyByCurrency 的键与值都不得为 null: " + entry.getKey());
+        }
+        if (entry.getValue() < 0L) {
+          throw new IllegalArgumentException(
+              "MigrationMove.moneyByCurrency 的份额不得为负: " + entry.getKey() + " = " + entry.getValue());
+        }
+        if (entry.getValue() > 0L) {
+          moneyCopy.put(entry.getKey(), entry.getValue());
+        }
+      }
+      moneyByCurrency = Collections.unmodifiableMap(moneyCopy); // ★ 冻在赋值处
     }
   }
 
@@ -285,12 +330,17 @@ public final class ModeMigrationPolicy {
         populations[i] = drafts.get(i).population;
       }
       boolean emptiesSource = sum(populations) == sourcePopulation;
-      CurrencyId currency = currentCurrency(currentOf(modeByHousehold, source), accounts, markets);
-      long[] moneyShares =
-          splitMoney(accounts, populations, sourcePopulation, currency, source, emptiesSource);
+      List<Map<CurrencyId, Long>> moneySharesByCurrency =
+          splitMoneyByCurrency(accounts, populations, sourcePopulation, source, emptiesSource);
+      // ★ 旧读口 moneyMilli 仍报"主币种"份额；权威全币种表在 moneyByCurrency（D-023）。
+      CurrencyId legacyCurrency =
+          currentCurrency(currentOf(modeByHousehold, source), accounts, markets);
       long[] debtShares = splitDebt(populations, sourcePopulation, source, debts, emptiesSource);
       for (int i = 0; i < drafts.size(); i++) {
         MoveDraft draft = drafts.get(i);
+        Map<CurrencyId, Long> moneyByCurrency = moneySharesByCurrency.get(i);
+        long legacyMoneyMilli =
+            legacyCurrency == null ? 0L : moneyByCurrency.getOrDefault(legacyCurrency, 0L);
         moves.add(
             new MigrationMove(
                 source,
@@ -299,9 +349,10 @@ public final class ModeMigrationPolicy {
                 draft.targetMode,
                 draft.transferSpeedPerMille,
                 draft.population,
-                moneyShares[i],
+                legacyMoneyMilli,
                 debtShares[i],
-                draft.reason));
+                draft.reason,
+                moneyByCurrency));
       }
     }
     return new MigrationPlan(moves);
@@ -929,34 +980,64 @@ public final class ModeMigrationPolicy {
     return smallest;
   }
 
-  private static long[] splitMoney(
+  /**
+   * ★★ <b>P11.1 / D-023：按人口比例切源户的“全部币种”余额</b>（逐币种独立、逐笔 floor、<b>不做 FX</b>）。
+   *
+   * <pre>
+   * 逐币种 c（CurrencyId.value 升序）：remaining = 当前余额
+   *   第 i 笔（i = 0..n-1）：denom = max(1, sourcePopulation − movedBefore)
+   *     share_i = (源户迁空 && i == n−1) ? remaining : ⌊remaining × populations[i] ÷ denom⌋
+   *     remaining -= share_i；movedBefore += populations[i]
+   * 源户不迁空 ⇒ 每个币种的 floor 余数留在源户；迁空 ⇒ 余数随最后一笔走。
+   * </pre>
+   *
+   * <p>★ 返回的第 i 个 map 就是第 i 笔 move 的 {@code moneyByCurrency}；不同币种并列存在，不互相折算。
+   */
+  private static List<Map<CurrencyId, Long>> splitMoneyByCurrency(
       AccountSession accounts,
       long[] populations,
       long sourcePopulation,
-      CurrencyId currency,
       HouseholdId source,
       boolean emptiesSource) {
-    long[] shares = new long[populations.length];
-    if (currency == null) {
-      return shares;
-    }
-    long remainingBalance =
-        accounts.householdMoney().getOrDefault(source, Map.of()).getOrDefault(currency, 0L);
-    if (remainingBalance <= 0L) {
-      return shares;
-    }
-    long movedBefore = 0L;
+    List<Map<CurrencyId, Long>> shares = new ArrayList<>(populations.length);
     for (int i = 0; i < populations.length; i++) {
-      long denom = Math.max(1L, sourcePopulation - movedBefore);
-      shares[i] =
-          emptiesSource && i == populations.length - 1
-              ? remainingBalance
-              : Math.multiplyExact(remainingBalance, populations[i]) / denom;
-      remainingBalance -= shares[i];
-      movedBefore = Math.addExact(movedBefore, populations[i]);
+      shares.add(new LinkedHashMap<>());
     }
-    if (remainingBalance < 0L) {
-      throw new IllegalStateException("货币切分出现负余额（坏数据）: source=" + source);
+    Map<CurrencyId, Long> balances = accounts.householdMoney().getOrDefault(source, Map.of());
+    List<CurrencyId> currencies = new ArrayList<>(balances.keySet());
+    currencies.sort(Comparator.comparing(CurrencyId::value));
+    for (CurrencyId currency : currencies) {
+      long remainingBalance = balances.getOrDefault(currency, 0L);
+      if (remainingBalance <= 0L) {
+        continue;
+      }
+      long movedBefore = 0L;
+      for (int i = 0; i < populations.length; i++) {
+        long denom = Math.max(1L, sourcePopulation - movedBefore);
+        long share =
+            emptiesSource && i == populations.length - 1
+                ? remainingBalance
+                : Math.multiplyExact(remainingBalance, populations[i]) / denom;
+        if (share < 0L || share > remainingBalance) {
+          throw new IllegalStateException(
+              "货币切分出现非法份额（坏数据）: source="
+                  + source
+                  + " currency="
+                  + currency
+                  + " share="
+                  + share
+                  + " remaining="
+                  + remainingBalance);
+        }
+        remainingBalance -= share;
+        movedBefore = Math.addExact(movedBefore, populations[i]);
+        if (share > 0L) {
+          shares.get(i).put(currency, share);
+        }
+      }
+      if (remainingBalance < 0L) {
+        throw new IllegalStateException("货币切分出现负余额（坏数据）: source=" + source);
+      }
     }
     return shares;
   }

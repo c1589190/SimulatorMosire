@@ -34,6 +34,7 @@ import io.mosire.simos.economy.model.ClassPosition.RelationToMeans;
 import io.mosire.simos.economy.model.ClassPosition.SurplusRole;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
@@ -323,6 +324,11 @@ final class EconomyOrganizationSettlement {
     List<ProductionMode> orderedModes = new ArrayList<>(base.modes().values());
     orderedModes.sort(Comparator.comparing(mode -> mode.id().value()));
     for (ProductionMode mode : orderedModes) {
+      if (DefaultProductionModes.DISPLACED.equals(mode.id())) {
+        // ★★ P11.1 / D-023 #6：流民没有工作、不得从 DISPLACED 池主动招募 —— 自动组织不得为
+        //    displaced 位置建 unit / 关系 / 劳动配额，也不得让已有的 displaced 位置被"重新雇佣"。
+        continue;
+      }
       var structure = base.classStructures().get(mode.classStructureId());
       if (structure == null) {
         continue; // 不完整状态：没有阶层结构就没有可组织的"位置"（不猜默认结构，报告里如实记）

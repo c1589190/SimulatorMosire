@@ -35,14 +35,12 @@ import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionOrganization;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionUnit;
-import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -61,7 +59,7 @@ import java.util.Set;
  * 逐 move：
  *   ① 源/目标行解析；目标已有 ⇒ 合并；目标缺失 ⇒ 新建（ClassRow + ClassStanding + 账户 + 组织/unit/关系 + 租赁资产）
  *   ② 人口/劳动/成员份额/劳动配额按人口比例移动（逐笔 floor；源户清空时余数随最后一笔走）
- *   ③ 货币按计划金额移动（只搬余额，不新造；负余额/超余额具名抛）
+ *   ③ 货币按**全部币种**逐项移动（D-023：逐币种按人口比例 floor，余数留源/迁空随最后一笔；不做 FX；只搬余额，不新造）
  *   ④ 债务逐合同走 DebtContractBook.reduce/upsert（唯一写口）；计划金额全部分摊，绝不静默丢债
  *   ⑤ 源户人口归零：清点货币/债务必须清零 ⇒ 从 classes/classStandings 移除，并清掉它的组织/unit/关系；
  *      源户资产按"随最后一批人"转给最后目标（资产守恒）
@@ -105,7 +103,6 @@ public final class ModeMigrationSettlement {
         session.sheet().operatorConditions();
     LinkedHashMap<ProductionUnitId, ProductionRelation> relations = session.sheet().relations();
     LinkedHashMap<DebtContractId, DebtContract> debts = session.sheet().debtContracts();
-    LinkedHashMap<HexCoord, Market> markets = session.sheet().markets();
     LinkedHashMap<PledgeId, Pledge> pledges = session.sheet().pledges();
     LinkedHashMap<ClassShareId, ClassShare> classShares = session.sheet().classShares();
     Map<DemandId, DemandEntry> demands = base.demands();
@@ -134,7 +131,6 @@ public final class ModeMigrationSettlement {
           operatorConditions,
           relations,
           debts,
-          markets,
           accounts,
           pledges,
           classShares,
@@ -161,7 +157,6 @@ public final class ModeMigrationSettlement {
       LinkedHashMap<ProductionUnitId, io.mosire.simos.economy.model.OperatorCondition> operatorConditions,
       LinkedHashMap<ProductionUnitId, ProductionRelation> relations,
       LinkedHashMap<DebtContractId, DebtContract> debts,
-      Map<HexCoord, Market> markets,
       AccountSession accounts,
       LinkedHashMap<PledgeId, Pledge> pledges,
       LinkedHashMap<ClassShareId, ClassShare> classShares,
@@ -378,10 +373,17 @@ public final class ModeMigrationSettlement {
         }
       }
 
-      // ③ 货币（只搬账户余额；计划金额精确执行）
-      if (move.moneyMilli() > 0L) {
-        CurrencyId currency = currencyOf(move, source, sourceRow, markets, accounts);
-        moveMoney(accounts, source, move.target(), currency, move.moneyMilli());
+      // ③ 货币（★★ D-023：源户全部币种逐项随迁；不做 FX、不做兑换）
+      if (!move.moneyByCurrency().isEmpty()) {
+        for (Map.Entry<CurrencyId, Long> leg : move.moneyByCurrency().entrySet()) {
+          if (leg.getValue() > 0L) {
+            moveMoney(accounts, source, move.target(), leg.getKey(), leg.getValue());
+          }
+        }
+      } else {
+        // 旧/手工计划的空 map ⇒ 就地按人口比例补算全部币种；计划器产出的 move 一律带权威 map。
+        moveAllCurrenciesByPopulation(
+            accounts, source, move.target(), populationBefore, popTake, empties);
       }
 
       // ④ 债务（计划金额分摊到源户合同；目标不新建组织）
@@ -1024,6 +1026,52 @@ public final class ModeMigrationSettlement {
     accounts.householdMoney().put(target, nextTarget);
   }
 
+  /**
+   * ★★ <b>P11.1 / D-023：旧 / 手工计划（{@code moneyByCurrency} 为空）的全币种兜底</b> —— 按当前余额逐币种
+   * 独立切：{@code share = ⌊余额 × popTake ÷ 迁出前人口⌋}（源户迁空 ⇒ 该币种余额全走），余数留源户。<b>不做 FX</b>，
+   * 逐币种并列存在。
+   */
+  private static void moveAllCurrenciesByPopulation(
+      AccountSession accounts,
+      HouseholdId source,
+      HouseholdId target,
+      long populationBefore,
+      long popTake,
+      boolean empties) {
+    Map<CurrencyId, Long> initialBalances = accounts.householdMoney().getOrDefault(source, Map.of());
+    List<CurrencyId> currencies = new ArrayList<>(initialBalances.keySet());
+    currencies.sort(Comparator.comparing(CurrencyId::value));
+    for (CurrencyId currency : currencies) {
+      long balance =
+          accounts
+              .householdMoney()
+              .getOrDefault(source, Map.of())
+              .getOrDefault(currency, 0L);
+      if (balance <= 0L) {
+        continue;
+      }
+      long share =
+          empties
+              ? balance
+              : Math.multiplyExact(balance, popTake) / Math.max(1L, populationBefore);
+      if (share <= 0L) {
+        continue;
+      }
+      if (share > balance) {
+        throw new IllegalStateException(
+            "迁移货币超过源户余额（拒绝透支）: source="
+                + source
+                + " currency="
+                + currency
+                + " need="
+                + share
+                + " balance="
+                + balance);
+      }
+      moveMoney(accounts, source, target, currency, share);
+    }
+  }
+
   private static void moveDebt(
       ModeMigrationPolicy.MigrationMove move,
       LinkedHashMap<DebtContractId, DebtContract> debts,
@@ -1098,25 +1146,6 @@ public final class ModeMigrationSettlement {
       }
     }
     return best;
-  }
-
-  private static CurrencyId currencyOf(
-      ModeMigrationPolicy.MigrationMove move,
-      HouseholdId source,
-      ClassRow sourceRow,
-      Map<HexCoord, Market> markets,
-      AccountSession accounts) {
-    Market market = markets.get(sourceRow.view().hex());
-    if (market != null) {
-      return market.numeraire();
-    }
-    CurrencyId smallest = null;
-    for (CurrencyId currency : accounts.householdMoney().getOrDefault(source, Map.of()).keySet()) {
-      if (smallest == null || currency.value().compareTo(smallest.value()) < 0) {
-        smallest = currency;
-      }
-    }
-    return smallest;
   }
 
   private static ProductionUnitId unitOfActivity(String activity) {
