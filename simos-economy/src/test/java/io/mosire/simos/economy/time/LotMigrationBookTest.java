@@ -5,14 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.economy.api.id.HouseholdId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.population.LotMigration;
 import io.mosire.simos.economy.model.ClassRow;
@@ -20,6 +19,8 @@ import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,9 +49,9 @@ class LotMigrationBookTest {
   private static final PeopleLotId SOURCE_LOT = new PeopleLotId("rural:0_0:MALE:1");
   private static final PeopleLotId TARGET_LOT = new PeopleLotId("urban:0_0:MALE:1");
   private static final HouseholdId SOURCE =
-      HouseholdId.ofSeed(RURAL_HEX, ResidenceKind.RURAL, SocialClassId.POOR_PEASANT);
+      HouseholdIds.ofSeed(RURAL_HEX, ResidenceKind.RURAL, SocialClassId.POOR_PEASANT);
   private static final HouseholdId CREDITOR =
-      HouseholdId.ofSeed(CREDITOR_HEX, ResidenceKind.RURAL, SocialClassId.LANDLORD);
+      HouseholdIds.ofSeed(CREDITOR_HEX, ResidenceKind.RURAL, SocialClassId.LANDLORD);
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final DebtTerms TERMS = DebtTerms.legacyDefault();
   private static final DebtContractId SOURCE_DEBT =
@@ -68,7 +69,7 @@ class LotMigrationBookTest {
     EconomyData after = LotMigrationBook.apply(base, List.of(migration), 7L);
 
     HouseholdId target =
-        HouseholdId.ofSeed(CITY_HEX, ResidenceKind.URBAN, SocialClassId.POOR_PEASANT);
+        HouseholdIds.ofSeed(CITY_HEX, ResidenceKind.URBAN, SocialClassId.POOR_PEASANT);
     assertThat(after.classes()).as("目标行缺失 ⇒ 新建规范身份行").containsKey(target);
 
     ClassRow sourceRow = after.classes().get(SOURCE);
@@ -104,7 +105,7 @@ class LotMigrationBookTest {
   @Test
   void migrationMergesIntoExistingTargetRowWithoutLosingPeopleOrDebt() {
     HouseholdId target =
-        HouseholdId.ofSeed(CITY_HEX, ResidenceKind.URBAN, SocialClassId.POOR_PEASANT);
+        HouseholdIds.ofSeed(CITY_HEX, ResidenceKind.URBAN, SocialClassId.POOR_PEASANT);
     ClassRow existingTarget =
         new ClassRow(
             target,
@@ -162,7 +163,7 @@ class LotMigrationBookTest {
   @Test
   void targetHouseholdIdOccupiedByDifferentViewFailsClosed() {
     HouseholdId target =
-        HouseholdId.ofSeed(CITY_HEX, ResidenceKind.URBAN, SocialClassId.POOR_PEASANT);
+        HouseholdIds.ofSeed(CITY_HEX, ResidenceKind.URBAN, SocialClassId.POOR_PEASANT);
     // 同一个规范 id 已被一个不同视图（农村居住）占用 ⇒ 新建目标行会覆盖既有身份，必须拒绝。
     ClassRow occupied =
         new ClassRow(

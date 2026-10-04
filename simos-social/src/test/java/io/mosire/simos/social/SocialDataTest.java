@@ -6,9 +6,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.calendar.CalendarDate;
 import io.mosire.simos.calendar.JulianCalendar;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
@@ -16,7 +17,6 @@ import io.mosire.simos.social.population.PopulationHeadline;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.PopulationSource;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.social.population.UrbanRural;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
@@ -45,7 +45,7 @@ class SocialDataTest {
   }
 
   private static Map<PeopleLotId, PopulationGroup> oneGroup() {
-    return Map.of(ruralLot(), new PopulationGroup(ruralLot(), H00, Sex.MALE, 100L, 0L, 0L));
+    return Map.of(ruralLot(), new PopulationGroup(ruralLot(), Sex.MALE, 100L, 0L, 0L));
   }
 
   private static SocialCity city() {
@@ -129,11 +129,12 @@ class SocialDataTest {
   @Test
   void groupsAreFrozenAgainstLaterMutation() {
     Map<PeopleLotId, PopulationGroup> mutable = new LinkedHashMap<>(oneGroup());
-    SocialData data = new SocialData(Map.of(H00, population()), Map.of(), mutable);
+    SocialData data =
+        SocialDataTestSupport.withHouseholdsAt(Map.of(H00, population()), Map.of(), mutable, H00);
     mutable.put(
         PopulationLots.rural(H00, Sex.FEMALE, "1"),
         new PopulationGroup(
-            PopulationLots.rural(H00, Sex.FEMALE, "1"), H00, Sex.FEMALE, 7L, 0L, 0L));
+            PopulationLots.rural(H00, Sex.FEMALE, "1"), Sex.FEMALE, 7L, 0L, 0L));
     assertThat(data.groups()).containsOnlyKeys(ruralLot());
   }
 
@@ -142,9 +143,10 @@ class SocialDataTest {
     PeopleLotId male = PopulationLots.rural(H00, Sex.MALE, "1");
     PeopleLotId female = PopulationLots.rural(H00, Sex.FEMALE, "1");
     Map<PeopleLotId, PopulationGroup> inserted = new LinkedHashMap<>();
-    inserted.put(female, new PopulationGroup(female, H00, Sex.FEMALE, 40L, 0L, 0L));
-    inserted.put(male, new PopulationGroup(male, H00, Sex.MALE, 60L, 0L, 0L));
-    SocialData data = new SocialData(Map.of(H00, population()), Map.of(), inserted);
+    inserted.put(female, new PopulationGroup(female, Sex.FEMALE, 40L, 0L, 0L));
+    inserted.put(male, new PopulationGroup(male, Sex.MALE, 60L, 0L, 0L));
+    SocialData data =
+        SocialDataTestSupport.withHouseholdsAt(Map.of(H00, population()), Map.of(), inserted, H00);
     assertThat(data.groups().keySet()).as("迭代序 = 插入序（不是内容序）").containsExactly(female, male);
   }
 
@@ -156,7 +158,7 @@ class SocialDataTest {
         .isInstanceOf(IllegalArgumentException.class);
 
     Map<PeopleLotId, PopulationGroup> nullKey = new LinkedHashMap<>();
-    nullKey.put(null, new PopulationGroup(ruralLot(), H00, Sex.MALE, 1L, 0L, 0L));
+    nullKey.put(null, new PopulationGroup(ruralLot(), Sex.MALE, 1L, 0L, 0L));
     assertThatThrownBy(() -> new SocialData(Map.of(H00, population()), Map.of(), nullKey))
         .isInstanceOf(IllegalArgumentException.class);
   }
@@ -176,7 +178,9 @@ class SocialDataTest {
 
   @Test
   void withGroupsSwapsOnlyThatComponent() {
-    SocialData base = new SocialData(Map.of(H00, population()), Map.of(C1, city()), Map.of());
+    SocialData base =
+        SocialDataTestSupport.withHouseholdsAt(
+            Map.of(H00, population()), Map.of(C1, city()), oneGroup(), H00);
     SocialData withGroups = base.withGroups(oneGroup());
 
     assertThat(withGroups.groups()).containsOnlyKeys(ruralLot());
@@ -185,21 +189,29 @@ class SocialDataTest {
   }
 
   /**
-   * ★★ **跨组件校验**（设计稿 §十.7：「`group` 必须落在有 `populations` 序列的格上」）：批次落在没有序列的格上 ⇒ 构造期拒。
+   * ★★ **S2 跨组件校验**：位置真值源已从 {@code PopulationGroup.residence} 迁到 {@code Household.location}
+   * （架构 §4.2）⇒ 每个批次必须**恰被一个家户引用**，无主批次（本用例）与双主批次都被构造期拒。
    *
-   * <p>★ 判别力：把这条校验删掉，本用例当场红（那正是"两笔人口账各说各话"的入口）；而上面每一条用到批次的用例都落在有序列的格上， 故它们都不会因为这条校验而被迫改动。
+   * <p>★ 判别力：把 {@code SocialData} 构造期这条校验删掉，本用例当场红——那正是"这批人没有位置、任何读口都看不见"
+   * 的入口。
    */
   @Test
-  void rejectsGroupsOnHexesWithoutAPopulationSeries() {
+  void rejectsGroupsWithoutAnyHousehold() {
     HexCoord orphan = new HexCoord(9, 9);
     PeopleLotId lot = PopulationLots.rural(orphan, Sex.MALE, "1");
     Map<PeopleLotId, PopulationGroup> groups =
-        Map.of(lot, new PopulationGroup(lot, orphan, Sex.MALE, 10L, 0L, 0L));
+        Map.of(lot, new PopulationGroup(lot, Sex.MALE, 10L, 0L, 0L));
 
     assertThatThrownBy(
-            () -> new SocialData(Map.of(H00, population()) /* 只有 H00 有序列 */, Map.of(), groups))
+            () ->
+                new SocialData(
+                    Map.of(H00, population()) /* 只有 H00 有序列 */,
+                    Map.of(),
+                    groups,
+                    Map.of(),
+                    Map.of()))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("没有 populations 序列");
+        .hasMessageContaining("没有被任何家户引用");
   }
 
   /**
@@ -217,12 +229,16 @@ class SocialDataTest {
     HexCoord otherHex = new HexCoord(1, 0);
     PeopleLotId otherLot = PopulationLots.rural(otherHex, Sex.MALE, "1");
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
-    groups.put(male, new PopulationGroup(male, H00, Sex.MALE, 600L, 0L, 0L));
-    groups.put(female, new PopulationGroup(female, H00, Sex.FEMALE, 400L, 0L, 0L));
-    groups.put(urban, new PopulationGroup(urban, H00, Sex.MALE, 1_500L, 0L, 0L));
-    groups.put(otherLot, new PopulationGroup(otherLot, otherHex, Sex.MALE, 99L, 0L, 0L));
+    groups.put(male, new PopulationGroup(male, Sex.MALE, 600L, 0L, 0L));
+    groups.put(female, new PopulationGroup(female, Sex.FEMALE, 400L, 0L, 0L));
+    groups.put(urban, new PopulationGroup(urban, Sex.MALE, 1_500L, 0L, 0L));
+    groups.put(otherLot, new PopulationGroup(otherLot, Sex.MALE, 99L, 0L, 0L));
     SocialData data =
-        new SocialData(Map.of(H00, population(), otherHex, population()), Map.of(), groups);
+        SocialDataTestSupport.withHouseholdsAt(
+            Map.of(H00, population(), otherHex, population()),
+            Map.of(),
+            groups,
+            Map.of(male, H00, female, H00, urban, H00, otherLot, otherHex));
 
     assertThat(data.populationAt(H00)).as("农村 600 + 400，城镇 1,500").isEqualTo(2_500L);
     assertThat(data.populationAt(otherHex)).isEqualTo(99L);
@@ -241,10 +257,12 @@ class SocialDataTest {
     PeopleLotId female = PopulationLots.urban(C1, Sex.FEMALE, "2");
     PeopleLotId rural = PopulationLots.rural(H00, Sex.MALE, "1");
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
-    groups.put(male, new PopulationGroup(male, H00, Sex.MALE, 3_000L, 0L, 0L));
-    groups.put(female, new PopulationGroup(female, H00, Sex.FEMALE, 2_000L, 0L, 0L));
-    groups.put(rural, new PopulationGroup(rural, H00, Sex.MALE, 500L, 0L, 0L));
-    SocialData data = new SocialData(Map.of(H00, population()), Map.of(C1, city()), groups);
+    groups.put(male, new PopulationGroup(male, Sex.MALE, 3_000L, 0L, 0L));
+    groups.put(female, new PopulationGroup(female, Sex.FEMALE, 2_000L, 0L, 0L));
+    groups.put(rural, new PopulationGroup(rural, Sex.MALE, 500L, 0L, 0L));
+    SocialData data =
+        SocialDataTestSupport.withHouseholdsAt(
+            Map.of(H00, population()), Map.of(C1, city()), groups, H00);
 
     assertThat(data.urbanPopulationAt(C1))
         .as("3,000 + 2,000（农村那 500 不算城里人；两批的细分名不同也照样归本城）")
@@ -371,6 +389,29 @@ class SocialDataTest {
     return groups;
   }
 
+  /** {@link #mixedGroups()} 的逐批次落点（S2 起位置只能由家户给出，构造 {@link SocialData} 时必须一起给）。 */
+  private static Map<PeopleLotId, HexCoord> mixedLocations(
+      Map<PeopleLotId, PopulationGroup> groups) {
+    Map<PeopleLotId, HexCoord> locations = new LinkedHashMap<>();
+    for (PeopleLotId lot : groups.keySet()) {
+      String value = lot.value();
+      if (value.startsWith("urban:c1:")) {
+        locations.put(lot, H00);
+      } else if (value.startsWith("urban:c2:")) {
+        locations.put(lot, H10);
+      } else if (value.startsWith("rural:0_0:")) {
+        locations.put(lot, H00);
+      } else if (value.startsWith("rural:1_0:")) {
+        locations.put(lot, H10);
+      } else if (value.startsWith("rural:9_9:")) {
+        locations.put(lot, H99);
+      } else {
+        throw new IllegalArgumentException("混合夹具未知批次落点: " + lot);
+      }
+    }
+    return locations;
+  }
+
   private static void put(
       Map<PeopleLotId, PopulationGroup> groups,
       PeopleLotId id,
@@ -378,7 +419,7 @@ class SocialDataTest {
       Sex sex,
       long count,
       long ageAtAnchorDays) {
-    groups.put(id, new PopulationGroup(id, at, sex, count, ageAtAnchorDays, ANCHOR));
+    groups.put(id, new PopulationGroup(id, sex, count, ageAtAnchorDays, ANCHOR));
   }
 
   /** 混合夹具的 {@link SocialData}（四个格都有序列：H00/H10 有批次，H01 一条都没有，H99 全是 0 人批次）。 */
@@ -388,7 +429,9 @@ class SocialDataTest {
     populations.put(H10, population());
     populations.put(H01, population());
     populations.put(H99, population());
-    return new SocialData(populations, Map.of(C1, city(), C2, cityOf(C2)), mixedGroups());
+    Map<PeopleLotId, PopulationGroup> groups = mixedGroups();
+    return SocialDataTestSupport.withHouseholdsAt(
+        populations, Map.of(C1, city(), C2, cityOf(C2)), groups, mixedLocations(groups));
   }
 
   private static SocialCity cityOf(CityId id) {
@@ -464,12 +507,12 @@ class SocialDataTest {
     groups.put(
         child,
         new PopulationGroup(
-            child, hex, Sex.MALE, 1L, ageDaysBeforeBirthdayAt(ANCHOR + 1L, 15L), ANCHOR));
+            child, Sex.MALE, 1L, ageDaysBeforeBirthdayAt(ANCHOR + 1L, 15L), ANCHOR));
     groups.put(
         adult,
         new PopulationGroup(
-            adult, hex, Sex.FEMALE, 1L, ageDaysBeforeBirthdayAt(ANCHOR + 1L, 60L), ANCHOR));
-    SocialData data = new SocialData(Map.of(hex, population()), Map.of(), groups);
+            adult, Sex.FEMALE, 1L, ageDaysBeforeBirthdayAt(ANCHOR + 1L, 60L), ANCHOR));
+    SocialData data = SocialDataTestSupport.withHouseholdsAt(Map.of(hex, population()), Map.of(), groups, hex);
 
     // ★ **锚点那一刻**的整张结构（两条边各钉下侧）——★ **如实记：这一条对"现算"没有判别力**
     //   （{@code nowTick == anchorTick} 时 {@code ageDaysAt} 与 {@code ageAtAnchorDays}
@@ -500,8 +543,8 @@ class SocialDataTest {
     HexCoord hex = new HexCoord(3, 3);
     PeopleLotId lot = PopulationLots.rural(hex, Sex.MALE, "0");
     Map<PeopleLotId, PopulationGroup> groups =
-        new LinkedHashMap<>(Map.of(lot, new PopulationGroup(lot, hex, Sex.MALE, 1L, 0L, ANCHOR)));
-    SocialData data = new SocialData(Map.of(hex, population()), Map.of(), groups);
+        new LinkedHashMap<>(Map.of(lot, new PopulationGroup(lot, Sex.MALE, 1L, 0L, ANCHOR)));
+    SocialData data = SocialDataTestSupport.withHouseholdsAt(Map.of(hex, population()), Map.of(), groups, hex);
 
     assertThatThrownBy(() -> data.ageStructureAt(hex, ANCHOR - 1L, CLOCK))
         .isInstanceOf(IllegalArgumentException.class)

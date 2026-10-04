@@ -8,16 +8,15 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -30,6 +29,8 @@ import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -56,9 +57,9 @@ class EconomyInvariantsTest {
   private static final CohortKey LANDLORD_KEY = new CohortKey(HEX, ResidenceKind.RURAL, LANDLORD);
 
   /** ★ S1：{@code classes}/{@code flows} 的键 = 家户稳定身份（旧 {@link CohortKey} 由 ofLegacy 迁移）。 */
-  private static final HouseholdId PEASANT_HOUSE = HouseholdId.ofLegacy(PEASANT_KEY);
+  private static final HouseholdId PEASANT_HOUSE = HouseholdIds.ofLegacy(PEASANT_KEY);
 
-  private static final HouseholdId LANDLORD_HOUSE = HouseholdId.ofLegacy(LANDLORD_KEY);
+  private static final HouseholdId LANDLORD_HOUSE = HouseholdIds.ofLegacy(LANDLORD_KEY);
   private static final CommodityId GRAIN = new CommodityId("grain");
 
   /** ★ E4a：粮债的默认条款与两个不同条款的连续合同身份（D1/D2 供“债务表是权威”的对照用例）。 */

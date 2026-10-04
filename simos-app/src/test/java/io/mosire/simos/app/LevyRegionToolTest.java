@@ -14,6 +14,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.app.testing.SocialHouseholdFixture;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.write.LevyRegionTool;
 import io.mosire.simos.core.CoreSimos;
@@ -28,7 +29,6 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.economy.codec.EconomyCodec;
@@ -50,10 +50,11 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.RelativeOffset;
@@ -109,6 +110,8 @@ class LevyRegionToolTest {
 
   /** 与缺省 initiator 不同，让"写死成别的值"这类变异当场现形。 */
   private static final String TEST_INITIATOR = "agent:t2-levy";
+
+  private static final Map<PeopleLotId, HexCoord> GROUP_LOCATIONS = new LinkedHashMap<>();
 
   private static final HexCoord H11 = new HexCoord(1, 1);
   private static final HexCoord H12 = new HexCoord(1, 2);
@@ -1033,7 +1036,21 @@ class LevyRegionToolTest {
     for (HexCoord at : List.of(H11, H12, H13)) {
       populations.put(at, populationSeries());
     }
-    return new SocialData(populations, Map.of(), groups);
+    return SocialHouseholdFixture.withHouseholdsAt(
+        populations, Map.of(), groups, groupLocations(groups));
+  }
+
+  private static Map<PeopleLotId, HexCoord> groupLocations(
+      Map<PeopleLotId, PopulationGroup> groups) {
+    Map<PeopleLotId, HexCoord> locations = new LinkedHashMap<>();
+    for (PeopleLotId id : groups.keySet()) {
+      HexCoord at = GROUP_LOCATIONS.get(id);
+      if (at == null) {
+        throw new IllegalArgumentException("测试夹具缺批次落点: " + id);
+      }
+      locations.put(id, at);
+    }
+    return locations;
   }
 
   private static PeopleLotId lot(String id) {
@@ -1041,7 +1058,9 @@ class LevyRegionToolTest {
   }
 
   private static PopulationGroup group(String id, HexCoord at, Sex sex, long count) {
-    return new PopulationGroup(lot(id), at, sex, count, 20L * 365L, 0L);
+    PopulationGroup group = new PopulationGroup(lot(id), sex, count, 20L * 365L, 0L);
+    GROUP_LOCATIONS.put(group.id(), at);
+    return group;
   }
 
   private static PopulationSeries populationSeries() {

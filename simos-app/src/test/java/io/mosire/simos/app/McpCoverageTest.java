@@ -26,9 +26,9 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -55,6 +55,7 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.unit.CompositionEntry;
@@ -217,7 +218,7 @@ class McpCoverageTest {
    * 的**唯一拼写点**；actor id 再由 {@link HouseholdActors#idOf(HouseholdId)} 拼，本文件不手写格式）。
    */
   private static final HouseholdId SEEDED_HOUSEHOLD =
-      HouseholdId.ofSeed(H11, ResidenceKind.RURAL, new SocialClassId("poor_peasant"));
+      HouseholdIds.ofSeed(H11, ResidenceKind.RURAL, new SocialClassId("poor_peasant"));
 
   private static final String HOUSEHOLD_ID = HouseholdActors.idOf(SEEDED_HOUSEHOLD);
 

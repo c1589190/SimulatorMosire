@@ -2,12 +2,12 @@ package io.mosire.simos.economy.time;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.time.MarketSettlementFixtures.Builder;
 import io.mosire.simos.economy.time.MarketSettlementFixtures.Round;
 import io.mosire.simos.economy.time.MarketSettlementFixtures.World;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;

@@ -3,14 +3,15 @@ package io.mosire.simos.app.gov;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.app.access.ScopeFixtures;
-import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.app.testing.SocialHouseholdFixture;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.GovLevel;
@@ -218,13 +219,15 @@ class NationSummaryTest {
   private static SocialData social(Map<HexCoord, Long> byHex) {
     Map<HexCoord, PopulationSeries> populations = new LinkedHashMap<>();
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
+    Map<PeopleLotId, HexCoord> locations = new LinkedHashMap<>();
     for (Map.Entry<HexCoord, Long> entry : byHex.entrySet()) {
       HexCoord hex = entry.getKey();
       populations.put(hex, populationSeries());
       PeopleLotId lot = new PeopleLotId("lot-" + hex);
-      groups.put(lot, new PopulationGroup(lot, hex, Sex.MALE, entry.getValue(), 30L, 0L));
+      groups.put(lot, new PopulationGroup(lot, Sex.MALE, entry.getValue(), 30L, 0L));
+      locations.put(lot, hex);
     }
-    return new SocialData(populations, Map.of(), groups);
+    return SocialHouseholdFixture.withHouseholdsAt(populations, Map.of(), groups, locations);
   }
 
   private static PopulationSeries populationSeries() {

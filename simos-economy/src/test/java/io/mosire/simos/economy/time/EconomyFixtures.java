@@ -5,13 +5,12 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -35,6 +34,8 @@ import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -61,12 +62,12 @@ final class EconomyFixtures {
 
   /** 旧视图 → 测试世界的稳定家户身份（本包旧用例的唯一转换点）。 */
   static HouseholdId hh(CohortKey view) {
-    return HouseholdId.ofLegacy(view);
+    return HouseholdIds.ofLegacy(view);
   }
 
   /** 稳定身份 → 旧视图（只服务本包旧用例的读回）。 */
   static CohortKey view(HouseholdId id) {
-    return id.legacyView().orElseThrow(() -> new IllegalArgumentException("不是本夹具的旧档身份: " + id));
+    return HouseholdIds.legacyView(id).orElseThrow(() -> new IllegalArgumentException("不是本夹具的旧档身份: " + id));
   }
 
   /**
@@ -255,7 +256,7 @@ final class EconomyFixtures {
         cycleInputUsedMilli);
   }
 
-  /** ★ 旧 9 参 ClassRow（无稳定 id）→ 当前 10 参；身份取 {@code HouseholdId.ofLegacy(view)}。 */
+  /** ★ 旧 9 参 ClassRow（无稳定 id）→ 当前 10 参；身份取 {@code HouseholdIds.ofLegacy(view)}。 */
   static ClassRow classRow(
       CohortKey view,
       long population,

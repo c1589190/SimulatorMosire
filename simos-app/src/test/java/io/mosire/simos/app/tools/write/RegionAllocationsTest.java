@@ -9,19 +9,20 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.app.testing.SocialHouseholdFixture;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.calendar.CalendarDate;
 import io.mosire.simos.calendar.JulianCalendar;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -44,6 +45,8 @@ import org.junit.jupiter.api.Test;
 class RegionAllocationsTest {
 
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
+  private static final Map<PeopleLotId, HexCoord> GROUP_LOCATIONS = new LinkedHashMap<>();
+
   private static final HexCoord H11 = new HexCoord(1, 1);
   private static final HexCoord H12 = new HexCoord(1, 2);
   private static final HexCoord H_OUT = new HexCoord(9, 9);
@@ -339,7 +342,9 @@ class RegionAllocationsTest {
 
   private static PopulationGroup group(
       String id, HexCoord at, Sex sex, long count, long ageAtAnchorDays, long anchorTick) {
-    return new PopulationGroup(lot(id), at, sex, count, ageAtAnchorDays, anchorTick);
+    PopulationGroup group = new PopulationGroup(lot(id), sex, count, ageAtAnchorDays, anchorTick);
+    GROUP_LOCATIONS.put(group.id(), at);
+    return group;
   }
 
   /** 按批次表现算 populations（SocialData 的跨组件校验要求每个批次落点都有农村序列）。 */
@@ -353,10 +358,16 @@ class RegionAllocationsTest {
 
   private static SocialData social(Map<PeopleLotId, PopulationGroup> groups) {
     Map<HexCoord, PopulationSeries> populations = new LinkedHashMap<>();
-    for (PopulationGroup group : groups.values()) {
-      populations.putIfAbsent(group.residence(), populationSeries());
+    Map<PeopleLotId, HexCoord> locations = new LinkedHashMap<>();
+    for (PeopleLotId id : groups.keySet()) {
+      HexCoord at = GROUP_LOCATIONS.get(id);
+      if (at == null) {
+        throw new IllegalArgumentException("测试夹具缺批次落点: " + id);
+      }
+      populations.putIfAbsent(at, populationSeries());
+      locations.put(id, at);
     }
-    return new SocialData(populations, Map.of(), groups);
+    return SocialHouseholdFixture.withHouseholdsAt(populations, Map.of(), groups, locations);
   }
 
   private static PopulationSeries populationSeries() {

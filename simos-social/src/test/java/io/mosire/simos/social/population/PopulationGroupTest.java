@@ -3,35 +3,33 @@ package io.mosire.simos.social.population;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.mosire.simos.economy.api.id.PeopleLotId;
-import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import org.junit.jupiter.api.Test;
 
 /** {@link PopulationGroup}：构造期不变量 + **年龄是派生纯函数**（R1 的 T2/T6 的判据）。 */
 class PopulationGroupTest {
 
   private static final PeopleLotId ID = PeopleLotId.parse("rural:0_0:MALE");
-  private static final HexCoord H00 = new HexCoord(0, 0);
-
   private static PopulationGroup group(long count, long ageDays, long anchorTick) {
-    return new PopulationGroup(ID, H00, Sex.MALE, count, ageDays, anchorTick);
+    return new PopulationGroup(ID, Sex.MALE, count, ageDays, anchorTick);
   }
 
   @Test
   void rejectsNullsAndNegativeNumbers() {
-    assertThatThrownBy(() -> new PopulationGroup(null, H00, Sex.MALE, 1L, 0L, 0L))
+    assertThatThrownBy(() -> new PopulationGroup(null, Sex.MALE, 1L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new PopulationGroup(ID, null, Sex.MALE, 1L, 0L, 0L))
+    assertThatThrownBy(() -> new PopulationGroup(ID, null, 1L, 0L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new PopulationGroup(ID, H00, null, 1L, 0L, 0L))
+    assertThatThrownBy(() -> new PopulationGroup(ID, null, 1L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new PopulationGroup(ID, H00, Sex.MALE, -1L, 0L, 0L))
+    assertThatThrownBy(() -> new PopulationGroup(ID, Sex.MALE, -1L, 0L, 0L))
         .as("count 为负")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new PopulationGroup(ID, H00, Sex.MALE, 1L, -1L, 0L))
+    assertThatThrownBy(() -> new PopulationGroup(ID, Sex.MALE, 1L, -1L, 0L))
         .as("ageAtAnchorDays 为负")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new PopulationGroup(ID, H00, Sex.MALE, 1L, 0L, -1L))
+    assertThatThrownBy(() -> new PopulationGroup(ID, Sex.MALE, 1L, 0L, -1L))
         .as("anchorTick 为负")
         .isInstanceOf(IllegalArgumentException.class);
   }

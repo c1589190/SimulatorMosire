@@ -32,6 +32,7 @@ import io.mosire.simos.sd.spi.CreateArmyHandler;
 import io.mosire.simos.sd.spi.CreateNationHandler;
 import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.gen.TerrainView;
 import io.mosire.simos.social.population.PopulationGroup;
@@ -287,7 +288,7 @@ class CompactThreeNationsEconomyTest {
       ClassRow row =
           economy
               .classes()
-              .get(io.mosire.simos.economy.api.id.HouseholdId.parse(account.householdId()));
+              .get(io.mosire.simos.social.api.id.HouseholdId.parse(account.householdId()));
       assertThat(row).as("%s: 家户生产账户必须在 classes 投影里: %s", tag, account.householdId()).isNotNull();
       assertThat(row.population())
           .as("%s: classes.population == 家户账户人口: %s", tag, account.householdId())

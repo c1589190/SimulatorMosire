@@ -78,7 +78,9 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.codec.SocialCodec;
+import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
@@ -1650,17 +1652,15 @@ class RealLlmGovScenarioTest {
     long headBefore = head();
     SimulationState before = stateAt(headBefore);
     List<PopulationGroup> groups =
-        CompactThreeNationsWorld.socialOf(before).groups().values().stream()
-            .filter(group -> group.residence().equals(nf.capital))
-            .toList();
+        groupsAt(CompactThreeNationsWorld.socialOf(before), nf.capital);
     assertThat(groups).as("%s 首都格必须有批次", nf.key).isNotEmpty();
     Map<String, Object> payload = new LinkedHashMap<>();
     List<Map<String, Object>> entries = new ArrayList<>();
     for (PopulationGroup group : groups) {
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("id", group.id().value());
-      entry.put("q", group.residence().q());
-      entry.put("r", group.residence().r());
+      entry.put("q", nf.capital.q());
+      entry.put("r", nf.capital.r());
       entry.put("sex", group.sex().name());
       entry.put("count", group.count() / 2L);
       entry.put("ageDays", group.ageAtAnchorDays());
@@ -1985,10 +1985,25 @@ class RealLlmGovScenarioTest {
     return StaffRole.SCRIBE;
   }
 
+  /** S2：某格的全部成员批次（位置在家户上；家户成员表的序即返回序）。 */
+  private static List<PopulationGroup> groupsAt(SocialData social, HexCoord hex) {
+    List<PopulationGroup> out = new ArrayList<>();
+    for (Household household : social.householdsAt(hex)) {
+      for (PeopleLotId lot : household.memberLots()) {
+        PopulationGroup group = social.groups().get(lot);
+        if (group != null) {
+          out.add(group);
+        }
+      }
+    }
+    return out;
+  }
+
   private static long socialTotalInRegion(SimulationState state, Region region) {
     long total = 0L;
-    for (PopulationGroup group : CompactThreeNationsWorld.socialOf(state).groups().values()) {
-      if (region.hexes().contains(group.residence())) {
+    SocialData social = CompactThreeNationsWorld.socialOf(state);
+    for (PopulationGroup group : social.groups().values()) {
+      if (social.hexOfLot(group.id()).filter(region.hexes()::contains).isPresent()) {
         total += group.count();
       }
     }
@@ -1997,8 +2012,9 @@ class RealLlmGovScenarioTest {
 
   private static long socialTotalAt(SimulationState state, HexCoord hex) {
     long total = 0L;
-    for (PopulationGroup group : CompactThreeNationsWorld.socialOf(state).groups().values()) {
-      if (group.residence().equals(hex)) {
+    SocialData social = CompactThreeNationsWorld.socialOf(state);
+    for (PopulationGroup group : social.groups().values()) {
+      if (social.hexOfLot(group.id()).filter(hex::equals).isPresent()) {
         total += group.count();
       }
     }
@@ -2049,10 +2065,7 @@ class RealLlmGovScenarioTest {
     return region.hexes().stream()
         .filter(hex -> !hex.equals(capital))
         .filter(hex -> social.populations().containsKey(hex))
-        .filter(
-            hex ->
-                social.groups().values().stream()
-                    .anyMatch(group -> group.residence().equals(hex) && group.count() > 0L))
+        .filter(hex -> social.groupsAt(hex).stream().anyMatch(group -> group.count() > 0L))
         .sorted(
             Comparator.comparingInt((HexCoord hex) -> hex.distanceTo(capital))
                 .thenComparingInt(HexCoord::q)

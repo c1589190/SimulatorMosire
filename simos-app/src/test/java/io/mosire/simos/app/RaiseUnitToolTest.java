@@ -13,6 +13,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.app.testing.SocialHouseholdFixture;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.RaiseUnitTool;
@@ -27,7 +28,6 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.economy.codec.EconomyCodec;
@@ -49,10 +49,11 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
@@ -105,6 +106,8 @@ class RaiseUnitToolTest {
 
   /** 与缺省 initiator 不同，让"写死成别的值"这类变异当场现形。 */
   private static final String TEST_INITIATOR = "agent:t4b-raise";
+
+  private static final Map<PeopleLotId, HexCoord> GROUP_LOCATIONS = new LinkedHashMap<>();
 
   private static final HexCoord H11 = new HexCoord(1, 1);
   private static final HexCoord H12 = new HexCoord(1, 2);
@@ -625,7 +628,7 @@ class RaiseUnitToolTest {
 
       if (id.value().equals("g1") || id.value().equals("g2")) {
         assertThat(afterGroup.id()).as("id 保真").isEqualTo(beforeGroup.id());
-        assertThat(afterGroup.residence()).as("居所保真").isEqualTo(beforeGroup.residence());
+        assertThat(after.locationOfLot(id)).as("居所保真（S2 位置在家户上）").isEqualTo(before.locationOfLot(id));
         assertThat(afterGroup.sex()).as("性别保真").isEqualTo(beforeGroup.sex());
         assertThat(afterGroup.ageAtAnchorDays())
             .as("stage ageDays 保真（不是当前 tick 重写）")
@@ -873,7 +876,21 @@ class RaiseUnitToolTest {
     for (HexCoord at : List.of(H11, H12, H13)) {
       populations.put(at, populationSeries());
     }
-    return new SocialData(populations, Map.of(), groups);
+    return SocialHouseholdFixture.withHouseholdsAt(
+        populations, Map.of(), groups, groupLocations(groups));
+  }
+
+  private static Map<PeopleLotId, HexCoord> groupLocations(
+      Map<PeopleLotId, PopulationGroup> groups) {
+    Map<PeopleLotId, HexCoord> locations = new LinkedHashMap<>();
+    for (PeopleLotId id : groups.keySet()) {
+      HexCoord at = GROUP_LOCATIONS.get(id);
+      if (at == null) {
+        throw new IllegalArgumentException("测试夹具缺批次落点: " + id);
+      }
+      locations.put(id, at);
+    }
+    return locations;
   }
 
   private static PeopleLotId lot(String id) {
@@ -888,7 +905,10 @@ class RaiseUnitToolTest {
       long ageAtAnchorDays,
       long anchorTick,
       long stress) {
-    return new PopulationGroup(lot(id), at, sex, count, ageAtAnchorDays, anchorTick, stress);
+    PopulationGroup group =
+        new PopulationGroup(lot(id), sex, count, ageAtAnchorDays, anchorTick, stress);
+    GROUP_LOCATIONS.put(group.id(), at);
+    return group;
   }
 
   private static PopulationSeries populationSeries() {

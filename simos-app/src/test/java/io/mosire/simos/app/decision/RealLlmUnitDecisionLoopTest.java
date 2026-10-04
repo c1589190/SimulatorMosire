@@ -71,11 +71,12 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.RelativeOffset;
@@ -1301,20 +1302,17 @@ class RealLlmUnitDecisionLoopTest {
 
   private static SocialData socialData() {
     Map<HexCoord, PopulationSeries> populations = new LinkedHashMap<>();
-    Map<io.mosire.simos.economy.api.id.PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
+    Map<io.mosire.simos.social.api.id.PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
+    Map<io.mosire.simos.social.api.id.PeopleLotId, HexCoord> locations = new LinkedHashMap<>();
     for (Map.Entry<HexCoord, Long> entry : POPULATION.entrySet()) {
       populations.put(entry.getKey(), populationSeries(entry.getValue()));
-      groups.put(
-          PopulationLots.rural(entry.getKey(), Sex.MALE, "0"),
-          new PopulationGroup(
-              PopulationLots.rural(entry.getKey(), Sex.MALE, "0"),
-              entry.getKey(),
-              Sex.MALE,
-              entry.getValue(),
-              30L,
-              0L));
+      io.mosire.simos.social.api.id.PeopleLotId lot =
+          PopulationLots.rural(entry.getKey(), Sex.MALE, "0");
+      groups.put(lot, new PopulationGroup(lot, Sex.MALE, entry.getValue(), 30L, 0L));
+      locations.put(lot, entry.getKey());
     }
-    return new SocialData(populations, Map.of(), groups);
+    return io.mosire.simos.app.testing.SocialHouseholdFixture.withHouseholdsAt(
+        populations, Map.of(), groups, locations);
   }
 
   private static PopulationSeries populationSeries(long count) {

@@ -28,6 +28,7 @@ import io.mosire.simos.app.render.ArtifactStore;
 import io.mosire.simos.app.render.RenderCache;
 import io.mosire.simos.app.render.RenderRequest;
 import io.mosire.simos.app.render.RenderService;
+import io.mosire.simos.app.testing.SocialHouseholdFixture;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.tools.read.MapOverlapsTool;
 import io.mosire.simos.app.tools.read.MapRenderTool;
@@ -94,7 +95,6 @@ import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
@@ -114,11 +114,12 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -2461,9 +2462,10 @@ class SimosToolsTest {
     }
     UnitState units = new UnitState(new LinkedHashMap<>(Map.of(U1, unit())));
     // ★★ R1.5：H11 挂**刻意混合**的批次（男女 × 城乡 × 三档各非零，见 mixedGroups）——MCP 读口的用例靠它避免假绿。
+    Map<PeopleLotId, PopulationGroup> groups = mixedGroups();
     SocialData social =
-        new SocialData(
-            new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of(), mixedGroups());
+        SocialHouseholdFixture.withHouseholdsAt(
+            new LinkedHashMap<>(Map.of(H11, populationSeries())), Map.of(), groups, H11);
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),
@@ -2554,7 +2556,7 @@ class SimosToolsTest {
       Sex sex,
       long count,
       long ageAtAnchorDays) {
-    groups.put(id, new PopulationGroup(id, H11, sex, count, ageAtAnchorDays, T0.tick()));
+    groups.put(id, new PopulationGroup(id, sex, count, ageAtAnchorDays, T0.tick()));
   }
 
   private static GameMap corridorMap() {

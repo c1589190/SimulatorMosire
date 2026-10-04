@@ -6,11 +6,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.calendar.CalendarDate;
 import io.mosire.simos.calendar.JulianCalendar;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialDataTestSupport;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -239,7 +241,7 @@ class PopulationDynamicsTest {
     long birthday = dayOf(2000, 4, 11);
     long birthOf15 = dayOf(1985, 4, 11);
     long birthOf60 = dayOf(1940, 4, 11);
-    PopulationGroup male = new PopulationGroup(lot("m-edge"), HEX, Sex.MALE, 1_000L, 0L, 0L, 0L);
+    PopulationGroup male = new PopulationGroup(lot("m-edge"), Sex.MALE, 1_000L, 0L, 0L, 0L);
     Map<Sex, Integer> sexFactor = Map.of(Sex.MALE, 1000);
 
     assertThat(
@@ -408,7 +410,7 @@ class PopulationDynamicsTest {
   private static PopulationGroup groupAtYears(
       PeopleLotId id, Sex sex, long count, long ageYears, long stress) {
     return new PopulationGroup(
-        id, HEX, sex, count, ageDaysAtSettlement(ageYears), SETTLEMENT_TICK, stress);
+        id, sex, count, ageDaysAtSettlement(ageYears), SETTLEMENT_TICK, stress);
   }
 
   /** 结算日恰好 {@code ageYears} 岁的年龄（天）：生日 = 结算日当天日期的年号回退 {@code ageYears} 年。 */
@@ -423,7 +425,6 @@ class PopulationDynamicsTest {
   private static PopulationGroup groupAtBirthday(String tag, long birthDayNumber) {
     return new PopulationGroup(
         lot(tag),
-        HEX,
         Sex.FEMALE,
         1_000L,
         SETTLEMENT_DAY_NUMBER - birthDayNumber,
@@ -433,7 +434,7 @@ class PopulationDynamicsTest {
 
   /** 只喂给 {@code birthsOf}/{@code mortalityPerMille} 的批次：真实年龄由调用方显式传 {@code ageDays}。 */
   private static PopulationGroup femaleAtCount(PeopleLotId id, long count) {
-    return new PopulationGroup(id, HEX, Sex.FEMALE, count, 0L, 0L, 0L);
+    return new PopulationGroup(id, Sex.FEMALE, count, 0L, 0L, 0L);
   }
 
   private static long dayOf(int year, int month, int day) {
@@ -447,7 +448,6 @@ class PopulationDynamicsTest {
   private static PopulationGroup withStress(PopulationGroup group, long stress) {
     return new PopulationGroup(
         group.id(),
-        group.residence(),
         group.sex(),
         group.count(),
         group.ageAtAnchorDays(),
@@ -461,10 +461,13 @@ class PopulationDynamicsTest {
     return withGroups(groups);
   }
 
-  /** 造一个只含这些批次的社会状态（人口序列只放一个格 —— {@code SocialData} 的跨组件校验要求批次落在有序列的格上）。 */
+  /**
+   * 造一个只含这些批次的社会状态（人口序列只放一个格；S2 起批次必须挂家户 ⇒ 用
+   * {@link SocialDataTestSupport} 为 {@link #HEX} 造一个成员齐全的家户）。
+   */
   private static SocialData withGroups(Map<PeopleLotId, PopulationGroup> groups) {
-    return new SocialData(
-        Map.of(HEX, series()), Map.<CityId, io.mosire.simos.social.city.SocialCity>of(), groups);
+    return SocialDataTestSupport.withHouseholdsAt(
+        Map.of(HEX, series()), Map.<CityId, io.mosire.simos.social.city.SocialCity>of(), groups, HEX);
   }
 
   /** 一条平凡的人口序列（本用例集只关心批次；序列本身只是"这一格有人口账"的凭证）。 */

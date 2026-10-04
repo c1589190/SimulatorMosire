@@ -2,16 +2,23 @@ package io.mosire.simos.social.change;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.household.HouseholdLocation;
+import io.mosire.simos.social.api.household.HouseholdProfile;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.HouseholdPopulationEvent;
+import io.mosire.simos.social.api.population.HouseholdVitalRates;
+import io.mosire.simos.social.api.population.PopulationEventType;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.city.SocialCity;
+import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.StateRef;
@@ -60,8 +67,8 @@ class SocialRoundTripTest {
   }
 
   @Test
-  void changeSetHasExactlyThreeComponents() {
-    assertThat(SocialChangeSet.class.getRecordComponents()).hasSize(3);
+  void changeSetHasExactlyFiveComponents() {
+    assertThat(SocialChangeSet.class.getRecordComponents()).hasSize(5);
     assertThat(componentNames(SocialChangeSet.class))
         .as("变更集的每个组件都必须在 SocialData 里有同名的 record 组件")
         .isSubsetOf(componentNames(SocialData.class));
@@ -90,7 +97,12 @@ class SocialRoundTripTest {
     return switch (name) {
       case "populations" -> base.withPopulations(onePopulation());
       case "cities" -> base.withCities(oneCity());
-      case "groups" -> base.withPopulations(onePopulation()).withGroups(oneGroup());
+      case "groups", "households" ->
+          base.withPopulations(onePopulation()).withGroupsAndHouseholds(oneGroup(), oneHousehold());
+      case "populationEvents" ->
+          base.withPopulations(onePopulation())
+              .withGroupsAndHouseholds(oneGroup(), oneHousehold())
+              .withPopulationEvents(Map.of(oneEvent().id(), oneEvent()));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -100,6 +112,8 @@ class SocialRoundTripTest {
       case "populations" -> cs.populations().changed();
       case "cities" -> cs.cities().changed();
       case "groups" -> cs.groups().changed();
+      case "households" -> cs.households().changed();
+      case "populationEvents" -> cs.populationEvents().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -132,6 +146,34 @@ class SocialRoundTripTest {
     return Map.of(
         PopulationLots.rural(H00, Sex.MALE, "1"),
         new PopulationGroup(
-            PopulationLots.rural(H00, Sex.MALE, "1"), H00, Sex.MALE, 300L, 250L, 0L));
+            PopulationLots.rural(H00, Sex.MALE, "1"), Sex.MALE, 300L, 250L, 0L));
+  }
+
+  private static final HouseholdId HOUSEHOLD = HouseholdId.parse("hh-0_0");
+
+  /** 与 {@link #oneGroup()} 配套的家户：位置 = H00、成员 = 那一条批次（S2 起批次必须有主）。 */
+  private static Map<HouseholdId, Household> oneHousehold() {
+    return Map.of(
+        HOUSEHOLD,
+        new Household(
+            HOUSEHOLD,
+            new HouseholdLocation.Hex(H00),
+            new HouseholdProfile("一户口", null, Map.of()),
+            List.of(PopulationLots.rural(H00, Sex.MALE, "1")),
+            new HouseholdVitalRates(List.of())));
+  }
+
+  /** 与 {@link #oneHousehold()} 配套的审计事件（RATE_SET 不改人数，只给事件表一个非空差异）。 */
+  private static HouseholdPopulationEvent oneEvent() {
+    return new HouseholdPopulationEvent(
+        "evt-rate-set",
+        HOUSEHOLD,
+        PopulationEventType.RATE_SET,
+        Sex.MALE,
+        "0-14",
+        0L,
+        0L,
+        "test",
+        "SocialRoundTripTest");
   }
 }

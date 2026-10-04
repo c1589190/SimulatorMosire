@@ -10,11 +10,10 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -36,6 +35,8 @@ import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -85,10 +86,10 @@ class EconomySeedHandlerTest {
    * （唯一拼写点）—— 本夹具与它逐值一致，故这里也走 {@code ofSeed}。
    */
   private static final HouseholdId PEASANT_HOUSEHOLD =
-      HouseholdId.ofSeed(HEX, ResidenceKind.RURAL, SocialClassId.POOR_PEASANT);
+      HouseholdIds.ofSeed(HEX, ResidenceKind.RURAL, SocialClassId.POOR_PEASANT);
 
   private static final HouseholdId LANDLORD_HOUSEHOLD =
-      HouseholdId.ofSeed(HEX, ResidenceKind.RURAL, SocialClassId.LANDLORD);
+      HouseholdIds.ofSeed(HEX, ResidenceKind.RURAL, SocialClassId.LANDLORD);
 
   /** R3 的商品词（与载荷里的字面量同字面量；用途见 {@code parsesCycleInputWithCommodityDimension…}）。 */
   private static final CommodityId GRAIN = new CommodityId("grain");
@@ -572,7 +573,7 @@ class EconomySeedHandlerTest {
     EconomyData after = apply(payload, EconomyData.empty(), T7);
 
     HouseholdId middlePeasantHousehold =
-        HouseholdId.ofSeed(HEX, ResidenceKind.RURAL, SocialClassId.MIDDLE_PEASANT);
+        HouseholdIds.ofSeed(HEX, ResidenceKind.RURAL, SocialClassId.MIDDLE_PEASANT);
     assertThat(after.classes()).containsKey(middlePeasantHousehold);
     assertThat(after.classes().get(middlePeasantHousehold).view())
         .as("阶层照进视图；slots 不再是白名单")

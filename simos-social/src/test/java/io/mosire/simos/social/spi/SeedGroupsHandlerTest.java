@@ -3,15 +3,17 @@ package io.mosire.simos.social.spi;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialDataTestSupport;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.ChangeSet;
@@ -127,7 +129,7 @@ class SeedGroupsHandlerTest {
         .as("整条替换（count 与 ageDays 一起换）")
         .isEqualTo(
             new PopulationGroup(
-                PopulationLots.rural(H00, Sex.MALE, "1"), H00, Sex.MALE, 200L, 20L, 0L));
+                PopulationLots.rural(H00, Sex.MALE, "1"), Sex.MALE, 200L, 20L, 0L));
   }
 
   /** ★ 已有批次的其他 id 原样保留（本命令是"追加/覆盖点名的那些"，不是整表替换）。 */
@@ -135,10 +137,11 @@ class SeedGroupsHandlerTest {
   void untouchedGroupsSurvive() {
     PeopleLotId existing = PopulationLots.rural(H00, Sex.FEMALE, "1");
     SocialData base =
-        new SocialData(
+        SocialDataTestSupport.withHouseholdsAt(
             Map.of(H00, SocialSpiFixture.still(1_000L)),
             Map.of(),
-            Map.of(existing, new PopulationGroup(existing, H00, Sex.FEMALE, 9L, 1L, 0L)));
+            Map.of(existing, new PopulationGroup(existing, Sex.FEMALE, 9L, 1L, 0L)),
+            H00);
 
     SocialData after =
         apply(
@@ -202,19 +205,37 @@ class SeedGroupsHandlerTest {
   }
 
   /**
-   * ★★ **跨组件校验的命令边界落点**（设计稿 §十.7）：批次落在**没有农村人口序列**的格上 ⇒ 拒绝（不是静默收下）。
-   *
-   * <p>判别力：把 {@code SocialData} 里那条校验删掉，本用例当场红（它会变成 {@code Applied}）；这正是不许出现"两笔人口账各说各话"的 第一道闸。
+   * ★★ **S2 位置语义**（架构 §4.2）：{@code PopulationGroup.residence} 已删，位置只由家户给出 ⇒ 条目没有声明家户时，
+   * handler 按 {@code {q,r}} 自动并入/新建 {@code hh:hex:<q>_<r>}（旧"必须已有 populations 序列"的判据已随 residence
+   * 删除；本阶段不做旧世界迁移，仍接受无序列格的命令归属）。
    */
   @Test
-  void groupOnAHexWithoutAPopulationSeriesIsRejected() {
-    assertThat(
-            rejected(
-                    baseWithPopulation(),
+  void groupWithoutDeclaredHouseholdIsAutoAttachedToItsHexHousehold() {
+    SocialData after =
+        apply(
+            (HandlerOutcome.Applied)
+                HANDLER.handle(
+                    SocialSpiFixture.state(baseWithPopulation()),
                     "{\"entries\":[{\"id\":\"rural:1_0:MALE:1\",\"q\":1,\"r\":0,\"sex\":\"MALE\","
-                        + "\"count\":1,\"ageDays\":1}]}")
-                .reason())
-        .contains("没有 populations 序列");
+                        + "\"count\":1,\"ageDays\":1}]}"),
+            baseWithPopulation());
+
+    assertThat(after.groups()).containsKey(PopulationLots.rural(H10, Sex.MALE, "1"));
+    assertThat(after.households()).containsKey(HouseholdId.parse("hh:hex:1_0"));
+    assertThat(after.householdsAt(H10)).hasSize(1);
+    assertThat(after.populationAt(H10)).isEqualTo(1L);
+  }
+
+  /** ★★ 命令边界的位置一致性：声明的家户与条目的 {q,r} 不符 ⇒ 具名拒绝（不静默搬次）。 */
+  @Test
+  void declaredHouseholdLocationMustMatchTheEntryHex() {
+    SocialData base = baseWithPopulation();
+    String payload =
+        "{\"entries\":[{\"id\":\"rural:1_0:MALE:1\",\"q\":1,\"r\":0,\"sex\":\"MALE\","
+            + "\"count\":1,\"ageDays\":1,\"household\":\"hh:hex:0_0\"}],\"households\":"
+            + "[{\"id\":\"hh:hex:0_0\",\"q\":0,\"r\":0,\"name\":\"0 格户\"}]}";
+
+    assertThat(rejected(base, payload).reason()).contains("与家户").contains("不符");
   }
 
   /** ★ 目标资源取 social 命名空间的既有形态 {@code <q>_<r>}（与 SetPopulation 同一个资源），重复格去重。 */

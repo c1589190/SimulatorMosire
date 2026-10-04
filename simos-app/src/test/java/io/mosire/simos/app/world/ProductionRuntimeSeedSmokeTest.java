@@ -15,7 +15,6 @@ import io.mosire.simos.social.gen.ResolvedNation;
 import io.mosire.simos.social.gen.SettlementGenerator;
 import io.mosire.simos.social.gen.SettlementPlan;
 import io.mosire.simos.social.gen.TerrainView;
-import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -65,13 +64,13 @@ class ProductionRuntimeSeedSmokeTest {
     ResolvedNation resolved = setup.resolve();
     SettlementPlan plan =
         SettlementGenerator.generate(resolved.request(), TerrainView.of(map), resolved.params());
-    List<PopulationGroup> groups = PopulationSeeder.groups(plan, 0L);
-    assertThat(groups).as("小地图必须有真人口批次").isNotEmpty();
+    PopulationSeeder.Seeding populations = PopulationSeeder.seed(plan, 0L);
+    assertThat(populations.groups()).as("小地图必须有真人口批次").isNotEmpty();
 
     EconomySeeder.Seed seed =
         EconomySeeder.plan(
             CompactThreeNationsWorld.MAP_ID,
-            groups,
+            populations,
             map,
             EconomySeeder.genesisMoneyMilliPerCapita(),
             EconomySeeder.FoundationProfile.PRODUCTION_RUNTIME,

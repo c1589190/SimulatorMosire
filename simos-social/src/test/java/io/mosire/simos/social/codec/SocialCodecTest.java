@@ -3,18 +3,19 @@ package io.mosire.simos.social.codec;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialDataTestSupport;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.RevisionId;
@@ -316,12 +317,14 @@ class SocialCodecTest {
     changedGroups.put(
         PopulationLots.rural(H00, Sex.MALE, "1"),
         new PopulationGroup(
-            PopulationLots.rural(H00, Sex.MALE, "1"), H00, Sex.MALE, 999L, 30L, 7L));
+            PopulationLots.rural(H00, Sex.MALE, "1"), Sex.MALE, 999L, 30L, 7L));
     changedGroups.put(
         PopulationLots.rural(H00, Sex.FEMALE, "1"),
         new PopulationGroup(
-            PopulationLots.rural(H00, Sex.FEMALE, "1"), H00, Sex.FEMALE, 4_000L, 5_500L, 0L));
-    SocialData changed = new SocialData(full.populations(), full.cities(), changedGroups);
+            PopulationLots.rural(H00, Sex.FEMALE, "1"), Sex.FEMALE, 4_000L, 5_500L, 0L));
+    SocialData changed =
+        SocialDataTestSupport.withHouseholdsAt(
+            full.populations(), full.cities(), changedGroups, H00);
 
     SocialChangeSet upsert = SocialChangeSet.between(empty, full);
     SocialChangeSet modify = SocialChangeSet.between(full, changed);
@@ -407,8 +410,9 @@ class SocialCodecTest {
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
     PeopleLotId male = PopulationLots.rural(H00, Sex.MALE, "1");
     PeopleLotId female = PopulationLots.rural(H00, Sex.FEMALE, "1");
-    groups.put(male, new PopulationGroup(male, H00, Sex.MALE, 6_000L, 5_000L, 0L));
-    groups.put(female, new PopulationGroup(female, H00, Sex.FEMALE, 4_000L, 5_500L, 0L));
-    return new SocialData(onePopulation(H00).populations(), Map.of(), groups);
+    groups.put(male, new PopulationGroup(male, Sex.MALE, 6_000L, 5_000L, 0L));
+    groups.put(female, new PopulationGroup(female, Sex.FEMALE, 4_000L, 5_500L, 0L));
+    return SocialDataTestSupport.withHouseholdsAt(
+        onePopulation(H00).populations(), Map.of(), groups, H00);
   }
 }

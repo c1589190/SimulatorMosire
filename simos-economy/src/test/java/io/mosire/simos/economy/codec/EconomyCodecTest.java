@@ -9,6 +9,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
@@ -17,11 +18,9 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -45,6 +44,8 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.RevisionId;
@@ -92,9 +93,9 @@ class EconomyCodecTest {
    * ClassRow.view}）；旧档的 {@link CohortKey} 由 {@code EconomyCodec} 读入时映射成 {@code ofLegacy}。本测试的夹具
    * 直接按旧视图造 id，等价于"旧档读入后的新形状"。
    */
-  private static final HouseholdId FARM_HH = HouseholdId.ofLegacy(PEASANT_KEY);
+  private static final HouseholdId FARM_HH = HouseholdIds.ofLegacy(PEASANT_KEY);
 
-  private static final HouseholdId LANDLORD_HH = HouseholdId.ofLegacy(LANDLORD_KEY);
+  private static final HouseholdId LANDLORD_HH = HouseholdIds.ofLegacy(LANDLORD_KEY);
   private static final DebtTerms GRAIN_TERMS = DebtTerms.legacyDefault();
   private static final CommodityId GRAIN = new CommodityId("grain");
 

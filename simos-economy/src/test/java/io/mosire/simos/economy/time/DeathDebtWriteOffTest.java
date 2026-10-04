@@ -7,16 +7,15 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -31,6 +30,8 @@ import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,9 +60,9 @@ class DeathDebtWriteOffTest {
   private static final ProductionUnitId UNIT = ProductionUnitId.idOf(FARM, ESTATE);
   private static final PeopleLotId LOT = new PeopleLotId("rural:0_0:MALE:1");
   private static final HouseholdId DEBTOR =
-      HouseholdId.ofSeed(HEX, ResidenceKind.RURAL, SocialClassId.POOR_PEASANT);
+      HouseholdIds.ofSeed(HEX, ResidenceKind.RURAL, SocialClassId.POOR_PEASANT);
   private static final HouseholdId CREDITOR =
-      HouseholdId.ofSeed(HEX, ResidenceKind.RURAL, SocialClassId.LANDLORD);
+      HouseholdIds.ofSeed(HEX, ResidenceKind.RURAL, SocialClassId.LANDLORD);
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final DebtTerms TERMS = DebtTerms.legacyDefault();
   private static final DebtContractId DEBT =

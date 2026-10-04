@@ -21,6 +21,7 @@ import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
+import io.mosire.simos.app.testing.SocialHouseholdFixture;
 import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.state.WorldChangeSet;
@@ -33,13 +34,12 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -72,11 +72,13 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -128,6 +130,8 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class GuiApiTest {
 
+  private static final Map<PeopleLotId, HexCoord> GROUP_LOCATIONS = new LinkedHashMap<>();
+
   private static final SimosTimestamp T0 = SimosTimestamp.of(0);
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
 
@@ -140,9 +144,9 @@ class GuiApiTest {
   private static final SocialClassId PEASANT = new SocialClassId("poor_peasant");
 
   private static final HouseholdId H11_HOUSEHOLD =
-      HouseholdId.ofSeed(H11, ResidenceKind.RURAL, PEASANT);
+      HouseholdIds.ofSeed(H11, ResidenceKind.RURAL, PEASANT);
   private static final HouseholdId H12_HOUSEHOLD =
-      HouseholdId.ofSeed(H12, ResidenceKind.RURAL, PEASANT);
+      HouseholdIds.ofSeed(H12, ResidenceKind.RURAL, PEASANT);
 
   private static final UnitId U1 = new UnitId("u-1");
   private static final int CHECKPOINT_INTERVAL = 100;
@@ -1306,12 +1310,14 @@ class GuiApiTest {
     //   ★ R2：**H12 也挂一批**（同样混合，见 {@link #mixedGroups()}）⇒ 两个格有批次，R1.5 那条"每个有批次的格都混合"照旧成立，
     //     而 T4 的劳动读口多了一条"按格筛落点"的判别力。
     //   ★ H13 **只有序列、没有批次**：R2（T0）的回退口径（legacySeries）就靠它钉住。
+    Map<PeopleLotId, PopulationGroup> groups = mixedGroups();
     SocialData social =
-        new SocialData(
+        SocialHouseholdFixture.withHouseholdsAt(
             new LinkedHashMap<>(
                 Map.of(H11, populationSeries(), H12, populationSeries(), H13, populationSeries())),
             Map.of(),
-            mixedGroups());
+            groups,
+            groupLocations(groups));
     SimulationState genesis =
         new SimulationState(
             new StateMeta(ref("main", 1), T7),
@@ -1416,7 +1422,24 @@ class GuiApiTest {
       Sex sex,
       long count,
       long ageAtAnchorDays) {
-    groups.put(id, new PopulationGroup(id, hex, sex, count, ageAtAnchorDays, T0.tick()));
+    PopulationGroup group =
+        new PopulationGroup(id, sex, count, ageAtAnchorDays, T0.tick());
+    GROUP_LOCATIONS.put(group.id(), hex);
+    groups.put(id, group);
+  }
+
+  /** S2：批次位置在家户上；本夹具的落点由 {@link #addLot} 记录。 */
+  private static Map<PeopleLotId, HexCoord> groupLocations(
+      Map<PeopleLotId, PopulationGroup> groups) {
+    Map<PeopleLotId, HexCoord> locations = new LinkedHashMap<>();
+    for (PeopleLotId id : groups.keySet()) {
+      HexCoord at = GROUP_LOCATIONS.get(id);
+      if (at == null) {
+        throw new IllegalArgumentException("测试夹具缺批次落点: " + id);
+      }
+      locations.put(id, at);
+    }
+    return locations;
   }
 
   /**

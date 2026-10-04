@@ -8,6 +8,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
@@ -25,13 +26,11 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -75,9 +74,9 @@ import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.MerchantPolicy;
-import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.Pledge;
@@ -88,6 +87,8 @@ import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.TransferRule;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.FieldDelta;
 import io.mosire.simos.util.state.RevisionId;
@@ -110,7 +111,7 @@ import org.junit.jupiter.api.Test;
  * "该组件参与"那条断言当场红。
  *
  * <p>★★ <b>S1/R3B.2/R4/E1–E6 的 API 漂移已在这里就位</b>：{@code classes}/{@code flows} 的键 = {@link
- * HouseholdId}（旧视图用 {@code HouseholdId.ofLegacy}）；{@code relations} 挂 {@link ProductionUnitId}；
+ * HouseholdId}（旧视图用 {@code HouseholdIds.ofLegacy}）；{@code relations} 挂 {@link ProductionUnitId}；
  * operator / 周期进度住在 {@link ProductionUnit} 上（不是 {@code Industry} 的旧档兼容位）；{@code EconomyData} 是 29
  * 组件记录（E1–E6 追加组件 + R1 的 classFirst 全在 {@link EconomyChangeSet} 里逐一对齐）。
  */
@@ -125,9 +126,9 @@ class EconomyRoundTripTest {
       new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, LANDLORD);
 
   /** ★ S1：键 = 稳定家户身份；{@code KEY} 只是它的旧视图。 */
-  private static final HouseholdId KEY_HH = HouseholdId.ofLegacy(KEY);
+  private static final HouseholdId KEY_HH = HouseholdIds.ofLegacy(KEY);
 
-  private static final HouseholdId OTHER_HH = HouseholdId.ofLegacy(OTHER_KEY);
+  private static final HouseholdId OTHER_HH = HouseholdIds.ofLegacy(OTHER_KEY);
   private static final CommodityId GRAIN = new CommodityId("grain");
 
   /** ★ R3：第二种商品（"所得逐商品"的那一维在往返里要真的被带上，只有一个商品的夹具挡不住"退回标量"）。 */

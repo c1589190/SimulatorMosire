@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.entry;
 
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -19,9 +18,10 @@ import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
@@ -777,7 +777,7 @@ class GovDailyTest {
 
   private static SocialData socialWithPopulation(long count) {
     PeopleLotId lot = new PeopleLotId("lot-1");
-    PopulationGroup group = new PopulationGroup(lot, H1, Sex.MALE, count, 20L * 365L, 0L);
+    PopulationGroup group = new PopulationGroup(lot, Sex.MALE, count, 20L * 365L, 0L);
     Map<HexCoord, PopulationSeries> populations = new LinkedHashMap<>();
     populations.put(
         H1,
@@ -785,6 +785,7 @@ class GovDailyTest {
             new Segment<>(T0, 1000L),
             new SegmentedSeries<>(List.of(new Segment<>(T0, 0.0)), List.of(), null),
             List.of()));
-    return new SocialData(populations, Map.of(), Map.of(lot, group));
+    return GovSocialDataFixture.withHouseholdsAt(
+        populations, Map.of(), Map.of(lot, group), Map.of(lot, H1));
   }
 }

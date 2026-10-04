@@ -17,7 +17,6 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.ClassPoolId;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.money.GovernmentActors;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.classfirst.AssetKind;
@@ -38,6 +37,7 @@ import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.spi.CreateArmyHandler;
 import io.mosire.simos.sd.spi.CreateNationHandler;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.gen.NationSetup;
 import io.mosire.simos.social.gen.ResolvedNation;
@@ -345,11 +345,11 @@ class ClassFirstEconomySeedTest {
     GameMap map = CompactThreeNationsWorld.map();
     Region region = map.regions().get(CompactThreeNationsWorld.GRANARY);
     SettlementPlan plan = settlementPlan(map, region);
-    List<PopulationGroup> groups = PopulationSeeder.groups(plan, 0L);
+    PopulationSeeder.Seeding populations = PopulationSeeder.seed(plan, 0L);
     EconomySeeder.Seed seeding =
         EconomySeeder.plan(
             CompactThreeNationsWorld.MAP_ID,
-            groups,
+            populations,
             map,
             EconomySeeder.genesisMoneyMilliPerCapita(),
             EconomySeeder.FoundationProfile.CLASS_FIRST,
@@ -421,7 +421,8 @@ class ClassFirstEconomySeedTest {
         landMilliMu += EconomySeeder.landMilliMuOf(terrain);
         long urban = 0L;
         for (PopulationGroup group : social.groups().values()) {
-          if (group.residence().equals(hex) && PopulationLots.isUrban(group)) {
+          if (social.hexOfLot(group.id()).filter(hex::equals).isPresent()
+              && PopulationLots.isUrban(group)) {
             urban += group.count();
           }
         }

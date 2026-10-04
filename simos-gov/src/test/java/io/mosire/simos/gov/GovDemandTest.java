@@ -3,7 +3,6 @@ package io.mosire.simos.gov;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -16,10 +15,11 @@ import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.RelativeOffset;
@@ -268,16 +268,18 @@ class GovDemandTest {
       Map<HexCoord, Long> populations, Map<CityId, SocialCity> cities) {
     Map<HexCoord, PopulationSeries> series = new LinkedHashMap<>();
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
+    Map<PeopleLotId, HexCoord> locations = new LinkedHashMap<>();
     int index = 0;
     for (Map.Entry<HexCoord, Long> entry : populations.entrySet()) {
       HexCoord at = entry.getKey();
       series.put(at, populationSeries());
       if (entry.getValue() > 0L) {
         PeopleLotId lot = new PeopleLotId("lot-" + index++);
-        groups.put(lot, new PopulationGroup(lot, at, Sex.MALE, entry.getValue(), 20L * 365L, 0L));
+        groups.put(lot, new PopulationGroup(lot, Sex.MALE, entry.getValue(), 20L * 365L, 0L));
+        locations.put(lot, at);
       }
     }
-    return new SocialData(series, cities, groups);
+    return GovSocialDataFixture.withHouseholdsAt(series, cities, groups, locations);
   }
 
   private static PopulationSeries populationSeries() {

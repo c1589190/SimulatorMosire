@@ -22,9 +22,7 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.ClassPoolId;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.MobilityPolicyId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.classfirst.AssetKind;
 import io.mosire.simos.economy.classfirst.ClassFirstPilotEngine;
@@ -44,6 +42,8 @@ import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.spi.CreateArmyHandler;
 import io.mosire.simos.sd.spi.CreateNationHandler;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.population.PopulationGroup;
@@ -772,7 +772,12 @@ class ClassFirstPopulationEconomyTimeParticipantTest {
     Map<String, Long> socialByLocation = new LinkedHashMap<>();
     for (PopulationGroup group : social.groups().values()) {
       socialByLocation.merge(
-          locationKey(group.residence().toString(), residenceOf(group).value()),
+          locationKey(
+              social
+                  .hexOfLot(group.id())
+                  .orElseThrow(() -> new IllegalStateException("批次没有位置: " + group.id()))
+                  .toString(),
+              residenceOf(group).value()),
           group.count(),
           Long::sum);
     }

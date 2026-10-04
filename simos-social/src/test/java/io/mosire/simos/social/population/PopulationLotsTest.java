@@ -3,9 +3,10 @@ package io.mosire.simos.social.population;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -85,6 +86,6 @@ class PopulationLotsTest {
 
   /** 批次本体不是本用例关心的（只借它的 id），故落点固定 H00。 */
   private static PopulationGroup group(PeopleLotId id) {
-    return new PopulationGroup(id, H00, Sex.MALE, 1L, 0L, 0L);
+    return new PopulationGroup(id, Sex.MALE, 1L, 0L, 0L);
   }
 }

@@ -9,13 +9,12 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -33,6 +32,8 @@ import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.state.BranchId;
@@ -367,10 +368,10 @@ public final class EconomyTestWorld {
           CohortKey key =
               new CohortKey(
                   new HexCoord(q, 0), residence, new SocialClassId(EconomySeeder.CLASS_IDS[i]));
-          classes.putIfAbsent(HouseholdId.ofLegacy(key), emptyRow(key, i));
+          classes.putIfAbsent(HouseholdIds.ofLegacy(key), emptyRow(key, i));
           // ★★ H1：**空账也要有账本**（与真播种器同口径：每格两组四行各一本，余额可以全 0）——
           //   少了它，日结算在 load 阶段就抛（"这个家户在这一格没有账"与"它的账是空的"是两件事）。
-          stocks.putIfAbsent(HouseholdId.ofLegacy(key), new LinkedHashMap<>());
+          stocks.putIfAbsent(HouseholdIds.ofLegacy(key), new LinkedHashMap<>());
         }
       }
     }
@@ -515,7 +516,7 @@ public final class EconomyTestWorld {
   /** 一本**空账**（该格那一组家户在本夹具里没有人）：人口/劳动全 0、库存空、需求 = 那条 0 的粮 —— ★ 与真播种器对"人口为 0 的那一组"写下的形状逐字同形（H0.2）。 */
   private static ClassRow emptyRow(CohortKey key, int index) {
     return new ClassRow(
-        HouseholdId.ofLegacy(key),
+        HouseholdIds.ofLegacy(key),
         key,
         0L,
         0L,
@@ -654,7 +655,7 @@ public final class EconomyTestWorld {
     if (amount <= 0L) {
       return;
     }
-    Map<CommodityId, Long> stock = stocks.get(HouseholdId.ofLegacy(key));
+    Map<CommodityId, Long> stock = stocks.get(HouseholdIds.ofLegacy(key));
     if (stock == null) {
       throw new IllegalStateException("家户账本不存在，无法并入库存: " + key);
     }
@@ -709,7 +710,7 @@ public final class EconomyTestWorld {
     // ★ S1 旧档迁移路径：household 先用 pending 占位（构造器允许），构造期迁移按人口权重替换成真实家户；
     //   actor/activity 保持旧产业口径，迁移器会一起对齐到 unit.operator / unit id。
     HouseholdId pendingHousehold =
-        HouseholdId.parse(HouseholdId.PENDING_LEGACY_PREFIX + industry.value());
+        HouseholdId.parse(HouseholdIds.PENDING_LEGACY_PREFIX + industry.value());
     return new LaborAllocation(
         allocationId(industry),
         lot,
@@ -782,11 +783,11 @@ public final class EconomyTestWorld {
         openingStock.put(entry.getKey(), entry.getValue());
       }
     }
-    stocks.put(HouseholdId.ofLegacy(key), openingStock);
+    stocks.put(HouseholdIds.ofLegacy(key), openingStock);
     classes.put(
-        HouseholdId.ofLegacy(key),
+        HouseholdIds.ofLegacy(key),
         new ClassRow(
-            HouseholdId.ofLegacy(key),
+            HouseholdIds.ofLegacy(key),
             key,
             population,
             EconomySeeder.laborMilli(population),

@@ -2,14 +2,15 @@ package io.mosire.simos.social.facet;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialDataTestSupport;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.facet.FacetEntry;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
@@ -58,10 +59,11 @@ class PopulationFacetTest {
   void facetFollowsTheBatchesWhenTheHexHasThem() {
     PeopleLotId lot = PopulationLots.rural(H11, Sex.MALE, "1");
     SocialData data =
-        new SocialData(
+        SocialDataTestSupport.withHouseholdsAt(
             new LinkedHashMap<>(Map.of(H11, seed())),
             Map.of(),
-            Map.of(lot, new PopulationGroup(lot, H11, Sex.MALE, 100L, 0L, 0L)));
+            Map.of(lot, new PopulationGroup(lot, Sex.MALE, 100L, 0L, 0L)),
+            H11);
     SimulationState state =
         new SimulationState(
             new StateMeta(REF, T0),
