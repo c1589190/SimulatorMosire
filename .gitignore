@@ -38,3 +38,6 @@ __pycache__/
 
 # 代码测试世界（18Lvt 副本；运行产物，不入库；见 test-world/README.md 与 AGENTS.md §8.7）
 /test-world/
+
+# P1.4 小世界演示的独立 store（run/small-world-db 等；运行产物，不入库）
+/run/

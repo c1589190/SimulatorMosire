@@ -288,6 +288,12 @@ public final class GuiServer implements AutoCloseable {
   /** ★ F1 世界经济总览只读面：{@code GET /api/economy/overview}；未接 redaction ⇒ 带 {@code as=} fail-closed。 */
   private static final String ECONOMY_OVERVIEW_PATH = "/api/economy/overview";
 
+  /**
+   * ★★ P1.4 内置政府只读面：{@code GET /api/economy/gov}——政府家户（国库）账户 + 周期铸币/发债政策 + 按政府过滤的发行审计累计。视图在 {@link
+   * ApiViews#economyGovernment}；未接 redaction ⇒ 带 {@code as=} fail-closed。
+   */
+  private static final String ECONOMY_GOV_PATH = "/api/economy/gov";
+
   private static final Set<String> GET_ROUTES =
       Set.of(
           "/api/state",
@@ -304,6 +310,8 @@ public final class GuiServer implements AutoCloseable {
           // ★ F2（2026-10-01）：地图热力图（紧凑聚合，视图全在 ApiViews.heatmap）。
           HEATMAP_PATH,
           ECONOMY_OVERVIEW_PATH,
+          // ★ P1.4（2026-10-09）：内置政府读数（政府家户账户 / 周期铸币政策；与 ApiViews.economyGovernment 同源）。
+          ECONOMY_GOV_PATH,
           // ★ R2a（2026-09-25）：逐格经济读数（G1 最小读口，与 simos.economy.hex 共用 ApiViews.economyHex）。
           "/api/economy/hex",
           // ★ H0.6（2026-09-27）：逐格产权读数（与 simos.economy.ownership 共用 ApiViews.economyOwnership）。
@@ -759,6 +767,11 @@ public final class GuiServer implements AutoCloseable {
       // ★ F1：世界经济总览（不逐格）——未接 redaction ⇒ 带 as= 显式拒绝（fail-closed）。
       rejectAs(path, asPresent);
       return Reply.of(200, ApiViews.economyOverview(queryService.stateAt(target(params))));
+    }
+    if (path.equals(ECONOMY_GOV_PATH)) {
+      // ★ P1.4：内置政府读数（含 actor 账本）——与 overview 同款拒 as=（未接 redaction，fail-closed）。
+      rejectAs(path, asPresent);
+      return Reply.of(200, ApiViews.economyGovernment(queryService.stateAt(target(params))));
     }
     if (path.equals("/api/economy/hex")) {
       // ★ R2a：逐格经济读数——与 population 同款：未接 redaction ⇒ 带 as= 显式拒绝（fail-closed，不静默给全量）。

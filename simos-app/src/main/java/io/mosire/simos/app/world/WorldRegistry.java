@@ -25,8 +25,11 @@ import java.util.Set;
  * <p>★ **已登记**（登记顺序即报错信息里的列举顺序）：
  *
  * <ul>
- *   <li>{@value #V17LEVANT} → {@link RichWorld}：当前唯一经济世界的复刻富世界，也是缺省世界；
- *   <li>{@value #CORRIDOR} → {@link CorridorWorld}：三格走廊夹具世界，供后续小世界与确定性用例复用（**不是**缺省）。
+ *   <li>{@value #V17LEVANT} → {@link RichWorld}：当前唯一经济世界的复刻富世界，也是**内置**缺省世界（{@link
+ *       io.mosire.simos.app.ShellConfig#DEFAULT_WORLD_ID}）；
+ *   <li>{@value #SMALL_WORLD} → {@link SmallWorld}：P1.4 的 15 格真实小世界（1 Region / 首都+镇 / 4,000 人 /
+ *       production-runtime 经济与政府内置），供 {@code run-small-world.sh} 与 WebUI 演示走真路径；
+ *   <li>{@value #CORRIDOR} → {@link CorridorWorld}：三格走廊夹具世界，供确定性用例复用（**不是**缺省）。
  * </ul>
  *
  * <p>★ **未知 id 一律 fail-closed**：{@link #require(String)} 具名抛出并列出已登记 id，绝不"落到某个默认世界"——那会让 拼错的 {@code
@@ -36,6 +39,12 @@ public final class WorldRegistry {
 
   /** 当前唯一经济世界（{@link RichWorld} 的 {@code v17levant} 复刻），也是内置缺省 worldId。 */
   public static final String V17LEVANT = "v17levant";
+
+  /**
+   * ★ P1.4 的 15 格真实小世界（{@link SmallWorld}）的登记 id：1 Region / 首都+镇 / 4,000 人 / production-runtime
+   * 经济与政府内置。
+   */
+  public static final String SMALL_WORLD = "small-world";
 
   /** 三格走廊夹具世界（{@link CorridorWorld}）的登记 id。 */
   public static final String CORRIDOR = "corridor";
@@ -116,6 +125,12 @@ public final class WorldRegistry {
     register(
         entries,
         new Entry(V17LEVANT, "v17levant 复刻富世界（59223 hex / 252 区域 / 240 条河流边）", RichWorld::state));
+    register(
+        entries,
+        new Entry(
+            SMALL_WORLD,
+            "P1.4 小世界（15 hex / 1 区域 / 首都+镇 / 4,000 人；production-runtime 经济与政府内置）",
+            SmallWorld::state));
     register(
         entries,
         new Entry(CORRIDOR, "三格沙漠走廊夹具世界（3 hex / 1 单位 / 1 条人口序列；供小世界与用例复用）", CorridorWorld::state));

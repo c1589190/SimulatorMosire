@@ -38,6 +38,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
+import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
@@ -62,6 +63,7 @@ import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DebtIndex;
 import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
@@ -1560,6 +1562,155 @@ public final class ApiViews {
     view.put("moneyLayers", moneyLayers(circulation));
     view.put("currencyDefs", currencyDefViews());
     view.put("moneyInstruments", moneyInstrumentViews());
+    return view;
+  }
+
+  /**
+   * ★★ <b>P1.4：内置政府的只读读数</b>（{@code GET /api/economy/gov} 的视图）。
+   *
+   * <p>★★ <b>它只读三件事、不写任何状态</b>：
+   *
+   * <ul>
+   *   <li>{@code governments[]}：{@code EconomyData.governments} 每个政府的身份 / 国库 actor / 可发行币种 /
+   *       <b>周期铸币与周期发债政策</b>（{@code seignioragePerCycle} / {@code debtIssuePerCycle}）；
+   *   <li>{@code treasuryAccounts[]}：国库 actor 的 {@code GoodsAccount}（production-runtime 里国库 = 内置
+   *       GOV 家户账户）：逐格商品 / 货币 / 冻结 / 可支配；找不到账 ⇒ 该条为空数组（不填 0 冒充）；
+   *   <li>{@code issuance}：按政府分组的 {@code MoneyIssuanceRecord} 累计（创世禀赋 / 财政发行 / 回笼 / 净额）——
+   *       这是"周期铸币"的<b>事实读数</b>，与上面的<b>政策旋钮</b>并排；{@code moneyIssuance} 另给世界级全量（同一份算法）。
+   * </ul>
+   *
+   * <p>★ 与 {@link #economyOverview} 同款：{@code economy} 切片未激活时返回 {@code activated=false} +
+   * 空表，不抛、不伪造。
+   */
+  public static Map<String, Object> economyGovernment(SimulationState state) {
+    Objects.requireNonNull(state, "state");
+    EconomyData data = economyData(state);
+    ActorData actors = actorData(state);
+    long tick = state.meta().timestamp().tick();
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("activated", data.meta().isPresent());
+    view.put("tick", tick < 0L ? null : tick);
+    view.put("scope", GOVERNMENT_SCOPE);
+    List<Government> ordered = new ArrayList<>(data.governments().values());
+    ordered.sort(Comparator.comparing(government -> government.id().value()));
+    List<Map<String, Object>> governments = new ArrayList<>(ordered.size());
+    for (Government government : ordered) {
+      Map<String, Object> node = new LinkedHashMap<>();
+      node.put("id", government.id().value());
+      node.put("nationRef", government.nationRef());
+      node.put("treasury", actorRefView(government.treasury()));
+      List<String> issuable = new ArrayList<>(government.issuable().size());
+      for (CurrencyId currency : government.issuable()) {
+        issuable.add(currency.value());
+      }
+      issuable.sort(Comparator.naturalOrder());
+      node.put("issuable", issuable);
+      // ★ 政策旋钮（每产业大周期）：写进 Government 的出厂值就是这两个；读口不重算、不补缺省。
+      node.put("seignioragePerCycle", government.seignioragePerCycle());
+      node.put("debtIssuePerCycle", government.debtIssuePerCycle());
+      node.put("mintCurrency", issuable.isEmpty() ? null : issuable.get(0));
+      // ★ production-runtime 的国库是 GOV 家户（kind=HOUSEHOLD）⇒ 这里能反查出它的家户行（人口 0、slot=official）。
+      HouseholdId treasuryHousehold =
+          government.treasury().kind() == ActorKind.HOUSEHOLD
+              ? HouseholdActors.householdOf(government.treasury())
+              : null;
+      node.put("treasuryHousehold", treasuryHousehold == null ? null : treasuryHousehold.value());
+      ClassRow row = treasuryHousehold == null ? null : data.classes().get(treasuryHousehold);
+      node.put("treasuryClassRow", row == null ? null : governmentClassRowView(row));
+      node.put("treasuryAccounts", treasuryAccountViews(actors, government.treasury()));
+      node.put("issuance", governmentIssuanceView(data, government.id()));
+      governments.add(node);
+    }
+    view.put("governments", governments);
+    view.put("moneyIssuance", moneyIssuanceView(data, moneyTotals(actors)));
+    return view;
+  }
+
+  /** ★★ P1.4：内置政府读数的 scope 说明（唯一拼写点）。 */
+  private static final String GOVERNMENT_SCOPE =
+      "世界级：EconomyData.governments 的内置政府（production-runtime 政府家户）；"
+          + "国库 = 该家户的 GoodsAccount，逐币种不跨币种求和";
+
+  /**
+   * 政府家户的 {@code ClassRow} 读侧形：**它是 GOV 的口袋行**（production-runtime 里 population=0、slot=official），
+   * 不是第二本人账；人口/劳动/参与率都来自行本身，读口不重算。
+   */
+  private static Map<String, Object> governmentClassRowView(ClassRow row) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("householdId", row.id().value());
+    view.put("q", row.view().hex().q());
+    view.put("r", row.view().hex().r());
+    view.put("residence", row.view().residence().value());
+    view.put("stratum", row.view().stratum().value());
+    view.put("population", row.population());
+    view.put("laborMilli", row.laborMilli());
+    view.put("participationPerMille", row.participationPerMille());
+    return view;
+  }
+
+  /**
+   * 国库 actor 的全部 {@code GoodsAccount}（按 {@code (q,r)} 排序；一本账一个条目）。
+   *
+   * <p>★ "找不到账"是合法结果（主体还没播账）：空数组，不给伪造的 0 条目——否则读的人会把"没这回事"当成"余额为零"。
+   */
+  private static List<Map<String, Object>> treasuryAccountViews(
+      ActorData actors, ActorRef treasury) {
+    List<GoodsAccount> accounts = new ArrayList<>();
+    for (GoodsAccount account : actors.accounts().values()) {
+      if (account.key().owner().equals(treasury)) {
+        accounts.add(account);
+      }
+    }
+    accounts.sort(
+        Comparator.comparingInt((GoodsAccount account) -> account.key().location().q())
+            .thenComparingInt(account -> account.key().location().r()));
+    List<Map<String, Object>> views = new ArrayList<>(accounts.size());
+    for (GoodsAccount account : accounts) {
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("location", hexCoord(account.key().location()));
+      item.put("goods", sortedCommodities(account.balances()));
+      item.put("money", sortedCurrencies(account.money()));
+      item.put("frozenGoods", sortedCommodities(account.frozenBalances()));
+      item.put("frozenMoney", sortedCurrencies(account.frozenMoney()));
+      item.put("availableGoods", availableCommodities(account));
+      item.put("availableMoney", availableCurrencies(account));
+      views.add(item);
+    }
+    return views;
+  }
+
+  /** 单个政府的发行审计累计（逐币种；与 {@code moneyIssuanceView} 同一套 kind 判据，只是按 governmentId 过滤）。 */
+  private static Map<String, Object> governmentIssuanceView(
+      EconomyData data, GovernmentId governmentId) {
+    Map<String, Long> initial = new TreeMap<>();
+    Map<String, Long> fiscal = new TreeMap<>();
+    Map<String, Long> withdrawal = new TreeMap<>();
+    int count = 0;
+    for (MoneyIssuanceRecord record : data.moneyIssuances().values()) {
+      if (!record.governmentId().equals(governmentId)) {
+        continue;
+      }
+      count++;
+      if (record.kind() == MoneyIssuanceKind.INITIAL_ENDOWMENT) {
+        initial.merge(record.currency().value(), record.amount(), Long::sum);
+      } else if (record.kind() == MoneyIssuanceKind.FISCAL_ISSUE) {
+        fiscal.merge(record.currency().value(), record.amount(), Long::sum);
+      } else {
+        withdrawal.merge(record.currency().value(), record.amount(), Long::sum);
+      }
+    }
+    Map<String, Long> net = new TreeMap<>(initial);
+    mergeIssuance(net, fiscal);
+    for (Map.Entry<String, Long> entry : withdrawal.entrySet()) {
+      net.merge(entry.getKey(), -entry.getValue(), Long::sum);
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("window", "累计（EconomyMeta.activatedDay 至当前 revision；无按日窗口）");
+    view.put("recordCount", count);
+    view.put("initialEndowment", initial);
+    view.put("fiscalIssue", fiscal);
+    view.put("withdrawal", withdrawal);
+    view.put("netIssuance", net);
     return view;
   }
 
