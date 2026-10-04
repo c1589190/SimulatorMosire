@@ -208,10 +208,40 @@ Unit/Economy/Gov 通过注入的 SPI 读，不直接依赖 `simos-population` �
 - 文化/宗教未来是 facet（读侧拼装）还是各自独立的关系表（写侧各自命令）？
 - 家户账户主体是否统一为 `ActorRef(HOUSEHOLD, id)`，由 actor 层只做账户、不做家户语义？
 
+### 10.5 2026-10-08 用户修订：Social 管人是天经地义；Actor 不是阶层
+
+用户裁定/追问：
+- Social 本来就是管人的；人自然组成群体，**家户归 Social 管是天经地义**；
+- Social 模块**还没有大到必须拆**；
+- Actor 不应该是阶层；需要说清“账户主体”是什么。
+
+据此修订：
+- **家户主体（Household）与人口/群体事实归 Social**，不再另起人口域，也不把 household 拆出 Social；
+- 只把**跨域共享的身份/角色词汇**放低层契约模块（暂名 `simos-people-api`，或先沿用 `economy-api` 中的 `HouseholdId`）：`HouseholdId`、`PeopleLotId`、`PopulationRole`、`HouseholdLookup`/`PopulationLookup` 只读 SPI；
+- Economy 仍只持有经济投影（ClassRow/需求/债务/生产参与），键 = `HouseholdId`；Culture/Religion/Gov 未来各自持有自己的关系表/facet，键 = `HouseholdId`；
+- Actor **不是阶层**：它是持有账户/商品/货币/资产的**经济主体身份层**（`ActorRef` + `ActorKind` + `GoodsAccount`）。阶层是 Economy 的 `SocialClassId`/`ClassPosition`/`ClassStanding`/`ClassRow.view.stratum`，是**可变的视图/位置**，不是稳定账户身份；
+- 账户主体必须是稳定身份（ActorRef），因为家户会改变阶层、改变生产方式、迁移；若拿阶层当账户键，阶层一变账就乱。庄园/作坊/政府/组织也需要账户，它们并没有“阶层”。
+
+因此本文件原来的 H2/H3 表述作废，改为 **H1.5**：
+- Social 拥有 `Household` + `PopulationGroup` + `PopulationAssignment`（归属/角色关系）；
+- `simos-people-api`（或等价低层契约）只放 ID/角色/只读 SPI，**不放状态**；
+- Unit/Economy/Gov/Culture/Religion 通过契约与只读 SPI 引用同一批人，不再各存一本头部账。
+
+### 10.6 Actor 与阶层的职责边界（写死）
+
+| 概念 | 归属 | 性质 |
+|---|---|---|
+| `ActorRef` / `ActorKind` | actor-api | 跨域稳定主体身份（谁持有） |
+| `GoodsAccount` | actor | 商品/货币/资产账（持有什么） |
+| `Household` / `PopulationGroup` / 归属关系 | social | 人是谁、组成什么群体、属于谁 |
+| `SocialClassId` / `ClassPosition` / `ClassStanding` / `ClassRow.view.stratum` | economy | 阶层位置与当前视图（可变的） |
+| `ProductionMode` / `ClassStructure` | economy | 生产方式与位置目录 |
+| 文化/宗教关系 | 未来 culture/religion 模块 | 各自关系表，键 = `HouseholdId` |
+
 ## 11. 待裁定
 
-1. 选项：A（只加 ID）、B（新人口域为唯一真源）、C（推荐：Social 人口学 + population assignment + 投影）。
-2. `PeopleLotId` 迁移到 `simos-population-api` 还是保留在 `economy-api`（推荐迁移）。
+1. 家户/人口域：按用户修订走 **H1.5**（Social 拥有 household/population/assignment；低层 `simos-people-api` 只放 ID/角色/SPI；不另起人口域、不拆 Social）。
+2. `HouseholdId`/`PeopleLotId` 迁移到 `simos-people-api`（推荐）还是继续沿用 `economy-api`？
 3. primary/secondary 语义：政府家户与政府单位谁拿 PRIMARY（C1 vs C2）。
 4. Unit `manpower`：直接改为投影，还是先保留缓存 + 对账。
 5. Gov `staff`：same。
@@ -219,4 +249,4 @@ Unit/Economy/Gov 通过注入的 SPI 读，不直接依赖 `simos-population` �
 7. 家户消费与粮饷：按 primary 还是按角色投影计算。
 8. 旧档：重置（推荐）还是一次性迁移。
 9. 日志分类：新增 `.population.assignment` 还是沿用 `.population`。
-10. 家户主体：H1（沉 Social）/ H2（推荐：共用契约层 + Social 社会事实 + 各域 facet）/ H3（人口大域）？
+10. Actor 职责：保持“账户/持有主体”身份层，不引入阶层语义；阶层继续归 economy。
