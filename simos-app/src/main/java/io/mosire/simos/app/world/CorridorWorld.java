@@ -51,7 +51,10 @@ import java.util.Optional;
  * <p>★ **只用公开的模块/util API 构造**（不碰 Core 的存储面）：三格走廊（desert，逐边成本见 {@link #UNIT} 的 mobility 注释）+ 一个单位
  * {@code u-1} 在 {@code [1,1]} + {@code [1,1]} 上一条人口序列。
  *
- * <p>★ 它**不是**空库初始化种入的世界——那是 {@link RichWorld}；本类只是用例的确定性夹具。
+ * <p>★ **它与启动选择的关系（P1.1）**：登记在 {@link WorldRegistry#CORRIDOR}（{@code --world=corridor} 可选中），供后续小世界与
+ * 确定性用例复用；但它**不是缺省世界**——缺省是 {@link WorldRegistry#V17LEVANT}（{@link RichWorld}）。★ 它当前只带
+ * map/unit/social/sd/economy/actor/gov 七片（**没有 army 片**）：足以让创世状态通过现有 codec 表落盘，但以它为底跑 army
+ * 写命令会因切片缺席 而拒（见 {@code ArmySnapshots}）——把它升级成完整小世界是后续批次的事，本类先保持既有形状不动。
  */
 public final class CorridorWorld {
 

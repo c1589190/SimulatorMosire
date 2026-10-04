@@ -1,5 +1,6 @@
 package io.mosire.simos.app;
 
+import io.mosire.simos.app.world.WorldRegistry;
 import java.nio.file.Path;
 import java.util.Objects;
 
@@ -29,6 +30,9 @@ import java.util.Objects;
  *     io.mosire.simos.app.Shell}
  * @param openingSnapshot **开场快照开关**（P4，缺省 {@value #DEFAULT_OPENING_SNAPSHOT}）：开 ⇒ 决策人的会话首次为空时，
  *     先给它发一张本国所在区域的渲染图（只在有视觉能力的路由上生效）。见 {@link #withOpeningSnapshot}
+ * @param worldId **创世世界选择**（P1.1，缺省 {@value #DEFAULT_WORLD_ID}）：**只在空库首启时**决定用哪个 {@code worldId}
+ *     对应的创世生成器做 bootstrap（注册表见 {@link io.mosire.simos.app.world.WorldRegistry}）。**它不是运行时切换**：非空库绝不
+ *     覆盖已有世界，该值对已有世界无任何作用。来源优先级：命令行 {@code --world} &gt; 配置文件 {@code world} &gt; 内置缺省。
  */
 public record ShellConfig(
     Path storeDir,
@@ -40,7 +44,8 @@ public record ShellConfig(
     String mcpInitiator,
     String mapId,
     String bindAddress,
-    boolean openingSnapshot) {
+    boolean openingSnapshot,
+    String worldId) {
 
   public static final int DEFAULT_CHECKPOINT_INTERVAL = 100;
   public static final int DEFAULT_GUI_PORT = 5711;
@@ -49,6 +54,12 @@ public record ShellConfig(
   public static final int DEFAULT_APPROVAL_PORT = 5713;
   public static final String DEFAULT_MCP_INITIATOR = "agent:external-mcp";
   public static final String DEFAULT_MAP_ID = "Map1";
+
+  /**
+   * 创世世界的**内置缺省** id（P1.1）：指向 {@link io.mosire.simos.app.world.WorldRegistry} 里登记的唯一经济世界 {@code
+   * v17levant}（字面量只在注册表里定义一次，避免两处漂移）。命令行 {@code --world} 与配置文件 {@code world} 都能覆盖它；三者都没有时就是它。
+   */
+  public static final String DEFAULT_WORLD_ID = WorldRegistry.V17LEVANT;
 
   /** GUI / MCP 的缺省绑定地址：回环（M10；不裸暴露，反代场景显式传 {@code 0.0.0.0}）。 */
   public static final String DEFAULT_BIND_ADDRESS = "127.0.0.1";
@@ -62,7 +73,39 @@ public record ShellConfig(
   public static final boolean DEFAULT_OPENING_SNAPSHOT = false;
 
   /**
-   * **9 参兼容构造**（P4）：{@code openingSnapshot} 取 {@value #DEFAULT_OPENING_SNAPSHOT}。
+   * **10 参兼容构造**（P1.1）：{@code worldId} 取 {@value #DEFAULT_WORLD_ID}。
+   *
+   * <p>★ 它存在的理由与下一条同族：{@code worldId} 是**新加的第 11 个分量**，而库内已有 13 处按 9 参、若干处按 10 参装配（多数在测试里）。
+   * 让它们继续钉在"新特性缺省"上，比各改一行更有价值。新代码请显式传 {@code worldId}。
+   */
+  public ShellConfig(
+      Path storeDir,
+      int checkpointInterval,
+      int guiPort,
+      int mcpPort,
+      String mcpPath,
+      int approvalPort,
+      String mcpInitiator,
+      String mapId,
+      String bindAddress,
+      boolean openingSnapshot) {
+    this(
+        storeDir,
+        checkpointInterval,
+        guiPort,
+        mcpPort,
+        mcpPath,
+        approvalPort,
+        mcpInitiator,
+        mapId,
+        bindAddress,
+        openingSnapshot,
+        DEFAULT_WORLD_ID);
+  }
+
+  /**
+   * **9 参兼容构造**（P4）：{@code openingSnapshot} 取 {@value #DEFAULT_OPENING_SNAPSHOT}、{@code worldId} 取
+   * {@value #DEFAULT_WORLD_ID}。
    *
    * <p>★ 它存在的理由很实在：那个开关是**新加的第 10 个分量**，而库内已有 13 处按 9 参装配（多数在测试里）。加一个形参就让 13
    * 个与本次改动无关的地方各改一行，换不到任何东西；把它们钉在"新特性缺省关"上，正是我们要的语义。
@@ -109,6 +152,7 @@ public record ShellConfig(
     mcpInitiator = requireText(mcpInitiator, "mcpInitiator");
     mapId = requireText(mapId, "mapId");
     bindAddress = requireText(bindAddress, "bindAddress");
+    worldId = requireText(worldId, "worldId");
   }
 
   /**
@@ -128,7 +172,8 @@ public record ShellConfig(
         DEFAULT_MCP_INITIATOR,
         DEFAULT_MAP_ID,
         DEFAULT_BIND_ADDRESS,
-        DEFAULT_OPENING_SNAPSHOT);
+        DEFAULT_OPENING_SNAPSHOT,
+        DEFAULT_WORLD_ID);
   }
 
   /** 仅替换三个端口，其余原样（测试用 {@code 0} 取随机端口时最常用）。 */
@@ -143,7 +188,8 @@ public record ShellConfig(
         mcpInitiator,
         mapId,
         bindAddress,
-        openingSnapshot);
+        openingSnapshot,
+        worldId);
   }
 
   /** 仅替换 GUI / MCP 的绑定地址，其余原样（M10；测试绑非回环地址时最常用）。 */
@@ -158,7 +204,8 @@ public record ShellConfig(
         mcpInitiator,
         mapId,
         bindAddress,
-        openingSnapshot);
+        openingSnapshot,
+        worldId);
   }
 
   /**
@@ -178,7 +225,29 @@ public record ShellConfig(
         mcpInitiator,
         mapId,
         bindAddress,
-        enabled);
+        enabled,
+        worldId);
+  }
+
+  /**
+   * 仅替换**创世世界 id**，其余原样（P1.1）。
+   *
+   * <p>★ 它只影响**空库首启**的 bootstrap 生成器选择：非空库永不覆盖，见 {@link ShellConfig#worldId()} 与 {@link
+   * io.mosire.simos.app.world.WorldRegistry#require(String)}（未知 id 在那里具名拒绝）。
+   */
+  public ShellConfig withWorldId(String worldId) {
+    return new ShellConfig(
+        storeDir,
+        checkpointInterval,
+        guiPort,
+        mcpPort,
+        mcpPath,
+        approvalPort,
+        mcpInitiator,
+        mapId,
+        bindAddress,
+        openingSnapshot,
+        worldId);
   }
 
   private static String requireText(String value, String name) {

@@ -37,8 +37,11 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 富世界（T11）：把签入的 {@code v17levant} 复刻数据集读成创世 {@link SimulationState}，供 {@link
- * io.mosire.simos.app.ShellMain} 在**空库首启时就地初始化**种入（没有"选世界"这一层）。
+ * 富世界（T11）：把签入的 {@code v17levant} 复刻数据集读成创世 {@link SimulationState}。
+ *
+ * <p>★ **它在启动选择里的位置（P1.1）**：登记在 {@link WorldRegistry} 的 {@link WorldRegistry#V17LEVANT}（也是 {@link
+ * io.mosire.simos.app.ShellConfig#DEFAULT_WORLD_ID}）；{@link io.mosire.simos.app.ShellMain}
+ * 只在**空库首启时**取这个 id 对应的生成器做 bootstrap，非空库绝不覆盖。本类自身**不认识**启动面，注册表也不在这里——加世界改 {@link WorldRegistry}。
  *
  * <p>★ **资源就是 simos 的线格式**（{@code simos-app/src/main/resources/worlds/v17levant.json} 是 {@code
  * tools/gsimap_import.py} 产出的 checkpoint 信封，逐字节签入）。因此本类**不另写一套解析**：走 {@link Envelope#decode} +
