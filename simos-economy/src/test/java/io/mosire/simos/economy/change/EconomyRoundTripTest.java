@@ -75,6 +75,8 @@ import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MerchantFirm;
+import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
@@ -155,6 +157,8 @@ class EconomyRoundTripTest {
   private static final ClassPositionId POSITION = new ClassPositionId("position-1");
   private static final ProductionOrganizationId ORGANIZATION =
       new ProductionOrganizationId("organization-1");
+  private static final ProductionOrganizationId MERCHANT_ORGANIZATION =
+      new ProductionOrganizationId("organization-merchant-1");
   private static final AssetRuleId ASSET_RULE = AssetRuleId.idOf(MODE, AssetKind.CATTLE);
   private static final GovernmentId GOVERNMENT = new GovernmentId("government-1");
   private static final MoneyIssuanceId ISSUANCE = new MoneyIssuanceId("issuance-1");
@@ -280,11 +284,11 @@ class EconomyRoundTripTest {
    * classFirst}。
    *
    * <p>★ 这个名字里的数字**故意写死**（R4 16 → E3 24 → E4 25 → E5 27 → E6 29 → R1 30）：它就是"又加了一个状态组件"这件事
-   * 在编译/测试面上的**唯一提醒**——新增组件却只改了 {@code EconomyData} 而没进变更集时，本用例当场红。
+   * 在编译/测试面上的**唯一提醒**——新增组件却只改了 {@code EconomyData} 而没进变更集时，本用例当场红。P10.1 追加 {@code merchantFirms} 后为 31 组件。
    */
   @Test
-  void changeSetHasExactlyThirtyComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(30);
+  void changeSetHasExactlyThirtyOneComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(31);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -301,6 +305,22 @@ class EconomyRoundTripTest {
             SimosTimestamp.of(5),
             EconomyData.empty());
     assertThat(snapshot.namespace()).isEqualTo("economy");
+  }
+
+  /** ★ P10.1：非空的最小 merchantFirms 夹具（键 == 值内 organizationId；组织表为空时不需要组织支撑）。 */
+  private static MerchantFirm merchantFirm() {
+    return new MerchantFirm(
+        MERCHANT_ORGANIZATION,
+        MerchantPolicy.MerchantTier.PORTER,
+        new HexCoord(0, 0),
+        true,
+        100L,
+        0L,
+        2L,
+        0L,
+        0L,
+        0L,
+        0L);
   }
 
   /** ★ R1：非空的最小 classFirst 夹具（一个池 + 一个 tick 的 meta，足以让"组件参与差异"有判别力）。 */
@@ -416,6 +436,8 @@ class EconomyRoundTripTest {
       case "modeTransitions" -> base.withModeTransitions(Map.of(TRANSITION, modeTransition()));
       case "classShares" -> base.withClassShares(Map.of(CLASS_SHARE, classShare()));
       case "classFirst" -> base.withClassFirst(classFirst());
+      case "merchantFirms" ->
+          base.withMerchantFirms(Map.of(MERCHANT_ORGANIZATION, merchantFirm()));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -452,6 +474,7 @@ class EconomyRoundTripTest {
       case "modeTransitions" -> cs.modeTransitions().changed();
       case "classShares" -> cs.classShares().changed();
       case "classFirst" -> cs.classFirst().changed();
+      case "merchantFirms" -> cs.merchantFirms().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }

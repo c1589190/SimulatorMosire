@@ -19,6 +19,7 @@ import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -54,6 +55,15 @@ import java.util.Optional;
 public final class OrganizationProfitBook {
 
   private OrganizationProfitBook() {}
+
+  /**
+   * ★★ <b>单位劳动净收益的高精度比例尺</b>：{@link Book#netPerLaborScaled} 返回
+   * {@code floor(Σnet × PER_LABOR_SCALE ÷ Σlabor)}，即百万分之一单位的单位劳动净收益。
+   *
+   * <p>旧读数 {@code net / max(1, labor)} 在劳动很大时会把真实利润比率整数截断为 0；本常量是修复口径，
+   * 不改变逐组织读数 {@link OrganizationProfit} 的既有字段与构造期守卫。
+   */
+  public static final long PER_LABOR_SCALE = 1_000_000L;
 
   /** 一个生产组织（= 一个 mode/hex/家户的生产身份）的本周期真实利润读数。 */
   public record OrganizationProfit(
@@ -128,17 +138,35 @@ public final class OrganizationProfitBook {
   /** 汇总结果（不可变；同输入同态恒逐值相同）。 */
   public record Book(
       Map<ProductionOrganizationId, OrganizationProfit> byOrganization,
+      Map<ModeHex, Long> netByModeHex,
       Map<ModeHex, Long> netPerLaborByModeHex,
       Map<ModeHex, Long> laborByModeHex) {
 
     public Book {
       Objects.requireNonNull(byOrganization, "byOrganization");
+      Objects.requireNonNull(netByModeHex, "netByModeHex");
       Objects.requireNonNull(netPerLaborByModeHex, "netPerLaborByModeHex");
       Objects.requireNonNull(laborByModeHex, "laborByModeHex");
       byOrganization = Collections.unmodifiableMap(new LinkedHashMap<>(byOrganization));
+      netByModeHex = Collections.unmodifiableMap(new LinkedHashMap<>(netByModeHex));
       netPerLaborByModeHex =
           Collections.unmodifiableMap(new LinkedHashMap<>(netPerLaborByModeHex));
       laborByModeHex = Collections.unmodifiableMap(new LinkedHashMap<>(laborByModeHex));
+    }
+
+    /**
+     * ★ 兼容旧三参调用点（旧调用没有原始净收益表）：按旧口径 {@code perLabor × max(1, labor)} 反推原始净收益，
+     * 让旧的逐值可重建；新的生产路径（{@link #collect}）恒走四参构造，传入真实本期 Σnet。
+     */
+    public Book(
+        Map<ProductionOrganizationId, OrganizationProfit> byOrganization,
+        Map<ModeHex, Long> netPerLaborByModeHex,
+        Map<ModeHex, Long> laborByModeHex) {
+      this(
+          byOrganization,
+          reconstructNetByModeHex(netPerLaborByModeHex, laborByModeHex),
+          netPerLaborByModeHex,
+          laborByModeHex);
     }
 
     /** 某个 (mode, hex) 是否真的有本期读数（没有 ⇒ false，调用方不得把它当成 0 收益目标）。 */
@@ -146,14 +174,82 @@ public final class OrganizationProfitBook {
       return laborByModeHex.containsKey(new ModeHex(modeId, hex));
     }
 
-    /** 某个 (mode, hex) 的单位劳动净收益；无读数 ⇒ 0（调用方先用 {@link #hasReading} 判）。 */
+    /** 某个 (mode, hex) 的本期<b>原始净收益</b>合计；无读数 ⇒ 0（调用方先用 {@link #hasReading} 判）。 */
+    public long net(ProductionModeId modeId, HexCoord hex) {
+      return netByModeHex.getOrDefault(new ModeHex(modeId, hex), 0L);
+    }
+
+    /** 旧口径单位劳动净收益（{@code net / max(1, labor)}，整数截断）；新代码请用 {@link #netPerLaborScaled}。 */
     public long netPerLabor(ProductionModeId modeId, HexCoord hex) {
       return netPerLaborByModeHex.getOrDefault(new ModeHex(modeId, hex), 0L);
+    }
+
+    /**
+     * ★★ <b>高精度单位劳动净收益</b>：{@code floor(Σnet × PER_LABOR_SCALE ÷ Σlabor)}，百万分之一单位。
+     *
+     * <p>无本期读数或 {@code labor <= 0} ⇒ 0。计算用 {@link BigInteger} 精确求 floor（负数也向下取整，不是向零截断）；
+     * 结果超出 {@code long} 时抛 {@link ArithmeticException}（fail-closed，不静默回绕）。
+     */
+    public long netPerLaborScaled(ProductionModeId modeId, HexCoord hex) {
+      ModeHex key = new ModeHex(modeId, hex);
+      if (!laborByModeHex.containsKey(key)) {
+        return 0L;
+      }
+      long labor = laborByModeHex.getOrDefault(key, 0L);
+      if (labor <= 0L) {
+        return 0L;
+      }
+      long net = netByModeHex.getOrDefault(key, 0L);
+      return scaledNetPerLabor(net, labor);
     }
 
     /** 某个 (mode, hex) 的本期总劳动。 */
     public long labor(ProductionModeId modeId, HexCoord hex) {
       return laborByModeHex.getOrDefault(new ModeHex(modeId, hex), 0L);
+    }
+  }
+
+  /**
+   * 旧三参 {@link Book} 兼容构造的反推：只有旧的截断 per-labor 表与 labor 表时，
+   * {@code net = perLabor × max(1, labor)}（与旧构造期守卫同式）。新生产路径不使用本方法。
+   */
+  private static Map<ModeHex, Long> reconstructNetByModeHex(
+      Map<ModeHex, Long> netPerLaborByModeHex, Map<ModeHex, Long> laborByModeHex) {
+    Objects.requireNonNull(netPerLaborByModeHex, "netPerLaborByModeHex");
+    Objects.requireNonNull(laborByModeHex, "laborByModeHex");
+    LinkedHashMap<ModeHex, Long> netByModeHex = new LinkedHashMap<>();
+    for (Map.Entry<ModeHex, Long> entry : netPerLaborByModeHex.entrySet()) {
+      ModeHex key = Objects.requireNonNull(entry.getKey(), "netPerLaborByModeHex key");
+      Long perLabor = Objects.requireNonNull(entry.getValue(), "netPerLaborByModeHex value");
+      long labor = laborByModeHex.getOrDefault(key, 0L);
+      netByModeHex.put(key, Math.multiplyExact(perLabor, Math.max(1L, labor)));
+    }
+    for (Map.Entry<ModeHex, Long> entry : laborByModeHex.entrySet()) {
+      ModeHex key = Objects.requireNonNull(entry.getKey(), "laborByModeHex key");
+      Objects.requireNonNull(entry.getValue(), "laborByModeHex value");
+      netByModeHex.putIfAbsent(key, 0L);
+    }
+    return netByModeHex;
+  }
+
+  /**
+   * 高精度缩放：{@code floor(net × PER_LABOR_SCALE / labor)}（{@code labor > 0} 由调用方保证）。
+   * 商超出 {@code long} ⇒ 具名异常 fail-closed。
+   */
+  private static long scaledNetPerLabor(long net, long labor) {
+    BigInteger numerator =
+        BigInteger.valueOf(net).multiply(BigInteger.valueOf(PER_LABOR_SCALE));
+    BigInteger denominator = BigInteger.valueOf(labor);
+    BigInteger[] quotientAndRemainder = numerator.divideAndRemainder(denominator);
+    BigInteger scaled = quotientAndRemainder[0];
+    if (numerator.signum() < 0 && quotientAndRemainder[1].signum() != 0) {
+      scaled = scaled.subtract(BigInteger.ONE); // Java 整数除法向零截断；这里要数学 floor
+    }
+    try {
+      return scaled.longValueExact();
+    } catch (ArithmeticException overflow) {
+      throw new ArithmeticException(
+          "netPerLaborScaled 溢出 long（fail-closed）: net=" + net + ", labor=" + labor);
     }
   }
 
@@ -484,15 +580,17 @@ public final class OrganizationProfitBook {
       aggregate[0] = Math.addExact(aggregate[0], net);
       aggregate[1] = Math.addExact(aggregate[1], labor);
     }
+    LinkedHashMap<ModeHex, Long> netByModeHex = new LinkedHashMap<>();
     LinkedHashMap<ModeHex, Long> perLaborByModeHex = new LinkedHashMap<>();
     LinkedHashMap<ModeHex, Long> laborByModeHex = new LinkedHashMap<>();
     for (Map.Entry<ModeHex, long[]> entry : byModeHex.entrySet()) {
       long net = entry.getValue()[0];
       long labor = entry.getValue()[1];
+      netByModeHex.put(entry.getKey(), net);
       perLaborByModeHex.put(entry.getKey(), net / Math.max(1L, labor));
       laborByModeHex.put(entry.getKey(), labor);
     }
-    return new Book(byOrganization, perLaborByModeHex, laborByModeHex);
+    return new Book(byOrganization, netByModeHex, perLaborByModeHex, laborByModeHex);
   }
 
   /** 组织缺 unit/行时回退到它经营主体的居住格（hex 是收益读数的维度，不能为空）。 */

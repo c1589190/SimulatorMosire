@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
@@ -44,17 +45,23 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * ★★ <b>P10.2 家户生产方式迁移计划器（架构 §5.2 的 ⑧）</b>：用 {@link OrganizationProfitBook} 的<b>真实</b>
+ * ★★ <b>P10.2 / P10.5 家户生产方式迁移计划器（架构 §5.2 的 ⑧）</b>：用 {@link OrganizationProfitBook} 的<b>真实</b>
  * 单位劳动净收益做权重，输出确定性的"人/钱/债转移到目标 mode 家户"的计划。
  *
  * <pre>
- * 目标权重 weight = max(0, target.netPerLabor − current.netPerLabor)          （真读数，不是外生 π）
+ * 目标权重 weight = max(0, target.netPerLaborScaled − current.netPerLaborScaled)
+ *                （同一把百万分之一单位的高精度尺，避免 net/labor 整数截断为 0；真读数，不是外生 π）
  * 目标排序       weight 降序 → 距离升序（同格 0、邻格 1）→ (hex, mode) 规范串升序 → 家户 id 升序
  * 基线速度        MIGRATION_PER_MILLE = 10‰/周期（可迁人口 = max(1, ⌊人口×10÷1000⌋)）
  * A 规则        expectedNet(current) < 0 且 cash + sellableInventory − nextCycleInputNeed < 0
- *                · 存在 netPerLabor 严格更高的可行目标 ⇒ transferSpeed = 1000‰，把人口转出
+ *                · 存在 netPerLaborScaled 严格更高的可行目标 ⇒ transferSpeed = 1000‰，把人口转出
  *                · 当前户已是最优（或没有更高可行目标）⇒ 不转移、继续生产，债务/欠款走现有资本化
  *                · 无法维持生产且没有任何能承载的可行目标 ⇒ 转 DISPLACED（同样 1000‰）
+ * 新建可行性      同一 plan() 共享"闲置资产预留账本"（IndustryId × AssetKind）；
+ *                available = Σ 闲置(quantity>0 ∧ operator==owner ∧ id∉既有组织 assetSources) − 已预留，
+ *                任一 required 不足则整笔不预留。
+ *                后一个新建户/后一遍 allocate 只看前面计划消费后的剩余，与执行期逐笔拆份额一致。
+ *                ★ 闲置判据的唯一拼写点 = {@link #isIdleShare(AssetShare, Set)}（policy/settlement 共用）。
  * </pre>
  *
  * <p>★★ <b>D-022 硬约束</b>：计划里只有 {@code MigrationMove}（源户 → 目标户）；{@code targetMode} 只属于目标家户，
@@ -196,6 +203,15 @@ public final class ModeMigrationPolicy {
     Objects.requireNonNull(accounts, "accounts");
     Objects.requireNonNull(book, "book");
     Objects.requireNonNull(relations, "relations");
+    // ★★ P10.6：计划期共享的"闲置资产预留账本"。同一 plan() 的所有源户、所有目标新建户、allocate 的两遍
+    //    都读写同一份账本 ⇒ 后一个新建户看到的是前面计划已消费后的剩余闲置资产，与执行期逐笔拆份额一致。
+    Map<IndustryId, Map<AssetKind, Long>> reservedIdle = new LinkedHashMap<>();
+    // ★★ P10.7 / P10.8：既有 ProductionOrganization.assetSources 正在使用的份额不是"闲置"——执行期把它拆/移走后，
+    //    组织引用会指向已删除的份额 id，EconomyData 当即以「生产组织使用的资产份额必须已存在」拒绝。
+    //    claimed 必须读调用方传入的当天工作副本 organizations（可能已被当天自动组织阶段加入新组织），
+    //    不能用当天开始时的不可变 base；只在这里构建一次，与预留账本一起透传；谓词与执行期共用
+    //    {@link #isIdleShare}，不新增持久组件。
+    Set<AssetShareId> claimedByOrganizations = claimedAssetShares(organizations);
     if (base.modes().isEmpty()) {
       return MigrationPlan.empty(); // class-first 世界：逐字 no-op
     }
@@ -246,7 +262,9 @@ public final class ModeMigrationPolicy {
               assetShares,
               markets,
               accounts,
-              book);
+              book,
+              reservedIdle,
+              claimedByOrganizations);
       if (!drafts.isEmpty()) {
         draftsBySource.put(source, drafts);
       }
@@ -306,11 +324,11 @@ public final class ModeMigrationPolicy {
       Map<AssetShareId, AssetShare> assetShares,
       Map<HexCoord, Market> markets,
       AccountSession accounts,
-      OrganizationProfitBook.Book book) {
-    long currentPerLabor =
-        book.hasReading(current.modeId, current.hex)
-            ? book.netPerLabor(current.modeId, current.hex)
-            : 0L;
+      OrganizationProfitBook.Book book,
+      Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
+      Set<AssetShareId> claimedByOrganizations) {
+    // ★★ P10.5：当前收益用高精度同一把尺（百万分之一单位）；无读数/labor<=0 时读口本身返回 0。
+    long currentPerLabor = book.netPerLaborScaled(current.modeId, current.hex);
     List<Target> targets =
         buildTargets(
             base,
@@ -343,7 +361,9 @@ public final class ModeMigrationPolicy {
             higher,
             base,
             sourceRow,
-            assetShares);
+            assetShares,
+            reservedIdle,
+            claimedByOrganizations);
       }
       if (!expected.canSustainProduction()) {
         List<Target> displaced =
@@ -358,7 +378,9 @@ public final class ModeMigrationPolicy {
               displaced,
               base,
               sourceRow,
-              assetShares);
+              assetShares,
+              reservedIdle,
+              claimedByOrganizations);
         }
       }
       // 当前户已是最优（或没有可承载目标）：不转移，债务按现有路径继续增长。
@@ -385,7 +407,9 @@ public final class ModeMigrationPolicy {
         positive,
         base,
         sourceRow,
-        assetShares);
+        assetShares,
+        reservedIdle,
+        claimedByOrganizations);
   }
 
   /** 目标候选（已有家户 + 可新建；同 (hex, mode) 一条，已有家户优先）。 */
@@ -421,7 +445,10 @@ public final class ModeMigrationPolicy {
         if (!book.hasReading(mode.id(), hex) || book.labor(mode.id(), hex) <= 0L) {
           continue; // 没有真实利润读数/没有真实劳动投入的 mode/hex 不作为正收益目标（不凭空造目标）
         }
-        long weight = Math.max(0L, book.netPerLabor(mode.id(), hex) - currentPerLabor);
+        long weight =
+            Math.max(
+                0L,
+                Math.subtractExact(book.netPerLaborScaled(mode.id(), hex), currentPerLabor));
         if (weight <= 0L) {
           continue;
         }
@@ -520,7 +547,7 @@ public final class ModeMigrationPolicy {
    * 分配可迁人口：按目标排序贪心填充（已有户剩余容量 → 同目标可新建容量 → 下一个目标）。
    *
    * <p>★ 新建目标的资产可行性在这里用"本次实际要建的人口"复核（不足 ⇒ 该目标的新建容量记 0）。溢出部分留在源户，
-   * 不丢人、也不凭空造承载。
+   * 不丢人、也不凭空造承载。★★ P10.6：预留账本由调用方（同一 plan 顶层）传入，两遍循环共用、不重置。
    */
   private static List<MoveDraft> allocate(
       HouseholdId source,
@@ -531,7 +558,9 @@ public final class ModeMigrationPolicy {
       List<Target> targets,
       EconomyData base,
       ClassRow sourceRow,
-      Map<AssetShareId, AssetShare> assetShares) {
+      Map<AssetShareId, AssetShare> assetShares,
+      Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
+      Set<AssetShareId> claimedByOrganizations) {
     List<MoveDraft> drafts = new ArrayList<>();
     if (targets.isEmpty()) {
       return drafts;
@@ -564,7 +593,9 @@ public final class ModeMigrationPolicy {
               sourceRow,
               assetShares,
               drafts,
-              newOrdinal);
+              newOrdinal,
+              reservedIdle,
+              claimedByOrganizations);
       remaining -= placed;
     }
     // 第二遍：把前面目标没承载下的余量按目标序顺延（仍受真实容量/资产约束）。
@@ -580,13 +611,20 @@ public final class ModeMigrationPolicy {
               sourceRow,
               assetShares,
               drafts,
-              newOrdinal);
+              newOrdinal,
+              reservedIdle,
+              claimedByOrganizations);
       remaining -= placed;
     }
     return drafts;
   }
 
-  /** 往一个目标里放人口（已有户剩余容量 → 该 (hex, mode) 至多新建一户）；返回实际放入人口。 */
+  /**
+   * 往一个目标里放人口（已有户剩余容量 → 该 (hex, mode) 至多新建一户）；返回实际放入人口。
+   *
+   * <p>★★ P10.6：新建部分的"资产可行性"是<b>检查并预留</b>（{@code reserveIdleAssetsFor}）；预留成功才产出 MoveDraft，
+   * 账本由同一 {@code plan()} 的所有源户/所有目标共享。
+   */
   private static long placeInto(
       Target target,
       long allow,
@@ -597,7 +635,9 @@ public final class ModeMigrationPolicy {
       ClassRow sourceRow,
       Map<AssetShareId, AssetShare> assetShares,
       List<MoveDraft> drafts,
-      int[] newOrdinal) {
+      int[] newOrdinal,
+      Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
+      Set<AssetShareId> claimedByOrganizations) {
     long placed = 0L;
     if (allow <= 0L) {
       return 0L;
@@ -611,7 +651,16 @@ public final class ModeMigrationPolicy {
       return placed;
     }
     long want = Math.min(allow - placed, MAX_HOUSEHOLD_POPULATION);
-    long room = perMoveNewRoom(target.hex, target.mode, want, base, sourceRow, assetShares);
+    long room =
+        perMoveNewRoom(
+            target.hex,
+            target.mode,
+            want,
+            base,
+            sourceRow,
+            assetShares,
+            reservedIdle,
+            claimedByOrganizations);
     long take = Math.min(want, room);
     if (take > 0L) {
       drafts.add(
@@ -627,14 +676,19 @@ public final class ModeMigrationPolicy {
     return placed;
   }
 
-  /** 新建户可承载人口：由本次 take 的劳动反推规模，再看该 hex 同产业闲置/可租赁资产够不够。不足 ⇒ 0。 */
+  /**
+   * 新建户可承载人口：由本次 take 的劳动反推规模，再看该 hex 的产业模板里有没有"闲置/可租赁资产够且预留成功"的；
+   * 第一个预留成功的产业即返回 take（预留已计入共享账本）。没有产业可预留 ⇒ 0。
+   */
   private static long perMoveNewRoom(
       HexCoord hex,
       ProductionModeId mode,
       long take,
       EconomyData base,
       ClassRow sourceRow,
-      Map<AssetShareId, AssetShare> assetShares) {
+      Map<AssetShareId, AssetShare> assetShares,
+      Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
+      Set<AssetShareId> claimedByOrganizations) {
     if (DefaultProductionModes.DISPLACED.equals(mode)) {
       return take;
     }
@@ -647,35 +701,58 @@ public final class ModeMigrationPolicy {
     industries.sort(Comparator.comparing(IndustryId::value));
     for (IndustryId industryId : industries) {
       Industry industry = base.industries().get(industryId);
-      if (industry != null && hasIdleAssetsFor(industry, laborEstimate, assetShares)) {
+      if (industry != null
+          && reserveIdleAssetsFor(
+              industry, laborEstimate, assetShares, reservedIdle, claimedByOrganizations)) {
         return take;
       }
     }
     return 0L;
   }
 
-  /** 这个 (hex 产业, asset) 上，按 take 人口推出的劳动规模，闲置/可租赁资产是否够。 */
-  private static boolean hasIdleAssetsFor(
-      Industry industry, long laborMilli, Map<AssetShareId, AssetShare> assetShares) {
+  /**
+   * "检查并预留"：按 laborMilli 推出的规模算每个 required 的 need，闲置资产够（Σ 闲置 − 已预留 ≥ need）则把
+   * need 累加进共享 {@code reservedIdle} 并返回 true；任一 required 不足 ⇒ false，<b>且不做任何部分预留</b>。
+   *
+   * <p>★ 口径与执行期 {@code ModeMigrationSettlement.planAssetMoves} 对齐：同一份"闲置"定义
+   * （{@link #isIdleShare}：{@code quantity > 0 && operator == owner && id ∉ claimedByOrganizations}）与同一个
+   * {@code scale} 公式；按 {@link IndustryId} 预留 ⇒ 同一产业的多个 mode 共享同一个闲置分母，不会各看各的快照。
+   * 执行侧逐笔拆完 share 后，各产业/种类的剩余量与本账本一致。
+   */
+  private static boolean reserveIdleAssetsFor(
+      Industry industry,
+      long laborMilli,
+      Map<AssetShareId, AssetShare> assetShares,
+      Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
+      Set<AssetShareId> claimedByOrganizations) {
     long scale =
         industry.recipe().laborPerUnit() <= 0L
             ? 1L
             : Math.max(1L, laborMilli / industry.recipe().laborPerUnit());
-    for (Map.Entry<io.mosire.simos.actor.api.asset.AssetKind, Long> required :
-        industry.recipe().capacityPerUnit().entrySet()) {
+    Map<AssetKind, Long> reservedForIndustry =
+        reservedIdle.getOrDefault(industry.id(), Map.of());
+    Map<AssetKind, Long> needs = new LinkedHashMap<>();
+    for (Map.Entry<AssetKind, Long> required : industry.recipe().capacityPerUnit().entrySet()) {
       long need = Math.multiplyExact(scale, required.getValue());
       long available = 0L;
       for (AssetShare share : assetShares.values()) {
         if (!share.industry().equals(industry.id())
             || share.asset() != required.getKey()
-            || !share.operator().equals(share.owner())) {
+            || !isIdleShare(share, claimedByOrganizations)) {
           continue;
         }
         available = Math.addExact(available, share.quantity());
       }
-      if (available < need) {
-        return false;
+      long alreadyReserved = reservedForIndustry.getOrDefault(required.getKey(), 0L);
+      if (Math.subtractExact(available, alreadyReserved) < need) {
+        return false; // 全有或全不：先查完全部 required，确认全部可行后才写账本。
       }
+      needs.put(required.getKey(), need);
+    }
+    Map<AssetKind, Long> bucket =
+        reservedIdle.computeIfAbsent(industry.id(), key -> new LinkedHashMap<>());
+    for (Map.Entry<AssetKind, Long> need : needs.entrySet()) {
+      bucket.merge(need.getKey(), need.getValue(), Math::addExact);
     }
     return true;
   }
@@ -799,15 +876,10 @@ public final class ModeMigrationPolicy {
       reason = "localRefPrice";
     } else {
       // 缺价：退回本期真实净收益（仍不是未来价，也不是外生 π）。
-      long net =
-          book.hasReading(current.modeId, current.hex)
-              ? book.netPerLabor(current.modeId, current.hex)
-              : 0L;
-      long labor =
-          book.hasReading(current.modeId, current.hex)
-              ? book.labor(current.modeId, current.hex)
-              : Math.max(1L, row.participationAdjustedLaborMilli());
-      expectedNet = net * Math.max(1L, labor);
+      // ★★ P10.5：用原始 Σnet / Σlabor 重建，不经 netPerLabor × labor 的二次截断；无读数时读口返回 0。
+      long net = book.net(current.modeId, current.hex);
+      long labor = book.labor(current.modeId, current.hex);
+      expectedNet = net;
       expectedLabor = labor;
       nextNeed = 0L;
       reason = "noLocalRefPrice:fallbackRealized";
@@ -977,6 +1049,47 @@ public final class ModeMigrationPolicy {
   private static boolean shouldProduce(ClassPosition position) {
     return position.laborRole() != ClassPosition.LaborRole.NONE
         && position.surplusRole() != ClassPosition.SurplusRole.DEPENDENT;
+  }
+
+  // ── 闲置资产判据的唯一拼写点（policy / settlement 共用；纯谓词，不新增持久组件）─────────────
+
+  /**
+   * ★★ <b>P10.7 闲置/可租赁资产判据的唯一拼写点</b>（计划期 {@code reserveIdleAssetsFor} 与执行期 {@code
+   * ModeMigrationSettlement.planAssetMoves} 共用；两侧不得各拼一遍）：
+   *
+   * <ol>
+   *   <li>{@code quantity() > 0}；
+   *   <li>{@code operator().equals(owner())}（自有自营；{@code operator != owner} 已被人实际使用）；
+   *   <li>{@code id()} <b>不在</b>既有 {@code ProductionOrganization.assetSources} 的并集 {@code
+   *       claimedByOrganizations} 里 —— 既有商号/组织正在使用的份额不是闲置：执行期若把它整条拆走，源份额行
+   *       会被删除，组织引用会指向不存在的份额 id，{@code EconomyData} 当即以「生产组织使用的资产份额必须已存在」
+   *       fail-closed。
+   * </ol>
+   */
+  static boolean isIdleShare(AssetShare share, Set<AssetShareId> claimedByOrganizations) {
+    Objects.requireNonNull(share, "share");
+    Objects.requireNonNull(claimedByOrganizations, "claimedByOrganizations");
+    return share.quantity() > 0L
+        && share.operator().equals(share.owner())
+        && !claimedByOrganizations.contains(share.id());
+  }
+
+  /**
+   * ★★ P10.7 / P10.8：<b>既有组织正在使用的资产份额 id 并集</b>（只读派生，不新增持久组件）。计划期在
+   * {@link #plan} 顶层从传入的 {@code organizations} 工作副本构建一次并透传；执行期在 {@link
+   * ModeMigrationSettlement#createOrganizationAndUnit} 从同一份当天工作副本再构建一次。集合只用于
+   * {@link #isIdleShare} 的包含判断，不参与排序，故迭代序不影响计划确定性。
+   */
+  static Set<AssetShareId> claimedAssetShares(
+      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
+    Objects.requireNonNull(organizations, "organizations");
+    Set<AssetShareId> claimed = new LinkedHashSet<>();
+    for (ProductionOrganization organization : organizations.values()) {
+      if (organization != null) {
+        claimed.addAll(organization.assetSources());
+      }
+    }
+    return claimed;
   }
 
   private static List<ProductionMode> sortedModes(EconomyData base) {

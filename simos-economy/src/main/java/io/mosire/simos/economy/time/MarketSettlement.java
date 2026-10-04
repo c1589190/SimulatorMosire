@@ -2125,6 +2125,17 @@ final class MarketSettlement {
       }
     }
 
+    // ★★ P10.9 自承运：选商可能选中买方本人（商号 principal 就是买方家户）—— 自承运不产生货币运费腿，
+    //   而 Transfer 的两端不得相等（自转移是坏数据）。必须在下面 total = payment + freight 之前把
+    //   freight 归零：买方不为它多冻结、不多记 spentMilli；不铸 CARRIER_FEE、不调 applyTransfer。
+    //   carrierActor 保持 present ⇒ 下面 carrierActor.isEmpty() 的"应收未收"分支不会把自承运错记成
+    //   freightUncollectedMilli（它只是自己运自己，本来就没有应收的货币运费，钱也没有凭空消失）。
+    boolean selfCarrier =
+        route != null && carrierActor.isPresent() && carrierActor.get().equals(buy.buyer.actor);
+    if (selfCarrier) {
+      freight = 0L;
+    }
+
     // ① 卖方把已冻结的那一份放出来，再走唯一 applier（货腿：卖方 → 买方）。
     long sellRelease = Math.min(quantity, sell.frozenRemaining);
     sell.frozenRemaining -= sellRelease;
