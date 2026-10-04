@@ -1,7 +1,7 @@
 package io.mosire.simos.social.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.change.SocialChangeSet;

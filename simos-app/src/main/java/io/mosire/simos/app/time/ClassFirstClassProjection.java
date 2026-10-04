@@ -8,7 +8,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.classfirst.ClassFirstState;
 import io.mosire.simos.economy.classfirst.ClassPool;
 import io.mosire.simos.economy.classfirst.HouseholdProductionAccount;

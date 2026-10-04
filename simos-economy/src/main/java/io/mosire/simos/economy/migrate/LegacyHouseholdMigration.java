@@ -2,13 +2,12 @@ package io.mosire.simos.economy.migrate;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
@@ -21,6 +20,8 @@ import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -119,7 +120,7 @@ public final class LegacyHouseholdMigration {
     }
     if (allocations != null) {
       for (LaborAllocation allocation : allocations.values()) {
-        if (allocation != null && allocation.household().isPending()) {
+        if (allocation != null && HouseholdIds.isPending(allocation.household())) {
           return true;
         }
       }
@@ -193,7 +194,7 @@ public final class LegacyHouseholdMigration {
       LaborAllocation allocation = entry.getValue();
       Optional<HexCoord> maybeHex = industryHexOf(industries, allocation.actor());
       if (maybeHex.isEmpty()) {
-        if (!allocation.household().isPending()) {
+        if (!HouseholdIds.isPending(allocation.household())) {
           if (rebuildMemberships) {
             throw new IllegalStateException(
                 "旧档迁移失败：配额 "
@@ -219,7 +220,7 @@ public final class LegacyHouseholdMigration {
       //   lot 权重表必须覆盖全部可定位的劳动归属，不能只收 pending 那一半。非 pending 的配额另外照旧原样进
       //   migratedAllocations（它已有真实家户，不再拆分）；但它的 lot 权重同样参与本次成员份额反推。
       former.add(new FormerAllocation(allocation, hex, residence));
-      if (!allocation.household().isPending()) {
+      if (!HouseholdIds.isPending(allocation.household())) {
         migratedAllocations.put(entry.getKey(), allocation);
         continue;
       }

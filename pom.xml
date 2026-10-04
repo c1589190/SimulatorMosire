@@ -11,12 +11,16 @@
   <version>0.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>SimulatorMosire</name>
-  <description>多模块模拟引擎：UtilSimos / MapSimos / SocialSimos / UnitSimos / CoreSimos / SDSimos / ActorApiSimos / ActorSimos / EconomyApiSimos / EconomySimos / GovSimos / ArmySimos / SimosApp（组合根）。各模块的边界与允许依赖见 AGENTS.md 的表。</description>
+  <description>多模块模拟引擎：UtilSimos / MapSimos / SocialApiSimos / SocialSimos / UnitSimos / CoreSimos / SDSimos / ActorApiSimos / ActorSimos / EconomyApiSimos / EconomySimos / GovSimos / ArmySimos / SimosApp（组合根）。各模块的边界与允许依赖见 AGENTS.md 的表。</description>
 
   <modules>
     <module>simos-util</module>
     <module>simos-map</module>
     <module>simos-calendar</module>
+    <!-- ★ 阶段 S1（2026-10-09 家户/人口计划）：social 切片共用的稳定契约层
+         （HouseholdId / PeopleLotId / Sex / 家户画像 / 人口事件与率 / 只读 SPI）。
+         只依赖 map，不依赖任何领域模块、不依赖 Jackson；排在 simos-social 之前。 -->
+    <module>simos-social-api</module>
     <module>simos-social</module>
     <module>simos-unit</module>
     <module>simos-core</module>
@@ -90,6 +94,9 @@
            与 gov 不同——gov 只在 settle 收调用方传入的年长（365/366），不新增 calendar 依赖。 -->
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-calendar</artifactId><version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.mosire</groupId><artifactId>simos-social-api</artifactId><version>${project.version}</version>
       </dependency>
       <dependency>
         <groupId>io.mosire</groupId><artifactId>simos-social</artifactId><version>${project.version}</version>

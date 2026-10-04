@@ -2,7 +2,7 @@ package io.mosire.simos.economy.migrate;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.ClassPositionId;
-import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassStanding;
 import java.util.Collections;

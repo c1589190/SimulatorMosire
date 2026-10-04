@@ -5,7 +5,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.api.population.LotMigration;

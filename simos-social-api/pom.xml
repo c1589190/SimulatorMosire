@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.mosire</groupId>
+    <artifactId>simos-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>simos-social-api</artifactId>
+  <name>SocialApiSimos</name>
+  <description>social 切片共用契约：家户/人口稳定 ID（HouseholdId / PeopleLotId）、性别人口词表（Sex）、家户位置/画像、人口年龄档与出生死亡事件形状、只读查询 SPI。无 Snapshot / ChangeSet / Codec / Jackson，不依赖任何 simos 领域模块。</description>
+
+  <!-- ★ 阶段 S1（2026-10-09 家户/人口架构 §3.1）：契约层只许依赖 map（HexCoord），
+       不依赖任何 simos 领域模块、不依赖 Jackson。UUID/位置/人口事件的形状在这里定死，
+       状态本体（Household / PopulationGroup / SocialData）仍住 simos-social。
+       ★ 版本由父 POM 的 dependencyManagement 提供（"依赖传递不是契约"）。 -->
+  <dependencies>
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
+    </dependency>
+    <!-- 契约的往返/校验用例归后续测试阶段；此处按本仓 api 模块的既有形制预留测试依赖
+         （scope=test 由父 POM dependencyManagement 给定）。 -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
+    </dependency>
+    <!-- 与 actor-api/economy-api 同款：门禁若在本地类型上报 EI_EXPOSE_REP 类误报，
+         @SuppressFBWarnings 的注解住在这里（version 与 spotbugs 插件同代）。 -->
+    <dependency>
+      <groupId>com.github.spotbugs</groupId><artifactId>spotbugs-annotations</artifactId>
+      <version>4.10.4</version><scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-module-boundaries</id>
+            <goals><goal>enforce</goal></goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <!-- ★ 架构 §3.1：social-api 是契约层，只许依赖 map。
+                         下列领域/编排模块一律禁（含反向依赖 social 本身与更底层的经济/actor 切片）。 -->
+                    <exclude>io.mosire:simos-social</exclude>
+                    <exclude>io.mosire:simos-unit</exclude>
+                    <exclude>io.mosire:simos-economy-api</exclude>
+                    <exclude>io.mosire:simos-economy</exclude>
+                    <exclude>io.mosire:simos-actor</exclude>
+                    <exclude>io.mosire:simos-actor-api</exclude>
+                    <exclude>io.mosire:simos-sd</exclude>
+                    <exclude>io.mosire:simos-core</exclude>
+                    <exclude>io.mosire:simos-army</exclude>
+                    <exclude>io.mosire:simos-gov</exclude>
+                    <exclude>io.mosire:simos-app</exclude>
+                    <exclude>io.mosire:agentlib-mosire</exclude>
+                  </excludes>
+                  <message>simos-social-api 是契约层（架构 §3.1）：只许依赖 simos-map（HexCoord），不许依赖任何 simos 领域/编排模块（social/unit/economy*/actor*/sd/core/army/gov/app/agentlib）与 Jackson。</message>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

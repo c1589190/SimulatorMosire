@@ -2,7 +2,7 @@ package io.mosire.simos.economy.api.cohort;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.map.hex.HexCoord;
 
@@ -55,8 +55,8 @@ public final class HouseholdActors {
   /**
    * ★★ <b>反查（新档）：actor 引用 → 家户身份</b>（{@link #of(HouseholdId)} 的逆）。
    *
-   * <p>★ 旧档迁移生成的 actor id 带 {@link HouseholdId#LEGACY_PREFIX} 前缀（冒号分隔三段）⇒ 还原成 {@link
-   * HouseholdId#ofLegacy(CohortKey)} 的同一身份；新档 id 直接 {@link HouseholdId#parse}。
+   * <p>★ 旧档迁移生成的 actor id 带 {@link HouseholdIds#LEGACY_PREFIX} 前缀（冒号分隔三段）⇒ 还原成 {@link
+   * HouseholdIds#ofLegacy(CohortKey)} 的同一身份；新档 id 直接 {@link HouseholdId#parse}。
    *
    * <p>★ <b>宁抛不静默</b>：种类不是 {@code HOUSEHOLD}、或旧档 id 段数/段内容非法 ⇒ 抛。
    */
@@ -68,9 +68,9 @@ public final class HouseholdActors {
       throw new IllegalArgumentException("只有 HOUSEHOLD 才是家户：本引用是 " + actor.kind() + " / " + actor);
     }
     String id = actor.id();
-    if (id.startsWith(HouseholdId.LEGACY_PREFIX)) {
-      return HouseholdId.ofLegacy(
-          legacyCohortOfActorId(id.substring(HouseholdId.LEGACY_PREFIX.length())));
+    if (id.startsWith(HouseholdIds.LEGACY_PREFIX)) {
+      return HouseholdIds.ofLegacy(
+          legacyCohortOfActorId(id.substring(HouseholdIds.LEGACY_PREFIX.length())));
     }
     return HouseholdId.parse(id);
   }

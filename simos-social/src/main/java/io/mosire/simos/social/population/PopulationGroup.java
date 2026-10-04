@@ -1,7 +1,8 @@
 package io.mosire.simos.social.population;
 
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 
 /**
  * ★★ **人口的实体**（第三阶段设计稿 §三）：一批**属性完全相同的活人** —— 住在哪、男的女的、几个人、多大了、身体状态如何。
@@ -15,7 +16,7 @@ import io.mosire.simos.map.hex.HexCoord;
  * {@link #ageDaysAt(long)} 现算 —— 逐日精度、不做五岁桶（用户旧设计的原口径：{@code
  * POLITICAL_ECONOMY_DESIGN.md:71}「0—4、5—9 等只是查询聚合」）。 于是"推进里变老"**不需要写任何状态**（T6 的全部内容）。
  *
- * <p>★ **身份是 {@link PeopleLotId}**（复用 {@code simos-economy-api} 已有的稳定 id，设计稿 §八.1）：迁移 = 换 {@link
+ * <p>★ **身份是 {@link PeopleLotId}**（稳定 id 现住 {@code simos-social-api}，设计稿 §八.1 / 架构 §3.1）：迁移 = 换 {@link
  * #residence}，**id 不变**。id 由**调用方**给短名（本阶段 = {@link PopulationLots} 的两条命名：农村/城镇 + 性别）。
  *
  * <p>★ 量纲：{@code count} 是人（整数），{@code ageAtAnchorDays}/{@code anchorTick} 是**天**（日制裁定：{@code

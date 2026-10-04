@@ -1,9 +1,9 @@
 package io.mosire.simos.app.time;
 
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
-import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.MembershipId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.map.hex.HexCoord;

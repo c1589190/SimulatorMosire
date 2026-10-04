@@ -35,6 +35,11 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
     </dependency>
+    <!-- ★ 阶段 S1（2026-10-09 家户/人口架构 §3.2）：HouseholdId / PeopleLotId 迁入 simos-social-api 后，
+         本模块 main 直接 import 这两个稳定 ID ⇒ 显式声明（不靠 economy-api 传递）。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-social-api</artifactId>
+    </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
     </dependency>

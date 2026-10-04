@@ -26,11 +26,18 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-calendar</artifactId>
     </dependency>
-    <!-- ★ R1 / 设计稿 §八.1：人口批次的**身份**复用 economy-api 已有的 `PeopleLotId`（它注释自称"该批次的稳定身份"，
-         本阶段从"spec v2 列出的死代码"复活）。★ 这是文档**明文允许**的方向，不是破例：
+    <!-- ★ 阶段 S1（2026-10-09 家户/人口架构 §3.2）：PeopleLotId / Sex 等跨模块人口词汇迁入
+         simos-social-api；本模块的 main 直接 import 它们 ⇒ 显式声明（不靠 economy-api 传递）。
+         版本由父 POM 的 dependencyManagement 提供。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-social-api</artifactId>
+    </dependency>
+    <!-- ★ R1 / 设计稿 §八.1：人口批次的**身份**复用经济契约层的稳定 ID。★ 这是文档**明文允许**的方向：
          `economy-api/package-info.java:9-11`「五个经济切片…**与 `simos-social` 可依赖本模块与 util/map**」，
-         根 `pom.xml:25-26`、`economy-api/pom.xml:16-18` 同款；故 social 的 enforcer **不拦**它
-         （反方向的 `simos-economy` 已在下面补禁）。版本由父 POM 的 dependencyManagement 提供。 -->
+         根 `pom.xml`、`economy-api/pom.xml` 同款；故 social 的 enforcer **不拦**它
+         （反方向的 `simos-economy` 已在下面补禁）。版本由父 POM 的 dependencyManagement 提供。
+         ★ 阶段 S1 起 PeopleLotId / Sex 已迁入 social-api；economy-api 仍供 CohortKey / ResidenceKind /
+         SocialClassId 等经济侧词汇。 -->
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId>
     </dependency>
@@ -75,12 +82,13 @@
                          此后新增的 `simos-economy` **从未回填** ⇒ 当时 `social → economy` 不会被拦
                          （那正是"边界可信"里的假话）。此处补禁。
                          ★ 注意：`simos-economy-api` **不在此列、也不许加进来**——文档三处明文允许 social 依赖它
-                         （`economy-api/package-info.java:9-11`、根 `pom.xml`、`economy-api/pom.xml`），
-                         R1 的 `PopulationGroup.id` 正是复用它的 `PeopleLotId`（spec §八.1）。 -->
+                         （`economy-api/package-info.java:9-11`、根 `pom.xml`、`economy-api/pom.xml`）。
+                         ★ 2026-10-09 S1 起 `PeopleLotId` / `Sex` 已迁入 `simos-social-api`（契约层，不在禁列）；
+                         economy-api 仍供 `CohortKey` / `ResidenceKind` / `SocialClassId` 等经济侧词汇。 -->
                     <exclude>io.mosire:simos-economy</exclude>
                     <!-- ★ Task 10 回填（AGENTS.md §〇 点名的欠账：本表停在 M0，此后新增模块从未回填）：
                          actor 与 social 是**兄弟切片**：`ActorKind.PEOPLE_LOT` 只是不透明种类串，
-                         人群批次的**身份**（`PeopleLotId`）走的是 economy-api 那条明文允许的路，不是 actor。
+                         人群批次的**身份**（`PeopleLotId`）走契约层，不是 actor。
                          ★ `simos-actor-api` **不在此列**（契约层，与 `economy-api` 同待遇）。 -->
                     <exclude>io.mosire:simos-actor</exclude>
                   </excludes>

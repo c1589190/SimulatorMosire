@@ -1,6 +1,6 @@
 package io.mosire.simos.economy.api.labor;
 
-import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 
 /**
  * ★★ **一个批次的劳动供给**（第三阶段设计稿 §四）：这批人**有多少劳动可以支配** —— 本阶段最重要的那条第 1 项。

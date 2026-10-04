@@ -10,7 +10,7 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayList;
 import java.util.Comparator;

@@ -50,7 +50,7 @@ import java.util.function.ToLongFunction;
  *   <li><b>分摊 = 瀑布</b>：三个账维度共用 {@link RegionAllocations#allocateAccounts}（可用量降序、同量按账键 {@link
  *       io.mosire.simos.actor.model.GoodsAccountKey#toString()} 升序，逐户扣满为止）；
  *   <li><b>人力来源</b>：{@code social.groups()} 里 residence 在 region 各 hex、{@link
- *       io.mosire.simos.social.population.Sex#MALE}、且 {@code
+ *       io.mosire.simos.social.api.population.Sex#MALE}、且 {@code
  *       io.mosire.simos.social.population.AgeBracket.of(clock.system(),
  *       clock.dayNumberOfTick(tick), ageDaysAt(tick))} == {@link
  *       io.mosire.simos.social.population.AgeBracket#ADULT} 的批次（年龄按<b>当前 tick + 历法现算</b>，15/60

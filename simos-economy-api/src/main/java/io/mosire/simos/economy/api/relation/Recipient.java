@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.cohort.CohortKey;
-import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.HouseholdId;
 
 /**
  * ★★ <b>一条补偿规则的受方：要么是经济主体，要么是人口 cohort —— **恰其一**</b>（spec §2.4 的 {@code recipient}；裁定 E4 的载体）。
@@ -53,7 +53,7 @@ public sealed interface Recipient
    * ★★ <b>受方是家户</b>（S1 起的主口径）：家户的稳定身份 {@link HouseholdId}，而不是"某一格某一阶层的视图"。
    *
    * <p>★ 旧档的一对一映射在 S1 迁移里完成：旧世界里一个 {@link CohortKey} 视图恰有一个家户 ⇒ {@code ToCohort(old)} → {@code
-   * ToHousehold(HouseholdId.ofLegacy(old))}。迁移后运行期不再生产 {@code ToCohort}；旧变体保留到
+   * ToHousehold(HouseholdIds.ofLegacy(old))}。迁移后运行期不再生产 {@code ToCohort}；旧变体保留到
    * S3，届时解释为"视图选择器"（{@code §3 S1.2}）。
    */
   record ToHousehold(HouseholdId household) implements Recipient {

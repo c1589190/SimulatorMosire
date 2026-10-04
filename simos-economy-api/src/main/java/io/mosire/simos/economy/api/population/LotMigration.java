@@ -1,7 +1,7 @@
 package io.mosire.simos.economy.api.population;
 
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
-import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 

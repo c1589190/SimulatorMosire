@@ -11,7 +11,7 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
-import io.mosire.simos.social.population.Sex;
+import io.mosire.simos.social.api.population.Sex;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;

@@ -1,13 +1,16 @@
 package io.mosire.simos.economy.codec;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -16,6 +19,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -35,7 +39,6 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.ExternalLenderId;
 import io.mosire.simos.economy.api.id.GovernmentId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.HouseholdProductionAccountId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
@@ -44,7 +47,6 @@ import io.mosire.simos.economy.api.id.MobilityPolicyId;
 import io.mosire.simos.economy.api.id.ModeParticipationId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -66,6 +68,8 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.ModuleDiffer;
@@ -185,6 +189,10 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(
         HouseholdId.class, keyDeserializer(EconomyCodec::legacyAwareHouseholdId));
     module.addDeserializer(HouseholdId.class, new HouseholdIdDeserializer());
+    // ★★ S1：HouseholdId 迁入无 Jackson 注解的 simos-social-api ⇒ 值侧必须显式写回裸字符串（旧 @JsonValue
+    //   行为），否则 ClassRow.id / LaborAllocation.household 等值会变成 {"value":…}，而上面的值反序列化器
+    //   只认字符串（写出来的档自己读不回）。键侧仍走 toString/parse 配对。
+    module.addSerializer(HouseholdId.class, new HouseholdIdSerializer());
     // ★★ E4a：债务合同表 / 质押表的新键（toString/parse 互逆，只需读侧）。
     module.addKeyDeserializer(DebtContractId.class, keyDeserializer(DebtContractId::parse));
     module.addKeyDeserializer(PledgeId.class, keyDeserializer(PledgeId::parse));
@@ -268,11 +276,11 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /**
-   * ★ 旧 {@code CohortKey} 规范串（含 {@code |}、且非 legacy- 前缀）⇒ {@code HouseholdId.ofLegacy}；其余原样 parse。
+   * ★ 旧 {@code CohortKey} 规范串（含 {@code |}、且非 legacy- 前缀）⇒ {@code HouseholdIds.ofLegacy}；其余原样 parse。
    */
   private static HouseholdId legacyAwareHouseholdId(String text) {
-    if (text != null && !text.startsWith(HouseholdId.LEGACY_PREFIX) && text.indexOf('|') >= 0) {
-      return HouseholdId.ofLegacy(CohortKey.parse(text));
+    if (text != null && !text.startsWith(HouseholdIds.LEGACY_PREFIX) && text.indexOf('|') >= 0) {
+      return HouseholdIds.ofLegacy(CohortKey.parse(text));
     }
     return HouseholdId.parse(text);
   }
@@ -364,8 +372,23 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /**
+   * ★★ S1：{@link HouseholdId} 的值序列化——写裸值字符串（与 {@link HouseholdIdDeserializer} 严格互补）。
+   *
+   * <p>旧 {@code economy-api} 的 {@code HouseholdId} 带 {@code @JsonValue}，迁移到无 Jackson 注解的
+   * {@code simos-social-api} 后注解随类消失；本序列化器把它逐字节补回来，线格式不变。
+   */
+  private static final class HouseholdIdSerializer extends JsonSerializer<HouseholdId> {
+
+    @Override
+    public void serialize(HouseholdId value, JsonGenerator generator, SerializerProvider serializers)
+        throws IOException {
+      generator.writeString(value.value());
+    }
+  }
+
+  /**
    * ★★ S1：旧档 {@code ClassRow} 的整形（旧键 {@code key} = CohortKey 规范串，没有 {@code id}/{@code view}） ⇒
-   * 新形状（{@code id = HouseholdId.ofLegacy(key)}、{@code view = key}）。
+   * 新形状（{@code id = HouseholdIds.ofLegacy(key)}、{@code view = key}）。
    *
    * <p>★ 新形状原样交给 {@link #PLAIN}；**缺 {@code id} 且缺 {@code key} ⇒ 抛**（不猜"大概是哪个家户"）。
    */
@@ -385,7 +408,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
         CohortKey view = CohortKey.parse(node.get("key").asText());
         ObjectNode migrated = node.deepCopy();
         migrated.remove("key");
-        migrated.put("id", HouseholdId.ofLegacy(view).value());
+        migrated.put("id", HouseholdIds.ofLegacy(view).value());
         migrated.put("view", view.toString());
         node = migrated;
       }
@@ -398,7 +421,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /**
-   * ★★ S1：旧档 {@code FlowRow} 的整形（{@code key = CohortKey} ⇒ {@code id = HouseholdId.ofLegacy(key)}）。
+   * ★★ S1：旧档 {@code FlowRow} 的整形（{@code key = CohortKey} ⇒ {@code id = HouseholdIds.ofLegacy(key)}）。
    */
   private static final class LegacyFlowRowDeserializer extends JsonDeserializer<FlowRow> {
 
@@ -416,7 +439,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
         CohortKey view = CohortKey.parse(node.get("key").asText());
         ObjectNode migrated = node.deepCopy();
         migrated.remove("key");
-        migrated.put("id", HouseholdId.ofLegacy(view).value());
+        migrated.put("id", HouseholdIds.ofLegacy(view).value());
         node = migrated;
       }
       try {
@@ -428,7 +451,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /**
-   * ★★ S1：旧档 {@code LaborAllocation} 的整形（缺 {@code household}）⇒ 造 {@link HouseholdId#pendingLegacy}
+   * ★★ S1：旧档 {@code LaborAllocation} 的整形（缺 {@code household}）⇒ 造 {@link HouseholdIds#pendingLegacy}
    * 占位；真正的家户归属由 {@code LegacyHouseholdMigration} 在 {@code EconomyData} 构造期按行人口拆出。
    */
   private static final class LegacyLaborAllocationDeserializer
@@ -446,7 +469,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
           throw new IllegalStateException("LaborAllocation 缺 household 且没有旧键 id，无法定位占位: " + node);
         }
         node = node.deepCopy();
-        node.put("household", HouseholdId.pendingLegacy(node.get("id").asText()).value());
+        node.put("household", HouseholdIds.pendingLegacy(node.get("id").asText()).value());
       }
       try {
         return PLAIN.treeToValue(node, LaborAllocation.class);

@@ -1,5 +1,7 @@
 package io.mosire.simos.economy.api.id;
 
+import io.mosire.simos.social.api.id.HouseholdId;
+
 /**
  * ★★ <b>阶层保留份额（{@code ClassShare}）的稳定身份</b>（理想架构 §2.9/§7.2；E6a）：一次模式变迁里某个家户在某个阶层位置上 的保留千分比记录。
  *

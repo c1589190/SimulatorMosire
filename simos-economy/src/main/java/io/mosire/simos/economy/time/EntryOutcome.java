@@ -1,7 +1,7 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.api.id.CandidateId;
-import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import java.util.Collections;
 import java.util.LinkedHashMap;

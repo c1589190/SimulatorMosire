@@ -1,14 +1,14 @@
 package io.mosire.simos.app.world;
 
 import io.mosire.simos.app.tools.ToolSupport;
-import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.gen.PlannedCity;
 import io.mosire.simos.social.gen.SettlementPlan;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
-import io.mosire.simos.social.population.Sex;
+import io.mosire.simos.social.api.population.Sex;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;

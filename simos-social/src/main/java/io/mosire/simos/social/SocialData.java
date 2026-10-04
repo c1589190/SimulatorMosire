@@ -1,7 +1,7 @@
 package io.mosire.simos.social;
 
 import io.mosire.simos.calendar.CalendarClock;
-import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.city.SocialCity;
@@ -11,7 +11,7 @@ import io.mosire.simos.social.population.PopulationHeadline;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.PopulationSource;
-import io.mosire.simos.social.population.Sex;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.UrbanRural;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;

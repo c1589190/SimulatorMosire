@@ -1,10 +1,10 @@
 package io.mosire.simos.economy.api.labor;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 
 /**
@@ -63,7 +63,7 @@ public record LaborAllocation(
     }
     if (household == null) {
       // ★ 旧档缺 household 的兜底**不在这里**：由 EconomyCodec 的旧档反序列化器造 pending 占位、
-      //   再由 LegacyHouseholdMigration 换成真实家户（见 HouseholdId.PENDING_LEGACY_PREFIX）。
+      //   再由 LegacyHouseholdMigration 换成真实家户（见 HouseholdIds.PENDING_LEGACY_PREFIX）。
       throw new IllegalArgumentException("LaborAllocation.household 不得为 null");
     }
     if (actor == null) {

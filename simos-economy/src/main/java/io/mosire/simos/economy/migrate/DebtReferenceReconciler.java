@@ -1,7 +1,7 @@
 package io.mosire.simos.economy.migrate;
 
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.DebtContract;
 import java.util.ArrayList;

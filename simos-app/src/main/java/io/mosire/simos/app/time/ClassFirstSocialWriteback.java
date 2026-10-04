@@ -2,9 +2,9 @@ package io.mosire.simos.app.time;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
-import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.HouseholdProductionAccountId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.classfirst.ClassFirstSettlement;
 import io.mosire.simos.economy.classfirst.ClassFirstState;
 import io.mosire.simos.economy.classfirst.ClassPool;

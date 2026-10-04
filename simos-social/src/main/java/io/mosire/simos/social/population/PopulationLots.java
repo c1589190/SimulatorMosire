@@ -1,9 +1,10 @@
 package io.mosire.simos.social.population;
 
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 
 /**
  * ★★ **人口批次的命名约定**（R1）：{@link PopulationGroup#id()} 由**调用方**给短名（{@link PeopleLotId} 的自述原文： "调用方给的短名

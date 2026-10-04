@@ -8,6 +8,7 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
@@ -19,10 +20,8 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.GovernmentId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -66,10 +65,12 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
-import io.mosire.simos.social.population.Sex;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import io.mosire.simos.util.json.SimosObjectMapper;
@@ -2644,7 +2645,7 @@ public final class EconomySeeder {
       // ★★ **H1：这个家户的开缸库存 → actor 侧的账本**（键 = {@link HouseholdActors#of} 的那个家户身份）。
       //   ★ **空账也落键**（人口 0 ⇒ 余额全 0）：读口因此读得到"这个家户在这一格有一本账"（既定口径），
       //     而"账本为空"与"这一格没有这个家户"是两件事。
-      HouseholdId key = HouseholdId.ofSeed(hex, residence, new SocialClassId(CLASS_IDS[i]));
+      HouseholdId key = HouseholdIds.ofSeed(hex, residence, new SocialClassId(CLASS_IDS[i]));
       locations.put(key, hex);
       householdKeys.add(key);
       stocks.put(key, openingStock(people[i], CLASS_IDS[i], goodsByClass, i));
@@ -2673,7 +2674,7 @@ public final class EconomySeeder {
       //   阶层槽位用 DISPLACED_SLOT（SocialClassId 词表内的 landless_laborer，见该常量的偏差说明）；
       //   家户 id 的 roleSuffix = "displaced" 保留显式痕迹，且与四行的 ofSeed id 不冲突。
       HouseholdId displacedKey =
-          HouseholdId.ofSeedRole(hex, residence, SocialClassId.LANDLESS_LABORER, "displaced");
+          HouseholdIds.ofSeedRole(hex, residence, SocialClassId.LANDLESS_LABORER, "displaced");
       locations.put(displacedKey, hex);
       stocks.put(
           displacedKey,
@@ -3699,10 +3700,10 @@ public final class EconomySeeder {
       boolean hasRural = populationOf(ruralPool) > 0L;
       boolean hasCraft = urbanPopulation > 0L;
       // ★★ P11.7/D-024：城市格的商号本金主 = 该格城镇 landlord 家户（位置 = merchant.principal）。它的 id 与
-      //   urbanCohort 的行键同源（都走 HouseholdId.ofSeed(hex, urban, landlord)），actor 拼写点走 HouseholdActors。
+      //   urbanCohort 的行键同源（都走 HouseholdIds.ofSeed(hex, urban, landlord)），actor 拼写点走 HouseholdActors。
       HouseholdId merchantPrincipalHousehold =
           hasCraft
-              ? HouseholdId.ofSeed(
+              ? HouseholdIds.ofSeed(
                   hex, ResidenceKind.URBAN, new SocialClassId(CLASS_IDS[LANDLORD_SLOT_INDEX]))
               : null;
       ActorRef merchantPrincipalActor =
@@ -3984,7 +3985,7 @@ public final class EconomySeeder {
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney) {
     HexCoord hex = governmentHex(ruralByHex, urbanByHex);
     HouseholdId householdId =
-        HouseholdId.ofSeed(hex, ResidenceKind.URBAN, SocialClassId.OFFICIAL);
+        HouseholdIds.ofSeed(hex, ResidenceKind.URBAN, SocialClassId.OFFICIAL);
     householdLocations.put(householdId, hex);
     householdStocks.put(householdId, Map.of());
     householdMoney.put(householdId, Map.of());
@@ -4329,7 +4330,7 @@ public final class EconomySeeder {
           continue;
         }
         HouseholdId household =
-            HouseholdId.ofSeed(hex, residence, new SocialClassId(CLASS_IDS[stratum]));
+            HouseholdIds.ofSeed(hex, residence, new SocialClassId(CLASS_IDS[stratum]));
         Map<String, Object> allocation = new LinkedHashMap<>();
         // ★★ R3B.2：id 与 activity 都按 **unit** 拼；actor = unit.operator（收劳动的主体）。
         allocation.put("id", LaborAllocation.idOf(unitId, group.id(), household).value());
@@ -5062,7 +5063,7 @@ public final class EconomySeeder {
       Map<String, Long> quantities,
       long landlordPopulation) {
     HouseholdId landlord =
-        HouseholdId.ofSeed(
+        HouseholdIds.ofSeed(
             hex, ResidenceKind.RURAL, new SocialClassId(CLASS_IDS[LANDLORD_SLOT_INDEX]));
     // ★ 自租退化（operator == landlord）必须与"没有地主"同档：转移的两端不许相等（Transfer 构造期守卫）。
     boolean hasLandlord = landlordPopulation > 0L && !landlord.equals(household);

@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
-import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
@@ -23,7 +23,7 @@ import java.util.function.Function;
  * social 模块的 {@link ModuleCodec} 实现（spec §八）。形态与 {@code MapCodec} 同制，理由不重复——只记 social 自己的那点差异。
  *
  * <p>★ 树里的自定义键有三个：{@code HexCoord}（{@code populations} 的键）、{@code CityId}（{@code cities} 的键）与
- * {@code PeopleLotId}（{@code groups} 的键，R1 新增）；前两者住在 simos-map、后者住在 simos-economy-api，social
+ * {@code PeopleLotId}（{@code groups} 的键，R1 新增）；前两者住在 simos-map、后者住在 simos-social-api，social
  * 对两者都有依赖 （后者见设计稿 §八.1/§八.2），铁律 3 允许。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
  *
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
@@ -59,8 +59,8 @@ public final class SocialCodec implements ModuleCodec, ModuleDiffer {
     SimpleModule module = new SimpleModule("social-json-keys");
     module.addKeyDeserializer(HexCoord.class, keyDeserializer(HexCoord::parse));
     module.addKeyDeserializer(CityId.class, keyDeserializer(CityId::parse));
-    // ★ R1：`groups` 的键是 PeopleLotId（住在 simos-economy-api，social 依赖它 —— 文档明文允许，
-    //   spec §八.1/§八.2）。与上面两条同制：裸值 toString() 作键、parse 还原。
+    // ★ R1 / S1：`groups` 的键是 PeopleLotId（住在 simos-social-api，social 显式依赖它）。
+    //   与上面两条同制：裸值 toString() 作键、parse 还原。
     module.addKeyDeserializer(PeopleLotId.class, keyDeserializer(PeopleLotId::parse));
     return module;
   }

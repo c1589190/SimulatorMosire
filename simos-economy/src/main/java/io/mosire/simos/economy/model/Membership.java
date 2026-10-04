@@ -1,8 +1,8 @@
 package io.mosire.simos.economy.model;
 
-import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.MembershipId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 
 /**
  * ★★ <b>成员份额</b>（S1）："人口批次 {@code lot} 里有 {@code count} 人属于家户 {@code household}"。

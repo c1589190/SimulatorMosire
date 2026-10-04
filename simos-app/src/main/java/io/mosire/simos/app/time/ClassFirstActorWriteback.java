@@ -9,7 +9,7 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.ClassPoolId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.classfirst.AssetKind;
 import io.mosire.simos.economy.classfirst.ClassFirstSettlement;
 import io.mosire.simos.economy.classfirst.ClassFirstState;

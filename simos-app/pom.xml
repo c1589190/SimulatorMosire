@@ -50,6 +50,11 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-calendar</artifactId>
     </dependency>
+    <!-- ★ 阶段 S1（2026-10-09 家户/人口架构 §3.2）：组合根 main 直接 import HouseholdId / PeopleLotId / Sex
+         ⇒ 显式声明 simos-social-api，不靠 simos-social 的传递依赖（"依赖传递不是契约"）。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-social-api</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-social</artifactId>
     </dependency>

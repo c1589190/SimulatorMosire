@@ -2,15 +2,16 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.population.LotMigration;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DebtIndex;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -29,7 +30,7 @@ import java.util.Objects;
  *      （正好 count 人，不会把任何一行抽成负）。
  *   ② 家户行迁移：源行人口 −take、源行劳动 −⌊源行劳动 × take ÷ 源行原人口⌋；
  *      目标行（同阶层 + 目标居住类型 + toResidence）人口 +take、劳动 +同一份劳动。
- *   ③ 目标行不存在 ⇒ 用 HouseholdId.ofSeed 的规范身份新建（人口/劳动 0，参与率取第一个源行的值）；
+ *   ③ 目标行不存在 ⇒ 用 HouseholdIds.ofSeed 的规范身份新建（人口/劳动 0，参与率取第一个源行的值）；
  *      已存在 ⇒ 复用（合并进同一行，不另造第二本账）。
  *   ④ 债务：逐合同 {@code ⌊本金 × take ÷ 源行原人口⌋} —— 逐合同 floor、余数留在源合同；
  *      目标侧同 debtor 合同的新建/合并<b>只走</b> {@link DebtContractBook#upsert}，源侧减少只走
@@ -295,7 +296,7 @@ public final class LotMigrationBook {
 
   /**
    * ★★ <b>目标家户行解析</b>：优先复用“同格 + 同居住类型 + 同阶层”的既有行（多行时取 id 规范串最小者，确定性）； 不存在 ⇒ 用 {@link
-   * HouseholdId#ofSeed} 的规范身份新建（人口/劳动 0，参与率取第一个源行的值，其余字段合法零值）。
+   * HouseholdIds#ofSeed} 的规范身份新建（人口/劳动 0，参与率取第一个源行的值，其余字段合法零值）。
    *
    * <p>新建行<b>不</b>造第二份钱/需求/债务账；它们由日结算/债务写口在后续按规范路径产生。
    */
@@ -315,7 +316,7 @@ public final class LotMigrationBook {
       }
       return existing;
     }
-    HouseholdId created = HouseholdId.ofSeed(migration.toResidence(), targetResidence, stratum);
+    HouseholdId created = HouseholdIds.ofSeed(migration.toResidence(), targetResidence, stratum);
     if (rows.containsKey(created)) {
       throw new IllegalStateException(
           "目标家户 id 已被不同视图占用（拒绝覆盖）：id="

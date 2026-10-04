@@ -9,6 +9,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
@@ -27,13 +28,11 @@ import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.GovernmentId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -83,6 +82,8 @@ import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.model.RentRule;
 import io.mosire.simos.economy.model.TransferRule;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
@@ -1232,7 +1233,7 @@ final class EconomyPayloads {
         //   LegacyHouseholdMigration 按"产业格 + 居住类型"的行人口拆到真实家户（与旧档同一条规则）。
         node.hasNonNull("household")
             ? HouseholdId.parse(requireText(node, "household"))
-            : HouseholdId.pendingLegacy(id.value()),
+            : HouseholdIds.pendingLegacy(id.value()),
         actorRef(actor),
         requireText(node, "activity"),
         requireLong(node, "laborMilli"),
@@ -1565,7 +1566,7 @@ final class EconomyPayloads {
     HouseholdId householdId =
         node.hasNonNull("householdId")
             ? HouseholdId.parse(requireText(node, "householdId"))
-            : HouseholdId.ofSeed(hex, residence, slot);
+            : HouseholdIds.ofSeed(hex, residence, slot);
     return new ClassRow(
         householdId,
         // ★ 这是创世载荷声明的 view（slot 可含 S3 新阶层）；运行期只由 HouseholdClassRule 改写 ClassRow.view，

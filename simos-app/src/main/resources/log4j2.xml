@@ -9,11 +9,19 @@
        · 默认 io.mosire.simos.economy = INFO（生命周期 + 每轮发生了什么）；
        · -Dsimos.economy.logLevel=DEBUG  开阶段池子/汇总/理由；
        · -Dsimos.economy.traceLevel=TRACE 再开逐笔转移/成交槽/债务变动/迁移 move。
-     这两个属性只影响日志输出，不影响任何状态；载荷明文仍然不进日志。 -->
+     这两个属性只影响日志输出，不影响任何状态；载荷明文仍然不进日志。
+
+     ★★ Social 家户/人口日志开关（2026-10-09 家户/人口架构 §6）：
+       · 默认 io.mosire.simos.social = INFO（家户生命周期 + 人口汇总）；
+       · -Dsimos.social.logLevel=DEBUG  开池/对账/守恒中间读数；
+       · -Dsimos.social.traceLevel=TRACE 再开逐批次/逐移出移入明细。
+     子 logger .household/.population/.event 继承根级别；.trace 单独用 traceLevel。 -->
 <Configuration status="WARN">
   <Properties>
     <Property name="economyLevel">${sys:simos.economy.logLevel:-INFO}</Property>
     <Property name="economyTraceLevel">${sys:simos.economy.traceLevel:-INFO}</Property>
+    <Property name="socialLevel">${sys:simos.social.logLevel:-INFO}</Property>
+    <Property name="socialTraceLevel">${sys:simos.social.traceLevel:-INFO}</Property>
   </Properties>
   <Appenders>
     <Console name="Console" target="SYSTEM_OUT">
@@ -23,6 +31,10 @@
   <Loggers>
     <Logger name="io.mosire.simos.economy" level="${economyLevel}"/>
     <Logger name="io.mosire.simos.economy.trace" level="${economyTraceLevel}"/>
+    <!-- ★ social 根 + 子 logger：根由 simos.social.logLevel 控制（.household/.population/.event 继承），
+         .trace 由 simos.social.traceLevel 单独控制；Root 保持 INFO。 -->
+    <Logger name="io.mosire.simos.social" level="${socialLevel}"/>
+    <Logger name="io.mosire.simos.social.trace" level="${socialTraceLevel}"/>
     <Root level="info">
       <AppenderRef ref="Console"/>
     </Root>

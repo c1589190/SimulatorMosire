@@ -5,6 +5,7 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
@@ -16,13 +17,11 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -67,6 +66,8 @@ import io.mosire.simos.economy.model.ProductionOrganization;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -152,7 +153,7 @@ import java.util.Set;
  * </ol>
  *
  * <p>★ <b>S1 起 {@code classes}/{@code flows} 的键都是稳定家户身份 {@link HouseholdId}</b>（旧档的 {@link
- * CohortKey} 由 {@code EconomyCodec} 读入时映射成 {@code HouseholdId.ofLegacy}）：键不再随地点/阶层变化（铁律 1），
+ * CohortKey} 由 {@code EconomyCodec} 读入时映射成 {@code HouseholdIds.ofLegacy}）：键不再随地点/阶层变化（铁律 1），
  * 行的当前视图住在 {@code ClassRow.view}。⇒ "这个产业有哪些行"不再由键的产业段回答，而由**劳动配额表**推（{@code 旧结算引擎（R3a
  * 已删除）.householdKeysOf}，唯一拼写点）—— 一个家户给两个产业出劳动时，它<b>只有一行</b>（V9/I1.2）。
  *
@@ -684,7 +685,7 @@ public record EconomyData(
       // ①-b ★★ S1：这份劳动必须属于一个已存在的家户（或旧档迁移期的 pending 占位 —— 只有
       //   EconomyCodec 的旧档反序列化器会造它，迁移器必须在交回状态前换成真实家户）。
       HouseholdId allocatedHousehold = allocation.household();
-      if (!allocatedHousehold.isPending() && !classesCopy.containsKey(allocatedHousehold)) {
+      if (!HouseholdIds.isPending(allocatedHousehold) && !classesCopy.containsKey(allocatedHousehold)) {
         throw new IllegalArgumentException(
             "劳动分配的家户必须是已存在的家户（S1 起身份与视图分离）："
                 + entry.getKey()
@@ -851,7 +852,7 @@ public record EconomyData(
         throw new IllegalArgumentException(
             "memberships 的键必须与 Membership.id 一致：键=" + entry.getKey() + "，行内 id=" + membership.id());
       }
-      if (membership.household().isPending()) {
+      if (HouseholdIds.isPending(membership.household())) {
         throw new IllegalArgumentException(
             "memberships 的 household 不得是旧档迁移占位（迁移器必须先把它换成真实家户）：" + membership);
       }

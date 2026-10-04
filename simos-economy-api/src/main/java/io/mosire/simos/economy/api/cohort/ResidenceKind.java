@@ -1,6 +1,6 @@
 package io.mosire.simos.economy.api.cohort;
 
-import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import java.util.List;
 
 /**

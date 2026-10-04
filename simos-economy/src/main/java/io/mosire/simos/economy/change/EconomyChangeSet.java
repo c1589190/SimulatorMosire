@@ -2,6 +2,7 @@ package io.mosire.simos.economy.change;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
@@ -12,13 +13,11 @@ import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
-import io.mosire.simos.economy.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -56,6 +55,8 @@ import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionOrganization;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.FieldDelta;
 import java.util.Map;
@@ -410,12 +411,12 @@ public record EconomyChangeSet(
 
   /**
    * ★★ S1：变更集里的键是 {@code toString()} 的产物 ⇒ 旧档的 CohortKey 串（{@code 0_0|rural|poor}，含 {@code |} 且非
-   * legacy- 前缀）必须在**重建时**映射成 {@link HouseholdId#ofLegacy}，否则它与快照迁移后的 classes 键对不上。 已是 {@code
+   * legacy- 前缀）必须在**重建时**映射成 {@link HouseholdIds#ofLegacy}，否则它与快照迁移后的 classes 键对不上。 已是 {@code
    * legacy-} 前缀的新键 ⇒ 原样 parse（幂等）。
    */
   private static HouseholdId householdId(String text) {
-    if (text != null && !text.startsWith(HouseholdId.LEGACY_PREFIX) && text.indexOf('|') >= 0) {
-      return HouseholdId.ofLegacy(CohortKey.parse(text));
+    if (text != null && !text.startsWith(HouseholdIds.LEGACY_PREFIX) && text.indexOf('|') >= 0) {
+      return HouseholdIds.ofLegacy(CohortKey.parse(text));
     }
     return HouseholdId.parse(text);
   }

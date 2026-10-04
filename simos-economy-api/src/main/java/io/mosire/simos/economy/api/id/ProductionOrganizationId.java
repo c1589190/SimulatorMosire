@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.api.id;
 
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;

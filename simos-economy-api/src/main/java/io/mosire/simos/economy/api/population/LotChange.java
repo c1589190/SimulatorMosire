@@ -1,6 +1,6 @@
 package io.mosire.simos.economy.api.population;
 
-import io.mosire.simos.economy.api.id.PeopleLotId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.map.hex.HexCoord;
 
 /**
@@ -15,7 +15,7 @@ import io.mosire.simos.map.hex.HexCoord;
  * == 出生 − 死亡"这条恒等式**根本写不出来**（差出来的那一块只能靠反推）。故两端显式落账， 且**两侧都进经济侧的流水**（{@code FlowRow.deaths} / {@code
  * FlowRow.births}），守恒式因此是可核对的。
  *
- * <p>★★ **它住在 {@code economy-api} 而不是任何一侧的切片里**，理由与 {@link PeopleLotId} 同款：这是**两侧都要看见的桥** ——
+ * <p>★★ **它住在 {@code economy-api} 而不是任何一侧的切片里**，理由与 {@link PeopleLotId} 同款（跨切片的稳定身份/桥）：这是**两侧都要看见的桥** ——
  * 出生/死亡的**判定**在 {@code social}（人住在那里：年龄、性别、生理压力都是批次的属性），而**落实**（阶层行的人口、劳动配额、 流水）在 {@code
  * economy}。{@code social → economy-api} 是设计稿 §八.1 明文允许的方向，反向则不行。
  *

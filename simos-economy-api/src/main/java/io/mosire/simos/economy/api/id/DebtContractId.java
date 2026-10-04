@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.nio.charset.StandardCharsets;
 import java.util.HexFormat;
 import java.util.Objects;

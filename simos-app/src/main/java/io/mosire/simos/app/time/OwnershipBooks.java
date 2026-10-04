@@ -6,9 +6,9 @@ import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.transfer.Transfer;
@@ -17,11 +17,12 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.time.AccountPartitionKey;
-import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.AccountSession.ActorAccount;
-import io.mosire.simos.economy.time.ProductionLedger;
+import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
+import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -233,7 +234,7 @@ public final class OwnershipBooks {
         //   而 economy 侧迁移后的身份是 {@code legacy-0_0|rural|poor_peasant}（actor id 为
         //   {@code legacy-0_0:rural:...}）。⇒ 新键取不到时按旧视图再找一次；这是**迁移期的唯一兼容读**，
         //   运行期新档 id（{@code hh-…}）没有 legacyView ⇒ 这一步恒不触发。
-        var legacyView = household.legacyView();
+        var legacyView = HouseholdIds.legacyView(household);
         if (legacyView.isPresent()) {
           ActorRef legacyActor = HouseholdActors.of(legacyView.get());
           account = books.accounts().get(new GoodsAccountKey(legacyActor, location));
@@ -393,10 +394,10 @@ public final class OwnershipBooks {
     Objects.requireNonNull(economy, "economy");
     Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>(books.accounts());
     boolean changed = false;
-    for (Map.Entry<io.mosire.simos.economy.api.id.HouseholdId, ClassRow> entry :
+    for (Map.Entry<io.mosire.simos.social.api.id.HouseholdId, ClassRow> entry :
         economy.classes().entrySet()) {
-      io.mosire.simos.economy.api.id.HouseholdId household = entry.getKey();
-      var legacyView = household.legacyView();
+      io.mosire.simos.social.api.id.HouseholdId household = entry.getKey();
+      var legacyView = HouseholdIds.legacyView(household);
       if (legacyView.isEmpty()) {
         continue;
       }
