@@ -165,7 +165,50 @@ Unit/Economy/Gov 通过注入的 SPI 读，不直接依赖 `simos-population` �
 | P3 | 招募/退伍/调任：政府家户、mint、军队 | 政府家户可招募工人；招募/退伍守恒；mint 能用 |
 | P4 | GUI/读口：人口、家户、单位、官府、铸币工人视图 | GUI 看到同一批人的不同角色视图，数字互相对得上 |
 
-## 10. 待裁定
+## 10. 家户主体归属（2026-10-08 追加讨论）
+
+用户提出：后面文化、宗教等模块都要大量“家户”，要不要把**家户主体直接沉到 Social 模块**。
+
+### 10.1 问题本质
+家户已经不是 economy 的私有物：
+- Economy 需要它（生产、消费、债务、劳动）；
+- Actor 需要它（账户主体）；
+- 未来的 Culture/Religion 需要它（信仰、习俗、节日、禁忌）；
+- Gov 需要它（户籍、赋役、征兵、救济）；
+- Social 需要它（人口、家庭、居所、生命历程）。
+把家户身份留在 economy，未来每个模块都会各自复制一份“家户表”。
+
+### 10.2 三种沉法
+- **H1：家户主体沉到 Social**
+  - Social 拥有 `HouseholdId` + 家户状态；其他模块依赖 Social 或读 Social 投影。
+  - 风险：Social 变成 god module；economy/unit/gov/culture/religion 都要依赖它；`simos-unit` 目前只依赖 util+map，Unit 若也要家户会被迫改依赖；与铁律 3 “领域模块互不依赖”冲突。
+- **H2（推荐）：家户身份沉到共用契约层，家户事实按域分片**
+  - 新增 `simos-household-api`（或并入 `simos-population-api`）：`HouseholdId`、`HouseholdRef`、`HouseholdKind`、`HouseholdLookup`。
+  - Social 拥有“家户的社会事实”：成员、居所、人口/生命周期。
+  - Economy 拥有“家户的经济事实”：ClassRow、生产参与、需求、债务投影。
+  - Actor 拥有账户（`ActorRef(HOUSEHOLD, id)`）。
+  - Culture/Religion/Gov 未来各自拥有自己的家户关系表/ facet，键 = `HouseholdId`。
+  - App 组合根按 facet 拼出完整家户视图。
+- **H3：家户并入“人口/人”大域**
+  - 新建 `simos-people`（人口 + 家户 + assignment）作为唯一真源；Social 退为城市/区域聚合。
+  - 最彻底，但迁移面最大，可作为长期终局。
+
+### 10.3 推荐
+**短期走 H2，长期可收敛到 H3。**
+理由：
+- 家户身份是跨域稳定 ID，应该和 `ActorRef` 同级下沉，而不是由某个领域模块“拥有”；
+- Social 负责“家户是谁、有哪些人、住哪、什么文化/宗教背景”——这与它现在的人口学职责一致；
+- Economy/Culture/Religion/Gov 只持有自己的 facet，同一 `HouseholdId` 可被任意投影；
+- 避免 Social 成为 god module，也避免每个模块复制家户表；
+- 和通用人口方案天然对齐：`HouseholdId` 与 `PeopleLotId` 一起进 `simos-population-api`，Social 持有 demographics，`simos-population` 持有 assignment。
+
+### 10.4 需要一起裁定的点
+- `HouseholdId` 最终放 `simos-population-api` 还是新 `simos-household-api`？
+- Social 的家户状态是否升级为正式 `Household` record（成员、居所、生命周期），还是继续由 `ClassRow` + `PopulationGroup` 拼？
+- 文化/宗教未来是 facet（读侧拼装）还是各自独立的关系表（写侧各自命令）？
+- 家户账户主体是否统一为 `ActorRef(HOUSEHOLD, id)`，由 actor 层只做账户、不做家户语义？
+
+## 11. 待裁定
 
 1. 选项：A（只加 ID）、B（新人口域为唯一真源）、C（推荐：Social 人口学 + population assignment + 投影）。
 2. `PeopleLotId` 迁移到 `simos-population-api` 还是保留在 `economy-api`（推荐迁移）。
@@ -176,3 +219,4 @@ Unit/Economy/Gov 通过注入的 SPI 读，不直接依赖 `simos-population` �
 7. 家户消费与粮饷：按 primary 还是按角色投影计算。
 8. 旧档：重置（推荐）还是一次性迁移。
 9. 日志分类：新增 `.population.assignment` 还是沿用 `.population`。
+10. 家户主体：H1（沉 Social）/ H2（推荐：共用契约层 + Social 社会事实 + 各域 facet）/ H3（人口大域）？
