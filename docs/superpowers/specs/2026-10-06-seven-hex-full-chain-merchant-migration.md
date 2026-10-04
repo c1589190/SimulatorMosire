@@ -22,8 +22,10 @@
 4. **人口、货币、债务随迁**：迁走的人口按人口比例带走货币和债务；源户可缩编，人口归零且账清空后消亡；总量守恒。
 5. **流民户（`DISPLACED`）是一等 mode**：没有生产组织/雇主/资产的失产失业家户进入该 mode；它可以被任何有劳动缺口的组织雇佣，也可以迁往正利润 mode；没有去处时留下，债务按 A 规则继续增长。
 6. **商人阶层真实运转**：merchant principal / porter / self-employed 三种位置；商号有真实运费收入、porter 工资、城区占用/船畜维护成本；盈利/亏损影响运力规模；商号本身也参与利润迁移与 A 规则。
-7. **A 规则**：预期利润 < 0 且“现金+可立即变现库存 < 下一周期再生产所需投入” ⇒ **立刻**切到预期利润最高的可行候选（哪怕仍为负）；若当前已是最优候选则不切、继续生产，让债务/欠款继续增长；只有**一个可行候选都没有**时才转入 `DISPLACED`。
+7. **转移速度规则（A 规则）**：**不修改任何现有家户的生产方式**。生产方式属于目标家户；把人口+货币+债务迁到“其他家户/新建家户”才是转变方式的唯一表示。若某户预期利润 < 0 且“现金+可立即变现库存 < 下一周期再生产所需投入”，则把该户的**转移速度提高到上限**，把人口按权重转往单位劳动预期净收益更高的可行目标家户（已存在则合并，不存在则新建）。若该户自身已是最高预期收益候选（即任何转移都不会使它的人均预期收益变好），则不转移、继续生产，让债务/欠款按 A 规则继续增长。只有当前家户连生产也无法维持、且不存在任何可行目标时，才把人口转入 `DISPLACED`（同样是转移到新建/已有流民户，不是改写原户 mode）。
 8. **旧档作废**：不做旧数据迁移/兼容；检测到旧档/版本不符/结构不完整 ⇒ 拒绝激活，只能 GM 重置后按新 profile 重播。
+
+★ **身份不原地改写（贯穿全文档的硬不变量）**：本批任何自动路径都**不得**把正在生产/存在的家户的 `mode`、`ClassStanding`、`ProductionOrganization.modeId` 原地改成另一种生产方式。转变方式只能表现为“源家户人口/货币/债务转移到目标 mode 的已有家户或新建家户”；源户可缩编、人口归零后消亡。仓库中若已有自动原地改 mode 的路径（例如把 `ModeTransition` 接到自动决策上），本批必须删除或旁路；只有显式 GM 手改可暂时保留，但也要在后续改为转移/新建语义。
 
 ### 1.2 非目标
 
@@ -142,32 +144,37 @@ MigrationPlan {
 }
 MigrationMove {
   HouseholdId source;
-  HouseholdId target;          // 已有家户（合并）或新家户 id（新建）
+  HouseholdId target;          // 已有家户（合并）或新家户 id（新建）；不得 == source
   HexCoord targetHex;
-  ProductionModeId targetMode;
+  ProductionModeId targetMode; // 目标家户的 mode；源户 mode 不变
+  long transferSpeedPerMille;  // 本 move 采用的人均迁移速度（基线上限 10‰；A 规则触发时为 1000‰）
   long population;
   long moneyMilli;
   long debtMilli;
-  String reason;               // PROVIDED_WEIGHTED / DISPLACED_ABSORBED / A_RULE_FALLBACK
+  String reason;               // PROFIT_WEIGHTED / A_RULE_MAX_SPEED / DISPLACED_ABSORBED
 }
 ```
 
 ### 5.2 `ModeMigrationPolicy`
 
-- 当前收益：`profit.netPerLabor(currentMode, currentHex)`；若该户不在任何组织，按 `DISPLACED` 处理。
+- 当前收益：源家户“当前所处 mode/hex”的 `profit.netPerLabor(currentMode, currentHex)`；若该户不在任何组织，按 `DISPLACED`（收益 0）处理。
+- 目标收益：目标家户所处 mode/hex 的 `profit.netPerLabor(targetMode, targetHex)`；目标必须是一个**已存在且能合并的家户**或一个**满足资产/承载条件、可新建的家户**，不是“给源户换个 mode”。
 - 目标权重：`weight = max(0, target.netPerLabor − current.netPerLabor)`。
-- 每周期最多迁出：`MIGRATION_PER_MILLE = 10`（1%/周期），具名 GM 可调。
+- 基线迁移速度：`MIGRATION_PER_MILLE = 10`（1%/周期），具名 GM 可调；A 规则触发时改用 `A_RULE_TRANSFER_SPEED_PER_MILLE = 1000`（当周期把可迁人口按权重全部转出）。
 - 目标排序：`weight` 降序 → 距离升序（同格 0，邻格 1）→ `(hex, mode)` 规范串升序。
-- 目标可行条件：`Mode.canLiveIn(hex)`、hex 有该 mode 的资产/承载（合并看家户剩余容量；新建看 hex 剩余承载）、目标 mode 有匹配位置。
+- 目标可行条件：`Mode.canLiveIn(hex)`、hex 有该 mode 的资产/承载（合并看目标家户剩余容量；新建看 hex 剩余承载）、目标 mode 有匹配位置。
 - A 规则触发条件：`expectedNet(current) < 0` 且 `cash + sellableInventory − nextCycleInputNeed < 0`。
-  - 触发后：选择全部可行候选中 `expectedNet` 最大者（可为负）；
-  - 若最大者就是当前 mode/hex：不迁移，继续生产，欠款/债务走现有资本化；
-  - 若无任何可行候选：`targetMode = DISPLACED`，转入流民。
+  - 触发后：在全部可行目标里，选 `target.netPerLabor` 最高者；
+  - 若该最高目标的 `netPerLabor` 严格高于当前 ⇒ 把本户 `transferSpeedPerMille` 设为 `A_RULE_TRANSFER_SPEED_PER_MILLE`，按权重把人口转出；
+  - 若当前家户的 `netPerLabor` 已经不低于任何可行目标（转了只会更差或一样）⇒ **不发生转移**，继续生产，欠款/债务走现有资本化；这正是 A 规则下“负债继续加、阶层下落加快”的路径；
+  - 若当前家户已经无法维持生产（无组织/资产/劳动）且不存在任何能承载的可行目标 ⇒ 目标选新建/已有 `DISPLACED` 家户，按 1000‰ 转出。
 - `expectedNet`：用当前本地 ref 价和当前可行规模现算；现金/库存用账户会话与本地市场价；不得使用未实现的未来价格。
+- **不产生“把源户 mode 改成 targetMode”的计划项**：`MigrationMove.targetMode` 只属于目标家户；源户的 mode/standing 在整个执行期间保持不变。
 
 ### 5.3 `ModeMigrationSettlement`
 
 - 只做计划中已确定的 move；不重新算利润。
+- **绝不原地改写源户 mode**：源户只减人口/货币/债务；目标 `ClassRow`（已有或新建）才带目标 mode 与目标 `ClassStanding`。源户的 `ClassStanding`、`ProductionOrganization.modeId`、`ProductionUnit.modeKey` 在本步一字不改；源户人口归零后整户移除，而不是被改造成目标 mode。
 - 合并：目标 `ClassRow` 加人口/货币/债务；源行减同额；若目标 mode 已存在，不新建组织。
 - 新建：在目标 hex 创建
   - 新 `HouseholdId` + `ClassRow`（人口/劳动按迁移人数重算）；
@@ -216,7 +223,7 @@ MigrationMove {
 - 迁移：发生合并、新建、消亡各至少一次；人口、货币守恒；债务 = 初始 + 流民新增 + 利息等既有路径，迁移本身不改变总量。
 - 模式变化：高真实利润 mode 的人口份额从初始到 3650 tick 显著上升。
 - 流民：进入过 `DISPLACED`，并被雇佣/迁出；`DISPLACED` 初期存在、终局不增长失控。
-- A 规则：构造一个负利润且流动性耗尽的家户，断言它立刻切到最高候选（哪怕负）；若当前已最优，断言不切且下一周期债务增加。
+- A 规则：构造一个负利润且流动性耗尽、且存在更高收益目标家户的户，断言它以 1000‰ 速度把人口转出到目标 mode 家户（已有则合并、没有则新建），**源户 mode 逐字不变**、只缩编/消亡；若当前户自身已是最高收益，断言不发生转移且下一周期债务增加；源户人口清零前，`ClassStanding`/organization mode 不得出现目标 mode 值。
 - 确定性：同输入两次运行终态逐字段相同。
 - 无负人口/负货币/负债务/负资产。
 
@@ -272,9 +279,11 @@ MigrationMove {
 | 运力增减 | +5 / −5，上限 100000，下限 5 | `MerchantSettlement` |
 | 农村累积惩罚 | +2/活跃轮，封顶 100 | `MerchantSettlement`/`MerchantPolicy` |
 | 城市商人折扣 | `P6 MerchantPolicy.cityDiscountPerMille` | 复用 |
-| A 规则阈值 | 预期利润 < 0 且现金+可卖库存 < 下一周期投入 | `ModeMigrationPolicy` |
+| A 规则触发 | 预期利润 < 0 且现金+可卖库存 < 下一周期投入 | `ModeMigrationPolicy` |
+| A 规则转移速度 | 触发且存在更高收益目标 ⇒ 1000‰；否则 0（不转移，继续负债生产） | `ModeMigrationPolicy` |
 | 迁移目标排序 | weight 降序 → 距离升序 → id 升序 | `ModeMigrationPolicy` |
 
 ## 11. 版本历史
 
 - v1（2026-10-06）：首版。用户已裁定旧档作废、A 规则、人口+债务随迁、流民适配；6 个 mode + displaced；商人承运/工资/运力模型。
+- v2（2026-10-06）：用户澄清——**从不改变当前家户的生产方式**；转变方式只能用“创建/转移到新家户/其他家户”表示。原第 7 条“原地切模式”改为“提高转移速度”；A 规则只加快转出，源户 mode/standing 不变；仓库已有原地自动改 mode 路径必须删除或旁路。
