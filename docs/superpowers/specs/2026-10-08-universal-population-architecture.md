@@ -306,16 +306,48 @@ Culture/Religion 挂：
 - 不是“计算层”，出生/死亡/迁移/征兵/招工的计算与规则由其他模块提供；
 - 它是人口的**唯一账本 + 唯一增删人接口**，不是人口公式的 owner。
 
-## 12. 待裁定
+## 12. 2026-10-08 用户裁定落记
 
-1. 家户/人口域：按用户最终构想走 §11：**Social 拥有 Household + 成员批次 + 位置 + 增删人接口；低层 `simos-people-api` 只放 HouseholdId/PeopleLotId/角色/SPI**。
-2. `HouseholdId`/`PeopleLotId` 迁移到 `simos-people-api`（推荐）还是继续沿用 `economy-api`？
-3. `Household` 的家户成员表示：继续复用 `PopulationGroup` 作为“家户成员批次”（推荐），还是新造 `HouseholdMember` record？
-4. `HouseholdLocation` 首批支持 `HEX | UNIT`；是否现在就把 `ORGANIZATION/ESTATE/WORKSHOP` 一起纳入？
-5. 家户可否同时属于多个位置/单位（例如同时挂 hex 和 unit），还是只允许一个 anchor + 角色关系？
-6. 出生/死亡 provider：谁算、怎么组合（Economy 粮/财富 + Culture/Religion + Gov 政策 + Unit 战损），以及计算窗口/优先级。
-7. 逐家户年龄别出生率/死亡率存放位置：Household 字段、provider 规则表，还是 Culture/Religion 关系表？
-8. Unit `manpower` / Gov `staff` 与 households 的关系：直接改成“家户集合 + 汇总视图”，还是先缓存 + 对账过渡？
-9. 家户拆分/合并/迁移：命令形状与守恒规则。
-10. 旧档：重置（推荐）还是一次性迁移。
-11. 日志：家户增删人、位置变更、逐家户出生/死亡、provider 计算明细的 logger 分类与级别。
+1. **家户位置只有两种**：`HEX` 或 `UNIT`；后续各种社会组织都用 `Unit` 再实现，这是定义问题，不再新增第三种 anchor。
+2. **HouseholdId 放 Social 的 `social-api` 层**（当前仓库还没有独立 `simos-social-api`，本批新建）：
+   - 维护家户的稳定身份与各种地址；
+   - 地址/坐标从 util 实现；
+   - 家户可以挂“介绍/描述”（`HouseholdProfile`：name/description/metadata），介绍不是身份，不参与主键。
+3. **家户成员继续复用 `PopulationGroup`**：
+   - `PopulationGroup` 保持“属性相同的活人批次”形状（id/residence/sex/count/ageAtAnchor/anchorTick/stress）；
+   - 一个家户由 0..N 个 `PopulationGroup` 组成；
+   - 建议成员批次从“属于 hex”改为“属于家户”，位置由家户的 `HouseholdLocation` 给出；旧 `residence` 字段的去留见 §13。
+4. **农村/军队当作 Economy/Unit 两种宿主**：
+   - 家户可锚定 hex，参加农业生产（Economy）；
+   - 家户可锚定 Unit（军队、政府等）；
+   - 文化系统以后可以给“军队家属聚集”等效果，但不在本批。
+5. **率与事件都由 Social 维护**：
+   - 出生率、死亡率、对应的人员增减事件都是 Social 的持久/事件化状态；
+   - 可以按单个 tick 编辑；
+   - GM 可以直接改出生率/死亡率，或加减任意年龄段人口；
+   - Economy 等模块通过开放接口传入理由，把其他家户人口转移过来；
+   - 本阶段先做“逐家户简单出生率/死亡率 → 事件加减人口”；后续公务员子弟等额外规则再叠加事件。
+6. **Unit/Gov 人数实时从家户汇总**：不做第二本 headcount；`Unit` 存 `List<HouseholdId>`，人数现算。
+7. **旧世界不管**：不做版本迁移；新世界重建。
+8. **Actor 保持账户/持有主体语义**：阶层仍归 Economy，不塞进 Actor。
+
+## 13. 版本与当前基线
+
+- Maven 项目版本：`0.1.0-SNAPSHOT`。
+- Git：`main`，最新已推送 `6bd93a4a`（本节写入后会有新 commit）。
+- Economy production-runtime 运行时版本：`seven-hex-v2`（`EconomyMeta.RUNTIME_VERSION_SEVEN_HEX_V2`）。
+- Class-first 规则版本：`aggregate-v1`（`EconomySeeder.RULES_VERSION`）。
+- Actor 规则版本：`actor-v1`（`HouseholdSeeder.RULES_VERSION`）。
+- 本架构没有独立的“人口版本号”；家户/人口模型落地时会新增 `social-api`/人口规则版本。
+- 旧档/旧世界：不做迁移，新世界重建（用户 2026-10-08 裁定）。
+
+## 14. 剩余待定（实现前）
+
+1. `simos-social-api` 的精确包名/模块名：`simos-social-api` vs 并入现有 `simos-social` 的 `api` 子包（推荐独立 Maven 模块，避免 unit/economy 反向依赖 Social 实现）。
+2. `Household` 的正式 record：`id + location + profile + memberLotIds` 还是“家户表 + 成员表”两张表。
+3. `PopulationGroup` 的 `residence` 字段：删除并由家户位置唯一提供，还是保留为“批次自身历史位置”。
+4. 家户事件形状：`PopulationEvent(id, householdId, type, sex, ageBracket, count, day, reason, source)`；事件是否落进 ChangeSet/Codec。
+5. 出生/死亡率的存储：Household 字段 `Map<AgeBracket, Map<Sex, Long>>`，还是 Social 的一张 rates 表。
+6. GM 工具：`social.SetHouseholdVitalRates`、`social.AdjustHouseholdPopulation`、`social.TransferHouseholdPopulation` 的工具名/命令名/权限。
+7. 经济开放接口：`transferMembers(from, to, ageBracket, sex, count, reason)` 的调用者与幂等键。
+8. 日志：家户/人口事件 logger 分类与级别（沿用 `.population` 或新开 `.household`）。
