@@ -566,7 +566,7 @@ public final class RegionSeedTool implements AgentTool {
             branch,
             expectedRevision,
             RegionSeedPlan.SEED_GROUPS_TYPE,
-            PopulationSeeder.payload(plan.groups())));
+            PopulationSeeder.payload(plan.population())));
     EconomySeeder.Seed seeding = plan.economySeed().orElse(null);
     if (plan.params().includeEconomy()) {
       batch.add(

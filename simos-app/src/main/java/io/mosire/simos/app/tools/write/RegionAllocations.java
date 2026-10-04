@@ -31,7 +31,7 @@ import java.util.function.ToLongFunction;
  * ≤ 0 的 不进来源表 → 按“可用量降序、同量按 {@link io.mosire.simos.actor.model.GoodsAccountKey#toString()} 升序”逐户扣满。
  * 额度函数由调用方给（粮 / 钱各走 {@link io.mosire.simos.actor.model.AvailableStock} 的对应重载，本类不写减法）。
  *
- * <p>★ <b>人力瀑布</b>（{@link #allocateManpower}）：{@code social.groups()} 里 residence 在 region、{@link
+ * <p>★ <b>人力瀑布</b>（{@link #allocateManpower}）：{@code social.groups()} 里家户位置在 region、{@link
  * Sex#MALE}、 且 {@code AgeBracket.of(clock.system(), clock.dayNumberOfTick(tick), ageDaysAt(tick))}
  * == {@link AgeBracket#ADULT} 的批次（年龄按<b>当前 tick + 历法现算</b>，15/60 整历法年、阈值不在本类另写） → count ≤ 0 的不进来源表
  * → 按“count 降序、id 升序”逐批扣满。
@@ -152,7 +152,8 @@ final class RegionAllocations {
       if (group.sex() != Sex.MALE) {
         continue;
       }
-      if (!region.hexes().contains(group.residence())) {
+      // ★ 家户架构 §4.2：位置只能从所属家户取（批次身上已没有 residence）；UNIT 家户没有格，不进 hex 辖区瀑布。
+      if (!social.hexOfLot(group.id()).filter(region.hexes()::contains).isPresent()) {
         continue;
       }
       if (group.count() <= 0L) {
@@ -181,7 +182,8 @@ final class RegionAllocations {
         break;
       }
       long take = Math.min(group.count(), remaining);
-      sources.add(new GroupSource(group, take));
+      // ★ 入选时已确认有 HEX 位置；这里把来源格随批次冻进 GroupSource（下游载荷不再回头解析 lot id）。
+      sources.add(new GroupSource(group, social.hexOfLot(group.id()).orElseThrow(), take));
       remaining -= take;
     }
     if (remaining != 0L) {
@@ -275,11 +277,15 @@ final class RegionAllocations {
     }
   }
 
-  /** 一个被动批次：整组覆盖用的原始批次 + 抽走的人数；{@code countAfter} 可为 0（合法空批）。 */
-  record GroupSource(PopulationGroup group, long taken) {
+  /**
+   * 一个被动批次：整组覆盖用的原始批次 + **它的来源格**（S2：位置来自家户，随来源一起冻住）+ 抽走的人数；
+   * {@code countAfter} 可为 0（合法空批）。
+   */
+  record GroupSource(PopulationGroup group, HexCoord at, long taken) {
 
     GroupSource {
       Objects.requireNonNull(group, "group");
+      Objects.requireNonNull(at, "at");
       if (taken <= 0L) {
         throw new IllegalArgumentException("taken 必须 > 0: " + taken);
       }

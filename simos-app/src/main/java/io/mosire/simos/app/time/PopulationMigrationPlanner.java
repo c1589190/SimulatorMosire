@@ -5,6 +5,7 @@ import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.population.LotMigration;
 import io.mosire.simos.economy.model.MigrationPolicy;
 import io.mosire.simos.map.CityId;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.PopulationGroup;
@@ -148,11 +149,19 @@ public final class PopulationMigrationPlanner {
         PeopleLotId targetLot =
             PopulationLots.urban(
                 cityPlan.city().id(), group.sex(), PopulationLots.cohortOf(group.id()));
+        // ★ S2：源格只能从所属家户取（批次身上没有 residence）；RURAL 批次的家户必然在 HEX 上。
+        HexCoord from =
+            social
+                .hexOfLot(group.id())
+                .orElseThrow(
+                    () ->
+                        new IllegalStateException(
+                            "迁移源批次 " + group.id() + " 的家户不在 HEX 上（S2 的城乡迁移口径只认 hex 家户）"));
         migrations.add(
             new LotMigration(
                 group.id(),
                 targetLot,
-                group.residence(),
+                from,
                 cityPlan.city().id(),
                 cityPlan.city().at(),
                 take,

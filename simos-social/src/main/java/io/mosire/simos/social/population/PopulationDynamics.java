@@ -4,9 +4,12 @@ import io.mosire.simos.calendar.CalendarAge;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.calendar.CalendarSystem;
 import io.mosire.simos.economy.api.population.LotChange;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.Sex;
+import io.mosire.simos.social.household.Household;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -244,6 +247,7 @@ public final class PopulationDynamics {
     // ★ 新生批次按 (居所, 性别) 聚合：同一个月的婴儿在会计上是**一批**（同性别、同年龄、同锚点 ⇒ 属性确实完全相同）。
     //   键用批次 id 的"前缀"（mother 的 id 去掉最后一段）—— 它天然保住了 rural/urban 的命名约定（见 PopulationLots）。
     Map<PeopleLotId, PopulationGroup> born = new LinkedHashMap<>();
+    Map<PeopleLotId, HouseholdId> bornHousehold = new LinkedHashMap<>();
     long totalBirths = 0L;
     long totalDeaths = 0L;
     for (PopulationGroup group : data.groups().values()) {
@@ -262,18 +266,58 @@ public final class PopulationDynamics {
       }
       next.put(
           group.id(), group.withCountAndStress(population - deaths, group.physiologicalStress()));
-      changes.put(group.id(), new LotChange(group.id(), group.residence(), births, deaths));
+      // ★ 家户架构 §4.2：{@code LotChange.at} 只能从所属家户的位置取（批次身上没有位置）。
+      //   ★ 家户在 UNIT 上时没有格 ⇒ 本经济回写口径（S2 范围外）fail-closed 指名 S3。
+      HexCoord at =
+          data.hexOfLot(group.id())
+              .orElseThrow(
+                  () ->
+                      new IllegalStateException(
+                          "批次 "
+                              + group.id()
+                              + " 的家户不在 HEX 上（UNIT 家户的 LotChange.at 口径属 S3 消费方集成；S2 不接）"));
+      changes.put(group.id(), new LotChange(group.id(), at, births, deaths));
       totalBirths += births;
       totalDeaths += deaths;
       if (births > 0L) {
-        appendBirths(born, group, births, nowTick);
+        HouseholdId household =
+            data.householdOfLot(group.id())
+                .map(Household::id)
+                .orElseThrow(
+                    () -> new IllegalStateException("批次 " + group.id() + " 没有所属家户（构造期不变式被破坏）"));
+        appendBirths(born, bornHousehold, household, group, births, nowTick);
       }
     }
+    // ★ 新生批次必须挂进母亲的家户（memberLots 是唯一成员关系；SocialData 构造期会拒无主批次）。
+    Map<HouseholdId, Household> households = new LinkedHashMap<>(data.households());
     for (PopulationGroup newborn : born.values()) {
+      HouseholdId owner = bornHousehold.get(newborn.id());
+      Household household = households.get(owner);
+      if (household == null) {
+        throw new IllegalStateException("新生批次 " + newborn.id() + " 的目标家户不存在: " + owner);
+      }
+      PopulationGroup existing = data.groups().get(newborn.id());
+      if (existing != null) {
+        HouseholdId existingOwner =
+            data.householdOfLot(newborn.id()).map(Household::id).orElse(null);
+        if (!owner.equals(existingOwner)) {
+          throw new IllegalStateException(
+              "新生批次 " + newborn.id() + " 的 id 已被家户 " + existingOwner + " 占用，不能并入 " + owner);
+        }
+      }
+      if (!household.hasMember(newborn.id())) {
+        List<PeopleLotId> lots = new ArrayList<>(household.memberLots());
+        lots.add(newborn.id());
+        household = household.withMemberLots(lots);
+      }
+      households.put(owner, household);
       next.put(newborn.id(), newborn);
     }
     return new Outcome(
-        data.withGroups(next), Collections.unmodifiableMap(changes), totalBirths, totalDeaths);
+        data.withGroupsAndHouseholds(next, households),
+        Collections.unmodifiableMap(changes),
+        totalBirths,
+        totalDeaths);
   }
 
   /**
@@ -365,9 +409,16 @@ public final class PopulationDynamics {
    *
    * <p>★ 新批次的 id 由 {@link PopulationLots#born} 给出（保住 rural/urban 前缀约定）；同一 (居所, 性别) 的多位母亲
    * 汇进**同一批**（属性确实相同：同性别、同年龄 0、同锚点）。
+   *
+   * <p>★ S2：新生批次同时登记"归属家户"（母亲的家户）⇒ 调用方把它挂进 memberLots（家户架构 §4.2）。
    */
   private static void appendBirths(
-      Map<PeopleLotId, PopulationGroup> born, PopulationGroup mother, long births, long nowTick) {
+      Map<PeopleLotId, PopulationGroup> born,
+      Map<PeopleLotId, HouseholdId> bornHousehold,
+      HouseholdId household,
+      PopulationGroup mother,
+      long births,
+      long nowTick) {
     long male = (births + 1L) / 2L; // 残差归男性：与 PopulationSeeder.SEX_SHARE_PER_MILLE 的最大余数法同口径
     long female = births - male;
     for (int i = 0; i < 2; i++) {
@@ -378,9 +429,14 @@ public final class PopulationDynamics {
       }
       PeopleLotId id =
           PopulationLots.born(mother, sex, PopulationLots.bornCohort(nowTick, SETTLEMENT_DAYS));
+      HouseholdId previous = bornHousehold.putIfAbsent(id, household);
+      if (previous != null && !previous.equals(household)) {
+        throw new IllegalStateException(
+            "新生批次 " + id + " 同时落在两个家户（" + previous + " / " + household + "）—— 拒绝静默合批");
+      }
       PopulationGroup existing = born.get(id);
       long merged = (existing == null ? 0L : existing.count()) + count;
-      born.put(id, new PopulationGroup(id, mother.residence(), sex, merged, 0L, nowTick));
+      born.put(id, new PopulationGroup(id, sex, merged, 0L, nowTick));
     }
   }
 

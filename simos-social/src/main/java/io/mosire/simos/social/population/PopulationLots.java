@@ -20,7 +20,7 @@ import io.mosire.simos.social.api.population.Sex;
  * io.mosire.simos.social.SocialData#urbanPopulationAt(io.mosire.simos.map.CityId)} 按**前缀**（{@code
  * urban:<cityId>:}，见 {@link #urbanPrefix}）归属，与有多少个细分无关。
  *
- * <p>★★ **为什么命名而不是加字段**：{@code PopulationGroup} 的形状由设计稿 §三 定死（id / residence / sex / count / age /
+ * <p>★★ **为什么命名而不是加字段**：{@code PopulationGroup} 的形状由设计稿 §三 + 架构 §4.2 定死（id / sex / count / age /
  * anchor），**不许多一个"城乡"或"属于哪座城"的字段** —— 那正是把 {@code ClassRow} 的老毛病（拿标签当主键）换个地方重演。 而"城里的人"这条关系在 R2+ 会由
  * {@code Relation}/{@code LaborAllocation} **显式**表达（人 ↔ 主体 ↔ 活动）， 届时本类 只是**创世期的命名**，不再是判据的唯一来源。
  *

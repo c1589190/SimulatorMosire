@@ -77,7 +77,7 @@ final class ClassFirstSocialWriteback {
 
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>(social.groups());
     LinkedHashSet<String> gaps = new LinkedHashSet<>();
-    applyPopulationMoves(groups, economy, before, result, gaps);
+    applyPopulationMoves(social, groups, economy, before, result, gaps);
     applyDailyStress(groups, before, result, gaps);
     return new AppliedSocial(social.withGroups(groups), gaps);
   }
@@ -90,6 +90,7 @@ final class ClassFirstSocialWriteback {
    * 的有多少人"各说各话）。
    */
   private static void applyPopulationMoves(
+      SocialData social,
       Map<PeopleLotId, PopulationGroup> groups,
       EconomyData economy,
       ClassFirstState before,
@@ -121,7 +122,7 @@ final class ClassFirstSocialWriteback {
         gaps.add("家户人口差分无法定位 social 批次（classes 缺行）：household=" + householdId + " delta=" + delta);
         continue;
       }
-      List<PeopleLotId> lots = lotsAt(groups, row.view().hex(), row.view().residence());
+      List<PeopleLotId> lots = lotsAt(social, groups, row.view().hex(), row.view().residence());
       if (lots.isEmpty()) {
         gaps.add(
             "家户人口差分无法定位 social 批次（该格/居住类型没有批次）：household="
@@ -146,12 +147,13 @@ final class ClassFirstSocialWriteback {
     }
   }
 
-  /** 某格某居住类型上的全部 social 批次（保持 {@code groups} 的迭代序 = 确定序）。 */
+  /** 某格某居住类型上的全部 social 批次（保持 {@code groups} 的迭代序 = 确定序；位置来自所属家户）。 */
   private static List<PeopleLotId> lotsAt(
-      Map<PeopleLotId, PopulationGroup> groups, HexCoord hex, ResidenceKind residence) {
+      SocialData social, Map<PeopleLotId, PopulationGroup> groups, HexCoord hex, ResidenceKind residence) {
     List<PeopleLotId> lots = new ArrayList<>();
     for (PopulationGroup group : groups.values()) {
-      if (group.residence().equals(hex) && ResidenceKind.ofLot(group.id()) == residence) {
+      if (social.hexOfLot(group.id()).filter(hex::equals).isPresent()
+          && ResidenceKind.ofLot(group.id()) == residence) {
         lots.add(group.id());
       }
     }

@@ -3,6 +3,7 @@ package io.mosire.simos.app.tools.write;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
@@ -314,8 +315,8 @@ final class GovRecruitPlan {
         PopulationGroup group = source.group();
         Map<String, Object> entry = new LinkedHashMap<>();
         entry.put("id", group.id().value());
-        entry.put("q", group.residence().q());
-        entry.put("r", group.residence().r());
+        entry.put("q", source.at().q());
+        entry.put("r", source.at().r());
         entry.put("sex", group.sex().name());
         entry.put("count", source.countAfter());
         // ★ 保真三件：锚点年龄 / 锚点 tick / 生理压力——整组覆盖不重新解释这批人。
@@ -370,8 +371,8 @@ final class GovRecruitPlan {
         PopulationGroup group = source.group();
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", group.id().value());
-        row.put("q", group.residence().q());
-        row.put("r", group.residence().r());
+        row.put("q", source.at().q());
+        row.put("r", source.at().r());
         row.put("before", group.count());
         row.put("taken", source.taken());
         row.put("after", source.countAfter());
@@ -413,8 +414,8 @@ final class GovRecruitPlan {
         PopulationGroup group = source.group();
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", group.id().value());
-        row.put("q", group.residence().q());
-        row.put("r", group.residence().r());
+        row.put("q", source.at().q());
+        row.put("r", source.at().r());
         row.put("before", group.count());
         row.put("taken", source.taken());
         row.put("after", source.countAfter());
@@ -424,11 +425,12 @@ final class GovRecruitPlan {
     }
   }
 
-  /** 一个被动批次：整组覆盖用的原始批次 + 抽走的人数；{@code countAfter} 可为 0（合法空批）。 */
-  record GroupSource(PopulationGroup group, long taken) {
+  /** 一个被动批次：整组覆盖用的原始批次 + 它的来源格（S2：位置来自家户）+ 抽走的人数；{@code countAfter} 可为 0。 */
+  record GroupSource(PopulationGroup group, HexCoord at, long taken) {
 
     GroupSource {
       Objects.requireNonNull(group, "group");
+      Objects.requireNonNull(at, "at");
       if (taken <= 0L) {
         throw new IllegalArgumentException("taken 必须 > 0: " + taken);
       }
@@ -439,7 +441,7 @@ final class GovRecruitPlan {
     }
 
     static GroupSource from(RegionAllocations.GroupSource source) {
-      return new GroupSource(source.group(), source.taken());
+      return new GroupSource(source.group(), source.at(), source.taken());
     }
 
     long countAfter() {

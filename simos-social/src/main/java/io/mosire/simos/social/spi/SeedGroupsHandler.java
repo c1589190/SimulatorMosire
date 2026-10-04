@@ -1,16 +1,23 @@
 package io.mosire.simos.social.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.social.api.id.PeopleLotId;
-import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.api.household.HouseholdLocation;
+import io.mosire.simos.social.api.household.HouseholdProfile;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.HouseholdVitalRates;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.change.SocialChangeSet;
+import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -18,36 +25,34 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * ★★ {@code social.SeedGroups} 命令的处理器（R1 的 T3）：**一次落 N 个人口批次**（{@link PopulationGroup}）——它是"人口实体"
- * 唯一的落盘入口；没有它，批次只能活在测试里。
+ * ★★ {@code social.SeedGroups} 命令的处理器（R1 的 T3）：**一次落 N 个人口批次**（{@link PopulationGroup}）——
+ * 它是"人口实体"唯一的落盘入口；没有它，批次只能活在测试里。
  *
  * <pre>{@code
  * {"entries":[{"id":"rural:0_0:MALE","q":0,"r":0,"sex":"MALE","count":6000,"ageDays":13505,"stress":0},
  *             {"id":"urban:c-0_0:FEMALE","q":0,"r":0,"sex":"FEMALE","count":4000,"ageDays":13505,"stress":0}],
- *  "anchorTick":0?}
+ *  "anchorTick":0?, "households":[{id,q,r,name?,description?}?]}
  * }</pre>
+ *
+ * <p>★★ <b>S2：家户是位置的唯一来源</b>（架构 §4.2：{@code PopulationGroup.residence} 已删）。本 handler 落批次的**同时**
+ * 把它们挂进家户的 {@code memberLots}：
+ *
+ * <ul>
+ *   <li>条目带 {@code household} 字段 ⇒ 挂进该家户（{@code households[]} 里声明的新家户，或已存在的家户）；
+ *   <li>条目不带 ⇒ 若该批次已在某个家户里（整组覆盖路径）保持原归属；否则按 {@code {q,r}} 归位——该格恰有一个家户
+ *       就并进去，否则复用/新建 {@code hh:hex:<q>_<r>}（零人口格也落家户，见 {@code PopulationSeeder}）；
+ *   <li>同一批次被声明的家户与既有家户**不一致** ⇒ 拒（不做静默迁移；迁移是 {@code HouseholdBook.transferMembers} 的事）。
+ * </ul>
  *
  * <p>★ **一条命令 = 一条 revision**：全部 entries 由同一个 {@link SocialChangeSet} 承载（{@link
  * SocialChangeSet#between} 逐组件比一次），批内不存在"落了一半"的中间态。
  *
- * <p>★ **整条替换现在可带可选 {@code stress}**（缺省 0；非负由 {@link PopulationGroup} 的构造期守卫判）：重写既有批次时把原批次的
- * 压力原样带过，<b>不会静默清零</b>——组合工具 {@code simos.unit.levyRegion} 抽人力靠它保真。旧载荷不带 {@code stress} ⇒ 取 0，
- * 行为与从前逐值相同。
+ * <p>★ **覆盖语义**：同一 id 已在状态里 ⇒ **整条替换**批次的人数/年龄/压力（成员关系不变）；
+ * {@code households[]} 里声明的家户若已存在 ⇒ 更新位置/画像（成员表保持并集，不因本次载荷丢人）。
  *
- * <p>★ **anchorTick 缺省 = 世界当前时刻**（{@code state.meta().timestamp().tick()}，单位：日）——与 {@code
- * social.SetPopulation} 同款；给了就按给的记（创世批量落批次时由调用方一次定死，见 {@code WorldgenInitializeTool}）。
- *
- * <p>★ **覆盖语义**：同一 id 已在状态里 ⇒ **整条替换**（不是累加）。"改一批人的年龄/性别/人数"与"重新播种"因此是同一条路； 累加语义（出生/迁入）属 R4
- * 的人口再生产，不在这里装作能做。
- *
- * <p>★ **坏载荷与域规则违反都折成 {@code Rejected}**（照本模块惯例，见 {@link SocialPayloads}）：空 entries、{@code sex} 不在
- * 词表里、id 空白各抛 {@link IllegalArgumentException}；{@code count}/{@code ageDays}/{@code stress} 为负由
- * {@link PopulationGroup} 拒；**批次落在没有 {@code populations} 序列的格上**由 {@link SocialData} 的跨组件校验拒（设计稿
- * §十.7） —— 最后这条正是"两笔人口账不许各说各话"的命令边界落点。
- *
- * <p>★ **目标资源**（{@link CommandTargets}）：{@code entries[]} 里**每一个**格，路径取 social 命名空间的既有形态 {@link
- * ResourcePaths#social(int, int)}（{@code <q>_<r>}，**不带 mapId**）—— 与 {@code social.SetPopulation}
- * 判的是同一个资源 （"往这一格上落人"），故受限决策人的裁决路径不需要为它新增语法。
+ * <p>★ **坏载荷与域规则违反都折成 {@code Rejected}**（照本模块惯例，见 {@link SocialPayloads}）：空 entries、
+ * {@code sex} 不在词表里、id 空白各抛 {@link IllegalArgumentException}；跨组件归位冲突由 {@code SocialData}
+ * 构造期校验拒。
  */
 public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
 
@@ -55,8 +60,7 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
   public List<String> targetPaths(String mapId, String payloadJson) {
     var payload = SocialPayloads.parse(payloadJson);
     LinkedHashSet<String> paths = new LinkedHashSet<>();
-    for (PopulationGroup group : SocialPayloads.requireGroupEntries(payload, 0L).values()) {
-      HexCoord at = group.residence();
+    for (HexCoord at : SocialPayloads.requireGroupEntries(payload, 0L).locations().values()) {
       paths.add(ResourcePaths.social(at.q(), at.r()));
     }
     return List.copyOf(paths);
@@ -75,15 +79,135 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
     try {
       JsonNode payload = SocialPayloads.parse(payloadJson);
       long nowTick = state.meta().timestamp().tick();
-      Map<PeopleLotId, PopulationGroup> entries =
+      SocialPayloads.GroupEntries entries =
           SocialPayloads.requireGroupEntries(payload, nowTick);
-      Map<PeopleLotId, PopulationGroup> next = new LinkedHashMap<>(base.groups());
-      next.putAll(entries); // ★ 同 id 覆盖（见类注的覆盖语义）
-      // ★ 跨组件校验（"批次必须落在有 populations 序列的格上"）在 SocialData 的构造期判：这里不重复实现，
-      //   违反它就由下面这条 catch 折成 Rejected。
-      return new HandlerOutcome.Applied(SocialChangeSet.between(base, base.withGroups(next)));
+      Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>(base.groups());
+      groups.putAll(entries.groups()); // ★ 同 id 覆盖（见类注的覆盖语义）
+      Map<HouseholdId, Household> households = new LinkedHashMap<>(base.households());
+
+      // ① 声明家户：新建 / 更新位置与画像（成员表并集保留）。
+      //   ★ 只有带画像的条目才是"声明"（SocialPayloads：引用既有家户的条目 profile=null）——引用不覆盖位置，
+      //     位置由 ② 的 requireLocationMatches 校验；否则引用一个 Unit 家户会被静默搬回 hex。
+      for (SocialPayloads.HouseholdDraft draft : entries.households().values()) {
+        Household existing = households.get(draft.id());
+        HouseholdLocation location = new HouseholdLocation.Hex(draft.hex());
+        if (existing == null) {
+          households.put(
+              draft.id(),
+              new Household(
+                  draft.id(),
+                  location,
+                  draft.profile() == null
+                      ? new HouseholdProfile(draft.id().value(), null, Map.of())
+                      : draft.profile(),
+                  List.of(),
+                  new HouseholdVitalRates(List.of())));
+          SocialLog.household()
+              .info(
+                  "event=HOUSEHOLD_CREATED "
+                      + SocialLog.kv(
+                          "id", draft.id(), "location", location, "source", "social.SeedGroups"));
+        } else if (draft.profile() != null) {
+          Household replaced = existing.withLocation(location).withProfile(draft.profile());
+          households.put(draft.id(), replaced);
+        }
+      }
+
+      // ② 归位：每个新批次必须且只能挂一个家户。
+      for (Map.Entry<PeopleLotId, PopulationGroup> entry : entries.groups().entrySet()) {
+        PeopleLotId lot = entry.getKey();
+        HexCoord at = entries.locations().get(lot);
+        HouseholdId declared = entries.householdOfLot().get(lot);
+        HouseholdId existingOwner = ownerOf(base.households(), lot);
+        if (existingOwner != null) {
+          if (declared != null && !declared.equals(existingOwner)) {
+            throw new IllegalArgumentException(
+                "批次 " + lot + " 已在家户 " + existingOwner + "，不能改挂到 " + declared + "（迁移请走 transferMembers）");
+          }
+          requireLocationMatches(households.get(existingOwner), at, lot);
+          continue;
+        }
+        HouseholdId target = declared == null ? autoHouseholdId(households, at) : declared;
+        Household household = households.get(target);
+        if (household == null) {
+          throw new IllegalArgumentException("批次 " + lot + " 指向不存在的家户: " + target);
+        }
+        requireLocationMatches(household, at, lot);
+        List<PeopleLotId> lots = new ArrayList<>(household.memberLots());
+        if (!lots.contains(lot)) {
+          lots.add(lot);
+        }
+        households.put(target, household.withMemberLots(lots));
+      }
+
+      SocialData next =
+          new SocialData(
+              base.populations(), base.cities(), groups, households, base.populationEvents());
+      return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());
+    }
+  }
+
+  /** 该批次的既有家户（不在任何家户 ⇒ null）。 */
+  private static HouseholdId ownerOf(
+      Map<HouseholdId, Household> households, PeopleLotId lot) {
+    for (Household household : households.values()) {
+      if (household.hasMember(lot)) {
+        return household.id();
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 无 {@code household} 字段时的自动归位：该格恰有一个家户 ⇒ 并入；否则复用/新建 {@code hh:hex:<q>_<r>}。
+   * （创世主路径始终显式给 {@code household}；这里只服务旧载荷/单条命令的向后兼容。）
+   */
+  private static HouseholdId autoHouseholdId(
+      Map<HouseholdId, Household> households, HexCoord at) {
+    HouseholdId synthetic = HouseholdId.parse("hh:hex:" + at.q() + "_" + at.r());
+    List<Household> atHex = new ArrayList<>();
+    for (Household household : households.values()) {
+      if (household.location() instanceof HouseholdLocation.Hex hex
+          && hex.hex().equals(at)) {
+        atHex.add(household);
+      }
+    }
+    if (atHex.size() == 1) {
+      return atHex.get(0).id();
+    }
+    if (households.get(synthetic) != null) {
+      // 同格的第二个及以后的批次汇进同一个合成家户（桶 = 格）。
+      return synthetic;
+    }
+    households.put(
+        synthetic,
+        new Household(
+            synthetic,
+            new HouseholdLocation.Hex(at),
+            new HouseholdProfile(synthetic.value(), null, Map.of()),
+            List.of(),
+            new HouseholdVitalRates(List.of())));
+    SocialLog.household()
+        .info(
+            "event=HOUSEHOLD_CREATED "
+                + SocialLog.kv("id", synthetic, "location", "HEX:" + at, "source", "social.SeedGroups(auto)"));
+    return synthetic;
+  }
+
+  /** 家户位置与条目落点必须一致（HEX 家户）；UNIT 家户不接受 SeedGroups 的 {q,r}。 */
+  private static void requireLocationMatches(Household household, HexCoord at, PeopleLotId lot) {
+    if (household == null) {
+      throw new IllegalArgumentException("批次 " + lot + " 的目标家户不存在");
+    }
+    if (!(household.location() instanceof HouseholdLocation.Hex hex)) {
+      throw new IllegalArgumentException(
+          "批次 " + lot + " 的目标家户 " + household.id() + " 不在 HEX 上（SeedGroups 的 {q,r} 只落 hex 家户）");
+    }
+    if (!hex.hex().equals(at)) {
+      throw new IllegalArgumentException(
+          "批次 " + lot + " 的落点 " + at + " 与家户 " + household.id() + " 的位置 " + hex.hex() + " 不符");
     }
   }
 }

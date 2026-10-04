@@ -239,7 +239,7 @@ final class LevyRegionPlan {
             ToolSupport.socialData(state), region, tick, requested, clock);
     List<GroupSource> sources = new ArrayList<>(allocation.sources().size());
     for (RegionAllocations.GroupSource source : allocation.sources()) {
-      sources.add(new GroupSource(source.group(), source.taken()));
+      sources.add(new GroupSource(source.group(), source.at(), source.taken()));
     }
     return new Manpower(allocation.requested(), allocation.available(), List.copyOf(sources));
   }
@@ -368,11 +368,12 @@ final class LevyRegionPlan {
     }
   }
 
-  /** 一个被动批次：整条覆盖用的必要字段 + 抽走的人数；{@code countAfter} 可为 0（合法空批）。 */
-  record GroupSource(PopulationGroup group, long taken) {
+  /** 一个被动批次：整条覆盖用的必要字段 + 来源格（S2：位置来自家户）+ 抽走的人数；{@code countAfter} 可为 0。 */
+  record GroupSource(PopulationGroup group, HexCoord at, long taken) {
 
     GroupSource {
       Objects.requireNonNull(group, "group");
+      Objects.requireNonNull(at, "at");
       if (taken <= 0L) {
         throw new IllegalArgumentException("taken 必须 > 0: " + taken);
       }

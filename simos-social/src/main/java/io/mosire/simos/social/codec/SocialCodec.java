@@ -1,10 +1,15 @@
 package io.mosire.simos.social.codec;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import io.mosire.simos.social.api.household.HouseholdLocation;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
@@ -17,14 +22,15 @@ import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
+import java.io.IOException;
 import java.util.function.Function;
 
 /**
  * social 模块的 {@link ModuleCodec} 实现（spec §八）。形态与 {@code MapCodec} 同制，理由不重复——只记 social 自己的那点差异。
  *
- * <p>★ 树里的自定义键有三个：{@code HexCoord}（{@code populations} 的键）、{@code CityId}（{@code cities} 的键）与
- * {@code PeopleLotId}（{@code groups} 的键，R1 新增）；前两者住在 simos-map、后者住在 simos-social-api，social
- * 对两者都有依赖 （后者见设计稿 §八.1/§八.2），铁律 3 允许。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
+ * <p>★ 树里的自定义键有四个：{@code HexCoord}（{@code populations} 的键）、{@code CityId}（{@code cities} 的键）、
+ * {@code PeopleLotId}（{@code groups} 的键，R1 新增）与 {@code HouseholdId}（{@code households} 的键，S2 新增）；
+ * 事件表（{@code populationEvents}）的键是裸字符串。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
  *
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
  *
@@ -62,7 +68,37 @@ public final class SocialCodec implements ModuleCodec, ModuleDiffer {
     // ★ R1 / S1：`groups` 的键是 PeopleLotId（住在 simos-social-api，social 显式依赖它）。
     //   与上面两条同制：裸值 toString() 作键、parse 还原。
     module.addKeyDeserializer(PeopleLotId.class, keyDeserializer(PeopleLotId::parse));
+    // ★ S2：`households` 的键是 HouseholdId（架构 §4.1）；同制裸值 + parse。
+    module.addKeyDeserializer(HouseholdId.class, keyDeserializer(HouseholdId::parse));
+    // ★ S2：`populationEvents` 的键是事件 id 的裸字符串（架构 §4.3：键 = event.id()）——显式注册恒等解析器，
+    //   不依赖 Jackson 对 String 键的内建路径（口径与上面四条一致：键的读写只在本模块注册）。
+    module.addKeyDeserializer(String.class, keyDeserializer(text -> text));
+    // ★ S2：`Household.location` 是 sealed interface（契约层零 Jackson 注解）⇒ 反序列化必须按线上形状
+    //   （`{"hex":{q,r}}` / `{"unitId":"..."}`）在**本模块**分派；没有它，Jackson 建不出接口实例，读档当场炸。
+    module.addDeserializer(HouseholdLocation.class, householdLocationDeserializer());
     return module;
+  }
+
+  /** {@code HouseholdLocation} 的线格式逆：按 {@code hex} / {@code unitId} 两档分派（与 record 的默认序列化形状一致）。 */
+  private static JsonDeserializer<HouseholdLocation> householdLocationDeserializer() {
+    return new JsonDeserializer<>() {
+      @Override
+      public HouseholdLocation deserialize(JsonParser parser, DeserializationContext context)
+          throws IOException {
+        JsonNode node = parser.readValueAsTree();
+        if (node == null || !node.isObject()) {
+          throw new IllegalArgumentException("HouseholdLocation 必须是 JSON 对象: " + node);
+        }
+        if (node.hasNonNull("hex")) {
+          HexCoord hex = parser.getCodec().treeToValue(node.get("hex"), HexCoord.class);
+          return new HouseholdLocation.Hex(hex);
+        }
+        if (node.hasNonNull("unitId")) {
+          return new HouseholdLocation.Unit(node.get("unitId").asText());
+        }
+        throw new IllegalArgumentException("HouseholdLocation 既没有 hex 也没有 unitId: " + node);
+      }
+    };
   }
 
   private static <K> KeyDeserializer keyDeserializer(Function<String, K> parse) {

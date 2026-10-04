@@ -463,8 +463,8 @@ final class GovSelectExamineesPlan {
         PopulationGroup group = source.group();
         Map<String, Object> entry = new LinkedHashMap<>();
         entry.put("id", group.id().value());
-        entry.put("q", group.residence().q());
-        entry.put("r", group.residence().r());
+        entry.put("q", source.at().q());
+        entry.put("r", source.at().r());
         entry.put("sex", group.sex().name());
         entry.put("count", source.countAfter());
         entry.put("ageDays", group.ageAtAnchorDays());
@@ -558,8 +558,8 @@ final class GovSelectExamineesPlan {
         PopulationGroup group = source.group();
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", group.id().value());
-        row.put("q", group.residence().q());
-        row.put("r", group.residence().r());
+        row.put("q", source.at().q());
+        row.put("r", source.at().r());
         row.put("before", group.count());
         row.put("taken", source.taken());
         row.put("after", source.countAfter());

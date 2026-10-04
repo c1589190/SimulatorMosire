@@ -818,8 +818,8 @@ public final class EconomySeeder {
    *
    * <p>★ 走真地图：地形 key 由 {@link GameMap#terrainIndex()} 一次物化后 O(1) 查。
    */
-  public static String payload(String mapId, List<PopulationGroup> groups, GameMap map) {
-    return plan(mapId, groups, map).economyPayload();
+  public static String payload(String mapId, PopulationSeeder.Seeding seeding, GameMap map) {
+    return plan(mapId, seeding, map).economyPayload();
   }
 
   /**
@@ -1065,16 +1065,16 @@ public final class EconomySeeder {
    * #plan}（唯一算一次的地方）。
    */
   static String payload(
-      String mapId, List<PopulationGroup> groups, Function<HexCoord, String> terrainOf) {
-    return plan(mapId, groups, terrainOf).economyPayload();
+      String mapId, PopulationSeeder.Seeding seeding, Function<HexCoord, String> terrainOf) {
+    return plan(mapId, seeding, terrainOf).economyPayload();
   }
 
   /**
    * 真地图重载（{@code terrainIndex()} 一次物化后 O(1) 查）—— 见 {@link #payload(String, List,
    * GameMap)}；初始禀赋取默认值，profile 缺省 {@link FoundationProfile#CLASS_FIRST}。
    */
-  public static Seed plan(String mapId, List<PopulationGroup> groups, GameMap map) {
-    return plan(mapId, groups, map, genesisMoneyMilliPerCapita(), FoundationProfile.CLASS_FIRST);
+  public static Seed plan(String mapId, PopulationSeeder.Seeding seeding, GameMap map) {
+    return plan(mapId, seeding, map, genesisMoneyMilliPerCapita(), FoundationProfile.CLASS_FIRST);
   }
 
   /**
@@ -1082,14 +1082,14 @@ public final class EconomySeeder {
    * 的每人金额，商品/人口/劳动/资产口径一字不动。profile 缺省 {@link FoundationProfile#CLASS_FIRST}。
    */
   public static Seed plan(
-      String mapId, List<PopulationGroup> groups, GameMap map, long genesisMoneyMilliPerCapita) {
-    return plan(mapId, groups, map, genesisMoneyMilliPerCapita, FoundationProfile.CLASS_FIRST);
+      String mapId, PopulationSeeder.Seeding seeding, GameMap map, long genesisMoneyMilliPerCapita) {
+    return plan(mapId, seeding, map, genesisMoneyMilliPerCapita, FoundationProfile.CLASS_FIRST);
   }
 
   /** ★ P1/P2：真地图 + profile（初始禀赋取默认值）；{@link FoundationProfile#CLASS_FIRST} 逐值等于当前 HEAD 行为。 */
   public static Seed plan(
-      String mapId, List<PopulationGroup> groups, GameMap map, FoundationProfile profile) {
-    return plan(mapId, groups, map, genesisMoneyMilliPerCapita(), profile, TestConditions.EMPTY);
+      String mapId, PopulationSeeder.Seeding seeding, GameMap map, FoundationProfile profile) {
+    return plan(mapId, seeding, map, genesisMoneyMilliPerCapita(), profile, TestConditions.EMPTY);
   }
 
   /**
@@ -1098,7 +1098,7 @@ public final class EconomySeeder {
    */
   public static Seed plan(
       String mapId,
-      List<PopulationGroup> groups,
+      PopulationSeeder.Seeding seeding,
       GameMap map,
       long genesisMoneyMilliPerCapita,
       FoundationProfile profile,
@@ -1106,7 +1106,7 @@ public final class EconomySeeder {
     Map<HexCoord, String> terrain = map.terrainIndex();
     return plan(
         mapId,
-        groups,
+        seeding,
         at -> {
           String key = terrain.get(at);
           if (key == null) {
@@ -1122,21 +1122,21 @@ public final class EconomySeeder {
   /** ★★ P1：真地图 + 初始禀赋 + profile 的主入口；P3 起条件缺省为空（逐值等于 P1）。 */
   public static Seed plan(
       String mapId,
-      List<PopulationGroup> groups,
+      PopulationSeeder.Seeding seeding,
       GameMap map,
       long genesisMoneyMilliPerCapita,
       FoundationProfile profile) {
-    return plan(mapId, groups, map, genesisMoneyMilliPerCapita, profile, TestConditions.EMPTY);
+    return plan(mapId, seeding, map, genesisMoneyMilliPerCapita, profile, TestConditions.EMPTY);
   }
 
   /** ★★ P3：真地图 + profile + 测试条件（初始禀赋取默认值）—— 载荷便捷入口。 */
   public static String payload(
       String mapId,
-      List<PopulationGroup> groups,
+      PopulationSeeder.Seeding seeding,
       GameMap map,
       FoundationProfile profile,
       TestConditions conditions) {
-    return plan(mapId, groups, map, genesisMoneyMilliPerCapita(), profile, conditions)
+    return plan(mapId, seeding, map, genesisMoneyMilliPerCapita(), profile, conditions)
         .economyPayload();
   }
 
@@ -1642,18 +1642,18 @@ public final class EconomySeeder {
    * @param terrainOf 逐格地形 key（真路径 = {@code map.terrainIndex()}）；未知地形 fail-closed
    */
   static Seed plan(
-      String mapId, List<PopulationGroup> groups, Function<HexCoord, String> terrainOf) {
+      String mapId, PopulationSeeder.Seeding seeding, Function<HexCoord, String> terrainOf) {
     return plan(
-        mapId, groups, terrainOf, genesisMoneyMilliPerCapita(), FoundationProfile.CLASS_FIRST);
+        mapId, seeding, terrainOf, genesisMoneyMilliPerCapita(), FoundationProfile.CLASS_FIRST);
   }
 
   /** ★ P1：纯函数主入口 + profile（初始禀赋取默认值）。 */
   static Seed plan(
       String mapId,
-      List<PopulationGroup> groups,
+      PopulationSeeder.Seeding seeding,
       Function<HexCoord, String> terrainOf,
       FoundationProfile profile) {
-    return plan(mapId, groups, terrainOf, genesisMoneyMilliPerCapita(), profile);
+    return plan(mapId, seeding, terrainOf, genesisMoneyMilliPerCapita(), profile);
   }
 
   /**
@@ -1662,11 +1662,11 @@ public final class EconomySeeder {
    */
   static Seed plan(
       String mapId,
-      List<PopulationGroup> groups,
+      PopulationSeeder.Seeding seeding,
       Function<HexCoord, String> terrainOf,
       long genesisMoneyMilliPerCapita) {
     return plan(
-        mapId, groups, terrainOf, genesisMoneyMilliPerCapita, FoundationProfile.CLASS_FIRST);
+        mapId, seeding, terrainOf, genesisMoneyMilliPerCapita, FoundationProfile.CLASS_FIRST);
   }
 
   /**
@@ -1676,18 +1676,18 @@ public final class EconomySeeder {
    */
   static Seed plan(
       String mapId,
-      List<PopulationGroup> groups,
+      PopulationSeeder.Seeding seeding,
       Function<HexCoord, String> terrainOf,
       long genesisMoneyMilliPerCapita,
       FoundationProfile profile) {
     return plan(
-        mapId, groups, terrainOf, genesisMoneyMilliPerCapita, profile, TestConditions.EMPTY);
+        mapId, seeding, terrainOf, genesisMoneyMilliPerCapita, profile, TestConditions.EMPTY);
   }
 
   /** ★★ P3：纯函数主入口 + 初始禀赋 + profile + 测试条件（空条件逐值等于 P1）。 */
   static Seed plan(
       String mapId,
-      List<PopulationGroup> groups,
+      PopulationSeeder.Seeding seeding,
       Function<HexCoord, String> terrainOf,
       long genesisMoneyMilliPerCapita,
       FoundationProfile profile,
@@ -1704,10 +1704,10 @@ public final class EconomySeeder {
     //   entries + 出口追加默认生产方式目录/资产规则（见 jsonOf）。两条路径都不再共用同一条人口壳。
     return switch (profile) {
       case CLASS_FIRST ->
-          planClassFirst(mapId, groups, terrainOf, genesisMoneyMilliPerCapita, profile, conditions);
+          planClassFirst(mapId, seeding, terrainOf, genesisMoneyMilliPerCapita, profile, conditions);
       case PRODUCTION_RUNTIME, PRODUCTION_RUNTIME_GOVERNMENT ->
           planProductionRuntime(
-              mapId, groups, terrainOf, genesisMoneyMilliPerCapita, profile, conditions);
+              mapId, seeding, terrainOf, genesisMoneyMilliPerCapita, profile, conditions);
     };
   }
 
@@ -1744,17 +1744,18 @@ public final class EconomySeeder {
    */
   static Seed planClassFirst(
       String mapId,
-      List<PopulationGroup> groups,
+      PopulationSeeder.Seeding seeding,
       Function<HexCoord, String> terrainOf,
       long genesisMoneyMilliPerCapita,
       FoundationProfile profile,
       TestConditions conditions) {
     Map<HexCoord, List<PopulationGroup>> ruralByHex = new LinkedHashMap<>();
     Map<HexCoord, List<PopulationGroup>> urbanByHex = new LinkedHashMap<>();
-    for (PopulationGroup group : groups) {
+    for (PopulationGroup group : seeding.groups()) {
       Map<HexCoord, List<PopulationGroup>> target =
           PopulationLots.isUrban(group) ? urbanByHex : ruralByHex;
-      target.computeIfAbsent(group.residence(), hex -> new ArrayList<>()).add(group);
+      // ★ S2：落点从家户取（批次身上没有 residence）。
+      target.computeIfAbsent(seeding.locationOf(group.id()), hex -> new ArrayList<>()).add(group);
     }
     List<HexCoord> hexes = new ArrayList<>(ruralByHex.keySet());
     for (HexCoord hex : urbanByHex.keySet()) {
@@ -1976,13 +1977,13 @@ public final class EconomySeeder {
    */
   static Seed planClassFirst(
       String mapId,
-      List<PopulationGroup> groups,
+      PopulationSeeder.Seeding seeding,
       Function<HexCoord, String> terrainOf,
       long genesisMoneyMilliPerCapita,
       TestConditions conditions) {
     return planClassFirst(
         mapId,
-        groups,
+        seeding,
         terrainOf,
         genesisMoneyMilliPerCapita,
         FoundationProfile.CLASS_FIRST,
@@ -3646,17 +3647,18 @@ public final class EconomySeeder {
    */
   private static Seed planProductionRuntime(
       String mapId,
-      List<PopulationGroup> groups,
+      PopulationSeeder.Seeding seeding,
       Function<HexCoord, String> terrainOf,
       long genesisMoneyMilliPerCapita,
       FoundationProfile profile,
       TestConditions conditions) {
     Map<HexCoord, List<PopulationGroup>> ruralByHex = new LinkedHashMap<>();
     Map<HexCoord, List<PopulationGroup>> urbanByHex = new LinkedHashMap<>();
-    for (PopulationGroup group : groups) {
+    for (PopulationGroup group : seeding.groups()) {
       Map<HexCoord, List<PopulationGroup>> target =
           PopulationLots.isUrban(group) ? urbanByHex : ruralByHex;
-      target.computeIfAbsent(group.residence(), hex -> new ArrayList<>()).add(group);
+      // ★ S2：落点从家户取（批次身上没有 residence）。
+      target.computeIfAbsent(seeding.locationOf(group.id()), hex -> new ArrayList<>()).add(group);
     }
     List<HexCoord> hexes = new ArrayList<>(ruralByHex.keySet());
     for (HexCoord hex : urbanByHex.keySet()) {
@@ -3919,7 +3921,7 @@ public final class EconomySeeder {
                 householdMoney)
             : null;
     // ★★ S1.4 出口自检：tick0 seed 是"人工造份额"的唯一入口 ⇒ 这里逐 lot 对账，不等就播不出去（fail-closed）。
-    requireMembershipConservation(groups, allMemberships);
+    requireMembershipConservation(seeding.groups(), allMemberships);
     Map<GovernmentId, Government> governments =
         profile.seedsGovernmentHousehold()
             ? Map.of(GENESIS_GOVERNMENT_ID, governmentHouseholdGovernment(governmentHousehold))

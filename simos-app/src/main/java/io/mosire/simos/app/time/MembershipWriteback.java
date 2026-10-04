@@ -53,6 +53,23 @@ public final class MembershipWriteback {
   private record ViewKey(HexCoord hex, ResidenceKind residence) {}
 
   /**
+   * ★ S2：批次 → (格, 居住类型) 的唯一派生口。位置来自所属家户（{@code group} 已无 residence）；
+   * UNIT 家户没有格 ⇒ 本对账口径 fail-closed（S3 的家户汇总口径）。
+   */
+  private static ViewKey viewOf(SocialData social, PopulationGroup group) {
+    HexCoord hex =
+        social
+            .hexOfLot(group.id())
+            .orElseThrow(
+                () ->
+                    new IllegalStateException(
+                        "批次 "
+                            + group.id()
+                            + " 的家户不在 HEX 上：成员份额对账的 (格,居住类型) 口径属 S3 消费方集成；S2 不接"));
+    return new ViewKey(hex, ResidenceKind.ofLot(group.id()));
+  }
+
+  /**
    * ★★ <b>逐 lot 硬判据</b>：不等 ⇒ 当场抛（fail-closed；调用方不得把差额均摊到别的 lot）。
    *
    * <p>★ 也判"份额指向的家户必须存在"与"份额的 lot 必须在 social 里"—— 前者 {@code EconomyData} 构造期还会再判一次，
@@ -189,7 +206,7 @@ public final class MembershipWriteback {
           weights[i] = existing.get(i).count();
         }
       } else {
-        ViewKey view = new ViewKey(group.residence(), ResidenceKind.ofLot(group.id()));
+        ViewKey view = viewOf(social, group);
         List<HouseholdId> candidates = householdsByView.get(view);
         if (candidates == null || candidates.isEmpty()) {
           throw new IllegalStateException(
@@ -198,7 +215,7 @@ public final class MembershipWriteback {
                   + " 有 "
                   + need
                   + " 人没有成员份额，而 (格 "
-                  + group.residence()
+                  + view.hex()
                   + ", 居住 "
                   + ResidenceKind.ofLot(group.id())
                   + ") 没有任何人口非 0 的家户可收 —— 拒绝静默丢人（S1.4 后置不变量）");
@@ -216,7 +233,7 @@ public final class MembershipWriteback {
       }
       if (weightSum <= 0L && !existing.isEmpty()) {
         // ★ 已有份额但全是 0 份额空壳 ⇒ 退回"按行人口权重"的候选集（不把新生儿塞给一个 0 权重家户）。
-        ViewKey view = new ViewKey(group.residence(), ResidenceKind.ofLot(group.id()));
+        ViewKey view = viewOf(social, group);
         List<HouseholdId> candidates = householdsByView.get(view);
         if (candidates != null && !candidates.isEmpty()) {
           targets = candidates;
@@ -274,7 +291,7 @@ public final class MembershipWriteback {
     List<PopulationGroup> groups = new ArrayList<>(social.groups().values());
     groups.sort(Comparator.comparing(group -> group.id().value()));
     for (PopulationGroup group : groups) {
-      ViewKey view = new ViewKey(group.residence(), ResidenceKind.ofLot(group.id()));
+      ViewKey view = viewOf(social, group);
       List<HouseholdId> candidates = householdsByView.getOrDefault(view, List.of());
       if (group.count() == 0L) {
         continue;
@@ -286,7 +303,7 @@ public final class MembershipWriteback {
                 + " 有 "
                 + group.count()
                 + " 人，而 (格 "
-                + group.residence()
+                + view.hex()
                 + ", 居住 "
                 + ResidenceKind.ofLot(group.id())
                 + ") 没有任何人口非 0 的家户");
@@ -407,7 +424,7 @@ public final class MembershipWriteback {
     }
     Map<ViewKey, Long> socialTotals = new LinkedHashMap<>();
     for (PopulationGroup group : social.groups().values()) {
-      ViewKey view = new ViewKey(group.residence(), ResidenceKind.ofLot(group.id()));
+      ViewKey view = viewOf(social, group);
       socialTotals.merge(view, group.count(), Math::addExact);
     }
     LinkedHashSet<ViewKey> views = new LinkedHashSet<>(rowTotals.keySet());

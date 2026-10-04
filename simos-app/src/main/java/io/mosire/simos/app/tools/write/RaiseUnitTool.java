@@ -616,8 +616,8 @@ public final class RaiseUnitTool implements AgentTool {
       PopulationGroup group = source.group();
       Map<String, Object> row = new LinkedHashMap<>();
       row.put("id", group.id().value());
-      row.put("q", group.residence().q());
-      row.put("r", group.residence().r());
+      row.put("q", source.at().q());
+      row.put("r", source.at().r());
       row.put("before", group.count());
       row.put("taken", source.taken());
       row.put("after", source.countAfter());

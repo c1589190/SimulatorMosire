@@ -3,6 +3,8 @@ package io.mosire.simos.social.spi;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.social.api.household.HouseholdProfile;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.city.SocialCity;
@@ -10,6 +12,7 @@ import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -126,27 +129,60 @@ final class SocialPayloads {
   }
 
   /**
-   * 必填的 {@code [{id,q,r,sex,count,ageDays,anchorTick?,stress?}…]} 数组 ⇒ **保序**的批次表（R1 的 {@code
-   * social.SeedGroups}）。**重复 id：后出现者覆盖先出现者，不报错**（先出现的那个位置保持）；空数组 ⇒ 抛。
+   * 必填的 {@code [{id,q,r,sex,count,ageDays,anchorTick?,stress?,household?}…]} 数组 + 可选
+   * {@code households:[{id,q,r,name?,description?}…]} ⇒ **保序**的批次/位置/归户表（R1 的 {@code social.SeedGroups}，
+   * S2 作家户归位）。
    *
-   * <p>★ **形状与类型在本层判**（{@code sex} 必须是 {@code MALE}/{@code FEMALE}、五个数值字段必须是整数且可转 long）； {@code
-   * count}/{@code ageDays}/{@code stress} **为负由 {@link PopulationGroup} 的构造期守卫拒**（那是域规则，本层不重复实现）；
-   * {@code id} 的空白由 {@link PeopleLotId#parse} 拒；批次落在没有序列的格上由 {@code SocialData} 的跨组件校验拒 —— 四者都在
-   * handler 边界折成 {@code Rejected}。
+   * <p>★★ <b>S2 的家户归位语义</b>：{@code PopulationGroup} 已无位置，位置只能来自家户
+   * （{@code SocialData.locationOfLot}）。本层把载荷翻译成三张表：
    *
-   * <p>★ {@code stress} 可选、**缺省 0**（辖区阶段 6 的向后兼容加字段）：旧载荷不带它 ⇒ 与从前逐值相同；新调用方整组覆盖既有批次时
-   * 应把原批次的压力原样带过，否则会把压力静默清零（{@code simos.unit.levyRegion} 抽人力靠它保真）。
+   * <ul>
+   *   <li>{@code groups}：批次本体（与旧载荷逐值一致）；
+   *   <li>{@code locations}：逐批次的 {@code {q,r}}（供 handler 派生 hex 家户 id / 校验既有家户位置）；
+   *   <li>{@code householdOfLot}：条目可选的 {@code household} 字段（指向 {@code households[]} 里的 id 或已存在家户）。
+   * </ul>
+   *
+   * <p>★ <b>重复 id：后出现者覆盖先出现者，不报错</b>（先出现的那个位置保持）；空数组 ⇒ 抛。
+   *
+   * <p>★ **形状与类型在本层判**；{@code count}/{@code ageDays}/{@code stress} 为负由 {@link PopulationGroup}
+   * 构造期守卫拒；`households[]` 的 {@code q}/{@code r} 只表达 {@code HEX} 位置（unit 家户由命令/服务另建，不走本载荷）。
+   *
+   * <p>★ {@code stress} 可选、**缺省 0**：旧载荷不带它 ⇒ 与从前逐值相同；新调用方整组覆盖既有批次时应把原批次的压力原样带过。
    *
    * @param defaultAnchorTick 载荷没给 {@code anchorTick} 时的缺省（= 世界当前世界日）
    */
-  static Map<PeopleLotId, PopulationGroup> requireGroupEntries(
-      JsonNode payload, long defaultAnchorTick) {
+  static GroupEntries requireGroupEntries(JsonNode payload, long defaultAnchorTick) {
+    Map<HouseholdId, HouseholdDraft> households = new LinkedHashMap<>();
+    JsonNode householdNodes = payload.get("households");
+    if (householdNodes != null && !householdNodes.isNull()) {
+      if (!householdNodes.isArray()) {
+        throw new IllegalArgumentException("字段 households 必须是 [{id,q,r,…}…] 数组: " + payload);
+      }
+      for (JsonNode element : householdNodes) {
+        if (!element.isObject()) {
+          throw new IllegalArgumentException("字段 households 的元素必须是 {id,q,r,…} 对象: " + element);
+        }
+        HouseholdId householdId = HouseholdId.parse(requireText(element, "id"));
+        HexCoord hex = hexFrom(element, "households");
+        String name = optionalText(element, "name");
+        String description = optionalText(element, "description");
+        HouseholdProfile profile =
+            new HouseholdProfile(name == null ? householdId.value() : name, description, Map.of());
+        HouseholdDraft previous =
+            households.put(householdId, new HouseholdDraft(householdId, hex, profile));
+        if (previous != null) {
+          throw new IllegalArgumentException("字段 households 的 id 重复: " + householdId);
+        }
+      }
+    }
     JsonNode value = payload.get("entries");
     if (value == null || value.isNull() || !value.isArray()) {
       throw new IllegalArgumentException(
-          "字段 entries 必须是 [{id,q,r,sex,count,ageDays,anchorTick?,stress?}…] 数组: " + payload);
+          "字段 entries 必须是 [{id,q,r,sex,count,ageDays,anchorTick?,stress?,household?}…] 数组: " + payload);
     }
-    Map<PeopleLotId, PopulationGroup> entries = new LinkedHashMap<>();
+    Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
+    Map<PeopleLotId, HexCoord> locations = new LinkedHashMap<>();
+    Map<PeopleLotId, HouseholdId> householdOfLot = new LinkedHashMap<>();
     for (JsonNode element : value) {
       if (!element.isObject()) {
         throw new IllegalArgumentException(
@@ -160,23 +196,56 @@ final class SocialPayloads {
       Long anchorTick = optionalLong(element, "anchorTick");
       // ★ stress 可选：缺省 0（旧载荷行为逐字不变）；负值由 PopulationGroup 的构造期守卫拒。
       Long stress = optionalLong(element, "stress");
+      String householdText = optionalText(element, "household");
       // ★ 域不变量（count/ageDays/anchorTick/stress 非负）由 PopulationGroup 的构造期守卫抛，本层不重复实现。
-      entries.put(
+      groups.put(
           id,
           new PopulationGroup(
               id,
-              residence,
               sex,
               count,
               ageDays,
               anchorTick == null ? defaultAnchorTick : anchorTick,
               stress == null ? 0L : stress));
+      locations.put(id, residence);
+      if (householdText != null) {
+        HouseholdId householdId = HouseholdId.parse(householdText);
+        householdOfLot.put(id, householdId);
+        if (!households.containsKey(householdId)) {
+          // 指向已存在家户也合法（handler 会校验存在性）；这里只保证"引用有名字的东西"。
+          households.putIfAbsent(householdId, new HouseholdDraft(householdId, residence, null));
+        } else {
+          HouseholdDraft draft = households.get(householdId);
+          if (draft.profile() == null && !draft.hex().equals(residence)) {
+            throw new IllegalArgumentException(
+                "批次 " + id + " 的落点 " + residence + " 与家户 " + householdId + " 的声明落点 " + draft.hex() + " 不符");
+          }
+        }
+      }
     }
-    if (entries.isEmpty()) {
+    if (groups.isEmpty()) {
       throw new IllegalArgumentException("entries 不得为空");
     }
-    return entries;
+    return new GroupEntries(groups, locations, householdOfLot, households);
   }
+
+  /** {@code social.SeedGroups} 载荷解析结果：批次 + 落点 + 归户 + 声明家户（见 {@link #requireGroupEntries}）。 */
+  record GroupEntries(
+      Map<PeopleLotId, PopulationGroup> groups,
+      Map<PeopleLotId, HexCoord> locations,
+      Map<PeopleLotId, HouseholdId> householdOfLot,
+      Map<HouseholdId, HouseholdDraft> households) {
+
+    GroupEntries {
+      groups = Collections.unmodifiableMap(new LinkedHashMap<>(groups));
+      locations = Collections.unmodifiableMap(new LinkedHashMap<>(locations));
+      householdOfLot = Collections.unmodifiableMap(new LinkedHashMap<>(householdOfLot));
+      households = Collections.unmodifiableMap(new LinkedHashMap<>(households));
+    }
+  }
+
+  /** 载荷里声明/引用的家户：id + HEX 落点 + 可选画像（{@code null} = 已存在家户的引用，不覆盖画像）。 */
+  record HouseholdDraft(HouseholdId id, HexCoord hex, HouseholdProfile profile) {}
 
   /**
    * ★★ **拒收已退役的 {@code population} 字段**（R1 / T5）：城市的城镇人口不再是 {@link SocialCity} 的字段、也不再由

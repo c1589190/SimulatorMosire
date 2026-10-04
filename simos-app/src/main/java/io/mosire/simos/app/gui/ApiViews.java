@@ -537,11 +537,16 @@ public final class ApiViews {
     //   PopulationLots.isUrban 是城乡归属的唯一拼写点）。long[2] = [urban, rural]。
     Map<HexCoord, long[]> urbanRuralByHex = new LinkedHashMap<>();
     for (PopulationGroup group : social.groups().values()) {
-      Long current = populationByHex.get(group.residence());
-      if (current != null) {
-        populationByHex.put(group.residence(), current + group.count());
+      // ★ S2：位置来自所属家户（UNIT 家户没有格，不进逐格汇总）。
+      HexCoord lotHex = social.hexOfLot(group.id()).orElse(null);
+      if (lotHex == null) {
+        continue;
       }
-      long[] counts = urbanRuralByHex.computeIfAbsent(group.residence(), ignored -> new long[2]);
+      Long current = populationByHex.get(lotHex);
+      if (current != null) {
+        populationByHex.put(lotHex, current + group.count());
+      }
+      long[] counts = urbanRuralByHex.computeIfAbsent(lotHex, ignored -> new long[2]);
       if (PopulationLots.isUrban(group)) {
         counts[0] += group.count();
       } else {
@@ -676,7 +681,7 @@ public final class ApiViews {
    * <p>口径逐条对上 F2 设计增补（用户 2026-10-01 已确认）：
    *
    * <ul>
-   *   <li>人口：{@code populations} ∪ {@code groups.residence()}；有批次的格用批次求和，无批次的旧序列格按 {@link
+   *   <li>人口：{@code populations} ∪ 家户成员批次落点；有家户批次的格用家户成员求和，无批次的旧序列格按 {@link
    *       SocialData#headlinePopulationAt} 回退；城乡二分只对有 {@link PopulationGroup} 的格。
    *   <li>粮食库存 / 日耗 / 覆盖天数：逐格 actor {@code GoodsAccount} 与 {@code ClassRow.naturalNeeds} 同源。
    *   <li>银货币：逐格 actor {@code GoodsAccount.money} 的 silver 分栏。
@@ -724,7 +729,11 @@ public final class ApiViews {
     // 一趟 groups 预聚合：long[2] = [urban, rural]（与 SocialData.urbanRuralAt 同判）。
     Map<HexCoord, long[]> groupsByHex = new LinkedHashMap<>();
     for (PopulationGroup group : social.groups().values()) {
-      long[] counts = groupsByHex.computeIfAbsent(group.residence(), ignored -> new long[2]);
+      HexCoord lotHex = social.hexOfLot(group.id()).orElse(null);
+      if (lotHex == null) {
+        continue; // UNIT 家户不进逐格热力图（S3 再接 unit 口径）
+      }
+      long[] counts = groupsByHex.computeIfAbsent(lotHex, ignored -> new long[2]);
       if (PopulationLots.isUrban(group)) {
         counts[0] += group.count();
       } else {
@@ -5879,10 +5888,9 @@ public final class ApiViews {
     return view;
   }
 
-  /** 该批次是不是住在这一格（视图层只读 {@code groups} 的落点，不解析 id 的拼法）。 */
+  /** 该批次是不是住在这一格（视图层只从家户取位置，不解析 id 的拼法）。 */
   private static boolean belongsTo(HexCoord coord, SocialData data, PeopleLotId group) {
-    PopulationGroup lot = data.groups().get(group);
-    return lot != null && coord.equals(lot.residence());
+    return group != null && data.hexOfLot(group).filter(coord::equals).isPresent();
   }
 
   /**

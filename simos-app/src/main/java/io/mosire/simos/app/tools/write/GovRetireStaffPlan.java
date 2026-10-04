@@ -88,12 +88,12 @@ final class GovRetireStaffPlan {
       int r = toInt(reinsertR.get(), "reinsertR");
       HexCoord hex = new HexCoord(q, r);
       SocialData social = ToolSupport.socialData(state);
-      if (!social.populations().containsKey(hex)) {
+      if (social.groupsAt(hex).isEmpty()) {
         throw new IllegalArgumentException(
             "回写格 "
                 + hexText(hex)
-                + " 没有 populations 序列：social.SeedGroups 的跨组件校验会拒（批次必须落在有序列的格上）"
-                + "（先 social.SetPopulation 补该格序列，或改指已有序列的格）");
+                + " 没有任何人口批次：没有可并入的批次，本工具不静默丢人"
+                + "（先向该格落一批人口，或改指已有批次的格）");
       }
       List<PopulationGroup> groups = social.groupsAt(hex);
       if (groups.isEmpty()) {
@@ -124,7 +124,6 @@ final class GovRetireStaffPlan {
           Optional.of(
               new PopulationGroup(
                   smallest.id(),
-                  smallest.residence(),
                   smallest.sex(),
                   after,
                   smallest.ageAtAnchorDays(),
@@ -171,13 +170,6 @@ final class GovRetireStaffPlan {
       }
       if (reinsertAt.isPresent()) {
         PopulationGroup target = reinsertTarget.get();
-        if (!target.residence().equals(reinsertAt.get())) {
-          throw new IllegalArgumentException(
-              "内部分摊不自洽：回写批次 residence="
-                  + hexText(target.residence())
-                  + " != 回写格 "
-                  + hexText(reinsertAt.get()));
-        }
         if (target.count() < dismissal.count() || reinsertCountAfter != target.count()) {
           throw new IllegalArgumentException(
               "守恒破坏：回写批次人数 "
@@ -235,8 +227,8 @@ final class GovRetireStaffPlan {
       PopulationGroup target = reinsertTarget.get();
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("id", target.id().value());
-      entry.put("q", target.residence().q());
-      entry.put("r", target.residence().r());
+      entry.put("q", reinsertAt.get().q());
+      entry.put("r", reinsertAt.get().r());
       entry.put("sex", target.sex().name());
       entry.put("count", target.count());
       entry.put("ageDays", target.ageAtAnchorDays());

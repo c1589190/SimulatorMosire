@@ -40,7 +40,6 @@ import io.mosire.simos.social.gen.SettlementPlan;
 import io.mosire.simos.social.gen.TerrainView;
 import io.mosire.simos.social.gen.ValueRange;
 import io.mosire.simos.social.gen.WorldgenConfig;
-import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.state.BranchId;
@@ -695,7 +694,7 @@ public final class WorldgenInitializeTool implements AgentTool {
               CREATE_CITY_TYPE,
               createCityPayload(region.id(), city, seed)));
     }
-    List<PopulationGroup> groups = PopulationSeeder.groups(plan, anchorTick);
+    PopulationSeeder.Seeding population = PopulationSeeder.seed(plan, anchorTick);
     batch.add(
         envelope(
             batchId,
@@ -703,14 +702,14 @@ public final class WorldgenInitializeTool implements AgentTool {
             branch,
             expectedRevision,
             SEED_GROUPS_TYPE,
-            PopulationSeeder.payload(groups)));
+            PopulationSeeder.payload(population)));
     // ★★ H1：**经济与家户 actor 同源**（裁定 D3-C/K1）—— 一条 {@link EconomySeeder#plan} 同时交出
     //   {@code economy.Seed} 的 entries + markets 与家户的开缸库存 + **创世货币禀赋**（后两者进
     //   {@code actor.Seed} 的同一本账）："一次算出、同一份喂两条命令"，两处各算一遍必然漂开
     //   （本仓明令禁止的"同一事实两处拼写点"）。
     EconomySeeder.Seed seeding =
         EconomySeeder.plan(
-            mapId, groups, map, genesisMoneyMilliPerCapita, economyProfile, conditions);
+            mapId, population, map, genesisMoneyMilliPerCapita, economyProfile, conditions);
     batch.add(
         envelope(
             batchId,

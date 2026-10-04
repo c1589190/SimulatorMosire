@@ -32,6 +32,19 @@ public record HouseholdVitalRates(List<HouseholdVitalRate> rates) {
     }
   }
 
+  /**
+   * 按 {@code (bracketId, sex)} 查率；缺失 ⇒ {@link java.util.Optional#empty()}（"这个档没有率"是合法状态：
+   * 结算方对缺失率按 0 处理，不臆造默认值）。
+   */
+  public java.util.Optional<HouseholdVitalRate> find(String bracketId, Sex sex) {
+    for (HouseholdVitalRate rate : rates) {
+      if (rate.bracketId().equals(bracketId) && rate.sex() == sex) {
+        return java.util.Optional.of(rate);
+      }
+    }
+    return java.util.Optional.empty();
+  }
+
   /** 防御性拷贝 + null 元素具名拒绝 + 保序冻结。 */
   private static List<HouseholdVitalRate> freeze(List<HouseholdVitalRate> source) {
     if (source == null) {

@@ -19,7 +19,6 @@ import io.mosire.simos.social.gen.SettlementParams;
 import io.mosire.simos.social.gen.SettlementPlan;
 import io.mosire.simos.social.gen.SettlementRequest;
 import io.mosire.simos.social.gen.TerrainView;
-import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -200,7 +199,7 @@ final class RegionSeedPlan {
    * @param params 本次调用的全部 GM 参数
    * @param request 交给 {@link SettlementGenerator} 的生成请求（全部字段都在）
    * @param settlement 生成的聚落计划
-   * @param groups 与 {@code social.SeedGroups} / {@code economy.Seed} **同源**的人口批次
+   * @param population 与 {@code social.SeedGroups} / {@code economy.Seed} **同源**的人口批次 + 家户
    * @param economySeed 同一次 {@link EconomySeeder#plan} 的内存产物（{@code includeEconomy/includeActors}
    *     任一为真时在场）
    * @param tick 批次锚点 = base state 的世界当前日
@@ -212,7 +211,7 @@ final class RegionSeedPlan {
       Params params,
       SettlementRequest request,
       SettlementPlan settlement,
-      List<PopulationGroup> groups,
+      PopulationSeeder.Seeding population,
       Optional<EconomySeeder.Seed> economySeed,
       long tick,
       int regionHexCount) {
@@ -223,7 +222,7 @@ final class RegionSeedPlan {
       Objects.requireNonNull(params, "params");
       Objects.requireNonNull(request, "request");
       Objects.requireNonNull(settlement, "settlement");
-      groups = List.copyOf(groups);
+      Objects.requireNonNull(population, "population");
       Objects.requireNonNull(economySeed, "economySeed");
     }
 
@@ -343,7 +342,7 @@ final class RegionSeedPlan {
     SettlementPlan settlement =
         SettlementGenerator.generate(request, TerrainView.of(map), SettlementParams.defaults());
     long ruralTotal = sumRural(settlement);
-    List<PopulationGroup> groups = PopulationSeeder.groups(settlement, tick);
+    PopulationSeeder.Seeding population = PopulationSeeder.seed(settlement, tick);
     Optional<EconomySeeder.Seed> economySeed = Optional.empty();
     if (params.includeEconomy() || params.includeActors()) {
       if (ruralTotal == 0L) {
@@ -351,7 +350,7 @@ final class RegionSeedPlan {
       }
       try {
         // ★ 一次算出：economy.Seed 的 entries/markets 与 actor.Seed 的库存/货币/经营者读的是同一份。
-        economySeed = Optional.of(EconomySeeder.plan(mapId, groups, map));
+        economySeed = Optional.of(EconomySeeder.plan(mapId, population, map));
       } catch (IllegalStateException e) {
         // ★ planClassFirst 的"有地无家户"前置：低人口（各阶层切分后某土地/农具持有位置无人）会在这里响亮抛。
         //   折成 BAD_REQUEST 并附可用的降级开关；不静默、也不把用户输入问题伪装成内部故障。
@@ -365,7 +364,7 @@ final class RegionSeedPlan {
             params,
             request,
             settlement,
-            groups,
+            population,
             economySeed,
             tick,
             region.hexes().size());
@@ -412,7 +411,7 @@ final class RegionSeedPlan {
         hits,
         "social.group",
         social.groups().values(),
-        group -> hexes.contains(group.residence()),
+        group -> social.hexOfLot(group.id()).filter(hexes::contains).isPresent(),
         group -> group.id().value());
     collect(
         hits,

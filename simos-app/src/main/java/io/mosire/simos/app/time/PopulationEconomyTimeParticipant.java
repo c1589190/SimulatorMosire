@@ -383,7 +383,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
    * 逐批次：取**它住的那一格、它那一种居住类型**的家户（四行求和）⇒ 满足率‰ ⇒ {@link PopulationDynamics#stressAfter}
    * </pre>
    *
-   * <p>★★ **H0.2 起批次 ↔ 家户的对应不再经产业**：批次身上有<b>落点格</b>（{@code group.residence()}）与 <b>居住类型</b>（批次 id
+   * <p>★★ **H0.2 起批次 ↔ 家户的对应不再经产业**：批次的<b>落点格</b>由所属家户给出（{@code social.hexOfLot(group.id())}）与 <b>居住类型</b>（批次 id
    * 的前缀 ⇒ {@link ResidenceKind#ofLot}，唯一拼写点），而家户行的键正是 {@code (格, 居住类型, 阶层)}（{@code CohortKey}） ⇒
    * 两维直接对上，**不需要中间映射表**。旧版要经"批次供给哪些产业"（{@code LaborAllocation}）再回退到"该格的产业"，
    * 那一步在"一格既有农村又有城镇"时会把两池并起来算 —— 正是 R-N1 要堵的"农村余粮喂城市缺口"。
@@ -404,9 +404,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     Map<HouseholdRef, long[]> byHousehold = dailyProvisioning(classes, flows, unmetBefore);
     Map<PeopleLotId, PopulationGroup> next = new LinkedHashMap<>(social.groups());
     for (PopulationGroup group : social.groups().values()) {
-      // ★ 批次 → 家户：**落点格 + 居住类型**（前缀的唯一判定在 {@link ResidenceKind#ofLot}）。
-      long[] row =
-          byHousehold.get(new HouseholdRef(group.residence(), ResidenceKind.ofLot(group.id())));
+      // ★ 批次 → 家户：**落点格 + 居住类型**（落点从所属家户取；前缀的唯一判定在 {@link ResidenceKind#ofLot}）。
+      HexCoord at = social.hexOfLot(group.id()).orElse(null);
+      if (at == null) {
+        continue; // UNIT 家户的满足率口径属 S3 消费方集成；S2 不臆造"哪个格的账"
+      }
+      long[] row = byHousehold.get(new HouseholdRef(at, ResidenceKind.ofLot(group.id())));
       if (row == null) {
         continue; // 该格没有这一组家户（世界还没播种到这里，或该池在这格没有人）⇒ 没有可算的满足率
       }

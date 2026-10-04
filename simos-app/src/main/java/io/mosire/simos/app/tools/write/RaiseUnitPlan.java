@@ -497,8 +497,8 @@ final class RaiseUnitPlan {
         PopulationGroup group = source.group();
         Map<String, Object> entry = new LinkedHashMap<>();
         entry.put("id", group.id().value());
-        entry.put("q", group.residence().q());
-        entry.put("r", group.residence().r());
+        entry.put("q", source.at().q());
+        entry.put("r", source.at().r());
         entry.put("sex", group.sex().name());
         entry.put("count", source.countAfter());
         // ★ 保真三件：锚点年龄 / 锚点 tick / 生理压力——整组覆盖不重新解释这批人。
