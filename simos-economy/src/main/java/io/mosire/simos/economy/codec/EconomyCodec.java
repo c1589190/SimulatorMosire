@@ -61,6 +61,7 @@ import io.mosire.simos.economy.classfirst.ClassFirstState;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.DebtContract;
+import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
@@ -100,6 +101,10 @@ import java.util.function.Function;
  * {@code ClassStructure.positions} / {@code ClassStructure.defaultSharesPerMille} / {@code
  * ClassStanding.retainedShares} 三个嵌套键表）；{@code classStandings} 的键仍是上面已注册的 {@code HouseholdId}。
  * 旧档缺这四个键 ⇒ 快照侧收成空表、变更集侧收成 {@code Unchanged}，见各自的构造器兜底。
+ *
+ * <p>★ <b>P10.1</b>：{@code merchantFirms}（第 31 个组件）的键复用已注册的 {@code ProductionOrganizationId}；值
+ * {@link io.mosire.simos.economy.model.MerchantFirm} 按 record 组件字段显式绑定， 缺键 ⇒ 空表（{@code EconomyData}
+ * 构造期归一），写侧按构造期 {@code LinkedHashMap} 的插入序保序。
  *
  * <p>★ {@code AssetKind} 作键（{@code dailyInputPerUnit}/{@code capacity}）走 Jackson **默认的枚举键** 绑定（按
  * {@code name()}），无需自定义；其余 ID/键类型都重写了 {@code toString()}（= 裸值）并与各自的 {@code parse} 互为逆，故只需读侧。
@@ -144,6 +149,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   private static ObjectMapper withEconomyMixins(ObjectMapper mapper) {
     mapper.addMixIn(EconomyChangeSet.class, EconomyChangeSetMixin.class);
     mapper.addMixIn(ClassFirstState.class, ClassFirstStateMixin.class);
+    mapper.addMixIn(EconomyMeta.class, EconomyMetaMixin.class);
     return mapper;
   }
 
@@ -159,6 +165,16 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
 
     @JsonIgnore
     abstract boolean isEmpty();
+  }
+
+  /**
+   * ★★ P10.1：{@link EconomyMeta#isCurrentRuntimeVersion()} 是**派生判据**（不是状态），Jackson 会把 {@code
+   * isXxx()} 当属性写出，严格读入随即因未知键炸 ⇒ 与 {@code isEmpty()} 同款在 mixin 里摘掉。
+   */
+  abstract static class EconomyMetaMixin {
+
+    @JsonIgnore
+    abstract boolean isCurrentRuntimeVersion();
   }
 
   private static SimpleModule keyModule() {
@@ -202,6 +218,9 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(ClassStructureId.class, keyDeserializer(ClassStructureId::parse));
     module.addKeyDeserializer(ClassPositionId.class, keyDeserializer(ClassPositionId::parse));
     // ★★ E2：productionOrganizations / assetRules 两张新表的键（opaque 裸值，与各自 parse 互为逆，只需读侧）。
+    //   ★ P10.1：merchantFirms（第 31 个组件）的键 = ProductionOrganizationId，复用下面这一个注册点；
+    //     值 MerchantFirm 走 Jackson 的 record 字段显式绑定（无自定义 compatibility 层），缺键 ⇒ EconomyData
+    //     构造期归一成空表，写侧按构造期 LinkedHashMap 的插入序保序。
     module.addKeyDeserializer(
         ProductionOrganizationId.class, keyDeserializer(ProductionOrganizationId::parse));
     module.addKeyDeserializer(AssetRuleId.class, keyDeserializer(AssetRuleId::parse));

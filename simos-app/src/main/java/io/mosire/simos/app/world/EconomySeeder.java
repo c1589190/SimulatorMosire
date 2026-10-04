@@ -49,6 +49,7 @@ import io.mosire.simos.economy.model.ClassPosition;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DefaultProductionModes;
+import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
@@ -702,8 +703,17 @@ public final class EconomySeeder {
    */
   public static final int GENESIS_MONEY_BUFFER_PER_MILLE = 1_200;
 
-  /** 规则版本标签（§5 末条"改参数 = 改 rulesVersion"）：写入 {@code EconomyMeta}。 */
+  /** 规则版本标签（§5 末条"改参数 = 改 rulesVersion"）：CLASS_FIRST 旧路径的写入值，逐字节不动。 */
   public static final String RULES_VERSION = "aggregate-v1";
+
+  /**
+   * ★★ P10.1：PRODUCTION_RUNTIME 新档写入的运行时版本 —— 唯一拼写点在 {@link EconomyMeta}；写入前先过版本门自检 （当前版本 ≠ 自检值 ⇒
+   * 当场抛"旧档/版本不符，需要 GM 重置"，而不是把错版本写进新档）。
+   */
+  static String productionRuntimeRulesVersion() {
+    EconomyMeta.requireCurrentRuntimeVersionTag(EconomyMeta.RUNTIME_VERSION_SEVEN_HEX_V1);
+    return EconomyMeta.RUNTIME_VERSION_SEVEN_HEX_V1;
+  }
 
   /**
    * ★★ E3：创世发行政府的稳定 id（世界级最小政府；唯一拼写点）。当前市场单一计价货币 {@code silver}， 因此全世界只有一个发行主体声称 silver ——
@@ -1080,7 +1090,11 @@ public final class EconomySeeder {
     }
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("mapId", mapId);
-    payload.put("rulesVersion", RULES_VERSION);
+    // ★★ P10.1：PRODUCTION_RUNTIME 新档写当前 7 hex 运行时版本（唯一拼写点在 {@code EconomyMeta}）；
+    //   CLASS_FIRST 旧路径继续保持 RULES_VERSION，逐字节不变。
+    payload.put(
+        "rulesVersion",
+        profile.seedsProductionStructure() ? productionRuntimeRulesVersion() : RULES_VERSION);
     payload.put("entries", entries);
     Map<String, Object> marketNodes = new LinkedHashMap<>();
     for (Map.Entry<HexCoord, Market> atHex : markets.entrySet()) {

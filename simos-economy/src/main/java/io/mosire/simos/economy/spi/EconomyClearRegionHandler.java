@@ -31,6 +31,7 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
+import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.Pledge;
@@ -91,10 +92,10 @@ import java.util.Set;
  *   <li>{@code governments} / {@code moneyIssuances}：世界级发行主体与世界总量审计；发行量不按区域归属，清它会破坏 货币守恒审计。
  * </ul>
  *
- * <p>★★ <b>为什么 classes/memberships 必须同一次构造（其余 28 个组件走 with* 链）</b>：30 个组件里 {@code memberships ↔
+ * <p>★★ <b>为什么 classes/memberships 必须同一次构造（其余 29 个组件走 with* 链）</b>：31 个组件里 {@code memberships ↔
  * classes} 有**双向互锁**（membership 必须引用现存家户 ∧ 非空 memberships 的 Σcount 必须等于
  * ΣClassRow.population）——先删哪一侧的中间态都非法。本类先按依赖序对其余组件逐 {@code with*}（先摘引用方、再摘被引用方，
- * 每个中间态都合法），最后把这两张表连同其余 28 个组件的结果**一次规范构造**，再走 {@link EconomyChangeSet#between(EconomyData,
+ * 每个中间态都合法），最后把这两张表连同其余 29 个组件的结果**一次规范构造**，再走 {@link EconomyChangeSet#between(EconomyData,
  * EconomyData)} 派生变更集；落盘路径与逐组件替换完全同一条（铁律 2/5）。
  *
  * <p>★ <b>Region 必须先在 {@code map.regions()} 里存在</b>：缺 map 切片/切片类型不对是装配故障（{@link
@@ -248,6 +249,10 @@ public final class EconomyClearRegionHandler
             });
     Set<ProductionOrganizationId> removedOrganizations =
         keysRemoved(base.productionOrganizations(), organizations);
+    // ★★ P10.1：商号表随它指名的组织一起移除 —— 否则新状态会出现"商号指向已删组织"的悬空引用，
+    //    EconomyData 构造期守卫会当场 fail-closed（宁可同步摘掉，不把区域清空卡死）。空表时逐值 no-op。
+    Map<ProductionOrganizationId, MerchantFirm> merchantFirms =
+        withoutKeys(base.merchantFirms(), removedOrganizations);
     Map<ModeTransitionId, ModeTransition> modeTransitions =
         new LinkedHashMap<>(base.modeTransitions());
     modeTransitions
@@ -304,7 +309,7 @@ public final class EconomyClearRegionHandler
             .withIndustries(industries);
 
     // ⑥ classes 与 memberships **同一次规范构造**：先删任一侧的中间态都非法（另一侧悬空或 Σ 守恒失衡）。
-    //    其余 28 个组件取 staged 的逐 with* 结果 ⇒ 等价于"30 个 with* 的同时复合"。
+    //    其余 29 个组件取 staged 的逐 with* 结果 ⇒ 等价于"31 个组件的同时复合"。
     return new EconomyData(
         staged.meta(),
         staged.industries(),
@@ -335,7 +340,8 @@ public final class EconomyClearRegionHandler
         staged.crisisSignals(),
         staged.modeTransitions(),
         staged.classShares(),
-        staged.classFirst());
+        staged.classFirst(),
+        merchantFirms);
   }
 
   /** 保序拷贝并删掉给定键（返回可变表，交给下一次过滤；构造器会再冻）。 */

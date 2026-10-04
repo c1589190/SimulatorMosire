@@ -365,6 +365,8 @@ public final class EconomyStateBuilder {
         modeTransitions == null ? base.modeTransitions() : modeTransitions,
         classShares == null ? base.classShares() : classShares,
         // ★★ R1：整值工作副本（未写 ⇒ 原样复用 base 的不可变状态）。
-        classFirst());
+        classFirst(),
+        // ★★ P10.1：商号表本批不参与日结算写回 —— 原样带过 base 的表（写入口留给 P10.2+）。
+        base.merchantFirms());
   }
 }

@@ -47,6 +47,7 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
+import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.Pledge;
@@ -63,7 +64,7 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 30 个：{@code meta} / {@code industries} /
+ * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 31 个：{@code meta} / {@code industries} /
  * {@code classes} / {@code debtContracts} / {@code flows} / {@code laborSupply} / {@code
  * allocations} / {@code relations} / {@code markets} / {@code shipments} / {@code memberships} /
  * {@code assetShares} / {@code operatorConditions} / {@code units} / {@code demands} / {@code
@@ -71,7 +72,7 @@ import java.util.function.Function;
  * classStandings} / {@code productionOrganizations} / {@code assetRules} + E3 的 {@code governments}
  * / {@code moneyIssuances} + E4a 的 {@code debtContracts} / {@code pledges} + E5a 的 {@code
  * liquidationPolicies} / {@code crisisSignals} + E6a 的 {@code modeTransitions} / {@code
- * classShares}）。
+ * classShares} + R1 的 {@code classFirst} + P10.1 的 {@code merchantFirms}）。
  *
  * <p>铁律 5：变更集从完整状态类型派生，由 {@code EconomyRoundTripTest} 的**反射枚举**把守——新增状态组件若不进 变更集，那个测试自动红。
  *
@@ -80,7 +81,8 @@ import java.util.function.Function;
  * productionOrganizations/assetRules}；E3 {@code governments/moneyIssuances}；E4 {@code
  * debtContracts} （替换旧 {@code debts} 槽）/{@code pledges}；E5 {@code
  * liquidationPolicies/crisisSignals}；E6 {@code modeTransitions/classShares}。E6b（GM 经济调整命令）与 E6c（统一
- * dashboard 读口）都只读写既有组件， **零新状态组件**；R1 追加 {@code classFirst} 后为 **30 个组件**（上面那份逐条清单就是全表）。
+ * dashboard 读口）都只读写既有组件， **零新状态组件**；R1 追加 {@code classFirst}、P10.1 追加 {@code merchantFirms} 后为 **31
+ * 个组件**（上面那份逐条清单就是全表）。
  *
  * <p>★ **差异与重建的语义不在这里**：一律委托 {@link FieldDelta#diff} / {@link FieldDelta#rebuild}（与 {@code
  * MapChangeSet} / {@code SocialChangeSet} / {@code UnitChangeSet} / {@code SdChangeSet} / {@code
@@ -132,7 +134,8 @@ public record EconomyChangeSet(
     FieldDelta<HexCrisisSignal> crisisSignals,
     FieldDelta<ModeTransition> modeTransitions,
     FieldDelta<ClassShare> classShares,
-    FieldDelta<ClassFirstState> classFirst)
+    FieldDelta<ClassFirstState> classFirst,
+    FieldDelta<MerchantFirm> merchantFirms)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -249,6 +252,10 @@ public record EconomyChangeSet(
     if (classFirst == null) {
       classFirst = new FieldDelta.Unchanged<>();
     }
+    // ★★ P10.1 第 31 个组件（商号表）：旧变更集没提该组件，就是没动它。
+    if (merchantFirms == null) {
+      merchantFirms = new FieldDelta.Unchanged<>();
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ **全 Unchanged**（不是空对象）。 */
@@ -285,7 +292,8 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.crisisSignals(), target.crisisSignals()),
         FieldDelta.diff(base.modeTransitions(), target.modeTransitions()),
         FieldDelta.diff(base.classShares(), target.classShares()),
-        FieldDelta.diff(classFirstTable(base.classFirst()), classFirstTable(target.classFirst())));
+        FieldDelta.diff(classFirstTable(base.classFirst()), classFirstTable(target.classFirst())),
+        FieldDelta.diff(base.merchantFirms(), target.merchantFirms()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -330,7 +338,9 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(base.classShares(), cs.classShares(), ClassShareId::parse),
         classFirstOf(
             FieldDelta.rebuild(
-                classFirstTable(base.classFirst()), cs.classFirst(), key -> CLASS_FIRST_KEY)));
+                classFirstTable(base.classFirst()), cs.classFirst(), key -> CLASS_FIRST_KEY)),
+        FieldDelta.rebuild(
+            base.merchantFirms(), cs.merchantFirms(), ProductionOrganizationId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -364,7 +374,8 @@ public record EconomyChangeSet(
         || crisisSignals.changed()
         || modeTransitions.changed()
         || classShares.changed()
-        || classFirst.changed());
+        || classFirst.changed()
+        || merchantFirms.changed());
   }
 
   /**

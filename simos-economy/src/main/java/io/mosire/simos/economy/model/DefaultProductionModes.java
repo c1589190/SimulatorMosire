@@ -22,7 +22,7 @@ import java.util.Optional;
  * ClassPosition}；{@code EconomySeeder} 的 {@code production-runtime} profile 直接以本目录为唯一拼写点发 {@code
  * modes} / {@code classStructures} / {@code classPositions} / {@code classStandings} 四个顶层键。
  *
- * <p>★★ <b>七个 mode 与位置角色（P1 的六个 + P6 追加的商人 mode；本表是唯一裁决表）</b>：
+ * <p>★★ <b>八个 mode 与位置角色（P1 的六个 + P6 追加的商人 mode + P10.1 追加的流民 mode；本表是唯一裁决表）</b>：
  *
  * <pre>
  * mode                   结构 id                        位置 role → relationToMeans / laborRole / surplusRole
@@ -40,6 +40,8 @@ import java.util.Optional;
  * merchant               merchant-structure             principal       OWNER          ORGANIZER   SURPLUS_RECEIVER
  *                                                       porter          DIRECT_LABORER PROVIDER    WAGE_EARNER
  *                                                       self_employed   MIXED          BOTH        SELF_SUBSISTENCE
+ * displaced              displaced-structure             laborer        DIRECT_LABORER PROVIDER    WAGE_EARNER
+ *                                                       destitute       DIRECT_LABORER NONE        DEPENDENT
  * </pre>
  *
  * <p>★★ <b>为什么有 {@code family_farm} 这个桥接 mode</b>：旧 {@code class-first} 的 {@code middle_peasant} /
@@ -50,6 +52,11 @@ import java.util.Optional;
  * <p>★★ <b>P6 的 {@code merchant} mode</b>：把探针 {@code TransportTeam}/{@code MerchantTier} 的三档
  * （脚夫/个体户/老板）落成正式结构位置；层次、城市折扣、农村累积成本与运力自增长的政策值在 {@code MerchantPolicy}。 ★ P6 只让目录/结构/位置能进 {@code
  * EconomyData} 并通过构造期守卫，<b>不</b>生成商人组织（组织生成是 P6 后续/P9）。
+ *
+ * <p>★★ <b>P10.1 的 {@code displaced} mode</b>：失产/失业家户的一等 mode（架构 §3.3），位置 {@code
+ * displaced-laborer}（DIRECT_LABORER/PROVIDER/WAGE_EARNER）与 {@code displaced-destitute}
+ * （DIRECT_LABORER/NONE/DEPENDENT）。本批只落目录/结构/位置并随 {@code EconomySeeder} 的逐目录迭代进新档；
+ * 进入/离开规则与人口迁移留给后续批次，不在这里接线。
  *
  * <p>★★ <b>ID 三条硬约束</b>：
  *
@@ -101,6 +108,9 @@ public final class DefaultProductionModes {
   /** ★ P6 商人：探针 {@code TransportTeam}/{@code MerchantTier} 的正式 mode（脚夫/个体户/老板三档）。 */
   public static final ProductionModeId MERCHANT = new ProductionModeId("merchant");
 
+  /** ★★ P10.1 流民：失产/失业家户的一等 mode（架构 §3.3；本批只落目录与位置，不接线迁移）。 */
+  public static final ProductionModeId DISPLACED = new ProductionModeId("displaced");
+
   /** ★ 位置角色名：地主（佃农制三个 mode 共用角色名，但各自有独立位置 id）。 */
   public static final String ROLE_LANDLORD = "landlord";
 
@@ -134,6 +144,18 @@ public final class DefaultProductionModes {
   /** ★ 位置角色名：个体商户（P6；位置 id = {@code merchant-self-employed}）。 */
   public static final String ROLE_SELF_EMPLOYED = "self_employed";
 
+  /** ★★ 位置角色名：流民劳力（P10.1；位置 id = {@code displaced-laborer}）。 */
+  public static final String ROLE_DISPLACED_LABORER = "laborer";
+
+  /** ★★ 位置角色名：流民依附者（P10.1；位置 id = {@code displaced-destitute}）。 */
+  public static final String ROLE_DISPLACED_DESTITUTE = "destitute";
+
+  /** ★ {@link #ROLE_DISPLACED_LABORER} 的短名别名（同一个值，不是第二处拼写点）。 */
+  public static final String ROLE_LABORER = ROLE_DISPLACED_LABORER;
+
+  /** ★ {@link #ROLE_DISPLACED_DESTITUTE} 的短名别名（同一个值，不是第二处拼写点）。 */
+  public static final String ROLE_DESTITUTE = ROLE_DISPLACED_DESTITUTE;
+
   /** ★ 目录的稳定顺序（声明序 = mode 列表序 = 结构列表序 = 位置在本结构内的声明序）。 */
   private static final List<ModeSpec> MODE_SPECS = buildModeSpecs();
 
@@ -158,7 +180,7 @@ public final class DefaultProductionModes {
    * ★ 默认生产方式目录（键 = {@link ProductionMode#id()}；保序）。
    *
    * <p>返回每次新建的防御性副本（仍是不可变包装）；顺序 = 本类声明的 mode 顺序（佃农制三形态 → 雇农制 → 手工业 → 桥接 {@code family_farm} → P6
-   * {@code merchant}）。
+   * {@code merchant} → P10.1 {@code displaced}）。
    */
   public static Map<ProductionModeId, ProductionMode> modes() {
     return Collections.unmodifiableMap(new LinkedHashMap<>(MODES));
@@ -215,7 +237,10 @@ public final class DefaultProductionModes {
     return position(modeId, role).map(ClassPosition::id);
   }
 
-  /** 目录的稳定声明序：P1 五模式（计划序）+ 桥接 family_farm + P6 merchant（追加在末尾）。每项自带 mode / 结构 / 位置。 */
+  /**
+   * 目录的稳定声明序：P1 五模式（计划序）+ 桥接 family_farm + P6 merchant + P10.1 displaced（均追加在末尾）。每项自带 mode / 结构 /
+   * 位置。
+   */
   private static List<ModeSpec> buildModeSpecs() {
     List<ModeSpec> specs = new ArrayList<>();
     specs.add(
@@ -332,6 +357,26 @@ public final class DefaultProductionModes {
                 RelationToMeans.MIXED,
                 LaborRole.BOTH,
                 SurplusRole.SELF_SUBSISTENCE)));
+    // ★★ P10.1：displaced 追加在**末尾**，P1/P6 的七个 mode / 结构 / 位置声明序逐项不变（旧 payload 前缀不变）。
+    //   角色照架构 §3.3：displaced_laborer DIRECT_LABORER / PROVIDER / WAGE_EARNER；
+    //   displaced_destitute DIRECT_LABORER / NONE / DEPENDENT。位置 id 按本目录既有规则生成 =
+    //   displaced-laborer / displaced-destitute（role 下划线换连字符）。
+    specs.add(
+        modeSpec(
+            DISPLACED,
+            "流民（失产失业）",
+            positionSpec(
+                ROLE_DISPLACED_LABORER,
+                "流民劳力",
+                RelationToMeans.DIRECT_LABORER,
+                LaborRole.PROVIDER,
+                SurplusRole.WAGE_EARNER),
+            positionSpec(
+                ROLE_DISPLACED_DESTITUTE,
+                "流民依附者",
+                RelationToMeans.DIRECT_LABORER,
+                LaborRole.NONE,
+                SurplusRole.DEPENDENT)));
     return Collections.unmodifiableList(specs);
   }
 

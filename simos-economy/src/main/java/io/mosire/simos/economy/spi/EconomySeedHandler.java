@@ -162,7 +162,9 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             merge(base.classShares(), seeded.classShares()),
             // ★★ R1 第 30 个组件：可选 classFirst 顶层键按"空表播种 ⇒ 逐值带过已有状态"的口径合并
             //   （漏了它 = 已播的阶层池状态在后续国家 seed 时静默消失）。
-            mergeClassFirst(base.classFirst(), seeded.classFirst()));
+            mergeClassFirst(base.classFirst(), seeded.classFirst()),
+            // ★★ P10.1 第 31 个组件：商号表按同一套 append 口径合并（空表播种 ⇒ 逐值带过已有状态）。
+            merge(base.merchantFirms(), seeded.merchantFirms()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 
