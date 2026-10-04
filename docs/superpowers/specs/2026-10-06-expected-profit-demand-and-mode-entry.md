@@ -71,7 +71,12 @@
 | 真实 12hex 3650 | 停在 `urban 875→9`、`displacedPeak=0`、`freightPaid=0`、D-022 位置下落断言 | 城镇不崩、merchant/handicraft mode 有人、freight>0、displaced>0、D-022 mode 改写 = 0 |
 | 运行时版本 | `seven-hex-v1` | `seven-hex-v2`；seeder 写入新版本，旧载荷不可混入 |
 
-### 2.1 "市场节点"是什么（避免与每格市场价表混淆）
+### 2.1 "市场节点"是什么（★ 2026-10-06 D-026 已取代本节的半径划区口径）
+
+> ★★ **本节的“节点 + 半径划区”说明已被 D-026 取代**：市场区改由 map 的 `Region`（GM 可编辑）给出，
+> 节点改为经济聚集的自然产物。新的完整设计见
+> `docs/superpowers/specs/2026-10-06-market-regions-and-agglomeration-redesign.md`。
+> 本节以下文字保留为历史对照，不再作为生产实现依据。
 
 - `EconomyData.markets` 是**逐格的价目表**（一个 hex 可以有一张 `Market`：单一计价货币 + 商品价格）；它回答"这一格价格是多少"。
 - `MarketTopology` 的**市场节点**是**区域市场锚**（`MarketNode`：anchor hex、`radiusHex`、`numeraire`、`receiveWith`），
