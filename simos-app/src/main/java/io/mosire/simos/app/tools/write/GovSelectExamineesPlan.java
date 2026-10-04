@@ -338,7 +338,6 @@ final class GovSelectExamineesPlan {
             List.of(new Segment<>(at, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(at, Optional.of(start))), List.of(), null),
         List.of(),
-        List.of(),
         NEW_UNIT_SPEED,
         NEW_UNIT_MOBILITY_PER_MILLE,
         Optional.empty(),

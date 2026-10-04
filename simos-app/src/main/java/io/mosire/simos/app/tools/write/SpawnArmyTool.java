@@ -110,7 +110,7 @@ public final class SpawnArmyTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 按格直接建军（组合工具，一批 = 一条 revision；GM 特权：不抽人口、不抽粮饷）："
+    return "GM 按格直接建军（组合工具，一批 = 一条 revision；GM 特权：不抽人口、不抽粮饷）。★ S3b：Unit.manpower 已退役，本工具尚未接线到家户来源 ⇒ apply 会被 unit.CreateUnit 具名拒（新单位人口必须先有 Social 家户）；本工具暂只保留 preview 与失败路径："
         + "参数 {unitId(必填), name(必填), q(必填 int), r(必填 int), member(必填 int, >=1；新单位人力表落成单条 "
         + "{type=\""
         + SpawnArmyPlan.DEFAULT_MANPOWER_TYPE

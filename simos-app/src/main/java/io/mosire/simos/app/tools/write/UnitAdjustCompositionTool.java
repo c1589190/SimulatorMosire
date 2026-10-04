@@ -43,8 +43,8 @@ public final class UnitAdjustCompositionTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "GM 调试直改单位人力/装备：固定 unit.AdjustComposition，载荷 {id, manpower[{type,amount(有符号)}],"
-        + " equipment[{type,amount(有符号)}]}——正增量可新建 type（追加表尾）、负增量要求 type 已存在且 |Δ| ≤ 当前值；"
-        + "同表 type 不重复、零增量合法 no-op；一条命令原子改两张表。";
+    return "GM 调试直改单位装备：固定 unit.AdjustComposition，载荷 {id, equipment[{type,amount(有符号)}]}"
+        + "（★ S3b：manpower 已退役，非空 manpower 具名拒；人员属于 Social 家户）——正增量可新建 type（追加表尾）、"
+        + "负增量要求 type 已存在且 |Δ| ≤ 当前值；同表 type 不重复、零增量合法 no-op。";
   }
 }

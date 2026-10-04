@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -58,9 +59,9 @@ import java.util.function.Function;
  * </ul>
  *
  * <p>★★ <b>S3a 的线格式</b>：{@code Unit} 再多一个 {@code "households"} 键（第 18 组件，紧接 {@code
- * "stateDescriptions"}），值 = {@code HouseholdId} 的有序数组（record 值，不需要键反序列化器）。★ <b>不做旧档归一</b>
- * （与 manpower/equipment 同口径）：旧档没有该键 ⇒ Jackson 给 {@code null} ⇒ {@code Unit} 紧凑构造器当场拒——旧世界不迁移
- * （架构 §1）⇒ 让它响亮读不出，而不是静默丢家户。变更集侧同样从 record 组件自动派生（铁律 5）。
+ * "stateDescriptions"}），值 = {@code HouseholdId} 的有序数组（record 值，不需要键反序列化器）。★ <b>不做旧档归一</b> （与
+ * manpower/equipment 同口径）：旧档没有该键 ⇒ Jackson 给 {@code null} ⇒ {@code Unit} 紧凑构造器当场拒——旧世界不迁移 （架构 §1）⇒
+ * 让它响亮读不出，而不是静默丢家户。变更集侧同样从 record 组件自动派生（铁律 5）。
  *
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
  *
@@ -91,12 +92,16 @@ public final class UnitCodec implements ModuleCodec, ModuleDiffer {
     abstract boolean isEmpty();
   }
 
-  /** 三个键类型各接一路 {@code parse}（{@code RegionId} 是辖区阶段 5 新进树的自定义键）。 */
+  /**
+   * 四个键类型各接一路 {@code parse}（{@code RegionId} 是辖区阶段 5 新进树的自定义键；{@code HouseholdId} 是 S3b
+   * 军官/领导家户配置的键——{@code householdDuties}/{@code householdPosts} 都是 {@code HouseholdId → 配置} 的表）。
+   */
   private static SimpleModule keyModule() {
     SimpleModule module = new SimpleModule("unit-json-keys");
     module.addKeyDeserializer(UnitId.class, keyDeserializer(UnitId::parse));
     module.addKeyDeserializer(CommandChainId.class, keyDeserializer(CommandChainId::parse));
     module.addKeyDeserializer(RegionId.class, keyDeserializer(RegionId::parse));
+    module.addKeyDeserializer(HouseholdId.class, keyDeserializer(HouseholdId::parse));
     return module;
   }
 

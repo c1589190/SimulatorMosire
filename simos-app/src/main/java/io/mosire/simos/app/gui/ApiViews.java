@@ -38,11 +38,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.social.api.lookup.HouseholdLookup;
-import io.mosire.simos.social.api.lookup.PopulationLookup;
-import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.labor.LaborSupply;
@@ -124,19 +120,25 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.lookup.HouseholdLookup;
+import io.mosire.simos.social.api.lookup.PopulationLookup;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationHeadline;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.UrbanRural;
 import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentHouseholdPost;
 import io.mosire.simos.unit.Jurisdiction;
+import io.mosire.simos.unit.MilitaryHouseholdDuty;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.Route;
@@ -702,7 +704,8 @@ public final class ApiViews {
               "粮食·周期缺口",
               "毫粮",
               "本周期累计（旧 MarketReport 口径）；production-runtime 无逐格来源",
-              "R3a 起旧市场报告组件已删除；production-runtime 不产生逐格周期缺口" + "（旧 FlowRow.unmetNeed 不作为代理，避免把 0 读成没有缺口）",
+              "R3a 起旧市场报告组件已删除；production-runtime 不产生逐格周期缺口"
+                  + "（旧 FlowRow.unmetNeed 不作为代理，避免把 0 读成没有缺口）",
               new LinkedHashMap<>());
       case HEATMAP_MONEY_SILVER -> moneySilverHeatmap(state, id);
       default ->
@@ -1534,11 +1537,10 @@ public final class ApiViews {
   /**
    * ★ F1：**世界级经济总览**（{@code GET /api/economy/overview} 的视图）。
    *
-   * <p>★ <b>它不逐格</b>：货币发行/回笼、actor kind / 家户阶层聚合都是**世界级**量；逐格读仍走 {@link
-   * #economyHex}。本方法只是把 {@code economyHex} 用的同一批私有装配函数（{@link
-   * #moneyIssuanceView} / {@link #moneyByActorKind} / {@link #moneyByHouseholdClass} / {@link
-   * #moneyLayers} / {@link #currencyDefViews} / {@link #moneyInstrumentViews}）按**同一口径**组装一次 ——
-   * 不复制第二份公式，两个读口的数字不会漂移。
+   * <p>★ <b>它不逐格</b>：货币发行/回笼、actor kind / 家户阶层聚合都是**世界级**量；逐格读仍走 {@link #economyHex}。本方法只是把 {@code
+   * economyHex} 用的同一批私有装配函数（{@link #moneyIssuanceView} / {@link #moneyByActorKind} / {@link
+   * #moneyByHouseholdClass} / {@link #moneyLayers} / {@link #currencyDefViews} / {@link
+   * #moneyInstrumentViews}）按**同一口径**组装一次 —— 不复制第二份公式，两个读口的数字不会漂移。
    *
    * <p>★ {@code activated} / {@code tick} 来自 economy 切片；{@code scope} 具名写出"世界级"。
    */
@@ -3155,8 +3157,7 @@ public final class ApiViews {
 
   /** ★★ E5b：清算审计读不到的具名原因（唯一拼写点）。 */
   private static final String LIQUIDATION_AUDIT_PROCESS_ONLY =
-      "旧清算/阶层下滑审计（当日 ProductionLedger.liquidationAudits）已随旧结算运行时删除（R3a）："
-          + "逐条\"处置了什么、跳过了什么\"读不到";
+      "旧清算/阶层下滑审计（当日 ProductionLedger.liquidationAudits）已随旧结算运行时删除（R3a）：" + "逐条\"处置了什么、跳过了什么\"读不到";
 
   /** ① 生产自给率报不出来的原因（唯一拼写点：主函数与类注引同一句）。 */
   private static final String PRODUCTION_NEEDS_LEDGER =
@@ -4682,9 +4683,7 @@ public final class ApiViews {
     return units(units, at, map, sd, calendars, null, null);
   }
 
-  /**
-   * S3a：单位清单的每条视图同样带 {@code households[]} 与实时 {@code population}（与 {@link #unit} 的 8 参形态同源）。
-   */
+  /** S3a：单位清单的每条视图同样带 {@code households[]} 与实时 {@code population}（与 {@link #unit} 的 8 参形态同源）。 */
   static List<Map<String, Object>> units(
       UnitState units,
       SimosTimestamp at,
@@ -4739,12 +4738,14 @@ public final class ApiViews {
 
   /**
    * ★★ <b>S3a（2026-10-09）带家户/人口只读 SPI 的重载</b>：在 6 参形态之上追加
+   *
    * <ul>
-   *   <li>{@code households[]}：{@code unit.households()} 的逐项视图（{@code id} + 可得时带
-   *       {@code name/location/memberLots/population}）；</li>
-   *   <li>{@code population}：单位总人口 = {@code PopulationLookup.unitPopulation(unitId)} 现算（<b>不是</b>单位状态里的第二本
-   *       headcount，架构 §5）。</li>
+   *   <li>{@code households[]}：{@code unit.households()} 的逐项视图（{@code id} + 可得时带 {@code
+   *       name/location/memberLots/population}）；
+   *   <li>{@code population}：单位总人口 = {@code PopulationLookup.unitPopulation(unitId)}
+   *       现算（<b>不是</b>单位状态里的第二本 headcount，架构 §5）。
    * </ul>
+   *
    * 两个 lookup 可取同一个 {@code SocialLookupAdapter} 实例；{@code null} ⇒ {@code households[]} 只发 id、
    * {@code population} 为 {@code null}（旧调用点的"没有注入"必须与"是 0 人"可分）。
    */
@@ -4761,9 +4762,8 @@ public final class ApiViews {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", unit.id().value());
     view.put("name", unit.name());
-    // ★★ D3a（2026-10-02 / D-006 + R1）：人力/装备都是**有序条目列表** [{type,amount}…]（不是 member:int /
-    //   equipment:Map）；读侧字段名与新表一致，顺序原样。存量键 `member` 已按 D-011/R4 删除，不留兼容。
-    view.put("manpower", compositionView(unit.manpower()));
+    // ★★ S3b（2026-10-09）：`Unit.manpower` 已退役——人员人口读口走下面的 `population`（Social 家户现算）；
+    //   装备仍是 unit 状态本体，原样透出有序条目列表。
     view.put("equipment", compositionView(unit.equipment()));
     view.put("speed", unit.speed());
     view.put("mobilityPerMille", unit.mobilityPerMille());
@@ -4798,14 +4798,13 @@ public final class ApiViews {
     //   空列表也发（与 stateDescriptions/equipment 同款："没有家户"是单位状态本体的一部分）。
     view.put("households", unitHouseholdViews(unit, householdLookup, population));
     view.put(
-        "population",
-        population == null ? null : population.unitPopulation(unit.id().value()));
+        "population", population == null ? null : population.unitPopulation(unit.id().value()));
     return view;
   }
 
   /**
-   * {@code unit.households()} 的逐项视图：{@code id} 恒有；注入 {@link HouseholdLookup} 时补
-   * {@code name/location/memberLots}；注入 {@link PopulationLookup} 时补该家户人数。★ 顺序 = unit 列表顺序（保序是内容）。
+   * {@code unit.households()} 的逐项视图：{@code id} 恒有；注入 {@link HouseholdLookup} 时补 {@code
+   * name/location/memberLots}；注入 {@link PopulationLookup} 时补该家户人数。★ 顺序 = unit 列表顺序（保序是内容）。
    */
   private static List<Map<String, Object>> unitHouseholdViews(
       Unit unit, HouseholdLookup householdLookup, PopulationLookup population) {
@@ -4871,6 +4870,17 @@ public final class ApiViews {
         govHouseholds.add(household.value());
       }
       view.put("households", govHouseholds);
+      // ★★ S3b（2026-10-09）：领导层家户配置（以 HouseholdId 为键的具名状态；空表也发）。
+      List<Map<String, Object>> posts = new ArrayList<>(gov.householdPosts().size());
+      for (GovernmentHouseholdPost post : gov.householdPosts().values()) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("household", post.householdId().value());
+        row.put("role", post.role().name());
+        row.put("level", post.level().name());
+        row.put("head", post.headOfGovernment());
+        posts.add(row);
+      }
+      view.put("householdPosts", posts);
       view.put("policy", officePolicyView(gov.policy()));
       return view;
     }
@@ -4879,6 +4889,17 @@ public final class ApiViews {
       view.put("kind", "army");
       view.put("masterGov", army.masterGov().map(UnitId::value).orElse(null));
       view.put("role", army.role());
+      // ★★ S3b（2026-10-09）：军官/军职家户配置（以 HouseholdId 为键的具名状态；空表也发）。
+      List<Map<String, Object>> duties = new ArrayList<>(army.householdDuties().size());
+      for (MilitaryHouseholdDuty duty : army.householdDuties().values()) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("household", duty.householdId().value());
+        row.put("kind", duty.kind().name());
+        row.put("appointment", duty.appointment());
+        row.put("commandOf", duty.commandOf().map(UnitId::value).orElse(null));
+        duties.add(row);
+      }
+      view.put("householdDuties", duties);
       return view;
     }
     throw new IllegalStateException("未知的 UnitModule 实现: " + module.getClass().getName());

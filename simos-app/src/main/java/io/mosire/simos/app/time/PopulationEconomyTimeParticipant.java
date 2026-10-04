@@ -5,14 +5,14 @@ import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.household.HouseholdClassRowProjection;
+import io.mosire.simos.app.household.HouseholdUnitConsistency;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.population.LotMigration;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ClassRow;
@@ -29,9 +29,13 @@ import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.population.PopulationDynamics;
 import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.unit.UnitSnapshot;
+import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
@@ -139,10 +143,46 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
   public WorldTimeProposal simulateWorld(SimulationState state, TimeRange range) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(range, "range");
-    EconomyData economy = economyOf(state);
-    SocialData social = socialOf(state);
+    EconomyData economyBase = economyOf(state);
+    SocialData socialBase = socialOf(state);
     // ★★ S1 阶段 4+5 Task 5：**第三片 actor** —— 产权落账只可能发生在同时看得见 economy 与 actor 的地方。
     ActorData actor = actorOf(state);
+    // ★★ S3b（2026-10-09）：Unit/Gov 的 households ↔ Social 家户位置一致性 + ClassRow 人口向 Social 家户投影。
+    //   两件事都必须在日循环之前做：它们改的是本轮推进的**基态**，终端变更集相对 economyBase/socialBase 取差分。
+    UnitState units = unitStateOf(state);
+    SocialData social = socialBase;
+    if (units != null && !social.households().isEmpty()) {
+      HouseholdUnitConsistency.Reconciliation reconciliation =
+          HouseholdUnitConsistency.reconcileSocialToUnits(social, units);
+      social = reconciliation.data();
+      if (!reconciliation.unresolved().isEmpty()) {
+        throw new IllegalStateException(
+            "Unit.households 与 Social 家户位置存在单侧修不了的不一致（S3b）："
+                + reconciliation.unresolved().size()
+                + " 处，首条："
+                + reconciliation.unresolved().get(0));
+      }
+      HouseholdUnitConsistency.requireConsistent(social, units);
+      Map<String, Long> staffProjection =
+          HouseholdUnitConsistency.staffHouseholdProjection(social, units);
+      if (!staffProjection.isEmpty()) {
+        LOG.info(
+            "event=GOV_STAFF_HOUSEHOLD_PROJECTION mapId={} entries={} projection={}",
+            mapId,
+            staffProjection.size(),
+            staffProjection);
+      }
+    }
+    HouseholdClassRowProjection.Result classRowProjection =
+        HouseholdClassRowProjection.project(economyBase, social);
+    if (!classRowProjection.unresolved().isEmpty()) {
+      LOG.warn(
+          "event=CLASSROW_POPULATION_PROJECTION_UNRESOLVED mapId={} count={} first={}",
+          mapId,
+          classRowProjection.unresolved().size(),
+          classRowProjection.unresolved().get(0));
+    }
+    EconomyData economy = classRowProjection.data();
 
     LinkedHashSet<String> reads = new LinkedHashSet<>();
     LinkedHashSet<String> writes = new LinkedHashSet<>();
@@ -175,6 +215,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       // ★ M2.3：区域拓扑读地图（城市/地形）—— 只读声明，避免与地图写者同轮冲突时静默。
       reads.add(mapAddressRoot());
     }
+    if (units != null) {
+      // ★ S3b：本轮读 unit 切片做家户一致性校核/自动同步（只读，不写 unit——写侧仍归 UnitTimeParticipant）。
+      reads.add(unitAddressRoot());
+    }
     writes.add(actorAddressRoot());
     for (GoodsAccountKey key : actor.accounts().keySet()) {
       reads.add(accountAddress(key));
@@ -184,11 +228,12 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     Optional<io.mosire.simos.util.time.SimosTimestamp> to = range.to();
     if (to.isEmpty() || economy.meta().isEmpty()) {
       // 无上界推进 / 经济未激活 ⇒ 三片都不动（但**交的是不变变更集，不是空提案**：契约原文）。
+      // ★ S3b：家户一致性同步 / ClassRow 投影即使在经济未激活时也照常提交（它们各自与 base 差分）。
       return new WorldTimeProposal(
           NAMESPACE,
           Map.of(
-              ECONOMY, EconomyChangeSet.between(economy, economy),
-              SOCIAL, SocialChangeSet.between(social, social),
+              ECONOMY, EconomyChangeSet.between(economyBase, economy),
+              SOCIAL, SocialChangeSet.between(socialBase, social),
               ACTOR, ActorChangeSet.between(actor, actor)),
           reads,
           writes);
@@ -290,9 +335,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                   outcome.births(),
                   outcome.deaths(),
                   stepper.classRows().size(),
-                  stepper.classRows().values().stream()
-                      .mapToLong(ClassRow::population)
-                      .sum());
+                  stepper.classRows().values().stream().mapToLong(ClassRow::population).sum());
               // ★★ S1.4.1 的跨切片收口：出生落在**新的 born lot**（社会侧），存量 lot 只减死亡 ⇒ 在这里按行人口权重
               //   为新批次补建份额，然后逐 lot 硬校验。顺序必须在 landAccountSession 之前（份额不进账户，但它与行人口
               //   同属 economy 工作副本，先收口再构造终态）。
@@ -339,8 +382,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         return new WorldTimeProposal(
             NAMESPACE,
             Map.of(
-                ECONOMY, EconomyChangeSet.between(economy, currentEconomy),
-                SOCIAL, SocialChangeSet.between(social, currentSocial),
+                ECONOMY, EconomyChangeSet.between(economyBase, currentEconomy),
+                SOCIAL, SocialChangeSet.between(socialBase, currentSocial),
                 ACTOR, ActorChangeSet.between(actor, currentBooks)),
             reads,
             writes);
@@ -383,10 +426,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
    * 逐批次：取**它住的那一格、它那一种居住类型**的家户（四行求和）⇒ 满足率‰ ⇒ {@link PopulationDynamics#stressAfter}
    * </pre>
    *
-   * <p>★★ **H0.2 起批次 ↔ 家户的对应不再经产业**：批次的<b>落点格</b>由所属家户给出（{@code social.hexOfLot(group.id())}）与 <b>居住类型</b>（批次 id
-   * 的前缀 ⇒ {@link ResidenceKind#ofLot}，唯一拼写点），而家户行的键正是 {@code (格, 居住类型, 阶层)}（{@code CohortKey}） ⇒
-   * 两维直接对上，**不需要中间映射表**。旧版要经"批次供给哪些产业"（{@code LaborAllocation}）再回退到"该格的产业"，
-   * 那一步在"一格既有农村又有城镇"时会把两池并起来算 —— 正是 R-N1 要堵的"农村余粮喂城市缺口"。
+   * <p>★★ **H0.2 起批次 ↔ 家户的对应不再经产业**：批次的<b>落点格</b>由所属家户给出（{@code social.hexOfLot(group.id())}）与
+   * <b>居住类型</b>（批次 id 的前缀 ⇒ {@link ResidenceKind#ofLot}，唯一拼写点），而家户行的键正是 {@code (格, 居住类型,
+   * 阶层)}（{@code CohortKey}） ⇒ 两维直接对上，**不需要中间映射表**。旧版要经"批次供给哪些产业"（{@code
+   * LaborAllocation}）再回退到"该格的产业"， 那一步在"一格既有农村又有城镇"时会把两池并起来算 —— 正是 R-N1 要堵的"农村余粮喂城市缺口"。
    *
    * <p>★ **没有配额的批次照样吃饭**（0-14 档与全部新生儿）：它们的居住类型与落点格本来就在批次上 ⇒ 这条兜底现在是**结构上白拿的**（旧版要为它单独查一次"该格的产业"）。 ★
    * **没有需求的批次不动**（{@code 需求 == 0} ⇒ 满足率按 1000‰ 计，压力照常消退）："这一天没记账"不等于"饿了一天"。
@@ -492,6 +535,19 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         .orElse(false);
   }
 
+  /** S3b：unit 切片（缺省 ⇒ null；只读，用于家户一致性校核/自动同步）。 */
+  private static UnitState unitStateOf(SimulationState state) {
+    Snapshot snapshot = state.module("unit").orElse(null);
+    if (snapshot == null) {
+      return null;
+    }
+    if (!(snapshot instanceof UnitSnapshot unitSnapshot)) {
+      throw new IllegalStateException(
+          "state 的 unit 切片不是 UnitSnapshot: " + snapshot.getClass().getName());
+    }
+    return unitSnapshot.state();
+  }
+
   private static EconomyData economyOf(SimulationState state) {
     Snapshot snapshot =
         state
@@ -532,6 +588,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
   private String socialAddress(String kind, String localId) {
     return new Address(List.of(new Namespace(SOCIAL), Entity.of(mapId), Entity.of(kind, localId)))
         .canonical();
+  }
+
+  private String unitAddressRoot() {
+    return new Address(List.of(new Namespace("unit"), Entity.of(mapId))).canonical();
   }
 
   private String actorAddressRoot() {

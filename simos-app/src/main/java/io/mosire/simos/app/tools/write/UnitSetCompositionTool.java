@@ -43,8 +43,8 @@ public final class UnitSetCompositionTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "整表复写单位人力/装备：固定 unit.SetComposition，载荷 {id, manpower[{type,amount}],"
-        + " equipment[{type,amount}]}——两张表整体取代旧表（不是增量）；未知 type 合法；amount ≥ 0、同表 type 不重复。"
-        + "旧 unit.SetStrength 已按 D-011 删除，不留兼容。";
+    return "整表复写单位装备：固定 unit.SetComposition，载荷 {id, equipment[{type,amount}]}"
+        + "（★ S3b：manpower 已退役，非空 manpower 具名拒；人员属于 Social 家户）——装备表整体取代旧表（不是增量）；"
+        + "未知 type 合法；amount ≥ 0、同表 type 不重复。旧 unit.SetStrength 已按 D-011 删除，不留兼容。";
   }
 }

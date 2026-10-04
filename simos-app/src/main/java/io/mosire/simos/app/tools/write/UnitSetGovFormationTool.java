@@ -35,9 +35,12 @@ public final class UnitSetGovFormationTool extends AbstractNarrowWriteTool {
   @Override
   public String description() {
     return "立/改 GOV 编制：固定 unit.SetGovFormation，载荷 {unitId, level(CENTRAL|PROVINCE),"
-        + " superiorGov?, staff?{SCRIBE|YAMEN|POST:整数}, policy?{grainPerStaffPerTick?,"
+        + " superiorGov?, households?[家户 id], householdPosts?[{household,role,level,head?}],"
+        + " staff?{SCRIBE|YAMEN|POST:整数}, policy?{grainPerStaffPerTick?,"
         + " clothPerStaffPerCycle?, moneyPerStaffPerTick?, retirementPerStaff?, staffCap?{角色:整数}}}"
-        + "（★ staff 缺省空表、policy 缺省 OfficePolicy.defaults() 且可给部分字段；"
+        + "（★ S3b：householdPosts 是以 HouseholdId 为键的领导层家户具名配置（家户必须在本单位 households 里）；"
+        + "households/householdPosts 缺省 = 保持既有（不是清空）；staff 缺省空表、"
+        + "policy 缺省 OfficePolicy.defaults() 且可给部分字段；householdPosts 非空时 staff 只是家户人口投影的兼容字段；"
         + "既有 ArmyFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
         + "superiorGov 必须存在且带 GovFormation、不得指向自身；同类型重复设置 = 整体替换）";
   }

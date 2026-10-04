@@ -63,9 +63,8 @@ import java.util.UUID;
  *       note} = 人可读摘要，{@code tick} = 当前世界日。
  * </ol>
  *
- * <p>★ <b>{@code tools} 本批不做</b>：actor 账只有商品 / 货币两维（工具形态不落 actor）⇒ 载荷出现
- * {@code tools} 键一律具名 {@link IllegalArgumentException}（折 {@code BAD_REQUEST}），<b>不静默忽略</b>；装备只走
- * {@code equipment} 参数。
+ * <p>★ <b>{@code tools} 本批不做</b>：actor 账只有商品 / 货币两维（工具形态不落 actor）⇒ 载荷出现 {@code tools} 键一律具名 {@link
+ * IllegalArgumentException}（折 {@code BAD_REQUEST}），<b>不静默忽略</b>；装备只走 {@code equipment} 参数。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字也不是命令类型 ⇒ 不进 catalog / {@code
  * PAYLOAD_HINTS}。★ {@code actor.AdjustAccounts} 标了 {@code GmOnlyCommand}，令 / {@code RegisterEffect}
@@ -98,8 +97,12 @@ public final class RaiseUnitTool implements AgentTool {
   /** 见 {@link #CREATE_UNIT_TYPE}。 */
   static final String ADJUST_ACCOUNTS_TYPE = RaiseUnitPlan.ADJUST_ACCOUNTS_TYPE;
 
-  /** 见 {@link #CREATE_UNIT_TYPE}。 */
-  static final String SEED_GROUPS_TYPE = RaiseUnitPlan.SEED_GROUPS_TYPE;
+  /** S3b：人口家户创建命令类型（见 {@link #CREATE_UNIT_TYPE}）。 */
+  static final String CREATE_HOUSEHOLD_TYPE = RaiseUnitPlan.CREATE_HOUSEHOLD_TYPE;
+
+  /** S3b：成员批次转移命令类型（见 {@link #CREATE_UNIT_TYPE}）。 */
+  static final String TRANSFER_HOUSEHOLD_MEMBERS_TYPE =
+      RaiseUnitPlan.TRANSFER_HOUSEHOLD_MEMBERS_TYPE;
 
   /** 见 {@link #CREATE_UNIT_TYPE}。 */
   static final String PUT_INFO_TYPE = RaiseUnitPlan.PUT_INFO_TYPE;
@@ -109,8 +112,7 @@ public final class RaiseUnitTool implements AgentTool {
 
   /** {@code tools} 键的具名拒因（计划 §5：用具来源本批不做，不静默忽略）。 */
   static final String TOOLS_REJECT_MESSAGE =
-      "载荷不支持 tools 键：actor 账只有商品/货币两维；工具形态不落 actor；本批不做用具来源"
-          + "（装备只走 equipment 参数，不从账本抽）";
+      "载荷不支持 tools 键：actor 账只有商品/货币两维；工具形态不落 actor；本批不做用具来源" + "（装备只走 equipment 参数，不从账本抽）";
 
   /** 本工具只写 unit / actor / social / sd 四个命名空间（GM 侧四面 unlimited ⇒ 逐条判通过）。 */
   private static final ResourceManifest RAISE_UNIT_WRITE =
@@ -140,8 +142,8 @@ public final class RaiseUnitTool implements AgentTool {
    * @param core 唯一写入口（本工具走 {@code submitBatch}；preview=true 时一个字节都不写）
    * @param query 只读入口（读 branch/revision 的当前 {@link SimulationState}；preview 与同一份推导共用它）
    * @param initiator 落盘时的发起者（C21 的 {@code <kind>:<id>} 形态）
-   * @param mapId 本世界的 map 称谓（★ 保留在装配签名里以与 {@code LevyRegionTool} 同制；本工具资源
-   *     声明是四个命名空间的粗断言、单位地址按单位 id 定位，不当路径用）
+   * @param mapId 本世界的 map 称谓（★ 保留在装配签名里以与 {@code LevyRegionTool} 同制；本工具资源 声明是四个命名空间的粗断言、单位地址按单位 id
+   *     定位，不当路径用）
    */
   // ★ 测试/旧路径：全缺省时钟，不读 store；生产 Shell 必须用带 CalendarService 的重载（CalendarService.load）。
   public RaiseUnitTool(CoreSimos core, QueryService query, String initiator, String mapId) {
@@ -170,9 +172,9 @@ public final class RaiseUnitTool implements AgentTool {
   @Override
   public String description() {
     return "GM 组军（组合工具，一批 = 一条 revision）：从 region 的合格批次抽 manpower、从 region 各 hex 的 HOUSEHOLD 账抽"
-        + " grain/money，同批建出新单位（新单位人力表 = 单条 {type=\""
-        + RaiseUnitPlan.DEFAULT_MANPOWER_TYPE
-        + "\", amount=实抽人力}）、把粮/钱落进新单位国库，并落一条 sd.PutInfo 行动记录。"
+        + " grain/money，同批先建一个 location=UNIT(newUnitId) 的人口家户、把抽取批次转移进去，再建出新单位"
+        + "（unit.households = [该家户]，人口 = 转移人数）、把粮/钱落进新单位国库，并落一条 sd.PutInfo 行动记录"
+        + "（★ S3b：不再写 unit.manpower 第二本 headcount）。"
         + "载荷 {newUnitId(必填), name(必填), regionId(必填), at{q,r}(必填, 必须在该 region 的 hex 集里), "
         + "manpower(必填 long, >=1；抽取人数), grain?(缺省 0), money?(缺省 0), speed(必填, >=1), "
         + "mobilityPerMille(必填, 1..1000), equipment?(缺省空表, 值 >=0；输入 map 按迭代序转成装备表), "
@@ -184,12 +186,12 @@ public final class RaiseUnitTool implements AgentTool {
         + " AgeBracket.ADULT 的批次；"
         + "粮/钱来源 = region 各 hex 上 HOUSEHOLD 账的可支配量（余额−冻结，AvailableStock 唯一算法）；"
         + "总量不足 ⇒ 整条拒（不部分、不截断）；分摊 = 瀑布（可用量/人数降序，同量按账键/批次 id 升序）。"
-        + "apply 批（固定顺序）：unit.CreateUnit → actor.AdjustAccounts（家户负增量 + 新单位国库正增量；仅粮/钱>0 时）"
-        + " → social.SeedGroups（各被动批次整组覆盖，带 ageDays/anchorTick/stress 保真、扣后 count 可为 0）"
+        + "apply 批（固定顺序）：social.CreateHousehold → social.TransferHouseholdMembers×N"
+        + " → unit.CreateUnit → actor.AdjustAccounts（家户负增量 + 新单位国库正增量；仅粮/钱>0 时）"
         + " → sd.PutInfo（单位 canonical 地址、key="
         + INFO_KEY
         + "、value=JSON 字符串的行动记录）。"
-        + "返回 {preview, submitted, tick, unitId, name, regionId, at, parent, manpower[{type,amount}], "
+        + "返回 {preview, submitted, tick, unitId, name, regionId, at, parent, householdId, population, "
         + "equipment[{type,amount}], speed, mobilityPerMille, grain/money 各 {requested, available, sources[]}, "
         + "manpowerAllocation {requested, available, sources[]}, commands, infoText}；"
         + "apply 另加 submission。";
@@ -209,9 +211,7 @@ public final class RaiseUnitTool implements AgentTool {
         "manpower",
         ToolSupport.prop(
             "integer",
-            "抽人力（人；>=1；只抽 MALE 且当前 tick 成年档的批次）；新单位落成单条 {type=\""
-                + RaiseUnitPlan.DEFAULT_MANPOWER_TYPE
-                + "\", amount=实抽人数}"));
+            "抽人口（人；>=1；只抽 MALE 且当前 tick 成年档的 Social 批次）；S3b 起落成新家户的成员，" + "不写 unit.manpower"));
     props.put("grain", ToolSupport.prop("integer", "抽粮（最小计量单位；可选，缺省 0 = 本维度整段跳过；不得为负）"));
     props.put("money", ToolSupport.prop("integer", "抽钱（毫银；可选，缺省 0 = 本维度整段跳过；不得为负）"));
     props.put("speed", ToolSupport.prop("integer", "新单位速度（>=1；必填，不发明默认值）"));
@@ -505,7 +505,25 @@ public final class RaiseUnitTool implements AgentTool {
       String reason,
       BranchId branch,
       RevisionId expectedRevision) {
-    List<CommandEnvelope> batch = new ArrayList<>(4);
+    List<CommandEnvelope> batch = new ArrayList<>(4 + plan.transfers().size());
+    // ★★ S3b 批序：先落 Social（建人口家户 + 把抽取批次转移进去），再建 unit 并带 households=[该家户]，
+    //   最后按需 actor 国库/行动记录。同批 = 一条 revision ⇒ Unit.households 与 Household.location 天然一致。
+    batch.add(
+        envelope(
+            batchId,
+            branch,
+            expectedRevision,
+            CREATE_HOUSEHOLD_TYPE,
+            plan.createHouseholdPayloadJson()));
+    for (RaiseUnitPlan.Transfer transfer : plan.transfers()) {
+      batch.add(
+          envelope(
+              batchId,
+              branch,
+              expectedRevision,
+              TRANSFER_HOUSEHOLD_MEMBERS_TYPE,
+              plan.transferPayloadJson(transfer, reason)));
+    }
     batch.add(
         envelope(
             batchId, branch, expectedRevision, CREATE_UNIT_TYPE, plan.createUnitPayloadJson()));
@@ -518,9 +536,6 @@ public final class RaiseUnitTool implements AgentTool {
               ADJUST_ACCOUNTS_TYPE,
               plan.adjustAccountsPayloadJson()));
     }
-    batch.add(
-        envelope(
-            batchId, branch, expectedRevision, SEED_GROUPS_TYPE, plan.seedGroupsPayloadJson()));
     batch.add(
         envelope(batchId, branch, expectedRevision, PUT_INFO_TYPE, infoPayload(plan, reason)));
     return List.copyOf(batch);
@@ -574,7 +589,8 @@ public final class RaiseUnitTool implements AgentTool {
     view.put("regionId", plan.regionId());
     view.put("at", ToolSupport.hexCoord(plan.at()));
     view.put("parent", plan.parent().orElse(null));
-    view.put("manpower", ToolSupport.compositionView(plan.manpowerEntries()));
+    view.put("householdId", plan.householdId());
+    view.put("population", plan.manpowerCount());
     view.put("speed", plan.speed());
     view.put("mobilityPerMille", plan.mobilityPerMille());
     view.put("equipment", ToolSupport.compositionView(plan.equipment()));

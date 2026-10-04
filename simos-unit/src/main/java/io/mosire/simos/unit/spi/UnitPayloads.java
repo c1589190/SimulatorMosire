@@ -8,6 +8,9 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.GovernmentHouseholdPost;
+import io.mosire.simos.unit.MilitaryDutyKind;
+import io.mosire.simos.unit.MilitaryHouseholdDuty;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.UnitId;
@@ -292,6 +295,32 @@ final class UnitPayloads {
   }
 
   /**
+   * ★★ <b>S3b（2026-10-09）：{@code Unit.manpower} 已退役</b>——人员人口唯一来源是 Social 家户（{@code
+   * unit.households} + Social 成员批次现算），不再由 unit 侧的第二本 headcount 承载。
+   *
+   * <p>本方法给三条"旧载荷"命令的共同边界：{@code manpower} <b>缺席 / null / 空数组</b> ⇒ 合法（空表等价于"没有旧账"）； <b>非空数组</b> ⇒
+   * 具名拒，消息指路 Social 家户命令。{@code equipment} 不走这条，照常在 {@code unit} 命令里 发放/调整/战损。
+   */
+  static void rejectRetiredManpower(JsonNode payload) {
+    JsonNode value = payload.get("manpower");
+    if (value == null || value.isNull()) {
+      return;
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException(
+          "字段 manpower 必须是数组或 null（Unit.manpower 已退役，人员由 Social 家户承载）: " + payload);
+    }
+    if (!value.isEmpty()) {
+      throw new IllegalArgumentException(
+          "字段 manpower 已退役（S3b / 2026-10-09）：Unit.manpower 不再是人口账，人员属于 Social 家户"
+              + "（unit.households + 家户成员批次现算）；请用 social.* 家户命令移动人员，equipment 仍走本命令。"
+              + " 收到 "
+              + value.size()
+              + " 条人力条目");
+    }
+  }
+
+  /**
    * 必填的人力/装备**状态表**：JSON 数组 {@code [{type,amount}…]}（空数组合法）。每条：{@code type} 非空白、{@code amount}
    * 非负整数（long 量纲）；同表重复 type ⇒ 具名拒（一张表里同一 type 两条会让"加/减值"歧义）。
    *
@@ -436,6 +465,102 @@ final class UnitPayloads {
       return Optional.empty();
     }
     return Optional.of(requireHouseholdIds(payload, field));
+  }
+
+  /**
+   * ★★ <b>S3b：可选的军官/军职家户配置数组</b>（{@code unit.SetArmyFormation.householdDuties}）：
+   *
+   * <pre>{@code
+   * [{"household":"hh-1","kind":"OFFICER","appointment":"营官","commandOf":"u-2"} …]
+   * }</pre>
+   *
+   * <p>★ 缺失或 {@code null} ⇒ 空 Optional（<b>未给 ⇒ 保持既有配置</b>，不是清空——与 {@code households} 的旧调用点兼容口径同款）；
+   * 给了（含空数组）⇒ 整体替换。{@code commandOf} 可缺省。字段形状在这里把关；键 == 配置 id 等不变量由 {@link ArmyFormation} / {@link
+   * UnitState} 判。
+   */
+  static Optional<Map<HouseholdId, MilitaryHouseholdDuty>> optionalMilitaryDuties(
+      JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return Optional.empty();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是家户配置对象数组或 null: " + payload);
+    }
+    Map<HouseholdId, MilitaryHouseholdDuty> duties = new LinkedHashMap<>();
+    Set<String> seen = new LinkedHashSet<>();
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是对象: " + element);
+      }
+      String householdText = requireText(element, "household");
+      if (!seen.add(householdText)) {
+        throw new IllegalArgumentException("字段 " + field + " 不得有重复 household: " + householdText);
+      }
+      HouseholdId household = HouseholdId.parse(householdText);
+      String kindText = requireText(element, "kind");
+      MilitaryDutyKind kind;
+      try {
+        kind = MilitaryDutyKind.valueOf(kindText);
+      } catch (IllegalArgumentException e) {
+        throw new IllegalArgumentException(
+            "字段 " + field + " 的 kind 不是合法军职类别（SOLDIER|NCO|OFFICER|COMMANDER）: " + kindText, e);
+      }
+      String appointment = requireText(element, "appointment");
+      Optional<UnitId> commandOf = optionalId(element, "commandOf");
+      duties.put(household, new MilitaryHouseholdDuty(household, kind, appointment, commandOf));
+    }
+    return Optional.of(duties);
+  }
+
+  /**
+   * ★★ <b>S3b：可选的领导层家户配置数组</b>（{@code unit.SetGovFormation.householdPosts}）：
+   *
+   * <pre>{@code
+   * [{"household":"hh-1","role":"SCRIBE","level":"CENTRAL","head":true} …]
+   * }</pre>
+   *
+   * <p>★ 缺失或 {@code null} ⇒ 空 Optional（<b>未给 ⇒ 保持既有配置</b>）；给了（含空数组）⇒ 整体替换。{@code head} 可缺省（缺省
+   * false）。字段形状在这里把关；键 == 配置 id 等不变量由 {@link GovFormation} / {@link UnitState} 判。
+   */
+  static Optional<Map<HouseholdId, GovernmentHouseholdPost>> optionalGovernmentPosts(
+      JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return Optional.empty();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是领导家户配置对象数组或 null: " + payload);
+    }
+    Map<HouseholdId, GovernmentHouseholdPost> posts = new LinkedHashMap<>();
+    Set<String> seen = new LinkedHashSet<>();
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是对象: " + element);
+      }
+      String householdText = requireText(element, "household");
+      if (!seen.add(householdText)) {
+        throw new IllegalArgumentException("字段 " + field + " 不得有重复 household: " + householdText);
+      }
+      HouseholdId household = HouseholdId.parse(householdText);
+      StaffRole role = requireStaffRole(element, "role");
+      GovLevel level = requireGovLevel(element, "level");
+      boolean head = optionalBoolean(element, "head").orElse(false);
+      posts.put(household, new GovernmentHouseholdPost(household, role, level, head));
+    }
+    return Optional.of(posts);
+  }
+
+  /** 可选布尔字段：缺失或 {@code null} ⇒ 空 Optional；给出但非布尔 ⇒ 抛。 */
+  static Optional<Boolean> optionalBoolean(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return Optional.empty();
+    }
+    if (!value.isBoolean()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是布尔或 null: " + payload);
+    }
+    return Optional.of(value.asBoolean());
   }
 
   private static HexCoord hexFrom(JsonNode object, String field) {

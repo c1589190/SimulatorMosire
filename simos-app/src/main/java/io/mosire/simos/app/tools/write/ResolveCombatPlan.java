@@ -111,6 +111,19 @@ final class ResolveCombatPlan {
         throw new IllegalArgumentException(
             "结局" + selection.outcome().id().value() + " 的损失指向不存在的单位: " + loss.unit().value());
       }
+      // ★★ S3b（2026-10-09）：Unit.manpower 已退役 ⇒ 人力战损必须落到 Social 家户（成员批次），本工具尚未接线。
+      //   这里 fail-closed、具名拒，绝不把人力损失静默丢给 unit.AdjustComposition（那会变成第二本 headcount）。
+      if (!loss.manpower().isEmpty()) {
+        throw new IllegalArgumentException(
+            "结局 "
+                + selection.outcome().id().value()
+                + " 含 "
+                + loss.manpower().size()
+                + " 条人力损失（unit "
+                + loss.unit().value()
+                + "）：S3b 起 Unit.manpower 已退役，人力战损必须落到 Social 家户成员批次；"
+                + "本工具尚未接线该写口（具名缺口），拒绝把人员损失写回 unit 状态");
+      }
     }
 
     boolean allResolvedAfter = true;
@@ -208,7 +221,7 @@ final class ResolveCombatPlan {
         }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("id", loss.unit().value());
-        payload.put("manpower", ToolSupport.compositionDeltaView(loss.manpower()));
+        // ★ S3b：不再发 manpower（该结局若含人力损失已在 derive 处具名拒）；装备战损照常。
         payload.put("equipment", ToolSupport.compositionDeltaView(loss.equipment()));
         payloads.add(ToolSupport.json(payload));
       }

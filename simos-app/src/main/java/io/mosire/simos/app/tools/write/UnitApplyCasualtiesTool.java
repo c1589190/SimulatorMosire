@@ -36,8 +36,8 @@ public final class UnitApplyCasualtiesTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "施加战损：固定 unit.ApplyCasualties，载荷 {id, manpower[{type,amount≤0}], equipment[{type,amount≤0}]}——"
-        + "两张 delta 表都必填（只报人力战损也要显式给 []）；只扣提及的 type、未提及的保持不变；提及不存在的 type  ⇒ 具名拒"
-        + "（不视作 0）；|Δ| ≤ 当前值。";
+    return "施加装备战损：固定 unit.ApplyCasualties，载荷 {id, equipment[{type,amount≤0}]}"
+        + "（★ S3b：manpower 已退役，非空 manpower 具名拒；人员战损要落 Social 家户命令）——只扣提及的 type、"
+        + "未提及的保持不变；提及不存在的 type ⇒ 具名拒（不视作 0）；|Δ| ≤ 当前值。";
   }
 }

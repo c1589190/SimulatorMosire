@@ -51,10 +51,11 @@ public final class UnitGetTool implements AgentTool {
 
   @Override
   public String description() {
-    return "按 id 查单位详情：name/manpower[{type,amount}]/equipment[{type,amount}]/speed/mobilityPerMille/"
+    return "按 id 查单位详情：name/equipment[{type,amount}]/speed/mobilityPerMille/"
         + "parent/position/stateDescriptions/households[{id,name?,location?,memberLots?,population?}]/population（实时人口，"
-        + "从 Social 家户汇总现算）；"
-        + "若单位带编制/管辖，另含 module（gov: level/superiorGov/households/staff/policy；army: masterGov/role）与 "
+        + "从 Social 家户汇总现算；S3b 起 manpower 已退役）；"
+        + "若单位带编制/管辖，另含 module（gov: level/superiorGov/households/householdPosts/staff/policy；"
+        + "army: masterGov/role/householdDuties）与 "
         + "jurisdiction（regions→每周期税率‰、levy*CapPerCommand、administrationPerMille）";
   }
 

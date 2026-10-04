@@ -3,14 +3,15 @@ package io.mosire.simos.unit.ops;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.Jurisdiction;
+import io.mosire.simos.unit.MilitaryHouseholdDuty;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.RelativeOffset;
@@ -91,7 +92,6 @@ public final class UnitOperations {
             unit.name(),
             setOrAppend(unit.parent(), at, newParent),
             unit.position(),
-            unit.manpower(),
             unit.equipment(),
             unit.speed(),
             unit.mobilityPerMille(),
@@ -107,7 +107,6 @@ public final class UnitOperations {
             name,
             unit.parent(),
             unit.position(),
-            unit.manpower(),
             unit.equipment(),
             unit.speed(),
             unit.mobilityPerMille(),
@@ -115,17 +114,14 @@ public final class UnitOperations {
   }
 
   /**
-   * ★ <b>整表复写人力/装备</b>（{@code unit.SetComposition} 的领域实现；原 {@code setStrength} 的 rename，D3a）：
-   * 载荷给出的两张表**整体取代**旧表，不是增量合并。★ <b>未知 type 不是错误</b>——整表语义就是"给什么就是什么"；数值范围 （{@code amount ≥ 0}、同表
-   * type 不重复）由 {@link Unit} 构造期判，本方法不重复实现。
+   * ★ <b>整表复写装备</b>（{@code unit.SetComposition} 的领域实现；原 {@code setStrength} 的 rename，D3a；S3b 起
+   * manpower 退役）： 载荷给出的装备表**整体取代**旧表，不是增量合并。★ <b>未知 type 不是错误</b>——整表语义就是"给什么就是什么"；数值范围 （{@code
+   * amount ≥ 0}、同表 type 不重复）由 {@link Unit} 构造期判，本方法不重复实现。
    *
-   * <p>★ 纯函数：结果单位走 canonical 18 参拷贝，其余 16 个组件一个不丢。
+   * <p>★ 纯函数：结果单位走 canonical 17 参拷贝，其余 16 个组件一个不丢。
    */
   public static UnitState setComposition(
-      UnitState state,
-      UnitId id,
-      List<CompositionEntry> manpower,
-      List<CompositionEntry> equipment) {
+      UnitState state, UnitId id, List<CompositionEntry> equipment) {
     Unit unit = require(state, id);
     return withUnit(
         state,
@@ -134,7 +130,6 @@ public final class UnitOperations {
             unit.name(),
             unit.parent(),
             unit.position(),
-            manpower,
             equipment,
             unit.speed(),
             unit.mobilityPerMille(),
@@ -149,7 +144,7 @@ public final class UnitOperations {
    * （同一家户不得同时属于两个 unit、Unit id 不得与 household id 撞名）由 {@link UnitState} 构造期判——{@link #withUnit}
    * 重建状态时自然强制执行，本方法不另写一份。
    *
-   * <p>★ 纯函数；结果走 {@link #withHouseholds} 的 canonical 18 参拷贝（其余 18 个组件一个不丢）。
+   * <p>★ 纯函数；结果走 {@link #withHouseholds} 的 canonical 17 参拷贝（其余组件一个不丢）。
    */
   public static UnitState setUnitHouseholds(
       UnitState state, UnitId id, List<HouseholdId> households) {
@@ -170,8 +165,8 @@ public final class UnitOperations {
   }
 
   /**
-   * ★ <b>有符号直改人力/装备</b>（{@code unit.AdjustComposition} 的领域实现，D-009 补裁的 GM 调试原语）：两条增量表都**有序**，
-   * 一条命令原子地把它们落在当前表上。
+   * ★ <b>有符号直改装备</b>（{@code unit.AdjustComposition} 的领域实现，D-009 补裁的 GM 调试原语；S3b 起 manpower 退役）：
+   * 增量表**有序**，一条命令原子地把它们落在当前表上。
    *
    * <p>★ <b>符号语义</b>：
    *
@@ -182,21 +177,15 @@ public final class UnitOperations {
    *   <li><b>零增量</b>：合法 no-op（本操作面不判"无变化命令"，与既有 attach/updateChain 同口径）。
    * </ul>
    *
-   * <p>★ <b>同表重复 type 一律拒</b>（两张输入表各自判）：一条 type 两条增量会让"先加后减"与"先减后加"产生不同结果，超出"一张表"的语义。
+   * <p>★ <b>同表重复 type 一律拒</b>：一条 type 两条增量会让"先加后减"与"先减后加"产生不同结果，超出"一张表"的语义。
    *
-   * <p>★ 纯函数；结果走 canonical 18 参拷贝（其余 16 个组件一个不丢）。变更集仍由 {@code UnitChangeSet.between} 派生，不做第二条增量通道。
+   * <p>★ 纯函数；结果走 canonical 17 参拷贝（其余组件一个不丢）。变更集仍由 {@code UnitChangeSet.between} 派生，不做第二条增量通道。
    */
   public static UnitState adjustComposition(
-      UnitState state,
-      UnitId id,
-      List<CompositionDelta> manpowerDeltas,
-      List<CompositionDelta> equipmentDeltas) {
-    Objects.requireNonNull(manpowerDeltas, "manpowerDeltas");
+      UnitState state, UnitId id, List<CompositionDelta> equipmentDeltas) {
     Objects.requireNonNull(equipmentDeltas, "equipmentDeltas");
     Unit unit = require(state, id);
-    requireNoDuplicateDeltaTypes(manpowerDeltas, "manpower");
     requireNoDuplicateDeltaTypes(equipmentDeltas, "equipment");
-    List<CompositionEntry> manpower = applyAdjustDeltas(unit.manpower(), manpowerDeltas, "人力");
     List<CompositionEntry> equipment = applyAdjustDeltas(unit.equipment(), equipmentDeltas, "装备");
     return withUnit(
         state,
@@ -205,7 +194,6 @@ public final class UnitOperations {
             unit.name(),
             unit.parent(),
             unit.position(),
-            manpower,
             equipment,
             unit.speed(),
             unit.mobilityPerMille(),
@@ -213,8 +201,8 @@ public final class UnitOperations {
   }
 
   /**
-   * ★ **战损增量**（T8 / spec §四 表 / E4 / N3 / P14；D3a 改为双轨有序条目列表）：{@code manpowerDeltas} 与 {@code
-   * equipmentDeltas} 都是**≤ 0 的增量**，逐项**落在当前值上**——与 {@link #setComposition} 的"整表复写"是两种语义，绝不混用。
+   * ★ **装备战损增量**（T8 / spec §四 表 / E4 / N3 / P14；D3a 双轨条目；S3b 起 manpower 退役）：{@code equipmentDeltas}
+   * 是**≤ 0 的增量**，逐项**落在当前值上**——与 {@link #setComposition} 的"整表复写"是两种语义，绝不混用。
    *
    * <p>三条判据（都抛 {@link IllegalArgumentException}，由 handler 在命令边界折成拒绝）：
    *
@@ -236,16 +224,10 @@ public final class UnitOperations {
    * 必须原样带过，绝不写 `new UnitState(units)`。
    */
   public static UnitState applyCasualties(
-      UnitState state,
-      UnitId id,
-      List<CompositionDelta> manpowerDeltas,
-      List<CompositionDelta> equipmentDeltas) {
-    Objects.requireNonNull(manpowerDeltas, "manpowerDeltas");
+      UnitState state, UnitId id, List<CompositionDelta> equipmentDeltas) {
     Objects.requireNonNull(equipmentDeltas, "equipmentDeltas");
     Unit unit = require(state, id);
-    requireNoDuplicateDeltaTypes(manpowerDeltas, "manpower");
     requireNoDuplicateDeltaTypes(equipmentDeltas, "equipment");
-    List<CompositionEntry> manpower = applyCasualtyDeltas(unit.manpower(), manpowerDeltas, "人员");
     List<CompositionEntry> equipment = applyCasualtyDeltas(unit.equipment(), equipmentDeltas, "装备");
     return withUnit(
         state,
@@ -254,7 +236,6 @@ public final class UnitOperations {
             unit.name(),
             unit.parent(),
             unit.position(),
-            manpower,
             equipment,
             unit.speed(),
             unit.mobilityPerMille(),
@@ -354,7 +335,6 @@ public final class UnitOperations {
             unit.name(),
             unit.parent(),
             append(unit.position(), at, hex),
-            unit.manpower(),
             unit.equipment(),
             unit.speed(),
             unit.mobilityPerMille(),
@@ -397,7 +377,6 @@ public final class UnitOperations {
             unit.name(),
             unit.parent(),
             unit.position(),
-            unit.manpower(),
             unit.equipment(),
             unit.speed(),
             unit.mobilityPerMille(),
@@ -531,7 +510,6 @@ public final class UnitOperations {
             unit.name(),
             unit.parent(),
             unit.position(),
-            unit.manpower(),
             unit.equipment(),
             unit.speed(),
             unit.mobilityPerMille(),
@@ -708,6 +686,17 @@ public final class UnitOperations {
           "单位 " + id + " 已带 GovFormation（一单位至多一个编制标签）：不能改挂 ArmyFormation；本命令不做静默替换");
     }
     formation.masterGov().ifPresent(master -> requireGovUnit(state, master, "masterGov"));
+    // ★ S3b：军官配置里的 commandOf 必须指向现存单位（悬空指挥引用不得进状态）。
+    for (MilitaryHouseholdDuty duty : formation.householdDuties().values()) {
+      duty.commandOf()
+          .ifPresent(
+              commandOf -> {
+                if (!state.units().containsKey(commandOf)) {
+                  throw new IllegalArgumentException(
+                      "军官家户配置 " + duty.householdId() + " 的 commandOf 指向不存在的单位: " + commandOf);
+                }
+              });
+    }
     return withUnit(state, withModule(unit, Optional.of(formation)));
   }
 
@@ -799,6 +788,7 @@ public final class UnitOperations {
     }
     Unit unit = require(state, id);
     GovFormation gov = requireGovFormation(unit, id);
+    requireStaffNotProjected(gov, id, "招募");
     long current = gov.staff().getOrDefault(role, 0L);
     Long cap = gov.policy().staffCap().get(role);
     if (cap != null && current > cap - count) {
@@ -838,6 +828,7 @@ public final class UnitOperations {
     }
     Unit unit = require(state, id);
     GovFormation gov = requireGovFormation(unit, id);
+    requireStaffNotProjected(gov, id, "离编");
     long current = gov.staff().getOrDefault(role, 0L);
     if (current < count) {
       throw new IllegalArgumentException(
@@ -902,19 +893,54 @@ public final class UnitOperations {
     }
   }
 
+  /**
+   * ★★ <b>S3b（2026-10-09）：{@code householdPosts} 非空 ⇒ staff 已是家户投影，禁止再直改 staff</b>。
+   *
+   * <p>{@code staff} 是兼容字段；一旦 GOV 用 {@link GovernmentHouseholdPost} 把领导层家户配置起来，编制人数只能由家户人口现算 （app
+   * 组合根按 {@code PopulationLookup} 投影）。直接加减 staff 会制造第二本权威 ⇒ 具名拒，指路 Social 家户命令。
+   */
+  private static void requireStaffNotProjected(GovFormation gov, UnitId id, String action) {
+    if (!gov.householdPosts().isEmpty()) {
+      throw new IllegalArgumentException(
+          "单位 "
+              + id
+              + " 已用 householdPosts 配置领导层家户，staff 只是家户人口投影：不能直接"
+              + action
+              + " staff（会制造第二本权威）。请改 Social 家户人口（social.* 家户成员命令），或先清空 householdPosts");
+    }
+  }
+
   /** 只换 {@link GovFormation#policy()}，其余三个组件原样带过（阶段 10b-i）。 */
   private static GovFormation withGovPolicy(GovFormation gov, OfficePolicy policy) {
-    return new GovFormation(gov.staff(), gov.households(), policy, gov.superiorGov(), gov.level());
+    return new GovFormation(
+        gov.staff(),
+        gov.households(),
+        gov.householdPosts(),
+        policy,
+        gov.superiorGov(),
+        gov.level());
   }
 
   /** 只换 {@link GovFormation#superiorGov()}，其余三个组件原样带过（阶段 10b-i）。 */
   private static GovFormation withGovSuperior(GovFormation gov, Optional<UnitId> superiorGov) {
-    return new GovFormation(gov.staff(), gov.households(), gov.policy(), superiorGov, gov.level());
+    return new GovFormation(
+        gov.staff(),
+        gov.households(),
+        gov.householdPosts(),
+        gov.policy(),
+        superiorGov,
+        gov.level());
   }
 
   /** 只换 {@link GovFormation#staff()}，其余三个组件原样带过（阶段 10b-i）。 */
   private static GovFormation withGovStaff(GovFormation gov, Map<StaffRole, Long> staff) {
-    return new GovFormation(staff, gov.households(), gov.policy(), gov.superiorGov(), gov.level());
+    return new GovFormation(
+        staff,
+        gov.households(),
+        gov.householdPosts(),
+        gov.policy(),
+        gov.superiorGov(),
+        gov.level());
   }
 
   /**
@@ -1543,7 +1569,7 @@ public final class UnitOperations {
   }
 
   /**
-   * ★ **canonical 拷贝点**：9 个可变字段（含人力/装备两张新表）由调用方给，T1 的四个新字段（{@code status}/{@code attached}/{@code
+   * ★ **canonical 拷贝点**：9 个可变字段（含装备表）由调用方给，T1 的四个新字段（{@code status}/{@code attached}/{@code
    * offset}/{@code rejoinTarget}）、Task 1 的 {@code visionRadius}、辖区阶段 5 的 {@code jurisdiction}、阶段 9
    * 的 {@code module} 与 D1 的 {@code stateDescriptions} 一律**原样带过**——不用兼容构造器（那会把新字段重置成默认值， 正是 R1
    * 的残留风险）。 只动编队三件套（{@code parent}/{@code attached}/{@code offset}）的操作用同族的 {@link #copyFormation}。
@@ -1553,7 +1579,6 @@ public final class UnitOperations {
       String name,
       SegmentedSeries<Optional<UnitId>> parent,
       SegmentedSeries<Optional<HexCoord>> position,
-      List<CompositionEntry> manpower,
       List<CompositionEntry> equipment,
       int speed,
       int mobilityPerMille,
@@ -1563,7 +1588,6 @@ public final class UnitOperations {
         name,
         parent,
         position,
-        manpower,
         equipment,
         speed,
         mobilityPerMille,
@@ -1601,7 +1625,6 @@ public final class UnitOperations {
         unit.name(),
         parent,
         position,
-        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),
@@ -1618,12 +1641,12 @@ public final class UnitOperations {
   }
 
   /**
-   * ★ <b>只换 {@code households}、其余 17 个组件原样带过</b>（S3a / 2026-10-09 的 canonical 拷贝点，与 {@link #withStateDescriptions}
-   * 同形）。
+   * ★ <b>只换 {@code households}、其余 17 个组件原样带过</b>（S3a / 2026-10-09 的 canonical 拷贝点，与 {@link
+   * #withStateDescriptions} 同形）。
    *
-   * <p>★★ <b>18 个组件逐一显式列出</b>（不是走兼容构造器）：那会把 {@code status}/{@code attached}/{@code offset}/
-   * {@code rejoinTarget}/{@code visionRadius}/{@code jurisdiction}/{@code module}/{@code stateDescriptions}
-   * 一并重置成默认值——改容纳家户顺手清掉编制/管辖/编队是本仓最贵的教训形态（R1 字段漂移）。
+   * <p>★★ <b>18 个组件逐一显式列出</b>（不是走兼容构造器）：那会把 {@code status}/{@code attached}/{@code offset}/ {@code
+   * rejoinTarget}/{@code visionRadius}/{@code jurisdiction}/{@code module}/{@code
+   * stateDescriptions} 一并重置成默认值——改容纳家户顺手清掉编制/管辖/编队是本仓最贵的教训形态（R1 字段漂移）。
    */
   private static Unit withHouseholds(Unit unit, List<HouseholdId> households) {
     Objects.requireNonNull(households, "households");
@@ -1632,7 +1655,6 @@ public final class UnitOperations {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),
@@ -1658,7 +1680,6 @@ public final class UnitOperations {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.manpower(),
         unit.equipment(),
         speed,
         unit.mobilityPerMille(),
@@ -1681,7 +1702,6 @@ public final class UnitOperations {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),
@@ -1709,7 +1729,6 @@ public final class UnitOperations {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),
@@ -1736,7 +1755,6 @@ public final class UnitOperations {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),
@@ -1768,7 +1786,6 @@ public final class UnitOperations {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),
@@ -1799,7 +1816,6 @@ public final class UnitOperations {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),

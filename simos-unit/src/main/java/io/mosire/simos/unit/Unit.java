@@ -42,11 +42,11 @@ import java.util.Set;
  * + 行政能力）。缺省 {@link Optional#empty()} ⇒ 旧档/旧调用点行为逐字不变；**所有重建既有 Unit 的拷贝点都必须原样带过 {@code
  * before.jurisdiction()}**（漏传 = 静默丢管辖，同一条最贵教训）。
  *
- * <p>★★ **家户容纳（S3a，2026-10-09）**：第 18 组件 {@code households} = 本单位容纳的 {@link HouseholdId} 列表（保序、冻结、不得
- * null/含 null/重复）。★ <b>它不是第二本人数</b>：人口真值仍在 Social 家户的成员批次里，读口用
- * {@code PopulationLookup.unitPopulation(unitId)} 现算（架构 §5）。★★ <b>所有重建既有 Unit 的拷贝点都必须原样带过 {@code
- * before.households()}</b>（漏传 = 静默丢家户，本仓最贵教训的共同形态）；创建点显式给空表。
- * 跨单位不变量（同一家户不得同时属于两个 Unit、Unit id 不得与 household id 撞名）由 {@link UnitState} 构造期把关。
+ * <p>★★ **家户容纳（S3a，2026-10-09）**：第 17 组件 {@code households} = 本单位容纳的 {@link HouseholdId}
+ * 列表（保序、冻结、不得 null/含 null/重复）。★ <b>它不是第二本人数</b>：人口真值仍在 Social 家户的成员批次里，读口用 {@code
+ * PopulationLookup.unitPopulation(unitId)} 现算（架构 §5）。★★ <b>所有重建既有 Unit 的拷贝点都必须原样带过 {@code
+ * before.households()}</b>（漏传 = 静默丢家户，本仓最贵教训的共同形态）；创建点显式给空表。 跨单位不变量（同一家户不得同时属于两个 Unit、Unit id 不得与
+ * household id 撞名）由 {@link UnitState} 构造期把关。
  *
  * <p>★ **编制模块（阶段 9，2026-09-30）**：第 16 组件 {@code module} = 单位侧的编制标签（{@link UnitModule} 的 sealed 子类型：
  * {@link GovFormation} 或 {@link ArmyFormation}，一单位至多一个，互斥由类型保证）。缺省 {@link Optional#empty()} ⇒
@@ -59,34 +59,33 @@ import java.util.Set;
  * 旧档/旧调用点行为逐字不变；**所有重建既有 Unit 的拷贝点都必须原样带过 {@code before.stateDescriptions()}**（漏传 =
  * 静默丢链接，同一条最贵教训）；创建点显式给空表。
  *
- * <p>★★ **通用人力/装备表（阶段 D3a，2026-10-02 / D-006 + 补裁 R1）**：第 5/6 组件不再是 {@code int member} + {@code
- * Map<String,Integer> equipment}，而是**有序条目列表**：
+ * <p>★★ <b>装备表（阶段 D3a，2026-10-02 / D-006 + 补裁 R1）</b>：第 5 组件 = {@link CompositionEntry}
+ * 的**有序**列表（每条 = {@code type} + {@code amount}；类型当前是自然语义 {@link String}，将来可放宽为结构化数据）。
  *
  * <ul>
- *   <li>{@code manpower}：{@link CompositionEntry} 的**有序**列表（每条 = {@code type} + {@code
- *       amount}）；一个单位可拥有**多种人力**；
- *   <li>{@code equipment}：**同构**的 {@link CompositionEntry} 有序列表（类型当前是自然语义 {@link
- *       String}，将来可放宽为结构化数据）；
- *   <li><b>不变量</b>：两者**不得为 null**（空列表合法）；每条 {@code type} 非空白、{@code amount ≥ 0}；**同一张表内不得有重复
- *       type**（"同 type 两条"会让"加/减值"歧义，拒绝是刻意的）；顺序是内容的一部分，一律 `List.copyOf` 风格的保序不可变拷贝（**不用**
+ *   <li><b>不变量</b>：不得为 null（空列表合法）；每条 {@code type} 非空白、{@code amount ≥ 0}；**同一张表内不得有重复 type**（"同
+ *       type 两条"会让"加/减值"歧义，拒绝是刻意的）；顺序是内容的一部分，一律 `List.copyOf` 风格的保序不可变拷贝（**不用**
  *       `Map.copyOf`——它不承诺保序）；
  *   <li><b>不背旧档</b>（D-011 / R4）：{@code member:int} 与 {@code equipment:Map}
  *       的字段与构造器语义**全部删除**，旧档读不出就让它读不出； 世界替换在后续阶段 D6 做，本类不写迁移 shim、不留"双轨"。
  * </ul>
  *
- * 变更集侧不另写通道：{@code UnitChangeSet} 按 record 组件整份派生（铁律 5），新列表组件自动随 {@code equals} 进往返断言。
+ * <p>★★ <b>{@code Unit.manpower} 已退役（S3b，2026-10-09）</b>：本 record <b>没有</b> manpower 组件。人员人口的唯一来源是
+ * Social 家户（{@link #households()} + Social 成员批次现算，读口 {@code PopulationLookup.unitPopulation}）；旧
+ * {@code unit.manpower} 的第二本 headcount、以及依赖它的 unit 侧命令载荷一律具名拒（{@code
+ * UnitPayloads.rejectRetiredManpower}）。装备照常保留、发放、调整、战损。
  *
- * <p>★ **构造器矩阵（D3a 收敛；S3a 扩到 18 参）**：canonical = 18 参（record 自动生成、紧凑构造器校验）；另有
- * 9/13/14/15/16/17 参兼容形态，均为**新表形态**（前 9/13/14/15/16/17 个组件同 canonical），不提供任何 {member,
- * equipment-map} 语义的构造器。六条兼容形态只补"后加的字段"（T1 四件套、视野半径、管辖、编制、状态链接、家的容纳）的缺省值；
- * **生产拷贝点一律走 canonical 18 参**，兼容构造器只服务"那些后加字段没有来源"的创建/测试调用点。
+ * <p>变更集侧不另写通道：{@code UnitChangeSet} 按 record 组件整份派生（铁律 5），新列表组件自动随 {@code equals} 进往返断言。
+ *
+ * <p>★ **构造器矩阵（D3a 收敛；S3b 砍 manpower 后为 17 组件）**：canonical = 17 参（record 自动生成、紧凑构造器校验）；另有
+ * 8/12/13/14/15/16 参兼容形态，前 8/12/13/14/15/16 个组件同 canonical。六条兼容形态只补"后加的字段"（T1
+ * 四件套、视野半径、管辖、编制、状态链接、家的容纳）的缺省值； **生产拷贝点一律走 canonical 17 参**，兼容构造器只服务"那些后加字段没有来源"的创建/测试调用点。
  */
 public record Unit(
     UnitId id,
     String name,
     SegmentedSeries<Optional<UnitId>> parent,
     SegmentedSeries<Optional<HexCoord>> position,
-    List<CompositionEntry> manpower,
     List<CompositionEntry> equipment,
     int speed,
     int mobilityPerMille,
@@ -118,16 +117,11 @@ public record Unit(
         throw new IllegalArgumentException("parent 不得指向自身: " + id);
       }
     }
-    if (manpower == null) {
-      // ★ 不做旧档归一（D-011 / R4）：缺 manpower 键就是坏数据，让它当场读不出，而不是静默变成空表。
-      throw new IllegalArgumentException("manpower 不得为 null（空列表合法）");
-    }
     if (equipment == null) {
       // ★ 同上：equipment 已从 Map 改成有序条目列表，旧档的 {键:值} 对象会在此之前被 Jackson 拒掉。
       throw new IllegalArgumentException("equipment 不得为 null（空列表合法）");
     }
     // ★ 冻在赋值处（SpotBugs 的 EI_EXPOSE_REP 只认它看得见的 Collections.unmodifiable*）。
-    manpower = Collections.unmodifiableList(copyComposition(manpower, "manpower"));
     equipment = Collections.unmodifiableList(copyComposition(equipment, "equipment"));
     if (speed < 1) {
       throw new IllegalArgumentException("speed 必须 ≥ 1: " + speed);
@@ -186,20 +180,19 @@ public record Unit(
   }
 
   /**
-   * ★ **9 参兼容构造器**（T1，R1 的对策）：旧 9 参签名（**前 9 个组件**）⇒ {@code status = MOVING}、{@code attached} = 父序列
-   * anchor 时刻的 {@code true}、{@code offset} = 空、{@code rejoinTarget = empty}、{@code visionRadius =
-   * }{@link #DEFAULT_VISION_RADIUS}、{@code jurisdiction = empty}、{@code module = empty}、 {@code
-   * stateDescriptions = 空表}。
+   * ★ **8 参兼容构造器**（T1/R1 的对策；S3b 砍 manpower 后由 9 参降为 8 参）：旧 8 参签名（**前 8 个组件**）⇒ {@code status =
+   * MOVING}、{@code attached} = 父序列 anchor 时刻的 {@code true}、{@code offset} = 空、{@code rejoinTarget =
+   * empty}、{@code visionRadius = }{@link #DEFAULT_VISION_RADIUS}、{@code jurisdiction =
+   * empty}、{@code module = empty}、 {@code stateDescriptions = 空表}。
    *
-   * <p>★★ <b>它不是 {member, equipment-map} 语义的旧构造器</b>：第 5/6 个参数已经是新表形态（{@link CompositionEntry} 列表）。
-   * 旧字段语义（单一人数、装备 map）在 D3a **全部删除**，本构造器只保留"后加的字段没有来源"这一条便民口径。
+   * <p>★★ <b>它不是 {member, equipment-map} 语义的旧构造器</b>：第 5 个参数（装备）已经是新表形态（{@link CompositionEntry}
+   * 列表）。 旧字段语义（单一人数、装备 map）在 D3a **全部删除**，本构造器只保留"后加的字段没有来源"这一条便民口径。
    */
   public Unit(
       UnitId id,
       String name,
       SegmentedSeries<Optional<UnitId>> parent,
       SegmentedSeries<Optional<HexCoord>> position,
-      List<CompositionEntry> manpower,
       List<CompositionEntry> equipment,
       int speed,
       int mobilityPerMille,
@@ -209,7 +202,6 @@ public record Unit(
         name,
         parent,
         position,
-        manpower,
         equipment,
         speed,
         mobilityPerMille,
@@ -226,21 +218,20 @@ public record Unit(
   }
 
   /**
-   * ★ **13 参兼容构造器**（权限阶段 Task 1 / spec §4.1）：前 13 个组件（截至 {@code rejoinTarget}）⇒ 只补 {@code
-   * visionRadius = }{@link #DEFAULT_VISION_RADIUS}、{@code jurisdiction = empty}、{@code module =
-   * empty} 与 {@code stateDescriptions = 空表}。
+   * ★ **12 参兼容构造器**（权限阶段 Task 1 / spec §4.1；S3b 砍 manpower 后由 13 参降为 12 参）：前 12 个组件（截至 {@code
+   * rejoinTarget}）⇒ 只补 {@code visionRadius = }{@link #DEFAULT_VISION_RADIUS}、{@code jurisdiction =
+   * empty}、{@code module = empty} 与 {@code stateDescriptions = 空表}。
    *
    * <p>**为什么需要它**：这些调用点不是"忘了新字段"的拷贝点——视野半径对它们而言没有来源，取缺省正是**唯一正确**的语义。
    *
    * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.visionRadius()} / {@code 原.jurisdiction()} / {@code
-   * 原.module()} / {@code 原.stateDescriptions()}），走 canonical 18 参。
+   * 原.module()} / {@code 原.stateDescriptions()}），走 canonical 17 参。
    */
   public Unit(
       UnitId id,
       String name,
       SegmentedSeries<Optional<UnitId>> parent,
       SegmentedSeries<Optional<HexCoord>> position,
-      List<CompositionEntry> manpower,
       List<CompositionEntry> equipment,
       int speed,
       int mobilityPerMille,
@@ -254,7 +245,6 @@ public record Unit(
         name,
         parent,
         position,
-        manpower,
         equipment,
         speed,
         mobilityPerMille,
@@ -267,20 +257,20 @@ public record Unit(
   }
 
   /**
-   * ★ **14 参兼容构造器**（辖区阶段 5，2026-09-30）：前 14 个组件（截至 {@code visionRadius}）⇒ 只补 {@code jurisdiction =
-   * empty} 与 {@code module = empty}、{@code stateDescriptions = 空表}。
+   * ★ **13 参兼容构造器**（辖区阶段 5，2026-09-30；S3b 砍 manpower 后由 14 参降为 13 参）：前 13 个组件（截至 {@code
+   * visionRadius}）⇒ 只补 {@code jurisdiction = empty} 与 {@code module = empty}、{@code
+   * stateDescriptions = 空表}。
    *
    * <p>**为什么需要它**：辖区对它们而言没有来源，取空管辖正是**唯一正确**的语义。
    *
    * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.jurisdiction()} / {@code 原.module()} / {@code
-   * 原.stateDescriptions()}），走 canonical 18 参——漏传 = 静默丢管辖/编制/链接/家户。
+   * 原.stateDescriptions()}），走 canonical 17 参——漏传 = 静默丢管辖/编制/链接/家户。
    */
   public Unit(
       UnitId id,
       String name,
       SegmentedSeries<Optional<UnitId>> parent,
       SegmentedSeries<Optional<HexCoord>> position,
-      List<CompositionEntry> manpower,
       List<CompositionEntry> equipment,
       int speed,
       int mobilityPerMille,
@@ -295,7 +285,6 @@ public record Unit(
         name,
         parent,
         position,
-        manpower,
         equipment,
         speed,
         mobilityPerMille,
@@ -309,20 +298,19 @@ public record Unit(
   }
 
   /**
-   * ★ **15 参兼容构造器**（阶段 9，2026-09-30）：前 15 个组件（截至 {@code jurisdiction}）⇒ 只补 {@code module = empty} 与
-   * {@code stateDescriptions = 空表}。
+   * ★ **14 参兼容构造器**（阶段 9，2026-09-30；S3b 砍 manpower 后由 15 参降为 14 参）：前 14 个组件（截至 {@code
+   * jurisdiction}）⇒ 只补 {@code module = empty} 与 {@code stateDescriptions = 空表}。
    *
    * <p>**为什么需要它**：编制模块对它们而言没有来源，取空编制正是**唯一正确**的语义。
    *
-   * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.module()} / {@code 原.stateDescriptions()} /
-   * {@code 原.households()}），走 canonical 18 参——漏传 = 静默丢编制/链接/家户。
+   * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.module()} / {@code 原.stateDescriptions()} / {@code
+   * 原.households()}），走 canonical 17 参——漏传 = 静默丢编制/链接/家户。
    */
   public Unit(
       UnitId id,
       String name,
       SegmentedSeries<Optional<UnitId>> parent,
       SegmentedSeries<Optional<HexCoord>> position,
-      List<CompositionEntry> manpower,
       List<CompositionEntry> equipment,
       int speed,
       int mobilityPerMille,
@@ -338,7 +326,6 @@ public record Unit(
         name,
         parent,
         position,
-        manpower,
         equipment,
         speed,
         mobilityPerMille,
@@ -353,21 +340,20 @@ public record Unit(
   }
 
   /**
-   * ★ **16 参兼容构造器**（阶段 D1，2026-10-02）：前 16 个组件（截至 {@code module}）⇒ 只补 {@code stateDescriptions =
-   * 空表}（S3a 起再补第 18 组件 {@code households = 空表}）。
+   * ★ **15 参兼容构造器**（阶段 D1，2026-10-02；S3b 砍 manpower 后由 16 参降为 15 参）：前 15 个组件（截至 {@code module}）⇒ 只补
+   * {@code stateDescriptions = 空表}（S3a 起再补第 17 组件 {@code households = 空表}）。
    *
    * <p>**为什么需要它**：第 17 组件落地前写的调用点按"16 参规范形态"写（{@code jurisdiction}/{@code module}
    * 有来源、状态链接没有），取空表正是**唯一正确**的语义；有了它，新增第 17 组件不会把既有 16 参调用点逼成编译错误。
    *
-   * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.stateDescriptions()} / {@code 原.households()}），走 canonical
-   * 18 参——漏传 = 静默丢链接/家户。
+   * <p>★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.stateDescriptions()} / {@code 原.households()}），走
+   * canonical 18 参——漏传 = 静默丢链接/家户。
    */
   public Unit(
       UnitId id,
       String name,
       SegmentedSeries<Optional<UnitId>> parent,
       SegmentedSeries<Optional<HexCoord>> position,
-      List<CompositionEntry> manpower,
       List<CompositionEntry> equipment,
       int speed,
       int mobilityPerMille,
@@ -384,7 +370,6 @@ public record Unit(
         name,
         parent,
         position,
-        manpower,
         equipment,
         speed,
         mobilityPerMille,
@@ -401,20 +386,19 @@ public record Unit(
   }
 
   /**
-   * ★ **17 参兼容构造器**（S3a，2026-10-09）：旧 canonical 形态（前 17 个组件，截至 {@code stateDescriptions}）⇒
-   * 只补第 18 组件 {@code households = 空表}。
+   * ★ **16 参兼容构造器**（S3a，2026-10-09；S3b 砍 manpower 后由 17 参降为 16 参）：旧 canonical 形态（前 16 个组件，截至 {@code
+   * stateDescriptions}）⇒ 只补第 17 组件 {@code households = 空表}。
    *
-   * <p>**为什么需要它**：第 18 组件落地前写的调用点（含测试夹具）按"17 参规范形态"写，家户列表对它们而言没有来源，取空表正是**唯一正确**
-   * 的语义；有了它，新增第 18 组件不会把既有 17 参调用点逼成编译错误。
+   * <p>**为什么需要它**：第 17 组件落地前写的调用点（含测试夹具）按"17 参规范形态"写，家户列表对它们而言没有来源，取空表正是**唯一正确** 的语义；有了它，新增第 17
+   * 组件不会把既有 17 参调用点逼成编译错误。
    *
-   * <p>★★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.households()}），走 canonical 18 参——漏传 = 静默丢家户。
+   * <p>★★ **它同样不是生产拷贝点该用的形状**：拷贝点有来源（{@code 原.households()}），走 canonical 17 参——漏传 = 静默丢家户。
    */
   public Unit(
       UnitId id,
       String name,
       SegmentedSeries<Optional<UnitId>> parent,
       SegmentedSeries<Optional<HexCoord>> position,
-      List<CompositionEntry> manpower,
       List<CompositionEntry> equipment,
       int speed,
       int mobilityPerMille,
@@ -432,7 +416,6 @@ public record Unit(
         name,
         parent,
         position,
-        manpower,
         equipment,
         speed,
         mobilityPerMille,
@@ -491,9 +474,9 @@ public record Unit(
   /**
    * 拷贝 + 校验家户列表（不做冻结，赋值处冻结——同 {@link #copyComposition} 的 SpotBugs 口径）。
    *
-   * <p>三条不变量：非 null（调用方已判）、元素不得为 null、同一 unit 内不得重复 household id；顺序是内容的一部分（保序不可变拷贝）。
-   * ★ 跨单位不变量（同一家户不得同时属于两个 Unit、Unit id 不得与 household id 撞名）不在本类型里做——那要看到整张
-   * {@code units} 表，归 {@link UnitState} 构造期。
+   * <p>三条不变量：非 null（调用方已判）、元素不得为 null、同一 unit 内不得重复 household id；顺序是内容的一部分（保序不可变拷贝）。 ★
+   * 跨单位不变量（同一家户不得同时属于两个 Unit、Unit id 不得与 household id 撞名）不在本类型里做——那要看到整张 {@code units} 表，归 {@link
+   * UnitState} 构造期。
    */
   private static List<HouseholdId> copyHouseholds(List<HouseholdId> households) {
     List<HouseholdId> copy = new ArrayList<>(households.size());

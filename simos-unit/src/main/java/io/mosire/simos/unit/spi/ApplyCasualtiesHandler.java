@@ -16,9 +16,9 @@ import java.util.Objects;
 
 /**
  * {@code unit.ApplyCasualties} 命令的处理器（T8 / spec §四；D3a 改为双轨 delta 有序条目列表）： {@code id,
- * manpower[{type,amount≤0}], equipment[{type,amount≤0}]}。
+ * equipment[{type,amount≤0}], equipment[{type,amount≤0}]}。
  *
- * <p>★ {@code manpower} 与 {@code equipment} 的值都是 **≤ 0 的增量**（战损只减员），与 {@code unit.SetComposition} 的
+ * <p>★ {@code equipment} 的值是 **≤ 0 的增量**（装备战损只减；人力战损落 Social 家户命令），与 {@code unit.SetComposition} 的
  * "整表复写"是两种语义：只扣**提及**的 type，未提及的 type 保持不变；提及了**不存在**的 type ⇒ 拒（P14，不视作 0）。
  *
  * <p>★ **差分不另造路径**：本条命令与其余 handler 一样，产出的变更集是 {@link UnitChangeSet#between}（**绝对值**：目标状态
@@ -49,9 +49,9 @@ public final class ApplyCasualtiesHandler implements CommandHandler, CommandTarg
     try {
       JsonNode payload = UnitPayloads.parse(payloadJson);
       UnitId id = UnitId.parse(UnitPayloads.requireText(payload, "id"));
-      List<CompositionDelta> manpower = UnitPayloads.requireCompositionDelta(payload, "manpower");
+      UnitPayloads.rejectRetiredManpower(payload);
       List<CompositionDelta> equipment = UnitPayloads.requireCompositionDelta(payload, "equipment");
-      UnitState next = UnitOperations.applyCasualties(snapshot.state(), id, manpower, equipment);
+      UnitState next = UnitOperations.applyCasualties(snapshot.state(), id, equipment);
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

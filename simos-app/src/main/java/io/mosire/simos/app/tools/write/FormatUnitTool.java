@@ -349,9 +349,8 @@ public final class FormatUnitTool implements AgentTool {
     view.put("seed", plan.seed());
     view.put("seedProvided", plan.seedProvided());
     view.put("tick", plan.tick());
-    view.put("manpower", ToolSupport.compositionView(plan.manpower()));
+    // ★ S3b：不再回 manpower 表（Unit.manpower 已退役，人员属于 Social 家户）；只回装备前后值。
     view.put("equipment", ToolSupport.compositionView(plan.equipment()));
-    view.put("beforeManpower", ToolSupport.compositionView(plan.beforeManpower()));
     view.put("beforeEquipment", ToolSupport.compositionView(plan.beforeEquipment()));
     view.put("commands", plan.commandTypes());
     view.put("reason", reason);

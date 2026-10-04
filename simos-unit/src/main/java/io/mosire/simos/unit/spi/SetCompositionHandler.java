@@ -16,7 +16,7 @@ import java.util.Objects;
 
 /**
  * {@code unit.SetComposition} 命令的处理器（阶段 D3a，2026-10-02；原 {@code unit.SetStrength} 的 rename）： {@code
- * id, manpower[{type,amount}], equipment[{type,amount}]}。
+ * id, equipment[{type,amount}], equipment[{type,amount}]}。
  *
  * <p>★ **整表复写**：载荷里的两张表**整体取代**旧表，不是增量合并；**未知 type 不是错误**——给什么就是什么。人数/装备范围 （{@code amount ≥ 0}、同表
  * type 不重复）由 {@code Unit} 构造期判、折成拒绝。
@@ -49,9 +49,9 @@ public final class SetCompositionHandler implements CommandHandler, CommandTarge
     try {
       JsonNode payload = UnitPayloads.parse(payloadJson);
       UnitId id = UnitId.parse(UnitPayloads.requireText(payload, "id"));
-      List<CompositionEntry> manpower = UnitPayloads.requireComposition(payload, "manpower");
+      UnitPayloads.rejectRetiredManpower(payload);
       List<CompositionEntry> equipment = UnitPayloads.requireComposition(payload, "equipment");
-      UnitState next = UnitOperations.setComposition(snapshot.state(), id, manpower, equipment);
+      UnitState next = UnitOperations.setComposition(snapshot.state(), id, equipment);
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

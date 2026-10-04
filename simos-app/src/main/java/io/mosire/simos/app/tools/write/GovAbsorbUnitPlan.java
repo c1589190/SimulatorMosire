@@ -1,14 +1,10 @@
 package io.mosire.simos.app.tools.write;
 
 import io.mosire.simos.app.tools.ToolSupport;
-import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.CompositionDelta;
-import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
-import io.mosire.simos.unit.UnitId;
-import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -80,116 +76,13 @@ final class GovAbsorbUnitPlan {
     if (count < 1L) {
       throw new IllegalArgumentException("吸收人数 count 必须 ≥ 1: " + count);
     }
-    UnitState units = ToolSupport.unitState(state);
-    Unit govUnit = units.units().get(UnitId.parse(govUnitId));
-    if (govUnit == null) {
-      throw new IllegalArgumentException("吸收方 GOV 单位不存在: " + govUnitId);
-    }
-    GovFormation gov = requireGovFormation(govUnit, govUnitId);
-    Unit source = units.units().get(UnitId.parse(sourceUnitId));
-    if (source == null) {
-      throw new IllegalArgumentException("源人口单位不存在: " + sourceUnitId);
-    }
-    long sourceMemberBefore = manpowerTotal(source);
-    if (sourceMemberBefore < count) {
-      throw new IllegalArgumentException(
-          "吸收 " + count + " 人超过源单位现有人力合计: 源 " + sourceUnitId + " 现有 " + sourceMemberBefore);
-    }
-    var module = source.module().orElse(null);
-    if (module instanceof ArmyFormation) {
-      throw new IllegalArgumentException(
-          "源单位 "
-              + sourceUnitId
-              + " 带 ArmyFormation：军队单位不是人口容器，默认拒吸收；只有无 module 的纯人员单位才能被吸收"
-              + "（先 unit.SplitFormation / 另建纯人员来源）");
-    }
-    if (module instanceof GovFormation) {
-      throw new IllegalArgumentException(
-          "源单位 " + sourceUnitId + " 带 GovFormation：不是纯人员单位，不能作为人口来源被吸收");
-    }
-    if (module != null) {
-      throw new IllegalArgumentException(
-          "源单位 " + sourceUnitId + " 带编制标签（" + module.getClass().getSimpleName() + "）：不是纯人员单位");
-    }
-    long staffBefore = gov.staff().getOrDefault(role, 0L);
-    if (staffBefore > Long.MAX_VALUE - count) {
-      throw new IllegalArgumentException(
-          "吸收后 " + role + " 在编人数溢出 long: 现有 " + staffBefore + " + 请求 " + count);
-    }
-    Long cap = gov.policy().staffCap().get(role);
-    if (cap != null && staffBefore > cap - count) {
-      throw new IllegalArgumentException(
-          "吸收 "
-              + role
-              + " "
-              + count
-              + " 人会超编制上限: 现有 "
-              + staffBefore
-              + " + 请求 "
-              + count
-              + " > staffCap "
-              + cap
-              + "（不截断；先 unit.SetGovPolicy 提上限或减少 count）");
-    }
-    long sourceMemberAfter = sourceMemberBefore - count;
-    List<CompositionDelta> manpowerDeltas = allocateManpowerDeltas(source, count);
-    boolean disband = disbandSource && sourceMemberAfter == 0L;
-    Optional<String> disbandSkippedReason =
-        disbandSource && !disband
-            ? Optional.of(
-                "disbandSource=true 但吸收后源单位仍有 "
-                    + sourceMemberAfter
-                    + " 人：不自动解散（保留剩余人员；要么继续吸收，要么显式另走 unit.DisbandUnit）")
-            : Optional.empty();
-    return new Plan(
-        govUnitId,
-        sourceUnitId,
-        role,
-        count,
-        sourceMemberBefore,
-        sourceMemberAfter,
-        manpowerDeltas,
-        staffBefore,
-        staffBefore + count,
-        disbandSource,
-        disband,
-        disbandSkippedReason,
-        state.meta().timestamp().tick());
-  }
-
-  /** 源单位的现有人力合计（饱和加法：本类只用它做"够不够"与视图，不参与逐值扣减；表是合法 Unit ⇒ 每项 {@code ≥ 0}）。 */
-  private static long manpowerTotal(Unit unit) {
-    long total = 0L;
-    for (CompositionEntry entry : unit.manpower()) {
-      total = total > Long.MAX_VALUE - entry.amount() ? Long.MAX_VALUE : total + entry.amount();
-    }
-    return total;
-  }
-
-  /**
-   * 从源单位的多条人力里按**表序**扣 {@code count} 人，逐 type 生成负增量。
-   *
-   * <p>★ 口径：先扣表里靠前的 type，扣完再下一个；每 type 至多扣光、不越界。调用方已保证 {@code Σ amount ≥
-   * count}，故这里不会出现"扣不满"；真出现就是夹具坏了，抛 {@link IllegalStateException}（不是可拒的坏命令）。
-   */
-  private static List<CompositionDelta> allocateManpowerDeltas(Unit source, long count) {
-    List<CompositionDelta> deltas = new ArrayList<>();
-    long remaining = count;
-    for (CompositionEntry entry : source.manpower()) {
-      if (remaining == 0L) {
-        break;
-      }
-      long taken = Math.min(entry.amount(), remaining);
-      if (taken > 0L) {
-        deltas.add(new CompositionDelta(entry.type(), -taken));
-        remaining -= taken;
-      }
-    }
-    if (remaining != 0L) {
-      throw new IllegalStateException(
-          "内部分摊不自洽：源 " + source.id() + " 人力合计不足 " + count + "（余 " + remaining + "）");
-    }
-    return List.copyOf(deltas);
+    // ★ S3b（2026-10-09）：Unit.manpower 已退役 ⇒ "把源单位的人吸收成 GOV 编制"必须先落到 Social 家户
+    //   （转移成员批次 + 改两侧 households），本工具尚未接线到那条写口。这里 fail-closed、具名拒，绝不把人员
+    //   静默写回 unit 侧的第二本 headcount。接线点（下一步）：social.TransferHouseholdMembers 组合。
+    throw new IllegalArgumentException(
+        "GovAbsorbUnit 尚未接线到家户模型（S3b）：Unit.manpower 已退役，人员转移必须先走 Social 家户"
+            + "（social.CreateHousehold / social.TransferHouseholdMembers + unit.SetUnitHouseholds，"
+            + "或用 simos.unit.assignHousehold）；本工具暂只保留失败路径，不做第二本 headcount");
   }
 
   /** 角色词表：只认 SCRIBE|YAMEN|POST，别的词给具名拒（不静默当缺省）。 */

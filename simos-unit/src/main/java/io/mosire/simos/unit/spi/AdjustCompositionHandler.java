@@ -17,10 +17,10 @@ import java.util.Objects;
 
 /**
  * {@code unit.AdjustComposition} 命令的处理器（阶段 D3a，2026-10-02 / D-009 补裁）： {@code id,
- * manpower[{type,amount(有符号)}], equipment[{type,amount(有符号)}]}。
+ * equipment[{type,amount(有符号)}], equipment[{type,amount(有符号)}]}。
  *
  * <pre>{@code
- * {"id":"u-1","manpower":[{"type":"重骑兵","amount":300},{"type":"轻步兵","amount":-120}], "equipment":[]}
+ * {"id":"u-1","equipment":[{"type":"重骑兵","amount":30},{"type":"轻步兵","amount":-12}]}
  * }</pre>
  *
  * <p>★ <b>GM 调试直改原语</b>（用户 D-009 补裁：「为了确保调试，单独的 Unit 人力/装备变动自然也必须被 GM 工具组支持」）： 正增量可新建
@@ -59,9 +59,9 @@ public final class AdjustCompositionHandler
     try {
       JsonNode payload = UnitPayloads.parse(payloadJson);
       UnitId id = UnitId.parse(UnitPayloads.requireText(payload, "id"));
-      List<CompositionDelta> manpower = UnitPayloads.requireCompositionDelta(payload, "manpower");
+      UnitPayloads.rejectRetiredManpower(payload);
       List<CompositionDelta> equipment = UnitPayloads.requireCompositionDelta(payload, "equipment");
-      UnitState next = UnitOperations.adjustComposition(snapshot.state(), id, manpower, equipment);
+      UnitState next = UnitOperations.adjustComposition(snapshot.state(), id, equipment);
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

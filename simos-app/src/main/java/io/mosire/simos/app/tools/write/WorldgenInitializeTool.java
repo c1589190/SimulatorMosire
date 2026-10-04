@@ -932,13 +932,7 @@ public final class WorldgenInitializeTool implements AgentTool {
             branch,
             expectedRevision,
             CREATE_UNIT_TYPE,
-            createUnitPayload(
-                rootId,
-                displayName + ARMY_NAME_SUFFIX,
-                at,
-                manpowerForAll(army),
-                List.of(),
-                null)));
+            createUnitPayload(rootId, displayName + ARMY_NAME_SUFFIX, at, List.of(), null)));
     List<String> armUnitIds = new ArrayList<>(army.establishment().size());
     for (Map.Entry<String, Integer> entry : army.establishment().entrySet()) {
       String armId = armUnitId(nationId, entry.getKey());
@@ -951,12 +945,7 @@ public final class WorldgenInitializeTool implements AgentTool {
               expectedRevision,
               CREATE_UNIT_TYPE,
               createUnitPayload(
-                  armId,
-                  entry.getKey(),
-                  at,
-                  List.of(new CompositionEntry(entry.getKey(), entry.getValue())),
-                  equipmentFor(army, entry.getKey()),
-                  rootId)));
+                  armId, entry.getKey(), at, equipmentFor(army, entry.getKey()), rootId)));
     }
     // ★ commander（根单位）必须 ∈ members（CommandChain 构造期硬约束）⇒ members 含根 + 全部兵种。
     List<String> members = new ArrayList<>(1 + armUnitIds.size());
@@ -1041,19 +1030,20 @@ public final class WorldgenInitializeTool implements AgentTool {
     return ToolSupport.json(payload);
   }
 
-  /** {@code unit.CreateUnit} 载荷（{@code parent} 为 null ⇒ 不发该键，即根单位）。 */
+  /**
+   * {@code unit.CreateUnit} 载荷（{@code parent} 为 null ⇒ 不发该键，即根单位）。
+   *
+   * <p>★ S3b（2026-10-09）：不再发 {@code manpower}（Unit.manpower 已退役）；军队单位以空 {@code households} 起步，等
+   * Social 家户按征兵/编入路径挂上来之后才有真实人口。{@code establishment} 只在摘要里作为编制名册读数， 不写进 Unit 状态（具名缺口：worldgen
+   * 军队人口 → 家户来源的接线）。
+   */
   private static String createUnitPayload(
-      String id,
-      String name,
-      HexCoord at,
-      List<CompositionEntry> manpower,
-      List<CompositionEntry> equipment,
-      String parent) {
+      String id, String name, HexCoord at, List<CompositionEntry> equipment, String parent) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("id", id);
     payload.put("name", name);
     payload.put("position", ToolSupport.hexCoord(at));
-    payload.put("manpower", ToolSupport.compositionView(manpower));
+    payload.put("households", List.of());
     payload.put("equipment", ToolSupport.compositionView(equipment));
     payload.put("speed", ARMY_SPEED);
     payload.put("mobilityPerMille", ARMY_MOBILITY_PER_MILLE);
@@ -1274,29 +1264,35 @@ public final class WorldgenInitializeTool implements AgentTool {
     view.put("armyId", armyId(nationId));
     view.put("position", ToolSupport.hexCoord(at));
     List<Map<String, Object>> units = new ArrayList<>(1 + army.establishment().size());
-    units.add(unitRow(rootId, displayName + ARMY_NAME_SUFFIX, manpowerForAll(army), List.of()));
+    units.add(unitRow(rootId, displayName + ARMY_NAME_SUFFIX, List.of()));
     for (Map.Entry<String, Integer> entry : army.establishment().entrySet()) {
       units.add(
           unitRow(
               armUnitId(nationId, entry.getKey()),
               entry.getKey(),
-              List.of(new CompositionEntry(entry.getKey(), entry.getValue())),
               equipmentFor(army, entry.getKey())));
     }
     view.put("units", units);
+    // ★ S3b：编制名册是读数，不是 Unit 状态的第二本人口账（Unit.manpower 已退役；人口只能来自 Social 家户）。
+    view.put("establishment", ToolSupport.compositionView(manpowerForAll(army)));
+    view.put(
+        "populationNote",
+        "S3b：军队单位以空 households 创建，population=0；编制人数见 establishment，等 Social 家户编入后才有真实人口");
     return view;
   }
 
   /**
-   * 编制单位行：{@code {id,name,manpower:[{type,amount}],equipment:[{type,amount}]}}（D3a 起与 Unit 新表同形）。
+   * 编制单位行：{@code {id,name,equipment:[{type,amount}],households:[],population:0}}（S3b：不再有 manpower
+   * 表； 军队人口只能来自 Social 家户，编制名册在 {@code armySummary.establishment} 里单列）。
    */
   private static Map<String, Object> unitRow(
-      String id, String name, List<CompositionEntry> manpower, List<CompositionEntry> equipment) {
+      String id, String name, List<CompositionEntry> equipment) {
     Map<String, Object> row = new LinkedHashMap<>();
     row.put("id", id);
     row.put("name", name);
-    row.put("manpower", ToolSupport.compositionView(manpower));
     row.put("equipment", ToolSupport.compositionView(equipment));
+    row.put("households", List.of());
+    row.put("population", 0L);
     return row;
   }
 

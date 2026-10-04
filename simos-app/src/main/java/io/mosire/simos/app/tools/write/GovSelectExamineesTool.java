@@ -114,7 +114,7 @@ public final class GovSelectExamineesTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 科举选人：从来源 GOV 辖区社会批次选人，同批建无标签纯人员单位（可选规划到目的 GOV）（组合工具，一批 = 一条 revision）："
+    return "GM 科举选人：从来源 GOV 辖区社会批次选人，同批建无标签纯人员单位（可选规划到目的 GOV）（组合工具，一批 = 一条 revision）。★ S3b：Unit.manpower 已退役，本工具尚未接线到家户转移 ⇒ apply 会被 unit.CreateUnit 具名拒；参数与守恒口径如下："
         + "参数 {unitId(必填, 带 GovFormation 的来源 GOV), count(必填 ≥ 1), targetGovUnitId?(目的 GOV), "
         + "role?(行动记录角色标签，缺省 EXAMINEE), newUnitId?(可选；缺省确定性生成), reason(必填), "
         + "preview?(缺省 true=只算不写), branch?(缺省 "

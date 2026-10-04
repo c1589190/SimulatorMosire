@@ -2,6 +2,8 @@ package io.mosire.simos.unit.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.unit.ArmyFormation;
+import io.mosire.simos.unit.MilitaryHouseholdDuty;
+import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
@@ -12,6 +14,7 @@ import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -43,6 +46,16 @@ public final class SetArmyFormationHandler implements CommandHandler, CommandTar
     return "unit.SetArmyFormation";
   }
 
+  /** 既有 ArmyFormation 的军官家户配置（载荷未给 {@code householdDuties} 时的保持值）：不是 Army ⇒ 空表。 */
+  private static Map<io.mosire.simos.social.api.id.HouseholdId, MilitaryHouseholdDuty>
+      existingArmyDuties(UnitState state, UnitId id) {
+    Unit unit = state.units().get(id);
+    if (unit != null && unit.module().orElse(null) instanceof ArmyFormation army) {
+      return army.householdDuties();
+    }
+    return Map.of();
+  }
+
   @Override
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
@@ -53,7 +66,11 @@ public final class SetArmyFormationHandler implements CommandHandler, CommandTar
       UnitId id = UnitId.parse(UnitPayloads.requireText(payload, "unitId"));
       Optional<UnitId> masterGov = UnitPayloads.optionalId(payload, "masterGov");
       String role = UnitPayloads.requireText(payload, "role");
-      ArmyFormation formation = new ArmyFormation(masterGov, role);
+      // ★ S3b：householdDuties 与 GOV households 同款兼容口径——载荷缺席 ⇒ 保持既有军官配置（不是清空）。
+      Map<io.mosire.simos.social.api.id.HouseholdId, MilitaryHouseholdDuty> householdDuties =
+          UnitPayloads.optionalMilitaryDuties(payload, "householdDuties")
+              .orElseGet(() -> existingArmyDuties(snapshot.state(), id));
+      ArmyFormation formation = new ArmyFormation(masterGov, role, householdDuties);
       UnitState next = UnitOperations.setArmyFormation(snapshot.state(), id, formation);
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {

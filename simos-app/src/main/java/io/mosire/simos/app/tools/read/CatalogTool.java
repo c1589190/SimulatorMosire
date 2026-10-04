@@ -59,15 +59,17 @@ public final class CatalogTool implements AgentTool {
           Map.entry("unit.RenameUnit", "id, name"),
           Map.entry(
               "unit.CreateUnit",
-              "id, name, position{q,r}?, manpower[{type,amount}], equipment[{type,amount}], speed,"
+              "id, name, position{q,r}?, households?[家户 id], equipment[{type,amount}], speed,"
                   + " mobilityPerMille, parent?（省略 position ⇒ 无自身位置、跟随父，此时 parent 必填；"
-                  + "manpower/equipment 必填数组，空数组合法；同表 type 不得重复）"),
+                  + "★ S3b：manpower 已退役（非空具名拒，人员属于 Social 家户）；equipment 必填、空数组合法；"
+                  + "households 给的 Social 家户必须存在，位置不一致时下一轮推进自动同步到 UNIT(本单位)）"),
           Map.entry("unit.ReparentUnit", "id, parent?（null=清根）"),
           Map.entry(
               "unit.SetComposition",
-              "id, manpower[{type,amount}], equipment[{type,amount}]"
-                  + "（★ D3a：整表复写——两张表整体取代旧表、不是增量；未知 type 合法（给什么就是什么）；"
-                  + "amount ≥ 0、同表 type 不重复，越界由 Unit 构造期拒。旧 unit.SetStrength 已按 D-011 删除，不留兼容）"),
+              "id, equipment[{type,amount}]"
+                  + "（★ S3b：manpower 已退役、非空具名拒，人员属于 Social 家户；装备整表复写——整体取代旧表、不是增量；"
+                  + "未知 type 合法（给什么就是什么）；amount ≥ 0、同表 type 不重复，越界由 Unit 构造期拒。"
+                  + "旧 unit.SetStrength 已按 D-011 删除，不留兼容）"),
           Map.entry("unit.PlaceAt", "id, hex{q,r}?（null=撤销位置）"),
           Map.entry("unit.PlanRoute", "id, waypoints[{q,r}...]"),
           Map.entry("unit.CancelRoute", "id"),
@@ -93,19 +95,21 @@ public final class CatalogTool implements AgentTool {
           Map.entry("unit.UpdateCommandChain", "chainId, name?, commander?, members?"),
           Map.entry(
               "unit.ApplyCasualties",
-              "id, manpower[{type,amount≤0}], equipment[{type,amount≤0}]"
-                  + "（★ D3a：双轨有序 delta；只扣提及的 type，未提及的 type 保持不变；"
-                  + "提及不存在的 type ⇒ 具名拒（P14，不视作 0）；|Δ| ≤ 当前值）"),
+              "id, equipment[{type,amount≤0}]"
+                  + "（★ S3b：manpower 已退役、非空具名拒，人员战损要落 Social 家户命令；装备 delta 只扣提及的 type，"
+                  + "未提及的 type 保持不变；提及不存在的 type ⇒ 具名拒（P14，不视作 0）；|Δ| ≤ 当前值）"),
           Map.entry(
               "unit.AdjustComposition",
-              "id, manpower[{type,amount(有符号)}], equipment[{type,amount(有符号)}]"
-                  + "（★ D3a / D-009 补裁：GM 调试直改原语；正增量可新建 type（追加表尾），"
-                  + "负增量要求 type 已存在且 |Δ| ≤ 当前值；同表 type 不重复、零增量合法 no-op；非 GmOnly）"),
+              "id, equipment[{type,amount(有符号)}]"
+                  + "（★ S3b：manpower 已退役、非空具名拒，人员属于 Social 家户；GM 调试直改原语："
+                  + "正增量可新建 type（追加表尾），负增量要求 type 已存在且 |Δ| ≤ 当前值；"
+                  + "同表 type 不重复、零增量合法 no-op；非 GmOnly）"),
           Map.entry(
               "unit.SetUnitHouseholds",
               "unitId, households[家户 id...]（必填数组；空数组=清空、保序；不得重复）, reason"
                   + "（★ S3a：整体替换 unit 容纳的家户列表；unit 必须存在；同一家户不得同时属于两个 unit、"
-                  + "unit id 不得与 household id 撞名（UnitState 构造期具名拒）；UNIT 家户位置的一致性由 app 组合工具同批保证）"),
+                  + "unit id 不得与 household id 撞名（UnitState 构造期具名拒）；UNIT 家户位置的一致性由 app 组合工具同批保证，"
+                  + "生产路径（推进参与者）还会在每轮推进前把 Social 位置自动同步到 unit.households）"),
           Map.entry(
               "unit.SetJurisdiction",
               "unitId, regions[regionId...]（必填；空数组 = 撤销全部管辖）,"
@@ -119,17 +123,24 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "unit.SetGovFormation",
               "unitId, level(CENTRAL|PROVINCE), superiorGov?,"
-                  + " households?[家户 id...], staff?{SCRIBE|YAMEN|POST:整数}, policy?{grainPerStaffPerTick?,"
+                  + " households?[家户 id...], householdPosts?[{household,role,level,head?}],"
+                  + " staff?{SCRIBE|YAMEN|POST:整数}, policy?{grainPerStaffPerTick?,"
                   + " clothPerStaffPerCycle?, moneyPerStaffPerTick?, retirementPerStaff?,"
                   + " staffCap?{SCRIBE|YAMEN|POST:整数}}"
                   + "（★ staff 缺省空表、policy 缺省 OfficePolicy.defaults() 且可给部分字段；"
                   + "households 缺省 = 保持既有 GOV 的下辖家户（不是清空）、给了（含空数组）⇒ 整体替换；"
+                  + "householdPosts 缺省 = 保持既有领导配置；S3b 起 householdPosts 是以 HouseholdId 为键的"
+                  + "领导层家户具名配置（键必须在本单位 households 里；非空时 staff 只是家户人口投影、"
+                  + "unit.RecruitStaff/DismissStaff 具名拒）；"
                   + "既有 ArmyFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
                   + "superiorGov 必须存在且带 GovFormation、不得指向自身；同类型重复设置 = 整体替换）"),
           Map.entry(
               "unit.SetArmyFormation",
-              "unitId, masterGov?, role"
-                  + "（★ role 必填非空白；masterGov 缺省 = 未认主子，给了必须存在且带 GovFormation；"
+              "unitId, masterGov?, role,"
+                  + " householdDuties?[{household,kind(SOLDIER|NCO|OFFICER|COMMANDER),appointment,commandOf?}]"
+                  + "（★ S3b：householdDuties 是以 HouseholdId 为键的军官/军职家户具名配置"
+                  + "（键必须在本单位 households 里）；缺省 = 保持既有配置；"
+                  + "role 必填非空白；masterGov 缺省 = 未认主子，给了必须存在且带 GovFormation；"
                   + "既有 GovFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
                   + "同类型重复设置 = 整体替换）"),
           Map.entry(
@@ -209,8 +220,7 @@ public final class CatalogTool implements AgentTool {
                   + "（★ lotId 缺省确定性生成 gm-add:<householdId>；批次 id 已存在 ⇒ 拒；anchorTick 缺省=世界当前 tick）"),
           Map.entry(
               "social.RemoveHouseholdMembers",
-              "householdId, lotId, count(>0), reason"
-                  + "（★ 批次必须属于该家户；扣到 0 删批次；超量 ⇒ 具名拒）"),
+              "householdId, lotId, count(>0), reason" + "（★ 批次必须属于该家户；扣到 0 删批次；超量 ⇒ 具名拒）"),
           Map.entry(
               "social.TransferHouseholdMembers",
               "from, to, lotId, count(>0), reason"

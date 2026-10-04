@@ -109,7 +109,15 @@ final class FormatUnitPlan {
     if (unitId == null || unitId.isBlank()) {
       throw new IllegalArgumentException("unitId 必须是非空文本");
     }
-    requireNoDuplicateSpecTypes(manpowerSpecs, "manpower");
+    // ★ S3b（2026-10-09）：Unit.manpower 已退役——本工具只做装备格式；带非空 manpower 规格 ⇒ 具名拒（fail-closed），
+    //   不静默把人员整表复写成一个 unit 侧的第二本 headcount。人员流转走 social.* 家户命令。
+    if (!manpowerSpecs.isEmpty()) {
+      throw new IllegalArgumentException(
+          "manpower 已退役（S3b / 2026-10-09）：Unit.manpower 不再是人口账，人员属于 Social 家户；"
+              + "本工具只格式化 equipment（收到 "
+              + manpowerSpecs.size()
+              + " 条人力规格）。人员移动请用 social.* 家户命令");
+    }
     requireNoDuplicateSpecTypes(equipmentSpecs, "equipment");
     UnitState units = ToolSupport.unitState(state);
     Unit current = units.units().get(UnitId.parse(unitId));
@@ -124,15 +132,14 @@ final class FormatUnitPlan {
             ? seed.get()
             : deriveSeed(unitId, manpowerSpecs, equipmentSpecs, baseRevision, tick);
     Random random = new Random(effectiveSeed);
-    List<CompositionEntry> manpower = format(manpowerSpecs, random);
     List<CompositionEntry> equipment = format(equipmentSpecs, random);
     return new Plan(
         unitId,
         effectiveSeed,
         seedProvided,
-        manpower,
+        List.of(),
         equipment,
-        current.manpower(),
+        List.of(),
         current.equipment(),
         tick);
   }
@@ -295,7 +302,7 @@ final class FormatUnitPlan {
     String setCompositionPayloadJson() {
       Map<String, Object> payload = new LinkedHashMap<>();
       payload.put("id", unitId);
-      payload.put("manpower", ToolSupport.compositionView(manpower));
+      // ★ S3b：不再发 manpower（Unit.manpower 已退役；人员属于 Social 家户）。
       payload.put("equipment", ToolSupport.compositionView(equipment));
       return ToolSupport.json(payload);
     }
@@ -310,9 +317,7 @@ final class FormatUnitPlan {
       value.put("seed", seed);
       value.put("seedProvided", seedProvided);
       value.put("tick", tick);
-      value.put("manpower", ToolSupport.compositionView(manpower));
       value.put("equipment", ToolSupport.compositionView(equipment));
-      value.put("beforeManpower", ToolSupport.compositionView(beforeManpower));
       value.put("beforeEquipment", ToolSupport.compositionView(beforeEquipment));
       value.put("reason", reason);
       return ToolSupport.json(value);
@@ -327,11 +332,9 @@ final class FormatUnitPlan {
           + "，seed="
           + seed
           + (seedProvided ? "（显式）" : "（派生）")
-          + "）：manpower="
-          + manpower
-          + "，equipment="
+          + "）：equipment="
           + equipment
-          + "；reason="
+          + "（S3b：manpower 已退役）；reason="
           + reason;
     }
   }

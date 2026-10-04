@@ -90,7 +90,7 @@ public final class GovAbsorbUnitTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 吸收纯人员单位进 GOV 编制（组合工具，一批 = 一条 revision）："
+    return "GM 吸收纯人员单位进 GOV 编制（组合工具，一批 = 一条 revision）。★ S3b：Unit.manpower 已退役，本工具尚未接线到家户转移 ⇒ 推导阶段即具名拒（fail-closed，不做第二本 headcount）；"
         + "参数 {unitId(必填, 吸收方 GOV), role(必填 SCRIBE|YAMEN|POST), sourceUnitId(必填, 无 module 的纯人员单位), "
         + "count(必填 ≥ 1), disbandSource?(缺省 false；源吸收后已空才同批 unit.DisbandUnit), reason(必填), "
         + "preview?(缺省 true), branch?(缺省 "

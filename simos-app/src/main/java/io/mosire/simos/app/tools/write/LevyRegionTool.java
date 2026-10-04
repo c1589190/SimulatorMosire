@@ -24,9 +24,9 @@ import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.util.address.Address;
+import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -158,7 +158,7 @@ public final class LevyRegionTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 辖区一次性抽取（组合工具，一批 = 一条 revision）：从单位辖区的家户 actor 账抽粮/钱/布、从该区域抽人力，"
+    return "GM 辖区一次性抽取（组合工具，一批 = 一条 revision）：从单位辖区的家户 actor 账抽粮/钱/布。★ S3b：manpower 已退役、本工具尚未接线到家户转移 ⇒ manpower>0 时 apply 会被 unit.AdjustComposition 具名拒；粮/钱/布三维照常可用："
         + "粮/钱/人各自受 unit.SetJurisdiction 的 levy*CapPerCommand 约束（0 = 无额度）；"
         + "★ cloth 本批只受可用量约束，上限字段留后续（Jurisdiction 没有第四条上限）。"
         + "载荷 {unitId(必填), regionId(必填), grain?, money?, cloth?, manpower?(四项可选 long，缺省 0；"

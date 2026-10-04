@@ -3,6 +3,8 @@ package io.mosire.simos.sd.spi;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.sd.state.SdSnapshot;
+import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
@@ -57,6 +59,23 @@ final class SdSnapshots {
           "state 的 unit 切片不是 UnitSnapshot: " + snapshot.getClass().getName());
     }
     return unitSnapshot.state();
+  }
+
+  /**
+   * ★ <b>S3b（2026-10-09）：social 切片（只读）</b>——{@code sd.RecordCasualties} 的人员上界现在从 {@link
+   * SocialData#unitPopulation(String)} 现算（Unit.manpower 已退役；人数唯一来源是 Social 家户）。
+   */
+  static SocialData social(SimulationState state) {
+    Objects.requireNonNull(state, "state");
+    Snapshot snapshot =
+        state
+            .module("social")
+            .orElseThrow(() -> new IllegalStateException("state 里没有 social 切片（装配故障）"));
+    if (!(snapshot instanceof SocialSnapshot socialSnapshot)) {
+      throw new IllegalStateException(
+          "state 的 social 切片不是 SocialSnapshot: " + snapshot.getClass().getName());
+    }
+    return socialSnapshot.data();
   }
 
   /** 根单位是否存在（只读 unit 切片）。 */

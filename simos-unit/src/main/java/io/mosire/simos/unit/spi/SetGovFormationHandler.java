@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.GovernmentHouseholdPost;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
@@ -32,9 +33,9 @@ import java.util.Optional;
  * }</pre>
  *
  * <p>★ <b>载荷语义</b>：{@code level} 必填词表（CENTRAL|PROVINCE）；{@code superiorGov} 可缺省（中央应为空）；{@code
- * staff} 缺省空表、{@code policy} 缺省 {@link OfficePolicy#defaults()}（也可给部分字段，缺省字段取 defaults）。
- * ★ <b>S3a 的 {@code households}</b>（第 18 组件）：缺席 ⇒ <b>保持既有 GOV 的下辖家户</b>（不是清空——旧调用点没有这个字段，
- * 清空会静默丢家户）；给了（含空数组）⇒ 整体替换。
+ * staff} 缺省空表、{@code policy} 缺省 {@link OfficePolicy#defaults()}（也可给部分字段，缺省字段取 defaults）。 ★ <b>S3a 的
+ * {@code households}</b>（第 18 组件）：缺席 ⇒ <b>保持既有 GOV 的下辖家户</b>（不是清空——旧调用点没有这个字段， 清空会静默丢家户）；给了（含空数组）⇒
+ * 整体替换。
  *
  * <p>★ <b>拒因</b>（全部由 {@link UnitOperations#setGovFormation} 给出，边界只折 {@code Rejected}）：单位不存在；单位已带
  * {@code ArmyFormation}（一单位至多一个标签，不静默替换）；{@code superiorGov} 不存在 / 不是 GOV / 指向自身。同类型重复设置 =
@@ -71,10 +72,14 @@ public final class SetGovFormationHandler implements CommandHandler, CommandTarg
       //   理由：本命令对 staff/policy 是"同类型整体替换"（缺省回落空表/defaults），而 households 对第 18 组件落地前
       //   的既有调用点没有来源——缺省清空会静默丢掉刚刚容纳的家户（本仓最贵教训的形态）。
       List<HouseholdId> households =
-          UnitPayloads
-              .optionalHouseholdIds(payload, "households")
+          UnitPayloads.optionalHouseholdIds(payload, "households")
               .orElseGet(() -> existingGovHouseholds(snapshot.state(), id));
-      GovFormation formation = new GovFormation(staff, households, policy, superiorGov, level);
+      // ★ S3b：householdPosts 与 households 同款兼容口径——载荷缺席 ⇒ 保持既有领导配置（不是清空）。
+      Map<HouseholdId, GovernmentHouseholdPost> householdPosts =
+          UnitPayloads.optionalGovernmentPosts(payload, "householdPosts")
+              .orElseGet(() -> existingGovPosts(snapshot.state(), id));
+      GovFormation formation =
+          new GovFormation(staff, households, householdPosts, policy, superiorGov, level);
       UnitState next = UnitOperations.setGovFormation(snapshot.state(), id, formation);
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {
@@ -83,9 +88,8 @@ public final class SetGovFormationHandler implements CommandHandler, CommandTarg
   }
 
   /**
-   * 既有 GOV 的下辖家户（载荷未给 {@code households} 时的保持值）：单位不存在 / 不是 GOV / 尚无编制 ⇒ 空表。
-   * ★ 这是 S3a 新组件的旧调用点兼容口径：第 18 组件落地前的 {@code unit.SetGovFormation} 载荷没有这个字段，
-   * 重新设编制不得顺手清掉容纳的家户。
+   * 既有 GOV 的下辖家户（载荷未给 {@code households} 时的保持值）：单位不存在 / 不是 GOV / 尚无编制 ⇒ 空表。 ★ 这是 S3a 新组件的旧调用点兼容口径：第
+   * 18 组件落地前的 {@code unit.SetGovFormation} 载荷没有这个字段， 重新设编制不得顺手清掉容纳的家户。
    */
   private static List<HouseholdId> existingGovHouseholds(UnitState state, UnitId id) {
     Unit unit = state.units().get(id);
@@ -93,5 +97,15 @@ public final class SetGovFormationHandler implements CommandHandler, CommandTarg
       return gov.households();
     }
     return List.of();
+  }
+
+  /** 既有 GOV 的领导家户配置（载荷未给 {@code householdPosts} 时的保持值）：不是 GOV ⇒ 空表。 */
+  private static Map<HouseholdId, GovernmentHouseholdPost> existingGovPosts(
+      UnitState state, UnitId id) {
+    Unit unit = state.units().get(id);
+    if (unit != null && unit.module().orElse(null) instanceof GovFormation gov) {
+      return gov.householdPosts();
+    }
+    return Map.of();
   }
 }

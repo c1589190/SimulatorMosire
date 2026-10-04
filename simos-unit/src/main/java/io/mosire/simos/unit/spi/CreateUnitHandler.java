@@ -71,8 +71,11 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
       String name = UnitPayloads.requireText(payload, "name");
       // ★ position 可选：省略/null ⇒ 无自身位置（跟随父）；但那时必须给 parent（否则单位不在图上，是坏输入）。
       Optional<HexCoord> position = UnitPayloads.optionalHex(payload, "position");
-      List<CompositionEntry> manpower = UnitPayloads.requireComposition(payload, "manpower");
+      UnitPayloads.rejectRetiredManpower(payload);
       List<CompositionEntry> equipment = UnitPayloads.requireComposition(payload, "equipment");
+      // ★ S3b：创建期即可给家户（生产路径 RaiseUnit 用）；缺席 ⇒ 空表（旧调用点）。
+      List<HouseholdId> households =
+          UnitPayloads.optionalHouseholdIds(payload, "households").orElse(List.of());
       int speed = UnitPayloads.requireInt(payload, "speed");
       int mobilityPerMille = UnitPayloads.requireInt(payload, "mobilityPerMille");
       Optional<UnitId> parent = UnitPayloads.optionalId(payload, "parent");
@@ -105,7 +108,6 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
               name,
               new SegmentedSeries<>(List.of(new Segment<>(at, parent)), List.of(), null),
               new SegmentedSeries<>(List.of(new Segment<>(at, position)), List.of(), null),
-              manpower,
               equipment,
               speed,
               mobilityPerMille,
@@ -124,8 +126,8 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
               Optional.empty(),
               // ★ 创建（不是拷贝）：新单位尚无"状态 ↔ 状态描述地址"链接 ⇒ 空表（阶段 D1 / D-012）。
               Map.<String, String>of(),
-              // ★ 创建（不是拷贝）：新单位尚无容纳的家户 ⇒ 空表（S3a / 2026-10-09；家户经 unit.SetUnitHouseholds 加入）。
-              List.<HouseholdId>of());
+              // ★ S3b：创建期给的家户（缺席 ⇒ 空表）；家户在 Social 侧的位置一致性由组合工具/生产路径保证。
+              households);
       UnitState next = UnitOperations.create(snapshot.state(), unit);
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {

@@ -28,8 +28,8 @@ import java.util.Set;
  * <p>★ **T1 新增第二组件** {@code commandChains}（spec §一.2）：命令链引用完整性（commander/全部 members 必须存在于同快照的
  * {@code units}）在构造期强制；多属（同一 {@code UnitId} 出现在多条链）是**允许**的。
  *
- * <p>★ **S3a 家户容纳（2026-10-09）**：同一 {@link HouseholdId} 不得出现在多个 unit 的 {@code households} 列表里；Unit id
- * 不得与 household id 撞名（两者共用不透明裸串空间）。两条都在构造期强制（见 {@code requireHouseholdContainment}）。
+ * <p>★ **S3a 家户容纳（2026-10-09）**：同一 {@link HouseholdId} 不得出现在多个 unit 的 {@code households} 列表里；Unit
+ * id 不得与 household id 撞名（两者共用不透明裸串空间）。两条都在构造期强制（见 {@code requireHouseholdContainment}）。
  */
 public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChain> commandChains) {
 
@@ -206,12 +206,12 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
   }
 
   /**
-   * ★★ <b>S3a 的家户容纳不变量</b>（2026-10-09 §3.1）：一个 {@link HouseholdId} 只能出现在<b>一个</b> unit 的
-   * {@code households} 列表里（家户同一时刻只能属于一个 Unit 或一个 Hex，unit 列表是"谁在哪个 unit"的 unit 侧账）；
-   * 且 <b>Unit id 不得与 household id 撞名</b>（两套稳定身份共用裸串空间，撞名后地址/资源围栏无法区分）。
+   * ★★ <b>S3a 的家户容纳不变量</b>（2026-10-09 §3.1）：一个 {@link HouseholdId} 只能出现在<b>一个</b> unit 的 {@code
+   * households} 列表里（家户同一时刻只能属于一个 Unit 或一个 Hex，unit 列表是"谁在哪个 unit"的 unit 侧账）； 且 <b>Unit id 不得与
+   * household id 撞名</b>（两套稳定身份共用裸串空间，撞名后地址/资源围栏无法区分）。
    *
-   * <p>★ 单侧的不变量（列表非 null/无 null/无重复）由 {@link Unit} 构造期把关，这里只查"需要看见整张 units 表"的那两条。
-   * 坏数据当场抛 {@link IllegalArgumentException}（具名给出两个 unit / 相撞的 id），不静默丢家户。
+   * <p>★ 单侧的不变量（列表非 null/无 null/无重复）由 {@link Unit} 构造期把关，这里只查"需要看见整张 units 表"的那两条。 坏数据当场抛 {@link
+   * IllegalArgumentException}（具名给出两个 unit / 相撞的 id），不静默丢家户。
    */
   private static void requireHouseholdContainment(Map<UnitId, Unit> units) {
     Set<String> unitIds = new LinkedHashSet<>();
@@ -223,12 +223,56 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
       for (HouseholdId household : unit.households()) {
         if (unitIds.contains(household.value())) {
           throw new IllegalArgumentException(
-              "Unit id 不得与 household id 撞名: unit=" + household.value() + "（家户由 unit " + unit.id() + " 容纳）");
+              "Unit id 不得与 household id 撞名: unit="
+                  + household.value()
+                  + "（家户由 unit "
+                  + unit.id()
+                  + " 容纳）");
         }
         UnitId previous = ownerByHousehold.putIfAbsent(household.value(), unit.id());
         if (previous != null) {
           throw new IllegalArgumentException(
-              "同一个家户不得同时属于多个 unit: household=" + household + " 同时在 " + previous + " 与 " + unit.id());
+              "同一个家户不得同时属于多个 unit: household="
+                  + household
+                  + " 同时在 "
+                  + previous
+                  + " 与 "
+                  + unit.id());
+        }
+      }
+    }
+    // ★★ S3b（2026-10-09）：军官/领导层家户配置（ArmyFormation.householdDuties /
+    //   GovFormation.householdPosts）的键必须出现在本单位的 households 列表里——配置是"这个家户在我这里是什么身份"，
+    //   挂一个不属于本单位的家户 = 配置与人口关系脱钩（本仓最忌的静默漂移，当场具名拒）。
+    for (Unit unit : units.values()) {
+      requireModuleConfigsBelongToUnit(unit);
+    }
+  }
+
+  /** S3b：编制模块上的家户配置键 ⊆ 该单位的 {@code households()}（违者具名拒，不静默丢配置/家户）。 */
+  private static void requireModuleConfigsBelongToUnit(Unit unit) {
+    Set<HouseholdId> contained = new LinkedHashSet<>(unit.households());
+    UnitModule module = unit.module().orElse(null);
+    if (module instanceof GovFormation gov) {
+      for (HouseholdId household : gov.householdPosts().keySet()) {
+        if (!contained.contains(household)) {
+          throw new IllegalArgumentException(
+              "GovFormation.householdPosts 的家户不在单位 "
+                  + unit.id()
+                  + " 的 households 列表里: "
+                  + household
+                  + "（先 unit.SetUnitHouseholds / social.SetHouseholdLocation 把家户编入本单位）");
+        }
+      }
+    } else if (module instanceof ArmyFormation army) {
+      for (HouseholdId household : army.householdDuties().keySet()) {
+        if (!contained.contains(household)) {
+          throw new IllegalArgumentException(
+              "ArmyFormation.householdDuties 的家户不在单位 "
+                  + unit.id()
+                  + " 的 households 列表里: "
+                  + household
+                  + "（先 unit.SetUnitHouseholds / social.SetHouseholdLocation 把家户编入本单位）");
         }
       }
     }

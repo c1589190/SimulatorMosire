@@ -15,7 +15,15 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.household.HouseholdLocation;
+import io.mosire.simos.social.api.household.HouseholdProfile;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.HouseholdVitalRates;
+import io.mosire.simos.social.household.HouseholdBook;
+import io.mosire.simos.social.spi.CreateHouseholdHandler;
+import io.mosire.simos.social.spi.TransferHouseholdMembersHandler;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -65,8 +73,9 @@ import java.util.Optional;
  *       sd.PutInfo}；<b>不另造第二份账</b>。
  * </ol>
  *
- * <p>★ <b>为什么载荷组装也在这个类</b>：四条命令的载荷都是这份计划的纯函数（照 {@code LevyRegionPlan} 的拆法）——把载荷留在 工具里会多出一条"视图与载荷各读一次
- * Plan 字段"的缝，漏一个字段没有症状。载荷一律 {@link LinkedHashMap} 保序构造、 {@link ToolSupport#json} 序列化 ⇒ 同状态同参数逐字节相同。
+ * <p>★ <b>为什么载荷组装也在这个类</b>：四条命令的载荷都是这份计划的纯函数（照 {@code LevyRegionPlan} 的拆法）——把载荷留在
+ * 工具里会多出一条"视图与载荷各读一次 Plan 字段"的缝，漏一个字段没有症状。载荷一律 {@link LinkedHashMap} 保序构造、 {@link ToolSupport#json}
+ * 序列化 ⇒ 同状态同参数逐字节相同。
  *
  * <p>★ <b>确定性 / 保序不可变</b>：本类不碰墙钟、不用随机量（{@code tick} 是状态 meta 的函数）；来源表由 {@link RegionAllocations}
  * 冻住，equipment 冻在 Plan 的赋值处（{@code List.copyOf} + 保序转表，不用 {@code Map.copyOf}）。
@@ -79,23 +88,17 @@ final class RaiseUnitPlan {
   /** 家户出账 + 新单位国库入账的命令类型（与 {@code AdjustAccountsHandler.type()} 同字面；该 handler 未导出常量）。 */
   static final String ADJUST_ACCOUNTS_TYPE = "actor.AdjustAccounts";
 
-  /** 人力来源整组覆盖的命令类型（与 {@code SeedGroupsHandler.type()} 同字面）。 */
-  static final String SEED_GROUPS_TYPE = "social.SeedGroups";
+  /** S3b：新单位人口家户的创建命令类型（引用 social handler 常量，本类不另抄字面量）。 */
+  static final String CREATE_HOUSEHOLD_TYPE = CreateHouseholdHandler.TYPE;
+
+  /** S3b：把抽取到的成员批次转移进新家户的命令类型。 */
+  static final String TRANSFER_HOUSEHOLD_MEMBERS_TYPE = TransferHouseholdMembersHandler.TYPE;
 
   /** 行动记录的命令类型（{@code PutInfoHandler.type()}）。 */
   static final String PUT_INFO_TYPE = "sd.PutInfo";
 
   /** 粮的商品 id（{@link EconomyCommodities#GRAIN} 的<b>唯一</b>字面量来源；本类不另写 {@code "grain"}）。 */
   private static final CommodityId GRAIN = EconomyCommodities.GRAIN;
-
-  /**
-   * 从地方抽取人力时，新单位人力表的 type 字面量（D3a 无受控词表，取自然语义）。
-   *
-   * <p>★ 为什么是固定 {@code "人员"} 而不是让调用方给 type：本工具抽取的是"region 内 MALE + 成年档"的人口，不是某个兵种；
-   * 抽来的人尚未分兵种，给它一个中性的自然语义类型最诚实。需要任意的多类型人力搭配时，走 {@code simos.unit.create} 窄工具或 {@code
-   * simos.army.formatUnit}。
-   */
-  static final String DEFAULT_MANPOWER_TYPE = "人员";
 
   private RaiseUnitPlan() {}
 
@@ -229,6 +232,43 @@ final class RaiseUnitPlan {
     RegionAllocations.ManpowerAllocation manpowerAllocation =
         RegionAllocations.allocateManpower(
             ToolSupport.socialData(state), region, tick, manpower, clock);
+    // ★★ S3b（2026-10-09）：新单位的人口不再落成 unit.manpower 的第二本 headcount，而是
+    //   ① 建一个 location=UNIT(newUnitId) 的小家户；② 把抽到的成员批次**转移**进它；③ unit.households=[该家户]。
+    //   三件事在同一批命令里，与 Social 位置天然一致（本批是生产路径，不靠 GM 手工工具）。
+    SocialData social = ToolSupport.socialData(state);
+    String householdId = householdIdFor(newUnitId);
+    HouseholdId household = HouseholdId.parse(householdId);
+    if (social.households().containsKey(household)) {
+      throw new IllegalArgumentException(
+          "S3b 新单位的人口家户 id 已被占用: " + householdId + "（先清掉同名家户，或换 newUnitId）");
+    }
+    SocialData projectedSocial =
+        HouseholdBook.create(
+            social,
+            household,
+            new HouseholdLocation.Unit(newUnitId),
+            new HouseholdProfile(name + "·人口家户", null, Map.of()),
+            new HouseholdVitalRates(List.of()));
+    List<Transfer> transfers = new ArrayList<>(manpowerAllocation.sources().size());
+    for (RegionAllocations.GroupSource source : manpowerAllocation.sources()) {
+      HouseholdId from =
+          social
+              .householdOfLot(source.group().id())
+              .map(io.mosire.simos.social.household.Household::id)
+              .orElseThrow(
+                  () ->
+                      new IllegalArgumentException(
+                          "S3b：抽取的批次 " + source.group().id() + " 不属于任何 Social 家户，无法转移"));
+      transfers.add(new Transfer(from, source.group().id(), source.taken()));
+      projectedSocial =
+          HouseholdBook.transferMembers(
+              projectedSocial,
+              from,
+              household,
+              source.group().id(),
+              source.taken(),
+              "组军 " + newUnitId);
+    }
     return new Plan(
         newUnitId,
         name,
@@ -236,6 +276,9 @@ final class RaiseUnitPlan {
         at,
         tick,
         manpower,
+        householdId,
+        projectedSocial,
+        transfers,
         grainAllocation,
         moneyAllocation,
         manpowerAllocation,
@@ -243,6 +286,11 @@ final class RaiseUnitPlan {
         mobilityPerMille,
         ToolSupport.compositionEntries(equipment),
         parent);
+  }
+
+  /** 新单位人口家户的稳定 id（唯一拼写点）：{@code hh-unit:<unitId>}；UnitState 的家户/单位撞名守卫同时成立。 */
+  static String householdIdFor(String unitId) {
+    return "hh-unit:" + unitId;
   }
 
   // ── 引用 / 数值校验小件 ─────────────────────────────────────────────────────────────
@@ -326,7 +374,10 @@ final class RaiseUnitPlan {
    * @param regionId 来源区域
    * @param at 新单位落点 = 国库落点
    * @param tick 推导时的世界日（行动记录用）
-   * @param manpowerCount 新单位实抽人数（= 新单位 manpower 表中 {@value #DEFAULT_MANPOWER_TYPE} 的 amount）
+   * @param manpowerCount 新单位实抽人数 = 新人口家户的成员之和（S3b 起不再落 unit.manpower）
+   * @param householdId 新单位人口家户 id（{@code hh-unit:<unitId>}；location = UNIT(newUnitId)）
+   * @param projectedSocial 家户创建 + 成员转移后的 Social 纯投影（preview 用，不写盘）
+   * @param transfers 成员批次转移表（源家户 → 新家户；保序）
    * @param grain 粮来源分摊（requested = 0 = 本维度整段跳过）
    * @param money 钱来源分摊（requested = 0 = 本维度整段跳过）
    * @param manpower 人力来源分摊（manpower ≥ 1 ⇒ 恒有实际来源）
@@ -342,6 +393,9 @@ final class RaiseUnitPlan {
       HexCoord at,
       long tick,
       long manpowerCount,
+      String householdId,
+      SocialData projectedSocial,
+      List<Transfer> transfers,
       RegionAllocations.AccountAllocation grain,
       RegionAllocations.AccountAllocation money,
       RegionAllocations.ManpowerAllocation manpower,
@@ -363,6 +417,9 @@ final class RaiseUnitPlan {
       if (manpowerCount < 1L) {
         throw new IllegalArgumentException("manpowerCount 必须 ≥ 1: " + manpowerCount);
       }
+      requireNonBlank(householdId, "householdId");
+      Objects.requireNonNull(projectedSocial, "projectedSocial");
+      transfers = List.copyOf(Objects.requireNonNull(transfers, "transfers"));
       Objects.requireNonNull(grain, "grain");
       Objects.requireNonNull(money, "money");
       Objects.requireNonNull(manpower, "manpower");
@@ -386,9 +443,34 @@ final class RaiseUnitPlan {
       equipment = List.copyOf(Objects.requireNonNull(equipment, "equipment"));
     }
 
-    /** 新单位的人力表：单条 {@value RaiseUnitPlan#DEFAULT_MANPOWER_TYPE}（抽取来的人尚未分兵种）。 */
-    List<CompositionEntry> manpowerEntries() {
-      return List.of(new CompositionEntry(DEFAULT_MANPOWER_TYPE, manpowerCount));
+    /**
+     * ★★ {@code social.CreateHousehold} 载荷（S3b）：新单位的人口家户，位置 = {@code UNIT(unitId)}。vitalRates
+     * 缺省空表（组军人口沿用原批次率；率本身属于 Social，家户只是容器）。
+     */
+    String createHouseholdPayloadJson() {
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("householdId", householdId);
+      Map<String, Object> location = new LinkedHashMap<>();
+      location.put("type", "UNIT");
+      location.put("unitId", unitId);
+      payload.put("location", location);
+      Map<String, Object> profile = new LinkedHashMap<>();
+      profile.put("name", name + "·人口家户");
+      payload.put("profile", profile);
+      payload.put("vitalRates", List.of());
+      return ToolSupport.json(payload);
+    }
+
+    /** ★★ {@code social.TransferHouseholdMembers} 载荷（S3b）：把一条抽取来源批次从源家户转移进新家户。 */
+    String transferPayloadJson(Transfer transfer, String reason) {
+      requireNonBlank(reason, "reason");
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("from", transfer.from().value());
+      payload.put("to", householdId);
+      payload.put("lotId", transfer.lotId().value());
+      payload.put("count", transfer.taken());
+      payload.put("reason", reason);
+      return ToolSupport.json(payload);
     }
 
     /** 是否需要落 {@code actor.AdjustAccounts}（粮 / 钱任一 &gt; 0）。 */
@@ -398,19 +480,24 @@ final class RaiseUnitPlan {
 
     /** 本工具提交的命令类型（按批内固定顺序；preview 视图与 apply 组批共用同一处）。 */
     List<String> commandTypes() {
-      List<String> types = new ArrayList<>(4);
+      List<String> types = new ArrayList<>(4 + transfers.size());
+      types.add(CREATE_HOUSEHOLD_TYPE);
+      for (int i = 0; i < transfers.size(); i++) {
+        types.add(TRANSFER_HOUSEHOLD_MEMBERS_TYPE);
+      }
       types.add(CREATE_UNIT_TYPE);
       if (hasGrainOrMoney()) {
         types.add(ADJUST_ACCOUNTS_TYPE);
       }
-      types.add(SEED_GROUPS_TYPE);
       types.add(PUT_INFO_TYPE);
       return List.copyOf(types);
     }
 
     /**
      * {@code unit.CreateUnit} 载荷（字段名逐字照 handler 的 {@code UnitPayloads}：{@code
-     * id/name/position/manpower/equipment/speed/mobilityPerMille/parent?}）。
+     * id/name/position/households/equipment/speed/mobilityPerMille/parent?}）。
+     *
+     * <p>★ S3b：不再发 {@code manpower}（已退役）；新单位人口由 {@code households=[新家户]} 承载。
      *
      * <p>★ {@code jurisdiction} 不在载荷里：{@code CreateUnitHandler} 对新建单位一律取 {@code Optional.empty()}
      * （新单位尚无管辖），本工具不发明第二个字段。
@@ -420,7 +507,7 @@ final class RaiseUnitPlan {
       payload.put("id", unitId);
       payload.put("name", name);
       payload.put("position", ToolSupport.hexCoord(at));
-      payload.put("manpower", ToolSupport.compositionView(manpowerEntries()));
+      payload.put("households", List.of(householdId));
       payload.put("equipment", ToolSupport.compositionView(equipment));
       payload.put("speed", speed);
       payload.put("mobilityPerMille", mobilityPerMille);
@@ -488,31 +575,6 @@ final class RaiseUnitPlan {
     }
 
     /**
-     * {@code social.SeedGroups} 载荷：每个被动批次一条<b>整组覆盖</b>，必须带原 {@code ageDays}/{@code anchorTick} 与
-     * {@code stress} 保真（否则重写会把压力静默清零）；{@code count} 取扣后、可为 0。
-     */
-    String seedGroupsPayloadJson() {
-      List<Map<String, Object>> entries = new ArrayList<>(manpower.sources().size());
-      for (RegionAllocations.GroupSource source : manpower.sources()) {
-        PopulationGroup group = source.group();
-        Map<String, Object> entry = new LinkedHashMap<>();
-        entry.put("id", group.id().value());
-        entry.put("q", source.at().q());
-        entry.put("r", source.at().r());
-        entry.put("sex", group.sex().name());
-        entry.put("count", source.countAfter());
-        // ★ 保真三件：锚点年龄 / 锚点 tick / 生理压力——整组覆盖不重新解释这批人。
-        entry.put("ageDays", group.ageAtAnchorDays());
-        entry.put("anchorTick", group.anchorTick());
-        entry.put("stress", group.physiologicalStress());
-        entries.add(entry);
-      }
-      Map<String, Object> payload = new LinkedHashMap<>();
-      payload.put("entries", entries);
-      return ToolSupport.json(payload);
-    }
-
-    /**
      * {@code sd.PutInfo} 的 {@code value}（JSON <b>字符串</b>；字段序固定：unit/region/at/三项数量/来源计数/reason）。
      */
     String infoValueJson(String reason) {
@@ -521,7 +583,8 @@ final class RaiseUnitPlan {
       value.put("unitId", unitId);
       value.put("regionId", regionId);
       value.put("at", ToolSupport.hexCoord(at));
-      value.put("manpower", ToolSupport.compositionView(manpowerEntries()));
+      // ★ S3b：不再有 unit.manpower 表；记录新单位的人口家户与抽取人口（均来自 Social 家户）。
+      value.put("householdId", householdId);
       value.put("manpowerRequested", manpower.requested());
       value.put("grain", grain.requested());
       value.put("money", money.requested());
@@ -547,9 +610,11 @@ final class RaiseUnitPlan {
           + regionId
           + "，落点 "
           + hexText(at)
-          + "，人力 "
+          + "，人口 "
           + manpower.requested()
-          + "（批次 "
+          + "（家户 "
+          + householdId
+          + "，来源批次 "
           + manpower.sources().size()
           + "）、粮 "
           + grain.requested()
@@ -561,6 +626,18 @@ final class RaiseUnitPlan {
           + money.sources().size()
           + "）；reason="
           + reason;
+    }
+  }
+
+  /** S3b：一条成员批次转移（源家户、批次、抽走人数）；数量恒 > 0，由瀑布保证。 */
+  record Transfer(HouseholdId from, PeopleLotId lotId, long taken) {
+
+    Transfer {
+      Objects.requireNonNull(from, "from");
+      Objects.requireNonNull(lotId, "lotId");
+      if (taken <= 0L) {
+        throw new IllegalArgumentException("taken 必须 > 0: " + taken);
+      }
     }
   }
 }

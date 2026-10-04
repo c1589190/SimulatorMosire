@@ -64,7 +64,6 @@ public final class UnitMoves {
             unit.name(),
             unit.parent(),
             unit.position(),
-            unit.manpower(),
             unit.equipment(),
             unit.speed(),
             movement.mobilityAtDeparture(),

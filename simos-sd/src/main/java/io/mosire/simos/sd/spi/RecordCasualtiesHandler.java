@@ -52,6 +52,8 @@ public final class RecordCasualtiesHandler implements CommandHandler {
     Objects.requireNonNull(payloadJson, "payloadJson");
     SdState base = SdSnapshots.of(state).state();
     UnitState units = SdSnapshots.units(state);
+    // ★ S3b：人员上界的唯一来源 = 该 unit 的家户人口现算（不再有 Unit.manpower 第二本账）。
+    io.mosire.simos.social.SocialData social = SdSnapshots.social(state);
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       CombatId combatId = CombatId.parse(SdPayloads.requireText(payload, "combatId"));
@@ -69,7 +71,7 @@ public final class RecordCasualtiesHandler implements CommandHandler {
         if (unit == null) {
           return new HandlerOutcome.Rejected("单位不存在: " + delta.unit());
         }
-        requireWithinBound(delta, unit);
+        requireWithinBound(delta, unit, social);
       }
       RevisionId atRevision = state.meta().ref().revision();
       LossRecordId recordId = new LossRecordId(combatId.value() + ":" + atRevision.value());
@@ -113,17 +115,13 @@ public final class RecordCasualtiesHandler implements CommandHandler {
    * <p>★ D3a 适配（2026-10-02）：Unit 的 {@code equipment} 从 Map 改为有序条目列表 ⇒ 这里从"按键取值"改成"按 type 线性查"； sd
    * 的损失记录模型与命令载荷形状本阶段**不动**（D-012：旧 sd 战斗命令族清理另批），故 {@code personnel} 仍只报一个总量。
    */
-  private static void requireWithinBound(CasualtyDelta delta, Unit unit) {
-    long manpowerTotal = 0L;
-    for (CompositionEntry entry : unit.manpower()) {
-      manpowerTotal =
-          manpowerTotal > Long.MAX_VALUE - entry.amount()
-              ? Long.MAX_VALUE
-              : manpowerTotal + entry.amount();
-    }
-    if (delta.personnel() < -manpowerTotal) {
+  private static void requireWithinBound(
+      CasualtyDelta delta, Unit unit, io.mosire.simos.social.SocialData social) {
+    // ★ S3b：人员上界 = 该 unit 容纳家户的成员人口现算（Unit.manpower 已退役，不再有第二本 headcount）。
+    long population = social.unitPopulation(unit.id().value());
+    if (delta.personnel() < -population) {
       throw new IllegalArgumentException(
-          "人员战损超出当前值: " + manpowerTotal + " + (" + delta.personnel() + ")");
+          "人员战损超出家户人口: " + population + " + (" + delta.personnel() + ")（S3b：人数唯一来源是 Social 家户）");
     }
     for (Map.Entry<String, Integer> entry : delta.equipment().entrySet()) {
       Long current = null;

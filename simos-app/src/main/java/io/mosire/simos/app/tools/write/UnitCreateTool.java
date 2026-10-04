@@ -35,9 +35,10 @@ public final class UnitCreateTool extends AbstractNarrowWriteTool {
 
   @Override
   public String description() {
-    return "新建单位：固定 unit.CreateUnit，载荷 {id, name, position{q,r}?, manpower[{type,amount}],"
+    return "新建单位：固定 unit.CreateUnit，载荷 {id, name, position{q,r}?, households?[家户id],"
         + " equipment[{type,amount}], speed, mobilityPerMille, parent?, status?（缺省 MOVING）}"
-        + "（★ manpower/equipment 必填数组、空数组合法；同表 type 不得重复；"
+        + "（★ S3b：manpower 已退役——人员由 Social 家户承载，非空 manpower 具名拒；equipment 必填、空数组合法；"
+        + "households 给的 Social 家户必须存在，位置不一致时由下一轮推进的 Unit↔Social 自动同步对齐到 UNIT(本单位)；"
         + "省略 position ⇒ 无自身位置、跟随父，此时须给 parent）";
   }
 }
