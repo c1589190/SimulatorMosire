@@ -52,45 +52,63 @@
 - 同币判断不在 economy 内做城市半径计算：组合根在 `MarketTopologyBook` 里按"所有 market.numeraire 相同 / 或 GM 指定"选择单区入口。
   本批 production-runtime 世界统一走单区；旧半径入口只留给旧兼容测试。
 
-### 3.2 单 hex 贸易成本
+### 3.2 单 hex 贸易成本（本批第一版的具体口径）
 
-新增 `HexTradeCost` 读数/策略（建议放 `simos-economy`/`simos-app` 组合根，纯函数）：
+新增 `HexTradeCost` 纯策略（`simos-economy/time/HexTradeCost.java`）：
 
 ```text
-hexTradeCostMilliPerUnit = basePerHexRate
-                         × hexDistance(from, to)
-                         × moveCost(targetHex, roadBottleneck)
-                         × (1 − hexUrbanDiscountPerMille / 1000)
-transportLossPerMille    = baseLossPerMille × hexDistance(from, to)
-                         × (terrain/road 系数)
+同格（from == to）：
+  lossPerMille = 0，costMilliPerUnit = 0
+跨格（同一区内）：
+  lossPerMille = min(MAX_HEX_TRADE_LOSS_PER_MILLE,
+                     HEX_TRADE_LOSS_PER_MILLE_PER_HEX
+                     × from.distanceTo(to)
+                     × max(1, topology.moveCostAt(to)))
+  costMilliPerUnit = 0        // 第一版单区内不产生货币运费；成本以实物损耗表达
 ```
 
-- 逐段（from→to）计量；同格 = 0；不跨区的多段按段求和（或按总距离一次算，实现时二选一并写死唯一口径）。
-- 付款/承担（本批第一版，明确写出）：
-  1. 有真实承运人（`MerchantFirm`/组织）承接时：买方付运费给承运人（`CARRIER_FEE`），承运人付 porter 工资/upkeep；
-  2. 没有承运人时：**不收钱**，但按 `transportLossPerMille` 在在途/交付量里扣实物损耗并进损耗账户；
-     钱不凭空消失，货不凭空多出。
-- 读数：`MarketReport` 增加/复用逐成交的 `hexTradeCost` 与 `transportLoss`（毫商品/毫计价货币），让"单 hex 成本"可审计。
+具名默认（agent 可命名常量，但数值先按此写死并具名注释）：
 
-### 3.3 市场总调控
+```text
+HEX_TRADE_LOSS_PER_MILLE_PER_HEX = 2
+MAX_HEX_TRADE_LOSS_PER_MILLE     = 500
+```
 
-新增 `MarketRegulation`（区级，建议放 `simos-economy` 的 model 或 app 组合根 policy；本批先形状+出厂默认）：
+- **第一版不做单区内货币承运费**：区内即时成交路径没有 `MerchantFirm` lane，货币运费留给后续批次；这样避免“没有承运人时钱付给谁”的未决问题，同时保证钱货守恒。
+- 跨格即时成交时：`loss = fill.quantity × lossPerMille / 1000`；买方**收到净量**、按毛量付款（与既有“买方承担在途损耗”口径一致）；`loss` 记入 `ProductionLedger.losses`（损耗账户），并写进该 `MarketReport.Fill.lossMilli`。
+- 复用现有字段，不新增 `Fill` 字段：`lossMilli` 表达单 hex 损耗；`freightPerUnitMilli`/`freightMilli` 仍只服务跨区承运（本批单区恒 0）。
+- `MarketReport` 增加只读聚合辅助（不改 record 形状）：
+  `immediateCrossHexFills()`、`immediateCrossHexLossMilli()`（对 `immediate && from != to` 的 fill 计数/求和）。
+- 失败语义：同格/无拓扑/无市场 ⇒ 0；坏数据（负距离等）由既有类型守卫 fail-closed。
+
+### 3.3 市场总调控（本批第一版的具体口径）
+
+新增区级 `MarketRegulation`（`simos-economy/time/MarketRegulation.java`；纯值类型，**本批不落盘**）：
 
 ```text
 record MarketRegulation(
-    HexCoord anchor,                     // 区级参考价的锚格（本批 = 城市/市场锚）
-    Map<CommodityId, Long> referencePrices,  // 区级参考价；缺省 = 锚格 Market.prices
-    long bidPerMille, long askPerMille,   // 区级限价
-    Map<CommodityId, Long> quotaPerWindow,   // 配额/配给上限（空 = 无配额）
-    Map<CommodityId, Long> tariffPerUnit,    // 区级税费（毫钱/单位；可为 0）
-    boolean open,                         // 开市/闭市
-    List<String> rules)                   // 具名规则/制度标签（GM 可读）
+    HexCoord anchor,                        // 区级参考价锚格；单区 = 规范序第一个有市场的 hex
+    Map<CommodityId, Long> referencePrices, // 空 = 沿用原 Market.prices（出厂默认）
+    long bidPerMille, long askPerMille,     // 0 = 沿用 Market.BID_PER_MILLE/ASK_PER_MILLE
+    Map<CommodityId, Long> quotaPerWindow,  // 空 = 无配额
+    Map<CommodityId, Long> tariffPerUnit,   // 空/0 = 无税费
+    boolean open,                           // 默认 true；false = 本轮不撮合
+    List<String> rules)                     // 具名制度标签，只读
 ```
 
-- 施加点：`MarketSettlement` 每轮**按区读一次** regulation；区内所有 hex 共用参考价/限价/配额/税费。
-- 单 hex 价格（如果有）与区级参考价的关系写死：
-  `localReferencePrice(hex, c) = regionalReferencePrice(c) + 累计单 hex 贸易成本(anchor→hex, c)`（本批第一版可先取同价 + 成本另计，实现时二选一写死）。
+- 默认实例 `MarketRegulation.defaults(anchor)`：`referencePrices` 空、bid/ask=0、quota/tariff 空、`open=true`、rules 空。
+  **默认行为与现状逐值相同**：`MarketSettlement` 仍读各 hex 的 `Market.prices` 与既有 `BID_PER_MILLE/ASK_PER_MILLE`。
+- 施加点：`MarketSettlement` 新增可选 `MarketRegulation` 入参（旧调用委托为默认实例）；**每轮按区读一次**，
+  区内所有 hex 共用。`EconomySettlement` 生产路径先传 `MarketRegulation.defaults(单区锚格)`；测试/未来 GM 可直接构造自定义实例。
+  建议把 regulation 放进 `MarketSettlement.MarketRound`（逐轮瞬态，不落盘），`clearOncePerCycle` 从 round 里读；旧调用点不受影响。
+  自定义 regulation 时：
+  1. `referencePrices` 非空 ⇒ 覆盖该区所有 hex 的参考价（区内一价 + 单 hex 损耗另计）；
+  2. `quotaPerWindow` 非空 ⇒ 该商品本轮该区总成交量上限（超出部分记 `Unfilled` 具名原因 `REGULATION_QUOTA`）；
+  3. `open=false` ⇒ 该区本轮不撮合（`MarketReport.empty` + 具名 trigger/readout，不抛）；
+  4. `tariffPerUnit` 非空 ⇒ 成交时对买方加一条区级费用腿（收款方本批留空：只记读数、不凭空铸钱；后续接地方政府）；
+  5. `bidPerMille/askPerMille` 非 0 ⇒ 覆盖 `Market` 的挂牌价差。
 - 市场总调控**不得**被实现成逐 hex 的 extra cost；单 hex 贸易成本也不得承担价格/配额职能。
+- 未决项（本批明确不做）：税费收款方、配额的管理主体、regulation 落盘/GM 工具。
 
 ### 3.4 循环各环节
 
@@ -109,7 +127,7 @@ record MarketRegulation(
   ② MarketSettlement（单区）：
        读 MarketRegulation（区级一次）
        → 区内撮合买卖（沿用现有 buyer/seller 订单）
-       → 跨 hex 成交：套 HexTradeCost（承运人运费 或 实物损耗）
+       → 跨 hex 成交：套 HexTradeCost（第一版 = 实物损耗；承运人货币运费留后续）
        → 写 MarketReport：fills/unfilled/hexTradeCost/transportLoss
   ③ 关系实付/消费/出生死亡/债务/利息/偿还（现有）
 
@@ -123,10 +141,11 @@ record MarketRegulation(
 ## 5. 接口/契约
 
 - `MarketTopology.singleRegion(...)`：新增；旧城市半径入口保留为兼容路径，生产路径不再用。
-- `HexTradeCost`：纯函数/策略，至少暴露 `costMilliPerUnit(from,to,commodity)`、`lossPerMille(from,to)`；
-  坏数据（缺格、海洋、负距离）fail-closed 具名。
+- `HexTradeCost`：纯函数/策略，至少暴露 `lossPerMille(from,to)`（`<=0` 明确拒绝/0=同格）；
+  第一版 `costMilliPerUnit` 恒 0（单区内不产生货币运费），坏数据（缺格、负距离）fail-closed 具名。
 - `MarketRegulation`：区级不可变值；缺省 = 锚格 `Market.prices` + 现有 bid/ask + open=true + 无配额/税费。
-- `MarketReport`：逐 cross-hex fill 增加 `hexTradeCostMilli` 与 `transportLossMilli`（0 = 同格/无成本）。
+- `MarketReport`：**复用现有 `Fill.lossMilli`** 表达单 hex 损耗；新增只读聚合辅助
+  `immediateCrossHexFills()` / `immediateCrossHexLossMilli()`；不新增 `Fill` 字段。
 - 失败语义：无市场/闭市 ⇒ 不撮合；无价 ⇒ 不成交；无承运人 ⇒ 只扣实物损耗、不收运费；配额用尽 ⇒ 未成交具名原因。
 
 ## 6. 版本、激活与旧数据
@@ -145,9 +164,9 @@ record MarketRegulation(
 
 ### 7.2 单 hex 贸易成本
 
-1. 同格成交 `hexTradeCost=0`；跨 hex 成交 `hexTradeCost>0` 可读，且随距离/地形/道路变化方向正确。
-2. 有承运人时：买方付 `CARRIER_FEE`，承运人收；钱守恒。
-3. 无承运人时：只扣 `transportLoss` 实物损耗，钱不凭空消失、货不凭空消失。
+1. 同格成交 `lossMilli=0`；跨 hex 即时成交 `lossMilli>0` 可读，且随距离/地形变化方向正确。
+2. 第一版单区内**不产生货币运费/CARRIER_FEE**：只扣 `transportLoss` 实物损耗并进损耗账户；钱不凭空消失、货不凭空消失。
+3. 跨区承运路径本批不改、不作为本批判据；后续批次再把货币运费接到单区/跨区承运人。
 4. 成本/损耗不进入 `Market.prices` 参考价本身（两层分离）。
 
 ### 7.3 市场总调控
