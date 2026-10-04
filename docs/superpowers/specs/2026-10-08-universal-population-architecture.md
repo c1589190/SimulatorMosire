@@ -238,15 +238,84 @@ Unit/Economy/Gov 通过注入的 SPI 读，不直接依赖 `simos-population` �
 | `ProductionMode` / `ClassStructure` | economy | 生产方式与位置目录 |
 | 文化/宗教关系 | 未来 culture/religion 模块 | 各自关系表，键 = `HouseholdId` |
 
-## 11. 待裁定
+## 11. 2026-10-08 用户最终构想：家户是 Social 的基本单元，Social 是接口层
 
-1. 家户/人口域：按用户修订走 **H1.5**（Social 拥有 household/population/assignment；低层 `simos-people-api` 只放 ID/角色/SPI；不另起人口域、不拆 Social）。
+用户原话要点：
+- Social 只提供：这个家户在哪里、由什么人组成、以及一套给家户**增人/减人**的接口；
+- hex 的人口组成从“单纯年龄段”提升为“以家户为基本单元”，逐家户汇总各年龄段；
+- 每个家户有自己的分年龄段出生率/死亡率，逐家户算人口增减；
+- Economy 复用家户的人员主体，为其挂经济账户；
+- Unit（军队、政府）内部可以塞多个家户；例如一个政府内部可以同时有印度教群体和华人群体，这两个群体就是该政府内的两个家户；
+- 因此家户不但在 hex 里，还可以**脱离 hex 挂在 Unit 里**；
+- Social 本质是一个大的接口层，出生/死亡率等实质性计算由 Economy 等其他模块复写/提供。
+
+### 11.1 修订后的模型
+
+**Social 拥有：**
+- `Household`：稳定 `HouseholdId` + 位置 + 成员组成；
+- `HouseholdMemberLot` / 继续复用 `PopulationGroup`：家户内的年龄×性别批次（人数、年龄锚点、生理压力）；
+- `HouseholdLocation`：`HEX(hex)` 或 `UNIT(unitId)`（将来可扩展 `ORGANIZATION`/`ESTATE`/`WORKSHOP`）；
+- 家户生命周期接口：
+  - `addMembers(householdId, lotSpec/count)`；
+  - `removeMembers(householdId, lotId/count)`；
+  - `transferMembers(fromHousehold, toHousehold, lotId/count)`；
+  - `attachTo(householdId, location)` / `detach(householdId)`。
+
+**Social 不拥有：**
+- 出生率、死亡率、粮食、财富、阶层、文化、宗教、官府编制、军队编制；
+- 这些由 Economy / Culture / Religion / Gov / Unit 的 provider 计算，把结果（新增/减少的人）交给 Social 的接口落账。
+
+### 11.2 汇总怎么变
+
+```
+hex 人口      = Σ 该 hex 锚定的所有家户的成员
+unit 人员     = Σ 该 unit 锚定的所有家户的成员
+年龄段人口     = Σ 家户成员按年龄档聚合
+出生/死亡      = 逐家户按自己的年龄结构 + provider 给的年龄别率计算
+```
+
+当前 `SocialData.populations`（按 hex + 性别 + 年龄的批次）改成**家户成员视图**：批次仍可存在，但每条批次属于一个家户；hex 汇总由家户派生，不再单独维护一套“hex 人口”。
+
+### 11.3 跨域
+
+- `HouseholdId` 是跨域共享的稳定身份，放低层契约模块（`simos-people-api` 或等价物）；
+- Economy 以 `HouseholdId` 为键挂经济数据（ClassRow/需求/债务/生产参与），账户仍由 Actor 持有；
+- Unit 状态里存 `List<HouseholdId> households`，人员数由家户成员汇总；军队/政府可以有多个家户；
+- Gov 的编制也从“staff 人数”改成“该政府单位下有哪些家户 + 角色”；
+- Culture/Religion 未来各自以 `HouseholdId` 为键挂自己的关系表/facet；
+- Actor 仍只做账户/持有主体，`ActorRef(HOUSEHOLD, id)` 与 `HouseholdId` 一一映射。
+
+### 11.4 政府内多群体示例
+
+```
+gov-unit: u-capital
+  households:
+    hh-hindu-001  (location=UNIT(u-capital))  members: ...
+    hh-han-001    (location=UNIT(u-capital))  members: ...
+unit 总人数 = hh-hindu-001.count + hh-han-001.count
+```
+
+Culture/Religion 挂：
+- `hh-hindu-001` → religion=hindu；
+- `hh-han-001` → culture=han；
+- 政府本身不需要知道这些标签，只持有 households。
+
+### 11.5 Social 的定位
+
+- 不是“没有状态”，而是**只拥有家户/人口的结构状态与生命周期操作**；
+- 不是“计算层”，出生/死亡/迁移/征兵/招工的计算与规则由其他模块提供；
+- 它是人口的**唯一账本 + 唯一增删人接口**，不是人口公式的 owner。
+
+## 12. 待裁定
+
+1. 家户/人口域：按用户最终构想走 §11：**Social 拥有 Household + 成员批次 + 位置 + 增删人接口；低层 `simos-people-api` 只放 HouseholdId/PeopleLotId/角色/SPI**。
 2. `HouseholdId`/`PeopleLotId` 迁移到 `simos-people-api`（推荐）还是继续沿用 `economy-api`？
-3. primary/secondary 语义：政府家户与政府单位谁拿 PRIMARY（C1 vs C2）。
-4. Unit `manpower`：直接改为投影，还是先保留缓存 + 对账。
-5. Gov `staff`：same。
-6. 招募规则：从 Region / 家户 / 单位怎么抽；是否消耗钱粮；是否有征募上限/批复。
-7. 家户消费与粮饷：按 primary 还是按角色投影计算。
-8. 旧档：重置（推荐）还是一次性迁移。
-9. 日志分类：新增 `.population.assignment` 还是沿用 `.population`。
-10. Actor 职责：保持“账户/持有主体”身份层，不引入阶层语义；阶层继续归 economy。
+3. `Household` 的家户成员表示：继续复用 `PopulationGroup` 作为“家户成员批次”（推荐），还是新造 `HouseholdMember` record？
+4. `HouseholdLocation` 首批支持 `HEX | UNIT`；是否现在就把 `ORGANIZATION/ESTATE/WORKSHOP` 一起纳入？
+5. 家户可否同时属于多个位置/单位（例如同时挂 hex 和 unit），还是只允许一个 anchor + 角色关系？
+6. 出生/死亡 provider：谁算、怎么组合（Economy 粮/财富 + Culture/Religion + Gov 政策 + Unit 战损），以及计算窗口/优先级。
+7. 逐家户年龄别出生率/死亡率存放位置：Household 字段、provider 规则表，还是 Culture/Religion 关系表？
+8. Unit `manpower` / Gov `staff` 与 households 的关系：直接改成“家户集合 + 汇总视图”，还是先缓存 + 对账过渡？
+9. 家户拆分/合并/迁移：命令形状与守恒规则。
+10. 旧档：重置（推荐）还是一次性迁移。
+11. 日志：家户增删人、位置变更、逐家户出生/死亡、provider 计算明细的 logger 分类与级别。
