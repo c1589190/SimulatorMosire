@@ -543,11 +543,12 @@ class AdjudicateTickToolTest {
             "economy.TransferAssetShare");
     assertThat(tool.allowedCommandTypes())
         .as(
-            "白名单 = 注册面（85）− GmOnly（15）− sd 自指（21）= 49（旧 47：SetStrength→SetComposition 换名，"
-                + "D1 的 SetStateDescription 与 R3a 的 actor.RemitGovTreasury 各 +1）")
-        .hasSize(49);
+            "白名单 = 注册面（93）− GmOnly（15）− sd 自指（21）= 57（旧 47：SetStrength→SetComposition 换名，"
+                + "D1 的 SetStateDescription 与 R3a 的 actor.RemitGovTreasury 各 +1，S3a 的 7 条 social 家户命令"
+                + "与 unit.SetUnitHouseholds +8）")
+        .hasSize(57);
 
-    // ② 其余 39 条白名单类型 + 10 条 GM-only（实现 CommandTargets 的）= 49 条样本：逐条给真载荷、钉死输出路径。
+    // ② 其余 47 条白名单类型 + 10 条 GM-only（实现 CommandTargets 的）= 57 条样本：逐条给真载荷、钉死输出路径。
     //   ★ 10 条 GM-only 里 4 条经济命令（SwitchMode/GmAdjust/UnitBorrow/UnitRepay）与三条区域清空
     //     （actor/economy/social.ClearRegion）有意返回空目标；actor.AdjustAccounts 返回**落格**目标
     //     （entries[] 的 q/r），actor.RemitGovTreasury 返回源/目标两格，unit.AdjustComposition 返回载荷点名的
@@ -721,6 +722,42 @@ class AdjudicateTickToolTest {
         "economy.UnitRepay",
         List.of(
             "{\"unitId\":\"u-1\",\"lenderId\":\"lender-cov\",\"unit\":\"money\",\"amount\":1}"));
+    // ★ S3a（2026-10-09）：7 条 social 家户命令 + unit.SetUnitHouseholds。
+    //   CreateHousehold / SetHouseholdLocation 的 HEX 位置 ⇒ social 命名空间格路径；UNIT 位置 ⇒ 空（fail-closed）。
+    //   其余家户命令的目标对象不是资源命名空间（无 hex/unit 入参）⇒ 有意返回空列表，同样登记为"无路径"。
+    samples.put(
+        "social.CreateHousehold",
+        List.of(
+            "{\"householdId\":\"hh-1\",\"location\":{\"type\":\"HEX\",\"hex\":{\"q\":1,\"r\":1}},"
+                + "\"profile\":{\"name\":\"户\"},\"reason\":\"x\"}",
+            "1_1"));
+    samples.put(
+        "social.SetHouseholdLocation",
+        List.of(
+            "{\"householdId\":\"hh-1\",\"location\":{\"type\":\"HEX\",\"hex\":{\"q\":1,\"r\":2}},"
+                + "\"reason\":\"x\"}",
+            "1_2"));
+    samples.put(
+        "social.AddHouseholdMembers",
+        List.of("{\"householdId\":\"hh-1\",\"sex\":\"MALE\",\"count\":1,\"reason\":\"x\"}"));
+    samples.put(
+        "social.RemoveHouseholdMembers",
+        List.of("{\"householdId\":\"hh-1\",\"lotId\":\"l-1\",\"count\":1,\"reason\":\"x\"}"));
+    samples.put(
+        "social.TransferHouseholdMembers",
+        List.of(
+            "{\"from\":\"hh-1\",\"to\":\"hh-2\",\"lotId\":\"l-1\",\"count\":1,\"reason\":\"x\"}"));
+    samples.put(
+        "social.SetHouseholdVitalRates",
+        List.of("{\"householdId\":\"hh-1\",\"rates\":[],\"reason\":\"x\"}"));
+    samples.put(
+        "social.AdjustHouseholdPopulation",
+        List.of(
+            "{\"householdId\":\"hh-1\",\"sex\":\"MALE\",\"ageBracketId\":\"0-14\",\"delta\":1,"
+                + "\"reason\":\"x\"}"));
+    samples.put(
+        "unit.SetUnitHouseholds",
+        List.of("{\"unitId\":\"u-1\",\"households\":[],\"reason\":\"x\"}", "u-1"));
 
     for (Map.Entry<String, List<String>> sample : samples.entrySet()) {
       List<String> expected = sample.getValue();
@@ -731,8 +768,8 @@ class AdjudicateTickToolTest {
           .containsExactlyInAnyOrderElementsOf(expected.subList(1, expected.size()));
     }
     assertThat(samples.keySet())
-        .as("49 条样本一条不漏（39 条白名单目标 + 10 条 GM-only；少一条 ⇒ 上面那条断言根本不会跑）")
-        .hasSize(49);
+        .as("57 条样本一条不漏（47 条白名单目标 + 10 条 GM-only；少一条 ⇒ 上面那条断言根本不会跑）")
+        .hasSize(57);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());

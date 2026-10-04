@@ -268,8 +268,8 @@ class UnitModuleTest {
         .as("module 只出现一次——类型层没有第二个编制分量可以并挂")
         .isEqualTo(1);
     assertThat(
-            Unit.class.getRecordComponents()[Unit.class.getRecordComponents().length - 2].getType())
-        .as("module 是 Optional<UnitModule>（擦除后 Optional；末位是 D1 的 stateDescriptions）")
+            Unit.class.getRecordComponents()[Unit.class.getRecordComponents().length - 3].getType())
+        .as("module 是 Optional<UnitModule>（擦除后 Optional；其后是 stateDescriptions / households）")
         .isEqualTo(Optional.class);
   }
 

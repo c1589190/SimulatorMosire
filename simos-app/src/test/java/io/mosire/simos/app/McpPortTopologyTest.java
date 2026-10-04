@@ -79,7 +79,7 @@ class McpPortTopologyTest {
           // ★ C5b（2026-10-02）：历法/气候信息（四桶共享读）。
           "simos.calendar.info");
 
-  /** **非窄写**的写工具（34 条）：3 条通用写 + D1–P7 的组合/编排写（都不继承 AbstractNarrowWriteTool）。 */
+  /** **非窄写**的写工具（40 条）：3 条通用写 + D1–P7 的组合/编排写 + S3a 的 6 条家户/人口组合写（都不继承 AbstractNarrowWriteTool）。 */
   private static final List<String> NON_NARROW_WRITES =
       List.of(
           "simos.command.submit",
@@ -116,7 +116,14 @@ class McpPortTopologyTest {
           "simos.economy.adjust",
           "simos.gm.approve",
           // ★ C5b（2026-10-02）：历法/气候配置（GM 写）。
-          "simos.calendar.configure");
+          "simos.calendar.configure",
+          // ★ S3a（2026-10-09）：家户/人口 GM 窄写六条（AbstractHouseholdGmTool，不是 AbstractNarrowWriteTool）。
+          "simos.social.household.create",
+          "simos.social.household.move",
+          "simos.social.household.members",
+          "simos.social.household.rates",
+          "simos.unit.assignHousehold",
+          "simos.unit.detachHousehold");
 
   /** M1 的 8 条 map 窄写（进 GM 桶）：决策人口**不得**含其中任何一条。 */
   private static final List<String> MAP_WRITES =
@@ -213,7 +220,7 @@ class McpPortTopologyTest {
     }
   }
 
-  /** J1：**唯一的 MCP 口 = GM 组**（读 32 + 非窄写 34 + 窄写 60 = 126）。 */
+  /** J1：**唯一的 MCP 口 = GM 组**（读 32 + 非窄写 40 + 窄写 60 = 132）。 */
   @Test
   void theSingleMcpPortExposesTheGmToolFace() {
     try (McpSyncClient client = newClient(shell.boundMcpPort())) {
@@ -221,7 +228,7 @@ class McpPortTopologyTest {
       assertThat(init.serverInfo().name()).isEqualTo(SERVER_NAME);
 
       assertThat(toolNames(client))
-          .as("J1：唯一口 = GM 组（32 读 + 34 非窄写 + 60 窄写 = 126）")
+          .as("J1：唯一口 = GM 组（32 读 + 40 非窄写 + 60 窄写 = 132）")
           .containsExactlyInAnyOrderElementsOf(
               concat(READ_TOOLS, NON_NARROW_WRITES, GM_NARROW_WRITES));
     }

@@ -73,22 +73,28 @@ class UnitVisionRadiusTest {
     RecordComponent[] components = Unit.class.getRecordComponents();
     List<String> names = componentNames();
     assertThat(names)
-        .as("Unit 应为 17 分量；visionRadius 是倒数第四个（其后依次为 jurisdiction / module / stateDescriptions）")
-        .hasSize(17);
-    assertThat(names.get(names.size() - 4)).isEqualTo("visionRadius");
-    assertThat(components[components.length - 4].getType()).as("视野半径是 int").isEqualTo(int.class);
-    assertThat(names.get(names.size() - 3)).isEqualTo("jurisdiction");
-    assertThat(components[components.length - 3].getType())
+        .as(
+            "Unit 应为 18 分量（S3a 第 18 = households）；visionRadius 是倒数第五个"
+                + "（其后依次为 jurisdiction / module / stateDescriptions / households）")
+        .hasSize(18);
+    assertThat(names.get(names.size() - 5)).isEqualTo("visionRadius");
+    assertThat(components[components.length - 5].getType()).as("视野半径是 int").isEqualTo(int.class);
+    assertThat(names.get(names.size() - 4)).isEqualTo("jurisdiction");
+    assertThat(components[components.length - 4].getType())
         .as("管辖是 Optional<Jurisdiction>（擦除后 Optional）")
         .isEqualTo(Optional.class);
-    assertThat(names.get(names.size() - 2)).isEqualTo("module");
-    assertThat(components[components.length - 2].getType())
+    assertThat(names.get(names.size() - 3)).isEqualTo("module");
+    assertThat(components[components.length - 3].getType())
         .as("编制是 Optional<UnitModule>（擦除后 Optional）")
         .isEqualTo(Optional.class);
-    assertThat(names.get(names.size() - 1)).isEqualTo("stateDescriptions");
-    assertThat(components[components.length - 1].getType())
+    assertThat(names.get(names.size() - 2)).isEqualTo("stateDescriptions");
+    assertThat(components[components.length - 2].getType())
         .as("状态描述链接是 Map<String,String>（擦除后 Map）")
         .isEqualTo(Map.class);
+    assertThat(names.get(names.size() - 1)).isEqualTo("households");
+    assertThat(components[components.length - 1].getType())
+        .as("家户容纳是 List<HouseholdId>（擦除后 List）")
+        .isEqualTo(List.class);
   }
 
   @Test
@@ -131,15 +137,15 @@ class UnitVisionRadiusTest {
   }
 
   @Test
-  void constructorMatrixIsCanonical17PlusFiveCompatibilityShapes() {
-    // 五条兼容构造器（9/13/14/15/16 参）都只补缺省、不接受新字段的显式来源 ⇒ 它们不可能绕过构造期校验（这是结构断言，不靠"我记得")。
+  void constructorMatrixIsCanonical18PlusSixCompatibilityShapes() {
+    // 六条兼容构造器（9/13/14/15/16/17 参）都只补缺省、不接受新字段的显式来源 ⇒ 它们不可能绕过构造期校验（这是结构断言，不靠"我记得")。
     Set<Integer> arities = new LinkedHashSet<>();
     for (var constructor : Unit.class.getConstructors()) {
       arities.add(constructor.getParameterCount());
     }
     assertThat(arities)
-        .as("恰六种构造形态：17 参 canonical + 9/13/14/15/16 参兼容（兼容形态没有新增字段的显式来源）")
-        .isEqualTo(Set.of(9, 13, 14, 15, 16, 17));
+        .as("恰七种构造形态：18 参 canonical + 9/13/14/15/16/17 参兼容（兼容形态没有新增字段的显式来源）")
+        .isEqualTo(Set.of(9, 13, 14, 15, 16, 17, 18));
   }
 
   // ── ★★ 9 处生产拷贝/创建点：逐处不丢字段 ──────────────────────────
@@ -338,7 +344,7 @@ class UnitVisionRadiusTest {
    * ★★ **本测试的主力装置**：逐 record 分量对拍 {@code before}/{@code after}，返回**值发生变化**的分量名集。
    *
    * <p>**不按名字引用 {@code visionRadius}** ⇒ 拷贝点漏传那一刻，{@code "visionRadius"} 自己出现在差集里。写死比较对象是错的做法：
-   * 那样新增第 15 个分量时本装置不会自动跟上，正是铁律 5 的由来（{@code MapDiff} 手工维护、四个字段漂移出去）。
+   * 那样新增第 18 个分量时本装置不会自动跟上，正是铁律 5 的由来（{@code MapDiff} 手工维护、四个字段漂移出去）。
    */
   private static Set<String> changedComponents(Unit before, Unit after) {
     Set<String> changed = new LinkedHashSet<>();

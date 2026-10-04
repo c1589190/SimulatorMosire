@@ -120,10 +120,10 @@ class McpCoverageTest {
   private static final String TEST_INITIATOR = "agent:t11-coverage";
 
   /**
-   * catalog 预期的 85 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
+   * catalog 预期的 93 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
    * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43，T11C 起 43 → 44，会话重置起 44 → 45，令状态翻转起 45 → 46， social
    * 起 46 → 49，economy/actor 全族补齐后 50 → 60，辖区阶段 5–8 起 60 → 65，阶段 9–12 起 65 → 71，P1b1/P1b2/P3/R3a 与
-   * D1/D3a/D4/D5 起 71 → 85）。
+   * D1/D3a/D4/D5 起 71 → 85，S3a 的家户/人口 8 条起 85 → 93）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -177,10 +177,17 @@ class McpCoverageTest {
           "sd.SetStageOutcomeTable",
           "sd.StartDecision",
           "sd.SubmitVerdict",
+          "social.AddHouseholdMembers",
+          "social.AdjustHouseholdPopulation",
           "social.ClearRegion",
           "social.CreateCity",
+          "social.CreateHousehold",
+          "social.RemoveHouseholdMembers",
           "social.SeedGroups",
+          "social.SetHouseholdLocation",
+          "social.SetHouseholdVitalRates",
           "social.SetPopulation",
+          "social.TransferHouseholdMembers",
           "social.UpdateCity",
           "unit.AdjustComposition",
           "unit.ApplyCasualties",
@@ -210,6 +217,7 @@ class McpCoverageTest {
           "unit.SetStateDescription",
           "unit.SetStatus",
           "unit.SetTaxRate",
+          "unit.SetUnitHouseholds",
           "unit.SplitFormation",
           "unit.UpdateCommandChain");
 
@@ -566,6 +574,42 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put("map.RenameRegion", "{\"regionId\":\"r-nation\",\"name\":\"覆盖改名\"}");
     MINIMAL_PAYLOADS.put(
         "sd.SetArmyMasterGov", "{\"armyId\":\"a-cov\",\"masterGovUnitId\":\"u-2\"}");
+
+    // ── S3a（2026-10-09）的 8 条家户/人口命令：追加在最后 ⇒ 不移动上面任何命令的 revision 号。──
+    //   语义序：先建家户 hh-cov（HEX）→ 加成员 → 设率 → 调人口 → 减员 → 转移给 social.SeedGroups
+    //   自动建的 hh:hex:1_1 → 家户改挂 UNIT(u-2) → unit 侧列表加入它（两端一致）。
+    //   每条都必须产生**非空**变更集（命令提交不允许空 revision）。
+    MINIMAL_PAYLOADS.put(
+        "social.CreateHousehold",
+        "{\"householdId\":\"hh-cov\",\"location\":{\"type\":\"HEX\",\"hex\":{\"q\":1,\"r\":3}},"
+            + "\"profile\":{\"name\":\"覆盖户\"},\"reason\":\"coverage\"}");
+    MINIMAL_PAYLOADS.put(
+        "social.AddHouseholdMembers",
+        "{\"householdId\":\"hh-cov\",\"lotId\":\"lot-cov-1\",\"sex\":\"MALE\",\"count\":10,"
+            + "\"ageAtAnchorDays\":0,\"reason\":\"coverage\"}");
+    MINIMAL_PAYLOADS.put(
+        "social.SetHouseholdVitalRates",
+        "{\"householdId\":\"hh-cov\",\"rates\":[{\"bracketId\":\"0-14\",\"sex\":\"MALE\","
+            + "\"birthRatePerMillePerTick\":5,\"deathRatePerMillePerTick\":3}],"
+            + "\"reason\":\"coverage\"}");
+    MINIMAL_PAYLOADS.put(
+        "social.AdjustHouseholdPopulation",
+        "{\"householdId\":\"hh-cov\",\"sex\":\"MALE\",\"ageBracketId\":\"0-14\",\"delta\":3,"
+            + "\"reason\":\"coverage\"}");
+    MINIMAL_PAYLOADS.put(
+        "social.RemoveHouseholdMembers",
+        "{\"householdId\":\"hh-cov\",\"lotId\":\"lot-cov-1\",\"count\":4,\"reason\":\"coverage\"}");
+    MINIMAL_PAYLOADS.put(
+        "social.TransferHouseholdMembers",
+        "{\"from\":\"hh-cov\",\"to\":\"hh:hex:1_1\",\"lotId\":\"lot-cov-1\",\"count\":2,"
+            + "\"reason\":\"coverage\"}");
+    MINIMAL_PAYLOADS.put(
+        "social.SetHouseholdLocation",
+        "{\"householdId\":\"hh-cov\",\"location\":{\"type\":\"UNIT\",\"unitId\":\"u-2\"},"
+            + "\"reason\":\"coverage\"}");
+    MINIMAL_PAYLOADS.put(
+        "unit.SetUnitHouseholds",
+        "{\"unitId\":\"u-2\",\"households\":[\"hh-cov\"],\"reason\":\"coverage\"}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -618,7 +662,7 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 85 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5）")
+            "catalog 列出的 type 与 Shell 注册的 93 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
     committableCatalogTypes.removeAll(PRECONDITION_REJECT_TYPES);

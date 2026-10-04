@@ -158,7 +158,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * 工具集验收（M5 T5；D1–D5 后）：注册表 126 条（GM 桶全量 = 32 读 + 94 写）/ catalog 与注册面一致（R5）/ 写工具身份注入（R4）/ 读工具与
+ * 工具集验收（M5 T5；D1–D5 后）：注册表 132 条（GM 桶全量 = 32 读 + 100 写）/ catalog 与注册面一致（R5）/ 写工具身份注入（R4）/ 读工具与
  * {@code QueryService} 逐值 对拍 / 拒绝与冲突不留 revision。
  *
  * <p>夹具与 {@code QueryServiceTest}/{@code GuiApiTest} 同法：独立 store 种创世 {@code (main,1)} + 含
@@ -244,10 +244,10 @@ class SimosToolsTest {
           "simos.llm.providers");
 
   /**
-   * 非窄写写工具（34 条）：**只有 GM 组有**（MCP 与 GM Agent 同权限级）。
+   * 非窄写写工具（40 条）：**只有 GM 组有**（MCP 与 GM Agent 同权限级）。
    *
    * <p>★ 它们**不是窄写**：不继承 {@code AbstractNarrowWriteTool} ⇒ 窄写扫描器（按 {@code tools/write}
-   * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这 34 条从差集里扣掉。
+   * 目录扫源码）**扫不到**它们；判"窄写是否都挂上了"时必须先把这 40 条从差集里扣掉。
    */
   private static final List<String> NON_NARROW_WRITE_NAMES =
       List.of(
@@ -291,7 +291,15 @@ class SimosToolsTest {
           "simos.economy.adjust",
           "simos.gm.approve",
           // ★ C5b（2026-10-02）：历法/气候配置（GM 写；不继承窄写基类）。
-          "simos.calendar.configure");
+          "simos.calendar.configure",
+          // ★ S3a（2026-10-09）：家户/人口 GM 窄写六条（继承 AbstractHouseholdGmTool，不是
+          //   AbstractNarrowWriteTool ⇒ 窄写扫描器扫不到；四条 social 家户工具 + 两条 unit 组合工具）。
+          "simos.social.household.create",
+          "simos.social.household.move",
+          "simos.social.household.members",
+          "simos.social.household.rates",
+          "simos.unit.assignHousehold",
+          "simos.unit.detachHousehold");
 
   /** M1 的 8 条 map 窄写：**只进 GM 组**（= MCP 口），**不进**决策人组（决策人不能直接改数据）。 */
   private static final List<String> MAP_WRITE_NAMES =
@@ -429,14 +437,14 @@ class SimosToolsTest {
               "social.UpdateCity",
               "actor.AdjustAccounts"));
 
-  /** 写工具全集（94 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的补集。 */
+  /** 写工具全集（100 条）：{@link #READ_TOOL_NAMES} 在 {@link #GM_TOOL_NAMES} 里的补集。 */
   private static final List<String> WRITE_TOOL_NAMES =
       concat(NON_NARROW_WRITE_NAMES, NARROW_WRITE_NAMES);
 
-  /** **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 32 读 + 94 写 = 126（**34 非窄写** + **60 窄写**）。 */
+  /** **运行时 MCP 口 = GM 组**的工具面（spec §2.1）= 32 读 + 100 写 = 132（**40 非窄写** + **60 窄写**）。 */
   private static final List<String> GM_TOOL_NAMES = concat(READ_TOOL_NAMES, WRITE_TOOL_NAMES);
 
-  /** catalog 预期的 85 个已注册命令类型（与 Shell 注册的 handler 同源）。 */
+  /** catalog 预期的 93 个已注册命令类型（与 Shell 注册的 handler 同源）。 */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
           "actor.AdjustAccounts",
@@ -489,10 +497,17 @@ class SimosToolsTest {
           "sd.SetStageOutcomeTable",
           "sd.StartDecision",
           "sd.SubmitVerdict",
+          "social.AddHouseholdMembers",
+          "social.AdjustHouseholdPopulation",
           "social.ClearRegion",
           "social.CreateCity",
+          "social.CreateHousehold",
+          "social.RemoveHouseholdMembers",
           "social.SeedGroups",
+          "social.SetHouseholdLocation",
+          "social.SetHouseholdVitalRates",
           "social.SetPopulation",
+          "social.TransferHouseholdMembers",
           "social.UpdateCity",
           "unit.AdjustComposition",
           "unit.ApplyCasualties",
@@ -522,6 +537,7 @@ class SimosToolsTest {
           "unit.SetStateDescription",
           "unit.SetStatus",
           "unit.SetTaxRate",
+          "unit.SetUnitHouseholds",
           "unit.SplitFormation",
           "unit.UpdateCommandChain");
 
@@ -720,7 +736,7 @@ class SimosToolsTest {
   }
 
   /**
-   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 85 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
+   * ★ **T9 的强判据**：catalog 的 type 集合 == **全仓 93 个 `CommandHandler` 实现**的 `type()` 集合（注册面 == 实现面），
    * 而不只是"与一份手抄的期望表相等"。扫描 simos-unit/map/social/sd 的 main 源码抽 `type()` 的返回串——**任一 handler 存在却没注册进
    * {@code Shell}，或注册了一条没有实现的 type，这里都会红**。
    *
@@ -732,9 +748,10 @@ class SimosToolsTest {
     Set<String> implementationTypes = handlerTypesFromSources();
     assertThat(implementationTypes)
         .as(
-            "扫描必须恰为 85 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
-                + "P1b1/P3/R3a 的区域清空与国库上缴，辖区阶段 5–12，D1/D3a/D4/D5 的 unit/sd/army 新命令）")
-        .hasSize(85);
+            "扫描必须恰为 93 个 *Handler.java 的 type()（扫到 0/漏文件是『扫描器静默』陷阱；R4/E6 后含全部 economy/actor handler，"
+                + "P1b1/P3/R3a 的区域清空与国库上缴，辖区阶段 5–12，D1/D3a/D4/D5 的 unit/sd/army 新命令，"
+                + "S3a 的 7 条 social 家户命令与 unit.SetUnitHouseholds）")
+        .hasSize(93);
 
     ToolResult result = call("simos.command.catalog", Map.of());
     assertThat(result.success()).isTrue();
@@ -770,8 +787,8 @@ class SimosToolsTest {
         .containsAll(SD_WRITE_NAMES)
         .containsAll(MAP_WRITE_NAMES)
         .containsAll(UNIT_WRITE_NAMES)
-        .as("★ D1–D5 后 + C5b：GM 桶 = 32 读 + 94 写 = 126（34 非窄写 + 60 窄写）")
-        .hasSize(126);
+        .as("★ D1–D5 后 + C5b + S3a：GM 桶 = 32 读 + 100 写 = 132（40 非窄写 + 60 窄写）")
+        .hasSize(132);
     assertThat(agent)
         .as(
             "★ J3（spec §2.2/§四.3）：决策人桶**没有**通用写、**没有**任何 map/unit/sd 的写工具，"
@@ -1505,8 +1522,8 @@ class SimosToolsTest {
   void everyToolClassOnDiskIsRegisteredInSomeBucket() throws Exception {
     Set<String> onDisk = toolNamesFromSources();
     assertThat(onDisk)
-        .as("扫描必须恰为 131 个 *Tool.java 的 NAME（126 条 GM 桶 + 5 条只进决策人桶的条目；扫到 0/漏文件是『扫描器静默』陷阱）")
-        .hasSize(131);
+        .as("扫描必须恰为 137 个 *Tool.java 的 NAME（132 条 GM 桶 + 5 条只进决策人桶的条目；扫到 0/漏文件是『扫描器静默』陷阱）")
+        .hasSize(137);
 
     List<String> union =
         Stream.concat(

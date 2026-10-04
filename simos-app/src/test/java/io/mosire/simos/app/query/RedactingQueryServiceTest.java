@@ -32,6 +32,9 @@ import io.mosire.simos.sd.model.DisclosurePolicy;
 import io.mosire.simos.sd.model.Verdict;
 import io.mosire.simos.sd.model.VerdictMeta;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.util.address.Address;
@@ -42,6 +45,7 @@ import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.resolve.ResolverRegistry;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateRef;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -320,6 +324,9 @@ class RedactingQueryServiceTest {
     core.register(new MapCodec());
     core.register(new UnitCodec());
     core.register(new SdCodec());
+    // ★ S3a：unit 读口（RedactingQueryService.units/UnitGetTool）现在经 SocialLookupAdapter 取 households/population
+    //   ⇒ 夹具必须有 social 切片，否则会按"装配故障"抛（生产状态恒有该切片）。
+    core.register(new SocialCodec());
     core.bootstrapGenesis(genesis());
     QueryService query = new QueryService(core, new ResolverRegistry(), new FacetRegistry());
     return new RedactingQueryService(query, DecisionScopeFunctions.defaults(), MAP_ID);
@@ -355,7 +362,16 @@ class RedactingQueryServiceTest {
   }
 
   private static SimulationState genesis() {
-    return ScopeFixtures.state(map(), units(), sdState());
+    return withEmptySocial(ScopeFixtures.state(map(), units(), sdState()));
+  }
+
+  /** ★ S3a：给夹具补一个（空的）social 切片——单位读口经 SocialLookupAdapter 取 households/population 时需要它。 */
+  private static SimulationState withEmptySocial(SimulationState base) {
+    Map<String, Snapshot> slices = new LinkedHashMap<>(base.modules());
+    slices.put(
+        "social",
+        new SocialSnapshot(base.meta().ref(), base.meta().timestamp(), SocialData.empty()));
+    return new SimulationState(base.meta(), slices, base.info());
   }
 
   private static SdState sdState() {

@@ -598,6 +598,10 @@ class UnitTimeParticipantTest {
    * Optional<Jurisdiction>}，单位侧管辖富结构）加进来时本用例 同样**如期红了**。过完的结论也是它**不违反不变量 3**：管辖是"谁管哪些 Region +
    * 税率/上限/行政能力"的制度事实，不是位置、更不是回归终点 hex（下面的类型判据同时确认 Unit 上仍只有 {@code position} 一个 {@code HexCoord}
    * 分量）。⇒ 名单补上它。
+   *
+   * <p>★ **2026-10-09（S3a 家户容纳）**：{@code households}（{@code
+   * List<HouseholdId>}）加进来时本用例同样**如期红了**。过完的结论是它 **不违反不变量 3**：家户容纳是"哪些家户归本单位"的制度事实，不是位置、更不是回归终点
+   * hex（下面的 hex 型分量判据仍只认 {@code position} 一个）。⇒ 名单补上它。
    */
   @Test
   void stateHasNoPlaceToPersistAnEndpointHex() {
@@ -623,7 +627,8 @@ class UnitTimeParticipantTest {
             "visionRadius",
             "jurisdiction",
             "module",
-            "stateDescriptions");
+            "stateDescriptions",
+            "households");
     assertThat(hexTypedComponentNames(Unit.class))
         .as("★ **名单之外的牙齿**：`position` 是 Unit 上唯一能装 hex 的分量 —— 想塞「回归终点」只能塞在这里，改名换名单都绕不过")
         .containsExactly("position");

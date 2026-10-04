@@ -99,8 +99,9 @@ class McpServerTest {
    * H0.6 的 simos.economy.ownership）。
    */
   /**
-   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 32 读 + 94 写 = 126 条（spec §七.2 的 C6；含 D1–D5 的 unit/sd/army 新读写口与
-   * P1b1/P1b2/P3/R3a/P7a/P7b/P7c 的各项补齐，以及用户 2026-10-02 的 {@code simos.map.overlaps}）。
+   * 现有口（T4：EXTERNAL ∪ GM）的工具面 = 32 读 + 100 写 = 132 条（spec §七.2 的 C6；含 D1–D5 的 unit/sd/army 新读写口与
+   * P1b1/P1b2/P3/R3a/P7a/P7b/P7c 的各项补齐，以及用户 2026-10-02 的 {@code simos.map.overlaps}；S3a 再 +6 条
+   * 家户/人口 GM 窄写）。
    */
   private static final List<String> EXTERNAL_UNION_GM_TOOL_NAMES =
       List.of(
@@ -231,7 +232,14 @@ class McpServerTest {
           "simos.army.resolveCombat",
           "simos.army.formatUnit",
           "simos.economy.adjust",
-          "simos.gm.approve");
+          "simos.gm.approve",
+          // ★ S3a（2026-10-09）：家户/人口 GM 窄写六条。
+          "simos.social.household.create",
+          "simos.social.household.move",
+          "simos.social.household.members",
+          "simos.social.household.rates",
+          "simos.unit.assignHousehold",
+          "simos.unit.detachHousehold");
 
   private static final Duration WAIT = Duration.ofSeconds(10);
 
@@ -286,7 +294,7 @@ class McpServerTest {
     McpSchema.ListToolsResult tools = client.listTools();
     assertThat(tools.tools())
         .extracting(McpSchema.Tool::name)
-        .as("现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 126 条（32 读 + 94 写；D1–D5 + C5b 后逐条同源）")
+        .as("现有口 tools/list 必须恰好是 EXTERNAL ∪ GM 的 132 条（32 读 + 100 写；D1–D5 + C5b + S3a 后逐条同源）")
         .containsExactlyInAnyOrderElementsOf(EXTERNAL_UNION_GM_TOOL_NAMES);
   }
 
