@@ -150,9 +150,13 @@ record Prospect(
 
 ```text
 assetScale = min_k floor(可用资产[k] / capacityPerUnit[k])          // 自有自营资产 + 同格可租闲置（AssetRule/RentRule 允许）
-laborScale = floor(row.participationAdjustedLaborMilli() / (laborPerUnit × cycleDays))
+laborScale = floor(row.participationAdjustedLaborMilli() / laborPerUnit)
 scale      = min(assetScale, laborScale)
 ```
+
+★ **量纲说明（D-024 实施修正）**：`ClassRow.participationAdjustedLaborMilli()` 是**千分劳动/日**，`laborPerUnit` 是**千分劳动/日/单位规模**。
+"视界内劳动 / 视界内单位劳动" = `(row × horizonDays) / (laborPerUnit × horizonDays)` = `row / laborPerUnit`。
+实现取后者这个等价形式；测试代理手算时按此口径，不要再把它当成"漏乘 horizonDays"。
 
 - `可用资产` 的取法沿用 `ModeMigrationPolicy` 现有闲置判据（`isIdleShare` + `claimedByOrganizations` 排除），
   新进入者的份额按执行期同样的 `reserveIdleAssetsFor` 规则；**没有资产又租不到 ⇒ `feasible=false, scale=0`**，不凭空造资产。
@@ -269,10 +273,12 @@ netPerLaborScaled = (运费收入 − 成本) × 1_000_000 / max(1, laborNeed)
    - `EconomySeeder.Seed` / `jsonOf` 增加可选顶层 `merchantFirms` 键（载荷形状与 `EconomyPayloads.parseMerchantFirms` 逐字一致；空表时该批不发出，保持旧形态）。
 5. `PRODUCTION_RUNTIME_ASSET_KINDS` 增加 `SHIP`、`CATTLE`。
 6. `productionRuntimeRulesVersion()` 改为写 `EconomyMeta.RUNTIME_VERSION_SEVEN_HEX_V2`；seeder 自检也用 V2。
+   ★ **版本门同步**：`EconomyMeta.isCurrentRuntimeVersion()` / `isCurrentRuntimeVersion(String)` / `requireCurrentRuntimeVersion*` 的“当前版本”比较目标从 V1 切到 V2（旧 V1 一律视为旧档）；这是 V2 写入路径的必要条件，由 Agent B 一并改（见 §10 文件所有权）。
 
 ### 3.6 版本与旧数据
 
 - `EconomyMeta` 增加 `RUNTIME_VERSION_SEVEN_HEX_V2 = "seven-hex-v2"`；`RUNTIME_VERSION_SEVEN_HEX_V1` 保留为历史常量。
+  ★ `isCurrentRuntimeVersion()` / `requireCurrentRuntimeVersion*` 的当前版本比较目标切成 V2；**激活/加载路径的调用接线仍不在本批**（见 §9 第 6 条）。
 - production-runtime seed 写 V2；旧 V1 载荷/存档一律视为旧档（本批不做兼容读取）。
 - 现有"激活/加载时拒绝旧版本"的缺口不在本批实现（保留在 §9 已知缺口）；本轮至少保证 seeder 自检与新档写入 V2。
 
@@ -383,7 +389,7 @@ netPerLaborScaled = (运费收入 − 成本) × 1_000_000 / max(1, laborNeed)
 3. **动态价格未开**：预期利润全部按当前固定价 + bid/ask；价格不随供需调整。
 4. **商人 upkeep 仍非现金支出**：D-023 第 4 条（维护/upkeep 真实现金支出）本批仍未做；`MerchantSettlement` 的 upkeep 继续按既有计提口径。
 5. **CityLand/城区容量/慢速扩建未接**：城市人口不因城区拥挤被限制。
-6. **激活/加载版本门未接**：V2 只在 seeder 写入前自检；旧档加载仍可能被别的路径读入，需要后续 GM reset/激活门。
+6. **激活/加载版本门未接**：V2 会在 seeder 写入前自检，且 `EconomyMeta` 的当前版本判据切到 V2；但"世界激活/载入时拒绝 V1"的调用接线仍不在本批，旧档仍可能被别的读路径读入，需要后续 GM reset/激活门。
 7. **merchant 组织的产业模板选择需要新分支**：若 `EconomyOrganizationSettlement` 未改成功，merchant principal 可能回退到 farm/craft；测试代理以"merchantFirms 非空 + 运费进账"为判据暴露。
 8. **没有 `trade` 模板的旧世界**：candidate merchant `feasible=false`，不会凭空造运力。
 9. **本设计不覆盖**：GOV/税、FX、城市财政、商人买低卖高、完整城区租金。
@@ -403,15 +409,16 @@ netPerLaborScaled = (运费收入 − 成本) × 1_000_000 / max(1, laborNeed)
 - `simos-economy/src/main/java/io/mosire/simos/economy/time/ModeMigrationSettlement.java`（仅当 merchant/新 mode 目标建户必须选产业模板/资产时）
 禁止：任何测试文件、`simos-app/**`、`docs/**`；不得 `git commit`。
 
-### Agent B（`simos-app` 生产代码 + `simos-economy-api` 的 `HouseholdId` 工厂）
+### Agent B（`simos-app` 生产代码 + `simos-economy-api` 的 `HouseholdId` 工厂 + `EconomyMeta` 版本门）
 
 依赖：Agent A 的 `RUNTIME_VERSION_SEVEN_HEX_V2` 已编译进 economy。
 
 允许：
 - `simos-app/src/main/java/io/mosire/simos/app/world/EconomySeeder.java`
 - `simos-economy-api/src/main/java/io/mosire/simos/economy/api/id/HouseholdId.java`（新增 `ofSeedRole`）
+- `simos-economy/src/main/java/io/mosire/simos/economy/model/EconomyMeta.java`（**只把当前版本判据切到 V2**：`isCurrentRuntimeVersion()`/`isCurrentRuntimeVersion(String)`/`requireCurrentRuntimeVersion*` 的比较目标与消息；不改 record 形状）
 - 若载荷 plumbing 必须：`simos-app/src/main/java/io/mosire/simos/app/tools/write/WorldgenInitializeTool.java`、`RegionSeedPlan.java`（只做 merchantFirms 透传）
-禁止：任何测试文件、`simos-economy/src/main/**`（只可 import/读）、`docs/**`；不得 `git commit`。
+禁止：任何测试文件、其余 `simos-economy/src/main/**`（只可 import/读）、`docs/**`；不得 `git commit`。
 
 ### Agent C（测试代理，只写测试，不改 main）
 
