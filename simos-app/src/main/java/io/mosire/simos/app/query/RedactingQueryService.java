@@ -161,7 +161,7 @@ public final class RedactingQueryService {
     AccessLimit limit = accessLimitOf(actor, target);
     List<Map<String, Object>> out = new ArrayList<>();
     for (Map<String, Object> unit :
-        ToolSupport.units(units, at, map, ToolSupport.sdState(state), calendarService)) {
+        ToolSupport.units(units, at, map, ToolSupport.sdState(state), ToolSupport.socialData(state), calendarService)) {
       UnitId id = new UnitId(String.valueOf(unit.get("id")));
       if (context.map(c -> ToolSupport.unitVisible(c, id)).orElse(false)) {
         out.add(asMap(applyRedactedFields(unit, limit)));

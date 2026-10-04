@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovLevel;
@@ -398,6 +399,43 @@ final class UnitPayloads {
       waypoints.add(hexFrom(element, field));
     }
     return waypoints;
+  }
+
+  /**
+   * 必填的家户 id 数组（S3a 的 {@code unit.SetUnitHouseholds.households}）：JSON 数组 {@code ["hh-1","hh-2"]}
+   * （空数组合法）。元素必须是非空白字符串；同表重复 ⇒ 具名拒（{@link io.mosire.simos.unit.Unit} 构造期再判一遍，
+   * 边界要可读拒因）。顺序是内容的一部分，原样保留。
+   */
+  static List<HouseholdId> requireHouseholdIds(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 [家户 id…] 数组: " + payload);
+    }
+    List<HouseholdId> households = new ArrayList<>(value.size());
+    Set<String> seen = new LinkedHashSet<>();
+    for (JsonNode element : value) {
+      if (!element.isTextual() || element.asText().isBlank()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是非空白字符串: " + element);
+      }
+      String id = element.asText();
+      if (!seen.add(id)) {
+        throw new IllegalArgumentException("字段 " + field + " 不得有重复: " + id);
+      }
+      households.add(HouseholdId.parse(id));
+    }
+    return households;
+  }
+
+  /**
+   * 可选的家户 id 数组（阶段 S3a 的 {@code unit.SetGovFormation.households}）：缺失或 {@code null} ⇒ 空 Optional
+   * （**未给 ⇒ 保持既有**，不是清空）；给了 ⇒ 形状与语义同 {@link #requireHouseholdIds}（空数组 = 显式清空）。
+   */
+  static Optional<List<HouseholdId>> optionalHouseholdIds(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return Optional.empty();
+    }
+    return Optional.of(requireHouseholdIds(payload, field));
   }
 
   private static HexCoord hexFrom(JsonNode object, String field) {

@@ -351,7 +351,9 @@ final class GovSelectExamineesPlan {
         Optional.empty(),
         Optional.empty(),
         // ★ 创建（不是拷贝）：探针单位不承载任何状态链接（阶段 D1 / D-012）。
-        Map.<String, String>of());
+        Map.<String, String>of(),
+        // ★ 创建（不是拷贝）：探针单位不容纳任何家户（S3a / 2026-10-09）。
+        List.of());
   }
 
   private static void requireNonBlank(String value, String field) {

@@ -20,6 +20,12 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
     </dependency>
+    <!-- ★ S3a（2026-10-09 Unit/Gov 家户容纳 §3）：unit 是领域模块，social-api 是契约层
+         （HouseholdId 等稳定 ID / 只读 SPI），依赖方向为领域 → 契约，不依赖 simos-social 实现。
+         版本由父 POM 的 dependencyManagement 提供（"依赖传递不是契约"）。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-social-api</artifactId>
+    </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
     </dependency>
@@ -53,7 +59,7 @@
                          ★ `simos-actor-api` **不在此列**（契约层，与 `economy-api` 同待遇）。 -->
                     <exclude>io.mosire:simos-actor</exclude>
                   </excludes>
-                  <message>UnitSimos 与 SocialSimos 互不依赖（spec §3.1 / G8）；也不得依赖 ActorSimos（兄弟切片，Task 10 回填）</message>
+                  <message>UnitSimos 与 SocialSimos 实现互不依赖（spec §3.1 / G8）；也不得依赖 ActorSimos（兄弟切片，Task 10 回填）。★ `simos-social-api` **不在禁列**（S3a：unit 是领域模块，social-api 是契约层，与 actor-api/economy-api 同待遇——只引 HouseholdId 契约，不引 simos-social 实现）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

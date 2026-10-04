@@ -2,6 +2,7 @@ package io.mosire.simos.unit.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
@@ -122,7 +123,9 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
               //   不凭空发明）。
               Optional.empty(),
               // ★ 创建（不是拷贝）：新单位尚无"状态 ↔ 状态描述地址"链接 ⇒ 空表（阶段 D1 / D-012）。
-              Map.<String, String>of());
+              Map.<String, String>of(),
+              // ★ 创建（不是拷贝）：新单位尚无容纳的家户 ⇒ 空表（S3a / 2026-10-09；家户经 unit.SetUnitHouseholds 加入）。
+              List.<HouseholdId>of());
       UnitState next = UnitOperations.create(snapshot.state(), unit);
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {

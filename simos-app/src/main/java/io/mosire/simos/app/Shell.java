@@ -119,10 +119,17 @@ import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.facet.PopulationFacet;
 import io.mosire.simos.social.resolve.SocialResolver;
+import io.mosire.simos.social.spi.AddHouseholdMembersHandler;
+import io.mosire.simos.social.spi.AdjustHouseholdPopulationHandler;
 import io.mosire.simos.social.spi.ClearRegionHandler;
 import io.mosire.simos.social.spi.CreateCityHandler;
+import io.mosire.simos.social.spi.CreateHouseholdHandler;
+import io.mosire.simos.social.spi.RemoveHouseholdMembersHandler;
 import io.mosire.simos.social.spi.SeedGroupsHandler;
+import io.mosire.simos.social.spi.SetHouseholdLocationHandler;
+import io.mosire.simos.social.spi.SetHouseholdVitalRatesHandler;
 import io.mosire.simos.social.spi.SetPopulationHandler;
+import io.mosire.simos.social.spi.TransferHouseholdMembersHandler;
 import io.mosire.simos.social.spi.UpdateCityHandler;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.unit.facet.UnitsHereFacet;
@@ -156,6 +163,7 @@ import io.mosire.simos.unit.spi.SetRejoinTargetHandler;
 import io.mosire.simos.unit.spi.SetStateDescriptionHandler;
 import io.mosire.simos.unit.spi.SetStatusHandler;
 import io.mosire.simos.unit.spi.SetTaxRateHandler;
+import io.mosire.simos.unit.spi.SetUnitHouseholdsHandler;
 import io.mosire.simos.unit.spi.SplitFormationHandler;
 import io.mosire.simos.unit.spi.UnitTimeParticipant;
 import io.mosire.simos.unit.spi.UpdateCommandChainHandler;
@@ -506,6 +514,9 @@ public final class Shell implements AutoCloseable {
                 //   GmOnly（控制器 2026-10-02 收紧）⇒ 不进决策令 / RegisterEffect 白名单；GM 直通口是窄工具
                 //   simos.unit.adjust-composition（只在 GM 桶），以及 GM 的 simos.command.submit。──
                 new AdjustCompositionHandler(),
+                // ── S3a（2026-10-09）：单个 unit 容纳的家户列表整体替换（unit 侧唯一写口；非 GmOnly ⇒ 与既有 unit
+                //   命令同待遇；"加入/移出 Unit"的两侧一致性由 app 组合工具同批保证）。──
+                new SetUnitHouseholdsHandler(),
                 // ── 辖区阶段 5（2026-09-30）：管辖区域集合 + 长期税率两条窄写。非 GmOnly ⇒ 与既有 unit 命令同待遇
                 //   （仍可嵌入决策人令；"只在 GM 桶"说的是配套窄工具）。──
                 new SetJurisdictionHandler(),
@@ -521,12 +532,22 @@ public final class Shell implements AutoCloseable {
                 new SetGovSuperiorHandler(),
                 new RecruitStaffHandler(),
                 new DismissStaffHandler(),
-                // ── social（4 条）：逐格农村人口 + 城市节点 + **人口批次**（R1 的 T3：人口的唯一落盘入口）。
+                // ── social（4 条既有）：逐格农村人口 + 城市节点 + **人口批次**（R1 的 T3：人口的唯一落盘入口）。
                 //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）──
                 new SetPopulationHandler(),
                 new CreateCityHandler(),
                 new UpdateCityHandler(),
                 new SeedGroupsHandler(),
+                // ── S3a（2026-10-09 家户/人口架构 §4.1）：家户生命周期七条命令——创建 / 位置 / 增人 / 减人 /
+                //   转移 / 设率 / GM 直调人口。全部只写 SocialData、返回 SocialChangeSet；UNIT 位置的 unit 侧一致性
+                //   由 app 组合工具同批保证（social 域不认识 unit）。非 sd 前缀 ⇒ 自动进 drainableCommandTypes。──
+                new CreateHouseholdHandler(),
+                new SetHouseholdLocationHandler(),
+                new AddHouseholdMembersHandler(),
+                new RemoveHouseholdMembersHandler(),
+                new TransferHouseholdMembersHandler(),
+                new SetHouseholdVitalRatesHandler(),
+                new AdjustHouseholdPopulationHandler(),
                 // ── P1b1（2026-10-01）：GM-only 区域社会数据清空（目标 Region 格集内的 populations/groups/cities）。
                 //   标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
                 new ClearRegionHandler(),

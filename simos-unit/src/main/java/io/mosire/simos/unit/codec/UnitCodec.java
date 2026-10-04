@@ -57,6 +57,11 @@ import java.util.function.Function;
  *       equals} 含新列表组件 ⇒ "新组件不进变更集"这类漂移在这里结构上不可能发生（判别力仍由往返测试的反射枚举把守）。
  * </ul>
  *
+ * <p>★★ <b>S3a 的线格式</b>：{@code Unit} 再多一个 {@code "households"} 键（第 18 组件，紧接 {@code
+ * "stateDescriptions"}），值 = {@code HouseholdId} 的有序数组（record 值，不需要键反序列化器）。★ <b>不做旧档归一</b>
+ * （与 manpower/equipment 同口径）：旧档没有该键 ⇒ Jackson 给 {@code null} ⇒ {@code Unit} 紧凑构造器当场拒——旧世界不迁移
+ * （架构 §1）⇒ 让它响亮读不出，而不是静默丢家户。变更集侧同样从 record 组件自动派生（铁律 5）。
+ *
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
  *
  * <p>★ **同时实现 {@link ModuleDiffer}**（"一批命令 = 一条 revision" 的原子批量提交需要）：委托 {@link

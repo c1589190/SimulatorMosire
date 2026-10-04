@@ -44,6 +44,7 @@ import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.household.SocialLookupAdapter;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -720,6 +721,11 @@ public final class GuiServer implements AutoCloseable {
       }
       SimulationState state = queryService.stateAt(target(params));
       UnitState units = ApiViews.unitState(state);
+      SocialLookupAdapter lookup =
+          new SocialLookupAdapter(
+              ApiViews.socialData(state),
+              state.meta().timestamp().tick(),
+              calendarService.clock());
       return Reply.of(
           200,
           Map.of(
@@ -729,7 +735,9 @@ public final class GuiServer implements AutoCloseable {
                   state.meta().timestamp(),
                   ApiViews.gameMap(state),
                   ApiViews.sdState(state),
-                  calendarService)));
+                  calendarService,
+                  lookup,
+                  lookup)));
     }
     if (isUnitDetail(path)) {
       return unitReply(
@@ -1192,6 +1200,11 @@ public final class GuiServer implements AutoCloseable {
     if (unit == null) {
       return Reply.of(404, Map.of("error", "unit not found", "id", id));
     }
+    SocialLookupAdapter householdLookup =
+        new SocialLookupAdapter(
+            ApiViews.socialData(state),
+            state.meta().timestamp().tick(),
+            calendarService.clock());
     return redactedIfRequested(
         asPresent,
         actor,
@@ -1204,7 +1217,10 @@ public final class GuiServer implements AutoCloseable {
                 state.meta().timestamp(),
                 ApiViews.gameMap(state),
                 ApiViews.sdState(state),
-                calendarService)));
+                calendarService,
+                // ★★ S3a：unit 详情附 households[] 与实时人口（同一份 SocialLookupAdapter 同时喂两个只读 SPI）。
+                householdLookup,
+                householdLookup)));
   }
 
   private Reply populationReply(

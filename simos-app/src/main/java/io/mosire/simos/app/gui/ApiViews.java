@@ -41,6 +41,8 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.social.api.lookup.HouseholdLookup;
+import io.mosire.simos.social.api.lookup.PopulationLookup;
 import io.mosire.simos.economy.api.id.MobilityPolicyId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -5182,9 +5184,23 @@ public final class ApiViews {
   /** 单位列表（每个单位带 head 时刻的有效位置与在途移动视图；★ 2026-09-24 起带所属交战）。 */
   static List<Map<String, Object>> units(
       UnitState units, SimosTimestamp at, GameMap map, SdState sd, CalendarService calendars) {
+    return units(units, at, map, sd, calendars, null, null);
+  }
+
+  /**
+   * S3a：单位清单的每条视图同样带 {@code households[]} 与实时 {@code population}（与 {@link #unit} 的 8 参形态同源）。
+   */
+  static List<Map<String, Object>> units(
+      UnitState units,
+      SimosTimestamp at,
+      GameMap map,
+      SdState sd,
+      CalendarService calendars,
+      PopulationLookup population,
+      HouseholdLookup householdLookup) {
     List<Map<String, Object>> out = new ArrayList<>(units.units().size());
     for (Unit unit : units.units().values()) {
-      out.add(unit(unit, units, at, map, sd, calendars));
+      out.add(unit(unit, units, at, map, sd, calendars, population, householdLookup));
     }
     return out;
   }
@@ -5223,6 +5239,29 @@ public final class ApiViews {
       GameMap map,
       SdState sd,
       CalendarService calendars) {
+    return unit(unit, units, at, map, sd, calendars, null, null);
+  }
+
+  /**
+   * ★★ <b>S3a（2026-10-09）带家户/人口只读 SPI 的重载</b>：在 6 参形态之上追加
+   * <ul>
+   *   <li>{@code households[]}：{@code unit.households()} 的逐项视图（{@code id} + 可得时带
+   *       {@code name/location/memberLots/population}）；</li>
+   *   <li>{@code population}：单位总人口 = {@code PopulationLookup.unitPopulation(unitId)} 现算（<b>不是</b>单位状态里的第二本
+   *       headcount，架构 §5）。</li>
+   * </ul>
+   * 两个 lookup 可取同一个 {@code SocialLookupAdapter} 实例；{@code null} ⇒ {@code households[]} 只发 id、
+   * {@code population} 为 {@code null}（旧调用点的"没有注入"必须与"是 0 人"可分）。
+   */
+  public static Map<String, Object> unit(
+      Unit unit,
+      UnitState units,
+      SimosTimestamp at,
+      GameMap map,
+      SdState sd,
+      CalendarService calendars,
+      PopulationLookup population,
+      HouseholdLookup householdLookup) {
     Objects.requireNonNull(calendars, "calendars");
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", unit.id().value());
@@ -5260,7 +5299,41 @@ public final class ApiViews {
     // ★★ D1（2026-10-02 / D-012）：当前回合状态 ↔ 状态描述地址的链接表**原样透出**（空表也发——与
     //   `equipment` 同款：这栏本身是单位状态的一部分，"没有链接"就用空对象表达；GUI 与 MCP 同源这一份）。
     view.put("stateDescriptions", new LinkedHashMap<>(unit.stateDescriptions()));
+    // ★★ S3a（2026-10-09）：unit 侧容纳的家户列表 + 实时人口（人口从 Social 家户汇总现算，不落第二本 headcount）。
+    //   空列表也发（与 stateDescriptions/equipment 同款："没有家户"是单位状态本体的一部分）。
+    view.put("households", unitHouseholdViews(unit, householdLookup, population));
+    view.put(
+        "population",
+        population == null ? null : population.unitPopulation(unit.id().value()));
     return view;
+  }
+
+  /**
+   * {@code unit.households()} 的逐项视图：{@code id} 恒有；注入 {@link HouseholdLookup} 时补
+   * {@code name/location/memberLots}；注入 {@link PopulationLookup} 时补该家户人数。★ 顺序 = unit 列表顺序（保序是内容）。
+   */
+  private static List<Map<String, Object>> unitHouseholdViews(
+      Unit unit, HouseholdLookup householdLookup, PopulationLookup population) {
+    List<Map<String, Object>> out = new ArrayList<>(unit.households().size());
+    for (HouseholdId id : unit.households()) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("id", id.value());
+      if (householdLookup != null) {
+        householdLookup
+            .household(id)
+            .ifPresent(
+                household -> {
+                  row.put("name", household.profile().name());
+                  row.put("location", household.location().toString());
+                  row.put("memberLots", household.memberLots().size());
+                });
+      }
+      if (population != null) {
+        row.put("population", population.householdPopulation(id));
+      }
+      out.add(row);
+    }
+    return out;
   }
 
   /**
@@ -5297,6 +5370,12 @@ public final class ApiViews {
       view.put("level", gov.level().name());
       view.put("superiorGov", gov.superiorGov().map(UnitId::value).orElse(null));
       view.put("staff", unitStaffView(gov.staff()));
+      // ★★ S3a（2026-10-09）：官府下辖家户（保序原样透出；空表也发——"没有下辖"是编制自身状态）。
+      List<String> govHouseholds = new ArrayList<>(gov.households().size());
+      for (HouseholdId household : gov.households()) {
+        govHouseholds.add(household.value());
+      }
+      view.put("households", govHouseholds);
       view.put("policy", officePolicyView(gov.policy()));
       return view;
     }

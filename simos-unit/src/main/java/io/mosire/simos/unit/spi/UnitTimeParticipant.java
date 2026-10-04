@@ -216,7 +216,8 @@ public final class UnitTimeParticipant implements TimeParticipant {
         unit.visionRadius(),
         unit.jurisdiction(),
         unit.module(),
-        unit.stateDescriptions());
+        unit.stateDescriptions(),
+        unit.households());
   }
 
   /** 只换在途行程、其余 16 个组件（含 {@code position}、视野半径、管辖、编制模块与状态链接）原样带过（T7：回归重规划**不碰位置**）。 */
@@ -238,7 +239,8 @@ public final class UnitTimeParticipant implements TimeParticipant {
         unit.visionRadius(),
         unit.jurisdiction(),
         unit.module(),
-        unit.stateDescriptions());
+        unit.stateDescriptions(),
+        unit.households());
   }
 
   private static GameMap mapOf(SimulationState state) {

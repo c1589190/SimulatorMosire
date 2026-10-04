@@ -87,6 +87,12 @@ import io.mosire.simos.app.tools.write.RegionSeedTool;
 import io.mosire.simos.app.tools.write.RejectDirectiveTool;
 import io.mosire.simos.app.tools.write.RepayDebtTool;
 import io.mosire.simos.app.tools.write.ResetDecisionMakerConversationTool;
+import io.mosire.simos.app.tools.write.SocialHouseholdCreateTool;
+import io.mosire.simos.app.tools.write.SocialHouseholdMembersTool;
+import io.mosire.simos.app.tools.write.SocialHouseholdMoveTool;
+import io.mosire.simos.app.tools.write.SocialHouseholdRatesTool;
+import io.mosire.simos.app.tools.write.UnitAssignHouseholdTool;
+import io.mosire.simos.app.tools.write.UnitDetachHouseholdTool;
 import io.mosire.simos.app.tools.write.ResolveCombatTool;
 import io.mosire.simos.app.tools.write.RunDecisionMakersTool;
 import io.mosire.simos.app.tools.write.RunDecisionTool;
@@ -684,6 +690,16 @@ public final class SimosToolSource implements ToolSource {
     //   **只在 GM 桶**：决策人桶（addDecisionAgentWrites）没有它，DecisionCallerFactory.WHITELIST 也没有它，
     //   且 economy.GmAdjust 本身标了 GmOnlyCommand（令/RegisterEffect/决策人 catalog 三条路径都排除）。
     built.add(new EconomyAdjustTool(core, query, initiator, mapId));
+    // ★★ S3a（2026-10-09 Unit/Gov 家户容纳 §4.3）：家户/人口 GM 窄写六条。**只在 GM 桶**；
+    //   工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS。四条 social 工具：创建 / 移动（HEX↔UNIT，跨 unit 时
+    //   同批改 unit.households）/ 成员增删转移 / 出生死亡率；两条组合工具：assignHousehold（social.SetHouseholdLocation
+    //   + unit.SetUnitHouseholds，一批一条 revision）与 detachHousehold（反向）。preview=true（缺省）一个字节都不写。
+    built.add(new SocialHouseholdCreateTool(core, query, initiator));
+    built.add(new SocialHouseholdMoveTool(core, query, initiator));
+    built.add(new SocialHouseholdMembersTool(core, query, initiator));
+    built.add(new SocialHouseholdRatesTool(core, query, initiator));
+    built.add(new UnitAssignHouseholdTool(core, query, initiator));
+    built.add(new UnitDetachHouseholdTool(core, query, initiator));
     // ★★ P7b（2026-10-01 后端 + MCP 稳定化计划）：GM 审批队列裁决口（控制面，不落世界 revision）。
     //   **只在 GM 桶**；与读口 simos.gm.approvals 共用同一份 PendingApprovals / ApprovalCoordinator。
     //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 NONE（不读写世界命名空间）。

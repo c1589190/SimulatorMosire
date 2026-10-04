@@ -8,6 +8,7 @@ import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.CompositionEntry;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Movement;
@@ -55,7 +56,7 @@ import java.util.Set;
  *
  * <p>★ **GOV 编制编辑四件（阶段 10b-i，2026-10-01）**：{@link #setGovPolicy}/{@link #setGovSuperior}/{@link
  * #recruitStaff}/{@link #dismissStaff} 都只认 {@link GovFormation}，结果统一走 {@link #withModule} canonical
- * 拷贝（17 个组件一个不丢）。
+ * 拷贝（18 个组件一个不丢）。
  */
 public final class UnitOperations {
 
@@ -118,7 +119,7 @@ public final class UnitOperations {
    * 载荷给出的两张表**整体取代**旧表，不是增量合并。★ <b>未知 type 不是错误</b>——整表语义就是"给什么就是什么"；数值范围 （{@code amount ≥ 0}、同表
    * type 不重复）由 {@link Unit} 构造期判，本方法不重复实现。
    *
-   * <p>★ 纯函数：结果单位走 canonical 17 参拷贝，其余 15 个组件一个不丢。
+   * <p>★ 纯函数：结果单位走 canonical 18 参拷贝，其余 16 个组件一个不丢。
    */
   public static UnitState setComposition(
       UnitState state,
@@ -141,6 +142,34 @@ public final class UnitOperations {
   }
 
   /**
+   * ★★ <b>整体替换一个 unit 容纳的家户列表</b>（{@code unit.SetUnitHouseholds} 的领域实现，S3a / 2026-10-09）：目标 unit
+   * 必须存在；列表整体取代旧列表（保序）。
+   *
+   * <p>★ <b>拒因</b>：unit 不存在；元素为 null；同一 unit 内 household id 重复（{@link Unit} 构造期也会判）。跨单位不变量
+   * （同一家户不得同时属于两个 unit、Unit id 不得与 household id 撞名）由 {@link UnitState} 构造期判——{@link #withUnit}
+   * 重建状态时自然强制执行，本方法不另写一份。
+   *
+   * <p>★ 纯函数；结果走 {@link #withHouseholds} 的 canonical 18 参拷贝（其余 18 个组件一个不丢）。
+   */
+  public static UnitState setUnitHouseholds(
+      UnitState state, UnitId id, List<HouseholdId> households) {
+    Objects.requireNonNull(households, "households");
+    Unit unit = require(state, id);
+    List<HouseholdId> copy = new ArrayList<>(households.size());
+    Set<HouseholdId> seen = new LinkedHashSet<>();
+    for (HouseholdId household : households) {
+      if (household == null) {
+        throw new IllegalArgumentException("households 的元素不得为 null");
+      }
+      if (!seen.add(household)) {
+        throw new IllegalArgumentException("households 不得有重复: " + household);
+      }
+      copy.add(household);
+    }
+    return withUnit(state, withHouseholds(unit, copy));
+  }
+
+  /**
    * ★ <b>有符号直改人力/装备</b>（{@code unit.AdjustComposition} 的领域实现，D-009 补裁的 GM 调试原语）：两条增量表都**有序**，
    * 一条命令原子地把它们落在当前表上。
    *
@@ -155,7 +184,7 @@ public final class UnitOperations {
    *
    * <p>★ <b>同表重复 type 一律拒</b>（两张输入表各自判）：一条 type 两条增量会让"先加后减"与"先减后加"产生不同结果，超出"一张表"的语义。
    *
-   * <p>★ 纯函数；结果走 canonical 17 参拷贝（其余 15 个组件一个不丢）。变更集仍由 {@code UnitChangeSet.between} 派生，不做第二条增量通道。
+   * <p>★ 纯函数；结果走 canonical 18 参拷贝（其余 16 个组件一个不丢）。变更集仍由 {@code UnitChangeSet.between} 派生，不做第二条增量通道。
    */
   public static UnitState adjustComposition(
       UnitState state,
@@ -636,7 +665,7 @@ public final class UnitOperations {
    * </ol>
    *
    * <p>★ 纯函数：产新 {@code UnitState}；变更集仍由 {@code UnitChangeSet.between} 派生（不做第二条拼增量路径）。 结果单位走 {@link
-   * #withModule} 的 canonical 拷贝，17 个组件一个不丢。
+   * #withModule} 的 canonical 拷贝，18 个组件一个不丢。
    */
   public static UnitState setGovFormation(UnitState state, UnitId id, GovFormation formation) {
     Objects.requireNonNull(formation, "formation");
@@ -669,7 +698,7 @@ public final class UnitOperations {
    *   <li><b>同类型重复设置 = 整体替换</b>（{@code role}/{@code masterGov} 一起换成传入的整份）。
    * </ol>
    *
-   * <p>★ 纯函数；结果单位走 {@link #withModule}，17 个组件一个不丢。
+   * <p>★ 纯函数；结果单位走 {@link #withModule}，18 个组件一个不丢。
    */
   public static UnitState setArmyFormation(UnitState state, UnitId id, ArmyFormation formation) {
     Objects.requireNonNull(formation, "formation");
@@ -696,7 +725,7 @@ public final class UnitOperations {
    * </ol>
    *
    * <p>★ 保序：{@code staffCap} 经 {@link OfficePolicy} 的 LinkedHashMap 拷贝，已有键保持原位、新键追加在末尾。 ★ 纯函数：结果单位走
-   * {@link #withModule} canonical 拷贝，17 个组件一个不丢。
+   * {@link #withModule} canonical 拷贝，18 个组件一个不丢。
    */
   public static UnitState setGovPolicy(
       UnitState state,
@@ -737,7 +766,7 @@ public final class UnitOperations {
    * </ol>
    *
    * <p>★ 环检测对"查无此人 / 链上单位不是 GOV"的祖先视为链路终点（本命令只负责不引入环；悬空链的修复不在本命令面）。 ★ 纯函数；结果单位走 {@link
-   * #withModule}，17 个组件一个不丢。
+   * #withModule}，18 个组件一个不丢。
    */
   public static UnitState setGovSuperior(UnitState state, UnitId id, Optional<UnitId> superiorGov) {
     Objects.requireNonNull(superiorGov, "superiorGov");
@@ -875,17 +904,17 @@ public final class UnitOperations {
 
   /** 只换 {@link GovFormation#policy()}，其余三个组件原样带过（阶段 10b-i）。 */
   private static GovFormation withGovPolicy(GovFormation gov, OfficePolicy policy) {
-    return new GovFormation(gov.staff(), policy, gov.superiorGov(), gov.level());
+    return new GovFormation(gov.staff(), gov.households(), policy, gov.superiorGov(), gov.level());
   }
 
   /** 只换 {@link GovFormation#superiorGov()}，其余三个组件原样带过（阶段 10b-i）。 */
   private static GovFormation withGovSuperior(GovFormation gov, Optional<UnitId> superiorGov) {
-    return new GovFormation(gov.staff(), gov.policy(), superiorGov, gov.level());
+    return new GovFormation(gov.staff(), gov.households(), gov.policy(), superiorGov, gov.level());
   }
 
   /** 只换 {@link GovFormation#staff()}，其余三个组件原样带过（阶段 10b-i）。 */
   private static GovFormation withGovStaff(GovFormation gov, Map<StaffRole, Long> staff) {
-    return new GovFormation(staff, gov.policy(), gov.superiorGov(), gov.level());
+    return new GovFormation(staff, gov.households(), gov.policy(), gov.superiorGov(), gov.level());
   }
 
   /**
@@ -1546,7 +1575,8 @@ public final class UnitOperations {
         unit.visionRadius(),
         unit.jurisdiction(),
         unit.module(),
-        unit.stateDescriptions());
+        unit.stateDescriptions(),
+        unit.households());
   }
 
   /**
@@ -1583,11 +1613,43 @@ public final class UnitOperations {
         unit.visionRadius(),
         unit.jurisdiction(),
         unit.module(),
-        unit.stateDescriptions());
+        unit.stateDescriptions(),
+        unit.households());
   }
 
   /**
-   * 只换 `speed`、其余 16 个组件（尤其是 {@code mobilityPerMille}、视野半径、管辖与编制模块）原样带过——**mergeFormation
+   * ★ <b>只换 {@code households}、其余 17 个组件原样带过</b>（S3a / 2026-10-09 的 canonical 拷贝点，与 {@link #withStateDescriptions}
+   * 同形）。
+   *
+   * <p>★★ <b>18 个组件逐一显式列出</b>（不是走兼容构造器）：那会把 {@code status}/{@code attached}/{@code offset}/
+   * {@code rejoinTarget}/{@code visionRadius}/{@code jurisdiction}/{@code module}/{@code stateDescriptions}
+   * 一并重置成默认值——改容纳家户顺手清掉编制/管辖/编队是本仓最贵的教训形态（R1 字段漂移）。
+   */
+  private static Unit withHouseholds(Unit unit, List<HouseholdId> households) {
+    Objects.requireNonNull(households, "households");
+    return new Unit(
+        unit.id(),
+        unit.name(),
+        unit.parent(),
+        unit.position(),
+        unit.manpower(),
+        unit.equipment(),
+        unit.speed(),
+        unit.mobilityPerMille(),
+        unit.movement(),
+        unit.status(),
+        unit.attached(),
+        unit.offset(),
+        unit.rejoinTarget(),
+        unit.visionRadius(),
+        unit.jurisdiction(),
+        unit.module(),
+        unit.stateDescriptions(),
+        households);
+  }
+
+  /**
+   * 只换 `speed`、其余 17 个组件（尤其是 {@code mobilityPerMille}、视野半径、管辖与编制模块）原样带过——**mergeFormation
    * 的最慢者决定速度**专用 （canonical 拷贝点，同 {@link #withStatus} 的形制）。
    */
   private static Unit withSpeed(Unit unit, int speed) {
@@ -1608,7 +1670,8 @@ public final class UnitOperations {
         unit.visionRadius(),
         unit.jurisdiction(),
         unit.module(),
-        unit.stateDescriptions());
+        unit.stateDescriptions(),
+        unit.households());
   }
 
   /** 只换 status、其余 16 个组件（含另外三个新字段、视野半径、管辖与编制模块）原样带过。 */
@@ -1630,7 +1693,8 @@ public final class UnitOperations {
         unit.visionRadius(),
         unit.jurisdiction(),
         unit.module(),
-        unit.stateDescriptions());
+        unit.stateDescriptions(),
+        unit.households());
   }
 
   /**
@@ -1657,7 +1721,8 @@ public final class UnitOperations {
         unit.visionRadius(),
         unit.jurisdiction(),
         unit.module(),
-        unit.stateDescriptions());
+        unit.stateDescriptions(),
+        unit.households());
   }
 
   /**
@@ -1683,14 +1748,15 @@ public final class UnitOperations {
         unit.visionRadius(),
         jurisdiction,
         unit.module(),
-        unit.stateDescriptions());
+        unit.stateDescriptions(),
+        unit.households());
   }
 
   /**
    * ★ <b>只换 {@code module}、其余 16 个组件原样带过</b>（阶段 10a 的 canonical 拷贝点，与 {@link #withJurisdiction} /
    * {@link #withStatus} 同形）。
    *
-   * <p>★★ <b>17 个组件逐一显式列出</b>（不是走兼容构造器）：那会把 {@code status}/{@code attached}/{@code offset}/ {@code
+   * <p>★★ <b>18 个组件逐一显式列出</b>（不是走兼容构造器）：那会把 {@code status}/{@code attached}/{@code offset}/ {@code
    * rejoinTarget}/{@code visionRadius}/{@code jurisdiction} 一并重置成默认值——立编制顺手清掉管辖/视野/编队 是本仓最贵的教训形态（R1
    * 字段漂移）。★ 两条"立编制"命令（{@link #setGovFormation} / {@link #setArmyFormation}） 都只经此一处换 {@code
    * module}，不为 GOV / Army 各写一份拷贝点。
@@ -1714,14 +1780,15 @@ public final class UnitOperations {
         unit.visionRadius(),
         unit.jurisdiction(),
         module,
-        unit.stateDescriptions());
+        unit.stateDescriptions(),
+        unit.households());
   }
 
   /**
    * ★ <b>只换 {@code stateDescriptions}、其余 16 个组件原样带过</b>（阶段 D1 / D-012 的 canonical 拷贝点，与 {@link
    * #withModule} 同形）。
    *
-   * <p>★★ <b>17 个组件逐一显式列出</b>（不是走兼容构造器）：那会把 {@code status}/{@code attached}/{@code offset}/{@code
+   * <p>★★ <b>18 个组件逐一显式列出</b>（不是走兼容构造器）：那会把 {@code status}/{@code attached}/{@code offset}/{@code
    * rejoinTarget}/{@code visionRadius}/{@code jurisdiction}/{@code module}
    * 一并重置成默认值——改一条状态链接顺手清掉编制/管辖/编队是本仓最贵的教训形态（R1 字段漂移）。
    */
@@ -1744,6 +1811,7 @@ public final class UnitOperations {
         unit.visionRadius(),
         unit.jurisdiction(),
         unit.module(),
-        stateDescriptions);
+        stateDescriptions,
+        unit.households());
   }
 }

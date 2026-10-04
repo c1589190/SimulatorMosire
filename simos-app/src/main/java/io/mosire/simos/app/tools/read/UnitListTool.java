@@ -76,6 +76,7 @@ public final class UnitListTool implements AgentTool {
               ToolSupport.gameMap(state),
               ToolSupport.sdState(state),
               unitId -> ToolSupport.unitVisible(context, unitId),
+              ToolSupport.socialData(state),
               calendarService));
       return ToolSupport.ok(view);
     } catch (IllegalArgumentException e) {

@@ -1,6 +1,7 @@
 package io.mosire.simos.unit;
 
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayDeque;
@@ -26,6 +27,9 @@ import java.util.Set;
  *
  * <p>★ **T1 新增第二组件** {@code commandChains}（spec §一.2）：命令链引用完整性（commander/全部 members 必须存在于同快照的
  * {@code units}）在构造期强制；多属（同一 {@code UnitId} 出现在多条链）是**允许**的。
+ *
+ * <p>★ **S3a 家户容纳（2026-10-09）**：同一 {@link HouseholdId} 不得出现在多个 unit 的 {@code households} 列表里；Unit id
+ * 不得与 household id 撞名（两者共用不透明裸串空间）。两条都在构造期强制（见 {@code requireHouseholdContainment}）。
  */
 public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChain> commandChains) {
 
@@ -55,6 +59,7 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
         Collections.unmodifiableMap(chainCopy); // ★ 冻在赋值处（SpotBugs 的 EI_EXPOSE_REP 只认它看得见的）
     requireNoCycleAtKeyTimes(units);
     requireChainReferencesResolve(units, commandChains);
+    requireHouseholdContainment(units);
   }
 
   /** 兼容构造器（T1）：旧 1 参签名 ⇒ {@code commandChains} 为空表。 */
@@ -198,6 +203,35 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
       }
     }
     return children;
+  }
+
+  /**
+   * ★★ <b>S3a 的家户容纳不变量</b>（2026-10-09 §3.1）：一个 {@link HouseholdId} 只能出现在<b>一个</b> unit 的
+   * {@code households} 列表里（家户同一时刻只能属于一个 Unit 或一个 Hex，unit 列表是"谁在哪个 unit"的 unit 侧账）；
+   * 且 <b>Unit id 不得与 household id 撞名</b>（两套稳定身份共用裸串空间，撞名后地址/资源围栏无法区分）。
+   *
+   * <p>★ 单侧的不变量（列表非 null/无 null/无重复）由 {@link Unit} 构造期把关，这里只查"需要看见整张 units 表"的那两条。
+   * 坏数据当场抛 {@link IllegalArgumentException}（具名给出两个 unit / 相撞的 id），不静默丢家户。
+   */
+  private static void requireHouseholdContainment(Map<UnitId, Unit> units) {
+    Set<String> unitIds = new LinkedHashSet<>();
+    for (Unit unit : units.values()) {
+      unitIds.add(unit.id().value());
+    }
+    Map<String, UnitId> ownerByHousehold = new LinkedHashMap<>();
+    for (Unit unit : units.values()) {
+      for (HouseholdId household : unit.households()) {
+        if (unitIds.contains(household.value())) {
+          throw new IllegalArgumentException(
+              "Unit id 不得与 household id 撞名: unit=" + household.value() + "（家户由 unit " + unit.id() + " 容纳）");
+        }
+        UnitId previous = ownerByHousehold.putIfAbsent(household.value(), unit.id());
+        if (previous != null) {
+          throw new IllegalArgumentException(
+              "同一个家户不得同时属于多个 unit: household=" + household + " 同时在 " + previous + " 与 " + unit.id());
+        }
+      }
+    }
   }
 
   private static void requireChainReferencesResolve(

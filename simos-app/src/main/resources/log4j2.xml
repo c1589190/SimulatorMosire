@@ -15,13 +15,21 @@
        · 默认 io.mosire.simos.social = INFO（家户生命周期 + 人口汇总）；
        · -Dsimos.social.logLevel=DEBUG  开池/对账/守恒中间读数；
        · -Dsimos.social.traceLevel=TRACE 再开逐批次/逐移出移入明细。
-     子 logger .household/.population/.event 继承根级别；.trace 单独用 traceLevel。 -->
+     子 logger .household/.population/.event 继承根级别；.trace 单独用 traceLevel。
+
+     ★★ Unit 家户容纳日志开关（2026-10-09 S3a / 架构 §6）：
+       · 默认 io.mosire.simos.unit = INFO（UNIT_HOUSEHOLDS_SET / UNIT_HOUSEHOLD_ASSIGN / UNIT_HOUSEHOLD_DETACH）；
+       · -Dsimos.unit.logLevel=DEBUG  开对账/汇总中间读数；
+       · -Dsimos.unit.traceLevel=TRACE 再开逐家户逐项明细。
+     子 logger .household 继承根级别；.trace 单独用 traceLevel。 -->
 <Configuration status="WARN">
   <Properties>
     <Property name="economyLevel">${sys:simos.economy.logLevel:-INFO}</Property>
     <Property name="economyTraceLevel">${sys:simos.economy.traceLevel:-INFO}</Property>
     <Property name="socialLevel">${sys:simos.social.logLevel:-INFO}</Property>
     <Property name="socialTraceLevel">${sys:simos.social.traceLevel:-INFO}</Property>
+    <Property name="unitLevel">${sys:simos.unit.logLevel:-INFO}</Property>
+    <Property name="unitTraceLevel">${sys:simos.unit.traceLevel:-INFO}</Property>
   </Properties>
   <Appenders>
     <Console name="Console" target="SYSTEM_OUT">
@@ -35,6 +43,10 @@
          .trace 由 simos.social.traceLevel 单独控制；Root 保持 INFO。 -->
     <Logger name="io.mosire.simos.social" level="${socialLevel}"/>
     <Logger name="io.mosire.simos.social.trace" level="${socialTraceLevel}"/>
+    <!-- ★ unit 根 + 子 logger：根由 simos.unit.logLevel 控制（.household 继承），
+         .trace 由 simos.unit.traceLevel 单独控制；Root 保持 INFO。 -->
+    <Logger name="io.mosire.simos.unit" level="${unitLevel}"/>
+    <Logger name="io.mosire.simos.unit.trace" level="${unitTraceLevel}"/>
     <Root level="info">
       <AppenderRef ref="Console"/>
     </Root>

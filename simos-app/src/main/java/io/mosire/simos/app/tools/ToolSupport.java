@@ -27,6 +27,7 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.household.SocialLookupAdapter;
 import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
@@ -50,6 +51,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
@@ -681,6 +683,20 @@ public final class ToolSupport {
     return units(units, at, map, sd, any -> true, calendars);
   }
 
+  /**
+   * ★★ S3a 的生产形态：单位清单附 {@code households[]} 与 {@code population}（从 {@code SocialData} 现算）。
+   * {@code social} 由调用方给当前 base 状态的切片；两个只读 SPI 用同一份 {@link SocialLookupAdapter} 视图。
+   */
+  public static List<Map<String, Object>> units(
+      UnitState units,
+      SimosTimestamp at,
+      GameMap map,
+      SdState sd,
+      SocialData social,
+      CalendarService calendars) {
+    return units(units, at, map, sd, any -> true, social, calendars);
+  }
+
   /** **按可见性过滤**的单位清单（T10）：越界的单位不进结果（与 {@code unit.get} 的"不可见 ⇒ NOT_FOUND"同一口径）。 */
   public static List<Map<String, Object>> units(
       UnitState units,
@@ -695,6 +711,29 @@ public final class ToolSupport {
         continue;
       }
       out.add(unit(unit, units, at, map, sd, calendars));
+    }
+    return out;
+  }
+
+  /**
+   * 同上，但每条的视图带家户/人口（S3a）；{@code social} 为当前 base 状态的 social 切片，同一份
+   * {@link SocialLookupAdapter} 同时喂两个只读 SPI。
+   */
+  public static List<Map<String, Object>> units(
+      UnitState units,
+      SimosTimestamp at,
+      GameMap map,
+      SdState sd,
+      Predicate<UnitId> unitVisible,
+      SocialData social,
+      CalendarService calendars) {
+    SocialLookupAdapter lookup = lookup(social, at, calendars);
+    List<Map<String, Object>> out = new ArrayList<>(units.units().size());
+    for (Unit unit : units.units().values()) {
+      if (!unitVisible.test(unit.id())) {
+        continue;
+      }
+      out.add(ApiViews.unit(unit, units, at, map, sd, calendars, lookup, lookup));
     }
     return out;
   }
@@ -716,6 +755,27 @@ public final class ToolSupport {
       SdState sd,
       CalendarService calendars) {
     return ApiViews.unit(unit, units, at, map, sd, calendars);
+  }
+
+  /** S3a 生产形态：unit 详情附 {@code households[]} 与 {@code population}（同一份 adapter 喂两个 SPI）。 */
+  public static Map<String, Object> unit(
+      Unit unit,
+      UnitState units,
+      SimosTimestamp at,
+      GameMap map,
+      SdState sd,
+      SocialData social,
+      CalendarService calendars) {
+    SocialLookupAdapter lookup = lookup(social, at, calendars);
+    return ApiViews.unit(unit, units, at, map, sd, calendars, lookup, lookup);
+  }
+
+  /** 一次查询窗口的只读 SPIs：{@link SocialLookupAdapter} 绑定 base 切片 + 查询时刻 + 历法时钟。 */
+  private static SocialLookupAdapter lookup(SocialData social, SimosTimestamp at, CalendarService calendars) {
+    Objects.requireNonNull(social, "social");
+    Objects.requireNonNull(at, "at");
+    Objects.requireNonNull(calendars, "calendars");
+    return new SocialLookupAdapter(social, at.tick(), calendars.clock());
   }
 
   public static List<Map<String, Object>> facets(List<FacetEntry> entries) {

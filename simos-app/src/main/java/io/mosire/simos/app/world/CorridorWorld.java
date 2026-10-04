@@ -12,6 +12,7 @@ import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.generate.GenerationSpec;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.map.pathway.PathwayGroup;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
@@ -153,7 +154,9 @@ public final class CorridorWorld {
             // ★ 创建（不是拷贝）：创世单位尚无编制模块（阶段 9）。
             Optional.empty(),
             // ★ 创建（不是拷贝）：创世单位尚无"状态 ↔ 状态描述地址"链接（阶段 D1 / D-012）。
-            Map.<String, String>of());
+            Map.<String, String>of(),
+            // ★ 创建（不是拷贝）：创世单位不容纳家户（S3a / 2026-10-09）。
+            List.<HouseholdId>of());
     Map<UnitId, Unit> units = new LinkedHashMap<>();
     units.put(UNIT, unit);
     return new UnitState(units);

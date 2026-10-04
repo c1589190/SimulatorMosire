@@ -102,6 +102,11 @@ public final class CatalogTool implements AgentTool {
                   + "（★ D3a / D-009 补裁：GM 调试直改原语；正增量可新建 type（追加表尾），"
                   + "负增量要求 type 已存在且 |Δ| ≤ 当前值；同表 type 不重复、零增量合法 no-op；非 GmOnly）"),
           Map.entry(
+              "unit.SetUnitHouseholds",
+              "unitId, households[家户 id...]（必填数组；空数组=清空、保序；不得重复）, reason"
+                  + "（★ S3a：整体替换 unit 容纳的家户列表；unit 必须存在；同一家户不得同时属于两个 unit、"
+                  + "unit id 不得与 household id 撞名（UnitState 构造期具名拒）；UNIT 家户位置的一致性由 app 组合工具同批保证）"),
+          Map.entry(
               "unit.SetJurisdiction",
               "unitId, regions[regionId...]（必填；空数组 = 撤销全部管辖）,"
                   + " levyGrainCapPerCommand?, levyMoneyCapPerCommand?, levyManpowerCapPerCommand?,"
@@ -114,10 +119,11 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "unit.SetGovFormation",
               "unitId, level(CENTRAL|PROVINCE), superiorGov?,"
-                  + " staff?{SCRIBE|YAMEN|POST:整数}, policy?{grainPerStaffPerTick?,"
+                  + " households?[家户 id...], staff?{SCRIBE|YAMEN|POST:整数}, policy?{grainPerStaffPerTick?,"
                   + " clothPerStaffPerCycle?, moneyPerStaffPerTick?, retirementPerStaff?,"
                   + " staffCap?{SCRIBE|YAMEN|POST:整数}}"
                   + "（★ staff 缺省空表、policy 缺省 OfficePolicy.defaults() 且可给部分字段；"
+                  + "households 缺省 = 保持既有 GOV 的下辖家户（不是清空）、给了（含空数组）⇒ 整体替换；"
                   + "既有 ArmyFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
                   + "superiorGov 必须存在且带 GovFormation、不得指向自身；同类型重复设置 = 整体替换）"),
           Map.entry(
@@ -186,6 +192,38 @@ public final class CatalogTool implements AgentTool {
               "regionId（必填；必须在当前 map.regions() 里）"
                   + "（★ GM-only 区域社会数据清空：目标 Region 格集内的 populations 键、groups.residence、"
                   + "cities.at 或 city.region 命中项整条删除；不动其它 Region 与任何地图/单位/GOV/决策人结构）"),
+          // ── S3a（2026-10-09）：家户生命周期七条命令的载荷提示（本表构造期要求覆盖全注册面）。──
+          Map.entry(
+              "social.CreateHousehold",
+              "householdId, location{type:HEX|UNIT, hex{q,r}|unitId}, profile{name, description?, metadata?},"
+                  + " vitalRates?[{bracketId, sex(MALE|FEMALE), birthRatePerMillePerTick?,"
+                  + " deathRatePerMillePerTick?}], reason"
+                  + "（★ 新建家户成员表为空；id 已存在 ⇒ 拒；vitalRates 缺省空表；UNIT 的 unit 侧同步由 app 组合工具同批保证）"),
+          Map.entry(
+              "social.SetHouseholdLocation",
+              "householdId, location{type:HEX|UNIT, hex{q,r}|unitId}, reason"
+                  + "（★ 只动 Social 位置；HEX↔UNIT 都合法；UNIT 的 unit 侧同步由 app 组合工具同批保证）"),
+          Map.entry(
+              "social.AddHouseholdMembers",
+              "householdId, lotId?, sex(MALE|FEMALE), count(>0), ageAtAnchorDays?, anchorTick?, reason"
+                  + "（★ lotId 缺省确定性生成 gm-add:<householdId>；批次 id 已存在 ⇒ 拒；anchorTick 缺省=世界当前 tick）"),
+          Map.entry(
+              "social.RemoveHouseholdMembers",
+              "householdId, lotId, count(>0), reason"
+                  + "（★ 批次必须属于该家户；扣到 0 删批次；超量 ⇒ 具名拒）"),
+          Map.entry(
+              "social.TransferHouseholdMembers",
+              "from, to, lotId, count(>0), reason"
+                  + "（★ 源≠目标；整批移动保 id、拆分落派生 id <lotId>@<to>；两条腿事件原子写入）"),
+          Map.entry(
+              "social.SetHouseholdVitalRates",
+              "householdId, rates[{bracketId, sex(MALE|FEMALE), birthRatePerMillePerTick?,"
+                  + " deathRatePerMillePerTick?}], reason"
+                  + "（★ 整体替换率表；rates 缺失/null=清空；两个率缺省 0；负数/重复 (bracketId,sex) ⇒ 拒）"),
+          Map.entry(
+              "social.AdjustHouseholdPopulation",
+              "householdId, sex(MALE|FEMALE), ageBracketId(如 0-14|15-59|60+), delta(非 0，可负), reason"
+                  + "（★ GM 直调；负不得使人数 < 0；未知年龄档 id ⇒ 拒）"),
           Map.entry(
               "economy.Seed",
               "mapId, rulesVersion, entries[{q,r,"

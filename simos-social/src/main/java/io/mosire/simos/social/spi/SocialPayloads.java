@@ -3,17 +3,21 @@ package io.mosire.simos.social.spi;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.api.population.HouseholdVitalRate;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -126,6 +130,138 @@ final class SocialPayloads {
       throw new IllegalArgumentException("entries 不得为空");
     }
     return entries;
+  }
+
+  /**
+   * 必填家户 id 字段（S3a 的家户命令共用）：{@code HouseholdId.parse} 只校验非空白。
+   */
+  static HouseholdId requireHouseholdId(JsonNode payload, String field) {
+    return HouseholdId.parse(requireText(payload, field));
+  }
+
+  /**
+   * 必填性别字段（S3a 的家户命令共用）：只认词表里那两个名字（大小写一致，不做宽容匹配——见 {@link Sex} 的线格式约定）。
+   */
+  static Sex requireSex(JsonNode element, String field) {
+    String text = requireText(element, field);
+    try {
+      return Sex.valueOf(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 " + Arrays.toString(Sex.values()) + ": " + text, e);
+    }
+  }
+
+  /**
+   * 必填的 {@code location} 对象（S3a 的家户位置）：两档，形状与 {@link HouseholdLocation} 的线格式同源但更宽容
+   * （命令载荷是 social 模块私事，C26）：
+   *
+   * <pre>{@code
+   * {"type":"HEX","hex":{"q":1,"r":0}}   // type 也接受 "@type"/"hex"（大小写不敏感）
+   * {"type":"UNIT","unitId":"gov-central"}  // type 也接受 "@type"/"unit"
+   * }</pre>
+   *
+   * ★ 缺 {@code type} 但给了 {@code hex} / {@code unitId} 也能判出档位（LLM 载荷常见形态）；两档都没有 / 都有 / 形状不符 ⇒ 具名拒。
+   */
+  static HouseholdLocation requireLocation(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || !value.isObject()) {
+      throw new IllegalArgumentException(
+          "字段 " + field + " 必须是 {type:HEX|UNIT, hex|unitId} 对象: " + payload);
+    }
+    String type = locationType(value, field);
+    if (type.equalsIgnoreCase("hex")) {
+      JsonNode hex = value.get("hex");
+      if (hex == null || !hex.isObject()) {
+        throw new IllegalArgumentException("字段 " + field + " 的 HEX 位置必须有 {q,r} 对象 hex: " + value);
+      }
+      return new HouseholdLocation.Hex(hexFrom(hex, field));
+    }
+    if (type.equalsIgnoreCase("unit")) {
+      JsonNode unitId = value.get("unitId");
+      if (unitId == null || !unitId.isTextual() || unitId.asText().isBlank()) {
+        throw new IllegalArgumentException("字段 " + field + " 的 UNIT 位置必须有非空白 unitId: " + value);
+      }
+      return new HouseholdLocation.Unit(unitId.asText());
+    }
+    throw new IllegalArgumentException(
+        "字段 " + field + " 的 type 只认 HEX|UNIT（大小写不敏感）: " + value);
+  }
+
+  /** location 对象的档位文本：{@code type} / {@code @type}，缺省时按 {@code hex}/{@code unitId} 推断。 */
+  private static String locationType(JsonNode value, String field) {
+    JsonNode typeNode = value.get("type");
+    if (typeNode == null || typeNode.isNull()) {
+      typeNode = value.get("@type");
+    }
+    if (typeNode != null && !typeNode.isNull()) {
+      if (!typeNode.isTextual() || typeNode.asText().isBlank()) {
+        throw new IllegalArgumentException("字段 " + field + " 的 type 必须是非空白字符串: " + value);
+      }
+      return typeNode.asText();
+    }
+    boolean hasHex = value.hasNonNull("hex");
+    boolean hasUnit = value.hasNonNull("unitId");
+    if (hasHex && !hasUnit) {
+      return "hex";
+    }
+    if (hasUnit && !hasHex) {
+      return "unit";
+    }
+    throw new IllegalArgumentException("字段 " + field + " 必须给 type（HEX|UNIT）或二选一的 hex/unitId: " + value);
+  }
+
+  /**
+   * 可选的出生/死亡率数组（S3a 的 {@code social.SetHouseholdVitalRates.rates}）：缺失或 JSON {@code null} ⇒ 空表
+   * （= 清空率表）；给了 ⇒ 必须是 {@code [{bracketId,sex,birthRatePerMillePerTick?,deathRatePerMillePerTick?}…]}，
+   * 两个率缺省 0。元素形状/数值非负由 {@link HouseholdVitalRate} 构造期判；(bracketId, sex) 重复由率表构造期判。
+   */
+  static List<HouseholdVitalRate> requireVitalRates(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException(
+          "字段 " + field + " 必须是 [{bracketId,sex,birthRatePerMillePerTick?,deathRatePerMillePerTick?}…] 数组: " + payload);
+    }
+    ArrayList<HouseholdVitalRate> rates = new ArrayList<>(value.size());
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是率对象: " + element);
+      }
+      String bracketId = requireText(element, "bracketId");
+      Sex sex = requireSex(element, "sex");
+      Long birthValue = optionalLong(element, "birthRatePerMillePerTick");
+      Long deathValue = optionalLong(element, "deathRatePerMillePerTick");
+      rates.add(new HouseholdVitalRate(bracketId, sex, birthValue == null ? 0L : birthValue, deathValue == null ? 0L : deathValue));
+    }
+    return List.copyOf(rates);
+  }
+
+  /**
+   * 可选的字符串表（S3a 的 {@code profile.metadata}）：缺失或 JSON {@code null} ⇒ 空表；出现但非对象、或值非字符串 ⇒ 抛。
+   */
+  static Map<String, String> optionalStringMap(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return Map.of();
+    }
+    if (!value.isObject()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 {键:字符串} 对象或 null: " + payload);
+    }
+    Map<String, String> map = new LinkedHashMap<>();
+    value
+        .fields()
+        .forEachRemaining(
+            entry -> {
+              JsonNode item = entry.getValue();
+              if (item == null || !item.isTextual()) {
+                throw new IllegalArgumentException(
+                    "字段 " + field + " 的值必须是字符串: " + entry.getKey());
+              }
+              map.put(entry.getKey(), item.asText());
+            });
+    return Collections.unmodifiableMap(map);
   }
 
   /**
@@ -266,14 +402,9 @@ final class SocialPayloads {
   }
 
   /** 必填的 {@code sex} 字段：只认词表里那两个名字（大小写一致，不做宽容匹配——见 {@link Sex} 的线格式约定）。 */
+  /** 保留旧私有名（SeedGroups 的调用点不动）：语义与 {@link #requireSex} 同。 */
   private static Sex sexFrom(JsonNode element) {
-    String text = requireText(element, "sex");
-    try {
-      return Sex.valueOf(text);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException(
-          "字段 sex 必须是 " + Arrays.toString(Sex.values()) + ": " + text, e);
-    }
+    return requireSex(element, "sex");
   }
 
   /**
@@ -302,6 +433,15 @@ final class SocialPayloads {
               props.put(entry.getKey(), MAPPER.convertValue(item, Object.class));
             });
     return props;
+  }
+
+  /** 必填的 {@code reason} 字段：非空白（家户命令共用；事件/日志要能回答为什么）。 */
+  static String requireReason(JsonNode payload) {
+    String reason = requireText(payload, "reason");
+    if (reason.isBlank()) {
+      throw new IllegalArgumentException("字段 reason 不得为空白（事件/日志要能回答为什么）");
+    }
+    return reason;
   }
 
   private static HexCoord hexFrom(JsonNode object, String field) {

@@ -52,8 +52,9 @@ public final class UnitGetTool implements AgentTool {
   @Override
   public String description() {
     return "按 id 查单位详情：name/manpower[{type,amount}]/equipment[{type,amount}]/speed/mobilityPerMille/"
-        + "parent/position/stateDescriptions；"
-        + "若单位带编制/管辖，另含 module（gov: level/superiorGov/staff/policy；army: masterGov/role）与 "
+        + "parent/position/stateDescriptions/households[{id,name?,location?,memberLots?,population?}]/population（实时人口，"
+        + "从 Social 家户汇总现算）；"
+        + "若单位带编制/管辖，另含 module（gov: level/superiorGov/households/staff/policy；army: masterGov/role）与 "
         + "jurisdiction（regions→每周期税率‰、levy*CapPerCommand、administrationPerMille）";
   }
 
@@ -88,6 +89,7 @@ public final class UnitGetTool implements AgentTool {
               state.meta().timestamp(),
               ToolSupport.gameMap(state),
               ToolSupport.sdState(state),
+              ToolSupport.socialData(state),
               calendarService));
     } catch (IllegalArgumentException e) {
       return ToolResult.error("BAD_REQUEST", e.getMessage());
