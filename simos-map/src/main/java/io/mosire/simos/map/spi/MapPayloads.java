@@ -11,6 +11,7 @@ import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -91,6 +92,40 @@ final class MapPayloads {
   /** 必填的 {@code regionId} 字符串 ⇒ {@link RegionId}（空白由 {@link RegionId#parse} 拒绝，消息是它自己的）。 */
   static RegionId requireRegionId(JsonNode payload, String field) {
     return RegionId.parse(requireText(payload, field));
+  }
+
+  /** 必填的 {@code ["regionId"…]} 数组 ⇒ 保序去重的 {@link RegionId} 列表；空数组 ⇒ 抛（区划语义命令至少要点名一个区域）。 */
+  static List<RegionId> requireRegionIds(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 [regionId…] 数组: " + payload);
+    }
+    if (value.isEmpty()) {
+      throw new IllegalArgumentException("字段 " + field + " 不得为空数组");
+    }
+    java.util.LinkedHashSet<RegionId> ids = new java.util.LinkedHashSet<>();
+    for (JsonNode element : value) {
+      if (!element.isTextual()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是 regionId 字符串: " + element);
+      }
+      RegionId id = RegionId.parse(element.asText());
+      if (!ids.add(id)) {
+        throw new IllegalArgumentException("字段 " + field + " 不得含重复区域: " + id);
+      }
+    }
+    return List.copyOf(ids);
+  }
+
+  /** 可选布尔：缺席或 JSON {@code null} ⇒ {@code defaultValue}；出现但非布尔 ⇒ 抛。 */
+  static boolean optionalBoolean(JsonNode payload, String field, boolean defaultValue) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return defaultValue;
+    }
+    if (!value.isBoolean()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是布尔: " + payload);
+    }
+    return value.asBoolean();
   }
 
   /**

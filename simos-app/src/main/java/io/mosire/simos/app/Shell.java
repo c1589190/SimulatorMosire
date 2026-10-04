@@ -26,7 +26,9 @@ import io.mosire.simos.actor.resolve.ActorResolver;
 import io.mosire.simos.actor.spi.ActorClearRegionHandler;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
 import io.mosire.simos.actor.spi.AdjustAccountsHandler;
+import io.mosire.simos.actor.spi.MoveAccountHandler;
 import io.mosire.simos.actor.spi.RemitGovTreasuryHandler;
+import io.mosire.simos.actor.spi.TransferAccountsHandler;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.GmAutoApproveGate;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
@@ -76,11 +78,14 @@ import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
 import io.mosire.simos.map.spi.CreateRegionHandler;
 import io.mosire.simos.map.spi.DeleteRegionHandler;
+import io.mosire.simos.map.spi.MergeRegionsHandler;
 import io.mosire.simos.map.spi.RandomizeRegionHandler;
+import io.mosire.simos.map.spi.ReassignHexesHandler;
 import io.mosire.simos.map.spi.RegisterPathwayGroupHandler;
 import io.mosire.simos.map.spi.RenameRegionHandler;
 import io.mosire.simos.map.spi.SetEdgeHandler;
 import io.mosire.simos.map.spi.SetTerrainHandler;
+import io.mosire.simos.map.spi.SplitRegionHandler;
 import io.mosire.simos.map.spi.UpdateRegionHandler;
 import io.mosire.simos.sd.channel.ActorId;
 import io.mosire.simos.sd.channel.DecisionChannel;
@@ -96,6 +101,7 @@ import io.mosire.simos.sd.spi.CreateCombatHandler;
 import io.mosire.simos.sd.spi.CreateDecisionMakerHandler;
 import io.mosire.simos.sd.spi.CreateNationHandler;
 import io.mosire.simos.sd.spi.DeleteDecisionMakerHandler;
+import io.mosire.simos.sd.spi.DeleteNationHandler;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import io.mosire.simos.sd.spi.IssueDirectiveHandler;
 import io.mosire.simos.sd.spi.PutInfoHandler;
@@ -122,6 +128,9 @@ import io.mosire.simos.social.spi.AdjustHouseholdPopulationHandler;
 import io.mosire.simos.social.spi.ClearRegionHandler;
 import io.mosire.simos.social.spi.CreateCityHandler;
 import io.mosire.simos.social.spi.CreateHouseholdHandler;
+import io.mosire.simos.social.spi.DeleteCityHandler;
+import io.mosire.simos.social.spi.MoveCityHandler;
+import io.mosire.simos.social.spi.MovePopulationLotsHandler;
 import io.mosire.simos.social.spi.RemoveHouseholdMembersHandler;
 import io.mosire.simos.social.spi.SeedGroupsHandler;
 import io.mosire.simos.social.spi.SetHouseholdLocationHandler;
@@ -162,6 +171,7 @@ import io.mosire.simos.unit.spi.SetStateDescriptionHandler;
 import io.mosire.simos.unit.spi.SetStatusHandler;
 import io.mosire.simos.unit.spi.SetTaxRateHandler;
 import io.mosire.simos.unit.spi.SetUnitHouseholdsHandler;
+import io.mosire.simos.unit.spi.SetVisionRadiusHandler;
 import io.mosire.simos.unit.spi.SplitFormationHandler;
 import io.mosire.simos.unit.spi.UnitTimeParticipant;
 import io.mosire.simos.unit.spi.UpdateCommandChainHandler;
@@ -477,6 +487,11 @@ public final class Shell implements AutoCloseable {
                 new SetTerrainHandler(),
                 new CreateRegionHandler(),
                 new UpdateRegionHandler(),
+                // ★★ P1.2（2026-10-09 后端行政批次）：区划语义命令——map 只改自己的 regions；
+                //    jurisdiction/城市/税率/编制跟随重算由 app 组合根 submitBatch 协调（不反向依赖）。
+                new MergeRegionsHandler(),
+                new SplitRegionHandler(),
+                new ReassignHexesHandler(),
                 // ★ R4（行政区划修复计划 §1.4）：GM 改区域名。标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect /
                 //   决策人目录；GM 直接提交照常可用。──
                 new RenameRegionHandler(),
@@ -493,6 +508,8 @@ public final class Shell implements AutoCloseable {
                 new CancelRouteHandler(),
                 new DisbandUnitHandler(),
                 new SetStatusHandler(),
+                // ★★ P1.2 / A6：视野半径命令（字段早已存在，本次补写路径；非 GmOnly，目标声明见 handler）。
+                new SetVisionRadiusHandler(),
                 // ★★ D1（2026-10-02 / D-012）：当前回合状态 ↔ 状态描述地址的 upsert / 删除。★ 非 GmOnly ⇒
                 //   与既有 unit 命令同待遇（可嵌进决策令，目标声明见 handler 自己的 CommandTargets）；
                 //   GM 侧的窄写工具 simos.unit.set-state-description 走这一条 handler。
@@ -535,6 +552,11 @@ public final class Shell implements AutoCloseable {
                 new SetPopulationHandler(),
                 new CreateCityHandler(),
                 new UpdateCityHandler(),
+                // ★★ P1.2（2026-10-09 后端行政批次）：城市落点迁移 / 严格删城 / 按居住格或家户批量迁移人口批次。
+                //   三条都只写 SocialData；城籍由批次 id 前缀承载，MoveCity 身份不变 ⇒ 人口派生不丢。
+                new MoveCityHandler(),
+                new DeleteCityHandler(),
+                new MovePopulationLotsHandler(),
                 new SeedGroupsHandler(),
                 // ── S3a（2026-10-09 家户/人口架构 §4.1）：家户生命周期七条命令——创建 / 位置 / 增人 / 减人 /
                 //   转移 / 设率 / GM 直调人口。全部只写 SocialData、返回 SocialChangeSet；UNIT 位置的 unit 侧一致性
@@ -581,6 +603,11 @@ public final class Shell implements AutoCloseable {
                 //   （整条原子；缺账 + 纯正增量新建）。非 sd 前缀 ⇒ 自动进 drainableCommandTypes；
                 //   同时进 commandTypes ⇒ simos.command.submit 的目标声明表（CommandTargets）同源认得它。──
                 new AdjustAccountsHandler(),
+                // ── P1.2（2026-10-09 后端行政批次）：actor.TransferAccounts（任意两个账户间商品/货币原子转移）与
+                //   actor.MoveAccount（按 owner 搬整本账、冻结随行、目标已有逐键精确相加、溢出拒）。
+                //   两条都 GM-only、都只写 accounts、都进 CommandTargets。
+                new TransferAccountsHandler(),
+                new MoveAccountHandler(),
                 // ── R3a（2026-10-01 行政区划修复计划 §1.3）：actor.RemitGovTreasury —— 显式 GOV 国库上缴 /
                 //   任意两个 GOV 单位之间转移（整条原子；只动 accounts）。★ **非 GmOnly**：省份决策人可嵌进
                 //   sd.IssueDirective；targetPaths 返回源/目标两个 actor 格路径（决策 scope 在 R3b 贯通）。
@@ -589,6 +616,9 @@ public final class Shell implements AutoCloseable {
                 // ── P1b1（2026-10-01）：GM-only 区域 actor 账本清空（目标格账本 + 清账后不再持有账户的主体）。──
                 new ActorClearRegionHandler(),
                 new CreateNationHandler(),
+                // ── P1.2（2026-10-09 后端行政批次）：sd.DeleteNation —— 默认严格引用检查（决策人 / 外交关系 /
+                //   map nation tag），显式 clearDiplomaticReferences=true 才连关系与外交事件一起清。GM-only。──
+                new DeleteNationHandler(),
                 new CreateArmyHandler(),
                 // ── 阶段 12 后续赋值（2026-10-01 Army 主子改派缺口）：Army 创建后的主子改派/解除。★ GM-only
                 //   （handler 标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用）。──

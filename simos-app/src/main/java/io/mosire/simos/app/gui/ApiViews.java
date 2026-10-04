@@ -4770,6 +4770,9 @@ public final class ApiViews {
     // ★ B9（用户 2026-09-23 实测）：单位**自身**状态（MOVING/RESTING/ENGAGED）此前两处视图都没发 ⇒
     //   前端"这个单位是什么"里缺"状态"一项。这里是领域真值（`Unit.status()` 的普通字段）的原样透出。
     view.put("status", unit.status().name());
+    // ★★ P1.2 / A6 只读 additive：视野半径（六角圈数，0 = 只看自身格）。字段早已存在，本次补命令后在此读回，
+    //   让"设了没有"不用读代码/查状态就能从 GUI 与 MCP 两个面看到。
+    view.put("visionRadius", unit.visionRadius());
     view.put("parent", unit.parent().valueAt(at).map(UnitId::value).orElse(null));
     view.put(
         "position", units.effectivePosition(unit.id(), at).map(ApiViews::hexCoord).orElse(null));
@@ -5419,6 +5422,25 @@ public final class ApiViews {
     stress.put("average", stressed == 0L ? 0L : stressSum / stressed);
     stress.put("max", stressMax);
     groups.put("physiologicalStress", stress);
+    // ★★ P1.2：**人口批次 id 读口**（只读 additive）——`social.MovePopulationLots` 需要批次身份才能迁移；
+    //   这里把该格的每个批次逐条发出去（id 是身份，不是给人看的名字），并带上位置真值来源（所属家户）。
+    //   顺序 = groupsAt 的保序（与状态插入序同序）；空数组也发，读侧一次判空即可。
+    List<Map<String, Object>> lots = new ArrayList<>();
+    for (PopulationGroup group : data.groupsAt(coord)) {
+      Map<String, Object> lot = new LinkedHashMap<>();
+      lot.put("id", group.id().value());
+      lot.put("count", group.count());
+      lot.put("sex", group.sex().name());
+      lot.put("ageDays", group.ageDaysAt(at.tick()));
+      lot.put("anchorTick", group.anchorTick());
+      lot.put("physiologicalStress", group.physiologicalStress());
+      lot.put("urban", PopulationLots.isUrban(group));
+      lot.put(
+          "household",
+          data.householdOfLot(group.id()).map(household -> household.id().value()).orElse(null));
+      lots.add(lot);
+    }
+    groups.put("lots", lots);
     return groups;
   }
 

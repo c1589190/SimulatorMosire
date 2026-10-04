@@ -461,6 +461,22 @@ public final class UnitOperations {
     return withUnit(state, withStatus(unit, status));
   }
 
+  /**
+   * ★ <b>改视野半径</b>（P1.2 / A6）：{@code visionRadius ≥ 0}（0 = 只看自身格）；其余 16 个组件原样带过。
+   *
+   * <p>★ 它只改 {@link Unit#visionRadius()} 这一个普通字段；当前唯一读者是 app 侧的 {@code ArmyScope} （按军队位置 + 本半径算可见
+   * hex），下一轮现算即生效，无缓存需要失效。
+   *
+   * @throws IllegalArgumentException 单位不存在 / {@code visionRadius < 0}
+   */
+  public static UnitState setVisionRadius(UnitState state, UnitId id, int visionRadius) {
+    if (visionRadius < 0) {
+      throw new IllegalArgumentException("visionRadius 必须 ≥ 0: " + visionRadius);
+    }
+    Unit unit = require(state, id);
+    return withUnit(state, withVisionRadius(unit, visionRadius));
+  }
+
   // ── 状态描述地址（阶段 D1，2026-10-02 / D-012） ──────────────
 
   /**
@@ -1711,6 +1727,33 @@ public final class UnitOperations {
         unit.offset(),
         unit.rejoinTarget(),
         unit.visionRadius(),
+        unit.jurisdiction(),
+        unit.module(),
+        unit.stateDescriptions(),
+        unit.households());
+  }
+
+  /**
+   * 只换 {@code visionRadius}、其余 16 个组件（含 status/编队/管辖/编制/家户）原样带过（P1.2 / A6 的 canonical 拷贝点）。
+   *
+   * <p>★ 不用兼容构造器：那会把后加字段一并重置成默认值（本仓最贵的字段漂移形态）。
+   */
+  private static Unit withVisionRadius(Unit unit, int visionRadius) {
+    Objects.requireNonNull(unit, "unit");
+    return new Unit(
+        unit.id(),
+        unit.name(),
+        unit.parent(),
+        unit.position(),
+        unit.equipment(),
+        unit.speed(),
+        unit.mobilityPerMille(),
+        unit.movement(),
+        unit.status(),
+        unit.attached(),
+        unit.offset(),
+        unit.rejoinTarget(),
+        visionRadius,
         unit.jurisdiction(),
         unit.module(),
         unit.stateDescriptions(),

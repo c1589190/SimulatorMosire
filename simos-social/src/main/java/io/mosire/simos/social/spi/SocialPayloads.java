@@ -105,6 +105,30 @@ final class SocialPayloads {
     return hexFrom(value, field);
   }
 
+  /** 可选 {@code {q,r}} 对象：缺席或 JSON {@code null} ⇒ {@code null}（"不给"）；出现但形态不符 ⇒ 抛。 */
+  static HexCoord optionalHex(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return null;
+    }
+    if (!value.isObject()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 {q,r} 对象: " + payload);
+    }
+    return hexFrom(value, field);
+  }
+
+  /** 可选布尔：缺席或 JSON {@code null} ⇒ {@code defaultValue}；出现但非布尔 ⇒ 抛。 */
+  static boolean optionalBoolean(JsonNode payload, String field, boolean defaultValue) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return defaultValue;
+    }
+    if (!value.isBoolean()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是布尔: " + payload);
+    }
+    return value.asBoolean();
+  }
+
   /**
    * 必填的 {@code [{q,r,population}…]} 数组 ⇒ **保序**的坐标 → 人口表。**重复坐标：后出现者覆盖先出现者，不报错**（先出现的那个位置保持）； 空数组 ⇒
    * 抛。population 为负 ⇒ 抛（这条语义在本层判，不留给构造器——{@code PopulationSeries} 不校验人口非负）。

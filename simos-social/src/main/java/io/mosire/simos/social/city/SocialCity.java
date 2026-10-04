@@ -71,6 +71,17 @@ public record SocialCity(
     return new SocialCity(id, value, at, region, props);
   }
 
+  /**
+   * 改落点（身份、显示名、region、props 都不动）。
+   *
+   * <p>★ <b>城的城镇人口不随落点变化</b>：人口归属由 {@code urban:&lt;cityId&gt;:} 批次 id 前缀给出， 身份 {@link #id()} 不变 ⇒
+   * 人口仍属于同一座城。物理人口是否跟着搬，是 {@code social.MovePopulationLots} 的独立决定（见 {@code
+   * SocialData.urbanPopulationAt} 的类注）。
+   */
+  public SocialCity withAt(HexCoord value) {
+    return new SocialCity(id, name, value, region, props);
+  }
+
   /** 换整份 props（**不是合并**；合并语义是调用方的事，见 {@code social.UpdateCity}）。 */
   public SocialCity withProps(Map<String, Object> value) {
     return new SocialCity(id, name, at, region, value);

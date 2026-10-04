@@ -76,6 +76,11 @@ public final class CatalogTool implements AgentTool {
           Map.entry("unit.DisbandUnit", "id"),
           Map.entry("unit.SetStatus", "id, status(MOVING|RESTING|ENGAGED)"),
           Map.entry(
+              "unit.SetVisionRadius",
+              "id, visionRadius（整数 ≥ 0；0 = 只看自身格。"
+                  + "★ P1.2 / A6：字段早已存在，本命令补写路径；当前读者是 ArmyScope 的可见范围函数；"
+                  + "非 GmOnly，可嵌进决策令，目标就是载荷点名的那个单位）"),
+          Map.entry(
               "unit.SetStateDescription",
               "id, state, address?（★ 阶段 D1 / D-012：当前回合状态 → 状态描述地址的链接；"
                   + "state 必填非空白；address 缺省/null/空串 = **清除**该状态链接（本来没有 ⇒ 具名拒），"
@@ -432,6 +437,55 @@ public final class CatalogTool implements AgentTool {
               "sd.SetDirectiveStatus",
               "directiveId, status(EXECUTED|CANCELLED)（★ 只允许 ISSUED → 二者之一，只由"
                   + " sd.AdjudicateTick 内部编排产生；不对外提供窄工具）"),
+          Map.entry(
+              "actor.TransferAccounts",
+              "from{owner{kind,id},q,r}, to{owner{kind,id},q,r}, goods{商品:>0}?, money{币种:>0}?, reason?"
+                  + "（★ P1.2：任意两个 actor 账户间原子转移；源账必须存在且逐资源可支配足够；"
+                  + "目标缺失 ⇒ 按转入量新建；冻结额不动；至少一个维度非空、0 不得出现；GmOnly）"),
+          Map.entry(
+              "actor.MoveAccount",
+              "owner{kind,id}, from{q,r}, to{q,r}, reason?"
+                  + "（★ P1.2：按 owner 搬整本账——owner 不变、位置从 from 换到 to；"
+                  + "余额/货币/两张冻结表整本随行；目标已有 ⇒ 四张表逐键精确相加、long 溢出 ⇒ 整条拒；"
+                  + "from/to 相同/源账不存在 ⇒ 拒；GmOnly）"),
+          Map.entry(
+              "social.MoveCity",
+              "id, at{q,r}, region?"
+                  + "（★ P1.2：改城市落点；region 缺席=保持原归属、null=清空、字符串=设值。"
+                  + "城市身份不变 ⇒ urban:<cityId>: 批次的城镇人口归属不变；"
+                  + "物理人口随迁请另发 social.MovePopulationLots；GmOnly）"),
+          Map.entry(
+              "social.DeleteCity",
+              "id, deletePopulation?（缺省 false）"
+                  + "（★ P1.2：城市仍挂着 urban:<id>: 城镇批次时，缺省严格拒绝；"
+                  + "deletePopulation=true 才连带删除这些批次及其在所有家户 memberLots 里的成员关系（破坏性清理）；GmOnly）"),
+          Map.entry(
+              "social.MovePopulationLots",
+              "fromHouseholdId? 或 from{q,r}; toHouseholdId? 或 to{q,r}; lots?[批次 id…]; reason"
+                  + "（★ P1.2：源/目标两类各必须二选一。lots 缺省=源范围全部批次；"
+                  + "目标格未给家户时：恰一个 HEX 家户 ⇒ 并入，零个 ⇒ 新建合成家户，多个 ⇒ 拒；"
+                  + "整条原子、批次 id 不变、只换所属家户；GmOnly）"),
+          Map.entry(
+              "map.MergeRegions",
+              "targetRegionId, sourceRegionIds[regionId…]"
+                  + "（★ P1.2：目标保留身份/名称/meta，hexes 取并集，源区域删除；"
+                  + "只改 map.regions；jurisdiction/城市/税率/编制由 app 组合根 submitBatch 协调；GmOnly）"),
+          Map.entry(
+              "map.SplitRegion",
+              "sourceRegionId, keepSource?, parts[{regionId,name,hexes[{q,r}…],meta?}…]"
+                  + "（★ P1.2：keepSource=false（缺省）时 parts 必须恰好覆盖源全部格、源删除；"
+                  + "true 时 parts 是源的真子集、源保留剩余格；新 id 不得已存在/重复；GmOnly）"),
+          Map.entry(
+              "map.ReassignHexes",
+              "toRegionId, fromRegionIds[regionId…], hexes[{q,r}…]"
+                  + "（★ P1.2：逐格从所有 fromRegions 删除、往目标加入；每个 hex 必须至少属于一个源；"
+                  + "任一源被划空 ⇒ 拒并指向 Merge/Split/Delete；重叠不报错；GmOnly）"),
+          Map.entry(
+              "sd.DeleteNation",
+              "nationId, clearDiplomaticReferences?"
+                  + "（★ P1.2：缺省 false = 仍有决策人绑定 / 外交关系边 / 外交事件 / map 上 nation:<id> tag ⇒ "
+                  + "逐类具名拒绝，不静默级联；true = 连该国的外交关系与外交事件一起删，"
+                  + "但决策人与 map tag 仍须先清；GM-only）"),
           Map.entry(
               "army.RecordCombat",
               "id, kind（自定义交战状态自由文本，如野战/轰城）, tick?, hex{q,r}, participants[unitId...]"
