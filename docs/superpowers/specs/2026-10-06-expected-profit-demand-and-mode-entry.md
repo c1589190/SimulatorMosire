@@ -501,3 +501,56 @@ Agent A3（修复 1b）允许：
 - `simos-economy/src/main/java/io/mosire/simos/economy/time/ModeMigrationPolicy.java`
 - `simos-economy/src/main/java/io/mosire/simos/economy/time/ModeMigrationSettlement.java`（仅同步 claimed 集合/雇主判据）
 禁止：任何测试、`simos-app/**`、`docs/**`、其余 economy main、`git commit`。
+
+## 12. 第三轮重跑结果与下一批修复（2026-10-06，Agent A3/C3 后追加）
+
+### 12.1 已完成/已转绿
+
+- 修复 1 + 1b 实现正确：claimed 集合现在 = `organizations.assetSources` ∪ 在产 unit 占用的份额；`employerOf` 改读当天 `units`。
+  4 条变异自证（claimed 去 unit 并集、employer 去 hex/产业、去本户排除、modeKey 秩降级）全部当场红并 md5 还原。
+- economy 全量测试 **235/0/0/0**（新增 claimed 4 条、employer 7 条；`SevenHexFullChain3650Test 6/0`、`SevenHexNatural3650Test 1/0` 全绿）。
+- 真实 12hex 仍能跑到 3650；D-022 违规 0（same-mode 位置下落 3 条单列）、D-023 DISPLACED 无配额/无组织、货币/资产守恒、负值扫描通过。
+- tick0 modes 仍为 `displaced=167, family_farm=1311, handicraft_workshop=657, merchant=175, tenancy_fixed_kind=134, wage_farm=1056`；`merchantFirms=1`。
+
+### 12.2 仍红：城市人口 875→210（主判据要求 ≥438）
+
+新增证据（`/tmp/testagent/r3/real12-r3-final2.log`）：
+
+1. **城市衰退主因已从"迁出"变为"断粮死亡"**：同组城市户前 1200 tick `Δpop=-711`、`births=52`、`deaths=799`、残差 +36（净迁入）；
+   同期 `marketFills` 从 109 一路降到 0~2，`unmetNeed` 高企。
+2. **tick=120 计划 probe**：`planMoves=30, urbanMoves=0`；所有计划源户都是农村户（`family_farm=19, tenancy_fixed_kind=11`），
+   目标全是 `wage_farm`；城市户没有迁出。⇒ A3 已止住"抽水"，但没有解决"城市挣不到粮"。
+3. **城市户当前预期读数（同 probe）**：
+   - 城市贫农 craft 户：`feasible`，`netPerLaborScaled=+2369`，但收入来自 `WAGE_SHARE_ESTIMATE,WAGE_POSITION` 的**上界近似**；
+   - 城市中农 craft 户：`net=-325`、`DEMAND_CAPPED`；
+   - 城市富农 merchant 户：`NO_MERCHANT_CAPACITY:no-capacity`；
+   - 城市地主 merchant 户：`NO_DEMAND,NO_LANE`；
+   - 城市 displaced：`DISPLACED_NO_WORK`。
+4. **单市场节点**：`shipments/freightPaid/crossRegionFills=0` 是结构必然（§11.2 第 3 条），merchant 无真实运费收入；
+   merchant 人口 175→13。
+5. **§8.2 其他红**：`creations=0`（tick120 后所有迁移都合并进既有 wage 户，且 `perMoveNewRoom` 对 wage/porter 仍按
+   "预留闲置实物资产"处理，没有实现 §3.2.1 的"雇主劳动缺口"分支）；`populationZeroed=0` 未单独定位。
+
+### 12.3 下一批修复队列
+
+- **修复 2（economy main，最高优先）**：`MarketDemandBook` 的买方需求改用实际购买力口径：
+  `BuyerOutcome.affordableQty/filledQty/desiredQty` 与 `unfilled` 取 max/交叉校验，并在 `addressable` 中扣除**正在生产的既有供给**；
+  同时收紧 `ExpectedProfitBook` 的 `OUTPUT_SHARE` 上界估计（`WAGE_SHARE_ESTIMATE` 不得把"产出全归本受方"当成默认事实）。
+  验收：城市中农 craft 的 `DEMAND_CAPPED` 与市场真实 `marketFills/unmetNeed` 一致，不再出现"预期正收益但市场长期零成交"。
+- **修复 4（economy main，与修复 2 同批）**：`ModeMigrationPolicy.perMoveNewRoom` / `allocate` 对
+  `WAGE_EARNER`/`porter` 位置改为按**目标 hex 的雇主劳动缺口**判新建承载（不再要求预留闲置实物资产）；对
+  `DISPLACED` 保持 D-023 旁路。
+- **修复 5（economy main）**：`ExpectedProfitBook.merchantProspect` 仍读 `base.productionOrganizations()`/`base.merchantFirms()`
+  过期快照（`ExpectedProfitBook.java:595-608` 一带）；与 claimed/employer 同口径改为当天工作副本入参。
+- **修复 3（世界结构/测试）**：为 ≥2 城市/市场节点的真实小地图补 merchant freight 端到端证据；或在组合根把市场镇/手工业格
+  接入市场节点生成（另开设计）。单节点 12hex 不能作为 merchant 判据的充分夹具。
+- **修复 6（设计校准，需用户/控制方裁定）**：城市收入来源与粮食进口：当前农村户自产布、城市 craft 无有效外部需求，
+  城市无法用 craft 收入买粮；需要在"城市 craft 成本折价/出口需求""商人承运粮布"或"城市人口迁出/饿死"之间明确目标形态。
+  这是本批城市 875→210 的结构性原因，不是单个公式能修好的。
+
+### 12.4 下一批文件所有权
+
+- Agent A4（修复 2+4+5）：允许 `MarketDemandBook.java`、`ExpectedProfitBook.java`、`ModeMigrationPolicy.java`、
+  `ModeMigrationSettlement.java`（仅 perMove 分支）；禁止测试/app/docs/commit。
+- Agent C4（测试+重跑）：允许 `simos-economy/src/test/**`、`simos-app/src/test/**`；禁止 main/docs/commit。
+- 修复 3/6 另开设计批次。
