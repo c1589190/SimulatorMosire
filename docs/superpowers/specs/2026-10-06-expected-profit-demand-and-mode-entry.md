@@ -71,6 +71,18 @@
 | 真实 12hex 3650 | 停在 `urban 875→9`、`displacedPeak=0`、`freightPaid=0`、D-022 位置下落断言 | 城镇不崩、merchant/handicraft mode 有人、freight>0、displaced>0、D-022 mode 改写 = 0 |
 | 运行时版本 | `seven-hex-v1` | `seven-hex-v2`；seeder 写入新版本，旧载荷不可混入 |
 
+### 2.1 "市场节点"是什么（避免与每格市场价表混淆）
+
+- `EconomyData.markets` 是**逐格的价目表**（一个 hex 可以有一张 `Market`：单一计价货币 + 商品价格）；它回答"这一格价格是多少"。
+- `MarketTopology` 的**市场节点**是**区域市场锚**（`MarketNode`：anchor hex、`radiusHex`、`numeraire`、`receiveWith`），
+  由组合根从 `SocialData.cities` / `GameMap.cities` 派生；cap-craft 世界的退化回退是"有 `craft@` 产业的格"。
+  所有 hex 按"半径内最近节点"归属成一个**市场区**（`MarketRegion`）。
+- **同一个区内部**：买卖可以在成员 hex 之间即时撮合（`crossHexFills` 可以有），不产生 `ShipmentBatch`/承运/运费。
+- **跨区（lane）**：两个区的 anchor 距离 ≤ `rA + rB + 1` 时互为邻接供应区；跨区成交才会建在途批次、走
+  `TradeRoute`/`TransportTariff`，才需要真实承运人（`MerchantFirm` principal），才产生 `freightPaid`。
+- 因此**1 个城市 = 1 个市场节点 = 1 个区 ⇒ 没有任何 lane**；此世界 merchant 仍可播种、跑 `MerchantSettlement`，
+  但没有跨区业务，`freightPaid=0` 是结构必然，不是实现失败。要验证 merchant 运费，必须有 ≥2 个市场节点的世界。
+
 ## 3. 组件与数据模型
 
 ### 3.1 `MarketDemandBook`（新增，`simos-economy` 主包，纯函数）
@@ -378,16 +390,19 @@ netPerLaborScaled = (运费收入 − 成本) × 1_000_000 / max(1, laborNeed)
 | 判据 | 期望 |
 |---|---|
 | tick0 生产方式 | `handicraft_workshop > 0`、`merchant > 0`、`displaced > 0`；农村 farm mode 仍 > 0 |
-| 城市人口 | 终局 urban 人口 ≥ 初始的 50%（本轮先以"不 875→9"为硬判据；具体阈值写入测试报告） |
-| merchant | `merchantFirms` 非空；至少一个边界 `freightPaid > 0` 或 `freightUncollected=0` 且真实运费进账 |
+| 城市人口（D-025 修订） | **允许因饥荒下降/归零**；只判人口守恒、非负、`urbanization = urban/(rural+urban)` 为派生读数（初始/终局都打印，不设维持阈值） |
+| merchant（单节点世界） | `merchantFirms` 非空、运力资产存在；单市场节点下 `shipments/freightPaid/crossRegionFills = 0` 是结构必然，**不判失败** |
+| merchant（≥2 节点世界，另立夹具） | 至少一个边界 `freightPaid > 0` 且存在真实承运/在途；本夹具不作为 `RealTwelveHex` 的判据 |
 | displaced | `displacedPeak > 0`、`displacedLast >= 0`；DISPLACED 无劳动配额/无自动组织 |
-| 迁移事件 | merges > 0、creations > 0、populationZeroed > 0（真实读数） |
-| 债务/断粮 | `maxDebt > 0`、`maxUnmetNeed > 0`，且终局不因负值崩溃 |
+| 迁移事件 | `merges + creations > 0`（真实读数；不分别强制两个都 >0）；`populationZeroed >= 0` 记录读数，不设硬阈值 |
+| 债务/断粮 | `maxDebt > 0`、`maxUnmetNeed > 0`，且终局不因负值崩溃；饥荒死亡路径合法（D-025） |
 | 守恒 | 逐币种货币 == 初始；AssetKind 总量 == 初始；无负值 |
 | D-022 | mode / `ProductionOrganization.modeId` / `ProductionUnit.modeKey` 不得原地改写；同 mode 的 `ClassStanding.currentPositionId` 下落（债务驱动阶层下落）不计违规 |
 | D-023 | 任意介质偿还路径无回归；全部币种随迁；流民无自动招募 |
 
-证据：surefire XML/TXT + `/tmp/real12-v2.log`（或测试报告指名路径），由测试代理在报告里逐条贴读数。
+证据：surefire XML/TXT + 测试报告指名日志路径，由测试代理在报告里逐条贴读数。
+★ 2026-10-06 用户裁定 D-025：「饿死就饿死了，中世纪哪有这么多城市，人口少了自动减城市化率」——
+本表据此把"城市人口 ≥ 初始 50%"从硬判据改为"允许衰亡 + 城市化率派生"；商号/merchant 的运费端到端证据移到多节点夹具。
 
 ## 9. 已知缺口与风险（如实记）
 
@@ -544,9 +559,10 @@ Agent A3（修复 1b）允许：
   过期快照（`ExpectedProfitBook.java:595-608` 一带）；与 claimed/employer 同口径改为当天工作副本入参。
 - **修复 3（世界结构/测试）**：为 ≥2 城市/市场节点的真实小地图补 merchant freight 端到端证据；或在组合根把市场镇/手工业格
   接入市场节点生成（另开设计）。单节点 12hex 不能作为 merchant 判据的充分夹具。
-- **修复 6（设计校准，需用户/控制方裁定）**：城市收入来源与粮食进口：当前农村户自产布、城市 craft 无有效外部需求，
-  城市无法用 craft 收入买粮；需要在"城市 craft 成本折价/出口需求""商人承运粮布"或"城市人口迁出/饿死"之间明确目标形态。
-  这是本批城市 875→210 的结构性原因，不是单个公式能修好的。
+- **修复 6（D-025 已裁定，不再需要"保城市"校准）**：城市收入来源与粮食进口：当前农村户自产布、城市 craft 无有效外部需求，
+  城市无法用 craft 收入买粮。用户 2026-10-06 裁定：**饿死就饿死，中世纪没有这么多城市；人口少了城市化率自动下降** ⇒
+  不要求城市人口维持初始比例、不为了保城市伪造粮食/需求。修复 2/4/5 仍按"预期利润/需求口径正确"继续做，
+  但城市清零/萎缩本身不是失败；merchant 真实运费在 ≥2 市场节点的另立夹具验证。
 
 ### 12.4 下一批文件所有权
 
