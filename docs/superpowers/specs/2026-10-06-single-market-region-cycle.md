@@ -209,3 +209,22 @@ record MarketRegulation(
 
 按 AGENTS §一.5：一阶段一个写代码代理（只写 main、只过编译、不写测试、不 commit）；测试最后单独代理。
 本文件未确认前不派实现。
+
+## 10. 实施与验收结果（2026-10-06，已实现并重跑）
+
+- **实现完成**（一个写代码代理 + 一个守恒修复代理，均只写 main、过编译）：
+  - `MarketTopology.singleRegion(...)`；`MarketTopologyBook` 同币生产路径走单区；
+  - `HexTradeCost` 单 hex 实物损耗；`MarketSettlement` 跨格即时成交毛量过账 + 买方侧非换手扣减 + `ledger.losses` 唯一凭据；
+  - `MarketRegulation` 区级参考价/限价/配额/开闭市/税费读数；默认与现状逐值相同；
+  - `MarketReport` 只读聚合：`immediateCrossHexFills()` / `immediateCrossHexLossMilli()` / `regulatedTariffMilli()`。
+- **测试**：
+  - economy 全量 **893 / 0 / 0 / 0**（economy 257；含单区/损耗/regulation 新增单测）；
+  - 真实 12hex 3650 **2 / 0 / 0 / 0**（主验收 + 120 天 probe）；
+  - 三条变异自证（去掉买方损耗扣减、`Fill.lossMilli` 置 0、ledger loss 置 0）均当场红并逐字节还原。
+- **12hex 关键读数**（`/tmp/d027-real12-postC.log`）：
+  - `TOPOLOGY-SINGLE regions=1 nodeId=single-region anchor=0_0`，11 个市场 hex 全在一个区；
+  - `immediateCrossHexFills` 最大 94、`immediateCrossHexLossMilli` 最大 5381；单区 `freight/CARRIER_FEE/在途/跨区成交` 结构 0；
+  - 货币/资产守恒、D-022 violations=0、D-023 流民无配额/无组织通过；
+  - economyUrban 875→208、urbanization 250‰→74‰（D-025：派生量，不设维持阈值）。
+- **本批仍未做**（按设计）：跨市场区 lane/在途/承运/聚集节点（D-026 暂缓）；税费收款方；regulation 落盘/GM 工具；
+  动态价格；P8/P9 社会侧城乡迁移。
