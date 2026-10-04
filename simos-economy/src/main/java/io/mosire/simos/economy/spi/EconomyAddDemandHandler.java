@@ -165,11 +165,11 @@ public final class EconomyAddDemandHandler implements CommandHandler {
     }
   }
 
-  /** 该格必须有市场行、且该商品有价；否则拒绝并**指名** {@code economy.SetMarketPrice}。 */
+  /** 该格必须有市场行、且该商品有价；否则拒绝并**指名** {@code economy.SetMarketPrice}。★ 明确 0 价（免费）算"有价"。 */
   private static void requirePriced(
       EconomyData base, HexCoord hex, CommodityId commodity, String where) {
     Market market = base.markets().get(hex);
-    if (market == null || market.priceOf(commodity) <= 0L) {
+    if (market == null || !market.hasPrice(commodity)) {
       throw new IllegalArgumentException(
           where
               + " "

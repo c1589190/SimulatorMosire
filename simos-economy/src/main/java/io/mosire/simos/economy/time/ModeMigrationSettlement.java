@@ -245,8 +245,7 @@ public final class ModeMigrationSettlement {
     sourceOwnedAssetIds.sort(Comparator.comparing(AssetShareId::value));
     // 已被别的组织（organizer != 源户）实际使用的份额：移动会改 operator、拆掉那个组织的引用 ⇒ 本批留原户并具名。
     Set<AssetShareId> foreignUsedShareIds = foreignUsedAssetShareIds(organizations, sourceActor);
-    // ACTIVE 质押的份额：随迁会让质押上界 fail-closed；本批留原户并具名，不越权解押。
-    Set<AssetShareId> activePledgedShareIds = activePledgedAssetShareIds(pledges);
+    // ★ 2026-10-09：ACTIVE 质押不再排除随迁 —— AssetShareBook 会把质押按比例跟到目标户的新份额（含跨 hex rebuild）。
     Map<AssetShareId, String> residualReasons = new LinkedHashMap<>();
     Set<AssetShareId> movedWholeShareIds = new LinkedHashSet<>();
     Map<HouseholdId, List<AssetShareId>> migratedShareIdsByTarget = new LinkedHashMap<>();
@@ -332,7 +331,7 @@ public final class ModeMigrationSettlement {
               sourceOwnedAssetIds,
               assetShares,
               base,
-              activePledgedShareIds,
+              pledges,
               foreignUsedShareIds,
               movedWholeShareIds,
               residualReasons);
@@ -355,6 +354,7 @@ public final class ModeMigrationSettlement {
                 relations,
                 organizations,
                 base,
+                pledges,
                 assetOutcome.createdIds(),
                 assetOutcome.coverage(),
                 day,
@@ -881,6 +881,7 @@ public final class ModeMigrationSettlement {
       LinkedHashMap<ProductionUnitId, ProductionRelation> relations,
       LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations,
       EconomyData base,
+      LinkedHashMap<PledgeId, Pledge> pledges,
       List<AssetShareId> migratedShareIds,
       Map<IndustryId, Map<AssetKind, Long>> migratedCoverage,
       long day,
@@ -940,7 +941,7 @@ public final class ModeMigrationSettlement {
     List<AssetShareId> createdShares = new ArrayList<>();
     if (!assetMoves.isEmpty()) {
       createdShares.addAll(
-          AssetShareBook.apply(assetShares, base.industries(), base.pledges(), assetMoves));
+          AssetShareBook.apply(assetShares, base.industries(), pledges, assetMoves));
     }
     // ★★ GAP-2：组织 assetSources 只收 operator == organizer（targetActor）的份额。随迁份额由
     //    migrateAssetsForMove 按 targetActor 重建（同/跨 hex 都一样）；租赁份额由上方 planAssetMoves
@@ -1202,7 +1203,7 @@ public final class ModeMigrationSettlement {
       List<AssetShareId> sourceOwnedAssetIds,
       LinkedHashMap<AssetShareId, AssetShare> assetShares,
       EconomyData base,
-      Set<AssetShareId> activePledgedShareIds,
+      LinkedHashMap<PledgeId, Pledge> pledges,
       Set<AssetShareId> foreignUsedShareIds,
       Set<AssetShareId> movedWholeShareIds,
       Map<AssetShareId, String> residualReasons) {
@@ -1220,11 +1221,7 @@ public final class ModeMigrationSettlement {
         residualReasons.putIfAbsent(share.id(), "leased-to-foreign-org:" + share.asset().name());
         continue;
       }
-      // ACTIVE 质押的份额：随迁会让质押上界 fail-closed；本批不越权解押，留原户并具名。
-      if (activePledgedShareIds.contains(share.id())) {
-        residualReasons.putIfAbsent(share.id(), "pledged-retained:" + share.asset().name());
-        continue;
-      }
+      // ★ 2026-10-09：ACTIVE 质押不排除 —— AssetShareBook 按比例跟到目标份额（同 hex 拆分 / 跨 hex 重建都一样）。
       long take =
           empties
               ? share.quantity()
@@ -1259,26 +1256,47 @@ public final class ModeMigrationSettlement {
     List<AssetShareId> createdIds = new ArrayList<>();
     if (!sameHexMoves.isEmpty()) {
       createdIds.addAll(
-          AssetShareBook.apply(assetShares, base.industries(), base.pledges(), sameHexMoves));
+          AssetShareBook.apply(assetShares, base.industries(), pledges, sameHexMoves));
     }
     if (!rebuildMoves.isEmpty()) {
       createdIds.addAll(
-          AssetShareBook.rebuild(assetShares, base.industries(), base.pledges(), rebuildMoves));
+          AssetShareBook.rebuild(assetShares, base.industries(), pledges, rebuildMoves));
     }
     if (createdIds.isEmpty()) {
       return AssetMigrationOutcome.empty();
     }
+    // ★ 2026-10-09：同 tuple 目标行会合并，`createdIds` 可能重复指向同一行 ⇒ 覆盖量按**本次实际移动量**
+    //   逐 Move 记账，不读合并行的总数量（否则会把目标户原有资产算进"随迁覆盖"）。
     Map<IndustryId, Map<AssetKind, Long>> coverage = new LinkedHashMap<>();
-    for (AssetShareId createdId : createdIds) {
-      AssetShare created = assetShares.get(createdId);
-      if (created == null) {
-        throw new IllegalStateException("资产随迁新建份额在表里不存在（拒绝静默丢资产）: " + createdId);
-      }
-      coverage
-          .computeIfAbsent(created.industry(), ignored -> new LinkedHashMap<>())
-          .merge(created.asset(), created.quantity(), Math::addExact);
+    int coverageIndex = 0;
+    for (AssetShareBook.Move assetMove : sameHexMoves) {
+      coverageIndex =
+          accumulateCoverage(coverage, assetShares, createdIds, coverageIndex, assetMove.quantity());
+    }
+    for (AssetShareBook.RebuildMove rebuildMove : rebuildMoves) {
+      coverageIndex =
+          accumulateCoverage(
+              coverage, assetShares, createdIds, coverageIndex, rebuildMove.quantity());
     }
     return new AssetMigrationOutcome(createdIds, coverage);
+  }
+
+  /** 把一条随迁移动量记进覆盖率（目标行必须真实存在；重复目标行按 Move 逐笔记，不重复读行内总量）。 */
+  private static int accumulateCoverage(
+      Map<IndustryId, Map<AssetKind, Long>> coverage,
+      Map<AssetShareId, AssetShare> assetShares,
+      List<AssetShareId> createdIds,
+      int index,
+      long quantity) {
+    AssetShare created = assetShares.get(createdIds.get(index));
+    if (created == null) {
+      throw new IllegalStateException(
+          "资产随迁目标份额在表里不存在（拒绝静默丢资产）: " + createdIds.get(index));
+    }
+    coverage
+        .computeIfAbsent(created.industry(), ignored -> new LinkedHashMap<>())
+        .merge(created.asset(), quantity, Math::addExact);
+    return index + 1;
   }
 
   /** 可移动资产判据（D-023：TOOL/SHIP/CATTLE/MACHINE 随人走；LAND/WORKSHOP 不跨 hex）。 */
@@ -1330,17 +1348,6 @@ public final class ModeMigrationSettlement {
       }
     }
     return used;
-  }
-
-  /** ACTIVE 质押指名的份额 id 并集（随迁会让质押上界 fail-closed；本批留原户并具名）。 */
-  private static Set<AssetShareId> activePledgedAssetShareIds(Map<PledgeId, Pledge> pledges) {
-    Set<AssetShareId> pledged = new LinkedHashSet<>();
-    for (Pledge pledge : pledges.values()) {
-      if (pledge != null && pledge.status() == Pledge.Status.ACTIVE) {
-        pledged.add(pledge.assetShareId());
-      }
-    }
-    return pledged;
   }
 
   /** 整条随迁后旧 id 已删：把源户自己的组织 assetSources 里的这些 id 摘掉（部分随迁 id 仍在、数量已减，不动）。 */

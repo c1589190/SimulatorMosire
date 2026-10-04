@@ -764,9 +764,10 @@ public final class OrganizationProfitBook {
     }
     long price = market.priceOf(commodity);
     if (price <= 0L) {
-      return 0L;
+      return 0L; // 未定价与明确 0 价都折 0（免费商品没有货币价值）
     }
-    return quantityMilli * price / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
+    // ★★ 2026-10-09：原为裸 `quantity * price`，库存量级一大就静默回绕成负数 ⇒ 精确乘法。
+    return Math.multiplyExact(quantityMilli, price) / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
   }
 
   private static CurrencyId currencyOf(HexCoord hex, Map<HexCoord, Market> markets) {

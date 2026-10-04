@@ -13,7 +13,7 @@ import io.mosire.simos.map.hex.HexCoord;
  * deliverTo        提到哪一格（账户 = (actor, location) ⇒ 交割地点必须显式）
  * commodity        买什么
  * quantity         要买多少（毫商品；> 0）
- * maxLandedPrice   愿意接受的最高价格（毫计价货币 / 商品单位；> 0）
+ * maxLandedPrice   愿意接受的最高价格（毫计价货币 / 商品单位；≥ 0，0 = 明确免费交易）
  * latestArrivalTick 最迟到货的世界日（本层无运输 ⇒ 与下单同一天）
  * budget           独立预算（见 {@link Budget}）；不得为 null
  * payWith          用哪种货币工具支付；必须与 {@code budget.instrument()} 逐值相同
@@ -30,7 +30,7 @@ import io.mosire.simos.map.hex.HexCoord;
  * @param deliverTo 交割格；不得为 null
  * @param commodity 商品；不得为 null
  * @param quantity 数量（毫商品）；必须 &gt; 0（0 不是一条订单）
- * @param maxLandedPrice 最高价（毫计价货币 / 商品单位）；必须 &gt; 0
+ * @param maxLandedPrice 最高价（毫计价货币 / 商品单位）；必须 ≥ 0（0 = 明确免费交易，货款腿为 0、运费另计）
  * @param latestArrivalTick 最迟到货世界日；不得为负
  * @param budget 独立预算；不得为 null，且其工具必须与 {@code payWith} 逐值相同
  * @param payWith 支付工具；不得为 null，且必须与 {@code budget.instrument()} 逐值相同
@@ -58,9 +58,10 @@ public record BuyOrder(
     if (quantity <= 0L) {
       throw new IllegalArgumentException("BuyOrder.quantity 必须 > 0（0 不是一条订单）: " + quantity);
     }
-    if (maxLandedPrice <= 0L) {
+    if (maxLandedPrice < 0L) {
       throw new IllegalArgumentException(
-          "BuyOrder.maxLandedPrice 必须 > 0（价格是可花的钱 ÷ 价格那个式子的分母）: " + maxLandedPrice);
+          "BuyOrder.maxLandedPrice 不得为负（0 = 明确免费交易；未定价的商品不生成订单）: "
+              + maxLandedPrice);
     }
     if (latestArrivalTick < 0L) {
       throw new IllegalArgumentException(

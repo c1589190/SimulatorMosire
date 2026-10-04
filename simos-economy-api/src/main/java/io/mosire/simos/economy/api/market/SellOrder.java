@@ -28,7 +28,7 @@ import io.mosire.simos.map.hex.HexCoord;
  * @param dispatchFrom 发货格；不得为 null
  * @param commodity 商品；不得为 null
  * @param sellable 可卖数量（毫商品）；必须 &gt; 0（0 不是一条订单）
- * @param minPrice 最低价（毫计价货币 / 商品单位）；必须 &gt; 0
+ * @param minPrice 最低价（毫计价货币 / 商品单位）；必须 ≥ 0（0 = 明确免费交易）
  * @param availableFromTick 可发货的世界日；不得为负
  * @param receiveWith 收款工具；不得为 null
  */
@@ -54,9 +54,9 @@ public record SellOrder(
     if (sellable <= 0L) {
       throw new IllegalArgumentException("SellOrder.sellable 必须 > 0（0 不是一条订单）: " + sellable);
     }
-    if (minPrice <= 0L) {
+    if (minPrice < 0L) {
       throw new IllegalArgumentException(
-          "SellOrder.minPrice 必须 > 0（价格是可花的钱 ÷ 价格那个式子的分母）: " + minPrice);
+          "SellOrder.minPrice 不得为负（0 = 明确免费交易；未定价的商品不生成订单）: " + minPrice);
     }
     if (availableFromTick < 0L) {
       throw new IllegalArgumentException(

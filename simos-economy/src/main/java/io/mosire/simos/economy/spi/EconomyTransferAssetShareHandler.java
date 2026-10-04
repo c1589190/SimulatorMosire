@@ -7,8 +7,10 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.AssetShareId;
+import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.time.AssetShareBook;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -109,11 +111,13 @@ public final class EconomyTransferAssetShareHandler implements CommandHandler {
             "toOwner/toOperator/kind 至少一项必须与现值不同（否则不产生任何转移）: share=" + shareId.value());
       }
       Map<AssetShareId, AssetShare> updated = new LinkedHashMap<>(base.assetShares());
+      // ★ 2026-10-09：质押表也要可写 —— ACTIVE 质押按比例跟到新份额（AssetShareBook 就地写）。
+      Map<PledgeId, Pledge> updatedPledges = new LinkedHashMap<>(base.pledges());
       try {
         AssetShareBook.transfer(
             updated,
             base.industries(),
-            base.pledges(),
+            updatedPledges,
             shareId,
             quantity,
             toOwner,
@@ -124,7 +128,8 @@ public final class EconomyTransferAssetShareHandler implements CommandHandler {
         return new HandlerOutcome.Rejected(e.getMessage());
       }
       return new HandlerOutcome.Applied(
-          EconomyChangeSet.between(base, base.withAssetShares(updated)));
+          EconomyChangeSet.between(
+              base, base.withAssetShares(updated).withPledges(updatedPledges)));
     } catch (IllegalArgumentException | JsonProcessingException e) {
       return new HandlerOutcome.Rejected(e.getMessage());
     }

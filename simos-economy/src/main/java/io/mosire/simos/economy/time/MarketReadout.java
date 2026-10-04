@@ -217,16 +217,16 @@ public record MarketReadout(
       List<CommodityReadout> commodities = new ArrayList<>();
       for (CommodityId commodity : sortedCommodities(anchorMarket)) {
         long reference = anchorMarket.priceOf(commodity);
-        if (reference <= 0L) {
-          continue; // 没定价 ⇒ 本区不交易它（同 Market 的口径），不伪造一行 0
+        if (!anchorMarket.hasPrice(commodity)) {
+          continue; // 从未定价 ⇒ 本区不交易它（同 Market 的口径），不伪造一行 0
         }
         long supply = 0L;
         long demand = 0L;
         Set<ActorRef> buyers = new LinkedHashSet<>();
         for (HexCoord member : region.members()) {
           Market memberMarket = data.markets().get(member);
-          if (memberMarket == null || memberMarket.priceOf(commodity) <= 0L) {
-            continue;
+          if (memberMarket == null || !memberMarket.hasPrice(commodity)) {
+            continue; // 该成员格从未定价 ⇒ 不生成订单（明确 0 价仍要进订单/读数）
           }
           MarketSettlement.PlannedOrders orders =
               MarketSettlement.planOrders(
@@ -277,9 +277,11 @@ public record MarketReadout(
               continue; // 本轮生成了有效需求 ⇒ 不算"买不起"
             }
             long spendable = spendableMoney(accounts, key, anchorMarket.numeraire());
-            if (spendable <= 0L
-                || ask <= 0L
-                || spendable * EconomySettlement.MILLI_PER_GRAIN / ask <= 0L) {
+            if (reference > 0L
+                && (spendable <= 0L
+                    || ask <= 0L
+                    || spendable * EconomySettlement.MILLI_PER_GRAIN / ask <= 0L)) {
+              // ★ 2026-10-09：0 价免费交易不算"买不起"（货款腿为 0；运费另计，不在本读数里混算）。
               cannotAfford += need;
               cannotAffordHouseholds++;
             }

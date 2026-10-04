@@ -736,9 +736,11 @@ public final class MerchantSettlement {
     }
     long price = market.priceOf(commodity);
     if (price <= 0L) {
-      return 0L;
+      return 0L; // 明确 0 价（免费）⇒ 实物工资折 0；不参与货币价值守恒
     }
-    return quantityMilli * price / io.mosire.simos.util.economy.EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
+    // ★★ 2026-10-09：原为裸 `quantity * price`，量级一大就静默回绕成负数 ⇒ 精确乘法 + 除法。
+    return Math.multiplyExact(quantityMilli, price)
+        / io.mosire.simos.util.economy.EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
   }
 
   private static CurrencyId firstCurrency(AccountSession accounts, HouseholdId household) {

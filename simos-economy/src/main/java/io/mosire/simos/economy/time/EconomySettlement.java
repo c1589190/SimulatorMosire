@@ -1051,7 +1051,8 @@ public final class EconomySettlement {
               session.sheet().classStandingsOrBase(),
               rows,
               industries,
-              base.pledges(),
+              // ★ 2026-10-09：传入**可写**质押工作副本 —— 租佃拆分会把 ACTIVE 质押按比例跟到新份额（AssetShareBook 就地写）。
+              session.sheet().pledges(),
               units,
               session.sheet().relations(),
               assetShares,

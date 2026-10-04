@@ -347,7 +347,7 @@ public final class ExpectedProfitBook {
       }
       remainingTotal = Math.addExact(remainingTotal, remaining);
       sellableTotal = Math.addExact(sellableTotal, sell);
-      if (sell + self > 0L && (market == null || market.bidPriceOf(commodity) <= 0L)) {
+      if (sell + self > 0L && (market == null || !market.hasPrice(commodity))) {
         priceMissing = true;
       }
     }
@@ -362,9 +362,12 @@ public final class ExpectedProfitBook {
       if (quantity <= 0L) {
         continue;
       }
-      long price = market == null ? 0L : market.bidPriceOf(commodity);
+      if (market == null || !market.hasPrice(commodity)) {
+        continue; // 从未定价 ⇒ 这一项按 0 计，priceMissing 已记
+      }
+      long price = market.bidPriceOf(commodity);
       if (price <= 0L) {
-        continue; // 缺价 ⇒ 这一项按 0 计，priceMissing 已记
+        continue; // 明确 0 价（免费）⇒ 收入为 0；仍然"有价"，不算缺价
       }
       long money =
           Math.multiplyExact(quantity, price) / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
@@ -380,10 +383,13 @@ public final class ExpectedProfitBook {
         continue;
       }
       long need = Math.multiplyExact(input.getValue(), scale);
-      long price = market == null ? 0L : market.askPriceOf(input.getKey());
-      if (price <= 0L) {
+      if (market == null || !market.hasPrice(input.getKey())) {
         inputPriceMissing = true;
-        continue;
+        continue; // 从未定价的投入 ⇒ 不硬折
+      }
+      long price = market.askPriceOf(input.getKey());
+      if (price <= 0L) {
+        continue; // 明确 0 价投入 ⇒ 免费，成本 0；仍然"有价"
       }
       long money =
           Math.multiplyExact(need, price) / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
@@ -394,7 +400,8 @@ public final class ExpectedProfitBook {
     long laborNeed =
         laborPerUnit <= 0L ? 0L : Math.multiplyExact(Math.multiplyExact(laborPerUnit, scale), horizonDays);
     long grainPrice = market == null ? 0L : market.priceOf(EconomySettlement.GRAIN);
-    boolean grainPriceMissing = laborNeed > 0L && grainPrice <= 0L;
+    boolean grainPriceMissing =
+        laborNeed > 0L && (market == null || !market.hasPrice(EconomySettlement.GRAIN));
     long subsistenceLaborCost =
         grainPriceMissing
             ? 0L

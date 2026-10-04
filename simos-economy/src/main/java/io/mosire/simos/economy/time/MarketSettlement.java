@@ -44,6 +44,7 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.MerchantFirm;
+import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.map.hex.HexCoord;
@@ -208,10 +209,11 @@ final class MarketSettlement {
   static final long MARKET_ADAPTIVE_ALPHA_PER_MILLE = 50L;
 
   /**
-   * ★ <b>自适应价格的下限 p_min</b>（毫计价货币/商品单位）：{@code 1} —— 与 {@code Market} 的"价格必须 &gt; 0"同一条守卫。
-   * 需求远小于供给时价格仍会停在 1 毫，不会出现 0 或负价。
+   * ★★ <b>自适应价格的下限 p_min</b>（毫计价货币/商品单位）：{@code 0}（2026-10-09 用户口径：取消 1 毫下限）。 价格可以一路降到
+   * 0 —— 0 是<b>明确免费交易</b>（买方只出运费，货款腿为 0），不是"没有定价"；"从未定价"的商品根本不会进自适应
+   * （{@link #hasEffectivePrice} 先判）。
    */
-  static final long MARKET_PRICE_FLOOR_MILLI = 1L;
+  static final long MARKET_PRICE_FLOOR_MILLI = 0L;
 
   /**
    * ★ <b>自适应公式里分母的 ε</b>（毫商品）：{@code 1} —— {@code max(需求 + 供给, ε)} 的分母保护，保证零供需时 {@code z = 0}
@@ -722,7 +724,8 @@ final class MarketSettlement {
         regulation.defined() && regulation.anchor().toString().equals(regionId);
     long reference =
         regulatedReference(market, commodity, regulated ? regulation : MarketRegulation.none());
-    if (reference <= 0L) {
+    // ★★ 2026-10-09：有定价行（含明确 0 价）都进订单生成；"从未定价"才不交易。
+    if (!(regulated ? regulation : MarketRegulation.none()).hasPrice(market, commodity)) {
       return new PlannedOrders(List.of(), List.of()); // 没定价的商品不交易（同 Market 的口径）
     }
     List<HouseholdId> keys =
@@ -862,9 +865,8 @@ final class MarketSettlement {
                   MarketRegion region = topology.regionOf(hex);
                   for (Map.Entry<CommodityId, Long> priced : market.prices().entrySet()) {
                     CommodityId commodity = priced.getKey();
-                    if (market.priceOf(commodity) <= 0L) {
-                      continue; // Market 的构造期守卫已判死，这里只防御
-                    }
+                    // ★★ 2026-10-09：有这一行就是"已定价"—— 值为 0 = 明确免费交易，不能再按 <=0 当缺价跳过。
+                    //    "从未定价"的商品根本不在 market.prices() 里，这个循环天然不会碰它。
                     MarketRegulation regionRegulation =
                         ctx.regulationFor(region.node().nodeId());
                     PlannedOrders orders =
@@ -1028,9 +1030,28 @@ final class MarketSettlement {
     // 逐 (region, commodity) 汇总订单；region 用拓扑对象本身当键（它由 node+members 派生，等值即同区）。
     Map<MarketRegion, Map<CommodityId, long[]>> byRegion = new LinkedHashMap<>();
     for (BuySlot buy : ctx.buys) {
-      byRegion.computeIfAbsent(buy.region, ignored -> new LinkedHashMap<>())
-              .computeIfAbsent(buy.order.commodity(), ignored -> new long[2])[0] +=
-          buy.order.quantity();
+      // ★★ 2026-10-09 红字修复：信用世界里的挂单量 = 整笔缺口（不按现金封顶），直接喂给自适应公式会让
+      //   需求对价格**完全不敏感** ⇒ 价格每轮 multiplicative 上涨（实测 cloth 涨到 1.2e10 毫/单位，
+      //   跨区布匹贸易因此停滞、商号运费实收归 0）。这里把需求折回"按当前参考价真正付得起的量"：
+      //   价格越涨、有效需求越小，公式才能在供需处收敛。信用能补的那部分不在价格信号里重复放大。
+      CommodityId commodity = buy.order.commodity();
+      long quantity = buy.order.quantity();
+      Market buyMarket = ctx.markets.get(buy.hex);
+      if (buyMarket == null) {
+        buyMarket = ctx.markets.get(buy.region.anchor());
+      }
+      if (buyMarket != null) {
+        long reference = ctx.referencePriceOf(buy.regionId, buyMarket, commodity);
+        if (reference > 0L) {
+          long affordable =
+              safeMulDiv(
+                  payableMoneyOf(ctx, buy), EconomySettlement.MILLI_PER_GRAIN, reference);
+          quantity = Math.min(quantity, affordable);
+        }
+      }
+      byRegion
+          .computeIfAbsent(buy.region, ignored -> new LinkedHashMap<>())
+          .computeIfAbsent(commodity, ignored -> new long[2])[0] += quantity;
     }
     for (SellSlot sell : ctx.sells) {
       byRegion.computeIfAbsent(sell.region, ignored -> new LinkedHashMap<>())
@@ -1046,10 +1067,11 @@ final class MarketSettlement {
       }
       Map<CommodityId, long[]> quantities = byRegion.getOrDefault(region, Map.of());
       for (CommodityId commodity : orderedCommodities(ctx)) {
-        long reference = anchorMarket.priceOf(commodity);
-        if (reference <= 0L) {
+        // ★★ 2026-10-09：有定价行（含明确 0 价）才自适应；"从未定价"的商品跳过（不凭空造一行）。
+        if (!anchorMarket.hasPrice(commodity)) {
           continue;
         }
+        long reference = anchorMarket.priceOf(commodity);
         long[] demandSupply = quantities.get(commodity);
         long demand = demandSupply == null ? 0L : demandSupply[0];
         long supply = demandSupply == null ? 0L : demandSupply[1];
@@ -1059,8 +1081,8 @@ final class MarketSettlement {
         }
         for (HexCoord member : region.members()) {
           Market current = updated.get(member);
-          if (current == null || current.priceOf(commodity) <= 0L) {
-            continue;
+          if (current == null || !current.hasPrice(commodity)) {
+            continue; // 成员格没给该商品定价（含"明确 0 价"仍可被区价覆盖）
           }
           if (current.priceOf(commodity) == next) {
             continue;
@@ -1086,8 +1108,13 @@ final class MarketSettlement {
    * 对称。
    */
   static long adaptiveNextPrice(long price, long demand, long supply) {
-    if (price <= 0L) {
-      throw new IllegalArgumentException("自适应价格的入参 price 必须 > 0: " + price);
+    if (price < 0L) {
+      throw new IllegalArgumentException("自适应价格的入参 price 不得为负: " + price);
+    }
+    // ★★ 0 价态（明确免费交易）：乘法公式在 0 上恒为 0，故显式给一条具名的"退出免费态"规则 ——
+    //   需求 > 供给 ⇒ 下一轮从 1 毫重新起步；供给 ≥ 需求 ⇒ 维持 0（免费）。这是粗口径，不是第二套定价公式。
+    if (price == 0L) {
+      return demand > supply ? 1L : 0L;
     }
     BigInteger d = BigInteger.valueOf(Math.max(0L, demand));
     BigInteger s = BigInteger.valueOf(Math.max(0L, supply));
@@ -1180,12 +1207,14 @@ final class MarketSettlement {
     //   （bid = 卖方底价、ask = 买方限价），订单按它们过滤；成交仍按参考价（区内）/ 卖方格参考价（跨区）。
     // ★★ D-027：调控覆盖只对"这一格所属区的锚格 == regulation.anchor()"生效；未覆盖时逐值退回上面的口径。
     MarketRegulation effective = regulated ? regulation : MarketRegulation.none();
+    // ★★ 2026-10-09：先区分"从未定价"（不交易）与"明确 0 价"（免费交易）。有定价行 ⇒ 可挂单；值为 0 ⇒ 货款腿 0，
+    //    买方只承担运费（运费与价格解耦，见 freightUnitMilli）。
+    if (!effective.hasPrice(market, commodity)) {
+      return new PlannedOrders(List.of(), List.of()); // 没定价的商品不交易（不凭空造一行）
+    }
     long reference = regulatedReference(market, commodity, effective);
     long bid = regulatedBid(market, commodity, effective);
     long ask = regulatedAsk(market, commodity, effective);
-    if (reference <= 0L || bid <= 0L || ask <= 0L) {
-      return new PlannedOrders(List.of(), List.of()); // 没定价的商品不交易（与 Market.priceOf 同口径）
-    }
     List<BuyOrder> buys = new ArrayList<>();
     List<SellOrder> sells = new ArrayList<>();
     long deadline = round.day + MARKET_BUY_DEADLINE_DAYS;
@@ -1232,7 +1261,12 @@ final class MarketSettlement {
       long baseTarget = participant.household != null ? life : necessary;
       long incoming = confirmedIncoming(round, participant.actor, commodity, deadline);
       long budget = spendableMoneyOf(round, participant, market.numeraire());
-      long cashAffordable = budget * EconomySettlement.MILLI_PER_GRAIN / reference;
+      // ★★ 0 价免费交易：货款腿为 0 ⇒ 数量不受"货款买得起"约束（只受缺口约束）；运费仍由撮合阶段按
+      //    route.freightPerUnit 逐笔复核（家户与经营者同口径）。未定价的商品已在方法开头整行返回。
+      long cashAffordable =
+          reference == 0L
+              ? Long.MAX_VALUE
+              : budget * EconomySettlement.MILLI_PER_GRAIN / reference;
       // ★★ D-031：借款人侧不再有额度上限。家户把"目标缺口 + 需求缺口"整笔挂出来（现金撮合仍只按真实预算付，
       //    剩余由信用撮合按放贷人实际可借头寸补）；经营者不参与信用 ⇒ 仍按现金买得起量封顶。
       boolean creditDemand = participant.household != null && round.creditEnabled();
@@ -1531,8 +1565,11 @@ final class MarketSettlement {
           continue;
         }
         long price = ctx.referencePriceOf(regionId, anchor, commodity);
-        if (price <= 0L) {
-          continue;
+        if (!anchor.hasPrice(commodity)) {
+          continue; // 从未定价 ⇒ 不交易，也谈不上信用
+        }
+        if (price == 0L) {
+          continue; // 明确 0 价 ⇒ 货款腿为 0，不需要货款信用（运费由现金腿承担）
         }
         for (BuySlot buy : slots) {
           if (buy.remaining <= 0L || buy.buyer.household == null) {
@@ -2093,8 +2130,11 @@ final class MarketSettlement {
             indexes.sellsByRegionCommodity.getOrDefault(regionId, Map.of());
         for (CommodityId commodity : indexes.commodities) {
           long price = ctx.referencePriceOf(regionId, anchor, commodity);
-          if (price <= 0L) {
-            continue;
+          if (!anchor.hasPrice(commodity)) {
+            continue; // 从未定价 ⇒ 不交易
+          }
+          if (price == 0L) {
+            continue; // 明确 0 价 ⇒ 无货可借（货款腿 0，不存在要借的货款）
           }
           for (SellSlot sell : byCommodity.getOrDefault(commodity, List.of())) {
             if (sell.remaining <= 0L
@@ -2367,6 +2407,13 @@ final class MarketSettlement {
     if (regions.isEmpty()) {
       return;
     }
+    // ★★ 2026-10-09：有商号（merchantFirms 非空）时区内跨格也要由商号承运 —— 承运容量是**全商号每周期一份**
+    //   的全局硬约束，分散在并行 worker 里各自持副本会超发。⇒ 商号世界改成协调器单线程按拓扑区序直接撮合
+    //   （与 RegionClone.run 的区内序逐字同源），跨区/区内共用一个真实 CarrierPool。
+    if (!ctx.merchantFirms.isEmpty()) {
+      matchWithinRegionsSerial(ctx, regions, indexes);
+      return;
+    }
     // ★★ worker 不能读 AccountSession 的活视图（owner 守卫在第一次 get 就抛）⇒ 本区账户副本必须在**协调器线程**
     //   先建好；ExecutorService.submit 的 happens-before 把建好的副本安全发布给 worker（worker 只改自己的副本）。
     Map<String, RegionClone> clonesById = new LinkedHashMap<>();
@@ -2405,6 +2452,43 @@ final class MarketSettlement {
           ctx.absorbQuotas(clone.local);
           ctx.regulationQuotaExhausted.addAll(clone.local.regulationQuotaExhausted);
         }
+      }
+    }
+  }
+
+  /**
+   * ★★ <b>商号世界的区内串行撮合</b>（2026-10-09）：与 {@code RegionClone.run} 同一区内顺序
+   * （拓扑区序 × 商品序 × 槽位插入序），但直接在协调器 {@code ctx} 上成交 —— 区内跨格运费因此与跨区运费共用同一个
+   * {@link MerchantSettlement.CarrierPool}，商号每周期运力不会被各 worker 副本重复发放。
+   */
+  private static void matchWithinRegionsSerial(
+      MatchContext ctx, List<MarketRegion> regions, MarketIndexes indexes) {
+    for (MarketRegion region : regions) {
+      String regionId = region.node().nodeId();
+      Market anchorMarket = ctx.markets.get(region.anchor());
+      if (anchorMarket == null) {
+        continue;
+      }
+      Map<CommodityId, List<BuySlot>> buysByCommodity =
+          indexes.buysByRegionCommodity.getOrDefault(regionId, Map.of());
+      Map<CommodityId, List<SellSlot>> sellsByCommodity =
+          indexes.sellsByRegionCommodity.getOrDefault(regionId, Map.of());
+      for (CommodityId commodity : indexes.commodities) {
+        if (!ctx.hasPrice(regionId, anchorMarket, commodity)) {
+          continue;
+        }
+        long price = ctx.referencePriceOf(regionId, anchorMarket, commodity);
+        List<BuySlot> buys =
+            activeBuys(buysByCommodity.get(commodity), price, ctx.round.day);
+        if (buys.isEmpty()) {
+          continue;
+        }
+        List<SellSlot> sells =
+            activeSells(sellsByCommodity.get(commodity), price, ctx.round.day);
+        if (sells.isEmpty()) {
+          continue;
+        }
+        matchGroup(ctx, buys, sells, price, null);
       }
     }
   }
@@ -2589,10 +2673,11 @@ final class MarketSettlement {
       if (anchorMarket != null) {
         for (CommodityId commodity : indexes.commodities) {
           // ★★ D-027：区内参考价 = 卖方格价 + 该区区级调控覆盖（与 ordersFor 同一条口径）。
-          long price = local.referencePriceOf(regionId, anchorMarket, commodity);
-          if (price <= 0L) {
+          //    ★ 2026-10-09：有定价行（含明确 0 价免费）都进撮合；只有"从未定价"才跳过。
+          if (!local.hasPrice(regionId, anchorMarket, commodity)) {
             continue;
           }
+          long price = local.referencePriceOf(regionId, anchorMarket, commodity);
           List<BuySlot> buys = activeBuys(buysByCommodity.get(commodity), price, day);
           if (buys.isEmpty()) {
             continue;
@@ -3070,11 +3155,16 @@ final class MarketSettlement {
       }
       long arrivalTick = ctx.round.day + travelTicks + round;
       long unitPrice = unitPriceOf(ctx, sells, commodity);
-      long freightPerUnit = freightPerUnitOf(unitPrice, freightRatePerMille);
+      // ★★ 2026-10-09：单位运费与货款价格解耦（商品种类 × 路线费率 × 默认承运成本）；撮合前的可负担量按它预判，
+      //    真正的逐商号承运成本差异在 executeTrade/carrierChargeSplit 里按选中商号现算。
+      long freightPerUnit =
+          freightUnitMilli(
+              commodity, freightRatePerMille, plannedCarrierCostPerMille(ctx));
       RouteContext route =
           new RouteContext(
               sellerHex,
               buyerHex,
+              commodity,
               unitPrice,
               freightRatePerMille,
               freightPerUnit,
@@ -3082,7 +3172,8 @@ final class MarketSettlement {
               costPerUnit,
               capacityPerWindow,
               MARKET_TRANSPORT_LOSS_PER_MILLE,
-              arrivalTick);
+              arrivalTick,
+              false);
       long[] weights = new long[buys.size()];
       long demand = 0L;
       long supply = 0L;
@@ -3161,10 +3252,12 @@ final class MarketSettlement {
           }
           long[] buyParts = ProportionalSplit.byDenominator(matched, tierBuyWeights, tierDemand);
           long[] sellParts = ProportionalSplit.byDenominator(matched, sellWeights, tierSupply);
-          acc.used += matched;
-          capacityLeft -= matched;
-          // ★ 配额按真正落账的量逐笔扣（唯一扣减点 = executeTrade）；matched 已按剩余配额封顶。
-          pairUp(ctx, buys, buyParts, tier, sellParts, unitPrice, route);
+          // ★★ 2026-10-09：路线窗口容量按**真正落账**的量扣 —— 承运商每周期运力不足时 pairUp 只会
+          //   成交可承运的部分，若这里仍按 matched 扣，窗口容量会被高估、后续买方被误判"没运力"。
+          //   ★ 配额同样按真正落账的量逐笔扣（唯一扣减点 = executeTrade）。
+          long executed = pairUp(ctx, buys, buyParts, tier, sellParts, unitPrice, route);
+          acc.used = Math.addExact(acc.used, executed);
+          capacityLeft -= executed;
         }
         tierStart = tierEnd;
       }
@@ -3175,8 +3268,45 @@ final class MarketSettlement {
             buy.blocked = MarketUnfilledReason.LOGISTICS_CAPACITY;
           }
         }
+        // ★★ 2026-10-09：卖方剩余同样具名（路线每窗口运力用尽）—— 不让它落进 OUTCOMPETED 的误档。
+        for (SellSlot sell : sells) {
+          if (sell.remaining > 0L) {
+            sell.capacityBlocked = true;
+          }
+        }
       }
     }
+  }
+
+  /**
+   * ★★ <b>2026-10-09：区内跨格（同市场区、不同 hex）也走商人的运输职能</b> —— 构造一条"即时结算、但要付运费"的
+   * 合成路线：{@code immediate = true}（不走 ShipmentBatch/在途），货款与运费仍在成交日结清。
+   *
+   * <p>★ 保留旧世界行为：只有 {@code merchantFirms} 非空（有商号）才启用；没有商号的旧档/旧测试仍不产生区内货币运费。
+   * 费率与跨区同源（{@link MarketTopology#freightPerMilleBetween} + {@link #freightUnitMilli}），路线窗口容量取出厂值
+   * （真正的硬约束是商号的每周期运力，由 {@link MerchantSettlement.CarrierPool} 扣）。
+   */
+  private static RouteContext intraRegionFreightRoute(
+      MatchContext ctx, BuySlot buy, SellSlot sell, long unitPrice) {
+    CommodityId commodity = buy.order.commodity();
+    long distance = Math.max(1L, ctx.topology.travelTicks(sell.hex, buy.hex));
+    long moveCost = Math.max(1L, moveCostOf(ctx, buy.hex));
+    long rate = ctx.topology.freightPerMilleBetween(sell.hex, buy.hex);
+    long freightPerUnit =
+        freightUnitMilli(commodity, rate, plannedCarrierCostPerMille(ctx));
+    return new RouteContext(
+        sell.hex,
+        buy.hex,
+        commodity,
+        unitPrice,
+        rate,
+        freightPerUnit,
+        distance,
+        Math.multiplyExact(distance, moveCost),
+        MARKET_ROUTE_CAPACITY_MILLI_PER_WINDOW,
+        MARKET_TRANSPORT_LOSS_PER_MILLE,
+        ctx.round.day,
+        true);
   }
 
   /**
@@ -3187,7 +3317,7 @@ final class MarketSettlement {
    * 货款/运费每个小笔各自向上取整，因此整单按总价反解出的数量不保证逐笔加起来付得起；只有把每笔的实际付款累进 {@link BuySlot#spentMilli}（{@code
    * executeTrade} 写）再递推复核，任何成交序列下累计付款才不会越过后端的冻结/余额守卫。
    */
-  private static void pairUp(
+  private static long pairUp(
       MatchContext ctx,
       List<BuySlot> buyers,
       long[] buyParts,
@@ -3195,6 +3325,7 @@ final class MarketSettlement {
       long[] sellParts,
       long price,
       RouteContext route) {
+    long executedTotal = 0L;
     int sellerIndex = 0;
     long sellLeft = sellers.isEmpty() ? 0L : sellParts[0];
     for (int i = 0; i < buyers.size(); i++) {
@@ -3208,23 +3339,34 @@ final class MarketSettlement {
           }
         }
         if (sellerIndex >= sellers.size()) {
-          return;
+          return executedTotal;
         }
         SellSlot sell = sellers.get(sellerIndex);
         long quantity = Math.min(need, sellLeft);
+        // ★★ 2026-10-09：同市场区、不同 hex 的成交也由商号承运（有 merchantFirms 时）⇒ 合成一条"即时但有运费"的
+        //   路线；同 hex 仍走零运费即时成交（route == null）。
+        RouteContext effectiveRoute = route;
+        if (route == null
+            && !ctx.merchantFirms.isEmpty()
+            && !buy.hex.equals(sell.hex)) {
+          effectiveRoute = intraRegionFreightRoute(ctx, buy, sell, price);
+        }
+        boolean freeTicket =
+            price <= 0L && (effectiveRoute == null || effectiveRoute.freightPerUnit <= 0L);
         // ★ 递归约束：上一笔实际付款（含各自 ceil 的货款与运费）已经写进 spentMilli 与余额/冻结表，
         //   这里按**当前**剩余可付重算上限，堵住 N 笔各 ceil 一毫的累计越界。先取原口径的保守配给量，
         //   再用逐笔实际算式精确封顶（跨区运费 floor + 两处 ceil 的累计误差都在这里削平）。
-        long affordable = affordableQuantity(ctx, buy, price, route);
+        long affordable = affordableQuantity(ctx, buy, price, effectiveRoute);
         if (quantity > affordable) {
           quantity = affordable;
         }
         long payable = payableMoneyOf(ctx, buy);
-        quantity = exactAffordableUpTo(quantity, payable, price, route);
+        quantity = exactAffordableUpTo(quantity, payable, price, effectiveRoute);
         if (quantity <= 0L) {
           // 钱包/预算在账面上已经归零（不是"这个价买不起"）⇒ 这个买方在**任何**正价格上都再无成交可能：
           // 置 noMoney 让后续跨区路线直接跳过它（否则它会以 remaining>0 的身份把每条路线都试一遍）。
-          if (payable <= 0L) {
+          // ★ 完全免费（0 价 + 0 运费）不是"没钱"：不得置 noMoney，否则区内免费拿货会被自己关死。
+          if (payable <= 0L && !freeTicket) {
             buy.noMoney = true;
             if (buy.blocked == null) {
               buy.blocked = MarketUnfilledReason.NO_BUDGET;
@@ -3232,18 +3374,37 @@ final class MarketSettlement {
           }
           break;
         }
-        executeTrade(ctx, buy, sell, quantity, price, route);
-        buy.remaining -= quantity;
-        sell.remaining -= quantity;
-        need -= quantity;
-        sellLeft -= quantity;
+        long executed = executeTrade(ctx, buy, sell, quantity, price, effectiveRoute);
+        if (executed <= 0L) {
+          // ★★ 承运运力不足 ⇒ 本笔不成交（executeTrade 已把买卖槽位与路线标成 LOGISTICS_CAPACITY）。
+          //   不置 noMoney（钱不是瓶颈），也不扣槽位剩余 —— 剩余留给下一轮/下一窗口。
+          break;
+        }
+        executedTotal = Math.addExact(executedTotal, executed);
+        buy.remaining -= executed;
+        sell.remaining -= executed;
+        need -= executed;
+        sellLeft -= executed;
       }
     }
+    return executedTotal;
   }
 
   // ── 一笔成交（区内即时 / 跨区在途）────────────────────────────────────────────────
 
-  private static void executeTrade(
+  /**
+   * ★★ <b>落一笔成交</b>（区内即时 / 跨区在途）。
+   *
+   * <p>★★ <b>2026-10-09 承运硬约束</b>：跨区成交<b>先选承运、再落账</b>；商号/路线可承运量不足 ⇒ 成交数量收缩到实际可承运量
+   * （{@code executed}），未承运部分不发货、不免费成交，并以 {@link MarketUnfilledReason#LOGISTICS_CAPACITY} 具名留在
+   * 买卖槽位的剩余里。完全没有可承运量 ⇒ 本笔成交量为 0（不改任何余额、不铸货腿/钱腿）。
+   *
+   * <p>★★ <b>运费与货款解耦</b>：货款腿只由 {@code unitPrice} 决定（0 价 ⇒ 0），运费腿由
+   * {@code route.freightPerUnit}（商品种类 × 路线费率 × 承运成本）决定 —— 0 价免费交易仍要付运费。
+   *
+   * @return 实际成交量（毫商品）；0 = 本笔没有成交（调用方不得再减槽位剩余）
+   */
+  private static long executeTrade(
       MatchContext ctx,
       BuySlot buy,
       SellSlot sell,
@@ -3252,36 +3413,35 @@ final class MarketSettlement {
       RouteContext route) {
     MarketRound round = ctx.round;
     CommodityId commodity = buy.order.commodity();
-    HexCoord location = route == null ? sell.hex : route.from;
-    long payment = ceilDiv(quantity * unitPrice, EconomySettlement.MILLI_PER_GRAIN);
-    // ★★ D-027：区级配额按**真正落账**的毛量逐笔扣（唯一扣减点；worker 扣本区副本、协调器回放时扣共享表
-    //   ⇒ 跨区撮合看到的是剩余额度）。配额只压成交上限，不改价、不承担物流成本。
-    ctx.consumeQuota(sell.region, commodity, quantity);
-    // ★★ D-027：单 hex 贸易成本只在**同一市场区**的区内即时成交上逐笔计量（跨区在途走 route.lossPerMille，
-    //   口径不变）。第一版只表达为实物损耗：同格 = 0、跨格 = HexTradeCost 的具名公式并夹在 quantity 内。
-    long lossMilli =
-        route == null && !sell.hex.equals(buy.hex)
-            ? Math.min(quantity, quantity * ctx.hexTradeCost.lossPerMilleBetween(sell.hex, buy.hex) / 1000L)
-            : 0L;
-    long nominalFreight =
-        route == null ? 0L : freightOf(quantity, route.unitPrice, route.freightRatePerMille);
-    // ★★ P11.3：跨区 lane 由 CarrierPool 按容量把本票需求分给多家商号（有效到货费率升序 → organizationId 升序）。
-    //   自承运（choice.principalActor == 买方 actor）的条目整条跳过：不铸自转移、不计实收、也不记未收（P10.9 口径），
-    //   但它的运力仍按选择结果被扣。只有"总可分配量不足"的剩余部分才记 freightUncollectedMilli（具名边界）。
+    // ★ 2026-10-09：route 非 null 且 immediate = 区内跨格（有商号承运，货款/运费当日结清、没有 ShipmentBatch）；
+    //   route 非 null 且 !immediate = 跨区在途；route == null = 同 hex 即时（零运费）。
+    boolean inTransit = route != null && !route.immediate;
+    HexCoord location = inTransit ? route.from : sell.hex;
+
+    // ── ① 承运选择（跨格才需要）：容量不足时把成交收缩到实际可承运量 ─────────────────────────
+    long executed = quantity;
     List<FreightCharge> freightCharges = new ArrayList<>();
     long freight = 0L;
     long uncollectedFreight = 0L;
     if (route != null) {
+      long nominalFreight = freightOf(quantity, route.freightPerUnit);
       if (!ctx.merchantFirms.isEmpty()) {
         MerchantSettlement.CarrierAllocation allocation =
             ctx.carrierPool.select(route.from, route.to, quantity, route.freightRatePerMille);
+        long allocated = allocation.allocatedMilli();
+        if (allocated <= 0L) {
+          markCapacityBlocked(ctx, buy, sell, route);
+          return 0L; // 一点承运运力都没有 ⇒ 不成交（绝不发"免费"的跨区货）
+        }
+        executed = Math.min(quantity, allocated);
+        if (executed < quantity) {
+          markCapacityBlocked(ctx, buy, sell, route);
+          // 应收而未收的名义运费：承运池算不出这部分的收款人，读数具名、不静默变 0。
+          uncollectedFreight = freightOf(quantity - executed, route.freightPerUnit);
+        }
         freightCharges = carrierChargeSplit(allocation, buy.buyer.actor, route);
         for (FreightCharge charge : freightCharges) {
           freight = Math.addExact(freight, charge.amountMilli());
-        }
-        long unallocated = allocation.unallocatedMilli();
-        if (unallocated > 0L) {
-          uncollectedFreight = freightOf(unallocated, route.unitPrice, route.freightRatePerMille);
         }
       } else if (ctx.carrier.isPresent()) {
         // 旧路径（merchantFirms 为空）：第一个有货币账的 ORGANIZATION 承运整票；自承运同样不收运费。
@@ -3297,8 +3457,24 @@ final class MarketSettlement {
       }
     }
 
-    // ① 卖方把已冻结的那一份放出来，再走唯一 applier（货腿：卖方 → 买方）。
-    long sellRelease = Math.min(quantity, sell.frozenRemaining);
+    long payment =
+        ceilDiv(
+            Math.multiplyExact(executed, unitPrice), EconomySettlement.MILLI_PER_GRAIN);
+    // ★★ D-027：区级配额按**真正落账**的毛量逐笔扣（唯一扣减点；worker 扣本区副本、协调器回放时扣共享表
+    //   ⇒ 跨区撮合看到的是剩余额度）。配额只压成交上限，不改价、不承担物流成本。
+    ctx.consumeQuota(sell.region, commodity, executed);
+    // ★★ D-027：单 hex 贸易成本只在**同一市场区**的区内即时成交上逐笔计量（跨区在途走 route.lossPerMille，
+    //   口径不变）。第一版只表达为实物损耗：同格 = 0、跨格 = HexTradeCost 的具名公式并夹在 quantity 内。
+    long lossMilli =
+        !inTransit && !sell.hex.equals(buy.hex)
+            ? Math.min(
+                executed,
+                Math.multiplyExact(executed, ctx.hexTradeCost.lossPerMilleBetween(sell.hex, buy.hex))
+                    / 1000L)
+            : 0L;
+
+    // ② 卖方把已冻结的那一份放出来，再走唯一 applier（货腿：卖方 → 买方）。
+    long sellRelease = Math.min(executed, sell.frozenRemaining);
     sell.frozenRemaining -= sellRelease;
     releaseSellFrozenSum(ctx, sell, sellRelease);
     refreshSellFrozen(ctx, sell);
@@ -3307,7 +3483,7 @@ final class MarketSettlement {
             sell.seller.actor,
             buy.buyer.actor,
             location,
-            Map.of(commodity, quantity),
+            Map.of(commodity, executed),
             Map.of(),
             TransferReason.MARKET_TRADE);
     EconomySettlement.applyTransfer(
@@ -3337,13 +3513,13 @@ final class MarketSettlement {
       round.ledger.addLoss(TRANSPORT_LOSS_ACCOUNT, commodity, lossMilli);
     }
 
-    if (route != null) {
+    if (inTransit) {
       // ★ 装载在途：货权已归买方（上面那条货腿），但货**不在目的地的余额里** —— 把它从买方的会话余额移进
       //   ShipmentBatch（到货日再反向落回）。这不是第二次换手，是在途资产的唯一落点。
-      loadInTransit(ctx, buy, quantity);
+      loadInTransit(ctx, buy, executed);
     }
 
-    // ② 买方把冻结的货款（+运费）放出来，再货款 → 卖方、运费 → 承运人。
+    // ③ 买方把冻结的货款（+运费）放出来，再货款 → 卖方、运费 → 承运人。
     long total = payment + freight;
     long buyRelease = Math.min(total, buy.frozenRemaining);
     buy.frozenRemaining -= buyRelease;
@@ -3402,7 +3578,7 @@ final class MarketSettlement {
           new FillIntent(
               buy.orderIndex,
               sell.orderIndex,
-              quantity,
+              executed,
               unitPrice,
               sell.region.node().nodeId(),
               commodity,
@@ -3410,11 +3586,11 @@ final class MarketSettlement {
               actorKeyOf(buy.buyer.actor)));
     }
 
-    if (route == null) {
-      // 区内即时：买到的**净量**冲减当日未满足需求（封顶 = 已记的缺口；只对家户，经营者没有那条读数）。
+    if (!inTransit) {
+      // 区内即时（同 hex 零运费 / 同区跨格有商号运费）：买到的**净量**冲减当日未满足需求（封顶 = 已记的缺口；只对家户）。
       // ★ D-027：买方按毛量付款、收到毛量 − 损耗 ⇒ 冲减的也是净量（否则缺口会被高估成"买到没损耗"）。
       if (buy.buyer.household != null) {
-        reduceUnmet(round.unmetToday, buy.buyer.household, commodity, quantity - lossMilli);
+        reduceUnmet(round.unmetToday, buy.buyer.household, commodity, executed - lossMilli);
       }
       ctx.immediateFills++;
       long tariffPerUnit = ctx.tariffPerUnitOf(sell.regionId, commodity);
@@ -3425,11 +3601,11 @@ final class MarketSettlement {
               commodity,
               sell.seller.actor,
               buy.buyer.actor,
-              quantity,
+              executed,
               unitPrice,
-              0L,
+              route == null ? 0L : route.freightPerUnit,
               payment,
-              0L,
+              freight,
               round.day,
               true,
               "",
@@ -3439,17 +3615,17 @@ final class MarketSettlement {
         // ★★ D-027：区级税费**只累计读数**（毫计价货币；本批不搬钱、不铸币、不落债务），收款方后续批次再定。
         ctx.tariffByFill.put(fill, tariffPerUnit);
       }
-      return;
+      return executed;
     }
 
-    // ③ 跨区：合并到同 (from,to,commodity,arrival) 的在途批次，并保留逐票损耗归属。
+    // ④ 跨区：合并到同 (from,to,commodity,arrival) 的在途批次，并保留逐票损耗归属。
     ShipmentKey key = new ShipmentKey(route.from, route.to, commodity, route.arrivalTick);
     ShipmentBuilder batch =
         ctx.shipments.computeIfAbsent(key, ignored -> new ShipmentBuilder(route));
-    batch.quantity += quantity;
+    batch.quantity += executed;
     batch.allocations.add(
         new ShipmentAllocation(
-            sell.seller.actor, buy.buyer.actor, buy.order.deliverTo(), quantity, LossBearer.BUYER));
+            sell.seller.actor, buy.buyer.actor, buy.order.deliverTo(), executed, LossBearer.BUYER));
     String shipmentId = batch.shipmentId;
     if (shipmentId == null) {
       shipmentId = "sh-" + round.day + "-" + (ctx.shipmentSequence++);
@@ -3464,11 +3640,13 @@ final class MarketSettlement {
             route.arrivalTick,
             batch.quantity,
             batch.allocations));
-    ctx.scheduledLossMilli += quantity * route.lossPerMille / 1000L;
+    ctx.scheduledLossMilli += Math.multiplyExact(executed, route.lossPerMille) / 1000L;
     ctx.crossRegionFills++;
     // 读数里的单位运费按**本票实收**折算（不是 route 的指示费率）：L3 的到货价 = 单价 + 这一栏。
     long reportedFreightPerUnit =
-        freight > 0L ? ceilDiv(freight * EconomySettlement.MILLI_PER_GRAIN, quantity) : 0L;
+        freight > 0L
+            ? ceilDiv(Math.multiplyExact(freight, EconomySettlement.MILLI_PER_GRAIN), executed)
+            : 0L;
     ctx.fills.add(
         new MarketReport.Fill(
             route.from,
@@ -3476,7 +3654,7 @@ final class MarketSettlement {
             commodity,
             sell.seller.actor,
             buy.buyer.actor,
-            quantity,
+            executed,
             unitPrice,
             reportedFreightPerUnit,
             payment,
@@ -3485,7 +3663,22 @@ final class MarketSettlement {
             false,
             shipmentId,
             // ★ M2.7：逐票预排损耗与到货日的扣减公式逐字同源（deliverShipments 也是 quantity × lossPerMille ÷ 1000）。
-            quantity * route.lossPerMille / 1000L));
+            Math.multiplyExact(executed, route.lossPerMille) / 1000L));
+    return executed;
+  }
+
+  /** ★★ 承运容量不足的具名落点：买方槽 blocked、卖方槽 capacityBlocked、路线 bottleneck，三处都读得到。 */
+  private static void markCapacityBlocked(
+      MatchContext ctx, BuySlot buy, SellSlot sell, RouteContext route) {
+    if (buy.blocked == null) {
+      buy.blocked = MarketUnfilledReason.LOGISTICS_CAPACITY;
+    }
+    sell.capacityBlocked = true;
+    RouteAccumulator acc =
+        ctx.routes.get(route.from + "->" + route.to + "#" + route.commodity.value());
+    if (acc != null) {
+      acc.bottleneck = true;
+    }
   }
 
   /**
@@ -3519,13 +3712,15 @@ final class MarketSettlement {
               effectiveFreightSum,
               freightOf(
                   choice.quantityMilli(),
-                  route.unitPrice,
-                  choice.effectiveRatePerMille(route.freightRatePerMille)));
+                  freightUnitMilli(
+                      route.commodity,
+                      choice.effectiveRatePerMille(route.freightRatePerMille),
+                      carrierCostPerMille(choice.firm()))));
     }
     if (chargeableQuantity <= 0L) {
       return List.of();
     }
-    long nominalCap = freightOf(chargeableQuantity, route.unitPrice, route.freightRatePerMille);
+    long nominalCap = freightOf(chargeableQuantity, route.freightPerUnit);
     long collectible = Math.min(nominalCap, effectiveFreightSum);
     List<FreightCharge> charges = new ArrayList<>();
     long assigned = 0L;
@@ -3683,20 +3878,101 @@ final class MarketSettlement {
   }
 
   /**
-   * 单位运费（毫计价货币 / 商品单位）：{@code ⌊单价 × 费率‰ ÷ 1000⌋} —— 与探针 {@code landed = base × (1000+rate)/1000}
-   * 的向下取整同口径。★ 费率唯一来源 = {@link MarketTopology#freightPerMilleBetween(HexCoord, HexCoord)}。
+   * ★★ <b>商品种类的基础运费（毫计价货币 / 商品单位 / 程）</b>：只由商品种类决定，<b>与商品价格无关</b>
+   * （2026-10-09 用户口径："运费只和商品种类有关"）。粮/纤维轻而贱、布/工具更重更占运力，故基础费分档；
+   * 未登记的商品取 {@link #MARKET_FREIGHT_BASE_PER_UNIT_DEFAULT_MILLI}（粗估，不静默给 0）。
    */
-  private static long freightPerUnitOf(long unitPrice, long ratePerMille) {
-    return Math.multiplyExact(unitPrice, ratePerMille) / 1000L;
+  static final long MARKET_FREIGHT_BASE_PER_UNIT_GRAIN_MILLI = 1L;
+
+  static final long MARKET_FREIGHT_BASE_PER_UNIT_FIBER_MILLI = 1L;
+  static final long MARKET_FREIGHT_BASE_PER_UNIT_CLOTH_MILLI = 2L;
+  static final long MARKET_FREIGHT_BASE_PER_UNIT_TOOL_MILLI = 3L;
+  static final long MARKET_FREIGHT_BASE_PER_UNIT_DEFAULT_MILLI = 1L;
+
+  /**
+   * ★★ <b>承运方运营成本加价（‰ / 每档 tier 城区当量）</b>：脚夫与商人"要吃饭"的粗估表示 —— 承运不是免费的
+   * 公共服务，运费里必须含这笔成本。PORTER 25‰ / SELF_EMPLOYED 50‰ / BOSS 100‰（数值是粗估、可由 GM 改）。
+   */
+  static final long MARKET_FREIGHT_CARRIER_COST_PER_MILLE_PER_TIER_STEP = 25L;
+
+  /** 没有商号（旧 {@code carrierOf} 路径）时的默认承运成本（‰）；也用于撮合前的可负担量预判。 */
+  static final long MARKET_FREIGHT_DEFAULT_CARRIER_COST_PER_MILLE = 25L;
+
+  /** 商品种类基础运费（按 {@code EconomyVocabulary} 的稳定 id 分档；只此一处拼写）。 */
+  static long commodityFreightBaseMilli(CommodityId commodity) {
+    Objects.requireNonNull(commodity, "commodity");
+    String value = commodity.value();
+    if (EconomyVocabulary.GRAIN_COMMODITY_ID.equals(value)) {
+      return MARKET_FREIGHT_BASE_PER_UNIT_GRAIN_MILLI;
+    }
+    if (EconomyVocabulary.FIBER_COMMODITY_ID.equals(value)) {
+      return MARKET_FREIGHT_BASE_PER_UNIT_FIBER_MILLI;
+    }
+    if (EconomyVocabulary.CLOTH_COMMODITY_ID.equals(value)) {
+      return MARKET_FREIGHT_BASE_PER_UNIT_CLOTH_MILLI;
+    }
+    if (EconomyVocabulary.TOOL_COMMODITY_ID.equals(value)) {
+      return MARKET_FREIGHT_BASE_PER_UNIT_TOOL_MILLI;
+    }
+    return MARKET_FREIGHT_BASE_PER_UNIT_DEFAULT_MILLI;
+  }
+
+  /** 某商号的承运成本（‰）：tier 城区当量 × {@link #MARKET_FREIGHT_CARRIER_COST_PER_MILLE_PER_TIER_STEP}。 */
+  static long carrierCostPerMille(MerchantFirm firm) {
+    Objects.requireNonNull(firm, "firm");
+    return Math.multiplyExact(
+        (long) firm.tier().districtUse(), MARKET_FREIGHT_CARRIER_COST_PER_MILLE_PER_TIER_STEP);
   }
 
   /**
-   * 一条成交量的运费：{@code ⌈数量 × 单价 × 费率‰ ÷ 1,000,000⌉}（毫计价货币；数量是毫商品、单价是毫计价货币/商品单位）。 ★ 与 {@link
-   * #freightPerUnitOf} 同源（同一个 {@code ratePerMille}），保留既有的向上取整毫单位口径。
+   * ★★ <b>撮合前可负担性预判用的承运成本（‰）</b>：有商号时取最高档 tier 的成本上界（BOSS=4×25=100‰），
+   * 保证 {@code pairUp} 按它规划的钱 ≤ 实际逐商号收费；没有商号（旧路径）沿用小默认值。
    */
-  private static long freightOf(long quantity, long unitPrice, long ratePerMille) {
-    return ceilDiv(
-        Math.multiplyExact(Math.multiplyExact(quantity, unitPrice), ratePerMille), 1_000_000L);
+  static long plannedCarrierCostPerMille(MatchContext ctx) {
+    if (ctx.merchantFirms.isEmpty()) {
+      return MARKET_FREIGHT_DEFAULT_CARRIER_COST_PER_MILLE;
+    }
+    return Math.multiplyExact(
+        (long) MerchantPolicy.MerchantTier.BOSS.districtUse(),
+        MARKET_FREIGHT_CARRIER_COST_PER_MILLE_PER_TIER_STEP);
+  }
+
+  /**
+   * ★★ <b>单位运费（毫计价货币 / 商品单位）的唯一算式</b>（2026-10-09 与货款价格解耦）：
+   *
+   * <pre>
+   * unit = max(1, ⌈ 商品种类基础费 × (1000 + 路线费率‰) × (1000 + 承运成本‰) ÷ 1,000,000 ⌉ )
+   * </pre>
+   *
+   * <p>三项来源：① 商品种类（{@link #commodityFreightBaseMilli}）；② 路线费率（{@link
+   * MarketTopology#freightPerMilleBetween} 的里程/辐射/道路）；③ 承运成本（{@link #carrierCostPerMille}，
+   * 脚夫/商号要吃饭的粗估）。<b>不含</b> {@code unitPrice} —— 0 价免费商品仍产生正运费。
+   */
+  static long freightUnitMilli(
+      CommodityId commodity, long ratePerMille, long carrierCostPerMille) {
+    if (ratePerMille < 0L) {
+      throw new IllegalArgumentException("ratePerMille 不得为负: " + ratePerMille);
+    }
+    if (carrierCostPerMille < 0L) {
+      throw new IllegalArgumentException("carrierCostPerMille 不得为负: " + carrierCostPerMille);
+    }
+    long routeFactor = Math.addExact(1000L, ratePerMille);
+    long carrierFactor = Math.addExact(1000L, carrierCostPerMille);
+    long product =
+        Math.multiplyExact(
+            Math.multiplyExact(commodityFreightBaseMilli(commodity), routeFactor), carrierFactor);
+    return Math.max(1L, ceilDiv(product, 1_000_000L));
+  }
+
+  /**
+   * 一条成交量的运费：{@code ⌈数量(毫商品) × 单位运费(毫钱/商品单位) ÷ 1000⌉}（毫计价货币）。 ★ 单位运费由
+   * {@link #freightUnitMilli} 给出；<b>不看货款单价</b>。
+   */
+  private static long freightOf(long quantityMilli, long unitFreightMilli) {
+    if (quantityMilli <= 0L || unitFreightMilli <= 0L) {
+      return 0L;
+    }
+    return ceilDiv(Math.multiplyExact(quantityMilli, unitFreightMilli), 1000L);
   }
 
   /**
@@ -3709,15 +3985,17 @@ final class MarketSettlement {
    */
   private static long affordableQuantity(
       MatchContext ctx, BuySlot buy, long unitPrice, RouteContext route) {
+    long unitCost = unitPrice + (route == null ? 0L : route.freightPerUnit);
+    if (unitCost <= 0L) {
+      // ★★ 完全免费（0 价 + 0 运费，典型 = 区内即时免费拿）：钱不是约束，数量由需求/供给决定。
+      //    ★ 跨区 0 价仍要付运费（route.freightPerUnit > 0）⇒ 走下面的按钱折算分支。
+      return Long.MAX_VALUE;
+    }
     long money = payableMoneyOf(ctx, buy);
     if (money <= MARKET_MONEY_ROUNDING_MARGIN_MILLI) {
       return 0L;
     }
     money -= MARKET_MONEY_ROUNDING_MARGIN_MILLI;
-    long unitCost = unitPrice + (route == null ? 0L : route.freightPerUnit);
-    if (unitCost <= 0L) {
-      return safeMulDiv(money, EconomySettlement.MILLI_PER_GRAIN, 1L);
-    }
     return safeMulDiv(money, EconomySettlement.MILLI_PER_GRAIN, unitCost);
   }
 
@@ -3734,43 +4012,46 @@ final class MarketSettlement {
   }
 
   /**
-   * 这一笔数量按**与 {@link #executeTrade} 同一算式**算出的总价（货款 + 名义运费）是否 ≤ {@code money}。 全程 {@code
-   * long}；乘法真的会溢出 ⇒ 这个数量在 {@code executeTrade} 里同样不可付，按"付不起"处理。
+   * 这一笔数量按**与 {@link #executeTrade} 同一算式**算出的总价（货款 + 运费）是否 ≤ {@code money}。运费与货款解耦
+   * （{@link #freightUnitMilli}），0 价商品仍计运费。全程 {@code long}；乘法真的会溢出 ⇒ 这个数量在 {@code
+   * executeTrade} 里同样不可付，按"付不起"处理。
    */
   private static boolean totalCostAtMost(
       long quantity, long money, long unitPrice, RouteContext route) {
-    long scaled;
+    long payment;
     try {
-      scaled = Math.multiplyExact(quantity, unitPrice);
+      payment =
+          ceilDivPositive(
+              Math.multiplyExact(quantity, unitPrice), EconomySettlement.MILLI_PER_GRAIN);
     } catch (ArithmeticException overflow) {
       return false;
     }
-    long payment = ceilDivPositive(scaled, EconomySettlement.MILLI_PER_GRAIN);
     if (payment > money) {
       return false;
     }
-    if (route == null) {
+    if (route == null || route.freightPerUnit <= 0L) {
       return true;
     }
-    long rawFreight;
+    long freight;
     try {
-      rawFreight = Math.multiplyExact(scaled, route.freightRatePerMille);
+      freight = ceilDivPositive(Math.multiplyExact(quantity, route.freightPerUnit), 1000L);
     } catch (ArithmeticException overflow) {
       return false;
     }
-    long freight = ceilDivPositive(rawFreight, 1_000_000L);
     return freight <= money - payment;
   }
 
   /**
    * 把预分配/计划量按**当前剩余可付**精确封顶：最大 {@code q ≤ upper} 使 {@code q} 这一笔的总价（货款 + 名义运费）≤ {@code payable}。
    *
-   * <p>★ 这是缺陷 A 的安全点：{@link #affordableQuantity} 的边距只负责"保守少买"，跨区运费 floor 与逐笔 ceil 造成
-   * 的累计越界在这里被逐笔按实际账削平 ⇒ 任何成交序列下付款 ≤ 可支配（冻结 + 可花）。
+   * <p>★ 这是缺陷 A 的安全点：{@link #affordableQuantity} 的边距只负责"保守少买"，跨区运费与两处 ceil 造成
+   * 的累计越界在这里被逐笔按实际账削平 ⇒ 任何成交序列下付款 ≤ 可支配（冻结 + 可花）。★ 0 价 + 0 运费的完全免费交易
+   * 在 {@code payable == 0} 时也应放行，故这里不再用 {@code payable <= 0} 提前判死（由 {@link
+   * #totalCostAtMost} 按真实总价回答）。
    */
   private static long exactAffordableUpTo(
       long upper, long payable, long unitPrice, RouteContext route) {
-    if (upper <= 0L || payable <= 0L) {
+    if (upper <= 0L) {
       return 0L;
     }
     if (totalCostAtMost(upper, payable, unitPrice, route)) {
@@ -3911,6 +4192,11 @@ final class MarketSettlement {
    */
   private static MarketUnfilledReason sellerReason(
       MatchContext ctx, SellSlot sell, MarketIndexes indexes) {
+    // ★★ 2026-10-09：承运容量（商号每周期运力 / 路线每窗口容量）是本槽剩余的直接原因时，优先具名物流瓶颈，
+    //    不让它掉进 OUTCOMPETED/ALGORITHM_UNCOVERED 掩盖过去。
+    if (sell.capacityBlocked) {
+      return MarketUnfilledReason.LOGISTICS_CAPACITY;
+    }
     if (sellerSelfUsable(ctx, sell)) {
       return MarketUnfilledReason.UNSOLD_SELF_USABLE;
     }
@@ -4205,8 +4491,8 @@ final class MarketSettlement {
       }
       for (CommodityId commodity : indexes.commodities) {
         long reference = market.priceOf(commodity);
-        if (reference <= 0L) {
-          continue;
+        if (!market.hasPrice(commodity)) {
+          continue; // 从未定价 ⇒ 不交易（也不谈"买不起"）
         }
         long desired;
         if (participant.household() == null) {
@@ -4234,7 +4520,11 @@ final class MarketSettlement {
                 actorKeyOf(participant.actor) + "#" + commodity.value(), 0L);
         long gap = Math.max(0L, desired - onHand - incoming);
         long budget = spendableMoneyOf(ctx.round, participant, market.numeraire());
-        long affordable = budget * EconomySettlement.MILLI_PER_GRAIN / reference;
+        // ★★ 0 价免费交易：货款买得起量无上限（数量受缺口约束）；非 0 价才按"钱 ÷ 价"折算。
+        long affordable =
+            reference == 0L
+                ? Long.MAX_VALUE
+                : budget * EconomySettlement.MILLI_PER_GRAIN / reference;
         long ordered = 0L;
         long filled = 0L;
         MarketUnfilledReason slotReason = null;
@@ -4847,6 +5137,9 @@ final class MarketSettlement {
     long frozenRemaining;
     long baseFrozenGoods;
 
+    /** ★★ 2026-10-09：本槽剩余是否卡在"承运运力不足"（路线窗口/商号每周期运力）。 */
+    boolean capacityBlocked;
+
     SellSlot(
         SellOrder order,
         Participant seller,
@@ -4889,6 +5182,7 @@ final class MarketSettlement {
   private record RouteContext(
       HexCoord from,
       HexCoord to,
+      CommodityId commodity,
       long unitPrice,
       long freightRatePerMille,
       long freightPerUnit,
@@ -4896,7 +5190,8 @@ final class MarketSettlement {
       long costPerUnit,
       long capacityPerWindow,
       int lossPerMille,
-      long arrivalTick) {
+      long arrivalTick,
+      boolean immediate) {
     TradeRoute toRoute() {
       return new TradeRoute(from, to, capacityPerWindow, travelTicks, costPerUnit, lossPerMille);
     }
@@ -5101,6 +5396,14 @@ final class MarketSettlement {
       return effective.defined()
           ? effective.referencePriceOf(market, commodity)
           : market.priceOf(commodity);
+    }
+
+    /**
+     * ★★ 本区该商品有没有有效定价（区级覆盖优先；<b>值为 0 也算定价</b> = 明确免费交易）。
+     * 它是"未定价 ⇒ 不交易"与"0 价 ⇒ 免费交易"的唯一分辨点。
+     */
+    boolean hasPrice(String regionId, Market market, CommodityId commodity) {
+      return regulationFor(regionId).hasPrice(market, commodity);
     }
 
     /** 本区该商品的单位税费（毫计价货币/商品单位）；没有调控/缺项/0 ⇒ 0（只记读数，不搬钱）。 */

@@ -351,9 +351,12 @@ public record MarketReport(
     public PriceUpdate {
       Objects.requireNonNull(anchor, "anchor");
       Objects.requireNonNull(commodity, "commodity");
-      if (previousPriceMilli <= 0L || nextPriceMilli <= 0L) {
+      if (previousPriceMilli < 0L || nextPriceMilli < 0L) {
         throw new IllegalArgumentException(
-            "PriceUpdate 的两个价格都必须 > 0: " + previousPriceMilli + " -> " + nextPriceMilli);
+            "PriceUpdate 的两个价格都不得为负（0 = 明确免费交易）: "
+                + previousPriceMilli
+                + " -> "
+                + nextPriceMilli);
       }
     }
   }

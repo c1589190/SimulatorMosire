@@ -1039,14 +1039,35 @@ public final class ModeMigrationPolicy {
       for (Map.Entry<CommodityId, Long> good : stock.entrySet()) {
         long price = market.priceOf(good.getKey());
         if (price > 0L) {
-          sellable =
-              Math.addExact(
-                  sellable,
-                  good.getValue() * price / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT);
+          // ★★ 2026-10-09 红字修复：这里原来是裸 `value * price`，库存量级一大就静默回绕成负数
+          //   （实测 hh-nat-r2-tenant 的 liquidity 变成 −6.6e15，触发 ExpectedProfit 守卫）。
+          //   改为精确乘法 + 饱和加法：溢出时按"极富流动性"饱和到 Long.MAX_VALUE，绝不静默出负读数。
+          long value = saturatedMulDiv(good.getValue(), price, EconomyVocabulary.MILLI_PER_COMMODITY_UNIT);
+          sellable = saturatedAdd(sellable, value);
         }
       }
     }
-    return Math.addExact(cash, sellable);
+    return saturatedAdd(cash, sellable);
+  }
+
+  /** 精确 {@code value × multiplier ÷ divisor}；乘法溢出 ⇒ 饱和到 {@link Long#MAX_VALUE}（不静默回绕）。 */
+  private static long saturatedMulDiv(long value, long multiplier, long divisor) {
+    if (value <= 0L || multiplier <= 0L || divisor <= 0L) {
+      return 0L;
+    }
+    try {
+      return Math.multiplyExact(value, multiplier) / divisor;
+    } catch (ArithmeticException overflow) {
+      return Long.MAX_VALUE;
+    }
+  }
+
+  /** 饱和加法：真的越过 {@link Long#MAX_VALUE} ⇒ 饱和（不静默回绕）。 */
+  private static long saturatedAdd(long left, long right) {
+    if (left < 0L || right < 0L) {
+      throw new IllegalArgumentException("饱和加法的入参不得为负: " + left + " + " + right);
+    }
+    return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
   }
 
   /** 本格价表：优先本格市场；无则退到该格所在区的集散节点市场（区内同价）；都没有 ⇒ null。 */

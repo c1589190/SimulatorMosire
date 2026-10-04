@@ -35,7 +35,7 @@ import java.util.Objects;
  * 未覆盖的一侧沿用 {@link Market} 的两个常量。
  *
  * @param anchor 区级参考价锚格；单区 = 规范序第一个有市场的 hex；不得为 null
- * @param referencePrices 商品 → 区级参考价（毫计价货币/商品单位；空 = 沿用各 hex {@code Market.prices}；值必须 &gt; 0）
+ * @param referencePrices 商品 → 区级参考价（毫计价货币/商品单位；空 = 沿用各 hex {@code Market.prices}；值必须 ≥ 0，0 = 明确免费交易）
  * @param bidPerMille 卖方挂牌底价（‰；0 = 沿用 {@link Market#BID_PER_MILLE}）
  * @param askPerMille 买方挂牌限价（‰；0 = 沿用 {@link Market#ASK_PER_MILLE}）
  * @param quotaPerWindow 商品 → 本区本轮卖方成交量上限（毫商品；空 = 无配额；0 = 配额用尽）
@@ -113,7 +113,8 @@ public record MarketRegulation(
 
   /**
    * ★ <b>该 hex 的商品参考价</b>：{@link #referencePrices} 覆盖优先；缺项回退该 hex
-   * {@link Market#priceOf(CommodityId)}（0 = 本格不交易它，不凭空造一行）。
+   * {@link Market#priceOf(CommodityId)}。★ 未定价与明确 0 价都返回 0 ⇒ 要用 {@link #hasPrice} 区分
+   * "不交易"与"免费交易"。
    */
   public long referencePriceOf(Market market, CommodityId commodity) {
     Objects.requireNonNull(market, "market");
@@ -123,12 +124,25 @@ public record MarketRegulation(
   }
 
   /**
+   * ★★ <b>该 hex 的商品有没有有效定价</b>：区级覆盖里有该商品，或该格 {@link Market#hasPrice} ——
+   * <b>值为 0 也算定价</b>（明确 0 价免费交易）。
+   */
+  public boolean hasPrice(Market market, CommodityId commodity) {
+    Objects.requireNonNull(market, "market");
+    Objects.requireNonNull(commodity, "commodity");
+    return referencePrices.containsKey(commodity) || market.hasPrice(commodity);
+  }
+
+  /**
    * ★ <b>该 hex 商品的卖方挂牌底价</b>：{@code max(1, ⌊有效参考价 × bid‰ ÷ 1000⌋)}；{@code bidPerMille == 0} 时
-   * 与 {@link Market#bidPriceOf} 逐值同源。
+   * 与 {@link Market#bidPriceOf} 逐值同源。未定价 ⇒ 0；明确 0 价 ⇒ 0（免费交易的卖方底价为 0）。
    */
   public long bidPriceOf(Market market, CommodityId commodity) {
+    if (!hasPrice(market, commodity)) {
+      return 0L;
+    }
     long price = referencePriceOf(market, commodity);
-    if (price <= 0L) {
+    if (price == 0L) {
       return 0L;
     }
     long rate = bidPerMille != 0L ? bidPerMille : Market.BID_PER_MILLE;
@@ -137,11 +151,14 @@ public record MarketRegulation(
 
   /**
    * ★ <b>该 hex 商品的买方挂牌限价</b>：{@code max(bid + 1, ⌈有效参考价 × ask‰ ÷ 1000⌉)}；{@code askPerMille == 0}
-   * 时与 {@link Market#askPriceOf} 逐值同源。
+   * 时与 {@link Market#askPriceOf} 逐值同源。未定价 ⇒ 0；明确 0 价 ⇒ 0（免费交易的买方货款上限为 0）。
    */
   public long askPriceOf(Market market, CommodityId commodity) {
+    if (!hasPrice(market, commodity)) {
+      return 0L;
+    }
     long price = referencePriceOf(market, commodity);
-    if (price <= 0L) {
+    if (price == 0L) {
       return 0L;
     }
     long rate = askPerMille != 0L ? askPerMille : Market.ASK_PER_MILLE;

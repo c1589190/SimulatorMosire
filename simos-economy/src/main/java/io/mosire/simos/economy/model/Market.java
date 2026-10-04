@@ -24,8 +24,11 @@ import java.util.Map;
  * 买得起多少 = 钱(毫钱) × 1000 ÷ 价格          // 与上式互逆（恒有 货款(买得起多少) ≤ 钱）
  * </pre>
  *
- * <p>★ <b>为什么价格必须 &gt; 0</b>：它是"可花的钱 ÷ 价格"那个式子的分母 —— 取 0 会让"买得起多少"除零， 而"白送"不是一种价格（它是另一套制度：配给/救济）。 ⇒
- * 逐值 {@code > 0}，构造期判死（不静默归一）。
+ * <p>★★ <b>0 价的两种含义（2026-10-09 用户口径）</b>：本表<b>没有这一行</b> = 这一格从未给该商品定价 ⇒
+ * <b>不交易</b>（合法状态，不抛）；本表<b>有这一行且值为 0</b> = <b>明确 0 价免费交易</b> —— 买方不付货款（货款腿为 0）， 但<b>运费照付</b>（运费与商品价格解耦，见
+ * {@code MarketSettlement} 的运费算式）。⇒ 构造期只拒绝<b>负价</b>；"有没有定价"由 {@link #hasPrice(CommodityId)}
+ * 回答、"是不是免费"由 {@link #isFree(CommodityId)} 回答。{@link #priceOf(CommodityId)} 对"未定价"与"明确 0 价"
+ * 都返回 0，因此<b>凡是要区分这两种状态的判定</b>必须先查 {@code hasPrice}。
  *
  * <p>★★ <b>M2.6：本类同时给出买卖两侧的挂牌限价</b>（{@link #bidPriceOf} / {@link #askPriceOf}）—— 参考价仍在 {@link
  * #prices()} 里，两个限价由 {@link #BID_PER_MILLE} / {@link #ASK_PER_MILLE} <b>两个各自独立</b>的具名常量现算；
@@ -38,7 +41,7 @@ import java.util.Map;
  * {@code Collections.unmodifiableMap} 不能直接用在**参数**上（那会改掉参数绑定的类型），故这里用"先拷进不可变副本、再重新绑定"的同一形制。
  *
  * @param numeraire 本格唯一的计价货币（结算里所有的钱都是它）；不得为 null
- * @param prices 商品 → 单价（毫计价货币 / 商品单位；**逐值 &gt; 0**）；不得为 null（没有价格就请给空表）；键值非 null
+ * @param prices 商品 → 单价（毫计价货币 / 商品单位；**逐值 ≥ 0**，0 = 明确免费）；不得为 null（没有价格就请给空表）；键值非 null
  */
 public record Market(CurrencyId numeraire, Map<CommodityId, Long> prices) {
 
@@ -54,10 +57,9 @@ public record Market(CurrencyId numeraire, Map<CommodityId, Long> prices) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("Market.prices 的键与值都不得为 null: " + entry.getKey());
       }
-      if (entry.getValue() <= 0L) {
+      if (entry.getValue() < 0L) {
         throw new IllegalArgumentException(
-            "Market.prices 的单价必须 > 0（价格是可花的钱 ÷ 价格 那个式子的分母，"
-                + "而'白送'不是一种价格）："
+            "Market.prices 的单价不得为负（0 = 明确免费交易；没有定价请整行缺省）："
                 + entry.getKey()
                 + " = "
                 + entry.getValue());
@@ -73,16 +75,31 @@ public record Market(CurrencyId numeraire, Map<CommodityId, Long> prices) {
   }
 
   /**
+   * ★★ <b>这一格有没有给该商品定价</b>：{@code prices} 里有这一行即为 true —— 值为 <b>0 也算定价</b>
+   * （明确 0 价免费交易）。{@link #priceOf} 无法区分"未定价"与"定价为 0"，故凡是要区分这两种状态的判定必须先查本方法。
+   */
+  public boolean hasPrice(CommodityId commodity) {
+    return prices.containsKey(commodity);
+  }
+
+  /** ★★ <b>是不是"明确 0 价免费交易"</b>：有定价行且值为 0（与"未定价 ⇒ 不交易"是两件事）。 */
+  public boolean isFree(CommodityId commodity) {
+    Long price = prices.get(commodity);
+    return price != null && price == 0L;
+  }
+
+  /**
    * ★★ <b>M2.6：卖方的挂牌底价（bid）</b>：{@code ⌊参考价 × {@value #BID_PER_MILLE} ÷ 1000⌋}，且至少 1 毫。
    *
    * <p>★★ <b>为什么 bid/ask 必须是两个具名常量</b>：价差的两条腿（买方最多愿付、卖方最少愿收）是**两件事** —— 用一个
    * "价差"常量同时推两边，改一边就会悄悄改另一边；照本仓"不许一个常量兼两职"的纪律拆成两个数，各自可调、各自可读。
    *
    * <p>★ <b>它只决定限价，不决定成交价</b>：成交仍按参考价（区内 = 集散节点市价、跨区 = 卖方格市价）—— 买卖双方都比自己的限价占优，
-   * 价差没有中间人截留（钱不许凭空消失）。参考价缺失（{@code 0}）时返回 {@code 0} = 本格不交易它。
+   * 价差没有中间人截留（钱不许凭空消失）。未定价 ⇒ 返回 {@code 0}；明确 0 价（免费）也返回 {@code 0} —— 调用方必须用
+   * {@link #hasPrice(CommodityId)} 区分"不交易"与"免费"。
    *
    * @param commodity 商品；不得为 null
-   * @return 卖方最低可接受价（毫计价货币 / 商品单位）；没有定价 ⇒ 0
+   * @return 卖方最低可接受价（毫计价货币 / 商品单位）；没有定价 ⇒ 0；明确 0 价 ⇒ 0
    */
   public long bidPriceOf(CommodityId commodity) {
     long price = priceOf(commodity);
@@ -93,18 +110,21 @@ public record Market(CurrencyId numeraire, Map<CommodityId, Long> prices) {
    * ★★ <b>M2.6：买方的最高限价（ask）</b>：{@code ⌈参考价 × {@value #ASK_PER_MILLE} ÷ 1000⌉}，且严格高于 {@link
    * #bidPriceOf}（极小的价格上价差退化成 1 毫 —— 那仍是"分开的两个限价"，不是同一个数）。
    *
-   * <p>★ 口径与 {@link #bidPriceOf} 对称：只进限价过滤，不决定成交价。没有定价 ⇒ 0。
+   * <p>★ 口径与 {@link #bidPriceOf} 对称：只进限价过滤，不决定成交价。未定价 ⇒ 0；明确 0 价 ⇒ 0（免费交易的买方货款上限为 0）。
    *
    * <p>★★ <b>整数网格的如实边界</b>：价格是毫单位的整数 ⇒ 当 {@code p} 小到 1% 不足 1 毫时（真档粮价 = 1）， 价差退化成"两侧各让 1 毫"（bid 至少
    * 1、ask 至少 bid+1），相对幅度会大于 1%。这是网格的必然，不是公式走样 —— 成交仍按参考价，价差只放宽/收紧**限价过滤**。
    *
    * @param commodity 商品；不得为 null
-   * @return 买方最高可接受价（毫计价货币 / 商品单位）；没有定价 ⇒ 0
+   * @return 买方最高可接受价（毫计价货币 / 商品单位）；没有定价 ⇒ 0；明确 0 价 ⇒ 0
    */
   public long askPriceOf(CommodityId commodity) {
+    if (!hasPrice(commodity)) {
+      return 0L; // 未定价 ⇒ 不交易（无价可挂）
+    }
     long price = priceOf(commodity);
-    if (price <= 0L) {
-      return 0L;
+    if (price == 0L) {
+      return 0L; // 明确 0 价 ⇒ 免费交易：买方只出运费，货款上限 0
     }
     long ask = (price * ASK_PER_MILLE + 999L) / 1000L;
     return Math.max(bidPriceOf(commodity) + 1L, ask);

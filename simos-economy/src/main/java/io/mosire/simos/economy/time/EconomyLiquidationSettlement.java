@@ -1066,9 +1066,10 @@ public final class EconomyLiquidationSettlement {
             : AssetShareBook.apply(
                 context.assetShares(), context.industries(), plannedPledges, moves);
 
-    for (PledgeUpdate update : plan.pledgeUpdates()) {
-      context.pledges().put(update.pledgeId(), update.after());
-    }
+    // ★ 2026-10-09：AssetShareBook 会把被处置份额上**其它** ACTIVE 质押按比例跟到债权人新份额；
+    //   该写口就地改的是 plannedPledges（已先并入本计划的质押终态）⇒ 这里整表并回唯一的工作副本。
+    context.pledges().clear();
+    context.pledges().putAll(plannedPledges);
 
     int moveIndex = 0;
     for (DebtReductionPlan reduction : plan.debtReductions()) {
