@@ -36,6 +36,7 @@ import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
@@ -93,6 +94,12 @@ public final class EconomyStateBuilder {
 
   /** ★★ E6a：阶层保留份额表工作副本（日结算 apply 时按变迁/家户写出）。 */
   private LinkedHashMap<ClassShareId, ClassShare> classShares;
+
+  /**
+   * ★★ <b>P10.2：商号表工作副本（第 31 个组件）</b> —— 承运选择扣本周期运力、周期末结算写 lastFee/upkeep/profit/容量；
+   * 未物化时 {@link #build} 原样复用 base 的不可变表（class-first/无商号世界零拷贝）。
+   */
+  private LinkedHashMap<ProductionOrganizationId, MerchantFirm> merchantFirms;
 
   private Optional<EconomyMeta> meta;
 
@@ -212,6 +219,17 @@ public final class EconomyStateBuilder {
       productionOrganizations = new LinkedHashMap<>(base.productionOrganizations());
     }
     return productionOrganizations;
+  }
+
+  /**
+   * ★★ <b>P10.2：商号表工作副本</b>（键 = 值内 organizationId）。本批的写口：{@link MerchantSettlement} 的承运扣量
+   * 与周期末 {@code withTradeResult/withCapacityDelta}。
+   */
+  public LinkedHashMap<ProductionOrganizationId, MerchantFirm> merchantFirms() {
+    if (merchantFirms == null) {
+      merchantFirms = new LinkedHashMap<>(base.merchantFirms());
+    }
+    return merchantFirms;
   }
 
   /** 市场表工作副本。 */
@@ -366,7 +384,7 @@ public final class EconomyStateBuilder {
         classShares == null ? base.classShares() : classShares,
         // ★★ R1：整值工作副本（未写 ⇒ 原样复用 base 的不可变状态）。
         classFirst(),
-        // ★★ P10.1：商号表本批不参与日结算写回 —— 原样带过 base 的表（写入口留给 P10.2+）。
-        base.merchantFirms());
+        // ★★ P10.2：商号表是结算工作副本（承运扣量、周期末贸易结果写回）；未物化 ⇒ 原样复用 base。
+        merchantFirms == null ? base.merchantFirms() : merchantFirms);
   }
 }

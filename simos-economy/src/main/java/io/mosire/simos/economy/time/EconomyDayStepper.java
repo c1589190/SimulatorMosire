@@ -45,6 +45,12 @@ public final class EconomyDayStepper implements AutoCloseable {
   /** ★★ R2：本会话的并行度（默认单线程退化路径；{@link #finish()} 关掉自建的池）。 */
   private final EconomyParallelism parallelism;
 
+  /**
+   * ★★ <b>P10.2：本周期利润/迁移累加器</b>（{@code modes} 非空才有；逐日喂当天账本，关账日 ⑦⑧⑨ 后在
+   * {@code EconomySettlement} 内复位）。class-first 世界（{@code modes} 空）恒为 {@code null} ⇒ 逐值不变。
+   */
+  private final OrganizationProfitBook.CycleAccumulator profitCycle;
+
   /** ★ M2.3/M2.4：最近一次 step 的区域市场报告（瞬态；L3 读数接它）。 */
   private MarketReport lastMarketReport;
 
@@ -109,6 +115,7 @@ public final class EconomyDayStepper implements AutoCloseable {
     this.plantingDrawsFirst = plantingDrawsFirst;
     this.famineMortalityPerMille = famineMortalityPerMille;
     this.parallelism = EconomyParallelism.requireNonNull(parallelism);
+    this.profitCycle = base.modes().isEmpty() ? null : new OrganizationProfitBook.CycleAccumulator();
   }
 
   /** ★ R2：本条会话的并行度（只读；见类注的"1 线程不是另一套实现"）。 */
@@ -221,7 +228,8 @@ public final class EconomyDayStepper implements AutoCloseable {
         plantingDrawsFirst,
         famineMortalityPerMille,
         ledger,
-        parallelism);
+        parallelism,
+        profitCycle);
     MarketReport report = ledger.marketReport();
     if (report != null) {
       lastMarketReport = report;

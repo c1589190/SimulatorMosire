@@ -48,7 +48,9 @@ import io.mosire.simos.economy.model.DebtIndex;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
+import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Membership;
@@ -647,6 +649,33 @@ public final class EconomySettlement {
       int famineMortalityPerMille,
       ProductionLedger.Accumulator ledger,
       EconomyParallelism parallelism) {
+    // ★ P10.2：旧调用方（单模块/测试/批量 settle）没有周期累加器 ⇒ 不接迁移钩子；class-first/旧路径逐值不变。
+    settleOneDayInto(
+        session,
+        day,
+        accounts,
+        topology,
+        plantingDrawsFirst,
+        famineMortalityPerMille,
+        ledger,
+        parallelism,
+        null);
+  }
+
+  /**
+   * ★★ <b>P10.2：带周期利润累加器的入口</b>（{@code profitCycle == null} 时与上一个重载逐值相同）—— 关账日在本方法末尾按
+   * ⑦真实利润汇总 → ⑧迁移计划 → ⑨迁移执行 接线；保证在<b>下一周期投入开扣之前</b>完成（下一次 {@code step()} 才开扣）。
+   */
+  static void settleOneDayInto(
+      EconomySession session,
+      long day,
+      AccountSession accounts,
+      MarketTopology topology,
+      boolean plantingDrawsFirst,
+      int famineMortalityPerMille,
+      ProductionLedger.Accumulator ledger,
+      EconomyParallelism parallelism,
+      OrganizationProfitBook.CycleAccumulator profitCycle) {
     Objects.requireNonNull(session, "session（S1：revision 级会话持有可变工作表）");
     Objects.requireNonNull(accounts, "accounts（S1：账户会话是会话状态，必须由调用方载入）");
     Objects.requireNonNull(topology, "topology（M2.3：区域拓扑是只读输入；单格世界用 MarketTopology.singleHex）");
@@ -1010,6 +1039,8 @@ public final class EconomySettlement {
     }
     // ★★ H5：本日关账的产业（饿死判据与劳动缩放要等救济通道走完 —— 见下面的 4d）。
     List<ClosedUnit> closed = new ArrayList<>();
+    // ★★ P10.2：关账 unit 的周期劳动/投入快照（在下面把 unit 周期状态清零**之前**抓；⑦ 利润汇总用）。
+    List<OrganizationProfitBook.CloseFact> closedFacts = new ArrayList<>();
     // ★★ R2：关账产业先收集成工作单元，进度/周期状态按原序落回 industries；收获/关系分账在收集完后
     //   按 hex 并行执行（同一 hex 内的多个产业共用家户账/关系账 ⇒ 同分区串行，见 runHarvestStage）。
     List<HarvestWork> harvestWorks = new ArrayList<>();
@@ -1053,6 +1084,16 @@ public final class EconomySettlement {
                 keys,
                 industry.cycleDays(),
                 inputShortfallOf(unit, industry, settlementIndex, operatorConditions.get(id))));
+        // ★★ P10.2：周期劳动/投入在 unit.cycleState 清零前抓（clear 的写就在下面几行）。
+        closedFacts.add(
+            new OrganizationProfitBook.CloseFact(
+                id,
+                industry.id(),
+                unit.operator(),
+                hexOfIndustry(unit.industry()),
+                unit.modeKey(),
+                cycledLabor,
+                unit.cycleInputUsedMilli()));
         nextProgress = 0L;
         nextCycleLabor = 0L;
         nextInputUsed = Map.of(); // ★ 与 cycleLaborMilli 同处清零（不清零 ⇒ 下周期的投入瓶颈凭空变大）
@@ -1118,12 +1159,26 @@ public final class EconomySettlement {
             settlementIndex,
             // ★★ R4-E2：当日有效需求来自状态组件的只读账本（订单路径据此把"生活保留基线 + 需求目标"合成买卖目标）。
             base.demands());
+    // ★★ P10.2：有 merchantFirms 时由 MerchantSettlement 逐 lane 选商号/收费；没有时 Map.of() 退回旧承运路径。
+    Map<ProductionOrganizationId, MerchantFirm> marketMerchants =
+        base.merchantFirms().isEmpty() ? Map.of() : session.sheet().merchantFirms();
+    MerchantSettlement.CarrierPool merchantCarrierPool =
+        marketMerchants.isEmpty()
+            ? MerchantSettlement.CarrierPool.empty()
+            : new MerchantSettlement.CarrierPool(
+                marketMerchants, session.sheet().productionOrganizations());
     MarketTrigger marketTrigger =
         MarketSettlement.triggerFor(day, anyCycleClosed, markets, marketRound);
     if (marketTrigger != MarketTrigger.NONE) {
       MarketSettlement.MarketOutcome outcome =
           MarketSettlement.clearOncePerCycle(
-              markets, marketRound, marketTrigger, topology, parallelism);
+              markets,
+              marketRound,
+              marketTrigger,
+              topology,
+              parallelism,
+              marketMerchants,
+              merchantCarrierPool);
       // ★ L2 只把报告留给 L3 的读数组件（不落盘）；不聚合丢失（见 MarketReport 的类注）。
       ledger.recordMarketReport(outcome.report());
       // ★★ S3 修复：把本轮的逐卖方证据累加进经营者条件的"本周期累计"字段。一个周期有多轮市场，关账日那轮
@@ -1496,6 +1551,59 @@ public final class EconomySettlement {
     }
     // ★ T2：生产关系表**原样带过**（本任务行为不变：{@code harvest} 还没读它 —— 那时 T4 的事）。
     session.sheet().meta(Optional.of(nextMeta));
+
+    // ── ★★ P10.2 周期关账钩子：⑦真实利润汇总 → ⑧迁移计划 → ⑨迁移执行 ─────────────────────────
+    //   ★ 位置：在 ⑥饥饿/死亡、5b/5b.5/5c 全部之后、下一个 step() 的"投入开扣"之前。
+    //   ★ 闸门：class-first 世界（modes 空）profitCycle 恒 null ⇒ 这一整段不执行，逐值不变。
+    if (profitCycle != null) {
+      profitCycle.recordDay(day, ledger.toLedger(), ledger.marketReport());
+    }
+    if (profitCycle != null && anyCycleClosed && !base.modes().isEmpty()) {
+      profitCycle.recordCloseFacts(day, closedFacts);
+      // ⑦a 商人周期结算（运费实收/porter 工资/upkeep/运力）；结果进 profitCycle 的商人读数。
+      MerchantSettlement.settleCycle(
+          profitCycle,
+          session.sheet().merchantFirms(),
+          session.sheet().productionOrganizations(),
+          units,
+          session.sheet().relations(),
+          allocations,
+          assetShares,
+          rows,
+          accounts,
+          markets,
+          session.sheet().debtContracts(),
+          day);
+      // ⑦b 真实利润汇总（只读本周期真实账）。
+      OrganizationProfitBook.Book profitBook =
+          OrganizationProfitBook.collect(
+              profitCycle,
+              session.sheet().productionOrganizations(),
+              units,
+              rows,
+              industries,
+              markets,
+              accounts);
+      // ⑧ 迁移计划（真实利润权重 + A 规则 + 目标选择）。
+      ModeMigrationPolicy.MigrationPlan migrationPlan =
+          ModeMigrationPolicy.plan(
+              base,
+              session.sheet().productionOrganizations(),
+              units,
+              rows,
+              session.sheet().classStandings(),
+              assetShares,
+              session.sheet().relations(),
+              allocations,
+              markets,
+              session.sheet().debtContracts(),
+              accounts,
+              profitBook,
+              day);
+      // ⑨ 迁移执行（只执行计划；源户 mode/standing/org/unit.modeKey 一字不改）。
+      ModeMigrationSettlement.apply(session, accounts, migrationPlan, base, day);
+      profitCycle.resetForNextCycle();
+    }
   }
 
   /**

@@ -1,0 +1,606 @@
+package io.mosire.simos.economy.time;
+
+import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.actor.api.asset.AssetKind;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.economy.api.debt.DebtTerms;
+import io.mosire.simos.economy.api.debt.DebtUnit;
+import io.mosire.simos.economy.api.id.AssetShareId;
+import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.DebtContractId;
+import io.mosire.simos.economy.api.id.HouseholdId;
+import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.ProductionOrganizationId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.DebtContract;
+import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MerchantFirm;
+import io.mosire.simos.economy.model.MerchantPolicy;
+import io.mosire.simos.economy.model.ProductionOrganization;
+import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.map.hex.HexCoord;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.OptionalLong;
+
+/**
+ * ★★ <b>P10.2 商人承运与周期结算（架构 §5.4）</b>：
+ *
+ * <pre>
+ * 市场阶段：按 lane 服务半径 + 剩余运力选商号（到货费率升序 → organizationId 升序）；买方 CARRIER_FEE
+ *           直接付给 merchant principal 家户；无承运 ⇒ freightUncollectedMilli（钱不凭空消失）
+ * 周期末  ：运费实收 − porter 工资实付 − upkeep = lastProfit；盈利 capacityPerRound+5（上限 100000）、
+ *           亏损 −5（下限 5）；农村商号每活跃轮 +2‰（封顶 100）；结果经 withTradeResult 写回 merchantFirms
+ * </pre>
+ *
+ * <p>★★ <b>与既有承运路径的关系</b>：{@code merchantFirms} 为空时 {@code MarketSettlement} 保持旧行为（第一个有货币账的
+ * ORGANIZATION）；非空时改走本类。★ 本类不搬货、不卖买，只做承运与商号财务。
+ *
+ * <p>★★ <b>upkeep 的口径</b>：城区当量 upkeep（{@code tier.districtUse × MerchantPolicy.UPKEEP_PER_DISTRICT_USE}）
+ * 与船畜维护在本批是<b>成本计提</b>（没有可收方主体；若真的扣钱就会让货币凭空消失）。它进 {@code lastProfitMilli} 与
+ * {@link OrganizationProfitBook} 的成本，<b>不</b>移动任何余额。这是本批具名收窄（见收口报告）。
+ */
+public final class MerchantSettlement {
+
+  private MerchantSettlement() {}
+
+  /** 盈利/亏损时每周期运力增减（架构 §10：+5/−5）。 */
+  public static final long CAPACITY_STEP_PER_ROUND = 5L;
+
+  /** 运力上限（架构 §10：100000）。 */
+  public static final long CAPACITY_CEILING = MerchantPolicy.CITY_CAPACITY_CEILING;
+
+  /** 运力下限（架构 §10：5）。 */
+  public static final long CAPACITY_FLOOR = MerchantPolicy.CITY_CAPACITY_SHRINK_FLOOR;
+
+  /** 农村累积惩罚步长（‰/活跃轮；架构 §10：+2）。 */
+  public static final long RURAL_PENALTY_STEP_PER_ROUND = MerchantPolicy.RURAL_PENALTY_STEP_PER_ROUND;
+
+  /** 农村累积惩罚上限（‰；架构 §10：100）。 */
+  public static final long RURAL_PENALTY_CAP_PER_MILLE = MerchantPolicy.RURAL_PENALTY_CAP_PER_MILLE;
+
+  /**
+   * ★ <b>船畜维护单价（毫/单位；本批具名缺省值）</b>：海运/畜力的每单位每周期维护。架构 §10 没有给数值，本批取 10 毫/单位
+   * （合理量级、可 GM 改；见收口报告的"受影响硬编码字面量"）。
+   */
+  public static final long SHIP_CATTLE_UPKEEP_PER_UNIT_MILLI = 10L;
+
+  /** 一条承运选择结果。 */
+  public record CarrierChoice(
+      ProductionOrganizationId organizationId,
+      ActorRef principalActor,
+      MerchantFirm firm,
+      long quantity,
+      long freightMilli,
+      long effectiveRatePerMille) {
+
+    public CarrierChoice {
+      Objects.requireNonNull(organizationId, "organizationId");
+      Objects.requireNonNull(principalActor, "principalActor");
+      Objects.requireNonNull(firm, "firm");
+      if (quantity <= 0L || freightMilli < 0L || effectiveRatePerMille < 0L) {
+        throw new IllegalArgumentException("CarrierChoice 的 quantity/freight/rate 非法");
+      }
+    }
+  }
+
+  /**
+   * ★★ <b>一轮市场/一整周期的承运池</b>：持有商号工作副本（容量扣减就地写回），只允许协调器单线程使用。
+   */
+  public static final class CarrierPool {
+
+    private final Map<ProductionOrganizationId, MerchantFirm> firms;
+    private final Map<ProductionOrganizationId, ActorRef> principalByOrganization;
+
+    public CarrierPool(
+        Map<ProductionOrganizationId, MerchantFirm> firms,
+        Map<ProductionOrganizationId, ProductionOrganization> organizations) {
+      this.firms = Objects.requireNonNull(firms, "firms");
+      this.principalByOrganization = new LinkedHashMap<>();
+      List<ProductionOrganizationId> ids = new ArrayList<>(firms.keySet());
+      ids.sort(Comparator.comparing(ProductionOrganizationId::value));
+      for (ProductionOrganizationId id : ids) {
+        ProductionOrganization organization = organizations.get(id);
+        if (organization == null) {
+          continue; // 没有组织的商号是坏档：不猜承运人，选商时跳过（结算时具名抛）
+        }
+        principalByOrganization.put(id, organization.organizer());
+      }
+    }
+
+    /** 空池（旧路径/worker 本地副本用；不做任何选择）。 */
+    public static CarrierPool empty() {
+      return new CarrierPool(Map.of(), Map.of());
+    }
+
+    public boolean isEmpty() {
+      return firms.isEmpty();
+    }
+
+    /**
+     * 按 lane 选承运商：服务半径覆盖两端、剩余运力 ≥ 本票数量；到货费率升序 → organizationId 升序。
+     */
+    public Optional<CarrierChoice> select(
+        HexCoord from,
+        HexCoord to,
+        long quantity,
+        long unitPriceMilli,
+        long nominalRatePerMille) {
+      Objects.requireNonNull(from, "from");
+      Objects.requireNonNull(to, "to");
+      if (quantity <= 0L) {
+        return Optional.empty();
+      }
+      List<Candidate> candidates = new ArrayList<>();
+      for (Map.Entry<ProductionOrganizationId, MerchantFirm> entry : firms.entrySet()) {
+        MerchantFirm firm = entry.getValue();
+        ActorRef principal = principalByOrganization.get(entry.getKey());
+        if (firm == null || principal == null || quantity <= 0L) {
+          continue;
+        }
+        if (!servesLane(firm, from, to)) {
+          continue;
+        }
+        long remaining = Math.max(0L, firm.capacityPerRound() - firm.capacityUsedThisRound());
+        if (remaining < quantity) {
+          continue;
+        }
+        long cityDiscount = cityDiscountPerMille(firm, from, to);
+        long effective =
+            Math.max(
+                0L,
+                Math.addExact(
+                    Math.subtractExact(nominalRatePerMille, cityDiscount),
+                    firm.ruralTradeCostPenaltyPerMille()));
+        candidates.add(new Candidate(entry.getKey(), principal, firm, effective));
+      }
+      candidates.sort(
+          Comparator.comparingLong((Candidate candidate) -> candidate.effectiveRate)
+              .thenComparing(candidate -> candidate.organizationId.value()));
+      if (candidates.isEmpty()) {
+        return Optional.empty();
+      }
+      Candidate chosen = candidates.get(0);
+      // ★ 保守边界：向买方收取的运费不超过 route 的名义费率（旧口径）。城市折扣可以压低；农村惩罚只影响
+      //   商号排序/选择，不越过买方订单冻结与预算（否则会撞上 pairUp 的"按名义运费封顶"预算校验）。
+      long nominal = freightOf(quantity, unitPriceMilli, nominalRatePerMille);
+      long effectiveFreight = freightOf(quantity, unitPriceMilli, chosen.effectiveRate);
+      long freight = Math.min(nominal, effectiveFreight);
+      firms.put(
+          chosen.organizationId,
+          chosen.firm.withCapacityUsedThisRound(chosen.firm.capacityUsedThisRound() + quantity));
+      return Optional.of(
+          new CarrierChoice(
+              chosen.organizationId,
+              chosen.principal,
+              chosen.firm,
+              quantity,
+              freight,
+              chosen.effectiveRate));
+    }
+
+    private record Candidate(
+        ProductionOrganizationId organizationId,
+        ActorRef principal,
+        MerchantFirm firm,
+        long effectiveRate) {}
+  }
+
+  /** 本周期某商号的运费实收（只从本周期真实 CARRIER_FEE 转移读数取；`to` = principal actor）。 */
+  public static long feeRevenueOf(
+      OrganizationProfitBook.CycleAccumulator cycle, ActorRef principalActor) {
+    long revenue = 0L;
+    for (ProductionLedger ledger : cycle.ledgers()) {
+      for (io.mosire.simos.economy.api.transfer.Transfer transfer : ledger.transfers()) {
+        if (transfer.reason() != io.mosire.simos.economy.api.transfer.TransferReason.CARRIER_FEE) {
+          continue;
+        }
+        if (!transfer.to().equals(principalActor)) {
+          continue;
+        }
+        for (long amount : transfer.money().values()) {
+          revenue = Math.addExact(revenue, amount);
+        }
+      }
+    }
+    return revenue;
+  }
+
+  /**
+   * ★★ <b>周期末商号结算</b>：收入 = 本周期 CARRIER_FEE 实收；成本 = porter 工资实付 + upkeep 计提；付不出的工资走
+   * {@link DebtContractBook#upsert} 资本化；盈利/亏损与农村惩罚写回 {@code merchantFirms}。
+   */
+  public static void settleCycle(
+      OrganizationProfitBook.CycleAccumulator cycle,
+      LinkedHashMap<ProductionOrganizationId, MerchantFirm> firms,
+      Map<ProductionOrganizationId, ProductionOrganization> organizations,
+      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionRelation> relations,
+      Map<LaborAllocationId, LaborAllocation> allocations,
+      Map<AssetShareId, AssetShare> assetShares,
+      Map<HouseholdId, ClassRow> rows,
+      AccountSession accounts,
+      Map<HexCoord, Market> markets,
+      LinkedHashMap<DebtContractId, DebtContract> debts,
+      long day) {
+    Objects.requireNonNull(cycle, "cycle");
+    Objects.requireNonNull(firms, "firms");
+    if (firms.isEmpty() || !cycle.cycleClosed()) {
+      return;
+    }
+    Map<ActorRef, HouseholdId> householdByActor = new LinkedHashMap<>();
+    for (HouseholdId household : sortedHouseholds(rows)) {
+      householdByActor.put(HouseholdActors.of(household), household);
+    }
+    List<ProductionOrganizationId> ids = new ArrayList<>(firms.keySet());
+    ids.sort(Comparator.comparing(ProductionOrganizationId::value));
+    for (ProductionOrganizationId organizationId : ids) {
+      MerchantFirm firm = firms.get(organizationId);
+      ProductionOrganization organization = organizations.get(organizationId);
+      if (firm == null || organization == null) {
+        throw new IllegalStateException(
+            "merchantFirms 的商号没有对应的 ProductionOrganization（拒绝静默跳过）: " + organizationId);
+      }
+      ActorRef principalActor = organization.organizer();
+      HouseholdId principalHousehold = householdByActor.get(principalActor);
+      if (principalHousehold == null) {
+        throw new IllegalStateException(
+            "商号 principal 不是已登记家户（说不出收款人，拒绝静默丢钱）: " + organizationId + " actor=" + principalActor);
+      }
+      long revenue = feeRevenueOf(cycle, principalActor);
+      List<Porter> porters = portersOf(organization, principalHousehold, allocations, rows);
+      List<Long> porterWeights = new ArrayList<>(porters.size());
+      long totalPorterLabor = 0L;
+      for (Porter porter : porters) {
+        porterWeights.add(porter.laborMilli);
+        totalPorterLabor = Math.addExact(totalPorterLabor, porter.laborMilli);
+      }
+      if (totalPorterLabor <= 0L && !porterWeights.isEmpty()) {
+        porterWeights.replaceAll(ignored -> 1L);
+        totalPorterLabor = porterWeights.size();
+      }
+      ProductionRelation relation =
+          organization.unitId().isPresent() ? relations.get(organization.unitId().get()) : null;
+      Market market = markets.get(firm.homeHex());
+      CurrencyId numeraire =
+          market != null ? market.numeraire() : firstCurrency(accounts, principalHousehold);
+      long wagesDueMoney = dueMoneyWages(relation);
+      long wagesPaidMoney = 0L;
+      long arrearsMoney = 0L;
+      long wagesPaidInKindValue = 0L;
+      long arrearsInKindValue = 0L;
+      if (wagesDueMoney > 0L && !porters.isEmpty() && numeraire == null) {
+        throw new IllegalStateException(
+            "商人有应付货币工资但找不到计价币（说不出欠薪币种，拒绝静默丢债）: " + organizationId);
+      }
+      if (wagesDueMoney > 0L && !porters.isEmpty() && numeraire != null) {
+        long[] dueShares = split(porters.size(), wagesDueMoney, porterWeights, totalPorterLabor);
+        long available = accountMoney(accounts, principalHousehold, numeraire);
+        long paid = Math.min(wagesDueMoney, available);
+        long[] paidShares = split(porters.size(), paid, porterWeights, totalPorterLabor);
+        for (int i = 0; i < porters.size(); i++) {
+          if (paidShares[i] > 0L) {
+            moveMoney(accounts, principalHousehold, porters.get(i).household, numeraire, paidShares[i]);
+            wagesPaidMoney = Math.addExact(wagesPaidMoney, paidShares[i]);
+          }
+          long unpaid = dueShares[i] - paidShares[i];
+          if (unpaid > 0L) {
+            DebtContractBook.upsert(
+                debts,
+                principalHousehold,
+                porters.get(i).household,
+                DebtUnit.money(numeraire),
+                DebtTerms.legacyDefault(0),
+                unpaid,
+                day,
+                OptionalLong.empty());
+            arrearsMoney = Math.addExact(arrearsMoney, unpaid);
+          }
+        }
+      }
+      // 实物工资（FIXED_IN_KIND_PER_LABOR）：按现扣口径，付不出也资本化成实物债。
+      for (CompensationRule rule : rulesOfType(relation, RuleType.FIXED_IN_KIND_PER_LABOR)) {
+        CommodityId commodity = rule.commodity().orElse(null);
+        if (commodity == null || porters.isEmpty() || totalPorterLabor <= 0L) {
+          continue;
+        }
+        long due = Math.multiplyExact(rule.fixedAmount(), totalPorterLabor) / 1000L;
+        long[] dueShares = split(porters.size(), due, porterWeights, totalPorterLabor);
+        long available = accountGoods(accounts, principalHousehold, commodity);
+        long paid = Math.min(due, available);
+        long[] paidShares = split(porters.size(), paid, porterWeights, totalPorterLabor);
+        for (int i = 0; i < porters.size(); i++) {
+          if (paidShares[i] > 0L) {
+            moveGoods(accounts, principalHousehold, porters.get(i).household, commodity, paidShares[i]);
+            wagesPaidInKindValue =
+                Math.addExact(
+                    wagesPaidInKindValue,
+                    goodsValue(paidShares[i], commodity, market));
+          }
+          long unpaid = dueShares[i] - paidShares[i];
+          if (unpaid > 0L) {
+            DebtContractBook.upsert(
+                debts,
+                principalHousehold,
+                porters.get(i).household,
+                DebtUnit.commodity(commodity),
+                DebtTerms.legacyDefault(0),
+                unpaid,
+                day,
+                OptionalLong.empty());
+            arrearsInKindValue =
+                Math.addExact(arrearsInKindValue, goodsValue(unpaid, commodity, market));
+          }
+        }
+      }
+      long upkeep = upkeepOf(firm, organization, assetShares);
+      long costPaid =
+          Math.addExact(
+              Math.addExact(wagesPaidMoney, wagesPaidInKindValue),
+              upkeep);
+      long arrears = Math.addExact(arrearsMoney, arrearsInKindValue);
+      long profit = revenue - costPaid;
+
+      // 运力：盈利 +5（上限 100000）、亏损 −5（下限 5）。
+      long capacity = firm.capacityPerRound();
+      if (profit > 0L) {
+        capacity = Math.min(CAPACITY_CEILING, capacity + CAPACITY_STEP_PER_ROUND);
+      } else if (profit < 0L) {
+        capacity = Math.max(CAPACITY_FLOOR, capacity - CAPACITY_STEP_PER_ROUND);
+      }
+      long ruralPenalty = firm.ruralTradeCostPenaltyPerMille();
+      boolean active = revenue > 0L || firm.capacityUsedThisRound() > 0L;
+      if (!firm.homeIsCity() && active) {
+        ruralPenalty = Math.min(RURAL_PENALTY_CAP_PER_MILLE, ruralPenalty + RURAL_PENALTY_STEP_PER_ROUND);
+      }
+      MerchantFirm updated =
+          firm.withTradeResult(revenue, upkeep, profit)
+              .withCapacityDelta(capacity - firm.capacityPerRound())
+              .withRuralTradeCostPenaltyPerMille(ruralPenalty)
+              .withRoundReset();
+      firms.put(organizationId, updated);
+
+      cycle.recordMerchantWages(organizationId, Math.addExact(wagesPaidMoney, wagesPaidInKindValue));
+      cycle.recordMerchantUpkeep(organizationId, upkeep);
+      cycle.recordMerchantArrears(organizationId, arrears);
+      cycle.recordMerchantLabor(organizationId, totalPorterLabor);
+    }
+  }
+
+  // ── 商人细节 ──────────────────────────────────────────────────────────────────────────────
+
+  private static boolean servesLane(MerchantFirm firm, HexCoord from, HexCoord to) {
+    if (firm.serviceRadiusHex() <= 0L) {
+      return false; // 0 = 不按半径服务；MerchantFirm 没有显式 lane 字段（收口报告具名缺口）
+    }
+    return firm.homeHex().distanceTo(from) <= firm.serviceRadiusHex()
+        && firm.homeHex().distanceTo(to) <= firm.serviceRadiusHex();
+  }
+
+  private static long cityDiscountPerMille(MerchantFirm firm, HexCoord from, HexCoord to) {
+    MerchantPolicy policy =
+        new MerchantPolicy(
+            firm.tier(),
+            firm.homeHex(),
+            firm.homeIsCity(),
+            firm.capacityPerRound(),
+            Math.max(0L, firm.capacityPerRound() - firm.capacityUsedThisRound()),
+            null,
+            null,
+            firm.serviceRadiusHex(),
+            firm.ruralTradeCostPenaltyPerMille(),
+            firm.capacityUsedThisRound());
+    return policy.cityDiscountForLane(from, to);
+  }
+
+  private static long freightOf(long quantity, long unitPriceMilli, long ratePerMille) {
+    long numerator = Math.multiplyExact(Math.multiplyExact(quantity, unitPriceMilli), ratePerMille);
+    return (numerator + 1_000_000L - 1L) / 1_000_000L;
+  }
+
+  private static long upkeepOf(
+      MerchantFirm firm,
+      ProductionOrganization organization,
+      Map<AssetShareId, AssetShare> assetShares) {
+    long district = Math.multiplyExact((long) firm.tier().districtUse(), MerchantPolicy.UPKEEP_PER_DISTRICT_USE);
+    long assets = 0L;
+    for (AssetShareId shareId : organization.assetSources()) {
+      AssetShare share = assetShares.get(shareId);
+      if (share == null || share.quantity() <= 0L) {
+        continue;
+      }
+      if (share.asset() == AssetKind.SHIP || share.asset() == AssetKind.CATTLE) {
+        assets =
+            Math.addExact(
+                assets, Math.multiplyExact(share.quantity(), SHIP_CATTLE_UPKEEP_PER_UNIT_MILLI));
+      }
+    }
+    return Math.addExact(district, assets);
+  }
+
+  /** 一个 porter 家户与本周期实际劳动（laborSources 只提供身份；实际劳动只从 LaborAllocation 取）。 */
+  private record Porter(HouseholdId household, long laborMilli) {}
+
+  private static List<Porter> portersOf(
+      ProductionOrganization organization,
+      HouseholdId principal,
+      Map<LaborAllocationId, LaborAllocation> allocations,
+      Map<HouseholdId, ClassRow> rows) {
+    LinkedHashMap<HouseholdId, Long> laborByHousehold = new LinkedHashMap<>();
+    if (organization.unitId().isPresent()) {
+      String activity = organization.unitId().get().value();
+      List<LaborAllocation> matching = new ArrayList<>();
+      for (LaborAllocation allocation : allocations.values()) {
+        if (allocation.activity().equals(activity) && allocation.laborMilli() > 0L) {
+          matching.add(allocation);
+        }
+      }
+      matching.sort(Comparator.comparing(allocation -> allocation.id().value()));
+      for (LaborAllocation allocation : matching) {
+        if (allocation.household().equals(principal) || !rows.containsKey(allocation.household())) {
+          continue;
+        }
+        laborByHousehold.merge(allocation.household(), allocation.laborMilli(), Math::addExact);
+      }
+    }
+    if (laborByHousehold.isEmpty()) {
+      for (HouseholdId source : organization.laborSources()) {
+        if (!source.equals(principal) && rows.containsKey(source)) {
+          laborByHousehold.putIfAbsent(source, 0L);
+        }
+      }
+    }
+    List<HouseholdId> households = new ArrayList<>(laborByHousehold.keySet());
+    households.sort(Comparator.comparing(HouseholdId::value));
+    List<Porter> porters = new ArrayList<>();
+    for (HouseholdId household : households) {
+      porters.add(new Porter(household, laborByHousehold.get(household)));
+    }
+    return porters;
+  }
+
+  private static long dueMoneyWages(ProductionRelation relation) {
+    long due = 0L;
+    for (CompensationRule rule : rulesOfType(relation, RuleType.FIXED_MONEY_WAGE)) {
+      due = Math.addExact(due, rule.fixedAmount());
+    }
+    return due;
+  }
+
+  private static List<CompensationRule> rulesOfType(ProductionRelation relation, RuleType type) {
+    if (relation == null) {
+      return List.of();
+    }
+    List<CompensationRule> rules = new ArrayList<>();
+    for (CompensationRule rule : relation.rules()) {
+      if (rule.type() == type) {
+        rules.add(rule);
+      }
+    }
+    return rules;
+  }
+
+  // ── 比例切分 / 账户移动 ───────────────────────────────────────────────────────────────────
+
+  private static long[] split(int size, long total, List<Long> weights, long weightSum) {
+    long[] shares = new long[size];
+    if (size == 0 || total <= 0L) {
+      return shares;
+    }
+    if (weightSum <= 0L) {
+      shares[0] = total;
+      return shares;
+    }
+    return io.mosire.simos.util.economy.ProportionalSplit.byDenominator(
+        total, toArray(weights), weightSum);
+  }
+
+  private static long[] toArray(List<Long> values) {
+    long[] array = new long[values.size()];
+    for (int i = 0; i < values.size(); i++) {
+      array[i] = values.get(i);
+    }
+    return array;
+  }
+
+  private static long accountMoney(
+      AccountSession accounts, HouseholdId household, CurrencyId currency) {
+    return accounts.householdMoney().getOrDefault(household, Map.of()).getOrDefault(currency, 0L);
+  }
+
+  private static long accountGoods(
+      AccountSession accounts, HouseholdId household, CommodityId commodity) {
+    return accounts.householdGoods().getOrDefault(household, Map.of()).getOrDefault(commodity, 0L);
+  }
+
+  private static void moveMoney(
+      AccountSession accounts, HouseholdId source, HouseholdId target, CurrencyId currency, long amount) {
+    if (amount <= 0L) {
+      return;
+    }
+    Map<CurrencyId, Long> sourceMoney = accounts.householdMoney().get(source);
+    Map<CurrencyId, Long> targetMoney = accounts.householdMoney().get(target);
+    if (sourceMoney == null || targetMoney == null) {
+      throw new IllegalStateException("商人工资付款账户不存在（拒绝静默丢钱）: " + source + " → " + target);
+    }
+    long balance = sourceMoney.getOrDefault(currency, 0L);
+    if (amount > balance) {
+      throw new IllegalStateException("商人工资超过 principal 余额（拒绝透支）: need=" + amount + " balance=" + balance);
+    }
+    LinkedHashMap<CurrencyId, Long> nextSource = new LinkedHashMap<>(sourceMoney);
+    if (balance - amount <= 0L) {
+      nextSource.remove(currency);
+    } else {
+      nextSource.put(currency, balance - amount);
+    }
+    accounts.householdMoney().put(source, nextSource);
+    LinkedHashMap<CurrencyId, Long> nextTarget = new LinkedHashMap<>(targetMoney);
+    nextTarget.merge(currency, amount, Math::addExact);
+    accounts.householdMoney().put(target, nextTarget);
+  }
+
+  private static void moveGoods(
+      AccountSession accounts, HouseholdId source, HouseholdId target, CommodityId commodity, long amount) {
+    if (amount <= 0L) {
+      return;
+    }
+    Map<CommodityId, Long> sourceGoods = accounts.householdGoods().get(source);
+    Map<CommodityId, Long> targetGoods = accounts.householdGoods().get(target);
+    if (sourceGoods == null || targetGoods == null) {
+      throw new IllegalStateException("商人实物工资账户不存在（拒绝静默丢货）: " + source + " → " + target);
+    }
+    long balance = sourceGoods.getOrDefault(commodity, 0L);
+    if (amount > balance) {
+      throw new IllegalStateException("商人实物工资超过 principal 库存（拒绝透支）: need=" + amount + " balance=" + balance);
+    }
+    LinkedHashMap<CommodityId, Long> nextSource = new LinkedHashMap<>(sourceGoods);
+    if (balance - amount <= 0L) {
+      nextSource.remove(commodity);
+    } else {
+      nextSource.put(commodity, balance - amount);
+    }
+    accounts.householdGoods().put(source, nextSource);
+    LinkedHashMap<CommodityId, Long> nextTarget = new LinkedHashMap<>(targetGoods);
+    nextTarget.merge(commodity, amount, Math::addExact);
+    accounts.householdGoods().put(target, nextTarget);
+  }
+
+  private static long goodsValue(long quantityMilli, CommodityId commodity, Market market) {
+    if (market == null || commodity == null || quantityMilli <= 0L) {
+      return 0L;
+    }
+    long price = market.priceOf(commodity);
+    if (price <= 0L) {
+      return 0L;
+    }
+    return quantityMilli * price / io.mosire.simos.util.economy.EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
+  }
+
+  private static CurrencyId firstCurrency(AccountSession accounts, HouseholdId household) {
+    CurrencyId smallest = null;
+    for (CurrencyId currency : accounts.householdMoney().getOrDefault(household, Map.of()).keySet()) {
+      if (smallest == null || currency.value().compareTo(smallest.value()) < 0) {
+        smallest = currency;
+      }
+    }
+    return smallest;
+  }
+
+  private static List<HouseholdId> sortedHouseholds(Map<HouseholdId, ClassRow> rows) {
+    List<HouseholdId> keys = new ArrayList<>(rows.keySet());
+    keys.sort(Comparator.comparing(HouseholdId::value));
+    return keys;
+  }
+}

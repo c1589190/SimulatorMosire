@@ -12,6 +12,7 @@ import io.mosire.simos.economy.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.InstrumentId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
+import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
@@ -37,6 +38,7 @@ import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.map.hex.HexCoord;
@@ -525,16 +527,37 @@ final class MarketSettlement {
       MarketTrigger trigger,
       MarketTopology topology,
       EconomyParallelism parallelism) {
+    // ★ P10.2 兼容入口：没有 merchantFirms 的世界走旧承运路径（逐值不变）。
+    return clearOncePerCycle(
+        markets, round, trigger, topology, parallelism, Map.of(), MerchantSettlement.CarrierPool.empty());
+  }
+
+  /**
+   * ★★ <b>P10.2 承运商入口</b>：{@code merchantFirms} 非空时每条跨区 lane 由 {@link MerchantSettlement.CarrierPool}
+   * 现选商号（服务半径/剩余运力/到货费率序），买方 CARRIER_FEE 直接付给 principal 家户；为空时退回旧 {@link #carrierOf}。
+   */
+  static MarketOutcome clearOncePerCycle(
+      Map<HexCoord, Market> markets,
+      MarketRound round,
+      MarketTrigger trigger,
+      MarketTopology topology,
+      EconomyParallelism parallelism,
+      Map<ProductionOrganizationId, MerchantFirm> merchantFirms,
+      MerchantSettlement.CarrierPool carrierPool) {
     Objects.requireNonNull(markets, "markets");
     Objects.requireNonNull(round, "round");
     Objects.requireNonNull(trigger, "trigger");
     Objects.requireNonNull(topology, "topology");
     Objects.requireNonNull(parallelism, "parallelism");
-    Optional<ActorRef> carrier = carrierOf(round);
-    MatchContext ctx = new MatchContext(round, markets, topology, carrier);
+    Objects.requireNonNull(merchantFirms, "merchantFirms");
+    Objects.requireNonNull(carrierPool, "carrierPool");
+    boolean merchantWorld = !merchantFirms.isEmpty();
+    Optional<ActorRef> carrier = merchantWorld ? Optional.empty() : carrierOf(round);
+    MatchContext ctx =
+        new MatchContext(round, markets, topology, carrier, merchantFirms, carrierPool);
     if (markets.isEmpty() || trigger == MarketTrigger.NONE) {
       return new MarketOutcome(
-          MarketReport.empty(round.day, trigger, carrier.isPresent()), markets);
+          MarketReport.empty(round.day, trigger, carrierPresent(ctx)), markets);
     }
 
     // ── 1. 逐格建计划与订单；参与表按 actor 去重（订单生成与撮合的唯一来源）──────────────────────
@@ -671,7 +694,7 @@ final class MarketSettlement {
         new MarketReport(
             round.day,
             trigger,
-            ctx.carrier.isPresent(),
+            carrierPresent(ctx),
             ctx.fills,
             ctx.unfilled,
             routeUsages,
@@ -1380,7 +1403,14 @@ final class MarketSettlement {
             ctx.round.operatorConditions,
             ctx.round.index,
             ctx.round.demands);
-    MatchContext local = new MatchContext(localRound, ctx.markets, ctx.topology, ctx.carrier);
+    MatchContext local =
+        new MatchContext(
+            localRound,
+            ctx.markets,
+            ctx.topology,
+            ctx.carrier,
+            ctx.merchantFirms,
+            MerchantSettlement.CarrierPool.empty());
     local.buys.addAll(localBuys);
     local.sells.addAll(localSells);
     local.recordFillIntents = true;
@@ -2077,7 +2107,23 @@ final class MarketSettlement {
     long payment = ceilDiv(quantity * unitPrice, EconomySettlement.MILLI_PER_GRAIN);
     long nominalFreight =
         route == null ? 0L : freightOf(quantity, route.unitPrice, route.freightRatePerMille);
-    long freight = route != null && ctx.carrier.isPresent() ? nominalFreight : 0L;
+    // ★ P10.2：跨区 lane 现选承运商（merchantFirms 非空时）；无商号/无运力 ⇒ 运费记入 uncollected，钱不消失。
+    Optional<ActorRef> carrierActor = Optional.empty();
+    long freight = 0L;
+    if (route != null) {
+      if (!ctx.merchantFirms.isEmpty()) {
+        Optional<MerchantSettlement.CarrierChoice> choice =
+            ctx.carrierPool.select(
+                route.from, route.to, quantity, route.unitPrice, route.freightRatePerMille);
+        if (choice.isPresent()) {
+          freight = choice.get().freightMilli();
+          carrierActor = Optional.of(choice.get().principalActor());
+        }
+      } else if (ctx.carrier.isPresent()) {
+        freight = nominalFreight;
+        carrierActor = ctx.carrier;
+      }
+    }
 
     // ① 卖方把已冻结的那一份放出来，再走唯一 applier（货腿：卖方 → 买方）。
     long sellRelease = Math.min(quantity, sell.frozenRemaining);
@@ -2137,11 +2183,11 @@ final class MarketSettlement {
           round.householdOfActor,
           moneyLeg);
     }
-    if (freight > 0L && ctx.carrier.isPresent()) {
+    if (freight > 0L && carrierActor.isPresent()) {
       Transfer freightLeg =
           round.ledger.mint(
               buy.buyer.actor,
-              ctx.carrier.get(),
+              carrierActor.get(),
               route.to,
               Map.of(),
               Map.of(buy.currency, freight),
@@ -2158,7 +2204,7 @@ final class MarketSettlement {
           round.householdOfActor,
           freightLeg);
       ctx.freightPaidMilli += freight;
-    } else if (route != null) {
+    } else if (route != null && carrierActor.isEmpty()) {
       ctx.freightUncollectedMilli += nominalFreight;
     }
     buy.spentMilli += total;
@@ -3350,6 +3396,10 @@ final class MarketSettlement {
    * <p>★ <b>必须要求货币账</b>：只有商品账的组织收不了运费 —— 若把它当承运人，买方的运费腿会"记了但没人收" （钱凭空消失）。没有可收款的主体就**不收运费**（{@link
    * MarketReport#freightUncollectedMilli()} 如实记下）。
    */
+  private static boolean carrierPresent(MatchContext ctx) {
+    return ctx.carrier.isPresent() || !ctx.merchantFirms.isEmpty();
+  }
+
   private static Optional<ActorRef> carrierOf(MarketRound round) {
     List<ActorRef> carriers = new ArrayList<>();
     for (ActorRef actor : round.operatorMoney.keySet()) {
@@ -3547,6 +3597,8 @@ final class MarketSettlement {
     final Map<HexCoord, Market> markets;
     final MarketTopology topology;
     final Optional<ActorRef> carrier;
+    final Map<ProductionOrganizationId, MerchantFirm> merchantFirms;
+    final MerchantSettlement.CarrierPool carrierPool;
     final List<BuySlot> buys = new ArrayList<>();
     final List<SellSlot> sells = new ArrayList<>();
     final Map<ActorRef, Participant> participants = new LinkedHashMap<>();
@@ -3577,11 +3629,15 @@ final class MarketSettlement {
         MarketRound round,
         Map<HexCoord, Market> markets,
         MarketTopology topology,
-        Optional<ActorRef> carrier) {
+        Optional<ActorRef> carrier,
+        Map<ProductionOrganizationId, MerchantFirm> merchantFirms,
+        MerchantSettlement.CarrierPool carrierPool) {
       this.round = round;
       this.markets = markets;
       this.topology = topology;
       this.carrier = carrier;
+      this.merchantFirms = merchantFirms;
+      this.carrierPool = carrierPool;
     }
   }
 }
