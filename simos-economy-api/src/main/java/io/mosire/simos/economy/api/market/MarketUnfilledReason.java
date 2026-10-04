@@ -88,7 +88,14 @@ public enum MarketUnfilledReason {
   CANNOT_REPRODUCE("cannot_reproduce"),
 
   /** 算法没有覆盖到的剩余（兜底，不静默）。 */
-  ALGORITHM_UNCOVERED("algorithm_uncovered");
+  ALGORITHM_UNCOVERED("algorithm_uncovered"),
+
+  /**
+   * ★ <b>D-027：市场总调控配额用尽</b>—— 本轮该区该商品的卖方成交量已达 {@code MarketRegulation.quotaPerWindow}
+   * 的上限，超出的买方需求因此没成交。★ 它是<b>区级制度原因</b>，与逐 hex 的物流成本（{@code HexTradeCost} 的实物损耗）
+   * 是两层：这一档不得被用来表达"路远/运力不足"。
+   */
+  REGULATION_QUOTA("regulation_quota");
 
   private final String value;
 

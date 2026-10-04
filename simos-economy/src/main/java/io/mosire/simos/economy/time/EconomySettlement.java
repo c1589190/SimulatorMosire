@@ -1159,7 +1159,10 @@ public final class EconomySettlement {
             operatorConditions,
             settlementIndex,
             // ★★ R4-E2：当日有效需求来自状态组件的只读账本（订单路径据此把"生活保留基线 + 需求目标"合成买卖目标）。
-            base.demands());
+            base.demands(),
+            // ★★ D-027：生产路径默认 regulation（单区锚格 = markets 规范序第一个 hex；空表/open=true/无税费
+            //   ⇒ 逐值现状）。跨市场区/自定义制度由后续批次经 GM 命令面注入同一入口。
+            MarketRegulation.defaultsFor(markets));
     // ★★ P10.2：有 merchantFirms 时由 MerchantSettlement 逐 lane 选商号/收费；没有时 Map.of() 退回旧承运路径。
     Map<ProductionOrganizationId, MerchantFirm> marketMerchants =
         base.merchantFirms().isEmpty() ? Map.of() : session.sheet().merchantFirms();

@@ -225,7 +225,14 @@ public record MarketReadout(
             continue;
           }
           MarketSettlement.PlannedOrders orders =
-              MarketSettlement.planOrders(round, member, memberMarket, commodity, rowsByHex);
+              MarketSettlement.planOrders(
+                  round,
+                  member,
+                  memberMarket,
+                  commodity,
+                  rowsByHex,
+                  region.node().nodeId(),
+                  round.regulation());
           for (SellOrder sell : orders.sells()) {
             supply += sell.sellable();
           }

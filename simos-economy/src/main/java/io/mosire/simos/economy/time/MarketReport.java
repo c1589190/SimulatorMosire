@@ -7,6 +7,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.market.PriceMode;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -75,6 +76,16 @@ public record MarketReport(
    */
   public static final boolean CROSS_REGION_SETTLEMENT_IMMEDIATE = true;
 
+  /**
+   * ★★ <b>D-027：逐票"区级税费"读数快照</b>（identity 键 → 毫计价货币税费）。
+   *
+   * <p>★ 它是 record 组件之外的<b>派生只读件</b>：record 不许有实例字段，故不进 {@code toString}/{@code equals}/
+   * 序列化形状；键用<b>引用身份</b>（不是 {@code equals}），不会把两份等值报告串味。{@link #withRegulatedTariff}
+   * 是唯一写入点；其余构造路径这里没有条目 ⇒ 读数为 0。
+   */
+  private static final Map<Object, Map<Fill, Long>> REGULATED_TARIFF_BY_REPORT =
+      java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
   public MarketReport {
     Objects.requireNonNull(trigger, "trigger");
     Objects.requireNonNull(priceMode, "priceMode");
@@ -84,6 +95,133 @@ public record MarketReport(
     priceUpdates = priceUpdates == null ? List.of() : List.copyOf(priceUpdates);
     sellerOutcomes = sellerOutcomes == null ? List.of() : List.copyOf(sellerOutcomes);
     buyerOutcomes = buyerOutcomes == null ? List.of() : List.copyOf(buyerOutcomes);
+  }
+
+  /** 只按<b>引用身份</b>相等的外部键（见 {@link #REGULATED_TARIFF_BY_REPORT}）。 */
+  private static final class IdentityKey {
+    private final Object target;
+
+    IdentityKey(Object target) {
+      this.target = target;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      return other instanceof IdentityKey key && key.target == target;
+    }
+
+    @Override
+    public int hashCode() {
+      return System.identityHashCode(target);
+    }
+  }
+
+  /**
+   * ★★ <b>D-027：带区级税费读数的报告工厂</b>（唯一会填 {@link #regulatedTariffMilli()} 的入口）。
+   *
+   * <p>★ 为什么税费不落成 {@link Fill} 字段：本批税费<b>只记读数、不搬钱</b>（收款方未定），把它塞进成交形状会诱导
+   * 读口把它加进到货价；放在这里则"谁要是真收了"这件事一眼可辨。{@code tariffPerUnit} 里非 0 的项才产生读数；
+   * 税费按<b>成交毛量</b>折算（{@code ⌊量 × 单价税 ÷ 1000⌋}，向下取整）。
+   *
+   * @param tariffByFill 逐票单位税费（毫计价货币/商品单位；空/缺项/≤0 = 该票不记税费）—— 税费按<b>成交毛量</b>折算
+   *     （{@code ⌊量 × 单价税 ÷ 1000⌋}，向下取整）
+   */
+  public static MarketReport withRegulatedTariff(
+      long day,
+      MarketTrigger trigger,
+      boolean carrierPresent,
+      List<Fill> fills,
+      List<Unfilled> unfilled,
+      List<RouteUsage> routes,
+      long freightPaidMilli,
+      long freightUncollectedMilli,
+      long scheduledLossMilli,
+      long immediateFills,
+      long crossRegionFills,
+      PriceMode priceMode,
+      List<PriceUpdate> priceUpdates,
+      List<SellerOutcome> sellerOutcomes,
+      List<BuyerOutcome> buyerOutcomes,
+      Map<Fill, Long> tariffByFill) {
+    MarketReport report =
+        new MarketReport(
+            day,
+            trigger,
+            carrierPresent,
+            fills,
+            unfilled,
+            routes,
+            freightPaidMilli,
+            freightUncollectedMilli,
+            scheduledLossMilli,
+            immediateFills,
+            crossRegionFills,
+            priceMode,
+            priceUpdates,
+            sellerOutcomes,
+            buyerOutcomes);
+    if (tariffByFill == null || tariffByFill.isEmpty() || report.fills.isEmpty()) {
+      return report;
+    }
+    Map<Fill, Long> byFill = new LinkedHashMap<>();
+    for (Map.Entry<Fill, Long> entry : tariffByFill.entrySet()) {
+      Fill fill = entry.getKey();
+      Long rate = entry.getValue();
+      if (fill == null || rate == null || rate <= 0L || !report.fills.contains(fill)) {
+        continue;
+      }
+      long tariff = fill.quantity() * rate / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
+      if (tariff <= 0L) {
+        continue;
+      }
+      byFill.put(fill, tariff);
+    }
+    if (!byFill.isEmpty()) {
+      REGULATED_TARIFF_BY_REPORT.put(new IdentityKey(report), byFill);
+    }
+    return report;
+  }
+
+  /**
+   * ★★ <b>D-027：单 hex 即时成交笔数</b>（{@code immediate && !from.equals(to)}）—— 同一格不跨 hex，不计。
+   */
+  public long immediateCrossHexFills() {
+    long count = 0L;
+    for (Fill fill : fills) {
+      if (fill.immediate() && !fill.from().equals(fill.to())) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * ★★ <b>D-027：单 hex 即时成交的损耗合计</b>（毫商品；{@code immediate && !from.equals(to)} 的 {@link
+   * Fill#lossMilli()} 之和）。它是"区内跨 hex 物流成本"的唯一读数入口。
+   */
+  public long immediateCrossHexLossMilli() {
+    long sum = 0L;
+    for (Fill fill : fills) {
+      if (fill.immediate() && !fill.from().equals(fill.to())) {
+        sum += fill.lossMilli();
+      }
+    }
+    return sum;
+  }
+
+  /**
+   * ★★ <b>D-027：区级税费读数合计</b>（毫计价货币）—— 本批<b>只记读数，不搬钱</b>（收款方未定）。没有调控/没有成交 ⇒ 0。
+   */
+  public long regulatedTariffMilli() {
+    Map<Fill, Long> byFill = REGULATED_TARIFF_BY_REPORT.get(new IdentityKey(this));
+    if (byFill == null) {
+      return 0L;
+    }
+    long sum = 0L;
+    for (long amount : byFill.values()) {
+      sum += amount;
+    }
+    return sum;
   }
 
   /** 没有任何市场活动的空报告。 */

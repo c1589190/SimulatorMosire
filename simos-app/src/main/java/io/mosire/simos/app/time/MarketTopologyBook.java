@@ -2,6 +2,7 @@ package io.mosire.simos.app.time;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.market.MarketNode;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.model.IndustryHexKeys;
@@ -97,6 +98,11 @@ final class MarketTopologyBook {
    * <p>★ P6 没有稳定来源时传 {@link MarketTopology#NO_CITY_DISCOUNT_PER_MILLE}/{@link
    * MarketTopology#NO_RURAL_PENALTY_PER_MILLE}（= 旧 {@link #from(SimulationState)}）；P9/P7 在组合根按
    * {@code MerchantPolicy} 汇总后注入。
+   *
+   * <p>★★ <b>D-027（同币即同区）的生产路径</b>：{@code economy.markets()} 非空、有城市权威、且<b>所有
+   * {@code Market.numeraire} 相同</b> ⇒ 直接返回 {@link MarketTopology#singleRegion}（全部有市场的 hex 归一个区，
+   * 锚格 = 规范序第一个 hex、{@code nodeId = "single-region"}）；币种不一致时才退回既有的"城市节点 + tier 半径"路径
+   * （D-027：跨市场区本批暂缓，不新增跨区撮合）。地形索引/道路/费率的装配方式逐字不变。
    */
   static MarketTopology from(
       SimulationState state,
@@ -110,9 +116,44 @@ final class MarketTopologyBook {
     if (!(mapSnapshot instanceof MapSnapshot map)) {
       return MarketTopology.singleHex(economy.markets());
     }
+    if (economy.markets().isEmpty()) {
+      return MarketTopology.singleHex(economy.markets());
+    }
     GameMap gameMap = map.map();
-    List<MarketNode> nodes = new ArrayList<>();
     SocialData social = socialOrNull(state);
+    boolean cityAuthority = social != null && !social.cities().isEmpty();
+    boolean sameNumeraire = sameNumeraire(economy.markets());
+    // ★★ D-027：同币即同区。城市权威缺席（单模块夹具/只有 craft@ 格）时也走此路径？不 ——
+    //   退回"城市节点 + 半径"的老装配，保持旧夹具可见的地形/道路装配口径不变。
+    if (cityAuthority && sameNumeraire) {
+      Map<HexCoord, Integer> terrainCost = terrainCostIndex(gameMap);
+      RoadNetwork roadNetwork = RoadNetwork.from(gameMap);
+      return MarketTopology.singleRegion(
+          economy.markets(),
+          economy.markets().keySet(),
+          hex -> terrainCostOf(terrainCost, hex),
+          roadNetwork::roadBottleneckBetween,
+          TransportTariff.probeDefaults());
+    }
+    return byCityRadius(
+        economy,
+        gameMap,
+        social,
+        cityDiscountPerMilleBetween,
+        ruralPenaltyPerMilleBetween);
+  }
+
+  /**
+   * ★★ <b>旧路径（城市节点 + tier 半径 / craft@ 退化）</b>：币种不一致或城市权威缺席时使用；装配口径与
+   * D-027 之前逐字相同（地形索引一次构建、道路/辐射由组合根注入、两个商人调整量落在费率公式里）。
+   */
+  private static MarketTopology byCityRadius(
+      EconomyData economy,
+      GameMap gameMap,
+      SocialData social,
+      ToLongBiFunction<HexCoord, HexCoord> cityDiscountPerMilleBetween,
+      ToLongBiFunction<HexCoord, HexCoord> ruralPenaltyPerMilleBetween) {
+    List<MarketNode> nodes = new ArrayList<>();
     if (social != null && !social.cities().isEmpty()) {
       List<SocialCity> cities = new ArrayList<>(social.cities().values());
       cities.sort(Comparator.comparing(city -> city.id().value()));
@@ -163,6 +204,22 @@ final class MarketTopologyBook {
         TransportTariff.probeDefaults(),
         cityDiscountPerMilleBetween,
         ruralPenaltyPerMilleBetween);
+  }
+
+  /**
+   * ★★ <b>D-027 的同币判据</b>：所有有市场的 hex 的 {@code Market.numeraire} 逐值相同 ⇒ 一个市场区。 空 markets ⇒
+   * false（由调用方先判空，不在这里派单区）。
+   */
+  private static boolean sameNumeraire(Map<HexCoord, Market> markets) {
+    CurrencyId single = null;
+    for (Market market : markets.values()) {
+      if (single == null) {
+        single = market.numeraire();
+      } else if (!single.equals(market.numeraire())) {
+        return false;
+      }
+    }
+    return single != null;
   }
 
   /**
