@@ -28,7 +28,6 @@ import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.classfirst.ClassFirstState;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassPosition;
@@ -65,7 +64,7 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 31 个：{@code meta} / {@code industries} /
+ * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 30 个：{@code meta} / {@code industries} /
  * {@code classes} / {@code debtContracts} / {@code flows} / {@code laborSupply} / {@code
  * allocations} / {@code relations} / {@code markets} / {@code shipments} / {@code memberships} /
  * {@code assetShares} / {@code operatorConditions} / {@code units} / {@code demands} / {@code
@@ -73,16 +72,16 @@ import java.util.function.Function;
  * classStandings} / {@code productionOrganizations} / {@code assetRules} + E3 的 {@code governments}
  * / {@code moneyIssuances} + E4a 的 {@code debtContracts} / {@code pledges} + E5a 的 {@code
  * liquidationPolicies} / {@code crisisSignals} + E6a 的 {@code modeTransitions} / {@code
- * classShares} + R1 的 {@code classFirst} + P10.1 的 {@code merchantFirms}）。
+ * classShares} + P10.1 的 {@code merchantFirms}）。
  *
  * <p>铁律 5：变更集从完整状态类型派生，由 {@code EconomyRoundTripTest} 的**反射枚举**把守——新增状态组件若不进 变更集，那个测试自动红。
  *
- * <p>★★ **E1–E6 追加组件、R1 的 {@code classFirst} 与 {@link EconomyData} 逐条对应**：E1 {@code
+ * <p>★★ **E1–E6 追加组件与 {@link EconomyData} 逐条对应**：E1 {@code
  * modes/classStructures/classPositions/classStandings}； E2 {@code
  * productionOrganizations/assetRules}；E3 {@code governments/moneyIssuances}；E4 {@code
  * debtContracts} （替换旧 {@code debts} 槽）/{@code pledges}；E5 {@code
  * liquidationPolicies/crisisSignals}；E6 {@code modeTransitions/classShares}。E6b（GM 经济调整命令）与 E6c（统一
- * dashboard 读口）都只读写既有组件， **零新状态组件**；R1 追加 {@code classFirst}、P10.1 追加 {@code merchantFirms} 后为 **31
+ * dashboard 读口）都只读写既有组件， **零新状态组件**；P10.1 追加 {@code merchantFirms} 后为 **30
  * 个组件**（上面那份逐条清单就是全表）。
  *
  * <p>★ **差异与重建的语义不在这里**：一律委托 {@link FieldDelta#diff} / {@link FieldDelta#rebuild}（与 {@code
@@ -135,15 +134,11 @@ public record EconomyChangeSet(
     FieldDelta<HexCrisisSignal> crisisSignals,
     FieldDelta<ModeTransition> modeTransitions,
     FieldDelta<ClassShare> classShares,
-    FieldDelta<ClassFirstState> classFirst,
     FieldDelta<MerchantFirm> merchantFirms)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
   private static final String META_KEY = "meta";
-
-  /** {@code classFirst} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
-  private static final String CLASS_FIRST_KEY = "classFirst";
 
   public EconomyChangeSet {
     // ★ **旧档兼容**（§11 的口径，照 {@code LedgerChangeSet}）：升级前落盘的这条变更集没有这些
@@ -249,11 +244,7 @@ public record EconomyChangeSet(
     if (classShares == null) {
       classShares = new FieldDelta.Unchanged<>();
     }
-    // ★★ R1 第 30 个组件（阶层池经济持久状态）：旧变更集没提该组件，就是没动它。
-    if (classFirst == null) {
-      classFirst = new FieldDelta.Unchanged<>();
-    }
-    // ★★ P10.1 第 31 个组件（商号表）：旧变更集没提该组件，就是没动它。
+    // ★★ P10.1 第 30 个组件（商号表）：旧变更集没提该组件，就是没动它。
     if (merchantFirms == null) {
       merchantFirms = new FieldDelta.Unchanged<>();
     }
@@ -293,7 +284,6 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.crisisSignals(), target.crisisSignals()),
         FieldDelta.diff(base.modeTransitions(), target.modeTransitions()),
         FieldDelta.diff(base.classShares(), target.classShares()),
-        FieldDelta.diff(classFirstTable(base.classFirst()), classFirstTable(target.classFirst())),
         FieldDelta.diff(base.merchantFirms(), target.merchantFirms()));
   }
 
@@ -337,9 +327,6 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(base.crisisSignals(), cs.crisisSignals(), CrisisSignalId::parse),
         FieldDelta.rebuild(base.modeTransitions(), cs.modeTransitions(), ModeTransitionId::parse),
         FieldDelta.rebuild(base.classShares(), cs.classShares(), ClassShareId::parse),
-        classFirstOf(
-            FieldDelta.rebuild(
-                classFirstTable(base.classFirst()), cs.classFirst(), key -> CLASS_FIRST_KEY)),
         FieldDelta.rebuild(
             base.merchantFirms(), cs.merchantFirms(), ProductionOrganizationId::parse));
   }
@@ -375,28 +362,7 @@ public record EconomyChangeSet(
         || crisisSignals.changed()
         || modeTransitions.changed()
         || classShares.changed()
-        || classFirst.changed()
         || merchantFirms.changed());
-  }
-
-  /**
-   * ★★ R1：{@code classFirst} 是单值组件，与 {@code meta} 同款投影进"至多一行的表"（键固定为 {@link
-   * #CLASS_FIRST_KEY}）——差异/重建全走 {@link FieldDelta} 既有机制，不另写一份"单值差异"。
-   *
-   * <p>{@link ClassFirstState#empty()} 投影成空表（= 该组件缺席）；非空状态投影成一行。语义是纯的：空 → 有值 = Upsert、有值 → 空 =
-   * Remove、有值 → 另一个值 = Upsert。
-   */
-  private static Map<String, ClassFirstState> classFirstTable(ClassFirstState state) {
-    if (state == null || state.isEmpty()) {
-      return Map.of();
-    }
-    return Map.of(CLASS_FIRST_KEY, state);
-  }
-
-  /** 上一条的逆：空表 ⇒ {@link ClassFirstState#empty()}。 */
-  private static ClassFirstState classFirstOf(Map<String, ClassFirstState> table) {
-    ClassFirstState state = table.get(CLASS_FIRST_KEY);
-    return state == null ? ClassFirstState.empty() : state;
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

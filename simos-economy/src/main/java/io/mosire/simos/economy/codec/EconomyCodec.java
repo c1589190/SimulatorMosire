@@ -26,9 +26,6 @@ import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CandidateId;
-import io.mosire.simos.economy.api.id.ClassFirstAccountId;
-import io.mosire.simos.economy.api.id.ClassFlowEventId;
-import io.mosire.simos.economy.api.id.ClassPoolId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
@@ -37,14 +34,10 @@ import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
-import io.mosire.simos.economy.api.id.ExternalLenderId;
 import io.mosire.simos.economy.api.id.GovernmentId;
-import io.mosire.simos.economy.api.id.HouseholdProductionAccountId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.MembershipId;
-import io.mosire.simos.economy.api.id.MobilityPolicyId;
-import io.mosire.simos.economy.api.id.ModeParticipationId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
@@ -59,7 +52,6 @@ import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.classfirst.ClassFirstState;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.DebtContract;
@@ -106,7 +98,7 @@ import java.util.function.Function;
  * ClassStanding.retainedShares} 三个嵌套键表）；{@code classStandings} 的键仍是上面已注册的 {@code HouseholdId}。
  * 旧档缺这四个键 ⇒ 快照侧收成空表、变更集侧收成 {@code Unchanged}，见各自的构造器兜底。
  *
- * <p>★ <b>P10.1</b>：{@code merchantFirms}（第 31 个组件）的键复用已注册的 {@code ProductionOrganizationId}；值
+ * <p>★ <b>P10.1</b>：{@code merchantFirms}（第 30 个组件）的键复用已注册的 {@code ProductionOrganizationId}；值
  * {@link io.mosire.simos.economy.model.MerchantFirm} 按 record 组件字段显式绑定， 缺键 ⇒ 空表（{@code EconomyData}
  * 构造期归一），写侧按构造期 {@code LinkedHashMap} 的插入序保序。
  *
@@ -143,29 +135,19 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       withEconomyMixins(SimosObjectMapper.create(keyModule(), compatModule()));
 
   /**
-   * ★ 把 {@code EconomyChangeSet.isEmpty()} / {@link ClassFirstState#isEmpty()} 摘出 JSON 形态（与 {@code
+   * ★ 把 {@code EconomyChangeSet.isEmpty()} 摘出 JSON 形态（与 {@code
    * LedgerCodec} 同制）：Jackson 会把 {@code isEmpty()} 当成属性 {@code "empty"} 写进字节，而严格读入随即炸掉。 {@code
    * isEmpty} 是派生判断不是状态，**不进线格式**；mixin 放本类（mapper 与 mixin 同处一地、谁也丢不了），领域类型保持零 Jackson 注解（{@code
    * AllocationRule} 的 sealed 多态注解除外——那是往返的硬前提）。
-   *
-   * <p>★ R1：{@link ClassFirstState} 也带 {@code isEmpty()}（空态投影判据），故两台 mapper（MAPPER 与 PLAIN）都要装。
    */
   private static ObjectMapper withEconomyMixins(ObjectMapper mapper) {
     mapper.addMixIn(EconomyChangeSet.class, EconomyChangeSetMixin.class);
-    mapper.addMixIn(ClassFirstState.class, ClassFirstStateMixin.class);
     mapper.addMixIn(EconomyMeta.class, EconomyMetaMixin.class);
     return mapper;
   }
 
   /** 只承载注解，方法体永不执行。 */
   abstract static class EconomyChangeSetMixin {
-
-    @JsonIgnore
-    abstract boolean isEmpty();
-  }
-
-  /** ★ R1：同上，为 {@link ClassFirstState#isEmpty()} 摘掉派生属性。 */
-  abstract static class ClassFirstStateMixin {
 
     @JsonIgnore
     abstract boolean isEmpty();
@@ -226,7 +208,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(ClassStructureId.class, keyDeserializer(ClassStructureId::parse));
     module.addKeyDeserializer(ClassPositionId.class, keyDeserializer(ClassPositionId::parse));
     // ★★ E2：productionOrganizations / assetRules 两张新表的键（opaque 裸值，与各自 parse 互为逆，只需读侧）。
-    //   ★ P10.1：merchantFirms（第 31 个组件）的键 = ProductionOrganizationId，复用下面这一个注册点；
+    //   ★ P10.1：merchantFirms（第 30 个组件）的键 = ProductionOrganizationId，复用下面这一个注册点；
     //     值 MerchantFirm 走 Jackson 的 record 字段显式绑定（无自定义 compatibility 层），缺键 ⇒ EconomyData
     //     构造期归一成空表，写侧按构造期 LinkedHashMap 的插入序保序。
     module.addKeyDeserializer(
@@ -241,21 +223,6 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     // ★★ E6a：modeTransitions / classShares 两张新表的键（opaque 裸值，与各自 parse 互为逆，只需读侧）。
     module.addKeyDeserializer(ModeTransitionId.class, keyDeserializer(ModeTransitionId::parse));
     module.addKeyDeserializer(ClassShareId.class, keyDeserializer(ClassShareId::parse));
-    // ★★ R1：classfirst 持久状态新增的七类键（toString/parse 互逆，只需读侧）。
-    //   ★ R2a：ClassPool 的值绑定已搬到类型自身的 @JsonSerialize/@JsonDeserialize 注解
-    //     （io.mosire.simos.economy.classfirst.ClassPoolJson）—— 这里再注册一份会让同一字段集
-    //     有两个拼写点；且 Timeline 的 changeset mapper 本来就看不见本私有 mapper 的注册，
-    //     落盘会抛 No serializer found。 ⇒ 删这两行注册，走类型注解。
-    module.addKeyDeserializer(ClassPoolId.class, keyDeserializer(ClassPoolId::parse));
-    module.addKeyDeserializer(
-        ModeParticipationId.class, keyDeserializer(ModeParticipationId::parse));
-    module.addKeyDeserializer(
-        HouseholdProductionAccountId.class, keyDeserializer(HouseholdProductionAccountId::parse));
-    module.addKeyDeserializer(MobilityPolicyId.class, keyDeserializer(MobilityPolicyId::parse));
-    module.addKeyDeserializer(ClassFlowEventId.class, keyDeserializer(ClassFlowEventId::parse));
-    module.addKeyDeserializer(
-        ClassFirstAccountId.class, keyDeserializer(ClassFirstAccountId::parse));
-    module.addKeyDeserializer(ExternalLenderId.class, keyDeserializer(ExternalLenderId::parse));
     return module;
   }
 
@@ -565,6 +532,19 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /**
+   * ★★ 2026-10-09：class-first 经济档已退役 —— 快照/变更集里的顶层 {@code classFirst} 组件不再存在；
+   * 明确 fail-closed（而不是让 Jackson 以"未知字段"兜底），旧 class-first 世界需按 production-runtime 重建。
+   */
+  private static void rejectRetiredClassFirst(ObjectNode node, String what) {
+    if (node.has("classFirst")) {
+      throw new IllegalStateException(
+          what
+              + " 里出现已退役的 classFirst 组件：class-first 线格式自 2026-10-09 起不再受支持，"
+              + "请用 production-runtime（政府内置）重建世界");
+    }
+  }
+
+  /**
    * ★★ R3B.1：{@link EconomyData} 的旧档读侧兼容（组件键 {@code useRights} 与旧值形状）。
    *
    * <p>★ <b>翻译而不是猜</b>：旧 {@code holder} 同时填 {@code owner} 与 {@code operator}（一对一的旧档事实），
@@ -581,6 +561,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       if (!(raw instanceof ObjectNode node)) {
         throw new IllegalStateException("EconomyData 必须是 JSON 对象: " + raw);
       }
+      rejectRetiredClassFirst(node, "EconomyData");
       node = migrateLegacyAssetShareComponent(node);
       node = migrateLegacyProductionComponents(node);
       node = migrateLegacyDebtSnapshotComponent(node);
@@ -609,6 +590,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       if (!(raw instanceof ObjectNode node)) {
         throw new IllegalStateException("EconomyChangeSet 必须是 JSON 对象: " + raw);
       }
+      rejectRetiredClassFirst(node, "EconomyChangeSet");
       node = migrateLegacyAssetShareComponent(node);
       node = migrateLegacyProductionChangeSetComponents(node);
       node = migrateLegacyDebtChangeSetComponent(node);
@@ -1682,26 +1664,6 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       throw new IllegalStateException("ProductionUnitId 必须是字符串或 {value:\"…\"}: " + raw);
     }
   }
-
-  // ── R1：classfirst 持久状态的线格式 ─────────────────────────────────────────
-
-  /**
-   * ★★ R1：给 {@code EconomyPayloads} 的顶层可选 {@code classFirst} 键用（与快照同一条绑定路径）。缺键 ⇒ {@link
-   * ClassFirstState#empty()}。
-   */
-  public static ClassFirstState deserializeClassFirstState(JsonNode node) {
-    if (node == null || node.isNull()) {
-      return ClassFirstState.empty();
-    }
-    try {
-      return MAPPER.treeToValue(node, ClassFirstState.class);
-    } catch (JsonProcessingException e) {
-      throw new IllegalStateException("classFirst 解码失败: " + node, e);
-    }
-  }
-
-  // ★★ R2a：ClassPool 的 (de)serializer 已搬到类型自身的注解（{@code classfirst.ClassPoolJson}），
-  //   本 codec 不再维护第二份字段集（见 keyModule() 的注释）。
 
   private static <K> KeyDeserializer keyDeserializer(Function<String, K> parse) {
     return new KeyDeserializer() {

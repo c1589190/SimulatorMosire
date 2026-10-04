@@ -710,7 +710,7 @@ public final class EconomySettlement {
       int famineMortalityPerMille,
       ProductionLedger.Accumulator ledger,
       EconomyParallelism parallelism) {
-    // ★ P10.2：旧调用方（单模块/测试/批量 settle）没有周期累加器 ⇒ 不接迁移钩子；class-first/旧路径逐值不变。
+    // ★ P10.2：旧调用方（单模块/测试/批量 settle）没有周期累加器 ⇒ 不接迁移钩子；旧路径逐值不变。
     settleOneDayInto(
         session,
         day,
@@ -2099,7 +2099,7 @@ public final class EconomySettlement {
 
     // ── ★★ P10.2 周期关账钩子：⑦真实利润汇总 → ⑧迁移计划 → ⑨迁移执行 ─────────────────────────
     //   ★ 位置：在 ⑥饥饿/死亡、5b/5b.5/5c 全部之后、下一个 step() 的"投入开扣"之前。
-    //   ★ 闸门：class-first 世界（modes 空）profitCycle 恒 null ⇒ 这一整段不执行，逐值不变。
+    //   ★ 闸门：旧档（modes 空）profitCycle 恒 null ⇒ 这一整段不执行，逐值不变。
     if (profitCycle != null) {
       profitCycle.recordDay(day, ledger.toLedger(), ledger.marketReport());
     }

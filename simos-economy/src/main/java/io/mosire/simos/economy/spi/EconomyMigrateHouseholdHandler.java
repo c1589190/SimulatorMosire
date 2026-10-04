@@ -17,7 +17,6 @@ import io.mosire.simos.util.state.Snapshot;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 
 /**
  * ★★ <b>S3.3 {@code economy.MigrateHousehold} 的最小合法入口</b>（计划 §S3.5 命令面）：
@@ -35,21 +34,11 @@ import java.util.Optional;
  *
  * <p>★ <b>fail-closed</b>：家户不存在 / 目标格不在图上 / 目标格就是原格 ⇒ {@code Rejected}（不产生半截 revision）。
  *
- * <p>★★ <b>class-first 世界拒绝</b>：{@link EconomyData#classFirst()} 非空时本命令由 {@link
- * ClassFirstCommandGuard} 在读取 base 后立即具名拒绝 —— class-first 结算<b>不读</b> {@code classes.view}
- * （它只是投影，class-first 家户无格维权威；真值在世界级 {@code classFirst.classPools} / {@code
- * classFirst.householdAccounts} 池与账户投影）；迁移只改投影映射、本版不开放，对应工具未接（后续阶段）。 {@code classFirst}
- * 为空（旧档/未播种）时本命令行为逐字不变。
  */
 public final class EconomyMigrateHouseholdHandler implements CommandHandler {
 
   private static final String COMMAND = "economy.MigrateHousehold";
 
-  /** class-first 拒绝的理由主体（不读什么 + 真值在哪 + 指路）。 */
-  private static final String CLASS_FIRST_GUIDANCE =
-      "class-first 结算不读 classes.view（它只是投影，class-first 家户无格维权威；"
-          + "真值在世界级 classFirst.classPools / classFirst.householdAccounts 池与账户投影）；"
-          + "迁移只改投影映射、本版不开放，对应工具未接（后续阶段）";
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
@@ -63,11 +52,6 @@ public final class EconomyMigrateHouseholdHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     EconomyData base = EconomySnapshots.of(state).data();
-    Optional<HandlerOutcome> classFirstRejection =
-        ClassFirstCommandGuard.rejectIfClassFirst(COMMAND, base, CLASS_FIRST_GUIDANCE);
-    if (classFirstRejection.isPresent()) {
-      return classFirstRejection.get();
-    }
     try {
       JsonNode payload = MAPPER.readTree(payloadJson);
       HouseholdId household = HouseholdId.parse(requireText(payload, "household"));

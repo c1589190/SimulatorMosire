@@ -8,9 +8,9 @@ import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.calendar.CalendarClock;
+import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -65,7 +65,7 @@ import java.util.Optional;
  *       sd.PutInfo}；<b>不另造第二份账</b>。
  * </ol>
  *
- * <p>★ <b>为什么载荷组装也在这个类</b>：四条命令的载荷都是这份计划的纯函数（照 {@link UnitDebtPlan} 的拆法）——把载荷留在 工具里会多出一条"视图与载荷各读一次
+ * <p>★ <b>为什么载荷组装也在这个类</b>：四条命令的载荷都是这份计划的纯函数（照 {@code LevyRegionPlan} 的拆法）——把载荷留在 工具里会多出一条"视图与载荷各读一次
  * Plan 字段"的缝，漏一个字段没有症状。载荷一律 {@link LinkedHashMap} 保序构造、 {@link ToolSupport#json} 序列化 ⇒ 同状态同参数逐字节相同。
  *
  * <p>★ <b>确定性 / 保序不可变</b>：本类不碰墙钟、不用随机量（{@code tick} 是状态 meta 的函数）；来源表由 {@link RegionAllocations}
@@ -85,8 +85,8 @@ final class RaiseUnitPlan {
   /** 行动记录的命令类型（{@code PutInfoHandler.type()}）。 */
   static final String PUT_INFO_TYPE = "sd.PutInfo";
 
-  /** 粮的商品 id（{@link PilotModel#GRAIN} 的<b>唯一</b>字面量来源；本类不另写 {@code "grain"}）。 */
-  private static final CommodityId GRAIN = new CommodityId(PilotModel.GRAIN);
+  /** 粮的商品 id（{@link EconomyCommodities#GRAIN} 的<b>唯一</b>字面量来源；本类不另写 {@code "grain"}）。 */
+  private static final CommodityId GRAIN = EconomyCommodities.GRAIN;
 
   /**
    * 从地方抽取人力时，新单位人力表的 type 字面量（D3a 无受控词表，取自然语义）。
@@ -309,7 +309,7 @@ final class RaiseUnitPlan {
 
   /**
    * 单位 canonical 地址（{@code unit:<unitId>}）：只经 {@link Address#parse} → {@link Address#canonical()}（与
-   * {@code LevyRegionTool}/{@code UnitDebtPlan}/{@code RejectDirectiveTool} 同款），行动记录的唯一拼写点。
+   * {@code LevyRegionTool}/{@code RejectDirectiveTool} 同款），行动记录的唯一拼写点。
    */
   static String unitAddress(String unitId) {
     Objects.requireNonNull(unitId, "unitId");

@@ -279,7 +279,7 @@ public final class WorldgenInitializeTool implements AgentTool {
         + " + sd.CreateArmy）。"
         + "载荷 {nation(regionId，必填), seed?(缺省=配置), randomize?(缺省=配置 randomization.enabled),"
         + " dryRun?(缺省 true=只算不写), army?(缺省 true=连军队编制一起建；false=只做人口+城市), branch?(缺省 main),"
-        + " economyProfile?(class-first 或 production-runtime，缺省 class-first),"
+        + " economyProfile?(唯一值 production-runtime，缺省 production-runtime),"
         + " economyTestConditions?(JSON 文本，缺省 null=无条件：初始债务/质押/资产拆分/外部库存货币注入),"
         + " cityLimit?(缺省 "
         + DEFAULT_CITY_LIMIT
@@ -311,10 +311,9 @@ public final class WorldgenInitializeTool implements AgentTool {
         "economyProfile",
         ToolSupport.prop(
             "string",
-            "经济地基 profile：class-first（缺省；只种阶层池状态 + 最小人口/市场壳，不种旧生产结构）/ "
-                + "production-runtime（旧完整生产播种路径：entries 带 farm/weave/craft industries、units、"
+            "经济地基 profile：唯一值 production-runtime（缺省即它）：entries 带 farm/weave/craft industries、units、"
                 + "assetShares、劳动配额、memberships 与经营者开缸账，另发默认生产方式/阶层结构/位置/家户归属/"
-                + "资产规则；P3 起据此结算）"));
+                + "资产规则，并内置 GOV 家户（国库 = 其家户账户）；其它值 fail-closed"));
     props.put(
         "economyTestConditions",
         ToolSupport.prop(
@@ -378,11 +377,11 @@ public final class WorldgenInitializeTool implements AgentTool {
       }
       long genesisMoneyMilliPerCapita =
           genesisMoneyArg == null ? EconomySeeder.genesisMoneyMilliPerCapita() : genesisMoneyArg;
-      // ★★ P1/P2：经济地基 profile（GM 可传参数；缺省 class-first，P2 起 production-runtime = 旧完整生产路径）。不用 System
-      // property。
+      // ★★ 2026-10-09：经济地基 profile 唯一值 = production-runtime（完整生产路径 + 政府内置）。
+      //   GM 可传参数，缺省即它；其它值由 parse fail-closed。不用 System property。
       EconomySeeder.FoundationProfile economyProfile =
           EconomySeeder.FoundationProfile.parse(
-              ToolSupport.optionalText(args, "economyProfile", "class-first"));
+              ToolSupport.optionalText(args, "economyProfile", "production-runtime"));
       // ★★ P3：测试条件（JSON 文本；缺省 null = 无条件）。解析失败 ⇒ BAD_REQUEST（具名原因，不静默忽略）。
       String conditionsText = ToolSupport.optionalText(args, "economyTestConditions", null);
       TestConditions conditions =
@@ -396,8 +395,7 @@ public final class WorldgenInitializeTool implements AgentTool {
       }
       StateRef base = new StateRef(branch, head.get());
       SimulationState state = core.replay(base);
-      // ★★ R2c：多 region class-first 已支持 —— 三国的 seed 逐国到达，EconomySeedHandler 经 ClassFirstState.merge
-      //    把同键池/放贷账户按加法合并成世界级状态（不再拒绝第二个 class-first seed）。
+      // ★★ 多 region production-runtime 追加播种：各国的 seed 逐国到达，EconomySeedHandler 按格判重后合并。
       GameMap map = ToolSupport.gameMap(state);
 
       WorldgenConfig config = loadConfig(randomizeArg);
@@ -589,12 +587,12 @@ public final class WorldgenInitializeTool implements AgentTool {
         seed,
         anchorTick,
         EconomySeeder.genesisMoneyMilliPerCapita(),
-        EconomySeeder.FoundationProfile.CLASS_FIRST);
+        EconomySeeder.FoundationProfile.PRODUCTION_RUNTIME);
   }
 
   /**
    * ★★ E3：同上一支 + **初始禀赋参数**（毫/人）。缺省重载逐值等于 E3 之前；本重载把参数透传给 {@link EconomySeeder#plan(String, List,
-   * GameMap, long)}，只改 INITIAL_ENDOWMENT 的每人金额。profile 缺省 CLASS_FIRST（R3a 起唯一值）。
+   * GameMap, long)}，只改 INITIAL_ENDOWMENT 的每人金额。profile 缺省 production-runtime（唯一值）。
    */
   static List<CommandEnvelope> buildBatch(
       String batchId,
@@ -620,7 +618,7 @@ public final class WorldgenInitializeTool implements AgentTool {
         seed,
         anchorTick,
         genesisMoneyMilliPerCapita,
-        EconomySeeder.FoundationProfile.CLASS_FIRST);
+        EconomySeeder.FoundationProfile.PRODUCTION_RUNTIME);
   }
 
   /**
@@ -776,10 +774,10 @@ public final class WorldgenInitializeTool implements AgentTool {
         at,
         anchorTick,
         EconomySeeder.genesisMoneyMilliPerCapita(),
-        EconomySeeder.FoundationProfile.CLASS_FIRST);
+        EconomySeeder.FoundationProfile.PRODUCTION_RUNTIME);
   }
 
-  /** ★★ E3：军队批 + 初始禀赋参数（毫/人）—— 与无军队那支共用同一个透传点。profile 缺省 CLASS_FIRST（R3a 起唯一值）。 */
+  /** ★★ E3：军队批 + 初始禀赋参数（毫/人）—— 与无军队那支共用同一个透传点。profile 缺省 production-runtime（唯一值）。 */
   static List<CommandEnvelope> buildBatch(
       String batchId,
       String initiator,
@@ -810,7 +808,7 @@ public final class WorldgenInitializeTool implements AgentTool {
         at,
         anchorTick,
         genesisMoneyMilliPerCapita,
-        EconomySeeder.FoundationProfile.CLASS_FIRST);
+        EconomySeeder.FoundationProfile.PRODUCTION_RUNTIME);
   }
 
   /** ★★ P1：军队批 + 初始禀赋 + 经济地基 profile（与无军队那支共用同一个透传点）。P3 起条件缺省为空。 */

@@ -34,7 +34,6 @@ import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
-import io.mosire.simos.economy.classfirst.ClassFirstState;
 import io.mosire.simos.economy.migrate.DebtReferenceReconciler;
 import io.mosire.simos.economy.migrate.LegacyHouseholdMigration;
 import io.mosire.simos.economy.model.AssetRule;
@@ -87,7 +86,7 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **三十一个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的三十一个组件一一对应**（铁律 5）：
+ * <p>★ **三十个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的三十个组件一一对应**（铁律 5）：
  * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **E1–E6 追加组件清单**（逐阶段；数字是本记录全表的组件序号/个数，E6b/E6c 零新状态组件）：
@@ -100,13 +99,11 @@ import java.util.Set;
  *   <li>E4（第 25 个，另替换第 4 个组件的旧 {@code debts} 槽为 {@code debtContracts}）：{@code pledges}；
  *   <li>E5（第 26–27 个，2 个）：{@code liquidationPolicies} / {@code crisisSignals}；
  *   <li>E6（第 28–29 个，2 个）：{@code modeTransitions} / {@code classShares}；
- *   <li>R1（第 30 个，1 个）：{@code classFirst}（阶层池经济持久状态 ClassFirstState）；
- *   <li>P10.1（第 31 个，1 个）：{@code merchantFirms}（商号表，见 {@link MerchantFirm}；键 = 值内 organizationId）。
+  *   <li>P10.1（第 30 个，1 个）：{@code merchantFirms}（商号表，见 {@link MerchantFirm}；键 = 值内 organizationId）。
  * </ul>
  *
  * E6b（GM 经济调整命令与预览审计）与 E6c（统一 dashboard 读口）都只读/写既有组件，**不追加新状态组件**， 故本记录的全表组件数在 E6 之后仍为 **29 个组件**；★
- * <b>R1 追加第 30 个组件 {@code classFirst}</b>（阶层池经济持久状态，见 {@link ClassFirstState}），★ <b>P10.1 追加第 31
- * 个组件 {@code merchantFirms}</b>（商号表，见 {@link MerchantFirm}），逐条对应关系见 {@link EconomyChangeSet}。
+ * <b>P10.1 追加第 30 个组件 {@code merchantFirms}</b>（商号表，见 {@link MerchantFirm}），逐条对应关系见 {@link EconomyChangeSet}。
  *
  * <p>★★ **跨表同键不变式**（§6.2 的身份部分）：{@code classes} 的每个键必须等于其 {@link ClassRow#key()}；{@code flows}
  * 的每个键必须等于其 {@link FlowRow#key()}；{@code laborSupply} / {@code allocations} 同理各自等于行内的 group / id。
@@ -138,7 +135,7 @@ import java.util.Set;
  * 时一律收成空表 / 未激活，**此处不抛** —— 抛了等于"旧档全部读不回来"。方向是 fail-closed： 缺键 ⇒
  * 没有产业/没有阶层/没有债务/没有流水/没有劳动供给与配额/没有生产关系/<b>没有市场</b>/未激活。
  *
- * <p>★ **三十一张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
+ * <p>★ **三十张表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**——它的迭代序不是内容的纯函数（字节级往返因此不成立）。冻结那一步**写在字段赋值处** （SpotBugs 的 {@code EI_EXPOSE_REP}
  * 不做跨过程分析，只认它看得见的包装）。
  *
@@ -248,10 +245,9 @@ public record EconomyData(
     Map<CrisisSignalId, HexCrisisSignal> crisisSignals,
     Map<ModeTransitionId, ModeTransition> modeTransitions,
     Map<ClassShareId, ClassShare> classShares,
-    ClassFirstState classFirst,
     Map<ProductionOrganizationId, MerchantFirm> merchantFirms) {
 
-  /** 往返用例的起点：未激活 + 三十一张空表。 */
+  /** 往返用例的起点：未激活 + 三十张空表。 */
   public static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
@@ -283,7 +279,6 @@ public record EconomyData(
         Map.of(),
         Map.of(),
         Map.of(),
-        ClassFirstState.empty(),
         Map.of());
   }
 
@@ -384,11 +379,7 @@ public record EconomyData(
     if (classShares == null) {
       classShares = Map.of();
     }
-    // ★★ R1 第 30 个组件（阶层池经济持久状态）：旧档缺键 ⇒ ClassFirstState.empty()（同上面每一条的口径）。
-    if (classFirst == null) {
-      classFirst = ClassFirstState.empty();
-    }
-    // ★★ P10.1 第 31 个组件（商号表）：旧档缺键 ⇒ 空表（同上面每一条的口径）。真正的旧档由版本门在激活前拒绝，
+    // ★★ P10.1 第 30 个组件（商号表）：旧档缺键 ⇒ 空表（同上面每一条的口径）。真正的旧档由版本门在激活前拒绝，
     //   这里的空表兜底只服务 with* 逐组件构造与"对侧尚未提供"的中间态。
     if (merchantFirms == null) {
       merchantFirms = Map.of();
@@ -1570,7 +1561,7 @@ public record EconomyData(
       }
     }
     classShares = Collections.unmodifiableMap(classSharesCopy); // ★ 冻在赋值处
-    // ── P10.1 第 31 个组件：商号（键 == 值内 organizationId；引用完整性按“对侧已提供”分段）──────────────
+    // ── P10.1 第 30 个组件：商号（键 == 值内 organizationId；引用完整性按“对侧已提供”分段）──────────────
     //   ★ productionOrganizations 为空 = 组织侧尚未提供 ⇒ 只判键身份与值形状（tier/容量/金额已由 MerchantFirm 构造期判）。
     //   ★ 组织侧非空 ⇒ fail-closed：每个商号必须指名一个已存在的生产组织，且该组织的 modeId 必须是 merchant
     //     （商号只能挂在商人 mode 的组织上；mode 不符 = 同一件事两处拼写不一致）。
@@ -1692,7 +1683,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
@@ -1728,7 +1718,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
@@ -1764,13 +1753,12 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
   /**
    * ★★ E4a：债务合同表（第 4 个组件，替换旧的 {@code debts} 槽）—— 键 = {@link DebtContractId}， 值 = {@link
-   * DebtContract}。其余 30 个组件原样带过（全表共 31 个组件）。
+   * DebtContract}。其余 29 个组件原样带过（全表共 30 个组件）。
    */
   public EconomyData withDebtContracts(Map<DebtContractId, DebtContract> value) {
     return new EconomyData(
@@ -1803,7 +1791,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
@@ -1839,11 +1826,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** 一个组件一个 with（R2：劳动供给表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
+  /** 一个组件一个 with（R2：劳动供给表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withLaborSupply(Map<PeopleLotId, LaborSupply> value) {
     return new EconomyData(
         meta,
@@ -1875,11 +1861,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** 一个组件一个 with（R2：劳动分配表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
+  /** 一个组件一个 with（R2：劳动分配表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withAllocations(Map<LaborAllocationId, LaborAllocation> value) {
     return new EconomyData(
         meta,
@@ -1911,11 +1896,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** 一个组件一个 with（T2：生产关系表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
+  /** 一个组件一个 with（T2：生产关系表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withRelations(Map<ProductionUnitId, ProductionRelation> value) {
     return new EconomyData(
         meta,
@@ -1947,12 +1931,11 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
   /**
-   * 一个组件一个 with（H4：市场表）；其余 30 个组件原样带过（全表共 31 个组件）。
+   * 一个组件一个 with（H4：市场表）；其余 29 个组件原样带过（全表共 30 个组件）。
    *
    * <p>★ <b>它是"GM 定价格"的唯一写入口</b>（铁律 2：所有修改最终表示为 Command → ChangeSet → Revision）——
    * 本批还没有"设价"命令，故它现在只被载荷（创世播种）与用例用到；命令留待 GM 参数目录落地。
@@ -1988,12 +1971,11 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
   /**
-   * ★★ <b>第 10 个组件（M2.4）：在途批次表</b>；其余 30 个组件原样带过（全表共 31 个组件）。
+   * ★★ <b>第 10 个组件（M2.4）：在途批次表</b>；其余 29 个组件原样带过（全表共 30 个组件）。
    *
    * <p>★ 与 {@link #withMarkets} 同款：它是"跨 tick 状态"的唯一写入口（在日循环的到货销账与发运建账里被调用）， 不是 GM 命令面。
    */
@@ -2028,11 +2010,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** 一个组件一个 with（S1：成员份额表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
+  /** 一个组件一个 with（S1：成员份额表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withMemberships(Map<MembershipId, Membership> value) {
     return new EconomyData(
         meta,
@@ -2064,11 +2045,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** 一个组件一个 with（R3B.1：实物资产份额表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
+  /** 一个组件一个 with（R3B.1：实物资产份额表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withAssetShares(Map<AssetShareId, AssetShare> value) {
     return new EconomyData(
         meta,
@@ -2100,11 +2080,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** 一个组件一个 with（S3.2：经营者状态表）；其余 30 个组件原样带过（全表共 31 个组件）。 */
+  /** 一个组件一个 with（S3.2：经营者状态表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withOperatorConditions(Map<ProductionUnitId, OperatorCondition> value) {
     return new EconomyData(
         meta,
@@ -2136,11 +2115,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** ★★ R3B.2：生产单元表（第 14 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
+  /** ★★ R3B.2：生产单元表（第 14 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withUnits(Map<ProductionUnitId, ProductionUnit> value) {
     return new EconomyData(
         meta,
@@ -2172,11 +2150,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** ★★ R4-E2：需求账本（第 15 个组件）；其余 30 个组件原样带过（全表共 31 个组件）（GM 命令的唯一写入口）。 */
+  /** ★★ R4-E2：需求账本（第 15 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
   public EconomyData withDemands(Map<DemandId, DemandEntry> value) {
     return new EconomyData(
         meta,
@@ -2208,11 +2185,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** ★★ R4-E2：候选预设表（第 16 个组件）；其余 30 个组件原样带过（全表共 31 个组件）（GM 命令的唯一写入口）。 */
+  /** ★★ R4-E2：候选预设表（第 16 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
   public EconomyData withCandidates(Map<CandidateId, ProductionCandidate> value) {
     return new EconomyData(
         meta,
@@ -2244,11 +2220,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** ★★ E1：生产方式表（第 17 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
+  /** ★★ E1：生产方式表（第 17 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withModes(Map<ProductionModeId, ProductionMode> value) {
     return new EconomyData(
         meta,
@@ -2280,11 +2255,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** ★★ E1：阶层结构表（第 18 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
+  /** ★★ E1：阶层结构表（第 18 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withClassStructures(Map<ClassStructureId, ClassStructure> value) {
     return new EconomyData(
         meta,
@@ -2316,11 +2290,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** ★★ E1：阶层位置表（第 19 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
+  /** ★★ E1：阶层位置表（第 19 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withClassPositions(Map<ClassPositionId, ClassPosition> value) {
     return new EconomyData(
         meta,
@@ -2352,12 +2325,11 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
   /**
-   * ★★ <b>E1/P7：阶层结构与全局阶层位置表的成对写口</b>（第 18/19 两个组件一次落值）；其余 29 个组件原样带过（全表共 31 个组件）。
+   * ★★ <b>E1/P7：阶层结构与全局阶层位置表的成对写口</b>（第 18/19 两个组件一次落值）；其余 29 个组件原样带过（全表共 30 个组件）。
    *
    * <p>★ <b>为什么必须成对</b>：{@link ClassStructure#positions()} 与全局 {@code classPositions} 有"逐值相等 +
    * 每条位置至少属于一个结构"的双向守卫，而现有 {@code withClassStructures}/{@code withClassPositions} 各自只改一个组件 ——
@@ -2398,11 +2370,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
+  /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withClassStandings(Map<HouseholdId, ClassStanding> value) {
     return new EconomyData(
         meta,
@@ -2434,11 +2405,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** ★★ E2：生产组织表（第 21 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
+  /** ★★ E2：生产组织表（第 21 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withProductionOrganizations(
       Map<ProductionOrganizationId, ProductionOrganization> value) {
     return new EconomyData(
@@ -2471,11 +2441,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** ★★ E2：生产资料规则表（第 22 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
+  /** ★★ E2：生产资料规则表（第 22 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withAssetRules(Map<AssetRuleId, AssetRule> value) {
     return new EconomyData(
         meta,
@@ -2507,11 +2476,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** ★★ E3：政府表（第 23 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
+  /** ★★ E3：政府表（第 23 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withGovernments(Map<GovernmentId, Government> value) {
     return new EconomyData(
         meta,
@@ -2543,11 +2511,10 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
-  /** ★★ E3：货币发行审计表（第 24 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。 */
+  /** ★★ E3：货币发行审计表（第 24 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withMoneyIssuances(Map<MoneyIssuanceId, MoneyIssuanceRecord> value) {
     return new EconomyData(
         meta,
@@ -2579,12 +2546,11 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
   /**
-   * ★★ E4a：质押表（第 25 个组件，追加在末尾）；其余 30 个组件原样带过（全表共 31 个组件）。
+   * ★★ E4a：质押表（第 25 个组件，追加在末尾）；其余 29 个组件原样带过（全表共 30 个组件）。
    *
    * <p>★ {@code pledges} 为空 = 没有质押；本方法只让调用方逐组件构造，跨表守卫 （Σ活跃质押 ≤ share.quantity）仍由规范构造器按“对侧已提供”分段判。
    */
@@ -2619,12 +2585,11 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
   /**
-   * ★★ E5a：清算政策表（第 26 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。
+   * ★★ E5a：清算政策表（第 26 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。
    *
    * <p>★ 键 == 值内 {@code ruleId}；{@code assetRules} 非空时被引用规则必须存在 —— 两条守卫都由规范构造器 fail-closed。 空表 =
    * 没有清算制度参数，旧行为逐值不变。
@@ -2660,12 +2625,11 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
   /**
-   * ★★ E5a：hex 危机信号表（第 27 个组件，追加在末尾）；其余 30 个组件原样带过（全表共 31 个组件）。
+   * ★★ E5a：hex 危机信号表（第 27 个组件，追加在末尾）；其余 29 个组件原样带过（全表共 30 个组件）。
    *
    * <p>★ 键 == 值内 id == {@code CrisisSignalId.idOf(hex, kind)}；同 hex 同 kind 覆盖即更新（不追加历史）。 空表 =
    * 没有信号；E5a 不产生任何信号。
@@ -2701,12 +2665,11 @@ public record EconomyData(
         value,
         modeTransitions,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
   /**
-   * ★★ E6a：模式变迁表（第 28 个组件）；其余 30 个组件原样带过（全表共 31 个组件）。
+   * ★★ E6a：模式变迁表（第 28 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。
    *
    * <p>★ 键 == 值内 id == {@code ModeTransitionId.idOf(organizationId, toModeId,
    * effectiveDay)}；同一组织至多一条 PENDING。空表 = 没有模式变迁请求，旧行为逐值不变。
@@ -2742,12 +2705,11 @@ public record EconomyData(
         crisisSignals,
         value,
         classShares,
-        classFirst,
         merchantFirms);
   }
 
   /**
-   * ★★ E6a：阶层保留份额表（第 29 个组件，追加在末尾）；其余 30 个组件原样带过（全表共 31 个组件）。
+   * ★★ E6a：阶层保留份额表（第 29 个组件，追加在末尾）；其余 29 个组件原样带过（全表共 30 个组件）。
    *
    * <p>★ 键 == 值内 id == {@code ClassShareId.idOf(transitionId, householdId, classPositionId)}；同一
    * {@code (transitionId, householdId)} 的 Σ sharePerMille 必须 = 1000（规范构造器逐组判）。空表 = 没有份额记录。
@@ -2783,53 +2745,11 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         value,
-        classFirst,
         merchantFirms);
   }
 
   /**
-   * ★★ R1：阶层池经济持久状态（第 30 个组件，追加在末尾）；其余 30 个组件原样带过（全表共 31 个组件）。
-   *
-   * <p>它把 mode 参与 / 阶层池 / 家户生产子账户 / 资产状态 schema / 阶层边界 / 流动政策 / 阶层流动审计 / 双边账户 / 外部放贷账户 / meta
-   * 收在一个不可变 record 里。旧档缺键 ⇒ {@link ClassFirstState#empty()}（见 compact 构造器的归一化）。
-   */
-  public EconomyData withClassFirst(ClassFirstState value) {
-    return new EconomyData(
-        meta,
-        industries,
-        classes,
-        debtContracts,
-        flows,
-        laborSupply,
-        allocations,
-        relations,
-        markets,
-        shipments,
-        memberships,
-        assetShares,
-        operatorConditions,
-        units,
-        demands,
-        candidates,
-        modes,
-        classStructures,
-        classPositions,
-        classStandings,
-        productionOrganizations,
-        assetRules,
-        governments,
-        moneyIssuances,
-        pledges,
-        liquidationPolicies,
-        crisisSignals,
-        modeTransitions,
-        classShares,
-        value,
-        merchantFirms);
-  }
-
-  /**
-   * ★★ P10.1：商号表（第 31 个组件，追加在末尾）；其余 30 个组件原样带过（全表共 31 个组件）。
+   * ★★ P10.1：商号表（第 30 个组件，追加在末尾）；其余 29 个组件原样带过（全表共 30 个组件）。
    *
    * <p>键 = {@link ProductionOrganizationId}，且必须等于值内 {@link MerchantFirm#organizationId()}。本批只落持久形状与
    * 构造期引用守卫（组织表已提供时，商号必须挂在 {@code modeId = merchant} 的现存组织上）；运力增减 / 农村惩罚 / 承运选择等结算行为留给
@@ -2866,7 +2786,6 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        classFirst,
         value);
   }
 

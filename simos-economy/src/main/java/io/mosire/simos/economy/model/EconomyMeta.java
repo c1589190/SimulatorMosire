@@ -74,7 +74,7 @@ public record EconomyMeta(
    * ★★ <b>P10.1 版本门（读侧判据）</b>：本档的 {@code rulesVersion} 是否等于当前 7 hex 运行时版本
    * （{@link #RUNTIME_VERSION_SEVEN_HEX_V2}）。
    *
-   * <p>它只是判据、不改状态；调用方（激活/载入路径）拿到 false 后应走 GM 重置，不许静默按空表继续 （架构 §6："旧档到不了空表静默路径"）。class-first 旧档的
+   * <p>它只是判据、不改状态；调用方（激活/载入路径）拿到 false 后应走 GM 重置，不许静默按空表继续 （架构 §6："旧档到不了空表静默路径"）。旧档的
    * {@code aggregate-v1} 与上一代 {@code seven-hex-v1} 会如实返回 false —— 那正是要拒绝的旧档。
    *
    * <p>★★ <b>线格式契约</b>：这是派生判据，不是状态组件 ⇒ 必须在类型上直接 {@link JsonIgnore}。不能只靠

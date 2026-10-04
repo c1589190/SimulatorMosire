@@ -23,7 +23,6 @@ import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.classfirst.ClassFirstState;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassShare;
@@ -96,15 +95,12 @@ public final class EconomyStateBuilder {
   private LinkedHashMap<ClassShareId, ClassShare> classShares;
 
   /**
-   * ★★ <b>P10.2：商号表工作副本（第 31 个组件）</b> —— 承运选择扣本周期运力、周期末结算写 lastFee/upkeep/profit/容量；
-   * 未物化时 {@link #build} 原样复用 base 的不可变表（class-first/无商号世界零拷贝）。
+   * ★★ <b>P10.2：商号表工作副本（第 30 个组件）</b> —— 承运选择扣本周期运力、周期末结算写 lastFee/upkeep/profit/容量；
+   * 未物化时 {@link #build} 原样复用 base 的不可变表（无商号世界零拷贝）。
    */
   private LinkedHashMap<ProductionOrganizationId, MerchantFirm> merchantFirms;
 
   private Optional<EconomyMeta> meta;
-
-  /** ★★ R1：阶层池经济持久状态工作副本（"写口 = 整值替换"；未写 ⇒ 原样复用 base）。 */
-  private ClassFirstState classFirst;
 
   public EconomyStateBuilder(EconomyData base) {
     this.base = Objects.requireNonNull(base, "base");
@@ -327,16 +323,6 @@ public final class EconomyStateBuilder {
     return meta == null ? base.meta() : meta;
   }
 
-  /** ★★ R1：阶层池经济状态（未写 ⇒ base 的原值；写口 = 整值替换，不给半改状态留后门）。 */
-  public ClassFirstState classFirst() {
-    return classFirst == null ? base.classFirst() : classFirst;
-  }
-
-  /** ★★ R1：整体替换 classFirst 工作副本（下一 tick 的快照/命令把它写进来）。 */
-  public void classFirst(ClassFirstState value) {
-    this.classFirst = Objects.requireNonNull(value, "classFirst");
-  }
-
   /** 写元信息（revision 边界由会话统一带入）。 */
   public void meta(Optional<EconomyMeta> value) {
     meta = value;
@@ -382,8 +368,6 @@ public final class EconomyStateBuilder {
         // ★★ E6a：命令登记 PENDING、日结算执行终态 —— 显式工作副本；未物化 ⇒ 原样复用 base。
         modeTransitions == null ? base.modeTransitions() : modeTransitions,
         classShares == null ? base.classShares() : classShares,
-        // ★★ R1：整值工作副本（未写 ⇒ 原样复用 base 的不可变状态）。
-        classFirst(),
         // ★★ P10.2：商号表是结算工作副本（承运扣量、周期末贸易结果写回）；未物化 ⇒ 原样复用 base。
         merchantFirms == null ? base.merchantFirms() : merchantFirms);
   }

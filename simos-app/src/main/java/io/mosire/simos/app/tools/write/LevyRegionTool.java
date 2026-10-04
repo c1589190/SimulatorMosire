@@ -24,7 +24,7 @@ import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.economy.classfirst.PilotModel;
+import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.state.BranchId;
@@ -166,7 +166,7 @@ public final class LevyRegionTool implements AgentTool {
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
         + "口径：单位必须存在且管辖含该 region、region 必须在地图里、单位必须有当刻有效位置（国库落点）；"
-        + "粮/钱/布来源 = region 各 hex 上 HOUSEHOLD 账的可支配量（余额−冻结，AvailableStock 唯一算法；布 = CommodityId(PilotModel.CLOTH)），"
+        + "粮/钱/布来源 = region 各 hex 上 HOUSEHOLD 账的可支配量（余额−冻结，AvailableStock 唯一算法；布 = CommodityId(EconomyVocabulary.CLOTH_COMMODITY_ID)），"
         + "人力来源 = residence 在 region、MALE、当前 tick 落在 AgeBracket.ADULT 的批次；"
         + "总量不足 ⇒ 整条拒（不部分、不截断）；分摊 = 瀑布（可用量/人数降序，同量按账键/批次 id 升序）。"
         + "apply 批：actor.AdjustAccounts（各来源负增量 + 单位国库正增量；粮与布合并进 goods、钱进 money）"
@@ -427,10 +427,10 @@ public final class LevyRegionTool implements AgentTool {
       // ★ 粮与布同在一张 goods 表里：同键同命令只出现一条，扣减逐值对应。
       Map<String, Object> goods = new LinkedHashMap<>();
       if (grainByKey.containsKey(key)) {
-        goods.put(PilotModel.GRAIN, grainByKey.get(key));
+        goods.put(EconomyVocabulary.GRAIN_COMMODITY_ID, grainByKey.get(key));
       }
       if (clothByKey.containsKey(key)) {
-        goods.put(PilotModel.CLOTH, clothByKey.get(key));
+        goods.put(EconomyVocabulary.CLOTH_COMMODITY_ID, clothByKey.get(key));
       }
       if (!goods.isEmpty()) {
         entry.put("goods", goods);
@@ -449,10 +449,10 @@ public final class LevyRegionTool implements AgentTool {
     treasury.put("r", plan.treasuryLocation().r());
     Map<String, Object> treasuryGoods = new LinkedHashMap<>();
     if (plan.grain().requested() > 0L) {
-      treasuryGoods.put(PilotModel.GRAIN, plan.grain().requested());
+      treasuryGoods.put(EconomyVocabulary.GRAIN_COMMODITY_ID, plan.grain().requested());
     }
     if (plan.cloth().requested() > 0L) {
-      treasuryGoods.put(PilotModel.CLOTH, plan.cloth().requested());
+      treasuryGoods.put(EconomyVocabulary.CLOTH_COMMODITY_ID, plan.cloth().requested());
     }
     if (!treasuryGoods.isEmpty()) {
       treasury.put("goods", treasuryGoods);

@@ -26,9 +26,9 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.Unit;
@@ -74,11 +74,11 @@ public final class GovRemitTool implements AgentTool {
   /** 本工具提交的唯一命令类型（与 handler 的 {@code TYPE} 同一个拼写点）。 */
   private static final String COMMAND_TYPE = RemitGovTreasuryHandler.TYPE;
 
-  /** 粮的商品 id（{@link PilotModel#GRAIN} 的**唯一**字面量来源；本类不另写 {@code "grain"}）。 */
-  private static final CommodityId GRAIN = new CommodityId(PilotModel.GRAIN);
+  /** 粮的商品 id（{@link EconomyCommodities#GRAIN} 的**唯一**字面量来源；本类不另写 {@code "grain"}）。 */
+  private static final CommodityId GRAIN = EconomyCommodities.GRAIN;
 
-  /** 布的商品 id（{@link PilotModel#CLOTH} 的**唯一**字面量来源；本类不另写 {@code "cloth"}）。 */
-  private static final CommodityId CLOTH = new CommodityId(PilotModel.CLOTH);
+  /** 布的商品 id（{@link EconomyCommodities#CLOTH} 的**唯一**字面量来源；本类不另写 {@code "cloth"}）。 */
+  private static final CommodityId CLOTH = EconomyCommodities.CLOTH;
 
   /** 本工具只写 actor 命名空间（GM 侧 actor 未受限 ⇒ 逐条判通过）。 */
   private static final ResourceManifest ACTOR_WRITE =

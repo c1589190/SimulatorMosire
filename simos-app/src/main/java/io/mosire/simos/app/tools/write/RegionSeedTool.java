@@ -57,11 +57,11 @@ import java.util.UUID;
  * social.populations} / {@code PopulationGroup} 落点 / {@code SocialCity.at} 或 city.region / actor 账户
  * location / economy 逐格 industries·markets；任一命中 ⇒ <b>不 submit、零 revision</b>，返回 {@code NEEDS_CLEAR}
  * 具名 JSON（类型 / 数量 / 示例 id），并提示用 {@code simos.region.clearData} / {@code
- * simos.region.clearStructures} 清空后重试。世界级 {@code classFirst} 池是共享世界状态、不作为 Region 命中，只在 {@code
+ * simos.region.clearStructures} 清空后重试。世界级共享经济状态不作为 Region 命中，只在 {@code
  * warnings} 里警告。
  *
  * <p>★★ <b>默认带经济与 actor</b>：{@code includeEconomy}/{@code includeActors} 缺省均为 true（用户 2026-10-01 裁定
- * 3）； 低人口 / 零人口（class-first 无法建池）⇒ {@code BAD_REQUEST} 具名拒绝，并提示可显式关掉两个开关只播种人口与城市。
+ * 3）； 低人口 / 零人口（economic 播种无法建家户账）⇒ {@code BAD_REQUEST} 具名拒绝，并提示可显式关掉两个开关只播种人口与城市。
  *
  * <p>★ <b>白名单</b>：只做生成模式（{@code totalPopulation + seed}）；explicit 明细模式留后续批次。参数里没有逐格 entries。
  *
@@ -151,7 +151,7 @@ public final class RegionSeedTool implements AgentTool {
         + "), expectedRevision?(preview=false 必填，>=0), reason(必填非空白)}。"
         + "clean gate：目标 Region 格集内已有 social.populations / PopulationGroup / SocialCity.at 或 city.region /"
         + " actor GoodsAccount location / economy 逐格 industries·markets 任一命中 ⇒ 不提交、零 revision，"
-        + "返回 NEEDS_CLEAR（列出类型/数量/示例 id 与清空指路）；世界级 classFirst 池只警告、不作 Region 命中。"
+        + "返回 NEEDS_CLEAR（列出类型/数量/示例 id 与清空指路）；世界级共享经济状态不作 Region 命中。"
         + "低人口/零人口且 includeEconomy/includeActors 打开 ⇒ BAD_REQUEST 具名拒绝，可关开关只播种人口与城市。"
         + "全海洋/零承载力 ⇒ BAD_REQUEST；shortfall>0 原样返回、不阻止落盘。"
         + "失败语义：参数/前置 ⇒ BAD_REQUEST（零 revision）；批内域拒 ⇒ REJECTED（逐条真拒因）；"

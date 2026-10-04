@@ -27,9 +27,9 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.Affiliation;
@@ -77,11 +77,11 @@ public final class GovPayTool implements AgentTool {
   /** 本工具提交的唯一命令类型（与 handler 的 {@code TYPE} 同一个拼写点）。 */
   private static final String COMMAND_TYPE = RemitGovTreasuryHandler.TYPE;
 
-  /** 粮 / 布的商品 id（{@link PilotModel} 常量是唯一字面量来源；本类不另写 "grain"/"cloth"）。 */
-  private static final CommodityId GRAIN = new CommodityId(PilotModel.GRAIN);
+  /** 粮 / 布的商品 id（{@link EconomyCommodities} 常量是唯一字面量来源；本类不另写 "grain"/"cloth"）。 */
+  private static final CommodityId GRAIN = EconomyCommodities.GRAIN;
 
   /** 见 {@link #GRAIN}。 */
-  private static final CommodityId CLOTH = new CommodityId(PilotModel.CLOTH);
+  private static final CommodityId CLOTH = EconomyCommodities.CLOTH;
 
   /** 本工具只写 actor 命名空间（政府决策人的 actor 可达面 = 自己 + superiorGov 的国库格）。 */
   private static final ResourceManifest ACTOR_WRITE =

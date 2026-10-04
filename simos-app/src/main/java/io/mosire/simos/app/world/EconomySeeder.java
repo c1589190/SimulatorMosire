@@ -1,12 +1,9 @@
 package io.mosire.simos.app.world;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.calendar.CalendarClock;
-import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -29,7 +26,6 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.api.money.GovernmentActors;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
@@ -38,12 +34,6 @@ import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
-import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.classfirst.ClassFirstPilotEngine;
-import io.mosire.simos.economy.classfirst.ClassFirstState;
-import io.mosire.simos.economy.classfirst.PilotConfig;
-import io.mosire.simos.economy.classfirst.PilotModel;
-import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassPosition;
 import io.mosire.simos.economy.model.ClassRow;
@@ -73,7 +63,6 @@ import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
-import io.mosire.simos.util.json.SimosObjectMapper;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -135,35 +124,15 @@ public final class EconomySeeder {
   private static final org.slf4j.Logger LOG = io.mosire.simos.economy.EconomyLog.settlement();
 
   /**
-   * ★★ <b>经济地基 profile</b>（P2 起两个公开值；2026-10-07 追加 GOV 家户试点第三个值）。
+   * ★★ <b>经济地基 profile</b>（2026-10-09 起唯一值）：{@link #PRODUCTION_RUNTIME} —— 旧完整生产路径 +
+   * 默认生产方式目录/资产规则 + 内置 GOV 家户（国库 = 它的家户账户；周期铸币/发债为固定组成）。
    *
-   * <p>★★ <b>三个 profile 的职责</b>：
-   *
-   * <ul>
-   *   <li>{@link #CLASS_FIRST}：class-first 的生产权威路径 —— 只种阶层池状态 + 最小人口/市场壳，不发 {@code modes} / {@code
-   *       classStructures} / {@code classPositions} / {@code classStandings}；顶层 {@code classFirst}
-   *       键是它的正式状态。
-   *   <li>{@link #PRODUCTION_RUNTIME}：P2 恢复的旧完整生产路径 —— {@code entries[]} 带 {@code industries} /
-   *       {@code laborSupply} / {@code allocations} / {@code assetShares} / {@code units} / {@code
-   *       memberships}，并追加 {@code modes} / {@code classStructures} / {@code classPositions} /
-   *       {@code classStandings} / {@code assetRules}（+ 可对上的 {@code liquidationPolicies}）；{@code
-   *       classFirst} 为空（生产权威是 entries 的旧生产结构）。
-   *   <li>{@link #PRODUCTION_RUNTIME_GOVERNMENT}：在 PRODUCTION_RUNTIME 上追加一个**不生产**的 GOV 家户（population=0、
-   *       slot={@code official}、无 unit/资产/ClassStanding），并把世界政府的国库指向它的家户账户；{@code
-   *       Government.seignioragePerCycle} 控制周期铸币。它只由显式 {@code economyProfile} 激活。
-   * </ul>
-   *
-   * <p>★ 旧 {@code legacy} / {@code complete} 两个线格式名不再可解析（P2 起 fail-closed，不把缺省猜成旧 profile）。
+   * <p>★ 旧 {@code class-first} / {@code legacy} / {@code complete} 与
+   * {@code production-runtime-government} 线格式名不再可解析（fail-closed，不把缺省猜成旧 profile）。
    */
   public enum FoundationProfile {
-    /** ★★ class-first：阶层池状态 + 最小人口/市场壳；不种旧生产结构，也不发生产方式目录。 */
-    CLASS_FIRST("class-first"),
-
-    /** ★★ P2 正式生产运行时：旧完整生产 entries + 默认生产方式目录/资产规则。 */
-    PRODUCTION_RUNTIME("production-runtime"),
-
-    /** ★★ 2026-10-07 GOV 非生产家户试点：production-runtime + 一个 GOV 家户 + 周期铸币政策。 */
-    PRODUCTION_RUNTIME_GOVERNMENT("production-runtime-government");
+    /** ★★ 唯一生产运行时：完整生产 entries + 生产方式目录 + 政府家户（政府内置）。 */
+    PRODUCTION_RUNTIME("production-runtime");
 
     private final String wireName;
 
@@ -171,131 +140,35 @@ public final class EconomySeeder {
       this.wireName = wireName;
     }
 
-    /** 线格式名（{@code "class-first"} / {@code "production-runtime"} / {@code "production-runtime-government"}）。 */
+    /** 线格式名（唯一值 {@code "production-runtime"}）。 */
     public String wireName() {
       return wireName;
     }
 
-    /** ★ 该 profile 的正式状态是顶层 {@code classFirst}（且必须非空）；只有 CLASS_FIRST 为真。 */
-    public boolean seedsClassFirstFoundation() {
-      return this == CLASS_FIRST;
-    }
-
     /**
-     * ★ 该 profile 走旧完整生产路径（entries 的 industries/units/assetShares/labor/allocations/memberships）。
-     */
-    public boolean seedsProductionStructure() {
-      return this == PRODUCTION_RUNTIME || this == PRODUCTION_RUNTIME_GOVERNMENT;
-    }
-
-    /** ★ 该 profile 在 {@code economy.Seed} 顶层追加默认生产方式目录/阶层/资产规则。 */
-    public boolean seedsProductionCatalog() {
-      return this == PRODUCTION_RUNTIME || this == PRODUCTION_RUNTIME_GOVERNMENT;
-    }
-
-    /** ★★ 该 profile 追加 GOV 家户主体与国库家户账户（只由显式 profile 激活）。 */
-    public boolean seedsGovernmentHousehold() {
-      return this == PRODUCTION_RUNTIME_GOVERNMENT;
-    }
-
-    /**
-     * 按线格式名解析：{@code "class-first"}、{@code "production-runtime"} 或
-     * {@code "production-runtime-government"}；其余/空白一律 fail-closed。
-     *
-     * <p>缺省仍是 {@link #CLASS_FIRST} —— 由调用方（{@code WorldgenInitializeTool}）在缺键时传入 {@code
-     * "class-first"}；本方法不把 null/空白猜成某个 profile。
+     * 按线格式名解析：只接受 {@code "production-runtime"}；其余/空白一律 fail-closed。
      */
     public static FoundationProfile parse(String text) {
       if (text == null || text.isBlank()) {
-        throw new IllegalArgumentException(
-            "economyProfile 不得为空白；合法值: class-first、production-runtime、production-runtime-government");
+        throw new IllegalArgumentException("economyProfile 不得为空白；唯一合法值: production-runtime");
       }
       String trimmed = text.trim();
-      if ("class-first".equals(trimmed)) {
-        return CLASS_FIRST;
-      }
       if ("production-runtime".equals(trimmed)) {
         return PRODUCTION_RUNTIME;
       }
-      if ("production-runtime-government".equals(trimmed)) {
-        return PRODUCTION_RUNTIME_GOVERNMENT;
-      }
       throw new IllegalArgumentException(
-          "未知的 economyProfile: " + text + "；合法值: class-first、production-runtime、production-runtime-government");
+          "未知的 economyProfile: " + text + "；唯一合法值: production-runtime");
     }
   }
 
-  // ── R2a：CLASS_FIRST 的种子参数（全部是显式出厂值；改它们 = 改新世界初态）────────────────────
-
   /**
-   * ★★ <b>CLASS_FIRST：社会阶层槽位 → 阶层池位置</b>（与 {@link #CLASS_IDS} 同序：贫农/中农/富农/地主）。
-   *
-   * <p>★ <b>映射是一次显式种子判断</b>（不是旧生产结构）：地主 → {@code LANDLORD}、富农 → {@code MIDDLE_PEASANT}（有地自耕的中农）、 中农
-   * → {@code TENANT}（佃耕）、贫农 → {@code LABORER}（无地雇农）。四个池因此都有真实人口；若将来要改档，改这一行即可。
-   */
-  private static final String[] CLASS_FIRST_POSITION_BY_SLOT = {
-    PilotModel.LABORER_ID,
-    PilotModel.TENANT_ID,
-    PilotModel.MIDDLE_PEASANT_ID,
-    PilotModel.LANDLORD_ID
-  };
-
-  /**
-   * ★★ <b>CLASS_FIRST：初始土地所有权（‰，与 {@link #CLASS_IDS} 同序）</b>：{@code {贫农 0, 中农 0, 富农 300, 地主 700}}。
-   *
-   * <p>★ 与旧世界「主 unit 700‰ / 佃农副 unit 300‰」（{@link #SECONDARY_PER_MILLE}）同一量级：地主是主要出租方，富农自耕一份；
-   * 中农/贫农无地（佃/雇）。土地总量**逐值来自**本 seed 的可耕地（{@link #landMilliMuOf}），不新增一亩。
-   */
-  private static final int[] CLASS_FIRST_LAND_OWNERSHIP_PER_MILLE = {0, 0, 300, 700};
-
-  /**
-   * ★★ <b>CLASS_FIRST：初始农具所有权（‰，与 {@link #CLASS_IDS} 同序）</b>：{@code {贫农 0, 中农 500, 富农 500, 地主 0}}。
-   *
-   * <p>★ 工具总量**逐值来自**本 seed 已有的作坊工具存量（{@code 作坊数 × }{@link #toolPerWorkshopMilli()}，÷1000 换成件），
-   * 只把持有者从旧 craft 经营者改成两个**实际耕种**的池（{@link PilotModel#MIDDLE_PEASANT_ID} / {@link
-   * PilotModel#TENANT_ID}）—— 引擎只让这两个池经营土地。
-   */
-  private static final int[] CLASS_FIRST_TOOLS_OWNERSHIP_PER_MILLE = {0, 500, 500, 0};
-
-  /** ★ CLASS_FIRST：土地/工具按池内人口权重切分给家户子账户（总量由 {@link #splitProportional} 保真）。 */
-  private static final long CLASS_FIRST_HOUSEHOLD_PARTICIPATION_PER_MILLE = 1000L;
-
-  /**
-   * ★★ <b>PRODUCTION_RUNTIME：class-first 家户 → 默认阶层位置时写进 {@code ClassStanding.reason} 的具名值。</b>
+   * ★★ <b>production-runtime 家户 → 默认阶层位置时写进 {@code ClassStanding.reason} 的具名值。</b>
    *
    * <p>命名风格与旧档迁移的 {@code legacyDefault:seedClassStanding} 一致：冒号前是来源、冒号后是动作。它是状态字段的
    * 可审计文本，不是显示给玩家的文本。
    */
   public static final String PRODUCTION_RUNTIME_SEED_REASON =
       "production-runtime:seedClassStanding";
-
-  /**
-   * ★★ <b>CLASS_FIRST：GOV 放贷窗口的初始资金（占创世家户货币总量的 ‰）</b>：{@code 10000} = <b>10 倍</b>。
-   *
-   * <p>★ <b>它是什么</b>：独立于任何阶层池的放贷主体（计划 §8「放贷先用独立 Lender/GOV 账户模拟」）—— 货币走一条显式 {@code
-   * INITIAL_ENDOWMENT} 发行记录，商品/流动性为 0（只放钱、不放货）。★ 资金量按**本 seed 已算出的家户钱包**派生（不另造人口口径）， 10
-   * 倍是"足够深的口袋"这一判断值（GM 可调：改这个常量 = 改新世界初态）。
-   */
-  private static final long CLASS_FIRST_LENDER_MONEY_PER_MILLE_OF_HOUSEHOLD = 10_000L;
-
-  /** ★ CLASS_FIRST：放贷窗口的稳定 id（独立于任何阶层池；与 {@code ExternalLenderId} 的派生点一致）。 */
-  public static final String CLASS_FIRST_LENDER_ID = "gov-class-first-lender";
-
-  /** ★ CLASS_FIRST：放贷窗口利率（‰/tick；与 pilot 默认的 20‰ 同量级）。 */
-  private static final long CLASS_FIRST_LENDER_INTEREST_PER_MILLE = 20L;
-
-  /** ★ CLASS_FIRST：放贷窗口的首次到期 tick（与 pilot 夹具的 60 同值）。 */
-  private static final long CLASS_FIRST_LENDER_NEXT_DUE_TICK = 60L;
-
-  /** ★ CLASS_FIRST：放贷窗口的催收能力（pilot 的具名参数，保留原值）。 */
-  private static final long CLASS_FIRST_LENDER_COLLECTION_POWER = 1000L;
-
-  /** ★ CLASS_FIRST：地主催收政策的出厂值（与 pilot 夹具同值；GM 可调 policy 由 classFirst meta.config 显式带出）。 */
-  private static final long CLASS_FIRST_COLLECTION_THRESHOLD = 900L;
-
-  private static final long CLASS_FIRST_COLLECTION_TRIGGER_RATIO_PER_MILLE = 6000L;
-  private static final long CLASS_FIRST_COLLECTION_RATIO_PER_MILLE = 250L;
-  private static final long CLASS_FIRST_LAND_PRICE_PER_UNIT = 20L;
 
   /** 农业产业种类标签（{@link IndustryHexKeys} 的前缀）。 */
   public static final String FARM = "farm";
@@ -425,7 +298,7 @@ public final class EconomySeeder {
    * <p>★ **依据**：亚麻/秸秆是粮食作物的副产物，不占单独的地（spec §四 的 T4："**纤维内生于土地**（不凭空造）"）。 6 单位/亩 是与"每亩 67
    * 粮"同量级的**拍出来的假设**（与前现代亩产的秸秆/纤维量级相符），它的作用是让"田里**同时**出粮与纤维"在真档里看得见。
    *
-   * <p>★ 改它 = 改产出结构 ⇒ 记入 {@link #RULES_VERSION}。
+   * <p>★ 改它 = 改产出结构 ⇒ 记入 productionRuntimeRulesVersion()。
    */
   public static final long FIBER_OUTPUT_PER_MU = 6L;
 
@@ -572,7 +445,7 @@ public final class EconomySeeder {
    *
    * <p>它只在 {@link FoundationProfile#PRODUCTION_RUNTIME} 路径生效：每个池（农村/城镇）按 {@code floor(池人口 ×
    * 本值 ÷ 1000)} 从**最贫一档**（{@link #CLASS_IDS}{@code [0]}）切出一条 {@code displaced.laborer} 家户行；切不出
-   * ≥1 人则不发该行（不造 0 人以下家户）。★ 改它 = 改新世界初态，记入 {@link #RULES_VERSION} 的口径。
+   * ≥1 人则不发该行（不造 0 人以下家户）。★ 改它 = 改新世界初态，记入 productionRuntimeRulesVersion() 的口径。
    */
   public static final int DISPLACED_SEED_PER_MILLE = 50;
 
@@ -595,7 +468,7 @@ public final class EconomySeeder {
    * 于是同格借粮链**空转**、缺粮**没有任何后果**。贫农最薄（30 天）、地主最厚（250 天）后，地主/富农手里天然有可贷的余粮， 贫农先见底 ⇒ 同格借贷与（{@code
    * 旧结算引擎（R3a 已删除）} 的）饿死惩罚才有落点。
    *
-   * <p>★ 改这张表 = 改初始资源分布 ⇒ 记入 {@link #RULES_VERSION} 的口径（版本化，不写死在公式里）。
+   * <p>★ 改这张表 = 改初始资源分布 ⇒ 记入 productionRuntimeRulesVersion() 的口径（版本化，不写死在公式里）。
    */
   public static final Map<SocialClassId, Integer> INITIAL_RATION_DAYS_BY_CLASS =
       Map.of(
@@ -770,9 +643,6 @@ public final class EconomySeeder {
    */
   public static final int GENESIS_MONEY_BUFFER_PER_MILLE = 1_200;
 
-  /** 规则版本标签（§5 末条"改参数 = 改 rulesVersion"）：CLASS_FIRST 旧路径的写入值，逐字节不动。 */
-  public static final String RULES_VERSION = "aggregate-v1";
-
   /**
    * ★★ P10.1/P11.7：PRODUCTION_RUNTIME 新档写入的运行时版本（{@link EconomyMeta#RUNTIME_VERSION_SEVEN_HEX_V2}）—— 唯一拼写点在
    * {@link EconomyMeta}；写入前先过版本门自检（当前版本 ≠ 自检值 ⇒ 当场抛"旧档/版本不符，需要 GM 重置"，而不是把错版本写进新档）。
@@ -794,9 +664,8 @@ public final class EconomySeeder {
   /**
    * ★★ <b>2026-10-07 GOV 非生产家户试点：周期铸币的出厂量</b>（毫计价货币 / 产业周期；{@code 10_000} = 10 银）。
    *
-   * <p>它是 {@link FoundationProfile#PRODUCTION_RUNTIME_GOVERNMENT} 的**具名 GM 默认值**：只在
-   * {@code production-runtime-government} profile 下写进 {@link Government#seignioragePerCycle()}。当前还没有 GM 实时
-   * 编辑命令；要改本批口径就改这个常量并按新 profile 重播（与其余 seeder 初态参数同制）。
+   * <p>它是 production-runtime **内置政府**的具名 GM 默认值：写进 {@link Government#seignioragePerCycle()}。
+   * 当前还没有 GM 实时编辑命令；要改本批口径就改这个常量并重播（与其余 seeder 初态参数同制）。
    */
   public static final long GOVERNMENT_SEIGNIORAGE_PER_CYCLE_MILLI = 2_000L;
 
@@ -858,11 +727,7 @@ public final class EconomySeeder {
       List<Map<String, Object>> pledges,
       List<Map<String, Object>> extraMoneyIssuances,
       TestConditions.Report conditionReport,
-      // ★★ R2a/P2：CLASS_FIRST 的正式状态；顶层 classFirst 键只在该 profile 需要它且状态非空时发出
-      //    （见 FoundationProfile.seedsClassFirstFoundation）。PRODUCTION_RUNTIME 的生产权威是 entries 旧结构。
-      ClassFirstState classFirst,
-      // ★★ P11.7/D-024：PRODUCTION_RUNTIME 的商号表（键 = 生产组织 id；空表 = 旧 class-first 形态）。
-      //    非空时由 economyPayload() 发一个可选顶层 merchantFirms 数组；class-first 路径为空表 ⇒ 载荷逐字节不变。
+      // ★★ P11.7/D-024：PRODUCTION_RUNTIME 的商号表（键 = 生产组织 id；空表时不发顶层键）。
       Map<ProductionOrganizationId, MerchantFirm> merchantFirms) {
 
     /**
@@ -879,7 +744,7 @@ public final class EconomySeeder {
       }
       if (profile == null) {
         throw new IllegalArgumentException(
-            "Seed.profile 不得为 null（缺省用 FoundationProfile.CLASS_FIRST）");
+            "Seed.profile 不得为 null（缺省用 FoundationProfile.PRODUCTION_RUNTIME）");
       }
       List<Map<String, Object>> entriesCopy =
           new ArrayList<>(entries == null ? List.of() : entries);
@@ -950,13 +815,6 @@ public final class EconomySeeder {
       }
       extraMoneyIssuances = Collections.unmodifiableList(extraMoneyIssuancesCopy);
       conditionReport = conditionReport == null ? TestConditions.Report.EMPTY : conditionReport;
-      // ★★ R2a/P2：CLASS_FIRST 必须真的种出池与账户 —— 这里 fail-closed，不把"classFirst 留空"的载荷发出去；
-      //    PRODUCTION_RUNTIME 的 classFirst 为空态（它不发顶层 classFirst 键）。
-      classFirst = classFirst == null ? ClassFirstState.empty() : classFirst;
-      if (profile.seedsClassFirstFoundation() && classFirst.isEmpty()) {
-        throw new IllegalArgumentException(
-            profile.name() + " profile 的 Seed.classFirst 不得为空（必须真的种出阶层池与家户账户）");
-      }
       // ★★ P11.7/D-024：商号表在赋值处冻结（同上方四张表）；null ⇒ 空表。
       Map<ProductionOrganizationId, MerchantFirm> merchantFirmsCopy = new LinkedHashMap<>();
       Map<ProductionOrganizationId, MerchantFirm> firms =
@@ -973,11 +831,10 @@ public final class EconomySeeder {
 
     /**
      * {@code economy.Seed} 的载荷文本（{@code mapId} / {@code rulesVersion} / {@code entries} / {@code
-     * markets} 都在顶层）。CLASS_FIRST 的键集与键序逐字节不变（追加一个顶层 {@code classFirst}，不发旧生产结构）； PRODUCTION_RUNTIME
-     * 的 entries 是恢复的旧完整生产结构，并在其后<b>追加</b> {@code modes} / {@code classStructures} / {@code
-     * classPositions} / {@code classStandings} / {@code assetRules} / {@code liquidationPolicies}
-     * 六个键 + 非空时一个可选 {@code merchantFirms} 数组（见 {@link #jsonOf}）。★ P3：无 conditions 时 {@code debtContracts}/{@code pledges} 仍是空表、也不出现
-     * {@code testConditions} 键。
+     * markets} 都在顶层）。production-runtime 的 entries 是完整生产结构，并在其后<b>追加</b> {@code modes} / {@code
+     * classStructures} / {@code classPositions} / {@code classStandings} / {@code assetRules} / {@code
+     * liquidationPolicies} 六个键 + 非空时一个可选 {@code merchantFirms} 数组（见 {@link #jsonOf}）。★ P3：无 conditions 时 {@code
+     * debtContracts}/{@code pledges} 仍是空表、也不出现 {@code testConditions} 键。
      */
     public String economyPayload() {
       return jsonOf(
@@ -987,12 +844,10 @@ public final class EconomySeeder {
           governments,
           genesisEndowment,
           genesisMoneyMilliPerCapita,
-          profile,
           debtContracts,
           pledges,
           extraMoneyIssuances,
           conditionReport,
-          classFirst,
           merchantFirms);
     }
   }
@@ -1071,22 +926,22 @@ public final class EconomySeeder {
 
   /**
    * 真地图重载（{@code terrainIndex()} 一次物化后 O(1) 查）—— 见 {@link #payload(String, List,
-   * GameMap)}；初始禀赋取默认值，profile 缺省 {@link FoundationProfile#CLASS_FIRST}。
+   * GameMap)}；初始禀赋取默认值，profile 缺省 {@link FoundationProfile#PRODUCTION_RUNTIME}。
    */
   public static Seed plan(String mapId, PopulationSeeder.Seeding seeding, GameMap map) {
-    return plan(mapId, seeding, map, genesisMoneyMilliPerCapita(), FoundationProfile.CLASS_FIRST);
+    return plan(mapId, seeding, map, genesisMoneyMilliPerCapita(), FoundationProfile.PRODUCTION_RUNTIME);
   }
 
   /**
    * ★★ E3：真地图重载 + **初始禀赋参数**（毫/人）。默认重载逐值等于旧行为；本重载只改 {@code INITIAL_ENDOWMENT}
-   * 的每人金额，商品/人口/劳动/资产口径一字不动。profile 缺省 {@link FoundationProfile#CLASS_FIRST}。
+   * 的每人金额，商品/人口/劳动/资产口径一字不动。profile 缺省 {@link FoundationProfile#PRODUCTION_RUNTIME}。
    */
   public static Seed plan(
       String mapId, PopulationSeeder.Seeding seeding, GameMap map, long genesisMoneyMilliPerCapita) {
-    return plan(mapId, seeding, map, genesisMoneyMilliPerCapita, FoundationProfile.CLASS_FIRST);
+    return plan(mapId, seeding, map, genesisMoneyMilliPerCapita, FoundationProfile.PRODUCTION_RUNTIME);
   }
 
-  /** ★ P1/P2：真地图 + profile（初始禀赋取默认值）；{@link FoundationProfile#CLASS_FIRST} 逐值等于当前 HEAD 行为。 */
+  /** ★ P1/P2：真地图 + profile（初始禀赋取默认值）；当前唯一值是 {@link FoundationProfile#PRODUCTION_RUNTIME}。 */
   public static Seed plan(
       String mapId, PopulationSeeder.Seeding seeding, GameMap map, FoundationProfile profile) {
     return plan(mapId, seeding, map, genesisMoneyMilliPerCapita(), profile, TestConditions.EMPTY);
@@ -1167,11 +1022,9 @@ public final class EconomySeeder {
    * <p>★★ <b>无 conditions 的路径逐字节不变</b>：三张条件表为空 + 报告为空 ⇒ 不出现 {@code testConditions} 键， {@code
    * debtContracts}/{@code pledges} 仍是空数组，与本方法 P1 版本的输出逐字节相同。
    *
-   * <p>★★ <b>R2a/P2：{@code classFirst} 只在 {@link FoundationProfile#CLASS_FIRST} 下发出</b>，且为空时
-   * fail-closed（"必须真的有池和账户"）；PRODUCTION_RUNTIME 在<b>本方法末尾追加</b>六个顶层键：{@code modes} / {@code
+   * <p>★★ production-runtime 在<b>本方法末尾追加</b>六个顶层键：{@code modes} / {@code
    * classStructures} / {@code classPositions} / {@code classStandings} / {@code assetRules} /
-   * {@code liquidationPolicies}（默认目录来自 {@code DefaultProductionModes}）。 CLASS_FIRST
-   * 的键集/键序/值逐字节不变（下面每个分支都按 profile 原样比较，不重排既有键）。
+   * {@code liquidationPolicies}（默认目录来自 {@code DefaultProductionModes}）。
    */
   static String jsonOf(
       String mapId,
@@ -1180,37 +1033,21 @@ public final class EconomySeeder {
       Map<GovernmentId, Government> governments,
       Map<CurrencyId, Long> genesisEndowment,
       long genesisMoneyMilliPerCapita,
-      FoundationProfile profile,
       List<Map<String, Object>> debtContracts,
       List<Map<String, Object>> pledges,
       List<Map<String, Object>> extraMoneyIssuances,
       TestConditions.Report conditionReport,
-      ClassFirstState classFirst,
       Map<ProductionOrganizationId, MerchantFirm> merchantFirms) {
-    if (profile == null) {
-      throw new IllegalArgumentException("jsonOf 的 profile 不得为 null");
-    }
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("mapId", mapId);
-    // ★★ P10.1：PRODUCTION_RUNTIME 新档写当前 7 hex 运行时版本（唯一拼写点在 {@code EconomyMeta}）；
-    //   CLASS_FIRST 旧路径继续保持 RULES_VERSION，逐字节不变。
-    payload.put(
-        "rulesVersion",
-        profile.seedsProductionStructure() ? productionRuntimeRulesVersion() : RULES_VERSION);
+    // ★★ P10.1：新档写当前 7 hex 运行时版本（唯一拼写点在 {@code EconomyMeta}）。
+    payload.put("rulesVersion", productionRuntimeRulesVersion());
     payload.put("entries", entries);
     Map<String, Object> marketNodes = new LinkedHashMap<>();
     for (Map.Entry<HexCoord, Market> atHex : markets.entrySet()) {
       marketNodes.put(atHex.getKey().toString(), marketNode(atHex.getValue()));
     }
     payload.put("markets", marketNodes);
-    if (profile.seedsClassFirstFoundation()) {
-      if (classFirst == null || classFirst.isEmpty()) {
-        throw new IllegalArgumentException(
-            profile.name() + " 的 economy.Seed 必须带非空 classFirst（拒绝发出空壳载荷）");
-      }
-      // ★★ R2a：阶层池状态是 CLASS_FIRST 的生产权威；线格式的唯一拼写点是 economy 的持久 codec。
-      payload.put("classFirst", classFirstNode(classFirst));
-    }
     // ★★ E3：政府与 INITIAL_ENDOWMENT 发行记录（缺省长（ENDOWMENT=零）时只有 governments；旧载荷缺这两个键 ⇒ 空表）。
     payload.put("governments", governmentNodes(governments));
     List<Map<String, Object>> issuances =
@@ -1229,23 +1066,20 @@ public final class EconomySeeder {
       // ★ 条件应用的可读报告（条数 + 外部注入总量 + 具名 reason）：随载荷走，读口/审计可核。
       payload.put("testConditions", conditionReport.toWireMap());
     }
-    // ★★ P2：PRODUCTION_RUNTIME 在既有键集之后**追加**六个顶层键 —— 顺序固定为 modes / classStructures /
-    //   classPositions / classStandings / assetRules / liquidationPolicies；CLASS_FIRST 不进这个分支，
-    //   输出因此逐字节不变。
-    if (profile.seedsProductionCatalog()) {
-      // ★★ P2：基础六表（mode/结构/位置/standing）后追加资产规则；清算政策与规则 id 同源派生 ⇒ 引用必然对得上。
-      payload.put("modes", productionModeNodes());
-      payload.put("classStructures", classStructureNodes());
-      payload.put("classPositions", classPositionNodes());
-      payload.put("classStandings", productionRuntimeClassStandings(entries));
-      payload.put("assetRules", productionRuntimeAssetRuleNodes());
-      payload.put("liquidationPolicies", productionRuntimeLiquidationPolicyNodes());
-      // ★★ P11.7/D-024：可选顶层 merchantFirms（仅非空时发；空表不出现该键，class-first 载荷因此逐字节不变）。
-      //   节点字段与 EconomyPayloads.parseMerchantFirms 的读取名逐字一致（唯一拼写点仍是各自读取处，不在这里
-      //   发明第二套字段名）。
-      if (merchantFirms != null && !merchantFirms.isEmpty()) {
-        payload.put("merchantFirms", merchantFirmNodes(merchantFirms));
-      }
+    // ★★ P2：在既有键集之后**追加**六个顶层键 —— 顺序固定为 modes / classStructures /
+    //   classPositions / classStandings / assetRules / liquidationPolicies。
+    // ★★ P2：基础六表（mode/结构/位置/standing）后追加资产规则；清算政策与规则 id 同源派生 ⇒ 引用必然对得上。
+    payload.put("modes", productionModeNodes());
+    payload.put("classStructures", classStructureNodes());
+    payload.put("classPositions", classPositionNodes());
+    payload.put("classStandings", productionRuntimeClassStandings(entries));
+    payload.put("assetRules", productionRuntimeAssetRuleNodes());
+    payload.put("liquidationPolicies", productionRuntimeLiquidationPolicyNodes());
+    // ★★ P11.7/D-024：可选顶层 merchantFirms（仅非空时发）。
+    //   节点字段与 EconomyPayloads.parseMerchantFirms 的读取名逐字一致（唯一拼写点仍是各自读取处，不在这里
+    //   发明第二套字段名）。
+    if (merchantFirms != null && !merchantFirms.isEmpty()) {
+      payload.put("merchantFirms", merchantFirmNodes(merchantFirms));
     }
     return ToolSupport.json(payload);
   }
@@ -1438,7 +1272,7 @@ public final class EconomySeeder {
       throw new IllegalStateException("PRODUCTION_RUNTIME 的 residence 不得为 null");
     }
     if (slot == null || slot.isBlank()) {
-      throw new IllegalStateException("PRODUCTION_RUNTIME 的 class-first 槽位不得为空白");
+      throw new IllegalStateException("PRODUCTION_RUNTIME 的社会阶层槽位不得为空白");
     }
     if (DISPLACED_SLOT.equals(slot)) {
       // ★ 流民无工作：位置是 displaced.laborer（D-023），与居住类型无关（城乡各有一条流民行）。
@@ -1474,7 +1308,7 @@ public final class EconomySeeder {
           : requiredDefaultPosition(
               DefaultProductionModes.MERCHANT, DefaultProductionModes.ROLE_MERCHANT_PRINCIPAL);
     }
-    throw new IllegalStateException("PRODUCTION_RUNTIME 未裁决的 class-first 槽位（拒绝臆造映射）: " + slot);
+    throw new IllegalStateException("PRODUCTION_RUNTIME 未裁决的社会阶层槽位（拒绝臆造映射）: " + slot);
   }
 
   /** ★ 默认目录必须给得出这个位置；给不出 = 目录与 seeder 漂开，具名抛（不猜另一个位置）。 */
@@ -1490,37 +1324,6 @@ public final class EconomySeeder {
                         + "（catalog 与 seeder 漂开）"));
   }
 
-  /**
-   * ★★ <b>R2a：{@link ClassFirstState} → 顶层 {@code classFirst} 的线格式节点</b>。
-   *
-   * <p>★★ <b>为什么不在这里手抄键名</b>：{@code classFirst} 的线格式与快照/变更集**同一份**（{@code EconomyCodec} 的持久绑定点， 含
-   * {@code ClassPool} 的显式序列化器与全部 ID 键反序列化器）。本类若自己拼一棵 {@code Map}， 就是同一事实的第二处拼写点 —— 状态 record
-   * 加一个字段时不会有人记得改这里，而载荷仍能"看起来对"地发出去。 ⇒ 走一次"只改 classFirst 的最小变更集"编码， 再取出它的值节点：新增字段/改字段名会由 codec
-   * 自动带上。
-   */
-  static JsonNode classFirstNode(ClassFirstState state) {
-    Objects.requireNonNull(state, "state");
-    if (state.isEmpty()) {
-      throw new IllegalArgumentException("classFirstNode 需要非空 ClassFirstState（空态不发顶层键）");
-    }
-    EconomyChangeSet changes =
-        EconomyChangeSet.between(EconomyData.empty(), EconomyData.empty().withClassFirst(state));
-    String encoded = new EconomyCodec().encodeChangeSet(changes);
-    try {
-      JsonNode node =
-          SimosObjectMapper.create()
-              .readTree(encoded)
-              .path("classFirst")
-              .path("entries")
-              .path("classFirst");
-      if (node.isMissingNode() || node.isNull()) {
-        throw new IllegalStateException("EconomyCodec 的 classFirst 编码形状与预期不符: " + encoded);
-      }
-      return node;
-    } catch (JsonProcessingException e) {
-      throw new IllegalStateException("classFirst 线格式解析失败", e);
-    }
-  }
 
   static List<Map<String, Object>> governmentNodes(Map<GovernmentId, Government> governments) {
     List<Map<String, Object>> nodes = new ArrayList<>(governments.size());
@@ -1568,7 +1371,7 @@ public final class EconomySeeder {
             + "总量按 actor.Seed 的家户+经营者钱包逐值汇总）");
   }
 
-  /** ★★ R2a：同上，但 reason 由调用方给出（CLASS_FIRST 的家户钱包口径与旧"每人禀赋+经营者周转金"不同）。 */
+  /** ★★ R2a：同上，但 reason 由调用方给出（调用方自行给出可审计原因）。 */
   static List<Map<String, Object>> issuanceNodes(
       String mapId,
       List<Map<String, Object>> entries,
@@ -1644,7 +1447,7 @@ public final class EconomySeeder {
   static Seed plan(
       String mapId, PopulationSeeder.Seeding seeding, Function<HexCoord, String> terrainOf) {
     return plan(
-        mapId, seeding, terrainOf, genesisMoneyMilliPerCapita(), FoundationProfile.CLASS_FIRST);
+        mapId, seeding, terrainOf, genesisMoneyMilliPerCapita(), FoundationProfile.PRODUCTION_RUNTIME);
   }
 
   /** ★ P1：纯函数主入口 + profile（初始禀赋取默认值）。 */
@@ -1666,13 +1469,12 @@ public final class EconomySeeder {
       Function<HexCoord, String> terrainOf,
       long genesisMoneyMilliPerCapita) {
     return plan(
-        mapId, seeding, terrainOf, genesisMoneyMilliPerCapita, FoundationProfile.CLASS_FIRST);
+        mapId, seeding, terrainOf, genesisMoneyMilliPerCapita, FoundationProfile.PRODUCTION_RUNTIME);
   }
 
   /**
-   * ★★ <b>P2：纯函数主入口 + 初始禀赋 + profile</b>。{@link FoundationProfile#CLASS_FIRST} 只发 class-first
-   * 键集（旧口径逐字节不变）；{@link FoundationProfile#PRODUCTION_RUNTIME} 走恢复的旧完整生产 entries，并在 {@code
-   * Seed.economyPayload()} 追加生产方式目录/阶层/资产规则。
+   * ★★ <b>P2：纯函数主入口 + 初始禀赋 + profile</b>。{@link FoundationProfile#PRODUCTION_RUNTIME} 走完整生产
+   * entries，并在 {@code Seed.economyPayload()} 追加生产方式目录/阶层/资产规则 + 内置 GOV 家户。
    */
   static Seed plan(
       String mapId,
@@ -1700,452 +1502,10 @@ public final class EconomySeeder {
     }
     // ★ P3：缺省/空 conditions = P1 路径（不新增任何键、不碰任何账）。
     conditions = conditions == null ? TestConditions.EMPTY : conditions;
-    // ★★ P2：两个 profile 走两条正式路径 —— CLASS_FIRST = 阶层池状态；PRODUCTION_RUNTIME = 恢复的旧完整生产
-    //   entries + 出口追加默认生产方式目录/资产规则（见 jsonOf）。两条路径都不再共用同一条人口壳。
-    return switch (profile) {
-      case CLASS_FIRST ->
-          planClassFirst(mapId, seeding, terrainOf, genesisMoneyMilliPerCapita, profile, conditions);
-      case PRODUCTION_RUNTIME, PRODUCTION_RUNTIME_GOVERNMENT ->
-          planProductionRuntime(
-              mapId, seeding, terrainOf, genesisMoneyMilliPerCapita, profile, conditions);
-    };
-  }
-
-  // ── R2a/P2：CLASS_FIRST 的播种路径（只种阶层池 + 最小人口/市场壳）────────────────────────────
-
-  /**
-   * ★★ <b>CLASS_FIRST 的纯函数播种路径</b>（{@link FoundationProfile#PRODUCTION_RUNTIME} 已改为旧完整生产路径，
-   * 不再进入本方法）。
-   *
-   * <p>它复用旧路径的人口聚合与开缸库存/货币算法（{@link #ruralCohort} / {@link #urbanCohort}），但出口完全不同：
-   *
-   * <ol>
-   *   <li>{@code entries} 只留 {@code q/r + industries(恒空数组，解析器必填壳) + classes}（人口/账户视图）——
-   *       旧生产结构的劳动配额/资产份额/生产单元/成员份额一律不发；{@code relations} 在条目形状里本就不存在（由 industries 派生）；
-   *   <li>每个**人口 > 0** 的 {@code ClassRow} 映射到四个阶层池之一，库存/货币逐值喂进 {@link
-   *       PilotModel.Household}（引擎构造期聚合到池）；
-   *   <li>土地/农具按显式所有权表切给池、再按池内人口权重挂到各家家户：总量逐值来自本 seed 的可耕地（毫亩 → 亩）与作坊工具存量（毫工具 → 件）；
-   *   <li>独立 GOV 放贷窗口：大量货币、零商品；与 actor.Seed 的 GOV 账户同额，并落一条 INITIAL_ENDOWMENT 发行记录；
-   *   <li>用 {@link ClassFirstPilotEngine} 的播种构造器 + {@link ClassFirstPilotEngine#snapshot()} 得到权威
-   *       {@link ClassFirstState}（含 schema / bounds / policy / meta.config）。
-   * </ol>
-   *
-   * <p>★★ <b>量纲（与 actor 账本的关系）</b>：{@code GRAIN}/{@code CLOTH}/{@code MONEY} 在池与 actor 账本之间
-   * <b>1:1</b>（同一份 {@code Seed.householdStocks}/{@code householdMoney} 的数字，不换标度、不复制计算）；{@code
-   * OWNED_LAND} 由毫亩折亩、{@code TOOLS} 由毫工具折件（引擎的地租/农艺参数按"亩/件"读才有量级）。FIBER/IRON 不在 classfirst 资产维度里 ⇒
-   * 它们只留在 actor 家户账本，不塞进池（见类注与报告）。
-   *
-   * <p>★★ <b>权威关系</b>：池是生产结算的唯一权威（{@code ClassPool} 的 {@code addStock}/{@code takeStock} 是唯一写口）；
-   * {@link io.mosire.simos.economy.classfirst.HouseholdProductionAccount}
-   * 只带人口/劳动/份额（<b>没有库存字段</b>，因此不存在池内第二本货账）； actor 家户 {@code GoodsAccount} 是与池同源、逐家户展开的账本（R2b 把
-   * {@code settleOneDay} 的账户增量写回它）。
-   *
-   * @param profile 播种 profile（只允许 {@link FoundationProfile#CLASS_FIRST}；由 {@link #plan} 分派）
-   */
-  static Seed planClassFirst(
-      String mapId,
-      PopulationSeeder.Seeding seeding,
-      Function<HexCoord, String> terrainOf,
-      long genesisMoneyMilliPerCapita,
-      FoundationProfile profile,
-      TestConditions conditions) {
-    Map<HexCoord, List<PopulationGroup>> ruralByHex = new LinkedHashMap<>();
-    Map<HexCoord, List<PopulationGroup>> urbanByHex = new LinkedHashMap<>();
-    for (PopulationGroup group : seeding.groups()) {
-      Map<HexCoord, List<PopulationGroup>> target =
-          PopulationLots.isUrban(group) ? urbanByHex : ruralByHex;
-      // ★ S2：落点从家户取（批次身上没有 residence）。
-      target.computeIfAbsent(seeding.locationOf(group.id()), hex -> new ArrayList<>()).add(group);
-    }
-    List<HexCoord> hexes = new ArrayList<>(ruralByHex.keySet());
-    for (HexCoord hex : urbanByHex.keySet()) {
-      if (!ruralByHex.containsKey(hex)) {
-        hexes.add(hex);
-      }
-    }
-    hexes.sort(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
-    if (hexes.isEmpty()) {
-      throw new IllegalArgumentException(
-          profile.name() + " 需要至少一个有人口的格（批次的 residence 集合为空，无法播种阶层池）");
-    }
-
-    List<Map<String, Object>> entries = new ArrayList<>(hexes.size());
-    Map<HouseholdId, Map<CommodityId, Long>> householdStocks = new LinkedHashMap<>();
-    Map<HouseholdId, HexCoord> householdLocations = new LinkedHashMap<>();
-    Map<HouseholdId, Map<CurrencyId, Long>> householdMoney = new LinkedHashMap<>();
-    Map<HexCoord, Market> markets = new LinkedHashMap<>();
-    List<ClassFirstHouseholdDraft> drafts = new ArrayList<>();
-    List<OperatorSeed> operatorShells = new ArrayList<>();
-    long totalLandMilliMu = 0L;
-    long totalWorkshops = 0L;
-
-    for (HexCoord hex : hexes) {
-      List<PopulationGroup> ruralPool = ruralByHex.getOrDefault(hex, List.of());
-      List<PopulationGroup> urbanPool = urbanByHex.getOrDefault(hex, List.of());
-      IndustryId farmId = IndustryHexKeys.id(FARM, hex.q(), hex.r());
-      IndustryId weaveId = IndustryHexKeys.id(WEAVE, hex.q(), hex.r());
-      IndustryId craftId = IndustryHexKeys.id(CRAFT, hex.q(), hex.r());
-      long landMilliMu = landMilliMuOf(terrainOf.apply(hex));
-      long workshops = populationOf(urbanPool) / URBAN_CAPITA_PER_WORKSHOP;
-      boolean hasRural = populationOf(ruralPool) > 0L;
-      boolean hasCraft = populationOf(urbanPool) > 0L;
-
-      // ★ 复用旧的 cohort 辅助方法：它顺带产出 actor 侧的位置/库存/货币三张表与 classes 行。成员份额 CLASS_FIRST
-      //   不发出（旧结算引擎（R3a 已删除） 的耦合面），故给一个丢弃桶。
-      List<Map<String, Object>> classes = new ArrayList<>(2 * CLASS_IDS.length);
-      List<Map<String, Object>> ignoredMemberships = new ArrayList<>();
-      classes.addAll(
-          ruralCohort(
-              hex,
-              ruralPool,
-              landMilliMu,
-              householdLocations,
-              householdStocks,
-              householdMoney,
-              ignoredMemberships,
-              genesisMoneyMilliPerCapita));
-      classes.addAll(
-          urbanCohort(
-              hex,
-              urbanPool,
-              workshops,
-              householdLocations,
-              householdStocks,
-              householdMoney,
-              ignoredMemberships,
-              genesisMoneyMilliPerCapita));
-      for (Map<String, Object> row : classes) {
-        long population = ((Number) row.get("population")).longValue();
-        if (population <= 0L) {
-          continue; // 0 人口行没有可挂的生产账户（PilotModel.Household 的人口守卫是 >= 1）
-        }
-        long laborMilli = ((Number) row.get("laborMilli")).longValue();
-        drafts.add(
-            new ClassFirstHouseholdDraft(
-                HouseholdId.parse((String) row.get("householdId")),
-                classFirstPositionOf((String) row.get("slot")),
-                population,
-                laborMilli * 1000L / population));
-      }
-
-      totalLandMilliMu += landMilliMu;
-      totalWorkshops += workshops;
-      // ★★ 旧产业的经营者身份保留（actor.Seed 仍建"经营者账"），但开缸商品/货币**空**：CLASS_FIRST 的生产库存
-      //    权威在阶层池。下面的土地/农具总量正是从它们原来的账/产能搬进池的（总量不变、持有者变）。
-      operatorShells.add(classFirstOperatorShell(farmId, REGIME_FEUDAL, hex));
-      if (hasRural) {
-        operatorShells.add(classFirstOperatorShell(weaveId, REGIME_HOUSEHOLD, hex));
-      }
-      if (hasCraft) {
-        operatorShells.add(classFirstOperatorShell(craftId, REGIME_HANDICRAFT, hex));
-      }
-
-      Map<String, Object> entry = new LinkedHashMap<>();
-      entry.put("q", hex.q());
-      entry.put("r", hex.r());
-      // ★ 空壳：{@code EconomyPayloads} 把 industries 当**必填数组**（缺键即拒）。空数组 = 本格没有产业，
-      //   不是"没给这个键"——CLASS_FIRST 的生产结构在顶层 classFirst 里，不在这里。
-      entry.put("industries", List.of());
-      entry.put("classes", classes);
-      entries.add(entry);
-      // ★ 有 entry 才有市场（与旧路径同口径；本批保留市场表供读口/后续市场阶段使用）。
-      markets.put(hex, MARKET_FACTORY);
-    }
-
-    // ★★ E3 口径与旧路径一致：INITIAL_ENDOWMENT 取**条件注入之前**的家户+经营者钱包；条件注入的货币走独立
-    //    FISCAL_ISSUE 审计（{@link #applyTestConditions}），绝不混进"每人禀赋"那条记录。
-    Map<CurrencyId, Long> genesisEndowment = genesisEndowmentOf(householdMoney, operatorShells);
-
-    // ★★ P3 条件：外部注入的家户库存/货币要先进**同一份表**，再据此建池（同一处接缝，不另算一遍）。
-    AppliedConditions applied =
-        applyTestConditions(mapId, entries, householdStocks, householdMoney, profile, conditions);
-
-    // 土地/农具：总和来自本 seed 的可耕地与作坊工具存量；按所有权表切到旧槽位，再映射到四个池位置。
-    long totalLandMu = totalLandMilliMu / MILLI_MU_PER_MU;
-    long totalTools =
-        totalWorkshops * toolPerWorkshopMilli() / EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
-    long[] landBySlot = splitByShares(totalLandMu, CLASS_FIRST_LAND_OWNERSHIP_PER_MILLE);
-    long[] toolsBySlot = splitByShares(totalTools, CLASS_FIRST_TOOLS_OWNERSHIP_PER_MILLE);
-    int positions = PilotModel.classPositions().size();
-    long[] landByPosition = new long[positions];
-    long[] toolsByPosition = new long[positions];
-    for (int slot = 0; slot < CLASS_IDS.length; slot++) {
-      int index = classFirstPositionIndex(CLASS_FIRST_POSITION_BY_SLOT[slot]);
-      landByPosition[index] += landBySlot[slot];
-      toolsByPosition[index] += toolsBySlot[slot];
-    }
-
-    // 池内再按人口权重把土地/农具切给各家户（Σ 逐池保真；池总量因此逐值落在 Pool.stock(OWNED_LAND/TOOLS)）。
-    List<PilotModel.Household> households = new ArrayList<>(drafts.size());
-    for (int index = 0; index < positions; index++) {
-      String positionId = PilotModel.classPositions().get(index).id();
-      List<ClassFirstHouseholdDraft> members = new ArrayList<>();
-      for (ClassFirstHouseholdDraft draft : drafts) {
-        if (draft.positionId().equals(positionId)) {
-          members.add(draft);
-        }
-      }
-      if (members.isEmpty()) {
-        if (landByPosition[index] != 0L || toolsByPosition[index] != 0L) {
-          throw new IllegalStateException(
-              profile.name()
-                  + "：位置 "
-                  + positionId
-                  + " 没有人口，无法承载其土地/农具份额（land="
-                  + landByPosition[index]
-                  + "，tools="
-                  + toolsByPosition[index]
-                  + "）—— 请扩大 seed 人口或调整所有权表");
-        }
-        continue;
-      }
-      long[] weights = new long[members.size()];
-      for (int i = 0; i < members.size(); i++) {
-        weights[i] = members.get(i).population();
-      }
-      long[] landShares = splitProportional(landByPosition[index], weights);
-      long[] toolShares = splitProportional(toolsByPosition[index], weights);
-      for (int i = 0; i < members.size(); i++) {
-        ClassFirstHouseholdDraft draft = members.get(i);
-        households.add(
-            classFirstHousehold(
-                draft,
-                householdStocks.get(draft.householdId()),
-                householdMoney.get(draft.householdId()),
-                landShares[i],
-                toolShares[i]));
-      }
-    }
-
-    // ★★ 独立 GOV 放贷窗口：货币量按**条件注入之前的**家户钱包派生（不另造人口口径；也不把条件注入算两遍）。
-    long householdSilver = genesisEndowment.getOrDefault(MARKET_NUMERAIRE, 0L);
-    long lenderMoney =
-        Math.multiplyExact(householdSilver, CLASS_FIRST_LENDER_MONEY_PER_MILLE_OF_HOUSEHOLD)
-            / 1000L;
-    PilotModel.Lender lender = classFirstLender(lenderMoney);
-    ClassFirstPilotEngine engine =
-        new ClassFirstPilotEngine(classFirstConfig(lender), households, List.of(lender));
-    ClassFirstState state = engine.snapshot();
-    if (state.isEmpty()) {
-      throw new IllegalStateException(profile.name() + " 播种没有产出非空 ClassFirstState");
-    }
-
-    List<OperatorSeed> operators = new ArrayList<>(operatorShells);
-    operators.add(classFirstLenderOperator(entries, lenderMoney));
-    List<Map<String, Object>> extraMoneyIssuances = new ArrayList<>(applied.extraMoneyIssuances());
-    if (lenderMoney > 0L) {
-      extraMoneyIssuances.add(classFirstLenderIssuance(mapId, entries, lenderMoney));
-    }
-    if (LOG.isDebugEnabled()) {
-      LOG.debug(
-          "event=ECONOMY_SEED profile={} mapId={} entries={} markets={} householdStocks={} householdMoney={} operators={} debtContracts={} pledges={} extraMoneyIssuances={} genesisEndowment={}",
-          profile,
-          mapId,
-          entries.size(),
-          markets.size(),
-          householdStocks.size(),
-          householdMoney.size(),
-          operators.size(),
-          applied.debtContracts().size(),
-          applied.pledges().size(),
-          extraMoneyIssuances.size(),
-          genesisEndowment);
-    }
-    return new Seed(
-        mapId,
-        entries,
-        markets,
-        householdLocations,
-        householdStocks,
-        householdMoney,
-        operators,
-        Map.of(GENESIS_GOVERNMENT_ID, genesisGovernment()),
-        genesisEndowment,
-        genesisMoneyMilliPerCapita,
-        profile,
-        applied.debtContracts(),
-        applied.pledges(),
-        extraMoneyIssuances,
-        applied.report(),
-        state,
-        // ★★ P11.7/D-024：class-first 不发顶层 merchantFirms（空表 ⇒ economyPayload() 不出现该键，旧载荷逐字节不变）。
-        Map.of());
-  }
-
-  /**
-   * ★ <b>兼容入口</b>：旧调用点（单测/工具）只给 5 参时按 {@link FoundationProfile#CLASS_FIRST} 走，逐值等于带 profile 的重载。
-   */
-  static Seed planClassFirst(
-      String mapId,
-      PopulationSeeder.Seeding seeding,
-      Function<HexCoord, String> terrainOf,
-      long genesisMoneyMilliPerCapita,
-      TestConditions conditions) {
-    return planClassFirst(
-        mapId,
-        seeding,
-        terrainOf,
-        genesisMoneyMilliPerCapita,
-        FoundationProfile.CLASS_FIRST,
-        conditions);
-  }
-
-  /** R2a：CLASS_FIRST 的一个家户播种中间体（库存/货币在构造 {@link PilotModel.Household} 时从同一份表里读）。 */
-  private record ClassFirstHouseholdDraft(
-      HouseholdId householdId, String positionId, long population, long laborPerCapita) {}
-
-  /** R2a：社会阶层槽位（{@link #CLASS_IDS} 序）→ 阶层池位置；未知槽位 fail-closed。 */
-  private static String classFirstPositionOf(String slot) {
-    for (int i = 0; i < CLASS_IDS.length; i++) {
-      if (CLASS_IDS[i].equals(slot)) {
-        return CLASS_FIRST_POSITION_BY_SLOT[i];
-      }
-    }
-    throw new IllegalStateException("CLASS_FIRST 的词表外社会阶层槽位（拒绝臆造映射）: " + slot);
-  }
-
-  /**
-   * ★★ <b>R2c：classfirst 阶层池位置 → 社会阶层槽位</b>（{@link #classFirstPositionOf} 的逆，唯一拼写点）。
-   *
-   * <p>只读 {@code ClassRow} 投影要用它把"家户当前所属的池"翻回 {@code view.stratum}；映射本身仍只写在本类 {@link
-   * #CLASS_FIRST_POSITION_BY_SLOT} 一行，投影侧不另拍一份。
-   */
-  public static SocialClassId classFirstStratumOf(String positionId) {
-    for (int i = 0; i < CLASS_IDS.length; i++) {
-      if (CLASS_FIRST_POSITION_BY_SLOT[i].equals(positionId)) {
-        return new SocialClassId(CLASS_IDS[i]);
-      }
-    }
-    throw new IllegalStateException("CLASS_FIRST 的未知阶层池位置（无法投影为 ClassRow.view）: " + positionId);
-  }
-
-  /** R2a：阶层池位置 → {@link PilotModel#classPositions()} 的下标（所有权数组的下标换算）。 */
-  private static int classFirstPositionIndex(String positionId) {
-    for (int i = 0; i < PilotModel.classPositions().size(); i++) {
-      if (PilotModel.classPositions().get(i).id().equals(positionId)) {
-        return i;
-      }
-    }
-    throw new IllegalStateException("CLASS_FIRST 的未知阶层池位置: " + positionId);
-  }
-
-  /** R2a：一行家户草稿 + **同一份**开缸库存/货币 → 引擎的 {@link PilotModel.Household}（只允许 grain/cloth 进池）。 */
-  private static PilotModel.Household classFirstHousehold(
-      ClassFirstHouseholdDraft draft,
-      Map<CommodityId, Long> stock,
-      Map<CurrencyId, Long> wallet,
-      long land,
-      long tools) {
-    Map<String, Long> goods = new LinkedHashMap<>();
-    long grain = stock == null ? 0L : stock.getOrDefault(new CommodityId(COMMODITY_GRAIN), 0L);
-    long cloth = stock == null ? 0L : stock.getOrDefault(new CommodityId(COMMODITY_CLOTH), 0L);
-    if (grain > 0L) {
-      goods.put(PilotModel.GRAIN, grain);
-    }
-    if (cloth > 0L) {
-      goods.put(PilotModel.CLOTH, cloth);
-    }
-    long money = 0L;
-    if (wallet != null) {
-      for (Map.Entry<CurrencyId, Long> entry : wallet.entrySet()) {
-        if (entry.getValue() == 0L) {
-          continue;
-        }
-        if (!entry.getKey().equals(MARKET_NUMERAIRE)) {
-          throw new IllegalStateException(
-              "CLASS_FIRST 只支持单一计价货币 "
-                  + MARKET_NUMERAIRE.value()
-                  + "；家户 "
-                  + draft.householdId()
-                  + " 另有 "
-                  + entry.getKey().value());
-        }
-        money = Math.addExact(money, entry.getValue());
-      }
-    }
-    return new PilotModel.Household(
-        draft.householdId().value(),
-        "CLASS_FIRST 家户 " + draft.householdId().value(),
-        draft.positionId(),
-        draft.population(),
-        draft.laborPerCapita(),
-        goods,
-        money,
-        land,
-        tools,
-        CLASS_FIRST_HOUSEHOLD_PARTICIPATION_PER_MILLE);
-  }
-
-  /** R2a：旧产业经营者身份的**零余额壳**（actor.Seed 仍建经营者账；库存权威已搬到阶层池）。 */
-  private static OperatorSeed classFirstOperatorShell(IndustryId id, String regime, HexCoord hex) {
-    return new OperatorSeed(
-        RegimeOperators.defaultOperator(new RegimeId(regime), id),
-        hex,
-        id.value() + " 经营者",
-        Map.of(),
-        Map.of());
-  }
-
-  /** R2a：独立 GOV 放贷窗口的账户（actor.Seed 侧：货币 = 池外放贷资金，商品空 = 0 流动性）。 */
-  private static OperatorSeed classFirstLenderOperator(
-      List<Map<String, Object>> entries, long lenderMoney) {
-    Map<String, Object> first = entries.get(0);
-    HexCoord at =
-        new HexCoord(((Number) first.get("q")).intValue(), ((Number) first.get("r")).intValue());
-    Map<CurrencyId, Long> wallet = new LinkedHashMap<>();
-    if (lenderMoney > 0L) {
-      wallet.put(MARKET_NUMERAIRE, lenderMoney);
-    }
-    return new OperatorSeed(
-        GovernmentActors.of(GENESIS_GOVERNMENT_ID), at, "GOV 放贷窗口（CLASS_FIRST）", Map.of(), wallet);
-  }
-
-  /** R2a：GOV 放贷资金的 {@code INITIAL_ENDOWMENT} 审计节点（与 actor.Seed 的 GOV 账户同额）。 */
-  private static Map<String, Object> classFirstLenderIssuance(
-      String mapId, List<Map<String, Object>> entries, long lenderMoney) {
-    Map<String, Object> node = new LinkedHashMap<>();
-    node.put(
-        "id",
-        new MoneyIssuanceId(
-                "endowment-classfirst-lender-"
-                    + mapId
-                    + "-"
-                    + seedAnchor(entries)
-                    + "-"
-                    + MARKET_NUMERAIRE.value())
-            .value());
-    node.put("governmentId", GENESIS_GOVERNMENT_ID.value());
-    node.put("currency", MARKET_NUMERAIRE.value());
-    node.put("amount", lenderMoney);
-    node.put("kind", "INITIAL_ENDOWMENT");
-    node.put(
-        "reason",
-        "CLASS_FIRST：GOV 放贷窗口初始资金（独立放贷主体，不属任何阶层池；" + "同时记入 actor.Seed 的 GOV 账户；商品/流动性为 0）");
-    return node;
-  }
-
-  /** R2a：独立 GOV 放贷主体（大量货币、零商品；不塞进任何阶层池）。 */
-  private static PilotModel.Lender classFirstLender(long lenderMoney) {
-    return new PilotModel.Lender(
-        CLASS_FIRST_LENDER_ID,
-        lenderMoney,
-        Map.of(),
-        CLASS_FIRST_LENDER_INTEREST_PER_MILLE,
-        CLASS_FIRST_LENDER_NEXT_DUE_TICK,
-        CLASS_FIRST_LENDER_COLLECTION_POWER);
-  }
-
-  /** R2a：佃农制出厂配置（classfirst 包的默认 schema/bounds/mobility；催收政策由本类的常量显式给出）。 */
-  private static PilotConfig classFirstConfig(PilotModel.Lender lender) {
-    PilotModel.CollectionPolicy policy =
-        new PilotModel.CollectionPolicy(
-            PilotModel.LANDLORD_ID,
-            CLASS_FIRST_COLLECTION_THRESHOLD,
-            CLASS_FIRST_COLLECTION_TRIGGER_RATIO_PER_MILLE,
-            CLASS_FIRST_COLLECTION_RATIO_PER_MILLE,
-            CLASS_FIRST_LAND_PRICE_PER_UNIT,
-            PilotModel.SeizurePriority.LIQUID_THEN_LAND);
-    return PilotConfig.tenancyAgriculture(lender, policy);
+    // ★★ 2026-10-09：唯一路线 = production-runtime（完整生产 entries + 默认生产方式目录/资产规则 +
+    //   内置 GOV 家户），见 planProductionRuntime/jsonOf。
+    return planProductionRuntime(
+        mapId, seeding, terrainOf, genesisMoneyMilliPerCapita, profile, conditions);
   }
 
   // ── H4：出厂价表与创世货币禀赋（纯函数）──────────────────────────────────────────────
@@ -2223,14 +1583,6 @@ public final class EconomySeeder {
     return wallet;
   }
 
-  /** E3：世界级最小发行政府（唯一发行主体声称当前单一计价货币 silver）。 */
-  static Government genesisGovernment() {
-    return new Government(
-        GENESIS_GOVERNMENT_ID,
-        GENESIS_GOVERNMENT_NATION_REF,
-        GovernmentActors.of(GENESIS_GOVERNMENT_ID),
-        Set.of(MARKET_NUMERAIRE));
-  }
 
   /**
    * E3：创世初始发行总量 = 家户钱包 + 经营者钱包的逐币种纯和（与 {@code actor.Seed} 的同一份表）。 只保留正数键；0 不造记录（"没有发行"与"发行 0"是两件事）。
@@ -2470,7 +1822,7 @@ public final class EconomySeeder {
 
   /**
    * 上一条的 PRODUCTION_RUNTIME 变体：{@code seedDisplaced=true} 时在四行之后追加一条从最贫一档切出的
-   * {@code displaced} 家户行（CLASS_FIRST 走上面那条——逐字节不动的旧路径）。
+   * {@code displaced} 家户行（production-runtime 的位移播种口径）。
    */
   private static List<Map<String, Object>> ruralCohort(
       HexCoord hex,
@@ -3045,7 +2397,6 @@ public final class EconomySeeder {
       List<Map<String, Object>> entries,
       Map<HouseholdId, Map<CommodityId, Long>> householdStocks,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
-      FoundationProfile profile,
       TestConditions conditions) {
     if (conditions == null || conditions.isEmpty()) {
       return AppliedConditions.empty();
@@ -3258,26 +2609,16 @@ public final class EconomySeeder {
                 + "，份额数量="
                 + share.quantity());
       }
-      switch (profile) {
-        case CLASS_FIRST ->
-            throw new IllegalArgumentException(
-                "test-condition: "
-                    + where
-                    + " 需要 complete profile 的旧资产规则；R3a 起只支持 CLASS_FIRST"
-                    + "（不种旧 mode/资产规则，质押没有落点）—— 该条件在 class-first 世界不适用");
-        case PRODUCTION_RUNTIME -> {
-          // ★★ P2：旧路径的 LegacyClassStructure.defaultModeId() 单值硬编码改成 DefaultProductionModes
-          //   目录查询 —— 目录外的 mode 具名拒绝，不静默通过（目录是唯一 mode 来源）。
-          if (DefaultProductionModes.mode(pledge.modeId()).isEmpty()) {
-            throw new IllegalArgumentException(
-                "test-condition: "
-                    + where
-                    + " 指名的 mode 不在 PRODUCTION_RUNTIME 的默认生产方式目录里（拒绝凭空引用）: "
-                    + pledge.modeId()
-                    + "；合法 mode: "
-                    + DefaultProductionModes.modes().keySet());
-          }
-        }
+      // ★★ P2：旧路径的 LegacyClassStructure.defaultModeId() 单值硬编码改成 DefaultProductionModes
+      //   目录查询 —— 目录外的 mode 具名拒绝，不静默通过（目录是唯一 mode 来源）。
+      if (DefaultProductionModes.mode(pledge.modeId()).isEmpty()) {
+        throw new IllegalArgumentException(
+            "test-condition: "
+                + where
+                + " 指名的 mode 不在 production-runtime 的默认生产方式目录里（拒绝凭空引用）: "
+                + pledge.modeId()
+                + "；合法 mode: "
+                + DefaultProductionModes.modes().keySet());
       }
       pledgeNodes.add(pledgeNode(pledgeIdFor(i, pledge), pledge));
     }
@@ -3637,13 +2978,13 @@ public final class EconomySeeder {
   /**
    * ★★ <b>PRODUCTION_RUNTIME：P2 恢复的旧完整生产播种路径</b>（旧 {@code b243e3d9^} 的 LEGACY/COMPLETE 共同生产段）。
    *
-   * <p>它与 {@link #planClassFirst} 是两条并列的正式路径：本方法逐格生成 {@code industries}（farm/weave/craft）、 {@code
+   * <p>它是唯一生产路径：本方法逐格生成 {@code industries}（farm/weave/craft）、 {@code
    * units} / {@code assetShares} / {@code laborSupply} / {@code allocations} / {@code memberships}
-   * / 经营者开缸账；阶层池 {@link ClassFirstState} 为空态（生产权威是 entries 的旧生产结构）。
+   * / 经营者开缸账；生产权威 = entries 的完整生产结构 + 默认生产方式目录。
    *
    * <p>★ 载荷出口的 {@code modes} / {@code classStructures} / {@code classPositions} / {@code
-   * classStandings} / {@code assetRules} / {@code liquidationPolicies} 由 {@link #jsonOf} 的 {@link
-   * FoundationProfile#seedsProductionCatalog()} 分支追加（mode 目录来自 {@code DefaultProductionModes}）。
+   * classStandings} / {@code assetRules} / {@code liquidationPolicies} 由 {@link #jsonOf} 追加（mode 目录来自
+   * {@code DefaultProductionModes}）；GOV 家户与政府国库由本方法内置。
    */
   private static Seed planProductionRuntime(
       String mapId,
@@ -3906,31 +3247,28 @@ public final class EconomySeeder {
       //   "这一格没有市场"（格不在本表的键集里）是合法状态，不是缺数据。
       markets.put(hex, MARKET_FACTORY);
     }
-    // ★★ 2026-10-07 GOV 非生产家户试点：在全部普通家户之后追加一个 GOV 家户。
+    // ★★ 政府内置（2026-10-09 起固定组成）：在全部普通家户之后追加一个 GOV 家户。
     //   它必须在 genesisEndowmentOf / applyTestConditions **之前**落进 entries 与三张家户表：
     //   ① 条件注入（extraGoodsByHousehold / extraMoneyByHousehold）才能指向它；
     //   ② INITIAL_ENDOWMENT 的“条件注入之前”口径才不会被 GOV 政策铸币污染。
     HouseholdId governmentHousehold =
-        profile.seedsGovernmentHousehold()
-            ? seedGovernmentHousehold(
-                entries,
-                ruralByHex,
-                urbanByHex,
-                householdLocations,
-                householdStocks,
-                householdMoney)
-            : null;
+        seedGovernmentHousehold(
+            entries,
+            ruralByHex,
+            urbanByHex,
+            householdLocations,
+            householdStocks,
+            householdMoney);
     // ★★ S1.4 出口自检：tick0 seed 是"人工造份额"的唯一入口 ⇒ 这里逐 lot 对账，不等就播不出去（fail-closed）。
     requireMembershipConservation(seeding.groups(), allMemberships);
+    // 国库 = GOV 家户账户；seigniorage/debtIssue 取本类具名 GM 默认值（固定组成）。
     Map<GovernmentId, Government> governments =
-        profile.seedsGovernmentHousehold()
-            ? Map.of(GENESIS_GOVERNMENT_ID, governmentHouseholdGovernment(governmentHousehold))
-            : Map.of(GENESIS_GOVERNMENT_ID, genesisGovernment());
+        Map.of(GENESIS_GOVERNMENT_ID, governmentHouseholdGovernment(governmentHousehold));
     // ★★ P3：INITIAL_ENDOWMENT 的总量取**条件注入之前**的家户+经营者钱包 —— 外部注入的货币走独立
     //   FISCAL_ISSUE 审计（见 applyTestConditions），绝不混进"每人禀赋"这条记录。
     Map<CurrencyId, Long> genesisEndowment = genesisEndowmentOf(householdMoney, operators);
     AppliedConditions applied =
-        applyTestConditions(mapId, entries, householdStocks, householdMoney, profile, conditions);
+        applyTestConditions(mapId, entries, householdStocks, householdMoney, conditions);
     if (LOG.isDebugEnabled()) {
       LOG.debug(
           "event=ECONOMY_SEED profile={} mapId={} entries={} markets={} householdStocks={} householdMoney={} operators={} debtContracts={} pledges={} extraMoneyIssuances={} merchantFirms={} genesisEndowment={}",
@@ -3963,7 +3301,6 @@ public final class EconomySeeder {
         applied.pledges(),
         applied.extraMoneyIssuances(),
         applied.report(),
-        ClassFirstState.empty(),
         merchantFirms);
   }
 

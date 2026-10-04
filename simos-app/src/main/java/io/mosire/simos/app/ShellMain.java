@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
  * 已随"没有就就地初始化"的裁定拔掉，见 {@link #parse})：{@code --store <dir>}（必填）、 {@code --gui-port N}、 {@code
  * --mcp-port N}、{@code --approval-port N} （三者缺省取自 {@link ShellConfig}）、{@code --bind-address
  * <host>} （GUI / MCP 的绑定地址，缺省 {@code 127.0.0.1}； ★ 审批端点恒回环，见 {@link ShellConfig#bindAddress()})。 ★
- * R3a 起 {@code --economy-threads N} 已拔掉（class-first 引擎是单线程，旧并行结算随旧结算运行时退役）—— 传它按未知参数拒，
+ * R3a 起 {@code --economy-threads N} 已拔掉（当前组合根按单线程退化路径装配生产运行时）—— 传它按未知参数拒，
  * 不留在"接了线但其实没用"的半吊子形态里。 {@code mcpPath} / {@code mcpInitiator} / {@code mapId} / {@code
  * checkpointInterval} 暂无开关，取缺省。
  *

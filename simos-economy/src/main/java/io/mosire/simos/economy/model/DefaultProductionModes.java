@@ -44,7 +44,7 @@ import java.util.Optional;
  *                                                       destitute       DIRECT_LABORER NONE        DEPENDENT
  * </pre>
  *
- * <p>★★ <b>为什么有 {@code family_farm} 这个桥接 mode</b>：旧 {@code class-first} 的 {@code middle_peasant} /
+ * <p>★★ <b>为什么有 {@code family_farm} 这个桥接 mode</b>：旧社会阶层的 {@code middle_peasant} /
  * {@code rich_peasant} 家户在 P1 还没有正式的自耕农 mode；{@code production-runtime} 的 {@code classStandings}
  * 需要一个稳定位置可指。{@code family_farm} 只承载“家户自耕农”的结构位置，不是探针五模式之一； 它的角色三档与 {@code LegacyClassStructure}
  * 的中农/富农位置一致（MIXED / BOTH / SELF_SUBSISTENCE）， 不发明新的分配规则。
@@ -102,7 +102,7 @@ public final class DefaultProductionModes {
   public static final ProductionModeId HANDICRAFT_WORKSHOP =
       new ProductionModeId("handicraft_workshop");
 
-  /** ★ 桥接 mode：旧 class-first 的中农/富农家户在 P1 的默认“家户自耕”位置（不是探针五模式之一）。 */
+  /** ★ 桥接 mode：中农/富农家户在 P1 的默认“家户自耕”位置（不是探针五模式之一）。 */
   public static final ProductionModeId FAMILY_FARM = new ProductionModeId("family_farm");
 
   /** ★ P6 商人：探针 {@code TransportTeam}/{@code MerchantTier} 的正式 mode（脚夫/个体户/老板三档）。 */

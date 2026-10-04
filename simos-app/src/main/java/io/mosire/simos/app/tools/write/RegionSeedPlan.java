@@ -54,7 +54,7 @@ import java.util.function.Predicate;
  *   <li>{@code economy.industries} 的 {@code <kind>@<q>_<r>} 命中，或 {@code economy.markets} 的格键命中。
  * </ul>
  *
- * <p>★ <b>世界级 classFirst 池不是 Region 命中</b>（它是共享世界状态，多 Region 追加播种是受支持形态）：只在结果 {@code warnings} 里警告。
+ * <p>★ <b>世界级经济状态（政府/发行审计/制度定义）不是 Region 命中</b>（它们是共享世界状态，多 Region 追加播种是受支持形态）。
  */
 final class RegionSeedPlan {
 
@@ -143,7 +143,7 @@ final class RegionSeedPlan {
     }
   }
 
-  /** clean gate 结果（{@code hits} 为空 = 干净；世界级 classFirst 不在此列，见类注）。 */
+  /** clean gate 结果（{@code hits} 为空 = 干净；世界级共享状态不在此列，见类注）。 */
   record CleanGate(List<Hit> hits) {
 
     CleanGate {
@@ -176,7 +176,7 @@ final class RegionSeedPlan {
 
   /**
    * 推导结果：干净 ⇒ {@code plan} 在场；命中 ⇒ {@code plan} 缺席（工具返回 {@code NEEDS_CLEAR}，零 revision）。 {@code
-   * warnings} 在两种形态下都给（世界级 classFirst / actor 与 economy 开关不一致）。
+   * warnings} 在两种形态下都给（actor 与 economy 开关不一致等）。
    */
   record Derivation(Optional<Plan> plan, CleanGate cleanGate, List<String> warnings) {
 
@@ -319,9 +319,9 @@ final class RegionSeedPlan {
     if (!cleanGate.clean()) {
       return new Derivation(Optional.empty(), cleanGate, warnings);
     }
-    // ★ 低人口 / 零人口：economy/actor 播种（class-first 阶层池 + 家户账）需要人口。
-    //   先判最直白的一档，保证拒因里带"可关开关"的指路；更细的"有地无家户"由 EconomySeeder 自己的
-    //   fail-closed 前置兜住（见下），这里不写第二份阈值推导。
+    // ★ 零人口：economy/actor 播种需要人口承载家户账。
+    //   先判最直白的一档，保证拒因里带"可关开关"的指路；更细的播种前置由 EconomySeeder 自己的
+    //   fail-closed 兜住（见下），这里不写第二份阈值推导。
     if ((params.includeEconomy() || params.includeActors()) && params.totalPopulation() == 0L) {
       throw lowPopulation("总人口为 0");
     }
@@ -341,20 +341,16 @@ final class RegionSeedPlan {
             params.documentedNames());
     SettlementPlan settlement =
         SettlementGenerator.generate(request, TerrainView.of(map), SettlementParams.defaults());
-    long ruralTotal = sumRural(settlement);
     PopulationSeeder.Seeding population = PopulationSeeder.seed(settlement, tick);
     Optional<EconomySeeder.Seed> economySeed = Optional.empty();
     if (params.includeEconomy() || params.includeActors()) {
-      if (ruralTotal == 0L) {
-        throw lowPopulation("农村人口为 0（全部人口在城镇），class-first 没有农村家户承载土地/农具");
-      }
       try {
         // ★ 一次算出：economy.Seed 的 entries/markets 与 actor.Seed 的库存/货币/经营者读的是同一份。
         economySeed = Optional.of(EconomySeeder.plan(mapId, population, map));
       } catch (IllegalStateException e) {
-        // ★ planClassFirst 的"有地无家户"前置：低人口（各阶层切分后某土地/农具持有位置无人）会在这里响亮抛。
-        //   折成 BAD_REQUEST 并附可用的降级开关；不静默、也不把用户输入问题伪装成内部故障。
-        throw lowPopulation("class-first 无法建池：" + e.getMessage());
+        // ★ 播种前置（低人口等）会在这里响亮抛。折成 BAD_REQUEST 并附可用的降级开关；
+        //   不静默、也不把用户输入问题伪装成内部故障。
+        throw lowPopulation("production-runtime 播种失败：" + e.getMessage());
       }
     }
     Plan plan =
@@ -392,7 +388,7 @@ final class RegionSeedPlan {
    * ★★ clean gate：目标 Region 的格集内是否存在 social / actor / economy 的既有记录。只读 {@code state}，不写任何东西。
    *
    * <p>★ 逐格经济只认 {@code industries}（按 {@link IndustryHexKeys} 的 id 语法）与 {@code markets}（格键）——世界级的
-   * {@code classFirst} 不在此列，见类注。
+   * 政府/制度定义不在此列，见类注。
    *
    * <p>★ <b>P1b1 起包内可见</b>（原 {@code private}）：{@code simos.region.clearData} 的只读 pre-scan 复用同一次扫描，
    * 避免"清空工具的命中清单"与"播种工具的 clean gate"各写一份而漂开。语义、命中序、样本数与拒因一字未动。
@@ -476,27 +472,13 @@ final class RegionSeedPlan {
 
   /** preview / apply 都要给的世界级与口径警告（不阻断落盘；阻断的只有 clean gate 的 Region 命中）。 */
   private static List<String> warnings(SimulationState state, Params params) {
-    EconomyData economy = ToolSupport.economyData(state);
     List<String> warnings = new ArrayList<>();
-    if (!economy.classFirst().isEmpty()) {
-      warnings.add(
-          "economy.classFirst 已是世界级非空状态（共享世界状态，不作为 Region 命中；本工具不清空它）"
-              + "——若目标 Region 是空白可继续，若与目标区域有关请另行评估");
-    }
     if (params.includeActors() && !params.includeEconomy()) {
       warnings.add(
-          "includeActors=true 而 includeEconomy=false：家户/经营者开缸账仍由同一次 class-first 推导算出，"
+          "includeActors=true 而 includeEconomy=false：家户/经营者开缸账仍由同一次 production-runtime 推导算出，"
               + "但 economy.Seed 不会落盘 ⇒ actor 账与 economy 切片可能不同步（建议两者同开）");
     }
     return List.copyOf(warnings);
   }
 
-  /** Σ 逐格农村人口。 */
-  private static long sumRural(SettlementPlan settlement) {
-    long total = 0L;
-    for (long value : settlement.ruralPopulation().values()) {
-      total += value;
-    }
-    return total;
-  }
 }

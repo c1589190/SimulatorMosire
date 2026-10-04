@@ -47,7 +47,7 @@ import io.mosire.simos.app.sd.channel.GuiDecisionChannel;
 import io.mosire.simos.app.sd.channel.HttpDecisionChannel;
 import io.mosire.simos.app.skill.SkillLibrary;
 import io.mosire.simos.app.time.CalendarService;
-import io.mosire.simos.app.time.ClassFirstPopulationEconomyTimeParticipant;
+import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.army.codec.ArmyCodec;
@@ -71,8 +71,6 @@ import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketPriceHandler;
 import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
 import io.mosire.simos.economy.spi.EconomyTransferAssetShareHandler;
-import io.mosire.simos.economy.spi.UnitBorrowHandler;
-import io.mosire.simos.economy.spi.UnitRepayHandler;
 import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
@@ -575,13 +573,6 @@ public final class Shell implements AutoCloseable {
                 // ── P1b1（2026-10-01）：GM-only 区域经济数据清空（目标格 industries/markets + 可靠可定位的连带记录）。
                 //   标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
                 new EconomyClearRegionHandler(),
-                // ── economy（阶段 7 第一段）：地方债借入/还款两条 economy 原语。★ 同样 GM-only：单提其中一条会造成
-                //   资金悬空（放贷方已扣/国库未收，或反之），唯一受支持的调用面是配套工具批
-                //   （economy.UnitBorrow + actor.AdjustAccounts / actor.AdjustAccounts +
-                // economy.UnitRepay）。
-                //   handler 照常注册、照进 commandTargets；但排除出令白名单 / RegisterEffect / 决策人目录。──
-                new UnitBorrowHandler(),
-                new UnitRepayHandler(),
                 // ── actor（1 条，S1 阶段 2）：actor.Seed —— 一次种入某地图的 actor 分片（主体/产权/商品库存三张表）。
                 //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）；同时也进 commandTypes ⇒
                 //   simos.command.submit 的目标声明表（CommandTargets）同源认得它。──
@@ -689,16 +680,16 @@ public final class Shell implements AutoCloseable {
     }
 
     // ★ T10-h：participant 由**清单**注册、条数由清单长度数出来（曾把 `participant=1` 写死在日志里 ⇒ 将来加第二个会静默说谎）。
-    //   ★ R2b（2026-09-30）：生产路径切到 **class-first** —— 经济/人口只由 ClassFirstSettlement 推进（新参与者），
-    //     R3a：旧的 PopulationEconomyTimeParticipant 已随旧结算运行时删除（只剩 class-first 一条生产路径）。
+    //   ★ 2026-10-09：生产路径收敛到 **production-runtime** —— 经济/人口/actor 三片由
+    //     PopulationEconomyTimeParticipant（EconomySettlement 的日结算）推进；class-first 路由已删除。
     //   ★ 旧注释（R4 为何 economy 与 social 合为一个参与者）仍成立：出生/死亡要同时看两侧，且"同一模块只能有一个写者"。
     List<TimeParticipant> participants =
         List.of(
             new UnitTimeParticipant(TerrainMovementCost.INSTANCE, config.mapId()),
             new SdTimeParticipant(config.mapId()),
-            // ★ R2b：唯一的经济—人口协调器 = class-first 单日入口；不再传入 economyWorkerCount（classfirst 引擎无并行池）。
+            // ★ 唯一的经济—人口协调器 = production-runtime 单日入口（缺省单线程退化路径）。
             // ★ C5：历法与人口/经济同取一份 CalendarService 快照（生产路径必须由 CalendarService.load 注入）。
-            new ClassFirstPopulationEconomyTimeParticipant(config.mapId(), calendarService));
+            new PopulationEconomyTimeParticipant(config.mapId()));
     for (TimeParticipant participant : participants) {
       coreSimos.register(participant);
     }

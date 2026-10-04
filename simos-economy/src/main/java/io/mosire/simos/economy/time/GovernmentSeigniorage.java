@@ -133,7 +133,7 @@ final class GovernmentSeigniorage {
     return minted;
   }
 
-  /** 国库账户：HOUSEHOLD treasury 走家户账户，其余（含 class-first 的 GOVERNMENT）走经营者账户。 */
+  /** 国库账户：HOUSEHOLD treasury 走家户账户，其余（GOVERNMENT 等）走经营者账户。 */
   private static ActorAccount accountOf(AccountSession accounts, Government government) {
     if (government.treasury().kind() == ActorKind.HOUSEHOLD) {
       HouseholdId household = HouseholdActors.householdOf(government.treasury());

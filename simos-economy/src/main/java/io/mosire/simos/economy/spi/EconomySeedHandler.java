@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.classfirst.ClassFirstState;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -60,12 +59,6 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     EconomyData base = EconomySnapshots.of(state).data(); // 装配故障当场炸，不走拒绝路径
-    // ★★ R2c：CLASS_FIRST 的权威是 householdAccounts，不声明 memberships。而 EconomyData 的旧档迁移器会对"classes
-    //    非空 + memberships 空"的载荷自动补出合成成员份额（旧生产结构影子）：它既没有消费者，又会在人口回写后让
-    //    S1 的 ΣMembership == ΣClassRow 守恒守卫误红 ⇒ class-first 世界在入口就丢掉这一旧口径影子。
-    if (!base.classFirst().isEmpty()) {
-      base = base.withMemberships(Map.of());
-    }
     JsonNode payload;
     EconomyData seeded;
     try {
@@ -76,21 +69,6 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
       //   以 IllegalStateException fail-closed（"无法定位产业格"等）—— 它同样是**载荷语义错误**，
       //   必须在命令边界成为 Rejected，不允许穿出去变成整条推进/revision 失败（类注的"失败都以 Rejected 出面"）。
       return new HandlerOutcome.Rejected(e.getMessage());
-    }
-    if (!seeded.classFirst().isEmpty()) {
-      seeded = seeded.withMemberships(Map.of());
-    }
-    // ★★ R2c：class-first 与旧生产结构不混播 —— 混合世界的 memberships/classes 守恒口径无法同时成立，
-    //    而且旧结算在 R2b 后已无生产调用方。首次播种（base.meta 空）两种 profile 都放行；此后只许同类追加。
-    boolean baseIsClassFirst = !base.classFirst().isEmpty();
-    boolean seededIsClassFirst = !seeded.classFirst().isEmpty();
-    if (base.meta().isPresent() && baseIsClassFirst != seededIsClassFirst) {
-      return new HandlerOutcome.Rejected(
-          "CLASS_FIRST 与旧生产结构不能混播：base classFirst="
-              + (baseIsClassFirst ? "非空" : "空")
-              + "，本载荷 classFirst="
-              + (seededIsClassFirst ? "非空" : "空")
-              + "（旧结算已无生产调用方，混合世界不受支持）");
     }
     if (base.meta().isEmpty()) {
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, seeded)); // 首次播种：打标
@@ -144,10 +122,12 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             // ★★ E2 第 21/22 个组件：同一套"该格已被占用 ⇒ 上面就拒"的口径追加（空表播种 ⇒ 逐值带过已有状态）。
             merge(base.productionOrganizations(), seeded.productionOrganizations()),
             merge(base.assetRules(), seeded.assetRules()),
-            // ★★ E3 第 23/24 个组件：政府按 id 幂等合并（同一份世界级最小政府在三国的 seed 里逐值相同），
-            //   发行记录按 id 追加（每个 seed 一条 INITIAL_ENDOWMENT 聚合记录；id 含该 seed 的格集指纹）。
-            //   ★ 漏了这两项 = 已播国家的政府/发行记录在后续国家 seed 时静默消失（账面上看不出是谁弄丢的）。
-            merge(base.governments(), seeded.governments()),
+            // ★★ E3 第 23/24 个组件：政府表按 id **先到者胜**，发行记录按 id 追加（每个 seed 一条
+            //   INITIAL_ENDOWMENT 聚合记录；id 含该 seed 的格集指纹）。
+            //   ★ 2026-10-09：production-runtime 每个 seed 都内置一个 GOV 家户，并把世界政府国库指向它的家户账户 ⇒
+            //     若后播 seed 覆盖政府记录，世界国库会随播种顺序漂移。世界级政府只应有一份 ⇒ 保留已存在者。
+            //     （每个 seed 自带的 official 家户行仍各自保留；它们不生产、人口 0，世界政府只认第一份。）
+            mergeKeepingExisting(base.governments(), seeded.governments()),
             merge(base.moneyIssuances(), seeded.moneyIssuances()),
             // ★★ E4a 的第 25 个组件：质押按同一套“该格已被占用 ⇒ 上面就拒”的口径追加（空表播种 ⇒ 逐值带过已有状态）。
             merge(base.pledges(), seeded.pledges()),
@@ -160,10 +140,7 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             //   国家 seed 时静默消失（新播的 seed 载荷通常为空表，逐值带过已有状态）。
             merge(base.modeTransitions(), seeded.modeTransitions()),
             merge(base.classShares(), seeded.classShares()),
-            // ★★ R1 第 30 个组件：可选 classFirst 顶层键按"空表播种 ⇒ 逐值带过已有状态"的口径合并
-            //   （漏了它 = 已播的阶层池状态在后续国家 seed 时静默消失）。
-            mergeClassFirst(base.classFirst(), seeded.classFirst()),
-            // ★★ P10.1 第 31 个组件：商号表按同一套 append 口径合并（空表播种 ⇒ 逐值带过已有状态）。
+            // ★★ P10.1 第 30 个组件：商号表按同一套 append 口径合并（空表播种 ⇒ 逐值带过已有状态）。
             merge(base.merchantFirms(), seeded.merchantFirms()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
@@ -180,26 +157,19 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
     return hexes;
   }
 
-  /**
-   * ★★ R1：{@code classFirst} 的追加合并 —— 空表播种 ⇒ 逐值带过已有状态；新载荷非空 ⇒ 按 {@link ClassFirstState#merge}
-   * 追加（同键以新载荷为准）。
-   */
-  private static ClassFirstState mergeClassFirst(ClassFirstState base, ClassFirstState added) {
-    ClassFirstState canonicalBase = base == null ? ClassFirstState.empty() : base;
-    ClassFirstState canonicalAdded = added == null ? ClassFirstState.empty() : added;
-    if (canonicalAdded.isEmpty()) {
-      return canonicalBase;
-    }
-    if (canonicalBase.isEmpty()) {
-      return canonicalAdded;
-    }
-    return canonicalBase.merge(canonicalAdded);
-  }
-
   /** 追加表：保留 {@code base} 的插入序，再把新增项接在后面（保序不可变的纯形态仍由 {@link EconomyData} 构造期冻结）。 */
   private static <K, V> Map<K, V> merge(Map<K, V> base, Map<K, V> added) {
     LinkedHashMap<K, V> merged = new LinkedHashMap<>(base);
     merged.putAll(added);
+    return merged;
+  }
+
+  /** 同 {@link #merge}，但同 id **保留已存在者**（后到者的值不覆盖先到者；见 governments 的合并口径）。 */
+  private static <K, V> Map<K, V> mergeKeepingExisting(Map<K, V> base, Map<K, V> added) {
+    LinkedHashMap<K, V> merged = new LinkedHashMap<>(base);
+    for (Map.Entry<K, V> entry : added.entrySet()) {
+      merged.putIfAbsent(entry.getKey(), entry.getValue());
+    }
     return merged;
   }
 }

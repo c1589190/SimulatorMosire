@@ -281,7 +281,7 @@ public final class ModeMigrationPolicy {
     //    单参兼容重载只算组织引用格，生产路径一律走三参版本。
     Set<AssetShareId> claimedByOrganizations = claimedAssetShares(organizations, units, assetShares);
     if (base.modes().isEmpty()) {
-      return MigrationPlan.empty(); // class-first 世界：逐字 no-op
+      return MigrationPlan.empty(); // 旧档（无 modes）：逐字 no-op
     }
 
     // ★★ D-024 / 设计 §3.3：需求簿只构建一次，透传给所有源户/候选评估（horizonDays = 世界产业 cycleDays 的统一值；

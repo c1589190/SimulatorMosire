@@ -200,11 +200,11 @@ final class GovernmentDebtIssuance {
     return lenders;
   }
 
-  /** 政府身份 → 政府家户 id（本批 treasury 恒为 HOUSEHOLD；GOVERNMENT actor 的 class-first 政府不参与本写口）。 */
+  /** 政府身份 → 政府家户 id（本写口只支持 treasury = HOUSEHOLD）。 */
   private static HouseholdId householdOf(Government government) {
     if (government.treasury().kind() != ActorKind.HOUSEHOLD) {
       throw new IllegalStateException(
-          "GOV 发债需要 HOUSEHOLD 国库（class-first GOVERNMENT 国库不参与本写口）：" + government);
+          "GOV 发债需要 HOUSEHOLD 国库（非 HOUSEHOLD 国库不参与本写口）：" + government);
     }
     return HouseholdActors.householdOf(government.treasury());
   }

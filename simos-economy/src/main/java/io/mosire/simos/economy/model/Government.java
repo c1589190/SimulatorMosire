@@ -41,7 +41,7 @@ public record Government(
   /**
    * ★ 旧形状兼容构造器：两个财政旋钮都取 0（逐值等于它们引入前的政府）。
    *
-   * <p>class-first 路径、旧夹具与旧载荷都走它；新世界的 GOV 家户 profile 才显式给铸币/发债量。
+   * <p>旧夹具与旧载荷走它；production-runtime 的内置 GOV 家户才显式给铸币/发债量。
    */
   public Government(
       GovernmentId id, String nationRef, ActorRef treasury, Set<CurrencyId> issuable) {
@@ -65,7 +65,7 @@ public record Government(
     }
     Objects.requireNonNull(treasury, "Government.treasury 不得为 null");
     // ★★ 2026-10-07 GOV 非生产家户试点：国库可以是一本家户账（ActorKind.HOUSEHOLD）——
-    //   那时政府与家户共用同一套市场/债务路径。class-first 的世界级最小政府仍是 GOVERNMENT。
+    //   那时政府与家户共用同一套市场/债务路径。旧档的世界级最小政府仍是 GOVERNMENT。
     if (treasury.kind() != ActorKind.GOVERNMENT && treasury.kind() != ActorKind.HOUSEHOLD) {
       throw new IllegalArgumentException(
           "Government.treasury 的 ActorKind 必须是 GOVERNMENT 或 HOUSEHOLD: " + treasury);

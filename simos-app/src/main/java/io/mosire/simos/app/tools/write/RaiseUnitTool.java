@@ -63,7 +63,7 @@ import java.util.UUID;
  *       note} = 人可读摘要，{@code tick} = 当前世界日。
  * </ol>
  *
- * <p>★ <b>{@code tools} 本批不做</b>：actor 账只有商品 / 货币两维（classfirst 的 {@code TOOLS} 不落 actor）⇒ 载荷出现
+ * <p>★ <b>{@code tools} 本批不做</b>：actor 账只有商品 / 货币两维（工具形态不落 actor）⇒ 载荷出现
  * {@code tools} 键一律具名 {@link IllegalArgumentException}（折 {@code BAD_REQUEST}），<b>不静默忽略</b>；装备只走
  * {@code equipment} 参数。
  *
@@ -109,7 +109,7 @@ public final class RaiseUnitTool implements AgentTool {
 
   /** {@code tools} 键的具名拒因（计划 §5：用具来源本批不做，不静默忽略）。 */
   static final String TOOLS_REJECT_MESSAGE =
-      "载荷不支持 tools 键：actor 账只有商品/货币两维；classfirst 的 TOOLS 不落 actor；本批不做用具来源"
+      "载荷不支持 tools 键：actor 账只有商品/货币两维；工具形态不落 actor；本批不做用具来源"
           + "（装备只走 equipment 参数，不从账本抽）";
 
   /** 本工具只写 unit / actor / social / sd 四个命名空间（GM 侧四面 unlimited ⇒ 逐条判通过）。 */
@@ -140,7 +140,7 @@ public final class RaiseUnitTool implements AgentTool {
    * @param core 唯一写入口（本工具走 {@code submitBatch}；preview=true 时一个字节都不写）
    * @param query 只读入口（读 branch/revision 的当前 {@link SimulationState}；preview 与同一份推导共用它）
    * @param initiator 落盘时的发起者（C21 的 {@code <kind>:<id>} 形态）
-   * @param mapId 本世界的 map 称谓（★ 保留在装配签名里以与 {@code LevyRegionTool}/{@code IssueDebtTool} 同制；本工具资源
+   * @param mapId 本世界的 map 称谓（★ 保留在装配签名里以与 {@code LevyRegionTool} 同制；本工具资源
    *     声明是四个命名空间的粗断言、单位地址按单位 id 定位，不当路径用）
    */
   // ★ 测试/旧路径：全缺省时钟，不读 store；生产 Shell 必须用带 CalendarService 的重载（CalendarService.load）。

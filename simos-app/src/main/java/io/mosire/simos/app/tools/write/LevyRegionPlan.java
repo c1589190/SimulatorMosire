@@ -6,9 +6,9 @@ import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.calendar.CalendarClock;
+import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -65,17 +65,16 @@ import java.util.function.ToLongFunction;
  */
 final class LevyRegionPlan {
 
-  /** 粮的商品 id（{@link PilotModel#GRAIN} 的<b>唯一</b>字面量来源；本类不另写 {@code "grain"}）。 */
-  private static final CommodityId GRAIN = new CommodityId(PilotModel.GRAIN);
+  /** 粮的商品 id（{@link EconomyCommodities#GRAIN} 的<b>唯一</b>字面量来源；本类不另写 {@code "grain"}）。 */
+  private static final CommodityId GRAIN = EconomyCommodities.GRAIN;
 
   /**
-   * 布的商品 id：取 {@link PilotModel#CLOTH} 这个<b>既有常量</b>作为唯一拼写点（不另写 {@code "cloth"}）。
+   * 布的商品 id：取 {@link EconomyCommodities#CLOTH} 这个<b>既有常量</b>作为唯一拼写点（不另写 {@code "cloth"}）。
    *
-   * <p>★ 为什么不取 {@code EconomyVocabulary.CLOTH_COMMODITY_ID}：本类的粮已经用 {@link
-   * PilotModel#GRAIN}，粮/布同批必须同源； 而 {@code GovDaily} 的行政物资走 {@code EconomyVocabulary} 是 gov
-   * 模块自己的边界，不在本类复述第二份词表。两个常量都只是 {@code "cloth"} 字符串，谁都没有另造值。
+   * <p>★ 常量来自 {@link EconomyCommodities}，字面量的唯一拼写点仍是 {@code
+   * EconomyVocabulary.CLOTH_COMMODITY_ID}；本类不复述第二份词表。
    */
-  private static final CommodityId CLOTH = new CommodityId(PilotModel.CLOTH);
+  private static final CommodityId CLOTH = EconomyCommodities.CLOTH;
 
   private LevyRegionPlan() {}
 

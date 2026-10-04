@@ -109,7 +109,7 @@ public final class RegionClearDataTool implements AgentTool {
         + " sd.PutInfo 下单；三域都无命中 ⇒ 不提交、零 revision，返回\"没有需要清空的数据\"。"
         + "清空边界：social 清目标 Region 格集内的 populations/groups/cities（含 city.region 归属命中）；actor 清目标格内的"
         + " GoodsAccount，并只删除清账后在任何位置都不再持有账户的主体；economy 至少清目标格 industries/markets 及其"
-        + " unit/relations/classes/memberships 等可靠可定位的连带记录（不动世界级 classFirst/发行审计/在途货物/laborSupply）。"
+        + " unit/relations/classes/memberships 等可靠可定位的连带记录（不动世界级发行审计/在途货物/laborSupply）。"
         + "本工具只清数据，不动 Region/Unit/GOV/决策人结构（结构清空请单独调用 simos.region.clearStructures）。"
         + "参数 {regionId(必填，必须在当前 map.regions() 里), preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH

@@ -51,7 +51,7 @@ public final class EconomyDayStepper implements AutoCloseable {
 
   /**
    * ★★ <b>P10.2：本周期利润/迁移累加器</b>（{@code modes} 非空才有；逐日喂当天账本，关账日 ⑦⑧⑨ 后在
-   * {@code EconomySettlement} 内复位）。class-first 世界（{@code modes} 空）恒为 {@code null} ⇒ 逐值不变。
+   * {@code EconomySettlement} 内复位）。旧档 {@code modes} 为空时恒为 {@code null} ⇒ 逐值不变。
    */
   private final OrganizationProfitBook.CycleAccumulator profitCycle;
 

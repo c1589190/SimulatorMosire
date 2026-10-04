@@ -290,40 +290,20 @@ public final class CatalogTool implements AgentTool {
                   + "（★ GM-only 区域经济数据清空：目标 Region 格集内 industries/markets 及可靠可定位的连带记录"
                   + "（units/relations/operatorConditions/assetShares/classes/flows/memberships/allocations/"
                   + "debtContracts/pledges/productionOrganizations/modeTransitions/classShares/classStandings/demands/"
-                  + "crisisSignals）整条删除；世界级 classFirst/发行审计/在途货物/laborSupply/制度定义不动）"),
+                  + "crisisSignals）整条删除；世界级发行审计/在途货物/laborSupply/制度定义不动）"),
           Map.entry(
               "economy.GmAdjust",
-              "adjustment(setMobilityPolicy|setClassFirstLender|forgiveClassFirstDebt"
-                  + "|setCollectionPolicy|setProductionParameters|levyStock"
-                  + "|forgiveDebt|setLiquidationPolicy"
+              "adjustment(forgiveDebt|setLiquidationPolicy"
                   + "|upsertProductionMode|deactivateProductionMode|upsertClassStructure|upsertClassPosition"
                   + "|upsertProductionRelation|upsertAssetRule|upsertProductionOrganization|upsertCandidate),"
                   + " parameters(JSON 对象), reason(必填非空白)"
                   + "（★ GM-only、只改源状态：白名单外/派生读数 ⇒ 拒；"
-                  + "class-first 原生六：setMobilityPolicy={modeId?, 任一 MobilityPolicy 标量字段或 absorptionPolicy"
-                  + "(PROPORTIONAL|ALL_OR_NOTHING)；schema/bounds/absorptionCapByEdgePerMille/bundleTemplates 给到即拒}；"
-                  + "setClassFirstLender={lenderId, interestRatePerMille?/nextDueTick? 至少一项(≥0)；collectionPower 无消费点 ⇒ 拒}；"
-                  + "forgiveClassFirstDebt={ownerId, counterpartyId, unit?(缺省=grain), amount?(缺省=全额债务)}"
-                  + "（对称清减两条镜像账户，归零 ⇒ SETTLED；不动 interestAccrued/库存）；"
-                  + "setCollectionPolicy={collectionThreshold?(≥0), collectionTriggerRatioPerMille?(≥0),"
-                  + " collectionRatioPerMille?(0..1000), landPricePerUnit?(≥1) 至少一项；"
-                  + "seizurePriority（枚举只有一个取值）/collectorClassPositionId（本阶段固定 LANDLORD）给到即拒}；"
-                  + "setProductionParameters={15 个生产/技术标量至少一项：yieldPerLand(>0)/seedPerLand(≥0)/laborPerLand(>0)/"
-                  + "toolCapacityPerTool(>0)/rentPerLand(≥0)/wagePerLabor(≥0)/baseRationPerCapita(≥0)/laborRationPerLabor(≥0)/"
-                  + "nonEssentialNeedPerMille(≥0)/nonEssentialEfficiencyPenaltyPerMille(≥0)/loanInterestRatePerMille(≥0)/"
-                  + "moneyPerGrain(>0)/toolPricePerUnit(≥0)/reserveTicks(≥0)/collectionIntervalTicks(≥1)；"
-                  + "只改 meta.config、未给字段保持原值}；"
-                  + "levyStock={fromClassPositionId, lenderId, unit(grain|money), amount(≥1 整数) 四字段全必填；"
-                  + "grain 上限=stock−protectedGrainReserve(population,labor)（口粮保护储备不可抽）、money 上限=stock；"
-                  + "超上限 ⇒ 拒并报 available，不截断；只改源池与目标 lender}；"
-                  + "旧表两 kind 仅非空 classFirst 为空的世界可用（classFirst 非空 ⇒ 具名拒绝并指路 class-first 原生 kind）："
-                  + "forgiveDebt: debtContractId, amount?(缺省=全额本金，须 ≤ 本金)；"
+                  + "旧表两：forgiveDebt: debtContractId, amount?(缺省=全额本金，须 ≤ 本金)；"
                   + "setLiquidationPolicy: assetRuleId, maxLiquidatePerMille(0..1000), protectedReserve(≥0),"
                   + " priceSource(MARKET|AGREED|POLICY), policyValuePerUnitMilli(≥0；非 POLICY 必须 0),"
-                  + " recipientRule(CREDITOR_FIRST|MARKET_FIRST)；引用不存在的 AssetRule ⇒ 拒）；"
-                  + "P7 生产方式编辑八 kind（class-first 世界也可用，classFirst 优先分支不变）："
-                  + "upsertProductionMode={id,name,version?,classStructureId}（version 必须推进；classStructureId 须已存在，"
-                  + "class-first 且 classStructures 空时允许先引用待建结构 id）；"
+                  + " recipientRule(CREDITOR_FIRST|MARKET_FIRST)；引用不存在的 AssetRule ⇒ 拒；"
+                  + "P7 生产方式编辑八 kind："
+                  + "upsertProductionMode={id,name,version?,classStructureId}（version 必须推进；classStructureId 须已存在）；"
                   + "deactivateProductionMode={id}（被 classStructures/classPositions/productionOrganizations/"
                   + "assetRules/modeTransitions/pledges 任一引用 ⇒ 具名拒绝）；"
                   + "upsertClassStructure={id,modeId,positions?,defaultSharesPerMille?}（至少一项；位置 upsert 并同步全局 "
@@ -341,23 +321,6 @@ public final class CatalogTool implements AgentTool {
                   + "buildDays?,cycleDays?,regime?,laborSource?,acceptedRightKinds?,assetSource?,name?}"
                   + "（新建 output/outputPerUnit/cycleDays/regime 必填；修订须推进 version；"
                   + "★ ProductionCandidate 没有 modeId 字段，显式 modeId ⇒ 具名拒绝））"),
-          Map.entry(
-              "economy.UnitBorrow",
-              "unitId, lenderId, unit(money|grain), principal(≥1), interestRatePerMille(≥0),"
-                  + " nextDueTick(> 当前 tick), terms?(缺省 unit-debt)"
-                  + "（★ GM-only：地方债借入原语，只改 classFirst.lenders/accounts 两张表——"
-                  + "放贷方余额 −principal、owner=unitId/counterparty=lenderId 与镜像两条腿同批落；"
-                  + "classFirst 为空 / lender 不存在 / unit 不认 / principal 超可贷量 /"
-                  + "已有未结清腿 ⇒ 拒（后者指路 unit.repayDebt）；已结清身份可重开；不碰 actor；"
-                  + "唯一受支持的完整调用面是 economy.UnitBorrow + actor.AdjustAccounts 工具批）"),
-          Map.entry(
-              "economy.UnitRepay",
-              "unitId, lenderId, unit(money|grain), amount(≥1)"
-                  + "（★ GM-only：地方债还款原语，只改 classFirst.lenders/accounts 两张表——"
-                  + "放贷方余额 +amount、借款腿/镜像腿各减 amount，清 0 ⇒ 双腿 SETTLED；"
-                  + "classFirst 为空 / lender 不存在 / unit 不认 / 没有未结清的地方债 / amount 超过负债 ⇒ 拒；"
-                  + "镜像腿缺失或两腿净额不互为相反数 ⇒ 状态损坏（IllegalStateException）；不碰 actor；"
-                  + "唯一受支持的完整调用面是 actor.AdjustAccounts + economy.UnitRepay 工具批）"),
           Map.entry(
               "actor.Seed",
               "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],"
