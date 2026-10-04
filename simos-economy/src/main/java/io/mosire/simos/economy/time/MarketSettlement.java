@@ -2107,33 +2107,36 @@ final class MarketSettlement {
     long payment = ceilDiv(quantity * unitPrice, EconomySettlement.MILLI_PER_GRAIN);
     long nominalFreight =
         route == null ? 0L : freightOf(quantity, route.unitPrice, route.freightRatePerMille);
-    // ★ P10.2：跨区 lane 现选承运商（merchantFirms 非空时）；无商号/无运力 ⇒ 运费记入 uncollected，钱不消失。
-    Optional<ActorRef> carrierActor = Optional.empty();
+    // ★★ P11.3：跨区 lane 由 CarrierPool 按容量把本票需求分给多家商号（有效到货费率升序 → organizationId 升序）。
+    //   自承运（choice.principalActor == 买方 actor）的条目整条跳过：不铸自转移、不计实收、也不记未收（P10.9 口径），
+    //   但它的运力仍按选择结果被扣。只有"总可分配量不足"的剩余部分才记 freightUncollectedMilli（具名边界）。
+    List<FreightCharge> freightCharges = new ArrayList<>();
     long freight = 0L;
+    long uncollectedFreight = 0L;
     if (route != null) {
       if (!ctx.merchantFirms.isEmpty()) {
-        Optional<MerchantSettlement.CarrierChoice> choice =
-            ctx.carrierPool.select(
-                route.from, route.to, quantity, route.unitPrice, route.freightRatePerMille);
-        if (choice.isPresent()) {
-          freight = choice.get().freightMilli();
-          carrierActor = Optional.of(choice.get().principalActor());
+        MerchantSettlement.CarrierAllocation allocation =
+            ctx.carrierPool.select(route.from, route.to, quantity, route.freightRatePerMille);
+        freightCharges = carrierChargeSplit(allocation, buy.buyer.actor, route);
+        for (FreightCharge charge : freightCharges) {
+          freight = Math.addExact(freight, charge.amountMilli());
+        }
+        long unallocated = allocation.unallocatedMilli();
+        if (unallocated > 0L) {
+          uncollectedFreight = freightOf(unallocated, route.unitPrice, route.freightRatePerMille);
         }
       } else if (ctx.carrier.isPresent()) {
-        freight = nominalFreight;
-        carrierActor = ctx.carrier;
+        // 旧路径（merchantFirms 为空）：第一个有货币账的 ORGANIZATION 承运整票；自承运同样不收运费。
+        // 名义费率为 0 时不出零额腿，也不记未收（旧口径 freight > 0 才铸）。
+        ActorRef legacyCarrier = ctx.carrier.get();
+        if (!legacyCarrier.equals(buy.buyer.actor) && nominalFreight > 0L) {
+          freightCharges = List.of(new FreightCharge(legacyCarrier, nominalFreight));
+          freight = nominalFreight;
+        }
+      } else {
+        // 没有商号服务 / 没有可用承运人：整票名义运费记未收（旧行为），钱不凭空消失。
+        uncollectedFreight = nominalFreight;
       }
-    }
-
-    // ★★ P10.9 自承运：选商可能选中买方本人（商号 principal 就是买方家户）—— 自承运不产生货币运费腿，
-    //   而 Transfer 的两端不得相等（自转移是坏数据）。必须在下面 total = payment + freight 之前把
-    //   freight 归零：买方不为它多冻结、不多记 spentMilli；不铸 CARRIER_FEE、不调 applyTransfer。
-    //   carrierActor 保持 present ⇒ 下面 carrierActor.isEmpty() 的"应收未收"分支不会把自承运错记成
-    //   freightUncollectedMilli（它只是自己运自己，本来就没有应收的货币运费，钱也没有凭空消失）。
-    boolean selfCarrier =
-        route != null && carrierActor.isPresent() && carrierActor.get().equals(buy.buyer.actor);
-    if (selfCarrier) {
-      freight = 0L;
     }
 
     // ① 卖方把已冻结的那一份放出来，再走唯一 applier（货腿：卖方 → 买方）。
@@ -2194,14 +2197,16 @@ final class MarketSettlement {
           round.householdOfActor,
           moneyLeg);
     }
-    if (freight > 0L && carrierActor.isPresent()) {
+    // ★ P11.3：逐条实际承运条目分别铸 CARRIER_FEE；freightPaidMilli 只累加真实铸出的金额（Σ = 实际可收运费，
+    //   自承运条目已在 carrierChargeSplit 里剔除，因此不会出现"买方 → 买方"的自转移）。
+    for (FreightCharge charge : freightCharges) {
       Transfer freightLeg =
           round.ledger.mint(
               buy.buyer.actor,
-              carrierActor.get(),
+              charge.carrierActor(),
               route.to,
               Map.of(),
-              Map.of(buy.currency, freight),
+              Map.of(buy.currency, charge.amountMilli()),
               TransferReason.CARRIER_FEE);
       EconomySettlement.applyTransfer(
           round.householdGoods,
@@ -2214,10 +2219,9 @@ final class MarketSettlement {
           round.operatorFrozenMoney,
           round.householdOfActor,
           freightLeg);
-      ctx.freightPaidMilli += freight;
-    } else if (route != null && carrierActor.isEmpty()) {
-      ctx.freightUncollectedMilli += nominalFreight;
+      ctx.freightPaidMilli += charge.amountMilli();
     }
+    ctx.freightUncollectedMilli += uncollectedFreight;
     buy.spentMilli += total;
     if (ctx.recordFillIntents) {
       // ★ worker 的区内意向：全局槽位下标 + 唯一标识（区/商品/买卖方 canonical 串），协调器按区序回放。
@@ -2302,6 +2306,76 @@ final class MarketSettlement {
             shipmentId,
             // ★ M2.7：逐票预排损耗与到货日的扣减公式逐字同源（deliverShipments 也是 quantity × lossPerMille ÷ 1000）。
             quantity * route.lossPerMille / 1000L));
+  }
+
+  /**
+   * ★★ <b>P11.3：把一票跨区运费分摊成逐商号的 CARRIER_FEE 金额</b>。
+   *
+   * <pre>
+   * ① 自承运条目（principalActor == 买方 actor）整条跳过：不铸自转移、不计实收、不记未收（P10.9 口径）；
+   * ② 实际可收运费 = min(非自承运部分的名义运费上限, Σ 各条按自身有效到货费率的运费)；
+   * ③ 其余条目按承运量占非自承运总量的比例 floor 分摊，顺序里**最后一条实际承运条目拿余数**
+   *    ⇒ Σ各条金额 == 实际可收运费，且 ≤ 该票 nominal freight；
+   * ④ 金额为 0 的条目不产生转移（仍保持守恒）。
+   * </pre>
+   *
+   * <p>★ 分摊顺序 = select 返回顺序（有效费率升序 → organizationId 升序），不读时钟/随机 ⇒ 同输入逐值确定。
+   */
+  private static List<FreightCharge> carrierChargeSplit(
+      MerchantSettlement.CarrierAllocation allocation, ActorRef buyerActor, RouteContext route) {
+    List<MerchantSettlement.CarrierChoice> choices = allocation.choices();
+    long chargeableQuantity = 0L;
+    long effectiveFreightSum = 0L;
+    int lastChargeable = -1;
+    for (int i = 0; i < choices.size(); i++) {
+      MerchantSettlement.CarrierChoice choice = choices.get(i);
+      if (choice.principalActor().equals(buyerActor)) {
+        continue; // 自承运：该条的运费不进入实收，也不进入未收
+      }
+      lastChargeable = i;
+      chargeableQuantity = Math.addExact(chargeableQuantity, choice.quantityMilli());
+      effectiveFreightSum =
+          Math.addExact(
+              effectiveFreightSum,
+              freightOf(
+                  choice.quantityMilli(),
+                  route.unitPrice,
+                  choice.effectiveRatePerMille(route.freightRatePerMille)));
+    }
+    if (chargeableQuantity <= 0L) {
+      return List.of();
+    }
+    long nominalCap = freightOf(chargeableQuantity, route.unitPrice, route.freightRatePerMille);
+    long collectible = Math.min(nominalCap, effectiveFreightSum);
+    List<FreightCharge> charges = new ArrayList<>();
+    long assigned = 0L;
+    for (int i = 0; i < choices.size(); i++) {
+      MerchantSettlement.CarrierChoice choice = choices.get(i);
+      if (choice.principalActor().equals(buyerActor)) {
+        continue;
+      }
+      long amount;
+      if (i == lastChargeable) {
+        amount = collectible - assigned; // 余数全部给顺序里最后一条实际承运条目
+      } else {
+        amount = Math.multiplyExact(collectible, choice.quantityMilli()) / chargeableQuantity;
+        assigned = Math.addExact(assigned, amount);
+      }
+      if (amount > 0L) {
+        charges.add(new FreightCharge(choice.principalActor(), amount));
+      }
+    }
+    return List.copyOf(charges);
+  }
+
+  /** 一条实际要铸的 CARRIER_FEE 腿（P11.3）：收款 principal + 金额（毫计价货币）。 */
+  private record FreightCharge(ActorRef carrierActor, long amountMilli) {
+    private FreightCharge {
+      Objects.requireNonNull(carrierActor, "carrierActor");
+      if (amountMilli <= 0L) {
+        throw new IllegalArgumentException("FreightCharge 金额必须为正: " + amountMilli);
+      }
+    }
   }
 
   /** 把刚记到买方名下的量移出会话余额（在途资产的装载；到货日反向落回）。 */

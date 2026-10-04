@@ -32,15 +32,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.OptionalLong;
 
 /**
- * ★★ <b>P10.2 商人承运与周期结算（架构 §5.4）</b>：
+ * ★★ <b>P10.2/P11.3 商人承运与周期结算（架构 §5.4）</b>：
  *
  * <pre>
- * 市场阶段：按 lane 服务半径 + 剩余运力选商号（到货费率升序 → organizationId 升序）；买方 CARRIER_FEE
- *           直接付给 merchant principal 家户；无承运 ⇒ freightUncollectedMilli（钱不凭空消失）
+ * 市场阶段：按 lane 服务半径 + 剩余运力，把一条 lane 的需求按"有效到货费率升序 → organizationId 升序"依次分给多家商号，
+ *           每家吃满 capacityPerRound 余量（P11.3 多承运商分摊）；买方 CARRIER_FEE 按承运量比例分别付给 merchant principal
+ *           家户；总运力仍不足的部分才 ⇒ freightUncollectedMilli（钱不凭空消失）
  * 周期末  ：运费实收 − porter 工资实付 − upkeep = lastProfit；盈利 capacityPerRound+5（上限 100000）、
  *           亏损 −5（下限 5）；农村商号每活跃轮 +2‰（封顶 100）；结果经 withTradeResult 写回 merchantFirms
  * </pre>
@@ -77,22 +77,105 @@ public final class MerchantSettlement {
    */
   public static final long SHIP_CATTLE_UPKEEP_PER_UNIT_MILLI = 10L;
 
-  /** 一条承运选择结果。 */
+  /**
+   * ★★ <b>一条承运选择结果（P11.3 起：多承运商按容量分摊）</b>。
+   *
+   * <p>★★ <b>与 P10.2 旧形状的差异（具名）</b>：{@code select} 不再拿 lane 单价，因此本记录<b>不存</b>单条
+   * {@code freightMilli}；运费由 {@code MarketSettlement} 按 lane 名义费率现算各条有效费率下的金额，再按承运量比例分摊并封顶。
+   *
+   * @param organizationId 商号对应的生产组织
+   * @param principalActor 商号 principal 家户 actor（CARRIER_FEE 收款人）
+   * @param firm 选中时的商号读数（容量扣减前的快照）
+   * @param quantityMilli 本条分到的承运量（毫商品单位）
+   * @param cityDiscountPerMille 本条 lane 的城市折扣（‰）
+   * @param ruralPenaltyPerMille 本条商号的农村累积惩罚（‰）
+   */
   public record CarrierChoice(
       ProductionOrganizationId organizationId,
       ActorRef principalActor,
       MerchantFirm firm,
-      long quantity,
-      long freightMilli,
-      long effectiveRatePerMille) {
+      long quantityMilli,
+      long cityDiscountPerMille,
+      long ruralPenaltyPerMille) {
 
     public CarrierChoice {
       Objects.requireNonNull(organizationId, "organizationId");
       Objects.requireNonNull(principalActor, "principalActor");
       Objects.requireNonNull(firm, "firm");
-      if (quantity <= 0L || freightMilli < 0L || effectiveRatePerMille < 0L) {
-        throw new IllegalArgumentException("CarrierChoice 的 quantity/freight/rate 非法");
+      if (quantityMilli <= 0L || cityDiscountPerMille < 0L || ruralPenaltyPerMille < 0L) {
+        throw new IllegalArgumentException("CarrierChoice 的 quantity/discount/penalty 非法");
       }
+    }
+
+    /** 本条在给定 lane 名义费率下的有效到货费率（‰）：{@code max(0, 名义 − 城市折扣 + 农村惩罚)}（P10.2 同一算式）。 */
+    public long effectiveRatePerMille(long nominalRatePerMille) {
+      if (nominalRatePerMille < 0L) {
+        throw new IllegalArgumentException("nominalRatePerMille 不得为负: " + nominalRatePerMille);
+      }
+      return Math.max(
+          0L,
+          Math.addExact(
+              Math.subtractExact(nominalRatePerMille, cityDiscountPerMille),
+              ruralPenaltyPerMille));
+    }
+
+    /** P10.2 旧访问器名（旧形状字段叫 {@code quantity}）；语义 = {@link #quantityMilli()}。 */
+    public long quantity() {
+      return quantityMilli;
+    }
+  }
+
+  /**
+   * ★★ <b>一次 select 的完整结果（P11.3）</b>：分给了哪些商号、各多少、以及没分出去的剩余需求。
+   *
+   * <p>★★ <b>不变量</b>：{@code Σ choices.quantityMilli + unallocatedMilli == requestedMilli}；{@code unallocatedMilli}
+   * 必须由调用方显式处理（{@code MarketSettlement} 记 {@code freightUncollectedMilli}），本类不静默丢。
+   *
+   * @param choices 已分配条目（按有效到货费率升序 → organizationId 升序）
+   * @param requestedMilli 本次请求分配的承运量
+   * @param unallocatedMilli 总剩余运力仍不足而未分配的数量
+   */
+  public record CarrierAllocation(
+      List<CarrierChoice> choices, long requestedMilli, long unallocatedMilli) {
+
+    public CarrierAllocation {
+      Objects.requireNonNull(choices, "choices");
+      choices = List.copyOf(choices);
+      if (requestedMilli < 0L || unallocatedMilli < 0L || unallocatedMilli > requestedMilli) {
+        throw new IllegalArgumentException(
+            "CarrierAllocation 的 requested/unallocated 非法: requested="
+                + requestedMilli
+                + " unallocated="
+                + unallocatedMilli);
+      }
+      long allocated = 0L;
+      for (CarrierChoice choice : choices) {
+        allocated = Math.addExact(allocated, choice.quantityMilli());
+      }
+      if (allocated != requestedMilli - unallocatedMilli) {
+        throw new IllegalArgumentException(
+            "CarrierAllocation 不守恒: allocated="
+                + allocated
+                + " requested="
+                + requestedMilli
+                + " unallocated="
+                + unallocatedMilli);
+      }
+    }
+
+    /** 已分配总量（毫商品单位）= {@code requestedMilli − unallocatedMilli}。 */
+    public long allocatedMilli() {
+      return requestedMilli - unallocatedMilli;
+    }
+
+    /** 需求是否全部有商号承运（自承运也算已分配；自承运是否收钱由调用方按 P10.9 口径处理）。 */
+    public boolean fullyAllocated() {
+      return unallocatedMilli == 0L;
+    }
+
+    /** 一条都没分出去（没有可服务商号 / 全部运力耗尽）。 */
+    public boolean isEmpty() {
+      return choices.isEmpty();
     }
   }
 
@@ -130,72 +213,121 @@ public final class MerchantSettlement {
     }
 
     /**
-     * 按 lane 选承运商：服务半径覆盖两端、剩余运力 ≥ 本票数量；到货费率升序 → organizationId 升序。
+     * ★★ <b>P11.3 多承运商按容量分摊</b>：按"有效到货费率升序 → organizationId 升序"依次取服务商号，每家取
+     * {@code min(剩余需求, capacityPerRound − capacityUsedThisRound)}，扣减该商号本轮已用运力，直到需求放完或没有可服务商号。
+     * 总可分配量仍不足的部分原样放进 {@code unallocatedMilli}，不静默丢。
+     *
+     * <p>★ 排序口径保留 P10.2：有效费率 = {@code max(0, nominal − 城市折扣 + 农村惩罚)}；同一 lane 的 nominal 对所有候选相同，
+     * 但它参与 {@code max(0,·)} 截断 ⇒ 必须传入才能与旧序逐值一致。
+     *
+     * @param nominalRatePerMille lane 名义到货费率（‰，{@code MarketTopology.freightPerMilleBetween} 给出的唯一来源）
      */
-    public Optional<CarrierChoice> select(
-        HexCoord from,
-        HexCoord to,
-        long quantity,
-        long unitPriceMilli,
-        long nominalRatePerMille) {
+    public CarrierAllocation select(
+        HexCoord from, HexCoord to, long quantityMilli, long nominalRatePerMille) {
       Objects.requireNonNull(from, "from");
       Objects.requireNonNull(to, "to");
-      if (quantity <= 0L) {
-        return Optional.empty();
+      if (nominalRatePerMille < 0L) {
+        throw new IllegalArgumentException("nominalRatePerMille 不得为负: " + nominalRatePerMille);
       }
+      List<Candidate> candidates = candidatesFor(from, to);
+      candidates.sort(
+          Comparator.comparingLong(
+                  (Candidate candidate) -> candidate.effectiveRatePerMille(nominalRatePerMille))
+              .thenComparing(candidate -> candidate.organizationId.value()));
+      return allocate(quantityMilli, candidates);
+    }
+
+    /**
+     * ★ <b>3 参便捷入口（任务书签名）</b>：调用方不知道 lane 名义费率时，按"费率调整量（农村惩罚 − 城市折扣）"升序 →
+     * organizationId 升序。nominal 对同一 lane 的所有候选取同一值，因此该序在常规区间（不被 {@code max(0,·)} 截平）与 4 参口径
+     * 逐值一致；{@code MarketSettlement} 的实际收费走 4 参版本，以保留 P10.2 的逐值排序。
+     */
+    public CarrierAllocation select(HexCoord from, HexCoord to, long quantityMilli) {
+      Objects.requireNonNull(from, "from");
+      Objects.requireNonNull(to, "to");
+      List<Candidate> candidates = candidatesFor(from, to);
+      candidates.sort(
+          Comparator.comparingLong((Candidate candidate) -> candidate.rateAdjustmentPerMille())
+              .thenComparing(candidate -> candidate.organizationId.value()));
+      return allocate(quantityMilli, candidates);
+    }
+
+    /** 池里所有"服务该 lane 且本轮仍有剩余运力"的商号候选（未排序）。 */
+    private List<Candidate> candidatesFor(HexCoord from, HexCoord to) {
       List<Candidate> candidates = new ArrayList<>();
       for (Map.Entry<ProductionOrganizationId, MerchantFirm> entry : firms.entrySet()) {
         MerchantFirm firm = entry.getValue();
         ActorRef principal = principalByOrganization.get(entry.getKey());
-        if (firm == null || principal == null || quantity <= 0L) {
+        if (firm == null || principal == null || !servesLane(firm, from, to)) {
           continue;
         }
-        if (!servesLane(firm, from, to)) {
+        if (remainingCapacityOf(firm) <= 0L) {
           continue;
         }
-        long remaining = Math.max(0L, firm.capacityPerRound() - firm.capacityUsedThisRound());
-        if (remaining < quantity) {
-          continue;
-        }
-        long cityDiscount = cityDiscountPerMille(firm, from, to);
-        long effective =
-            Math.max(
-                0L,
-                Math.addExact(
-                    Math.subtractExact(nominalRatePerMille, cityDiscount),
-                    firm.ruralTradeCostPenaltyPerMille()));
-        candidates.add(new Candidate(entry.getKey(), principal, firm, effective));
+        candidates.add(
+            new Candidate(
+                entry.getKey(),
+                principal,
+                firm,
+                cityDiscountPerMille(firm, from, to),
+                firm.ruralTradeCostPenaltyPerMille()));
       }
-      candidates.sort(
-          Comparator.comparingLong((Candidate candidate) -> candidate.effectiveRate)
-              .thenComparing(candidate -> candidate.organizationId.value()));
-      if (candidates.isEmpty()) {
-        return Optional.empty();
+      return candidates;
+    }
+
+    /** 按既定顺序贪心分配：每家吃满 min(剩余需求, 本轮剩余运力)；逐条扣减就地写回商号工作副本。 */
+    private CarrierAllocation allocate(long quantityMilli, List<Candidate> ordered) {
+      if (quantityMilli < 0L) {
+        throw new IllegalArgumentException("承运需求不得为负: " + quantityMilli);
       }
-      Candidate chosen = candidates.get(0);
-      // ★ 保守边界：向买方收取的运费不超过 route 的名义费率（旧口径）。城市折扣可以压低；农村惩罚只影响
-      //   商号排序/选择，不越过买方订单冻结与预算（否则会撞上 pairUp 的"按名义运费封顶"预算校验）。
-      long nominal = freightOf(quantity, unitPriceMilli, nominalRatePerMille);
-      long effectiveFreight = freightOf(quantity, unitPriceMilli, chosen.effectiveRate);
-      long freight = Math.min(nominal, effectiveFreight);
-      firms.put(
-          chosen.organizationId,
-          chosen.firm.withCapacityUsedThisRound(chosen.firm.capacityUsedThisRound() + quantity));
-      return Optional.of(
-          new CarrierChoice(
-              chosen.organizationId,
-              chosen.principal,
-              chosen.firm,
-              quantity,
-              freight,
-              chosen.effectiveRate));
+      List<CarrierChoice> choices = new ArrayList<>();
+      long demandLeft = quantityMilli;
+      for (Candidate candidate : ordered) {
+        if (demandLeft <= 0L) {
+          break;
+        }
+        long remainingCapacity = remainingCapacityOf(candidate.firm());
+        if (remainingCapacity <= 0L) {
+          continue;
+        }
+        long take = Math.min(demandLeft, remainingCapacity);
+        if (take <= 0L) {
+          continue;
+        }
+        long used = Math.addExact(candidate.firm().capacityUsedThisRound(), take);
+        firms.put(candidate.organizationId(), candidate.firm().withCapacityUsedThisRound(used));
+        choices.add(
+            new CarrierChoice(
+                candidate.organizationId(),
+                candidate.principal(),
+                candidate.firm(),
+                take,
+                candidate.cityDiscountPerMille(),
+                candidate.ruralPenaltyPerMille()));
+        demandLeft -= take;
+      }
+      return new CarrierAllocation(List.copyOf(choices), quantityMilli, demandLeft);
+    }
+
+    private static long remainingCapacityOf(MerchantFirm firm) {
+      return Math.max(0L, firm.capacityPerRound() - firm.capacityUsedThisRound());
     }
 
     private record Candidate(
         ProductionOrganizationId organizationId,
         ActorRef principal,
         MerchantFirm firm,
-        long effectiveRate) {}
+        long cityDiscountPerMille,
+        long ruralPenaltyPerMille) {
+
+      long rateAdjustmentPerMille() {
+        return Math.subtractExact(ruralPenaltyPerMille, cityDiscountPerMille);
+      }
+
+      long effectiveRatePerMille(long nominalRatePerMille) {
+        return Math.max(0L, Math.addExact(nominalRatePerMille, rateAdjustmentPerMille()));
+      }
+    }
   }
 
   /** 本周期某商号的运费实收（只从本周期真实 CARRIER_FEE 转移读数取；`to` = principal actor）。 */
@@ -403,11 +535,6 @@ public final class MerchantSettlement {
             firm.ruralTradeCostPenaltyPerMille(),
             firm.capacityUsedThisRound());
     return policy.cityDiscountForLane(from, to);
-  }
-
-  private static long freightOf(long quantity, long unitPriceMilli, long ratePerMille) {
-    long numerator = Math.multiplyExact(Math.multiplyExact(quantity, unitPriceMilli), ratePerMille);
-    return (numerator + 1_000_000L - 1L) / 1_000_000L;
   }
 
   private static long upkeepOf(
