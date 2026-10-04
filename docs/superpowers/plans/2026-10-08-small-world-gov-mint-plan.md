@@ -34,17 +34,17 @@
 - 政府家户位置：首都格 `CAPITAL`。
 
 ### 2.2 主代码新增（不是 test）
-- `simos-app/src/main/java/io/mosire/simos/app/world/SmallWorld.java`：
+- **世界加载不做切换**：`ShellMain` 新增 `--world <worldId>`（或世界配置文件字段），启动时按这个 id 载入对应世界的生成器；没有“运行时选世界”这一层。
+  - 本批新增 `SmallWorld`（`simos-app/src/main/java/.../world/SmallWorld.java`）作为 `--world small-world` 的生成器；
+  - 后续世界（v17levant 等）同样在这个映射表里登记，`--world` 只是“启动时加载哪一个”。
+- `SmallWorld`：
   - 程序化构造 13~17 hex `GameMap`（地形、河流边、Region）；
   - 提供 `state(mapId)`，像 `RichWorld` 一样产出创世 `SimulationState`；
-  - 提供 `writeConfig(dir)` 或内置 worldgen 配置（可复用 `WorldgenInitializeTool` 的配置 schema）。
-- `ShellMain` 新增开关：`--small-world`（或 `--world small-world`）：
-  - 空 DB：先 `bootstrapGenesis(SmallWorld.state(mapId))`；
-  - 再调用真实 `WorldgenInitializeTool`（`economyProfile=production-runtime-government`）播种人口/城市/经济/actor；
-  - 然后正常 `Shell.start` → GUI。
+  - 提供 `writeConfig(dir)` 或内置 worldgen 配置（复用 `WorldgenInitializeTool` 的配置 schema）。
+- `ShellMain` 空 DB 时：按 `--world` 选中的生成器 `bootstrapGenesis`，再调用真实 `WorldgenInitializeTool`（`economyProfile=production-runtime-government`）播种人口/城市/经济/actor；然后正常 `Shell.start` → GUI。
 - `run-small-world.sh`（仓根）：
   - `./mvnw -q -pl simos-app -am -DskipTests package` 或直接 `exec:java`；
-  - 传 `--store ./run/small-world-db --small-world --gui-port 5711`；
+  - 传 `--store ./run/small-world-db --world small-world --gui-port 5711`；
   - 打印 WebUI URL。
 - `.gitignore`：忽略 `run/` DB。
 
@@ -61,7 +61,8 @@
 ## 3. Phase W2：政府家户库存与转移
 
 ### 3.1 库存归属
-- 政府家户 id：小世界里给 GOV 家户**真实人口**（例如 50~150 人），使它有劳动、能经营铸币工场；不再是当前试点里的 population=0。
+- 政府家户**不硬编码“真实人口”**：它是政府单位/官府人口的持有与招募主体；人口不由 `ClassRow.population` 单独硬给，而由**通用人口分配关系**（见 `docs/superpowers/specs/2026-10-08-universal-population-architecture.md`）派生。
+- 政府家户可以通过**招募/征调**拿到劳动；它的“家户人口”可以是政府单位人口的**同一批人**（同一 `PopulationAssignment` 的 primary/secondary 视图），不是复制一份。
 - 库存：
   - 粮 `grain`、工具 `tool`、货币 `silver`（后续 `foreignCurrency`）全在政府家户 actor 账户；
   - 铸币工场资产（WORKSHOP/TOOL 份额）挂在政府家户名下。
@@ -200,11 +201,12 @@
 
 1. 小地图：13/15/16/17 hex？建议 16；首都/镇/河流布局。
 2. 铸币产出表示：A `Industry.moneyOutputPerUnit`（推荐）还是 B 独立 `MintRule`。
-3. 政府家户人口：小世界里给多少人口/劳动？还是从其他家户雇工？建议给 50~150 人的政府家户。
+3. 政府家户人口：走“通用人口分配”派生；是让政府家户 primary 持有政府单位人口、单位拿 secondary 兵役视图，还是让政府家户从社会招募？推荐前者（同一批人，不复制）。
 4. 铸币规模：用 mint `AssetShare`/unit 规模（推荐）还是新增 `ProductionUnit.targetScale`。
 5. 产能硬上限：允许 GM 把家户产能调到 `Industry.capacity` 以上吗？
 6. 铸币系数：每单位银需要多少劳动、多少工具磨损、多少天。
 7. 转移命令：新增 `actor.TransferAccounts`（推荐）还是泛化 `RemitGovTreasury`。
 8. GUI 写面：第一版只读 dashboard，还是同时提供 GM 写面板。
-9. 现有 `production-runtime-government`（population=0 试点）是否保留为兼容 profile；小世界另开 `small-world-gov` profile？
+9. 现有 `production-runtime-government`（population=0 试点）保留为兼容 profile；小世界可继续用它 + 人口分配，不另开 population 硬字段。
 10. 旧 test 诊断：保留还是删除；主验收是否写成 `run-small-world.sh` + 手工 GUI 检查 + 日志摘录。
+11. 通用人口：见 `docs/superpowers/specs/2026-10-08-universal-population-architecture.md` 的待裁定清单。
