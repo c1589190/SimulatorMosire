@@ -437,3 +437,52 @@ netPerLaborScaled = (运费收入 − 成本) × 1_000_000 / max(1, laborNeed)
 - `simos-app/src/test/java/io/mosire/simos/app/world/**`
 - 必要时新增 fixture；`RealTwelveHexProductionRuntime3650Test` 的 D-022 口径按本文件 §8.2 修正
 禁止：任何 main 代码、`docs/**`；不得为迁就实现改断言（发现不一致先报告）。
+
+## 11. 第一轮重跑结果与修复队列（2026-10-06，测试代理回收后追加）
+
+### 11.1 第一轮结果（证据：`/tmp/testagent/real12-final3.log`）
+
+生产代码和测试代理按本文件 §1~§8 完成后，真实 12hex 已能跑到 3650 tick，且 D-024 的核心结构生效：
+
+- tick0 economy 生产方式：`displaced=167`、`family_farm=1311`、`handicraft_workshop=657`、`merchant=175`、`tenancy_fixed_kind=134`、`wage_farm=1056`；`merchantFirms=1`（CATTLE 100）。
+- D-022 违规（mode/org.modeId/unit.modeKey 原地改写）= 0；同 mode 阶层下落 17 条单列。
+- 货币/资产守恒、负值扫描、D-023 DISPLACED 无劳动配额/无自动组织均通过；债务/断粮路径正常。
+- 但 **city 主判据仍红**：economy urban `875 → 78`（终局 8.9%，设计阈值 ≥50%）；`handicraft_workshop 657→228`、`merchant 175→2`；迁移把城市户大量迁往农村 farm/tenancy 目标。
+- 本 12hex 夹具只有 1 个 SocialCity / 1 个市场节点 ⇒ 没有跨区 lane，`shipments/freightPaid/crossRegionFills` 恒 0；§8.2 的“merchant freight 进账”判据在该夹具下结构不可达（不是实现通过）。
+
+### 11.2 已定位的根因（按证据强度排序）
+
+1. **`ExpectedProfitBook` 用错 claimed 集合（本轮必修）**：
+   `prospect(...)` 在候选/当前资产规模里用
+   `ModeMigrationPolicy.claimedAssetShares(base.productionOrganizations())` 重算"已被组织使用"的份额；
+   而周期关账时 `base` 是**本周期开始时的 revision**（tick0 种子状态），`productionOrganizations` 为空 ⇒
+   **所有 `owner==operator` 的份额（包括 ESTATE 名下全部土地）都被判成"闲置可租"**。
+   于是城市户可以无限抢占 ESTATE 土地、计划新建农村 farm 目标，形成 `handicraft/merchant → family_farm/tenancy` 的单向抽水。
+   证据：`ModeMigrationPolicy.plan` 自己已经从**当天工作副本** `organizations` 正确算出 `claimedByOrganizations` 并用于闲置预留，
+   但 `ExpectedProfitBook.prospect` 不接收它、在内部重算了一份基于 `base` 的错误副本——同一判据两处拼写、且其中一处是过期快照。
+2. **需求上限仍偏"想要"而非"买得起"（下一轮候选）**：
+   `MarketDemandBook.unfilledBuyer` 取 `MarketReport.unfilled` 的数量，未按 `BuyerOutcome.affordableQty/filledQty`
+   折算购买力；`addressable` 会高于真实可成交需求，进一步放大"看起来高利润"的 farm 目标权重。
+3. **单节点夹具无法让 merchant 真实运转（夹具/世界结构问题）**：
+   商人运费只在跨区 lane 上产生；1 城市 = 1 市场节点 ⇒ 跨区 lane 为空，merchant mode 没有真实收入来源，
+   商号只能吃 upkeep、最终被抽走。要满足 §8.2 的 freight 判据，必须有 ≥2 个市场节点/城市（或在后续批次把市场镇接入节点生成）。
+
+### 11.3 修复队列（本轮只做 1，其余按 2/3 排期）
+
+- **修复 1（本轮，economy main）**：把 plan 已从工作副本算出的 `claimedByOrganizations` 作为**唯一判据**传入
+  `ExpectedProfitBook.prospect(...)`；删除 `ExpectedProfitBook` 内部基于 `base.productionOrganizations()` 的重算。
+  所有调用点（`ModeMigrationPolicy.planForSource` / `buildTargets` / 未来测试）共用这一份集合。
+  验收：真实 12hex 重跑后 `family_farm/tenancy` 目标不再把 ESTATE 已使用土地当闲置；城市人口不再单向抽水；
+  若仍不达标，按 11.2 第 2/3 条继续。
+- **修复 2（下一轮，economy main）**：`MarketDemandBook` 的买方需求改用 `BuyerOutcome` 的有效购买力口径
+  （`affordableQty`/`filledQty`/`desiredQty` 与 `unfilled` 的 max/交叉校验），并在 `addressable` 里扣除**正在生产的既有供给**。
+- **修复 3（下一轮，测试/世界结构）**：为一个 ≥2 城市/市场的真实小地图补 merchant freight 端到端证据；
+  或在组合根把市场镇/手工业格接入市场节点生成（需单独设计，不在修复 1 内顺手做）。
+
+### 11.4 修复 1 的文件所有权（Agent A2，只写 main、只过编译、不写/不跑测试、不 commit）
+
+允许：
+- `simos-economy/src/main/java/io/mosire/simos/economy/time/ExpectedProfitBook.java`
+- `simos-economy/src/main/java/io/mosire/simos/economy/time/ModeMigrationPolicy.java`
+- `simos-economy/src/main/java/io/mosire/simos/economy/time/MarketDemandBook.java`（仅当修复 1 必需的签名联动）
+禁止：任何测试、`simos-app/**`、`docs/**`、其余 economy main、`git commit`。
