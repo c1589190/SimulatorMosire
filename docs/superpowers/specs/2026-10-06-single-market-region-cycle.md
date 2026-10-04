@@ -76,6 +76,10 @@ MAX_HEX_TRADE_LOSS_PER_MILLE     = 500
 
 - **第一版不做单区内货币承运费**：区内即时成交路径没有 `MerchantFirm` lane，货币运费留给后续批次；这样避免“没有承运人时钱付给谁”的未决问题，同时保证钱货守恒。
 - 跨格即时成交时：`loss = fill.quantity × lossPerMille / 1000`；买方**收到净量**、按毛量付款（与既有“买方承担在途损耗”口径一致）；`loss` 记入 `ProductionLedger.losses`（损耗账户），并写进该 `MarketReport.Fill.lossMilli`。
+  ★ **守恒实现口径（唯一写口 + 非换手落点）**：货腿由唯一 applier 走**毛量** `sell → buy`；
+  随后由买方侧按 `loss` 做一次**非换手扣减**（与 `MarketSettlement.loadInTransit` 把买方货物移进在途是同一类“货物离开账户但未换手”的落点），
+  并在 `ProductionLedger.losses[TRANSPORT_LOSS_ACCOUNT]` 留下唯一凭据。于是 `Σ余额 + losses` 守恒、卖方毛量出、买方净量入。
+  **不得**只把货腿写成 `quantity − loss` 再记一笔 loss（那会让损耗凭空多出来，实测守恒式 `Σ余额+losses = 初始 + loss`）。
 - 复用现有字段，不新增 `Fill` 字段：`lossMilli` 表达单 hex 损耗；`freightPerUnitMilli`/`freightMilli` 仍只服务跨区承运（本批单区恒 0）。
 - `MarketReport` 增加只读聚合辅助（不改 record 形状）：
   `immediateCrossHexFills()`、`immediateCrossHexLossMilli()`（对 `immediate && from != to` 的 fill 计数/求和）。
