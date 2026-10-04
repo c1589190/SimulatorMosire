@@ -467,22 +467,37 @@ netPerLaborScaled = (运费收入 − 成本) × 1_000_000 / max(1, laborNeed)
    商人运费只在跨区 lane 上产生；1 城市 = 1 市场节点 ⇒ 跨区 lane 为空，merchant mode 没有真实收入来源，
    商号只能吃 upkeep、最终被抽走。要满足 §8.2 的 freight 判据，必须有 ≥2 个市场节点/城市（或在后续批次把市场镇接入节点生成）。
 
-### 11.3 修复队列（本轮只做 1，其余按 2/3 排期）
+### 11.3 修复队列（修复 1 已做；1b 为第二轮证据追加）
 
-- **修复 1（本轮，economy main）**：把 plan 已从工作副本算出的 `claimedByOrganizations` 作为**唯一判据**传入
+- **修复 1（已做，economy main）**：把 plan 已从工作副本算出的 `claimedByOrganizations` 作为**唯一判据**传入
   `ExpectedProfitBook.prospect(...)`；删除 `ExpectedProfitBook` 内部基于 `base.productionOrganizations()` 的重算。
   所有调用点（`ModeMigrationPolicy.planForSource` / `buildTargets` / 未来测试）共用这一份集合。
   验收：真实 12hex 重跑后 `family_farm/tenancy` 目标不再把 ESTATE 已使用土地当闲置；城市人口不再单向抽水；
   若仍不达标，按 11.2 第 2/3 条继续。
+  ★ **第二轮结果（Agent C2，2026-10-06）**：修复 1 实现正确（两条回归 + 双向变异锁住），但 12hex 读数与第一轮**逐字相同**。
+  证据：`/tmp/testagent/r2/real12-final3.log`，tick=120 工作副本有 81 个组织 / 76 条 claimed 份额，城市源户的计划目标全是
+  `wage_farm`；`wageProspect`/`employerOf` 不经 claimed 资产判据，且 `employerOf` 读 `base.productionOrganizations()`
+  过期快照。⇒ 修复 1 必要但不充分，追加 1b。
+- **修复 1b（本轮追加，economy main）**：
+  1. **claimed 集合按"在产 unit"补全**：`claimedAssetShares(...)` 的集合 = `organizations.assetSources` ∪
+     { 所有 `assetShares` 中满足 `share.industry()==unit.industry() && share.operator()==unit.operator()` 的份额 }；
+     这样 seeder 直接以 ESTATE operator 建立的 farm/weave/craft/trade unit 所占的土地/工具/作坊/船畜不再被当成
+     "无组织引用的闲置份额"。`ModeMigrationPolicy.plan` 与 `ModeMigrationSettlement` 的闲置判据共用同一份新集合。
+  2. **`employerOf` 不再读 `base.productionOrganizations()`**：改为从**当前 unit 表**按"同格、同产业、operator != 本户"
+     选产能规模最大的 unit 作为雇主（mode 兼容性按 `unit.modeKey`/产业 regime 校验；找不到就 `NO_EMPLOYER`）。
+     这样 wage 目标使用当天真实雇主，不用 tick0 过期快照。
+  3. 验收：真实 12hex 重跑后城市户不再被 `wage_farm`/`family_farm` 目标单向抽水；若仍红，按 11.2 第 2/3 条继续。
 - **修复 2（下一轮，economy main）**：`MarketDemandBook` 的买方需求改用 `BuyerOutcome` 的有效购买力口径
   （`affordableQty`/`filledQty`/`desiredQty` 与 `unfilled` 的 max/交叉校验），并在 `addressable` 里扣除**正在生产的既有供给**。
 - **修复 3（下一轮，测试/世界结构）**：为一个 ≥2 城市/市场的真实小地图补 merchant freight 端到端证据；
   或在组合根把市场镇/手工业格接入市场节点生成（需单独设计，不在修复 1 内顺手做）。
 
-### 11.4 修复 1 的文件所有权（Agent A2，只写 main、只过编译、不写/不跑测试、不 commit）
+### 11.4 文件所有权（Agent A2 完成修复 1；Agent A3 做修复 1b）
 
-允许：
+Agent A2（已做）允许：`ExpectedProfitBook.java`、`ModeMigrationPolicy.java`（+ 必要的 `MarketDemandBook.java` 签名联动）。
+
+Agent A3（修复 1b）允许：
 - `simos-economy/src/main/java/io/mosire/simos/economy/time/ExpectedProfitBook.java`
 - `simos-economy/src/main/java/io/mosire/simos/economy/time/ModeMigrationPolicy.java`
-- `simos-economy/src/main/java/io/mosire/simos/economy/time/MarketDemandBook.java`（仅当修复 1 必需的签名联动）
+- `simos-economy/src/main/java/io/mosire/simos/economy/time/ModeMigrationSettlement.java`（仅同步 claimed 集合/雇主判据）
 禁止：任何测试、`simos-app/**`、`docs/**`、其余 economy main、`git commit`。
