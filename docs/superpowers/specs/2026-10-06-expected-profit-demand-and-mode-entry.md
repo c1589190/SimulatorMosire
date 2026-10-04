@@ -255,15 +255,22 @@ netPerLaborScaled = (运费收入 − 成本) × 1_000_000 / max(1, laborNeed)
 1. `productionRuntimeClassStandings(entries)` 读取每行的 `residence`，按 `(residence, slot)` 调新的 `productionRuntimePositionId(residence, slot)`：
    - 农村映射保持现状；
    - 城镇按 §1.2 第 5 条映射到手工业/商户；
-   - `slot == "displaced"` ⇒ `displaced.laborer`。
+   - displaced 行 ⇒ `displaced.laborer`。
 2. `urbanCohort` / `productionRuntime` 的家户行：
-   - 现有四行继续按 `CLASS_IDS` 切人口；在此基础上追加一条 `displaced` 行；
-   - `displaced` 人口 = `floor(池人口 × DISPLACED_SEED_PER_MILLE / 1000)`（具名 GM 默认，建议 `50`=5%），从该池穷困端扣除；新家户 id 用新增的
-     `HouseholdId.ofSeedRole(hex, residence, stratum, roleSuffix)`（唯一拼写点，避免与四行 id 冲突）；
+   - 现有四行继续按 `CLASS_IDS` 切人口；在此基础上追加一条 displaced 行；
+   - **槽位实现口径（Agent B 实测修正）**：`SocialClassId` 是封闭词表（`poor_peasant/middle_peasant/rich_peasant/landlord/landless_laborer/artisan/official`），没有 `"displaced"` ⇒ 该行的 `slot`/`view.stratum` 用词表内既有的 **`landless_laborer`**，家户 id 用
+     `HouseholdId.ofSeedRole(hex, residence, new SocialClassId("landless_laborer"), "displaced")` 保留显式痕迹；
+     `productionRuntimePositionId` 对 `landless_laborer` 槽位裁决为 `displaced.laborer`。这是与既有 `SevenHexFullChain3650Test` 的 `DISPLACED="landless_laborer"` 约定一致的口径。
+   - displaced 人口 = `floor(池人口 × DISPLACED_SEED_PER_MILLE / 1000)`（具名 GM 默认 `50`=5%），从该池 `CLASS_IDS[0]`（最贫一档）人口里扣除，保证该池 `Σ 行人口` 逐值不变；
+   - displaced 行 `laborMilli=0`，不发 `memberships`；四行常规 membership 仍按**扣减前**的阶层权重切（`Σ Membership.count == Σ ClassRow.population` 全局守恒仍成立，代价是 class0 常规户的 membership 计数可能略高于其扣减后的行人口——已记为具名近似）。
    - 若池人口不足以切出 ≥1 人的 displaced 行，则不发该行（不造 0 人以下人口）。
 3. 每个有 `urbanPool` 的格追加 `trade` 产业模板：
    - `capacityPerUnit = {CATTLE: 1}`、`outputPerUnit = {}`、`cycleInputPerUnit = {}`、`laborPerUnit = 1000`、`cycleDays = CYCLE_DAYS`；
    - 经营者 = 商号 principal 家户 actor；资产份额由第 4 条发。
+   - ★ **载荷解析适配（Agent B 实测修正）**：`merchant` regime 尚未登记进 `RegimeOperators.BY_REGIME`/`RegimeRelations`，
+     而 `EconomyPayloads.industrySpec` 对无 `operator` 键的 industry 会先走 `RegimeOperators.defaultOperator` ⇒ trade 节点若按纯新形状发会在解析期 fail-closed。
+     因此 trade 载荷显式带 `operator`（principal）与 `relation`（最小自留关系），解析器按 legacy 合成路径建出 trade unit；seeder 不重复发显式 trade unit。
+     本批不扩这两张登记表，留作后续缺口（见 §9）。
 4. 商号与运力资产：
    - 每个城市格播种一个 `MerchantFirm`：`organizationId = ProductionOrganizationId.idOf(MERCHANT, merchantPrincipalPositionId, merchantPrincipalHousehold, hexKey)`，
      tier `PORTER`（默认）或 `SELF_EMPLOYED`（按 `MERCHANT_TIER` 具名常量），`homeHex = hex`、`homeIsCity = true`、
@@ -392,7 +399,10 @@ netPerLaborScaled = (运费收入 − 成本) × 1_000_000 / max(1, laborNeed)
 6. **激活/加载版本门未接**：V2 会在 seeder 写入前自检，且 `EconomyMeta` 的当前版本判据切到 V2；但"世界激活/载入时拒绝 V1"的调用接线仍不在本批，旧档仍可能被别的读路径读入，需要后续 GM reset/激活门。
 7. **merchant 组织的产业模板选择需要新分支**：若 `EconomyOrganizationSettlement` 未改成功，merchant principal 可能回退到 farm/craft；测试代理以"merchantFirms 非空 + 运费进账"为判据暴露。
 8. **没有 `trade` 模板的旧世界**：candidate merchant `feasible=false`，不会凭空造运力。
-9. **本设计不覆盖**：GOV/税、FX、城市财政、商人买低卖高、完整城区租金。
+9. **merchant regime 尚未登记进 `RegimeOperators.BY_REGIME`/`RegimeRelations`**：trade 载荷用显式 `operator`/`relation` 走 legacy 合成路径规避解析失败；merchant 新 unit 的关系仍可能是最小自留 + 具名审计 `merchant-regime-unregistered`。后续应把 merchant 登记进两张表或惰性化 legacy 推导。
+10. **小城市商号孤儿风险**：若某格 `urbanPool>0` 但城镇地主人口切分为 0（城市人口 <20 时可能发生），该格的 `merchantFirms` 组织 id 不会被自动组织创建，而 `productionOrganizations` 非空后守卫可能抛。测试代理必须专门验证（建小城夹具或检查真档城市规模）。
+11. **displaced membership 近似**：displaced 行不发 membership；四条常规行 membership 仍按扣减前阶层权重切，故 class0 常规户的 membership 计数可能略高于其扣减后的行人口；全局 `Σ Membership.count == Σ ClassRow.population` 仍成立。
+12. **本设计不覆盖**：GOV/税、FX、城市财政、商人买低卖高、完整城区租金。
 
 ## 10. 文件所有权（本阶段）
 
