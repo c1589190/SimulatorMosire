@@ -7,7 +7,7 @@
 ## 1. 目标与非目标
 
 **目标**
-1. 新建独立契约模块 `simos-social-api`：只放稳定 ID、地址、家户画像、人口事件/率形状、只读 SPI；不放状态/Codec/结算/Jackson 实现。
+1. 新建独立契约模块 `simos-social-api`：只放稳定 ID、地址、家户画像、人口事件/率形状、只读 SPI；不放状态/Codec/结算实现；Jackson 仅限 `jackson-annotations`（sealed 线格式分派所需，2026-10-09 修订）。
 2. 把 `HouseholdId`、`PeopleLotId`、`Sex` 等跨模块人口/家户词汇迁入 `simos-social-api`；全仓只保留一份定义。
 3. `simos-social` 实现家户状态与生命周期：家户位置、成员批次、增人/减人/转移、逐家户率与人口事件。
 4. `PopulationGroup` 复用为家户成员批次；删除 `residence` 的位置语义，位置统一归 `Household.location`。
@@ -35,7 +35,8 @@
 ## 3. 模块与依赖
 
 ### 3.1 新模块 `simos-social-api`
-- 依赖：`simos-map`（`HexCoord`）；不依赖任何 simos 领域模块、不依赖 Jackson、无状态、无 Codec。
+- 依赖：`simos-map`（`HexCoord`）与 `jackson-annotations`；不依赖任何 simos 领域模块、不依赖 `jackson-databind`、无状态、无 Codec。
+  - ★ 2026-10-09 集成修复：`HouseholdLocation` 是 `ChangeSet` 嵌套字段里的 sealed 接口，而 `Timeline` 的全局 changeset mapper 看不见 social 模块 codec；类型本身必须带 `@JsonTypeInfo/@JsonSubTypes`，否则任何含家户位置的 revision 在 replay 时都会因 abstract type 读不回来。该注解只服务跨模块 mapper，`SocialCodec` 自己的反序列化器仍可更具体。
 - 包名：`io.mosire.simos.social.api`。
 - 只放：
   - `id.HouseholdId`、`id.PeopleLotId`（从 economy-api 迁入，旧包删除）；

@@ -11,7 +11,7 @@
 
   <artifactId>simos-social-api</artifactId>
   <name>SocialApiSimos</name>
-  <description>social 切片共用契约：家户/人口稳定 ID（HouseholdId / PeopleLotId）、性别人口词表（Sex）、家户位置/画像、人口年龄档与出生死亡事件形状、只读查询 SPI。无 Snapshot / ChangeSet / Codec / Jackson，不依赖任何 simos 领域模块。</description>
+  <description>social 切片共用契约：家户/人口稳定 ID（HouseholdId / PeopleLotId）、性别人口词表（Sex）、家户位置/画像、人口年龄档与出生死亡事件形状、只读查询 SPI。无 Snapshot / ChangeSet / Codec；只依赖 map + jackson-annotations（类型注解），不依赖任何 simos 领域模块。</description>
 
   <!-- ★ 阶段 S1（2026-10-09 家户/人口架构 §3.1）：契约层只许依赖 map（HexCoord），
        不依赖任何 simos 领域模块、不依赖 Jackson。UUID/位置/人口事件的形状在这里定死，
@@ -20,6 +20,13 @@
   <dependencies>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
+    </dependency>
+    <!-- ★ 2026-10-09 集成缺陷修复：Timeline 的全局 CHANGESET_MAPPER 看不见 social 模块 codec，
+         而 HouseholdLocation 是 ChangeSet 嵌套字段里的 sealed 接口 ⇒ 类型本身必须带 @JsonTypeInfo/@JsonSubTypes，
+         否则任何含家户位置的 revision 在 replay 时都因 abstract type 读不回来。
+         只引 annotations（不带 databind），版本由父 POM 的 jackson-bom 给定。 -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-annotations</artifactId>
     </dependency>
     <!-- 契约的往返/校验用例归后续测试阶段；此处按本仓 api 模块的既有形制预留测试依赖
          （scope=test 由父 POM dependencyManagement 给定）。 -->
@@ -50,7 +57,7 @@
               <rules>
                 <bannedDependencies>
                   <excludes>
-                    <!-- ★ 架构 §3.1：social-api 是契约层，只许依赖 map。
+                    <!-- ★ 架构 §3.1：social-api 是契约层，只许依赖 map（HexCoord）与 jackson-annotations。
                          下列领域/编排模块一律禁（含反向依赖 social 本身与更底层的经济/actor 切片）。 -->
                     <exclude>io.mosire:simos-social</exclude>
                     <exclude>io.mosire:simos-unit</exclude>
@@ -65,7 +72,7 @@
                     <exclude>io.mosire:simos-app</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
                   </excludes>
-                  <message>simos-social-api 是契约层（架构 §3.1）：只许依赖 simos-map（HexCoord），不许依赖任何 simos 领域/编排模块（social/unit/economy*/actor*/sd/core/army/gov/app/agentlib）与 Jackson。</message>
+                  <message>simos-social-api 是契约层（架构 §3.1）：只许依赖 simos-map（HexCoord；其 util 传递带 jackson-databind 是既有事实）与 jackson-annotations（类型注解），不许依赖任何 simos 领域/编排模块（social/unit/economy*/actor*/sd/core/army/gov/app/agentlib）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>
