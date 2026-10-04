@@ -273,6 +273,182 @@ public final class AssetShareBook {
     return List.copyOf(created);
   }
 
+  /**
+   * ★★ <b>跨产业重建</b>（D-023 资产随迁的“跨 hex”一路）：把源份额的 quantity 拆到<b>另一个产业模板</b>下的同 {@link AssetKind}
+   * 新份额（owner/operator/kind 可改）。与 {@link #apply} 同一原子承诺：全量校验后才写。
+   *
+   * <p>★ <b>与 {@link #apply} 的守恒口径差异</b>：{@code apply} 要求每个 {@code (industry, asset)} 一减一加归零； 跨 hex
+   * 时源/目标产业 id 不同（产业 id 带格键），这个分组守恒在语义上不成立。故本方法要求 <b>逐 {@link AssetKind} 的 Σquantity
+   * 守恒</b>，并要求目标产业模板能承载该 asset （{@code capacityPerUnit} 含它）——绝不把 LAND 变 SHIP、也不在不能承载的产业下凭空造份额。
+   *
+   * @param source 源份额 id；不得为 null
+   * @param quantity 移动数量；必须 {@code > 0}
+   * @param toIndustry 目标产业模板（必须能承载源份额的 asset）；不得为 null
+   * @param toOwner 新所有权主体；不得为 null
+   * @param toOperator 新经营主体；不得为 null
+   * @param kind 新权利性质；不得为 null
+   */
+  public record RebuildMove(
+      AssetShareId source,
+      long quantity,
+      IndustryId toIndustry,
+      ActorRef toOwner,
+      ActorRef toOperator,
+      AssetShare.RightKind kind) {
+
+    public RebuildMove {
+      Objects.requireNonNull(source, "AssetShareBook.RebuildMove.source 不得为 null");
+      if (quantity <= 0L) {
+        throw new IllegalArgumentException(
+            "AssetShareBook.RebuildMove.quantity 必须 > 0: " + quantity);
+      }
+      Objects.requireNonNull(toIndustry, "AssetShareBook.RebuildMove.toIndustry 不得为 null");
+      Objects.requireNonNull(toOwner, "AssetShareBook.RebuildMove.toOwner 不得为 null");
+      Objects.requireNonNull(toOperator, "AssetShareBook.RebuildMove.toOperator 不得为 null");
+      Objects.requireNonNull(kind, "AssetShareBook.RebuildMove.kind 不得为 null");
+    }
+  }
+
+  /**
+   * ★★ <b>跨产业重建的批写口</b>（D-023 跨 hex 资产随迁）：语义、原子性与“零行保留”口径同 {@link #apply}；
+   * 唯一的差别是允许把源份额重建到<b>另一个产业模板</b>下（逐 {@link AssetKind} 守恒，目标模板必须能承载该 asset）。
+   */
+  public static List<AssetShareId> rebuild(
+      Map<AssetShareId, AssetShare> shares,
+      Map<IndustryId, Industry> industries,
+      Map<PledgeId, Pledge> pledges,
+      List<RebuildMove> moves) {
+    Objects.requireNonNull(shares, "AssetShareBook.rebuild 的 shares 不得为 null");
+    Objects.requireNonNull(moves, "AssetShareBook.rebuild 的 moves 不得为 null");
+    if (moves.isEmpty()) {
+      return List.of();
+    }
+    Map<IndustryId, Industry> knownIndustries = industries == null ? Map.of() : industries;
+    Map<PledgeId, Pledge> knownPledges = pledges == null ? Map.of() : pledges;
+    // ── 校验/规划覆盖层（与 apply 同款：全过之前不碰调用方的表）──────────────────────────────
+    Map<AssetShareId, Long> remaining = new LinkedHashMap<>();
+    Map<AssetShareId, AssetShare> pending = new LinkedHashMap<>();
+    List<AssetShareId> created = new ArrayList<>(moves.size());
+    Map<AssetKind, Long> deltasByAssetKind = new LinkedHashMap<>();
+    for (RebuildMove move : moves) {
+      Objects.requireNonNull(move, "AssetShareBook.rebuild 的 moves 不得含 null");
+      AssetShare source = shares.get(move.source());
+      if (source == null) {
+        throw new IllegalArgumentException(
+            "AssetShareBook.rebuild 的源份额不存在（拒绝半笔操作）: " + move.source());
+      }
+      if (!move.source().equals(source.id())) {
+        throw new IllegalArgumentException(
+            "AssetShareBook 的键必须与 AssetShare.id 一致：键=" + move.source() + "，行内 id=" + source.id());
+      }
+      if (!knownIndustries.isEmpty() && !knownIndustries.containsKey(source.industry())) {
+        throw new IllegalArgumentException(
+            "AssetShareBook.rebuild 的源份额产业不存在: source="
+                + move.source()
+                + " industry="
+                + source.industry());
+      }
+      Industry targetIndustry = knownIndustries.get(move.toIndustry());
+      if (targetIndustry == null) {
+        throw new IllegalArgumentException(
+            "AssetShareBook.rebuild 的目标产业不存在（拒绝凭空造产业）: " + move.toIndustry());
+      }
+      if (!targetIndustry.capacityPerUnit().containsKey(source.asset())) {
+        throw new IllegalArgumentException(
+            "AssetShareBook.rebuild 的目标产业无法承载该资产: industry="
+                + move.toIndustry()
+                + " asset="
+                + source.asset()
+                + "（capacityPerUnit="
+                + targetIndustry.capacityPerUnit().keySet()
+                + "）");
+      }
+      long available = remaining.getOrDefault(move.source(), source.quantity());
+      if (move.quantity() > available) {
+        throw new IllegalArgumentException(
+            "AssetShareBook.rebuild 的移动数量超过源份额（含本批已移走的部分；拒绝半笔操作）: source="
+                + move.source()
+                + " have="
+                + available
+                + " need="
+                + move.quantity());
+      }
+      remaining.put(move.source(), available - move.quantity());
+      // ★ id 的唯一拼写点 = AssetShare.idOf；序号由 nextShareId 确定性给（同输入同 id，不解析旧档 opaque id）。
+      AssetShareId newId =
+          nextShareId(
+              shares,
+              pending,
+              move.toIndustry(),
+              source.asset(),
+              move.toOwner(),
+              move.toOperator(),
+              move.kind());
+      pending.put(
+          newId,
+          new AssetShare(
+              newId,
+              move.toIndustry(),
+              source.asset(),
+              move.toOwner(),
+              move.toOperator(),
+              move.quantity(),
+              move.kind()));
+      created.add(newId);
+      // 守恒：同一个 AssetKind 上一减一加；跨产业 id 变了，但“多少件 TOOL/CATTLE”不因换产业变化。
+      deltasByAssetKind.merge(source.asset(), -move.quantity(), Math::addExact);
+      deltasByAssetKind.merge(source.asset(), move.quantity(), Math::addExact);
+    }
+    for (Map.Entry<AssetKind, Long> entry : deltasByAssetKind.entrySet()) {
+      if (entry.getValue() != 0L) {
+        throw new IllegalArgumentException(
+            "AssetShareBook.rebuild 的 Σ(asset) quantity 不守恒: "
+                + entry.getKey()
+                + " delta="
+                + entry.getValue());
+      }
+    }
+    requirePledgeBounds(shares, remaining, knownPledges);
+    // E5b：被本批移空的源份额仍被任何质押（含 RELEASED/EXECUTED）指名 ⇒ 保留 quantity=0 行（同 apply）。
+    Set<AssetShareId> keepZeroRow = new LinkedHashSet<>();
+    if (!knownPledges.isEmpty()) {
+      Set<AssetShareId> movedSources = new LinkedHashSet<>();
+      for (RebuildMove move : moves) {
+        movedSources.add(move.source());
+      }
+      for (Pledge pledge : knownPledges.values()) {
+        if (pledge != null && movedSources.contains(pledge.assetShareId())) {
+          keepZeroRow.add(pledge.assetShareId());
+        }
+      }
+    }
+    // ── 全部校验通过：提交（只改受影响行；可写表上不会失败）────────────────────────────────
+    for (RebuildMove move : moves) {
+      AssetShare current = shares.get(move.source());
+      if (current == null) {
+        throw new IllegalStateException(
+            "AssetShareBook.rebuild 提交时源份额消失（表被并发修改？）: " + move.source());
+      }
+      long left = current.quantity() - move.quantity();
+      if (left == 0L && !keepZeroRow.contains(move.source())) {
+        shares.remove(move.source()); // 整条转移且无任何质押引用：旧 id 不再存在
+      } else {
+        shares.put(
+            move.source(),
+            new AssetShare(
+                current.id(),
+                current.industry(),
+                current.asset(),
+                current.owner(),
+                current.operator(),
+                left,
+                current.kind()));
+      }
+    }
+    shares.putAll(pending);
+    return List.copyOf(created);
+  }
+
   /** {@code (industry, asset)} 的守恒分组键（record 相等 ⇒ 不靠分隔符拼串，不会因 id 含分隔符而误合并）。 */
   private record IndustryAsset(IndustryId industry, AssetKind asset) {}
 

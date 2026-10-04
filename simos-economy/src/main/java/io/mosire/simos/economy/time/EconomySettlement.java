@@ -1605,7 +1605,8 @@ public final class EconomySettlement {
               profitBook,
               day);
       // ⑨ 迁移执行（只执行计划；源户 mode/standing/org/unit.modeKey 一字不改）。
-      ModeMigrationSettlement.apply(session, accounts, migrationPlan, base, day);
+      //    ★ D-023：把当天的瞬态 ledger 传进去记“留原户资产/关系模板回退”的具名读数（不新增持久组件）。
+      ModeMigrationSettlement.apply(session, accounts, migrationPlan, base, day, ledger);
       profitCycle.resetForNextCycle();
     }
   }
