@@ -312,3 +312,4 @@ MigrationMove {
 - v1（2026-10-06）：首版。用户已裁定旧档作废、A 规则、人口+债务随迁、流民适配；6 个 mode + displaced；商人承运/工资/运力模型。
 - v2（2026-10-06）：用户澄清——**从不改变当前家户的生产方式**；转变方式只能用“创建/转移到新家户/其他家户”表示。原第 7 条“原地切模式”改为“提高转移速度”；A 规则只加快转出，源户 mode/standing 不变；仓库已有原地自动改 mode 路径必须删除或旁路。
 - v3（2026-10-06）：按 D-023 修订——偿还“有啥付啥”不规定介质；估值家户价目表优先、否则市场区默认；不按 DebtUnit/币种分别核算；资产随人口迁移（可移动随迁、不可移动租赁/变卖）；全部币种余额随迁但不做 FX；流民没有工作、不得主动招募；优先做 3/5/6/7/8/9，4 不急。
+- v4（2026-10-06）：按 D-024 修订——候选生产方式不再以“已有真实利润读数”为门槛；每户 × 每 mode × 每市场用配方 + 市场价 + **真实需求**算预期净收益/劳动；`OrganizationProfitBook` 退位为对账；城镇 seeder 按 `(residence, slot)` 产出 `handicraft_workshop`/`merchant`/`displaced`；播种 `trade` 产业、`merchantFirms`、`SHIP/CATTLE` 运力；运行时版本升 `seven-hex-v2`。完整设计见 `docs/superpowers/specs/2026-10-06-expected-profit-demand-and-mode-entry.md`。
