@@ -110,17 +110,31 @@ P2-F 行政/世界/Log 剩余缺口 + 真实小世界冒烟
 最后：clean verify + 新架构测试 + 前端适配另批
 ```
 
-## 需要用户先裁定/确认的点
+## 原“需要用户先裁定/确认的点”（已关闭，控制方自答口径）
 
-1. **唯一家户身份**：Social 与 Economy 用同一个 `HouseholdId`；当前 Economy 一侧的 4 条阶层行如何处理（改成一个家户的多个 facet，还是 Social 也建 4 个家户）？
-2. **账户身份**：账户键去掉 hex，改为 actor 唯一；旧账用 `MoveAccount` 合并还是旧世界重建（按既有“旧世界不迁移、重建”口径）？
-3. **Membership 迁移到 Social**：Social 是否新增 `(lot, household, count)` 份额表；Economy 只读 projection？
-4. **劳动口径**：确认统一为“家户每 tick 有限时间预算”，单位用 `laborMilli` 还是直接时间（分钟/小时）？男女小孩合算系数是否固定为“男 × 3/4”这种口径？
-5. **利润率排队**：排序键是“预期单位劳动净收益”还是“真实已实现利润”？并列/限额/无吸收时如何落读口？
-6. **多生产方式**：同一家户是否允许同时存在多个 organization/unit；还是“同一 tick 内按顺序填满”即可？
-7. **自定义 Class**：`ClassPosition` 的类型化扩展边界；是否新增直接给家户挂/改 ClassStanding 的后端命令？
-8. **政府家户**：中央/地方是各自一个家户还是多个；人口/劳动/资产从哪里来；铸币生产式算法是否仍按“后置”处理？
-9. **P2 范围**：是否包含前端适配与 Agent/MCP 工具包装；还是继续只做后端。
+> 本节保留标题作为历史清单，但下面每条都已由用户后续确认或按用户授权采用合理默认；
+> **不再有待用户裁定项阻塞 P2**。具体以 §13 为准。
+
+1. **唯一家户身份**：Social 与 Economy 共用同一个 `HouseholdId`。Social 默认按“一个 `(hex, 居住类型, 阶层)` 一户”
+   建户；Economy 的 `ClassRow`/`ClassStanding` 只是这些家户的经济面 facet；不再另造经济家户 id。
+   同一阶层允许多户，首版只种一户。
+2. **账户身份**：账户键去掉 hex，改为“一家户一本账”；位置由 `Household.location` 派生；旧账户直接报废，
+   旧世界重建。非家户主体不持账户；庄园/作坊是生产方式，通过组织者/经营者家户账户结算。
+3. **Membership 迁 Social**：Social 新增 `(PeopleLotId, HouseholdId, count)` 家户人口组成份额；
+   同一批次可按 count 拆给多个家户；Economy 只读 projection，不再持 `EconomyData.memberships` 的计数权威。
+4. **劳动口径**：单位用**小时**；每个家户每 tick 有限时间预算；每 tick 重算。
+   默认系数由控制方定一组合理值并写成可调参数（首版：成年男 16h、成年女 8h、儿童 4h，合计 28h/3 口之家），
+   后续调试校准；不阻塞 P2。
+5. **利润率排队**：排序键 = **预期单位劳动小时净收益**；并列按 `modeId` 字典序；预期 ≤ 0 的生产方式不参与利润队列。
+   每 tick 按“预期单位劳动净收益降序 × 各生产方式最大可吸收劳动”填满家户时间；没有可吸收且不能借到投入 ⇒ 劳动空缺。
+6. **多生产方式**：同一家户同一 tick 允许多个 `ProductionOrganization`/`ProductionUnit` 与多条
+   `LaborAllocation`；不是“干完一个再切下一个”，而是按利润率排队同时分配本 tick 的有限时间。
+7. **自定义 Class**：`ClassPosition` 先维持三固定维 + `ruleExtensions`；新增后端命令直接改家户
+   `ClassStanding`（如 `economy.SetHouseholdClass`），必须引用已存在的 `ClassPosition`；GM/决策人可调用。
+   类型化扩展规则的边界在设计文档里细化，不阻塞账户/劳动批。
+8. **政府家户**：中央、地方各恰一个政府家户；默认人口从该 GOV 单位 `households` 取，取不到则为零人口财政户，
+   由 DM/GM 直接配置人口层/经济层；铸币生产式算法仍后置。
+9. **P2 范围**：只做后端 state/command/handler/读口后端；P2-0 测试迁移前置；不包 MCP 工具与 GUI，前端另批。
 
 ## 总验收口径（沿用 AGENTS）
 
