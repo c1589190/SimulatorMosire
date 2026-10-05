@@ -23,7 +23,7 @@ import java.util.Objects;
  * {"householdId":"hh-1",
  *  "location":{"type":"HEX","hex":{"q":1,"r":0}},
  *  "profile":{"name":"城东民户","description"?,"metadata"?},
- *  "vitalRates":[{"bracketId":"0-14","sex":"FEMALE","birthRatePerMillePerTick":0,"deathRatePerMillePerTick":5}],
+ *  "vitalRates":[{"bracketId":"0-14","sex":"FEMALE","birthRatePerMillionPerTick":0,"deathRatePerMillionPerTick":5}],
  *  "reason":"创世播种"}
  * }</pre>
  *

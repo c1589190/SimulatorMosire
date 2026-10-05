@@ -72,10 +72,11 @@ public final class PopulationLots {
   }
 
   /**
-   * ★★ **生育结算月**的细分短名（R4）：{@code b<结算月序号>}（{@code b} = born）。
+   * ★★ **生育结算期的**细分短名（R4 的月度遗留形态）：{@code b<结算期序号>}（{@code b} = born）。
    *
-   * <p>★ 它让"当月出生的人"各自成批（同性别、同年龄 0 天、同锚点 ⇒ 属性确实完全相同），从而**年龄结构随推进演化**； 而**同一批母亲**在该月生的孩子汇进同一条批次（见
-   * {@code PopulationDynamics.appendBirths}）。
+   * <p>★ 它让"同一结算期出生的人"各自成批（同性别、同年龄 0 天、同锚点 ⇒ 属性确实完全相同），从而**年龄结构随推进演化**。
+   * ★ 2026-10-09 每 tick 引擎不再走月度结算，{@code HouseholdBook} 直接按 {@code b<day>-<家户>} 拼新生 cohort（见
+   * {@link #born(PopulationGroup, Sex, String)}）；本方法保留给仍按固定周期切批的调用方。
    */
   public static String bornCohort(long nowTick, long settlementDays) {
     if (nowTick < 0L || settlementDays < 1L) {
@@ -86,11 +87,11 @@ public final class PopulationLots {
   }
 
   /**
-   * ★★ **一个新生批次的 id**（R4）：{@code <母亲批次 id 的位置前缀><儿童性别>:<结算月序号>-<母亲细分>}。
+   * ★★ **一个新生批次的 id**（R4）：{@code <母亲批次 id 的位置前缀><儿童性别>:<结算期>-<母亲细分>}。
    *
    * <pre>
-   * rural:0_0:FEMALE:s0-1  ──(MALE, 第 360 天)──→  rural:0_0:MALE:b12-s0-1
-   * urban:c-0_0:FEMALE:s1-1 ─(FEMALE, 第 360 天)─→  urban:c-0_0:FEMALE:b12-s1-1
+   * rural:0_0:FEMALE:s0-1  ──(MALE, 第 360 天)──→  rural:0_0:MALE:b360-s0-1
+   * urban:c-0_0:FEMALE:s1-1 ─(FEMALE, 第 360 天)─→  urban:c-0_0:FEMALE:b360-s1-1
    * </pre>
    *
    * <p>★★ **为什么按"母亲的前缀"而不是另起一套命名**：{@link #isUrban} 与 {@code SocialData#urbanPopulationAt(CityId)}
@@ -98,10 +99,10 @@ public final class PopulationLots {
    * 去掉最后两段（性别 + 细分），故"住在哪、属于哪座城"自动继承，**不需要第二个字段**。
    *
    * <p>★★ <b>P2-E 修：细分段带上母亲的细分</b>。P2-A 起一个 {@code (居住类型, 阶层)} 是一个**独立家户**，而同
-   * (城/格, 性别) 下不同阶层母亲的旧 id 规则（把末段整个换成 {@code b<月>}）会**撞同一个 id** ⇒
-   * {@code PopulationDynamics.appendBirths} 的"同一新生批次只能归一个家户"守卫当场抛（实测
-   * {@code urban:c-1_0:FEMALE:MALE:b17} 同时落在 poor/middle 两个家户）。故新生批次的末段追加母亲的细分，
-   * 让不同家户的新生批次天然分开，同一家户同月同母亲细分的孩子仍汇进同一条批次。
+   * (城/格, 性别) 下不同阶层母亲的旧 id 规则（把末段整个换成 {@code b<期>}）会**撞同一个 id** ⇒ 旧月度结算的
+   * "同一新生批次只能归一个家户"守卫当场抛（实测 {@code urban:c-1_0:FEMALE:MALE:b17} 同时落在 poor/middle 两个家户）。
+   * 故新生批次的末段追加母亲的细分，让不同家户的新生批次天然分开；同一家户同一批母亲在同一期生的孩子仍可汇进同一条批次（每 tick
+   * 引擎为避免跨户/跨母撞 id，cohort 另带家户指纹）。
    */
   public static PeopleLotId born(PopulationGroup mother, Sex sex, String cohort) {
     if (mother == null) {

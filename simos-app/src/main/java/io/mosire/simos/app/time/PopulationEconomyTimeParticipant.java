@@ -15,12 +15,9 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.api.population.LotMigration;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
-import io.mosire.simos.economy.model.MigrationPolicy;
 import io.mosire.simos.economy.time.AccountPartitionKey;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
@@ -40,13 +37,12 @@ import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
-import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.household.Household;
-import io.mosire.simos.social.population.PopulationDynamics;
-import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.household.HouseholdBook;
+import io.mosire.simos.social.household.VitalSettlementResult;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -61,7 +57,6 @@ import io.mosire.simos.util.spi.WorldTimeProposal;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
-import io.mosire.simos.util.time.SimosTimestamp;
 import io.mosire.simos.util.time.TimeRange;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -76,14 +71,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * ★★ **人口—经济协调器**（R4）：**唯一同时看得见 {@code social} 与 {@code economy} 的推进参与者** —— 于是"人"第一次真的随时间变：**年龄推进
- * + 逐日生理压力 + 月度出生/死亡**，而且**死亡会同时反映到经济侧的阶层行与劳动配额上**。
+ * ★★ **人口—经济协调器**（R4）：**唯一同时看得见 {@code social} 与 {@code economy} 的推进参与者** —— 于是"人"第一次真的随时间变：
+ * **日初每 tick 生死结算（Social 唯一权威）+ 经济结算一天 + 逐户净人口变化同步到经济行**。
  *
  * <p>★★ **为什么必须有它**（不是"图省事"，是结构上只能如此）：
  *
  * <ol>
- *   <li>**出生/死亡只能算在人口那一侧**（`年龄 × 性别 × 基础死亡率 × 生理压力` —— 年龄与性别是 {@link PopulationGroup}
- *       的属性），**而"吃得饱不饱"只算在经济那一侧**（需求与实得都在 {@code FlowRow} 里）⇒ 判定需要两侧同时在场；
+ *   <li>**出生/死亡只算在 Social 那一侧**（年龄/性别/率表都是 {@code Household} + {@code PopulationGroup}
+ *       的属性，见 {@code HouseholdBook.settleOneTick}）；**而"经济行人口"只住在 economy 那一侧** ⇒ 两边必须在一个参与者里按
+ *       "先 Social 结算、再刷新经济投影、最后把 delta 加到经济行"的次序接线；
  *   <li>**§十一 等价性**（一次推 N 天 == N 次单日）要求"逐日"这条语义落在**同一个参与者内部** —— 若让两个参与者各自读对方的**基态**，一次推 365
  *       天时社会侧只能看到第 0 天的经济状态， 而 365 次单日推进每天都能看到前一天的 ⇒ **两条路径必然不等价**；
  *   <li>跨切片写要求"同一模块只能有一个写者"（{@code TimeProposalResolver} 的写-写检查）⇒ 同时写这两片的参与者**只能有一份**。
@@ -93,20 +89,25 @@ import org.slf4j.LoggerFactory;
  * simos-app}** （唯一认识所有模块的地方）"。★ 它**内联调用** {@link EconomySettlement} 的包内可见日结算入口， 从而与 {@code
  * EconomyTimeParticipant} 共用同一个结算实现（**只有一条真相**，不是两份公式）。
  *
- * <p>★★ **一天的次序**（缺一不可）：
+ * <p>★★ **一天的次序**（2026-10-09 每 tick 生死 Batch B 起；缺一不可）：
  *
  * <pre>
- * ① 经济结算一天（消费/借粮/进度/劳动/周期末收获）      —— 行人口仍是"上个月末"的
- * ② 生理压力：读**当天**的发生额（需求与实得）⇒ 逐批次 stressAfter
- * ③ 每 30 天：月度结算（出生/死亡）⇒ 改社会侧的 count，并把同一份账回写经济侧（行人口/配额/流水）
+ * ① 日初：Social 每 tick 生死结算（HouseholdBook.settleOneTick）
+ *     → 用**新** Social 刷新经济侧 composition / laborBudgets / naturalNeeds
+ *     → 把逐户净人口变化（出生 − 死亡）加到经济行 population
+ * ② 经济结算一天（消费/借粮/进度/劳动/周期末收获）——
+ *     行人口、劳动预算与当日需求都已是**新 Social** 的投影
  * </pre>
+ *
+ * <p>★ 旧口径的"日末生理压力 + 每 30 天月度出生/死亡"已在 Batch B 整体删除；出生/死亡不再进
+ * {@code FlowRow.births/deaths} 的逐户流水（本批只同步行人口，见报告"未完成/风险"）。
  *
  * <p>★★ <b>H4：两份副本（商品 + 货币）按同一顺序收尾</b>：<b>载入</b>（{@link OwnershipBooks#loadHouseholdGoods} / {@link
  * OwnershipBooks#loadHouseholdMoney}）→ step（两者都由 {@code EconomyDayStepper} 就地更新）→ 条目落账 （{@link
  * OwnershipBooks#apply}）→ **两份副本按绝对值落回**（先商品、后货币；顺序不能反，因为它们写的是同一本 {@code HouseholdInventory} 的两个余额表）。
  *
- * <p>★★ **它是"人口守恒"的落点**：出生与死亡在这一处算出来、在两侧各落一次账（社会侧改 {@code count}、 经济侧改行人口与 {@code
- * FlowRow.births/deaths}）⇒ {@code Σ新人口 == Σ旧人口 + 出生 − 死亡} 逐值可核。
+ * <p>★★ **它是"人口守恒"的落点**：出生与死亡在 Social 侧算出（唯一权威），本参与者把逐户净变化同步到经济行 ⇒
+ * {@code Σ经济行新人口 == Σ经济行旧人口 + 出生 − 死亡} 逐值可核。
  *
  * <p>★ **未激活/无上界**：经济未激活（{@code meta} 空）⇒ **两侧都交不变变更集**（没有生活资料信号 ⇒ 人口不动， 这正是"世界还没播种"该有的样子）；{@code
  * range.to} 缺省 ⇒ 同样交不变变更集、不抛（该推进随后必被 Core 拒）。
@@ -356,9 +357,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             "人口—经济推进并行入口: workerCount={} parallelism={}",
             economyWorkerCount,
             stepper.parallelism());
-        // ★★ P2-A A3：家户人口组成的唯一权威是 Social 的 {@code Household.members} —— 这里把它投影成
+        // ★★ P2-A A3：家户人口组成的唯一权威是 Social 的 {@code Household.members} —— 这里先把**基态**投影成
         //   「household → (lot → count)」只读表注入经济会话（组织/进入阶段挑批次用；不进 Economy 状态、
-        //   不进变更集）。SocialData 的构造期守卫已经保证逐 lot 守恒（Σshare == PopulationGroup.count）。
+        //   不进变更集）。日循环里每 tick 在生死结算后再用新 Social 刷新一次。
         stepper.updateComposition(compositionOf(social));
         stepper.recomputeLaborBudgets(laborBudgetsOf(social, range.from().tick()));
         ActorData currentBooks = migratedBooks;
@@ -368,12 +369,31 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         AdminTotals adminTotals = new AdminTotals();
         Set<String> missingAdminRegions = new LinkedHashSet<>();
         for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
-          // ★★ P2-A §13.4：每 tick 重算家户时间预算（Social 人口组成 × 可调系数表）—— 见 EconomyDayStepper。
+          // ★★ 2026-10-09 每 tick 生死 Batch B：**日初先算生死**（Social 唯一权威），再用新 Social 刷新经济侧
+          //   composition / laborBudgets / naturalNeeds，最后把逐户净人口变化加到经济行人口上 —— 全部在
+          //   step(day) 之前完成。经济结算当天读到的都是新 Social 的投影。
+          VitalSettlementResult vital =
+              HouseholdBook.settleOneTick(currentSocial, day, CalendarClock.julianDefault());
+          currentSocial = vital.data();
+          stepper.updateComposition(compositionOf(currentSocial));
           stepper.recomputeLaborBudgets(laborBudgetsOf(currentSocial, day));
-          // ★★ 2026-10-09 家户结构修复 Batch 3：当日逐户逐商品自然需求也每 tick 从 Social 重展一次，并在 step
-          //   之前注入（消费步只读它；经济侧不再按 population 反推需求）。
           stepper.updateNaturalNeeds(naturalNeedsOf(currentSocial, day));
-          LinkedHashMap<HouseholdId, Map<CommodityId, Long>> unmetBefore = unmetOf(stepper.flows());
+          stepper.applyHouseholdPopulationDeltas(vital.populationDeltas());
+          if (LOG.isDebugEnabled()) {
+            long deltaNet = 0L;
+            for (long delta : vital.populationDeltas().values()) {
+              deltaNet = Math.addExact(deltaNet, delta);
+            }
+            LOG.debug(
+                "event=POPULATION_SETTLE_APP day={} births={} deaths={} events={}"
+                    + " deltaHouseholds={} deltaNet={}",
+                day,
+                vital.births(),
+                vital.deaths(),
+                vital.events().size(),
+                vital.populationDeltas().size(),
+                deltaNet);
+          }
           // ★★ T5：日循环里同一处落账 —— step 交回**当天**的账，条目逐日落到 actor 账本上（不重不漏）。
           //   ★★ M2 守恒收口：**市场成交（MARKET_TRADE）不折**（理由见 {@link OwnershipBooks#REASONS_NOT_FOLDED}）——
           //   市场双方都必须是本轮参与者：落在账户上的那一份已由下面的会话副本绝对值落回覆盖，在途那一份由
@@ -435,51 +455,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           //   ⇒ 这一步是它们唯一共同的落点。★ 副本是**活的**（step 就地更新）⇒ 每天重新读访问器，不缓存引用。
           // ★★ S1：全部账户（家户 + 经营者；商品 + 货币 + 冻结）按会话绝对值一次落回。
           currentBooks = OwnershipBooks.landAccountSession(currentBooks, stepper.accounts());
-          // ② 逐日生理压力（读**当天**的需求与实得 —— 两者都在刚结算完的账上）。
-          currentSocial =
-              applyDailyStress(
-                  stepper.householdEconomies(), currentSocial, stepper.flows(), unmetBefore, units, day);
-          // ③ 月度结算：出生/死亡 → 先改人口（真值源），再按同一份账回写经济侧。
-          if (day % PopulationDynamics.SETTLEMENT_DAYS == 0L) {
-            PopulationDynamics.Outcome outcome =
-                PopulationDynamics.monthly(currentSocial, day, CalendarClock.julianDefault());
-            currentSocial = outcome.data();
-            if (!outcome.isEmpty()) {
-              stepper.applyPopulationChange(outcome.changeList());
-              LOG.info(
-                  "event=POPULATION_WRITEBACK day={} births={} deaths={} households={}"
-                      + " population={}",
-                  day,
-                  outcome.births(),
-                  outcome.deaths(),
-                  stepper.householdEconomies().size(),
-                  stepper.householdEconomies().values().stream().mapToLong(HouseholdEconomy::population).sum());
-              // ★★ P2-A A3：出生/死亡/新生批次都在 Social 侧落定（PopulationDynamics 已维护 Household.members）
-              //   ⇒ 这里只刷新经济会话的只读组成投影，不再回写任何 Economy 成员份额。
-              stepper.updateComposition(compositionOf(currentSocial));
-              // ★ 月末**重新对齐副本**（照 flows 的既有先例：那份实现会带出自己的流水副本 ⇒ 累加器要重新读一遍）。
-              //   ★ 放在月度回写之后、且**在条目落账之后**：全部账户以会话的绝对值收尾（顺序反了会把条目加两遍）。
-              currentBooks = OwnershipBooks.landAccountSession(currentBooks, stepper.accounts());
-            }
-            // ★★ P8 迁移接线位（**默认 no-op**）：`planMigrations` 目前传空读数表 ⇒ 规划器恒返回空表 ⇒
-            //   不改任何状态、不动任何数值。P9 启用时的顺序必须在这里（月度人口回写 + 份额对账之后、
-            //   `landAccountSession`/`stepper.finish()` 之前）：
-            //     ① 读数：从 MarketReportFeed / CityLandBook / social.urbanPopulationAt 现算
-            //        List<CityMigrationReading>（本参与者已在 reads 里声明 map/social 根地址）；
-            //     ② social 侧：按 planned 拆/合 PopulationGroup（换 residence，id 不变），得到新的 SocialData；
-            //     ③ 经济侧：stepper.applyMigrations(planned, day)（行人口/劳动/债务；唯一写口见 LotMigrationBook，
-            //        它有意不碰 Membership —— 份额由下一步的 reconcile 按行人口重建/削平）；
-            //     ④ 对账：MembershipWriteback.reconcile(stepper.householdEconomies(), stepper.memberships(), 新
-            // SocialData)
-            //        逐 lot 硬校验；⑤ 再落 actor 账户（若迁移不碰账户可省略，但顺序必须早于 finish()）。
-            List<LotMigration> plannedMigrations = planMigrations(currentSocial, day);
-            if (!plannedMigrations.isEmpty()) {
-              throw new IllegalStateException(
-                  "P8 迁移执行尚未接线：规划器返回了 "
-                      + plannedMigrations.size()
-                      + " 笔迁移，但 social/economy 双写与对账顺序未实现（默认空读数表 ⇒ 正常不会到达这里）");
-            }
-          }
+          // ★★ Batch B 起：日末不再有生理压力/月度出生死亡回写 —— 生死已移到**日初**（见循环最前面），
+          //   经济行人口由 HouseholdBook 的逐户 delta 同步；P8 迁移规划接线位（原默认 no-op，挂在旧月结块里）
+          //   随月结块一并删除，P9 重新接线前必须先定周期边界（见报告）。
         }
         EconomyData currentEconomy = stepper.finish();
         long finalPopulation = 0L;
@@ -525,178 +503,6 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       parallelism.close();
       throw failure;
     }
-  }
-
-  // ── P8 迁移规划接线位（默认 no-op）──────────────────────────────────────────────────────────
-
-  /**
-   * ★★ <b>P8 人口迁移规划器调用位（默认 no-op）</b>：当前显式传空读数表 ⇒ {@link PopulationMigrationPlanner#plan} 恒返回
-   * {@code List.of()}，调用点 {@code if (!plannedMigrations.isEmpty())} 不进入 ⇒ <b>不改任何状态、不改任何数值</b>。
-   *
-   * <p>★★ <b>为什么必须住这里</b>：迁移计划同时看得见 social（批次）与 economy（城市/市场读数），而只有组合根同时认识 两片；plan 本身仍是纯函数（见
-   * {@link PopulationMigrationPlanner}）。
-   *
-   * <p>★★ <b>P9 接线点（本方法就是那个唯一入口）</b>：把空表替换成按城现算的 {@link CityMigrationReading} 列表—— 数据源 = {@link
-   * MarketReportFeed}（本轮交易/利润读数）、P6 {@code CityLandBook}（承载/拥挤）与 {@code
-   * SocialData.urbanPopulationAt(cityId)}（人口分母）；然后把调用点改造成上面的 ①②③④⑤ 顺序。
-   */
-  private static List<LotMigration> planMigrations(SocialData social, long day) {
-    // ★ 默认空读数表：不是“还没写”，是 P8 明确只做契约/纯规划器/接线点；P9 统一接读数与测试。
-    return PopulationMigrationPlanner.plan(social, List.of(), MigrationPolicy.defaults(), day);
-  }
-
-  // ── 逐日生理压力（社会侧唯一的日常写点）────────────────────────────────────────────────
-
-  /**
-   * ★★ **把当天的生活资料满足情况折成每个批次的压力**（spec §七："短期缺粮加一些、恢复供给后逐渐消退"）。
-   *
-   * <pre>
-   * 逐家户：粮/布的"当日需求" = 该户 {@code naturalNeeds[商品]}（app 当日注入 ⇒ 与结算同源）
-   *          粮/布的"当日实得" = 需求 − 当日新记进 {@code FlowRow.unmetNeed[商品]} 的那一笔
-   * 逐批次：取**持有它份额的家户**，按份额加权各户的满足率‰ ⇒ {@link PopulationDynamics#stressAfter}
-   * </pre>
-   *
-   * <p>★★ **2026-10-09 家户结构修复 Batch 3：聚合键从 {@code (格, 居住类型)} 改成 {@link HouseholdId}**：
-   * 同一格同一居住类型下现在可以有多户（P2-A 起一户 = 格 + 居住类型 + 阶层），按格合并会把不同户的余粮/缺口
-   * 搅在一起；每户用自己的 {@code naturalNeeds} 与自己的 {@code FlowRow} 算满足率，再用批次在该户的
-   * {@code Household.members} 份额加权。单一持有户 ⇒ 与旧口径的单户读数逐值相同。
-   *
-   * <p>★ **UNIT 家户仍走 {@link HouseholdPositionResolver} 取位置**：位置解析不到（unit 不存在/无位置）⇒ 该户
-   * 不参与本日满足率（与旧口径"没有可算的格"一致）；HEX 家户的位置即家户本身。
-   *
-   * <p>★ **没有需求的批次不动**（{@code 需求 == 0} ⇒ 满足率按 1000‰ 计，压力照常消退）："这一天没记账"不等于"饿了一天"。
-   * ★ 批次所属家户在经济侧缺行 ⇒ 具名 {@link IllegalStateException}（不静默跳过、不补 0）。
-   *
-   * @param unmetBefore 当日结算**之前**的 {@code FlowRow.unmetNeed} 快照（用于取"当天新增的那一笔"）
-   * @param units unit 切片（UNIT 家户的有效格由 {@link HouseholdPositionResolver} 现算；可为 {@code null} ⇒
-   *     UNIT 家户不参与、HEX 家户照常）
-   * @param day 世界日（resolver 的取位时刻）
-   */
-  private static SocialData applyDailyStress(
-      Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      SocialData social,
-      Map<HouseholdId, FlowRow> flows,
-      Map<HouseholdId, Map<CommodityId, Long>> unmetBefore,
-      UnitState units,
-      long day) {
-    if (social.groups().isEmpty() || householdEconomies.isEmpty()) {
-      return social; // 没有批次/没有经济 ⇒ 没有可算的人
-    }
-    Map<HouseholdId, long[]> byHousehold = dailyProvisioning(householdEconomies, flows, unmetBefore);
-    // ★★ 批次 → 持有它的家户（一个批次可按份额拆给多户；保序 households 插入序）。
-    Map<PeopleLotId, List<Household>> holdersByLot = new LinkedHashMap<>();
-    for (Household holder : social.households().values()) {
-      for (PeopleLotId lot : holder.members().keySet()) {
-        holdersByLot.computeIfAbsent(lot, ignored -> new ArrayList<>()).add(holder);
-      }
-    }
-    Map<PeopleLotId, PopulationGroup> next = new LinkedHashMap<>(social.groups());
-    for (PopulationGroup group : social.groups().values()) {
-      List<Household> holders = holdersByLot.get(group.id());
-      if (holders == null || holders.isEmpty()) {
-        continue; // 没有持有户 ⇒ 没有满足率可算（Social 构造期守卫应已排除）
-      }
-      long shareSum = 0L;
-      long grainSatisfactionSum = 0L;
-      long clothSatisfactionSum = 0L;
-      for (Household holder : holders) {
-        long share = holder.members().getOrDefault(group.id(), 0L);
-        if (share <= 0L) {
-          continue;
-        }
-        if (holder.location() instanceof HouseholdLocation.Unit
-            && (units == null
-                || HouseholdPositionResolver.effectiveHex(
-                        holder.id(), social, units, SimosTimestamp.of(day))
-                    .isEmpty())) {
-          continue; // ★ UNIT 家户仍走 resolver 取位置：解析不到 ⇒ 该户不参与
-        }
-        long[] row = byHousehold.get(holder.id());
-        if (row == null) {
-          LOG.error(
-              "event=DAILY_STRESS_REJECTED reason=missing-economy-row household={} lot={}",
-              holder.id().value(),
-              group.id().value());
-          throw new IllegalStateException(
-              "批次所属家户在经济侧没有对应行（Social/Economy 投影不一致，拒绝静默跳过）: household="
-                  + holder.id().value()
-                  + " lot="
-                  + group.id().value());
-        }
-        shareSum = Math.addExact(shareSum, share);
-        grainSatisfactionSum =
-            Math.addExact(
-                grainSatisfactionSum,
-                Math.multiplyExact(satisfactionPerMille(row[1], row[0]), share));
-        clothSatisfactionSum =
-            Math.addExact(
-                clothSatisfactionSum,
-                Math.multiplyExact(satisfactionPerMille(row[3], row[2]), share));
-      }
-      if (shareSum <= 0L) {
-        continue; // 全部持有户都无有效位置/零份额 ⇒ 与旧口径"没有可算的格"一致，不更新压力
-      }
-      long stress =
-          PopulationDynamics.stressAfter(
-              group.physiologicalStress(),
-              grainSatisfactionSum / shareSum,
-              clothSatisfactionSum / shareSum);
-      if (stress != group.physiologicalStress()) {
-        next.put(group.id(), group.withPhysiologicalStress(stress));
-      }
-    }
-    return social.withGroups(next);
-  }
-
-  /** 逐户的当日 {@code [粮需求, 粮实得, 布需求, 布实得]}（毫单位）—— 键 = {@link HouseholdId}，不再按格合并。 */
-  private static Map<HouseholdId, long[]> dailyProvisioning(
-      Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<HouseholdId, FlowRow> flows,
-      Map<HouseholdId, Map<CommodityId, Long>> unmetBefore) {
-    Map<HouseholdId, long[]> byHousehold = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomies.entrySet()) {
-      HouseholdId key = householdEconomyEntry.getKey();
-      HouseholdEconomy householdEconomy = householdEconomyEntry.getValue();
-      long[] row = byHousehold.computeIfAbsent(key, ignored -> new long[4]);
-      long grainNeed = householdEconomy.naturalNeeds().getOrDefault(EconomySettlement.GRAIN, 0L);
-      long clothNeed = householdEconomy.naturalNeeds().getOrDefault(EconomySettlement.CLOTH, 0L);
-      row[0] = grainNeed;
-      row[2] = clothNeed;
-      row[1] = grainNeed - dayUnmet(flows, unmetBefore, key, EconomySettlement.GRAIN);
-      row[3] = clothNeed - dayUnmet(flows, unmetBefore, key, EconomySettlement.CLOTH);
-    }
-    return byHousehold;
-  }
-
-  /** 某行某商品**当天新增**的未满足需求（= 结算后 − 结算前）。 */
-  private static long dayUnmet(
-      Map<HouseholdId, FlowRow> flows,
-      Map<HouseholdId, Map<CommodityId, Long>> unmetBefore,
-      HouseholdId key,
-      CommodityId commodity) {
-    FlowRow after = flows.get(key);
-    long now = after == null ? 0L : after.unmetNeed().getOrDefault(commodity, 0L);
-    Map<CommodityId, Long> before = unmetBefore.get(key);
-    long was = before == null ? 0L : before.getOrDefault(commodity, 0L);
-    return Math.max(0L, now - was);
-  }
-
-  /** 满足率（‰）：{@code 需求 == 0 ⇒ 1000}（"这一天没记账"不等于"饿了一天"）；否则 {@code 实得 × 1000 ÷ 需求}，封顶 1000。 */
-  static long satisfactionPerMille(long got, long need) {
-    if (need <= 0L) {
-      return 1000L;
-    }
-    return Math.min(1000L, Math.max(0L, got) * 1000L / need);
-  }
-
-  /** 各行的 {@code unmetNeed} 快照（当日结算前）——只读一份，供"当天新增"的差分用。 */
-  private static LinkedHashMap<HouseholdId, Map<CommodityId, Long>> unmetOf(
-      Map<HouseholdId, FlowRow> flows) {
-    LinkedHashMap<HouseholdId, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, FlowRow> entry : flows.entrySet()) {
-      copy.put(entry.getKey(), entry.getValue().unmetNeed());
-    }
-    return copy;
   }
 
   // ── 切片读取与地址 ────────────────────────────────────────────────────────────────────

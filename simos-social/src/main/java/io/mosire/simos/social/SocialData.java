@@ -9,6 +9,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.population.AgeBracketView;
 import io.mosire.simos.social.api.population.HouseholdPopulationEvent;
+import io.mosire.simos.social.api.population.HouseholdVitalRate;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.household.Household;
@@ -18,6 +19,8 @@ import io.mosire.simos.social.population.PopulationHeadline;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.PopulationSource;
+import io.mosire.simos.social.population.SocialVitalRates;
+import io.mosire.simos.social.population.SocialVitalRemainders;
 import io.mosire.simos.social.population.UrbanRural;
 import io.mosire.simos.social.provisioning.DemandBasis;
 import io.mosire.simos.social.provisioning.DemandCoefficient;
@@ -34,7 +37,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * 社会状态（M3 spec §3.1 + 城市节点 + 第三阶段设计稿 §三的**人口实体** + 2026-10-09 家户架构 §4）。
+ * 社会状态（M3 spec §3.1 + 城市节点 + 第三阶段设计稿 §三的**人口实体** + 2026-10-09 家户架构 §4 +
+ * 2026-10-09 每 tick 生死计划 §2）。
  *
  * <p>★★ <b>2026-10-09 家户架构：位置的真值源是 {@code households}</b>。{@code PopulationGroup} 已删除
  * {@code residence}；"某批次在哪一格/哪个 unit"只能从 {@link #locationOfLot(PeopleLotId)} /
@@ -57,10 +61,19 @@ import java.util.Set;
  * <p>★ {@code populationEvents} 以 {@code event.id()} 为键（架构 §4.3：事件进持久表、可回放；重复 id 由
  * {@code HouseholdBook.applyEvent} 拒绝）。
  *
- * <p>★ <b>六个组件都保序不可变</b>：{@code LinkedHashMap} + {@code unmodifiableMap}，**绝不用 {@code
- * Map.copyOf}**——它的迭代序不是内容的纯函数（M2 实测），字节级往返因此不成立。第 6 个组件
- * {@link #provisioning()} 是 2026-10-09 家户结构修复计划的 Batch 1 权威旁表（需求/劳动全局默认 + 逐户覆盖），
- * 由 {@link io.mosire.simos.social.provisioning.SocialProvisioning#defaults()} 给出初始六档值。
+ * <p>★ <b>八个组件都保序不可变</b>：{@code LinkedHashMap} + {@code unmodifiableMap}，**绝不用 {@code
+ * Map.copyOf}**——它的迭代序不是内容的纯函数（M2 实测），字节级往返因此不成立。
+ *
+ * <ul>
+ *   <li>第 6 个组件 {@link #provisioning()}：需求/劳动权威旁表（全局默认 + 逐户覆盖）；
+ *   <li>第 7 个组件 {@link #vitalRates()}：每 tick 生死率<b>全局默认表</b>；家户覆盖复用
+ *       {@code Household.vitalRates}，查找走 {@link #findVitalRate(HouseholdId, AgeBracket, Sex)}；
+ *   <li>第 8 个组件 {@link #vitalRemainders()}：每 tick 生死<b>余数累加器</b>
+ *       （键 {@code (家户, 批次, BIRTH|DEATH)}）。
+ * </ul>
+ *
+ * <p>★★ <b>旧档缺第 6/7/8 组件 = 不可读</b>（用户 2026-10-09 裁定"一切从新、旧档作废、不做迁移/双读"）：
+ * canonical 构造期具名拒；新档由 5 参便捷构造器（委托默认 provisioning / vitalRates / 空余数）或 seeder 显式给值。
  */
 public record SocialData(
     Map<HexCoord, PopulationSeries> populations,
@@ -68,7 +81,9 @@ public record SocialData(
     Map<PeopleLotId, PopulationGroup> groups,
     Map<HouseholdId, Household> households,
     Map<String, HouseholdPopulationEvent> populationEvents,
-    SocialProvisioning provisioning) {
+    SocialProvisioning provisioning,
+    SocialVitalRates vitalRates,
+    SocialVitalRemainders vitalRemainders) {
 
   public SocialData {
     if (populations == null) {
@@ -79,6 +94,24 @@ public record SocialData(
     if (provisioning == null) {
       throw provisioningReject(
           "SocialData.provisioning 不得为 null（旧档缺此组件已作废，不做缺省兜底；新世界请显式给 provisioning）");
+    }
+    // ★★ 第 7 个组件（每 tick 生死计划 §2.1）：全局默认率表缺键 = 旧档不可读，不补默认值。
+    if (vitalRates == null) {
+      SocialLog.population()
+          .error(
+              "event=SOCIAL_VITAL_RATES_REJECTED reason={}",
+              "SocialData.vitalRates 不得为 null（旧档缺此组件已作废，不做缺省兜底；新世界请显式给 vitalRates）");
+      throw new IllegalArgumentException(
+          "SocialData.vitalRates 不得为 null（旧档缺此组件已作废，不做缺省兜底；新世界请显式给 vitalRates）");
+    }
+    // ★★ 第 8 个组件（每 tick 生死计划 §3.4）：余数表缺键 = 旧档不可读，不补默认值（空表必须显式 List.of()）。
+    if (vitalRemainders == null) {
+      SocialLog.population()
+          .error(
+              "event=SOCIAL_VITAL_REMAINDERS_REJECTED reason={}",
+              "SocialData.vitalRemainders 不得为 null（旧档缺此组件已作废，不做缺省兜底；空表请显式 List.of()）");
+      throw new IllegalArgumentException(
+          "SocialData.vitalRemainders 不得为 null（旧档缺此组件已作废，不做缺省兜底；空表请显式 List.of()）");
     }
     // ★ **老档兼容**（旧字节没有这个键，如 `worlds/v17levant.json` 与升级前落盘的每条 social revision）：
     //   缺省 = 空表，**此处不抛** —— 抛了等于"整个世界打不开"（先例：SdInfoEntry 的 affiliations/adjudicationStatus）。
@@ -207,11 +240,11 @@ public record SocialData(
   }
 
   /**
-   * ★ <b>旧 5 参便捷构造器</b>（第 6 组件缺省的过渡形态）：只服务"还没有 provisioning 表"的装配点与既有测试，
-   * <b>一律委托 {@link SocialProvisioning#defaults()}</b>。
+   * ★ <b>旧 5 参便捷构造器</b>（第 6/7/8 组件缺省的过渡形态）：只服务"还没有 provisioning / vitalRates / 余数表"的
+   * 装配点与既有测试，<b>一律委托</b> {@link SocialProvisioning#defaults()}、{@link SocialVitalRates#defaults()} 与空余数表。
    *
-   * <p>★★ 新主路径与状态重建必须显式带过第 6 参（六个 {@code with*} 已全部原样带过），否则每次重建都会把 GM
-   * 调过的覆盖表退回默认值——这是"旧档作废、一切从新"（用户 2026-10-09 裁定）下唯一保留的便捷口。
+   * <p>★★ 新主路径与状态重建必须显式带过第 6/7/8 参（八个 {@code with*} 已全部原样带过），否则每次重建都会把 GM
+   * 调过的表/余数退回默认值——这是"旧档作废、一切从新"（用户 2026-10-09 裁定）下唯一保留的便捷口。
    */
   public SocialData(
       Map<HexCoord, PopulationSeries> populations,
@@ -219,54 +252,188 @@ public record SocialData(
       Map<PeopleLotId, PopulationGroup> groups,
       Map<HouseholdId, Household> households,
       Map<String, HouseholdPopulationEvent> populationEvents) {
-    this(populations, cities, groups, households, populationEvents, SocialProvisioning.defaults());
+    this(
+        populations,
+        cities,
+        groups,
+        households,
+        populationEvents,
+        SocialProvisioning.defaults(),
+        SocialVitalRates.defaults(),
+        new SocialVitalRemainders(List.of()));
   }
 
-  /** 往返用例的起点；需求/劳动表走 {@link SocialProvisioning#defaults()}。 */
+  /** 往返用例的起点；需求/劳动、率表与余数表都走默认构造。 */
   public static SocialData empty() {
     return new SocialData(Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
   }
 
-  /** 一个组件一个 with（照 M2 的形制）；{@code provisioning} 原样带过。 */
+  /** 一个组件一个 with（照 M2 的形制）；其余七个组件原样带过。 */
   public SocialData withPopulations(Map<HexCoord, PopulationSeries> value) {
-    return new SocialData(value, cities, groups, households, populationEvents, provisioning);
+    return new SocialData(
+        value,
+        cities,
+        groups,
+        households,
+        populationEvents,
+        provisioning,
+        vitalRates,
+        vitalRemainders);
   }
 
-  /** 一个组件一个 with（照 M2 的形制）；{@code provisioning} 原样带过。 */
+  /** 一个组件一个 with（照 M2 的形制）；其余七个组件原样带过。 */
   public SocialData withCities(Map<CityId, SocialCity> value) {
-    return new SocialData(populations, value, groups, households, populationEvents, provisioning);
+    return new SocialData(
+        populations,
+        value,
+        groups,
+        households,
+        populationEvents,
+        provisioning,
+        vitalRates,
+        vitalRemainders);
   }
 
   /**
-   * 只换批次表的形态：**成员关系一字不动** ⇒ 批次人数/压力可以在原位更新（月度结算、逐日压力）。
+   * 只换批次表的形态：**成员关系一字不动** ⇒ 批次人数可以在原位更新。
    * ★ 新增批次（新生批次）不能用它——那会造出无主批次；请用 {@link #withGroupsAndHouseholds}。
    */
   public SocialData withGroups(Map<PeopleLotId, PopulationGroup> value) {
-    return new SocialData(populations, cities, value, households, populationEvents, provisioning);
+    return new SocialData(
+        populations,
+        cities,
+        value,
+        households,
+        populationEvents,
+        provisioning,
+        vitalRates,
+        vitalRemainders);
   }
 
   /** 只换家户表（成员关系变了就要求 {@code groups} 同步：见 {@link #withGroupsAndHouseholds}）。 */
   public SocialData withHouseholds(Map<HouseholdId, Household> value) {
-    return new SocialData(populations, cities, groups, value, populationEvents, provisioning);
+    return new SocialData(
+        populations,
+        cities,
+        groups,
+        value,
+        populationEvents,
+        provisioning,
+        vitalRates,
+        vitalRemainders);
   }
 
   /** 批次与家户**一起**换（新增/删除成员、跨家户转移的唯一安全写口：中间态不经过构造期校验）。 */
   public SocialData withGroupsAndHouseholds(
       Map<PeopleLotId, PopulationGroup> newGroups, Map<HouseholdId, Household> newHouseholds) {
     return new SocialData(
-        populations, cities, newGroups, newHouseholds, populationEvents, provisioning);
+        populations,
+        cities,
+        newGroups,
+        newHouseholds,
+        populationEvents,
+        provisioning,
+        vitalRates,
+        vitalRemainders);
   }
 
   /** 只换事件表。 */
   public SocialData withPopulationEvents(Map<String, HouseholdPopulationEvent> value) {
-    return new SocialData(populations, cities, groups, households, value, provisioning);
+    return new SocialData(
+        populations,
+        cities,
+        groups,
+        households,
+        value,
+        provisioning,
+        vitalRates,
+        vitalRemainders);
   }
 
   /**
    * ★★ 只换需求/劳动权威旁表（全局默认 + 逐户覆盖）：其余组件原样带过，是 GM 调参与创世装配的写口形制。
    */
   public SocialData withProvisioning(SocialProvisioning value) {
-    return new SocialData(populations, cities, groups, households, populationEvents, value);
+    return new SocialData(
+        populations,
+        cities,
+        groups,
+        households,
+        populationEvents,
+        value,
+        vitalRates,
+        vitalRemainders);
+  }
+
+  /**
+   * ★★ 只换每 tick 生死率的<b>全局默认表</b>（家户覆盖不在本组件里）：其余组件原样带过。
+   */
+  public SocialData withVitalRates(SocialVitalRates value) {
+    return new SocialData(
+        populations,
+        cities,
+        groups,
+        households,
+        populationEvents,
+        provisioning,
+        value,
+        vitalRemainders);
+  }
+
+  /**
+   * ★★ 只换每 tick 生死<b>余数表</b>：其余组件原样带过，是每 tick 引擎的落账口。
+   */
+  public SocialData withVitalRemainders(SocialVitalRemainders value) {
+    return new SocialData(
+        populations,
+        cities,
+        groups,
+        households,
+        populationEvents,
+        provisioning,
+        vitalRates,
+        value);
+  }
+
+  /**
+   * ★★ <b>生死率的唯一查找入口</b>（计划 §2.1）：家户覆盖
+   * （{@link Household#vitalRates()}，空表/缺键即回落）优先，全局默认 {@link SocialVitalRates#require}
+   * 兜底；两边都没有 ⇒ 具名拒（ERROR 日志 + {@link IllegalArgumentException}）。
+   *
+   * <p>★ 查找是<b>逐键</b>的：家户只覆盖 0-14 ⇒ 它的 15-59 仍走全局默认；覆盖表空 ⇒ 整户走全局默认。</p>
+   *
+   * @param householdId 家户 id；不得为 null，且家户必须存在（不存在是坏数据，不静默给全局值）
+   * @param ageBracket 年龄档；不得为 null
+   * @param sex 性别；不得为 null
+   * @throws IllegalArgumentException 任一参数为 null、家户不存在，或覆盖与全局两边都缺该键
+   */
+  public HouseholdVitalRate findVitalRate(
+      HouseholdId householdId, AgeBracket ageBracket, Sex sex) {
+    if (householdId == null) {
+      throw vitalRateReject("findVitalRate：householdId 不得为 null");
+    }
+    if (ageBracket == null) {
+      throw vitalRateReject("findVitalRate：ageBracket 不得为 null");
+    }
+    if (sex == null) {
+      throw vitalRateReject("findVitalRate：sex 不得为 null");
+    }
+    Household household = households.get(householdId);
+    if (household == null) {
+      throw vitalRateReject("findVitalRate：家户不存在: " + householdId);
+    }
+    Optional<HouseholdVitalRate> override =
+        household.vitalRates().find(ageBracket.key(), sex);
+    if (override.isPresent()) {
+      return override.get();
+    }
+    return vitalRates.require(ageBracket, sex);
+  }
+
+  /** 生死率查找的具名拒绝出口：ERROR 日志 + {@link IllegalArgumentException}。 */
+  private static IllegalArgumentException vitalRateReject(String message) {
+    SocialLog.population().error("event=SOCIAL_VITAL_RATE_REJECTED reason={}", message);
+    return new IllegalArgumentException(message);
   }
 
   // ── 家户/位置派生量（★ 一律现算，别找地方存 —— 见类注）────────────────────────────────
@@ -727,14 +894,10 @@ public record SocialData(
     long[] maxDays = {15L * 365L - 1L, 60L * 365L - 1L, Long.MAX_VALUE};
     for (AgeBracket bracket : AgeBracket.values()) {
       for (Sex sex : Sex.values()) {
-        long deathRate = household.vitalRates().find(bracket.key(), sex)
-            .map(rate -> rate.deathRatePerMillePerTick())
-            .orElse(0L);
-        long increaseRate = bracket == AgeBracket.CHILD
-            ? household.vitalRates().find(bracket.key(), sex)
-                .map(rate -> rate.birthRatePerMillePerTick())
-                .orElse(0L)
-            : 0L;
+        HouseholdVitalRate rate = findVitalRate(householdId, bracket, sex);
+        long deathRate = rate.deathRatePerMillionPerTick();
+        long increaseRate =
+            bracket == AgeBracket.CHILD ? rate.birthRatePerMillionPerTick() : 0L;
         out.add(
             new AgeBracketView(
                 bracket.key(),

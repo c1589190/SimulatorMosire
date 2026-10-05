@@ -3323,6 +3323,102 @@ public final class EconomySettlement {
   }
 
   /**
+   * ★★ <b>2026-10-09 每 tick 生死 Batch B：把 Social 的逐家户净人口变化直接落到经济行</b>（新主路径；旧
+   * {@link #applyPopulationChangeInto} 的批次摊派路径保留给迁移/兼容调用）。
+   *
+   * <pre>
+   * 逐条：row.population += delta      // delta = 出生 − 死亡，由 Social 按 HouseholdId 算好
+   *       结果 &lt; 0 或行不存在 ⇒ 具名拒（fail-closed，不静默跳过）
+   * </pre>
+   *
+   * <p>★★ <b>为什么不像旧路径那样摊批次/缩劳动/删债</b>：调用方（app 日循环）在调用本方法**之前**已经用新 Social
+   * 刷新了 {@code composition} / {@code laborMilli} / {@code naturalNeeds}——劳动权威已经是结算后 Social；这里再按人口
+   * 比例缩一次会把当日权威缩两遍。人口 delta 只改行人口这一项投影，其它派生量由调用方的刷新与后续 step 承担。
+   *
+   * <p>★ <b>拒绝语义</b>：null 键/值、0 delta、缺经济行、结果为负都具名拒（ERROR 日志 + 异常）；空表是合法输入
+   * （当天无生死）。★ 汇总只记 DEBUG（逐户明细由 Social 侧事件日志承担）。
+   */
+  static void applyHouseholdPopulationDeltasInto(
+      EconomySession session, Map<HouseholdId, Long> deltas) {
+    Objects.requireNonNull(session, "session");
+    Objects.requireNonNull(deltas, "deltas");
+    if (deltas.isEmpty()) {
+      return;
+    }
+    LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies =
+        session.sheet().householdEconomies();
+    // ① 先做全量校验：任何坏输入都在写任何一行之前具名拒（不留半落账状态）。
+    long deltaSum = 0L;
+    for (Map.Entry<HouseholdId, Long> entry : deltas.entrySet()) {
+      HouseholdId household = entry.getKey();
+      Long delta = entry.getValue();
+      if (household == null) {
+        EconomyLog.population()
+            .error("event=HOUSEHOLD_POPULATION_DELTA_REJECTED reason=null-household-key");
+        throw new IllegalArgumentException("逐户人口变化含 null 家户键（Social 结算结果不得含 null）");
+      }
+      if (delta == null) {
+        EconomyLog.population()
+            .error(
+                "event=HOUSEHOLD_POPULATION_DELTA_REJECTED reason=null-delta household={}",
+                household);
+        throw new IllegalArgumentException("逐户人口变化的值不得为 null: household=" + household);
+      }
+      if (delta == 0L) {
+        EconomyLog.population()
+            .error(
+                "event=HOUSEHOLD_POPULATION_DELTA_REJECTED reason=zero-delta household={}",
+                household);
+        throw new IllegalArgumentException("逐户人口变化不应含 0（只给非 0 净变化）: household=" + household);
+      }
+      HouseholdEconomy row = householdEconomies.get(household);
+      if (row == null) {
+        EconomyLog.population()
+            .error(
+                "event=HOUSEHOLD_POPULATION_DELTA_REJECTED reason=unknown-household-row household={}",
+                household);
+        throw new IllegalStateException(
+            "逐户人口变化指向不存在的经济家户行（Social/Economy 投影不一致，拒绝静默丢弃）: " + household);
+      }
+      long nextPopulation = Math.addExact(row.population(), delta);
+      if (nextPopulation < 0L) {
+        EconomyLog.population()
+            .error(
+                "event=HOUSEHOLD_POPULATION_DELTA_REJECTED reason=negative-result household={}"
+                    + " population={} delta={} next={}",
+                household,
+                row.population(),
+                delta,
+                nextPopulation);
+        throw new IllegalStateException(
+            "逐户人口变化后结果为负（拒绝落账）: household="
+                + household
+                + " population="
+                + row.population()
+                + " delta="
+                + delta);
+      }
+      deltaSum = Math.addExact(deltaSum, delta);
+    }
+    // ② 校验全过后再写：population += delta；laborMilli 原样（调用方已按新 Social 重算）。
+    for (Map.Entry<HouseholdId, Long> entry : deltas.entrySet()) {
+      HouseholdId household = entry.getKey();
+      HouseholdEconomy row = householdEconomies.get(household);
+      long nextPopulation = Math.addExact(row.population(), entry.getValue());
+      householdEconomies.put(
+          household,
+          withPopulationAndLabor(row, nextPopulation, row.laborMilli()));
+    }
+    if (EconomyLog.population().isDebugEnabled()) {
+      EconomyLog.population()
+          .debug(
+              "event=HOUSEHOLD_POPULATION_DELTAS_APPLIED households={} deltaNet={} unit=person",
+              deltas.size(),
+              deltaSum);
+    }
+  }
+
+  /**
    * ★★ <b>P5：死亡按人口比例删债（逐笔整数口径）</b>——只缩减「{@code debtor ==} 本行」的全部活跃合同。
    *
    * <pre>
@@ -3415,9 +3511,9 @@ public final class EconomySettlement {
   /**
    * ★★ **某一格的全部产业**（保序：产业表的插入序；无则空表）。
    *
-   * <p>★★ **两处共用**（{@code applyPopulationChange} 与 {@code
-   * io.mosire.simos.app.time.PopulationEconomyTimeParticipant#applyDailyStress}）——
-   * 抽成一个方法是因为"**没有配额的批次该按哪一格算**"这个问题**只能有一个答案**， 两处各写一遍必然漂（S1 spec §十 的原文）。
+   * <p>★★ **它是"某一格有哪些产业"这个问题的唯一算法**（历史上由 {@code applyPopulationChange} 的批次摊派与已删除的
+   * 日压力路径共用；2026-10-09 Batch B 后调用方只剩旧批次回写这条兼容路径）—— 抽成一个方法是因为"**没有配额的批次该按哪一格算**"这个问题
+   * **只能有一个答案**， 两处各写一遍必然漂（S1 spec §十 的原文）。
    *
    * <p>★ 可见性是 {@code public} 而非包内：调用方在 {@code simos-app} 的另一个包里。
    */
@@ -3452,9 +3548,9 @@ public final class EconomySettlement {
    *
    * <p>★★ **它是"某一格有哪些产业"这件事的唯一算法** —— {@link #industriesAt} 也从它取， 故两处（以及将来的第三处）不可能给出不同答案。
    *
-   * <p>★ **为什么要单独暴露它**：调用方 {@code PopulationEconomyTimeParticipant#applyDailyStress} 在**逐日 ×
-   * 逐批次**的热路径上需要它 —— 没有配额的批次（0-14 档 + 全部新生儿）**每一个**都要 走兜底，而它们的数量随新生批次**逐月累积**（真档实测 ≈ 6,263
-   * 个）。在那儿每次全表扫产业会 多出一项 O(批次 × 产业)；**建一次索引**就没有这一项。
+   * <p>★ **为什么要单独暴露它**：调用方在**逐日 × 逐批次**的热路径上需要它 —— 没有配额的批次（0-14 档 + 新生儿）**每一个**都要
+   * 走兜底，而它们的数量随新生批次**逐期累积**（真档实测 ≈ 6,263 个）。在那儿每次全表扫产业会 多出一项 O(批次 × 产业)；**建一次索引**就没有这一项。
+   * ★ 2026-10-09 Batch B 删除了它的日压力调用方，本方法保留给旧批次回写等兼容路径。
    *
    * @param base 经济状态
    * @return 格键（{@code q_r}）→ 该格的产业（保序；无产业的格**不出现在表里**）
@@ -7221,12 +7317,13 @@ public final class EconomySettlement {
    * population}、{@code 人口 ≥ 0}、 {@code labor ≥ 0}（构造期由 {@link HouseholdEconomy} 再兜一层）。
    *
    * <p>★★ **R4 起这条旧账已收口**（R2 如实记过的那处不齐）：本节缩的**行**劳动之外，调用方还会把该产业名下的**全部劳动配额**
-   * 与对应批次的**劳动供给**按同一个存活比例缩（{@link #scaleLaborOfIndustry}）—— 于是"人死了劳动没减"不再成立。 ★ 另一条死亡路径（生理压力，见
-   * {@link #applyPopulationChange}）则按**批次**缩：两条路径各自缩自己那份账， 都落在同一条不变量（{@code Σ allocated ≤
-   * available}）上。
+   * 与对应批次的**劳动供给**按同一个存活比例缩（{@link #scaleLaborOfIndustry}）—— 于是"人死了劳动没减"不再成立。 ★ 另一条人口变化路径
+   * （Social 每 tick 生死，见 {@link #applyHouseholdPopulationDeltasInto}）只同步家户行人口：劳动预算由 app 用**结算后**的
+   * Social 重算，不在这里按比例缩。
    *
-   * <p>★ **它现在还是"直接按缺口处死"那个独立旋钮**（默认 0‰）：R4 起真正的日常死亡走生理压力那条路 （{@code PopulationDynamics}
-   * 的月度结算），本方法的致死率仍由 {@link #FAMINE_MORTALITY_PER_MILLE} 控制， 且**逐值用例仍钉着非 0 那一条路**（不是死分支）。
+   * <p>★ **它现在还是"直接按缺口处死"那个独立旋钮**（默认 0‰）：2026-10-09 每 tick 生死起，日常出生/死亡走 Social 的
+   * ppm/tick 率表 + 余数累加器（不再有"生理压力抬死亡率"那条路）；本方法的致死率仍由 {@link #FAMINE_MORTALITY_PER_MILLE}
+   * 控制， 且**逐值用例仍钉着非 0 那一条路**（不是死分支）。
    */
   private static void applyFamine(
       LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,

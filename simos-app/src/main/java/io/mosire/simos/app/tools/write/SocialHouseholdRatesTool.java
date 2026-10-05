@@ -21,8 +21,9 @@ import java.util.Map;
  * ★★ {@code simos.social.household.rates}（S3a，2026-10-09）：<b>GM 设置家户出生/死亡率窄工具</b>——
  * {@code social.SetHouseholdVitalRates} 的封装（率表<b>整体替换</b>）。
  *
- * <p>★ <b>载荷</b>：{@code rates = [{bracketId, sex, birthRatePerMillePerTick?, deathRatePerMillePerTick?}]}；缺失 ⇒
- * 空表（= 清空率表）；两个率缺省 0；负数 / 重复 {@code (bracketId, sex)} 由契约类型具名拒。
+ * <p>★ <b>载荷</b>：{@code rates = [{bracketId, sex, birthRatePerMillionPerTick?, deathRatePerMillionPerTick?}]}；缺失 ⇒
+ * 空表（= 清空率表）；两个率缺省 0（= 这一档按 0 率结算）；负数 / 重复 {@code (bracketId, sex)} 由契约类型具名拒。单位
+ * ppm/tick。
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：preview 先调 {@link HouseholdBook#setVitalRates} 并把前后率表折进视图，
  * <b>一个字节都不写</b>；apply 组一条命令走 {@link CoreSimos#submitBatch}。
@@ -50,7 +51,7 @@ public final class SocialHouseholdRatesTool extends AbstractHouseholdGmTool {
   public String description() {
     return "GM 设置家户出生/死亡率（social.SetHouseholdVitalRates 窄封装，整体替换率表；一条命令 = 一条 revision）："
         + "参数 {householdId, rates:[{bracketId(如 0-14|15-59|60+), sex(MALE|FEMALE), "
-        + "birthRatePerMillePerTick?, deathRatePerMillePerTick?}], reason, preview?(缺省 true=只算不写), branch?, "
+        + "birthRatePerMillionPerTick?, deathRatePerMillionPerTick?}], reason, preview?(缺省 true=只算不写), branch?, "
         + "expectedRevision?(preview=false 必填)}。rates 缺失 ⇒ 清空率表；两个率缺省 0；负数/重复 (bracketId,sex) 拒。"
         + "返回 {preview, submitted, householdId, ratesBefore, ratesAfter, commandsPreview, submission?}。";
   }
@@ -63,7 +64,7 @@ public final class SocialHouseholdRatesTool extends AbstractHouseholdGmTool {
         "rates",
         ToolSupport.prop(
             "array",
-            "[{bracketId,sex(MALE|FEMALE),birthRatePerMillePerTick?,deathRatePerMillePerTick?}]（整体替换；"
+            "[{bracketId,sex(MALE|FEMALE),birthRatePerMillionPerTick?,deathRatePerMillionPerTick?}]（整体替换；"
                 + "缺失=清空；两个率缺省 0；负数/重复 (bracketId,sex) 拒）"));
     props.put("reason", ToolSupport.prop("string", "设率原因（必填非空白；进命令载荷与事件）"));
     props.put("preview", ToolSupport.prop("boolean", "true（缺省）= 只算不写；false = 提交命令"));

@@ -8,6 +8,10 @@ import java.util.Set;
 /**
  * 一个家户的率表（2026-10-09 家户/人口架构 §4.3）：{@link HouseholdVitalRate} 的冻结列表。
  *
+ * <p>它同时是<b>家户覆盖表</b>与<b>全局默认表</b>的形状：作为 {@code Household.vitalRates} 时是逐户覆盖，
+ * 空表/缺键 ⇒ 由 {@code SocialData.findVitalRate} <b>逐键回落</b>全局默认；作为
+ * {@code SocialVitalRates.globalDefaults} 时是全局兜底。两边都没有 ⇒ 具名拒（不静默给 0）。
+ *
  * <p>不变量（构造期判）：
  *
  * <ul>
@@ -33,8 +37,10 @@ public record HouseholdVitalRates(List<HouseholdVitalRate> rates) {
   }
 
   /**
-   * 按 {@code (bracketId, sex)} 查率；缺失 ⇒ {@link java.util.Optional#empty()}（"这个档没有率"是合法状态：
-   * 结算方对缺失率按 0 处理，不臆造默认值）。
+   * 按 {@code (bracketId, sex)} 查本表；缺失 ⇒ {@link java.util.Optional#empty()}。
+   *
+   * <p>★ 缺失的语义由持有方决定：作为家户覆盖表 ⇒ 该键回落全局默认；作为全局默认表 ⇒ 全局缺键（结算方具名拒）。
+   * 本方法本身不臆造 0，也不替调用方决定兜底。
    */
   public java.util.Optional<HouseholdVitalRate> find(String bracketId, Sex sex) {
     for (HouseholdVitalRate rate : rates) {

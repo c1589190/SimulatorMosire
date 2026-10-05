@@ -457,7 +457,7 @@ final class GovSelectExamineesPlan {
       return List.copyOf(types);
     }
 
-    /** {@code social.SeedGroups} 载荷：逐批整组覆盖（count=扣后，带保真三件；可为 0）。 */
+    /** {@code social.SeedGroups} 载荷：逐批整组覆盖（count=扣后，带保真两件；可为 0）。★ Batch B 起不再携带 stress。 */
     String seedGroupsPayloadJson() {
       List<Map<String, Object>> entries = new ArrayList<>(sources.size());
       for (GovRecruitPlan.GroupSource source : sources) {
@@ -470,7 +470,6 @@ final class GovSelectExamineesPlan {
         entry.put("count", source.countAfter());
         entry.put("ageDays", group.ageAtAnchorDays());
         entry.put("anchorTick", group.anchorTick());
-        entry.put("stress", group.physiologicalStress());
         entries.add(entry);
       }
       Map<String, Object> payload = new LinkedHashMap<>();

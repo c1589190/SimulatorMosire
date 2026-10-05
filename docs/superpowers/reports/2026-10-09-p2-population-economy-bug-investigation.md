@@ -557,3 +557,27 @@ tick360 grain satisfaction                  = 1000‰
    - 再校准储备粮的正式口径（30× 只是验证值，不是最终值）；
    - 最后统一 `PopulationDynamics` / `HouseholdBook.settleVitalEvents` 两套生死引擎；
    - 每步继续用 360 tick 对照本节与 §12 前文基线。
+
+---
+
+## 13. 后续收口（2026-10-09 Batch A/B/C，本文调查之后的实现）
+
+上文 §12.6 的“下一步”已实施，口径改为 **Social 每 tick 生死引擎**（不再修 `PopulationDynamics.birthsOf`，
+该类连同压力/月度路径整体删除）。施工依据、Unit 对接规划与实测留档：
+
+- `docs/superpowers/plans/2026-10-09-social-vital-rates-per-tick-plan.md`（§7.2 是 Unit 对接前的 P0 旁路，
+  §10 是本批实测）；
+- `docs/superpowers/HANDOFF-2026-10-09-social-vital-engine.md`（下一会话入口）。
+
+本批对本文结论的更新：
+
+```text
+10.2 的 fertileWomen=1098 / 月出生=2 / 应约 21  → 旧 PopulationDynamics 口径，已作废；
+10.2 的 stress 读数与 §12 高压力复盘        → physiologicalStress 已删除，读口不再有数；
+12.6 的“逐批次整除 bug / 两套引擎未统一”    → 随 PopulationDynamics 删除而关闭；
+本批 fresh 0→360：births=258、deaths=157、final social=economy=4101、ERROR=0；
+余数零初值在 360 tick 只实现出 20 死亡（连续期望 156），已改稳定哈希初相位修正，见计划 §10.3。
+```
+
+仍未关闭：`ModeMigrationSettlement` 直接改经济行人口（计划 §7.2 P0）、`FlowRow.births/deaths` 读口、
+GM/决策人工具、测试迁移、Unit 四件套。

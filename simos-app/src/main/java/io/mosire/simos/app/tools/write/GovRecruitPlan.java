@@ -306,8 +306,8 @@ final class GovRecruitPlan {
     }
 
     /**
-     * {@code social.SeedGroups} 载荷：每个被动批次一条<b>整组覆盖</b>，必须带原 {@code ageDays}/{@code anchorTick} 与
-     * {@code stress} 保真（否则重写会把压力静默清零）；{@code count} 取扣后、可为 0。
+     * {@code social.SeedGroups} 载荷：每个被动批次一条<b>整组覆盖</b>，必须带原 {@code ageDays}/{@code anchorTick} 保真；
+     * {@code count} 取扣后、可为 0。★★ Batch B：旧 {@code stress} 字段已退役，不再携带。
      */
     String seedGroupsPayloadJson() {
       List<Map<String, Object>> entries = new ArrayList<>(sources.size());
@@ -319,10 +319,9 @@ final class GovRecruitPlan {
         entry.put("r", source.at().r());
         entry.put("sex", group.sex().name());
         entry.put("count", source.countAfter());
-        // ★ 保真三件：锚点年龄 / 锚点 tick / 生理压力——整组覆盖不重新解释这批人。
+        // ★ 保真两件：锚点年龄 / 锚点 tick——整组覆盖不重新解释这批人。
         entry.put("ageDays", group.ageAtAnchorDays());
         entry.put("anchorTick", group.anchorTick());
-        entry.put("stress", group.physiologicalStress());
         entries.add(entry);
       }
       Map<String, Object> payload = new LinkedHashMap<>();

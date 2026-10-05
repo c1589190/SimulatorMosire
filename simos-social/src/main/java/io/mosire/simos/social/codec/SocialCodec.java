@@ -32,13 +32,15 @@ import java.util.function.Function;
  * {@code PeopleLotId}（{@code groups} 的键，R1 新增）与 {@code HouseholdId}（{@code households} 的键，S2 新增）；
  * 事件表（{@code populationEvents}）的键是裸字符串。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
  *
- * <p>★★ <b>Batch 1 的 provisioning 组件不需要新的键注册</b>：{@code SocialProvisioning} 的
- * {@code householdDemandOverrides} / {@code householdLaborOverrides} 也是以 {@code HouseholdId} 为键的 map，
- * 复用本模块已注册的同一条 {@code HouseholdId} 键反序列化器；其余字段是 record 组件（enum / 单参值对象），
- * Jackson 的 record 内省可直接处理。值里的 {@code CommodityId} 是 economy-api 的单参 record，按组件名 {@code
- * value} 进出线格式——本模块不另加注解、也不碰 economy 的 mapper。
+ * <p>★★ <b>Batch 1 的 provisioning、Batch A 的 vitalRates / vitalRemainders 都不需要新的键注册</b>：
+ * {@code SocialProvisioning} 的 {@code householdDemandOverrides} / {@code householdLaborOverrides} 也是以
+ * {@code HouseholdId} 为键的 map，复用本模块已注册的同一条 {@code HouseholdId} 键反序列化器；而
+ * {@code SocialVitalRates} 是单值 record（内部 {@code HouseholdVitalRates} 是列表）、
+ * {@code SocialVitalRemainders} 是<b>列表</b>（不是复合键 map，故无需 key deserializer），其余字段是
+ * record 组件（enum / 单参值对象），Jackson 的 record 内省可直接处理。值里的 {@code CommodityId} 是
+ * economy-api 的单参 record，按组件名 {@code value} 进出线格式——本模块不另加注解、也不碰 economy 的 mapper。
  *
- * <p>★ <b>旧档缺第 6 组件 = 不可读</b>：{@code SocialData}/{@code SocialChangeSet} 的构造期都会具名拒
+ * <p>★ <b>旧档缺第 6/7/8 组件 = 不可读</b>：{@code SocialData}/{@code SocialChangeSet} 的构造期都会具名拒
  * null（用户 2026-10-09 裁定"一切从新、旧档作废"），本 codec **不做任何 null 兜底/default 回填**——
  * 读旧档时 {@link #readJson} 会把构造期的具名原因原样包进 {@code IllegalStateException} 抛出。
  *

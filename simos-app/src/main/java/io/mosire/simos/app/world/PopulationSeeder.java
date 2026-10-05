@@ -350,10 +350,12 @@ public final class PopulationSeeder {
 
   /**
    * {@code social.SeedGroups} 的载荷（S2 的形状）：{@code
-   * {entries:[{id,q,r,sex,count,ageDays,anchorTick,stress,household}…], households:[{id,q,r,name}…]}}。
+   * {entries:[{id,q,r,sex,count,ageDays,anchorTick,household}…], households:[{id,q,r,name}…]}}。
    *
    * <p>★ {@code anchorTick} **逐条显式给**（不用"缺省 = 世界当前时刻"）：这一份列表同时喂给经济侧，
    * 两侧的年龄必须指向**同一个锚点**。
+   *
+   * <p>★★ Batch B：旧 {@code stress} 字段已退役（{@code social.SeedGroups} 出现即具名拒），本载荷不再携带。
    */
   public static String payload(Seeding seeding) {
     Objects.requireNonNull(seeding, "seeding");
@@ -369,7 +371,6 @@ public final class PopulationSeeder {
       entry.put("count", group.count());
       entry.put("ageDays", group.ageAtAnchorDays());
       entry.put("anchorTick", group.anchorTick());
-      entry.put("stress", group.physiologicalStress());
       entry.put("household", household.value());
       entries.add(entry);
     }

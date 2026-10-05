@@ -451,7 +451,7 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
     }
   }
 
-  /** 可选的率数组成员（S3a 的 {@code [{bracketId,sex,birthRatePerMillePerTick?,deathRatePerMillePerTick?}…]}）。 */
+  /** 可选的率数组成员（S3a 的 {@code [{bracketId,sex,birthRatePerMillionPerTick?,deathRatePerMillionPerTick?}…]}；ppm/tick）。 */
   protected static List<HouseholdVitalRate> vitalRatesArg(Map<String, Object> args, String name) {
     Object raw = args.get(name);
     if (raw == null) {
@@ -473,8 +473,8 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
       } catch (IllegalArgumentException e) {
         throw new IllegalArgumentException("参数 " + name + ".sex 必须是 MALE|FEMALE: " + sexText, e);
       }
-      long birth = optionalLongArg(map, "birthRatePerMillePerTick", name);
-      long death = optionalLongArg(map, "deathRatePerMillePerTick", name);
+      long birth = optionalLongArg(map, "birthRatePerMillionPerTick", name);
+      long death = optionalLongArg(map, "deathRatePerMillionPerTick", name);
       rates.add(new HouseholdVitalRate(bracketId, sex, birth, death));
     }
     return List.copyOf(rates);
@@ -583,8 +583,8 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
       Map<String, Object> row = new LinkedHashMap<>();
       row.put("bracketId", rate.bracketId());
       row.put("sex", rate.sex().name());
-      row.put("birthRatePerMillePerTick", rate.birthRatePerMillePerTick());
-      row.put("deathRatePerMillePerTick", rate.deathRatePerMillePerTick());
+      row.put("birthRatePerMillionPerTick", rate.birthRatePerMillionPerTick());
+      row.put("deathRatePerMillionPerTick", rate.deathRatePerMillionPerTick());
       out.add(row);
     }
     return out;

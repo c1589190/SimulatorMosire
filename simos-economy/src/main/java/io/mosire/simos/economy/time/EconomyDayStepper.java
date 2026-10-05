@@ -325,6 +325,23 @@ public final class EconomyDayStepper implements AutoCloseable {
   }
 
   /**
+   * ★★ <b>2026-10-09 每 tick 生死 Batch B：把 Social 结算出的逐家户净人口变化落到经济行</b>（{@code
+   * population += delta}）——委托 {@link EconomySettlement#applyHouseholdPopulationDeltasInto(EconomySession,
+   * Map)}；键缺行/结果为负都具名拒，不静默跳过。
+   *
+   * <p>★★ <b>调用方次序（app 日循环）</b>：先 {@link #updateComposition(Map)} + {@link
+   * #recomputeLaborBudgets(Map)} + {@link #updateNaturalNeeds(Map)} 用**新** Social 刷新投影，再调本方法加
+   * delta，最后 {@link #step(long)}。★ 劳动预算已在前面按新 Social 重算，故本方法**不动** {@code laborMilli}
+   * ——在这里再按人口比例缩一遍会把 Social 的当日权威缩两次。
+   *
+   * @param deltas 逐家户净人口变化（出生 − 死亡；只含非 0 项）；不得为 null
+   */
+  public void applyHouseholdPopulationDeltas(Map<HouseholdId, Long> deltas) {
+    Objects.requireNonNull(deltas, "deltas");
+    EconomySettlement.applyHouseholdPopulationDeltasInto(session, deltas);
+  }
+
+  /**
    * ★★ <b>P8：把一份迁移计划落进本会话的经济侧工作副本</b>（人口 / 劳动 / 债务；见 {@link LotMigrationBook}）。
    *
    * <p>★ 本方法只转发经济侧写口；<b>不</b>动 social 批次、{@code Membership}、{@code HouseholdLaborCommitment}/{@code

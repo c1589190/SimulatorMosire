@@ -151,7 +151,9 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
               groups,
               households,
               base.populationEvents(),
-              base.provisioning());
+              base.provisioning(),
+              base.vitalRates(),
+              base.vitalRemainders());
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

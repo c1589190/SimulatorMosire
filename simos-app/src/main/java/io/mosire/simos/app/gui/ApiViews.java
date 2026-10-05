@@ -5564,20 +5564,9 @@ public final class ApiViews {
       sex.put(entry.getKey().name(), entry.getValue());
     }
     groups.put("sex", sex);
-    // ★★ R4：**生理压力**一维（"缺粮不直接对应死亡人数，而是累积压力"的读口落点）：人均压力 + 最大值。
-    //   ★ 两个数都从这里读得到，且**逐格**给（压力是批次的属性，但读口按格汇总才有用）。
-    long stressSum = 0L;
-    long stressMax = 0L;
-    long stressed = 0L;
-    for (PopulationGroup group : data.groupsAt(coord)) {
-      stressSum += group.physiologicalStress() * group.count();
-      stressMax = Math.max(stressMax, group.physiologicalStress());
-      stressed += group.count();
-    }
-    Map<String, Object> stress = new LinkedHashMap<>();
-    stress.put("average", stressed == 0L ? 0L : stressSum / stressed);
-    stress.put("max", stressMax);
-    groups.put("physiologicalStress", stress);
+    // ★★ Batch B：生理压力字段已退役（2026-10-09 每 tick 生死计划 §4：压力与压力自动传导一起删）——
+    //   读口保留键但**给 null**（具名"不可用"），不填 0 冒充"没有压力"；GUI 侧按缺读数展示。
+    groups.put("physiologicalStress", null);
     // ★★ P1.2：**人口批次 id 读口**（只读 additive）——`social.MovePopulationLots` 需要批次身份才能迁移；
     //   这里把该格的每个批次逐条发出去（id 是身份，不是给人看的名字），并带上位置真值来源（所属家户）。
     //   顺序 = groupsAt 的保序（与状态插入序同序）；空数组也发，读侧一次判空即可。
@@ -5589,7 +5578,8 @@ public final class ApiViews {
       lot.put("sex", group.sex().name());
       lot.put("ageDays", group.ageDaysAt(at.tick()));
       lot.put("anchorTick", group.anchorTick());
-      lot.put("physiologicalStress", group.physiologicalStress());
+      // ★★ Batch B：压力字段已退役；保留键给 null（具名不可用），不填 0。
+      lot.put("physiologicalStress", null);
       lot.put("urban", PopulationLots.isUrban(group));
       lot.put(
           "household",

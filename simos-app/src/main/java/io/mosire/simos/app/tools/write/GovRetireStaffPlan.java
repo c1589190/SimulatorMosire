@@ -127,8 +127,7 @@ final class GovRetireStaffPlan {
                   smallest.sex(),
                   after,
                   smallest.ageAtAnchorDays(),
-                  smallest.anchorTick(),
-                  smallest.physiologicalStress()));
+                  smallest.anchorTick()));
       reinsertCountAfter = after;
     }
     return new Plan(dismissal, reinsertAt, reinsertTarget, reinsertCountAfter);
@@ -233,7 +232,7 @@ final class GovRetireStaffPlan {
       entry.put("count", target.count());
       entry.put("ageDays", target.ageAtAnchorDays());
       entry.put("anchorTick", target.anchorTick());
-      entry.put("stress", target.physiologicalStress());
+      // ★★ Batch B：旧 stress 字段已退役（social.SeedGroups 出现即具名拒），不再随载荷保真。
       Map<String, Object> payload = new LinkedHashMap<>();
       payload.put("entries", List.of(entry));
       return ToolSupport.json(payload);

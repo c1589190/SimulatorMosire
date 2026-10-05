@@ -63,7 +63,7 @@ public final class SocialHouseholdCreateTool extends AbstractHouseholdGmTool {
   public String description() {
     return "GM 创建家户（social.CreateHousehold 窄封装，最多再加一条 unit.SetUnitHouseholds，同批一条 revision）："
         + "参数 {householdId, location:{type:HEX|UNIT, hex:{q,r}|unitId}, name, description?, metadata?, "
-        + "vitalRates?:[{bracketId,sex,birthRatePerMillePerTick?,deathRatePerMillePerTick?}], reason, "
+        + "vitalRates?:[{bracketId,sex,birthRatePerMillionPerTick?,deathRatePerMillionPerTick?}], reason, "
         + "preview?(缺省 true=只算不写), branch?, expectedRevision?(preview=false 必填)}。"
         + "location 为 UNIT 时先校验单位存在、家户 id 不与 unit id 撞名，并同批把家户加入 unit.households"
         + "（保证社会位置与 unit 侧容纳列表一致）；location 为 HEX 时只落一条 CreateHousehold。"
@@ -86,8 +86,8 @@ public final class SocialHouseholdCreateTool extends AbstractHouseholdGmTool {
         "vitalRates",
         ToolSupport.prop(
             "array",
-            "出生/死亡率表 [{bracketId(如 15-59),sex(MALE|FEMALE),birthRatePerMillePerTick?,"
-                + "deathRatePerMillePerTick?}]（可选，缺省空表；两个率缺省 0，负数/重复 (bracketId,sex) 拒）"));
+            "出生/死亡率表 [{bracketId(如 15-59),sex(MALE|FEMALE),birthRatePerMillionPerTick?,"
+                + "deathRatePerMillionPerTick?}]（可选，缺省空表；两个率缺省 0，负数/重复 (bracketId,sex) 拒；单位 ppm/tick）"));
     props.put("reason", ToolSupport.prop("string", "创建原因（必填非空白；进命令载荷与工具结果）"));
     props.put("preview", ToolSupport.prop("boolean", "true（缺省）= 只算不写；false = 提交命令批"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));

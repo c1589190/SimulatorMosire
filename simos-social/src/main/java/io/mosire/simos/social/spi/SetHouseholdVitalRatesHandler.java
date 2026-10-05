@@ -14,20 +14,24 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * {@code social.SetHouseholdVitalRates} 命令的处理器（S3a，2026-10-09 / 架构 §4.1）：整体替换一个家户的出生/死亡率表。
+ * {@code social.SetHouseholdVitalRates} 命令的处理器（S3a，2026-10-09 / 架构 §4.1）：整体替换一个家户的出生/死亡率<b>覆盖表</b>。
  *
  * <pre>{@code
  * {"householdId":"hh-1",
- *  "rates":[{"bracketId":"15-59","sex":"FEMALE","birthRatePerMillePerTick":18,"deathRatePerMillePerTick":4},
- *           {"bracketId":"0-14","sex":"MALE","birthRatePerMillePerTick":0,"deathRatePerMillePerTick":12}],
+ *  "rates":[{"bracketId":"15-59","sex":"FEMALE","birthRatePerMillionPerTick":18,"deathRatePerMillionPerTick":4},
+ *           {"bracketId":"0-14","sex":"MALE","birthRatePerMillionPerTick":0,"deathRatePerMillionPerTick":12}],
  *  "reason":"设定率"}
  * }</pre>
  *
- * <p>★ <b>载荷语义</b>：{@code rates} 缺失 / JSON {@code null} ⇒ 空表（= 清空率表，合法）；两个率缺省 0；负数、重复
- * {@code (bracketId, sex)} 由 {@link io.mosire.simos.social.api.population.HouseholdVitalRate} /
- * {@link HouseholdVitalRates} 构造期具名拒。★ 率为 0 表示"这一档没有率"，不是"用默认值"。
+ * <p>★ <b>载荷语义</b>：{@code rates} 缺失 / JSON {@code null} ⇒ 空表（= 清空覆盖表，全部键回落全局默认）；两个率缺省 0
+ * （0 是"这一档确实按 0 率结算"，不是"没有这一行"）；负数、重复 {@code (bracketId, sex)} 由
+ * {@link io.mosire.simos.social.api.population.HouseholdVitalRate} / {@link HouseholdVitalRates} 构造期具名拒。
+ * ★ 单位是 <b>ppm/tick</b>。
  *
- * <p>★ <b>语义</b>：只调 {@link HouseholdBook#setVitalRates}——率表本体进状态，另落一条 {@code RATE_SET} 审计事件。
+ * <p>★ <b>语义</b>：只调 {@link HouseholdBook#setVitalRates}——覆盖表本体进状态的 {@code Household.vitalRates}，另落一条
+ * {@code RATE_SET} 审计事件；查找时家户覆盖优先、全局默认兜底，见
+ * {@link io.mosire.simos.social.SocialData#findVitalRate(io.mosire.simos.social.api.id.HouseholdId,
+ * io.mosire.simos.social.population.AgeBracket, io.mosire.simos.social.api.population.Sex)}。
  */
 public final class SetHouseholdVitalRatesHandler implements CommandHandler, CommandTargets {
 

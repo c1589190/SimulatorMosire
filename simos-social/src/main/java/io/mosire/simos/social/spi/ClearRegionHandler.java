@@ -128,7 +128,9 @@ public final class ClearRegionHandler implements CommandHandler, CommandTargets,
               groups,
               households,
               base.populationEvents(),
-              base.provisioning());
+              base.provisioning(),
+              base.vitalRates(),
+              base.vitalRemainders());
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
       // ★ 域构造期守卫（若清空边界写错）也在这里折成具名拒绝，不穿成整条推进失败。

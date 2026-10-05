@@ -45,7 +45,8 @@ import java.util.Objects;
  * @param location 家户位置（{@code HEX} / {@code UNIT}）；不得为 null
  * @param profile 家户画像；不得为 null
  * @param members 成员份额（批次 → 人数）；冻结、不得含 null 键或负值
- * @param vitalRates 逐 {@code (年龄档, 性别)} 的出生/死亡率；不得为 null
+ * @param vitalRates 逐 {@code (年龄档, 性别)} 的出生/死亡率<b>家户覆盖表</b>（ppm/tick；空表/缺键逐键回落全局默认）；
+ *     不得为 null
  */
 public record Household(
     HouseholdId id,

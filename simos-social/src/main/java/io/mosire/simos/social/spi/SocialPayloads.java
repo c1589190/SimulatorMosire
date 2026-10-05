@@ -316,8 +316,10 @@ final class SocialPayloads {
 
   /**
    * 可选的出生/死亡率数组（S3a 的 {@code social.SetHouseholdVitalRates.rates}）：缺失或 JSON {@code null} ⇒ 空表
-   * （= 清空率表）；给了 ⇒ 必须是 {@code [{bracketId,sex,birthRatePerMillePerTick?,deathRatePerMillePerTick?}…]}，
-   * 两个率缺省 0。元素形状/数值非负由 {@link HouseholdVitalRate} 构造期判；(bracketId, sex) 重复由率表构造期判。
+   * （= 清空率表，全部键回落全局默认）；给了 ⇒ 必须是
+   * {@code [{bracketId,sex,birthRatePerMillionPerTick?,deathRatePerMillionPerTick?}…]}，两个率缺省 0
+   * （0 是"这一档确实按 0 率结算"，不是"没有这一行"；要回落全局默认就别给这个键）。元素形状/数值非负由
+   * {@link HouseholdVitalRate} 构造期判；(bracketId, sex) 重复由率表构造期判。
    */
   static List<HouseholdVitalRate> requireVitalRates(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
@@ -326,18 +328,35 @@ final class SocialPayloads {
     }
     if (!value.isArray()) {
       throw new IllegalArgumentException(
-          "字段 " + field + " 必须是 [{bracketId,sex,birthRatePerMillePerTick?,deathRatePerMillePerTick?}…] 数组: " + payload);
+          "字段 "
+              + field
+              + " 必须是 [{bracketId,sex,birthRatePerMillionPerTick?,deathRatePerMillionPerTick?}…] 数组: "
+              + payload);
     }
     ArrayList<HouseholdVitalRate> rates = new ArrayList<>(value.size());
     for (JsonNode element : value) {
       if (!element.isObject()) {
         throw new IllegalArgumentException("字段 " + field + " 的元素必须是率对象: " + element);
       }
+      // ★★ 旧 perMille 口径字段已作废：出现即具名拒——静默当 0 会把"我设了率"变成一句假话。
+      if (element.has("birthRatePerMillePerTick") || element.has("deathRatePerMillePerTick")) {
+        throw new IllegalArgumentException(
+            "字段 "
+                + field
+                + " 不再接受 perMille/tick 口径（旧档作废）：请改用 birthRatePerMillionPerTick / "
+                + "deathRatePerMillionPerTick（ppm/tick）: "
+                + element);
+      }
       String bracketId = requireText(element, "bracketId");
       Sex sex = requireSex(element, "sex");
-      Long birthValue = optionalLong(element, "birthRatePerMillePerTick");
-      Long deathValue = optionalLong(element, "deathRatePerMillePerTick");
-      rates.add(new HouseholdVitalRate(bracketId, sex, birthValue == null ? 0L : birthValue, deathValue == null ? 0L : deathValue));
+      Long birthValue = optionalLong(element, "birthRatePerMillionPerTick");
+      Long deathValue = optionalLong(element, "deathRatePerMillionPerTick");
+      rates.add(
+          new HouseholdVitalRate(
+              bracketId,
+              sex,
+              birthValue == null ? 0L : birthValue,
+              deathValue == null ? 0L : deathValue));
     }
     return List.copyOf(rates);
   }
@@ -369,7 +388,7 @@ final class SocialPayloads {
   }
 
   /**
-   * 必填的 {@code [{id,q,r,sex,count,ageDays,anchorTick?,stress?,household?}…]} 数组 + 可选
+   * 必填的 {@code [{id,q,r,sex,count,ageDays,anchorTick?,household?}…]} 数组 + 可选
    * {@code households:[{id,q,r,name?,description?}…]} ⇒ **保序**的批次/位置/归户表（R1 的 {@code social.SeedGroups}，
    * S2 作家户归位）。
    *
@@ -384,10 +403,11 @@ final class SocialPayloads {
    *
    * <p>★ <b>重复 id：后出现者覆盖先出现者，不报错</b>（先出现的那个位置保持）；空数组 ⇒ 抛。
    *
-   * <p>★ **形状与类型在本层判**；{@code count}/{@code ageDays}/{@code stress} 为负由 {@link PopulationGroup}
+   * <p>★ **形状与类型在本层判**；{@code count}/{@code ageDays} 为负由 {@link PopulationGroup}
    * 构造期守卫拒；`households[]` 的 {@code q}/{@code r} 只表达 {@code HEX} 位置（unit 家户由命令/服务另建，不走本载荷）。
    *
-   * <p>★ {@code stress} 可选、**缺省 0**：旧载荷不带它 ⇒ 与从前逐值相同；新调用方整组覆盖既有批次时应把原批次的压力原样带过。
+   * <p>★★ <b>旧 {@code stress} 字段已退役</b>（用户 2026-10-09 裁定：生理压力与压力自动传导一起删，旧档作废）：
+   * 本层对出现的 {@code stress} 字段具名拒，不静默忽略——静默会让"我设了压力"变成一句假话。
    *
    * @param defaultAnchorTick 载荷没给 {@code anchorTick} 时的缺省（= 世界当前世界日）
    */
@@ -418,7 +438,7 @@ final class SocialPayloads {
     JsonNode value = payload.get("entries");
     if (value == null || value.isNull() || !value.isArray()) {
       throw new IllegalArgumentException(
-          "字段 entries 必须是 [{id,q,r,sex,count,ageDays,anchorTick?,stress?,household?}…] 数组: " + payload);
+          "字段 entries 必须是 [{id,q,r,sex,count,ageDays,anchorTick?,household?}…] 数组: " + payload);
     }
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>();
     Map<PeopleLotId, HexCoord> locations = new LinkedHashMap<>();
@@ -434,10 +454,15 @@ final class SocialPayloads {
       long count = requireLong(element, "count");
       long ageDays = requireLong(element, "ageDays");
       Long anchorTick = optionalLong(element, "anchorTick");
-      // ★ stress 可选：缺省 0（旧载荷行为逐字不变）；负值由 PopulationGroup 的构造期守卫拒。
-      Long stress = optionalLong(element, "stress");
+      // ★★ 旧 stress 字段已退役：出现即具名拒（不静默忽略，见方法注）。
+      JsonNode stressNode = element.get("stress");
+      if (stressNode != null && !stressNode.isNull()) {
+        throw new IllegalArgumentException(
+            "字段 entries 不再接受 stress（用户 2026-10-09 裁定：生理压力与压力自动传导一起删，旧档作废）: "
+                + element);
+      }
       String householdText = optionalText(element, "household");
-      // ★ 域不变量（count/ageDays/anchorTick/stress 非负）由 PopulationGroup 的构造期守卫抛，本层不重复实现。
+      // ★ 域不变量（count/ageDays/anchorTick 非负）由 PopulationGroup 的构造期守卫抛，本层不重复实现。
       groups.put(
           id,
           new PopulationGroup(
@@ -445,8 +470,7 @@ final class SocialPayloads {
               sex,
               count,
               ageDays,
-              anchorTick == null ? defaultAnchorTick : anchorTick,
-              stress == null ? 0L : stress));
+              anchorTick == null ? defaultAnchorTick : anchorTick));
       locations.put(id, residence);
       if (householdText != null) {
         HouseholdId householdId = HouseholdId.parse(householdText);

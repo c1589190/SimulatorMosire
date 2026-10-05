@@ -1,5 +1,6 @@
 package io.mosire.simos.social.household;
 
+import io.mosire.simos.calendar.CalendarAge;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialLog;
@@ -14,14 +15,19 @@ import io.mosire.simos.social.api.population.PopulationEventType;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.population.PopulationLots;
+import io.mosire.simos.social.population.SocialVitalRemainder;
+import io.mosire.simos.social.population.SocialVitalRemainders;
+import io.mosire.simos.social.population.VitalKind;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -167,7 +173,14 @@ public final class HouseholdBook {
     events.put(event.id(), event);
     SocialData result =
         new SocialData(
-            base.populations(), base.cities(), groups, households, events, base.provisioning());
+            base.populations(),
+            base.cities(),
+            groups,
+            households,
+            events,
+            base.provisioning(),
+            base.vitalRates(),
+            base.vitalRemainders());
     SocialLog.household()
         .info(
             "event=HOUSEHOLD_MEMBER_ADD "
@@ -321,7 +334,14 @@ public final class HouseholdBook {
 
     SocialData result =
         new SocialData(
-            base.populations(), base.cities(), groups, households, events, base.provisioning());
+            base.populations(),
+            base.cities(),
+            groups,
+            households,
+            events,
+            base.provisioning(),
+            base.vitalRates(),
+            base.vitalRemainders());
     SocialLog.household()
         .info(
             "event=HOUSEHOLD_MEMBER_TRANSFER "
@@ -515,7 +535,9 @@ public final class HouseholdBook {
             groups,
             households,
             eventsTable,
-            base.provisioning());
+            base.provisioning(),
+            base.vitalRates(),
+            base.vitalRemainders());
     for (HouseholdPopulationEvent event : applied) {
       SocialLog.event()
           .debug(
@@ -539,105 +561,343 @@ public final class HouseholdBook {
     return requireConservation(result);
   }
 
-  // ── 逐日生死结算 ─────────────────────────────────────────────────────────────────────
+  // ── 每 tick 生死结算 ─────────────────────────────────────────────────────────────────
 
-  /** 逐日生命事件结算（缺省儒略历；生产路径应传绑定时钟，见三参重载）。 */
+  /** 兼容旧调用：逐日生命事件结算（缺省儒略历；生产路径应传绑定时钟，见三参重载）。 */
   public static SocialData settleVitalEvents(SocialData base, long day) {
-    return settleVitalEvents(base, day, CalendarClock.julianDefault());
+    return settleVitalEventsResult(base, day, CalendarClock.julianDefault()).data();
+  }
+
+  /** 兼容旧调用：逐日生命事件结算并只返回新状态（结果型入口见 {@link #settleVitalEventsResult}）。 */
+  public static SocialData settleVitalEvents(SocialData base, long day, CalendarClock clock) {
+    return settleVitalEventsResult(base, day, clock).data();
   }
 
   /**
-   * ★★ <b>逐日生命事件结算</b>（S2 的简单实现）：逐家户、逐成员批次
+   * ★★ <b>每 tick 生死结算（新引擎，计划 §3）</b>：逐家户、逐成员批次，按 ppm/tick 率与余数累加器算
+   * {@code DEATH} / {@code BIRTH} 事件，一次 {@link #applyEvents} 落账，并清理无主余数。
    *
-   * <ol>
-   *   <li><b>死亡</b>：按 {@code (该批次在 day 的年龄档, 性别)} 查家户率表，{@code deaths = count × 死亡率 ÷ 1000}
-   *       （死亡率封顶 1000‰）；生成 {@code DEATH} 事件（带 lotId 精确落账）；
-   *   <li><b>出生</b>：育龄段 = 率表里 {@code (档, FEMALE)} 的出生率 &gt; 0 的档；{@code births = 女性人数 × 出生率 ÷ 1000}；
-   *       按性别各半拆成 {@code BIRTH} 事件（残差归男性，与创世性别切分同口径），落进<b>最小/0 岁档</b>（不存在则新建
-   *       {@link PopulationGroup}，锚点 = {@code day}、年龄 0）。
-   * </ol>
+   * <pre>
+   * 死亡：numerator = 旧余数 + 份额 × deathRatePerMillionPerTick
+   *       deaths    = numerator / 1_000_000；新余数 = numerator % 1_000_000
+   * 出生：仅 FEMALE 且精确年龄 15 ≤ ageYears &lt; 45（率取 (15-59, FEMALE) 键）；
+   *       numerator = 旧余数 + 份额 × birthRatePerMillionPerTick
+   *       births    = numerator / 1_000_000；新余数 = numerator % 1_000_000
+   * </pre>
    *
-   * <p>★ 结算先按<b>结算前</b>的批次算齐全部事件，再一次性 {@link #applyEvents} 落账 ⇒ 同一天内死亡与出生互不干扰、
-   * 结果对同一输入确定。同一天重复调用会因事件 id 重复而拒（幂等守卫，不是静默重复出生）。
+   * <p>★★ <b>首次见到某余数键时用稳定哈希给 [0, 999_999] 的初相位</b>（{@link #initialRemainder}），
+   * <b>不是 0</b>：零初值会让每个小批次的首个事件被推迟到 {@code 1_000_000 ÷ (份额 × 率)} 个 tick 之后——
+   * 2026-10-09 的 360 tick smoke 实测死亡 20 人，而率表连续期望 156 人（≈136 人的差额全冻在 450 个批次各自的
+   * 余数里，Python 逐步模拟复现 20）。哈希相位让有限窗口内的事件数期望等于连续期望；余数仍跨 tick 累加、
+   * 长期速率不变，且同一状态重放逐字节相同（哈希只用稳定 id 与 kind 名，不用 {@code Object.hashCode}/枚举身份）。</p>
+   *
+   * <p>★ 结算先按<b>结算前</b>的批次算齐全部事件，再一次性 {@link #applyEvents} ⇒ 同一天内死亡与出生互不干扰、
+   * 结果对同一输入确定。事件 id = {@code (household, lot, day, kind, sex)}，同日重复调用由事件 id 幂等守卫拒绝。</p>
+   *
+   * <p>★ 余数键语义 = {@code (HouseholdId, PeopleLotId, kind)}；批次/家户份额消失后，其余数在本次结算出口清理，
+   * 不留无主余数（{@code vitalRemainders} 组件本身只管范围与键唯一）。</p>
+   *
+   * @param base 结算前状态；不得为 null
+   * @param day 世界日（tick）；不得为负
+   * @param clock 历法时钟：tick→JDN 与年龄年数换算唯一的入口；不得为 null
+   * @throws IllegalArgumentException 参数坏、批次年龄为负、率表缺键、事件重复等具名拒绝
    */
-  public static SocialData settleVitalEvents(SocialData base, long day, CalendarClock clock) {
+  public static VitalSettlementResult settleVitalEventsResult(
+      SocialData base, long day, CalendarClock clock) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(clock, "clock");
     if (day < 0L) {
-      throw new IllegalArgumentException("settleVitalEvents 的 day 不得为负: " + day);
+      throw vitalReject("settleVitalEvents 的 day 不得为负: " + day);
     }
+    long currentDayNumber = clock.dayNumberOfTick(day);
+
+    // ① 载入有效余数；旧余数里批次已不存在的键直接清理（不参与本 tick 计算）。
+    Map<RemainderKey, Long> remainders = new LinkedHashMap<>();
+    int cleanedRemainders = 0;
+    for (SocialVitalRemainder entry : base.vitalRemainders().entries()) {
+      RemainderKey key = new RemainderKey(entry.householdId(), entry.lotId(), entry.kind());
+      if (hasLiveShare(base, key)) {
+        remainders.put(key, entry.numerator());
+      } else {
+        cleanedRemainders++;
+      }
+    }
+
     List<HouseholdPopulationEvent> events = new ArrayList<>();
+    Map<HouseholdId, Long> populationDeltas = new LinkedHashMap<>();
+    long totalBirths = 0L;
+    long totalDeaths = 0L;
+
     for (Household household : base.households().values()) {
+      long householdBirths = 0L;
+      long householdDeaths = 0L;
       for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
         PeopleLotId lot = member.getKey();
         long share = member.getValue();
+        if (share <= 0L) {
+          continue; // 显式 0 份额：不贡献生死，也不会留下余数（出口清理）。
+        }
         PopulationGroup group = base.groups().get(lot);
-        if (group == null || share <= 0L) {
-          continue; // 构造期不变式下不会发生；防御性跳过。
+        if (group == null) {
+          throw vitalReject(
+              "家户 " + household.id() + " 的成员批次不在 groups 里（坏数据）: " + lot);
         }
-        String bracketId = bracketIdAt(group, day, clock);
-        // ① 死亡（★ P2-A：按**家户份额**算，同一批次被多户持有时各户各算自己那一份）
-        Optional<HouseholdVitalRate> deathRate = household.vitalRates().find(bracketId, group.sex());
-        if (deathRate.isPresent() && deathRate.get().deathRatePerMillePerTick() > 0L) {
-          long rate = Math.min(1000L, deathRate.get().deathRatePerMillePerTick());
-          long deaths = share * rate / 1000L;
-          if (deaths > 0L) {
-            events.add(
-                new HouseholdPopulationEvent(
-                    "death:" + household.id() + ":" + day + ":" + lot,
-                    household.id(),
-                    PopulationEventType.DEATH,
-                    group.sex(),
-                    bracketId,
-                    deaths,
-                    day,
-                    "vital=" + rate + "perMille",
-                    "SETTLEMENT",
-                    lot));
-          }
+        long ageDays = group.ageDaysAt(day);
+        if (ageDays < 0L) {
+          throw vitalReject(
+              "settleVitalEvents：批次年龄为负（day 早于锚点） household="
+                  + household.id()
+                  + " lot="
+                  + lot
+                  + " day="
+                  + day
+                  + " anchorTick="
+                  + group.anchorTick());
         }
-        // ② 出生：只有育龄段女性承载（率表里的 (档, FEMALE) 出生率 > 0）
-        if (group.sex() == Sex.FEMALE && share > 0L) {
-          Optional<HouseholdVitalRate> birthRate = household.vitalRates().find(bracketId, Sex.FEMALE);
-          if (birthRate.isPresent() && birthRate.get().birthRatePerMillePerTick() > 0L) {
-            long births = share * birthRate.get().birthRatePerMillePerTick() / 1000L;
-            if (births > 0L) {
-              long male = (births + 1L) / 2L;
-              long female = births - male;
-              for (int i = 0; i < Sex.values().length; i++) {
-                Sex sex = Sex.values()[i];
-                long count = i == 0 ? male : female;
-                if (count <= 0L) {
-                  continue;
-                }
-                events.add(
-                    new HouseholdPopulationEvent(
-                        "birth:" + household.id() + ":" + day + ":" + lot + ":" + sex,
-                        household.id(),
-                        PopulationEventType.BIRTH,
-                        sex,
-                        AgeBracket.CHILD.key(),
-                        count,
-                        day,
-                        "fertileMother=" + lot,
-                        "SETTLEMENT",
-                        null));
+        AgeBracket bracket = AgeBracket.of(clock.system(), currentDayNumber, ageDays);
+        long ageYears =
+            CalendarAge.ageInYears(
+                clock.system(), Math.subtractExact(currentDayNumber, ageDays), currentDayNumber);
+
+        // ② 死亡：份额 × 死亡率（ppm/tick），余数跨 tick 累加。
+        HouseholdVitalRate deathRate = base.findVitalRate(household.id(), bracket, group.sex());
+        RemainderKey deathKey = new RemainderKey(household.id(), lot, VitalKind.DEATH);
+        long deathNumerator =
+            Math.addExact(
+                remainderFor(remainders, deathKey, household.id(), lot, VitalKind.DEATH),
+                Math.multiplyExact(share, deathRate.deathRatePerMillionPerTick()));
+        long deaths = deathNumerator / 1_000_000L;
+        putRemainder(remainders, deathKey, deathNumerator % 1_000_000L);
+        if (deaths > 0L) {
+          events.add(
+              new HouseholdPopulationEvent(
+                  vitalEventId(VitalKind.DEATH, household.id(), lot, day, group.sex()),
+                  household.id(),
+                  PopulationEventType.DEATH,
+                  group.sex(),
+                  bracket.key(),
+                  deaths,
+                  day,
+                  "ratePpm=" + deathRate.deathRatePerMillionPerTick(),
+                  "SETTLEMENT",
+                  lot));
+          householdDeaths = Math.addExact(householdDeaths, deaths);
+        }
+
+        // ③ 出生：仅精确育龄窗口（15 ≤ ageYears < 45）的女性；率取 (15-59, FEMALE) 键。
+        if (group.sex() == Sex.FEMALE && ageYears >= 15L && ageYears < 45L) {
+          HouseholdVitalRate birthRate =
+              base.findVitalRate(household.id(), AgeBracket.ADULT, Sex.FEMALE);
+          RemainderKey birthKey = new RemainderKey(household.id(), lot, VitalKind.BIRTH);
+          long birthNumerator =
+              Math.addExact(
+                  remainderFor(remainders, birthKey, household.id(), lot, VitalKind.BIRTH),
+                  Math.multiplyExact(share, birthRate.birthRatePerMillionPerTick()));
+          long births = birthNumerator / 1_000_000L;
+          putRemainder(remainders, birthKey, birthNumerator % 1_000_000L);
+          if (births > 0L) {
+            long male = (births + 1L) / 2L;
+            long female = births - male;
+            for (int index = 0; index < Sex.values().length; index++) {
+              Sex childSex = Sex.values()[index];
+              long count = index == 0 ? male : female;
+              if (count <= 0L) {
+                continue;
               }
+              PeopleLotId bornLot = birthLotId(household.id(), group, childSex, day);
+              events.add(
+                  new HouseholdPopulationEvent(
+                      vitalEventId(VitalKind.BIRTH, household.id(), lot, day, childSex),
+                      household.id(),
+                      PopulationEventType.BIRTH,
+                      childSex,
+                      AgeBracket.CHILD.key(),
+                      count,
+                      day,
+                      "motherLot=" + lot + " ratePpm=" + birthRate.birthRatePerMillionPerTick(),
+                      "SETTLEMENT",
+                      bornLot));
             }
+            householdBirths = Math.addExact(householdBirths, births);
           }
         }
       }
+      long householdDelta = Math.subtractExact(householdBirths, householdDeaths);
+      if (householdDelta != 0L) {
+        populationDeltas.put(household.id(), householdDelta);
+      }
+      totalBirths = Math.addExact(totalBirths, householdBirths);
+      totalDeaths = Math.addExact(totalDeaths, householdDeaths);
     }
-    if (events.isEmpty()) {
-      SocialLog.population()
-          .debug("event=POPULATION_SETTLE " + SocialLog.kv("day", day, "households", base.households().size(), "events", 0));
-      return base;
+
+    // ④ 一次性落账；没有事件时也必须把余数表写回（余数本身就是状态）。
+    SocialData settled = events.isEmpty() ? base : applyEvents(base, events, clock);
+
+    // ⑤ 出口清理：死绝/迁走/不存在的主人一律不留余数键。
+    Map<RemainderKey, Long> finalRemainders = new LinkedHashMap<>();
+    for (Map.Entry<RemainderKey, Long> entry : remainders.entrySet()) {
+      if (hasLiveShare(settled, entry.getKey()) && entry.getValue() != 0L) {
+        finalRemainders.put(entry.getKey(), entry.getValue());
+      } else if (entry.getValue() != 0L) {
+        cleanedRemainders++;
+      }
     }
+    SocialData data = settled.withVitalRemainders(toRemainders(finalRemainders));
+
     SocialLog.population()
         .info(
             "event=POPULATION_SETTLE "
-                + SocialLog.kv("day", day, "households", base.households().size(), "events", events.size()));
-    return applyEvents(base, events, clock);
+                + SocialLog.kv(
+                    "day",
+                    day,
+                    "households",
+                    base.households().size(),
+                    "births",
+                    totalBirths,
+                    "deaths",
+                    totalDeaths,
+                    "events",
+                    events.size(),
+                    "deltaHouseholds",
+                    populationDeltas.size(),
+                    "remainders",
+                    finalRemainders.size(),
+                    "cleanedRemainders",
+                    cleanedRemainders));
+    if (cleanedRemainders > 0) {
+      SocialLog.population()
+          .warn(
+              "event=POPULATION_SETTLE_REMAINDERS_CLEANED "
+                  + SocialLog.kv("day", day, "count", cleanedRemainders));
+    }
+    return new VitalSettlementResult(
+        data, populationDeltas, totalBirths, totalDeaths, day, events);
+  }
+
+  /**
+   * 计划 §3.1 的 App 侧调用名：与 {@link #settleVitalEventsResult} 同一条每 tick 引擎（旧
+   * {@code settleVitalEvents(...)} 签名保留为只返回 {@link SocialData} 的兼容口）。
+   */
+  public static VitalSettlementResult settleOneTick(SocialData base, long day, CalendarClock clock) {
+    return settleVitalEventsResult(base, day, clock);
+  }
+
+  /** 余数键：{@code (HouseholdId, PeopleLotId, VitalKind)}（计划 §3.4 的键语义）。 */
+  private record RemainderKey(HouseholdId householdId, PeopleLotId lotId, VitalKind kind) {}
+
+  /** 该 {@code (家户, 批次)} 在状态里仍有正份额且批次仍存在（余数只允许挂在这种主上）。 */
+  private static boolean hasLiveShare(SocialData data, RemainderKey key) {
+    if (!data.groups().containsKey(key.lotId())) {
+      return false;
+    }
+    Household household = data.households().get(key.householdId());
+    return household != null && household.memberCount(key.lotId()) > 0L;
+  }
+
+  /** 0 ⇒ 删键（"没有余数不落键"）；非 0 ⇒ 覆盖/追加。 */
+  private static void putRemainder(Map<RemainderKey, Long> remainders, RemainderKey key, long value) {
+    if (value == 0L) {
+      remainders.remove(key);
+    } else {
+      remainders.put(key, value);
+    }
+  }
+
+  /**
+   * 取某键的当前余数；<b>首次见键</b>用 {@link #initialRemainder} 落稳定哈希初相位并写进工作副本。
+   *
+   * <p>★ 为什么不是 0：见 {@link #settleVitalEventsResult} 的类注——零初值会把小批次首事件推迟数年，
+   * 使有限窗口内的实际生死数系统性低于率表期望。</p>
+   */
+  private static long remainderFor(
+      Map<RemainderKey, Long> remainders,
+      RemainderKey key,
+      HouseholdId householdId,
+      PeopleLotId lotId,
+      VitalKind kind) {
+    Long existing = remainders.get(key);
+    if (existing != null) {
+      return existing;
+    }
+    long phase = initialRemainder(householdId, lotId, kind);
+    remainders.put(key, phase);
+    return phase;
+  }
+
+  /**
+   * 稳定哈希初相位 ∈ {@code [0, 999_999]}：FNV-1a 64 位（只用稳定 id 与 {@link VitalKind#name()}，
+   * 不用 {@code Object.hashCode}/枚举身份）⇒ 同一状态重放逐字节相同，不同批次/家户的相位互不相同。
+   *
+   * <p>★ 它是"余数不为 0"的一次性初值，不是每 tick 加的噪声；之后完全由 {@code numerator % 1_000_000} 推进。</p>
+   */
+  private static long initialRemainder(HouseholdId householdId, PeopleLotId lotId, VitalKind kind) {
+    String key = householdId.value() + "|" + lotId.value() + "|" + kind.name();
+    long hash = 0xcbf29ce484222325L; // FNV-1a 64 offset basis
+    for (int index = 0; index < key.length(); index++) {
+      hash ^= key.charAt(index);
+      hash *= 0x100000001b3L; // FNV-1a 64 prime（long 溢出回绕是算法的一部分）
+    }
+    return Math.floorMod(hash, 1_000_000L);
+  }
+
+  /** 内部 map → 保序组件（迭代序 = 载入/写入序）。 */
+  private static SocialVitalRemainders toRemainders(Map<RemainderKey, Long> remainders) {
+    List<SocialVitalRemainder> entries = new ArrayList<>(remainders.size());
+    for (Map.Entry<RemainderKey, Long> entry : remainders.entrySet()) {
+      entries.add(
+          new SocialVitalRemainder(
+              entry.getKey().householdId(), entry.getKey().lotId(), entry.getKey().kind(), entry.getValue()));
+    }
+    return new SocialVitalRemainders(entries);
+  }
+
+  /**
+   * 同日幂等的事件 id（计划 §3.3）：{@code (household, lot, day, kind, sex)} 的稳定拼写。
+   *
+   * <p>★ 它不含任何计数/序号 —— 同一批人在同一天只能落一次账；重复调用会命中
+   * {@link #applyEvents} 的"事件 id 已存在"守卫。</p>
+   */
+  private static String vitalEventId(
+      VitalKind kind, HouseholdId householdId, PeopleLotId lotId, long day, Sex sex) {
+    return "vital:" + kind.name() + ":" + householdId + ":" + lotId + ":" + day + ":" + sex;
+  }
+
+  /**
+   * 新生批次的 id：优先走 {@link PopulationLots#born} 保住 {@code rural:/urban:} 前缀（经济侧按前缀分池）；
+   * 母亲批次 id 不符合标准形状（命令造的自定义批次）时退化为 {@code born:<家户 hex>:<母亲>:<day>:<性别>}，
+   * 保证同日同户不撞 id、且不因一个自定义 lot 让整次结算失败。
+   */
+  private static PeopleLotId birthLotId(
+      HouseholdId householdId, PopulationGroup mother, Sex childSex, long day) {
+    String householdToken =
+        HexFormat.of().formatHex(householdId.value().getBytes(StandardCharsets.UTF_8));
+    String cohort = "b" + day + "-" + householdToken;
+    try {
+      return PopulationLots.born(mother, childSex, cohort);
+    } catch (IllegalArgumentException malformedMotherLot) {
+      SocialLog.population()
+          .warn(
+              "event=POPULATION_BIRTH_LOT_ID_FALLBACK "
+                  + SocialLog.kv(
+                      "household",
+                      householdId,
+                      "motherLot",
+                      mother.id(),
+                      "day",
+                      day,
+                      "sex",
+                      childSex,
+                      "reason",
+                      malformedMotherLot.getMessage()));
+      return PeopleLotId.parse(
+          "born:" + householdToken + ":" + mother.id().value() + ":" + day + ":" + childSex.name());
+    }
+  }
+
+  /** 结算路径的具名拒绝出口：ERROR 日志 + {@link IllegalArgumentException}（与 provisioning 同制）。 */
+  private static IllegalArgumentException vitalReject(String message) {
+    SocialLog.population().error("event=POPULATION_SETTLE_REJECTED reason={}", message);
+    return new IllegalArgumentException(message);
   }
 
   // ── 守恒检查 ─────────────────────────────────────────────────────────────────────────
@@ -730,7 +990,7 @@ public final class HouseholdBook {
         requireSex(group, event);
         groups.put(
             group.id(),
-            group.withCountAndStress(group.count() + delta, group.physiologicalStress()));
+            group.withCount(group.count() + delta));
         // 批次若已存在但本家户没有份额（回放中间态 / 跨户拆分的另一半），给它加份额。
         households.put(household.id(), addMemberShare(current, event.lotId(), delta));
         return;
@@ -745,7 +1005,7 @@ public final class HouseholdBook {
       PopulationGroup group = bucket.group();
       groups.put(
           group.id(),
-          group.withCountAndStress(group.count() + delta, group.physiologicalStress()));
+          group.withCount(group.count() + delta));
       households.put(household.id(), addMemberShare(current, group.id(), delta));
       return;
     }
@@ -791,7 +1051,7 @@ public final class HouseholdBook {
       if (next == 0L) {
         groups.remove(event.lotId());
       } else {
-        groups.put(group.id(), group.withCountAndStress(next, group.physiologicalStress()));
+        groups.put(group.id(), group.withCount(next));
       }
       households.put(household.id(), removeMemberShare(current, event.lotId(), amount));
       return;
@@ -814,7 +1074,7 @@ public final class HouseholdBook {
       if (next == 0L) {
         groups.remove(candidate.lot());
       } else {
-        groups.put(group.id(), group.withCountAndStress(next, group.physiologicalStress()));
+        groups.put(group.id(), group.withCount(next));
       }
     }
     if (remaining != 0L) {
@@ -878,7 +1138,7 @@ public final class HouseholdBook {
   private static PopulationGroup newGroup(
       PeopleLotId id, HouseholdPopulationEvent event, CalendarClock clock) {
     long ageDays = representativeAgeDays(event.ageBracketId());
-    return new PopulationGroup(id, event.sex(), Math.abs(event.count()), ageDays, event.day(), 0L);
+    return new PopulationGroup(id, event.sex(), Math.abs(event.count()), ageDays, event.day());
   }
 
   /** 年龄档 id → 下界天数（CHILD=0 / ADULT=15×365 / ELDER=60×365）；未知 ⇒ 拒（不猜自定义档）。 */
@@ -977,7 +1237,7 @@ public final class HouseholdBook {
     switch (event.type()) {
       case BIRTH ->
           SocialLog.population()
-              .info(
+              .debug(
                   "event=POPULATION_BIRTH "
                       + SocialLog.kv(
                           "household",
@@ -992,7 +1252,7 @@ public final class HouseholdBook {
                           event.day()));
       case DEATH ->
           SocialLog.population()
-              .info(
+              .debug(
                   "event=POPULATION_DEATH "
                       + SocialLog.kv(
                           "household",

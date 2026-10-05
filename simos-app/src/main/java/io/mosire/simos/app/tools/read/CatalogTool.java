@@ -213,8 +213,8 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "social.CreateHousehold",
               "householdId, location{type:HEX|UNIT, hex{q,r}|unitId}, profile{name, description?, metadata?},"
-                  + " vitalRates?[{bracketId, sex(MALE|FEMALE), birthRatePerMillePerTick?,"
-                  + " deathRatePerMillePerTick?}], reason"
+                  + " vitalRates?[{bracketId, sex(MALE|FEMALE), birthRatePerMillionPerTick?,"
+                  + " deathRatePerMillionPerTick?}], reason"
                   + "（★ 新建家户成员表为空；id 已存在 ⇒ 拒；vitalRates 缺省空表；UNIT 的 unit 侧同步由 app 组合工具同批保证）"),
           Map.entry(
               "social.SetHouseholdLocation",
@@ -233,8 +233,8 @@ public final class CatalogTool implements AgentTool {
                   + "（★ 源≠目标；整批移动保 id、拆分落派生 id <lotId>@<to>；两条腿事件原子写入）"),
           Map.entry(
               "social.SetHouseholdVitalRates",
-              "householdId, rates[{bracketId, sex(MALE|FEMALE), birthRatePerMillePerTick?,"
-                  + " deathRatePerMillePerTick?}], reason"
+              "householdId, rates[{bracketId, sex(MALE|FEMALE), birthRatePerMillionPerTick?,"
+                  + " deathRatePerMillionPerTick?}], reason"
                   + "（★ 整体替换率表；rates 缺失/null=清空；两个率缺省 0；负数/重复 (bracketId,sex) ⇒ 拒）"),
           Map.entry(
               "social.AdjustHouseholdPopulation",

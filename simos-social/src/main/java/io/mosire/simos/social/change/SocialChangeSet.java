@@ -11,6 +11,8 @@ import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.social.population.SocialVitalRates;
+import io.mosire.simos.social.population.SocialVitalRemainders;
 import io.mosire.simos.social.provisioning.SocialProvisioning;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.FieldDelta;
@@ -19,8 +21,8 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /**
- * 社会状态的变更集。**组件与 {@link SocialData} 的 record 组件一一对应**（当前 6 个：populations / cities / groups /
- * households / populationEvents / provisioning）。
+ * 社会状态的变更集。**组件与 {@link SocialData} 的 record 组件一一对应**（当前 8 个：populations / cities / groups /
+ * households / populationEvents / provisioning / vitalRates / vitalRemainders）。
  *
  * <p>铁律 5：变更集从完整状态类型派生，由 `SocialRoundTripTest` 的**反射枚举**把守——新增状态组件若不进变更集，那个测试自动红。
  *
@@ -30,14 +32,16 @@ import java.util.function.Function;
  * <p>★ **S2 起新增两个键解析器**：{@code households} 的键是 {@link HouseholdId#parse}（裸值 + parse 三件套）， {@code
  * populationEvents} 的键是事件 id 的裸字符串（恒等还原）。
  *
- * <p>★★ <b>第 6 个组件 {@code provisioning} 照 {@code EconomyChangeSet.meta} 的"单键表"投影法</b>：它是
- * 一个<b>单值</b>组件（{@link SocialProvisioning} 不是表），若为它另写一份"单值差异"机制，就有了与 {@link FieldDelta}
- * 分叉的第二份实现。故把它投影成"恰一行的表"（键固定为 {@link #PROVISIONING_KEY}）， diff/rebuild 全走既有机制，再投影回单值。语义是纯的：{@code
- * 旧值 → 新值} = {@code Upsert}、 {@code 不变} = {@code Unchanged}；本项目不存在"把 provisioning
- * 删掉"的合法状态（组件恒在），故不产生 {@code Remove}。
+ * <p>★★ <b>三个单值组件 {@code provisioning} / {@code vitalRates} / {@code vitalRemainders} 照 {@code
+ * EconomyChangeSet.meta} 的"单键表"投影法</b>：它们各是一个<b>单值</b>组件（后两者本身是 record，不是 map），
+ * 若为它们另写"单值差异"机制，就有了与 {@link FieldDelta} 分叉的第二/三份实现。故各投影成"恰一行的表"（键固定为
+ * {@link #PROVISIONING_KEY} / {@link #VITAL_RATES_KEY} / {@link #VITAL_REMAINDERS_KEY}），diff/rebuild
+ * 全走既有机制，再投影回单值。语义是纯的：{@code 旧值 → 新值} = {@code Upsert}、{@code 不变} = {@code Unchanged}；
+ * 本项目不存在"把某个恒在组件删掉"的合法状态，故不产生 {@code Remove}。
  *
- * <p>★★ <b>旧档不兼容</b>（用户 2026-10-09 裁定"一切从新、旧档作废、不做迁移/双读"）：其余五个组件的旧档 缺键仍按既有口径读成 {@code
- * Unchanged}（那是更早变更集的既有语义，本批不动），但第 6 个组件缺键 ⇒ 构造期具名拒——旧变更集读不回是可接受结果，不给它补默认值。
+ * <p>★★ <b>旧档不兼容</b>（用户 2026-10-09 裁定"一切从新、旧档作废、不做迁移/双读"）：其余五个组件的旧档缺键仍按既有口径读成
+ * {@code Unchanged}（那是更早变更集的既有语义，本批不动），但第 6/7/8 三个组件缺键 ⇒ 构造期具名拒——旧变更集读不回是
+ * 可接受结果，不给它们补默认值。
  */
 public record SocialChangeSet(
     FieldDelta<PopulationSeries> populations,
@@ -45,11 +49,19 @@ public record SocialChangeSet(
     FieldDelta<PopulationGroup> groups,
     FieldDelta<Household> households,
     FieldDelta<HouseholdPopulationEvent> populationEvents,
-    FieldDelta<SocialProvisioning> provisioning)
+    FieldDelta<SocialProvisioning> provisioning,
+    FieldDelta<SocialVitalRates> vitalRates,
+    FieldDelta<SocialVitalRemainders> vitalRemainders)
     implements ChangeSet {
 
   /** {@code provisioning} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
   private static final String PROVISIONING_KEY = "provisioning";
+
+  /** {@code vitalRates} 投影成表时的唯一键。 */
+  private static final String VITAL_RATES_KEY = "vitalRates";
+
+  /** {@code vitalRemainders} 投影成表时的唯一键。 */
+  private static final String VITAL_REMAINDERS_KEY = "vitalRemainders";
 
   public SocialChangeSet {
     // ★ **老档兼容**（升级前落盘的每条 social revision 都没有这些键）：缺省 = {@link FieldDelta.Unchanged}
@@ -66,13 +78,18 @@ public record SocialChangeSet(
     if (populationEvents == null) {
       populationEvents = new FieldDelta.Unchanged<>();
     }
-    // ★★ 第 6 组件（Batch 1）**不做旧档兜底**：缺键 = 旧变更集缺 provisioning，具名拒（见类注"旧档不兼容"）。
+    // ★★ 第 6/7/8 组件（Batch A）**不做旧档兜底**：缺键 = 旧变更集缺该组件，具名拒。
     if (provisioning == null) {
-      SocialLog.provisioning()
-          .error(
-              "event=SOCIAL_PROVISIONING_REJECTED reason={}",
-              "SocialChangeSet.provisioning 不得为 null（旧档缺此组件已作废，不做缺省兜底）");
-      throw new IllegalArgumentException("SocialChangeSet.provisioning 不得为 null（旧档缺此组件已作废，不做缺省兜底）");
+      rejectMissingComponent(
+          "provisioning", "SocialChangeSet.provisioning 不得为 null（旧档缺此组件已作废，不做缺省兜底）");
+    }
+    if (vitalRates == null) {
+      rejectMissingComponent(
+          "vitalRates", "SocialChangeSet.vitalRates 不得为 null（旧档缺此组件已作废，不做缺省兜底）");
+    }
+    if (vitalRemainders == null) {
+      rejectMissingComponent(
+          "vitalRemainders", "SocialChangeSet.vitalRemainders 不得为 null（旧档缺此组件已作废，不做缺省兜底）");
     }
   }
 
@@ -87,7 +104,14 @@ public record SocialChangeSet(
         FieldDelta.diff(base.households(), target.households()),
         FieldDelta.diff(base.populationEvents(), target.populationEvents()),
         FieldDelta.diff(
-            provisioningTable(base.provisioning()), provisioningTable(target.provisioning())));
+            singleValueTable(PROVISIONING_KEY, base.provisioning()),
+            singleValueTable(PROVISIONING_KEY, target.provisioning())),
+        FieldDelta.diff(
+            singleValueTable(VITAL_RATES_KEY, base.vitalRates()),
+            singleValueTable(VITAL_RATES_KEY, target.vitalRates())),
+        FieldDelta.diff(
+            singleValueTable(VITAL_REMAINDERS_KEY, base.vitalRemainders()),
+            singleValueTable(VITAL_REMAINDERS_KEY, target.vitalRemainders())));
   }
 
   /**
@@ -95,7 +119,7 @@ public record SocialChangeSet(
    *
    * <p>★ key 解析器一律是各自的 {@code parse}（铁律 1 的"裸值 + parse"三件套）：{@code HexCoord::parse} / {@code
    * CityId::parse} / {@code PeopleLotId::parse} / {@link HouseholdId#parse}；事件表的键是裸字符串 ⇒
-   * 恒等还原；{@code provisioning} 的单键表键是固定串 ⇒ 恒等还原。
+   * 恒等还原；三个单值组件的单键表键是固定串 ⇒ 恒等还原。
    */
   public static SocialData apply(SocialChangeSet cs, SocialData base) {
     Objects.requireNonNull(cs, "cs");
@@ -106,9 +130,30 @@ public record SocialChangeSet(
         FieldDelta.rebuild(base.groups(), cs.groups(), PeopleLotId::parse),
         FieldDelta.rebuild(base.households(), cs.households(), HouseholdId::parse),
         FieldDelta.rebuild(base.populationEvents(), cs.populationEvents(), text -> text),
-        provisioningOf(
+        singleValueOf(
             FieldDelta.rebuild(
-                provisioningTable(base.provisioning()), cs.provisioning(), Function.identity())));
+                singleValueTable(PROVISIONING_KEY, base.provisioning()),
+                cs.provisioning(),
+                Function.identity()),
+            PROVISIONING_KEY,
+            "provisioning",
+            "SOCIAL_PROVISIONING_REJECTED"),
+        singleValueOf(
+            FieldDelta.rebuild(
+                singleValueTable(VITAL_RATES_KEY, base.vitalRates()),
+                cs.vitalRates(),
+                Function.identity()),
+            VITAL_RATES_KEY,
+            "vitalRates",
+            "SOCIAL_VITAL_RATES_REJECTED"),
+        singleValueOf(
+            FieldDelta.rebuild(
+                singleValueTable(VITAL_REMAINDERS_KEY, base.vitalRemainders()),
+                cs.vitalRemainders(),
+                Function.identity()),
+            VITAL_REMAINDERS_KEY,
+            "vitalRemainders",
+            "SOCIAL_VITAL_REMAINDERS_REJECTED"));
   }
 
   /** 是否所有组件都未变。 */
@@ -118,30 +163,46 @@ public record SocialChangeSet(
         || groups.changed()
         || households.changed()
         || populationEvents.changed()
-        || provisioning.changed());
+        || provisioning.changed()
+        || vitalRates.changed()
+        || vitalRemainders.changed());
   }
 
-  /** {@code SocialProvisioning} → 恰一行的表（键固定为 {@link #PROVISIONING_KEY}）。 */
-  private static Map<String, SocialProvisioning> provisioningTable(
-      SocialProvisioning provisioning) {
-    if (provisioning == null) {
+  /** 单值组件 → 恰一行的表（键固定为调用方给的组件名）。 */
+  private static <T> Map<String, T> singleValueTable(String key, T value) {
+    if (value == null) {
       throw new IllegalArgumentException(
-          "SocialChangeSet.provisioningTable 收到 null（坏数据；provisioning 组件恒在）");
+          "SocialChangeSet." + key + "Table 收到 null（坏数据；" + key + " 组件恒在）");
     }
-    return Map.of(PROVISIONING_KEY, provisioning);
+    return Map.of(key, value);
   }
 
-  /** 上一条的逆：单键表 → {@code SocialProvisioning}；键缺席 ⇒ 具名拒（不静默补默认值）。 */
-  private static SocialProvisioning provisioningOf(Map<String, SocialProvisioning> table) {
-    SocialProvisioning provisioning = table.get(PROVISIONING_KEY);
-    if (provisioning == null) {
-      SocialLog.provisioning()
-          .error(
-              "event=SOCIAL_PROVISIONING_REJECTED reason={}",
-              "SocialChangeSet.apply 后 provisioning 键缺席（坏数据；旧档已作废，不做缺省兜底）");
-      throw new IllegalArgumentException(
-          "SocialChangeSet.apply 后 provisioning 键缺席（坏数据；旧档已作废，不做缺省兜底）");
+  /** 上一条的逆：单键表 → 组件值；键缺席 ⇒ 具名拒（不静默补默认值）。 */
+  private static <T> T singleValueOf(
+      Map<String, T> table, String key, String label, String rejectEvent) {
+    T value = table.get(key);
+    if (value == null) {
+      String message =
+          "SocialChangeSet.apply 后 " + label + " 键缺席（坏数据；旧档已作废，不做缺省兜底）";
+      SocialLog.population().error("event={} reason={}", rejectEvent, message);
+      throw new IllegalArgumentException(message);
     }
-    return provisioning;
+    return value;
+  }
+
+  /** 缺组件具名拒（构造期唯一出口）。 */
+  private static void rejectMissingComponent(String field, String message) {
+    SocialLog.population().error("event={} reason={}", rejectEventName(field), message);
+    throw new IllegalArgumentException(message);
+  }
+
+  /** 缺组件对应的日志事件名。 */
+  private static String rejectEventName(String field) {
+    return switch (field) {
+      case "provisioning" -> "SOCIAL_PROVISIONING_REJECTED";
+      case "vitalRates" -> "SOCIAL_VITAL_RATES_REJECTED";
+      case "vitalRemainders" -> "SOCIAL_VITAL_REMAINDERS_REJECTED";
+      default -> "SOCIAL_CHANGESET_REJECTED";
+    };
   }
 }

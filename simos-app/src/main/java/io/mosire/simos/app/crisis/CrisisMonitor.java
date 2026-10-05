@@ -12,7 +12,6 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
-import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.ArrayList;
@@ -35,7 +34,8 @@ import java.util.Map;
  *   <caption>判据落点</caption>
  *   <tr><th>spec 列的</th><th>本类的落点</th></tr>
  *   <tr><td>当前需求满足水平</td><td>{@link Kind#FOOD}/{@link Kind#CLOTH}：本周期**逐商品**的满足率（粮与布**各一条**）</td></tr>
- *   <tr><td>儿童·青壮年·老年人分别受影响程度</td><td>{@link Kind#FOOD} 的 {@code stressByAgeBracket}：各档批次的**生理压力**最大值/均值</td></tr>
+ *   <tr><td>儿童·青壮年·老年人分别受影响程度</td><td>★★ <b>Batch B 后具名 unavailable</b>：{@code stressByAgeBracket} 的键保留并给
+ *       {@code null}，另给 {@link #STRESS_BY_AGE_BRACKET_UNAVAILABLE} 原因（生理压力字段已退役，不填 0 冒充）</td></tr>
  *   <tr><td>债务增长</td><td>{@link Kind#DEBT}：本期新借入 ÷ 本周期**至今**需求（与分子同基准）</td></tr>
  *   <tr><td>劳动负担</td><td>{@link Kind#LABOR_BURDEN}：该格劳动占用率（{@code Σ配额 ÷ Σ可用劳动}）</td></tr>
  *   <tr><td>相比历史基线的突变</td><td>★ **如实记：本阶段用的是"满额基线（1000‰）"** ——真正的"与历史基线相比"要一份跨周期的留痕
@@ -78,15 +78,23 @@ public final class CrisisMonitor {
   /** 劳动占用率 ≥ 它 ⇒ 报 {@link Kind#LABOR_BURDEN}（‰）：**950**（几乎没有余量）。 */
   public static final long LABOR_BURDEN_CRISIS_PER_MILLE = 950L;
 
+  /**
+   * ★★ <b>Batch B：{@code stressByAgeBracket} 的具名不可用原因</b>（2026-10-09 每 tick 生死计划 §4：生理压力与压力自动传导
+   * 一起删）。读口保留键并给 {@code null}，另用本常量说明为什么没有数——**不填 0 冒充"没有压力"**。
+   */
+  public static final String STRESS_BY_AGE_BRACKET_UNAVAILABLE =
+      "生理压力字段已退役（2026-10-09 每 tick 生死计划 §4）：生死改由 Social ppm/tick 率表 + 余数累加器每 tick 结算，"
+          + "本读口不再有数";
+
   private CrisisMonitor() {}
 
   /**
    * ★★ **逐格的红灯**（保序：格按 {@code (q,r)}）。**只读**，不产生任何状态改动。
    *
    * @param economy 经济切片（需求、满足、借贷、劳动都在这里）
-   * @param social 社会切片（批次：生理压力按年龄档分组读）
+   * @param social 社会切片（批次位置：劳动负担读口按格分组用）
    * @param atTick 读的时刻（世界日）：批次落在哪一档由 {@code ageDaysAt(atTick)} 现算（年龄没有档，只有逐日精度）
-   * @param clock 历法时钟（衣着需求按历法年分数算；C5 起由 CalendarService 注入）
+   * @param clock 历法时钟（保留参数：衣着需求已由 app 按历法展开进 {@code naturalNeeds}，本类不再直接读历法）
    */
   public static Map<HexCoord, List<Light>> lights(
       EconomyData economy, SocialData social, long atTick, CalendarClock clock) {
@@ -180,8 +188,9 @@ public final class CrisisMonitor {
       // ★ 相位：让读的人知道这是**部分周期**的读数（elapsedDays ≤ cycleDays）。
       evidence.put("elapsedDays", elapsedDaysSeen);
       evidence.put("cycleDays", cycleDaysSeen);
-      // ★ "儿童·青壮年·老年人分别受影响程度"：各档批次**生理压力**的最大值（批次身上只有逐日年龄与压力）。
-      evidence.put("stressByAgeBracket", stressByAgeBracket(coord, social, atTick, clock));
+      // ★★ Batch B：生理压力读数已退役（计划 §4）——保留键给 null + 具名 unavailable 原因，不填 0 冒充。
+      evidence.put("stressByAgeBracket", null);
+      evidence.put("stressByAgeBracketUnavailable", STRESS_BY_AGE_BRACKET_UNAVAILABLE);
       lights.add(new Light(coord, Kind.FOOD, evidence));
     }
     long clothSatisfaction = satisfaction(clothNeed, clothUnmet);
@@ -293,21 +302,6 @@ public final class CrisisMonitor {
       return 1000L;
     }
     return Math.max(0L, (need - Math.min(need, unmet)) * 1000L / need);
-  }
-
-  /** 该格各年龄档的**最大生理压力**（"儿童·青壮年·老年人分别受影响程度"的唯一现成口径）。 */
-  private static Map<String, Long> stressByAgeBracket(
-      HexCoord coord, SocialData social, long atTick, CalendarClock clock) {
-    long currentDayNumber = clock.dayNumberOfTick(atTick);
-    Map<String, Long> out = new LinkedHashMap<>();
-    for (AgeBracket bracket : AgeBracket.values()) {
-      out.put(bracket.key(), 0L);
-    }
-    for (PopulationGroup group : social.groupsAt(coord)) {
-      String key = AgeBracket.of(clock.system(), currentDayNumber, group.ageDaysAt(atTick)).key();
-      out.merge(key, group.physiologicalStress(), Math::max);
-    }
-    return out;
   }
 
   private static CommodityId commodityGrain() {
