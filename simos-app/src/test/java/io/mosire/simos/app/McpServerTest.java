@@ -347,11 +347,6 @@ class McpServerTest {
 
     assertThat(unit.get("id").asText()).isEqualTo(expected.id().value());
     assertThat(unit.get("name").asText()).isEqualTo(expected.name());
-    assertThat(unit.get("manpower")).hasSize(expected.manpower().size());
-    assertThat(unit.get("manpower").get(0).get("type").asText())
-        .isEqualTo(expected.manpower().get(0).type());
-    assertThat(unit.get("manpower").get(0).get("amount").asLong())
-        .isEqualTo(expected.manpower().get(0).amount());
     assertThat(unit.get("equipment")).hasSize(expected.equipment().size());
     assertThat(unit.get("equipment").get(0).get("type").asText())
         .isEqualTo(expected.equipment().get(0).type());
@@ -520,7 +515,6 @@ class McpServerTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,

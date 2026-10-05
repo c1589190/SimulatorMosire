@@ -42,7 +42,6 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
@@ -124,7 +123,7 @@ class GovPayToolD5Test {
   private static final String GOV_NO_POS = "gov-no-pos";
   private static final String PLAIN_UNIT = "u-plain";
 
-  private static final CommodityId GRAIN = new CommodityId(PilotModel.GRAIN);
+  private static final CommodityId GRAIN = new CommodityId("grain");
   private static final CurrencyId SILVER = MoneyVocabulary.SILVER_CURRENCY;
 
   private static final ObjectMapper JSON = new ObjectMapper();
@@ -417,7 +416,6 @@ class GovPayToolD5Test {
         new SegmentedSeries<>(
             List.of(new Segment<>(T7, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T7, Optional.ofNullable(at))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 10)),
         List.of(new CompositionEntry("步枪", 5)),
         2,
         500,
@@ -455,7 +453,7 @@ class GovPayToolD5Test {
     GoodsAccount account =
         new GoodsAccount(
             new GoodsAccountKey(new ActorRef(ActorKind.UNIT, GOV_A), H11),
-            Map.of(GRAIN, 1000L, new CommodityId(PilotModel.CLOTH), 50L),
+            Map.of(GRAIN, 1000L, new CommodityId("cloth"), 50L),
             Map.of(SILVER, 500L),
             Map.of(),
             Map.of());

@@ -30,7 +30,6 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -132,8 +131,8 @@ class LevyRegionToolTest {
   private static final ActorRef TREASURY = new ActorRef(ActorKind.UNIT, "u-1");
   private static final ActorRef TREASURY_SMALL_CAPS = new ActorRef(ActorKind.UNIT, "u-cap-1");
 
-  private static final CommodityId GRAIN = new CommodityId(PilotModel.GRAIN);
-  private static final CommodityId CLOTH = new CommodityId(PilotModel.CLOTH);
+  private static final CommodityId GRAIN = new CommodityId("grain");
+  private static final CommodityId CLOTH = new CommodityId("cloth");
   private static final CurrencyId SILVER = MoneyVocabulary.SILVER_CURRENCY;
 
   private static final String REASON = "第一轮军粮与兵源";
@@ -1086,7 +1085,6 @@ class LevyRegionToolTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,

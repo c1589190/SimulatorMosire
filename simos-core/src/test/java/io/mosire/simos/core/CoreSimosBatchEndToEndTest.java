@@ -95,7 +95,7 @@ class CoreSimosBatchEndToEndTest {
                   envelope(
                       "unit.CreateUnit",
                       "{\"id\":\"u-2\",\"name\":\"第二连\",\"position\":{\"q\":0,\"r\":0},"
-                          + "\"manpower\":[{\"type\":\"步兵\",\"amount\":80}],\"equipment\":[],"
+                          + "\"equipment\":[],"
                           + "\"speed\":3,\"mobilityPerMille\":900}")));
 
       assertThat(result).isInstanceOf(BatchResult.Committed.class);
@@ -183,7 +183,7 @@ class CoreSimosBatchEndToEndTest {
                   envelope(
                       "unit.CreateUnit",
                       "{\"id\":\"u-2\",\"name\":\"第二连\",\"position\":{\"q\":0,\"r\":0},"
-                          + "\"manpower\":[{\"type\":\"步兵\",\"amount\":80}],\"equipment\":[],"
+                          + "\"equipment\":[],"
                           + "\"speed\":3,\"mobilityPerMille\":900}"),
                   envelope("unit.RenameUnit", "{\"id\":\"u-2\",\"name\":\"改名\"}")));
 

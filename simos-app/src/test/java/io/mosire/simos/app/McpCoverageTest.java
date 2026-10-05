@@ -120,10 +120,10 @@ class McpCoverageTest {
   private static final String TEST_INITIATOR = "agent:t11-coverage";
 
   /**
-   * catalog 预期的 93 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
+   * catalog 预期的 91 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
    * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43，T11C 起 43 → 44，会话重置起 44 → 45，令状态翻转起 45 → 46， social
    * 起 46 → 49，economy/actor 全族补齐后 50 → 60，辖区阶段 5–8 起 60 → 65，阶段 9–12 起 65 → 71，P1b1/P1b2/P3/R3a 与
-   * D1/D3a/D4/D5 起 71 → 85，S3a 的家户/人口 8 条起 85 → 93）。
+   * D1/D3a/D4/D5 起 71 → 85，S3a 的家户/人口 8 条起 85 → 93；P0.1 删除 economy.UnitBorrow/UnitRepay 两个 handler ⇒ 91）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
@@ -144,8 +144,6 @@ class McpCoverageTest {
           "economy.SetMarketPrice",
           "economy.SwitchMode",
           "economy.TransferAssetShare",
-          "economy.UnitBorrow",
-          "economy.UnitRepay",
           "map.CreateRegion",
           "map.DeleteRegion",
           "map.RandomizeRegion",
@@ -241,8 +239,6 @@ class McpCoverageTest {
       Set.of(
           "economy.SwitchMode",
           "economy.GmAdjust",
-          "economy.UnitBorrow",
-          "economy.UnitRepay",
           // ★ R3a：actor.RemitGovTreasury 非 GmOnly，但本夹具没有两个带国库账的 GOV ⇒ 形状合法、前置缺失，
           //   走同一支具名拒（不推 revision）。
           "actor.RemitGovTreasury",
@@ -261,12 +257,6 @@ class McpCoverageTest {
           "economy.GmAdjust",
           "{\"adjustment\":\"forgiveDebt\","
               + "\"parameters\":{\"debtContractId\":\"missing-debt\"},\"reason\":\"coverage\"}",
-          // class-first 未播种 ⇒ handler 在查放贷方之前先拒"只在 class-first 世界可用"。
-          "economy.UnitBorrow",
-          "{\"unitId\":\"u-2\",\"lenderId\":\"lender-missing\",\"unit\":\"money\",\"principal\":1,"
-              + "\"interestRatePerMille\":0,\"nextDueTick\":400}",
-          "economy.UnitRepay",
-          "{\"unitId\":\"u-2\",\"lenderId\":\"lender-missing\",\"unit\":\"money\",\"amount\":1}",
           // actor.RemitGovTreasury：形状合法、源国库账在本夹具不存在 ⇒ 具名拒。
           "actor.RemitGovTreasury",
           "{\"fromUnitId\":\"u-missing\",\"fromQ\":1,\"fromR\":1,\"toUnitId\":\"u-missing-2\","
@@ -295,13 +285,11 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put(
         "unit.CreateUnit",
         "{\"id\":\"u-2\",\"name\":\"第二连\",\"position\":{\"q\":1,\"r\":2},"
-            + "\"manpower\":[{\"type\":\"步兵\",\"amount\":50}],"
             + "\"equipment\":[{\"type\":\"步枪\",\"amount\":10}],\"speed\":2,\"mobilityPerMille\":500}");
     MINIMAL_PAYLOADS.put("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"一改\"}");
     MINIMAL_PAYLOADS.put(
         "unit.SetComposition",
-        "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":120}],"
-            + "\"equipment\":[{\"type\":\"步枪\",\"amount\":60}]}");
+        "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":60}]}");
     // ★★ 编制 v2（2026-09-24）：**只有顶层能下路线** ⇒ 路线类命令必须排在 ReparentUnit **之前**
     //   （reparent 之后 u-1 就是 u-2 那一支的成员了，成员下路线会被域层正当拒绝）。
     //   起点也随之前移：此刻 u-1 还在创世格 (1,1)，PlaceAt 之后才到 (1,2)。
@@ -318,8 +306,7 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put("unit.SetRejoinTarget", "{\"id\":\"u-1\",\"target\":\"u-2\"}");
     MINIMAL_PAYLOADS.put(
         "unit.ApplyCasualties",
-        "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-10}],"
-            + "\"equipment\":[{\"type\":\"步枪\",\"amount\":-5}]}");
+        "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-5}]}");
     MINIMAL_PAYLOADS.put(
         "unit.CreateCommandChain",
         "{\"chainId\":\"c-1\",\"name\":\"第一链\",\"commander\":\"u-2\",\"members\":[\"u-2\"]}");
@@ -550,8 +537,7 @@ class McpCoverageTest {
         "unit.SetStateDescription", "{\"id\":\"u-2\",\"state\":\"覆盖状态\",\"address\":\"map:Map1\"}");
     MINIMAL_PAYLOADS.put(
         "unit.AdjustComposition",
-        "{\"id\":\"u-2\",\"manpower\":[{\"type\":\"步兵\",\"amount\":1}],"
-            + "\"equipment\":[{\"type\":\"步枪\",\"amount\":1}]}");
+        "{\"id\":\"u-2\",\"equipment\":[{\"type\":\"步枪\",\"amount\":1}]}");
     MINIMAL_PAYLOADS.put(
         "sd.SetDiplomaticRelation",
         "{\"from\":\"n-cov\",\"to\":\"n-seed\",\"kind\":\"称臣纳贡\",\"text\":\"覆盖关系\"}");
@@ -662,12 +648,12 @@ class McpCoverageTest {
     List<String> catalogTypes = catalogTypes();
     assertThat(catalogTypes)
         .as(
-            "catalog 列出的 type 与 Shell 注册的 93 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户）")
+            "catalog 列出的 type 与 Shell 注册的 91 个 handler 同源（R4/E6 后含 economy/actor 全族 + P1b1/P1b2/P3/R3a + 辖区阶段 5–12 + D1/D3a/D4/D5 + S3a 家户；P0.1 删除 UnitBorrow/UnitRepay）")
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
     List<String> committableCatalogTypes = new ArrayList<>(catalogTypes);
     committableCatalogTypes.removeAll(PRECONDITION_REJECT_TYPES);
     assertThat(MINIMAL_PAYLOADS.keySet())
-        .as("除 7 条需要前置状态 / 已退役的命令外，每个 catalog type 都备了载荷（%s）", PRECONDITION_REJECT_TYPES)
+        .as("除 5 条需要前置状态 / 已退役的命令外，每个 catalog type 都备了载荷（%s）", PRECONDITION_REJECT_TYPES)
         .containsExactlyInAnyOrderElementsOf(committableCatalogTypes);
 
     // 2. 逐类经 MCP 提交（每条都过审批 APPROVE_ONCE），断言全部 commit 且 head 逐条前进。
@@ -695,7 +681,7 @@ class McpCoverageTest {
       System.out.println(line);
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("每条可提交命令各推一格；需前置状态 / 已退役的 7 条留在下一段验证具名拒绝")
+        .as("每条可提交命令各推一格；需前置状态 / 已退役的 5 条留在下一段验证具名拒绝")
         .isEqualTo(1L + MINIMAL_PAYLOADS.size());
 
     // 2a. MigrateHousehold 在上面的覆盖里把家户迁到了 (1,2)，但 actor 账仍在 (1,1)
@@ -710,9 +696,9 @@ class McpCoverageTest {
     assertThat(restore.isError()).as(wireText(restore)).isFalse();
     assertThat(JSON.readTree(wireText(restore)).get("result").asText()).isEqualTo("committed");
 
-    // 2b. 需前置状态 / 已退役的 7 条（economy.SwitchMode / economy.GmAdjust / economy.UnitBorrow /
-    //     economy.UnitRepay 缺组织/债务合同/class-first 放贷方；actor.RemitGovTreasury 缺 GOV 国库账；
-    //     unit.SetFormationOffset 已退役；sd.DeleteDecisionMaker 被 Directive 引用）⇒ 必须经 MCP 可提交但被
+    // 2b. 需前置状态 / 已退役的 5 条（economy.SwitchMode / economy.GmAdjust 缺组织/债务合同；
+    //     actor.RemitGovTreasury 缺 GOV 国库账；unit.SetFormationOffset 已退役；sd.DeleteDecisionMaker 被 Directive 引用）
+    //     ⇒ 必须经 MCP 可提交但被
     //     **具名拒绝**，且不推 revision。
     for (String rejectType : PRECONDITION_REJECT_TYPES) {
       long headBeforeGmOnly = shell.coreSimos().head(main()).orElseThrow().value();
@@ -752,8 +738,9 @@ class McpCoverageTest {
         .containsExactlyInAnyOrder(
             new UnitId("u-2"), new UnitId("u-3"), new UnitId("u-4"), new UnitId("u-5"));
     assertThat(units.units().get(new UnitId("u-2")).name()).isEqualTo("第二连");
-    assertThat(units.units().get(new UnitId("u-2")).manpower())
-        .containsExactly(new CompositionEntry("步兵", 50));
+    assertThat(units.units().get(new UnitId("u-2")).equipment())
+        .as("u-2 在 AdjustComposition(+1 步枪) 后：10 + 1 = 11")
+        .containsExactly(new CompositionEntry("步枪", 11));
 
     // 4. simos.advance 经 MCP 可达且有效。
     // ★ 期望值从 **head 现取**（不写字面量）：上面的命令条数一变，写死的 revision 就会整条链错位，而症状是
@@ -971,7 +958,6 @@ class McpCoverageTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
@@ -986,7 +972,6 @@ class McpCoverageTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,

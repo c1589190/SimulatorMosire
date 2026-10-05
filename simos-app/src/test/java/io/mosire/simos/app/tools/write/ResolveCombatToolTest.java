@@ -137,7 +137,6 @@ class ResolveCombatToolTest {
       // ★ 守恒：handler 收到的真载荷 == 记录里该 outcome 声明的损失。
       JsonNode applied = JSON.readTree(fx.callPayload(AdjustCompositionHandler.TYPE));
       assertThat(applied.get("id").asText()).isEqualTo("u-1");
-      assertThat(deltas(applied.get("manpower"))).containsExactly("步兵=-30");
       assertThat(deltas(applied.get("equipment"))).containsExactly("步枪=-5");
 
       SimulationState after = fx.stateAt(2L);
@@ -146,17 +145,12 @@ class ResolveCombatToolTest {
       assertThat(stage.selectedOutcomeId()).contains(new CombatOutcomeId("win"));
       assertThat(stage.rollSeed()).as("显式结局不投骰 ⇒ rollSeed 空").isEmpty();
       CombatUnitLoss declared = stage.selectedOutcome().orElseThrow().losses().get(0);
-      assertThat(deltas(applied.get("manpower")))
-          .isEqualTo(
-              List.of(
-                  declared.manpower().get(0).type() + "=" + declared.manpower().get(0).amount()));
       assertThat(deltas(applied.get("equipment")))
           .isEqualTo(
               List.of(
                   declared.equipment().get(0).type() + "=" + declared.equipment().get(0).amount()));
 
       Unit unit = fx.unit(after, U1);
-      assertThat(entries(unit.manpower())).as("100 + (-30) = 70").containsExactly("步兵=70");
       assertThat(entries(unit.equipment())).as("50 + (-5) = 45").containsExactly("步枪=45");
       assertThat(unit.stateDescriptions())
           .as("全部阶段判定完 ⇒ 同一批清除 combat 链接")
@@ -173,7 +167,7 @@ class ResolveCombatToolTest {
       assertThat(fx.handlerCalls)
           .as("没有实际变动的单位不生成 unit.AdjustComposition（只更新记录 + 清链接）")
           .containsExactly(ResolveCombatStageHandler.TYPE, SetStateDescriptionHandler.TYPE);
-      assertThat(entries(fx.unit(fx.stateAt(2L), U1).manpower())).containsExactly("步兵=100");
+      assertThat(entries(fx.unit(fx.stateAt(2L), U1).equipment())).containsExactly("步枪=50");
     }
   }
 
@@ -183,8 +177,8 @@ class ResolveCombatToolTest {
   void rolledOutcomeIsReproducibleAndAppliedFromTheRolledOutcomeOnly() throws Exception {
     List<CombatOutcome> table =
         List.of(
-            outcome("o1", "胜", 3, List.of(new CompositionDelta("步兵", -30))),
-            outcome("o2", "败", 7, List.of(new CompositionDelta("步兵", -10))));
+            outcome("o1", "胜", 3, List.of(new CompositionDelta("步枪", -30))),
+            outcome("o2", "败", 7, List.of(new CompositionDelta("步枪", -10))));
     try (Fixture fx = fixtureWithOutcomes(tempDir.resolve("roll"), table)) {
       ToolResult first = fx.call(resolveArgs("c-1", "start", null, null, null, null));
       ToolResult second = fx.call(resolveArgs("c-1", "start", null, null, null, null));
@@ -227,15 +221,15 @@ class ResolveCombatToolTest {
       ToolResult applied = fx.call(settlementArgs);
       assertThat(applied.success()).as(applied.message()).isTrue();
       JsonNode appliedPayload = JSON.readTree(fx.callPayload(AdjustCompositionHandler.TYPE));
-      assertThat(deltas(appliedPayload.get("manpower")))
-          .containsExactlyElementsOf(declaredAmounts(expected.losses().get(0).manpower()));
+      assertThat(deltas(appliedPayload.get("equipment")))
+          .containsExactlyElementsOf(declaredAmounts(expected.losses().get(0).equipment()));
 
       SimulationState after = fx.stateAt(2L);
       CombatStage stage = fx.record(after, C1).stages().get(0);
       assertThat(stage.rollSeed()).contains(seed);
       assertThat(stage.selectedOutcomeId()).contains(expected.id());
-      assertThat(entries(fx.unit(after, U1).manpower()))
-          .isEqualTo(List.of("步兵=" + (100L + expected.losses().get(0).manpower().get(0).amount())));
+      assertThat(entries(fx.unit(after, U1).equipment()))
+          .isEqualTo(List.of("步枪=" + (50L + expected.losses().get(0).equipment().get(0).amount())));
     }
   }
 
@@ -297,8 +291,8 @@ class ResolveCombatToolTest {
   void explicitOutcomeInconsistentWithSeedIsRejectedWithZeroWrites() throws Exception {
     List<CombatOutcome> table =
         List.of(
-            outcome("o1", "胜", 3, List.of(new CompositionDelta("步兵", -30))),
-            outcome("o2", "败", 7, List.of(new CompositionDelta("步兵", -10))));
+            outcome("o1", "胜", 3, List.of(new CompositionDelta("步枪", -30))),
+            outcome("o2", "败", 7, List.of(new CompositionDelta("步枪", -10))));
     try (Fixture fx = fixtureWithOutcomes(tempDir.resolve("inconsistent"), table)) {
       long seed = 12345L;
       long total = table.stream().mapToLong(CombatOutcome::weight).sum();
@@ -323,7 +317,7 @@ class ResolveCombatToolTest {
             new CombatOutcomeId("win"),
             "胜",
             1,
-            List.of(new CombatUnitLoss(OTHER, List.of(new CompositionDelta("步兵", -1)), List.of())));
+            List.of(new CombatUnitLoss(OTHER, List.of(), List.of(new CompositionDelta("步枪", -1)))));
     try (Fixture fx = fixtureWithOutcomes(tempDir.resolve("missing"), List.of(ghostLoss))) {
       ToolResult result = fx.call(resolveArgs("c-1", "start", "win", null, null, null));
       assertThat(result.success()).isFalse();
@@ -344,13 +338,13 @@ class ResolveCombatToolTest {
       assertThat(view.get("submitted").asBoolean()).isFalse();
       assertThat(view.get("allStagesResolvedAfter").asBoolean()).isTrue();
       assertThat(values(view.get("clearedLinks"))).containsExactly("u-1");
-      assertThat(deltas(view.get("losses").get(0).get("manpower"))).containsExactly("步兵=-30");
+      assertThat(deltas(view.get("losses").get(0).get("equipment"))).containsExactly("步枪=-5");
       assertThat(view.get("losses").get(0).get("unit").asText()).isEqualTo("u-1");
       assertThat(view.get("losses").get(0).get("empty").asBoolean()).isFalse();
 
       assertThat(fx.head()).isEqualTo(1L);
       assertThat(fx.handlerCalls).isEmpty();
-      assertThat(entries(fx.unit(fx.stateAt(1L), U1).manpower())).containsExactly("步兵=100");
+      assertThat(entries(fx.unit(fx.stateAt(1L), U1).equipment())).containsExactly("步枪=50");
       assertThat(fx.unit(fx.stateAt(1L), U1).stateDescriptions())
           .containsExactly(Map.entry("combat", ADDRESS));
       assertThat(fx.record(fx.stateAt(1L), C1).stages().get(0).resolved()).isFalse();
@@ -360,8 +354,9 @@ class ResolveCombatToolTest {
   // ── 夹具 ────────────────────────────────────────────────────────────────────────────
 
   private static Fixture singleStageFixture(Path dir) {
+    // ★ S3b：Unit.manpower 已退役 ⇒ 战损只走 equipment（人力战损会被 ResolveCombatPlan 具名拒）。
     return fixtureWithDeclaredLosses(
-        dir, List.of(new CompositionDelta("步兵", -30)), List.of(new CompositionDelta("步枪", -5)));
+        dir, List.of(), List.of(new CompositionDelta("步枪", -5)));
   }
 
   private static Fixture fixtureWithDeclaredLosses(
@@ -389,13 +384,13 @@ class ResolveCombatToolTest {
             "start",
             "初始阶段",
             List.of(U1),
-            List.of(outcome("o1", "接触", 1, List.of(new CompositionDelta("步兵", -5)))));
+            List.of(outcome("o1", "接触", 1, List.of(new CompositionDelta("步枪", -5)))));
     CombatStage s2 =
         stage(
             "s2",
             "决战",
             List.of(U1),
-            List.of(outcome("o2", "破城", 1, List.of(new CompositionDelta("步兵", -7)))));
+            List.of(outcome("o2", "破城", 1, List.of(new CompositionDelta("步枪", -7)))));
     ArmyData army = armyWith(record(List.of(U1), List.of(start, s2)));
     return Fixture.open(dir, unitState(Map.of("combat", ADDRESS)), army);
   }
@@ -460,12 +455,12 @@ class ResolveCombatToolTest {
   }
 
   private static CombatOutcome outcome(
-      String id, String label, long weight, List<CompositionDelta> manpowerDeltas) {
+      String id, String label, long weight, List<CompositionDelta> equipmentDeltas) {
     return new CombatOutcome(
         new CombatOutcomeId(id),
         label,
         weight,
-        List.of(new CombatUnitLoss(U1, manpowerDeltas, List.of())));
+        List.of(new CombatUnitLoss(U1, List.of(), equipmentDeltas)));
   }
 
   private static UnitState unitState(Map<String, String> links) {
@@ -476,7 +471,6 @@ class ResolveCombatToolTest {
             new SegmentedSeries<>(
                 List.of(new Segment<>(T7, Optional.<UnitId>empty())), List.of(), null),
             new SegmentedSeries<>(List.of(new Segment<>(T7, Optional.of(H11))), List.of(), null),
-            List.of(new CompositionEntry("步兵", 100)),
             List.of(new CompositionEntry("步枪", 50)),
             2,
             500,

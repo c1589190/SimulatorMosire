@@ -223,7 +223,6 @@ class SdCombatEndToEndTest {
                 List.of(new Segment<>(T, Optional.<UnitId>empty())), List.of(), null),
             new SegmentedSeries<>(
                 List.of(new Segment<>(T, Optional.of(new HexCoord(0, 0)))), List.of(), null),
-            List.of(new CompositionEntry("步兵", 100)),
             List.of(new CompositionEntry("步枪", 50)),
             2,
             500,

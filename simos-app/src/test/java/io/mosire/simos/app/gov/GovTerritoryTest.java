@@ -242,7 +242,6 @@ class GovTerritoryTest {
             List.of(new Segment<>(ScopeFixtures.T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(
             List.of(new Segment<>(ScopeFixtures.T0, Optional.of(position))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(),
         2,
         500,

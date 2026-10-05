@@ -927,7 +927,7 @@ class GuiApiTest {
                     "Map1",
                     7L,
                     java.util.OptionalLong.empty(),
-                    EconomySeeder.RULES_VERSION,
+                    EconomyMeta.RUNTIME_VERSION_SEVEN_HEX_V2,
                     Optional.empty())));
   }
 
@@ -1354,7 +1354,6 @@ class GuiApiTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,

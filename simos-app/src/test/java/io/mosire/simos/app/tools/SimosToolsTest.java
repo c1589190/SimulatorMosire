@@ -1886,7 +1886,7 @@ class SimosToolsTest {
     assertDomainRejectedAndHeadUnchanged(
         UnitCreateTool.NAME,
         "{\"id\":\"u-1\",\"name\":\"第二连\",\"position\":{\"q\":1,\"r\":1},"
-            + "\"manpower\":[{\"type\":\"步兵\",\"amount\":1}],\"equipment\":[],"
+            + "\"equipment\":[],"
             + "\"speed\":2,\"mobilityPerMille\":500}",
         "单位 id 已存在");
   }
@@ -1901,7 +1901,7 @@ class SimosToolsTest {
   void unitSetCompositionToolSurfacesTheDomainRejectionForANegativeAmount() throws Exception {
     assertDomainRejectedAndHeadUnchanged(
         UnitSetCompositionTool.NAME,
-        "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-1}],\"equipment\":[]}",
+        "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步兵\",\"amount\":-1}]}",
         "amount 必须 ≥ 0");
   }
 
@@ -1993,7 +1993,7 @@ class SimosToolsTest {
         callNarrowWrite(
             UnitCreateTool.NAME,
             "{\"id\":\"u-2\",\"name\":\"第二连\",\"position\":{\"q\":1,\"r\":2},"
-                + "\"manpower\":[{\"type\":\"步兵\",\"amount\":1}],\"equipment\":[],"
+                + "\"equipment\":[],"
                 + "\"speed\":2,\"mobilityPerMille\":500}",
             1L);
     assertThat(created.success()).as(created.message()).isTrue();
@@ -2037,13 +2037,13 @@ class SimosToolsTest {
         UnitUpdateCommandChainTool.NAME, "{\"chainId\":\"nope\",\"name\":\"新名\"}", "链不存在");
   }
 
-  /** ★ 坏载荷 = **未知装备类型**：P14 明写不视作 0（manpower 给空增量，确保先撞的是装备那一关）。 */
+  /** ★ 坏载荷 = **未知装备类型**：P14 明写不视作 0（S3b 起战损只有装备一表；未知 type 判定在符号之前）。 */
   @Test
   void unitApplyCasualtiesToolSurfacesTheDomainRejectionForAnUnknownEquipmentType()
       throws Exception {
     assertDomainRejectedAndHeadUnchanged(
         UnitApplyCasualtiesTool.NAME,
-        "{\"id\":\"u-1\",\"manpower\":[],\"equipment\":[{\"type\":\"没这个装备\",\"amount\":-1}]}",
+        "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"没这个装备\",\"amount\":-1}]}",
         "未知装备类型");
   }
 
@@ -2524,7 +2524,6 @@ class SimosToolsTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,

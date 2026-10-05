@@ -73,7 +73,7 @@ class SdCommandDrainTest {
     // ★ 日制裁定：一次推进恰好一天 ⇒ 到 tick 5 要连续提交 5 次单日推进（revision 3 → 8）。
     long atTick5 = advanceDays(3, 5);
     long beforeDrain = revisionRowCount();
-    assertThat(unitMember(core, atTick5)).as("推进本身不改 unit").isEqualTo(100);
+    assertThat(unitEquipment(core, atTick5)).as("推进本身不改 unit").isEqualTo(50);
 
     List<CommandResult> drained = new SdCommandDrain(core).drainAfterAdvance(MAIN);
 
@@ -81,8 +81,8 @@ class SdCommandDrainTest {
     assertThat(drained.get(0)).isInstanceOf(CommandResult.Committed.class);
     assertThat(revisionRowCount()).as("跨模块效果落成真 revision").isEqualTo(beforeDrain + 1);
     assertThat(core.head(MAIN).orElseThrow().value()).isEqualTo(atTick5 + 1);
-    assertThat(unitMember(core, atTick5 + 1)).as("unit 真的改了").isEqualTo(90);
-    System.out.println("[C5] drain committed revision=" + (atTick5 + 1) + " member=90");
+    assertThat(unitEquipment(core, atTick5 + 1)).as("unit 真的改了").isEqualTo(45);
+    System.out.println("[C5] drain committed revision=" + (atTick5 + 1) + " equipment=45");
 
     List<CommandResult> again = new SdCommandDrain(core).drainAfterAdvance(MAIN);
     assertThat(again).as("幂等：重复 drain 不重复提交（e2 仍 PLANNED、e1 已 drain）").isEmpty();
@@ -98,7 +98,7 @@ class SdCommandDrainTest {
             1,
             "e1",
             5,
-            "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-9999}],\"equipment\":[]}"));
+            "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-9999}]}"));
     // ★ 日制裁定：到 tick 5 = 连续 5 次单日推进（revision 2 → 7）。
     long atTick5 = advanceDays(2, 5);
     long beforeDrain = revisionRowCount();
@@ -108,12 +108,12 @@ class SdCommandDrainTest {
     assertThat(drained).hasSize(1);
     assertThat(drained.get(0)).as("越界战损被 unit 侧拒绝").isInstanceOf(CommandResult.Rejected.class);
     assertThat(revisionRowCount()).as("被拒不写行 ⇒ 无半写 revision").isEqualTo(beforeDrain);
-    assertThat(unitMember(core, atTick5)).as("unit 未改（中间态）").isEqualTo(100);
+    assertThat(unitEquipment(core, atTick5)).as("unit 未改（中间态）").isEqualTo(50);
     assertThat(effectStatus(core, atTick5, "e1")).as("sd 已记 effect FIRED（中间态）").isEqualTo("FIRED");
     List<CommandResult> retry = new SdCommandDrain(core).drainAfterAdvance(MAIN);
     assertThat(retry).as("被拒的指令下次 drain 会重试（不静默丢弃）").hasSize(1);
     System.out.println(
-        "[C5] rejected-drain intermediate state: sd=FIRED unit=100 rows=" + beforeDrain);
+        "[C5] rejected-drain intermediate state: sd=FIRED equipment=50 rows=" + beforeDrain);
   }
 
   // ── 夹具与助手 ───────────────────────────────────────────────────────
@@ -146,7 +146,7 @@ class SdCommandDrainTest {
   }
 
   private static String boundPayload() {
-    return "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-10}],\"equipment\":[{\"type\":\"步枪\",\"amount\":-5}]}";
+    return "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-5}]}";
   }
 
   private static String jsonString(String text) {
@@ -201,8 +201,8 @@ class SdCommandDrainTest {
     }
   }
 
-  private static long unitMember(CoreSimos core, long revision) {
-    return unitState(core, revision).units().get(U1).manpower().stream()
+  private static long unitEquipment(CoreSimos core, long revision) {
+    return unitState(core, revision).units().get(U1).equipment().stream()
         .mapToLong(CompositionEntry::amount)
         .sum();
   }
@@ -245,7 +245,6 @@ class SdCommandDrainTest {
                 List.of(new Segment<>(T, Optional.of(new io.mosire.simos.map.hex.HexCoord(0, 0)))),
                 List.of(),
                 null),
-            List.of(new CompositionEntry("步兵", 100)),
             List.of(new CompositionEntry("步枪", 50)),
             2,
             500,

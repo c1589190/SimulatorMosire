@@ -289,7 +289,7 @@ class UnitTimeParticipantTest {
       Unit right = chained.units().get(id);
       assertThat(left.name()).isEqualTo(right.name());
       assertThat(left.parent()).as("parent 是归属历史，推进不改它").isEqualTo(right.parent());
-      assertThat(left.manpower()).isEqualTo(right.manpower());
+      assertThat(left.households()).isEqualTo(right.households());
       assertThat(left.equipment()).isEqualTo(right.equipment());
       assertThat(left.speed()).isEqualTo(right.speed());
       assertThat(left.mobilityPerMille()).isEqualTo(right.mobilityPerMille());
@@ -332,7 +332,6 @@ class UnitTimeParticipantTest {
         "单位 " + id.value(),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(parent))), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
@@ -399,7 +398,6 @@ class UnitTimeParticipantTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, position)), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
@@ -615,7 +613,6 @@ class UnitTimeParticipantTest {
             "name",
             "parent",
             "position",
-            "manpower",
             "equipment",
             "speed",
             "mobilityPerMille",

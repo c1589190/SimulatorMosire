@@ -29,7 +29,6 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -123,7 +122,7 @@ class RaiseUnitToolTest {
   private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "e-1");
   private static final ActorRef NEW_TREASURY = new ActorRef(ActorKind.UNIT, NEW_UNIT.value());
 
-  private static final CommodityId GRAIN = new CommodityId(PilotModel.GRAIN);
+  private static final CommodityId GRAIN = new CommodityId("grain");
   private static final CurrencyId SILVER = MoneyVocabulary.SILVER_CURRENCY;
 
   private static final String REASON = "T4b 组军守恒与保真";
@@ -201,8 +200,8 @@ class RaiseUnitToolTest {
     assertThat(view.get("regionId").asText()).isEqualTo(NATION.value());
     assertThat(view.get("at").get("q").asInt()).isEqualTo(1);
     assertThat(view.get("at").get("r").asInt()).isEqualTo(1);
-    assertThat(view.get("manpower").get(0).get("type").asText()).isEqualTo("人员");
-    assertThat(view.get("manpower").get(0).get("amount").asLong()).isEqualTo(40L);
+    assertThat(view.get("householdId").asText()).as("S3b：人口落在家户").isNotEmpty();
+    assertThat(view.get("population").asLong()).as("新单位人口 = 请求 40").isEqualTo(40L);
     assertThat(view.get("speed").asInt()).isEqualTo(4);
     assertThat(view.get("mobilityPerMille").asInt()).isEqualTo(700);
     assertThat(view.get("equipment").get(0).get("type").asText()).isEqualTo("rifle");
@@ -218,8 +217,8 @@ class RaiseUnitToolTest {
     assertThat(view.get("money").get("available").asLong()).isEqualTo(130L);
     assertThat(view.get("money").get("sources").get(0).get("amount").asLong()).isEqualTo(80L);
     assertThat(view.get("money").get("sources").get(1).get("amount").asLong()).isEqualTo(20L);
-    // ★ D3a：`manpower` 键已改成"新单位的目标表"（array）；抽取来源挪到 `manpowerAllocation`（避免同名字段
-    //   两个形状）——按新口径逐值断言。
+    // ★ S3b：单位侧人员表已退役（人口 = householdId + population）；抽取来源仍在
+    //   `manpowerAllocation`，按新口径逐值断言。
     assertThat(view.get("manpowerAllocation").get("requested").asLong()).isEqualTo(40L);
     assertThat(view.get("manpowerAllocation").get("available").asLong()).isEqualTo(50L);
     assertThat(view.get("manpowerAllocation").get("sources").get(0).get("id").asText())
@@ -239,7 +238,12 @@ class RaiseUnitToolTest {
         .isEqualTo(10L);
     assertThat(commandTypes(view))
         .containsExactly(
-            "unit.CreateUnit", "actor.AdjustAccounts", "social.SeedGroups", "sd.PutInfo");
+            "social.CreateHousehold",
+            "social.TransferHouseholdMembers",
+            "social.TransferHouseholdMembers",
+            "unit.CreateUnit",
+            "actor.AdjustAccounts",
+            "sd.PutInfo");
 
     assertThat(head()).as("preview 不得推 head").isEqualTo(headBefore);
     assertThat(revisionRowCount()).as("preview 不得留 revision").isEqualTo(rowsBefore);
@@ -273,7 +277,12 @@ class RaiseUnitToolTest {
     assertThat(commandTypes(view))
         .as("可执行前的 plan 视图也给出同一批命令序")
         .containsExactly(
-            "unit.CreateUnit", "actor.AdjustAccounts", "social.SeedGroups", "sd.PutInfo");
+            "social.CreateHousehold",
+            "social.TransferHouseholdMembers",
+            "social.TransferHouseholdMembers",
+            "unit.CreateUnit",
+            "actor.AdjustAccounts",
+            "sd.PutInfo");
 
     assertThat(head()).as("一批只前进一格").isEqualTo(2L);
     assertThat(revisionRowCount()).as("一批只多一行 revision").isEqualTo(rowsBefore + 1L);
@@ -282,9 +291,9 @@ class RaiseUnitToolTest {
     Unit created = unitState(after).units().get(NEW_UNIT);
     assertThat(created).as("新单位必须出现").isNotNull();
     assertThat(created.name()).isEqualTo("新军");
-    assertThat(created.manpower())
-        .as("manpower == 实抽人力 == 请求人力")
-        .containsExactly(new CompositionEntry("人员", 40));
+    assertThat(created.households())
+        .as("S3b：人员落在 Social 家户（新单位容纳 1 个家户），不再有 unit.manpower")
+        .hasSize(1);
     assertThat(created.equipment())
         .as("equipment 原样进新单位（按 Map 迭代序转成有序表）")
         .containsExactly(new CompositionEntry("rifle", 12), new CompositionEntry("shield", 3));
@@ -331,12 +340,16 @@ class RaiseUnitToolTest {
     JsonNode view = JSON.readTree(result.message());
     assertThat(commandTypes(view))
         .as("粮钱都是 0 ⇒ 批内没有 actor.AdjustAccounts")
-        .containsExactly("unit.CreateUnit", "social.SeedGroups", "sd.PutInfo");
+        .containsExactly(
+            "social.CreateHousehold",
+            "social.TransferHouseholdMembers",
+            "social.TransferHouseholdMembers",
+            "unit.CreateUnit",
+            "sd.PutInfo");
     assertThat(head()).isEqualTo(2L);
 
     SimulationState after = stateAt(2L);
-    assertThat(unitState(after).units().get(NEW_UNIT).manpower())
-        .containsExactly(new CompositionEntry("人员", 40));
+    assertThat(unitState(after).units().get(NEW_UNIT).households()).hasSize(1);
     assertThat(actorData(after)).as("纯人力不得碰 actor 账").isEqualTo(actorsBefore);
     long taken = 0L;
     for (Map.Entry<PeopleLotId, PopulationGroup> entry : socialBefore.groups().entrySet()) {
@@ -404,11 +417,16 @@ class RaiseUnitToolTest {
     assertThat(commandTypesFromSubmission(submission))
         .as("真 submitBatch 收到的批内顺序")
         .containsExactly(
-            "unit.CreateUnit", "actor.AdjustAccounts", "social.SeedGroups", "sd.PutInfo");
+            "social.CreateHousehold",
+            "social.TransferHouseholdMembers",
+            "social.TransferHouseholdMembers",
+            "unit.CreateUnit",
+            "actor.AdjustAccounts",
+            "sd.PutInfo");
     JsonNode commands = submission.get("commands");
-    assertThat(commands).hasSize(4);
-    assertThat(commands.get(3).get("type").asText()).isEqualTo("sd.PutInfo");
-    assertThat(commands.get(3).get("reason").asText())
+    assertThat(commands).hasSize(6);
+    assertThat(commands.get(5).get("type").asText()).isEqualTo("sd.PutInfo");
+    assertThat(commands.get(5).get("reason").asText())
         .as("逼整批拒的那条必须报真拒因")
         .contains("INFO 条目 id 已存在")
         .contains(DECOY_INFO_ID);
@@ -693,8 +711,7 @@ class RaiseUnitToolTest {
     assertThat(value.get("regionId").asText()).isEqualTo(NATION.value());
     assertThat(value.get("at").get("q").asInt()).isEqualTo(1);
     assertThat(value.get("at").get("r").asInt()).isEqualTo(1);
-    assertThat(value.get("manpower").get(0).get("type").asText()).isEqualTo("人员");
-    assertThat(value.get("manpower").get(0).get("amount").asLong()).isEqualTo(40L);
+    assertThat(value.get("householdId").asText()).isNotEmpty();
     assertThat(value.get("manpowerRequested").asLong()).isEqualTo(40L);
     assertThat(value.get("grain").asLong()).isEqualTo(grain);
     assertThat(value.get("money").asLong()).isEqualTo(money);
@@ -831,7 +848,6 @@ class RaiseUnitToolTest {
             new SegmentedSeries<>(
                 List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
             new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-            List.of(new CompositionEntry("步兵", 100)),
             List.of(new CompositionEntry("步枪", 50)),
             2,
             500,

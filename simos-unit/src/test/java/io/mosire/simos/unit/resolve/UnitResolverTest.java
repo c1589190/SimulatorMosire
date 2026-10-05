@@ -53,7 +53,6 @@ class UnitResolverTest {
         name,
         new SegmentedSeries<>(parentSegments, List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(TS, Optional.of(H11))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         1000,

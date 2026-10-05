@@ -181,9 +181,7 @@ class BranchingEndToEndTest {
     Unit b2Renamed = b2Unit.state().units().get(U1);
     assertThat(b2Renamed.id()).isEqualTo(U1);
     assertThat(b2Renamed.name()).isEqualTo("b2 一改");
-    assertThat(b2Renamed.manpower())
-        .as("③ 其余单位字段也被逐值钉住")
-        .containsExactly(new CompositionEntry("步兵", 100));
+    assertThat(b2Renamed.households()).as("③ 其余单位字段也被逐值钉住（家户列表）").isEmpty();
     assertThat(b2Renamed.equipment()).containsExactly(new CompositionEntry("步枪", 50));
     assertThat(b2Renamed.speed()).isEqualTo(2);
     assertThat(b2Renamed.mobilityPerMille()).isEqualTo(500);
@@ -252,7 +250,6 @@ class BranchingEndToEndTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,

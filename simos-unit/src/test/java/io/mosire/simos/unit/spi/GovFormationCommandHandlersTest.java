@@ -818,7 +818,6 @@ class GovFormationCommandHandlersTest {
             List.of(new Segment<>(SpiFixture.T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(
             List.of(new Segment<>(SpiFixture.T0, Optional.of(SpiFixture.H11))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,

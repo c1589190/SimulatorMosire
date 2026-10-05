@@ -13,7 +13,6 @@ import io.mosire.simos.app.testing.SocialHouseholdFixture;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -77,8 +76,8 @@ class LevyRegionPlanTest {
   private static final UnitId U1 = new UnitId("u-1");
   private static final RegionId NATION = new RegionId("r-nation");
 
-  private static final CommodityId GRAIN = new CommodityId(PilotModel.GRAIN);
-  private static final CommodityId CLOTH = new CommodityId(PilotModel.CLOTH);
+  private static final CommodityId GRAIN = new CommodityId("grain");
+  private static final CommodityId CLOTH = new CommodityId("cloth");
   private static final CurrencyId SILVER = MoneyVocabulary.SILVER_CURRENCY;
 
   private static final ActorRef HH1 = new ActorRef(ActorKind.HOUSEHOLD, "hh-1");
@@ -421,7 +420,6 @@ class LevyRegionPlanTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, position)), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,

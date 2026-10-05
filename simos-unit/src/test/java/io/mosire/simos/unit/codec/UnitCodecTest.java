@@ -89,19 +89,13 @@ class UnitCodecTest {
    * <p>判别力：任何一个拷贝点/编解码把两张表丢掉一条、合成总数或换成哈希序 ⇒ 本用例当场红（"不丢失"变异自证的靶子）。
    */
   @Test
-  void snapshotRoundTripsOrderedCompositionTables() {
+  void snapshotRoundTripsOrderedCompositionTable() {
     UnitSnapshot snapshot =
         snapshotOf(stateOf(withComposition(oneUnit("u-1", H11, false))), SimosTimestamp.of(13));
     UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshot));
     assertThat(back).isEqualTo(snapshot);
 
     Unit unit = back.state().units().get(new UnitId("u-1"));
-    assertThat(unit.manpower())
-        .as("人力表逐条带回且顺序不变")
-        .containsExactly(
-            new CompositionEntry("重骑兵", 120),
-            new CompositionEntry("轻步兵", 300),
-            new CompositionEntry("火枪手", 480));
     assertThat(unit.equipment())
         .as("装备表逐条带回且顺序不变")
         .containsExactly(
@@ -110,7 +104,7 @@ class UnitCodecTest {
             new CompositionEntry("弹药车", 6));
   }
 
-  /** 变更集也带得动两张表：{@code between} ⇒ 编码 ⇒ 解码 ⇒ {@code apply} 逐值重建目标，一条不丢。 */
+  /** 变更集也带得动装备表：{@code between} ⇒ 编码 ⇒ 解码 ⇒ {@code apply} 逐值重建目标，一条不丢。 */
   @Test
   void changeSetRoundTripsACompositionChange() {
     UnitState base = stateOf(oneUnit("u-1", H11, false));
@@ -121,11 +115,6 @@ class UnitCodecTest {
     UnitState applied = UnitChangeSet.apply(encoded, base);
 
     assertThat(applied).as("整表变更也必须过线并逐条重建（铁律 5）").isEqualTo(target);
-    assertThat(applied.units().get(new UnitId("u-1")).manpower())
-        .containsExactly(
-            new CompositionEntry("重骑兵", 120),
-            new CompositionEntry("轻步兵", 300),
-            new CompositionEntry("火枪手", 480));
     assertThat(applied.units().get(new UnitId("u-1")).equipment())
         .containsExactly(
             new CompositionEntry("火炮", 12),
@@ -255,10 +244,9 @@ class UnitCodecTest {
     Unit unit = back.state().units().get(new UnitId("u-1"));
     assertThat(unit.jurisdiction()).as("旧档缺键 ⇒ 空管辖（不是 null、不抛）").isEmpty();
     assertThat(unit.name()).as("其余字段照常读回").isEqualTo("单位 u-1");
-    assertThat(unit.manpower())
-        .as("旧档缺 jurisdiction 键也必须逐值带回人力表（不是只剩一个总数）")
-        .containsExactly(new CompositionEntry("步兵", 500));
-    assertThat(unit.equipment()).containsExactly(new CompositionEntry("旗帜", 3));
+    assertThat(unit.equipment())
+        .as("旧档缺 jurisdiction 键也必须逐值带回装备表（不是只剩一个总数）")
+        .containsExactly(new CompositionEntry("旗帜", 3));
     assertThat(unit.position().valueAt(T0)).contains(H11);
     assertThat(unit.visionRadius()).isEqualTo(Unit.DEFAULT_VISION_RADIUS);
   }
@@ -456,10 +444,9 @@ class UnitCodecTest {
     assertThat(unit.jurisdiction()).as("其余字段逐值活着：管辖").contains(jurisdiction);
     assertThat(unit.visionRadius()).as("其余字段逐值活着：视野半径").isEqualTo(4);
     assertThat(unit.name()).isEqualTo("单位 u-1");
-    assertThat(unit.manpower())
-        .as("旧档缺 module 键也必须逐值带回人力表（不是只剩一个总数）")
-        .containsExactly(new CompositionEntry("步兵", 500));
-    assertThat(unit.equipment()).containsExactly(new CompositionEntry("旗帜", 3));
+    assertThat(unit.equipment())
+        .as("旧档缺 module 键也必须逐值带回装备表（不是只剩一个总数）")
+        .containsExactly(new CompositionEntry("旗帜", 3));
     assertThat(unit.position().valueAt(T0)).contains(H11);
   }
 
@@ -657,17 +644,13 @@ class UnitCodecTest {
     return UnitState.empty().withUnits(Map.of(unit.id(), unit));
   }
 
-  /** 只换人力/装备两张表（其余 15 个组件原样带过）——顺序往返用例的夹具。 */
+  /** 只换装备表（其余组件原样带过）——顺序往返用例的夹具。 */
   private static Unit withComposition(Unit base) {
     return new Unit(
         base.id(),
         base.name(),
         base.parent(),
         base.position(),
-        List.of(
-            new CompositionEntry("重骑兵", 120),
-            new CompositionEntry("轻步兵", 300),
-            new CompositionEntry("火枪手", 480)),
         List.of(
             new CompositionEntry("火炮", 12),
             new CompositionEntry("步枪", 340),
@@ -697,7 +680,6 @@ class UnitCodecTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(at))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 500)),
         List.of(new CompositionEntry("旗帜", 3)),
         2,
         1000,
@@ -738,7 +720,6 @@ class UnitCodecTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(at))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 500)),
         List.of(new CompositionEntry("旗帜", 3)),
         2,
         1000,

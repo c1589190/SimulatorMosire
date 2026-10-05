@@ -333,7 +333,6 @@ class UnitModuleTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 10)),
         List.of(new CompositionEntry("步枪", 5)),
         2,
         500,

@@ -444,15 +444,11 @@ public final class CompactThreeNationsWorld {
         conditions,
         conditionsNation,
         NATION_REGIONS,
-        EconomySeeder.FoundationProfile
-            .CLASS_FIRST); // R3a：只支持 class-first；带旧资产规则的条件会被 applyTestConditions 具名拒绝
+        EconomySeeder.FoundationProfile.PRODUCTION_RUNTIME); // P0.1：class-first 已删，唯一路线是 production-runtime
   }
 
   /**
-   * ★★ <b>R2a：用任意 profile 初始化单个 region</b>（CLASS_FIRST 小世界的入口）。
-   *
-   * <p>★ R2c 起 class-first 也支持多 region：{@link #initializeNations(CoreSimos,
-   * EconomySeeder.FoundationProfile)} 依次初始化三国，经 {@code ClassFirstState.merge} 合成世界级 4 池。
+   * ★★ <b>R2a：用 profile 初始化单个 region</b>（唯一值 = {@code PRODUCTION_RUNTIME}）。
    */
   public static JsonNode initializeNation(
       CoreSimos core, RegionId region, EconomySeeder.FoundationProfile profile) throws IOException {

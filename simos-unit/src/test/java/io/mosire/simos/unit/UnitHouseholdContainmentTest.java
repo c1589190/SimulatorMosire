@@ -32,7 +32,7 @@ import org.junit.jupiter.api.Test;
  * <p>覆盖四组判据：
  *
  * <ol>
- *   <li>第 18 组件 {@code households} 的构造语义（旧 17 参缺省空表、canonical 保序/拒重/冻结）；
+ *   <li>第 17 组件 {@code households} 的构造语义（旧 16 参缺省空表、canonical 保序/拒重/冻结）；
  *   <li>{@link UnitState} 的两条跨单位守卫（同一家户两个 unit、unit id 与 household id 撞名）；
  *   <li>JSON/ChangeSet/快照往返保留 households（空表与非空表）；
  *   <li>{@link GovFormation#households()} 的旧 4 参缺省、canonical 语义、往返，以及 unit 侧拷贝点不丢家户。
@@ -49,20 +49,20 @@ class UnitHouseholdContainmentTest {
   private static final StateRef REF = new StateRef(new BranchId("main"), new RevisionId(1));
   private static final UnitCodec CODEC = new UnitCodec();
 
-  // ── 1. Unit 第 18 组件 ────────────────────────────────────────────────
+  // ── 1. Unit 第 17 组件 ────────────────────────────────────────────────
 
-  /** 旧 canonical 的 17 参构造器（第 18 组件没有来源）⇒ 缺省空表，且旧 17 个组件逐值在场。 */
+  /** 旧 canonical 的 16 参构造器（第 17 组件没有来源）⇒ 缺省空表，且旧 16 个组件逐值在场。 */
   @Test
-  void seventeenArgCompatibilityConstructorDefaultsToEmptyHouseholds() {
+  void sixteenArgCompatibilityConstructorDefaultsToEmptyHouseholds() {
     Unit unit = oldShapeUnit(U1);
 
-    assertThat(unit.households()).as("第 18 组件没有来源 ⇒ 空表（不是 null）").isEmpty();
+    assertThat(unit.households()).as("第 17 组件没有来源 ⇒ 空表（不是 null）").isEmpty();
     assertThat(unit.name()).isEqualTo("单位 u-1");
-    assertThat(unit.manpower()).containsExactly(new CompositionEntry("步兵", 100));
-    assertThat(unit.stateDescriptions()).as("第 17 组件仍逐值在场").containsEntry("回合", "map:Map1");
+    assertThat(unit.equipment()).containsExactly(new CompositionEntry("步枪", 50));
+    assertThat(unit.stateDescriptions()).as("第 16 组件仍逐值在场").containsEntry("回合", "map:Map1");
   }
 
-  /** canonical 18 参：保序、拒重、拒 null 元素/整表、防御性拷贝 + 冻结。 */
+  /** canonical 17 参：保序、拒重、拒 null 元素/整表、防御性拷贝 + 冻结。 */
   @Test
   void canonicalConstructorKeepsOrderRejectsDuplicatesAndFreezes() {
     List<HouseholdId> input = new ArrayList<>(List.of(HH_B, HH_A));
@@ -283,11 +283,7 @@ class UnitHouseholdContainmentTest {
 
     assertHouseholdsKept(UnitOperations.rename(base, U1, "新名").units().get(U1));
     assertHouseholdsKept(
-        UnitOperations.setComposition(
-                base,
-                U1,
-                List.of(new CompositionEntry("骑兵", 7)),
-                List.of(new CompositionEntry("马", 3)))
+        UnitOperations.setComposition(base, U1, List.of(new CompositionEntry("马", 3)))
             .units()
             .get(U1));
     assertHouseholdsKept(UnitOperations.setStatus(base, U1, UnitStatus.RESTING).units().get(U1));
@@ -307,7 +303,7 @@ class UnitHouseholdContainmentTest {
 
     assertThat(after.households()).containsExactly(HH_B, HH_A);
     assertThat(after.id()).isEqualTo(before.id());
-    assertThat(after.manpower()).isEqualTo(before.manpower());
+    assertThat(after.equipment()).isEqualTo(before.equipment());
     assertThat(after.stateDescriptions()).isEqualTo(before.stateDescriptions());
   }
 
@@ -319,7 +315,7 @@ class UnitHouseholdContainmentTest {
         .containsExactly(HH_B, HH_A);
   }
 
-  /** canonical 18 参 Unit（第 18 组件显式给，其余取固定夹具值）。 */
+  /** canonical 17 参 Unit（第 17 组件 households 显式给，其余取固定夹具值）。 */
   private static Unit unit(UnitId id, List<HouseholdId> households) {
     return unit(id, households, Optional.empty());
   }
@@ -331,7 +327,6 @@ class UnitHouseholdContainmentTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(),
         2,
         500,
@@ -348,7 +343,7 @@ class UnitHouseholdContainmentTest {
         households);
   }
 
-  /** 旧 17 参 canonical 形态（S3a 之前的规范形状；stateDescriptions 有显式来源）。 */
+  /** 旧 16 参 canonical 形态（S3a/S3b 之前的规范形状；stateDescriptions 有显式来源，households 无来源）。 */
   private static Unit oldShapeUnit(UnitId id) {
     return new Unit(
         id,
@@ -356,8 +351,7 @@ class UnitHouseholdContainmentTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
-        List.of(),
+        List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
         Optional.empty(),

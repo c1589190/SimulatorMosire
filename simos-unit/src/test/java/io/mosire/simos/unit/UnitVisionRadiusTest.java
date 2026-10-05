@@ -165,15 +165,10 @@ class UnitVisionRadiusTest {
     UnitState base = stateOf(unit(U1, Optional.empty(), Optional.of(H11), RADIUS));
     assertCopied(
         base.units().get(U1),
-        UnitOperations.setComposition(
-                base,
-                U1,
-                List.of(new CompositionEntry("步兵", 70)),
-                List.of(new CompositionEntry("步枪", 40)))
+        UnitOperations.setComposition(base, U1, List.of(new CompositionEntry("步枪", 40)))
             .units()
             .get(U1),
         "setComposition",
-        "manpower",
         "equipment");
   }
 
@@ -183,14 +178,10 @@ class UnitVisionRadiusTest {
     assertCopied(
         base.units().get(U1),
         UnitOperations.applyCasualties(
-                base,
-                U1,
-                List.of(new CompositionDelta("步兵", -30)),
-                List.of(new CompositionDelta("步枪", -10)))
+                base, U1, List.of(new CompositionDelta("步枪", -10)))
             .units()
             .get(U1),
         "applyCasualties",
-        "manpower",
         "equipment");
   }
 
@@ -385,7 +376,6 @@ class UnitVisionRadiusTest {
         "单位 " + id.value(),
         new SegmentedSeries<>(List.of(new Segment<>(T0, parent)), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, position)), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
@@ -415,7 +405,6 @@ class UnitVisionRadiusTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
@@ -429,7 +418,6 @@ class UnitVisionRadiusTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
@@ -447,7 +435,6 @@ class UnitVisionRadiusTest {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),

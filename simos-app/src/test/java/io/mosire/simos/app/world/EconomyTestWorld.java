@@ -377,7 +377,7 @@ public final class EconomyTestWorld {
     }
     EconomyMeta meta =
         new EconomyMeta(
-            MAP_ID, 0L, OptionalLong.empty(), EconomySeeder.RULES_VERSION, Optional.empty());
+            MAP_ID, 0L, OptionalLong.empty(), EconomyMeta.RUNTIME_VERSION_SEVEN_HEX_V2, Optional.empty());
     // ★★ H4：**创世货币禀赋**（毫银）—— 与行由**同一次构造**产出（人口 → 钱），口径照真播种器
     //   （{@link EconomySeeder#genesisMoney(long)} 是唯一拼写点）；★ 空账（人口 0）⇒ 空钱包。
     for (Map.Entry<HouseholdId, ClassRow> row : classes.entrySet()) {

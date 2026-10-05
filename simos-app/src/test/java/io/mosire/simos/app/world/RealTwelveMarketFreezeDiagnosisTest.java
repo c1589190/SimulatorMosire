@@ -17,7 +17,7 @@ import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
-import io.mosire.simos.app.time.ClassFirstPopulationEconomyTimeParticipant;
+import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
 import io.mosire.simos.app.time.EconomyDayFeed;
 import io.mosire.simos.app.time.MarketReadoutAssembly;
 import io.mosire.simos.app.time.MarketReportFeed;
@@ -1593,7 +1593,7 @@ class RealTwelveMarketFreezeDiagnosisTest {
     }
     core.register(new UnitTimeParticipant(TerrainMovementCost.INSTANCE, RealTwelveHexWorld.MAP_ID));
     core.register(new SdTimeParticipant(RealTwelveHexWorld.MAP_ID));
-    core.register(new ClassFirstPopulationEconomyTimeParticipant(RealTwelveHexWorld.MAP_ID));
+    core.register(new PopulationEconomyTimeParticipant(RealTwelveHexWorld.MAP_ID));
     return core;
   }
 }

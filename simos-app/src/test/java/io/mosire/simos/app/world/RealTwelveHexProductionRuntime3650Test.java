@@ -16,7 +16,7 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
-import io.mosire.simos.app.time.ClassFirstPopulationEconomyTimeParticipant;
+import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
 import io.mosire.simos.app.time.EconomyDayFeed;
 import io.mosire.simos.app.time.MarketReportFeed;
 import io.mosire.simos.app.time.MarketTopologyBookTestAccess;
@@ -997,9 +997,6 @@ class RealTwelveHexProductionRuntime3650Test {
     assertThat(economy.meta().orElseThrow().isCurrentRuntimeVersion())
         .as("★ V2 版本门：新档必须被当前版本判据接受")
         .isTrue();
-    assertThat(economy.classFirst().isEmpty())
-        .as("production-runtime: classFirst 为空")
-        .isTrue();
     assertThat(economy.modes()).as("modes 非空").isNotEmpty();
     assertThat(economy.modes().size()).as("默认 mode 目录 >= 7").isGreaterThanOrEqualTo(7);
     assertThat(economy.classStructures()).as("classStructures 非空").isNotEmpty();
@@ -1742,7 +1739,7 @@ class RealTwelveHexProductionRuntime3650Test {
     core.register(
         new UnitTimeParticipant(TerrainMovementCost.INSTANCE, RealTwelveHexWorld.MAP_ID));
     core.register(new SdTimeParticipant(RealTwelveHexWorld.MAP_ID));
-    core.register(new ClassFirstPopulationEconomyTimeParticipant(RealTwelveHexWorld.MAP_ID));
+    core.register(new PopulationEconomyTimeParticipant(RealTwelveHexWorld.MAP_ID));
     return core;
   }
 

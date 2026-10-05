@@ -99,8 +99,8 @@ class FormatUnitToolTest {
   @Test
   void previewDerivesTheSeedDeterministicallyAndWritesNothing() throws Exception {
     try (Fixture fx = Fixture.open(tempDir.resolve("preview"))) {
-      ToolResult first = fx.call(formatArgs("u-1", 200L, 400L, null, null, null));
-      ToolResult second = fx.call(formatArgs("u-1", 200L, 400L, null, null, null));
+      ToolResult first = fx.call(formatArgs("u-1", 400L, null, null, null));
+      ToolResult second = fx.call(formatArgs("u-1", 400L, null, null, null));
 
       assertThat(first.success()).as(first.message()).isTrue();
       assertThat(second.success()).as(second.message()).isTrue();
@@ -108,17 +108,13 @@ class FormatUnitToolTest {
       JsonNode b = JSON.readTree(second.message());
 
       long expectedSeed =
-          fnv1a64("u-1|1|7|M[步兵:100:200:0:" + MAX + ";]E[步枪:50:400:0:" + MAX + ";]");
+          fnv1a64("u-1|1|7|M[]E[步枪:50:400:0:" + MAX + ";]");
       assertThat(a.get("seedProvided").asBoolean()).isFalse();
       assertThat(a.get("seed").asLong())
           .as("无 seed ⇒ FNV-1a(unitId|baseRevision|tick|M[...]E[...])")
           .isEqualTo(expectedSeed);
       assertThat(b.get("seed").asLong()).as("同状态同参数 ⇒ 同 seed").isEqualTo(expectedSeed);
-      assertThat(amounts(a.get("manpower")))
-          .isEqualTo(expectedFormats(expectedSeed, 200L, 400L).subList(0, 1));
-      assertThat(amounts(a.get("equipment")))
-          .isEqualTo(expectedFormats(expectedSeed, 200L, 400L).subList(1, 2));
-      assertThat(amounts(b.get("manpower"))).isEqualTo(amounts(a.get("manpower")));
+      assertThat(amounts(a.get("equipment"))).isEqualTo(expectedFormats(expectedSeed, 400L));
       assertThat(amounts(b.get("equipment"))).isEqualTo(amounts(a.get("equipment")));
       assertThat(values(a.get("commands")))
           .containsExactly(SetCompositionHandler.TYPE, FormatUnitPlan.PUT_INFO_TYPE);
@@ -126,7 +122,7 @@ class FormatUnitToolTest {
       assertThat(fx.head()).as("preview 零写入").isEqualTo(1L);
       assertThat(fx.storedRevisions()).hasSize(1);
       assertThat(fx.handlerCalls).isEmpty();
-      assertThat(entries(fx.unit(fx.stateAt(1L)).manpower())).containsExactly("步兵=100");
+      assertThat(entries(fx.unit(fx.stateAt(1L)).equipment())).containsExactly("步枪=50");
     }
   }
 
@@ -135,13 +131,12 @@ class FormatUnitToolTest {
     try (Fixture fx = Fixture.open(tempDir.resolve("apply-explicit"))) {
       // 同 seed 的两次 preview 逐值相等（同 seed 同结果）。
       JsonNode p1 =
-          JSON.readTree(fx.call(formatArgs("u-1", 200L, 400L, 42L, null, null)).message());
+          JSON.readTree(fx.call(formatArgs("u-1", 400L, 42L, null, null)).message());
       JsonNode p2 =
-          JSON.readTree(fx.call(formatArgs("u-1", 200L, 400L, 42L, null, null)).message());
-      assertThat(amounts(p2.get("manpower"))).isEqualTo(amounts(p1.get("manpower")));
+          JSON.readTree(fx.call(formatArgs("u-1", 400L, 42L, null, null)).message());
       assertThat(amounts(p2.get("equipment"))).isEqualTo(amounts(p1.get("equipment")));
 
-      ToolResult result = fx.call(formatArgs("u-1", 200L, 400L, 42L, 1L, Boolean.FALSE));
+      ToolResult result = fx.call(formatArgs("u-1", 400L, 42L, 1L, Boolean.FALSE));
       assertThat(result.success()).as(result.message()).isTrue();
       JsonNode view = JSON.readTree(result.message());
       assertThat(view.get("submission").get("result").asText()).isEqualTo("committed");
@@ -154,9 +149,8 @@ class FormatUnitToolTest {
           .as("PutInfo 的载荷 JSON 里含 key/value")
           .contains("\"key\":\"formatUnit\"");
 
-      List<String> expected = expectedFormats(42L, 200L, 400L);
-      assertThat(entries(fx.unit(fx.stateAt(2L)).manpower())).containsExactly(expected.get(0));
-      assertThat(entries(fx.unit(fx.stateAt(2L)).equipment())).containsExactly(expected.get(1));
+      List<String> expected = expectedFormats(42L, 400L);
+      assertThat(entries(fx.unit(fx.stateAt(2L)).equipment())).containsExactlyElementsOf(expected);
 
       // ★ 同批 sd.PutInfo 审计：seed / 是否显式 / 前后两张表 / tick / reason。
       SdInfoEntry entry = infoEntry(fx.stateAt(2L));
@@ -167,10 +161,8 @@ class FormatUnitToolTest {
       assertThat(value.get("seed").asLong()).isEqualTo(42L);
       assertThat(value.get("seedProvided").asBoolean()).isTrue();
       assertThat(value.get("tick").asLong()).isEqualTo(7L);
-      assertThat(deltas(value.get("beforeManpower"))).containsExactly("步兵=100");
       assertThat(deltas(value.get("beforeEquipment"))).containsExactly("步枪=50");
-      assertThat(deltas(value.get("manpower"))).isEqualTo(expected.subList(0, 1));
-      assertThat(deltas(value.get("equipment"))).isEqualTo(expected.subList(1, 2));
+      assertThat(deltas(value.get("equipment"))).isEqualTo(expected);
       assertThat(value.get("reason").asText()).isEqualTo(FormatUnitTool.DEFAULT_REASON);
       assertThat(entry.note()).isPresent();
       assertThat(entry.note().orElseThrow()).contains("seed=42");
@@ -181,24 +173,22 @@ class FormatUnitToolTest {
   void derivedSeedPathAuditsSeedProvidedFalseAndMatchesPreview() throws Exception {
     try (Fixture fx = Fixture.open(tempDir.resolve("apply-derived"))) {
       JsonNode preview =
-          JSON.readTree(fx.call(formatArgs("u-1", 200L, 400L, null, null, null)).message());
+          JSON.readTree(fx.call(formatArgs("u-1", 400L, null, null, null)).message());
       long derivedSeed = preview.get("seed").asLong();
 
-      ToolResult result = fx.call(formatArgs("u-1", 200L, 400L, null, 1L, Boolean.FALSE));
+      ToolResult result = fx.call(formatArgs("u-1", 400L, null, 1L, Boolean.FALSE));
       assertThat(result.success()).as(result.message()).isTrue();
       JsonNode view = JSON.readTree(result.message());
       assertThat(view.get("seed").asLong())
           .as("preview / apply 共用同一份纯推导 ⇒ 同派生 seed")
           .isEqualTo(derivedSeed);
       assertThat(view.get("seedProvided").asBoolean()).isFalse();
-      assertThat(amounts(view.get("manpower"))).isEqualTo(amounts(preview.get("manpower")));
       assertThat(amounts(view.get("equipment"))).isEqualTo(amounts(preview.get("equipment")));
 
       SdInfoEntry entry = infoEntry(fx.stateAt(2L));
       JsonNode value = JSON.readTree(entry.value().toString());
       assertThat(value.get("seed").asLong()).isEqualTo(derivedSeed);
       assertThat(value.get("seedProvided").asBoolean()).isFalse();
-      assertThat(deltas(value.get("manpower"))).isEqualTo(deltas(view.get("manpower")));
       assertThat(deltas(value.get("equipment"))).isEqualTo(deltas(view.get("equipment")));
     }
   }
@@ -207,7 +197,7 @@ class FormatUnitToolTest {
   void applyOrderIsReadFromTheRealEnvelopeSequenceWhenAGuardRejectsPutInfo() throws Exception {
     try (Fixture fx = Fixture.open(tempDir.resolve("order"))) {
       fx.rejectTypes.add(FormatUnitPlan.PUT_INFO_TYPE);
-      ToolResult result = fx.call(formatArgs("u-1", 200L, 400L, 7L, 1L, Boolean.FALSE));
+      ToolResult result = fx.call(formatArgs("u-1", 400L, 7L, 1L, Boolean.FALSE));
       assertThat(result.success()).isFalse();
       assertThat(result.code()).isEqualTo("REJECTED");
       JsonNode commands = JSON.readTree(result.message()).get("submission").get("commands");
@@ -217,14 +207,14 @@ class FormatUnitToolTest {
           .as("真信封序：SetComposition 先、PutInfo 后")
           .containsExactly(SetCompositionHandler.TYPE, FormatUnitPlan.PUT_INFO_TYPE);
       assertThat(fx.head()).as("整批拒 ⇒ 零 revision").isEqualTo(1L);
-      assertThat(entries(fx.unit(fx.stateAt(1L)).manpower())).containsExactly("步兵=100");
+      assertThat(entries(fx.unit(fx.stateAt(1L)).equipment())).containsExactly("步枪=50");
     }
   }
 
   @Test
   void missingUnitIsRejectedBeforeAnyWrite() throws Exception {
     try (Fixture fx = Fixture.open(tempDir.resolve("missing"))) {
-      ToolResult result = fx.call(formatArgs("u-404", 200L, 400L, 42L, null, null));
+      ToolResult result = fx.call(formatArgs("u-404", 400L, 42L, null, null));
       assertThat(result.success()).isFalse();
       assertThat(result.code()).isEqualTo("BAD_REQUEST");
       assertThat(result.message()).contains("单位不存在: u-404");
@@ -246,15 +236,13 @@ class FormatUnitToolTest {
   }
 
   /**
-   * 独立 {@link Random} 预言机：按"manpower 表序 → equipment 表序"，幅度为 0 的条目不消费随机数；在 {@code [-amplitude,
-   * +amplitude]} 均匀取整后按 [0, MAX] 截断。返回 ["步兵=<n>", "步枪=<n>"]。
+   * 独立 {@link Random} 预言机：只按 equipment 表序（manpower 已退役）；幅度为 0 的条目不消费随机数；在 {@code [-amplitude,
+   * +amplitude]} 均匀取整后按 [0, MAX] 截断。返回 ["步枪=<n>"]。
    */
-  private static List<String> expectedFormats(
-      long seed, long manpowerJitter, long equipmentJitter) {
+  private static List<String> expectedFormats(long seed, long equipmentJitter) {
     Random random = new Random(seed);
-    long infantry = jittered(100L, manpowerJitter, random);
     long rifle = jittered(50L, equipmentJitter, random);
-    return List.of("步兵=" + infantry, "步枪=" + rifle);
+    return List.of("步枪=" + rifle);
   }
 
   private static long jittered(long base, long jitterPerMille, Random random) {
@@ -270,22 +258,16 @@ class FormatUnitToolTest {
 
   private static Map<String, Object> formatArgs(
       String unitId,
-      long manpowerJitterPerMille,
       long equipmentJitterPerMille,
       Long seed,
       Long expectedRevision,
       Boolean preview) {
-    Map<String, Object> manpower = new LinkedHashMap<>();
-    manpower.put("type", "步兵");
-    manpower.put("baseAmount", 100L);
-    manpower.put("jitterPerMille", manpowerJitterPerMille);
     Map<String, Object> equipment = new LinkedHashMap<>();
     equipment.put("type", "步枪");
     equipment.put("baseAmount", 50L);
     equipment.put("jitterPerMille", equipmentJitterPerMille);
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("unitId", unitId);
-    args.put("manpower", List.of(manpower));
     args.put("equipment", List.of(equipment));
     if (seed != null) {
       args.put("seed", seed);
@@ -419,7 +401,6 @@ class FormatUnitToolTest {
             new SegmentedSeries<>(
                 List.of(new Segment<>(T7, Optional.<UnitId>empty())), List.of(), null),
             new SegmentedSeries<>(List.of(new Segment<>(T7, Optional.of(H11))), List.of(), null),
-            List.of(new CompositionEntry("步兵", 100)),
             List.of(new CompositionEntry("步枪", 50)),
             2,
             500,

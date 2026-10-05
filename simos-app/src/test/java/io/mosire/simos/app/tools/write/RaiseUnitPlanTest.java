@@ -15,7 +15,6 @@ import io.mosire.simos.app.testing.SocialHouseholdFixture;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -57,7 +56,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link RaiseUnitPlan} 纯推导（收尾期 T4b）：参数 / 引用逐条具名拒、三项来源瀑布与不足缺口、四片载荷逐值、命令类型与顺序、★ 不丢失（SeedGroups 的
+ * {@link RaiseUnitPlan} 纯推导（收尾期 T4b + S3b）：参数 / 引用逐条具名拒、三项来源瀑布与不足缺口、四片载荷逐值、命令类型与顺序、★ 不丢失（CreateHousehold/TransferHouseholdMembers 的
  * {@code ageDays}/{@code anchorTick}/{@code stress} 保真）、同状态同参数确定性。
  *
  * <p>★ 判别力：来源表把**每个来源的 (owner/批次, 格, 额/扣后人数)** 逐值钉住；保真断言取**非 0 stress / 非 0 anchorTick**——
@@ -88,7 +87,7 @@ class RaiseUnitPlanTest {
   private static final ActorRef HH_OUT = new ActorRef(ActorKind.HOUSEHOLD, "house@1_3");
   private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "e-1");
 
-  private static final CommodityId GRAIN = new CommodityId(PilotModel.GRAIN);
+  private static final CommodityId GRAIN = new CommodityId("grain");
   private static final CurrencyId SILVER = MoneyVocabulary.SILVER_CURRENCY;
 
   private static final ObjectMapper JSON = new ObjectMapper();
@@ -267,7 +266,12 @@ class RaiseUnitPlanTest {
     assertThat(plan.parent()).isEmpty();
     assertThat(plan.commandTypes())
         .containsExactly(
-            "unit.CreateUnit", "actor.AdjustAccounts", "social.SeedGroups", "sd.PutInfo");
+            "social.CreateHousehold",
+            "social.TransferHouseholdMembers",
+            "social.TransferHouseholdMembers",
+            "unit.CreateUnit",
+            "actor.AdjustAccounts",
+            "sd.PutInfo");
 
     // 粮：hh1 可支配 100−20=80 先扣满，再 hh2 的 40；ESTATE / 区外 / 可用 0 不进来源表。
     assertThat(plan.grain().requested()).isEqualTo(120L);
@@ -306,8 +310,9 @@ class RaiseUnitPlanTest {
     assertThat(create.get("name").asText()).isEqualTo("新军");
     assertThat(create.get("position").get("q").asInt()).isEqualTo(1);
     assertThat(create.get("position").get("r").asInt()).isEqualTo(1);
-    assertThat(create.get("manpower").get(0).get("type").asText()).isEqualTo("人员");
-    assertThat(create.get("manpower").get(0).get("amount").asLong()).isEqualTo(40L);
+    assertThat(create.get("households")).hasSize(1);
+    assertThat(create.get("households").get(0).asText()).isEqualTo(plan.householdId());
+    assertThat(create.has("manpower")).as("S3b：CreateUnit 载荷不再发 manpower").isFalse();
     assertThat(create.get("equipment").get(0).get("type").asText()).isEqualTo("rifle");
     assertThat(create.get("equipment").get(0).get("amount").asInt()).isEqualTo(12);
     assertThat(create.get("equipment").get(1).get("type").asText()).isEqualTo("shield");
@@ -325,19 +330,28 @@ class RaiseUnitPlanTest {
     assertHouseholdAdjustment(entries.get(1), HH2, H12, -40L, -80L);
     assertTreasuryAdjustment(entries.get(2), "u-new", H11, 120L, 100L);
 
-    // social.SeedGroups：整组覆盖必须带 ageDays/anchorTick/stress 保真，count = 扣后。
-    JsonNode seeds = JSON.readTree(plan.seedGroupsPayloadJson()).get("entries");
-    assertThat(seeds).hasSize(2);
-    assertSeedEntry(seeds.get(0), "g1", H11, 0L, 20L * 365L, 0L, 4L);
-    assertSeedEntry(seeds.get(1), "g2", H12, 10L, 30L * 365L, 5L, 11L);
+    // social：新人口家户 + 两条成员批次转移（from/to/lotId/count 逐值；人口不再进 Unit）。
+    JsonNode household = JSON.readTree(plan.createHouseholdPayloadJson());
+    assertThat(household.get("householdId").asText()).isEqualTo(plan.householdId());
+    assertThat(household.get("location").get("type").asText()).isEqualTo("UNIT");
+    assertThat(household.get("location").get("unitId").asText()).isEqualTo("u-new");
+    assertThat(household.get("vitalRates")).isEmpty();
+    assertThat(plan.transfers()).hasSize(2);
+    JsonNode transfer0 = JSON.readTree(plan.transferPayloadJson(plan.transfers().get(0), "组军测试"));
+    assertThat(transfer0.get("to").asText()).isEqualTo(plan.householdId());
+    assertThat(transfer0.get("lotId").asText()).isEqualTo("g1");
+    assertThat(transfer0.get("count").asLong()).isEqualTo(30L);
+    assertThat(transfer0.get("reason").asText()).isEqualTo("组军测试");
+    JsonNode transfer1 = JSON.readTree(plan.transferPayloadJson(plan.transfers().get(1), "组军测试"));
+    assertThat(transfer1.get("lotId").asText()).isEqualTo("g2");
+    assertThat(transfer1.get("count").asLong()).isEqualTo(10L);
 
     JsonNode info = JSON.readTree(plan.infoValueJson("组军测试"));
     assertThat(info.get("unitId").asText()).isEqualTo("u-new");
     assertThat(info.get("regionId").asText()).isEqualTo("r-nation");
     assertThat(info.get("at").get("q").asInt()).isEqualTo(1);
     assertThat(info.get("at").get("r").asInt()).isEqualTo(1);
-    assertThat(info.get("manpower").get(0).get("type").asText()).isEqualTo("人员");
-    assertThat(info.get("manpower").get(0).get("amount").asLong()).isEqualTo(40L);
+    assertThat(info.get("householdId").asText()).isEqualTo(plan.householdId());
     assertThat(info.get("manpowerRequested").asLong()).isEqualTo(40L);
     assertThat(info.get("grain").asLong()).isEqualTo(120L);
     assertThat(info.get("money").asLong()).isEqualTo(100L);
@@ -348,7 +362,7 @@ class RaiseUnitPlanTest {
     assertThat(plan.infoNote("组军测试"))
         .contains("u-new")
         .contains("region=r-nation")
-        .contains("人力 40")
+        .contains("人口 40")
         .contains("粮 120")
         .contains("钱 100")
         .contains("组军测试");
@@ -370,7 +384,12 @@ class RaiseUnitPlanTest {
 
     assertThat(manpowerOnly.commandTypes())
         .as("纯人力批：无粮/钱 ⇒ 不落 actor.AdjustAccounts")
-        .containsExactly("unit.CreateUnit", "social.SeedGroups", "sd.PutInfo");
+        .containsExactly(
+            "social.CreateHousehold",
+            "social.TransferHouseholdMembers",
+            "social.TransferHouseholdMembers",
+            "unit.CreateUnit",
+            "sd.PutInfo");
     assertThat(manpowerOnly.hasGrainOrMoney()).isFalse();
     assertThat(manpowerOnly.grain())
         .as("requested=0 = 整段跳过（不是『恰好没有来源』）")
@@ -403,7 +422,10 @@ class RaiseUnitPlanTest {
     assertThat(second.commandTypes()).containsExactlyElementsOf(first.commandTypes());
     assertThat(second.createUnitPayloadJson()).isEqualTo(first.createUnitPayloadJson());
     assertThat(second.adjustAccountsPayloadJson()).isEqualTo(first.adjustAccountsPayloadJson());
-    assertThat(second.seedGroupsPayloadJson()).isEqualTo(first.seedGroupsPayloadJson());
+    assertThat(second.createHouseholdPayloadJson()).isEqualTo(first.createHouseholdPayloadJson());
+    assertThat(second.transfers()).isEqualTo(first.transfers());
+    assertThat(second.transferPayloadJson(second.transfers().get(0), "组军测试"))
+        .isEqualTo(first.transferPayloadJson(first.transfers().get(0), "组军测试"));
     assertThat(second.infoValueJson("组军测试")).isEqualTo(first.infoValueJson("组军测试"));
     assertThat(second.grain().sources()).containsExactlyElementsOf(first.grain().sources());
     assertThat(second.manpower().sources()).containsExactlyElementsOf(first.manpower().sources());
@@ -570,7 +592,6 @@ class RaiseUnitPlanTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(at))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,

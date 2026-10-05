@@ -10,7 +10,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.map.MapSnapshot;
-import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -49,11 +48,11 @@ class RenameUnitHandlerTest {
     UnitChangeSet changeSet = (UnitChangeSet) ((HandlerOutcome.Applied) outcome).changeSet();
     UnitState next = UnitChangeSet.apply(changeSet, base);
     assertThat(next.units().get(U1).name()).isEqualTo("第二连");
-    // 改名只动 name：其余字段原样带过
-    assertThat(next.units().get(U1).manpower()).containsExactly(new CompositionEntry("步兵", 100));
-    assertThat(next.units().get(U1).equipment()).containsExactly(new CompositionEntry("步枪", 50));
-    assertThat(next.units().get(U1).position()).isEqualTo(base.units().get(U1).position());
-    assertThat(next.units().get(U1).parent()).isEqualTo(base.units().get(U1).parent());
+    // 改名只动 name：其余 16 个组件（含 equipment / households / parent 时态段）逐值带过
+    assertThat(next.units().get(U1))
+        .usingRecursiveComparison()
+        .ignoringFields("name")
+        .isEqualTo(base.units().get(U1));
   }
 
   @Test

@@ -425,7 +425,6 @@ class UnitJurisdictionOperationsTest {
             "第一连",
             parentSeries(Optional.empty()),
             positionSeries(Optional.of(H11)),
-            List.of(new CompositionEntry("步兵", 100)),
             List.of(new CompositionEntry("步枪", 50)),
             2,
             500,
@@ -467,12 +466,10 @@ class UnitJurisdictionOperationsTest {
         UnitOperations.setComposition(
                 base,
                 U1,
-                List.of(new CompositionEntry("步兵", 70)),
                 List.of(new CompositionEntry("步枪", 40)))
             .units()
             .get(U1),
         "setComposition",
-        "manpower",
         "equipment");
   }
 
@@ -484,12 +481,10 @@ class UnitJurisdictionOperationsTest {
         UnitOperations.applyCasualties(
                 base,
                 U1,
-                List.of(new CompositionDelta("步兵", -30)),
                 List.of(new CompositionDelta("步枪", -10)))
             .units()
             .get(U1),
         "applyCasualties",
-        "manpower",
         "equipment");
   }
 
@@ -766,7 +761,6 @@ class UnitJurisdictionOperationsTest {
         "单位 " + id.value(),
         parentSeries(parent),
         positionSeries(position),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         speed,
         500,
@@ -812,7 +806,6 @@ class UnitJurisdictionOperationsTest {
         "第一连",
         parentSeries(Optional.empty()),
         positionSeries(Optional.of(H11)),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
@@ -825,7 +818,6 @@ class UnitJurisdictionOperationsTest {
         "第一连",
         parentSeries(Optional.empty()),
         positionSeries(Optional.of(H11)),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
@@ -842,7 +834,6 @@ class UnitJurisdictionOperationsTest {
         "第一连",
         parentSeries(Optional.empty()),
         positionSeries(Optional.of(H11)),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
@@ -860,7 +851,6 @@ class UnitJurisdictionOperationsTest {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),

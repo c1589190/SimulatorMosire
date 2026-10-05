@@ -327,23 +327,18 @@ class UnitExtensionEndToEndTest {
     assertThat(
             submit(
                 "unit.ApplyCasualties",
-                "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-30}],\"equipment\":[{\"type\":\"步枪\",\"amount\":-10}]}",
+                "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-10}]}",
                 1))
         .isEqualTo(new CommandResult.Committed(ref("main", 2)));
 
     Unit after = unitSlice(shell.coreSimos().replay(ref("main", 2))).units().get(U1);
-    assertThat(after.manpower())
-        .as("★ 100 + (−30) = 70（把 Δ 当绝对值会得 30）")
-        .containsExactly(new CompositionEntry("步兵", 70));
     assertThat(after.equipment())
-        .as("装备双轨：提及键扣 10、未提及键原样")
+        .as("★ 50 + (−10) = 40（把 Δ 当绝对值会得 10）；未提及的 炮 原样")
         .containsExactly(new CompositionEntry("步枪", 40), new CompositionEntry("炮", 4));
 
     Unit before = unitSlice(shell.coreSimos().replay(ref("main", 1))).units().get(U1);
-    assertThat(before.manpower())
-        .as("★ 回退到战损前 ⇒ 100（历史若被覆写，这里读到 70）")
-        .containsExactly(new CompositionEntry("步兵", 100));
     assertThat(before.equipment())
+        .as("★ 回退到战损前 ⇒ 步枪 50（历史若被覆写，这里读到 40）")
         .containsExactly(new CompositionEntry("步枪", 50), new CompositionEntry("炮", 4));
   }
 
@@ -465,7 +460,6 @@ class UnitExtensionEndToEndTest {
         name,
         new SegmentedSeries<>(List.of(new Segment<>(T0, parent)), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         equipment,
         2,
         500,
@@ -489,7 +483,6 @@ class UnitExtensionEndToEndTest {
         name,
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(parent))), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,

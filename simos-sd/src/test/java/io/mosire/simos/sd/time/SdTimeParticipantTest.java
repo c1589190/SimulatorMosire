@@ -234,8 +234,7 @@ class SdTimeParticipantTest {
             new Trigger.AtOrAfterTick(5),
             new Action.EnqueueUnitCommand(
                 "unit.ApplyCasualties",
-                "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-1}],"
-                    + "\"equipment\":[]}"),
+                "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-1}]}"),
             status,
             0);
     return SdState.empty().withEffects(Map.of(E1, effect));

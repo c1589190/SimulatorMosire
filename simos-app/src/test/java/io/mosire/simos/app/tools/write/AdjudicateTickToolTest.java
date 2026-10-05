@@ -559,7 +559,6 @@ class AdjudicateTickToolTest {
         "unit.CreateUnit",
         List.of(
             "{\"id\":\"u-9\",\"name\":\"x\",\"position\":{\"q\":1,\"r\":1},"
-                + "\"manpower\":[{\"type\":\"步兵\",\"amount\":1}],\"equipment\":[],"
                 + "\"speed\":1,\"mobilityPerMille\":500}",
             "u-9"));
     samples.put("unit.CancelRoute", List.of("{\"id\":\"u-1\"}", "u-1"));
@@ -567,7 +566,7 @@ class AdjudicateTickToolTest {
     samples.put(
         "unit.SetComposition",
         List.of(
-            "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":1}]," + "\"equipment\":[]}",
+            "{\"id\":\"u-1\",\"equipment\":[]}",
             "u-1"));
     samples.put("unit.SetStatus", List.of("{\"id\":\"u-1\",\"status\":\"RESTING\"}", "u-1"));
     // ★ D1/D3a：状态描述链接与有符号直改都按载荷点名的 unitId 给目标（AdjustComposition 是 GM-only，
@@ -578,12 +577,12 @@ class AdjudicateTickToolTest {
     samples.put(
         "unit.AdjustComposition",
         List.of(
-            "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-1}]," + "\"equipment\":[]}",
+            "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-1}]}",
             "u-1"));
     samples.put(
         "unit.ApplyCasualties",
         List.of(
-            "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-1}]," + "\"equipment\":[]}",
+            "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-1}]}",
             "u-1"));
     samples.put("unit.DetachUnit", List.of("{\"id\":\"u-3\"}", "u-3"));
     samples.put("unit.SetFormationOffset", List.of("{\"id\":\"u-3\",\"dq\":1,\"dr\":0}", "u-3"));
@@ -1292,7 +1291,6 @@ class AdjudicateTickToolTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,

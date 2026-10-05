@@ -124,7 +124,6 @@ final class RenderFixtures {
                 null),
             new SegmentedSeries<>(
                 List.of(new Segment<>(T0, Optional.of(SOUTH_EAST))), List.of(), null),
-            List.of(new CompositionEntry("步兵", 300)),
             List.of(),
             2,
             1000,
@@ -144,7 +143,6 @@ final class RenderFixtures {
                 null),
             new SegmentedSeries<>(
                 List.of(new Segment<>(T0, Optional.of(new HexCoord(9, 9)))), List.of(), null),
-            List.of(new CompositionEntry("步兵", 100)),
             List.of(),
             2,
             1000,

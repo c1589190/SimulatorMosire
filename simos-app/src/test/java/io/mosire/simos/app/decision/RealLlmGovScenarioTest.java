@@ -58,7 +58,6 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.economy.classfirst.PilotModel;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.GovState;
@@ -153,8 +152,8 @@ class RealLlmGovScenarioTest {
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
-  private static final CommodityId GRAIN = new CommodityId(PilotModel.GRAIN);
-  private static final CommodityId CLOTH = new CommodityId(PilotModel.CLOTH);
+  private static final CommodityId GRAIN = new CommodityId("grain");
+  private static final CommodityId CLOTH = new CommodityId("cloth");
   private static final CurrencyId SILVER = MoneyVocabulary.SILVER_CURRENCY;
 
   /** 四条工具名（GM 代执行/补执行的靶子）。 */
@@ -507,7 +506,7 @@ class RealLlmGovScenarioTest {
   private void buildWorld() throws Exception {
     List<JsonNode> summaries =
         CompactThreeNationsWorld.initializeNations(
-            shell.coreSimos(), EconomySeeder.FoundationProfile.CLASS_FIRST);
+            shell.coreSimos(), EconomySeeder.FoundationProfile.PRODUCTION_RUNTIME);
     assertThat(summaries).as("三国 worldgen 摘要").hasSize(3);
     SimulationState world = stateAt(head());
     for (int i = 0; i < CompactThreeNationsWorld.NATION_REGIONS.size(); i++) {
@@ -2026,7 +2025,8 @@ class RealLlmGovScenarioTest {
       return 0L;
     }
     Unit unit = CompactThreeNationsWorld.unitOf(state).units().get(new UnitId(unitId));
-    return unit == null ? 0L : unit.manpower().stream().mapToLong(CompositionEntry::amount).sum();
+    // ★ S3b：人口唯一来源 = Social 家户现算（Unit.manpower 已退役）。
+    return unit == null ? 0L : CompactThreeNationsWorld.socialOf(state).unitPopulation(unitId);
   }
 
   private static long govStaff(SimulationState state, UnitId govUnit, StaffRole role) {

@@ -67,10 +67,9 @@ class UnitCasualtyRevisionTest {
   /** T8 冻结的命令类型（spec §五.2 / §四 表）。 */
   private static final String CASUALTY_TYPE = "unit.ApplyCasualties";
 
-  /** ★ 战损载荷：人力 −30、装备只扣**提及**的 `步枪`（`炮` 必须留在原地）。 */
+  /** ★ 战损载荷：只扣**提及**的 `步枪`（`炮` 必须留在原地；manpower 已退役，不出现）。 */
   private static final String CASUALTY_PAYLOAD =
-      "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-30}],"
-          + "\"equipment\":[{\"type\":\"步枪\",\"amount\":-10}]}";
+      "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-10}]}";
 
   /** 与 {@code BranchingEndToEndTest} 同一口径：{@code CoreConfig.mapper} 无消费者，但也不许传 null。 */
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
@@ -97,30 +96,24 @@ class UnitCasualtyRevisionTest {
 
       // ── 战损后那一 revision：绝对值落盘 ⇒ 70 / 40（`炮` 未提及 ⇒ 4 留在原地）────────────
       UnitSnapshot afterBattle = unitOf(core.replay(ref("main", 2)));
-      assertThat(afterBattle.state().units().get(U1).manpower())
-          .as("R2：100 + (−30) = 70（有序条目表，人力条目留在原地）")
-          .containsExactly(new CompositionEntry("步兵", 70));
       assertThat(afterBattle.state().units().get(U1).equipment())
-          .as("R2：装备双轨——提及条目 40、未提及条目 4（保序）")
+          .as("R2：50 + (−10) = 40；未提及的 炮 留在原地 4（保序）")
           .containsExactly(new CompositionEntry("步枪", 40), new CompositionEntry("炮", 4));
       assertThat(afterBattle.ref()).as("切片的 ref 是它自己那一 revision").isEqualTo(ref("main", 2));
 
       // ── ★★ 回退到战损前那一 revision：战前值（m5 的咬点）─────────────────────────────
       UnitSnapshot beforeBattle = unitOf(core.replay(ref("main", 1)));
-      assertThat(beforeBattle.state().units().get(U1).manpower())
-          .as("★ 回退 R1 ⇒ 战前值 100（历史若被覆写，这里读到的是 70）")
-          .containsExactly(new CompositionEntry("步兵", 100));
       assertThat(beforeBattle.state().units().get(U1).equipment())
-          .as("★ 回退 R1 ⇒ 战前装备（步枪 50 / 炮 4，保序）")
+          .as("★ 回退 R1 ⇒ 战前装备（步枪 50 / 炮 4，保序；历史若被覆写，这里读到的是 40）")
           .containsExactly(new CompositionEntry("步枪", 50), new CompositionEntry("炮", 4));
 
       // ── 再回一次、再取一次：重放是纯函数，历史行不被读操作改写 ────────────────────────
-      assertThat(unitOf(core.replay(ref("main", 1))).state().units().get(U1).manpower())
+      assertThat(unitOf(core.replay(ref("main", 1))).state().units().get(U1).equipment())
           .as("重复回退仍是战前值")
-          .containsExactly(new CompositionEntry("步兵", 100));
-      assertThat(unitOf(core.replay(ref("main", 2))).state().units().get(U1).manpower())
+          .containsExactly(new CompositionEntry("步枪", 50), new CompositionEntry("炮", 4));
+      assertThat(unitOf(core.replay(ref("main", 2))).state().units().get(U1).equipment())
           .as("重复取战损后仍是战损值")
-          .containsExactly(new CompositionEntry("步兵", 70));
+          .containsExactly(new CompositionEntry("步枪", 40), new CompositionEntry("炮", 4));
 
       assertThat(core.revisions(main()))
           .as("两条各自独立的行（创世 + 战损）")
@@ -137,9 +130,8 @@ class UnitCasualtyRevisionTest {
     assertThat(casualtyRow.timestamp()).isEqualTo(T0);
     assertThat(casualtyRow.changesetJson())
         .as("★ 落盘的是变更集（绝对值），不是命令载荷的 delta 明文")
-        .contains("\"amount\":70")
         .contains("\"amount\":40")
-        .doesNotContain("\"amount\":-30")
+        .contains("\"amount\":4")
         .doesNotContain("\"amount\":-10");
   }
 
@@ -161,35 +153,29 @@ class UnitCasualtyRevisionTest {
               casualtyPayload(
                   "cmd-over",
                   1,
-                  "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-101}],"
-                      + "\"equipment\":[]}"));
+                  "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-51}]}"));
       CommandResult positive =
           core.submit(
               casualtyPayload(
                   "cmd-plus",
                   1,
-                  "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":5}],"
-                      + "\"equipment\":[]}"));
+                  "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":5}]}"));
       CommandResult unknownKey =
           core.submit(
               casualtyPayload(
                   "cmd-unknown",
                   1,
-                  "{\"id\":\"u-1\",\"manpower\":[{\"type\":\"步兵\",\"amount\":-1}],"
-                      + "\"equipment\":[{\"type\":\"坦克\",\"amount\":-1}]}"));
+                  "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"坦克\",\"amount\":-1}]}"));
 
-      assertThat(outOfRange).as("★ 上界：100 + (−101) ⇒ 拒").isInstanceOf(CommandResult.Rejected.class);
-      assertThat(((CommandResult.Rejected) outOfRange).reason()).contains("人员战损超出当前值");
-      assertThat(((CommandResult.Rejected) positive).reason()).contains("人员增量必须 ≤ 0");
+      assertThat(outOfRange).as("★ 上界：50 + (−51) ⇒ 拒").isInstanceOf(CommandResult.Rejected.class);
+      assertThat(((CommandResult.Rejected) outOfRange).reason()).contains("装备战损超出当前值");
+      assertThat(((CommandResult.Rejected) positive).reason()).contains("装备增量必须 ≤ 0");
       assertThat(((CommandResult.Rejected) unknownKey).reason())
           .as("★ P14：未知类型 ⇒ 拒（不视作 0）")
           .contains("未知装备类型");
 
       assertThat(core.revisions(main())).as("★ 三条拒绝之后，revisions 行数仍是一（拒绝不落 revision）").hasSize(1);
       UnitSnapshot still = unitOf(core.replay(ref("main", 1)));
-      assertThat(still.state().units().get(U1).manpower())
-          .as("世界逐值不动")
-          .containsExactly(new CompositionEntry("步兵", 100));
       assertThat(still.state().units().get(U1).equipment())
           .containsExactly(new CompositionEntry("步枪", 50), new CompositionEntry("炮", 4));
     }
@@ -231,7 +217,6 @@ class UnitCasualtyRevisionTest {
         .containsPattern("\"payloadDigest\":\"sha256:[0-9a-f]{32}\"");
     assertThat(payload)
         .as("★ m6：delta 的字段名不进事件载荷")
-        .doesNotContain("manpower")
         .doesNotContain("equipment");
     assertThat(payload)
         .as("★ m6：delta 的数值不进事件载荷（负数一定带 `-`，十六进制里不可能出现）")
@@ -307,7 +292,6 @@ class UnitCasualtyRevisionTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(H11))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50), new CompositionEntry("炮", 4)),
         2,
         500,

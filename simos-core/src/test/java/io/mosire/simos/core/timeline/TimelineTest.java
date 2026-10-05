@@ -374,7 +374,6 @@ class TimelineTest {
                         List.of(new Segment<>(t0, Optional.of(new HexCoord(1, 1)))),
                         List.of(),
                         null),
-                    List.of(new CompositionEntry("士兵", 500)),
                     List.of(new CompositionEntry("旗帜", 3)),
                     2,
                     1000,

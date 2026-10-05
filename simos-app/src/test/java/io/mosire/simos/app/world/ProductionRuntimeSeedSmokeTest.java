@@ -33,7 +33,7 @@ import org.junit.jupiter.api.Test;
  * EconomySeeder.FoundationProfile#PRODUCTION_RUNTIME} 的小地图必须
  *
  * <ol>
- *   <li>不种 class-first 状态（{@code seed.classFirst().isEmpty()}）；
+ *   <li>不写 class-first 顶层键（P0.1 后 {@code classFirst} 组件已删除，载荷不得再出该键）；
  *   <li>载荷顶层带 P1/P2 目录五表：{@code modes/classStructures/classPositions/classStandings/assetRules}；
  *   <li>每条 entry 都是完整生产结构（{@code industries} + {@code units/assetShares/allocations/laborSupply/
  *       memberships}），且至少一条真的有产业/生产单元/资产份额/劳动/成员；
@@ -79,9 +79,6 @@ class ProductionRuntimeSeedSmokeTest {
     assertThat(seed.profile())
         .as("profile 必须逐值保留")
         .isEqualTo(EconomySeeder.FoundationProfile.PRODUCTION_RUNTIME);
-    assertThat(seed.classFirst().isEmpty())
-        .as("production-runtime 的生产权威是 entries，不种 class-first")
-        .isTrue();
 
     JsonNode payload = JSON.readTree(seed.economyPayload());
     assertThat(payload.path("entries").isArray()).as("entries 必须是数组").isTrue();
@@ -140,9 +137,6 @@ class ProductionRuntimeSeedSmokeTest {
     EconomyData economy =
         EconomyChangeSet.apply(
             (EconomyChangeSet) ((HandlerOutcome.Applied) outcome).changeSet(), EconomyData.empty());
-    assertThat(economy.classFirst().isEmpty())
-        .as("handler 落盘后 classFirst 仍为空（production-runtime 不混播）")
-        .isTrue();
     assertThat(economy.modes()).as("落盘 modes ≥ 7").hasSizeGreaterThanOrEqualTo(7);
     assertThat(economy.classStructures())
         .as("落盘 classStructures ≥ 7")

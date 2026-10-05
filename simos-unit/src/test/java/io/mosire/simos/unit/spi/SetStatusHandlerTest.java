@@ -47,10 +47,11 @@ class SetStatusHandlerTest {
     UnitState next = applied(base, "{\"id\":\"u-1\",\"status\":\"RESTING\"}");
 
     assertThat(next.units().get(U1).status()).isEqualTo(UnitStatus.RESTING);
-    assertThat(next.units().get(U1).name()).isEqualTo(base.units().get(U1).name());
-    assertThat(next.units().get(U1).manpower()).isEqualTo(base.units().get(U1).manpower());
-    assertThat(next.units().get(U1).equipment()).isEqualTo(base.units().get(U1).equipment());
-    assertThat(next.units().get(U1).movement()).isEqualTo(base.units().get(U1).movement());
+    // 改状态只动 status：其余 16 个组件逐值带过
+    assertThat(next.units().get(U1))
+        .usingRecursiveComparison()
+        .ignoringFields("status")
+        .isEqualTo(base.units().get(U1));
   }
 
   @Test

@@ -175,7 +175,6 @@ class UnitsHereFacetTest {
         name,
         new SegmentedSeries<>(List.of(new Segment<>(T0, parent)), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, position)), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,

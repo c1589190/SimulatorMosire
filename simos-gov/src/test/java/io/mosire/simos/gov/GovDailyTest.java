@@ -711,7 +711,6 @@ class GovDailyTest {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, position)), List.of(), null),
-        List.of(new CompositionEntry("官员", 1)),
         List.of(),
         1,
         1000,

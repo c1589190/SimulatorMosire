@@ -145,13 +145,11 @@ class UnitModuleOperationsTest {
           UnitOperations.setComposition(
                   base,
                   U1,
-                  List.of(new CompositionEntry("步兵", 70)),
                   List.of(new CompositionEntry("步枪", 40)))
               .units()
               .get(U1),
           op("setComposition", module),
-          "manpower",
-          "equipment");
+            "equipment");
     }
   }
 
@@ -165,13 +163,11 @@ class UnitModuleOperationsTest {
           UnitOperations.applyCasualties(
                   base,
                   U1,
-                  List.of(new CompositionDelta("步兵", -30)),
                   List.of(new CompositionDelta("步枪", -10)))
               .units()
               .get(U1),
           op("applyCasualties", module),
-          "manpower",
-          "equipment");
+            "equipment");
     }
   }
 
@@ -670,7 +666,6 @@ class UnitModuleOperationsTest {
         "单位 " + id.value(),
         parentSeries(parent),
         positionSeries(position),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         speed,
         500,
@@ -691,7 +686,6 @@ class UnitModuleOperationsTest {
         "第一连",
         parentSeries(Optional.empty()),
         positionSeries(Optional.of(H11)),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
@@ -752,7 +746,6 @@ class UnitModuleOperationsTest {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),

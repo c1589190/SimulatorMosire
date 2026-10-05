@@ -125,7 +125,6 @@ public final class ScopeFixtures {
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(List.of(new Segment<>(T0, Optional.of(position))), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
@@ -146,7 +145,6 @@ public final class ScopeFixtures {
             List.of(new Segment<>(T0, Optional.of(new UnitId(parentId)))), List.of(), null),
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<HexCoord>empty())), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
@@ -162,7 +160,6 @@ public final class ScopeFixtures {
             List.of(new Segment<>(T0, Optional.<UnitId>empty())), List.of(), null),
         new SegmentedSeries<>(
             List.of(new Segment<>(T0, Optional.<HexCoord>empty())), List.of(), null),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         500,
@@ -180,7 +177,6 @@ public final class ScopeFixtures {
         unit.name(),
         unit.parent(),
         unit.position(),
-        unit.manpower(),
         unit.equipment(),
         unit.speed(),
         unit.mobilityPerMille(),

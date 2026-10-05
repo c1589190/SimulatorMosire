@@ -35,7 +35,6 @@ class UnitTest {
         "第一连",
         noParent(),
         positionAt(H11),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         2,
         1000,
@@ -58,7 +57,6 @@ class UnitTest {
         "第一连",
         noParent(),
         positionAt(H11),
-        List.of(new CompositionEntry("步兵", 100)),
         List.of(new CompositionEntry("步枪", 50)),
         speed,
         1000,
@@ -98,7 +96,6 @@ class UnitTest {
                         List.of(new Event<>(T0, Optional.<UnitId>empty(), EventMode.SET)),
                         null),
                     positionAt(H11),
-                    List.of(new CompositionEntry("步兵", 100)),
                     List.of(),
                     2,
                     1000,
@@ -116,7 +113,6 @@ class UnitTest {
                         List.of(new Segment<>(T0, Optional.<HexCoord>empty())),
                         List.of(new Event<>(T0, Optional.of(H11), EventMode.SET)),
                         null),
-                    List.of(new CompositionEntry("步兵", 100)),
                     List.of(),
                     2,
                     1000,
@@ -136,7 +132,6 @@ class UnitTest {
                     new SegmentedSeries<>(
                         List.of(new Segment<>(T0, Optional.of(id))), List.of(), null),
                     positionAt(H11),
-                    List.of(new CompositionEntry("步兵", 100)),
                     List.of(),
                     2,
                     1000,
@@ -155,10 +150,10 @@ class UnitTest {
                     noParent(),
                     positionAt(H11),
                     List.of(new CompositionEntry("步兵", -1)),
-                    List.of(),
                     2,
                     1000,
                     Optional.empty()))
+        .as("条目 amount 必须 ≥ 0")
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(
             () ->
@@ -167,7 +162,6 @@ class UnitTest {
                     "第一连",
                     noParent(),
                     positionAt(H11),
-                    List.of(),
                     List.of(),
                     0,
                     1000,
@@ -180,7 +174,6 @@ class UnitTest {
                     "第一连",
                     noParent(),
                     positionAt(H11),
-                    List.of(),
                     List.of(),
                     2,
                     0,
@@ -189,7 +182,7 @@ class UnitTest {
   }
 
   @Test
-  void compositionTablesAreFrozenAndValidated() {
+  void compositionTableIsFrozenAndValidated() {
     List<CompositionEntry> mutable = new ArrayList<>(List.of(new CompositionEntry("步枪", 50)));
     Unit u =
         new Unit(
@@ -197,7 +190,6 @@ class UnitTest {
             "第一连",
             noParent(),
             positionAt(H11),
-            List.of(new CompositionEntry("步兵", 100)),
             mutable,
             2,
             1000,
@@ -218,8 +210,8 @@ class UnitTest {
                     "第一连",
                     noParent(),
                     positionAt(H11),
-                    List.of(new CompositionEntry("步兵", 100), new CompositionEntry("步兵", 50)),
-                    List.of(),
+                    List.of(
+                        new CompositionEntry("步兵", 100), new CompositionEntry("步兵", 50)),
                     2,
                     1000,
                     Optional.empty()))
@@ -234,13 +226,12 @@ class UnitTest {
                     "第一连",
                     noParent(),
                     positionAt(H11),
-                    null,
                     List.of(),
                     2,
                     1000,
                     Optional.empty()))
         .as("表不得为 null（空表合法）")
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("manpower");
+        .hasMessageContaining("equipment");
   }
 }
