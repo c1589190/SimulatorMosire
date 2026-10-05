@@ -1,4 +1,4 @@
-# HANDOFF 2026-10-09：Social 每 tick 生死引擎（Batch A/B/C）
+# HANDOFF 2026-10-09：Social 每 tick 生死引擎（Batch A/B/C + P0 迁移旁路关闭）
 
 > 新会话先读本文件 + `docs/superpowers/plans/2026-10-09-social-vital-rates-per-tick-plan.md`
 > （施工依据与 §7 Unit 对接规划）。本文件是本批完成的存档与下一批入口。
@@ -8,9 +8,11 @@
 - 仓库：`/home/cna/SimulatorMosire`，分支 `main`；
 - 本批完成：Social 每 tick 生死引擎（ppm/tick + 全局默认率表 + 家户覆盖 + 余数累加器含稳定哈希初相位）、
   App 日初接线、经济逐户 population delta 同步、`physiologicalStress` / `PopulationDynamics` 生产路径删除；
-- 实测：fresh small-world `0→360` 无 Runtime ERROR，出生 258 / 死亡 157，最终 Social 人口 = Economy 人口 = 4101；
-- 未完成/下一批 P0：`ModeMigrationSettlement` 仍直接改经济行人口（day 120/240/360 实测逐户漂移），
-  必须先改成 Social 工单；之后才接 Unit 四件套。详见计划 §7.2。
+- 实测：fresh small-world `0→360`，出生 258 / 死亡 157（vital engine 基线）；
+- **2026-10-10 更新**：P0 迁移写人旁路已关闭（`ModeMigrationSettlement` 投影账 + outbox，
+  `MigrationSocialBridge` 同 revision 落 Social 工单）；fresh 0→360 逐户 138/138 Social == Economy、
+  世界总人口 4100 = 4100；下一步 = Unit 四件套。设计/实施见
+  `docs/superpowers/plans/2026-10-10-p0-mode-migration-social-outbox.md`。
 - 测试迁移仍后置：`test-compile` 仍红，生产编译/打包用 `-DskipTests` / `-Dmaven.test.skip=true`。
 
 ## 1. 本批落地内容
@@ -81,9 +83,9 @@ MIGRATION_APPLIED day=120/240/360 moves=7 rowsBefore=138 rowsAfter=138
 ⇒ 136 人冻在 450 个批次的余数里，限窗内死亡率只有配置值的 13%
 ```
 
-## 3. 下一批 P0：关掉经济写人旁路（先于 Unit）
+## 3. P0：关掉经济写人旁路（✅ 2026-10-10 已关闭，先于 Unit）
 
-问题：`ModeMigrationSettlement.apply` 直接改 `HouseholdEconomy.population`（并迁资产/钱/债），
+问题（已修复留痕）：`ModeMigrationSettlement.apply` 直接改 `HouseholdEconomy.population`（并迁资产/钱/债），
 Social 不知道；360 天后逐户漂移，例如：
 
 ```text
@@ -92,18 +94,19 @@ hh-0_1-rural-rich_peasant     Social 30  Economy 27
 hh-0_2-urban-middle_peasant   Social 110 Economy 131
 ```
 
-修法（计划 §7.2 已展开）：
+实施（设计/实测见 `docs/superpowers/plans/2026-10-10-p0-mode-migration-social-outbox.md`）：
 
-1. `ModeMigrationSettlement` 只把 `(source, target, count, targetHex, targetMode, newTarget?)`
-   记进当日 outbox（建议 `EconomySession.pendingPopulationTransfers()`，不新增持久组件）；
-2. App 在 `stepper.step(day)` 后把 outbox 翻成 `social.SubmitHouseholdWorkOrder`：
-   newTarget 先 `CREATE_HOUSEHOLD`，再按确定性选批次 `TRANSFER_MEMBERS` 恰好 count 人；
-3. 同一条 revision 内与 Economy/Unit 迁移一起提交，Social 工单失败 ⇒ 整个 advance 具名拒；
-4. 防回归：迁后 `Social 逐户人口 == Economy 逐户人口`，且经济侧不得再有第二个 `population` 写口。
+1. `ModeMigrationSettlement` 用 `plannedPopulation/plannedLabor` 投影账，**不再写已有行的 population/laborMilli**；
+   每笔 move 记 `EconomySession` 瞬态 outbox `EconomyPopulationTransfer`；
+2. App 在 `stepper.step(day)` 后 drain outbox，`MigrationSocialBridge` 翻成 Social 工单
+   （newTarget 先 `CREATE_HOUSEHOLD`，再按 `ProportionalSplit` 确定性选批次 `TRANSFER_MEMBERS` 恰好 count 人）；
+3. 同一条 revision 内：Social 工单落人 → 经济行逐户净 delta 回写 → 刷新 composition/labor/needs；
+   Social 工单失败 ⇒ 整个 advance 具名拒，不落 revision；
+4. 实测：fresh 0→360 逐户 138/138 Social == Economy、世界总人口 4100 = 4100，0 ERROR / 0 投影 unresolved。
 
-## 4. 再下一批：Unit 对接四件套（计划 §7.3）
+## 4. 下一批：Unit 对接四件套（计划 §7.3）
 
-顺序：P0 旁路 → P1 征兵/退伍工单化 → P2 战斗伤亡回写 Social → P3 UNIT 家户 smoke →
+顺序：P1 征兵/退伍工单化 → P2 战斗伤亡回写 Social → P3 UNIT 家户 smoke →
 P4 经济通用“周期家户库存扣增” + Unit 决策人内部分摊规则。
 
 要点：
@@ -115,8 +118,8 @@ P4 经济通用“周期家户库存扣增” + Unit 决策人内部分摊规则
 
 ## 5. 未做清单（按优先级）
 
-1. P0 `ModeMigrationSettlement` → Social 工单 outbox；
-2. Unit 四件套 + Unit 决策人模型；
+1. ~~P0 `ModeMigrationSettlement` → Social 工单 outbox~~ ✅ 2026-10-10 已关闭；
+2. Unit 四件套 + Unit 决策人模型（当前最高优先级）；
 3. `FlowRow.births/deaths` 仍不承载每 tick 生死，`CrisisMonitor.MORTALITY` 看不到 ppm 死亡；
    （本批已知边界，读口/结算批补）
 4. GM/决策人工具：计划 §6 清单已完整落盘（率表 delta、直接加减人口、受限决策人版、Catalog/前端/审计/测试）；

@@ -1,6 +1,7 @@
 # 2026-10-09 Social 每 tick 生死引擎 + 率表 + Unit 对接规划
 
-> 状态：**Batch A/B/C 已实现并跑通 fresh small-world 0→360；Next = §7.2 P0 + Unit 对接四件套。**
+> 状态：**Batch A/B/C 已实现并跑通 fresh small-world 0→360；§7.2 P0 迁移写人旁路 2026-10-10 已关闭；
+> Next = §7.3 Unit 对接四件套 + 决策人模型。**
 > 基线：`HEAD c9186fd4`（30× 储备粮验证后）；本批实现含余数初相位修正，见 §3.4 / §10.3。
 > 纪律：Social 是出生/死亡唯一域；外部模块只能调 Social 接口；旧数据作废；测试迁移仍后置。
 
@@ -205,7 +206,12 @@ social.AdjustPopulation:
 - Social 工单/命令已支持 `TRANSFER_MEMBERS` / `ADJUST_POPULATION` / `SET_VITAL_RATES`；
 - app `submitBatch` 已能把 Social + Unit 命令打成一条 revision。
 
-### 7.2 Unit 对接前必须先关掉的旁路（P0，任何 Unit 批次之前）
+### 7.2 Unit 对接前必须先关掉的旁路（P0，任何 Unit 批次之前）—— ✅ 2026-10-10 已关闭
+
+> 实施记录见 `docs/superpowers/plans/2026-10-10-p0-mode-migration-social-outbox.md` §5。fresh 0→360 复验：
+> day 120/240/360 有 `MIGRATION_APPLIED`；逐户 138/138 Social == Economy；世界总人口 4100 = 4100；
+> 0 ERROR / 0 投影 unresolved；`work-order:mode-migration:*` 15 条、0 duplicate/rejected。
+> 以下原文保留为问题留痕。
 
 **实测（2026-10-09 Batch C，fresh small-world 0→360）**：`ModeMigrationSettlement.apply` 在 day 120/240/360
 各执行 7 次迁移，直接改 `HouseholdEconomy.population`（并迁移资产/钱/债），**Social 完全不知道**。360 天后
@@ -334,7 +340,7 @@ hh-1_1-rural-rich_peasant     Social 31  Economy 28
 
 ### Batch D：Unit 对接（⏳ 下一批）
 
-顺序 = §7.2 P0（关经济写人旁路）→ §7.3 四件套 + 决策人模型；不在本批生死引擎里混做。
+顺序 = §7.2 P0（✅ 2026-10-10 已关闭）→ §7.3 四件套 + 决策人模型；不在本批生死引擎里混做。
 
 ## 9. 验收标准与实测
 
@@ -343,9 +349,9 @@ hh-1_1-rural-rich_peasant     Social 31  Economy 28
 3. 出生/死亡每天发生（不再只在 day30 倍数）—— ✅（360 个 `POPULATION_SETTLE`，逐日事件分布）；
 4. 长期出生率/死亡率与配置 ppm 一致（余数累加器自证）—— ✅（相位修正后：360 tick 出生 258、死亡 157；
    FNV 相位逐步模拟预期 259 / 156）；
-5. 经济行人口每天跟随 Social 变化 —— ⚠️ **部分**：全世界总数逐日对齐（4101 = 4101），但
-   `ModeMigrationSettlement` 的 3 次迁移（day 120/240/360）直接改经济行人口，逐户已错开；
-   必须先做 §7.2 P0 才能打勾；
+5. 经济行人口每天跟随 Social 变化 —— ✅ 2026-10-10 P0 关闭旁路后：fresh 0→360 逐户 138/138
+   Social == Economy，世界总人口 Social = Economy = 4100；day 120/240/360 迁移均经
+   `MigrationSocialBridge` 落 Social 工单并回写经济 delta；详见 §7.2 上方实施记录；
 6. 无 `physiologicalStress`、无 `PopulationDynamics` 月度调用 —— ✅（main 静态审计：旧类 0 命中；
    `physiologicalStress` 只剩两个 `null` 不可用读口键）；
 7. UNIT 家户出生/死亡不因无 HEX 抛 —— ⏳ 未实测（small-world 当前无 Unit/Army；代码路径已改为逐户 delta，
@@ -405,7 +411,7 @@ FNV 相位模拟预期 deaths = 156，出生 = 259
 
 - 测试迁移：`test-compile` 仍红（旧 API 引用未迁）；`test` / `verify` 未跑；
 - `FlowRow.births/deaths` 仍不承载每 tick 生死（`CrisisMonitor.MORTALITY` 只看 famine 路，默认看不到 ppm 死亡）；
-- `ModeMigrationSettlement` 旁路未关（§7.2 P0）；
+- ~~`ModeMigrationSettlement` 旁路未关（§7.2 P0）~~ —— ✅ 2026-10-10 已关闭，逐户对账见 §7.2 实施记录；
 - GM/决策人工具未做（§6 清单已落盘）；
 - UNIT 家户 / GOV / Army smoke 未做（small-world 目前没有 Unit/Army）；
 - 迁移期时序：迁移在 `step(day)` 内发生、Social 工单要同日补账（§7.2 P0 的设计已经按“同 revision 落齐”写死）。

@@ -579,5 +579,8 @@ tick360 grain satisfaction                  = 1000‰
 余数零初值在 360 tick 只实现出 20 死亡（连续期望 156），已改稳定哈希初相位修正，见计划 §10.3。
 ```
 
-仍未关闭：`ModeMigrationSettlement` 直接改经济行人口（计划 §7.2 P0）、`FlowRow.births/deaths` 读口、
-GM/决策人工具、测试迁移、Unit 四件套。
+仍未关闭：`FlowRow.births/deaths` 读口、GM/决策人工具、测试迁移、Unit 四件套。
+
+★ 2026-10-10 更新：`ModeMigrationSettlement` 写人旁路（计划 §7.2 P0）已关闭——经济腿改瞬态
+outbox + 投影账，App `MigrationSocialBridge` 同 revision 落 Social 工单并回写经济 delta；
+fresh 0→360 逐户 138/138 Social == Economy、总人口 4100 = 4100。

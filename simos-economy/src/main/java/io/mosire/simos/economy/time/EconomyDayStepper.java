@@ -360,6 +360,26 @@ public final class EconomyDayStepper implements AutoCloseable {
     return Optional.ofNullable(lastMarketReport);
   }
 
+  /**
+   * ★★ <b>P0（2026-10-10）：本会话已记但尚未被 App 取走的迁移人口 outbox</b>（只读视图；保序 = move 执行序）。
+   *
+   * <p>由 {@link ModeMigrationSettlement} 在每笔 move 成功落账后追加；App 的
+   * {@code PopulationEconomyTimeParticipant} 在 {@code step(day)} 之后用
+   * {@link #drainPendingPopulationTransfers()} 取走并翻译成 Social 工单。
+   */
+  public List<EconomyPopulationTransfer> pendingPopulationTransfers() {
+    return session.pendingPopulationTransfers();
+  }
+
+  /**
+   * ★★ <b>P0：App 每日取走并清空迁移人口 outbox</b>（返回保序不可变快照；空 ⇒ {@link List#of()}）。
+   *
+   * <p>★ 同一条事实只被翻译一次：取走后本会话记录清零；整次 advance 失败 ⇒ 会话丢弃，不落 revision（outbox 是瞬态）。
+   */
+  public List<EconomyPopulationTransfer> drainPendingPopulationTransfers() {
+    return session.drainPendingPopulationTransfers();
+  }
+
   /** 收尾：把累加器挂上，交出可以进变更集的最终状态（账户在 {@link #accounts()} 里，不在这个状态里）。 */
   public EconomyData finish() {
     try {

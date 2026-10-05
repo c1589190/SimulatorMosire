@@ -3,13 +3,13 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassShareId;
-import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
@@ -33,7 +33,6 @@ import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.HouseholdDemand;
-import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MerchantFirm;
@@ -44,6 +43,8 @@ import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -62,18 +63,25 @@ import java.util.Set;
  * <pre>
  * 逐 move：
  *   ① 源/目标行解析；目标已有 ⇒ 合并；目标缺失 ⇒ 新建（HouseholdEconomy + HouseholdClassMembership + 账户 + 组织/unit/关系 + 租赁资产）
- *   ② 人口/劳动/成员份额/劳动配额按人口比例移动（逐笔 floor；源户清空时余数随最后一笔走）
+ *   ② 人口/劳动/劳动配额按人口比例推进**迁移投影账**（逐笔 floor；源户清空时余数随最后一笔走）——
+ *      ★★ P0 起不写 householdEconomies 行的 population/laborMilli；每笔成功落账后追加 outbox（EconomyPopulationTransfer），
+ *      由 App 在同一 revision 内翻译成 Social 工单并把 Social 真值 delta 回写经济行
  *   ③ 货币按**全部币种**逐项移动（D-023：逐币种按人口比例 floor，余数留源/迁空随最后一笔；不做 FX；只搬余额，不新造）
  *   ④ 债务逐合同走 DebtContractBook.reduce/upsert（唯一写口）；计划金额全部分摊，绝不静默丢债
  *   ⑤ 资产随迁（D-023）：源户自有资产按**逐笔迁移人口比例**随迁 —— 可移动资产（TOOL/SHIP/CATTLE/MACHINE）
  *      同 hex 同产业直接拆份额、跨 hex 在目标产业的同 AssetKind 下重建；不可移动资产（LAND/WORKSHOP）同 hex 可换主人，
  *      跨 hex 留原户并记具名读数。绝不再走"整户消亡时把资产全给最后目标"的旧路
- *   ⑥ 源户人口归零：钱/债必须为 0；仍有资产（自有不可移动/不可用，或作为他人资产 operator）⇒ 保留 0 人口“资产持有壳户”，
- *      不从 classes/classStandings 删除；没有任何残留 ⇒ 整户移除并清掉它的组织/unit/关系
+ *   ⑥ 源户**计划**人口归零：钱/债必须为 0；组织/unit/关系/劳动配额/商号照旧退役；**始终保留 0 人口壳行**
+ *      （HouseholdEconomy + HouseholdClassMembership + FlowRow，不删行/不删 FlowRow/不摘 crisisSignal 引用），
+ *      实际行 population 由 App 按 outbox delta 回写为 0
  * </pre>
  *
  * <p>★★ <b>D-022 硬不变量</b>：源户的 {@code HouseholdClassMembership} / {@code ProductionEnterprise.modeId} /
  * {@code ProductionProcess.modeKey} 在本类里<b>一字不改</b>；目标 mode 只出现在目标家户（已有或新建）上。
+ *
+ * <p>★★ <b>P0 人口权威（2026-10-10）</b>：Economy 不再把人写进 {@code HouseholdEconomy.population} 当权威。
+ * 投影账只服务"本笔搬多少、按什么比例搬钱/债/资产/劳动配额"；人的最终落点由 Social 工单决定，经济行人口是 App
+ * 回写的物化视图。{@link EconomyPopulationTransfer} 是两条腿之间唯一的瞬态接口。
  *
  * <p>★★ <b>失败具名抛</b>：不静默丢人/丢债/丢钱；整段写入发生在同一个 {@link EconomySession}/revision 内。
  */
@@ -116,6 +124,19 @@ public final class ModeMigrationSettlement {
       return;
     }
     Map<HouseholdId, HouseholdEconomy> householdEconomies = session.sheet().householdEconomies();
+    // ★★ P0（2026-10-10）：迁移投影账（跨全部 source 共享）——迁移只推进这两本账，
+    //    绝不写 householdEconomies 行的 population/laborMilli；App 在 step(day) 之后按 outbox 把 Social
+    //    真值 delta 回写经济行。初值 = 现有行值（含本批之前已创建的行；迁移中新建的目标行在创建处补 0 起步）。
+    LinkedHashMap<HouseholdId, Long> plannedPopulation = new LinkedHashMap<>();
+    LinkedHashMap<HouseholdId, Long> plannedLabor = new LinkedHashMap<>();
+    for (HouseholdEconomy row : householdEconomies.values()) {
+      plannedPopulation.put(row.id(), row.population());
+      plannedLabor.put(row.id(), row.laborMilli());
+    }
+    // ★★ P0 防回归（§7.2 第 4 条）：apply 结束时校验这些**已有**行的实际人口/劳动一字未改
+    //    （本类只允许写投影账；新建目标行不在快照里）。这条例行守卫把"经济域写人"挡在运行时。
+    LinkedHashMap<HouseholdId, Long> initialPopulation = new LinkedHashMap<>(plannedPopulation);
+    LinkedHashMap<HouseholdId, Long> initialLabor = new LinkedHashMap<>(plannedLabor);
     LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships = session.sheet().classMemberships();
     LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments = session.sheet().laborCommitments();
     LinkedHashMap<AssetShareId, OwnershipStake> assetShares = session.sheet().assetShares();
@@ -145,6 +166,8 @@ public final class ModeMigrationSettlement {
           session,
           bySource.get(source),
           householdEconomies,
+          plannedPopulation,
+          plannedLabor,
           classMemberships,
           laborCommitments,
           assetShares,
@@ -162,6 +185,29 @@ public final class ModeMigrationSettlement {
           createdTargets,
           auditLedger);
     }
+    // ★★ P0 防回归：已有经济行的 population/laborMilli 在本次 apply 前后必须逐值相等。
+    for (Map.Entry<HouseholdId, Long> entry : initialPopulation.entrySet()) {
+      HouseholdEconomy row = householdEconomies.get(entry.getKey());
+      if (row == null) {
+        throw new IllegalStateException(
+            "迁移不得删除已有经济行（P0：源户人口归零留 0 人口壳行）: " + entry.getKey());
+      }
+      long laborBefore = initialLabor.get(entry.getKey());
+      if (row.population() != entry.getValue() || row.laborMilli() != laborBefore) {
+        throw new IllegalStateException(
+            "迁移不得写经济行 population/laborMilli（P0：只推进投影账，人口由 App 按 outbox 回写）:"
+                + " household="
+                + entry.getKey()
+                + " populationBefore="
+                + entry.getValue()
+                + " populationAfter="
+                + row.population()
+                + " laborBefore="
+                + laborBefore
+                + " laborAfter="
+                + row.laborMilli());
+      }
+    }
   }
 
   // ── 一个源户的全部 move ────────────────────────────────────────────────────────────────────
@@ -171,6 +217,8 @@ public final class ModeMigrationSettlement {
       EconomySession session,
       List<ModeMigrationPolicy.MigrationMove> moves,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      LinkedHashMap<HouseholdId, Long> plannedPopulation,
+      LinkedHashMap<HouseholdId, Long> plannedLabor,
       Map<HouseholdId, HouseholdClassMembership> classMemberships,
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       LinkedHashMap<AssetShareId, OwnershipStake> assetShares,
@@ -194,7 +242,13 @@ public final class ModeMigrationSettlement {
     }
     ActorRef sourceActor = HouseholdActors.of(source);
     HexCoord sourceHex = sourceHouseholdEconomy.view().hex();
-    long sourcePopulation = sourceHouseholdEconomy.population();
+    // ★★ P0：源户人口/劳动一律取投影账（初值 = 行值；前面 source 的迁移已把自己的账推进到最新）。
+    Long plannedSourcePopulation = plannedPopulation.get(source);
+    Long plannedSourceLabor = plannedLabor.get(source);
+    if (plannedSourcePopulation == null || plannedSourceLabor == null) {
+      throw new IllegalStateException("迁移源家户不在投影账里（拒绝静默丢人）: " + source);
+    }
+    long sourcePopulation = plannedSourcePopulation;
     long movedPopulation = 0L;
     for (ModeMigrationPolicy.MigrationMove move : moves) {
       if (!move.source().equals(source)) {
@@ -238,7 +292,7 @@ public final class ModeMigrationSettlement {
     Map<HouseholdId, List<AssetShareId>> migratedShareIdsByTarget = new LinkedHashMap<>();
 
     long populationLeft = sourcePopulation;
-    long laborLeft = sourceHouseholdEconomy.laborMilli();
+    long laborLeft = plannedSourceLabor;
     long movedLaborTotal = 0L;
     for (int index = 0; index < moves.size(); index++) {
       ModeMigrationPolicy.MigrationMove move = moves.get(index);
@@ -269,8 +323,18 @@ public final class ModeMigrationSettlement {
         targetUnit =
             targetOrg != null && targetOrg.unitId().isPresent() ? targetOrg.unitId().get() : null;
       } else {
+        // ★★ P0：需要 HouseholdEconomy 实例的调用点传“投影行视图”（只读参数，不 put 回表）——
+        //   源户在本笔之前的迁移已在投影账里，视图必须带投影值，不能回头读实际行。
+        HouseholdEconomy sourceProjection =
+            sourceHouseholdEconomy.withPopulationAndLabor(
+                plannedPopulation.get(source), plannedLabor.get(source));
         newTargetPosition =
-            createNewHousehold(move, sourceHouseholdEconomy, householdEconomies, classMemberships, accounts, base, day);
+            createNewHousehold(
+                move, sourceProjection, householdEconomies, classMemberships, accounts, base, day);
+        // ★★ P0：新建目标行人口/劳动 0 起步，先登记进投影账（跨 source 共享）；
+        //   实际行由 App 按 outbox 的 +pop delta 回写（newTarget=true ⇒ Social 侧对应 CREATE_HOUSEHOLD）。
+        plannedPopulation.putIfAbsent(move.target(), 0L);
+        plannedLabor.putIfAbsent(move.target(), 0L);
         // ★★ 新建目标户后必须刷新行引用：createNewHousehold 只把新行写进 rows，
         //    不改变本方法早先捕获的 targetRow（原为 null）。不刷新 ⇒ 下一段 NPE。
         targetHouseholdEconomy = householdEconomies.get(move.target());
@@ -279,27 +343,33 @@ public final class ModeMigrationSettlement {
         }
       }
 
-      // ② 人口/劳动
+      // ② 人口/劳动：只推进投影账（跨 source 共享），**不写** householdEconomies 行的
+      //    population/laborMilli —— 实际行由 App 在 step(day) 之后按 outbox delta 回写 Social 真值。
       long popTake = move.population();
       long laborTake =
           empties
               ? laborLeft
-              : Math.multiplyExact(sourceHouseholdEconomy.laborMilli(), popTake)
-                  / Math.max(1L, populationBefore);
+              : Math.multiplyExact(laborLeft, popTake) / Math.max(1L, populationBefore);
       if (laborTake > laborLeft) {
         throw new IllegalStateException(
             "迁移劳动超过源户剩余劳动（拒绝抽成负劳动）: source=" + source + " take=" + laborTake);
       }
-      householdEconomies.put(
-          move.target(),
-          targetHouseholdEconomy.withPopulationAndLabor(
-              targetHouseholdEconomy.population() + popTake, targetHouseholdEconomy.laborMilli() + laborTake));
-      sourceHouseholdEconomy =
-          sourceHouseholdEconomy.withPopulationAndLabor(
-              sourceHouseholdEconomy.population() - popTake, sourceHouseholdEconomy.laborMilli() - laborTake);
-      householdEconomies.put(source, sourceHouseholdEconomy);
-      populationLeft = sourceHouseholdEconomy.population();
-      laborLeft = sourceHouseholdEconomy.laborMilli();
+      Long targetPlannedPopulationBox = plannedPopulation.get(move.target());
+      Long targetPlannedLaborBox = plannedLabor.get(move.target());
+      if (targetPlannedPopulationBox == null || targetPlannedLaborBox == null) {
+        // 防御：本批之外已在工作副本里的目标行（正常路径不会发生；新目标行在上面已登记 0）。
+        targetPlannedPopulationBox = targetHouseholdEconomy.population();
+        targetPlannedLaborBox = targetHouseholdEconomy.laborMilli();
+        plannedPopulation.putIfAbsent(move.target(), targetPlannedPopulationBox);
+        plannedLabor.putIfAbsent(move.target(), targetPlannedLaborBox);
+      }
+      plannedPopulation.put(source, Math.subtractExact(plannedPopulation.get(source), popTake));
+      plannedLabor.put(source, Math.subtractExact(plannedLabor.get(source), laborTake));
+      plannedPopulation.put(
+          move.target(), Math.addExact(targetPlannedPopulationBox, popTake));
+      plannedLabor.put(move.target(), Math.addExact(targetPlannedLaborBox, laborTake));
+      populationLeft = plannedPopulation.get(source);
+      laborLeft = plannedLabor.get(source);
       movedLaborTotal = Math.addExact(movedLaborTotal, laborTake);
       if (newTarget) {
         // ★★ D-023：本一次 apply 内新建的目标户要在后续源并入时也补记随迁资产引用（见 apply 顶层注释）。
@@ -330,11 +400,13 @@ public final class ModeMigrationSettlement {
       if (newTarget && !DefaultProductionModes.DISPLACED.equals(move.targetMode())) {
         // ★ 组织/unit/资产必须在目标行带上迁移人口/劳动之后建（规模 = 劳动/工艺需求，不能拿 0 劳动建）；
         //   随迁份额（assetOutcome）进 assetSources，并在 planAssetMoves 里抵减目标产业容量需求。
+        //   ★★ P0：传**投影行视图**（带投影人口/劳动），只读参数，不 put 回 householdEconomies。
         targetUnit =
             createEnterpriseAndProcess(
                 move,
                 householdEconomies,
-                householdEconomies.get(move.target()),
+                targetHouseholdEconomy.withPopulationAndLabor(
+                    plannedPopulation.get(move.target()), plannedLabor.get(move.target())),
                 newTargetPosition,
                 assetShares,
                 units,
@@ -380,8 +452,15 @@ public final class ModeMigrationSettlement {
                   laborCommitment.period()));
         }
         if (!DefaultProductionModes.DISPLACED.equals(move.targetMode()) && targetUnit != null) {
+          // ★★ P0：传投影行视图（带投影人口/劳动），只读参数；本方法只做存在性校验。
           moveLaborCommitmentToTarget(
-              laborCommitment, move.target(), targetUnit, take, laborCommitments, householdEconomies.get(move.target()));
+              laborCommitment,
+              move.target(),
+              targetUnit,
+              take,
+              laborCommitments,
+              targetHouseholdEconomy.withPopulationAndLabor(
+                  plannedPopulation.get(move.target()), plannedLabor.get(move.target())));
         }
       }
 
@@ -403,6 +482,33 @@ public final class ModeMigrationSettlement {
         moveDebt(move, debts, day);
       }
 
+      // ★★ P0：本笔 move 校验/落账全部成功后追加 outbox（人口事实），由 App 在同一 revision 内
+      //    翻译成 Social 工单、再把 Social 真值 delta 回写经济行。outbox 是瞬态：整次 advance 失败 ⇒ 会话丢弃。
+      EconomyPopulationTransfer populationTransfer =
+          new EconomyPopulationTransfer(
+              source,
+              move.target(),
+              popTake,
+              move.targetHex(),
+              move.targetMode(),
+              newTarget,
+              move.reason());
+      session.recordPopulationTransfer(populationTransfer);
+      if (EconomyLog.migration().isTraceEnabled()) {
+        EventLog.channel(EconomyLog.migration())
+            .trace(
+                LogEvent.of(
+                    "MIGRATION_POPULATION_OUTBOX",
+                    "day", day,
+                    "source", source.value(),
+                    "target", move.target().value(),
+                    "population", popTake,
+                    "targetHex", move.targetHex().q() + "," + move.targetHex().r(),
+                    "targetMode", move.targetMode().value(),
+                    "newTarget", newTarget,
+                    "reason", move.reason()));
+      }
+
       if (empties) {
         break;
       }
@@ -418,12 +524,18 @@ public final class ModeMigrationSettlement {
     //    （瞬态 ProductionLedger；不新增持久组件，不改数量）。
     recordResidualAssetAudits(auditLedger, day, source, assetShares, residualReasons);
 
-    // ⑤ 源户消亡 / 缩编
-    if (sourceHouseholdEconomy.population() == 0L) {
+    // ⑤ 源户计划人口归零 / 缩编
+    //   ★★ P0：判据取**投影账**，不读实际行人口（实际行人口由 App 同 revision 按 outbox 回写）。
+    Long plannedSourcePopulationFinal = plannedPopulation.get(source);
+    if (plannedSourcePopulationFinal == null) {
+      throw new IllegalStateException("迁移源家户不在投影账里（拒绝静默丢人）: " + source);
+    }
+    if (plannedSourcePopulationFinal == 0L) {
       retireSource(
           source,
           session,
           householdEconomies,
+          plannedPopulation,
           classMemberships,
           laborCommitments,
           assetShares,
@@ -440,11 +552,19 @@ public final class ModeMigrationSettlement {
     }
   }
 
-  /** 源户人口清零后的清点与移除：钱/债必须为 0；有资产残留 ⇒ 留 0 人口壳户；组织/unit/关系/劳动配额一并退役。 */
+  /**
+   * 源户计划人口清零后的清点与退役：钱/债必须为 0；组织/unit/关系/劳动配额/商号照旧退役。
+   *
+   * <p>★★ <b>P0（2026-10-10）：始终保留 0 人口壳行</b> —— {@code HouseholdEconomy} + {@code FlowRow} +
+   * {@code HouseholdClassMembership} 一律不删（不再区分"有无资产/合同残留"），不摘 crisisSignal 引用；实际行的
+   * {@code population} 由 App 在同一 revision 内按 outbox delta 回写成 0。{@code plannedPopulation} 只用于
+   * 判"源户计划归零"这一入口条件。
+   */
   private static void retireSource(
       HouseholdId source,
       EconomySession session,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<HouseholdId, Long> plannedPopulation,
       Map<HouseholdId, HouseholdClassMembership> classMemberships,
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       LinkedHashMap<AssetShareId, OwnershipStake> assetShares,
@@ -593,50 +713,27 @@ public final class ModeMigrationSettlement {
         laborCommitments.remove(laborCommitment.id());
       }
     }
-    if (!shell) {
-      classMemberships.remove(source);
-      householdEconomies.remove(source);
-      // ★★ 缺陷②：flows 与 classes 自 S1 起同键 —— 源户行删除时必须同步删它的 FlowRow，
-      //    否则同一 revision 的 EconomyData 构造期守卫会以「flows 的键必须是已存在的家户」拒绝。
-      session.flows().remove(source);
-      // ★ 同类跨表键：危机信号的 households 点名源户时也得摘掉（否则 build 守卫「危机信号点名的家户不存在」）。
-      removeCrisisSignalReferences(session.sheet().crisisSignals(), source);
-    } else {
-      // ★★ D-023 壳户：人口 0、无组织/unit/配额；保留 HouseholdEconomy + HouseholdClassMembership + FlowRow，
-      //    让资产份额的 owner（或作为 operator 的既有引用）与债务合同端点仍可解析。不从 classes 删除。
-      HouseholdEconomy shellHouseholdEconomy = householdEconomies.get(source);
-      if (shellHouseholdEconomy != null && shellHouseholdEconomy.population() != 0L) {
-        throw new IllegalStateException(
-            "壳户源户人口必须为 0: " + source + " population=" + shellHouseholdEconomy.population());
-      }
+    // ★★ P0：不再区分"整户移除 / 留壳户"——人口归零后**始终保留** 0 人口壳行
+    //    （HouseholdEconomy + HouseholdClassMembership + FlowRow），不删行/不删 FlowRow/不摘 crisisSignal 引用；
+    //    组织/unit/关系/劳动配额/商号已在上方照旧退役。这样 App 的 outbox delta（源户 -pop）总有落点，
+    //    也与 Social 侧"迁移后留下 0 成员家户"同形。实际行 population 由 App 同 revision 回写为 0。
+    Long plannedSourcePopulation = plannedPopulation.get(source);
+    if (plannedSourcePopulation == null || plannedSourcePopulation != 0L) {
+      throw new IllegalStateException(
+          "retireSource 只允许在源户计划人口为 0 时调用: source="
+              + source
+              + " plannedPopulation="
+              + plannedSourcePopulation);
     }
-  }
-
-  /**
-   * ★ 同类跨表键清理：危机信号以 {@code households} 列表指名家户；源户行已删时把它从每个信号的 {@code households} 里摘掉（信号本身按 {@code
-   * (hex, kind)} 的最新警告保留，不删行、不改 severity/evidence）。
-   */
-  private static void removeCrisisSignalReferences(
-      LinkedHashMap<CrisisSignalId, HexCrisisSignal> signals, HouseholdId source) {
-    for (Map.Entry<CrisisSignalId, HexCrisisSignal> entry : new ArrayList<>(signals.entrySet())) {
-      HexCrisisSignal signal = entry.getValue();
-      if (signal == null || !signal.households().contains(source)) {
-        continue;
-      }
-      List<HouseholdId> households = new ArrayList<>(signal.households());
-      households.removeIf(source::equals);
-      signals.put(
-          entry.getKey(),
-          new HexCrisisSignal(
-              signal.id(),
-              signal.hex(),
-              signal.kind(),
-              signal.severity(),
-              signal.day(),
-              signal.evidence(),
-              households,
-              signal.classes(),
-              signal.reason()));
+    // 兜底：classMemberships/householdEconomies 必须仍能解析该行（其它路径不得提前删掉它）。
+    if (!householdEconomies.containsKey(source) || !classMemberships.containsKey(source)) {
+      throw new IllegalStateException(
+          "0 人口壳户的行/阶层归属缺失（拒绝留下半删状态）: source="
+              + source
+              + " row="
+              + householdEconomies.containsKey(source)
+              + " standing="
+              + classMemberships.containsKey(source));
     }
   }
 

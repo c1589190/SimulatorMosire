@@ -4,11 +4,13 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.household.GovernmentHouseholdWiring;
 import io.mosire.simos.app.household.HouseholdEconomyProjection;
 import io.mosire.simos.app.household.HouseholdPositionResolver;
 import io.mosire.simos.app.household.HouseholdUnitConsistency;
+import io.mosire.simos.app.household.MigrationSocialBridge;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -22,6 +24,7 @@ import io.mosire.simos.economy.time.AccountPartitionKey;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
 import io.mosire.simos.economy.time.EconomyParallelism;
+import io.mosire.simos.economy.time.EconomyPopulationTransfer;
 import io.mosire.simos.economy.time.EconomySettlement;
 import io.mosire.simos.economy.time.ProductionLedger;
 import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
@@ -52,6 +55,8 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.spi.WorldTimeProposal;
 import io.mosire.simos.util.state.ChangeSet;
@@ -95,8 +100,10 @@ import org.slf4j.LoggerFactory;
  * ① 日初：Social 每 tick 生死结算（HouseholdBook.settleOneTick）
  *     → 用**新** Social 刷新经济侧 composition / laborBudgets / naturalNeeds
  *     → 把逐户净人口变化（出生 − 死亡）加到经济行 population
- * ② 经济结算一天（消费/借粮/进度/劳动/周期末收获）——
- *     行人口、劳动预算与当日需求都已是**新 Social** 的投影
+ * ② 经济结算一天（消费/借粮/进度/劳动/周期末收获/迁移执行）——
+ *     行人口、劳动预算与当日需求都已是**新 Social** 的投影；迁移只推进投影账并落 outbox
+ * ③ ★★ P0：经济腿迁移 outbox → Social 工单落人 → 经济行人口按净 delta 回写 → 再刷新
+ *     composition / laborBudgets / naturalNeeds（与②同属本次 advance 的同一条 revision）
  * </pre>
  *
  * <p>★ 旧口径的"日末生理压力 + 每 30 天月度出生/死亡"已在 Batch B 整体删除；出生/死亡不再进
@@ -399,6 +406,42 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           //   市场双方都必须是本轮参与者：落在账户上的那一份已由下面的会话副本绝对值落回覆盖，在途那一份由
           //   ShipmentBatch 承载；再折一遍会在异地键上造幽灵账。
           ProductionLedger ledger = stepper.step(day);
+          // ★★ P0（2026-10-10）：经济腿迁移 outbox → Social 工单 → 经济行人口回写。次序（缺一不可）：
+          //   ① drain：ModeMigrationSettlement 已在 step 内按投影账把资产/钱/债/组织/劳动配额落好，
+          //      只把"搬了多少人、从谁到谁"留在瞬态 outbox；
+          //   ② Social 工单落人（失败 ⇒ 整次 advance 具名拒、不落 revision，经济腿一并作废）；
+          //   ③ 逐户净 delta 写回经济行 population（源 − / 目标 +；壳户行已在经济腿保留）；
+          //   ④ 用**新** Social 重刷 composition / laborBudgets / naturalNeeds，供同日 gov 阶段与下一天使用。
+          List<EconomyPopulationTransfer> populationTransfers =
+              stepper.drainPendingPopulationTransfers();
+          if (!populationTransfers.isEmpty()) {
+            long socialPopulationBefore = totalSocialPopulation(currentSocial);
+            long migratedPopulation = totalTransferredPopulation(populationTransfers);
+            int createdTargets = 0;
+            for (EconomyPopulationTransfer transfer : populationTransfers) {
+              if (transfer.newTarget()) {
+                createdTargets++;
+              }
+            }
+            currentSocial = MigrationSocialBridge.apply(currentSocial, populationTransfers, day);
+            stepper.applyHouseholdPopulationDeltas(netPopulationDeltas(populationTransfers));
+            stepper.updateComposition(compositionOf(currentSocial));
+            stepper.recomputeLaborBudgets(laborBudgetsOf(currentSocial, day));
+            stepper.updateNaturalNeeds(naturalNeedsOf(currentSocial, day));
+            EventLog.channel(AppLog.time())
+                .info(
+                    LogEvent.of(
+                        "MODE_MIGRATION_BRIDGED",
+                        "mapId", mapId,
+                        "day", day,
+                        "transfers", populationTransfers.size(),
+                        "migratedPopulation", migratedPopulation,
+                        "createdTargets", createdTargets,
+                        "socialPopulationBefore", socialPopulationBefore,
+                        "socialPopulationAfter", totalSocialPopulation(currentSocial),
+                        "economyPopulationAfter",
+                            totalEconomyPopulation(stepper.householdEconomies())));
+          }
           // ★★ P2-D：日结算之后的税 / 行政俸禄 —— **同一账户会话、同一个日循环**（不另起 participant，避免 gov/actor 同名模块冲突）。
           //   顺序沿用阶段 11b：先税（收入侧）、后 GovDaily（支出侧）⇒ 当天税可先供当天俸禄；两者都写账户会话，
           //   由本日末尾的 landAccountSession 绝对值一次落回 actor。信号折进 economy.crisisSignals（同 (hex,kind) 覆盖）。
@@ -780,6 +823,50 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           upkeepShortfallTotal,
           signals);
     }
+  }
+
+  // ── P0 迁移桥的净 delta / 对账读数（纯函数，不写状态）─────────────────────────────────────
+
+  /**
+   * ★★ <b>P0：迁移 outbox → 逐户净人口 delta</b>（源 {@code -population}、目标 {@code +population}，同户出现多次
+   * 则 Σ 合并；结果为 0 的家户不入表——{@code applyHouseholdPopulationDeltasInto} 拒绝 0 delta）。
+   */
+  private static Map<HouseholdId, Long> netPopulationDeltas(
+      List<EconomyPopulationTransfer> transfers) {
+    LinkedHashMap<HouseholdId, Long> deltas = new LinkedHashMap<>();
+    for (EconomyPopulationTransfer transfer : transfers) {
+      deltas.merge(transfer.source(), -transfer.population(), Math::addExact);
+      deltas.merge(transfer.target(), transfer.population(), Math::addExact);
+    }
+    deltas.entrySet().removeIf(entry -> entry.getValue() == 0L);
+    return deltas;
+  }
+
+  /** ★★ P0：outbox 迁移人数合计（只进日志，不写状态）。 */
+  private static long totalTransferredPopulation(List<EconomyPopulationTransfer> transfers) {
+    long total = 0L;
+    for (EconomyPopulationTransfer transfer : transfers) {
+      total = Math.addExact(total, transfer.population());
+    }
+    return total;
+  }
+
+  /** ★★ P0：Social 总人口（逐家户 {@link SocialData#householdPopulation(HouseholdId)} 求和；只进日志/对账）。 */
+  private static long totalSocialPopulation(SocialData social) {
+    long total = 0L;
+    for (HouseholdId household : social.households().keySet()) {
+      total = Math.addExact(total, social.householdPopulation(household));
+    }
+    return total;
+  }
+
+  /** ★★ P0：Economy 行人口合计（只进日志/对账）。 */
+  private static long totalEconomyPopulation(Map<HouseholdId, HouseholdEconomy> rows) {
+    long total = 0L;
+    for (HouseholdEconomy row : rows.values()) {
+      total = Math.addExact(total, row.population());
+    }
+    return total;
   }
 
   /** ★★ P2-A A3：Social 的家户成员表 → 经济结算的只读组成投影（不落任何 Economy 状态）。 */
