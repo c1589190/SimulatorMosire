@@ -15,7 +15,6 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Pool;
@@ -129,7 +128,6 @@ final class EconomyFixtures {
       CohortKey key = goodsKeyFor(goods, row);
       accounts.registerHousehold(
           row.id(),
-          HouseholdActors.of(row.id()),
           row.view().hex(),
           goods.getOrDefault(key, Map.of()),
           Map.of(),
@@ -145,8 +143,6 @@ final class EconomyFixtures {
       if (accounts.actorKeyOrNull(operator) != null) {
         continue; // 这个 actor 已有家户账（家户自营），不再重复登记经营者账。
       }
-      accounts.registerOperator(
-          operator, hexOfIndustry(unit.industry()), Map.of(), Map.of(), Map.of(), Map.of());
     }
     return accounts;
   }
@@ -301,7 +297,6 @@ final class EconomyFixtures {
       Map<CohortKey, ClassRow> classesByView,
       Map<DebtContractId, DebtContract> debtContracts,
       Map<CohortKey, FlowRow> flowsByView,
-      Map<PeopleLotId, LaborSupply> laborSupply,
       Map<LaborAllocationId, LaborAllocation> allocations,
       Map<?, ProductionRelation> relationsByIndustry,
       Map<HexCoord, Market> markets,
@@ -383,7 +378,6 @@ final class EconomyFixtures {
         .withClasses(classes)
         .withDebtContracts(debtContracts)
         .withFlows(flows)
-        .withLaborSupply(laborSupply)
         .withAllocations(allocations)
         .withRelations(relations)
         .withMarkets(markets)

@@ -46,13 +46,18 @@ public final class SocialHouseholdFixture {
     Map<HouseholdId, Household> households = new LinkedHashMap<>();
     for (Map.Entry<HexCoord, List<PeopleLotId>> entry : lotsByHex.entrySet()) {
       HouseholdId householdId = HouseholdId.parse("hh:" + entry.getKey());
+      // ★ P2-A：成员表 = (lot → count) 份额表；单户持整批 ⇒ count = 批次人数（守恒）。
+      Map<PeopleLotId, Long> members = new LinkedHashMap<>();
+      for (PeopleLotId lot : entry.getValue()) {
+        members.put(lot, groups.get(lot).count());
+      }
       households.put(
           householdId,
           new Household(
               householdId,
               new HouseholdLocation.Hex(entry.getKey()),
               new HouseholdProfile(householdId.value(), null, Map.of()),
-              entry.getValue(),
+              members,
               new HouseholdVitalRates(List.of())));
     }
     return new SocialData(populations, cities, groups, households, Map.of());

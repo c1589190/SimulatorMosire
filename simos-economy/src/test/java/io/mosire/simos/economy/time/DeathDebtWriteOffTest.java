@@ -20,7 +20,6 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassRow;
@@ -56,7 +55,7 @@ class DeathDebtWriteOffTest {
 
   private static final HexCoord HEX = new HexCoord(0, 0);
   private static final IndustryId FARM = new IndustryId("farm@0_0");
-  private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "farm@0_0");
+  private static final ActorRef ESTATE = new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
   private static final ProductionUnitId UNIT = ProductionUnitId.idOf(FARM, ESTATE);
   private static final PeopleLotId LOT = new PeopleLotId("rural:0_0:MALE:1");
   private static final HouseholdId DEBTOR =
@@ -214,7 +213,6 @@ class DeathDebtWriteOffTest {
         .withUnits(Map.of(UNIT, unit))
         .withClasses(rows)
         .withDebtContracts(Map.of(DEBT, debt))
-        .withLaborSupply(Map.of(LOT, new LaborSupply(LOT, 1L, 100_000L, 0L, 0L)))
         .withAllocations(
             Map.of(
                 ALLOC, new LaborAllocation(ALLOC, LOT, DEBTOR, ESTATE, UNIT.value(), 60_000L, 1L)));

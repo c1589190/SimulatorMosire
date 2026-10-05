@@ -85,7 +85,7 @@ class RaiseUnitPlanTest {
   private static final ActorRef HH2 = new ActorRef(ActorKind.HOUSEHOLD, "house@1_2");
   private static final ActorRef HH_ZERO = new ActorRef(ActorKind.HOUSEHOLD, "house-zero");
   private static final ActorRef HH_OUT = new ActorRef(ActorKind.HOUSEHOLD, "house@1_3");
-  private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "e-1");
+  private static final ActorRef DANGLING_HH = new ActorRef(ActorKind.HOUSEHOLD, "hh-dangling");
 
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final CurrencyId SILVER = MoneyVocabulary.SILVER_CURRENCY;
@@ -273,7 +273,7 @@ class RaiseUnitPlanTest {
             "actor.AdjustAccounts",
             "sd.PutInfo");
 
-    // 粮：hh1 可支配 100−20=80 先扣满，再 hh2 的 40；ESTATE / 区外 / 可用 0 不进来源表。
+    // 粮：hh1 可支配 100−20=80 先扣满，再 hh2 的 40；悬空家户 / 区外 / 可用 0 不进来源表。
     assertThat(plan.grain().requested()).isEqualTo(120L);
     assertThat(plan.grain().available()).isEqualTo(120L);
     assertThat(plan.grain().sources())
@@ -516,14 +516,14 @@ class RaiseUnitPlanTest {
         .withAccount(account(HH1, H11, 100L, 20L, 50L))
         .withAccount(account(HH2, H12, 40L, 0L, 80L))
         .withAccount(account(HH_ZERO, H11, 10L, 10L, 0L))
-        .withAccount(account(ESTATE, H11, 1000L, 0L, 1000L))
+        .withAccount(account(DANGLING_HH, H11, 1000L, 0L, 1000L))
         .withAccount(account(HH_OUT, H13, 1000L, 0L, 1000L));
   }
 
   private static GoodsAccount account(
       ActorRef owner, HexCoord at, long grain, long frozenGrain, long silver) {
     return new GoodsAccount(
-        new GoodsAccountKey(owner, at),
+        new GoodsAccountKey(io.mosire.simos.economy.api.cohort.HouseholdActors.householdOf(owner)),
         Map.of(GRAIN, grain),
         Map.of(SILVER, silver),
         frozenGrain == 0L ? Map.of() : Map.of(GRAIN, frozenGrain),

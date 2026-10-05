@@ -67,9 +67,9 @@ class ModeMigrationPolicyClaimedAssetsTest {
   private static final HouseholdId HOUSE = HouseholdId.parse("hh-claimed-house");
   private static final HouseholdId NEWCOMER = HouseholdId.parse("hh-claimed-newcomer");
 
-  private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "estate-claimed-test");
-  private static final ActorRef OP1 = new ActorRef(ActorKind.ESTATE, "op-1");
-  private static final ActorRef OP2 = new ActorRef(ActorKind.ESTATE, "op-2");
+  private static final ActorRef ESTATE = new ActorRef(ActorKind.ORGANIZATION, "estate-claimed-test");
+  private static final ActorRef OP1 = new ActorRef(ActorKind.ORGANIZATION, "op-1");
+  private static final ActorRef OP2 = new ActorRef(ActorKind.ORGANIZATION, "op-2");
 
   private static AssetShare share(
       IndustryId industry, AssetKind asset, ActorRef owner, ActorRef operator, long quantity, long sequence) {
@@ -190,9 +190,7 @@ class ModeMigrationPolicyClaimedAssetsTest {
             .withMarkets(Map.of(H, market()));
 
     AccountSession accounts = AccountSession.empty();
-    accounts.registerHousehold(
-        NEWCOMER, HouseholdActors.of(NEWCOMER), H, Map.of(), Map.of(), Map.of(), Map.of());
-    accounts.registerOperator(ESTATE, H, Map.of(), Map.of(), Map.of(), Map.of());
+    accounts.registerHousehold(NEWCOMER, H, Map.of(), Map.of(), Map.of(), Map.of());
     MarketTopology topology = MarketTopology.singleHex(Map.of(H, market()));
     return new EstateUnitFixture(base, shares, units, estateShare.id(), accounts, topology);
   }

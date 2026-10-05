@@ -12,7 +12,7 @@ import io.mosire.simos.actor.model.Actor;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.identity.ResolvedSubject;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
@@ -33,7 +33,7 @@ import org.junit.jupiter.api.Test;
  * {@code actor:} 命名空间的地址解析（照 {@code EconomyResolver} 的形制与"空候选 / 抛"分工）。
  *
  * <p>★ <b>认两类主体</b>（{@code ActorData} 的两张带记录的表，每类各一个 kind）：{@code actor}（主体） / {@code goods}（库存）。 ★
- * 库存那一类的名字是**它聚合键的规范串**（{@code <owner>|<location>}）—— 它的逆住在那 个类型自己的 {@code parse}
+ * 库存那一类的名字是**它聚合键的规范串**（P2-A §13.3 起 = 家户 id）—— 它的逆住在那 个类型自己的 {@code parse}
  * 里，<b>本解析器不复述任何格式</b>； 名字里带 {@code :} 时 canonical 会自动加引（§3.4 的按需加引，由 {@code Address} AST
  * 产出，本类不手写）。
  *
@@ -45,17 +45,21 @@ class ActorResolverTest {
   private static final StateRef REF = new StateRef(new BranchId("main"), new RevisionId(1));
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
 
-  private static final ActorRef FARM = new ActorRef(ActorKind.ESTATE, "farm@0_0");
+  private static final ActorRef ORGANIZATION = new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
   private static final ActorRef LOT = new ActorRef(ActorKind.PEOPLE_LOT, "rural:0_0:MALE:1");
-  private static final GoodsAccountKey GRAIN = new GoodsAccountKey(FARM, new HexCoord(0, 0));
 
-  /** 一份已激活的切片：一个庄园主体（AGE）+ 一本账，外加一个 id 里含 {@code :} 的人口批次。 */
+  /** ★ P2-A 起库存键 = 家户身份（不再有 owner|hex 两段）。 */
+  private static final HouseholdId HOUSEHOLD = new HouseholdId("hh-0_0-rural-poor_peasant");
+
+  private static final GoodsAccountKey GRAIN = new GoodsAccountKey(HOUSEHOLD);
+
+  /** 一份已激活的切片：一个组织者主体（AGE）+ 一本家户账，外加一个 id 里含 {@code :} 的人口批次。 */
   private static final ActorData DATA =
       ActorData.empty()
           .withMeta(Optional.of(new ActorMeta("Map1", 0, "actor-v1")))
           .withActors(
               Map.of(
-                  FARM, new Actor(FARM, "农业庄园"),
+                  ORGANIZATION, new Actor(ORGANIZATION, "农业组织者"),
                   LOT, new Actor(LOT, "0_0 的男性批次")))
           .withAccounts(
               Map.of(GRAIN, new GoodsAccount(GRAIN, Map.of(new CommodityId("grain"), 7L))));
@@ -79,12 +83,12 @@ class ActorResolverTest {
   /** 主体：{@code actor.<KIND>.<id>}（id 不含结构字符时不加引）。 */
   @Test
   void resolvesAnActorByItsKindAndId() {
-    ResolvedSubject subject = only("actor:Map1:actor.ESTATE.farm@0_0");
+    ResolvedSubject subject = only("actor:Map1:actor.ORGANIZATION.farm@0_0");
 
     assertThat(subject.id().namespace()).isEqualTo("actor.actor");
-    assertThat(subject.id().localId()).as("localId 是主体规范串").isEqualTo("ESTATE:farm@0_0");
+    assertThat(subject.id().localId()).as("localId 是主体规范串").isEqualTo("ORGANIZATION:farm@0_0");
     assertThat(subject.typeName()).isEqualTo("Actor");
-    assertThat(subject.canonicalAddress()).isEqualTo("actor:Map1:actor.ESTATE.farm@0_0");
+    assertThat(subject.canonicalAddress()).isEqualTo("actor:Map1:actor.ORGANIZATION.farm@0_0");
   }
 
   /**
@@ -110,33 +114,33 @@ class ActorResolverTest {
         .isEqualTo("PEOPLE_LOT:rural:0_0:MALE:1");
   }
 
-  /** 库存：名字是 {@code GoodsAccountKey} 的规范串。 */
+  /** 库存：名字是 {@code GoodsAccountKey} 的规范串（P2-A 起 = 家户 id）。 */
   @Test
   void resolvesAGoodsAccountByItsCompositeKey() {
-    ResolvedSubject subject = only("actor:Map1:goods.\"ESTATE:farm@0_0|0_0\"");
+    ResolvedSubject subject = only("actor:Map1:goods.hh-0_0-rural-poor_peasant");
 
     assertThat(subject.id().namespace()).isEqualTo("actor.goods");
     assertThat(subject.id().localId()).isEqualTo(GRAIN.toString());
     assertThat(subject.typeName()).isEqualTo("GoodsAccount");
-    assertThat(subject.canonicalAddress()).isEqualTo("actor:Map1:goods.\"ESTATE:farm@0_0|0_0\"");
+    assertThat(subject.canonicalAddress()).isEqualTo("actor:Map1:goods.hh-0_0-rural-poor_peasant");
   }
 
   /** ★ 合法但**没有记录**的主体/库存 ⇒ **空候选**（不是错误）。 */
   @Test
   void rowsThatDoNotExistAreEmptyCandidates() {
-    assertThat(resolve("actor:Map1:actor.ESTATE.farm@9_9")).isEmpty();
-    assertThat(resolve("actor:Map1:goods.\"HOUSEHOLD:house@0_0|0_0\"")).isEmpty();
+    assertThat(resolve("actor:Map1:actor.ORGANIZATION.farm@9_9")).isEmpty();
+    assertThat(resolve("actor:Map1:goods.hh-9_9-urban-vendor")).isEmpty();
   }
 
   /** ★ 本模块不服务的形态一律**空候选**：别的 kind、属性段、Index 段、段数 &gt; 3、缺 kind 的实体。 */
   @Test
   void unservedShapesAreEmptyCandidates() {
     assertThat(resolve("actor:Map1:unit.u-1")).as("其它 kind").isEmpty();
-    assertThat(resolve("actor:Map1:actor.ESTATE.farm@0_0:label")).as("属性段（4 段）").isEmpty();
+    assertThat(resolve("actor:Map1:actor.ORGANIZATION.farm@0_0:label")).as("属性段（4 段）").isEmpty();
     assertThat(resolve("actor:Map1:[0,0]")).as("Index 段：本切片没有位置型主体").isEmpty();
     assertThat(resolve("actor:Map1:\"Nation.区域A\"")).as("缺 kind 的实体").isEmpty();
-    assertThat(resolve("actor:actor.ESTATE")).as("第 2 段（根主体）不许带 kind：那是命名空间自己的位置").isEmpty();
-    assertThat(resolve("actor:Map1:holding.\"ESTATE:farm@0_0|0_0\""))
+    assertThat(resolve("actor:actor.ORGANIZATION")).as("第 2 段（根主体）不许带 kind：那是命名空间自己的位置").isEmpty();
+    assertThat(resolve("actor:Map1:holding.\"hh-0_0-rural-poor_peasant\""))
         .as("★ 已退役的 holding kind：不再认领 ⇒ 空候选（不是抛，也不再解析产权键）")
         .isEmpty();
   }
@@ -148,25 +152,26 @@ class ActorResolverTest {
   }
 
   /**
-   * ★★ **认领了的 kind 里名字解析失败 ⇒ 抛**（不包不吞）：词表外的主体种类、缺接缝的库存键各抛它自己那份 IAE。
+   * ★★ **认领了的 kind 里名字解析失败 ⇒ 抛**（不包不吞）：词表外的主体种类、缺 id 段的主体名各抛它自己那份 IAE。
    *
    * <p>判别力：若把这些异常吞成空候选，"拼错主体种类"与"这个主体不存在"就再也分不开了。
    *
-   * <p>★ 第三条原以产权键（{@code holding.noseparator}，{@code AssetHoldingKey.parse} 抛）为夹具；裁定 S3 之后 {@code
-   * holding} 已不是本解析器认领的 kind（落进"其它 kind ⇒ 空候选"），故改用同形的**库存键**夹具。
+   * <p>★ <b>P2-A 迁移（如实记）</b>：库存键缩小成"家户 id"后，非空白的名字一律合法（唯一拒绝是空白，而地址语法不会产生空白名）⇒
+   * 旧第三条"缺接缝的库存键 ⇒ 抛"不再可达，改为断言"合法但不存在 ⇒ 空候选"（同一判据的另一面：不吞也不误造）。
    */
   @Test
   void aBadNameInsideAClaimedKindThrows() {
     assertThatThrownBy(() -> resolve("actor:Map1:actor.MANOR.farm@0_0"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("MANOR")
-        .hasMessageContaining("ESTATE");
-    assertThatThrownBy(() -> resolve("actor:Map1:actor.ESTATE"))
+        .hasMessageContaining("ORGANIZATION");
+    assertThatThrownBy(() -> resolve("actor:Map1:actor.ORGANIZATION"))
         .as("缺 <id> 那一段（只给了 KIND）")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("KIND");
-    assertThatThrownBy(() -> resolve("actor:Map1:goods.noseparator"))
-        .isInstanceOf(IllegalArgumentException.class);
+    assertThat(resolve("actor:Map1:goods.hh-9_9-urban-vendor"))
+        .as("库存键只有空白非法 ⇒ 合法但不存在的家户是空候选")
+        .isEmpty();
   }
 
   /** ★ 装配故障：state 里没有 actor 切片 ⇒ 抛（**不是**"没有候选"）。 */

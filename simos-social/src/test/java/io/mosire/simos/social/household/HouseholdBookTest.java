@@ -249,14 +249,14 @@ class HouseholdBookTest {
             h1,
             new HouseholdLocation.Hex(H00),
             new HouseholdProfile("户1", null, Map.of()),
-            List.of(LOT),
+            Map.of(LOT, 1L),
             new HouseholdVitalRates(List.of()));
     Household hh2 =
         new Household(
             h2,
             new HouseholdLocation.Hex(H10),
             new HouseholdProfile("户2", null, Map.of()),
-            List.of(LOT),
+            Map.of(LOT, 1L),
             new HouseholdVitalRates(List.of()));
 
     assertThatThrownBy(

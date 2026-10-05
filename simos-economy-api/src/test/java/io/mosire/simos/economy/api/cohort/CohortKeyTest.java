@@ -219,11 +219,11 @@ class CohortKeyTest {
         .containsExactlyInAnyOrder(
             Recipient.ToActor.class, Recipient.ToHousehold.class, Recipient.ToCohort.class);
 
-    ActorRef estate = new ActorRef(ActorKind.ESTATE, "farm@0_0");
+    ActorRef organization = new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
     CohortKey cohort =
         new CohortKey(new HexCoord(2, -1), ResidenceKind.RURAL, SocialClassId.LANDLORD);
 
-    assertThat(new Recipient.ToActor(estate).actor()).isEqualTo(estate);
+    assertThat(new Recipient.ToActor(organization).actor()).isEqualTo(organization);
     assertThat(new Recipient.ToCohort(cohort).cohort()).isEqualTo(cohort);
 
     assertThatThrownBy(() -> new Recipient.ToActor(null))
@@ -312,7 +312,7 @@ class CohortKeyTest {
    */
   @Test
   void moneyRulesConstructFineWithoutACommodity() {
-    Recipient toActor = new Recipient.ToActor(new ActorRef(ActorKind.WORKSHOP, "craft@1_0"));
+    Recipient toActor = new Recipient.ToActor(new ActorRef(ActorKind.ORGANIZATION, "craft@1_0"));
     CompensationRule rule =
         rule(
             RuleType.FIXED_MONEY_RENT,

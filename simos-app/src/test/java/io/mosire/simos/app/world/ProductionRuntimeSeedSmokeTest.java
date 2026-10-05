@@ -35,8 +35,8 @@ import org.junit.jupiter.api.Test;
  * <ol>
  *   <li>不写 class-first 顶层键（P0.1 后 {@code classFirst} 组件已删除，载荷不得再出该键）；
  *   <li>载荷顶层带 P1/P2 目录五表：{@code modes/classStructures/classPositions/classStandings/assetRules}；
- *   <li>每条 entry 都是完整生产结构（{@code industries} + {@code units/assetShares/allocations/laborSupply/
- *       memberships}），且至少一条真的有产业/生产单元/资产份额/劳动/成员；
+ *   <li>每条 entry 都是完整生产结构（{@code industries} + {@code units/assetShares/allocations}），
+ *       且至少一条真的有产业/生产单元/资产份额/劳动配额（P2-A 后 {@code laborSupply}/{@code memberships} 已退役）；
  *   <li>载荷被真 {@link EconomySeedHandler} 接受（{@code Applied}），落出的 {@link EconomyData} 里 mode ≥ 7、
  *       classStructure ≥ 7、生产结构非空、classFirst 空。
  * </ol>
@@ -52,7 +52,7 @@ class ProductionRuntimeSeedSmokeTest {
   private static final ObjectMapper JSON = SimosObjectMapper.create();
 
   private static final List<String> PRODUCTION_STRUCTURE_KEYS =
-      List.of("industries", "units", "assetShares", "allocations", "laborSupply", "memberships");
+      List.of("industries", "units", "assetShares", "allocations");
 
   @Test
   void productionRuntimeSeedCarriesCatalogAndFullProductionEntriesThenHandlerAppliesThem()
@@ -103,8 +103,6 @@ class ProductionRuntimeSeedSmokeTest {
     boolean anyUnits = false;
     boolean anyAssetShares = false;
     boolean anyAllocations = false;
-    boolean anyLaborSupply = false;
-    boolean anyMemberships = false;
     for (JsonNode entry : payload.path("entries")) {
       for (String key : PRODUCTION_STRUCTURE_KEYS) {
         assertThat(entry.hasNonNull(key)).as("每条 entry 都必须带 %s（缺键 = 结构不完整）", key).isTrue();
@@ -114,15 +112,12 @@ class ProductionRuntimeSeedSmokeTest {
       anyUnits |= entry.path("units").size() > 0;
       anyAssetShares |= entry.path("assetShares").size() > 0;
       anyAllocations |= entry.path("allocations").size() > 0;
-      anyLaborSupply |= entry.path("laborSupply").size() > 0;
-      anyMemberships |= entry.path("memberships").size() > 0;
     }
     assertThat(anyIndustries).as("至少一条 entry 有非空 industries").isTrue();
     assertThat(anyUnits).as("至少一条 entry 有非空 units").isTrue();
     assertThat(anyAssetShares).as("至少一条 entry 有非空 assetShares").isTrue();
     assertThat(anyAllocations).as("至少一条 entry 有非空 allocations").isTrue();
-    assertThat(anyLaborSupply).as("至少一条 entry 有非空 laborSupply").isTrue();
-    assertThat(anyMemberships).as("至少一条 entry 有非空 memberships").isTrue();
+    // ★ P2-A：laborSupply 已删除、memberships 已迁 Social ⇒ 载荷结构键与断言同步收敛。
 
     SimulationState empty =
         new SimulationState(
@@ -148,7 +143,10 @@ class ProductionRuntimeSeedSmokeTest {
     assertThat(economy.units()).as("units 非空").isNotEmpty();
     assertThat(economy.assetShares()).as("assetShares 非空").isNotEmpty();
     assertThat(economy.allocations()).as("allocations 非空").isNotEmpty();
-    assertThat(economy.laborSupply()).as("laborSupply 非空").isNotEmpty();
-    assertThat(economy.memberships()).as("memberships 非空").isNotEmpty();
+    // ★ P2-A A4 / §13.2：laborSupply 已删除、memberships 已迁 Social ⇒ 改为钉家户时间预算的载体。
+    assertThat(economy.classes()).as("classes 非空").isNotEmpty();
+    assertThat(economy.classes().values().stream().allMatch(row -> row.laborMilli() >= 0L))
+        .as("每行的每 tick 时间预算不得为负")
+        .isTrue();
   }
 }

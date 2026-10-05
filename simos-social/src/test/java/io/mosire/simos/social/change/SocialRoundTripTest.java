@@ -159,7 +159,7 @@ class SocialRoundTripTest {
             HOUSEHOLD,
             new HouseholdLocation.Hex(H00),
             new HouseholdProfile("一户口", null, Map.of()),
-            List.of(PopulationLots.rural(H00, Sex.MALE, "1")),
+            Map.of(PopulationLots.rural(H00, Sex.MALE, "1"), 300L),
             new HouseholdVitalRates(List.of())));
   }
 

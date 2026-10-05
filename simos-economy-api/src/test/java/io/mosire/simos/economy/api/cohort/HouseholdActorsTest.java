@@ -61,8 +61,8 @@ class HouseholdActorsTest {
   @Test
   void nonHouseholdKindsAndMalformedTextAreRejectedLoudly() {
     assertThatThrownBy(
-            () -> HouseholdActors.cohortOf(new ActorRef(ActorKind.WORKSHOP, "craft@3_-7")))
-        .as("★ 作坊不是家户（把它的账当家户账读 ⇒ 静默答错）")
+            () -> HouseholdActors.cohortOf(new ActorRef(ActorKind.ORGANIZATION, "craft@3_-7")))
+        .as("★ 组织者不是家户（把它的账当家户账读 ⇒ 静默答错）")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("HOUSEHOLD");
     assertThatThrownBy(

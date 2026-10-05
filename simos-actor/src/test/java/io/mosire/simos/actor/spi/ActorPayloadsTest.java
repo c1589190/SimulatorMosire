@@ -11,7 +11,7 @@ import io.mosire.simos.actor.model.Actor;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.Map;
@@ -24,58 +24,57 @@ import org.junit.jupiter.api.Test;
  * <p>★ 分工照 {@code EconomyPayloads}：**形状/类型/词表在本层**判（坏载荷一律以 {@link IllegalArgumentException}
  * 面世，带可读中文原因）；**数值语义**（余额 ≥ 0）交给领域类型（{@link GoodsAccount}）的构造期守卫 ——**不重复实现，一处真相**。
  *
- * <p>★ 另有两条**本切片特有**的判据（{@code EconomyData} 的 {@code requireSlotExists} 那一族）：
+ * <p>★ 库存行的引用判据（P2-A §13.3 起）：账户主体只有家户 ⇒ 载荷是 {@code {"household":"hh-…","balances":{…}}}。
+ * 家户由该行自声明，故"悬空 owner"那条旧判据随之退役。
  *
- * <ul>
- *   <li>库存的 {@code owner} 必须是**已声明的主体**（载荷里的 {@code actors} ∪ 现有状态里的主体）——悬空引用当场拒；
- *   <li>库存的 {@code location} 必须**等于所在格**——命令声明的目标（格）必须覆盖它真正动到的资源，否则权限围栏判的不是同一件事。
- * </ul>
- *
- * <p>★ <b>2026-09-27 裁定 S3</b>：产权（{@code holdings} 行 / {@code AssetHolding}）整块退役 ⇒ 本类里产权那一组用例 （缺
- * owner / 词表外的资产粗类型 / {@code assetKey} 形状 / 负数量 / 产权重复）随之删除；"悬空 owner"与"地格必须等于所在格"
- * 两条判据各留一条（它们的夹具本就命中库存行，见各自的方法注释）。
+ * <p>★ <b>2026-09-27 裁定 S3</b>：产权（{@code holdings} 行 / {@code AssetHolding}）整块退役 ⇒ 本类里产权那一组用例随之删除。
+ * ★ <b>P2-A §13.3</b>：{@code owner}/{@code location} 两段随"账户键无格"整体退役 ⇒ "库存的 location 必须等于所在格"那条判据
+ * 不再是账户载荷的一部分（账户位置由 {@code Household.location} 派生），改钉"缺 {@code household} 字段 ⇒ 拒"。
  */
 class ActorPayloadsTest {
 
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
 
-  private static final ActorRef ESTATE_FARM = new ActorRef(ActorKind.ESTATE, "farm@0_0");
-  private static final ActorRef HOUSEHOLD = new ActorRef(ActorKind.HOUSEHOLD, "house@0_0");
+  private static final ActorRef ORGANIZATION_FARM = new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
 
-  /** 最小合法载荷：一格，两个主体 + 一本账。 */
+  private static final ActorRef HOUSEHOLD_ACTOR = new ActorRef(ActorKind.HOUSEHOLD, "house@0_0");
+
+  private static final HouseholdId HOUSEHOLD = new HouseholdId("hh-house-0_0");
+
+  /** 最小合法载荷：一格，两个主体 + 一本家户账。 */
   private static final String PAYLOAD =
       "{\"mapId\":\"Map1\",\"rulesVersion\":\"actor-v1\",\"entries\":[{\"q\":0,\"r\":0,"
-          + "\"actors\":[{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\",\"label\":\"农业庄园\"},"
+          + "\"actors\":[{\"kind\":\"ORGANIZATION\",\"id\":\"farm@0_0\",\"label\":\"农业组织者\"},"
           + "{\"kind\":\"HOUSEHOLD\",\"id\":\"house@0_0\",\"label\":\"农户\"}],"
-          + "\"goods\":[{\"owner\":{\"kind\":\"HOUSEHOLD\",\"id\":\"house@0_0\"},"
-          + "\"location\":{\"q\":0,\"r\":0},\"balances\":{\"grain\":2241000,\"fiber\":0}}]}]}";
+          + "\"goods\":[{\"household\":\"hh-house-0_0\","
+          + "\"balances\":{\"grain\":2241000,\"fiber\":0}}]}]}";
 
   /** 会计行的完整字面（**替换类用例的锚点**：它唯一，替换不中就是测了空气）。 */
   private static final String GOODS_ROW =
-      "{\"owner\":{\"kind\":\"HOUSEHOLD\",\"id\":\"house@0_0\"},"
-          + "\"location\":{\"q\":0,\"r\":0},\"balances\":{\"grain\":2241000,\"fiber\":0}}";
+      "{\"household\":\"hh-house-0_0\",\"balances\":{\"grain\":2241000,\"fiber\":0}}";
 
   // ── 正例：逐值 materialize ──────────────────────────────────────────────────────────
 
   /** ★ 正例：三件**逐值**落盘（元信息 / 主体 / 库存），且 `activatedDay` = 世界当前 tick。 */
   @Test
   void materializesEveryFieldValueForValue() {
-    ActorData data = ActorPayloads.toData(ActorPayloads.parse(PAYLOAD), Set.of(), T7);
+    ActorData data = ActorPayloads.toData(ActorPayloads.parse(PAYLOAD), Set.of(), Set.of(), T7);
 
     ActorMeta meta = data.meta().orElseThrow();
     assertThat(meta.mapId()).isEqualTo("Map1");
     assertThat(meta.rulesVersion()).isEqualTo("actor-v1");
     assertThat(meta.activatedDay()).as("激活日 = 世界当前 tick").isEqualTo(7L);
 
-    assertThat(data.actors()).containsOnlyKeys(ESTATE_FARM, HOUSEHOLD);
-    Actor estate = data.actors().get(ESTATE_FARM);
-    assertThat(estate.ref()).as("键从值派生：键 == Actor.ref()").isEqualTo(ESTATE_FARM);
-    assertThat(estate.label()).isEqualTo("农业庄园");
+    assertThat(data.actors()).containsOnlyKeys(ORGANIZATION_FARM, HOUSEHOLD_ACTOR);
+    Actor organization = data.actors().get(ORGANIZATION_FARM);
+    assertThat(organization.ref()).as("键从值派生：键 == Actor.ref()").isEqualTo(ORGANIZATION_FARM);
+    assertThat(organization.label()).isEqualTo("农业组织者");
 
-    GoodsAccountKey accountKey = new GoodsAccountKey(HOUSEHOLD, new HexCoord(0, 0));
+    GoodsAccountKey accountKey = new GoodsAccountKey(HOUSEHOLD);
     assertThat(data.accounts()).containsOnlyKeys(accountKey);
     GoodsAccount account = data.accounts().get(accountKey);
     assertThat(account.key()).as("键从值派生：键 == GoodsAccount.key()").isEqualTo(accountKey);
+    assertThat(account.key().household()).as("账户主体 = 载荷里声明的家户").isEqualTo(HOUSEHOLD);
     assertThat(account.balances())
         .as("余额逐值；**0 保留**（存量不是空表）")
         .containsExactlyInAnyOrderEntriesOf(
@@ -83,26 +82,26 @@ class ActorPayloadsTest {
   }
 
   /**
-   * ★★ **主体声明在别的格、库存落在这一格 ⇒ 合法**（载荷的格序**不是**依赖序）。
+   * ★★ **主体声明在别的格、库存落在这一格 ⇒ 合法**（载荷的格序**不是**依赖序；两趟走）。
    *
-   * <p>判别力：这条用例钉的是"**两趟走**"（先收齐全部主体，再建那张带 location 的表）—— 一趟走（边读边建）会把这份载荷 判成"悬空
-   * owner"，而它其实完全合法：库存只要求"到这个命令为止该主体存在"，不要求"与库存同格、同一条 entry"。
-   *
-   * <p>★ <b>2026-09-27 裁定 S3</b>：夹具原用产权行（{@code holdings}），随该表退役改为同形的**库存行**（{@code goods}）——
-   * 判据（两趟走）与断言一字未改，只是落在那张还活着的表上。
+   * <p>★ <b>P2-A 迁移</b>：库存行不再引用 actor，而是自声明家户 ⇒ 本用例改为钉"多 entry 的 actors 与 goods 各自
+   * 都落盘、互不要求同一条 entry"（两趟走仍在：actors 先全收齐再建表）。
    */
   @Test
-  void acceptsAnOwnerDeclaredInAnotherEntry() {
+  void acceptsActorsAndHouseholdAccountsSpreadAcrossEntries() {
     String twoEntries =
         "{\"mapId\":\"Map1\",\"rulesVersion\":\"actor-v1\",\"entries\":["
-            + "{\"q\":0,\"r\":0,\"goods\":[{\"owner\":{\"kind\":\"ESTATE\",\"id\":\"farm@1_0\"},"
-            + "\"location\":{\"q\":0,\"r\":0},\"balances\":{\"grain\":1}}]},"
-            + "{\"q\":1,\"r\":0,\"actors\":[{\"kind\":\"ESTATE\",\"id\":\"farm@1_0\",\"label\":\"庄园\"}]}"
+            + "{\"q\":0,\"r\":0,\"goods\":[{\"household\":\"hh-other-1_0\","
+            + "\"balances\":{\"grain\":1}}]},"
+            + "{\"q\":1,\"r\":0,\"actors\":[{\"kind\":\"ORGANIZATION\",\"id\":\"farm@1_0\","
+            + "\"label\":\"庄园\"}]}"
             + "]}";
 
-    ActorData data = ActorPayloads.toData(ActorPayloads.parse(twoEntries), Set.of(), T7);
+    ActorData data = ActorPayloads.toData(ActorPayloads.parse(twoEntries), Set.of(), Set.of(), T7);
 
     assertThat(data.accounts()).as("库存照旧落盘").hasSize(1);
+    assertThat(data.accounts().keySet().iterator().next().household())
+        .isEqualTo(new HouseholdId("hh-other-1_0"));
     assertThat(data.actors()).as("主体在后一条 entry 里声明，但同属一份载荷").hasSize(1);
   }
 
@@ -141,6 +140,7 @@ class ActorPayloadsTest {
                     ActorPayloads.parse(
                         "{\"mapId\":\"Map1\",\"rulesVersion\":\"v\",\"entries\":[]}"),
                     Set.of(),
+                    Set.of(),
                     T7))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("entries 不得为空");
@@ -148,6 +148,7 @@ class ActorPayloadsTest {
             () ->
                 ActorPayloads.toData(
                     ActorPayloads.parse("{\"mapId\":\"Map1\",\"rulesVersion\":\"v\"}"),
+                    Set.of(),
                     Set.of(),
                     T7))
         .isInstanceOf(IllegalArgumentException.class)
@@ -163,6 +164,7 @@ class ActorPayloadsTest {
                     ActorPayloads.parse(
                         "{\"mapId\":\" \",\"rulesVersion\":\"v\",\"entries\":[{\"q\":0,\"r\":0}]}"),
                     Set.of(),
+                    Set.of(),
                     T7))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("mapId");
@@ -170,6 +172,7 @@ class ActorPayloadsTest {
             () ->
                 ActorPayloads.toData(
                     ActorPayloads.parse("{\"mapId\":\"Map1\",\"entries\":[{\"q\":0,\"r\":0}]}"),
+                    Set.of(),
                     Set.of(),
                     T7))
         .isInstanceOf(IllegalArgumentException.class)
@@ -188,7 +191,8 @@ class ActorPayloadsTest {
             "\"kind\":\"HOUSEHOLD\",\"id\":\" \",\"label\":\"农户\"");
 
     assertThat(payload).as("替换必须真的发生（否则测的是别处那个 id）").isNotEqualTo(PAYLOAD);
-    assertThatThrownBy(() -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), T7))
+    assertThatThrownBy(
+            () -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), Set.of(), T7))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("字段 id");
   }
@@ -202,7 +206,8 @@ class ActorPayloadsTest {
     String payload = PAYLOAD.replace("\"label\":\"农户\"", "\"label\":\" \"");
 
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
-    assertThatThrownBy(() -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), T7))
+    assertThatThrownBy(
+            () -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), Set.of(), T7))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("字段 label");
   }
@@ -212,13 +217,14 @@ class ActorPayloadsTest {
   /** ★★ 词表外的**主体种类** ⇒ 当场抛，消息里列出合法值。 */
   @Test
   void rejectsAnActorKindOutsideTheVocabulary() {
-    String payload = PAYLOAD.replace("\"kind\":\"ESTATE\"", "\"kind\":\"MANOR\"");
+    String payload = PAYLOAD.replace("\"kind\":\"ORGANIZATION\"", "\"kind\":\"MANOR\"");
 
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
-    assertThatThrownBy(() -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), T7))
+    assertThatThrownBy(
+            () -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), Set.of(), T7))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("MANOR")
-        .hasMessageContaining("ESTATE");
+        .hasMessageContaining("ORGANIZATION");
   }
 
   // ── 拒因：数值语义（交给领域类型的构造期守卫）──────────────────────────────────────
@@ -229,7 +235,8 @@ class ActorPayloadsTest {
     String payload = PAYLOAD.replace("\"grain\":2241000", "\"grain\":-2241000");
 
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
-    assertThatThrownBy(() -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), T7))
+    assertThatThrownBy(
+            () -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), Set.of(), T7))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("不得为负");
   }
@@ -246,7 +253,8 @@ class ActorPayloadsTest {
                 + "{\"kind\":\"HOUSEHOLD\",\"id\":\"house@0_0\",\"label\":\"农户二\"}]");
 
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
-    assertThatThrownBy(() -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), T7))
+    assertThatThrownBy(
+            () -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), Set.of(), T7))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("主体重复");
   }
@@ -257,53 +265,41 @@ class ActorPayloadsTest {
     String payload = PAYLOAD.replace(GOODS_ROW, GOODS_ROW + "," + GOODS_ROW);
 
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
-    assertThatThrownBy(() -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), T7))
+    assertThatThrownBy(
+            () -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), Set.of(), T7))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("库存重复");
   }
 
-  // ── 拒因：★ 本切片特有的两条引用判据 ────────────────────────────────────────────────
+  // ── 拒因：★ 账户行的家户引用 ────────────────────────────────────────────────────────
 
   /**
-   * ★★ **悬空 owner ⇒ 拒**：库存指向一个**既不在载荷里、也不在现有状态里**的主体。
+   * ★★ <b>库存行没有 {@code household} ⇒ 拒</b>（P2-A 后账户主体只有家户；"谁的账"必须写得出来）。
    *
-   * <p>判别力：一个拼错的 owner（{@code house@9_9} 而非 {@code house@0_0}）若被收下，那本账就是**静默的幽灵** —— 按 owner
-   * 查它查不到、也没有任何一层会报错（同 "拼错产业 id 会让当日劳动静默变 0" 那一族）。故命令面当场拒，并点名 owner 与所在格。
-   *
-   * <p>★ <b>2026-09-27 裁定 S3</b>：夹具的 {@code "id":"house@0_0"}} 只命中<b>库存行</b>的 owner（主体行那个 id 后面跟的是
-   * {@code ,} 而不是 {@code }}）⇒ 本条原本就落在库存那一路上，退役产权后一字未改；原先与之并列的那条 "同一条判据对会计行同样成立"（它的 {@code farm@0_0}
-   * 夹具实际命中的是产权行）随产权退役而删除。
+   * <p>判别力：若缺字段被当成"默认某个家户"，这本账就会落到一个**调用方没说过的**主体名下 —— 静默记账到错误的人头上。
    */
   @Test
-  void rejectsAGoodsRowWhoseOwnerIsDeclaredNowhere() {
-    String payload = PAYLOAD.replace("\"id\":\"house@0_0\"}", "\"id\":\"house@9_9\"}");
-
-    assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
-    assertThatThrownBy(() -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), T7))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("house@9_9")
-        .hasMessageContaining("0_0");
-  }
-
-  /**
-   * ★★ **库存的地格必须等于所在格 ⇒ 否则拒**：命令声明的目标（格）必须覆盖它真正动到的资源。
-   *
-   * <p>判别力：{@code actor.Seed} 的目标路径是 {@code entries[]} 的**格**（GM 代执行时逐条判越权）。若载荷能在 {@code 0_0} 那一条里写
-   * {@code -1_0} 的库存，权限围栏判的就是**另一件事** —— 一条被授权的命令改到了没被授权的格。
-   */
-  @Test
-  void rejectsAGoodsRowWhoseLocationIsNotTheEntryHex() {
+  void rejectsAGoodsRowWithoutAHouseholdField() {
     String payload =
         PAYLOAD.replace(
-            "\"owner\":{\"kind\":\"HOUSEHOLD\",\"id\":\"house@0_0\"},"
-                + "\"location\":{\"q\":0,\"r\":0}",
-            "\"owner\":{\"kind\":\"HOUSEHOLD\",\"id\":\"house@0_0\"},"
-                + "\"location\":{\"q\":-1,\"r\":0}");
+            "{\"household\":\"hh-house-0_0\",", "{"); // 去掉 household 键，balances 留着
 
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
-    assertThatThrownBy(() -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), T7))
+    assertThatThrownBy(
+            () -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), Set.of(), T7))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("location")
-        .hasMessageContaining("0_0");
+        .hasMessageContaining("字段 household");
+  }
+
+  /** ★ 对照：{@code household} 是空白串 ⇒ 同样拒（家户 id 不得空白）。 */
+  @Test
+  void rejectsAGoodsRowWithABlankHouseholdId() {
+    String payload = PAYLOAD.replace("hh-house-0_0", "   ");
+
+    assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
+    assertThatThrownBy(
+            () -> ActorPayloads.toData(ActorPayloads.parse(payload), Set.of(), Set.of(), T7))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("household");
   }
 }

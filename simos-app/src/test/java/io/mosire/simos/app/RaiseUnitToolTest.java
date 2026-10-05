@@ -13,6 +13,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.app.testing.SocialHouseholdFixture;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.write.CommandSubmitTool;
@@ -48,9 +49,13 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.household.HouseholdLocation;
+import io.mosire.simos.social.api.household.HouseholdProfile;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.codec.SocialCodec;
+import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.unit.CompositionEntry;
@@ -119,8 +124,9 @@ class RaiseUnitToolTest {
   private static final ActorRef HH1 = new ActorRef(ActorKind.HOUSEHOLD, "house@1_1");
   private static final ActorRef HH2 = new ActorRef(ActorKind.HOUSEHOLD, "house@1_2");
   private static final ActorRef HH_OUT = new ActorRef(ActorKind.HOUSEHOLD, "house@1_3");
-  private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "e-1");
-  private static final ActorRef NEW_TREASURY = new ActorRef(ActorKind.UNIT, NEW_UNIT.value());
+  private static final ActorRef DANGLING_HH = new ActorRef(ActorKind.HOUSEHOLD, "hh-dangling");
+  /** ★ P2-A：组军给新单位建的人口家户（{@code RaiseUnitPlan.householdIdFor} 的格式）就是它的国库主体。 */
+  private static final HouseholdId NEW_TREASURY_HH = new HouseholdId("hh-unit:" + NEW_UNIT.value());
 
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final CurrencyId SILVER = MoneyVocabulary.SILVER_CURRENCY;
@@ -308,10 +314,9 @@ class RaiseUnitToolTest {
     assertManpowerConservationAndFidelity(socialBefore, socialData(after), 40L);
     assertInfoRecord(after);
 
-    // 失败方向也钉住：国库不在 H12、未涉及的家户/批次不得动。
-    assertThat(grainOf(actorData(after), new GoodsAccountKey(NEW_TREASURY, H12))).isZero();
-    assertThat(grainOf(actorData(after), new GoodsAccountKey(ESTATE, H11))).isEqualTo(1000L);
-    assertThat(grainOf(actorData(after), new GoodsAccountKey(HH_OUT, H13))).isEqualTo(1000L);
+    // 失败方向也钉住：未涉及的家户不得动（P2-A 后账户键无格 ⇒ 旧"国库不在 H12"判据随之退役）。
+    assertThat(grainOf(actorData(after), new GoodsAccountKey(HouseholdActors.householdOf(DANGLING_HH)))).isEqualTo(1000L);
+    assertThat(grainOf(actorData(after), new GoodsAccountKey(HouseholdActors.householdOf(HH_OUT)))).isEqualTo(1000L);
   }
 
   @Test
@@ -359,9 +364,7 @@ class RaiseUnitToolTest {
     assertThat(taken).as("Σ各批次被抓人数 == 请求人力").isEqualTo(40L);
     assertThat(actorData(after).accounts().keySet())
         .as("不得给新单位建空国库账（没有 AdjustAccounts 就没有国库条目）")
-        .noneMatch(
-            key ->
-                key.owner().kind() == ActorKind.UNIT && key.owner().id().equals(NEW_UNIT.value()));
+        .noneMatch(key -> key.household().equals(NEW_TREASURY_HH));
     assertInfoRecord(after, 0L, 0L, 0, 0, 2);
   }
 
@@ -604,18 +607,16 @@ class RaiseUnitToolTest {
     long grainReduction = 0L;
     long moneyReduction = 0L;
     for (GoodsAccountKey key : before.accounts().keySet()) {
-      if (key.owner().kind() != ActorKind.HOUSEHOLD) {
-        continue;
-      }
+      // ★ P2-A：账户主体只有家户 ⇒ 原"非 HOUSEHOLD 跳过"退役。
       grainReduction += grainOf(before, key) - grainOf(after, key);
       moneyReduction += moneyOf(before, key) - moneyOf(after, key);
     }
     long treasuryGrainIncrease =
-        grainOf(after, new GoodsAccountKey(NEW_TREASURY, H11))
-            - grainOf(before, new GoodsAccountKey(NEW_TREASURY, H11));
+        grainOf(after, new GoodsAccountKey(NEW_TREASURY_HH))
+            - grainOf(before, new GoodsAccountKey(NEW_TREASURY_HH));
     long treasuryMoneyIncrease =
-        moneyOf(after, new GoodsAccountKey(NEW_TREASURY, H11))
-            - moneyOf(before, new GoodsAccountKey(NEW_TREASURY, H11));
+        moneyOf(after, new GoodsAccountKey(NEW_TREASURY_HH))
+            - moneyOf(before, new GoodsAccountKey(NEW_TREASURY_HH));
 
     assertThat(grainReduction).as("Σ家户粮减少 == 请求粮").isEqualTo(120L);
     assertThat(treasuryGrainIncrease).as("新单位国库粮 == 请求粮").isEqualTo(120L);
@@ -624,11 +625,11 @@ class RaiseUnitToolTest {
     assertThat(treasuryMoneyIncrease).as("新单位国库钱 == 请求钱").isEqualTo(100L);
     assertThat(moneyReduction).as("守恒式：Σ家户钱减少 == 新单位国库钱").isEqualTo(treasuryMoneyIncrease);
 
-    assertThat(grainOf(after, new GoodsAccountKey(HH1, H11))).as("hh-1 粮：100−80").isEqualTo(20L);
-    assertThat(grainOf(after, new GoodsAccountKey(HH2, H12))).as("hh-2 粮：40−40（落到 0 保留）").isZero();
-    assertThat(moneyOf(after, new GoodsAccountKey(HH2, H12))).as("hh-2 钱：80−80").isZero();
-    assertThat(moneyOf(after, new GoodsAccountKey(HH1, H11))).as("hh-1 钱：50−20").isEqualTo(30L);
-    assertThat(after.accounts().get(new GoodsAccountKey(HH1, H11)).frozenBalances())
+    assertThat(grainOf(after, new GoodsAccountKey(HouseholdActors.householdOf(HH1)))).as("hh-1 粮：100−80").isEqualTo(20L);
+    assertThat(grainOf(after, new GoodsAccountKey(HouseholdActors.householdOf(HH2)))).as("hh-2 粮：40−40（落到 0 保留）").isZero();
+    assertThat(moneyOf(after, new GoodsAccountKey(HouseholdActors.householdOf(HH2)))).as("hh-2 钱：80−80").isZero();
+    assertThat(moneyOf(after, new GoodsAccountKey(HouseholdActors.householdOf(HH1)))).as("hh-1 钱：50−20").isEqualTo(30L);
+    assertThat(after.accounts().get(new GoodsAccountKey(HouseholdActors.householdOf(HH1))).frozenBalances())
         .as("冻结额不许被抽走（粮冻结 20 原样）")
         .containsEntry(GRAIN, 20L);
   }
@@ -867,13 +868,13 @@ class RaiseUnitToolTest {
         .withAccount(account(HH1, H11, 100L, 20L, 50L))
         .withAccount(account(HH2, H12, 40L, 0L, 80L))
         .withAccount(account(HH_OUT, H13, 1000L, 0L, 1000L))
-        .withAccount(account(ESTATE, H11, 1000L, 0L, 1000L));
+        .withAccount(account(DANGLING_HH, H11, 1000L, 0L, 1000L));
   }
 
   private static GoodsAccount account(
       ActorRef owner, HexCoord at, long grain, long frozenGrain, long silver) {
     return new GoodsAccount(
-        new GoodsAccountKey(owner, at),
+        new GoodsAccountKey(HouseholdActors.householdOf(owner)),
         Map.of(GRAIN, grain),
         Map.of(SILVER, silver),
         frozenGrain == 0L ? Map.of() : Map.of(GRAIN, frozenGrain),
@@ -892,8 +893,38 @@ class RaiseUnitToolTest {
     for (HexCoord at : List.of(H11, H12, H13)) {
       populations.put(at, populationSeries());
     }
-    return SocialHouseholdFixture.withHouseholdsAt(
-        populations, Map.of(), groups, groupLocations(groups));
+    return accountHouseholdSocial(
+        SocialHouseholdFixture.withHouseholdsAt(
+            populations, Map.of(), groups, groupLocations(groups)));
+  }
+
+  /**
+   * ★ P2-A：账户主体 = 家户 ⇒ 让 Social 家户 id 与账本夹具的 {@link HouseholdId} 逐字一致
+   * （{@code house@1_1 / house@1_2 / house@1_3}）；否则瀑布按 Social 查家户会全部落空。
+   */
+  private static SocialData accountHouseholdSocial(SocialData base) {
+    Map<HexCoord, HouseholdId> byHex = new LinkedHashMap<>();
+    byHex.put(H11, HouseholdActors.householdOf(HH1));
+    byHex.put(H12, HouseholdActors.householdOf(HH2));
+    byHex.put(H13, HouseholdActors.householdOf(HH_OUT));
+    Map<HouseholdId, Household> renamed = new LinkedHashMap<>();
+    for (Household household : base.households().values()) {
+      HexCoord at = ((HouseholdLocation.Hex) household.location()).hex();
+      HouseholdId id = byHex.get(at);
+      if (id == null) {
+        throw new IllegalStateException("没有为格 " + at + " 指定家户 id");
+      }
+      renamed.put(
+          id,
+          new Household(
+              id,
+              household.location(),
+              new HouseholdProfile(id.value(), null, Map.of()),
+              household.members(),
+              household.vitalRates()));
+    }
+    return new SocialData(
+        base.populations(), base.cities(), base.groups(), renamed, base.populationEvents());
   }
 
   private static Map<PeopleLotId, HexCoord> groupLocations(

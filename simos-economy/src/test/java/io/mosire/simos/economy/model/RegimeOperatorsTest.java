@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 /**
  * ★★ **制度 → 默认经营主体**的推导表（S1 阶段 3 Task 1；spec §六 + 裁定 R1/R3）。
  *
- * <p>★ 判别力：表里任一档的 {@code ActorKind} 改错（如 {@code handicraft → ESTATE}）⇒ 第一条用例**红**； 把"未登记即抛"改回
+ * <p>★ 判别力：表里任一档的 {@code ActorKind} 改错（如 {@code handicraft → UNIT}）⇒ 第一条用例**红**； 把"未登记即抛"改回
  * fail-open（拿某个档顶替）⇒ 第二条用例**红**；id 改成裸 hex ⇒ 第一条的末句**红**。
  */
 class RegimeOperatorsTest {
@@ -23,17 +23,17 @@ class RegimeOperatorsTest {
   @Test
   void theFourDocumentedRegimesMapToTheirDocumentedKinds() {
     assertThat(RegimeOperators.defaultOperator(new RegimeId("feudal"), FARM))
-        .isEqualTo(new ActorRef(ActorKind.ESTATE, "farm@0_0"));
+        .isEqualTo(new ActorRef(ActorKind.ORGANIZATION, "farm@0_0"));
     assertThat(RegimeOperators.defaultOperator(new RegimeId("household"), FARM))
         .isEqualTo(new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0"));
     assertThat(RegimeOperators.defaultOperator(new RegimeId("handicraft"), FARM))
-        .isEqualTo(new ActorRef(ActorKind.WORKSHOP, "farm@0_0"));
+        .isEqualTo(new ActorRef(ActorKind.ORGANIZATION, "farm@0_0"));
     assertThat(RegimeOperators.defaultOperator(new RegimeId("tenant"), FARM))
         .as("★★ 本轮新加的租佃档：佃农家户经营（不是地主）")
         .isEqualTo(new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0"));
     assertThat(RegimeOperators.defaultOperator(new RegimeId("feudal"), FARM).toString())
         .as("★ R3：id 是产业 id、不是裸 hex（否则同一个庄园会有两个 ActorRef）")
-        .isEqualTo("ESTATE:farm@0_0");
+        .isEqualTo("ORGANIZATION:farm@0_0");
   }
 
   /** ★★ 裁定 R1：未登记的制度**不许猜**（fail-closed）；★ 字面量大小写敏感（本表不做归一）。 */

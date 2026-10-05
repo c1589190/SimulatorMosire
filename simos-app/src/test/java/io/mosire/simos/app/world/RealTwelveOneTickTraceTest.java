@@ -855,7 +855,7 @@ class RealTwelveOneTickTraceTest {
             + " withdrawal="
             + withdrawal);
     GoodsAccountKey accountKey =
-        new GoodsAccountKey(HouseholdActors.of(governmentHousehold), governmentHex);
+        new GoodsAccountKey(governmentHousehold);
     GoodsAccount account = actor.accounts().get(accountKey);
     if (account == null) {
       System.out.println("[TRACE-GOV][ACCOUNT] 缺失: " + accountKey);

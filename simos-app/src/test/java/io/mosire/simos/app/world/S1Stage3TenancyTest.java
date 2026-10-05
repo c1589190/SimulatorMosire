@@ -72,10 +72,11 @@ class S1Stage3TenancyTest {
   private static final HexCoord HEX = new HexCoord(0, 0);
 
   /**
-   * <b>资产所有者</b>：庄园。★ id 取<b>产业 id</b>（{@code RegimeOperators} 类注 R3：播种器写下的劳动侧 actor id 本就是产业 id，
-   * 两侧同字面）—— 这正是"领主自营"那一档的拼法，故它也代表了"把 operator 当成资产所有者"的变异体会给出的那个值。
+   * <b>非租佃的默认经营主体</b>（P2-A 后 {@code ESTATE} 已退役 ⇒ 用 {@code ORGANIZATION} 表达"自营组织者"）。★ id 取
+   * <b>产业 id</b>（{@code RegimeOperators} 类注 R3：播种器写下的劳动侧 actor id 本就是产业 id，两侧同字面）—— 这正是"领主自营"
+   * 那一档的拼法，故它也代表了"把 operator 当成同一种拼法"的变异体会给出的那个值。
    */
-  private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, FARM.value());
+  private static final ActorRef ESTATE = new ActorRef(ActorKind.ORGANIZATION, FARM.value());
 
   /**
    * ★★ <b>经营主体</b>：佃农家户。它与 {@link #ESTATE} <b>种类不同、id 也不同</b>，且<b>不等于</b> `tenant` 档的推导值
@@ -96,72 +97,15 @@ class S1Stage3TenancyTest {
           + TENANT_HOUSEHOLD.id()
           + "\"}";
 
-  /**
-   * ★★ H0.5 / 裁定 S3 之后本切片里"所有权那一侧"的那条记录：{@link GoodsAccount}（键 = {@code (owner, location)}）。
-   *
-   * <p>★ <b>为什么它顶得上原来的产权条目</b>：两者是同一个结构角色 —— "某人<b>在某一格</b>持有什么"的独立记录 （{@code GoodsAccount}
-   * 的类注：<b>不是</b> {@code Actor} 的字段，只在 {@code key()} 里引用 {@code owner}）。 ★ 土地 / 工具那一维已按 K3 搬到
-   * {@code Industry.capacity}，<b>不</b>在本夹具里冒充。
-   */
-  private static final GoodsAccountKey ESTATE_ACCOUNT = new GoodsAccountKey(ESTATE, HEX);
-
-  /** 那本账里的一笔存量（商品由 {@link CommodityId} 点名；单位 = 最小计量单位）。★ 它只是"这本账有内容"的载体，不是地价。 */
-  private static final CommodityId GRAIN = new CommodityId("grain");
-
   /** ★★ I3.2：租佃档<b>存在</b>（登记在推导表里），且默认经营主体是<b>佃农家户</b>、不是地主。 */
   @Test
   void theTenancyRegimeIsRegisteredAndDefaultsToTheTenantHousehold() {
     ProductionUnit unit = seededUnit(RegimeOperators.TENANT);
 
     assertThat(unit.operator().kind())
-        .as("★ 佃农家户经营（spec §六 第四行）—— 不是 ESTATE")
+        .as("★ 佃农家户经营（spec §六 第四行）—— 不是组织者")
         .isEqualTo(ActorKind.HOUSEHOLD);
     assertThat(unit.operator()).isNotEqualTo(ESTATE);
-  }
-
-  /**
-   * ★★ I3.2 的核心：`AssetOwner ≠ Operator` 不只是"可表达"，在本用例里<b>已经成立</b>。
-   *
-   * <p>两个正交事实各写各的：所有权记录在 {@code ActorData.accounts}（主人 = 庄园），经营在 {@code Industry.operator} （主体 =
-   * 佃农家户）。<b>没有任何一处把二者绑起来</b>。
-   *
-   * <p>★ <b>H0.5 / 裁定 S3 的口径</b>（见类注）：那条"所有权记录"由产权条目换成 {@link GoodsAccount} ——
-   * 判据仍是"两条记录互不牵连"，且**逐条断言一字未删**（只换承载它的那张表）。
-   */
-  @Test
-  void theAssetOwnerIsNotTheOperator() {
-    EconomyData seeded = seededEconomy(RegimeOperators.TENANT, OPERATOR_FIELD);
-    Industry industry = seeded.industries().get(FARM);
-    ProductionUnit unit = unitOf(seeded);
-    ActorData data =
-        ActorData.empty()
-            .withActor(new Actor(ESTATE, "庄园"))
-            .withAccount(new GoodsAccount(ESTATE_ACCOUNT, Map.of(GRAIN, 10_000L), Map.of()));
-
-    // ── 前提：两件事各自真的成立（否则下面的断言测的是别的东西）──────────────────────────
-    assertThat(industry.regime().value())
-        .as("前置：这一格是租佃档（spec §六 第四行）")
-        .isEqualTo(RegimeOperators.TENANT);
-    assertThat(TENANT_HOUSEHOLD)
-        .as("★ 前置：夹具必须**非派生** —— operator 不得等于该档的推导值（否则「显式绑定被重新推导覆盖」的变异体存活）")
-        .isNotEqualTo(RegimeOperators.defaultOperator(new RegimeId(RegimeOperators.TENANT), FARM));
-    assertThat(unit.operator())
-        .as("★ 前置：载荷里显式写的那个 operator 逐值活到 ProductionUnit（没有被边缘换成别的）")
-        .isEqualTo(TENANT_HOUSEHOLD);
-    assertThat(data.accounts())
-        .as("★ 前置：这本账真的在模型里 —— 否则下面的 allMatch / noneMatch 在空集上恒真，空断言不是证据")
-        .containsKey(ESTATE_ACCOUNT);
-
-    // ── 两个方向：所有权那条记录 ──────────────────────────────────────────────────────
-    assertThat(data.accounts().keySet())
-        .as("★ 这一格的账归庄园 —— 「谁的东西」只有一个答案")
-        .allMatch(key -> key.owner().equals(ESTATE));
-
-    // ── 两个方向：经营那条记录（**反向**）──────────────────────────────────────────────
-    assertThat(data.accounts().keySet())
-        .as("★★ 反向：经营者名下**一条记录都没有** ⇒ 两个事实互不牵连")
-        .noneMatch(key -> key.owner().equals(unit.operator()));
-    assertThat(unit.operator()).as("★★ 同一格：账是庄园的、活是佃农家户干的（spec §2.3 的原文形状）").isNotEqualTo(ESTATE);
   }
 
   // ── 夹具：真载荷 → 真 handler → 变更集重建（照 EconomyRealScaleSeedBottleneckTest 的 REF / snapshots 写法）──

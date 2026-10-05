@@ -1007,7 +1007,8 @@ class RealTwelveHexProductionRuntime3650Test {
     assertThat(economy.units()).as("units 非空").isNotEmpty();
     assertThat(economy.assetShares()).as("assetShares 非空").isNotEmpty();
     assertThat(economy.allocations()).as("allocations 非空").isNotEmpty();
-    assertThat(economy.laborSupply()).as("laborSupply 非空").isNotEmpty();
+    // ★ P2-A A4：laborSupply 已删除 ⇒ 劳动预算的唯一权威 = ClassRow.laborMilli（随家户人口投影）。
+    assertThat(economy.classes()).as("classes（家户时间预算的载体）非空").isNotEmpty();
     assertThat(economy.markets()).as("markets 非空").isNotEmpty();
     // productionOrganizations 由生产运行时在关账/结算中从 units 物化，不在创世载荷里；留待推进后读。
     // ★ D-024 §3.5：merchantFirms 现在必须由 seeder 播种非空（城市格商号），否则真实运费路径退化。

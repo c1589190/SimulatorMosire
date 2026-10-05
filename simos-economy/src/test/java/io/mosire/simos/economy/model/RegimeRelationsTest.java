@@ -37,7 +37,7 @@ import org.junit.jupiter.api.Test;
 class RegimeRelationsTest {
 
   private static final IndustryId FARM = new IndustryId("farm@0_0");
-  private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "farm@0_0");
+  private static final ActorRef ESTATE = new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
 
   /** R3B.2：关系的 activity = unit 身份；新 id 走唯一拼写点 {@code ProductionUnitId.idOf}。 */
   private static final ProductionUnitId UNIT = ProductionUnitId.idOf(FARM, ESTATE);
@@ -150,7 +150,7 @@ class RegimeRelationsTest {
   /** ★ `handicraft` 档（R8 第 3 行）：实物工资（布 600‰ × 劳动量）+ ★货币工资档**只定义不结算**（I5.3）。 */
   @Test
   void theHandicraftRegimePaysAWageInClothAndDefinesButDoesNotSettleAMoneyWage() {
-    ActorRef workshop = new ActorRef(ActorKind.WORKSHOP, "farm@0_0");
+    ActorRef workshop = new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
     ProductionRelation relation =
         RegimeRelations.defaultRelation(
             new RegimeId("handicraft"),

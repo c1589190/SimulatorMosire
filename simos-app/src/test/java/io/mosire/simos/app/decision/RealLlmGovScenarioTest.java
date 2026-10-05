@@ -77,6 +77,7 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.household.Household;
@@ -2047,8 +2048,7 @@ class RealLlmGovScenarioTest {
     if (at.isEmpty()) {
       return 0L;
     }
-    GoodsAccountKey key =
-        new GoodsAccountKey(new ActorRef(ActorKind.UNIT, govUnit.value()), at.get());
+    GoodsAccountKey key = new GoodsAccountKey(GovernmentHouseholds.of(govUnit.value()));
     GoodsAccount account = CompactThreeNationsWorld.actorOf(state).accounts().get(key);
     return account == null ? 0L : account.money().getOrDefault(SILVER, 0L);
   }

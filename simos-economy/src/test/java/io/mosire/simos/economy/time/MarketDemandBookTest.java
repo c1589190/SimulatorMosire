@@ -125,7 +125,7 @@ class MarketDemandBookTest {
     MarketTopology topology = MarketTopology.singleHex(markets);
     Map<HouseholdId, ClassRow> rows = Map.of(HOUSE, row(10L, 10_000L, Map.of(GRAIN, 100L)));
     AccountSession accounts = AccountSession.empty();
-    accounts.registerHousehold(HOUSE, ACTOR, H, Map.of(), Map.of(), Map.of(), Map.of());
+    accounts.registerHousehold(HOUSE, H, Map.of(), Map.of(), Map.of(), Map.of());
 
     MarketDemandBook.Book book =
         MarketDemandBook.build(
@@ -189,7 +189,7 @@ class MarketDemandBookTest {
             shareId, CRAFT, AssetKind.WORKSHOP, ACTOR, ACTOR, 1L, AssetShare.RightKind.OWNED);
 
     AccountSession accounts = AccountSession.empty();
-    accounts.registerHousehold(HOUSE, ACTOR, H, Map.of(GRAIN, 300L), Map.of(), Map.of(), Map.of());
+    accounts.registerHousehold(HOUSE, H, Map.of(GRAIN, 300L), Map.of(), Map.of(), Map.of());
 
     // 在途：H2 → H、GRAIN 400 毫、day=7 时尚未到达 ⇒ 参与“无报告回退”的 − inTransit 项。
     ShipmentId shipmentId = ShipmentId.parse("ship-demand");

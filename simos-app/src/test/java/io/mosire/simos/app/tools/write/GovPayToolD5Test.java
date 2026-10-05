@@ -59,6 +59,8 @@ import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.unit.CompositionEntry;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.GovLevel;
 import io.mosire.simos.unit.OfficePolicy;
@@ -241,9 +243,9 @@ class GovPayToolD5Test {
 
     ActorData actors = world.actor(world.stateAt(2L));
     GoodsAccount from =
-        actors.accounts().get(new GoodsAccountKey(new ActorRef(ActorKind.UNIT, GOV_A), H11));
+        actors.accounts().get(new GoodsAccountKey(GovernmentHouseholds.of(GOV_A)));
     GoodsAccount to =
-        actors.accounts().get(new GoodsAccountKey(new ActorRef(ActorKind.UNIT, GOV_B), H12));
+        actors.accounts().get(new GoodsAccountKey(GovernmentHouseholds.of(GOV_B)));
     assertThat(from.balances().getOrDefault(GRAIN, 0L)).as("付款国库 grain 1000 − 100").isEqualTo(900L);
     assertThat(to.balances().getOrDefault(GRAIN, 0L)).as("收款国库 grain 0 + 100").isEqualTo(100L);
     assertThat(world.shell.pendingApprovals().pending()).as("决议后不再待批").isEmpty();
@@ -387,25 +389,30 @@ class GovPayToolD5Test {
     Map<UnitId, Unit> units = new LinkedHashMap<>();
     units.put(
         new UnitId(GOV_A),
-        unit(GOV_A, H11, Optional.of(govFormation(GovLevel.CENTRAL, Optional.empty()))));
+        unit(GOV_A, H11, Optional.of(govFormation(GOV_A, GovLevel.CENTRAL, Optional.empty()))));
     units.put(
         new UnitId(GOV_B),
         unit(
             GOV_B,
             H12,
-            Optional.of(govFormation(GovLevel.PROVINCE, Optional.of(new UnitId(GOV_A))))));
+            Optional.of(govFormation(GOV_B, GovLevel.PROVINCE, Optional.of(new UnitId(GOV_A))))));
     units.put(
         new UnitId(GOV_NO_POS),
         unit(
             GOV_NO_POS,
             null,
-            Optional.of(govFormation(GovLevel.PROVINCE, Optional.of(new UnitId(GOV_A))))));
+            Optional.of(
+                govFormation(GOV_NO_POS, GovLevel.PROVINCE, Optional.of(new UnitId(GOV_A))))));
     units.put(new UnitId(PLAIN_UNIT), unit(PLAIN_UNIT, H11, Optional.empty()));
     return new UnitState(units);
   }
 
-  private static GovFormation govFormation(GovLevel level, Optional<UnitId> superiorGov) {
-    return new GovFormation(Map.of(), OfficePolicy.defaults(), superiorGov, level);
+  private static GovFormation govFormation(
+      String unitId, GovLevel level, Optional<UnitId> superiorGov) {
+    // ★ P2-C §13.7：GOV 单位必须恰含自己的政府家户 hh-gov-<unitId>（UnitState 构造期强制）。
+    HouseholdId governmentHousehold = GovernmentHouseholds.of(unitId);
+    return new GovFormation(
+        Map.of(), List.of(governmentHousehold), Map.of(), OfficePolicy.defaults(), superiorGov, level);
   }
 
   private static Unit unit(
@@ -452,7 +459,7 @@ class GovPayToolD5Test {
   private static ActorData actors() {
     GoodsAccount account =
         new GoodsAccount(
-            new GoodsAccountKey(new ActorRef(ActorKind.UNIT, GOV_A), H11),
+            new GoodsAccountKey(GovernmentHouseholds.of(GOV_A)),
             Map.of(GRAIN, 1000L, new CommodityId("cloth"), 50L),
             Map.of(SILVER, 500L),
             Map.of(),

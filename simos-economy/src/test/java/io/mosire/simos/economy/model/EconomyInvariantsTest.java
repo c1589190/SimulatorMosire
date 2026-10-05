@@ -21,7 +21,6 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
@@ -76,7 +75,7 @@ class EconomyInvariantsTest {
           PEASANT_HOUSE, LANDLORD_HOUSE, DebtUnit.commodity(GRAIN), GRAIN_SECOND_TERMS);
 
   /** R4：经营主体住在 {@code ProductionUnit}（不再是 {@code Industry} 的模板字段）。 */
-  private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "estate-7");
+  private static final ActorRef ESTATE = new ActorRef(ActorKind.ORGANIZATION, "estate-7");
 
   /** R3B.2：{@code ProductionUnitId.idOf(industry, operator)} 是 unit 身份的唯一拼写点。 */
   private static final ProductionUnitId UNIT = ProductionUnitId.idOf(FARM, ESTATE);
@@ -999,136 +998,90 @@ class EconomyInvariantsTest {
   //   任何一条路径（命令、旧档读入、夹具、将来的协调器）都造不出"配额超过可支配劳动"的状态。
 
   /**
-   * ★★ **本阶段最重要的不变量**：{@code Σ 同一批次的配额 ≤ 该批次的可用劳动}。
+   * ★★ **本阶段最重要的不变量（P2-A A4 口径）**：{@code Σ 同一家户的配额 ≤ 该家户每 tick 时间预算}
+   * （{@code ClassRow.laborMilli}；第二权威 {@code LaborSupply} 已删除）。
    *
-   * <p>★ 判别力：把这条判据删掉（或把 {@code >} 写成 {@code >=}... 后者不红，此处只谈删）⇒ 本条转绿 ⇒ 红。 ★
-   * 对照条在下面：**恰好用满**（取等号）必须放行 —— 否则这条判据会退化成"多加一条配额就拒"的粗暴规则。
+   * <p>★ 判别力：把这条判据删掉（或把 {@code >} 写成 {@code >=}... 后者不红，此处只谈删）⇒ 本条转绿 ⇒ 红。
+   * ★ 对照条在下面：**恰好用满**（取等号）必须放行 —— 否则这条判据会退化成"多加一条配额就拒"的粗暴规则。
    */
   @Test
-  void rejectsAllocationsThatExceedTheGroupsAvailableLabor() {
+  void rejectsAllocationsThatExceedTheHouseholdsTimeBudget() {
     assertThatThrownBy(
             () ->
                 economyWith(
-                    laborSupply(LOT, 100_000L, 0L, 0L),
+                    100_000L,
                     Map.of(
                         ALLOC_A,
-                        allocation(ALLOC_A, LOT, FARM.value(), ActorKind.ESTATE, 60_000L),
-                        // ★ 60,000 + 60,000 = 120,000 > 可用 100,000 ⇒ 同一批人的劳动被算了两次满额
+                        allocation(ALLOC_A, LOT, FARM.value(), ActorKind.ORGANIZATION, 60_000L),
+                        // ★ 60,000 + 60,000 = 120,000 > 家户预算 100,000 ⇒ 同一户的时间被算两次满额
                         ALLOC_B,
-                        allocation(ALLOC_B, LOT, FARM.value(), ActorKind.ESTATE, 60_000L))))
-        .as("Σ 配额超过可用劳动必须构造期拒（设计稿 §四 的那条不变量）")
+                        allocation(ALLOC_B, LOT, FARM.value(), ActorKind.ORGANIZATION, 60_000L))))
+        .as("Σ 配额超过家户时间预算必须构造期拒（计划 §13.5 的那条不变量）")
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("超过其可用劳动");
+        .hasMessageContaining("超过它的每 tick 时间预算");
   }
 
-  /** ★ 对照：两产业各 60,000 + 40,000 = 100,000 = 可用 ⇒ **恰好用满，放行**（配额本来就该能取满）。 */
+  /** ★ 对照：两产业各 60,000 + 40,000 = 100,000 = 预算 ⇒ **恰好用满，放行**（配额本来就该能取满）。 */
   @Test
-  void acceptsAllocationsThatExactlyUseUpTheAvailableLabor() {
+  void acceptsAllocationsThatExactlyUseUpTheHouseholdsTimeBudget() {
     EconomyData data =
         economyWith(
-            laborSupply(LOT, 100_000L, 0L, 0L),
+            100_000L,
             Map.of(
                 ALLOC_A,
-                allocation(ALLOC_A, LOT, FARM.value(), ActorKind.ESTATE, 60_000L),
+                allocation(ALLOC_A, LOT, FARM.value(), ActorKind.ORGANIZATION, 60_000L),
                 ALLOC_B,
-                allocation(ALLOC_B, LOT, OTHER_FARM.value(), ActorKind.ESTATE, 40_000L)));
+                allocation(ALLOC_B, LOT, OTHER_FARM.value(), ActorKind.ORGANIZATION, 40_000L)));
 
-    assertThat(data.allocations()).as("同一批次供给两个产业：结构上成立").hasSize(2);
+    assertThat(data.allocations()).as("同一家户供给两个生产活动：结构上成立").hasSize(2);
+  }
+
+  /** ★★ **配额必须属于一个已存在的家户**（P2-A 起没有供给表 ⇒ 悬空家户不再有第二处可查）。 */
+  @Test
+  void rejectsAnAllocationWhoseHouseholdIsNotInClasses() {
+    HouseholdId unknown = new HouseholdId("hh-not-seeded");
+    LaborAllocation orphan =
+        new LaborAllocation(
+            ALLOC_A, LOT, unknown, new ActorRef(ActorKind.ORGANIZATION, FARM.value()), "farm", 1L, 1L);
+    assertThatThrownBy(() -> economyWith(100_000L, Map.of(ALLOC_A, orphan)))
+        .as("配额的家户必须在 classes 里（否则这份劳动没有归属）")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("家户必须是已存在的家户");
   }
 
   /**
-   * ★ **两项扣除也进上限**：已服役 30,000 + 已承诺 20,000 ⇒ 可用 = 100,000 − 50,000 = 50,000 ⇒ 60,000 的配额必须拒（判别力：若把
-   * {@code availableLabor()} 写成"直接返回毛额"，本条转绿 ⇒ 红）。
+   * ★★ **非产业型主体不得与产业 id 撞名**（结算按 actor id 把配额归给产业）—— P2-A 起
+   * {@code ESTATE}/{@code WORKSHOP} 退役，允许命中产业 id 的只有 {@code ORGANIZATION}/{@code HOUSEHOLD}。
+   *
+   * <p>★ 判别力：拼错 kinds 或把撞名判据删掉 ⇒ 这条静默转绿；下面的对照条证明"允许的两档不会被一律拒"。
    */
   @Test
-  void theCapCountsServedAndCommittedOutOfTheGrossLabor() {
+  void rejectsNonIndustryKindsWhoseIdCollidesWithAnIndustry() {
     assertThatThrownBy(
             () ->
                 economyWith(
-                    laborSupply(LOT, 100_000L, 30_000L, 20_000L),
+                    100_000L,
                     Map.of(
                         ALLOC_A,
-                        allocation(ALLOC_A, LOT, FARM.value(), ActorKind.ESTATE, 60_000L))))
+                        allocation(ALLOC_A, LOT, FARM.value(), ActorKind.PEOPLE_LOT, 1L))))
+        .as("PEOPLE_LOT 的 id 撞上产业 id ⇒ 它的配额会被静默算进那个产业")
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("超过其可用劳动");
-    // ★ 同一份供给，配额降到 50,000（= 可用）⇒ 放行
-    assertThat(
-            economyWith(
-                    laborSupply(LOT, 100_000L, 30_000L, 20_000L),
-                    Map.of(
-                        ALLOC_A, allocation(ALLOC_A, LOT, FARM.value(), ActorKind.ESTATE, 50_000L)))
-                .allocations())
-        .hasSize(1);
+        .hasMessageContaining("非产业型主体的 id 不得与任何产业 id 相同");
+
+    // ★ 对照：允许的两档（ORGANIZATION / HOUSEHOLD）命中产业 id 时放行。
+    EconomyData organization =
+        economyWith(
+            100_000L,
+            Map.of(ALLOC_A, allocation(ALLOC_A, LOT, FARM.value(), ActorKind.ORGANIZATION, 1L)));
+    assertThat(organization.allocations()).as("ORGANIZATION 可以经营一个产业").hasSize(1);
   }
 
-  /** ★ **没有供给记录的配额没有上限** ⇒ 构造期拒（判别力：删掉这条判据 ⇒ 那条 60,000 的配额静默入库、谁也算不出它超没超）。 */
-  @Test
-  void rejectsAnAllocationWhoseGroupHasNoSupplyRecord() {
-    assertThatThrownBy(
-            () ->
-                economyWith(
-                    Map.of(),
-                    Map.of(ALLOC_A, allocation(ALLOC_A, LOT, FARM.value(), ActorKind.ESTATE, 1L))))
-        .as("配额必须有一份同期的供给记录")
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("没有劳动供给记录");
-  }
-
-  /** ★ **同期**才算有供给：配额在第 1 周期、供给写在第 2 周期 ⇒ 拒（否则"按周期发配额"这条口径就有后门）。 */
-  @Test
-  void rejectsAnAllocationWhoseSupplyIsFromAnotherPeriod() {
-    assertThatThrownBy(
-            () ->
-                economyWith(
-                    Map.of(LOT, new LaborSupply(LOT, 2L, 100_000L, 0L, 0L)),
-                    Map.of(ALLOC_A, allocation(ALLOC_A, LOT, FARM.value(), ActorKind.ESTATE, 1L))))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("没有劳动供给记录");
-  }
-
-  /**
-   * ★★ **actor ↔ 产业 的对应关系是双条件的**（结算按 {@code actor.id()} 把配额归给产业）：产业型主体（庄园/作坊）
-   * 必须指名**已存在**的产业；**其余非产业型主体**的 id **不得**与任何产业 id 撞名。
-   *
-   * <p>★ 判别力：两条各自挡一种错 ——
-   *
-   * <ul>
-   *   <li>拼错产业 id（{@code famr@0_0}）⇒ 当日劳动静默变 0（不报错、只少产）⇒ 第一条；
-   *   <li>{@link ActorKind#ORGANIZATION} 的 id 恰好等于某产业 id ⇒ 它的配额被静默算进那个产业 ⇒ 第二条。
-   * </ul>
-   *
-   * <p>★★ **R3 起这一条改由 {@code ORGANIZATION} 承担，不再由 {@code HOUSEHOLD}**：农村家庭纺织是"家户自己承担的一个生产过程" （spec
-   * §四）⇒ 家户的 actor id **可以**命名一个产业（那时它的配额照进该产业的 {@code cycleLaborMilli}）—— 那是**有意为之**， 不再是"撞名"。★
-   * 于是"撞名"这条判据必须在**其余**非产业型种类上继续被钉住（{@link #acceptsAHouseholdActorOwningAnIndustry}）。
-   */
-  @Test
-  void rejectsActorsThatDoNotMatchAnExistingIndustry() {
-    assertThatThrownBy(
-            () ->
-                economyWith(
-                    laborSupply(LOT, 100_000L, 0L, 0L),
-                    Map.of(ALLOC_A, allocation(ALLOC_A, LOT, "famr@0_0", ActorKind.ESTATE, 1L))))
-        .as("产业型主体的 id 必须是已存在的产业")
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("对应关系不成立");
-    assertThatThrownBy(
-            () ->
-                economyWith(
-                    laborSupply(LOT, 100_000L, 0L, 0L),
-                    Map.of(
-                        ALLOC_A,
-                        allocation(ALLOC_A, LOT, FARM.value(), ActorKind.ORGANIZATION, 1L))))
-        .as("非产业型主体（此处 = 组织）的 id 不得与产业 id 撞名（撞名 ⇒ 它的配额被算进那个产业）")
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("对应关系不成立");
-  }
-
-  /** ★★ **R3：家户可以"拥有"一个生产过程**（农村家庭纺织）⇒ 它的 actor id 命名一个产业时**放行**，且配额进该产业的劳动投入。 */
+  /** ★★ **R3：家户可以"拥有"一个生产过程**（农村家庭纺织）⇒ 它的 actor id 命名一个产业时**放行**。 */
   @Test
   void acceptsAHouseholdActorOwningAnIndustry() {
     EconomyData data =
         economyWith(
-            laborSupply(LOT, 100_000L, 0L, 0L),
+            100_000L,
             Map.of(ALLOC_A, allocation(ALLOC_A, LOT, FARM.value(), ActorKind.HOUSEHOLD, 40_000L)));
 
     assertThat(data.allocations()).as("家户的生产过程（家户织布）放行").hasSize(1);
@@ -1139,32 +1092,22 @@ class EconomyInvariantsTest {
   void acceptsAHouseholdActorWhoseIdIsNotAnIndustry() {
     EconomyData data =
         economyWith(
-            laborSupply(LOT, 100_000L, 0L, 0L),
+            100_000L,
             Map.of(ALLOC_A, allocation(ALLOC_A, LOT, "0_0", ActorKind.HOUSEHOLD, 40_000L)));
 
     assertThat(data.allocations()).hasSize(1);
   }
 
-  /** ★ 两张新表的键必须与行内身份一致（与 {@code classes}/{@code flows} 同款的不变量）。 */
+  /** ★ 配额表的键必须与行内身份一致（与 {@code classes}/{@code flows} 同款的不变量）。 */
   @Test
-  void rejectsLaborTableKeysThatDoNotMatchTheirRows() {
+  void rejectsLaborAllocationKeysThatDoNotMatchTheirRows() {
     assertThatThrownBy(
             () ->
                 economyWith(
-                    Map.of(
-                        new PeopleLotId("rural:0_0:MALE:1"),
-                        // ★ 行内的 group 是另一个 id ⇒ 键与值不一致
-                        new LaborSupply(new PeopleLotId("rural:0_0:FEMALE:1"), 1L, 1L, 0L, 0L)),
-                    Map.of()))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("LaborSupply.group");
-    assertThatThrownBy(
-            () ->
-                economyWith(
-                    laborSupply(LOT, 100_000L, 0L, 0L),
+                    100_000L,
                     Map.of(
                         new LaborAllocationId("alloc-别的"),
-                        allocation(ALLOC_A, LOT, FARM.value(), ActorKind.ESTATE, 1L))))
+                        allocation(ALLOC_A, LOT, FARM.value(), ActorKind.ORGANIZATION, 1L))))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("LaborAllocation.id");
   }
@@ -1177,14 +1120,13 @@ class EconomyInvariantsTest {
   private static final IndustryId OTHER_FARM = new IndustryId("farm@0_0");
 
   /**
-   * 一份最小的经济：两个产业（{@code farm} 与 {@code farm@0_0}）+ 一个家户行 + 给定的两张劳动表。
+   * 一份最小的经济：两个产业（{@code farm} 与 {@code farm@0_0}）+ 一个家户行（每 tick 时间预算 = 参数）+ 给定的配额表。
    *
-   * <p>★ 家户行是必需的：S1 起配额必须属于一个已存在的家户；{@code meta} 走已迁移档 ⇒ 构造期不会先跑 {@code LegacyHouseholdMigration}
-   * 改写夹具。
+   * <p>★ 家户行是必需的：P2-A 起配额必须属于一个已存在的家户，且上限 = 它的 {@code ClassRow.laborMilli}；
+   * 构造期不会先跑 {@code LegacyHouseholdMigration} 改写夹具（配额已带真实家户）。
    */
   private static EconomyData economyWith(
-      Map<PeopleLotId, LaborSupply> laborSupply,
-      Map<LaborAllocationId, LaborAllocation> allocations) {
+      long householdLaborMilli, Map<LaborAllocationId, LaborAllocation> allocations) {
     return EconomyData.empty()
         .withMeta(Optional.of(meta()))
         .withIndustries(
@@ -1193,14 +1135,17 @@ class EconomyInvariantsTest {
                 industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950))),
                 OTHER_FARM,
                 industryWithSlots(List.of(new ClassSlot(PEASANT, "贫农", 950)))))
-        .withClasses(Map.of(PEASANT_HOUSE, classRowWithoutDebts(PEASANT_HOUSE, PEASANT_KEY)))
-        .withLaborSupply(laborSupply)
+        .withClasses(
+            Map.of(
+                PEASANT_HOUSE,
+                classRowWithLabor(PEASANT_HOUSE, PEASANT_KEY, householdLaborMilli)))
         .withAllocations(allocations);
   }
 
-  private static Map<PeopleLotId, LaborSupply> laborSupply(
-      PeopleLotId group, long gross, long served, long committed) {
-    return Map.of(group, new LaborSupply(group, 1L, gross, served, committed));
+  /** 与 {@link #classRowWithoutDebts} 同形，只把每 tick 时间预算参数化（P2-A 的配额上限）。 */
+  private static ClassRow classRowWithLabor(HouseholdId id, CohortKey view, long laborMilli) {
+    return new ClassRow(
+        id, view, 120L, laborMilli, 800, 50L, List.of(), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
   }
 
   /** 一条配额（第 1 周期、家户 = 本夹具的 {@code PEASANT_HOUSE}、活动名 {@code farm}）。 */

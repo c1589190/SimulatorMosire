@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.AvailableStock;
@@ -19,10 +20,15 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.household.HouseholdLocation;
+import io.mosire.simos.social.api.household.HouseholdProfile;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.social.api.population.HouseholdVitalRates;
+import io.mosire.simos.social.household.Household;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -63,22 +69,31 @@ class RegionAllocationsTest {
 
   // ── 家户账瀑布 ───────────────────────────────────────────────────────────────────────
 
-  /** ★ 过滤三类不合资格来源：非 HOUSEHOLD（ESTATE）/ 区外 / available ≤ 0；合格来源的 available 合计**只算被留下的那些**。 */
+  /**
+   * ★ 过滤三类不合资格来源（P2-A 口径：账户主体只有家户）：Social 里查不到的家户 / 区外 / available ≤ 0；
+   * 合格来源的 available 合计**只算被留下的那些**。
+   */
   @Test
-  void householdWaterfallFiltersKindRegionAndNonPositiveAvailable() {
+  void householdWaterfallFiltersUnknownRegionAndNonPositiveAvailable() {
     ActorData actors =
         ActorData.empty()
             .withAccount(account(household("h-in"), H11, 50L, 0L))
-            .withAccount(account(estate("e-in"), H11, 100L, 0L))
+            .withAccount(account(household("h-dangling"), H11, 100L, 0L))
             .withAccount(account(household("h-out"), H_OUT, 100L, 0L))
             .withAccount(account(household("h-zero"), H11, 10L, 10L));
+    SocialData social =
+        accountSocial(
+            Map.of(
+                "h-in", H11,
+                "h-out", H_OUT,
+                "h-zero", H11));
 
     RegionAllocations.AccountAllocation result =
-        RegionAllocations.allocateAccounts(actors, REGION, "粮", 50L, GRAIN_AVAILABLE);
+        RegionAllocations.allocateAccounts(actors, social, REGION, "粮", 50L, GRAIN_AVAILABLE);
 
     assertThat(result.requested()).isEqualTo(50L);
     assertThat(result.available())
-        .as("只有 h-in 合格 ⇒ 合计 50（ESTATE / 区外 / 可用 0 都不得进合计）")
+        .as("只有 h-in 合格 ⇒ 合计 50（悬空家户 / 区外 / 可用 0 都不得进合计）")
         .isEqualTo(50L);
     assertThat(result.sources())
         .as("过滤后只剩 h-in，逐户扣减 = 请求量（它够）")
@@ -99,7 +114,7 @@ class RegionAllocationsTest {
     }
 
     RegionAllocations.AccountAllocation full =
-        RegionAllocations.allocateAccounts(actors, REGION, "粮", 180L, GRAIN_AVAILABLE);
+        RegionAllocations.allocateAccounts(actors, accountSocialFromAccounts(actors), REGION, "粮", 180L, GRAIN_AVAILABLE);
     assertThat(full.sources())
         .as("available 降序、同量按账键（owner id）升序；插入序是反的")
         .containsExactly(
@@ -113,7 +128,7 @@ class RegionAllocationsTest {
     assertThat(full.requested()).isEqualTo(180L);
 
     RegionAllocations.AccountAllocation two =
-        RegionAllocations.allocateAccounts(actors, REGION, "粮", 100L, GRAIN_AVAILABLE);
+        RegionAllocations.allocateAccounts(actors, accountSocialFromAccounts(actors), REGION, "粮", 100L, GRAIN_AVAILABLE);
     assertThat(two.sources())
         .as("逐户扣满：前两户各扣 50 后就够了，第三户不产生来源条目")
         .containsExactly(
@@ -122,7 +137,7 @@ class RegionAllocationsTest {
     assertThat(two.available()).as("available 报的是**来源总量**（不是请求量）").isEqualTo(180L);
 
     RegionAllocations.AccountAllocation partial =
-        RegionAllocations.allocateAccounts(actors, REGION, "粮", 90L, GRAIN_AVAILABLE);
+        RegionAllocations.allocateAccounts(actors, accountSocialFromAccounts(actors), REGION, "粮", 90L, GRAIN_AVAILABLE);
     assertThat(partial.sources())
         .as("第二户被部分扣 40（逐户扣满，不按比例）")
         .containsExactly(
@@ -139,7 +154,7 @@ class RegionAllocationsTest {
             .withAccount(account(household("h2"), H12, 80L, 0L));
 
     assertThatThrownBy(
-            () -> RegionAllocations.allocateAccounts(actors, REGION, "粮", 1000L, GRAIN_AVAILABLE))
+            () -> RegionAllocations.allocateAccounts(actors, accountSocialFromAccounts(actors), REGION, "粮", 1000L, GRAIN_AVAILABLE))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("粮总量不足")
         .hasMessageContaining("requested=1000")
@@ -147,7 +162,7 @@ class RegionAllocationsTest {
         .hasMessageContaining("缺口=820");
 
     assertThatThrownBy(
-            () -> RegionAllocations.allocateAccounts(actors, REGION, "粮", 181L, GRAIN_AVAILABLE))
+            () -> RegionAllocations.allocateAccounts(actors, accountSocialFromAccounts(actors), REGION, "粮", 181L, GRAIN_AVAILABLE))
         .as("只差 1 也整条拒（不是截断成 180）")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("缺口=1");
@@ -165,7 +180,7 @@ class RegionAllocationsTest {
     ActorData actors = ActorData.empty().withAccount(account(household("h1"), H11, 50L, 0L));
 
     RegionAllocations.AccountAllocation result =
-        RegionAllocations.allocateAccounts(actors, REGION, "粮", 0L, counting);
+        RegionAllocations.allocateAccounts(actors, accountSocialFromAccounts(actors), REGION, "粮", 0L, counting);
 
     assertThat(result.requested()).isZero();
     assertThat(result.available()).as("0 = 未求值（不是『恰好没有来源』）").isZero();
@@ -177,7 +192,7 @@ class RegionAllocationsTest {
   void householdWaterfallRejectsNegativeRequested() {
     ActorData actors = ActorData.empty();
     assertThatThrownBy(
-            () -> RegionAllocations.allocateAccounts(actors, REGION, "粮", -1L, GRAIN_AVAILABLE))
+            () -> RegionAllocations.allocateAccounts(actors, accountSocialFromAccounts(actors), REGION, "粮", -1L, GRAIN_AVAILABLE))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("requested 不得为负");
   }
@@ -306,18 +321,46 @@ class RegionAllocationsTest {
     return new ActorRef(ActorKind.HOUSEHOLD, id);
   }
 
-  private static ActorRef estate(String id) {
-    return new ActorRef(ActorKind.ESTATE, id);
-  }
+  /** 账本所在格的工作记录（P2-A 后账户键不带格；格只进 SocialData，供瀑布按区筛）。 */
+  private static final Map<HouseholdId, HexCoord> ACCOUNT_LOCATIONS = new LinkedHashMap<>();
 
   /** 一本家户账：只带 grain 余额与 grain 冻结额（本类只测商品一维的分摊）。 */
   private static GoodsAccount account(ActorRef owner, HexCoord at, long grain, long frozenGrain) {
+    HouseholdId household = HouseholdActors.householdOf(owner);
+    ACCOUNT_LOCATIONS.put(household, at);
     return new GoodsAccount(
-        new GoodsAccountKey(owner, at),
+        new GoodsAccountKey(household),
         Map.of(GRAIN, grain),
         Map.of(),
         frozenGrain == 0L ? Map.of() : Map.of(GRAIN, frozenGrain),
         Map.of());
+  }
+
+  /** 与账本夹具配套的 Social 家户表：家户 id → 落点（瀑布按 Social 的位置过滤）。 */
+  private static SocialData accountSocial(Map<String, HexCoord> locations) {
+    Map<HouseholdId, Household> households = new LinkedHashMap<>();
+    for (Map.Entry<String, HexCoord> entry : locations.entrySet()) {
+      HouseholdId id = new HouseholdId(entry.getKey());
+      households.put(
+          id,
+          new Household(
+              id,
+              new HouseholdLocation.Hex(entry.getValue()),
+              new HouseholdProfile(id.value(), null, Map.of()),
+              Map.of(),
+              new HouseholdVitalRates(List.of())));
+    }
+    return new SocialData(Map.of(), Map.of(), Map.of(), households, Map.of());
+  }
+
+  /** 从本类刚建的账本表反查落点，拼出与它配套的 Social（不在 Social 里的家户 = 悬空，照旧被过滤掉）。 */
+  private static SocialData accountSocialFromAccounts(ActorData actors) {
+    Map<String, HexCoord> locations = new LinkedHashMap<>();
+    for (GoodsAccountKey key : actors.accounts().keySet()) {
+      HexCoord at = ACCOUNT_LOCATIONS.get(key.household());
+      locations.put(key.household().value(), at == null ? H11 : at);
+    }
+    return accountSocial(locations);
   }
 
   private static long availableById(int i) {

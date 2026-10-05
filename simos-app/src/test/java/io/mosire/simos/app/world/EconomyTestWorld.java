@@ -19,7 +19,6 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.ClassRow;
@@ -202,34 +201,9 @@ public final class EconomyTestWorld {
    * 其余产业开缸为空（庄园的种子在出料主体的账上、织机的纤维在农村家户的账上，见 {@code EconomySeeder.plan} 的同款注释）。
    */
   public static List<EconomySeeder.OperatorSeed> operators() {
-    List<EconomySeeder.OperatorSeed> seeds = new ArrayList<>();
-    EconomyData economy = data();
-    for (Map.Entry<IndustryId, Industry> entry : economy.industries().entrySet()) {
-      IndustryId id = entry.getKey();
-      Industry industry = entry.getValue();
-      HexCoord hex =
-          IndustryHexKeys.hexKeyOf(id)
-              .map(HexCoord::parse)
-              .orElseThrow(() -> new IllegalStateException("产业 id 里没有格键: " + id));
-      Map<CommodityId, Long> goods = new LinkedHashMap<>();
-      ActorRef operator = RegimeOperators.defaultOperator(industry.regime(), id);
-      if (operator.kind() == ActorKind.WORKSHOP) {
-        // ★ K3/H0.3 起产能已归一化进 AssetShare；旧兼容位 Industry.capacity 在构造期清成中性。
-        long workshops =
-            economy.assetShares().values().stream()
-                .filter(share -> share.industry().equals(id))
-                .filter(share -> share.asset() == AssetKind.WORKSHOP)
-                .mapToLong(share -> share.quantity())
-                .sum();
-        if (workshops > 0L) {
-          goods.put(
-              new CommodityId(EconomySeeder.COMMODITY_TOOL),
-              workshops * EconomySeeder.toolPerWorkshopMilli());
-        }
-      }
-      seeds.add(EconomySeeder.operatorSeed(id, industry.regime().value(), hex, goods));
-    }
-    return seeds;
+    // ★ P2-A §13.3：庄园/作坊/商号**不再持账** ⇒ 生产播种不再产出经营者账户（P2-C 起农场/作坊的
+    //   收支走组织者/经营者家户账户；本夹具与生产口径一致，返回空表）。
+    return List.of();
   }
 
   /**
@@ -290,13 +264,11 @@ public final class EconomyTestWorld {
       boolean withMarkets) {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     Map<HouseholdId, ClassRow> classes = new LinkedHashMap<>();
-    Map<PeopleLotId, LaborSupply> supply = new LinkedHashMap<>();
     Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
     // (0,0) 平原 1000 人 / (1,0) 低丘 500 人 / (2,0) 只有城市 300 人。
     farm(
         industries,
         classes,
-        supply,
         allocations,
         0,
         0,
@@ -307,7 +279,6 @@ public final class EconomyTestWorld {
     farm(
         industries,
         classes,
-        supply,
         allocations,
         1,
         0,
@@ -318,7 +289,6 @@ public final class EconomyTestWorld {
     farm(
         industries,
         classes,
-        supply,
         allocations,
         2,
         0,
@@ -326,12 +296,11 @@ public final class EconomyTestWorld {
         PLAINS_LAND_MILLI_MU,
         Stock.NORMAL,
         stocks);
-    craft(industries, classes, supply, allocations, 2, 0, 300L, stocks);
+    craft(industries, classes, allocations, 2, 0, 300L, stocks);
     // (3,0) 有粮可借 / (4,0) 无粮可借。
     farm(
         industries,
         classes,
-        supply,
         allocations,
         3,
         0,
@@ -342,7 +311,6 @@ public final class EconomyTestWorld {
     farm(
         industries,
         classes,
-        supply,
         allocations,
         4,
         0,
@@ -398,7 +366,6 @@ public final class EconomyTestWorld {
             .withMeta(Optional.of(legacyMeta))
             .withIndustries(industries)
             .withClasses(classes)
-            .withLaborSupply(supply)
             // ★★ T4/T5：第 8 个组件（生产关系表）**非空** —— harvest 已经真的读它了。
             //   本夹具按**每个产业自己的 regime** 推默认关系（{@link RegimeRelations#defaultRelation}），
             //   与真播种器载荷走的是**同一条推导**（{@code EconomyPayloads.relation}）⇒ 夹具与真档不漂。
@@ -457,7 +424,6 @@ public final class EconomyTestWorld {
   private static void farm(
       Map<IndustryId, Industry> industries,
       Map<HouseholdId, ClassRow> classes,
-      Map<PeopleLotId, LaborSupply> supply,
       Map<LaborAllocationId, LaborAllocation> allocations,
       int q,
       int r,
@@ -490,14 +456,13 @@ public final class EconomyTestWorld {
     // ★★ **同一批农村人的劳动分成两条配额**（R3；spec §四 的压力测试）：农业 900‰ + 家庭纺织 100‰。
     //   ★ 两条之和 = 该池的当日劳动（{@code ruralDaily}）⇒ 与 R2 的"一池一产业"逐值同源；
     //     而"同一批次供给两个产业"在这里是**结构上**成立的（EconomyData 的构造期守卫判 Σ ≤ 可用）。
-    addSupply(supply, id, people, population);
     long ruralDaily =
         EconomySeeder.industryDailyLabor(people, EconomySeeder.laborMilli(population), population);
     long weaveQuota = ruralDaily * EconomySeeder.WEAVE_SHARE_PER_MILLE / 1000L;
     addAllocation(
         allocations,
         id,
-        ActorKind.ESTATE,
+        ActorKind.ORGANIZATION,
         EconomySeeder.FARM,
         syntheticLot(id),
         ruralDaily - weaveQuota);
@@ -552,7 +517,6 @@ public final class EconomyTestWorld {
   private static void craft(
       Map<IndustryId, Industry> industries,
       Map<HouseholdId, ClassRow> classes,
-      Map<PeopleLotId, LaborSupply> supply,
       Map<LaborAllocationId, LaborAllocation> allocations,
       int q,
       int r,
@@ -595,11 +559,10 @@ public final class EconomyTestWorld {
           Map.of(FIBER, shopByClass[i] * fiberPerShop, IRON, shopByClass[i] * ironPerShop),
           stocks);
     }
-    addSupply(supply, id, people, population);
     addAllocation(
         allocations,
         id,
-        ActorKind.WORKSHOP,
+        ActorKind.ORGANIZATION,
         EconomySeeder.CRAFT,
         syntheticLot(id),
         EconomySeeder.industryDailyLabor(people, EconomySeeder.laborMilli(population), population));
@@ -672,21 +635,6 @@ public final class EconomyTestWorld {
     return EconomySeeder.CLOTH_PER_LOOM_PER_CYCLE;
   }
 
-  /**
-   * ★★ **供给行**（每池一条；R3 起与配额分家，见 {@code EconomySeeder.appendSupply} 的注释）：本夹具没有真的批次 ⇒ 批次 id 按真档的
-   * 命名约定**合成**（{@code PopulationLots} 的拼法）。
-   *
-   * <p>★ 毛额取该池的毛劳动（= {@code 人口 × 580‰}，与行的口径同源）⇒ 配额之和 ≤ 毛额恒成立。
-   */
-  private static void addSupply(
-      Map<PeopleLotId, LaborSupply> supply, IndustryId industry, long[] people, long population) {
-    long grossLabor = EconomySeeder.laborMilli(population);
-    if (grossLabor <= 0L) {
-      return; // 零人口的格（(2,0) 的农业）：没有可支配劳动 ⇒ 不发供给
-    }
-    PeopleLotId lot = syntheticLot(industry);
-    supply.put(lot, new LaborSupply(lot, EconomySeeder.FIRST_PERIOD, grossLabor, 0L, 0L));
-  }
 
   /**
    * **一条配额**：{@code (产业, 批次)} 一条，量取自 {@link EconomySeeder#industryDailyLabor(long[], long, long)}

@@ -952,7 +952,9 @@ class RealTwelveMarketFreezeDiagnosisTest {
     TreeMap<String, long[]> byMode = new TreeMap<>();
     Map<HouseholdId, long[]> householdMoneyGrain = new LinkedHashMap<>();
     for (GoodsAccount account : actor.accounts().values()) {
-      ActorRef owner = account.key().owner();
+      // ★ P2-A §13.3：账户主体只有家户，键 = HouseholdId（不再带格）⇒ 原先的 owner/kind 分支整体退役，
+      //   位置从 economy 的 ClassRow.view().hex() 派生。
+      HouseholdId household = account.key().household();
       long silver = account.money().getOrDefault(SILVER, 0L);
       long grain = account.balances().getOrDefault(GRAIN, 0L);
       totalSilver += silver;
@@ -960,59 +962,37 @@ class RealTwelveMarketFreezeDiagnosisTest {
       for (Map.Entry<CurrencyId, Long> money : account.money().entrySet()) {
         totalByCurrency.merge(money.getKey(), money.getValue(), Long::sum);
       }
-      String residence = "-";
-      String stratum = "-";
+      ClassRow row = economy.classes().get(household);
+      String residence = row == null ? "-" : row.view().residence().value();
+      String stratum = row == null ? "-" : row.view().stratum().value();
       String mode = "-";
-      if (owner.kind() == ActorKind.HOUSEHOLD) {
-        HouseholdId household = null;
-        try {
-          household = HouseholdActors.householdOf(owner);
-          ClassRow row = economy.classes().get(household);
-          if (row != null) {
-            residence = row.view().residence().value();
-            stratum = row.view().stratum().value();
-          }
-          ClassStanding standing = economy.classStandings().get(household);
-          if (standing != null) {
-            ClassPosition position = economy.classPositions().get(standing.currentPositionId());
-            if (position != null) {
-              mode = position.modeId().value();
-            }
-          }
-        } catch (RuntimeException e) {
-          residence = "?";
+      ClassStanding standing = economy.classStandings().get(household);
+      if (standing != null) {
+        ClassPosition position = economy.classPositions().get(standing.currentPositionId());
+        if (position != null) {
+          mode = position.modeId().value();
         }
-        long population = 0L;
-        if (household != null) {
-          ClassRow row = economy.classes().get(household);
-          population = row == null ? 0L : row.population();
-          householdMoneyGrain.put(household, new long[] {silver, grain});
-        }
-        long[] residenceSlot = byResidence.computeIfAbsent(residence, ignored -> new long[4]);
-        residenceSlot[0]++;
-        residenceSlot[1] += population;
-        residenceSlot[2] += silver;
-        residenceSlot[3] += grain;
-        long[] stratumSlot = byStratum.computeIfAbsent(stratum, ignored -> new long[4]);
-        stratumSlot[0]++;
-        stratumSlot[2] += silver;
-        stratumSlot[3] += grain;
-        long[] modeSlot = byMode.computeIfAbsent(mode, ignored -> new long[4]);
-        modeSlot[0]++;
-        modeSlot[2] += silver;
-        modeSlot[3] += grain;
-      } else {
-        long[] operatorMode =
-            byMode.computeIfAbsent("(" + owner.kind() + ")", ignored -> new long[4]);
-        operatorMode[0]++;
-        operatorMode[2] += silver;
-        operatorMode[3] += grain;
       }
+      long population = row == null ? 0L : row.population();
+      householdMoneyGrain.put(household, new long[] {silver, grain});
+      long[] residenceSlot = byResidence.computeIfAbsent(residence, ignored -> new long[4]);
+      residenceSlot[0]++;
+      residenceSlot[1] += population;
+      residenceSlot[2] += silver;
+      residenceSlot[3] += grain;
+      long[] stratumSlot = byStratum.computeIfAbsent(stratum, ignored -> new long[4]);
+      stratumSlot[0]++;
+      stratumSlot[2] += silver;
+      stratumSlot[3] += grain;
+      long[] modeSlot = byMode.computeIfAbsent(mode, ignored -> new long[4]);
+      modeSlot[0]++;
+      modeSlot[2] += silver;
+      modeSlot[3] += grain;
       rows.add(
           new AccountRow(
-              owner.kind() + ":" + owner.id(),
-              owner.kind().name(),
-              account.key().location().toString(),
+              "HOUSEHOLD:" + household.value(),
+              "HOUSEHOLD",
+              row == null ? "-" : row.view().hex().toString(),
               residence,
               stratum,
               mode,
@@ -1233,7 +1213,7 @@ class RealTwelveMarketFreezeDiagnosisTest {
       if (row == null || entry.getValue() <= 0L) {
         continue;
       }
-      GoodsAccountKey key = OwnershipBooks.accountKeyOf(entry.getKey(), row.view().hex());
+      GoodsAccountKey key = OwnershipBooks.accountKeyOf(entry.getKey());
       GoodsAccount account = accounts.get(key);
       if (account == null) {
         missing++;
@@ -1272,7 +1252,7 @@ class RealTwelveMarketFreezeDiagnosisTest {
     for (HouseholdId household : targets.keySet()) {
       ClassRow row = economy.classes().get(household);
       if (row != null) {
-        targetKeys.add(OwnershipBooks.accountKeyOf(household, row.view().hex()));
+        targetKeys.add(OwnershipBooks.accountKeyOf(household));
       }
     }
     List<GoodsAccount> donors = new ArrayList<>();
@@ -1301,7 +1281,7 @@ class RealTwelveMarketFreezeDiagnosisTest {
       ClassRow row = economy.classes().get(entry.getKey());
       if (row != null && entry.getValue() > 0L) {
         delta.merge(
-            OwnershipBooks.accountKeyOf(entry.getKey(), row.view().hex()),
+            OwnershipBooks.accountKeyOf(entry.getKey()),
             entry.getValue(),
             Long::sum);
       }

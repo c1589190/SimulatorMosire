@@ -69,7 +69,7 @@ class ExpectedProfitBookTest {
   /** ★ 过期快照回归用的第二个家户：在 H 格没有任何自有资产，只能靠同格"闲置"份额进产。 */
   private static final HouseholdId NEWCOMER = HouseholdId.parse("hh-estate-newcomer");
   /** ★ 过期快照回归用的 ESTATE 主体（owner==operator 自营份额；产业型 id 必须指向已存在产业）。 */
-  private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, CRAFT.value());
+  private static final ActorRef ESTATE = new ActorRef(ActorKind.ORGANIZATION, CRAFT.value());
 
   /** 一个手搭的最小世界（新形状 Industry/Unit/AssetShare/Relation；无组织、无真实利润账）。 */
   private record Fixture(
@@ -188,8 +188,7 @@ class ExpectedProfitBookTest {
             .withMarkets(Map.of(H, market()));
 
     AccountSession accounts = AccountSession.empty();
-    accounts.registerHousehold(HOUSE, ACTOR, H, Map.of(), Map.of(), Map.of(), Map.of());
-    accounts.registerOperator(ACTOR, H, Map.of(), Map.of(), Map.of(), Map.of());
+    accounts.registerHousehold(HOUSE, H, Map.of(), Map.of(), Map.of(), Map.of());
     MarketTopology topology = MarketTopology.singleHex(Map.of(H, market()));
     return new Fixture(
         base, shares, accounts, topology, Map.of(H, market()), demand, Map.of());
@@ -441,8 +440,7 @@ class ExpectedProfitBookTest {
             .withAssetShares(shares)
             .withMarkets(markets);
     AccountSession accounts = AccountSession.empty();
-    accounts.registerHousehold(HOUSE, ACTOR, H, Map.of(), Map.of(), Map.of(), Map.of());
-    accounts.registerOperator(ACTOR, H, Map.of(), Map.of(), Map.of(), Map.of());
+    accounts.registerHousehold(HOUSE, H, Map.of(), Map.of(), Map.of(), Map.of());
     MarketTopology topology = MarketTopology.singleHex(markets);
     MarketDemandBook.Book demand =
         new MarketDemandBook.Book(
@@ -528,9 +526,7 @@ class ExpectedProfitBookTest {
             .withMarkets(Map.of(H, market()));
 
     AccountSession accounts = AccountSession.empty();
-    accounts.registerHousehold(
-        NEWCOMER, HouseholdActors.of(NEWCOMER), H, Map.of(), Map.of(), Map.of(), Map.of());
-    accounts.registerOperator(ESTATE, H, Map.of(), Map.of(), Map.of(), Map.of());
+    accounts.registerHousehold(NEWCOMER, H, Map.of(), Map.of(), Map.of(), Map.of());
     MarketTopology topology = MarketTopology.singleHex(Map.of(H, market()));
     return new Fixture(
         base,

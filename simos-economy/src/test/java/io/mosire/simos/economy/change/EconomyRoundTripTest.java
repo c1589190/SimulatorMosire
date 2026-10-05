@@ -27,7 +27,6 @@ import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
@@ -38,7 +37,6 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.LossBearer;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
@@ -70,7 +68,6 @@ import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.ModeTransition;
@@ -177,9 +174,6 @@ class EconomyRoundTripTest {
   private static final ProductionUnitId FARM_UNIT =
       ProductionUnitId.idOf(FARM, NON_DEFAULT_OPERATOR);
 
-  /** ★ S1：memberships 夹具的键（键 == 值内 id；count 必须对上行人口）。 */
-  private static final MembershipId KEY_MEMBERSHIP = Membership.idOf(LOT, KEY_HH);
-
   /** ★ R3B.1：assetShares 夹具的键（键 == 值内 id；industry 必须存在）。 */
   private static final AssetShareId FARM_SHARE =
       AssetShare.idOf(
@@ -275,19 +269,18 @@ class EconomyRoundTripTest {
   }
 
   /**
-   * ★★ <b>组件计数（E6 = 29 + P10.1 merchantFirms = 30；classFirst 已删）</b>：{@code meta} / {@code industries} /
-   * {@code classes} / {@code debtContracts} / {@code flows} / {@code laborSupply} / {@code
-   * allocations} / {@code relations} / {@code markets} / {@code shipments} / {@code memberships} /
-   * {@code assetShares} / {@code operatorConditions} / {@code units} / {@code demands} / {@code
-   * candidates} / E1 的四个 / E2 的两个 / E3 的两个 / E4 的 {@code pledges} / E5 的两个 / E6 的两个 /
-   * P10.1 的 {@code merchantFirms}。
+   * ★★ <b>组件计数（E6 = 29 + P10.1 merchantFirms = 30，P2-A 删 laborSupply / memberships ⇒ 28；classFirst 已删）</b>：
+   * {@code meta} / {@code industries} / {@code classes} / {@code debtContracts} / {@code flows} / {@code
+   * allocations} / {@code relations} / {@code markets} / {@code shipments} / {@code assetShares} / {@code
+   * operatorConditions} / {@code units} / {@code demands} / {@code candidates} / E1 的四个 / E2 的两个 /
+   * E3 的两个 / E4 的 {@code pledges} / E5 的两个 / E6 的两个 / P10.1 的 {@code merchantFirms}。
    *
-   * <p>★ 这个名字里的数字**故意写死**（R4 16 → E3 24 → E4 25 → E5 27 → E6 29 → P10.1 30）：它就是"又加/删了一个状态组件"这件事
-   * 在编译/测试面上的**唯一提醒**——改动 {@code EconomyData} 而没同步变更集时，本用例当场红。
+   * <p>★ 这个名字里的数字**故意写死**（R4 16 → E3 24 → E4 25 → E5 27 → E6 29 → P10.1 30 → P2-A 28）：
+   * 它就是"又加/删了一个状态组件"这件事在编译/测试面上的**唯一提醒**——改动 {@code EconomyData} 而没同步变更集时，本用例当场红。
    */
   @Test
-  void changeSetHasExactlyThirtyComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(30);
+  void changeSetHasExactlyTwentyEightComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(28);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -345,16 +338,13 @@ class EconomyRoundTripTest {
               .withIndustries(Map.of(FARM, industry(FARM)))
               .withClasses(Map.of(KEY_HH, classRow(KEY_HH, KEY)))
               .withFlows(Map.of(KEY_HH, flowRow(KEY_HH)));
-      // ★ R2 的两个新组件：都自带"支撑记录"（供给挂批次、配额挂产业 —— 两条都是构造期守卫判死的对应关系）。
-      case "laborSupply" -> base.withLaborSupply(Map.of(LOT, laborSupply()));
+      // ★ R2 的配额组件：自带 unit 支撑 —— activity 指到 unit、actor == unit.operator（同一件事不许两处拼写），
+      //   家户必须在 classes 里；P2-A 起上限是 ClassRow.laborMilli（这里 60_000 恰好用满）。
       case "allocations" ->
-          // ★ R3B.2：配额自带 unit 支撑 —— activity 指到 unit、actor == unit.operator（同一件事不许两处拼写），
-          //   家户必须在 classes 里，供给必须同期（这里 60_000 恰好用满）。
           base.withMeta(Optional.of(meta()))
               .withIndustries(Map.of(FARM, industry(FARM)))
               .withUnits(Map.of(FARM_UNIT, unit(FARM_UNIT, NON_DEFAULT_OPERATOR)))
               .withClasses(Map.of(KEY_HH, classRow(KEY_HH, KEY)))
-              .withLaborSupply(Map.of(LOT, laborSupply()))
               .withAllocations(Map.of(ALLOCATION, laborAllocation()));
       // ★ T2 的第 8 个组件：**自带同 operator 的 unit**（跨表守卫要求 relations 键 == 值内 activity == 已存在的
       //   unit id，且 relation.operator() == unit.operator()）。
@@ -372,12 +362,6 @@ class EconomyRoundTripTest {
       // ★ M2.4 的第 10 个组件：**自带支撑的票**（在途批次没有跨表守卫，但仍要有真实的路线与至少一票，
       //   否则构造期就会拦下"在途必须能追到票"）。
       case "shipments" -> base.withShipments(Map.of(SHIPMENT, shipment()));
-      // ★ S1 的第 11 个组件：**自带支撑的家户行**（membership 的家户必须存在，且 Σcount == Σ行人口）。
-      case "memberships" ->
-          base.withMeta(Optional.of(meta()))
-              .withIndustries(Map.of(FARM, industry(FARM)))
-              .withClasses(Map.of(KEY_HH, classRow(KEY_HH, KEY)))
-              .withMemberships(Map.of(KEY_MEMBERSHIP, membership()));
       // ★ R3B.1 的第 12 个组件：**自带支撑的产业**（份额指名的 industry 必须存在；键 == 值内 id）。
       case "assetShares" ->
           base.withIndustries(Map.of(FARM, industry(FARM)))
@@ -429,12 +413,10 @@ class EconomyRoundTripTest {
       case "classes" -> cs.classes().changed();
       case "debtContracts" -> cs.debtContracts().changed();
       case "flows" -> cs.flows().changed();
-      case "laborSupply" -> cs.laborSupply().changed();
       case "allocations" -> cs.allocations().changed();
       case "relations" -> cs.relations().changed();
       case "markets" -> cs.markets().changed();
       case "shipments" -> cs.shipments().changed();
-      case "memberships" -> cs.memberships().changed();
       case "assetShares" -> cs.assetShares().changed();
       case "operatorConditions" -> cs.operatorConditions().changed();
       case "units" -> cs.units().changed();
@@ -566,16 +548,6 @@ class EconomyRoundTripTest {
         ALLOCATION, LOT, KEY_HH, NON_DEFAULT_OPERATOR, FARM_UNIT.value(), 60_000L, 1L);
   }
 
-  /** ★ R2 的供给夹具：毛额 60,000 ⇒ 配额恰好用满（{@code Σ allocated ≤ available} 取等号）。 */
-  static LaborSupply laborSupply() {
-    return new LaborSupply(LOT, 1L, 60_000L, 0L, 0L);
-  }
-
-  /** ★ S1 的成员份额夹具：count 120 == 行人口 120（Σ 守恒）。 */
-  static Membership membership() {
-    return new Membership(KEY_MEMBERSHIP, LOT, KEY_HH, 120L);
-  }
-
   /** ★ R3B.1 的资产份额夹具：键 == 值内 id、industry 存在；键与值都由 {@link #FARM_SHARE} 一处拼写。 */
   static AssetShare share() {
     return new AssetShare(
@@ -643,7 +615,7 @@ class EconomyRoundTripTest {
         500L,
         List.of(
             new ShipmentAllocation(
-                new ActorRef(ActorKind.ESTATE, FARM.value()),
+                new ActorRef(ActorKind.ORGANIZATION, FARM.value()),
                 new ActorRef(ActorKind.HOUSEHOLD, "house-7"),
                 new HexCoord(1, 0),
                 500L,

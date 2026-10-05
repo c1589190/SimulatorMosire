@@ -19,14 +19,12 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.MarketNode;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.CompensationRule;
@@ -51,7 +49,6 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.ProductionMode;
@@ -329,11 +326,7 @@ class SevenHexFullChain3650Test {
     wallet.put(SILVER, 1_000L);
     wallet.put(gold, 7L);
     wallet.put(copper, 3L);
-    accounts.registerHousehold(
-        source,
-        sourceActor,
-        R5,
-        world.goods().getOrDefault(source, Map.of()),
+    accounts.registerHousehold(source, R5, world.goods().getOrDefault(source, Map.of()),
         wallet,
         Map.of(),
         Map.of());
@@ -550,7 +543,7 @@ class SevenHexFullChain3650Test {
           0,
           ledger,
           EconomyParallelism.singleThreaded(),
-          null);
+          Map.of());
       cycle.recordDay(day, ledger.toLedger(), null);
     }
     List<OrganizationProfitBook.CloseFact> facts = new ArrayList<>();
@@ -586,7 +579,7 @@ class SevenHexFullChain3650Test {
         0,
         closing,
         EconomyParallelism.singleThreaded(),
-        null);
+        Map.of());
     cycle.recordDay(120L, closing.toLedger(), null);
     return OrganizationProfitBook.collect(
         cycle,
@@ -864,7 +857,9 @@ class SevenHexFullChain3650Test {
     appendMap(builder, "assetShares", data.assetShares());
     appendMap(builder, "debtContracts", data.debtContracts());
     appendMap(builder, "allocations", data.allocations());
-    appendMap(builder, "memberships", data.memberships());
+    // ★ P2-A：memberships 已迁 Social（EconomyData 不再持有）⇒ 指纹改为覆盖 classPositions / operatorConditions。
+    appendMap(builder, "classPositions", data.classPositions());
+    appendMap(builder, "operatorConditions", data.operatorConditions());
     appendMap(builder, "merchantFirms", data.merchantFirms());
     appendMap(builder, "markets", data.markets());
     return builder.toString();
@@ -1248,7 +1243,6 @@ class SevenHexFullChain3650Test {
     for (ClassRow row : base.classes().values()) {
       accounts.registerHousehold(
           row.id(),
-          HouseholdActors.of(row.id()),
           row.view().hex(),
           goods.getOrDefault(row.id(), Map.of()),
           money.getOrDefault(row.id(), Map.of()),
@@ -1260,13 +1254,6 @@ class SevenHexFullChain3650Test {
       if (accounts.actorKeyOrNull(operator) != null) {
         continue;
       }
-      accounts.registerOperator(
-          operator,
-          EconomySettlement.hexOfIndustry(unit.industry()),
-          Map.of(),
-          Map.of(),
-          Map.of(),
-          Map.of());
     }
     return accounts;
   }
@@ -1487,7 +1474,6 @@ class SevenHexFullChain3650Test {
     Map<HouseholdId, Map<CurrencyId, Long>> money = new LinkedHashMap<>();
     Map<HouseholdId, ProductionModeId> modeByHousehold = new LinkedHashMap<>();
     Map<HouseholdId, ClassPositionId> positionByHousehold = new LinkedHashMap<>();
-    Map<PeopleLotId, LaborSupply> laborSupply = new LinkedHashMap<>();
     Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
     Map<IndustryId, ActorRef> unitOperator = new LinkedHashMap<>();
     List<UnitSpec> unitSpecs = new ArrayList<>();
@@ -1578,6 +1564,19 @@ class SevenHexFullChain3650Test {
         r4Landlord, R4, ResidenceKind.RURAL, LANDLORD, 20L, DefaultProductionModes.TENANCY_FIXED_KIND,
         DefaultProductionModes.ROLE_LANDLORD);
     money.get(r4Landlord).put(SILVER, 100_000L);
+    if (!creationMode) {
+      // ★ P2-A A4 夹具迁移：非创世档的目标户只有 1 人（历史夹具口径），而它的租佃农场 unit 配额
+      //   21,450 毫小时按旧口径来自**整个批次的毛劳动**（LaborSupply）—— 新口径下必须 ≤ 该家户
+      //   自己的 ClassRow.laborMilli。这里把它补到本格批次毛额，等价于旧的可用量；创世档不动。
+      long lotLaborR4 = 0L;
+      for (ClassRow row : classes.values()) {
+        if (row.view().hex().equals(R4) && row.view().residence() == ResidenceKind.RURAL) {
+          lotLaborR4 += row.population() * LABOR_MILLI_PER_PERSON;
+        }
+      }
+      ClassRow targetRow = classes.get(r4Target);
+      classes.put(r4Target, withLabor(targetRow, Math.max(targetRow.laborMilli(), lotLaborR4)));
+    }
 
     // R5：A 规则触发源（150 人、流动性耗尽）+ 普通农场 + 地主。
     // ★ D-024 夹具修正：A 规则的当前户预期必须来自**生产者位置**（租佃经营者）；旧夹具用的是 wage_laborer，
@@ -1734,7 +1733,6 @@ class SevenHexFullChain3650Test {
         actor(HouseholdActors.of(cMerchant)), CYCLE_DAYS * 100L);
 
     // ── 劳动供给 / 配额（批次 id 用 ResidenceKind 的前缀约定）────────────────────────────
-    Map<PeopleLotId, Long> grossByLot = new LinkedHashMap<>();
     for (HexCoord hex : HEXES) {
       for (ResidenceKind residence : ResidenceKind.all()) {
         long population = 0L;
@@ -1747,51 +1745,48 @@ class SevenHexFullChain3650Test {
           continue;
         }
         PeopleLotId lot = lot(hex, residence);
-        long gross = population * LABOR_MILLI_PER_PERSON;
-        grossByLot.put(lot, gross);
-        laborSupply.put(lot, new LaborSupply(lot, START_PERIOD, gross, 0L, 0L));
       }
     }
 
     // 农村/城市：显式配额（actor = unit.operator；activity = unit id）——不再走旧档 pending 迁移。
-    Map<PeopleLotId, Long> allocatedByLot = new LinkedHashMap<>();
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    Map<HouseholdId, Long> allocatedByHousehold = new LinkedHashMap<>();
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("farm", R0.q(), R0.r()), HouseholdActors.of(r0Anchor), r0Anchor,
         laborQuota(industries, IndustryHexKeys.id("farm", R0.q(), R0.r()), 100L));
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("anchor-best", R0.q(), R0.r()), HouseholdActors.of(r0Anchor), r0Anchor,
         1L);
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("farm", R1.q(), R1.r()), HouseholdActors.of(r1Farm), r1Farm,
         laborQuota(industries, IndustryHexKeys.id("farm", R1.q(), R1.r()), 100L));
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("weave", R1.q(), R1.r()), HouseholdActors.of(r1Weaver), r1Weaver,
         laborQuota(industries, IndustryHexKeys.id("weave", R1.q(), R1.r()), 30L));
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("farm", R2.q(), R2.r()), HouseholdActors.of(r2Farm), r2Farm,
         laborQuota(industries, IndustryHexKeys.id("farm", R2.q(), R2.r()), 80L));
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("farm", R3.q(), R3.r()), HouseholdActors.of(r3Wage), r3Wage,
         laborQuota(industries, IndustryHexKeys.id("farm", R3.q(), R3.r()), 100L));
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("weave", R3.q(), R3.r()), HouseholdActors.of(r3Weaver), r3Weaver,
         laborQuota(industries, IndustryHexKeys.id("weave", R3.q(), R3.r()), 30L));
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("farm", R4.q(), R4.r()), HouseholdActors.of(r4Target), r4Target,
         laborQuota(industries, IndustryHexKeys.id("farm", R4.q(), R4.r()), 150L));
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("profit", R4.q(), R4.r()), HouseholdActors.of(r4Profit), r4Profit, 1L);
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("farm", R5.q(), R5.r()), HouseholdActors.of(r5Farm), r5Farm,
         laborQuota(industries, IndustryHexKeys.id("farm", R5.q(), R5.r()), 80L));
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("loss-farm", R5.q(), R5.r()), HouseholdActors.of(r5Wage), r5Wage,
         1L);
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("craft", C.q(), C.r()), HouseholdActors.of(cOwner), cOwner, 10_000L);
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("craft", C.q(), C.r()), HouseholdActors.of(cOwner), cArtisan, 8_000L);
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("trade", C.q(), C.r()), HouseholdActors.of(cMerchant), cPorter, 1L);
     // ★ D-023 #6 / D-024 §8.2 夹具修正（测试代理第三轮）：旧夹具给 cDisplaced 挂了 1L trade 劳动配额，
     //   这与“DISPLACED 无劳动配额/无自动组织”的硬判据直接冲突（assertNoDisplacedAutoWork 当场红）。
@@ -1891,14 +1886,6 @@ class SevenHexFullChain3650Test {
             OptionalLong.empty(),
             DebtStatus.NORMAL));
 
-    Map<MembershipId, Membership> memberships = new LinkedHashMap<>();
-    for (ClassRow row : classes.values()) {
-      PeopleLotId membershipLot = new PeopleLotId("fixture-lot-" + row.id().value());
-      MembershipId membershipId = Membership.idOf(membershipLot, row.id());
-      memberships.put(
-          membershipId,
-          new Membership(membershipId, membershipLot, row.id(), row.population()));
-    }
 
     EconomyMeta legacyMeta =
         new EconomyMeta(
@@ -1912,10 +1899,8 @@ class SevenHexFullChain3650Test {
             .withMeta(Optional.of(legacyMeta))
             .withIndustries(industries)
             .withClasses(classes)
-            .withLaborSupply(laborSupply)
             .withRelations(relations)
             .withAllocations(allocations)
-            .withMemberships(memberships)
             .withDebtContracts(debts)
             .withMarkets(markets);
 
@@ -1969,7 +1954,6 @@ class SevenHexFullChain3650Test {
     Map<HouseholdId, Map<CurrencyId, Long>> money = new LinkedHashMap<>();
     Map<HouseholdId, ProductionModeId> modeByHousehold = new LinkedHashMap<>();
     Map<HouseholdId, ClassPositionId> positionByHousehold = new LinkedHashMap<>();
-    Map<PeopleLotId, LaborSupply> laborSupply = new LinkedHashMap<>();
     Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
     Map<IndustryId, ActorRef> unitOperator = new LinkedHashMap<>();
     List<UnitSpec> unitSpecs = new ArrayList<>();
@@ -2122,7 +2106,6 @@ class SevenHexFullChain3650Test {
         actor(HouseholdActors.of(cMerchant)), CYCLE_DAYS * 100L);
 
     // ── 劳动供给/配额（与旧夹具同 helper；产业 operator 自营）。────────────────────────────
-    Map<PeopleLotId, Long> grossByLot = new LinkedHashMap<>();
     for (HexCoord hex : HEXES) {
       for (ResidenceKind residence : ResidenceKind.all()) {
         long population = 0L;
@@ -2135,34 +2118,32 @@ class SevenHexFullChain3650Test {
           continue;
         }
         PeopleLotId lot = lot(hex, residence);
-        grossByLot.put(lot, population * LABOR_MILLI_PER_PERSON);
-        laborSupply.put(lot, new LaborSupply(lot, START_PERIOD, population * LABOR_MILLI_PER_PERSON, 0L, 0L));
       }
     }
-    Map<PeopleLotId, Long> allocatedByLot = new LinkedHashMap<>();
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    Map<HouseholdId, Long> allocatedByHousehold = new LinkedHashMap<>();
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("farm", R0.q(), R0.r()), HouseholdActors.of(r0Wage), r0Wage,
         laborQuota(industries, IndustryHexKeys.id("farm", R0.q(), R0.r()), 120L));
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("farm", R1.q(), R1.r()), HouseholdActors.of(r1Tenant), r1Tenant,
         laborQuota(industries, IndustryHexKeys.id("farm", R1.q(), R1.r()), 120L));
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("farm", R2.q(), R2.r()), HouseholdActors.of(r2Tenant), r2Tenant,
         laborQuota(industries, IndustryHexKeys.id("farm", R2.q(), R2.r()), 100L));
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("farm", R3.q(), R3.r()), HouseholdActors.of(r3Wage), r3Wage,
         laborQuota(industries, IndustryHexKeys.id("farm", R3.q(), R3.r()), 130L));
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("farm", R4.q(), R4.r()), HouseholdActors.of(r4Target), r4Target,
         laborQuota(industries, IndustryHexKeys.id("farm", R4.q(), R4.r()), 150L));
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("farm", R5.q(), R5.r()), HouseholdActors.of(r5Wage), r5Wage,
         laborQuota(industries, IndustryHexKeys.id("farm", R5.q(), R5.r()), 140L));
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("craft", C.q(), C.r()), HouseholdActors.of(cOwner), cOwner, 10_000L);
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("craft", C.q(), C.r()), HouseholdActors.of(cOwner), cArtisan, 8_000L);
-    addAllocation(allocations, laborSupply, allocatedByLot,
+    addAllocation(allocations, classes, allocatedByHousehold,
         IndustryHexKeys.id("trade", C.q(), C.r()), HouseholdActors.of(cMerchant), cPorter, 1L);
     // ★ porter 是 merchant mode 自身家户（不是 DISPLACED），这里给的是正常工资劳动配额，不是“主动招募流民”。
 
@@ -2234,14 +2215,6 @@ class SevenHexFullChain3650Test {
             OptionalLong.empty(),
             DebtStatus.NORMAL));
 
-    Map<MembershipId, Membership> memberships = new LinkedHashMap<>();
-    for (ClassRow row : classes.values()) {
-      PeopleLotId membershipLot = new PeopleLotId("fixture-lot-" + row.id().value());
-      MembershipId membershipId = Membership.idOf(membershipLot, row.id());
-      memberships.put(
-          membershipId,
-          new Membership(membershipId, membershipLot, row.id(), row.population()));
-    }
 
     EconomyMeta legacyMeta =
         new EconomyMeta(
@@ -2255,10 +2228,8 @@ class SevenHexFullChain3650Test {
             .withMeta(Optional.of(legacyMeta))
             .withIndustries(industries)
             .withClasses(classes)
-            .withLaborSupply(laborSupply)
             .withRelations(relations)
             .withAllocations(allocations)
-            .withMemberships(memberships)
             .withDebtContracts(debts)
             .withMarkets(markets);
     legacy = protectLandlordCohortAssets(legacy, modeByHousehold, positionByHousehold, R2);
@@ -2805,6 +2776,22 @@ class SevenHexFullChain3650Test {
         new ClassSlot(new SocialClassId(LANDLORD), "地主", 100));
   }
 
+
+  /** 换一行的每 tick 时间预算（P2-A 的配额上限）；其余组件原样带过。 */
+  private static ClassRow withLabor(ClassRow row, long laborMilli) {
+    return new ClassRow(
+        row.id(),
+        row.view(),
+        row.population(),
+        laborMilli,
+        row.participationPerMille(),
+        row.money(),
+        row.debts(),
+        row.naturalNeeds(),
+        row.effectiveDemand(),
+        row.cycleNaturalNeedMilli());
+  }
+
   private static long laborQuota(
       Map<IndustryId, Industry> industries, IndustryId industry, long desiredScale) {
     Industry template = industries.get(industry);
@@ -2813,8 +2800,8 @@ class SevenHexFullChain3650Test {
 
   private static void addAllocation(
       Map<LaborAllocationId, LaborAllocation> allocations,
-      Map<PeopleLotId, LaborSupply> supply,
-      Map<PeopleLotId, Long> allocatedByLot,
+      Map<HouseholdId, ClassRow> classes,
+      Map<HouseholdId, Long> allocatedByHousehold,
       IndustryId industry,
       ActorRef actor,
       HouseholdId household,
@@ -2822,16 +2809,19 @@ class SevenHexFullChain3650Test {
     HexCoord hex = IndustryHexKeys.hexKeyOf(industry).map(HexCoord::parse).orElseThrow();
     ResidenceKind residence = hex.equals(C) ? ResidenceKind.URBAN : ResidenceKind.RURAL;
     PeopleLotId lot = lot(hex, residence);
-    LaborSupply labor = supply.get(lot);
-    if (labor == null) {
-      throw new IllegalStateException("没有劳动供给批次: " + lot);
+    // ★ P2-A A4：配额上限的唯一权威 = 家户每 tick 时间预算（ClassRow.laborMilli）——
+    //   LaborSupply（每批次供给表）已删除；这里按**家户**累计，不弱化 EconomyData 的同款构造期守卫。
+    ClassRow row = classes.get(household);
+    if (row == null) {
+      throw new IllegalStateException("没有这个家户的阶层行: " + household);
     }
-    long already = allocatedByLot.getOrDefault(lot, 0L);
-    if (already + laborMilli > labor.availableLabor()) {
+    long already = allocatedByHousehold.getOrDefault(household, 0L);
+    if (already + laborMilli > row.laborMilli()) {
       throw new IllegalStateException(
-          "夹具配额超过供给: " + lot + " used=" + already + " add=" + laborMilli);
+          "夹具配额超过家户时间预算: " + household + " used=" + already + " add=" + laborMilli
+              + " budget=" + row.laborMilli());
     }
-    allocatedByLot.put(lot, already + laborMilli);
+    allocatedByHousehold.put(household, already + laborMilli);
     ProductionUnitId unitId = ProductionUnitId.idOf(industry, actor);
     LaborAllocationId id = LaborAllocation.idOf(industry, lot, household);
     allocations.put(

@@ -10,68 +10,92 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.Sex;
 import org.junit.jupiter.api.Test;
 
 /**
- * ★★ **R2 的劳动关系层**（{@link LaborSupply} / {@link LaborAllocation}）的类型护栏：构造期不变量逐条 + 那条公式 {@code
- * availableLabor = 毛额 − 已服役 − 已承诺} 的**逐值**算例。
+ * ★★ **P2 劳动口径的类型护栏**（{@link LaborTimeTable} / {@link LaborAllocation}）：家户每 tick 时间预算的逐值算例 +
+ * 一次劳动分配的构造期不变量。
  *
- * <p>★ 判据的意义：这两个类型是"劳动可分配但不能凭空重复"的**唯一载体** —— 它们的字段就是守恒式的两端，故不变量必须在这里判死
- * （负劳动、负周期、扣除项超过毛额都不是"状态"，是坏数据）。
+ * <p>★ 判据的意义：P2-A §13.4 起劳动单位 = 毫小时，家户时间预算是**每 tick 重算的有限量**（{@link LaborTimeTable}），
+ * 第二权威 {@code LaborSupply} 已删除；{@link LaborAllocation} 是与该预算对齐的分配载体， 其字段就是守恒式 {@code Σ allocated ≤
+ * available} 的两端，故不变量必须在这里判死（负劳动、负周期、缺主体都不是"状态"，是坏数据）。
  */
 class LaborTypesTest {
 
   private static final PeopleLotId GROUP = new PeopleLotId("rural:0_0:MALE:1");
   private static final HouseholdId HOUSEHOLD = new HouseholdId("hh-0_0-rural-poor_peasant");
-  private static final ActorRef ACTOR = new ActorRef(ActorKind.ESTATE, "farm@0_0");
+  private static final ActorRef ACTOR = new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
   private static final ProductionUnitId UNIT =
       ProductionUnitId.idOf(new IndustryId("farm@0_0"), ACTOR);
   private static final String ACTIVITY = UNIT.value();
 
-  // ── LaborSupply：那条公式 ────────────────────────────────────────────────────────────
+  // ── LaborTimeTable：家户每 tick 时间预算的逐值系数 ─────────────────────────────────────
 
   /**
-   * ★★ **逐值算例**（本阶段最重要的不变量的右端）：{@code availableLabor = 毛额 − 已服役 − 已承诺}。
+   * ★★ **逐值算例**（P2-A §13.4 的默认口径）：未成年 4h、成年男 16h、成年女 8h、老年 0（毫小时）。
    *
-   * <p>★ 判别力：把"减去服役/承诺"写成"只减其中一项"或"直接返回毛额" ⇒ 本条的 850 会变成 900 / 950 / 1000，三条一起红。
+   * <p>★ 判别力：把性别档写成同一值、把老年档猜成 4h/8h、或把单位从毫小时降成小时 ⇒ 本条的 4000/16000/8000/0
+   * 至少有一处当场红（"家户每 tick 有限时间"这条判据全在这四个数上）。
    */
   @Test
-  void availableLaborIsGrossMinusServedMinusCommitted() {
-    LaborSupply supply = new LaborSupply(GROUP, 1L, 1_000L, 100L, 50L);
-
-    assertThat(supply.availableLabor()).as("1,000 − 100 − 50").isEqualTo(850L);
+  void defaultTableGivesTheDocumentedPerPersonBudgets() {
+    assertThat(LaborTimeTable.DEFAULT.perPersonMilliHours(LaborTimeTable.BRACKET_CHILD, Sex.MALE))
+        .as("未成年：4h = 4000 毫小时")
+        .isEqualTo(4_000L);
+    assertThat(LaborTimeTable.DEFAULT.perPersonMilliHours(LaborTimeTable.BRACKET_ADULT, Sex.MALE))
+        .as("成年男：16h = 16000 毫小时")
+        .isEqualTo(16_000L);
+    assertThat(LaborTimeTable.DEFAULT.perPersonMilliHours(LaborTimeTable.BRACKET_ADULT, Sex.FEMALE))
+        .as("成年女：8h = 8000 毫小时（与成年男不同的档必须真的不同）")
+        .isEqualTo(8_000L);
+    assertThat(LaborTimeTable.DEFAULT.perPersonMilliHours(LaborTimeTable.BRACKET_ELDER, Sex.MALE))
+        .as("老年：0（口径是『先定死为 0』，不是『档位不存在』）")
+        .isZero();
+    assertThat(LaborTimeTable.DEFAULT.perPersonMilliHours(LaborTimeTable.BRACKET_ELDER, Sex.FEMALE))
+        .isZero();
   }
 
-  /** ★ 两项扣除**本轮恒 0**，但类型照减（0 是值，不是"这一项不存在"）——非 0 那条路必须真的走得到。 */
+  /** ★ 系数表可注入：非默认实例必须按自己的值算，不能回落到 {@link LaborTimeTable#DEFAULT}。 */
   @Test
-  void availableLaborEqualsGrossWhenNothingIsServedOrCommitted() {
-    LaborSupply supply = new LaborSupply(GROUP, 1L, 580_000L, 0L, 0L);
+  void injectedTableUsesItsOwnCoefficients() {
+    LaborTimeTable custom = new LaborTimeTable(1_000L, 2_000L, 3_000L, 5_000L);
 
-    assertThat(supply.availableLabor()).as("本轮创世的实际形态：两份扣除都是 0").isEqualTo(580_000L);
+    assertThat(custom.perPersonMilliHours(LaborTimeTable.BRACKET_CHILD, Sex.FEMALE)).isEqualTo(1_000L);
+    assertThat(custom.perPersonMilliHours(LaborTimeTable.BRACKET_ADULT, Sex.MALE)).isEqualTo(2_000L);
+    assertThat(custom.perPersonMilliHours(LaborTimeTable.BRACKET_ADULT, Sex.FEMALE)).isEqualTo(3_000L);
+    assertThat(custom.perPersonMilliHours(LaborTimeTable.BRACKET_ELDER, Sex.MALE)).isEqualTo(5_000L);
+  }
+
+  /** ★ 未知档位 / null 性别 ⇒ 具名抛（不猜、不给默默认值）。 */
+  @Test
+  void perPersonRejectsUnknownBracketAndNullSex() {
+    assertThatThrownBy(() -> LaborTimeTable.DEFAULT.perPersonMilliHours(3, Sex.MALE))
+        .as("档位只有 0/1/2；第 4 档即抛")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("未知年龄档");
+    assertThatThrownBy(() -> LaborTimeTable.DEFAULT.perPersonMilliHours(-1, Sex.MALE))
+        .isInstanceOf(IllegalArgumentException.class);
+    // ★ 生产实现用 Objects.requireNonNull(sex)：null 性别 ⇒ NPE（Java 的 null 契约），不是"猜一个默认档"。
+    assertThatThrownBy(
+            () -> LaborTimeTable.DEFAULT.perPersonMilliHours(LaborTimeTable.BRACKET_ADULT, null))
+        .isInstanceOf(NullPointerException.class);
   }
 
   @Test
-  void laborSupplyRejectsNegativeOrOverDeductedNumbers() {
-    assertThatThrownBy(() -> new LaborSupply(null, 1L, 0L, 0L, 0L))
-        .as("group 不得为 null")
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new LaborSupply(GROUP, -1L, 0L, 0L, 0L))
-        .as("period 不得为负")
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new LaborSupply(GROUP, 1L, -1L, 0L, 0L))
-        .as("毛额不得为负")
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new LaborSupply(GROUP, 1L, 0L, -1L, 0L))
-        .as("已服役不得为负")
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new LaborSupply(GROUP, 1L, 0L, 0L, -1L))
-        .as("已承诺不得为负")
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new LaborSupply(GROUP, 1L, 100L, 100L, 1L))
-        .as("已服役 + 已承诺 > 毛额 ⇒ 可支配劳动为负 ⇒ 拒（不是一种状态，是坏数据）")
-        .isInstanceOf(IllegalArgumentException.class);
-    // ★ 边界：扣到 0 是**合法**的（毛额恰好全被占住 ⇒ 可支配 0）
-    assertThat(new LaborSupply(GROUP, 1L, 100L, 100L, 0L).availableLabor()).isZero();
+  void timeTableRejectsNegativeCoefficientsAtConstruction() {
+    for (long[] bad :
+        new long[][] {
+          {-1L, 16_000L, 8_000L, 0L},
+          {4_000L, -1L, 8_000L, 0L},
+          {4_000L, 16_000L, -1L, 0L},
+          {4_000L, 16_000L, 8_000L, -1L}
+        }) {
+      assertThatThrownBy(() -> new LaborTimeTable(bad[0], bad[1], bad[2], bad[3]))
+          .as("负系数不是一种时间预算：%s", java.util.Arrays.toString(bad))
+          .isInstanceOf(IllegalArgumentException.class);
+    }
+    assertThat(new LaborTimeTable(0L, 0L, 0L, 0L)).as("零预算是合法值（值 0，不是缺档）").isNotNull();
   }
 
   // ── LaborAllocation：一次分配 ────────────────────────────────────────────────────────
@@ -94,11 +118,11 @@ class LaborTypesTest {
         .isEqualTo(LaborAllocation.idOf(UNIT, GROUP, HOUSEHOLD));
     assertThat(allocation.group()).as("出劳动的那批人").isEqualTo(GROUP);
     assertThat(allocation.household()).as("★ S1 起这份劳动有明确的家户归属").isEqualTo(HOUSEHOLD);
-    assertThat(allocation.actor()).as("收劳动的主体（产业 = 庄园）").isEqualTo(ACTOR);
+    assertThat(allocation.actor()).as("收劳动的主体").isEqualTo(ACTOR);
     assertThat(allocation.activity())
         .as("★ R3B.2 起 activity = ProductionUnitId.value()，不是旧产业标签")
         .isEqualTo(UNIT.value());
-    assertThat(allocation.laborMilli()).isEqualTo(464_000L);
+    assertThat(allocation.laborMilli()).as("P2-A 起单位 = 毫小时").isEqualTo(464_000L);
     assertThat(allocation.period()).isEqualTo(1L);
   }
 

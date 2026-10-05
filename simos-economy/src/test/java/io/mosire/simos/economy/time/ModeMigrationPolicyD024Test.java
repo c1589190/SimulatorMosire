@@ -68,7 +68,7 @@ class ModeMigrationPolicyD024Test {
   private static final IndustryId TARGET_INDUSTRY = IndustryHexKeys.id("target", H2.q(), H2.r());
 
   /** ★ 过期快照回归：H2 目标份额的 ESTATE 所有者（owner==operator，且不是迁移源户）。 */
-  private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, TARGET_INDUSTRY.value());
+  private static final ActorRef ESTATE = new ActorRef(ActorKind.ORGANIZATION, TARGET_INDUSTRY.value());
 
   private record Fixture(
       EconomyData base,
@@ -262,16 +262,12 @@ class ModeMigrationPolicyD024Test {
     }
 
     AccountSession accounts = AccountSession.empty();
-    accounts.registerHousehold(
-        SOURCE,
-        sourceActor,
-        H1,
-        Map.of(),
+    accounts.registerHousehold(SOURCE, H1, Map.of(),
         sourceMoney <= 0L ? Map.of() : Map.of(SILVER, sourceMoney),
         Map.of(),
         Map.of());
-    accounts.registerHousehold(BUYER1, HouseholdActors.of(BUYER1), H1, Map.of(), Map.of(), Map.of(), Map.of());
-    accounts.registerHousehold(BUYER2, HouseholdActors.of(BUYER2), H2, Map.of(), Map.of(), Map.of(), Map.of());
+    accounts.registerHousehold(BUYER1, H1, Map.of(), Map.of(), Map.of(), Map.of());
+    accounts.registerHousehold(BUYER2, H2, Map.of(), Map.of(), Map.of(), Map.of());
 
     return new Fixture(
         base, accounts, MarketTopology.singleHex(markets), markets, h1ShareId, h2ShareId, sourceUnitId);

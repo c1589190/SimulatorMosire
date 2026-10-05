@@ -84,7 +84,7 @@ class LevyRegionPlanTest {
   private static final ActorRef HH2 = new ActorRef(ActorKind.HOUSEHOLD, "hh-2");
   private static final ActorRef HH_ZERO = new ActorRef(ActorKind.HOUSEHOLD, "hh-zero");
   private static final ActorRef HH_OUT = new ActorRef(ActorKind.HOUSEHOLD, "hh-out");
-  private static final ActorRef ESTATE = new ActorRef(ActorKind.ESTATE, "e-1");
+  private static final ActorRef DANGLING_HH = new ActorRef(ActorKind.HOUSEHOLD, "hh-dangling");
 
   // ── 拒因：单位 / 管辖 / 区域 / 上限 / 位置 ──────────────────────────────────────────────
 
@@ -209,7 +209,7 @@ class LevyRegionPlanTest {
 
     assertThat(plan.cloth().requested()).as("cloth requested = 70").isEqualTo(70L);
     assertThat(plan.cloth().available())
-        .as("布可支配 = (60−10) + (70−20) = 100；区外 hh-out、ESTATE、可用 0 的 hh-zero 都不进合计")
+        .as("布可支配 = (60−10) + (70−20) = 100；区外 hh-out、悬空家户、可用 0 的 hh-zero 都不进合计")
         .isEqualTo(100L);
     assertThat(plan.cloth().sources())
         .as("布瀑布：两户可用量同为 50，按账键升序 hh-1 先扣 50、hh-2 再扣 20")
@@ -296,7 +296,7 @@ class LevyRegionPlanTest {
 
     assertThat(plan.grain().requested()).isEqualTo(120L);
     assertThat(plan.grain().available())
-        .as("家户粮可支配 = (100−20) + 40；ESTATE / 区外 / 可用 0 都不进合计")
+        .as("家户粮可支配 = (100−20) + 40；悬空家户 / 区外 / 可用 0 都不进合计")
         .isEqualTo(120L);
     assertThat(plan.grain().sources())
         .as("粮瀑布：hh-1（可用 80）先扣满，再 hh-2（可用 40）")
@@ -472,7 +472,7 @@ class LevyRegionPlanTest {
     return ActorData.empty()
         .withAccount(account(HH1, H11, 100L, 20L, 50L, 0L, 60L, 10L))
         .withAccount(account(HH2, H12, 40L, 0L, 80L, 0L, 70L, 20L))
-        .withAccount(account(ESTATE, H11, 1000L, 0L, 1000L, 0L, 1000L, 0L))
+        .withAccount(account(DANGLING_HH, H11, 1000L, 0L, 1000L, 0L, 1000L, 0L))
         .withAccount(account(HH_OUT, H13, 1000L, 0L, 1000L, 0L, 1000L, 0L))
         .withAccount(account(HH_ZERO, H11, 10L, 10L, 0L, 0L, 0L, 0L));
   }
@@ -497,7 +497,7 @@ class LevyRegionPlanTest {
       frozenBalances.put(CLOTH, frozenCloth);
     }
     return new GoodsAccount(
-        new GoodsAccountKey(owner, at),
+        new GoodsAccountKey(io.mosire.simos.economy.api.cohort.HouseholdActors.householdOf(owner)),
         balances,
         Map.of(SILVER, silver),
         frozenBalances,

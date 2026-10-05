@@ -23,25 +23,20 @@ import org.junit.jupiter.api.Test;
 class ActorTypesTest {
 
   /**
-   * ★★ **逐值断言**（R2 由四档扩到七档）：扩枚举是 {@code LaborAllocation.actor} 选了 {@code ActorRef} 的代价 （第三阶段设计稿
-   * §八.1 明写"要扩枚举 + 同步改 {@code EconomyIdsTest} 的逐值断言"，故本条就是那份"连带改"）。★ S1 阶段 2：该断言随类型从 {@code
-   * EconomyIdsTest} 搬到本类。
-   *
-   * <p>★ 前四档的**次序与拼写一字不动**（它们已进过 JSON：{@code LedgerCodec} 写 {@code kind} 用 {@code name()}）；
-   * 新增三档追加在**末尾**，理由同上——插在中间会让"词表位置"这种没进线格式的东西产生 diff 噪声。
+   * ★★ **逐值断言**（P2-A §13.3 由七档收敛到五档）：{@code ESTATE} / {@code WORKSHOP} 已随"庄园/作坊 =
+   * 生产方式，不是 ActorRef 种类"的整体退役删除，本断言跟着改为五档。前四档的**次序与拼写一字不动**
+   * （它们已进过 JSON：{@code LedgerCodec} 写 {@code kind} 用 {@code name()}）；{@code HOUSEHOLD} 仍在末尾。
    */
   @Test
-  void actorKindCoversTheSevenDocumentedKinds() {
+  void actorKindCoversTheFiveDocumentedKinds() {
     assertThat(ActorKind.values())
-        .as("设计稿 §2/§4/§5/§7 的四类主体 + R2 的生产关系三类（家户/庄园/作坊）")
+        .as("设计稿 §2/§4/§5/§7 的四类主体 + P2-A 唯一账户主体家户（庄园/作坊已退役）")
         .containsExactly(
             ActorKind.PEOPLE_LOT,
             ActorKind.UNIT,
             ActorKind.GOVERNMENT,
             ActorKind.ORGANIZATION,
-            ActorKind.HOUSEHOLD,
-            ActorKind.ESTATE,
-            ActorKind.WORKSHOP);
+            ActorKind.HOUSEHOLD);
   }
 
   @Test
@@ -53,9 +48,7 @@ class ActorTypesTest {
         .hasMessageContaining("UNIT")
         .hasMessageContaining("GOVERNMENT")
         .hasMessageContaining("ORGANIZATION")
-        .hasMessageContaining("HOUSEHOLD")
-        .hasMessageContaining("ESTATE")
-        .hasMessageContaining("WORKSHOP");
+        .hasMessageContaining("HOUSEHOLD");
 
     assertThatThrownBy(() -> ActorKind.parse(null))
         .as("null 种类即抛")
@@ -146,7 +139,7 @@ class ActorTypesTest {
     assertThatThrownBy(() -> ActorRef.parseCanonical("NOPE:u-1"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("PEOPLE_LOT")
-        .hasMessageContaining("ESTATE");
+        .hasMessageContaining("HOUSEHOLD");
   }
 
   /** ★ {@code null} / 空白即抛（空白不是身份）。 */

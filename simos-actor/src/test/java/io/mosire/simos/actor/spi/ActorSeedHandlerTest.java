@@ -34,16 +34,15 @@ class ActorSeedHandlerTest {
   private static final StateRef REF = new StateRef(new BranchId("main"), new RevisionId(1));
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
 
-  private static final ActorRef ESTATE_FARM = new ActorRef(ActorKind.ESTATE, "farm@0_0");
+  private static final ActorRef ORGANIZATION_FARM = new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
   private static final ActorRef HOUSEHOLD = new ActorRef(ActorKind.HOUSEHOLD, "house@0_0");
 
   /** 一格的最小合法 entry：两个主体 + 一本账。 */
   private static final String ENTRY_0 =
       "{\"q\":0,\"r\":0,"
-          + "\"actors\":[{\"kind\":\"ESTATE\",\"id\":\"farm@0_0\",\"label\":\"农业庄园\"},"
+          + "\"actors\":[{\"kind\":\"ORGANIZATION\",\"id\":\"farm@0_0\",\"label\":\"农业组织者\"},"
           + "{\"kind\":\"HOUSEHOLD\",\"id\":\"house@0_0\",\"label\":\"农户\"}],"
-          + "\"goods\":[{\"owner\":{\"kind\":\"HOUSEHOLD\",\"id\":\"house@0_0\"},"
-          + "\"location\":{\"q\":0,\"r\":0},\"balances\":{\"grain\":2241000,\"fiber\":0}}]}";
+          + "\"goods\":[{\"household\":\"hh-house-0_0\",\"balances\":{\"grain\":2241000,\"fiber\":0}}]}";
 
   /** 同一 entry 搬到 {@code 1_0}（坐标、位置、两个主体 id 一并改）——验证"已激活后按格追加"。 */
   private static final String ENTRY_1 =
@@ -67,7 +66,7 @@ class ActorSeedHandlerTest {
     assertThat(meta.mapId()).isEqualTo("Map1");
     assertThat(meta.rulesVersion()).isEqualTo("actor-v1");
     assertThat(meta.activatedDay()).as("激活日 = 世界当前 tick").isEqualTo(7L);
-    assertThat(after.actors()).containsOnlyKeys(ESTATE_FARM, HOUSEHOLD);
+    assertThat(after.actors()).containsOnlyKeys(ORGANIZATION_FARM, HOUSEHOLD);
     assertThat(after.accounts()).as("库存表").hasSize(1);
   }
 
@@ -124,25 +123,21 @@ class ActorSeedHandlerTest {
   }
 
   /**
-   * ★★ **悬空 owner 在命令边界是拒绝（不是抛）**：库存指向一个载荷与现有状态里都没有的主体。
+   * ★★ **缺家户的库存行在命令边界是拒绝（不是抛）**：P2-A 起账户主体只有家户，库存行必须自报 {@code household}。
    *
-   * <p>判别力：这条判据若不存在，一份拼错 owner 的载荷会被**静默收下**，那本账从此查不到、也永远不报错。
-   *
-   * <p>★ <b>2026-09-27 裁定 S3</b>：夹具的 {@code "id":"house@0_0"}} 只命中库存行的 owner ⇒ 判据与断言一字未改，只是名字
-   * 从"产权"改成"库存"（产权随该裁定整块退役）。
+   * <p>判别力：若缺字段被静默收下，那本账会落到一个**调用方没说过的**主体名下 —— 记账记错人却无人报错。
    */
   @Test
-  void rejectsAGoodsRowWhoseOwnerIsNotDeclared() {
-    String payload = PAYLOAD.replace("\"id\":\"house@0_0\"}", "\"id\":\"house@9_9\"}");
+  void rejectsAGoodsRowWithoutAHousehold() {
+    String payload = PAYLOAD.replace("{\"household\":\"hh-house-0_0\",", "{");
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
 
     HandlerOutcome outcome = HANDLER.handle(state(ActorData.empty(), T7), payload);
 
     assertThat(outcome).isInstanceOf(HandlerOutcome.Rejected.class);
     assertThat(((HandlerOutcome.Rejected) outcome).reason())
-        .as("拒因点名那个悬空的主体与所在格")
-        .contains("house@9_9")
-        .contains("0_0");
+        .as("拒因点名缺失的家户字段")
+        .contains("household");
   }
 
   /**

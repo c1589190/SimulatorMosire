@@ -67,8 +67,8 @@ class ExpectedProfitBookEmployerOfTest {
 
   private static final HouseholdId WORKER = HouseholdId.parse("hh-wage-worker");
   private static final ActorRef SELF = HouseholdActors.of(WORKER);
-  private static final ActorRef ESTATE_A = new ActorRef(ActorKind.ESTATE, "estate-a");
-  private static final ActorRef ESTATE_B = new ActorRef(ActorKind.ESTATE, "estate-b");
+  private static final ActorRef ESTATE_A = new ActorRef(ActorKind.ORGANIZATION, "estate-a");
+  private static final ActorRef ESTATE_B = new ActorRef(ActorKind.ORGANIZATION, "estate-b");
 
   private static final IndustryId FARM = IndustryHexKeys.id("farm", H.q(), H.r());
   private static final IndustryId FARM2 = IndustryHexKeys.id("farm", H2.q(), H2.r());
