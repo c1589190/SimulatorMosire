@@ -73,14 +73,21 @@
   - tick 360 `(0,0)` stress average=1012 / max=1590；
   - day1 consumedQuantities=21,692,009，初始粮库存 21,666,661，deficit=190,500，unmetAfter=174,908；
   - 证明出生为 0 不是投影/需求 bug 的单纯连带结果，而是播种口粮 + 逐批次整除 + 两套生死引擎的复合 bug。
+- **储备粮验证（未提交实验参数）**：`EconomySeeder.GENESIS_GRAIN_RESERVE_MULTIPLIER=30` 放大初始口粮后：
+  - day1 consumed=344,599,264、deficit=80,250、unmetAfter=9,808（≈当日 cloth 需求）；
+  - tick360 `(0,0)` stress average=0 / max=0，grain satisfaction=1000‰；
+  - 最终人口 4016（births=2/月、deaths=0）；
+  - 证明“出生 0”主要是早期全缺导致压力 ≥500 的抑制结果；压力归零后出生暴露为逐批次整除 bug（2/月 vs 应约 21/月）。
+  - ★ 30× 是验证值，不是最终口径；代码变更在下一提交里，需后续校准或回退。
 - 未跑：`test` / `test-compile` / `clean verify`；测试未迁移。
 
 ## 3. 当前已知缺口（按优先级）
 
-1. **出生为 0**：三类原因都未修：
-   - 首日 `PLANTING_DRAWS_BEFORE_CONSUMPTION` 把口粮当种子、初始库存只够 65 天口粮；
-   - `PopulationDynamics.birthsOf` 逐批次整数截断（1098 育龄女性实际只生 2/月，先汇总应为 21）；
+1. **出生为 0 / 低生育**：三类原因已分离：
+   - 初始储备粮不足 + 首扣种子 ⇒ 前 240 天严重缺货、压力 >1000；30× 储备粮验证已使 stress 归零；
+   - `PopulationDynamics.birthsOf` 逐批次整数截断：压力归零后仍只有 2 人/月（先汇总应约 21 人/月）；
    - `PopulationDynamics` 与 `HouseholdBook.settleVitalEvents` 两套生死引擎未统一。
+   下一步先修逐批次整除，再校准储备粮正式值。
 2. **GM 读口**：查看全局默认/家户覆盖/有效 needs·labor 的读工具未做。
 3. **EconomySeeder 创世口径**：初始库存/口粮种子仍按 `population × 统一系数`；需要随 Social 分档口径收口。
 4. **`ApiViews.unmetPersonDays`**：仍是全局 83 毫粮/人日的量级读数，已具名标注。

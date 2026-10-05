@@ -527,3 +527,33 @@ day360 仍≈1145（实测平均 1012、最大 1590，同量级）。
   两种商品同时缺时，满足率低于约 55% 压力就持续上升，低于约 62.5%（只缺粮）同理；
 - 如果“首日播种先扣”是既定设计，那么要解决的是**播种后到首个收获日之间的口粮过渡**（例如种子不计入 subsistence、初始库存覆盖到首次收获、或允许借贷/市场过渡）；
 - 如果认为播种/库存都没问题，则下一步应校准压力衰减/门槛参数（`STRESS_DECAY_PER_DAY=6`、`FERTILITY_SUPPRESSION_PER_STRESS=2`、`STRESS_MORTALITY_THRESHOLD=300`），否则 240 天积累需要 300+ 天退清，人口会长期处在低生育区。
+
+### 12.6 储备粮验证：30× 初始粮食储备
+
+按用户建议做最小验证：不改播种流程、不改压力公式，只把 `EconomySeeder` 的初始口粮天数统一放大
+`GENESIS_GRAIN_RESERVE_MULTIPLIER = 30`（验证参数，见该常量 Javadoc）。
+
+实测（fresh small-world，`0→360`，同口径独立 store/端口）：
+
+```text
+day1 INPUTS+CONSUMPTION consumedQuantities = 344,599,264
+day1 deficitGrainMilli                      = 80,250
+day1 借贷后 unmetAfter                      = 9,808（≈ 当日 cloth 需求）
+最终人口                                    = 4016（初始 4000）
+每月写回                                    = births=2、deaths=0（day150 起每月 +2）
+tick360 (0,0) stress                        = average=0、max=0
+tick360 grain satisfaction                  = 1000‰
+本次 errors / projection warnings           = 0 / 0
+```
+
+结论：
+
+1. **储备粮是主因之一**：把粮食储备放大后，day1 种子扣款不再吃光全部口粮，grain 当天满足；
+2. **压力是链式结果**：粮食满足后，压力没有再累积；360 tick 后 `(0,0)` stress 归零；
+3. **出生不再为 0**，但只有 **2 人/月**：这证明“出生 0”主要是压力 ≥500 抑制的结果，同时把
+   `PopulationDynamics.birthsOf` 的逐批次整除 bug 露了出来——1098 名育龄女性本应先汇总出约 21 人/月；
+4. 因此下一批的正确顺序是：
+   - 先修 `birthsOf` 的逐批次整除（跨批次累积后一次取整）；
+   - 再校准储备粮的正式口径（30× 只是验证值，不是最终值）；
+   - 最后统一 `PopulationDynamics` / `HouseholdBook.settleVitalEvents` 两套生死引擎；
+   - 每步继续用 360 tick 对照本节与 §12 前文基线。

@@ -485,6 +485,17 @@ public final class EconomySeeder {
           new SocialClassId(CLASS_IDS[2]), 120, // 富农：有余粮可贷
           new SocialClassId(CLASS_IDS[3]), 250); // 地主：最厚（同格主要债权人）
 
+  /**
+   * ★★ <b>2026-10-09 压力验证批：初始粮食储备倍数</b>。
+   *
+   * <p>验证目标：首日播种会按可用的家户粮食扣种子（种子需求约 3.39 亿毫粮，见 small-world 42,358 亩 × 8 粮/亩），
+   * 而 {@link #INITIAL_RATION_DAYS_BY_CLASS} 的原始储备只有约 2,167 万毫粮 ⇒ 首日几乎全被当种子扣掉，第一个收获日前
+   * 没有口粮，压力累积到 1000+。本常量把各阶层储备粮按倍数放大，验证“只要留下口粮、压力是否会退、出生是否会动”。
+   *
+   * <p>★ 这是<b>验证参数</b>，不是最终口径；验证完成后应改为正式参数表/世界生成参数或回退。
+   */
+  public static final int GENESIS_GRAIN_RESERVE_MULTIPLIER = 30;
+
   /** 槽位劳动投入率上限（‰）：{@code ClassSlot} 的既定口径（贫农 950 / 中农 900 / 富农 750 / 地主 100）。 */
   static final int[] CLASS_LABOR_PER_MILLE = {950, 900, 750, 100};
 
@@ -2304,7 +2315,7 @@ public final class EconomySeeder {
     if (days == null) {
       throw new IllegalArgumentException("阶层槽位 " + slot + " 不在初始口粮天数表里（拒绝臆造）");
     }
-    return days;
+    return Math.multiplyExact(days, GENESIS_GRAIN_RESERVE_MULTIPLIER);
   }
 
   /**
