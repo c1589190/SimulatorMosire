@@ -4600,6 +4600,20 @@ final class MarketSettlement {
         if (single.isEmpty()) {
           List<HouseholdId> collective = round.index.householdsOf(unitId);
           if (collective.isEmpty()) {
+            // ★★ P2-E：**没有任何正产能、也没有任何劳动配额**的 unit 是合法空壳（B.3b：
+            //   "有经营者、无资产、不生产"是合法状态，资产可以被全部转走；0 产能的份额也走这里）。
+            //   它没有库存可卖、没有产能可买投入，因此不生成任何订单 —— 具名跳过，不静默当成
+            //   "零库存参与者"，也不把它当坏数据。有正资产或有劳动却解析不到家户 ⇒ 仍走下面的具名抛。
+            boolean hasCapacity =
+                round.index.usableAssetsOf(unitId).values().stream()
+                    .anyMatch(quantity -> quantity != null && quantity > 0L);
+            if (!hasCapacity) {
+              MARKET.warn(
+                  "event=MARKET_SUBJECT_EMPTY_UNIT unit={} operator={} reason=no-positive-asset-and-no-labor-allocation",
+                  unitId.value(),
+                  entry.getKey());
+              continue;
+            }
             throw new IllegalStateException(
                 "市场参与者无法解析到任何家户（账户主体只有家户；聚合主体必须能解析到组织者/经营者家户）："
                     + "unit="

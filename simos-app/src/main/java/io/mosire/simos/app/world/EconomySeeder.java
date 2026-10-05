@@ -3094,6 +3094,12 @@ public final class EconomySeeder {
                   Set.of(ResidenceKind.URBAN),
                   new ActorRef(ActorKind.ORGANIZATION, craftId.value()))
               : null;
+      // ★★ P2-E：家户纺织主 unit 是**集体经营** unit（operator 是聚合主体，名下有多个劳动家户）。
+      //   它必须显式带一条"无规则"关系：净产出已由 harvest 的 creditOutput 按劳动权重分给各家家户账；
+      //   若沿用制度默认的 HOUSEHOLD 模板，模板的四个受方 cohort 与集体成员是同一批家户 ⇒ 规则结算会在
+      //   成员之间铸出"付给自己"的转移（Transfer 两端不得相等，首个收获日当场抛）。
+      ProductionRelation weaveMainRelation =
+          hasRural ? collectiveRelation(planOf(plans, weaveId)) : null;
       List<Map<String, Object>> industries = new ArrayList<>(plans.size());
       for (IndustryPlan plan : plans) {
         industries.add(plan.payload());
@@ -3176,6 +3182,7 @@ public final class EconomySeeder {
               switch (plan.kind()) {
                 case FARM -> farmMainRelation;
                 case CRAFT -> craftMainRelation;
+                case WEAVE -> weaveMainRelation;
                 default -> null;
               };
           units.add(
@@ -4214,9 +4221,64 @@ public final class EconomySeeder {
         base.activity(),
         base.operator(),
         new Recipient.ToActor(inputSupplierOrg),
-        base.rules(),
+        withoutSelfPayments(base.rules(), plan.operator()),
         base.residualOwner(),
         base.laborSource());
+  }
+
+  /**
+   * ★★ <b>剔除"受方 == 本条关系的 operator"的规则</b>（P2-E）：这类规则对余额是恒等变换，而 {@code Transfer}
+   * 的两端不得相等（自转移是坏数据）。P2-A 起主 farm/craft unit 的 operator 就是组织者家户，而 FEUDAL/HANDICRAFT
+   * 默认模板里"付给该家户所在 cohort"的给养/地租/工资就是自付 —— 不剔除会在首个收获日当场抛。
+   *
+   * <p>★ 口径与 {@code EconomyOrganizationSettlement.normalizeRecipients} 逐条相同（那里管自动组织新建的 unit，
+   * 这里管 seeder 创世载荷）；本类不另立第二套判定。
+   */
+  private static List<CompensationRule> withoutSelfPayments(
+      List<CompensationRule> rules, ActorRef operator) {
+    List<CompensationRule> kept = new ArrayList<>(rules.size());
+    for (CompensationRule rule : rules) {
+      if (!paysOperator(rule.recipient(), operator)) {
+        kept.add(rule);
+      }
+    }
+    return List.copyOf(kept);
+  }
+
+  /** 一条规则的受方是否就是 operator（cohort 受方按创世家户 id 的同一拼写点还原）。 */
+  private static boolean paysOperator(Recipient recipient, ActorRef operator) {
+    return switch (recipient) {
+      case Recipient.ToHousehold toHousehold ->
+          HouseholdActors.of(toHousehold.household()).equals(operator);
+      case Recipient.ToActor toActor -> toActor.actor().equals(operator);
+      case Recipient.ToCohort toCohort ->
+          HouseholdActors.of(
+                  HouseholdIds.ofSeed(
+                      toCohort.cohort().hex(),
+                      toCohort.cohort().residence(),
+                      toCohort.cohort().stratum()))
+              .equals(operator);
+    };
+  }
+
+  /**
+   * ★★ <b>集体经营 unit 的最小关系</b>（P2-E；当前 = 家户纺织主 unit）：{@code operator}/{@code
+   * residualOwner} = 聚合经营主体，{@code inputSupplier} 也指它（{@code supplierAccountsOf} 对聚合主体按
+   * {@code index.householdsOf(unit)} 代理到各劳动家户账）；<b>规则为空</b> —— 净产出已由 harvest 的
+   * {@code creditOutput} 按劳动权重分给各家家户账，不再叠一层制度模板。
+   *
+   * <p>★ <b>为什么必须显式空规则</b>：HOUSEHOLD 模板的四个受方 cohort 与这个集体 unit 的成员是同一批家户 ⇒
+   * 模板规则会让成员之间互相转移（同一对家户既是付方又是受方 ⇒ 自转移，{@code Transfer} 的两端不得相等，
+   * 实测首个收获日当场抛）。集体经营的产出归属由 {@code HouseholdRouting} 的劳动权重表达，模板在这里是第二本账。
+   */
+  private static ProductionRelation collectiveRelation(IndustryPlan plan) {
+    return new ProductionRelation(
+        plan.unitId(),
+        plan.operator(),
+        new Recipient.ToActor(plan.operator()),
+        List.of(),
+        plan.operator(),
+        LaborSource.FAMILY);
   }
 
   /**

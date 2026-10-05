@@ -586,9 +586,18 @@ final class EconomyOrganizationSettlement {
         ProductionUnitBook.usableAssets(industryId, organizer, assetShares);
     long ownCapacity =
         ProductionUnitBook.capacityScaleOf(industryId, organizer, industry, assetShares);
+    // ★★ P2-E：**已被某个生产 unit 使用的 (industry, operator) 作用域** —— 该作用域下的 OWNED 份额
+    //   是那条 unit 的产能来源，不是"闲置可租"的份额（否则自动组织会把别人正在用的 unit 拆空）。
+    Set<ActorRef> operatorsWithUnit = new LinkedHashSet<>();
+    for (ProductionUnit candidate : units.values()) {
+      if (candidate.industry().equals(industryId)) {
+        operatorsWithUnit.add(candidate.operator());
+      }
+    }
     // 资产天花板 = 自有 + 同产业全部可租闲置份额（"自家会生产"的家户份额除外）；目标规模不超过它。
     long assetCeiling =
-        assetCeiling(industry, organizer, usable, assetShares, reservedHouseholdOwners);
+        assetCeiling(
+            industry, organizer, usable, assetShares, reservedHouseholdOwners, operatorsWithUnit);
     long desired;
     if (target == UNCONSTRAINED) {
       desired = Math.max(1L, Math.min(Math.max(ownCapacity, 0L), assetCeiling));
@@ -606,7 +615,8 @@ final class EconomyOrganizationSettlement {
                 usable,
                 desired,
                 assetShares,
-                reservedHouseholdOwners)
+                reservedHouseholdOwners,
+                operatorsWithUnit)
             : new TenancyPlan(List.of(), List.of());
     long expectedCapacity = expectedCapacityAfterGrants(industry, usable, tenancy.grants());
     if (expectedCapacity < 1L) {
@@ -864,7 +874,8 @@ final class EconomyOrganizationSettlement {
       Map<AssetKind, Long> usable,
       long desiredScale,
       Map<AssetShareId, AssetShare> assetShares,
-      Set<ActorRef> reservedHouseholdOwners) {
+      Set<ActorRef> reservedHouseholdOwners,
+      Set<ActorRef> operatorsWithUnit) {
     List<AssetGrant> grants = new ArrayList<>();
     // 缺资产那几路按 AssetKind.name() 稳定序处理（同一产业内的资产种类集合来自模板）。
     List<AssetKind> required = new ArrayList<>(industry.capacityPerUnit().keySet());
@@ -896,7 +907,13 @@ final class EconomyOrganizationSettlement {
       }
       long taken = 0L;
       for (AssetShare source :
-          idleSources(industry.id(), assetKind, organizer, assetShares, reservedHouseholdOwners)) {
+          idleSources(
+              industry.id(),
+              assetKind,
+              organizer,
+              assetShares,
+              reservedHouseholdOwners,
+              operatorsWithUnit)) {
         long give = Math.min(deficit - taken, source.quantity());
         if (give <= 0L) {
           continue;
@@ -928,13 +945,20 @@ final class EconomyOrganizationSettlement {
       ActorRef organizer,
       Map<AssetKind, Long> usable,
       Map<AssetShareId, AssetShare> assetShares,
-      Set<ActorRef> reservedHouseholdOwners) {
+      Set<ActorRef> reservedHouseholdOwners,
+      Set<ActorRef> operatorsWithUnit) {
     long ceiling = Long.MAX_VALUE;
     for (Map.Entry<AssetKind, Long> entry : industry.capacityPerUnit().entrySet()) {
       AssetKind assetKind = entry.getKey();
       long available = usable.getOrDefault(assetKind, 0L);
       for (AssetShare source :
-          idleSources(industry.id(), assetKind, organizer, assetShares, reservedHouseholdOwners)) {
+          idleSources(
+              industry.id(),
+              assetKind,
+              organizer,
+              assetShares,
+              reservedHouseholdOwners,
+              operatorsWithUnit)) {
         available = saturatingAdd(available, source.quantity());
       }
       ceiling = Math.min(ceiling, available / entry.getValue());
@@ -953,13 +977,18 @@ final class EconomyOrganizationSettlement {
    *
    * <p>★ {@code reservedHouseholdOwners} = 本 mode 下自己会生产的家户 actor 集合：这些家户的 OWNED 份额要留给
    * 他们自己的组织，不能被别家的租佃拆走（见 {@code organize} 里的注释）。非生产位置（地主/官署）的家户份额不在此列。
+   *
+   * <p>★★ <b>P2-E 新增：{@code operatorsWithUnit}</b> = 本产业里**已经有生产 unit 的经营者**集合。这些
+   * (industry, operator) 作用域下的份额是那条 unit 的产能来源，不是闲置份额 —— 否则自动组织会为另一个家户
+   * "租"走别人正在用的产能，把原 unit 拆成没有份额的空壳（P2-E 的 weave 红点即此路径）。
    */
   private static List<AssetShare> idleSources(
       IndustryId industryId,
       AssetKind assetKind,
       ActorRef organizer,
       Map<AssetShareId, AssetShare> assetShares,
-      Set<ActorRef> reservedHouseholdOwners) {
+      Set<ActorRef> reservedHouseholdOwners,
+      Set<ActorRef> operatorsWithUnit) {
     List<AssetShare> sources = new ArrayList<>();
     for (AssetShare share : assetShares.values()) {
       if (!share.industry().equals(industryId) || share.asset() != assetKind) {
@@ -970,6 +999,9 @@ final class EconomyOrganizationSettlement {
       }
       if (!share.operator().equals(share.owner())) {
         continue; // 已有人在用（operator != owner）⇒ 不是闲置
+      }
+      if (operatorsWithUnit.contains(share.operator())) {
+        continue; // 该 (industry, operator) 已有生产 unit 在用它 ⇒ 不是闲置（P2-E：防拆空正在生产的 unit）
       }
       if (share.owner().equals(organizer)) {
         continue; // 本户自己的份额已经在 usable 里

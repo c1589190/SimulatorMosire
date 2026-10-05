@@ -86,16 +86,22 @@ public final class PopulationLots {
   }
 
   /**
-   * ★★ **一个新生批次的 id**（R4）：{@code <母亲批次 id 的前缀><性别>:b<结算月序号>}。
+   * ★★ **一个新生批次的 id**（R4）：{@code <母亲批次 id 的位置前缀><儿童性别>:<结算月序号>-<母亲细分>}。
    *
    * <pre>
-   * rural:0_0:FEMALE:1  ──(MALE, 第 360 天)──→  rural:0_0:MALE:b12
-   * urban:c-0_0:FEMALE:1 ─(FEMALE, 第 360 天)─→  urban:c-0_0:FEMALE:b12
+   * rural:0_0:FEMALE:s0-1  ──(MALE, 第 360 天)──→  rural:0_0:MALE:b12-s0-1
+   * urban:c-0_0:FEMALE:s1-1 ─(FEMALE, 第 360 天)─→  urban:c-0_0:FEMALE:b12-s1-1
    * </pre>
    *
    * <p>★★ **为什么按"母亲的前缀"而不是另起一套命名**：{@link #isUrban} 与 {@code SocialData#urbanPopulationAt(CityId)}
-   * 都按 id 的**前缀**归属 —— 另起一套会让"城里生的人"在城乡归属上凭空变成农村人（而那条归属正是经济侧分池的依据）。 前缀 = 母亲 id
-   * 去掉最后一段（细分），故"住在哪、属于哪座城"自动继承，**不需要第二个字段**。
+   * 都按 id 的**前缀**归属 —— 另起一套会让"城里生的人"在城乡归属上凭空变成农村人（而那条归属正是经济侧分池的依据）。 位置前缀 = 母亲 id
+   * 去掉最后两段（性别 + 细分），故"住在哪、属于哪座城"自动继承，**不需要第二个字段**。
+   *
+   * <p>★★ <b>P2-E 修：细分段带上母亲的细分</b>。P2-A 起一个 {@code (居住类型, 阶层)} 是一个**独立家户**，而同
+   * (城/格, 性别) 下不同阶层母亲的旧 id 规则（把末段整个换成 {@code b<月>}）会**撞同一个 id** ⇒
+   * {@code PopulationDynamics.appendBirths} 的"同一新生批次只能归一个家户"守卫当场抛（实测
+   * {@code urban:c-1_0:FEMALE:MALE:b17} 同时落在 poor/middle 两个家户）。故新生批次的末段追加母亲的细分，
+   * 让不同家户的新生批次天然分开，同一家户同月同母亲细分的孩子仍汇进同一条批次。
    */
   public static PeopleLotId born(PopulationGroup mother, Sex sex, String cohort) {
     if (mother == null) {
@@ -106,11 +112,19 @@ public final class PopulationLots {
     }
     String id = mother.id().value();
     int lastSeparator = id.lastIndexOf(':');
-    if (lastSeparator < 0) {
-      throw new IllegalArgumentException("母亲批次的 id 必须形如 <前缀>:<性别>:<细分>（R4 的新生批次按前缀继承城乡归属）: " + id);
+    int sexSeparator = lastSeparator < 0 ? -1 : id.lastIndexOf(':', lastSeparator - 1);
+    if (sexSeparator <= 0 || sexSeparator == lastSeparator - 1) {
+      throw new IllegalArgumentException(
+          "母亲批次的 id 必须形如 <前缀>:<性别>:<细分>（R4 的新生批次按前缀继承城乡归属）: " + id);
     }
+    String motherCohort = id.substring(lastSeparator + 1);
     return PeopleLotId.parse(
-        id.substring(0, lastSeparator + 1) + sex.name() + ":" + requireCohort(cohort));
+        id.substring(0, sexSeparator + 1)
+            + sex.name()
+            + ":"
+            + requireCohort(cohort)
+            + "-"
+            + requireCohort(motherCohort));
   }
 
   /**

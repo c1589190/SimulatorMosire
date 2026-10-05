@@ -432,7 +432,8 @@ public final class AssetShareBook {
     Map<PledgeId, Pledge> plannedPledges = new LinkedHashMap<>(knownPledges);
     Set<PledgeId> createdPledgeIds = new LinkedHashSet<>();
     if (!knownPledges.isEmpty()) {
-      planPledgeFollow(shares, plannedPledges, createdPledgeIds, movedOut, flowsBySource);
+      planPledgeFollow(
+          shares, finalQuantity, plannedPledges, createdPledgeIds, movedOut, flowsBySource);
     }
 
     // ── 6) 终态校验：Σ活跃质押 ≤ 终态 quantity；所有质押指名的份额都必须存在 ─────────────────
@@ -494,6 +495,7 @@ public final class AssetShareBook {
    */
   private static void planPledgeFollow(
       Map<AssetShareId, AssetShare> shares,
+      Map<AssetShareId, Long> finalQuantity,
       Map<PledgeId, Pledge> plannedPledges,
       Set<PledgeId> createdPledgeIds,
       Map<AssetShareId, Long> movedOut,
@@ -505,6 +507,14 @@ public final class AssetShareBook {
       Pledge pledge = plannedPledges.get(pledgeId);
       if (pledge != null && pledge.status() == Pledge.Status.ACTIVE) {
         mergeIndex.putIfAbsent(mergeKeyOf(pledge), pledgeId);
+      }
+    }
+    // ★★ P2-E：逐份额的 ACTIVE 质押合计（终态上界的实时读数）。跟随写回时同步维护，见下面的两步：
+    //   ① 主跟随（逐源逐质押按比例 floor）；② **源侧补差**（floor 会漏掉"总跟随量 < 源数量减少量"的部分）。
+    Map<AssetShareId, Long> activeByShare = new LinkedHashMap<>();
+    for (Pledge pledge : plannedPledges.values()) {
+      if (pledge != null && pledge.status() == Pledge.Status.ACTIVE) {
+        activeByShare.merge(pledge.assetShareId(), pledge.quantity(), Math::addExact);
       }
     }
     List<AssetShareId> sources = new ArrayList<>(flowsBySource.keySet());
@@ -548,41 +558,124 @@ public final class AssetShareBook {
             continue;
           }
           movedPledge = Math.addExact(movedPledge, amount);
-          PledgeMergeKey key =
-              new PledgeMergeKey(destination, pledge.debtContractId(), pledge.modeId(), pledge.priority());
-          PledgeId existingId = mergeIndex.get(key);
-          Pledge existing = existingId == null ? null : plannedPledges.get(existingId);
-          if (existing != null
-              && existing.status() == Pledge.Status.ACTIVE
-              && !existingId.equals(pledgeId)) {
-            plannedPledges.put(
-                existingId, existing.withQuantity(Math.addExact(existing.quantity(), amount)));
-          } else {
-            PledgeId followId = nextPledgeId(plannedPledges, createdPledgeIds);
-            plannedPledges.put(
-                followId,
-                new Pledge(
-                    followId,
-                    pledge.debtContractId(),
-                    destination,
-                    amount,
-                    pledge.modeId(),
-                    pledge.priority(),
-                    Pledge.Status.ACTIVE));
-            createdPledgeIds.add(followId);
-            mergeIndex.put(key, followId);
+          followPledgeTo(
+              plannedPledges, mergeIndex, createdPledgeIds, pledgeId, pledge, destination, amount);
+          activeByShare.merge(destination, amount, Math::addExact);
+        }
+        // 源质押按已跟随量减量（全跟走 ⇒ 删行）；同步源侧合计。
+        activeByShare.merge(sourceId, -movedPledge, Math::addExact);
+      }
+      // ── ② 源侧补差（P2-E 修）：逐质押 floor + 最大余数可能**整体少跟**（源数量只减了 1，而每笔质押的
+      //   比例都 floor 到 0）⇒ 源上剩下的 ACTIVE 合计会超过源终态数量。这里把差额补跟到有余额的目标份额上：
+      //   只动本批 flows 里的目标，且以**目标终态余额**为硬上限（不制造新的越界）。补不动 ⇒ 具名抛（不静默）。
+      long finalSource = finalQuantity.getOrDefault(sourceId, source.quantity());
+      long excess = activeByShare.getOrDefault(sourceId, 0L) - finalSource;
+      if (excess > 0L) {
+        List<AssetShareId> destinations = new ArrayList<>(flows.keySet());
+        destinations.sort(Comparator.comparing(AssetShareId::value));
+        List<PledgeId> repledgeable = new ArrayList<>();
+        for (PledgeId pledgeId : sortedPledgeIds(plannedPledges)) {
+          Pledge pledge = plannedPledges.get(pledgeId);
+          if (pledge != null
+              && pledge.status() == Pledge.Status.ACTIVE
+              && pledge.assetShareId().equals(sourceId)
+              && pledge.quantity() > 0L) {
+            repledgeable.add(pledgeId);
           }
         }
-        long left = Math.subtractExact(quantity, movedPledge);
-        if (left > 0L) {
-          plannedPledges.put(pledgeId, pledge.withQuantity(left));
-        } else {
-          plannedPledges.remove(pledgeId);
-          PledgeMergeKey ownKey = mergeKeyOf(pledge);
-          if (ownKey != null && pledgeId.equals(mergeIndex.get(ownKey))) {
-            mergeIndex.remove(ownKey);
+        for (PledgeId pledgeId : repledgeable) {
+          if (excess <= 0L) {
+            break;
+          }
+          Pledge pledge = plannedPledges.get(pledgeId);
+          if (pledge == null || pledge.status() != Pledge.Status.ACTIVE) {
+            continue;
+          }
+          for (AssetShareId destination : destinations) {
+            if (excess <= 0L) {
+              break;
+            }
+            long spare =
+                finalQuantity.getOrDefault(destination, 0L)
+                    - activeByShare.getOrDefault(destination, 0L);
+            if (spare <= 0L) {
+              continue;
+            }
+            long amount = Math.min(excess, Math.min(pledge.quantity(), spare));
+            if (amount <= 0L) {
+              continue;
+            }
+            followPledgeTo(
+                plannedPledges, mergeIndex, createdPledgeIds, pledgeId, pledge, destination, amount);
+            activeByShare.merge(destination, amount, Math::addExact);
+            activeByShare.merge(sourceId, -amount, Math::addExact);
+            excess -= amount;
           }
         }
+        if (excess > 0L) {
+          throw new IllegalStateException(
+              "AssetShareBook 的质押跟随无法在终态上界内补齐（拒绝越界）：源份额="
+                  + sourceId
+                  + " 尚缺="
+                  + excess
+                  + "（终态数量="
+                  + finalSource
+                  + "，ACTIVE 合计="
+                  + activeByShare.getOrDefault(sourceId, 0L)
+                  + "）");
+        }
+      }
+    }
+  }
+
+  /**
+   * 把 {@code sourcePledgeId} 上的 {@code amount} 跟随到 {@code destination}：同 (债务合同, mode, 优先级) 的
+   * 目标质押存在则累加，否则新发一条 {@code pledge-follow-N}；源质押按量减量（归零即删）。只动质押表，不动份额表。
+   */
+  private static void followPledgeTo(
+      Map<PledgeId, Pledge> plannedPledges,
+      Map<PledgeMergeKey, PledgeId> mergeIndex,
+      Set<PledgeId> createdPledgeIds,
+      PledgeId sourcePledgeId,
+      Pledge pledge,
+      AssetShareId destination,
+      long amount) {
+    PledgeMergeKey key =
+        new PledgeMergeKey(destination, pledge.debtContractId(), pledge.modeId(), pledge.priority());
+    PledgeId existingId = mergeIndex.get(key);
+    Pledge existing = existingId == null ? null : plannedPledges.get(existingId);
+    if (existing != null
+        && existing.status() == Pledge.Status.ACTIVE
+        && !existingId.equals(sourcePledgeId)) {
+      plannedPledges.put(
+          existingId, existing.withQuantity(Math.addExact(existing.quantity(), amount)));
+    } else {
+      PledgeId followId = nextPledgeId(plannedPledges, createdPledgeIds);
+      plannedPledges.put(
+          followId,
+          new Pledge(
+              followId,
+              pledge.debtContractId(),
+              destination,
+              amount,
+              pledge.modeId(),
+              pledge.priority(),
+              Pledge.Status.ACTIVE));
+      createdPledgeIds.add(followId);
+      mergeIndex.put(key, followId);
+    }
+    Pledge current = plannedPledges.get(sourcePledgeId);
+    if (current == null) {
+      throw new IllegalStateException("AssetShareBook 跟随写回找不到源质押行: " + sourcePledgeId);
+    }
+    long left = Math.subtractExact(current.quantity(), amount);
+    if (left > 0L) {
+      plannedPledges.put(sourcePledgeId, current.withQuantity(left));
+    } else {
+      plannedPledges.remove(sourcePledgeId);
+      PledgeMergeKey ownKey = mergeKeyOf(pledge);
+      if (ownKey != null && sourcePledgeId.equals(mergeIndex.get(ownKey))) {
+        mergeIndex.remove(ownKey);
       }
     }
   }
