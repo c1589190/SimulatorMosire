@@ -14,8 +14,8 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.model.AvailableStock;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.actor.spi.RemitGovTreasuryHandler;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.household.GovernmentHouseholdResolver;
@@ -406,17 +406,17 @@ public final class GovRemitTool implements AgentTool {
    */
   private static Map<String, Object> availableOf(SimulationState state, TreasuryLocation from) {
     ActorData actors = ApiViews.actorData(state);
-    GoodsAccount account =
+    HouseholdInventory inventory =
         actors
             .accounts()
-            .get(new GoodsAccountKey(HouseholdId.parse(from.householdId())));
-    if (account == null) {
+            .get(new HouseholdAccountKey(HouseholdId.parse(from.householdId())));
+    if (inventory == null) {
       return null;
     }
     Map<String, Object> view = new LinkedHashMap<>();
-    view.put("grain", AvailableStock.available(account, GRAIN));
-    view.put("cloth", AvailableStock.available(account, CLOTH));
-    view.put("money", AvailableStock.available(account, MoneyVocabulary.SILVER_CURRENCY));
+    view.put("grain", AvailableStock.available(inventory, GRAIN));
+    view.put("cloth", AvailableStock.available(inventory, CLOTH));
+    view.put("money", AvailableStock.available(inventory, MoneyVocabulary.SILVER_CURRENCY));
     return view;
   }
 

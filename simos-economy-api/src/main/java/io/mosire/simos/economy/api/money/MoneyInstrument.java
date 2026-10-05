@@ -13,7 +13,7 @@ import java.util.Optional;
  * 工具（本类型）        "这是银币 / 国库宝钞 / 钱庄存款"  ← M1.1 新增的那一维
  * </pre>
  *
- * <p>★★ <b>它只加身份，不动账</b>（铁律 2 不受影响）：本类型<b>不是</b>余额的容器 —— 钱仍然只存在 {@code GoodsAccount.money} 里、键仍然是
+ * <p>★★ <b>它只加身份，不动账</b>（铁律 2 不受影响）：本类型<b>不是</b>余额的容器 —— 钱仍然只存在 {@code HouseholdInventory.money} 里、键仍然是
  * {@link CurrencyId}（裁定"旧的 {@code CurrencyId} 读口保留"）。 故 M1.1 <b>不产生任何新的写入点</b>：没有命令、没有账、没有算式。★
  * 铸熔、成色、兑现都不在本批（M4+）。
  *

@@ -86,7 +86,7 @@ import java.util.function.Function;
  * {@code economy.Seed} 命令的载荷。
  *
  * <p>★★ **H1 起它同时产出家户的创世库存**（裁定 D3-C / K1；见 {@link Seed}）：商品库存的**唯一持久真源**是 actor 切片里 家户的 {@code
- * GoodsAccount}，故"每格两组四行的开缸余额"不再写进阶层行，而是由 {@link #openingStock} 一次算好后交回 —— {@link HouseholdSeeder}
+ * HouseholdInventory}，故"每格两组四行的开缸余额"不再写进阶层行，而是由 {@link #openingStock} 一次算好后交回 —— {@link HouseholdSeeder}
  * 用**同一份**结果播 {@code actor.Seed}（"一次算出、同一份喂两条命令"，与人口批次那条接缝同款）。
  *
  * <p>★★ **R1（T4）起人口一律取自 {@link PopulationGroup} 批次列表**（{@link PopulationSeeder#groups} 造的那一份，
@@ -723,7 +723,7 @@ public final class EconomySeeder {
    * 的逐格 {@code entries} 与 {@code markets}，以及**家户的创世库存**与**创世货币禀赋**（键 = 家户身份）。
    *
    * <p>★★ <b>为什么把它们放在一起</b>：H1 起"商品库存"<b>不在阶层行里</b>（{@code ClassRow} 没有 {@code goods}，裁定 D3-C/K1）——
-   * 它的持久真源是 actor 切片里该家户的 {@code GoodsAccount}。而"每格两组四行的开缸余额"（口粮按阶层天数、纤维按田亩副产、
+   * 它的持久真源是 actor 切片里该家户的 {@code HouseholdInventory}。而"每格两组四行的开缸余额"（口粮按阶层天数、纤维按田亩副产、
    * 城镇行的纤维与铁按作坊数）<b>只能算一次</b>：两处各算一遍必然漂移（本仓最忌"同一事实两处拼写点"）。故本记录是那条接缝 —— {@link #payload(String,
    * List, GameMap)} 取 {@link #entries()} 与 {@link #markets()}，{@link HouseholdSeeder} 取 {@link
    * #householdStocks()} 与 {@link #householdMoney()}（**同一份**：命令播出来的世界与夹具手搭的世界逐字段同形）。
@@ -887,7 +887,7 @@ public final class EconomySeeder {
    * tenant} 档的 operator 就是佃农家户 ⇒ 计提被抹掉）；② 关系实付/货币工资的付方是聚合主体 ⇒ economy 看不见它 ⇒ "可用 0 ⇒ 实付 0"（H4
    * 如实记的边界）。
    *
-   * <p>★ <b>goods 与 money 都按 {@code GoodsAccount} 的两张余额表</b>（裁定 K15）：0 ⇒ 不落键（空表的纯形态）。 ★
+   * <p>★ <b>goods 与 money 都按 {@code HouseholdInventory} 的两张余额表</b>（裁定 K15）：0 ⇒ 不落键（空表的纯形态）。 ★
    * <b>货币从哪来</b>：见 {@link #operatorWageReserveMilli}（它自己那条制度里货币档的每周期应付 × 缓冲）——
    * 它是**创世初始条件**（与家户的禀赋同一条口径，裁定 K14），不是发行。
    *
@@ -1817,7 +1817,7 @@ public final class EconomySeeder {
    * ★★ **城镇四行**：人口 = 该格**城镇批次**之和按 {@link #CLASS_SHARE_PER_MILLE} 切（**逐值 = 旧版 craft 四行**）。
    *
    * <p>★ **原料库存的去处**：旧版 craft 四行里的纤维与铁按"该行作坊数 × 一座作坊一个周期的用量"持有， H0.2 起并入**城镇四行**（同一批人的同一本账）、H1
-   * 起落进那四个家户的 {@code GoodsAccount}（见 {@link #openingStock}） —— 逐值同式，只是行键不再带产业、且账本搬到了 actor 侧。
+   * 起落进那四个家户的 {@code HouseholdInventory}（见 {@link #openingStock}） —— 逐值同式，只是行键不再带产业、且账本搬到了 actor 侧。
    *
    * @param workshops 本格作坊总数（= 城镇人口 ÷ {@link #URBAN_CAPITA_PER_WORKSHOP}）
    */
@@ -1826,7 +1826,7 @@ public final class EconomySeeder {
    * （**逐值 = 旧版 craft 四行**）。
    *
    * <p>★ **原料库存的去处**：旧版 craft 四行里的纤维与铁按"该行作坊数 × 一座作坊一个周期的用量"持有， H0.2 起并入**城镇四行**（同一批人的同一本账）、H1
-   * 起落进那四个家户的 {@code GoodsAccount}（见 {@link #openingStock}） —— 逐值同式，只是行键不再带产业、且账本搬到了 actor 侧。
+   * 起落进那四个家户的 {@code HouseholdInventory}（见 {@link #openingStock}） —— 逐值同式，只是行键不再带产业、且账本搬到了 actor 侧。
    *
    * @param workshops 本格作坊总数（= 城镇人口 ÷ {@link #URBAN_CAPITA_PER_WORKSHOP}）
    */
@@ -1966,7 +1966,7 @@ public final class EconomySeeder {
       HouseholdId key = cohorts.classHouseholds().get(i);
       locations.put(key, hex);
       stocks.put(key, openingStock(people[i], CLASS_IDS[i], goodsByClass, i));
-      // ★★ H4：创世货币禀赋走**同一本账**（actor 侧的同一个 {@code GoodsAccount}）—— 见 {@link
+      // ★★ H4：创世货币禀赋走**同一本账**（actor 侧的同一个 {@code HouseholdInventory}）—— 见 {@link
       // #genesisMoneyMilliPerCapita}。
       money.put(key, genesisMoney(people[i], genesisMoneyMilliPerCapita));
       rows.add(
@@ -2123,7 +2123,7 @@ public final class EconomySeeder {
     row.put("laborMilli", laborBudgetMilli);
     row.put("participationPerMille", participationPerMille);
     // ★★ **H1：这里没有 {@code goods} 键**（裁定 D3-C/K1）—— 商品库存的唯一持久真源是 actor 切片里该家户的
-    //   {@code GoodsAccount}，开缸余额由 {@link #openingStock} 一次算好、经 {@link HouseholdSeeder} 落成那本账。
+    //   {@code HouseholdInventory}，开缸余额由 {@link #openingStock} 一次算好、经 {@link HouseholdSeeder} 落成那本账。
     //   ★ 载荷里再写一份 = 同一事实的第二处拼写点，而且它会静默漂开（economy 侧已不再读它）。
     row.put("money", 0);
     // ★★ E4a：行里的债务引用不再由 seed 写（欠债只能由 runtime 借粮路径产生；空引用 = 缺键）。
@@ -3232,7 +3232,7 @@ public final class EconomySeeder {
       //     "这一格此刻有没有城镇人口"是另一件事（H1 的家户 actor 按 格 × 居住 × 阶层 播，形状必须与行集一致）。
       //     人口为 0 的行是**合法的空账**（人口/劳动/需求全 0），不是噪声：它是"这一格有这个家户、只是没人"。
       List<Map<String, Object>> classes = new ArrayList<>(2 * CLASS_IDS.length);
-      // ★★ **H1：开缸库存的去处 = 家户账**（actor 侧的 {@code GoodsAccount}）。本方法把它**一次算好**并交回
+      // ★★ **H1：开缸库存的去处 = 家户账**（actor 侧的 {@code HouseholdInventory}）。本方法把它**一次算好**并交回
       //   （{@code Seed.householdStocks}），载荷里的阶层行**不再带 {@code goods}** —— 行里没有商品这件事
       //   在"一本账"的判据（守恒式无 ΔΣRowGoods）里是必须的。
       //   ★★ H4：**创世货币禀赋与它同源**（同一处循环、同一份人口口径）⇒ 商品与货币两本账在同一次 plan 里算定。

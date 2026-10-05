@@ -372,7 +372,7 @@ final class BufferedAccountTables {
       }
 
       /**
-       * ★★ <b>M2：绝对值的负值守卫</b> —— 负余额/负冻结不是一种状态（{@code GoodsAccount} 的构造期守卫同向），
+       * ★★ <b>M2：绝对值的负值守卫</b> —— 负余额/负冻结不是一种状态（{@code HouseholdInventory} 的构造期守卫同向），
        * 这里<b>显式抛具名异常</b>，绝不改成"负值静默钳到 0"：钳 0 会把符号写错的算式藏到落回 actor 才现形。
        */
       private long requireNonNegativeValue(W id, long value) {

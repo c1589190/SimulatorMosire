@@ -3,8 +3,8 @@ package io.mosire.simos.actor.ops;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
 import io.mosire.simos.actor.model.AvailableStock;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -31,7 +31,7 @@ import org.slf4j.Logger;
  * 静默丢字段"同族事故的处置就是 fail-closed。故相加一律走 {@link Math#addExact(long, long)}， 除零/溢出都以 {@link
  * IllegalArgumentException} 面世，由命令边界折成具名拒因。
  *
- * <p>★ <b>冻结语义</b>：只搬运/相加冻结额，<b>绝不</b>把冻结额清零（{@code GoodsAccount} 的 {@code 0 ≤ 冻结 ≤ 余额}
+ * <p>★ <b>冻结语义</b>：只搬运/相加冻结额，<b>绝不</b>把冻结额清零（{@code HouseholdInventory} 的 {@code 0 ≤ 冻结 ≤ 余额}
  * 由构造期把守；源扣减不侵占冻结额由 {@link AvailableStock} 的唯一算法判）。
  */
 public final class AccountOperations {
@@ -58,12 +58,12 @@ public final class AccountOperations {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(fromHousehold, "fromHousehold");
     Objects.requireNonNull(toHousehold, "toHousehold");
-    GoodsAccountKey fromKey = new GoodsAccountKey(fromHousehold);
-    GoodsAccountKey toKey = new GoodsAccountKey(toHousehold);
+    HouseholdAccountKey fromKey = new HouseholdAccountKey(fromHousehold);
+    HouseholdAccountKey toKey = new HouseholdAccountKey(toHousehold);
     if (fromKey.equals(toKey)) {
       throw new IllegalArgumentException("actor.TransferAccounts 的源账户与目标账户相同: " + fromKey);
     }
-    GoodsAccount source = base.accounts().get(fromKey);
+    HouseholdInventory source = base.accounts().get(fromKey);
     if (source == null) {
       throw new IllegalArgumentException("源账户不存在: " + fromKey);
     }
@@ -108,19 +108,19 @@ public final class AccountOperations {
       sourceMoney.put(currency, source.money().getOrDefault(currency, 0L) - amount);
     }
 
-    Map<GoodsAccountKey, GoodsAccount> next = new LinkedHashMap<>(base.accounts());
+    Map<HouseholdAccountKey, HouseholdInventory> next = new LinkedHashMap<>(base.accounts());
     // 五参写回：两张冻结表原样带过。
     next.put(
         fromKey,
-        new GoodsAccount(
+        new HouseholdInventory(
             fromKey, sourceBalances, sourceMoney, source.frozenBalances(), source.frozenMoney()));
 
-    GoodsAccount target = base.accounts().get(toKey);
+    HouseholdInventory target = base.accounts().get(toKey);
     if (target == null) {
-      // 目标缺失 ⇒ 按转入量新建（冻结表空）；键由值派生，走 withAccount 的同一个拼写点。
+      // 目标缺失 ⇒ 按转入量新建（冻结表空）；键由值派生，走 withInventory 的同一个拼写点。
       next.put(
           toKey,
-          new GoodsAccount(
+          new HouseholdInventory(
               toKey, new LinkedHashMap<>(goods), new LinkedHashMap<>(money), Map.of(), Map.of()));
     } else {
       Map<CommodityId, Long> targetBalances = new LinkedHashMap<>(target.balances());
@@ -149,7 +149,7 @@ public final class AccountOperations {
       }
       next.put(
           toKey,
-          new GoodsAccount(
+          new HouseholdInventory(
               toKey, targetBalances, targetMoney, target.frozenBalances(), target.frozenMoney()));
     }
     LOG.info(
@@ -176,12 +176,12 @@ public final class AccountOperations {
             entry.getValue());
       }
     }
-    return base.withAccounts(next);
+    return base.withInventories(next);
   }
 
   /** 一处具名的 {@code Math.addExact}：溢出 ⇒ 拒绝，绝不截断/回绕。 */
   private static long addExact(
-      long current, long delta, String dimension, String asset, GoodsAccountKey target) {
+      long current, long delta, String dimension, String asset, HouseholdAccountKey target) {
     try {
       return Math.addExact(current, delta);
     } catch (ArithmeticException e) {

@@ -18,7 +18,7 @@ import java.util.Arrays;
  *   <li><b>★★ P2-A §13.3（2026-10-09 用户裁定）：{@code ESTATE} / {@code WORKSHOP} 已整体退役</b>——
  *       庄园/作坊是生产方式/生产活动（{@code ProductionMode} / {@code ProductionOrganization} /
  *       {@code ProductionUnit}），不是 ActorRef 的种类；它们的投入/产出/收款走组织者/经营者家户账户；
- *       <b>只有 {@link #HOUSEHOLD} 允许持有账户</b>（{@code GoodsAccountKey} 的键就是家户身份）；
+ *       <b>只有 {@link #HOUSEHOLD} 允许持有账户</b>（{@code HouseholdAccountKey} 的键就是家户身份）；
  *   <li>{@link #HOUSEHOLD} —— 家户（自给自足的家庭经济单位）：本轮**只由夹具**使用（"同一批人农闲织布"那条压力测试）；它不属任何产业，
  *       故在结算里**不占任何产业的劳动投入**，但照样进守恒（{@code Σ allocated ≤ available}）与读口。 ★ 真正让它产出布的配方（{@code FIBER
  *       + LABOR + TOOL → CLOTH}）属 R3 的 V7 —— 本轮不给它产出，也**不**假装给了。
@@ -34,7 +34,7 @@ public enum ActorKind {
   ORGANIZATION,
 
   /**
-   * 家户（自给自足的家庭经济单位；R3 的落点；**P2-A 起也是唯一允许持有 GoodsAccount 的主体**）。
+   * 家户（自给自足的家庭经济单位；R3 的落点；**P2-A 起也是唯一允许持有 HouseholdInventory 的主体**）。
    */
   HOUSEHOLD;
 

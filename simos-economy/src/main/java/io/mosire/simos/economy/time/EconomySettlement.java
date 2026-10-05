@@ -376,7 +376,7 @@ public final class EconomySettlement {
    *
    * <p>★★ <b>M1.2 边界：保留策略留在本层，账户层的 {@code frozen} 只表达"已明确的占用"</b> —— 本常量与 {@code lendableOf}
    * 都是<b>只读算式</b>（"保留额不是冻结起来的一笔粮"，见 {@code lendableOf} 的注释）， <b>不许</b>把它折进 {@code
-   * GoodsAccount.frozenBalances}。★ 两者的差别是<b>语义</b>的：这里是"<b>打算</b>留着的下界"（每天都可能变），
+   * HouseholdInventory.frozenBalances}。★ 两者的差别是<b>语义</b>的：这里是"<b>打算</b>留着的下界"（每天都可能变），
    * 冻结是"<b>已经</b>承诺出去的占用"（挂单/交付）——M2 的算式把它们当作**两项**、互不重复地各减一次。
    */
   public static final int LENDER_SUBSISTENCE_RESERVE_PER_MILLE = 1000;
@@ -527,7 +527,7 @@ public final class EconomySettlement {
    *
    * <ol>
    *   <li>★★ <b>它没有家户账</b>（H1；裁定 K1）：日结算的消费与投入都从**家户账的会话工作副本**里读，而本入口手里没有它 —— 它只看经济切片，家户库存住在 actor
-   *       切片的 {@code GoodsAccount} 上。⇒ 只要这个世界有 {@code population > 0}
+   *       切片的 {@code HouseholdInventory} 上。⇒ 只要这个世界有 {@code population > 0}
    *       的家户行，本入口就<b>在第一天之前当场抛</b>（把"没有账"当成"库存 0"正是本仓最反对的静默付 0）。 正确的入口是 {@link
    *       EconomyDayStepper}（家户账是**会话状态**：载入 → 逐日 step → 交回）；
    *   <li>产出<b>不再写进阶层行</b>（R5 ②）—— 它变成产权条目（{@code +净产 → operator}）与给家户 actor 的实付条目。 而"把产权条目落到
@@ -567,7 +567,7 @@ public final class EconomySettlement {
     for (Map.Entry<HouseholdId, ClassRow> entry : base.classes().entrySet()) {
       if (entry.getValue().population() > 0L) {
         throw new IllegalStateException(
-            "本入口（多日静态入口）没有**家户账** —— 家户的商品库存住在 actor 切片的 GoodsAccount 上，"
+            "本入口（多日静态入口）没有**家户账** —— 家户的商品库存住在 actor 切片的 HouseholdInventory 上，"
                 + "而日结算的消费与投入都要读它（H1/K1：家户账是会话状态）。"
                 + "把'没有账'当成'库存 0'是本仓最反对的形态，故当场抛：家户="
                 + entry.getKey()
@@ -3547,7 +3547,7 @@ public final class EconomySettlement {
    *       这就是"<b>佃农穷 ⇒ 地荒</b>"：tenant 档的 operator 就是佃农家户 ⇒ 它的缸空 ⇒ 规模 0，且**没有"同层"可补** （单一主体 ⇒
    *       ③（二）那道补齐无事可做）；
    *   <li>★★ <b>供方是聚合主体</b>（{@code ESTATE} / {@code WORKSHOP} / 产业型 {@code HOUSEHOLD}：id 是产业 id，如
-   *       {@code farm@0_0}）：<b>economy 看不见它的账</b> —— 那本账住在 actor 切片的 {@code GoodsAccount} 上（键
+   *       {@code farm@0_0}）：<b>economy 看不见它的账</b> —— 那本账住在 actor 切片的 {@code HouseholdInventory} 上（键
    *       {@code (actor, location)}），而会话工作副本按 {@code HouseholdId} 索引、只有家户账进得来（铁律 3：economy 不认识
    *       actor 切片；S1 起家户账经 {@code HouseholdActors.of} 派生 actor 后落进 AccountSession）。⇒ 由
    *       <b>该产业名下的家户账代理它</b>（"这个主体的缸" = 它名下那些家户的缸，与"谁供给这个产业"同一条唯一事实 {@link #householdKeysOf}）。★
@@ -6443,7 +6443,7 @@ public final class EconomySettlement {
    * <ul>
    *   <li>规则指名的 cohort **必须有行**（家户不存在 ⇒ 当场抛；不许静默留在 operator —— 那会把"配置错了"伪装成"operator 自留"）；
    *   <li>该 cohort **必须住在这一格**（{@code cohort.hex() == facts.location()}）：家户账只住在它自己的格 （{@code
-   *       GoodsAccountKey(actor, cohort.hex())}），否则条目与账本会落在两个地方。
+   *       HouseholdAccountKey(actor, cohort.hex())}），否则条目与账本会落在两个地方。
    * </ul>
    *
    * <p>★ <b>缺 {@code relation} 的产业</b>（{@code relations} 表里没有它）：<b>没有规则要结算</b>，产出全部留在 operator ——
@@ -7591,7 +7591,7 @@ public final class EconomySettlement {
         "家户账缺失（H1 fail-closed，裁定 K1）：有 "
             + missing.size()
             + " 个「有人口」的家户在会话工作副本里没有键 —— 不许把'没有账'静默当成'库存 0'"
-            + "（那会让这一家人当天静默地不吃饭）。app 协调器必须在推进前从 actor 侧的 GoodsAccount 载入家户账；"
+            + "（那会让这一家人当天静默地不吃饭）。app 协调器必须在推进前从 actor 侧的 HouseholdInventory 载入家户账；"
             + "单模块用例请用 EconomyDayStepper 的 householdGoods 参数显式给账。缺失的家户（最多列 8 个）："
             + missing.subList(0, Math.min(8, missing.size())));
   }

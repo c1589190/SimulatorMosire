@@ -8,8 +8,8 @@ import io.mosire.simos.actor.ActorMeta;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.Actor;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.stock.DeductionReason;
@@ -57,7 +57,7 @@ import java.util.function.Function;
  * 载荷声明的目标就是那一格，若某一行能落在别的格上，GM 代执行时**逐条判越权的对象**与 **命令真正改到的资源**就不是同一件事（一条被授权的命令改到了没被授权的格）。
  *
  * <p>★ <b>坏载荷一律以 {@link IllegalArgumentException} 面世</b>（带可读中文原因）：形状/类型/词表在本层判， <b>数值语义</b>（余额 ≥
- * 0……）交给 {@link GoodsAccount} 的构造期守卫 —— <b>不重复实现，一处真相</b>（同 {@code EconomyPayloads} 的分工）。
+ * 0……）交给 {@link HouseholdInventory} 的构造期守卫 —— <b>不重复实现，一处真相</b>（同 {@code EconomyPayloads} 的分工）。
  *
  * <p>★★ <b>2026-09-27 裁定 S3</b>：产权行（{@code holdings[]}）连同 {@code AssetHolding} 整块退役 ⇒ 本类不再有 {@code
  * holdings} 的解析、{@code assetKey} 的词表校验与"产权重复"判据。★ <b>如实记</b>：载荷里多出来的 {@code holdings}
@@ -159,21 +159,21 @@ final class ActorPayloads {
         declaredHouseholds.add(AccountPayloads.household(node, "household"));
       }
     }
-    Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>();
+    Map<HouseholdAccountKey, HouseholdInventory> inventories = new LinkedHashMap<>();
     for (JsonNode entry : entries) {
       requireInt(entry, "q");
       requireInt(entry, "r");
       for (JsonNode node : optionalArray(entry, "goods")) {
-        GoodsAccount account = goods(node, declaredHouseholds);
-        if (accounts.putIfAbsent(account.key(), account) != null) {
-          throw new IllegalArgumentException("同一份载荷里库存重复: " + account.key());
+        HouseholdInventory inventory = goods(node, declaredHouseholds);
+        if (inventories.putIfAbsent(inventory.key(), inventory) != null) {
+          throw new IllegalArgumentException("同一份载荷里库存重复: " + inventory.key());
         }
       }
     }
     ActorMeta meta = new ActorMeta(mapId, at.tick(), rulesVersion);
     // ★ 两张表 + 元信息**批量**装配（`ActorData` 的 bulk wither 的调用面就在这里，见裁定 R-ae / R-ah：Task 8 用不到就删，
     //   而本任务正是它们要等的那条路）："键从值派生"的校验由 ActorData 的构造期守卫统一把守，本类不自己拼键。
-    return ActorData.empty().withMeta(Optional.of(meta)).withActors(actors).withAccounts(accounts);
+    return ActorData.empty().withMeta(Optional.of(meta)).withActors(actors).withInventories(inventories);
   }
 
   // ── actor.AdjustAccounts（净增量账，阶段 6 / 计划 §6.2）────────────────────────────
@@ -448,13 +448,13 @@ final class ActorPayloads {
   /**
    * 一本家户账（P2-A §13.3）：{@code {household, balances:{<commodityId>:<余额>}, money?:{<currencyId>:<余额>},
    * frozenBalances?:{<commodityId>:<冻结额>}, frozenMoney?:{<currencyId>:<冻结额>}}}（余额与冻结额都是**存量**：0
-   * 保留；数值守卫 —— 余额非负、{@code 0 ≤ 冻结 ≤ 余额} —— 由 {@code GoodsAccount} 拒，本层不重复实现）。
+   * 保留；数值守卫 —— 余额非负、{@code 0 ≤ 冻结 ≤ 余额} —— 由 {@code HouseholdInventory} 拒，本层不重复实现）。
    *
    * <p>★ {@code money} / {@code frozenBalances} / {@code frozenMoney} 三键**可缺省**（缺 = 空表）。
    *
    * <p>★ <b>没有 {@code location}</b>：账户键不再带格（P2-A）—— 位置从 {@code Household.location} 派生。
    */
-  private static GoodsAccount goods(JsonNode node, Set<HouseholdId> declaredHouseholds) {
+  private static HouseholdInventory goods(JsonNode node, Set<HouseholdId> declaredHouseholds) {
     HouseholdId household;
     try {
       household = AccountPayloads.household(node, "household");
@@ -497,7 +497,7 @@ final class ActorPayloads {
     }
     // ★★ M1.3：M1.2 新增的两张**冻结表**同样是这本账的一部分，本解析**显式带过**它们（不许经三参便捷构造器
     //   静默清零）：① 缺键（旧载荷 / 创世载荷）⇒ 空表（fail-closed 方向：没写就是没有冻结）；
-    //   ② 写了就逐键解析，数值语义（0 ≤ 冻结 ≤ 余额）交给 GoodsAccount 的构造期守卫 —— 本层不重复实现。
+    //   ② 写了就逐键解析，数值语义（0 ≤ 冻结 ≤ 余额）交给 HouseholdInventory 的构造期守卫 —— 本层不重复实现。
     Map<CommodityId, Long> frozenBalances = new LinkedHashMap<>();
     JsonNode frozenBalancesNode = optionalObject(node, "frozenBalances");
     if (frozenBalancesNode != null) {
@@ -520,8 +520,8 @@ final class ActorPayloads {
                       new CurrencyId(field.getKey()),
                       requireIntegral(field.getValue(), "frozenMoney." + field.getKey())));
     }
-    return new GoodsAccount(
-        new GoodsAccountKey(household), parsed, money, frozenBalances, frozenMoney);
+    return new HouseholdInventory(
+        new HouseholdAccountKey(household), parsed, money, frozenBalances, frozenMoney);
   }
 
   /** {@code {"kind","id"}}：主体引用（载荷里主体行共用**同一个**形状与解析）。 */

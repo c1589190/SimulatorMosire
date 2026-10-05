@@ -18,7 +18,7 @@ import java.util.Objects;
  * ActorData.accounts()}（生产侧会话副本的四条载入、GUI/MCP 读口、地址解析、播种、测试夹具）—— 谁想读就自己拆余额表、自己减。
  * 于是同一个算式散在调用方，改口径时没人能找全。⇒ 家户与经营者<b>走同一入口</b>：本类的四个重载最后都落到那一行减法上。
  *
- * <p>★★ <b>边界（用户 2026-09-27 裁定；与 {@link GoodsAccount} 的类注同一条，这里再点一次是因为它最容易被做歪）</b>：
+ * <p>★★ <b>边界（用户 2026-09-27 裁定；与 {@link HouseholdInventory} 的类注同一条，这里再点一次是因为它最容易被做歪）</b>：
  * 本算法<b>只减"已冻结"</b>这一项。那条例式里的另外两项 —— <b>必要生产投入</b>与<b>生活保留</b> —— 是<b>决策层的策略</b>， 按裁定落在 M2
  * 的订单/保留算式里，照
  *
@@ -29,13 +29,13 @@ import java.util.Objects;
  * 逐项算。<b>不许</b>把 {@code MarketSettlement.MARKET_SELF_RESERVE_PER_MILLE} / {@code 旧结算引擎（R3a
  * 已删除）.LENDER_SUBSISTENCE_RESERVE_PER_MILLE} 塞进本类，也<b>不许</b>在这里按阶层/人口推一个保留额。
  *
- * <p>★ <b>这里没有 {@code max(0, …)}，是刻意的</b>：{@code GoodsAccount} 的构造期守卫已经把"{@code 0 ≤ 冻结 ≤ 余额}"钉成
+ * <p>★ <b>这里没有 {@code max(0, …)}，是刻意的</b>：{@code HouseholdInventory} 的构造期守卫已经把"{@code 0 ≤ 冻结 ≤ 余额}"钉成
  * 类型不变量 ⇒ 本减法的结果<b>必然 ≥ 0</b>。而那条例式里的 {@code max(0, …)} 属于 M2（那里还要再减两项，减成负数才需要截断）—— 在这里抄一个 {@code
  * max(0, …)} 只会把"守卫被绕过"这种真事故<b>掩盖成 0</b>（本仓最反对的"静默付 0"）。
  *
- * <p>★ <b>为什么是本类（一个静态助手），而不是 {@link GoodsAccount} 的实例方法</b>（形态由实现裁，理由记在这里）： 判据要的入口形状是 <b>(主体, 格,
+ * <p>★ <b>为什么是本类（一个静态助手），而不是 {@link HouseholdInventory} 的实例方法</b>（形态由实现裁，理由记在这里）： 判据要的入口形状是 <b>(主体, 格,
  * 资产)</b> —— 它必须<b>先解析出那本账</b>；把"解析"与"减法"分住两个文件，就等于把这个概念劈成两半，
- * 读的人要跳两处才敢说"没有第二个算法"。故本类同时收<b>账本级</b>与<b>主体级</b>两个入口，减法只写一次。★ 反过来， {@code GoodsAccount}
+ * 读的人要跳两处才敢说"没有第二个算法"。故本类同时收<b>账本级</b>与<b>主体级</b>两个入口，减法只写一次。★ 反过来， {@code HouseholdInventory}
  * 保持纯值类型（只有"是多少"、没有算式），与它类注里"写入口是整本覆盖、'转入 500'是命令不是状态类型的方法"同一条口径。
  *
  * <p>★ <b>没有这本账 ⇒ 0，不是抛</b>：这是<b>查询</b>口径 —— 读不到库存就是没有可支配库存（经营者账缺席是合法状态，见 {@code
@@ -62,35 +62,35 @@ public final class AvailableStock {
   }
 
   /** 一本账上某商品的<b>可支配</b>数量（毫单位；余额 − 冻结）。 */
-  public static long available(GoodsAccount account, CommodityId commodity) {
-    Objects.requireNonNull(account, "account");
+  public static long available(HouseholdInventory inventory, CommodityId commodity) {
+    Objects.requireNonNull(inventory, "inventory");
     Objects.requireNonNull(commodity, "commodity");
-    return availableOf(account.balances(), account.frozenBalances(), commodity);
+    return availableOf(inventory.balances(), inventory.frozenBalances(), commodity);
   }
 
   /** 一本账上某币种的<b>可支配</b>金额（最小币值；余额 − 冻结）。 */
-  public static long available(GoodsAccount account, CurrencyId currency) {
-    Objects.requireNonNull(account, "account");
+  public static long available(HouseholdInventory inventory, CurrencyId currency) {
+    Objects.requireNonNull(inventory, "inventory");
     Objects.requireNonNull(currency, "currency");
-    return availableOf(account.money(), account.frozenMoney(), currency);
+    return availableOf(inventory.money(), inventory.frozenMoney(), currency);
   }
 
   /** ★ 主体级入口（商品）：该家户那本账的可支配数量；没有这本账 ⇒ 0（见类注）。 */
   public static long available(ActorData books, HouseholdId household, CommodityId commodity) {
-    GoodsAccount account = accountOf(books, household);
-    return account == null ? 0L : available(account, commodity);
+    HouseholdInventory inventory = inventoryOf(books, household);
+    return inventory == null ? 0L : available(inventory, commodity);
   }
 
   /** ★ 主体级入口（货币）：与上面那条**同一个入口**（P2-A：账户主体只有家户）。 */
   public static long available(ActorData books, HouseholdId household, CurrencyId currency) {
-    GoodsAccount account = accountOf(books, household);
-    return account == null ? 0L : available(account, currency);
+    HouseholdInventory inventory = inventoryOf(books, household);
+    return inventory == null ? 0L : available(inventory, currency);
   }
 
   /** 取账：键是家户身份（本类里唯一的拼写点；解析不出 ⇒ null = 没有这本账）。 */
-  private static GoodsAccount accountOf(ActorData books, HouseholdId household) {
+  private static HouseholdInventory inventoryOf(ActorData books, HouseholdId household) {
     Objects.requireNonNull(books, "books");
     Objects.requireNonNull(household, "household");
-    return books.accounts().get(new GoodsAccountKey(household));
+    return books.accounts().get(new HouseholdAccountKey(household));
   }
 }

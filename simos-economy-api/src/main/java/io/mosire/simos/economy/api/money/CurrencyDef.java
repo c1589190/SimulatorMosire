@@ -11,7 +11,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
  * </pre>
  *
  * <p>★★ <b>{@code scale} 的语义</b>：{@code 1 个币种单位 = 10^scale 个最小单位}（{@code scale} = 小数位数）。 全仓的货币余额一律是
- * <b>最小单位的定点整数</b>（"毫"；见 {@code GoodsAccount.money} 的类注）⇒ 读口与算式都要知道"1 银是 1000 还是 100"， 这个数在 M1.1
+ * <b>最小单位的定点整数</b>（"毫"；见 {@code HouseholdInventory.money} 的类注）⇒ 读口与算式都要知道"1 银是 1000 还是 100"， 这个数在 M1.1
  * 之前是**隐含**在每个人脑子里的（本仓最反对的"没人写下来的一处真相"）。 ★ 本类**不给** {@code milliPerUnit()} 之类的折算函数：折算 = 10
  * 的幂，写出来就要处理 {@code scale} 过大时的溢出 —— 而 M1.1 没有任何调用方需要它 （真要折算时，落点是 V7 的参数化口径，不是这里多一个没人读的方法）。
  *

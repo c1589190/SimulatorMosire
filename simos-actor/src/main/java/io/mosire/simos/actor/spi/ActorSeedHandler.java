@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
 import io.mosire.simos.actor.change.ActorChangeSet;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -86,7 +86,7 @@ public final class ActorSeedHandler implements CommandHandler, CommandTargets {
     }
     // ★ 已激活 ⇒ 追加：先判"本批家户是否已有账"（任一撞键 ⇒ 整份拒绝并点名），再并入现有切片。
     Set<HouseholdId> occupied = householdsOf(base);
-    for (GoodsAccountKey key : seeded.accounts().keySet()) {
+    for (HouseholdAccountKey key : seeded.accounts().keySet()) {
       if (occupied.contains(key.household())) {
         return new HandlerOutcome.Rejected(
             "家户 "
@@ -101,7 +101,7 @@ public final class ActorSeedHandler implements CommandHandler, CommandTargets {
     //   ★ meta 走 base 的：不覆盖首次播种的 activatedDay / rulesVersion。
     ActorData merged =
         base.withActors(merge(base.actors(), seeded.actors()))
-            .withAccounts(merge(base.accounts(), seeded.accounts()));
+            .withInventories(merge(base.accounts(), seeded.accounts()));
     LOG.info(
         "event=ACTOR_SEEDED first=false entries={} actors={} accounts={}",
         ActorPayloads.entryHexKeys(payload).size(),
@@ -113,7 +113,7 @@ public final class ActorSeedHandler implements CommandHandler, CommandTargets {
   /** 现有切片里已有账的家户集（P2-A：账户主体只有家户，判重按家户身份）。 */
   private static Set<HouseholdId> householdsOf(ActorData base) {
     Set<HouseholdId> households = new LinkedHashSet<>();
-    for (GoodsAccountKey key : base.accounts().keySet()) {
+    for (HouseholdAccountKey key : base.accounts().keySet()) {
       households.add(key.household());
     }
     return households;

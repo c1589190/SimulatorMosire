@@ -2,7 +2,7 @@ package io.mosire.simos.app.tools.write;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.AvailableStock;
-import io.mosire.simos.actor.model.GoodsAccount;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.household.GovernmentHouseholdResolver;
 import io.mosire.simos.app.tools.ToolSupport;
@@ -46,12 +46,12 @@ import java.util.function.ToLongFunction;
  *       无位置 ⇒ 具名拒（指路 {@code unit.PlaceAt}）；
  *   <li><b>粮 / 钱 / 布来源</b>：region 各 hex 上 {@link
  *       io.mosire.simos.actor.api.actor.ActorKind#HOUSEHOLD} 的 actor 账，可用量 = {@link
- *       AvailableStock#available(GoodsAccount, CommodityId)} / {@link
- *       AvailableStock#available(GoodsAccount,
+ *       AvailableStock#available(HouseholdInventory, CommodityId)} / {@link
+ *       AvailableStock#available(HouseholdInventory,
  *       io.mosire.simos.economy.api.id.CurrencyId)}（<b>唯一算法</b>，本类不重写减法）； 总量不足 ⇒ <b>整条拒</b>（带
  *       requested / available / 缺口，不部分、不截断）；
  *   <li><b>分摊 = 瀑布</b>：三个账维度共用 {@link RegionAllocations#allocateAccounts}（可用量降序、同量按账键 {@link
- *       io.mosire.simos.actor.model.GoodsAccountKey#toString()} 升序，逐户扣满为止）；
+ *       io.mosire.simos.actor.model.HouseholdAccountKey#toString()} 升序，逐户扣满为止）；
  *   <li><b>人力来源</b>：{@code social.groups()} 里 residence 在 region 各 hex、{@link
  *       io.mosire.simos.social.api.population.Sex#MALE}、且 {@code
  *       io.mosire.simos.social.population.AgeBracket.of(clock.system(),
@@ -219,7 +219,7 @@ final class LevyRegionPlan {
         grain == 0L
             ? Dimension.skipped()
             : accountDimension(
-                state, region, "粮", grain, account -> AvailableStock.available(account, GRAIN));
+                state, region, "粮", grain, inventory -> AvailableStock.available(inventory, GRAIN));
     Dimension moneyDimension =
         money == 0L
             ? Dimension.skipped()
@@ -228,12 +228,12 @@ final class LevyRegionPlan {
                 region,
                 "钱",
                 money,
-                account -> AvailableStock.available(account, MoneyVocabulary.SILVER_CURRENCY));
+                inventory -> AvailableStock.available(inventory, MoneyVocabulary.SILVER_CURRENCY));
     Dimension clothDimension =
         cloth == 0L
             ? Dimension.skipped()
             : accountDimension(
-                state, region, "布", cloth, account -> AvailableStock.available(account, CLOTH));
+                state, region, "布", cloth, inventory -> AvailableStock.available(inventory, CLOTH));
     Manpower manpowerDimension =
         manpower == 0L
             ? Manpower.skipped()
@@ -263,7 +263,7 @@ final class LevyRegionPlan {
       Region region,
       String label,
       long requested,
-      ToLongFunction<GoodsAccount> availableOf) {
+      ToLongFunction<HouseholdInventory> availableOf) {
     RegionAllocations.AccountAllocation allocation =
         RegionAllocations.allocateAccounts(
             ApiViews.actorData(state),

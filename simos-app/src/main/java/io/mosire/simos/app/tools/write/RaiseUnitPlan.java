@@ -3,7 +3,7 @@ package io.mosire.simos.app.tools.write;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.AvailableStock;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.calendar.CalendarClock;
@@ -221,7 +221,7 @@ final class RaiseUnitPlan {
         grain == 0L
             ? RegionAllocations.AccountAllocation.skipped()
             : RegionAllocations.allocateAccounts(
-                actors, social, region, "粮", grain, account -> AvailableStock.available(account, GRAIN));
+                actors, social, region, "粮", grain, inventory -> AvailableStock.available(inventory, GRAIN));
     RegionAllocations.AccountAllocation moneyAllocation =
         money == 0L
             ? RegionAllocations.AccountAllocation.skipped()
@@ -231,7 +231,7 @@ final class RaiseUnitPlan {
                 region,
                 "钱",
                 money,
-                account -> AvailableStock.available(account, MoneyVocabulary.SILVER_CURRENCY));
+                inventory -> AvailableStock.available(inventory, MoneyVocabulary.SILVER_CURRENCY));
     RegionAllocations.ManpowerAllocation manpowerAllocation =
         RegionAllocations.allocateManpower(
             ToolSupport.socialData(state), region, tick, manpower, clock);
@@ -527,18 +527,18 @@ final class RaiseUnitPlan {
       if (!hasGrainOrMoney()) {
         throw new IllegalStateException("组军批不自洽：无粮/钱请求却要组装 actor.AdjustAccounts 载荷");
       }
-      LinkedHashMap<GoodsAccountKey, Long> grainByKey = new LinkedHashMap<>();
+      LinkedHashMap<HouseholdAccountKey, Long> grainByKey = new LinkedHashMap<>();
       for (RegionAllocations.AccountSource source : grain.sources()) {
-        grainByKey.put(new GoodsAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
+        grainByKey.put(new HouseholdAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
       }
-      LinkedHashMap<GoodsAccountKey, Long> moneyByKey = new LinkedHashMap<>();
+      LinkedHashMap<HouseholdAccountKey, Long> moneyByKey = new LinkedHashMap<>();
       for (RegionAllocations.AccountSource source : money.sources()) {
-        moneyByKey.put(new GoodsAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
+        moneyByKey.put(new HouseholdAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
       }
-      LinkedHashSet<GoodsAccountKey> order = new LinkedHashSet<>(grainByKey.keySet());
+      LinkedHashSet<HouseholdAccountKey> order = new LinkedHashSet<>(grainByKey.keySet());
       order.addAll(moneyByKey.keySet());
       List<Map<String, Object>> entries = new ArrayList<>(order.size() + 1);
-      for (GoodsAccountKey key : order) {
+      for (HouseholdAccountKey key : order) {
         Map<String, Object> entry = new LinkedHashMap<>();
         entry.put("household", key.household().value());
         if (grainByKey.containsKey(key)) {

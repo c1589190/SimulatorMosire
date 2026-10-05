@@ -19,7 +19,7 @@ import java.util.Map;
  * I1.2），而"哪些行属于这个产业"改由**劳动配额表**推（见 {@code 旧结算引擎（R3a 已删除）.householdKeysOf}）。
  *
  * <p>★★ <b>为什么没有 {@code goods}</b>（H1；裁定 D3-C "家户主体化" + I6.1/I7.1 "一本账"）：商品库存的**唯一持久真源**是 actor
- * 切片里该家户 actor 的 {@code GoodsAccount}（键 {@code (HouseholdActors.of(key), key.hex())}）。 economy
+ * 切片里该家户 actor 的 {@code HouseholdInventory}（键 {@code (HouseholdActors.of(key), key.hex())}）。 economy
  * 的日结算要读库存 ⇒ 它在**会话工作副本**里读（{@code 旧日推进器（R3a 已删除）} 持有、就地更新，见 {@link
  * io.mosire.simos.economy.time.旧日推进器（R3a 已删除）}），**不是第二本持久账**。 ★ <b>辨别口径</b>：本字段一旦回来（或守恒式里重新出现
  * {@code ΔΣRowGoods} 这一项），就说明"还有一本账没搬完"。

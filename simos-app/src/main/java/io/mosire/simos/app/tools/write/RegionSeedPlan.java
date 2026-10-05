@@ -50,7 +50,7 @@ import java.util.function.Predicate;
  *   <li>{@code social.populations} 键命中；
  *   <li>{@code SocialData.groups} 的 {@code residence} 命中；
  *   <li>{@code SocialCity.at} 命中，或 {@code SocialCity.region} == 目标 Region；
- *   <li>{@code ActorData.accounts} 的 {@code GoodsAccountKey.location} 命中；
+ *   <li>{@code ActorData.accounts} 的 {@code HouseholdAccountKey.location} 命中；
  *   <li>{@code economy.industries} 的 {@code <kind>@<q>_<r>} 命中，或 {@code economy.markets} 的格键命中。
  * </ul>
  *
@@ -426,8 +426,8 @@ final class RegionSeedPlan {
         hits,
         "actor.account",
         actors.accounts().keySet(),
-        account -> {
-          var household = social.households().get(account.household());
+        accountKey -> {
+          var household = social.households().get(accountKey.household());
           return household != null
               && household.location()
                   instanceof io.mosire.simos.social.api.household.HouseholdLocation.Hex at

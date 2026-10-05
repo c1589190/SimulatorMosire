@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
 import io.mosire.simos.actor.change.ActorChangeSet;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -28,7 +28,7 @@ import java.util.Objects;
  * <p>★★ <b>为什么需要它</b>：账户归 actor 切片，而政府家户可能在社会/经济侧先被创建（{@code social.CreateHousehold} + {@code
  * economy.RegisterGovernment}）。既有 {@code actor.AdjustAccounts} 只在<b>纯正增量</b>时新建账户（且那是"改余额"的语义，
  * 会去动发行审计）；而一个还没有国库余额的新政府家户需要的只是"存在一本空账"—— 否则推进装载账本时会 fail-closed（缺账不得当余额 0）。 本命令只创建一个五张表全空 {@link
- * GoodsAccount}，<b>不碰余额、不造钱、不写 actors/meta</b>。
+ * HouseholdInventory}，<b>不碰余额、不造钱、不写 actors/meta</b>。
  *
  * <p>★ <b>幂等</b>：账已存在 ⇒ 逐值不变（返回 {@code Applied(Unchanged)}），不覆盖任何余额/冻结。
  *
@@ -69,13 +69,13 @@ public final class EnsureHouseholdAccountHandler
       JsonNode payload = ActorPayloads.parse(payloadJson);
       HouseholdId household = AccountPayloads.household(payload, "household");
       String reason = optionalReason(payload);
-      GoodsAccountKey key = new GoodsAccountKey(household);
+      HouseholdAccountKey key = new HouseholdAccountKey(household);
       ActorData projected = base;
       boolean created = false;
       if (!base.accounts().containsKey(key)) {
-        Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>(base.accounts());
-        accounts.put(key, new GoodsAccount(key, Map.of(), Map.of(), Map.of(), Map.of()));
-        projected = base.withAccounts(accounts);
+        Map<HouseholdAccountKey, HouseholdInventory> inventories = new LinkedHashMap<>(base.accounts());
+        inventories.put(key, new HouseholdInventory(key, Map.of(), Map.of(), Map.of(), Map.of()));
+        projected = base.withInventories(inventories);
         created = true;
       }
       if (created) {

@@ -88,7 +88,7 @@ import java.util.TreeSet;
  * </pre>
  *
  * <p>★★ <b>在途（M2.4）</b>：发运时卖方库存减、买方在途资产增；到货日（{@code EconomySettlement} 的日循环）在途减、
- * 目的地库存增；到货前目的地既不能消费、也不能再挂牌卖出（货不在任何 {@code GoodsAccount} 余额里）。损耗逐票由买方承担 （{@link
+ * 目的地库存增；到货前目的地既不能消费、也不能再挂牌卖出（货不在任何 {@code HouseholdInventory} 余额里）。损耗逐票由买方承担 （{@link
  * LossBearer#BUYER}），到货时从在途量里扣并记进 {@code ProductionLedger} 的损耗账户。
  *
  * <p>★★ <b>运费必须有收款方</b>：承运主体 = {@code ActorKind.ORGANIZATION} 且会话里有货币账。世界里没有承运 actor

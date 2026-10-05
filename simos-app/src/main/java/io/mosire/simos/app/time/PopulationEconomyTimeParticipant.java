@@ -3,7 +3,7 @@ package io.mosire.simos.app.time;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.change.ActorChangeSet;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.household.GovernmentHouseholdWiring;
 import io.mosire.simos.app.household.HouseholdClassRowProjection;
@@ -105,7 +105,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>★★ <b>H4：两份副本（商品 + 货币）按同一顺序收尾</b>：<b>载入</b>（{@link OwnershipBooks#loadHouseholdGoods} / {@link
  * OwnershipBooks#loadHouseholdMoney}）→ step（两者都由 {@code EconomyDayStepper} 就地更新）→ 条目落账 （{@link
- * OwnershipBooks#apply}）→ **两份副本按绝对值落回**（先商品、后货币；顺序不能反，因为它们写的是同一本 {@code GoodsAccount} 的两个余额表）。
+ * OwnershipBooks#apply}）→ **两份副本按绝对值落回**（先商品、后货币；顺序不能反，因为它们写的是同一本 {@code HouseholdInventory} 的两个余额表）。
  *
  * <p>★★ **它是"人口守恒"的落点**：出生与死亡在这一处算出来、在两侧各落一次账（社会侧改 {@code count}、 经济侧改行人口与 {@code
  * FlowRow.births/deaths}）⇒ {@code Σ新人口 == Σ旧人口 + 出生 − 死亡} 逐值可核。
@@ -290,7 +290,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       reads.add(unitAddressRoot());
     }
     writes.add(actorAddressRoot());
-    for (GoodsAccountKey key : actor.accounts().keySet()) {
+    for (HouseholdAccountKey key : actor.accounts().keySet()) {
       reads.add(accountAddress(key));
       writes.add(accountAddress(key));
     }
@@ -330,7 +330,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     //   ★ S1.5 旧档：先把旧三段 actor id 上的账搬到新身份键（移动，不是复制 —— 否则一笔粮变两本账）。
     ActorData migratedBooks = actor; // ★ P2-A：旧账户随旧世界报废，不再做 legacy actor 账户搬家
     // ★ S1.5：搬迁后的新账户键也要进读写集（否则第二次推进的冲突检测看不见它们）。
-    for (GoodsAccountKey key : migratedBooks.accounts().keySet()) {
+    for (HouseholdAccountKey key : migratedBooks.accounts().keySet()) {
       reads.add(accountAddress(key));
       writes.add(accountAddress(key));
     }
@@ -425,7 +425,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           List<ActorEntry> entries = OwnershipBooks.fold(ledger, OwnershipBooks.REASONS_NOT_FOLDED);
           if (!entries.isEmpty()) {
             currentBooks = OwnershipBooks.apply(currentBooks, entries, sessionAccounts);
-            for (GoodsAccountKey key : currentBooks.accounts().keySet()) {
+            for (HouseholdAccountKey key : currentBooks.accounts().keySet()) {
               writes.add(accountAddress(key));
             }
           }
@@ -769,9 +769,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
 
   /**
    * 一本产权账的地址：{@code actor:<mapId>:goods.<key>} —— ★ 形制照 {@code ActorResolver}（它的第三段 kind 就是 {@code
-   * goods}）。{@code <key>} 是 {@link GoodsAccountKey#toString()} 的产物，<b>本类不复述那个格式</b>。
+   * goods}）。{@code <key>} 是 {@link HouseholdAccountKey#toString()} 的产物，<b>本类不复述那个格式</b>。
    */
-  private String accountAddress(GoodsAccountKey key) {
+  private String accountAddress(HouseholdAccountKey key) {
     return new Address(
             List.of(new Namespace(ACTOR), Entity.of(mapId), Entity.of("goods", key.toString())))
         .canonical();

@@ -20,7 +20,7 @@ import java.util.Map;
  *
  * <blockquote>
  *
- * {@code GoodsAccount} 是新产权模型中商品余额的 {@code authoritative state}；既有 {@code simos-ledger.Account} 保持
+ * {@code HouseholdInventory} 是新产权模型中商品余额的 {@code authoritative state}；既有 {@code simos-ledger.Account} 保持
  * legacy/unwired —— <b>不读、不写、不同步、不做镜像</b>。
  *
  * </blockquote>
@@ -38,7 +38,7 @@ import java.util.Map;
  *
  * <p>★★ <b>库存是存量，不是流量</b>（spec §2.5 L166）：存量 = 能保存、出售、转移 = 有产权；而 {@code Cohort consumption receipt}
  * 是流量（本结算窗口内<b>可用于最终消费</b>的流入，≠ cohort 拥有库存）。两件事<b>不合并</b> ⇒ 本类型的语义是
- * "该余额<b>是多少</b>"，<b>不是</b>"加多少"：写入口 {@code ActorData.withAccount} 是<b>整本覆盖</b>，而"转入 500"
+ * "该余额<b>是多少</b>"，<b>不是</b>"加多少"：写入口 {@code ActorData.withInventory} 是<b>整本覆盖</b>，而"转入 500"
  * 是**命令**（先读余额、再算出新余额），不是状态类型的方法。
  *
  * <p>★★ <b>0 余额保留，负数当场抛</b>：0 合法 ——「这一格这个人手里还有 0 斤粮」与「这个人根本不在这格」是<b>两件事</b>，前者在阶段 4（产出落
@@ -85,10 +85,10 @@ import java.util.Map;
  * CurrencyId} 在余额表与冻结表里的键是同一个，读的人不必记两套规则， 构造期守卫也能按<b>逐条同款</b>的两段写（口径一致 —— 与 H4 把货币并进本账时给的理由是同一条）。
  *
  * <p>★ <b>冻结额也是存量</b>：<b>绝对值</b>（"现在被占用多少"），不是增量 —— 写入口给的是"这本账现在的冻结额是多少"， 与余额同一口径（{@code
- * ActorData.withAccount} 是整本覆盖）。<b>幂等由这条语义来</b>：同一个数写两次 ⇒ 状态逐字段相同。 ★ <b>0 保留</b>：冻结表同样不做任何归一 —— 一条
+ * ActorData.withInventory} 是整本覆盖）。<b>幂等由这条语义来</b>：同一个数写两次 ⇒ 状态逐字段相同。 ★ <b>0 保留</b>：冻结表同样不做任何归一 —— 一条
  * {@code 0} 的意思是"这个商品的占用<u>曾经</u>存在、现在是 0"，与"根本没有这一条"在审计上不是同一件事。
  *
- * <p>★ <b>缺键（{@code null}）⇒ 空表</b>（旧档兼容，照 {@code ActorData} 的同款口径）：M1.2 之前落盘的 {@code GoodsAccount}
+ * <p>★ <b>缺键（{@code null}）⇒ 空表</b>（旧档兼容，照 {@code ActorData} 的同款口径）：M1.2 之前落盘的 {@code HouseholdInventory}
  * 没有这两张表，Jackson 会绑成 {@code null} ⇒ 收成空表、<b>此处不抛</b>（抛了等于"旧档全部读不回来"）。 ★ 方向是
  * fail-closed：旧档没提冻结，就是<b>没有冻结</b>。★ 而余额那两张表不适用本条：它们是这本账的<b>本体</b>，{@code null} 仍是坏数据、照样抛。
  *
@@ -99,8 +99,8 @@ import java.util.Map;
  *     保留</b>）
  * @param frozenMoney 各币种的<b>冻结额</b>（{@code CurrencyId} → 定点整数；口径与 {@code frozenBalances} 逐条同款）
  */
-public record GoodsAccount(
-    GoodsAccountKey key,
+public record HouseholdInventory(
+    HouseholdAccountKey key,
     Map<CommodityId, Long> balances,
     Map<CurrencyId, Long> money,
     Map<CommodityId, Long> frozenBalances,
@@ -118,7 +118,7 @@ public record GoodsAccount(
    * HouseholdSeeder} / {@code OwnershipBooks} 五处落账点全部显式带过 两张冻结表）—— 留着它只为测试夹具与"确认无钱、无冻结"的旧读法。★
    * <b>写回点一律用五参</b>：它给的是"冻结 = 空表"， 用它写回会把已有冻结静默清零。
    */
-  public GoodsAccount(GoodsAccountKey key, Map<CommodityId, Long> balances) {
+  public HouseholdInventory(HouseholdAccountKey key, Map<CommodityId, Long> balances) {
     this(key, balances, Map.of(), Map.of(), Map.of());
   }
 
@@ -129,20 +129,20 @@ public record GoodsAccount(
    * 两参构造器把钱静默清零是同一个形态的病）⇒ 那些点必须显式把冻结带过（见 {@code OwnershipBooks} 的注释与用例）。 ★ <b>M1.3 收口后，全仓 {@code
    * src/main} 里同样没有本构造器的调用点</b>（载荷解析与创世装配已改走五参）—— 理由与两参那条一字不差。
    */
-  public GoodsAccount(
-      GoodsAccountKey key, Map<CommodityId, Long> balances, Map<CurrencyId, Long> money) {
+  public HouseholdInventory(
+      HouseholdAccountKey key, Map<CommodityId, Long> balances, Map<CurrencyId, Long> money) {
     this(key, balances, money, Map.of(), Map.of());
   }
 
-  public GoodsAccount {
+  public HouseholdInventory {
     if (key == null) {
-      throw new IllegalArgumentException("GoodsAccount.key 不得为 null");
+      throw new IllegalArgumentException("HouseholdInventory.key 不得为 null");
     }
     if (balances == null) {
-      throw new IllegalArgumentException("GoodsAccount.balances 不得为 null");
+      throw new IllegalArgumentException("HouseholdInventory.balances 不得为 null");
     }
     if (money == null) {
-      throw new IllegalArgumentException("GoodsAccount.money 不得为 null（没有钱用空 map）");
+      throw new IllegalArgumentException("HouseholdInventory.money 不得为 null（没有钱用空 map）");
     }
     // ★★ M1.2：两张**冻结**表缺键（null）⇒ 空表（旧档兼容，fail-closed 方向 —— 旧档没提冻结就是没有冻结）。
     //   与上面那两条**刻意不同**：余额表是这本账的本体，null 是坏数据；冻结表是 M1.2 新增的组件，
@@ -160,7 +160,7 @@ public record GoodsAccount(
       }
       if (entry.getValue() < 0) {
         throw new IllegalArgumentException(
-            "GoodsAccount 的余额是存量、不得为负: " + entry.getKey() + "=" + entry.getValue());
+            "HouseholdInventory 的余额是存量、不得为负: " + entry.getKey() + "=" + entry.getValue());
       }
       balancesCopy.put(entry.getKey(), entry.getValue());
     }
@@ -173,7 +173,7 @@ public record GoodsAccount(
       }
       if (entry.getValue() < 0) {
         throw new IllegalArgumentException(
-            "GoodsAccount 的货币余额是存量、不得为负（发行/回笼要 MoneyAuthority，本批无实现者）: "
+            "HouseholdInventory 的货币余额是存量、不得为负（发行/回笼要 MoneyAuthority，本批无实现者）: "
                 + entry.getKey()
                 + "="
                 + entry.getValue());

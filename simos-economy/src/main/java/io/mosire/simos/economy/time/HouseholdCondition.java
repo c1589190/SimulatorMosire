@@ -116,7 +116,7 @@ public record HouseholdCondition(
   /**
    * ★★ <b>E1：带"库存粮"入参的家户状态读数</b>。
    *
-   * <p>★★ <b>为什么粮库存要由调用方给</b>：商品库存的唯一真源在 actor 侧的 {@code GoodsAccount}，而 economy
+   * <p>★★ <b>为什么粮库存要由调用方给</b>：商品库存的唯一真源在 actor 侧的 {@code HouseholdInventory}，而 economy
    * 状态树里没有它（H1/D3-C）；本类不能自己也去读一份账（那就是第二本账）。{@code OptionalLong.empty()} = "读不到账" ⇒ {@code
    * grainCoveragePerMille} 保持 empty，绝不用 0 冒充"断粮"。
    *

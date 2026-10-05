@@ -3,7 +3,7 @@ package io.mosire.simos.actor.resolve;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.AddressSegment;
 import io.mosire.simos.util.address.Entity;
@@ -110,7 +110,7 @@ public final class ActorResolver implements Resolver {
   }
 
   private static QueryResult resolveGoods(ActorData data, String mapId, String name) {
-    GoodsAccountKey key = GoodsAccountKey.parse(name);
+    HouseholdAccountKey key = HouseholdAccountKey.parse(name);
     if (!data.accounts().containsKey(key)) {
       return empty();
     }

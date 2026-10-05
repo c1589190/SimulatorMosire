@@ -1,8 +1,8 @@
 package io.mosire.simos.app.time;
 
 import io.mosire.simos.actor.model.AvailableStock;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.household.GovernmentHouseholdResolver;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -272,7 +272,7 @@ final class JurisdictionDailyTax {
               continue;
             }
 
-            GoodsAccount view = goodsView(account);
+            HouseholdInventory view = goodsView(account);
             Assessment grain = assess(view, false, rate, efficiency);
             Assessment money = assess(view, true, rate, efficiency);
             grainAssessed = saturatedAdd(grainAssessed, grain.assessed());
@@ -376,11 +376,11 @@ final class JurisdictionDailyTax {
    * 跳过（assessed/attainable/collected 全 0，不记缺口）。
    */
   private static Assessment assess(
-      GoodsAccount account, boolean money, long ratePerMille, long efficiencyPerMille) {
+      HouseholdInventory inventory, boolean money, long ratePerMille, long efficiencyPerMille) {
     long balance =
         money
-            ? account.money().getOrDefault(SILVER, 0L)
-            : account.balances().getOrDefault(GRAIN, 0L);
+            ? inventory.money().getOrDefault(SILVER, 0L)
+            : inventory.balances().getOrDefault(GRAIN, 0L);
     if (balance <= 0L) {
       return Assessment.skipped();
     }
@@ -388,8 +388,8 @@ final class JurisdictionDailyTax {
     long attainable = scalePerMille(assessed, efficiencyPerMille);
     long available =
         money
-            ? AvailableStock.available(account, SILVER)
-            : AvailableStock.available(account, GRAIN);
+            ? AvailableStock.available(inventory, SILVER)
+            : AvailableStock.available(inventory, GRAIN);
     long collected = Math.min(attainable, available);
     return new Assessment(assessed, attainable, collected);
   }
@@ -420,10 +420,10 @@ final class JurisdictionDailyTax {
     return base + extra;
   }
 
-  /** 账户会话活账 → 只读 {@link GoodsAccount} 视图（只为复用 {@link AvailableStock} 的唯一减法）。 */
-  private static GoodsAccount goodsView(AccountSession.ActorAccount account) {
-    return new GoodsAccount(
-        new GoodsAccountKey(account.household()),
+  /** 账户会话活账 → 只读 {@link HouseholdInventory} 视图（只为复用 {@link AvailableStock} 的唯一减法）。 */
+  private static HouseholdInventory goodsView(AccountSession.ActorAccount account) {
+    return new HouseholdInventory(
+        new HouseholdAccountKey(account.household()),
         account.goods(),
         account.money(),
         account.frozenGoods(),

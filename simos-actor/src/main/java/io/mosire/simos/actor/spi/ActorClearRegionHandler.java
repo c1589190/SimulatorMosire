@@ -30,7 +30,7 @@ import org.slf4j.Logger;
  * <p>★★ <b>清空边界</b>：
  *
  * <ul>
- *   <li>{@code ActorData.accounts}：{@code GoodsAccountKey.location} 落在目标 hex 集的账本整条删除；
+ *   <li>{@code ActorData.accounts}：{@code HouseholdAccountKey.location} 落在目标 hex 集的账本整条删除；
  *   <li>{@code ActorData.actors}：**只删除"清账后在任何位置都不再持有任何账户"的主体**。判据： {@code 清账前持有过账本 ∧
  *       清账后一本都不剩}；仍有别处账户的主体保留； <b>本来就无账户的主体保留</b>——无账户主体不是区域绑定数据（它是跨区的身份记录，可能今天还没开户）；
  *   <li>{@code ActorData.meta} 与其它 Region 的账本/主体<b>一字不动</b>。

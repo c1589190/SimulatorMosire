@@ -13,7 +13,7 @@ import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.app.tools.ToolSupport;
@@ -403,23 +403,23 @@ public final class LevyRegionTool implements AgentTool {
    * goods} 表，钱进 {@code money} 表。条目顺序 = 粮来源瀑布序 → 仅钱的来源瀑布序 → 仅布的来源瀑布序（首次出现的位置保留）→ 国库（恒在最后）， 是内容的纯函数。
    */
   private static String adjustAccountsPayload(LevyRegionPlan.Plan plan) {
-    LinkedHashMap<GoodsAccountKey, Long> grainByKey = new LinkedHashMap<>();
+    LinkedHashMap<HouseholdAccountKey, Long> grainByKey = new LinkedHashMap<>();
     for (LevyRegionPlan.AccountSource source : plan.grain().sources()) {
-      grainByKey.put(new GoodsAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
+      grainByKey.put(new HouseholdAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
     }
-    LinkedHashMap<GoodsAccountKey, Long> moneyByKey = new LinkedHashMap<>();
+    LinkedHashMap<HouseholdAccountKey, Long> moneyByKey = new LinkedHashMap<>();
     for (LevyRegionPlan.AccountSource source : plan.money().sources()) {
-      moneyByKey.put(new GoodsAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
+      moneyByKey.put(new HouseholdAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
     }
-    LinkedHashMap<GoodsAccountKey, Long> clothByKey = new LinkedHashMap<>();
+    LinkedHashMap<HouseholdAccountKey, Long> clothByKey = new LinkedHashMap<>();
     for (LevyRegionPlan.AccountSource source : plan.cloth().sources()) {
-      clothByKey.put(new GoodsAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
+      clothByKey.put(new HouseholdAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
     }
-    LinkedHashSet<GoodsAccountKey> order = new LinkedHashSet<>(grainByKey.keySet());
+    LinkedHashSet<HouseholdAccountKey> order = new LinkedHashSet<>(grainByKey.keySet());
     order.addAll(moneyByKey.keySet());
     order.addAll(clothByKey.keySet());
     List<Map<String, Object>> entries = new ArrayList<>(order.size() + 1);
-    for (GoodsAccountKey key : order) {
+    for (HouseholdAccountKey key : order) {
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("household", key.household().value());
       // ★ 粮与布同在一张 goods 表里：同键同命令只出现一条，扣减逐值对应。

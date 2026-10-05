@@ -15,14 +15,14 @@ import io.mosire.simos.map.hex.HexCoord;
  * 同一个身份的<b>两处拼写点</b>（本仓明令禁止，它会静默漂开）；本类把它们钉在一起。
  *
  * <p>★★ <b>为什么 actor id 不能直接取旧视图串 {@code CohortKey#toString()}</b>（K9，一处会炸的接缝冲突）： {@code
- * GoodsAccountKey} 的规范串是 {@code <owner>|<location>}、按<b>第一个 {@code |}</b> 切，而它的类注明文依赖"全仓现行的 actor
+ * HouseholdAccountKey} 的规范串是 {@code <owner>|<location>}、按<b>第一个 {@code |}</b> 切，而它的类注明文依赖"全仓现行的 actor
  * id 必然不含 {@code |}"。若家户 actor 的 id 取 {@code 0_0|rural|poor_peasant}，那么 {@code
- * GoodsAccountKey.toString()} 会产出 {@code HOUSEHOLD:0_0|rural|poor_peasant|0_0}， {@code parse}
+ * HouseholdAccountKey.toString()} 会产出 {@code HOUSEHOLD:0_0|rural|poor_peasant|0_0}， {@code parse}
  * 按第一个接缝切之后会把 {@code rural|poor_peasant|0_0} 整段喂给 {@code HexCoord.parse} ⇒ <b>存盘 / 读档的往返当场抛</b>。
  *
  * <p>★ <b>故本类的 actor id 规则</b>：{@code idOf(HouseholdId) = household.value().replace('|', ':')} ——
  * 新档 id（{@code hh-…}）本来就没有 {@code |}，替换是恒等；旧档迁移 id（{@code legacy-0_0|rural|poor_peasant}） 由此变成
- * {@code legacy-0_0:rural:poor_peasant}（与旧三段批次 id 同族、且不含 {@code |}，与 {@code GoodsAccountKey}
+ * {@code legacy-0_0:rural:poor_peasant}（与旧三段批次 id 同族、且不含 {@code |}，与 {@code HouseholdAccountKey}
  * 的接缝约定相容）。{@link #householdOf(ActorRef)} 是它的逆。
  *
  * <p>★ <b>旧 API 保留但只准迁移用</b>：{@link #of(CohortKey)} / {@link #idOf(CohortKey)} / {@link

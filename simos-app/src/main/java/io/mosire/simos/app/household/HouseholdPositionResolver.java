@@ -28,7 +28,7 @@ import java.util.Optional;
  *
  * <p>★★ <b>为什么必须有它</b>：政府家户（以及 {@code unit.RaiseUnit} 造的小家户）的位置不再是创建时钉死的 HEX，而是
  * {@code UNIT(unitId)}。{@code unit.PlaceAt} / 行军 / 迁都只改 unit 的位置，家户的“有效 hex”必须由 resolver 现算——
- * 否则政府家户的国库/入市/生产组织会停在旧格。{@code GoodsAccountKey} 早已只按 {@code HouseholdId}（P2-A §13.3）⇒ 账户键不因此变。
+ * 否则政府家户的国库/入市/生产组织会停在旧格。{@code HouseholdAccountKey} 早已只按 {@code HouseholdId}（P2-A §13.3）⇒ 账户键不因此变。
  *
  * <p>★★ <b>谁必须走它</b>（本批接线）：
  *

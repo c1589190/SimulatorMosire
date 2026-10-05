@@ -4,8 +4,8 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.Actor;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -21,18 +21,18 @@ import java.util.Objects;
 
 /**
  * ★★ <b>家户 actor 的播种器</b>（H1；裁定 D1-A / D3-C / K1 / S1）：把"每格两组四行"的家户主体（{@link ActorKind#HOUSEHOLD}）
- * 连同它那一本 {@link GoodsAccount} 播进 actor 切片 —— 于是"产出/分配落到谁头上"第一次有了<b>稳定的主体</b>。
+ * 连同它那一本 {@link HouseholdInventory} 播进 actor 切片 —— 于是"产出/分配落到谁头上"第一次有了<b>稳定的主体</b>。
  *
  * <p>★★ <b>为什么必须每个家户都有 actor</b>（哪怕它一本空账）：economy 侧的关系规则（地租那类）<b>按人口过滤</b>不了 —— 规则可以把实物付给<b>人口为
  * 0</b> 的家户。少一个 actor ⇒ 那条分配<b>没有地方落</b>（要么静默丢、要么当场炸）。 故本类的口径是：<b>行集（{@code EconomyData.classes}
- * 的键集）里每一个家户都要有一个 actor + 一本账</b>， 账本可以全 0（"这个家户在这一格有一本账"与"它现在有东西"是两件事，见 {@code GoodsAccount} 的"0
+ * 的键集）里每一个家户都要有一个 actor + 一本账</b>， 账本可以全 0（"这个家户在这一格有一本账"与"它现在有东西"是两件事，见 {@code HouseholdInventory} 的"0
  * 余额保留"）。
  *
  * <p>★★ <b>真档判据</b>：799 格 × 8 行（2 种居住类型 × 4 个阶层）= <b>6392</b> 个家户 actor + 同样多的账户。
  *
  * <p>★★ <b>身份的唯一拼写点是 {@link HouseholdActors}</b>（{@code of(cohort)} / {@code cohortOf(actor)} 互逆）——
- * 本类 <b>不自己拼 id</b>；账户键 = {@code new GoodsAccountKey(该 actor, cohort.hex())}（"某人<b>在某一格</b>有多少商品"，
- * 键的第二段是格，见 {@code GoodsAccountKey}）。
+ * 本类 <b>不自己拼 id</b>；账户键 = {@code new HouseholdAccountKey(该 actor, cohort.hex())}（"某人<b>在某一格</b>有多少商品"，
+ * 键的第二段是格，见 {@code HouseholdAccountKey}）。
  *
  * <p>★★ <b>它落在哪条创世路径上</b>（本类只有两个入口，各自服务一类调用方）：
  *
@@ -46,7 +46,7 @@ import java.util.Objects;
  * </ol>
  *
  * <p>★ <b>不写 holdings</b>：产权表（{@code AssetHolding} / {@code AssetClassKey}）已按裁定 S3 整块退役 ⇒ 本切片里家户的
- * {@code GoodsAccount} 是唯一的账（★ H4 起它是**两张余额表**：商品 + 货币，裁定 M2"两个独立身份"； {@code AssetKind}
+ * {@code HouseholdInventory} 是唯一的账（★ H4 起它是**两张余额表**：商品 + 货币，裁定 M2"两个独立身份"； {@code AssetKind}
  * 仍在，它是产业产能的键）。
  *
  * <p>★★ <b>H4：创世货币禀赋也在这里播</b>——{@code goods} 那条记录多一个 {@code money} 键（见 {@link #goodsNode}）， 值来自
@@ -87,7 +87,7 @@ public final class HouseholdSeeder {
    * <p>★★ <b>{@code goods} 与 {@code actors} 逐条对齐</b>：一本账的 owner 必须<b>是已声明的主体</b>（{@code
    * ActorPayloads} 的"悬空 owner ⇒ 拒"），故两者由同一次遍历产出 —— 少写一条就是"账没有主人"，多写一条就是"主体凭空多出来"。
    *
-   * <p>★★ <b>H4：钱与货在同一本账里</b>（同一本 {@code GoodsAccount} 的两个余额表）：商品余额来自 {@link
+   * <p>★★ <b>H4：钱与货在同一本账里</b>（同一本 {@code HouseholdInventory} 的两个余额表）：商品余额来自 {@link
    * EconomySeeder.Seed#householdStocks()}、货币余额来自 {@link EconomySeeder.Seed#householdMoney()} ——
    * 两条都出自 **同一次** {@code EconomySeeder.plan}（"一次算出、同一份喂两条命令"）。★ 货币的出厂值与依据见 {@code
    * EconomySeeder.genesisMoneyMilliPerCapita}（每人 1.2 个周期的口粮等价，初始条件而非发行）。
@@ -165,13 +165,13 @@ public final class HouseholdSeeder {
    * 诊断、将来的存档迁移）。
    *
    * <p>★ <b>元信息不在这里</b>（{@code meta} 有自己的激活语义：空 = 本世界尚未落 actor 切片）⇒ 调用方按 {@code
-   * ActorData.empty().withMeta(...).withActors(...).withAccounts(...)} 自己拼（{@code ActorData} 是三件：
+   * ActorData.empty().withMeta(...).withActors(...).withInventories(...)} 自己拼（{@code ActorData} 是三件：
    * meta / actors / accounts）。
    *
    * <p>★★ 与 {@link #payload(String, Map, Map)} <b>读的是同一份库存表、同一份货币表、同一套 id</b>（{@link
    * HouseholdActors}）⇒ "命令播出来的世界"与"夹具手搭的世界"在这两张表上逐字段同形。
    *
-   * <p>★★ <b>H4：一本账 = 货 + 钱</b>（{@code GoodsAccount} 的两个余额表）：手搭的世界同样要带上创世货币禀赋，
+   * <p>★★ <b>H4：一本账 = 货 + 钱</b>（{@code HouseholdInventory} 的两个余额表）：手搭的世界同样要带上创世货币禀赋，
    * 否则"手搭世界"与"真播种世界"会在钱上漂开 —— 而那正是本仓最忌的"同一事实两处拼写点"。
    */
   public static ActorData books(
@@ -196,7 +196,7 @@ public final class HouseholdSeeder {
     Objects.requireNonNull(householdMoney, "householdMoney");
     Objects.requireNonNull(operators, "operators（没有经营者就给空表）");
     Map<ActorRef, Actor> actors = new LinkedHashMap<>();
-    Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>();
+    Map<HouseholdAccountKey, HouseholdInventory> inventories = new LinkedHashMap<>();
     for (Map.Entry<HexCoord, List<HouseholdId>> atHex :
         byHex(householdLocations, householdStocks).entrySet()) {
       for (HouseholdId household : atHex.getValue()) {
@@ -206,10 +206,10 @@ public final class HouseholdSeeder {
         // ★★ M1.3：显式带过两张**冻结表** —— 创世没有冻结（M1.2 的两张表从空表开始），但这里**不许**用三参便捷
         //   构造器：它给的是"冻结 = 空表"，将来若创世要带冻结（例如"先落占用再交割"的世界），漏带会静默清零。
         // ★★ P2-A §13.3：账户键 = 家户身份本身（不再带格）。
-        GoodsAccountKey accountKey = new GoodsAccountKey(household);
-        accounts.put(
+        HouseholdAccountKey accountKey = new HouseholdAccountKey(household);
+        inventories.put(
             accountKey,
-            new GoodsAccount(
+            new HouseholdInventory(
                 accountKey,
                 householdStocks.getOrDefault(household, Map.of()),
                 householdMoney.getOrDefault(household, Map.of()),
@@ -222,7 +222,7 @@ public final class HouseholdSeeder {
     for (EconomySeeder.OperatorSeed operator : operators) {
       actors.put(operator.owner(), new Actor(operator.owner(), operator.label()));
     }
-    return ActorData.empty().withActors(actors).withAccounts(accounts);
+    return ActorData.empty().withActors(actors).withInventories(inventories);
   }
 
   /** 经营者按格分组（键序 = 传入序；格序 = 首次出现序）—— 载荷按格装 {@code actors}/{@code goods} 用。 */
@@ -285,7 +285,7 @@ public final class HouseholdSeeder {
    * <p>★ {@code location} 是 {@code {q,r}} 对象（载荷形状），而 {@code balances} 的键是 {@link
    * CommodityId#toString()} 的产物 —— ★ <b>本类不复述那个格式</b>（键序沿用库存表的插入序：粮在前）。
    *
-   * <p>★★ <b>H4：{@code money} 与 {@code balances} 并列在同一本账里</b>（{@code GoodsAccount} 的两个余额表）—— 键是
+   * <p>★★ <b>H4：{@code money} 与 {@code balances} 并列在同一本账里</b>（{@code HouseholdInventory} 的两个余额表）—— 键是
    * {@link CurrencyId#value()}（币种名，例如 {@code silver}），值是**最小币值**。★ <b>钱不是商品</b>（裁定 M2：{@code
    * CurrencyId} 与 {@code CommodityId} 各守各的余额与守恒）⇒ 它是**同一条 {@code goods} 记录里的另一个键**， 不是 {@code
    * balances} 里的第六个商品。

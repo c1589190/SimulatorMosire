@@ -3,8 +3,8 @@ package io.mosire.simos.app.tools.write;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -28,7 +28,7 @@ import java.util.function.ToLongFunction;
  * 都只准调它，不许再写第二份。
  *
  * <p>★ <b>家户账瀑布</b>（{@link #allocateAccounts}）：region 各 hex 上 {@link ActorKind#HOUSEHOLD} 的账 → 可用量
- * ≤ 0 的 不进来源表 → 按“可用量降序、同量按 {@link io.mosire.simos.actor.model.GoodsAccountKey#toString()} 升序”逐户扣满。
+ * ≤ 0 的 不进来源表 → 按“可用量降序、同量按 {@link io.mosire.simos.actor.model.HouseholdAccountKey#toString()} 升序”逐户扣满。
  * 额度函数由调用方给（粮 / 钱各走 {@link io.mosire.simos.actor.model.AvailableStock} 的对应重载，本类不写减法）。
  *
  * <p>★ <b>人力瀑布</b>（{@link #allocateManpower}）：{@code social.groups()} 里家户位置在 region、{@link
@@ -66,7 +66,7 @@ final class RegionAllocations {
       Region region,
       String label,
       long requested,
-      ToLongFunction<GoodsAccount> availableOf) {
+      ToLongFunction<HouseholdInventory> availableOf) {
     Objects.requireNonNull(actors, "actors");
     Objects.requireNonNull(social, "social");
     Objects.requireNonNull(region, "region");
@@ -79,8 +79,8 @@ final class RegionAllocations {
       return AccountAllocation.skipped();
     }
     List<AccountCandidate> candidates = new ArrayList<>();
-    for (Map.Entry<GoodsAccountKey, GoodsAccount> entry : actors.accounts().entrySet()) {
-      GoodsAccountKey key = entry.getKey();
+    for (Map.Entry<HouseholdAccountKey, HouseholdInventory> entry : actors.accounts().entrySet()) {
+      HouseholdAccountKey key = entry.getKey();
       var household = social.households().get(key.household());
       if (household == null
           || !(household.location()

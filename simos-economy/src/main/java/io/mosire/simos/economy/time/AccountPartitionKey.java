@@ -17,7 +17,7 @@ import java.util.Objects;
  * </ul>
  *
  * <p>★ <b>规范串 = 家户 id 本身</b>（{@link HouseholdId#value()}）；{@link #parseCanonical(String)} 是它的逆。提交序
- * {@link CommitOrder#canonicalKey()} 只带这个串 —— 与 {@code GoodsAccountKey.toString()} 同源。
+ * {@link CommitOrder#canonicalKey()} 只带这个串 —— 与 {@code HouseholdAccountKey.toString()} 同源。
  *
  * <p>★ <b>确定性分区函数</b>：{@code floorMod(canonical.hashCode(), partitionCount)}（1/4/8 线程同一函数）。
  */

@@ -8,11 +8,11 @@ import io.mosire.simos.economy.api.id.GovernmentId;
  * ★★ <b>政府身份（{@link GovernmentId}）与 actor 身份（{@link ActorRef}）之间的唯一拼写点</b>（E3；照 {@code
  * HouseholdActors} 的形制）。
  *
- * <p>★★ <b>为什么需要它</b>：政府是发行主体，而国库是 actor 切片里的一本 {@code GoodsAccount}；同一个身份因此有两个名字空间 ——财政状态表里的
+ * <p>★★ <b>为什么需要它</b>：政府是发行主体，而国库是 actor 切片里的一本 {@code HouseholdInventory}；同一个身份因此有两个名字空间 ——财政状态表里的
  * {@link GovernmentId} 与账户里的 actor id。两处各拼一份 = 同一个身份的第二个拼写点（本仓明令禁止）。
  *
  * <p>★ actor id 的前缀是 {@code gov-}（唯一拼写点在本文件）；反查时前缀必须存在，且种类必须是 {@link ActorKind#GOVERNMENT}。 ★ 形制与
- * {@code HouseholdActors} 一致：id 里的 {@code '|'} 换成 {@code ':'}（账户键 {@code GoodsAccountKey} 按第一个
+ * {@code HouseholdActors} 一致：id 里的 {@code '|'} 换成 {@code ':'}（账户键 {@code HouseholdAccountKey} 按第一个
  * {@code '|'} 切，政府 actor id 因此不得带 {@code '|'}）。
  */
 public final class GovernmentActors {

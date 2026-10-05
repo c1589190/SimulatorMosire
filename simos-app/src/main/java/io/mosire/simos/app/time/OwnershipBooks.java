@@ -3,8 +3,8 @@ package io.mosire.simos.app.time;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -39,9 +39,9 @@ import java.util.Set;
  *   <li><b>账户会话唯一</b>：{@link #loadAccountSession(EconomyData, ActorData)} / {@link
  *       #landAccountSession(ActorData, AccountSession)} 一次装载/落回<b>全部主体</b> （家户 + 经营者 + 将来的
  *       GOV/UNIT），键恒为 {@code (ActorRef, HexCoord)}。旧的四张会话地图与四张 frozen 表的平行装载/落回已删除（它们只是同一份账的不同切面）；
- *   <li><b>{@link #apply} 批处理</b>（P1.4）：先把条目按 {@link GoodsAccountKey} 聚合，再按**首次入账序**逐账户一次 {@code
- *       withAccount}；每条条目的**前缀余额**仍逐条校验（与旧逐条实现同一处抛点），故入账序的中间态语义不变；
- *   <li><b>绝对值落回</b>：{@link #landAccountSession} 按会话的绝对值一次 {@code withAccounts} 写回全部账
+ *   <li><b>{@link #apply} 批处理</b>（P1.4）：先把条目按 {@link HouseholdAccountKey} 聚合，再按**首次入账序**逐账户一次 {@code
+ *       withInventory}；每条条目的**前缀余额**仍逐条校验（与旧逐条实现同一处抛点），故入账序的中间态语义不变；
+ *   <li><b>绝对值落回</b>：{@link #landAccountSession} 按会话的绝对值一次 {@code withInventories} 写回全部账
  *       （家户的商品/货币/冻结与经营者的四张表一起），不再有"先商品后货币"的顺序约定 —— 同一本账一次写全。
  * </ol>
  */
@@ -83,7 +83,7 @@ public final class OwnershipBooks {
   }
 
   /**
-   * ★★ <b>批处理落账</b>（P1.4）：先按 {@link GoodsAccountKey} 聚合 delta，再按**首次入账序**逐账户一次写。
+   * ★★ <b>批处理落账</b>（P1.4）：先按 {@link HouseholdAccountKey} 聚合 delta，再按**首次入账序**逐账户一次写。
    *
    * <p>★ <b>逐条前缀校验保留</b>：聚合不改变"某条条目落下时那本账不能为负"的判据 —— 每条仍按它的入账序推一次前缀余额， 负数当场抛（与旧实现逐字同因）。★
    * <b>入账序保留</b>：外层 {@code LinkedHashMap} 的键序 = 该账户第一次出现的次序； 同一账户内商品按首次出现序。
@@ -112,11 +112,11 @@ public final class OwnershipBooks {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(entries, "entries");
     Objects.requireNonNull(alreadyMaterialized, "alreadyMaterialized");
-    Map<GoodsAccountKey, Map<CommodityId, Long>> deltas = new LinkedHashMap<>();
-    Map<GoodsAccountKey, Map<CommodityId, Long>> prefix = new LinkedHashMap<>();
+    Map<HouseholdAccountKey, Map<CommodityId, Long>> deltas = new LinkedHashMap<>();
+    Map<HouseholdAccountKey, Map<CommodityId, Long>> prefix = new LinkedHashMap<>();
     for (ActorEntry entry : entries) {
       // ★★ P2-A §13.3：产权条目必须已经解析到家户（economy 的结算侧负责解析；这里不再有"非家户静默跳过"）。
-      GoodsAccountKey key = requireHouseholdKey(entry.actor());
+      HouseholdAccountKey key = requireHouseholdKey(entry.actor());
       if (alreadyMaterialized.contains(new AccountPartitionKey(key.household()))) {
         continue; // ★ 会话负责：终值由 landAccountSession 的绝对值覆盖，这里不再叠一遍。
       }
@@ -124,9 +124,9 @@ public final class OwnershipBooks {
           .computeIfAbsent(key, ignored -> new LinkedHashMap<>())
           .merge(entry.commodity(), entry.delta(), Long::sum);
       long baseline = 0L;
-      GoodsAccount account = base.accounts().get(key);
-      if (account != null) {
-        baseline = account.balances().getOrDefault(entry.commodity(), 0L);
+      HouseholdInventory inventory = base.accounts().get(key);
+      if (inventory != null) {
+        baseline = inventory.balances().getOrDefault(entry.commodity(), 0L);
       }
       long running =
           prefix
@@ -167,15 +167,15 @@ public final class OwnershipBooks {
     // ★★ R1 / P1.4 的"最终按 canonical 顺序合并"：逐条入账序（前缀校验）保持上面的顺序，但**写回 actor 的批次**
     //   按账户 canonical 串升序执行 —— 新增账户的插入序因此是内容的纯函数（1/4/8 线程/重放同序），
     //   而既有账户在 LinkedHashMap 里保持原位置（put 不改既有键序）。★ 同一账户内的商品序仍是首次入账序（见上）。
-    List<Map.Entry<GoodsAccountKey, Map<CommodityId, Long>>> canonicalOrder =
+    List<Map.Entry<HouseholdAccountKey, Map<CommodityId, Long>>> canonicalOrder =
         new ArrayList<>(deltas.entrySet());
     canonicalOrder.sort(java.util.Comparator.comparing(entry -> entry.getKey().toString()));
-    Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>(base.accounts());
-    for (Map.Entry<GoodsAccountKey, Map<CommodityId, Long>> entry : canonicalOrder) {
-      GoodsAccountKey key = entry.getKey();
-      GoodsAccount account = base.accounts().get(key);
+    Map<HouseholdAccountKey, HouseholdInventory> inventories = new LinkedHashMap<>(base.accounts());
+    for (Map.Entry<HouseholdAccountKey, Map<CommodityId, Long>> entry : canonicalOrder) {
+      HouseholdAccountKey key = entry.getKey();
+      HouseholdInventory inventory = base.accounts().get(key);
       Map<CommodityId, Long> balances =
-          account == null ? new LinkedHashMap<>() : new LinkedHashMap<>(account.balances());
+          inventory == null ? new LinkedHashMap<>() : new LinkedHashMap<>(inventory.balances());
       for (Map.Entry<CommodityId, Long> delta : entry.getValue().entrySet()) {
         long before = balances.getOrDefault(delta.getKey(), 0L);
         long after = Math.addExact(before, delta.getValue());
@@ -194,13 +194,13 @@ public final class OwnershipBooks {
         }
         balances.put(delta.getKey(), after);
       }
-      Map<CurrencyId, Long> money = account == null ? Map.of() : account.money();
-      Map<CommodityId, Long> frozenBalances = account == null ? Map.of() : account.frozenBalances();
-      Map<CurrencyId, Long> frozenMoney = account == null ? Map.of() : account.frozenMoney();
+      Map<CurrencyId, Long> money = inventory == null ? Map.of() : inventory.money();
+      Map<CommodityId, Long> frozenBalances = inventory == null ? Map.of() : inventory.frozenBalances();
+      Map<CurrencyId, Long> frozenMoney = inventory == null ? Map.of() : inventory.frozenMoney();
       // ★★ 整本覆盖必须把货币与两张冻结表带过（漏带 = 静默清零）。
-      accounts.put(key, new GoodsAccount(key, balances, money, frozenBalances, frozenMoney));
+      inventories.put(key, new HouseholdInventory(key, balances, money, frozenBalances, frozenMoney));
     }
-    return base.withAccounts(accounts);
+    return base.withInventories(inventories);
   }
 
   /**
@@ -222,18 +222,18 @@ public final class OwnershipBooks {
       ClassRow row = entry.getValue();
       HexCoord location = row.view().hex();
       // ★★ P2-A §13.3：一个家户一本账，键 = 家户身份（不再带格）。旧账户已报废、旧世界重建 ⇒ 无兼容回找。
-      GoodsAccount account = books.accounts().get(new GoodsAccountKey(household));
-      if (account == null) {
+      HouseholdInventory inventory = books.accounts().get(new HouseholdAccountKey(household));
+      if (inventory == null) {
         missing.add(household + "（" + location + "）");
         continue;
       }
       session.registerHousehold(
           household,
           location,
-          new LinkedHashMap<>(account.balances()),
-          new LinkedHashMap<>(account.money()),
-          new LinkedHashMap<>(account.frozenBalances()),
-          new LinkedHashMap<>(account.frozenMoney()));
+          new LinkedHashMap<>(inventory.balances()),
+          new LinkedHashMap<>(inventory.money()),
+          new LinkedHashMap<>(inventory.frozenBalances()),
+          new LinkedHashMap<>(inventory.frozenMoney()));
     }
     if (!missing.isEmpty()) {
       throw new IllegalStateException(
@@ -250,38 +250,38 @@ public final class OwnershipBooks {
   }
 
   /**
-   * ★★ <b>按绝对值一次落回全部账户</b>（S1）：会话里每本账的四张表一起写回那一本 {@code GoodsAccount} ——
+   * ★★ <b>按绝对值一次落回全部账户</b>（S1）：会话里每本账的四张表一起写回那一本 {@code HouseholdInventory} ——
    * 不再有"先商品后货币"的顺序约定（同一本账一次写全），也没有第二处落账路径。
    */
   public static ActorData landAccountSession(ActorData books, AccountSession session) {
     Objects.requireNonNull(books, "books");
     Objects.requireNonNull(session, "session");
     session.checkCoordinatorThread();
-    Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>(books.accounts());
+    Map<HouseholdAccountKey, HouseholdInventory> inventories = new LinkedHashMap<>(books.accounts());
     for (Map.Entry<AccountPartitionKey, ActorAccount> entry : session.accounts().entrySet()) {
       AccountPartitionKey sessionKey = entry.getKey();
       ActorAccount account = entry.getValue();
       validateNonNegative(sessionKey, account);
-      GoodsAccountKey key = new GoodsAccountKey(sessionKey.household());
-      accounts.put(
+      HouseholdAccountKey key = new HouseholdAccountKey(sessionKey.household());
+      inventories.put(
           key,
-          new GoodsAccount(
+          new HouseholdInventory(
               key,
               new LinkedHashMap<>(account.goods()),
               new LinkedHashMap<>(account.money()),
               new LinkedHashMap<>(account.frozenGoods()),
               new LinkedHashMap<>(account.frozenMoney())));
     }
-    return books.withAccounts(accounts);
+    return books.withInventories(inventories);
   }
 
   /**
    * ★★ <b>一个家户的账本键 = 家户身份本身</b>（P2-A §13.3：一个家户一本账，键不再带 {@code HexCoord}）——
    * <b>本类里唯一的拼写点</b>。
    */
-  public static GoodsAccountKey accountKeyOf(HouseholdId household) {
+  public static HouseholdAccountKey accountKeyOf(HouseholdId household) {
     Objects.requireNonNull(household, "household");
-    return new GoodsAccountKey(household);
+    return new HouseholdAccountKey(household);
   }
 
   /**
@@ -298,8 +298,8 @@ public final class OwnershipBooks {
   }
 
   /** ledger 条目落账用的键：家户 actor ⇒ 家户键；非家户 ⇒ 具名抛（见 {@link #apply}）。 */
-  private static GoodsAccountKey requireHouseholdKey(ActorRef actor) {
-    return new GoodsAccountKey(requireHouseholdOf(actor));
+  private static HouseholdAccountKey requireHouseholdKey(ActorRef actor) {
+    return new HouseholdAccountKey(requireHouseholdOf(actor));
   }
 
   /** 落回前的负余额守卫（快照里不该有负数：透支是信用，不是库存）。 */
@@ -332,53 +332,53 @@ public final class OwnershipBooks {
 
   /** ★★ 冻结一笔商品：把 {@code key} 这本账上 {@code commodity} 的冻结额**置为** {@code amount}（幂等）。 */
   public static ActorData freeze(
-      ActorData books, GoodsAccountKey key, CommodityId commodity, long amount) {
+      ActorData books, HouseholdAccountKey key, CommodityId commodity, long amount) {
     return withFrozenGoods(books, key, commodity, amount);
   }
 
   /** ★★ 解冻一笔商品 = 置 0（保留那条 0）。 */
-  public static ActorData release(ActorData books, GoodsAccountKey key, CommodityId commodity) {
+  public static ActorData release(ActorData books, HouseholdAccountKey key, CommodityId commodity) {
     return withFrozenGoods(books, key, commodity, 0L);
   }
 
   /** ★★ 冻结一笔货币。 */
   public static ActorData freeze(
-      ActorData books, GoodsAccountKey key, CurrencyId currency, long amount) {
+      ActorData books, HouseholdAccountKey key, CurrencyId currency, long amount) {
     return withFrozenMoney(books, key, currency, amount);
   }
 
   /** ★★ 解冻一笔货币 = 置 0。 */
-  public static ActorData release(ActorData books, GoodsAccountKey key, CurrencyId currency) {
+  public static ActorData release(ActorData books, HouseholdAccountKey key, CurrencyId currency) {
     return withFrozenMoney(books, key, currency, 0L);
   }
 
   private static ActorData withFrozenGoods(
-      ActorData books, GoodsAccountKey key, CommodityId commodity, long amount) {
-    GoodsAccount account = requireAccount(books, key);
-    Map<CommodityId, Long> frozen = new LinkedHashMap<>(account.frozenBalances());
+      ActorData books, HouseholdAccountKey key, CommodityId commodity, long amount) {
+    HouseholdInventory inventory = requireInventory(books, key);
+    Map<CommodityId, Long> frozen = new LinkedHashMap<>(inventory.frozenBalances());
     frozen.put(commodity, amount);
-    return books.withAccount(
-        new GoodsAccount(key, account.balances(), account.money(), frozen, account.frozenMoney()));
+    return books.withInventory(
+        new HouseholdInventory(key, inventory.balances(), inventory.money(), frozen, inventory.frozenMoney()));
   }
 
   private static ActorData withFrozenMoney(
-      ActorData books, GoodsAccountKey key, CurrencyId currency, long amount) {
-    GoodsAccount account = requireAccount(books, key);
-    Map<CurrencyId, Long> frozen = new LinkedHashMap<>(account.frozenMoney());
+      ActorData books, HouseholdAccountKey key, CurrencyId currency, long amount) {
+    HouseholdInventory inventory = requireInventory(books, key);
+    Map<CurrencyId, Long> frozen = new LinkedHashMap<>(inventory.frozenMoney());
     frozen.put(currency, amount);
-    return books.withAccount(
-        new GoodsAccount(
-            key, account.balances(), account.money(), account.frozenBalances(), frozen));
+    return books.withInventory(
+        new HouseholdInventory(
+            key, inventory.balances(), inventory.money(), inventory.frozenBalances(), frozen));
   }
 
   /** 目标账本（缺席 ⇒ 抛：冻结不是"对不存在的账下处置"）。 */
-  private static GoodsAccount requireAccount(ActorData books, GoodsAccountKey key) {
+  private static HouseholdInventory requireInventory(ActorData books, HouseholdAccountKey key) {
     Objects.requireNonNull(books, "books");
     Objects.requireNonNull(key, "key");
-    GoodsAccount account = books.accounts().get(key);
-    if (account == null) {
+    HouseholdInventory inventory = books.accounts().get(key);
+    if (inventory == null) {
       throw new IllegalStateException("冻结/解冻要求该账本已在 actor 侧存在（对不存在的账冻结 = 凭空造账）：键=" + key);
     }
-    return account;
+    return inventory;
   }
 }

@@ -3,8 +3,8 @@ package io.mosire.simos.actor.ops;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
 import io.mosire.simos.actor.model.AvailableStock;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -70,12 +70,12 @@ public final class StockDeductionOperations {
     if (deductions.isEmpty()) {
       throw new IllegalArgumentException("HouseholdStockDeduction 批次不得为空");
     }
-    Map<GoodsAccountKey, GoodsAccount> next = new LinkedHashMap<>(base.accounts());
+    Map<HouseholdAccountKey, HouseholdInventory> next = new LinkedHashMap<>(base.accounts());
     for (HouseholdStockDeduction deduction : deductions) {
       Objects.requireNonNull(deduction, "deductions 的元素不得为 null");
       HouseholdId household = deduction.household();
-      GoodsAccountKey key = new GoodsAccountKey(household);
-      GoodsAccount source = next.get(key);
+      HouseholdAccountKey key = new HouseholdAccountKey(household);
+      HouseholdInventory source = next.get(key);
       if (source == null) {
         throw new IllegalArgumentException(missingSourceMessage(base, key));
       }
@@ -91,7 +91,7 @@ public final class StockDeductionOperations {
       // ★ 五参写回：两张冻结表原样带过（用便捷构造器会把已有冻结静默清零）。
       next.put(
           key,
-          new GoodsAccount(key, balances, money, source.frozenBalances(), source.frozenMoney()));
+          new HouseholdInventory(key, balances, money, source.frozenBalances(), source.frozenMoney()));
 
       deduction.toHousehold().ifPresent(recipient -> credit(next, base, recipient, deduction));
 
@@ -122,27 +122,27 @@ public final class StockDeductionOperations {
         }
       }
     }
-    return base.withAccounts(next);
+    return base.withInventories(next);
   }
 
   /** 收款腿：有账 ⇒ 只加余额（冻结表原样带过、溢出即抛）；没有账但主体行存在 ⇒ 按转入量新建（冻结空表）； 连主体行都没有 ⇒ 拒（不成幽灵账）。 */
   private static void credit(
-      Map<GoodsAccountKey, GoodsAccount> next,
+      Map<HouseholdAccountKey, HouseholdInventory> next,
       ActorData base,
       HouseholdId recipient,
       HouseholdStockDeduction deduction) {
     if (recipient.equals(deduction.household())) {
       throw new IllegalArgumentException("扣除的收款家户不得等于被扣家户（自转不是一条发生额）: " + recipient);
     }
-    GoodsAccountKey key = new GoodsAccountKey(recipient);
-    GoodsAccount target = next.get(key);
+    HouseholdAccountKey key = new HouseholdAccountKey(recipient);
+    HouseholdInventory target = next.get(key);
     if (target == null) {
       if (!hasSubjectRow(base, recipient)) {
         throw new IllegalArgumentException("收款家户不存在：actor 切片里没有主体行也没有账户: " + recipient);
       }
       next.put(
           key,
-          new GoodsAccount(
+          new HouseholdInventory(
               key,
               new LinkedHashMap<>(deduction.goods()),
               new LinkedHashMap<>(deduction.money()),
@@ -173,11 +173,11 @@ public final class StockDeductionOperations {
               leg.getKey().toString()));
     }
     next.put(
-        key, new GoodsAccount(key, balances, money, target.frozenBalances(), target.frozenMoney()));
+        key, new HouseholdInventory(key, balances, money, target.frozenBalances(), target.frozenMoney()));
   }
 
   /** 被扣家户没有账时的具名拒（区分"有主体行但没开账"与"连主体行都没有"）。 */
-  private static String missingSourceMessage(ActorData base, GoodsAccountKey key) {
+  private static String missingSourceMessage(ActorData base, HouseholdAccountKey key) {
     if (hasSubjectRow(base, key.household())) {
       return "账户不存在：家户 " + key.household() + " 在 actor 切片里有主体行、但没有账户（拒绝为扣除凭空开账）";
     }
@@ -191,27 +191,27 @@ public final class StockDeductionOperations {
 
   /** 商品腿的足量判据：<b>先</b>余额、<b>再</b>可支配（{@link AvailableStock} 的唯一算法）；返回扣除后的新余额。 */
   private static long requireGoods(
-      GoodsAccount account, CommodityId commodity, long amount, HouseholdId household) {
+      HouseholdInventory inventory, CommodityId commodity, long amount, HouseholdId household) {
     return requireAvailable(
         household,
         "商品",
         commodity,
-        account.balances().getOrDefault(commodity, 0L),
-        account.frozenBalances().getOrDefault(commodity, 0L),
-        AvailableStock.available(account, commodity),
+        inventory.balances().getOrDefault(commodity, 0L),
+        inventory.frozenBalances().getOrDefault(commodity, 0L),
+        AvailableStock.available(inventory, commodity),
         amount);
   }
 
   /** 货币腿：口径与 {@link #requireGoods} 逐条同款（商品与货币是两个独立身份、同一套算术）。 */
   private static long requireMoney(
-      GoodsAccount account, CurrencyId currency, long amount, HouseholdId household) {
+      HouseholdInventory inventory, CurrencyId currency, long amount, HouseholdId household) {
     return requireAvailable(
         household,
         "货币",
         currency,
-        account.money().getOrDefault(currency, 0L),
-        account.frozenMoney().getOrDefault(currency, 0L),
-        AvailableStock.available(account, currency),
+        inventory.money().getOrDefault(currency, 0L),
+        inventory.frozenMoney().getOrDefault(currency, 0L),
+        AvailableStock.available(inventory, currency),
         amount);
   }
 

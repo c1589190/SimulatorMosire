@@ -44,7 +44,7 @@ import java.util.Objects;
  * <p>★★ <b>可用量走唯一算法</b>：{@code 可支配 = 余额 − 冻结}（{@code AvailableStock}）；扣减不侵占冻结、冻结表原样带过； 余额扣到 0
  * <b>保留</b>（0 是"现在手里是 0"，不是"没有这一条"）。
  *
- * <p>★ <b>为什么账户状态在 actor 切片</b>（P2-A §13.3）：{@code GoodsAccount} 是家户商品/货币的唯一真源；本命令只写 {@code
+ * <p>★ <b>为什么账户状态在 actor 切片</b>（P2-A §13.3）：{@code HouseholdInventory} 是家户商品/货币的唯一真源；本命令只写 {@code
  * accounts} 一张表（{@code meta} / {@code actors} 一字不动），返回 {@link ActorChangeSet} —— 满足 Core 的单
  * namespace 约束。
  *

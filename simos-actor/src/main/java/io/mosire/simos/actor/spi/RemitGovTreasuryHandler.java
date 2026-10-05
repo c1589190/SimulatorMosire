@@ -5,8 +5,8 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.AvailableStock;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
@@ -180,10 +180,10 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
 
   /** 全量校验 + 物化（纯函数）：任一违例即抛，**不返回半成品** —— 调用方把它折成整条 {@code Rejected}，于是"部分生效"在结构上 不可能发生。 */
   private static ActorData apply(ActorData base, Remit remit) {
-    GoodsAccountKey fromKey = new GoodsAccountKey(remit.fromHousehold());
-    GoodsAccountKey toKey = new GoodsAccountKey(remit.toHousehold());
-    Map<GoodsAccountKey, GoodsAccount> next = new LinkedHashMap<>(base.accounts());
-    GoodsAccount source = next.get(fromKey);
+    HouseholdAccountKey fromKey = new HouseholdAccountKey(remit.fromHousehold());
+    HouseholdAccountKey toKey = new HouseholdAccountKey(remit.toHousehold());
+    Map<HouseholdAccountKey, HouseholdInventory> next = new LinkedHashMap<>(base.accounts());
+    HouseholdInventory source = next.get(fromKey);
     if (source == null) {
       throw new IllegalArgumentException(
           "源国库账不存在：household=" + remit.fromHousehold() + "（上缴要求源账已存在；缺账不新建）");
@@ -205,11 +205,11 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
     }
     next.put(
         fromKey,
-        new GoodsAccount(
+        new HouseholdInventory(
             fromKey, sourceGoods, sourceMoney, source.frozenBalances(), source.frozenMoney()));
 
     // ★ 目标入账：缺账 ⇒ 五参新建（两张冻结表空，禁走三参便捷构造器）；有账 ⇒ 保留其它键与冻结表。
-    GoodsAccount target = next.get(toKey);
+    HouseholdInventory target = next.get(toKey);
     if (target == null) {
       Map<CommodityId, Long> targetGoods = new LinkedHashMap<>();
       if (remit.grain() > 0L) {
@@ -222,7 +222,7 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
       if (remit.money() > 0L) {
         targetMoney.put(MoneyVocabulary.SILVER_CURRENCY, remit.money());
       }
-      next.put(toKey, new GoodsAccount(toKey, targetGoods, targetMoney, Map.of(), Map.of()));
+      next.put(toKey, new HouseholdInventory(toKey, targetGoods, targetMoney, Map.of(), Map.of()));
     } else {
       Map<CommodityId, Long> targetGoods = new LinkedHashMap<>(target.balances());
       if (remit.grain() > 0L) {
@@ -245,15 +245,15 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
       }
       next.put(
           toKey,
-          new GoodsAccount(
+          new HouseholdInventory(
               toKey, targetGoods, targetMoney, target.frozenBalances(), target.frozenMoney()));
     }
     // ★ 只换 accounts：meta / actors 原样带过（目标新账不给 UNIT owner 建 Actor 行）。
-    return base.withAccounts(next);
+    return base.withInventories(next);
   }
 
   /** 逐资源判可支配量：不足 ⇒ 具名拒（资源、请求、可用各写清；可用走 {@link AvailableStock} 唯一算法）。 */
-  private static void requireAvailable(GoodsAccount source, GoodsAccountKey key, Remit remit) {
+  private static void requireAvailable(HouseholdInventory source, HouseholdAccountKey key, Remit remit) {
     if (remit.grain() > 0L) {
       requireCommodityAvailable(source, key, GRAIN, "grain", remit.grain());
     }
@@ -281,8 +281,8 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
 
   /** 商品维度的可支配量判据（与货币那一段逐条同款；消息写清资源 / 请求 / 可用 / 余额 / 冻结）。 */
   private static void requireCommodityAvailable(
-      GoodsAccount source,
-      GoodsAccountKey key,
+      HouseholdInventory source,
+      HouseholdAccountKey key,
       CommodityId commodity,
       String label,
       long requested) {
@@ -309,7 +309,7 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
    * 目标余额加法（溢出 ⇒ 具名拒而不是静默回绕）：余额是 long 存量，normal 路径下不会溢出；这里是 fail-closed 兜底，不把 {@link
    * ArithmeticException} 漏出命令边界。
    */
-  private static long addExact(long balance, long amount, String label, GoodsAccountKey key) {
+  private static long addExact(long balance, long amount, String label, HouseholdAccountKey key) {
     long sum = balance + amount;
     if (sum < balance) {
       throw new IllegalArgumentException(

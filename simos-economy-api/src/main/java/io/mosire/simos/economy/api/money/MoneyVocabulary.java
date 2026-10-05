@@ -25,7 +25,7 @@ import java.util.Optional;
  *
  * <ul>
  *   <li><b>在用</b>：{@code silver} —— 一个 {@link CurrencyDef}（{@code scale = 3}，即"毫银"）+ 一个 {@link
- *       InstrumentKind#SPECIE} 工具。它的三个读法都指向同一处：{@code GoodsAccount.money} 的键（家户与经营者的余额）、 {@code
+ *       InstrumentKind#SPECIE} 工具。它的三个读法都指向同一处：{@code HouseholdInventory.money} 的键（家户与经营者的余额）、 {@code
  *       Market.numeraire}（每格的计价货币）、{@code Transfer.money} 的货币腿；
  *   <li><b>留位</b>：<b>没有</b>国币 / 银行存款工具 —— ★ 这不是漏写：那两档<b>必须有发行人</b>（构造期守卫），而本批 {@code MoneyIssuance}
  *       <b>零注册</b>（没有任何 {@code MoneyAuthority} 实现）⇒ 世界上<b>说不出</b>谁是发行人，
@@ -44,7 +44,7 @@ public final class MoneyVocabulary {
    * 银的<b>最小单位精度</b>：3 ⇒ 最小单位 = 毫银（{@code 1 银 = 1000 毫银}）。
    *
    * <p>★ <b>这个 3 是"写下来的既有事实"，不是新裁定的数</b>：全仓的货币余额一直是"毫银"（{@code
-   * EconomySeeder.genesisMoneyMilliPerCapita} 的口径、各读口的 {@code milli} 后缀、{@code GoodsAccount.money}
+   * EconomySeeder.genesisMoneyMilliPerCapita} 的口径、各读口的 {@code milli} 后缀、{@code HouseholdInventory.money}
    * 的"最小币值"） —— M1.1 之前它<b>没有一处写下来</b>，只活在每个人的脑子里。
    */
   public static final int SILVER_SCALE = 3;

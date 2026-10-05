@@ -150,7 +150,7 @@ public final class RegionSeedTool implements AgentTool {
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision?(preview=false 必填，>=0), reason(必填非空白)}。"
         + "clean gate：目标 Region 格集内已有 social.populations / PopulationGroup / SocialCity.at 或 city.region /"
-        + " actor GoodsAccount location / economy 逐格 industries·markets 任一命中 ⇒ 不提交、零 revision，"
+        + " actor HouseholdInventory location / economy 逐格 industries·markets 任一命中 ⇒ 不提交、零 revision，"
         + "返回 NEEDS_CLEAR（列出类型/数量/示例 id 与清空指路）；世界级共享经济状态不作 Region 命中。"
         + "低人口/零人口且 includeEconomy/includeActors 打开 ⇒ BAD_REQUEST 具名拒绝，可关开关只播种人口与城市。"
         + "全海洋/零承载力 ⇒ BAD_REQUEST；shortfall>0 原样返回、不阻止落盘。"

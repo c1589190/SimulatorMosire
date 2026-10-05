@@ -916,7 +916,7 @@ public final class ToolSupport {
    * 逐格经济读数（R2a）：**与 GUI 的 {@code /api/economy/hex} 逐字节同形**（同一份 {@link ApiViews#economyHex}）。
    *
    * <p>★ <b>H1 起入参是 state</b>：行里已经没有商品（{@code ClassRow} 无 goods），商品读数只能从 actor 侧的 {@code
-   * GoodsAccount} 读 ⇒ 本视图同时要 economy 与 actor 两片（同 {@link #economyOwnership}）。
+   * HouseholdInventory} 读 ⇒ 本视图同时要 economy 与 actor 两片（同 {@link #economyOwnership}）。
    */
   public static Map<String, Object> economyHex(HexCoord coord, SimulationState state) {
     return ApiViews.economyHex(coord, state);
@@ -924,7 +924,7 @@ public final class ToolSupport {
 
   /**
    * 逐格**产权**读数（H0.6）：**与 GUI 的 {@code /api/economy/ownership} 逐字节同形**（同一份 {@link
-   * ApiViews#economyOwnership}）——它同时读 economy（行侧账）与 actor（{@code GoodsAccount}）两片，故入参是 state。
+   * ApiViews#economyOwnership}）——它同时读 economy（行侧账）与 actor（{@code HouseholdInventory}）两片，故入参是 state。
    */
   public static Map<String, Object> economyOwnership(HexCoord coord, SimulationState state) {
     return ApiViews.economyOwnership(coord, ApiViews.economyData(state), ApiViews.actorData(state));

@@ -1,8 +1,8 @@
 package io.mosire.simos.app.time;
 
 import io.mosire.simos.actor.model.AvailableStock;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.household.GovernmentHouseholdResolver;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -83,9 +83,9 @@ final class GovernmentUpkeepOracle implements GovDaily.PaymentOracle {
               + " treasury="
               + treasury.value());
     }
-    GoodsAccount view =
-        new GoodsAccount(
-            new GoodsAccountKey(account.household()),
+    HouseholdInventory view =
+        new HouseholdInventory(
+            new HouseholdAccountKey(account.household()),
             account.goods(),
             account.money(),
             account.frozenGoods(),
@@ -146,12 +146,12 @@ final class GovernmentUpkeepOracle implements GovDaily.PaymentOracle {
   }
 
   /** 可用量 = {@link AvailableStock} 的唯一算法（商品/货币各走对应重载）。 */
-  private static long availableOf(GoodsAccount account, GovDaily.GovResource resource) {
+  private static long availableOf(HouseholdInventory inventory, GovDaily.GovResource resource) {
     if (resource instanceof GovDaily.Commodity commodity) {
-      return AvailableStock.available(account, commodity.commodity());
+      return AvailableStock.available(inventory, commodity.commodity());
     }
     if (resource instanceof GovDaily.Money money) {
-      return AvailableStock.available(account, money.currency());
+      return AvailableStock.available(inventory, money.currency());
     }
     throw new IllegalArgumentException("未知 GovResource: " + resource);
   }

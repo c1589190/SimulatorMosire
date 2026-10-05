@@ -9,7 +9,7 @@
  *
  * <p>★ <b>本包只放契约</b>：没有余额、没有公式、没有落账口 —— "谁把货币腿落到账上"由同时看得见 economy 与 actor 的 app 协调器做（铁律
  * 3），"谁敢凭空造钱"由 {@code MoneyIssuance} 的闸门回答（本批恒抛）。★ M1.1 的工具身份<b>同样不动账</b>：余额仍住在 {@code
- * GoodsAccount.money}（键是 {@code CurrencyId}）⇒ 本批没有新的写入点。
+ * HouseholdInventory.money}（键是 {@code CurrencyId}）⇒ 本批没有新的写入点。
  *
  * <p>★ <b>为什么在 {@code economy-api}</b>：发行源要用 {@code ActorRef}（住 {@code actor-api}）与 {@code
  * CurrencyId}（住本模块） —— 而 {@code simos-util} 不依赖任何 simos 模块 ⇒ 把 SPI 放 util 会当场编不过（详见 {@code

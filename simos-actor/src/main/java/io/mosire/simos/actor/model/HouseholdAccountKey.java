@@ -25,10 +25,10 @@ import java.util.Objects;
  *
  * @param household 账户主体（家户稳定身份）；不得为 null
  */
-public record GoodsAccountKey(HouseholdId household) {
+public record HouseholdAccountKey(HouseholdId household) {
 
-  public GoodsAccountKey {
-    Objects.requireNonNull(household, "GoodsAccountKey.household 不得为 null");
+  public HouseholdAccountKey {
+    Objects.requireNonNull(household, "HouseholdAccountKey.household 不得为 null");
   }
 
   /** 规范串 = 家户 id（既是变更集的 key，也是 JSON Map 的键）。 */
@@ -42,8 +42,8 @@ public record GoodsAccountKey(HouseholdId household) {
    *
    * @throws IllegalArgumentException 空白 / null（{@link HouseholdId#parse} 的口径）
    */
-  public static GoodsAccountKey parse(String text) {
-    return new GoodsAccountKey(HouseholdId.parse(text));
+  public static HouseholdAccountKey parse(String text) {
+    return new HouseholdAccountKey(HouseholdId.parse(text));
   }
 
 }

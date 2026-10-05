@@ -1,8 +1,8 @@
 package io.mosire.simos.app.time;
 
 import io.mosire.simos.actor.model.AvailableStock;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -29,7 +29,7 @@ import org.slf4j.Logger;
  * AccountSession.commit}，而是"构造 {@link HouseholdStockDeduction} + 调本服务"。
  *
  * <p>★★ <b>为什么在 app 而不是 economy 模块</b>（实现裁定，如实记）：本服务要同时看见 <b>economy 的 {@code
- * AccountSession}</b>（唯一落账口）与 <b>actor 的 {@code GoodsAccount} / {@code AvailableStock}</b>（唯一"余额 −
+ * AccountSession}</b>（唯一落账口）与 <b>actor 的 {@code HouseholdInventory} / {@code AvailableStock}</b>（唯一"余额 −
  * 冻结" 算法）。{@code simos-economy} 的 enforcer 只允许 {@code actor-api}（契约），看不见 {@code simos-actor} 的实现类型
  * ⇒ 把服务塞进 economy 就只能自己再写一遍减法，正是本次要消灭的"第二处拼写点"。app 是唯一同时认识两片的组合根（五条铁律 3/4），故落在这里。
  *
@@ -48,7 +48,7 @@ import org.slf4j.Logger;
  *       线程的稳定提交 序同源。
  * </ol>
  *
- * <p>★★ <b>可用量只有一处算法</b>：影子账户用 {@link GoodsAccount} 视图承载，减法走 {@link AvailableStock#available}；本类
+ * <p>★★ <b>可用量只有一处算法</b>：影子账户用 {@link HouseholdInventory} 视图承载，减法走 {@link AvailableStock#available}；本类
  * <b>不</b>内联 {@code balances - frozen}。冻结表原样带过（扣减只动余额）。
  *
  * <p>★ <b>日志</b>（AGENTS §一.9）：TRACE = 逐条 {@code event=HOUSEHOLD_STOCK_DEDUCTED household=… reason=… detail=…}
@@ -96,11 +96,11 @@ public final class StockDeductionService {
       throw reject("家户库存扣除批次不得为空");
     }
     // ★ 影子副本：本次调用演练出的终值（活表只读，commit 之前一个字节都不改）。
-    Map<HouseholdId, GoodsAccount> shadow = new LinkedHashMap<>();
+    Map<HouseholdId, HouseholdInventory> shadow = new LinkedHashMap<>();
     List<String> reasons = new ArrayList<>();
     for (HouseholdStockDeduction deduction : deductions) {
       Objects.requireNonNull(deduction, "deductions 的元素不得为 null");
-      GoodsAccount source = shadowAccount(accounts, shadow, deduction.household());
+      HouseholdInventory source = shadowInventory(accounts, shadow, deduction.household());
       deduct(shadow, source, deduction);
       deduction
           .toHousehold()
@@ -145,8 +145,8 @@ public final class StockDeductionService {
 
   /** 扣减被扣家户（在影子上）：逐腿两条具名拒（先余额、再冻结），完成后把新账写进影子（冻结表原样带过、余额 0 保留）。 */
   private static void deduct(
-      Map<HouseholdId, GoodsAccount> shadow,
-      GoodsAccount source,
+      Map<HouseholdId, HouseholdInventory> shadow,
+      HouseholdInventory source,
       HouseholdStockDeduction deduction) {
     Map<CommodityId, Long> balances = new LinkedHashMap<>(source.balances());
     for (Map.Entry<CommodityId, Long> leg : deduction.goods().entrySet()) {
@@ -162,20 +162,20 @@ public final class StockDeductionService {
     }
     shadow.put(
         deduction.household(),
-        new GoodsAccount(
+        new HouseholdInventory(
             source.key(), balances, money, source.frozenBalances(), source.frozenMoney()));
   }
 
   /** 收款腿：收款家户必须已登记且有账（不在结算中途造账）；只加余额、冻结原样带过，溢出即拒。 */
   private static void credit(
       AccountSession accounts,
-      Map<HouseholdId, GoodsAccount> shadow,
+      Map<HouseholdId, HouseholdInventory> shadow,
       HouseholdId recipient,
       HouseholdStockDeduction deduction) {
     if (recipient.equals(deduction.household())) {
       throw reject("扣除的收款家户不得等于被扣家户（自转不是一条发生额）: " + recipient);
     }
-    GoodsAccount target = shadowAccount(accounts, shadow, recipient);
+    HouseholdInventory target = shadowInventory(accounts, shadow, recipient);
     Map<CommodityId, Long> balances = new LinkedHashMap<>(target.balances());
     for (Map.Entry<CommodityId, Long> leg : deduction.goods().entrySet()) {
       balances.put(
@@ -200,18 +200,18 @@ public final class StockDeductionService {
     }
     shadow.put(
         recipient,
-        new GoodsAccount(
+        new HouseholdInventory(
             target.key(), balances, money, target.frozenBalances(), target.frozenMoney()));
   }
 
   /**
-   * 影子账户：已登记的家户 → 当前活表的只读 {@link GoodsAccount} 视图（首次触碰时从活表抄一份，之后看影子）。
+   * 影子账户：已登记的家户 → 当前活表的只读 {@link HouseholdInventory} 视图（首次触碰时从活表抄一份，之后看影子）。
    *
    * <p>★ 只读活表、不写活表：影子的所有变更都留在本方法的内存表里，直到一次 {@code commit}。
    */
-  private static GoodsAccount shadowAccount(
-      AccountSession accounts, Map<HouseholdId, GoodsAccount> shadow, HouseholdId household) {
-    GoodsAccount cached = shadow.get(household);
+  private static HouseholdInventory shadowInventory(
+      AccountSession accounts, Map<HouseholdId, HouseholdInventory> shadow, HouseholdId household) {
+    HouseholdInventory cached = shadow.get(household);
     if (cached != null) {
       return cached;
     }
@@ -222,9 +222,9 @@ public final class StockDeductionService {
     if (live == null) {
       throw reject("账户不存在：家户已登记但没有账户（状态损坏）: household=" + household.value());
     }
-    GoodsAccount view =
-        new GoodsAccount(
-            new GoodsAccountKey(household),
+    HouseholdInventory view =
+        new HouseholdInventory(
+            new HouseholdAccountKey(household),
             live.goods(),
             live.money(),
             live.frozenGoods(),
@@ -235,27 +235,27 @@ public final class StockDeductionService {
 
   /** 商品腿的足量判据：<b>先</b>余额、<b>再</b>可支配（{@link AvailableStock} 的唯一算法）；返回扣除后的新余额。 */
   private static long requireAvailableGoods(
-      GoodsAccount account, CommodityId commodity, long amount, HouseholdId household) {
+      HouseholdInventory inventory, CommodityId commodity, long amount, HouseholdId household) {
     return requireAvailable(
         household,
         "商品",
         commodity,
-        account.balances().getOrDefault(commodity, 0L),
-        account.frozenBalances().getOrDefault(commodity, 0L),
-        AvailableStock.available(account, commodity),
+        inventory.balances().getOrDefault(commodity, 0L),
+        inventory.frozenBalances().getOrDefault(commodity, 0L),
+        AvailableStock.available(inventory, commodity),
         amount);
   }
 
   /** 货币腿：口径与商品腿逐条同款（同一个算式，两张表各走对应重载）。 */
   private static long requireAvailableMoney(
-      GoodsAccount account, CurrencyId currency, long amount, HouseholdId household) {
+      HouseholdInventory inventory, CurrencyId currency, long amount, HouseholdId household) {
     return requireAvailable(
         household,
         "货币",
         currency,
-        account.money().getOrDefault(currency, 0L),
-        account.frozenMoney().getOrDefault(currency, 0L),
-        AvailableStock.available(account, currency),
+        inventory.money().getOrDefault(currency, 0L),
+        inventory.frozenMoney().getOrDefault(currency, 0L),
+        AvailableStock.available(inventory, currency),
         amount);
   }
 
@@ -309,7 +309,7 @@ public final class StockDeductionService {
    * SettlementExecutor.commit} 的并列提交键。
    */
   private static List<AccountDelta> netDeltas(
-      AccountSession accounts, Map<HouseholdId, GoodsAccount> shadow, SettlementStage stage) {
+      AccountSession accounts, Map<HouseholdId, HouseholdInventory> shadow, SettlementStage stage) {
     List<HouseholdId> ordered = new ArrayList<>(shadow.keySet());
     ordered.sort(Comparator.comparing(HouseholdId::value));
     List<AccountDelta> deltas = new ArrayList<>(ordered.size());
@@ -319,7 +319,7 @@ public final class StockDeductionService {
       if (live == null) {
         throw reject("账户不存在：家户已登记但没有账户（状态损坏）: household=" + household.value());
       }
-      GoodsAccount target = shadow.get(household);
+      HouseholdInventory target = shadow.get(household);
       Map<CommodityId, Long> goodsDelta = goodsDelta(live, target);
       Map<CurrencyId, Long> moneyDelta = moneyDelta(live, target);
       if (goodsDelta.isEmpty() && moneyDelta.isEmpty()) {
@@ -335,7 +335,7 @@ public final class StockDeductionService {
 
   /** 商品净增量：键的并集（保序：活表键序在前、影子新增键接后），只保留非 0。 */
   private static Map<CommodityId, Long> goodsDelta(
-      AccountSession.ActorAccount live, GoodsAccount target) {
+      AccountSession.ActorAccount live, HouseholdInventory target) {
     Map<CommodityId, Long> delta = new LinkedHashMap<>();
     Set<CommodityId> keys = new LinkedHashSet<>(live.goods().keySet());
     keys.addAll(target.balances().keySet());
@@ -350,7 +350,7 @@ public final class StockDeductionService {
 
   /** 货币净增量：口径与 {@link #goodsDelta} 逐条同款。 */
   private static Map<CurrencyId, Long> moneyDelta(
-      AccountSession.ActorAccount live, GoodsAccount target) {
+      AccountSession.ActorAccount live, HouseholdInventory target) {
     Map<CurrencyId, Long> delta = new LinkedHashMap<>();
     Set<CurrencyId> keys = new LinkedHashSet<>(live.money().keySet());
     keys.addAll(target.money().keySet());

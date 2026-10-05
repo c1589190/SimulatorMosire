@@ -2,7 +2,7 @@ package io.mosire.simos.app.time;
 
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
-import io.mosire.simos.actor.model.GoodsAccount;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -90,15 +90,15 @@ public final class MarketReadoutAssembly {
     Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney = new LinkedHashMap<>();
     for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
       HouseholdId key = entry.getKey();
-      GoodsAccount account =
+      HouseholdInventory inventory =
           actor.accounts().get(OwnershipBooks.accountKeyOf(key));
-      if (account == null) {
+      if (inventory == null) {
         continue; // 读口覆盖不足：由 MarketReadout 的 unavailable.householdAccounts 计数点名
       }
-      householdGoods.put(key, account.balances());
-      householdMoney.put(key, account.money());
-      householdFrozenGoods.put(key, account.frozenBalances());
-      householdFrozenMoney.put(key, account.frozenMoney());
+      householdGoods.put(key, inventory.balances());
+      householdMoney.put(key, inventory.money());
+      householdFrozenGoods.put(key, inventory.frozenBalances());
+      householdFrozenMoney.put(key, inventory.frozenMoney());
     }
     // ★★ P2-A §13.3：账户主体只有家户 —— 组织者/经营者家户的余额就在上面的家户表里，不再有第二张经营者表。
     return new MarketReadoutAccounts(

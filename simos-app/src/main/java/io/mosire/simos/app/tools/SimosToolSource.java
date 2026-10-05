@@ -783,7 +783,7 @@ public final class SimosToolSource implements ToolSource {
         // ★ R2a（2026-09-25）：逐格经济读数（GUI `/api/economy/hex` 的对应读口；**四桶共享**——经济是世界状态，
         //   决策人该看得见辖地的产出与库存；视野由 ToolSupport.hexVisible 收窄）。
         new EconomyHexTool(query, mapId),
-        // ★ H0.6（2026-09-27）：产权读口 —— 行侧家户库存与 actor 侧 GoodsAccount **并排**发（堵"把一本账读成全系统"）。
+        // ★ H0.6（2026-09-27）：产权读口 —— 行侧家户库存与 actor 侧 HouseholdInventory **并排**发（堵"把一本账读成全系统"）。
         //   只在 GM 桶（GmOnlyRead）：响应含 actor 切片的商品余额，而 actor 面在本仓的资源表态里是缺省拒。
         new EconomyOwnershipTool(query, mapId),
         // ★ P3（2026-09-24）：把世界渲染成图——中心+半径、可选图层；图片随结果出站（MCP ImageContent / 决策人图片分片）

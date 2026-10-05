@@ -17,7 +17,7 @@ import io.mosire.simos.map.hex.HexCoord;
  * <b>农村贫农与城镇贫农会并成同一个家户</b> ⇒ 农村余粮与城市缺口并到一本账上 ⇒ <b>城市不再饿死，但不是因为修好了通道，而是因为账合并了</b>—— 那正是 {@code
  * AGENT.md} §9.1 的"假绿"，会长在"城市缺口收敛"这条判据上。
  *
- * <p>★★ <b>本类型自带「裸 {@code toString()} + 单参 {@code parse}」这一对</b>（照 {@code GoodsAccountKey#parse} /
+ * <p>★★ <b>本类型自带「裸 {@code toString()} + 单参 {@code parse}」这一对</b>（照 {@code HouseholdAccountKey#parse} /
  * {@code ActorRef#parseCanonical} 的先例）： {@code FieldDelta}（{@code simos-util}）把状态表的键压成 {@code
  * toString()} 的产物、 重建时用 {@code parse} 还原 ⇒ 缺了这条配对，下游就被迫自己写规范串的逆， 于是<b>同一个格式有了两处拼写点</b>。★
  * 格式的拼写只许在一个文件之内。
@@ -69,7 +69,7 @@ public record CohortKey(HexCoord hex, ResidenceKind residence, SocialClassId str
    *
    * <p>★ 三段各自交给上游的逆 —— <b>本类不复述它们的格式</b>，故上游改了规范串，本类的往返当场跟着红。
    *
-   * <p>★ <b>宁抛不静默</b>（照 {@code GoodsAccountKey#parse} 的口径）：{@code null} / 空白 / 段数不足 / 接缝在首或在尾，一律
+   * <p>★ <b>宁抛不静默</b>（照 {@code HouseholdAccountKey#parse} 的口径）：{@code null} / 空白 / 段数不足 / 接缝在首或在尾，一律
    * {@link IllegalArgumentException} —— 静默造一个半截的家户身份，比当场炸难查得多。
    */
   @JsonCreator

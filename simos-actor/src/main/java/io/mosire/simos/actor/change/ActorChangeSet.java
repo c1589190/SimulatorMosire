@@ -4,8 +4,8 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorMeta;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.Actor;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.FieldDelta;
 import java.util.Map;
@@ -31,12 +31,12 @@ import java.util.function.Function;
  * <p>★ <b>实现 util 的 {@code ChangeSet} 标记接口</b>：该接口已收窄为<b>标记接口</b>，实现它不带来任何新义务。
  *
  * <p>★ 本 record 的每一片都走同一份机制：{@code actors} / {@code accounts} 是普通的"键 → 值"表（键类型 {@link
- * GoodsAccountKey} 自带 {@code toString()} + {@code parse} 这一对，见裁定 R-48-f），故 diff/rebuild 一字不用改 ——
+ * HouseholdAccountKey} 自带 {@code toString()} + {@code parse} 这一对，见裁定 R-48-f），故 diff/rebuild 一字不用改 ——
  * rebuild 的键解析器就是各键类型自己的 {@code parse}。★ 2026-09-27 裁定 S3 退役的 {@code holdings} 分片<b>已整块删除</b>
  * （不是绕过）：铁律 5 的往返测试反射枚举 {@link ActorData} 的组件，豁免集必须保持为空。
  */
 public record ActorChangeSet(
-    FieldDelta<ActorMeta> meta, FieldDelta<Actor> actors, FieldDelta<GoodsAccount> accounts)
+    FieldDelta<ActorMeta> meta, FieldDelta<Actor> actors, FieldDelta<HouseholdInventory> accounts)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -74,7 +74,7 @@ public record ActorChangeSet(
     return new ActorData(
         metaOf(FieldDelta.rebuild(metaTable(base.meta()), cs.meta(), Function.identity())),
         FieldDelta.rebuild(base.actors(), cs.actors(), ActorChangeSet::parseActorKey),
-        FieldDelta.rebuild(base.accounts(), cs.accounts(), GoodsAccountKey::parse));
+        FieldDelta.rebuild(base.accounts(), cs.accounts(), HouseholdAccountKey::parse));
   }
 
   /** 是否所有组件都未变。 */

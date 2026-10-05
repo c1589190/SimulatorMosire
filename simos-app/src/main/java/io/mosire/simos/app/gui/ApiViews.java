@@ -6,8 +6,8 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.model.AvailableStock;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
@@ -552,14 +552,14 @@ public final class ApiViews {
     Map<HexCoord, Long> grainStockByHex = new LinkedHashMap<>();
     Map<HexCoord, Long> silverByHex = new LinkedHashMap<>();
     Map<HexCoord, Map<String, Long>> goodsByHex = new LinkedHashMap<>();
-    for (GoodsAccount account : actors.accounts().values()) {
+    for (HouseholdInventory inventory : actors.accounts().values()) {
       // ★ 2026-10-09：政府家户位置是 UNIT(unitId) ⇒ 账本落格必须走 resolver（否则读口会因"家户不在 HEX 上"炸）。
-      HexCoord hex = householdHex(social, units, at, account.key().household());
-      grainStockByHex.merge(hex, account.balances().getOrDefault(GRAIN, 0L), Long::sum);
+      HexCoord hex = householdHex(social, units, at, inventory.key().household());
+      grainStockByHex.merge(hex, inventory.balances().getOrDefault(GRAIN, 0L), Long::sum);
       silverByHex.merge(
-          hex, account.money().getOrDefault(MoneyVocabulary.SILVER_CURRENCY, 0L), Long::sum);
+          hex, inventory.money().getOrDefault(MoneyVocabulary.SILVER_CURRENCY, 0L), Long::sum);
       Map<String, Long> goods = goodsByHex.computeIfAbsent(hex, ignored -> new LinkedHashMap<>());
-      for (Map.Entry<CommodityId, Long> entry : account.balances().entrySet()) {
+      for (Map.Entry<CommodityId, Long> entry : inventory.balances().entrySet()) {
         goods.merge(entry.getKey().value(), entry.getValue(), Long::sum);
       }
     }
@@ -678,8 +678,8 @@ public final class ApiViews {
    * <ul>
    *   <li>人口：{@code populations} ∪ 家户成员批次落点；有家户批次的格用家户成员求和，无批次的旧序列格按 {@link
    *       SocialData#headlinePopulationAt} 回退；城乡二分只对有 {@link PopulationGroup} 的格。
-   *   <li>粮食库存 / 日耗 / 覆盖天数：逐格 actor {@code GoodsAccount} 与 {@code ClassRow.naturalNeeds} 同源。
-   *   <li>银货币：逐格 actor {@code GoodsAccount.money} 的 silver 分栏。
+   *   <li>粮食库存 / 日耗 / 覆盖天数：逐格 actor {@code HouseholdInventory} 与 {@code ClassRow.naturalNeeds} 同源。
+   *   <li>银货币：逐格 actor {@code HouseholdInventory.money} 的 silver 分栏。
    *   <li>{@code grainCycleUnmet}：R3a 起旧市场报告组件已删除，production-runtime 不产生逐格周期缺口 ⇒ 整层 unavailable。
    * </ul>
    *
@@ -770,14 +770,14 @@ public final class ApiViews {
     return longHeatmap(state, id, label, "人", "批次口径（有批次的格）；时点快照", values, notes);
   }
 
-  /** F2 粮食库存：逐格 actor GoodsAccount 的 grain 余额合计（有账户的格全发，0 也是事实）。 */
+  /** F2 粮食库存：逐格 actor HouseholdInventory 的 grain 余额合计（有账户的格全发，0 也是事实）。 */
   private static Map<String, Object> grainStockHeatmap(SimulationState state, String id) {
     TreeMap<HexCoord, Long> values = new TreeMap<>();
-    for (GoodsAccount account : actorData(state).accounts().values()) {
-      values.merge(householdHex(state, account.key().household()), account.balances().getOrDefault(GRAIN, 0L), Long::sum);
+    for (HouseholdInventory inventory : actorData(state).accounts().values()) {
+      values.merge(householdHex(state, inventory.key().household()), inventory.balances().getOrDefault(GRAIN, 0L), Long::sum);
     }
     return longHeatmap(
-        state, id, "粮食·库存", "毫粮", "逐格 actor GoodsAccount 粮余额合计（时点）", values, new LinkedHashMap<>());
+        state, id, "粮食·库存", "毫粮", "逐格 actor HouseholdInventory 粮余额合计（时点）", values, new LinkedHashMap<>());
   }
 
   /** F2 粮食日耗：逐格 ClassRow.naturalNeeds 的 grain 合计（与 economyHex.grainDailyConsumption 同源）。 */
@@ -799,10 +799,10 @@ public final class ApiViews {
   /** F2 粮食覆盖天数：同一趟聚合 stock 与 dailyNeed；分母 ≤ 0 或库存账缺失的格不入层，notes 记数。 */
   private static Map<String, Object> grainCoverageDaysHeatmap(SimulationState state, String id) {
     TreeMap<HexCoord, Long> stockByHex = new TreeMap<>();
-    for (GoodsAccount account : actorData(state).accounts().values()) {
+    for (HouseholdInventory inventory : actorData(state).accounts().values()) {
       stockByHex.merge(
-          householdHex(state, account.key().household()),
-          account.balances().getOrDefault(GRAIN, 0L),
+          householdHex(state, inventory.key().household()),
+          inventory.balances().getOrDefault(GRAIN, 0L),
           Long::sum);
     }
     TreeMap<HexCoord, Long> dailyNeedByHex = new TreeMap<>();
@@ -838,13 +838,13 @@ public final class ApiViews {
         notes);
   }
 
-  /** F2 银货币：逐格 actor GoodsAccount.money 的 silver 余额合计（有账户的格全发，0 也是事实）。 */
+  /** F2 银货币：逐格 actor HouseholdInventory.money 的 silver 余额合计（有账户的格全发，0 也是事实）。 */
   private static Map<String, Object> moneySilverHeatmap(SimulationState state, String id) {
     TreeMap<HexCoord, Long> values = new TreeMap<>();
-    for (GoodsAccount account : actorData(state).accounts().values()) {
+    for (HouseholdInventory inventory : actorData(state).accounts().values()) {
       values.merge(
-          householdHex(state, account.key().household()),
-          account.money().getOrDefault(MoneyVocabulary.SILVER_CURRENCY, 0L),
+          householdHex(state, inventory.key().household()),
+          inventory.money().getOrDefault(MoneyVocabulary.SILVER_CURRENCY, 0L),
           Long::sum);
     }
     return longHeatmap(
@@ -852,7 +852,7 @@ public final class ApiViews {
         id,
         "货币·银",
         "毫银",
-        "逐格 actor GoodsAccount silver 余额合计（时点）",
+        "逐格 actor HouseholdInventory silver 余额合计（时点）",
         values,
         new LinkedHashMap<>());
   }
@@ -1192,16 +1192,16 @@ public final class ApiViews {
     // ★★ M2.7 丙条仪器：该格 Σ 各行的**本周期累计自然口粮需要**（毫粮；人口逐日变时唯一与
     //   "本周期累计未满足需求"同窗口的分母）。★ 不再用"某一天人口 × 整周期配额"并排冒充它。
     long cycleNaturalNeedMilli = 0L;
-    // ★★ H1：**商品库存的唯一真源是 actor 侧的 {@code GoodsAccount}**（裁定 D3-C/K1；{@code ClassRow} 里没有 goods）
+    // ★★ H1：**商品库存的唯一真源是 actor 侧的 {@code HouseholdInventory}**（裁定 D3-C/K1；{@code ClassRow} 里没有 goods）
     //   ⇒ 本视图的商品读数从**该格的全部账户**求和，逐值等于 {@link #economyOwnership} 的 {@code actorGoodsTotal}。
     //   ★ 行侧那一栏（旧版的 Σ{@code row.goods()}）**结构性消失** —— 不是"读不到"，是"那里已经没有这本账"。
     Map<String, Long> goods = new TreeMap<>();
-    // ★★ H4：**货币与商品同住一本 {@code GoodsAccount}**（裁定 M2：两个独立身份、两张余额表）⇒ 货币读数走
+    // ★★ H4：**货币与商品同住一本 {@code HouseholdInventory}**（裁定 M2：两个独立身份、两张余额表）⇒ 货币读数走
     //   **同一趟**遍历（两次遍历会在"账本中途变化"时给出两个不同世界的读数）。
     Map<String, Long> actorMoneyTotal = new TreeMap<>();
-    for (GoodsAccount account : accountsAt(data, actors, coord)) {
-      mergeInto(goods, account.balances());
-      mergeMoneyInto(actorMoneyTotal, account.money());
+    for (HouseholdInventory inventory : inventoriesAt(data, actors, coord)) {
+      mergeInto(goods, inventory.balances());
+      mergeMoneyInto(actorMoneyTotal, inventory.money());
     }
     long grainStock = goods.getOrDefault(EconomyVocabulary.GRAIN_COMMODITY_ID, 0L);
     List<Map<String, Object>> industries = new ArrayList<>();
@@ -1337,9 +1337,9 @@ public final class ApiViews {
     // ★★ H6：**旧的行侧货币栏（{@code money}）已删** —— 它读的是 {@code Σ ClassRow.money()}，而 H1 起行里没有钱
     //   （{@code EconomySeeder} 写下的 {@code ClassRow.money} 恒为 0）⇒ 那是一栏**结构性的 0**：不是"这一格没钱"，
     //   是"那本账不存在"，读数的人只会把它当成真值（本仓最反对的"看起来在记"）。
-    //   ★ 钱的真值只有一处：actor 侧 {@code GoodsAccount} 的**逐币种**合计（下面那一栏）—— 币种各自守恒，
+    //   ★ 钱的真值只有一处：actor 侧 {@code HouseholdInventory} 的**逐币种**合计（下面那一栏）—— 币种各自守恒，
     //     "跨币种求和的 money"本来也不是一个有意义的量（同 {@link #economyOwnership} 的口径）。
-    // ★★ H4：**actor 侧的货币合计**（逐币种）—— 该格每一本 {@code GoodsAccount} 的钱，与 {@code goods} 同一趟遍历。
+    // ★★ H4：**actor 侧的货币合计**（逐币种）—— 该格每一本 {@code HouseholdInventory} 的钱，与 {@code goods} 同一趟遍历。
     view.put("actorMoneyTotal", actorMoneyTotal);
     // ★★ M1.6：**逐工具守恒的三个分栏**（私人流通 / 全部基础货币 /（将来）银行存款）—— 纯派生自上面那一趟
     //   同源遍历，不在视图层再扫一账；逐条口径见 {@link #moneyLayers}。
@@ -1409,12 +1409,12 @@ public final class ApiViews {
       householdOfActorAtHex.put(HouseholdActors.of(key), key);
     }
     Map<HouseholdId, Long> grainStockByHousehold = new LinkedHashMap<>();
-    for (GoodsAccount account : accountsAt(data, actors, coord)) {
-      HouseholdId key = householdOfActorAtHex.get(HouseholdActors.of(account.key().household()));
+    for (HouseholdInventory inventory : inventoriesAt(data, actors, coord)) {
+      HouseholdId key = householdOfActorAtHex.get(HouseholdActors.of(inventory.key().household()));
       if (key == null) {
         continue;
       }
-      grainStockByHousehold.merge(key, account.balances().getOrDefault(GRAIN, 0L), Long::sum);
+      grainStockByHousehold.merge(key, inventory.balances().getOrDefault(GRAIN, 0L), Long::sum);
     }
     // ★★ E4b：逐户 debtCapacity（F 四项 / 可质押余粮 / 既有债 / unpriced / headroom；唯一算法在
     //   {@link DebtCapacityBook}）。库存从 actor 侧账本现取：账缺席 ⇒ 该行的 pledgeable/headroom 记 null +
@@ -1577,7 +1577,7 @@ public final class ApiViews {
    * <ul>
    *   <li>{@code governments[]}：{@code EconomyData.governments} 每个政府的身份 / 国库 actor / 可发行币种 /
    *       <b>周期铸币与周期发债政策</b>（{@code seignioragePerCycle} / {@code debtIssuePerCycle}）；
-   *   <li>{@code treasuryAccounts[]}：国库 actor 的 {@code GoodsAccount}（production-runtime 里国库 = 内置
+   *   <li>{@code treasuryAccounts[]}：国库 actor 的 {@code HouseholdInventory}（production-runtime 里国库 = 内置
    *       GOV 家户账户）：逐格商品 / 货币 / 冻结 / 可支配；找不到账 ⇒ 该条为空数组（不填 0 冒充）；
    *   <li>{@code issuance}：按政府分组的 {@code MoneyIssuanceRecord} 累计（创世禀赋 / 财政发行 / 回笼 / 净额）——
    *       这是"周期铸币"的<b>事实读数</b>，与上面的<b>政策旋钮</b>并排；{@code moneyIssuance} 另给世界级全量（同一份算法）。
@@ -1634,7 +1634,7 @@ public final class ApiViews {
   /** ★★ P1.4：内置政府读数的 scope 说明（唯一拼写点）。 */
   private static final String GOVERNMENT_SCOPE =
       "全部 EconomyData.governments：世界级创世审计主体 + 按 GOV 单位稳定 id 登记的中央/地方政府；"
-          + "带政府家户的国库 = 该家户的 GoodsAccount，逐币种不跨币种求和";
+          + "带政府家户的国库 = 该家户的 HouseholdInventory，逐币种不跨币种求和";
 
   /**
    * 政府家户的 {@code ClassRow} 读侧形：**它是 GOV 的口袋行**（可配置人口/劳动/参与率；P2-C 起不再恒为 0），
@@ -1654,32 +1654,32 @@ public final class ApiViews {
   }
 
   /**
-   * 国库 actor 的全部 {@code GoodsAccount}（按 {@code (q,r)} 排序；一本账一个条目）。
+   * 国库 actor 的全部 {@code HouseholdInventory}（按 {@code (q,r)} 排序；一本账一个条目）。
    *
    * <p>★ "找不到账"是合法结果（主体还没播账）：空数组，不给伪造的 0 条目——否则读的人会把"没这回事"当成"余额为零"。
    */
   private static List<Map<String, Object>> treasuryAccountViews(
       EconomyData data, ActorData actors, ActorRef treasury) {
-    List<GoodsAccount> accounts = new ArrayList<>();
-    for (GoodsAccount account : actors.accounts().values()) {
-      if (HouseholdActors.of(account.key().household()).equals(treasury)) {
-        accounts.add(account);
+    List<HouseholdInventory> inventories = new ArrayList<>();
+    for (HouseholdInventory inventory : actors.accounts().values()) {
+      if (HouseholdActors.of(inventory.key().household()).equals(treasury)) {
+        inventories.add(inventory);
       }
     }
-    accounts.sort(
+    inventories.sort(
         Comparator.comparingInt(
-                (GoodsAccount account) -> householdHex(data, account.key().household()).q())
-            .thenComparingInt(account -> householdHex(data, account.key().household()).r()));
-    List<Map<String, Object>> views = new ArrayList<>(accounts.size());
-    for (GoodsAccount account : accounts) {
+                (HouseholdInventory inventory) -> householdHex(data, inventory.key().household()).q())
+            .thenComparingInt(inventory -> householdHex(data, inventory.key().household()).r()));
+    List<Map<String, Object>> views = new ArrayList<>(inventories.size());
+    for (HouseholdInventory inventory : inventories) {
       Map<String, Object> item = new LinkedHashMap<>();
-      item.put("location", hexCoord(householdHex(data, account.key().household())));
-      item.put("goods", sortedCommodities(account.balances()));
-      item.put("money", sortedCurrencies(account.money()));
-      item.put("frozenGoods", sortedCommodities(account.frozenBalances()));
-      item.put("frozenMoney", sortedCurrencies(account.frozenMoney()));
-      item.put("availableGoods", availableCommodities(account));
-      item.put("availableMoney", availableCurrencies(account));
+      item.put("location", hexCoord(householdHex(data, inventory.key().household())));
+      item.put("goods", sortedCommodities(inventory.balances()));
+      item.put("money", sortedCurrencies(inventory.money()));
+      item.put("frozenGoods", sortedCommodities(inventory.frozenBalances()));
+      item.put("frozenMoney", sortedCurrencies(inventory.frozenMoney()));
+      item.put("availableGoods", availableCommodities(inventory));
+      item.put("availableMoney", availableCurrencies(inventory));
       views.add(item);
     }
     return views;
@@ -1939,7 +1939,7 @@ public final class ApiViews {
   private static final String DASHBOARD_STOCK_ASSET_WINDOW =
       "时点：当前 revision 的 assetShares（industry 的格键 = 本格）；数量单位随 AssetKind（LAND 千分亩、其余件）";
   private static final String DASHBOARD_STOCK_MONEY_WINDOW =
-      "时点：当前 revision 的 actor GoodsAccount.money；世界级（复用 moneyByActorKind / moneyByHouseholdClass 的唯一算法），逐币种不跨币种求和";
+      "时点：当前 revision 的 actor HouseholdInventory.money；世界级（复用 moneyByActorKind / moneyByHouseholdClass 的唯一算法），逐币种不跨币种求和";
   private static final String DASHBOARD_STOCK_POPULATION_WINDOW =
       "时点：ClassRow.population / ClassStanding.currentPositionId；无 ClassStanding 的旧档按 ClassRow.view.stratum 投影";
   private static final String DASHBOARD_FLOW_WINDOW =
@@ -2809,8 +2809,8 @@ public final class ApiViews {
   private static Map<String, Object> shortageOrganizationSummary(
       EconomyData data, ActorData actors, HexCoord coord) {
     Set<ActorRef> organizersAtHex = new LinkedHashSet<>();
-    for (GoodsAccount account : accountsAt(data, actors, coord)) {
-      organizersAtHex.add(HouseholdActors.of(account.key().household()));
+    for (HouseholdInventory inventory : inventoriesAt(data, actors, coord)) {
+      organizersAtHex.add(HouseholdActors.of(inventory.key().household()));
     }
     List<ProductionOrganization> organizations =
         new ArrayList<>(data.productionOrganizations().values());
@@ -3363,7 +3363,7 @@ public final class ApiViews {
    *               "goods":{"grain":123,"cloth":4},"money":{"silver":12},          // 余额（事实）
    *               "frozenGoods":{"grain":23},"frozenMoney":{"silver":2},          // ★ M1.2 冻结（事实）
    *               "availableGoods":{"grain":100},"availableMoney":{"silver":10}}],// ★ M1.2 可支配（派生）
-   *  "actorGoodsTotal":{"grain":123,"cloth":4},   // actor 侧：该格各本 GoodsAccount 的**商品**合计
+   *  "actorGoodsTotal":{"grain":123,"cloth":4},   // actor 侧：该格各本 HouseholdInventory 的**商品**合计
    *  "actorMoneyTotal":{"silver":12},          // ★ H4：actor 侧：同一批账的**货币**合计（逐币种）
    *  "moneyLayers":{"privateCirculation":{"silver":12},   // ★ M1.6：私人流通 / 全部基础货币 /
    *                 "baseMoney":{"silver":12},           //    （将来）银行存款三栏（纯派生）
@@ -3373,12 +3373,12 @@ public final class ApiViews {
    *
    * <p>★★ <b>M1.2：一本账的四个表 + 两栏派生量全在同一处</b>（余额 / 冻结 / 可支配一次读全）—— 冻结额只表达"<b>已明确的占用</b>"
    * （挂单要卖的货、已承诺的交付），<b>不含</b>生活保留 / 必要生产投入 / 经营储备（那些是决策层的策略，落点在 M2）。 ★ <b>读口只读、不重算</b>：{@code
-   * available*} 两栏逐键调 {@link AvailableStock#available(GoodsAccount,
+   * available*} 两栏逐键调 {@link AvailableStock#available(HouseholdInventory,
    * CommodityId)}（唯一算法），本层<b>没有</b>第二处减法。★ 两张 {@code available*} 的键集 = 余额表 ∪ 冻结表（冻结表里可能有 余额表没有的 0 键
    * —— "缺键 = 0"那条守卫的合法形态）。
    *
    * <p>★★ **为什么两个 total 必须一起给**（这是本视图存在的理由）：行侧的 {@code ClassRow.goods} 与 actor 侧的 {@code
-   * GoodsAccount} 是**两本不同性质的账**（前者是"这批人当期可用/持有"的视图，后者是本切片里商品余额的唯一真源），
+   * HouseholdInventory} 是**两本不同性质的账**（前者是"这批人当期可用/持有"的视图，后者是本切片里商品余额的唯一真源），
    * 任何一方被单独读成"全系统有多少"都是一次口径错。并排发出来 ⇒ 读的人当场看得见两者差多少，而不是靠注释提醒。
    *
    * <p>★★ <b>H4：货币在同一个 {@code accounts} 里、同一个 actor 下</b>（{@code money} 与 {@code goods} 并列）—— 裁定 M2
@@ -3395,33 +3395,33 @@ public final class ApiViews {
   public static Map<String, Object> economyOwnership(
       HexCoord coord, EconomyData economy, ActorData actors) {
     Map<String, Object> view = hexCoord(coord);
-    List<GoodsAccount> atHex = accountsAt(economy, actors, coord);
-    List<Map<String, Object>> accounts = new ArrayList<>(atHex.size());
+    List<HouseholdInventory> atHex = inventoriesAt(economy, actors, coord);
+    List<Map<String, Object>> inventories = new ArrayList<>(atHex.size());
     Map<String, Long> actorGoodsTotal = new TreeMap<>();
     Map<String, Long> actorMoneyTotal = new TreeMap<>();
-    for (GoodsAccount account : atHex) {
+    for (HouseholdInventory inventory : atHex) {
       Map<String, Object> entry = new LinkedHashMap<>();
-      entry.put("actor", HouseholdActors.of(account.key().household()).toString());
-      entry.put("kind", HouseholdActors.of(account.key().household()).kind().name());
-      entry.put("goods", sortedCommodities(account.balances()));
+      entry.put("actor", HouseholdActors.of(inventory.key().household()).toString());
+      entry.put("kind", HouseholdActors.of(inventory.key().household()).kind().name());
+      entry.put("goods", sortedCommodities(inventory.balances()));
       // ★★ H4：同一个 actor 的**货币账**（逐币种；缺币种 = 这个家户没有那种钱）。
-      entry.put("money", sortedCurrencies(account.money()));
+      entry.put("money", sortedCurrencies(inventory.money()));
       // ★★ M1.2：**余额 / 冻结 / 可支配三者一次读全**（同一处、同一本账）——
       //   前两栏是**事实**（账户里存的两个表），后两栏是**派生量**，且派生只经唯一那个算法
       //   `AvailableStock.available`（★ 读口**不重算**：这里没有第二处减法）。
-      entry.put("frozenGoods", sortedCommodities(account.frozenBalances()));
-      entry.put("frozenMoney", sortedCurrencies(account.frozenMoney()));
-      entry.put("availableGoods", availableCommodities(account));
-      entry.put("availableMoney", availableCurrencies(account));
-      accounts.add(entry);
-      mergeInto(actorGoodsTotal, account.balances());
-      mergeMoneyInto(actorMoneyTotal, account.money());
+      entry.put("frozenGoods", sortedCommodities(inventory.frozenBalances()));
+      entry.put("frozenMoney", sortedCurrencies(inventory.frozenMoney()));
+      entry.put("availableGoods", availableCommodities(inventory));
+      entry.put("availableMoney", availableCurrencies(inventory));
+      inventories.add(entry);
+      mergeInto(actorGoodsTotal, inventory.balances());
+      mergeMoneyInto(actorMoneyTotal, inventory.money());
     }
     // ★★ H1：行侧**没有商品了**（{@code ClassRow} 无 goods，裁定 D3-C/K1）⇒ 这一栏是**结构性的空表**
     //   （不是"读不到"，是"那里已经没有这本账"）。它照旧发出来，正是为了让"一本账"这条判据**并排可见**：
     //   {@code accounts} / {@code actorGoodsTotal} 有数，{@code rowGoodsTotal} 恒空。
     Map<String, Long> rowGoodsTotal = new TreeMap<>();
-    view.put("accounts", accounts);
+    view.put("accounts", inventories);
     view.put("actorGoodsTotal", actorGoodsTotal);
     view.put("actorMoneyTotal", actorMoneyTotal);
     // ★★ M1.6：与 {@link #economyHex} **同一份**分栏（同一趟遍历的派生量；两处不许各算一套）。
@@ -3461,15 +3461,15 @@ public final class ApiViews {
    * 该格上的全部库存账（**保序**：按 owner 的规范串字典序）—— {@link #economyOwnership} 与 {@link #economyHex}
    * 读的是**同一个集合**（后者的 {@code goods} 就是前者 {@code actorGoodsTotal} 的来源）。
    */
-  private static List<GoodsAccount> accountsAt(
+  private static List<HouseholdInventory> inventoriesAt(
       EconomyData data, ActorData actors, HexCoord coord) {
-    List<GoodsAccount> atHex = new ArrayList<>();
-    for (GoodsAccount account : actors.accounts().values()) {
-      if (householdHex(data, account.key().household()).equals(coord)) {
-        atHex.add(account);
+    List<HouseholdInventory> atHex = new ArrayList<>();
+    for (HouseholdInventory inventory : actors.accounts().values()) {
+      if (householdHex(data, inventory.key().household()).equals(coord)) {
+        atHex.add(inventory);
       }
     }
-    atHex.sort(Comparator.comparing(account -> account.key().household().value()));
+    atHex.sort(Comparator.comparing(inventory -> inventory.key().household().value()));
     return atHex;
   }
 
@@ -3696,14 +3696,14 @@ public final class ApiViews {
     view.put(
         "participationAdjustedLaborPerCapitaPerMille",
         perCapitaLaborMilli(row.participationAdjustedLaborMilli(), row.population()));
-    // ★★ H1：这个家户的商品余额**只在 actor 侧的账本上**（{@code GoodsAccount}，键 =
+    // ★★ H1：这个家户的商品余额**只在 actor 侧的账本上**（{@code HouseholdInventory}，键 =
     //   {@code (HouseholdActors.of(key), key.hex())}）—— 行里没有 goods 这一栏。★ 键的拼法只经
     //   {@link #accountKeyOf(HouseholdId, HexCoord)}（本层不复述家户 id / 账户键的形状）；账本缺席 ⇒ 空表（读口不抛）。
-    GoodsAccount account = actors.accounts().get(accountKeyOf(key));
-    view.put("goods", sortedCommodities(account == null ? Map.of() : account.balances()));
-    // ★★ H4：这个家户的**货币账**（actor 侧；与 {@code goods} 同住一本 {@code GoodsAccount}）——
+    HouseholdInventory inventory = actors.accounts().get(accountKeyOf(key));
+    view.put("goods", sortedCommodities(inventory == null ? Map.of() : inventory.balances()));
+    // ★★ H4：这个家户的**货币账**（actor 侧；与 {@code goods} 同住一本 {@code HouseholdInventory}）——
     //   与下面那个行侧恒 0 的 {@code money} 并排（同 goods 与 rowGoodsTotal 的处置：真值在 actor 侧）。
-    view.put("actorMoney", sortedCurrencies(account == null ? Map.of() : account.money()));
+    view.put("actorMoney", sortedCurrencies(inventory == null ? Map.of() : inventory.money()));
     view.put("money", row.money());
     // 债务人方向：旧形状保持不变（id 字符串数组），另在 debtDetails 里补明细。
     List<String> debts = new ArrayList<>(row.debts().size());
@@ -3742,7 +3742,7 @@ public final class ApiViews {
 
   /** ★★ E4b：粮库存读不到时 headroom/可质押余粮的具名缺失（唯一拼写点；绝不填 0 冒充）。 */
   private static final String DEBT_CAPACITY_STOCK_UNREADABLE =
-      "该家户在本格 ActorData 里没有 GoodsAccount（粮库存读不到）⇒ 可质押余粮/可质押真实资产价值/headroom"
+      "该家户在本格 ActorData 里没有 HouseholdInventory（粮库存读不到）⇒ 可质押余粮/可质押真实资产价值/headroom"
           + "记 null；缺失不是 0，也不拿别的账本顶替";
 
   /** ★★ E4b：三个流量与库存的窗口标注（挂在 debtCapacity 块上；逐字段口径与 {@link DebtCapacity} 类注同源）。 */
@@ -3897,12 +3897,12 @@ public final class ApiViews {
       householdOfActorAtHex.put(HouseholdActors.of(key), key);
     }
     Map<HouseholdId, Long> grainStockByHousehold = new LinkedHashMap<>();
-    for (GoodsAccount account : accountsAt(data, actors, coord)) {
-      HouseholdId key = householdOfActorAtHex.get(HouseholdActors.of(account.key().household()));
+    for (HouseholdInventory inventory : inventoriesAt(data, actors, coord)) {
+      HouseholdId key = householdOfActorAtHex.get(HouseholdActors.of(inventory.key().household()));
       if (key == null) {
         continue;
       }
-      grainStockByHousehold.merge(key, account.balances().getOrDefault(GRAIN, 0L), Long::sum);
+      grainStockByHousehold.merge(key, inventory.balances().getOrDefault(GRAIN, 0L), Long::sum);
     }
     Map<HouseholdId, DebtCapacity> capacities =
         DebtCapacityBook.capacitiesForState(
@@ -4111,8 +4111,8 @@ public final class ApiViews {
   /** ★★ E3：全部 actor 账本的货币合计（逐币种时点；世界级，不分局）。 */
   private static Map<String, Long> moneyTotals(ActorData actors) {
     Map<String, Long> totals = new TreeMap<>();
-    for (GoodsAccount account : actors.accounts().values()) {
-      mergeMoneyInto(totals, account.money());
+    for (HouseholdInventory inventory : actors.accounts().values()) {
+      mergeMoneyInto(totals, inventory.money());
     }
     return totals;
   }
@@ -4125,7 +4125,7 @@ public final class ApiViews {
    * fiscalIssue            Σ kind=FISCAL_ISSUE 的 amount（逐币种，累计）
    * cumulativeIssuance     = initialEndowment + fiscalIssue
    * cumulativeWithdrawal   Σ kind=WITHDRAWAL 的 amount（逐币种，累计）
-   * circulation            Σ 全部 actor GoodsAccount.money 余额（逐币种时点）
+   * circulation            Σ 全部 actor HouseholdInventory.money 余额（逐币种时点）
    * netIssuance            = cumulativeIssuance − cumulativeWithdrawal（逐币种）
    * </pre>
    *
@@ -4174,10 +4174,10 @@ public final class ApiViews {
   /** ★★ E3：货币余额按 actor kind 聚合（逐币种；世界级时点）。键序 = kind 名 / 币种名字典序。 */
   private static Map<String, Map<String, Long>> moneyByActorKind(ActorData actors) {
     Map<String, Map<String, Long>> byKind = new TreeMap<>();
-    for (GoodsAccount account : actors.accounts().values()) {
+    for (HouseholdInventory inventory : actors.accounts().values()) {
       mergeMoneyInto(
-          byKind.computeIfAbsent(HouseholdActors.of(account.key().household()).kind().name(), ignored -> new TreeMap<>()),
-          account.money());
+          byKind.computeIfAbsent(HouseholdActors.of(inventory.key().household()).kind().name(), ignored -> new TreeMap<>()),
+          inventory.money());
     }
     return byKind;
   }
@@ -4189,35 +4189,35 @@ public final class ApiViews {
   private static Map<String, Map<String, Long>> moneyByHouseholdClass(
       EconomyData data, ActorData actors) {
     Map<String, Map<String, Long>> byClass = new TreeMap<>();
-    for (GoodsAccount account : actors.accounts().values()) {
-      if (HouseholdActors.of(account.key().household()).kind() != ActorKind.HOUSEHOLD) {
+    for (HouseholdInventory inventory : actors.accounts().values()) {
+      if (HouseholdActors.of(inventory.key().household()).kind() != ActorKind.HOUSEHOLD) {
         continue;
       }
-      HouseholdId household = HouseholdActors.householdOf(HouseholdActors.of(account.key().household()));
+      HouseholdId household = HouseholdActors.householdOf(HouseholdActors.of(inventory.key().household()));
       ClassRow row = data.classes().get(household);
       String stratum = row == null ? "__unmapped__" : row.view().stratum().value();
-      mergeMoneyInto(byClass.computeIfAbsent(stratum, ignored -> new TreeMap<>()), account.money());
+      mergeMoneyInto(byClass.computeIfAbsent(stratum, ignored -> new TreeMap<>()), inventory.money());
     }
     return byClass;
   }
 
   /**
-   * ★★ <b>可支配商品表</b>（M1.2）：逐商品问 {@link AvailableStock#available(GoodsAccount, CommodityId)} —— 读口
+   * ★★ <b>可支配商品表</b>（M1.2）：逐商品问 {@link AvailableStock#available(HouseholdInventory, CommodityId)} —— 读口
    * <b>只读不重算</b>（这一栏里没有第二处 `余额 − 冻结`）。键集 = 余额表 ∪ 冻结表，键序 = 商品名字典序。
    */
-  private static Map<String, Long> availableCommodities(GoodsAccount account) {
+  private static Map<String, Long> availableCommodities(HouseholdInventory inventory) {
     Map<String, Long> out = new TreeMap<>();
-    for (CommodityId id : union(account.balances().keySet(), account.frozenBalances().keySet())) {
-      out.put(id.value(), AvailableStock.available(account, id));
+    for (CommodityId id : union(inventory.balances().keySet(), inventory.frozenBalances().keySet())) {
+      out.put(id.value(), AvailableStock.available(inventory, id));
     }
     return out;
   }
 
   /** ★★ <b>可支配货币表</b>（M1.2）：与 {@link #availableCommodities} 逐条同款（**逐币种**，不跨币种求和）。 */
-  private static Map<String, Long> availableCurrencies(GoodsAccount account) {
+  private static Map<String, Long> availableCurrencies(HouseholdInventory inventory) {
     Map<String, Long> out = new TreeMap<>();
-    for (CurrencyId id : union(account.money().keySet(), account.frozenMoney().keySet())) {
-      out.put(id.value(), AvailableStock.available(account, id));
+    for (CurrencyId id : union(inventory.money().keySet(), inventory.frozenMoney().keySet())) {
+      out.put(id.value(), AvailableStock.available(inventory, id));
     }
     return out;
   }
@@ -6024,8 +6024,8 @@ public final class ApiViews {
   }
 
   /** 家户账键 = 家户身份（P2-A §13.3：一本账，键不再带格）。 */
-  private static GoodsAccountKey accountKeyOf(HouseholdId household) {
-    return new GoodsAccountKey(household);
+  private static HouseholdAccountKey accountKeyOf(HouseholdId household) {
+    return new HouseholdAccountKey(household);
   }
 
   /**

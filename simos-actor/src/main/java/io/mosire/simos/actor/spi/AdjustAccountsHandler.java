@@ -5,8 +5,8 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.AvailableStock;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -39,7 +39,7 @@ import org.slf4j.Logger;
  *   <li>{@code entries} 必填、非空数组；每项 {@code owner{kind,id}}、{@code q}、{@code r} 必填；
  *   <li>{@code goods} / {@code money} <b>至少一个非空</b>（缺省 / {@code null} = 空表）：键 = 商品 id / 币种 id，值 =
  *       <b>有符号净增量</b>（long，<b>0 不得出现</b>，无操作条目请删）；
- *   <li>{@code (owner, 格)} 就是 {@link GoodsAccountKey} 的 {@code (owner, location)}：增量打在**那一本账**上。
+ *   <li>{@code (owner, 格)} 就是 {@link HouseholdAccountKey} 的 {@code (owner, location)}：增量打在**那一本账**上。
  * </ul>
  *
  * <p>★★ <b>数值语义（整条原子：任一违例 ⇒ 全拒，不做部分生效）</b>：
@@ -47,7 +47,7 @@ import org.slf4j.Logger;
  * <ul>
  *   <li><b>已有账</b> ⇒ 在 {@code LinkedHashMap} 拷贝上逐键 upsert：原有键序与两张<b>冻结表</b>原样保留；结果余额为 0
  *       <b>保留、不归一</b>（0 是"现在手里是 0"，与"没有这一条"不是同一件事）；
- *   <li><b>缺账 + 纯正增量</b> ⇒ **新建**该账（{@link GoodsAccount} 五参构造：其余商品 / 货币 / 冻结表空）；
+ *   <li><b>缺账 + 纯正增量</b> ⇒ **新建**该账（{@link HouseholdInventory} 五参构造：其余商品 / 货币 / 冻结表空）；
  *   <li><b>缺账 + 任何负增量</b> ⇒ 拒；
  *   <li><b>负增量使余额 &lt; 0</b> ⇒ 拒；<b>负增量侵占冻结额</b> ⇒ 拒（可支配 = 余额 − 冻结，走 {@link AvailableStock}
  *       的<b>唯一算法</b>，本类不自己写减法）；
@@ -119,34 +119,34 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
 
   /** 全量校验 + 物化（纯函数）：任一条目违例即抛，**不返回半成品** —— 调用方把它折成整条 {@code Rejected}，于是"部分生效"在结构上 不可能发生。 */
   private static ActorData apply(ActorData base, List<ActorPayloads.AccountAdjustment> entries) {
-    Map<GoodsAccountKey, GoodsAccount> next = new LinkedHashMap<>(base.accounts());
+    Map<HouseholdAccountKey, HouseholdInventory> next = new LinkedHashMap<>(base.accounts());
     for (ActorPayloads.AccountAdjustment entry : entries) {
-      GoodsAccountKey key = new GoodsAccountKey(entry.household());
-      GoodsAccount account = next.get(key);
-      if (account == null) {
-        requireNoNegativeForMissingAccount(entry); // 缺账：任何负增量拒绝（0 已在解析期拒）
-        next.put(key, new GoodsAccount(key, entry.goods(), entry.money(), Map.of(), Map.of()));
+      HouseholdAccountKey key = new HouseholdAccountKey(entry.household());
+      HouseholdInventory inventory = next.get(key);
+      if (inventory == null) {
+        requireNoNegativeForMissingInventory(entry); // 缺账：任何负增量拒绝（0 已在解析期拒）
+        next.put(key, new HouseholdInventory(key, entry.goods(), entry.money(), Map.of(), Map.of()));
         continue;
       }
-      Map<CommodityId, Long> balances = new LinkedHashMap<>(account.balances());
+      Map<CommodityId, Long> balances = new LinkedHashMap<>(inventory.balances());
       for (Map.Entry<CommodityId, Long> delta : entry.goods().entrySet()) {
-        applyCommodityDelta(account, balances, entry, delta.getKey(), delta.getValue());
+        applyCommodityDelta(inventory, balances, entry, delta.getKey(), delta.getValue());
       }
-      Map<CurrencyId, Long> money = new LinkedHashMap<>(account.money());
+      Map<CurrencyId, Long> money = new LinkedHashMap<>(inventory.money());
       for (Map.Entry<CurrencyId, Long> delta : entry.money().entrySet()) {
-        applyMoneyDelta(account, money, entry, delta.getKey(), delta.getValue());
+        applyMoneyDelta(inventory, money, entry, delta.getKey(), delta.getValue());
       }
       // ★ 五参写回：两张冻结表**原样带过**（用三参便捷构造器会把已有冻结静默清零）。
       next.put(
           key,
-          new GoodsAccount(key, balances, money, account.frozenBalances(), account.frozenMoney()));
+          new HouseholdInventory(key, balances, money, inventory.frozenBalances(), inventory.frozenMoney()));
     }
     // ★ 只换 accounts：meta / actors 原样带过（不给 owner 建 Actor 行）。
-    return base.withAccounts(next);
+    return base.withInventories(next);
   }
 
   /** 缺账 + 任何负增量 ⇒ 拒（纯正增量允许，见类注的"新建"）。 */
-  private static void requireNoNegativeForMissingAccount(ActorPayloads.AccountAdjustment entry) {
+  private static void requireNoNegativeForMissingInventory(ActorPayloads.AccountAdjustment entry) {
     for (Map.Entry<CommodityId, Long> delta : entry.goods().entrySet()) {
       requireNotNegative(delta.getValue(), entry, "商品", delta.getKey().toString());
     }
@@ -173,7 +173,7 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
 
   /** 记一笔商品净增量：负增量先判"结果 ≥ 0"、再判"不侵占冻结额"（两个拒因分开点名）。 */
   private static void applyCommodityDelta(
-      GoodsAccount account,
+      HouseholdInventory inventory,
       Map<CommodityId, Long> balances,
       ActorPayloads.AccountAdjustment entry,
       CommodityId commodity,
@@ -185,8 +185,8 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
           "商品",
           commodity.toString(),
           balance,
-          account.frozenBalances().getOrDefault(commodity, 0L),
-          AvailableStock.available(account, commodity),
+          inventory.frozenBalances().getOrDefault(commodity, 0L),
+          AvailableStock.available(inventory, commodity),
           delta);
     }
     balances.put(commodity, balance + delta);
@@ -194,7 +194,7 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
 
   /** 记一笔货币净增量：口径与 {@link #applyCommodityDelta} 逐条同款（商品与货币是两个独立身份、同一套算术）。 */
   private static void applyMoneyDelta(
-      GoodsAccount account,
+      HouseholdInventory inventory,
       Map<CurrencyId, Long> money,
       ActorPayloads.AccountAdjustment entry,
       CurrencyId currency,
@@ -206,8 +206,8 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
           "货币",
           currency.toString(),
           balance,
-          account.frozenMoney().getOrDefault(currency, 0L),
-          AvailableStock.available(account, currency),
+          inventory.frozenMoney().getOrDefault(currency, 0L),
+          AvailableStock.available(inventory, currency),
           delta);
     }
     money.put(currency, balance + delta);

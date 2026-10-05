@@ -10,7 +10,7 @@ package io.mosire.simos.economy.api.id;
  *   <li>{@code CompensationRule.currency} 用它说清"货币档发的是哪种钱"（实物档恒空、货币档必须有值）；
  *   <li>{@code Transfer.money} 的键是它（<b>H4 起真的有钱</b>：货币工资/地租是一条**只带货币腿**的转移，市场成交是**一对** 转移 —— 见
  *       {@code Transfer} 的货币腿口径）；
- *   <li>{@code GoodsAccount.money} 的键也是它（钱与货<b>同住一本账</b>，裁定 M2：两个独立身份、两张余额表）。
+ *   <li>{@code HouseholdInventory.money} 的键也是它（钱与货<b>同住一本账</b>，裁定 M2：两个独立身份、两张余额表）。
  * </ul>
  *
  * <p>★ <b>它仍然只是"身份"</b>（没有发行）：本批没有任何 {@code MoneyAuthority} 实现 ⇒ 世界上没有"铸币/回笼"这条路径， 任何账户的货币余额不得为负（透支
