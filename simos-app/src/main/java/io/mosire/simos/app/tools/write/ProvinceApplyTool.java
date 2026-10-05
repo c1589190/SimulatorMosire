@@ -52,7 +52,7 @@ import java.util.UUID;
  * 切片；单条命令只能落一个命名空间。本工具走 {@link CoreSimos#submitBatch}（同 batchId/branch/expectedRevision ⇒ 一批 = 一条
  * revision，原子）。
  *
- * <p>★★ <b>相关结构门</b>（目标 Region 内/指向目标 Region 的既有结构，只读 base state）：命中带 {@code GovFormation} 的单位 / 其
+ * <p>★★ <b>相关结构门</b>（目标 Region 内/指向目标 Region 的既有结构，只读 base state）：命中带 {@code GovernmentFormation} 的单位 / 其
  * Gov 决策人 / 覆盖目标 Region（或完全落在目标 hex 集内的 Region）的 jurisdiction / id 形如 {@code
  * sanitize(regionId)+"__P"+数字} 或 {@code __CAP} 的既有 Region ⇒ <b>不 submit、零 revision</b>，返回 {@code
  * ToolResult.error("NEEDS_CLEAR", JSON)}，hint 指路 {@code simos.region.clearStructures}。
@@ -150,7 +150,7 @@ public final class ProvinceApplyTool implements AgentTool {
         + "reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision?(preview=false 必填)}。"
-        + "pre-scan：目标 Region 内已有 GovFormation 单位 / 其 Gov 决策人 / 覆盖它的 jurisdiction / "
+        + "pre-scan：目标 Region 内已有 GovernmentFormation 单位 / 其 Gov 决策人 / 覆盖它的 jurisdiction / "
         + "sanitize(regionId)+__P<数字> 或 __CAP 既有 Region ⇒ NEEDS_CLEAR（零 revision，指路 "
         + "simos.region.clearStructures）；与既有 Region 相交且 overrideOverlaps=false ⇒ "
         + "OVERLAP_OVERRIDE_REQUIRED（列出 id/name/tag/相交格数）。"

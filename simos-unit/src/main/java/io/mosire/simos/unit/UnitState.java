@@ -242,8 +242,8 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
         }
       }
     }
-    // ★★ S3b（2026-10-09）：军官/领导层家户配置（ArmyFormation.householdDuties /
-    //   GovFormation.householdPosts）的键必须出现在本单位的 households 列表里——配置是"这个家户在我这里是什么身份"，
+    // ★★ S3b（2026-10-09）：军官/领导层家户配置（ArmyFormation.militaryDutiesOfHousehold /
+    //   GovernmentFormation.governmentPostsOfHousehold）的键必须出现在本单位的 households 列表里——配置是"这个家户在我这里是什么身份"，
     //   挂一个不属于本单位的家户 = 配置与人口关系脱钩（本仓最忌的静默漂移，当场具名拒）。
     for (Unit unit : units.values()) {
       requireModuleConfigsBelongToUnit(unit);
@@ -254,11 +254,11 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
   private static void requireModuleConfigsBelongToUnit(Unit unit) {
     Set<HouseholdId> contained = new LinkedHashSet<>(unit.households());
     UnitModule module = unit.module().orElse(null);
-    if (module instanceof GovFormation gov) {
-      for (HouseholdId household : gov.householdPosts().keySet()) {
+    if (module instanceof GovernmentFormation governmentFormation) {
+      for (HouseholdId household : governmentFormation.governmentPostsOfHousehold().keySet()) {
         if (!contained.contains(household)) {
           throw new IllegalArgumentException(
-              "GovFormation.householdPosts 的家户不在单位 "
+              "GovernmentFormation.householdPosts 的家户不在单位 "
                   + unit.id()
                   + " 的 households 列表里: "
                   + household
@@ -266,7 +266,7 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
         }
       }
       // ★★ P2-C §13.7 + 2026-10-09 唯一列表裁定：中央/地方 GOV 各恰一个政府家户，且身份必须是该 GOV 单位稳定
-      //   id 的派生物（hh-gov-<unitId>）；这个家户必须出现在 Unit.households（唯一实质列表）里——GovFormation
+      //   id 的派生物（hh-gov-<unitId>）；这个家户必须出现在 Unit.households（唯一实质列表）里——GovernmentFormation
       //   不再有 households 重复列表。"先到者胜"或"随便挂第一户"在这里进不了状态：恰好一个、且引用逐字相等。
       HouseholdId expectedGovernmentHousehold = GovernmentHouseholds.of(unit.id().value());
       List<HouseholdId> governmentHouseholds = new ArrayList<>();
@@ -290,7 +290,7 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
                 + "下辖其他家户请用 unit.SetUnitHouseholds 且务必保留这个政府家户）");
       }
     } else if (module instanceof ArmyFormation army) {
-      for (HouseholdId household : army.householdDuties().keySet()) {
+      for (HouseholdId household : army.militaryDutiesOfHousehold().keySet()) {
         if (!contained.contains(household)) {
           throw new IllegalArgumentException(
               "ArmyFormation.householdDuties 的家户不在单位 "

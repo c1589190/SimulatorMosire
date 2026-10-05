@@ -39,7 +39,7 @@ import io.mosire.simos.sd.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.address.Address;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -550,18 +550,18 @@ public final class AdjudicateTickTool implements AgentTool {
     }
     UnitState units = ToolSupport.unitState(state);
     Unit fromUnit = units.units().get(gov.govUnit());
-    if (fromUnit == null || !(fromUnit.module().orElse(null) instanceof GovFormation fromGov)) {
+    if (fromUnit == null || !(fromUnit.module().orElse(null) instanceof GovernmentFormation fromGovernmentFormation)) {
       return Optional.of("出令决策人所属 GOV 单位不存在或不是 GOV: " + gov.govUnit().value());
     }
     UnitId superiorId =
-        fromGov
+        fromGovernmentFormation
             .superiorGov()
             .orElse(null);
     if (superiorId == null) {
       return Optional.of("中央 GOV 没有 superiorGov：上缴命令只对地方 GOV 有意义: " + fromUnit.id().value());
     }
     Unit toUnit = units.units().get(superiorId);
-    if (toUnit == null || !(toUnit.module().orElse(null) instanceof GovFormation toGov)) {
+    if (toUnit == null || !(toUnit.module().orElse(null) instanceof GovernmentFormation toGovernmentFormation)) {
       return Optional.of("上级 GOV 不存在或不是 GOV: " + superiorId.value());
     }
     JsonNode payload;

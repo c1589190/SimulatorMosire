@@ -109,7 +109,7 @@ public final class RichWorld {
         "actor",
         ignored ->
             new ActorSnapshot(decoded.meta().ref(), decoded.meta().timestamp(), ActorData.empty()));
-    // ★ 阶段 11b/12（2026-10-01 控制方修生产缺陷）：参与者在单位带 GovFormation 时会写 gov 片，而
+    // ★ 阶段 11b/12（2026-10-01 控制方修生产缺陷）：参与者在单位带 GovernmentFormation 时会写 gov 片，而
     //   TimeAdvance 要求 base 已有该 namespace 快照 ⇒ 升旧档/创世必须补一个空 gov 片（与 sd/economy/actor 同制）。
     modules.computeIfAbsent(
         "gov",
@@ -137,7 +137,7 @@ public final class RichWorld {
             new EconomyCodec(),
             new ActorCodec(),
             // ★ 阶段 10a：gov codec 与 Shell 同源。★ 阶段 11b 起 gov 片由参与者写 ⇒ 创世/升档必须补空片
-            //   （见上面 computeIfAbsent("gov")），否则带 GovFormation 的单位推进会被 TimeAdvance 拒。
+            //   （见上面 computeIfAbsent("gov")），否则带 GovernmentFormation 的单位推进会被 TimeAdvance 拒。
             new GovCodec(),
             // ★★ D1（2026-10-02 / D-012）：army codec 与 Shell 同源；上面 computeIfAbsent("army") 保证
             //   旧档/创世也有空 army 片（命令总线要求切片在场）。

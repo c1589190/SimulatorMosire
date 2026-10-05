@@ -8,7 +8,7 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.population.PopulationGroup;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -53,7 +53,7 @@ import java.util.Set;
  * recruit}，value=JSON <b>字符串</b>，含 role/count/来源计数/reason/tick，note=人可读摘要）。三条共享同一 batchId 与同一
  * branch/expectedRevision ⇒ 一条 revision。
  *
- * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：单位存在且带 {@link GovFormation}；
+ * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：单位存在且带 {@link GovernmentFormation}；
  * {@code count ≥ 1}；{@code role} 词表；{@code staffCap[role]} 若存在且 {@code 现有 + count > cap} ⇒ 具名拒（带现有
  * / 上限 / 请求，不截断）；现有 + count 溢出 long ⇒ 具名拒；无 jurisdiction / 辖区 Region 在地图里查无 ⇒ 具名拒。
  *
@@ -77,7 +77,7 @@ final class GovRecruitPlan {
    * 纯推导入口（见类注的来源口径与校验清单）。
    *
    * @param state 读数所在的状态（preview / apply 都取<b>同一坐标</b>的状态）
-   * @param unitId 招募主体（必须是带 {@link GovFormation} 的单位）
+   * @param unitId 招募主体（必须是带 {@link GovernmentFormation} 的单位）
    * @param roleText 行政角色词表（SCRIBE|YAMEN|POST）
    * @param count 招募人数（≥ 1）
    * @throws IllegalArgumentException 任一具名前置不满足（工具折 {@code BAD_REQUEST}）
@@ -108,14 +108,14 @@ final class GovRecruitPlan {
     if (unit == null) {
       throw new IllegalArgumentException("GOV 单位不存在: " + unitId);
     }
-    GovFormation gov = requireGovFormation(unit, unitId);
-    long staffBefore = gov.staff().getOrDefault(role, 0L);
+    GovernmentFormation governmentFormation = requireGovernmentFormation(unit, unitId);
+    long staffBefore = governmentFormation.staff().getOrDefault(role, 0L);
     if (staffBefore > Long.MAX_VALUE - count) {
       throw new IllegalArgumentException(
           "招募后 " + role + " 在编人数溢出 long: 现有 " + staffBefore + " + 请求 " + count);
     }
     long staffAfter = staffBefore + count;
-    Optional<Long> staffCap = Optional.ofNullable(gov.policy().staffCap().get(role));
+    Optional<Long> staffCap = Optional.ofNullable(governmentFormation.policy().staffCap().get(role));
     if (staffCap.isPresent() && staffBefore > staffCap.get() - count) {
       throw new IllegalArgumentException(
           "招募 "
@@ -213,13 +213,13 @@ final class GovRecruitPlan {
     }
   }
 
-  /** 单位必须带 {@link GovFormation}（招募命令的领域前置；消息给出下一步）。 */
-  private static GovFormation requireGovFormation(Unit unit, String unitId) {
-    if (unit.module().orElse(null) instanceof GovFormation gov) {
-      return gov;
+  /** 单位必须带 {@link GovernmentFormation}（招募命令的领域前置；消息给出下一步）。 */
+  private static GovernmentFormation requireGovernmentFormation(Unit unit, String unitId) {
+    if (unit.module().orElse(null) instanceof GovernmentFormation governmentFormation) {
+      return governmentFormation;
     }
     throw new IllegalArgumentException(
-        "单位 " + unitId + " 没有 GovFormation：招募只对 GOV 单位；先 unit.SetGovFormation");
+        "单位 " + unitId + " 没有 GovernmentFormation：招募只对 GOV 单位；先 unit.SetGovFormation");
   }
 
   /** 饱和加法（非负 long；溢出取 {@link Long#MAX_VALUE}）——只用于 available 合计与拒因展示，不参与逐值扣减。 */

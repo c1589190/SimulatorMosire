@@ -47,7 +47,7 @@ import org.slf4j.Logger;
  * <ol>
  *   <li><b>逐单位</b>：{@code units.units()} 按 {@link UnitId#value()} 升序；只征 {@code
  *       efficiencyPerMilleByUnit} 里<b>查得到</b>的单位；
- *   <li><b>无 GOV ⇒ 不征</b>：查不到效率（没有 {@code GovFormation}/没有 GOV 读数）⇒ <b>整单位跳过、不征</b>； 不读已退役的 {@code
+ *   <li><b>无 GOV ⇒ 不征</b>：查不到效率（没有 {@code GovernmentFormation}/没有 GOV 读数）⇒ <b>整单位跳过、不征</b>； 不读已退役的 {@code
  *       Jurisdiction.administrationPerMille}、不补 0；
  *   <li><b>逐区域</b>：{@code Jurisdiction.taxRatePerMilleByRegion} 的 key 按 {@link RegionId#value()}
  *       升序， rate = 0 跳过；区域不在 {@code map.regions()} ⇒ 具名 {@link GapKind#REGION_MISSING} 并跳过；
@@ -454,7 +454,7 @@ final class JurisdictionDailyTax {
     REGION_MISSING,
     /** 单位当刻没有有效位置（无座位不征）。 */
     NO_POSITION,
-    /** 带 GovFormation 却解析不出政府家户（状态损坏；正常路径由 UnitState/GovernmentHouseholdWiring 拦下）。 */
+    /** 带 GovernmentFormation 却解析不出政府家户（状态损坏；正常路径由 UnitState/GovernmentHouseholdWiring 拦下）。 */
     NO_GOVERNMENT_HOUSEHOLD,
     /** 政府家户不在账户会话里（状态损坏）。 */
     TREASURY_ACCOUNT_MISSING,

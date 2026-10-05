@@ -4,7 +4,7 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.unit.ArmyFormation;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -44,11 +44,11 @@ import java.util.Optional;
  * </ul>
  *
  * <p>★ <b>{@code masterGovUnitId} 的三态</b>：缺席 / {@code null} / 空串（含空白串）= 解除认领；给了非空白值必须存在、 且带 {@link
- * GovFormation}（与 {@code sd.CreateArmy}/{@code unit.SetArmyFormation} 同口径）。
+ * GovernmentFormation}（与 {@code sd.CreateArmy}/{@code unit.SetArmyFormation} 同口径）。
  *
  * <p>★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：{@code armyId}/{@code reason}
- * 非空白；Army 必须存在；root unit 必须存在；新主子若给必须存在且带 {@link GovFormation}；{@code syncUnitSide=true} 时 unit 侧
- * role 必须能确定（见上）。批内域层拒（如 root 已带 {@code GovFormation}、同 tick 二次改编）由 {@code submitBatch} 整条拒，逐条真拒因折成
+ * 非空白；Army 必须存在；root unit 必须存在；新主子若给必须存在且带 {@link GovernmentFormation}；{@code syncUnitSide=true} 时 unit 侧
+ * role 必须能确定（见上）。批内域层拒（如 root 已带 {@code GovernmentFormation}、同 tick 二次改编）由 {@code submitBatch} 整条拒，逐条真拒因折成
  * {@code REJECTED}。
  *
  * <p>★ <b>确定性</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；字段序固定（{@code LinkedHashMap}）。
@@ -124,7 +124,7 @@ final class AssignArmyGovPlan {
         state.meta().timestamp().tick());
   }
 
-  /** 新主子必须存在且带 {@link GovFormation}（与 {@code sd.CreateArmy} 同口径，纯只读）。 */
+  /** 新主子必须存在且带 {@link GovernmentFormation}（与 {@code sd.CreateArmy} 同口径，纯只读）。 */
   private static void requireGovUnit(UnitState units, String govId, String field) {
     requireNonBlank(govId, field);
     UnitId gov = UnitId.parse(govId);
@@ -132,8 +132,8 @@ final class AssignArmyGovPlan {
     if (unit == null) {
       throw new IllegalArgumentException(field + " 指定的 GOV 单位不存在: " + govId);
     }
-    if (!(unit.module().orElse(null) instanceof GovFormation)) {
-      throw new IllegalArgumentException(field + " 指定的单位 " + govId + " 没有 GovFormation：不能作为 GOV");
+    if (!(unit.module().orElse(null) instanceof GovernmentFormation)) {
+      throw new IllegalArgumentException(field + " 指定的单位 " + govId + " 没有 GovernmentFormation：不能作为 GOV");
     }
   }
 

@@ -34,7 +34,7 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -115,7 +115,7 @@ public final class GovPayTool implements AgentTool {
         + "branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision?(preview=false 必填)}。"
-        + "调用者必须是隶属某个 GOV 的决策人（Army/Nation 归属不收）；付款/收款 GOV 都必须存在、带 GovFormation 且有当刻有效位置。"
+        + "调用者必须是隶属某个 GOV 的决策人（Army/Nation 归属不收）；付款/收款 GOV 都必须存在、带 GovernmentFormation 且有当刻有效位置。"
         + "★ 需 GM 在审批面点头：本工具是敏感工具，决策人链路会停在待批。★ 金额/余额/冻结/原子由域层判。";
   }
 
@@ -123,7 +123,7 @@ public final class GovPayTool implements AgentTool {
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put(
-        "toGovId", ToolSupport.prop("string", "收款 GOV 单位 id（必填；必须存在且带 GovFormation、有当刻有效位置）"));
+        "toGovId", ToolSupport.prop("string", "收款 GOV 单位 id（必填；必须存在且带 GovernmentFormation、有当刻有效位置）"));
     props.put("grain", ToolSupport.prop("integer", "支付粮（可选，缺省 0；不得为负；三项至少一个 > 0）"));
     props.put("cloth", ToolSupport.prop("integer", "支付布（可选，缺省 0；不得为负；三项至少一个 > 0）"));
     props.put("money", ToolSupport.prop("integer", "支付银（毫银；可选，缺省 0；不得为负；三项至少一个 > 0）"));
@@ -254,7 +254,7 @@ public final class GovPayTool implements AgentTool {
     }
     UnitState units = ToolSupport.unitState(state);
     Unit unit = units.units().get(gov.govUnit());
-    if (unit == null || !(unit.module().orElse(null) instanceof GovFormation)) {
+    if (unit == null || !(unit.module().orElse(null) instanceof GovernmentFormation)) {
       throw new PaymentRejected("调用者所属 GOV 单位不存在或不是 GOV: " + gov.govUnit().value());
     }
     HexCoord at =
@@ -270,7 +270,7 @@ public final class GovPayTool implements AgentTool {
   }
 
   /**
-   * 解析一个收款 GOV 的国库落点：必须存在、带 {@link GovFormation}、有当刻有效位置（与 GUI / scope / GM 的 {@code
+   * 解析一个收款 GOV 的国库落点：必须存在、带 {@link GovernmentFormation}、有当刻有效位置（与 GUI / scope / GM 的 {@code
    * simos.gov.remit} 同口径）——任一不满足 ⇒ {@link IllegalArgumentException}（由 {@link #execute} 折成
    * BAD_REQUEST，零 revision）。
    */
@@ -282,9 +282,9 @@ public final class GovPayTool implements AgentTool {
     if (unit == null) {
       throw new IllegalArgumentException("参数 " + field + " 指定的单位不存在: " + rawUnitId);
     }
-    if (!(unit.module().orElse(null) instanceof GovFormation)) {
+    if (!(unit.module().orElse(null) instanceof GovernmentFormation)) {
       throw new IllegalArgumentException(
-          "参数 " + field + " 指定的单位没有 GovFormation，不能作为 GOV: " + rawUnitId);
+          "参数 " + field + " 指定的单位没有 GovernmentFormation，不能作为 GOV: " + rawUnitId);
     }
     HexCoord at =
         units

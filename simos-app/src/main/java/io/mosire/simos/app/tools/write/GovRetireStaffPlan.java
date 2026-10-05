@@ -55,7 +55,7 @@ final class GovRetireStaffPlan {
    * 纯推导入口（见类注的待遇/回写口径）。
    *
    * @param state 读数所在的状态（preview / apply 都取<b>同一坐标</b>的状态）
-   * @param unitId 离编主体（带 GovFormation 的 GOV）
+   * @param unitId 离编主体（带 GovernmentFormation 的 GOV）
    * @param roleText 行政角色词表（SCRIBE|YAMEN|POST）
    * @param count 离编人数（≥ 1，且不得超过现有在编）
    * @param reinsertQ 回写格 q（可选；与 reinsertR 成对）

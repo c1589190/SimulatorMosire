@@ -21,7 +21,7 @@ import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
-import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.GovernmentLevel;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.util.state.BranchId;
@@ -130,7 +130,7 @@ public final class GovCreateOfficeTool implements AgentTool {
     return "GM 建 GOV 单位并同批绑决策人（组合工具，一批 = 一条 revision）："
         + "参数 {unitId(必填), name(必填), q(必填 int), r(必填 int), level(必填 CENTRAL|PROVINCE), "
         + "regions?(可选 RegionId 字符串数组; 每个必须存在于当前地图 regions()，重复元素保序去重), "
-        + "superiorGov?(可选; 非空必须存在且带 GovFormation), staff?(可选 {SCRIBE|YAMEN|POST:整数}, 缺省空表), "
+        + "superiorGov?(可选; 非空必须存在且带 GovernmentFormation), staff?(可选 {SCRIBE|YAMEN|POST:整数}, 缺省空表), "
         + "policy?(可选 {grainPerStaffPerTick?, clothPerStaffPerCycle?, moneyPerStaffPerTick?, retirementPerStaff?, "
         + "staffCap?{角色:整数}}, 缺省 OfficePolicy.defaults()、可部分覆盖), decisionMakerId(必填, 不得已存在), "
         + "providerId?(可选; 给了同批 sd.SetDecisionMakerProvider), cadence?(可选, 缺省 1), "
@@ -140,7 +140,7 @@ public final class GovCreateOfficeTool implements AgentTool {
         + "), expectedRevision(preview=false 时必填)}。"
         + "纯推导前置：unitId/decisionMakerId 必须不存在；level 词表；regions 每个必须存在于当前地图（具名拒，不静默丢）；"
         + "level=PROVINCE 时 regions 必须非空，level=CENTRAL 时可为空（缺省空 = 不落 SetJurisdiction、无管辖）；"
-        + "superiorGov 非空须存在且带 GovFormation。"
+        + "superiorGov 非空须存在且带 GovernmentFormation。"
         + "新单位固定 manpower=[]/equipment=[]/speed=1/mobilityPerMille=500/position=(q,r)/无 parent。"
         + "批顺序：unit.CreateUnit → social.CreateHousehold（政府家户 hh-gov-<unitId>，位置 UNIT(unitId)）→ "
         + "actor.EnsureHouseholdAccount（政府家户零余额账户）→ unit.SetGovFormation（域层把该政府家户编入 Unit.households）→ "
@@ -166,7 +166,7 @@ public final class GovCreateOfficeTool implements AgentTool {
             "array",
             "初始管辖区域 RegionId 字符串数组（可选；每个必须存在于当前地图；PROVINCE 必须非空，CENTRAL 可空缺省；"
                 + "仅非空时同批落 unit.SetJurisdiction，载荷不带 levy caps）"));
-    props.put("superiorGov", ToolSupport.prop("string", "上级 GOV 单位 id（可选；非空必须存在且带 GovFormation）"));
+    props.put("superiorGov", ToolSupport.prop("string", "上级 GOV 单位 id（可选；非空必须存在且带 GovernmentFormation）"));
     props.put("staff", ToolSupport.prop("object", "初始编制 {SCRIBE|YAMEN|POST:整数}（可选，缺省空表；值必须 ≥ 0）"));
     props.put(
         "policy",
@@ -240,7 +240,7 @@ public final class GovCreateOfficeTool implements AgentTool {
       String name = ToolSupport.requiredText(args, "name");
       int q = requiredInt(args, "q");
       int r = requiredInt(args, "r");
-      GovLevel level = parseLevel(ToolSupport.requiredText(args, "level"));
+      GovernmentLevel level = parseLevel(ToolSupport.requiredText(args, "level"));
       List<RegionId> regions = parseRegions(args.get("regions"));
       Optional<String> superiorGov = optionalText(args, "superiorGov");
       Map<StaffRole, Long> staff = parseStaff(args.get("staff"));
@@ -317,9 +317,9 @@ public final class GovCreateOfficeTool implements AgentTool {
   }
 
   /** 层级词表：只认 CENTRAL|PROVINCE，别的词给具名拒（不静默当缺省）。 */
-  private static GovLevel parseLevel(String text) {
+  private static GovernmentLevel parseLevel(String text) {
     try {
-      return GovLevel.valueOf(text);
+      return GovernmentLevel.valueOf(text);
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("参数 level 不是合法层级（CENTRAL|PROVINCE）: " + text, e);
     }

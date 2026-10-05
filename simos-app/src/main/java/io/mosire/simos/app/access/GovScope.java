@@ -9,7 +9,7 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.spi.ResourcePaths;
@@ -24,7 +24,7 @@ import java.util.TreeSet;
 /**
  * **政府决策人**的可见范围（阶段 10a，用户裁定 4：<b>直辖</b>）。
  *
- * <p>链路：{@code Affiliation.Gov(govUnitId)} → unit 切片里那个单位（<b>必须存在且带 {@link GovFormation}，否则
+ * <p>链路：{@code Affiliation.Gov(govUnitId)} → unit 切片里那个单位（<b>必须存在且带 {@link GovernmentFormation}，否则
  * deny-all 四命名空间</b>，照 {@code ArmyScope} 的 fail-closed）→ 本级 {@code Unit.jurisdiction} 的 Region 集合 ⇒
  * 这些 Region 的<b>逐格</b> hex 前缀 + Region 级前缀 + 自己所在格。
  *
@@ -78,7 +78,7 @@ public final class GovScope implements DecisionScopeFunction {
     // ★ 装配故障（缺 unit 切片）当场炸；"单位不存在 / 不是 GOV"是世界数据的问题 ⇒ deny-all，不抛。
     UnitState units = ToolSupport.unitState(state);
     Unit govUnit = units.units().get(gov.govUnit());
-    if (govUnit == null || !(govUnit.module().orElse(null) instanceof GovFormation)) {
+    if (govUnit == null || !(govUnit.module().orElse(null) instanceof GovernmentFormation)) {
       return denyAll();
     }
 
@@ -95,8 +95,8 @@ public final class GovScope implements DecisionScopeFunction {
           .withNamespace(ToolSupport.ACTOR_NAMESPACE, ResourceScope.none());
     }
 
-    // ★ 前置检查已确认 module 是 GovFormation；superiorGov 是"显式上缴"的授权链（类注四个命名空间）。
-    GovFormation govFormation = (GovFormation) govUnit.module().orElseThrow();
+    // ★ 前置检查已确认 module 是 GovernmentFormation；superiorGov 是"显式上缴"的授权链（类注四个命名空间）。
+    GovernmentFormation governmentFormation = (GovernmentFormation) govUnit.module().orElseThrow();
     GameMap map = ToolSupport.gameMap(state);
     Set<RegionId> jurisdictionRegions =
         govUnit
@@ -133,7 +133,7 @@ public final class GovScope implements DecisionScopeFunction {
     //   superiorGov 不存在 / 不在 unit 切片 / 当刻无位置 ⇒ 不加那一条（不整体 deny-all、也不放全量）。
     Set<String> actorPrefixes = new TreeSet<>();
     actorPrefixes.add(ResourcePaths.actor(own.get().q(), own.get().r()));
-    govFormation
+    governmentFormation
         .superiorGov()
         .filter(units.units()::containsKey)
         .flatMap(superiorId -> units.effectivePosition(superiorId, at))

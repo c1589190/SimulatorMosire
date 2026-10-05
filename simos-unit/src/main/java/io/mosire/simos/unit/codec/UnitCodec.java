@@ -36,7 +36,7 @@ import java.util.function.Function;
  * <p>★ <b>阶段 9 的线格式</b>：{@code Unit} 再多一个 {@code "module"} 键（紧接 {@code "jurisdiction"}），值同样是 {@code
  * Optional} 绑定——present ⇒ 对象本体，empty ⇒ JSON {@code null}。对象本体走 {@link
  * io.mosire.simos.unit.UnitModule} 类型上的 Jackson 多态注解（属性 {@code "@class"}：{@code "gov"} ⇒ {@link
- * io.mosire.simos.unit.GovFormation}、{@code "army"} ⇒ {@link
+ * io.mosire.simos.unit.GovernmentFormation}、{@code "army"} ⇒ {@link
  * io.mosire.simos.unit.ArmyFormation}），**本类不注册任何 mixin / 子类型映射**（与 {@code Affiliation}/{@code
  * Action} 同制：类型信息钉在类型上）。旧档没有该键 ⇒ Jackson 对 record 缺参给 {@code null} ⇒ {@code Unit} 紧凑构造器归一成 {@code
  * Optional.empty()}，行为逐字不变。

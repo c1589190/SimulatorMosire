@@ -134,7 +134,7 @@ import io.mosire.simos.app.tools.write.UnitReparentTool;
 import io.mosire.simos.app.tools.write.UnitSetArmyFormationTool;
 import io.mosire.simos.app.tools.write.UnitSetCompositionTool;
 import io.mosire.simos.app.tools.write.UnitSetFormationOffsetTool;
-import io.mosire.simos.app.tools.write.UnitSetGovFormationTool;
+import io.mosire.simos.app.tools.write.UnitSetGovernmentFormationTool;
 import io.mosire.simos.app.tools.write.UnitSetGovPolicyTool;
 import io.mosire.simos.app.tools.write.UnitSetGovSuperiorTool;
 import io.mosire.simos.app.tools.write.UnitSetJurisdictionTool;
@@ -593,7 +593,7 @@ public final class SimosToolSource implements ToolSource {
     built.add(new SocialUpdateCityTool(core, initiator, mapId));
     // 阶段 10a（2026-09-30 GOV/Army 计划）：两条"立编制"命令的窄封装（编制字段在 Unit.module ⇒ 是 unit 域命令）。
     //   **只在 GM 桶**；决策人侧要改编制仍走 sd.IssueDirective 的审批链（这两条命令非 GmOnly，可嵌入令）。
-    built.add(new UnitSetGovFormationTool(core, initiator, mapId));
+    built.add(new UnitSetGovernmentFormationTool(core, initiator, mapId));
     built.add(new UnitSetArmyFormationTool(core, initiator, mapId));
     // 阶段 10b-i（2026-10-01 GOV 计划）：GOV 政策 / 上级层级两条窄工具。**只在 GM 桶**。
     //   ★ **有意不为 unit.RecruitStaff / unit.DismissStaff 配窄工具**：那会变成"凭空造人 / 跳过退休支付"的

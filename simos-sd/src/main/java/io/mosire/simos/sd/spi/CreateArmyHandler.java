@@ -6,7 +6,7 @@ import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.state.SdState;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -25,7 +25,7 @@ import org.slf4j.Logger;
  * {"armyId":"a1","masterGovUnitId":"g1","rootUnitId":"u-1","name":"第一军"}
  * }</pre>
  *
- * <p>★ <b>载荷语义</b>：{@code masterGovUnitId} 可缺省/null（未认主子）；给了必须存在、且带 {@link GovFormation}（认主子只认
+ * <p>★ <b>载荷语义</b>：{@code masterGovUnitId} 可缺省/null（未认主子）；给了必须存在、且带 {@link GovernmentFormation}（认主子只认
  * GOV，与 {@code unit.SetArmyFormation} 同口径）。{@code rootUnitId} 是否存在仍经 {@link SdSnapshots#unitExists}
  * 只读 unit 切片（铁律 3）。
  *
@@ -68,7 +68,7 @@ public final class CreateArmyHandler implements CommandHandler {
         if (masterGov == null) {
           return new HandlerOutcome.Rejected("masterGovUnitId 不存在: " + masterGovUnitId.get());
         }
-        if (!(masterGov.module().orElse(null) instanceof GovFormation)) {
+        if (!(masterGov.module().orElse(null) instanceof GovernmentFormation)) {
           return new HandlerOutcome.Rejected("masterGovUnitId 不是 GOV 单位: " + masterGovUnitId.get());
         }
       }

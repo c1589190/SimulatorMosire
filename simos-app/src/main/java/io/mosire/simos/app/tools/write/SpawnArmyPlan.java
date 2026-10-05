@@ -5,7 +5,7 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -37,7 +37,7 @@ import java.util.Optional;
  * {@code {type:"士兵", amount=member}}），允许无人口、无国库；{@code member} 仍须 ≥ 1（P5 计划明文）。 {@code raiseUnit}
  * 保持抽取语义，一个字不动。
  *
- * <p>★★ <b>{@code masterGov} 的双边语义</b>：{@code masterGov} 给了 ⇒ 必须存在且带 {@link GovFormation}；同批写入
+ * <p>★★ <b>{@code masterGov} 的双边语义</b>：{@code masterGov} 给了 ⇒ 必须存在且带 {@link GovernmentFormation}；同批写入
  * {@code sd.CreateArmy.masterGovUnitId}。{@code role} 非空 ⇒ 同批再落 {@code unit.SetArmyFormation}，并把同一个
  * {@code masterGov} 写进它的 {@code masterGov} 字段。{@code role} 为空但 {@code masterGov} 给了 ⇒ <b>只写 sd
  * 侧</b>（unit 侧不落 ArmyFormation，也就不设 {@code ArmyFormation.masterGov}）——preview 由 {@link
@@ -47,7 +47,7 @@ import java.util.Optional;
  * {@code armyId} 非空白；{@code member ≥ 1}；{@code speed ≥ 1}；{@code mobilityPerMille ∈
  * [1,1000]}；{@code equipment} 键非空、值 ≥ 0；{@code unitId} 不得与既有单位重复；{@code armyId} 不得与既有 Army
  * 重复；{@code (q,r)} 必须存在于当前 {@link GameMap}；{@code parent} 若给必须存在且当刻有效位置与落点同格；{@code masterGov}
- * 若给必须存在且带 {@link GovFormation}。批内域层拒（如同一 tick 的第二次改编）由 {@code submitBatch} 整条拒，逐条真拒因折成 {@code
+ * 若给必须存在且带 {@link GovernmentFormation}。批内域层拒（如同一 tick 的第二次改编）由 {@code submitBatch} 整条拒，逐条真拒因折成 {@code
  * REJECTED}。
  *
  * <p>★ <b>确定性 / 保序不可变</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；{@code equipment} 用 {@link
@@ -101,7 +101,7 @@ final class SpawnArmyPlan {
    * @param status 新单位状态（工具层已折；缺省 {@link #DEFAULT_STATUS}）
    * @param armyId Army id（工具层已给缺省；不得与既有 Army 重复）
    * @param role 兵种/职责短名（可选；给了才同批落 {@code unit.SetArmyFormation}）
-   * @param masterGov 认领的 GOV 单位 id（可选；给了必须存在且带 {@link GovFormation}）
+   * @param masterGov 认领的 GOV 单位 id（可选；给了必须存在且带 {@link GovernmentFormation}）
    * @throws IllegalArgumentException 任一具名前置不满足（工具折 {@code BAD_REQUEST}）
    */
   static Plan plan(
@@ -208,7 +208,7 @@ final class SpawnArmyPlan {
   }
 
   /**
-   * {@code masterGov} 必须存在且带 {@link GovFormation}（与 {@code sd.CreateArmy}/{@code UnitOperations}
+   * {@code masterGov} 必须存在且带 {@link GovernmentFormation}（与 {@code sd.CreateArmy}/{@code UnitOperations}
    * 同口径）。
    */
   private static void requireGovUnit(UnitState units, String govId, String field) {
@@ -218,8 +218,8 @@ final class SpawnArmyPlan {
     if (unit == null) {
       throw new IllegalArgumentException(field + " 指定的 GOV 单位不存在: " + govId);
     }
-    if (!(unit.module().orElse(null) instanceof GovFormation)) {
-      throw new IllegalArgumentException(field + " 指定的单位 " + govId + " 没有 GovFormation：不能作为 GOV");
+    if (!(unit.module().orElse(null) instanceof GovernmentFormation)) {
+      throw new IllegalArgumentException(field + " 指定的单位 " + govId + " 没有 GovernmentFormation：不能作为 GOV");
     }
   }
 

@@ -37,7 +37,7 @@ public final class SdCreateArmyTool extends AbstractNarrowWriteTool {
   @Override
   public String description() {
     return "建军：固定 sd.CreateArmy，载荷 {armyId, masterGovUnitId?, rootUnitId, name}"
-        + "（armyId/rootUnitId/name 必填；masterGovUnitId 缺省 = 未认主子，给了必须存在且带 GovFormation；"
+        + "（armyId/rootUnitId/name 必填；masterGovUnitId 缺省 = 未认主子，给了必须存在且带 GovernmentFormation；"
         + "★ 旧 nationId 键已拒并指路 masterGovUnitId）";
   }
 

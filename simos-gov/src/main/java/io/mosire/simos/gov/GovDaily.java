@@ -6,7 +6,7 @@ import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -30,7 +30,7 @@ import org.slf4j.Logger;
  * <p>★★ <b>边界与裁定</b>：
  *
  * <ul>
- *   <li><b>行政力与战力分开算</b>（用户裁定 1/2）：本类只读 {@code Unit.module} 里的 {@link GovFormation}（编制/政策），不产出任何战力；
+ *   <li><b>行政力与战力分开算</b>（用户裁定 1/2）：本类只读 {@code Unit.module} 里的 {@link GovernmentFormation}（编制/政策），不产出任何战力；
  *       军队 {@code ArmyFormation} 不参与本结算；
  *   <li><b>只发信号，不扣市场</b>（用户裁定 5/6）：缺口只写 {@link SignalDraft} 与 {@code lastShortfall*}
  *       读数，<b>不</b>自动去市场拿粮、 <b>不</b>自动裁人、<b>不</b>自动加税；决策人自己决定下一步；
@@ -42,7 +42,7 @@ import org.slf4j.Logger;
  * </ul>
  *
  * <p>★★ <b>状态损坏不静默</b>：office 的 {@code unitId} 在 {@code units} 里查无、或该单位没有 {@link
- * GovFormation}，一律当场抛 {@link IllegalStateException}——这是装配/数据故障，不能"跳过这个 office"把损坏藏起来。
+ * GovernmentFormation}，一律当场抛 {@link IllegalStateException}——这是装配/数据故障，不能"跳过这个 office"把损坏藏起来。
  *
  * <p>★★ <b>无有效位置</b>（{@code units.effectivePosition(...)} 为空）：该 office 本日<b>跳过 upkeep 与全部信号</b>，只把
  * efficiency 四个 per-mille 读数与 {@code tick} 更新到新读数上；{@code assessed/paid/shortfall} 六表清空（<b>空表不是"评估为
@@ -161,12 +161,12 @@ public final class GovDaily {
         throw new IllegalStateException("gov offices 引用了不存在的单位（状态损坏）: " + unitId);
       }
       UnitModule module = unit.module().orElse(null);
-      if (!(module instanceof GovFormation gov)) {
-        throw new IllegalStateException("gov offices 的单位缺少 GovFormation（状态损坏）: " + unitId);
+      if (!(module instanceof GovernmentFormation governmentFormation)) {
+        throw new IllegalStateException("gov offices 的单位缺少 GovernmentFormation（状态损坏）: " + unitId);
       }
 
       Map<HexCoord, GovDemand.HexDemand> demand = GovDemand.of(map, social, unit);
-      GovEfficiency.Efficiency efficiency = GovEfficiency.of(gov, demand);
+      GovEfficiency.Efficiency efficiency = GovEfficiency.of(governmentFormation, demand);
 
       Optional<HexCoord> seat = units.effectivePosition(unitId, SimosTimestamp.of(tick));
       if (seat.isEmpty()) {
@@ -177,8 +177,8 @@ public final class GovDaily {
       HexCoord at = seat.get();
 
       // ---- 评估与支付（顺序固定 grain → cloth → money；0 需求不发）----
-      OfficePolicy policy = gov.policy();
-      long totalStaff = totalStaff(gov);
+      OfficePolicy policy = governmentFormation.policy();
+      long totalStaff = totalStaff(governmentFormation);
       long grainNeed = totalStaff * policy.grainPerStaffPerTick();
       long clothNeed =
           totalStaff * Math.floorDiv(policy.clothPerStaffPerCycle(), daysInYearAtSettlement);
@@ -218,8 +218,8 @@ public final class GovDaily {
                     moneyShortfall)));
       }
 
-      long securitySupply = GovEfficiency.securitySupply(gov);
-      long paperworkSupply = GovEfficiency.paperworkSupply(gov);
+      long securitySupply = GovEfficiency.securitySupply(governmentFormation);
+      long paperworkSupply = GovEfficiency.paperworkSupply(governmentFormation);
       long securityDemand = GovEfficiency.securityDemand(demand);
       long paperworkDemand = GovEfficiency.paperworkDemand(demand);
       if (efficiency.securityCoveragePerMille() < GovRules.COVERAGE_FULL_PER_MILLE) {
@@ -362,9 +362,9 @@ public final class GovDaily {
   }
 
   /** 编制总人数（各角色求和；超编时这个数就是"超"的分子来源）。 */
-  private static long totalStaff(GovFormation gov) {
+  private static long totalStaff(GovernmentFormation governmentFormation) {
     long total = 0L;
-    for (long count : gov.staff().values()) {
+    for (long count : governmentFormation.staff().values()) {
       total += count;
     }
     return total;

@@ -20,7 +20,7 @@ import java.util.Map;
  *
  * <p>★ <b>保序不可变</b>：六张表都用 {@code LinkedHashMap} 拷贝 + 在赋值处 {@code Collections.unmodifiableMap}
  * 冻结（<b>绝不用 {@code Map.copyOf}</b>——它的迭代序不是内容的纯函数，字节级往返因此不成立）。冻结写在赋值处是 SpotBugs 的 {@code
- * EI_EXPOSE_REP} 唯一认得的形态（与 {@code GovFormation} / {@code ActorData} 同一条纪律）。
+ * EI_EXPOSE_REP} 唯一认得的形态（与 {@code GovernmentFormation} / {@code ActorData} 同一条纪律）。
  *
  * <p>★ <b>构造期校验</b>：{@code unitId} 非 null；{@code tick ≥ 0}；六张表非 null、键/值非 null、值 ≥ 0； {@code
  * securityCoveragePerMille}/{@code paperworkCoveragePerMille ∈ [0,1000]}；{@code efficiencyPerMille

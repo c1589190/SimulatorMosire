@@ -30,7 +30,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -48,7 +48,7 @@ import java.util.UUID;
  * GOV 单位当刻有效位置折成一条 {@code actor.RemitGovTreasury} 命令：源国库扣、目标国库加， 一条命令、一条 revision、整条原子。
  *
  * <p>★★ <b>preview / apply 共用同一份解析与视图</b>：preview 只读 {@link QueryService} 给出的 base state，找两个单位、
- * 要求都带 {@link GovFormation} 且当刻有效位置非空，返回源/目标位置、请求量与命令预览（含源国库可支配量）， <b>一个字节都不写</b>；preview=false
+ * 要求都带 {@link GovernmentFormation} 且当刻有效位置非空，返回源/目标位置、请求量与命令预览（含源国库可支配量）， <b>一个字节都不写</b>；preview=false
  * 把同一份解析结果组一条 {@link CommandEnvelope} 走 {@link CoreSimos#submit}。 金额语义（源账必须存在、可支配量足、目标缺账正增量新建）由域层
  * handler 判，本工具不重复实现。
  *
@@ -116,7 +116,7 @@ public final class GovRemitTool implements AgentTool {
         + "reason(必填非空白), preview?(缺省 true=只读预览), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision?(preview=false 必填)}。"
-        + "两个单位都必须存在、带 GovFormation 且有当刻有效位置；preview 返回源国库可支配量（账不存在 = null，不填 0）"
+        + "两个单位都必须存在、带 GovernmentFormation 且有当刻有效位置；preview 返回源国库可支配量（账不存在 = null，不填 0）"
         + "与 commandsPreview；apply 由域层判源账存在 / 可支配量足（不足带资源、请求、可用），目标账缺 ⇒ 五参新建。"
         + "★ GM 允许任意两个 GOV 之间转移（不要求 to 是 from.superiorGov）；决策人路径的 superior 校验留 R3b。";
   }
@@ -125,9 +125,9 @@ public final class GovRemitTool implements AgentTool {
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put(
-        "fromGovUnitId", ToolSupport.prop("string", "源 GOV 单位 id（必填；必须存在且带 GovFormation、有当刻有效位置）"));
+        "fromGovUnitId", ToolSupport.prop("string", "源 GOV 单位 id（必填；必须存在且带 GovernmentFormation、有当刻有效位置）"));
     props.put(
-        "toGovUnitId", ToolSupport.prop("string", "目标 GOV 单位 id（必填；必须存在且带 GovFormation、有当刻有效位置）"));
+        "toGovUnitId", ToolSupport.prop("string", "目标 GOV 单位 id（必填；必须存在且带 GovernmentFormation、有当刻有效位置）"));
     props.put(
         "grain",
         ToolSupport.prop("integer", "上缴粮（最小计量单位；可选，缺省 0；不得为负；grain/cloth/money 至少一个 > 0）"));
@@ -251,7 +251,7 @@ public final class GovRemitTool implements AgentTool {
   }
 
   /**
-   * 解析一个 GOV 单位的国库落点：必须存在、带 {@link GovFormation}、有<b>当刻有效位置</b> （与 GUI / scope / facet 同口径走 {@link
+   * 解析一个 GOV 单位的国库落点：必须存在、带 {@link GovernmentFormation}、有<b>当刻有效位置</b> （与 GUI / scope / facet 同口径走 {@link
    * UnitState#effectivePosition}）—— 任一不满足 ⇒ {@link IllegalArgumentException}（由 {@link #execute} 折成
    * BAD_REQUEST，零 revision）。
    */
@@ -263,9 +263,9 @@ public final class GovRemitTool implements AgentTool {
     if (unit == null) {
       throw new IllegalArgumentException("参数 " + field + " 指定的单位不存在: " + rawUnitId);
     }
-    if (!(unit.module().orElse(null) instanceof GovFormation)) {
+    if (!(unit.module().orElse(null) instanceof GovernmentFormation)) {
       throw new IllegalArgumentException(
-          "参数 " + field + " 指定的单位没有 GovFormation，不能作为 GOV: " + rawUnitId);
+          "参数 " + field + " 指定的单位没有 GovernmentFormation，不能作为 GOV: " + rawUnitId);
     }
     HexCoord at =
         units

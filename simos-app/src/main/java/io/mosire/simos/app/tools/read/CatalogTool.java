@@ -139,15 +139,15 @@ public final class CatalogTool implements AgentTool {
                   + "领导层家户具名配置（键必须在本单位 households 里；非空时 staff 只是家户人口投影、"
                   + "unit.RecruitStaff/DismissStaff 具名拒）；"
                   + "既有 ArmyFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
-                  + "superiorGov 必须存在且带 GovFormation、不得指向自身；同类型重复设置 = 整体替换）"),
+                  + "superiorGov 必须存在且带 GovernmentFormation、不得指向自身；同类型重复设置 = 整体替换）"),
           Map.entry(
               "unit.SetArmyFormation",
               "unitId, masterGov?, role,"
                   + " householdDuties?[{household,kind(SOLDIER|NCO|OFFICER|COMMANDER),appointment,commandOf?}]"
                   + "（★ S3b：householdDuties 是以 HouseholdId 为键的军官/军职家户具名配置"
                   + "（键必须在本单位 households 里）；缺省 = 保持既有配置；"
-                  + "role 必填非空白；masterGov 缺省 = 未认主子，给了必须存在且带 GovFormation；"
-                  + "既有 GovFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
+                  + "role 必填非空白；masterGov 缺省 = 未认主子，给了必须存在且带 GovernmentFormation；"
+                  + "既有 GovernmentFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
                   + "同类型重复设置 = 整体替换）"),
           Map.entry(
               "unit.SetGovPolicy",
@@ -158,7 +158,7 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "unit.SetGovSuperior",
               "unitId, superiorGov?（缺省/null = 中央）"
-                  + "（★ 非空必须存在且带 GovFormation、不得指向自身；沿 superiorGov 上溯不得成环，"
+                  + "（★ 非空必须存在且带 GovernmentFormation、不得指向自身；沿 superiorGov 上溯不得成环，"
                   + "命中和 seen 重复即拒、最多 64 层；单位本身必须是 GOV）"),
           Map.entry(
               "unit.RecruitStaff",
@@ -444,13 +444,13 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "sd.CreateArmy",
               "armyId, masterGovUnitId?, rootUnitId, name"
-                  + "（★ masterGovUnitId 缺省 = 未认主子，给了必须存在且带 GovFormation；"
+                  + "（★ masterGovUnitId 缺省 = 未认主子，给了必须存在且带 GovernmentFormation；"
                   + "旧 nationId 键已拒并指路 masterGovUnitId）"),
           Map.entry(
               "sd.SetArmyMasterGov",
               "armyId, masterGovUnitId?"
                   + "（★ 已存在 Army 的主子改派/解除：masterGovUnitId 缺席/null/空串 = 解除认领；"
-                  + "给了必须存在且带 GovFormation；armyId 不存在 ⇒ 具名拒；只改 sd 侧，不碰 unit 侧 ArmyFormation；"
+                  + "给了必须存在且带 GovernmentFormation；armyId 不存在 ⇒ 具名拒；只改 sd 侧，不碰 unit 侧 ArmyFormation；"
                   + "GM-only）"),
           Map.entry(
               "sd.CreateDecisionMaker", "id, affiliation{kind,id}, allowedTools[字符串...], cadence"),

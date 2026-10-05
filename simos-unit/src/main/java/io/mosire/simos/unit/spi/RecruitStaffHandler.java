@@ -23,7 +23,7 @@ import java.util.Objects;
  *  "sources":[{"kind":"social_group","id":"g-1","count":2},{"kind":"unit","id":"u-team","count":1}]}
  * }</pre>
  *
- * <p>★★ <b>这是一条"只入编、不扣人"的裸命令，不是独立可用的招募入口</b>：本 handler 只把 {@code GovFormation.staff[role] +=
+ * <p>★★ <b>这是一条"只入编、不扣人"的裸命令，不是独立可用的招募入口</b>：本 handler 只把 {@code GovernmentFormation.staff[role] +=
  * count}；它不读社会批次、不扣人口、不按 {@code sources} 扣任何来源。 <b>裸提只入编不扣人</b>；受支持的调用面是 10b-ii 的配套工具批（{@code
  * social.SeedGroups} 扣人 + 本命令入编 + {@code sd.PutInfo} 记录，一批一条 revision）或决策令批——人员扣减、来源守恒与审计都在那一层。
  *

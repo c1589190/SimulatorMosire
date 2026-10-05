@@ -11,7 +11,7 @@ import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.household.Household;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -25,7 +25,7 @@ import java.util.Optional;
  * ★★ <b>中央/地方 GOV 家户与政府记录的闭环校核</b>（P2-C §13.7；app 组合根是唯一同时看得见 unit 与 economy 的地方）。
  *
  * <pre>
- * 每个带 GovFormation 的 unit：
+ * 每个带 GovernmentFormation 的 unit：
  *   Unit.households 里恰一个政府家户 H = hh-gov-&lt;unitId&gt;
  *   Social.households[H].location == UNIT(&lt;unitId&gt;)          ← 2026-10-09 位置锚点（政府家户跟随单位）
  *   economy.governments[gov-unit-&lt;unitId&gt;].treasury == HouseholdActors.of(H)
@@ -36,7 +36,7 @@ import java.util.Optional;
  * HouseholdLocation.Unit}（social）、{@link Government#treasury()}（economy）、{@code actor} 的账户（政府家户账户）。
  * 创建侧由 {@code social.CreateHousehold(UNIT)} + {@code economy.RegisterGovernment} + {@code
  * actor.EnsureHouseholdAccount} 成对写；本类在推进入口把“四边都在且逐值对应”判死 —— 少了任何一边都 fail-closed，不把“没有政府记录”读成“没有政府”、也不让某个
- * GOV 单位悄悄共用别家的国库。★ 2026-10-09 唯一列表裁定后本类不再读 {@code GovFormation.households}（该组件已删除），改读
+ * GOV 单位悄悄共用别家的国库。★ 2026-10-09 唯一列表裁定后本类不再读 {@code GovernmentFormation.households}（该组件已删除），改读
  * {@code Unit.households}；并新增位置锚点校验，拒绝“家户列表里有、位置却钉在旧 HEX”的僵尸国库。
  *
  * <p>★ <b>只读 + 纯函数</b>：不改入参；不一致以 {@link Mismatch} 具名列出，{@link #requireConsistent} 折成一条异常。
@@ -72,7 +72,7 @@ public final class GovernmentHouseholdWiring {
     List<Unit> ordered = new ArrayList<>(units.units().values());
     ordered.sort(Comparator.comparing(unit -> unit.id().value()));
     for (Unit unit : ordered) {
-      if (!(unit.module().orElse(null) instanceof GovFormation)) {
+      if (!(unit.module().orElse(null) instanceof GovernmentFormation)) {
         continue;
       }
       HouseholdId governmentHousehold = null;
@@ -182,7 +182,7 @@ public final class GovernmentHouseholdWiring {
         continue;
       }
       Unit unit = units.units().get(UnitId.parse(unitRef.get()));
-      if (unit == null || !(unit.module().orElse(null) instanceof GovFormation)) {
+      if (unit == null || !(unit.module().orElse(null) instanceof GovernmentFormation)) {
         out.add(
             new Mismatch(
                 "GOV_RECORD_WITHOUT_UNIT",

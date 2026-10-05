@@ -51,7 +51,7 @@ import java.util.UUID;
  * <p>★★ <b>preview / apply 共用同一份只读 pre-scan</b>：唯一语义落点在 {@link
  * RegionClearStructuresPlan#scan}；本类只做四件事——参数形状解析、读 base state、把 Plan 折成视图、组批与折叠结局。
  *
- * <p>★★ <b>候选识别（详见 Plan 类注）</b>：GOV 单位按"带 GovFormation + 当刻有效位置在目标 Region hex 集"；决策人按 Gov 归属且
+ * <p>★★ <b>候选识别（详见 Plan 类注）</b>：GOV 单位按"带 GovernmentFormation + 当刻有效位置在目标 Region hex 集"；决策人按 Gov 归属且
  * govUnit 在候选单位集；Region 只自动认 {@code sanitize(regionId) + "__P" + 两位以上数字} 且真子集的省， 其余相交 Region 只列
  * preview + warning，必须显式 {@code regionIds} 才删。显式清单里不满足自动规则的项仍按显式执行， 但会在 warning 里逐条说明。
  *
@@ -112,7 +112,7 @@ public final class RegionClearStructuresTool implements AgentTool {
   @Override
   public String description() {
     return "GM 区域结构清空（组合工具，一批 = 一条 revision）：按 regionId 只读 pre-scan 生成器创建的结构——"
-        + "带 GovFormation 且当刻有效位置在目标 Region hex 集内的 GOV 单位、这些 GOV 的 Gov 归属决策人、以及"
+        + "带 GovernmentFormation 且当刻有效位置在目标 Region hex 集内的 GOV 单位、这些 GOV 的 Gov 归属决策人、以及"
         + " id = sanitize(regionId)+\"__P\"+两位以上数字 且 hexes 是目标 hex 真子集的省 Region；"
         + "其它相交 Region 只在 overlappingRegions/warnings 里列出，不自动删。"
         + "固定批序 sd.DeleteDecisionMaker × N → unit.DisbandUnit × N → map.DeleteRegion × N → sd.PutInfo；"

@@ -93,7 +93,7 @@ public final class GovDispatchTeamTool implements AgentTool {
   @Override
   public String description() {
     return "GM 从 GOV 编制派出调查组（组合工具，一批 = 一条 revision）。★ S3b：Unit.manpower 已退役，本工具尚未接线到家户转移 ⇒ apply 会被 unit.CreateUnit 具名拒；"
-        + "参数 {unitId(必填, 带 GovFormation 的 GOV), count(必填 ≥ 1), role?(SCRIBE|YAMEN|POST，缺省 SCRIBE), "
+        + "参数 {unitId(必填, 带 GovernmentFormation 的 GOV), count(必填 ≥ 1), role?(SCRIBE|YAMEN|POST，缺省 SCRIBE), "
         + "armed?(缺省 false；true = 同批加 ArmyFormation masterGov=unitId role=armed-team), newUnitId?(可选；"
         + "缺省确定性生成), reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
@@ -110,7 +110,7 @@ public final class GovDispatchTeamTool implements AgentTool {
   @Override
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
-    props.put("unitId", ToolSupport.prop("string", "来源：带 GovFormation 的 GOV 单位 id"));
+    props.put("unitId", ToolSupport.prop("string", "来源：带 GovernmentFormation 的 GOV 单位 id"));
     props.put("count", ToolSupport.prop("integer", "出人数量（≥ 1；不得超过该角色现有在编与 int 上限）"));
     props.put("role", ToolSupport.prop("string", "出人角色：SCRIBE|YAMEN|POST（可选；缺省 SCRIBE）"));
     props.put(

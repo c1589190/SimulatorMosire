@@ -49,7 +49,7 @@ import io.mosire.simos.social.api.population.AgeBracketView;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.population.PopulationDynamics;
 import io.mosire.simos.social.population.PopulationGroup;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitModule;
@@ -228,14 +228,14 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           householdEconomyProjection.unresolved().get(0));
     }
     EconomyData economy = householdEconomyProjection.data();
-    // ★★ P2-C §13.7：经济已激活 + 存在 GOV 单位时，推进入口把"GovFormation 政府家户 ↔ HouseholdEconomy ↔ 政府记录 ↔ 国库账户"
+    // ★★ P2-C §13.7：经济已激活 + 存在 GOV 单位时，推进入口把"GovernmentFormation 政府家户 ↔ HouseholdEconomy ↔ 政府记录 ↔ 国库账户"
     //   这条闭环判死 —— 缺任何一边都具名失败，不把"没有政府记录"读成"没有政府"。
     if (economy.meta().isPresent() && units != null) {
       GovernmentHouseholdWiring.requireConsistent(economy, social, units);
     }
 
     // ★★ P2-D：gov 切片（GOV 单位 → 每 tick 行政读数）与地图（Region 拓扑）在日循环之前读入。
-    //   引导（沿用阶段 11b 的口径）：只要单位带 GovFormation 而 gov 片还没有它的读数，就为本推进补一条
+    //   引导（沿用阶段 11b 的口径）：只要单位带 GovernmentFormation 而 gov 片还没有它的读数，就为本推进补一条
     //   GovOfficeState.empty(...) 作为基线 —— 否则"建了 GOV 编制"永远不会激活行政结算（没有人负责首建读数）。
     GovState govState = govOf(state);
     GameMap map = mapOfOrNull(state);
@@ -793,7 +793,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
   // ── P2-D：行政引导 / 效率表 / 信号折叠 / 日累计读数 ────────────────────────────────────
 
   /**
-   * ★★ <b>行政读数引导</b>（阶段 11b 口径不变）：为"带 {@link GovFormation} 但 gov 片还没有读数"的单位补一条 {@link
+   * ★★ <b>行政读数引导</b>（阶段 11b 口径不变）：为"带 {@link GovernmentFormation} 但 gov 片还没有读数"的单位补一条 {@link
    * GovOfficeState#empty(UnitId, long)} 作为本推进基线。
    *
    * <p>确定性：缺读数单位按 {@link UnitId#value()} 升序追加；已有读数原样保留（键序不变）。没有任何缺项 ⇒ 返回入参同一实例 （无 GOV/已引导世界零变化）。
@@ -802,7 +802,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     LinkedHashMap<UnitId, GovOfficeState> offices = new LinkedHashMap<>(base.offices());
     List<UnitId> missing = new ArrayList<>();
     for (Unit unit : units.units().values()) {
-      if (unit.module().orElse(null) instanceof GovFormation && !offices.containsKey(unit.id())) {
+      if (unit.module().orElse(null) instanceof GovernmentFormation && !offices.containsKey(unit.id())) {
         missing.add(unit.id());
       }
     }
@@ -819,7 +819,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
   /**
    * ★★ <b>算当日 GOV 效率表</b>（单位 → efficiency‰），供辖区日税查表。
    *
-   * <p>口径：{@code govState.offices()} 里每个 office 先取单位上的 {@link GovFormation}（没有 ⇒ 不进表 = 税侧整单位跳过）； 再用
+   * <p>口径：{@code govState.offices()} 里每个 office 先取单位上的 {@link GovernmentFormation}（没有 ⇒ 不进表 = 税侧整单位跳过）； 再用
    * {@link GovDemand#of} + {@link GovEfficiency#of} 现算。★ 检查该单位管辖的每个 Region 是否都在 map 里， 缺的累积进 {@code
    * missingRegions}（只累积、不抛；调用方整轮汇总成一条具名 WARN）。
    *
@@ -840,8 +840,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         continue; // 状态损坏由 GovDaily.settle 当场抛；税侧只保证"查不到效率就不征"。
       }
       UnitModule module = unit.module().orElse(null);
-      if (!(module instanceof GovFormation formation)) {
-        continue; // 没有 GovFormation ⇒ 不进效率表 ⇒ 税侧整单位跳过（无 GOV 不征）。
+      if (!(module instanceof GovernmentFormation formation)) {
+        continue; // 没有 GovernmentFormation ⇒ 不进效率表 ⇒ 税侧整单位跳过（无 GOV 不征）。
       }
       unit.jurisdiction()
           .ifPresent(

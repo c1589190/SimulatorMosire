@@ -16,7 +16,7 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.unit.ArmyFormation;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -175,7 +175,7 @@ final class LevyRegionPlan {
     //     ② 认领了 masterGov 的军队单位 → 该 GOV 的政府家户；
     //     ③ 否则 unit.households 恰一个 → 用它；零个/多个 ⇒ 不猜（多个 = 具名拒，零个且要动账 = 具名拒）。
     String treasuryHousehold;
-    if (unit.module().orElse(null) instanceof GovFormation) {
+    if (unit.module().orElse(null) instanceof GovernmentFormation) {
       treasuryHousehold =
           GovernmentHouseholdResolver.requireGovernmentHousehold(unit, unitId).value();
     } else {
@@ -185,7 +185,7 @@ final class LevyRegionPlan {
       if (army != null && army.masterGov().isPresent()) {
         UnitId masterId = army.masterGov().get();
         Unit master = units.units().get(masterId);
-        if (master == null || !(master.module().orElse(null) instanceof GovFormation)) {
+        if (master == null || !(master.module().orElse(null) instanceof GovernmentFormation)) {
           throw new IllegalArgumentException(
               "单位 "
                   + unitId

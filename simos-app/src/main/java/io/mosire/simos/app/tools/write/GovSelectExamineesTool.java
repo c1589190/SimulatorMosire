@@ -115,7 +115,7 @@ public final class GovSelectExamineesTool implements AgentTool {
   @Override
   public String description() {
     return "GM 科举选人：从来源 GOV 辖区社会批次选人，同批建无标签纯人员单位（可选规划到目的 GOV）（组合工具，一批 = 一条 revision）。★ S3b：Unit.manpower 已退役，本工具尚未接线到家户转移 ⇒ apply 会被 unit.CreateUnit 具名拒；参数与守恒口径如下："
-        + "参数 {unitId(必填, 带 GovFormation 的来源 GOV), count(必填 ≥ 1), targetGovUnitId?(目的 GOV), "
+        + "参数 {unitId(必填, 带 GovernmentFormation 的来源 GOV), count(必填 ≥ 1), targetGovUnitId?(目的 GOV), "
         + "role?(行动记录角色标签，缺省 EXAMINEE), newUnitId?(可选；缺省确定性生成), reason(必填), "
         + "preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
@@ -134,7 +134,7 @@ public final class GovSelectExamineesTool implements AgentTool {
   @Override
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
-    props.put("unitId", ToolSupport.prop("string", "来源：带 GovFormation 的省级 GOV 单位 id"));
+    props.put("unitId", ToolSupport.prop("string", "来源：带 GovernmentFormation 的省级 GOV 单位 id"));
     props.put("count", ToolSupport.prop("integer", "选送人数（≥ 1；不得超过 int 上限）"));
     props.put("targetGovUnitId", ToolSupport.prop("string", "目的 GOV 单位 id（可选；给了就规划从来源到它的路线）"));
     props.put("role", ToolSupport.prop("string", "行动记录里的角色标签（可选；缺省 EXAMINEE；不落单位字段）"));

@@ -25,7 +25,7 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
@@ -51,7 +51,7 @@ import java.util.UUID;
  * GovDemand.HexDemand#paperwork()} 逐格求和得 {@code securityDemand}/{@code paperworkDemand}。
  *
  * <p>★★ <b>目标编制</b>：{@code YAMEN = securityDemand}、{@code SCRIBE = paperworkDemand}、{@code POST} 不设
- * （= 0）；两维都为 0 ⇒ 空 staff map（不写 0 键）；当前 {@code GovFormation.staff()} 与目标相等 ⇒ 该 GOV 不改。 每个要改的 GOV
+ * （= 0）；两维都为 0 ⇒ 空 staff map（不写 0 键）；当前 {@code GovernmentFormation.staff()} 与目标相等 ⇒ 该 GOV 不改。 每个要改的 GOV
  * 折一条 {@code unit.SetGovFormation}：载荷带全 {@code level}、{@code superiorGov?}（有才给）、 {@code staff} 与
  * <b>当前 policy 的五个字段</b>（{@code grainPerStaffPerTick}/{@code clothPerStaffPerCycle}/{@code
  * moneyPerStaffPerTick}/{@code retirementPerStaff}/{@code staffCap}）——同类型是整体 替换，缺 policy 会回落
@@ -80,7 +80,7 @@ public final class GovApplyStaffingTool implements AgentTool {
   public static final String NAME = "simos.gov.applyStaffing";
 
   /** 本工具提交的唯一命令类型（引用窄工具的字面量，不在本类另抄一份）。 */
-  private static final String COMMAND_TYPE = UnitSetGovFormationTool.NAME;
+  private static final String COMMAND_TYPE = UnitSetGovernmentFormationTool.NAME;
 
   /**
    * 本工具声明的资源面：map / social 只读、unit 可写（GM 侧 unit unlimited）。
@@ -224,7 +224,7 @@ public final class GovApplyStaffingTool implements AgentTool {
   // ── 推导（preview / apply 共用；纯读，不碰 core）──────────────────────────────────────
 
   /**
-   * ★ 唯一推导入口：扫描所有 {@link Unit}，按 {@code unit.id().value()} 字典序只处理带 {@link GovFormation} 的单位； 逐 GOV
+   * ★ 唯一推导入口：扫描所有 {@link Unit}，按 {@code unit.id().value()} 字典序只处理带 {@link GovernmentFormation} 的单位； 逐 GOV
    * 用 {@link GovDemand#of} 求和并算出目标 staff 与是否要改。不改任何状态。
    */
   private static List<GovAssessment> derive(GameMap map, SocialData social, UnitState units) {
@@ -233,14 +233,14 @@ public final class GovApplyStaffingTool implements AgentTool {
     Objects.requireNonNull(units, "units");
     List<Unit> govs = new ArrayList<>();
     for (Unit unit : units.units().values()) {
-      if (unit.module().orElse(null) instanceof GovFormation) {
+      if (unit.module().orElse(null) instanceof GovernmentFormation) {
         govs.add(unit);
       }
     }
     govs.sort(Comparator.comparing(unit -> unit.id().value()));
     List<GovAssessment> assessments = new ArrayList<>(govs.size());
     for (Unit unit : govs) {
-      GovFormation formation = (GovFormation) unit.module().orElseThrow();
+      GovernmentFormation formation = (GovernmentFormation) unit.module().orElseThrow();
       Map<HexCoord, GovDemand.HexDemand> demand = GovDemand.of(map, social, unit);
       long securityDemand = 0L;
       long paperworkDemand = 0L;
@@ -312,7 +312,7 @@ public final class GovApplyStaffingTool implements AgentTool {
    * 是目标表、{@code policy} 是当前政策<b>五字段全带</b>（同类型整体替换，缺项会回落 defaults / 丢 staffCap）。
    */
   private static Map<String, Object> commandPayload(
-      UnitId unitId, GovFormation formation, Map<StaffRole, Long> targetStaff) {
+      UnitId unitId, GovernmentFormation formation, Map<StaffRole, Long> targetStaff) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("unitId", unitId.value());
     payload.put("level", formation.level().name());
@@ -471,7 +471,7 @@ public final class GovApplyStaffingTool implements AgentTool {
    */
   private record GovAssessment(
       String unitId,
-      GovFormation formation,
+      GovernmentFormation formation,
       List<String> jurisdictionRegionIds,
       long securityDemand,
       long paperworkDemand,

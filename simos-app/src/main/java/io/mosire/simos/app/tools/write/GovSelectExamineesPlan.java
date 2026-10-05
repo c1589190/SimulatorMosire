@@ -9,7 +9,7 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -62,7 +62,7 @@ import java.util.Set;
  * id；纯状态函数，不用随机量/墙钟）。
  *
  * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：来源单位存在且带 {@link
- * GovFormation}；{@code count ≥ 1}（{@code unit.CreateUnit} 的 manpower amount 是 long，不再有 int 上限）；来源
+ * GovernmentFormation}；{@code count ≥ 1}（{@code unit.CreateUnit} 的 manpower amount 是 long，不再有 int 上限）；来源
  * GOV 当刻必须有有效位置（否则新单位没有落点）；{@code targetGovUnitId} 若给必须是存在的 GOV，且可达 （A* 无路 ⇒ 具名拒）；无 jurisdiction /
  * 辖区 Region 在地图里查无 ⇒ 具名拒；辖区 Region hex 重叠导致同一批次被 两个 Region 选中 ⇒ 具名拒（判据与 recruit 同款）。
  *
@@ -98,7 +98,7 @@ final class GovSelectExamineesPlan {
    * 纯推导入口（见类注的来源口径与校验清单）。
    *
    * @param state 读数所在的状态（preview / apply 都取<b>同一坐标</b>的状态）
-   * @param unitId 来源 GOV 单位 id（必须带 {@link GovFormation}）
+   * @param unitId 来源 GOV 单位 id（必须带 {@link GovernmentFormation}）
    * @param count 选送人数（≥ 1，且 ≤ {@code Integer.MAX_VALUE}）
    * @param targetGovUnitId 目的 GOV（可选；给了就要求存在、是 GOV，并规划到它当刻位置的路线）
    * @param roleText 行动记录里的角色标签（可选；缺省 {@value #DEFAULT_ROLE}）
@@ -148,7 +148,7 @@ final class GovSelectExamineesPlan {
     if (source == null) {
       throw new IllegalArgumentException("来源 GOV 单位不存在: " + unitId);
     }
-    requireGovFormation(source, unitId);
+    requireGovernmentFormation(source, unitId);
     Optional<HexCoord> sourceAt = units.effectivePosition(source.id(), timestamp);
     if (sourceAt.isEmpty()) {
       throw new IllegalArgumentException("来源 GOV " + unitId + " 当刻没有有效位置：新单位落点无法确定；先 unit.PlaceAt");
@@ -166,7 +166,7 @@ final class GovSelectExamineesPlan {
       if (target == null) {
         throw new IllegalArgumentException("目的 GOV 单位不存在: " + targetText);
       }
-      requireGovFormation(target, targetText);
+      requireGovernmentFormation(target, targetText);
       Optional<HexCoord> at =
           target.id().equals(source.id())
               ? sourceAt
@@ -317,13 +317,13 @@ final class GovSelectExamineesPlan {
     throw new IllegalArgumentException("确定性生成的新单位 id 后缀已用尽（unit 切片里 " + fallbackBase + "-* 全部被占用）");
   }
 
-  /** 单位必须带 {@link GovFormation}（本工具只做 GOV 侧的人员流转）。 */
-  private static GovFormation requireGovFormation(Unit unit, String unitId) {
-    if (unit.module().orElse(null) instanceof GovFormation gov) {
-      return gov;
+  /** 单位必须带 {@link GovernmentFormation}（本工具只做 GOV 侧的人员流转）。 */
+  private static GovernmentFormation requireGovernmentFormation(Unit unit, String unitId) {
+    if (unit.module().orElse(null) instanceof GovernmentFormation governmentFormation) {
+      return governmentFormation;
     }
     throw new IllegalArgumentException(
-        "单位 " + unitId + " 没有 GovFormation：本工具只对 GOV 单位；先 unit.SetGovFormation");
+        "单位 " + unitId + " 没有 GovernmentFormation：本工具只对 GOV 单位；先 unit.SetGovFormation");
   }
 
   /**

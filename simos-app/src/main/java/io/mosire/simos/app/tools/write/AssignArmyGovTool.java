@@ -46,7 +46,7 @@ import java.util.UUID;
  * → {@code sd.PutInfo}；不需要同步时第一条缺席。全部共享同一 batchId 与同一 branch/expectedRevision。
  *
  * <p>★★ <b>{@code masterGovUnitId} 三态</b>：缺席 / {@code null} / 空串（含空白串）= 解除认领；给了非空白值必须存在且带 {@code
- * GovFormation}（preview 的前置校验与域层同口径）。
+ * GovernmentFormation}（preview 的前置校验与域层同口径）。
  *
  * <p>★★ <b>{@code syncUnitSide} / {@code role}</b>：缺省 {@code syncUnitSide=true}。root unit 已有 {@code
  * ArmyFormation} ⇒ 用它的原 role，只同步 masterGov（解除时 {@code unit.SetArmyFormation} 载荷不带 {@code masterGov}
@@ -62,7 +62,7 @@ import java.util.UUID;
  *
  * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / armyId 不存在 / root unit 不存在 / 新主子不存在或非 GOV / 需要同步 unit 侧却没有 role ⇒
  * {@link IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒（如 root 已带 {@code
- * GovFormation}、同 tick 二次改编）⇒ {@code REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛
+ * GovernmentFormation}、同 tick 二次改编）⇒ {@code REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛
  * {@link ResourceDeniedException}（由唯一入口折资源拒因）。
  */
 public final class AssignArmyGovTool implements AgentTool {
@@ -112,12 +112,12 @@ public final class AssignArmyGovTool implements AgentTool {
   public String description() {
     return "GM 改派/解除 Army 主子 GOV（组合工具，一批 = 一条 revision）："
         + "参数 {armyId(必填, 必须已存在), masterGovUnitId?(可空/缺省/空串 = 解除认领; "
-        + "给了必须存在且带 GovFormation), syncUnitSide?(缺省 true), role?(可选; root 还没有 ArmyFormation "
+        + "给了必须存在且带 GovernmentFormation), syncUnitSide?(缺省 true), role?(可选; root 还没有 ArmyFormation "
         + "且 syncUnitSide=true 时必填；root 已有 ArmyFormation 时用它的原 role), reason(必填非空白), "
         + "preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision?(preview=false 必填，>=0)}。"
-        + "前置：Army 与 root unit 必须已存在；新主子必须存在且带 GovFormation；syncUnitSide=true 且 root 无 "
+        + "前置：Army 与 root unit 必须已存在；新主子必须存在且带 GovernmentFormation；syncUnitSide=true 且 root 无 "
         + "ArmyFormation 时必须有 role，否则 BAD_REQUEST（零 revision）。"
         + "批顺序："
         + "[syncUnitSide: unit.SetArmyFormation] → sd.SetArmyMasterGov → sd.PutInfo"
@@ -137,7 +137,7 @@ public final class AssignArmyGovTool implements AgentTool {
     props.put("armyId", ToolSupport.prop("string", "Army id（必填，必须已存在）"));
     props.put(
         "masterGovUnitId",
-        ToolSupport.prop("string", "新主子 GOV 单位 id（可空/缺省/空串 = 解除认领；给了必须存在且带 GovFormation）"));
+        ToolSupport.prop("string", "新主子 GOV 单位 id（可空/缺省/空串 = 解除认领；给了必须存在且带 GovernmentFormation）"));
     props.put(
         "syncUnitSide",
         ToolSupport.prop("boolean", "是否同批同步 root unit 的 ArmyFormation.masterGov（缺省 true）"));

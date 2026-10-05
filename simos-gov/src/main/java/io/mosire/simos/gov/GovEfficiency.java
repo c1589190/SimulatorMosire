@@ -1,7 +1,7 @@
 package io.mosire.simos.gov;
 
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.StaffRole;
 import java.util.Map;
 
@@ -58,16 +58,16 @@ public final class GovEfficiency {
   /**
    * 算一个 GOV 编制的行政效率读数。
    *
-   * @param gov 编制（{@code staff} 提供供给、{@code policy} 不参与效率）；不得为 null
+   * @param governmentFormation 编制（{@code staff} 提供供给、{@code policy} 不参与效率）；不得为 null
    * @param demand 逐格需求（{@link GovDemand#of} 的输出；空表 = 无需求）；不得为 null、键值不得为 null
    * @return 覆盖率 / 加成 / 效率读数（四个字段都做界校验）
    */
-  public static Efficiency of(GovFormation gov, Map<HexCoord, GovDemand.HexDemand> demand) {
-    requireGov(gov);
+  public static Efficiency of(GovernmentFormation governmentFormation, Map<HexCoord, GovDemand.HexDemand> demand) {
+    requireGovernmentFormation(governmentFormation);
     requireDemand(demand);
 
-    long securitySupply = securitySupply(gov);
-    long paperworkSupply = paperworkSupply(gov);
+    long securitySupply = securitySupply(governmentFormation);
+    long paperworkSupply = paperworkSupply(governmentFormation);
     long securityDemand = securityDemand(demand);
     long paperworkDemand = paperworkDemand(demand);
 
@@ -92,16 +92,16 @@ public final class GovEfficiency {
   }
 
   /** 治安供给：{@code YAMEN} 在编人数（缺角色 = 0）。package-private：每日结算的信号 evidence 与本方法共用同一份求和。 */
-  static long securitySupply(GovFormation gov) {
-    requireGov(gov);
-    return gov.staff().getOrDefault(StaffRole.YAMEN, 0L);
+  static long securitySupply(GovernmentFormation governmentFormation) {
+    requireGovernmentFormation(governmentFormation);
+    return governmentFormation.staff().getOrDefault(StaffRole.YAMEN, 0L);
   }
 
   /** 文书供给：{@code SCRIBE + POST} 在编人数（缺角色 = 0）。★ 两个角色同口径，但驿传不另算第三种需求。 */
-  static long paperworkSupply(GovFormation gov) {
-    requireGov(gov);
-    return gov.staff().getOrDefault(StaffRole.SCRIBE, 0L)
-        + gov.staff().getOrDefault(StaffRole.POST, 0L);
+  static long paperworkSupply(GovernmentFormation governmentFormation) {
+    requireGovernmentFormation(governmentFormation);
+    return governmentFormation.staff().getOrDefault(StaffRole.SCRIBE, 0L)
+        + governmentFormation.staff().getOrDefault(StaffRole.POST, 0L);
   }
 
   /** 治安需求汇总（逐格 {@code security} 求和）。 */
@@ -162,9 +162,9 @@ public final class GovEfficiency {
             surplusPercent + GovRules.BONUS_SATURATION));
   }
 
-  private static void requireGov(GovFormation gov) {
-    if (gov == null) {
-      throw new IllegalArgumentException("gov 不得为 null");
+  private static void requireGovernmentFormation(GovernmentFormation governmentFormation) {
+    if (governmentFormation == null) {
+      throw new IllegalArgumentException("governmentFormation 不得为 null");
     }
   }
 

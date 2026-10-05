@@ -171,7 +171,7 @@ import io.mosire.simos.unit.spi.ReparentUnitHandler;
 import io.mosire.simos.unit.spi.SetArmyFormationHandler;
 import io.mosire.simos.unit.spi.SetCompositionHandler;
 import io.mosire.simos.unit.spi.SetFormationOffsetHandler;
-import io.mosire.simos.unit.spi.SetGovFormationHandler;
+import io.mosire.simos.unit.spi.SetGovernmentFormationHandler;
 import io.mosire.simos.unit.spi.SetGovPolicyHandler;
 import io.mosire.simos.unit.spi.SetGovSuperiorHandler;
 import io.mosire.simos.unit.spi.SetJurisdictionHandler;
@@ -547,7 +547,7 @@ public final class Shell implements AutoCloseable {
                 new SetTaxRateHandler(),
                 // ── 阶段 10a（2026-09-30）：两条"立编制"命令（编制字段在 Unit.module ⇒ unit 域命令）。非 GmOnly
                 //   ⇒ 与既有 unit 命令同待遇（仍可嵌入决策人令；"只在 GM 桶"说的是配套窄工具）。──
-                new SetGovFormationHandler(),
+                new SetGovernmentFormationHandler(),
                 new SetArmyFormationHandler(),
                 // ── 阶段 10b-i（2026-10-01）：GOV 政策 / 层级 / 入编 / 离编四条 unit 命令。全部非 GmOnly
                 //   ⇒ 与既有 unit 命令同待遇（可嵌入决策令）。★ Recruit/Dismiss 有意**不配** GM 窄工具

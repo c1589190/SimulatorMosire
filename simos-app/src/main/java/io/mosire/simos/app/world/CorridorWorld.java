@@ -105,7 +105,7 @@ public final class CorridorWorld {
             "economy", new EconomySnapshot(at, AT, EconomyData.empty()),
             // ★ S1 阶段 2：同款——actor 切片缺席时 slice("actor") 会响亮失败 ⇒ 补空/未激活切片。
             "actor", new ActorSnapshot(at, AT, ActorData.empty()),
-            // ★ 阶段 11b/12：gov 片由参与者写；缺席时带 GovFormation 的推进会被 TimeAdvance 拒 ⇒ 补空片。
+            // ★ 阶段 11b/12：gov 片由参与者写；缺席时带 GovernmentFormation 的推进会被 TimeAdvance 拒 ⇒ 补空片。
             "gov", new GovSnapshot(at, AT, GovState.empty())),
         InMemoryInfoSystem.empty());
   }

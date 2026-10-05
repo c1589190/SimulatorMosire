@@ -3,7 +3,7 @@ package io.mosire.simos.app.tools.write;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -32,7 +32,7 @@ import java.util.Optional;
  * canonical，key={@code dispatchTeam}，value 含 armed 标记）。
  *
  * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：来源 GOV 存在且带 {@link
- * GovFormation}；{@code count ≥ 1}（{@code unit.CreateUnit} 的 manpower amount 是 long，不再有 int 上限）；
+ * GovernmentFormation}；{@code count ≥ 1}（{@code unit.CreateUnit} 的 manpower amount 是 long，不再有 int 上限）；
  * {@code roster[role] ≥ count}（缺省 role = SCRIBE）否则具名拒（带现有/请求数字）；来源 GOV 当刻必须有有效 位置；{@code newUnitId}
  * 给了且已存在 ⇒ 具名拒（缺省确定性生成）。
  *
@@ -71,7 +71,7 @@ final class GovDispatchTeamPlan {
    * 纯推导入口（见类注的校验清单）。
    *
    * @param state 读数所在的状态（preview / apply 都取<b>同一坐标</b>的状态）
-   * @param unitId 来源 GOV 单位 id（必须带 {@link GovFormation}）
+   * @param unitId 来源 GOV 单位 id（必须带 {@link GovernmentFormation}）
    * @param count 出人数量（≥ 1，且不得超过该角色现有在编与 int 上限）
    * @param roleText 出人角色（可选；缺省 {@link #DEFAULT_ROLE}，只认 SCRIBE|YAMEN|POST）
    * @param armed 是否同批加 ArmyFormation（武装调查组 = 通用接口的小军队编制）
@@ -100,8 +100,8 @@ final class GovDispatchTeamPlan {
     if (source == null) {
       throw new IllegalArgumentException("来源 GOV 单位不存在: " + unitId);
     }
-    GovFormation gov = requireGovFormation(source, unitId);
-    long staffBefore = gov.staff().getOrDefault(role, 0L);
+    GovernmentFormation governmentFormation = requireGovernmentFormation(source, unitId);
+    long staffBefore = governmentFormation.staff().getOrDefault(role, 0L);
     if (staffBefore < count) {
       throw new IllegalArgumentException(
           "出人 " + role + " " + count + " 人超过现有在编: 现有 " + staffBefore + " < 请求 " + count);
@@ -136,13 +136,13 @@ final class GovDispatchTeamPlan {
     }
   }
 
-  /** 单位必须带 {@link GovFormation}（本工具只从 GOV 编制出人）。 */
-  private static GovFormation requireGovFormation(Unit unit, String unitId) {
-    if (unit.module().orElse(null) instanceof GovFormation gov) {
-      return gov;
+  /** 单位必须带 {@link GovernmentFormation}（本工具只从 GOV 编制出人）。 */
+  private static GovernmentFormation requireGovernmentFormation(Unit unit, String unitId) {
+    if (unit.module().orElse(null) instanceof GovernmentFormation governmentFormation) {
+      return governmentFormation;
     }
     throw new IllegalArgumentException(
-        "单位 " + unitId + " 没有 GovFormation：本工具只从 GOV 编制出人；先 unit.SetGovFormation");
+        "单位 " + unitId + " 没有 GovernmentFormation：本工具只从 GOV 编制出人；先 unit.SetGovFormation");
   }
 
   private static void requireNonBlank(String value, String field) {

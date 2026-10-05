@@ -5,7 +5,7 @@ import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.household.Household;
 import io.mosire.simos.unit.ArmyFormation;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -215,7 +215,7 @@ public final class HouseholdUnitConsistency {
   }
 
   /**
-   * ★ <b>领导层 staff 与家户配置的只读投影读数</b>（S3b，兼容期）：某 GOV 的 {@code householdPosts} 非空时，按角色聚合这些
+   * ★ <b>领导层 staff 与家户配置的只读投影读数</b>（S3b，兼容期）：某 GOV 的 {@code governmentPostsOfHousehold} 非空时，按角色聚合这些
    * 家户的**人口**（人），作为 {@code staff} 的家户投影读数。★ 本方法**不判等、不写状态**：旧 {@code staff} 的数值口径 （在编人数 vs
    * 全部家庭成员）尚未由用户裁定，强制相等会臆造规则；调用方只把它作为具名读数/告警。
    */
@@ -224,12 +224,12 @@ public final class HouseholdUnitConsistency {
     Objects.requireNonNull(units, "units");
     Map<String, Long> projection = new LinkedHashMap<>();
     for (Unit unit : sortedUnits(units)) {
-      if (!(unit.module().orElse(null) instanceof GovFormation gov)
-          || gov.householdPosts().isEmpty()) {
+      if (!(unit.module().orElse(null) instanceof GovernmentFormation governmentFormation)
+          || governmentFormation.governmentPostsOfHousehold().isEmpty()) {
         continue;
       }
       Map<String, Long> byRole = new LinkedHashMap<>();
-      for (io.mosire.simos.unit.GovernmentHouseholdPost post : gov.householdPosts().values()) {
+      for (io.mosire.simos.unit.GovernmentPostOfHousehold post : governmentFormation.governmentPostsOfHousehold().values()) {
         long population = social.householdPopulation(post.householdId());
         byRole.merge(post.role().name(), population, Long::sum);
       }
@@ -253,8 +253,8 @@ public final class HouseholdUnitConsistency {
     List<Mismatch> out = new ArrayList<>();
     for (Unit unit : sortedUnits(units)) {
       Set<HouseholdId> contained = new LinkedHashSet<>(unit.households());
-      if (unit.module().orElse(null) instanceof GovFormation gov) {
-        for (HouseholdId household : gov.householdPosts().keySet()) {
+      if (unit.module().orElse(null) instanceof GovernmentFormation governmentFormation) {
+        for (HouseholdId household : governmentFormation.governmentPostsOfHousehold().keySet()) {
           if (!contained.contains(household)) {
             out.add(
                 new Mismatch(
@@ -263,7 +263,7 @@ public final class HouseholdUnitConsistency {
           }
         }
       } else if (unit.module().orElse(null) instanceof ArmyFormation army) {
-        for (HouseholdId household : army.householdDuties().keySet()) {
+        for (HouseholdId household : army.militaryDutiesOfHousehold().keySet()) {
           if (!contained.contains(household)) {
             out.add(
                 new Mismatch(

@@ -5,8 +5,8 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentLevel;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -22,8 +22,8 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * <b>Nation 的只读派生概括视图</b>（阶段 12，计划 §2.4 / 用户裁定 4/5/7）：每个 {@link GovLevel#CENTRAL} 的中央 GOV 沿 {@link
- * GovFormation#superiorGov()} <b>向下</b>收集自己 + 全部下级 GOV，汇总显示名、名义辖区与人口。
+ * <b>Nation 的只读派生概括视图</b>（阶段 12，计划 §2.4 / 用户裁定 4/5/7）：每个 {@link GovernmentLevel#CENTRAL} 的中央 GOV 沿 {@link
+ * GovernmentFormation#superiorGov()} <b>向下</b>收集自己 + 全部下级 GOV，汇总显示名、名义辖区与人口。
  *
  * <p>★★ <b>只给显示/后续外交，绝不进任何授权判定</b>（裁定 4）：它不给 {@code GovScope}/{@code ArmyScope}/{@code
  * AdjudicateTick} 使用，也不是 {@code sd.Nation} 的替代或状态。{@link #of} 是**纯函数**——不落盘、不新增状态、 不改任何切片；每次调用现算。
@@ -39,7 +39,7 @@ import java.util.Set;
  * </ul>
  *
  * <p>★ <b>坏数据的降级</b>：悬空 {@code superiorGov}/悬空单位 BFS 时跳过该支，不抛；手工拼出的环由 {@code seen} 兜底。 一个没有 {@code
- * GovFormation} 的层级根不会被本视图当作 Nation；没有 CENTRAL GOV 时返回空列表。
+ * GovernmentFormation} 的层级根不会被本视图当作 Nation；没有 CENTRAL GOV 时返回空列表。
  *
  * @param displayName 中央 GOV 单位名（非空白）
  * @param centralGovUnit 中央 GOV 单位 id（非 null）
@@ -101,7 +101,7 @@ public record NationSummary(
     // 反向索引 superiorGov → 直接下级 GOV（按 units 插入序；BFS 结果序 = 内容的纯函数）。
     Map<UnitId, List<UnitId>> children = new LinkedHashMap<>();
     for (Unit unit : units.units().values()) {
-      if (unit.module().orElse(null) instanceof GovFormation formation
+      if (unit.module().orElse(null) instanceof GovernmentFormation formation
           && formation.superiorGov().isPresent()) {
         children
             .computeIfAbsent(formation.superiorGov().get(), key -> new ArrayList<>())
@@ -111,8 +111,8 @@ public record NationSummary(
 
     List<NationSummary> summaries = new ArrayList<>();
     for (Unit unit : units.units().values()) {
-      if (!(unit.module().orElse(null) instanceof GovFormation central)
-          || central.level() != GovLevel.CENTRAL) {
+      if (!(unit.module().orElse(null) instanceof GovernmentFormation central)
+          || central.level() != GovernmentLevel.CENTRAL) {
         continue;
       }
 
@@ -127,7 +127,7 @@ public record NationSummary(
           continue; // 环/重复入队：显示端不许死循环
         }
         Unit govUnit = units.units().get(govId);
-        if (govUnit == null || !(govUnit.module().orElse(null) instanceof GovFormation)) {
+        if (govUnit == null || !(govUnit.module().orElse(null) instanceof GovernmentFormation)) {
           continue; // 悬空 superiorGov：跳过这一支，不抛（显示派生对坏数据降级）
         }
         govUnits.add(govId);

@@ -48,7 +48,7 @@ import java.util.UUID;
  * <p>★★ <b>GM 特权</b>：直接建军允许无人口、无国库；{@code member} 直接写进新单位（仍须 ≥ 1），不读写 social/actor。★ {@code
  * raiseUnit} 保持抽取语义，一个字不动。
  *
- * <p>★★ <b>{@code masterGov} 的双边语义</b>：给了就必须存在且带 GovFormation；同批写入 {@code
+ * <p>★★ <b>{@code masterGov} 的双边语义</b>：给了就必须存在且带 GovernmentFormation；同批写入 {@code
  * sd.CreateArmy.masterGovUnitId}。{@code role} 非空时才同批落 {@code unit.SetArmyFormation}，也把同一个 {@code
  * masterGov} 写进它的 {@code masterGov}。{@code role} 为空但 {@code masterGov} 给了 ⇒ 只写 sd 侧，<b>unit 侧未设
  * ArmyFormation.masterGov</b>；preview 的 {@code armyFormationNote} 会明确说明。
@@ -120,12 +120,12 @@ public final class SpawnArmyTool implements AgentTool {
         + "parent?(可选; 给了必须存在且当刻有效位置与 (q,r) 同格), "
         + "status?(可选 MOVING|RESTING|ENGAGED，缺省 RESTING), "
         + "armyId?(可选; 缺省 unitId + \"-army\"；不得已存在), role?(可选; 给了非空白才同批落 unit.SetArmyFormation), "
-        + "masterGov?(可选; 给了必须存在且带 GovFormation；同批写入 sd.CreateArmy.masterGovUnitId，role 非空时也写入 "
+        + "masterGov?(可选; 给了必须存在且带 GovernmentFormation；同批写入 sd.CreateArmy.masterGovUnitId，role 非空时也写入 "
         + "unit.SetArmyFormation.masterGov), reason(必填非空白), preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 必填，>=0)}。"
         + "前置：member>=1、speed>=1、mobilityPerMille 在 1..1000、equipment 值 >=0、hex 必须存在于当前 GameMap、"
-        + "unitId 与 armyId 不得已存在、parent 必须存在且当刻同格、masterGov 必须存在且带 GovFormation、role 给了不得空白。"
+        + "unitId 与 armyId 不得已存在、parent 必须存在且当刻同格、masterGov 必须存在且带 GovernmentFormation、role 给了不得空白。"
         + "批顺序：unit.CreateUnit → [role 非空: unit.SetArmyFormation] → sd.CreateArmy → sd.PutInfo(key="
         + INFO_KEY
         + "，address=root 单位 canonical，value=JSON 字符串)。"
@@ -162,7 +162,7 @@ public final class SpawnArmyTool implements AgentTool {
     props.put("role", ToolSupport.prop("string", "兵种/职责短名（可选；给了非空白才同批落 unit.SetArmyFormation）"));
     props.put(
         "masterGov",
-        ToolSupport.prop("string", "认领的 GOV 单位 id（可选；给了必须存在且带 GovFormation；同批写 sd.CreateArmy）"));
+        ToolSupport.prop("string", "认领的 GOV 单位 id（可选；给了必须存在且带 GovernmentFormation；同批写 sd.CreateArmy）"));
     props.put("reason", ToolSupport.prop("string", "建军原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSupport.prop("boolean", "true（缺省）= 只算不写；false = 提交同一批"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));

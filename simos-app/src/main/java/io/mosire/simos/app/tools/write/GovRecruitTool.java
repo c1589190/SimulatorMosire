@@ -132,7 +132,7 @@ public final class GovRecruitTool implements AgentTool {
   @Override
   public String description() {
     return "GM 从辖区社会批次招募入编（组合工具，一批 = 一条 revision）："
-        + "参数 {unitId(必填, 必须是带 GovFormation 的 GOV), role(必填 SCRIBE|YAMEN|POST), count(必填 ≥ 1), "
+        + "参数 {unitId(必填, 必须是带 GovernmentFormation 的 GOV), role(必填 SCRIBE|YAMEN|POST), count(必填 ≥ 1), "
         + "reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
@@ -150,7 +150,7 @@ public final class GovRecruitTool implements AgentTool {
   @Override
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
-    props.put("unitId", ToolSupport.prop("string", "招募主体：带 GovFormation 的 GOV 单位 id"));
+    props.put("unitId", ToolSupport.prop("string", "招募主体：带 GovernmentFormation 的 GOV 单位 id"));
     props.put("role", ToolSupport.prop("string", "行政角色：SCRIBE（书吏）|YAMEN（衙门）|POST（驿传）"));
     props.put("count", ToolSupport.prop("integer", "招募人数（≥ 1；不得超过 staffCap[role] 的剩余额度）"));
     props.put("reason", ToolSupport.prop("string", "招募原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));

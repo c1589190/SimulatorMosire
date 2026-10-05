@@ -22,7 +22,7 @@ import java.util.Optional;
  * }</pre>
  *
  * <p>★ <b>载荷语义</b>：{@code superiorGov} 缺省或 JSON {@code null} ⇒ {@code Optional.empty()} = 中央
- * （无上级）。非空上级必须存在、带 {@code GovFormation}、不得指向自身，且<b>不得成环</b>（从新上级沿 {@code superiorGov} 上溯，命中自己即拒；用
+ * （无上级）。非空上级必须存在、带 {@code GovernmentFormation}、不得指向自身，且<b>不得成环</b>（从新上级沿 {@code superiorGov} 上溯，命中自己即拒；用
  * seen + 最多 64 层兜底）。
  *
  * <p>★ <b>拒因</b>（由 {@link UnitOperations#setGovSuperior} 给出，边界只折 {@code Rejected}）：单位不存在； 单位不是

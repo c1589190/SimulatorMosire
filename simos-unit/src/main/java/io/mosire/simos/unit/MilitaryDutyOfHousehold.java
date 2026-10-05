@@ -8,7 +8,7 @@ import java.util.Optional;
  * ArmyFormation} 上。
  *
  * <pre>
- * MilitaryHouseholdDuty(householdId, kind, appointment, commandOf?)
+ * MilitaryDutyOfHousehold(householdId, kind, appointment, commandOf?)
  * </pre>
  *
  * <p>★ <b>为什么必须有具名类型</b>（用户裁定原文）：军官团、各级政府领导层这种人少但配置特殊的主体，可以单独建小家户；基层军官可以不单独立户，而 在一个大家户上挂 Army
@@ -28,25 +28,25 @@ import java.util.Optional;
  * @param appointment 任职/岗位短名（非空白；词表后置）
  * @param commandOf 该家户主官统率的单位（非主官用 {@code Optional.empty()}；Optional 本身非 null）
  */
-public record MilitaryHouseholdDuty(
+public record MilitaryDutyOfHousehold(
     HouseholdId householdId,
     MilitaryDutyKind kind,
     String appointment,
     Optional<UnitId> commandOf) {
 
-  public MilitaryHouseholdDuty {
+  public MilitaryDutyOfHousehold {
     if (householdId == null) {
-      throw new IllegalArgumentException("MilitaryHouseholdDuty.householdId 不得为 null");
+      throw new IllegalArgumentException("MilitaryDutyOfHousehold.householdId 不得为 null");
     }
     if (kind == null) {
-      throw new IllegalArgumentException("MilitaryHouseholdDuty.kind 不得为 null");
+      throw new IllegalArgumentException("MilitaryDutyOfHousehold.kind 不得为 null");
     }
     if (appointment == null || appointment.isBlank()) {
-      throw new IllegalArgumentException("MilitaryHouseholdDuty.appointment 不得为空白");
+      throw new IllegalArgumentException("MilitaryDutyOfHousehold.appointment 不得为空白");
     }
     if (commandOf == null) {
       throw new IllegalArgumentException(
-          "MilitaryHouseholdDuty.commandOf 不得为 null（非主官用 Optional.empty()）");
+          "MilitaryDutyOfHousehold.commandOf 不得为 null（非主官用 Optional.empty()）");
     }
   }
 

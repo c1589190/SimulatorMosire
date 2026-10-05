@@ -26,7 +26,7 @@ import java.util.Map;
  *
  * <p>★★ <b>{@code administrationPerMille} 已退役：生产路径零读取</b>（阶段 11b，计划 §2.5；用户裁定 7/8）。长期税的行政效率改由
  * {@code simos-gov} 的每 tick 读数（{@code GovOfficeState.efficiencyPerMille}）提供；本字段只为 <b>旧档兼容</b> 保留
- * ——旧 JSON 里仍有它时照常读入、构造期照常校验，但没有任何生产代码再读它来决定征不征税。无 {@code GovFormation}/无 GOV 读数 ⇒
+ * ——旧 JSON 里仍有它时照常读入、构造期照常校验，但没有任何生产代码再读它来决定征不征税。无 {@code GovernmentFormation}/无 GOV 读数 ⇒
  * 该单位整单位跳过、不征（不是回退到本字段的旧值）。
  *
  * <p>★ 本类型<b>只依赖 {@code RegionId}</b>（unit 已依赖 map），不引 app/core/economy。

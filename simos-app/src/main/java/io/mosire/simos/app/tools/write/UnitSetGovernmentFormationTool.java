@@ -14,11 +14,11 @@ import java.util.Map;
  * ArmyFormation ⇒ 具名拒 （一单位一标签，不静默替换）；{@code superiorGov} 必须存在、是 GOV、且不得指向自身。拒绝理由由域层给、经 {@code
  * ToolSupport.fold} 变成可读的 {@code REJECTED}。
  */
-public final class UnitSetGovFormationTool extends AbstractNarrowWriteTool {
+public final class UnitSetGovernmentFormationTool extends AbstractNarrowWriteTool {
 
   public static final String NAME = "unit.SetGovFormation";
 
-  public UnitSetGovFormationTool(CoreSimos core, String initiator, String mapId) {
+  public UnitSetGovernmentFormationTool(CoreSimos core, String initiator, String mapId) {
     super(core, initiator, mapId);
   }
 
@@ -44,6 +44,6 @@ public final class UnitSetGovFormationTool extends AbstractNarrowWriteTool {
         + "householdPosts 缺省 = 保持既有（不是清空）；staff 缺省空表、"
         + "policy 缺省 OfficePolicy.defaults() 且可给部分字段；householdPosts 非空时 staff 只是家户人口投影的兼容字段；"
         + "既有 ArmyFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
-        + "superiorGov 必须存在且带 GovFormation、不得指向自身；同类型重复设置 = 整体替换）";
+        + "superiorGov 必须存在且带 GovernmentFormation、不得指向自身；同类型重复设置 = 整体替换）";
   }
 }

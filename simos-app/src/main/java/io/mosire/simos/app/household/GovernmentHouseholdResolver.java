@@ -2,7 +2,7 @@ package io.mosire.simos.app.household;
 
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitModule;
 import java.util.Objects;
@@ -17,19 +17,19 @@ import java.util.Objects;
  * unit.households 的第一个）。
  *
  * <p>★ {@code UnitState} 构造期已把“每个 GOV 恰一个政府家户、且就在 {@code Unit.households} 里”判死；本类是命令/工具边界的
- * <b>同一口径</b>再解析一次，让工具不依赖列表顺序。{@code GovFormation} 只用来判“这确实是 GOV 单位”，家户列表一个字不读。
+ * <b>同一口径</b>再解析一次，让工具不依赖列表顺序。{@code GovernmentFormation} 只用来判“这确实是 GOV 单位”，家户列表一个字不读。
  */
 public final class GovernmentHouseholdResolver {
 
   private GovernmentHouseholdResolver() {}
 
-  /** 单位必须带 {@link GovFormation}；取它 {@code Unit.households} 里唯一的政府家户（形状/引用对不上 ⇒ 具名 {@link IllegalArgumentException}）。 */
+  /** 单位必须带 {@link GovernmentFormation}；取它 {@code Unit.households} 里唯一的政府家户（形状/引用对不上 ⇒ 具名 {@link IllegalArgumentException}）。 */
   public static HouseholdId requireGovernmentHousehold(Unit unit, String unitId) {
     Objects.requireNonNull(unit, "unit");
     UnitModule module = unit.module().orElse(null);
-    if (!(module instanceof GovFormation)) {
+    if (!(module instanceof GovernmentFormation)) {
       throw new IllegalArgumentException(
-          "单位 " + unitId + " 没有 GovFormation，不能作为 GOV（国库 = 政府家户账户只对 GOV 成立）");
+          "单位 " + unitId + " 没有 GovernmentFormation，不能作为 GOV（国库 = 政府家户账户只对 GOV 成立）");
     }
     Objects.requireNonNull(unitId, "unitId");
     HouseholdId expected = GovernmentHouseholds.of(unitId);

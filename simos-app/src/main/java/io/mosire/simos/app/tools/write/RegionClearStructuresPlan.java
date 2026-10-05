@@ -12,7 +12,7 @@ import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.CommandChain;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -35,7 +35,7 @@ import java.util.Set;
  * <p>★★ <b>候选识别规则（本类唯一语义落点）</b>：
  *
  * <ol>
- *   <li><b>候选 GOV 单位</b>：带 {@link GovFormation} 且**当刻有效位置**落在目标 Region hex 集内的单位 + 调用方显式给的 {@code
+ *   <li><b>候选 GOV 单位</b>：带 {@link GovernmentFormation} 且**当刻有效位置**落在目标 Region hex 集内的单位 + 调用方显式给的 {@code
  *       unitIds}（必须存在）。自动候选只认"位置在目标 Region 内"的 GOV，不因为别的 Region 使用同一个单位就扩大；
  *   <li><b>候选决策人</b>：{@link Affiliation.Gov} 且其 {@code govUnit} 落在上述候选单位集合内的决策人 + 调用方显式给的 {@code
  *       decisionMakerIds}（必须存在；本批选择"必须是 Gov 归属"的严格口径，非 Gov 的显式 id 具名拒，见 {@link
@@ -344,7 +344,7 @@ final class RegionClearStructuresPlan {
     Set<String> explicitOut = new LinkedHashSet<>();
     for (Unit unit : sorted) {
       String id = unit.id().value();
-      boolean isGov = unit.module().orElse(null) instanceof GovFormation;
+      boolean isGov = unit.module().orElse(null) instanceof GovernmentFormation;
       Optional<HexCoord> position = units.effectivePosition(unit.id(), at);
       boolean inTarget = position.isPresent() && target.hexes().contains(position.get());
       boolean isAuto = isGov && inTarget;
@@ -358,7 +358,7 @@ final class RegionClearStructuresPlan {
         all.add(id);
       }
       if (isExplicit && !isAuto) {
-        warnings.add("显式 unitId " + id + " 不是目标 Region 内当刻有效的 GovFormation 单位（仍按显式清单删除）");
+        warnings.add("显式 unitId " + id + " 不是目标 Region 内当刻有效的 GovernmentFormation 单位（仍按显式清单删除）");
       }
     }
     // ★ 批内 unit.DisbandUnit 的域层约束是"不得仍有下属"⇒ 先删后代再删祖先，避免同一批里可避免的整批拒。

@@ -2,7 +2,7 @@ package io.mosire.simos.app.tools.write;
 
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.unit.CompositionDelta;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.util.state.SimulationState;
@@ -24,7 +24,7 @@ import java.util.Optional;
  * GOV canonical， key={@code absorbUnit}）。
  *
  * <p>★★ <b>源单位口径（用户裁定 3/10）</b>：<b>默认拒</b>带 ArmyFormation 的源单位（军队单位不是人口容器），<b>除非 源是无 module
- * 的纯人员单位</b>；带 GovFormation 的源同样拒。⇒ 本计划要求 {@code source.module().isEmpty()}， 两类编制都给出各自的具名拒因。
+ * 的纯人员单位</b>；带 GovernmentFormation 的源同样拒。⇒ 本计划要求 {@code source.module().isEmpty()}， 两类编制都给出各自的具名拒因。
  *
  * <p>★★ <b>守恒</b>：{@code 源人力合计前 − count == 源人力合计后} 且 {@code GOV roster[role] 前 + count == roster
  * 后}；源有多个 type 时按源表序逐条扣；Plan 构造期逐值互校。
@@ -32,7 +32,7 @@ import java.util.Optional;
  * <p>★ <b>disbandSource 的条件语义</b>：只有“吸收后源人力合计==0”才落 {@code unit.DisbandUnit}；若源仍有剩余人员，
  * 本工具<b>不自动解散</b>（那会丢掉剩下的人），并在行动记录里具名说明 {@code disbandSkippedReason}。
  *
- * <p>★ <b>校验</b>：GOV 存在且带 {@link GovFormation}；源单位存在且人力合计 {@code ≥ count}；{@code count ≥ 1}； {@code
+ * <p>★ <b>校验</b>：GOV 存在且带 {@link GovernmentFormation}；源单位存在且人力合计 {@code ≥ count}；{@code count ≥ 1}； {@code
  * staffCap[role]} 超限 ⇒ 具名拒（带现有 / 上限 / 请求，不截断）。
  */
 final class GovAbsorbUnitPlan {
@@ -55,7 +55,7 @@ final class GovAbsorbUnitPlan {
    * 纯推导入口（见类注的校验与守恒口径）。
    *
    * @param state 读数所在的状态（preview / apply 都取<b>同一坐标</b>的状态）
-   * @param govUnitId 吸收方 GOV 单位 id（必须带 {@link GovFormation}）
+   * @param govUnitId 吸收方 GOV 单位 id（必须带 {@link GovernmentFormation}）
    * @param roleText 入编角色词表（SCRIBE|YAMEN|POST）
    * @param sourceUnitId 源人口单位 id（必须存在、且必须是无 module 的纯人员单位）
    * @param count 吸收人数（≥ 1，且不得超过源 member）
@@ -97,13 +97,13 @@ final class GovAbsorbUnitPlan {
     }
   }
 
-  /** 吸收方必须带 {@link GovFormation}（入编命令的领域前置）。 */
-  private static GovFormation requireGovFormation(Unit unit, String unitId) {
-    if (unit.module().orElse(null) instanceof GovFormation gov) {
-      return gov;
+  /** 吸收方必须带 {@link GovernmentFormation}（入编命令的领域前置）。 */
+  private static GovernmentFormation requireGovernmentFormation(Unit unit, String unitId) {
+    if (unit.module().orElse(null) instanceof GovernmentFormation governmentFormation) {
+      return governmentFormation;
     }
     throw new IllegalArgumentException(
-        "单位 " + unitId + " 没有 GovFormation：吸收只对 GOV 编制单位；先 unit.SetGovFormation");
+        "单位 " + unitId + " 没有 GovernmentFormation：吸收只对 GOV 编制单位；先 unit.SetGovFormation");
   }
 
   private static void requireNonBlank(String value, String field) {

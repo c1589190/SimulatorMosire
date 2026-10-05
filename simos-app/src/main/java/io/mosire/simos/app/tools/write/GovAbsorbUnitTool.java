@@ -33,7 +33,7 @@ import java.util.UUID;
  * ★★ {@code simos.gov.absorbUnit}（阶段 13A 人员流转，GOV/Army 计划 §2.6）：<b>GM 组合工具</b>—— 把无标签纯人员单位吸收进 GOV
  * 编制（可顺带解散已空源单位），一批落一条 revision。
  *
- * <p>★★ <b>源单位口径（用户裁定 3/10）</b>：默认拒带 {@code ArmyFormation} 的源（军队单位不是人口容器），带 {@code GovFormation}
+ * <p>★★ <b>源单位口径（用户裁定 3/10）</b>：默认拒带 {@code ArmyFormation} 的源（军队单位不是人口容器），带 {@code GovernmentFormation}
  * 的同样拒；<b>只有无 module 的纯人员单位才能被吸收</b>。拒因具名（点名是哪种编制）。
  *
  * <p>★★ <b>批顺序（固定，一条 revision）</b>：{@code unit.ApplyCasualties}（源 {@code manpower=[{type,−count}]}、
@@ -96,7 +96,7 @@ public final class GovAbsorbUnitTool implements AgentTool {
         + "preview?(缺省 true), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
-        + "★ 源带 ArmyFormation（军队不是人口容器）或 GovFormation ⇒ 默认具名拒。"
+        + "★ 源带 ArmyFormation（军队不是人口容器）或 GovernmentFormation ⇒ 默认具名拒。"
         + "批：unit.ApplyCasualties（manpower=[{type,−taken}]、equipment=[]）→ unit.RecruitStaff（sources=[{kind:\"unit\","
         + "id:sourceUnitId,count}]）→（disbandSource 且源已空）unit.DisbandUnit → sd.PutInfo(key="
         + INFO_KEY
@@ -109,7 +109,7 @@ public final class GovAbsorbUnitTool implements AgentTool {
   @Override
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
-    props.put("unitId", ToolSupport.prop("string", "吸收方：带 GovFormation 的 GOV 单位 id"));
+    props.put("unitId", ToolSupport.prop("string", "吸收方：带 GovernmentFormation 的 GOV 单位 id"));
     props.put("role", ToolSupport.prop("string", "入编角色：SCRIBE（书吏）|YAMEN（衙门）|POST（驿传）"));
     props.put("sourceUnitId", ToolSupport.prop("string", "源人口单位 id（必须无 module：纯人员单位）"));
     props.put("count", ToolSupport.prop("integer", "吸收人数（≥ 1；不得超过源单位人力合计与 staffCap 余额）"));

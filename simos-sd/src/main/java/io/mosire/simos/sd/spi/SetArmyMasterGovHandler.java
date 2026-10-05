@@ -5,7 +5,7 @@ import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.state.SdState;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -28,7 +28,7 @@ import java.util.Optional;
  * }</pre>
  *
  * <p>★ <b>载荷语义</b>：{@code masterGovUnitId} 缺席 / {@code null} / 空串（含空白串）= 解除认领；给了非空白值必须存在、 且带 {@link
- * GovFormation}（与 {@code sd.CreateArmy} / {@code unit.SetArmyFormation} 同口径，认主子只认 GOV）。armyId 不存在 ⇒
+ * GovernmentFormation}（与 {@code sd.CreateArmy} / {@code unit.SetArmyFormation} 同口径，认主子只认 GOV）。armyId 不存在 ⇒
  * 具名拒。
  *
  * <p>★ <b>只改一个字段</b>：成功时只换 {@link Army#masterGovUnitId()}，{@code id}/{@code rootUnit}/{@code name}
@@ -67,7 +67,7 @@ public final class SetArmyMasterGovHandler implements CommandHandler, GmOnlyComm
         if (masterGov == null) {
           return new HandlerOutcome.Rejected("masterGovUnitId 不存在: " + masterGovUnitId.get());
         }
-        if (!(masterGov.module().orElse(null) instanceof GovFormation)) {
+        if (!(masterGov.module().orElse(null) instanceof GovernmentFormation)) {
           return new HandlerOutcome.Rejected("masterGovUnitId 不是 GOV 单位: " + masterGovUnitId.get());
         }
       }

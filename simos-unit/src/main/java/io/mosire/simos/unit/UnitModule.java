@@ -13,7 +13,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
  * <p>★ <b>两个实现</b>（一单位至多一个）：
  *
  * <ul>
- *   <li>{@link GovFormation}：实际拥有行政职能的政府单位（裁定 5/7）——中央与地方都走它，层级由 {@link GovLevel} 表达；
+ *   <li>{@link GovernmentFormation}：实际拥有行政职能的政府单位（裁定 5/7）——中央与地方都走它，层级由 {@link GovernmentLevel} 表达；
  *   <li>{@link ArmyFormation}：军事单位——一期只记"认哪个 GOV 当主子 + 职责短名"，战力计算不在本链表里（裁定 8）。
  * </ul>
  *
@@ -28,7 +28,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "@class")
 @JsonSubTypes({
-  @JsonSubTypes.Type(value = GovFormation.class, name = "gov"),
+  @JsonSubTypes.Type(value = GovernmentFormation.class, name = "gov"),
   @JsonSubTypes.Type(value = ArmyFormation.class, name = "army"),
 })
-public sealed interface UnitModule permits GovFormation, ArmyFormation {}
+public sealed interface UnitModule permits GovernmentFormation, ArmyFormation {}

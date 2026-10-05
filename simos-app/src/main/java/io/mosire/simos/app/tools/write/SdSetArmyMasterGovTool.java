@@ -13,7 +13,7 @@ import java.util.Map;
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：命令类型固定，模型只能给载荷。标 sensitive ⇒ 走审批门链。
  *
  * <p>★ <b>载荷</b>：{@code {armyId, masterGovUnitId?}}。{@code masterGovUnitId} 缺席/null/空串 =
- * 解除认领；给了必须存在且带 {@code GovFormation}。前置（armyId 不存在 / 目标不是 GOV）都在**域层**判、 逐条有可读文案——工具层不重复校验。
+ * 解除认领；给了必须存在且带 {@code GovernmentFormation}。前置（armyId 不存在 / 目标不是 GOV）都在**域层**判、 逐条有可读文案——工具层不重复校验。
  *
  * <p>★ <b>只改 sd 侧</b>：本工具不碰 {@code unit.ArmyFormation}（unit 侧同步走 {@code simos.army.assignGov}
  * 组合工具）； 两者语义独立，命令面不替调用方发明跨域联动。
@@ -39,7 +39,7 @@ public final class SdSetArmyMasterGovTool extends AbstractNarrowWriteTool {
   @Override
   public String description() {
     return "改派/解除 Army 主子 GOV：固定 sd.SetArmyMasterGov，载荷 {armyId, masterGovUnitId?}"
-        + "（armyId 必填；masterGovUnitId 缺席/null/空串 = 解除认领，给了必须存在且带 GovFormation；"
+        + "（armyId 必填；masterGovUnitId 缺席/null/空串 = 解除认领，给了必须存在且带 GovernmentFormation；"
         + "armyId 不存在 ⇒ 具名拒；只改 sd 侧 masterGovUnitId，保留 id/rootUnit/name，不碰 unit 侧 ArmyFormation）";
   }
 

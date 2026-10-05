@@ -7,8 +7,8 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentLevel;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
@@ -63,9 +63,9 @@ import java.util.Set;
  *
  * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：{@code unitId}/{@code name}/
  * {@code decisionMakerId} 非空白；{@code unitId} 在 unit 切片里<b>必须不存在</b>；{@code decisionMakerId} 在 sd
- * 切片里 <b>必须不存在</b>；{@code level} 必须是 {@link GovLevel} 词表；{@code regions} 每个元素必须存在于当前 map 的 {@code
+ * 切片里 <b>必须不存在</b>；{@code level} 必须是 {@link GovernmentLevel} 词表；{@code regions} 每个元素必须存在于当前 map 的 {@code
  * regions()}（具名拒，不静默丢）；{@code level=PROVINCE} ⇒ {@code regions} 必须非空；{@code level=CENTRAL} ⇒ {@code
- * regions} 可为空（缺省空）；{@code superiorGov} 非空 ⇒ 必须存在、带 {@link GovFormation}、且不得等于新 unitId；{@code
+ * regions} 可为空（缺省空）；{@code superiorGov} 非空 ⇒ 必须存在、带 {@link GovernmentFormation}、且不得等于新 unitId；{@code
  * cadence ≥ 1}。批内域层拒（如一单位一标签、N9 白名单）由 {@code submitBatch} 整条拒，逐条真拒因折成 {@code REJECTED}。
  *
  * <p>★ <b>确定性 / 保序不可变</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；{@code staff} 用 {@code
@@ -125,7 +125,7 @@ final class GovCreateOfficePlan {
    * @param at 新单位落点 = 工具层的 {@code (q,r)}
    * @param level GOV 层级词表（CENTRAL|PROVINCE）
    * @param regions 初始管辖区域（保序；工具层已解析为 {@link RegionId} 并去重。CENTRAL 可为空；PROVINCE 必须非空）
-   * @param superiorGov 上级 GOV（可选；非空必须存在、带 GovFormation、不得等于 unitId）
+   * @param superiorGov 上级 GOV（可选；非空必须存在、带 GovernmentFormation、不得等于 unitId）
    * @param staff 初始编制（保序；缺省空表由工具层给）
    * @param policy 编制政策（缺省 {@link OfficePolicy#defaults()} 由工具层给）
    * @param decisionMakerId 同批绑定的决策人 id（在 sd 切片里必须不存在）
@@ -140,7 +140,7 @@ final class GovCreateOfficePlan {
       String unitId,
       String name,
       HexCoord at,
-      GovLevel level,
+      GovernmentLevel level,
       List<RegionId> regions,
       Optional<String> superiorGov,
       Map<StaffRole, Long> staff,
@@ -166,7 +166,7 @@ final class GovCreateOfficePlan {
     if (cadence < 1L) {
       throw new IllegalArgumentException("cadence 必须 ≥ 1（决策周期，单位：天）: " + cadence);
     }
-    if (level == GovLevel.PROVINCE && regions.isEmpty()) {
+    if (level == GovernmentLevel.PROVINCE && regions.isEmpty()) {
       throw new IllegalArgumentException("level=PROVINCE 时 regions 不得为空：省 GOV 必须至少管辖本省一个 Region");
     }
     if (!regions.isEmpty()) {
@@ -225,16 +225,16 @@ final class GovCreateOfficePlan {
         state.meta().timestamp().tick());
   }
 
-  /** 上级 GOV 必须存在且带 {@link GovFormation}（与 {@code UnitOperations.requireGovUnit} 同口径，纯只读）。 */
+  /** 上级 GOV 必须存在且带 {@link GovernmentFormation}（与 {@code UnitOperations.requireGovUnit} 同口径，纯只读）。 */
   private static void requireGovUnit(
       io.mosire.simos.unit.UnitState units, UnitId govUnitId, String field) {
     Unit unit = units.units().get(govUnitId);
     if (unit == null) {
       throw new IllegalArgumentException(field + " 指定的 GOV 单位不存在: " + govUnitId);
     }
-    if (!(unit.module().orElse(null) instanceof GovFormation)) {
+    if (!(unit.module().orElse(null) instanceof GovernmentFormation)) {
       throw new IllegalArgumentException(
-          field + " 指定的单位 " + govUnitId + " 没有 GovFormation：不能作为 GOV");
+          field + " 指定的单位 " + govUnitId + " 没有 GovernmentFormation：不能作为 GOV");
     }
   }
 
@@ -266,7 +266,7 @@ final class GovCreateOfficePlan {
       String unitId,
       String name,
       HexCoord at,
-      GovLevel level,
+      GovernmentLevel level,
       List<RegionId> regions,
       Optional<String> superiorGov,
       Map<StaffRole, Long> staff,
@@ -366,7 +366,7 @@ final class GovCreateOfficePlan {
      * {@code unit.SetGovFormation} 载荷：{@code {unitId, level, superiorGov?, staff, policy}}；
      * {@code staff}/{@code policy} 都显式给全（而不是靠 handler 缺省），让 revision 里的意图可读、可回放。
      * ★★ 2026-10-09 唯一列表裁定：载荷<b>不再带 {@code households}</b>（该线格式键已删）——政府家户
-     * {@code hh-gov-<unitId>} 由域层 {@code UnitOperations.setGovFormation} 在改编制时同批编入
+     * {@code hh-gov-<unitId>} 由域层 {@code UnitOperations.setGovernmentFormation} 在改编制时同批编入
      * {@code Unit.households}，与同批 {@code social.CreateHousehold(UNIT)} 和 {@code economy.RegisterGovernment}
      * 的国库引用指向同一把家户键。
      */

@@ -10,7 +10,7 @@ import java.util.Map;
  * 调用时走审批门链。
  *
  * <p>★ <b>载荷</b>：{@code {unitId, masterGov?, role}}；{@code role} 必填非空白，{@code masterGov} 可缺省（未认主子），
- * 给了就必须存在且带 {@code GovFormation}。既有 GovFormation ⇒ 具名拒（一单位一标签，不静默替换）。拒绝理由由域层给、经 {@code
+ * 给了就必须存在且带 {@code GovernmentFormation}。既有 GovernmentFormation ⇒ 具名拒（一单位一标签，不静默替换）。拒绝理由由域层给、经 {@code
  * ToolSupport.fold} 变成可读的 {@code REJECTED}。
  */
 public final class UnitSetArmyFormationTool extends AbstractNarrowWriteTool {
@@ -36,8 +36,8 @@ public final class UnitSetArmyFormationTool extends AbstractNarrowWriteTool {
     return "立/改 Army 编制：固定 unit.SetArmyFormation，载荷 {unitId, masterGov?, role,"
         + " householdDuties?[{household,kind(SOLDIER|NCO|OFFICER|COMMANDER),appointment,commandOf?}]}"
         + "（★ S3b：householdDuties 是以 HouseholdId 为键的军官/军职家户具名配置（家户必须在本单位 households 里）；"
-        + "缺省 = 保持既有配置（不是清空）；role 必填非空白；masterGov 缺省 = 未认主子，给了必须存在且带 GovFormation；"
-        + "既有 GovFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
+        + "缺省 = 保持既有配置（不是清空）；role 必填非空白；masterGov 缺省 = 未认主子，给了必须存在且带 GovernmentFormation；"
+        + "既有 GovernmentFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
         + "同类型重复设置 = 整体替换（role/masterGov 一起换））";
   }
 }

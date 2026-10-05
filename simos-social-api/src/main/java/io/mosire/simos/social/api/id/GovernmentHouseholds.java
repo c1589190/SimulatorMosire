@@ -12,7 +12,7 @@ import java.util.Optional;
  * HouseholdActors.of(...)}）—— 该不变量由 {@code EconomyData} 与 {@code EconomyRegisterGovernmentHandler}
  * 在状态/命令边界判死。
  *
- * <p>★ <b>它住在 social-api 的理由</b>：unit（{@code Unit.households} 与 {@code GovFormation}）与经济/actor（国库账户）两边都要拼同一个 id，
+ * <p>★ <b>它住在 social-api 的理由</b>：unit（{@code Unit.households} 与 {@code GovernmentFormation}）与经济/actor（国库账户）两边都要拼同一个 id，
  * 而两边都只共享 {@code social-api} 这个契约层。字符串格式在这里定死一处，别处不得再拼。
  *
  * <p>★ <b>字符约束（不是洁癖）</b>：{@code |} 与 {@code .} 被明确拒绝 —— {@code HouseholdActors.idOf} 把 {@code |}

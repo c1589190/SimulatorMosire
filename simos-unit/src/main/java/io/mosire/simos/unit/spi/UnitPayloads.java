@@ -7,10 +7,10 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.unit.GovLevel;
-import io.mosire.simos.unit.GovernmentHouseholdPost;
+import io.mosire.simos.unit.GovernmentLevel;
+import io.mosire.simos.unit.GovernmentPostOfHousehold;
 import io.mosire.simos.unit.MilitaryDutyKind;
-import io.mosire.simos.unit.MilitaryHouseholdDuty;
+import io.mosire.simos.unit.MilitaryDutyOfHousehold;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.UnitId;
@@ -161,13 +161,13 @@ final class UnitPayloads {
   }
 
   /**
-   * 必填的政府编制层级（阶段 10a 的 {@code unit.SetGovFormation} 用）：未知串 ⇒ 抛（{@code GovLevel.valueOf} 失败
+   * 必填的政府编制层级（阶段 10a 的 {@code unit.SetGovFormation} 用）：未知串 ⇒ 抛（{@code GovernmentLevel.valueOf} 失败
    * 折成拒绝，理由点名词表）。
    */
-  static GovLevel requireGovLevel(JsonNode payload, String field) {
+  static GovernmentLevel requireGovernmentLevel(JsonNode payload, String field) {
     String text = requireText(payload, field);
     try {
-      return GovLevel.valueOf(text);
+      return GovernmentLevel.valueOf(text);
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("字段 " + field + " 不是合法层级（CENTRAL|PROVINCE）: " + text, e);
     }
@@ -189,7 +189,7 @@ final class UnitPayloads {
   /**
    * 可选的行政角色人数表（阶段 10a 的 {@code unit.SetGovFormation.staff}）：缺失或 {@code null} ⇒ 空 Optional； 给了 ⇒ 必须是
    * {@code {SCRIBE|YAMEN|POST:整数}} 对象。★ <b>角色词表在这里把关</b>（未知串具名拒，不静默丢条目）； <b>值域（≥0）不在这里判</b>——留给
-   * {@link io.mosire.simos.unit.GovFormation} 构造期，两处不重复实现。
+   * {@link io.mosire.simos.unit.GovernmentFormation} 构造期，两处不重复实现。
    */
   static Optional<Map<StaffRole, Long>> optionalStaffMap(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
@@ -479,7 +479,7 @@ final class UnitPayloads {
    * 给了（含空数组）⇒ 整体替换。{@code commandOf} 可缺省。字段形状在这里把关；键 == 配置 id 等不变量由 {@link ArmyFormation} / {@link
    * UnitState} 判。
    */
-  static Optional<Map<HouseholdId, MilitaryHouseholdDuty>> optionalMilitaryDuties(
+  static Optional<Map<HouseholdId, MilitaryDutyOfHousehold>> optionalMilitaryDuties(
       JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull()) {
@@ -488,7 +488,7 @@ final class UnitPayloads {
     if (!value.isArray()) {
       throw new IllegalArgumentException("字段 " + field + " 必须是家户配置对象数组或 null: " + payload);
     }
-    Map<HouseholdId, MilitaryHouseholdDuty> duties = new LinkedHashMap<>();
+    Map<HouseholdId, MilitaryDutyOfHousehold> duties = new LinkedHashMap<>();
     Set<String> seen = new LinkedHashSet<>();
     for (JsonNode element : value) {
       if (!element.isObject()) {
@@ -509,7 +509,7 @@ final class UnitPayloads {
       }
       String appointment = requireText(element, "appointment");
       Optional<UnitId> commandOf = optionalId(element, "commandOf");
-      duties.put(household, new MilitaryHouseholdDuty(household, kind, appointment, commandOf));
+      duties.put(household, new MilitaryDutyOfHousehold(household, kind, appointment, commandOf));
     }
     return Optional.of(duties);
   }
@@ -522,9 +522,9 @@ final class UnitPayloads {
    * }</pre>
    *
    * <p>★ 缺失或 {@code null} ⇒ 空 Optional（<b>未给 ⇒ 保持既有配置</b>）；给了（含空数组）⇒ 整体替换。{@code head} 可缺省（缺省
-   * false）。字段形状在这里把关；键 == 配置 id 等不变量由 {@link GovFormation} / {@link UnitState} 判。
+   * false）。字段形状在这里把关；键 == 配置 id 等不变量由 {@link GovernmentFormation} / {@link UnitState} 判。
    */
-  static Optional<Map<HouseholdId, GovernmentHouseholdPost>> optionalGovernmentPosts(
+  static Optional<Map<HouseholdId, GovernmentPostOfHousehold>> optionalGovernmentPosts(
       JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull()) {
@@ -533,7 +533,7 @@ final class UnitPayloads {
     if (!value.isArray()) {
       throw new IllegalArgumentException("字段 " + field + " 必须是领导家户配置对象数组或 null: " + payload);
     }
-    Map<HouseholdId, GovernmentHouseholdPost> posts = new LinkedHashMap<>();
+    Map<HouseholdId, GovernmentPostOfHousehold> posts = new LinkedHashMap<>();
     Set<String> seen = new LinkedHashSet<>();
     for (JsonNode element : value) {
       if (!element.isObject()) {
@@ -545,9 +545,9 @@ final class UnitPayloads {
       }
       HouseholdId household = HouseholdId.parse(householdText);
       StaffRole role = requireStaffRole(element, "role");
-      GovLevel level = requireGovLevel(element, "level");
+      GovernmentLevel level = requireGovernmentLevel(element, "level");
       boolean head = optionalBoolean(element, "head").orElse(false);
-      posts.put(household, new GovernmentHouseholdPost(household, role, level, head));
+      posts.put(household, new GovernmentPostOfHousehold(household, role, level, head));
     }
     return Optional.of(posts);
   }

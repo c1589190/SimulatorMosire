@@ -10,8 +10,8 @@ import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentLevel;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.StaffRole;
@@ -51,7 +51,7 @@ import java.util.Set;
  * <ol>
  *   <li><b>相关结构门</b>（{@link Gate#NEEDS_CLEAR}）——四条任一命中：
  *       <ul>
- *         <li>目标 Region hex 集内存在带 {@link GovFormation} 的 Unit（按当刻 {@code effectivePosition}）；
+ *         <li>目标 Region hex 集内存在带 {@link GovernmentFormation} 的 Unit（按当刻 {@code effectivePosition}）；
  *         <li>存在 {@link Affiliation.Gov} 且其 {@code govUnit} 属于上述 Unit 的 DecisionMaker；
  *         <li>存在任何 Unit 的 {@code jurisdiction} 覆盖目标 Region 的 key，或覆盖一个 hex 集完全落在目标 Region hex 集内的
  *             Region；
@@ -299,7 +299,7 @@ final class ProvinceApplyPlan {
       String unitName,
       HexCoord at,
       String decisionMakerId,
-      GovLevel level,
+      GovernmentLevel level,
       Optional<String> superiorGov,
       List<String> jurisdictionRegionIds) {
 
@@ -465,7 +465,7 @@ final class ProvinceApplyPlan {
               centralUnitName,
               centralAt,
               centralDecisionMakerId,
-              GovLevel.CENTRAL,
+              GovernmentLevel.CENTRAL,
               Optional.empty(),
               capitalDistrict == null ? List.of() : List.of(capitalDistrict.regionId())));
       for (RegionUnitEntry province : provinces) {
@@ -475,7 +475,7 @@ final class ProvinceApplyPlan {
                 province.unitName(),
                 province.center(),
                 province.decisionMakerId(),
-                GovLevel.PROVINCE,
+                GovernmentLevel.PROVINCE,
                 Optional.of(centralUnitId),
                 List.of(province.regionId())));
       }
@@ -807,12 +807,12 @@ final class ProvinceApplyPlan {
     List<Unit> sortedUnits = new ArrayList<>(units.units().values());
     sortedUnits.sort(Comparator.comparing((Unit unit) -> unit.id().value()));
 
-    // 1) 目标 hex 集内、带 GovFormation 的 Unit（按 effectivePosition）。
+    // 1) 目标 hex 集内、带 GovernmentFormation 的 Unit（按 effectivePosition）。
     Set<UnitId> govUnitsInTarget = new LinkedHashSet<>();
     List<String> govUnitSamples = new ArrayList<>();
     Set<HexCoord> targetHexes = target.hexes();
     for (Unit unit : sortedUnits) {
-      if (!(unit.module().orElse(null) instanceof GovFormation)) {
+      if (!(unit.module().orElse(null) instanceof GovernmentFormation)) {
         continue;
       }
       Optional<HexCoord> position = units.effectivePosition(unit.id(), at);

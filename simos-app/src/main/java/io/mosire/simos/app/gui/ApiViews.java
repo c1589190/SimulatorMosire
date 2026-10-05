@@ -137,10 +137,10 @@ import io.mosire.simos.social.population.UrbanRural;
 import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovernmentHouseholdPost;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentPostOfHousehold;
 import io.mosire.simos.unit.Jurisdiction;
-import io.mosire.simos.unit.MilitaryHouseholdDuty;
+import io.mosire.simos.unit.MilitaryDutyOfHousehold;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.Route;
@@ -503,7 +503,7 @@ public final class ApiViews {
    *       <b>按城市落点</b>（{@code SocialCity.at}）统计的城市数与城市人口（人口仍现算）；国家/省/首都区各自按自己的 hex 集计，重叠区域各自计数。旧
    *       {@code cityCount} / {@code cityPopulation} 口径与字段名一字不变。
    *   <li>{@code unitCount} = 该单位在 {@code at} 时刻的 {@link UnitState#effectivePosition} 落在 Region hex
-   *       集合内的数量（含 GOV）；{@code govCount} 是其中 {@code unit.module()} 为 {@link GovFormation} 的数量。
+   *       集合内的数量（含 GOV）；{@code govCount} 是其中 {@code unit.module()} 为 {@link GovernmentFormation} 的数量。
    *   <li>★ F2 追加：{@code ruralPopulation} / {@code urbanPopulation} = region hex 集内**有 {@link
    *       PopulationGroup}** 的格按城乡二分求和（旧序列格无法二分、不计入）；{@code grainStock} / {@code silverMoney} /
    *       {@code goodsTotal} = region hex 集内 actor 账本的粮 / silver / 逐商品余额 合计（键按商品 id
@@ -634,7 +634,7 @@ public final class ApiViews {
           continue;
         }
         unitCount += 1L;
-        if (unit.module().map(module -> module instanceof GovFormation).orElse(false)) {
+        if (unit.module().map(module -> module instanceof GovernmentFormation).orElse(false)) {
           govCount += 1L;
         }
       }
@@ -5019,17 +5019,17 @@ public final class ApiViews {
    * {@code null}（"无上级/未认主子"是编制自身的状态，不是键缺失）。
    */
   private static Map<String, Object> unitModuleView(UnitModule module) {
-    if (module instanceof GovFormation gov) {
+    if (module instanceof GovernmentFormation governmentFormation) {
       Map<String, Object> view = new LinkedHashMap<>();
       view.put("kind", "gov");
-      view.put("level", gov.level().name());
-      view.put("superiorGov", gov.superiorGov().map(UnitId::value).orElse(null));
-      view.put("staff", unitStaffView(gov.staff()));
-      // ★★ 2026-10-09 唯一列表裁定：编制视图不再发 households（该字段已从 GovFormation 删除）；"谁在这个 Unit 里"
+      view.put("level", governmentFormation.level().name());
+      view.put("superiorGov", governmentFormation.superiorGov().map(UnitId::value).orElse(null));
+      view.put("staff", unitStaffView(governmentFormation.staff()));
+      // ★★ 2026-10-09 唯一列表裁定：编制视图不再发 households（该字段已从 GovernmentFormation 删除）；"谁在这个 Unit 里"
       //   只读 unit 视图的 households[]（含政府家户 hh-gov-<unitId>）。
       // ★★ S3b（2026-10-09）：领导层家户配置（以 HouseholdId 为键的具名状态；空表也发）。
-      List<Map<String, Object>> posts = new ArrayList<>(gov.householdPosts().size());
-      for (GovernmentHouseholdPost post : gov.householdPosts().values()) {
+      List<Map<String, Object>> posts = new ArrayList<>(governmentFormation.governmentPostsOfHousehold().size());
+      for (GovernmentPostOfHousehold post : governmentFormation.governmentPostsOfHousehold().values()) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("household", post.householdId().value());
         row.put("role", post.role().name());
@@ -5038,7 +5038,7 @@ public final class ApiViews {
         posts.add(row);
       }
       view.put("householdPosts", posts);
-      view.put("policy", officePolicyView(gov.policy()));
+      view.put("policy", officePolicyView(governmentFormation.policy()));
       return view;
     }
     if (module instanceof ArmyFormation army) {
@@ -5047,8 +5047,8 @@ public final class ApiViews {
       view.put("masterGov", army.masterGov().map(UnitId::value).orElse(null));
       view.put("role", army.role());
       // ★★ S3b（2026-10-09）：军官/军职家户配置（以 HouseholdId 为键的具名状态；空表也发）。
-      List<Map<String, Object>> duties = new ArrayList<>(army.householdDuties().size());
-      for (MilitaryHouseholdDuty duty : army.householdDuties().values()) {
+      List<Map<String, Object>> duties = new ArrayList<>(army.militaryDutiesOfHousehold().size());
+      for (MilitaryDutyOfHousehold duty : army.militaryDutiesOfHousehold().values()) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("household", duty.householdId().value());
         row.put("kind", duty.kind().name());
@@ -5062,7 +5062,7 @@ public final class ApiViews {
     throw new IllegalStateException("未知的 UnitModule 实现: " + module.getClass().getName());
   }
 
-  /** 行政在编人数视图（角色名 → 人数；{@link GovFormation#staff()} 的插入序原样保留）。 */
+  /** 行政在编人数视图（角色名 → 人数；{@link GovernmentFormation#staff()} 的插入序原样保留）。 */
   private static Map<String, Object> unitStaffView(Map<StaffRole, Long> staff) {
     Map<String, Object> view = new LinkedHashMap<>();
     for (Map.Entry<StaffRole, Long> entry : staff.entrySet()) {
