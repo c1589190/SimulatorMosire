@@ -238,6 +238,31 @@ hh-1_1-rural-rich_peasant     Social 31  Economy 28
 4. 防回归：加“经济域不得写人口”的静态/运行守卫（至少 `ModeMigrationSettlement` 的 `population` 写入只准
    经 outbox 适配器；测试迁移时补一条“day 120 迁移后 Social 逐户人口 == Economy 逐户人口”）。
 
+#### 7.2.1 经济腿的债务/资产/钱货口径（2026-10-09 用户确认：选接口级 policy、默认跟人比例）
+
+- **两条腿、一个 migrationId、同一条 revision**：Social 工单只搬人；Economy（与 Actor）只搬经济状态；
+  App 是唯一编排者，任一腿失败整批拒；经济行 `population` 最终由 App 按 Social 真值落，不作为独立权威。
+- **债务默认 `FOLLOWS_POPULATION`**：按迁移人数比例切本金；实现复用
+  `ProportionalSplit.byDenominator`（最大余数法、Σ 守恒）+ `DebtContractBook.reduce/upsert`（唯一写口）。
+  全额迁移 `movedPopulation == sourcePopulation` ⇒ 本金 100% 转移、源合同清零；部分迁移的整数余数留在源合同
+  （随剩余人口，后续再迁也不会丢）。
+- **合同级 policy 预留但不现在做规则引擎**：接口/terms 留
+  `FOLLOWS_POPULATION（默认） | STAYS_WITH_ORIGINAL | CALLABLE_ON_MIGRATION`；后续 GM/决策人可定制，
+  现在只实现默认分支。
+- **债务人 / 债权人两侧对称**：源户是债务人 ⇒ 目标成为新债务人；源户是债权人 ⇒ 按比例把应收转给目标
+  （目标成为新债权人）。现有 P8 `LotMigrationBook` 只做了债务人侧，P0 要补齐债权人侧。
+- **质押/抵押 MVP 留源合同**：源户若要消亡而质押仍挂着 ⇒ 整笔迁移具名拒，不静默解除质押；以后再做
+  “质押随份额”。
+- **源户清空**：合同端点/不可移动资产残留时允许保留 0 人口经济空壳（沿用 `retireSource` 口径），但必须
+  具名审计；“清户”只有在所有债权/债务/质押都转移或结清后才允许。
+- **钱/货/资产**：货币与商品在 actor 账户 ⇒ App 编排 actor 腿按比例搬或显式留源；`OwnershipStake` 按数量
+  比例拆；跨 hex/不可移动资产沿用现有 D-023 留源 + audit；劳动配额/供给在人口迁移后必须按新 Social
+  重算，防止破 `Σ allocated ≤ available`。
+- **日志归属**：经济腿（`MIGRATION_PLAN/MOVE/APPLIED`、逐合同本金迁移）记 `EconomyLog.migration()`；
+  Social 腿（工单、TRANSFER_IN/OUT）记 `SocialLog.workOrder()`/`population()`；跨域编排汇总（同一
+  migrationId 两腿结果、守恒审计）记 `AppLog.time()`（或 app 新增分类）；**util 不放日志门面**，见
+  AGENTS.md §一.9 的模块日志纪律。
+
 ### 7.3 Unit 对接批次（四件套 + 决策人模型）
 
 1. **征兵/退伍：组合工具迁移到 Social 工单**
