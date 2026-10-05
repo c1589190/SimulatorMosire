@@ -65,7 +65,7 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
       payload = EconomyPayloads.parse(payloadJson);
       seeded = EconomyPayloads.toData(payload, state.meta().timestamp());
     } catch (IllegalArgumentException | IllegalStateException e) {
-      // ★ 旧形状载荷（缺 household/memberships）会在 EconomyData 构造期的 LegacyHouseholdMigration 里
+      // ★ 旧形状载荷（缺 household）会在 EconomyData 构造期的 LegacyHouseholdMigration 里
       //   以 IllegalStateException fail-closed（"无法定位产业格"等）—— 它同样是**载荷语义错误**，
       //   必须在命令边界成为 Rejected，不允许穿出去变成整条推进/revision 失败（类注的"失败都以 Rejected 出面"）。
       return new HandlerOutcome.Rejected(e.getMessage());
@@ -88,9 +88,8 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             merge(base.classes(), seeded.classes()),
             merge(base.debtContracts(), seeded.debtContracts()),
             base.flows(),
-            // ★ R2：劳动供给与配额**按格追加**（与产业/阶层行同一套判重口径：该格已被占用 ⇒ 上面就拒了），
-            //   故这里按表合并即可 —— 各国的批次 id 互不相同（含格/城的 id 段）。
-            merge(base.laborSupply(), seeded.laborSupply()),
+            // ★ P2-A A4：劳动供给表已删除（家户时间预算每 tick 由 Social 人口组成重算）；配额按格追加，
+            //   口径与产业/阶层行同一套（该格已被占用 ⇒ 上面就拒了）。
             merge(base.allocations(), seeded.allocations()),
             // ★ T2：第 8 个组件按同一套判重口径追加（该格已被占用 ⇒ 上面就拒了）。
             merge(base.relations(), seeded.relations()),
@@ -100,9 +99,7 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             // ★ M2.4：第 10 个组件（在途批次）—— 播种载荷没有在途，但**必须原样带过已有批次**：
             //   漏了它 = 一次按格追加播种会把全世界正在路上的货物静默抹掉（比"没播"更糟：货权凭据消失）。
             merge(base.shipments(), seeded.shipments()),
-            // ★ S1：成员份额与 R3B.1 的实物资产份额按同一套"该格已被占用 ⇒ 上面就拒"的口径追加 —— 漏了它们 =
-            //   第二批播种的家户成员份额/资产份额静默消失（世界照旧起得来，缺口却在账面上查无此人）。
-            merge(base.memberships(), seeded.memberships()),
+            // ★ P2-A A3：成员份额已迁 Social（不再是经济组件）；这里只追加 R3B.1 的实物资产份额。
             merge(base.assetShares(), seeded.assetShares()),
             // ★ S3 预留的第 13 个组件：同一套"该格已被占用 ⇒ 上面就拒"的口径追加（空表播种 ⇒ 逐值带过已有状态）。
             merge(base.operatorConditions(), seeded.operatorConditions()),

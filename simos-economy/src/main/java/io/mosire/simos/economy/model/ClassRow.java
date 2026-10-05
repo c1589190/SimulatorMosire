@@ -32,7 +32,7 @@ import java.util.Map;
  * <p>★ **它是存量**（§3.3 末条"存量/流量分离"）：本期的发生额在 {@link FlowRow} 里、**结算后清零**；绝不用"生产成本"或"资产减少"
  * 冒充负债——债务只能由借入/赊购产生，引用 {@link #debts} 指向债务表。
  *
- * <p>★ **量纲**（§7）：{@code population} 人；{@code laborMilli} 千分劳动；{@code naturalNeeds}/{@code
+ * <p>★ **量纲**（§7；P2-A §13.4 起）：{@code population} 人；{@code laborMilli} = **每 tick 家户时间预算（毫小时）**；{@code naturalNeeds}/{@code
  * effectiveDemand} 按最小计量单位；{@code money} 最小币值；{@code participationPerMille} 千分数。
  *
  * <p>★ **不变量（构造期判，§6.4）**：{@code population ≥ 0}、{@code laborMilli ≥ 0}、{@code money ≥ 0}、两个表的逐值
@@ -46,9 +46,11 @@ import java.util.Map;
  * @param id ★★ <b>家户稳定身份</b>（S1）：是 {@code EconomyData.classes} 的键，迁移/分层/居住变化都不改它
  * @param view 当前视图（格 + 居住类型 + 阶层）：可变，不再是身份
  * @param population 人口（人）；不得为负
- * @param laborMilli **未按参与率折算的**每日劳动（千分劳动/日）——由 social 的人数 × 年龄×性别系数而来；不得为负 ★
- *     M1.8：它是"这份人有多少劳动能力"的毛量；按阶层参与率折算后的可用劳动<b>不存成第二份字段</b>，而是由 {@link
- *     #participationAdjustedLaborMilli()} 现算（唯一算法，见该方法）
+ * @param laborMilli ★★ <b>本 tick 家户时间预算（毫小时）</b>（P2-A §13.4）——由 Social 的家户成员 ×
+ *     {@code LaborTimeTable} 现算（每 tick 重算、创世由 {@code EconomySeeder} 算同一张表）；不得为负。
+ *     ★ 它是劳动配额的上限：不变量 {@code Σ allocations(household).laborMilli ≤ laborMilli}（见 {@code EconomyData}）。
+ *     ★ 旧的"千分劳动/日"口径（{@code AGE_LABOR_COEF_BY_SEX} 折算量）已退役；{@code participationPerMille} 仍保留为
+ *     分配权重（不再是硬上限）
  * @param participationPerMille 本期实际劳动投入率（≤ 该格各产业的槽位上限）；必须 ∈ [0, 1000]
  * @param money 货币（最小币值）；不得为负
  * @param debts 指向债务表的引用；可空、不得含 null
@@ -222,7 +224,7 @@ public record ClassRow(
    *
    * <p>公式与不变量见 {@link #participationAdjustedLaborMilli()} —— 两个形态是<b>同一处</b>拼写点，实例方法只负责取自己的两个字段。
    *
-   * @param laborMilli 未折算的每日劳动（千分劳动/日）；不得为负
+   * @param laborMilli 家户时间预算（毫小时）；不得为负
    * @param participationPerMille 参与率（千分）；必须 ∈ [0, 1000]
    * @throws IllegalArgumentException 劳动量为负、或参与率越界（"折算系数"越界不是一种状态，是坏数据）
    */

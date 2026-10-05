@@ -13,10 +13,11 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.app.world.EconomySeeder;
+import io.mosire.simos.economy.api.labor.LaborTimeTable;
 import io.mosire.simos.economy.api.population.LotMigration;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.MigrationPolicy;
 import io.mosire.simos.economy.time.AccountPartitionKey;
@@ -31,6 +32,7 @@ import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.AgeBracketView;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.population.PopulationDynamics;
 import io.mosire.simos.social.population.PopulationGroup;
@@ -282,21 +284,16 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             "人口—经济推进并行入口: workerCount={} parallelism={}",
             economyWorkerCount,
             stepper.parallelism());
-        // ★★ S1.4 后置不变量（app 侧，唯一看得见 social 的地方）：
-        //   · 旧档（meta.rulesVersion = pre-modern-v1）的迁移器只能按行人口反推近似份额 / 合成 lot ⇒ 第一次推进前按
-        //     social 真实批次重建一次（片区总量对不上 ⇒ fail-closed）；
-        //   · 新档 ⇒ 逐 lot 严格校验（不等当场抛，不静默均摊）。
-        if (isLegacyMigration(economy)) {
-          if (!MembershipWriteback.isConsistent(
-              stepper.memberships(), stepper.classRows(), social)) {
-            MembershipWriteback.rebuildLegacy(stepper.classRows(), stepper.memberships(), social);
-          }
-        } else {
-          MembershipWriteback.requireConsistent(stepper.memberships(), stepper.classRows(), social);
-        }
+        // ★★ P2-A A3：家户人口组成的唯一权威是 Social 的 {@code Household.members} —— 这里把它投影成
+        //   「household → (lot → count)」只读表注入经济会话（组织/进入阶段挑批次用；不进 Economy 状态、
+        //   不进变更集）。SocialData 的构造期守卫已经保证逐 lot 守恒（Σshare == PopulationGroup.count）。
+        stepper.updateComposition(compositionOf(social));
+        stepper.recomputeLaborBudgets(laborBudgetsOf(social, range.from().tick()));
         ActorData currentBooks = migratedBooks;
         SocialData currentSocial = social;
         for (long day = range.from().tick() + 1L; day <= to.get().tick(); day++) {
+          // ★★ P2-A §13.4：每 tick 重算家户时间预算（Social 人口组成 × 可调系数表）—— 见 EconomyDayStepper。
+          stepper.recomputeLaborBudgets(laborBudgetsOf(currentSocial, day));
           LinkedHashMap<HouseholdId, Map<CommodityId, Long>> unmetBefore = unmetOf(stepper.flows());
           // ★★ T5：日循环里同一处落账 —— step 交回**当天**的账，条目逐日落到 actor 账本上（不重不漏）。
           //   ★★ M2 守恒收口：**市场成交（MARKET_TRADE）不折**（理由见 {@link OwnershipBooks#REASONS_NOT_FOLDED}）——
@@ -336,11 +333,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                   outcome.deaths(),
                   stepper.classRows().size(),
                   stepper.classRows().values().stream().mapToLong(ClassRow::population).sum());
-              // ★★ S1.4.1 的跨切片收口：出生落在**新的 born lot**（社会侧），存量 lot 只减死亡 ⇒ 在这里按行人口权重
-              //   为新批次补建份额，然后逐 lot 硬校验。顺序必须在 landAccountSession 之前（份额不进账户，但它与行人口
-              //   同属 economy 工作副本，先收口再构造终态）。
-              MembershipWriteback.reconcile(
-                  stepper.classRows(), stepper.memberships(), currentSocial);
+              // ★★ P2-A A3：出生/死亡/新生批次都在 Social 侧落定（PopulationDynamics 已维护 Household.members）
+              //   ⇒ 这里只刷新经济会话的只读组成投影，不再回写任何 Economy 成员份额。
+              stepper.updateComposition(compositionOf(currentSocial));
               // ★ 月末**重新对齐副本**（照 flows 的既有先例：那份实现会带出自己的流水副本 ⇒ 累加器要重新读一遍）。
               //   ★ 放在月度回写之后、且**在条目落账之后**：全部账户以会话的绝对值收尾（顺序反了会把条目加两遍）。
               currentBooks = OwnershipBooks.landAccountSession(currentBooks, stepper.accounts());
@@ -528,12 +523,6 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
   // ── 切片读取与地址 ────────────────────────────────────────────────────────────────────
 
   /** ★ 是否旧档迁移态（只有旧档需要按 social 重建份额；新档逐 lot 严格校验）。 */
-  private static boolean isLegacyMigration(EconomyData economy) {
-    return economy
-        .meta()
-        .map(meta -> EconomyMeta.RULES_VERSION_PRE_MODERN_V1.equals(meta.rulesVersion()))
-        .orElse(false);
-  }
 
   /** S3b：unit 切片（缺省 ⇒ null；只读，用于家户一致性校核/自动同步）。 */
   private static UnitState unitStateOf(SimulationState state) {
@@ -624,4 +613,60 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     }
     return actorSnapshot.data();
   }
+  /** ★★ P2-A A3：Social 的家户成员表 → 经济结算的只读组成投影（不落任何 Economy 状态）。 */
+  private static Map<HouseholdId, Map<PeopleLotId, Long>> compositionOf(SocialData social) {
+    Map<HouseholdId, Map<PeopleLotId, Long>> composition = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, io.mosire.simos.social.household.Household> entry :
+        social.households().entrySet()) {
+      composition.put(entry.getKey(), entry.getValue().members());
+    }
+    return composition;
+  }
+
+  /** ★★ P2-A §13.4：Social 人口组成 × 系数表 → 每家户每 tick 的时间预算（毫小时；只读投影）。 */
+  private static Map<HouseholdId, Long> laborBudgetsOf(SocialData social, long day) {
+    CalendarClock clock = CalendarClock.julianDefault();
+    Map<HouseholdId, Long> budgets = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, io.mosire.simos.social.household.Household> entry :
+        social.households().entrySet()) {
+      long total = 0L;
+      for (AgeBracketView view : social.ageBrackets(entry.getKey(), day, clock)) {
+        total =
+            Math.addExact(
+                total,
+                Math.multiplyExact(
+                    view.count(),
+                    EconomySeeder.LABOR_TIME_TABLE.perPersonMilliHours(
+                        bracketOf(view), view.sex())));
+      }
+      budgets.put(entry.getKey(), total);
+    }
+    return budgets;
+  }
+
+  /**
+   * 年龄档视图 → {@link LaborTimeTable} 的三档：优先用 social 的档名（{@code 0-14}/{@code 15-59}/{@code 60+}，
+   * 与 {@code AgeBracket} 的历法边界逐字同源）；档名不认识时退回"天数上界/下界"近似（只作防御，不另立一套历法）。
+   */
+  private static int bracketOf(AgeBracketView view) {
+    switch (view.bracketId()) {
+      case "0-14":
+        return LaborTimeTable.BRACKET_CHILD;
+      case "15-59":
+        return LaborTimeTable.BRACKET_ADULT;
+      case "60+":
+        return LaborTimeTable.BRACKET_ELDER;
+      default:
+        long childMaxDays = 15L * 365L;
+        long elderMinDays = 60L * 365L;
+        if (view.maxAgeDays() < childMaxDays) {
+          return LaborTimeTable.BRACKET_CHILD;
+        }
+        if (view.minAgeDays() >= elderMinDays) {
+          return LaborTimeTable.BRACKET_ELDER;
+        }
+        return LaborTimeTable.BRACKET_ADULT;
+    }
+  }
+
 }

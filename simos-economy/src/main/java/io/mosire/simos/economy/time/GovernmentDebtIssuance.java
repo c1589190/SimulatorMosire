@@ -1,9 +1,7 @@
 package io.mosire.simos.economy.time;
 
-import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
-import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -200,20 +198,13 @@ final class GovernmentDebtIssuance {
     return lenders;
   }
 
-  /** 政府身份 → 政府家户 id（本写口只支持 treasury = HOUSEHOLD）。 */
+  /** 政府身份 → 政府家户 id（treasury 必须是 HOUSEHOLD actor；非家户具名拒）。 */
   private static HouseholdId householdOf(Government government) {
-    if (government.treasury().kind() != ActorKind.HOUSEHOLD) {
-      throw new IllegalStateException(
-          "GOV 发债需要 HOUSEHOLD 国库（非 HOUSEHOLD 国库不参与本写口）：" + government);
-    }
-    return HouseholdActors.householdOf(government.treasury());
+    return HouseholdRouting.requireHouseholdOf(government.treasury());
   }
 
-  /** 国库账户：HOUSEHOLD treasury 走家户账户；其余走经营者账户。 */
+  /** ★★ P2-A §13.3：国库账户 = 政府家户账户（不再有经营者账户旁路）。 */
   private static ActorAccount accountOf(AccountSession accounts, Government government) {
-    if (government.treasury().kind() == ActorKind.HOUSEHOLD) {
-      return accounts.householdAccount(HouseholdActors.householdOf(government.treasury()));
-    }
-    return accounts.operatorAccount(government.treasury());
+    return accounts.householdAccount(householdOf(government));
   }
 }

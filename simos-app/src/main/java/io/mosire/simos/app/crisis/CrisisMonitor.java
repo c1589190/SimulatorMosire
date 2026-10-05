@@ -213,17 +213,22 @@ public final class CrisisMonitor {
       evidence.put("cycleDays", cycleDaysSeen);
       lights.add(new Light(coord, Kind.DEBT, evidence));
     }
+    // ★★ P2-A A4：可用量 = 该格各家的**每 tick 时间预算**（ClassRow.laborMilli，毫小时）；
+    //   批次级供给表已删除（唯一权威是 Social 人口组成 × 系数表）。
     long available = 0L;
     long allocated = 0L;
-    for (PopulationGroup group : social.groupsAt(coord)) {
-      var supply = economy.laborSupply().get(group.id());
-      if (supply != null) {
-        available += supply.availableLabor();
+    for (var row : economy.classes().values()) {
+      if (row.view().hex().equals(coord)) {
+        available += row.laborMilli();
       }
-      for (var allocation : economy.allocations().values()) {
-        if (allocation.group().equals(group.id())) {
-          allocated += allocation.laborMilli();
-        }
+    }
+    java.util.Set<io.mosire.simos.social.api.id.PeopleLotId> groupsHere = new java.util.HashSet<>();
+    for (PopulationGroup group : social.groupsAt(coord)) {
+      groupsHere.add(group.id());
+    }
+    for (var allocation : economy.allocations().values()) {
+      if (groupsHere.contains(allocation.group())) {
+        allocated += allocation.laborMilli();
       }
     }
     if (available > 0L && allocated * 1000L / available >= LABOR_BURDEN_CRISIS_PER_MILLE) {

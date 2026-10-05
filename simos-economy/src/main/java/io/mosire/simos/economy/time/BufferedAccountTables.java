@@ -1,6 +1,5 @@
 package io.mosire.simos.economy.time;
 
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -42,10 +41,6 @@ final class BufferedAccountTables {
   final Map<HouseholdId, Map<CurrencyId, Long>> householdMoney;
   final Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods;
   final Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney;
-  final Map<ActorRef, Map<CommodityId, Long>> operatorGoods;
-  final Map<ActorRef, Map<CurrencyId, Long>> operatorMoney;
-  final Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods;
-  final Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney;
 
   BufferedAccountTables(AccountSnapshot snapshot, AccountIntentBuffer buffer) {
     this.snapshot = Objects.requireNonNull(snapshot, "snapshot");
@@ -58,14 +53,6 @@ final class BufferedAccountTables {
         new OuterView<>(snapshot.householdIndexKeySet(), snapshot::householdKey, FROZEN_GOODS);
     this.householdFrozenMoney =
         new OuterView<>(snapshot.householdIndexKeySet(), snapshot::householdKey, FROZEN_MONEY);
-    this.operatorGoods =
-        new OuterView<>(snapshot.operatorIndexKeySet(), snapshot::operatorKey, GOODS);
-    this.operatorMoney =
-        new OuterView<>(snapshot.operatorIndexKeySet(), snapshot::operatorKey, MONEY);
-    this.operatorFrozenGoods =
-        new OuterView<>(snapshot.operatorIndexKeySet(), snapshot::operatorKey, FROZEN_GOODS);
-    this.operatorFrozenMoney =
-        new OuterView<>(snapshot.operatorIndexKeySet(), snapshot::operatorKey, FROZEN_MONEY);
   }
 
   /** 商品轴（余额 / 冻结）。 */

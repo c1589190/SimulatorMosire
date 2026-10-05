@@ -118,9 +118,16 @@ public final class AccountIntentBuffer {
         stage,
         partitionIndex,
         partitionCount,
-        key ->
-            AccountPartitionKey.partitionIndexOf(key.location().toString(), partitionCount)
-                == partitionIndex,
+        key -> {
+          io.mosire.simos.map.hex.HexCoord location = snapshot.locationOf(key.household());
+          if (location == null) {
+            throw new IllegalStateException(
+                "家户未登记位置，无法按格分区（账户身份与位置解耦后，位置索引是分区唯一读口）: "
+                    + key.canonical());
+          }
+          return AccountPartitionKey.partitionIndexOf(location.toString(), partitionCount)
+              == partitionIndex;
+        },
         false);
   }
 
@@ -493,8 +500,9 @@ public final class AccountIntentBuffer {
     }
   }
 
-  private static void requireSameLocation(AccountPartitionKey key, Transfer transfer, String side) {
-    if (!key.location().equals(transfer.location())) {
+  private void requireSameLocation(AccountPartitionKey key, Transfer transfer, String side) {
+    io.mosire.simos.map.hex.HexCoord registered = snapshot.locationOf(key.household());
+    if (registered == null || !registered.equals(transfer.location())) {
       throw new IllegalStateException(
           "转移的 location 与"
               + side

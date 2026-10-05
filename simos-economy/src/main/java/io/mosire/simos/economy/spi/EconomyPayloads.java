@@ -30,7 +30,6 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
@@ -40,7 +39,6 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.Basis;
@@ -68,7 +66,6 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.ModeTransition;
@@ -310,7 +307,6 @@ final class EconomyPayloads {
     // ★★ H0：家户行是**entry 级**的（键 = (格, 居住类型, 阶层)），不再嵌在产业节点里 —— 见类注 ①。
     Map<HouseholdId, ClassRow> classes = new LinkedHashMap<>();
     // ★ R2 的两张新表：**逐格**声明（格是命令目标与权限的粒度：一条命令动的是这些格）。
-    Map<PeopleLotId, LaborSupply> laborSupply = new LinkedHashMap<>();
     Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
     // ★ T2 的第 8 个组件：R3B.2 起键 = ProductionUnitId（关系挂在 unit 上）。
     Map<ProductionUnitId, ProductionRelation> relations = new LinkedHashMap<>();
@@ -327,9 +323,9 @@ final class EconomyPayloads {
     Map<GovernmentId, Government> governments = governments(payload);
     Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances =
         moneyIssuances(payload, at, governments);
-    // ★ S1 的两个新组件：可选的逐格声明；缺省 ⇒ 空表（由 EconomyData 的迁移器补齐成员份额；
-    //   资产份额则是"没有登记就没有份额" —— 不凭产能替谁发明权利，见 AssetShare 的类注）。
-    Map<MembershipId, Membership> memberships = new LinkedHashMap<>();
+    // ★ S1 的资产份额组件：可选的逐格声明；缺省 ⇒ 空表（"没有登记就没有份额" —— 不凭产能替谁发明权利，
+    //   见 AssetShare 的类注）。★ P2-A A3：成员份额不再是经济状态组件（唯一权威 = Social 的 Household.members），
+    //   载荷里即使带 `memberships` 键也不再解析（旧世界重建）。
     Map<AssetShareId, AssetShare> assetShares = new LinkedHashMap<>();
     Map<String, Long> assetShareSequences = new LinkedHashMap<>();
     for (JsonNode entry : entries) {
@@ -512,26 +508,9 @@ final class EconomyPayloads {
         }
       }
       // ★ R2：该格各批次的劳动供给（可支配劳动的上限）—— 缺省 ⇒ 空表（与 classes 同款）。
-      for (JsonNode node : optionalArray(entry, "laborSupply")) {
-        LaborSupply supply = laborSupply(node);
-        if (laborSupply.putIfAbsent(supply.group(), supply) != null) {
-          throw new IllegalArgumentException("同一份载荷里劳动供给重复: " + supply.group());
-        }
-      }
       for (LaborAllocation allocation : canonicalAllocations) {
         if (allocations.putIfAbsent(allocation.id(), allocation) != null) {
           throw new IllegalArgumentException("同一份载荷里劳动分配重复: " + allocation.id());
-        }
-      }
-      // ★ S1：该格的成员份额（可选；键 = (lot, household) 的确定性 id）。
-      for (JsonNode node : optionalArray(entry, "memberships")) {
-        PeopleLotId lot = PeopleLotId.parse(requireText(node, "lot"));
-        HouseholdId household = HouseholdId.parse(requireText(node, "household"));
-        Membership membership =
-            new Membership(
-                Membership.idOf(lot, household), lot, household, requireLong(node, "count"));
-        if (memberships.putIfAbsent(membership.id(), membership) != null) {
-          throw new IllegalArgumentException("同一份载荷里成员份额重复: " + membership.id());
         }
       }
     }
@@ -557,13 +536,11 @@ final class EconomyPayloads {
         classes,
         debtContracts,
         Map.of(),
-        laborSupply,
         allocations,
         relations,
         markets,
         // ★ M2.4：创世载荷没有在途（播种出来的世界货物都在账上；在途由市场发运产生）。
         Map.of(),
-        memberships,
         assetShares,
         // ★ S3 预留的第 13 个组件：创世载荷暂不声明经营者状态（空表 = 尚未登记任何状态机状态）。
         Map.of(),
@@ -1125,16 +1102,6 @@ final class EconomyPayloads {
    * <p>★ **毛额由载荷给**（不由本层从人口算）：人口与年龄性别住在 social 的 {@code PopulationGroup}，economy 编译期不认识它 （设计稿
    * §二/§八.1）—— 算出毛额的是 {@code EconomySeeder}（它以 R1 已落地的年龄×性别系数表折算）。
    */
-  private static LaborSupply laborSupply(JsonNode node) {
-    return new LaborSupply(
-        PeopleLotId.parse(requireText(node, "group")),
-        requireLong(node, "period"),
-        requireLong(node, "grossLaborMilli"),
-        // ★ 两项扣除缺省 0（本轮的形态）：它们**不是可有可无**的字段，只是值为 0 ——
-        //   LaborSupply 照减（见其类注），故载荷给非 0 时逐值生效。
-        optionalLong(node, "servedLaborMilli", 0L),
-        optionalLong(node, "committedLaborMilli", 0L));
-  }
 
   /**
    * ★★ <b>R3B.2：配额 activity → unit</b>。新载荷必须直接给 unit id；旧载荷给活动标签（{@code farm}）或旧产业串 ⇒ 按 {@code

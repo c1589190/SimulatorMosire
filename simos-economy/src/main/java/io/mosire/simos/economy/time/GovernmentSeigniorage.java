@@ -1,9 +1,7 @@
 package io.mosire.simos.economy.time;
 
-import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
-import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
@@ -133,13 +131,10 @@ final class GovernmentSeigniorage {
     return minted;
   }
 
-  /** 国库账户：HOUSEHOLD treasury 走家户账户，其余（GOVERNMENT 等）走经营者账户。 */
+  /** ★★ P2-A §13.3：国库账户 = 政府家户账户（非 HOUSEHOLD 国库具名拒，不再有经营者账户旁路）。 */
   private static ActorAccount accountOf(AccountSession accounts, Government government) {
-    if (government.treasury().kind() == ActorKind.HOUSEHOLD) {
-      HouseholdId household = HouseholdActors.householdOf(government.treasury());
-      return accounts.householdAccount(household);
-    }
-    return accounts.operatorAccount(government.treasury());
+    HouseholdId household = HouseholdRouting.requireHouseholdOf(government.treasury());
+    return accounts.householdAccount(household);
   }
 
   /** 发行审计 id（确定性、无随机/时钟；政府 id 里的 {@code '|'} 换成 {@code ':'} 以避开账户/编码分段符）。 */

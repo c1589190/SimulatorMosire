@@ -15,7 +15,6 @@ import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
@@ -24,7 +23,6 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
@@ -44,7 +42,6 @@ import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
@@ -66,7 +63,7 @@ import java.util.function.Function;
 /**
  * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 30 个：{@code meta} / {@code industries} /
  * {@code classes} / {@code debtContracts} / {@code flows} / {@code laborSupply} / {@code
- * allocations} / {@code relations} / {@code markets} / {@code shipments} / {@code memberships} /
+ * allocations} / {@code relations} / {@code markets} / {@code shipments} /
  * {@code assetShares} / {@code operatorConditions} / {@code units} / {@code demands} / {@code
  * candidates} / {@code modes} / {@code classStructures} / {@code classPositions} / {@code
  * classStandings} / {@code productionOrganizations} / {@code assetRules} + E3 的 {@code governments}
@@ -110,12 +107,10 @@ public record EconomyChangeSet(
     FieldDelta<ClassRow> classes,
     FieldDelta<DebtContract> debtContracts,
     FieldDelta<FlowRow> flows,
-    FieldDelta<LaborSupply> laborSupply,
     FieldDelta<LaborAllocation> allocations,
     FieldDelta<ProductionRelation> relations,
     FieldDelta<Market> markets,
     FieldDelta<ShipmentBatch> shipments,
-    FieldDelta<Membership> memberships,
     FieldDelta<AssetShare> assetShares,
     FieldDelta<OperatorCondition> operatorConditions,
     FieldDelta<ProductionUnit> units,
@@ -159,9 +154,6 @@ public record EconomyChangeSet(
     if (flows == null) {
       flows = new FieldDelta.Unchanged<>();
     }
-    if (laborSupply == null) {
-      laborSupply = new FieldDelta.Unchanged<>();
-    }
     if (allocations == null) {
       allocations = new FieldDelta.Unchanged<>();
     }
@@ -178,9 +170,6 @@ public record EconomyChangeSet(
       shipments = new FieldDelta.Unchanged<>();
     }
     // ★ S1 的两个新组件：同一口径（旧档没提该组件，就是没动它）。
-    if (memberships == null) {
-      memberships = new FieldDelta.Unchanged<>();
-    }
     if (assetShares == null) {
       assetShares = new FieldDelta.Unchanged<>();
     }
@@ -260,12 +249,10 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.classes(), target.classes()),
         FieldDelta.diff(base.debtContracts(), target.debtContracts()),
         FieldDelta.diff(base.flows(), target.flows()),
-        FieldDelta.diff(base.laborSupply(), target.laborSupply()),
         FieldDelta.diff(base.allocations(), target.allocations()),
         FieldDelta.diff(base.relations(), target.relations()),
         FieldDelta.diff(base.markets(), target.markets()),
         FieldDelta.diff(base.shipments(), target.shipments()),
-        FieldDelta.diff(base.memberships(), target.memberships()),
         FieldDelta.diff(base.assetShares(), target.assetShares()),
         FieldDelta.diff(base.operatorConditions(), target.operatorConditions()),
         FieldDelta.diff(base.units(), target.units()),
@@ -297,12 +284,10 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(base.classes(), cs.classes(), EconomyChangeSet::householdId),
         FieldDelta.rebuild(base.debtContracts(), cs.debtContracts(), DebtContractId::parse),
         FieldDelta.rebuild(base.flows(), cs.flows(), EconomyChangeSet::householdId),
-        FieldDelta.rebuild(base.laborSupply(), cs.laborSupply(), PeopleLotId::parse),
         FieldDelta.rebuild(base.allocations(), cs.allocations(), LaborAllocationId::parse),
         FieldDelta.rebuild(base.relations(), cs.relations(), ProductionUnitId::parse),
         FieldDelta.rebuild(base.markets(), cs.markets(), HexCoord::parse),
         FieldDelta.rebuild(base.shipments(), cs.shipments(), ShipmentId::parse),
-        FieldDelta.rebuild(base.memberships(), cs.memberships(), MembershipId::parse),
         FieldDelta.rebuild(base.assetShares(), cs.assetShares(), AssetShareId::parse),
         FieldDelta.rebuild(
             base.operatorConditions(), cs.operatorConditions(), ProductionUnitId::parse),
@@ -338,12 +323,12 @@ public record EconomyChangeSet(
         || classes.changed()
         || debtContracts.changed()
         || flows.changed()
-        || laborSupply.changed()
+
         || allocations.changed()
         || relations.changed()
         || markets.changed()
         || shipments.changed()
-        || memberships.changed()
+
         || assetShares.changed()
         || operatorConditions.changed()
         || units.changed()

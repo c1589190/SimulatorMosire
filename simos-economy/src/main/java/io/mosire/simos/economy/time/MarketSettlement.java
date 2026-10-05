@@ -1,6 +1,5 @@
 package io.mosire.simos.economy.time;
 
-import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.cohort.CohortKey;
@@ -270,10 +269,6 @@ final class MarketSettlement {
     private final Map<HouseholdId, Map<CurrencyId, Long>> householdMoney;
     private final Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods;
     private final Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney;
-    private final Map<ActorRef, Map<CommodityId, Long>> operatorGoods;
-    private final Map<ActorRef, Map<CurrencyId, Long>> operatorMoney;
-    private final Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods;
-    private final Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney;
     private final Map<HouseholdId, Map<CommodityId, Long>> unmetToday;
     private final Map<ActorRef, HouseholdId> householdOfActor;
     private final Map<IndustryId, Industry> industries;
@@ -340,10 +335,6 @@ final class MarketSettlement {
         Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
         Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
         Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
-        Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
-        Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
-        Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
-        Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
         Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
         Map<ActorRef, HouseholdId> householdOfActor,
         Map<IndustryId, Industry> industries,
@@ -363,10 +354,6 @@ final class MarketSettlement {
           householdMoney,
           householdFrozenGoods,
           householdFrozenMoney,
-          operatorGoods,
-          operatorMoney,
-          operatorFrozenGoods,
-          operatorFrozenMoney,
           unmetToday,
           householdOfActor,
           industries,
@@ -397,10 +384,6 @@ final class MarketSettlement {
         Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
         Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
         Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
-        Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
-        Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
-        Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
-        Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
         Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
         Map<ActorRef, HouseholdId> householdOfActor,
         Map<IndustryId, Industry> industries,
@@ -415,7 +398,7 @@ final class MarketSettlement {
         Map<DemandId, DemandEntry> demands,
         MarketRegulation regulation) {
       this(day, rows, householdGoods, householdMoney, householdFrozenGoods, householdFrozenMoney,
-          operatorGoods, operatorMoney, operatorFrozenGoods, operatorFrozenMoney, unmetToday,
+          unmetToday,
           householdOfActor, industries, units, assetShares, relations, allocations, shipments,
           ledger, operatorConditions, index, demands, regulation, null, null);
     }
@@ -432,10 +415,6 @@ final class MarketSettlement {
         Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
         Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
         Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
-        Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
-        Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
-        Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
-        Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney,
         Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
         Map<ActorRef, HouseholdId> householdOfActor,
         Map<IndustryId, Industry> industries,
@@ -459,10 +438,6 @@ final class MarketSettlement {
           Objects.requireNonNull(householdFrozenGoods, "householdFrozenGoods");
       this.householdFrozenMoney =
           Objects.requireNonNull(householdFrozenMoney, "householdFrozenMoney");
-      this.operatorGoods = Objects.requireNonNull(operatorGoods, "operatorGoods");
-      this.operatorMoney = Objects.requireNonNull(operatorMoney, "operatorMoney");
-      this.operatorFrozenGoods = Objects.requireNonNull(operatorFrozenGoods, "operatorFrozenGoods");
-      this.operatorFrozenMoney = Objects.requireNonNull(operatorFrozenMoney, "operatorFrozenMoney");
       this.unmetToday = Objects.requireNonNull(unmetToday, "unmetToday");
       this.householdOfActor = Objects.requireNonNull(householdOfActor, "householdOfActor");
       this.industries = Objects.requireNonNull(industries, "industries");
@@ -509,10 +484,6 @@ final class MarketSettlement {
           householdMoney,
           householdFrozenGoods,
           householdFrozenMoney,
-          operatorGoods,
-          operatorMoney,
-          operatorFrozenGoods,
-          operatorFrozenMoney,
           unmetToday,
           householdOfActor,
           industries,
@@ -1970,12 +1941,8 @@ final class MarketSettlement {
     EconomySettlement.applyTransfer(
         round.householdGoods,
         round.householdMoney,
-        round.operatorGoods,
-        round.operatorMoney,
         round.householdFrozenGoods,
         round.householdFrozenMoney,
-        round.operatorFrozenGoods,
-        round.operatorFrozenMoney,
         round.householdOfActor,
         transfer);
   }
@@ -2542,39 +2509,20 @@ final class MarketSettlement {
     Map<HouseholdId, Map<CurrencyId, Long>> householdMoney = new LinkedHashMap<>();
     Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods = new LinkedHashMap<>();
     Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney = new LinkedHashMap<>();
-    Map<ActorRef, Map<CommodityId, Long>> operatorGoods = new LinkedHashMap<>();
-    Map<ActorRef, Map<CurrencyId, Long>> operatorMoney = new LinkedHashMap<>();
-    Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods = new LinkedHashMap<>();
-    Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney = new LinkedHashMap<>();
     Map<HouseholdId, Map<CommodityId, Long>> unmetToday = new LinkedHashMap<>();
     for (Participant participant : regionParticipants.values()) {
-      if (participant.household != null) {
-        HouseholdId household = participant.household;
-        householdGoods.put(household, copyBalances(ctx.round.householdGoods, household));
-        householdMoney.put(household, copyBalances(ctx.round.householdMoney, household));
-        householdFrozenGoods.put(
-            household, copyBalances(ctx.round.householdFrozenGoods, household));
-        householdFrozenMoney.put(
-            household, copyBalances(ctx.round.householdFrozenMoney, household));
-        Map<CommodityId, Long> recorded = ctx.round.unmetToday.get(household);
-        if (recorded != null) {
-          unmetToday.put(household, new LinkedHashMap<>(recorded));
-        }
-      } else {
-        ActorRef actor = participant.actor;
-        // ★ 经营者账"缺席合法"（没播种）：只复制存在的表，保持 applyTransfer 的 containsKey 路由语义。
-        if (ctx.round.operatorGoods.containsKey(actor)) {
-          operatorGoods.put(actor, copyBalances(ctx.round.operatorGoods, actor));
-        }
-        if (ctx.round.operatorMoney.containsKey(actor)) {
-          operatorMoney.put(actor, copyBalances(ctx.round.operatorMoney, actor));
-        }
-        if (ctx.round.operatorFrozenGoods.containsKey(actor)) {
-          operatorFrozenGoods.put(actor, copyBalances(ctx.round.operatorFrozenGoods, actor));
-        }
-        if (ctx.round.operatorFrozenMoney.containsKey(actor)) {
-          operatorFrozenMoney.put(actor, copyBalances(ctx.round.operatorFrozenMoney, actor));
-        }
+      // ★★ P2-A §13.3：参与者恒为家户（participantsFor 已把经营者角色解析到家户；解析不到的聚合主体
+      //   不进入市场——具名缺口，见那里的注释）。
+      HouseholdId household = participant.household;
+      householdGoods.put(household, copyBalances(ctx.round.householdGoods, household));
+      householdMoney.put(household, copyBalances(ctx.round.householdMoney, household));
+      householdFrozenGoods.put(
+          household, copyBalances(ctx.round.householdFrozenGoods, household));
+      householdFrozenMoney.put(
+          household, copyBalances(ctx.round.householdFrozenMoney, household));
+      Map<CommodityId, Long> recorded = ctx.round.unmetToday.get(household);
+      if (recorded != null) {
+        unmetToday.put(household, new LinkedHashMap<>(recorded));
       }
     }
     MarketRound localRound =
@@ -2585,10 +2533,6 @@ final class MarketSettlement {
             householdMoney,
             householdFrozenGoods,
             householdFrozenMoney,
-            operatorGoods,
-            operatorMoney,
-            operatorFrozenGoods,
-            operatorFrozenMoney,
             unmetToday,
             ctx.round.householdOfActor,
             ctx.round.industries,
@@ -2824,10 +2768,6 @@ final class MarketSettlement {
         new LinkedHashMap<>(round.householdMoney),
         new LinkedHashMap<>(round.householdFrozenGoods),
         new LinkedHashMap<>(round.householdFrozenMoney),
-        new LinkedHashMap<>(round.operatorGoods),
-        new LinkedHashMap<>(round.operatorMoney),
-        new LinkedHashMap<>(round.operatorFrozenGoods),
-        new LinkedHashMap<>(round.operatorFrozenMoney),
         new LinkedHashMap<>(round.unmetToday),
         round.householdOfActor,
         round.industries,
@@ -3489,12 +3429,8 @@ final class MarketSettlement {
     EconomySettlement.applyTransfer(
         round.householdGoods,
         round.householdMoney,
-        round.operatorGoods,
-        round.operatorMoney,
         round.householdFrozenGoods,
         round.householdFrozenMoney,
-        round.operatorFrozenGoods,
-        round.operatorFrozenMoney,
         round.householdOfActor,
         goodsLeg);
 
@@ -3537,12 +3473,8 @@ final class MarketSettlement {
       EconomySettlement.applyTransfer(
           round.householdGoods,
           round.householdMoney,
-          round.operatorGoods,
-          round.operatorMoney,
           round.householdFrozenGoods,
           round.householdFrozenMoney,
-          round.operatorFrozenGoods,
-          round.operatorFrozenMoney,
           round.householdOfActor,
           moneyLeg);
     }
@@ -3560,12 +3492,8 @@ final class MarketSettlement {
       EconomySettlement.applyTransfer(
           round.householdGoods,
           round.householdMoney,
-          round.operatorGoods,
-          round.operatorMoney,
           round.householdFrozenGoods,
           round.householdFrozenMoney,
-          round.operatorFrozenGoods,
-          round.operatorFrozenMoney,
           round.householdOfActor,
           freightLeg);
       ctx.freightPaidMilli += charge.amountMilli();
@@ -3757,25 +3685,13 @@ final class MarketSettlement {
   private static void loadInTransit(MatchContext ctx, BuySlot buy, long quantity) {
     MarketRound round = ctx.round;
     CommodityId commodity = buy.order.commodity();
-    if (buy.buyer.household != null) {
-      HouseholdId key = buy.buyer.household;
-      long stock = householdStockOf(round.householdGoods, key, commodity);
-      if (stock < quantity) {
-        throw new IllegalStateException(
-            "装载在途时买方库存不足（货腿刚记上，账不应漂开）：家户=" + key + " 商品=" + commodity + " 余额=" + stock);
-      }
-      setHouseholdStock(round.householdGoods, key, commodity, stock - quantity);
-      return;
-    }
-    if (!round.operatorGoods.containsKey(buy.buyer.actor)) {
-      throw new IllegalStateException("装载在途时买方经营者账不在会话副本里（跨区买家必须在参与者里）：" + buy.buyer.actor);
-    }
-    long stock = operatorStockOf(round.operatorGoods, buy.buyer.actor, commodity);
+    HouseholdId key = buy.buyer.household;
+    long stock = householdStockOf(round.householdGoods, key, commodity);
     if (stock < quantity) {
       throw new IllegalStateException(
-          "装载在途时买方经营者库存不足：经营者=" + buy.buyer.actor + " 商品=" + commodity + " 余额=" + stock);
+          "装载在途时买方库存不足（货腿刚记上，账不应漂开）：家户=" + key + " 商品=" + commodity + " 余额=" + stock);
     }
-    setOperatorStock(round.operatorGoods, buy.buyer.actor, commodity, stock - quantity);
+    setHouseholdStock(round.householdGoods, key, commodity, stock - quantity);
   }
 
   /**
@@ -3792,32 +3708,12 @@ final class MarketSettlement {
   private static void deductBuyerLossNoTransfer(MatchContext ctx, BuySlot buy, long lossMilli) {
     MarketRound round = ctx.round;
     CommodityId commodity = buy.order.commodity();
-    if (buy.buyer.household != null) {
-      HouseholdId key = buy.buyer.household;
-      long stock = householdStockOf(round.householdGoods, key, commodity);
-      if (stock < lossMilli) {
-        throw new IllegalStateException(
-            "扣减单 hex 贸易损耗时买方家户库存不足（货腿刚按毛量记上，账不应漂开）：家户="
-                + key
-                + " 商品="
-                + commodity
-                + " 余额="
-                + stock
-                + " 损耗="
-                + lossMilli);
-      }
-      setHouseholdStock(round.householdGoods, key, commodity, stock - lossMilli);
-      return;
-    }
-    if (!round.operatorGoods.containsKey(buy.buyer.actor)) {
-      throw new IllegalStateException(
-          "扣减单 hex 贸易损耗时买方经营者账不在会话副本里（区内买家必须在参与者里）：" + buy.buyer.actor);
-    }
-    long stock = operatorStockOf(round.operatorGoods, buy.buyer.actor, commodity);
+    HouseholdId key = buy.buyer.household;
+    long stock = householdStockOf(round.householdGoods, key, commodity);
     if (stock < lossMilli) {
       throw new IllegalStateException(
-          "扣减单 hex 贸易损耗时买方经营者库存不足：经营者="
-              + buy.buyer.actor
+          "扣减单 hex 贸易损耗时买方家户库存不足（货腿刚按毛量记上，账不应漂开）：家户="
+              + key
               + " 商品="
               + commodity
               + " 余额="
@@ -3825,7 +3721,7 @@ final class MarketSettlement {
               + " 损耗="
               + lossMilli);
     }
-    setOperatorStock(round.operatorGoods, buy.buyer.actor, commodity, stock - lossMilli);
+    setHouseholdStock(round.householdGoods, key, commodity, stock - lossMilli);
   }
 
   // ── 会话副本的最小读写（本类不引入第二个 applier；这里只是把"哪张表、哪个键"说清）──────────────
@@ -4693,16 +4589,57 @@ final class MarketSettlement {
     for (List<ProductionUnitId> units : unitsByOperator.values()) {
       units.sort(Comparator.comparing(ProductionUnitId::value));
     }
+    // ★★ P2-A §13.3：经营者角色（庄园/作坊/商号）不持账 —— 逐 unit 解析到组织者/经营者家户：
+    //   ① 单一家户（operator/relation/份额可解析）⇒ 把 unit 挂到该家户的参与者上；
+    //   ② 解析不到单一主体但有名下劳动家户（集体经营，如家户纺织主 unit）⇒ 本批**具名缺口**：
+    //      不把聚合 unit 当市场参与者（其产出已按劳动分给各家家户账，各家按自己的库存买卖）；
+    //   ③ 连劳动家户都没有 ⇒ 具名抛（坏数据，不静默当成"零库存参与者"）。
     for (Map.Entry<ActorRef, List<ProductionUnitId>> entry : unitsByOperator.entrySet()) {
-      ActorRef actor = entry.getKey();
-      // ★ "账在会话副本里"才有可读库存/可花货币（缺席 = 看不见 = 可用 0，H4/H5 的既有口径）。
-      if (!round.operatorGoods.containsKey(actor)
-          && !round.operatorMoney.containsKey(actor)
-          && !round.operatorFrozenGoods.containsKey(actor)
-          && !round.operatorFrozenMoney.containsKey(actor)) {
-        continue;
+      for (ProductionUnitId unitId : entry.getValue()) {
+        Optional<HouseholdId> single = round.index.economicHouseholdOf(unitId);
+        if (single.isEmpty()) {
+          List<HouseholdId> collective = round.index.householdsOf(unitId);
+          if (collective.isEmpty()) {
+            throw new IllegalStateException(
+                "市场参与者无法解析到任何家户（账户主体只有家户；聚合主体必须能解析到组织者/经营者家户）："
+                    + "unit="
+                    + unitId.value()
+                    + " operator="
+                    + entry.getKey());
+          }
+          // ② 集体经营（如家户纺织主 unit）：具名缺口 —— 不进市场参与者（产出已按劳动分给各家家户账，
+          //    各家按自己的库存与预算参与市场）。
+          MARKET.warn(
+              "event=MARKET_SUBJECT_COLLECTIVE unit={} operator={} households={} reason=aggregate-unit-not-a-single-household",
+              unitId.value(),
+              entry.getKey(),
+              collective);
+          continue;
+        }
+        HouseholdId household = single.get();
+        ClassRow row = round.rows.get(household);
+        if (row == null) {
+          throw new IllegalStateException(
+              "市场参与者的组织者家户没有 ClassRow（解析结果必须是现存家户）：household="
+                  + household
+                  + " unit="
+                  + unitId.value());
+        }
+        Participant existing = byActor.get(HouseholdActors.of(household));
+        if (existing == null) {
+          byActor.put(
+              HouseholdActors.of(household),
+              new Participant(
+                  HouseholdActors.of(household), household, row.view(), List.of(unitId)));
+        } else {
+          List<ProductionUnitId> merged = new ArrayList<>(existing.units());
+          merged.add(unitId);
+          merged.sort(Comparator.comparing(ProductionUnitId::value));
+          byActor.put(
+              existing.actor(),
+              new Participant(existing.actor(), household, row.view(), merged));
+        }
       }
-      byActor.put(actor, new Participant(actor, null, null, entry.getValue()));
     }
     return List.copyOf(byActor.values());
   }
@@ -4902,88 +4839,52 @@ final class MarketSettlement {
   // ── 账户读取 / 冻结写入（唯一拼写点）────────────────────────────────────────────────
 
   private static long stockOf(MarketRound round, Participant participant, CommodityId commodity) {
-    if (participant.household != null) {
-      return round
-          .householdGoods
-          .getOrDefault(participant.household, Map.of())
-          .getOrDefault(commodity, 0L);
-    }
+    // ★★ P2-A §13.3：参与者恒为家户（账户主体只有家户）。
     return round
-        .operatorGoods
-        .getOrDefault(participant.actor, Map.of())
+        .householdGoods
+        .getOrDefault(participant.household, Map.of())
         .getOrDefault(commodity, 0L);
   }
 
   private static long frozenGoodsOf(
       MarketRound round, Participant participant, CommodityId commodity) {
-    if (participant.household != null) {
-      return round
-          .householdFrozenGoods
-          .getOrDefault(participant.household, Map.of())
-          .getOrDefault(commodity, 0L);
-    }
     return round
-        .operatorFrozenGoods
-        .getOrDefault(participant.actor, Map.of())
+        .householdFrozenGoods
+        .getOrDefault(participant.household, Map.of())
         .getOrDefault(commodity, 0L);
   }
 
   private static void setFrozenGoods(
       MarketRound round, Participant participant, CommodityId commodity, long amount) {
     long value = Math.max(0L, amount);
-    if (participant.household != null) {
-      Map<CommodityId, Long> inner =
-          new LinkedHashMap<>(
-              round.householdFrozenGoods.getOrDefault(participant.household, Map.of()));
-      inner.put(commodity, value);
-      round.householdFrozenGoods.put(participant.household, inner);
-      return;
-    }
     Map<CommodityId, Long> inner =
-        new LinkedHashMap<>(round.operatorFrozenGoods.getOrDefault(participant.actor, Map.of()));
+        new LinkedHashMap<>(round.householdFrozenGoods.getOrDefault(participant.household, Map.of()));
     inner.put(commodity, value);
-    round.operatorFrozenGoods.put(participant.actor, inner);
+    round.householdFrozenGoods.put(participant.household, inner);
   }
 
   private static long moneyOf(MarketRound round, Participant participant, CurrencyId currency) {
-    if (participant.household != null) {
-      return round
-          .householdMoney
-          .getOrDefault(participant.household, Map.of())
-          .getOrDefault(currency, 0L);
-    }
-    return round.operatorMoney.getOrDefault(participant.actor, Map.of()).getOrDefault(currency, 0L);
+    return round
+        .householdMoney
+        .getOrDefault(participant.household, Map.of())
+        .getOrDefault(currency, 0L);
   }
 
   private static long frozenMoneyOf(
       MarketRound round, Participant participant, CurrencyId currency) {
-    if (participant.household != null) {
-      return round
-          .householdFrozenMoney
-          .getOrDefault(participant.household, Map.of())
-          .getOrDefault(currency, 0L);
-    }
     return round
-        .operatorFrozenMoney
-        .getOrDefault(participant.actor, Map.of())
+        .householdFrozenMoney
+        .getOrDefault(participant.household, Map.of())
         .getOrDefault(currency, 0L);
   }
 
   private static void setFrozenMoney(
       MarketRound round, Participant participant, CurrencyId currency, long amount) {
     long value = Math.max(0L, amount);
-    if (participant.household != null) {
-      Map<CurrencyId, Long> inner =
-          new LinkedHashMap<>(
-              round.householdFrozenMoney.getOrDefault(participant.household, Map.of()));
-      inner.put(currency, value);
-      round.householdFrozenMoney.put(participant.household, inner);
-      return;
-    }
     Map<CurrencyId, Long> inner =
-        new LinkedHashMap<>(round.operatorFrozenMoney.getOrDefault(participant.actor, Map.of()));
+        new LinkedHashMap<>(round.householdFrozenMoney.getOrDefault(participant.household, Map.of()));
     inner.put(currency, value);
-    round.operatorFrozenMoney.put(participant.actor, inner);
+    round.householdFrozenMoney.put(participant.household, inner);
   }
 
   private static long spendableMoneyOf(
@@ -5026,15 +4927,13 @@ final class MarketSettlement {
     return ctx.carrier.isPresent() || !ctx.merchantFirms.isEmpty();
   }
 
+  /**
+   * ★★ P2-A §13.3：旧路径的"第一个有货币账的 ORGANIZATION"承运人不复存在（组织不持账）。
+   * 没有商号（{@code merchantFirms} 为空）的世界因此没有可收款承运人 —— 名义运费如实记进
+   * {@code MarketReport.freightUncollectedMilli()}（具名缺口，不把钱凭空塞给某个家户）。
+   */
   private static Optional<ActorRef> carrierOf(MarketRound round) {
-    List<ActorRef> carriers = new ArrayList<>();
-    for (ActorRef actor : round.operatorMoney.keySet()) {
-      if (actor.kind() == ActorKind.ORGANIZATION) {
-        carriers.add(actor);
-      }
-    }
-    carriers.sort(Comparator.comparing(ActorRef::id));
-    return carriers.isEmpty() ? Optional.empty() : Optional.of(carriers.get(0));
+    return Optional.empty();
   }
 
   /** 本轮市场里出现过的全部商品（按 id 字典序；撮合顺序因此是内容的纯函数）。 */

@@ -9,6 +9,7 @@ import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Government;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -124,16 +125,23 @@ public final class TreasuryWithdrawal {
       }
       return existing;
     }
-    // ★ 国库账必须是会话里已载入的经营者账（缺账不得静默当 0/不得造账）。
-    Map<ActorRef, Map<CurrencyId, Long>> operatorMoney = accounts.operatorMoney();
-    Map<CurrencyId, Long> wallet = operatorMoney.get(treasury);
+    // ★★ P2-A §13.3：国库不再是"经营者账" —— 政府家户就是账户主体（treasury 恒为 HOUSEHOLD actor）。
+    //   国库账必须是会话里已载入的家户账（缺账不得静默当 0/不得造账）。
+    HouseholdId treasuryHousehold = HouseholdRouting.requireHouseholdOf(treasury);
+    Map<CurrencyId, Long> wallet = accounts.householdMoney().get(treasuryHousehold);
     if (wallet == null) {
       throw new IllegalStateException(
-          "国库账户不在本会话副本里（拒绝从看不见的账上销账）：国库=" + treasury + "，政府=" + governmentId);
+          "国库家户账户不在本会话副本里（拒绝从看不见的账上销账）：国库家户="
+              + treasuryHousehold
+              + "，政府="
+              + governmentId);
     }
     long balance = wallet.getOrDefault(currency, 0L);
     long frozen =
-        accounts.operatorFrozenMoney().getOrDefault(treasury, Map.of()).getOrDefault(currency, 0L);
+        accounts
+            .householdFrozenMoney()
+            .getOrDefault(treasuryHousehold, Map.of())
+            .getOrDefault(currency, 0L);
     long available = Math.max(0L, balance - frozen);
     if (amount > available) {
       throw new IllegalStateException(
@@ -157,7 +165,7 @@ public final class TreasuryWithdrawal {
     } else {
       nextWallet.put(currency, after);
     }
-    operatorMoney.put(treasury, nextWallet);
+    accounts.householdMoney().put(treasuryHousehold, nextWallet);
     MoneyIssuanceRecord previous = audit.putIfAbsent(id, record);
     if (previous != null) {
       throw new IllegalStateException("回笼审计写口遇到并发 id 冲突（本次余额已扣、记录未写，调用方必须整批失败重放）: id=" + id);

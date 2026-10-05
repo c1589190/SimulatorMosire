@@ -1,8 +1,5 @@
 package io.mosire.simos.actor.model;
 
-import io.mosire.simos.actor.api.actor.ActorKind;
-import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Objects;
 
@@ -49,27 +46,4 @@ public record GoodsAccountKey(HouseholdId household) {
     return new GoodsAccountKey(HouseholdId.parse(text));
   }
 
-  /**
-   * ★★ <b>过渡期收口点（P2-A §13.3）：actor 引用 → 账户键</b>。
-   *
-   * <ul>
-   *   <li>{@code HOUSEHOLD} actor ⇒ {@link HouseholdActors#householdOf} 反查出真实家户键（家户身份的唯一拼写点）；
-   *   <li>其它 kind（UNIT / GOVERNMENT / ORGANIZATION …）⇒ <b>不再持账</b>：返回一个带
-   *       {@value #RETIRED_NON_HOUSEHOLD_PREFIX} 前缀的键。它<b>永远取不到账</b>（不是坏数据、也不是抛），于是旧调用点会得到
-   *       "这本账不存在"的具名结果而不是静默读到别人的账 —— 单位/政府国库改走家户账户属 P2-C。
-   * </ul>
-   *
-   * <p>★ 它是旧 {@code (owner, hex)} 拼法在 P2-A 的唯一下沉点：P2-C 把政府/军队账改走家户后，本方法应删除。
-   */
-  @Deprecated
-  public static GoodsAccountKey ofActor(ActorRef actor) {
-    Objects.requireNonNull(actor, "actor");
-    if (actor.kind() == ActorKind.HOUSEHOLD) {
-      return new GoodsAccountKey(HouseholdActors.householdOf(actor));
-    }
-    return new GoodsAccountKey(HouseholdId.parse(RETIRED_NON_HOUSEHOLD_PREFIX + actor));
-  }
-
-  /** 旧非家户主体的占位键前缀（见 {@link #ofActor(ActorRef)}；永不与真实家户 id 相同）。 */
-  @Deprecated public static final String RETIRED_NON_HOUSEHOLD_PREFIX = "retired-actor:";
 }

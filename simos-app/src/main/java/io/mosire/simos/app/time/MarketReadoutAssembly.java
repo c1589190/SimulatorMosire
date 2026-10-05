@@ -2,7 +2,6 @@ package io.mosire.simos.app.time;
 
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
@@ -81,7 +80,7 @@ public final class MarketReadoutAssembly {
     return new MarketReadoutContext(readout, report, tick, "");
   }
 
-  /** 把 actor 侧的余额/冻结表载入成逐家户与逐经营者的纯 map（缺席不抛；见类注）。 */
+  /** 把 actor 侧的余额/冻结表载入成逐家户纯 map（缺席不抛；账户主体只有家户）。 */
   static MarketReadoutAccounts accountsOf(EconomyData economy, ActorData actor) {
     Objects.requireNonNull(economy, "economy");
     Objects.requireNonNull(actor, "actor");
@@ -101,21 +100,9 @@ public final class MarketReadoutAssembly {
       householdFrozenGoods.put(key, account.frozenBalances());
       householdFrozenMoney.put(key, account.frozenMoney());
     }
-    // ★★ P2-A §13.3：庄园/作坊（经营者）不再持账户 ⇒ 经营者四张表恒空；
-    //   它们的投入/产出/收款改走组织者/经营者家户账户（P2-B/P2-C 接线）。
-    Map<ActorRef, Map<CommodityId, Long>> operatorGoods = new LinkedHashMap<>();
-    Map<ActorRef, Map<CurrencyId, Long>> operatorMoney = new LinkedHashMap<>();
-    Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods = new LinkedHashMap<>();
-    Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney = new LinkedHashMap<>();
+    // ★★ P2-A §13.3：账户主体只有家户 —— 组织者/经营者家户的余额就在上面的家户表里，不再有第二张经营者表。
     return new MarketReadoutAccounts(
-        householdGoods,
-        householdMoney,
-        householdFrozenGoods,
-        householdFrozenMoney,
-        operatorGoods,
-        operatorMoney,
-        operatorFrozenGoods,
-        operatorFrozenMoney);
+        householdGoods, householdMoney, householdFrozenGoods, householdFrozenMoney);
   }
 
   private static EconomyData economyOrNull(SimulationState state) {

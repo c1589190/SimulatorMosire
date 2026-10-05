@@ -11,7 +11,6 @@ import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -30,7 +29,6 @@ import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
@@ -207,8 +205,6 @@ public final class EconomyClearRegionHandler
         withoutKeys(base.operatorConditions(), removedUnits);
     Map<HouseholdId, ClassRow> classes = withoutKeys(base.classes(), removedClasses);
     Map<HouseholdId, FlowRow> flows = withoutKeys(base.flows(), removedClasses);
-    Map<MembershipId, Membership> memberships = new LinkedHashMap<>(base.memberships());
-    memberships.entrySet().removeIf(entry -> removedClasses.contains(entry.getValue().household()));
     Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>(base.allocations());
     allocations
         .entrySet()
@@ -315,12 +311,10 @@ public final class EconomyClearRegionHandler
         classes,
         staged.debtContracts(),
         staged.flows(),
-        staged.laborSupply(),
         staged.allocations(),
         staged.relations(),
         staged.markets(),
         staged.shipments(),
-        memberships,
         staged.assetShares(),
         staged.operatorConditions(),
         staged.units(),

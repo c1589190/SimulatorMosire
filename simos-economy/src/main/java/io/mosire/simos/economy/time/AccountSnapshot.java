@@ -1,8 +1,11 @@
 package io.mosire.simos.economy.time;
 
+import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,17 +17,15 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * ★★ <b>账户会话的只读快照</b>（R1 并行内核）：worker 唯一允许持有的账户视图。
+ * ★★ <b>账户会话的只读快照</b>（R1 并行内核；P2-A §13.3 起账户主体统一为家户）。
  *
- * <p>★★ <b>它解决什么</b>：并行 worker 需要读余额来算意向，但<b>绝不能拿到</b> {@link AccountSession} 的活表
- * （活表只有一个协调器写者）。本类是那份活表的<b>不可变投影</b>：四张表（商品/货币 × 余额/冻结）在构造时逐值拷贝、 按 canonical key
+ * <p>worker 唯一允许持有的账户视图；四张表（商品/货币 × 余额/冻结）在构造时逐值拷贝、按 canonical key
  * 排序后冻结，之后任何线程读它都不会看到写。
  *
- * <p>★ <b>放行的语义</b>：快照是"本阶段开始那一刻"的余额，不随后续提交变化。worker 的本地增量必须自己叠加 （见 {@link
- * AccountIntentBuffer#goods}），而最终校验在提交器里对着<b>提交时的活表</b>重做 —— 两遍式的分工： 快照只服务计算，活表只服务校验与落账。
+ * <p>★ <b>放行的语义</b>：快照是"本阶段开始那一刻"的余额，不随后续提交变化。worker 的本地增量必须自己叠加
+ * （见 {@link AccountIntentBuffer#goods}），而最终校验在提交器里对着<b>提交时的活表</b>重做。
  *
- * <p>★ <b>顺序</b>：账户按 canonical key 升序、家户索引按 {@code HouseholdId.value()} 升序、经营索引按 actor canonical
- * 串升序 —— 迭代序是内容的纯函数（<b>不用</b> {@code HashMap} / {@code Map.copyOf}）。
+ * <p>★ <b>顺序</b>：账户按家户 id 升序、位置索引按家户 id 升序 —— 迭代序是内容的纯函数。
  */
 public final class AccountSnapshot {
 
@@ -46,58 +47,54 @@ public final class AccountSnapshot {
   private final Map<AccountPartitionKey, SnapshotAccount> accounts;
   private final Map<HouseholdId, AccountPartitionKey> householdIndex;
   private final Map<ActorRef, AccountPartitionKey> householdActorIndex;
-  private final Map<ActorRef, AccountPartitionKey> operatorIndex;
+  /** 家户登记位置（分区与转移 location 的派生读口；<b>不是</b>账户身份）。 */
+  private final Map<HouseholdId, HexCoord> locations;
 
   private AccountSnapshot(
       Map<AccountPartitionKey, SnapshotAccount> accounts,
-      Map<HouseholdId, AccountPartitionKey> householdIndex,
-      Map<ActorRef, AccountPartitionKey> operatorIndex) {
-    // ★ 按 canonical key 排序后冻结：迭代序 = 内容的纯函数（1/4/8 线程同序）。
+      Map<HouseholdId, HexCoord> locations) {
     List<Map.Entry<AccountPartitionKey, SnapshotAccount>> accountEntries =
         new ArrayList<>(Objects.requireNonNull(accounts, "accounts").entrySet());
     accountEntries.sort(Comparator.comparing(entry -> entry.getKey().canonical()));
     Map<AccountPartitionKey, SnapshotAccount> frozenAccounts = new LinkedHashMap<>();
+    Map<HouseholdId, AccountPartitionKey> households = new LinkedHashMap<>();
     for (Map.Entry<AccountPartitionKey, SnapshotAccount> entry : accountEntries) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("AccountSnapshot.accounts 的键与值都不得为 null");
       }
       frozenAccounts.put(entry.getKey(), entry.getValue());
+      households.put(entry.getKey().household(), entry.getKey());
     }
     this.accounts = Collections.unmodifiableMap(frozenAccounts);
+    this.householdIndex = Collections.unmodifiableMap(households);
 
-    List<Map.Entry<HouseholdId, AccountPartitionKey>> householdEntries =
-        new ArrayList<>(Objects.requireNonNull(householdIndex, "householdIndex").entrySet());
-    householdEntries.sort(Comparator.comparing(entry -> entry.getKey().value()));
-    Map<HouseholdId, AccountPartitionKey> frozenHouseholds = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, AccountPartitionKey> entry : householdEntries) {
-      frozenHouseholds.put(entry.getKey(), entry.getValue());
-    }
-    this.householdIndex = Collections.unmodifiableMap(frozenHouseholds);
     Map<ActorRef, AccountPartitionKey> actorToHousehold = new LinkedHashMap<>();
-    for (AccountPartitionKey key : frozenHouseholds.values()) {
-      AccountPartitionKey previous = actorToHousehold.putIfAbsent(key.actor(), key);
+    for (AccountPartitionKey key : households.values()) {
+      ActorRef actor = HouseholdActors.of(key.household());
+      AccountPartitionKey previous = actorToHousehold.putIfAbsent(actor, key);
       if (previous != null && !previous.equals(key)) {
-        throw new IllegalStateException("同一家户 actor 在快照里有多本账（装配错误）: " + key.actor());
+        throw new IllegalStateException("同一家户 actor 在快照里有多本账（装配错误）: " + actor);
       }
     }
     this.householdActorIndex = Collections.unmodifiableMap(actorToHousehold);
 
-    List<Map.Entry<ActorRef, AccountPartitionKey>> operatorEntries =
-        new ArrayList<>(Objects.requireNonNull(operatorIndex, "operatorIndex").entrySet());
-    operatorEntries.sort(Comparator.comparing(entry -> entry.getKey().toString()));
-    Map<ActorRef, AccountPartitionKey> frozenOperators = new LinkedHashMap<>();
-    for (Map.Entry<ActorRef, AccountPartitionKey> entry : operatorEntries) {
-      frozenOperators.put(entry.getKey(), entry.getValue());
+    List<Map.Entry<HouseholdId, HexCoord>> locationEntries =
+        new ArrayList<>(Objects.requireNonNull(locations, "locations").entrySet());
+    locationEntries.sort(Comparator.comparing(entry -> entry.getKey().value()));
+    Map<HouseholdId, HexCoord> frozenLocations = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, HexCoord> entry : locationEntries) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("AccountSnapshot.locations 的键与值都不得为 null");
+      }
+      frozenLocations.put(entry.getKey(), entry.getValue());
     }
-    this.operatorIndex = Collections.unmodifiableMap(frozenOperators);
+    this.locations = Collections.unmodifiableMap(frozenLocations);
   }
 
-  /** 由 {@link AccountSession} 的协调器线程构造（package-private：worker 只能收到已有的快照，不能自己造一份 "半截"视图）。 */
+  /** 由 {@link AccountSession} 的协调器线程构造（package-private：worker 只能收到已有的快照）。 */
   static AccountSnapshot of(
-      Map<AccountPartitionKey, SnapshotAccount> accounts,
-      Map<HouseholdId, AccountPartitionKey> householdIndex,
-      Map<ActorRef, AccountPartitionKey> operatorIndex) {
-    return new AccountSnapshot(accounts, householdIndex, operatorIndex);
+      Map<AccountPartitionKey, SnapshotAccount> accounts, Map<HouseholdId, HexCoord> locations) {
+    return new AccountSnapshot(accounts, locations);
   }
 
   /** 全部账户键（只读、canonical 升序）。 */
@@ -114,7 +111,7 @@ public final class AccountSnapshot {
     return account;
   }
 
-  /** 取一本账；没有 ⇒ null（只服务"存在性判定"，用它算余额前必须显式 fail-closed）。 */
+  /** 取一本账；没有 ⇒ null。 */
   public SnapshotAccount accountOrNull(AccountPartitionKey key) {
     return accounts.get(Objects.requireNonNull(key, "key"));
   }
@@ -140,40 +137,41 @@ public final class AccountSnapshot {
     return householdIndex.get(Objects.requireNonNull(household, "household"));
   }
 
-  /** ★ 家户索引的键集合（只读、按 {@code HouseholdId.value()} 升序）——R2 的账户活视图按它定迭代序。 */
+  /** ★ 家户索引的键集合（只读、按 {@code HouseholdId.value()} 升序）。 */
   public Set<HouseholdId> householdIndexKeySet() {
     return householdIndex.keySet();
   }
 
-  /** 经营者账户键；未登记 ⇒ null。 */
-  public AccountPartitionKey operatorKey(ActorRef actor) {
-    return operatorIndex.get(Objects.requireNonNull(actor, "actor"));
-  }
-
-  /** ★ 经营者索引的键集合（只读、按 actor canonical 升序）。 */
-  public Set<ActorRef> operatorIndexKeySet() {
-    return operatorIndex.keySet();
+  /** 家户登记位置（分区/转移 location 读口）；未登记 ⇒ null。 */
+  public HexCoord locationOf(HouseholdId household) {
+    return locations.get(Objects.requireNonNull(household, "household"));
   }
 
   /**
-   * 任一主体（家户 / 经营者）的账户键；没有 ⇒ null。
+   * 家户 actor → 账户键；非 {@code HOUSEHOLD} actor / 未登记 ⇒ null。
    *
-   * <p>★ 一个 actor 同时出现在两张索引里是装配错误（家户 actor 与经营者 actor 的 kind 不同，正常不可能）⇒ 当场抛。
+   * <p>★★ P2-A：账户主体只有家户 —— 非家户主体一律 null（由调用方具名拒绝或具名缺口，绝不静默造账）。
    */
   public AccountPartitionKey actorKeyOrNull(ActorRef actor) {
-    AccountPartitionKey household = householdActorIndex.get(Objects.requireNonNull(actor, "actor"));
-    AccountPartitionKey operator = operatorIndex.get(actor);
-    if (household != null && operator != null && !household.equals(operator)) {
-      throw new IllegalStateException("同一个 actor 同时登记了家户账与经营者账（装配错误）: " + actor);
+    Objects.requireNonNull(actor, "actor");
+    if (actor.kind() != ActorKind.HOUSEHOLD) {
+      return null;
     }
-    return household != null ? household : operator;
+    HouseholdId household;
+    try {
+      household = HouseholdActors.householdOf(actor);
+    } catch (RuntimeException notAHouseholdActor) {
+      return null;
+    }
+    return householdIndex.get(household);
   }
 
-  /** 任一主体的账户键；没有 ⇒ 抛（fail-closed）。 */
+  /** 家户 actor 的账户键；没有 ⇒ 抛（fail-closed）。 */
   public AccountPartitionKey requireActorKey(ActorRef actor) {
     AccountPartitionKey key = actorKeyOrNull(actor);
     if (key == null) {
-      throw new IllegalStateException("账户快照里没有这个主体的账（并行阶段要求全部相关主体都已登记）: " + actor);
+      throw new IllegalStateException(
+          "账户快照里没有这个家户主体的账（账户主体只有家户；非家户 actor 必须先在结算侧解析到家户）: " + actor);
     }
     return key;
   }

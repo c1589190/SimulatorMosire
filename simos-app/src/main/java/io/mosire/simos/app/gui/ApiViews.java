@@ -42,7 +42,6 @@ import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.money.CurrencyDef;
 import io.mosire.simos.economy.api.money.InstrumentKind;
 import io.mosire.simos.economy.api.money.MoneyInstrument;
@@ -5624,11 +5623,12 @@ public final class ApiViews {
   private static Map<String, Object> laborView(
       SocialData data, EconomyData economy, HexCoord coord) {
     List<PopulationGroup> groups = data.groupsAt(coord);
+    // ★★ P2-A A4：可用量 = 该格各家的**每 tick 时间预算**（ClassRow.laborMilli，毫小时）；
+    //   批次级供给表已删除（唯一权威是 Social 人口组成 × 系数表）。
     long available = 0L;
-    for (PopulationGroup group : groups) {
-      LaborSupply supply = economy.laborSupply().get(group.id());
-      if (supply != null) {
-        available += supply.availableLabor();
+    for (ClassRow row : economy.classes().values()) {
+      if (row.view().hex().equals(coord)) {
+        available += row.laborMilli();
       }
     }
     long allocated = 0L;

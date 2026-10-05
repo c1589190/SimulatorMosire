@@ -11,7 +11,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
  * ★★ **一次劳动分配**（第三阶段设计稿 §四）："**这批人**把**这么多**劳动供给**这个主体**，在这个周期里"。
  *
  * <pre>
- * PopulationGroup ──→ LaborSupply ──→ LaborAllocation ──→ ProductionProcess
+ * Household(时间预算) ──→ LaborAllocation ──→ ProductionUnit（生产活动）
  * </pre>
  *
  * <p>★★ **它存在的理由**（设计稿 §一.2 实测的空洞）：此前"劳动投入"是**按产业各自累加**的（每格 farm 与 craft 各带一份人口与劳动、 互不知道对方）⇒
@@ -22,11 +22,10 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
  * 本模块**不认识** {@code PopulationGroup}（social 的类型）—— 只认它的稳定身份 {@link PeopleLotId}。方向是 {@code social →
  * economy-api}（设计稿 §八.1 明文允许），不是反过来。
  *
- * <p>★ **{@code laborMilli} 的口径（一处容易读错的地方，写清楚）**：它是**本批次承诺投入该主体的劳动**，单位 = 千分劳动·日， 与 {@code
- * Industry.cycleLaborMilli} 逐日累加的口径**同侧**。本轮创世时它由 {@code EconomySeeder} 从"该池的有效劳动" 算出（该池的年龄性别构成 ×
- * 各阶层投入率 —— 与该产业当日实际投入**逐值同源**），故"结算的当日劳动取自本表"与改前逐值相同。 ★ 它**不是** {@link
- * LaborSupply#availableLabor()}（那是**毛容量**）：承诺量 ≤ 容量，这正是 {@code Σ allocated ≤ available}
- * 那条不变量能成立的原因。
+ * <p>★★ <b>{@code laborMilli} 的口径（P2-A §13.4 起）</b>：它是**本家户这一 tick 分给该生产活动/unit 的时间**，
+ * 单位 = <b>毫小时</b>（{@code 1 小时 = 1000 毫小时}，定点整数，无浮点）。它是 {@code LaborAllocation} 唯一的量纲；
+ * 家户每 tick 的总时间预算 = {@code ClassRow.laborMilli}（由 Social 人口组成 × {@code LaborTimeTable} 每 tick 重算），
+ * 不变量 = {@code Σ allocations(household).laborMilli ≤ ClassRow.laborMilli}。★ 第二权威 {@code LaborSupply} 已删除。
  *
  * <p>★ **{@code period} = 发放周期**（世界周期序号，从 1 起）：本轮配额是**常设**的（跨周期不变，见 {@code 旧结算引擎（R3a 已删除）}
  * 的取用口径），故它现在由**构造期守卫**读（"该批次的供给记录必须与它同期"，见 {@code EconomyData}）；将来有了"按周期重发配额" 的命令，再按 {@code

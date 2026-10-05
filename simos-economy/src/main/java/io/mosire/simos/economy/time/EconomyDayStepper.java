@@ -1,17 +1,16 @@
 package io.mosire.simos.economy.time;
 
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.api.population.LotMigration;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.FlowRow;
-import io.mosire.simos.economy.model.Membership;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -45,6 +44,9 @@ public final class EconomyDayStepper implements AutoCloseable {
 
   private final EconomySession session;
   private final AccountSession accounts;
+
+  /** 「家户 → (lot → count)」只读投影（P2-A A3；由调用方从 Social 注入，不进任何 Economy 状态）。 */
+  private Map<HouseholdId, Map<PeopleLotId, Long>> composition = Map.of();
 
   /** ★★ R2：本会话的并行度（默认单线程退化路径；{@link #finish()} 关掉自建的池）。 */
   private final EconomyParallelism parallelism;
@@ -141,11 +143,26 @@ public final class EconomyDayStepper implements AutoCloseable {
   }
 
   /**
-   * ★★ <b>成员份额工作副本</b>（{@code (lot, household) → count}）—— 只服务<b>协调器</b>（app 侧）在同一 revision 内补齐新生批次
-   * / 旧档对账；worker 线程不得访问（本视图是可变工作表，见 {@code EconomySession} 的 "协调器单线程"契约）。
+   * ★★ <b>家户人口组成的只读投影</b>（P2-A A3）：{@code household → (lot → count)}，由调用方（app 组合根）从
+   * Social 的 {@code Household.members} 现算后注入；<b>不进 Economy 状态、不进变更集</b>。组织/进入阶段用它
+   * 为"没有既有配额的家户"挑批次。缺省空表 ⇒ 那些路径按具名 SHORTAGE 退回（不伪造批次）。
    */
-  public Map<MembershipId, Membership> memberships() {
-    return session.sheet().memberships();
+  public Map<HouseholdId, Map<PeopleLotId, Long>> composition() {
+    return composition;
+  }
+
+  /** 更新人口组成投影（出生/死亡/迁移之后由协调器重建一份；不触发任何 Economy 状态写入）。 */
+  public void updateComposition(Map<HouseholdId, Map<PeopleLotId, Long>> next) {
+    Objects.requireNonNull(next, "next");
+    Map<HouseholdId, Map<PeopleLotId, Long>> frozen = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, Map<PeopleLotId, Long>> entry : next.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("composition 不得含 null 键/值");
+      }
+      frozen.put(
+          entry.getKey(), java.util.Collections.unmodifiableMap(new LinkedHashMap<>(entry.getValue())));
+    }
+    this.composition = java.util.Collections.unmodifiableMap(frozen);
   }
 
   /** ★★ 唯一账户会话（推进前载入、推进中就地更新、推进后整体落回 actor）。 */
@@ -185,16 +202,6 @@ public final class EconomyDayStepper implements AutoCloseable {
     return accounts.householdMoney();
   }
 
-  /** 经营者商品协调器视图（包内；键 = 主体）。 */
-  Map<ActorRef, Map<CommodityId, Long>> operatorGoods() {
-    return accounts.operatorGoods();
-  }
-
-  /** 经营者货币协调器视图（包内）。 */
-  Map<ActorRef, Map<CurrencyId, Long>> operatorMoney() {
-    return accounts.operatorMoney();
-  }
-
   /** 家户商品冻结协调器视图（包内）。 */
   Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods() {
     return accounts.householdFrozenGoods();
@@ -203,16 +210,6 @@ public final class EconomyDayStepper implements AutoCloseable {
   /** 家户货币冻结协调器视图（包内）。 */
   Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney() {
     return accounts.householdFrozenMoney();
-  }
-
-  /** 经营者商品冻结协调器视图（包内）。 */
-  Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods() {
-    return accounts.operatorFrozenGoods();
-  }
-
-  /** 经营者货币冻结协调器视图（包内）。 */
-  Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney() {
-    return accounts.operatorFrozenMoney();
   }
 
   /**
@@ -233,7 +230,8 @@ public final class EconomyDayStepper implements AutoCloseable {
         famineMortalityPerMille,
         ledger,
         parallelism,
-        profitCycle);
+        profitCycle,
+        composition);
     MarketReport report = ledger.marketReport();
     if (report != null) {
       lastMarketReport = report;
@@ -252,7 +250,15 @@ public final class EconomyDayStepper implements AutoCloseable {
     return result;
   }
 
-  /** ★★ 把逐批次出生/死亡回写经济侧（行人口、成员份额、劳动配额与流水）。 */
+  /**
+   * ★★ <b>P2-A §13.4：每个 tick 重算家户时间预算</b>（毫小时）—— 由协调器从 Social 人口组成 × 系数表现算后传入；
+   * 本方法把它写进 {@code ClassRow.laborMilli} 并把超预算的配额按比例缩回（不变量在下一 revision 边界仍成立）。
+   */
+  public void recomputeLaborBudgets(Map<HouseholdId, Long> budgetsByHousehold) {
+    EconomySettlement.applyLaborBudgetsInto(session, budgetsByHousehold);
+  }
+
+  /** ★★ 把逐批次出生/死亡回写经济侧（行人口、劳动配额与流水；成员份额由 Social 权威维护，本侧不再持副本）。 */
   public void applyPopulationChange(List<LotChange> changes) {
     Objects.requireNonNull(changes, "changes");
     if (!changes.isEmpty()) {

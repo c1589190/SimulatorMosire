@@ -16,7 +16,6 @@ import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -37,7 +36,6 @@ import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionMode;
@@ -119,7 +117,6 @@ public final class ModeMigrationSettlement {
     }
     Map<HouseholdId, ClassRow> rows = session.sheet().rows();
     LinkedHashMap<HouseholdId, ClassStanding> standings = session.sheet().classStandings();
-    LinkedHashMap<MembershipId, Membership> memberships = session.sheet().memberships();
     LinkedHashMap<LaborAllocationId, LaborAllocation> allocations = session.sheet().allocations();
     LinkedHashMap<AssetShareId, AssetShare> assetShares = session.sheet().assetShares();
     LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations =
@@ -149,7 +146,6 @@ public final class ModeMigrationSettlement {
           bySource.get(source),
           rows,
           standings,
-          memberships,
           allocations,
           assetShares,
           organizations,
@@ -176,7 +172,6 @@ public final class ModeMigrationSettlement {
       List<ModeMigrationPolicy.MigrationMove> moves,
       Map<HouseholdId, ClassRow> rows,
       Map<HouseholdId, ClassStanding> standings,
-      LinkedHashMap<MembershipId, Membership> memberships,
       LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
       LinkedHashMap<AssetShareId, AssetShare> assetShares,
       LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations,
@@ -217,14 +212,6 @@ public final class ModeMigrationSettlement {
               + sourcePopulation);
     }
 
-    LinkedHashMap<MembershipId, Membership> sourceMemberships = new LinkedHashMap<>();
-    for (Membership membership : memberships.values()) {
-      if (membership.household().equals(source) && membership.count() > 0L) {
-        sourceMemberships.put(membership.id(), membership);
-      }
-    }
-    List<MembershipId> sourceMembershipIds = new ArrayList<>(sourceMemberships.keySet());
-    sourceMembershipIds.sort(Comparator.comparing(MembershipId::value));
     LinkedHashMap<LaborAllocationId, LaborAllocation> sourceAllocations = new LinkedHashMap<>();
     for (LaborAllocation allocation : allocations.values()) {
       if (allocation.household().equals(source) && allocation.laborMilli() > 0L) {
@@ -361,71 +348,8 @@ public final class ModeMigrationSettlement {
                 auditLedger);
       }
 
-      // 成员份额：必须与本笔迁出人口逐值相等（EconomyData 的 Σcount == Σpopulation 守卫），
-      // 故按当前份额计数用最大余数法切出恰好 popTake；清空时余数随最后一笔全部带走。
-      List<MembershipId> currentMembershipIds = new ArrayList<>();
-      List<Long> currentMembershipCounts = new ArrayList<>();
-      long membershipTotal = 0L;
-      for (MembershipId membershipId : sourceMembershipIds) {
-        Membership membership = memberships.get(membershipId);
-        if (membership != null && membership.count() > 0L) {
-          currentMembershipIds.add(membershipId);
-          currentMembershipCounts.add(membership.count());
-          membershipTotal = Math.addExact(membershipTotal, membership.count());
-        }
-      }
-      if (!currentMembershipIds.isEmpty() && membershipTotal < popTake) {
-        throw new IllegalStateException(
-            "源户成员份额不足以承载迁出人口（拒绝让 Σcount 与 Σpopulation 漂开）: source="
-                + source
-                + " take="
-                + popTake
-                + " membership="
-                + membershipTotal);
-      }
-      long[] membershipShares;
-      if (empties || currentMembershipIds.isEmpty()) {
-        membershipShares = new long[currentMembershipCounts.size()];
-        for (int i = 0; i < membershipShares.length; i++) {
-          membershipShares[i] = currentMembershipCounts.get(i);
-        }
-      } else {
-        membershipShares =
-            io.mosire.simos.util.economy.ProportionalSplit.byDenominator(
-                popTake, toLongArray(currentMembershipCounts), membershipTotal);
-      }
-      for (int i = 0; i < currentMembershipIds.size(); i++) {
-        MembershipId membershipId = currentMembershipIds.get(i);
-        Membership membership = memberships.get(membershipId);
-        if (membership == null) {
-          continue;
-        }
-        long take = Math.min(membershipShares[i], membership.count());
-        if (take <= 0L) {
-          continue;
-        }
-        if (take == membership.count()) {
-          memberships.remove(membershipId);
-        } else {
-          memberships.put(
-              membershipId,
-              new Membership(
-                  membershipId,
-                  membership.lot(),
-                  membership.household(),
-                  membership.count() - take));
-        }
-        MembershipId targetMembershipId = Membership.idOf(membership.lot(), move.target());
-        Membership existingTarget = memberships.get(targetMembershipId);
-        memberships.put(
-            targetMembershipId,
-            new Membership(
-                targetMembershipId,
-                membership.lot(),
-                move.target(),
-                (existingTarget == null ? 0L : existingTarget.count()) + take));
-      }
-
+      // ★ P2-A A3：成员份额已迁 Social —— 本类只改 ClassRow.population/劳动/资产/货币；家户成员怎么随迁
+      //   由跨切片协调器（P8/P9 接线）写回 Social 的 Household.members，本批如实记为缺口。
       // 劳动配额：逐笔 floor，清空时余数随最后一笔
       for (LaborAllocationId allocationId : sourceAllocationIds) {
         LaborAllocation allocation = allocations.get(allocationId);
@@ -501,7 +425,6 @@ public final class ModeMigrationSettlement {
           session,
           rows,
           standings,
-          memberships,
           allocations,
           assetShares,
           organizations,
@@ -523,7 +446,6 @@ public final class ModeMigrationSettlement {
       EconomySession session,
       Map<HouseholdId, ClassRow> rows,
       Map<HouseholdId, ClassStanding> standings,
-      LinkedHashMap<MembershipId, Membership> memberships,
       LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
       LinkedHashMap<AssetShareId, AssetShare> assetShares,
       LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations,
@@ -671,11 +593,6 @@ public final class ModeMigrationSettlement {
         allocations.remove(allocation.id());
       }
     }
-    for (Membership membership : new ArrayList<>(memberships.values())) {
-      if (membership.household().equals(source)) {
-        memberships.remove(membership.id());
-      }
-    }
     if (!shell) {
       standings.remove(source);
       rows.remove(source);
@@ -759,7 +676,6 @@ public final class ModeMigrationSettlement {
             target, positionId, positionId, Map.of(), 0L, day, "AUTO_MIGRATION:" + move.reason()));
     accounts.registerHousehold(
         target,
-        HouseholdActors.of(target),
         move.targetHex(),
         Map.of(),
         Map.of(),

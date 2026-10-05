@@ -1,6 +1,5 @@
 package io.mosire.simos.economy.time;
 
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -9,7 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * ★★ <b>{@link MarketReadout} 的账户输入（读时派生的会话快照，不落盘、不改状态）</b>—— 四对余额/冻结表，键 = 家户身份或 经营者主体。
+ * ★★ <b>{@link MarketReadout} 的账户输入（读时派生的会话快照，不落盘、不改状态）</b>—— 四张余额/冻结表，键 = 家户身份。
  *
  * <p>★★ <b>为什么单独一个类型</b>：读口（{@code simos-app} 的组合根）从 actor 侧载入这些表，economy 侧只吃纯 map；
  * 把八张表装进一个不可变记录，工厂的入参就不会是八个同型参数的"位置陷阱"。
@@ -21,38 +20,25 @@ import java.util.Map;
  * @param householdMoney 家户货币余额
  * @param householdFrozenGoods 家户商品冻结额
  * @param householdFrozenMoney 家户货币冻结额
- * @param operatorGoods 经营者商品余额
- * @param operatorMoney 经营者货币余额
- * @param operatorFrozenGoods 经营者商品冻结额
- * @param operatorFrozenMoney 经营者货币冻结额
  */
 public record MarketReadoutAccounts(
     Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
     Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
     Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
-    Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney,
-    Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
-    Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
-    Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods,
-    Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney) {
+    Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney) {
 
   public MarketReadoutAccounts {
     // ★ 外层不可变包装写在赋值处（SpotBugs 的 EI_EXPOSE_REP 不做跨过程分析，只认赋值点看得见的
     //   Collections.unmodifiableMap）；内层逐值防御性拷贝 + 不可变包装仍由 helper 完成。
     householdGoods = Collections.unmodifiableMap(copyGoods(householdGoods));
     householdFrozenGoods = Collections.unmodifiableMap(copyGoods(householdFrozenGoods));
-    operatorGoods = Collections.unmodifiableMap(copyGoods(operatorGoods));
-    operatorFrozenGoods = Collections.unmodifiableMap(copyGoods(operatorFrozenGoods));
     householdMoney = Collections.unmodifiableMap(copyMoney(householdMoney));
     householdFrozenMoney = Collections.unmodifiableMap(copyMoney(householdFrozenMoney));
-    operatorMoney = Collections.unmodifiableMap(copyMoney(operatorMoney));
-    operatorFrozenMoney = Collections.unmodifiableMap(copyMoney(operatorFrozenMoney));
   }
 
-  /** 八张空表：单模块用例/无账户世界的合法形态（读时派生按"看不见"处理）。 */
+  /** 四张空表：单模块用例/无账户世界的合法形态（读时派生按"看不见"处理）。 */
   public static MarketReadoutAccounts empty() {
-    return new MarketReadoutAccounts(
-        Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+    return new MarketReadoutAccounts(Map.of(), Map.of(), Map.of(), Map.of());
   }
 
   private static <K> Map<K, Map<CommodityId, Long>> copyGoods(

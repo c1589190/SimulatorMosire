@@ -1,7 +1,5 @@
 package io.mosire.simos.economy.time;
 
-import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -22,7 +20,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -234,30 +231,23 @@ public final class MarketDemandBook {
     }
     // ★ 每次调用只取一次活视图（AccountSession 的视图是协调器线程专用；本方法在结算协调器线程里跑）。
     Map<HouseholdId, Map<CommodityId, Long>> householdGoods = accounts.householdGoods();
-    Map<ActorRef, Map<CommodityId, Long>> operatorGoods = accounts.operatorGoods();
 
     Map<HexCoord, HexCoord> regionAnchorByHex = regionAnchors(topology, markets);
     // ★ 覆盖全部会用到的 hex：家户、unit（产业 id 里的格）、市场、在途收货格、报告里的格。
-    Set<CommodityId> commodities = commodityUniverse(rows, units, industries, householdGoods, operatorGoods, shipments, markets);
+    Set<CommodityId> commodities = commodityUniverse(rows, units, industries, householdGoods, shipments, markets);
     MarketReport latest = latestReport(reports);
     addReportCommodities(commodities, latest);
 
     // 逐区聚合累加器（[consumer, input, unfilled, stock, inTransit, external]）；按 anchor (q,r) 规范序。
     Map<HexCoord, Map<CommodityId, long[]>> byRegion = new TreeMap<>(HEX_ORDER);
-    Map<ActorRef, HexCoord> anchorByActor = anchorByActor(rows, units);
 
     // ★ 同一 actor 可能同时登记了家户账与经营者账（同键 = 同一本账）⇒ 按账户键去重，库存只计一次。
-    Set<AccountPartitionKey> countedAccountKeys = new LinkedHashSet<>();
     for (HouseholdId household : sortedHouseholds(rows)) {
       ClassRow row = rows.get(household);
       HexCoord anchor = anchorOf(regionAnchorByHex, row.view().hex());
       for (Map.Entry<CommodityId, Long> need : row.naturalNeeds().entrySet()) {
         long[] consumer = bucketOf(byRegion, anchor, need.getKey());
         consumer[0] = Math.addExact(consumer[0], Math.multiplyExact(need.getValue(), horizonDays));
-      }
-      AccountPartitionKey key = accounts.householdKeyOf(household);
-      if (key != null) {
-        countedAccountKeys.add(key);
       }
       Map<CommodityId, Long> goods = householdGoods.getOrDefault(household, Map.of());
       for (Map.Entry<CommodityId, Long> stock : goods.entrySet()) {
@@ -288,22 +278,8 @@ public final class MarketDemandBook {
         inputBucket[1] = Math.addExact(inputBucket[1], amount);
       }
     }
-    // ★ 经营者账：按 (unit/家户) 反查到的格归区；聚合主体没有 unit 行且不是家户 ⇒ 跳过（不猜区）。
-    //   已作为家户账计过的同键账户在这里跳过（同一本账不得加两次）。
-    for (ActorRef actor : sortedActors(operatorGoods.keySet())) {
-      HexCoord anchor = anchorByActor.get(actor);
-      if (anchor == null) {
-        continue;
-      }
-      AccountPartitionKey key = accounts.actorKeyOrNull(actor);
-      if (key != null && !countedAccountKeys.add(key)) {
-        continue;
-      }
-      for (Map.Entry<CommodityId, Long> stock : operatorGoods.getOrDefault(actor, Map.of()).entrySet()) {
-        long[] stockBucket = bucketOf(byRegion, anchor, stock.getKey());
-        stockBucket[3] = Math.addExact(stockBucket[3], stock.getValue());
-      }
-    }
+    // ★★ P2-A §13.3：账户主体只有家户 —— 经营者的库存就是其组织者/经营者家户账的一部分，已在上面的
+    //   家户循环里逐账户计过一次；这里不再有第二张经营者库存表（也不存在"同键账户加两次"的接缝）。
 
     for (ShipmentId shipmentId : sortedShipments(shipments)) {
       ShipmentBatch shipment = shipments.get(shipmentId);
@@ -409,21 +385,6 @@ public final class MarketDemandBook {
     return regionAnchorByHex.getOrDefault(hex, hex);
   }
 
-  private static Map<ActorRef, HexCoord> anchorByActor(
-      Map<HouseholdId, ClassRow> rows, Map<ProductionUnitId, ProductionUnit> units) {
-    Map<ActorRef, HexCoord> anchors = new HashMap<>();
-    for (ClassRow row : rows.values()) {
-      anchors.putIfAbsent(HouseholdActors.of(row.id()), row.view().hex());
-    }
-    for (ProductionUnit unit : units.values()) {
-      HexCoord hex = unitHexOrNull(unit);
-      if (hex != null) {
-        anchors.putIfAbsent(unit.operator(), hex);
-      }
-    }
-    return anchors;
-  }
-
   /** unit 的地点（产业 id 里的格键）；拿不到 ⇒ null（不猜坐标）。 */
   private static HexCoord unitHexOrNull(ProductionUnit unit) {
     return IndustryHexKeys.hexKeyOf(unit.industry()).map(HexCoord::parse).orElse(null);
@@ -434,7 +395,6 @@ public final class MarketDemandBook {
       Map<ProductionUnitId, ProductionUnit> units,
       Map<IndustryId, Industry> industries,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
-      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
       Map<ShipmentId, ShipmentBatch> shipments,
       Map<HexCoord, Market> markets) {
     Set<CommodityId> commodities = new TreeSet<>(Comparator.comparing(CommodityId::value));
@@ -449,9 +409,6 @@ public final class MarketDemandBook {
       }
     }
     for (Map<CommodityId, Long> goods : householdGoods.values()) {
-      commodities.addAll(goods.keySet());
-    }
-    for (Map<CommodityId, Long> goods : operatorGoods.values()) {
       commodities.addAll(goods.keySet());
     }
     for (ShipmentBatch shipment : shipments.values()) {
@@ -541,10 +498,5 @@ public final class MarketDemandBook {
     return keys;
   }
 
-  private static List<ActorRef> sortedActors(Set<ActorRef> actors) {
-    List<ActorRef> keys = new ArrayList<>(actors);
-    keys.sort(Comparator.comparing(ActorRef::toString));
-    return keys;
-  }
 
 }

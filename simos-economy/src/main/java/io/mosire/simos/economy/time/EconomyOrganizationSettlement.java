@@ -11,13 +11,11 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Pool;
@@ -38,7 +36,6 @@ import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionOrganization;
@@ -226,8 +223,7 @@ final class EconomyOrganizationSettlement {
       LinkedHashMap<ProductionUnitId, ProductionRelation> relations,
       LinkedHashMap<AssetShareId, AssetShare> assetShares,
       LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
-      Map<MembershipId, Membership> memberships,
-      Map<PeopleLotId, LaborSupply> laborSupply,
+      Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HexCoord, Market> markets,
       LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations) {
@@ -241,8 +237,7 @@ final class EconomyOrganizationSettlement {
         relations,
         assetShares,
         allocations,
-        memberships,
-        laborSupply,
+        composition,
         householdGoods,
         markets,
         organizations);
@@ -261,8 +256,7 @@ final class EconomyOrganizationSettlement {
    * @param relations 生产关系工作副本（可能被 upsert）
    * @param assetShares 实物资产份额工作副本（可能被租佃拆分：只改 operator/kind，总量不变）
    * @param allocations 劳动配额工作副本（可能被 upsert）
-   * @param memberships 成员份额（只读；为没有既有配额的家户找批次）
-   * @param laborSupply 劳动供给工作副本（只读本阶段；判批次余量）
+   * @param composition 家户人口组成的只读投影（{@code household → (lot → count)}；来自 Social，不是经济状态）
    * @param householdGoods 家户商品账会话副本（只读；判投入约束）
    * @param markets 市场表（只读；只用于"缺投入时有没有市场"的具名区分）
    * @param organizations 生产组织工作副本（upsert）
@@ -278,8 +272,7 @@ final class EconomyOrganizationSettlement {
       LinkedHashMap<ProductionUnitId, ProductionRelation> relations,
       LinkedHashMap<AssetShareId, AssetShare> assetShares,
       LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
-      Map<MembershipId, Membership> memberships,
-      Map<PeopleLotId, LaborSupply> laborSupply,
+      Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HexCoord, Market> markets,
       LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations) {
@@ -295,8 +288,7 @@ final class EconomyOrganizationSettlement {
     Objects.requireNonNull(relations, "relations");
     Objects.requireNonNull(assetShares, "assetShares");
     Objects.requireNonNull(allocations, "allocations");
-    Objects.requireNonNull(memberships, "memberships");
-    Objects.requireNonNull(laborSupply, "laborSupply");
+    Objects.requireNonNull(composition, "composition");
     Objects.requireNonNull(householdGoods, "householdGoods");
     Objects.requireNonNull(markets, "markets");
     Objects.requireNonNull(organizations, "organizations");
@@ -403,9 +395,8 @@ final class EconomyOrganizationSettlement {
                     relations,
                     assetShares,
                     allocations,
-                    memberships,
-                    laborSupply,
-                    householdGoods,
+                    composition,
+                                householdGoods,
                     markets);
             ProductionOrganization previous = organizations.put(orgId, result.organization());
             if (!result.organization().equals(previous)) {
@@ -456,8 +447,7 @@ final class EconomyOrganizationSettlement {
       LinkedHashMap<ProductionUnitId, ProductionRelation> relations,
       LinkedHashMap<AssetShareId, AssetShare> assetShares,
       LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
-      Map<MembershipId, Membership> memberships,
-      Map<PeopleLotId, LaborSupply> laborSupply,
+      Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HexCoord, Market> markets) {
     ActorRef organizer = HouseholdActors.of(household);
@@ -525,7 +515,7 @@ final class EconomyOrganizationSettlement {
     long disposableLabor = disposableLabor(household, row, allocations);
     LotChoice lotChoice = null;
     if (recipe.laborPerUnit() > 0L) {
-      lotChoice = chooseLot(household, allocations, memberships, laborSupply);
+      lotChoice = chooseLot(household, allocations, composition, rows);
       if (lotChoice == null) {
         return shortageResult(
             orgId,
@@ -679,17 +669,8 @@ final class EconomyOrganizationSettlement {
             shareIdsOf(industryId, organizer, assetShares),
             REASON_NO_LABOR + ":" + household.value());
       }
-      LaborSupply supply = laborSupply.get(lotChoice.lot());
-      if (supply == null) {
-        return shortageResult(
-            orgId,
-            mode,
-            positionId,
-            household,
-            shareIdsOf(industryId, organizer, assetShares),
-            REASON_NO_LABOR_LOT + ":" + lotChoice.lot().value());
-      }
-      allocation = Optional.of(new AllocationPlan(lotChoice.lot(), amount, supply.period()));
+      // ★★ P2-A A4：period 只是审计标签（供给表已删除）；批次有效性已由 chooseLot 的组成投影保证。
+      allocation = Optional.of(new AllocationPlan(lotChoice.lot(), amount, 1L));
     }
 
     // ── apply：全部可失败判断已在上面做完，这里只落工作副本（不重置/不覆盖既有 unit）──────────
@@ -804,7 +785,7 @@ final class EconomyOrganizationSettlement {
     return Optional.empty();
   }
 
-  /** 可支配劳动（千分劳动/日）= 行折算劳动 − 该户已承诺的全部配额；不除零、不为负。 */
+  /** 可支配时间（毫小时/tick）= 行时间预算（{@code ClassRow.laborMilli}）− 该户已承诺的全部配额；不除零、不为负。 */
   private static long disposableLabor(
       HouseholdId household, ClassRow row, Map<LaborAllocationId, LaborAllocation> allocations) {
     long allocated = 0L;
@@ -813,7 +794,7 @@ final class EconomyOrganizationSettlement {
         allocated += allocation.laborMilli();
       }
     }
-    return Math.max(0L, row.participationAdjustedLaborMilli() - allocated);
+    return Math.max(0L, row.laborMilli() - allocated);
   }
 
   /**
@@ -823,42 +804,27 @@ final class EconomyOrganizationSettlement {
   private static LotChoice chooseLot(
       HouseholdId household,
       Map<LaborAllocationId, LaborAllocation> allocations,
-      Map<MembershipId, Membership> memberships,
-      Map<PeopleLotId, LaborSupply> laborSupply) {
+      Map<HouseholdId, Map<PeopleLotId, Long>> composition,
+      Map<HouseholdId, ClassRow> rows) {
     Set<PeopleLotId> lots = new LinkedHashSet<>();
     for (LaborAllocation allocation : allocations.values()) {
       if (allocation.household().equals(household)) {
         lots.add(allocation.group());
       }
     }
-    for (Membership membership : memberships.values()) {
-      if (membership.household().equals(household) && membership.count() > 0L) {
-        lots.add(membership.lot());
+    // ★ P2-A A3：家户人口组成来自 Social 的只读投影（不是 Economy 状态里的成员份额表）。
+    for (Map.Entry<PeopleLotId, Long> member :
+        composition.getOrDefault(household, Map.of()).entrySet()) {
+      if (member.getValue() != null && member.getValue() > 0L) {
+        lots.add(member.getKey());
       }
     }
     List<PeopleLotId> ordered = new ArrayList<>(lots);
     ordered.sort(Comparator.comparing(PeopleLotId::value));
-    LotChoice best = null;
-    for (PeopleLotId lot : ordered) {
-      LaborSupply supply = laborSupply.get(lot);
-      if (supply == null) {
-        continue;
-      }
-      long used = 0L;
-      for (LaborAllocation allocation : allocations.values()) {
-        if (allocation.group().equals(lot)) {
-          used += allocation.laborMilli();
-        }
-      }
-      long room = supply.availableLabor() - used;
-      if (room <= 0L) {
-        continue;
-      }
-      if (best == null || room > best.room()) {
-        best = new LotChoice(lot, room);
-      }
-    }
-    return best;
+    // ★★ P2-A A4：余量 = **家户时间预算** − 该户已承诺的全部配额（不再有批次级供给这第二权威）；
+    //   批次只决定这笔时间记在哪个 lot 名下 ⇒ 取 id 最小的可用批次。
+    long room = disposableLabor(household, rows.get(household), allocations);
+    return ordered.isEmpty() || room <= 0L ? null : new LotChoice(ordered.get(0), room);
   }
 
   // ── 租佃计划 ─────────────────────────────────────────────────────────────────────────────

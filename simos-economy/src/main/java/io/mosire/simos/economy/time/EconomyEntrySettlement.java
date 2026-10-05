@@ -11,12 +11,10 @@ import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.model.AllocationRule;
@@ -27,7 +25,6 @@ import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OperatorCondition.IndustryStatus;
 import io.mosire.simos.economy.model.ProductionCandidate;
@@ -201,8 +198,7 @@ final class EconomyEntrySettlement {
       Map<HouseholdId, ClassRow> rows,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
-      Map<MembershipId, Membership> memberships,
-      Map<PeopleLotId, LaborSupply> laborSupply,
+      Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       Map<ProductionUnitId, ProductionUnit> units,
       Map<AssetShareId, AssetShare> assetShares,
       Map<LaborAllocationId, LaborAllocation> allocations,
@@ -231,8 +227,7 @@ final class EconomyEntrySettlement {
             rows,
             householdGoods,
             householdMoney,
-            memberships,
-            laborSupply,
+            composition,
             markets,
             day);
     List<HouseholdId> orderedHouseholds = new ArrayList<>(rows.keySet());
@@ -285,8 +280,7 @@ final class EconomyEntrySettlement {
       Map<HouseholdId, ClassRow> rows,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
-      Map<MembershipId, Membership> memberships,
-      Map<PeopleLotId, LaborSupply> laborSupply,
+      Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       Map<HexCoord, Market> markets,
       long day) {
     Objects.requireNonNull(intents, "intents");
@@ -302,8 +296,7 @@ final class EconomyEntrySettlement {
             rows,
             householdGoods,
             householdMoney,
-            memberships,
-            laborSupply,
+            composition,
             markets,
             day);
     boolean changed = false;
@@ -444,8 +437,7 @@ final class EconomyEntrySettlement {
       long laborPeriod = 0L;
       if (candidate.laborPerUnit() > 0L) {
         long householdRoom =
-            row.participationAdjustedLaborMilli()
-                - context.allocationMilliByHousehold.getOrDefault(household, 0L);
+            row.laborMilli() - context.allocationMilliByHousehold.getOrDefault(household, 0L);
         if (householdRoom < candidate.laborPerUnit()) {
           return Attempt.rejection(
               reject(
@@ -457,48 +449,25 @@ final class EconomyEntrySettlement {
                       + ",need="
                       + candidate.laborPerUnit()));
         }
+        // ★★ P2-A A4：配额上限 = **家户时间预算**（ClassRow.laborMilli，毫小时）− 已分配；
+        //   批次级"供给余量"这第二权威已删除。挑批次只决定这笔家户时间记在哪个 lot 名下（取 id 最小者）。
         List<PeopleLotId> lotChoices = context.lotsFor(household);
-        PeopleLotId bestLot = null;
-        long bestRoom = Long.MIN_VALUE;
-        for (PeopleLotId lot : lotChoices) {
-          LaborSupply supply = context.laborSupply.get(lot);
-          if (supply == null) {
-            continue;
-          }
-          long room =
-              supply.availableLabor() - context.allocationMilliByGroup.getOrDefault(lot, 0L);
-          if (room > bestRoom
-              || (room == bestRoom
-                  && (bestLot == null || lot.value().compareTo(bestLot.value()) < 0))) {
-            bestLot = lot;
-            bestRoom = room;
-          }
+        if (lotChoices.isEmpty()) {
+          return Attempt.rejection(reject(context, household, candidate, "LABOR_NO_LOT"));
         }
-        if (bestLot == null) {
-          return Attempt.rejection(reject(context, household, candidate, "LABOR_NO_SUPPLY"));
-        }
-        if (bestRoom < candidate.laborPerUnit()) {
-          return Attempt.rejection(
-              reject(
-                  context,
-                  household,
-                  candidate,
-                  "LABOR_SHORT:groupRoom=" + bestRoom + ",need=" + candidate.laborPerUnit()));
-        }
-        long groupCap = bestRoom / candidate.laborPerUnit();
+        PeopleLotId bestLot = lotChoices.get(0);
         long householdCap = householdRoom / candidate.laborPerUnit();
-        laborCap = Math.min(groupCap, householdCap);
+        laborCap = householdCap;
         if (laborCap < 1L) {
           return Attempt.rejection(
               reject(
                   context,
                   household,
                   candidate,
-                  "LABOR_SHORT:householdRoom=" + householdRoom + ",groupRoom=" + bestRoom));
+                  "LABOR_SHORT:householdRoom=" + householdRoom + ",need=" + candidate.laborPerUnit()));
         }
         lots = List.of(bestLot);
-        LaborSupply supply = context.laborSupply.get(bestLot);
-        laborPeriod = supply.period();
+        laborPeriod = 1L; // ★ 只是审计标签（供给表删除后 period 不再有供给权威）
       }
       cap = Math.min(cap, laborCap);
 
@@ -874,15 +843,16 @@ final class EconomyEntrySettlement {
       if (tables.allocations.containsKey(allocationId)) {
         return Optional.of("ALLOCATION_ID_EXISTS:" + allocationId.value());
       }
-      LaborSupply supply = context.laborSupply.get(lot);
-      if (supply == null || supply.period() != intent.laborPeriod()) {
-        return Optional.of("LABOR_SUPPLY_CHANGED:" + lot.value());
-      }
-      long room = supply.availableLabor() - context.allocationMilliByGroup.getOrDefault(lot, 0L);
+      ClassRow roomRow = context.rows.get(intent.household());
+      long room =
+          roomRow == null
+              ? 0L
+              : roomRow.laborMilli()
+                  - context.allocationMilliByHousehold.getOrDefault(intent.household(), 0L);
       if (room < intent.laborMilli()) {
         return Optional.of(
-            "LABOR_GROUP_ROOM_GONE:lot="
-                + lot.value()
+            "LABOR_HOUSEHOLD_ROOM_GONE:household="
+                + intent.household().value()
                 + ",room="
                 + room
                 + ",need="
@@ -1160,7 +1130,6 @@ final class EconomyEntrySettlement {
     private final Map<HouseholdId, ClassRow> rows;
     private final Map<HouseholdId, Map<CommodityId, Long>> householdGoods;
     private final Map<HouseholdId, Map<CurrencyId, Long>> householdMoney;
-    private final Map<PeopleLotId, LaborSupply> laborSupply;
     private final Map<HexCoord, Market> markets;
     private final long day;
     private final Map<ActorRef, List<ProductionUnitId>> unitIdsByOperator = new LinkedHashMap<>();
@@ -1176,16 +1145,14 @@ final class EconomyEntrySettlement {
         Map<HouseholdId, ClassRow> rows,
         Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
         Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
-        Map<MembershipId, Membership> memberships,
-        Map<PeopleLotId, LaborSupply> laborSupply,
-        Map<HexCoord, Market> markets,
+        Map<HouseholdId, Map<PeopleLotId, Long>> composition,
+          Map<HexCoord, Market> markets,
         long day) {
       this.tables = tables;
       this.demands = demands;
       this.rows = rows;
       this.householdGoods = householdGoods;
       this.householdMoney = householdMoney;
-      this.laborSupply = laborSupply;
       this.markets = markets;
       this.day = day;
       for (ProductionUnit unit : tables.units.values()) {
@@ -1201,14 +1168,14 @@ final class EconomyEntrySettlement {
             .computeIfAbsent(share.operator(), ignored -> new ArrayList<>())
             .add(share.id());
       }
-      for (Membership membership : memberships.values()) {
-        if (membership.count() <= 0L) {
-          continue;
-        }
+      // ★ P2-A A3：家户人口组成来自 Social 的只读投影（不是 Economy 状态里的成员份额表）。
+      for (Map.Entry<HouseholdId, Map<PeopleLotId, Long>> householdMembers : composition.entrySet()) {
         List<PeopleLotId> lots =
-            lotsByHousehold.computeIfAbsent(membership.household(), ignored -> new ArrayList<>());
-        if (!lots.contains(membership.lot())) {
-          lots.add(membership.lot());
+            lotsByHousehold.computeIfAbsent(householdMembers.getKey(), ignored -> new ArrayList<>());
+        for (Map.Entry<PeopleLotId, Long> member : householdMembers.getValue().entrySet()) {
+          if (member.getValue() != null && member.getValue() > 0L && !lots.contains(member.getKey())) {
+            lots.add(member.getKey());
+          }
         }
       }
       for (LaborAllocation allocation : tables.allocations.values()) {

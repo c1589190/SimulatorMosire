@@ -7,7 +7,6 @@ import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
@@ -16,12 +15,10 @@ import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -39,7 +36,6 @@ import java.util.Set;
  *
  * <pre>
  * needed = 任一 LaborAllocation.household 是 pending 占位
- *       或 classes 非空而 memberships 为空（旧档没有成员份额组件）
  *       或无 units 却有 relations（旧键连一个 unit 都解析不到）
  *       或有 units 时 关系/条件的键不是已存在的 unit、或配额的 activity/actor 与 unit 不一致（旧键对齐）
  * </pre>
@@ -67,9 +63,6 @@ import java.util.Set;
  */
 public final class LegacyHouseholdMigration {
 
-  /** 合成 lot 的前缀（只覆盖"旧档没有任何配额供给"的家户行，见类注）。 */
-  public static final String SYNTHETIC_LOT_PREFIX = "legacy-";
-
   /** 迁移来源标签（旧档没有 revision 上下文时用的具名值；有值则原样保留）。 */
   public static final String LEGACY_MIGRATION_SOURCE = "legacy-pre-modern-v1";
 
@@ -85,7 +78,6 @@ public final class LegacyHouseholdMigration {
   public record Result(
       Map<ProductionUnitId, ProductionUnit> units,
       Map<LaborAllocationId, LaborAllocation> allocations,
-      Map<MembershipId, Membership> memberships,
       Map<AssetShareId, AssetShare> assetShares,
       Map<ProductionUnitId, ProductionRelation> relations,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
@@ -104,20 +96,10 @@ public final class LegacyHouseholdMigration {
       Map<ProductionUnitId, ProductionUnit> units,
       Map<HouseholdId, ClassRow> classes,
       Map<LaborAllocationId, LaborAllocation> allocations,
-      Map<MembershipId, Membership> memberships,
       Map<AssetShareId, AssetShare> assetShares,
       Map<ProductionUnitId, ProductionRelation> relations,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       Optional<EconomyMeta> meta) {
-    // ★ 迁移完成的判据 = meta.rulesVersion 已升到 pre-modern-v1（幂等标记）；它保证"没有产能 ⇒ 生成的资产份额表
-    //   仍为空"的状态不会被日复一日地重复迁移。
-    boolean migrated = isMigrated(meta);
-    if (!migrated
-        && classes != null
-        && !classes.isEmpty()
-        && (memberships == null || memberships.isEmpty())) {
-      return true;
-    }
     if (allocations != null) {
       for (LaborAllocation allocation : allocations.values()) {
         if (allocation != null && HouseholdIds.isPending(allocation.household())) {
@@ -179,32 +161,17 @@ public final class LegacyHouseholdMigration {
       Map<ProductionUnitId, ProductionUnit> units,
       Map<HouseholdId, ClassRow> classes,
       Map<LaborAllocationId, LaborAllocation> allocations,
-      Map<MembershipId, Membership> memberships,
       Map<AssetShareId, AssetShare> assetShares,
       Map<ProductionUnitId, ProductionRelation> relations,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       Optional<EconomyMeta> meta) {
     Map<LaborAllocationId, LaborAllocation> migratedAllocations = new LinkedHashMap<>();
-    // 每条旧配额在迁移前的“位置/居住/权重”快照，供 Membership 反推用（迁移后 id 与原表已不同）。
-    List<FormerAllocation> former = new ArrayList<>();
-    // ★ M4：本次迁移是否会重建 memberships —— 能定位格的配额全量进 former（见下）；定位不了的非 pending
-    //   配额若同时存在，就是无法逐 lot 对账的混合态 ⇒ 立刻 fail-closed，不静默按权重近似。
-    boolean rebuildMemberships = classes != null && !classes.isEmpty();
     for (Map.Entry<LaborAllocationId, LaborAllocation> entry : allocations.entrySet()) {
       LaborAllocation allocation = entry.getValue();
       Optional<HexCoord> maybeHex = industryHexOf(industries, allocation.actor());
       if (maybeHex.isEmpty()) {
         if (!HouseholdIds.isPending(allocation.household())) {
-          if (rebuildMemberships) {
-            throw new IllegalStateException(
-                "旧档迁移失败：配额 "
-                    + entry.getKey()
-                    + " 的 actor "
-                    + allocation.actor()
-                    + " 无法定位产业格，而本次迁移要重建 memberships ⇒ 该 lot 进不了权重表、无法逐 lot 对账"
-                    + "（混合态拒绝静默近似：请先补齐产业格键，或不要在同一批里混入无法定位的配额）");
-          }
-          // 非 pending 的新档配额（actor 不是产业 id 也能合法存在 —— 家户自营）：本次不重建 memberships ⇒ 原样带过。
+          // 非 pending 的新档配额（actor 不是产业 id 也能合法存在 —— 家户自营）：原样带过。
           migratedAllocations.put(entry.getKey(), allocation);
           continue;
         }
@@ -216,10 +183,6 @@ public final class LegacyHouseholdMigration {
       }
       HexCoord hex = maybeHex.get();
       ResidenceKind residence = ResidenceKind.ofLot(allocation.group());
-      // ★★ M4：凡**能定位产业格**的配额（pending 或非 pending）都进 former —— deriveMemberships 的
-      //   lot 权重表必须覆盖全部可定位的劳动归属，不能只收 pending 那一半。非 pending 的配额另外照旧原样进
-      //   migratedAllocations（它已有真实家户，不再拆分）；但它的 lot 权重同样参与本次成员份额反推。
-      former.add(new FormerAllocation(allocation, hex, residence));
       if (!HouseholdIds.isPending(allocation.household())) {
         migratedAllocations.put(entry.getKey(), allocation);
         continue;
@@ -263,17 +226,6 @@ public final class LegacyHouseholdMigration {
         }
       }
     }
-    Map<MembershipId, Membership> migratedMemberships = new LinkedHashMap<>();
-    if (memberships != null && !memberships.isEmpty()) {
-      // ★★ B.2b：**已有成员份额的旧档原样保留** —— 迁移器的职责是"补缺"（旧档没有 memberships 组件时按行人口
-      //   反推），不是"重算"。实测：对本批真实 tick0 旧 changeset 重算会把 12912 条人口份额改成 9896 条
-      //   （deriveMemberships 走"劳动配额 lot"口径，与播种载荷自己的成员分摊不同）⇒ 违反"只做键归一、不静默丢
-      //   人口事实"，也会让"apply 前后人口组件数量不变"的验收落空。缺 memberships 的旧档仍走下面的
-      //   deriveMemberships（行为逐字不变）。
-      migratedMemberships.putAll(memberships);
-    } else if (classes != null && !classes.isEmpty()) {
-      deriveMemberships(classes, former, migratedMemberships);
-    }
     Map<AssetShareId, AssetShare> migratedAssetShares = new LinkedHashMap<>();
     if (assetShares != null) {
       // ★★ R3B.1：旧档已有 UseRight 时，codec 已按"一对一把 holder 填成 owner=operator"整形成 AssetShare
@@ -301,7 +253,6 @@ public final class LegacyHouseholdMigration {
     return new Result(
         migratedUnits,
         migratedAllocations,
-        migratedMemberships,
         migratedAssetShares,
         migratedRelations,
         migratedConditions,
@@ -515,67 +466,6 @@ public final class LegacyHouseholdMigration {
     return byIndustry;
   }
 
-  /** 旧配额快照（拆 id 之后仍需要它来推成员份额）。 */
-  private record FormerAllocation(
-      LaborAllocation allocation, HexCoord hex, ResidenceKind residence) {}
-
-  /**
-   * ★★ <b>每个 (格, 居住类型) 上的供给权重</b>：lot → Σ laborMilli。
-   *
-   * <p>★ <b>M4 的口径</b>：{@code former} 由 {@link #migrate} <b>全量</b>收集“凡能定位产业格”的配额（pending 与
-   * non-pending 都算），不再只收 pending；因此每个可对账的 lot 都会进入本权重表。无法定位格的非 pending 配额 在 {@code migrate} 里已作为混合态
-   * fail-closed，不会走到这里被静默略过。
-   */
-  private static void deriveMemberships(
-      Map<HouseholdId, ClassRow> classes,
-      List<FormerAllocation> former,
-      Map<MembershipId, Membership> out) {
-    Map<ViewKey, Map<PeopleLotId, Long>> weightsByView = new LinkedHashMap<>();
-    for (FormerAllocation allocation : former) {
-      weightsByView
-          .computeIfAbsent(
-              new ViewKey(allocation.hex(), allocation.residence()),
-              ignored -> new LinkedHashMap<>())
-          .merge(
-              allocation.allocation().group(),
-              allocation.allocation().laborMilli(),
-              Math::addExact);
-    }
-    for (ClassRow row : classes.values()) {
-      ViewKey view = new ViewKey(row.view().hex(), row.view().residence());
-      Map<PeopleLotId, Long> weights = weightsByView.get(view);
-      if (weights == null || weights.isEmpty()) {
-        // ★ 没有配额供给的家户行：用确定性的合成 lot 承载，保证 Σ 成员 == Σ 行人口（见类注的近似）。
-        PeopleLotId synthetic = new PeopleLotId(SYNTHETIC_LOT_PREFIX + row.view());
-        addMembership(out, synthetic, row.id(), row.population());
-        continue;
-      }
-      List<PeopleLotId> lots = new ArrayList<>(weights.keySet());
-      lots.sort(Comparator.comparing(PeopleLotId::value));
-      long[] lotWeights = new long[lots.size()];
-      long totalWeight = 0L;
-      for (int i = 0; i < lots.size(); i++) {
-        lotWeights[i] = weights.get(lots.get(i));
-        totalWeight = Math.addExact(totalWeight, lotWeights[i]);
-      }
-      long[] parts = ProportionalSplit.byDenominator(row.population(), lotWeights, totalWeight);
-      for (int i = 0; i < lots.size(); i++) {
-        addMembership(out, lots.get(i), row.id(), parts[i]);
-      }
-    }
-  }
-
-  private static void addMembership(
-      Map<MembershipId, Membership> out, PeopleLotId lot, HouseholdId household, long count) {
-    MembershipId id = Membership.idOf(lot, household);
-    Membership previous = out.get(id);
-    if (previous == null) {
-      out.put(id, new Membership(id, lot, household, count));
-      return;
-    }
-    out.put(id, new Membership(id, lot, household, Math.addExact(previous.count(), count)));
-  }
-
   /** 家户行的候选：同格 + 同居住类型 + population &gt; 0，按 HouseholdId 字典序（残差顺序确定）。 */
   private static List<ClassRow> candidateRows(
       Map<HouseholdId, ClassRow> classes, HexCoord hex, ResidenceKind residence) {
@@ -631,6 +521,4 @@ public final class LegacyHouseholdMigration {
                 : Optional.of(LEGACY_MIGRATION_SOURCE)));
   }
 
-  /** (格, 居住类型) 的复合键（Membership 反推的分组，不参与持久化）。 */
-  private record ViewKey(HexCoord hex, ResidenceKind residence) {}
 }

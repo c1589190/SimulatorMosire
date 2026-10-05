@@ -204,8 +204,6 @@ final class OperatorSettlement {
       SettlementIndex index,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
-      Map<ActorRef, Map<CommodityId, Long>> operatorGoods,
-      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney,
       Map<HexCoord, Market> markets,
       Set<ProductionUnitId> closingUnits,
       Map<ProductionUnitId, Boolean> inputShortfallByUnit) {
@@ -253,14 +251,8 @@ final class OperatorSettlement {
           long available =
               switch (debt.unit()) {
                 case DebtUnit.Commodity commodity ->
-                    stockOf(
-                        household,
-                        unit.operator(),
-                        commodity.commodity(),
-                        householdGoods,
-                        operatorGoods);
-                case DebtUnit.Money ignored ->
-                    cashOf(household, unit.operator(), householdMoney, operatorMoney);
+                    stockOf(household, commodity.commodity(), householdGoods);
+                case DebtUnit.Money ignored -> cashOf(household, householdMoney);
               };
           if (due > available) {
             debtStress = true;
@@ -273,11 +265,10 @@ final class OperatorSettlement {
       IndustryStatus status = prev.status();
       String reason = prev.lastReason();
       // ★★ E1：自用维生硬门（唯一判据在 canSelfProvision）—— 提前算好，下面四条新路径都读同一个答案。
-      long selfUsable =
-          selfUsableOf(household, unit, industry, index, householdGoods, operatorGoods);
-      long cash = cashOf(household, unit.operator(), householdMoney, operatorMoney);
+      long selfUsable = selfUsableOf(household, unit, industry, index, householdGoods);
+      long cash = cashOf(household, householdMoney);
       boolean canSelfProvision =
-          canSelfProvision(unit, household, industry, index, rows, householdGoods, operatorGoods);
+          canSelfProvision(unit, household, industry, index, rows, householdGoods);
       switch (status) {
         case ACTIVE, TRIALING -> {
           if (hadMarket
@@ -495,18 +486,13 @@ final class OperatorSettlement {
   }
 
   private static long cashOf(
-      HouseholdId household,
-      ActorRef operator,
-      Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
-      Map<ActorRef, Map<CurrencyId, Long>> operatorMoney) {
-    long sum = 0L;
-    if (household != null) {
-      for (long value : householdMoney.getOrDefault(household, Map.of()).values()) {
-        sum += value;
-      }
-      return sum;
+      HouseholdId household, Map<HouseholdId, Map<CurrencyId, Long>> householdMoney) {
+    // ★★ P2-A §13.3：账户主体只有家户 —— 解析不到家户就没有可读的现金（不伪造经营者钱包）。
+    if (household == null) {
+      return 0L;
     }
-    for (long value : operatorMoney.getOrDefault(operator, Map.of()).values()) {
+    long sum = 0L;
+    for (long value : householdMoney.getOrDefault(household, Map.of()).values()) {
       sum += value;
     }
     return sum;
@@ -514,13 +500,12 @@ final class OperatorSettlement {
 
   private static long stockOf(
       HouseholdId household,
-      ActorRef operator,
       CommodityId commodity,
-      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
-      Map<ActorRef, Map<CommodityId, Long>> operatorGoods) {
-    return household != null
-        ? householdGoods.getOrDefault(household, Map.of()).getOrDefault(commodity, 0L)
-        : operatorGoods.getOrDefault(operator, Map.of()).getOrDefault(commodity, 0L);
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods) {
+    // ★★ P2-A §13.3：账户主体只有家户 —— 解析不到家户就没有可见库存（不伪造经营者账）。
+    return household == null
+        ? 0L
+        : householdGoods.getOrDefault(household, Map.of()).getOrDefault(commodity, 0L);
   }
 
   /**
@@ -546,14 +531,11 @@ final class OperatorSettlement {
       Industry industry,
       SettlementIndex index,
       Map<HouseholdId, ClassRow> rows,
-      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
-      Map<ActorRef, Map<CommodityId, Long>> operatorGoods) {
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods) {
     if (household != null) {
       ClassRow row = rows.get(household);
       if (row != null) {
-        long grainStock =
-            stockOf(
-                household, unit.operator(), EconomySettlement.GRAIN, householdGoods, operatorGoods);
+        long grainStock = stockOf(household, EconomySettlement.GRAIN, householdGoods);
         long cycleRation =
             io.mosire.simos.util.economy.EconomyVocabulary.cumulativeRationMilli(
                 row.population(), industry.cycleDays());
@@ -564,12 +546,11 @@ final class OperatorSettlement {
             io.mosire.simos.util.economy.EconomyVocabulary.cumulativeRationMilli(
                 row.population(), StressPolicy.SELF_PROVISION_GUARD_DAYS);
         return grainStock >= guardRation
-            && coversNextCycleInputs(
-                unit, household, industry, index, householdGoods, operatorGoods);
+            && coversNextCycleInputs(unit, household, industry, index, householdGoods);
       }
     }
-    // ★ 解析不到家户（或家户行缺失）：只看 operator 账的可自用投入覆盖 —— 不伪造家户，也不凭空给它口粮。
-    return coversNextCycleInputs(unit, null, industry, index, householdGoods, operatorGoods);
+    // ★★ P2-A §13.3：解析不到家户 ⇒ 没有可见的自用库存（不伪造经营者账）；但投入覆盖判据仍可判"没账 ⇒ 覆盖 0"。
+    return coversNextCycleInputs(unit, null, industry, index, householdGoods);
   }
 
   /** 下一周期投入需求是否被自用库存全覆盖（{@code Σ min(库存,需求) == Σ 需求}；无投入需求视为已覆盖）。 */
@@ -578,8 +559,7 @@ final class OperatorSettlement {
       HouseholdId household,
       Industry industry,
       SettlementIndex index,
-      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
-      Map<ActorRef, Map<CommodityId, Long>> operatorGoods) {
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods) {
     long scale = ProductionUnitBook.capacityScaleOf(unit, industry, index);
     if (scale <= 0L) {
       return false; // 没有可用资产 ⇒ 没有"下一周期生产"可谈（不是"投入需求为零所以已覆盖"）
@@ -594,7 +574,7 @@ final class OperatorSettlement {
     if (required <= 0L) {
       return true; // 没有实物投入需求 ⇒ 没有"覆盖不到"的投入
     }
-    long covered = selfUsableOf(household, unit, industry, index, householdGoods, operatorGoods);
+    long covered = selfUsableOf(household, unit, industry, index, householdGoods);
     return covered >= required;
   }
 
@@ -604,8 +584,7 @@ final class OperatorSettlement {
       ProductionUnit unit,
       Industry industry,
       SettlementIndex index,
-      Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
-      Map<ActorRef, Map<CommodityId, Long>> operatorGoods) {
+      Map<HouseholdId, Map<CommodityId, Long>> householdGoods) {
     long scale = ProductionUnitBook.capacityScaleOf(unit, industry, index);
     long sum = 0L;
     for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
@@ -613,8 +592,7 @@ final class OperatorSettlement {
         continue;
       }
       long need = entry.getValue() * scale;
-      long stock =
-          stockOf(household, unit.operator(), entry.getKey(), householdGoods, operatorGoods);
+      long stock = stockOf(household, entry.getKey(), householdGoods);
       sum += Math.min(need, stock);
     }
     return sum;

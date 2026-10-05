@@ -37,7 +37,6 @@ import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
@@ -185,8 +184,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     //   → LaborAllocation）。两者都重写了 toString()（= 裸值）并与各自的 parse 互为逆，故只需读侧。
     module.addKeyDeserializer(PeopleLotId.class, keyDeserializer(PeopleLotId::parse));
     module.addKeyDeserializer(LaborAllocationId.class, keyDeserializer(LaborAllocationId::parse));
-    // ★★ S1：memberships / assetShares 两张新表的键（R3B.1 起后者 = AssetShareId；旧 use-… 串 opaque 可读）。
-    module.addKeyDeserializer(MembershipId.class, keyDeserializer(MembershipId::parse));
+    // ★★ S1：assetShares 表的键（R3B.1 起 = AssetShareId；旧 use-… 串 opaque 可读）。
     module.addKeyDeserializer(AssetShareId.class, keyDeserializer(AssetShareId::parse));
     // ★★ R3B.2：units 表的键 = ProductionUnitId；同时注册值侧反序列化器（旧档/手写可能写裸字符串）。
     module.addKeyDeserializer(ProductionUnitId.class, keyDeserializer(ProductionUnitId::parse));

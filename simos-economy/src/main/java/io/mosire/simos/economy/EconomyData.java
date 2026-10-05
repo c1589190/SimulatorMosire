@@ -19,7 +19,6 @@ import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.economy.api.id.MembershipId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.id.PledgeId;
@@ -28,7 +27,6 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.api.labor.LaborSupply;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.CompensationRule;
@@ -54,7 +52,6 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.Membership;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
@@ -66,7 +63,6 @@ import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.social.api.id.PeopleLotId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -169,11 +165,11 @@ import java.util.Set;
  * <p>★★ **{@code shipments} 是第 10 个组件**（M2.4）：键 = {@link ShipmentId}，值 = {@link
  * ShipmentBatch}（在途批次）。★ 它是**跨 tick 状态**：发运日建、到货日销；到货前目的地消费不到它。
  *
- * <p>★★ **S1 的第 11/12 个组件**：{@code memberships}（键 = {@link MembershipId}；成员份额，Σcount ==
- * 行人口的全局守卫在这里判）与 {@code assetShares}（键 = {@link AssetShareId}；R3B.1 起是<b>独立的实物资产份额总账</b>， 逐行判"键 ==
- * 值内 id / industry 存在 / 非空 / quantity ≥ 0"；★ <b>没有</b>"Σ quantity ≤ Industry.capacity" 这类
+ * <p>★★ **S1 的第 12 个组件 {@code assetShares}**（键 = {@link AssetShareId}；R3B.1 起是<b>独立的实物资产份额总账</b>，
+ * 逐行判"键 == 值内 id / industry 存在 / 非空 / quantity ≥ 0"；★ <b>没有</b>"Σ quantity ≤ Industry.capacity" 这类
  * 把技术模板与实物账本绑死的上界守卫）。★ 第 13 个组件 {@code operatorConditions}（{@link OperatorCondition}；S3.2 的经营者状态机）由
- * S1 一次性补齐，本阶段空表缺省。
+ * S1 一次性补齐，本阶段空表缺省。★ <b>P2-A A3：成员份额已从本切片整体删除</b>——家户人口组成的唯一权威是 Social 的
+ * {@code Household.members}，Economy 只在结算入口读一份只读投影（不进状态、不进变更集/Codec）。
  *
  * <p>★★ **E1 追加第 17–20 个组件**（{@code modes} / {@code classStructures} / {@code classPositions} /
  * {@code classStandings}）：它们建立"生产方式 → 阶层结构 → 阶层位置 → 家户归属"的权威状态。★ **E1 不接线结算**： 这四张表为空时，旧 {@code
@@ -214,19 +210,17 @@ import java.util.Set;
 //   29 个 Map 记录组件的生成访问器保守报"暴露内部表示"；ArmyPlan 已有同类豁免先例。
 @SuppressFBWarnings(
     value = "EI_EXPOSE_REP",
-    justification = "29 张 Map 组件均在 compact 构造器内逐键复制并 Collections.unmodifiableMap；访问器返回冻结副本")
+    justification = "28 张 Map 组件均在 compact 构造器内逐键复制并 Collections.unmodifiableMap；访问器返回冻结副本")
 public record EconomyData(
     Optional<EconomyMeta> meta,
     Map<IndustryId, Industry> industries,
     Map<HouseholdId, ClassRow> classes,
     Map<DebtContractId, DebtContract> debtContracts,
     Map<HouseholdId, FlowRow> flows,
-    Map<PeopleLotId, LaborSupply> laborSupply,
     Map<LaborAllocationId, LaborAllocation> allocations,
     Map<ProductionUnitId, ProductionRelation> relations,
     Map<HexCoord, Market> markets,
     Map<ShipmentId, ShipmentBatch> shipments,
-    Map<MembershipId, Membership> memberships,
     Map<AssetShareId, AssetShare> assetShares,
     Map<ProductionUnitId, OperatorCondition> operatorConditions,
     Map<ProductionUnitId, ProductionUnit> units,
@@ -247,39 +241,14 @@ public record EconomyData(
     Map<ClassShareId, ClassShare> classShares,
     Map<ProductionOrganizationId, MerchantFirm> merchantFirms) {
 
-  /** 往返用例的起点：未激活 + 三十张空表。 */
+  /** 往返用例的起点：未激活 + 二十七张空表（P2-A A3/A4 起成员份额表与劳动供给表已删除）。 */
   public static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of());
+        Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
+        Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
+        Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
+        Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
   }
 
   public EconomyData {
@@ -300,17 +269,11 @@ public record EconomyData(
       flows = Map.of();
     }
     // ★ R2 的两个新组件：同一口径（缺键 ⇒ 空表，见类注释）。
-    if (laborSupply == null) {
-      laborSupply = Map.of();
-    }
     if (allocations == null) {
       allocations = Map.of();
     }
-    // ★ S1 的两个新组件：同一口径（缺键 ⇒ 空表，见类注释）。★ memberships 空表 = 旧档尚未迁移
+    // ★ S1 的新组件：同一口径（缺键 ⇒ 空表，见类注释）。
     //   （由 LegacyHouseholdMigration 补齐）；运行期的类状态与成员份额必须同源（见下面的守恒守卫）。
-    if (memberships == null) {
-      memberships = Map.of();
-    }
     if (assetShares == null) {
       assetShares = Map.of();
     }
@@ -488,18 +451,16 @@ public record EconomyData(
       assetShares = normalizedShares;
     }
     // ★★ S1 旧档迁移（显式、幂等、可重放；见 LegacyHouseholdMigration 的类注）：
-    //   旧 LaborAllocation 没有 household / 旧档没有 memberships 组件时，在这里一次性补齐。
+    //   旧 LaborAllocation 没有 household 时，在这里按配额反查补一个稳定家户身份。
     //   ★ 它必须发生在**所有守卫之前**：迁移后的状态才参与 pending 检查、Σ 守卫与关系归一。
     //   ★★ Minor-5（2026-09-28 评审）：这一步是**构造期自动**跑的 ⇒ 任何旧形状测试夹具（classes 非空但
-    //   memberships/assetShares 为空、或 allocation 的 household 是 pending 占位）都会被静默补齐
-    //   memberships/assetShares 后才进守卫。V 阶段适配旧测试/旧档时必须点名这条自动迁移（它不是夹具"本来就有"的
-    //   组件，是构造期补出来的）；本批不改行为、只留提示。
+    //   assetShares 为空、或 allocation 的 household 是 pending 占位）都会被静默补齐 assetShares 后才进守卫。
+    //   V 阶段适配旧测试/旧档时必须点名这条自动迁移（它不是夹具"本来就有"的组件，是构造期补出来的）。
     if (LegacyHouseholdMigration.needed(
         industries,
         units,
         classes,
         allocations,
-        memberships,
         assetShares,
         relations,
         operatorConditions,
@@ -510,14 +471,12 @@ public record EconomyData(
               units,
               classes,
               allocations,
-              memberships,
               assetShares,
               relations,
               operatorConditions,
               meta);
       units = migrated.units();
       allocations = migrated.allocations();
-      memberships = migrated.memberships();
       assetShares = migrated.assetShares();
       relations = migrated.relations();
       operatorConditions = migrated.operatorConditions();
@@ -632,22 +591,6 @@ public record EconomyData(
       flowsCopy.put(entry.getKey(), entry.getValue());
     }
     flows = Collections.unmodifiableMap(flowsCopy); // ★ 冻在赋值处
-    // ── R2：劳动供给表 ────────────────────────────────────────────────────────────────────
-    Map<PeopleLotId, LaborSupply> supplyCopy = new LinkedHashMap<>();
-    for (Map.Entry<PeopleLotId, LaborSupply> entry : laborSupply.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("laborSupply 的键与值都不得为 null: " + entry.getKey());
-      }
-      if (!entry.getKey().equals(entry.getValue().group())) {
-        throw new IllegalArgumentException(
-            "laborSupply 的键必须与 LaborSupply.group 一致：键="
-                + entry.getKey()
-                + "，行内 group="
-                + entry.getValue().group());
-      }
-      supplyCopy.put(entry.getKey(), entry.getValue());
-    }
-    laborSupply = Collections.unmodifiableMap(supplyCopy); // ★ 冻在赋值处
     // ── R2：劳动分配表 + 三条结构判据（见类注释）────────────────────────────────────────────
     Set<String> industryIds = new LinkedHashSet<>();
     for (IndustryId id : industriesCopy.keySet()) {
@@ -660,7 +603,7 @@ public record EconomyData(
       unitsByValue.put(unit.id().value(), unit);
     }
     Map<LaborAllocationId, LaborAllocation> allocationsCopy = new LinkedHashMap<>();
-    Map<PeopleLotId, Long> allocatedPerGroup = new LinkedHashMap<>();
+    Map<HouseholdId, Long> allocatedPerHousehold = new LinkedHashMap<>();
     for (Map.Entry<LaborAllocationId, LaborAllocation> entry : allocations.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("allocations 的键与值都不得为 null: " + entry.getKey());
@@ -721,35 +664,27 @@ public record EconomyData(
                 + "，actor="
                 + allocation.actor());
       }
-      // ② 配额必须有**同期**的供给记录（没有供给的配额没有上限）。
-      LaborSupply supply = supplyCopy.get(allocation.group());
-      if (supply == null || supply.period() != allocation.period()) {
-        throw new IllegalArgumentException(
-            "劳动分配 "
-                + entry.getKey()
-                + " 的批次 "
-                + allocation.group()
-                + " 在第 "
-                + allocation.period()
-                + " 周期没有劳动供给记录（没有供给的配额没有上限，拒绝）："
-                + (supply == null ? "该批次完全没有供给记录" : "供给记录在第 " + supply.period() + " 周期"));
-      }
-      allocatedPerGroup.merge(allocation.group(), allocation.laborMilli(), Long::sum);
+      // ★★ P2-A A4：配额上限改为**家户每 tick 时间预算**（{@code ClassRow.laborMilli}，毫小时）——
+      //   不再有"每批次供给表"这第二权威（LaborSupply 已删除；预算每 tick 由 Social 人口组成重算）。
+      allocatedPerHousehold.merge(allocation.household(), allocation.laborMilli(), Long::sum);
       allocationsCopy.put(entry.getKey(), allocation);
     }
     allocations = Collections.unmodifiableMap(allocationsCopy); // ★ 冻在赋值处
-    // ③ ★★ **Σ allocated ≤ available**（本阶段最重要的不变量，见类注释）。
-    for (Map.Entry<PeopleLotId, Long> entry : allocatedPerGroup.entrySet()) {
-      long available = supplyCopy.get(entry.getKey()).availableLabor();
-      if (entry.getValue() > available) {
+    // ③ ★★ **Σ allocated(household) ≤ household time budget**（本阶段最重要的不变量，见类注释）。
+    for (Map.Entry<HouseholdId, Long> entry : allocatedPerHousehold.entrySet()) {
+      ClassRow row = classesCopy.get(entry.getKey());
+      if (row == null) {
+        continue; // 旧档迁移期的 pending 家户：迁移器会换成真实家户（见 LegacyHouseholdMigration）
+      }
+      if (entry.getValue() > row.laborMilli()) {
         throw new IllegalArgumentException(
-            "批次 "
+            "家户 "
                 + entry.getKey()
                 + " 的劳动配额之和 "
                 + entry.getValue()
-                + " 超过其可用劳动 "
-                + available
-                + "（同一批人的劳动不得被两个产业各算一次满额，设计稿 §四）");
+                + " 超过它的每 tick 时间预算 "
+                + row.laborMilli()
+                + " 毫小时（同一份家户时间不得被多个生产活动各算一次满额，计划 §13.5）");
       }
     }
     // ── R3B.1 第 12 个组件：实物资产份额表 ──────────────────────────────────────────────
@@ -817,46 +752,6 @@ public record EconomyData(
                 + relation.operator()
                 + "，unit="
                 + unit.operator());
-      }
-    }
-    // ── S1 第 11 个组件：成员份额表 ───────────────────────────────────────────────────────
-    //   ★ 键 = MembershipId；键 == 值内 id；household 必须存在；count ≥ 0。
-    //   ★ 全局守恒（计划 §6.1 第 1 条的第二半）：Σ Membership.count == Σ ClassRow.population。
-    //     逐批 == PopulationGroup.count 要读 social，由 app 协调器在同一 revision 内判（economy 看不见 social）。
-    Map<MembershipId, Membership> membershipsCopy = new LinkedHashMap<>();
-    long membershipTotal = 0L;
-    for (Map.Entry<MembershipId, Membership> entry : memberships.entrySet()) {
-      if (entry.getKey() == null || entry.getValue() == null) {
-        throw new IllegalArgumentException("memberships 的键与值都不得为 null: " + entry.getKey());
-      }
-      Membership membership = entry.getValue();
-      if (!entry.getKey().equals(membership.id())) {
-        throw new IllegalArgumentException(
-            "memberships 的键必须与 Membership.id 一致：键=" + entry.getKey() + "，行内 id=" + membership.id());
-      }
-      if (HouseholdIds.isPending(membership.household())) {
-        throw new IllegalArgumentException(
-            "memberships 的 household 不得是旧档迁移占位（迁移器必须先把它换成真实家户）：" + membership);
-      }
-      if (!classesCopy.containsKey(membership.household())) {
-        throw new IllegalArgumentException(
-            "membership 的家户必须是已存在的家户：" + membership.id() + " → " + membership.household());
-      }
-      membershipTotal = Math.addExact(membershipTotal, membership.count());
-      membershipsCopy.put(entry.getKey(), membership);
-    }
-    memberships = Collections.unmodifiableMap(membershipsCopy); // ★ 冻在赋值处
-    if (!membershipsCopy.isEmpty()) {
-      long classPopulation = 0L;
-      for (ClassRow row : classesCopy.values()) {
-        classPopulation = Math.addExact(classPopulation, row.population());
-      }
-      if (classPopulation != membershipTotal) {
-        throw new IllegalArgumentException(
-            "Σ Membership.count 必须等于 Σ ClassRow.population（S1 §6.1 第 1 条）：成员份额="
-                + membershipTotal
-                + "，行人口="
-                + classPopulation);
       }
     }
     // ── 第 9 个组件：市场表（H4；每格一个现货市场）──────────────────────────────────────
@@ -1650,12 +1545,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -1685,12 +1578,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -1720,12 +1611,10 @@ public record EconomyData(
         value,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -1758,12 +1647,10 @@ public record EconomyData(
         classes,
         value,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -1793,12 +1680,10 @@ public record EconomyData(
         classes,
         debtContracts,
         value,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -1820,42 +1705,6 @@ public record EconomyData(
         merchantFirms);
   }
 
-  /** 一个组件一个 with（R2：劳动供给表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
-  public EconomyData withLaborSupply(Map<PeopleLotId, LaborSupply> value) {
-    return new EconomyData(
-        meta,
-        industries,
-        classes,
-        debtContracts,
-        flows,
-        value,
-        allocations,
-        relations,
-        markets,
-        shipments,
-        memberships,
-        assetShares,
-        operatorConditions,
-        units,
-        demands,
-        candidates,
-        modes,
-        classStructures,
-        classPositions,
-        classStandings,
-        productionOrganizations,
-        assetRules,
-        governments,
-        moneyIssuances,
-        pledges,
-        liquidationPolicies,
-        crisisSignals,
-        modeTransitions,
-        classShares,
-        merchantFirms);
-  }
-
-  /** 一个组件一个 with（R2：劳动分配表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withAllocations(Map<LaborAllocationId, LaborAllocation> value) {
     return new EconomyData(
         meta,
@@ -1863,12 +1712,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         value,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -1898,12 +1745,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         value,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -1938,12 +1783,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         value,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -1977,46 +1820,9 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
-        value,
-        memberships,
-        assetShares,
-        operatorConditions,
-        units,
-        demands,
-        candidates,
-        modes,
-        classStructures,
-        classPositions,
-        classStandings,
-        productionOrganizations,
-        assetRules,
-        governments,
-        moneyIssuances,
-        pledges,
-        liquidationPolicies,
-        crisisSignals,
-        modeTransitions,
-        classShares,
-        merchantFirms);
-  }
-
-  /** 一个组件一个 with（S1：成员份额表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
-  public EconomyData withMemberships(Map<MembershipId, Membership> value) {
-    return new EconomyData(
-        meta,
-        industries,
-        classes,
-        debtContracts,
-        flows,
-        laborSupply,
-        allocations,
-        relations,
-        markets,
-        shipments,
         value,
         assetShares,
         operatorConditions,
@@ -2039,7 +1845,6 @@ public record EconomyData(
         merchantFirms);
   }
 
-  /** 一个组件一个 with（R3B.1：实物资产份额表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
   public EconomyData withAssetShares(Map<AssetShareId, AssetShare> value) {
     return new EconomyData(
         meta,
@@ -2047,12 +1852,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         value,
         operatorConditions,
         units,
@@ -2082,12 +1885,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         value,
         units,
@@ -2117,12 +1918,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         value,
@@ -2152,12 +1951,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2187,12 +1984,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2222,12 +2017,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2257,12 +2050,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2292,12 +2083,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2337,12 +2126,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2372,12 +2159,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2408,12 +2193,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2443,12 +2226,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2478,12 +2259,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2513,12 +2292,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2552,12 +2329,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2592,12 +2367,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2632,12 +2405,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2672,12 +2443,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2712,12 +2481,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,
@@ -2753,12 +2520,10 @@ public record EconomyData(
         classes,
         debtContracts,
         flows,
-        laborSupply,
         allocations,
         relations,
         markets,
         shipments,
-        memberships,
         assetShares,
         operatorConditions,
         units,

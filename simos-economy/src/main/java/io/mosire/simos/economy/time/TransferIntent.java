@@ -18,7 +18,7 @@ public record TransferIntent(CommitOrder order, Transfer transfer) implements Or
   public TransferIntent {
     Objects.requireNonNull(order, "TransferIntent.order 不得为 null");
     Objects.requireNonNull(transfer, "TransferIntent.transfer 不得为 null");
-    String expected = new AccountPartitionKey(transfer.from(), transfer.location()).canonical();
+    String expected = fromKey(transfer).canonical();
     if (!expected.equals(order.canonicalKey())) {
       throw new IllegalArgumentException(
           "TransferIntent 的提交序键必须等于付方账户的 canonical 串: " + order.canonicalKey() + " != " + expected);
@@ -32,7 +32,7 @@ public record TransferIntent(CommitOrder order, Transfer transfer) implements Or
   public static TransferIntent of(
       SettlementStage stage, int partitionIndex, int intraIndex, Transfer transfer) {
     Objects.requireNonNull(transfer, "transfer");
-    AccountPartitionKey key = new AccountPartitionKey(transfer.from(), transfer.location());
+    AccountPartitionKey key = fromKey(transfer);
     return new TransferIntent(
         new CommitOrder(stage, partitionIndex, key.canonical(), intraIndex), transfer);
   }
@@ -44,6 +44,11 @@ public record TransferIntent(CommitOrder order, Transfer transfer) implements Or
 
   /** 收方账户键（它可能落在另一个分区 ⇒ 由协调阶段统一提交）。 */
   public AccountPartitionKey receiverKey() {
-    return new AccountPartitionKey(transfer.to(), transfer.location());
+    return new AccountPartitionKey(HouseholdRouting.requireHouseholdOf(transfer.to()));
+  }
+
+  /** 付方账户键（账户主体只有家户；非家户 actor 具名抛）。 */
+  private static AccountPartitionKey fromKey(Transfer transfer) {
+    return new AccountPartitionKey(HouseholdRouting.requireHouseholdOf(transfer.from()));
   }
 }

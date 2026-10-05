@@ -9,13 +9,9 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.api.market.ShipmentAllocation;
-import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.time.AccountPartitionKey;
 import io.mosire.simos.economy.time.AccountSession.ActorAccount;
 import io.mosire.simos.economy.time.AccountSession;
@@ -28,7 +24,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -120,12 +115,9 @@ public final class OwnershipBooks {
     Map<GoodsAccountKey, Map<CommodityId, Long>> deltas = new LinkedHashMap<>();
     Map<GoodsAccountKey, Map<CommodityId, Long>> prefix = new LinkedHashMap<>();
     for (ActorEntry entry : entries) {
-      // ★★ P2-A §13.3：账户主体只有家户 ⇒ 非家户 actor 的 ledger 条目不再落账（经营者账改走组织者家户属 P2-B/P2-C）。
-      GoodsAccountKey key = householdKeyOrNull(entry.actor());
-      if (key == null) {
-        continue;
-      }
-      if (alreadyMaterialized.contains(new AccountPartitionKey(entry.actor(), entry.location()))) {
+      // ★★ P2-A §13.3：产权条目必须已经解析到家户（economy 的结算侧负责解析；这里不再有"非家户静默跳过"）。
+      GoodsAccountKey key = requireHouseholdKey(entry.actor());
+      if (alreadyMaterialized.contains(new AccountPartitionKey(key.household()))) {
         continue; // ★ 会话负责：终值由 landAccountSession 的绝对值覆盖，这里不再叠一遍。
       }
       deltas
@@ -229,7 +221,6 @@ public final class OwnershipBooks {
       HouseholdId household = entry.getKey();
       ClassRow row = entry.getValue();
       HexCoord location = row.view().hex();
-      ActorRef actor = HouseholdActors.of(household);
       // ★★ P2-A §13.3：一个家户一本账，键 = 家户身份（不再带格）。旧账户已报废、旧世界重建 ⇒ 无兼容回找。
       GoodsAccount account = books.accounts().get(new GoodsAccountKey(household));
       if (account == null) {
@@ -238,7 +229,6 @@ public final class OwnershipBooks {
       }
       session.registerHousehold(
           household,
-          actor,
           location,
           new LinkedHashMap<>(account.balances()),
           new LinkedHashMap<>(account.money()),
@@ -254,74 +244,9 @@ public final class OwnershipBooks {
               + missing.subList(0, Math.min(5, missing.size()))
               + (missing.size() > 5 ? " …" : ""));
     }
-    for (Map.Entry<ActorRef, HexCoord> entry : operatorLocations(economy).entrySet()) {
-      HouseholdId operatorHousehold = householdOfOrNull(entry.getKey());
-      if (operatorHousehold == null) {
-        continue; // ★ P2-A：经营者账改走组织者家户（P2-B/P2-C）；非家户 operator 在 actor 侧没有账。
-      }
-      GoodsAccount account = books.accounts().get(new GoodsAccountKey(operatorHousehold));
-      if (account == null) {
-        continue; // 缺席合法：手搭夹具 / 这个世界还没给经营者播种
-      }
-      session.registerOperator(
-          entry.getKey(),
-          entry.getValue(),
-          new LinkedHashMap<>(account.balances()),
-          new LinkedHashMap<>(account.money()),
-          new LinkedHashMap<>(account.frozenBalances()),
-          new LinkedHashMap<>(account.frozenMoney()));
-    }
-    // ★★ M6：把 economy.shipments() 里出现的买方/卖方 actor 一并载入 —— 到货路径要求买方账已在会话里
-    //   （deliverShipments 对缺账 fail-closed），而跨区经营者未在 actor 侧播种时，上面的经营者循环会合法地跳过它。
-    //   shipments 证明这些 actor 已参与经济（在途是发运日从卖方扣出、由买方承担的在途资产）⇒ 能定位产业格就补一本零账，
-    //   给到货日留出落点；零余额不改变任何守恒式。
-    registerShipmentCounterparties(session, economy);
+    // ★★ P2-A §13.3：庄园/作坊/商号/组织不再是账户主体 —— 它们的账户路径由 economy 侧解析到
+    //   组织者/经营者家户；会话不再登记任何 operator 账（旧 operator 账户随旧世界报废）。
     return session;
-  }
-
-  /**
-   * ★★ <b>M6：在途批次的买卖双方 → 零账补载</b>（唯一触发点是 {@link #loadAccountSession}）。
-   *
-   * <pre>
-   * 对 economy.shipments() 每票的 buyer / seller：
-   *   已在会话家户/经营者索引里          ⇒ 不动（载入是幂等的）
-   *   能由 EconomyData 定位到产业格      ⇒ registerOperator(空四表) —— 缺账时建零账，不静默丢货
-   *   定位不了（不是任何家户 actor、也没有产业格）⇒ 不猜账；到货时若它真是买方，deliverShipments 按“真正无主”抛
-   * </pre>
-   *
-   * <p>★ 家户 actor 缺席不走这里：{@link #loadAccountSession} 的家户循环对"行在而账缺"已经 fail-closed 抛出 （H1
-   * 的守卫，不放宽）；本方法只补经营者那条"缺席合法"的口子。
-   */
-  private static void registerShipmentCounterparties(AccountSession session, EconomyData economy) {
-    Map<ActorRef, HexCoord> operatorByActor = operatorLocations(economy);
-    for (ShipmentBatch batch : economy.shipments().values()) {
-      for (ShipmentAllocation allocation : batch.allocations()) {
-        registerLocatableOperator(session, allocation.buyer(), operatorByActor);
-        registerLocatableOperator(session, allocation.seller(), operatorByActor);
-      }
-    }
-  }
-
-  /** 单个 shipment 相关方：已在索引或定位不了就跳过；能定位产业格的经营者补零账（见上面口径）。 */
-  private static void registerLocatableOperator(
-      AccountSession session, ActorRef actor, Map<ActorRef, HexCoord> operatorByActor) {
-    if (session.actorKeyOrNull(actor) != null) {
-      return; // 家户/经营者账已经载入（含 actor 侧已有账的那一份）
-    }
-    HexCoord location = operatorByActor.get(actor);
-    if (location == null) {
-      return; // 连产业格都定位不了 ⇒ 到货路径按真正无主 fail-closed，不在这里猜一本账
-    }
-    if (householdOfOrNull(actor) == null) {
-      return; // ★ P2-A：非家户主体不再持账（经营者账改走组织者家户属 P2-B/P2-C）
-    }
-    session.registerOperator(
-        actor,
-        location,
-        Map.<CommodityId, Long>of(),
-        Map.<CurrencyId, Long>of(),
-        Map.<CommodityId, Long>of(),
-        Map.<CurrencyId, Long>of());
   }
 
   /**
@@ -337,11 +262,7 @@ public final class OwnershipBooks {
       AccountPartitionKey sessionKey = entry.getKey();
       ActorAccount account = entry.getValue();
       validateNonNegative(sessionKey, account);
-      HouseholdId household = householdOfOrNull(sessionKey.actor());
-      if (household == null) {
-        continue; // ★ P2-A：非家户会话账不落 actor 账本（经营者账改走组织者家户属 P2-B/P2-C）。
-      }
-      GoodsAccountKey key = new GoodsAccountKey(household);
+      GoodsAccountKey key = new GoodsAccountKey(sessionKey.household());
       accounts.put(
           key,
           new GoodsAccount(
@@ -363,17 +284,22 @@ public final class OwnershipBooks {
     return new GoodsAccountKey(household);
   }
 
-  /** 家户 actor 引用的家户身份；非 {@code HOUSEHOLD} actor ⇒ null（不猜、不造键）。 */
-  private static HouseholdId householdOfOrNull(ActorRef actor) {
-    return actor != null && actor.kind() == ActorKind.HOUSEHOLD
-        ? HouseholdActors.householdOf(actor)
-        : null;
+  /**
+   * 家户 actor 引用的家户身份；非 {@code HOUSEHOLD} actor ⇒ <b>具名拒绝</b>（P2-A §13.3：账户主体只有家户，
+   * 组织角色必须由 economy 侧先解析到组织者/经营者家户；这里不再静默跳过、也不造 {@code retired-actor:} 占位键）。
+   */
+  private static HouseholdId requireHouseholdOf(ActorRef actor) {
+    Objects.requireNonNull(actor, "actor");
+    if (actor.kind() != ActorKind.HOUSEHOLD) {
+      throw new IllegalStateException(
+          "产权账条目指名的不是家户主体（账户主体只有家户；庄园/作坊/商号必须解析到组织者/经营者家户）：" + actor);
+    }
+    return HouseholdActors.householdOf(actor);
   }
 
-  /** ledger 条目落账用的键：家户 actor ⇒ 家户键；非家户 ⇒ null（调用方跳过，见 {@link #apply} 的类注）。 */
-  private static GoodsAccountKey householdKeyOrNull(ActorRef actor) {
-    HouseholdId household = householdOfOrNull(actor);
-    return household == null ? null : new GoodsAccountKey(household);
+  /** ledger 条目落账用的键：家户 actor ⇒ 家户键；非家户 ⇒ 具名抛（见 {@link #apply}）。 */
+  private static GoodsAccountKey requireHouseholdKey(ActorRef actor) {
+    return new GoodsAccountKey(requireHouseholdOf(actor));
   }
 
   /** 落回前的负余额守卫（快照里不该有负数：透支是信用，不是库存）。 */
@@ -381,10 +307,8 @@ public final class OwnershipBooks {
     for (Map.Entry<CommodityId, Long> entry : account.goods().entrySet()) {
       if (entry.getValue() < 0L) {
         throw new IllegalStateException(
-            "账户商品余额不得为负（透支是信用，不是库存）：actor="
-                + key.actor()
-                + " 格="
-                + key.location()
+            "账户商品余额不得为负（透支是信用，不是库存）：household="
+                + key.household()
                 + " 商品="
                 + entry.getKey()
                 + " 余额="
@@ -394,34 +318,14 @@ public final class OwnershipBooks {
     for (Map.Entry<CurrencyId, Long> entry : account.money().entrySet()) {
       if (entry.getValue() < 0L) {
         throw new IllegalStateException(
-            "账户货币余额不得为负（透支是信用，不是货币）：actor="
-                + key.actor()
-                + " 格="
-                + key.location()
+            "账户货币余额不得为负（透支是信用，不是货币）：household="
+                + key.household()
                 + " 币种="
                 + entry.getKey()
                 + " 余额="
                 + entry.getValue());
       }
     }
-  }
-
-  /**
-   * ★★ <b>经营者 actor → 它那一格</b>（H5）：逐产业取 {@code (operator, 产业 id 的格)}； 一个主体只可能有一格（{@code
-   * RegimeOperators} 用产业 id 当主体 id）。
-   */
-  public static Map<ActorRef, HexCoord> operatorLocations(EconomyData economy) {
-    Objects.requireNonNull(economy, "economy");
-    Map<ActorRef, HexCoord> locations = new LinkedHashMap<>();
-    // ★★ R3B.2：经营者账的格来自它实际生产的 unit（unit.industry 的格键），不是产业模板。
-    for (ProductionUnit unit : economy.units().values()) {
-      Optional<HexCoord> hex = IndustryHexKeys.hexKeyOf(unit.industry()).map(HexCoord::parse);
-      if (hex.isEmpty()) {
-        continue; // 产业 id 里没有格键（手搭状态）：说不出账户在哪一格 ⇒ 不进表
-      }
-      locations.put(unit.operator(), hex.get());
-    }
-    return locations;
   }
 
   // ── 冻结 / 解冻（M1.2；语义与旧实现逐条相同）────────────────────────────────────────
