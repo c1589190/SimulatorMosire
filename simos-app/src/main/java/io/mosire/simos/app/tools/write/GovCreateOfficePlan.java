@@ -87,7 +87,7 @@ final class GovCreateOfficePlan {
   /** {@code unit.SetGovFormation} 的命令类型。 */
   static final String SET_GOV_FORMATION_TYPE = "unit.SetGovFormation";
 
-  /** {@code economy.RegisterGovernment} 的命令类型（政府记录 + ClassRow；P2-C 的唯一拼写点取 handler）。 */
+  /** {@code economy.RegisterGovernment} 的命令类型（政府记录 + HouseholdEconomy；P2-C 的唯一拼写点取 handler）。 */
   static final String REGISTER_GOVERNMENT_TYPE = EconomyRegisterGovernmentHandler.TYPE;
 
   /** {@code unit.SetJurisdiction} 的命令类型（仅 regions 非空才落）。 */
@@ -418,7 +418,7 @@ final class GovCreateOfficePlan {
     }
 
     /**
-     * {@code economy.RegisterGovernment} 载荷：政府记录 + 政府家户的 {@code ClassRow}。身份字段只给
+     * {@code economy.RegisterGovernment} 载荷：政府记录 + 政府家户的 {@code HouseholdEconomy}。身份字段只给
      * {@code govUnitId}，{@code governmentId}/{@code household} 由 handler 派生（不在这里写第二份 id 拼法）。
      * ★ 人口/劳动/参与率/issuable/铸币/发债<b>一律缺席</b>：新建时 handler 取 0/空集，重复登记时逐值保留既有配置
      * —— 一次"补登记"不得把 GM 配好的政府经济层静默清零。

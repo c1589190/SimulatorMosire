@@ -7,8 +7,8 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
@@ -33,7 +33,7 @@ import java.util.Set;
  * ★★ <b>P2-B §13.4/§13.5：每 tick 的家户劳动利润率排队落点</b>（写 {@code allocations} 工作副本的唯一新写者）。
  *
  * <p>★★ <b>两阶段（为什么不是一个家户一个家户就地写）</b>：一条 unit 是**共享**的生产活动（主 unit 由多个家户按
- * {@code LaborAllocation} 出工；家户自营 unit 通常只有一个 operator 家户）。因此"这个 unit 本 tick 最大可吸收多少劳动"
+ * {@code HouseholdLaborCommitment} 出工；家户自营 unit 通常只有一个 operator 家户）。因此"这个 unit 本 tick 最大可吸收多少劳动"
  * 是<b>全局</b>上界，不能每家各算一次满额。本类分两阶段：
  *
  * <ol>
@@ -81,9 +81,9 @@ final class LaborQueueSettlement {
     Objects.requireNonNull(index, "index");
     Objects.requireNonNull(composition, "composition");
     Objects.requireNonNull(entryTrialUnits, "entryTrialUnits");
-    LinkedHashMap<LaborAllocationId, LaborAllocation> allocations = session.sheet().allocations();
+    LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments = session.sheet().laborCommitments();
     LinkedHashMap<ProductionUnitId, ProductionUnit> units = session.sheet().units();
-    LinkedHashMap<HouseholdId, ClassRow> rows = session.sheet().rows();
+    LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies = session.sheet().householdEconomies();
     Map<IndustryId, Industry> industryTemplates = session.sheet().industries();
     LinkedHashMap<HexCoord, Market> markets = session.sheet().markets();
     Map<ProductionUnitId, OperatorCondition> conditions = session.sheet().operatorConditions();
@@ -103,19 +103,19 @@ final class LaborQueueSettlement {
     }
 
     // ── 既有配额按家户分组 + activity → 家户 索引（候选判定的 O(1) 来源）────────────────────
-    Map<HouseholdId, List<LaborAllocation>> allocationsByHousehold = new LinkedHashMap<>();
+    Map<HouseholdId, List<HouseholdLaborCommitment>> laborCommitmentsByHousehold = new LinkedHashMap<>();
     Map<String, Set<HouseholdId>> allocationHouseholdsByActivity = new LinkedHashMap<>();
-    for (LaborAllocation allocation : allocations.values()) {
-      allocationsByHousehold
-          .computeIfAbsent(allocation.household(), ignored -> new ArrayList<>())
-          .add(allocation);
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+      laborCommitmentsByHousehold
+          .computeIfAbsent(laborCommitment.household(), ignored -> new ArrayList<>())
+          .add(laborCommitment);
       allocationHouseholdsByActivity
-          .computeIfAbsent(allocation.activity(), ignored -> new LinkedHashSet<>())
-          .add(allocation.household());
+          .computeIfAbsent(laborCommitment.activity(), ignored -> new LinkedHashSet<>())
+          .add(laborCommitment.household());
     }
 
     // ── 候选 unit 按家户归集 ─────────────────────────────────────────────────────────────
-    List<HouseholdId> orderedHouseholds = new ArrayList<>(rows.keySet());
+    List<HouseholdId> orderedHouseholds = new ArrayList<>(householdEconomies.keySet());
     orderedHouseholds.sort(Comparator.comparing(HouseholdId::value));
     Map<HouseholdId, List<ProductionUnit>> candidatesByHousehold = new LinkedHashMap<>();
     for (HouseholdId household : orderedHouseholds) {
@@ -124,7 +124,7 @@ final class LaborQueueSettlement {
     for (ProductionUnit unit : units.values()) {
       for (HouseholdId household :
           candidateHouseholdsOf(
-              unit, rows, organizationByUnit, allocationHouseholdsByActivity, index)) {
+              unit, householdEconomies, organizationByUnit, allocationHouseholdsByActivity, index)) {
         List<ProductionUnit> list = candidatesByHousehold.get(household);
         if (list != null && !list.contains(unit)) {
           list.add(unit);
@@ -138,12 +138,12 @@ final class LaborQueueSettlement {
     // ── 阶段 1：逐家户排队（只算不写）────────────────────────────────────────────────────
     List<HouseholdWork> works = new ArrayList<>();
     for (HouseholdId household : orderedHouseholds) {
-      ClassRow row = rows.get(household);
+      HouseholdEconomy householdEconomy = householdEconomies.get(household);
       List<ProductionUnit> candidates = candidatesByHousehold.getOrDefault(household, List.of());
       if (candidates.isEmpty()) {
         continue; // 没有可参与的生产活动：不动它的任何既有配额（自由家户劳动/纯消费户）
       }
-      PeopleLotId lot = chooseLot(household, allocationsByHousehold, composition);
+      PeopleLotId lot = chooseLot(household, laborCommitmentsByHousehold, composition);
       if (lot == null) {
         if (EconomyLog.population().isDebugEnabled()) {
           EconomyLog.population()
@@ -159,7 +159,7 @@ final class LaborQueueSettlement {
       for (ProductionUnit unit : candidates) {
         candidateUnitsById.put(unit.id(), unit);
       }
-      Market market = marketOf(row, candidates, markets);
+      Market market = marketOf(householdEconomy, candidates, markets);
       List<LaborQueueBook.Offer> offers = new ArrayList<>();
       Set<ProductionUnitId> queuedUnits = new LinkedHashSet<>();
       for (ProductionUnit unit : candidates) {
@@ -182,18 +182,18 @@ final class LaborQueueSettlement {
         }
       }
 
-      long budget = Math.max(0L, row.laborMilli());
-      List<LaborAllocation> householdAllocations =
-          allocationsByHousehold.getOrDefault(household, List.of());
+      long budget = Math.max(0L, householdEconomy.laborMilli());
+      List<HouseholdLaborCommitment> householdLaborCommitments =
+          laborCommitmentsByHousehold.getOrDefault(household, List.of());
       long preserved = 0L;
-      for (LaborAllocation allocation : householdAllocations) {
-        if (!queuedUnits.contains(new ProductionUnitId(allocation.activity()))) {
-          preserved += allocation.laborMilli();
+      for (HouseholdLaborCommitment laborCommitment : householdLaborCommitments) {
+        if (!queuedUnits.contains(new ProductionUnitId(laborCommitment.activity()))) {
+          preserved += laborCommitment.laborMilli();
         }
       }
       if (preserved > budget) {
         // 合法状态到不了这里（构造期守卫），但排队写回不得以坏状态为借口超预算：按既有量比例缩到预算以内。
-        preserveIntoBudget(allocations, householdAllocations, queuedUnits, budget, preserved);
+        preserveIntoBudget(laborCommitments, householdLaborCommitments, queuedUnits, budget, preserved);
         preserved = budget;
       }
       LaborQueueBook.Plan desired = LaborQueueBook.plan(household, budget, preserved, offers);
@@ -204,7 +204,7 @@ final class LaborQueueSettlement {
               preserved,
               lot,
               candidateUnitsById,
-              householdAllocations,
+              householdLaborCommitments,
               desired));
     }
 
@@ -232,10 +232,10 @@ final class LaborQueueSettlement {
       for (LaborQueueBook.Decision decision : work.desired().decisions()) {
         queuedForWork.add(decision.offer().unitId());
       }
-      for (LaborAllocation allocation : work.householdAllocations()) {
-        ProductionUnitId unitId = new ProductionUnitId(allocation.activity());
+      for (HouseholdLaborCommitment laborCommitment : work.householdLaborCommitments()) {
+        ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
         if (!queuedForWork.contains(unitId) && capByUnit.containsKey(unitId)) {
-          reservedByUnit.merge(unitId, allocation.laborMilli(), Long::sum);
+          reservedByUnit.merge(unitId, laborCommitment.laborMilli(), Long::sum);
         }
       }
     }
@@ -297,7 +297,7 @@ final class LaborQueueSettlement {
               allocated,
               Math.max(0L, work.budget() - allocated),
               decisions);
-      applyPlan(allocations, work.householdAllocations(), plan, work.lot(), work.candidateUnitsById());
+      applyPlan(laborCommitments, work.householdLaborCommitments(), plan, work.lot(), work.candidateUnitsById());
       plans.add(plan);
 
       if (EconomyLog.organization().isDebugEnabled()) {
@@ -330,7 +330,7 @@ final class LaborQueueSettlement {
       session
           .sheet()
           .meta()
-          .ifPresent(meta -> LaborAllocationFeed.publish(meta.mapId(), report));
+          .ifPresent(meta -> HouseholdLaborCommitmentFeed.publish(meta.mapId(), report));
     }
     return report;
   }
@@ -342,14 +342,14 @@ final class LaborQueueSettlement {
       long preserved,
       PeopleLotId lot,
       Map<ProductionUnitId, ProductionUnit> candidateUnitsById,
-      List<LaborAllocation> householdAllocations,
+      List<HouseholdLaborCommitment> householdLaborCommitments,
       LaborQueueBook.Plan desired) {
 
     HouseholdWork {
       Objects.requireNonNull(household, "household");
       Objects.requireNonNull(lot, "lot");
       Objects.requireNonNull(candidateUnitsById, "candidateUnitsById");
-      Objects.requireNonNull(householdAllocations, "householdAllocations");
+      Objects.requireNonNull(householdLaborCommitments, "householdAllocations");
       Objects.requireNonNull(desired, "desired");
     }
   }
@@ -364,32 +364,32 @@ final class LaborQueueSettlement {
   /** 该 unit 归哪些家户（operator、组织的 organizer/laborSources、既有配额的 household）——稳定去重。 */
   private static Set<HouseholdId> candidateHouseholdsOf(
       ProductionUnit unit,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<ProductionUnitId, ProductionOrganization> organizationByUnit,
       Map<String, Set<HouseholdId>> allocationHouseholdsByActivity,
       SettlementIndex index) {
     Set<HouseholdId> households = new LinkedHashSet<>();
     if (unit.operator().kind() == ActorKind.HOUSEHOLD) {
       HouseholdId operatorHousehold = index.householdByActor().get(unit.operator());
-      if (operatorHousehold != null && rows.containsKey(operatorHousehold)) {
+      if (operatorHousehold != null && householdEconomies.containsKey(operatorHousehold)) {
         households.add(operatorHousehold);
       }
     }
     ProductionOrganization organization = organizationByUnit.get(unit.id());
     if (organization != null) {
       HouseholdId organizerHousehold = index.householdByActor().get(organization.organizer());
-      if (organizerHousehold != null && rows.containsKey(organizerHousehold)) {
+      if (organizerHousehold != null && householdEconomies.containsKey(organizerHousehold)) {
         households.add(organizerHousehold);
       }
       for (HouseholdId laborSource : organization.laborSources()) {
-        if (rows.containsKey(laborSource)) {
+        if (householdEconomies.containsKey(laborSource)) {
           households.add(laborSource);
         }
       }
     }
     for (HouseholdId household :
         allocationHouseholdsByActivity.getOrDefault(unit.id().value(), Set.of())) {
-      if (rows.containsKey(household)) {
+      if (householdEconomies.containsKey(household)) {
         households.add(household);
       }
     }
@@ -405,8 +405,8 @@ final class LaborQueueSettlement {
 
   /** 居住格的价表（没有 ⇒ 该 unit 所在格的价表；都没有 ⇒ null = 无价，排队读数按 0 估值并具名）。 */
   private static Market marketOf(
-      ClassRow row, List<ProductionUnit> candidates, Map<HexCoord, Market> markets) {
-    Market market = markets.get(row.view().hex());
+      HouseholdEconomy householdEconomy, List<ProductionUnit> candidates, Map<HexCoord, Market> markets) {
+    Market market = markets.get(householdEconomy.view().hex());
     if (market != null) {
       return market;
     }
@@ -429,7 +429,7 @@ final class LaborQueueSettlement {
    */
   private static PeopleLotId chooseLot(
       HouseholdId household,
-      Map<HouseholdId, List<LaborAllocation>> allocationsByHousehold,
+      Map<HouseholdId, List<HouseholdLaborCommitment>> laborCommitmentsByHousehold,
       Map<HouseholdId, Map<PeopleLotId, Long>> composition) {
     List<PeopleLotId> lots = new ArrayList<>();
     for (Map.Entry<PeopleLotId, Long> member :
@@ -443,9 +443,9 @@ final class LaborQueueSettlement {
       return lots.get(0);
     }
     List<PeopleLotId> existing = new ArrayList<>();
-    for (LaborAllocation allocation : allocationsByHousehold.getOrDefault(household, List.of())) {
-      if (allocation.group() != null) {
-        existing.add(allocation.group());
+    for (HouseholdLaborCommitment laborCommitment : laborCommitmentsByHousehold.getOrDefault(household, List.of())) {
+      if (laborCommitment.group() != null) {
+        existing.add(laborCommitment.group());
       }
     }
     existing.sort(Comparator.comparing(PeopleLotId::value));
@@ -459,8 +459,8 @@ final class LaborQueueSettlement {
    * 没有旧行 ⇒ 用 unit.operator() / 选定批次新发一条）。保留活动的旧行一律不动。
    */
   private static void applyPlan(
-      LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
-      List<LaborAllocation> householdAllocations,
+      LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      List<HouseholdLaborCommitment> householdLaborCommitments,
       LaborQueueBook.Plan plan,
       PeopleLotId lot,
       Map<ProductionUnitId, ProductionUnit> candidateUnitsById) {
@@ -468,12 +468,12 @@ final class LaborQueueSettlement {
     for (LaborQueueBook.Decision decision : plan.decisions()) {
       queuedUnits.add(decision.offer().unitId());
     }
-    Map<ProductionUnitId, LaborAllocation> templates = new LinkedHashMap<>();
-    for (LaborAllocation allocation : householdAllocations) {
-      ProductionUnitId unitId = new ProductionUnitId(allocation.activity());
+    Map<ProductionUnitId, HouseholdLaborCommitment> templates = new LinkedHashMap<>();
+    for (HouseholdLaborCommitment laborCommitment : householdLaborCommitments) {
+      ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
       if (queuedUnits.contains(unitId)) {
-        templates.putIfAbsent(unitId, allocation);
-        allocations.remove(allocation.id());
+        templates.putIfAbsent(unitId, laborCommitment);
+        laborCommitments.remove(laborCommitment.id());
       }
     }
     for (LaborQueueBook.Decision decision : plan.decisions()) {
@@ -481,9 +481,9 @@ final class LaborQueueSettlement {
         continue;
       }
       ProductionUnitId unitId = decision.offer().unitId();
-      LaborAllocation template = templates.get(unitId);
+      HouseholdLaborCommitment template = templates.get(unitId);
       if (template != null) {
-        allocations.put(template.id(), withLaborMilli(template, decision.grantedLaborMilli()));
+        laborCommitments.put(template.id(), withLaborMilli(template, decision.grantedLaborMilli()));
         continue;
       }
       ProductionUnit unit = candidateUnitsById.get(unitId);
@@ -491,9 +491,9 @@ final class LaborQueueSettlement {
         throw new IllegalStateException(
             "排队结果指向一个不在候选表里的 unit（内部不一致）：" + unitId.value());
       }
-      LaborAllocationId id = LaborAllocation.idOf(unitId, lot, plan.household());
-      LaborAllocation fresh =
-          new LaborAllocation(
+      LaborAllocationId id = HouseholdLaborCommitment.idOf(unitId, lot, plan.household());
+      HouseholdLaborCommitment freshLaborCommitment =
+          new HouseholdLaborCommitment(
               id,
               lot,
               plan.household(),
@@ -501,28 +501,28 @@ final class LaborQueueSettlement {
               unitId.value(),
               decision.grantedLaborMilli(),
               1L);
-      LaborAllocation previous = allocations.putIfAbsent(id, fresh);
-      if (previous != null) {
-        allocations.put(id, withLaborMilli(previous, decision.grantedLaborMilli()));
+      HouseholdLaborCommitment previousLaborCommitment = laborCommitments.putIfAbsent(id, freshLaborCommitment);
+      if (previousLaborCommitment != null) {
+        laborCommitments.put(id, withLaborMilli(previousLaborCommitment, decision.grantedLaborMilli()));
       }
     }
   }
 
   /** 按既有量比例把保留配额缩到预算以内（只在坏状态兜底）：0 ⇒ 删行、其余写回缩小值。 */
   private static void preserveIntoBudget(
-      LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
-      List<LaborAllocation> householdAllocations,
+      LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      List<HouseholdLaborCommitment> householdLaborCommitments,
       Set<ProductionUnitId> queuedUnits,
       long budget,
       long preserved) {
     List<LaborAllocationId> ids = new ArrayList<>();
     List<Long> weights = new ArrayList<>();
-    for (LaborAllocation allocation : householdAllocations) {
-      if (queuedUnits.contains(new ProductionUnitId(allocation.activity()))) {
+    for (HouseholdLaborCommitment laborCommitment : householdLaborCommitments) {
+      if (queuedUnits.contains(new ProductionUnitId(laborCommitment.activity()))) {
         continue;
       }
-      ids.add(allocation.id());
-      weights.add(Math.max(0L, allocation.laborMilli()));
+      ids.add(laborCommitment.id());
+      weights.add(Math.max(0L, laborCommitment.laborMilli()));
     }
     long[] weightArray = new long[weights.size()];
     for (int i = 0; i < weights.size(); i++) {
@@ -530,27 +530,27 @@ final class LaborQueueSettlement {
     }
     long[] parts = ProportionalSplit.byDenominator(budget, weightArray, preserved);
     for (int i = 0; i < ids.size(); i++) {
-      LaborAllocation allocation = allocations.get(ids.get(i));
-      if (allocation == null) {
+      HouseholdLaborCommitment laborCommitment = laborCommitments.get(ids.get(i));
+      if (laborCommitment == null) {
         continue;
       }
       if (parts[i] <= 0L) {
-        allocations.remove(ids.get(i));
+        laborCommitments.remove(ids.get(i));
       } else {
-        allocations.put(ids.get(i), withLaborMilli(allocation, parts[i]));
+        laborCommitments.put(ids.get(i), withLaborMilli(laborCommitment, parts[i]));
       }
     }
   }
 
   /** 换劳动量（其余字段原样带过）—— 与 {@code EconomySettlement.withLaborMilli} 同一形制。 */
-  private static LaborAllocation withLaborMilli(LaborAllocation allocation, long laborMilli) {
-    return new LaborAllocation(
-        allocation.id(),
-        allocation.group(),
-        allocation.household(),
-        allocation.actor(),
-        allocation.activity(),
+  private static HouseholdLaborCommitment withLaborMilli(HouseholdLaborCommitment laborCommitment, long laborMilli) {
+    return new HouseholdLaborCommitment(
+        laborCommitment.id(),
+        laborCommitment.group(),
+        laborCommitment.household(),
+        laborCommitment.actor(),
+        laborCommitment.activity(),
         laborMilli,
-        allocation.period());
+        laborCommitment.period());
   }
 }

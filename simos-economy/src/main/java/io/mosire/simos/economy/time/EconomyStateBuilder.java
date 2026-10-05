@@ -16,14 +16,14 @@ import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
-import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
@@ -65,10 +65,10 @@ public final class EconomyStateBuilder {
   private final EconomyData base;
 
   private LinkedHashMap<IndustryId, Industry> industries;
-  private LinkedHashMap<HouseholdId, ClassRow> rows;
+  private LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies;
   private LinkedHashMap<DebtContractId, DebtContract> debtContracts;
   private LinkedHashMap<PledgeId, Pledge> pledges;
-  private LinkedHashMap<LaborAllocationId, LaborAllocation> allocations;
+  private LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments;
   private LinkedHashMap<AssetShareId, AssetShare> assetShares;
   private LinkedHashMap<ProductionUnitId, OperatorCondition> operatorConditions;
   private LinkedHashMap<ProductionUnitId, ProductionUnit> units;
@@ -80,7 +80,7 @@ public final class EconomyStateBuilder {
   private LinkedHashMap<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances;
   private LinkedHashMap<AssetRuleId, LiquidationPolicy> liquidationPolicies;
   private LinkedHashMap<CrisisSignalId, HexCrisisSignal> crisisSignals;
-  private LinkedHashMap<HouseholdId, ClassStanding> classStandings;
+  private LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships;
 
   /** ★★ E6a：模式变迁表工作副本（命令只登记 PENDING；日结算写 APPLIED/FAILED）。 */
   private LinkedHashMap<ModeTransitionId, ModeTransition> modeTransitions;
@@ -113,11 +113,11 @@ public final class EconomyStateBuilder {
   }
 
   /** 家户行工作副本（键 = 稳定身份）。 */
-  public LinkedHashMap<HouseholdId, ClassRow> rows() {
-    if (rows == null) {
-      rows = new LinkedHashMap<>(base.classes());
+  public LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies() {
+    if (householdEconomies == null) {
+      householdEconomies = new LinkedHashMap<>(base.classes());
     }
-    return rows;
+    return householdEconomies;
   }
 
   /** ★★ E4a：债务**合同**表工作副本（键 = 稳定合同 id）。 */
@@ -137,11 +137,11 @@ public final class EconomyStateBuilder {
   }
 
   /** 劳动配额表工作副本。 */
-  public LinkedHashMap<LaborAllocationId, LaborAllocation> allocations() {
-    if (allocations == null) {
-      allocations = new LinkedHashMap<>(base.allocations());
+  public LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments() {
+    if (laborCommitments == null) {
+      laborCommitments = new LinkedHashMap<>(base.allocations());
     }
-    return allocations;
+    return laborCommitments;
   }
 
   /** 实物资产份额表工作副本（R3B.1）。 */
@@ -260,18 +260,18 @@ public final class EconomyStateBuilder {
 
   /**
    * ★★ <b>E5b：家户阶层归属的工作副本</b>（第 19 个组件）—— 债务压力计数器、阶层下滑与 5c 的 standing 权威投影会写它； 未物化时 {@link
-   * #classStandingsOrBase()} 直接复用 base 的不可变表（旧档空表因此不产生任何拷贝）。
+   * #classMembershipsOrBase()} 直接复用 base 的不可变表（旧档空表因此不产生任何拷贝）。
    */
-  public LinkedHashMap<HouseholdId, ClassStanding> classStandings() {
-    if (classStandings == null) {
-      classStandings = new LinkedHashMap<>(base.classStandings());
+  public LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships() {
+    if (classMemberships == null) {
+      classMemberships = new LinkedHashMap<>(base.classStandings());
     }
-    return classStandings;
+    return classMemberships;
   }
 
   /** ★ <b>阶层归属表的只读选择</b>：已物化工作副本则读它，否则读 base 的表（5c 的投影因此每次构造都读同一份）。 */
-  public Map<HouseholdId, ClassStanding> classStandingsOrBase() {
-    return classStandings == null ? base.classStandings() : classStandings;
+  public Map<HouseholdId, HouseholdClassMembership> classMembershipsOrBase() {
+    return classMemberships == null ? base.classStandings() : classMemberships;
   }
 
   /**
@@ -312,10 +312,10 @@ public final class EconomyStateBuilder {
     return new EconomyData(
         meta(),
         industries == null ? base.industries() : industries,
-        rows == null ? base.classes() : rows,
+        householdEconomies == null ? base.classes() : householdEconomies,
         debtContracts == null ? base.debtContracts() : debtContracts,
         flows,
-        allocations == null ? base.allocations() : allocations,
+        laborCommitments == null ? base.allocations() : laborCommitments,
         // ★★ R4-E2b：relations 也成了可选工作副本（进入执行会插入新 relation；未物化 ⇒ 原样复用 base）。
         relationsOrBase(),
         markets == null ? base.markets() : markets,
@@ -332,7 +332,7 @@ public final class EconomyStateBuilder {
         base.classStructures(),
         base.classPositions(),
         // ★★ E5b：家户阶层归属是结算工作副本（债务压力计数器/阶层下滑写它；未物化 ⇒ 原样复用 base）。
-        classStandingsOrBase(),
+        classMembershipsOrBase(),
         // ★★ E2：生产组织由自动组织阶段 upsert（显式工作副本）；生产资料规则只读 —— 原样带过 base 的表。
         productionOrganizations == null ? base.productionOrganizations() : productionOrganizations,
         base.assetRules(),

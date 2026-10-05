@@ -3,7 +3,7 @@ package io.mosire.simos.app.household;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
@@ -33,7 +33,7 @@ import java.util.Optional;
  * <p>★★ <b>谁必须走它</b>（本批接线）：
  *
  * <ul>
- *   <li>{@link #alignClassRowViews}：经济侧 {@code ClassRow.view.hex} 是市场参与 / 生产组织 / 贷款等读位置的载体；
+ *   <li>{@link #alignHouseholdEconomyViews}：经济侧 {@code HouseholdEconomy.view.hex} 是市场参与 / 生产组织 / 贷款等读位置的载体；
  *       UNIT 家户的行视图由 unit 当刻位置刷新（HEX 家户原样不动），于是 economy 的既有 {@code view().hex()} 读点全部跟随；
  *   <li>{@link #hexOfLot}：app 层“批次在哪一格”的读点（逐日生计满足率）；
  *   <li>{@link #effectiveHex}：读口/汇总（如区域账本汇总）取家户有效格。
@@ -41,7 +41,7 @@ import java.util.Optional;
  *
  * <p>★ <b>只读 + 纯函数</b>：不抛“查无此人”的模糊错——{@code UNIT} 单位不存在/无位置时返回 {@link Optional#empty()}；
  * 调用方按各自口径 fail-closed（一致性校核另在 {@link HouseholdUnitConsistency} / {@link GovernmentHouseholdWiring}）。
- * ★ {@link #alignClassRowViews} 对“有流水行”的家户只在目标格有产业登记（或经济里存在无格键产业）时才动车——
+ * ★ {@link #alignHouseholdEconomyViews} 对“有流水行”的家户只在目标格有产业登记（或经济里存在无格键产业）时才动车——
  * {@code EconomyData} 构造期要求有流水的家户视图落点有产业登记；移不动的留在原格，属本批具名缺口（见报告）。
  */
 public final class HouseholdPositionResolver {
@@ -100,7 +100,7 @@ public final class HouseholdPositionResolver {
    * <p>★ 目标格的产业登记判据与 {@code EconomyData} 构造期 {@code requireIndustryRegistered} 同源：存在无格键产业 ⇒
    * 任何格都算已登记；否则该格必须恰有一个产业 id 的格键逐字相等。
    */
-  public static Alignment alignClassRowViews(
+  public static Alignment alignHouseholdEconomyViews(
       EconomyData economy, SocialData social, UnitState units, SimosTimestamp at) {
     Objects.requireNonNull(economy, "economy");
     Objects.requireNonNull(social, "social");
@@ -108,39 +108,39 @@ public final class HouseholdPositionResolver {
     Objects.requireNonNull(at, "at");
     List<Household> ordered = new ArrayList<>(social.households().values());
     ordered.sort(Comparator.comparing(household -> household.id().value()));
-    Map<HouseholdId, ClassRow> next = null;
+    Map<HouseholdId, HouseholdEconomy> nextHouseholdEconomies = null;
     int moved = 0;
     for (Household household : ordered) {
       if (!(household.location() instanceof HouseholdLocation.Unit)) {
         continue;
       }
-      ClassRow row = economy.classes().get(household.id());
-      if (row == null) {
+      HouseholdEconomy householdEconomy = economy.classes().get(household.id());
+      if (householdEconomy == null) {
         continue;
       }
       Optional<HexCoord> atHex = resolve(household.location(), units, at);
-      if (atHex.isEmpty() || atHex.get().equals(row.view().hex())) {
+      if (atHex.isEmpty() || atHex.get().equals(householdEconomy.view().hex())) {
         continue;
       }
       if (economy.flows().containsKey(household.id())
           && !hexHasRegisteredIndustry(economy, atHex.get())) {
         continue; // 该家户有流水行 ⇒ EconomyData 构造期要求其视图落点有产业登记；移不动则留在原格（具名缺口）。
       }
-      if (next == null) {
-        next = new LinkedHashMap<>(economy.classes());
+      if (nextHouseholdEconomies == null) {
+        nextHouseholdEconomies = new LinkedHashMap<>(economy.classes());
       }
-      next.put(
+      nextHouseholdEconomies.put(
           household.id(),
-          row.withView(new CohortKey(atHex.get(), row.view().residence(), row.view().stratum())));
+          householdEconomy.withView(new CohortKey(atHex.get(), householdEconomy.view().residence(), householdEconomy.view().stratum())));
       moved++;
     }
-    if (next == null) {
+    if (nextHouseholdEconomies == null) {
       return new Alignment(economy, 0);
     }
-    return new Alignment(economy.withClasses(next), moved);
+    return new Alignment(economy.withHouseholdEconomies(nextHouseholdEconomies), moved);
   }
 
-  /** 目标格是否有产业登记（判据与 {@code EconomyData} 构造期同源；见 {@link #alignClassRowViews}）。 */
+  /** 目标格是否有产业登记（判据与 {@code EconomyData} 构造期同源；见 {@link #alignHouseholdEconomyViews}）。 */
   private static boolean hexHasRegisteredIndustry(EconomyData economy, HexCoord hex) {
     String target = IndustryHexKeys.hexKey(hex.q(), hex.r());
     for (IndustryId id : economy.industries().keySet()) {

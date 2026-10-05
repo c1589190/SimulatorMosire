@@ -7,7 +7,7 @@ import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.population.LotMigration;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DebtIndex;
 import io.mosire.simos.map.hex.HexCoord;
@@ -47,7 +47,7 @@ import java.util.Objects;
  *   <li>全部迁移完成后逐笔复核人数守恒（{@code Σ take == migration.count()}），不等 ⇒ 具名抛。
  * </ol>
  *
- * <p>★ <b>为什么按“源居住区的行人口”摊而不是按 lot 精确拆</b>：{@code ClassRow} 只有 {@code (格, 居住类型, 阶层)}
+ * <p>★ <b>为什么按“源居住区的行人口”摊而不是按 lot 精确拆</b>：{@code HouseholdEconomy} 只有 {@code (格, 居住类型, 阶层)}
  * 三维，<b>没有性别/年龄维</b> —— 一笔 lot 级迁移在 economy 侧只能按该居住区各行的行人口比例摊（“这批人具体属于哪个家户” 的精确关系在 {@code
  * Membership} 里，P9 对账时用）。本类不假装能精确到 lot↔家户，也不因此静默少搬人。
  *
@@ -57,10 +57,10 @@ import java.util.Objects;
  *   <li><b>social 侧</b>：{@code PopulationGroup} 的拆批/换 residence/合并目标批次（本类只写 economy）；
  *   <li><b>成员份额</b>：{@code Membership} 本类<b>一字不改</b> —— 源/目标 lot 的人数变化由 app 协调器在 P9 用 {@code
  *       MembershipWriteback.reconcile} 按行人口权重重建/削平（那正是它既有的职责：逐 lot Σcount == 社会人数）；
- *   <li><b>劳动配额与供给</b>：{@code LaborAllocation}/{@code LaborSupply} 不随本类改变（源批次的 {@code
+ *   <li><b>劳动配额与供给</b>：{@code HouseholdLaborCommitment}/{@code LaborSupply} 不随本类改变（源批次的 {@code
  *       grossLaborMilli} 与配额由 social 侧迁移后的批次重发/缩编）；P9 必须在同一 revision 里接上，否则 “行劳动减了、批次配额没减”会让 {@code
  *       Σ allocated ≤ available} 与行/批次两侧漂开；
- *   <li><b>货币/商品</b>：迁移只带人、劳动与债务；{@code ClassRow.money} 留在源行（本记录没有“第二份钱账”）， P9 若决定财富随行必须另立显式契约；
+ *   <li><b>货币/商品</b>：迁移只带人、劳动与债务；{@code HouseholdEconomy.money} 留在源行（本记录没有“第二份钱账”）， P9 若决定财富随行必须另立显式契约；
  *   <li><b>naturalNeeds/effectiveDemand/cycleNaturalNeedMilli</b>：不随行；目标行由日结算的 {@code
  *       withDailyNeed} 在下一次结算时按新人口重算（源行余留的一日需求同样是下一次结算会覆盖的量）。
  * </ul>
@@ -99,9 +99,9 @@ public final class LotMigrationBook {
     if (migrations.isEmpty()) {
       return;
     }
-    LinkedHashMap<HouseholdId, ClassRow> rows = session.sheet().rows();
+    LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies = session.sheet().householdEconomies();
     LinkedHashMap<DebtContractId, DebtContract> debts = session.sheet().debtContracts();
-    Map<CohortKey, HouseholdId> householdByView = indexHouseholdsByView(rows);
+    Map<CohortKey, HouseholdId> householdByView = indexHouseholdsByView(householdEconomies);
     Map<HouseholdId, List<DebtContractId>> debtsByDebtor = mutableDebtIndex(debts);
     for (int i = 0; i < migrations.size(); i++) {
       LotMigration migration = migrations.get(i);
@@ -109,14 +109,14 @@ public final class LotMigrationBook {
         throw new IllegalArgumentException(
             "LotMigrationBook.applyInto 的 migrations[" + i + "] 不得为 null");
       }
-      applyOne(rows, debts, householdByView, debtsByDebtor, migration, day);
+      applyOne(householdEconomies, debts, householdByView, debtsByDebtor, migration, day);
     }
   }
 
   // ── 单笔迁移 ────────────────────────────────────────────────────────────────────────────────
 
   private static void applyOne(
-      LinkedHashMap<HouseholdId, ClassRow> rows,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       LinkedHashMap<DebtContractId, DebtContract> debts,
       Map<CohortKey, HouseholdId> householdByView,
       Map<HouseholdId, List<DebtContractId>> debtsByDebtor,
@@ -124,8 +124,8 @@ public final class LotMigrationBook {
       long day) {
     ResidenceKind sourceResidence = ResidenceKind.ofLot(migration.sourceLot());
     ResidenceKind targetResidence = ResidenceKind.ofLot(migration.targetLot());
-    List<ClassRow> sourceRows = rowsAt(rows, migration.from(), sourceResidence);
-    if (sourceRows.isEmpty()) {
+    List<HouseholdEconomy> sourceHouseholdEconomies = householdEconomiesAt(householdEconomies, migration.from(), sourceResidence);
+    if (sourceHouseholdEconomies.isEmpty()) {
       throw new IllegalStateException(
           "迁移源格在 economy 侧没有对应家户行（拒绝静默丢人）："
               + migration.sourceLot()
@@ -135,9 +135,9 @@ public final class LotMigrationBook {
               + sourceResidence);
     }
     long totalPopulation = 0L;
-    long[] weights = new long[sourceRows.size()];
-    for (int i = 0; i < sourceRows.size(); i++) {
-      weights[i] = sourceRows.get(i).population();
+    long[] weights = new long[sourceHouseholdEconomies.size()];
+    for (int i = 0; i < sourceHouseholdEconomies.size(); i++) {
+      weights[i] = sourceHouseholdEconomies.get(i).population();
       totalPopulation = Math.addExact(totalPopulation, weights[i]);
     }
     if (totalPopulation <= 0L || migration.count() > totalPopulation) {
@@ -146,31 +146,31 @@ public final class LotMigrationBook {
     }
     long[] parts = ProportionalSplit.byDenominator(migration.count(), weights, totalPopulation);
     long moved = 0L;
-    for (int i = 0; i < sourceRows.size(); i++) {
+    for (int i = 0; i < sourceHouseholdEconomies.size(); i++) {
       long take = parts[i];
       if (take <= 0L) {
         continue;
       }
-      ClassRow sourceRow = sourceRows.get(i);
-      if (take > sourceRow.population()) {
+      HouseholdEconomy sourceHouseholdEconomy = sourceHouseholdEconomies.get(i);
+      if (take > sourceHouseholdEconomy.population()) {
         throw new IllegalStateException(
             "迁移源行切分超过行人口（拒绝把行抽成负）：row="
-                + sourceRow.id()
+                + sourceHouseholdEconomy.id()
                 + " take="
                 + take
                 + " population="
-                + sourceRow.population());
+                + sourceHouseholdEconomy.population());
       }
       HouseholdId targetHousehold =
           resolveTargetHousehold(
-              rows,
+              householdEconomies,
               householdByView,
               migration,
               targetResidence,
-              sourceRow.view().stratum(),
-              sourceRow.participationPerMille());
+              sourceHouseholdEconomy.view().stratum(),
+              sourceHouseholdEconomy.participationPerMille());
       movePopulationAndLabor(
-          rows, debts, debtsByDebtor, sourceRow.id(), targetHousehold, take, day, migration);
+          householdEconomies, debts, debtsByDebtor, sourceHouseholdEconomy.id(), targetHousehold, take, day, migration);
       moved = Math.addExact(moved, take);
     }
     if (moved != migration.count()) {
@@ -180,7 +180,7 @@ public final class LotMigrationBook {
 
   /** ★ 源行人口/劳动减、目标行人口/劳动增（同家户 ⇒ 净 0，直接返回）。 */
   private static void movePopulationAndLabor(
-      LinkedHashMap<HouseholdId, ClassRow> rows,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       LinkedHashMap<DebtContractId, DebtContract> debts,
       Map<HouseholdId, List<DebtContractId>> debtsByDebtor,
       HouseholdId sourceHousehold,
@@ -191,12 +191,12 @@ public final class LotMigrationBook {
     if (count <= 0L) {
       return;
     }
-    ClassRow source = rows.get(sourceHousehold);
-    if (source == null) {
+    HouseholdEconomy sourceHouseholdEconomy = householdEconomies.get(sourceHousehold);
+    if (sourceHouseholdEconomy == null) {
       throw new IllegalStateException(
           "迁移源家户行不存在（拒绝静默丢人）：" + migration + " source=" + sourceHousehold);
     }
-    long sourcePopulation = source.population();
+    long sourcePopulation = sourceHouseholdEconomy.population();
     if (sourcePopulation <= 0L || count > sourcePopulation) {
       throw new IllegalStateException(
           "迁移源行人口不足（拒绝把行抽成负）：迁移="
@@ -212,22 +212,22 @@ public final class LotMigrationBook {
       // 同一本账内部的迁移：人口/劳动净 0、债务仍归同一债务人 ⇒ 没有经济侧状态要改。
       return;
     }
-    ClassRow target = rows.get(targetHousehold);
-    if (target == null) {
+    HouseholdEconomy targetHouseholdEconomy = householdEconomies.get(targetHousehold);
+    if (targetHouseholdEconomy == null) {
       throw new IllegalStateException(
           "迁移目标家户行不存在（拒绝静默丢人）：" + migration + " target=" + targetHousehold);
     }
-    long movedLabor = laborShareFloor(source.laborMilli(), count, sourcePopulation);
+    long movedLabor = laborShareFloor(sourceHouseholdEconomy.laborMilli(), count, sourcePopulation);
     long sourcePopulationAfter = sourcePopulation - count;
-    long sourceLaborAfter = source.laborMilli() - movedLabor;
-    long targetPopulationAfter = Math.addExact(target.population(), count);
-    long targetLaborAfter = Math.addExact(target.laborMilli(), movedLabor);
-    rows.put(
-        sourceHousehold, source.withPopulationAndLabor(sourcePopulationAfter, sourceLaborAfter));
-    rows.put(
-        targetHousehold, target.withPopulationAndLabor(targetPopulationAfter, targetLaborAfter));
+    long sourceLaborAfter = sourceHouseholdEconomy.laborMilli() - movedLabor;
+    long targetPopulationAfter = Math.addExact(targetHouseholdEconomy.population(), count);
+    long targetLaborAfter = Math.addExact(targetHouseholdEconomy.laborMilli(), movedLabor);
+    householdEconomies.put(
+        sourceHousehold, sourceHouseholdEconomy.withPopulationAndLabor(sourcePopulationAfter, sourceLaborAfter));
+    householdEconomies.put(
+        targetHousehold, targetHouseholdEconomy.withPopulationAndLabor(targetPopulationAfter, targetLaborAfter));
     moveDebts(
-        rows, debts, debtsByDebtor, sourceHousehold, targetHousehold, sourcePopulation, count, day);
+        householdEconomies, debts, debtsByDebtor, sourceHousehold, targetHousehold, sourcePopulation, count, day);
   }
 
   /**
@@ -237,7 +237,7 @@ public final class LotMigrationBook {
    * 四元组自会合并）。{@code movedPrincipal == 0} 的合同不建目标条、不写 0 减免。
    */
   private static void moveDebts(
-      LinkedHashMap<HouseholdId, ClassRow> rows,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       LinkedHashMap<DebtContractId, DebtContract> debts,
       Map<HouseholdId, List<DebtContractId>> debtsByDebtor,
       HouseholdId sourceHousehold,
@@ -276,13 +276,13 @@ public final class LotMigrationBook {
       DebtContractId targetContractId =
           DebtContractId.idOf(
               targetHousehold, contract.creditor(), contract.unit(), contract.terms());
-      ClassRow targetRow = rows.get(targetHousehold);
-      if (targetRow == null) {
+      HouseholdEconomy targetHouseholdEconomy = householdEconomies.get(targetHousehold);
+      if (targetHouseholdEconomy == null) {
         throw new IllegalStateException(
             "债务随行的目标家户行不存在（拒绝静默丢债）：" + targetHousehold + " ← " + sourceHousehold);
       }
       // ★ 会话内也把目标行的派生引用补上（权威仍是合同表；build() 的 DebtReferenceReconciler 会再对一次）。
-      rows.put(targetHousehold, DebtContractBook.withDebtReference(targetRow, targetContractId));
+      householdEconomies.put(targetHousehold, DebtContractBook.withDebtReference(targetHouseholdEconomy, targetContractId));
       List<DebtContractId> targetContracts =
           debtsByDebtor.computeIfAbsent(targetHousehold, ignored -> new ArrayList<>());
       if (!targetContracts.contains(targetContractId)) {
@@ -301,7 +301,7 @@ public final class LotMigrationBook {
    * <p>新建行<b>不</b>造第二份钱/需求/债务账；它们由日结算/债务写口在后续按规范路径产生。
    */
   private static HouseholdId resolveTargetHousehold(
-      LinkedHashMap<HouseholdId, ClassRow> rows,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<CohortKey, HouseholdId> householdByView,
       LotMigration migration,
       ResidenceKind targetResidence,
@@ -310,24 +310,24 @@ public final class LotMigrationBook {
     CohortKey targetView = new CohortKey(migration.toResidence(), targetResidence, stratum);
     HouseholdId existing = householdByView.get(targetView);
     if (existing != null) {
-      if (rows.get(existing) == null) {
+      if (householdEconomies.get(existing) == null) {
         throw new IllegalStateException(
             "目标行索引与家户表不一致（拒绝静默丢人）：视图=" + targetView + " 指向 " + existing);
       }
       return existing;
     }
     HouseholdId created = HouseholdIds.ofSeed(migration.toResidence(), targetResidence, stratum);
-    if (rows.containsKey(created)) {
+    if (householdEconomies.containsKey(created)) {
       throw new IllegalStateException(
           "目标家户 id 已被不同视图占用（拒绝覆盖）：id="
               + created
               + " 既有视图="
-              + rows.get(created).view()
+              + householdEconomies.get(created).view()
               + " 期望视图="
               + targetView);
     }
-    ClassRow createdRow =
-        new ClassRow(
+    HouseholdEconomy createdHouseholdEconomy =
+        new HouseholdEconomy(
             created,
             targetView,
             0L,
@@ -338,7 +338,7 @@ public final class LotMigrationBook {
             Map.of(),
             Map.of(),
             0L);
-    rows.put(created, createdRow);
+    householdEconomies.put(created, createdHouseholdEconomy);
     householdByView.put(targetView, created);
     return created;
   }
@@ -347,28 +347,28 @@ public final class LotMigrationBook {
 
   /** 视图 → 家户行；同一视图多行时取 id 规范串最小者（确定性；正常状态应唯一）。 */
   private static Map<CohortKey, HouseholdId> indexHouseholdsByView(
-      Map<HouseholdId, ClassRow> rows) {
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Map<CohortKey, HouseholdId> index = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : rows.entrySet()) {
-      HouseholdId current = index.get(entry.getValue().view());
-      if (current == null || entry.getKey().value().compareTo(current.value()) < 0) {
-        index.put(entry.getValue().view(), entry.getKey());
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomies.entrySet()) {
+      HouseholdId current = index.get(householdEconomyEntry.getValue().view());
+      if (current == null || householdEconomyEntry.getKey().value().compareTo(current.value()) < 0) {
+        index.put(householdEconomyEntry.getValue().view(), householdEconomyEntry.getKey());
       }
     }
     return index;
   }
 
   /** (格, 居住类型) 的源行（按 id 规范串升序，确定性）。 */
-  private static List<ClassRow> rowsAt(
-      Map<HouseholdId, ClassRow> rows, HexCoord hex, ResidenceKind residence) {
-    List<ClassRow> out = new ArrayList<>();
-    for (ClassRow row : rows.values()) {
-      if (row.view().hex().equals(hex) && row.view().residence() == residence) {
-        out.add(row);
+  private static List<HouseholdEconomy> householdEconomiesAt(
+      Map<HouseholdId, HouseholdEconomy> householdEconomies, HexCoord hex, ResidenceKind residence) {
+    List<HouseholdEconomy> matchingHouseholdEconomies = new ArrayList<>();
+    for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
+      if (householdEconomy.view().hex().equals(hex) && householdEconomy.view().residence() == residence) {
+        matchingHouseholdEconomies.add(householdEconomy);
       }
     }
-    out.sort(Comparator.comparing(row -> row.id().value()));
-    return out;
+    matchingHouseholdEconomies.sort(Comparator.comparing(householdEconomy -> householdEconomy.id().value()));
+    return matchingHouseholdEconomies;
   }
 
   /** 可变的债务人索引（{@link DebtIndex} 的派生是只读的；迁移会新增目标合同，故逐层复制成可变表）。 */

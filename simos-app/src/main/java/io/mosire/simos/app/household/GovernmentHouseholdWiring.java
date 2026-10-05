@@ -29,7 +29,7 @@ import java.util.Optional;
  *   Unit.households 里恰一个政府家户 H = hh-gov-&lt;unitId&gt;
  *   Social.households[H].location == UNIT(&lt;unitId&gt;)          ← 2026-10-09 位置锚点（政府家户跟随单位）
  *   economy.governments[gov-unit-&lt;unitId&gt;].treasury == HouseholdActors.of(H)
- *   economy.classes 里有 H 的 ClassRow（人口层/劳动层可配置、可入市）
+ *   economy.classes 里有 H 的 HouseholdEconomy（人口层/劳动层可配置、可入市）
  * </pre>
  *
  * <p>★★ <b>为什么必须有这一处</b>：四条事实分布在三个切片 —— {@link Unit#households()}（unit）、 {@link
@@ -68,7 +68,7 @@ public final class GovernmentHouseholdWiring {
     Objects.requireNonNull(units, "units");
     List<Mismatch> out = new ArrayList<>();
 
-    // 正向：每个 GOV 单位都要有"政府家户 → Social UNIT 位置 → ClassRow → 政府记录 → 国库=家户"这条链。
+    // 正向：每个 GOV 单位都要有"政府家户 → Social UNIT 位置 → HouseholdEconomy → 政府记录 → 国库=家户"这条链。
     List<Unit> ordered = new ArrayList<>(units.units().values());
     ordered.sort(Comparator.comparing(unit -> unit.id().value()));
     for (Unit unit : ordered) {

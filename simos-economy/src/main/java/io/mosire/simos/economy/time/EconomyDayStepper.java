@@ -6,7 +6,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.api.population.LotMigration;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -132,7 +132,7 @@ public final class EconomyDayStepper implements AutoCloseable {
   }
 
   /**
-   * ★ 当前状态快照（**会跑一次全量守卫并构造 {@link EconomyData}**）—— 只服务读口/测试；日循环内部请走 {@link #classRows()} 与 {@link
+   * ★ 当前状态快照（**会跑一次全量守卫并构造 {@link EconomyData}**）—— 只服务读口/测试；日循环内部请走 {@link #householdEconomies()} 与 {@link
    * #flows()}（P1.5：不在日循环里构造状态）。
    */
   public EconomyData data() {
@@ -140,8 +140,8 @@ public final class EconomyDayStepper implements AutoCloseable {
   }
 
   /** ★ 家户行工作副本（**活视图**；日循环内读它，不构造 EconomyData）。 */
-  public Map<HouseholdId, ClassRow> classRows() {
-    return session.sheet().rows();
+  public Map<HouseholdId, HouseholdEconomy> householdEconomies() {
+    return session.sheet().householdEconomies();
   }
 
   /**
@@ -282,7 +282,7 @@ public final class EconomyDayStepper implements AutoCloseable {
       LOG.debug(
           "event=STEPPER_STEP day={} rows={} units={} transfers={} marketReport={} shipments={}",
           day,
-          session.sheet().rows().size(),
+          session.sheet().householdEconomies().size(),
           session.sheet().units().size(),
           result.transfers().size(),
           report != null,
@@ -293,7 +293,7 @@ public final class EconomyDayStepper implements AutoCloseable {
 
   /**
    * ★★ <b>P2-A §13.4：每个 tick 重算家户时间预算</b>（毫小时）—— 由协调器从 Social 人口组成 × 系数表现算后传入； 本方法把它写进 {@code
-   * ClassRow.laborMilli} 并把超预算的配额按比例缩回（不变量在下一 revision 边界仍成立）。
+   * HouseholdEconomy.laborMilli} 并把超预算的配额按比例缩回（不变量在下一 revision 边界仍成立）。
    */
   public void recomputeLaborBudgets(Map<HouseholdId, Long> budgetsByHousehold) {
     EconomySettlement.applyLaborBudgetsInto(session, budgetsByHousehold);
@@ -311,7 +311,7 @@ public final class EconomyDayStepper implements AutoCloseable {
   /**
    * ★★ <b>P8：把一份迁移计划落进本会话的经济侧工作副本</b>（人口 / 劳动 / 债务；见 {@link LotMigrationBook}）。
    *
-   * <p>★ 本方法只转发经济侧写口；<b>不</b>动 social 批次、{@code Membership}、{@code LaborAllocation}/{@code
+   * <p>★ 本方法只转发经济侧写口；<b>不</b>动 social 批次、{@code Membership}、{@code HouseholdLaborCommitment}/{@code
    * LaborSupply} 与 actor 账户（那是 P9 跨切片协调器的接线内容）。空计划 ⇒ 一字不改。
    */
   public void applyMigrations(List<LotMigration> migrations, long day) {

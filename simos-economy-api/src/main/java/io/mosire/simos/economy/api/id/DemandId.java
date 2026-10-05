@@ -1,7 +1,7 @@
 package io.mosire.simos.economy.api.id;
 
 /**
- * ★★ <b>需求条目 ID</b>（R4-E2）：一条 GM/内生需求（{@code DemandEntry}）的稳定身份，归 {@code economy} 切片。
+ * ★★ <b>需求条目 ID</b>（R4-E2）：一条 GM/内生需求（{@code HouseholdDemand}）的稳定身份，归 {@code economy} 切片。
  *
  * <p>★ <b>opaque 值对象</b>：裸值 {@code toString()} + {@code static parse} 三件套（铁律 1）。{@code parse}
  * 不做格式约束 —— 旧档/外部工具写下的 id 原样读回，不因本类新增而重算。新 id 的拼写点在 {@code EconomyAddDemandHandler} （{@code

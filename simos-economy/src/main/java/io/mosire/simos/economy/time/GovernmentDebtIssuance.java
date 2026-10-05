@@ -7,7 +7,7 @@ import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.time.AccountSession.ActorAccount;
@@ -60,7 +60,7 @@ final class GovernmentDebtIssuance {
     if (base.governments().isEmpty()) {
       return 0L;
     }
-    Map<HouseholdId, ClassRow> rows = session.sheet().rows();
+    Map<HouseholdId, HouseholdEconomy> householdEconomies = session.sheet().householdEconomies();
     Map<DebtContractId, DebtContract> debts = session.sheet().debtContracts();
     long issuedTotal = 0L;
     for (Government government : base.governments().values()) {
@@ -79,8 +79,8 @@ final class GovernmentDebtIssuance {
       // 单政府单币种试点：取第一个可发行币种作为债务币种（LinkedHashSet 保序 ⇒ 确定性）。
       CurrencyId currency = government.issuable().iterator().next();
       HouseholdId governmentHousehold = householdOf(government);
-      ClassRow governmentRow = rows.get(governmentHousehold);
-      if (governmentRow == null) {
+      HouseholdEconomy governmentHouseholdEconomy = householdEconomies.get(governmentHousehold);
+      if (governmentHouseholdEconomy == null) {
         throw new IllegalStateException(
             "GOV 发债找不到政府家户行（seed/账户会话不完整）：government="
                 + government.id()
@@ -99,12 +99,12 @@ final class GovernmentDebtIssuance {
       long remaining = target;
       long borrowed = 0L;
       int lenderCount = 0;
-      for (HouseholdId lender : sortedLenders(rows, governmentHousehold)) {
+      for (HouseholdId lender : sortedLenders(householdEconomies, governmentHousehold)) {
         if (remaining <= 0L) {
           break;
         }
-        ClassRow lenderRow = rows.get(lender);
-        if (lenderRow == null || lenderRow.population() <= 0L) {
+        HouseholdEconomy lenderHouseholdEconomy = householdEconomies.get(lender);
+        if (lenderHouseholdEconomy == null || lenderHouseholdEconomy.population() <= 0L) {
           continue;
         }
         ActorAccount lenderAccount = accounts.householdAccount(lender);
@@ -114,7 +114,7 @@ final class GovernmentDebtIssuance {
         long balance = lenderAccount.money().getOrDefault(currency, 0L);
         long reserve =
             Math.multiplyExact(
-                lenderRow.population(), MarketSettlement.LENDER_MONEY_BUFFER_PER_CAPITA_MILLI);
+                lenderHouseholdEconomy.population(), MarketSettlement.LENDER_MONEY_BUFFER_PER_CAPITA_MILLI);
         long lendable = Math.max(0L, balance - reserve);
         long take = Math.min(remaining, lendable);
         if (take <= 0L) {
@@ -145,10 +145,10 @@ final class GovernmentDebtIssuance {
                 take,
                 day,
                 OptionalLong.of(currentCycle + 1L));
-        rows.put(
+        householdEconomies.put(
             governmentHousehold,
-            DebtContractBook.withDebtReference(governmentRow, contract.id()));
-        governmentRow = rows.get(governmentHousehold);
+            DebtContractBook.withDebtReference(governmentHouseholdEconomy, contract.id()));
+        governmentHouseholdEconomy = householdEconomies.get(governmentHousehold);
         remaining = Math.subtractExact(remaining, take);
         borrowed = Math.addExact(borrowed, take);
         lenderCount++;
@@ -184,14 +184,14 @@ final class GovernmentDebtIssuance {
 
   /** 出借人家户（人口 > 0、排除政府自己），按 {@link HouseholdId#value()} 规范序 —— 同一世界/重放同序。 */
   private static List<HouseholdId> sortedLenders(
-      Map<HouseholdId, ClassRow> rows, HouseholdId governmentHousehold) {
+      Map<HouseholdId, HouseholdEconomy> householdEconomies, HouseholdId governmentHousehold) {
     List<HouseholdId> lenders = new ArrayList<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : rows.entrySet()) {
-      if (entry.getKey().equals(governmentHousehold)) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomies.entrySet()) {
+      if (householdEconomyEntry.getKey().equals(governmentHousehold)) {
         continue;
       }
-      if (entry.getValue() != null && entry.getValue().population() > 0L) {
-        lenders.add(entry.getKey());
+      if (householdEconomyEntry.getValue() != null && householdEconomyEntry.getValue().population() > 0L) {
+        lenders.add(householdEconomyEntry.getKey());
       }
     }
     lenders.sort(Comparator.comparing(HouseholdId::value));

@@ -9,7 +9,7 @@ import io.mosire.simos.economy.api.id.SocialClassId;
  *
  * <ul>
  *   <li>本记录只持**制度参数**：该阶层的**劳动投入率上限**（贫农 950‰ / 中农 900‰ / 富农 750‰ / 地主 100‰）。
- *   <li>**人口与占比不在这里**：它们住在 {@code ClassRow.population}（该产业的阶层行），比例是**观测** （Σ行 = 该产业人口），不再另存一份 ——
+ *   <li>**人口与占比不在这里**：它们住在 {@code HouseholdEconomy.population}（该产业的阶层行），比例是**观测** （Σ行 = 该产业人口），不再另存一份 ——
  *       一条真相，避免两处漂移。
  * </ul>
  *

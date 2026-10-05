@@ -14,12 +14,12 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.MerchantFirm;
@@ -364,9 +364,9 @@ public final class MerchantSettlement {
       Map<ProductionOrganizationId, ProductionOrganization> organizations,
       Map<ProductionUnitId, ProductionUnit> units,
       Map<ProductionUnitId, ProductionRelation> relations,
-      Map<LaborAllocationId, LaborAllocation> allocations,
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<AssetShareId, AssetShare> assetShares,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       AccountSession accounts,
       Map<HexCoord, Market> markets,
       LinkedHashMap<DebtContractId, DebtContract> debts,
@@ -380,7 +380,7 @@ public final class MerchantSettlement {
       LOG.debug("event=MERCHANT_CYCLE_START day={} firms={}", day, firms.size());
     }
     Map<ActorRef, HouseholdId> householdByActor = new LinkedHashMap<>();
-    for (HouseholdId household : sortedHouseholds(rows)) {
+    for (HouseholdId household : sortedHouseholds(householdEconomies)) {
       householdByActor.put(HouseholdActors.of(household), household);
     }
     List<ProductionOrganizationId> ids = new ArrayList<>(firms.keySet());
@@ -399,7 +399,7 @@ public final class MerchantSettlement {
             "商号 principal 不是已登记家户（说不出收款人，拒绝静默丢钱）: " + organizationId + " actor=" + principalActor);
       }
       long revenue = feeRevenueOf(cycle, principalActor);
-      List<Porter> porters = portersOf(organization, principalHousehold, allocations, rows);
+      List<Porter> porters = portersOf(organization, principalHousehold, laborCommitments, householdEconomies);
       List<Long> porterWeights = new ArrayList<>(porters.size());
       long totalPorterLabor = 0L;
       for (Porter porter : porters) {
@@ -583,34 +583,34 @@ public final class MerchantSettlement {
     return Math.addExact(district, assets);
   }
 
-  /** 一个 porter 家户与本周期实际劳动（laborSources 只提供身份；实际劳动只从 LaborAllocation 取）。 */
+  /** 一个 porter 家户与本周期实际劳动（laborSources 只提供身份；实际劳动只从 HouseholdLaborCommitment 取）。 */
   private record Porter(HouseholdId household, long laborMilli) {}
 
   private static List<Porter> portersOf(
       ProductionOrganization organization,
       HouseholdId principal,
-      Map<LaborAllocationId, LaborAllocation> allocations,
-      Map<HouseholdId, ClassRow> rows) {
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     LinkedHashMap<HouseholdId, Long> laborByHousehold = new LinkedHashMap<>();
     if (organization.unitId().isPresent()) {
       String activity = organization.unitId().get().value();
-      List<LaborAllocation> matching = new ArrayList<>();
-      for (LaborAllocation allocation : allocations.values()) {
-        if (allocation.activity().equals(activity) && allocation.laborMilli() > 0L) {
-          matching.add(allocation);
+      List<HouseholdLaborCommitment> matchingLaborCommitments = new ArrayList<>();
+      for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+        if (laborCommitment.activity().equals(activity) && laborCommitment.laborMilli() > 0L) {
+          matchingLaborCommitments.add(laborCommitment);
         }
       }
-      matching.sort(Comparator.comparing(allocation -> allocation.id().value()));
-      for (LaborAllocation allocation : matching) {
-        if (allocation.household().equals(principal) || !rows.containsKey(allocation.household())) {
+      matchingLaborCommitments.sort(Comparator.comparing(allocation -> allocation.id().value()));
+      for (HouseholdLaborCommitment laborCommitment : matchingLaborCommitments) {
+        if (laborCommitment.household().equals(principal) || !householdEconomies.containsKey(laborCommitment.household())) {
           continue;
         }
-        laborByHousehold.merge(allocation.household(), allocation.laborMilli(), Math::addExact);
+        laborByHousehold.merge(laborCommitment.household(), laborCommitment.laborMilli(), Math::addExact);
       }
     }
     if (laborByHousehold.isEmpty()) {
       for (HouseholdId source : organization.laborSources()) {
-        if (!source.equals(principal) && rows.containsKey(source)) {
+        if (!source.equals(principal) && householdEconomies.containsKey(source)) {
           laborByHousehold.putIfAbsent(source, 0L);
         }
       }
@@ -753,8 +753,8 @@ public final class MerchantSettlement {
     return smallest;
   }
 
-  private static List<HouseholdId> sortedHouseholds(Map<HouseholdId, ClassRow> rows) {
-    List<HouseholdId> keys = new ArrayList<>(rows.keySet());
+  private static List<HouseholdId> sortedHouseholds(Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+    List<HouseholdId> keys = new ArrayList<>(householdEconomies.keySet());
     keys.sort(Comparator.comparing(HouseholdId::value));
     return keys;
   }

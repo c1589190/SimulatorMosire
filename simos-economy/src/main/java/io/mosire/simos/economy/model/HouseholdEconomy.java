@@ -47,7 +47,7 @@ import java.util.Map;
  * @param view 当前视图（格 + 居住类型 + 阶层）：可变，不再是身份
  * @param population 人口（人）；不得为负
  * @param laborMilli ★★ <b>本 tick 家户时间预算（毫小时）</b>（P2-A §13.4）——由 Social 的家户成员 ×
- *     {@code LaborTimeTable} 现算（每 tick 重算、创世由 {@code EconomySeeder} 算同一张表）；不得为负。
+ *     {@code HouseholdLaborTimeTable} 现算（每 tick 重算、创世由 {@code EconomySeeder} 算同一张表）；不得为负。
  *     ★ 它是劳动配额的上限：不变量 {@code Σ allocations(household).laborMilli ≤ laborMilli}（见 {@code EconomyData}）。
  *     ★ 旧的"千分劳动/日"口径（{@code AGE_LABOR_COEF_BY_SEX} 折算量）已退役；{@code participationPerMille} 仍保留为
  *     分配权重（不再是硬上限）
@@ -60,9 +60,9 @@ import java.util.Map;
  *     dailyRationMilli(population_d, d)}，{@code population_d} = 第 d 天结算前的行人口（日初人口）—— 由 {@code
  *     旧结算引擎（R3a 已删除）} 逐日累加、新周期第一天重置为当天需要（见 {@code withDailyNeed} 与流水清零点旁的注释）。
  *     <b>它是唯一与"周期累计未满足需求"同窗口的自然需求分母</b>；旧的"某一天人口 × 整周期配额"不得再与它并排当同一分母（丙条）。 旧档（M2.7 之前）缺本键 ⇒
- *     0（fail-closed 的"还没开始累计"），由 {@code EconomyPayloads.classRow} 与 Jackson 的记录绑定分别兜底。 不得为负
+ *     0（fail-closed 的"还没开始累计"），由 {@code EconomyPayloads.householdEconomy} 与 Jackson 的记录绑定分别兜底。 不得为负
  */
-public record ClassRow(
+public record HouseholdEconomy(
     HouseholdId id,
     CohortKey view,
     long population,
@@ -74,7 +74,7 @@ public record ClassRow(
     Map<CommodityId, Long> effectiveDemand,
     long cycleNaturalNeedMilli) {
 
-  public ClassRow {
+  public HouseholdEconomy {
     if (id == null) {
       throw new IllegalArgumentException("ClassRow.id 不得为 null（家户稳定身份，S1 起与视图分离）");
     }
@@ -156,14 +156,14 @@ public record ClassRow(
    * ★★ <b>S3 阶层写回：只换当前视图，别的字段一字不动</b>—— 身份（{@link #id()}）、人口、劳动、参与率、货币、债务引用、 两类需求与周期累计自然需要全部原样保留。
    *
    * <p>★★ <b>为什么必须是一个方法而不是调用方逐字段抄</b>：写回路径（{@code 旧结算引擎（R3a 已删除）} 的关账日阶层分类）若在调用点 手抄字段，任何一次 {@code
-   * ClassRow} 加字段都会把写回路径变成"静默丢字段"的第二处拼写点；本方法把"只改 view"的承诺钉在类型内部， 将来加字段时这段也只会编译失败一次（不会静默漏）。★
+   * HouseholdEconomy} 加字段都会把写回路径变成"静默丢字段"的第二处拼写点；本方法把"只改 view"的承诺钉在类型内部， 将来加字段时这段也只会编译失败一次（不会静默漏）。★
    * 它<b>不改</b> {@code HouseholdId}（铁律 1：ID 是身份，视图是可变的）。
    */
-  public ClassRow withView(CohortKey newView) {
+  public HouseholdEconomy withView(CohortKey newView) {
     if (newView == null) {
       throw new IllegalArgumentException("ClassRow.withView 的 newView 不得为 null");
     }
-    return new ClassRow(
+    return new HouseholdEconomy(
         id,
         newView,
         population,
@@ -180,10 +180,10 @@ public record ClassRow(
    * ★★ <b>P8 迁移：只换人口与劳动，别的字段一字不动</b>——身份、视图、参与率、货币、债务引用、两类需求与周期累计自然需要 全部原样保留。
    *
    * <p>★★ <b>与 {@link #withView} 同族的理由</b>：迁移的源/目标行都要改人口与劳动（劳动按迁出人数比例缩/增）， 若调用点逐字段手抄，任何一次 {@code
-   * ClassRow} 加字段都会让迁移写口静默丢字段；本方法把“只改这两个字段”的承诺 钉在类型内部。人口/劳动为负由规范构造器当场拒（迁移不得把行抽到负数）。
+   * HouseholdEconomy} 加字段都会让迁移写口静默丢字段；本方法把“只改这两个字段”的承诺 钉在类型内部。人口/劳动为负由规范构造器当场拒（迁移不得把行抽到负数）。
    */
-  public ClassRow withPopulationAndLabor(long newPopulation, long newLaborMilli) {
-    return new ClassRow(
+  public HouseholdEconomy withPopulationAndLabor(long newPopulation, long newLaborMilli) {
+    return new HouseholdEconomy(
         id,
         view,
         newPopulation,
@@ -201,12 +201,12 @@ public record ClassRow(
    * 货币、债务引用、两类需求与周期累计自然需要全部原样保留。
    *
    * <p>★ <b>与每 tick 投影的关系（如实边界）</b>：{@code laborMilli} 的常规来源是 Social 成员 ×
-   * {@code LaborTimeTable} 的逐 tick 投影（P2-A §13.4）。本写口直接落一个显式配置值；下一次推进时若 Social 侧该户
+   * {@code HouseholdLaborTimeTable} 的逐 tick 投影（P2-A §13.4）。本写口直接落一个显式配置值；下一次推进时若 Social 侧该户
    * 成员组成存在，投影会按 Social 重算并覆盖它 —— 要持久改变劳动时间，应同时编辑 Social 成员组成（那不在经济命令的边界里）。
    * 这里不做"覆盖位"之类的第二权威：显式配置就是一次状态写入，读口读到的永远是当前状态。
    */
-  public ClassRow withLaborAndParticipation(long newLaborMilli, int newParticipationPerMille) {
-    return new ClassRow(
+  public HouseholdEconomy withLaborAndParticipation(long newLaborMilli, int newParticipationPerMille) {
+    return new HouseholdEconomy(
         id,
         view,
         population,
@@ -229,7 +229,7 @@ public record ClassRow(
    * <ul>
    *   <li>{@code EconomySeeder.industryDailyLabor}（产业当日的配额总量）；
    *   <li>{@code 旧结算引擎（R3a 已删除）.laborOfCohort}（关账时逐 cohort 的**本周期**劳动量，再乘 {@code cycleDays}）；
-   *   <li>读口 {@code ApiViews.classRowView} 的 {@code participationAdjustedLaborMilli} 一栏。
+   *   <li>读口 {@code ApiViews.householdEconomyView} 的 {@code participationAdjustedLaborMilli} 一栏。
    * </ul>
    *
    * <p>★★ <b>为什么不把折算结果存成字段</b>：① 存了就有两个数（毛量与折算量），任何一处忘记同步都会让"劳动总量守恒"悄悄漂开； ②
@@ -242,7 +242,7 @@ public record ClassRow(
   }
 
   /**
-   * ★★ <b>折算算法的 static 形态</b>（服务于还没有 {@code ClassRow} 对象的调用点：{@code
+   * ★★ <b>折算算法的 static 形态</b>（服务于还没有 {@code HouseholdEconomy} 对象的调用点：{@code
    * EconomySeeder.industryDailyLabor} 在生成载荷时用逐行的"人数 × 池人均劳动"临时量算总量）。
    *
    * <p>公式与不变量见 {@link #participationAdjustedLaborMilli()} —— 两个形态是<b>同一处</b>拼写点，实例方法只负责取自己的两个字段。

@@ -22,8 +22,8 @@ import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassPosition;
 import io.mosire.simos.economy.model.ClassPosition.RelationToMeans;
 import io.mosire.simos.economy.model.ClassPosition.SurplusRole;
-import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.DebtCapacity;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.HexCrisisSignal;
@@ -52,7 +52,7 @@ import java.util.Set;
  *
  * <pre>
  * ① 压力判定（逐户逐合同，读 E4b DebtCapacity 与 E4c 偿还读数；见 {@link #contractStressed}）
- * ② 连续压力计数器（ClassStanding.consecutiveDebtStressCycles；阈值 {@link #DEBT_STRESS_CYCLES_THRESHOLD}）
+ * ② 连续压力计数器（HouseholdClassMembership.consecutiveDebtStressCycles；阈值 {@link #DEBT_STRESS_CYCLES_THRESHOLD}）
  * ③ 触发清算 = status==DEFAULTED，或连续压力 ≥ 阈值且本合同本期受压
  * ④ 触发阶层下滑 = 核心生产资料被处置，或 DEFAULTED 且压力 ≥ 阈值，或 F 持续不足下一轮必要投入
  * ⑤ planner 只读选路（{@link #plan}）→ apply（{@link #apply}）一次性写入
@@ -94,7 +94,7 @@ public final class EconomyLiquidationSettlement {
   /** ★ 下滑目标的规则扩展位键名（优先于机械序，见类注）。 */
   public static final String DOWNWARD_POSITION_EXTENSION_KEY = "downwardPositionId";
 
-  /** ★ 新建 {@code ClassStanding} 的具名原因（尚未发生阶层迁移）。 */
+  /** ★ 新建 {@code HouseholdClassMembership} 的具名原因（尚未发生阶层迁移）。 */
   public static final String STANDING_SEED_REASON = "e5b:classStandingSeed";
 
   /** ★ 信号/审计的稳定动作词（读口按它分类，不在多处拼字符串）。 */
@@ -144,7 +144,7 @@ public final class EconomyLiquidationSettlement {
       EconomySession session,
       long day,
       long currentCycle,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<AssetShareId, AssetShare> assetShares,
       Map<PledgeId, Pledge> pledges,
       Map<DebtContractId, DebtContract> debts,
@@ -155,7 +155,7 @@ public final class EconomyLiquidationSettlement {
       ProductionLedger.Accumulator ledger) {
     Objects.requireNonNull(session, "session 不得为 null");
     Objects.requireNonNull(ledger, "ledger 不得为 null");
-    Objects.requireNonNull(rows, "rows 不得为 null");
+    Objects.requireNonNull(householdEconomies, "rows 不得为 null");
     Objects.requireNonNull(assetShares, "assetShares 不得为 null");
     Objects.requireNonNull(pledges, "pledges 不得为 null");
     Objects.requireNonNull(debts, "debts 不得为 null");
@@ -171,7 +171,7 @@ public final class EconomyLiquidationSettlement {
             base,
             day,
             currentCycle,
-            rows,
+            householdEconomies,
             assetShares,
             pledges,
             debts,
@@ -205,7 +205,7 @@ public final class EconomyLiquidationSettlement {
       EconomyData base,
       long day,
       long currentCycle,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<AssetShareId, AssetShare> assetShares,
       Map<PledgeId, Pledge> pledges,
       Map<DebtContractId, DebtContract> debts,
@@ -326,13 +326,13 @@ public final class EconomyLiquidationSettlement {
 
   private static Plan plan(Context context) {
     EconomyData base = context.base();
-    Map<HouseholdId, ClassStanding> baseStandings = base.classStandings();
+    Map<HouseholdId, HouseholdClassMembership> baseClassMemberships = base.classStandings();
     Map<ClassPositionId, ClassPosition> positions = base.classPositions();
     List<AuditEntry> audits = new ArrayList<>();
 
     Map<HouseholdId, List<DebtContract>> debtsByDebtor = indexDebtsByDebtor(context.debts());
     Map<DebtContractId, List<Pledge>> pledgesByDebt = indexActivePledgesByDebt(context.pledges());
-    List<HouseholdId> households = sortedHouseholds(context.rows());
+    List<HouseholdId> households = sortedHouseholds(context.householdEconomies());
     // ★★ 到期即默认：先用有效状态参与本轮的应力/触发判定，需落状态的在 apply 统一 markStatus。
     List<DebtContractId> autoDefaults = new ArrayList<>();
     Map<DebtContractId, DebtStatus> effectiveStatuses = effectiveStatuses(context, autoDefaults);
@@ -401,11 +401,11 @@ public final class EconomyLiquidationSettlement {
       boolean inputShortfall = capacity != null && nextRoundInputNotFunded(capacity);
       boolean counterStress = anyStress || inputShortfall;
       Optional<ClassPositionId> resolvable =
-          resolvablePosition(context, household, baseStandings, positions);
+          resolvablePosition(context, household, baseClassMemberships, positions);
       long previous =
-          baseStandings.get(household) == null
+          baseClassMemberships.get(household) == null
               ? 0L
-              : baseStandings.get(household).consecutiveDebtStressCycles();
+              : baseClassMemberships.get(household).consecutiveDebtStressCycles();
       long incremented = previous == Long.MAX_VALUE ? Long.MAX_VALUE : previous + 1L;
       long next =
           counterStress && resolvable.isPresent() ? incremented : (counterStress ? previous : 0L);
@@ -527,12 +527,12 @@ public final class EconomyLiquidationSettlement {
       if (!decline) {
         continue;
       }
-      ClassRow row = context.rows().get(household);
-      if (row == null) {
+      HouseholdEconomy householdEconomy = context.householdEconomies().get(household);
+      if (householdEconomy == null) {
         continue;
       }
       Optional<ClassPositionId> current =
-          resolvablePosition(context, household, baseStandings, positions);
+          resolvablePosition(context, household, baseClassMemberships, positions);
       ClassPositionId target = null;
       String reason;
       boolean migrated = false;
@@ -559,7 +559,7 @@ public final class EconomyLiquidationSettlement {
       declines.add(
           new ClassDeclinePlan(
               household,
-              row.view().hex(),
+              householdEconomy.view().hex(),
               current.orElse(null),
               target,
               migrated,
@@ -593,8 +593,8 @@ public final class EconomyLiquidationSettlement {
       if (active.isEmpty()) {
         continue;
       }
-      ClassRow row = context.rows().get(household);
-      if (row == null) {
+      HouseholdEconomy householdEconomy = context.householdEconomies().get(household);
+      if (householdEconomy == null) {
         continue;
       }
       // ★ 只把**粮 unit** 的本金相加：F 是粮口径，混入银/布本金就是把不同 unit 硬折成一个数。
@@ -654,7 +654,7 @@ public final class EconomyLiquidationSettlement {
       explosions.add(
           new DebtExplosionPlan(
               household,
-              row.view().hex(),
+              householdEconomy.view().hex(),
               principalTotal,
               F,
               multiple,
@@ -967,11 +967,11 @@ public final class EconomyLiquidationSettlement {
       Context context,
       DebtContract debt,
       Pledge pledge,
-      Map<HouseholdId, ClassStanding> standings,
+      Map<HouseholdId, HouseholdClassMembership> classMemberships,
       Map<ClassPositionId, ClassPosition> positions) {
-    ClassStanding standing = standings.get(debt.debtor());
-    if (standing != null) {
-      ClassPosition position = positions.get(standing.currentPositionId());
+    HouseholdClassMembership classMembership = classMemberships.get(debt.debtor());
+    if (classMembership != null) {
+      ClassPosition position = positions.get(classMembership.currentPositionId());
       if (position != null) {
         return position.modeId();
       }
@@ -1108,21 +1108,21 @@ public final class EconomyLiquidationSettlement {
     if (plan.stressUpdates().isEmpty() && plan.declines().isEmpty()) {
       return;
     }
-    LinkedHashMap<HouseholdId, ClassStanding> standings =
-        context.session().sheet().classStandings();
+    LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships =
+        context.session().sheet().classMemberships();
     Map<ClassPositionId, ClassPosition> positions = context.base().classPositions();
-    Map<HouseholdId, ClassStanding> baseStandings = context.base().classStandings();
+    Map<HouseholdId, HouseholdClassMembership> baseClassMemberships = context.base().classStandings();
 
     for (StressUpdate update : plan.stressUpdates()) {
-      ClassStanding existing = standings.get(update.household());
-      if (existing == null) {
+      HouseholdClassMembership existingClassMembership = classMemberships.get(update.household());
+      if (existingClassMembership == null) {
         Optional<ClassPositionId> position =
-            resolvablePosition(context, update.household(), baseStandings, positions);
+            resolvablePosition(context, update.household(), baseClassMemberships, positions);
         if (position.isEmpty()) {
           continue; // planner 已写具名审计：不伪造位置
         }
-        existing =
-            new ClassStanding(
+        existingClassMembership =
+            new HouseholdClassMembership(
                 update.household(),
                 position.get(),
                 position.get(),
@@ -1133,19 +1133,19 @@ public final class EconomyLiquidationSettlement {
                 0L,
                 STANDING_SEED_REASON);
       }
-      standings.put(update.household(), withStressCount(existing, update.nextCount()));
+      classMemberships.put(update.household(), withStressCount(existingClassMembership, update.nextCount()));
     }
 
     for (ClassDeclinePlan decline : plan.declines()) {
-      ClassStanding existing = standings.get(decline.household());
-      if (existing == null) {
+      HouseholdClassMembership existingClassMembership = classMemberships.get(decline.household());
+      if (existingClassMembership == null) {
         Optional<ClassPositionId> position =
-            resolvablePosition(context, decline.household(), baseStandings, positions);
+            resolvablePosition(context, decline.household(), baseClassMemberships, positions);
         if (position.isEmpty()) {
           continue; // 无位置可写：信号与审计仍保留，但不伪造归属
         }
-        existing =
-            new ClassStanding(
+        existingClassMembership =
+            new HouseholdClassMembership(
                 decline.household(),
                 position.get(),
                 position.get(),
@@ -1156,30 +1156,30 @@ public final class EconomyLiquidationSettlement {
                 STANDING_SEED_REASON);
       }
       if (decline.to() != null) {
-        standings.put(
+        classMemberships.put(
             decline.household(),
-            new ClassStanding(
+            new HouseholdClassMembership(
                 decline.household(),
-                existing.originalPositionId(),
+                existingClassMembership.originalPositionId(),
                 decline.to(),
                 // ★ P2-B：位置变了 ⇒ 旧的可参与集合（指向旧位置）不再沿用，只参与新位置。
                 Set.of(),
-                existing.retainedShares(),
+                existingClassMembership.retainedShares(),
                 0L,
                 context.day(),
                 decline.reason()));
       } else {
-        standings.put(
+        classMemberships.put(
             decline.household(),
-            new ClassStanding(
+            new HouseholdClassMembership(
                 decline.household(),
-                existing.originalPositionId(),
-                existing.currentPositionId(),
+                existingClassMembership.originalPositionId(),
+                existingClassMembership.currentPositionId(),
                 // ★ P2-B：位置没变 ⇒ 可参与集合逐值带过。
-                existing.participatingPositionIds(),
-                existing.retainedShares(),
-                existing.consecutiveDebtStressCycles(),
-                existing.lastTransitionDay(),
+                existingClassMembership.participatingPositionIds(),
+                existingClassMembership.retainedShares(),
+                existingClassMembership.consecutiveDebtStressCycles(),
+                existingClassMembership.lastTransitionDay(),
                 decline.reason()));
       }
     }
@@ -1234,9 +1234,9 @@ public final class EconomyLiquidationSettlement {
     int maxSeverity = 1;
     for (ClassDeclinePlan decline : ordered) {
       households.add(decline.household());
-      ClassRow row = context.rows().get(decline.household());
-      if (row != null) {
-        classes.add(row.view().stratum());
+      HouseholdEconomy householdEconomy = context.householdEconomies().get(decline.household());
+      if (householdEconomy != null) {
+        classes.add(householdEconomy.view().stratum());
       }
       if (decline.migrated()) {
         migrated++;
@@ -1287,9 +1287,9 @@ public final class EconomyLiquidationSettlement {
     int unknownF = 0;
     for (DebtExplosionPlan explosion : ordered) {
       households.add(explosion.household());
-      ClassRow row = context.rows().get(explosion.household());
-      if (row != null) {
-        classes.add(row.view().stratum());
+      HouseholdEconomy householdEconomy = context.householdEconomies().get(explosion.household());
+      if (householdEconomy != null) {
+        classes.add(householdEconomy.view().stratum());
       }
       principalTotal = saturatedAdd(principalTotal, explosion.principalTotalMilli());
       netDelta = saturatedAdd(netDelta, explosion.netPrincipalDeltaMilli());
@@ -1395,17 +1395,17 @@ public final class EconomyLiquidationSettlement {
   private static Optional<ClassPositionId> resolvablePosition(
       Context context,
       HouseholdId household,
-      Map<HouseholdId, ClassStanding> standings,
+      Map<HouseholdId, HouseholdClassMembership> classMemberships,
       Map<ClassPositionId, ClassPosition> positions) {
-    ClassStanding standing = standings.get(household);
-    if (standing != null) {
-      return Optional.of(standing.currentPositionId());
+    HouseholdClassMembership classMembership = classMemberships.get(household);
+    if (classMembership != null) {
+      return Optional.of(classMembership.currentPositionId());
     }
-    ClassRow row = context.rows().get(household);
-    if (row == null) {
+    HouseholdEconomy householdEconomy = context.householdEconomies().get(household);
+    if (householdEconomy == null) {
       return Optional.empty();
     }
-    ClassPositionId derived = LegacyClassStructure.positionIdOf(row.view().stratum());
+    ClassPositionId derived = LegacyClassStructure.positionIdOf(householdEconomy.view().stratum());
     if (positions.isEmpty() || positions.containsKey(derived)) {
       return Optional.of(derived);
     }
@@ -1508,16 +1508,16 @@ public final class EconomyLiquidationSettlement {
     };
   }
 
-  private static ClassStanding withStressCount(ClassStanding standing, long count) {
-    return new ClassStanding(
-        standing.householdId(),
-        standing.originalPositionId(),
-        standing.currentPositionId(),
-        standing.participatingPositionIds(),
-        standing.retainedShares(),
+  private static HouseholdClassMembership withStressCount(HouseholdClassMembership classMembership, long count) {
+    return new HouseholdClassMembership(
+        classMembership.householdId(),
+        classMembership.originalPositionId(),
+        classMembership.currentPositionId(),
+        classMembership.participatingPositionIds(),
+        classMembership.retainedShares(),
         count,
-        standing.lastTransitionDay(),
-        standing.reason());
+        classMembership.lastTransitionDay(),
+        classMembership.reason());
   }
 
   /**
@@ -1661,8 +1661,8 @@ public final class EconomyLiquidationSettlement {
     return index;
   }
 
-  private static List<HouseholdId> sortedHouseholds(Map<HouseholdId, ClassRow> rows) {
-    List<HouseholdId> households = new ArrayList<>(rows.keySet());
+  private static List<HouseholdId> sortedHouseholds(Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+    List<HouseholdId> households = new ArrayList<>(householdEconomies.keySet());
     households.sort(Comparator.comparing(HouseholdId::value));
     return households;
   }

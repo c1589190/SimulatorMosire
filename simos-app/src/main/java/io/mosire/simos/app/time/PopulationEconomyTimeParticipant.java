@@ -6,7 +6,7 @@ import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.household.GovernmentHouseholdWiring;
-import io.mosire.simos.app.household.HouseholdClassRowProjection;
+import io.mosire.simos.app.household.HouseholdEconomyProjection;
 import io.mosire.simos.app.household.HouseholdPositionResolver;
 import io.mosire.simos.app.household.HouseholdUnitConsistency;
 import io.mosire.simos.app.world.EconomySeeder;
@@ -17,10 +17,10 @@ import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.api.labor.LaborTimeTable;
+import io.mosire.simos.economy.api.labor.HouseholdLaborTimeTable;
 import io.mosire.simos.economy.api.population.LotMigration;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.MigrationPolicy;
@@ -176,7 +176,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     SocialData socialBase = socialOf(state);
     // ★★ S1 阶段 4+5 Task 5：**第三片 actor** —— 产权落账只可能发生在同时看得见 economy 与 actor 的地方。
     ActorData actor = actorOf(state);
-    // ★★ S3b（2026-10-09）：Unit/Gov 的 households ↔ Social 家户位置一致性 + ClassRow 人口向 Social 家户投影。
+    // ★★ S3b（2026-10-09）：Unit/Gov 的 households ↔ Social 家户位置一致性 + HouseholdEconomy 人口向 Social 家户投影。
     //   两件事都必须在日循环之前做：它们改的是本轮推进的**基态**，终端变更集相对 economyBase/socialBase 取差分。
     UnitState units = unitStateOf(state);
     SocialData social = socialBase;
@@ -205,10 +205,10 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     EconomyData economyAligned = economyBase;
     if (units != null && !social.households().isEmpty()) {
       // ★★ 2026-10-09：UNIT 家户（政府/军队小家户）的 economy 行视图对齐到 unit 当刻 effectivePosition 的 hex——
-      //   市场参与 / 生产组织 / 贷款等 economy 内部一律读 ClassRow.view().hex()，本对齐让它们无需 new dependency
+      //   市场参与 / 生产组织 / 贷款等 economy 内部一律读 HouseholdEconomy.view().hex()，本对齐让它们无需 new dependency
       //   就跟随 unit.PlaceAt / 行军 / 迁都。HEX 家户原样不动。
       HouseholdPositionResolver.Alignment alignment =
-          HouseholdPositionResolver.alignClassRowViews(economyBase, social, units, range.from());
+          HouseholdPositionResolver.alignHouseholdEconomyViews(economyBase, social, units, range.from());
       economyAligned = alignment.data();
       if (alignment.moved() > 0) {
         LOG.info(
@@ -218,17 +218,17 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             range.from().tick());
       }
     }
-    HouseholdClassRowProjection.Result classRowProjection =
-        HouseholdClassRowProjection.project(economyAligned, social);
-    if (!classRowProjection.unresolved().isEmpty()) {
+    HouseholdEconomyProjection.Result householdEconomyProjection =
+        HouseholdEconomyProjection.project(economyAligned, social);
+    if (!householdEconomyProjection.unresolved().isEmpty()) {
       LOG.warn(
           "event=CLASSROW_POPULATION_PROJECTION_UNRESOLVED mapId={} count={} first={}",
           mapId,
-          classRowProjection.unresolved().size(),
-          classRowProjection.unresolved().get(0));
+          householdEconomyProjection.unresolved().size(),
+          householdEconomyProjection.unresolved().get(0));
     }
-    EconomyData economy = classRowProjection.data();
-    // ★★ P2-C §13.7：经济已激活 + 存在 GOV 单位时，推进入口把"GovFormation 政府家户 ↔ ClassRow ↔ 政府记录 ↔ 国库账户"
+    EconomyData economy = householdEconomyProjection.data();
+    // ★★ P2-C §13.7：经济已激活 + 存在 GOV 单位时，推进入口把"GovFormation 政府家户 ↔ HouseholdEconomy ↔ 政府记录 ↔ 国库账户"
     //   这条闭环判死 —— 缺任何一边都具名失败，不把"没有政府记录"读成"没有政府"。
     if (economy.meta().isPresent() && units != null) {
       GovernmentHouseholdWiring.requireConsistent(economy, social, units);
@@ -298,7 +298,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     Optional<io.mosire.simos.util.time.SimosTimestamp> to = range.to();
     if (to.isEmpty() || economy.meta().isEmpty()) {
       // 无上界推进 / 经济未激活 ⇒ 三片都不动（但**交的是不变变更集，不是空提案**：契约原文）。
-      // ★ S3b：家户一致性同步 / ClassRow 投影即使在经济未激活时也照常提交（它们各自与 base 差分）。
+      // ★ S3b：家户一致性同步 / HouseholdEconomy 投影即使在经济未激活时也照常提交（它们各自与 base 差分）。
       return new WorldTimeProposal(
           NAMESPACE,
           Map.of(
@@ -387,7 +387,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             JurisdictionDailyTax.Report tax =
                 JurisdictionDailyTax.collect(
                     stepper.accounts(),
-                    stepper.classRows(),
+                    stepper.householdEconomies(),
                     units,
                     map,
                     day,
@@ -437,7 +437,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           // ② 逐日生理压力（读**当天**的需求与实得 —— 两者都在刚结算完的账上）。
           currentSocial =
               applyDailyStress(
-                  stepper.classRows(), currentSocial, stepper.flows(), unmetBefore, units, day);
+                  stepper.householdEconomies(), currentSocial, stepper.flows(), unmetBefore, units, day);
           // ③ 月度结算：出生/死亡 → 先改人口（真值源），再按同一份账回写经济侧。
           if (day % PopulationDynamics.SETTLEMENT_DAYS == 0L) {
             PopulationDynamics.Outcome outcome =
@@ -451,8 +451,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                   day,
                   outcome.births(),
                   outcome.deaths(),
-                  stepper.classRows().size(),
-                  stepper.classRows().values().stream().mapToLong(ClassRow::population).sum());
+                  stepper.householdEconomies().size(),
+                  stepper.householdEconomies().values().stream().mapToLong(HouseholdEconomy::population).sum());
               // ★★ P2-A A3：出生/死亡/新生批次都在 Social 侧落定（PopulationDynamics 已维护 Household.members）
               //   ⇒ 这里只刷新经济会话的只读组成投影，不再回写任何 Economy 成员份额。
               stepper.updateComposition(compositionOf(currentSocial));
@@ -468,7 +468,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             //     ② social 侧：按 planned 拆/合 PopulationGroup（换 residence，id 不变），得到新的 SocialData；
             //     ③ 经济侧：stepper.applyMigrations(planned, day)（行人口/劳动/债务；唯一写口见 LotMigrationBook，
             //        它有意不碰 Membership —— 份额由下一步的 reconcile 按行人口重建/削平）；
-            //     ④ 对账：MembershipWriteback.reconcile(stepper.classRows(), stepper.memberships(), 新
+            //     ④ 对账：MembershipWriteback.reconcile(stepper.householdEconomies(), stepper.memberships(), 新
             // SocialData)
             //        逐 lot 硬校验；⑤ 再落 actor 账户（若迁移不碰账户可省略，但顺序必须早于 finish()）。
             List<LotMigration> plannedMigrations = planMigrations(currentSocial, day);
@@ -482,8 +482,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         }
         EconomyData currentEconomy = stepper.finish();
         long finalPopulation = 0L;
-        for (ClassRow row : currentEconomy.classes().values()) {
-          finalPopulation += row.population();
+        for (HouseholdEconomy householdEconomy : currentEconomy.classes().values()) {
+          finalPopulation += householdEconomy.population();
         }
         LOG.info(
             "event=ECONOMY_ADVANCE_END mapId={} toTick={} days={} finalPopulation={}"
@@ -558,7 +558,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
    * <p>★★ **H0.2 起批次 ↔ 家户的对应不再经产业**：批次的<b>落点格</b>由所属家户给出（HEX 家户直接取，
    * {@code UNIT} 家户经 {@link HouseholdPositionResolver} 派生 unit 当刻 hex）与 <b>居住类型</b>（批次 id 的前缀 ⇒
    * {@link ResidenceKind#ofLot}，唯一拼写点），而家户行的键正是 {@code (格, 居住类型, 阶层)}（{@code CohortKey}）
-   * ⇒ 两维直接对上，**不需要中间映射表**。旧版要经"批次供给哪些产业"（{@code LaborAllocation}）再回退到"该格的产业"， 那一步在"一格既有农村又有城镇"时会把两池并起来算
+   * ⇒ 两维直接对上，**不需要中间映射表**。旧版要经"批次供给哪些产业"（{@code HouseholdLaborCommitment}）再回退到"该格的产业"， 那一步在"一格既有农村又有城镇"时会把两池并起来算
    * —— 正是 R-N1 要堵的"农村余粮喂城市缺口"。
    *
    * <p>★ **没有配额的批次照样吃饭**（0-14 档与全部新生儿）：它们的居住类型与落点格本来就在批次上 ⇒ 这条兜底现在是**结构上白拿的**（旧版要为它单独查一次"该格的产业"）。 ★
@@ -570,16 +570,16 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
    * @param day 世界日（resolver 的取位时刻）
    */
   private static SocialData applyDailyStress(
-      Map<HouseholdId, ClassRow> classes,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       SocialData social,
       Map<HouseholdId, FlowRow> flows,
       Map<HouseholdId, Map<CommodityId, Long>> unmetBefore,
       UnitState units,
       long day) {
-    if (social.groups().isEmpty() || classes.isEmpty()) {
+    if (social.groups().isEmpty() || householdEconomies.isEmpty()) {
       return social; // 没有批次/没有经济 ⇒ 没有可算的人
     }
-    Map<HouseholdRef, long[]> byHousehold = dailyProvisioning(classes, flows, unmetBefore);
+    Map<HouseholdRef, long[]> byHousehold = dailyProvisioning(householdEconomies, flows, unmetBefore);
     Map<PeopleLotId, PopulationGroup> next = new LinkedHashMap<>(social.groups());
     for (PopulationGroup group : social.groups().values()) {
       // ★ 批次 → 家户：**落点格 + 居住类型**（落点从所属家户取；UNIT 家户经 resolver 派生 unit 当刻 hex）。
@@ -613,19 +613,19 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
 
   /** 逐家户组的当日 {@code [粮需求, 粮实得, 布需求, 布实得]}（毫单位）—— 该格该居住类型的**四行求和**。 */
   private static Map<HouseholdRef, long[]> dailyProvisioning(
-      Map<HouseholdId, ClassRow> classes,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, FlowRow> flows,
       Map<HouseholdId, Map<CommodityId, Long>> unmetBefore) {
     Map<HouseholdRef, long[]> byHousehold = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : classes.entrySet()) {
-      HouseholdId key = entry.getKey();
-      ClassRow classRow = entry.getValue();
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomies.entrySet()) {
+      HouseholdId key = householdEconomyEntry.getKey();
+      HouseholdEconomy householdEconomy = householdEconomyEntry.getValue();
       long[] row =
           byHousehold.computeIfAbsent(
-              new HouseholdRef(classRow.view().hex(), classRow.view().residence()),
+              new HouseholdRef(householdEconomy.view().hex(), householdEconomy.view().residence()),
               ignored -> new long[4]);
-      long grainNeed = entry.getValue().naturalNeeds().getOrDefault(EconomySettlement.GRAIN, 0L);
-      long clothNeed = entry.getValue().naturalNeeds().getOrDefault(EconomySettlement.CLOTH, 0L);
+      long grainNeed = householdEconomyEntry.getValue().naturalNeeds().getOrDefault(EconomySettlement.GRAIN, 0L);
+      long clothNeed = householdEconomyEntry.getValue().naturalNeeds().getOrDefault(EconomySettlement.CLOTH, 0L);
       row[0] += grainNeed;
       row[2] += clothNeed;
       row[1] += grainNeed - dayUnmet(flows, unmetBefore, key, EconomySettlement.GRAIN);
@@ -965,7 +965,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                 total,
                 Math.multiplyExact(
                     view.count(),
-                    EconomySeeder.LABOR_TIME_TABLE.perPersonMilliHours(
+                    EconomySeeder.HOUSEHOLD_LABOR_TIME_TABLE.perPersonMilliHours(
                         bracketOf(view), view.sex())));
       }
       budgets.put(entry.getKey(), total);
@@ -974,27 +974,27 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
   }
 
   /**
-   * 年龄档视图 → {@link LaborTimeTable} 的三档：优先用 social 的档名（{@code 0-14}/{@code 15-59}/{@code 60+}， 与
+   * 年龄档视图 → {@link HouseholdLaborTimeTable} 的三档：优先用 social 的档名（{@code 0-14}/{@code 15-59}/{@code 60+}， 与
    * {@code AgeBracket} 的历法边界逐字同源）；档名不认识时退回"天数上界/下界"近似（只作防御，不另立一套历法）。
    */
   private static int bracketOf(AgeBracketView view) {
     switch (view.bracketId()) {
       case "0-14":
-        return LaborTimeTable.BRACKET_CHILD;
+        return HouseholdLaborTimeTable.BRACKET_CHILD;
       case "15-59":
-        return LaborTimeTable.BRACKET_ADULT;
+        return HouseholdLaborTimeTable.BRACKET_ADULT;
       case "60+":
-        return LaborTimeTable.BRACKET_ELDER;
+        return HouseholdLaborTimeTable.BRACKET_ELDER;
       default:
         long childMaxDays = 15L * 365L;
         long elderMinDays = 60L * 365L;
         if (view.maxAgeDays() < childMaxDays) {
-          return LaborTimeTable.BRACKET_CHILD;
+          return HouseholdLaborTimeTable.BRACKET_CHILD;
         }
         if (view.minAgeDays() >= elderMinDays) {
-          return LaborTimeTable.BRACKET_ELDER;
+          return HouseholdLaborTimeTable.BRACKET_ELDER;
         }
-        return LaborTimeTable.BRACKET_ADULT;
+        return HouseholdLaborTimeTable.BRACKET_ADULT;
     }
   }
 }

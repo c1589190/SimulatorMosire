@@ -22,7 +22,7 @@ import io.mosire.simos.map.hex.HexCoord;
  *
  * <ul>
  *   <li><b>目标 lot 可以不存在</b>⇒ 由调用方创建；目标 lot 已存在 ⇒ 由调用方合并（拆/合是两步，本记录只描述一步）；
- *   <li><b>劳动随行比例</b>由调用方按 {@code ClassRow} 现算（本记录不写“第二份劳动账”）；
+ *   <li><b>劳动随行比例</b>由调用方按 {@code HouseholdEconomy} 现算（本记录不写“第二份劳动账”）；
  *   <li><b>债务随行比例</b>由调用方按债务表现算（逐合同取整；唯一写口是 {@code DebtContractBook}）；
  *   <li><b>社会侧人口真值源</b>仍是 {@code PopulationGroup}（换 {@code residence}、{@code id} 不变），本记录是两侧
  *       执行同一个计划的桥。

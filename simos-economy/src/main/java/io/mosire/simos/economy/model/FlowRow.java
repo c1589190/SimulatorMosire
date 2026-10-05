@@ -10,7 +10,7 @@ import java.util.Map;
 /**
  * 周期流水（新经济设计 §3.3 逐字，表 3）：**本期发生额**——结算后清零，绝不回流成存量。
  *
- * <p>★★ **存量/流量分离**（§3.3 末条 + §6.5）：{@link ClassRow} 是存量；本类型只记本期发生额，**结算后清零**。 绝不用"生产成本"或"资产减少"
+ * <p>★★ **存量/流量分离**（§3.3 末条 + §6.5）：{@link HouseholdEconomy} 是存量；本类型只记本期发生额，**结算后清零**。 绝不用"生产成本"或"资产减少"
  * 冒充负债——{@code newBorrowing} 才是借入，{@code repaid} 才是偿债。
  *
  * <p>★ **量纲**（§7）：货币类字段按**最小币值**；{@code income}/{@code consumed} 按**最小计量单位**、**逐商品**。
@@ -43,7 +43,7 @@ import java.util.Map;
  * <p>★ 两张商品表都保序不可变（{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**），冻结写在字段赋值处。
  *
- * @param id 家户稳定身份（S1；见 {@link ClassRow} 的类注）；在 {@code EconomyData.flows} 里必须与其 Map 键一致
+ * @param id 家户稳定身份（S1；见 {@link HouseholdEconomy} 的类注）；在 {@code EconomyData.flows} 里必须与其 Map 键一致
  * @param income 本期所得（**逐商品**，按最小计量单位）；键值非空、逐值 ≥ 0
  * @param consumed ★★ <b>本期"从本行账上离开"的量</b>（**逐商品**；键值非空、逐值 ≥ 0）—— <b>只含两项</b>：
  *     <ol>

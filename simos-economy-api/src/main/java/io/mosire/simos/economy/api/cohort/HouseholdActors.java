@@ -11,7 +11,7 @@ import io.mosire.simos.map.hex.HexCoord;
  * <b>K9</b>；H1 的契约；<b>2026-09-28 S1 起身份换成 HouseholdId</b>）。
  *
  * <p>★★ <b>为什么需要它</b>：家户是持有商品与货币的经济主体，而人口数 / 劳动 / 需求 / 压力是同一批人的<b>视图</b> （{@code
- * ClassRow.view}）。同一个身份因此有两个名字空间：<b>经济状态表的键</b>（{@link HouseholdId}）与 <b>actor 的 id</b>。 两者各写一份拼法 =
+ * HouseholdEconomy.view}）。同一个身份因此有两个名字空间：<b>经济状态表的键</b>（{@link HouseholdId}）与 <b>actor 的 id</b>。 两者各写一份拼法 =
  * 同一个身份的<b>两处拼写点</b>（本仓明令禁止，它会静默漂开）；本类把它们钉在一起。
  *
  * <p>★★ <b>为什么 actor id 不能直接取旧视图串 {@code CohortKey#toString()}</b>（K9，一处会炸的接缝冲突）： {@code

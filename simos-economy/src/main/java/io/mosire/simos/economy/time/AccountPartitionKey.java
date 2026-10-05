@@ -12,7 +12,7 @@ import java.util.Objects;
  * <ul>
  *   <li><b>唯一主体 = 家户</b>：键就是 {@link HouseholdId}；actor 只是家户身份的读法（{@code HouseholdActors.of}），
  *       不再参与账户身份；
- *   <li><b>没有 {@code HexCoord}</b>：位置由 {@code ClassRow.view().hex()} / 家户登记位置派生（会话内部只为
+ *   <li><b>没有 {@code HexCoord}</b>：位置由 {@code HouseholdEconomy.view().hex()} / 家户登记位置派生（会话内部只为
  *       分区与转移 location 保留一张“家户 → 格”索引，<b>不是</b>账户身份）。
  * </ul>
  *

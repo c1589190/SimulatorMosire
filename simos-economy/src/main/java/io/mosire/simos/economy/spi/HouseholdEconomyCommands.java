@@ -8,8 +8,8 @@ import io.mosire.simos.economy.migrate.ClassPositionResolver;
 import io.mosire.simos.economy.model.ClassPosition;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.ResourcePaths;
@@ -51,17 +51,17 @@ final class HouseholdEconomyCommands {
     if (at.isEmpty()) {
       return;
     }
-    ClassRow row = base.classes().get(household);
-    if (row == null) {
+    HouseholdEconomy householdEconomy = base.classes().get(household);
+    if (householdEconomy == null) {
       throw new IllegalArgumentException(command + " 的家户不存在: " + household.value());
     }
-    if (!row.view().hex().equals(at.get())) {
+    if (!householdEconomy.view().hex().equals(at.get())) {
       throw new IllegalArgumentException(
           command
               + " 的 at 必须等于家户当刻居住格：家户="
               + household.value()
               + " 居住格="
-              + row.view().hex()
+              + householdEconomy.view().hex()
               + "，at="
               + at.get());
     }
@@ -148,14 +148,14 @@ final class HouseholdEconomyCommands {
   }
 
   /**
-   * 该家户的 {@link ClassStanding}；没有就用 {@link ClassPositionResolver#resolveCurrent}（旧档 stratum 映射）
+   * 该家户的 {@link HouseholdClassMembership}；没有就用 {@link ClassPositionResolver#resolveCurrent}（旧档 stratum 映射）
    * 播种一条"只参与当前位置"的归属。解析不出位置 ⇒ 具名拒绝（不伪造归属）。
    */
-  static ClassStanding requireStandingOrSeed(
+  static HouseholdClassMembership requireStandingOrSeed(
       String command, EconomyData base, HouseholdId household, String reason, long day) {
-    ClassStanding existing = base.classStandings().get(household);
-    if (existing != null) {
-      return existing;
+    HouseholdClassMembership existingClassMembership = base.classStandings().get(household);
+    if (existingClassMembership != null) {
+      return existingClassMembership;
     }
     ClassPositionId current =
         ClassPositionResolver
@@ -166,7 +166,7 @@ final class HouseholdEconomyCommands {
                         command
                             + " 的家户没有阶层归属、也解析不出旧 stratum 对应位置；请先用 economy.SetHouseholdClass: "
                             + household.value()));
-    return new ClassStanding(
+    return new HouseholdClassMembership(
         household,
         current,
         current,

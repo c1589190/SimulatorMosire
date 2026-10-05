@@ -18,7 +18,7 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.Budget;
 import io.mosire.simos.economy.api.market.BuyOrder;
 import io.mosire.simos.economy.api.market.LossBearer;
@@ -36,9 +36,9 @@ import io.mosire.simos.economy.api.relation.SubsistenceObligation;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
-import io.mosire.simos.economy.model.DemandEntry;
+import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
@@ -264,7 +264,7 @@ final class MarketSettlement {
   static final class MarketRound {
 
     private final long day;
-    private final Map<HouseholdId, ClassRow> rows;
+    private final Map<HouseholdId, HouseholdEconomy> householdEconomies;
     private final Map<HouseholdId, Map<CommodityId, Long>> householdGoods;
     private final Map<HouseholdId, Map<CurrencyId, Long>> householdMoney;
     private final Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods;
@@ -280,7 +280,7 @@ final class MarketSettlement {
     private final Map<AssetShareId, AssetShare> assetShares;
 
     private final Map<ProductionUnitId, ProductionRelation> relations;
-    private final Map<LaborAllocationId, LaborAllocation> allocations;
+    private final Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments;
     private final Map<ShipmentId, ShipmentBatch> shipments;
     private final ProductionLedger.Accumulator ledger;
 
@@ -294,7 +294,7 @@ final class MarketSettlement {
      * ★★ R4-E2：需求账本（只读；由 {@code EconomySettlement}/{@code MarketReadout} 从 {@code
      * EconomyData.demands()} 传入）。订单路径用它把"生活保留基线 + 有效需求目标"合成买/不卖目标。
      */
-    private final Map<DemandId, DemandEntry> demands;
+    private final Map<DemandId, HouseholdDemand> householdDemands;
 
     /**
      * ★★ <b>D-027：本轮区级市场总调控</b>（逐轮瞬态，不落盘）—— {@link MarketRegulation#anchor()} 所在的区按它施加
@@ -330,7 +330,7 @@ final class MarketSettlement {
 
     MarketRound(
         long day,
-        Map<HouseholdId, ClassRow> rows,
+        Map<HouseholdId, HouseholdEconomy> householdEconomies,
         Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
         Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
         Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
@@ -341,15 +341,15 @@ final class MarketSettlement {
         Map<ProductionUnitId, ProductionUnit> units,
         Map<AssetShareId, AssetShare> assetShares,
         Map<ProductionUnitId, ProductionRelation> relations,
-        Map<LaborAllocationId, LaborAllocation> allocations,
+        Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
         Map<ShipmentId, ShipmentBatch> shipments,
         ProductionLedger.Accumulator ledger,
         Map<ProductionUnitId, OperatorCondition> operatorConditions,
         SettlementIndex index,
-        Map<DemandId, DemandEntry> demands) {
+        Map<DemandId, HouseholdDemand> householdDemands) {
       this(
           day,
-          rows,
+          householdEconomies,
           householdGoods,
           householdMoney,
           householdFrozenGoods,
@@ -360,12 +360,12 @@ final class MarketSettlement {
           units,
           assetShares,
           relations,
-          allocations,
+          laborCommitments,
           shipments,
           ledger,
           operatorConditions,
           index,
-          demands,
+          householdDemands,
           MarketRegulation.none(),
           null,
           null);
@@ -379,7 +379,7 @@ final class MarketSettlement {
      */
     MarketRound(
         long day,
-        Map<HouseholdId, ClassRow> rows,
+        Map<HouseholdId, HouseholdEconomy> householdEconomies,
         Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
         Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
         Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
@@ -390,17 +390,17 @@ final class MarketSettlement {
         Map<ProductionUnitId, ProductionUnit> units,
         Map<AssetShareId, AssetShare> assetShares,
         Map<ProductionUnitId, ProductionRelation> relations,
-        Map<LaborAllocationId, LaborAllocation> allocations,
+        Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
         Map<ShipmentId, ShipmentBatch> shipments,
         ProductionLedger.Accumulator ledger,
         Map<ProductionUnitId, OperatorCondition> operatorConditions,
         SettlementIndex index,
-        Map<DemandId, DemandEntry> demands,
+        Map<DemandId, HouseholdDemand> householdDemands,
         MarketRegulation regulation) {
-      this(day, rows, householdGoods, householdMoney, householdFrozenGoods, householdFrozenMoney,
+      this(day, householdEconomies, householdGoods, householdMoney, householdFrozenGoods, householdFrozenMoney,
           unmetToday,
-          householdOfActor, industries, units, assetShares, relations, allocations, shipments,
-          ledger, operatorConditions, index, demands, regulation, null, null);
+          householdOfActor, industries, units, assetShares, relations, laborCommitments, shipments,
+          ledger, operatorConditions, index, householdDemands, regulation, null, null);
     }
 
     /**
@@ -410,7 +410,7 @@ final class MarketSettlement {
      */
     MarketRound(
         long day,
-        Map<HouseholdId, ClassRow> rows,
+        Map<HouseholdId, HouseholdEconomy> householdEconomies,
         Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
         Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
         Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods,
@@ -421,17 +421,17 @@ final class MarketSettlement {
         Map<ProductionUnitId, ProductionUnit> units,
         Map<AssetShareId, AssetShare> assetShares,
         Map<ProductionUnitId, ProductionRelation> relations,
-        Map<LaborAllocationId, LaborAllocation> allocations,
+        Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
         Map<ShipmentId, ShipmentBatch> shipments,
         ProductionLedger.Accumulator ledger,
         Map<ProductionUnitId, OperatorCondition> operatorConditions,
         SettlementIndex index,
-        Map<DemandId, DemandEntry> demands,
+        Map<DemandId, HouseholdDemand> householdDemands,
         MarketRegulation regulation,
         CreditConfig creditConfig,
         Map<DebtContractId, DebtContract> debts) {
       this.day = day;
-      this.rows = Objects.requireNonNull(rows, "rows");
+      this.householdEconomies = Objects.requireNonNull(householdEconomies, "rows");
       this.householdGoods = Objects.requireNonNull(householdGoods, "householdGoods");
       this.householdMoney = Objects.requireNonNull(householdMoney, "householdMoney");
       this.householdFrozenGoods =
@@ -444,13 +444,13 @@ final class MarketSettlement {
       this.units = Objects.requireNonNull(units, "units");
       this.assetShares = Objects.requireNonNull(assetShares, "assetShares");
       this.relations = Objects.requireNonNull(relations, "relations");
-      this.allocations = Objects.requireNonNull(allocations, "allocations");
+      this.laborCommitments = Objects.requireNonNull(laborCommitments, "allocations");
       this.shipments = Objects.requireNonNull(shipments, "shipments");
       this.ledger = Objects.requireNonNull(ledger, "ledger");
       this.operatorConditions =
           operatorConditions == null ? Map.of() : Map.copyOf(operatorConditions);
       this.index = Objects.requireNonNull(index, "index");
-      this.demands = demands == null ? Map.of() : demands;
+      this.householdDemands = householdDemands == null ? Map.of() : householdDemands;
       this.regulation = regulation == null ? MarketRegulation.none() : regulation;
       this.creditConfig = creditConfig;
       this.debts = debts;
@@ -479,7 +479,7 @@ final class MarketSettlement {
       Objects.requireNonNull(debts, "debts");
       return new MarketRound(
           day,
-          rows,
+          householdEconomies,
           householdGoods,
           householdMoney,
           householdFrozenGoods,
@@ -490,20 +490,20 @@ final class MarketSettlement {
           units,
           assetShares,
           relations,
-          allocations,
+          laborCommitments,
           shipments,
           ledger,
           operatorConditions,
           index,
-          demands,
+          householdDemands,
           regulation,
           new CreditConfig(dueCycle),
           debts);
     }
 
     /** ★ R4-E2：需求账本（只读；空表 = 没有 GM 需求，订单退回旧基线）。 */
-    Map<DemandId, DemandEntry> demands() {
-      return demands;
+    Map<DemandId, HouseholdDemand> householdDemands() {
+      return householdDemands;
     }
 
     /** ★★ D-027：本轮区级市场总调控（逐轮瞬态；不落盘）。默认实例 = 逐值现状。 */
@@ -615,15 +615,15 @@ final class MarketSettlement {
    * 的首都就是"整格都没有可卖余量"的形态）。★ 每个 5 天窗口最多追加一次 （绝对日相位），因此逐行判的代价有上界。
    */
   private static boolean lowGrainStock(MarketRound round, Map<HexCoord, Market> markets) {
-    Map<String, List<HouseholdId>> rowsByHex = EconomySettlement.rowsByHex(round.rows);
+    Map<String, List<HouseholdId>> rowsByHex = EconomySettlement.rowsByHex(round.householdEconomies);
     for (HexCoord hex : markets.keySet()) {
       for (HouseholdId key :
           rowsByHex.getOrDefault(IndustryHexKeys.hexKey(hex.q(), hex.r()), List.of())) {
-        ClassRow row = round.rows.get(key);
-        if (row == null) {
+        HouseholdEconomy householdEconomy = round.householdEconomies.get(key);
+        if (householdEconomy == null) {
           continue;
         }
-        long need = row.naturalNeeds().getOrDefault(EconomySettlement.GRAIN, 0L);
+        long need = householdEconomy.naturalNeeds().getOrDefault(EconomySettlement.GRAIN, 0L);
         if (need <= 0L) {
           continue;
         }
@@ -653,7 +653,7 @@ final class MarketSettlement {
   static PlannedOrders planOrders(
       MarketRound round, HexCoord hex, Market market, CommodityId commodity) {
     Objects.requireNonNull(round, "round");
-    return planOrders(round, hex, market, commodity, EconomySettlement.rowsByHex(round.rows));
+    return planOrders(round, hex, market, commodity, EconomySettlement.rowsByHex(round.householdEconomies));
   }
 
   /**
@@ -777,7 +777,7 @@ final class MarketSettlement {
           markets.size(),
           topology.regions().size(),
           merchantFirms.size(),
-          round.rows.size(),
+          round.householdEconomies.size(),
           round.creditEnabled());
     }
     boolean merchantWorld = !merchantFirms.isEmpty();
@@ -799,7 +799,7 @@ final class MarketSettlement {
     //   ★★ C4：rowsByHex 只在这里建一次（旧 R2 让每个分区 worker 各自重建一次），只读传给 worker。
     //   ★★ 并行安全：worker 读的必须是**普通只读表**，不能是 AccountSession 的活视图（owner 守卫在 worker 线程
     //     第一次 get 就抛）⇒ 协调器先把八张账户表浅拷成 planningRound，worker 只读它。
-    Map<String, List<HouseholdId>> rowsByHex = EconomySettlement.rowsByHex(round.rows);
+    Map<String, List<HouseholdId>> rowsByHex = EconomySettlement.rowsByHex(round.householdEconomies);
     MarketRound planningRound = readOnlyPlanningRound(round);
     TreeMap<String, List<HexCoord>> hexesByRegion = new TreeMap<>();
     for (HexCoord hex : markets.keySet()) {
@@ -1884,12 +1884,12 @@ final class MarketSettlement {
    * 需要，见交付报告）。人口/行读不到 ⇒ {@link Long#MAX_VALUE}（fail-closed：不把"读不到"当"不用留"）。
    */
   private static long moneyReserveOf(MatchContext ctx, Participant participant, Market market) {
-    ClassRow row = ctx.round.rows.get(participant.household);
-    if (row == null || market == null) {
+    HouseholdEconomy householdEconomy = ctx.round.householdEconomies.get(participant.household);
+    if (householdEconomy == null || market == null) {
       return Long.MAX_VALUE;
     }
     long reserve = 0L;
-    for (Map.Entry<CommodityId, Long> need : row.naturalNeeds().entrySet()) {
+    for (Map.Entry<CommodityId, Long> need : householdEconomy.naturalNeeds().entrySet()) {
       if (need.getValue() <= 0L) {
         continue;
       }
@@ -1912,7 +1912,7 @@ final class MarketSettlement {
         safeAdd(
             reserve,
             safeMulDiv(
-                row.population(), LENDER_MONEY_BUFFER_PER_CAPITA_MILLI, 1L));
+                householdEconomy.population(), LENDER_MONEY_BUFFER_PER_CAPITA_MILLI, 1L));
     return reserve;
   }
 
@@ -1949,11 +1949,11 @@ final class MarketSettlement {
 
   /** 把新合同的派生引用补进债务人行（幂等；权威重建仍在 {@code DebtReferenceReconciler}）。 */
   private static void addDebtReference(MarketRound round, HouseholdId debtor, DebtContractId id) {
-    ClassRow row = round.rows.get(debtor);
-    if (row == null) {
+    HouseholdEconomy householdEconomy = round.householdEconomies.get(debtor);
+    if (householdEconomy == null) {
       throw new IllegalStateException("信用成交的债务人行不在市场轮里（状态漂开）: " + debtor);
     }
-    round.rows.put(debtor, DebtContractBook.withDebtReference(row, id));
+    round.householdEconomies.put(debtor, DebtContractBook.withDebtReference(householdEconomy, id));
   }
 
   /**
@@ -2528,7 +2528,7 @@ final class MarketSettlement {
     MarketRound localRound =
         new MarketRound(
             ctx.round.day,
-            ctx.round.rows,
+            ctx.round.householdEconomies,
             householdGoods,
             householdMoney,
             householdFrozenGoods,
@@ -2539,13 +2539,13 @@ final class MarketSettlement {
             ctx.round.units,
             ctx.round.assetShares,
             ctx.round.relations,
-            ctx.round.allocations,
+            ctx.round.laborCommitments,
             ctx.round.shipments,
             // ★ 本地账本：worker 铸造的转移只服务于本地 applyTransfer，交回后丢弃；协调器回放时在全局累加器上重铸。
             new ProductionLedger.Accumulator(ctx.round.day),
             ctx.round.operatorConditions,
             ctx.round.index,
-            ctx.round.demands);
+            ctx.round.householdDemands);
     MatchContext local =
         new MatchContext(
             localRound,
@@ -2763,7 +2763,7 @@ final class MarketSettlement {
   private static MarketRound readOnlyPlanningRound(MarketRound round) {
     return new MarketRound(
         round.day,
-        round.rows,
+        round.householdEconomies,
         new LinkedHashMap<>(round.householdGoods),
         new LinkedHashMap<>(round.householdMoney),
         new LinkedHashMap<>(round.householdFrozenGoods),
@@ -2774,12 +2774,12 @@ final class MarketSettlement {
         round.units,
         round.assetShares,
         round.relations,
-        round.allocations,
+        round.laborCommitments,
         round.shipments,
         new ProductionLedger.Accumulator(round.day),
         round.operatorConditions,
         round.index,
-        round.demands,
+        round.householdDemands,
         // ★ 与旧短构造器逐值同源：worker 的订单生成由调用方显式传 regionRegulation，不读这里的默认值。
         MarketRegulation.none(),
         round.creditConfig,
@@ -4255,8 +4255,8 @@ final class MarketSettlement {
       return true;
     }
     if (sell.seller.household() != null) {
-      ClassRow row = ctx.round.rows.get(sell.seller.household());
-      return row != null && householdLifeReserveOf(row).getOrDefault(commodity, 0L) > 0L;
+      HouseholdEconomy householdEconomy = ctx.round.householdEconomies.get(sell.seller.household());
+      return householdEconomy != null && householdLifeReserveOf(householdEconomy).getOrDefault(commodity, 0L) > 0L;
     }
     return false;
   }
@@ -4375,7 +4375,7 @@ final class MarketSettlement {
     // ★★ R4-E2：读口 desired 必须与订单生成同源 —— 有效需求目标也进"目标量"（否则报告会说"缺口 0"
     //   而买单非 0）。量与 planFor 走同一段 DemandTargets 逻辑，不另算一份。
     Map<String, Map<HouseholdId, Map<CommodityId, Long>>> demandTargetsByHex =
-        DemandTargets.totalsByHex(ctx.round.demands(), ctx.round.rows, ctx.round.day);
+        DemandTargets.totalsByHex(ctx.round.householdDemands(), ctx.round.householdEconomies, ctx.round.day);
     for (Participant participant : ctx.participants.values()) {
       HexCoord hex = ctx.participantHex.get(participant.actor);
       if (hex == null) {
@@ -4433,9 +4433,9 @@ final class MarketSettlement {
         }
         OptionalLong coverDays = OptionalLong.empty();
         if (participant.household() != null) {
-          ClassRow row = ctx.round.rows.get(participant.household());
-          if (row != null) {
-            long daily = row.naturalNeeds().getOrDefault(commodity, 0L);
+          HouseholdEconomy householdEconomy = ctx.round.householdEconomies.get(participant.household());
+          if (householdEconomy != null) {
+            long daily = householdEconomy.naturalNeeds().getOrDefault(commodity, 0L);
             if (daily > 0L) {
               coverDays = OptionalLong.of(onHand / daily);
             }
@@ -4484,8 +4484,8 @@ final class MarketSettlement {
   /** 家户在某商品上的生活保留（家户没有该商品的需要 ⇒ 0；不是"读不到"）。 */
   private static long lifeReserveOfParticipant(
       MatchContext ctx, Participant participant, CommodityId commodity) {
-    ClassRow row = ctx.round.rows.get(participant.household());
-    return row == null ? 0L : householdLifeReserveOf(row).getOrDefault(commodity, 0L);
+    HouseholdEconomy householdEconomy = ctx.round.householdEconomies.get(participant.household());
+    return householdEconomy == null ? 0L : householdLifeReserveOf(householdEconomy).getOrDefault(commodity, 0L);
   }
 
   /**
@@ -4584,7 +4584,7 @@ final class MarketSettlement {
       byActor.put(
           actor,
           new Participant(
-              actor, key, round.rows.get(key).view(), units == null ? List.of() : units));
+              actor, key, round.householdEconomies.get(key).view(), units == null ? List.of() : units));
     }
     for (List<ProductionUnitId> units : unitsByOperator.values()) {
       units.sort(Comparator.comparing(ProductionUnitId::value));
@@ -4631,8 +4631,8 @@ final class MarketSettlement {
           continue;
         }
         HouseholdId household = single.get();
-        ClassRow row = round.rows.get(household);
-        if (row == null) {
+        HouseholdEconomy householdEconomy = round.householdEconomies.get(household);
+        if (householdEconomy == null) {
           throw new IllegalStateException(
               "市场参与者的组织者家户没有 ClassRow（解析结果必须是现存家户）：household="
                   + household
@@ -4644,14 +4644,14 @@ final class MarketSettlement {
           byActor.put(
               HouseholdActors.of(household),
               new Participant(
-                  HouseholdActors.of(household), household, row.view(), List.of(unitId)));
+                  HouseholdActors.of(household), household, householdEconomy.view(), List.of(unitId)));
         } else {
           List<ProductionUnitId> merged = new ArrayList<>(existing.units());
           merged.add(unitId);
           merged.sort(Comparator.comparing(ProductionUnitId::value));
           byActor.put(
               existing.actor(),
-              new Participant(existing.actor(), household, row.view(), merged));
+              new Participant(existing.actor(), household, householdEconomy.view(), merged));
         }
       }
     }
@@ -4665,13 +4665,13 @@ final class MarketSettlement {
     Map<ActorRef, Map<CommodityId, Long>> life = new LinkedHashMap<>();
     // ★★ R4-E2：需求账本 → 本格逐户目标量（每 hex 扫一次 demand 表；demands 空时是空表、零行为差异）。
     Map<HouseholdId, Map<CommodityId, List<Long>>> demandParts =
-        DemandTargets.partsForHex(round.demands(), round.rows, hex, keys, round.day);
+        DemandTargets.partsForHex(round.householdDemands(), round.householdEconomies, hex, keys, round.day);
     Map<ActorRef, Map<CommodityId, List<Long>>> demandPartsByActor = new LinkedHashMap<>();
     for (Participant participant : participants) {
       necessary.put(participant.actor, necessaryInputsOf(round, participant));
       if (participant.household != null) {
-        ClassRow row = round.rows.get(participant.household);
-        life.put(participant.actor, row == null ? Map.of() : householdLifeReserveOf(row));
+        HouseholdEconomy householdEconomy = round.householdEconomies.get(participant.household);
+        life.put(participant.actor, householdEconomy == null ? Map.of() : householdLifeReserveOf(householdEconomy));
         demandPartsByActor.put(
             participant.actor, demandParts.getOrDefault(participant.household, Map.of()));
       } else {
@@ -4770,13 +4770,13 @@ final class MarketSettlement {
     return necessary;
   }
 
-  private static Map<CommodityId, Long> householdLifeReserveOf(ClassRow row) {
+  private static Map<CommodityId, Long> householdLifeReserveOf(HouseholdEconomy householdEconomy) {
     Map<CommodityId, Long> life = new LinkedHashMap<>();
-    long grain = selfNeedOf(row.population(), EconomySettlement.GRAIN, MARKET_LIFE_RESERVE_DAYS);
+    long grain = selfNeedOf(householdEconomy.population(), EconomySettlement.GRAIN, MARKET_LIFE_RESERVE_DAYS);
     if (grain > 0L) {
       life.put(EconomySettlement.GRAIN, grain);
     }
-    long cloth = selfNeedOf(row.population(), EconomySettlement.CLOTH, MARKET_LIFE_RESERVE_DAYS);
+    long cloth = selfNeedOf(householdEconomy.population(), EconomySettlement.CLOTH, MARKET_LIFE_RESERVE_DAYS);
     if (cloth > 0L) {
       life.put(EconomySettlement.CLOTH, cloth);
     }
@@ -4803,9 +4803,9 @@ final class MarketSettlement {
       long population = 0L;
       // ★ R4-B.3a-perf：家户行由入口索引给（旧实现每个 unit 现扫全量配额）。
       for (HouseholdId key : round.index.householdsOf(id)) {
-        ClassRow row = round.rows.get(key);
-        if (row != null) {
-          population += row.population();
+        HouseholdEconomy householdEconomy = round.householdEconomies.get(key);
+        if (householdEconomy != null) {
+          population += householdEconomy.population();
         }
       }
       Map<CommodityId, Long> requested = new LinkedHashMap<>();
@@ -4820,7 +4820,7 @@ final class MarketSettlement {
       Map<CommodityId, Long> one =
           SubsistenceObligation.retentionOf(
               relation,
-              EconomySettlement.laborOfCohort(round.rows, hex, industry.cycleDays()),
+              EconomySettlement.laborOfCohort(round.householdEconomies, hex, industry.cycleDays()),
               requested);
       for (Map.Entry<CommodityId, Long> entry : one.entrySet()) {
         retained.merge(entry.getKey(), entry.getValue(), Long::sum);

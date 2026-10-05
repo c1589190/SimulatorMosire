@@ -8,7 +8,7 @@ import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.time.MarketReadout;
 import io.mosire.simos.economy.time.MarketReadoutAccounts;
 import io.mosire.simos.economy.time.MarketReport;
@@ -88,8 +88,8 @@ public final class MarketReadoutAssembly {
     Map<HouseholdId, Map<CurrencyId, Long>> householdMoney = new LinkedHashMap<>();
     Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods = new LinkedHashMap<>();
     Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
-      HouseholdId key = entry.getKey();
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : economy.classes().entrySet()) {
+      HouseholdId key = householdEconomyEntry.getKey();
       HouseholdInventory inventory =
           actor.accounts().get(OwnershipBooks.accountKeyOf(key));
       if (inventory == null) {

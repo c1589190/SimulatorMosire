@@ -29,7 +29,7 @@ import java.util.Optional;
  * 故它<b>不进</b> {@link Actor}，而是独立成表（{@code accounts}），键<b>从值派生</b>。若哪天有人把库存 同时写进 {@code Actor}
  * 本体，spec §三 L283 的禁令就被绕过 —— 那条禁令由 {@code ActorRoundTripTest} 的反射断言把守。
  *
- * <p>★★ <b>跨表同键不变式</b>（照 {@code EconomyData} 的"classes 的每个键必须等于其 {@code ClassRow.key()}"） ：{@code
+ * <p>★★ <b>跨表同键不变式</b>（照 {@code EconomyData} 的"classes 的每个键必须等于其 {@code HouseholdEconomy.key()}"） ：{@code
  * actors} 的每个键必须等于其 {@link Actor#ref()}；{@code accounts} 的每个键必须等于其 {@link
  * HouseholdInventory#key()}。否则同一份身份 / 同一本账就有两处可能不一致的记录。
  *

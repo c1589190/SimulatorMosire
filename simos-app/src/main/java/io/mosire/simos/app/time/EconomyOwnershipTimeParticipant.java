@@ -34,7 +34,7 @@ import org.slf4j.Logger;
 
 /**
  * ★★ <b>经济 × 产权的协调器</b>（S1 阶段 4+5 Task 5）：<b>唯一同时看得见 {@code economy} 与 {@code actor} 的推进参与者</b> ——
- * 于是"产出离开 {@code ClassRow} 之后落到谁的账上"第一次真的发生。
+ * 于是"产出离开 {@code HouseholdEconomy} 之后落到谁的账上"第一次真的发生。
  *
  * <p>★★ <b>它存在的理由（裁定 E7 / 计划 R4）</b>：产出自本阶段起<b>不再写进阶层行</b> —— 它变成产权条目 （{@code +净产 → operator}
  * 与关系规则的转出/收入）。产权条目由 <b>economy</b> 算（{@link ProductionLedger}）， 而账本住在 <b>{@code actor}</b>

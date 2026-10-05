@@ -3,8 +3,8 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.DemandEntry;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
@@ -19,9 +19,9 @@ import java.util.Map;
  * <p>★★ <b>两条口径</b>：
  *
  * <ul>
- *   <li>{@link DemandEntry.DemandScope#HOUSEHOLD}：直接归该家户；{@code PER_CAPITA} = 每人量 × 该户人口，{@code
+ *   <li>{@link HouseholdDemand.DemandScope#HOUSEHOLD}：直接归该家户；{@code PER_CAPITA} = 每人量 × 该户人口，{@code
  *       TOTAL} = 总量；
- *   <li>{@link DemandEntry.DemandScope#HEX}：按本格家户人口摊到户（{@link ProportionalSplit} 最大余数法；并列按 {@link
+ *   <li>{@link HouseholdDemand.DemandScope#HEX}：按本格家户人口摊到户（{@link ProportionalSplit} 最大余数法；并列按 {@link
  *       HouseholdId#value()} 升序 —— 排序后的下标序就是并列序）。{@code PER_CAPITA} 先乘本格总人口再摊，{@code TOTAL} 直接摊。
  * </ul>
  *
@@ -46,47 +46,47 @@ final class DemandTargets {
    * @param day 当前日（判 created/expires）
    */
   static Map<HouseholdId, Map<CommodityId, List<Long>>> partsForHex(
-      Map<DemandId, DemandEntry> demands,
-      Map<HouseholdId, ClassRow> rows,
+      Map<DemandId, HouseholdDemand> householdDemands,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       HexCoord hex,
       List<HouseholdId> keys,
       long day) {
-    if (demands.isEmpty() || keys.isEmpty()) {
+    if (householdDemands.isEmpty() || keys.isEmpty()) {
       return Map.of();
     }
     Map<HouseholdId, Long> populations = new LinkedHashMap<>();
     for (HouseholdId key : keys) {
-      ClassRow row = rows.get(key);
-      if (row != null) {
-        populations.put(key, row.population());
+      HouseholdEconomy householdEconomy = householdEconomies.get(key);
+      if (householdEconomy != null) {
+        populations.put(key, householdEconomy.population());
       }
     }
     if (populations.isEmpty()) {
       return Map.of();
     }
-    List<DemandEntry> effective = new ArrayList<>();
-    for (DemandEntry demand : demands.values()) {
+    List<HouseholdDemand> effectiveHouseholdDemands = new ArrayList<>();
+    for (HouseholdDemand demand : householdDemands.values()) {
       if (!demand.effectiveOn(day)) {
         continue;
       }
-      if (demand.scope() == DemandEntry.DemandScope.HOUSEHOLD) {
+      if (demand.scope() == HouseholdDemand.DemandScope.HOUSEHOLD) {
         if (populations.containsKey(demand.household().orElseThrow())) {
-          effective.add(demand);
+          effectiveHouseholdDemands.add(demand);
         }
       } else if (hex.equals(demand.hex().orElseThrow())) {
-        effective.add(demand);
+        effectiveHouseholdDemands.add(demand);
       }
     }
-    if (effective.isEmpty()) {
+    if (effectiveHouseholdDemands.isEmpty()) {
       return Map.of();
     }
     // ★ 预算优先级序（同 priority 按 DemandId 值升序）；list 的追加序即调用方的扣预算序。
-    effective.sort(
-        Comparator.comparingInt(DemandEntry::priority)
+    effectiveHouseholdDemands.sort(
+        Comparator.comparingInt(HouseholdDemand::priority)
             .thenComparing(demand -> demand.id().value()));
     Map<HouseholdId, Map<CommodityId, List<Long>>> parts = new LinkedHashMap<>();
-    for (DemandEntry demand : effective) {
-      if (demand.scope() == DemandEntry.DemandScope.HOUSEHOLD) {
+    for (HouseholdDemand demand : effectiveHouseholdDemands) {
+      if (demand.scope() == HouseholdDemand.DemandScope.HOUSEHOLD) {
         HouseholdId household = demand.household().orElseThrow();
         long amount = amountFor(demand, populations.getOrDefault(household, 0L));
         if (amount > 0L) {
@@ -127,20 +127,20 @@ final class DemandTargets {
 
   /** 全格的需求总量快照（读口归因用）：{@code hexKey → 家户 → 商品 → 目标总量}。与 {@link #partsForHex} 走同一段逻辑。 */
   static Map<String, Map<HouseholdId, Map<CommodityId, Long>>> totalsByHex(
-      Map<DemandId, DemandEntry> demands, Map<HouseholdId, ClassRow> rows, long day) {
-    if (demands.isEmpty() || rows.isEmpty()) {
+      Map<DemandId, HouseholdDemand> householdDemands, Map<HouseholdId, HouseholdEconomy> householdEconomies, long day) {
+    if (householdDemands.isEmpty() || householdEconomies.isEmpty()) {
       return Map.of();
     }
     Map<HexCoord, List<HouseholdId>> keysByHex = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : rows.entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomies.entrySet()) {
       keysByHex
-          .computeIfAbsent(entry.getValue().view().hex(), ignored -> new ArrayList<>())
-          .add(entry.getKey());
+          .computeIfAbsent(householdEconomyEntry.getValue().view().hex(), ignored -> new ArrayList<>())
+          .add(householdEconomyEntry.getKey());
     }
     Map<String, Map<HouseholdId, Map<CommodityId, Long>>> totals = new LinkedHashMap<>();
     for (Map.Entry<HexCoord, List<HouseholdId>> entry : keysByHex.entrySet()) {
       Map<HouseholdId, Map<CommodityId, List<Long>>> parts =
-          partsForHex(demands, rows, entry.getKey(), entry.getValue(), day);
+          partsForHex(householdDemands, householdEconomies, entry.getKey(), entry.getValue(), day);
       if (parts.isEmpty()) {
         continue;
       }
@@ -171,8 +171,8 @@ final class DemandTargets {
   }
 
   /** 单条需求对某人口的量：{@code PER_CAPITA} × 人口（安全乘），{@code TOTAL} = 原量。 */
-  private static long amountFor(DemandEntry demand, long population) {
-    if (demand.unit() == DemandEntry.DemandUnit.PER_CAPITA) {
+  private static long amountFor(HouseholdDemand demand, long population) {
+    if (demand.unit() == HouseholdDemand.DemandUnit.PER_CAPITA) {
       return Math.multiplyExact(demand.quantityPerCycle(), population);
     }
     return demand.quantityPerCycle();

@@ -9,7 +9,7 @@ import java.util.Arrays;
  * 那样会把共用契约层绑到各领域模块的内部类型上（本模块不依赖任何领域模块，理由见 {@link ActorRef} 的类注）。
  *
  * <p>★★ **R2 追加的后三档**（第三阶段设计稿 §二 的三层拆分：{@code PopulationGroup} 回答"是谁"、{@code EconomicActor}
- * 回答"谁持有"、{@code LaborAllocation} 回答"人与主体是什么关系"）：原四档里**没有**家户/庄园/作坊，而"这批人的劳动给了谁" 必须能指名一个**生产主体** ——
+ * 回答"谁持有"、{@code HouseholdLaborCommitment} 回答"人与主体是什么关系"）：原四档里**没有**家户/庄园/作坊，而"这批人的劳动给了谁" 必须能指名一个**生产主体** ——
  * 拿 {@code ORGANIZATION} 顶替等于把"制度"这一维抹掉（庄园 ≠ 作坊 ≠ 家户，三者的劳动义务与产出归属都不同）。
  *
  * <p>★ **本轮的用法**（R2 = 劳动底座，尚无 {@code EconomicActor} 的完整类型）：

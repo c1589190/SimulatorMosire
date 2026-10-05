@@ -49,7 +49,7 @@ import org.slf4j.Logger;
  * HouseholdId}。
  *
  * <p>★★ <b>债务仍走唯一写口</b>：{@link DebtContractBook#upsert} 负责建条/累加本金、身份（ {@code (debtor, creditor,
- * unit, terms)} 的确定性 id）与到期周期；{@code ClassRow.debts} 引用由 {@code EconomyData} 构造期的 {@code
+ * unit, terms)} 的确定性 id）与到期周期；{@code HouseholdEconomy.debts} 引用由 {@code EconomyData} 构造期的 {@code
  * DebtReferenceReconciler} 从合同表重建，本命令不手写第二份引用。
  *
  * <p>★★ <b>资金走家户账户，但不在本命令里</b>（架构硬约束，具名）：一条 {@code CommandHandler} 只能产出一个命名空间的 变更集，而"钱从放贷方家户 →

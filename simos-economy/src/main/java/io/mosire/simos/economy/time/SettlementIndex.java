@@ -11,11 +11,11 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
@@ -36,7 +36,7 @@ import java.util.Set;
  * ★★ <b>一次日结算（或一批人口回写）内只读的派生索引</b>（R4-B.3a-perf）。
  *
  * <p>★★ <b>为什么要有它</b>：结算里有几组问题每天、每个市场轮、每个 unit 都要回答很多次，而它们的答案在一天内不变 —— "这个 unit
- * 的可用资产/产能规模"（AssetShare 聚合）、"这个 unit 的家户行"（LaborAllocation 反查）、"这一格有哪些 unit"、 "这家户供给哪些
+ * 的可用资产/产能规模"（AssetShare 聚合）、"这个 unit 的家户行"（HouseholdLaborCommitment 反查）、"这一格有哪些 unit"、 "这家户供给哪些
  * unit"、"每个债务人的债务"、"这一格有哪些产业"。旧实现每次现扫全表：真档新世界 8,940 unit × 44,564 配额、8,940 unit × 8,940 份额，把 0→120
  * 推到 752 秒。索引把这些答案在入口算一次，结算全程只查表。
  *
@@ -47,7 +47,7 @@ import java.util.Set;
  * 只读同一份快照。索引在协调器线程构建；worker 不持有可写结构。
  *
  * <p>★★ <b>与状态变更的关系</b>：{@code AssetShare}/{@code Industry}/{@code ProductionUnit}
- * 的身份与份额在一天内不被本切片修改，故 资产/产能/格索引一次构建即可；{@code LaborAllocation} 会在劳动再分配与饿死缩放中被改写，故 {@link #withLabor}
+ * 的身份与份额在一天内不被本切片修改，故 资产/产能/格索引一次构建即可；{@code HouseholdLaborCommitment} 会在劳动再分配与饿死缩放中被改写，故 {@link #withLabor}
  * 在改写的 阶段边界重建“配额侧”的视图；{@code DebtContract} 会在借粮/偿还/计息中被改写，故 {@link #withDebtContracts}
  * 在债务阶段边界重建债务视图。 这两次重建都仍是“每阶段一次”，不是逐查询一次 —— 语义由 {@link #build} 中逐字保留的旧遍历序保证。
  */
@@ -65,7 +65,7 @@ final class SettlementIndex {
   private final Map<ProductionUnitId, HouseholdId> economicHouseholdByUnit;
 
   // ── 劳动 / 家户 ─────────────────────────────────────────────────────────────────────
-  private final Map<ProductionUnitId, List<LaborAllocation>> allocationsByUnit;
+  private final Map<ProductionUnitId, List<HouseholdLaborCommitment>> laborCommitmentsByUnit;
   private final Map<ProductionUnitId, List<LaborAllocationId>> allocationIdsByUnit;
   private final Map<PeopleLotId, List<LaborAllocationId>> allocationIdsByGroup;
   private final Map<ProductionUnitId, List<HouseholdId>> householdsByUnit;
@@ -89,7 +89,7 @@ final class SettlementIndex {
       Map<ProductionUnitId, Long> capacityScaleByUnit,
       Map<ProductionUnitId, List<AssetShareId>> assetShareIdsByUnit,
       Map<ProductionUnitId, HouseholdId> economicHouseholdByUnit,
-      Map<ProductionUnitId, List<LaborAllocation>> allocationsByUnit,
+      Map<ProductionUnitId, List<HouseholdLaborCommitment>> laborCommitmentsByUnit,
       Map<ProductionUnitId, List<LaborAllocationId>> allocationIdsByUnit,
       Map<PeopleLotId, List<LaborAllocationId>> allocationIdsByGroup,
       Map<ProductionUnitId, List<HouseholdId>> householdsByUnit,
@@ -107,7 +107,7 @@ final class SettlementIndex {
     this.capacityScaleByUnit = capacityScaleByUnit;
     this.assetShareIdsByUnit = assetShareIdsByUnit;
     this.economicHouseholdByUnit = economicHouseholdByUnit;
-    this.allocationsByUnit = allocationsByUnit;
+    this.laborCommitmentsByUnit = laborCommitmentsByUnit;
     this.allocationIdsByUnit = allocationIdsByUnit;
     this.allocationIdsByGroup = allocationIdsByGroup;
     this.householdsByUnit = householdsByUnit;
@@ -133,11 +133,11 @@ final class SettlementIndex {
       Map<ProductionUnitId, ProductionUnit> units,
       Map<IndustryId, Industry> industries,
       Map<AssetShareId, AssetShare> assetShares,
-      Map<LaborAllocationId, LaborAllocation> allocations,
-      Map<HouseholdId, ClassRow> rows,
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<DebtContractId, DebtContract> debts,
       Map<ProductionUnitId, ProductionRelation> relations) {
-    return build(units, industries, assetShares, allocations, rows, debts, relations, Map.of());
+    return build(units, industries, assetShares, laborCommitments, householdEconomies, debts, relations, Map.of());
   }
 
   /**
@@ -148,35 +148,35 @@ final class SettlementIndex {
       Map<ProductionUnitId, ProductionUnit> units,
       Map<IndustryId, Industry> industries,
       Map<AssetShareId, AssetShare> assetShares,
-      Map<LaborAllocationId, LaborAllocation> allocations,
-      Map<HouseholdId, ClassRow> rows,
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<DebtContractId, DebtContract> debts,
       Map<ProductionUnitId, ProductionRelation> relations,
       Map<ProductionOrganizationId, ProductionOrganization> organizations) {
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(industries, "industries");
     Objects.requireNonNull(assetShares, "assetShares");
-    Objects.requireNonNull(allocations, "allocations");
-    Objects.requireNonNull(rows, "rows");
+    Objects.requireNonNull(laborCommitments, "allocations");
+    Objects.requireNonNull(householdEconomies, "rows");
     Objects.requireNonNull(relations, "relations");
     Objects.requireNonNull(organizations, "organizations");
 
     Map<ProductionUnitId, Map<AssetKind, Long>> usable = usableAssets(units, assetShares);
     Map<ProductionUnitId, Long> capacity = capacityScale(units, industries, usable);
     Map<ProductionUnitId, List<AssetShareId>> shareIds = assetShareIdsByUnit(units, assetShares);
-    Map<ActorRef, HouseholdId> householdOfActor = householdByActor(rows);
+    Map<ActorRef, HouseholdId> householdOfActor = householdByActor(householdEconomies);
     return new SettlementIndex(
         usable,
         capacity,
         shareIds,
         economicHouseholds(units, relations, assetShares, shareIds, householdOfActor),
-        allocationsByUnit(allocations),
-        allocationIdsByUnit(allocations),
-        allocationIdsByGroup(allocations),
-        householdsByUnit(allocations, rows),
-        unitsByHousehold(units, allocations, rows),
-        unitsByGroup(units, allocations),
-        laborByUnit(allocations),
+        laborCommitmentsByUnit(laborCommitments),
+        allocationIdsByUnit(laborCommitments),
+        allocationIdsByGroup(laborCommitments),
+        householdsByUnit(laborCommitments, householdEconomies),
+        unitsByHousehold(units, laborCommitments, householdEconomies),
+        unitsByGroup(units, laborCommitments),
+        laborByUnit(laborCommitments),
         householdOfActor,
         unitsByHex(units),
         hexByUnit(units),
@@ -189,23 +189,23 @@ final class SettlementIndex {
   /** ★ 劳动配额被改写之后的阶段边界视图：共享资产/格/产业/债务，只重建配额侧派生量。 */
   SettlementIndex withLabor(
       Map<ProductionUnitId, ProductionUnit> units,
-      Map<HouseholdId, ClassRow> rows,
-      Map<LaborAllocationId, LaborAllocation> allocations) {
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
     Objects.requireNonNull(units, "units");
-    Objects.requireNonNull(rows, "rows");
-    Objects.requireNonNull(allocations, "allocations");
+    Objects.requireNonNull(householdEconomies, "rows");
+    Objects.requireNonNull(laborCommitments, "allocations");
     return new SettlementIndex(
         usableAssetsByUnit,
         capacityScaleByUnit,
         assetShareIdsByUnit,
         economicHouseholdByUnit,
-        allocationsByUnit(allocations),
-        allocationIdsByUnit(allocations),
-        allocationIdsByGroup(allocations),
-        householdsByUnit(allocations, rows),
-        unitsByHousehold(units, allocations, rows),
-        unitsByGroup(units, allocations),
-        laborByUnit(allocations),
+        laborCommitmentsByUnit(laborCommitments),
+        allocationIdsByUnit(laborCommitments),
+        allocationIdsByGroup(laborCommitments),
+        householdsByUnit(laborCommitments, householdEconomies),
+        unitsByHousehold(units, laborCommitments, householdEconomies),
+        unitsByGroup(units, laborCommitments),
+        laborByUnit(laborCommitments),
         householdByActor,
         unitsByHex,
         hexByUnit,
@@ -223,7 +223,7 @@ final class SettlementIndex {
         capacityScaleByUnit,
         assetShareIdsByUnit,
         economicHouseholdByUnit,
-        allocationsByUnit,
+        laborCommitmentsByUnit,
         allocationIdsByUnit,
         allocationIdsByGroup,
         householdsByUnit,
@@ -270,8 +270,8 @@ final class SettlementIndex {
     return householdsByUnit.getOrDefault(unit, List.of());
   }
 
-  List<LaborAllocation> allocationsOfUnit(ProductionUnitId unit) {
-    return allocationsByUnit.getOrDefault(unit, List.of());
+  List<HouseholdLaborCommitment> allocationsOfUnit(ProductionUnitId unit) {
+    return laborCommitmentsByUnit.getOrDefault(unit, List.of());
   }
 
   List<LaborAllocationId> allocationIdsOfUnit(ProductionUnitId unit) {
@@ -454,27 +454,27 @@ final class SettlementIndex {
   }
 
   /** 配额全量快照（旧 {@code householdKeysOf} 的“按 activity 归组”方向）；序 = 全局配额表序。 */
-  private static Map<ProductionUnitId, List<LaborAllocation>> allocationsByUnit(
-      Map<LaborAllocationId, LaborAllocation> allocations) {
-    Map<ProductionUnitId, List<LaborAllocation>> raw = new LinkedHashMap<>();
-    for (LaborAllocation allocation : allocations.values()) {
-      raw.computeIfAbsent(new ProductionUnitId(allocation.activity()), ignored -> new ArrayList<>())
-          .add(allocation);
+  private static Map<ProductionUnitId, List<HouseholdLaborCommitment>> laborCommitmentsByUnit(
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
+    Map<ProductionUnitId, List<HouseholdLaborCommitment>> rawLaborCommitment = new LinkedHashMap<>();
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+      rawLaborCommitment.computeIfAbsent(new ProductionUnitId(laborCommitment.activity()), ignored -> new ArrayList<>())
+          .add(laborCommitment);
     }
-    Map<ProductionUnitId, List<LaborAllocation>> frozen = new LinkedHashMap<>();
-    for (Map.Entry<ProductionUnitId, List<LaborAllocation>> entry : raw.entrySet()) {
-      frozen.put(entry.getKey(), List.copyOf(entry.getValue()));
+    Map<ProductionUnitId, List<HouseholdLaborCommitment>> frozenLaborCommitments = new LinkedHashMap<>();
+    for (Map.Entry<ProductionUnitId, List<HouseholdLaborCommitment>> laborCommitmentEntry : rawLaborCommitment.entrySet()) {
+      frozenLaborCommitments.put(laborCommitmentEntry.getKey(), List.copyOf(laborCommitmentEntry.getValue()));
     }
-    return Collections.unmodifiableMap(frozen);
+    return Collections.unmodifiableMap(frozenLaborCommitments);
   }
 
   /** 配额 id 快照；缩放路径必须拿 id 回活表取当前值，不能缓存 record（可能已被改写）。 */
   private static Map<ProductionUnitId, List<LaborAllocationId>> allocationIdsByUnit(
-      Map<LaborAllocationId, LaborAllocation> allocations) {
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
     Map<ProductionUnitId, List<LaborAllocationId>> raw = new LinkedHashMap<>();
-    for (LaborAllocation allocation : allocations.values()) {
-      raw.computeIfAbsent(new ProductionUnitId(allocation.activity()), ignored -> new ArrayList<>())
-          .add(allocation.id());
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+      raw.computeIfAbsent(new ProductionUnitId(laborCommitment.activity()), ignored -> new ArrayList<>())
+          .add(laborCommitment.id());
     }
     Map<ProductionUnitId, List<LaborAllocationId>> frozen = new LinkedHashMap<>();
     for (Map.Entry<ProductionUnitId, List<LaborAllocationId>> entry : raw.entrySet()) {
@@ -485,10 +485,10 @@ final class SettlementIndex {
 
   /** 批次 → 该批次配额 id（人口回写缩放按批次查，不再每次扫全表）。 */
   private static Map<PeopleLotId, List<LaborAllocationId>> allocationIdsByGroup(
-      Map<LaborAllocationId, LaborAllocation> allocations) {
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
     Map<PeopleLotId, List<LaborAllocationId>> raw = new LinkedHashMap<>();
-    for (LaborAllocation allocation : allocations.values()) {
-      raw.computeIfAbsent(allocation.group(), ignored -> new ArrayList<>()).add(allocation.id());
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+      raw.computeIfAbsent(laborCommitment.group(), ignored -> new ArrayList<>()).add(laborCommitment.id());
     }
     Map<PeopleLotId, List<LaborAllocationId>> frozen = new LinkedHashMap<>();
     for (Map.Entry<PeopleLotId, List<LaborAllocationId>> entry : raw.entrySet()) {
@@ -502,18 +502,18 @@ final class SettlementIndex {
    * 升序）。
    */
   private static Map<ProductionUnitId, List<HouseholdId>> householdsByUnit(
-      Map<LaborAllocationId, LaborAllocation> allocations, Map<HouseholdId, ClassRow> rows) {
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments, Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Map<ProductionUnitId, LinkedHashSet<HouseholdId>> raw = new LinkedHashMap<>();
-    for (LaborAllocation allocation : allocations.values()) {
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
       raw.computeIfAbsent(
-              new ProductionUnitId(allocation.activity()), ignored -> new LinkedHashSet<>())
-          .add(allocation.household());
+              new ProductionUnitId(laborCommitment.activity()), ignored -> new LinkedHashSet<>())
+          .add(laborCommitment.household());
     }
     Map<ProductionUnitId, List<HouseholdId>> frozen = new LinkedHashMap<>();
     for (Map.Entry<ProductionUnitId, LinkedHashSet<HouseholdId>> entry : raw.entrySet()) {
       List<HouseholdId> keys = new ArrayList<>();
       for (HouseholdId household : entry.getValue()) {
-        if (rows.containsKey(household)) {
+        if (householdEconomies.containsKey(household)) {
           keys.add(household);
         }
       }
@@ -526,15 +526,15 @@ final class SettlementIndex {
   /** 家户 → 它供给的 unit 集合（只认现存 unit 与现存行；序 = 全局配额表首次出现序）。 */
   private static Map<HouseholdId, Set<ProductionUnitId>> unitsByHousehold(
       Map<ProductionUnitId, ProductionUnit> units,
-      Map<LaborAllocationId, LaborAllocation> allocations,
-      Map<HouseholdId, ClassRow> rows) {
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Map<HouseholdId, LinkedHashSet<ProductionUnitId>> raw = new LinkedHashMap<>();
-    for (LaborAllocation allocation : allocations.values()) {
-      ProductionUnitId unitId = new ProductionUnitId(allocation.activity());
-      if (!units.containsKey(unitId) || !rows.containsKey(allocation.household())) {
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+      ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
+      if (!units.containsKey(unitId) || !householdEconomies.containsKey(laborCommitment.household())) {
         continue;
       }
-      raw.computeIfAbsent(allocation.household(), ignored -> new LinkedHashSet<>()).add(unitId);
+      raw.computeIfAbsent(laborCommitment.household(), ignored -> new LinkedHashSet<>()).add(unitId);
     }
     Map<HouseholdId, Set<ProductionUnitId>> frozen = new LinkedHashMap<>();
     for (Map.Entry<HouseholdId, LinkedHashSet<ProductionUnitId>> entry : raw.entrySet()) {
@@ -547,14 +547,14 @@ final class SettlementIndex {
   /** 批次 → 它供给的 unit（旧 {@code unitsOfHouseholds} 的按 group 口径；序 = 全局配额首次出现序）。 */
   private static Map<PeopleLotId, List<ProductionUnitId>> unitsByGroup(
       Map<ProductionUnitId, ProductionUnit> units,
-      Map<LaborAllocationId, LaborAllocation> allocations) {
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
     Map<PeopleLotId, LinkedHashSet<ProductionUnitId>> raw = new LinkedHashMap<>();
-    for (LaborAllocation allocation : allocations.values()) {
-      ProductionUnitId unitId = new ProductionUnitId(allocation.activity());
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+      ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
       if (!units.containsKey(unitId)) {
         continue;
       }
-      raw.computeIfAbsent(allocation.group(), ignored -> new LinkedHashSet<>()).add(unitId);
+      raw.computeIfAbsent(laborCommitment.group(), ignored -> new LinkedHashSet<>()).add(unitId);
     }
     Map<PeopleLotId, List<ProductionUnitId>> frozen = new LinkedHashMap<>();
     for (Map.Entry<PeopleLotId, LinkedHashSet<ProductionUnitId>> entry : raw.entrySet()) {
@@ -565,18 +565,18 @@ final class SettlementIndex {
 
   /** 旧 {@code laborByUnit}：activity → Σ laborMilli；键序 = 首次出现序（调用方只按值查，不依赖键序）。 */
   private static Map<String, Long> laborByUnit(
-      Map<LaborAllocationId, LaborAllocation> allocations) {
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
     Map<String, Long> byUnit = new LinkedHashMap<>();
-    for (LaborAllocation allocation : allocations.values()) {
-      byUnit.merge(allocation.activity(), allocation.laborMilli(), Long::sum);
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+      byUnit.merge(laborCommitment.activity(), laborCommitment.laborMilli(), Long::sum);
     }
     return Collections.unmodifiableMap(byUnit);
   }
 
   /** 旧 {@code householdActorsOf}：家户 actor → 家户身份（键序 = 行表序）。 */
-  private static Map<ActorRef, HouseholdId> householdByActor(Map<HouseholdId, ClassRow> rows) {
+  private static Map<ActorRef, HouseholdId> householdByActor(Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Map<ActorRef, HouseholdId> byActor = new LinkedHashMap<>();
-    for (HouseholdId key : rows.keySet()) {
+    for (HouseholdId key : householdEconomies.keySet()) {
       byActor.put(HouseholdActors.of(key), key);
     }
     return Collections.unmodifiableMap(byActor);

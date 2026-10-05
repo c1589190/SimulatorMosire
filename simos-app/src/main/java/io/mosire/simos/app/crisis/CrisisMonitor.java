@@ -5,7 +5,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
@@ -94,10 +94,10 @@ public final class CrisisMonitor {
     //   反解两次，现在一次都不必（"行在哪一格"与"产业在哪一格"从此是两件事，各读各的）。
     //   ★ 分组键仍是 {@code <q>_<r>} 字符串（{@link IndustryHexKeys#hexKey}），排序口径与旧版逐字相同（字典序）。
     Map<String, List<HouseholdId>> byHex = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
-      HexCoord hex = entry.getValue().view().hex();
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : economy.classes().entrySet()) {
+      HexCoord hex = householdEconomyEntry.getValue().view().hex();
       String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
-      byHex.computeIfAbsent(hexKey, ignored -> new ArrayList<>()).add(entry.getKey());
+      byHex.computeIfAbsent(hexKey, ignored -> new ArrayList<>()).add(householdEconomyEntry.getKey());
     }
     List<String> hexKeys = new ArrayList<>(byHex.keySet());
     hexKeys.sort(String::compareTo);
@@ -120,9 +120,9 @@ public final class CrisisMonitor {
   public static List<Light> lightsAt(
       HexCoord coord, EconomyData economy, SocialData social, long atTick, CalendarClock clock) {
     List<HouseholdId> keys = new ArrayList<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
-      if (entry.getValue().view().hex().equals(coord)) {
-        keys.add(entry.getKey());
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : economy.classes().entrySet()) {
+      if (householdEconomyEntry.getValue().view().hex().equals(coord)) {
+        keys.add(householdEconomyEntry.getKey());
       }
     }
     return lightsAt(coord, keys, economy, social, atTick, clock);
@@ -145,12 +145,12 @@ public final class CrisisMonitor {
     long elapsedDaysSeen = 0L;
     long cycleDaysSeen = 0L;
     for (HouseholdId key : keys) {
-      ClassRow row = economy.classes().get(key);
+      HouseholdEconomy householdEconomy = economy.classes().get(key);
       FlowRow flow = economy.flows().get(key);
-      if (row == null) {
+      if (householdEconomy == null) {
         continue;
       }
-      population += row.population();
+      population += householdEconomy.population();
       // ★★ B2 修复：**分子与分母必须同基准**。
       //   分子是"本周期**至今**累计的 unmetNeed"（FlowRow 在新周期第一天归零、此后逐日累加），
       //   故分母必须是"本周期**至今**的需求"，而不是整周期的需求 —— 否则周期初分子只累计了几天、
@@ -160,12 +160,12 @@ public final class CrisisMonitor {
       long elapsedDays = elapsedDaysOf(economy, key);
       elapsedDaysSeen = Math.max(elapsedDaysSeen, elapsedDays);
       cycleDaysSeen = Math.max(cycleDaysSeen, cycleDaysOf(economy, key));
-      grainNeed += EconomyVocabulary.cumulativeRationMilli(row.population(), elapsedDays);
+      grainNeed += EconomyVocabulary.cumulativeRationMilli(householdEconomy.population(), elapsedDays);
       // C4a：衣着按历法年分数精确折算：区间 [atTick - elapsedDays, atTick) 由 CalendarClock 按历年逐段求和；
       // 不夹取负 tick —— yearFraction 本身支持负数 tick。
       clothNeed +=
           EconomyVocabulary.cumulativeClothMilli(
-              row.population(), clock.yearFraction(atTick - elapsedDays, atTick));
+              householdEconomy.population(), clock.yearFraction(atTick - elapsedDays, atTick));
       if (flow != null) {
         grainUnmet += flow.unmetNeed().getOrDefault(commodityGrain(), 0L);
         clothUnmet += flow.unmetNeed().getOrDefault(commodityCloth(), 0L);
@@ -213,22 +213,22 @@ public final class CrisisMonitor {
       evidence.put("cycleDays", cycleDaysSeen);
       lights.add(new Light(coord, Kind.DEBT, evidence));
     }
-    // ★★ P2-A A4：可用量 = 该格各家的**每 tick 时间预算**（ClassRow.laborMilli，毫小时）；
+    // ★★ P2-A A4：可用量 = 该格各家的**每 tick 时间预算**（HouseholdEconomy.laborMilli，毫小时）；
     //   批次级供给表已删除（唯一权威是 Social 人口组成 × 系数表）。
     long available = 0L;
     long allocated = 0L;
-    for (var row : economy.classes().values()) {
-      if (row.view().hex().equals(coord)) {
-        available += row.laborMilli();
+    for (var householdEconomy : economy.classes().values()) {
+      if (householdEconomy.view().hex().equals(coord)) {
+        available += householdEconomy.laborMilli();
       }
     }
     java.util.Set<io.mosire.simos.social.api.id.PeopleLotId> groupsHere = new java.util.HashSet<>();
     for (PopulationGroup group : social.groupsAt(coord)) {
       groupsHere.add(group.id());
     }
-    for (var allocation : economy.allocations().values()) {
-      if (groupsHere.contains(allocation.group())) {
-        allocated += allocation.laborMilli();
+    for (var laborCommitment : economy.allocations().values()) {
+      if (groupsHere.contains(laborCommitment.group())) {
+        allocated += laborCommitment.laborMilli();
       }
     }
     if (available > 0L && allocated * 1000L / available >= LABOR_BURDEN_CRISIS_PER_MILLE) {

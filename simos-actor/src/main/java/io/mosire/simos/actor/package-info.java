@@ -14,7 +14,7 @@
  *
  * <p>★★ <b>本切片不吞 Money / Debt</b>（spec §三 L281-283）：债权天然是跨主体关系（{@code debtor / creditor / principal
  * / terms}），Money/credit 又是 S2 的领域 ⇒ <b>禁止</b>写 {@code ActorRow { Money money; List<Debt> debts; }}
- * 这种形状，否则 S2 第一件事就是拆 S1。既有的 {@code EconomyData.debts} 与 {@code ClassRow.debts}
+ * 这种形状，否则 S2 第一件事就是拆 S1。既有的 {@code EconomyData.debts} 与 {@code HouseholdEconomy.debts}
  * <b>本阶段一行不动</b>（legacy bridge，S2 迁走）。
  *
  * <p>★★ <b>库存不是 Actor 的字段</b>（spec §2.3 L109、§三 L290）：<i>"资产是 Actor <b>拥有的关系</b>， 不是 Actor

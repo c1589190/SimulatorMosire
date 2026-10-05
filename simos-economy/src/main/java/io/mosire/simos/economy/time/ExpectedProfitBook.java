@@ -22,7 +22,7 @@ import io.mosire.simos.economy.api.relation.SubsistenceObligation;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.Industry;
@@ -240,8 +240,8 @@ public final class ExpectedProfitBook {
       return infeasible(household, modeId, currentPosition.id(), hex, null, "DEPENDENT");
     }
     ClassPosition position = choosePosition(base, household, modeId, producing);
-    ClassRow row = base.classes().get(household);
-    if (row == null || row.population() <= 0L) {
+    HouseholdEconomy householdEconomy = base.classes().get(household);
+    if (householdEconomy == null || householdEconomy.population() <= 0L) {
       return infeasible(household, modeId, position.id(), hex, null, "NO_ROW");
     }
     if (DefaultProductionModes.DISPLACED.equals(modeId)) {
@@ -252,7 +252,7 @@ public final class ExpectedProfitBook {
         industryOrNull != null ? industryOrNull : resolveIndustry(base, hex, modeId);
     if (DefaultProductionModes.MERCHANT.equals(modeId)) {
       return merchantProspect(
-          base, household, row, modeId, position, hex, industry, marketOrNull, demand, shares,
+          base, household, householdEconomy, modeId, position, hex, industry, marketOrNull, demand, shares,
           claimedByOrganizations, units, relations, topology, day);
     }
     if (industry == null) {
@@ -260,10 +260,10 @@ public final class ExpectedProfitBook {
     }
     if (isWagePosition(position)) {
       return wageProspect(
-          household, row, modeId, position, hex, industry, marketOrNull, shares, units, relations);
+          household, householdEconomy, modeId, position, hex, industry, marketOrNull, shares, units, relations);
     }
     return productionProspect(
-        household, row, modeId, position, hex, industry, marketOrNull, demand, shares,
+        household, householdEconomy, modeId, position, hex, industry, marketOrNull, demand, shares,
         claimedByOrganizations, units, relations);
   }
 
@@ -271,7 +271,7 @@ public final class ExpectedProfitBook {
 
   private static Prospect productionProspect(
       HouseholdId household,
-      ClassRow row,
+      HouseholdEconomy householdEconomy,
       ProductionModeId modeId,
       ClassPosition position,
       HexCoord hex,
@@ -299,7 +299,7 @@ public final class ExpectedProfitBook {
     long laborScale =
         laborPerUnit <= 0L
             ? Long.MAX_VALUE
-            : row.participationAdjustedLaborMilli() / laborPerUnit;
+            : householdEconomy.participationAdjustedLaborMilli() / laborPerUnit;
     if (assetScale < 1L) {
       return infeasible(
           household, modeId, position.id(), hex, industry.id(), "NO_ASSET:" + industry.id().value());
@@ -334,7 +334,7 @@ public final class ExpectedProfitBook {
       long planned = output.getValue();
       long need =
           Math.multiplyExact(
-              row.naturalNeeds().getOrDefault(commodity, 0L), horizonDays);
+              householdEconomy.naturalNeeds().getOrDefault(commodity, 0L), horizonDays);
       long self = Math.min(planned, need);
       long remaining = Math.max(0L, planned - self);
       long addressable = demand.addressable(hex, commodity);
@@ -408,12 +408,12 @@ public final class ExpectedProfitBook {
             : laborCostMilli(laborNeed, RegimeRelations.subsistenceMilliPerLabor(), grainPrice);
 
     ProductionRelation relation =
-        relationFor(relations, unitId, modeId, industry, row, operator);
+        relationFor(relations, unitId, modeId, industry, householdEconomy, operator);
     Obligations obligations =
         obligationsOf(
             relation,
             household,
-            row,
+            householdEconomy,
             hex,
             market,
             revenueByCommodity,
@@ -462,7 +462,7 @@ public final class ExpectedProfitBook {
 
   private static Prospect wageProspect(
       HouseholdId household,
-      ClassRow row,
+      HouseholdEconomy householdEconomy,
       ProductionModeId modeId,
       ClassPosition position,
       HexCoord hex,
@@ -481,7 +481,7 @@ public final class ExpectedProfitBook {
     long laborScale =
         laborPerUnit <= 0L
             ? Long.MAX_VALUE
-            : row.participationAdjustedLaborMilli() / laborPerUnit;
+            : householdEconomy.participationAdjustedLaborMilli() / laborPerUnit;
     if (laborScale < 1L) {
       return infeasible(
           household, modeId, position.id(), hex, industry.id(), "NO_LABOR:" + household.value());
@@ -496,7 +496,7 @@ public final class ExpectedProfitBook {
             : Math.multiplyExact(Math.multiplyExact(laborPerUnit, scale), horizonDays);
     ProductionRelation relation =
         relationFor(
-            relations, employer.unitId(), modeId, industry, row, employer.operator());
+            relations, employer.unitId(), modeId, industry, householdEconomy, employer.operator());
     long income = 0L;
     boolean priceMissing = false;
     List<String> notes = new ArrayList<>();
@@ -504,7 +504,7 @@ public final class ExpectedProfitBook {
       notes.add("NO_RELATION");
     } else {
       for (CompensationRule rule : relation.rules()) {
-        if (!isWorkerRecipient(rule.recipient(), household, row, hex)) {
+        if (!isWorkerRecipient(rule.recipient(), household, householdEconomy, hex)) {
           continue;
         }
         switch (rule.type()) {
@@ -571,7 +571,7 @@ public final class ExpectedProfitBook {
   private static Prospect merchantProspect(
       EconomyData base,
       HouseholdId household,
-      ClassRow row,
+      HouseholdEconomy householdEconomy,
       ProductionModeId modeId,
       ClassPosition position,
       HexCoord hex,
@@ -594,7 +594,7 @@ public final class ExpectedProfitBook {
     }
     if (isWagePosition(position)) {
       return wageProspect(
-          household, row, modeId, position, hex, trade, market, shares, units, relations);
+          household, householdEconomy, modeId, position, hex, trade, market, shares, units, relations);
     }
     ActorRef actor = HouseholdActors.of(household);
     MerchantFirm firm = null;
@@ -670,19 +670,19 @@ public final class ExpectedProfitBook {
         notes.add("NO_LANE");
       }
     }
-    ProductionRelation relation = relationFor(relations, unitId, modeId, trade, row, actor);
+    ProductionRelation relation = relationFor(relations, unitId, modeId, trade, householdEconomy, actor);
     if (derivedCapacity) {
       notes.add("DERIVED_MERCHANT_CAPACITY");
     }
     if (hasInKindPerLaborRule(relation)) {
-      // ★ 具名缺口：porter 劳动量拿不到（签名没有 LaborAllocation）⇒ 按劳动计的 porter 工资记 0，不静默。
+      // ★ 具名缺口：porter 劳动量拿不到（签名没有 HouseholdLaborCommitment）⇒ 按劳动计的 porter 工资记 0，不静默。
       notes.add("PORTER_LABOR_UNKNOWN");
     }
     Obligations obligations =
         obligationsOf(
             relation,
             household,
-            row,
+            householdEconomy,
             hex,
             market,
             Map.of(),
@@ -699,7 +699,7 @@ public final class ExpectedProfitBook {
             Math.multiplyExact((long) tier.districtUse(), MerchantPolicy.UPKEEP_PER_DISTRICT_USE),
             assetUpkeep);
     long laborNeed =
-        Math.multiplyExact(row.participationAdjustedLaborMilli(), horizonDays);
+        Math.multiplyExact(householdEconomy.participationAdjustedLaborMilli(), horizonDays);
     long net =
         Math.subtractExact(
             Math.subtractExact(
@@ -813,7 +813,7 @@ public final class ExpectedProfitBook {
       ProductionUnitId unitId,
       ProductionModeId modeId,
       Industry industry,
-      ClassRow row,
+      HouseholdEconomy householdEconomy,
       ActorRef operator) {
     ProductionRelation explicit = relations.get(unitId);
     if (explicit != null) {
@@ -831,7 +831,7 @@ public final class ExpectedProfitBook {
     RegimeId regime = useModeRegime ? new RegimeId(modeRegime.get()) : industry.regime();
     try {
       return RegimeRelations.defaultRelation(
-          regime, unitId, industry.id(), operator, Set.of(row.view().residence()));
+          regime, unitId, industry.id(), operator, Set.of(householdEconomy.view().residence()));
     } catch (IllegalArgumentException ignored) {
       return null; // 未登记的制度（如 merchant）⇒ 不猜一套规则
     }
@@ -847,7 +847,7 @@ public final class ExpectedProfitBook {
   private static Obligations obligationsOf(
       ProductionRelation relation,
       HouseholdId household,
-      ClassRow row,
+      HouseholdEconomy householdEconomy,
       HexCoord hex,
       Market market,
       Map<CommodityId, Long> revenueByCommodity,
@@ -870,7 +870,7 @@ public final class ExpectedProfitBook {
     //   · Weight.LABOR_AMOUNT 拿不到 Σ劳动 ⇒ 对同一池取最大率、只计一次（标 SHARE_WEIGHT_ESTIMATE），是上界。
     Map<String, long[]> sharePools = new LinkedHashMap<>();
     for (CompensationRule rule : relation.rules()) {
-      if (isSelfRecipient(rule.recipient(), relation.operator(), household, row, hex)) {
+      if (isSelfRecipient(rule.recipient(), relation.operator(), household, householdEconomy, hex)) {
         continue;
       }
       switch (rule.type()) {
@@ -992,8 +992,8 @@ public final class ExpectedProfitBook {
    * —— 与 {@code ModeMigrationSettlement.pickTargetPosition} 同一口径（本类不另立一套）。
    */
   private static ClassPosition currentPositionOf(EconomyData base, HouseholdId household) {
-    var standing = base.classStandings().get(household);
-    return standing == null ? null : base.classPositions().get(standing.currentPositionId());
+    var classMembership = base.classStandings().get(household);
+    return classMembership == null ? null : base.classPositions().get(classMembership.currentPositionId());
   }
 
   private static ClassPosition choosePosition(
@@ -1254,7 +1254,7 @@ public final class ExpectedProfitBook {
   }
 
   private static boolean isSelfRecipient(
-      Recipient recipient, ActorRef operator, HouseholdId household, ClassRow row, HexCoord hex) {
+      Recipient recipient, ActorRef operator, HouseholdId household, HouseholdEconomy householdEconomy, HexCoord hex) {
     if (recipient instanceof Recipient.ToActor toActor) {
       return toActor.actor().equals(operator) || toActor.actor().equals(HouseholdActors.of(household));
     }
@@ -1263,8 +1263,8 @@ public final class ExpectedProfitBook {
     }
     if (recipient instanceof Recipient.ToCohort toCohort) {
       return toCohort.cohort().hex().equals(hex)
-          && toCohort.cohort().residence() == row.view().residence()
-          && toCohort.cohort().stratum().equals(row.view().stratum());
+          && toCohort.cohort().residence() == householdEconomy.view().residence()
+          && toCohort.cohort().stratum().equals(householdEconomy.view().stratum());
     }
     return false;
   }
@@ -1282,7 +1282,7 @@ public final class ExpectedProfitBook {
   }
 
   private static boolean isWorkerRecipient(
-      Recipient recipient, HouseholdId household, ClassRow row, HexCoord hex) {
+      Recipient recipient, HouseholdId household, HouseholdEconomy householdEconomy, HexCoord hex) {
     if (recipient instanceof Recipient.ToActor toActor) {
       return toActor.actor().equals(HouseholdActors.of(household));
     }
@@ -1291,8 +1291,8 @@ public final class ExpectedProfitBook {
     }
     if (recipient instanceof Recipient.ToCohort toCohort) {
       return toCohort.cohort().hex().equals(hex)
-          && toCohort.cohort().residence() == row.view().residence()
-          && toCohort.cohort().stratum().equals(row.view().stratum());
+          && toCohort.cohort().residence() == householdEconomy.view().residence()
+          && toCohort.cohort().stratum().equals(householdEconomy.view().stratum());
     }
     return false;
   }

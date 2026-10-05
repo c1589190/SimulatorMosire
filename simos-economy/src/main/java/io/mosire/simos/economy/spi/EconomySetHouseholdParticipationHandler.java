@@ -6,7 +6,7 @@ import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -22,7 +22,7 @@ import java.util.Set;
 
 /**
  * ★★ {@code economy.SetHouseholdParticipation}（P2-B §13.5）：配置一个家户"除当前职业外还参与哪些生产方式"
- * = {@link ClassStanding#participatingPositionIds()}；只写 {@code classStandings} 一张表。
+ * = {@link HouseholdClassMembership#participatingPositionIds()}；只写 {@code classStandings} 一张表。
  *
  * <pre>{@code
  * {"household":"hh-...","positions":["family-farm-family-farmer"],"modes"?["family_farm"],
@@ -37,7 +37,7 @@ import java.util.Set;
  *       {@code shouldProduce} 过滤，本命令不复制那份判据）；两者可同时给，取并集；
  *   <li><b>空数组 = 清空追加集合</b>（回到"只参与 {@code currentPositionId}"的旧口径）；两个字段都缺 ⇒ 具名拒绝
  *       （"想清空"必须显式写空数组，不能靠漏字段）；
- *   <li>当前位置由 {@code currentPositionId} 自动并入（{@link ClassStanding#effectivePositionIds()}），
+ *   <li>当前位置由 {@code currentPositionId} 自动并入（{@link HouseholdClassMembership#effectivePositionIds()}），
  *       所以这里<b>不需要也不允许</b>借本命令改"当前职业"（那是 {@code economy.SetHouseholdClass} 的职责）；
  *   <li>家户没有 standing ⇒ 先按旧 stratum 解析当前位置播种一条，再写追加集合；解析不出 ⇒ 具名拒绝（不伪造归属）；
  *   <li>{@code at} 是给 {@link CommandTargets} 的目标声明；给了就必须等于该家户当刻居住格。
@@ -103,25 +103,25 @@ public final class EconomySetHouseholdParticipationHandler implements CommandHan
       if (day < 0L) {
         throw new IllegalArgumentException(TYPE + " 的 day 不得为负: " + day);
       }
-      ClassStanding existing =
+      HouseholdClassMembership existingClassMembership =
           HouseholdEconomyCommands.requireStandingOrSeed(TYPE, base, household, reason, day);
-      ClassStanding after =
-          new ClassStanding(
+      HouseholdClassMembership afterClassMembership =
+          new HouseholdClassMembership(
               household,
-              existing.originalPositionId(),
-              existing.currentPositionId(),
+              existingClassMembership.originalPositionId(),
+              existingClassMembership.currentPositionId(),
               positions,
-              existing.retainedShares(),
-              existing.consecutiveDebtStressCycles(),
-              existing.lastTransitionDay(),
+              existingClassMembership.retainedShares(),
+              existingClassMembership.consecutiveDebtStressCycles(),
+              existingClassMembership.lastTransitionDay(),
               reason);
-      if (after.equals(base.classStandings().get(household))) {
+      if (afterClassMembership.equals(base.classStandings().get(household))) {
         return new HandlerOutcome.Applied(EconomyChangeSet.between(base, base));
       }
-      LinkedHashMap<HouseholdId, ClassStanding> standings =
+      LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships =
           new LinkedHashMap<>(base.classStandings());
-      standings.put(household, after);
-      EconomyData projected = base.withClassStandings(standings);
+      classMemberships.put(household, afterClassMembership);
+      EconomyData projected = base.withClassMemberships(classMemberships);
       EconomyLog.organization()
           .info(
               "event=HOUSEHOLD_PARTICIPATION household={} positions={} reason={}",

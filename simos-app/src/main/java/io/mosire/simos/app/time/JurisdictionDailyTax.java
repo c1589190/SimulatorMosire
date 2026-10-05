@@ -10,7 +10,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.stock.DeductionReason;
 import io.mosire.simos.economy.api.stock.HouseholdStockDeduction;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
@@ -51,7 +51,7 @@ import org.slf4j.Logger;
  *       Jurisdiction.administrationPerMille}、不补 0；
  *   <li><b>逐区域</b>：{@code Jurisdiction.taxRatePerMilleByRegion} 的 key 按 {@link RegionId#value()}
  *       升序， rate = 0 跳过；区域不在 {@code map.regions()} ⇒ 具名 {@link GapKind#REGION_MISSING} 并跳过；
- *   <li><b>税基</b>：区域各 hex 上的家户行（{@code rows} 的 location = {@link ClassRow#view()}.hex()）， 按 {@link
+ *   <li><b>税基</b>：区域各 hex 上的家户行（{@code rows} 的 location = {@link HouseholdEconomy#view()}.hex()）， 按 {@link
  *       HouseholdId#value()} 升序；余额 ≤ 0 跳过；<b>征着自己的国库家户排除</b> （自征自返只是账面噪声）；
  *   <li><b>国库落点</b>：GOV 单位 → {@link GovernmentHouseholdResolver} 解析出的政府家户（{@code
  *       hh-gov-&lt;unitId&gt;}， 资金先入它的账户，俸禄再从同一账户支出）；无有效位置 ⇒ 具名 {@link GapKind#NO_POSITION} 并跳过该单位
@@ -109,13 +109,13 @@ final class JurisdictionDailyTax {
    */
   static Report collect(
       AccountSession accounts,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       UnitState units,
       GameMap map,
       long tick,
       Map<UnitId, Long> efficiencyPerMilleByUnit) {
     Objects.requireNonNull(accounts, "accounts");
-    Objects.requireNonNull(rows, "rows");
+    Objects.requireNonNull(householdEconomies, "rows");
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(map, "map");
     Objects.requireNonNull(efficiencyPerMilleByUnit, "efficiencyPerMilleByUnit");
@@ -125,18 +125,18 @@ final class JurisdictionDailyTax {
 
     List<Unit> orderedUnits = new ArrayList<>(units.units().values());
     orderedUnits.sort(Comparator.comparing(unit -> unit.id().value()));
-    List<HouseholdId> orderedHouseholds = new ArrayList<>(rows.keySet());
+    List<HouseholdId> orderedHouseholds = new ArrayList<>(householdEconomies.keySet());
     orderedHouseholds.sort(Comparator.comparing(HouseholdId::value));
     // ★ 税基按格索引一次（旧实现逐 region 全表扫描，O(region × households)）：每格的清单保持家户 id 升序，
     //   于是同一份状态每次得到同一个征收序，与 region.hexes() 的迭代序无关。
     Map<HexCoord, List<HouseholdId>> householdsByHex = new LinkedHashMap<>();
     for (HouseholdId household : orderedHouseholds) {
-      ClassRow row = rows.get(household);
-      if (row == null) {
+      HouseholdEconomy householdEconomy = householdEconomies.get(household);
+      if (householdEconomy == null) {
         continue;
       }
       householdsByHex
-          .computeIfAbsent(row.view().hex(), ignored -> new ArrayList<>())
+          .computeIfAbsent(householdEconomy.view().hex(), ignored -> new ArrayList<>())
           .add(household);
     }
 

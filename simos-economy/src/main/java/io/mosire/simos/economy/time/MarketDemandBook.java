@@ -9,7 +9,7 @@ import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
@@ -204,7 +204,7 @@ public final class MarketDemandBook {
   public static Book build(
       List<MarketReport> reports,
       MarketTopology topology,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<ProductionUnitId, ProductionUnit> units,
       Map<IndustryId, Industry> industries,
       Map<AssetShareId, AssetShare> shares,
@@ -215,7 +215,7 @@ public final class MarketDemandBook {
       long horizonDays) {
     Objects.requireNonNull(reports, "reports");
     Objects.requireNonNull(topology, "topology");
-    Objects.requireNonNull(rows, "rows");
+    Objects.requireNonNull(householdEconomies, "rows");
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(industries, "industries");
     Objects.requireNonNull(shares, "shares");
@@ -234,7 +234,7 @@ public final class MarketDemandBook {
 
     Map<HexCoord, HexCoord> regionAnchorByHex = regionAnchors(topology, markets);
     // ★ 覆盖全部会用到的 hex：家户、unit（产业 id 里的格）、市场、在途收货格、报告里的格。
-    Set<CommodityId> commodities = commodityUniverse(rows, units, industries, householdGoods, shipments, markets);
+    Set<CommodityId> commodities = commodityUniverse(householdEconomies, units, industries, householdGoods, shipments, markets);
     MarketReport latest = latestReport(reports);
     addReportCommodities(commodities, latest);
 
@@ -242,10 +242,10 @@ public final class MarketDemandBook {
     Map<HexCoord, Map<CommodityId, long[]>> byRegion = new TreeMap<>(HEX_ORDER);
 
     // ★ 同一 actor 可能同时登记了家户账与经营者账（同键 = 同一本账）⇒ 按账户键去重，库存只计一次。
-    for (HouseholdId household : sortedHouseholds(rows)) {
-      ClassRow row = rows.get(household);
-      HexCoord anchor = anchorOf(regionAnchorByHex, row.view().hex());
-      for (Map.Entry<CommodityId, Long> need : row.naturalNeeds().entrySet()) {
+    for (HouseholdId household : sortedHouseholds(householdEconomies)) {
+      HouseholdEconomy householdEconomy = householdEconomies.get(household);
+      HexCoord anchor = anchorOf(regionAnchorByHex, householdEconomy.view().hex());
+      for (Map.Entry<CommodityId, Long> need : householdEconomy.naturalNeeds().entrySet()) {
         long[] consumer = bucketOf(byRegion, anchor, need.getKey());
         consumer[0] = Math.addExact(consumer[0], Math.multiplyExact(need.getValue(), horizonDays));
       }
@@ -391,15 +391,15 @@ public final class MarketDemandBook {
   }
 
   private static Set<CommodityId> commodityUniverse(
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<ProductionUnitId, ProductionUnit> units,
       Map<IndustryId, Industry> industries,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<ShipmentId, ShipmentBatch> shipments,
       Map<HexCoord, Market> markets) {
     Set<CommodityId> commodities = new TreeSet<>(Comparator.comparing(CommodityId::value));
-    for (ClassRow row : rows.values()) {
-      commodities.addAll(row.naturalNeeds().keySet());
+    for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
+      commodities.addAll(householdEconomy.naturalNeeds().keySet());
     }
     for (ProductionUnit unit : units.values()) {
       Industry industry = industries.get(unit.industry());
@@ -480,8 +480,8 @@ public final class MarketDemandBook {
     return Math.floorDiv(numerator + denominator - 1L, denominator);
   }
 
-  private static List<HouseholdId> sortedHouseholds(Map<HouseholdId, ClassRow> rows) {
-    List<HouseholdId> keys = new ArrayList<>(rows.keySet());
+  private static List<HouseholdId> sortedHouseholds(Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+    List<HouseholdId> keys = new ArrayList<>(householdEconomies.keySet());
     keys.sort(Comparator.comparing(HouseholdId::value));
     return keys;
   }

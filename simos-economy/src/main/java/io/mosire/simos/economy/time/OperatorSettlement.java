@@ -10,7 +10,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
@@ -200,7 +200,7 @@ final class OperatorSettlement {
       LinkedHashMap<ProductionUnitId, ProductionUnit> units,
       Map<IndustryId, Industry> industries,
       Map<ProductionUnitId, ProductionRelation> relations,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       SettlementIndex index,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
@@ -268,7 +268,7 @@ final class OperatorSettlement {
       long selfUsable = selfUsableOf(household, unit, industry, index, householdGoods);
       long cash = cashOf(household, householdMoney);
       boolean canSelfProvision =
-          canSelfProvision(unit, household, industry, index, rows, householdGoods);
+          canSelfProvision(unit, household, industry, index, householdEconomies, householdGoods);
       switch (status) {
         case ACTIVE, TRIALING -> {
           if (hadMarket
@@ -530,21 +530,21 @@ final class OperatorSettlement {
       HouseholdId household,
       Industry industry,
       SettlementIndex index,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods) {
     if (household != null) {
-      ClassRow row = rows.get(household);
-      if (row != null) {
+      HouseholdEconomy householdEconomy = householdEconomies.get(household);
+      if (householdEconomy != null) {
         long grainStock = stockOf(household, EconomySettlement.GRAIN, householdGoods);
         long cycleRation =
             io.mosire.simos.util.economy.EconomyVocabulary.cumulativeRationMilli(
-                row.population(), industry.cycleDays());
+                householdEconomy.population(), industry.cycleDays());
         if (grainStock >= cycleRation) {
           return true;
         }
         long guardRation =
             io.mosire.simos.util.economy.EconomyVocabulary.cumulativeRationMilli(
-                row.population(), StressPolicy.SELF_PROVISION_GUARD_DAYS);
+                householdEconomy.population(), StressPolicy.SELF_PROVISION_GUARD_DAYS);
         return grainStock >= guardRation
             && coversNextCycleInputs(unit, household, industry, index, householdGoods);
       }

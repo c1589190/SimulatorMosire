@@ -42,7 +42,7 @@ import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.money.CurrencyDef;
 import io.mosire.simos.economy.api.money.InstrumentKind;
 import io.mosire.simos.economy.api.money.MoneyInstrument;
@@ -54,14 +54,14 @@ import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.api.relation.SubsistenceObligation;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassSlot;
-import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.DebtCapacity;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DebtIndex;
-import io.mosire.simos.economy.model.DemandEntry;
+import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
@@ -678,7 +678,7 @@ public final class ApiViews {
    * <ul>
    *   <li>人口：{@code populations} ∪ 家户成员批次落点；有家户批次的格用家户成员求和，无批次的旧序列格按 {@link
    *       SocialData#headlinePopulationAt} 回退；城乡二分只对有 {@link PopulationGroup} 的格。
-   *   <li>粮食库存 / 日耗 / 覆盖天数：逐格 actor {@code HouseholdInventory} 与 {@code ClassRow.naturalNeeds} 同源。
+   *   <li>粮食库存 / 日耗 / 覆盖天数：逐格 actor {@code HouseholdInventory} 与 {@code HouseholdEconomy.naturalNeeds} 同源。
    *   <li>银货币：逐格 actor {@code HouseholdInventory.money} 的 silver 分栏。
    *   <li>{@code grainCycleUnmet}：R3a 起旧市场报告组件已删除，production-runtime 不产生逐格周期缺口 ⇒ 整层 unavailable。
    * </ul>
@@ -780,11 +780,11 @@ public final class ApiViews {
         state, id, "粮食·库存", "毫粮", "逐格 actor HouseholdInventory 粮余额合计（时点）", values, new LinkedHashMap<>());
   }
 
-  /** F2 粮食日耗：逐格 ClassRow.naturalNeeds 的 grain 合计（与 economyHex.grainDailyConsumption 同源）。 */
+  /** F2 粮食日耗：逐格 HouseholdEconomy.naturalNeeds 的 grain 合计（与 economyHex.grainDailyConsumption 同源）。 */
   private static Map<String, Object> grainDailyNeedHeatmap(SimulationState state, String id) {
     TreeMap<HexCoord, Long> values = new TreeMap<>();
-    for (ClassRow row : economyData(state).classes().values()) {
-      values.merge(row.view().hex(), row.naturalNeeds().getOrDefault(GRAIN, 0L), Long::sum);
+    for (HouseholdEconomy householdEconomy : economyData(state).classes().values()) {
+      values.merge(householdEconomy.view().hex(), householdEconomy.naturalNeeds().getOrDefault(GRAIN, 0L), Long::sum);
     }
     return longHeatmap(
         state,
@@ -806,8 +806,8 @@ public final class ApiViews {
           Long::sum);
     }
     TreeMap<HexCoord, Long> dailyNeedByHex = new TreeMap<>();
-    for (ClassRow row : economyData(state).classes().values()) {
-      dailyNeedByHex.merge(row.view().hex(), row.naturalNeeds().getOrDefault(GRAIN, 0L), Long::sum);
+    for (HouseholdEconomy householdEconomy : economyData(state).classes().values()) {
+      dailyNeedByHex.merge(householdEconomy.view().hex(), householdEconomy.naturalNeeds().getOrDefault(GRAIN, 0L), Long::sum);
     }
     TreeMap<HexCoord, Double> values = new TreeMap<>();
     long skippedDailyNeedZero = 0L;
@@ -1125,7 +1125,7 @@ public final class ApiViews {
    *
    * <p>★ **该格的产业怎么认出来**：经 {@link IndustryHexKeys#at}（"产业属于哪一格"的**唯一拼写点**）；本方法**不**自己拼/拆 id。
    *
-   * <p>★★ **H0.2 的两处形状变化**：① 家户行（{@code ClassRow}）**挂在格上**（键 = {@code (格, 居住类型, 阶层)}）， 故 {@code
+   * <p>★★ **H0.2 的两处形状变化**：① 家户行（{@code HouseholdEconomy}）**挂在格上**（键 = {@code (格, 居住类型, 阶层)}）， 故 {@code
    * classes} 是**格级**数组、每个产业对象里**没有** {@code classes}；② 土地不再在行上 ⇒ 该格的 {@code landMilliMu} 由该格产业的
    * {@code capacity[LAND]} 合计而来（K3），行级不再发这个恒为 0 的字段。
    *
@@ -1180,7 +1180,7 @@ public final class ApiViews {
     long population = 0L;
     long laborMilli = 0L;
     // ★★ M1.8：该格**按阶层参与率折扣后的**每日劳动合计（逐值 = Σ 各行的 participationAdjustedLaborMilli）
-    //   —— 与 {@code laborMilli}（毛量）并排发，四档人均劳动因此可逐值核对（见 classRowView）。
+    //   —— 与 {@code laborMilli}（毛量）并排发，四档人均劳动因此可逐值核对（见 householdEconomyView）。
     long participationAdjustedLaborMilli = 0L;
     long landMilliMu = 0L;
     long debtPrincipal = 0L;
@@ -1192,7 +1192,7 @@ public final class ApiViews {
     // ★★ M2.7 丙条仪器：该格 Σ 各行的**本周期累计自然口粮需要**（毫粮；人口逐日变时唯一与
     //   "本周期累计未满足需求"同窗口的分母）。★ 不再用"某一天人口 × 整周期配额"并排冒充它。
     long cycleNaturalNeedMilli = 0L;
-    // ★★ H1：**商品库存的唯一真源是 actor 侧的 {@code HouseholdInventory}**（裁定 D3-C/K1；{@code ClassRow} 里没有 goods）
+    // ★★ H1：**商品库存的唯一真源是 actor 侧的 {@code HouseholdInventory}**（裁定 D3-C/K1；{@code HouseholdEconomy} 里没有 goods）
     //   ⇒ 本视图的商品读数从**该格的全部账户**求和，逐值等于 {@link #economyOwnership} 的 {@code actorGoodsTotal}。
     //   ★ 行侧那一栏（旧版的 Σ{@code row.goods()}）**结构性消失** —— 不是"读不到"，是"那里已经没有这本账"。
     Map<String, Long> goods = new TreeMap<>();
@@ -1281,14 +1281,14 @@ public final class ApiViews {
     List<Map<String, Object>> classes = new ArrayList<>();
     List<HouseholdId> classKeys = new ArrayList<>();
     for (HouseholdId key : cohortKeysAt(data, coord)) {
-      ClassRow row = data.classes().get(key);
-      population += row.population();
-      laborMilli += row.laborMilli();
-      participationAdjustedLaborMilli += row.participationAdjustedLaborMilli();
-      grainDailyConsumption += row.naturalNeeds().getOrDefault(GRAIN, 0L);
-      cycleNaturalNeedMilli += row.cycleNaturalNeedMilli();
+      HouseholdEconomy householdEconomy = data.classes().get(key);
+      population += householdEconomy.population();
+      laborMilli += householdEconomy.laborMilli();
+      participationAdjustedLaborMilli += householdEconomy.participationAdjustedLaborMilli();
+      grainDailyConsumption += householdEconomy.naturalNeeds().getOrDefault(GRAIN, 0L);
+      cycleNaturalNeedMilli += householdEconomy.cycleNaturalNeedMilli();
       // 债务人侧：仍按行里的引用清点（它是放贷时写下的权威清单）。
-      for (DebtContractId debtId : row.debts()) {
+      for (DebtContractId debtId : householdEconomy.debts()) {
         DebtContract debt = data.debtContracts().get(debtId);
         if (debt != null) {
           debtCount++;
@@ -1305,13 +1305,13 @@ public final class ApiViews {
         }
       }
       Map<String, Object> classView =
-          classRowView(key, row, data.flows().get(key), actors, credits, data.debtContracts());
-      // ★★ E5a：该户的阶层归属读数（含 consecutiveDebtStressCycles）。没有 ClassStanding ⇒ null + 具名原因，
-      //   不伪造一个默认归属、也不填 0 冒充（旧路径以 ClassRow.view 为准；E5a 不产生任何阶层变动）。
-      ClassStanding standing = data.classStandings().get(key);
-      classView.put("classStanding", standing == null ? null : classStandingView(standing));
+          householdEconomyView(key, householdEconomy, data.flows().get(key), actors, credits, data.debtContracts());
+      // ★★ E5a：该户的阶层归属读数（含 consecutiveDebtStressCycles）。没有 HouseholdClassMembership ⇒ null + 具名原因，
+      //   不伪造一个默认归属、也不填 0 冒充（旧路径以 HouseholdEconomy.view 为准；E5a 不产生任何阶层变动）。
+      HouseholdClassMembership classMembership = data.classStandings().get(key);
+      classView.put("classStanding", classMembership == null ? null : classMembershipView(classMembership));
       classView.put(
-          "classStandingUnavailable", standing == null ? CLASS_STANDING_UNAVAILABLE : null);
+          "classStandingUnavailable", classMembership == null ? CLASS_STANDING_UNAVAILABLE : null);
       classes.add(classView);
       classKeys.add(key);
     }
@@ -1322,7 +1322,7 @@ public final class ApiViews {
     view.put("landMilliMu", landMilliMu);
     view.put("goods", goods);
     // ★ R3a：该格粮库存合计与日耗合计（"看变化"的两个直接读数；单位 = 毫粮）。
-    //   ★★ **日耗读的是结算写下的 {@code ClassRow.naturalNeeds}**（V5；spec §八.8 的"读数与结算同源"）：
+    //   ★★ **日耗读的是结算写下的 {@code HouseholdEconomy.naturalNeeds}**（V5；spec §八.8 的"读数与结算同源"）：
     //     结算每天把**当日需求**（累计口粮的逐日差分）写进该字段，读口只是把它加起来 ⇒ 同一面板上的"人口"与"日耗"
     //     不会再分叉。★ 代价如实记：读口显示的是"**最近一次结算那天**"的需求（两次结算之间不刷新；本方法入参没有 tick，
     //     物理上复算不出结算当天那个数）。
@@ -1334,8 +1334,8 @@ public final class ApiViews {
     view.put("cycleNaturalNeedClock", CYCLE_NATURAL_NEED_CLOCK);
     // ★ 日耗那一栏的窗口（与上面那栏不可并排当同一分母：丙条已查清两者口径本就不可比）。
     view.put("grainDailyConsumptionClock", GRAIN_DAILY_CONSUMPTION_CLOCK);
-    // ★★ H6：**旧的行侧货币栏（{@code money}）已删** —— 它读的是 {@code Σ ClassRow.money()}，而 H1 起行里没有钱
-    //   （{@code EconomySeeder} 写下的 {@code ClassRow.money} 恒为 0）⇒ 那是一栏**结构性的 0**：不是"这一格没钱"，
+    // ★★ H6：**旧的行侧货币栏（{@code money}）已删** —— 它读的是 {@code Σ HouseholdEconomy.money()}，而 H1 起行里没有钱
+    //   （{@code EconomySeeder} 写下的 {@code HouseholdEconomy.money} 恒为 0）⇒ 那是一栏**结构性的 0**：不是"这一格没钱"，
     //   是"那本账不存在"，读数的人只会把它当成真值（本仓最反对的"看起来在记"）。
     //   ★ 钱的真值只有一处：actor 侧 {@code HouseholdInventory} 的**逐币种**合计（下面那一栏）—— 币种各自守恒，
     //     "跨币种求和的 money"本来也不是一个有意义的量（同 {@link #economyOwnership} 的口径）。
@@ -1442,7 +1442,7 @@ public final class ApiViews {
     List<Map<String, Object>> householdConditions = new ArrayList<>();
     List<Map<String, Object>> classifications = new ArrayList<>();
     for (HouseholdId key : householdKeys) {
-      ClassRow row = data.classes().get(key);
+      HouseholdEconomy householdEconomy = data.classes().get(key);
       OptionalLong grainStockMilli =
           grainStockByHousehold.containsKey(key)
               ? OptionalLong.of(grainStockByHousehold.get(key))
@@ -1452,7 +1452,7 @@ public final class ApiViews {
       HouseholdClassRule.Classification classification = classIndex.classify(key, dayLedger);
       householdConditions.add(householdConditionView(condition, classification.stratum().value()));
       classifications.add(
-          classificationView(key, row == null ? null : row.view().stratum(), classification));
+          classificationView(key, householdEconomy == null ? null : householdEconomy.view().stratum(), classification));
     }
     view.put("householdConditions", householdConditions);
     // ★★ S3：写回结果与"从哪一档跳来"的具名读数——classes[].slot 是当前真值；classifications 给逐户证据；
@@ -1620,8 +1620,8 @@ public final class ApiViews {
               ? HouseholdActors.householdOf(government.treasury())
               : null;
       node.put("treasuryHousehold", treasuryHousehold == null ? null : treasuryHousehold.value());
-      ClassRow row = treasuryHousehold == null ? null : data.classes().get(treasuryHousehold);
-      node.put("treasuryClassRow", row == null ? null : governmentClassRowView(row));
+      HouseholdEconomy householdEconomy = treasuryHousehold == null ? null : data.classes().get(treasuryHousehold);
+      node.put("treasuryClassRow", householdEconomy == null ? null : governmentHouseholdEconomyView(householdEconomy));
       node.put("treasuryAccounts", treasuryAccountViews(data, actors, government.treasury()));
       node.put("issuance", governmentIssuanceView(data, government.id()));
       governments.add(node);
@@ -1637,19 +1637,19 @@ public final class ApiViews {
           + "带政府家户的国库 = 该家户的 HouseholdInventory，逐币种不跨币种求和";
 
   /**
-   * 政府家户的 {@code ClassRow} 读侧形：**它是 GOV 的口袋行**（可配置人口/劳动/参与率；P2-C 起不再恒为 0），
+   * 政府家户的 {@code HouseholdEconomy} 读侧形：**它是 GOV 的口袋行**（可配置人口/劳动/参与率；P2-C 起不再恒为 0），
    * 不是第二本人账；读口只读行本身、不重算。
    */
-  private static Map<String, Object> governmentClassRowView(ClassRow row) {
+  private static Map<String, Object> governmentHouseholdEconomyView(HouseholdEconomy householdEconomy) {
     Map<String, Object> view = new LinkedHashMap<>();
-    view.put("householdId", row.id().value());
-    view.put("q", row.view().hex().q());
-    view.put("r", row.view().hex().r());
-    view.put("residence", row.view().residence().value());
-    view.put("stratum", row.view().stratum().value());
-    view.put("population", row.population());
-    view.put("laborMilli", row.laborMilli());
-    view.put("participationPerMille", row.participationPerMille());
+    view.put("householdId", householdEconomy.id().value());
+    view.put("q", householdEconomy.view().hex().q());
+    view.put("r", householdEconomy.view().hex().r());
+    view.put("residence", householdEconomy.view().residence().value());
+    view.put("stratum", householdEconomy.view().stratum().value());
+    view.put("population", householdEconomy.population());
+    view.put("laborMilli", householdEconomy.laborMilli());
+    view.put("participationPerMille", householdEconomy.participationPerMille());
     return view;
   }
 
@@ -1775,17 +1775,17 @@ public final class ApiViews {
     long cycleNeed = 0L;
     long unmet = 0L;
     for (HouseholdId key : keys) {
-      ClassRow row = data.classes().get(key);
-      population += row.population();
+      HouseholdEconomy householdEconomy = data.classes().get(key);
+      population += householdEconomy.population();
       // ★ 日耗读结算写下的 naturalNeeds（与面板同源）；★ 结算还没跑过 ⇒ 那一栏是 0，此处**按口粮公式兜底**
       //   （兜底也要有，否则"未激活的世界"会显示成"这一格没有需求"——那是假的）。
-      long rowDaily = row.naturalNeeds().getOrDefault(GRAIN, 0L);
-      if (rowDaily <= 0L && row.population() > 0L) {
-        rowDaily = EconomyVocabulary.dailyRationMilli(row.population(), 1L);
+      long rowDaily = householdEconomy.naturalNeeds().getOrDefault(GRAIN, 0L);
+      if (rowDaily <= 0L && householdEconomy.population() > 0L) {
+        rowDaily = EconomyVocabulary.dailyRationMilli(householdEconomy.population(), 1L);
       }
       dailyNeed += rowDaily;
       // ★★ M2.7：周期分母改读**丙条累加器**（逐日、日初人口累加）—— 不再用"读口时刻人口 × 整周期配额"现算。
-      cycleNeed += row.cycleNaturalNeedMilli();
+      cycleNeed += householdEconomy.cycleNaturalNeedMilli();
       FlowRow flow = data.flows().get(key);
       if (flow == null) {
         continue;
@@ -1909,7 +1909,7 @@ public final class ApiViews {
   private static final String DASHBOARD_ASSET_MARKET_VALUE_UNAVAILABLE =
       "资产市值/非粮折粮没有可信价格口径（Market 只服务商品现货、LiquidationPolicy 的政策价不是市值）" + "⇒ dashboard 只报实物数量，不折算成粮/钱";
 
-  /** ★★ E6c：ClassRow.debts 引用悬空的具名原因（唯一拼写点）。 */
+  /** ★★ E6c：HouseholdEconomy.debts 引用悬空的具名原因（唯一拼写点）。 */
   private static final String DASHBOARD_DEBT_REF_DANGLING =
       "ClassRow.debts 引用的 DebtContractId 不在 debtContracts 表中（状态不完整）⇒ 这些合同未计入"
           + "逐户/合计本金与条数；缺失不是 0，不用别的债顶替";
@@ -1967,12 +1967,12 @@ public final class ApiViews {
    * ├─ scope                    本格坐标 / 家户数 / 经济激活 / 各分组口径范围
    * ├─ stocks                   【时点存量】
    * │  ├─ debtPrincipal         按 unit：principal / contractCount / defaultedCount / delinquentCount；
-   * │  │                        逐户 + 合计（债务人侧；复用 ClassRow.debts 权威引用，按 id 去重）
+   * │  │                        逐户 + 合计（债务人侧；复用 HouseholdEconomy.debts 权威引用，按 id 去重）
    * │  ├─ assetSharesByKind     按 AssetKind：totalQuantity / ownershipByActor / operationByActor /
    * │  │                        selfOperatedQuantity / ownerNotOperatorQuantity / tenancy* / kind*
    * │  ├─ moneyByActorKind      复用 {@link #moneyByActorKind(ActorData)}
    * │  ├─ moneyByHouseholdClass 复用 {@link #moneyByHouseholdClass(EconomyData, ActorData)}
-   * │  └─ populationByClassPosition 按 ClassStanding.currentPositionId（无 standing 用 view.stratum 投影）
+   * │  └─ populationByClassPosition 按 HouseholdClassMembership.currentPositionId（无 standing 用 view.stratum 投影）
    * ├─ flows                   【本周期流量】FlowRow 的 income/consumed/taxPaid/interestDue/newBorrowing/
    * │                          repaid/repaidMoney/capitalizedArrears/netSurplus/unmetNeed 合计
    * ├─ derived                 【本期派生】
@@ -2072,14 +2072,14 @@ public final class ApiViews {
   /**
    * ★★ E6c：本格家户的债务存量读数（一次聚合，stocks 与 debtToOutput 共用）。
    *
-   * <p>方向：债务人侧 = {@link ClassRow#debts()}（放贷时写下的权威清单；按 id 去重，避免同一引用重复计数）。 债权人侧不在本块重复：旧键 {@code
+   * <p>方向：债务人侧 = {@link HouseholdEconomy#debts()}（放贷时写下的权威清单；按 id 去重，避免同一引用重复计数）。 债权人侧不在本块重复：旧键 {@code
    * creditCount}/{@code creditPrincipal} 与逐行 {@code credits} 已发出。
    */
   private static HexDebtStock hexDebtStock(EconomyData data, List<HouseholdId> householdKeys) {
     HexDebtStock stock = new HexDebtStock();
     for (HouseholdId key : householdKeys) {
-      ClassRow row = data.classes().get(key);
-      if (row == null) {
+      HouseholdEconomy householdEconomy = data.classes().get(key);
+      if (householdEconomy == null) {
         Map<String, Object> missing = new LinkedHashMap<>();
         missing.put("household", key.value());
         missing.put("byUnit", new TreeMap<>());
@@ -2089,7 +2089,7 @@ public final class ApiViews {
       }
       Map<String, UnitDebtAggregate> byUnit = new TreeMap<>();
       int dangling = 0;
-      for (DebtContractId debtId : new LinkedHashSet<>(row.debts())) {
+      for (DebtContractId debtId : new LinkedHashSet<>(householdEconomy.debts())) {
         DebtContract debt = data.debtContracts().get(debtId);
         if (debt == null) {
           dangling++;
@@ -2277,8 +2277,8 @@ public final class ApiViews {
   /**
    * ★★ E6c：本格人口的阶层分布（时点）。
    *
-   * <p>位置来源：有 {@link ClassStanding} ⇒ {@code currentPositionId}；无 standing 的旧档 ⇒ {@code "legacy:" +
-   * ClassRow.view.stratum}（显式投影，不改写状态、不伪造默认 position）。
+   * <p>位置来源：有 {@link HouseholdClassMembership} ⇒ {@code currentPositionId}；无 standing 的旧档 ⇒ {@code "legacy:" +
+   * HouseholdEconomy.view.stratum}（显式投影，不改写状态、不伪造默认 position）。
    */
   private static Map<String, Object> populationByClassPositionStockView(
       EconomyData data, List<HouseholdId> householdKeys) {
@@ -2286,27 +2286,27 @@ public final class ApiViews {
     int standingHouseholds = 0;
     int legacyFallbackHouseholds = 0;
     for (HouseholdId key : householdKeys) {
-      ClassRow row = data.classes().get(key);
-      if (row == null) {
+      HouseholdEconomy householdEconomy = data.classes().get(key);
+      if (householdEconomy == null) {
         continue;
       }
-      ClassStanding standing = data.classStandings().get(key);
+      HouseholdClassMembership classMembership = data.classStandings().get(key);
       String classPosition;
       boolean fromStanding;
-      if (standing != null) {
+      if (classMembership != null) {
         // ★ 位置键就是 currentPositionId（不与 legacy 投影共享命名空间前缀）。
-        classPosition = standing.currentPositionId().value();
+        classPosition = classMembership.currentPositionId().value();
         fromStanding = true;
         standingHouseholds++;
       } else {
         // ★ 旧档兼容：把 view.stratum 直接投影成位置键；来源由每条 source 字段标明。
-        classPosition = row.view().stratum().value();
+        classPosition = householdEconomy.view().stratum().value();
         fromStanding = false;
         legacyFallbackHouseholds++;
       }
       groups
           .computeIfAbsent(classPosition, ignored -> new ClassPositionAggregate())
-          .add(row, fromStanding);
+          .add(householdEconomy, fromStanding);
     }
     List<Map<String, Object>> out = new ArrayList<>(groups.size());
     for (Map.Entry<String, ClassPositionAggregate> entry : groups.entrySet()) {
@@ -2336,11 +2336,11 @@ public final class ApiViews {
     private long standingHouseholds;
     private long legacyFallbackHouseholds;
 
-    private void add(ClassRow row, boolean fromStanding) {
-      population += row.population();
+    private void add(HouseholdEconomy householdEconomy, boolean fromStanding) {
+      population += householdEconomy.population();
       householdCount++;
-      laborMilli += row.laborMilli();
-      participationAdjustedLaborMilli += row.participationAdjustedLaborMilli();
+      laborMilli += householdEconomy.laborMilli();
+      participationAdjustedLaborMilli += householdEconomy.participationAdjustedLaborMilli();
       if (fromStanding) {
         standingHouseholds++;
       } else {
@@ -2688,15 +2688,15 @@ public final class ApiViews {
 
   /**
    * 基本需求缺口：{@link FlowRow#unmetNeed()}（逐商品、本周期至今）对 {@link
-   * ClassRow#cycleNaturalNeedMilli()}（本周期累计、仅粮）。
+   * HouseholdEconomy#cycleNaturalNeedMilli()}（本周期累计、仅粮）。
    */
   private static Map<String, Object> basicNeedGapDerivedView(
       EconomyData data, List<HouseholdId> householdKeys, HexFlowAggregate hexFlows) {
     long naturalNeedGrain = 0L;
     for (HouseholdId key : householdKeys) {
-      ClassRow row = data.classes().get(key);
-      if (row != null) {
-        naturalNeedGrain += row.cycleNaturalNeedMilli();
+      HouseholdEconomy householdEconomy = data.classes().get(key);
+      if (householdEconomy != null) {
+        naturalNeedGrain += householdEconomy.cycleNaturalNeedMilli();
       }
     }
     Set<String> commodities = new TreeSet<>(hexFlows.unmetNeed.keySet());
@@ -2868,8 +2868,8 @@ public final class ApiViews {
       return true;
     }
     for (HouseholdId household : organization.laborSources()) {
-      ClassRow row = data.classes().get(household);
-      if (row != null && row.view().hex().equals(coord)) {
+      HouseholdEconomy householdEconomy = data.classes().get(household);
+      if (householdEconomy != null && householdEconomy.view().hex().equals(coord)) {
         return true;
       }
     }
@@ -3307,7 +3307,7 @@ public final class ApiViews {
       "候选进入评估结果是进程内瞬态（EntryOutcomeFeed；不落盘、不新增 EconomyData 组件）：重启/换进程/还没结算时"
           + "读不到\"哪些户被评估、为什么没进\"；unit 与份额的真值仍在 units[] 与 assetShares[] 两栏";
 
-  /** ★ E1/E5a：某家户没有 ClassStanding 时的具名原因（唯一拼写点；不是 0，也不是伪造一个默认归属）。 */
+  /** ★ E1/E5a：某家户没有 HouseholdClassMembership 时的具名原因（唯一拼写点；不是 0，也不是伪造一个默认归属）。 */
   private static final String CLASS_STANDING_UNAVAILABLE =
       "该家户没有 ClassStanding 记录（economy.classStandings 为空或未覆盖此户）：E1 起新状态为空时旧路径仍以 "
           + "ClassRow.view 为准；E5a 不产生任何阶层变动，不伪造 current/original/consecutiveDebtStressCycles";
@@ -3377,7 +3377,7 @@ public final class ApiViews {
    * CommodityId)}（唯一算法），本层<b>没有</b>第二处减法。★ 两张 {@code available*} 的键集 = 余额表 ∪ 冻结表（冻结表里可能有 余额表没有的 0 键
    * —— "缺键 = 0"那条守卫的合法形态）。
    *
-   * <p>★★ **为什么两个 total 必须一起给**（这是本视图存在的理由）：行侧的 {@code ClassRow.goods} 与 actor 侧的 {@code
+   * <p>★★ **为什么两个 total 必须一起给**（这是本视图存在的理由）：行侧的 {@code HouseholdEconomy.goods} 与 actor 侧的 {@code
    * HouseholdInventory} 是**两本不同性质的账**（前者是"这批人当期可用/持有"的视图，后者是本切片里商品余额的唯一真源），
    * 任何一方被单独读成"全系统有多少"都是一次口径错。并排发出来 ⇒ 读的人当场看得见两者差多少，而不是靠注释提醒。
    *
@@ -3417,7 +3417,7 @@ public final class ApiViews {
       mergeInto(actorGoodsTotal, inventory.balances());
       mergeMoneyInto(actorMoneyTotal, inventory.money());
     }
-    // ★★ H1：行侧**没有商品了**（{@code ClassRow} 无 goods，裁定 D3-C/K1）⇒ 这一栏是**结构性的空表**
+    // ★★ H1：行侧**没有商品了**（{@code HouseholdEconomy} 无 goods，裁定 D3-C/K1）⇒ 这一栏是**结构性的空表**
     //   （不是"读不到"，是"那里已经没有这本账"）。它照旧发出来，正是为了让"一本账"这条判据**并排可见**：
     //   {@code accounts} / {@code actorGoodsTotal} 有数，{@code rowGoodsTotal} 恒空。
     Map<String, Long> rowGoodsTotal = new TreeMap<>();
@@ -3476,9 +3476,9 @@ public final class ApiViews {
   /** 该格的家户**稳定身份**（{@code HouseholdId}），**按 (居住类型, 阶层 id) 字典序**（可复现；见 {@link #economyHex}）。 */
   private static List<HouseholdId> cohortKeysAt(EconomyData data, HexCoord coord) {
     List<HouseholdId> keys = new ArrayList<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : data.classes().entrySet()) {
-      if (entry.getValue().view().hex().equals(coord)) {
-        keys.add(entry.getKey());
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : data.classes().entrySet()) {
+      if (householdEconomyEntry.getValue().view().hex().equals(coord)) {
+        keys.add(householdEconomyEntry.getKey());
       }
     }
     keys.sort(
@@ -3668,16 +3668,16 @@ public final class ApiViews {
    * / 到期周期逐值相同（它们回的是同一条 {@link DebtContract} 记录）。
    *
    * <p>★★ <b>M1.8：劳动口径可逐值核对</b>：{@code laborMilli}（未折算的每日毛劳动）+ {@code participationPerMille} 旁边发
-   * {@code participationAdjustedLaborMilli}（{@link ClassRow#participationAdjustedLaborMilli()}
+   * {@code participationAdjustedLaborMilli}（{@link HouseholdEconomy#participationAdjustedLaborMilli()}
    * 的**唯一算法**）与两个"人均" 读数（千分/人）—— 改前四阶层 {@code labor/pop} 全部相同（真档 562.0‰）；改后参与率 950‰ 的贫农与 100‰
    * 的地主的人均有效劳动相差 **9.5 倍**（如 534.0‰ vs 56.2‰）。 ★ 两个"人均"都是本层派生量（行里不存第二份），分母为 0 ⇒ 0（不做除零、也不臆造）。
    *
    * @param credits 该行的债权人侧 {@link DebtContractId}（由 {@link DebtIndex#byCreditor} 一次派生、整格复用；可为空表）
    * @param debtBook 该切片的债务表（{@code EconomyData.debtContracts()}；只读，不在本层改）
    */
-  private static Map<String, Object> classRowView(
+  private static Map<String, Object> householdEconomyView(
       HouseholdId key,
-      ClassRow row,
+      HouseholdEconomy householdEconomy,
       FlowRow flow,
       ActorData actors,
       List<DebtContractId> credits,
@@ -3685,17 +3685,17 @@ public final class ApiViews {
     Map<String, Object> view = new LinkedHashMap<>();
     // ★★ H0.2：**居住类型随行一起发出来**（农村贫农与城镇贫农是两本账，读口必须分得开）；
     //   ★ 字面量取自契约的 {@code ResidenceKind#value()} 的产物（{@code key.toString()} 的那一段），本层不写第二份词表。
-    view.put("residence", row.view().residence().value());
-    view.put("slot", row.view().stratum().value());
-    view.put("population", row.population());
-    view.put("laborMilli", row.laborMilli());
-    view.put("participationPerMille", row.participationPerMille());
-    // ★★ M1.8：按阶层参与率折扣后的可用劳动（唯一算法在 ClassRow）+ 两个人均读数 —— 四档差别在报表里可逐值核对。
-    view.put("participationAdjustedLaborMilli", row.participationAdjustedLaborMilli());
-    view.put("laborPerCapitaPerMille", perCapitaLaborMilli(row.laborMilli(), row.population()));
+    view.put("residence", householdEconomy.view().residence().value());
+    view.put("slot", householdEconomy.view().stratum().value());
+    view.put("population", householdEconomy.population());
+    view.put("laborMilli", householdEconomy.laborMilli());
+    view.put("participationPerMille", householdEconomy.participationPerMille());
+    // ★★ M1.8：按阶层参与率折扣后的可用劳动（唯一算法在 HouseholdEconomy）+ 两个人均读数 —— 四档差别在报表里可逐值核对。
+    view.put("participationAdjustedLaborMilli", householdEconomy.participationAdjustedLaborMilli());
+    view.put("laborPerCapitaPerMille", perCapitaLaborMilli(householdEconomy.laborMilli(), householdEconomy.population()));
     view.put(
         "participationAdjustedLaborPerCapitaPerMille",
-        perCapitaLaborMilli(row.participationAdjustedLaborMilli(), row.population()));
+        perCapitaLaborMilli(householdEconomy.participationAdjustedLaborMilli(), householdEconomy.population()));
     // ★★ H1：这个家户的商品余额**只在 actor 侧的账本上**（{@code HouseholdInventory}，键 =
     //   {@code (HouseholdActors.of(key), key.hex())}）—— 行里没有 goods 这一栏。★ 键的拼法只经
     //   {@link #accountKeyOf(HouseholdId, HexCoord)}（本层不复述家户 id / 账户键的形状）；账本缺席 ⇒ 空表（读口不抛）。
@@ -3704,10 +3704,10 @@ public final class ApiViews {
     // ★★ H4：这个家户的**货币账**（actor 侧；与 {@code goods} 同住一本 {@code HouseholdInventory}）——
     //   与下面那个行侧恒 0 的 {@code money} 并排（同 goods 与 rowGoodsTotal 的处置：真值在 actor 侧）。
     view.put("actorMoney", sortedCurrencies(inventory == null ? Map.of() : inventory.money()));
-    view.put("money", row.money());
+    view.put("money", householdEconomy.money());
     // 债务人方向：旧形状保持不变（id 字符串数组），另在 debtDetails 里补明细。
-    List<String> debts = new ArrayList<>(row.debts().size());
-    for (DebtContractId debt : row.debts()) {
+    List<String> debts = new ArrayList<>(householdEconomy.debts().size());
+    for (DebtContractId debt : householdEconomy.debts()) {
       debts.add(debt.value());
     }
     view.put("debts", debts);
@@ -3718,8 +3718,8 @@ public final class ApiViews {
     }
     view.put("credits", creditsView);
     // ★★ M1.5：同一批债务的明细（两个方向同源；dueCycle 由此接入读口，它此前零 reader）。
-    List<Map<String, Object>> debtDetails = new ArrayList<>(row.debts().size() + credits.size());
-    for (DebtContractId debtId : row.debts()) {
+    List<Map<String, Object>> debtDetails = new ArrayList<>(householdEconomy.debts().size() + credits.size());
+    for (DebtContractId debtId : householdEconomy.debts()) {
       DebtContract debt = debtBook.get(debtId);
       if (debt != null) {
         debtDetails.add(debtDetailView(debt, false));
@@ -3732,10 +3732,10 @@ public final class ApiViews {
       }
     }
     view.put("debtDetails", debtDetails);
-    view.put("naturalNeeds", sortedCommodities(row.naturalNeeds()));
+    view.put("naturalNeeds", sortedCommodities(householdEconomy.naturalNeeds()));
     // ★★ M2.7 丙条：本行**本周期累计自然口粮需要**（毫粮；与自然需求并排，窗口标注见 economyHex 的 clock 两栏）。
-    view.put("cycleNaturalNeedMilli", row.cycleNaturalNeedMilli());
-    view.put("effectiveDemand", sortedCommodities(row.effectiveDemand()));
+    view.put("cycleNaturalNeedMilli", householdEconomy.cycleNaturalNeedMilli());
+    view.put("effectiveDemand", sortedCommodities(householdEconomy.effectiveDemand()));
     view.put("flow", flowView(flow));
     return view;
   }
@@ -4183,7 +4183,7 @@ public final class ApiViews {
   }
 
   /**
-   * ★★ E3：家户货币余额按 {@code ClassRow.view.stratum} 聚合（逐币种；世界级时点）。 只认 {@code ActorKind.HOUSEHOLD} 且能在
+   * ★★ E3：家户货币余额按 {@code HouseholdEconomy.view.stratum} 聚合（逐币种；世界级时点）。 只认 {@code ActorKind.HOUSEHOLD} 且能在
    * economy 行集里定位的家户；定位不到的家户不静默塞进某一阶层，而是记进 {@code "__unmapped__"}。
    */
   private static Map<String, Map<String, Long>> moneyByHouseholdClass(
@@ -4194,8 +4194,8 @@ public final class ApiViews {
         continue;
       }
       HouseholdId household = HouseholdActors.householdOf(HouseholdActors.of(inventory.key().household()));
-      ClassRow row = data.classes().get(household);
-      String stratum = row == null ? "__unmapped__" : row.view().stratum().value();
+      HouseholdEconomy householdEconomy = data.classes().get(household);
+      String stratum = householdEconomy == null ? "__unmapped__" : householdEconomy.view().stratum().value();
       mergeMoneyInto(byClass.computeIfAbsent(stratum, ignored -> new TreeMap<>()), inventory.money());
     }
     return byClass;
@@ -4306,11 +4306,11 @@ public final class ApiViews {
    */
   private static List<Map<String, Object>> demandViews(
       EconomyData data, HexCoord coord, long tick) {
-    List<Map.Entry<DemandId, DemandEntry>> entries = new ArrayList<>(data.demands().entrySet());
-    entries.sort(Comparator.comparing(entry -> entry.getKey().value()));
+    List<Map.Entry<DemandId, HouseholdDemand>> householdDemandEntries = new ArrayList<>(data.demands().entrySet());
+    householdDemandEntries.sort(Comparator.comparing(entry -> entry.getKey().value()));
     List<Map<String, Object>> out = new ArrayList<>();
-    for (Map.Entry<DemandId, DemandEntry> entry : entries) {
-      DemandEntry demand = entry.getValue();
+    for (Map.Entry<DemandId, HouseholdDemand> householdDemand : householdDemandEntries) {
+      HouseholdDemand demand = householdDemand.getValue();
       if (!demandTouchesHex(data, demand, coord)) {
         continue;
       }
@@ -4334,12 +4334,12 @@ public final class ApiViews {
   }
 
   /** 本格相关：HEX 需求命中本格，或 HOUSEHOLD 需求的家户住在该格。 */
-  private static boolean demandTouchesHex(EconomyData data, DemandEntry demand, HexCoord coord) {
-    if (demand.scope() == DemandEntry.DemandScope.HEX) {
+  private static boolean demandTouchesHex(EconomyData data, HouseholdDemand demand, HexCoord coord) {
+    if (demand.scope() == HouseholdDemand.DemandScope.HEX) {
       return demand.hex().map(coord::equals).orElse(false);
     }
-    ClassRow row = data.classes().get(demand.household().orElse(null));
-    return row != null && row.view().hex().equals(coord);
+    HouseholdEconomy householdEconomy = data.classes().get(demand.household().orElse(null));
+    return householdEconomy != null && householdEconomy.view().hex().equals(coord);
   }
 
   /** ★★ R4-E2：候选预设的全量只读视图（世界级、与格无关；按 id 值升序）。 */
@@ -4524,7 +4524,7 @@ public final class ApiViews {
 
   /**
    * ★★ <b>E6a：阶层保留份额只读视图</b>（世界级；按 {@code ClassShareId} 字典序）。它只 <b>读</b> {@code
-   * EconomyData.classShares()}：每条的 {@code sharePerMille} 与 {@link ClassStanding#retainedShares()}
+   * EconomyData.classShares()}：每条的 {@code sharePerMille} 与 {@link HouseholdClassMembership#retainedShares()}
    * 同源； 同一 {@code (transitionId, householdId)} 的 Σ = 1000‰ 由构造期守卫判死。空列表 = 没有份额记录。
    */
   private static List<Map<String, Object>> classShareViews(EconomyData data) {
@@ -4596,16 +4596,16 @@ public final class ApiViews {
       ProductionLedger.LiquidationAudit audit, EconomyData data, HexCoord coord) {
     String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
     if (audit.household().isPresent()) {
-      ClassRow row = data.classes().get(audit.household().get());
-      if (row != null && row.view().hex().equals(coord)) {
+      HouseholdEconomy householdEconomy = data.classes().get(audit.household().get());
+      if (householdEconomy != null && householdEconomy.view().hex().equals(coord)) {
         return true;
       }
     }
     if (audit.contractId().isPresent()) {
       DebtContract contract = data.debtContracts().get(audit.contractId().get());
       if (contract != null) {
-        ClassRow debtorRow = data.classes().get(contract.debtor());
-        if (debtorRow != null && debtorRow.view().hex().equals(coord)) {
+        HouseholdEconomy debtorHouseholdEconomy = data.classes().get(contract.debtor());
+        if (debtorHouseholdEconomy != null && debtorHouseholdEconomy.view().hex().equals(coord)) {
           return true;
         }
       }
@@ -4621,22 +4621,22 @@ public final class ApiViews {
   }
 
   /**
-   * ★★ <b>E5a：家户阶层归属只读视图</b>：把 {@code ClassStanding} 的每个字段（含 {@code
+   * ★★ <b>E5a：家户阶层归属只读视图</b>：把 {@code HouseholdClassMembership} 的每个字段（含 {@code
    * consecutiveDebtStressCycles}）逐值发出；视图不解释、不重算，也不改旧路径权威。
    */
-  private static Map<String, Object> classStandingView(ClassStanding standing) {
+  private static Map<String, Object> classMembershipView(HouseholdClassMembership classMembership) {
     Map<String, Object> view = new LinkedHashMap<>();
-    view.put("householdId", standing.householdId().value());
-    view.put("originalPositionId", standing.originalPositionId().value());
-    view.put("currentPositionId", standing.currentPositionId().value());
+    view.put("householdId", classMembership.householdId().value());
+    view.put("originalPositionId", classMembership.originalPositionId().value());
+    view.put("currentPositionId", classMembership.currentPositionId().value());
     Map<String, Long> retained = new TreeMap<>();
-    for (Map.Entry<ClassPositionId, Long> entry : standing.retainedShares().entrySet()) {
+    for (Map.Entry<ClassPositionId, Long> entry : classMembership.retainedShares().entrySet()) {
       retained.put(entry.getKey().value(), entry.getValue());
     }
     view.put("retainedShares", retained);
-    view.put("consecutiveDebtStressCycles", standing.consecutiveDebtStressCycles());
-    view.put("lastTransitionDay", standing.lastTransitionDay());
-    view.put("reason", standing.reason());
+    view.put("consecutiveDebtStressCycles", classMembership.consecutiveDebtStressCycles());
+    view.put("lastTransitionDay", classMembership.lastTransitionDay());
+    view.put("reason", classMembership.reason());
     return view;
   }
 
@@ -5623,24 +5623,24 @@ public final class ApiViews {
   private static Map<String, Object> laborView(
       SocialData data, EconomyData economy, HexCoord coord) {
     List<PopulationGroup> groups = data.groupsAt(coord);
-    // ★★ P2-A A4：可用量 = 该格各家的**每 tick 时间预算**（ClassRow.laborMilli，毫小时）；
+    // ★★ P2-A A4：可用量 = 该格各家的**每 tick 时间预算**（HouseholdEconomy.laborMilli，毫小时）；
     //   批次级供给表已删除（唯一权威是 Social 人口组成 × 系数表）。
     long available = 0L;
-    for (ClassRow row : economy.classes().values()) {
-      if (row.view().hex().equals(coord)) {
-        available += row.laborMilli();
+    for (HouseholdEconomy householdEconomy : economy.classes().values()) {
+      if (householdEconomy.view().hex().equals(coord)) {
+        available += householdEconomy.laborMilli();
       }
     }
     long allocated = 0L;
     Map<String, long[]> byActor = new TreeMap<>(); // 键 = "KIND|id"（字典序可复现），值 = [劳动量]
-    for (LaborAllocation allocation : economy.allocations().values()) {
-      if (!belongsTo(coord, data, allocation.group())) {
+    for (HouseholdLaborCommitment laborCommitment : economy.allocations().values()) {
+      if (!belongsTo(coord, data, laborCommitment.group())) {
         continue;
       }
-      allocated += allocation.laborMilli();
-      String key = allocation.actor().kind().name() + "|" + allocation.actor().id();
+      allocated += laborCommitment.laborMilli();
+      String key = laborCommitment.actor().kind().name() + "|" + laborCommitment.actor().id();
       long[] slot = byActor.computeIfAbsent(key, ignored -> new long[1]);
-      slot[0] += allocation.laborMilli();
+      slot[0] += laborCommitment.laborMilli();
     }
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("availableMilli", available);
@@ -6008,17 +6008,17 @@ public final class ApiViews {
    * 一族量的是**本周期**劳动 ⇒ 乘周期天数。R3a 之后旧结算引擎已删除，本方法只服务这一条读口。
    */
   private static Map<HouseholdId, Long> laborOfCohort(
-      Map<HouseholdId, ClassRow> rows, HexCoord location, long cycleDays) {
+      Map<HouseholdId, HouseholdEconomy> householdEconomies, HexCoord location, long cycleDays) {
     Map<HouseholdId, Long> byCohort = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : rows.entrySet()) {
-      if (!entry.getValue().view().hex().equals(location)) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomies.entrySet()) {
+      if (!householdEconomyEntry.getValue().view().hex().equals(location)) {
         continue;
       }
-      long rowLabor = entry.getValue().participationAdjustedLaborMilli() * cycleDays;
+      long rowLabor = householdEconomyEntry.getValue().participationAdjustedLaborMilli() * cycleDays;
       if (rowLabor <= 0L) {
         continue;
       }
-      byCohort.put(entry.getKey(), rowLabor);
+      byCohort.put(householdEconomyEntry.getKey(), rowLabor);
     }
     return byCohort;
   }
@@ -6033,12 +6033,12 @@ public final class ApiViews {
    * 定位不到（无经济行的家户）⇒ 抛（读口不静默造一个假格）。
    */
   private static HexCoord householdHex(EconomyData economy, HouseholdId household) {
-    ClassRow row = economy.classes().get(household);
-    if (row == null) {
+    HouseholdEconomy householdEconomy = economy.classes().get(household);
+    if (householdEconomy == null) {
       throw new IllegalStateException(
           "家户没有经济行（无法定位账户所在格；A1 起 Social/Economy 应共用同一 HouseholdId）: " + household);
     }
-    return row.view().hex();
+    return householdEconomy.view().hex();
   }
 
   /** {@link #householdHex(EconomyData, HouseholdId)} 的 state 形态（读口便利重载）。 */

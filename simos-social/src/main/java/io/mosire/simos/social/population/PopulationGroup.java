@@ -11,8 +11,8 @@ import io.mosire.simos.social.api.population.Sex;
  * {@code householdOfLot(...)} 是唯一读口。于是 unit 家户与 hex 家户是同一个模型的两档，批次可以随家户从 hex 搬到 unit
  * （{@code id} 不变），而不需要往本类型加任何"位置/居住类型"字段。
  *
- * <p>★★ **它绝不是新版 {@code ClassRow}**（设计稿 §二 的明令）：本类型**不装** 贫农/中农/富农/地主、也不装 {@code farm}/{@code
- * craft}/{@code serf}、更不装库存货币债务。那些是**生产关系**（{@code Relation}/{@code LaborAllocation}，属
+ * <p>★★ **它绝不是新版 {@code HouseholdEconomy}**（设计稿 §二 的明令）：本类型**不装** 贫农/中农/富农/地主、也不装 {@code farm}/{@code
+ * craft}/{@code serf}、更不装库存货币债务。那些是**生产关系**（{@code Relation}/{@code HouseholdLaborCommitment}，属
  * R2+）与**经济主体**（{@code EconomicActor}，属 economy 切片）的事。 只有把三者分开，"富裕依附农 / 贫穷自由农" 这种交叉才表达得出来 ——
  * 现在表达不了，因为阶层就是主键。
  *

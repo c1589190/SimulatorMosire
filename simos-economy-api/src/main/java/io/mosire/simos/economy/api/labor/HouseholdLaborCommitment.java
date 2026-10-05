@@ -11,7 +11,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
  * ★★ **一次劳动分配**（第三阶段设计稿 §四）："**这批人**把**这么多**劳动供给**这个主体**，在这个周期里"。
  *
  * <pre>
- * Household(时间预算) ──→ LaborAllocation ──→ ProductionUnit（生产活动）
+ * Household(时间预算) ──→ HouseholdLaborCommitment ──→ ProductionUnit（生产活动）
  * </pre>
  *
  * <p>★★ **它存在的理由**（设计稿 §一.2 实测的空洞）：此前"劳动投入"是**按产业各自累加**的（每格 farm 与 craft 各带一份人口与劳动、 互不知道对方）⇒
@@ -23,9 +23,9 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
  * economy-api}（设计稿 §八.1 明文允许），不是反过来。
  *
  * <p>★★ <b>{@code laborMilli} 的口径（P2-A §13.4 起）</b>：它是**本家户这一 tick 分给该生产活动/unit 的时间**，
- * 单位 = <b>毫小时</b>（{@code 1 小时 = 1000 毫小时}，定点整数，无浮点）。它是 {@code LaborAllocation} 唯一的量纲；
- * 家户每 tick 的总时间预算 = {@code ClassRow.laborMilli}（由 Social 人口组成 × {@code LaborTimeTable} 每 tick 重算），
- * 不变量 = {@code Σ allocations(household).laborMilli ≤ ClassRow.laborMilli}。★ 第二权威 {@code LaborSupply} 已删除。
+ * 单位 = <b>毫小时</b>（{@code 1 小时 = 1000 毫小时}，定点整数，无浮点）。它是 {@code HouseholdLaborCommitment} 唯一的量纲；
+ * 家户每 tick 的总时间预算 = {@code HouseholdEconomy.laborMilli}（由 Social 人口组成 × {@code HouseholdLaborTimeTable} 每 tick 重算），
+ * 不变量 = {@code Σ allocations(household).laborMilli ≤ HouseholdEconomy.laborMilli}。★ 第二权威 {@code LaborSupply} 已删除。
  *
  * <p>★ **{@code period} = 发放周期**（世界周期序号，从 1 起）：本轮配额是**常设**的（跨周期不变，见 {@code 旧结算引擎（R3a 已删除）}
  * 的取用口径），故它现在由**构造期守卫**读（"该批次的供给记录必须与它同期"，见 {@code EconomyData}）；将来有了"按周期重发配额" 的命令，再按 {@code
@@ -44,7 +44,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
  * @param laborMilli 承诺投入的劳动（千分劳动·日）；不得为负
  * @param period 发放周期（世界周期序号）；不得为负
  */
-public record LaborAllocation(
+public record HouseholdLaborCommitment(
     LaborAllocationId id,
     PeopleLotId group,
     HouseholdId household,
@@ -53,7 +53,7 @@ public record LaborAllocation(
     long laborMilli,
     long period) {
 
-  public LaborAllocation {
+  public HouseholdLaborCommitment {
     if (id == null) {
       throw new IllegalArgumentException("LaborAllocation.id 不得为 null");
     }

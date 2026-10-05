@@ -17,7 +17,7 @@ import java.util.Objects;
  *
  * <p>★★ <b>口径</b>：{@link #perPersonMilliHours(int, Sex)} 是**每人每 tick** 的预算；家户预算 = Σ 成员
  * {@code count × perPersonMilliHours}。它是**重算量**（每 tick 从 Social 的家户成员与年龄现算），
- * 不是经济状态里的第二权威 —— {@code ClassRow.laborMilli} 只是它在本 tick 的投影。
+ * 不是经济状态里的第二权威 —— {@code HouseholdEconomy.laborMilli} 只是它在本 tick 的投影。
  *
  * <p>★ <b>可编辑性</b>：默认值只有 {@link #DEFAULT} 一个拼写点；调用方（创世播种 / 协调器）可注入别的实例。
  * 年龄档序号与 {@code PopulationSeeder} 的 D4 三档同序：{@link #BRACKET_CHILD} / {@link #BRACKET_ADULT} /
@@ -28,7 +28,7 @@ import java.util.Objects;
  * @param adultFemaleMilliHoursPerTick 成年女每人每 tick 毫小时；不得为负
  * @param elderMilliHoursPerTick 老年每人每 tick 毫小时；不得为负
  */
-public record LaborTimeTable(
+public record HouseholdLaborTimeTable(
     long childMilliHoursPerTick,
     long adultMaleMilliHoursPerTick,
     long adultFemaleMilliHoursPerTick,
@@ -44,10 +44,10 @@ public record LaborTimeTable(
   public static final int BRACKET_ELDER = 2;
 
   /** 本批默认表（可调；见类注）。 */
-  public static final LaborTimeTable DEFAULT =
-      new LaborTimeTable(4_000L, 16_000L, 8_000L, 0L);
+  public static final HouseholdLaborTimeTable DEFAULT =
+      new HouseholdLaborTimeTable(4_000L, 16_000L, 8_000L, 0L);
 
-  public LaborTimeTable {
+  public HouseholdLaborTimeTable {
     if (childMilliHoursPerTick < 0L) {
       throw new IllegalArgumentException(
           "LaborTimeTable.childMilliHoursPerTick 不得为负: " + childMilliHoursPerTick);

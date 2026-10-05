@@ -13,7 +13,7 @@ import java.util.Set;
 
 /**
  * ★★ <b>家户阶层归属</b>（理想架构 §2.3/§2.9）：持久化一个家户的当前阶层位置、原所属位置与保留份额。它是 E1 建立的"家户 → 阶层"权威状态； 旧 {@code
- * ClassRow.view.stratum} 在 E1 仍是旧结算路径的权威，<b>本状态不接线结算、不改旧路径</b>。
+ * HouseholdEconomy.view.stratum} 在 E1 仍是旧结算路径的权威，<b>本状态不接线结算、不改旧路径</b>。
  *
  * <p>★★ <b>为什么保留 {@code originalPositionId} 与 {@code
  * retainedShares}</b>：模式变迁时，一个家户可能只把一部分成员/权利迁入新位置，其余保留在原所属； 单一 {@code currentPositionId}
@@ -23,7 +23,7 @@ import java.util.Set;
  * 与键身份是状态合法性判据；"份额合计是否等于 1000"等规则留到 E6 模式变迁裁决。
  *
  * <p>★★ <b>E5a 追加 {@code consecutiveDebtStressCycles}</b>：连续债务压力周期数（≥ 0）。★ <b>旧 JSON 缺这个键 ⇒
- * 0</b>（Jackson 对 record 的缺失原始 {@code long} 取类型默认值，与 {@code ClassRow.cycleNaturalNeedMilli} 同款约定），
+ * 0</b>（Jackson 对 record 的缺失原始 {@code long} 取类型默认值，与 {@code HouseholdEconomy.cycleNaturalNeedMilli} 同款约定），
  * 故本字段不需要另写迁移层；E5a 只落字段与构造期 ≥ 0 守卫，递增/清零在 E5b。
  *
  * <p>★★ <b>P2-B §13.5 追加 {@code participatingPositionIds}</b>：本家户**除当前位置之外还参与**的阶层位置集合
@@ -44,7 +44,7 @@ import java.util.Set;
  * @param lastTransitionDay 最近一次阶层变更日；不得为负
  * @param reason 最近一次变更原因（具名文本；可为空串 = 尚未发生变更）；不得为 null
  */
-public record ClassStanding(
+public record HouseholdClassMembership(
     HouseholdId householdId,
     ClassPositionId originalPositionId,
     ClassPositionId currentPositionId,
@@ -59,7 +59,7 @@ public record ClassStanding(
    * 使尚未迁移的旧调用方/用例仍能按原签名构造。新代码请直接给 {@code participatingPositionIds}（没有就给
    * {@code Set.of()}，语义相同）。
    */
-  public ClassStanding(
+  public HouseholdClassMembership(
       HouseholdId householdId,
       ClassPositionId originalPositionId,
       ClassPositionId currentPositionId,
@@ -78,7 +78,7 @@ public record ClassStanding(
         reason);
   }
 
-  public ClassStanding {
+  public HouseholdClassMembership {
     if (householdId == null) {
       throw new IllegalArgumentException("ClassStanding.householdId 不得为 null");
     }

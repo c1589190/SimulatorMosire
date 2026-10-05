@@ -27,7 +27,7 @@ public final class HouseholdIds {
   public static final String LEGACY_PREFIX = "legacy-";
 
   /**
-   * 旧档临时占位前缀（只由 {@code EconomyCodec} 的反序列化器在"旧 LaborAllocation 缺 household"时造）：
+   * 旧档临时占位前缀（只由 {@code EconomyCodec} 的反序列化器在"旧 HouseholdLaborCommitment 缺 household"时造）：
    * 迁移器必须在返回状态前把它换成真实家户。运行期不得使用（{@link #isPending(HouseholdId)} 可判）。
    */
   public static final String PENDING_LEGACY_PREFIX = "legacy-pending-";

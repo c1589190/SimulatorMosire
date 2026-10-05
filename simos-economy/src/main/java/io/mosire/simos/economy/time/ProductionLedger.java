@@ -28,7 +28,7 @@ import java.util.Optional;
 import org.slf4j.Logger;
 
 /**
- * ★★ <b>一天结算里"离开 {@code ClassRow} 的那些发生额"</b>（S1 阶段 4+5 Task 4；spec §四 ①→⑤ 的账）。
+ * ★★ <b>一天结算里"离开 {@code HouseholdEconomy} 的那些发生额"</b>（S1 阶段 4+5 Task 4；spec §四 ①→⑤ 的账）。
  *
  * <p>★★ <b>它为什么必须存在</b>（本阶段最要紧的一件事）：产出<b>不再写进阶层行</b>（R5 ②）—— 它变成产权条目/转移（{@code actor}
  * 账上的增减）。这一样<b>不是 economy 切片自己的数据</b>： 产权住在 {@code simos-actor}，而"谁把条目/转移落到账上"必须由<b>同时看得见两片</b>的
@@ -473,8 +473,8 @@ public record ProductionLedger(
    *   <li>{@code degraded-rule-selection}：政策按 assetKind 退化为 id 最小的一条（仍可能继续处置）；
    *   <li>{@code class-decline} / {@code debt-explosion}：阶层下滑与债务爆炸信号同样落一条审计（信号本体进 {@code
    *       crisisSignals}）；
-   *   <li>{@code class-projection-fallback}：5c 发现 {@code ClassStanding.currentPositionId} 投影不回旧
-   *       {@code ClassRow.view.stratum}，保留旧 view 并具名报告。
+   *   <li>{@code class-projection-fallback}：5c 发现 {@code HouseholdClassMembership.currentPositionId} 投影不回旧
+   *       {@code HouseholdEconomy.view.stratum}，保留旧 view 并具名报告。
    * </ul>
    *
    * <p>★ <b>窗口/单位</b>：{@code day} = 本次结算日；{@code quantity} 与 AssetShare 同单位；{@code *Milli}
@@ -553,7 +553,7 @@ public record ProductionLedger(
   /**
    * ★★ <b>这一天有没有"产出"</b>（E7/R4 的 fail-closed 判据）：有毛产、或有产出计提。
    *
-   * <p>★ 为什么这两样：它们正是<b>离开 {@code ClassRow} 的部分</b> —— 没有产权落账口的入口拿它们<b>无处可放</b>。 ★ 为什么不含 {@link
+   * <p>★ 为什么这两样：它们正是<b>离开 {@code HouseholdEconomy} 的部分</b> —— 没有产权落账口的入口拿它们<b>无处可放</b>。 ★ 为什么不含 {@link
    * #inputs()}：投入扣在家户账（会话副本）里、记在流水的 {@code consumed} 里，账是完整的。 ★ 为什么不含 {@link #deferredMoney()}：H4
    * 起它<b>恒为空</b>（货币档真的结算了），对判据没有影响。 ★ 为什么不含 {@link
    * #transfers()}：借粮与取材<b>不是产出</b>（它们是既有库存的换手）；而本判据服务的入口（多日静态 {@code settle}）

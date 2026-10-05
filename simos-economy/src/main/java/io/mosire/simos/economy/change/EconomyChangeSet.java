@@ -22,19 +22,19 @@ import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
-import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DebtContract;
-import io.mosire.simos.economy.model.DemandEntry;
+import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
@@ -104,22 +104,22 @@ import java.util.function.Function;
 public record EconomyChangeSet(
     FieldDelta<EconomyMeta> meta,
     FieldDelta<Industry> industries,
-    FieldDelta<ClassRow> classes,
+    FieldDelta<HouseholdEconomy> classes,
     FieldDelta<DebtContract> debtContracts,
     FieldDelta<FlowRow> flows,
-    FieldDelta<LaborAllocation> allocations,
+    FieldDelta<HouseholdLaborCommitment> allocations,
     FieldDelta<ProductionRelation> relations,
     FieldDelta<Market> markets,
     FieldDelta<ShipmentBatch> shipments,
     FieldDelta<AssetShare> assetShares,
     FieldDelta<OperatorCondition> operatorConditions,
     FieldDelta<ProductionUnit> units,
-    FieldDelta<DemandEntry> demands,
+    FieldDelta<HouseholdDemand> demands,
     FieldDelta<ProductionCandidate> candidates,
     FieldDelta<ProductionMode> modes,
     FieldDelta<ClassStructure> classStructures,
     FieldDelta<ClassPosition> classPositions,
-    FieldDelta<ClassStanding> classStandings,
+    FieldDelta<HouseholdClassMembership> classStandings,
     FieldDelta<ProductionOrganization> productionOrganizations,
     FieldDelta<AssetRule> assetRules,
     FieldDelta<Government> governments,

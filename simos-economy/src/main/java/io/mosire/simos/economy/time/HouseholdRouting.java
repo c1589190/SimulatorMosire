@@ -3,9 +3,9 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ProductionOrganization;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -52,7 +52,7 @@ final class HouseholdRouting {
 
   /** HOUSEHOLD actor 且是现存家户行 ⇒ 该家户；其余（非家户 / 行不存在 / id 不可解析）⇒ 空。 */
   static Optional<HouseholdId> householdOfActorOrNull(
-      ActorRef actor, Map<HouseholdId, ClassRow> rows) {
+      ActorRef actor, Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     if (actor == null || actor.kind() != ActorKind.HOUSEHOLD) {
       return Optional.empty();
     }
@@ -62,7 +62,7 @@ final class HouseholdRouting {
     } catch (RuntimeException notAHouseholdActor) {
       return Optional.empty();
     }
-    return rows.containsKey(household) ? Optional.of(household) : Optional.empty();
+    return householdEconomies.containsKey(household) ? Optional.of(household) : Optional.empty();
   }
 
   /** 一个 unit 的账户主体：单一家户 或 集体家户（两者最多一个非空；空 = 解析不到）。 */
@@ -107,24 +107,24 @@ final class HouseholdRouting {
    */
   static Subject subjectOf(
       ProductionUnit unit,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<ProductionUnitId, ProductionOrganization> organizationByUnit,
       SettlementIndex index) {
     Objects.requireNonNull(unit, "unit");
-    Objects.requireNonNull(rows, "rows");
+    Objects.requireNonNull(householdEconomies, "rows");
     Objects.requireNonNull(index, "index");
     Optional<HouseholdId> economic = index.economicHouseholdOf(unit.id());
     if (economic.isPresent()) {
       return Subject.single(economic.get());
     }
-    Optional<HouseholdId> direct = householdOfActorOrNull(unit.operator(), rows);
+    Optional<HouseholdId> direct = householdOfActorOrNull(unit.operator(), householdEconomies);
     if (direct.isPresent()) {
       return Subject.single(direct.get());
     }
     ProductionOrganization organization =
         organizationByUnit == null ? null : organizationByUnit.get(unit.id());
     if (organization != null) {
-      Optional<HouseholdId> organizer = householdOfActorOrNull(organization.organizer(), rows);
+      Optional<HouseholdId> organizer = householdOfActorOrNull(organization.organizer(), householdEconomies);
       if (organizer.isPresent()) {
         return Subject.single(organizer.get());
       }
@@ -141,10 +141,10 @@ final class HouseholdRouting {
    * 仍无权重 ⇒ 等权。返回表保序（首次出现序），只含主体成员。
    */
   static Map<HouseholdId, Long> weightsOf(
-      ProductionUnitId unitId, SettlementIndex index, Map<HouseholdId, ClassRow> rows) {
+      ProductionUnitId unitId, SettlementIndex index, Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Map<HouseholdId, Long> weights = new LinkedHashMap<>();
-    for (LaborAllocation allocation : index.allocationsOfUnit(unitId)) {
-      weights.merge(allocation.household(), Math.max(0L, allocation.laborMilli()), Math::addExact);
+    for (HouseholdLaborCommitment laborCommitment : index.allocationsOfUnit(unitId)) {
+      weights.merge(laborCommitment.household(), Math.max(0L, laborCommitment.laborMilli()), Math::addExact);
     }
     long positive = 0L;
     for (long weight : weights.values()) {
@@ -155,8 +155,8 @@ final class HouseholdRouting {
     }
     weights.clear();
     for (HouseholdId household : index.householdsOf(unitId)) {
-      ClassRow row = rows.get(household);
-      weights.put(household, Math.max(1L, row == null ? 1L : row.population()));
+      HouseholdEconomy householdEconomy = householdEconomies.get(household);
+      weights.put(household, Math.max(1L, householdEconomy == null ? 1L : householdEconomy.population()));
     }
     return weights;
   }

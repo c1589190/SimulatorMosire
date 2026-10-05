@@ -108,7 +108,7 @@ final class ProvinceApplyPlan {
   /** {@code unit.SetGovFormation} 的命令类型。 */
   static final String SET_GOV_FORMATION_TYPE = GovCreateOfficePlan.SET_GOV_FORMATION_TYPE;
 
-  /** {@code economy.RegisterGovernment} 的命令类型（政府记录 + ClassRow；P2-C §13.7）。 */
+  /** {@code economy.RegisterGovernment} 的命令类型（政府记录 + HouseholdEconomy；P2-C §13.7）。 */
   static final String REGISTER_GOVERNMENT_TYPE = GovCreateOfficePlan.REGISTER_GOVERNMENT_TYPE;
 
   /** {@code unit.SetJurisdiction} 的命令类型（中央无首都圈时缺席）。 */
@@ -685,7 +685,7 @@ final class ProvinceApplyPlan {
     }
 
     /**
-     * {@code economy.RegisterGovernment} 载荷：政府记录 + 政府家户 ClassRow；身份只给 {@code govUnitId}
+     * {@code economy.RegisterGovernment} 载荷：政府记录 + 政府家户 HouseholdEconomy；身份只给 {@code govUnitId}
      * （政府/家户 id 由 handler 派生）。人口/劳动/参与率/issuable/铸币/发债一律缺席：新建取 0/空集、重复登记逐值保留。
      */
     String registerGovernmentPayload(GovEntry gov, String reason) {

@@ -27,8 +27,8 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
-import io.mosire.simos.economy.api.labor.LaborTimeTable;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
+import io.mosire.simos.economy.api.labor.HouseholdLaborTimeTable;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
@@ -39,7 +39,7 @@ import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -94,7 +94,7 @@ import java.util.function.Function;
  * PopulationLots#isUrban}）。**不再读 {@link io.mosire.simos.social.gen.SettlementPlan}** —— 两条命令读同一份列表，
  * "Σ group == 经济侧总人口"因此是构造性成立的。本类只做"分配 / 换算"，不做人口估计。
  *
- * <p>★★ **R2 起"这个批次属于哪个产业"不再隐含在批次上，而由 {@code LaborAllocation} 表达**（第三阶段设计稿 §四）：本类 **同时**产出该格的
+ * <p>★★ **R2 起"这个批次属于哪个产业"不再隐含在批次上，而由 {@code HouseholdLaborCommitment} 表达**（第三阶段设计稿 §四）：本类 **同时**产出该格的
  * {@code laborSupply}（各批次的毛劳动与两项扣除）与 {@code allocations}（各批次把多少劳动给了哪个主体 —— 创世 = "农村批次 → 农业（庄园）/
  * 城镇批次 → 手工业（作坊）"的 1000‰ 配额）。★ 配额之和**逐值等于**改口径前的当日劳动 （见 {@link
  * #industryDailyLabor}），故本轮**改的是结构、不是取值**。
@@ -170,7 +170,7 @@ public final class EconomySeeder {
   }
 
   /**
-   * ★★ <b>production-runtime 家户 → 默认阶层位置时写进 {@code ClassStanding.reason} 的具名值。</b>
+   * ★★ <b>production-runtime 家户 → 默认阶层位置时写进 {@code HouseholdClassMembership.reason} 的具名值。</b>
    *
    * <p>命名风格与旧档迁移的 {@code legacyDefault:seedClassStanding} 一致：冒号前是来源、冒号后是动作。它是状态字段的
    * 可审计文本，不是显示给玩家的文本。
@@ -369,7 +369,7 @@ public final class EconomySeeder {
    */
   public static final long TOOL_MILLI_PER_WORKSHOP_CYCLE = 2_000L;
 
-  /** 织造的产业活动标签（{@code LaborAllocation.activity}）。 */
+  /** 织造的产业活动标签（{@code HouseholdLaborCommitment.activity}）。 */
   public static final String ACTIVITY_WEAVE = WEAVE;
 
   /**
@@ -461,10 +461,10 @@ public final class EconomySeeder {
    * ★★ <b>流民家户的阶层槽位字面量</b>：{@link SocialClassId#LANDLESS_LABORER} 的规范值（{@code
    * "landless_laborer"}）—— 它是 {@link SocialClassId} 封闭词表里与"无地流民"唯一对齐的一档。
    *
-   * <p>★★ <b>为什么不是字面量 {@code "displaced"}</b>（如实记偏差）：{@code ClassRow} 的 {@code
-   * slot}/view 的阶层段由 {@code EconomyPayloads.classRow} 经 {@link SocialClassId#parse} 解析，而该词表**不含**
+   * <p>★★ <b>为什么不是字面量 {@code "displaced"}</b>（如实记偏差）：{@code HouseholdEconomy} 的 {@code
+   * slot}/view 的阶层段由 {@code EconomyPayloads.householdEconomy} 经 {@link SocialClassId#parse} 解析，而该词表**不含**
    * {@code displaced}（本批文件所有权也不含 {@code SocialClassId}）⇒ 线格式只能用一个词表内阶层。流民的**生产方式**仍是
-   * {@link DefaultProductionModes#DISPLACED}，由 {@code productionRuntimeClassStandings} 按本槽位映射到 {@code
+   * {@link DefaultProductionModes#DISPLACED}，由 {@code productionRuntimeClassMemberships} 按本槽位映射到 {@code
    * displaced.laborer} 位置；家户 id 的 {@code roleSuffix="displaced"} 保留"流民户"的显式痕迹。
    */
   static final String DISPLACED_SLOT = SocialClassId.LANDLESS_LABORER.value();
@@ -513,7 +513,7 @@ public final class EconomySeeder {
    *
    * <p>★★ <b>它为什么存在、以及它为什么不是"第二次折扣"</b>：配额是**按批次**发的，而一个批次（性别 × 年龄）里混着四个阶层 ——
    * 批次的"可用劳动"只能按**池的阶层构成**取加权参与率。于是同一份毛劳动在两条投影上各折算<b>一次</b>： 逐行 = {@link
-   * ClassRow#participationAdjustedLaborMilli()}（阶层自己的参与率），逐批次 = 本常量；两者在池上的总量相等（同一批人、同一套份额）。 ★
+   * HouseholdEconomy#participationAdjustedLaborMilli()}（阶层自己的参与率），逐批次 = 本常量；两者在池上的总量相等（同一批人、同一套份额）。 ★
    * <b>严禁</b>任何调用点在乘过本常量之后又去乘一次逐阶层的参与率（或反过来）—— 那会把同一份劳动折算两遍（M1.8 的靶子）。
    *
    * <p>★ <b>它是派生量、不是第二个参数表</b>：公式只读 {@link #CLASS_SHARE_PER_MILLE} 与 {@link #CLASS_LABOR_PER_MILLE}
@@ -552,9 +552,9 @@ public final class EconomySeeder {
 
   /**
    * ★★ <b>P2-A §13.4：家户每 tick 劳动时间预算的系数表（可调参数）</b>：默认 = 未成年 4h / 成年男 16h /
-   * 成年女 8h / 老年 0。单位毫小时；{@code ClassRow.laborMilli} 是它在经济侧的投影（每 tick 重算）。
+   * 成年女 8h / 老年 0。单位毫小时；{@code HouseholdEconomy.laborMilli} 是它在经济侧的投影（每 tick 重算）。
    */
-  public static final LaborTimeTable LABOR_TIME_TABLE = LaborTimeTable.DEFAULT;
+  public static final HouseholdLaborTimeTable HOUSEHOLD_LABOR_TIME_TABLE = HouseholdLaborTimeTable.DEFAULT;
 
   // ── 商品 id：唯一拼写点都在 {@link EconomyVocabulary}（v2 spec §六；R3 起商品不止粮）──────────
 
@@ -722,7 +722,7 @@ public final class EconomySeeder {
    * ★★ <b>一次生成的<strong>内存形态</strong></b>（H1）：同一条循环的<strong>四个</strong>产物 —— {@code economy.Seed}
    * 的逐格 {@code entries} 与 {@code markets}，以及**家户的创世库存**与**创世货币禀赋**（键 = 家户身份）。
    *
-   * <p>★★ <b>为什么把它们放在一起</b>：H1 起"商品库存"<b>不在阶层行里</b>（{@code ClassRow} 没有 {@code goods}，裁定 D3-C/K1）——
+   * <p>★★ <b>为什么把它们放在一起</b>：H1 起"商品库存"<b>不在阶层行里</b>（{@code HouseholdEconomy} 没有 {@code goods}，裁定 D3-C/K1）——
    * 它的持久真源是 actor 切片里该家户的 {@code HouseholdInventory}。而"每格两组四行的开缸余额"（口粮按阶层天数、纤维按田亩副产、
    * 城镇行的纤维与铁按作坊数）<b>只能算一次</b>：两处各算一遍必然漂移（本仓最忌"同一事实两处拼写点"）。故本记录是那条接缝 —— {@link #payload(String,
    * List, GameMap)} 取 {@link #entries()} 与 {@link #markets()}，{@link HouseholdSeeder} 取 {@link
@@ -1099,7 +1099,7 @@ public final class EconomySeeder {
     payload.put("modes", productionModeNodes());
     payload.put("classStructures", classStructureNodes());
     payload.put("classPositions", classPositionNodes());
-    payload.put("classStandings", productionRuntimeClassStandings(entries));
+    payload.put("classStandings", productionRuntimeClassMemberships(entries));
     payload.put("assetRules", productionRuntimeAssetRuleNodes());
     payload.put("liquidationPolicies", productionRuntimeLiquidationPolicyNodes());
     // ★★ P11.7/D-024：可选顶层 merchantFirms（仅非空时发）。
@@ -1224,7 +1224,7 @@ public final class EconomySeeder {
    * {@link #PRODUCTION_RUNTIME_SEED_REASON}。slot → 默认位置由 {@link #productionRuntimePositionId} 唯一裁决；
    * 词表外槽位或目录缺位置都 fail-closed，<b>不静默少一条</b>。
    */
-  private static List<Map<String, Object>> productionRuntimeClassStandings(
+  private static List<Map<String, Object>> productionRuntimeClassMemberships(
       List<Map<String, Object>> entries) {
     List<Map<String, Object>> nodes = new ArrayList<>();
     Set<HouseholdId> seenHouseholds = new LinkedHashSet<>();
@@ -1256,7 +1256,7 @@ public final class EconomySeeder {
           throw new IllegalStateException(
               "PRODUCTION_RUNTIME 的家户 id 在 entries 里重复（classStandings 必须一户一条）: " + householdId);
         }
-        // ★★ 2026-10-07 GOV 非生产家户试点：official 槽位的 GOV 家户**没有**阶层位置/ClassStanding ——
+        // ★★ 2026-10-07 GOV 非生产家户试点：official 槽位的 GOV 家户**没有**阶层位置/HouseholdClassMembership ——
         //   它不生产、不持资产、不出劳动；关账日 HouseholdClassRule 在"无可观察证据"时保留当前 view（official）。
         //   这里只做 id 去重（上面已做），不发 standing。
         if (SocialClassId.OFFICIAL.value().equals(slotValue)) {
@@ -1649,7 +1649,7 @@ public final class EconomySeeder {
 
   /**
    * ★★ **该池的"产业日劳动"**：{@code Σ_i (行劳动_i × 槽位投入率_i ÷ 1000)}，其中 {@code 行劳动_i = 该槽位人数_i × 池毛劳动 ÷
-   * 池人数}（与 {@link #classRow} 写进载荷的那两个数**同一个算法**）。
+   * 池人数}（与 {@link #householdEconomy} 写进载荷的那两个数**同一个算法**）。
    *
    * <pre>
    * 人数     people    = splitByShares(Σcount, CLASS_SHARE_PER_MILLE)      // 450/350/150/50
@@ -1682,10 +1682,10 @@ public final class EconomySeeder {
   static long industryDailyLabor(long[] people, long poolLabor, long poolCount) {
     long total = 0L;
     for (int i = 0; i < CLASS_IDS.length; i++) {
-      // ★ M1.8：按参与率折算的唯一算法在 ClassRow（本处与结算/读口调的是同一个函数）—— 这里不再自己写
+      // ★ M1.8：按参与率折算的唯一算法在 HouseholdEconomy（本处与结算/读口调的是同一个函数）—— 这里不再自己写
       //   `rowLabor * CLASS_LABOR_PER_MILLE / 1000`（公式同值，但两处写法就是两份会漂开的真相）。
       total +=
-          ClassRow.participationAdjustedLaborMilli(
+          HouseholdEconomy.participationAdjustedLaborMilli(
               rowLaborMilli(people[i], poolLabor, poolCount), CLASS_LABOR_PER_MILLE[i]);
     }
     return total;
@@ -1701,7 +1701,7 @@ public final class EconomySeeder {
    * 1000。
    *
    * <p>★★ <b>它是批次侧的唯一"可用"口径</b>：{@link #laborBudget}（配额上限）与 {@link #appendAllocation}（权重）都读它 ——
-   * 两处不许各乘一次（同一份劳动最多折算一次）。逐行的折算见 {@link ClassRow#participationAdjustedLaborMilli()}：
+   * 两处不许各乘一次（同一份劳动最多折算一次）。逐行的折算见 {@link HouseholdEconomy#participationAdjustedLaborMilli()}：
    * 两条投影在池上的总量相等（同一批人、同一套阶层份额与参与率）。
    *
    * <p>★ <b>为什么不是把折算写进 {@code LaborSupply.grossLaborMilli}</b>：那个字段的契约口径是"毛额 = Σ(人数 × 年龄×性别系数)"
@@ -1709,7 +1709,7 @@ public final class EconomySeeder {
    * 状态里仍是毛额，折扣发生在"预算/权重"这一使用点上。{@code EconomyData} 的构造期守卫因此仍以毛额为更宽的一道网（见 {@link #laborBudget}）。
    */
   static long participationAdjustedLaborMilli(PopulationGroup group) {
-    return ClassRow.participationAdjustedLaborMilli(
+    return HouseholdEconomy.participationAdjustedLaborMilli(
         grossLaborMilli(group), CLASS_WEIGHTED_LABOR_PER_MILLE);
   }
 
@@ -1924,7 +1924,7 @@ public final class EconomySeeder {
   }
 
   /**
-   * **一组四行**（同一格、同一居住类型、四个阶层）：人口按阶层比例切（Σ 恰为该池人口），有效劳动 = 该行人口 × **该池的人均劳动**（见 {@link #classRow}
+   * **一组四行**（同一格、同一居住类型、四个阶层）：人口按阶层比例切（Σ 恰为该池人口），有效劳动 = 该行人口 × **该池的人均劳动**（见 {@link #householdEconomy}
    * 的旧注：阶层之间"年龄性别同分布"这条明说的假设）。
    *
    * <p>★ {@code goodsByClass} 是"逐商品的**逐阶层**存量表"（与 {@link #CLASS_IDS} 同序）：0 ⇒ 不落键（保持空商品表的纯形态）。
@@ -1939,7 +1939,7 @@ public final class EconomySeeder {
    *
    * <p>★★ <b>memberships 的口径（P2-A 的 A3）</b>：逐 lot 直接从 Social 的成员关系投影（{@code (lot, household,
    * count)}），<b>包括流民户的批次</b>——流民行不参与劳动/资产，但它的成员份额是真实的社会构成。这样
-   * {@code Σ Membership.count == Σ ClassRow.population} 与"逐 lot Σcount == PopulationGroup.count"两条守卫同时自然成立。
+   * {@code Σ Membership.count == Σ HouseholdEconomy.population} 与"逐 lot Σcount == PopulationGroup.count"两条守卫同时自然成立。
    */
   private static List<Map<String, Object>> cohortGroup(
       HexCoord hex,
@@ -2089,7 +2089,7 @@ public final class EconomySeeder {
   }
 
   /**
-   * ★★ **一个家户行**（H0.2 起与 §3.2 {@code ClassRow} 逐字段对应，**除 {@code meansOfProduction} 外** —— 那一项已按 K3
+   * ★★ **一个家户行**（H0.2 起与 §3.2 {@code HouseholdEconomy} 逐字段对应，**除 {@code meansOfProduction} 外** —— 那一项已按 K3
    * 搬到 {@code Industry.capacity}）：身份 = {@code (residence, slot)}（格由它所在的 entry 给出）； 有效劳动 = 本行人口 ×
    * **该池的人均劳动**（= 池内 Σ(count × 年龄档 × 性别的每人系数) ÷ 池人口，见 {@link #laborMilli(List)}）、 自然需求 = **第 1
    * 天**的口粮（{@link #firstDayRationMilli}；结算每天会覆写它，§八.8）、 货币 0、无债务、无有效需求（§十 没有它们的依据 ⇒ 不臆造）。
@@ -2226,9 +2226,9 @@ public final class EconomySeeder {
 
   /**
    * ★★ <b>P2-A §13.4：一个家户每 tick 的时间预算（毫小时）</b> = Σ_{属于它的批次} count ×
-   * {@link LaborTimeTable#perPersonMilliHours}(年龄档, 性别)。年龄档 = {@link #ageBracketOf(long)}（与 D4 三档同序）。
+   * {@link HouseholdLaborTimeTable#perPersonMilliHours}(年龄档, 性别)。年龄档 = {@link #ageBracketOf(long)}（与 D4 三档同序）。
    *
-   * <p>★ 这是 {@code ClassRow.laborMilli} 在创世时的唯一算法；运行时每 tick 由协调器按同一张表从 Social 重算。
+   * <p>★ 这是 {@code HouseholdEconomy.laborMilli} 在创世时的唯一算法；运行时每 tick 由协调器按同一张表从 Social 重算。
    */
   static long householdBudgetMilli(
       List<PopulationGroup> allPool, PoolCohorts cohorts, HouseholdId household) {
@@ -2242,7 +2242,7 @@ public final class EconomySeeder {
               total,
               Math.multiplyExact(
                   group.count(),
-                  LABOR_TIME_TABLE.perPersonMilliHours(
+                  HOUSEHOLD_LABOR_TIME_TABLE.perPersonMilliHours(
                       ageBracketOf(group.ageAtAnchorDays()), group.sex())));
     }
     return total;
@@ -3363,7 +3363,7 @@ public final class EconomySeeder {
    *
    * <p>★★ <b>P2-A：身份/落点由 Social 的 {@link PopulationSeeder.Seeding#governmentHousehold()} 给出</b>（经济侧只读，
    * 不再自己挑格、另拼 id）。它<b>不</b>进 laborSupply/allocations/memberships/units/assetShares/merchantFirms —— 不生产、不出劳动、不持资产。
-   * 没有 ClassStanding（{@code productionRuntimeClassStandings} 对 official 槽位显式跳过）：关账日
+   * 没有 HouseholdClassMembership（{@code productionRuntimeClassMemberships} 对 official 槽位显式跳过）：关账日
    * HouseholdClassRule 在无可观察证据时保留当前 view。
    */
   private static HouseholdId seedGovernmentHousehold(
@@ -3391,7 +3391,7 @@ public final class EconomySeeder {
     householdStocks.put(householdId, Map.of());
     householdMoney.put(householdId, Map.of());
 
-    Map<String, Object> row = governmentClassRow(householdId);
+    Map<String, Object> row = governmentHouseholdEconomy(householdId);
     boolean added = false;
     for (Map<String, Object> entry : entries) {
       int q = ((Number) entry.get("q")).intValue();
@@ -3413,7 +3413,7 @@ public final class EconomySeeder {
   }
 
   /** GOV 家户行：population/labor/participation 全 0、无需求；身份仍由 {@link HouseholdId} 稳定承载。 */
-  private static Map<String, Object> governmentClassRow(HouseholdId householdId) {
+  private static Map<String, Object> governmentHouseholdEconomy(HouseholdId householdId) {
     Map<String, Object> row = new LinkedHashMap<>();
     row.put("householdId", householdId.value());
     row.put("residence", ResidenceKind.URBAN.value());
@@ -3620,7 +3620,7 @@ public final class EconomySeeder {
    * @param allocations 出参：本格的配额行（每 (批次, 产业) 一条）
    * @param budget 该池各批次的**剩余可支配劳动**（{@link #laborBudget}；**就地扣减**）
    * @param total 该 unit 本次要切出去的劳动总量（千分劳动；= 该池日劳动 × 该活动的份额）
-   * @param unitId 收劳动的生产单元（R3B.2 起配额的 id 与 activity 都按它拼；见 {@code LaborAllocation.idOf}）
+   * @param unitId 收劳动的生产单元（R3B.2 起配额的 id 与 activity 都按它拼；见 {@code HouseholdLaborCommitment.idOf}）
    * @param operator 该 unit 的经营者（收劳动的主体；actor 列按它落载荷）
    * @param activity 这笔劳动干什么的**标签**（本仓当前用产业种类标签：{@code farm} / {@code weave} / {@code craft}；
    *     只有性别权重表读它，载荷的 activity 列写的是 unit id）
@@ -3704,7 +3704,7 @@ public final class EconomySeeder {
     }
   }
 
-  /** 一条 {@code LaborAllocation} 载荷（id/group/household/actor/activity/laborMilli/period）—— 唯一拼写点。 */
+  /** 一条 {@code HouseholdLaborCommitment} 载荷（id/group/household/actor/activity/laborMilli/period）—— 唯一拼写点。 */
   private static Map<String, Object> allocationNode(
       ProductionUnitId unitId,
       ActorRef operator,
@@ -3713,7 +3713,7 @@ public final class EconomySeeder {
       long laborMilli) {
     Map<String, Object> allocation = new LinkedHashMap<>();
     // ★★ R3B.2：id 与 activity 都按 **unit** 拼；actor = unit.operator（收劳动的主体）。
-    allocation.put("id", LaborAllocation.idOf(unitId, group.id(), household).value());
+    allocation.put("id", HouseholdLaborCommitment.idOf(unitId, group.id(), household).value());
     allocation.put("group", group.id().value());
     allocation.put("household", household.value());
     Map<String, Object> actor = new LinkedHashMap<>();
@@ -3752,12 +3752,12 @@ public final class EconomySeeder {
    */
   static Map<PeopleLotId, Long> laborBudget(List<PopulationGroup> pool) {
     // ★★ P2-A §13.4：配额上限改为**该 batch 每 tick 的时间预算**（毫小时）—— 配额 ≤ 所属家户的
-    //   ClassRow.laborMilli 由此构造性成立（splitIndustry 只搬不加）。参与率不再当硬上限，
+    //   HouseholdEconomy.laborMilli 由此构造性成立（splitIndustry 只搬不加）。参与率不再当硬上限，
     //   只作为 appendAllocation 的分配权重（旧口径的"折扣后劳动"不再是权威）。
     Map<PeopleLotId, Long> budget = new LinkedHashMap<>();
     for (PopulationGroup group : pool) {
       long perPerson =
-          LABOR_TIME_TABLE.perPersonMilliHours(ageBracketOf(group.ageAtAnchorDays()), group.sex());
+          HOUSEHOLD_LABOR_TIME_TABLE.perPersonMilliHours(ageBracketOf(group.ageAtAnchorDays()), group.sex());
       long available = Math.multiplyExact(group.count(), perPerson);
       if (available > 0L) {
         budget.put(group.id(), available);
@@ -3984,7 +3984,7 @@ public final class EconomySeeder {
    * <p>★★ **它名下没有 {@code classes}**（H0.2）：阶层行按 {@code (格, 居住类型, 阶层)} 挂在 entry 级 —— 一个产业的 {@code
    * slots} 只说"这个制度允许哪些角色"，不再说"这些行归它"。
    *
-   * @param capacity 本格该产业的**产能总量**（§3.1 的 {@code capacity}；旧版住在 {@code ClassRow.meansOfProduction}）
+   * @param capacity 本格该产业的**产能总量**（§3.1 的 {@code capacity}；旧版住在 {@code HouseholdEconomy.meansOfProduction}）
    * @param capacityPerUnit 每 1 单位规模需要多少生产资料（农业 = 1 亩；织机/作坊 = 1 台/座）
    * @param laborPerUnit 每 1 单位规模需要多少劳动（千分劳动）
    * @param outputPerUnit 每 1 单位规模的产出（商品单位）
@@ -4411,7 +4411,7 @@ public final class EconomySeeder {
   }
 
   /**
-   * 一条副 unit 的劳动配额载荷：{@code id = LaborAllocation.idOf(副 unit, 批次, 家户)}、{@code actor = 家户 actor}、
+   * 一条副 unit 的劳动配额载荷：{@code id = HouseholdLaborCommitment.idOf(副 unit, 批次, 家户)}、{@code actor = 家户 actor}、
    * {@code activity = 副 unit id}，其余字段（group/household/period）照原行。★ 调用方先把主行的 {@code laborMilli} 减掉
    * moved。
    */
@@ -4422,7 +4422,7 @@ public final class EconomySeeder {
     Map<String, Object> allocation = new LinkedHashMap<>();
     allocation.put(
         "id",
-        LaborAllocation.idOf(unitId, PeopleLotId.parse((String) row.get("group")), unit.household())
+        HouseholdLaborCommitment.idOf(unitId, PeopleLotId.parse((String) row.get("group")), unit.household())
             .value());
     allocation.put("group", row.get("group"));
     allocation.put("household", unit.household().value());

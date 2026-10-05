@@ -6,7 +6,7 @@
  * RegimeId}/{@code DebtId}/{@code CommodityId} 一律取自 {@code simos-economy-api}（铁律 1：不在切片里另造同义 ID）。
  *
  * <p><b>本切片不含任何经济公式</b>（§八 R1 行："模块化、无公式"）：产量、分配、税、市场撮合、流动全是 R2+ 的结算逻辑， {@link
- * io.mosire.simos.economy.EconomyData} 只是状态与形状。存量/流量分离（§3.3 末条）：{@code ClassRow} 是存量、 {@code
+ * io.mosire.simos.economy.EconomyData} 只是状态与形状。存量/流量分离（§3.3 末条）：{@code HouseholdEconomy} 是存量、 {@code
  * FlowRow} 是本期发生额（结算后清零）。
  *
  * <p><b>未激活 = {@code meta} 空</b>：{@code EconomyData.meta} 为空 {@code Optional} 表示日制世界尚未激活经济（§6.6）。

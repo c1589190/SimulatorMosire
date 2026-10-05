@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.DemandEntry;
+import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -42,9 +42,9 @@ public final class EconomyCancelDemandHandler implements CommandHandler {
       if (!base.demands().containsKey(demandId)) {
         return new HandlerOutcome.Rejected("需求不存在: " + demandId.value());
       }
-      Map<DemandId, DemandEntry> demands = new LinkedHashMap<>(base.demands());
-      demands.remove(demandId);
-      return new HandlerOutcome.Applied(EconomyChangeSet.between(base, base.withDemands(demands)));
+      Map<DemandId, HouseholdDemand> householdDemands = new LinkedHashMap<>(base.demands());
+      householdDemands.remove(demandId);
+      return new HandlerOutcome.Applied(EconomyChangeSet.between(base, base.withHouseholdDemands(householdDemands)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());
     }

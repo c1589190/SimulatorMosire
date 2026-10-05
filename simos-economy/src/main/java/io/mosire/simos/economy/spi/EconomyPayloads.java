@@ -38,7 +38,7 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.Basis;
@@ -53,10 +53,10 @@ import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassSlot;
-import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -294,7 +294,7 @@ final class EconomyPayloads {
   static EconomyData toData(JsonNode payload, SimosTimestamp at) {
     Objects.requireNonNull(at, "at");
     // ★★ E4c：`debtContracts` / `pledges` 从"只接受空数组"放开为可解析；结构与引用完整性走 EconomyData 构造期守卫
-    //   （id 四元组派生、debtor/creditor 行存在、ClassRow.debts 引用存在、质押引用与 Σ活跃质押上界）。
+    //   （id 四元组派生、debtor/creditor 行存在、HouseholdEconomy.debts 引用存在、质押引用与 Σ活跃质押上界）。
     String mapId = requireText(payload, "mapId");
     String rulesVersion = requireText(payload, "rulesVersion");
     JsonNode entries = requireArray(payload, "entries");
@@ -305,9 +305,9 @@ final class EconomyPayloads {
     // ★★ R3B.2：第 14 个组件（生产单元）—— 新载荷显式给 units[]，旧载荷由 industry 的旧实例字段合成。
     Map<ProductionUnitId, ProductionUnit> units = new LinkedHashMap<>();
     // ★★ H0：家户行是**entry 级**的（键 = (格, 居住类型, 阶层)），不再嵌在产业节点里 —— 见类注 ①。
-    Map<HouseholdId, ClassRow> classes = new LinkedHashMap<>();
+    Map<HouseholdId, HouseholdEconomy> householdEconomies = new LinkedHashMap<>();
     // ★ R2 的两张新表：**逐格**声明（格是命令目标与权限的粒度：一条命令动的是这些格）。
-    Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
+    Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments = new LinkedHashMap<>();
     // ★ T2 的第 8 个组件：R3B.2 起键 = ProductionUnitId（关系挂在 unit 上）。
     Map<ProductionUnitId, ProductionRelation> relations = new LinkedHashMap<>();
     // ★ H4 的第 9 个组件：顶层 `markets`（键 = 格串），见类注的第五处形状变化。
@@ -317,7 +317,7 @@ final class EconomyPayloads {
     Map<ProductionModeId, ProductionMode> modes = parseModes(payload);
     Map<ClassStructureId, ClassStructure> classStructures = parseClassStructures(payload);
     Map<ClassPositionId, ClassPosition> classPositions = parseClassPositions(payload);
-    Map<HouseholdId, ClassStanding> classStandings = parseClassStandings(payload);
+    Map<HouseholdId, HouseholdClassMembership> classMemberships = parseClassMemberships(payload);
     Map<AssetRuleId, AssetRule> assetRules = parseAssetRules(payload);
     // ★★ E3 的第 23/24 个组件：顶层可选 `governments` / `moneyIssuances`（缺键 ⇒ 空表；旧载荷逐值不变）。
     Map<GovernmentId, Government> governments = governments(payload);
@@ -334,9 +334,9 @@ final class EconomyPayloads {
       int r = requireInt(entry, "r");
       HexCoord hex = new HexCoord(q, r);
       // ★★ **H0：配额先解析**（下面推默认关系的居住类型要用它 —— 那是"这批人住哪种居住类型"的唯一来源）。
-      List<LaborAllocation> entryAllocations = new ArrayList<>();
+      List<HouseholdLaborCommitment> entryLaborCommitments = new ArrayList<>();
       for (JsonNode node : optionalArray(entry, "allocations")) {
-        entryAllocations.add(allocation(node));
+        entryLaborCommitments.add(allocation(node));
       }
       // ★★ R3B.2：产业模板 + 旧实例字段（旧载荷的 operator/capacity/progress/cycle）分两路读。
       List<IndustrySpec> specs = new ArrayList<>();
@@ -459,20 +459,20 @@ final class EconomyPayloads {
             .computeIfAbsent(unit.industry().value(), ignored -> new ArrayList<>())
             .add(unit.id());
       }
-      List<LaborAllocation> canonicalAllocations = new ArrayList<>(entryAllocations.size());
-      for (LaborAllocation allocation : entryAllocations) {
-        canonicalAllocations.add(
-            canonicalAllocationActivity(allocation, unitsByIndustry, units, entry));
+      List<HouseholdLaborCommitment> canonicalLaborCommitments = new ArrayList<>(entryLaborCommitments.size());
+      for (HouseholdLaborCommitment laborCommitment : entryLaborCommitments) {
+        canonicalLaborCommitments.add(
+            canonicalAllocationActivity(laborCommitment, unitsByIndustry, units, entry));
       }
       // ★ 默认关系的居住类型来源 = 供给该 unit 的批次前缀（ResidenceKind.ofLot）。
       Map<ProductionUnitId, Set<ResidenceKind>> residencesByUnit = new LinkedHashMap<>();
-      for (LaborAllocation allocation : canonicalAllocations) {
+      for (HouseholdLaborCommitment laborCommitment : canonicalLaborCommitments) {
         List<ProductionUnitId> resolved =
-            resolveAllocationUnits(allocation, unitsByIndustry, units.keySet());
+            resolveAllocationUnits(laborCommitment, unitsByIndustry, units.keySet());
         for (ProductionUnitId unitId : resolved) {
           residencesByUnit
               .computeIfAbsent(unitId, ignored -> new LinkedHashSet<>())
-              .add(ResidenceKind.ofLot(allocation.group()));
+              .add(ResidenceKind.ofLot(laborCommitment.group()));
         }
       }
       for (ProductionUnitId unitId : entryUnitIds) {
@@ -502,15 +502,15 @@ final class EconomyPayloads {
       }
       // ★★ **H0：该格的家户行（entry 级）** —— 每行显式带 {@code residence}，键 = (格, 居住类型, 阶层)。
       for (JsonNode row : optionalArray(entry, "classes")) {
-        ClassRow classRow = classRow(hex, row);
-        if (classes.putIfAbsent(classRow.id(), classRow) != null) {
-          throw new IllegalArgumentException("同一份载荷里家户行重复: " + classRow.id());
+        HouseholdEconomy householdEconomy = householdEconomy(hex, row);
+        if (householdEconomies.putIfAbsent(householdEconomy.id(), householdEconomy) != null) {
+          throw new IllegalArgumentException("同一份载荷里家户行重复: " + householdEconomy.id());
         }
       }
       // ★ R2：该格各批次的劳动供给（可支配劳动的上限）—— 缺省 ⇒ 空表（与 classes 同款）。
-      for (LaborAllocation allocation : canonicalAllocations) {
-        if (allocations.putIfAbsent(allocation.id(), allocation) != null) {
-          throw new IllegalArgumentException("同一份载荷里劳动分配重复: " + allocation.id());
+      for (HouseholdLaborCommitment laborCommitment : canonicalLaborCommitments) {
+        if (laborCommitments.putIfAbsent(laborCommitment.id(), laborCommitment) != null) {
+          throw new IllegalArgumentException("同一份载荷里劳动分配重复: " + laborCommitment.id());
         }
       }
     }
@@ -533,10 +533,10 @@ final class EconomyPayloads {
     return new EconomyData(
         Optional.of(meta),
         industries,
-        classes,
+        householdEconomies,
         debtContracts,
         Map.of(),
-        allocations,
+        laborCommitments,
         relations,
         markets,
         // ★ M2.4：创世载荷没有在途（播种出来的世界货物都在账上；在途由市场发运产生）。
@@ -552,7 +552,7 @@ final class EconomyPayloads {
         modes,
         classStructures,
         classPositions,
-        classStandings,
+        classMemberships,
         // ★★ E2：生产组织**不由创世载荷声明** —— 必须留给 EconomyOrganizationSettlement 的自动组织阶段
         //   在 modes 非空后生成（手种 = 第二真相）；生产资料规则则由 P1 的 assetRules 键显式给出。
         Map.of(),
@@ -762,8 +762,8 @@ final class EconomyPayloads {
    * ★ P2-B：{@code participatingPositionIds} 是当前位置之外**追加**参与的生产位置（缺键/空数组 = 只参与当前位置）。
    * 引用完整性（家户存在、位置存在）由 {@link EconomyData} 构造期守卫判。
    */
-  private static Map<HouseholdId, ClassStanding> parseClassStandings(JsonNode payload) {
-    Map<HouseholdId, ClassStanding> standings = new LinkedHashMap<>();
+  private static Map<HouseholdId, HouseholdClassMembership> parseClassMemberships(JsonNode payload) {
+    Map<HouseholdId, HouseholdClassMembership> classMemberships = new LinkedHashMap<>();
     for (JsonNode node : optionalArray(payload, "classStandings")) {
       if (!node.isObject()) {
         throw new IllegalArgumentException("classStandings 的每项必须是对象: " + node);
@@ -779,8 +779,8 @@ final class EconomyPayloads {
       long consecutiveDebtStressCycles = optionalLong(node, "consecutiveDebtStressCycles", 0L);
       long lastTransitionDay = optionalLong(node, "lastTransitionDay", 0L);
       String reason = optionalText(node, "reason").orElse("");
-      ClassStanding standing =
-          new ClassStanding(
+      HouseholdClassMembership classMembership =
+          new HouseholdClassMembership(
               householdId,
               original,
               current,
@@ -789,11 +789,11 @@ final class EconomyPayloads {
               consecutiveDebtStressCycles,
               lastTransitionDay,
               reason);
-      if (standings.putIfAbsent(householdId, standing) != null) {
+      if (classMemberships.putIfAbsent(householdId, classMembership) != null) {
         throw new IllegalArgumentException("同一份载荷里 classStanding 家户重复: " + householdId);
       }
     }
-    return standings;
+    return classMemberships;
   }
 
   /** 可选的位置 id 数组（缺键 / null ⇒ 空集；元素必须是非空白文本，走 {@link ClassPositionId#parse}）。 */
@@ -1131,78 +1131,78 @@ final class EconomyPayloads {
    * ★★ <b>R3B.2：配额 activity → unit</b>。新载荷必须直接给 unit id；旧载荷给活动标签（{@code farm}）或旧产业串 ⇒ 按 {@code
    * actor.id()} 当产业串找**唯一** unit 改写；多个候选抛（新载荷必须写 unit id，不猜）；解析不到 ⇒ 原样 （自由家户劳动，不喂任何生产，旧档同义）。
    */
-  private static LaborAllocation canonicalAllocationActivity(
-      LaborAllocation allocation,
+  private static HouseholdLaborCommitment canonicalAllocationActivity(
+      HouseholdLaborCommitment laborCommitment,
       Map<String, List<ProductionUnitId>> unitsByIndustry,
       Map<ProductionUnitId, ProductionUnit> units,
       JsonNode entry) {
-    ProductionUnitId byActivity = new ProductionUnitId(allocation.activity());
+    ProductionUnitId byActivity = new ProductionUnitId(laborCommitment.activity());
     ProductionUnit direct = units.get(byActivity);
     if (direct != null) {
       // ★ activity 已是 unit id：actor 必须是该 unit 的 operator（守卫要求两者一致）——旧载荷里 actor 可能是
       //   产业 id（默认经营者同 id 时本就相等），这里按 unit.operator 对齐。
-      return direct.operator().equals(allocation.actor())
-          ? allocation
-          : new LaborAllocation(
-              allocation.id(),
-              allocation.group(),
-              allocation.household(),
+      return direct.operator().equals(laborCommitment.actor())
+          ? laborCommitment
+          : new HouseholdLaborCommitment(
+              laborCommitment.id(),
+              laborCommitment.group(),
+              laborCommitment.household(),
               direct.operator(),
-              allocation.activity(),
-              allocation.laborMilli(),
-              allocation.period());
+              laborCommitment.activity(),
+              laborCommitment.laborMilli(),
+              laborCommitment.period());
     }
-    if (allocation.activity().startsWith("unit-")) {
+    if (laborCommitment.activity().startsWith("unit-")) {
       throw new IllegalArgumentException(
           "劳动配额的 activity 看起来是 unit id 但该 unit 不在载荷里（悬空引用；自由家户劳动请用非 unit 的活动词）："
-              + allocation
+              + laborCommitment
               + "，entry="
               + entry);
     }
     List<ProductionUnitId> candidates =
-        unitsByIndustry.getOrDefault(allocation.actor().id(), List.of());
+        unitsByIndustry.getOrDefault(laborCommitment.actor().id(), List.of());
     if (candidates.isEmpty()) {
-      candidates = unitsByIndustry.getOrDefault(allocation.activity(), List.of());
+      candidates = unitsByIndustry.getOrDefault(laborCommitment.activity(), List.of());
     }
     if (candidates.size() == 1) {
       ProductionUnit resolved = units.get(candidates.get(0));
-      return new LaborAllocation(
-          allocation.id(),
-          allocation.group(),
-          allocation.household(),
-          resolved == null ? allocation.actor() : resolved.operator(),
+      return new HouseholdLaborCommitment(
+          laborCommitment.id(),
+          laborCommitment.group(),
+          laborCommitment.household(),
+          resolved == null ? laborCommitment.actor() : resolved.operator(),
           candidates.get(0).value(),
-          allocation.laborMilli(),
-          allocation.period());
+          laborCommitment.laborMilli(),
+          laborCommitment.period());
     }
     if (candidates.size() > 1) {
       throw new IllegalArgumentException(
           "劳动配额的 activity 不是 unit id，而 actor 指名的产业有多条 unit ⇒ 无法确定是哪一条（请在载荷里写 unit id）："
-              + allocation
+              + laborCommitment
               + "，候选="
               + candidates
               + "，entry="
               + entry);
     }
-    return allocation;
+    return laborCommitment;
   }
 
   /** 一条配额供给的 unit 集合（已对齐 activity；解析不到 ⇒ 空表）。 */
   private static List<ProductionUnitId> resolveAllocationUnits(
-      LaborAllocation allocation,
+      HouseholdLaborCommitment laborCommitment,
       Map<String, List<ProductionUnitId>> unitsByIndustry,
       Set<ProductionUnitId> unitIds) {
-    ProductionUnitId byActivity = new ProductionUnitId(allocation.activity());
+    ProductionUnitId byActivity = new ProductionUnitId(laborCommitment.activity());
     if (unitIds.contains(byActivity)) {
       return List.of(byActivity);
     }
-    if (allocation.activity().startsWith("unit-")) {
+    if (laborCommitment.activity().startsWith("unit-")) {
       return List.of(); // 悬空 unit 引用：不解析；由构造期守卫 fail-closed
     }
     List<ProductionUnitId> candidates =
-        unitsByIndustry.getOrDefault(allocation.actor().id(), List.of());
+        unitsByIndustry.getOrDefault(laborCommitment.actor().id(), List.of());
     if (candidates.isEmpty()) {
-      candidates = unitsByIndustry.getOrDefault(allocation.activity(), List.of());
+      candidates = unitsByIndustry.getOrDefault(laborCommitment.activity(), List.of());
     }
     return candidates.size() == 1 ? List.of(candidates.get(0)) : List.of();
   }
@@ -1213,13 +1213,13 @@ final class EconomyPayloads {
    * <p>★ {@code actor.kind} 走 {@link ActorKind#parse} 的**词表**（词表外的种类即抛并列出合法值）； {@code actor.id}
    * 与产业的对应关系由 {@code EconomyData} 的构造期守卫判死（不在这里重复实现）。
    */
-  private static LaborAllocation allocation(JsonNode node) {
+  private static HouseholdLaborCommitment allocation(JsonNode node) {
     JsonNode actor = optionalObject(node, "actor");
     if (actor == null) {
       throw new IllegalArgumentException("劳动分配的字段 actor 必须是对象: " + node);
     }
     LaborAllocationId id = LaborAllocationId.parse(requireText(node, "id"));
-    return new LaborAllocation(
+    return new HouseholdLaborCommitment(
         id,
         PeopleLotId.parse(requireText(node, "group")),
         // ★ S1：新载荷可以显式给 household；旧载荷没有该键 ⇒ pending 占位，由 EconomyData 构造期的
@@ -1524,7 +1524,7 @@ final class EconomyPayloads {
    * <p>★★ <b>M2.7 的 {@code cycleNaturalNeedMilli} 是可选键</b>（旧档缺键 ⇒ 0，照本类 {@code money} 的同款先例）：
    * 它是**结算逐日累加的读数**（本周期累计自然口粮需要），创世载荷通常不写它；旧载荷读成 0 = "还没开始累计"，不是"没有需要"。
    */
-  private static ClassRow classRow(HexCoord hex, JsonNode node) {
+  private static HouseholdEconomy householdEconomy(HexCoord hex, JsonNode node) {
     ResidenceKind residence = ResidenceKind.parse(requireText(node, "residence"));
     SocialClassId slot = SocialClassId.parse(requireText(node, "slot"));
     long population = requireLong(node, "population");
@@ -1560,9 +1560,9 @@ final class EconomyPayloads {
         node.hasNonNull("householdId")
             ? HouseholdId.parse(requireText(node, "householdId"))
             : HouseholdIds.ofSeed(hex, residence, slot);
-    return new ClassRow(
+    return new HouseholdEconomy(
         householdId,
-        // ★ 这是创世载荷声明的 view（slot 可含 S3 新阶层）；运行期只由 HouseholdClassRule 改写 ClassRow.view，
+        // ★ 这是创世载荷声明的 view（slot 可含 S3 新阶层）；运行期只由 HouseholdClassRule 改写 HouseholdEconomy.view，
         //   不回写载荷、也不反过来从 view 推身份（householdId 缺失时才由 ofSeed 生成稳定身份）。
         new CohortKey(hex, residence, slot),
         population,
@@ -1676,7 +1676,7 @@ final class EconomyPayloads {
    * </ul>
    *
    * <p>★★ <b>结构/引用/条款校验不在这里重复实现</b>：{@link DebtContract} 与 {@code EconomyData} 的构造期守卫会判 id
-   * 派生、debtor/creditor 行存在、{@code ClassRow.debts} 引用存在。
+   * 派生、debtor/creditor 行存在、{@code HouseholdEconomy.debts} 引用存在。
    *
    * <p>★★ <b>初始债务的配套责任（必须写清）</b>：本方法只把债权记进 economy 状态；它<b>不搬任何 actor 库存/货币/权利</b>。 如果 seed 声明"H1 欠
    * H2 1000 粮"，app 侧的 actor.Seed 协调器必须已经在 H1/H2 的账户里备好对应的真实粮/钱 （否则这条债没有对价，是凭空造出的债权名册）。economy 不自动搬

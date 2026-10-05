@@ -5,7 +5,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -20,7 +20,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ {@code economy.SetHouseholdClass}（P2-B §13.6）：把某个家户的 {@link ClassStanding#currentPositionId()}
+ * ★★ {@code economy.SetHouseholdClass}（P2-B §13.6）：把某个家户的 {@link HouseholdClassMembership#currentPositionId()}
  * 改到一个**已存在**的 {@link ClassPosition} 上；只写 {@code classStandings} 一张表。
  *
  * <pre>{@code
@@ -36,9 +36,9 @@ import java.util.Set;
  *   <li>{@code originalPosition} 缺省 = 既有 standing 的原所属 / 新建时 = {@code position}；
  *       {@code participatingPositionIds}（追加参与集合）与 {@code retainedShares}、债务压力计数**逐值保留** ——
  *       本命令的承诺就是"只改当前职业"，要改追加集合请用 {@code economy.SetHouseholdParticipation}；
- *   <li>家户没有 {@code ClassStanding} ⇒ 新建一条（original = current = position，追加集合空）；
- *   <li>它<b>不改</b> {@code ClassRow.view}（那是 Social 阶层名/旧分类器的投影），也不动人口/劳动/资产 ——
- *       "家户 Class"的权威是 {@code ClassStanding}，组织阶段按它解析可参与位置；
+ *   <li>家户没有 {@code HouseholdClassMembership} ⇒ 新建一条（original = current = position，追加集合空）；
+ *   <li>它<b>不改</b> {@code HouseholdEconomy.view}（那是 Social 阶层名/旧分类器的投影），也不动人口/劳动/资产 ——
+ *       "家户 Class"的权威是 {@code HouseholdClassMembership}，组织阶段按它解析可参与位置；
  *   <li>{@code at} 是给 {@link CommandTargets} 的目标声明（见 {@link HouseholdEconomyCommands}）；给了就必须等于
  *       该家户当刻居住格。
  * </ul>
@@ -82,33 +82,33 @@ public final class EconomySetHouseholdClassHandler implements CommandHandler, Co
       if (day < 0L) {
         throw new IllegalArgumentException(TYPE + " 的 day 不得为负: " + day);
       }
-      ClassStanding existing = base.classStandings().get(household);
+      HouseholdClassMembership existingClassMembership = base.classStandings().get(household);
       ClassPositionId originalPosition = position.id();
       if (payload.hasNonNull("originalPosition")) {
         originalPosition =
             HouseholdEconomyCommands.requirePosition(
                     TYPE, base, EconomyCommandPayloads.requireText(TYPE, payload, "originalPosition"))
                 .id();
-      } else if (existing != null) {
-        originalPosition = existing.originalPositionId();
+      } else if (existingClassMembership != null) {
+        originalPosition = existingClassMembership.originalPositionId();
       }
-      ClassStanding after =
-          new ClassStanding(
+      HouseholdClassMembership afterClassMembership =
+          new HouseholdClassMembership(
               household,
               originalPosition,
               position.id(),
-              existing == null ? Set.of() : existing.participatingPositionIds(),
-              existing == null ? Map.of() : existing.retainedShares(),
-              existing == null ? 0L : existing.consecutiveDebtStressCycles(),
+              existingClassMembership == null ? Set.of() : existingClassMembership.participatingPositionIds(),
+              existingClassMembership == null ? Map.of() : existingClassMembership.retainedShares(),
+              existingClassMembership == null ? 0L : existingClassMembership.consecutiveDebtStressCycles(),
               day,
               reason);
-      if (after.equals(existing)) {
+      if (afterClassMembership.equals(existingClassMembership)) {
         return new HandlerOutcome.Applied(EconomyChangeSet.between(base, base));
       }
-      LinkedHashMap<HouseholdId, ClassStanding> standings =
+      LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships =
           new LinkedHashMap<>(base.classStandings());
-      standings.put(household, after);
-      EconomyData projected = base.withClassStandings(standings);
+      classMemberships.put(household, afterClassMembership);
+      EconomyData projected = base.withClassMemberships(classMemberships);
       io.mosire.simos.economy.EconomyLog.organization()
           .info(
               "event=HOUSEHOLD_CLASS household={} currentPosition={} originalPosition={} reason={}",

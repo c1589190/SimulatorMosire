@@ -10,7 +10,7 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
@@ -411,20 +411,20 @@ public final class OrganizationProfitBook {
       CycleAccumulator cycle,
       Map<ProductionOrganizationId, ProductionOrganization> organizations,
       Map<ProductionUnitId, ProductionUnit> units,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<IndustryId, Industry> industries,
       Map<HexCoord, Market> markets,
       AccountSession accounts) {
     Objects.requireNonNull(cycle, "cycle");
     Objects.requireNonNull(organizations, "organizations");
     Objects.requireNonNull(units, "units");
-    Objects.requireNonNull(rows, "rows");
+    Objects.requireNonNull(householdEconomies, "rows");
     Objects.requireNonNull(industries, "industries");
     Objects.requireNonNull(markets, "markets");
     Objects.requireNonNull(accounts, "accounts");
 
     Map<ActorRef, HouseholdId> householdByActor = new LinkedHashMap<>();
-    for (HouseholdId household : sortedHouseholds(rows)) {
+    for (HouseholdId household : sortedHouseholds(householdEconomies)) {
       householdByActor.put(io.mosire.simos.economy.api.cohort.HouseholdActors.of(household), household);
     }
     // 组织按 household 归集：生产运行时 organizer = 该家户 actor（E2 的唯一拼写点）。
@@ -437,7 +437,7 @@ public final class OrganizationProfitBook {
       if (organization == null) {
         continue;
       }
-      HouseholdId household = householdOfActor(organization.organizer(), rows, householdByActor);
+      HouseholdId household = householdOfActor(organization.organizer(), householdEconomies, householdByActor);
       if (household != null) {
         orgByHousehold.putIfAbsent(household, organization);
       }
@@ -458,11 +458,11 @@ public final class OrganizationProfitBook {
       if (organization == null) {
         continue;
       }
-      HouseholdId household = householdOfActor(organization.organizer(), rows, householdByActor);
+      HouseholdId household = householdOfActor(organization.organizer(), householdEconomies, householdByActor);
       if (household == null) {
         continue;
       }
-      HexCoord hex = hexOfOrganization(organization, units, rows, household);
+      HexCoord hex = hexOfOrganization(organization, units, householdEconomies, household);
       if (hex == null) {
         continue;
       }
@@ -597,7 +597,7 @@ public final class OrganizationProfitBook {
   private static HexCoord hexOfOrganization(
       ProductionOrganization organization,
       Map<ProductionUnitId, ProductionUnit> units,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       HouseholdId household) {
     if (organization.unitId().isPresent()) {
       ProductionUnit unit = units.get(organization.unitId().get());
@@ -615,12 +615,12 @@ public final class OrganizationProfitBook {
         }
       }
     }
-    ClassRow row = rows.get(household);
-    return row == null ? null : row.view().hex();
+    HouseholdEconomy householdEconomy = householdEconomies.get(household);
+    return householdEconomy == null ? null : householdEconomy.view().hex();
   }
 
   private static HouseholdId householdOfActor(
-      ActorRef actor, Map<HouseholdId, ClassRow> rows, Map<ActorRef, HouseholdId> householdByActor) {
+      ActorRef actor, Map<HouseholdId, HouseholdEconomy> householdEconomies, Map<ActorRef, HouseholdId> householdByActor) {
     HouseholdId direct = householdByActor.get(actor);
     if (direct != null) {
       return direct;
@@ -630,7 +630,7 @@ public final class OrganizationProfitBook {
       try {
         HouseholdId parsed =
             io.mosire.simos.economy.api.cohort.HouseholdActors.householdOf(actor);
-        return rows.containsKey(parsed) ? parsed : null;
+        return householdEconomies.containsKey(parsed) ? parsed : null;
       } catch (RuntimeException ignored) {
         return null;
       }
@@ -638,8 +638,8 @@ public final class OrganizationProfitBook {
     return null;
   }
 
-  private static List<HouseholdId> sortedHouseholds(Map<HouseholdId, ClassRow> rows) {
-    List<HouseholdId> keys = new ArrayList<>(rows.keySet());
+  private static List<HouseholdId> sortedHouseholds(Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+    List<HouseholdId> keys = new ArrayList<>(householdEconomies.keySet());
     keys.sort(Comparator.comparing(HouseholdId::value));
     return keys;
   }

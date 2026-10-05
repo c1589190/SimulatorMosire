@@ -1,7 +1,7 @@
 package io.mosire.simos.economy.api.id;
 
 /**
- * 劳动分配 ID（第三阶段设计稿 §四）：一次 {@code LaborAllocation}（"某批人把多少劳动供给某个主体"）的稳定身份，归 {@code economy} 切片的劳动分配表。
+ * 劳动分配 ID（第三阶段设计稿 §四）：一次 {@code HouseholdLaborCommitment}（"某批人把多少劳动供给某个主体"）的稳定身份，归 {@code economy} 切片的劳动分配表。
  *
  * <p>★ **id 由调用方给短名**（与 {@link DebtId} 之外的其余 id 同款）：本类型只校验非空白，**不校验格式**——格式的权威是产出方那唯一一处拼写。
  *

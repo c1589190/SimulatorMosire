@@ -11,7 +11,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.time.AccountPartitionKey;
 import io.mosire.simos.economy.time.AccountSession.ActorAccount;
 import io.mosire.simos.economy.time.AccountSession;
@@ -217,10 +217,10 @@ public final class OwnershipBooks {
     Objects.requireNonNull(books, "books");
     AccountSession session = AccountSession.empty();
     List<String> missing = new ArrayList<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
-      HouseholdId household = entry.getKey();
-      ClassRow row = entry.getValue();
-      HexCoord location = row.view().hex();
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : economy.classes().entrySet()) {
+      HouseholdId household = householdEconomyEntry.getKey();
+      HouseholdEconomy householdEconomy = householdEconomyEntry.getValue();
+      HexCoord location = householdEconomy.view().hex();
       // ★★ P2-A §13.3：一个家户一本账，键 = 家户身份（不再带格）。旧账户已报废、旧世界重建 ⇒ 无兼容回找。
       HouseholdInventory inventory = books.accounts().get(new HouseholdAccountKey(household));
       if (inventory == null) {

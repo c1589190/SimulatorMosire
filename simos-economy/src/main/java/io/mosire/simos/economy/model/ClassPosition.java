@@ -10,7 +10,7 @@ import java.util.Map;
  * ★★ <b>阶层位置</b>（理想架构 §2.2）：给定生产方式下"对生产资料、劳动、剩余的固定结构位置"。
  *
  * <p>★★ <b>它不等于社会阶层身份</b>：{@code SocialClassId}（贫农/地主/工匠…）是产业无关的人口身份；本类型是在某个 {@code ProductionMode}
- * 下、由该生产方式的阶层结构定义的位置。同一个人口可以在模式变迁后处于另一个位置（见 {@code ClassStanding}）。
+ * 下、由该生产方式的阶层结构定义的位置。同一个人口可以在模式变迁后处于另一个位置（见 {@code HouseholdClassMembership}）。
  *
  * <p>★★ <b>三条结构维先落定，规则只留扩展位</b>：E1 只把 {@code relationToMeans} / {@code laborRole} / {@code
  * surplusRole} 三个维度作为权威状态落下来。设计稿 §2.2 的 {@code assetRights} / {@code laborObligation} / {@code

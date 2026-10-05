@@ -11,9 +11,9 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtCapacity;
 import io.mosire.simos.economy.model.DebtCapacity.NextRoundNecessaryInputSource;
 import io.mosire.simos.economy.model.DebtContract;
@@ -137,7 +137,7 @@ public final class DebtCapacityBook {
    * ★★ <b>读口便捷入口</b>：从 {@link EconomyData} 的当前值算全部家户的容量（时点口径；E4b 的库存由 app 传入）。
    *
    * <p>窗口：{@code afterAllocationGrainIncome}／{@code consumed}／{@code taxPaid} 直接读 {@code
-   * FlowRow}（本周期已实现／本周期实缴），{@code basicRation} 读 {@code ClassRow.cycleNaturalNeedMilli}
+   * FlowRow}（本周期已实现／本周期实缴），{@code basicRation} 读 {@code HouseholdEconomy.cycleNaturalNeedMilli}
    * （本周期累计）；库存在函数被调用的那一刻读（时点）。
    */
   public static Map<HouseholdId, DebtCapacity> capacitiesForState(
@@ -191,16 +191,16 @@ public final class DebtCapacityBook {
       DebtUnitValueLookup debtUnitValueLookup) {
     Objects.requireNonNull(data, "data 不得为 null");
     Objects.requireNonNull(householdKeys, "householdKeys 不得为 null");
-    Map<HouseholdId, ClassRow> rows = new LinkedHashMap<>();
+    Map<HouseholdId, HouseholdEconomy> householdEconomies = new LinkedHashMap<>();
     Map<HouseholdId, Long> income = new LinkedHashMap<>();
     Map<HouseholdId, Long> consumed = new LinkedHashMap<>();
     Map<HouseholdId, Long> taxPaid = new LinkedHashMap<>();
     for (HouseholdId key : householdKeys) {
-      ClassRow row = data.classes().get(key);
-      if (row == null) {
+      HouseholdEconomy householdEconomy = data.classes().get(key);
+      if (householdEconomy == null) {
         continue; // 状态不完整：逐户读数标具名缺失，不在这里造 0
       }
-      rows.put(key, row);
+      householdEconomies.put(key, householdEconomy);
       FlowRow flow = data.flows().get(key);
       // ★ 用 long 局部再装箱：避免 Map<..., Long> 的 getOrDefault 先拆箱、put
       // 立刻重装箱（BX_UNBOXING_IMMEDIATELY_REBOXED）。
@@ -217,7 +217,7 @@ public final class DebtCapacityBook {
       taxPaid.put(key, paidTax);
     }
     return capacities(
-        rows,
+        householdEconomies,
         income,
         consumed,
         taxPaid,
@@ -257,7 +257,7 @@ public final class DebtCapacityBook {
    *     #marketPriceLookup(Map)}
    */
   public static Map<HouseholdId, DebtCapacity> capacities(
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, Long> afterAllocationGrainIncome,
       Map<HouseholdId, Long> cycleToDateGrainConsumed,
       Map<HouseholdId, Long> taxPaidFromFlowRow,
@@ -270,7 +270,7 @@ public final class DebtCapacityBook {
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       long pledgeableAssetPolicyValue,
       DebtUnitValueLookup debtUnitValueLookup) {
-    Objects.requireNonNull(rows, "rows 不得为 null");
+    Objects.requireNonNull(householdEconomies, "rows 不得为 null");
     Objects.requireNonNull(afterAllocationGrainIncome, "afterAllocationGrainIncome 不得为 null");
     Objects.requireNonNull(cycleToDateGrainConsumed, "cycleToDateGrainConsumed 不得为 null");
     Objects.requireNonNull(taxPaidFromFlowRow, "taxPaidFromFlowRow 不得为 null");
@@ -294,8 +294,8 @@ public final class DebtCapacityBook {
     }
 
     Map<HouseholdId, DebtCapacity> capacities = new LinkedHashMap<>();
-    for (ClassRow row : rows.values()) {
-      HouseholdId key = row.id();
+    for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
+      HouseholdId key = householdEconomy.id();
       OptionalLong grainStock =
           grainStockMilliOf == null ? OptionalLong.empty() : grainStockMilliOf.apply(key);
       if (grainStock == null) {
@@ -314,7 +314,7 @@ public final class DebtCapacityBook {
               assetShares,
               operatorConditions,
               consumedGrain,
-              row.cycleNaturalNeedMilli());
+              householdEconomy.cycleNaturalNeedMilli());
 
       long existingDebt = 0L;
       long unpricedDebtAmount = 0L;
@@ -344,18 +344,18 @@ public final class DebtCapacityBook {
       }
 
       // ★ 可自用余粮与旧放贷方的余粮**同一算式、同一保留额**（R3a 从 旧结算引擎（R3a 已删除） 原样搬来，见下面的
-      //   {@link #lendableOf(ClassRow, long, long)}）；
+      //   {@link #lendableOf(HouseholdEconomy, long, long)}）；
       //   库存读不到 ⇒ 空（不是 0）。
       OptionalLong selfUsable =
           grainStock.isPresent()
-              ? OptionalLong.of(lendableOf(row, grainStock.getAsLong(), cycleDays))
+              ? OptionalLong.of(lendableOf(householdEconomy, grainStock.getAsLong(), cycleDays))
               : OptionalLong.empty();
 
       capacities.put(
           key,
           new DebtCapacity(
               realizedGrainIncome,
-              row.cycleNaturalNeedMilli(),
+              householdEconomy.cycleNaturalNeedMilli(),
               nextRound.input(),
               nextRound.source(),
               taxPaid,
@@ -456,14 +456,14 @@ public final class DebtCapacityBook {
                       .add(industryId));
     }
     Map<HouseholdId, Set<ProductionUnitId>> unitsOfHouseholds = new LinkedHashMap<>();
-    for (LaborAllocation allocation : data.allocations().values()) {
-      ProductionUnitId unitId = new ProductionUnitId(allocation.activity());
+    for (HouseholdLaborCommitment laborCommitment : data.allocations().values()) {
+      ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
       if (!data.units().containsKey(unitId)
-          || !data.classes().containsKey(allocation.household())) {
+          || !data.classes().containsKey(laborCommitment.household())) {
         continue;
       }
       unitsOfHouseholds
-          .computeIfAbsent(allocation.household(), ignored -> new LinkedHashSet<>())
+          .computeIfAbsent(laborCommitment.household(), ignored -> new LinkedHashSet<>())
           .add(unitId);
     }
     Map<HouseholdId, Long> byHousehold = new LinkedHashMap<>();
@@ -478,11 +478,11 @@ public final class DebtCapacityBook {
         }
       }
       if (cycleDays == 0L) {
-        ClassRow row = data.classes().get(key);
-        if (row != null) {
+        HouseholdEconomy householdEconomy = data.classes().get(key);
+        if (householdEconomy != null) {
           for (IndustryId industryId :
               industriesByHex.getOrDefault(
-                  IndustryHexKeys.hexKey(row.view().hex().q(), row.view().hex().r()), List.of())) {
+                  IndustryHexKeys.hexKey(householdEconomy.view().hex().q(), householdEconomy.view().hex().r()), List.of())) {
             Industry industry = data.industries().get(industryId);
             if (industry != null) {
               cycleDays = Math.max(cycleDays, industry.cycleDays());
@@ -501,13 +501,13 @@ public final class DebtCapacityBook {
    * <p>★ R3a：本方法从旧 {@code 旧结算引擎（R3a 已删除）.lendableOf} 原样搬来（算式与保留额一字不改）；它是 {@link
    * #capacitiesForState} 里"可自用余粮"那一栏的唯一实现，不新增第二处口径。
    */
-  static long lendableOf(ClassRow lender, long stock, long cycleDays) {
+  static long lendableOf(HouseholdEconomy lenderHouseholdEconomy, long stock, long cycleDays) {
     if (stock <= 0L) {
       return 0L;
     }
     long reserve =
         io.mosire.simos.util.economy.EconomyVocabulary.cumulativeRationMilli(
-                lender.population(), cycleDays)
+                lenderHouseholdEconomy.population(), cycleDays)
             * LENDER_SUBSISTENCE_RESERVE_PER_MILLE
             / 1000L;
     return Math.max(0L, stock - reserve);

@@ -25,7 +25,7 @@ import java.util.Set;
  * ProductionOrganization(id, modeId, classPositionId,
  *                       unitId,              // 对应的 ProductionUnit（SHORTAGE 早期可以为空：还没建出可生产的 unit）
  *                       organizer,           // ActorRef：谁组织/经营（经济主体，不等于阶层本身、也不等于地主）
- *                       laborSources,        // 参与劳动的家户（稳定身份；批次维度在各 LaborAllocation 里）
+ *                       laborSources,        // 参与劳动的家户（稳定身份；批次维度在各 HouseholdLaborCommitment 里）
  *                       assetSources,        // 实际使用的 AssetShare（份额身份，不复制数量）
  *                       inputSources,        // 谁出种子/原料/工具（来自 relation.inputSupplier）
  *                       outputOwnership,     // 产出先归谁（来自 relation.residualOwner）

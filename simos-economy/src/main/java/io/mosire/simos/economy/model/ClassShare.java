@@ -12,7 +12,7 @@ import java.util.Objects;
  *
  * <p>★★ <b>同一 {@code (transitionId, householdId)} 的 Σ sharePerMille 必须 = 1000</b>（在 {@code
  * EconomyData} 构造期逐组判）。一次变迁把一个家户拆成"保留原所属 X‰ + 迁入新位置 (1000−X)‰"两条记录（0‰ 那一侧可省略）； 这与 {@link
- * ClassStanding#retainedShares()} 同源：standing 是"以家户为键的当前视图"，本表是"以变迁为键的历史明细"， 两份数据的比例逐值相等（结算在同一处写出）。
+ * HouseholdClassMembership#retainedShares()} 同源：standing 是"以家户为键的当前视图"，本表是"以变迁为键的历史明细"， 两份数据的比例逐值相等（结算在同一处写出）。
  *
  * <p>★ <b>不复制实物</b>：本记录只表达阶层权利的保留比例，不拥有资产数量；资产份额仍按 industry 存在于 {@code AssetShare}，债务仍是家户间债权 ——
  * 模式变迁不按本比例拆分实物或债务。

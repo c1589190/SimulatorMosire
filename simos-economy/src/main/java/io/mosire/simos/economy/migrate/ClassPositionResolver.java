@@ -3,8 +3,8 @@ package io.mosire.simos.economy.migrate;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -13,17 +13,17 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ <b>阶层位置解析器（E1b）</b>：旧 {@code ClassRow.view.stratum} ↔ 新 {@code ClassStanding} / {@code
+ * ★★ <b>阶层位置解析器（E1b）</b>：旧 {@code HouseholdEconomy.view.stratum} ↔ 新 {@code HouseholdClassMembership} / {@code
  * ClassPosition} 之间的唯一纯函数入口。
  *
  * <p>★★ <b>它不参与结算，也不改变旧路径</b>：旧 {@code HouseholdClassRule} / {@code 旧结算引擎（R3a 已删除）} / {@code
- * EconomySeedHandler} / {@code EconomyStateBuilder} <b>全部原样不动</b>（旧路径仍以 {@code ClassRow.view}
+ * EconomySeedHandler} / {@code EconomyStateBuilder} <b>全部原样不动</b>（旧路径仍以 {@code HouseholdEconomy.view}
  * 为准）；本类只有"未来显式迁移器或读口主动调用"时才起作用。调用与不调用都不构成行为变化 —— 唯一的区别是后者状态树里多/少四张新表。
  *
  * <p>★★ <b>只读解析的唯一口径 {@link #resolveCurrent(EconomyData, HouseholdId)}</b>（按优先级）：
  *
  * <ol>
- *   <li>{@code classStandings} 里有该户 ⇒ 返回其 {@link ClassStanding#currentPositionId()}。<b>新状态优先</b>：
+ *   <li>{@code classStandings} 里有该户 ⇒ 返回其 {@link HouseholdClassMembership#currentPositionId()}。<b>新状态优先</b>：
  *       有显式归属后，不再回看旧 stratum，也不在这里做再分类（分类是 {@code HouseholdClassRule} 的职责）。
  *   <li>否则该户在旧 {@code classes} 里有行 ⇒ 按 {@link LegacyClassStructure#positionIdOf} 把 {@code
  *       view.stratum} 映射成默认结构的对应位置。<b>这一步不要求 {@code classPositions} 已经存在</b>：
@@ -31,7 +31,7 @@ import java.util.Set;
  *   <li>都没有 ⇒ {@link Optional#empty()}（不猜、不造位置）。
  * </ol>
  *
- * <p>★★ <b>迁移种子 {@link #seedLegacyClassStandings(EconomyData)} 的契约</b>：
+ * <p>★★ <b>迁移种子 {@link #seedLegacyClassMemberships(EconomyData)} 的契约</b>：
  *
  * <ul>
  *   <li><b>幂等（同一实例）</b>：若新状态（{@code modes} / {@code classStructures} / {@code classPositions} /
@@ -39,10 +39,10 @@ import java.util.Set;
  *       EconomyChangeSet.between(before, after)} 因此没有可提交的差异；
  *   <li><b>无事可做</b>：新状态为空且旧 {@code classes} 也为空 ⇒ 同样返回入参同一实例（没有可播种的家户）；
  *   <li><b>显式播种</b>：新状态为空且旧 {@code classes} 非空 ⇒ 返回一个新的 {@code EconomyData}，写入 E1a 的 四张表：默认 mode +
- *       默认 classStructure + 7 个默认 classPositions + 每户一条 {@code ClassStanding} （{@code original =
+ *       默认 classStructure + 7 个默认 classPositions + 每户一条 {@code HouseholdClassMembership} （{@code original =
  *       current = positionIdOf(row.view().stratum)}，{@code retainedShares} 空表， {@code
  *       lastTransitionDay = 0}，{@code reason = LegacyClassStructure.SEED_REASON}）；
- *   <li><b>最小改动面</b>：只读旧 {@code ClassRow.view.stratum} 做映射，<b>不回写</b> {@code ClassRow}，不动 {@code
+ *   <li><b>最小改动面</b>：只读旧 {@code HouseholdEconomy.view.stratum} 做映射，<b>不回写</b> {@code HouseholdEconomy}，不动 {@code
  *       view}/{@code debts}/{@code memberships}/{@code assetShares} 等任何已有组件；四张新表的写入走 {@code
  *       EconomyData.with*} 逐组件写口，不新增绕过变更集的入口。本方法返回的仍是状态值，交给调用方按 Command → ChangeSet → Revision 提交。
  * </ul>
@@ -68,26 +68,26 @@ public final class ClassPositionResolver {
   public static Optional<ClassPositionId> resolveCurrent(EconomyData data, HouseholdId household) {
     Objects.requireNonNull(data, "data");
     Objects.requireNonNull(household, "household");
-    ClassStanding standing = data.classStandings().get(household);
-    if (standing != null) {
-      return Optional.of(standing.currentPositionId());
+    HouseholdClassMembership classMembership = data.classStandings().get(household);
+    if (classMembership != null) {
+      return Optional.of(classMembership.currentPositionId());
     }
-    ClassRow row = data.classes().get(household);
-    if (row == null) {
+    HouseholdEconomy householdEconomy = data.classes().get(household);
+    if (householdEconomy == null) {
       return Optional.empty();
     }
-    return Optional.of(LegacyClassStructure.positionIdOf(row.view().stratum()));
+    return Optional.of(LegacyClassStructure.positionIdOf(householdEconomy.view().stratum()));
   }
 
   /**
-   * ★★ <b>把旧档 {@code classes} 显式播种成新阶层归属</b>（幂等；不改旧路径、不改 {@code ClassRow.view}）。
+   * ★★ <b>把旧档 {@code classes} 显式播种成新阶层归属</b>（幂等；不改旧路径、不改 {@code HouseholdEconomy.view}）。
    *
    * <p>它只给未来的显式迁移命令 / 读口调用，生产路径当前无人调用。<b>不调用它时旧档行为逐值不变</b>； 调用它只增加四张新表，不触碰旧结算读取的任何字段。
    *
    * @param data 经济状态；不得为 null
    * @return 新状态为空且旧 {@code classes} 非空时返回播种后的新状态；否则返回入参同一实例（无变更）
    */
-  public static EconomyData seedLegacyClassStandings(EconomyData data) {
+  public static EconomyData seedLegacyClassMemberships(EconomyData data) {
     Objects.requireNonNull(data, "data");
     if (hasAnyNewState(data)) {
       return data; // ★ 幂等：新状态已非空 ⇒ 不重播、不产差异（同一实例）
@@ -95,14 +95,14 @@ public final class ClassPositionResolver {
     if (data.classes().isEmpty()) {
       return data; // ★ 无事可做：没有旧家户可映射
     }
-    Map<HouseholdId, ClassStanding> standings = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : data.classes().entrySet()) {
+    Map<HouseholdId, HouseholdClassMembership> classMemberships = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : data.classes().entrySet()) {
       ClassPositionId positionId =
-          LegacyClassStructure.positionIdOf(entry.getValue().view().stratum());
-      standings.put(
-          entry.getKey(),
-          new ClassStanding(
-              entry.getKey(),
+          LegacyClassStructure.positionIdOf(householdEconomyEntry.getValue().view().stratum());
+      classMemberships.put(
+          householdEconomyEntry.getKey(),
+          new HouseholdClassMembership(
+              householdEconomyEntry.getKey(),
               positionId, // original = 旧档当前所属
               positionId, // current  = 同一位置（播种不是一次阶层变迁）
               Set.of(), // ★ P2-B：旧档只有单一 stratum ⇒ 只参与当前位置（追加集合为空）
@@ -121,7 +121,7 @@ public final class ClassPositionResolver {
                 LegacyClassStructure.defaultClassStructureId(),
                 LegacyClassStructure.defaultClassStructure()))
         .withClassPositions(LegacyClassStructure.defaultClassPositions())
-        .withClassStandings(Collections.unmodifiableMap(standings)); // ★ 冻在赋值处
+        .withClassMemberships(Collections.unmodifiableMap(classMemberships)); // ★ 冻在赋值处
   }
 
   /** ★ "新状态"是否已有任何一格被写过（四个组件任一非空即视为已播种/已由别的路径写入）。 */

@@ -2,7 +2,7 @@ package io.mosire.simos.app.household;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
@@ -22,32 +22,32 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * ★★ <b>ClassRow.population 的 Social 家户投影（S3b，2026-10-09）</b>。
+ * ★★ <b>HouseholdEconomy.population 的 Social 家户投影（S3b，2026-10-09）</b>。
  *
  * <pre>
  * 对每个 (hex, 居住类型) 的家户组：
- *   Σ_{经济侧属于该组的 ClassRow.population}  ←  Social 家户成员批次之和
+ *   Σ_{经济侧属于该组的 HouseholdEconomy.population}  ←  Social 家户成员批次之和
  * </pre>
  *
- * <p>★★ <b>为什么需要它</b>：{@code ClassRow.population} 是经济侧的行人口（月结账、劳动折算、债务减免都要读），而人口真值在 Social
+ * <p>★★ <b>为什么需要它</b>：{@code HouseholdEconomy.population} 是经济侧的行人口（月结账、劳动折算、债务减免都要读），而人口真值在 Social
  * 家户的成员批次里。本类在 app 组合根（唯一同时看得见 social 与 economy 的地方）把经济侧行人口**重投影**回家户事实：正常状态下两侧 逐值一致 ⇒
  * 零变化；出现漂移（社会侧少了人而经济侧没跟、或反向）⇒ 按现有行人口权重把该组总量拉回 Social 人数，并对每行劳动量同比例缩放。
  *
- * <p>★★ <b>这不是"第二本账转正"</b>：投影是**单向**的（Social → ClassRow）；经济侧仍然物理存着 {@code population} 字段供本切片计算，
+ * <p>★★ <b>这不是"第二本账转正"</b>：投影是**单向**的（Social → HouseholdEconomy）；经济侧仍然物理存着 {@code population} 字段供本切片计算，
  * 但它的**权威来源**是 Social。经济侧自己的月度出生/死亡写回仍保留（它同时负责劳动、债务、流水），本投影在推进入口做一次对齐。
  *
- * <p>★ <b>明确不做（具名缺口）</b>：{@code ClassRow} 的**身份**仍是经济侧合成的 {@code (格, 居住类型, 阶层)} 家户 id（一个 Social
+ * <p>★ <b>明确不做（具名缺口）</b>：{@code HouseholdEconomy} 的**身份**仍是经济侧合成的 {@code (格, 居住类型, 阶层)} 家户 id（一个 Social
  * 家户对应该组的 4 条阶层行），不是 Social 的 {@code HouseholdId}——把键改成 Social 家户需要改 {@code classes}/{@code flows}/
  * {@code Membership}/配额的主键结构与全部读口，超出本批；本类只保证**人口数值**以 Social 为准。
  *
  * <p>★ <b>fail-closed 口径</b>：只要存在"经济侧行组找不到对应 Social 家户"或"同一家户组有两个 Social 家户"这类无法无损投影的情况，本类
  * **不做任何修改**（返回原数据）并把原因放进 {@code unresolved}；调用方据此告警/拒绝，绝不静默把差额均摊掉。
  */
-public final class HouseholdClassRowProjection {
+public final class HouseholdEconomyProjection {
 
-  private static final Logger LOG = LoggerFactory.getLogger(HouseholdClassRowProjection.class);
+  private static final Logger LOG = LoggerFactory.getLogger(HouseholdEconomyProjection.class);
 
-  private HouseholdClassRowProjection() {}
+  private HouseholdEconomyProjection() {}
 
   /** 投影结果：{@code projected=true} 时 {@code data} 是重投影后的经济状态；否则原样返回且带 {@code unresolved} 原因。 */
   public record Result(
@@ -63,7 +63,7 @@ public final class HouseholdClassRowProjection {
     }
   }
 
-  /** (格, 居住类型) 的复合键：Social 家户组与 ClassRow.view 在这里会合。 */
+  /** (格, 居住类型) 的复合键：Social 家户组与 HouseholdEconomy.view 在这里会合。 */
   private record HouseholdView(HexCoord hex, ResidenceKind residence) {}
 
   /**
@@ -72,7 +72,7 @@ public final class HouseholdClassRowProjection {
    * <p>★ Social 家户为空（旧世界/未播种）⇒ 原样返回（投影无从谈起，不是坏数据）；经济侧为空同理。
    *
    * <p>★★ <b>2026-10-09 UNIT 家户口径</b>：位置为 {@code HouseholdLocation.Unit} 的家户（政府/军队小家户）不参与
-   * {@code (格,居住)} 分组——它们的经济行视图另由 {@link HouseholdPositionResolver#alignClassRowViews} 对齐到 unit
+   * {@code (格,居住)} 分组——它们的经济行视图另由 {@link HouseholdPositionResolver#alignHouseholdEconomyViews} 对齐到 unit
    * 当刻位置；其行人口也从“非 UNIT 行总量”分母里剔除，既不摊给同格民户，也不因其存在把整批 HEX 投影判为未决。
    */
   public static Result project(EconomyData economy, SocialData social) {
@@ -87,7 +87,7 @@ public final class HouseholdClassRowProjection {
     Map<HouseholdView, Long> targetPopulation = new LinkedHashMap<>();
     Map<HouseholdView, HouseholdId> householdOfView = new LinkedHashMap<>();
     // ★ 2026-10-09：UNIT 家户（政府家户 / 军队小家户）没有独立的 (格,居住) 目标；它们的经济行视图由
-    //   HouseholdPositionResolver.alignClassRowViews 对齐到 unit 当刻位置，人口**不并入同格的 HEX 组**——
+    //   HouseholdPositionResolver.alignHouseholdEconomyViews 对齐到 unit 当刻位置，人口**不并入同格的 HEX 组**——
     //   否则政府家户人口会被按权重摊给同格民户（静默并账）。它们的 id 在这里先收集，用于从经济侧分组/总量里剔除。
     Set<HouseholdId> unitHouseholds = new LinkedHashSet<>();
     List<Household> households = new ArrayList<>(social.households().values());
@@ -95,7 +95,7 @@ public final class HouseholdClassRowProjection {
     for (Household household : households) {
       if (!(household.location() instanceof HouseholdLocation.Hex hex)) {
         unitHouseholds.add(household.id());
-        continue; // UNIT 家户没有格行；它们的人口不落 HEX ClassRow 组。
+        continue; // UNIT 家户没有格行；它们的人口不落 HEX HouseholdEconomy 组。
       }
       ResidenceKind residence = residenceOf(household);
       if (residence == null) {
@@ -120,15 +120,15 @@ public final class HouseholdClassRowProjection {
       targetPopulation.put(view, social.householdPopulation(household.id()));
     }
 
-    // ② 经济侧：按 (格, 居住类型) 分组 ClassRow（保序）；UNIT 家户的行不参与 HEX 组（见上）。
+    // ② 经济侧：按 (格, 居住类型) 分组 HouseholdEconomy（保序）；UNIT 家户的行不参与 HEX 组（见上）。
     Map<HouseholdView, List<HouseholdId>> rowsByView = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
-      if (unitHouseholds.contains(entry.getKey())) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : economy.classes().entrySet()) {
+      if (unitHouseholds.contains(householdEconomyEntry.getKey())) {
         continue;
       }
-      ClassRow row = entry.getValue();
-      HouseholdView view = new HouseholdView(row.view().hex(), row.view().residence());
-      rowsByView.computeIfAbsent(view, ignored -> new ArrayList<>()).add(entry.getKey());
+      HouseholdEconomy householdEconomy = householdEconomyEntry.getValue();
+      HouseholdView view = new HouseholdView(householdEconomy.view().hex(), householdEconomy.view().residence());
+      rowsByView.computeIfAbsent(view, ignored -> new ArrayList<>()).add(householdEconomyEntry.getKey());
     }
     for (HouseholdView view : rowsByView.keySet()) {
       if (!targetPopulation.containsKey(view)) {
@@ -147,11 +147,11 @@ public final class HouseholdClassRowProjection {
       targetTotal = Math.addExact(targetTotal, population);
     }
     long rowTotal = 0L;
-    for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
-      if (unitHouseholds.contains(entry.getKey())) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : economy.classes().entrySet()) {
+      if (unitHouseholds.contains(householdEconomyEntry.getKey())) {
         continue;
       }
-      rowTotal = Math.addExact(rowTotal, entry.getValue().population());
+      rowTotal = Math.addExact(rowTotal, householdEconomyEntry.getValue().population());
     }
     if (targetTotal != rowTotal) {
       unresolved.add(
@@ -170,7 +170,7 @@ public final class HouseholdClassRowProjection {
     }
 
     // ③ 逐组重投影：现有行人口作权重，最大余数法分配 Social 总数；劳动量同比例缩放。
-    Map<HouseholdId, ClassRow> next = new LinkedHashMap<>(economy.classes());
+    Map<HouseholdId, HouseholdEconomy> nextHouseholdEconomies = new LinkedHashMap<>(economy.classes());
     int changedRows = 0;
     long populationDelta = 0L;
     for (Map.Entry<HouseholdView, List<HouseholdId>> group : rowsByView.entrySet()) {
@@ -178,7 +178,7 @@ public final class HouseholdClassRowProjection {
       long currentTotal = 0L;
       long[] weights = new long[keys.size()];
       for (int i = 0; i < keys.size(); i++) {
-        long population = next.get(keys.get(i)).population();
+        long population = nextHouseholdEconomies.get(keys.get(i)).population();
         weights[i] = population;
         currentTotal = Math.addExact(currentTotal, population);
       }
@@ -189,24 +189,24 @@ public final class HouseholdClassRowProjection {
       long[] parts = ProportionalSplit.byDenominator(target, weights, currentTotal);
       for (int i = 0; i < keys.size(); i++) {
         HouseholdId key = keys.get(i);
-        ClassRow row = next.get(key);
+        HouseholdEconomy householdEconomy = nextHouseholdEconomies.get(key);
         long newPopulation = parts[i];
-        if (newPopulation == row.population()) {
+        if (newPopulation == householdEconomy.population()) {
           continue;
         }
         long newLabor =
-            row.population() == 0L
-                ? row.laborMilli()
-                : row.laborMilli() * newPopulation / row.population();
-        next.put(key, row.withPopulationAndLabor(newPopulation, newLabor));
+            householdEconomy.population() == 0L
+                ? householdEconomy.laborMilli()
+                : householdEconomy.laborMilli() * newPopulation / householdEconomy.population();
+        nextHouseholdEconomies.put(key, householdEconomy.withPopulationAndLabor(newPopulation, newLabor));
         changedRows++;
-        populationDelta += Math.abs(newPopulation - row.population());
+        populationDelta += Math.abs(newPopulation - householdEconomy.population());
       }
     }
     if (changedRows == 0) {
       return new Result(economy, false, 0, 0L, List.of());
     }
-    EconomyData projected = economy.withClasses(next);
+    EconomyData projected = economy.withHouseholdEconomies(nextHouseholdEconomies);
     LOG.info(
         "event=CLASSROW_POPULATION_PROJECTED households={} changedRows={} absPopulationDelta={}",
         targetPopulation.size(),

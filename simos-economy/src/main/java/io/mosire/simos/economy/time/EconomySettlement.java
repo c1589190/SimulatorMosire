@@ -24,7 +24,7 @@ import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
@@ -39,8 +39,8 @@ import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.migrate.LegacyClassStructure;
 import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.DebtCapacity;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DebtIndex;
@@ -85,7 +85,7 @@ import org.slf4j.Logger;
  *   <li>**播种**：周期的第一天（{@code progressDays == 0}）先扣种子（{@link #sowIfCycleStart}）——**先于当天消费** （{@link
  *       #PLANTING_DRAWS_BEFORE_CONSUMPTION}，v2 spec §3.2）。种子粮与口粮是同一个商品，优先性来自**时点**。
  *   <li>**消费**：每行扣当天口粮 {@code EconomyVocabulary.dailyRationMilli(人口, 绝对日号)}（= 累计口粮的**逐日差分**， 口径"每人每
- *       120 天 10 粮"，v2 spec §八.6），**并把该数写进** {@link ClassRow#naturalNeeds()}（§八.8"读数与结算同源"
+ *       120 天 10 粮"，v2 spec §八.6），**并把该数写进** {@link HouseholdEconomy#naturalNeeds()}（§八.8"读数与结算同源"
  *       的**一条真相**：读口直接读它，不再各算一遍）。
  *   <li>**缺口**：库存不够 ⇒ 先在同格内借粮（**按可贷余粮降序**放贷 —— 旧"地主 → 富农 → 中农"的阶层白名单已由可观察余粮取代，见 {@link
  *       #lendDeficitsInHex}；从有粮的行的**余粮**划转 —— 余粮 = 库存 − **本周期自需** × {@link
@@ -94,7 +94,7 @@ import org.slf4j.Logger;
  *       unit, terms) 跨周期恒同一条，见 {@link #legacyGrainDebtId}，本金递增）；**借完仍补不上**的部分记入本行流水的 {@code
  *       unmetNeed}（毫粮、逐日累加，供周期末的饿死判据 —— 见 {@link #FAMINE_MORTALITY_PER_MILLE}，默认致命率 0‰）。
  *   <li>**进度**：每个产业 {@code progressDays + 1}。
- *   <li>**劳动投入**：本产业当日实际劳动 = **该产业名下全部 {@code LaborAllocation} 的 {@code laborMilli} 之和**（R2
+ *   <li>**劳动投入**：本产业当日实际劳动 = **该产业名下全部 {@code HouseholdLaborCommitment} 的 {@code laborMilli} 之和**（R2
  *       改口径；改前是"Σ(行 {@code laborMilli × participationPerMille / 1000})"，两者在创世逐值相同）—— 累加进 {@link
  *       Industry#cycleLaborMilli()}（供收获时算劳动瓶颈）。★ 于是"同一批人的劳动"**只有一处真相**：配额表；而"配额之和 ≤
  *       该批次的可用劳动"是状态的不变量（{@code EconomyData} 构造期判）。
@@ -191,7 +191,7 @@ import org.slf4j.Logger;
  * <p>★★ **逐值算例**（5 格端到端夹具，(0,0) 平原 3,100 亩、粮；数字与算式都逐项可核）： ★
  * <b>时效标注（2026-09-27，H0/K3）</b>：下面的数字是**改前**（产能还散在各行 {@code meansOfProduction} 上、 收获规模按
  * Σ各行产能算）的实测。K3 把产能搬到 {@link Industry#capacity()} 之后，**算式形状一字未改**，但 "各行想扣多少"改按人口占比折算 ⇒
- * <b>真档数值会变</b>（K3 已认这个代价，见 {@code ClassRow} 的注释；★ H3 起"各行想扣多少"这条口径 <b>整块删掉</b>（改前的 {@code
+ * <b>真档数值会变</b>（K3 已认这个代价，见 {@code HouseholdEconomy} 的注释；★ H3 起"各行想扣多少"这条口径 <b>整块删掉</b>（改前的 {@code
  * rowSharesOf} 已不存在），改由 relation 指名供方）。 ★★ <b>时效标注（2026-09-27，H1）</b>：下面两式的**第一项已换名换物** —— {@code
  * ΔΣRowGoods} 不再存在，同一个位置上现在是 {@code ΔΣActorGoods}（家户账副本 + operator 条目）。⇒
  * **这些数不再当作判据，只当作"算式怎么读"的例子**。
@@ -352,7 +352,7 @@ public final class EconomySettlement {
    * 续修要修的读数）；一点也不留则会当天见底、把"还债"变成"立刻断粮"。一日最低口粮是<strong>可解释的下界</strong>： 只动员"今天吃完还有余"的那部分粮。
    *
    * <p>★ 它是**制度层参数**，与 {@link #DEBT_REPAYMENT_SHARE_PER_MILLE} 同处置（V7 迁入参数表、GM 可调）。★ 保留额按 {@code
-   * ClassRow.naturalNeeds[GRAIN]}（结算日当天的自然口粮需要）取，不用"人口 × 拍出来的数"另算一份。
+   * HouseholdEconomy.naturalNeeds[GRAIN]}（结算日当天的自然口粮需要）取，不用"人口 × 拍出来的数"另算一份。
    */
   public static final int DEBTOR_SUBSISTENCE_RESERVE_DAYS = 1;
 
@@ -564,15 +564,15 @@ public final class EconomySettlement {
     // ★★ **H1 的第一层 fail-closed：本入口没有家户账**（裁定 K1 / D3-C）。
     //   家户账是**会话状态**（{@link EconomyDayStepper} 的工作副本），不在 EconomyData 里、也不在本入口的入参里 ⇒
     //   "要吃粮的家户"一个都没有时本入口才可能自洽（全零人口的世界：没有人吃饭、没有人出工）。
-    for (Map.Entry<HouseholdId, ClassRow> entry : base.classes().entrySet()) {
-      if (entry.getValue().population() > 0L) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : base.classes().entrySet()) {
+      if (householdEconomyEntry.getValue().population() > 0L) {
         throw new IllegalStateException(
             "本入口（多日静态入口）没有**家户账** —— 家户的商品库存住在 actor 切片的 HouseholdInventory 上，"
                 + "而日结算的消费与投入都要读它（H1/K1：家户账是会话状态）。"
                 + "把'没有账'当成'库存 0'是本仓最反对的形态，故当场抛：家户="
-                + entry.getKey()
+                + householdEconomyEntry.getKey()
                 + " 人口="
-                + entry.getValue().population()
+                + householdEconomyEntry.getValue().population()
                 + "。**请走 EconomyDayStepper（家户账是会话状态）**："
                 + "它的构造器收一份 Map<HouseholdId, Map<CommodityId, Long>> 工作副本（由 app 协调器从 actor 侧载入），"
                 + "step(day) 就地更新它、finish() 之后由协调器落回 actor；"
@@ -781,7 +781,7 @@ public final class EconomySettlement {
     LinkedHashMap<IndustryId, Industry> industries = session.sheet().industries();
     // ★★ R3B.2：生产单元表工作副本（进度/劳动/投入的唯一写点；Industry 只留模板）。
     LinkedHashMap<ProductionUnitId, ProductionUnit> units = session.sheet().units();
-    LinkedHashMap<HouseholdId, ClassRow> rows = session.sheet().rows();
+    LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies = session.sheet().householdEconomies();
     LinkedHashMap<DebtContractId, DebtContract> debts = session.sheet().debtContracts();
     // ★★ **计息的"昨日本金" = 当日起始快照**（M0.5 权威口径：计息日 {@code + ⌊昨 × 率 ÷ 1000⌋}，"昨"是当日开始时
     //   的本金）。必须在 4b 放贷 / 4c 偿还之前取；否则当天新借的债当天就被计息，与守恒式不符（实测：第 120 天
@@ -792,7 +792,7 @@ public final class EconomySettlement {
     }
     // ★★ **R2：劳动配额表**——日结算**读**它（当日劳动的唯一来源），R4 起在**饿死**那一步**按存活比例缩**它
     //   （见 {@link #scaleLaborOfIndustry}："人死了劳动没减"这条旧账的收口）⇒ 需要工作副本。
-    LinkedHashMap<LaborAllocationId, LaborAllocation> allocations = session.sheet().allocations();
+    LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments = session.sheet().laborCommitments();
     // ★ P2-A A3：成员份额不再是 Economy 状态组件 —— 家户人口组成由调用方作为**只读投影**传入（见 composition）。
     LinkedHashMap<AssetShareId, AssetShare> assetShares = session.sheet().assetShares();
     // ★★ S3：经营者状态机的工作副本 —— 与 industries/rows 同一条"日结算就地更新、结束后整体交出"的口径；
@@ -810,15 +810,15 @@ public final class EconomySettlement {
     // ★★ R4-B.3a-perf：日结算的只读派生索引 —— **每天入口构建一次**。它把“unit 可用资产/产能、unit↔家户、
     //   格↔unit/产业、债务人↔债务”这些一天内不变的问题一次算好，串行热路径与并行 worker 都只查表。
     //   ★ 不进 EconomyData/ChangeSet/Codec，不作为第二份状态；AssetShare/Industry/unit 本步不改写，故这一份在
-    //     日结算内始终有效。LaborAllocation 会在劳动再分配后被改写 ⇒ 那之后用 withLabor(...) 换一次配额侧视图；
+    //     日结算内始终有效。HouseholdLaborCommitment 会在劳动再分配后被改写 ⇒ 那之后用 withLabor(...) 换一次配额侧视图；
     //     DebtContract 会在借粮/偿还/计息后被改写 ⇒ 状态机之前用 withDebtContracts(...) 换一次债务视图。
     SettlementIndex settlementIndex =
         SettlementIndex.build(
             units,
             industries,
             assetShares,
-            allocations,
-            rows,
+            laborCommitments,
+            householdEconomies,
             debts,
             relations,
             session.sheet().productionOrganizations());
@@ -826,21 +826,21 @@ public final class EconomySettlement {
     // ★★ **H1 的第一条守卫：家户账必须覆盖每一个"要吃粮的家户"**（fail-closed；裁定 K1 / D3-C）——
     //   放在任何公式之前（与 E14 的"在任何数量计算之前"同款）：副本缺键时若继续跑，缺的那一家会被当成"库存 0"
     //   ⇒ 它当天"吃 0、投入 0"，账面看不出少了谁。那正是本仓最反对的形态，故当场抛。
-    requireHouseholdAccounts(rows, householdGoods);
+    requireHouseholdAccounts(householdEconomies, householdGoods);
     // ★★ **H4 的第一条守卫：货币账必须覆盖每一个"可能要花钱的家户"**（与商品那条同款、同一条理由）：
     //   缺键时若继续跑，那一家的可花余额会被当成 0 —— 它当天的有效需求因此是 0、市场买不到粮、
     //   而账面（缺口只多不少）看起来完全正常。⇒ 缺键 ⇒ 当场抛（"没有账"与"账是空的"是两件事）。
-    requireHouseholdMoney(rows, householdMoney);
+    requireHouseholdMoney(householdEconomies, householdMoney);
 
     long dayStartPopulation = 0L;
-    for (ClassRow row : rows.values()) {
-      dayStartPopulation += row.population();
+    for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
+      dayStartPopulation += householdEconomy.population();
     }
     TRACE.info(
         "event=DAY_START day={} mapId={} rows={} population={} units={} markets={} organizations={} debtContracts={} modes={} topologyRegions={}",
         day,
         meta.mapId(),
-        rows.size(),
+        householdEconomies.size(),
         dayStartPopulation,
         units.size(),
         markets.size(),
@@ -853,7 +853,7 @@ public final class EconomySettlement {
       TRACE.debug(
           "[day={}] 00 START rows={} units={} markets={} organizations={} debts={} modes={} topologyRegions={}",
           day,
-          rows.size(),
+          householdEconomies.size(),
           units.size(),
           markets.size(),
           session.sheet().productionOrganizations().size(),
@@ -880,13 +880,13 @@ public final class EconomySettlement {
               industries,
               settlementIndex,
               markets,
-              rows,
+              householdEconomies,
               householdGoods,
               householdMoney,
               composition,
               units,
               assetShares,
-              allocations,
+              laborCommitments,
               operatorConditions,
               relations,
               day);
@@ -899,10 +899,10 @@ public final class EconomySettlement {
                 industries,
                 units,
                 assetShares,
-                allocations,
+                laborCommitments,
                 operatorConditions,
                 session.sheet().relations(),
-                rows,
+                householdEconomies,
                 householdGoods,
                 householdMoney,
                 composition,
@@ -918,8 +918,8 @@ public final class EconomySettlement {
                   units,
                   industries,
                   assetShares,
-                  allocations,
-                  rows,
+                  laborCommitments,
+                  householdEconomies,
                   debts,
                   relations,
                   session.sheet().productionOrganizations());
@@ -985,7 +985,7 @@ public final class EconomySettlement {
     LinkedHashMap<HouseholdId, Long> deficitToday = new LinkedHashMap<>();
     // ── 0-entry.4. ★★ E6a 模式变迁执行（理想架构 §4.4；计划 E6a）────────────────────────────────
     //   ★★ 位置：**必须在自动组织阶段之前** —— 变迁写回 EXITING/ACTIVE 组织、同一 unit 的新 modeKey 与新
-    //      ClassStanding；随后 organize 以新归属做幂等检查（新组织已 ACTIVE ⇒ 不重建），retain=1000 的旧
+    //      HouseholdClassMembership；随后 organize 以新归属做幂等检查（新组织已 ACTIVE ⇒ 不重建），retain=1000 的旧
     //      EXITING 组织也不会被重建（organize 对该状态显式跳过）。
     //   ★★ 闸门：`modeTransitions` 为空时连工作副本都不建（空表基线逐值不变）；apply 内部再判一次到期 PENDING。
     //   ★ 只对"base 里真有一条到期 PENDING"才进入：APPLIED/FAILED 的历史变迁不产生任何拷贝（跨 revision 的稳定基线）。
@@ -1004,12 +1004,12 @@ public final class EconomySettlement {
           EconomyModeTransitionSettlement.apply(
               base,
               day,
-              rows,
+              householdEconomies,
               session.sheet().productionOrganizations(),
               units,
               assetShares,
               session.sheet().pledges(),
-              session.sheet().classStandings(),
+              session.sheet().classMemberships(),
               session.sheet().modeTransitions(),
               session.sheet().classShares());
       if (transitionOutcome.changed()) {
@@ -1042,15 +1042,15 @@ public final class EconomySettlement {
           EconomyOrganizationSettlement.organize(
               base,
               // ★ E6a：变迁刚写过的 standing 工作副本优先（无变迁时 = base 的不可变表，旧路径逐值不变）。
-              session.sheet().classStandingsOrBase(),
-              rows,
+              session.sheet().classMembershipsOrBase(),
+              householdEconomies,
               industries,
               // ★ 2026-10-09：传入**可写**质押工作副本 —— 租佃拆分会把 ACTIVE 质押按比例跟到新份额（AssetShareBook 就地写）。
               session.sheet().pledges(),
               units,
               session.sheet().relations(),
               assetShares,
-              allocations,
+              laborCommitments,
               composition,
               householdGoods,
               markets,
@@ -1065,8 +1065,8 @@ public final class EconomySettlement {
                 units,
                 industries,
                 assetShares,
-                allocations,
-                rows,
+                laborCommitments,
+                householdEconomies,
                 debts,
                 relations,
                 session.sheet().productionOrganizations());
@@ -1082,7 +1082,7 @@ public final class EconomySettlement {
             day,
             organizationOutcome.createdUnitIds().size(),
             session.sheet().productionOrganizations().size(),
-            rows.size());
+            householdEconomies.size());
       }
       if (TRACE.isDebugEnabled()) {
         TRACE.debug(
@@ -1158,7 +1158,7 @@ public final class EconomySettlement {
         LaborQueueSettlement.apply(session, settlementIndex, day, composition, enteredToday);
       }
       // ★ 配额被改写 ⇒ 换一份“配额侧”视图，后续（unit 家户归属/市场参与者/人口回写）继续 O(1) 查表。
-      settlementIndex = settlementIndex.withLabor(units, rows, allocations);
+      settlementIndex = settlementIndex.withLabor(units, householdEconomies, laborCommitments);
     }
 
     // ── 1~2. 消费（各自吃自己的库存；缺口**先记下不借** —— 借是最后手段，见 4b）──────────────
@@ -1166,9 +1166,9 @@ public final class EconomySettlement {
     //     两处各算一遍就是同一个量的第二处拼写点（算错不会报错，只会让两处口径悄悄漂开）。
     Map<HouseholdId, Long> cycleDaysByHousehold =
         cycleDaysByHousehold(
-            rows, industries, units, unitsOfHousehold, settlementIndex.industriesByHex());
+            householdEconomies, industries, units, unitsOfHousehold, settlementIndex.industriesByHex());
     consumeOwnStockPartitioned(
-        rows, accounts, consumedGoods, unmetToday, deficitToday, day, parallelism);
+        householdEconomies, accounts, consumedGoods, unmetToday, deficitToday, day, parallelism);
 
     if (!plantingDrawsFirst) {
       drawCycleInputsPartitioned(
@@ -1187,7 +1187,7 @@ public final class EconomySettlement {
         LaborQueueSettlement.apply(session, settlementIndex, day, composition, enteredToday);
       }
       // ★ 配额被改写 ⇒ 换一份“配额侧”视图（与 plantingDrawsFirst 分支同一条阶段边界）。
-      settlementIndex = settlementIndex.withLabor(units, rows, allocations);
+      settlementIndex = settlementIndex.withLabor(units, householdEconomies, laborCommitments);
     }
 
     if (TRACE.isDebugEnabled()) {
@@ -1230,18 +1230,18 @@ public final class EconomySettlement {
     //     （实测：`EconomyDebtTest` 的 interestDue 读成两个周期之和）。
     Map<String, List<IndustryId>> hexToIndustries = settlementIndex.industriesByHex();
     Set<HouseholdId> newCycleHouseholds = new LinkedHashSet<>();
-    for (HouseholdId key : rows.keySet()) {
+    for (HouseholdId key : householdEconomies.keySet()) {
       Set<ProductionUnitId> supplied = unitsOfHousehold.getOrDefault(key, Set.of());
       if (supplied.isEmpty()) {
         // ★ 兜底：没有配额的户按它住的那一格的产业找 unit（与 cycleDaysByHousehold 同一条兜底）。
-        ClassRow cycleRow = rows.get(key);
-        if (cycleRow != null) {
+        HouseholdEconomy cycleHouseholdEconomy = householdEconomies.get(key);
+        if (cycleHouseholdEconomy != null) {
           // ★ R4-B.3a-perf：格 → unit 由入口索引一次给出（旧实现逐无配额家户全量扫 8,940 个 unit）。
           supplied =
               new LinkedHashSet<>(
                   settlementIndex.unitsInHex(
                       IndustryHexKeys.hexKey(
-                          cycleRow.view().hex().q(), cycleRow.view().hex().r())));
+                          cycleHouseholdEconomy.view().hex().q(), cycleHouseholdEconomy.view().hex().r())));
         }
       }
       for (ProductionUnitId unitId : supplied) {
@@ -1320,10 +1320,10 @@ public final class EconomySettlement {
     //   旧 CohortKey 视图 → 家户（旧 ToCohort 规则的唯一合法读法）。
     Map<ProductionUnitId, ProductionOrganization> organizationByUnit =
         organizationsByUnit(session.sheet().productionOrganizations());
-    Map<CohortKey, HouseholdId> viewIndex = viewToHousehold(rows);
+    Map<CohortKey, HouseholdId> viewIndex = viewToHousehold(householdEconomies);
     harvestPartitioned(
         harvestWorks,
-        rows,
+        householdEconomies,
         settlementIndex,
         relations,
         organizationByUnit,
@@ -1369,7 +1369,7 @@ public final class EconomySettlement {
     //   ★ 位置在**借粮/偿还之前**：新增的既有债因此同日进入偿还排序（D-031 起不再进入任何借款额度门）；
     //     但不在当日起始本金快照里 ⇒ 当天不计息（与借粮同口径，见 principalAtDayStart）。
     capitalizeArrears(
-        base, settlementIndex, ledger, rows, debts, capitalizedArrearsToday, day, dueCycle);
+        base, settlementIndex, ledger, householdEconomies, debts, capitalizedArrearsToday, day, dueCycle);
     ProductionLedger capitalized = ledger.toLedger();
     if (!capitalized.debtCapitalizations().isEmpty()
         || !capitalized.unresolvedDebtCapitalizations().isEmpty()) {
@@ -1402,7 +1402,7 @@ public final class EconomySettlement {
     MarketSettlement.MarketRound marketRound =
         new MarketSettlement.MarketRound(
             day,
-            rows,
+            householdEconomies,
             householdGoods,
             householdMoney,
             householdFrozenGoods,
@@ -1413,7 +1413,7 @@ public final class EconomySettlement {
             units,
             assetShares,
             relations,
-            allocations,
+            laborCommitments,
             shipments,
             ledger,
             operatorConditions,
@@ -1607,7 +1607,7 @@ public final class EconomySettlement {
     // ★★ D-030 §3.4/§3.5：本日起所有“债务折价/还款折算”共用同一份家户价目表索引 ——
     //   有本格市场用本格，否则回落该格所在市场区的锚格默认价目表（单区 = 该区默认价）。
     //   ★ 这是 EconomySettlement 里唯一构造 debt lookup 的地方；算式在本类之外（DebtValuation）。
-    Map<HouseholdId, Market> marketByHousehold = marketIndexByHousehold(rows, markets, topology);
+    Map<HouseholdId, Market> marketByHousehold = marketIndexByHousehold(householdEconomies, markets, topology);
     DebtCapacityBook.DebtUnitValueLookup debtUnitValueLookup =
         DebtCapacityBook.marketPriceLookup(marketByHousehold);
 
@@ -1624,7 +1624,7 @@ public final class EconomySettlement {
       // ★★ D-031：同格借粮也不再有借款人额度门 —— 缺口户有多少缺口就借多少，直到本格放贷人的
       //   `lendableOf` 余粮被借空为止；债务风险由债权人承担，抵押物不再是前置条件。
       lendDeficitsPartitioned(
-          rows,
+          householdEconomies,
           debts,
           accounts,
           consumedGoods,
@@ -1678,7 +1678,7 @@ public final class EconomySettlement {
     //     {@link DebtValuation.RepayeeResolver#HOUSEHOLD_ACTORS} 起步（账户在会话/actor 账里可收即可）。
     if (anyCycleClosed) {
       repayDebts(
-          rows,
+          householdEconomies,
           debts,
           householdGoods,
           householdMoney,
@@ -1725,29 +1725,29 @@ public final class EconomySettlement {
     for (ClosedUnit closing : closed) {
       long populationBefore = 0L;
       for (HouseholdId key : closing.keys()) {
-        populationBefore += rows.get(key).population();
+        populationBefore += householdEconomies.get(key).population();
       }
       for (HouseholdId key : closing.keys()) {
         long carried =
             newCycleUnits.contains(closing.unit()) || flows.get(key) == null
                 ? 0L
                 : flows.get(key).unmetNeed().getOrDefault(GRAIN, 0L);
-        ClassRow beforeFamineRow = rows.get(key);
-        long populationBeforeFamine = beforeFamineRow == null ? 0L : beforeFamineRow.population();
+        HouseholdEconomy beforeFamineHouseholdEconomy = householdEconomies.get(key);
+        long populationBeforeFamine = beforeFamineHouseholdEconomy == null ? 0L : beforeFamineHouseholdEconomy.population();
         long famineUnmet =
             carried + unmetToday.getOrDefault(key, Map.of()).getOrDefault(GRAIN, 0L);
         applyFamine(
-            rows,
+            householdEconomies,
             deathsToday,
             key,
-            rows.get(key),
+            householdEconomies.get(key),
             famineUnmet,
             day,
             closing.cycleDays(),
             famineMortalityPerMille);
-        ClassRow afterFamineRow = rows.get(key);
+        HouseholdEconomy afterFamineHouseholdEconomy = householdEconomies.get(key);
         long famineDeaths =
-            populationBeforeFamine - (afterFamineRow == null ? 0L : afterFamineRow.population());
+            populationBeforeFamine - (afterFamineHouseholdEconomy == null ? 0L : afterFamineHouseholdEconomy.population());
         if (famineDeaths > 0L) {
           RAW.trace(
               "event=FAMINE_DEATH day={} household={} unit={} deaths={} populationBefore={} populationAfter={} unmetGrainMilli={}",
@@ -1756,17 +1756,17 @@ public final class EconomySettlement {
               closing.unit().value(),
               famineDeaths,
               populationBeforeFamine,
-              afterFamineRow == null ? 0L : afterFamineRow.population(),
+              afterFamineHouseholdEconomy == null ? 0L : afterFamineHouseholdEconomy.population(),
               famineUnmet);
         }
-        if (afterFamineRow != null) {
-          // ★ P2-A A3：成员份额已迁 Social —— 饿死只改 ClassRow.population；Social 侧的家户成员回写由
+        if (afterFamineHouseholdEconomy != null) {
+          // ★ P2-A A3：成员份额已迁 Social —— 饿死只改 HouseholdEconomy.population；Social 侧的家户成员回写由
           //   跨切片协调器负责（本批如实记为缺口，见交付报告）。
         }
       }
       long populationAfter = 0L;
       for (HouseholdId key : closing.keys()) {
-        populationAfter += rows.get(key).population();
+        populationAfter += householdEconomies.get(key).population();
       }
       // ★★ **R4：饿死之后劳动按同比例缩 —— 而且这次真的缩到配额上**（R2 如实记下的那条旧账：
       //   `applyFamine` 缩的是**行**劳动，而当日劳动自 R2 起取自**劳动分配表** ⇒ "人死了劳动没减"）。
@@ -1775,7 +1775,7 @@ public final class EconomySettlement {
             closing.unit(),
             populationBefore,
             populationAfter,
-            allocations,
+            laborCommitments,
             settlementIndex);
       }
     }
@@ -1841,7 +1841,7 @@ public final class EconomySettlement {
               units,
               industries,
               relations,
-              rows,
+              householdEconomies,
               stateIndex,
               householdGoods,
               householdMoney,
@@ -1855,7 +1855,7 @@ public final class EconomySettlement {
             operatorConditions,
             session.sheet().productionOrganizations(),
             assetShares,
-            allocations,
+            laborCommitments,
             debts,
             householdGoods,
             householdMoney,
@@ -1891,8 +1891,8 @@ public final class EconomySettlement {
                 units,
                 industries,
                 assetShares,
-                allocations,
-                rows,
+                laborCommitments,
+                householdEconomies,
                 debts,
                 relations,
                 session.sheet().productionOrganizations());
@@ -1908,7 +1908,7 @@ public final class EconomySettlement {
     if (anyCycleClosed && EconomyLiquidationSettlement.isActive(base)) {
       Map<HouseholdId, DebtCapacity> closeDebtCapacities =
           debtCapacitiesForDay(
-              rows,
+              householdEconomies,
               flows,
               newCycleHouseholds,
               income,
@@ -1925,7 +1925,7 @@ public final class EconomySettlement {
           session,
           day,
           currentCycle,
-          rows,
+          householdEconomies,
           assetShares,
           session.sheet().pledges(),
           debts,
@@ -1944,50 +1944,50 @@ public final class EconomySettlement {
     }
 
     // ── 5c. S3 阶层写回（关账日、经营者状态机之后）────────────────────────────────────────
-    //   ★ 只改 ClassRow.view：稳定 HouseholdId、actor/账户/债务/劳动配额/人口/成员份额一字不动（withView 的方法承诺）。
-    //   ★ E5b：有 ClassStanding 的家户以 standing 为权威 —— 把 currentPositionId 投影回 view.stratum；
+    //   ★ 只改 HouseholdEconomy.view：稳定 HouseholdId、actor/账户/债务/劳动配额/人口/成员份额一字不动（withView 的方法承诺）。
+    //   ★ E5b：有 HouseholdClassMembership 的家户以 standing 为权威 —— 把 currentPositionId 投影回 view.stratum；
     //     投影不到的非 legacy 位置保留旧 view 并写具名审计，**不**把该户再交给 HouseholdClassRule（禁止双真相）。
     //   ★ 没有 standing 的旧档才继续走 HouseholdClassRule（投影不到 = 有显式归属但表达不了，不是"退回旧分类器"）。
     //   ★ 分类用本日 ledger（关账日 = 本周期收获/分配的结算账本，租金实付是整周期口径）；读不到时不填 0。
     //   ★ 原四档允许跳变；这里不新增人口、不改任何守恒量。
     if (anyCycleClosed) {
       ProductionLedger classLedger = ledger.toLedger();
-      Map<HouseholdId, ClassStanding> classStandings = session.sheet().classStandingsOrBase();
+      Map<HouseholdId, HouseholdClassMembership> classMemberships = session.sheet().classMembershipsOrBase();
       HouseholdClassRule.Index classIndex =
           HouseholdClassRule.Index.of(
-              assetShares, allocations, units, industries, relations, rows, debts, settlementIndex);
+              assetShares, laborCommitments, units, industries, relations, householdEconomies, debts, settlementIndex);
       List<ClassTransition> classTransitions = new ArrayList<>();
-      for (HouseholdId key : new ArrayList<>(rows.keySet())) {
-        ClassRow row = rows.get(key);
-        if (row == null) {
+      for (HouseholdId key : new ArrayList<>(householdEconomies.keySet())) {
+        HouseholdEconomy householdEconomy = householdEconomies.get(key);
+        if (householdEconomy == null) {
           continue;
         }
-        ClassStanding standing = classStandings.get(key);
+        HouseholdClassMembership classMembership = classMemberships.get(key);
         SocialClassId derived;
         String reason;
-        if (standing != null) {
+        if (classMembership != null) {
           Optional<SocialClassId> projected =
-              LegacyClassStructure.socialClassOf(standing.currentPositionId());
+              LegacyClassStructure.socialClassOf(classMembership.currentPositionId());
           if (projected.isEmpty()) {
             EconomyLiquidationSettlement.recordClassProjectionFallback(
-                ledger, day, key, standing.currentPositionId(), row.view().stratum());
+                ledger, day, key, classMembership.currentPositionId(), householdEconomy.view().stratum());
             continue; // ★ 保留旧 view，不改旧权威也不另造一个投影
           }
           derived = projected.get();
-          reason = "classStanding-authority:" + standing.currentPositionId().value();
+          reason = "classStanding-authority:" + classMembership.currentPositionId().value();
         } else {
           HouseholdClassRule.Classification classification =
               classIndex.classify(key, Optional.of(classLedger));
           derived = classification.stratum();
           reason = classification.reason();
         }
-        if (derived.equals(row.view().stratum())) {
+        if (derived.equals(householdEconomy.view().stratum())) {
           continue;
         }
         ClassTransition transition =
-            new ClassTransition(day, key, row.view().stratum(), derived, reason);
-        rows.put(
-            key, row.withView(new CohortKey(row.view().hex(), row.view().residence(), derived)));
+            new ClassTransition(day, key, householdEconomy.view().stratum(), derived, reason);
+        householdEconomies.put(
+            key, householdEconomy.withView(new CohortKey(householdEconomy.view().hex(), householdEconomy.view().residence(), derived)));
         classTransitions.add(transition);
       }
       // ★ 具名审计读数：即使没有写回也投递空表（读口才分得清"这次关账没有变化"与"没读到"）。
@@ -2001,18 +2001,18 @@ public final class EconomySettlement {
     }
 
     // ── 流水：每行一条（本期发生额；税 v1 恒 0、利息见上一步）────────────────────────────
-    for (Map.Entry<HouseholdId, ClassRow> rowEntry : rows.entrySet()) {
-      HouseholdId key = rowEntry.getKey();
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomies.entrySet()) {
+      HouseholdId key = householdEconomyEntry.getKey();
       // ★★ **M2.7（丙条仪器）：周期累加器的清零点与流水同一天** —— 新周期第一天把
       //   {@code cycleNaturalNeedMilli} 重置为"今天这一份"（{@code withDailyNeed} 在消费步刚累加过）。
       //   ★ 放在这里而不是 {@code withDailyNeed} 里：只有这里同时看得见 {@code newCycleHouseholds}
       //     （由产业 progressDays 推、且与 FlowRow 的清零同一判据）。重置为"当天那一份"而不是 0 —— 理由见
       //     {@link #withCycleNaturalNeed}。
       if (newCycleHouseholds.contains(key)) {
-        ClassRow cycleRow = rowEntry.getValue();
-        if (cycleRow != null) {
-          rowEntry.setValue(
-              withCycleNaturalNeed(cycleRow, cycleRow.naturalNeeds().getOrDefault(GRAIN, 0L)));
+        HouseholdEconomy cycleHouseholdEconomy = householdEconomyEntry.getValue();
+        if (cycleHouseholdEconomy != null) {
+          householdEconomyEntry.setValue(
+              withCycleNaturalNeed(cycleHouseholdEconomy, cycleHouseholdEconomy.naturalNeeds().getOrDefault(GRAIN, 0L)));
         }
       }
       // ★★ **T4 起两张实物表的口径都变了**（R1 的"行侧、形状不变、口径改"）：
@@ -2110,9 +2110,9 @@ public final class EconomySettlement {
           session.sheet().productionOrganizations(),
           units,
           session.sheet().relations(),
-          allocations,
+          laborCommitments,
           assetShares,
-          rows,
+          householdEconomies,
           accounts,
           markets,
           session.sheet().debtContracts(),
@@ -2123,7 +2123,7 @@ public final class EconomySettlement {
               profitCycle,
               session.sheet().productionOrganizations(),
               units,
-              rows,
+              householdEconomies,
               industries,
               markets,
               accounts);
@@ -2133,11 +2133,11 @@ public final class EconomySettlement {
               base,
               session.sheet().productionOrganizations(),
               units,
-              rows,
-              session.sheet().classStandings(),
+              householdEconomies,
+              session.sheet().classMemberships(),
               assetShares,
               session.sheet().relations(),
-              allocations,
+              laborCommitments,
               markets,
               session.sheet().debtContracts(),
               accounts,
@@ -2181,7 +2181,7 @@ public final class EconomySettlement {
             profitBook.netByModeHex().size(),
             migrationPlan.moves().size());
       }
-      int rowsBeforeMigration = rows.size();
+      int rowsBeforeMigration = householdEconomies.size();
       ModeMigrationSettlement.apply(session, accounts, migrationPlan, base, day, ledger);
       if (!migrationPlan.moves().isEmpty()) {
         TRACE.info(
@@ -2189,21 +2189,21 @@ public final class EconomySettlement {
             day,
             migrationPlan.moves().size(),
             rowsBeforeMigration,
-            rows.size(),
+            householdEconomies.size(),
             ledger.toLedger().transfers().size());
       }
       if (TRACE.isDebugEnabled()) {
         TRACE.debug(
             "[day={}] 20 MIGRATION_APPLIED rowsAfter={} transfersToday={}",
             day,
-            rows.size(),
+            householdEconomies.size(),
             ledger.toLedger().transfers().size());
       }
       profitCycle.resetForNextCycle();
     }
     long dayEndPopulation = 0L;
-    for (ClassRow row : rows.values()) {
-      dayEndPopulation += row.population();
+    for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
+      dayEndPopulation += householdEconomy.population();
     }
     MarketReport dayMarketReport = ledger.marketReport();
     TRACE.info(
@@ -2240,7 +2240,7 @@ public final class EconomySettlement {
       TRACE.debug(
           "[day={}] 21 END rows={} units={} debts={} transfers={} byReasonCount={} byReasonGoods={} byReasonMoney={}",
           day,
-          rows.size(),
+          householdEconomies.size(),
           units.size(),
           debts.size(),
           ledger.toLedger().transfers().size(),
@@ -2457,7 +2457,7 @@ public final class EconomySettlement {
   /** 消费阶段一个分区的产出（意向 + 行更新 + 三个读数累加器）。 */
   private record ConsumptionPartition(
       List<OrderedAccountIntent> intents,
-      Map<HouseholdId, ClassRow> rowUpdates,
+      Map<HouseholdId, HouseholdEconomy> householdEconomyUpdates,
       Map<HouseholdId, Map<CommodityId, Long>> consumed,
       Map<HouseholdId, Map<CommodityId, Long>> unmet,
       Map<HouseholdId, Long> deficits) {}
@@ -2469,14 +2469,14 @@ public final class EconomySettlement {
    * 写的是线程本地意向。缺口/消费/未满足三个累加器随分区返回，协调器按分区序合并（整数加法可交换）。
    */
   private static void consumeOwnStockPartitioned(
-      LinkedHashMap<HouseholdId, ClassRow> rows,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       AccountSession accounts,
       LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumedGoods,
       LinkedHashMap<HouseholdId, Map<CommodityId, Long>> unmetNeed,
       LinkedHashMap<HouseholdId, Long> deficitToday,
       long day,
       EconomyParallelism parallelism) {
-    Map<String, List<HouseholdId>> hexToRows = rowsByHex(rows);
+    Map<String, List<HouseholdId>> hexToRows = rowsByHex(householdEconomies);
     if (hexToRows.isEmpty()) {
       return;
     }
@@ -2495,18 +2495,18 @@ public final class EconomySettlement {
                       partition.partitionIndex(),
                       plan.partitionCount());
               BufferedAccountTables tables = new BufferedAccountTables(snapshot, buffer);
-              LinkedHashMap<HouseholdId, ClassRow> rowUpdates = new LinkedHashMap<>();
+              LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomyUpdates = new LinkedHashMap<>();
               LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumed = new LinkedHashMap<>();
               LinkedHashMap<HouseholdId, Map<CommodityId, Long>> unmet = new LinkedHashMap<>();
               LinkedHashMap<HouseholdId, Long> deficits = new LinkedHashMap<>();
               for (String hex : partition.canonicalKeys()) {
                 for (HouseholdId key : hexToRows.get(hex)) {
                   consumeOneHousehold(
-                      rows, tables.householdGoods, key, day, rowUpdates, consumed, unmet, deficits);
+                      householdEconomies, tables.householdGoods, key, day, householdEconomyUpdates, consumed, unmet, deficits);
                 }
               }
               return new ConsumptionPartition(
-                  buffer.drainIntents(), rowUpdates, consumed, unmet, deficits);
+                  buffer.drainIntents(), householdEconomyUpdates, consumed, unmet, deficits);
             },
             parallelism.poolOrNull());
     List<OrderedAccountIntent> intents = new ArrayList<>();
@@ -2515,8 +2515,8 @@ public final class EconomySettlement {
     }
     accounts.commit(intents);
     for (ConsumptionPartition partition : partitions) {
-      for (Map.Entry<HouseholdId, ClassRow> update : partition.rowUpdates().entrySet()) {
-        rows.put(update.getKey(), update.getValue());
+      for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyUpdate : partition.householdEconomyUpdates().entrySet()) {
+        householdEconomies.put(householdEconomyUpdate.getKey(), householdEconomyUpdate.getValue());
       }
       mergeGoodsInto(consumedGoods, partition.consumed());
       mergeGoodsInto(unmetNeed, partition.unmet());
@@ -2528,25 +2528,25 @@ public final class EconomySettlement {
 
   /** 消费一户（{@link #consumeOwnStockPartitioned} 的逐户版；读共享行/意向视图，写本地累加器）。 */
   private static void consumeOneHousehold(
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       HouseholdId key,
       long day,
-      Map<HouseholdId, ClassRow> rowUpdates,
+      Map<HouseholdId, HouseholdEconomy> householdEconomyUpdates,
       Map<HouseholdId, Map<CommodityId, Long>> consumedGoods,
       Map<HouseholdId, Map<CommodityId, Long>> unmetNeed,
       Map<HouseholdId, Long> deficitToday) {
-    ClassRow row = withDailyNeed(rows.get(key), day);
-    rowUpdates.put(key, row);
-    if (row.population() <= 0L) {
+    HouseholdEconomy householdEconomy = withDailyNeed(householdEconomies.get(key), day);
+    householdEconomyUpdates.put(key, householdEconomy);
+    if (householdEconomy.population() <= 0L) {
       return;
     }
-    long need = row.naturalNeeds().getOrDefault(GRAIN, 0L);
+    long need = householdEconomy.naturalNeeds().getOrDefault(GRAIN, 0L);
     long stock = stockOf(householdGoods, key, GRAIN);
     long eaten = Math.min(stock, need);
     setStock(householdGoods, key, GRAIN, stock - eaten);
     addGoods(consumedGoods, key, GRAIN, eaten);
-    long clothNeed = row.naturalNeeds().getOrDefault(CLOTH, 0L);
+    long clothNeed = householdEconomy.naturalNeeds().getOrDefault(CLOTH, 0L);
     long clothStock = stockOf(householdGoods, key, CLOTH);
     long clothGot = Math.min(clothStock, clothNeed);
     if (clothNeed > 0L) {
@@ -2588,7 +2588,7 @@ public final class EconomySettlement {
     LinkedHashMap<ProductionUnitId, ProductionUnit> units = session.sheet().units();
     // ★★ R3B.2：产业表只读（模板；日结算不再改它）。
     Map<IndustryId, Industry> industries = session.sheet().industries();
-    LinkedHashMap<HouseholdId, ClassRow> rows = session.sheet().rows();
+    LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies = session.sheet().householdEconomies();
     // ★★ R4-E2b：走 relation 的**工作副本选择**（进入执行可能刚插入新 unit 的 relation；未物化时等于 base）。
     Map<ProductionUnitId, ProductionRelation> relations = session.sheet().relationsOrBase();
     // ★ S3：缩产/停业后的"计划规模"要进投入调查（条件缺失 ⇒ 系数 1000‰ ⇒ 旧行为逐值相同）。
@@ -2632,7 +2632,7 @@ public final class EconomySettlement {
                 drawCycleInputs(
                     localUnits,
                     industries,
-                    rows,
+                    householdEconomies,
                     relations,
                     operatorConditions,
                     index,
@@ -2674,7 +2674,7 @@ public final class EconomySettlement {
       drawCycleInputs(
           local,
           industries,
-          rows,
+          householdEconomies,
           relations,
           operatorConditions,
           index,
@@ -2691,7 +2691,7 @@ public final class EconomySettlement {
 
   /** 劳动再分配阶段一个分区的产出（本地配额表 + 该分区 seed 过的键，用于识别"整条回池"的删除）。 */
   private record LaborPartition(
-      Map<LaborAllocationId, LaborAllocation> allocations, Set<LaborAllocationId> seededKeys) {}
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments, Set<LaborAllocationId> seededKeys) {}
 
   /**
    * ★★ <b>R4-E2b：这个 unit 是否由候选预设进入</b>——旧档/主副 unit 的 {@code modeKey == industry.id()}（世界播种与
@@ -2730,8 +2730,8 @@ public final class EconomySettlement {
       Set<ProductionUnitId> cycleStartExempt) {
     LinkedHashMap<ProductionUnitId, ProductionUnit> units = session.sheet().units();
     Map<IndustryId, Industry> industries = session.sheet().industries();
-    LinkedHashMap<HouseholdId, ClassRow> rows = session.sheet().rows();
-    LinkedHashMap<LaborAllocationId, LaborAllocation> allocations = session.sheet().allocations();
+    LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies = session.sheet().householdEconomies();
+    LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments = session.sheet().laborCommitments();
     Map<ProductionUnitId, OperatorCondition> operatorConditions =
         session.sheet().operatorConditions();
     TreeMap<String, List<ProductionUnitId>> unitsByHex = new TreeMap<>();
@@ -2770,27 +2770,27 @@ public final class EconomySettlement {
                   localUnits.put(id, units.get(id));
                 }
               }
-              LinkedHashMap<LaborAllocationId, LaborAllocation> localAllocations =
+              LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> localLaborCommitments =
                   new LinkedHashMap<>();
               Set<LaborAllocationId> seeded = new LinkedHashSet<>();
-              for (LaborAllocation allocation : allocations.values()) {
-                if (localUnits.containsKey(new ProductionUnitId(allocation.activity()))) {
-                  localAllocations.put(allocation.id(), allocation);
-                  seeded.add(allocation.id());
+              for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+                if (localUnits.containsKey(new ProductionUnitId(laborCommitment.activity()))) {
+                  localLaborCommitments.put(laborCommitment.id(), laborCommitment);
+                  seeded.add(laborCommitment.id());
                 }
               }
               reallocateLabor(
-                  localUnits, industries, rows, localAllocations, operatorConditions, index);
-              return new LaborPartition(localAllocations, seeded);
+                  localUnits, industries, householdEconomies, localLaborCommitments, operatorConditions, index);
+              return new LaborPartition(localLaborCommitments, seeded);
             },
             parallelism.poolOrNull());
     for (LaborPartition partition : partitions) {
       for (LaborAllocationId id : partition.seededKeys()) {
-        if (!partition.allocations().containsKey(id)) {
-          allocations.remove(id); // 整条回池（原算法 remove；本地副本里没有它）
+        if (!partition.laborCommitments().containsKey(id)) {
+          laborCommitments.remove(id); // 整条回池（原算法 remove；本地副本里没有它）
         }
       }
-      allocations.putAll(partition.allocations());
+      laborCommitments.putAll(partition.laborCommitments());
     }
   }
 
@@ -2817,7 +2817,7 @@ public final class EconomySettlement {
    */
   private static void harvestPartitioned(
       List<HarvestWork> works,
-      LinkedHashMap<HouseholdId, ClassRow> rows,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       SettlementIndex index,
       Map<ProductionUnitId, ProductionRelation> relations,
       Map<ProductionUnitId, ProductionOrganization> organizationByUnit,
@@ -2862,7 +2862,7 @@ public final class EconomySettlement {
                   harvest(
                       work.unit(),
                       work.industry(),
-                      rows,
+                      householdEconomies,
                       work.cycledLabor(),
                       work.plannedPerMille(),
                       index,
@@ -2896,7 +2896,7 @@ public final class EconomySettlement {
   private record LendingPartition(
       List<OrderedAccountIntent> intents,
       Map<DebtContractId, DebtContract> debts,
-      Map<HouseholdId, ClassRow> rowUpdates,
+      Map<HouseholdId, HouseholdEconomy> householdEconomyUpdates,
       Map<HouseholdId, Map<CommodityId, Long>> consumed,
       Map<HouseholdId, Long> borrowing,
       Map<HouseholdId, Map<CommodityId, Long>> unmet,
@@ -2910,7 +2910,7 @@ public final class EconomySettlement {
    * 归属）、行、未满足读数，交出后由协调器按分区序合并。账户/转移仍走意向 + 唯一写口。
    */
   private static void lendDeficitsPartitioned(
-      LinkedHashMap<HouseholdId, ClassRow> rows,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       LinkedHashMap<DebtContractId, DebtContract> debts,
       AccountSession accounts,
       LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumedGoods,
@@ -2923,7 +2923,7 @@ public final class EconomySettlement {
       ProductionLedger.Accumulator ledger,
       long day,
       EconomyParallelism parallelism) {
-    Map<String, List<HouseholdId>> hexToRows = rowsByHex(rows);
+    Map<String, List<HouseholdId>> hexToRows = rowsByHex(householdEconomies);
     TreeMap<String, List<HouseholdId>> active = new TreeMap<>();
     for (Map.Entry<String, List<HouseholdId>> hex : hexToRows.entrySet()) {
       for (HouseholdId key : hex.getValue()) {
@@ -2970,7 +2970,7 @@ public final class EconomySettlement {
               //   协调器用 absorb 落回。
               LinkedHashMap<DebtContractId, DebtContract> localDebts =
                   DebtContractBook.subset(debts, contract -> keys.contains(contract.debtor()));
-              LinkedHashMap<HouseholdId, ClassRow> rowUpdates = new LinkedHashMap<>();
+              LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomyUpdates = new LinkedHashMap<>();
               LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumed = new LinkedHashMap<>();
               LinkedHashMap<HouseholdId, Long> localBorrowing = new LinkedHashMap<>();
               ProductionLedger.Accumulator partitionLedger =
@@ -2989,8 +2989,8 @@ public final class EconomySettlement {
                 }
                 lendDeficitsInHex(
                     hexKeys,
-                    rows,
-                    rowUpdates,
+                    householdEconomies,
+                    householdEconomyUpdates,
                     localDebts,
                     tables.householdGoods,
                     tables.householdMoney,
@@ -3007,7 +3007,7 @@ public final class EconomySettlement {
               return new LendingPartition(
                   buffer.drainIntents(),
                   localDebts,
-                  rowUpdates,
+                  householdEconomyUpdates,
                   consumed,
                   localBorrowing,
                   localUnmet,
@@ -3022,7 +3022,7 @@ public final class EconomySettlement {
     accounts.commit(intents);
     for (LendingPartition partition : partitions) {
       DebtContractBook.absorb(debts, partition.debts());
-      rows.putAll(partition.rowUpdates());
+      householdEconomies.putAll(partition.householdEconomyUpdates());
       mergeGoodsInto(consumedGoods, partition.consumed());
       for (Map.Entry<HouseholdId, Long> entry : partition.borrowing().entrySet()) {
         borrowing.merge(entry.getKey(), entry.getValue(), Long::sum);
@@ -3083,7 +3083,7 @@ public final class EconomySettlement {
    */
   /**
    * ★★ <b>P2-A §13.4：每个 tick 重算家户时间预算</b>（毫小时）—— 输入 = 协调器从 Social 人口组成 ×
-   * {@code LaborTimeTable} 现算的「household → 预算」；本方法把它写进 {@code ClassRow.laborMilli}
+   * {@code HouseholdLaborTimeTable} 现算的「household → 预算」；本方法把它写进 {@code HouseholdEconomy.laborMilli}
    * （唯一投影），并把超预算的家户配额**按比例缩到预算内**（保持 {@code Σallocations ≤ budget} 不变量）。
    *
    * <p>★★ <b>为什么在这里缩</b>：预算每 tick 会随出生/死亡/成年变化；配额是周期粒度的。若只改行预算不缩配额，
@@ -3094,28 +3094,28 @@ public final class EconomySettlement {
       EconomySession session, Map<HouseholdId, Long> budgetsByHousehold) {
     Objects.requireNonNull(session, "session");
     Objects.requireNonNull(budgetsByHousehold, "budgetsByHousehold");
-    LinkedHashMap<HouseholdId, ClassRow> rows = session.sheet().rows();
+    LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies = session.sheet().householdEconomies();
     List<HouseholdId> households = new ArrayList<>(budgetsByHousehold.keySet());
     households.sort(Comparator.comparing(HouseholdId::value));
     for (HouseholdId household : households) {
-      ClassRow row = rows.get(household);
-      if (row == null) {
+      HouseholdEconomy householdEconomy = householdEconomies.get(household);
+      if (householdEconomy == null) {
         throw new IllegalStateException(
             "时间预算指向不存在的家户（协调器投影必须与经济行同键）：" + household);
       }
       long budget = Math.max(0L, budgetsByHousehold.getOrDefault(household, 0L));
-      rows.put(household, row.withPopulationAndLabor(row.population(), budget));
+      householdEconomies.put(household, householdEconomy.withPopulationAndLabor(householdEconomy.population(), budget));
     }
-    LinkedHashMap<LaborAllocationId, LaborAllocation> allocations = session.sheet().allocations();
+    LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments = session.sheet().laborCommitments();
     Map<HouseholdId, List<LaborAllocationId>> byHousehold = new LinkedHashMap<>();
-    for (LaborAllocation allocation : allocations.values()) {
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
       byHousehold
-          .computeIfAbsent(allocation.household(), ignored -> new ArrayList<>())
-          .add(allocation.id());
+          .computeIfAbsent(laborCommitment.household(), ignored -> new ArrayList<>())
+          .add(laborCommitment.id());
     }
     for (Map.Entry<HouseholdId, List<LaborAllocationId>> entry : byHousehold.entrySet()) {
-      ClassRow row = rows.get(entry.getKey());
-      if (row == null) {
+      HouseholdEconomy householdEconomy = householdEconomies.get(entry.getKey());
+      if (householdEconomy == null) {
         continue;
       }
       List<LaborAllocationId> ids = new ArrayList<>(entry.getValue());
@@ -3123,25 +3123,25 @@ public final class EconomySettlement {
       long sum = 0L;
       long[] weights = new long[ids.size()];
       for (int i = 0; i < ids.size(); i++) {
-        LaborAllocation allocation = allocations.get(ids.get(i));
-        weights[i] = allocation == null ? 0L : Math.max(0L, allocation.laborMilli());
+        HouseholdLaborCommitment laborCommitment = laborCommitments.get(ids.get(i));
+        weights[i] = laborCommitment == null ? 0L : Math.max(0L, laborCommitment.laborMilli());
         sum = Math.addExact(sum, weights[i]);
       }
-      long budget = Math.max(0L, row.laborMilli());
+      long budget = Math.max(0L, householdEconomy.laborMilli());
       if (sum <= budget || sum <= 0L) {
         continue;
       }
       long[] parts = ProportionalSplit.byDenominator(budget, weights, sum);
       for (int i = 0; i < ids.size(); i++) {
         LaborAllocationId id = ids.get(i);
-        LaborAllocation allocation = allocations.get(id);
-        if (allocation == null) {
+        HouseholdLaborCommitment laborCommitment = laborCommitments.get(id);
+        if (laborCommitment == null) {
           continue;
         }
         if (parts[i] <= 0L) {
-          allocations.remove(id);
+          laborCommitments.remove(id);
         } else {
-          allocations.put(id, withLaborMilli(allocation, parts[i]));
+          laborCommitments.put(id, withLaborMilli(laborCommitment, parts[i]));
         }
       }
     }
@@ -3166,9 +3166,9 @@ public final class EconomySettlement {
       return;
     }
     EconomyData base = session.base();
-    LinkedHashMap<HouseholdId, ClassRow> rows = session.sheet().rows();
+    LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies = session.sheet().householdEconomies();
     LinkedHashMap<HouseholdId, FlowRow> flows = session.flows();
-    LinkedHashMap<LaborAllocationId, LaborAllocation> allocations = session.sheet().allocations();
+    LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments = session.sheet().laborCommitments();
     // ★ P2-A A3：成员份额不再是 Economy 状态组件 —— 家户人口组成由调用方作为**只读投影**传入（见 composition）。
     LinkedHashMap<AssetShareId, AssetShare> assetShares = session.sheet().assetShares();
     // ★★ P5：死亡删债的两个工作输入 —— 合同表工作副本与「债务人 → 合同 id」的只读索引。
@@ -3184,8 +3184,8 @@ public final class EconomySettlement {
             session.sheet().units(),
             session.sheet().industries(),
             assetShares,
-            allocations,
-            rows,
+            laborCommitments,
+            householdEconomies,
             null,
             // ★★ R4-E2b：同一会话里 settleOneDayInto 可能刚由进入执行插入新 unit 的 relation ⇒ 读工作副本选择，
             //   不再直读 base.relations()（否则这一次人口回写的经济家户索引会漏掉刚建的 unit）。
@@ -3207,32 +3207,32 @@ public final class EconomySettlement {
           continue; // 该格本来就没有任何经济状态（世界还没播种到这里）⇒ 没有可摊的行
         }
       }
-      // ★★ **H0/S3：这批人的家户行 = 供给目标产业的配额里、居住类型匹配的 LaborAllocation.household 并集**，
-      //   **并集去重** —— 不按四阶层枚举、也不读 ClassRow.view.stratum（阶层写回后仍不漏行/错行）。
+      // ★★ **H0/S3：这批人的家户行 = 供给目标产业的配额里、居住类型匹配的 HouseholdLaborCommitment.household 并集**，
+      //   **并集去重** —— 不按四阶层枚举、也不读 HouseholdEconomy.view.stratum（阶层写回后仍不漏行/错行）。
       //   农村批次同时供给农业与家庭纺织（两者落在**同一批农村家户行**上）⇒ 不去重就会把它的人与生死**算两遍**。
       List<HouseholdId> keys =
-          householdKeysOfLot(rows, targets, ResidenceKind.ofLot(change.group()), index);
+          householdKeysOfLot(householdEconomies, targets, ResidenceKind.ofLot(change.group()), index);
       if (keys.isEmpty()) {
         continue; // 那些产业在这一格没有家户行（行还没种下）⇒ 没有可摊的行
       }
       long[] rowPopulations = new long[keys.size()];
       long populationBefore = 0L;
       for (int j = 0; j < keys.size(); j++) {
-        rowPopulations[j] = rows.get(keys.get(j)).population();
+        rowPopulations[j] = householdEconomies.get(keys.get(j)).population();
         populationBefore += rowPopulations[j];
       }
       long[] birthsParts = allocate(change.births(), rowPopulations);
       long[] deathsParts = allocate(change.deaths(), rowPopulations);
       for (int j = 0; j < keys.size(); j++) {
         HouseholdId key = keys.get(j);
-        ClassRow row = rows.get(key);
-        long population = row.population();
+        HouseholdEconomy householdEconomy = householdEconomies.get(key);
+        long population = householdEconomy.population();
         if (population <= 0L) {
           continue;
         }
         long remaining = population - deathsParts[j]; // deathsParts ≤ row 人口（按人口权重切，见 allocate）
-        long labor = row.laborMilli() * remaining / population; // 死亡同比例缩；出生不加劳动
-        rows.put(key, withPopulationAndLabor(row, remaining + birthsParts[j], Math.max(0L, labor)));
+        long labor = householdEconomy.laborMilli() * remaining / population; // 死亡同比例缩；出生不加劳动
+        householdEconomies.put(key, withPopulationAndLabor(householdEconomy, remaining + birthsParts[j], Math.max(0L, labor)));
         if (birthsParts[j] != 0L || deathsParts[j] != 0L) {
           flows.put(key, withLifecycle(flows.get(key), key, birthsParts[j], deathsParts[j]));
         }
@@ -3252,9 +3252,9 @@ public final class EconomySettlement {
           change.group(),
           populationBefore,
           populationBefore - change.deaths(),
-          allocations,
+          laborCommitments,
           index);
-      // ★ P2-A A3：出生/死亡只改 ClassRow.population 与派生量（工时/配额/债务）；家户成员份额由 Social 权威维护。
+      // ★ P2-A A3：出生/死亡只改 HouseholdEconomy.population 与派生量（工时/配额/债务）；家户成员份额由 Social 权威维护。
     }
     // ★ 工作表与流水都在 session 里就地更新；构造与全量守卫由 revision 边界（build）负责（P1.5a）。
   }
@@ -3456,28 +3456,28 @@ public final class EconomySettlement {
       ProductionUnitId unitId,
       long before,
       long after,
-      LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
+      LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       SettlementIndex index) {
     if (before <= 0L || after >= before) {
       return;
     }
     // ★ R4-B.3a-perf：按 unit 的配额 id 列表查活表（旧实现每个关账 unit 扫全量配额）。
     for (LaborAllocationId allocationId : index.allocationIdsOfUnit(unitId)) {
-      LaborAllocation allocation = allocations.get(allocationId);
-      if (allocation == null) {
+      HouseholdLaborCommitment laborCommitment = laborCommitments.get(allocationId);
+      if (laborCommitment == null) {
         continue; // 索引与活表同源；这里只防御中途被移除
       }
-      long scaled = allocation.laborMilli() * after / before;
-      allocations.put(
+      long scaled = laborCommitment.laborMilli() * after / before;
+      laborCommitments.put(
           allocationId,
-          new LaborAllocation(
-              allocation.id(),
-              allocation.group(),
-              allocation.household(),
-              allocation.actor(),
-              allocation.activity(),
+          new HouseholdLaborCommitment(
+              laborCommitment.id(),
+              laborCommitment.group(),
+              laborCommitment.household(),
+              laborCommitment.actor(),
+              laborCommitment.activity(),
               scaled,
-              allocation.period()));
+              laborCommitment.period()));
     }
   }
 
@@ -3492,7 +3492,7 @@ public final class EconomySettlement {
       PeopleLotId group,
       long before,
       long after,
-      LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
+      LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       SettlementIndex index) {
     if (before <= 0L || after >= before) {
       return;
@@ -3500,21 +3500,21 @@ public final class EconomySettlement {
     // ★ R4-B.3a-perf：按批次查配额 id（旧实现每条 LotChange 扫全量配额）；id 回活表取当前 record，
     //   故同一次回写里前面的缩放不会被缓存的旧值覆盖。
     for (LaborAllocationId allocationId : index.allocationIdsOfGroup(group)) {
-      LaborAllocation allocation = allocations.get(allocationId);
-      if (allocation == null) {
+      HouseholdLaborCommitment laborCommitment = laborCommitments.get(allocationId);
+      if (laborCommitment == null) {
         continue; // 索引与活表同源；这里只防御中途被移除
       }
-      long scaled = allocation.laborMilli() * after / before;
-      allocations.put(
+      long scaled = laborCommitment.laborMilli() * after / before;
+      laborCommitments.put(
           allocationId,
-          new LaborAllocation(
-              allocation.id(),
-              allocation.group(),
-              allocation.household(),
-              allocation.actor(),
-              allocation.activity(),
+          new HouseholdLaborCommitment(
+              laborCommitment.id(),
+              laborCommitment.group(),
+              laborCommitment.household(),
+              laborCommitment.actor(),
+              laborCommitment.activity(),
               scaled,
-              allocation.period()));
+              laborCommitment.period()));
     }
   }
 
@@ -3624,7 +3624,7 @@ public final class EconomySettlement {
   private static void drawCycleInputs(
       LinkedHashMap<ProductionUnitId, ProductionUnit> units,
       Map<IndustryId, Industry> industries,
-      LinkedHashMap<HouseholdId, ClassRow> rows,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<ProductionUnitId, ProductionRelation> relations,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       SettlementIndex index,
@@ -3638,7 +3638,7 @@ public final class EconomySettlement {
         surveyInputDemands(
             units,
             industries,
-            rows,
+            householdEconomies,
             relations,
             operatorConditions,
             index,
@@ -3651,7 +3651,7 @@ public final class EconomySettlement {
       drawOneProductionUnitInputs(
           plan,
           units,
-          rows,
+          householdEconomies,
           householdGoods,
           householdMoney,
           consumedGoods,
@@ -3740,7 +3740,7 @@ public final class EconomySettlement {
   private static List<InputPlan> surveyInputDemands(
       LinkedHashMap<ProductionUnitId, ProductionUnit> units,
       Map<IndustryId, Industry> industries,
-      LinkedHashMap<HouseholdId, ClassRow> rows,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<ProductionUnitId, ProductionRelation> relations,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       SettlementIndex index,
@@ -3771,7 +3771,7 @@ public final class EconomySettlement {
       Recipient supplier =
           relation == null ? new Recipient.ToActor(unit.operator()) : relation.inputSupplier();
       List<HouseholdId> ownKeys =
-          supplierAccountsOf(supplier, unit, industry, rows, householdOfActor, index);
+          supplierAccountsOf(supplier, unit, industry, householdEconomies, householdOfActor, index);
       // ① 可供量（逐商品）= relation 名下的家户账（聚合主体已由 supplierAccountsOf 解析到 unit 名下的家户账）。
       Map<CommodityId, Long> available = new LinkedHashMap<>();
       for (CommodityId commodity : perScale.keySet()) {
@@ -3903,7 +3903,7 @@ public final class EconomySettlement {
   private static void drawOneProductionUnitInputs(
       InputPlan plan,
       LinkedHashMap<ProductionUnitId, ProductionUnit> units,
-      LinkedHashMap<HouseholdId, ClassRow> rows,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumedGoods,
@@ -3928,7 +3928,7 @@ public final class EconomySettlement {
       }
       // ③ 一：按人口占比 + **最大余数法**分派（Σ分派 == remaining，不再逐户丢余数），逐户上限 = 它的余额。
       for (Map.Entry<HouseholdId, Long> ask :
-          apportionToHouseholds(plan.ownKeys, rows, remaining).entrySet()) {
+          apportionToHouseholds(plan.ownKeys, householdEconomies, remaining).entrySet()) {
         long drawn = Math.min(stockOf(householdGoods, ask.getKey(), commodity), ask.getValue());
         if (drawn <= 0L) {
           continue; // 缸空/不够 ⇒ 这一户出不起它那一份（下面的补齐可能从**同层的别人**那里补上）
@@ -3938,7 +3938,7 @@ public final class EconomySettlement {
             unit,
             commodity,
             drawn,
-            rows,
+            householdEconomies,
             householdGoods,
             householdMoney,
             consumedGoods,
@@ -3956,7 +3956,7 @@ public final class EconomySettlement {
                 commodity,
                 remaining,
                 drawnTotal,
-                rows,
+                householdEconomies,
                 householdGoods,
                 householdMoney,
                 consumedGoods,
@@ -3978,7 +3978,7 @@ public final class EconomySettlement {
             commodity,
             remaining,
             drawnTotal,
-            rows,
+            householdEconomies,
             householdGoods,
             householdMoney,
             consumedGoods,
@@ -4008,7 +4008,7 @@ public final class EconomySettlement {
       CommodityId commodity,
       long remaining,
       Map<CommodityId, Long> drawnTotal,
-      LinkedHashMap<HouseholdId, ClassRow> rows,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumedGoods,
@@ -4028,7 +4028,7 @@ public final class EconomySettlement {
           plan.unit,
           commodity,
           drawn,
-          rows,
+          householdEconomies,
           householdGoods,
           householdMoney,
           consumedGoods,
@@ -4055,12 +4055,12 @@ public final class EconomySettlement {
       Recipient supplier,
       ProductionUnit unit,
       Industry industry,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<ActorRef, HouseholdId> householdOfActor,
       SettlementIndex index) {
     if (supplier instanceof Recipient.ToHousehold toHousehold) {
       HouseholdId key = toHousehold.household();
-      if (!rows.containsKey(key)) {
+      if (!householdEconomies.containsKey(key)) {
         throw new IllegalStateException(
             "关系指名的投入供方没有家户行（H3 fail-closed：供方的账就是它的家户账，"
                 + "把'配置错'静默当成'缸里没有'会让账面上看不出问题）：unit="
@@ -4068,15 +4068,15 @@ public final class EconomySettlement {
                 + " 供方="
                 + key);
       }
-      requireSupplierHex(rows.get(key).view().hex(), industry);
+      requireSupplierHex(householdEconomies.get(key).view().hex(), industry);
       return List.of(key);
     }
     if (supplier instanceof Recipient.ToCohort toCohort) {
       // ★ S1 兼容档：旧档的 ToCohort 按视图反查**恰一个**家户（构造期归一化已把一对一的转成
       //   ToHousehold；走到这里说明视图有歧义或状态还没归一，故 fail-closed，不猜第几个）。
       HouseholdId matched = null;
-      for (ClassRow row : rows.values()) {
-        if (row.view().equals(toCohort.cohort())) {
+      for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
+        if (householdEconomy.view().equals(toCohort.cohort())) {
           if (matched != null) {
             throw new IllegalStateException(
                 "旧档 ToCohort 视图对上了多个家户（S1 起视图不再是唯一身份）："
@@ -4084,9 +4084,9 @@ public final class EconomySettlement {
                     + " ⇒ "
                     + matched
                     + " / "
-                    + row.id());
+                    + householdEconomy.id());
           }
-          matched = row.id();
+          matched = householdEconomy.id();
         }
       }
       if (matched == null) {
@@ -4096,19 +4096,19 @@ public final class EconomySettlement {
                 + " 供方视图="
                 + toCohort.cohort());
       }
-      requireSupplierHex(rows.get(matched).view().hex(), industry);
+      requireSupplierHex(householdEconomies.get(matched).view().hex(), industry);
       return List.of(matched);
     }
     ActorRef actor = ((Recipient.ToActor) supplier).actor();
     HouseholdId named = householdOfActor.get(actor);
     if (named != null) {
-      requireSupplierHex(rows.get(named).view().hex(), industry);
+      requireSupplierHex(householdEconomies.get(named).view().hex(), industry);
       return List.of(named);
     }
     // ★ 聚合主体：它的账在 actor 切片上（economy 看不见）⇒ 由**该 unit 名下的家户账**代理（见方法注释）。
     List<HouseholdId> proxied = index.householdsOf(unit.id());
     for (HouseholdId key : proxied) {
-      requireSupplierHex(rows.get(key).view().hex(), industry);
+      requireSupplierHex(householdEconomies.get(key).view().hex(), industry);
     }
     return proxied;
   }
@@ -4141,21 +4141,21 @@ public final class EconomySettlement {
    * @return 键序 = {@code keys} 的传入序（保序，可复现）
    */
   private static Map<HouseholdId, Long> apportionToHouseholds(
-      List<HouseholdId> keys, Map<HouseholdId, ClassRow> rows, long total) {
+      List<HouseholdId> keys, Map<HouseholdId, HouseholdEconomy> householdEconomies, long total) {
     Map<HouseholdId, Long> apportioned = new LinkedHashMap<>();
     if (keys.isEmpty() || total <= 0L) {
       return apportioned;
     }
     long population = 0L;
     for (HouseholdId key : keys) {
-      population += rows.get(key).population();
+      population += householdEconomies.get(key).population();
     }
     if (population <= 0L) {
       return apportioned;
     }
     long[] weights = new long[keys.size()];
     for (int i = 0; i < keys.size(); i++) {
-      weights[i] = rows.get(keys.get(i)).population();
+      weights[i] = householdEconomies.get(keys.get(i)).population();
     }
     long[] parts = ProportionalSplit.byDenominator(total, weights, population);
     for (int i = 0; i < keys.size(); i++) {
@@ -4203,7 +4203,7 @@ public final class EconomySettlement {
       ProductionUnit unit,
       CommodityId commodity,
       long drawn,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumedGoods,
@@ -4216,8 +4216,8 @@ public final class EconomySettlement {
     ledger.addInput(unit.industry(), commodity, drawn);
     if (operatorKey != null && !operatorKey.equals(supplierKey)) {
       // ① 两个主体都在家户账里 ⇒ 走转移（唯一 applier 落副本），随后由经营者消费掉。
-      ClassRow supplierRow = rows.get(supplierKey);
-      if (supplierRow == null) {
+      HouseholdEconomy supplierHouseholdEconomy = householdEconomies.get(supplierKey);
+      if (supplierHouseholdEconomy == null) {
         throw new IllegalStateException(
             "投入供方不在家户表里（账户 must 有 location，拒绝静默用 (0,0)）: " + supplierKey);
       }
@@ -4225,7 +4225,7 @@ public final class EconomySettlement {
           ledger.mint(
               HouseholdActors.of(supplierKey),
               unit.operator(),
-              supplierRow.view().hex(),
+              supplierHouseholdEconomy.view().hex(),
               Map.of(commodity, drawn),
               TransferReason.INPUT_REQUISITION);
       applyTransfer(
@@ -4335,7 +4335,7 @@ public final class EconomySettlement {
    * <pre>
    * ① 产业所在格 = IndustryHexKeys.hexKeyOf(industryId)      （唯一拼写点；拿不到格键 ⇒ 空表，不猜 (0,0)）
    * ② 居住类型   = ResidenceKind.ofLot(allocation.group())   （批次前缀的唯一拼写点在 ResidenceKind）
-   * ③ 家户行     = 从 LaborAllocation.household 取"actor 命中该产业"的家户，按稳定 HouseholdId 去重、只留真有行的
+   * ③ 家户行     = 从 HouseholdLaborCommitment.household 取"actor 命中该产业"的家户，按稳定 HouseholdId 去重、只留真有行的
    * </pre>
    *
    * <p>★★ <b>它取代了改前的 {@code classKeysOf(rows, industryId)}</b>（按行键里的产业段过滤）：H0 之后**行里没有产业了** （键 = 格
@@ -4345,29 +4345,29 @@ public final class EconomySettlement {
    * <p>★ <b>行不存在 ⇒ 跳过</b>（不是坏数据）：逐组件增量落盘 ⇒ 配额先到、行后到是合法写序（同 {@code EconomyData} 的
    * "表与表之间没有引用完整性约束"）。★ <b>一条配额都没有的产业 ⇒ 空表</b>（没有家户 ⇒ 没有劳动者；收获的产出全留 operator）。
    *
-   * <p>★★ <b>S3：本方法不读 {@code ClassRow.view.stratum}，也不按四阶层枚举</b> —— 归属的唯一事实源是 {@link
-   * LaborAllocation#household()}（H0 的裁定，S3 写回阶层后仍然成立）。故阶层改成 {@code landless_laborer}/{@code
+   * <p>★★ <b>S3：本方法不读 {@code HouseholdEconomy.view.stratum}，也不按四阶层枚举</b> —— 归属的唯一事实源是 {@link
+   * HouseholdLaborCommitment#household()}（H0 的裁定，S3 写回阶层后仍然成立）。故阶层改成 {@code landless_laborer}/{@code
    * artisan}/{@code official} 后，这里既不会漏行也不会错行。
    *
    * <p>★ 序 = 稳定 {@link HouseholdId#value()} 字典序（纯函数、与配额表插入序无关；不再按 {@code SocialClassId.all()}
    * 的四档顺序假想行集合）。
    */
   static List<HouseholdId> householdKeysOf(
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       ProductionUnitId unit,
-      Map<LaborAllocationId, LaborAllocation> allocations) {
-    // ★★ S1：家户归属的**唯一事实源 = LaborAllocation.household**（不再从视角的阶层段反推）。
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
+    // ★★ S1：家户归属的**唯一事实源 = HouseholdLaborCommitment.household**（不再从视角的阶层段反推）。
     //   ★★ R3B.2：归属判据从 {@code actor.id() == industryId} 改成 {@code activity == unit.id()} ——
     //     "这份劳动喂哪条生产活动"由 activity 回答（与结算按 activity 归集劳动同一个源）。
     LinkedHashSet<HouseholdId> households = new LinkedHashSet<>();
-    for (LaborAllocation allocation : allocations.values()) {
-      if (allocation.activity().equals(unit.value())) {
-        households.add(allocation.household());
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+      if (laborCommitment.activity().equals(unit.value())) {
+        households.add(laborCommitment.household());
       }
     }
     List<HouseholdId> keys = new ArrayList<>();
     for (HouseholdId household : households) {
-      if (rows.containsKey(household)) {
+      if (householdEconomies.containsKey(household)) {
         keys.add(household);
       }
     }
@@ -4381,15 +4381,15 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ S1：由"格 + 居住类型集合"筛出**该处的全部家户**（只留真的存在的行）—— 视图与身份分离后， 只有 {@link ClassRow#view()}
+   * ★★ S1：由"格 + 居住类型集合"筛出**该处的全部家户**（只留真的存在的行）—— 视图与身份分离后， 只有 {@link HouseholdEconomy#view()}
    * 还能回答"住哪"；键本身不再带格。
    */
   private static List<HouseholdId> householdKeysAt(
-      Map<HouseholdId, ClassRow> rows, HexCoord hex, Set<ResidenceKind> residences) {
+      Map<HouseholdId, HouseholdEconomy> householdEconomies, HexCoord hex, Set<ResidenceKind> residences) {
     List<HouseholdId> keys = new ArrayList<>();
-    for (ClassRow row : rows.values()) {
-      if (row.view().hex().equals(hex) && residences.contains(row.view().residence())) {
-        keys.add(row.id());
+    for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
+      if (householdEconomy.view().hex().equals(hex) && residences.contains(householdEconomy.view().residence())) {
+        keys.add(householdEconomy.id());
       }
     }
     keys.sort(Comparator.comparing(HouseholdId::value));
@@ -4398,26 +4398,26 @@ public final class EconomySettlement {
 
   /**
    * ★★ <b>一个批次的出生/死亡该摊到哪些家户行</b>（{@link #applyPopulationChange} 用）：它供给的那些产业名下、 {@code
-   * LaborAllocation.household} 指名且居住类型匹配的家户，**并集去重**。
+   * HouseholdLaborCommitment.household} 指名且居住类型匹配的家户，**并集去重**。
    *
    * <p>★★ <b>去重不是优化，是正确性</b>：真档里农村批次同时供给 {@code farm@hex} 与 {@code weave@hex}，而两者落在**同一批农村家户行**
    * 上（H0 之后行不含产业段）—— 不去重会把这批人的出生/死亡**算两遍**（人口账当场对不上）。
    *
-   * <p>★ <b>S3：不按阶层枚举</b>——旧注释里的"× 四个阶层"在 H0 已作废；阶层写回只改 {@code ClassRow.view}， 而本方法的键来自 {@code
-   * LaborAllocation.household} 与 {@code ResidenceKind.ofLot}，故新派生阶层不会漏行/错行。
+   * <p>★ <b>S3：不按阶层枚举</b>——旧注释里的"× 四个阶层"在 H0 已作废；阶层写回只改 {@code HouseholdEconomy.view}， 而本方法的键来自 {@code
+   * HouseholdLaborCommitment.household} 与 {@code ResidenceKind.ofLot}，故新派生阶层不会漏行/错行。
    */
   private static List<HouseholdId> householdKeysOfLot(
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       List<ProductionUnitId> units,
       ResidenceKind residence,
-      Map<LaborAllocationId, LaborAllocation> allocations) {
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
     LinkedHashSet<ProductionUnitId> targets = new LinkedHashSet<>(units);
     LinkedHashSet<HouseholdId> keys = new LinkedHashSet<>();
-    for (LaborAllocation allocation : allocations.values()) {
-      if (targets.contains(new ProductionUnitId(allocation.activity()))
-          && ResidenceKind.ofLot(allocation.group()) == residence
-          && rows.containsKey(allocation.household())) {
-        keys.add(allocation.household());
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+      if (targets.contains(new ProductionUnitId(laborCommitment.activity()))
+          && ResidenceKind.ofLot(laborCommitment.group()) == residence
+          && householdEconomies.containsKey(laborCommitment.household())) {
+        keys.add(laborCommitment.household());
       }
     }
     List<HouseholdId> sorted = new ArrayList<>(keys);
@@ -4427,17 +4427,17 @@ public final class EconomySettlement {
 
   /** ★★ 索引口径的“一个批次摊到哪些家户行”（R4-B.3a-perf；只有调用方仍需给 target 集合，不再扫全量配额）。 */
   private static List<HouseholdId> householdKeysOfLot(
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       List<ProductionUnitId> units,
       ResidenceKind residence,
       SettlementIndex index) {
     LinkedHashSet<ProductionUnitId> targets = new LinkedHashSet<>(units);
     LinkedHashSet<HouseholdId> keys = new LinkedHashSet<>();
     for (ProductionUnitId target : targets) {
-      for (LaborAllocation allocation : index.allocationsOfUnit(target)) {
-        if (ResidenceKind.ofLot(allocation.group()) == residence
-            && rows.containsKey(allocation.household())) {
-          keys.add(allocation.household());
+      for (HouseholdLaborCommitment laborCommitment : index.allocationsOfUnit(target)) {
+        if (ResidenceKind.ofLot(laborCommitment.group()) == residence
+            && householdEconomies.containsKey(laborCommitment.household())) {
+          keys.add(laborCommitment.household());
         }
       }
     }
@@ -4456,17 +4456,17 @@ public final class EconomySettlement {
    * unit（只进守恒与读口）。
    */
   private static Map<HouseholdId, Set<ProductionUnitId>> unitsOfHouseholds(
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<ProductionUnitId, ProductionUnit> units,
-      Map<LaborAllocationId, LaborAllocation> allocations) {
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
     Map<HouseholdId, Set<ProductionUnitId>> byHousehold = new LinkedHashMap<>();
-    for (LaborAllocation allocation : allocations.values()) {
-      ProductionUnitId unitId = new ProductionUnitId(allocation.activity());
-      if (!units.containsKey(unitId) || !rows.containsKey(allocation.household())) {
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+      ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
+      if (!units.containsKey(unitId) || !householdEconomies.containsKey(laborCommitment.household())) {
         continue;
       }
       byHousehold
-          .computeIfAbsent(allocation.household(), ignored -> new LinkedHashSet<>())
+          .computeIfAbsent(laborCommitment.household(), ignored -> new LinkedHashSet<>())
           .add(unitId);
     }
     return byHousehold;
@@ -4485,13 +4485,13 @@ public final class EconomySettlement {
    *     一次给出；读口见公开重载）
    */
   private static Map<HouseholdId, Long> cycleDaysByHousehold(
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<IndustryId, Industry> industries,
       Map<ProductionUnitId, ProductionUnit> units,
       Map<HouseholdId, Set<ProductionUnitId>> unitsOfHousehold,
       Map<String, List<IndustryId>> industriesByHex) {
     Map<HouseholdId, Long> byHousehold = new LinkedHashMap<>();
-    for (HouseholdId key : rows.keySet()) {
+    for (HouseholdId key : householdEconomies.keySet()) {
       Set<ProductionUnitId> supplied = unitsOfHousehold.getOrDefault(key, Set.of());
       long cycleDays = 0L;
       for (ProductionUnitId unitId : supplied) {
@@ -4502,12 +4502,12 @@ public final class EconomySettlement {
         }
       }
       if (cycleDays == 0L) {
-        ClassRow row = rows.get(key);
-        if (row != null) {
+        HouseholdEconomy householdEconomy = householdEconomies.get(key);
+        if (householdEconomy != null) {
           // ★ R4-B.3a-perf：本格产业由入口索引一次给出（旧实现逐无配额家户扫全量产业表）。
           for (IndustryId industryId :
               industriesByHex.getOrDefault(
-                  IndustryHexKeys.hexKey(row.view().hex().q(), row.view().hex().r()), List.of())) {
+                  IndustryHexKeys.hexKey(householdEconomy.view().hex().q(), householdEconomy.view().hex().r()), List.of())) {
             Industry industry = industries.get(industryId);
             if (industry != null) {
               cycleDays = Math.max(cycleDays, industry.cycleDays());
@@ -4575,7 +4575,7 @@ public final class EconomySettlement {
    * </pre>
    *
    * <p>★★ **H1：库存在会话工作副本里**（裁定 K1）：日耗从 {@code householdGoods} 读、**就地扣**（改前读写 {@code
-   * ClassRow.goods}）；{@code population == 0} 的家户**跳过消费**（它们不吃饭、不穿衣 —— 需求本来也是 0，这里显式挡一次 免得读一个不存在的账）。
+   * HouseholdEconomy.goods}）；{@code population == 0} 的家户**跳过消费**（它们不吃饭、不穿衣 —— 需求本来也是 0，这里显式挡一次 免得读一个不存在的账）。
    *
    * @param cycleDaysByHousehold 每条家户行的 {@code cycleDays}（放贷行**本周期自需**的输入，见 {@link
    *     #cycleDaysByHousehold}；H0 之前这一项藏在"行 → 产业"的键里，现在行没有产业了）
@@ -4630,8 +4630,8 @@ public final class EconomySettlement {
    */
   private static void lendDeficitsInHex(
       List<HouseholdId> keys,
-      Map<HouseholdId, ClassRow> rows,
-      Map<HouseholdId, ClassRow> rowUpdates,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<HouseholdId, HouseholdEconomy> householdEconomyUpdates,
       Map<DebtContractId, DebtContract> debts,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
@@ -4653,7 +4653,7 @@ public final class EconomySettlement {
       Map<HouseholdId, Long> lendableByLender = new LinkedHashMap<>();
       for (HouseholdId key : keys) {
         long available =
-            lendableOf(rows.get(key), grainOf(householdGoods, key), cycleDaysByHousehold);
+            lendableOf(householdEconomies.get(key), grainOf(householdGoods, key), cycleDaysByHousehold);
         if (available > 0L) {
           lendableByLender.put(key, available);
         }
@@ -4684,8 +4684,8 @@ public final class EconomySettlement {
       // ③ 逐缺口行（阶层 id 序 → 居住类型）借：借到多少累加多少债；没人有**余粮** ⇒ 剩下的只留作未满足的自然需求。
       List<HouseholdId> debtors = new ArrayList<>(deficit.keySet());
       debtors.sort(
-          Comparator.comparing((HouseholdId k) -> rows.get(k).view().stratum().value())
-              .thenComparing(k -> rows.get(k).view().residence()));
+          Comparator.comparing((HouseholdId k) -> householdEconomies.get(k).view().stratum().value())
+              .thenComparing(k -> householdEconomies.get(k).view().residence()));
       for (HouseholdId debtor : debtors) {
         long remaining = deficit.get(debtor);
         // ★★ **先再吃一口**（H5）：① 之后拿到手的粮（关账日的收获/分配、集市上买到的）先顶当天的饭 —— 不动信用。
@@ -4716,7 +4716,7 @@ public final class EconomySettlement {
               mint.mint(
                   HouseholdActors.of(lender),
                   HouseholdActors.of(debtor),
-                  rows.get(debtor).view().hex(),
+                  householdEconomies.get(debtor).view().hex(),
                   Map.of(GRAIN, lent),
                   TransferReason.LOAN_PRINCIPAL);
           applyTransfer(householdGoods, householdMoney, householdOfActor, loan);
@@ -4739,10 +4739,10 @@ public final class EconomySettlement {
                   lent,
                   day,
                   OptionalLong.of(dueCycle));
-          ClassRow currentRow = rowUpdates.getOrDefault(debtor, rows.get(debtor));
-          rowUpdates.put(
+          HouseholdEconomy currentHouseholdEconomy = householdEconomyUpdates.getOrDefault(debtor, householdEconomies.get(debtor));
+          householdEconomyUpdates.put(
               debtor,
-              DebtContractBook.withDebtReference(currentRow, contract.id())); // 派生引用只加一次（幂等）
+              DebtContractBook.withDebtReference(currentHouseholdEconomy, contract.id())); // 派生引用只加一次（幂等）
           // ★ 借到的粮当日吃掉 ⇒ 已在上面（转移之后）计入当日消费 —— 那里是**唯一**写这一笔的地方。
           borrowing.merge(debtor, lent, Long::sum);
           remaining -= lent;
@@ -4780,27 +4780,27 @@ public final class EconomySettlement {
    * 周期后半段会**多留**（那时已经用不到整周期的口粮了），这是本口径的可读后果，端到端用例逐值钉着它。
    *
    * <p>★★ <b>E4b 修正（如实记）</b>：S1 把行键从 {@code CohortKey} 换成 {@code HouseholdId} 之后，本方法一直用 {@code
-   * lender.key()}（= {@code ClassRow.view()}，视图）去查 {@code HouseholdId} 键的 {@code
+   * lender.key()}（= {@code HouseholdEconomy.view()}，视图）去查 {@code HouseholdId} 键的 {@code
    * cycleDaysByHousehold} ⇒ <b>查表恒不命中、保留额实际为 0</b>（与本节类注承诺的"整周期自留"相反）。E4b 的实现要按 {@code max(0, 库存 −
    * 本周期自需)} 算可质押余粮（{@link DebtCapacityBook}），故这里改用 {@code lender.id()} 取同一份 {@code
    * cycleDaysByHousehold}；<b>放贷方的可贷额因此真正开始扣整周期口粮</b>（这是 E4b 报告里逐条列出的有意行为变化， 不是隐藏改动）。
    */
-  static long lendableOf(ClassRow lender, long stock, long cycleDays) {
+  static long lendableOf(HouseholdEconomy lenderHouseholdEconomy, long stock, long cycleDays) {
     if (stock <= 0L) {
       return 0L;
     }
     long reserve =
-        EconomyVocabulary.cumulativeRationMilli(lender.population(), cycleDays)
+        EconomyVocabulary.cumulativeRationMilli(lenderHouseholdEconomy.population(), cycleDays)
             * LENDER_SUBSISTENCE_RESERVE_PER_MILLE
             / 1000L;
     return Math.max(0L, stock - reserve);
   }
 
   /**
-   * ★ 带查表的旧签名：键 = {@code lender.id()}（E4b 修正；见 {@link #lendableOf(ClassRow, long, long)} 的边界说明）。
+   * ★ 带查表的旧签名：键 = {@code lender.id()}（E4b 修正；见 {@link #lendableOf(HouseholdEconomy, long, long)} 的边界说明）。
    */
-  static long lendableOf(ClassRow lender, long stock, Map<HouseholdId, Long> cycleDaysByHousehold) {
-    return lendableOf(lender, stock, cycleDaysByHousehold.getOrDefault(lender.id(), 0L));
+  static long lendableOf(HouseholdEconomy lenderHouseholdEconomy, long stock, Map<HouseholdId, Long> cycleDaysByHousehold) {
+    return lendableOf(lenderHouseholdEconomy, stock, cycleDaysByHousehold.getOrDefault(lenderHouseholdEconomy.id(), 0L));
   }
 
   /**
@@ -4825,7 +4825,7 @@ public final class EconomySettlement {
    * DebtCapacityBook#NO_UNIT_PRICES} 保留旧口径。
    */
   private static Map<HouseholdId, DebtCapacity> debtCapacitiesForDay(
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, FlowRow> flows,
       Set<HouseholdId> newCycleHouseholds,
       Map<HouseholdId, Map<CommodityId, Long>> income,
@@ -4841,7 +4841,7 @@ public final class EconomySettlement {
     Map<HouseholdId, Long> cycleToDateIncome = new LinkedHashMap<>();
     Map<HouseholdId, Long> cycleToDateConsumed = new LinkedHashMap<>();
     Map<HouseholdId, Long> taxPaid = new LinkedHashMap<>();
-    for (HouseholdId key : rows.keySet()) {
+    for (HouseholdId key : householdEconomies.keySet()) {
       FlowRow accrual = newCycleHouseholds.contains(key) ? null : flows.get(key);
       long earnedToday = income.getOrDefault(key, Map.of()).getOrDefault(GRAIN, 0L);
       long consumedToday = consumed.getOrDefault(key, Map.of()).getOrDefault(GRAIN, 0L);
@@ -4856,7 +4856,7 @@ public final class EconomySettlement {
       taxPaid.put(key, accrual == null ? 0L : accrual.taxPaid());
     }
     return DebtCapacityBook.capacities(
-        rows,
+        householdEconomies,
         cycleToDateIncome,
         cycleToDateConsumed,
         taxPaid,
@@ -4890,12 +4890,12 @@ public final class EconomySettlement {
    * 仍可原物原还。
    */
   private static Map<HouseholdId, Market> marketIndexByHousehold(
-      Map<HouseholdId, ClassRow> rows, Map<HexCoord, Market> markets, MarketTopology topology) {
+      Map<HouseholdId, HouseholdEconomy> householdEconomies, Map<HexCoord, Market> markets, MarketTopology topology) {
     LinkedHashMap<HouseholdId, Market> byHousehold = new LinkedHashMap<>();
-    for (ClassRow row : rows.values()) {
-      Market market = marketForHex(row.view().hex(), markets, topology);
+    for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
+      Market market = marketForHex(householdEconomy.view().hex(), markets, topology);
       if (market != null) {
-        byHousehold.put(row.id(), market);
+        byHousehold.put(householdEconomy.id(), market);
       }
     }
     return byHousehold;
@@ -4943,7 +4943,7 @@ public final class EconomySettlement {
    * ★★ <b>E1：退出经营者的固定顺序事实处置</b>（{@code SUSPENDED -> EXITED} / {@code EXITING -> EXITED}）。
    *
    * <pre>
-   * 1. 劳动释放   ：删除 activity == exit.unit 的全部 LaborAllocation（laborSupply 不动），释放量进读数
+   * 1. 劳动释放   ：删除 activity == exit.unit 的全部 HouseholdLaborCommitment（laborSupply 不动），释放量进读数
    * 2. 资产处置   ：unit 名下（industry + operator）份额里，owner != operator 的只把 operator 改回 owner；
    *                owner == operator 的份额原样留在 owner 名下（unit 已停业，计划系数 0）；
    *                并同步把退回份额从该 operator 的生产组织 assetSources 里摘掉（GAP-2：不得留下 operator != organizer 的引用）
@@ -4969,7 +4969,7 @@ public final class EconomySettlement {
       LinkedHashMap<ProductionUnitId, OperatorCondition> operatorConditions,
       Map<ProductionOrganizationId, ProductionOrganization> organizations,
       LinkedHashMap<AssetShareId, AssetShare> assetShares,
-      LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
+      LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       LinkedHashMap<DebtContractId, DebtContract> debts,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
@@ -4983,12 +4983,12 @@ public final class EconomySettlement {
       long releasedLaborMilli = 0L;
       int releasedAllocations = 0;
       for (LaborAllocationId allocationId : index.allocationIdsOfUnit(exit.unit())) {
-        LaborAllocation allocation = allocations.get(allocationId);
-        if (allocation == null || !allocation.activity().equals(exit.unit().value())) {
+        HouseholdLaborCommitment laborCommitment = laborCommitments.get(allocationId);
+        if (laborCommitment == null || !laborCommitment.activity().equals(exit.unit().value())) {
           continue; // 索引是入口快照；处置过程中可能已被前一个 exit 改动 ⇒ 按当前行再核一次
         }
-        releasedLaborMilli += allocation.laborMilli();
-        allocations.remove(allocationId);
+        releasedLaborMilli += laborCommitment.laborMilli();
+        laborCommitments.remove(allocationId);
         releasedAllocations++;
       }
 
@@ -5253,7 +5253,7 @@ public final class EconomySettlement {
       EconomyData data,
       SettlementIndex index,
       ProductionLedger.Accumulator ledger,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<DebtContractId, DebtContract> debts,
       LinkedHashMap<HouseholdId, Map<String, Long>> capitalizedByHousehold,
       long day,
@@ -5342,17 +5342,17 @@ public final class EconomySettlement {
                 amount.amount(),
                 day,
                 OptionalLong.of(dueCycle));
-        ClassRow debtorRow = rows.get(amount.debtor());
-        if (debtorRow == null) {
+        HouseholdEconomy debtorHouseholdEconomy = householdEconomies.get(amount.debtor());
+        if (debtorHouseholdEconomy == null) {
           // 端点来自 DebtPartyResolver（同源于 data.classes），解析到却查不到行 = 状态已被改坏，fail-closed。
           throw new IllegalStateException(
               "资本化解出的债务人不在 rows 里（DebtPartyResolver 与 rows 漂开）: " + amount.debtor());
         }
-        if (!rows.containsKey(amount.creditor())) {
+        if (!householdEconomies.containsKey(amount.creditor())) {
           throw new IllegalStateException(
               "资本化解出的债权人不在 rows 里（DebtPartyResolver 与 rows 漂开）: " + amount.creditor());
         }
-        rows.put(amount.debtor(), DebtContractBook.withDebtReference(debtorRow, contract.id()));
+        householdEconomies.put(amount.debtor(), DebtContractBook.withDebtReference(debtorHouseholdEconomy, contract.id()));
         ledger.addDebtCapitalization(
             new ProductionLedger.DebtCapitalization(
                 sample.payer(),
@@ -5445,7 +5445,7 @@ public final class EconomySettlement {
    * @param householdPrices 单个家户价目表（可选；本批正式状态没有该字段 ⇒ 传 {@code null} 走市场默认）
    */
   private static void repayDebts(
-      LinkedHashMap<HouseholdId, ClassRow> rows,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       LinkedHashMap<DebtContractId, DebtContract> debts,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
@@ -5461,11 +5461,11 @@ public final class EconomySettlement {
       ProductionLedger.Accumulator ledger,
       MoneyIssuanceJournal issuanceJournal) {
     Map<HouseholdId, List<DebtContractId>> debtsByDebtor = DebtIndex.byDebtor(debts);
-    List<HouseholdId> debtors = new ArrayList<>(rows.keySet());
+    List<HouseholdId> debtors = new ArrayList<>(householdEconomies.keySet());
     debtors.sort(Comparator.comparing(HouseholdId::value)); // 稳定债务人序（不沿用 Map 插入序）
     for (HouseholdId debtor : debtors) {
-      ClassRow row = rows.get(debtor);
-      if (row == null) {
+      HouseholdEconomy householdEconomy = householdEconomies.get(debtor);
+      if (householdEconomy == null) {
         continue;
       }
       List<DebtContract> owed = new ArrayList<>();
@@ -5482,7 +5482,7 @@ public final class EconomySettlement {
       owed.sort(repaymentOrder(debtor, market, householdPrices));
 
       // ★ 可动用资产与介质序都取“本轮还款开始时”的值：介质序按原始余额排序，随后在逐债循环里只做扣减。
-      long dailyNeed = row.naturalNeeds().getOrDefault(GRAIN, 0L);
+      long dailyNeed = householdEconomy.naturalNeeds().getOrDefault(GRAIN, 0L);
       long grainReserve = Math.multiplyExact(dailyNeed, DEBTOR_SUBSISTENCE_RESERVE_DAYS);
       Map<CommodityId, Long> spendableGoods =
           spendableGoods(debtor, householdGoods, householdFrozenGoods, grainReserve);
@@ -5511,7 +5511,7 @@ public final class EconomySettlement {
               ledger.mint(
                   HouseholdActors.of(debtor),
                   payee,
-                  row.view().hex(),
+                  householdEconomy.view().hex(),
                   plan.goodsLegs(),
                   plan.moneyLegs(),
                   TransferReason.LOAN_REPAYMENT);
@@ -5831,7 +5831,7 @@ public final class EconomySettlement {
    *      usableScale_i = min( 产能那一路, ⌊本周期已扣到的投入_j ÷ inputPerUnit_j⌋ … )
    *      need_i        = usableScale_i × 配方 laborPerUnit_i       // 与配额同量纲（本批仍为毫小时刻度）
    * ② 逐 (批次, unit) 配额：保留 = min(配额, 该 unit**剩余**可吸收量)；超出的缩掉/整条删掉
-   * ③ 按**家户每 tick 时间预算**（{@code ClassRow.laborMilli}）封顶：Σallocations(household) ≤ budget，
+   * ③ 按**家户每 tick 时间预算**（{@code HouseholdEconomy.laborMilli}）封顶：Σallocations(household) ≤ budget，
    *      超出时按现有配额权重的最大余数法缩 —— Σ 从不凭空增加
    * </pre>
    *
@@ -5848,8 +5848,8 @@ public final class EconomySettlement {
   private static void reallocateLabor(
       LinkedHashMap<ProductionUnitId, ProductionUnit> units,
       Map<IndustryId, Industry> industries,
-      LinkedHashMap<HouseholdId, ClassRow> rows,
-      LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
+      LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       SettlementIndex index) {
     Map<String, List<ProductionUnitId>> hexToUnits = new LinkedHashMap<>();
@@ -5874,10 +5874,10 @@ public final class EconomySettlement {
       //     {@code ids.contains} 线性查找；插入序/求和/取整口径不变）。
       Set<ProductionUnitId> idSet = new LinkedHashSet<>(ids);
       Map<ProductionUnitId, Long> allocated = new LinkedHashMap<>();
-      for (LaborAllocation allocation : allocations.values()) {
-        ProductionUnitId unitId = new ProductionUnitId(allocation.activity());
+      for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+        ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
         if (idSet.contains(unitId)) {
-          allocated.merge(unitId, allocation.laborMilli(), Long::sum);
+          allocated.merge(unitId, laborCommitment.laborMilli(), Long::sum);
         }
       }
       Map<ProductionUnitId, Long> need = new LinkedHashMap<>();
@@ -5894,19 +5894,19 @@ public final class EconomySettlement {
       }
       // ② 按 unit 的**最大可吸收劳动**修剪（这是 §13.5 的"本 tick 最大可吸收量"，不是按缺口抢）
       Map<ProductionUnitId, Long> kept = new LinkedHashMap<>();
-      for (LaborAllocationId allocId : new ArrayList<>(allocations.keySet())) {
-        LaborAllocation allocation = allocations.get(allocId);
-        ProductionUnitId unitId = new ProductionUnitId(allocation.activity());
+      for (LaborAllocationId allocId : new ArrayList<>(laborCommitments.keySet())) {
+        HouseholdLaborCommitment laborCommitment = laborCommitments.get(allocId);
+        ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
         if (!need.containsKey(unitId)) {
           continue; // 不是本格的配额（另一格的 unit）
         }
         long room = Math.max(0L, need.get(unitId) - kept.getOrDefault(unitId, 0L));
-        long keep = Math.min(allocation.laborMilli(), room);
+        long keep = Math.min(laborCommitment.laborMilli(), room);
         kept.merge(unitId, keep, Long::sum);
         if (keep <= 0L) {
-          allocations.remove(allocId); // 这个 unit 这一周期一点也用不上
-        } else if (keep < allocation.laborMilli()) {
-          allocations.put(allocId, withLaborMilli(allocation, keep));
+          laborCommitments.remove(allocId); // 这个 unit 这一周期一点也用不上
+        } else if (keep < laborCommitment.laborMilli()) {
+          laborCommitments.put(allocId, withLaborMilli(laborCommitment, keep));
         }
       }
       // ③ ★★ P2-A §13.4：按**家户每 tick 时间预算**封顶（毫小时）—— Σallocations(household) ≤ row.laborMilli。
@@ -5914,17 +5914,17 @@ public final class EconomySettlement {
       //     劳动的排队属 P2-B（计划 §13.5）；本批只保证小时口径与预算不变量，旧的"缺口大者先得 + 最后兜底产粮
       //     unit"语义已删除（不得以任何形式冒充利润率排队）。
       Map<HouseholdId, List<LaborAllocationId>> byHousehold = new LinkedHashMap<>();
-      for (LaborAllocation allocation : allocations.values()) {
-        if (!idSet.contains(new ProductionUnitId(allocation.activity()))) {
+      for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+        if (!idSet.contains(new ProductionUnitId(laborCommitment.activity()))) {
           continue; // 另一格的配额
         }
         byHousehold
-            .computeIfAbsent(allocation.household(), ignored -> new ArrayList<>())
-            .add(allocation.id());
+            .computeIfAbsent(laborCommitment.household(), ignored -> new ArrayList<>())
+            .add(laborCommitment.id());
       }
       for (Map.Entry<HouseholdId, List<LaborAllocationId>> household : byHousehold.entrySet()) {
-        ClassRow row = rows.get(household.getKey());
-        if (row == null) {
+        HouseholdEconomy householdEconomy = householdEconomies.get(household.getKey());
+        if (householdEconomy == null) {
           continue;
         }
         List<LaborAllocationId> householdAllocationIds = new ArrayList<>(household.getValue());
@@ -5932,25 +5932,25 @@ public final class EconomySettlement {
         long sum = 0L;
         long[] weights = new long[householdAllocationIds.size()];
         for (int i = 0; i < householdAllocationIds.size(); i++) {
-          LaborAllocation allocation = allocations.get(householdAllocationIds.get(i));
-          weights[i] = allocation == null ? 0L : Math.max(0L, allocation.laborMilli());
+          HouseholdLaborCommitment laborCommitment = laborCommitments.get(householdAllocationIds.get(i));
+          weights[i] = laborCommitment == null ? 0L : Math.max(0L, laborCommitment.laborMilli());
           sum = Math.addExact(sum, weights[i]);
         }
-        long budget = Math.max(0L, row.laborMilli());
+        long budget = Math.max(0L, householdEconomy.laborMilli());
         if (sum <= budget || sum <= 0L) {
           continue;
         }
         long[] parts = ProportionalSplit.byDenominator(budget, weights, sum);
         for (int i = 0; i < householdAllocationIds.size(); i++) {
           LaborAllocationId allocationId = householdAllocationIds.get(i);
-          LaborAllocation allocation = allocations.get(allocationId);
-          if (allocation == null) {
+          HouseholdLaborCommitment laborCommitment = laborCommitments.get(allocationId);
+          if (laborCommitment == null) {
             continue;
           }
           if (parts[i] <= 0L) {
-            allocations.remove(allocationId);
+            laborCommitments.remove(allocationId);
           } else {
-            allocations.put(allocationId, withLaborMilli(allocation, parts[i]));
+            laborCommitments.put(allocationId, withLaborMilli(laborCommitment, parts[i]));
           }
         }
       }
@@ -5982,11 +5982,11 @@ public final class EconomySettlement {
   }
 
   /**
-   * 给某 (批次, unit) 加劳动：已有配额 ⇒ 累加；没有 ⇒ **新发一条**（id 由 {@link LaborAllocation#idOf(ProductionUnitId,
+   * 给某 (批次, unit) 加劳动：已有配额 ⇒ 累加；没有 ⇒ **新发一条**（id 由 {@link HouseholdLaborCommitment#idOf(ProductionUnitId,
    * PeopleLotId, HouseholdId)} 给出）。
    *
    * <p>★★ <b>B.2c：旧档迁移过来的配额要按语义键命中，不能只看新 unit 型 id</b>。{@code
-   * LegacyHouseholdMigration.canonicalizeAllocationActivities} 只改 activity/actor、**保留旧 id**（{@code
+   * LegacyHouseholdMigration.canonicalizeLaborCommitmentActivities} 只改 activity/actor、**保留旧 id**（{@code
    * alloc-<产业>-<批次>-<家户>}）⇒ 旧档续跑时，同一 (unit, group, household) 的既有行不在 unit 型 id 上。 若这里只看 {@code
    * idOf(unit,...)}，会为同一语义键再发一条新 id：两行并存后，死亡缩放 （{@code scaleLaborOfGroup}/{@code
    * scaleLaborOfUnit}）会对两行**各取整一次**， 比旧口径的单行 {@code floor(ΣA×r)} 少 1 毫劳动（实测：799 条旧档 farm
@@ -5994,7 +5994,7 @@ public final class EconomySettlement {
    * activity == 本 unit id}，防止同一产业将来有多 unit 时误并到别的 unit 的行上。
    */
   private static void addLabor(
-      LinkedHashMap<LaborAllocationId, LaborAllocation> allocations,
+      LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       ProductionUnit unit,
       PeopleLotId group,
       HouseholdId household,
@@ -6002,50 +6002,50 @@ public final class EconomySettlement {
     if (amount <= 0L) {
       return;
     }
-    LaborAllocationId id = LaborAllocation.idOf(unit.id(), group, household);
-    LaborAllocation existing = allocations.get(id);
-    if (existing == null) {
+    LaborAllocationId id = HouseholdLaborCommitment.idOf(unit.id(), group, household);
+    HouseholdLaborCommitment existingLaborCommitment = laborCommitments.get(id);
+    if (existingLaborCommitment == null) {
       // ★ B.2c：旧档 id 形如 alloc-<产业>-<批次>-<家户> ⇒ 用产业型 id 再找一次；activity 必须就是本 unit（见上）。
-      LaborAllocation legacy =
-          allocations.get(LaborAllocation.idOf(unit.industry(), group, household));
-      if (legacy != null && legacy.activity().equals(unit.id().value())) {
-        existing = legacy;
+      HouseholdLaborCommitment legacyLaborCommitment =
+          laborCommitments.get(HouseholdLaborCommitment.idOf(unit.industry(), group, household));
+      if (legacyLaborCommitment != null && legacyLaborCommitment.activity().equals(unit.id().value())) {
+        existingLaborCommitment = legacyLaborCommitment;
       }
     }
-    if (existing != null) {
-      allocations.put(existing.id(), withLaborMilli(existing, existing.laborMilli() + amount));
+    if (existingLaborCommitment != null) {
+      laborCommitments.put(existingLaborCommitment.id(), withLaborMilli(existingLaborCommitment, existingLaborCommitment.laborMilli() + amount));
       return;
     }
     // ★ 新配额的 activity = unit id（结算按它归集）；period 取该 unit 既有条目的（没有 ⇒ 1）。
-    LaborAllocation template = templateAllocationOf(allocations, unit.id());
+    HouseholdLaborCommitment template = templateAllocationOf(laborCommitments, unit.id());
     long period = template == null ? 1L : template.period();
-    allocations.put(
+    laborCommitments.put(
         id,
-        new LaborAllocation(
+        new HouseholdLaborCommitment(
             id, group, household, unit.operator(), unit.id().value(), amount, period));
   }
 
   /** 同一 unit 在配额表里的**既有条目**（用来抄 {@code period}；activity 就是 unit id 本身，不再是"调用方给的词"）。 */
-  private static LaborAllocation templateAllocationOf(
-      Map<LaborAllocationId, LaborAllocation> allocations, ProductionUnitId unitId) {
-    for (LaborAllocation allocation : allocations.values()) {
-      if (allocation.activity().equals(unitId.value())) {
-        return allocation;
+  private static HouseholdLaborCommitment templateAllocationOf(
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments, ProductionUnitId unitId) {
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
+      if (laborCommitment.activity().equals(unitId.value())) {
+        return laborCommitment;
       }
     }
     return null;
   }
 
   /** 换劳动量（其余字段原样带过）—— 配额缩小与累加共用。 */
-  private static LaborAllocation withLaborMilli(LaborAllocation allocation, long laborMilli) {
-    return new LaborAllocation(
-        allocation.id(),
-        allocation.group(),
-        allocation.household(),
-        allocation.actor(),
-        allocation.activity(),
+  private static HouseholdLaborCommitment withLaborMilli(HouseholdLaborCommitment laborCommitment, long laborMilli) {
+    return new HouseholdLaborCommitment(
+        laborCommitment.id(),
+        laborCommitment.group(),
+        laborCommitment.household(),
+        laborCommitment.actor(),
+        laborCommitment.activity(),
         laborMilli,
-        allocation.period());
+        laborCommitment.period());
   }
 
   /**
@@ -6083,17 +6083,17 @@ public final class EconomySettlement {
   }
 
   /** 旧 {@link CohortKey} 视图 → 家户（**恰一户**才登记；多于一户 = 歧义，不登记 —— {@link #requireCohortRows} 会先抛）。 */
-  private static Map<CohortKey, HouseholdId> viewToHousehold(Map<HouseholdId, ClassRow> rows) {
+  private static Map<CohortKey, HouseholdId> viewToHousehold(Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Map<CohortKey, HouseholdId> index = new LinkedHashMap<>();
     Set<CohortKey> ambiguous = new LinkedHashSet<>();
-    List<HouseholdId> keys = new ArrayList<>(rows.keySet());
+    List<HouseholdId> keys = new ArrayList<>(householdEconomies.keySet());
     keys.sort(Comparator.comparing(HouseholdId::value));
     for (HouseholdId household : keys) {
-      ClassRow row = rows.get(household);
-      if (row == null) {
+      HouseholdEconomy householdEconomy = householdEconomies.get(household);
+      if (householdEconomy == null) {
         continue;
       }
-      CohortKey view = row.view();
+      CohortKey view = householdEconomy.view();
       if (ambiguous.contains(view)) {
         continue;
       }
@@ -6162,11 +6162,11 @@ public final class EconomySettlement {
       ProductionUnit unit,
       HouseholdRouting.Subject unitSubject,
       Map<HouseholdId, Long> unitWeights,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<ProductionUnitId, ProductionOrganization> organizationByUnit,
       Map<CohortKey, HouseholdId> viewIndex,
       SettlementIndex index) {
-    Optional<HouseholdId> direct = HouseholdRouting.householdOfActorOrNull(actor, rows);
+    Optional<HouseholdId> direct = HouseholdRouting.householdOfActorOrNull(actor, householdEconomies);
     if (direct.isPresent()) {
       HouseholdId household = direct.get();
       return new ResolvedAccountSubject(
@@ -6179,7 +6179,7 @@ public final class EconomySettlement {
     for (ProductionOrganization organization : organizationByUnit.values()) {
       if (organization.organizer().equals(actor)) {
         Optional<HouseholdId> organizer =
-            HouseholdRouting.householdOfActorOrNull(organization.organizer(), rows);
+            HouseholdRouting.householdOfActorOrNull(organization.organizer(), householdEconomies);
         if (organizer.isPresent()) {
           return new ResolvedAccountSubject(
               HouseholdRouting.Subject.single(organizer.get()), Map.of(organizer.get(), 1L));
@@ -6210,7 +6210,7 @@ public final class EconomySettlement {
       if (!collective.isEmpty()) {
         return new ResolvedAccountSubject(
             HouseholdRouting.Subject.collective(collective),
-            HouseholdRouting.weightsOf(related, index, rows));
+            HouseholdRouting.weightsOf(related, index, householdEconomies));
       }
     }
     throw new IllegalStateException(
@@ -6289,7 +6289,7 @@ public final class EconomySettlement {
       Map<CommodityId, Long> goods,
       Map<CurrencyId, Long> money,
       TransferReason reason,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       Map<ProductionUnitId, ProductionOrganization> organizationByUnit,
@@ -6302,10 +6302,10 @@ public final class EconomySettlement {
       Map<HouseholdId, Map<CurrencyId, Long>> moneyDebited) {
     ResolvedAccountSubject payer =
         resolveAccountCounterparty(
-            from, unit, unitSubject, unitWeights, rows, organizationByUnit, viewIndex, index);
+            from, unit, unitSubject, unitWeights, householdEconomies, organizationByUnit, viewIndex, index);
     ResolvedAccountSubject payee =
         resolveAccountCounterparty(
-            to, unit, unitSubject, unitWeights, rows, organizationByUnit, viewIndex, index);
+            to, unit, unitSubject, unitWeights, householdEconomies, organizationByUnit, viewIndex, index);
     List<Transfer> legs = new ArrayList<>();
     for (Map.Entry<CommodityId, Long> leg : goods.entrySet()) {
       long amount = leg.getValue();
@@ -6425,14 +6425,14 @@ public final class EconomySettlement {
    * ① 规模 = 最紧约束（{@link #scaleOf}，R3/V7 泛化后的那一条 —— **一字未改**）
    * ② 逐商品：毛产 = 规模 × outputPerUnit_j × 1000；损耗 = 毛产 × (饲料 + 折旧)‰；净产 = 毛产 − 损耗
    *      · 毛产 / 损耗 → ledger（I4.2 的 ΣOutput / ΣLoss）
-   *      · **净产 → operator 的产权条目**（+net 一条；★ 产出离开 ClassRow 的**唯一去处**）
+   *      · **净产 → operator 的产权条目**（+net 一条；★ 产出离开 HouseholdEconomy 的**唯一去处**）
    * ③ 按 relation 结算（{@link ProductionSettlement}）：转出/收入**都是产权条目**（H1：受方恒为 actor，
    *      {@code ToCohort} 的家户 actor = {@code HouseholdActors.of(cohort)}）
    * ④ 家户那一条**同时记进两处**：会话工作副本（{@code householdGoods}，下一日消费读它）+ 本行流水 {@code income}
    *      （读口）—— ★ 条目本身照旧进 ledger（app 侧落盘的口径见 {@code EconomyDayStepper#step}）
    * </pre>
    *
-   * <p>★★ <b>为什么 ② 与 ③ 必须在同一个方法里</b>（T4 与 T5 必须同批落地的全部理由）：产出一旦离开 {@code ClassRow}， 家户唯一还有实物的通道就只剩 ③
+   * <p>★★ <b>为什么 ② 与 ③ 必须在同一个方法里</b>（T4 与 T5 必须同批落地的全部理由）：产出一旦离开 {@code HouseholdEconomy}， 家户唯一还有实物的通道就只剩 ③
    * 的实付 —— 少了它，**家户当场断粮**（而账面上看不出少了谁：产权条目照旧生成）。 由 {@code
    * ProductionLedgerTest#theCohortGetsItsPaidShareIntoTheConsumptionRow} 逐值守着。
    *
@@ -6460,7 +6460,7 @@ public final class EconomySettlement {
   private static void harvest(
       ProductionUnit unit,
       Industry industry,
-      LinkedHashMap<HouseholdId, ClassRow> rows,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       long cycledLabor,
       long plannedPerMille,
       SettlementIndex index,
@@ -6483,8 +6483,8 @@ public final class EconomySettlement {
     ActorRef operator = unit.operator();
     // ★★ P2-A §13.3：unit 的账户主体 = 组织者/经营者家户（单一或集体）。解析不到 ⇒ 具名缺口（见 creditOutput）。
     HouseholdRouting.Subject subject =
-        HouseholdRouting.subjectOf(unit, rows, organizationByUnit, index);
-    Map<HouseholdId, Long> subjectWeights = HouseholdRouting.weightsOf(unit.id(), index, rows);
+        HouseholdRouting.subjectOf(unit, householdEconomies, organizationByUnit, index);
+    Map<HouseholdId, Long> subjectWeights = HouseholdRouting.weightsOf(unit.id(), index, householdEconomies);
     // ★★ **逐商品产出入账**：毛产 = 规模 × outputPerUnit[j] × 1000 毫/单位（算式一字未改）。
     Map<CommodityId, Long> grossByCommodity = new LinkedHashMap<>();
     Map<CommodityId, Long> netByCommodity = new LinkedHashMap<>();
@@ -6514,7 +6514,7 @@ public final class EconomySettlement {
       return; // 缺 relation ⇒ 没有规则：产出全部留在 operator（等价路径，见方法注释）
     }
     // ★★ **H1.3 的 fail-closed**：受方家户必须存在、且住在这一格（判在所有公式之前 —— 与 E14 同款）。
-    requireCohortRows(relation, rows, location);
+    requireCohortRows(relation, householdEconomies, location);
     // ★★ **R5 ③：按 relation 结算**（priority 序、付款上限 = 本周期收到的产出、E14 的守卫都在 {@link
     //   ProductionSettlement} 里 —— 本方法只负责"把事实递给它、把结果落到该落的地方"）。
     //   ★★ P2-A §13.3：结算的 from 恒为 relation.operator()（可能是组织 actor）⇒ 这里用一个**路由铸造口**
@@ -6531,7 +6531,7 @@ public final class EconomySettlement {
             grossByCommodity,
             netByCommodity,
             unit.cycleInputUsedMilli(),
-            laborOfCohort(rows, location, industry.cycleDays()),
+            laborOfCohort(householdEconomies, location, industry.cycleDays()),
             industry.outputPerUnit(),
             // ★★ 货币档的付款上限 = **账户主体家户们的可花货币合计**（逐币种）；解析不到主体 ⇒ 空表（实付 0、
             //   欠额进读数 —— 如实报，不是静默付 0）。
@@ -6548,7 +6548,7 @@ public final class EconomySettlement {
                   goods,
                   money,
                   reason,
-                  rows,
+                  householdEconomies,
                   householdGoods,
                   householdMoney,
                   organizationByUnit,
@@ -6949,9 +6949,9 @@ public final class EconomySettlement {
    * <p>★ 键 = {@code HouseholdActors.of(cohort)}（家户 actor id 的唯一拼写点，K9）；★ 表**不含**经营者 （它们的账在 actor
    * 切片上，见 {@link #applyTransferToHouseholds}）。
    */
-  private static Map<ActorRef, HouseholdId> householdActorsOf(Map<HouseholdId, ClassRow> rows) {
+  private static Map<ActorRef, HouseholdId> householdActorsOf(Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Map<ActorRef, HouseholdId> householdOfActor = new LinkedHashMap<>();
-    for (HouseholdId key : rows.keySet()) {
+    for (HouseholdId key : householdEconomies.keySet()) {
       householdOfActor.put(HouseholdActors.of(key), key);
     }
     return householdOfActor;
@@ -6973,7 +6973,7 @@ public final class EconomySettlement {
    * facts.location()} —— 两者不同时，钱会落到这个家户在**别处**的账户上（而它的消费读的是本格的账）⇒ 静默丢失。
    */
   private static void requireCohortRows(
-      ProductionRelation relation, Map<HouseholdId, ClassRow> rows, HexCoord location) {
+      ProductionRelation relation, Map<HouseholdId, HouseholdEconomy> householdEconomies, HexCoord location) {
     for (CompensationRule rule : relation.rules()) {
       HouseholdId household;
       String source;
@@ -6983,13 +6983,13 @@ public final class EconomySettlement {
       } else if (rule.recipient() instanceof Recipient.ToCohort toCohort) {
         // ★ 旧档视图（S1 迁移前）：按视图反查**恰一个**家户；多于一户 ⇒ fail-closed（视图不再是身份）。
         household = null;
-        for (ClassRow row : rows.values()) {
-          if (row.view().equals(toCohort.cohort())) {
+        for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
+          if (householdEconomy.view().equals(toCohort.cohort())) {
             if (household != null) {
               throw new IllegalStateException(
                   "规则指名的旧 cohort 视图对上了多个家户（S1 起视图不再是唯一身份）：" + toCohort.cohort() + "；规则=" + rule);
             }
-            household = row.id();
+            household = householdEconomy.id();
           }
         }
         if (household == null) {
@@ -7003,8 +7003,8 @@ public final class EconomySettlement {
       } else {
         continue;
       }
-      ClassRow row = rows.get(household);
-      if (row == null) {
+      HouseholdEconomy householdEconomy = householdEconomies.get(household);
+      if (householdEconomy == null) {
         throw new IllegalStateException(
             "规则指名的家户没有行（S1 fail-closed：受方就是那一个家户，交付不出去就当场抛）："
                 + source
@@ -7013,7 +7013,7 @@ public final class EconomySettlement {
                 + "；规则="
                 + rule);
       }
-      if (!row.view().hex().equals(location)) {
+      if (!householdEconomy.view().hex().equals(location)) {
         throw new IllegalStateException(
             "规则指名的家户不住在本格（H1：家户账的 location 取自它的视图，条目却落在产业所在格）：activity="
                 + relation.activity()
@@ -7022,7 +7022,7 @@ public final class EconomySettlement {
                 + "="
                 + household
                 + " 视图格="
-                + row.view().hex()
+                + householdEconomy.view().hex()
                 + " 产业的格="
                 + location
                 + "；规则="
@@ -7035,7 +7035,7 @@ public final class EconomySettlement {
    * ★★ <b>本格各家户本期劳动量</b>（{@code LABOR_AMOUNT} 那一族的分子/分母，也是 M1.7 给养义务的"按什么量"）：键 = **行键本身**（H0：行就是
    * cohort），值 = 该行的 {@code rowLabor}（= <b>按参与率折算后的每日可用劳动</b> × cycleDays）。
    *
-   * <p>★★ <b>M1.8：折算只有一处拼写点</b> —— {@link ClassRow#participationAdjustedLaborMilli()}（= {@code
+   * <p>★★ <b>M1.8：折算只有一处拼写点</b> —— {@link HouseholdEconomy#participationAdjustedLaborMilli()}（= {@code
    * laborMilli × participationPerMille ÷ 1000}）。本方法<b>不再自己乘一次</b>参与率：否则读口/配额与这里会各折算一遍，真档数字会崩。
    *
    * <p>★★ <b>H0 起它不再"按 (格, 阶层) 并池"（E28 的收口）</b>：改前两池人的劳动被并进同一个 {@code (格, 阶层)}
@@ -7055,25 +7055,25 @@ public final class EconomySettlement {
    * @param cycleDays 该产业的周期天数（把"每日劳动"折成"本周期劳动"；见下面的量纲注释）
    */
   public static Map<HouseholdId, Long> laborOfCohort(
-      Map<HouseholdId, ClassRow> rows, HexCoord location, long cycleDays) {
+      Map<HouseholdId, HouseholdEconomy> householdEconomies, HexCoord location, long cycleDays) {
     Map<HouseholdId, Long> byCohort = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : rows.entrySet()) {
-      if (!entry.getValue().view().hex().equals(location)) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomies.entrySet()) {
+      if (!householdEconomyEntry.getValue().view().hex().equals(location)) {
         continue; // 只取本格的家户（见方法注释：分母的口径与改前逐字相同）
       }
-      ClassRow row = entry.getValue();
+      HouseholdEconomy householdEconomy = householdEconomyEntry.getValue();
       // ★★ **每日口径 × 周期天数 = 本周期口径**（量纲的收口）：行的 `laborMilli` 与发放的配额同口径
       //   （**每日**千分劳动；结算逐日把它累加进 `cycleLaborMilli`），而 {@code LABOR_AMOUNT} 那一族量的是
       //   **本周期**的劳动量（{@code FIXED_IN_KIND_PER_LABOR} 的"每周期一笔"就写在名字里）。
       //   ★ 少了这个乘数，给养只有应有值的 1/cycleDays —— 实测（真档 14,806 人的格）：一周期只拿到 0.8% 的口粮，
       //     第 2 周期起人吃不饱、也播不下种 ⇒ 生产逐周期崩掉（`EconomyRealScaleClothTest` / `WorldgenInitializeToolTest`
       //     的跨周期用例当场红）。★ 分成类（`OUTPUT_SHARE`）不受影响：那一路是比值，量纲自消。
-      //   ★ M1.8：参与率的折算收进 ClassRow 的唯一算法（上面乘一次，这里不许再乘）。
-      long rowLabor = row.participationAdjustedLaborMilli() * cycleDays;
+      //   ★ M1.8：参与率的折算收进 HouseholdEconomy 的唯一算法（上面乘一次，这里不许再乘）。
+      long rowLabor = householdEconomy.participationAdjustedLaborMilli() * cycleDays;
       if (rowLabor <= 0L) {
         continue;
       }
-      byCohort.put(entry.getKey(), rowLabor);
+      byCohort.put(householdEconomyEntry.getKey(), rowLabor);
     }
     return byCohort;
   }
@@ -7153,7 +7153,7 @@ public final class EconomySettlement {
    * 本周期收获已在调用方先行分配（照分给幸存者）。
    *
    * <p>★ 不变量：{@code faminePerMille ≤ 1000} 且致死率 {@code ≤ 1000‰} ⇒ {@code deaths ≤
-   * population}、{@code 人口 ≥ 0}、 {@code labor ≥ 0}（构造期由 {@link ClassRow} 再兜一层）。
+   * population}、{@code 人口 ≥ 0}、 {@code labor ≥ 0}（构造期由 {@link HouseholdEconomy} 再兜一层）。
    *
    * <p>★★ **R4 起这条旧账已收口**（R2 如实记过的那处不齐）：本节缩的**行**劳动之外，调用方还会把该产业名下的**全部劳动配额**
    * 与对应批次的**劳动供给**按同一个存活比例缩（{@link #scaleLaborOfIndustry}）—— 于是"人死了劳动没减"不再成立。 ★ 另一条死亡路径（生理压力，见
@@ -7164,15 +7164,15 @@ public final class EconomySettlement {
    * 的月度结算），本方法的致死率仍由 {@link #FAMINE_MORTALITY_PER_MILLE} 控制， 且**逐值用例仍钉着非 0 那一条路**（不是死分支）。
    */
   private static void applyFamine(
-      LinkedHashMap<HouseholdId, ClassRow> rows,
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
       LinkedHashMap<HouseholdId, Long> deaths,
       HouseholdId key,
-      ClassRow row,
+      HouseholdEconomy householdEconomy,
       long cycleUnmet,
       long day,
       long cycleDays,
       int famineMortalityPerMille) {
-    long population = row.population();
+    long population = householdEconomy.population();
     // ★ 本周期总需求 = 本周期**实际经过的那些天**的口粮之和 = 累计(day) − 累计(周期起点)。
     //   ★ 周期起点取 max(0, day − cycleDays)：夹具/存档可以在"周期已满"（progressDays == cycleDays）处入场，
     //     那时起点算到第 0 天之前 —— 而世界之前没有天，需求与缺口都只覆盖真实经过的天（两者口径一致）。
@@ -7188,8 +7188,8 @@ public final class EconomySettlement {
     }
     long nextPopulation = population - dead; // faminePerMille ≤ 1000 且致死率 ≤ 1000‰ ⇒ 必 ≥ 0
     long nextLabor =
-        population == 0L ? 0L : row.laborMilli() * nextPopulation / population; // 同比例缩，不除零
-    rows.put(key, withPopulationAndLabor(row, nextPopulation, nextLabor));
+        population == 0L ? 0L : householdEconomy.laborMilli() * nextPopulation / population; // 同比例缩，不除零
+    householdEconomies.put(key, withPopulationAndLabor(householdEconomy, nextPopulation, nextLabor));
     deaths.merge(key, dead, Long::sum);
   }
 
@@ -7352,18 +7352,18 @@ public final class EconomySettlement {
    * 的构造期守卫把这个对应关系判死 —— 产业型（庄园/作坊）必须指名已存在的产业，非产业型（家户）不得与产业 id 撞名）。
    * 于是"这一格的劳动被哪个产业占了多少"在结算侧**不需要**额外的映射表。
    *
-   * <p>★ **本轮配额是常设的**（跨周期不变）：{@code LaborAllocation.period()} 是"哪一周期发的"，
+   * <p>★ **本轮配额是常设的**（跨周期不变）：{@code HouseholdLaborCommitment.period()} 是"哪一周期发的"，
    * 由构造期守卫判它必须与供给记录同期；"按周期重发配额"（设计稿 §四 的"同一 period 内"）要等产生它的命令落地，届时这里改成取当前周期的那些配额。
    *
    * <p>★ **非产业型主体（家户）的配额照归集**：它不进任何产业的 {@code cycleLaborMilli}（家户织布是 R3 的配方）， 但**照进守恒与读口** ——
    * 不是"记了没人看"的字段：它是 {@code Σ allocated ≤ available} 那条不变量的一部分（少算它，家户的配额就成了第二个可凭空重复的来源）。
    */
   private static Map<String, Long> laborByUnit(
-      Map<LaborAllocationId, LaborAllocation> allocations) {
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
     Map<String, Long> byUnit = new LinkedHashMap<>();
-    for (LaborAllocation allocation : allocations.values()) {
+    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
       // ★★ R3B.2：按 activity（= unit id）归集；activity 不是现存 unit 的配额不进任何 unit 的劳动账。
-      byUnit.merge(allocation.activity(), allocation.laborMilli(), Long::sum);
+      byUnit.merge(laborCommitment.activity(), laborCommitment.laborMilli(), Long::sum);
     }
     return byUnit;
   }
@@ -7374,14 +7374,14 @@ public final class EconomySettlement {
    * <p>★ H4：可见性从 {@code private} 放宽到**包内** —— {@code MarketSettlement} 要问同一个问题（"这一格有哪些家户"），
    * 而它**只能有一个答案**（两处各写一份分组 = 同一个量的第二处拼写点）。
    */
-  static Map<String, List<HouseholdId>> rowsByHex(Map<HouseholdId, ClassRow> rows) {
+  static Map<String, List<HouseholdId>> rowsByHex(Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Map<String, List<HouseholdId>> byHex = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : rows.entrySet()) {
-      HexCoord hex = entry.getValue().view().hex();
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomies.entrySet()) {
+      HexCoord hex = householdEconomyEntry.getValue().view().hex();
       // ★ S1：格来自行的**视图**（键本身不再带格；{@link IndustryHexKeys#hexKey} 是拼写点）。
       byHex
           .computeIfAbsent(IndustryHexKeys.hexKey(hex.q(), hex.r()), ignored -> new ArrayList<>())
-          .add(entry.getKey());
+          .add(householdEconomyEntry.getKey());
     }
     LinkedHashMap<String, List<HouseholdId>> sorted = new LinkedHashMap<>();
     List<String> hexKeys = new ArrayList<>(byHex.keySet());
@@ -7391,8 +7391,8 @@ public final class EconomySettlement {
       // ★ 行序 = 阶层（字典序）→ 居住类型（直接读视图；键不再带这两维）。
       //   ★ S3：landless_laborer/artisan/official 也按同一个 value 字典序参与，只用于确定性；不映射回旧四档。
       members.sort(
-          Comparator.comparing((HouseholdId id) -> rows.get(id).view().stratum().value())
-              .thenComparing(id -> rows.get(id).view().residence()));
+          Comparator.comparing((HouseholdId id) -> householdEconomies.get(id).view().stratum().value())
+              .thenComparing(id -> householdEconomies.get(id).view().residence()));
       sorted.put(hexKey, members);
     }
     return sorted;
@@ -7402,7 +7402,7 @@ public final class EconomySettlement {
   //
   // ★★ H1：商品库存在**会话工作副本**里（|Map<HouseholdId, Map<CommodityId, Long>>|；裁定 K1），行里没有 goods 了。
   //   三个助手是这份副本的**唯一读写点**（口径只有一处）：
-  //     · 缺失键 = 该家户没有该商品（同 ClassRow.goods 原来的口径，见 EconomyDayStepper 的类注）；
+  //     · 缺失键 = 该家户没有该商品（同 HouseholdEconomy.goods 原来的口径，见 EconomyDayStepper 的类注）；
   //     · 写 ≤ 0 ⇒ **去掉该键**（保持"空商品表"的纯形态，不落一个值为 0 的假键）；
   //     · 内层表**只读**：换值一律 put 一张新表（绝不在调用方给的表上做增删）⇒ 任何拿到的快照都不会被后续结算改掉。
 
@@ -7521,9 +7521,9 @@ public final class EconomySettlement {
    * <b>app 协调器不许走它</b>： 真档的货币（创世禀赋）住在 actor 侧，必须由协调器载入（否则钱会在账上静默消失）。
    */
   static LinkedHashMap<HouseholdId, Map<CurrencyId, Long>> emptyMoneyAccountsFor(
-      Map<HouseholdId, ClassRow> rows) {
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     LinkedHashMap<HouseholdId, Map<CurrencyId, Long>> money = new LinkedHashMap<>();
-    for (HouseholdId key : rows.keySet()) {
+    for (HouseholdId key : householdEconomies.keySet()) {
       money.put(key, Map.of());
     }
     return money;
@@ -7536,14 +7536,14 @@ public final class EconomySettlement {
    * 货币工资也付不出去，而账面（缺口、读数）看起来完全正常。★ 0 人口的家户**可以缺席**（它们不消费、不出工）。
    */
   private static void requireHouseholdMoney(
-      Map<HouseholdId, ClassRow> rows, Map<HouseholdId, Map<CurrencyId, Long>> householdMoney) {
+      Map<HouseholdId, HouseholdEconomy> householdEconomies, Map<HouseholdId, Map<CurrencyId, Long>> householdMoney) {
     List<String> missing = new ArrayList<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : rows.entrySet()) {
-      if (entry.getValue().population() <= 0L) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomies.entrySet()) {
+      if (householdEconomyEntry.getValue().population() <= 0L) {
         continue; // 0 人口：不消费、不出工 ⇒ 允许没有钱包
       }
-      if (!householdMoney.containsKey(entry.getKey())) {
-        missing.add(entry.getKey() + "（人口 " + entry.getValue().population() + "）");
+      if (!householdMoney.containsKey(householdEconomyEntry.getKey())) {
+        missing.add(householdEconomyEntry.getKey() + "（人口 " + householdEconomyEntry.getValue().population() + "）");
       }
     }
     if (missing.isEmpty()) {
@@ -7574,14 +7574,14 @@ public final class EconomySettlement {
    * <p>★ **消息里给出前几个缺账的家户**（不是全部 —— 真档可能有几百个）：足够定位是哪一批人没被播种。
    */
   private static void requireHouseholdAccounts(
-      Map<HouseholdId, ClassRow> rows, Map<HouseholdId, Map<CommodityId, Long>> householdGoods) {
+      Map<HouseholdId, HouseholdEconomy> householdEconomies, Map<HouseholdId, Map<CommodityId, Long>> householdGoods) {
     List<String> missing = new ArrayList<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : rows.entrySet()) {
-      if (entry.getValue().population() <= 0L) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomies.entrySet()) {
+      if (householdEconomyEntry.getValue().population() <= 0L) {
         continue; // 0 人口：不吃饭、不出工 ⇒ 允许没有账
       }
-      if (!householdGoods.containsKey(entry.getKey())) {
-        missing.add(entry.getKey() + "（人口 " + entry.getValue().population() + "）");
+      if (!householdGoods.containsKey(householdEconomyEntry.getKey())) {
+        missing.add(householdEconomyEntry.getKey() + "（人口 " + householdEconomyEntry.getValue().population() + "）");
       }
     }
     if (missing.isEmpty()) {
@@ -7599,7 +7599,7 @@ public final class EconomySettlement {
   /**
    * 换**当日自然需求**（**逐商品**；{@code 0} 的那一项不落键）。
    *
-   * <p>★★ 这是 {@link ClassRow#naturalNeeds()} 的**唯一写入点**（v2 spec §八.8 的"一条真相"）：结算每天把当日需求写进去，
+   * <p>★★ 这是 {@link HouseholdEconomy#naturalNeeds()} 的**唯一写入点**（v2 spec §八.8 的"一条真相"）：结算每天把当日需求写进去，
    * 读口（{@code ApiViews.economyHex} / GUI / MCP）直接读它，不再各算一遍 —— 否则人口一变（饿死、将来的任何人口变动）
    * 同一面板上的"人口"与"日耗"就会分叉。
    *
@@ -7611,62 +7611,62 @@ public final class EconomySettlement {
    * dailyNeedsMilli}，不另立公式）加到行上的本周期累加器；<b>新周期的重置不在这里</b>，而在流水清零点（新周期第一天） 把它置为"当天那一份"（见 {@code
    * settleOneDay} 的流水循环旁注释）—— 那里才能同时看见"今天是不是新周期第一天"。
    */
-  private static ClassRow withDailyNeed(ClassRow row, long day) {
+  private static HouseholdEconomy withDailyNeed(HouseholdEconomy householdEconomy, long day) {
     Map<CommodityId, Long> needs = new LinkedHashMap<>();
     for (Map.Entry<String, Long> entry :
-        EconomyVocabulary.dailyNeedsMilli(row.population(), day, new YearFraction(1L, 365L))
+        EconomyVocabulary.dailyNeedsMilli(householdEconomy.population(), day, new YearFraction(1L, 365L))
             .entrySet()) {
       if (entry.getValue() > 0L) {
         needs.put(new CommodityId(entry.getKey()), entry.getValue());
       }
     }
     long dayGrainNeed = needs.getOrDefault(GRAIN, 0L);
-    return new ClassRow(
-        row.id(),
-        row.view(),
-        row.population(),
-        row.laborMilli(),
-        row.participationPerMille(),
-        row.money(),
-        row.debts(),
+    return new HouseholdEconomy(
+        householdEconomy.id(),
+        householdEconomy.view(),
+        householdEconomy.population(),
+        householdEconomy.laborMilli(),
+        householdEconomy.participationPerMille(),
+        householdEconomy.money(),
+        householdEconomy.debts(),
         needs,
-        row.effectiveDemand(),
-        row.cycleNaturalNeedMilli() + dayGrainNeed);
+        householdEconomy.effectiveDemand(),
+        householdEconomy.cycleNaturalNeedMilli() + dayGrainNeed);
   }
 
   /** 追加一条债务引用（其余字段原样带过）。 */
-  private static ClassRow withExtraDebt(ClassRow row, DebtContractId debtId) {
-    if (row.debts().contains(debtId)) {
-      return row; // 行里的引用只加一次（E4a 起同一合同跨周期恒同 id，幂等由这里兜底）
+  private static HouseholdEconomy withExtraDebt(HouseholdEconomy householdEconomy, DebtContractId debtId) {
+    if (householdEconomy.debts().contains(debtId)) {
+      return householdEconomy; // 行里的引用只加一次（E4a 起同一合同跨周期恒同 id，幂等由这里兜底）
     }
-    List<DebtContractId> debts = new ArrayList<>(row.debts());
+    List<DebtContractId> debts = new ArrayList<>(householdEconomy.debts());
     debts.add(debtId);
-    return new ClassRow(
-        row.id(),
-        row.view(),
-        row.population(),
-        row.laborMilli(),
-        row.participationPerMille(),
-        row.money(),
+    return new HouseholdEconomy(
+        householdEconomy.id(),
+        householdEconomy.view(),
+        householdEconomy.population(),
+        householdEconomy.laborMilli(),
+        householdEconomy.participationPerMille(),
+        householdEconomy.money(),
         debts,
-        row.naturalNeeds(),
-        row.effectiveDemand(),
-        row.cycleNaturalNeedMilli());
+        householdEconomy.naturalNeeds(),
+        householdEconomy.effectiveDemand(),
+        householdEconomy.cycleNaturalNeedMilli());
   }
 
   /** 换人口与有效劳动（饿死惩罚用；其余字段原样带过）。 */
-  private static ClassRow withPopulationAndLabor(ClassRow row, long population, long laborMilli) {
-    return new ClassRow(
-        row.id(),
-        row.view(),
+  private static HouseholdEconomy withPopulationAndLabor(HouseholdEconomy householdEconomy, long population, long laborMilli) {
+    return new HouseholdEconomy(
+        householdEconomy.id(),
+        householdEconomy.view(),
         population,
         laborMilli,
-        row.participationPerMille(),
-        row.money(),
-        row.debts(),
-        row.naturalNeeds(),
-        row.effectiveDemand(),
-        row.cycleNaturalNeedMilli());
+        householdEconomy.participationPerMille(),
+        householdEconomy.money(),
+        householdEconomy.debts(),
+        householdEconomy.naturalNeeds(),
+        householdEconomy.effectiveDemand(),
+        householdEconomy.cycleNaturalNeedMilli());
   }
 
   /**
@@ -7675,17 +7675,17 @@ public final class EconomySettlement {
    * <p>★ 为什么不是置 0：今天已经吃掉的这一份**属于新周期**（{@code withDailyNeed} 在消费步刚累加过）—— 置 0 会把新周期第一天的需要
    * 抹掉，整周期分母因此少一天。调用点必须用"最近结算日写下的 {@code naturalNeeds[grain]}"作为参数（同源，不另算）。
    */
-  private static ClassRow withCycleNaturalNeed(ClassRow row, long cycleNaturalNeedMilli) {
-    return new ClassRow(
-        row.id(),
-        row.view(),
-        row.population(),
-        row.laborMilli(),
-        row.participationPerMille(),
-        row.money(),
-        row.debts(),
-        row.naturalNeeds(),
-        row.effectiveDemand(),
+  private static HouseholdEconomy withCycleNaturalNeed(HouseholdEconomy householdEconomy, long cycleNaturalNeedMilli) {
+    return new HouseholdEconomy(
+        householdEconomy.id(),
+        householdEconomy.view(),
+        householdEconomy.population(),
+        householdEconomy.laborMilli(),
+        householdEconomy.participationPerMille(),
+        householdEconomy.money(),
+        householdEconomy.debts(),
+        householdEconomy.naturalNeeds(),
+        householdEconomy.effectiveDemand(),
         cycleNaturalNeedMilli);
   }
 

@@ -41,7 +41,7 @@ import java.util.Set;
  *   <li><b>城市优先级</b>：pull 降序；同 pull 按 {@link CityId#value()} 升序（消除 map 迭代序）。
  * </ol>
  *
- * <p>★★ <b>本类不读 {@code EconomyData}</b>：规划只看 social 与外部读数；把计划落到经济侧（{@code ClassRow}/债务）是 {@code
+ * <p>★★ <b>本类不读 {@code EconomyData}</b>：规划只看 social 与外部读数；把计划落到经济侧（{@code HouseholdEconomy}/债务）是 {@code
  * LotMigrationBook} 的职责，跨切片“social 拆/合批次 + 经济侧行列 + 成员份额对账”的原子接线留给 P9。
  */
 public final class PopulationMigrationPlanner {

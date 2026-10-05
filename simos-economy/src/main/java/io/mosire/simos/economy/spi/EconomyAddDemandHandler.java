@@ -7,8 +7,8 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.DemandEntry;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.map.hex.HexCoord;
@@ -35,7 +35,7 @@ import java.util.Optional;
  *   <li>{@code price} 存在性：HOUSEHOLD 范围用**其居住格**的价表；HEX 范围用该格价表。缺市场/缺该商品价 ⇒ {@link
  *       HandlerOutcome.Rejected}，消息**指名 {@code economy.SetMarketPrice}**；
  *   <li>{@code household} 必须存在（HOUSEHOLD 范围）；HEX 范围的 {@code hex} 以"该格有市场行"为存在证据；
- *   <li>scope ↔ household/hex 的互斥与必填（{@link DemandEntry} 构造期再判一遍）；{@code quantityPerCycle > 0}、
+ *   <li>scope ↔ household/hex 的互斥与必填（{@link HouseholdDemand} 构造期再判一遍）；{@code quantityPerCycle > 0}、
  *       {@code createdDay ≥ 0}、{@code priority ≥ 0}；
  *   <li>{@code id} 缺省 ⇒ 按 {@code demand-<scope>-<主体>-<商品>-<kind>-<unit>-<序号>} 确定性生成（序号 = 同前缀 现有 id
  *       尾段最大值 + 1；尾段不可解析 ⇒ 拒，不猜）；给了 id 且已存在 ⇒ 拒（要改请先 CancelDemand）；
@@ -65,11 +65,11 @@ public final class EconomyAddDemandHandler implements CommandHandler {
     EconomyData base = EconomySnapshots.of(state).data();
     try {
       JsonNode payload = EconomyCommandPayloads.parseObject(COMMAND, payloadJson);
-      DemandEntry.DemandScope scope =
+      HouseholdDemand.DemandScope scope =
           parseScope(EconomyCommandPayloads.requireText(COMMAND, payload, "scope"));
-      DemandEntry.DemandKind kind =
+      HouseholdDemand.DemandKind kind =
           parseKind(EconomyCommandPayloads.requireText(COMMAND, payload, "kind"));
-      DemandEntry.DemandUnit unit =
+      HouseholdDemand.DemandUnit unit =
           parseUnit(EconomyCommandPayloads.requireText(COMMAND, payload, "unit"));
       CommodityId commodity =
           CommodityId.parse(EconomyCommandPayloads.requireText(COMMAND, payload, "commodity"));
@@ -92,26 +92,26 @@ public final class EconomyAddDemandHandler implements CommandHandler {
       Optional<HouseholdId> household = Optional.empty();
       Optional<HexCoord> hex = Optional.empty();
       String ownerToken;
-      if (scope == DemandEntry.DemandScope.HOUSEHOLD) {
+      if (scope == HouseholdDemand.DemandScope.HOUSEHOLD) {
         if (payload.hasNonNull("hex")) {
           throw new IllegalArgumentException("HOUSEHOLD 范围不得给 hex（同一件事不许两处拼写）");
         }
         HouseholdId householdId =
             HouseholdId.parse(EconomyCommandPayloads.requireText(COMMAND, payload, "household"));
-        ClassRow row = base.classes().get(householdId);
-        if (row == null) {
+        HouseholdEconomy householdEconomy = base.classes().get(householdId);
+        if (householdEconomy == null) {
           return new HandlerOutcome.Rejected("家户不存在: " + householdId.value());
         }
-        requirePriced(base, row.view().hex(), commodity, "该家户居住格");
-        if (unit == DemandEntry.DemandUnit.PER_CAPITA) {
+        requirePriced(base, householdEconomy.view().hex(), commodity, "该家户居住格");
+        if (unit == HouseholdDemand.DemandUnit.PER_CAPITA) {
           try {
-            Math.multiplyExact(quantityPerCycle, row.population());
+            Math.multiplyExact(quantityPerCycle, householdEconomy.population());
           } catch (ArithmeticException e) {
             return new HandlerOutcome.Rejected(
                 "quantityPerCycle × 家户人口 超出 long（拒绝：订单路径会当场溢出）: "
                     + quantityPerCycle
                     + " × "
-                    + row.population());
+                    + householdEconomy.population());
           }
         }
         household = Optional.of(householdId);
@@ -122,7 +122,7 @@ public final class EconomyAddDemandHandler implements CommandHandler {
         }
         HexCoord hexCoord = EconomyCommandPayloads.requireHex(COMMAND, payload, "hex");
         requirePriced(base, hexCoord, commodity, "该格");
-        if (unit == DemandEntry.DemandUnit.PER_CAPITA) {
+        if (unit == HouseholdDemand.DemandUnit.PER_CAPITA) {
           try {
             Math.multiplyExact(quantityPerCycle, populationAt(base, hexCoord));
           } catch (ArithmeticException e) {
@@ -143,8 +143,8 @@ public final class EconomyAddDemandHandler implements CommandHandler {
       if (base.demands().containsKey(demandId)) {
         return new HandlerOutcome.Rejected("需求 id 已存在（要替换请先 CancelDemand）: " + demandId.value());
       }
-      DemandEntry entry =
-          new DemandEntry(
+      HouseholdDemand householdDemand =
+          new HouseholdDemand(
               demandId,
               scope,
               household,
@@ -157,9 +157,9 @@ public final class EconomyAddDemandHandler implements CommandHandler {
               expiresDay,
               priority,
               source);
-      Map<DemandId, DemandEntry> demands = new LinkedHashMap<>(base.demands());
-      demands.put(demandId, entry);
-      return new HandlerOutcome.Applied(EconomyChangeSet.between(base, base.withDemands(demands)));
+      Map<DemandId, HouseholdDemand> householdDemands = new LinkedHashMap<>(base.demands());
+      householdDemands.put(demandId, householdDemand);
+      return new HandlerOutcome.Applied(EconomyChangeSet.between(base, base.withHouseholdDemands(householdDemands)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());
     }
@@ -184,12 +184,12 @@ public final class EconomyAddDemandHandler implements CommandHandler {
   static long populationAt(EconomyData base, HexCoord hex) {
     long population = 0L;
     String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
-    for (Map.Entry<HouseholdId, ClassRow> entry : base.classes().entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : base.classes().entrySet()) {
       String rowHex =
           IndustryHexKeys.hexKey(
-              entry.getValue().view().hex().q(), entry.getValue().view().hex().r());
+              householdEconomyEntry.getValue().view().hex().q(), householdEconomyEntry.getValue().view().hex().r());
       if (rowHex.equals(hexKey)) {
-        population = Math.addExact(population, entry.getValue().population());
+        population = Math.addExact(population, householdEconomyEntry.getValue().population());
       }
     }
     return population;
@@ -198,11 +198,11 @@ public final class EconomyAddDemandHandler implements CommandHandler {
   /** 确定性新 id：同前缀现有 id 的尾段序号最大值 + 1；尾段不可解析 ⇒ 抛（fail-closed，不猜）。 */
   private static DemandId generatedId(
       EconomyData base,
-      DemandEntry.DemandScope scope,
+      HouseholdDemand.DemandScope scope,
       String ownerToken,
       CommodityId commodity,
-      DemandEntry.DemandKind kind,
-      DemandEntry.DemandUnit unit) {
+      HouseholdDemand.DemandKind kind,
+      HouseholdDemand.DemandUnit unit) {
     String prefix =
         "demand-"
             + scope.name()
@@ -243,39 +243,39 @@ public final class EconomyAddDemandHandler implements CommandHandler {
     return new DemandId(prefix + (max + 1L));
   }
 
-  static DemandEntry.DemandScope parseScope(String text) {
+  static HouseholdDemand.DemandScope parseScope(String text) {
     try {
-      return DemandEntry.DemandScope.valueOf(text);
+      return HouseholdDemand.DemandScope.valueOf(text);
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException(
           "未知 scope: "
               + text
               + "；合法值: "
-              + java.util.Arrays.toString(DemandEntry.DemandScope.values()));
+              + java.util.Arrays.toString(HouseholdDemand.DemandScope.values()));
     }
   }
 
-  static DemandEntry.DemandKind parseKind(String text) {
+  static HouseholdDemand.DemandKind parseKind(String text) {
     try {
-      return DemandEntry.DemandKind.valueOf(text);
+      return HouseholdDemand.DemandKind.valueOf(text);
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException(
           "未知 kind: "
               + text
               + "；合法值: "
-              + java.util.Arrays.toString(DemandEntry.DemandKind.values()));
+              + java.util.Arrays.toString(HouseholdDemand.DemandKind.values()));
     }
   }
 
-  static DemandEntry.DemandUnit parseUnit(String text) {
+  static HouseholdDemand.DemandUnit parseUnit(String text) {
     try {
-      return DemandEntry.DemandUnit.valueOf(text);
+      return HouseholdDemand.DemandUnit.valueOf(text);
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException(
           "未知 unit: "
               + text
               + "；合法值: "
-              + java.util.Arrays.toString(DemandEntry.DemandUnit.values()));
+              + java.util.Arrays.toString(HouseholdDemand.DemandUnit.values()));
     }
   }
 }

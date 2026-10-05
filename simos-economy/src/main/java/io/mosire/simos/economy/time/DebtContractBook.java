@@ -6,7 +6,7 @@ import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -42,7 +42,7 @@ import java.util.function.Predicate;
  *
  * <p>★★ <b>与派生读物的关系</b>：{@link io.mosire.simos.economy.model.DebtIndex} 是纯派生（只在读时从合同表现算）； {@link
  * io.mosire.simos.economy.migrate.DebtReferenceReconciler} 只在 {@code EconomyData} 构造期按合同表重建 {@code
- * ClassRow.debts}。结算会话内每建一条新合同，调用方用 {@link #withDebtReference} 把债务人行的派生引用补上； 持久化时仍以合同表为唯一权威。
+ * HouseholdEconomy.debts}。结算会话内每建一条新合同，调用方用 {@link #withDebtReference} 把债务人行的派生引用补上； 持久化时仍以合同表为唯一权威。
  */
 public final class DebtContractBook {
 
@@ -481,28 +481,28 @@ public final class DebtContractBook {
   }
 
   /**
-   * ★ 把一条合同的派生引用补进债务人行（幂等；已含 ⇒ 返回原行）。{@code ClassRow.debts} 的权威重建仍在 {@code
+   * ★ 把一条合同的派生引用补进债务人行（幂等；已含 ⇒ 返回原行）。{@code HouseholdEconomy.debts} 的权威重建仍在 {@code
    * DebtReferenceReconciler}（{@code EconomyData} 构造期），本方法只保证结算会话内同一行的引用不落后于合同表。
    */
-  public static ClassRow withDebtReference(ClassRow row, DebtContractId debtId) {
-    Objects.requireNonNull(row, "row 不得为 null");
+  public static HouseholdEconomy withDebtReference(HouseholdEconomy householdEconomy, DebtContractId debtId) {
+    Objects.requireNonNull(householdEconomy, "row 不得为 null");
     Objects.requireNonNull(debtId, "debtId 不得为 null");
-    if (row.debts().contains(debtId)) {
-      return row;
+    if (householdEconomy.debts().contains(debtId)) {
+      return householdEconomy;
     }
-    List<DebtContractId> debts = new ArrayList<>(row.debts());
+    List<DebtContractId> debts = new ArrayList<>(householdEconomy.debts());
     debts.add(debtId);
-    return new ClassRow(
-        row.id(),
-        row.view(),
-        row.population(),
-        row.laborMilli(),
-        row.participationPerMille(),
-        row.money(),
+    return new HouseholdEconomy(
+        householdEconomy.id(),
+        householdEconomy.view(),
+        householdEconomy.population(),
+        householdEconomy.laborMilli(),
+        householdEconomy.participationPerMille(),
+        householdEconomy.money(),
         debts,
-        row.naturalNeeds(),
-        row.effectiveDemand(),
-        row.cycleNaturalNeedMilli());
+        householdEconomy.naturalNeeds(),
+        householdEconomy.effectiveDemand(),
+        householdEconomy.cycleNaturalNeedMilli());
   }
 
   /** 取合同；缺席 ⇒ 具名抛（不允许"减少一条不存在的合同"这种静默 no-op）。 */

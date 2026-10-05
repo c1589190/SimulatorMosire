@@ -23,7 +23,7 @@ import java.util.OptionalLong;
  *   <tr><th>字段</th><th>来源</th><th>窗口</th></tr>
  *   <tr><td>{@link #afterAllocationGrainIncome()}</td><td>{@code FlowRow.income} 的粮商品维</td>
  *       <td><b>本周期已实现</b>（逐日累加、关账日含那次收获；新周期第一天清零；没有 = 0）</td></tr>
- *   <tr><td>{@link #basicRation()}</td><td>{@code ClassRow.cycleNaturalNeedMilli}</td>
+ *   <tr><td>{@link #basicRation()}</td><td>{@code HouseholdEconomy.cycleNaturalNeedMilli}</td>
  *       <td><b>本周期累计</b>自然口粮需要（逐日按日初人口累加；新周期第一天重置为当天那一份）</td></tr>
  *   <tr><td>{@link #nextRoundNecessaryInput()}</td><td>该家户 operator 的 unit 的产业配方
  *       （{@code ⌊plannedCapacityScale × inputPerUnit[GRAIN]⌋}），或具名下标的代理口径

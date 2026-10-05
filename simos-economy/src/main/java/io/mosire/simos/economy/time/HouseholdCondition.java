@@ -6,13 +6,13 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.api.relation.Recipient;
 import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
@@ -25,16 +25,16 @@ import java.util.Optional;
 import java.util.OptionalLong;
 
 /**
- * ★★ <b>S3.3 劳动家户状态读数（派生、不落盘）</b>—— 计划允许"并入 {@code ClassRow} 的派生读数或独立组件"；本类选择 <b>读时派生</b>：不新增
- * {@code EconomyData} 组件、不改变更集/codec 形状，字段由 {@code FlowRow + LaborAllocation + AssetShare +
+ * ★★ <b>S3.3 劳动家户状态读数（派生、不落盘）</b>—— 计划允许"并入 {@code HouseholdEconomy} 的派生读数或独立组件"；本类选择 <b>读时派生</b>：不新增
+ * {@code EconomyData} 组件、不改变更集/codec 形状，字段由 {@code FlowRow + HouseholdLaborCommitment + AssetShare +
  * DebtContract + ProductionLedger(瞬态)} 逐值复算；E1 的 {@code grainCoveragePerMille} 另由调用方传入库存粮（库存真源在
  * actor 侧，economy 不另存一本账）。
  *
  * <pre>
  * unmetNeedMilliGrain/Cloth = 本周期累计未满足（FlowRow.unmetNeed；与"本周期"同窗口）
  * debtStress               = 债务本金 ÷ max(1, 资产份额数量) × 1000（资产估价近似，如实标注为近似）
- * laborSoldMilli           = Σ LaborAllocation(household=本户).laborMilli
- * laborSelfMilli           = Σ LaborAllocation(household=本户 且 actor=本户 actor).laborMilli
+ * laborSoldMilli           = Σ HouseholdLaborCommitment(household=本户).laborMilli
+ * laborSelfMilli           = Σ HouseholdLaborCommitment(household=本户 且 actor=本户 actor).laborMilli
  * rentPaidMilli            = 本日 ledger 里本户作为付方的租规则实付（账本缺失 ⇒ empty，不填 0）
  * wageArrearsMilli         = 本日 ledger 里本户作为受方的工资欠款（WageArrears）
  * grainCoveragePerMille    = 库存粮 ÷ cumulativeRationMilli(人口, 本户 cycleDays)，封顶 1000（读不到账 ⇒ empty）
@@ -155,26 +155,26 @@ public record HouseholdCondition(
     long laborSold = 0L;
     long laborSelf = 0L;
     long cycleDays = 0L;
-    for (LaborAllocation allocation : data.allocations().values()) {
-      if (!allocation.household().equals(household)) {
+    for (HouseholdLaborCommitment laborCommitment : data.allocations().values()) {
+      if (!laborCommitment.household().equals(household)) {
         continue;
       }
-      if (allocation.actor().equals(HouseholdActors.of(household))) {
-        laborSelf += allocation.laborMilli();
+      if (laborCommitment.actor().equals(HouseholdActors.of(household))) {
+        laborSelf += laborCommitment.laborMilli();
       } else {
-        laborSold += allocation.laborMilli();
+        laborSold += laborCommitment.laborMilli();
       }
       // ★ E1：本户的"周期"取它供给的 unit 模板 cycleDays 的最大值（与结算侧 cycleDaysByHousehold 同一条口径）。
-      ProductionUnit unit = data.units().get(new ProductionUnitId(allocation.activity()));
+      ProductionUnit unit = data.units().get(new ProductionUnitId(laborCommitment.activity()));
       Industry industry = unit == null ? null : data.industries().get(unit.industry());
       if (industry != null) {
         cycleDays = Math.max(cycleDays, industry.cycleDays());
       }
     }
-    ClassRow row = data.classes().get(household);
-    if (cycleDays == 0L && row != null) {
+    HouseholdEconomy householdEconomy = data.classes().get(household);
+    if (cycleDays == 0L && householdEconomy != null) {
       // ★ 兜底：一条配额都没有的家户退回"它住的那一格的产业"（同 cycleDaysByHousehold 的兜底）。
-      String hexKey = IndustryHexKeys.hexKey(row.view().hex().q(), row.view().hex().r());
+      String hexKey = IndustryHexKeys.hexKey(householdEconomy.view().hex().q(), householdEconomy.view().hex().r());
       for (Map.Entry<IndustryId, Industry> entry : data.industries().entrySet()) {
         if (IndustryHexKeys.hexKeyOf(entry.getKey()).filter(hexKey::equals).isPresent()) {
           cycleDays = Math.max(cycleDays, entry.getValue().cycleDays());
@@ -196,7 +196,7 @@ public record HouseholdCondition(
     //   的接线不在 E4c 范围：为了避免在没接线前拿一半数据冒充，rentPaid 仍保持 empty（"读不到"），
     //   由后续阶段的逐关系落账读数补。
     OptionalLong rentPaid = OptionalLong.empty();
-    OptionalLong grainCoverage = grainCoveragePerMille(row, cycleDays, grainStockMilli);
+    OptionalLong grainCoverage = grainCoveragePerMille(householdEconomy, cycleDays, grainStockMilli);
     LivelihoodStatus status = livelihoodOf(data, household, laborSold, grainCoverage);
     long stressCycles = status == LivelihoodStatus.DESTITUTE && unmetGrain > 0L ? 1L : 0L;
     return new HouseholdCondition(
@@ -220,11 +220,11 @@ public record HouseholdCondition(
    * OptionalLong#empty()}（明确哨兵，不填 0）。
    */
   private static OptionalLong grainCoveragePerMille(
-      ClassRow row, long cycleDays, OptionalLong grainStockMilli) {
-    if (row == null || grainStockMilli.isEmpty() || cycleDays <= 0L) {
+      HouseholdEconomy householdEconomy, long cycleDays, OptionalLong grainStockMilli) {
+    if (householdEconomy == null || grainStockMilli.isEmpty() || cycleDays <= 0L) {
       return OptionalLong.empty();
     }
-    long cycleNeed = EconomyVocabulary.cumulativeRationMilli(row.population(), cycleDays);
+    long cycleNeed = EconomyVocabulary.cumulativeRationMilli(householdEconomy.population(), cycleDays);
     if (cycleNeed <= 0L) {
       return OptionalLong.empty(); // 0 人口/0 天：覆盖率没有定义，不猜 1000 也不猜 0
     }
@@ -251,11 +251,11 @@ public record HouseholdCondition(
   private static LivelihoodStatus livelihoodOf(
       EconomyData data, HouseholdId household, long laborSold, OptionalLong grainCoveragePerMille) {
     LaborSource source = null;
-    for (LaborAllocation allocation : data.allocations().values()) {
-      if (!allocation.household().equals(household)) {
+    for (HouseholdLaborCommitment laborCommitment : data.allocations().values()) {
+      if (!laborCommitment.household().equals(household)) {
         continue;
       }
-      ProductionUnitId unitId = new ProductionUnitId(allocation.activity());
+      ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
       ProductionRelation relation =
           data.units().containsKey(unitId) ? data.relations().get(unitId) : null;
       if (relation != null) {

@@ -14,9 +14,9 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
-import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.ModeTransition;
@@ -47,10 +47,10 @@ import java.util.TreeSet;
  *       inputSources/outputOwnership/relationTemplateRef）；新组织 {@code ACTIVE} 复用**同一条** {@code
  *       ProductionUnit}（不复制实物、不新 progress）；该 unit 的 {@code modeKey} 改为新 mode key；旧 {@code
  *       Pledge.modeId == fromMode} 的质押改成 toMode（暴露出的 mode 维）；对旧组织 laborSources ∪ organizer 家户逐户写
- *       {@link ClassShare}（旧位置 retain‰、新位置 (1000−retain)‰，0‰ 省略）并更新 {@link ClassStanding}
+ *       {@link ClassShare}（旧位置 retain‰、新位置 (1000−retain)‰，0‰ 省略）并更新 {@link HouseholdClassMembership}
  *       （currentPosition/retainedShares/lastTransitionDay=day/reason；originalPosition 不动）。
  *   <li><b>按身份不动</b>：{@code AssetShare} 本身按 industry 存在，owner/operator/quantity/kind 一律不拆不复制；
- *       债务是家户间债权，不随 mode 复制；已有 {@code LaborAllocation} 的 activity 就是复用中的 unit id，原样有效； relation 挂在
+ *       债务是家户间债权，不随 mode 复制；已有 {@code HouseholdLaborCommitment} 的 activity 就是复用中的 unit id，原样有效； relation 挂在
  *       unit 上，原样有效。
  *   <li><b>失败不改状态</b>：规划阶段（找 mode/structure/position/hex/unit）任一具名失败 ⇒ 该 transition 落 {@code FAILED
  *       + 具名原因}，不修改组织/unit/质押/份额/standing；其余 transition 继续（逐条独立）。
@@ -125,21 +125,21 @@ final class EconomyModeTransitionSettlement {
   static Outcome apply(
       EconomyData base,
       long day,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations,
       LinkedHashMap<ProductionUnitId, ProductionUnit> units,
       Map<AssetShareId, AssetShare> assetShares,
       LinkedHashMap<PledgeId, Pledge> pledges,
-      LinkedHashMap<HouseholdId, ClassStanding> classStandings,
+      LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships,
       LinkedHashMap<ModeTransitionId, ModeTransition> modeTransitions,
       LinkedHashMap<ClassShareId, ClassShare> classShares) {
     Objects.requireNonNull(base, "base");
-    Objects.requireNonNull(rows, "rows");
+    Objects.requireNonNull(householdEconomies, "rows");
     Objects.requireNonNull(organizations, "organizations");
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(assetShares, "assetShares");
     Objects.requireNonNull(pledges, "pledges");
-    Objects.requireNonNull(classStandings, "classStandings");
+    Objects.requireNonNull(classMemberships, "classStandings");
     Objects.requireNonNull(modeTransitions, "modeTransitions");
     Objects.requireNonNull(classShares, "classShares");
     if (modeTransitions.isEmpty()) {
@@ -164,12 +164,12 @@ final class EconomyModeTransitionSettlement {
               base,
               transition,
               day,
-              rows,
+              householdEconomies,
               organizations,
               units,
               assetShares,
               pledges,
-              classStandings,
+              classMemberships,
               classShares);
       if (plan.failureReason != null) {
         modeTransitions.put(
@@ -195,7 +195,7 @@ final class EconomyModeTransitionSettlement {
       organizations.put(plan.newOrganization.id(), plan.newOrganization);
       units.put(plan.updatedUnit.id(), plan.updatedUnit);
       pledges.putAll(plan.updatedPledges);
-      classStandings.putAll(plan.updatedStandings);
+      classMemberships.putAll(plan.updatedClassMemberships);
       classShares.putAll(plan.newClassShares);
       modeTransitions.put(transition.id(), plan.appliedTransition);
       changed = true;
@@ -223,19 +223,19 @@ final class EconomyModeTransitionSettlement {
       ProductionUnit updatedUnit,
       Map<PledgeId, Pledge> updatedPledges,
       Map<ClassShareId, ClassShare> newClassShares,
-      Map<HouseholdId, ClassStanding> updatedStandings,
+      Map<HouseholdId, HouseholdClassMembership> updatedClassMemberships,
       ModeTransition appliedTransition) {}
 
   private static Plan plan(
       EconomyData base,
       ModeTransition transition,
       long day,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<ProductionOrganizationId, ProductionOrganization> organizations,
       Map<ProductionUnitId, ProductionUnit> units,
       Map<AssetShareId, AssetShare> assetShares,
       Map<PledgeId, Pledge> pledges,
-      Map<HouseholdId, ClassStanding> classStandings,
+      Map<HouseholdId, HouseholdClassMembership> classMemberships,
       Map<ClassShareId, ClassShare> classShares) {
     ProductionOrganization organization = organizations.get(transition.organizationId());
     if (organization == null) {
@@ -309,7 +309,7 @@ final class EconomyModeTransitionSettlement {
     if (organizerHousehold == null) {
       return failed(REASON_NO_ORGANIZER_HOUSEHOLD + ":organizer=" + organization.organizer());
     }
-    if (!rows.containsKey(organizerHousehold)) {
+    if (!householdEconomies.containsKey(organizerHousehold)) {
       return failed(REASON_HOUSEHOLD_NOT_FOUND + ":" + organizerHousehold.value());
     }
     ProductionOrganizationId newOrganizationId =
@@ -320,7 +320,7 @@ final class EconomyModeTransitionSettlement {
       return failed(REASON_TARGET_ORGANIZATION_EXISTS + ":" + newOrganizationId.value());
     }
 
-    // ★ 逐户（laborSources ∪ organizer 家户；去重、id 升序）：生成两条 ClassShare + 更新 ClassStanding。
+    // ★ 逐户（laborSources ∪ organizer 家户；去重、id 升序）：生成两条 ClassShare + 更新 HouseholdClassMembership。
     Set<HouseholdId> households = new LinkedHashSet<>(organization.laborSources());
     households.add(organizerHousehold);
     List<HouseholdId> orderedHouseholds = new ArrayList<>(households);
@@ -329,9 +329,9 @@ final class EconomyModeTransitionSettlement {
     int retain = transition.retainOriginalPerMille();
     int migrated = 1000 - retain;
     Map<ClassShareId, ClassShare> newShares = new LinkedHashMap<>();
-    Map<HouseholdId, ClassStanding> updatedStandings = new LinkedHashMap<>();
+    Map<HouseholdId, HouseholdClassMembership> updatedClassMemberships = new LinkedHashMap<>();
     for (HouseholdId household : orderedHouseholds) {
-      if (!rows.containsKey(household)) {
+      if (!householdEconomies.containsKey(household)) {
         return failed(REASON_HOUSEHOLD_NOT_FOUND + ":" + household.value());
       }
       if (retain > 0) {
@@ -357,7 +357,7 @@ final class EconomyModeTransitionSettlement {
         newShares.put(newShareId, newShare);
       }
 
-      ClassStanding existingStanding = classStandings.get(household);
+      HouseholdClassMembership existingClassMembership = classMemberships.get(household);
       ClassPositionId currentPosition =
           retain == 1000 ? organization.classPositionId() : newPosition;
       Map<ClassPositionId, Long> retainedShares = new LinkedHashMap<>();
@@ -367,20 +367,20 @@ final class EconomyModeTransitionSettlement {
       if (migrated > 0) {
         retainedShares.put(newPosition, (long) migrated);
       }
-      ClassStanding nextStanding =
-          new ClassStanding(
+      HouseholdClassMembership nextClassMembership =
+          new HouseholdClassMembership(
               household,
-              existingStanding == null
+              existingClassMembership == null
                   ? organization.classPositionId()
-                  : existingStanding.originalPositionId(),
+                  : existingClassMembership.originalPositionId(),
               currentPosition,
               // ★ P2-B：模式变迁后只参与新位置；旧的可参与集合属于旧 mode，不再沿用。
               Set.of(),
               retainedShares,
-              existingStanding == null ? 0L : existingStanding.consecutiveDebtStressCycles(),
+              existingClassMembership == null ? 0L : existingClassMembership.consecutiveDebtStressCycles(),
               day,
               transition.reason());
-      updatedStandings.put(household, nextStanding);
+      updatedClassMemberships.put(household, nextClassMembership);
     }
 
     // ★ Pledge 的 mode 维：凡 modeId == fromMode 的质押（含非 ACTIVE）改挂 toMode；其余字段逐值不动。
@@ -445,7 +445,7 @@ final class EconomyModeTransitionSettlement {
         updatedUnit,
         updatedPledges,
         newShares,
-        updatedStandings,
+        updatedClassMemberships,
         transition.withStatus(ModeTransition.Status.APPLIED, transition.reason()));
   }
 

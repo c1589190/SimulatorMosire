@@ -20,10 +20,10 @@ import java.util.Optional;
  * ★★ <b>旧档默认阶层结构（E1b）—— "旧档默认 mode / 阶层结构 / 阶层位置"的唯一来源。</b>
  *
  * <p>★★ <b>它解决什么问题</b>：E1a 已把 {@code ProductionMode} / {@code ClassStructure} / {@code
- * ClassPosition} / {@code ClassStanding} 四张新表落进 {@code EconomyData}，但旧档只有 {@code
- * ClassRow.view.stratum}（{@link SocialClassId}）这一件事实。本类把"旧档的 7
+ * ClassPosition} / {@code HouseholdClassMembership} 四张新表落进 {@code EconomyData}，但旧档只有 {@code
+ * HouseholdEconomy.view.stratum}（{@link SocialClassId}）这一件事实。本类把"旧档的 7
  * 个社会阶层"翻译成一套<b>确定、可复现、可审计</b>的默认阶层结构：一个默认 {@link ProductionMode}、一个默认 {@link ClassStructure}、7 个
- * {@link ClassPosition}。迁移器（{@code ClassPositionResolver.seedLegacyClassStandings}）与只读解析器都以本类为唯一拼写点
+ * {@link ClassPosition}。迁移器（{@code ClassPositionResolver.seedLegacyClassMemberships}）与只读解析器都以本类为唯一拼写点
  * —— 其它任何地方不得再写第二套默认映射。
  *
  * <p>★★ <b>ID 三条硬约束</b>（E1b 判据）：
@@ -84,7 +84,7 @@ import java.util.Optional;
  *
  * <p>★ <b>E1b 的行为边界</b>：本类<b>不</b>被任何生产路径自动调用 —— 不接着 {@code EconomyData} 构造器、不进 {@code
  * EconomySeedHandler} / {@code EconomyStateBuilder} / {@code settle*}；只有未来的显式迁移器或读口调用 {@link
- * ClassPositionResolver#seedLegacyClassStandings(EconomyData)} 时，这些常量才会被物化进状态。
+ * ClassPositionResolver#seedLegacyClassMemberships(EconomyData)} 时，这些常量才会被物化进状态。
  */
 public final class LegacyClassStructure {
 
@@ -104,7 +104,7 @@ public final class LegacyClassStructure {
   public static final String POSITION_ID_PREFIX = "legacy-";
 
   /**
-   * ★ 旧档种子写入 {@code ClassStanding.reason} 的具名值：{@code legacyDefault:seedClassStanding}。
+   * ★ 旧档种子写入 {@code HouseholdClassMembership.reason} 的具名值：{@code legacyDefault:seedClassStanding}。
    *
    * <p>命名风格与结算关账的 reason 一致（{@code retainedCurrentView:noObservableEvidence} 那一类）：
    * 冒号前是来源、冒号后是动作。它是状态字段的可审计文本，不是显示给玩家的文本。

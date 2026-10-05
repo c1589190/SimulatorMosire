@@ -11,7 +11,7 @@ import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.market.PriceMode;
 import io.mosire.simos.economy.api.market.SellOrder;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.map.hex.HexCoord;
 import java.math.BigInteger;
@@ -36,7 +36,7 @@ import java.util.Set;
  *   <li>{@code supplyMilli} / {@code effectiveDemandMilli} / {@code needsButCannotAffordMilli}：
  *       <b>读时现算</b>，入口是 {@link MarketSettlement#planOrders}（与真正成交用的是同一条订单生成实现）—— 供给 = 卖订单 {@code
  *       sellable} 之和；有效需求 = 买订单数量之和（已含"预算 &gt; 0 + 按参考价买得起"两重过滤；买方限价 ask 在订单生成时已写入）；
- *   <li>{@code naturalNeedMilli} / {@code cycleNaturalNeedMilli}：读 {@code ClassRow}。 <b>粮</b>用 M2.7
+ *   <li>{@code naturalNeedMilli} / {@code cycleNaturalNeedMilli}：读 {@code HouseholdEconomy}。 <b>粮</b>用 M2.7
  *       丙条累加器（{@code cycleNaturalNeedMilli} = {@code Σ_d dailyRationMilli(pop_d, d)}， {@code pop_d}
  *       = 第 d 天结算前的行人口 = 日初人口）；<b>其它商品</b>用 {@code naturalNeeds}（最近一次结算日那一份日需求）， {@code
  *       cycleNaturalNeedMilli} 对它们恒 0（逐商品累加器尚未实现，<b>不拿日需求冒充周期需要</b>）。★ 粮的累加器尚未累计 （旧档 / 还没结算过）⇒
@@ -195,10 +195,10 @@ public record MarketReadout(
     for (MarketRegion region : regions) {
       rowsByRegion.put(region, new ArrayList<>());
     }
-    for (Map.Entry<HouseholdId, ClassRow> entry : data.classes().entrySet()) {
-      MarketRegion region = regionByHex.get(entry.getValue().view().hex());
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : data.classes().entrySet()) {
+      MarketRegion region = regionByHex.get(householdEconomyEntry.getValue().view().hex());
       if (region != null) {
-        rowsByRegion.get(region).add(entry.getKey());
+        rowsByRegion.get(region).add(householdEconomyEntry.getKey());
       }
     }
     // ★ 一次建好"格 → 行"索引：逐区逐商品调 planOrders 时不再每次重扫全部行。
@@ -244,13 +244,13 @@ public record MarketReadout(
         long dailyNeed = 0L;
         long cycleNeed = 0L;
         for (HouseholdId key : rows) {
-          ClassRow row = data.classes().get(key);
-          if (row == null) {
+          HouseholdEconomy householdEconomy = data.classes().get(key);
+          if (householdEconomy == null) {
             continue;
           }
-          dailyNeed += row.naturalNeeds().getOrDefault(commodity, 0L);
+          dailyNeed += householdEconomy.naturalNeeds().getOrDefault(commodity, 0L);
           if (commodity.equals(EconomySettlement.GRAIN)) {
-            cycleNeed += row.cycleNaturalNeedMilli();
+            cycleNeed += householdEconomy.cycleNaturalNeedMilli();
           }
         }
         long cannotAfford = 0L;
@@ -259,16 +259,16 @@ public record MarketReadout(
         if (grain) {
           long ask = anchorMarket.askPriceOf(commodity);
           for (HouseholdId key : rows) {
-            ClassRow row = data.classes().get(key);
-            if (row == null) {
+            HouseholdEconomy householdEconomy = data.classes().get(key);
+            if (householdEconomy == null) {
               continue;
             }
             // ★ 周期累加器尚未累计（旧档 / 还没结算过）⇒ 退回首行的最近结算日日需求，窗口如实标成
             //   last-settled-day；绝不把"还没累计"读成"没有需要"。
             long need =
-                row.cycleNaturalNeedMilli() > 0L
-                    ? row.cycleNaturalNeedMilli()
-                    : row.naturalNeeds().getOrDefault(commodity, 0L);
+                householdEconomy.cycleNaturalNeedMilli() > 0L
+                    ? householdEconomy.cycleNaturalNeedMilli()
+                    : householdEconomy.naturalNeeds().getOrDefault(commodity, 0L);
             if (need <= 0L || buyers.contains(HouseholdActors.of(key))) {
               continue; // 本轮生成了有效需求 ⇒ 不算"买不起"
             }
@@ -317,9 +317,9 @@ public record MarketReadout(
       unavailable.put("matchResults", MATCH_REPORT_PROCESS_ONLY);
     }
     long missingHouseholdAccounts = 0L;
-    for (Map.Entry<HouseholdId, ClassRow> entry : data.classes().entrySet()) {
-      if (regionByHex.containsKey(entry.getValue().view().hex())
-          && !accounts.householdGoods().containsKey(entry.getKey())) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : data.classes().entrySet()) {
+      if (regionByHex.containsKey(householdEconomyEntry.getValue().view().hex())
+          && !accounts.householdGoods().containsKey(householdEconomyEntry.getKey())) {
         missingHouseholdAccounts++;
       }
     }

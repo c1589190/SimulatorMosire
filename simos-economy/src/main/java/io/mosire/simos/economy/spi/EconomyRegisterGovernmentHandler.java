@@ -13,8 +13,8 @@ import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
@@ -40,11 +40,11 @@ import java.util.Set;
  *  "governmentId"?:  "gov-unit-u-central",   // 缺省 = 派生值；给了必须逐字等于派生值
  *  "household"?:     "hh-gov-u-central",     // 缺省 = 派生值；给了必须逐字等于派生值
  *  "nationRef":"u-central",                  // 必填非空白（辖区引用；本命令不解释国家语义）
- *  "q":0,"r":0,                              // 必填：政府家户的 economy 落点（ClassRow.view.hex）
+ *  "q":0,"r":0,                              // 必填：政府家户的 economy 落点（HouseholdEconomy.view.hex）
  *  "residence"?: "urban",                    // 缺省 urban；既有行缺席 = 保持既有视图
  *  "stratum"?:   "official",                 // 缺省 official（SocialClassId.OFFICIAL）；既有行缺席 = 保持
  *  "population"?: 0, "laborMilli"?: 0, "participationPerMille"?: 0,  // 缺省 = 新建时 0 / 既有行保留
- *  "classPosition"?: "…",                    // 可选的阶层归属（必须已存在）；不给 = 不写 ClassStanding
+ *  "classPosition"?: "…",                    // 可选的阶层归属（必须已存在）；不给 = 不写 HouseholdClassMembership
  *  "issuable"?: ["silver"],                  // 缺省空集（= 纯财政主体，不铸币）；铸币算法后置
  *  "seignioragePerCycle"?: 0, "debtIssuePerCycle"?: 0,
  *  "reason"?: "gm:…"}
@@ -53,7 +53,7 @@ import java.util.Set;
  * <p>★★ <b>写什么（三张表，一次 revision）</b>：
  *
  * <ol>
- *   <li>{@code classes}：给政府家户建/补一条 {@link ClassRow}（人口层/劳动预算/参与率）。缺行 ⇒ 新建（默认 0 人口、 0 劳动、0
+ *   <li>{@code classes}：给政府家户建/补一条 {@link HouseholdEconomy}（人口层/劳动预算/参与率）。缺行 ⇒ 新建（默认 0 人口、 0 劳动、0
  *       参与率、无债务/需求）；有行 ⇒ <b>只更新显式给的字段</b>，其余逐值保留；行内落点与载荷 {@code q/r} 不一致 ⇒ 具名拒（要搬家请走 {@code
  *       economy.MigrateHousehold}，本命令不静默挪行）；
  *   <li>{@code classStandings}：给了 {@code classPosition} 才写（位置必须已存在；当前位置 = 原所属 = 该位置，其余字段保留）； 不给 ⇒
@@ -106,7 +106,7 @@ public final class EconomyRegisterGovernmentHandler
       Registration registration = parse(TYPE, payloadJson);
       if (base.meta().isEmpty()) {
         // ★ 未激活的 economy 是"还没播种"：首条 economy.Seed 会整份覆写该切片（EconomySeedHandler 的首次分支），
-        //   先登记的政府/ClassRow 会被静默抹掉 ⇒ 这里具名拒，要求先激活（先 economy.Seed 再登记 GOV）。
+        //   先登记的政府/HouseholdEconomy 会被静默抹掉 ⇒ 这里具名拒，要求先激活（先 economy.Seed 再登记 GOV）。
         return new HandlerOutcome.Rejected(
             TYPE + " 要求 economy 切片已激活（先 economy.Seed 播种再登记 GOV；未激活时登记会被首次播种覆写）");
       }
@@ -114,11 +114,11 @@ public final class EconomyRegisterGovernmentHandler
       String reason = registration.reason() == null ? "gm:" + TYPE : registration.reason();
 
       // ── ① classes：政府家户的人口层/劳动层行（缺 ⇒ 新建；有 ⇒ 只改显式字段）──────────────
-      ClassRow existingRow = base.classes().get(registration.household());
-      ClassRow row;
-      if (existingRow == null) {
-        row =
-            new ClassRow(
+      HouseholdEconomy existingHouseholdEconomy = base.classes().get(registration.household());
+      HouseholdEconomy householdEconomy;
+      if (existingHouseholdEconomy == null) {
+        householdEconomy =
+            new HouseholdEconomy(
                 registration.household(),
                 new CohortKey(registration.hex(), registration.residence(), registration.stratum()),
                 registration.population(),
@@ -130,35 +130,35 @@ public final class EconomyRegisterGovernmentHandler
                 Map.of(),
                 0L);
       } else {
-        if (!existingRow.view().hex().equals(registration.hex())) {
+        if (!existingHouseholdEconomy.view().hex().equals(registration.hex())) {
           return new HandlerOutcome.Rejected(
               "政府家户 "
                   + registration.household().value()
                   + " 的 economy 落点已在 "
-                  + existingRow.view().hex()
+                  + existingHouseholdEconomy.view().hex()
                   + "，与载荷 q/r="
                   + registration.hex()
                   + " 不一致；要搬家请走 economy.MigrateHousehold（本命令不静默挪行）");
         }
         // ★ residence/stratum：给了就必须与既有视图一致；缺席 = 保持既有（不把"补登记"变成视图重置）。
         if (registration.residenceSpecified()
-            && registration.residence() != existingRow.view().residence()) {
+            && registration.residence() != existingHouseholdEconomy.view().residence()) {
           return new HandlerOutcome.Rejected(
               "政府家户 "
                   + registration.household().value()
                   + " 的居住视图已在 "
-                  + existingRow.view().residence()
+                  + existingHouseholdEconomy.view().residence()
                   + "，与载荷 residence="
                   + registration.residence()
                   + " 不一致（视图是身份之外的现状，请显式迁移/另行配置）");
         }
         if (registration.stratumSpecified()
-            && !registration.stratum().equals(existingRow.view().stratum())) {
+            && !registration.stratum().equals(existingHouseholdEconomy.view().stratum())) {
           return new HandlerOutcome.Rejected(
               "政府家户 "
                   + registration.household().value()
                   + " 的阶层视图已在 "
-                  + existingRow.view().stratum()
+                  + existingHouseholdEconomy.view().stratum()
                   + "，与载荷 stratum="
                   + registration.stratum()
                   + " 不一致（视图是身份之外的现状，请显式迁移/另行配置）");
@@ -166,33 +166,33 @@ public final class EconomyRegisterGovernmentHandler
         long population =
             registration.populationSpecified()
                 ? registration.population()
-                : existingRow.population();
+                : existingHouseholdEconomy.population();
         long laborMilli =
             registration.laborMilliSpecified()
                 ? registration.laborMilli()
-                : existingRow.laborMilli();
+                : existingHouseholdEconomy.laborMilli();
         int participation =
             registration.participationSpecified()
                 ? registration.participationPerMille()
-                : existingRow.participationPerMille();
-        row =
-            new ClassRow(
-                existingRow.id(),
-                existingRow.view(),
+                : existingHouseholdEconomy.participationPerMille();
+        householdEconomy =
+            new HouseholdEconomy(
+                existingHouseholdEconomy.id(),
+                existingHouseholdEconomy.view(),
                 population,
                 laborMilli,
                 participation,
-                existingRow.money(),
-                existingRow.debts(),
-                existingRow.naturalNeeds(),
-                existingRow.effectiveDemand(),
-                existingRow.cycleNaturalNeedMilli());
+                existingHouseholdEconomy.money(),
+                existingHouseholdEconomy.debts(),
+                existingHouseholdEconomy.naturalNeeds(),
+                existingHouseholdEconomy.effectiveDemand(),
+                existingHouseholdEconomy.cycleNaturalNeedMilli());
       }
-      Map<HouseholdId, ClassRow> classes = new LinkedHashMap<>(base.classes());
-      classes.put(registration.household(), row);
+      Map<HouseholdId, HouseholdEconomy> householdEconomies = new LinkedHashMap<>(base.classes());
+      householdEconomies.put(registration.household(), householdEconomy);
 
       // ── ② classStandings：给了 classPosition 才写（位置引用必须存在）──────────────
-      Map<HouseholdId, ClassStanding> standings = new LinkedHashMap<>(base.classStandings());
+      Map<HouseholdId, HouseholdClassMembership> classMemberships = new LinkedHashMap<>(base.classStandings());
       if (registration.classPositionId() != null) {
         ClassPositionId positionId = registration.classPositionId();
         ClassPosition position = base.classPositions().get(positionId);
@@ -202,16 +202,16 @@ public final class EconomyRegisterGovernmentHandler
                   + " 的 classPosition 不存在（先 economy.GmAdjust.upsertClassPosition）: "
                   + positionId.value());
         }
-        ClassStanding previous = base.classStandings().get(registration.household());
-        standings.put(
+        HouseholdClassMembership previousClassMembership = base.classStandings().get(registration.household());
+        classMemberships.put(
             registration.household(),
-            new ClassStanding(
+            new HouseholdClassMembership(
                 registration.household(),
                 positionId,
                 positionId,
-                previous == null ? Set.of() : previous.participatingPositionIds(),
-                previous == null ? Map.of() : previous.retainedShares(),
-                previous == null ? 0L : previous.consecutiveDebtStressCycles(),
+                previousClassMembership == null ? Set.of() : previousClassMembership.participatingPositionIds(),
+                previousClassMembership == null ? Map.of() : previousClassMembership.retainedShares(),
+                previousClassMembership == null ? 0L : previousClassMembership.consecutiveDebtStressCycles(),
                 day,
                 reason));
       }
@@ -266,7 +266,7 @@ public final class EconomyRegisterGovernmentHandler
       governments.put(governmentId, government);
 
       EconomyData projected =
-          base.withClasses(classes).withClassStandings(standings).withGovernments(governments);
+          base.withHouseholdEconomies(householdEconomies).withClassMemberships(classMemberships).withGovernments(governments);
       EconomyLog.organization()
           .info(
               "event=GOVERNMENT_REGISTERED government={} govUnit={} household={} population={}"
@@ -275,9 +275,9 @@ public final class EconomyRegisterGovernmentHandler
               governmentId.value(),
               registration.govUnitId(),
               registration.household().value(),
-              row.population(),
-              row.laborMilli(),
-              row.participationPerMille(),
+              householdEconomy.population(),
+              householdEconomy.laborMilli(),
+              householdEconomy.participationPerMille(),
               issuable,
               seignioragePerCycle,
               debtIssuePerCycle,
@@ -472,7 +472,7 @@ public final class EconomyRegisterGovernmentHandler
     return GovernmentHouseholds.of(govUnitId).value();
   }
 
-  /** 只读：本命令的默认 reason 形态（未给 reason 时写进 ClassStanding 的审计文本）。 */
+  /** 只读：本命令的默认 reason 形态（未给 reason 时写进 HouseholdClassMembership 的审计文本）。 */
   public static String defaultReason() {
     return "gm:" + TYPE;
   }

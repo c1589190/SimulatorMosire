@@ -5,10 +5,10 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import java.util.Objects;
 
 /**
- * ★★ <b>S3.4 一条具名的阶层写回审计读数</b>：关账日 {@code ClassRow.view} 从 {@code fromClass} 跳到 {@code toClass}
+ * ★★ <b>S3.4 一条具名的阶层写回审计读数</b>：关账日 {@code HouseholdEconomy.view} 从 {@code fromClass} 跳到 {@code toClass}
  * 的事实。
  *
- * <p>★ <b>它不是状态</b>：状态真值是 {@code ClassRow.view.stratum}；本记录只服务读口（{@code
+ * <p>★ <b>它不是状态</b>：状态真值是 {@code HouseholdEconomy.view.stratum}；本记录只服务读口（{@code
  * ApiViews.classTransitions}）与 V 阶段的"写回真的发生了"核对。★ {@code reason} 保留 {@code lastClassReason} 的语义（由
  * {@code HouseholdClassRule.Classification.reason} 给出），不另造一套解释。
  */

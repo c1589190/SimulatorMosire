@@ -25,7 +25,8 @@ import java.util.Objects;
  *   <li>{@code economy:<mapId>} —— 该地图的经济切片根主体（第 2 段是根主体 {@code Entity(∅,·)}）
  *   <li>{@code economy:<mapId>:industry.<id>} —— 产业（类型名 {@code "Industry"}）；无记录 ⇒ 空候选
  *   <li>{@code economy:<mapId>:debt.<id>} —— 债务（类型名 {@code "Debt"}）；无记录 ⇒ 空候选
- *   <li>{@code economy:<mapId>:class.<cohort>} —— 家户行（类型名 {@code "ClassRow"}）；无记录 ⇒ 空候选。 {@code
+ *   <li>{@code economy:<mapId>:class.<cohort>} —— 家户经济（Java 类型 {@code HouseholdEconomy}；对外类型名 wire 仍为
+ *       {@code "ClassRow"}）；无记录 ⇒ 空候选。 {@code
  *       <cohort>} = {@link CohortKey#toString()} 的**规范串**（如 {@code 0_0|rural|poor_peasant}）
  *   <li>{@code economy:<mapId>:flow.<cohort>} —— 周期流水（类型名 {@code "FlowRow"}）；无记录 ⇒ 空候选
  * </ul>
@@ -85,7 +86,7 @@ public final class EconomyResolver implements Resolver {
     return switch (entity.kind().get()) {
       case "industry" -> resolveIndustry(data, mapId, entity.name());
       case "debt" -> resolveDebt(data, mapId, entity.name());
-      case "class" -> resolveClassRow(data, mapId, entity.name());
+      case "class" -> resolveHouseholdEconomy(data, mapId, entity.name());
       case "flow" -> resolveFlowRow(data, mapId, entity.name());
       default -> empty(); // 其它 kind 的合法地址，本模块不服务
     };
@@ -113,7 +114,7 @@ public final class EconomyResolver implements Resolver {
         "Debt");
   }
 
-  private static QueryResult resolveClassRow(EconomyData data, String mapId, String name) {
+  private static QueryResult resolveHouseholdEconomy(EconomyData data, String mapId, String name) {
     // ★ S1：class 的局部名 = 家户**稳定身份**（HouseholdId）的规范串；旧档的 CohortKey 串由
     //   EconomyCodec 在读入时映射成 ofLegacy 身份（地址解析器不复述那段兼容）。
     HouseholdId id = HouseholdId.parse(name);

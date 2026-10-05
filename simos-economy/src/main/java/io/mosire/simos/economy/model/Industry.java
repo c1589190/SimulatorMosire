@@ -22,7 +22,7 @@ import java.util.Set;
  * <p>★ **不再是逐生产单位**（§1 取代表）：周期/进度/投入/产出函数都挂在产业这一层，复杂度不随人口或单位数线性增长。
  *
  * <p>★★ <b>{@link #capacity()} 曾是 K3 的落点（2026-09-27 裁定）：本格该产业的产能总量</b>（键 = {@link AssetKind}，单位同
- * {@link #capacityPerUnit()}：{@code LAND} 千分亩、其余件）。改前它散在各 {@code ClassRow.meansOfProduction} 里，
+ * {@link #capacityPerUnit()}：{@code LAND} 千分亩、其余件）。改前它散在各 {@code HouseholdEconomy.meansOfProduction} 里，
  * 收获时靠 {@code Σ各行} 折出规模 —— 那是"家户持有生产资料"的形态；K2 把行变成家户之后，产能曾是**该格该产业的技术属性**。 ★ <b>B.2 起生产规模只从 {@link
  * AssetShare} 派生</b>（见 {@code ProductionUnitBook}），本字段降级为旧档兼容位（见下方 B.2b 段）—— <b>不再有任何生产读者</b>。
  *
@@ -65,7 +65,7 @@ import java.util.Set;
  *   <li>{@code dailyLaborPerUnit ≥ 0}、{@code laborPerUnit ≥ 0}；四张表的逐值 {@code ≥ 0}（§6.4 存量非负的下界）
  *   <li>**{@code capacityPerUnit} 不得为空**（"单位规模"的锚；见 {@link ProductionRecipe} 的构造期守卫）
  *   <li>**{@code slots} 非空、逐项非空、{@code id} 不重复**（槽位是"制度允许的角色"，**不含人口占比**—— 占比是 {@code
- *       ClassRow.population} 的观测派生，见 {@link ClassSlot} 的类注释）
+ *       HouseholdEconomy.population} 的观测派生，见 {@link ClassSlot} 的类注释）
  * </ul>
  *
  * <p>★ **各表都保序不可变**：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**绝不用 {@code
@@ -103,7 +103,7 @@ import java.util.Set;
  * @param outputPerUnit 每 1 单位规模的基准产出（农业 = 每亩 67 粮，v2 spec §10.3 标定值；织机 = 每台 N 匹布）；键值非空、 逐值 ≥ 0。★
  *     键已能放多商品，V7 起"每单位什么"由 {@link #capacityPerUnit()} 说清楚，不再是隐式约定（亩）
  * @param cycleInputPerUnit 每 1 单位规模**每周期一次性**投入（v2 spec §3.3；R3 换型：值侧带上商品维度）。**量纲**：最小计量单位 /
- *     单位规模（{@code LAND} 的键值是 **毫粮/亩**）。★ 别与 {@code ClassRow.meansOfProduction} 的 {@code
+ *     单位规模（{@code LAND} 的键值是 **毫粮/亩**）。★ 别与 {@code HouseholdEconomy.meansOfProduction} 的 {@code
  *     LAND}（**千分亩**） 混——现扣步里要先 {@code / 1000} 换成亩。**键 = 这段投入挂在哪种生产资料上**（一种归类，不要求它同时是产能约束：
  *     "工具的保养要耗粮"完全可以只出现在投入表里）；**合计**才进规模公式。键值非空、逐值 ≥ 0
  * @param slots 该制度允许的阶层槽位；非空、id 不重复（**不含人口占比**）

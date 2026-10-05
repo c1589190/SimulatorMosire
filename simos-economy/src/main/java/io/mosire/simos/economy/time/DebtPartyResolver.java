@@ -15,7 +15,7 @@ import io.mosire.simos.economy.migrate.LegacyClassStructure;
 import io.mosire.simos.economy.model.ClassPosition;
 import io.mosire.simos.economy.model.ClassPosition.RelationToMeans;
 import io.mosire.simos.economy.model.ClassPosition.SurplusRole;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
@@ -54,7 +54,7 @@ import java.util.Optional;
  *   <li>仍解析不到 ⇒ 空 + 具名 reason（{@code no-population-composition:...} 等）。
  * </ol>
  *
- * <p><b>人口拆分的唯一口径</b>：用 {@link ClassRow#population()}（不用 {@code Membership.count} 二次聚合）。
+ * <p><b>人口拆分的唯一口径</b>：用 {@link HouseholdEconomy#population()}（不用 {@code Membership.count} 二次聚合）。
  * 理由是行人口已经是经济切片的权威存量，且与口粮/劳动/需求同源；{@code Membership} 的批次归属可能滞后于死亡回写，
  * 两处口径一旦漂开，"谁人口多谁多担债"会静默改变。拆分走全仓唯一实现 {@link ProportionalSplit}（最大余数法）， 目标家户按 {@link
  * HouseholdId#value()} 升序，故可重放。
@@ -396,11 +396,11 @@ final class DebtPartyResolver {
     }
     LinkedHashSet<HouseholdId> positionMatches = new LinkedHashSet<>();
     LinkedHashSet<HouseholdId> legacyMatches = new LinkedHashSet<>();
-    for (ClassRow row : data.classes().values()) {
-      if (!row.view().hex().equals(targetHex)) {
+    for (HouseholdEconomy householdEconomy : data.classes().values()) {
+      if (!householdEconomy.view().hex().equals(targetHex)) {
         continue;
       }
-      Optional<ClassPositionId> positionId = ClassPositionResolver.resolveCurrent(data, row.id());
+      Optional<ClassPositionId> positionId = ClassPositionResolver.resolveCurrent(data, householdEconomy.id());
       ClassPosition position = positionId.map(data.classPositions()::get).orElse(null);
       boolean positionMatch = false;
       boolean legacyMatch = false;
@@ -409,19 +409,19 @@ final class DebtPartyResolver {
             position != null
                 && (position.relationToMeans() == RelationToMeans.OWNER
                     || position.surplusRole() == SurplusRole.SURPLUS_RECEIVER);
-        legacyMatch = row.view().stratum().equals(SocialClassId.LANDLORD);
+        legacyMatch = householdEconomy.view().stratum().equals(SocialClassId.LANDLORD);
       } else if (!isFeudalIndustry(data, actor)) {
         positionMatch =
             position != null
                 && LegacyClassStructure.socialClassOf(position.id())
                     .filter(SocialClassId.ARTISAN::equals)
                     .isPresent();
-        legacyMatch = row.view().stratum().equals(SocialClassId.ARTISAN);
+        legacyMatch = householdEconomy.view().stratum().equals(SocialClassId.ARTISAN);
       }
       if (positionMatch) {
-        positionMatches.add(row.id());
+        positionMatches.add(householdEconomy.id());
       } else if (legacyMatch) {
-        legacyMatches.add(row.id());
+        legacyMatches.add(householdEconomy.id());
       }
     }
 
@@ -451,12 +451,12 @@ final class DebtPartyResolver {
             + traceOf(positionResolution, legacyResolution));
   }
 
-  /** 旧 cohort 受方：在该 hex 上按 {@link ClassRow#view()} 逐字段相等匹配。 */
+  /** 旧 cohort 受方：在该 hex 上按 {@link HouseholdEconomy#view()} 逐字段相等匹配。 */
   private static Resolution resolveCohort(EconomyData data, CohortKey cohort) {
     LinkedHashSet<HouseholdId> households = new LinkedHashSet<>();
-    for (ClassRow row : data.classes().values()) {
-      if (row.view().equals(cohort)) {
-        households.add(row.id());
+    for (HouseholdEconomy householdEconomy : data.classes().values()) {
+      if (householdEconomy.view().equals(cohort)) {
+        households.add(householdEconomy.id());
       }
     }
     if (households.isEmpty()) {
@@ -469,7 +469,7 @@ final class DebtPartyResolver {
     return Resolution.unresolved(resolution.reason());
   }
 
-  /** 人口份额：按 {@link ClassRow#population()} 最大余数拆分；0 人口/缺行的家户不参与，目标按 id 升序。 */
+  /** 人口份额：按 {@link HouseholdEconomy#population()} 最大余数拆分；0 人口/缺行的家户不参与，目标按 id 升序。 */
   private static Resolution splitByPopulation(
       EconomyData data, Collection<HouseholdId> households, String source, String detail) {
     if (households == null || households.isEmpty()) {
@@ -481,13 +481,13 @@ final class DebtPartyResolver {
     long[] weights = new long[ordered.size()];
     long totalPopulation = 0L;
     for (HouseholdId household : ordered) {
-      ClassRow row = data.classes().get(household);
-      if (row == null || row.population() <= 0L) {
+      HouseholdEconomy householdEconomy = data.classes().get(household);
+      if (householdEconomy == null || householdEconomy.population() <= 0L) {
         continue;
       }
       targets.add(household);
-      weights[targets.size() - 1] = row.population();
-      totalPopulation = Math.addExact(totalPopulation, row.population());
+      weights[targets.size() - 1] = householdEconomy.population();
+      totalPopulation = Math.addExact(totalPopulation, householdEconomy.population());
     }
     if (targets.isEmpty()) {
       return Resolution.unresolved("no-population-composition:all-zero-or-missing:" + detail);

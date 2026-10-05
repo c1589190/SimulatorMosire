@@ -15,15 +15,15 @@ import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
-import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.DebtContract;
-import io.mosire.simos.economy.model.DemandEntry;
+import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.Industry;
@@ -68,7 +68,7 @@ import java.util.Set;
  *
  * <ul>
  *   <li>{@code assetShares}（按 {@code industry} 定位）与引用它们的 {@code pledges}；
- *   <li>{@code classes}（按 {@code ClassRow.view().hex()} 定位）、同键的 {@code flows}、{@code memberships}、
+ *   <li>{@code classes}（按 {@code HouseholdEconomy.view().hex()} 定位）、同键的 {@code flows}、{@code memberships}、
  *       {@code classStandings}、{@code classShares}、{@code allocations}（按 {@code household} 定位）；
  *   <li>清空区域内家户所涉的 {@code debtContracts}（按 debtor/creditor 定位）；引用被清合同/份额的 {@code pledges}；
  *   <li>{@code demands}：HEX 范围按格键命中；HOUSEHOLD 范围按被清家户命中；
@@ -189,9 +189,9 @@ public final class EconomyClearRegionHandler
 
     // ③ 家户行：view().hex() 定位（CohortKey 的"家户当前视图"就是区域归属）。
     Set<HouseholdId> removedClasses = new LinkedHashSet<>();
-    for (Map.Entry<HouseholdId, ClassRow> entry : base.classes().entrySet()) {
-      if (targetHexes.contains(entry.getValue().view().hex())) {
-        removedClasses.add(entry.getKey());
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : base.classes().entrySet()) {
+      if (targetHexes.contains(householdEconomyEntry.getValue().view().hex())) {
+        removedClasses.add(householdEconomyEntry.getKey());
       }
     }
 
@@ -203,17 +203,17 @@ public final class EconomyClearRegionHandler
         withoutKeys(base.relations(), removedUnits);
     Map<ProductionUnitId, OperatorCondition> operatorConditions =
         withoutKeys(base.operatorConditions(), removedUnits);
-    Map<HouseholdId, ClassRow> classes = withoutKeys(base.classes(), removedClasses);
+    Map<HouseholdId, HouseholdEconomy> householdEconomies = withoutKeys(base.classes(), removedClasses);
     Map<HouseholdId, FlowRow> flows = withoutKeys(base.flows(), removedClasses);
-    Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>(base.allocations());
-    allocations
+    Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments = new LinkedHashMap<>(base.allocations());
+    laborCommitments
         .entrySet()
         .removeIf(
             entry -> {
-              LaborAllocation allocation = entry.getValue();
-              return removedClasses.contains(allocation.household())
-                  || isRemovedIndustryActor(allocation, removedIndustryValues)
-                  || removedUnitValues.contains(allocation.activity());
+              HouseholdLaborCommitment laborCommitment = entry.getValue();
+              return removedClasses.contains(laborCommitment.household())
+                  || isRemovedIndustryActor(laborCommitment, removedIndustryValues)
+                  || removedUnitValues.contains(laborCommitment.activity());
             });
     Map<DebtContractId, DebtContract> debtContracts = new LinkedHashMap<>(base.debtContracts());
     debtContracts
@@ -261,16 +261,16 @@ public final class EconomyClearRegionHandler
             entry ->
                 removedClasses.contains(entry.getValue().householdId())
                     || removedTransitions.contains(entry.getValue().transitionId()));
-    Map<HouseholdId, ClassStanding> classStandings =
+    Map<HouseholdId, HouseholdClassMembership> classMemberships =
         withoutKeys(base.classStandings(), removedClasses);
 
     Map<HexCoord, Market> markets = withoutKeys(base.markets(), targetHexes);
-    Map<DemandId, DemandEntry> demands = new LinkedHashMap<>(base.demands());
-    demands
+    Map<DemandId, HouseholdDemand> householdDemands = new LinkedHashMap<>(base.demands());
+    householdDemands
         .entrySet()
         .removeIf(
             entry -> {
-              DemandEntry demand = entry.getValue();
+              HouseholdDemand demand = entry.getValue();
               return demand.household().map(removedClasses::contains).orElse(false)
                   || demand.hex().map(targetHexes::contains).orElse(false);
             });
@@ -292,12 +292,12 @@ public final class EconomyClearRegionHandler
             .withClassShares(classShares)
             .withModeTransitions(modeTransitions)
             .withProductionOrganizations(organizations)
-            .withAllocations(allocations)
+            .withLaborCommitments(laborCommitments)
             .withFlows(flows)
             .withDebtContracts(debtContracts)
-            .withDemands(demands)
+            .withHouseholdDemands(householdDemands)
             .withCrisisSignals(crisisSignals)
-            .withClassStandings(classStandings)
+            .withClassMemberships(classMemberships)
             .withUnits(units)
             .withAssetShares(assetShares)
             .withMarkets(markets)
@@ -308,7 +308,7 @@ public final class EconomyClearRegionHandler
     return new EconomyData(
         staged.meta(),
         staged.industries(),
-        classes,
+        householdEconomies,
         staged.debtContracts(),
         staged.flows(),
         staged.allocations(),
@@ -375,11 +375,11 @@ public final class EconomyClearRegionHandler
    * 是自由档（actor id 可与产业同名），若它本身与 activity 都未被清则原样保留——不把"家户恰好叫某个产业名"误伤成区域数据。
    */
   private static boolean isRemovedIndustryActor(
-      LaborAllocation allocation, Set<String> removedIndustryValues) {
-    if (!removedIndustryValues.contains(allocation.actor().id())) {
+      HouseholdLaborCommitment laborCommitment, Set<String> removedIndustryValues) {
+    if (!removedIndustryValues.contains(laborCommitment.actor().id())) {
       return false;
     }
-    ActorKind kind = allocation.actor().kind();
+    ActorKind kind = laborCommitment.actor().kind();
     return kind == ActorKind.ORGANIZATION;
   }
 

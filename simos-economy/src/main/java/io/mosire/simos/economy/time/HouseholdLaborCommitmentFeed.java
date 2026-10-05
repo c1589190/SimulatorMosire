@@ -20,11 +20,11 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li><b>一份报告覆盖一个 map</b>（键 = mapId）。
  * </ol>
  */
-public final class LaborAllocationFeed {
+public final class HouseholdLaborCommitmentFeed {
 
   private static final Map<String, Entry> BY_MAP = new ConcurrentHashMap<>();
 
-  private LaborAllocationFeed() {}
+  private HouseholdLaborCommitmentFeed() {}
 
   /** 投递一份报告（旧档/mode 未接线的世界不投递 ⇒ 读侧报"读不到"，不是"分配了 0"）。 */
   public static void publish(String mapId, LaborQueueReport report) {

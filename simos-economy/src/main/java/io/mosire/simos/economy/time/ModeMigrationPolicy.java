@@ -15,12 +15,12 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.ProductionRelation;
 import io.mosire.simos.economy.model.AssetShare;
 import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.ClassStanding;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DefaultProductionModes;
@@ -239,11 +239,11 @@ public final class ModeMigrationPolicy {
       EconomyData base,
       Map<ProductionOrganizationId, ProductionOrganization> organizations,
       Map<ProductionUnitId, ProductionUnit> units,
-      Map<HouseholdId, ClassRow> rows,
-      Map<HouseholdId, ClassStanding> standings,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<HouseholdId, HouseholdClassMembership> classMemberships,
       Map<AssetShareId, AssetShare> assetShares,
       Map<ProductionUnitId, ProductionRelation> relations,
-      Map<LaborAllocationId, LaborAllocation> allocations,
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HexCoord, Market> markets,
       Map<DebtContractId, DebtContract> debts,
       AccountSession accounts,
@@ -254,10 +254,10 @@ public final class ModeMigrationPolicy {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(organizations, "organizations");
     Objects.requireNonNull(units, "units");
-    Objects.requireNonNull(rows, "rows");
-    Objects.requireNonNull(standings, "standings");
+    Objects.requireNonNull(householdEconomies, "rows");
+    Objects.requireNonNull(classMemberships, "standings");
     Objects.requireNonNull(assetShares, "assetShares");
-    Objects.requireNonNull(allocations, "allocations");
+    Objects.requireNonNull(laborCommitments, "allocations");
     Objects.requireNonNull(markets, "markets");
     Objects.requireNonNull(debts, "debts");
     Objects.requireNonNull(accounts, "accounts");
@@ -291,7 +291,7 @@ public final class ModeMigrationPolicy {
         MarketDemandBook.build(
             marketReports,
             topology,
-            rows,
+            householdEconomies,
             units,
             base.industries(),
             assetShares,
@@ -302,40 +302,40 @@ public final class ModeMigrationPolicy {
             horizonDays);
 
     Map<HouseholdId, HouseholdMode> modeByHousehold = new LinkedHashMap<>();
-    for (HouseholdId household : sortedHouseholds(rows)) {
-      ClassRow row = rows.get(household);
-      ClassStanding standing = standings.get(household);
-      if (row == null || row.population() <= 0L || standing == null) {
+    for (HouseholdId household : sortedHouseholds(householdEconomies)) {
+      HouseholdEconomy householdEconomy = householdEconomies.get(household);
+      HouseholdClassMembership classMembership = classMemberships.get(household);
+      if (householdEconomy == null || householdEconomy.population() <= 0L || classMembership == null) {
         continue;
       }
-      ClassPosition position = base.classPositions().get(standing.currentPositionId());
+      ClassPosition position = base.classPositions().get(classMembership.currentPositionId());
       if (position == null) {
         continue;
       }
       modeByHousehold.put(
-          household, new HouseholdMode(household, row.view().hex(), position.modeId(), position.id()));
+          household, new HouseholdMode(household, householdEconomy.view().hex(), position.modeId(), position.id()));
     }
     if (modeByHousehold.isEmpty()) {
       return MigrationPlan.empty();
     }
 
-    List<HexCoord> hexes = globalHexes(rows, units, markets);
+    List<HexCoord> hexes = globalHexes(householdEconomies, units, markets);
     List<ProductionMode> modes = sortedModes(base);
     Map<ProductionModeId, List<ClassPosition>> producingPositions =
         producingPositionsByMode(base, modes);
 
     LinkedHashMap<HouseholdId, List<MoveDraft>> draftsBySource = new LinkedHashMap<>();
-    for (HouseholdId source : sortedHouseholds(rows)) {
+    for (HouseholdId source : sortedHouseholds(householdEconomies)) {
       HouseholdMode current = modeByHousehold.get(source);
       if (current == null) {
         continue;
       }
-      ClassRow sourceRow = rows.get(source);
+      HouseholdEconomy sourceHouseholdEconomy = householdEconomies.get(source);
       List<MoveDraft> drafts =
           planForSource(
               base,
               source,
-              sourceRow,
+              sourceHouseholdEconomy,
               current,
               hexes,
               modes,
@@ -343,7 +343,7 @@ public final class ModeMigrationPolicy {
               modeByHousehold,
               organizations,
               units,
-              rows,
+              householdEconomies,
               assetShares,
               relations,
               markets,
@@ -362,12 +362,12 @@ public final class ModeMigrationPolicy {
     }
 
     List<MigrationMove> moves = new ArrayList<>();
-    for (HouseholdId source : sortedHouseholds(rows)) {
+    for (HouseholdId source : sortedHouseholds(householdEconomies)) {
       List<MoveDraft> drafts = draftsBySource.get(source);
       if (drafts == null) {
         continue;
       }
-      long sourcePopulation = rows.get(source).population();
+      long sourcePopulation = householdEconomies.get(source).population();
       long[] populations = new long[drafts.size()];
       for (int i = 0; i < drafts.size(); i++) {
         populations[i] = drafts.get(i).population;
@@ -406,7 +406,7 @@ public final class ModeMigrationPolicy {
   private static List<MoveDraft> planForSource(
       EconomyData base,
       HouseholdId source,
-      ClassRow sourceRow,
+      HouseholdEconomy sourceHouseholdEconomy,
       HouseholdMode current,
       List<HexCoord> hexes,
       List<ProductionMode> modes,
@@ -414,7 +414,7 @@ public final class ModeMigrationPolicy {
       Map<HouseholdId, HouseholdMode> modeByHousehold,
       Map<ProductionOrganizationId, ProductionOrganization> organizations,
       Map<ProductionUnitId, ProductionUnit> units,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<AssetShareId, AssetShare> assetShares,
       Map<ProductionUnitId, ProductionRelation> relations,
       Map<HexCoord, Market> markets,
@@ -448,14 +448,14 @@ public final class ModeMigrationPolicy {
         buildTargets(
             base,
             source,
-            sourceRow,
+            sourceHouseholdEconomy,
             current,
             currentPerLabor,
             hexes,
             modes,
             producingPositions,
             modeByHousehold,
-            rows,
+            householdEconomies,
             units,
             assetShares,
             claimedByOrganizations,
@@ -478,30 +478,30 @@ public final class ModeMigrationPolicy {
       if (!higher.isEmpty()) {
         return allocate(
             source,
-            sourceRow.population(),
-            sourceRow.population(),
+            sourceHouseholdEconomy.population(),
+            sourceHouseholdEconomy.population(),
             A_RULE_TRANSFER_SPEED_PER_MILLE,
             MigrationMove.REASON_A_RULE_MAX_SPEED,
             higher,
             base,
-            sourceRow,
+            sourceHouseholdEconomy,
             assetShares,
             reservedIdle,
             claimedByOrganizations);
       }
       if (!expected.canSustainProduction()) {
         List<Target> displaced =
-            buildDisplacedTargets(source, current, hexes, modes, producingPositions, modeByHousehold, rows);
+            buildDisplacedTargets(source, current, hexes, modes, producingPositions, modeByHousehold, householdEconomies);
         if (!displaced.isEmpty()) {
           return allocate(
               source,
-              sourceRow.population(),
-              sourceRow.population(),
+              sourceHouseholdEconomy.population(),
+              sourceHouseholdEconomy.population(),
               A_RULE_TRANSFER_SPEED_PER_MILLE,
               MigrationMove.REASON_DISPLACED_ABSORBED,
               displaced,
               base,
-              sourceRow,
+              sourceHouseholdEconomy,
               assetShares,
               reservedIdle,
               claimedByOrganizations);
@@ -517,20 +517,20 @@ public final class ModeMigrationPolicy {
     }
     long moveable =
         Math.min(
-            sourceRow.population(),
-            Math.max(1L, sourceRow.population() * MIGRATION_PER_MILLE / 1000L));
+            sourceHouseholdEconomy.population(),
+            Math.max(1L, sourceHouseholdEconomy.population() * MIGRATION_PER_MILLE / 1000L));
     if (moveable <= 0L) {
       return List.of();
     }
     return allocate(
         source,
-        sourceRow.population(),
+        sourceHouseholdEconomy.population(),
         moveable,
         MIGRATION_PER_MILLE,
         MigrationMove.REASON_PROFIT_WEIGHTED,
         positive,
         base,
-        sourceRow,
+        sourceHouseholdEconomy,
         assetShares,
         reservedIdle,
         claimedByOrganizations);
@@ -551,14 +551,14 @@ public final class ModeMigrationPolicy {
   private static List<Target> buildTargets(
       EconomyData base,
       HouseholdId source,
-      ClassRow sourceRow,
+      HouseholdEconomy sourceHouseholdEconomy,
       HouseholdMode current,
       long currentPerLabor,
       List<HexCoord> hexes,
       List<ProductionMode> modes,
       Map<ProductionModeId, List<ClassPosition>> producingPositions,
       Map<HouseholdId, HouseholdMode> modeByHousehold,
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<ProductionUnitId, ProductionUnit> units,
       Map<AssetShareId, AssetShare> assetShares,
       Set<AssetShareId> claimedByOrganizations,
@@ -570,7 +570,7 @@ public final class ModeMigrationPolicy {
       long day) {
     List<Target> targets = new ArrayList<>();
     for (HexCoord hex : hexes) {
-      int distance = sourceRow.view().hex().distanceTo(hex);
+      int distance = sourceHouseholdEconomy.view().hex().distanceTo(hex);
       if (distance > 1) {
         continue;
       }
@@ -618,11 +618,11 @@ public final class ModeMigrationPolicy {
           continue;
         }
         HouseholdId existing =
-            bestExistingTarget(source, hex, mode, modeByHousehold, positions, rows);
+            bestExistingTarget(source, hex, mode, modeByHousehold, positions, householdEconomies);
         long room =
             existing == null
                 ? 0L
-                : Math.max(0L, MAX_HOUSEHOLD_POPULATION - rows.get(existing).population());
+                : Math.max(0L, MAX_HOUSEHOLD_POPULATION - householdEconomies.get(existing).population());
         targets.add(
             new Target(
                 hex,
@@ -652,7 +652,7 @@ public final class ModeMigrationPolicy {
       List<ProductionMode> modes,
       Map<ProductionModeId, List<ClassPosition>> producingPositions,
       Map<HouseholdId, HouseholdMode> modeByHousehold,
-      Map<HouseholdId, ClassRow> rows) {
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     ProductionMode displaced =
         modes.stream()
             .filter(mode -> DefaultProductionModes.DISPLACED.equals(mode.id()))
@@ -672,11 +672,11 @@ public final class ModeMigrationPolicy {
         continue;
       }
       HouseholdId existing =
-          bestExistingTarget(source, hex, displaced, modeByHousehold, positions, rows);
+          bestExistingTarget(source, hex, displaced, modeByHousehold, positions, householdEconomies);
       long room =
           existing == null
               ? 0L
-              : Math.max(0L, MAX_HOUSEHOLD_POPULATION - rows.get(existing).population());
+              : Math.max(0L, MAX_HOUSEHOLD_POPULATION - householdEconomies.get(existing).population());
       if (existing == null) {
         targets.add(
             new Target(
@@ -722,7 +722,7 @@ public final class ModeMigrationPolicy {
       String reason,
       List<Target> targets,
       EconomyData base,
-      ClassRow sourceRow,
+      HouseholdEconomy sourceHouseholdEconomy,
       Map<AssetShareId, AssetShare> assetShares,
       Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
       Set<AssetShareId> claimedByOrganizations) {
@@ -755,7 +755,7 @@ public final class ModeMigrationPolicy {
               speedPerMille,
               reason,
               base,
-              sourceRow,
+              sourceHouseholdEconomy,
               assetShares,
               drafts,
               newOrdinal,
@@ -773,7 +773,7 @@ public final class ModeMigrationPolicy {
               speedPerMille,
               reason,
               base,
-              sourceRow,
+              sourceHouseholdEconomy,
               assetShares,
               drafts,
               newOrdinal,
@@ -797,7 +797,7 @@ public final class ModeMigrationPolicy {
       long speedPerMille,
       String reason,
       EconomyData base,
-      ClassRow sourceRow,
+      HouseholdEconomy sourceHouseholdEconomy,
       Map<AssetShareId, AssetShare> assetShares,
       List<MoveDraft> drafts,
       int[] newOrdinal,
@@ -822,7 +822,7 @@ public final class ModeMigrationPolicy {
             target.mode,
             want,
             base,
-            sourceRow,
+            sourceHouseholdEconomy,
             assetShares,
             reservedIdle,
             claimedByOrganizations);
@@ -850,7 +850,7 @@ public final class ModeMigrationPolicy {
       ProductionModeId mode,
       long take,
       EconomyData base,
-      ClassRow sourceRow,
+      HouseholdEconomy sourceHouseholdEconomy,
       Map<AssetShareId, AssetShare> assetShares,
       Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
       Set<AssetShareId> claimedByOrganizations) {
@@ -859,9 +859,9 @@ public final class ModeMigrationPolicy {
     }
     // 以源户的"劳动/人口"比例折算这批人带来的劳动（与执行期 laborTake 同源；不按人口 1:1 猜劳动）。
     long laborEstimate =
-        sourceRow.population() <= 0L
+        sourceHouseholdEconomy.population() <= 0L
             ? take
-            : Math.multiplyExact(sourceRow.laborMilli(), take) / sourceRow.population();
+            : Math.multiplyExact(sourceHouseholdEconomy.laborMilli(), take) / sourceHouseholdEconomy.population();
     // ★ 与执行期（ModeMigrationSettlement.createOrganizationAndUnit）同一份"该 mode 能用哪些产业模板"：
     //   按 mode 的默认 regime 优先；merchant 找不到 trade 模板 ⇒ 空（绝不把农场模板当商号）。
     for (IndustryId industryId : industriesForMode(base, hex, mode)) {
@@ -929,14 +929,14 @@ public final class ModeMigrationPolicy {
       ProductionMode mode,
       Map<HouseholdId, HouseholdMode> modeByHousehold,
       List<ClassPosition> producingPositions,
-      Map<HouseholdId, ClassRow> rows) {
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Set<ClassPositionId> positionIds = new LinkedHashSet<>();
     for (ClassPosition position : producingPositions) {
       positionIds.add(position.id());
     }
     HouseholdId best = null;
     long bestRoom = 0L;
-    for (HouseholdId household : sortedHouseholds(rows)) {
+    for (HouseholdId household : sortedHouseholds(householdEconomies)) {
       if (household.equals(source)) {
         continue;
       }
@@ -947,7 +947,7 @@ public final class ModeMigrationPolicy {
           || !positionIds.contains(candidate.positionId)) {
         continue;
       }
-      long room = Math.max(0L, MAX_HOUSEHOLD_POPULATION - rows.get(household).population());
+      long room = Math.max(0L, MAX_HOUSEHOLD_POPULATION - householdEconomies.get(household).population());
       if (room > bestRoom
           || (room == bestRoom
               && room > 0L
@@ -1427,20 +1427,20 @@ public final class ModeMigrationPolicy {
     return modes;
   }
 
-  private static List<HouseholdId> sortedHouseholds(Map<HouseholdId, ClassRow> rows) {
-    List<HouseholdId> keys = new ArrayList<>(rows.keySet());
+  private static List<HouseholdId> sortedHouseholds(Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+    List<HouseholdId> keys = new ArrayList<>(householdEconomies.keySet());
     keys.sort(Comparator.comparing(HouseholdId::value));
     return keys;
   }
 
   private static List<HexCoord> globalHexes(
-      Map<HouseholdId, ClassRow> rows,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<ProductionUnitId, ProductionUnit> units,
       Map<HexCoord, Market> markets) {
     TreeSet<HexCoord> hexes =
         new TreeSet<>(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
-    for (ClassRow row : rows.values()) {
-      hexes.add(row.view().hex());
+    for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
+      hexes.add(householdEconomy.view().hex());
     }
     hexes.addAll(markets.keySet());
     for (ProductionUnit unit : units.values()) {

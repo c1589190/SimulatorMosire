@@ -915,7 +915,7 @@ public final class ToolSupport {
   /**
    * 逐格经济读数（R2a）：**与 GUI 的 {@code /api/economy/hex} 逐字节同形**（同一份 {@link ApiViews#economyHex}）。
    *
-   * <p>★ <b>H1 起入参是 state</b>：行里已经没有商品（{@code ClassRow} 无 goods），商品读数只能从 actor 侧的 {@code
+   * <p>★ <b>H1 起入参是 state</b>：行里已经没有商品（{@code HouseholdEconomy} 无 goods），商品读数只能从 actor 侧的 {@code
    * HouseholdInventory} 读 ⇒ 本视图同时要 economy 与 actor 两片（同 {@link #economyOwnership}）。
    */
   public static Map<String, Object> economyHex(HexCoord coord, SimulationState state) {

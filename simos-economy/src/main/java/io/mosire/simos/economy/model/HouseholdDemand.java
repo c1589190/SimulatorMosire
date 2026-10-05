@@ -44,7 +44,7 @@ import java.util.Optional;
  * @param priority 优先级（小者先分预算）；必须 ≥ 0
  * @param source 注入来源标签；不得为 null
  */
-public record DemandEntry(
+public record HouseholdDemand(
     DemandId id,
     DemandScope scope,
     Optional<HouseholdId> household,
@@ -76,7 +76,7 @@ public record DemandEntry(
     PER_CAPITA
   }
 
-  public DemandEntry {
+  public HouseholdDemand {
     Objects.requireNonNull(id, "DemandEntry.id 不得为 null");
     Objects.requireNonNull(scope, "DemandEntry.scope 不得为 null");
     Objects.requireNonNull(household, "DemandEntry.household 不得为 null（没有家户请用 Optional.empty()）");

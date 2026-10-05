@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -29,7 +29,7 @@ import java.util.Optional;
  *
  * <ul>
  *   <li>至少给一个字段；{@code laborMilli ≥ 0}（毫小时）、{@code participationPerMille ∈ [0,1000]}；
- *   <li>只改 {@link ClassRow} 的这两个字段（{@code ClassRow.withLaborAndParticipation}，其余字段逐值保留）；
+ *   <li>只改 {@link HouseholdEconomy} 的这两个字段（{@code HouseholdEconomy.withLaborAndParticipation}，其余字段逐值保留）；
  *   <li>★★ <b>{@code laborMilli} 的常规来源是 Social 成员组成的逐 tick 投影</b>（P2-A §13.4，参与者的
  *       {@code recomputeLaborBudgets}）。本命令是一次显式状态写入：下一次推进时若 Social 侧该户成员存在，投影会按
  *       Social 重算并覆盖它 —— <b>要持久改劳动时间，需同时编辑 Social 成员组成</b>（那不属于本命令的边界）。
@@ -74,32 +74,32 @@ public final class EconomySetHouseholdLaborHandler implements CommandHandler, Co
       if (!payload.has("laborMilli") && !payload.has("participationPerMille")) {
         throw new IllegalArgumentException(TYPE + " 至少要给 laborMilli 或 participationPerMille");
       }
-      ClassRow row = base.classes().get(household);
-      if (row == null) {
+      HouseholdEconomy householdEconomy = base.classes().get(household);
+      if (householdEconomy == null) {
         throw new IllegalArgumentException(TYPE + " 的家户不存在: " + household.value());
       }
       long laborMilli =
           payload.has("laborMilli")
               ? EconomyCommandPayloads.requireLong(TYPE, payload, "laborMilli")
-              : row.laborMilli();
+              : householdEconomy.laborMilli();
       if (laborMilli < 0L) {
         throw new IllegalArgumentException(TYPE + " 的 laborMilli 不得为负: " + laborMilli);
       }
       int participationPerMille =
           payload.has("participationPerMille")
               ? EconomyCommandPayloads.requireInt(TYPE, payload, "participationPerMille")
-              : row.participationPerMille();
+              : householdEconomy.participationPerMille();
       if (participationPerMille < 0 || participationPerMille > 1000) {
         throw new IllegalArgumentException(
             TYPE + " 的 participationPerMille 必须 ∈ [0,1000]: " + participationPerMille);
       }
-      ClassRow after = row.withLaborAndParticipation(laborMilli, participationPerMille);
-      if (after.equals(row)) {
+      HouseholdEconomy afterHouseholdEconomy = householdEconomy.withLaborAndParticipation(laborMilli, participationPerMille);
+      if (afterHouseholdEconomy.equals(householdEconomy)) {
         return new HandlerOutcome.Applied(EconomyChangeSet.between(base, base));
       }
-      LinkedHashMap<HouseholdId, ClassRow> classes = new LinkedHashMap<>(base.classes());
-      classes.put(household, after);
-      EconomyData projected = base.withClasses(classes);
+      LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies = new LinkedHashMap<>(base.classes());
+      householdEconomies.put(household, afterHouseholdEconomy);
+      EconomyData projected = base.withHouseholdEconomies(householdEconomies);
       EconomyLog.population()
           .info(
               "event=HOUSEHOLD_LABOR_CONFIG household={} laborMilli={} participationPerMille={}",

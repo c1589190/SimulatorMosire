@@ -237,7 +237,7 @@ public final class HouseholdSeeder {
 
   /** 家户的显示名（{@code <居住类型> <阶层> 家户}）—— ★ **只为读**，不参与任何身份判定（身份是 {@link ActorRef}）。 */
   private static String labelOf(HouseholdId household) {
-    // ★ S1：显示名只为读，不参与任何身份判定；家户的视图不再从 id 反解（视图是 ClassRow 的字段）。
+    // ★ S1：显示名只为读，不参与任何身份判定；家户的视图不再从 id 反解（视图是 HouseholdEconomy 的字段）。
     return "家户 " + household.value();
   }
 
