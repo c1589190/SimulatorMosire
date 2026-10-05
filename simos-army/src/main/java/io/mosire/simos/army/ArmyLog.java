@@ -1,5 +1,7 @@
 package io.mosire.simos.army;
 
+import io.mosire.simos.util.log.EventLog;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,16 +68,7 @@ public final class ArmyLog {
    * 或接受一次字符串分配。奇数个参数是拼写错误 ⇒ 当场抛（不静默丢字段）。
    */
   public static String kv(Object... keyValues) {
-    if (keyValues.length % 2 != 0) {
-      throw new IllegalArgumentException("ArmyLog.kv 需要偶数个 key/value: " + keyValues.length);
-    }
-    StringBuilder text = new StringBuilder();
-    for (int i = 0; i < keyValues.length; i += 2) {
-      if (i > 0) {
-        text.append(' ');
-      }
-      text.append(keyValues[i]).append('=').append(keyValues[i + 1]);
-    }
-    return text.toString();
+    // ★ 2026-10-09：实现收口到 util 的 EventLog.kv（本门面只留 logger 命名空间）。
+    return EventLog.kv(keyValues);
   }
 }

@@ -243,12 +243,27 @@ app（组合根）依赖全部领域模块 + core + agentlib + MCP —— **唯�
   "为什么"，逐条发生额至少 TRACE 一条；否则该阶段视为没做完（用户直接用日志排查，不读代码反推）。
 - 纪律：密钥/载荷明文绝不进日志；日志不写任何状态、不改任何公式；日志失败不得影响结算。
 
+**通用 event 机制落 util（2026-10-09 用户裁定）**：
+- 用户原话：「为啥非要让日志模块本身知道具体涉及了什么发生了什么，单纯的 event 完全应该放在 util。」
+- 通用机制唯一落点：`simos-util/src/main/java/io/mosire/simos/util/log/` 的
+  `LogEvent` / `LogLevel` / `EventLog` / `LogChannel`。它只持有"事件名 + 保序字段表 + 级别 + SLF4J
+  发射"，**不知道任何模块、事件名、领域类型或状态**；事件名与字段由产生事件的那一行代码传入。
+- 各模块 `XxxLog`（Economy/Social/Unit/Map/Sd/Actor/Gov/Army/Calendar/Core/App）继续是 logger 名的
+  **唯一拼写点**，继续被 `log4j2.xml` 的 `simos.<module>.logLevel/traceLevel` 控制；`kv` 不再各自实现，
+  只保留一行 `return EventLog.kv(keyValues);` 委托。新代码优先
+  `EventLog.channel(XxxLog.category()).info(LogEvent.of("EVENT", ...))`。
+- `io.mosire.simos.util.time.Event<T>` 仍是"时刻 + 值 + ADD/SET"的时态值类型，**不是**日志事件，二者不合并；
+  util 不持有任何领域事件（如 `HouseholdPopulationEvent` / `DebtContract` / `MIGRATION_*`）。
+- 设计文档：`docs/superpowers/plans/2026-10-09-util-event-logging-refactor.md`。
+
 **其他模块的现状（用户要求写明，调试收口后补）**：
 - 实测（2026-10-04）：`simos-map` / `simos-social` / `simos-unit` / `simos-sd` / `simos-actor` / `simos-actor-api` /
   `simos-economy-api` / `simos-calendar` 的 `src/main/java` 里 **`LoggerFactory` 与 `System.out` 都是 0 命中**；
   `simos-core` 有 4 个文件、`simos-app` 有 11 个文件有零星日志（启动/检查点/人口/税等），但**没有**"每一步做了什么"的阶段日志。
 - **待办（不是可选）**：本轮经济调试收口（市场冻结/借贷/迁移跑通）之后，按本条的同一套形态给其他模块补日志——
   每个模块一个 `XxxLog` 门面、同样 INFO/DEBUG/TRACE 三档、同样先写设计文档再派实现（§一.8）。
+  ★ 2026-10-09 P1.3 已补 `MapLog / SdLog / ActorLog / GovLog / ArmyLog / CalendarLog / CoreLog / AppLog`
+  八个门面（social/unit/economy 原有），剩余是调用点覆盖与测试迁移；通用 event 机制随后收口到 util（见上）。
   模块补齐前，任何"其他模块为什么没动作"的排查都只能读代码，不能读日志；这条缺口不许再被当成"已经是这样"。
 
 ### 一.10 ★★★ 子 Agent 新架构实验（2026-10-09 用户裁定；实验期覆盖 §一.5/§一.8 的派单细节）
