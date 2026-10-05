@@ -77,6 +77,15 @@ final class EconomyCommandPayloads {
     return requireLongNode(command, field, node);
   }
 
+  /** 必填 int（JSON 整型；超 int 范围 ⇒ 抛）。 */
+  static int requireInt(String command, JsonNode payload, String field) {
+    long value = requireLong(command, payload, field);
+    if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
+      throw new IllegalArgumentException(command + " 的字段 " + field + " 超出 int 范围: " + value);
+    }
+    return (int) value;
+  }
+
   /** 可选 int；缺键 / JSON null ⇒ fallback；超出 int 范围 ⇒ 抛。 */
   static int optionalInt(String command, JsonNode payload, String field, int fallback) {
     JsonNode node = payload.get(field);

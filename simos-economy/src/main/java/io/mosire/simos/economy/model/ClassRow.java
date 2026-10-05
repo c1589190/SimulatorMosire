@@ -197,6 +197,29 @@ public record ClassRow(
   }
 
   /**
+   * ★★ <b>P2-B：后端命令配置家户劳动时间/参与率</b>（{@code economy.SetHouseholdLabor}）——只换这两个字段，身份、视图、
+   * 货币、债务引用、两类需求与周期累计自然需要全部原样保留。
+   *
+   * <p>★ <b>与每 tick 投影的关系（如实边界）</b>：{@code laborMilli} 的常规来源是 Social 成员 ×
+   * {@code LaborTimeTable} 的逐 tick 投影（P2-A §13.4）。本写口直接落一个显式配置值；下一次推进时若 Social 侧该户
+   * 成员组成存在，投影会按 Social 重算并覆盖它 —— 要持久改变劳动时间，应同时编辑 Social 成员组成（那不在经济命令的边界里）。
+   * 这里不做"覆盖位"之类的第二权威：显式配置就是一次状态写入，读口读到的永远是当前状态。
+   */
+  public ClassRow withLaborAndParticipation(long newLaborMilli, int newParticipationPerMille) {
+    return new ClassRow(
+        id,
+        view,
+        population,
+        newLaborMilli,
+        newParticipationPerMille,
+        money,
+        debts,
+        naturalNeeds,
+        effectiveDemand,
+        cycleNaturalNeedMilli);
+  }
+
+  /**
    * ★★ <b>M1.8：按阶层参与率折算后的每日可用劳动</b>（千分劳动/日）= {@code laborMilli × participationPerMille ÷
    * 1000}（整数、向下取整）。
    *

@@ -166,7 +166,7 @@ public final class EconomyAddDemandHandler implements CommandHandler {
   }
 
   /** 该格必须有市场行、且该商品有价；否则拒绝并**指名** {@code economy.SetMarketPrice}。★ 明确 0 价（免费）算"有价"。 */
-  private static void requirePriced(
+  static void requirePriced(
       EconomyData base, HexCoord hex, CommodityId commodity, String where) {
     Market market = base.markets().get(hex);
     if (market == null || !market.hasPrice(commodity)) {
@@ -181,7 +181,7 @@ public final class EconomyAddDemandHandler implements CommandHandler {
   }
 
   /** 该格家户人口（没有家户行 ⇒ 0；HEX 需求的 PER_CAPITA 用它做溢出预检与摊分口径）。 */
-  private static long populationAt(EconomyData base, HexCoord hex) {
+  static long populationAt(EconomyData base, HexCoord hex) {
     long population = 0L;
     String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
     for (Map.Entry<HouseholdId, ClassRow> entry : base.classes().entrySet()) {
@@ -243,7 +243,7 @@ public final class EconomyAddDemandHandler implements CommandHandler {
     return new DemandId(prefix + (max + 1L));
   }
 
-  private static DemandEntry.DemandScope parseScope(String text) {
+  static DemandEntry.DemandScope parseScope(String text) {
     try {
       return DemandEntry.DemandScope.valueOf(text);
     } catch (IllegalArgumentException e) {
@@ -255,7 +255,7 @@ public final class EconomyAddDemandHandler implements CommandHandler {
     }
   }
 
-  private static DemandEntry.DemandKind parseKind(String text) {
+  static DemandEntry.DemandKind parseKind(String text) {
     try {
       return DemandEntry.DemandKind.valueOf(text);
     } catch (IllegalArgumentException e) {
@@ -267,7 +267,7 @@ public final class EconomyAddDemandHandler implements CommandHandler {
     }
   }
 
-  private static DemandEntry.DemandUnit parseUnit(String text) {
+  static DemandEntry.DemandUnit parseUnit(String text) {
     try {
       return DemandEntry.DemandUnit.valueOf(text);
     } catch (IllegalArgumentException e) {

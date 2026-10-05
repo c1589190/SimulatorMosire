@@ -1126,6 +1126,8 @@ public final class EconomyLiquidationSettlement {
                 update.household(),
                 position.get(),
                 position.get(),
+                // ★ P2-B：新播种的归属只参与当前位置（可参与集合由后续命令追加）。
+                Set.of(),
                 Map.of(),
                 update.previousCount(),
                 0L,
@@ -1147,6 +1149,7 @@ public final class EconomyLiquidationSettlement {
                 decline.household(),
                 position.get(),
                 position.get(),
+                Set.of(), // ★ P2-B：新播种的归属只参与当前位置
                 Map.of(),
                 0L,
                 0L,
@@ -1159,6 +1162,8 @@ public final class EconomyLiquidationSettlement {
                 decline.household(),
                 existing.originalPositionId(),
                 decline.to(),
+                // ★ P2-B：位置变了 ⇒ 旧的可参与集合（指向旧位置）不再沿用，只参与新位置。
+                Set.of(),
                 existing.retainedShares(),
                 0L,
                 context.day(),
@@ -1170,6 +1175,8 @@ public final class EconomyLiquidationSettlement {
                 decline.household(),
                 existing.originalPositionId(),
                 existing.currentPositionId(),
+                // ★ P2-B：位置没变 ⇒ 可参与集合逐值带过。
+                existing.participatingPositionIds(),
                 existing.retainedShares(),
                 existing.consecutiveDebtStressCycles(),
                 existing.lastTransitionDay(),
@@ -1506,6 +1513,7 @@ public final class EconomyLiquidationSettlement {
         standing.householdId(),
         standing.originalPositionId(),
         standing.currentPositionId(),
+        standing.participatingPositionIds(),
         standing.retainedShares(),
         count,
         standing.lastTransitionDay(),

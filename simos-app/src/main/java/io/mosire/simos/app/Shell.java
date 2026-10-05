@@ -66,6 +66,10 @@ import io.mosire.simos.economy.spi.EconomyAddDemandHandler;
 import io.mosire.simos.economy.spi.EconomyCancelDemandHandler;
 import io.mosire.simos.economy.spi.EconomyClearRegionHandler;
 import io.mosire.simos.economy.spi.EconomyGmAdjustHandler;
+import io.mosire.simos.economy.spi.EconomySetHouseholdClassHandler;
+import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
+import io.mosire.simos.economy.spi.EconomySetHouseholdParticipationHandler;
+import io.mosire.simos.economy.spi.EconomyUpdateDemandHandler;
 import io.mosire.simos.economy.spi.EconomyMigrateHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterCandidateHandler;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
@@ -582,6 +586,14 @@ public final class Shell implements AutoCloseable {
                 new EconomyAddDemandHandler(),
                 new EconomyCancelDemandHandler(),
                 new EconomyRegisterCandidateHandler(),
+                // ── economy（P2-B §13.6）：家户经济配置窄写四条 —— Class 归属、可参与生产方式（多生产方式）、
+                //   劳动时间/参与率、需求更新。★ 全部**非 GmOnly**（与 social 家户命令、AddDemand 同待遇）
+                //   ⇒ 进 directive 白名单/RegisterEffect；是否到得了决策令由 economy 命名空间的目标格可达面决定
+                //   （handler 的 CommandTargets 从载荷 at 声明目标格，见各自类注）。──
+                new EconomySetHouseholdClassHandler(),
+                new EconomySetHouseholdParticipationHandler(),
+                new EconomySetHouseholdLaborHandler(),
+                new EconomyUpdateDemandHandler(),
                 // ── economy（E6a）：模式变迁登记（只写 PENDING；执行在日结算自动组织之前）。★ GM-only：
                 //   标 GmOnlyCommand ⇒ 排除出 DirectiveWhitelist / 工具目录，但 handler 仍注册、仍进
                 // commandTargets，

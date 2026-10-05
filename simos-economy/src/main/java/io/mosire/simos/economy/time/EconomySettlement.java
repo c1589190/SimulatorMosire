@@ -1148,9 +1148,15 @@ public final class EconomySettlement {
           day,
           parallelism,
           settlementIndex);
-      // ★ R2：劳动再分配已按 hex 并行（配额键含产业 id ⇒ 跨 hex 无冲突；同一批次跨 hex 的全局协调留给 R3）。
-      // ★★ R4-E2b：今天刚进入的 unit 不触发"本周期是第一天"的重排判定（它今天确实是 0，但它不属于既有周期的重排对象）。
-      reallocateLaborPartitioned(session, parallelism, settlementIndex, enteredToday);
+      // ★★ P2-B：有 modes 的世界走"每 tick、按家户的利润率排队"（§13.4/§13.5）；旧档/未接线世界保留
+      //   hex 分区再分配（换入空集逐值等价旧路径）。
+      if (base.modes().isEmpty()) {
+        // ★ R2：劳动再分配已按 hex 并行（配额键含产业 id ⇒ 跨 hex 无冲突；同一批次跨 hex 的全局协调留给 R3）。
+        // ★★ R4-E2b：今天刚进入的 unit 不触发"本周期是第一天"的重排判定（它今天确实是 0，但它不属于既有周期的重排对象）。
+        reallocateLaborPartitioned(session, parallelism, settlementIndex, enteredToday);
+      } else {
+        LaborQueueSettlement.apply(session, settlementIndex, day, composition, enteredToday);
+      }
       // ★ 配额被改写 ⇒ 换一份“配额侧”视图，后续（unit 家户归属/市场参与者/人口回写）继续 O(1) 查表。
       settlementIndex = settlementIndex.withLabor(units, rows, allocations);
     }
@@ -1174,7 +1180,12 @@ public final class EconomySettlement {
           day,
           parallelism,
           settlementIndex);
-      reallocateLaborPartitioned(session, parallelism, settlementIndex, enteredToday);
+      if (base.modes().isEmpty()) {
+        reallocateLaborPartitioned(session, parallelism, settlementIndex, enteredToday);
+      } else {
+        // ★★ P2-B §13.4：每 tick 重算 —— 不在生产周期开始时锁死；投入已扣（本支在消费后），判定有据。
+        LaborQueueSettlement.apply(session, settlementIndex, day, composition, enteredToday);
+      }
       // ★ 配额被改写 ⇒ 换一份“配额侧”视图（与 plantingDrawsFirst 分支同一条阶段边界）。
       settlementIndex = settlementIndex.withLabor(units, rows, allocations);
     }
@@ -5807,7 +5818,11 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★★ <b>劳动再分配（P2-A §13.4 的小时口径版本；P2-B 才接利润率排队）</b>。
+   * ★★ <b>劳动再分配（P2-A §13.4 的小时口径版本；★ P2-B 起只服务 {@code modes} 为空的旧档世界）</b>。
+   *
+   * <p>★★ <b>P2-B §13.5 的接替者</b>：有 {@code modes} 的世界不再走本方法，改走
+   * {@link LaborQueueSettlement}（每 tick、按家户利润率排队 + 逐 unit 最大可吸收量全局封顶）。本方法保留为
+   * <b>旧路径</b>：空 modes 世界的逐值行为一字不变（同一批配额、同一修剪、同一封顶）。
    *
    * <p>★★ <b>本批的语义（判据就是它）</b>：
    *
@@ -5958,23 +5973,12 @@ public final class EconomySettlement {
       SettlementIndex index,
       long allocated,
       OperatorCondition condition) {
-    long laborPerUnit = industry.recipe().laborPerUnit();
-    if (laborPerUnit <= 0L) {
+    if (industry.recipe().laborPerUnit() <= 0L) {
       return allocated; // ★ 劳动那一路**不施加约束**（与 scaleOf 的同款口径）
     }
-    long scale = ProductionUnitBook.plannedCapacityScaleOf(unit, industry, index, condition);
-    for (Map.Entry<CommodityId, Long> entry : industry.recipe().inputPerUnit().entrySet()) {
-      if (entry.getValue() <= 0L) {
-        continue;
-      }
-      long drawn = unit.cycleInputUsedMilli().getOrDefault(entry.getKey(), 0L);
-      scale = Math.min(scale, drawn / entry.getValue());
-    }
-    if (scale <= 0L) {
-      return 0L; // 产能 0 或一点料都没有 ⇒ 这一周期一点劳动也用不上（回池）
-    }
-    long need = scale * laborPerUnit;
-    return need < 0L ? Long.MAX_VALUE : need; // 溢出兜底（手搭夹具可能给天文数字的产能）
+    // ★★ P2-B：产能×投入那一路的算式**只有一处拼写点** —— {@link LaborQueueBook#maxAbsorbableLaborMilli}
+    //   （本方法保留"laborPerUnit ≤ 0 ⇒ 返回已分配量"的旧包装语义，旧档逐值不变）。
+    return LaborQueueBook.maxAbsorbableLaborMilli(unit, industry, index, condition);
   }
 
   /**

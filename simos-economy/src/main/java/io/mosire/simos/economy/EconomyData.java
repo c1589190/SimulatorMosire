@@ -1056,6 +1056,17 @@ public record EconomyData(
                     + retained);
           }
         }
+        // ★★ P2-B：追加参与的生产位置（多生产方式）必须逐个是已存在的位置 —— 组织阶段按它们建
+        //   生产组织/unit，悬空引用会让"可参与"变成组织期的静默跳过。
+        for (ClassPositionId participating : standing.participatingPositionIds()) {
+          if (!positionsCopy.containsKey(participating)) {
+            throw new IllegalArgumentException(
+                "ClassStanding.participatingPositionIds 必须是已存在的阶层位置：家户="
+                    + entry.getKey()
+                    + "，参与位置="
+                    + participating);
+          }
+        }
       }
       standingsCopy.put(entry.getKey(), standing);
     }

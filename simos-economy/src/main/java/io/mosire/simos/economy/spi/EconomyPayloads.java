@@ -757,8 +757,9 @@ final class EconomyPayloads {
 
   /**
    * ★★ <b>顶层可选 {@code classStandings} 数组</b>（缺键 ⇒ 空表）。每项： {@code
-   * {"householdId","originalPositionId","currentPositionId","retainedShares"?,
+   * {"householdId","originalPositionId","currentPositionId","participatingPositionIds"?,"retainedShares"?,
    * "consecutiveDebtStressCycles"?,"lastTransitionDay"?,"reason"?}}；数值可缺省，reason 缺省空串。
+   * ★ P2-B：{@code participatingPositionIds} 是当前位置之外**追加**参与的生产位置（缺键/空数组 = 只参与当前位置）。
    * 引用完整性（家户存在、位置存在）由 {@link EconomyData} 构造期守卫判。
    */
   private static Map<HouseholdId, ClassStanding> parseClassStandings(JsonNode payload) {
@@ -770,6 +771,8 @@ final class EconomyPayloads {
       HouseholdId householdId = HouseholdId.parse(requireText(node, "householdId"));
       ClassPositionId original = ClassPositionId.parse(requireText(node, "originalPositionId"));
       ClassPositionId current = ClassPositionId.parse(requireText(node, "currentPositionId"));
+      Set<ClassPositionId> participating =
+          optionalClassPositionIds(node, "participatingPositionIds");
       Map<ClassPositionId, Long> retainedShares =
           classPositionShareMap(
               optionalObject(node, "retainedShares"), "classStandings[].retainedShares");
@@ -781,6 +784,7 @@ final class EconomyPayloads {
               householdId,
               original,
               current,
+              participating,
               retainedShares,
               consecutiveDebtStressCycles,
               lastTransitionDay,
@@ -790,6 +794,26 @@ final class EconomyPayloads {
       }
     }
     return standings;
+  }
+
+  /** 可选的位置 id 数组（缺键 / null ⇒ 空集；元素必须是非空白文本，走 {@link ClassPositionId#parse}）。 */
+  private static Set<ClassPositionId> optionalClassPositionIds(JsonNode node, String field) {
+    JsonNode values = node.get(field);
+    if (values == null || values.isNull()) {
+      return Set.of();
+    }
+    if (!values.isArray()) {
+      throw new IllegalArgumentException("classStandings[]." + field + " 必须是数组: " + values);
+    }
+    Set<ClassPositionId> positions = new LinkedHashSet<>();
+    for (JsonNode element : values) {
+      if (!element.isTextual() || element.asText().isBlank()) {
+        throw new IllegalArgumentException(
+            "classStandings[]." + field + " 的元素必须是非空白文本: " + element);
+      }
+      positions.add(ClassPositionId.parse(element.asText()));
+    }
+    return positions;
   }
 
   /**

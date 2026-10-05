@@ -673,7 +673,11 @@ public final class ModeMigrationSettlement {
     standings.put(
         target,
         new ClassStanding(
-            target, positionId, positionId, Map.of(), 0L, day, "AUTO_MIGRATION:" + move.reason()));
+            target,
+            positionId, positionId,
+            // ★ P2-B：迁移到新 mode ⇒ 只参与新位置（旧的可参与集合已随旧 mode 退出）
+            Set.of(),
+            Map.of(), 0L, day, "AUTO_MIGRATION:" + move.reason()));
     accounts.registerHousehold(
         target,
         move.targetHex(),

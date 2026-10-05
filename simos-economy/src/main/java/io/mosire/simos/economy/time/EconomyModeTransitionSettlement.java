@@ -374,6 +374,8 @@ final class EconomyModeTransitionSettlement {
                   ? organization.classPositionId()
                   : existingStanding.originalPositionId(),
               currentPosition,
+              // ★ P2-B：模式变迁后只参与新位置；旧的可参与集合属于旧 mode，不再沿用。
+              Set.of(),
               retainedShares,
               existingStanding == null ? 0L : existingStanding.consecutiveDebtStressCycles(),
               day,

@@ -71,9 +71,10 @@ import java.util.Set;
  * <p>★★ <b>行为规则（逐条，确定性）</b>：
  *
  * <ol>
- *   <li><b>遍历序</b>：mode 按 id 升序 → 阶层位置按 id 升序 → 家户按 id 升序。家户的当前阶层由 {@link
- *       ClassPositionResolver#resolveCurrent} 给（新状态优先、旧 {@code view.stratum} 次之）；无位置/无行/0
- *       人口的家户不建组织；
+ *   <li><b>遍历序</b>：mode 按 id 升序 → 阶层位置按 id 升序 → 家户按 id 升序。家户的参与位置由
+ *       {@link ClassStanding#effectivePositionIds()} 给（当前位置 ∪ 追加参与集合；无 standing 的旧档退回
+ *       {@link ClassPositionResolver#resolveCurrent} 的单值旧口径）⇒ <b>同一家户可同时参与多个
+ *       mode/position，各建一条组织与 unit</b>；无位置/无行/0 人口的家户不建组织；
  *   <li><b>应当生产的位置</b>：{@code laborRole != NONE} 且 {@code surplusRole !=
  *       DEPENDENT}（地主与无劳动角色的官署位置不组织； 三个农民档、佃农/雇工档、匠户都组织）；
  *   <li><b>产业模板</b>：该格已有 {@code industries} 按 id 升序；优先取 regime 与位置角色匹配的模板（自给 → {@code household}、
@@ -296,13 +297,15 @@ final class EconomyOrganizationSettlement {
     boolean changed = false;
     Set<ProductionUnitId> created = new LinkedHashSet<>();
 
-    // 家户 → 当前阶层位置（新状态优先、旧 stratum 次之；唯一解析口径在 ClassPositionResolver）。
-    Map<HouseholdId, ClassPositionId> positionByHousehold = new LinkedHashMap<>();
+    // 家户 → **本 tick 的有效参与位置集合**（P2-B §13.5：一家户可参与多个生产方式/生产位置）。
+    //   ★ 口径：ClassStanding.effectivePositionIds() = {currentPositionId} ∪ participatingPositionIds；
+    //     没有 standing 的旧档退回 ClassPositionResolver.resolveCurrent（旧单值口径），逐值不变。
+    Map<HouseholdId, List<ClassPositionId>> positionsByHousehold = new LinkedHashMap<>();
     List<HouseholdId> orderedHouseholds = new ArrayList<>(rows.keySet());
     orderedHouseholds.sort(Comparator.comparing(HouseholdId::value));
     for (HouseholdId household : orderedHouseholds) {
-      resolveCurrent(base, classStandings, household)
-          .ifPresent(position -> positionByHousehold.put(household, position));
+      positionsByHousehold.put(
+          household, effectivePositions(base, classStandings, household));
     }
 
     // (mode, assetKind) → AssetRule（EconomyData 已判同一组合唯一）；按 id 升序取，重复不可能。
@@ -337,7 +340,7 @@ final class EconomyOrganizationSettlement {
           continue;
         }
         for (HouseholdId household : orderedHouseholds) {
-          if (!positionId.equals(positionByHousehold.get(household))) {
+          if (!positionsByHousehold.getOrDefault(household, List.of()).contains(positionId)) {
             continue;
           }
           ClassRow row = rows.get(household);
@@ -352,7 +355,7 @@ final class EconomyOrganizationSettlement {
           continue;
         }
         for (HouseholdId household : orderedHouseholds) {
-          if (!positionId.equals(positionByHousehold.get(household))) {
+          if (!positionsByHousehold.getOrDefault(household, List.of()).contains(positionId)) {
             continue;
           }
           ClassRow row = rows.get(household);
@@ -728,6 +731,23 @@ final class EconomyOrganizationSettlement {
       return Optional.of(standing.currentPositionId());
     }
     return ClassPositionResolver.resolveCurrent(base, household);
+  }
+
+  /**
+   * ★★ <b>P2-B：本户的有效参与位置集合</b>（多生产方式的唯一读口）。有 {@code ClassStanding} ⇒
+   * {@link ClassStanding#effectivePositionIds()}（当前位置 ∪ 追加集合，按 id 升序）；无 standing 的旧档 ⇒
+   * 退回 {@link ClassPositionResolver#resolveCurrent} 的单值旧口径。位置自身的合法性（已存在、mode 已存在）
+   * 由 {@code EconomyData} 构造期判死，本方法只读。
+   */
+  private static List<ClassPositionId> effectivePositions(
+      EconomyData base, Map<HouseholdId, ClassStanding> classStandings, HouseholdId household) {
+    ClassStanding standing = classStandings.get(household);
+    if (standing != null) {
+      return standing.effectivePositionIds();
+    }
+    return ClassPositionResolver.resolveCurrent(base, household)
+        .map(List::of)
+        .orElseGet(List::of);
   }
 
   /** 位置角色 → 优先 regime（E2 的产业模板选择启发式；只是"先试哪一个"，不是规则权威）。 */
