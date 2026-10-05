@@ -107,7 +107,7 @@ public final class ActorCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(
         ActorRef.class, keyDeserializer(ActorCodec::legacyAwareActorRefCanonical));
     module.addKeyDeserializer(
-        GoodsAccountKey.class, keyDeserializer(ActorCodec::legacyAwareAccountKeyCanonical));
+        GoodsAccountKey.class, keyDeserializer(GoodsAccountKey::parse));
     module.addKeyDeserializer(CommodityId.class, keyDeserializer(CommodityId::parse));
     module.addKeyDeserializer(CurrencyId.class, keyDeserializer(CurrencyId::parse));
     // ★ 嵌套位置（Actor.ref / GoodsAccountKey.owner 作为对象构件）走值反序列化器，同一套迁移规则。
@@ -118,13 +118,6 @@ public final class ActorCodec implements ModuleCodec, ModuleDiffer {
   /** ★ S1：旧三段家户 actor 规范串 → 新稳定 actor 规范串；其余原样。 */
   private static ActorRef legacyAwareActorRefCanonical(String canonical) {
     return legacyAwareActorRef(ActorRef.parseCanonical(canonical));
-  }
-
-  /** ★ S1：{@code GoodsAccountKey} 的迁移 = 只换 owner（location 不变）。 */
-  private static GoodsAccountKey legacyAwareAccountKeyCanonical(String canonical) {
-    GoodsAccountKey key = GoodsAccountKey.parse(canonical);
-    ActorRef migrated = legacyAwareActorRef(key.owner());
-    return migrated.equals(key.owner()) ? key : new GoodsAccountKey(migrated, key.location());
   }
 
   /**

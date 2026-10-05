@@ -4,7 +4,6 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
@@ -93,7 +92,7 @@ public final class MarketReadoutAssembly {
     for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
       HouseholdId key = entry.getKey();
       GoodsAccount account =
-          actor.accounts().get(OwnershipBooks.accountKeyOf(key, entry.getValue().view().hex()));
+          actor.accounts().get(OwnershipBooks.accountKeyOf(key));
       if (account == null) {
         continue; // 读口覆盖不足：由 MarketReadout 的 unavailable.householdAccounts 计数点名
       }
@@ -102,22 +101,12 @@ public final class MarketReadoutAssembly {
       householdFrozenGoods.put(key, account.frozenBalances());
       householdFrozenMoney.put(key, account.frozenMoney());
     }
+    // ★★ P2-A §13.3：庄园/作坊（经营者）不再持账户 ⇒ 经营者四张表恒空；
+    //   它们的投入/产出/收款改走组织者/经营者家户账户（P2-B/P2-C 接线）。
     Map<ActorRef, Map<CommodityId, Long>> operatorGoods = new LinkedHashMap<>();
     Map<ActorRef, Map<CurrencyId, Long>> operatorMoney = new LinkedHashMap<>();
     Map<ActorRef, Map<CommodityId, Long>> operatorFrozenGoods = new LinkedHashMap<>();
     Map<ActorRef, Map<CurrencyId, Long>> operatorFrozenMoney = new LinkedHashMap<>();
-    for (Map.Entry<ActorRef, HexCoord> entry :
-        OwnershipBooks.operatorLocations(economy).entrySet()) {
-      GoodsAccount account =
-          actor.accounts().get(new GoodsAccountKey(entry.getKey(), entry.getValue()));
-      if (account == null) {
-        continue; // 经营者账缺席是合法状态（H4/H5 的既有口径）
-      }
-      operatorGoods.put(entry.getKey(), account.balances());
-      operatorMoney.put(entry.getKey(), account.money());
-      operatorFrozenGoods.put(entry.getKey(), account.frozenBalances());
-      operatorFrozenMoney.put(entry.getKey(), account.frozenMoney());
-    }
     return new MarketReadoutAccounts(
         householdGoods,
         householdMoney,

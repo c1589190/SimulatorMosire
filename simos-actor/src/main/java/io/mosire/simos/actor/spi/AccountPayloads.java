@@ -1,11 +1,9 @@
 package io.mosire.simos.actor.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.actor.api.actor.ActorKind;
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -14,8 +12,12 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /**
- * P1.2 actor 行政命令的载荷解析助手：{@code actor.TransferAccounts} / {@code actor.MoveAccount} 共用的 账户引用、正数量表与
- * owner 解析。形状是 actor 模块私有的事（Core 只转交 JSON 文本）。
+ * actor 账户行政命令的载荷解析助手（P2-A §13.3 起账户主体只有家户）：{@code actor.TransferAccounts} /
+ * {@code actor.AdjustAccounts} 共用的家户引用与正数量表。形状是 actor 模块私有的事（Core 只转交 JSON 文本）。
+ *
+ * <p>★★ <b>P2-A 的形状变化（如实记）</b>：改前账户引用是 {@code {"owner":{"kind","id"},"q":..,"r":..}}
+ * （{@code ActorRef} + 格）；现在只有家户，格从 {@code Household.location} 派生 ⇒ 引用是 {@code {"household":"hh-…"}}。
+ * 旧账户直接报废（§13.3）：本层**不**保留旧形状的兼容解析。
  *
  * <p>★ <b>只判形状/类型/非零：</b>数值语义（源是否有账、可支配是否够、相加是否溢出）由 {@link
  * io.mosire.simos.actor.ops.AccountOperations} 判 —— 本层不重复实现，避免同一规则两处拼写。
@@ -24,31 +26,46 @@ final class AccountPayloads {
 
   private AccountPayloads() {}
 
-  /** 一个账户引用：{@code {"owner":{"kind","id"},"q":..,"r":..}}。 */
-  record AccountRef(ActorRef owner, HexCoord at) {
+  /** 一个家户账户引用：{@code {"household":"hh-…"}}。 */
+  record AccountRef(HouseholdId household) {
 
     AccountRef {
-      Objects.requireNonNull(owner, "owner");
-      Objects.requireNonNull(at, "at");
+      Objects.requireNonNull(household, "household");
     }
   }
 
   /**
-   * 解析一条账户引用（形状见 {@link AccountRef}）。
+   * 解析一条家户账户引用（形状见 {@link AccountRef}）。
    *
    * @param node 承载该引用的 JSON 对象
    * @param field 字段名（错误消息点名用）
    */
   static AccountRef accountRef(JsonNode node, String field) {
     if (node == null || !node.isObject()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是 {owner{kind,id},q,r} 对象: " + node);
+      throw new IllegalArgumentException("字段 " + field + " 必须是 {household:<id>} 对象: " + node);
     }
-    return new AccountRef(ownerObject(node.get("owner"), field + ".owner"), hex(node, field));
+    JsonNode value = node.get("household");
+    if (value == null || !value.isTextual()) {
+      throw new IllegalArgumentException("字段 " + field + ".household 必须是家户 id 字符串: " + node);
+    }
+    try {
+      return new AccountRef(HouseholdId.parse(value.asText()));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("字段 " + field + ".household 的家户 id 不合法: " + e.getMessage(), e);
+    }
   }
 
-  /** 解析独立 {@code owner} 对象：{@code {"kind":…,"id":…}}。 */
-  static ActorRef owner(JsonNode payload, String field) {
-    return ownerObject(payload.get("owner"), field);
+  /** 解析独立 {@code household} 字段（字符串 id）。 */
+  static HouseholdId household(JsonNode node, String field) {
+    JsonNode value = node.get("household");
+    if (value == null || !value.isTextual()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是家户 id 字符串: " + node);
+    }
+    try {
+      return HouseholdId.parse(value.asText());
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("字段 " + field + " 的家户 id 不合法: " + e.getMessage(), e);
+    }
   }
 
   /** 解析 {@code actor.TransferAccounts} 的正转移量表（缺省/JSON null ⇒ 空表；值为 0/负 ⇒ 抛）。 */
@@ -59,37 +76,6 @@ final class AccountPayloads {
   /** 解析 {@code actor.TransferAccounts} 的正货币转移量表（口径同 {@link #positiveCommodities}）。 */
   static Map<CurrencyId, Long> positiveMoney(JsonNode payload, String field) {
     return positiveAmounts(payload, field, CurrencyId::parse, "货币");
-  }
-
-  /** owner 对象的唯一解析点（词表在 {@link ActorKind#parse}）。 */
-  private static ActorRef ownerObject(JsonNode owner, String field) {
-    if (owner == null || !owner.isObject()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是 {kind,id} 对象");
-    }
-    JsonNode kind = owner.get("kind");
-    JsonNode id = owner.get("id");
-    if (kind == null || !kind.isTextual()) {
-      throw new IllegalArgumentException("字段 " + field + ".kind 必须是字符串: " + owner);
-    }
-    if (id == null || !id.isTextual()) {
-      throw new IllegalArgumentException("字段 " + field + ".id 必须是字符串: " + owner);
-    }
-    return ActorRef.parse(kind.asText(), id.asText());
-  }
-
-  /** 解析 {@code {q,r}}（不允许小数/字符串；缺字段或类型不符 ⇒ 抛）。 */
-  private static HexCoord hex(JsonNode node, String field) {
-    JsonNode q = node.get("q");
-    JsonNode r = node.get("r");
-    if (q == null
-        || !q.isIntegralNumber()
-        || !q.canConvertToInt()
-        || r == null
-        || !r.isIntegralNumber()
-        || !r.canConvertToInt()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须有整数 q 与 r: " + node);
-    }
-    return new HexCoord(q.asInt(), r.asInt());
   }
 
   /**

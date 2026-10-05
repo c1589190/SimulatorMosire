@@ -16,7 +16,6 @@ import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -72,7 +71,7 @@ public final class HouseholdBook {
     if (base.households().containsKey(id)) {
       throw new IllegalArgumentException("家户已存在，拒绝重复创建: " + id);
     }
-    Household household = new Household(id, location, profile, List.of(), vitalRates);
+    Household household = new Household(id, location, profile, Map.of(), vitalRates);
     Map<HouseholdId, Household> next = new LinkedHashMap<>(base.households());
     next.put(id, household);
     SocialData result = base.withHouseholds(next);
@@ -146,7 +145,7 @@ public final class HouseholdBook {
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>(base.groups());
     groups.put(lotId, group);
     Map<HouseholdId, Household> households = new LinkedHashMap<>(base.households());
-    households.put(id, withMember(household, lotId));
+    households.put(id, addMemberShare(household, lotId, count));
     // ★ 事件账：addMembers 带逐日年龄锚点，而事件形状只有年龄档 id ⇒ 事件记录为可审计的 GM_ADJUST（带 lotId），
     //   状态落账由本方法精确完成；回放口径见 applyEvent（按档 id 的代表年龄重建）。
     HouseholdPopulationEvent event =
@@ -234,9 +233,10 @@ public final class HouseholdBook {
   }
 
   /**
-   * ★★ <b>跨家户转移成员</b>（架构 §5）：同一批次<b>整体移动</b> ⇒ id 不变；<b>拆分</b> ⇒ 源批次保留 id、迁出部分
-   * 在目标家户落一个派生 id（{@code <lotId>@<toHousehold>}，同一目标重复拆分自动合并）——一个批次只能有一个位置，
-   * 因此"身份不许被拆成两半"。
+   * ★★ <b>跨家户转移成员</b>（架构 §5 + P2-A §13.2）：把源家户对某批次的一部分份额（count）转给目标家户。
+   *
+   * <p>★★ <b>P2-A 的口径变化（如实记）</b>：改前"拆分"会在目标家户落一个派生批次 id（{@code <lotId>@<toHousehold>}）；
+   * 现在批次是<b>份额制</b> ⇒ 同一批次 id 同时被两个家户按 count 持有，<b>批次人数一字不动</b>（转移改的是份额，不是总人数）。
    *
    * <p>两条腿的事件（{@code TRANSFER_OUT}/{@code TRANSFER_IN}）带 {@code lotId}，由本方法**原子**写入
    * （事件形状没有"对手方"字段，逐条回放会在中间态看到无主批次；原子写是唯一安全口径）。
@@ -260,53 +260,30 @@ public final class HouseholdBook {
     Household to = base.requireHousehold(toHousehold);
     requireMember(from, lotId);
     PopulationGroup source = base.groups().get(lotId);
-    if (source.count() < count) {
+    long fromShare = from.memberCount(lotId);
+    if (fromShare < count) {
       throw new IllegalArgumentException(
-          "transferMembers 超出批次人数: lot=" + lotId + " count=" + source.count() + " transfer=" + count);
+          "transferMembers 超出该家户持有的份额: lot="
+              + lotId
+              + " household="
+              + fromHousehold
+              + " share="
+              + fromShare
+              + " transfer="
+              + count);
     }
     long day = latestDay(base);
     String bracketId = bracketIdAt(source, day, CalendarClock.julianDefault());
 
+    // ★★ P2-A：份额转移**保持批次 id 不变**（一个批次可按 count 拆给多个家户）—— 不再造派生批次 id。
+    //   批次人数（group.count）一字不动：转移改的是"这一批人里多少归哪个家户"，不是总人数。
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>(base.groups());
     Map<HouseholdId, Household> households = new LinkedHashMap<>(base.households());
     PeopleLotId movedLot = lotId;
-    if (count == source.count()) {
-      // 整体移动：成员关系换家户，批次一字不动。
-      households.put(fromHousehold, withoutMember(from, lotId));
-      households.put(toHousehold, withMember(to, lotId));
-    } else {
-      // 拆分：源批次减 count；迁出部分用派生 id（同一目标重复拆分 ⇒ 合并到已有派生批次）。
-      groups.put(lotId, source.withCountAndStress(source.count() - count, source.physiologicalStress()));
-      movedLot = derivedLotId(lotId, toHousehold);
-      HouseholdId movedOwner = ownerOf(households, movedLot).orElse(null);
-      if (movedOwner != null && !movedOwner.equals(toHousehold)) {
-        throw new IllegalArgumentException(
-            "拆分目标批次 " + movedLot + " 已属于家户 " + movedOwner + "（拒绝把两个家户并成一个批次）");
-      }
-      PopulationGroup existing = groups.get(movedLot);
-      if (existing == null) {
-        groups.put(
-            movedLot,
-            new PopulationGroup(
-                movedLot,
-                source.sex(),
-                count,
-                source.ageAtAnchorDays(),
-                source.anchorTick(),
-                source.physiologicalStress()));
-      } else {
-        if (existing.sex() != source.sex()
-            || existing.ageAtAnchorDays() != source.ageAtAnchorDays()
-            || existing.anchorTick() != source.anchorTick()) {
-          throw new IllegalArgumentException(
-              "拆分目标批次 " + movedLot + " 已存在且属性不同（拒绝静默合批）");
-        }
-        groups.put(
-            movedLot,
-            existing.withCountAndStress(existing.count() + count, existing.physiologicalStress()));
-      }
-      households.put(toHousehold, withMember(households.get(toHousehold), movedLot));
-    }
+    Household nextFrom = removeMemberShare(from, lotId, count);
+    households.put(fromHousehold, nextFrom);
+    Household nextTo = addMemberShare(to, lotId, count);
+    households.put(toHousehold, nextTo);
 
     long seq = base.populationEvents().size();
     String outId = "transfer-out:" + fromHousehold + ":" + lotId + ":" + seq;
@@ -358,7 +335,7 @@ public final class HouseholdBook {
                     "count",
                     count,
                     "mode",
-                    count == source.count() ? "WHOLE" : "SPLIT",
+                    fromShare == count ? "WHOLE_HOUSEHOLD_SHARE" : "PARTIAL_SHARE",
                     "reason",
                     reason));
     SocialLog.population()
@@ -579,17 +556,19 @@ public final class HouseholdBook {
     }
     List<HouseholdPopulationEvent> events = new ArrayList<>();
     for (Household household : base.households().values()) {
-      for (PeopleLotId lot : household.memberLots()) {
+      for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
+        PeopleLotId lot = member.getKey();
+        long share = member.getValue();
         PopulationGroup group = base.groups().get(lot);
-        if (group == null) {
+        if (group == null || share <= 0L) {
           continue; // 构造期不变式下不会发生；防御性跳过。
         }
         String bracketId = bracketIdAt(group, day, clock);
-        // ① 死亡
+        // ① 死亡（★ P2-A：按**家户份额**算，同一批次被多户持有时各户各算自己那一份）
         Optional<HouseholdVitalRate> deathRate = household.vitalRates().find(bracketId, group.sex());
         if (deathRate.isPresent() && deathRate.get().deathRatePerMillePerTick() > 0L) {
           long rate = Math.min(1000L, deathRate.get().deathRatePerMillePerTick());
-          long deaths = group.count() * rate / 1000L;
+          long deaths = share * rate / 1000L;
           if (deaths > 0L) {
             events.add(
                 new HouseholdPopulationEvent(
@@ -606,10 +585,10 @@ public final class HouseholdBook {
           }
         }
         // ② 出生：只有育龄段女性承载（率表里的 (档, FEMALE) 出生率 > 0）
-        if (group.sex() == Sex.FEMALE && group.count() > 0L) {
+        if (group.sex() == Sex.FEMALE && share > 0L) {
           Optional<HouseholdVitalRate> birthRate = household.vitalRates().find(bracketId, Sex.FEMALE);
           if (birthRate.isPresent() && birthRate.get().birthRatePerMillePerTick() > 0L) {
-            long births = group.count() * birthRate.get().birthRatePerMillePerTick() / 1000L;
+            long births = share * birthRate.get().birthRatePerMillePerTick() / 1000L;
             if (births > 0L) {
               long male = (births + 1L) / 2L;
               long female = births - male;
@@ -660,27 +639,40 @@ public final class HouseholdBook {
   public static SocialData requireConservation(SocialData data) {
     Objects.requireNonNull(data, "data");
     try {
-      Set<PeopleLotId> referenced = new HashSet<>();
+      // ★ P2-A：逐 lot 的跨家户份额守恒（Σ share == group.count）；同一批次可被多户持有。
+      Map<PeopleLotId, Long> sharedByLot = new LinkedHashMap<>();
       for (Household household : data.households().values()) {
         if (!household.id().equals(data.households().get(household.id()).id())) {
           throw new IllegalArgumentException("家户键与 id 不一致: " + household.id());
         }
-        for (PeopleLotId lot : household.memberLots()) {
-          PopulationGroup group = data.groups().get(lot);
+        for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
+          PopulationGroup group = data.groups().get(member.getKey());
           if (group == null) {
-            throw new IllegalArgumentException("家户 " + household.id() + " 的成员批次不存在: " + lot);
+            throw new IllegalArgumentException("家户 " + household.id() + " 的成员批次不存在: " + member.getKey());
           }
           if (group.count() < 0L) {
-            throw new IllegalArgumentException("批次人数为负: " + lot + " count=" + group.count());
+            throw new IllegalArgumentException("批次人数为负: " + member.getKey() + " count=" + group.count());
           }
-          if (!referenced.add(lot)) {
-            throw new IllegalArgumentException("批次被多个家户引用: " + lot);
+          if (member.getValue() < 0L) {
+            throw new IllegalArgumentException(
+                "家户份额为负: household=" + household.id() + " lot=" + member.getKey() + " share=" + member.getValue());
           }
+          sharedByLot.merge(member.getKey(), member.getValue(), Math::addExact);
         }
       }
-      for (PeopleLotId lot : data.groups().keySet()) {
-        if (!referenced.contains(lot)) {
-          throw new IllegalArgumentException("批次没有家户（无主批次）: " + lot);
+      for (Map.Entry<PeopleLotId, PopulationGroup> entry : data.groups().entrySet()) {
+        Long shared = sharedByLot.get(entry.getKey());
+        if (shared == null) {
+          throw new IllegalArgumentException("批次没有家户（无主批次）: " + entry.getKey());
+        }
+        if (shared.longValue() != entry.getValue().count()) {
+          throw new IllegalArgumentException(
+              "批次 "
+                  + entry.getKey()
+                  + " 的家户份额之和必须等于批次人数: Σshare="
+                  + shared
+                  + " count="
+                  + entry.getValue().count());
         }
       }
       long total = 0L;
@@ -719,42 +711,36 @@ public final class HouseholdBook {
       HouseholdPopulationEvent event,
       CalendarClock clock) {
     long delta = Math.abs(event.count());
+    Household current = households.get(household.id());
     if (event.lotId() != null) {
       PopulationGroup group = groups.get(event.lotId());
       if (group != null) {
-        ownerOf(households, event.lotId())
-            .filter(owner -> !owner.equals(household.id()))
-            .ifPresent(
-                owner -> {
-                  throw new IllegalArgumentException(
-                      "事件 " + event.id() + " 的批次 " + event.lotId() + " 属于家户 " + owner + "，不是 " + household.id());
-                });
         requireSex(group, event);
         groups.put(
             group.id(),
             group.withCountAndStress(group.count() + delta, group.physiologicalStress()));
-        // 批次若已存在但未被任何家户引用（回放中间态），挂回本家户。
-        if (ownerOf(households, event.lotId()).isEmpty()) {
-          households.put(household.id(), withMember(households.get(household.id()), event.lotId()));
-        }
+        // 批次若已存在但本家户没有份额（回放中间态 / 跨户拆分的另一半），给它加份额。
+        households.put(household.id(), addMemberShare(current, event.lotId(), delta));
         return;
       }
       PopulationGroup created = newGroup(event.lotId(), event, clock);
       groups.put(created.id(), created);
-      households.put(household.id(), withMember(households.get(household.id()), created.id()));
+      households.put(household.id(), addMemberShare(current, created.id(), created.count()));
       return;
     }
-    PopulationGroup bucket = findBucket(households.get(household.id()), groups, event, clock);
+    MemberSlot bucket = findBucket(current, groups, event, clock);
     if (bucket != null) {
+      PopulationGroup group = bucket.group();
       groups.put(
-          bucket.id(),
-          bucket.withCountAndStress(bucket.count() + delta, bucket.physiologicalStress()));
+          group.id(),
+          group.withCountAndStress(group.count() + delta, group.physiologicalStress()));
+      households.put(household.id(), addMemberShare(current, group.id(), delta));
       return;
     }
     PeopleLotId createdId = PeopleLotId.parse("evt:" + event.id());
     PopulationGroup created = newGroup(createdId, event, clock);
     groups.put(created.id(), created);
-    households.put(household.id(), withMember(households.get(household.id()), created.id()));
+    households.put(household.id(), addMemberShare(current, created.id(), created.count()));
   }
 
   /** 减少人数：带 lotId 精确扣；不带 lotId 按同 {@code (性别, 档)} 批次瀑布扣（不足 ⇒ 拒）。 */
@@ -765,97 +751,114 @@ public final class HouseholdBook {
       HouseholdPopulationEvent event,
       CalendarClock clock) {
     long amount = Math.abs(event.count());
+    Household current = households.get(household.id());
     if (event.lotId() != null) {
       PopulationGroup group = groups.get(event.lotId());
       if (group == null) {
         throw new IllegalArgumentException("事件 " + event.id() + " 的批次不存在: " + event.lotId());
       }
-      requireOwner(households, event.lotId(), household.id());
+      requireMember(current, event.lotId());
       requireSex(group, event);
-      if (group.count() < amount) {
+      long share = current.memberCount(event.lotId());
+      if (share < amount || group.count() < amount) {
         throw new IllegalArgumentException(
-            "事件 " + event.id() + " 扣减超量: lot=" + event.lotId() + " count=" + group.count() + " delta=" + amount);
+            "事件 "
+                + event.id()
+                + " 扣减超量: lot="
+                + event.lotId()
+                + " household="
+                + household.id()
+                + " share="
+                + share
+                + " count="
+                + group.count()
+                + " delta="
+                + amount);
       }
       long next = group.count() - amount;
       if (next == 0L) {
         groups.remove(event.lotId());
-        households.put(household.id(), withoutMember(households.get(household.id()), event.lotId()));
       } else {
         groups.put(group.id(), group.withCountAndStress(next, group.physiologicalStress()));
       }
+      households.put(household.id(), removeMemberShare(current, event.lotId(), amount));
       return;
     }
-    List<PopulationGroup> candidates =
-        matchingBuckets(households.get(household.id()), groups, event, clock);
+    List<MemberSlot> candidates = matchingBuckets(current, groups, event, clock);
     long remaining = amount;
-    for (PopulationGroup candidate : candidates) {
+    Household nextHousehold = current;
+    for (MemberSlot candidate : candidates) {
       if (remaining == 0L) {
         break;
       }
-      long take = Math.min(remaining, candidate.count());
+      long take = Math.min(remaining, candidate.share());
       if (take <= 0L) {
         continue;
       }
-      long next = candidate.count() - take;
+      PopulationGroup group = candidate.group();
+      long next = group.count() - take;
       remaining -= take;
+      nextHousehold = removeMemberShare(nextHousehold, candidate.lot(), take);
       if (next == 0L) {
-        groups.remove(candidate.id());
-        households.put(
-            household.id(), withoutMember(households.get(household.id()), candidate.id()));
+        groups.remove(candidate.lot());
       } else {
-        groups.put(candidate.id(), candidate.withCountAndStress(next, candidate.physiologicalStress()));
+        groups.put(group.id(), group.withCountAndStress(next, group.physiologicalStress()));
       }
     }
     if (remaining != 0L) {
       throw new IllegalArgumentException(
           "事件 " + event.id() + " 扣减不足: 家户=" + household.id() + " 性别=" + event.sex() + " 档=" + event.ageBracketId() + " 缺口=" + remaining);
     }
+    households.put(household.id(), nextHousehold);
   }
 
-  /** 同 {@code (性别, 该 day 所在年龄档)} 的成员批次，按 count 降序 / id 升序（瀑布的确定序）。 */
-  private static List<PopulationGroup> matchingBuckets(
+  /** 家户份额表里的一条候选（瀑布按份额降序 / id 升序）。 */
+  private record MemberSlot(PeopleLotId lot, long share, PopulationGroup group) {}
+
+  /** 同 {@code (性别, 该 day 所在年龄档)} 的成员批次（按家户**份额**降序 / id 升序，瀑布的确定序）。 */
+  private static List<MemberSlot> matchingBuckets(
       Household household,
       Map<PeopleLotId, PopulationGroup> groups,
       HouseholdPopulationEvent event,
       CalendarClock clock) {
-    List<PopulationGroup> out = new ArrayList<>();
-    for (PeopleLotId lot : household.memberLots()) {
-      PopulationGroup group = groups.get(lot);
+    List<MemberSlot> out = new ArrayList<>();
+    for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
+      PopulationGroup group = groups.get(member.getKey());
       if (group == null || group.sex() != event.sex()) {
         continue;
       }
       if (!bracketIdAt(group, event.day(), clock).equals(event.ageBracketId())) {
         continue;
       }
-      out.add(group);
+      out.add(new MemberSlot(member.getKey(), member.getValue(), group));
     }
     out.sort(
-        Comparator.comparingLong(PopulationGroup::count)
+        Comparator.comparingLong(MemberSlot::share)
             .reversed()
-            .thenComparing(group -> group.id().value()));
+            .thenComparing(slot -> slot.lot().value()));
     return out;
   }
 
-  /** 找同 {@code (性别, 档)} 的既有批次（最小 id）；找不到 ⇒ null。 */
-  private static PopulationGroup findBucket(
+  /** 找同 {@code (性别, 档)} 的既有批次（最小 id）；看不到 ⇒ null。 */
+  private static MemberSlot findBucket(
       Household household,
       Map<PeopleLotId, PopulationGroup> groups,
       HouseholdPopulationEvent event,
       CalendarClock clock) {
-    List<PopulationGroup> candidates = new ArrayList<>();
-    for (PeopleLotId lot : household.memberLots()) {
-      PopulationGroup group = groups.get(lot);
+    List<MemberSlot> candidates = new ArrayList<>();
+    for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
+      PopulationGroup group = groups.get(member.getKey());
       if (group == null || group.sex() != event.sex()) {
         continue;
       }
       if (bracketIdAt(group, event.day(), clock).equals(event.ageBracketId())) {
-        candidates.add(group);
+        candidates.add(new MemberSlot(member.getKey(), member.getValue(), group));
       }
     }
     if (candidates.isEmpty()) {
       return null;
     }
-    candidates.sort(Comparator.comparing(group -> group.id().value()));
+    candidates.sort(Comparator.comparing(slot -> slot.lot().value()));
     return candidates.get(0);
   }
 
@@ -895,19 +898,26 @@ public final class HouseholdBook {
     return next;
   }
 
-  private static Household withMember(Household household, PeopleLotId lot) {
-    if (household.hasMember(lot)) {
-      return household;
+  /** 给家户的某批次加份额（不存在则新建条目；count 必须 > 0）。 */
+  private static Household addMemberShare(Household household, PeopleLotId lot, long count) {
+    if (count < 0L) {
+      throw new IllegalArgumentException("addMemberShare 的 count 不得为负: " + count);
     }
-    List<PeopleLotId> lots = new ArrayList<>(household.memberLots());
-    lots.add(lot);
-    return household.withMemberLots(lots);
+    return household.withMember(lot, Math.addExact(household.memberCount(lot), count));
   }
 
-  private static Household withoutMember(Household household, PeopleLotId lot) {
-    List<PeopleLotId> lots = new ArrayList<>(household.memberLots());
-    lots.remove(lot);
-    return household.withMemberLots(lots);
+  /** 从家户的某批次份额里扣 count；份额归 0 ⇒ 删条目。 */
+  private static Household removeMemberShare(Household household, PeopleLotId lot, long count) {
+    requireMember(household, lot);
+    long share = household.memberCount(lot);
+    if (share < count) {
+      throw new IllegalArgumentException(
+          "家户 " + household.id() + " 对批次 " + lot + " 的份额不足: share=" + share + " remove=" + count);
+    }
+    if (share == count) {
+      return household.withoutMember(lot);
+    }
+    return household.withMember(lot, share - count);
   }
 
   private static void requireMember(Household household, PeopleLotId lot) {
@@ -916,36 +926,11 @@ public final class HouseholdBook {
     }
   }
 
-  private static Optional<HouseholdId> ownerOf(
-      Map<HouseholdId, Household> households, PeopleLotId lot) {
-    for (Household household : households.values()) {
-      if (household.hasMember(lot)) {
-        return Optional.of(household.id());
-      }
-    }
-    return Optional.empty();
-  }
-
-  private static void requireOwner(
-      Map<HouseholdId, Household> households, PeopleLotId lot, HouseholdId expected) {
-    HouseholdId owner =
-        ownerOf(households, lot)
-            .orElseThrow(() -> new IllegalArgumentException("批次没有家户（回放中间态？）: " + lot));
-    if (!owner.equals(expected)) {
-      throw new IllegalArgumentException("批次 " + lot + " 属于家户 " + owner + "，不是 " + expected);
-    }
-  }
-
   private static void requireSex(PopulationGroup group, HouseholdPopulationEvent event) {
     if (group.sex() != event.sex()) {
       throw new IllegalArgumentException(
           "事件 " + event.id() + " 的性别 " + event.sex() + " 与批次 " + group.id() + " 的性别 " + group.sex() + " 不符");
     }
-  }
-
-  /** 迁出部分的派生 id：{@code <lotId>@<toHousehold>}（同一目标重复拆分自动合并；不与其他 lot 冲突时稳定）。 */
-  private static PeopleLotId derivedLotId(PeopleLotId lotId, HouseholdId toHousehold) {
-    return PeopleLotId.parse(lotId.value() + "@" + toHousehold.value());
   }
 
   private static void requireEventIdFree(

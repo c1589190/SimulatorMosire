@@ -120,30 +120,48 @@ public record SocialData(
         throw new IllegalArgumentException(
             "households 的键必须等于家户 id: key=" + entry.getKey() + " id=" + household.id());
       }
-      for (PeopleLotId lot : household.memberLots()) {
-        if (!groupsCopy.containsKey(lot)) {
+      for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
+        if (!groupsCopy.containsKey(member.getKey())) {
           throw new IllegalArgumentException(
-              "家户 " + household.id() + " 的成员批次不在 groups 里: " + lot);
+              "家户 " + household.id() + " 的成员批次不在 groups 里: " + member.getKey());
+        }
+        if (member.getValue() > groupsCopy.get(member.getKey()).count()) {
+          throw new IllegalArgumentException(
+              "家户 "
+                  + household.id()
+                  + " 对批次 "
+                  + member.getKey()
+                  + " 的份额超过批次人数: share="
+                  + member.getValue()
+                  + " count="
+                  + groupsCopy.get(member.getKey()).count());
         }
       }
       householdsCopy.put(entry.getKey(), household);
     }
-    // ★★ 每个批次必须且只能被一个家户引用（架构 §4.1 的"memberLots 是唯一成员关系"）：
-    //   少一个 ⇒ 那批人没有位置（读口看不见、算不进任何 hex/unit）；多一个 ⇒ 同一个批次有两个位置。
-    Map<PeopleLotId, HouseholdId> ownerByLot = new LinkedHashMap<>();
+    // ★★ P2-A §13.2：一个批次可按 count 拆给多个家户（份额表），跨家户守恒 = 逐 lot
+    //   Σ share == PopulationGroup.count；且每个批次至少被一个家户引用（否则那批人没有位置，
+    //   读口看不见、算不进任何 hex/unit）。
+    Map<PeopleLotId, Long> sharedByLot = new LinkedHashMap<>();
     for (Household household : householdsCopy.values()) {
-      for (PeopleLotId lot : household.memberLots()) {
-        HouseholdId previous = ownerByLot.put(lot, household.id());
-        if (previous != null) {
-          throw new IllegalArgumentException(
-              "批次 " + lot + " 同时被家户 " + previous + " 与 " + household.id() + " 引用（每个批次只能有一个家户）");
-        }
+      for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
+        sharedByLot.merge(member.getKey(), member.getValue(), Math::addExact);
       }
     }
-    for (PeopleLotId lot : groupsCopy.keySet()) {
-      if (!ownerByLot.containsKey(lot)) {
+    for (Map.Entry<PeopleLotId, PopulationGroup> entry : groupsCopy.entrySet()) {
+      Long shared = sharedByLot.get(entry.getKey());
+      if (shared == null) {
         throw new IllegalArgumentException(
-            "批次 " + lot + " 没有被任何家户引用（位置只能由家户给出；拒绝无主批次）");
+            "批次 " + entry.getKey() + " 没有被任何家户引用（位置只能由家户给出；拒绝无主批次）");
+      }
+      if (shared.longValue() != entry.getValue().count()) {
+        throw new IllegalArgumentException(
+            "批次 "
+                + entry.getKey()
+                + " 的家户份额之和必须等于批次人数: Σshare="
+                + shared
+                + " count="
+                + entry.getValue().count());
       }
     }
     households = Collections.unmodifiableMap(householdsCopy);
@@ -214,8 +232,10 @@ public record SocialData(
   // ── 家户/位置派生量（★ 一律现算，别找地方存 —— 见类注）────────────────────────────────
 
   /**
-   * 某批次所属的家户（架构 §5 的只读查询）：批次必须且只能属于一个家户 ⇒ 查不到是坏状态（构造期已拒），
-   * 但本方法保持 {@link Optional} 形态（旧档/迁移期的读口防御）。
+   * 某批次所属的**第一个**家户（架构 §5 的只读查询；保序 households 的插入序）。
+   *
+   * <p>★★ P2-A：一个批次可按 count 拆给多个家户 ⇒ "唯一所有者"不再是模型不变量。本方法保留为兼容读法（旧调用点
+   * 只关心"至少有一个家户"）；要拿全部份额请用 {@link #householdsOfLot(PeopleLotId)}。
    */
   public Optional<Household> householdOfLot(PeopleLotId lotId) {
     if (lotId == null) {
@@ -227,6 +247,20 @@ public record SocialData(
       }
     }
     return Optional.empty();
+  }
+
+  /** 持有某批次**份额**的全部家户（保序；含 count=0 的显式条目）。 */
+  public List<Household> householdsOfLot(PeopleLotId lotId) {
+    if (lotId == null) {
+      throw new IllegalArgumentException("lotId 不得为 null");
+    }
+    List<Household> out = new ArrayList<>();
+    for (Household household : households.values()) {
+      if (household.hasMember(lotId)) {
+        out.add(household);
+      }
+    }
+    return List.copyOf(out);
   }
 
   /** 某批次的位置（HEX / UNIT）：位置只能来自所属家户（架构 §4.2）；查不到 ⇒ 空。 */
@@ -292,7 +326,7 @@ public record SocialData(
     return List.copyOf(out);
   }
 
-  /** 某个家户的人数（Σ 成员批次 count）；家户不存在 ⇒ 0（SPI 口径）。 */
+  /** 某个家户的人数（Σ 成员份额 count）；家户不存在 ⇒ 0（SPI 口径）。 */
   public long householdPopulation(HouseholdId householdId) {
     if (householdId == null) {
       throw new IllegalArgumentException("householdId 不得为 null");
@@ -302,10 +336,9 @@ public record SocialData(
       return 0L;
     }
     long total = 0L;
-    for (PeopleLotId lot : household.memberLots()) {
-      PopulationGroup group = groups.get(lot);
-      if (group != null) {
-        total += group.count();
+    for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
+      if (groups.get(member.getKey()) != null) {
+        total += member.getValue();
       }
     }
     return total;
@@ -378,15 +411,15 @@ public record SocialData(
       }
       counts.put(bracket, bySex);
     }
-    for (PeopleLotId lot : household.memberLots()) {
-      PopulationGroup group = groups.get(lot);
+    for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
+      PopulationGroup group = groups.get(member.getKey());
       if (group == null) {
         continue;
       }
       long atTick = nowTick < 0L ? group.anchorTick() : nowTick;
       long ageDays = group.ageDaysAt(atTick);
       AgeBracket bracket = AgeBracket.of(clock.system(), clock.dayNumberOfTick(atTick), ageDays);
-      counts.get(bracket).put(group.sex(), counts.get(bracket).get(group.sex()) + group.count());
+      counts.get(bracket).put(group.sex(), counts.get(bracket).get(group.sex()) + member.getValue());
     }
     List<AgeBracketView> out = new ArrayList<>(AgeBracket.values().length * Sex.values().length);
     long[] minDays = {0L, 15L * 365L, 60L * 365L};

@@ -1,7 +1,6 @@
 package io.mosire.simos.app.tools.write;
 
 import io.mosire.simos.actor.ActorData;
-import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccountKey;
@@ -9,6 +8,7 @@ import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyCommodities;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.map.GameMap;
@@ -215,16 +215,19 @@ final class RaiseUnitPlan {
 
     // ★ 粮/钱/人力的来源一律走 RegionAllocations（阶段 6/8 共享的唯一瀑布）；requested = 0 的维度整段跳过。
     ActorData actors = ApiViews.actorData(state);
+    // ★★ P2-A：账户键不再带格 ⇒ 家户→格从 social 的家户位置派生（唯一拼写点）。
+    SocialData social = ToolSupport.socialData(state);
     RegionAllocations.AccountAllocation grainAllocation =
         grain == 0L
             ? RegionAllocations.AccountAllocation.skipped()
             : RegionAllocations.allocateAccounts(
-                actors, region, "粮", grain, account -> AvailableStock.available(account, GRAIN));
+                actors, social, region, "粮", grain, account -> AvailableStock.available(account, GRAIN));
     RegionAllocations.AccountAllocation moneyAllocation =
         money == 0L
             ? RegionAllocations.AccountAllocation.skipped()
             : RegionAllocations.allocateAccounts(
                 actors,
+                social,
                 region,
                 "钱",
                 money,
@@ -235,7 +238,6 @@ final class RaiseUnitPlan {
     // ★★ S3b（2026-10-09）：新单位的人口不再落成 unit.manpower 的第二本 headcount，而是
     //   ① 建一个 location=UNIT(newUnitId) 的小家户；② 把抽到的成员批次**转移**进它；③ unit.households=[该家户]。
     //   三件事在同一批命令里，与 Social 位置天然一致（本批是生产路径，不靠 GM 手工工具）。
-    SocialData social = ToolSupport.socialData(state);
     String householdId = householdIdFor(newUnitId);
     HouseholdId household = HouseholdId.parse(householdId);
     if (social.households().containsKey(household)) {
@@ -527,20 +529,18 @@ final class RaiseUnitPlan {
       }
       LinkedHashMap<GoodsAccountKey, Long> grainByKey = new LinkedHashMap<>();
       for (RegionAllocations.AccountSource source : grain.sources()) {
-        grainByKey.put(new GoodsAccountKey(source.owner(), source.at()), -source.amount());
+        grainByKey.put(new GoodsAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
       }
       LinkedHashMap<GoodsAccountKey, Long> moneyByKey = new LinkedHashMap<>();
       for (RegionAllocations.AccountSource source : money.sources()) {
-        moneyByKey.put(new GoodsAccountKey(source.owner(), source.at()), -source.amount());
+        moneyByKey.put(new GoodsAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
       }
       LinkedHashSet<GoodsAccountKey> order = new LinkedHashSet<>(grainByKey.keySet());
       order.addAll(moneyByKey.keySet());
       List<Map<String, Object>> entries = new ArrayList<>(order.size() + 1);
       for (GoodsAccountKey key : order) {
         Map<String, Object> entry = new LinkedHashMap<>();
-        entry.put("owner", actorRefView(key.owner()));
-        entry.put("q", key.location().q());
-        entry.put("r", key.location().r());
+        entry.put("household", key.household().value());
         if (grainByKey.containsKey(key)) {
           Map<String, Object> goods = new LinkedHashMap<>();
           goods.put(GRAIN.toString(), grainByKey.get(key));
@@ -555,9 +555,7 @@ final class RaiseUnitPlan {
       }
       // ★ 新单位国库账户一条正增量 @ at：粮 / 钱各自 +requested（分配不变量保证 Σ扣减 == requested，逐值相等）。
       Map<String, Object> treasury = new LinkedHashMap<>();
-      treasury.put("owner", actorRefView(new ActorRef(ActorKind.UNIT, unitId)));
-      treasury.put("q", at.q());
-      treasury.put("r", at.r());
+      treasury.put("household", householdId);
       if (grain.requested() > 0L) {
         Map<String, Object> goods = new LinkedHashMap<>();
         goods.put(GRAIN.toString(), grain.requested());

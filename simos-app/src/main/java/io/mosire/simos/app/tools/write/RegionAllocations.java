@@ -1,7 +1,7 @@
 package io.mosire.simos.app.tools.write;
 
 import io.mosire.simos.actor.ActorData;
-import io.mosire.simos.actor.api.actor.ActorKind;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
@@ -62,11 +62,13 @@ final class RegionAllocations {
    */
   static AccountAllocation allocateAccounts(
       ActorData actors,
+      SocialData social,
       Region region,
       String label,
       long requested,
       ToLongFunction<GoodsAccount> availableOf) {
     Objects.requireNonNull(actors, "actors");
+    Objects.requireNonNull(social, "social");
     Objects.requireNonNull(region, "region");
     Objects.requireNonNull(label, "label");
     Objects.requireNonNull(availableOf, "availableOf");
@@ -79,17 +81,21 @@ final class RegionAllocations {
     List<AccountCandidate> candidates = new ArrayList<>();
     for (Map.Entry<GoodsAccountKey, GoodsAccount> entry : actors.accounts().entrySet()) {
       GoodsAccountKey key = entry.getKey();
-      if (key.owner().kind() != ActorKind.HOUSEHOLD) {
-        continue;
+      var household = social.households().get(key.household());
+      if (household == null
+          || !(household.location()
+              instanceof io.mosire.simos.social.api.household.HouseholdLocation.Hex at)) {
+        continue; // 不在 HEX 上的家户不参与按格瀑布
       }
-      if (!region.hexes().contains(key.location())) {
+      if (!region.hexes().contains(at.hex())) {
         continue;
       }
       long available = availableOf.applyAsLong(entry.getValue());
       if (available <= 0L) {
         continue; // 可支配为 0 的账供不出任何量，不进来源表（也不占用瀑布位次）。
       }
-      candidates.add(new AccountCandidate(key.owner(), key.location(), available, key.toString()));
+      candidates.add(
+          new AccountCandidate(HouseholdActors.of(key.household()), at.hex(), available, key.toString()));
     }
     // ★ 瀑布全序：可用量降序、同量按账键规范串升序（键在 Map 里唯一 ⇒ 无并列歧义）。
     candidates.sort(

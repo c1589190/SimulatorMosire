@@ -3,7 +3,6 @@ package io.mosire.simos.app.tools.write;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.AvailableStock;
-import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.map.hex.HexCoord;
@@ -117,13 +116,9 @@ final class GovDismissPlan {
         throw new IllegalArgumentException(
             "单位 " + unitId + " 当刻没有有效位置，国库落点无法确定（待遇 " + payment + " 需要支付）；先 unit.PlaceAt");
       }
-      ActorRef treasury = new ActorRef(ActorKind.UNIT, unitId);
-      availableSilver =
-          AvailableStock.available(
-              ApiViews.actorData(state),
-              treasury,
-              treasuryLocation.get(),
-              MoneyVocabulary.SILVER_CURRENCY);
+      // ★★ P2-A §13.3：单位国库账户退役（政府国库 = 政府家户账户）；本工具改走政府家户属 P2-C。
+      //   这里如实读 0（政府家户账户的定位不在此端口径内），不做"从军官家户扣款"的猜测。
+      availableSilver = 0L;
       if (availableSilver < payment) {
         throw new IllegalArgumentException(
             "退休待遇支付不足：requested="

@@ -386,7 +386,7 @@ public final class EconomyClearRegionHandler
       return false;
     }
     ActorKind kind = allocation.actor().kind();
-    return kind == ActorKind.ESTATE || kind == ActorKind.WORKSHOP;
+    return kind == ActorKind.ORGANIZATION;
   }
 
   /** 两个集合是否有交（保序集合的线性判；生产组织名单都很小）。 */

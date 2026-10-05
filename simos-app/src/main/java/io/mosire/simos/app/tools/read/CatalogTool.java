@@ -339,31 +339,30 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "actor.Seed",
               "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],"
-                  + "goods[{owner{kind,id}, location{q,r}, balances{键:整数}}...]}...]"
-                  + "（★ S1 阶段 2：一次种入某地图的 actor 分片，两张表各自挂在**自己那一格**下——"
-                  + "goods 的 location 必须等于所在 entry 的 (q,r)，否则拒；"
-                  + "owner 必须是载荷里声明的 actors ∪ 现有状态里已有的主体，悬空 owner 拒）"
-                  + "（★ H0.5/裁定 S3：产权表 holdings 随 AssetHolding 整块退役 ⇒ 本切片唯一的账是 goods）"),
+                  + "goods[{household, balances{键:整数}, money?, frozenBalances?, frozenMoney?}...]}...]"
+                  + "（★ P2-A §13.3：账户主体只有家户、一本账——goods 行的 household 必须是载荷/现有家户集里的家户，"
+                  + "悬空家户拒；位置从 Household.location 派生，不再写 location；"
+                  + "旧 (owner,location) 键的账户随旧世界报废，不做迁移）"),
           Map.entry(
               "actor.AdjustAccounts",
-              "entries[{owner{kind,id}, q, r, goods{商品:有符号净增量}?, money{币种:有符号净增量}?}...]"
-                  + "（★ 阶段 6：净增量账原语。entries 必填非空；每项 owner/q/r 必填；"
-                  + "goods/money 至少一个非空、值不得为 0；同一 (owner,q,r) 不得重复；"
+              "entries[{household, goods{商品:有符号净增量}?, money{币种:有符号净增量}?}...]"
+                  + "（★ P2-A：净增量账原语，账户主体只有家户。entries 必填非空；每项 household 必填；"
+                  + "goods/money 至少一个非空、值不得为 0；同一 household 不得重复；"
                   + "缺账 + 纯正增量 ⇒ 新建，缺账 + 任何负增量 ⇒ 拒；"
                   + "负增量使余额 < 0 或侵占冻结额（可支配 = 余额 − 冻结）⇒ 拒；整条原子）"),
           Map.entry(
               "actor.RemitGovTreasury",
-              "fromUnitId, fromQ, fromR, toUnitId, toQ, toR, grain?, cloth?, money?, reason?"
-                  + "（★ R3a：显式 GOV 国库上缴 / 转移，源/目标账键 = "
-                  + "(ActorRef(UNIT,unitId), q_r)；两个 unit id 必填非空白、坐标必填 int、from/to 账键不得相同；"
+              "fromHousehold, toHousehold, grain?, cloth?, money?, reason?"
+                  + "（★ P2-A §13.3：GOV 国库 = 政府家户账户；源/目标都是家户 id，两个不得相同；"
                   + "三个金额可选缺省 0、不得为负、至少一个 > 0；源账必须存在、逐资源走 AvailableStock"
                   + "（可支配 = 余额 − 冻结）判足量；整条原子，任一违例全拒；"
-                  + "★ 非 GmOnly：省份决策人可嵌进 sd.IssueDirective；目标必须是源 superiorGov 的规则在 app scope（R3b））"),
+                  + "★ 本批缺口：层级校验（省 → superiorGov）待 P2-C 重建，决策令路径暂被 app 层 fail-closed 拒）"),
           Map.entry(
               "actor.ClearRegion",
               "regionId（必填；必须在当前 map.regions() 里）"
-                  + "（★ GM-only 区域 actor 数据清空：目标 Region 格集内 location 命中的 GoodsAccount 整条删除；"
-                  + "actors 只删除清账后在任何位置都不再持有账户的主体，仍有别处账户或本来就无账户的主体保留）"),
+                  + "（★ GM-only；★★ P2-A 具名缺口：账户键不再带 location ⇒ 本命令不再能映射"
+                  + "「目标 Region 的账本」，本批只校验 region 存在性、不改账本/主体；"
+                  + "区域清账改由组合根按家户集协调（P2-F））"),
           Map.entry("sd.CreateNation", "nationId, name, homeRegionId, adminBudgetPerTick"),
           Map.entry(
               "sd.CreateArmy",
@@ -439,15 +438,10 @@ public final class CatalogTool implements AgentTool {
                   + " sd.AdjudicateTick 内部编排产生；不对外提供窄工具）"),
           Map.entry(
               "actor.TransferAccounts",
-              "from{owner{kind,id},q,r}, to{owner{kind,id},q,r}, goods{商品:>0}?, money{币种:>0}?, reason?"
-                  + "（★ P1.2：任意两个 actor 账户间原子转移；源账必须存在且逐资源可支配足够；"
-                  + "目标缺失 ⇒ 按转入量新建；冻结额不动；至少一个维度非空、0 不得出现；GmOnly）"),
-          Map.entry(
-              "actor.MoveAccount",
-              "owner{kind,id}, from{q,r}, to{q,r}, reason?"
-                  + "（★ P1.2：按 owner 搬整本账——owner 不变、位置从 from 换到 to；"
-                  + "余额/货币/两张冻结表整本随行；目标已有 ⇒ 四张表逐键精确相加、long 溢出 ⇒ 整条拒；"
-                  + "from/to 相同/源账不存在 ⇒ 拒；GmOnly）"),
+              "from{household}, to{household}, goods{商品:>0}?, money{币种:>0}?, reason?"
+                  + "（★ P2-A：两个**家户**账户间原子转移（账户键 = 家户身份，不再带格）；"
+                  + "源账必须存在且逐资源可支配足够；目标缺失 ⇒ 按转入量新建；冻结额不动；"
+                  + "至少一个维度非空、0 不得出现；GmOnly。★ actor.MoveAccount 已随 P2-A 退役）"),
           Map.entry(
               "social.MoveCity",
               "id, at{q,r}, region?"

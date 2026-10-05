@@ -1,7 +1,5 @@
 package io.mosire.simos.app.tools.write;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.agentlib.approval.AskKind;
 import io.mosire.agentlib.approval.ToolGate;
@@ -27,11 +25,9 @@ import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
-import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.model.AdjudicationStatus;
-import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveCommand;
@@ -39,10 +35,6 @@ import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import io.mosire.simos.sd.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.sd.state.SdState;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.Unit;
-import io.mosire.simos.unit.UnitId;
-import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -50,7 +42,6 @@ import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateRef;
-import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -535,137 +526,13 @@ public final class AdjudicateTickTool implements AgentTool {
    */
   private static Optional<String> remitHierarchyRejection(
       SimulationState state, Directive directive, DirectiveCommand command) {
-    DecisionMaker maker =
-        ToolSupport.sdState(state).decisionMakers().get(directive.decisionMakerId());
-    if (maker == null) {
-      // 正常路径前面 makerMissing 已拦；这里是防御（不编第二条语义）。
-      return Optional.of("决策人不存在: " + directive.decisionMakerId().value());
-    }
-    if (!(maker.affiliation() instanceof Affiliation.Gov gov)) {
-      return Optional.of("上缴令只能由 GOV 决策人发（当前归属 " + maker.affiliation() + "）");
-    }
-    RemitTarget target;
-    try {
-      target = parseRemitTarget(command.payloadJson());
-    } catch (IllegalArgumentException e) {
-      return Optional.of("上缴令载荷形状不对，裁定前拒: " + e.getMessage());
-    }
-    UnitState units = ToolSupport.unitState(state);
-    String ownGov = gov.govUnit().value();
-    if (!ownGov.equals(target.fromUnitId())) {
-      return Optional.of(
-          "上缴源必须是出令决策人自己的 GOV（令源=" + target.fromUnitId() + "，决策人 GOV=" + ownGov + "）");
-    }
-    Unit source = units.units().get(gov.govUnit());
-    if (source == null) {
-      return Optional.of("上缴源单位在 unit 切片里不存在: " + ownGov);
-    }
-    if (!(source.module().orElse(null) instanceof GovFormation sourceGov)) {
-      return Optional.of("上缴源单位没有 GovFormation（不是 GOV）: " + ownGov);
-    }
-    Optional<UnitId> superior = sourceGov.superiorGov();
-    if (superior.isEmpty()) {
-      return Optional.of("上缴源 GOV 没有 superiorGov（中央 / 无上级不能上缴）: " + ownGov);
-    }
-    String superiorId = superior.get().value();
-    if (!superiorId.equals(target.toUnitId())) {
-      return Optional.of(
-          "上缴目标必须是源 GOV 的 superiorGov（令目标="
-              + target.toUnitId()
-              + "，源 GOV 的 superiorGov="
-              + superiorId
-              + "）");
-    }
-    if (target.fromUnitId().equals(target.toUnitId())) {
-      return Optional.of(
-          "上缴源与目标不得相同（令源=" + target.fromUnitId() + "，令目标=" + target.toUnitId() + "）");
-    }
-    UnitId targetId;
-    try {
-      targetId = new UnitId(target.toUnitId());
-    } catch (IllegalArgumentException e) {
-      return Optional.of("上缴目标单位 id 非法: " + target.toUnitId());
-    }
-    Unit targetUnit = units.units().get(targetId);
-    if (targetUnit == null) {
-      return Optional.of("上缴目标单位在 unit 切片里不存在: " + target.toUnitId());
-    }
-    if (!(targetUnit.module().orElse(null) instanceof GovFormation)) {
-      return Optional.of("上缴目标单位没有 GovFormation（不是 GOV）: " + target.toUnitId());
-    }
-    SimosTimestamp at = state.meta().timestamp();
-    HexCoord from = new HexCoord(target.fromQ(), target.fromR());
-    Optional<HexCoord> sourceAt = units.effectivePosition(source.id(), at);
-    if (sourceAt.isEmpty() || !sourceAt.get().equals(from)) {
-      return Optional.of(
-          "上缴源坐标必须是源 GOV 当刻有效位置（令坐标="
-              + from
-              + "，源 GOV 当刻有效位置="
-              + sourceAt.map(HexCoord::toString).orElse("无")
-              + "）");
-    }
-    HexCoord to = new HexCoord(target.toQ(), target.toR());
-    Optional<HexCoord> targetAt = units.effectivePosition(targetUnit.id(), at);
-    if (targetAt.isEmpty() || !targetAt.get().equals(to)) {
-      return Optional.of(
-          "上缴目标坐标必须是目标 GOV 当刻有效位置（令坐标="
-              + to
-              + "，目标 GOV 当刻有效位置="
-              + targetAt.map(HexCoord::toString).orElse("无")
-              + "）");
-    }
-    return Optional.empty();
-  }
-
-  /** 上缴令只需形状的六个字段（金额不在本层解析——域层 handler 才有唯一口径）。 */
-  private record RemitTarget(
-      String fromUnitId, int fromQ, int fromR, String toUnitId, int toQ, int toR) {}
-
-  /** 解析上缴令形状：JSON 不是对象 / 字段缺失 / 类型不对都抛可读的 {@link IllegalArgumentException}。 */
-  private static RemitTarget parseRemitTarget(String payloadJson) {
-    JsonNode payload;
-    try {
-      payload = MAPPER.readTree(payloadJson);
-    } catch (JsonProcessingException e) {
-      throw new IllegalArgumentException("载荷不是合法 JSON: " + e.getOriginalMessage(), e);
-    }
-    if (payload == null || !payload.isObject()) {
-      throw new IllegalArgumentException("载荷必须是 JSON 对象");
-    }
-    return new RemitTarget(
-        normalizeUnitId(requireRemitText(payload, "fromUnitId")),
-        requireRemitInt(payload, "fromQ"),
-        requireRemitInt(payload, "fromR"),
-        normalizeUnitId(requireRemitText(payload, "toUnitId")),
-        requireRemitInt(payload, "toQ"),
-        requireRemitInt(payload, "toR"));
-  }
-
-  /** 上缴令的文本字段：缺失 / 非文本 / 空白都拒。 */
-  private static String requireRemitText(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || !value.isTextual() || value.asText().isBlank()) {
-      throw new IllegalArgumentException("字段 " + field + " 缺失或不是非空白文本");
-    }
-    return value.asText();
-  }
-
-  /** 单位 id 文本：接受 canonical {@code unit:<裸值>}，去掉前缀后按裸值使用；只剩前缀 ⇒ 拒。 */
-  private static String normalizeUnitId(String text) {
-    String value = text.startsWith("unit:") ? text.substring("unit:".length()) : text;
-    if (value.isBlank()) {
-      throw new IllegalArgumentException("单位 id 去掉 unit: 前缀后不得为空白");
-    }
-    return value;
-  }
-
-  /** 上缴令的坐标字段：缺失 / 非 int 都拒。 */
-  private static int requireRemitInt(JsonNode payload, String field) {
-    JsonNode value = payload.get(field);
-    if (value == null || !value.isInt()) {
-      throw new IllegalArgumentException("字段 " + field + " 缺失或不是 int");
-    }
-    return value.intValue();
+    // ★★ P2-A §13.3：国库 = 政府家户账户；actor.RemitGovTreasury 的载荷已改为
+    //   {fromHousehold,toHousehold} 家户口径。原"省 → superiorGov + 双方坐标必须等于当刻有效位置"的
+    //   层级/坐标校验依赖已退役的单位国库账 ⇒ 本批**fail-closed**：在 P2-C 重建家户口径的层级校验之前，
+    //   不接受任何该类型的决策令（宁拒不放行）。
+    return Optional.of(
+        "P2-A：actor.RemitGovTreasury 已改家户口径（国库 = 政府家户账户）；"
+            + "层级校验待 P2-C 重建 —— 本批暂不接受该类型决策令");
   }
 
   /**

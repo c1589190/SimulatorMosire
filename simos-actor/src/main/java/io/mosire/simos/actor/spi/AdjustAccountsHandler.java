@@ -9,7 +9,6 @@ import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -94,7 +93,8 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {
-    return ActorPayloads.entryHexKeys(ActorPayloads.parse(payloadJson));
+    ActorPayloads.parse(payloadJson); // 载荷必须可解析；家户账户无格 ⇒ 无 hex 目标
+    return List.of();
   }
 
   @Override
@@ -121,7 +121,7 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
   private static ActorData apply(ActorData base, List<ActorPayloads.AccountAdjustment> entries) {
     Map<GoodsAccountKey, GoodsAccount> next = new LinkedHashMap<>(base.accounts());
     for (ActorPayloads.AccountAdjustment entry : entries) {
-      GoodsAccountKey key = new GoodsAccountKey(entry.owner(), entry.location());
+      GoodsAccountKey key = new GoodsAccountKey(entry.household());
       GoodsAccount account = next.get(key);
       if (account == null) {
         requireNoNegativeForMissingAccount(entry); // 缺账：任何负增量拒绝（0 已在解析期拒）
@@ -159,17 +159,15 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
       long delta, ActorPayloads.AccountAdjustment entry, String dimension, String asset) {
     if (delta < 0L) {
       throw new IllegalArgumentException(
-          "缺账 + 负增量：owner="
-              + entry.owner()
-              + "，格 "
-              + hex(entry.location())
+          "缺账 + 负增量：household="
+              + entry.household()
               + "，"
               + dimension
               + " "
               + asset
               + " 增量="
               + delta
-              + "（该 (owner,格) 上还没有这本账；缺账只允许纯正增量新建）");
+              + "（该家户还没有这本账；缺账只允许纯正增量新建）");
     }
   }
 
@@ -234,10 +232,8 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
     long next = balance + delta;
     if (next < 0L) {
       throw new IllegalArgumentException(
-          "负增量使余额 < 0：owner="
-              + entry.owner()
-              + "，格 "
-              + hex(entry.location())
+          "负增量使余额 < 0：household="
+              + entry.household()
               + "，"
               + dimension
               + " "
@@ -252,10 +248,8 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
     }
     if (delta < -available) {
       throw new IllegalArgumentException(
-          "负增量侵占冻结额：owner="
-              + entry.owner()
-              + "，格 "
-              + hex(entry.location())
+          "负增量侵占冻结额：household="
+              + entry.household()
               + "，"
               + dimension
               + " "
@@ -270,10 +264,5 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
               + delta
               + "（可支配 = 余额 − 冻结，冻结部分不可动用）");
     }
-  }
-
-  /** 格的键：{@code <q>_<r>}（**只经** {@link ResourcePaths#actor}，本类不再有第二个拼写点）。 */
-  private static String hex(HexCoord coord) {
-    return ResourcePaths.actor(coord.q(), coord.r());
   }
 }

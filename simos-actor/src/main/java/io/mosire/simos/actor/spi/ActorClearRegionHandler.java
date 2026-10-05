@@ -3,11 +3,7 @@ package io.mosire.simos.actor.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.change.ActorChangeSet;
-import io.mosire.simos.actor.model.Actor;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -18,10 +14,7 @@ import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.slf4j.Logger;
@@ -82,41 +75,20 @@ public final class ActorClearRegionHandler
       String regionId = requireRegionId(ActorPayloads.parse(payloadJson));
       Region region = requireRegion(state, regionId);
       Set<HexCoord> hexes = region.hexes();
-      Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>(base.accounts());
-      // ★ "清账前持有过账本"的主体集合要在删账本之前取——"本来就无账户"的主体靠这个差集被保留。
-      Set<ActorRef> ownersWithAccountsBefore = ownersOf(accounts.keySet());
-      accounts.keySet().removeIf(key -> hexes.contains(key.location()));
-      Set<ActorRef> ownersWithAccountsAfter = ownersOf(accounts.keySet());
-      Map<ActorRef, Actor> actors = new LinkedHashMap<>(base.actors());
-      actors
-          .keySet()
-          .removeIf(
-              owner ->
-                  ownersWithAccountsBefore.contains(owner)
-                      && !ownersWithAccountsAfter.contains(owner));
-      ActorData next = base.withAccounts(accounts).withActors(actors);
+      // ★★ P2-A 具名缺口（如实记）：账户键不再带 HexCoord（位置从 Household.location 派生），
+      //   而 actor 切片看不见 social ⇒ 本命令**无法**再把"目标 Region 的账本"映射出来。
+      //   区域清账必须由组合根（同时看得见 social 与 actor）按"该区域的家户集"协调，属 P2-F。
+      //   本命令因此只校验 region 存在性，不改任何账本/主体（不猜、不静默删错）。
       LOG.info(
-          "event=ACTOR_REGION_CLEARED region={} hexes={} accountsBefore={} accountsAfter={} actorsBefore={} actorsAfter={}",
+          "event=ACTOR_REGION_CLEAR_SKIPPED region={} hexes={} accounts={} reason=accounts-are-household-owned",
           regionId,
           hexes.size(),
-          base.accounts().size(),
-          accounts.size(),
-          base.actors().size(),
-          actors.size());
-      return new HandlerOutcome.Applied(ActorChangeSet.between(base, next));
+          base.accounts().size());
+      return new HandlerOutcome.Applied(ActorChangeSet.between(base, base));
     } catch (IllegalArgumentException e) {
       // ★ 域构造期守卫（若清空边界写错）也在这里折成具名拒绝，不穿成整条推进失败。
       return new HandlerOutcome.Rejected(e.getMessage());
     }
-  }
-
-  /** 账本键集合里的全部主体（保序去重；只用于"清账前/后"两个差集）。 */
-  private static Set<ActorRef> ownersOf(Set<GoodsAccountKey> keys) {
-    Set<ActorRef> owners = new LinkedHashSet<>();
-    for (GoodsAccountKey key : keys) {
-      owners.add(key.owner());
-    }
-    return owners;
   }
 
   /** payload 的 regionId：必填、非空文本。 */

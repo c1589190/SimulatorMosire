@@ -13,8 +13,6 @@ import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.ActorData;
-import io.mosire.simos.actor.api.actor.ActorKind;
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
@@ -30,6 +28,7 @@ import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -274,7 +273,19 @@ public final class GovRemitTool implements AgentTool {
                 () ->
                     new IllegalArgumentException(
                         "参数 " + field + " 指定的 GOV 单位没有当刻有效位置（国库落点未知）: " + rawUnitId));
-    return new TreasuryLocation(rawUnitId, at);
+    return new TreasuryLocation(rawUnitId, at, govHousehold(unit, rawUnitId));
+  }
+
+  /**
+   * 政府国库家户（P2-A §13.3：国库 = 政府家户账户）：取单位 {@code households()} 的第一个（保序、确定性）。
+   * 没有家户 ⇒ 拒（不猜、不退回已退役的单位账户）。
+   */
+  private static String govHousehold(Unit unit, String unitId) {
+    if (unit.households().isEmpty()) {
+      throw new IllegalArgumentException(
+          "GOV 单位 " + unitId + " 没有家户（P2-A 起国库 = 政府家户账户；请先配置 unit.households）");
+    }
+    return unit.households().get(0).value();
   }
 
   /** 一条 {@code actor.RemitGovTreasury} 的载荷（字段名与 handler 的解析契约一致；三个金额显式写出）。 */
@@ -286,12 +297,8 @@ public final class GovRemitTool implements AgentTool {
       long money,
       String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("fromUnitId", from.unitId());
-    payload.put("fromQ", from.at().q());
-    payload.put("fromR", from.at().r());
-    payload.put("toUnitId", to.unitId());
-    payload.put("toQ", to.at().q());
-    payload.put("toR", to.at().r());
+    payload.put("fromHousehold", from.householdId());
+    payload.put("toHousehold", to.householdId());
     payload.put("grain", grain);
     payload.put("cloth", cloth);
     payload.put("money", money);
@@ -412,7 +419,7 @@ public final class GovRemitTool implements AgentTool {
     GoodsAccount account =
         actors
             .accounts()
-            .get(new GoodsAccountKey(new ActorRef(ActorKind.UNIT, from.unitId()), from.at()));
+            .get(new GoodsAccountKey(HouseholdId.parse(from.householdId())));
     if (account == null) {
       return null;
     }
@@ -433,5 +440,5 @@ public final class GovRemitTool implements AgentTool {
   }
 
   /** 国库落点：GOV 单位 id + 当刻有效位置。 */
-  private record TreasuryLocation(String unitId, HexCoord at) {}
+  private record TreasuryLocation(String unitId, HexCoord at, String householdId) {}
 }

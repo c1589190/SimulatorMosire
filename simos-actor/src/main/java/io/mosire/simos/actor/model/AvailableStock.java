@@ -1,10 +1,9 @@
 package io.mosire.simos.actor.model;
 
 import io.mosire.simos.actor.ActorData;
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Map;
 import java.util.Objects;
 
@@ -76,25 +75,22 @@ public final class AvailableStock {
     return availableOf(account.money(), account.frozenMoney(), currency);
   }
 
-  /** ★ 主体级入口（商品）：{@code (owner, location)} 上那本账的可支配数量；没有这本账 ⇒ 0（见类注）。 */
-  public static long available(
-      ActorData books, ActorRef owner, HexCoord location, CommodityId commodity) {
-    GoodsAccount account = accountOf(books, owner, location);
+  /** ★ 主体级入口（商品）：该家户那本账的可支配数量；没有这本账 ⇒ 0（见类注）。 */
+  public static long available(ActorData books, HouseholdId household, CommodityId commodity) {
+    GoodsAccount account = accountOf(books, household);
     return account == null ? 0L : available(account, commodity);
   }
 
-  /** ★ 主体级入口（货币）：与上面那条**同一个入口**（家户与经营者都走它，见类注）。 */
-  public static long available(
-      ActorData books, ActorRef owner, HexCoord location, CurrencyId currency) {
-    GoodsAccount account = accountOf(books, owner, location);
+  /** ★ 主体级入口（货币）：与上面那条**同一个入口**（P2-A：账户主体只有家户）。 */
+  public static long available(ActorData books, HouseholdId household, CurrencyId currency) {
+    GoodsAccount account = accountOf(books, household);
     return account == null ? 0L : available(account, currency);
   }
 
-  /** 取账：键是 {@code (owner, location)}（本类里唯一的拼写点；解析不出 ⇒ null = 没有这本账）。 */
-  private static GoodsAccount accountOf(ActorData books, ActorRef owner, HexCoord location) {
+  /** 取账：键是家户身份（本类里唯一的拼写点；解析不出 ⇒ null = 没有这本账）。 */
+  private static GoodsAccount accountOf(ActorData books, HouseholdId household) {
     Objects.requireNonNull(books, "books");
-    Objects.requireNonNull(owner, "owner");
-    Objects.requireNonNull(location, "location");
-    return books.accounts().get(new GoodsAccountKey(owner, location));
+    Objects.requireNonNull(household, "household");
+    return books.accounts().get(new GoodsAccountKey(household));
   }
 }

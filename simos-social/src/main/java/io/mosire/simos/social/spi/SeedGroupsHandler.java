@@ -100,7 +100,7 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
                   draft.profile() == null
                       ? new HouseholdProfile(draft.id().value(), null, Map.of())
                       : draft.profile(),
-                  List.of(),
+                  Map.of(),
                   new HouseholdVitalRates(List.of())));
           SocialLog.household()
               .info(
@@ -113,18 +113,26 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
         }
       }
 
-      // ② 归位：每个新批次必须且只能挂一个家户。
+      // ② 归位：每个批次挂一个家户；P2-A 起份额 = 批次人数（多户拆分走 HouseholdBook.transferMembers）。
       for (Map.Entry<PeopleLotId, PopulationGroup> entry : entries.groups().entrySet()) {
         PeopleLotId lot = entry.getKey();
         HexCoord at = entries.locations().get(lot);
         HouseholdId declared = entries.householdOfLot().get(lot);
-        HouseholdId existingOwner = ownerOf(base.households(), lot);
-        if (existingOwner != null) {
+        List<HouseholdId> existingOwners = ownersOf(base.households(), lot);
+        if (!existingOwners.isEmpty()) {
+          // ★ 覆盖语义：批次已在状态里 ⇒ 份额跟着新 count 走（旧档/旧载荷是单户；多户份额不在本路径覆盖）。
+          if (existingOwners.size() != 1) {
+            throw new IllegalArgumentException(
+                "批次 " + lot + " 已被多个家户按份额持有，SeedGroups 的整条覆盖不支持多户拆分: " + existingOwners);
+          }
+          HouseholdId existingOwner = existingOwners.get(0);
           if (declared != null && !declared.equals(existingOwner)) {
             throw new IllegalArgumentException(
                 "批次 " + lot + " 已在家户 " + existingOwner + "，不能改挂到 " + declared + "（迁移请走 transferMembers）");
           }
-          requireLocationMatches(households.get(existingOwner), at, lot);
+          Household household = households.get(existingOwner);
+          requireLocationMatches(household, at, lot);
+          households.put(existingOwner, household.withMember(lot, entry.getValue().count()));
           continue;
         }
         HouseholdId target = declared == null ? autoHouseholdId(households, at) : declared;
@@ -133,11 +141,7 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
           throw new IllegalArgumentException("批次 " + lot + " 指向不存在的家户: " + target);
         }
         requireLocationMatches(household, at, lot);
-        List<PeopleLotId> lots = new ArrayList<>(household.memberLots());
-        if (!lots.contains(lot)) {
-          lots.add(lot);
-        }
-        households.put(target, household.withMemberLots(lots));
+        households.put(target, household.withMember(lot, entry.getValue().count()));
       }
 
       SocialData next =
@@ -149,15 +153,16 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
     }
   }
 
-  /** 该批次的既有家户（不在任何家户 ⇒ null）。 */
-  private static HouseholdId ownerOf(
+  /** 该批次的既有家户（保序；无 ⇒ 空表）。 */
+  private static List<HouseholdId> ownersOf(
       Map<HouseholdId, Household> households, PeopleLotId lot) {
+    List<HouseholdId> owners = new ArrayList<>();
     for (Household household : households.values()) {
       if (household.hasMember(lot)) {
-        return household.id();
+        owners.add(household.id());
       }
     }
-    return null;
+    return owners;
   }
 
   /**
@@ -187,7 +192,7 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
             synthetic,
             new HouseholdLocation.Hex(at),
             new HouseholdProfile(synthetic.value(), null, Map.of()),
-            List.of(),
+            Map.of(),
             new HouseholdVitalRates(List.of())));
     SocialLog.household()
         .info(

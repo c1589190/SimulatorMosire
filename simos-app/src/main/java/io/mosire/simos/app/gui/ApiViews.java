@@ -552,7 +552,7 @@ public final class ApiViews {
     Map<HexCoord, Long> silverByHex = new LinkedHashMap<>();
     Map<HexCoord, Map<String, Long>> goodsByHex = new LinkedHashMap<>();
     for (GoodsAccount account : actors.accounts().values()) {
-      HexCoord hex = account.key().location();
+      HexCoord hex = householdHex(social, account.key().household());
       grainStockByHex.merge(hex, account.balances().getOrDefault(GRAIN, 0L), Long::sum);
       silverByHex.merge(
           hex, account.money().getOrDefault(MoneyVocabulary.SILVER_CURRENCY, 0L), Long::sum);
@@ -772,7 +772,7 @@ public final class ApiViews {
   private static Map<String, Object> grainStockHeatmap(SimulationState state, String id) {
     TreeMap<HexCoord, Long> values = new TreeMap<>();
     for (GoodsAccount account : actorData(state).accounts().values()) {
-      values.merge(account.key().location(), account.balances().getOrDefault(GRAIN, 0L), Long::sum);
+      values.merge(householdHex(state, account.key().household()), account.balances().getOrDefault(GRAIN, 0L), Long::sum);
     }
     return longHeatmap(
         state, id, "粮食·库存", "毫粮", "逐格 actor GoodsAccount 粮余额合计（时点）", values, new LinkedHashMap<>());
@@ -799,7 +799,9 @@ public final class ApiViews {
     TreeMap<HexCoord, Long> stockByHex = new TreeMap<>();
     for (GoodsAccount account : actorData(state).accounts().values()) {
       stockByHex.merge(
-          account.key().location(), account.balances().getOrDefault(GRAIN, 0L), Long::sum);
+          householdHex(state, account.key().household()),
+          account.balances().getOrDefault(GRAIN, 0L),
+          Long::sum);
     }
     TreeMap<HexCoord, Long> dailyNeedByHex = new TreeMap<>();
     for (ClassRow row : economyData(state).classes().values()) {
@@ -839,7 +841,7 @@ public final class ApiViews {
     TreeMap<HexCoord, Long> values = new TreeMap<>();
     for (GoodsAccount account : actorData(state).accounts().values()) {
       values.merge(
-          account.key().location(),
+          householdHex(state, account.key().household()),
           account.money().getOrDefault(MoneyVocabulary.SILVER_CURRENCY, 0L),
           Long::sum);
     }
@@ -1195,7 +1197,7 @@ public final class ApiViews {
     // ★★ H4：**货币与商品同住一本 {@code GoodsAccount}**（裁定 M2：两个独立身份、两张余额表）⇒ 货币读数走
     //   **同一趟**遍历（两次遍历会在"账本中途变化"时给出两个不同世界的读数）。
     Map<String, Long> actorMoneyTotal = new TreeMap<>();
-    for (GoodsAccount account : accountsAt(actors, coord)) {
+    for (GoodsAccount account : accountsAt(data, actors, coord)) {
       mergeInto(goods, account.balances());
       mergeMoneyInto(actorMoneyTotal, account.money());
     }
@@ -1405,8 +1407,8 @@ public final class ApiViews {
       householdOfActorAtHex.put(HouseholdActors.of(key), key);
     }
     Map<HouseholdId, Long> grainStockByHousehold = new LinkedHashMap<>();
-    for (GoodsAccount account : accountsAt(actors, coord)) {
-      HouseholdId key = householdOfActorAtHex.get(account.key().owner());
+    for (GoodsAccount account : accountsAt(data, actors, coord)) {
+      HouseholdId key = householdOfActorAtHex.get(HouseholdActors.of(account.key().household()));
       if (key == null) {
         continue;
       }
@@ -1617,7 +1619,7 @@ public final class ApiViews {
       node.put("treasuryHousehold", treasuryHousehold == null ? null : treasuryHousehold.value());
       ClassRow row = treasuryHousehold == null ? null : data.classes().get(treasuryHousehold);
       node.put("treasuryClassRow", row == null ? null : governmentClassRowView(row));
-      node.put("treasuryAccounts", treasuryAccountViews(actors, government.treasury()));
+      node.put("treasuryAccounts", treasuryAccountViews(data, actors, government.treasury()));
       node.put("issuance", governmentIssuanceView(data, government.id()));
       governments.add(node);
     }
@@ -1654,20 +1656,21 @@ public final class ApiViews {
    * <p>★ "找不到账"是合法结果（主体还没播账）：空数组，不给伪造的 0 条目——否则读的人会把"没这回事"当成"余额为零"。
    */
   private static List<Map<String, Object>> treasuryAccountViews(
-      ActorData actors, ActorRef treasury) {
+      EconomyData data, ActorData actors, ActorRef treasury) {
     List<GoodsAccount> accounts = new ArrayList<>();
     for (GoodsAccount account : actors.accounts().values()) {
-      if (account.key().owner().equals(treasury)) {
+      if (HouseholdActors.of(account.key().household()).equals(treasury)) {
         accounts.add(account);
       }
     }
     accounts.sort(
-        Comparator.comparingInt((GoodsAccount account) -> account.key().location().q())
-            .thenComparingInt(account -> account.key().location().r()));
+        Comparator.comparingInt(
+                (GoodsAccount account) -> householdHex(data, account.key().household()).q())
+            .thenComparingInt(account -> householdHex(data, account.key().household()).r()));
     List<Map<String, Object>> views = new ArrayList<>(accounts.size());
     for (GoodsAccount account : accounts) {
       Map<String, Object> item = new LinkedHashMap<>();
-      item.put("location", hexCoord(account.key().location()));
+      item.put("location", hexCoord(householdHex(data, account.key().household())));
       item.put("goods", sortedCommodities(account.balances()));
       item.put("money", sortedCurrencies(account.money()));
       item.put("frozenGoods", sortedCommodities(account.frozenBalances()));
@@ -2803,8 +2806,8 @@ public final class ApiViews {
   private static Map<String, Object> shortageOrganizationSummary(
       EconomyData data, ActorData actors, HexCoord coord) {
     Set<ActorRef> organizersAtHex = new LinkedHashSet<>();
-    for (GoodsAccount account : accountsAt(actors, coord)) {
-      organizersAtHex.add(account.key().owner());
+    for (GoodsAccount account : accountsAt(data, actors, coord)) {
+      organizersAtHex.add(HouseholdActors.of(account.key().household()));
     }
     List<ProductionOrganization> organizations =
         new ArrayList<>(data.productionOrganizations().values());
@@ -3389,14 +3392,14 @@ public final class ApiViews {
   public static Map<String, Object> economyOwnership(
       HexCoord coord, EconomyData economy, ActorData actors) {
     Map<String, Object> view = hexCoord(coord);
-    List<GoodsAccount> atHex = accountsAt(actors, coord);
+    List<GoodsAccount> atHex = accountsAt(economy, actors, coord);
     List<Map<String, Object>> accounts = new ArrayList<>(atHex.size());
     Map<String, Long> actorGoodsTotal = new TreeMap<>();
     Map<String, Long> actorMoneyTotal = new TreeMap<>();
     for (GoodsAccount account : atHex) {
       Map<String, Object> entry = new LinkedHashMap<>();
-      entry.put("actor", account.key().owner().toString());
-      entry.put("kind", account.key().owner().kind().name());
+      entry.put("actor", HouseholdActors.of(account.key().household()).toString());
+      entry.put("kind", HouseholdActors.of(account.key().household()).kind().name());
       entry.put("goods", sortedCommodities(account.balances()));
       // ★★ H4：同一个 actor 的**货币账**（逐币种；缺币种 = 这个家户没有那种钱）。
       entry.put("money", sortedCurrencies(account.money()));
@@ -3455,14 +3458,15 @@ public final class ApiViews {
    * 该格上的全部库存账（**保序**：按 owner 的规范串字典序）—— {@link #economyOwnership} 与 {@link #economyHex}
    * 读的是**同一个集合**（后者的 {@code goods} 就是前者 {@code actorGoodsTotal} 的来源）。
    */
-  private static List<GoodsAccount> accountsAt(ActorData actors, HexCoord coord) {
+  private static List<GoodsAccount> accountsAt(
+      EconomyData data, ActorData actors, HexCoord coord) {
     List<GoodsAccount> atHex = new ArrayList<>();
     for (GoodsAccount account : actors.accounts().values()) {
-      if (account.key().location().equals(coord)) {
+      if (householdHex(data, account.key().household()).equals(coord)) {
         atHex.add(account);
       }
     }
-    atHex.sort(Comparator.comparing(account -> account.key().owner().toString()));
+    atHex.sort(Comparator.comparing(account -> account.key().household().value()));
     return atHex;
   }
 
@@ -3692,7 +3696,7 @@ public final class ApiViews {
     // ★★ H1：这个家户的商品余额**只在 actor 侧的账本上**（{@code GoodsAccount}，键 =
     //   {@code (HouseholdActors.of(key), key.hex())}）—— 行里没有 goods 这一栏。★ 键的拼法只经
     //   {@link #accountKeyOf(HouseholdId, HexCoord)}（本层不复述家户 id / 账户键的形状）；账本缺席 ⇒ 空表（读口不抛）。
-    GoodsAccount account = actors.accounts().get(accountKeyOf(key, row.view().hex()));
+    GoodsAccount account = actors.accounts().get(accountKeyOf(key));
     view.put("goods", sortedCommodities(account == null ? Map.of() : account.balances()));
     // ★★ H4：这个家户的**货币账**（actor 侧；与 {@code goods} 同住一本 {@code GoodsAccount}）——
     //   与下面那个行侧恒 0 的 {@code money} 并排（同 goods 与 rowGoodsTotal 的处置：真值在 actor 侧）。
@@ -3890,8 +3894,8 @@ public final class ApiViews {
       householdOfActorAtHex.put(HouseholdActors.of(key), key);
     }
     Map<HouseholdId, Long> grainStockByHousehold = new LinkedHashMap<>();
-    for (GoodsAccount account : accountsAt(actors, coord)) {
-      HouseholdId key = householdOfActorAtHex.get(account.key().owner());
+    for (GoodsAccount account : accountsAt(data, actors, coord)) {
+      HouseholdId key = householdOfActorAtHex.get(HouseholdActors.of(account.key().household()));
       if (key == null) {
         continue;
       }
@@ -4169,7 +4173,7 @@ public final class ApiViews {
     Map<String, Map<String, Long>> byKind = new TreeMap<>();
     for (GoodsAccount account : actors.accounts().values()) {
       mergeMoneyInto(
-          byKind.computeIfAbsent(account.key().owner().kind().name(), ignored -> new TreeMap<>()),
+          byKind.computeIfAbsent(HouseholdActors.of(account.key().household()).kind().name(), ignored -> new TreeMap<>()),
           account.money());
     }
     return byKind;
@@ -4183,10 +4187,10 @@ public final class ApiViews {
       EconomyData data, ActorData actors) {
     Map<String, Map<String, Long>> byClass = new TreeMap<>();
     for (GoodsAccount account : actors.accounts().values()) {
-      if (account.key().owner().kind() != ActorKind.HOUSEHOLD) {
+      if (HouseholdActors.of(account.key().household()).kind() != ActorKind.HOUSEHOLD) {
         continue;
       }
-      HouseholdId household = HouseholdActors.householdOf(account.key().owner());
+      HouseholdId household = HouseholdActors.householdOf(HouseholdActors.of(account.key().household()));
       ClassRow row = data.classes().get(household);
       String stratum = row == null ? "__unmapped__" : row.view().stratum().value();
       mergeMoneyInto(byClass.computeIfAbsent(stratum, ignored -> new TreeMap<>()), account.money());
@@ -6019,8 +6023,37 @@ public final class ApiViews {
     return byCohort;
   }
 
-  /** 家户 actor 账键：{@code (HouseholdActors.of(household), 格)}（R3a 从旧 {@code OwnershipBooks} 原样搬来）。 */
-  private static GoodsAccountKey accountKeyOf(HouseholdId household, HexCoord location) {
-    return new GoodsAccountKey(HouseholdActors.of(household), location);
+  /** 家户账键 = 家户身份（P2-A §13.3：一本账，键不再带格）。 */
+  private static GoodsAccountKey accountKeyOf(HouseholdId household) {
+    return new GoodsAccountKey(household);
+  }
+
+  /**
+   * 家户账本的显示格：账户键不再带格（P2-A）⇒ 从 economy 的家户行视图派生（A1 起两侧同一 {@code HouseholdId}）。
+   * 定位不到（无经济行的家户）⇒ 抛（读口不静默造一个假格）。
+   */
+  private static HexCoord householdHex(EconomyData economy, HouseholdId household) {
+    ClassRow row = economy.classes().get(household);
+    if (row == null) {
+      throw new IllegalStateException(
+          "家户没有经济行（无法定位账户所在格；A1 起 Social/Economy 应共用同一 HouseholdId）: " + household);
+    }
+    return row.view().hex();
+  }
+
+  /** {@link #householdHex(EconomyData, HouseholdId)} 的 state 形态（读口便利重载）。 */
+  private static HexCoord householdHex(SimulationState state, HouseholdId household) {
+    return householdHex(economyData(state), household);
+  }
+
+  /** {@link #householdHex(EconomyData, HouseholdId)} 的 social 形态（region 汇总没有 economy 上下文时用）。 */
+  private static HexCoord householdHex(SocialData social, HouseholdId household) {
+    var householdData = social.households().get(household);
+    if (householdData == null
+        || !(householdData.location()
+            instanceof io.mosire.simos.social.api.household.HouseholdLocation.Hex hex)) {
+      throw new IllegalStateException("家户不在 HEX 上或不存在（无法定位账户所在格）: " + household);
+    }
+    return hex.hex();
   }
 }

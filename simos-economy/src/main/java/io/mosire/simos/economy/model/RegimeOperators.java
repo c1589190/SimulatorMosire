@@ -67,9 +67,9 @@ public final class RegimeOperators {
 
   static {
     Map<String, ActorKind> byRegime = new LinkedHashMap<>();
-    byRegime.put(FEUDAL, ActorKind.ESTATE);
+    byRegime.put(FEUDAL, ActorKind.ORGANIZATION);
     byRegime.put(HOUSEHOLD, ActorKind.HOUSEHOLD);
-    byRegime.put(HANDICRAFT, ActorKind.WORKSHOP);
+    byRegime.put(HANDICRAFT, ActorKind.ORGANIZATION);
     byRegime.put(TENANT, ActorKind.HOUSEHOLD);
     BY_REGIME = Collections.unmodifiableMap(byRegime);
   }

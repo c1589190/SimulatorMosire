@@ -10,8 +10,10 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.household.Household;
+import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -248,6 +250,8 @@ public final class PopulationDynamics {
     //   键用批次 id 的"前缀"（mother 的 id 去掉最后一段）—— 它天然保住了 rural/urban 的命名约定（见 PopulationLots）。
     Map<PeopleLotId, PopulationGroup> born = new LinkedHashMap<>();
     Map<PeopleLotId, HouseholdId> bornHousehold = new LinkedHashMap<>();
+    // ★★ P2-A：家户份额是成员关系的唯一权威 ⇒ 死亡按各户份额比例从本批次削、出生挂进（份额最大的）母亲家户。
+    Map<HouseholdId, Household> households = new LinkedHashMap<>(data.households());
     long totalBirths = 0L;
     long totalDeaths = 0L;
     for (PopulationGroup group : data.groups().values()) {
@@ -266,6 +270,9 @@ public final class PopulationDynamics {
       }
       next.put(
           group.id(), group.withCountAndStress(population - deaths, group.physiologicalStress()));
+      if (deaths > 0L) {
+        reduceShares(households, group.id(), deaths);
+      }
       // ★ 家户架构 §4.2：{@code LotChange.at} 只能从所属家户的位置取（批次身上没有位置）。
       //   ★ 家户在 UNIT 上时没有格 ⇒ 本经济回写口径（S2 范围外）fail-closed 指名 S3。
       HexCoord at =
@@ -280,16 +287,11 @@ public final class PopulationDynamics {
       totalBirths += births;
       totalDeaths += deaths;
       if (births > 0L) {
-        HouseholdId household =
-            data.householdOfLot(group.id())
-                .map(Household::id)
-                .orElseThrow(
-                    () -> new IllegalStateException("批次 " + group.id() + " 没有所属家户（构造期不变式被破坏）"));
+        HouseholdId household = largestShareHolder(households, group.id());
         appendBirths(born, bornHousehold, household, group, births, nowTick);
       }
     }
-    // ★ 新生批次必须挂进母亲的家户（memberLots 是唯一成员关系；SocialData 构造期会拒无主批次）。
-    Map<HouseholdId, Household> households = new LinkedHashMap<>(data.households());
+    // ★ 新生批次必须挂进母亲的家户（members 份额制：新批次挂进该户，份额 = 新生儿数）。
     for (PopulationGroup newborn : born.values()) {
       HouseholdId owner = bornHousehold.get(newborn.id());
       Household household = households.get(owner);
@@ -298,19 +300,18 @@ public final class PopulationDynamics {
       }
       PopulationGroup existing = data.groups().get(newborn.id());
       if (existing != null) {
-        HouseholdId existingOwner =
-            data.householdOfLot(newborn.id()).map(Household::id).orElse(null);
-        if (!owner.equals(existingOwner)) {
+        List<Household> existingOwners = data.householdsOfLot(newborn.id());
+        if (existingOwners.size() > 1) {
+          throw new IllegalStateException(
+              "新生批次 " + newborn.id() + " 的 id 已被多个家户按份额持有: " + existingOwners.size());
+        }
+        HouseholdId existingOwner = existingOwners.isEmpty() ? null : existingOwners.get(0).id();
+        if (existingOwner != null && !owner.equals(existingOwner)) {
           throw new IllegalStateException(
               "新生批次 " + newborn.id() + " 的 id 已被家户 " + existingOwner + " 占用，不能并入 " + owner);
         }
       }
-      if (!household.hasMember(newborn.id())) {
-        List<PeopleLotId> lots = new ArrayList<>(household.memberLots());
-        lots.add(newborn.id());
-        household = household.withMemberLots(lots);
-      }
-      households.put(owner, household);
+      households.put(owner, household.withMember(newborn.id(), newborn.count()));
       next.put(newborn.id(), newborn);
     }
     return new Outcome(
@@ -318,6 +319,64 @@ public final class PopulationDynamics {
         Collections.unmodifiableMap(changes),
         totalBirths,
         totalDeaths);
+  }
+
+  /** 把某个批次上的一笔死亡按各持户**份额比例**（最大余数法、HouseholdId 升序）从份额表里削掉；削到 0 ⇒ 删条目。 */
+  private static void reduceShares(
+      Map<HouseholdId, Household> households, PeopleLotId lot, long deaths) {
+    List<Map.Entry<HouseholdId, Household>> holders = new ArrayList<>();
+    for (Map.Entry<HouseholdId, Household> entry : households.entrySet()) {
+      if (entry.getValue().hasMember(lot)) {
+        holders.add(entry);
+      }
+    }
+    holders.sort(Comparator.comparing(entry -> entry.getKey().value()));
+    if (holders.isEmpty()) {
+      throw new IllegalStateException("批次 " + lot + " 没有任何家户持有却要削掉 " + deaths + " 人");
+    }
+    long[] weights = new long[holders.size()];
+    long total = 0L;
+    for (int i = 0; i < holders.size(); i++) {
+      weights[i] = holders.get(i).getValue().memberCount(lot);
+      total = Math.addExact(total, weights[i]);
+    }
+    if (total < deaths) {
+      throw new IllegalStateException(
+          "批次 " + lot + " 的份额合计 " + total + " 小于死亡数 " + deaths + "（状态不一致）");
+    }
+    long[] parts = ProportionalSplit.byDenominator(deaths, weights, total);
+    for (int i = 0; i < holders.size(); i++) {
+      if (parts[i] <= 0L) {
+        continue;
+      }
+      HouseholdId id = holders.get(i).getKey();
+      Household household = holders.get(i).getValue();
+      long share = household.memberCount(lot) - parts[i];
+      households.put(id, share == 0L ? household.withoutMember(lot) : household.withMember(lot, share));
+    }
+  }
+
+  /** 某批次份额最大的持户（份额相同 ⇒ HouseholdId 升序）—— 新生儿落点的确定序。 */
+  private static HouseholdId largestShareHolder(
+      Map<HouseholdId, Household> households, PeopleLotId lot) {
+    HouseholdId best = null;
+    long bestShare = -1L;
+    for (Map.Entry<HouseholdId, Household> entry : households.entrySet()) {
+      if (!entry.getValue().hasMember(lot)) {
+        continue;
+      }
+      long share = entry.getValue().memberCount(lot);
+      if (best == null
+          || share > bestShare
+          || (share == bestShare && entry.getKey().value().compareTo(best.value()) < 0)) {
+        best = entry.getKey();
+        bestShare = share;
+      }
+    }
+    if (best == null) {
+      throw new IllegalStateException("批次 " + lot + " 没有任何家户持有（构造期不变式被破坏）");
+    }
+    return best;
   }
 
   /**

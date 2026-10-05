@@ -46,6 +46,12 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-economy-api</artifactId>
     </dependency>
+    <!-- ★★ P2-A §13.3：账户主体统一为 HouseholdId ⇒ GoodsAccountKey 键的是家户身份。
+         simos-social-api 是**契约层**（稳定 ID，只依赖 map），不是 social 切片 ⇒ 不在 ban 列
+         （与 economy-api 同待遇；enforcer 的禁列是 simos-social 本身）。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-social-api</artifactId>
+    </dependency>
     <!-- ★ Task 7 起：ActorCodec 真的 import Jackson（ObjectMapper / SimpleModule / KeyDeserializer /
          JsonIgnore）。★ 版本由父 POM 已 import 的 jackson-bom 提供，不在此处写版本。 -->
     <dependency>

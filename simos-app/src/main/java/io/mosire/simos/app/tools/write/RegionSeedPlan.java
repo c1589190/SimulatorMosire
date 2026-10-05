@@ -426,7 +426,13 @@ final class RegionSeedPlan {
         hits,
         "actor.account",
         actors.accounts().keySet(),
-        account -> hexes.contains(account.location()),
+        account -> {
+          var household = social.households().get(account.household());
+          return household != null
+              && household.location()
+                  instanceof io.mosire.simos.social.api.household.HouseholdLocation.Hex at
+              && hexes.contains(at.hex());
+        },
         Object::toString);
     EconomyData economy = ToolSupport.economyData(state);
     Set<String> regionHexKeys = new HashSet<>();

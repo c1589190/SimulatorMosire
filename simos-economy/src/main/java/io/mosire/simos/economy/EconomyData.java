@@ -684,24 +684,15 @@ public record EconomyData(
                 + allocatedHousehold
                 + " 不在 classes 里");
       }
-      // ① actor ↔ 产业 的**双条件**（结算按 actor id 归属劳动，故两侧都得判：产业型必须指名存在的产业；
-      //    非产业型不得与产业 id 撞名 —— 撞名会让"家户的配额"静默算进那个产业）。
-      //   ★★ **R3 起 HOUSEHOLD 是"自由档"**：农村家庭纺织是一个**由家户承担的生产过程**（spec §四 的压力测试）
-      //     ⇒ 家户的 actor id **可以**命名一个产业（那时它的配额照进该产业的 cycleLaborMilli），**也可以不命名**
-      //     （那时它只是一个消费主体，配额只进守恒与读口）。这两种都是**有意为之**，故不判错。
-      //     其余非产业型（PEOPLE_LOT/UNIT/GOVERNMENT/ORGANIZATION）仍**不许**撞产业 id。
+      // ① actor ↔ 产业 的**撞名判据**（结算按 actor id 归属劳动）：
+      //    非产业型不得与产业 id 撞名 —— 撞名会让"家户/单位的配额"静默算进那个产业。
+      //   ★★ **R3 起 HOUSEHOLD 是"自由档"**：家户 actor id **可以**命名一个产业（那时配额照进该产业），也可以不命名。
+      //   ★★ **P2-A §13.3**：ESTATE/WORKSHOP 退役 ⇒ 生产主体身份改走 ORGANIZATION（产业经营者）与 HOUSEHOLD；
+      //     两者都允许命中产业 id（不再有"必须命中"的 kind —— ORGANIZATION 也可用来表示非产业组织）。
       ActorKind kind = allocation.actor().kind();
-      boolean mustResolveToIndustry = kind == ActorKind.ESTATE || kind == ActorKind.WORKSHOP;
-      boolean mayResolveToIndustry = mustResolveToIndustry || kind == ActorKind.HOUSEHOLD;
+      boolean mayResolveToIndustry =
+          kind == ActorKind.ORGANIZATION || kind == ActorKind.HOUSEHOLD;
       boolean resolvesToIndustry = industryIds.contains(allocation.actor().id());
-      if (mustResolveToIndustry && !resolvesToIndustry) {
-        throw new IllegalArgumentException(
-            "劳动分配的 actor 与产业 id 的对应关系不成立（结算按 actor id 把配额归给产业）：kind="
-                + kind
-                + "，id="
-                + allocation.actor().id()
-                + " ⇒ 产业型主体的 id 必须是一个已存在的产业");
-      }
       if (resolvesToIndustry && !mayResolveToIndustry) {
         throw new IllegalArgumentException(
             "劳动分配的 actor 与产业 id 的对应关系不成立（结算按 actor id 把配额归给产业）：kind="

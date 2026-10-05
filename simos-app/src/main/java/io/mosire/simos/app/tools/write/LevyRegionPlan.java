@@ -166,6 +166,14 @@ final class LevyRegionPlan {
                 () ->
                     new IllegalArgumentException(
                         "单位 " + unitId + " 当刻没有有效位置，国库落点无法确定；先 unit.PlaceAt"));
+    // ★★ P2-A §13.3：国库 = 政府家户账户 ⇒ 从单位 households 取（保序第一个、确定性）。
+    //   需要动账（粮/钱/布任一 > 0）而没有家户 ⇒ 拒（不退回已退役的单位账户）。
+    String treasuryHousehold =
+        unit.households().isEmpty() ? null : unit.households().get(0).value();
+    if (treasuryHousehold == null && (grain > 0L || money > 0L || cloth > 0L)) {
+      throw new IllegalArgumentException(
+          "单位 " + unitId + " 没有家户（P2-A 起国库 = 政府家户账户；请先配置 unit.households）");
+    }
     // ★ requested = 0 的维度整段跳过：不扫描来源、不进 Plan 的来源表（available 记 0 = "未求值"）。
     Dimension grainDimension =
         grain == 0L
@@ -195,6 +203,7 @@ final class LevyRegionPlan {
         regionId,
         tick,
         treasuryLocation,
+        treasuryHousehold,
         grainDimension,
         moneyDimension,
         clothDimension,
@@ -217,7 +226,7 @@ final class LevyRegionPlan {
       ToLongFunction<GoodsAccount> availableOf) {
     RegionAllocations.AccountAllocation allocation =
         RegionAllocations.allocateAccounts(
-            ApiViews.actorData(state), region, label, requested, availableOf);
+            ApiViews.actorData(state), ToolSupport.socialData(state), region, label, requested, availableOf);
     List<AccountSource> sources = new ArrayList<>(allocation.sources().size());
     for (RegionAllocations.AccountSource source : allocation.sources()) {
       sources.add(new AccountSource(source.owner(), source.at(), source.amount()));
@@ -282,6 +291,7 @@ final class LevyRegionPlan {
       String regionId,
       long tick,
       HexCoord treasuryLocation,
+      String treasuryHousehold,
       Dimension grain,
       Dimension money,
       Dimension cloth,
@@ -298,6 +308,10 @@ final class LevyRegionPlan {
         throw new IllegalArgumentException("tick 不得为负: " + tick);
       }
       Objects.requireNonNull(treasuryLocation, "treasuryLocation");
+      if ((grain.requested() > 0L || money.requested() > 0L || cloth.requested() > 0L)
+          && (treasuryHousehold == null || treasuryHousehold.isBlank())) {
+        throw new IllegalArgumentException("有账目动账（粮/钱/布）时 treasuryHousehold 不得为空白");
+      }
       Objects.requireNonNull(grain, "grain");
       Objects.requireNonNull(money, "money");
       Objects.requireNonNull(cloth, "cloth");

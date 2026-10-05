@@ -26,7 +26,6 @@ import io.mosire.simos.actor.resolve.ActorResolver;
 import io.mosire.simos.actor.spi.ActorClearRegionHandler;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
 import io.mosire.simos.actor.spi.AdjustAccountsHandler;
-import io.mosire.simos.actor.spi.MoveAccountHandler;
 import io.mosire.simos.actor.spi.RemitGovTreasuryHandler;
 import io.mosire.simos.actor.spi.TransferAccountsHandler;
 import io.mosire.simos.app.access.DecisionCallerFactory;
@@ -603,11 +602,10 @@ public final class Shell implements AutoCloseable {
                 //   （整条原子；缺账 + 纯正增量新建）。非 sd 前缀 ⇒ 自动进 drainableCommandTypes；
                 //   同时进 commandTypes ⇒ simos.command.submit 的目标声明表（CommandTargets）同源认得它。──
                 new AdjustAccountsHandler(),
-                // ── P1.2（2026-10-09 后端行政批次）：actor.TransferAccounts（任意两个账户间商品/货币原子转移）与
-                //   actor.MoveAccount（按 owner 搬整本账、冻结随行、目标已有逐键精确相加、溢出拒）。
-                //   两条都 GM-only、都只写 accounts、都进 CommandTargets。
+                // ── P1.2 / P2-A：actor.TransferAccounts（任意两个**家户**账户间商品/货币原子转移）。
+                //   GM-only、只写 accounts。★ actor.MoveAccount 已随 P2-A §13.3 退役（账户键不再带格，
+                //   位置从 Household.location 派生 ⇒ "搬账"不再是一个动作）。
                 new TransferAccountsHandler(),
-                new MoveAccountHandler(),
                 // ── R3a（2026-10-01 行政区划修复计划 §1.3）：actor.RemitGovTreasury —— 显式 GOV 国库上缴 /
                 //   任意两个 GOV 单位之间转移（整条原子；只动 accounts）。★ **非 GmOnly**：省份决策人可嵌进
                 //   sd.IssueDirective；targetPaths 返回源/目标两个 actor 格路径（决策 scope 在 R3b 贯通）。

@@ -1,12 +1,12 @@
 package io.mosire.simos.app.time;
 
 import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
-import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
@@ -120,10 +120,14 @@ public final class OwnershipBooks {
     Map<GoodsAccountKey, Map<CommodityId, Long>> deltas = new LinkedHashMap<>();
     Map<GoodsAccountKey, Map<CommodityId, Long>> prefix = new LinkedHashMap<>();
     for (ActorEntry entry : entries) {
+      // ★★ P2-A §13.3：账户主体只有家户 ⇒ 非家户 actor 的 ledger 条目不再落账（经营者账改走组织者家户属 P2-B/P2-C）。
+      GoodsAccountKey key = householdKeyOrNull(entry.actor());
+      if (key == null) {
+        continue;
+      }
       if (alreadyMaterialized.contains(new AccountPartitionKey(entry.actor(), entry.location()))) {
         continue; // ★ 会话负责：终值由 landAccountSession 的绝对值覆盖，这里不再叠一遍。
       }
-      GoodsAccountKey key = new GoodsAccountKey(entry.actor(), entry.location());
       deltas
           .computeIfAbsent(key, ignored -> new LinkedHashMap<>())
           .merge(entry.commodity(), entry.delta(), Long::sum);
@@ -185,10 +189,8 @@ public final class OwnershipBooks {
         long after = Math.addExact(before, delta.getValue());
         if (after < 0L) {
           throw new IllegalStateException(
-              "产权账余额不得为负（透支是信用，不是库存）：actor="
-                  + key.owner()
-                  + " 格="
-                  + key.location()
+              "产权账余额不得为负（透支是信用，不是库存）：household="
+                  + key.household()
                   + " 商品="
                   + delta.getKey()
                   + " 余额 "
@@ -228,44 +230,8 @@ public final class OwnershipBooks {
       ClassRow row = entry.getValue();
       HexCoord location = row.view().hex();
       ActorRef actor = HouseholdActors.of(household);
-      GoodsAccount account = books.accounts().get(new GoodsAccountKey(actor, location));
-      if (account == null) {
-        // ★★ S1.5 旧档：actor 侧的三段 id 路径（{@code 0_0:rural:poor_peasant}）没有 {@code legacy-} 前缀，
-        //   而 economy 侧迁移后的身份是 {@code legacy-0_0|rural|poor_peasant}（actor id 为
-        //   {@code legacy-0_0:rural:...}）。⇒ 新键取不到时按旧视图再找一次；这是**迁移期的唯一兼容读**，
-        //   运行期新档 id（{@code hh-…}）没有 legacyView ⇒ 这一步恒不触发。
-        var legacyView = HouseholdIds.legacyView(household);
-        if (legacyView.isPresent()) {
-          ActorRef legacyActor = HouseholdActors.of(legacyView.get());
-          account = books.accounts().get(new GoodsAccountKey(legacyActor, location));
-        }
-      }
-      if (account == null) {
-        // ★★ S3：家户迁移（economy.MigrateHousehold）只搬视图、不搬账的 location（S1.3 的既有口径）——
-        //   故按 **actor 身份**回找这本账；同一 actor 有多本（说不出哪本权威）⇒ 当场抛，不猜。
-        GoodsAccountKey foundKey = null;
-        GoodsAccount found = null;
-        for (Map.Entry<GoodsAccountKey, GoodsAccount> candidate : books.accounts().entrySet()) {
-          if (!candidate.getKey().owner().equals(actor)) {
-            continue;
-          }
-          if (foundKey != null && !candidate.getKey().equals(foundKey)) {
-            throw new IllegalStateException(
-                "家户 actor 有多本账，无法判断哪本是权威（拒绝静默合并）：actor="
-                    + actor
-                    + "，键="
-                    + foundKey
-                    + " 与 "
-                    + candidate.getKey());
-          }
-          foundKey = candidate.getKey();
-          found = candidate.getValue();
-        }
-        if (found != null) {
-          account = found;
-          location = foundKey.location();
-        }
-      }
+      // ★★ P2-A §13.3：一个家户一本账，键 = 家户身份（不再带格）。旧账户已报废、旧世界重建 ⇒ 无兼容回找。
+      GoodsAccount account = books.accounts().get(new GoodsAccountKey(household));
       if (account == null) {
         missing.add(household + "（" + location + "）");
         continue;
@@ -289,8 +255,11 @@ public final class OwnershipBooks {
               + (missing.size() > 5 ? " …" : ""));
     }
     for (Map.Entry<ActorRef, HexCoord> entry : operatorLocations(economy).entrySet()) {
-      GoodsAccount account =
-          books.accounts().get(new GoodsAccountKey(entry.getKey(), entry.getValue()));
+      HouseholdId operatorHousehold = householdOfOrNull(entry.getKey());
+      if (operatorHousehold == null) {
+        continue; // ★ P2-A：经营者账改走组织者家户（P2-B/P2-C）；非家户 operator 在 actor 侧没有账。
+      }
+      GoodsAccount account = books.accounts().get(new GoodsAccountKey(operatorHousehold));
       if (account == null) {
         continue; // 缺席合法：手搭夹具 / 这个世界还没给经营者播种
       }
@@ -343,6 +312,9 @@ public final class OwnershipBooks {
     if (location == null) {
       return; // 连产业格都定位不了 ⇒ 到货路径按真正无主 fail-closed，不在这里猜一本账
     }
+    if (householdOfOrNull(actor) == null) {
+      return; // ★ P2-A：非家户主体不再持账（经营者账改走组织者家户属 P2-B/P2-C）
+    }
     session.registerOperator(
         actor,
         location,
@@ -365,7 +337,11 @@ public final class OwnershipBooks {
       AccountPartitionKey sessionKey = entry.getKey();
       ActorAccount account = entry.getValue();
       validateNonNegative(sessionKey, account);
-      GoodsAccountKey key = new GoodsAccountKey(sessionKey.actor(), sessionKey.location());
+      HouseholdId household = householdOfOrNull(sessionKey.actor());
+      if (household == null) {
+        continue; // ★ P2-A：非家户会话账不落 actor 账本（经营者账改走组织者家户属 P2-B/P2-C）。
+      }
+      GoodsAccountKey key = new GoodsAccountKey(household);
       accounts.put(
           key,
           new GoodsAccount(
@@ -379,51 +355,25 @@ public final class OwnershipBooks {
   }
 
   /**
-   * ★★ <b>S1.5 旧档 actor 账户搬家</b>（旧三段 actor id → 新 {@link HouseholdId} 派生的 actor id）：把旧键上的 {@link
-   * GoodsAccount} 整体搬到新键（<b>余额 / 货币 / 冻结逐值带过，location 不变</b>），并删掉旧键。
-   *
-   * <p>★★ <b>为什么必须"搬"而不是"再找一次"</b>：旧档里同一笔余额若只读不搬，新键会在 {@code landAccountSession} 写出一本新账、旧键那本还留着 ⇒
-   * 同一笔粮变成两本账（守恒式当场失真）。故这里是 <b>移动</b>：新键已存在 ⇒ 抛（说不清哪本是权威）；旧键不存在 ⇒ 幂等跳过（新档与新档重放都不受影响）。
-   *
-   * <p>★ 只认"economy 侧仍是 legacy 身份、且旧 actor id 能由旧视图拼出"的家户；非 legacy 家户 / 无旧账 ⇒ 不动。 ★ 旧 actor
-   * 行（{@code actors} 表）不在这里删 —— 主体行的退役由旧档迁移的后续阶段处理；本方法只保证 <b>账户不被复制成两本</b>。
+   * ★★ <b>一个家户的账本键 = 家户身份本身</b>（P2-A §13.3：一个家户一本账，键不再带 {@code HexCoord}）——
+   * <b>本类里唯一的拼写点</b>。
    */
-  @SuppressWarnings("deprecation") // ★ S1.5：旧 actor id 的搬家是迁移期唯一允许触碰退役 API 的地方
-  public static ActorData migrateLegacyHouseholdAccounts(ActorData books, EconomyData economy) {
-    Objects.requireNonNull(books, "books");
-    Objects.requireNonNull(economy, "economy");
-    Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>(books.accounts());
-    boolean changed = false;
-    for (Map.Entry<io.mosire.simos.social.api.id.HouseholdId, ClassRow> entry :
-        economy.classes().entrySet()) {
-      io.mosire.simos.social.api.id.HouseholdId household = entry.getKey();
-      var legacyView = HouseholdIds.legacyView(household);
-      if (legacyView.isEmpty()) {
-        continue;
-      }
-      HexCoord location = entry.getValue().view().hex();
-      GoodsAccountKey oldKey = new GoodsAccountKey(HouseholdActors.of(legacyView.get()), location);
-      GoodsAccount oldAccount = accounts.get(oldKey);
-      if (oldAccount == null) {
-        continue; // 幂等：旧账已经搬过 / 这本就是新档
-      }
-      GoodsAccountKey newKey = new GoodsAccountKey(HouseholdActors.of(household), location);
-      if (accounts.containsKey(newKey)) {
-        throw new IllegalStateException(
-            "旧档账户搬家失败：新旧两把键都有账，无法判断哪本是权威（拒绝静默合并）：旧=" + oldKey + " 新=" + newKey);
-      }
-      accounts.remove(oldKey);
-      accounts.put(
-          newKey,
-          new GoodsAccount(
-              newKey,
-              new LinkedHashMap<>(oldAccount.balances()),
-              new LinkedHashMap<>(oldAccount.money()),
-              new LinkedHashMap<>(oldAccount.frozenBalances()),
-              new LinkedHashMap<>(oldAccount.frozenMoney())));
-      changed = true;
-    }
-    return changed ? books.withAccounts(accounts) : books;
+  public static GoodsAccountKey accountKeyOf(HouseholdId household) {
+    Objects.requireNonNull(household, "household");
+    return new GoodsAccountKey(household);
+  }
+
+  /** 家户 actor 引用的家户身份；非 {@code HOUSEHOLD} actor ⇒ null（不猜、不造键）。 */
+  private static HouseholdId householdOfOrNull(ActorRef actor) {
+    return actor != null && actor.kind() == ActorKind.HOUSEHOLD
+        ? HouseholdActors.householdOf(actor)
+        : null;
+  }
+
+  /** ledger 条目落账用的键：家户 actor ⇒ 家户键；非家户 ⇒ null（调用方跳过，见 {@link #apply} 的类注）。 */
+  private static GoodsAccountKey householdKeyOrNull(ActorRef actor) {
+    HouseholdId household = householdOfOrNull(actor);
+    return household == null ? null : new GoodsAccountKey(household);
   }
 
   /** 落回前的负余额守卫（快照里不该有负数：透支是信用，不是库存）。 */
@@ -472,16 +422,6 @@ public final class OwnershipBooks {
       locations.put(unit.operator(), hex.get());
     }
     return locations;
-  }
-
-  /**
-   * 一个家户的账本键：{@code (HouseholdActors.of(household), location)} —— <b>本类里唯一的拼写点</b>。 location 由调用方从
-   * {@code ClassRow.view().hex()} 取（搬迁不改账 location，S1.3）。
-   */
-  public static GoodsAccountKey accountKeyOf(HouseholdId household, HexCoord location) {
-    Objects.requireNonNull(household, "household");
-    Objects.requireNonNull(location, "location");
-    return new GoodsAccountKey(HouseholdActors.of(household), location);
   }
 
   // ── 冻结 / 解冻（M1.2；语义与旧实现逐条相同）────────────────────────────────────────

@@ -13,8 +13,6 @@ import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.ActorData;
-import io.mosire.simos.actor.api.actor.ActorKind;
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
@@ -31,6 +29,7 @@ import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
@@ -263,7 +262,7 @@ public final class GovPayTool implements AgentTool {
             .orElseThrow(
                 () ->
                     new PaymentRejected("调用者所属 GOV 没有当刻有效位置（付款国库落点未知）: " + gov.govUnit().value()));
-    return new Payer(gov.govUnit().value(), at);
+    return new Payer(gov.govUnit().value(), at, govHousehold(unit, gov.govUnit().value()));
   }
 
   /**
@@ -290,7 +289,19 @@ public final class GovPayTool implements AgentTool {
                 () ->
                     new IllegalArgumentException(
                         "参数 " + field + " 指定的 GOV 单位没有当刻有效位置（国库落点未知）: " + rawUnitId));
-    return new TreasuryLocation(rawUnitId, at);
+    return new TreasuryLocation(rawUnitId, at, govHousehold(unit, rawUnitId));
+  }
+
+  /**
+   * 政府国库家户（P2-A §13.3：国库 = 政府家户账户）：取单位 {@code households()} 的第一个（保序、确定性）。
+   * 没有家户 ⇒ 拒（不猜、不退回已退役的单位账户）。
+   */
+  private static String govHousehold(Unit unit, String unitId) {
+    if (unit.households().isEmpty()) {
+      throw new IllegalArgumentException(
+          "GOV 单位 " + unitId + " 没有家户（P2-A 起国库 = 政府家户账户；请先配置 unit.households）");
+    }
+    return unit.households().get(0).value();
   }
 
   /** 可选金额（缺省 0；类型错由 {@link ToolSupport#optionalLong} 抛 ⇒ BAD_REQUEST）。 */
@@ -314,12 +325,8 @@ public final class GovPayTool implements AgentTool {
   private static Map<String, Object> commandPayload(
       Payer payer, TreasuryLocation to, long grain, long cloth, long money, String reason) {
     Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("fromUnitId", payer.unitId());
-    payload.put("fromQ", payer.at().q());
-    payload.put("fromR", payer.at().r());
-    payload.put("toUnitId", to.unitId());
-    payload.put("toQ", to.at().q());
-    payload.put("toR", to.at().r());
+    payload.put("fromHousehold", payer.householdId());
+    payload.put("toHousehold", to.householdId());
     payload.put("grain", grain);
     payload.put("cloth", cloth);
     payload.put("money", money);
@@ -442,7 +449,7 @@ public final class GovPayTool implements AgentTool {
     GoodsAccount account =
         actors
             .accounts()
-            .get(new GoodsAccountKey(new ActorRef(ActorKind.UNIT, payer.unitId()), payer.at()));
+            .get(new GoodsAccountKey(HouseholdId.parse(payer.householdId())));
     if (account == null) {
       return null;
     }
@@ -463,10 +470,10 @@ public final class GovPayTool implements AgentTool {
   }
 
   /** 国库落点：GOV 单位 id + 当刻有效位置。 */
-  private record TreasuryLocation(String unitId, HexCoord at) {}
+  private record TreasuryLocation(String unitId, HexCoord at, String householdId) {}
 
   /** 付款人（身份派生）：GOV 单位 id + 当刻有效位置。 */
-  private record Payer(String unitId, HexCoord at) {}
+  private record Payer(String unitId, HexCoord at, String householdId) {}
 
   /** 身份 / 归属层面的拒（不是改参数能修的）：由 {@link #execute} 折成 {@code REJECTED}。 */
   private static final class PaymentRejected extends RuntimeException {

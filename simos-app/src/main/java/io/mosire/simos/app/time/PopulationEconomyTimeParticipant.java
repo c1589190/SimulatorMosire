@@ -252,7 +252,7 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     // ★★ S1：唯一账户会话 —— 家户（商品/货币/冻结）+ 经营者（商品/货币/冻结）一次装载；
     //   键 = (ActorRef, HexCoord)，家户 actor id 由 HouseholdId 唯一派生（不再从 CohortKey 拼）。
     //   ★ S1.5 旧档：先把旧三段 actor id 上的账搬到新身份键（移动，不是复制 —— 否则一笔粮变两本账）。
-    ActorData migratedBooks = OwnershipBooks.migrateLegacyHouseholdAccounts(actor, economy);
+    ActorData migratedBooks = actor; // ★ P2-A：旧账户随旧世界报废，不再做 legacy actor 账户搬家
     // ★ S1.5：搬迁后的新账户键也要进读写集（否则第二次推进的冲突检测看不见它们）。
     for (GoodsAccountKey key : migratedBooks.accounts().keySet()) {
       reads.add(accountAddress(key));

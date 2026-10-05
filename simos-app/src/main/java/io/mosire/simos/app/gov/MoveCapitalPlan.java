@@ -2,11 +2,6 @@ package io.mosire.simos.app.gov;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.mosire.simos.actor.ActorSnapshot;
-import io.mosire.simos.actor.api.actor.ActorKind;
-import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.BatchResult;
@@ -158,7 +153,6 @@ public final class MoveCapitalPlan {
     SocialData social = socialOf(state);
     UnitState units = unitsOf(state);
     SdState sd = sdOf(state);
-    ActorSnapshot actorSnapshot = actorSnapshotOf(state);
     SimosTimestamp at = state.meta().timestamp();
 
     NationId nationId = NationId.parse(request.nationId());
@@ -190,13 +184,8 @@ public final class MoveCapitalPlan {
             .effectivePosition(govId, at)
             .orElseThrow(
                 () -> new IllegalArgumentException("中央 GOV 单位没有有效位置（无法定位旧国库账，拒绝迁都）: " + govId));
-    ActorRef owner = new ActorRef(ActorKind.UNIT, govId.value());
-    GoodsAccount treasury =
-        actorSnapshot.data().accounts().get(new GoodsAccountKey(owner, fromHex));
-    if (treasury == null) {
-      throw new IllegalArgumentException(
-          "中央 GOV 在旧位置 " + fromHex + " 没有国库账（" + owner + "）；请先落账再迁都，拒绝把空账当国库");
-    }
+    // ★★ P2-A §13.3：国库 = 政府家户账户，账随家户走（键不再带格）——迁都不需要搬账本。
+    //   旧实现要求"旧格上有一本 UNIT 国库账"并在下面发 actor.MoveAccount；该命令已随 P2-A 退役。
 
     List<CommandEnvelope> commands = new ArrayList<>();
     // ① 首都区：把目标 hex 归入 homeRegion，并尽量从旧归属里移除（重叠虽是合法状态，但首都区应独占其格）。
@@ -266,19 +255,8 @@ public final class MoveCapitalPlan {
           envelope(request, "unit.PlaceAt", Map.of("id", govId.value(), "hex", hexJson(toHex))));
     }
 
-    // ④ 国库：整本账随 owner 从旧格搬到新格（余额 + 冻结随行；目标已有逐键精确相加）。
-    if (!fromHex.equals(toHex)) {
-      commands.add(
-          envelope(
-              request,
-              "actor.MoveAccount",
-              Map.of(
-                  "owner", Map.of("kind", ActorKind.UNIT.name(), "id", govId.value()),
-                  "from", hexJson(fromHex),
-                  "to", hexJson(toHex),
-                  "reason", request.reason())));
-    }
-
+    // ④ 国库：P2-A §13.3 起账随家户走（键不带格）⇒ 迁都**不再需要**搬账命令；
+    //   政府家户的落点/成员更新由 social/unit 的迁都编排处理（P2-C 的政府家户路径）。
     // ⑤ 编制/管辖：首都区必须在中央 GOV 的管辖集里（已有税率与上限留给 SetJurisdiction 保原值）。
     boolean jurisdictionHasCapital =
         gov.jurisdiction()
@@ -397,15 +375,6 @@ public final class MoveCapitalPlan {
           "state 的 sd 切片不是 SdSnapshot: " + snapshot.getClass().getName());
     }
     return sdSnapshot.state();
-  }
-
-  private static ActorSnapshot actorSnapshotOf(SimulationState state) {
-    Snapshot snapshot = requireModule(state, "actor");
-    if (!(snapshot instanceof ActorSnapshot actorSnapshot)) {
-      throw new IllegalStateException(
-          "state 的 actor 切片不是 ActorSnapshot: " + snapshot.getClass().getName());
-    }
-    return actorSnapshot;
   }
 
   private static Snapshot requireModule(SimulationState state, String namespace) {

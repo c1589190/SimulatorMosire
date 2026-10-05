@@ -3,8 +3,6 @@ package io.mosire.simos.actor.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
-import io.mosire.simos.actor.api.actor.ActorKind;
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccount;
@@ -12,7 +10,7 @@ import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -100,10 +98,8 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {
-    Remit remit = parse(payloadJson);
-    return List.of(
-        ResourcePaths.actor(remit.fromQ(), remit.fromR()),
-        ResourcePaths.actor(remit.toQ(), remit.toR()));
+    parse(payloadJson); // 载荷必须可解析；家户账户无格 ⇒ 无 hex 目标（政府家户国库的围栏路径属 P2-C）
+    return List.of();
   }
 
   @Override
@@ -115,13 +111,9 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
       Remit remit = parse(payloadJson);
       ActorData remitted = apply(base, remit);
       LOG.info(
-          "event=ACTOR_GOV_TREASURY_REMITTED fromUnit={} toUnit={} fromHex={},{} toHex={},{} grain={} cloth={} money={}",
-          remit.fromUnitId(),
-          remit.toUnitId(),
-          remit.fromQ(),
-          remit.fromR(),
-          remit.toQ(),
-          remit.toR(),
+          "event=ACTOR_GOV_TREASURY_REMITTED fromHousehold={} toHousehold={} grain={} cloth={} money={}",
+          remit.fromHousehold(),
+          remit.toHousehold(),
           remit.grain(),
           remit.cloth(),
           remit.money());
@@ -136,50 +128,34 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
   /** 解析载荷（见类注的形状）；形状 / 类型 / 金额边界错都抛 {@link IllegalArgumentException}。 */
   private static Remit parse(String payloadJson) {
     JsonNode payload = ActorPayloads.parse(payloadJson);
-    String fromUnitId = normalizeUnitId(requireText(payload, "fromUnitId"));
-    int fromQ = requireInt(payload, "fromQ");
-    int fromR = requireInt(payload, "fromR");
-    String toUnitId = normalizeUnitId(requireText(payload, "toUnitId"));
-    int toQ = requireInt(payload, "toQ");
-    int toR = requireInt(payload, "toR");
+    HouseholdId fromHousehold = AccountPayloads.household(payload, "fromHousehold");
+    HouseholdId toHousehold = AccountPayloads.household(payload, "toHousehold");
     long grain = optionalAmount(payload, "grain");
     long cloth = optionalAmount(payload, "cloth");
     long money = optionalAmount(payload, "money");
     requireOptionalReason(payload);
-    return new Remit(fromUnitId, fromQ, fromR, toUnitId, toQ, toR, grain, cloth, money);
-  }
-
-  /** 单位 id 文本：接受 canonical {@code unit:<裸值>}（读口/resolve 给决策人的常见形态），去掉前缀后按裸值建国库账键； 只剩前缀 ⇒ 拒。 */
-  private static String normalizeUnitId(String text) {
-    String value = text.startsWith("unit:") ? text.substring("unit:".length()) : text;
-    if (value.isBlank()) {
-      throw new IllegalArgumentException("单位 id 去掉 unit: 前缀后不得为空白");
-    }
-    return value;
+    return new Remit(fromHousehold, toHousehold, grain, cloth, money);
   }
 
   /**
-   * 已通过形状解析的一条上缴：{@code (fromUnitId,fromQ/fromR)} → {@code (toUnitId,toQ/toR)} + 三个可选金额。
+   * 已通过形状解析的一条上缴（P2-A §13.3：国库 = 政府家户账户）：{@code fromHousehold} → {@code toHousehold} +
+   * 三个可选金额。
    *
-   * <p>构造期把"账号键不得相同、金额不得为负、至少一个 &gt; 0"这三条语义违例判掉 —— 解析出即合法。
+   * <p>构造期把"账户不得相同、金额不得为负、至少一个 &gt; 0"这三条语义违例判掉 —— 解析出即合法。
    */
   private record Remit(
-      String fromUnitId,
-      int fromQ,
-      int fromR,
-      String toUnitId,
-      int toQ,
-      int toR,
+      HouseholdId fromHousehold,
+      HouseholdId toHousehold,
       long grain,
       long cloth,
       long money) {
 
     Remit {
-      if (fromUnitId == null || fromUnitId.isBlank()) {
-        throw new IllegalArgumentException("字段 fromUnitId 不得为空白");
+      if (fromHousehold == null) {
+        throw new IllegalArgumentException("字段 fromHousehold 不得为 null");
       }
-      if (toUnitId == null || toUnitId.isBlank()) {
-        throw new IllegalArgumentException("字段 toUnitId 不得为空白");
+      if (toHousehold == null) {
+        throw new IllegalArgumentException("字段 toHousehold 不得为 null");
       }
       if (grain < 0L) {
         throw new IllegalArgumentException("字段 grain 不得为负（上缴量必须 ≥ 0）: " + grain);
@@ -193,11 +169,9 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
       if (grain == 0L && cloth == 0L && money == 0L) {
         throw new IllegalArgumentException("grain/cloth/money 至少一个必须 > 0（至少上缴一种资源；三个都是 0 的载荷没有动作）");
       }
-      GoodsAccountKey from = accountKey(fromUnitId, fromQ, fromR);
-      GoodsAccountKey to = accountKey(toUnitId, toQ, toR);
-      if (from.equals(to)) {
+      if (fromHousehold.equals(toHousehold)) {
         throw new IllegalArgumentException(
-            "源与目标国库账不得相同：unitId=" + fromUnitId + "，格 " + hex(fromQ, fromR) + "（同一本账自己转给自己没有动作）");
+            "源与目标国库账不得相同：household=" + fromHousehold + "（同一本账自己转给自己没有动作）");
       }
     }
   }
@@ -206,17 +180,13 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
 
   /** 全量校验 + 物化（纯函数）：任一违例即抛，**不返回半成品** —— 调用方把它折成整条 {@code Rejected}，于是"部分生效"在结构上 不可能发生。 */
   private static ActorData apply(ActorData base, Remit remit) {
-    GoodsAccountKey fromKey = accountKey(remit.fromUnitId(), remit.fromQ(), remit.fromR());
-    GoodsAccountKey toKey = accountKey(remit.toUnitId(), remit.toQ(), remit.toR());
+    GoodsAccountKey fromKey = new GoodsAccountKey(remit.fromHousehold());
+    GoodsAccountKey toKey = new GoodsAccountKey(remit.toHousehold());
     Map<GoodsAccountKey, GoodsAccount> next = new LinkedHashMap<>(base.accounts());
     GoodsAccount source = next.get(fromKey);
     if (source == null) {
       throw new IllegalArgumentException(
-          "源国库账不存在：unitId="
-              + remit.fromUnitId()
-              + "，格 "
-              + hex(remit.fromQ(), remit.fromR())
-              + "（上缴要求源账已存在；缺账不新建）");
+          "源国库账不存在：household=" + remit.fromHousehold() + "（上缴要求源账已存在；缺账不新建）");
     }
     requireAvailable(source, fromKey, remit);
     // ★ 源账扣减：余额表拷到 LinkedHashMap（保持键序），只改本次涉及的键；两张冻结表**原样带过**（五参写回）。
@@ -294,10 +264,8 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
       long available = AvailableStock.available(source, MoneyVocabulary.SILVER_CURRENCY);
       if (remit.money() > available) {
         throw new IllegalArgumentException(
-            "源国库账 money 不足：unitId="
-                + key.owner().id()
-                + "，格 "
-                + hex(key.location())
+            "源国库账 money 不足：household="
+                + key.household()
                 + "，请求="
                 + remit.money()
                 + "，可用="
@@ -323,10 +291,8 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
       throw new IllegalArgumentException(
           "源国库账 "
               + label
-              + " 不足：unitId="
-              + key.owner().id()
-              + "，格 "
-              + hex(key.location())
+              + " 不足：household="
+              + key.household()
               + "，请求="
               + requested
               + "，可用="
@@ -347,32 +313,12 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
     long sum = balance + amount;
     if (sum < balance) {
       throw new IllegalArgumentException(
-          "目标国库账 "
-              + label
-              + " 余额溢出（拒绝静默回绕）：unitId="
-              + key.owner().id()
-              + "，格 "
-              + hex(key.location()));
+          "目标国库账 " + label + " 余额溢出（拒绝静默回绕）：household=" + key.household());
     }
     return sum;
   }
 
-  // ── 形状 / 键 ─────────────────────────────────────────────────────────────────────
-
-  /** {@code (UNIT:<unitId>, <q>_<r>)} 的账键（本类唯一的键拼写点）。 */
-  private static GoodsAccountKey accountKey(String unitId, int q, int r) {
-    return new GoodsAccountKey(new ActorRef(ActorKind.UNIT, unitId), new HexCoord(q, r));
-  }
-
-  /** 格的键：{@code <q>_<r>}（**只经** {@link ResourcePaths#actor}，本类不再有第二个拼写点）。 */
-  private static String hex(HexCoord coord) {
-    return hex(coord.q(), coord.r());
-  }
-
-  /** 见 {@link #hex(HexCoord)}。 */
-  private static String hex(int q, int r) {
-    return ResourcePaths.actor(q, r);
-  }
+  // ── 形状 ─────────────────────────────────────────────────────────────────────────
 
   private static String requireText(JsonNode node, String field) {
     JsonNode value = node.get(field);
@@ -380,14 +326,6 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
       throw new IllegalArgumentException("字段 " + field + " 必须是非空字符串: " + value);
     }
     return value.asText();
-  }
-
-  private static int requireInt(JsonNode node, String field) {
-    JsonNode value = node.get(field);
-    if (value == null || !value.isIntegralNumber() || !value.canConvertToInt()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + node);
-    }
-    return value.asInt();
   }
 
   /** 可选金额：缺键 / {@code null} ⇒ 0；类型不是整数 ⇒ 抛（负数在 {@link Remit} 构造期拒）。 */

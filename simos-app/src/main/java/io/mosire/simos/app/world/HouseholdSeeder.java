@@ -140,16 +140,12 @@ public final class HouseholdSeeder {
         actors.add(actorNode(actor, labelOf(household)));
         goods.add(
             goodsNode(
-                actor,
-                hex,
+                household,
                 householdStocks.getOrDefault(household, Map.of()),
                 householdMoney.getOrDefault(household, Map.of())));
       }
-      // ★★ H5：本格的经营主体（有产业才有它；见 EconomySeeder.operatorSeed）—— 与家户同一个 actors/goods 形状。
-      for (EconomySeeder.OperatorSeed operator : operatorsByHex.getOrDefault(hex, List.of())) {
-        actors.add(actorNode(operator.owner(), operator.label()));
-        goods.add(goodsNode(operator.owner(), hex, operator.goods(), operator.money()));
-      }
+      // ★★ P2-A §13.3：经营主体（庄园/作坊的 operator）不再持账户 —— 只声明身份、不发账本；
+      //   投入/产出/收款走组织者/经营者家户账户（P2-B/P2-C 接线）。
       Map<String, Object> entry = new LinkedHashMap<>();
       entry.put("q", hex.q());
       entry.put("r", hex.r());
@@ -206,10 +202,11 @@ public final class HouseholdSeeder {
       for (HouseholdId household : atHex.getValue()) {
         ActorRef actor = HouseholdActors.of(household);
         actors.put(actor, new Actor(actor, labelOf(household)));
-        // ★ 账本**按绝对值**建（含空账）：0 余额保留是本仓既定口径（读口因此读得到"这个家户在这一格有一本账"）。
+        // ★ 账本**按绝对值**建（含空账）：0 余额保留是本仓既定口径（读口因此读得到"这个家户有一本账"）。
         // ★★ M1.3：显式带过两张**冻结表** —— 创世没有冻结（M1.2 的两张表从空表开始），但这里**不许**用三参便捷
         //   构造器：它给的是"冻结 = 空表"，将来若创世要带冻结（例如"先落占用再交割"的世界），漏带会静默清零。
-        GoodsAccountKey accountKey = new GoodsAccountKey(actor, atHex.getKey());
+        // ★★ P2-A §13.3：账户键 = 家户身份本身（不再带格）。
+        GoodsAccountKey accountKey = new GoodsAccountKey(household);
         accounts.put(
             accountKey,
             new GoodsAccount(
@@ -220,14 +217,10 @@ public final class HouseholdSeeder {
                 Map.of()));
       }
     }
-    // ★★ H5：经营主体的主体 + 账（同一份 OperatorSeed 同时给出两者 ⇒ 不会出现"有账没主体"）。
+    // ★★ P2-A §13.3：经营主体的身份保留，但**不再建账户**（庄园/作坊是生产方式，不是账户主体）。
+    //   旧账户随旧世界报废；投入/产出/收款走组织者/经营者家户账户（P2-B/P2-C 接线）。
     for (EconomySeeder.OperatorSeed operator : operators) {
       actors.put(operator.owner(), new Actor(operator.owner(), operator.label()));
-      GoodsAccountKey accountKey = new GoodsAccountKey(operator.owner(), operator.location());
-      // ★★ M1.3：同家户那条 —— 显式带过两张冻结表（创世为空表），不给三参构造器留静默清零的机会。
-      accounts.put(
-          accountKey,
-          new GoodsAccount(accountKey, operator.goods(), operator.money(), Map.of(), Map.of()));
     }
     return ActorData.empty().withActors(actors).withAccounts(accounts);
   }
@@ -300,16 +293,9 @@ public final class HouseholdSeeder {
    * <p>★ <b>键序沿用表本身的插入序</b>（{@code EconomySeeder.genesisMoney} 只发本格计价货币那一种）⇒ 同一份货币表 两次调用产出同一份载荷。
    */
   private static Map<String, Object> goodsNode(
-      ActorRef owner, HexCoord at, Map<CommodityId, Long> balances, Map<CurrencyId, Long> money) {
+      HouseholdId household, Map<CommodityId, Long> balances, Map<CurrencyId, Long> money) {
     Map<String, Object> node = new LinkedHashMap<>();
-    Map<String, Object> ref = new LinkedHashMap<>();
-    ref.put("kind", owner.kind().name());
-    ref.put("id", owner.id());
-    node.put("owner", ref);
-    Map<String, Object> location = new LinkedHashMap<>();
-    location.put("q", at.q());
-    location.put("r", at.r());
-    node.put("location", location);
+    node.put("household", household.value());
     Map<String, Object> table = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> entry : balances.entrySet()) {
       table.put(entry.getKey().toString(), entry.getValue());

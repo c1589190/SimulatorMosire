@@ -12,7 +12,6 @@ import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
-import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.query.QueryService;
@@ -23,6 +22,7 @@ import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.util.address.Address;
@@ -405,15 +405,15 @@ public final class LevyRegionTool implements AgentTool {
   private static String adjustAccountsPayload(LevyRegionPlan.Plan plan) {
     LinkedHashMap<GoodsAccountKey, Long> grainByKey = new LinkedHashMap<>();
     for (LevyRegionPlan.AccountSource source : plan.grain().sources()) {
-      grainByKey.put(new GoodsAccountKey(source.owner(), source.at()), -source.amount());
+      grainByKey.put(new GoodsAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
     }
     LinkedHashMap<GoodsAccountKey, Long> moneyByKey = new LinkedHashMap<>();
     for (LevyRegionPlan.AccountSource source : plan.money().sources()) {
-      moneyByKey.put(new GoodsAccountKey(source.owner(), source.at()), -source.amount());
+      moneyByKey.put(new GoodsAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
     }
     LinkedHashMap<GoodsAccountKey, Long> clothByKey = new LinkedHashMap<>();
     for (LevyRegionPlan.AccountSource source : plan.cloth().sources()) {
-      clothByKey.put(new GoodsAccountKey(source.owner(), source.at()), -source.amount());
+      clothByKey.put(new GoodsAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
     }
     LinkedHashSet<GoodsAccountKey> order = new LinkedHashSet<>(grainByKey.keySet());
     order.addAll(moneyByKey.keySet());
@@ -421,9 +421,7 @@ public final class LevyRegionTool implements AgentTool {
     List<Map<String, Object>> entries = new ArrayList<>(order.size() + 1);
     for (GoodsAccountKey key : order) {
       Map<String, Object> entry = new LinkedHashMap<>();
-      entry.put("owner", actorRefView(key.owner()));
-      entry.put("q", key.location().q());
-      entry.put("r", key.location().r());
+      entry.put("household", key.household().value());
       // ★ 粮与布同在一张 goods 表里：同键同命令只出现一条，扣减逐值对应。
       Map<String, Object> goods = new LinkedHashMap<>();
       if (grainByKey.containsKey(key)) {
@@ -444,9 +442,7 @@ public final class LevyRegionTool implements AgentTool {
     }
     // ★ 国库账户一条正增量：粮 / 布 / 钱各自 +requested（分配不变量保证 Σ扣减 == requested，逐值相等）。
     Map<String, Object> treasury = new LinkedHashMap<>();
-    treasury.put("owner", actorRefView(new ActorRef(ActorKind.UNIT, plan.unitId())));
-    treasury.put("q", plan.treasuryLocation().q());
-    treasury.put("r", plan.treasuryLocation().r());
+    treasury.put("household", plan.treasuryHousehold());
     Map<String, Object> treasuryGoods = new LinkedHashMap<>();
     if (plan.grain().requested() > 0L) {
       treasuryGoods.put(EconomyVocabulary.GRAIN_COMMODITY_ID, plan.grain().requested());

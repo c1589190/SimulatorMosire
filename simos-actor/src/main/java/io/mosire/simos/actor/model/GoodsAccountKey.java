@@ -1,86 +1,75 @@
 package io.mosire.simos.actor.model;
 
+import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
+import io.mosire.simos.social.api.id.HouseholdId;
+import java.util.Objects;
 
 /**
- * ★★ <b>商品余额的聚合键</b>：{@code (owner, location)} —— 两段里<b>任一不同就是另一本账</b>（不合并）。
+ * ★★ <b>家户账户的聚合键：一个家户一本账</b>（P2-A §13.3，2026-10-09 用户裁定）。
  *
- * <p>★★ <b>为什么键是这两段而不是别的</b>：库存是"某人<b>在某一格</b>有多少商品"的关系。少写 {@code location} ⇒「全境有多少粮」与
- * 「这一格有多少粮」混成一件事（阶段 4 产出落 operator、阶段 6 消费从 receipt 来，都要按格算）； 少写 {@code owner} ⇒
- * 同一格上两个主体的库存会挤进同一本账，而"这一格谁手上有多少粮"就答不出来了。
+ * <p>★★ <b>形状变化（如实记）</b>：改前是 {@code (ActorRef owner, HexCoord location)} —— 同一主体可在多格各有一本账，
+ * 且 {@code ESTATE} / {@code WORKSHOP} 等非家户主体也持账。现在：
  *
- * <p>★★ <b>为什么键里没有"哪一种资产"那一段</b>（已退役的产权键 {@code AssetHoldingKey} 曾带 {@code
- * assetKey}）：资产类键是<b>同质性条件</b>（影响生产的地力等）， 而商品 —— 粮就是粮 —— 的同质性条件已经由那一段里的 {@link
- * io.mosire.simos.economy.api.id.CommodityId} 自身表达 （课税的粮与种子粮是两个 {@code
- * CommodityId}）。本类只负责"谁的、在哪一格"，"哪一种"由值那张余额表按商品逐条记。
+ * <ul>
+ *   <li><b>唯一主体 = 家户</b>：键就是 {@link HouseholdId}（不是 {@code ActorRef}：账户主体统一为家户，见 §13.3）；
+ *   <li><b>没有 {@code HexCoord}</b>：位置从 {@code Household.location} 派生 —— 家户搬家，账自动跟走；
+ *   <li>庄园/作坊不是账户主体：它们是生产方式/生产活动（{@code ProductionMode} / {@code ProductionOrganization} /
+ *       {@code ProductionUnit}），投入/产出/收款走组织者/经营者<b>家户</b>的这本账。
+ * </ul>
  *
- * <p>★★ <b>本类型自带"裸 {@code toString()} + 单参 {@code parse}"这一对</b>（裁定 R-48-f，照 {@link
- * ActorRef#parseCanonical} 的先例）：{@code FieldDelta}（{@code simos-util}）把状态表的键压成 {@code toString()}
- * 的产物、重建时用 {@code parse} 还原 ⇒ 缺了这条配对，本切片就被迫自己写规范串的逆， 于是<b>同一个格式有了两处拼写点</b>。★
- * <b>格式的拼写只许在一个文件之内</b>：分隔符常量、{@code toString()} 与 {@code parse} 同住本文件（照 {@code ClassKey} / {@code
- * EdgeRef} 的先例）。
+ * <p>★★ <b>旧账户直接报废、不做迁移</b>（§13.3 的既定口径）：旧键 {@code <owner>|<hex>} 的 JSON 在新 codec 下解析即抛，
+ * 旧世界重建。这里<b>不</b>保留 legacy 解析路径 —— 兼容读会把"旧账户还活着"这个错觉留进状态树。
  *
- * <p>★ <b>规范串的形状</b>：{@code <owner>|<location>}，例如 {@code ESTATE:farm@0_0|0_0}。两段各自交给上游的逆（{@link
- * ActorRef#parseCanonical} / {@link HexCoord#parse}）—— <b>本类不知道</b>冒号怎么切、坐标怎么切，只认"第一个 {@code |}
- * 是接缝"。
+ * <p>★ <b>规范串 = 家户 id 本身</b>（{@link HouseholdId#toString()}）；{@link #parse(String)} 是它的逆
+ * （{@code HouseholdId.parse}）。{@code FieldDelta}（{@code simos-util}）把状态表的键压成 {@code toString()} 的产物、
+ * 重建时用 {@code parse} 还原 ⇒ 这一对是铁律 5 的键往返要求。
  *
- * <p>★★ <b>为什么按"第一个 {@code |}"切</b>（照 {@code ClassKey} / {@code EdgeRef} 的口径）：地格段是 {@code
- * <q>_<r>}（数字与 {@code _}），<b>必然不含 {@code |}</b> ⇒ 第一个接缝之后整段都是地格，这个切法是唯一能还原的。★ 反面写法"按<b>最后一个</b>接缝切"
- * 在 {@link #parse} 的坏输入上会<b>静默</b>造出错的键（见下条前提），故明令不许。
- *
- * <p>★ <b>本逆成立的前提，如实写在这里</b>：{@link ActorRef#id()} 是任意非空白文本 ⇒ 若某个 id 里含 {@code |}，第一个接缝就会落进 id
- * 内部。这一档<b>不会静默产出错的键</b>：切歪之后余下那段喂不进 {@link HexCoord#parse}，当场抛（fail-closed）。全仓现行的 id 形状（{@code
- * farm@0_0} / {@code rural:0_0:MALE:1} / {@code craft@-3_2}）不含 {@code |}。
- *
- * <p>★ <b>宁抛不静默</b>（照 {@code ClassKey} / {@code EdgeRef} 的口径）：{@code null} / 空白 / 没有接缝 / 接缝在首 /
- * 接缝在尾，一律 {@link IllegalArgumentException} —— 静默造一个半截的库存身份，比当场炸难查得多。
- *
- * @param owner 持有者（{@code ActorRef} 是身份；改名不影响它）
- * @param location 持有位置（库存是"到格"的：同一 owner 在两格各是一本账 = 两条，不合并）
+ * @param household 账户主体（家户稳定身份）；不得为 null
  */
-public record GoodsAccountKey(ActorRef owner, HexCoord location) {
-
-  /**
-   * 规范串的段分隔符 —— <b>只在 {@link #toString()} 与 {@link #parse(String)} 两处被读</b>
-   * （同处一个文件，故"分隔符长什么样"在本类型只有这一个拼写点）。
-   */
-  private static final String SEGMENT_SEPARATOR = "|";
+public record GoodsAccountKey(HouseholdId household) {
 
   public GoodsAccountKey {
-    if (owner == null) {
-      throw new IllegalArgumentException("GoodsAccountKey.owner 不得为 null");
-    }
-    if (location == null) {
-      throw new IllegalArgumentException("GoodsAccountKey.location 不得为 null");
-    }
+    Objects.requireNonNull(household, "GoodsAccountKey.household 不得为 null");
   }
 
-  /** 规范串：{@code <owner>|<location>}（既是变更集的 key，也是 JSON Map 的键）。 */
+  /** 规范串 = 家户 id（既是变更集的 key，也是 JSON Map 的键）。 */
   @Override
   public String toString() {
-    return owner + SEGMENT_SEPARATOR + location;
+    return household.value();
   }
 
   /**
-   * 解析 {@link #toString()} 的产物（见类注释：按<b>第一个</b>接缝切）。
+   * 解析 {@link #toString()} 的产物（家户 id 的不透明文本；格式校验在 {@link HouseholdId#parse}）。
    *
-   * <p>★ 两段各自交给上游的逆（{@link ActorRef#parseCanonical} / {@link HexCoord#parse}）—— <b>本类不复述它们的格式</b>，
-   * 故上游改了规范串，本类的往返当场跟着红。
+   * @throws IllegalArgumentException 空白 / null（{@link HouseholdId#parse} 的口径）
    */
   public static GoodsAccountKey parse(String text) {
-    if (text == null || text.isBlank()) {
-      throw new IllegalArgumentException("非法库存键: " + text);
-    }
-    int ownerEnd = text.indexOf(SEGMENT_SEPARATOR);
-    if (ownerEnd <= 0) {
-      throw new IllegalArgumentException("非法库存键（所有者段缺失或在首）: " + text);
-    }
-    if (ownerEnd == text.length() - SEGMENT_SEPARATOR.length()) {
-      throw new IllegalArgumentException("非法库存键（地格段缺失）: " + text);
-    }
-    return new GoodsAccountKey(
-        ActorRef.parseCanonical(text.substring(0, ownerEnd)),
-        HexCoord.parse(text.substring(ownerEnd + SEGMENT_SEPARATOR.length())));
+    return new GoodsAccountKey(HouseholdId.parse(text));
   }
+
+  /**
+   * ★★ <b>过渡期收口点（P2-A §13.3）：actor 引用 → 账户键</b>。
+   *
+   * <ul>
+   *   <li>{@code HOUSEHOLD} actor ⇒ {@link HouseholdActors#householdOf} 反查出真实家户键（家户身份的唯一拼写点）；
+   *   <li>其它 kind（UNIT / GOVERNMENT / ORGANIZATION …）⇒ <b>不再持账</b>：返回一个带
+   *       {@value #RETIRED_NON_HOUSEHOLD_PREFIX} 前缀的键。它<b>永远取不到账</b>（不是坏数据、也不是抛），于是旧调用点会得到
+   *       "这本账不存在"的具名结果而不是静默读到别人的账 —— 单位/政府国库改走家户账户属 P2-C。
+   * </ul>
+   *
+   * <p>★ 它是旧 {@code (owner, hex)} 拼法在 P2-A 的唯一下沉点：P2-C 把政府/军队账改走家户后，本方法应删除。
+   */
+  @Deprecated
+  public static GoodsAccountKey ofActor(ActorRef actor) {
+    Objects.requireNonNull(actor, "actor");
+    if (actor.kind() == ActorKind.HOUSEHOLD) {
+      return new GoodsAccountKey(HouseholdActors.householdOf(actor));
+    }
+    return new GoodsAccountKey(HouseholdId.parse(RETIRED_NON_HOUSEHOLD_PREFIX + actor));
+  }
+
+  /** 旧非家户主体的占位键前缀（见 {@link #ofActor(ActorRef)}；永不与真实家户 id 相同）。 */
+  @Deprecated public static final String RETIRED_NON_HOUSEHOLD_PREFIX = "retired-actor:";
 }

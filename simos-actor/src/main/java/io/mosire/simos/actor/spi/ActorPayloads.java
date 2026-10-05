@@ -12,7 +12,7 @@ import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -123,8 +123,13 @@ final class ActorPayloads {
    * @param existingActors 现有切片里**已有**的主体（追加播种时"先落主体、后落库存"的合法写序靠它成立）
    * @param at 世界当前时刻（{@code activatedDay} 取它的 {@link SimosTimestamp#tick()}）
    */
-  static ActorData toData(JsonNode payload, Set<ActorRef> existingActors, SimosTimestamp at) {
+  static ActorData toData(
+      JsonNode payload,
+      Set<ActorRef> existingActors,
+      Set<HouseholdId> existingHouseholds,
+      SimosTimestamp at) {
     Objects.requireNonNull(existingActors, "existingActors");
+    Objects.requireNonNull(existingHouseholds, "existingHouseholds");
     Objects.requireNonNull(at, "at");
     String mapId = requireText(payload, "mapId");
     String rulesVersion = requireText(payload, "rulesVersion");
@@ -144,13 +149,19 @@ final class ActorPayloads {
         }
       }
     }
-    Set<ActorRef> declared = new LinkedHashSet<>(existingActors);
-    declared.addAll(actors.keySet());
+    // ★★ P2-A：账户主体只有家户 ⇒ 悬空判据看家户集（载荷里出现的 ∪ 现有状态里的），不再看 ActorRef。
+    Set<HouseholdId> declaredHouseholds = new LinkedHashSet<>(existingHouseholds);
+    for (JsonNode entry : entries) {
+      for (JsonNode node : optionalArray(entry, "goods")) {
+        declaredHouseholds.add(AccountPayloads.household(node, "household"));
+      }
+    }
     Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>();
     for (JsonNode entry : entries) {
-      HexCoord atHex = new HexCoord(requireInt(entry, "q"), requireInt(entry, "r"));
+      requireInt(entry, "q");
+      requireInt(entry, "r");
       for (JsonNode node : optionalArray(entry, "goods")) {
-        GoodsAccount account = goods(node, atHex, declared);
+        GoodsAccount account = goods(node, declaredHouseholds);
         if (accounts.putIfAbsent(account.key(), account) != null) {
           throw new IllegalArgumentException("同一份载荷里库存重复: " + account.key());
         }
@@ -165,19 +176,17 @@ final class ActorPayloads {
   // ── actor.AdjustAccounts（净增量账，阶段 6 / 计划 §6.2）────────────────────────────
 
   /**
-   * ★★ <b>{@code actor.AdjustAccounts} 的一条账目</b>：{@code (owner, 格)} + 两张<b>有符号净增量</b>表。
+   * ★★ <b>{@code actor.AdjustAccounts} 的一条账目</b>（P2-A §13.3：账户主体只有家户）：{@code household} +
+   * 两张<b>有符号净增量</b>表。
    *
    * <p>★ 两张表<b>至少一张非空</b>（否则这条账目没有任何动作，解析期已拒）；表的迭代序 = 载荷里的键序（{@code LinkedHashMap}）， 构造期冻成不可变。★
    * 增量是<b>净量</b>（不是存量），0 已在解析期拒（无操作条目请删）。
    */
   record AccountAdjustment(
-      ActorRef owner,
-      HexCoord location,
-      Map<CommodityId, Long> goods,
-      Map<CurrencyId, Long> money) {
+      HouseholdId household, Map<CommodityId, Long> goods, Map<CurrencyId, Long> money) {
 
     AccountAdjustment {
-      if (owner == null || location == null || goods == null || money == null) {
+      if (household == null || goods == null || money == null) {
         throw new IllegalArgumentException("AccountAdjustment 的组件都不得为 null");
       }
       // ★ 冻在赋值处（保序不可变：LinkedHashMap + Collections.unmodifiableMap；不用 Map.copyOf）。
@@ -188,12 +197,12 @@ final class ActorPayloads {
 
   /**
    * 解析 {@code actor.AdjustAccounts} 的载荷（形状见 {@code AdjustAccountsHandler} 的类注）： {@code
-   * entries[{owner{kind,id}, q, r, goods?, money?}...]}。
+   * entries[{household, goods?, money?}...]}。
    *
-   * <p>★ <b>本层只判形状 / 类型 / 词表 / 0 增量 / 同一 {@code (owner, 格)} 重复</b>；"负增量是否使余额 &lt; 0 / 侵占冻结额、
+   * <p>★ <b>本层只判形状 / 类型 / 词表 / 0 增量 / 同一家户重复</b>；"负增量是否使余额 &lt; 0 / 侵占冻结额、
    * 缺账能否新建"是<b>数值语义</b>，由 {@code AdjustAccountsHandler} 判（本层不重复实现）。
    *
-   * @throws IllegalArgumentException 形状/类型/词表/0 增量/重复任一不合法（消息带 owner、位置、维度与数字）
+   * @throws IllegalArgumentException 形状/类型/词表/0 增量/重复任一不合法（消息带家户、维度与数字）
    */
   static List<AccountAdjustment> adjustments(JsonNode payload) {
     JsonNode entries = requireArray(payload, "entries");
@@ -201,53 +210,33 @@ final class ActorPayloads {
       throw new IllegalArgumentException("entries 不得为空");
     }
     List<AccountAdjustment> parsed = new ArrayList<>(entries.size());
-    Set<GoodsAccountKey> seen = new LinkedHashSet<>();
+    Set<HouseholdId> seen = new LinkedHashSet<>();
     int index = 0;
     for (JsonNode entry : entries) {
       if (entry == null || !entry.isObject()) {
         throw new IllegalArgumentException(
-            "字段 entries 的元素必须是 {owner{kind,id},q,r,goods?,money?} 对象: " + entry);
+            "字段 entries 的元素必须是 {household,goods?,money?} 对象: " + entry);
       }
-      int q = requireInt(entry, "q");
-      int r = requireInt(entry, "r");
-      HexCoord at = new HexCoord(q, r);
-      ActorRef owner = adjustmentOwner(entry, index, at);
-      GoodsAccountKey key = new GoodsAccountKey(owner, at);
-      if (!seen.add(key)) {
+      HouseholdId household;
+      try {
+        household = AccountPayloads.household(entry, "entries[" + index + "].household");
+      } catch (IllegalArgumentException e) {
+        throw new IllegalArgumentException("entries[" + index + "] 的家户不合法: " + e.getMessage(), e);
+      }
+      if (!seen.add(household)) {
         throw new IllegalArgumentException(
-            "同一份载荷里账目重复：owner=" + owner + "，格 " + hex(at) + "（同一 (owner,格) 只能出现一次）");
+            "同一份载荷里账目重复：household=" + household + "（同一家户只能出现一次）");
       }
-      Map<CommodityId, Long> goods = deltas(entry, index, owner, at, "goods", CommodityId::parse);
-      Map<CurrencyId, Long> money = deltas(entry, index, owner, at, "money", CurrencyId::parse);
+      Map<CommodityId, Long> goods = deltas(entry, index, household, "goods", CommodityId::parse);
+      Map<CurrencyId, Long> money = deltas(entry, index, household, "money", CurrencyId::parse);
       if (goods.isEmpty() && money.isEmpty()) {
         throw new IllegalArgumentException(
-            "entries["
-                + index
-                + "] 的 goods/money 至少一个必须非空（owner="
-                + owner
-                + "，格 "
-                + hex(at)
-                + "；无操作条目请删）");
+            "entries[" + index + "] 的 goods/money 至少一个必须非空（household=" + household + "；无操作条目请删）");
       }
-      parsed.add(new AccountAdjustment(owner, at, goods, money));
+      parsed.add(new AccountAdjustment(household, goods, money));
       index++;
     }
     return List.copyOf(parsed);
-  }
-
-  /** 一条账目的 {@code owner}：形状/词表错都带 entries 下标与位置（见 {@link #adjustments} 的类注）。 */
-  private static ActorRef adjustmentOwner(JsonNode entry, int index, HexCoord at) {
-    JsonNode ownerNode = optionalObject(entry, "owner");
-    if (ownerNode == null) {
-      throw new IllegalArgumentException(
-          "entries[" + index + "] 的字段 owner 必须是 {kind,id} 对象: " + entry);
-    }
-    try {
-      return actorRef(ownerNode);
-    } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException(
-          "entries[" + index + "] 的 owner 不合法（格 " + hex(at) + "）: " + e.getMessage(), e);
-    }
   }
 
   /**
@@ -256,16 +245,11 @@ final class ActorPayloads {
    * <ul>
    *   <li>缺键 / {@code null} ⇒ 空表（"这张表没有动作"）；不是对象 ⇒ 拒；
    *   <li><b>值为 0 ⇒ 拒</b>（"无操作条目请删"）——收下它只会让"这条载荷到底想干什么"多一个假动作；
-   *   <li>错误消息带 entries 下标、owner、位置与维度（哪张表、哪个键）。
+   *   <li>错误消息带 entries 下标、家户与维度（哪张表、哪个键）。
    * </ul>
    */
   private static <A> Map<A, Long> deltas(
-      JsonNode entry,
-      int index,
-      ActorRef owner,
-      HexCoord at,
-      String dimension,
-      Function<String, A> idParser) {
+      JsonNode entry, int index, HouseholdId household, String dimension, Function<String, A> idParser) {
     Map<A, Long> parsed = new LinkedHashMap<>();
     JsonNode node = optionalObject(entry, dimension);
     if (node == null) {
@@ -285,10 +269,8 @@ final class ActorPayloads {
                 + index
                 + "] 的 "
                 + dimension
-                + " 键/值不合法（owner="
-                + owner
-                + "，格 "
-                + hex(at)
+                + " 键/值不合法（household="
+                + household
                 + "）: "
                 + e.getMessage(),
             e);
@@ -296,10 +278,8 @@ final class ActorPayloads {
       if (delta == 0L) {
         throw new IllegalArgumentException(
             dimension
-                + " 的值不得为 0（无操作条目请删）：owner="
-                + owner
-                + "，格 "
-                + hex(at)
+                + " 的值不得为 0（无操作条目请删）：household="
+                + household
                 + "，"
                 + dimension
                 + "."
@@ -319,18 +299,25 @@ final class ActorPayloads {
   }
 
   /**
-   * 一本账：{@code {owner, location, balances:{<commodityId>:<余额>}, money?:{<currencyId>:<余额>},
+   * 一本家户账（P2-A §13.3）：{@code {household, balances:{<commodityId>:<余额>}, money?:{<currencyId>:<余额>},
    * frozenBalances?:{<commodityId>:<冻结额>}, frozenMoney?:{<currencyId>:<冻结额>}}}（余额与冻结额都是**存量**：0
    * 保留；数值守卫 —— 余额非负、{@code 0 ≤ 冻结 ≤ 余额} —— 由 {@code GoodsAccount} 拒，本层不重复实现）。
    *
-   * <p>★ {@code money} / {@code frozenBalances} / {@code frozenMoney} 三键**可缺省**（缺 = 空表）：前者是 H4
-   * 的口径，后两者是 M1.2 新增的组件 ⇒ M1.2 之前写的载荷里根本没有它们（照 {@code GoodsAccount} 的旧档兼容口径）。
+   * <p>★ {@code money} / {@code frozenBalances} / {@code frozenMoney} 三键**可缺省**（缺 = 空表）。
+   *
+   * <p>★ <b>没有 {@code location}</b>：账户键不再带格（P2-A）—— 位置从 {@code Household.location} 派生。
    */
-  private static GoodsAccount goods(JsonNode node, HexCoord atHex, Set<ActorRef> declared) {
-    ActorRef owner = owner(node);
-    requireOwnerDeclared(owner, declared, atHex);
-    HexCoord location = location(node);
-    requireLocationAtEntry(location, atHex);
+  private static GoodsAccount goods(JsonNode node, Set<HouseholdId> declaredHouseholds) {
+    HouseholdId household;
+    try {
+      household = AccountPayloads.household(node, "household");
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("库存行不合法: " + e.getMessage(), e);
+    }
+    if (!declaredHouseholds.contains(household)) {
+      throw new IllegalArgumentException(
+          "库存的 household 既不在载荷的家户集里、也不在现有状态里（悬空家户）: " + household);
+    }
     JsonNode balances = optionalObject(node, "balances");
     if (balances == null) {
       throw new IllegalArgumentException("字段 balances 必须是对象: " + node);
@@ -387,50 +374,12 @@ final class ActorPayloads {
                       requireIntegral(field.getValue(), "frozenMoney." + field.getKey())));
     }
     return new GoodsAccount(
-        new GoodsAccountKey(owner, location), parsed, money, frozenBalances, frozenMoney);
+        new GoodsAccountKey(household), parsed, money, frozenBalances, frozenMoney);
   }
 
-  /** {@code {"kind","id"}}：主体引用（载荷里主体行与两张表的 {@code owner} 共用**同一个**形状与解析）。 */
+  /** {@code {"kind","id"}}：主体引用（载荷里主体行共用**同一个**形状与解析）。 */
   private static ActorRef actorRef(JsonNode node) {
     return new ActorRef(ActorKind.parse(requireText(node, "kind")), requireText(node, "id"));
-  }
-
-  /** 产权/库存行的 {@code owner}（必须是 {@code {kind,id}} 对象：形状判在本层，不落到 NPE）。 */
-  private static ActorRef owner(JsonNode node) {
-    JsonNode owner = optionalObject(node, "owner");
-    if (owner == null) {
-      throw new IllegalArgumentException("字段 owner 必须是 {kind,id} 对象: " + node);
-    }
-    return actorRef(owner);
-  }
-
-  /** ★★ 悬空 owner ⇒ 拒（见类注：既不在载荷里、也不在现有状态里的主体 = 静默的幽灵）。 */
-  private static void requireOwnerDeclared(ActorRef owner, Set<ActorRef> declared, HexCoord atHex) {
-    if (!declared.contains(owner)) {
-      throw new IllegalArgumentException("库存的 owner 不是已声明的主体: " + owner + "（格 " + hex(atHex) + "）");
-    }
-  }
-
-  /** ★★ 库存是"到格"的：行内的 {@code location} 必须等于所在格（见类注的权限理由）。 */
-  private static void requireLocationAtEntry(HexCoord location, HexCoord atHex) {
-    if (!location.equals(atHex)) {
-      throw new IllegalArgumentException(
-          "库存的 location 必须等于所在格: location=" + location + "，格=" + hex(atHex));
-    }
-  }
-
-  /** 行的 {@code location}（{@code {q,r}} 对象；缺键/非对象/非整数一律抛）。 */
-  private static HexCoord location(JsonNode node) {
-    JsonNode location = optionalObject(node, "location");
-    if (location == null) {
-      throw new IllegalArgumentException("字段 location 必须是 {q,r} 对象: " + node);
-    }
-    return new HexCoord(requireInt(location, "q"), requireInt(location, "r"));
-  }
-
-  /** 格的键：{@code <q>_<r>}（**只经 {@link ResourcePaths#actor}**，本类不再有第二个拼写点）。 */
-  private static String hex(HexCoord coord) {
-    return ResourcePaths.actor(coord.q(), coord.r());
   }
 
   // ── 形状助手（照 EconomyPayloads）─────────────────────────────────────────────────────

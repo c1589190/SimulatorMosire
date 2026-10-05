@@ -16,6 +16,8 @@ import io.mosire.simos.economy.model.ClassPosition;
 import io.mosire.simos.economy.model.ClassPosition.RelationToMeans;
 import io.mosire.simos.economy.model.ClassPosition.SurplusRole;
 import io.mosire.simos.economy.model.ClassRow;
+import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.ProductionOrganization;
 import io.mosire.simos.map.hex.HexCoord;
@@ -218,7 +220,7 @@ final class DebtPartyResolver {
                   household, 1000L, SOURCE_RELATION, "economic-household-of-related-unit")));
     }
 
-    boolean aggregateKind = actor.kind() == ActorKind.ESTATE || actor.kind() == ActorKind.WORKSHOP;
+    boolean aggregateKind = isAggregateProductionActor(data, actor);
     List<ProductionOrganization> organizations = index.organizationsOf(actor);
 
     // ③ 聚合主体优先用 E2 生产组织登记的家户归属（organizer 或 unit.operator == actor）。
@@ -402,13 +404,13 @@ final class DebtPartyResolver {
       ClassPosition position = positionId.map(data.classPositions()::get).orElse(null);
       boolean positionMatch = false;
       boolean legacyMatch = false;
-      if (actor.kind() == ActorKind.ESTATE) {
+      if (isFeudalIndustry(data, actor)) {
         positionMatch =
             position != null
                 && (position.relationToMeans() == RelationToMeans.OWNER
                     || position.surplusRole() == SurplusRole.SURPLUS_RECEIVER);
         legacyMatch = row.view().stratum().equals(SocialClassId.LANDLORD);
-      } else if (actor.kind() == ActorKind.WORKSHOP) {
+      } else if (!isFeudalIndustry(data, actor)) {
         positionMatch =
             position != null
                 && LegacyClassStructure.socialClassOf(position.id())
@@ -424,7 +426,7 @@ final class DebtPartyResolver {
     }
 
     String positionDetail =
-        actor.kind() == ActorKind.ESTATE
+        isFeudalIndustry(data, actor)
             ? "estate-owner-or-surplus-receiver"
             : "workshop-legacy-artisan-position";
     Resolution positionResolution =
@@ -434,16 +436,14 @@ final class DebtPartyResolver {
     }
 
     String legacyDetail =
-        actor.kind() == ActorKind.ESTATE
-            ? "estate-legacy-landlord"
-            : "workshop-legacy-artisan-stratum";
+        isFeudalIndustry(data, actor) ? "estate-legacy-landlord" : "workshop-legacy-artisan-stratum";
     Resolution legacyResolution =
         splitByPopulation(data, legacyMatches, SOURCE_POPULATION_FALLBACK, legacyDetail);
     if (legacyResolution.isResolved()) {
       return legacyResolution;
     }
 
-    String detail = actor.kind() == ActorKind.ESTATE ? "estate" : "workshop";
+    String detail = isFeudalIndustry(data, actor) ? "estate" : "workshop";
     return Resolution.unresolved(
         "no-population-composition:"
             + detail
@@ -518,6 +518,21 @@ final class DebtPartyResolver {
     return Resolution.resolved(List.copyOf(result));
   }
 
+  /**
+   * ★★ P2-A §13.3：庄园/作坊不再是 ActorKind ⇒ 聚合生产主体改用 {@code ORGANIZATION}（身份 = 产业 id）。
+   * 判据 = kind == ORGANIZATION 且 id 命中一个现存产业（不命中的 ORGANIZATION 不是产业经营者）。
+   */
+  private static boolean isAggregateProductionActor(EconomyData data, ActorRef actor) {
+    return actor.kind() == ActorKind.ORGANIZATION
+        && data.industries().containsKey(new IndustryId(actor.id()));
+  }
+
+  /** 该聚合生产主体是否是 {@code feudal}（庄园）制度：是 ⇒ estate 口径回退，否则按作坊口径。 */
+  private static boolean isFeudalIndustry(EconomyData data, ActorRef actor) {
+    Industry industry = data.industries().get(new IndustryId(actor.id()));
+    return industry != null && RegimeOperators.FEUDAL.equals(industry.regime().value());
+  }
+
   /** 端点解析的 hex 兜底：显式 hex → activity 的格 → actor id 的产业格 → 组织的 id/unit 格 → 相关 unit 的格。 */
   private static HexCoord effectiveHex(
       SettlementIndex index, ActorRef actor, HexCoord hex, Optional<ProductionUnitId> activity) {
@@ -530,7 +545,7 @@ final class DebtPartyResolver {
         return parsed;
       }
     }
-    if (actor.kind() == ActorKind.ESTATE || actor.kind() == ActorKind.WORKSHOP) {
+    if (actor.kind() == ActorKind.ORGANIZATION) {
       HexCoord parsed =
           parseHexKey(IndustryHexKeys.hexKeyOf(new IndustryId(actor.id())).orElse(null));
       if (parsed != null) {

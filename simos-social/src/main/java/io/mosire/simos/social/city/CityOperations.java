@@ -106,14 +106,14 @@ public final class CityOperations {
     Map<HouseholdId, Household> households = new LinkedHashMap<>(base.households());
     for (Map.Entry<HouseholdId, Household> entry : base.households().entrySet()) {
       Household household = entry.getValue();
-      List<PeopleLotId> remaining = new ArrayList<>(household.memberLots().size());
-      for (PeopleLotId lot : household.memberLots()) {
-        if (!removed.contains(lot)) {
-          remaining.add(lot);
+      Map<PeopleLotId, Long> remaining = new LinkedHashMap<>();
+      for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
+        if (!removed.contains(member.getKey())) {
+          remaining.put(member.getKey(), member.getValue());
         }
       }
-      if (remaining.size() != household.memberLots().size()) {
-        households.put(entry.getKey(), household.withMemberLots(remaining));
+      if (remaining.size() != household.members().size()) {
+        households.put(entry.getKey(), household.withMembers(remaining));
       }
     }
     // 事件表是历史留痕，不删（被删批次的 id 只作历史引用）；其余四个组件原样带过。

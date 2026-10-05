@@ -5,11 +5,10 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.GoodsAccountKey;
-import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
-import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -70,9 +69,11 @@ public final class ActorSeedHandler implements CommandHandler, CommandTargets {
     ActorData seeded;
     try {
       payload = ActorPayloads.parse(payloadJson);
-      // ★ 现有主体表一并交给载荷层：悬空 owner 的判据是"到这个命令为止该主体存不存在"，
-      //   故"先落主体、后落库存"的写序照样合法。
-      seeded = ActorPayloads.toData(payload, base.actors().keySet(), state.meta().timestamp());
+      // ★ 现有主体/家户一并交给载荷层：悬空判据是"到这个命令为止它存不存在"，
+      //   故"先落主体、后落库存"的写序照样合法。★ P2-A：账户主体只有家户 ⇒ 现有家户从账键里收。
+      seeded =
+          ActorPayloads.toData(
+              payload, base.actors().keySet(), householdsOf(base), state.meta().timestamp());
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());
     }
@@ -83,47 +84,39 @@ public final class ActorSeedHandler implements CommandHandler, CommandTargets {
           seeded.accounts().size());
       return new HandlerOutcome.Applied(ActorChangeSet.between(base, seeded)); // 首次播种：打标
     }
-    // ★ 已激活 ⇒ 按格追加：先逐格判重（任一格已被占用 ⇒ 整份拒绝并点名该格），再并入现有切片。
-    Set<String> occupied = occupiedHexKeys(base);
-    for (String hex : ActorPayloads.entryHexKeys(payload)) {
-      if (occupied.contains(hex)) {
+    // ★ 已激活 ⇒ 追加：先判"本批家户是否已有账"（任一撞键 ⇒ 整份拒绝并点名），再并入现有切片。
+    Set<HouseholdId> occupied = householdsOf(base);
+    for (GoodsAccountKey key : seeded.accounts().keySet()) {
+      if (occupied.contains(key.household())) {
         return new HandlerOutcome.Rejected(
-            "格 " + hex + " 已有 actor 状态（库存行），拒绝重复播种: mapId=" + base.meta().orElseThrow().mapId());
+            "家户 "
+                + key.household()
+                + " 已有 actor 账户，拒绝重复播种: mapId="
+                + base.meta().orElseThrow().mapId());
       }
     }
     // ★ 两张表**批量**并表（`ActorData` 的 bulk wither 的第二个调用面，见裁定 R-ae / R-ah）：
     //   merge 保留 base 的插入序、把新增项接在后面。
-    //   ★ 为什么并表是安全的（不会静默覆盖）：那张带 location 的表里每一行的 location 都必须等于它所在载荷格
-    //     （ActorPayloads 的判据），而这里每一格都已判过"没被占用" ⇒ 键不可能撞上。
+    //   ★ 为什么并表是安全的（不会静默覆盖）：家户账的键已逐条判过"没被占用" ⇒ 键不可能撞上。
     //   ★ meta 走 base 的：不覆盖首次播种的 activatedDay / rulesVersion。
     ActorData merged =
         base.withActors(merge(base.actors(), seeded.actors()))
             .withAccounts(merge(base.accounts(), seeded.accounts()));
     LOG.info(
-        "event=ACTOR_SEEDED first=false hexes={} actors={} accounts={}",
+        "event=ACTOR_SEEDED first=false entries={} actors={} accounts={}",
         ActorPayloads.entryHexKeys(payload).size(),
         merged.actors().size(),
         merged.accounts().size());
     return new HandlerOutcome.Applied(ActorChangeSet.between(base, merged));
   }
 
-  /**
-   * 现有切片里**已被占用的格键**（{@code <q>_<r>}）。
-   *
-   * <p>★ 判据只能落在有位置的**库存表**上：{@code actors} 没有位置字段（{@code Actor} 恰两件 {ref, label}， spec §三 L283
-   * 的禁令），故"某格是否已被播种"由"该格上有没有库存行"来回答（产权表已随裁定 S3 退役）。★ 路径经 {@link ResourcePaths#actor(int, int)} 拼——与
-   * {@code entries[]} 那条**同一个来源**，否则判重与目标声明会各拼一份。
-   */
-  private static Set<String> occupiedHexKeys(ActorData base) {
-    Set<String> hexes = new LinkedHashSet<>();
+  /** 现有切片里已有账的家户集（P2-A：账户主体只有家户，判重按家户身份）。 */
+  private static Set<HouseholdId> householdsOf(ActorData base) {
+    Set<HouseholdId> households = new LinkedHashSet<>();
     for (GoodsAccountKey key : base.accounts().keySet()) {
-      hexes.add(hexKeyOf(key.location()));
+      households.add(key.household());
     }
-    return hexes;
-  }
-
-  private static String hexKeyOf(HexCoord coord) {
-    return ResourcePaths.actor(coord.q(), coord.r());
+    return households;
   }
 
   /** 追加表：保留 {@code base} 的插入序，再把新增项接在后面（保序不可变的纯形态仍由 {@link ActorData} 构造期冻结）。 */
