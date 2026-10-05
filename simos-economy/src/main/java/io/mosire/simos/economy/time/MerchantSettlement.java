@@ -16,16 +16,16 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.CompensationRule;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.MerchantPolicy;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -51,7 +51,7 @@ import java.util.OptionalLong;
  *
  * <p>★★ <b>upkeep 的口径</b>：城区当量 upkeep（{@code tier.districtUse × MerchantPolicy.UPKEEP_PER_DISTRICT_USE}）
  * 与船畜维护在本批是<b>成本计提</b>（没有可收方主体；若真的扣钱就会让货币凭空消失）。它进 {@code lastProfitMilli} 与
- * {@link OrganizationProfitBook} 的成本，<b>不</b>移动任何余额。这是本批具名收窄（见收口报告）。
+ * {@link EnterpriseProfitBook} 的成本，<b>不</b>移动任何余额。这是本批具名收窄（见收口报告）。
  */
 public final class MerchantSettlement {
 
@@ -189,21 +189,21 @@ public final class MerchantSettlement {
   public static final class CarrierPool {
 
     private final Map<ProductionOrganizationId, MerchantFirm> firms;
-    private final Map<ProductionOrganizationId, ActorRef> principalByOrganization;
+    private final Map<ProductionOrganizationId, ActorRef> principalByEnterprise;
 
     public CarrierPool(
         Map<ProductionOrganizationId, MerchantFirm> firms,
-        Map<ProductionOrganizationId, ProductionOrganization> organizations) {
+        Map<ProductionOrganizationId, ProductionEnterprise> enterprises) {
       this.firms = Objects.requireNonNull(firms, "firms");
-      this.principalByOrganization = new LinkedHashMap<>();
+      this.principalByEnterprise = new LinkedHashMap<>();
       List<ProductionOrganizationId> ids = new ArrayList<>(firms.keySet());
       ids.sort(Comparator.comparing(ProductionOrganizationId::value));
       for (ProductionOrganizationId id : ids) {
-        ProductionOrganization organization = organizations.get(id);
-        if (organization == null) {
+        ProductionEnterprise enterprise = enterprises.get(id);
+        if (enterprise == null) {
           continue; // 没有组织的商号是坏档：不猜承运人，选商时跳过（结算时具名抛）
         }
-        principalByOrganization.put(id, organization.organizer());
+        principalByEnterprise.put(id, enterprise.organizer());
       }
     }
 
@@ -261,7 +261,7 @@ public final class MerchantSettlement {
       List<Candidate> candidates = new ArrayList<>();
       for (Map.Entry<ProductionOrganizationId, MerchantFirm> entry : firms.entrySet()) {
         MerchantFirm firm = entry.getValue();
-        ActorRef principal = principalByOrganization.get(entry.getKey());
+        ActorRef principal = principalByEnterprise.get(entry.getKey());
         if (firm == null || principal == null || !servesLane(firm, from, to)) {
           continue;
         }
@@ -336,7 +336,7 @@ public final class MerchantSettlement {
 
   /** 本周期某商号的运费实收（只从本周期真实 CARRIER_FEE 转移读数取；`to` = principal actor）。 */
   public static long feeRevenueOf(
-      OrganizationProfitBook.CycleAccumulator cycle, ActorRef principalActor) {
+      EnterpriseProfitBook.CycleAccumulator cycle, ActorRef principalActor) {
     long revenue = 0L;
     for (ProductionLedger ledger : cycle.ledgers()) {
       for (io.mosire.simos.economy.api.transfer.Transfer transfer : ledger.transfers()) {
@@ -359,13 +359,13 @@ public final class MerchantSettlement {
    * {@link DebtContractBook#upsert} 资本化；盈利/亏损与农村惩罚写回 {@code merchantFirms}。
    */
   public static void settleCycle(
-      OrganizationProfitBook.CycleAccumulator cycle,
+      EnterpriseProfitBook.CycleAccumulator cycle,
       LinkedHashMap<ProductionOrganizationId, MerchantFirm> firms,
-      Map<ProductionOrganizationId, ProductionOrganization> organizations,
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<ProductionUnitId, ProductionRelation> relations,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, ProductionRules> relations,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       AccountSession accounts,
       Map<HexCoord, Market> markets,
@@ -387,19 +387,19 @@ public final class MerchantSettlement {
     ids.sort(Comparator.comparing(ProductionOrganizationId::value));
     for (ProductionOrganizationId organizationId : ids) {
       MerchantFirm firm = firms.get(organizationId);
-      ProductionOrganization organization = organizations.get(organizationId);
-      if (firm == null || organization == null) {
+      ProductionEnterprise enterprise = enterprises.get(organizationId);
+      if (firm == null || enterprise == null) {
         throw new IllegalStateException(
-            "merchantFirms 的商号没有对应的 ProductionOrganization（拒绝静默跳过）: " + organizationId);
+            "merchantFirms 的商号没有对应的 ProductionEnterprise（拒绝静默跳过）: " + organizationId);
       }
-      ActorRef principalActor = organization.organizer();
+      ActorRef principalActor = enterprise.organizer();
       HouseholdId principalHousehold = householdByActor.get(principalActor);
       if (principalHousehold == null) {
         throw new IllegalStateException(
             "商号 principal 不是已登记家户（说不出收款人，拒绝静默丢钱）: " + organizationId + " actor=" + principalActor);
       }
       long revenue = feeRevenueOf(cycle, principalActor);
-      List<Porter> porters = portersOf(organization, principalHousehold, laborCommitments, householdEconomies);
+      List<Porter> porters = portersOf(enterprise, principalHousehold, laborCommitments, householdEconomies);
       List<Long> porterWeights = new ArrayList<>(porters.size());
       long totalPorterLabor = 0L;
       for (Porter porter : porters) {
@@ -410,8 +410,8 @@ public final class MerchantSettlement {
         porterWeights.replaceAll(ignored -> 1L);
         totalPorterLabor = porterWeights.size();
       }
-      ProductionRelation relation =
-          organization.unitId().isPresent() ? relations.get(organization.unitId().get()) : null;
+      ProductionRules relation =
+          enterprise.unitId().isPresent() ? relations.get(enterprise.unitId().get()) : null;
       Market market = markets.get(firm.homeHex());
       CurrencyId numeraire =
           market != null ? market.numeraire() : firstCurrency(accounts, principalHousehold);
@@ -484,7 +484,7 @@ public final class MerchantSettlement {
           }
         }
       }
-      long upkeep = upkeepOf(firm, organization, assetShares);
+      long upkeep = upkeepOf(firm, enterprise, assetShares);
       long costPaid =
           Math.addExact(
               Math.addExact(wagesPaidMoney, wagesPaidInKindValue),
@@ -565,12 +565,12 @@ public final class MerchantSettlement {
 
   private static long upkeepOf(
       MerchantFirm firm,
-      ProductionOrganization organization,
-      Map<AssetShareId, AssetShare> assetShares) {
+      ProductionEnterprise enterprise,
+      Map<AssetShareId, OwnershipStake> assetShares) {
     long district = Math.multiplyExact((long) firm.tier().districtUse(), MerchantPolicy.UPKEEP_PER_DISTRICT_USE);
     long assets = 0L;
-    for (AssetShareId shareId : organization.assetSources()) {
-      AssetShare share = assetShares.get(shareId);
+    for (AssetShareId shareId : enterprise.assetSources()) {
+      OwnershipStake share = assetShares.get(shareId);
       if (share == null || share.quantity() <= 0L) {
         continue;
       }
@@ -587,13 +587,13 @@ public final class MerchantSettlement {
   private record Porter(HouseholdId household, long laborMilli) {}
 
   private static List<Porter> portersOf(
-      ProductionOrganization organization,
+      ProductionEnterprise enterprise,
       HouseholdId principal,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     LinkedHashMap<HouseholdId, Long> laborByHousehold = new LinkedHashMap<>();
-    if (organization.unitId().isPresent()) {
-      String activity = organization.unitId().get().value();
+    if (enterprise.unitId().isPresent()) {
+      String activity = enterprise.unitId().get().value();
       List<HouseholdLaborCommitment> matchingLaborCommitments = new ArrayList<>();
       for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
         if (laborCommitment.activity().equals(activity) && laborCommitment.laborMilli() > 0L) {
@@ -609,7 +609,7 @@ public final class MerchantSettlement {
       }
     }
     if (laborByHousehold.isEmpty()) {
-      for (HouseholdId source : organization.laborSources()) {
+      for (HouseholdId source : enterprise.laborSources()) {
         if (!source.equals(principal) && householdEconomies.containsKey(source)) {
           laborByHousehold.putIfAbsent(source, 0L);
         }
@@ -624,7 +624,7 @@ public final class MerchantSettlement {
     return porters;
   }
 
-  private static long dueMoneyWages(ProductionRelation relation) {
+  private static long dueMoneyWages(ProductionRules relation) {
     long due = 0L;
     for (CompensationRule rule : rulesOfType(relation, RuleType.FIXED_MONEY_WAGE)) {
       due = Math.addExact(due, rule.fixedAmount());
@@ -632,7 +632,7 @@ public final class MerchantSettlement {
     return due;
   }
 
-  private static List<CompensationRule> rulesOfType(ProductionRelation relation, RuleType type) {
+  private static List<CompensationRule> rulesOfType(ProductionRules relation, RuleType type) {
     if (relation == null) {
       return List.of();
     }

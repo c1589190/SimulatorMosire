@@ -12,7 +12,7 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtCapacity;
 import io.mosire.simos.economy.model.DebtCapacity.NextRoundNecessaryInputSource;
@@ -23,7 +23,7 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OperatorCondition;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionProcess;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -43,7 +43,7 @@ import java.util.function.Function;
  * <pre>
  * 配方口径（该家户有可解析的 operator unit 时）：
  *   nextRoundNecessaryInput = Σ_{(industry, operator=本户)} ⌊plannedCapacityScale × industry.inputPerUnit[GRAIN]⌋
- *   其中 plannedCapacityScale = ProductionUnitBook.plannedCapacityScaleOf(unit, industry, AssetShare 总账, OperatorCondition)
+ *   其中 plannedCapacityScale = ProductionProcessBook.plannedCapacityScaleOf(unit, industry, OwnershipStake 总账, OperatorCondition)
  * 代理口径（该家户名下没有任何可解析 operator unit 时）：
  *   nextRoundNecessaryInput = max(0, 本周期 consumed[grain] − cycleNaturalNeedMilli)
  * </pre>
@@ -264,9 +264,9 @@ public final class DebtCapacityBook {
       Function<HouseholdId, OptionalLong> grainStockMilliOf,
       Map<HouseholdId, Long> cycleDaysByHousehold,
       Map<DebtContractId, DebtContract> debts,
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<IndustryId, Industry> industries,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       long pledgeableAssetPolicyValue,
       DebtUnitValueLookup debtUnitValueLookup) {
@@ -288,8 +288,8 @@ public final class DebtCapacityBook {
 
     // ★ 两个一次派生的索引：债务人 → 债务、operator → unit。逐户 O(债务 + unit) 查表，不做 O(户 × unit) 全扫。
     Map<HouseholdId, List<DebtContractId>> debtsByDebtor = DebtIndex.byDebtor(debts);
-    Map<ActorRef, List<ProductionUnit>> unitsByOperator = new LinkedHashMap<>();
-    for (ProductionUnit unit : units.values()) {
+    Map<ActorRef, List<ProductionProcess>> unitsByOperator = new LinkedHashMap<>();
+    for (ProductionProcess unit : units.values()) {
       unitsByOperator.computeIfAbsent(unit.operator(), ignored -> new ArrayList<>()).add(unit);
     }
 
@@ -373,7 +373,7 @@ public final class DebtCapacityBook {
    *
    * <pre>
    * 配方口径：遍历 unit.operator == HouseholdActors.of(household) 的 unit；
-   *           同一 (industry, operator) 的多 unit 共享同一份可用资产（ProductionUnitBook 按 scope 聚合）
+   *           同一 (industry, operator) 的多 unit 共享同一份可用资产（ProductionProcessBook 按 scope 聚合）
    *           ⇒ 该 scope 只计一次，不按 unit 条数倍增；
    *           每 scope 取 plannedCapacityScale × industry.inputPerUnit[GRAIN]。
    * 代理口径：上面一个“有产业模板且带配方”的 unit 都没有 ⇒ max(0, 本周期 consumed[grain] − cycleNaturalNeedMilli)。
@@ -388,19 +388,19 @@ public final class DebtCapacityBook {
    */
   private static NextRoundNeed nextRoundNecessaryInput(
       HouseholdId household,
-      Map<ActorRef, List<ProductionUnit>> unitsByOperator,
+      Map<ActorRef, List<ProductionProcess>> unitsByOperator,
       Map<IndustryId, Industry> industries,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       long consumedGrain,
       long cycleNaturalNeedMilli) {
-    List<ProductionUnit> mine =
+    List<ProductionProcess> mine =
         unitsByOperator.getOrDefault(HouseholdActors.of(household), List.of());
     Set<IndustryId> countedIndustries = new LinkedHashSet<>();
     long recipeNeed = 0L;
     boolean anyResolved = false;
     boolean anyRecipeSeen = false;
-    for (ProductionUnit unit : mine) {
+    for (ProductionProcess unit : mine) {
       Industry industry = industries.get(unit.industry());
       if (industry == null) {
         continue; // 状态坏：不猜规模，也不把它算成“没有 unit”
@@ -418,7 +418,7 @@ public final class DebtCapacityBook {
         continue; // 这个产业不耗粮（布/工具）：粮口径下需求为 0，不是“数据不足”
       }
       long scale =
-          ProductionUnitBook.plannedCapacityScaleOf(
+          ProductionProcessBook.plannedCapacityScaleOf(
               unit, industry, assetShares, operatorConditions.get(unit.id()));
       if (scale <= 0L) {
         continue;
@@ -471,7 +471,7 @@ public final class DebtCapacityBook {
       Set<ProductionUnitId> supplied = unitsOfHouseholds.getOrDefault(key, Set.of());
       long cycleDays = 0L;
       for (ProductionUnitId unitId : supplied) {
-        ProductionUnit unit = data.units().get(unitId);
+        ProductionProcess unit = data.units().get(unitId);
         Industry industry = unit == null ? null : data.industries().get(unit.industry());
         if (industry != null) {
           cycleDays = Math.max(cycleDays, industry.cycleDays());

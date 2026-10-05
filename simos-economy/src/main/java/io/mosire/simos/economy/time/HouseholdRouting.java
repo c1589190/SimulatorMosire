@@ -6,8 +6,8 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
@@ -25,7 +25,7 @@ import java.util.Optional;
  *
  * <pre>
  * ① unit 的既有经济家户解析（{@link EconomicHouseholdResolver}：operator / relation / 份额 owner）⇒ 单一家户
- * ② unit 对应的 {@link ProductionOrganization#organizer()}（家户 actor）⇒ 单一家户
+ * ② unit 对应的 {@link ProductionEnterprise#organizer()}（家户 actor）⇒ 单一家户
  * ③ unit 名下劳动配额的家户集合（{@code SettlementIndex.householdsOf}）⇒ <b>集体主体</b>
  *    （家户纺织这类"多个家户共同经营一个聚合 unit"：产出/付款按劳动权重分给各家户）
  * ④ 否则 ⇒ 空（调用方必须具名拒绝/具名缺口，绝不静默造账、绝不跳过）
@@ -34,7 +34,7 @@ import java.util.Optional;
  * <p>★ <b>非家户 actor 一律不持账</b>：{@link #requireHouseholdOf(ActorRef)} 对非 {@code HOUSEHOLD} 具名抛；
  * {@link #householdOfActorOrNull} 只对"现存家户行"里的 HOUSEHOLD actor 命中，其余返回空。
  *
- * <p>★ <b>本类不进状态</b>：它只读 {@code rows}/{@code units}/{@code organizations}/{@code index} 并返回纯派生结果。
+ * <p>★ <b>本类不进状态</b>：它只读 {@code rows}/{@code units}/{@code enterprises}/{@code index} 并返回纯派生结果。
  */
 final class HouseholdRouting {
 
@@ -106,9 +106,9 @@ final class HouseholdRouting {
    * 解析一个 unit 的账户主体（见类注的 ①→④）。不抛（解析不到 ⇒ {@link Subject#unresolved()}，由调用方具名处理）。
    */
   static Subject subjectOf(
-      ProductionUnit unit,
+      ProductionProcess unit,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<ProductionUnitId, ProductionOrganization> organizationByUnit,
+      Map<ProductionUnitId, ProductionEnterprise> enterpriseByProcess,
       SettlementIndex index) {
     Objects.requireNonNull(unit, "unit");
     Objects.requireNonNull(householdEconomies, "rows");
@@ -121,10 +121,10 @@ final class HouseholdRouting {
     if (direct.isPresent()) {
       return Subject.single(direct.get());
     }
-    ProductionOrganization organization =
-        organizationByUnit == null ? null : organizationByUnit.get(unit.id());
-    if (organization != null) {
-      Optional<HouseholdId> organizer = householdOfActorOrNull(organization.organizer(), householdEconomies);
+    ProductionEnterprise enterprise =
+        enterpriseByProcess == null ? null : enterpriseByProcess.get(unit.id());
+    if (enterprise != null) {
+      Optional<HouseholdId> organizer = householdOfActorOrNull(enterprise.organizer(), householdEconomies);
       if (organizer.isPresent()) {
         return Subject.single(organizer.get());
       }

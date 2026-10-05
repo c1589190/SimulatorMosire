@@ -111,7 +111,7 @@ public final class RegimeOperators {
    * {@code handicraft_workshop → handicraft}、{@code family_farm → household}、{@code merchant → merchant}；
    * 其余（{@code displaced}/GM 自定义 mode）⇒ 空（调用方按自己的 fail-closed 回退）。
    *
-   * <p>★ 它是"按 mode 选产业模板"的唯一拼写点：{@code EconomyOrganizationSettlement.selectIndustry}、
+   * <p>★ 它是"按 mode 选产业模板"的唯一拼写点：{@code EconomyEnterpriseSettlement.selectIndustry}、
    * {@code ModeMigrationPolicy.industriesForMode}、{@code ModeMigrationSettlement} 都读它，免得三处各写一遍 if 链。
    */
   public static Optional<String> defaultRegimeForMode(ProductionModeId modeId) {

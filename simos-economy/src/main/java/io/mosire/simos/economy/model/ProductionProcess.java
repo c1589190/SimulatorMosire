@@ -15,9 +15,9 @@ import java.util.Objects;
  * <p>★★ <b>三件事从此各归各位</b>：
  *
  * <pre>
- * AssetShare    —— 实物总账：谁拥有、谁使用、多少（唯一的 quantity 真相）
+ * OwnershipStake    —— 实物总账：谁拥有、谁使用、多少（唯一的 quantity 真相）
  * Industry      —— 技术模板：怎么做、每单位要什么/产什么（不再携带 operator/进度/产能总量）
- * ProductionUnit—— 谁在实际生产：operator + 进度 + 本周期实扣投入（结算的唯一主体）
+ * ProductionProcess—— 谁在实际生产：operator + 进度 + 本周期实扣投入（结算的唯一主体）
  * </pre>
  *
  * <p>★★ <b>为什么需要它</b>：旧 {@code Industry} 同时是"模板 + 实例 + 一个经营者"，同一格同一产业只能有一个经营者、一份 {@code
@@ -28,8 +28,8 @@ import java.util.Objects;
  * EconomyData} 的跨表守卫判 —— 本类型看不见产业模板）；{@code cycleLaborMilli} = 本周期累计实际投入劳动（千分劳动·日）； {@code
  * cycleInputUsedMilli} = 本周期实际扣到的投入（毫单位，按商品）。
  *
- * <p>★ <b>规模不在这里</b>：unit 的可用实物资产由 {@link ProductionUnitBook#usableAssets(ProductionUnit, Map)} 从
- * {@code AssetShare} <b>纯派生</b>，本记录不存第二份（存了就会与总账漂开）。
+ * <p>★ <b>规模不在这里</b>：unit 的可用实物资产由 {@link ProductionProcessBook#usableAssets(ProductionProcess, Map)} 从
+ * {@code OwnershipStake} <b>纯派生</b>，本记录不存第二份（存了就会与总账漂开）。
  *
  * <p>★ <b>命名</b>：{@code modeKey} 是"这次生产按哪种方式做"的稳定键（E3 的经验/学习读物）—— 旧档 = {@code
  * industry.id().value()}，将来的候选预设 = {@code candidateId+"@"+version}。本批只保证它在 unit 上稳定存在。
@@ -42,7 +42,7 @@ import java.util.Objects;
  * @param cycleLaborMilli 本周期累计实际投入劳动（千分劳动·日）；不得为负
  * @param cycleInputUsedMilli 本周期实际扣到的投入（毫单位，按商品）；不得为 null、逐值不得为负
  */
-public record ProductionUnit(
+public record ProductionProcess(
     ProductionUnitId id,
     IndustryId industry,
     ActorRef operator,
@@ -51,32 +51,32 @@ public record ProductionUnit(
     long cycleLaborMilli,
     Map<CommodityId, Long> cycleInputUsedMilli) {
 
-  public ProductionUnit {
-    Objects.requireNonNull(id, "ProductionUnit.id 不得为 null");
-    Objects.requireNonNull(industry, "ProductionUnit.industry 不得为 null");
-    Objects.requireNonNull(operator, "ProductionUnit.operator 不得为 null");
+  public ProductionProcess {
+    Objects.requireNonNull(id, "ProductionProcess.id 不得为 null");
+    Objects.requireNonNull(industry, "ProductionProcess.industry 不得为 null");
+    Objects.requireNonNull(operator, "ProductionProcess.operator 不得为 null");
     if (modeKey == null || modeKey.isBlank()) {
-      throw new IllegalArgumentException("ProductionUnit.modeKey 不得为空白");
+      throw new IllegalArgumentException("ProductionProcess.modeKey 不得为空白");
     }
     if (progressDays < 0L) {
-      throw new IllegalArgumentException("ProductionUnit.progressDays 不得为负: " + progressDays);
+      throw new IllegalArgumentException("ProductionProcess.progressDays 不得为负: " + progressDays);
     }
     if (cycleLaborMilli < 0L) {
-      throw new IllegalArgumentException("ProductionUnit.cycleLaborMilli 不得为负: " + cycleLaborMilli);
+      throw new IllegalArgumentException("ProductionProcess.cycleLaborMilli 不得为负: " + cycleLaborMilli);
     }
     if (cycleInputUsedMilli == null) {
-      throw new IllegalArgumentException("ProductionUnit.cycleInputUsedMilli 不得为 null（未投入用空表）");
+      throw new IllegalArgumentException("ProductionProcess.cycleInputUsedMilli 不得为 null（未投入用空表）");
     }
     // ★ 保序不可变 + 逐值非负：LinkedHashMap + unmodifiableMap（绝不用 Map.copyOf —— 迭代序不是内容的纯函数）。
     Map<CommodityId, Long> copy = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> entry : cycleInputUsedMilli.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException(
-            "ProductionUnit.cycleInputUsedMilli 的键与值都不得为 null: " + entry.getKey());
+            "ProductionProcess.cycleInputUsedMilli 的键与值都不得为 null: " + entry.getKey());
       }
       if (entry.getValue() < 0L) {
         throw new IllegalArgumentException(
-            "ProductionUnit.cycleInputUsedMilli 不得为负：" + entry.getKey() + " = " + entry.getValue());
+            "ProductionProcess.cycleInputUsedMilli 不得为负：" + entry.getKey() + " = " + entry.getValue());
       }
       copy.put(entry.getKey(), entry.getValue());
     }
@@ -84,9 +84,9 @@ public record ProductionUnit(
   }
 
   /** 换本周期状态（进度 / 累计劳动 / 累计投入），身份与经营者逐字带过 —— 日结算的唯一写回形制。 */
-  public ProductionUnit withCycleState(
+  public ProductionProcess withCycleState(
       long nextProgressDays, long nextCycleLaborMilli, Map<CommodityId, Long> nextInputUsedMilli) {
-    return new ProductionUnit(
+    return new ProductionProcess(
         id, industry, operator, modeKey, nextProgressDays, nextCycleLaborMilli, nextInputUsedMilli);
   }
 }

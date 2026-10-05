@@ -23,10 +23,10 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.LaborSource;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassPosition;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.Payee;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
@@ -39,8 +39,8 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
@@ -72,8 +72,8 @@ import java.util.Set;
  *      不从 classes/classStandings 删除；没有任何残留 ⇒ 整户移除并清掉它的组织/unit/关系
  * </pre>
  *
- * <p>★★ <b>D-022 硬不变量</b>：源户的 {@code HouseholdClassMembership} / {@code ProductionOrganization.modeId} /
- * {@code ProductionUnit.modeKey} 在本类里<b>一字不改</b>；目标 mode 只出现在目标家户（已有或新建）上。
+ * <p>★★ <b>D-022 硬不变量</b>：源户的 {@code HouseholdClassMembership} / {@code ProductionEnterprise.modeId} /
+ * {@code ProductionProcess.modeKey} 在本类里<b>一字不改</b>；目标 mode 只出现在目标家户（已有或新建）上。
  *
  * <p>★★ <b>失败具名抛</b>：不静默丢人/丢债/丢钱；整段写入发生在同一个 {@link EconomySession}/revision 内。
  */
@@ -118,13 +118,13 @@ public final class ModeMigrationSettlement {
     Map<HouseholdId, HouseholdEconomy> householdEconomies = session.sheet().householdEconomies();
     LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships = session.sheet().classMemberships();
     LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments = session.sheet().laborCommitments();
-    LinkedHashMap<AssetShareId, AssetShare> assetShares = session.sheet().assetShares();
-    LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations =
+    LinkedHashMap<AssetShareId, OwnershipStake> assetShares = session.sheet().assetShares();
+    LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises =
         session.sheet().productionOrganizations();
-    LinkedHashMap<ProductionUnitId, ProductionUnit> units = session.sheet().units();
+    LinkedHashMap<ProductionUnitId, ProductionProcess> units = session.sheet().units();
     LinkedHashMap<ProductionUnitId, io.mosire.simos.economy.model.OperatorCondition>
         operatorConditions = session.sheet().operatorConditions();
-    LinkedHashMap<ProductionUnitId, ProductionRelation> relations = session.sheet().relations();
+    LinkedHashMap<ProductionUnitId, ProductionRules> relations = session.sheet().relations();
     LinkedHashMap<DebtContractId, DebtContract> debts = session.sheet().debtContracts();
     LinkedHashMap<PledgeId, Pledge> pledges = session.sheet().pledges();
     LinkedHashMap<ClassShareId, ClassShare> classShares = session.sheet().classShares();
@@ -137,7 +137,7 @@ public final class ModeMigrationSettlement {
     List<HouseholdId> sources = new ArrayList<>(bySource.keySet());
     sources.sort(Comparator.comparing(HouseholdId::value));
     // ★★ D-023：本一次 apply 内被“新建目标户”创建的家户集合（跨源共享）——后续源并入同一新户时，
-    //    也要把随迁资产份额补进它的组织 assetSources（见 attachMigratedSharesToNewTargetOrganizations）。
+    //    也要把随迁资产份额补进它的组织 assetSources（见 attachMigratedSharesToNewTargetEnterprises）。
     Set<HouseholdId> createdTargets = new LinkedHashSet<>();
     for (HouseholdId source : sources) {
       applySource(
@@ -148,7 +148,7 @@ public final class ModeMigrationSettlement {
           classMemberships,
           laborCommitments,
           assetShares,
-          organizations,
+          enterprises,
           units,
           operatorConditions,
           relations,
@@ -173,12 +173,12 @@ public final class ModeMigrationSettlement {
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, HouseholdClassMembership> classMemberships,
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
-      LinkedHashMap<AssetShareId, AssetShare> assetShares,
-      LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations,
-      LinkedHashMap<ProductionUnitId, ProductionUnit> units,
+      LinkedHashMap<AssetShareId, OwnershipStake> assetShares,
+      LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      LinkedHashMap<ProductionUnitId, ProductionProcess> units,
       LinkedHashMap<ProductionUnitId, io.mosire.simos.economy.model.OperatorCondition>
           operatorConditions,
-      LinkedHashMap<ProductionUnitId, ProductionRelation> relations,
+      LinkedHashMap<ProductionUnitId, ProductionRules> relations,
       LinkedHashMap<DebtContractId, DebtContract> debts,
       AccountSession accounts,
       LinkedHashMap<PledgeId, Pledge> pledges,
@@ -224,15 +224,15 @@ public final class ModeMigrationSettlement {
     // ★★ D-023：源户自有资产快照（owner == 源户 actor；operator 可能是别人 —— 那是出租，不搬别人的所有者份额）。
     //    逐笔迁移只在这份快照上按当前剩余量切，绝不递归处理随迁后新生成的目标份额。
     List<AssetShareId> sourceOwnedAssetIds = new ArrayList<>();
-    for (AssetShare share : assetShares.values()) {
+    for (OwnershipStake share : assetShares.values()) {
       if (share.quantity() > 0L && share.owner().equals(sourceActor)) {
         sourceOwnedAssetIds.add(share.id());
       }
     }
     sourceOwnedAssetIds.sort(Comparator.comparing(AssetShareId::value));
     // 已被别的组织（organizer != 源户）实际使用的份额：移动会改 operator、拆掉那个组织的引用 ⇒ 本批留原户并具名。
-    Set<AssetShareId> foreignUsedShareIds = foreignUsedAssetShareIds(organizations, sourceActor);
-    // ★ 2026-10-09：ACTIVE 质押不再排除随迁 —— AssetShareBook 会把质押按比例跟到目标户的新份额（含跨 hex rebuild）。
+    Set<AssetShareId> foreignUsedShareIds = foreignUsedOwnershipStakeIds(enterprises, sourceActor);
+    // ★ 2026-10-09：ACTIVE 质押不再排除随迁 —— OwnershipStakeBook 会把质押按比例跟到目标户的新份额（含跨 hex rebuild）。
     Map<AssetShareId, String> residualReasons = new LinkedHashMap<>();
     Set<AssetShareId> movedWholeShareIds = new LinkedHashSet<>();
     Map<HouseholdId, List<AssetShareId>> migratedShareIdsByTarget = new LinkedHashMap<>();
@@ -254,7 +254,7 @@ public final class ModeMigrationSettlement {
           throw new IllegalStateException(
               "合并目标家户没有 ClassStanding（说不出它的 mode，拒绝静默改人）: " + move.target());
         }
-        ClassPosition targetPosition =
+        ProductionRole targetPosition =
             base.classPositions().get(targetClassMembership.currentPositionId());
         if (targetPosition == null || !targetPosition.modeId().equals(move.targetMode())) {
           throw new IllegalStateException(
@@ -265,7 +265,7 @@ public final class ModeMigrationSettlement {
                   + " actual="
                   + (targetPosition == null ? "<无此位置>" : targetPosition.modeId()));
         }
-        ProductionOrganization targetOrg = organizationOf(move.target(), householdEconomies, organizations);
+        ProductionEnterprise targetOrg = enterpriseOf(move.target(), householdEconomies, enterprises);
         targetUnit =
             targetOrg != null && targetOrg.unitId().isPresent() ? targetOrg.unitId().get() : null;
       } else {
@@ -331,7 +331,7 @@ public final class ModeMigrationSettlement {
         // ★ 组织/unit/资产必须在目标行带上迁移人口/劳动之后建（规模 = 劳动/工艺需求，不能拿 0 劳动建）；
         //   随迁份额（assetOutcome）进 assetSources，并在 planAssetMoves 里抵减目标产业容量需求。
         targetUnit =
-            createOrganizationAndUnit(
+            createEnterpriseAndProcess(
                 move,
                 householdEconomies,
                 householdEconomies.get(move.target()),
@@ -339,7 +339,7 @@ public final class ModeMigrationSettlement {
                 assetShares,
                 units,
                 relations,
-                organizations,
+                enterprises,
                 base,
                 pledges,
                 assetOutcome.createdIds(),
@@ -408,12 +408,12 @@ public final class ModeMigrationSettlement {
       }
     }
 
-    // ★★ D-023：整条随迁的源份额旧 id 已在 AssetShareBook.apply/rebuild 里删除 ⇒ 源户组织 assetSources
+    // ★★ D-023：整条随迁的源份额旧 id 已在 OwnershipStakeBook.apply/rebuild 里删除 ⇒ 源户组织 assetSources
     //    必须同步删掉这些 id（不悬空）；部分随迁的份额 id 仍在、数量已减，无需改引用。
-    removeSourceOrganizationAssetSources(organizations, sourceActor, movedWholeShareIds);
+    removeSourceEnterpriseAssetSources(enterprises, sourceActor, movedWholeShareIds);
     // ★★ D-023：目标户若是本一次 apply 新建的（含后续源并入），把随迁新份额 id 补进它的组织 assetSources。
-    attachMigratedSharesToNewTargetOrganizations(
-        createdTargets, migratedShareIdsByTarget, householdEconomies, assetShares, organizations);
+    attachMigratedSharesToNewTargetEnterprises(
+        createdTargets, migratedShareIdsByTarget, householdEconomies, assetShares, enterprises);
     // ★★ D-023：跨 hex 不可移动 / 目标 hex 无法承载 / 已出租给他组织 / 已质押 ⇒ 留原户的具名读数
     //    （瞬态 ProductionLedger；不新增持久组件，不改数量）。
     recordResidualAssetAudits(auditLedger, day, source, assetShares, residualReasons);
@@ -427,7 +427,7 @@ public final class ModeMigrationSettlement {
           classMemberships,
           laborCommitments,
           assetShares,
-          organizations,
+          enterprises,
           units,
           operatorConditions,
           relations,
@@ -447,12 +447,12 @@ public final class ModeMigrationSettlement {
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, HouseholdClassMembership> classMemberships,
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
-      LinkedHashMap<AssetShareId, AssetShare> assetShares,
-      LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations,
-      LinkedHashMap<ProductionUnitId, ProductionUnit> units,
+      LinkedHashMap<AssetShareId, OwnershipStake> assetShares,
+      LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      LinkedHashMap<ProductionUnitId, ProductionProcess> units,
       LinkedHashMap<ProductionUnitId, io.mosire.simos.economy.model.OperatorCondition>
           operatorConditions,
-      LinkedHashMap<ProductionUnitId, ProductionRelation> relations,
+      LinkedHashMap<ProductionUnitId, ProductionRules> relations,
       LinkedHashMap<DebtContractId, DebtContract> debts,
       LinkedHashMap<ClassShareId, ClassShare> classShares,
       Map<DemandId, HouseholdDemand> householdDemands,
@@ -538,26 +538,26 @@ public final class ModeMigrationSettlement {
       }
     }
     // 其它组织把源户列为 laborSource 时清掉该引用（源户已不存在）。
-    for (ProductionOrganization organization : new ArrayList<>(organizations.values())) {
-      if (organization.laborSources().contains(source)) {
-        List<HouseholdId> sources = new ArrayList<>(organization.laborSources());
+    for (ProductionEnterprise enterprise : new ArrayList<>(enterprises.values())) {
+      if (enterprise.laborSources().contains(source)) {
+        List<HouseholdId> sources = new ArrayList<>(enterprise.laborSources());
         sources.remove(source);
-        organizations.put(
-            organization.id(),
-            new ProductionOrganization(
-                organization.id(),
-                organization.modeId(),
-                organization.classPositionId(),
-                organization.unitId(),
-                organization.organizer(),
+        enterprises.put(
+            enterprise.id(),
+            new ProductionEnterprise(
+                enterprise.id(),
+                enterprise.modeId(),
+                enterprise.classPositionId(),
+                enterprise.unitId(),
+                enterprise.organizer(),
                 sources,
-                organization.assetSources(),
-                organization.inputSources(),
-                organization.outputOwnership(),
-                organization.relationTemplateRef(),
-                organization.status(),
-                organization.statusReason()));
-      } else if (organization.organizer().equals(sourceActorForOrg)) {
+                enterprise.assetSources(),
+                enterprise.inputSources(),
+                enterprise.outputOwnership(),
+                enterprise.relationTemplateRef(),
+                enterprise.status(),
+                enterprise.statusReason()));
+      } else if (enterprise.organizer().equals(sourceActorForOrg)) {
         // 源户自己的组织已在下面退役分支处理
         continue;
       }
@@ -565,20 +565,20 @@ public final class ModeMigrationSettlement {
     // ★★ D-023：不再有“整户消亡时把全部资产转给最后目标”的旧路径。资产随迁已在逐笔 move 里按人口比例完成；
     //    这里只负责组织/unit/关系/配额/成员份额的退役，以及决定“整户移除”还是“留资产壳户”。
     List<ProductionUnitId> removedUnits = new ArrayList<>();
-    List<ProductionOrganizationId> removedOrganizations = new ArrayList<>();
-    for (ProductionOrganization organization : new ArrayList<>(organizations.values())) {
-      if (organization.organizer().equals(sourceActorForOrg)) {
-        organization.unitId().ifPresent(removedUnits::add);
-        removedOrganizations.add(organization.id());
-        organizations.remove(organization.id());
+    List<ProductionOrganizationId> removedEnterprises = new ArrayList<>();
+    for (ProductionEnterprise enterprise : new ArrayList<>(enterprises.values())) {
+      if (enterprise.organizer().equals(sourceActorForOrg)) {
+        enterprise.unitId().ifPresent(removedUnits::add);
+        removedEnterprises.add(enterprise.id());
+        enterprises.remove(enterprise.id());
       }
     }
     // ★ 跨表键检查：merchantFirms 以 organizationId 为键；组织行已删，商号行不得残留
     //   （EconomyData 的「商号指名的生产组织不存在」守卫会在同一 revision 的 build 里 fail-closed）。
-    if (!removedOrganizations.isEmpty()) {
+    if (!removedEnterprises.isEmpty()) {
       LinkedHashMap<ProductionOrganizationId, MerchantFirm> merchantFirms =
           session.sheet().merchantFirms();
-      for (ProductionOrganizationId removed : removedOrganizations) {
+      for (ProductionOrganizationId removed : removedEnterprises) {
         merchantFirms.remove(removed);
       }
     }
@@ -699,7 +699,7 @@ public final class ModeMigrationSettlement {
     if (structure == null) {
       throw new IllegalStateException("目标 mode 没有阶层结构（拒绝凭空造位置）: " + modeId);
     }
-    ClassPosition sourcePosition = null;
+    ProductionRole sourcePosition = null;
     HouseholdClassMembership sourceClassMembership = null;
     for (HouseholdClassMembership classMembership : base.classStandings().values()) {
       if (classMembership.householdId().equals(sourceHouseholdEconomy.id())) {
@@ -710,10 +710,10 @@ public final class ModeMigrationSettlement {
     if (sourceClassMembership != null) {
       sourcePosition = base.classPositions().get(sourceClassMembership.currentPositionId());
     }
-    List<ClassPosition> positions = new ArrayList<>(structure.positions().values());
+    List<ProductionRole> positions = new ArrayList<>(structure.positions().values());
     positions.sort(Comparator.comparing(position -> position.id().value()));
     if (sourcePosition != null) {
-      for (ClassPosition position : positions) {
+      for (ProductionRole position : positions) {
         if (producing(position)
             && position.relationToMeans() == sourcePosition.relationToMeans()
             && position.surplusRole() == sourcePosition.surplusRole()) {
@@ -721,7 +721,7 @@ public final class ModeMigrationSettlement {
         }
       }
     }
-    for (ClassPosition position : positions) {
+    for (ProductionRole position : positions) {
       if (producing(position)) {
         return position.id();
       }
@@ -729,13 +729,13 @@ public final class ModeMigrationSettlement {
     throw new IllegalStateException("目标 mode 没有可承载人口的生产位置: " + modeId);
   }
 
-  private static boolean producing(ClassPosition position) {
-    return position.laborRole() != ClassPosition.LaborRole.NONE
-        && position.surplusRole() != ClassPosition.SurplusRole.DEPENDENT;
+  private static boolean producing(ProductionRole position) {
+    return position.laborRole() != ProductionRole.LaborRole.NONE
+        && position.surplusRole() != ProductionRole.SurplusRole.DEPENDENT;
   }
 
   /**
-   * 为一个产业模板规划"从该 hex 的闲置份额拆出 TENANCY"的资产移动（{@link AssetShareBook#apply} 唯一写口）； 任一 capacity 种类不足 ⇒
+   * 为一个产业模板规划"从该 hex 的闲置份额拆出 TENANCY"的资产移动（{@link OwnershipStakeBook#apply} 唯一写口）； 任一 capacity 种类不足 ⇒
    * null（该模板不可行）。
    *
    * <p>★★ P10.7 / D-024 修复 1b：闲置判据的唯一拼写点是 {@link ModeMigrationPolicy#isIdleShare} —— {@code
@@ -746,29 +746,29 @@ public final class ModeMigrationSettlement {
    * <p>★★ D-023：{@code availableByKind} = 本目标户随迁进来、已登记在该产业下的份额（{@code AssetKind → quantity}）。
    * 它们已经是目标户自有的产能 ⇒ 先从需求里抵减，只对缺口租闲置份额，避免同一份资产既随迁又租一遍。
    */
-  private static List<AssetShareBook.Move> planAssetMoves(
+  private static List<OwnershipStakeBook.Move> planAssetMoves(
       IndustryId industryId,
       Industry industry,
       ActorRef targetActor,
       long scale,
-      Map<AssetShareId, AssetShare> assetShares,
-      Set<AssetShareId> claimedByOrganizations,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Set<AssetShareId> claimedByEnterprises,
       Map<AssetKind, Long> availableByKind) {
     Map<AssetKind, Long> coveredByKind = availableByKind == null ? Map.of() : availableByKind;
-    List<AssetShare> idle = new ArrayList<>();
-    for (AssetShare share : assetShares.values()) {
+    List<OwnershipStake> idle = new ArrayList<>();
+    for (OwnershipStake share : assetShares.values()) {
       if (share.industry().equals(industryId)
-          && ModeMigrationPolicy.isIdleShare(share, claimedByOrganizations)) {
+          && ModeMigrationPolicy.isIdleShare(share, claimedByEnterprises)) {
         idle.add(share);
       }
     }
     idle.sort(Comparator.comparing(share -> share.id().value()));
-    List<AssetShareBook.Move> moves = new ArrayList<>();
+    List<OwnershipStakeBook.Move> moves = new ArrayList<>();
     for (Map.Entry<AssetKind, Long> required : industry.recipe().capacityPerUnit().entrySet()) {
       long requiredQuantity = Math.multiplyExact(scale, required.getValue());
       long need =
           Math.max(0L, requiredQuantity - coveredByKind.getOrDefault(required.getKey(), 0L));
-      for (AssetShare share : idle) {
+      for (OwnershipStake share : idle) {
         if (need <= 0L) {
           break;
         }
@@ -780,8 +780,8 @@ public final class ModeMigrationSettlement {
           continue;
         }
         moves.add(
-            new AssetShareBook.Move(
-                share.id(), take, share.owner(), targetActor, AssetShare.RightKind.TENANCY));
+            new OwnershipStakeBook.Move(
+                share.id(), take, share.owner(), targetActor, OwnershipStake.RightKind.TENANCY));
         need -= take;
       }
       if (need > 0L) {
@@ -791,15 +791,15 @@ public final class ModeMigrationSettlement {
     return moves;
   }
 
-  private static ProductionUnitId createOrganizationAndUnit(
+  private static ProductionUnitId createEnterpriseAndProcess(
       ModeMigrationPolicy.MigrationMove move,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       HouseholdEconomy targetHouseholdEconomy,
       ClassPositionId positionId,
-      LinkedHashMap<AssetShareId, AssetShare> assetShares,
-      LinkedHashMap<ProductionUnitId, ProductionUnit> units,
-      LinkedHashMap<ProductionUnitId, ProductionRelation> relations,
-      LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations,
+      LinkedHashMap<AssetShareId, OwnershipStake> assetShares,
+      LinkedHashMap<ProductionUnitId, ProductionProcess> units,
+      LinkedHashMap<ProductionUnitId, ProductionRules> relations,
+      LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises,
       EconomyData base,
       LinkedHashMap<PledgeId, Pledge> pledges,
       List<AssetShareId> migratedShareIds,
@@ -816,16 +816,16 @@ public final class ModeMigrationSettlement {
     }
     IndustryId industryId = null;
     Industry industry = null;
-    List<AssetShareBook.Move> assetMoves = new ArrayList<>();
+    List<OwnershipStakeBook.Move> assetMoves = new ArrayList<>();
     // ★★ P10.7 / P10.8 / D-024 修复 1b：既有组织 assetSources 正在使用的份额不是闲置；seeder 直接以 ESTATE 等
     //    operator 建立的 farm/weave/craft/trade 主 unit 没有对应组织，故 claimed 还必须并入"在产 unit 占用的份额"
     //    （同 industry、同 operator、quantity>0）。这里与 ModeMigrationPolicy.plan() 顶层共用同一个三参拼装点，
-    //    并读同一份当天工作副本 organizations/units/assetShares（含当天自动组织阶段新加、以及本一次 apply 前几笔
+    //    并读同一份当天工作副本 enterprises/units/assetShares（含当天自动组织阶段新加、以及本一次 apply 前几笔
     //    新建的组织/unit），保证"计划可新建 ⇔ 执行可拆到"；随迁新份额也从闲置池里排除（它们已归目标户）。
-    Set<AssetShareId> claimedByOrganizations =
+    Set<AssetShareId> claimedByEnterprises =
         new LinkedHashSet<>(
-            ModeMigrationPolicy.claimedAssetShares(organizations, units, assetShares));
-    claimedByOrganizations.addAll(migratedShareIds);
+            ModeMigrationPolicy.claimedOwnershipStakes(enterprises, units, assetShares));
+    claimedByEnterprises.addAll(migratedShareIds);
     for (IndustryId candidate : industries) {
       Industry candidateIndustry = base.industries().get(candidate);
       if (candidateIndustry == null) {
@@ -835,14 +835,14 @@ public final class ModeMigrationSettlement {
           candidateIndustry.recipe().laborPerUnit() <= 0L
               ? 1L
               : Math.max(1L, targetHouseholdEconomy.laborMilli() / candidateIndustry.recipe().laborPerUnit());
-      List<AssetShareBook.Move> planned =
+      List<OwnershipStakeBook.Move> planned =
           planAssetMoves(
               candidate,
               candidateIndustry,
               targetActor,
               scale,
               assetShares,
-              claimedByOrganizations,
+              claimedByEnterprises,
               migratedCoverage.getOrDefault(candidate, Map.of()));
       if (planned != null) {
         industryId = candidate;
@@ -861,7 +861,7 @@ public final class ModeMigrationSettlement {
     List<AssetShareId> createdShares = new ArrayList<>();
     if (!assetMoves.isEmpty()) {
       createdShares.addAll(
-          AssetShareBook.apply(assetShares, base.industries(), pledges, assetMoves));
+          OwnershipStakeBook.apply(assetShares, base.industries(), pledges, assetMoves));
     }
     // ★★ GAP-2：组织 assetSources 只收 operator == organizer（targetActor）的份额。随迁份额由
     //    migrateAssetsForMove 按 targetActor 重建（同/跨 hex 都一样）；租赁份额由上方 planAssetMoves
@@ -870,13 +870,13 @@ public final class ModeMigrationSettlement {
     List<AssetShareId> assetSources =
         new ArrayList<>(migratedShareIds.size() + createdShares.size());
     for (AssetShareId migratedShareId : migratedShareIds) {
-      AssetShare migratedShare = assetShares.get(migratedShareId);
+      OwnershipStake migratedShare = assetShares.get(migratedShareId);
       if (migratedShare != null && migratedShare.operator().equals(targetActor)) {
         assetSources.add(migratedShareId);
       }
     }
     for (AssetShareId createdShare : createdShares) {
-      AssetShare share = assetShares.get(createdShare);
+      OwnershipStake share = assetShares.get(createdShare);
       if (share == null || !share.operator().equals(targetActor)) {
         throw new IllegalStateException(
             "新建目标户的租赁份额 operator 必须等于 organizer(targetActor): share="
@@ -890,15 +890,15 @@ public final class ModeMigrationSettlement {
     if (units.containsKey(unitId)) {
       throw new IllegalStateException("新建目标 unit id 已存在（拒绝覆盖）: " + unitId);
     }
-    ProductionUnit unit =
-        new ProductionUnit(
+    ProductionProcess unit =
+        new ProductionProcess(
             unitId, industryId, targetActor, "mode:" + move.targetMode().value(), 0L, 0L, Map.of());
     units.put(unitId, unit);
     // ★★ D-023 第 5 项：新家户必须用目标产业 regime + 目标 mode 的**完整关系模板**（不再空规则全归 operator）。
     MigrationRelationPlan relationPlan =
         buildMigrationRelation(
             move, unitId, industryId, targetActor, householdEconomies, targetHouseholdEconomy, base, day, auditLedger);
-    ProductionRelation relation = relationPlan.relation();
+    ProductionRules relation = relationPlan.relation();
     relations.put(unitId, relation);
     ProductionOrganizationId organizationId =
         ProductionOrganizationId.idOf(
@@ -906,8 +906,8 @@ public final class ModeMigrationSettlement {
             positionId,
             move.target(),
             IndustryHexKeys.hexKey(move.targetHex().q(), move.targetHex().r()));
-    ProductionOrganization organization =
-        new ProductionOrganization(
+    ProductionEnterprise enterprise =
+        new ProductionEnterprise(
             organizationId,
             move.targetMode(),
             positionId,
@@ -916,11 +916,11 @@ public final class ModeMigrationSettlement {
             List.of(move.target()),
             assetSources,
             List.of(relation.inputSupplier()),
-            new Recipient.ToActor(relation.residualOwner()),
+            new Payee.ToActor(relation.residualOwner()),
             Optional.of(relationPlan.templateRef()),
-            ProductionOrganization.Status.ACTIVE,
+            ProductionEnterprise.Status.ACTIVE,
             "");
-    organizations.put(organizationId, organization);
+    enterprises.put(organizationId, enterprise);
     return unitId;
   }
 
@@ -1099,16 +1099,16 @@ public final class ModeMigrationSettlement {
   }
 
   /** 新家户的关系模板落点（关系本体 + 具名来源；失败回退时 templateRef 里写明原因）。 */
-  private record MigrationRelationPlan(ProductionRelation relation, String templateRef) {}
+  private record MigrationRelationPlan(ProductionRules relation, String templateRef) {}
 
   /**
    * ★★ <b>D-023 一条 move 的资产随迁</b>：只动 {@code owner == 源户 actor} 的份额；逐笔按迁移人口比例 {@code ⌊当前剩余量 ×
    * popTake ÷ 迁移前剩余人口⌋} 切（源户本笔迁空 ⇒ 余数随本笔全部带走）。
    *
    * <pre>
-   * 同 hex（同产业）：AssetShareBook.apply 拆出目标户份额（owner/operator 见 transferOperator/transferRightKind）
+   * 同 hex（同产业）：OwnershipStakeBook.apply 拆出目标户份额（owner/operator 见 transferOperator/transferRightKind）
    * 跨 hex + 可移动（TOOL/SHIP/CATTLE/MACHINE）：目标 hex 里第一个 capacityPerUnit 含该 AssetKind 的产业下
-   *                                        AssetShareBook.rebuild 新建同量份额；无承载产业 ⇒ 留原户并具名
+   *                                        OwnershipStakeBook.rebuild 新建同量份额；无承载产业 ⇒ 留原户并具名
    * 跨 hex + 不可移动（LAND/WORKSHOP）：不传送，留原户并具名
    * 已出租给他组织 / 有 ACTIVE 质押：本批不越权搬，留原户并具名
    * </pre>
@@ -1121,7 +1121,7 @@ public final class ModeMigrationSettlement {
       long popTake,
       boolean empties,
       List<AssetShareId> sourceOwnedAssetIds,
-      LinkedHashMap<AssetShareId, AssetShare> assetShares,
+      LinkedHashMap<AssetShareId, OwnershipStake> assetShares,
       EconomyData base,
       LinkedHashMap<PledgeId, Pledge> pledges,
       Set<AssetShareId> foreignUsedShareIds,
@@ -1129,10 +1129,10 @@ public final class ModeMigrationSettlement {
       Map<AssetShareId, String> residualReasons) {
     boolean sameHex = move.targetHex().equals(sourceHex);
     ActorRef targetActor = HouseholdActors.of(move.target());
-    List<AssetShareBook.Move> sameHexMoves = new ArrayList<>();
-    List<AssetShareBook.RebuildMove> rebuildMoves = new ArrayList<>();
+    List<OwnershipStakeBook.Move> sameHexMoves = new ArrayList<>();
+    List<OwnershipStakeBook.RebuildMove> rebuildMoves = new ArrayList<>();
     for (AssetShareId shareId : sourceOwnedAssetIds) {
-      AssetShare share = assetShares.get(shareId);
+      OwnershipStake share = assetShares.get(shareId);
       if (share == null || share.quantity() <= 0L || !share.owner().equals(sourceActor)) {
         continue; // 已在前面 move 整条随迁 / 已非源户所有
       }
@@ -1141,7 +1141,7 @@ public final class ModeMigrationSettlement {
         residualReasons.putIfAbsent(share.id(), "leased-to-foreign-org:" + share.asset().name());
         continue;
       }
-      // ★ 2026-10-09：ACTIVE 质押不排除 —— AssetShareBook 按比例跟到目标份额（同 hex 拆分 / 跨 hex 重建都一样）。
+      // ★ 2026-10-09：ACTIVE 质押不排除 —— OwnershipStakeBook 按比例跟到目标份额（同 hex 拆分 / 跨 hex 重建都一样）。
       long take =
           empties
               ? share.quantity()
@@ -1151,10 +1151,10 @@ public final class ModeMigrationSettlement {
         continue;
       }
       AssetKind asset = share.asset();
-      AssetShare.RightKind kind = transferRightKind(share);
+      OwnershipStake.RightKind kind = transferRightKind(share);
       ActorRef newOperator = transferOperator(share, targetActor);
       if (sameHex) {
-        sameHexMoves.add(new AssetShareBook.Move(share.id(), take, targetActor, newOperator, kind));
+        sameHexMoves.add(new OwnershipStakeBook.Move(share.id(), take, targetActor, newOperator, kind));
       } else {
         if (!isMobileAsset(asset)) {
           residualReasons.putIfAbsent(share.id(), "immobile-cross-hex:" + asset.name());
@@ -1166,7 +1166,7 @@ public final class ModeMigrationSettlement {
           continue;
         }
         rebuildMoves.add(
-            new AssetShareBook.RebuildMove(
+            new OwnershipStakeBook.RebuildMove(
                 share.id(), take, hostIndustry.get(), targetActor, newOperator, kind));
       }
       if (take == share.quantity()) {
@@ -1176,11 +1176,11 @@ public final class ModeMigrationSettlement {
     List<AssetShareId> createdIds = new ArrayList<>();
     if (!sameHexMoves.isEmpty()) {
       createdIds.addAll(
-          AssetShareBook.apply(assetShares, base.industries(), pledges, sameHexMoves));
+          OwnershipStakeBook.apply(assetShares, base.industries(), pledges, sameHexMoves));
     }
     if (!rebuildMoves.isEmpty()) {
       createdIds.addAll(
-          AssetShareBook.rebuild(assetShares, base.industries(), pledges, rebuildMoves));
+          OwnershipStakeBook.rebuild(assetShares, base.industries(), pledges, rebuildMoves));
     }
     if (createdIds.isEmpty()) {
       return AssetMigrationOutcome.empty();
@@ -1189,11 +1189,11 @@ public final class ModeMigrationSettlement {
     //   逐 Move 记账，不读合并行的总数量（否则会把目标户原有资产算进"随迁覆盖"）。
     Map<IndustryId, Map<AssetKind, Long>> coverage = new LinkedHashMap<>();
     int coverageIndex = 0;
-    for (AssetShareBook.Move assetMove : sameHexMoves) {
+    for (OwnershipStakeBook.Move assetMove : sameHexMoves) {
       coverageIndex =
           accumulateCoverage(coverage, assetShares, createdIds, coverageIndex, assetMove.quantity());
     }
-    for (AssetShareBook.RebuildMove rebuildMove : rebuildMoves) {
+    for (OwnershipStakeBook.RebuildMove rebuildMove : rebuildMoves) {
       coverageIndex =
           accumulateCoverage(
               coverage, assetShares, createdIds, coverageIndex, rebuildMove.quantity());
@@ -1204,11 +1204,11 @@ public final class ModeMigrationSettlement {
   /** 把一条随迁移动量记进覆盖率（目标行必须真实存在；重复目标行按 Move 逐笔记，不重复读行内总量）。 */
   private static int accumulateCoverage(
       Map<IndustryId, Map<AssetKind, Long>> coverage,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       List<AssetShareId> createdIds,
       int index,
       long quantity) {
-    AssetShare created = assetShares.get(createdIds.get(index));
+    OwnershipStake created = assetShares.get(createdIds.get(index));
     if (created == null) {
       throw new IllegalStateException(
           "资产随迁目标份额在表里不存在（拒绝静默丢资产）: " + createdIds.get(index));
@@ -1228,17 +1228,17 @@ public final class ModeMigrationSettlement {
   }
 
   /** 随迁新份额的权利性质：共有保持共有；其余一律随目标户自营（owner == operator ⇒ OWNED）。 */
-  private static AssetShare.RightKind transferRightKind(AssetShare share) {
-    return share.kind() == AssetShare.RightKind.COMMUNAL
-        ? AssetShare.RightKind.COMMUNAL
-        : AssetShare.RightKind.OWNED;
+  private static OwnershipStake.RightKind transferRightKind(OwnershipStake share) {
+    return share.kind() == OwnershipStake.RightKind.COMMUNAL
+        ? OwnershipStake.RightKind.COMMUNAL
+        : OwnershipStake.RightKind.OWNED;
   }
 
   /**
    * 随迁后的 operator = 目标户（D-023 §5.3 的“改 owner/operator 到目标户”）。★ 已被别的组织实际使用的 出租份额不在这里处理：上游 {@code
-   * foreignUsedAssetShareIds} 已把它按“留原户并具名”跳过，避免拆掉那个组织的引用。
+   * foreignUsedOwnershipStakeIds} 已把它按“留原户并具名”跳过，避免拆掉那个组织的引用。
    */
-  private static ActorRef transferOperator(AssetShare share, ActorRef targetActor) {
+  private static ActorRef transferOperator(OwnershipStake share, ActorRef targetActor) {
     if (share == null || targetActor == null) {
       throw new IllegalArgumentException("transferOperator 的 share/targetActor 不得为 null");
     }
@@ -1259,51 +1259,51 @@ public final class ModeMigrationSettlement {
   }
 
   /** 被 organizer != 源户的组织在 assetSources 里实际使用的份额 id 并集（这些份额本批不搬，留原户并具名）。 */
-  private static Set<AssetShareId> foreignUsedAssetShareIds(
-      Map<ProductionOrganizationId, ProductionOrganization> organizations, ActorRef sourceActor) {
+  private static Set<AssetShareId> foreignUsedOwnershipStakeIds(
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises, ActorRef sourceActor) {
     Set<AssetShareId> used = new LinkedHashSet<>();
-    for (ProductionOrganization organization : organizations.values()) {
-      if (organization != null && !organization.organizer().equals(sourceActor)) {
-        used.addAll(organization.assetSources());
+    for (ProductionEnterprise enterprise : enterprises.values()) {
+      if (enterprise != null && !enterprise.organizer().equals(sourceActor)) {
+        used.addAll(enterprise.assetSources());
       }
     }
     return used;
   }
 
   /** 整条随迁后旧 id 已删：把源户自己的组织 assetSources 里的这些 id 摘掉（部分随迁 id 仍在、数量已减，不动）。 */
-  private static void removeSourceOrganizationAssetSources(
-      Map<ProductionOrganizationId, ProductionOrganization> organizations,
+  private static void removeSourceEnterpriseAssetSources(
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
       ActorRef sourceActor,
       Set<AssetShareId> removedShareIds) {
     if (removedShareIds.isEmpty()) {
       return;
     }
-    List<ProductionOrganizationId> organizationIds = new ArrayList<>(organizations.keySet());
-    organizationIds.sort(Comparator.comparing(ProductionOrganizationId::value));
-    for (ProductionOrganizationId organizationId : organizationIds) {
-      ProductionOrganization organization = organizations.get(organizationId);
-      if (organization == null || !organization.organizer().equals(sourceActor)) {
+    List<ProductionOrganizationId> enterpriseIds = new ArrayList<>(enterprises.keySet());
+    enterpriseIds.sort(Comparator.comparing(ProductionOrganizationId::value));
+    for (ProductionOrganizationId organizationId : enterpriseIds) {
+      ProductionEnterprise enterprise = enterprises.get(organizationId);
+      if (enterprise == null || !enterprise.organizer().equals(sourceActor)) {
         continue;
       }
-      List<AssetShareId> updated = new ArrayList<>(organization.assetSources());
+      List<AssetShareId> updated = new ArrayList<>(enterprise.assetSources());
       if (!updated.removeIf(removedShareIds::contains)) {
         continue;
       }
-      organizations.put(
+      enterprises.put(
           organizationId,
-          new ProductionOrganization(
-              organization.id(),
-              organization.modeId(),
-              organization.classPositionId(),
-              organization.unitId(),
-              organization.organizer(),
-              organization.laborSources(),
+          new ProductionEnterprise(
+              enterprise.id(),
+              enterprise.modeId(),
+              enterprise.classPositionId(),
+              enterprise.unitId(),
+              enterprise.organizer(),
+              enterprise.laborSources(),
               updated,
-              organization.inputSources(),
-              organization.outputOwnership(),
-              organization.relationTemplateRef(),
-              organization.status(),
-              organization.statusReason()));
+              enterprise.inputSources(),
+              enterprise.outputOwnership(),
+              enterprise.relationTemplateRef(),
+              enterprise.status(),
+              enterprise.statusReason()));
     }
   }
 
@@ -1311,12 +1311,12 @@ public final class ModeMigrationSettlement {
    * ★★ D-023：本一次 apply 内新建的目标户，其组织 assetSources 必须指向随迁后的新份额 id（含后续源并入同一新户）。 只收 operator ==
    * organizer 的份额（EconomyData 的「组织使用的份额必须由 organizer 经营」守卫）。
    */
-  private static void attachMigratedSharesToNewTargetOrganizations(
+  private static void attachMigratedSharesToNewTargetEnterprises(
       Set<HouseholdId> createdTargets,
       Map<HouseholdId, List<AssetShareId>> migratedShareIdsByTarget,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<AssetShareId, AssetShare> assetShares,
-      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises) {
     if (migratedShareIdsByTarget.isEmpty()) {
       return;
     }
@@ -1326,38 +1326,38 @@ public final class ModeMigrationSettlement {
       if (!createdTargets.contains(target)) {
         continue; // 已有目标户不在此路（其组织不是本批新建；随迁份额仍按 operator 计产能）
       }
-      ProductionOrganization organization = organizationOf(target, householdEconomies, organizations);
-      if (organization == null) {
+      ProductionEnterprise enterprise = enterpriseOf(target, householdEconomies, enterprises);
+      if (enterprise == null) {
         continue; // DISPLACED 新建户不建组织
       }
-      List<AssetShareId> updated = new ArrayList<>(organization.assetSources());
+      List<AssetShareId> updated = new ArrayList<>(enterprise.assetSources());
       for (AssetShareId shareId : migratedShareIdsByTarget.get(target)) {
-        AssetShare share = assetShares.get(shareId);
-        if (share == null || !share.operator().equals(organization.organizer())) {
+        OwnershipStake share = assetShares.get(shareId);
+        if (share == null || !share.operator().equals(enterprise.organizer())) {
           continue;
         }
         if (!updated.contains(shareId)) {
           updated.add(shareId);
         }
       }
-      if (updated.size() == organization.assetSources().size()) {
+      if (updated.size() == enterprise.assetSources().size()) {
         continue;
       }
-      organizations.put(
-          organization.id(),
-          new ProductionOrganization(
-              organization.id(),
-              organization.modeId(),
-              organization.classPositionId(),
-              organization.unitId(),
-              organization.organizer(),
-              organization.laborSources(),
+      enterprises.put(
+          enterprise.id(),
+          new ProductionEnterprise(
+              enterprise.id(),
+              enterprise.modeId(),
+              enterprise.classPositionId(),
+              enterprise.unitId(),
+              enterprise.organizer(),
+              enterprise.laborSources(),
               updated,
-              organization.inputSources(),
-              organization.outputOwnership(),
-              organization.relationTemplateRef(),
-              organization.status(),
-              organization.statusReason()));
+              enterprise.inputSources(),
+              enterprise.outputOwnership(),
+              enterprise.relationTemplateRef(),
+              enterprise.status(),
+              enterprise.statusReason()));
     }
   }
 
@@ -1366,7 +1366,7 @@ public final class ModeMigrationSettlement {
       ProductionLedger.Accumulator auditLedger,
       long day,
       HouseholdId source,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<AssetShareId, String> residualReasons) {
     if (auditLedger == null || residualReasons.isEmpty()) {
       return;
@@ -1374,7 +1374,7 @@ public final class ModeMigrationSettlement {
     List<AssetShareId> shareIds = new ArrayList<>(residualReasons.keySet());
     shareIds.sort(Comparator.comparing(AssetShareId::value));
     for (AssetShareId shareId : shareIds) {
-      AssetShare share = assetShares.get(shareId);
+      OwnershipStake share = assetShares.get(shareId);
       if (share == null || share.quantity() <= 0L) {
         continue; // 后来又被随迁走了：不需要“留原户”读数
       }
@@ -1400,7 +1400,7 @@ public final class ModeMigrationSettlement {
   // ── D-023 第 5 项：新家户的完整生产关系模板 ─────────────────────────────────────────────────
 
   /**
-   * ★★ <b>D-023 第 5 项：按目标 mode + 目标产业 regime 生成完整 {@link ProductionRelation}</b>。
+   * ★★ <b>D-023 第 5 项：按目标 mode + 目标产业 regime 生成完整 {@link ProductionRules}</b>。
    *
    * <pre>
    * tenancy_fixed_kind / tenancy_share / tenancy_cash → RegimeRelations 的 tenant 档（租佃模板）
@@ -1416,9 +1416,9 @@ public final class ModeMigrationSettlement {
    * 也取自同一关系。回退空规则时把原因同时写进持久 {@code relationTemplateRef} 与当天瞬态 ledger 审计，绝不静默。
    *
    * <p>★★ <b>GAP-3 同源收口</b>：模板里的 {@code ToCohort(view)} 受方必须像 E2 自动组织一样在**落盘前**用当前
-   * rows 归一成 {@link Recipient.ToHousehold}（唯一视图）或退回最小自留关系；否则本关系会在**当天** harvest 时被
+   * rows 归一成 {@link Payee.ToHousehold}（唯一视图）或退回最小自留关系；否则本关系会在**当天** harvest 时被
    * {@code requireCohortRows} 的"视图不再是唯一身份"守卫拒绝。归一逻辑不另写一份，直接复用
-   * {@link EconomyOrganizationSettlement} 的唯一拼写点。
+   * {@link EconomyEnterpriseSettlement} 的唯一拼写点。
    */
   private static MigrationRelationPlan buildMigrationRelation(
       ModeMigrationPolicy.MigrationMove move,
@@ -1435,11 +1435,11 @@ public final class ModeMigrationSettlement {
     Set<ResidenceKind> residences = Set.of(targetHouseholdEconomy.view().residence());
     if (templateRegime.isPresent()) {
       try {
-        ProductionRelation relation =
+        ProductionRules relation =
             RegimeRelations.defaultRelation(
                 templateRegime.get(), unitId, industryId, targetActor, residences);
-        ProductionRelation normalized =
-            EconomyOrganizationSettlement.normalizeRecipients(
+        ProductionRules normalized =
+            EconomyEnterpriseSettlement.normalizePayees(
                 relation, householdEconomies, targetHouseholdEconomy.view().hex());
         if (normalized != null) {
           return new MigrationRelationPlan(
@@ -1505,12 +1505,12 @@ public final class ModeMigrationSettlement {
   }
 
   /** 具名回退：空规则 = 产出全归 operator（显式允许的缺省路径，但绝不在无具名原因时使用）。 */
-  private static ProductionRelation fallbackMigrationRelation(
+  private static ProductionRules fallbackMigrationRelation(
       ProductionUnitId unitId, ActorRef targetActor) {
-    return new ProductionRelation(
+    return new ProductionRules(
         unitId,
         targetActor,
-        new Recipient.ToActor(targetActor),
+        new Payee.ToActor(targetActor),
         List.of(),
         targetActor,
         LaborSource.SELF);
@@ -1544,18 +1544,18 @@ public final class ModeMigrationSettlement {
 
   // ── 小工具 ────────────────────────────────────────────────────────────────────────────────
 
-  private static ProductionOrganization organizationOf(
+  private static ProductionEnterprise enterpriseOf(
       HouseholdId household,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises) {
     ActorRef actor = HouseholdActors.of(household);
-    ProductionOrganization best = null;
-    List<ProductionOrganizationId> ids = new ArrayList<>(organizations.keySet());
+    ProductionEnterprise best = null;
+    List<ProductionOrganizationId> ids = new ArrayList<>(enterprises.keySet());
     ids.sort(Comparator.comparing(ProductionOrganizationId::value));
     for (ProductionOrganizationId id : ids) {
-      ProductionOrganization organization = organizations.get(id);
-      if (organization != null && organization.organizer().equals(actor)) {
-        best = organization;
+      ProductionEnterprise enterprise = enterprises.get(id);
+      if (enterprise != null && enterprise.organizer().equals(actor)) {
+        best = enterprise;
         break;
       }
     }
@@ -1574,8 +1574,8 @@ public final class ModeMigrationSettlement {
   }
 
   private static boolean hasAnySourceAsset(
-      ActorRef sourceActor, Map<AssetShareId, AssetShare> assetShares) {
-    for (AssetShare share : assetShares.values()) {
+      ActorRef sourceActor, Map<AssetShareId, OwnershipStake> assetShares) {
+    for (OwnershipStake share : assetShares.values()) {
       if (share.quantity() > 0L
           && (share.owner().equals(sourceActor) || share.operator().equals(sourceActor))) {
         return true;

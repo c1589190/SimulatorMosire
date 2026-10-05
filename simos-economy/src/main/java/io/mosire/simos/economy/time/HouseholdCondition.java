@@ -9,15 +9,15 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.Payee;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.Map;
 import java.util.Objects;
@@ -26,7 +26,7 @@ import java.util.OptionalLong;
 
 /**
  * ★★ <b>S3.3 劳动家户状态读数（派生、不落盘）</b>—— 计划允许"并入 {@code HouseholdEconomy} 的派生读数或独立组件"；本类选择 <b>读时派生</b>：不新增
- * {@code EconomyData} 组件、不改变更集/codec 形状，字段由 {@code FlowRow + HouseholdLaborCommitment + AssetShare +
+ * {@code EconomyData} 组件、不改变更集/codec 形状，字段由 {@code FlowRow + HouseholdLaborCommitment + OwnershipStake +
  * DebtContract + ProductionLedger(瞬态)} 逐值复算；E1 的 {@code grainCoveragePerMille} 另由调用方传入库存粮（库存真源在
  * actor 侧，economy 不另存一本账）。
  *
@@ -143,7 +143,7 @@ public record HouseholdCondition(
       }
     }
     long assetQuantity = 0L;
-    for (AssetShare share : data.assetShares().values()) {
+    for (OwnershipStake share : data.assetShares().values()) {
       // ★ R3B.1：旧 holder 语义拆成 owner/operator 两栏 —— 拥有或实际经营的份额都算本户的资产基数；
       //   同一条份额（owner == operator）只计一次。
       if (share.owner().equals(HouseholdActors.of(household))
@@ -165,7 +165,7 @@ public record HouseholdCondition(
         laborSold += laborCommitment.laborMilli();
       }
       // ★ E1：本户的"周期"取它供给的 unit 模板 cycleDays 的最大值（与结算侧 cycleDaysByHousehold 同一条口径）。
-      ProductionUnit unit = data.units().get(new ProductionUnitId(laborCommitment.activity()));
+      ProductionProcess unit = data.units().get(new ProductionUnitId(laborCommitment.activity()));
       Industry industry = unit == null ? null : data.industries().get(unit.industry());
       if (industry != null) {
         cycleDays = Math.max(cycleDays, industry.cycleDays());
@@ -186,7 +186,7 @@ public record HouseholdCondition(
       long wage = 0L;
       for (ProductionLedger.Arrear arrear : ledger.orElseThrow().arrears()) {
         if (arrear.kind() == ProductionLedger.Arrear.Kind.WAGE
-            && recipientIs(arrear.rule(), household)) {
+            && payeeIs(arrear.rule(), household)) {
           wage += arrear.owed();
         }
       }
@@ -233,11 +233,11 @@ public record HouseholdCondition(
   }
 
   /** 规则受方是否就是这家户（{@code ToHousehold} / 家户 actor / 旧 {@code ToCohort}）。 */
-  private static boolean recipientIs(CompensationRule rule, HouseholdId household) {
+  private static boolean payeeIs(CompensationRule rule, HouseholdId household) {
     return switch (rule.recipient()) {
-      case Recipient.ToHousehold toHousehold -> toHousehold.household().equals(household);
-      case Recipient.ToActor toActor -> toActor.actor().equals(HouseholdActors.of(household));
-      case Recipient.ToCohort toCohort ->
+      case Payee.ToHousehold toHousehold -> toHousehold.household().equals(household);
+      case Payee.ToActor toActor -> toActor.actor().equals(HouseholdActors.of(household));
+      case Payee.ToCohort toCohort ->
           HouseholdActors.of(toCohort.cohort()).equals(HouseholdActors.of(household));
     };
   }
@@ -256,7 +256,7 @@ public record HouseholdCondition(
         continue;
       }
       ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
-      ProductionRelation relation =
+      ProductionRules relation =
           data.units().containsKey(unitId) ? data.relations().get(unitId) : null;
       if (relation != null) {
         source = relation.laborSource();
@@ -272,7 +272,7 @@ public record HouseholdCondition(
       return LivelihoodStatus.SERF;
     }
     boolean hasRight = false;
-    for (AssetShare share : data.assetShares().values()) {
+    for (OwnershipStake share : data.assetShares().values()) {
       if (share.quantity() > 0L
           && (share.owner().equals(HouseholdActors.of(household))
               || share.operator().equals(HouseholdActors.of(household)))) {

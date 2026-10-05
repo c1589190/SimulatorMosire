@@ -32,13 +32,13 @@ import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.CompensationRule;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.migrate.DebtReferenceReconciler;
 import io.mosire.simos.economy.migrate.LegacyHouseholdMigration;
 import io.mosire.simos.economy.model.AssetRule;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassPosition;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
@@ -60,8 +60,8 @@ import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionCandidate;
 import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
@@ -139,12 +139,12 @@ import java.util.Set;
  * 不做跨过程分析，只认它看得见的包装）。
  *
  * <p>★★ **{@code relations} 是第 8 个组件**（S1 阶段 4+5 Task 2；计划 R3）：键 = {@code IndustryId}（ {@link
- * ProductionRelation} 不另造 id —— 身份就是它结算的那个 {@code activity}，铁律 1），值 = 一次生产的结算规则。 ★ 两条**跨表守卫**：
+ * ProductionRules} 不另造 id —— 身份就是它结算的那个 {@code activity}，铁律 1），值 = 一次生产的结算规则。 ★ 两条**跨表守卫**：
  *
  * <ol>
  *   <li>每个键**必须**是该格上已存在的产业（"{@code 关系指名的产业不存在}"）——否则结算时按 id 取不到产业；
  *   <li>{@code relations[k].operator()} **必须**等于 {@code industries[k].operator()}：**同一件事不许有两处拼写**
- *       （"谁经营"若能在关系表里另写一遍，两边不一致时没有任何一处能判谁对）；键还**必须**等于 {@code ProductionRelation.activity()}（同
+ *       （"谁经营"若能在关系表里另写一遍，两边不一致时没有任何一处能判谁对）；键还**必须**等于 {@code ProductionRules.activity()}（同
  *       {@code classes}/{@code flows} 的"键 == 值内 key"口径）。
  * </ol>
  *
@@ -180,9 +180,9 @@ import java.util.Set;
  * {@code HouseholdClassMembership} 的类注）。★ 跨表守卫按"对侧是否已提供"分段生效， 以便 {@code with*} 能逐组件构造；两侧都非空时引用完整性 fail-closed。
  *
  * <p>★★ **E2 追加第 21–22 个组件**（{@code productionOrganizations} / {@code assetRules}）：前者是"生产方式 + 阶层结构
- * + 劳动 + 资产"之间的桥（{@code ProductionOrganization}），由日结算的自动组织阶段 upsert；后者是 mode 下每种生产资料的
+ * + 劳动 + 资产"之间的桥（{@code ProductionEnterprise}），由日结算的自动组织阶段 upsert；后者是 mode 下每种生产资料的
  * 租佃/抵押/清算/转移规则（{@code AssetRule}）。★ 两张表为空时自动组织阶段整体 no-op，旧路径逐值不变；非空时的引用完整性同样按 "对侧是否已提供"分段生效（unit /
- * assetShare / classPosition / mode 存在性）。
+ * ownershipStake / productionRole / mode 存在性）。
  *
  * <p>★★ **E3 追加第 23–24 个组件**（{@code governments} / {@code moneyIssuances}）：政府表建立"谁是哪个币种的发行主体"，
  * 发行审计表记录 INITIAL_ENDOWMENT / FISCAL_ISSUE / WITHDRAWAL。两表为空时旧结算路径逐值不变（零登记 ⇒ 付方余额不足照旧
@@ -221,19 +221,19 @@ public record EconomyData(
     Map<DebtContractId, DebtContract> debtContracts,
     Map<HouseholdId, FlowRow> flows,
     Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
-    Map<ProductionUnitId, ProductionRelation> relations,
+    Map<ProductionUnitId, ProductionRules> relations,
     Map<HexCoord, Market> markets,
     Map<ShipmentId, ShipmentBatch> shipments,
-    Map<AssetShareId, AssetShare> assetShares,
+    Map<AssetShareId, OwnershipStake> assetShares,
     Map<ProductionUnitId, OperatorCondition> operatorConditions,
-    Map<ProductionUnitId, ProductionUnit> units,
+    Map<ProductionUnitId, ProductionProcess> units,
     Map<DemandId, HouseholdDemand> demands,
     Map<CandidateId, ProductionCandidate> candidates,
     Map<ProductionModeId, ProductionMode> modes,
     Map<ClassStructureId, ClassStructure> classStructures,
-    Map<ClassPositionId, ClassPosition> classPositions,
+    Map<ClassPositionId, ProductionRole> classPositions,
     Map<HouseholdId, HouseholdClassMembership> classStandings,
-    Map<ProductionOrganizationId, ProductionOrganization> productionOrganizations,
+    Map<ProductionOrganizationId, ProductionEnterprise> productionOrganizations,
     Map<AssetRuleId, AssetRule> assetRules,
     Map<GovernmentId, Government> governments,
     Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances,
@@ -354,7 +354,7 @@ public record EconomyData(
     if (relations == null) {
       relations = Map.of();
     }
-    // ★★ R3B.2b：旧档 Industry 兼容位（record 末尾 5 个）→ 默认 unit + 整额 OWNED AssetShare。
+    // ★★ R3B.2b：旧档 Industry 兼容位（record 末尾 5 个）→ 默认 unit + 整额 OWNED OwnershipStake。
     //   ★ **必须在 LegacyHouseholdMigration 之前**：迁移器要靠新造的 unit 才能把旧 relations /
     //     operatorConditions 键与 allocations.activity 对齐。
     //   ★ 它是 **Timeline 直读旧 changeset** 的兜底（那条路径不经过 EconomyCodec.decodeChangeSet 的节点整形）；
@@ -362,14 +362,14 @@ public record EconomyData(
     //   ★ 判据 = "兼容位非中性"（operator 非 null / progress/劳动 > 0 / 两张表非空）；新形状恒中性。
     if (hasLegacyProductionBits(industries)) {
       Map<IndustryId, Industry> normalizedIndustries = new LinkedHashMap<>();
-      Map<ProductionUnitId, ProductionUnit> normalizedUnits = new LinkedHashMap<>(units);
-      Map<AssetShareId, AssetShare> normalizedShares = new LinkedHashMap<>(assetShares);
+      Map<ProductionUnitId, ProductionProcess> normalizedUnits = new LinkedHashMap<>(units);
+      Map<AssetShareId, OwnershipStake> normalizedShares = new LinkedHashMap<>(assetShares);
       Set<IndustryId> unitIndustries = new LinkedHashSet<>();
-      for (ProductionUnit unit : normalizedUnits.values()) {
+      for (ProductionProcess unit : normalizedUnits.values()) {
         unitIndustries.add(unit.industry());
       }
       Set<IndustryId> shareIndustries = new LinkedHashSet<>();
-      for (AssetShare share : normalizedShares.values()) {
+      for (OwnershipStake share : normalizedShares.values()) {
         shareIndustries.add(share.industry());
       }
       for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
@@ -385,8 +385,8 @@ public record EconomyData(
             industry.operator() != null
                 ? industry.operator()
                 : RegimeOperators.defaultOperator(industry.regime(), industryId);
-        // ★ AssetShare：该 industry 尚无任何份额时才物化；只造 quantity > 0 的项（0 值不造行、也不构成生产规模）。
-        //   id 走 AssetShare.idOf(..., sequence=0)：与既有迁移同一条 id 规则 ⇒ 重放/重跑不会重复。
+        // ★ OwnershipStake：该 industry 尚无任何份额时才物化；只造 quantity > 0 的项（0 值不造行、也不构成生产规模）。
+        //   id 走 OwnershipStake.idOf(..., sequence=0)：与既有迁移同一条 id 规则 ⇒ 重放/重跑不会重复。
         boolean hasExistingShare = shareIndustries.contains(industryId);
         boolean hasPositiveCapacity = false;
         for (Map.Entry<AssetKind, Long> capacity : industry.capacity().entrySet()) {
@@ -398,23 +398,23 @@ public record EconomyData(
             continue;
           }
           AssetShareId shareId =
-              AssetShare.idOf(
+              OwnershipStake.idOf(
                   industryId,
                   capacity.getKey(),
                   operator,
                   operator,
-                  AssetShare.RightKind.OWNED,
+                  OwnershipStake.RightKind.OWNED,
                   0L);
           normalizedShares.putIfAbsent(
               shareId,
-              new AssetShare(
+              new OwnershipStake(
                   shareId,
                   industryId,
                   capacity.getKey(),
                   operator,
                   operator,
                   capacity.getValue(),
-                  AssetShare.RightKind.OWNED));
+                  OwnershipStake.RightKind.OWNED));
         }
         // ★ 默认 unit：同 industry 已有 unit 则不动（幂等）；capacity 全 0/空 ⇒ 旧档"规模恒 0、无生产"，不造 unit。
         //   进度/劳动/投入从兼容位原样带过。
@@ -422,7 +422,7 @@ public record EconomyData(
           ProductionUnitId unitId = ProductionUnitId.idOf(industryId, operator);
           normalizedUnits.putIfAbsent(
               unitId,
-              new ProductionUnit(
+              new ProductionProcess(
                   unitId,
                   industryId,
                   operator,
@@ -601,8 +601,8 @@ public record EconomyData(
     }
     // ★★ R3B.2：劳动配额的 activity 是 unit id（String）⇒ "这份劳动喂哪条生产活动"按值查 unit。
     //   ★ 用 values 建索引（id 值 → unit）：units 表自身的键一致性由后面的 unit 守卫判。
-    Map<String, ProductionUnit> unitsByValue = new LinkedHashMap<>();
-    for (ProductionUnit unit : units.values()) {
+    Map<String, ProductionProcess> unitsByValue = new LinkedHashMap<>();
+    for (ProductionProcess unit : units.values()) {
       unitsByValue.put(unit.id().value(), unit);
     }
     Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitmentsCopy = new LinkedHashMap<>();
@@ -650,7 +650,7 @@ public record EconomyData(
       // ①-c ★★ R3B.2：activity 若指名了现存 unit，则收劳动的主体必须就是该 unit 的 operator ——
       //   "劳动喂了谁"（activity）与"谁收劳动"（actor）是同一件事的两处拼写，不一致时没有哪一处能判谁对。
       //   ★ activity 不命中 unit 的配额合法（自由家户劳动/旧档未接线档）：它不喂任何生产，只进守恒与读口。
-      ProductionUnit referencedUnit = unitsByValue.get(laborCommitment.activity());
+      ProductionProcess referencedUnit = unitsByValue.get(laborCommitment.activity());
       if (referencedUnit == null && laborCommitment.activity().startsWith(UNIT_ID_PREFIX)) {
         throw new IllegalArgumentException(
             "劳动配额的 activity 看起来是 unit id（以 \""
@@ -692,31 +692,31 @@ public record EconomyData(
     }
     // ── R3B.1 第 12 个组件：实物资产份额表 ──────────────────────────────────────────────
     //   ★ 键 == 值内 id；industry 必须存在；asset/owner/operator/kind 非空、quantity ≥ 0（非空与 quantity
-    //     由 AssetShare 构造期判，这里判跨表的 industry 引用与键身份）。
-    //   ★★ **这里不再有"Σ quantity ≤ Industry.capacity"的上界守卫，也不写 Σ == capacity**：AssetShare 是
+    //     由 OwnershipStake 构造期判，这里判跨表的 industry 引用与键身份）。
+    //   ★★ **这里不再有"Σ quantity ≤ Industry.capacity"的上界守卫，也不写 Σ == capacity**：OwnershipStake 是
     //     独立的实物资产总账，Industry.capacity 在 B.1 里只是过渡字段（B.2 移出生产模型）；把技术模板当
     //     实物账本上界，会把"实物已存在、模板尚未及更新"这类合法状态误判成坏数据。
     //   ★ 关系表的 operator 与 unit 的关系由**第 14 个组件（units）**的守卫判（R3B.2 起关系挂在 unit 上）。
-    Map<AssetShareId, AssetShare> assetSharesCopy = new LinkedHashMap<>();
-    for (Map.Entry<AssetShareId, AssetShare> entry : assetShares.entrySet()) {
+    Map<AssetShareId, OwnershipStake> ownershipStakesCopy = new LinkedHashMap<>();
+    for (Map.Entry<AssetShareId, OwnershipStake> entry : assetShares.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("assetShares 的键与值都不得为 null: " + entry.getKey());
       }
-      AssetShare share = entry.getValue();
+      OwnershipStake share = entry.getValue();
       if (!entry.getKey().equals(share.id())) {
         throw new IllegalArgumentException(
-            "assetShares 的键必须与 AssetShare.id 一致：键=" + entry.getKey() + "，行内 id=" + share.id());
+            "assetShares 的键必须与 OwnershipStake.id 一致：键=" + entry.getKey() + "，行内 id=" + share.id());
       }
       if (!industriesCopy.containsKey(share.industry())) {
         throw new IllegalArgumentException("资产份额指名的产业不存在: " + share.industry());
       }
-      assetSharesCopy.put(entry.getKey(), share);
+      ownershipStakesCopy.put(entry.getKey(), share);
     }
-    assetShares = Collections.unmodifiableMap(assetSharesCopy); // ★ 冻在赋值处
+    assetShares = Collections.unmodifiableMap(ownershipStakesCopy); // ★ 冻在赋值处
 
     // ── 第 8 个组件：生产关系表（S1 阶段 4+5 Task 2；计划 R3；R3B.2 起键/activity = unit id）────────
-    Map<ProductionUnitId, ProductionRelation> relationsRaw = new LinkedHashMap<>();
-    for (Map.Entry<ProductionUnitId, ProductionRelation> entry : relations.entrySet()) {
+    Map<ProductionUnitId, ProductionRules> relationsRaw = new LinkedHashMap<>();
+    for (Map.Entry<ProductionUnitId, ProductionRules> entry : relations.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("relations 的键与值都不得为 null: " + entry.getKey());
       }
@@ -725,22 +725,22 @@ public record EconomyData(
     // ★★ S1：把旧档/默认关系里的 {@code ToCohort(view)} 一对一归一到 {@code ToHousehold(id)}
     //   （同一 view 恰有一个家户时才归一 —— 一一对应是旧档的既有事实；view 有歧义时保留 ToCohort
     //   作为 S3 的视图选择器，不在构造期猜）。归一化是"键/受方迁移"的唯一落点，幂等。
-    Map<ProductionUnitId, ProductionRelation> relationsCopy =
-        normalizeRecipients(relationsRaw, householdEconomiesCopy);
+    Map<ProductionUnitId, ProductionRules> relationsCopy =
+        normalizePayees(relationsRaw, householdEconomiesCopy);
     relations = Collections.unmodifiableMap(relationsCopy); // ★ 冻在赋值处
     // ★★ 两条跨表守卫（R3B.2 改口径）：① 键 == 值内 activity（同 classes/flows 的键身份口径）；
     //   ② 关系挂在一个**已存在的 unit** 上、且 operator 与 unit.operator 逐值相等
     //      （"谁经营"若能在关系表里另写一遍，两边不一致时没有任何一处能判谁对）。
-    for (Map.Entry<ProductionUnitId, ProductionRelation> entry : relationsCopy.entrySet()) {
-      ProductionRelation relation = entry.getValue();
+    for (Map.Entry<ProductionUnitId, ProductionRules> entry : relationsCopy.entrySet()) {
+      ProductionRules relation = entry.getValue();
       if (!entry.getKey().equals(relation.activity())) {
         throw new IllegalArgumentException(
-            "relations 的键必须与 ProductionRelation.activity 一致：键="
+            "relations 的键必须与 ProductionRules.activity 一致：键="
                 + entry.getKey()
                 + "，行内 activity="
                 + relation.activity());
       }
-      ProductionUnit unit = unitsByValue.get(entry.getKey().value());
+      ProductionProcess unit = unitsByValue.get(entry.getKey().value());
       if (unit == null) {
         throw new IllegalArgumentException(
             "关系指名的生产单元（unit）不存在："
@@ -792,7 +792,7 @@ public record EconomyData(
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("operatorConditions 的键与值都不得为 null: " + entry.getKey());
       }
-      ProductionUnit unit = unitsByValue.get(entry.getKey().value());
+      ProductionProcess unit = unitsByValue.get(entry.getKey().value());
       if (unit == null) {
         throw new IllegalArgumentException(
             "operatorConditions 指名的生产单元（unit）不存在："
@@ -814,17 +814,17 @@ public record EconomyData(
     // ── R3B.2 第 14 个组件：生产单元表（units）────────────────────────────────────────────
     //   ★ 键 == unit.id；industry 必须存在；progressDays ≤ industry.cycleDays（跨表上界）。
     //   ★★ **迁移完成态**：每个非 EXITED/ABANDONED 的 unit，其 operator 至少有一条同 industry 的
-    //     AssetShare（否则明确抛，不静默）—— 这条守卫是"AssetShare 是实物总账、unit 是实际生产"两件事
+    //     OwnershipStake（否则明确抛，不静默）—— 这条守卫是"OwnershipStake 是实物总账、unit 是实际生产"两件事
     //     之间的桥：没有份额的 unit 没有任何产能来源，让它留在 ACTIVE 或让它在结算里静默产出都是坏数据。
-    Map<ProductionUnitId, ProductionUnit> unitsCopy = new LinkedHashMap<>();
-    for (Map.Entry<ProductionUnitId, ProductionUnit> entry : units.entrySet()) {
+    Map<ProductionUnitId, ProductionProcess> unitsCopy = new LinkedHashMap<>();
+    for (Map.Entry<ProductionUnitId, ProductionProcess> entry : units.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("units 的键与值都不得为 null: " + entry.getKey());
       }
-      ProductionUnit unit = entry.getValue();
+      ProductionProcess unit = entry.getValue();
       if (!entry.getKey().equals(unit.id())) {
         throw new IllegalArgumentException(
-            "units 的键必须与 ProductionUnit.id 一致：键=" + entry.getKey() + "，行内 id=" + unit.id());
+            "units 的键必须与 ProductionProcess.id 一致：键=" + entry.getKey() + "，行内 id=" + unit.id());
       }
       Industry industryTemplate = industriesCopy.get(unit.industry());
       if (industryTemplate == null) {
@@ -832,7 +832,7 @@ public record EconomyData(
       }
       if (unit.progressDays() > industryTemplate.cycleDays()) {
         throw new IllegalArgumentException(
-            "ProductionUnit.progressDays 必须 ∈ [0, industry.cycleDays]：unit="
+            "ProductionProcess.progressDays 必须 ∈ [0, industry.cycleDays]：unit="
                 + entry.getKey()
                 + " progressDays="
                 + unit.progressDays()
@@ -842,9 +842,9 @@ public record EconomyData(
       unitsCopy.put(entry.getKey(), unit);
     }
     units = Collections.unmodifiableMap(unitsCopy); // ★ 冻在赋值处
-    // ★★ B.3b：**unit 不要求必须有 AssetShare**（R4 计划禁把"资产闲置/退出"判成坏数据）。
+    // ★★ B.3b：**unit 不要求必须有 OwnershipStake**（R4 计划禁把"资产闲置/退出"判成坏数据）。
     //   资产可以全部转走（见 economy.TransferAssetShare），此时该 unit 的规模由
-    //   ProductionUnitBook 纯派生为 0 —— "有经营者、无资产、不生产"是合法状态（也是 E1 退出处置的前态）。
+    //   ProductionProcessBook 纯派生为 0 —— "有经营者、无资产、不生产"是合法状态（也是 E1 退出处置的前态）。
     //   unit↔relation / operatorConditions 的 operator/industry 一致性已由上面两段守卫把守，不因本放宽而松。
     // ── R4-E2 第 15 个组件：需求账本 ───────────────────────────────────────────────────────
     //   ★ 键 == 值内 id；scope ↔ household/hex 的互斥与必填由 HouseholdDemand 构造期判；
@@ -964,15 +964,15 @@ public record EconomyData(
                 + mode.classStructureId());
       }
     }
-    Map<ClassPositionId, ClassPosition> positionsCopy = new LinkedHashMap<>();
-    for (Map.Entry<ClassPositionId, ClassPosition> entry : classPositions.entrySet()) {
+    Map<ClassPositionId, ProductionRole> positionsCopy = new LinkedHashMap<>();
+    for (Map.Entry<ClassPositionId, ProductionRole> entry : classPositions.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("classPositions 的键与值都不得为 null: " + entry.getKey());
       }
-      ClassPosition position = entry.getValue();
+      ProductionRole position = entry.getValue();
       if (!entry.getKey().equals(position.id())) {
         throw new IllegalArgumentException(
-            "classPositions 的键必须与 ClassPosition.id 一致：键="
+            "classPositions 的键必须与 ProductionRole.id 一致：键="
                 + entry.getKey()
                 + "，行内 id="
                 + position.id());
@@ -990,8 +990,8 @@ public record EconomyData(
     //   同一身份只有一处权威形状，避免"结构里写一套、全局表里另写一套"（对侧为空 = 该侧尚未提供，见段首口径）。
     if (!positionsCopy.isEmpty()) {
       for (ClassStructure structure : structuresCopy.values()) {
-        for (Map.Entry<ClassPositionId, ClassPosition> entry : structure.positions().entrySet()) {
-          ClassPosition flat = positionsCopy.get(entry.getKey());
+        for (Map.Entry<ClassPositionId, ProductionRole> entry : structure.positions().entrySet()) {
+          ProductionRole flat = positionsCopy.get(entry.getKey());
           if (flat == null || !flat.equals(entry.getValue())) {
             throw new IllegalArgumentException(
                 "classStructures.positions 的位置必须与 classPositions 逐值一致：结构="
@@ -1003,7 +1003,7 @@ public record EconomyData(
       }
     }
     if (!structuresCopy.isEmpty()) {
-      for (ClassPosition position : positionsCopy.values()) {
+      for (ProductionRole position : positionsCopy.values()) {
         boolean registered = false;
         for (ClassStructure structure : structuresCopy.values()) {
           if (position.equals(structure.positions().get(position.id()))) {
@@ -1077,61 +1077,61 @@ public record EconomyData(
     // ── E2 第 21/22 个组件：生产组织 / 生产资料规则 ───────────────────────────────────
     //   ★ 旧档缺键 ⇒ 空表（上面已归一）；两张表为空时本段整体 no-op，旧结算路径逐值不变。
     //   ★ 引用完整性按"对侧是否已提供"分段生效（与 E1 四条同款），保证 with* 能逐组件构造。
-    Map<ProductionOrganizationId, ProductionOrganization> organizationsCopy = new LinkedHashMap<>();
-    for (Map.Entry<ProductionOrganizationId, ProductionOrganization> entry :
+    Map<ProductionOrganizationId, ProductionEnterprise> enterprisesCopy = new LinkedHashMap<>();
+    for (Map.Entry<ProductionOrganizationId, ProductionEnterprise> entry :
         productionOrganizations.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException(
             "productionOrganizations 的键与值都不得为 null: " + entry.getKey());
       }
-      ProductionOrganization organization = entry.getValue();
-      if (!entry.getKey().equals(organization.id())) {
+      ProductionEnterprise enterprise = entry.getValue();
+      if (!entry.getKey().equals(enterprise.id())) {
         throw new IllegalArgumentException(
-            "productionOrganizations 的键必须与 ProductionOrganization.id 一致：键="
+            "productionOrganizations 的键必须与 ProductionEnterprise.id 一致：键="
                 + entry.getKey()
                 + "，行内 id="
-                + organization.id());
+                + enterprise.id());
       }
-      if (!modesCopy.isEmpty() && !modesCopy.containsKey(organization.modeId())) {
+      if (!modesCopy.isEmpty() && !modesCopy.containsKey(enterprise.modeId())) {
         throw new IllegalArgumentException(
-            "生产组织的 modeId 必须是已存在的生产方式：组织=" + entry.getKey() + "，modeId=" + organization.modeId());
+            "生产组织的 modeId 必须是已存在的生产方式：组织=" + entry.getKey() + "，modeId=" + enterprise.modeId());
       }
-      if (!positionsCopy.isEmpty() && !positionsCopy.containsKey(organization.classPositionId())) {
+      if (!positionsCopy.isEmpty() && !positionsCopy.containsKey(enterprise.classPositionId())) {
         throw new IllegalArgumentException(
             "生产组织的 classPositionId 必须是已存在的阶层位置：组织="
                 + entry.getKey()
                 + "，位置="
-                + organization.classPositionId());
+                + enterprise.classPositionId());
       }
-      if (organization.unitId().isPresent()
+      if (enterprise.unitId().isPresent()
           && !units.isEmpty()
-          && !units.containsKey(organization.unitId().get())) {
+          && !units.containsKey(enterprise.unitId().get())) {
         throw new IllegalArgumentException(
-            "生产组织指名的 unit 必须已存在：组织=" + entry.getKey() + "，unitId=" + organization.unitId().get());
+            "生产组织指名的 unit 必须已存在：组织=" + entry.getKey() + "，unitId=" + enterprise.unitId().get());
       }
-      if (organization.unitId().isPresent() && units.containsKey(organization.unitId().get())) {
-        ProductionUnit organizedUnit = units.get(organization.unitId().get());
-        if (!organizedUnit.operator().equals(organization.organizer())) {
+      if (enterprise.unitId().isPresent() && units.containsKey(enterprise.unitId().get())) {
+        ProductionProcess organizedUnit = units.get(enterprise.unitId().get());
+        if (!organizedUnit.operator().equals(enterprise.organizer())) {
           throw new IllegalArgumentException(
               "生产组织的 organizer 必须与它指名 unit 的 operator 一致（同一件事不许两处拼写）：组织="
                   + entry.getKey()
                   + " organizer="
-                  + organization.organizer()
+                  + enterprise.organizer()
                   + "，unit.operator="
                   + organizedUnit.operator());
         }
       }
-      for (AssetShareId assetSource : organization.assetSources()) {
+      for (AssetShareId assetSource : enterprise.assetSources()) {
         if (!assetShares.isEmpty() && !assetShares.containsKey(assetSource)) {
           throw new IllegalArgumentException(
               "生产组织使用的资产份额必须已存在：组织=" + entry.getKey() + "，份额=" + assetSource);
         }
         if (!assetShares.isEmpty()) {
-          AssetShare organizedShare = assetShares.get(assetSource);
+          OwnershipStake organizedShare = assetShares.get(assetSource);
           if (organizedShare != null
-              && !organizedShare.operator().equals(organization.organizer())) {
+              && !organizedShare.operator().equals(enterprise.organizer())) {
             throw new IllegalArgumentException(
-                "生产组织使用的 AssetShare 必须由 organizer 经营（operator 一致）：组织="
+                "生产组织使用的 OwnershipStake 必须由 organizer 经营（operator 一致）：组织="
                     + entry.getKey()
                     + "，份额="
                     + assetSource
@@ -1140,15 +1140,15 @@ public record EconomyData(
           }
         }
       }
-      for (HouseholdId laborSource : organization.laborSources()) {
+      for (HouseholdId laborSource : enterprise.laborSources()) {
         if (!householdEconomiesCopy.isEmpty() && !householdEconomiesCopy.containsKey(laborSource)) {
           throw new IllegalArgumentException(
               "生产组织的劳动来源家户必须已存在：组织=" + entry.getKey() + "，家户=" + laborSource);
         }
       }
-      organizationsCopy.put(entry.getKey(), organization);
+      enterprisesCopy.put(entry.getKey(), enterprise);
     }
-    productionOrganizations = Collections.unmodifiableMap(organizationsCopy); // ★ 冻在赋值处
+    productionOrganizations = Collections.unmodifiableMap(enterprisesCopy); // ★ 冻在赋值处
     Map<AssetRuleId, AssetRule> assetRulesCopy = new LinkedHashMap<>();
     Set<String> assetRuleModeKindKeys = new LinkedHashSet<>();
     for (Map.Entry<AssetRuleId, AssetRule> entry : assetRules.entrySet()) {
@@ -1288,7 +1288,7 @@ public record EconomyData(
         throw new IllegalArgumentException(
             "质押指名的债务合同必须已存在：质押=" + entry.getKey() + "，合同=" + pledge.debtContractId());
       }
-      if (!assetSharesCopy.isEmpty() && !assetSharesCopy.containsKey(pledge.assetShareId())) {
+      if (!ownershipStakesCopy.isEmpty() && !ownershipStakesCopy.containsKey(pledge.assetShareId())) {
         throw new IllegalArgumentException(
             "质押指名的资产份额必须已存在：质押=" + entry.getKey() + "，份额=" + pledge.assetShareId());
       }
@@ -1302,7 +1302,7 @@ public record EconomyData(
       pledgesCopy.put(entry.getKey(), pledge);
     }
     for (Map.Entry<AssetShareId, Long> entry : activePledgedByShare.entrySet()) {
-      AssetShare share = assetSharesCopy.get(entry.getKey());
+      OwnershipStake share = ownershipStakesCopy.get(entry.getKey());
       if (share == null) {
         continue; // 对侧（资产份额表）尚未提供 ⇒ 数量上界留给该侧就绪后的下一次构造
       }
@@ -1381,7 +1381,7 @@ public record EconomyData(
     //     ⇒ 只判结构；非空才判组织/mode 存在与 fromMode 一致性。★ “同一组织至多一条 PENDING”在构造期判死 ——
     //     它是模式变迁命令幂等与“一条 revision 只应用一次”的地基（重复 PENDING 会让同一次切换被两次结算）。
     Map<ModeTransitionId, ModeTransition> modeTransitionsCopy = new LinkedHashMap<>();
-    Set<ProductionOrganizationId> pendingOrganizations = new LinkedHashSet<>();
+    Set<ProductionOrganizationId> pendingEnterprises = new LinkedHashSet<>();
     for (Map.Entry<ModeTransitionId, ModeTransition> entry : modeTransitions.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("modeTransitions 的键与值都不得为 null: " + entry.getKey());
@@ -1411,16 +1411,16 @@ public record EconomyData(
             "模式变迁指名的生产组织不存在：变迁=" + entry.getKey() + "，组织=" + transition.organizationId());
       }
       if (!productionOrganizations.isEmpty()) {
-        ProductionOrganization organization =
+        ProductionEnterprise enterprise =
             productionOrganizations.get(transition.organizationId());
-        if (organization != null && !organization.modeId().equals(transition.fromModeId())) {
+        if (enterprise != null && !enterprise.modeId().equals(transition.fromModeId())) {
           throw new IllegalArgumentException(
               "模式变迁的 fromModeId 必须等于组织当前的 modeId（同一件事不许两处拼写）：变迁="
                   + entry.getKey()
                   + "，fromMode="
                   + transition.fromModeId()
                   + "，组织 mode="
-                  + organization.modeId());
+                  + enterprise.modeId());
         }
       }
       if (!modesCopy.isEmpty()) {
@@ -1440,7 +1440,7 @@ public record EconomyData(
         }
       }
       if (transition.status() == ModeTransition.Status.PENDING
-          && !pendingOrganizations.add(transition.organizationId())) {
+          && !pendingEnterprises.add(transition.organizationId())) {
         throw new IllegalArgumentException(
             "同一生产组织至多允许一条 PENDING 模式变迁（重复会让同一次切换被结算两次）：组织=" + transition.organizationId());
       }
@@ -1506,17 +1506,17 @@ public record EconomyData(
                 + firm.organizationId());
       }
       if (!productionOrganizations.isEmpty()) {
-        ProductionOrganization organization = productionOrganizations.get(entry.getKey());
-        if (organization == null) {
+        ProductionEnterprise enterprise = productionOrganizations.get(entry.getKey());
+        if (enterprise == null) {
           throw new IllegalArgumentException(
               "商号指名的生产组织不存在（组织表已提供 ⇒ fail-closed）：商号=" + entry.getKey());
         }
-        if (!DefaultProductionModes.MERCHANT.equals(organization.modeId())) {
+        if (!DefaultProductionModes.MERCHANT.equals(enterprise.modeId())) {
           throw new IllegalArgumentException(
               "商号对应的生产组织 modeId 必须是 merchant（同一件事不许两处拼写）：商号="
                   + entry.getKey()
                   + "，组织 modeId="
-                  + organization.modeId());
+                  + enterprise.modeId());
         }
       }
       merchantFirmsCopy.put(entry.getKey(), firm);
@@ -1779,7 +1779,7 @@ public record EconomyData(
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
-  public EconomyData withRelations(Map<ProductionUnitId, ProductionRelation> value) {
+  public EconomyData withRelations(Map<ProductionUnitId, ProductionRules> value) {
     return new EconomyData(
         meta,
         industries,
@@ -1886,7 +1886,7 @@ public record EconomyData(
         merchantFirms);
   }
 
-  public EconomyData withAssetShares(Map<AssetShareId, AssetShare> value) {
+  public EconomyData withOwnershipStakes(Map<AssetShareId, OwnershipStake> value) {
     return new EconomyData(
         meta,
         industries,
@@ -1952,7 +1952,7 @@ public record EconomyData(
   }
 
   /** ★★ R3B.2：生产单元表（第 14 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
-  public EconomyData withUnits(Map<ProductionUnitId, ProductionUnit> value) {
+  public EconomyData withProcesses(Map<ProductionUnitId, ProductionProcess> value) {
     return new EconomyData(
         meta,
         industries,
@@ -2117,7 +2117,7 @@ public record EconomyData(
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
-  public EconomyData withClassPositions(Map<ClassPositionId, ClassPosition> value) {
+  public EconomyData withProductionRoles(Map<ClassPositionId, ProductionRole> value) {
     return new EconomyData(
         meta,
         industries,
@@ -2153,14 +2153,14 @@ public record EconomyData(
    * ★★ <b>E1/P7：阶层结构与全局阶层位置表的成对写口</b>（第 18/19 两个组件一次落值）；其余 29 个组件原样带过（全表共 30 个组件）。
    *
    * <p>★ <b>为什么必须成对</b>：{@link ClassStructure#positions()} 与全局 {@code classPositions} 有"逐值相等 +
-   * 每条位置至少属于一个结构"的双向守卫，而现有 {@code withClassStructures}/{@code withClassPositions} 各自只改一个组件 ——
+   * 每条位置至少属于一个结构"的双向守卫，而现有 {@code withClassStructures}/{@code withProductionRoles} 各自只改一个组件 ——
    * 单独改任一侧都会让中间态过不了守卫（"结构里写一套、全局表里另写一套"）。GM 编辑（{@code economy.GmAdjust} 的
    * upsertClassStructure/upsertClassPosition）需要同时 upsert 结构与全局位置，故这里提供唯一的成对落值口；
    * <b>不是第二套状态</b>：两个参数就是那两个既有组件，最终仍走同一个 canonical 构造器与全部守卫。
    */
   public EconomyData withClassStructuresAndPositions(
       Map<ClassStructureId, ClassStructure> structures,
-      Map<ClassPositionId, ClassPosition> positions) {
+      Map<ClassPositionId, ProductionRole> positions) {
     return new EconomyData(
         meta,
         industries,
@@ -2226,8 +2226,8 @@ public record EconomyData(
   }
 
   /** ★★ E2：生产组织表（第 21 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
-  public EconomyData withProductionOrganizations(
-      Map<ProductionOrganizationId, ProductionOrganization> value) {
+  public EconomyData withProductionEnterprises(
+      Map<ProductionOrganizationId, ProductionEnterprise> value) {
     return new EconomyData(
         meta,
         industries,
@@ -2615,7 +2615,7 @@ public record EconomyData(
   }
 
   /**
-   * ★★ S1：把 {@link Recipient.ToCohort} 一对一归一到 {@link Recipient.ToHousehold}。
+   * ★★ S1：把 {@link Payee.ToCohort} 一对一归一到 {@link Payee.ToHousehold}。
    *
    * <p>判据：<b>该 view 恰有一个家户</b>（旧档的既有事实）⇒ 迁移；view 有歧义（S3 才允许）⇒ 保留旧变体交由 S3
    * 的视图选择器解释。归一化是构造期的纯函数、幂等（归一后的规则不再含 ToCohort）。
@@ -2624,8 +2624,8 @@ public record EconomyData(
    * ToHousehold(稳定身份)} ⇒ 之后的阶层写回只改 {@code HouseholdEconomy.view}，不会让这些规则改指到别的家户；仍保留的 {@code ToCohort}
    * 是旧档/多义视图的兼容窄口，按当前行集合解释。
    */
-  private static Map<ProductionUnitId, ProductionRelation> normalizeRecipients(
-      Map<ProductionUnitId, ProductionRelation> raw, Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+  private static Map<ProductionUnitId, ProductionRules> normalizePayees(
+      Map<ProductionUnitId, ProductionRules> raw, Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Map<CohortKey, HouseholdId> unique = new LinkedHashMap<>();
     Set<CohortKey> ambiguous = new LinkedHashSet<>();
     for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
@@ -2636,19 +2636,19 @@ public record EconomyData(
     for (CohortKey view : ambiguous) {
       unique.remove(view);
     }
-    Map<ProductionUnitId, ProductionRelation> normalized = new LinkedHashMap<>();
-    for (Map.Entry<ProductionUnitId, ProductionRelation> entry : raw.entrySet()) {
-      ProductionRelation relation = entry.getValue();
+    Map<ProductionUnitId, ProductionRules> normalized = new LinkedHashMap<>();
+    for (Map.Entry<ProductionUnitId, ProductionRules> entry : raw.entrySet()) {
+      ProductionRules relation = entry.getValue();
       List<CompensationRule> rules = new ArrayList<>(relation.rules().size());
       boolean changed = false;
       for (CompensationRule rule : relation.rules()) {
-        if (rule.recipient() instanceof Recipient.ToCohort toCohort) {
+        if (rule.recipient() instanceof Payee.ToCohort toCohort) {
           HouseholdId household = unique.get(toCohort.cohort());
           if (household != null) {
             rules.add(
                 new CompensationRule(
                     rule.type(),
-                    new Recipient.ToHousehold(household),
+                    new Payee.ToHousehold(household),
                     rule.pool(),
                     rule.weight(),
                     rule.ratePerMille(),
@@ -2665,7 +2665,7 @@ public record EconomyData(
       normalized.put(
           entry.getKey(),
           changed
-              ? new ProductionRelation(
+              ? new ProductionRules(
                   relation.activity(),
                   relation.operator(),
                   relation.inputSupplier(),

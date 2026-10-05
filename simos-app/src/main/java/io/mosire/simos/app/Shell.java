@@ -77,7 +77,7 @@ import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdParticipationHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketPriceHandler;
 import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
-import io.mosire.simos.economy.spi.EconomyTransferAssetShareHandler;
+import io.mosire.simos.economy.spi.EconomyTransferOwnershipStakeHandler;
 import io.mosire.simos.economy.spi.EconomyUpdateDemandHandler;
 import io.mosire.simos.economy.spi.UnitBorrowHandler;
 import io.mosire.simos.economy.spi.UnitRepayHandler;
@@ -593,7 +593,7 @@ public final class Shell implements AutoCloseable {
                 // ── economy（S3）：家户迁移的最小合法入口（只搬视图/份额，不生成人口；账 location 不搬）──
                 new EconomyMigrateHouseholdHandler(),
                 // ── economy（R4-B.3b）：GM/事件用的实物资产份额拆分/转移（确定性新 id、逐资产守恒）──
-                new EconomyTransferAssetShareHandler(),
+                new EconomyTransferOwnershipStakeHandler(),
                 // ── economy（R4-E2a）：价格 / 需求账本 / 候选预设 —— GM simos.command.submit 路径可用；
                 //   进入采用算法（E2b）不在本片。──
                 new EconomySetMarketPriceHandler(),

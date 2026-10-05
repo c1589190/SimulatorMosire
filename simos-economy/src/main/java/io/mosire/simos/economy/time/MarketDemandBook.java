@@ -8,12 +8,12 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -205,9 +205,9 @@ public final class MarketDemandBook {
       List<MarketReport> reports,
       MarketTopology topology,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<IndustryId, Industry> industries,
-      Map<AssetShareId, AssetShare> shares,
+      Map<AssetShareId, OwnershipStake> shares,
       Map<ShipmentId, ShipmentBatch> shipments,
       AccountSession accounts,
       Map<HexCoord, Market> markets,
@@ -257,7 +257,7 @@ public final class MarketDemandBook {
     }
 
     for (ProductionUnitId unitId : sortedUnits(units)) {
-      ProductionUnit unit = units.get(unitId);
+      ProductionProcess unit = units.get(unitId);
       Industry industry = industries.get(unit.industry());
       HexCoord unitHex = unitHexOrNull(unit);
       if (unitHex == null) {
@@ -267,7 +267,7 @@ public final class MarketDemandBook {
       if (industry == null) {
         continue; // 认不出模板 ⇒ 不猜配方（该 unit 的引致需求记 0；读数组件可另判 "missing-industry"）
       }
-      long scale = ProductionUnitBook.capacityScaleOf(unit, industry, shares);
+      long scale = ProductionProcessBook.capacityScaleOf(unit, industry, shares);
       long cycles = ceilDiv(horizonDays, industry.cycleDays());
       for (Map.Entry<CommodityId, Long> input : industry.recipe().inputPerUnit().entrySet()) {
         if (input.getValue() <= 0L || scale <= 0L) {
@@ -386,13 +386,13 @@ public final class MarketDemandBook {
   }
 
   /** unit 的地点（产业 id 里的格键）；拿不到 ⇒ null（不猜坐标）。 */
-  private static HexCoord unitHexOrNull(ProductionUnit unit) {
+  private static HexCoord unitHexOrNull(ProductionProcess unit) {
     return IndustryHexKeys.hexKeyOf(unit.industry()).map(HexCoord::parse).orElse(null);
   }
 
   private static Set<CommodityId> commodityUniverse(
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<IndustryId, Industry> industries,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<ShipmentId, ShipmentBatch> shipments,
@@ -401,7 +401,7 @@ public final class MarketDemandBook {
     for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
       commodities.addAll(householdEconomy.naturalNeeds().keySet());
     }
-    for (ProductionUnit unit : units.values()) {
+    for (ProductionProcess unit : units.values()) {
       Industry industry = industries.get(unit.industry());
       if (industry != null) {
         commodities.addAll(industry.recipe().inputPerUnit().keySet());
@@ -486,7 +486,7 @@ public final class MarketDemandBook {
     return keys;
   }
 
-  private static List<ProductionUnitId> sortedUnits(Map<ProductionUnitId, ProductionUnit> units) {
+  private static List<ProductionUnitId> sortedUnits(Map<ProductionUnitId, ProductionProcess> units) {
     List<ProductionUnitId> keys = new ArrayList<>(units.keySet());
     keys.sort(Comparator.comparing(ProductionUnitId::value));
     return keys;

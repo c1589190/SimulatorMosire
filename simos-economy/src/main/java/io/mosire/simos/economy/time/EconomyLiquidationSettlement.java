@@ -18,10 +18,10 @@ import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.migrate.LegacyClassStructure;
 import io.mosire.simos.economy.model.AssetRule;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassPosition.RelationToMeans;
-import io.mosire.simos.economy.model.ClassPosition.SurplusRole;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRole.RelationToMeans;
+import io.mosire.simos.economy.model.ProductionRole.SurplusRole;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.DebtCapacity;
@@ -63,13 +63,13 @@ import java.util.Set;
  * 两者都清零的条件是当个周期既无债务压力、下一轮投入又可覆盖。★ 把第三条下滑判据（{@code F} 持续不足）的"持续"持久化在同一个计数器里， 是 E5b
  * 明确允许的<b>等价持久判据</b>（不新增状态组件、不加第二份真值）；没有这个计数器时，{@code DEFAULTED} 只能靠合同状态持久、 而 {@code F} 缺口跨重启就丢了。
  *
- * <p>★★ <b>清算只换生产资料所有权，不搬粮/钱</b>：apply 里只有三条写口 —— {@link AssetShareBook#apply}（资产份额）、 {@link
+ * <p>★★ <b>清算只换生产资料所有权，不搬粮/钱</b>：apply 里只有三条写口 —— {@link OwnershipStakeBook#apply}（资产份额）、 {@link
  * DebtContractBook#reduce}/{@code markStatus}（债务本金/状态）、{@code EconomyStateBuilder.classStandings()}
  * / {@code crisisSignals()}（阶层与信号）。<b>不调用 applyTransfer、不碰账户</b>（§5.4"处置必须与债务本金扣减、资产份额转移、
  * 阶层归属变化在同一原子流程里完成"）。
  *
  * <p>★★ <b>planner 只读、apply 不再抛业务异常</b>：planner 把所有数量（处置量、减本额、质押减量、保护线、退化选择、无法处置的具名原因）
- * 一次算完并校验；apply 只做"照单执行"。唯一的 fail-closed 守卫在 {@link AssetShareBook#apply} 里（源存在/数量够/质押上界）， planner
+ * 一次算完并校验；apply 只做"照单执行"。唯一的 fail-closed 守卫在 {@link OwnershipStakeBook#apply} 里（源存在/数量够/质押上界）， planner
  * 已按同一批 Move 在覆盖层上预演过 ⇒ apply 正常路径不抛。
  *
  * <p>★★ <b>不硬折</b>：{@code MARKET}/{@code AGREED} 目前没有稳定价格源 ⇒ 具名 {@code unpriced} 跳过；{@code POLICY}
@@ -132,12 +132,12 @@ public final class EconomyLiquidationSettlement {
    * @param day 当前结算日（绝对世界日）
    * @param currentCycle 正在进行的周期序号（关账前的口径；与 4c/5 的偿还/计息同源）
    * @param rows 家户行工作副本
-   * @param assetShares 资产份额工作副本（唯一写口 {@link AssetShareBook}）
+   * @param assetShares 资产份额工作副本（唯一写口 {@link OwnershipStakeBook}）
    * @param debts 债务合同工作副本（唯一写口 {@link DebtContractBook}）
    * @param principalAtDayStart 当日起始本金快照（在任何 借/还 之前取；用于"本金未下降"与利息口径）
    * @param repaidPrincipalByDebt E4c 本日逐合同偿还读数（本金减少的具名证据；可为空表）
    * @param debtCapacities 本关账日终态的 E4b 容量（F/headroom 的唯一算法；见 {@code DebtCapacityBook}）
-   * @param industries 产业模板表（{@link AssetShareBook#apply} 的存在性守卫读它）
+   * @param industries 产业模板表（{@link OwnershipStakeBook#apply} 的存在性守卫读它）
    * @param ledger 当天审计累加器（清算事件只进这里，不落盘）
    */
   static void settle(
@@ -145,7 +145,7 @@ public final class EconomyLiquidationSettlement {
       long day,
       long currentCycle,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<PledgeId, Pledge> pledges,
       Map<DebtContractId, DebtContract> debts,
       Map<DebtContractId, Long> principalAtDayStart,
@@ -206,7 +206,7 @@ public final class EconomyLiquidationSettlement {
       long day,
       long currentCycle,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<PledgeId, Pledge> pledges,
       Map<DebtContractId, DebtContract> debts,
       Map<DebtContractId, Long> principalAtDayStart,
@@ -215,7 +215,7 @@ public final class EconomyLiquidationSettlement {
       Map<IndustryId, Industry> industries,
       ProductionLedger.Accumulator ledger) {}
 
-  /** 一条已选路的资产转移（新份额 id 在 apply 时由 {@link AssetShareBook} 确定性生成）。 */
+  /** 一条已选路的资产转移（新份额 id 在 apply 时由 {@link OwnershipStakeBook} 确定性生成）。 */
   private record PlannedMove(
       DebtContractId debtId,
       PledgeId pledgeId,
@@ -307,14 +307,14 @@ public final class EconomyLiquidationSettlement {
   /** 一个质押候选（选路结果 + 失败原因；失败也留在序里以便写具名审计）。 */
   private record PledgeCandidate(
       Pledge pledge,
-      AssetShare share,
+      OwnershipStake share,
       AssetRule rule,
       LiquidationPolicy policy,
       String degradedFrom,
       String failureReason) {}
 
   /** 自动挂质押的候选（折后可用量的自有份额 + 可质押规则）。 */
-  private record AutoPledgeCandidate(AssetShare share, AssetRule rule, long availableQuantity) {}
+  private record AutoPledgeCandidate(OwnershipStake share, AssetRule rule, long availableQuantity) {}
 
   /** 价格选路结果：{@code pricePerUnitMilli} 与政策一起返回，保证"价"与"保护线/比例"同源。 */
   private record SelectedPrice(long pricePerUnitMilli, LiquidationPolicy policy) {}
@@ -327,7 +327,7 @@ public final class EconomyLiquidationSettlement {
   private static Plan plan(Context context) {
     EconomyData base = context.base();
     Map<HouseholdId, HouseholdClassMembership> baseClassMemberships = base.classStandings();
-    Map<ClassPositionId, ClassPosition> positions = base.classPositions();
+    Map<ClassPositionId, ProductionRole> positions = base.classPositions();
     List<AuditEntry> audits = new ArrayList<>();
 
     Map<HouseholdId, List<DebtContract>> debtsByDebtor = indexDebtsByDebtor(context.debts());
@@ -728,7 +728,7 @@ public final class EconomyLiquidationSettlement {
         break;
       }
       Pledge pledge = candidate.pledge();
-      AssetShare share = candidate.share();
+      OwnershipStake share = candidate.share();
       if (candidate.failureReason() != null) {
         localAudits.add(
             skipAudit(
@@ -756,7 +756,7 @@ public final class EconomyLiquidationSettlement {
                     "pledgeQuantity",
                     pledge.quantity())));
       }
-      if (candidate.policy().recipientRule() == LiquidationPolicy.RecipientRule.MARKET_FIRST) {
+      if (candidate.policy().recipientRule() == LiquidationPolicy.PayeeRule.MARKET_FIRST) {
         // ★ 资产市场尚未落地（没有市场 acteur）：MARKET_FIRST 不硬走"第二套市场"，具名跳过；
         //   降级为 CREDITOR_FIRST 会让政策本身失真，故本阶段选择跳过而不是暗中改受偿对象。
         localAudits.add(
@@ -871,12 +871,12 @@ public final class EconomyLiquidationSettlement {
   /** 一个质押的资格 + 规则/政策选路（纯读；失败原因具名，不抛业务异常）。 */
   private static PledgeCandidate selectCandidate(
       Context context, DebtContract debt, Pledge pledge) {
-    AssetShare share = context.assetShares().get(pledge.assetShareId());
+    OwnershipStake share = context.assetShares().get(pledge.assetShareId());
     if (share == null) {
       return new PledgeCandidate(pledge, null, null, null, null, "pledge-share-missing");
     }
-    if (share.kind() != AssetShare.RightKind.OWNED
-        && share.kind() != AssetShare.RightKind.COMMUNAL) {
+    if (share.kind() != OwnershipStake.RightKind.OWNED
+        && share.kind() != OwnershipStake.RightKind.COMMUNAL) {
       return new PledgeCandidate(
           pledge, share, null, null, null, "right-kind-not-disposable:" + share.kind().name());
     }
@@ -884,7 +884,7 @@ public final class EconomyLiquidationSettlement {
       return new PledgeCandidate(pledge, share, null, null, null, "share-owner-not-debtor");
     }
     if (!context.industries().isEmpty() && !context.industries().containsKey(share.industry())) {
-      // 与 AssetShareBook.apply 的存在性守卫同口径：产业模板已提供但缺这一条 ⇒ planner 先具名拒绝，
+      // 与 OwnershipStakeBook.apply 的存在性守卫同口径：产业模板已提供但缺这一条 ⇒ planner 先具名拒绝，
       // 不让 apply 在提交前才抛（"planner 只读选路、apply 不再抛业务异常"）。
       return new PledgeCandidate(pledge, share, null, null, null, "asset-industry-missing");
     }
@@ -929,7 +929,7 @@ public final class EconomyLiquidationSettlement {
 
   /** 优先取"债务人当前位置的 mode + assetKind"对应的规则/政策；否则按 assetKind 取 id 最小的有政策规则。 */
   private static RulePolicySelection selectRulePolicy(
-      Context context, DebtContract debt, Pledge pledge, AssetShare share) {
+      Context context, DebtContract debt, Pledge pledge, OwnershipStake share) {
     EconomyData base = context.base();
     ProductionModeId preferredMode =
         preferredMode(context, debt, pledge, base.classStandings(), base.classPositions());
@@ -968,10 +968,10 @@ public final class EconomyLiquidationSettlement {
       DebtContract debt,
       Pledge pledge,
       Map<HouseholdId, HouseholdClassMembership> classMemberships,
-      Map<ClassPositionId, ClassPosition> positions) {
+      Map<ClassPositionId, ProductionRole> positions) {
     HouseholdClassMembership classMembership = classMemberships.get(debt.debtor());
     if (classMembership != null) {
-      ClassPosition position = positions.get(classMembership.currentPositionId());
+      ProductionRole position = positions.get(classMembership.currentPositionId());
       if (position != null) {
         return position.modeId();
       }
@@ -1043,16 +1043,16 @@ public final class EconomyLiquidationSettlement {
     for (DebtContractId debtId : plan.autoDefaults()) {
       DebtContractBook.markStatus(context.debts(), debtId, DebtStatus.DEFAULTED);
     }
-    List<AssetShareBook.Move> moves = new ArrayList<>();
+    List<OwnershipStakeBook.Move> moves = new ArrayList<>();
     for (DebtReductionPlan reduction : plan.debtReductions()) {
       for (PlannedMove move : reduction.moves()) {
         moves.add(
-            new AssetShareBook.Move(
+            new OwnershipStakeBook.Move(
                 move.source(),
                 move.quantity(),
                 HouseholdActors.of(reduction.debt().creditor()),
                 HouseholdActors.of(reduction.debt().creditor()),
-                AssetShare.RightKind.OWNED));
+                OwnershipStake.RightKind.OWNED));
       }
     }
 
@@ -1063,10 +1063,10 @@ public final class EconomyLiquidationSettlement {
     List<AssetShareId> created =
         moves.isEmpty()
             ? List.of()
-            : AssetShareBook.apply(
+            : OwnershipStakeBook.apply(
                 context.assetShares(), context.industries(), plannedPledges, moves);
 
-    // ★ 2026-10-09：AssetShareBook 会把被处置份额上**其它** ACTIVE 质押按比例跟到债权人新份额；
+    // ★ 2026-10-09：OwnershipStakeBook 会把被处置份额上**其它** ACTIVE 质押按比例跟到债权人新份额；
     //   该写口就地改的是 plannedPledges（已先并入本计划的质押终态）⇒ 这里整表并回唯一的工作副本。
     context.pledges().clear();
     context.pledges().putAll(plannedPledges);
@@ -1110,7 +1110,7 @@ public final class EconomyLiquidationSettlement {
     }
     LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships =
         context.session().sheet().classMemberships();
-    Map<ClassPositionId, ClassPosition> positions = context.base().classPositions();
+    Map<ClassPositionId, ProductionRole> positions = context.base().classPositions();
     Map<HouseholdId, HouseholdClassMembership> baseClassMemberships = context.base().classStandings();
 
     for (StressUpdate update : plan.stressUpdates()) {
@@ -1396,7 +1396,7 @@ public final class EconomyLiquidationSettlement {
       Context context,
       HouseholdId household,
       Map<HouseholdId, HouseholdClassMembership> classMemberships,
-      Map<ClassPositionId, ClassPosition> positions) {
+      Map<ClassPositionId, ProductionRole> positions) {
     HouseholdClassMembership classMembership = classMemberships.get(household);
     if (classMembership != null) {
       return Optional.of(classMembership.currentPositionId());
@@ -1414,8 +1414,8 @@ public final class EconomyLiquidationSettlement {
 
   /** 下滑目标：ruleExtensions 的 {@code downwardPositionId} 优先；否则同 mode 内按角色元组取最近严格低位。 */
   private static DownwardTarget resolveDownwardTarget(
-      ClassPositionId currentId, Map<ClassPositionId, ClassPosition> positions) {
-    ClassPosition current = positions.get(currentId);
+      ClassPositionId currentId, Map<ClassPositionId, ProductionRole> positions) {
+    ProductionRole current = positions.get(currentId);
     if (current == null) {
       return new DownwardTarget(Optional.empty(), "current-position-not-in-table");
     }
@@ -1423,7 +1423,7 @@ public final class EconomyLiquidationSettlement {
     if (extension != null && !extension.isBlank()) {
       try {
         ClassPositionId extensionId = new ClassPositionId(extension);
-        ClassPosition extensionPosition = positions.get(extensionId);
+        ProductionRole extensionPosition = positions.get(extensionId);
         if (extensionPosition != null && !extensionId.equals(currentId)) {
           return new DownwardTarget(Optional.of(extensionId), null);
         }
@@ -1439,11 +1439,11 @@ public final class EconomyLiquidationSettlement {
   }
 
   private static DownwardTarget mechanicalDownwardTarget(
-      ClassPosition current,
-      Map<ClassPositionId, ClassPosition> positions,
+      ProductionRole current,
+      Map<ClassPositionId, ProductionRole> positions,
       String absentOrInvalidReason) {
-    List<ClassPosition> lower = new ArrayList<>();
-    for (ClassPosition candidate : positions.values()) {
+    List<ProductionRole> lower = new ArrayList<>();
+    for (ProductionRole candidate : positions.values()) {
       if (candidate.modeId().equals(current.modeId()) && compareRoleRank(candidate, current) < 0) {
         lower.add(candidate);
       }
@@ -1464,7 +1464,7 @@ public final class EconomyLiquidationSettlement {
    * Id.value()} 只在<b>同角色档的多个候选之间</b>做确定性 tiebreak（见 {@link #POSITION_HEIGHT_ORDER}）。语义链仍应显式写 {@code
    * ruleExtensions.downwardPositionId}。
    */
-  private static int compareRoleRank(ClassPosition left, ClassPosition right) {
+  private static int compareRoleRank(ProductionRole left, ProductionRole right) {
     int relation =
         Integer.compare(
             relationOrdinal(left.relationToMeans()), relationOrdinal(right.relationToMeans()));
@@ -1478,13 +1478,13 @@ public final class EconomyLiquidationSettlement {
    * 机械下滑序：{@code (relationToMeans 语义序, surplusRole 语义序, ClassPositionId.value())} 的降序。★ 它只是 {@code
    * downwardPositionId} 的兜底；语义链请显式写规则扩展位（类注/报告都写明这条边界）。
    */
-  private static final Comparator<ClassPosition> POSITION_HEIGHT_ORDER =
+  private static final Comparator<ProductionRole> POSITION_HEIGHT_ORDER =
       Comparator.comparingInt(
-              (ClassPosition position) -> relationOrdinal(position.relationToMeans()))
+              (ProductionRole position) -> relationOrdinal(position.relationToMeans()))
           .reversed()
           .thenComparing(
               Comparator.comparingInt(
-                      (ClassPosition position) -> surplusOrdinal(position.surplusRole()))
+                      (ProductionRole position) -> surplusOrdinal(position.surplusRole()))
                   .reversed())
           .thenComparing(position -> position.id().value());
 
@@ -1575,12 +1575,12 @@ public final class EconomyLiquidationSettlement {
    */
   private static Optional<Pledge> autoPledgeFor(
       Context context, DebtContract debt, Map<AssetShareId, Long> activePledgeQuantity) {
-    List<AssetShare> shares = new ArrayList<>(context.assetShares().values());
+    List<OwnershipStake> shares = new ArrayList<>(context.assetShares().values());
     shares.sort(Comparator.comparing(share -> share.id().value()));
     List<AutoPledgeCandidate> candidates = new ArrayList<>();
-    for (AssetShare share : shares) {
+    for (OwnershipStake share : shares) {
       if (!share.owner().equals(HouseholdActors.of(debt.debtor()))
-          || share.kind() != AssetShare.RightKind.OWNED
+          || share.kind() != OwnershipStake.RightKind.OWNED
           || (!context.industries().isEmpty()
               && !context.industries().containsKey(share.industry()))) {
         continue;

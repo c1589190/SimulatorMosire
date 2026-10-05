@@ -51,7 +51,7 @@ import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
@@ -189,7 +189,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     // ★★ R3B.2：units 表的键 = ProductionUnitId；同时注册值侧反序列化器（旧档/手写可能写裸字符串）。
     module.addKeyDeserializer(ProductionUnitId.class, keyDeserializer(ProductionUnitId::parse));
     module.addDeserializer(ProductionUnitId.class, new ProductionUnitIdDeserializer());
-    // ★★ R3B.1：AssetShare 值内的 id 可能是本 codec 旧字节的 {"value":"use-…"}，也可能是裸字符串
+    // ★★ R3B.1：OwnershipStake 值内的 id 可能是本 codec 旧字节的 {"value":"use-…"}，也可能是裸字符串
     //   （手写/外部工具/旧别名）⇒ 值侧显式收两种（keyModule 同时供 PLAIN 使用）；其它形状仍 fail-closed。
     module.addDeserializer(AssetShareId.class, new AssetShareIdDeserializer());
     // ★★ H4：市场表的键 = **格**（{@code 0_0}）—— 本模块第一次把 HexCoord 当键用（见类注）。
@@ -458,7 +458,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
    * <p>★ <b>fail-closed</b>：同一对象同时出现 {@code useRights} 与 {@code assetShares} ⇒ 抛（同一件事两处拼写，
    * 没有哪一处能判谁对）；旧值节点同时出现 {@code activity/holder} 与 {@code industry/owner/operator} ⇒ 抛；旧键只给一半 ⇒ 抛。
    */
-  private static ObjectNode migrateLegacyAssetShareComponent(ObjectNode node) {
+  private static ObjectNode migrateLegacyOwnershipStakeComponent(ObjectNode node) {
     boolean hasOld = node.has("useRights");
     boolean hasNew = node.has("assetShares");
     if (hasOld && hasNew) {
@@ -467,23 +467,23 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     }
     if (hasOld) {
       JsonNode legacy = node.remove("useRights");
-      reshapeLegacyAssetShareNodes(legacy);
+      reshapeLegacyOwnershipStakeNodes(legacy);
       node.set("assetShares", legacy);
     } else if (hasNew) {
       // 新键下混入旧值形状也整形（幂等）：逐组件增量落盘可能只换了键名、没换完值。
-      reshapeLegacyAssetShareNodes(node.get("assetShares"));
+      reshapeLegacyOwnershipStakeNodes(node.get("assetShares"));
     }
     return node;
   }
 
   /** 递归整形一整个 {@code assetShares} / {@code useRights} 子树里的旧值节点（只认具名旧字段，其余原样）。 */
-  private static void reshapeLegacyAssetShareNodes(JsonNode node) {
+  private static void reshapeLegacyOwnershipStakeNodes(JsonNode node) {
     if (node == null || node.isNull()) {
       return;
     }
     if (node.isArray()) {
       for (JsonNode child : node) {
-        reshapeLegacyAssetShareNodes(child);
+        reshapeLegacyOwnershipStakeNodes(child);
       }
       return;
     }
@@ -512,7 +512,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     List<String> names = new ArrayList<>();
     object.fieldNames().forEachRemaining(names::add);
     for (String name : names) {
-      reshapeLegacyAssetShareNodes(object.get(name));
+      reshapeLegacyOwnershipStakeNodes(object.get(name));
     }
   }
 
@@ -560,7 +560,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
         throw new IllegalStateException("EconomyData 必须是 JSON 对象: " + raw);
       }
       rejectRetiredClassFirst(node, "EconomyData");
-      node = migrateLegacyAssetShareComponent(node);
+      node = migrateLegacyOwnershipStakeComponent(node);
       node = migrateLegacyProductionComponents(node);
       node = migrateLegacyDebtSnapshotComponent(node);
       try {
@@ -589,7 +589,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
         throw new IllegalStateException("EconomyChangeSet 必须是 JSON 对象: " + raw);
       }
       rejectRetiredClassFirst(node, "EconomyChangeSet");
-      node = migrateLegacyAssetShareComponent(node);
+      node = migrateLegacyOwnershipStakeComponent(node);
       node = migrateLegacyProductionChangeSetComponents(node);
       node = migrateLegacyDebtChangeSetComponent(node);
       try {
@@ -991,7 +991,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   // ── R3B.2：旧档 production 键/值 reshape（snapshot 与 changeset 两版）──────────────────────
 
   /**
-   * ★★ <b>R3B.2 旧档 {@link EconomyData} 的生产部分整形</b>（在 {@link #migrateLegacyAssetShareComponent}
+   * ★★ <b>R3B.2 旧档 {@link EconomyData} 的生产部分整形</b>（在 {@link #migrateLegacyOwnershipStakeComponent}
    * 之后跑）：
    *
    * <ol>
@@ -1065,7 +1065,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       industry.remove("cycleInputUsedMilli");
     }
     // 把（既有 + 新合成的）unit 收集成 industry → 候选表，供关系/条件/配额对齐。
-    Map<String, List<UnitRef>> unitsByIndustry = unitsByIndustry(units);
+    Map<String, List<ProcessRef>> unitsByIndustry = unitsByIndustry(units);
     rewriteRelationKeys(unitsByIndustry, industries, legacyOperators, node);
     rewriteConditionKeys(unitsByIndustry, node);
     rewriteAllocationActivities(unitsByIndustry, node);
@@ -1085,7 +1085,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
    */
   private static ObjectNode migrateLegacyProductionChangeSetComponents(ObjectNode root) {
     ObjectNode industries = deltaEntries(root.get("industries"));
-    Map<String, UnitRef> deltaUnits = new LinkedHashMap<>();
+    Map<String, ProcessRef> deltaUnits = new LinkedHashMap<>();
     Map<String, ObjectNode> deltaShareNodes = new LinkedHashMap<>();
     if (industries != null) {
       List<String> keys = new ArrayList<>();
@@ -1134,7 +1134,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
                 : JsonNodeFactory.instance.objectNode());
         deltaUnits.put(
             unitId.value(),
-            new UnitRef(unitId.value(), operatorNode.deepCopy(), industryKey, unitNode));
+            new ProcessRef(unitId.value(), operatorNode.deepCopy(), industryKey, unitNode));
         if (capacityNode instanceof ObjectNode capNode && !capNode.isEmpty()) {
           ObjectNode synthetic = JsonNodeFactory.instance.objectNode();
           synthesizeOwnedShares(synthetic, industryKey, operatorNode, capNode);
@@ -1152,7 +1152,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       }
     }
     if (!deltaUnits.isEmpty()) {
-      upsertUnitsDelta(root, deltaUnits);
+      upsertProcessesDelta(root, deltaUnits);
       // ★★ 旧档的**首播/按格追加**变更集把产能总量放在 Industry.capacity 上（没有 assetShares 增量）⇒ 从这里
       //   合成整额 OWNED 份额 upsert，否则重放出"unit 没有份额"的非法中间态（单位守卫当场拒）。
       //   ★ 只在这一批确实是"播种批"时做：assetShares 组件没有增量（unchanged/缺席，即旧形状）**且** relations
@@ -1160,7 +1160,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       boolean sharesUntouched = deltaEntries(root.get("assetShares")) == null;
       boolean looksLikeSeedingBatch = deltaEntries(root.get("relations")) != null;
       if (sharesUntouched && looksLikeSeedingBatch && !deltaShareNodes.isEmpty()) {
-        upsertAssetSharesDelta(root, deltaShareNodes);
+        upsertOwnershipStakesDelta(root, deltaShareNodes);
       }
     }
     ObjectNode relations = deltaEntries(root.get("relations"));
@@ -1241,7 +1241,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     }
   }
 
-  /** 生成一条整额 OWNED 份额节点（id 走 {@link AssetShare#idOf}，sequence 恒 0：capacity 每项至多一条）。 */
+  /** 生成一条整额 OWNED 份额节点（id 走 {@link OwnershipStake#idOf}，sequence 恒 0：capacity 每项至多一条）。 */
   private static void addOwnedShare(
       ObjectNode assetShares,
       String industryKey,
@@ -1256,8 +1256,8 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     }
     ActorRef owner = actorOf(operatorNode);
     AssetShareId shareId =
-        AssetShare.idOf(
-            new IndustryId(industryKey), asset, owner, owner, AssetShare.RightKind.OWNED, 0L);
+        OwnershipStake.idOf(
+            new IndustryId(industryKey), asset, owner, owner, OwnershipStake.RightKind.OWNED, 0L);
     ObjectNode share = JsonNodeFactory.instance.objectNode();
     share.put("id", shareId.value());
     share.set("industry", idNode(industryKey));
@@ -1265,7 +1265,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     share.set("owner", operatorNode.deepCopy());
     share.set("operator", operatorNode.deepCopy());
     share.put("quantity", quantity);
-    share.put("kind", AssetShare.RightKind.OWNED.name());
+    share.put("kind", OwnershipStake.RightKind.OWNED.name());
     assetShares.putIfAbsent(shareId.value(), share);
   }
 
@@ -1281,8 +1281,8 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /** 把 {@code units} 节点收成 industry → 候选 unit 表（按 units 插入序）。 */
-  private static Map<String, List<UnitRef>> unitsByIndustry(ObjectNode units) {
-    Map<String, List<UnitRef>> byIndustry = new LinkedHashMap<>();
+  private static Map<String, List<ProcessRef>> unitsByIndustry(ObjectNode units) {
+    Map<String, List<ProcessRef>> byIndustry = new LinkedHashMap<>();
     for (Map.Entry<String, JsonNode> entry : iterableFields(units)) {
       JsonNode value = entry.getValue();
       if (!(value instanceof ObjectNode unit)) {
@@ -1295,14 +1295,14 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       }
       byIndustry
           .computeIfAbsent(industryKey, ignored -> new ArrayList<>())
-          .add(new UnitRef(entry.getKey(), operatorNode, industryKey, value));
+          .add(new ProcessRef(entry.getKey(), operatorNode, industryKey, value));
     }
     return byIndustry;
   }
 
   /** 关系键/activity 对齐：按 relation.operator + 旧 industry 串找唯一 unit；0 条丢弃、多条 fail-closed。 */
   private static void rewriteRelationKeys(
-      Map<String, List<UnitRef>> unitsByIndustry,
+      Map<String, List<ProcessRef>> unitsByIndustry,
       ObjectNode industries,
       Map<String, JsonNode> legacyOperators,
       ObjectNode root) {
@@ -1324,12 +1324,12 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       ActorRef operator =
           operatorNode != null && operatorNode.isObject() ? actorOf(operatorNode) : null;
       // ★ 幂等：键已是现存 unit（新形状/多 unit）⇒ 只把值内 activity 对齐到键，不做 industry 解析（避免误判歧义）。
-      UnitRef byKey = findUnitById(unitsByIndustry, key);
+      ProcessRef byKey = findUnitById(unitsByIndustry, key);
       if (byKey != null) {
         continue; // 幂等：键已是现存 unit ⇒ 键与值内 activity 是否一致交给 EconomyData 守卫判（不在这里静默改写）
       }
       String industryKey = industryKeyOfRelation(relation, key);
-      UnitRef resolved = resolveUnit(unitsByIndustry, industryKey, operator);
+      ProcessRef resolved = resolveUnit(unitsByIndustry, industryKey, operator);
       if (resolved == null) {
         relations.remove(key); // 没有 unit ⇒ 这条关系没有生产活动可结算（旧档产能 0 等价）
         continue;
@@ -1345,7 +1345,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
 
   /** 条件键对齐：值内只有 industry（没有 operator）⇒ 该产业唯一 unit；0 条丢弃、多条 fail-closed。 */
   private static void rewriteConditionKeys(
-      Map<String, List<UnitRef>> unitsByIndustry, ObjectNode root) {
+      Map<String, List<ProcessRef>> unitsByIndustry, ObjectNode root) {
     ObjectNode conditions = objectField(root, "operatorConditions");
     if (conditions == null) {
       return;
@@ -1358,11 +1358,11 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
         continue;
       }
       // ★ 幂等：键已是现存 unit 且 industry 匹配 ⇒ 原样（多 unit 产业的新形状不会被误判成歧义）。
-      UnitRef byKey = findUnitById(unitsByIndustry, key);
+      ProcessRef byKey = findUnitById(unitsByIndustry, key);
       if (byKey != null && byKey.industryKey().equals(textOfId(condition.get("industry")))) {
         continue;
       }
-      List<UnitRef> candidates =
+      List<ProcessRef> candidates =
           unitsByIndustry.getOrDefault(textOfId(condition.get("industry")), List.of());
       if (candidates.isEmpty()) {
         conditions.remove(key);
@@ -1388,7 +1388,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
 
   /** 配额 activity 对齐：仍不是 unit id 的，按 actor.id() 当产业串找唯一 unit；解析不到 ⇒ 原样。 */
   private static void rewriteAllocationActivities(
-      Map<String, List<UnitRef>> unitsByIndustry, ObjectNode root) {
+      Map<String, List<ProcessRef>> unitsByIndustry, ObjectNode root) {
     JsonNode allocations = root.get("allocations");
     if (allocations == null || !allocations.isObject()) {
       return;
@@ -1410,15 +1410,15 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       if (actorId == null) {
         continue;
       }
-      List<UnitRef> candidates = unitsByIndustry.getOrDefault(actorId, List.of());
+      List<ProcessRef> candidates = unitsByIndustry.getOrDefault(actorId, List.of());
       if (candidates.size() == 1) {
         allocation.put("activity", candidates.get(0).id());
       }
     }
   }
 
-  /** root 的 {@code assetShares} 增量节点：把合成的整额份额 upsert 合并进去（变体落点同 {@link #upsertUnitsDelta}）。 */
-  private static void upsertAssetSharesDelta(ObjectNode root, Map<String, ObjectNode> shareNodes) {
+  /** root 的 {@code assetShares} 增量节点：把合成的整额份额 upsert 合并进去（变体落点同 {@link #upsertProcessesDelta}）。 */
+  private static void upsertOwnershipStakesDelta(ObjectNode root, Map<String, ObjectNode> shareNodes) {
     ObjectNode delta =
         root.has("assetShares") && root.get("assetShares").isObject()
             ? (ObjectNode) root.get("assetShares")
@@ -1448,7 +1448,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /** root 的 {@code units} 增量节点：把 unit upsert 合并进 units 组件增量（三种变体各自落点）。 */
-  private static void upsertUnitsDelta(ObjectNode root, Map<String, UnitRef> unitRefs) {
+  private static void upsertProcessesDelta(ObjectNode root, Map<String, ProcessRef> unitRefs) {
     ObjectNode delta =
         root.has("units") && root.get("units").isObject()
             ? (ObjectNode) root.get("units")
@@ -1476,7 +1476,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     } else {
       throw new IllegalStateException("无法识别的 units 增量变体: " + delta);
     }
-    for (UnitRef ref : unitRefs.values()) {
+    for (ProcessRef ref : unitRefs.values()) {
       if (ref.unitNode() instanceof ObjectNode withState) {
         entries.putIfAbsent(ref.id(), withState.deepCopy());
         continue;
@@ -1500,14 +1500,14 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /** 从 units 索引里解析唯一候选：优先 operator 相等；否则候选只有一个时用它；多个抛。 */
-  private static UnitRef resolveUnit(
-      Map<String, List<UnitRef>> unitsByIndustry, String industryKey, ActorRef operator) {
-    List<UnitRef> candidates = unitsByIndustry.getOrDefault(industryKey, List.of());
+  private static ProcessRef resolveUnit(
+      Map<String, List<ProcessRef>> unitsByIndustry, String industryKey, ActorRef operator) {
+    List<ProcessRef> candidates = unitsByIndustry.getOrDefault(industryKey, List.of());
     if (candidates.isEmpty()) {
       return null;
     }
-    List<UnitRef> matching = new ArrayList<>();
-    for (UnitRef candidate : candidates) {
+    List<ProcessRef> matching = new ArrayList<>();
+    for (ProcessRef candidate : candidates) {
       if (operator != null && actorOf(candidate.operatorNode()).equals(operator)) {
         matching.add(candidate);
       }
@@ -1528,9 +1528,9 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /** 按 id 找 unit（跨产业索引线性扫；reshape 期规模小，且只在读档一次）。 */
-  private static UnitRef findUnitById(Map<String, List<UnitRef>> unitsByIndustry, String unitId) {
-    for (List<UnitRef> refs : unitsByIndustry.values()) {
-      for (UnitRef ref : refs) {
+  private static ProcessRef findUnitById(Map<String, List<ProcessRef>> unitsByIndustry, String unitId) {
+    for (List<ProcessRef> refs : unitsByIndustry.values()) {
+      for (ProcessRef ref : refs) {
         if (ref.id().equals(unitId)) {
           return ref;
         }
@@ -1539,9 +1539,9 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     return null;
   }
 
-  private static boolean unitIdExists(Map<String, List<UnitRef>> unitsByIndustry, String unitId) {
-    for (List<UnitRef> refs : unitsByIndustry.values()) {
-      for (UnitRef ref : refs) {
+  private static boolean unitIdExists(Map<String, List<ProcessRef>> unitsByIndustry, String unitId) {
+    for (List<ProcessRef> refs : unitsByIndustry.values()) {
+      for (ProcessRef ref : refs) {
         if (ref.id().equals(unitId)) {
           return true;
         }
@@ -1551,7 +1551,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /** 一个 unit 的 reshape 中间表示（id + operator 节点 + 产业串 + 完整 unit 节点，后者可空）。 */
-  private record UnitRef(String id, JsonNode operatorNode, String industryKey, JsonNode unitNode) {}
+  private record ProcessRef(String id, JsonNode operatorNode, String industryKey, JsonNode unitNode) {}
 
   /** 读顶层组件的对象字段；缺席/非对象 ⇒ null（调用方按"没有该组件"处理）。 */
   private static ObjectNode objectField(ObjectNode node, String field) {

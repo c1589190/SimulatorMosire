@@ -14,7 +14,7 @@ import java.util.Set;
 
 /**
  * ★★ <b>阶层位置解析器（E1b）</b>：旧 {@code HouseholdEconomy.view.stratum} ↔ 新 {@code HouseholdClassMembership} / {@code
- * ClassPosition} 之间的唯一纯函数入口。
+ * ProductionRole} 之间的唯一纯函数入口。
  *
  * <p>★★ <b>它不参与结算，也不改变旧路径</b>：旧 {@code HouseholdClassRule} / {@code 旧结算引擎（R3a 已删除）} / {@code
  * EconomySeedHandler} / {@code EconomyStateBuilder} <b>全部原样不动</b>（旧路径仍以 {@code HouseholdEconomy.view}
@@ -54,9 +54,9 @@ import java.util.Set;
  * <p>★★ <b>确定性</b>：全部是静态纯函数；家户按 {@code data.classes()} 的稳定迭代序处理，位置 id 由 {@link
  * LegacyClassStructure} 的纯函数生成；<b>无随机、无时钟、无 UUID、无环境依赖</b>。同一入参在任意进程、 任意线程恒得逐字段相同的返回值（幂等分支则恒得同一引用）。
  */
-public final class ClassPositionResolver {
+public final class ProductionRoleResolver {
 
-  private ClassPositionResolver() {}
+  private ProductionRoleResolver() {}
 
   /**
    * ★★ <b>只读解析一个家户的当前阶层位置</b>（新状态优先，其次旧 stratum 映射；口径见类注释）。
@@ -120,7 +120,7 @@ public final class ClassPositionResolver {
             Map.of(
                 LegacyClassStructure.defaultClassStructureId(),
                 LegacyClassStructure.defaultClassStructure()))
-        .withClassPositions(LegacyClassStructure.defaultClassPositions())
+        .withProductionRoles(LegacyClassStructure.defaultProductionRoles())
         .withClassMemberships(Collections.unmodifiableMap(classMemberships)); // ★ 冻在赋值处
   }
 

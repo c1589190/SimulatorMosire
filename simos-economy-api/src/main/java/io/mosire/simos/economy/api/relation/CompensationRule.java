@@ -5,7 +5,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import java.util.Optional;
 
 /**
- * ★★ <b>一条补偿规则</b>（spec §2.4 的 {@code CompensationRule}）：<b>谁</b>（{@link Recipient}）按<b>什么方式</b>
+ * ★★ <b>一条补偿规则</b>（spec §2.4 的 {@code CompensationRule}）：<b>谁</b>（{@link Payee}）按<b>什么方式</b>
  * （{@link RuleType}）从<b>哪一层池</b>（{@link Pool}）取、<b>怎么在受方之间分</b>（{@link Weight}）、拿<b>多少</b> （{@code
  * ratePerMille} 或 {@code fixedAmount}），以及它<b>排第几</b>（{@code priority}）。
  *
@@ -34,7 +34,7 @@ import java.util.Optional;
  *   <li>{@code ratePerMille ∈ [0, 1000]}：分成率不会超过全额，也不会为负；
  *   <li>{@code fixedAmount ≥ 0}：固定额不是债务（负数不是一种数量）；
  *   <li>{@code priority ≥ 0} 且<b>允许重复</b>（次序 = 数据；同值的两条按 {@code rules} 里的先后稳定排序，见 {@link
- *       ProductionRelation}）；
+ *       ProductionRules}）；
  *   <li><b>二选一（商品侧）</b>：{@code type.money()} ⟺ {@code commodity} 为空；
  *   <li>★ <b>二选一（币种侧）</b>：{@code type.money()} ⟺ {@code currency} 非空 —— 实物规则说"这是什么钱"是坏数据，
  *       货币规则不说"这是什么钱"同样是坏数据（H2 补的那一维）；
@@ -59,7 +59,7 @@ import java.util.Optional;
  */
 public record CompensationRule(
     RuleType type,
-    Recipient recipient,
+    Payee recipient,
     Pool pool,
     Weight weight,
     int ratePerMille,

@@ -18,7 +18,7 @@ import io.mosire.simos.social.api.id.HouseholdId;
  * <p>★★ <b>它同时是裁定 E4 的落点</b>：spec §2.4 原本把规则分成 {@code laborCompensationRules} + {@code
  * assetCompensationRules} <b>两张表</b>，而「受方是谁」这一维已经由 {@code recipient} 表达 ⇒ 两张表是<b>第二拼写点</b>
  * （同一批规则能被分成两处、次序也被切成两段，于是「先给养后地租」这种次序<b>无从表达</b>）。⇒ 单列表 + {@code priority} （见 {@link
- * ProductionRelation}），且<b>地租显式写给 {@link ToCohort}（{@code (hex, landlord)}）</b> —— 不显式给， 地主 cohort
+ * ProductionRules}），且<b>地租显式写给 {@link ToCohort}（{@code (hex, landlord)}）</b> —— 不显式给， 地主 cohort
  * 的粮源会凭空消失（地主既不是劳动者、也不是 actor）。
  *
  * <p>★ <b>各变体的字段各自判 null 即抛</b>（不猜）：一条「没有受方」的规则不是状态，是坏数据。
@@ -32,19 +32,19 @@ import io.mosire.simos.social.api.id.HouseholdId;
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "@class")
 @JsonSubTypes({
-  @JsonSubTypes.Type(value = Recipient.ToActor.class, name = "to_actor"),
-  @JsonSubTypes.Type(value = Recipient.ToHousehold.class, name = "to_household"),
-  @JsonSubTypes.Type(value = Recipient.ToCohort.class, name = "to_cohort"),
+  @JsonSubTypes.Type(value = Payee.ToActor.class, name = "to_actor"),
+  @JsonSubTypes.Type(value = Payee.ToHousehold.class, name = "to_household"),
+  @JsonSubTypes.Type(value = Payee.ToCohort.class, name = "to_cohort"),
 })
-public sealed interface Recipient
-    permits Recipient.ToActor, Recipient.ToHousehold, Recipient.ToCohort {
+public sealed interface Payee
+    permits Payee.ToActor, Payee.ToHousehold, Payee.ToCohort {
 
   /** 受方是<b>经济主体</b>（{@code ActorRef} 是身份；actor 的种类/粒度由产出方定，本层不解释）。 */
-  record ToActor(ActorRef actor) implements Recipient {
+  record ToActor(ActorRef actor) implements Payee {
 
     public ToActor {
       if (actor == null) {
-        throw new IllegalArgumentException("Recipient.ToActor.actor 不得为 null");
+        throw new IllegalArgumentException("Payee.ToActor.actor 不得为 null");
       }
     }
   }
@@ -56,11 +56,11 @@ public sealed interface Recipient
    * ToHousehold(HouseholdIds.ofLegacy(old))}。迁移后运行期不再生产 {@code ToCohort}；旧变体保留到
    * S3，届时解释为"视图选择器"（{@code §3 S1.2}）。
    */
-  record ToHousehold(HouseholdId household) implements Recipient {
+  record ToHousehold(HouseholdId household) implements Payee {
 
     public ToHousehold {
       if (household == null) {
-        throw new IllegalArgumentException("Recipient.ToHousehold.household 不得为 null");
+        throw new IllegalArgumentException("Payee.ToHousehold.household 不得为 null");
       }
     }
   }
@@ -70,11 +70,11 @@ public sealed interface Recipient
    *
    * <p>★ 旧档迁移会把它一对一转成 {@link ToHousehold}；S3 再把它解释为"视图选择器"（可能展开成多个家户或进 {@code unresolved} 读数）。
    */
-  record ToCohort(CohortKey cohort) implements Recipient {
+  record ToCohort(CohortKey cohort) implements Payee {
 
     public ToCohort {
       if (cohort == null) {
-        throw new IllegalArgumentException("Recipient.ToCohort.cohort 不得为 null");
+        throw new IllegalArgumentException("Payee.ToCohort.cohort 不得为 null");
       }
     }
   }

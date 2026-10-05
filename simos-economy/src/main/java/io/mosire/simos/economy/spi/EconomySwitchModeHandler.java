@@ -7,7 +7,7 @@ import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ModeTransition;
-import io.mosire.simos.economy.model.ProductionOrganization;
+import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -30,7 +30,7 @@ import java.util.Objects;
  * day}）**自动组织之前**执行（见 {@code EconomyModeTransitionSettlement}）。因此命令成功 = 恰好新增一条 {@link
  * ModeTransition.Status#PENDING}；一次 revision 原子。
  *
- * <p>★★ <b>校验（命令期，逐条 fail-closed）</b>：organization 存在；toMode 存在且 ≠ 组织当前 mode；同一组织没有 PENDING
+ * <p>★★ <b>校验（命令期，逐条 fail-closed）</b>：enterprise 存在；toMode 存在且 ≠ 组织当前 mode；同一组织没有 PENDING
  * 变迁；{@code retainOriginalPerMille ∈ [0,1000]}；{@code effectiveDay >= 当前日}（缺省 = 当前日）。★
  * <b>同一请求重复提交幂等</b>： id 由 {@link ModeTransitionId#idOf(ProductionOrganizationId, ProductionModeId,
  * long)} 确定性派生，同 id 且请求字段逐值相同 ⇒ 返回空变更集（不再落第二条）。
@@ -96,18 +96,18 @@ public final class EconomySwitchModeHandler
           EconomyCommandPayloads.optionalLong(COMMAND, payload, "effectiveDay", now);
       String reason = EconomyCommandPayloads.optionalText(COMMAND, payload, "reason", "");
 
-      ProductionOrganization organization = base.productionOrganizations().get(organizationId);
-      if (organization == null) {
+      ProductionEnterprise enterprise = base.productionOrganizations().get(organizationId);
+      if (enterprise == null) {
         return new HandlerOutcome.Rejected("生产组织不存在: " + organizationId.value());
       }
-      ProductionModeId fromModeId = organization.modeId();
+      ProductionModeId fromModeId = enterprise.modeId();
       if (!base.modes().containsKey(toModeId)) {
         return new HandlerOutcome.Rejected("目标生产方式不存在: " + toModeId.value());
       }
       if (toModeId.equals(fromModeId)) {
         return new HandlerOutcome.Rejected("目标生产方式与组织当前 mode 相同，不构成变迁: " + toModeId.value());
       }
-      if (organization.status() == ProductionOrganization.Status.EXITING) {
+      if (enterprise.status() == ProductionEnterprise.Status.EXITING) {
         return new HandlerOutcome.Rejected("生产组织正在退出中，拒绝再次变迁: " + organizationId.value());
       }
       if (retainOriginalPerMille < 0 || retainOriginalPerMille > 1000) {

@@ -6,12 +6,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * ★★ <b>一次生产活动的结算规则</b>（spec §2.4 的 {@code ProductionRelation}）：关账以后，产出如何在<b>经营者</b>、
+ * ★★ <b>一次生产活动的结算规则</b>（spec §2.4 的 {@code ProductionRules}）：关账以后，产出如何在<b>经营者</b>、
  * <b>劳动提供者</b>、<b>资产所有者</b>之间分掉（裁定 E4 的单列表形态）。
  *
  * <p>★★ <b>它不另造 id</b>：身份 = 它结算的那个 {@link #activity()}（铁律 1 —— id 是身份，不在切片里另造同义 ID）。★ 关系表因此是 {@code
  * EconomyData} 的<b>第 8 个组件</b>、键 = {@code ProductionUnitId}（R3B.2 起），并与 {@code
- * ProductionUnit.operator} 有<b>跨表守卫</b> （两处拼写必须一致；守卫住 {@code EconomyData}，不在这里 ——
+ * ProductionProcess.operator} 有<b>跨表守卫</b> （两处拼写必须一致；守卫住 {@code EconomyData}，不在这里 ——
  * 本类型看得见自己，看不见那张生产单元表）。
  *
  * <p>★★ <b>单列表 + {@code priority}（裁定 E4，取代 spec §2.4 的 labor/asset 两张表）</b>：
@@ -62,7 +62,7 @@ import java.util.List;
  *       {@code feudal} 完全可以是地主出 —— 那正是 spec §2.4"同一个制度可以有 A 格这样、B 格那样"的落点）。
  * </ol>
  *
- * <p>★ <b>为什么是单一 {@link Recipient} 而不是 {@code Map<CommodityId, Recipient>}</b>（逐商品覆盖）： ①
+ * <p>★ <b>为什么是单一 {@link Payee} 而不是 {@code Map<CommodityId, Payee>}</b>（逐商品覆盖）： ①
  * 现在没有任何一种制度需要它（"种子归地主、纤维归作坊"这种话今天无人说） —— 提前造一维就是<b>造一个永远为空的维度</b>； ②
  * 逐商品覆盖会让"谁出料"从<b>一个</b>事实变成<b>一张表</b>，而读它的人（结算）要先把表摊平才能回答"这个产业谁出料"； ③
  * 真要那种制度时，加这一维是<b>纯追加</b>（多一个组件 / 载荷多一个键），不会推翻今天的形状。 ⇒ 等真有制度需要它再加（本仓的一般口径：不为假想的需要造形状）。
@@ -86,10 +86,10 @@ import java.util.List;
  * @param laborSource ★★ <b>这份生产的劳动来源</b>（S1；SELF/FAMILY/TENANT/SERF/WAGE）。旧档缺该键 ⇒ {@link
  *     LaborSource#SELF}（见构造期兜底）；显式档位由 {@code RegimeRelations} 与载荷给出。
  */
-public record ProductionRelation(
+public record ProductionRules(
     ProductionUnitId activity,
     ActorRef operator,
-    Recipient inputSupplier,
+    Payee inputSupplier,
     List<CompensationRule> rules,
     ActorRef residualOwner,
     LaborSource laborSource) {
@@ -98,41 +98,41 @@ public record ProductionRelation(
    * ★ 旧形状的便捷构造（{@code laborSource} 缺省 {@link LaborSource#SELF}）：新代码请显式给那一档；
    * 本重载只服务"这一步与劳动来源无关"的调用点与旧档迁移（缺键 ⇒ SELF，见 {@link #laborSource()}）。
    */
-  public ProductionRelation(
+  public ProductionRules(
       ProductionUnitId activity,
       ActorRef operator,
-      Recipient inputSupplier,
+      Payee inputSupplier,
       List<CompensationRule> rules,
       ActorRef residualOwner) {
     this(activity, operator, inputSupplier, rules, residualOwner, LaborSource.SELF);
   }
 
-  public ProductionRelation {
+  public ProductionRules {
     if (activity == null) {
-      throw new IllegalArgumentException("ProductionRelation.activity 不得为 null");
+      throw new IllegalArgumentException("ProductionRules.activity 不得为 null");
     }
     if (operator == null) {
-      throw new IllegalArgumentException("ProductionRelation.operator 不得为 null");
+      throw new IllegalArgumentException("ProductionRules.operator 不得为 null");
     }
     if (inputSupplier == null) {
       // ★ 缺省 = 经营者（H3/C3 的默认；四档默认同值 ⇒ 这一处就是"缺省"的唯一落点，见类注）。
-      inputSupplier = new Recipient.ToActor(operator);
+      inputSupplier = new Payee.ToActor(operator);
     }
     if (laborSource == null) {
       // ★ 旧档（S1 之前）没有这一维 ⇒ 读成"经营者自营"（该口径下最保守、且不改旧结算结果的映射）。
       laborSource = LaborSource.SELF;
     }
     if (rules == null) {
-      throw new IllegalArgumentException("ProductionRelation.rules 不得为 null（无规则请给空表）");
+      throw new IllegalArgumentException("ProductionRules.rules 不得为 null（无规则请给空表）");
     }
     if (residualOwner == null) {
-      throw new IllegalArgumentException("ProductionRelation.residualOwner 不得为 null");
+      throw new IllegalArgumentException("ProductionRules.residualOwner 不得为 null");
     }
     List<CompensationRule> rulesCopy = new ArrayList<>(rules.size());
     for (CompensationRule rule : rules) {
       if (rule == null) {
         throw new IllegalArgumentException(
-            "ProductionRelation.rules 不得含 null 项（第 " + rulesCopy.size() + " 项）");
+            "ProductionRules.rules 不得含 null 项（第 " + rulesCopy.size() + " 项）");
       }
       rulesCopy.add(rule);
     }
@@ -143,11 +143,11 @@ public record ProductionRelation(
    * ★★ <b>换身份（activity）</b>：迁移器把旧 {@code industryId} 串解析成 {@code ProductionUnitId} 后，用本方法把值内 {@code
    * activity} 一并对齐到新键（其余字段逐值带过）。★ 这不是第二份状态——它就是"同一件事实的键与值同时改"。
    */
-  public ProductionRelation withActivity(ProductionUnitId newActivity) {
+  public ProductionRules withActivity(ProductionUnitId newActivity) {
     if (newActivity == null) {
-      throw new IllegalArgumentException("ProductionRelation.withActivity 的 newActivity 不得为 null");
+      throw new IllegalArgumentException("ProductionRules.withActivity 的 newActivity 不得为 null");
     }
-    return new ProductionRelation(
+    return new ProductionRules(
         newActivity, operator, inputSupplier, rules, residualOwner, laborSource);
   }
 }

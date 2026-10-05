@@ -72,7 +72,7 @@ public final class StressPolicy {
   /**
    * 某状态下的计划规模系数（千分数；1000 = 按技术产能满产）。
    *
-   * <p>★ <b>缩产不销毁 {@code Industry.capacity} / {@code AssetShare}</b>：本系数只乘进"本周期的计划规模"，
+   * <p>★ <b>缩产不销毁 {@code Industry.capacity} / {@code OwnershipStake}</b>：本系数只乘进"本周期的计划规模"，
    * 产能与资产份额原样保留；状态回到 {@code ACTIVE} 即恢复满产。
    */
   public static long plannedScalePerMille(IndustryStatus status) {

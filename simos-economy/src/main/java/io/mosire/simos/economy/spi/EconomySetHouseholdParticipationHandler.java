@@ -5,7 +5,7 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.ClassPosition;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -84,7 +84,7 @@ public final class EconomySetHouseholdParticipationHandler implements CommandHan
       positions.addAll(HouseholdEconomyCommands.expandModes(TYPE, base, payload));
       // ★ 位置所属 mode 必须在场：不在场的 mode 组织阶段根本不会遍历，写进去就是"看起来可参与、实际永不生效"。
       for (ClassPositionId positionId : positions) {
-        ClassPosition position = base.classPositions().get(positionId);
+        ProductionRole position = base.classPositions().get(positionId);
         if (position == null) {
           throw new IllegalArgumentException(TYPE + " 的阶层位置不存在: " + positionId.value());
         }
@@ -122,7 +122,7 @@ public final class EconomySetHouseholdParticipationHandler implements CommandHan
           new LinkedHashMap<>(base.classStandings());
       classMemberships.put(household, afterClassMembership);
       EconomyData projected = base.withClassMemberships(classMemberships);
-      EconomyLog.organization()
+      EconomyLog.enterprise()
           .info(
               "event=HOUSEHOLD_PARTICIPATION household={} positions={} reason={}",
               household.value(),

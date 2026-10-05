@@ -12,7 +12,7 @@ import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.ClassPosition;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.Government;
@@ -191,11 +191,11 @@ public final class EconomyRegisterGovernmentHandler
       Map<HouseholdId, HouseholdEconomy> householdEconomies = new LinkedHashMap<>(base.classes());
       householdEconomies.put(registration.household(), householdEconomy);
 
-      // ── ② classStandings：给了 classPosition 才写（位置引用必须存在）──────────────
+      // ── ② classStandings：给了 productionRole 才写（位置引用必须存在）──────────────
       Map<HouseholdId, HouseholdClassMembership> classMemberships = new LinkedHashMap<>(base.classStandings());
       if (registration.classPositionId() != null) {
         ClassPositionId positionId = registration.classPositionId();
-        ClassPosition position = base.classPositions().get(positionId);
+        ProductionRole position = base.classPositions().get(positionId);
         if (position == null) {
           return new HandlerOutcome.Rejected(
               TYPE
@@ -267,7 +267,7 @@ public final class EconomyRegisterGovernmentHandler
 
       EconomyData projected =
           base.withHouseholdEconomies(householdEconomies).withClassMemberships(classMemberships).withGovernments(governments);
-      EconomyLog.organization()
+      EconomyLog.enterprise()
           .info(
               "event=GOVERNMENT_REGISTERED government={} govUnit={} household={} population={}"
                   + " laborMilli={} participationPerMille={} issuable={} seignioragePerCycle={}"
@@ -401,7 +401,7 @@ public final class EconomyRegisterGovernmentHandler
     boolean participationSpecified = payload.hasNonNull("participationPerMille");
     int participation =
         EconomyCommandPayloads.optionalInt(command, payload, "participationPerMille", 0);
-    ClassPositionId classPosition =
+    ClassPositionId productionRole =
         payload.hasNonNull("classPosition")
             ? ClassPositionId.parse(
                 EconomyCommandPayloads.requireText(command, payload, "classPosition"))
@@ -433,7 +433,7 @@ public final class EconomyRegisterGovernmentHandler
         laborSpecified,
         participation,
         participationSpecified,
-        classPosition,
+        productionRole,
         issuable,
         issuableSpecified,
         seigniorage,

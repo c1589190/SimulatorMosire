@@ -24,7 +24,7 @@ import java.util.Set;
  * <p>★★ <b>{@link #capacity()} 曾是 K3 的落点（2026-09-27 裁定）：本格该产业的产能总量</b>（键 = {@link AssetKind}，单位同
  * {@link #capacityPerUnit()}：{@code LAND} 千分亩、其余件）。改前它散在各 {@code HouseholdEconomy.meansOfProduction} 里，
  * 收获时靠 {@code Σ各行} 折出规模 —— 那是"家户持有生产资料"的形态；K2 把行变成家户之后，产能曾是**该格该产业的技术属性**。 ★ <b>B.2 起生产规模只从 {@link
- * AssetShare} 派生</b>（见 {@code ProductionUnitBook}），本字段降级为旧档兼容位（见下方 B.2b 段）—— <b>不再有任何生产读者</b>。
+ * OwnershipStake} 派生</b>（见 {@code ProductionProcessBook}），本字段降级为旧档兼容位（见下方 B.2b 段）—— <b>不再有任何生产读者</b>。
  *
  * <p>★★ <b>为什么"逐值可以为 0"而 {@code capacityPerUnit} 必须 > 0</b>（说的是旧档兼容位的合法值域）：两者性质不同 —— 前者是**存量**（沙漠格
  * {@code LAND = 0}、人口 &lt; 20 的格 {@code TOOL = 0} 都是旧档的合法形态 ⇒ 那种产业本周期不生产）， 后者是**除数** （"每 1
@@ -74,14 +74,14 @@ import java.util.Set;
  *
  * <p>★★ <b>B.2b：末尾 5 个组件是旧档反序列化兼容位</b>（{@code operator} / {@code progressDays} / {@code capacity} /
  * {@code cycleLaborMilli} / {@code cycleInputUsedMilli}）。B.2 已把"经营主体、周期进度、本格产能总量、 本周期累计劳动/投入"分别移交给
- * {@link ProductionUnit}（实例状态）与 {@link AssetShare}（实物总账），本类只留技术模板； 这 5 个字段被加回来<b>只有一个目的</b>：让历史
+ * {@link ProductionProcess}（实例状态）与 {@link OwnershipStake}（实物总账），本类只留技术模板； 这 5 个字段被加回来<b>只有一个目的</b>：让历史
  * changeset / 旧内联字节能被 {@code Timeline.readChangeSet} 的<b>全局严格 mapper</b> 直接绑定（那条路径不经过 {@code
  * EconomyCodec.decodeChangeSet} 的旧档节点整形，{@code FAIL_ON_UNKNOWN_PROPERTIES}
  * 默认开启）。<b>它们不是第二份状态真相</b>：
  *
  * <ul>
  *   <li>★ <b>生产结算路径（以及一切新代码）一律不得读这 5 个兼容位</b>；新代码只许走 12 参构造器（末尾 5 个取中性值 {@code null/0/Map.of()}）。
- *   <li>★ 旧档值在 {@code EconomyData} 构造期被归一化成默认 {@link ProductionUnit} + 整额 OWNED {@link AssetShare}，
+ *   <li>★ 旧档值在 {@code EconomyData} 构造期被归一化成默认 {@link ProductionProcess} + 整额 OWNED {@link OwnershipStake}，
  *       随后该 {@code Industry} 被换成 12 参模板 —— 于是 {@code EconomyChangeSet.between/diff} 不再产生兼容位漂移。
  *   <li>★ 紧凑构造器对兼容位只判"旧档合法值域"：{@code operator} 允许 {@code null}、两张表 {@code null ⇒ Map.of()}、{@code
  *       progressDays/cycleLaborMilli ≥ 0} 且 {@code progressDays ≤ cycleDays}。
@@ -95,7 +95,7 @@ import java.util.Set;
  * @param capacityPerUnit 每 1 单位规模需要的生产资料（{@code LAND} 按**千分亩**、其余按件）；键值非空、逐值 ≥ 0。空表 =
  *     无产能约束（只受劳动与投入约束）
  * @param capacity ★ <b>旧档兼容位</b>（见类注；生产路径禁读）：旧"本格该产业的产能总量"（K3；{@code LAND} 千分亩、其余件）。 键值非空、逐值 <b>≥
- *     0</b>（0 是旧档合法值）；新档恒空表。★ 实物总量的真相已归 {@link AssetShare}（{@code Σ quantity}）
+ *     0</b>（0 是旧档合法值）；新档恒空表。★ 实物总量的真相已归 {@link OwnershipStake}（{@code Σ quantity}）
  * @param dailyInputPerUnit 每 1 单位规模**每日**原料需求（按生产资料种类归类）；键值非空、逐值 ≥ 0。★ **本轮仍是零读取点** （spec §3.3
  *     明说两个字段并存、语义各自清楚；"每日原料"在 §四 的后续增量里）
  * @param dailyLaborPerUnit 每 1 单位规模的每日劳动需求（千分劳动）；不得为负。★ 本轮零读取点（同上）
@@ -109,11 +109,11 @@ import java.util.Set;
  * @param slots 该制度允许的阶层槽位；非空、id 不重复（**不含人口占比**）
  * @param allocation 制度分配函数（版本化参数；本类不执行它）
  * @param cycleLaborMilli ★ <b>旧档兼容位</b>（见类注；生产路径禁读）：旧"本周期累计的实际投入劳动"（千分劳动·日）；新档恒 {@code 0}，不得为负。 ★
- *     新档该状态住在 {@link ProductionUnit#cycleLaborMilli()}
+ *     新档该状态住在 {@link ProductionProcess#cycleLaborMilli()}
  * @param cycleInputUsedMilli ★ <b>旧档兼容位</b>（见类注；生产路径禁读）：旧"本周期实际扣到的投入"（毫单位，按商品）； 新档恒空表，键值非空、逐值 ≥ 0。★
- *     新档该状态住在 {@link ProductionUnit#cycleInputUsedMilli()}
+ *     新档该状态住在 {@link ProductionProcess#cycleInputUsedMilli()}
  * @param operator ★ <b>旧档兼容位</b>（见类注；生产路径禁读）：旧"经营主体"（S1 spec §2.1 的 {@code ProductionOperator}）。新档恒
- *     {@code null}；<b>允许 null 仅限本兼容位</b>。★ 新档经营主体住在 {@link ProductionUnit#operator()}；旧档缺省由 {@code
+ *     {@code null}；<b>允许 null 仅限本兼容位</b>。★ 新档经营主体住在 {@link ProductionProcess#operator()}；旧档缺省由 {@code
  *     EconomyData} 的归一化按 {@code RegimeOperators.defaultOperator(regime, industryId)} 推导
  */
 public record Industry(

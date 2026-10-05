@@ -16,7 +16,7 @@ import org.slf4j.LoggerFactory;
  *   <tr><td>{@link #market()}</td><td>{@code .market}</td><td>开市、订单/成交/未成交/信用成交、市场拓扑</td></tr>
  *   <tr><td>{@link #debt()}</td><td>{@code .debt}</td><td>债务合同建立/计息/偿还/核销/状态迁移</td></tr>
  *   <tr><td>{@link #migration()}</td><td>{@code .migration}</td><td>生产方式变迁计划与执行（D-022/D-023/D-024）</td></tr>
- *   <tr><td>{@link #organization()}</td><td>{@code .organization}</td><td>自动生产组织建立、租佃拆分、经营者归属</td></tr>
+ *   <tr><td>{@link #enterprise()}</td><td>{@code .organization}</td><td>自动生产组织建立、租佃拆分、经营者归属</td></tr>
  *   <tr><td>{@link #entry()}</td><td>{@code .entry}</td><td>候选预设进入/拒绝（0-entry）</td></tr>
  *   <tr><td>{@link #population()}</td><td>{@code .population}</td><td>出生/死亡/人口回写/劳动缩放</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐笔原始事件</b>：转移、成交、订单、债务/迁移的逐条明细</td></tr>
@@ -89,7 +89,7 @@ public final class EconomyLog {
   }
 
   /** 自动生产组织/租佃/经营者归属。 */
-  public static Logger organization() {
+  public static Logger enterprise() {
     return ORGANIZATION;
   }
 

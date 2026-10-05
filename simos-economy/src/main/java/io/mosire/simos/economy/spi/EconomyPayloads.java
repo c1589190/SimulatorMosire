@@ -45,14 +45,14 @@ import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Pool;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetRule;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassPosition;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassSlot;
@@ -71,7 +71,7 @@ import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.model.RentRule;
@@ -208,7 +208,7 @@ import java.util.Set;
  *   <li>★★ <b>H3：{@code inputSupplier} 是可选键</b>（"这些投入由谁出"，裁定 C3）—— 形状与 {@code recipient}
  *       逐字同款（{@code {actor:{kind,id}}} 或 {@code {cohort:"<CohortKey 规范串>"}}，恰给其一）； <b>缺键 ⇒ 取 {@code
  *       operator}</b>（= 四档默认，见 {@code RegimeRelations.defaultInputSupplier}）。 ★
- *       <b>缺省不在本层另写一遍</b>：交给 {@code ProductionRelation} 的构造期缺省（旧档兼容的那一处边缘）； ★
+ *       <b>缺省不在本层另写一遍</b>：交给 {@code ProductionRules} 的构造期缺省（旧档兼容的那一处边缘）； ★
  *       它**不参与**上面那条一致性判据（供方与经营者**可以**是两个主体 —— 那正是"地主出种"要表达的形态）；
  *   <li>★ <b>受方</b>：{@code recipient} 恰给 {@code actor}（{@code {kind,id}}）或 {@code cohort} （{@code
  *       CohortKey} 的**规范串**，如 {@code "0_0|landlord"}）之一 —— 两个都没给 / 两个都给了 ⇒ 抛；
@@ -303,20 +303,20 @@ final class EconomyPayloads {
     }
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     // ★★ R3B.2：第 14 个组件（生产单元）—— 新载荷显式给 units[]，旧载荷由 industry 的旧实例字段合成。
-    Map<ProductionUnitId, ProductionUnit> units = new LinkedHashMap<>();
+    Map<ProductionUnitId, ProductionProcess> units = new LinkedHashMap<>();
     // ★★ H0：家户行是**entry 级**的（键 = (格, 居住类型, 阶层)），不再嵌在产业节点里 —— 见类注 ①。
     Map<HouseholdId, HouseholdEconomy> householdEconomies = new LinkedHashMap<>();
     // ★ R2 的两张新表：**逐格**声明（格是命令目标与权限的粒度：一条命令动的是这些格）。
     Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments = new LinkedHashMap<>();
     // ★ T2 的第 8 个组件：R3B.2 起键 = ProductionUnitId（关系挂在 unit 上）。
-    Map<ProductionUnitId, ProductionRelation> relations = new LinkedHashMap<>();
+    Map<ProductionUnitId, ProductionRules> relations = new LinkedHashMap<>();
     // ★ H4 的第 9 个组件：顶层 `markets`（键 = 格串），见类注的第五处形状变化。
     Map<HexCoord, Market> markets = markets(payload, entries);
     // ★★ P1：E1/E2 的六个可选地基键（缺键 ⇒ 空表；旧载荷逐值不变）。解析只做形状/词表，
     //   键身份、结构↔位置闭环、standing 家户/位置引用等由 EconomyData 构造期守卫 fail-closed。
     Map<ProductionModeId, ProductionMode> modes = parseModes(payload);
     Map<ClassStructureId, ClassStructure> classStructures = parseClassStructures(payload);
-    Map<ClassPositionId, ClassPosition> classPositions = parseClassPositions(payload);
+    Map<ClassPositionId, ProductionRole> classPositions = parseProductionRoles(payload);
     Map<HouseholdId, HouseholdClassMembership> classMemberships = parseClassMemberships(payload);
     Map<AssetRuleId, AssetRule> assetRules = parseAssetRules(payload);
     // ★★ E3 的第 23/24 个组件：顶层可选 `governments` / `moneyIssuances`（缺键 ⇒ 空表；旧载荷逐值不变）。
@@ -324,10 +324,10 @@ final class EconomyPayloads {
     Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances =
         moneyIssuances(payload, at, governments);
     // ★ S1 的资产份额组件：可选的逐格声明；缺省 ⇒ 空表（"没有登记就没有份额" —— 不凭产能替谁发明权利，
-    //   见 AssetShare 的类注）。★ P2-A A3：成员份额不再是经济状态组件（唯一权威 = Social 的 Household.members），
+    //   见 OwnershipStake 的类注）。★ P2-A A3：成员份额不再是经济状态组件（唯一权威 = Social 的 Household.members），
     //   载荷里即使带 `memberships` 键也不再解析（旧世界重建）。
-    Map<AssetShareId, AssetShare> assetShares = new LinkedHashMap<>();
-    Map<String, Long> assetShareSequences = new LinkedHashMap<>();
+    Map<AssetShareId, OwnershipStake> assetShares = new LinkedHashMap<>();
+    Map<String, Long> ownershipStakeSequences = new LinkedHashMap<>();
     for (JsonNode entry : entries) {
       requireEntryObject(entry);
       int q = requireInt(entry, "q");
@@ -358,10 +358,10 @@ final class EconomyPayloads {
             "同一 entry 不得同时给 assetShares 与 useRights（R3B.1 起新键是 assetShares，旧键按一对一代际翻译）: " + entry);
       }
       for (JsonNode node : optionalArray(entry, "assetShares")) {
-        addAssetShare(assetShares, assetShareSequences, node, false);
+        addOwnershipStake(assetShares, ownershipStakeSequences, node, false);
       }
       for (JsonNode node : optionalArray(entry, "useRights")) {
-        addAssetShare(assetShares, assetShareSequences, node, true);
+        addOwnershipStake(assetShares, ownershipStakeSequences, node, true);
       }
       // 旧载荷：旧 Industry 的实例字段（operator/capacity/progress/cycle*）⇒ 合成默认 unit + 整额 OWNED 份额。
       Map<String, JsonNode> unitNodesById = new LinkedHashMap<>();
@@ -402,7 +402,7 @@ final class EconomyPayloads {
         // 只有"这一产业已有实物份额"时才建 unit（旧档 capacity 全 0 时没有份额 ⇒ 旧行为规模恒 0，不造假 unit）。
         if (!hasShareForIndustry(assetShares, spec.template().id())) {
           synthesizeOwnedShares(
-              assetShares, assetShareSequences, spec.template().id(), operator, spec.capacity());
+              assetShares, ownershipStakeSequences, spec.template().id(), operator, spec.capacity());
         }
         if (hasShareForIndustry(assetShares, spec.template().id())) {
           JsonNode operatorNode =
@@ -441,7 +441,7 @@ final class EconomyPayloads {
             optionalObject(unitNode, "operator") == null
                 ? RegimeOperators.defaultOperator(industry.regime(), industryId)
                 : actorRef(optionalObject(unitNode, "operator"));
-        ProductionUnit unit = unit(unitNode, industry, operator);
+        ProductionProcess unit = unit(unitNode, industry, operator);
         if (units.putIfAbsent(unit.id(), unit) != null) {
           throw new IllegalArgumentException("同一份载荷里 unit 重复: " + unit.id());
         }
@@ -454,7 +454,7 @@ final class EconomyPayloads {
       }
       // ★ 配额 activity → unit：新载荷必须直接给 unit id；旧载荷按 actor.id() 当产业串找唯一 unit 改写。
       Map<String, List<ProductionUnitId>> unitsByIndustry = new LinkedHashMap<>();
-      for (ProductionUnit unit : units.values()) {
+      for (ProductionProcess unit : units.values()) {
         unitsByIndustry
             .computeIfAbsent(unit.industry().value(), ignored -> new ArrayList<>())
             .add(unit.id());
@@ -476,13 +476,13 @@ final class EconomyPayloads {
         }
       }
       for (ProductionUnitId unitId : entryUnitIds) {
-        ProductionUnit unit = units.get(unitId);
+        ProductionProcess unit = units.get(unitId);
         if (unit == null || !industries.containsKey(unit.industry())) {
           continue;
         }
         Industry industry = industries.get(unit.industry());
         JsonNode relationNode = relationNodesByUnit.get(unitId);
-        ProductionRelation relation =
+        ProductionRules relation =
             relationNode == null || relationNode.isNull()
                 ? RegimeRelations.defaultRelation(
                     industry.regime(),
@@ -553,7 +553,7 @@ final class EconomyPayloads {
         classStructures,
         classPositions,
         classMemberships,
-        // ★★ E2：生产组织**不由创世载荷声明** —— 必须留给 EconomyOrganizationSettlement 的自动组织阶段
+        // ★★ E2：生产组织**不由创世载荷声明** —— 必须留给 EconomyEnterpriseSettlement 的自动组织阶段
         //   在 modes 非空后生成（手种 = 第二真相）；生产资料规则则由 P1 的 assetRules 键显式给出。
         Map.of(),
         assetRules,
@@ -677,16 +677,16 @@ final class EconomyPayloads {
       }
       ClassStructureId id = ClassStructureId.parse(requireText(node, "id"));
       ProductionModeId modeId = ProductionModeId.parse(requireText(node, "modeId"));
-      Map<ClassPositionId, ClassPosition> positions = new LinkedHashMap<>();
+      Map<ClassPositionId, ProductionRole> positions = new LinkedHashMap<>();
       for (JsonNode positionNode : requireArray(node, "positions")) {
-        ClassPosition position = classPosition(positionNode);
+        ProductionRole position = productionRole(positionNode);
         if (positions.putIfAbsent(position.id(), position) != null) {
           throw new IllegalArgumentException(
               "同一份 classStructure 里 position id 重复: " + position.id());
         }
       }
       Map<ClassPositionId, Long> shares =
-          classPositionShareMap(
+          productionRoleShareMap(
               optionalObject(node, "defaultSharesPerMille"),
               "classStructures[].defaultSharesPerMille");
       ClassStructure structure = new ClassStructure(id, modeId, positions, shares);
@@ -701,13 +701,13 @@ final class EconomyPayloads {
    * ★★ <b>顶层可选 {@code classPositions} 数组</b>（缺键 ⇒ 空表）。形状与 classStructures 内嵌的位置逐字相同；
    * 两条路径都构造同值对象，随后由 {@link EconomyData} 判"结构内位置 == 全局位置表"。
    */
-  private static Map<ClassPositionId, ClassPosition> parseClassPositions(JsonNode payload) {
-    Map<ClassPositionId, ClassPosition> positions = new LinkedHashMap<>();
+  private static Map<ClassPositionId, ProductionRole> parseProductionRoles(JsonNode payload) {
+    Map<ClassPositionId, ProductionRole> positions = new LinkedHashMap<>();
     for (JsonNode node : optionalArray(payload, "classPositions")) {
       if (!node.isObject()) {
         throw new IllegalArgumentException("classPositions 的每项必须是对象: " + node);
       }
-      ClassPosition position = classPosition(node);
+      ProductionRole position = productionRole(node);
       if (positions.putIfAbsent(position.id(), position) != null) {
         throw new IllegalArgumentException("同一份载荷里 classPosition id 重复: " + position.id());
       }
@@ -716,42 +716,42 @@ final class EconomyPayloads {
   }
 
   /** 一个阶层位置节点：id/modeId/name + 三个结构维词表 + 可选 ruleExtensions（缺键 ⇒ 空表）。 */
-  private static ClassPosition classPosition(JsonNode node) {
-    return classPosition(node, null);
+  private static ProductionRole productionRole(JsonNode node) {
+    return productionRole(node, null);
   }
 
   /**
-   * 一个阶层位置节点（同 {@link #classPosition(JsonNode)}），{@code modeId} 可缺省为 {@code defaultModeId}。
+   * 一个阶层位置节点（同 {@link #productionRole(JsonNode)}），{@code modeId} 可缺省为 {@code defaultModeId}。
    *
    * <p>★ P7 起 {@code economy.GmAdjust} 的两个 class 结构编辑 kind 复用本解析：{@code upsertClassStructure}
    * 的每个位置在 {@code classStructure.modeId} 缺省时取结构自身 modeId（给了则逐值参与后续一致性判据）；播种路径仍以 {@code null} 调本方法 ⇒
    * {@code modeId} 必填的旧行为逐字不变。
    */
-  static ClassPosition classPosition(JsonNode node, String defaultModeId) {
+  static ProductionRole productionRole(JsonNode node, String defaultModeId) {
     ClassPositionId id = ClassPositionId.parse(requireText(node, "id"));
     ProductionModeId modeId =
         node.hasNonNull("modeId")
             ? ProductionModeId.parse(requireText(node, "modeId"))
             : ProductionModeId.parse(
                 defaultModeId == null ? requireText(node, "modeId") : defaultModeId);
-    ClassPosition.RelationToMeans relationToMeans =
+    ProductionRole.RelationToMeans relationToMeans =
         enumValue(
-            ClassPosition.RelationToMeans.class,
+            ProductionRole.RelationToMeans.class,
             requireText(node, "relationToMeans"),
             "classPositions[].relationToMeans");
-    ClassPosition.LaborRole laborRole =
+    ProductionRole.LaborRole laborRole =
         enumValue(
-            ClassPosition.LaborRole.class,
+            ProductionRole.LaborRole.class,
             requireText(node, "laborRole"),
             "classPositions[].laborRole");
-    ClassPosition.SurplusRole surplusRole =
+    ProductionRole.SurplusRole surplusRole =
         enumValue(
-            ClassPosition.SurplusRole.class,
+            ProductionRole.SurplusRole.class,
             requireText(node, "surplusRole"),
             "classPositions[].surplusRole");
     Map<String, String> extensions =
         stringMap(optionalObject(node, "ruleExtensions"), "classPositions[].ruleExtensions");
-    return new ClassPosition(
+    return new ProductionRole(
         id, modeId, requireText(node, "name"), relationToMeans, laborRole, surplusRole, extensions);
   }
 
@@ -772,9 +772,9 @@ final class EconomyPayloads {
       ClassPositionId original = ClassPositionId.parse(requireText(node, "originalPositionId"));
       ClassPositionId current = ClassPositionId.parse(requireText(node, "currentPositionId"));
       Set<ClassPositionId> participating =
-          optionalClassPositionIds(node, "participatingPositionIds");
+          optionalProductionRoleIds(node, "participatingPositionIds");
       Map<ClassPositionId, Long> retainedShares =
-          classPositionShareMap(
+          productionRoleShareMap(
               optionalObject(node, "retainedShares"), "classStandings[].retainedShares");
       long consecutiveDebtStressCycles = optionalLong(node, "consecutiveDebtStressCycles", 0L);
       long lastTransitionDay = optionalLong(node, "lastTransitionDay", 0L);
@@ -797,7 +797,7 @@ final class EconomyPayloads {
   }
 
   /** 可选的位置 id 数组（缺键 / null ⇒ 空集；元素必须是非空白文本，走 {@link ClassPositionId#parse}）。 */
-  private static Set<ClassPositionId> optionalClassPositionIds(JsonNode node, String field) {
+  private static Set<ClassPositionId> optionalProductionRoleIds(JsonNode node, String field) {
     JsonNode values = node.get(field);
     if (values == null || values.isNull()) {
       return Set.of();
@@ -895,7 +895,7 @@ final class EconomyPayloads {
   }
 
   /** 位置 id → 千分比/数量表（用于 classStructures.defaultSharesPerMille 与 classStandings.retainedShares）。 */
-  static Map<ClassPositionId, Long> classPositionShareMap(JsonNode object, String field) {
+  static Map<ClassPositionId, Long> productionRoleShareMap(JsonNode object, String field) {
     Map<ClassPositionId, Long> out = new LinkedHashMap<>();
     if (object == null) {
       return out;
@@ -910,7 +910,7 @@ final class EconomyPayloads {
     return out;
   }
 
-  /** 字符串表（用于 {@code ClassPosition.ruleExtensions}）；值非文本 ⇒ 抛。 */
+  /** 字符串表（用于 {@code ProductionRole.ruleExtensions}）；值非文本 ⇒ 抛。 */
   static Map<String, String> stringMap(JsonNode object, String field) {
     Map<String, String> out = new LinkedHashMap<>();
     if (object == null) {
@@ -946,7 +946,7 @@ final class EconomyPayloads {
    * @param activity 关系挂的那个 unit（键 = 它，铁律 1）
    * @param operator 该 unit 的经营者（显式 relation 里的 operator 必须与它逐值相等）
    */
-  private static ProductionRelation relation(
+  private static ProductionRules relation(
       JsonNode relationNode,
       Industry industry,
       ProductionUnitId activity,
@@ -976,21 +976,21 @@ final class EconomyPayloads {
     // ★★ **H3（裁定 C3）：投入由谁出** —— 可选键，形状与补偿规则的 recipient 逐字同款（`{actor:{kind,id}}` 或
     //   `{cohort:"0_0|rural|landlord"}`，恰给其一）。★ **缺键 ⇒ 取 operator**（= 四档默认，见 RegimeRelations）：
     //   这是旧档兼容的那一处边缘 —— H3 之前的 relation JSON 没有这个键，而"旧档读不回来"不是兼容，是事故。
-    //   ★ 缺省**不在这里另写一遍值**：交给 ProductionRelation 的构造期缺省（null ⇒ ToActor(operator)），
+    //   ★ 缺省**不在这里另写一遍值**：交给 ProductionRules 的构造期缺省（null ⇒ ToActor(operator)），
     //     一处拼写点（本层只解析"给了什么"，不发明"没给时是什么"）。
     JsonNode inputSupplierNode = optionalObject(relationNode, "inputSupplier");
-    Recipient inputSupplier =
+    Payee inputSupplier =
         inputSupplierNode == null ? null : recipient(inputSupplierNode, "inputSupplier");
     List<CompensationRule> rules = new ArrayList<>();
     for (JsonNode rule : optionalArray(relationNode, "rules")) {
       rules.add(compensationRule(rule));
     }
-    // ★ S1：劳动来源（可选键；缺省留给 ProductionRelation 的构造期兜底 SELF，与旧档口径一致）。
+    // ★ S1：劳动来源（可选键；缺省留给 ProductionRules 的构造期兜底 SELF，与旧档口径一致）。
     LaborSource laborSource =
         relationNode.hasNonNull("laborSource")
             ? LaborSource.parse(requireText(relationNode, "laborSource"))
             : null;
-    return new ProductionRelation(
+    return new ProductionRules(
         activity, operator, inputSupplier, rules, residualOwner, laborSource);
   }
 
@@ -1004,7 +1004,7 @@ final class EconomyPayloads {
    * @param node 受方节点（非 null；调用方已确认它是对象）
    * @param what 字段名（进错误消息；如 {@code "recipient"} / {@code "inputSupplier"}）
    */
-  static Recipient recipient(JsonNode node, String what) {
+  static Payee recipient(JsonNode node, String what) {
     JsonNode actorNode = optionalObject(node, "actor");
     boolean hasCohort = node.hasNonNull("cohort");
     boolean hasHousehold = node.hasNonNull("household");
@@ -1014,12 +1014,12 @@ final class EconomyPayloads {
           what + " 必须恰给 actor / household / cohort 之一（给 " + given + " 个）: " + node);
     }
     if (actorNode != null) {
-      return new Recipient.ToActor(actorRef(actorNode));
+      return new Payee.ToActor(actorRef(actorNode));
     }
     if (hasHousehold) {
-      return new Recipient.ToHousehold(HouseholdId.parse(requireText(node, "household")));
+      return new Payee.ToHousehold(HouseholdId.parse(requireText(node, "household")));
     }
-    return new Recipient.ToCohort(CohortKey.parse(requireText(node, "cohort")));
+    return new Payee.ToCohort(CohortKey.parse(requireText(node, "cohort")));
   }
 
   /**
@@ -1034,12 +1034,12 @@ final class EconomyPayloads {
    * 那条纪律的落点：真档的关系载荷全是 {@code basis}，少了这条翻译，整个真档播不出来。
    */
   static CompensationRule compensationRule(JsonNode node) {
-    JsonNode recipientNode = optionalObject(node, "recipient");
-    if (recipientNode == null) {
+    JsonNode payeeNode = optionalObject(node, "recipient");
+    if (payeeNode == null) {
       throw new IllegalArgumentException("补偿规则的字段 recipient 必须是对象: " + node);
     }
     // ★ H3 起受方的解析与关系的 inputSupplier **共用同一处**（见 recipient）：同一套"恰其一"的规则只有一个拼写点。
-    Recipient recipient = recipient(recipientNode, "recipient");
+    Payee recipient = recipient(payeeNode, "recipient");
     RuleType type = RuleType.parse(requireText(node, "type"));
     return new CompensationRule(
         type,
@@ -1134,10 +1134,10 @@ final class EconomyPayloads {
   private static HouseholdLaborCommitment canonicalAllocationActivity(
       HouseholdLaborCommitment laborCommitment,
       Map<String, List<ProductionUnitId>> unitsByIndustry,
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       JsonNode entry) {
     ProductionUnitId byActivity = new ProductionUnitId(laborCommitment.activity());
-    ProductionUnit direct = units.get(byActivity);
+    ProductionProcess direct = units.get(byActivity);
     if (direct != null) {
       // ★ activity 已是 unit id：actor 必须是该 unit 的 operator（守卫要求两者一致）——旧载荷里 actor 可能是
       //   产业 id（默认经营者同 id 时本就相等），这里按 unit.operator 对齐。
@@ -1165,7 +1165,7 @@ final class EconomyPayloads {
       candidates = unitsByIndustry.getOrDefault(laborCommitment.activity(), List.of());
     }
     if (candidates.size() == 1) {
-      ProductionUnit resolved = units.get(candidates.get(0));
+      ProductionProcess resolved = units.get(candidates.get(0));
       return new HouseholdLaborCommitment(
           laborCommitment.id(),
           laborCommitment.group(),
@@ -1236,7 +1236,7 @@ final class EconomyPayloads {
   // ── 实物资产份额（R3B.1）────────────────────────────────────────────────────────────
 
   /**
-   * ★★ <b>一条实物资产份额载荷 → {@link AssetShare}</b>。
+   * ★★ <b>一条实物资产份额载荷 → {@link OwnershipStake}</b>。
    *
    * <p>★ <b>新形状</b>：{@code {industry, owner:{kind,id}, operator:{kind,id}, asset, quantity, kind}}
    * —— {@code owner} 与 {@code operator} 是两件事，允许不等（租佃/委托）。
@@ -1244,11 +1244,11 @@ final class EconomyPayloads {
    * <p>★ <b>旧形状（{@code useRights} 数组）</b>：{@code {activity, holder, asset, quantity, kind}} ⇒ 一对一翻译
    * {@code holder ⇒ owner=operator}、{@code activity ⇒ industry}；不拆地主/佃户/多 unit（R3B.1 边界）。
    *
-   * <p>★ <b>id 一律不信任载荷、由确定性序号生成</b>（{@link AssetShare#idOf}）：同一份载荷重放得到同一批 id， 禁止随机数/时间戳；旧档里已落盘的
+   * <p>★ <b>id 一律不信任载荷、由确定性序号生成</b>（{@link OwnershipStake#idOf}）：同一份载荷重放得到同一批 id， 禁止随机数/时间戳；旧档里已落盘的
    * {@code use-…} id 不走本方法（那条路在 {@code EconomyCodec} 里原样保留）。
    */
-  private static void addAssetShare(
-      Map<AssetShareId, AssetShare> out,
+  private static void addOwnershipStake(
+      Map<AssetShareId, OwnershipStake> out,
       Map<String, Long> sequences,
       JsonNode node,
       boolean legacy) {
@@ -1283,18 +1283,18 @@ final class EconomyPayloads {
       throw new IllegalArgumentException("资产份额的 asset 不是生产资料种类: " + node, e);
     }
     long quantity = requireLong(node, "quantity");
-    AssetShare.RightKind kind;
+    OwnershipStake.RightKind kind;
     try {
-      kind = AssetShare.RightKind.valueOf(requireText(node, "kind"));
+      kind = OwnershipStake.RightKind.valueOf(requireText(node, "kind"));
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("资产份额的 kind 不是 OWNED/TENANCY/COMMUNAL: " + node, e);
     }
     String sequenceKey = industry + "|" + asset + "|" + owner + "|" + operator + "|" + kind;
     long sequence = sequences.getOrDefault(sequenceKey, 0L);
     sequences.put(sequenceKey, sequence + 1L);
-    AssetShare share =
-        new AssetShare(
-            AssetShare.idOf(industry, asset, owner, operator, kind, sequence),
+    OwnershipStake share =
+        new OwnershipStake(
+            OwnershipStake.idOf(industry, asset, owner, operator, kind, sequence),
             industry,
             asset,
             owner,
@@ -1449,12 +1449,12 @@ final class EconomyPayloads {
   }
 
   /**
-   * ★★ <b>R3B.2：一个 unit 载荷节点 → {@link ProductionUnit}</b>：{@code {id?, industry, operator?,
+   * ★★ <b>R3B.2：一个 unit 载荷节点 → {@link ProductionProcess}</b>：{@code {id?, industry, operator?,
    * modeKey?, progressDays?, cycleLaborMilli?, cycleInputUsedMilli?}}。 {@code id} 缺省 = {@link
    * ProductionUnitId#idOf}；{@code operator} 缺省 = 该产业 regime 的默认经营者； {@code modeKey} 缺省 = {@code
    * industry.id().value()}（旧档口径）。
    */
-  private static ProductionUnit unit(JsonNode node, Industry industry, ActorRef operator) {
+  private static ProductionProcess unit(JsonNode node, Industry industry, ActorRef operator) {
     String idText = optionalText(node, "id").orElse(null);
     ProductionUnitId id =
         idText == null
@@ -1465,14 +1465,14 @@ final class EconomyPayloads {
     long cycleLaborMilli = optionalLong(node, "cycleLaborMilli", 0L);
     Map<CommodityId, Long> cycleInputUsed =
         commodityMap(optionalObject(node, "cycleInputUsedMilli"), "cycleInputUsedMilli");
-    return new ProductionUnit(
+    return new ProductionProcess(
         id, industry.id(), operator, modeKey, progressDays, cycleLaborMilli, cycleInputUsed);
   }
 
   /** 某个产业在 {@code assetShares} 表里是否已有份额行（值内 industry 命中）。 */
   private static boolean hasShareForIndustry(
-      Map<AssetShareId, AssetShare> assetShares, IndustryId industry) {
-    for (AssetShare share : assetShares.values()) {
+      Map<AssetShareId, OwnershipStake> assetShares, IndustryId industry) {
+    for (OwnershipStake share : assetShares.values()) {
       if (share.industry().equals(industry)) {
         return true;
       }
@@ -1482,7 +1482,7 @@ final class EconomyPayloads {
 
   /** 旧载荷的 capacity 表 ⇒ 逐项整额 OWNED 份额（含 0 值；capacity 空则退回 capacityPerUnit 的键、数量 0）。 */
   private static void synthesizeOwnedShares(
-      Map<AssetShareId, AssetShare> out,
+      Map<AssetShareId, OwnershipStake> out,
       Map<String, Long> sequences,
       IndustryId industry,
       ActorRef operator,
@@ -1498,8 +1498,8 @@ final class EconomyPayloads {
       share.set("operator", operatorNode.deepCopy());
       share.put("asset", entry.getKey().name());
       share.put("quantity", entry.getValue());
-      share.put("kind", AssetShare.RightKind.OWNED.name());
-      addAssetShare(out, sequences, share, false);
+      share.put("kind", OwnershipStake.RightKind.OWNED.name());
+      addOwnershipStake(out, sequences, share, false);
     }
   }
 
@@ -1823,9 +1823,9 @@ final class EconomyPayloads {
               requireText(node, "priceSource"),
               "liquidationPolicies[].priceSource");
       long policyValuePerUnitMilli = requireLong(node, "policyValuePerUnitMilli");
-      LiquidationPolicy.RecipientRule recipientRule =
+      LiquidationPolicy.PayeeRule recipientRule =
           enumValue(
-              LiquidationPolicy.RecipientRule.class,
+              LiquidationPolicy.PayeeRule.class,
               requireText(node, "recipientRule"),
               "liquidationPolicies[].recipientRule");
       LiquidationPolicy policy =

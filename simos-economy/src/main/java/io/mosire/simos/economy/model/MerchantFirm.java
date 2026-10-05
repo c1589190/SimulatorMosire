@@ -7,7 +7,7 @@ import java.util.Objects;
 /**
  * ★★ <b>商号持久状态（P10.1，7 hex 全链路架构 §3.2 的第 31 个组件值类型）</b>。
  *
- * <p>★★ <b>它是什么</b>：一个真实运转的承运商号（脚夫/个体户/老板三档）的不可变读数。商号本体仍然是 {@code ProductionOrganization(modeId =
+ * <p>★★ <b>它是什么</b>：一个真实运转的承运商号（脚夫/个体户/老板三档）的不可变读数。商号本体仍然是 {@code ProductionEnterprise(modeId =
  * merchant)}，本类型只是挂在它旁边的一行财务/运力/服务半径状态；<b>不另造商人实体</b> （身份 = {@link #organizationId()}，与 {@code
  * EconomyData.merchantFirms} 的键逐字相等）。
  *

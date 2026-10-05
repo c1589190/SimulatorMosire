@@ -56,7 +56,7 @@ public final class EconomyDayStepper implements AutoCloseable {
    * ★★ <b>P10.2：本周期利润/迁移累加器</b>（{@code modes} 非空才有；逐日喂当天账本，关账日 ⑦⑧⑨ 后在 {@code EconomySettlement}
    * 内复位）。旧档 {@code modes} 为空时恒为 {@code null} ⇒ 逐值不变。
    */
-  private final OrganizationProfitBook.CycleAccumulator profitCycle;
+  private final EnterpriseProfitBook.CycleAccumulator profitCycle;
 
   /** ★ M2.3/M2.4：最近一次 step 的区域市场报告（瞬态；L3 读数接它）。 */
   private MarketReport lastMarketReport;
@@ -123,7 +123,7 @@ public final class EconomyDayStepper implements AutoCloseable {
     this.famineMortalityPerMille = famineMortalityPerMille;
     this.parallelism = EconomyParallelism.requireNonNull(parallelism);
     this.profitCycle =
-        base.modes().isEmpty() ? null : new OrganizationProfitBook.CycleAccumulator();
+        base.modes().isEmpty() ? null : new EnterpriseProfitBook.CycleAccumulator();
   }
 
   /** ★ R2：本条会话的并行度（只读；见类注的"1 线程不是另一套实现"）。 */

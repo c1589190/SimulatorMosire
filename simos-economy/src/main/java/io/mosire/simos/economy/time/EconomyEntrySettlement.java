@@ -15,10 +15,10 @@ import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.HouseholdDemand;
@@ -28,7 +28,7 @@ import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OperatorCondition.IndustryStatus;
 import io.mosire.simos.economy.model.ProductionCandidate;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
@@ -46,7 +46,7 @@ import java.util.TreeMap;
 
 /**
  * ★★ <b>R4-E2b：候选预设 → 合条件主体的实际采用（运行期进入/试产）</b>—— 本片只做"GM 登记了预设 + 本格有有效需求"时， 让可行家户形成一条 {@code
- * OperatorCondition.IndustryStatus#TRIALING} 的新 {@code ProductionUnit}；<b>不做</b>自动发明、全局 ROI 切换、E3
+ * OperatorCondition.IndustryStatus#TRIALING} 的新 {@code ProductionProcess}；<b>不做</b>自动发明、全局 ROI 切换、E3
  * 经验、E4 梯度消费。
  *
  * <p>★★ <b>两段式（纯意向 + 执行）</b>，理由与计划一致：
@@ -69,7 +69,7 @@ import java.util.TreeMap;
  *   <li><b>资产</b>：{@code requiredAssets} 为空或全 0 ⇒ 不可行（本片没有"无资产也能产"的路）；自有可用份额只认 <b>已登记在候选产业 id
  *       下</b>、权利性质 ∈ {@code acceptedRightKinds} 的份额；不足部分从 {@code assetSource} 名下<b>空闲</b>（{@code
  *       operator==owner}）、同格的份额拆分：原份额只减数量（减到 0 则删行），新份额 owner 不变、operator = 家户、kind 按 {@code
- *       acceptedRightKinds} 选，并登记在候选产业 id 下（否则 {@code ProductionUnitBook} 的 {@code
+ *       acceptedRightKinds} 选，并登记在候选产业 id 下（否则 {@code ProductionProcessBook} 的 {@code
  *       (industry,operator)} 作用域取不到它）。<b>不新增总量、不删 owner</b>；
  *   <li><b>劳动</b>：家户折算后可用劳动（{@code participationAdjustedLaborMilli} − 已分配）与所选人口批次余量（{@code
  *       availableLabor} − 已分配）都 ≥ {@code laborPerUnit × trialScale}；批次按成员份额选（没有成员份额的旧夹具退回该户既有配额
@@ -107,7 +107,7 @@ final class EconomyEntrySettlement {
 
   /** 一条资产拆分腿：从 {@code sourceShare} 拆出 {@code quantity} 给新 unit（新份额 owner 不变、operator=家户）。 */
   record AssetGrant(
-      AssetShareId sourceShare, AssetKind asset, long quantity, AssetShare.RightKind kind) {
+      AssetShareId sourceShare, AssetKind asset, long quantity, OwnershipStake.RightKind kind) {
 
     AssetGrant {
       Objects.requireNonNull(sourceShare, "AssetGrant.sourceShare 不得为 null");
@@ -199,11 +199,11 @@ final class EconomyEntrySettlement {
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
       Map<HouseholdId, Map<PeopleLotId, Long>> composition,
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
-      Map<ProductionUnitId, ProductionRelation> relations,
+      Map<ProductionUnitId, ProductionRules> relations,
       long day) {
     Objects.requireNonNull(householdDemands, "demands");
     Objects.requireNonNull(candidates, "candidates");
@@ -272,11 +272,11 @@ final class EconomyEntrySettlement {
       List<EntryIntent> intents,
       Map<DemandId, HouseholdDemand> householdDemands,
       Map<IndustryId, Industry> industries,
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
-      Map<ProductionUnitId, ProductionRelation> relations,
+      Map<ProductionUnitId, ProductionRules> relations,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
@@ -376,7 +376,7 @@ final class EconomyEntrySettlement {
         return Attempt.rejection(reject(context, household, candidate, "DEMAND_TOO_SHORT"));
       }
       if (candidate.id().value().indexOf('.') >= 0) {
-        // ★ unit id / AssetShare id 都不允许 '.'（地址解析约定）；登记期未拦，进入期 fail-closed，不半建。
+        // ★ unit id / OwnershipStake id 都不允许 '.'（地址解析约定）；登记期未拦，进入期 fail-closed，不半建。
         return Attempt.rejection(reject(context, household, candidate, "CANDIDATE_ID_INVALID:dot"));
       }
       IndustryId industryId = IndustryHexKeys.id(candidate.id().value(), hex.q(), hex.r());
@@ -578,7 +578,7 @@ final class EconomyEntrySettlement {
       }
 
       // ⑤ 资产拆分的具体腿（自有份额已够的部分不动；只拆缺的部分）。
-      AssetShare.RightKind grantKind = chooseGrantKind(candidate.acceptedRightKinds());
+      OwnershipStake.RightKind grantKind = chooseGrantKind(candidate.acceptedRightKinds());
       List<AssetGrant> grants = new ArrayList<>();
       for (Map.Entry<AssetKind, Long> entry : required.entrySet()) {
         if (entry.getValue() <= 0L) {
@@ -600,7 +600,7 @@ final class EconomyEntrySettlement {
         }
         for (AssetShareId shareId :
             sourceShareIds(assetSource.get(), hex, entry.getKey(), context)) {
-          AssetShare share = context.tables.assetShares.get(shareId);
+          OwnershipStake share = context.tables.assetShares.get(shareId);
           if (share == null || share.quantity() <= 0L) {
             continue;
           }
@@ -697,7 +697,7 @@ final class EconomyEntrySettlement {
   private static boolean hasActiveDuplicate(
       ActorRef actor, ProductionCandidate candidate, EntryContext context) {
     for (ProductionUnitId unitId : context.unitIdsByOperator.getOrDefault(actor, List.of())) {
-      ProductionUnit unit = context.tables.units.get(unitId);
+      ProductionProcess unit = context.tables.units.get(unitId);
       if (unit == null) {
         continue;
       }
@@ -721,7 +721,7 @@ final class EconomyEntrySettlement {
   private static Map<AssetKind, Long> ownAssets(
       ActorRef actor,
       IndustryId industryId,
-      Set<AssetShare.RightKind> acceptedKinds,
+      Set<OwnershipStake.RightKind> acceptedKinds,
       EntryContext context) {
     Map<AssetKind, Long> sums = new LinkedHashMap<>();
     Set<AssetShareId> seen = new LinkedHashSet<>();
@@ -740,9 +740,9 @@ final class EconomyEntrySettlement {
 
   private static void mergeOwn(
       Map<AssetKind, Long> sums,
-      AssetShare share,
+      OwnershipStake share,
       IndustryId industryId,
-      Set<AssetShare.RightKind> acceptedKinds,
+      Set<OwnershipStake.RightKind> acceptedKinds,
       ActorRef actor) {
     if (share == null
         || !share.industry().equals(industryId)
@@ -758,7 +758,7 @@ final class EconomyEntrySettlement {
       ActorRef assetSource, HexCoord hex, Set<AssetKind> requiredKinds, EntryContext context) {
     Map<AssetKind, Long> sums = new LinkedHashMap<>();
     for (AssetShareId shareId : context.shareIdsByOwner.getOrDefault(assetSource, List.of())) {
-      AssetShare share = context.tables.assetShares.get(shareId);
+      OwnershipStake share = context.tables.assetShares.get(shareId);
       if (share == null
           || !share.operator().equals(share.owner())
           || !requiredKinds.contains(share.asset())
@@ -776,7 +776,7 @@ final class EconomyEntrySettlement {
     String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
     List<AssetShareId> ids = new ArrayList<>();
     for (AssetShareId shareId : context.shareIdsByOwner.getOrDefault(assetSource, List.of())) {
-      AssetShare share = context.tables.assetShares.get(shareId);
+      OwnershipStake share = context.tables.assetShares.get(shareId);
       if (share == null
           || !share.operator().equals(share.owner())
           || !share.asset().equals(asset)
@@ -791,12 +791,12 @@ final class EconomyEntrySettlement {
   }
 
   /** 拆分后新份额的权利性质：按 acceptedRightKinds 里选 TENANCY → COMMUNAL → OWNED（登记期已保证非空）。 */
-  private static AssetShare.RightKind chooseGrantKind(Set<AssetShare.RightKind> acceptedKinds) {
-    for (AssetShare.RightKind kind :
+  private static OwnershipStake.RightKind chooseGrantKind(Set<OwnershipStake.RightKind> acceptedKinds) {
+    for (OwnershipStake.RightKind kind :
         List.of(
-            AssetShare.RightKind.TENANCY,
-            AssetShare.RightKind.COMMUNAL,
-            AssetShare.RightKind.OWNED)) {
+            OwnershipStake.RightKind.TENANCY,
+            OwnershipStake.RightKind.COMMUNAL,
+            OwnershipStake.RightKind.OWNED)) {
       if (acceptedKinds.contains(kind)) {
         return kind;
       }
@@ -812,13 +812,13 @@ final class EconomyEntrySettlement {
    * 全过之后才写产业模板/unit/relation/condition/份额/配额。返回 {@link Optional#empty()} = 成功。
    *
    * <p>★★ <b>E5a 如实边界</b>：本方法里的份额写是**跨产业重新登记**（把 assetSource 的空闲份额改挂到候选的新
-   * industryId，再交给本户经营），不是纯所有权/经营权转移 ⇒ 不委托 {@link AssetShareBook}（Book 的守恒式是逐 {@code (industry,
+   * industryId，再交给本户经营），不是纯所有权/经营权转移 ⇒ 不委托 {@link OwnershipStakeBook}（Book 的守恒式是逐 {@code (industry,
    * asset)} 的，改产业不在它语义内）。这是记为遗留的显式例外，不是新增写路径；E5b 清算的转移/拆分只走 Book。
    */
   private static Optional<String> applyIntent(EntryIntent intent, EntryContext context) {
     Tables tables = context.tables;
     for (AssetGrant grant : intent.grants()) {
-      AssetShare source = tables.assetShares.get(grant.sourceShare());
+      OwnershipStake source = tables.assetShares.get(grant.sourceShare());
       if (source == null) {
         return Optional.of("GRANT_SOURCE_GONE:" + grant.sourceShare().value());
       }
@@ -865,7 +865,7 @@ final class EconomyEntrySettlement {
         intent.industryId(), templateFor(intent.candidate(), intent.industryId()));
     tables.units.put(
         unitId,
-        new ProductionUnit(
+        new ProductionProcess(
             unitId,
             intent.industryId(),
             intent.householdActor(),
@@ -875,10 +875,10 @@ final class EconomyEntrySettlement {
             Map.of()));
     tables.relations.put(
         unitId,
-        new ProductionRelation(
+        new ProductionRules(
             unitId,
             intent.householdActor(),
-            new Recipient.ToHousehold(intent.household()),
+            new Payee.ToHousehold(intent.household()),
             List.of(),
             intent.householdActor(),
             intent.candidate().laborSource()));
@@ -910,14 +910,14 @@ final class EconomyEntrySettlement {
             0L,
             0L));
     for (AssetGrant grant : intent.grants()) {
-      AssetShare source = tables.assetShares.get(grant.sourceShare());
+      OwnershipStake source = tables.assetShares.get(grant.sourceShare());
       long left = source.quantity() - grant.quantity();
       if (left == 0L) {
         tables.assetShares.remove(grant.sourceShare());
       } else {
         tables.assetShares.put(
             source.id(),
-            new AssetShare(
+            new OwnershipStake(
                 source.id(),
                 source.industry(),
                 source.asset(),
@@ -936,7 +936,7 @@ final class EconomyEntrySettlement {
               grant.kind());
       tables.assetShares.put(
           newId,
-          new AssetShare(
+          new OwnershipStake(
               newId,
               intent.industryId(),
               grant.asset(),
@@ -972,11 +972,11 @@ final class EconomyEntrySettlement {
   }
 
   /**
-   * ★★ <b>E5a 如实边界：本方法仍是份额表的直接写入点，不委托 {@link AssetShareBook}</b>。理由：进入动作要把 assetSource
+   * ★★ <b>E5a 如实边界：本方法仍是份额表的直接写入点，不委托 {@link OwnershipStakeBook}</b>。理由：进入动作要把 assetSource
    * 的空闲份额<b>改登记到候选的新产业</b>（{@code intent.industryId()}）后交给本户经营，这样新 unit 才 通过 {@code
-   * ProductionUnitBook.usableAssets} 的 {@code industry==unit.industry} 判据看见它；而 Book 的守恒式是 逐 {@code
+   * ProductionProcessBook.usableAssets} 的 {@code industry==unit.industry} 判据看见它；而 Book 的守恒式是 逐 {@code
    * (industry, asset)} 的，跨产业的重新登记不在它的语义内。这是记为遗留的显式例外，不是新增写路径； E5b 清算新增的转移/拆分一律只走 {@link
-   * AssetShareBook}。
+   * OwnershipStakeBook}。
    */
   private static AssetShareId nextShareId(
       Tables tables,
@@ -984,9 +984,9 @@ final class EconomyEntrySettlement {
       AssetKind asset,
       ActorRef owner,
       ActorRef operator,
-      AssetShare.RightKind kind) {
+      OwnershipStake.RightKind kind) {
     for (long sequence = 0L; ; sequence++) {
-      AssetShareId candidate = AssetShare.idOf(industry, asset, owner, operator, kind, sequence);
+      AssetShareId candidate = OwnershipStake.idOf(industry, asset, owner, operator, kind, sequence);
       if (!tables.assetShares.containsKey(candidate)) {
         return candidate;
       }
@@ -1103,11 +1103,11 @@ final class EconomyEntrySettlement {
   /** 工作副本组（plan 用浅拷贝，execute 用会话真副本）。 */
   private record Tables(
       Map<IndustryId, Industry> industries,
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
-      Map<ProductionUnitId, ProductionRelation> relations) {
+      Map<ProductionUnitId, ProductionRules> relations) {
 
     Tables {
       Objects.requireNonNull(industries, "Tables.industries 不得为 null");
@@ -1155,12 +1155,12 @@ final class EconomyEntrySettlement {
       this.householdMoney = householdMoney;
       this.markets = markets;
       this.day = day;
-      for (ProductionUnit unit : tables.units.values()) {
+      for (ProductionProcess unit : tables.units.values()) {
         unitIdsByOperator
             .computeIfAbsent(unit.operator(), ignored -> new ArrayList<>())
             .add(unit.id());
       }
-      for (AssetShare share : tables.assetShares.values()) {
+      for (OwnershipStake share : tables.assetShares.values()) {
         shareIdsByOwner
             .computeIfAbsent(share.owner(), ignored -> new ArrayList<>())
             .add(share.id());

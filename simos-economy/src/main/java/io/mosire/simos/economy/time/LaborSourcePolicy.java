@@ -2,7 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
 
 /**
@@ -76,8 +76,8 @@ final class LaborSourcePolicy {
     return type == RuleType.FIXED_IN_KIND_PER_LABOR || type == RuleType.FIXED_MONEY_WAGE;
   }
 
-  /** 关系里的制度档（缺关系 ⇒ 按 {@link LaborSource#SELF}，与 {@code ProductionRelation} 的缺省同值）。 */
-  static LaborSource sourceOf(ProductionRelation relation) {
+  /** 关系里的制度档（缺关系 ⇒ 按 {@link LaborSource#SELF}，与 {@code ProductionRules} 的缺省同值）。 */
+  static LaborSource sourceOf(ProductionRules relation) {
     return relation == null ? LaborSource.SELF : relation.laborSource();
   }
 }

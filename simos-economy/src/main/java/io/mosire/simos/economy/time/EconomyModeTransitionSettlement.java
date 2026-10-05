@@ -12,8 +12,8 @@ import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassPosition;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
@@ -22,9 +22,9 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionOrganization.Status;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionEnterprise.Status;
+import io.mosire.simos.economy.model.ProductionProcess;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -45,11 +45,11 @@ import java.util.TreeSet;
  * <ul>
  *   <li><b>迁移（按模式身份）</b>：旧组织 → {@code EXITING}（保留 unitId/operator/laborSources/assetSources/
  *       inputSources/outputOwnership/relationTemplateRef）；新组织 {@code ACTIVE} 复用**同一条** {@code
- *       ProductionUnit}（不复制实物、不新 progress）；该 unit 的 {@code modeKey} 改为新 mode key；旧 {@code
+ *       ProductionProcess}（不复制实物、不新 progress）；该 unit 的 {@code modeKey} 改为新 mode key；旧 {@code
  *       Pledge.modeId == fromMode} 的质押改成 toMode（暴露出的 mode 维）；对旧组织 laborSources ∪ organizer 家户逐户写
  *       {@link ClassShare}（旧位置 retain‰、新位置 (1000−retain)‰，0‰ 省略）并更新 {@link HouseholdClassMembership}
  *       （currentPosition/retainedShares/lastTransitionDay=day/reason；originalPosition 不动）。
- *   <li><b>按身份不动</b>：{@code AssetShare} 本身按 industry 存在，owner/operator/quantity/kind 一律不拆不复制；
+ *   <li><b>按身份不动</b>：{@code OwnershipStake} 本身按 industry 存在，owner/operator/quantity/kind 一律不拆不复制；
  *       债务是家户间债权，不随 mode 复制；已有 {@code HouseholdLaborCommitment} 的 activity 就是复用中的 unit id，原样有效； relation 挂在
  *       unit 上，原样有效。
  *   <li><b>失败不改状态</b>：规划阶段（找 mode/structure/position/hex/unit）任一具名失败 ⇒ 该 transition 落 {@code FAILED
@@ -59,7 +59,7 @@ import java.util.TreeSet;
  * <p>★★ <b>位置匹配</b>：由旧 position 的 {@code (relationToMeans, surplusRole)} 在 toMode 的 ClassStructure
  * 里找 同维位置；多个 ⇒ 取 id 字典序最小；一个都没有 ⇒ FAILED {@code NO_MATCHING_POSITION}。
  *
- * <p>★★ <b>格键</b>：从旧组织的 unit 的 industry id 与 assetSources 的 AssetShare.industry id 经 {@link
+ * <p>★★ <b>格键</b>：从旧组织的 unit 的 industry id 与 assetSources 的 OwnershipStake.industry id 经 {@link
  * IndustryHexKeys#hexKeyOf} 推导；恰好一个不同格键才继续，0 个 ⇒ {@code NO_HEX_KEY}，多个 ⇒ {@code
  * AMBIGUOUS_HEX_KEY}。★ 家户 = organizer 是 HOUSEHOLD 时直接反查，否则取唯一的 laborSource；推不出 ⇒ {@code
  * NO_ORGANIZER_HOUSEHOLD}。
@@ -114,7 +114,7 @@ final class EconomyModeTransitionSettlement {
    * @param base 结算前的不可变状态（读 modes/classStructures/classPositions 三张只读表）
    * @param day 当前世界日（{@code effectiveDay <= day} 才应用；也是 standing 的 lastTransitionDay）
    * @param rows 家户行工作副本（读 household 存在性）
-   * @param organizations 生产组织工作副本（读旧组织、写旧 EXITING + 新 ACTIVE）
+   * @param enterprises 生产组织工作副本（读旧组织、写旧 EXITING + 新 ACTIVE）
    * @param units 生产单元工作副本（写复用 unit 的 modeKey）
    * @param assetShares 实物资产份额表（只读；用于推导 org 的格键）
    * @param pledges 质押表工作副本（写 modeId）
@@ -126,16 +126,16 @@ final class EconomyModeTransitionSettlement {
       EconomyData base,
       long day,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations,
-      LinkedHashMap<ProductionUnitId, ProductionUnit> units,
-      Map<AssetShareId, AssetShare> assetShares,
+      LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      LinkedHashMap<ProductionUnitId, ProductionProcess> units,
+      Map<AssetShareId, OwnershipStake> assetShares,
       LinkedHashMap<PledgeId, Pledge> pledges,
       LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships,
       LinkedHashMap<ModeTransitionId, ModeTransition> modeTransitions,
       LinkedHashMap<ClassShareId, ClassShare> classShares) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(householdEconomies, "rows");
-    Objects.requireNonNull(organizations, "organizations");
+    Objects.requireNonNull(enterprises, "organizations");
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(assetShares, "assetShares");
     Objects.requireNonNull(pledges, "pledges");
@@ -165,7 +165,7 @@ final class EconomyModeTransitionSettlement {
               transition,
               day,
               householdEconomies,
-              organizations,
+              enterprises,
               units,
               assetShares,
               pledges,
@@ -191,8 +191,8 @@ final class EconomyModeTransitionSettlement {
         continue;
       }
       // ★ 规划已全部通过：下面只落工作副本，不再做可失败判断（构造期不变量异常照常抛出，不伪装成 FAILED）。
-      organizations.put(plan.exitingOrganization.id(), plan.exitingOrganization);
-      organizations.put(plan.newOrganization.id(), plan.newOrganization);
+      enterprises.put(plan.exitingOrganization.id(), plan.exitingOrganization);
+      enterprises.put(plan.newOrganization.id(), plan.newOrganization);
       units.put(plan.updatedUnit.id(), plan.updatedUnit);
       pledges.putAll(plan.updatedPledges);
       classMemberships.putAll(plan.updatedClassMemberships);
@@ -218,9 +218,9 @@ final class EconomyModeTransitionSettlement {
   /** 规划结果：全部可写对象在规划期算好；{@code failureReason != null} ⇒ 只写 transition 的 FAILED 终态。 */
   private record Plan(
       String failureReason,
-      ProductionOrganization exitingOrganization,
-      ProductionOrganization newOrganization,
-      ProductionUnit updatedUnit,
+      ProductionEnterprise exitingOrganization,
+      ProductionEnterprise newOrganization,
+      ProductionProcess updatedUnit,
       Map<PledgeId, Pledge> updatedPledges,
       Map<ClassShareId, ClassShare> newClassShares,
       Map<HouseholdId, HouseholdClassMembership> updatedClassMemberships,
@@ -231,39 +231,39 @@ final class EconomyModeTransitionSettlement {
       ModeTransition transition,
       long day,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<ProductionOrganizationId, ProductionOrganization> organizations,
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<PledgeId, Pledge> pledges,
       Map<HouseholdId, HouseholdClassMembership> classMemberships,
       Map<ClassShareId, ClassShare> classShares) {
-    ProductionOrganization organization = organizations.get(transition.organizationId());
-    if (organization == null) {
+    ProductionEnterprise enterprise = enterprises.get(transition.organizationId());
+    if (enterprise == null) {
       return failed(REASON_ORG_NOT_FOUND + ":" + transition.organizationId().value());
     }
-    if (organization.status() == Status.EXITING) {
+    if (enterprise.status() == Status.EXITING) {
       return failed(REASON_ORG_EXITING + ":" + transition.organizationId().value());
     }
-    if (!organization.modeId().equals(transition.fromModeId())) {
+    if (!enterprise.modeId().equals(transition.fromModeId())) {
       return failed(
           REASON_ORG_MODE_MISMATCH
               + ":org="
-              + organization.modeId().value()
+              + enterprise.modeId().value()
               + ",transition.from="
               + transition.fromModeId().value());
     }
     if (transition.toModeId().equals(transition.fromModeId())) {
       return failed(REASON_SAME_MODE + ":" + transition.toModeId().value());
     }
-    if (organization.unitId().isEmpty()) {
+    if (enterprise.unitId().isEmpty()) {
       return failed(REASON_ORG_HAS_NO_UNIT + ":" + transition.organizationId().value());
     }
-    ProductionUnitId unitId = organization.unitId().get();
-    ProductionUnit unit = units.get(unitId);
+    ProductionUnitId unitId = enterprise.unitId().get();
+    ProductionProcess unit = units.get(unitId);
     if (unit == null) {
       return failed(REASON_UNIT_NOT_FOUND + ":" + unitId.value());
     }
-    if (!unit.operator().equals(organization.organizer())) {
+    if (!unit.operator().equals(enterprise.organizer())) {
       return failed(
           REASON_UNIT_OPERATOR_MISMATCH
               + ":unit="
@@ -271,7 +271,7 @@ final class EconomyModeTransitionSettlement {
               + ",unit.operator="
               + unit.operator()
               + ",org.organizer="
-              + organization.organizer());
+              + enterprise.organizer());
     }
 
     ProductionMode toMode = base.modes().get(transition.toModeId());
@@ -282,9 +282,9 @@ final class EconomyModeTransitionSettlement {
     if (structure == null) {
       return failed(REASON_TO_CLASS_STRUCTURE_NOT_FOUND + ":" + toMode.classStructureId().value());
     }
-    ClassPosition oldPosition = base.classPositions().get(organization.classPositionId());
+    ProductionRole oldPosition = base.classPositions().get(enterprise.classPositionId());
     if (oldPosition == null) {
-      return failed(REASON_FROM_POSITION_NOT_FOUND + ":" + organization.classPositionId().value());
+      return failed(REASON_FROM_POSITION_NOT_FOUND + ":" + enterprise.classPositionId().value());
     }
     ClassPositionId newPosition = matchPosition(structure, oldPosition);
     if (newPosition == null) {
@@ -296,7 +296,7 @@ final class EconomyModeTransitionSettlement {
               + oldPosition.surplusRole().name());
     }
 
-    Set<String> hexKeys = resolveHexKeys(organization, unit, assetShares);
+    Set<String> hexKeys = resolveHexKeys(enterprise, unit, assetShares);
     if (hexKeys.isEmpty()) {
       return failed(REASON_NO_HEX_KEY + ":unit=" + unitId.value());
     }
@@ -305,23 +305,23 @@ final class EconomyModeTransitionSettlement {
     }
     String hexKey = hexKeys.iterator().next();
 
-    HouseholdId organizerHousehold = resolveOrganizerHousehold(organization);
+    HouseholdId organizerHousehold = resolveOrganizerHousehold(enterprise);
     if (organizerHousehold == null) {
-      return failed(REASON_NO_ORGANIZER_HOUSEHOLD + ":organizer=" + organization.organizer());
+      return failed(REASON_NO_ORGANIZER_HOUSEHOLD + ":organizer=" + enterprise.organizer());
     }
     if (!householdEconomies.containsKey(organizerHousehold)) {
       return failed(REASON_HOUSEHOLD_NOT_FOUND + ":" + organizerHousehold.value());
     }
-    ProductionOrganizationId newOrganizationId =
+    ProductionOrganizationId newEnterpriseId =
         ProductionOrganizationId.idOf(
             transition.toModeId(), newPosition, organizerHousehold, hexKey);
-    if (newOrganizationId.equals(organization.id())
-        || organizations.containsKey(newOrganizationId)) {
-      return failed(REASON_TARGET_ORGANIZATION_EXISTS + ":" + newOrganizationId.value());
+    if (newEnterpriseId.equals(enterprise.id())
+        || enterprises.containsKey(newEnterpriseId)) {
+      return failed(REASON_TARGET_ORGANIZATION_EXISTS + ":" + newEnterpriseId.value());
     }
 
     // ★ 逐户（laborSources ∪ organizer 家户；去重、id 升序）：生成两条 ClassShare + 更新 HouseholdClassMembership。
-    Set<HouseholdId> households = new LinkedHashSet<>(organization.laborSources());
+    Set<HouseholdId> households = new LinkedHashSet<>(enterprise.laborSources());
     households.add(organizerHousehold);
     List<HouseholdId> orderedHouseholds = new ArrayList<>(households);
     orderedHouseholds.sort(Comparator.comparing(HouseholdId::value));
@@ -336,10 +336,10 @@ final class EconomyModeTransitionSettlement {
       }
       if (retain > 0) {
         ClassShareId oldShareId =
-            ClassShareId.idOf(transition.id(), household, organization.classPositionId());
+            ClassShareId.idOf(transition.id(), household, enterprise.classPositionId());
         ClassShare oldShare =
             new ClassShare(
-                oldShareId, transition.id(), household, organization.classPositionId(), retain);
+                oldShareId, transition.id(), household, enterprise.classPositionId(), retain);
         ClassShare conflict = classShares.get(oldShareId);
         if (conflict != null && !conflict.equals(oldShare)) {
           return failed(REASON_CLASS_SHARE_CONFLICT + ":" + oldShareId.value());
@@ -359,10 +359,10 @@ final class EconomyModeTransitionSettlement {
 
       HouseholdClassMembership existingClassMembership = classMemberships.get(household);
       ClassPositionId currentPosition =
-          retain == 1000 ? organization.classPositionId() : newPosition;
+          retain == 1000 ? enterprise.classPositionId() : newPosition;
       Map<ClassPositionId, Long> retainedShares = new LinkedHashMap<>();
       if (retain > 0) {
-        retainedShares.put(organization.classPositionId(), (long) retain);
+        retainedShares.put(enterprise.classPositionId(), (long) retain);
       }
       if (migrated > 0) {
         retainedShares.put(newPosition, (long) migrated);
@@ -371,7 +371,7 @@ final class EconomyModeTransitionSettlement {
           new HouseholdClassMembership(
               household,
               existingClassMembership == null
-                  ? organization.classPositionId()
+                  ? enterprise.classPositionId()
                   : existingClassMembership.originalPositionId(),
               currentPosition,
               // ★ P2-B：模式变迁后只参与新位置；旧的可参与集合属于旧 mode，不再沿用。
@@ -401,41 +401,41 @@ final class EconomyModeTransitionSettlement {
       }
     }
 
-    ProductionUnit updatedUnit =
-        new ProductionUnit(
+    ProductionProcess updatedUnit =
+        new ProductionProcess(
             unit.id(),
             unit.industry(),
             unit.operator(),
-            EconomyOrganizationSettlement.MODE_KEY_PREFIX + transition.toModeId().value(),
+            EconomyEnterpriseSettlement.MODE_KEY_PREFIX + transition.toModeId().value(),
             unit.progressDays(),
             unit.cycleLaborMilli(),
             unit.cycleInputUsedMilli());
-    ProductionOrganization exitingOrganization =
-        new ProductionOrganization(
-            organization.id(),
-            organization.modeId(),
-            organization.classPositionId(),
-            organization.unitId(),
-            organization.organizer(),
-            organization.laborSources(),
-            organization.assetSources(),
-            organization.inputSources(),
-            organization.outputOwnership(),
-            organization.relationTemplateRef(),
+    ProductionEnterprise exitingOrganization =
+        new ProductionEnterprise(
+            enterprise.id(),
+            enterprise.modeId(),
+            enterprise.classPositionId(),
+            enterprise.unitId(),
+            enterprise.organizer(),
+            enterprise.laborSources(),
+            enterprise.assetSources(),
+            enterprise.inputSources(),
+            enterprise.outputOwnership(),
+            enterprise.relationTemplateRef(),
             Status.EXITING,
-            organization.statusReason());
-    ProductionOrganization newOrganization =
-        new ProductionOrganization(
-            newOrganizationId,
+            enterprise.statusReason());
+    ProductionEnterprise newOrganization =
+        new ProductionEnterprise(
+            newEnterpriseId,
             transition.toModeId(),
             newPosition,
             Optional.of(unitId),
-            organization.organizer(),
-            organization.laborSources(),
-            organization.assetSources(),
-            organization.inputSources(),
-            organization.outputOwnership(),
-            organization.relationTemplateRef(),
+            enterprise.organizer(),
+            enterprise.laborSources(),
+            enterprise.assetSources(),
+            enterprise.inputSources(),
+            enterprise.outputOwnership(),
+            enterprise.relationTemplateRef(),
             Status.ACTIVE,
             "");
     return new Plan(
@@ -455,10 +455,10 @@ final class EconomyModeTransitionSettlement {
 
   /** 由 (relationToMeans, surplusRole) 在结构内匹配新位置；多个取 id 字典序最小；没有 ⇒ null。 */
   private static ClassPositionId matchPosition(
-      ClassStructure structure, ClassPosition oldPosition) {
+      ClassStructure structure, ProductionRole oldPosition) {
     ClassPositionId best = null;
-    for (Map.Entry<ClassPositionId, ClassPosition> entry : structure.positions().entrySet()) {
-      ClassPosition candidate = entry.getValue();
+    for (Map.Entry<ClassPositionId, ProductionRole> entry : structure.positions().entrySet()) {
+      ProductionRole candidate = entry.getValue();
       if (candidate.relationToMeans() != oldPosition.relationToMeans()
           || candidate.surplusRole() != oldPosition.surplusRole()) {
         continue;
@@ -472,13 +472,13 @@ final class EconomyModeTransitionSettlement {
 
   /** 从旧 org 的 unit.industry 与 assetSources 的行业 id 推导格键集合（去重、字典序；空/多值都由调用方具名落）。 */
   private static Set<String> resolveHexKeys(
-      ProductionOrganization organization,
-      ProductionUnit unit,
-      Map<AssetShareId, AssetShare> assetShares) {
+      ProductionEnterprise enterprise,
+      ProductionProcess unit,
+      Map<AssetShareId, OwnershipStake> assetShares) {
     Set<String> keys = new TreeSet<>();
     IndustryHexKeys.hexKeyOf(unit.industry()).ifPresent(keys::add);
-    for (AssetShareId shareId : organization.assetSources()) {
-      AssetShare share = assetShares.get(shareId);
+    for (AssetShareId shareId : enterprise.assetSources()) {
+      OwnershipStake share = assetShares.get(shareId);
       if (share != null) {
         IndustryHexKeys.hexKeyOf(share.industry()).ifPresent(keys::add);
       }
@@ -487,18 +487,18 @@ final class EconomyModeTransitionSettlement {
   }
 
   /** organizer 对应的家户：HOUSEHOLD actor 直接反查；否则取唯一的 laborSource；推不出 ⇒ null。 */
-  private static HouseholdId resolveOrganizerHousehold(ProductionOrganization organization) {
-    if (organization.organizer().kind() == ActorKind.HOUSEHOLD) {
+  private static HouseholdId resolveOrganizerHousehold(ProductionEnterprise enterprise) {
+    if (enterprise.organizer().kind() == ActorKind.HOUSEHOLD) {
       try {
-        return HouseholdActors.householdOf(organization.organizer());
+        return HouseholdActors.householdOf(enterprise.organizer());
       } catch (IllegalArgumentException e) {
         return null;
       }
     }
-    List<HouseholdId> sources = new ArrayList<>(organization.laborSources());
+    List<HouseholdId> sources = new ArrayList<>(enterprise.laborSources());
     sources.sort(Comparator.comparing(HouseholdId::value));
     for (HouseholdId candidate : sources) {
-      if (HouseholdActors.of(candidate).equals(organization.organizer())) {
+      if (HouseholdActors.of(candidate).equals(enterprise.organizer())) {
         return candidate;
       }
     }

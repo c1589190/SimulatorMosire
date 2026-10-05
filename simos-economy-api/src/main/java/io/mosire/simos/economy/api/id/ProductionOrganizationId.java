@@ -6,11 +6,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * ★★ <b>生产组织（{@code ProductionOrganization}）的稳定身份</b>（理想架构 §2.4/§3.3；E2）：一个
+ * ★★ <b>生产组织（{@code ProductionEnterprise}）的稳定身份</b>（理想架构 §2.4/§3.3；E2）：一个
  * 生产组织回答"按当前生产方式与阶层结构，本期应当存在哪条生产活动、由谁组织、用哪些劳动/资产"。
  *
  * <p>★ 裸值 {@code toString()} + {@code static parse} 三件套（铁律 1）；{@code parse} 是 opaque 的，不做格式再解释。 ★
- * <b>规范串不含 {@code "."}</b>：地址 {@code economy:<mapId>:productionOrganization.<id>} 由 {@code
+ * <b>规范串不含 {@code "."}</b>：地址 {@code economy:<mapId>:productionEnterprise.<id>} 由 {@code
  * AddressParser} 在第一个点处切段，含点会把名字截断成另一个名字 ⇒ 本类型在构造期当场抛，不静默造一个解析不到的地址。
  *
  * <p>★★ <b>新 id 的唯一拼写点</b> = {@link #idOf(ProductionModeId, ClassPositionId, HouseholdId, String)}：
@@ -76,7 +76,7 @@ public record ProductionOrganizationId(String value) {
     String value =
         "org-" + modeId.value() + "-" + positionId.value() + "-" + household.value() + "-" + hexKey;
     if (value.indexOf('.') >= 0) {
-      throw new IllegalArgumentException("ProductionOrganization id 不得含 '.'（地址会被第一个点截断）: " + value);
+      throw new IllegalArgumentException("ProductionEnterprise id 不得含 '.'（地址会被第一个点截断）: " + value);
     }
     return new ProductionOrganizationId(value);
   }

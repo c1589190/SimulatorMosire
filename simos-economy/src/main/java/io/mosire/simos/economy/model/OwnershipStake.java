@@ -10,13 +10,13 @@ import io.mosire.simos.economy.api.id.IndustryId;
  * <b>谁实际经营/使用</b>（{@code operator}）。
  *
  * <p>★★ <b>与 {@code Industry.capacity} 的关系（B.1 过渡口径）</b>：本表是唯一的实物资产总账 —— 对每个 {@code (industry,
- * asset)}，{@code Σ AssetShare.quantity} 就是实物总量。{@code Industry.capacity} 在 B.1 里只是过渡字段 （B.2
+ * asset)}，{@code Σ OwnershipStake.quantity} 就是实物总量。{@code Industry.capacity} 在 B.1 里只是过渡字段 （B.2
  * 会把它从生产模型中移走），旧档/播种器允许用它<b>一次性</b>生成初始份额，但它<b>不是</b>持续存在的实物账本上界： 本类型与 {@code EconomyData}
  * 都<b>不</b>保留"Σ quantity ≤ capacity"或"Σ quantity == capacity"这类把技术模板与实物账本绑死的不变量。
  *
  * <p>★ <b>{@code owner} 与 {@code operator} 的语义</b>：{@code owner == operator} = 自有自营；{@code owner !=
  * operator} = 租佃/委托/占用 —— 终止租佃时只改该行的 {@code operator}（或改回 owner），{@code owner} 与 {@code quantity}
- * 不变。 地租、分成、工资由 {@code ProductionRelation} 结算，不在这里存。
+ * 不变。 地租、分成、工资由 {@code ProductionRules} 结算，不在这里存。
  *
  * <p>★ <b>{@code kind} 三档语义</b>：{@code OWNED}（自有；旧档迁移的默认档）、{@code TENANCY}（租佃）、 {@code
  * COMMUNAL}（公地/共同使用）；{@code kind} 只表达权利性质，不表达数量约束。
@@ -31,7 +31,7 @@ import io.mosire.simos.economy.api.id.IndustryId;
  * @param quantity 数量（非负；单位见 {@link AssetKind}）
  * @param kind 权利性质；不得为 null
  */
-public record AssetShare(
+public record OwnershipStake(
     AssetShareId id,
     IndustryId industry,
     AssetKind asset,
@@ -44,33 +44,33 @@ public record AssetShare(
   public enum RightKind {
     /** 自有（旧档一对一迁移/default 物化的默认档）。 */
     OWNED,
-    /** 租佃（{@code owner != operator} 时的常见档；地租仍在 ProductionRelation 结算）。 */
+    /** 租佃（{@code owner != operator} 时的常见档；地租仍在 ProductionRules 结算）。 */
     TENANCY,
     /** 公地/共同使用。 */
     COMMUNAL
   }
 
-  public AssetShare {
+  public OwnershipStake {
     if (id == null) {
-      throw new IllegalArgumentException("AssetShare.id 不得为 null");
+      throw new IllegalArgumentException("OwnershipStake.id 不得为 null");
     }
     if (industry == null) {
-      throw new IllegalArgumentException("AssetShare.industry 不得为 null");
+      throw new IllegalArgumentException("OwnershipStake.industry 不得为 null");
     }
     if (asset == null) {
-      throw new IllegalArgumentException("AssetShare.asset 不得为 null");
+      throw new IllegalArgumentException("OwnershipStake.asset 不得为 null");
     }
     if (owner == null) {
-      throw new IllegalArgumentException("AssetShare.owner 不得为 null");
+      throw new IllegalArgumentException("OwnershipStake.owner 不得为 null");
     }
     if (operator == null) {
-      throw new IllegalArgumentException("AssetShare.operator 不得为 null");
+      throw new IllegalArgumentException("OwnershipStake.operator 不得为 null");
     }
     if (quantity < 0L) {
-      throw new IllegalArgumentException("AssetShare.quantity 不得为负: " + quantity);
+      throw new IllegalArgumentException("OwnershipStake.quantity 不得为负: " + quantity);
     }
     if (kind == null) {
-      throw new IllegalArgumentException("AssetShare.kind 不得为 null");
+      throw new IllegalArgumentException("OwnershipStake.kind 不得为 null");
     }
   }
 
@@ -92,22 +92,22 @@ public record AssetShare(
       RightKind kind,
       long sequence) {
     if (industry == null) {
-      throw new IllegalArgumentException("AssetShare.idOf 的 industry 不得为 null");
+      throw new IllegalArgumentException("OwnershipStake.idOf 的 industry 不得为 null");
     }
     if (asset == null) {
-      throw new IllegalArgumentException("AssetShare.idOf 的 asset 不得为 null");
+      throw new IllegalArgumentException("OwnershipStake.idOf 的 asset 不得为 null");
     }
     if (owner == null) {
-      throw new IllegalArgumentException("AssetShare.idOf 的 owner 不得为 null");
+      throw new IllegalArgumentException("OwnershipStake.idOf 的 owner 不得为 null");
     }
     if (operator == null) {
-      throw new IllegalArgumentException("AssetShare.idOf 的 operator 不得为 null");
+      throw new IllegalArgumentException("OwnershipStake.idOf 的 operator 不得为 null");
     }
     if (kind == null) {
-      throw new IllegalArgumentException("AssetShare.idOf 的 kind 不得为 null");
+      throw new IllegalArgumentException("OwnershipStake.idOf 的 kind 不得为 null");
     }
     if (sequence < 0L) {
-      throw new IllegalArgumentException("AssetShare.idOf 的 sequence 不得为负: " + sequence);
+      throw new IllegalArgumentException("OwnershipStake.idOf 的 sequence 不得为负: " + sequence);
     }
     String value =
         "share-"
@@ -128,7 +128,7 @@ public record AssetShare(
             + sequence;
     if (value.indexOf('.') >= 0) {
       throw new IllegalArgumentException(
-          "AssetShare id 不得含 '.'（地址 economy:<mapId>:assetShare.<id> 会被第一个点截断）: " + value);
+          "OwnershipStake id 不得含 '.'（地址 economy:<mapId>:assetShare.<id> 会被第一个点截断）: " + value);
     }
     return new AssetShareId(value);
   }

@@ -11,7 +11,7 @@ import java.util.Objects;
  * LiquidationPolicy(
  *   ruleId,                       // 键 == 值内 ruleId（身份 = AssetRuleId，不再造 (modeId, assetKind) 第二身份）
  *   maxLiquidatePerMille,         // 每次清算最多处置的比例（0..1000；1000 = 可全量处置）
- *   protectedReserve,             // 保护口径（与 AssetShare.quantity 同单位；口粮/种粮/最低生产资料）
+ *   protectedReserve,             // 保护口径（与 OwnershipStake.quantity 同单位；口粮/种粮/最低生产资料）
  *   priceSource: MARKET | AGREED | POLICY,
  *   policyValuePerUnitMilli,      // POLICY 档的账面价（每单位毫值）；其它档必须为 0
  *   recipientRule: CREDITOR_FIRST | MARKET_FIRST)
@@ -28,7 +28,7 @@ import java.util.Objects;
  *
  * @param ruleId 被补充清算参数的生产资料规则；不得为 null（EconomyData 判"键 == 值内 ruleId"）
  * @param maxLiquidatePerMille 每次清算最多处置的千分比；必须 ∈ [0, 1000]
- * @param protectedReserve 保护量（与 AssetShare.quantity 同单位）；不得为负
+ * @param protectedReserve 保护量（与 OwnershipStake.quantity 同单位）；不得为负
  * @param priceSource 处置计价来源；不得为 null
  * @param policyValuePerUnitMilli POLICY 档的账面单价（毫值/单位）；不得为负；非 POLICY 档必须为 0
  * @param recipientRule 受偿顺序规则；不得为 null
@@ -39,7 +39,7 @@ public record LiquidationPolicy(
     long protectedReserve,
     PriceSource priceSource,
     long policyValuePerUnitMilli,
-    RecipientRule recipientRule) {
+    PayeeRule recipientRule) {
 
   /** 处置计价来源：有市场价用 MARKET、有合同价用 AGREED、都没有才用制度账面价 POLICY。 */
   public enum PriceSource {
@@ -52,7 +52,7 @@ public record LiquidationPolicy(
   }
 
   /** 处置受偿对象规则：先给债权人，还是先走市场。 */
-  public enum RecipientRule {
+  public enum PayeeRule {
     /** 优先转给债权人抵债（CREDITOR_FIRST）。 */
     CREDITOR_FIRST,
     /** 优先在市场变现（MARKET_FIRST）。 */

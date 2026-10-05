@@ -30,12 +30,12 @@ import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.market.TradeRoute;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.SubsistenceObligation;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.HouseholdDemand;
@@ -45,7 +45,7 @@ import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.OperatorCondition;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.util.economy.EconomyVocabulary;
@@ -274,12 +274,12 @@ final class MarketSettlement {
     private final Map<IndustryId, Industry> industries;
 
     /** ★★ R3B.2：生产单元表（键 = unit id；参与者/必要投入/卖单归属都读它）。 */
-    private final Map<ProductionUnitId, ProductionUnit> units;
+    private final Map<ProductionUnitId, ProductionProcess> units;
 
     /** ★★ R3B.2：实物总账（只读；必要投入的规模从它纯派生 —— 它是唯一的 quantity 真相）。 */
-    private final Map<AssetShareId, AssetShare> assetShares;
+    private final Map<AssetShareId, OwnershipStake> assetShares;
 
-    private final Map<ProductionUnitId, ProductionRelation> relations;
+    private final Map<ProductionUnitId, ProductionRules> relations;
     private final Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments;
     private final Map<ShipmentId, ShipmentBatch> shipments;
     private final ProductionLedger.Accumulator ledger;
@@ -338,9 +338,9 @@ final class MarketSettlement {
         Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
         Map<ActorRef, HouseholdId> householdOfActor,
         Map<IndustryId, Industry> industries,
-        Map<ProductionUnitId, ProductionUnit> units,
-        Map<AssetShareId, AssetShare> assetShares,
-        Map<ProductionUnitId, ProductionRelation> relations,
+        Map<ProductionUnitId, ProductionProcess> units,
+        Map<AssetShareId, OwnershipStake> assetShares,
+        Map<ProductionUnitId, ProductionRules> relations,
         Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
         Map<ShipmentId, ShipmentBatch> shipments,
         ProductionLedger.Accumulator ledger,
@@ -387,9 +387,9 @@ final class MarketSettlement {
         Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
         Map<ActorRef, HouseholdId> householdOfActor,
         Map<IndustryId, Industry> industries,
-        Map<ProductionUnitId, ProductionUnit> units,
-        Map<AssetShareId, AssetShare> assetShares,
-        Map<ProductionUnitId, ProductionRelation> relations,
+        Map<ProductionUnitId, ProductionProcess> units,
+        Map<AssetShareId, OwnershipStake> assetShares,
+        Map<ProductionUnitId, ProductionRules> relations,
         Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
         Map<ShipmentId, ShipmentBatch> shipments,
         ProductionLedger.Accumulator ledger,
@@ -418,9 +418,9 @@ final class MarketSettlement {
         Map<HouseholdId, Map<CommodityId, Long>> unmetToday,
         Map<ActorRef, HouseholdId> householdOfActor,
         Map<IndustryId, Industry> industries,
-        Map<ProductionUnitId, ProductionUnit> units,
-        Map<AssetShareId, AssetShare> assetShares,
-        Map<ProductionUnitId, ProductionRelation> relations,
+        Map<ProductionUnitId, ProductionProcess> units,
+        Map<AssetShareId, OwnershipStake> assetShares,
+        Map<ProductionUnitId, ProductionRules> relations,
         Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
         Map<ShipmentId, ShipmentBatch> shipments,
         ProductionLedger.Accumulator ledger,
@@ -4220,7 +4220,7 @@ final class MarketSettlement {
     // ★ R4-B.3a-perf：参与者按 hex 的索引已在 MarketIndexes 里建好（旧实现每次现扫全部参与者）。
     for (Participant participant : indexes.participantsByHex.getOrDefault(hexKey, List.of())) {
       for (ProductionUnitId id : participant.units) {
-        ProductionUnit unit = ctx.round.units.get(id);
+        ProductionProcess unit = ctx.round.units.get(id);
         Industry industry = unit == null ? null : ctx.round.industries.get(unit.industry());
         if (unit == null
             || industry == null
@@ -4228,7 +4228,7 @@ final class MarketSettlement {
           continue;
         }
         long scale =
-            ProductionUnitBook.plannedCapacityScaleOf(
+            ProductionProcessBook.plannedCapacityScaleOf(
                 unit, industry, ctx.round.index, ctx.round.operatorConditions.get(id));
         if (scale <= 0L) {
           continue;
@@ -4263,7 +4263,7 @@ final class MarketSettlement {
 
   /** 经营者状态机判定"真无法再生产"：{@code INDEBTED} 及以后（ACTIVE/TRIALING/CONTRACTING 不在此列）。 */
   private static boolean sellerCannotReproduce(MatchContext ctx, SellSlot sell) {
-    ProductionUnit unit = unitForSeller(ctx.round, sell.seller, sell.order.commodity());
+    ProductionProcess unit = unitForSeller(ctx.round, sell.seller, sell.order.commodity());
     if (unit == null) {
       return false;
     }
@@ -4291,7 +4291,7 @@ final class MarketSettlement {
           reason == MarketUnfilledReason.OUTCOMPETED
               ? outcompetedBy(ctx, sell, indexes)
               : new Outcompeted(0L, 0L);
-      ProductionUnit unit = unitForSeller(ctx.round, sell.seller, commodity);
+      ProductionProcess unit = unitForSeller(ctx.round, sell.seller, commodity);
       ctx.sellerOutcomes.add(
           new MarketReport.SellerOutcome(
               ctx.round.day,
@@ -4567,7 +4567,7 @@ final class MarketSettlement {
     Map<ActorRef, List<ProductionUnitId>> unitsByOperator = new LinkedHashMap<>();
     // ★ R4-B.3a-perf：本格 unit 由入口索引一次给出（序 = unit 表序，旧实现的全表过滤同此序）。
     for (ProductionUnitId id : round.index.unitsInHex(hexKey)) {
-      ProductionUnit unit = round.units.get(id);
+      ProductionProcess unit = round.units.get(id);
       if (unit == null) {
         continue; // 索引与活表同源；这里只防御手工状态在两者之间被改动
       }
@@ -4691,7 +4691,7 @@ final class MarketSettlement {
    */
   private static ProducerCostBook.Estimate costEstimateOf(
       MarketRound round, Market market, Participant seller, CommodityId commodity) {
-    ProductionUnit unit = unitForSeller(round, seller, commodity);
+    ProductionProcess unit = unitForSeller(round, seller, commodity);
     if (unit == null) {
       return ProducerCostBook.Estimate.unknown();
     }
@@ -4707,11 +4707,11 @@ final class MarketSettlement {
    * ★★ <b>"经营这个卖方的 unit"的唯一判定</b>：优先本格 unit 里 {@code unit.operator == seller} 且其模板出产该商品者 （按 unit id
    * canonical 取小），否则本格任一出产该商品者（同序取小）；认不出 ⇒ null（成本未知）。
    */
-  private static ProductionUnit unitForSeller(
+  private static ProductionProcess unitForSeller(
       MarketRound round, Participant seller, CommodityId commodity) {
-    ProductionUnit match = null;
+    ProductionProcess match = null;
     for (ProductionUnitId id : seller.units) {
-      ProductionUnit unit = round.units.get(id);
+      ProductionProcess unit = round.units.get(id);
       Industry candidate = unit == null ? null : round.industries.get(unit.industry());
       if (unit == null
           || candidate == null
@@ -4727,7 +4727,7 @@ final class MarketSettlement {
       return match;
     }
     for (ProductionUnitId id : seller.units) {
-      ProductionUnit unit = round.units.get(id);
+      ProductionProcess unit = round.units.get(id);
       Industry candidate = unit == null ? null : round.industries.get(unit.industry());
       if (unit == null || candidate == null || !candidate.outputPerUnit().containsKey(commodity)) {
         continue;
@@ -4743,19 +4743,19 @@ final class MarketSettlement {
       MarketRound round, Participant participant) {
     Map<CommodityId, Long> necessary = new LinkedHashMap<>();
     for (ProductionUnitId id : participant.units) {
-      ProductionUnit unit = round.units.get(id);
+      ProductionProcess unit = round.units.get(id);
       Industry industry = unit == null ? null : round.industries.get(unit.industry());
       if (unit == null || industry == null) {
         continue;
       }
-      ProductionRelation relation = round.relations.get(id);
-      Recipient supplier =
-          relation == null ? new Recipient.ToActor(unit.operator()) : relation.inputSupplier();
+      ProductionRules relation = round.relations.get(id);
+      Payee supplier =
+          relation == null ? new Payee.ToActor(unit.operator()) : relation.inputSupplier();
       if (!supplies(participant, supplier)) {
         continue;
       }
       long scale =
-          ProductionUnitBook.plannedCapacityScaleOf(
+          ProductionProcessBook.plannedCapacityScaleOf(
               unit, industry, round.index, round.operatorConditions.get(id));
       if (scale <= 0L) {
         continue; // 本格没有产能 / 已缩到 0 ⇒ 不要料（同 drawCycleInputs 的口径）
@@ -4787,12 +4787,12 @@ final class MarketSettlement {
       MarketRound round, Participant participant, HexCoord hex) {
     Map<CommodityId, Long> retained = new LinkedHashMap<>();
     for (ProductionUnitId id : participant.units) {
-      ProductionUnit unit = round.units.get(id);
+      ProductionProcess unit = round.units.get(id);
       Industry industry = unit == null ? null : round.industries.get(unit.industry());
       if (unit == null || industry == null) {
         continue;
       }
-      ProductionRelation relation = round.relations.get(id);
+      ProductionRules relation = round.relations.get(id);
       if (relation == null) {
         continue;
       }
@@ -4829,13 +4829,13 @@ final class MarketSettlement {
     return retained;
   }
 
-  private static boolean supplies(Participant participant, Recipient supplier) {
+  private static boolean supplies(Participant participant, Payee supplier) {
     return switch (supplier) {
-      case Recipient.ToActor toActor -> participant.actor.equals(toActor.actor());
-      case Recipient.ToHousehold toHousehold ->
+      case Payee.ToActor toActor -> participant.actor.equals(toActor.actor());
+      case Payee.ToHousehold toHousehold ->
           participant.household != null && participant.household.equals(toHousehold.household());
       // ★ 旧档变体：按**视图**比对（构造期归一化已把一对一转到 ToHousehold；这是兼容读的窄出口）。
-      case Recipient.ToCohort toCohort ->
+      case Payee.ToCohort toCohort ->
           participant.view != null && participant.view.equals(toCohort.cohort());
     };
   }

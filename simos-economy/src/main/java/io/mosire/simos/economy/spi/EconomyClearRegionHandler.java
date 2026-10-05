@@ -16,9 +16,9 @@ import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
@@ -33,8 +33,8 @@ import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.Pledge;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -174,14 +174,14 @@ public final class EconomyClearRegionHandler
 
     // ② unit / 资产份额：按 unit.industry / share.industry 定位到被清产业。
     Set<ProductionUnitId> removedUnits = new LinkedHashSet<>();
-    for (Map.Entry<ProductionUnitId, ProductionUnit> entry : base.units().entrySet()) {
+    for (Map.Entry<ProductionUnitId, ProductionProcess> entry : base.units().entrySet()) {
       if (removedIndustries.contains(entry.getValue().industry())) {
         removedUnits.add(entry.getKey());
       }
     }
     Set<String> removedUnitValues = unitIdValues(removedUnits);
     Set<AssetShareId> removedShares = new LinkedHashSet<>();
-    for (Map.Entry<AssetShareId, AssetShare> entry : base.assetShares().entrySet()) {
+    for (Map.Entry<AssetShareId, OwnershipStake> entry : base.assetShares().entrySet()) {
       if (removedIndustries.contains(entry.getValue().industry())) {
         removedShares.add(entry.getKey());
       }
@@ -197,9 +197,9 @@ public final class EconomyClearRegionHandler
 
     // ④ 各表新副本：没提到的组件直接 base 原值（= 逐组件 with* 的"其余原样带过"）。
     Map<IndustryId, Industry> industries = withoutKeys(base.industries(), removedIndustries);
-    Map<ProductionUnitId, ProductionUnit> units = withoutKeys(base.units(), removedUnits);
-    Map<AssetShareId, AssetShare> assetShares = withoutKeys(base.assetShares(), removedShares);
-    Map<ProductionUnitId, ProductionRelation> relations =
+    Map<ProductionUnitId, ProductionProcess> units = withoutKeys(base.units(), removedUnits);
+    Map<AssetShareId, OwnershipStake> assetShares = withoutKeys(base.assetShares(), removedShares);
+    Map<ProductionUnitId, ProductionRules> relations =
         withoutKeys(base.relations(), removedUnits);
     Map<ProductionUnitId, OperatorCondition> operatorConditions =
         withoutKeys(base.operatorConditions(), removedUnits);
@@ -231,28 +231,28 @@ public final class EconomyClearRegionHandler
                 removedContracts.contains(entry.getValue().debtContractId())
                     || removedShares.contains(entry.getValue().assetShareId()));
 
-    Map<ProductionOrganizationId, ProductionOrganization> organizations =
+    Map<ProductionOrganizationId, ProductionEnterprise> enterprises =
         new LinkedHashMap<>(base.productionOrganizations());
-    organizations
+    enterprises
         .entrySet()
         .removeIf(
             entry -> {
-              ProductionOrganization organization = entry.getValue();
-              return organization.unitId().map(removedUnits::contains).orElse(false)
-                  || intersects(organization.laborSources(), removedClasses)
-                  || intersects(organization.assetSources(), removedShares);
+              ProductionEnterprise enterprise = entry.getValue();
+              return enterprise.unitId().map(removedUnits::contains).orElse(false)
+                  || intersects(enterprise.laborSources(), removedClasses)
+                  || intersects(enterprise.assetSources(), removedShares);
             });
-    Set<ProductionOrganizationId> removedOrganizations =
-        keysRemoved(base.productionOrganizations(), organizations);
+    Set<ProductionOrganizationId> removedEnterprises =
+        keysRemoved(base.productionOrganizations(), enterprises);
     // ★★ P10.1：商号表随它指名的组织一起移除 —— 否则新状态会出现"商号指向已删组织"的悬空引用，
     //    EconomyData 构造期守卫会当场 fail-closed（宁可同步摘掉，不把区域清空卡死）。空表时逐值 no-op。
     Map<ProductionOrganizationId, MerchantFirm> merchantFirms =
-        withoutKeys(base.merchantFirms(), removedOrganizations);
+        withoutKeys(base.merchantFirms(), removedEnterprises);
     Map<ModeTransitionId, ModeTransition> modeTransitions =
         new LinkedHashMap<>(base.modeTransitions());
     modeTransitions
         .entrySet()
-        .removeIf(entry -> removedOrganizations.contains(entry.getValue().organizationId()));
+        .removeIf(entry -> removedEnterprises.contains(entry.getValue().organizationId()));
     Set<ModeTransitionId> removedTransitions = keysRemoved(base.modeTransitions(), modeTransitions);
     Map<ClassShareId, ClassShare> classShares = new LinkedHashMap<>(base.classShares());
     classShares
@@ -291,15 +291,15 @@ public final class EconomyClearRegionHandler
             .withPledges(pledges)
             .withClassShares(classShares)
             .withModeTransitions(modeTransitions)
-            .withProductionOrganizations(organizations)
+            .withProductionEnterprises(enterprises)
             .withLaborCommitments(laborCommitments)
             .withFlows(flows)
             .withDebtContracts(debtContracts)
             .withHouseholdDemands(householdDemands)
             .withCrisisSignals(crisisSignals)
             .withClassMemberships(classMemberships)
-            .withUnits(units)
-            .withAssetShares(assetShares)
+            .withProcesses(units)
+            .withOwnershipStakes(assetShares)
             .withMarkets(markets)
             .withIndustries(industries);
 

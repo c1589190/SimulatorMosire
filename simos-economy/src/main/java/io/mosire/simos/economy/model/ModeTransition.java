@@ -100,12 +100,12 @@ public record ModeTransition(
 
   /** 同一次请求（身份相同且请求字段逐值相同）⇒ 命令期可安全幂等返回 no-op。 */
   public boolean sameRequest(
-      ProductionOrganizationId requestedOrganization,
+      ProductionOrganizationId requestedEnterprise,
       ProductionModeId requestedToMode,
       int requestedRetainPerMille,
       long requestedEffectiveDay,
       String requestedReason) {
-    return organizationId.equals(requestedOrganization)
+    return organizationId.equals(requestedEnterprise)
         && toModeId.equals(requestedToMode)
         && retainOriginalPerMille == requestedRetainPerMille
         && effectiveDay == requestedEffectiveDay

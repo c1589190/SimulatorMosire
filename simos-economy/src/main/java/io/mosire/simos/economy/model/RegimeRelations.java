@@ -14,8 +14,8 @@ import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Pool;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.SubsistenceObligation;
 import io.mosire.simos.economy.api.relation.Weight;
@@ -85,7 +85,7 @@ import java.util.Set;
  * <p>★★ <b>如实记：这四档默认<b>同值</b> —— 都落在该档的 {@code operator} 上</b>（因为 operator 就是那个主体：庄园 / 佃农家户 / 织布的家户
  * / 作坊主）。⇒ <b>这一栏的价值不是"改默认值"</b>，而是把"谁出料"从<b>按人口猜</b>（改前的 {@code 旧结算引擎（R3a
  * 已删除）.rowSharesOf}：该产业各行人口占比 + 逐行向下取整）变成<b>制度明说</b>，并让 GM 能配（载荷里一条显式 {@code relation}
- * 就能写"<b>地主出种</b>"这种制度 —— spec §2.4"同一个制度可以 A 格这样、B 格那样"的落点）。详见 {@code ProductionRelation} 的类注。
+ * 就能写"<b>地主出种</b>"这种制度 —— spec §2.4"同一个制度可以 A 格这样、B 格那样"的落点）。详见 {@code ProductionRules} 的类注。
  *
  * <p>★ <b>为什么仍然做成一张"制度 → 值"的表（而不是直接在别处写 {@code ToActor(operator)}）</b>：① 四条默认是
  * <b>制度事实</b>（"佃农出种、庄园出种"各是一句话），它们的归属地就是本类（"制度 → 默认关系"的唯一拼写点）； ② <b>未登记的制度照样
@@ -265,7 +265,7 @@ public final class RegimeRelations {
    * @throws IllegalArgumentException 任一参数为 null、{@code regime} <b>未登记</b>（fail-closed，消息列出四档）、产业 id
    *     里没有格键（关系必须有地点）、或 {@code residences} 多于一种居住类型
    */
-  public static ProductionRelation defaultRelation(
+  public static ProductionRules defaultRelation(
       RegimeId regime,
       ProductionUnitId activity,
       IndustryId industry,
@@ -325,7 +325,7 @@ public final class RegimeRelations {
     }
     // ★★ H3/C3：投入的提供者由**制度**说（见 defaultInputSupplier 的类注）—— 四档默认同值（都落在 operator 上），
     //   但"谁出料"从此是**本表的一行**，不再是结算里按人口算出来的一个比例。
-    return new ProductionRelation(
+    return new ProductionRules(
         activity,
         operator,
         defaultInputSupplier(regime, operator),
@@ -338,7 +338,7 @@ public final class RegimeRelations {
    * ★★ <b>S1：四档默认的 {@link LaborSource}</b>（唯一拼写点）—— {@code feudal=SERF}、{@code tenant=TENANT}、
    * {@code household=FAMILY}、{@code handicraft=WAGE}。
    *
-   * <p>★ 旧档没有这一维时 {@code ProductionRelation} 的构造期兜底是 {@code SELF}；本方法服务"按制度推导"的新路径。 未登记 ⇒
+   * <p>★ 旧档没有这一维时 {@code ProductionRules} 的构造期兜底是 {@code SELF}；本方法服务"按制度推导"的新路径。 未登记 ⇒
    * 抛（与其余入口同口径）。
    */
   public static LaborSource laborSourceFor(RegimeId regime) {
@@ -375,7 +375,7 @@ public final class RegimeRelations {
 
   /**
    * ★★ <b>M1.7：默认关系里的"实物给养义务"展开</b> —— 由 {@link #defaultRelation(RegimeId, IndustryId, ActorRef,
-   * Set)} 先推出该档的默认关系，再按 {@link SubsistenceObligation#of(ProductionRelation, Map)} 展开成具名义务。
+   * Set)} 先推出该档的默认关系，再按 {@link SubsistenceObligation#of(ProductionRules, Map)} 展开成具名义务。
    *
    * <p>★ <b>为什么需要它</b>：本类的四档里只有 {@code feudal} 有给养那一档（{@code FIXED_IN_KIND_PER_LABOR}）—— 其余三档展开
    * 出<b>空表</b>（不是抛、也不是 0：那三档的制度里没有这项义务）。读口/验收要问"某经营者每周期应交付多少、给谁"时，若状态里还没有显式关系
@@ -422,7 +422,7 @@ public final class RegimeRelations {
    * @param operator 该产业的经营主体（H3 的四档默认都落在它身上）；不得为 null
    * @throws IllegalArgumentException 任一参数为 null，或 {@code regime} <b>未登记</b>（fail-closed，消息列出四档）
    */
-  public static Recipient defaultInputSupplier(RegimeId regime, ActorRef operator) {
+  public static Payee defaultInputSupplier(RegimeId regime, ActorRef operator) {
     if (regime == null) {
       throw new IllegalArgumentException("regime 不得为 null");
     }
@@ -433,9 +433,9 @@ public final class RegimeRelations {
       throw new IllegalArgumentException(
           "未登记的制度，无法推导默认投入提供者：" + regime.value() + "；已登记的档: " + BY_REGIME.keySet());
     }
-    // ★ 四档同值（见方法注释）：投入由**经营主体自己**出。⇒ 与 ProductionRelation 的构造期缺省同值，
+    // ★ 四档同值（见方法注释）：投入由**经营主体自己**出。⇒ 与 ProductionRules 的构造期缺省同值，
     //   两处不可能漂开（那一条是"缺键时"的补，本方法是"按制度推导时"的答，值域相同）。
-    return new Recipient.ToActor(operator);
+    return new Payee.ToActor(operator);
   }
 
   /**
@@ -568,7 +568,7 @@ public final class RegimeRelations {
    *
    * <p>★★ <b>S3 审计结论（保持原样）</b>：本方法只服务**创世缺省关系模板**（{@code EconomyPayloads} / {@code EconomySeeder}
    * 在载荷缺 {@code relation} 时调用），不按运行期 {@code HouseholdEconomy.view} 派生。模板产出的 {@code ToCohort} 会在 {@code
-   * EconomyData} 构造期由 {@code normalizeRecipients} 一对一归一成 {@code ToHousehold(稳定 HouseholdId)} ⇒ S3
+   * EconomyData} 构造期由 {@code normalizePayees} 一对一归一成 {@code ToHousehold(稳定 HouseholdId)} ⇒ S3
    * 关账写回把 {@code HouseholdEconomy.view.stratum} 改成 {@code landless_laborer}/{@code artisan}/{@code
    * official} 后，这些默认规则的对象仍然是同一家户， 不会漏行/错行。 新阶层没有创世行，由 S2/S3 的显式关系数据点名，不在这里追加（见 {@link
    * #TRADITIONAL_STRATA} 的类注）。
@@ -596,7 +596,7 @@ public final class RegimeRelations {
         spec.type(),
         // ★ 这是**创世模板**的 view 受方：EconomyData 构造期会在一对一时归一为 ToHousehold(稳定身份)，
         //   之后 S3 的 HouseholdEconomy.view 写回不会改这条规则指向的家户。
-        new Recipient.ToCohort(new CohortKey(hex, residence, spec.stratum())),
+        new Payee.ToCohort(new CohortKey(hex, residence, spec.stratum())),
         spec.pool(),
         spec.weight(),
         spec.ratePerMille(),

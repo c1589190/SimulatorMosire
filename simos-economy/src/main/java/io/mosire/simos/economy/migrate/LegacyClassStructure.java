@@ -4,10 +4,10 @@ import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassPosition.LaborRole;
-import io.mosire.simos.economy.model.ClassPosition.RelationToMeans;
-import io.mosire.simos.economy.model.ClassPosition.SurplusRole;
+import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRole.LaborRole;
+import io.mosire.simos.economy.model.ProductionRole.RelationToMeans;
+import io.mosire.simos.economy.model.ProductionRole.SurplusRole;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.ProductionMode;
 import java.util.Collections;
@@ -20,10 +20,10 @@ import java.util.Optional;
  * ★★ <b>旧档默认阶层结构（E1b）—— "旧档默认 mode / 阶层结构 / 阶层位置"的唯一来源。</b>
  *
  * <p>★★ <b>它解决什么问题</b>：E1a 已把 {@code ProductionMode} / {@code ClassStructure} / {@code
- * ClassPosition} / {@code HouseholdClassMembership} 四张新表落进 {@code EconomyData}，但旧档只有 {@code
+ * ProductionRole} / {@code HouseholdClassMembership} 四张新表落进 {@code EconomyData}，但旧档只有 {@code
  * HouseholdEconomy.view.stratum}（{@link SocialClassId}）这一件事实。本类把"旧档的 7
  * 个社会阶层"翻译成一套<b>确定、可复现、可审计</b>的默认阶层结构：一个默认 {@link ProductionMode}、一个默认 {@link ClassStructure}、7 个
- * {@link ClassPosition}。迁移器（{@code ClassPositionResolver.seedLegacyClassMemberships}）与只读解析器都以本类为唯一拼写点
+ * {@link ProductionRole}。迁移器（{@code ProductionRoleResolver.seedLegacyClassMemberships}）与只读解析器都以本类为唯一拼写点
  * —— 其它任何地方不得再写第二套默认映射。
  *
  * <p>★★ <b>ID 三条硬约束</b>（E1b 判据）：
@@ -36,7 +36,7 @@ import java.util.Optional;
  *       #socialClassOf(ClassPositionId)} 是这条规则的逆，解析失败返回空）。
  *   <li><b>全局唯一</b>：{@code EconomyData.classPositions} 是按位置 id 索引的<b>全局</b>表；前缀把旧档位置 限定在 {@code
  *       legacy-} 命名空间内，将来 E6 的新 mode 造自己的位置时不会与旧档名字撞车（同一个 {@code ClassPositionId} 不能在两个 mode
- *       下有两种形状，见 {@code ClassPosition.modeId} 的构造期判据）。
+ *       下有两种形状，见 {@code ProductionRole.modeId} 的构造期判据）。
  * </ol>
  *
  * <p>★★ <b>7 个位置的 role 映射（唯一的权威表；改动只许改这里）</b>：
@@ -80,11 +80,11 @@ import java.util.Optional;
  * </ol>
  *
  * <p>★★ <b>确定性与幂等</b>：本类全部是静态常量与纯函数；位置按 {@link SocialClassId#all()} 的稳定顺序生成， {@code LinkedHashMap}
- * 保序；无随机、无时钟、无 UUID、无文件系统。同一个 {@link SocialClassId} 在任意进程/任意 时刻都得到同一个 {@link ClassPosition}（值相等）。
+ * 保序；无随机、无时钟、无 UUID、无文件系统。同一个 {@link SocialClassId} 在任意进程/任意 时刻都得到同一个 {@link ProductionRole}（值相等）。
  *
  * <p>★ <b>E1b 的行为边界</b>：本类<b>不</b>被任何生产路径自动调用 —— 不接着 {@code EconomyData} 构造器、不进 {@code
  * EconomySeedHandler} / {@code EconomyStateBuilder} / {@code settle*}；只有未来的显式迁移器或读口调用 {@link
- * ClassPositionResolver#seedLegacyClassMemberships(EconomyData)} 时，这些常量才会被物化进状态。
+ * ProductionRoleResolver#seedLegacyClassMemberships(EconomyData)} 时，这些常量才会被物化进状态。
  */
 public final class LegacyClassStructure {
 
@@ -116,7 +116,7 @@ public final class LegacyClassStructure {
       new ProductionMode(DEFAULT_MODE_ID, "旧档默认生产方式", 1, DEFAULT_CLASS_STRUCTURE_ID);
 
   /** ★ 7 个默认位置（键 = 值内 id；保序不可变）。由 {@link #buildDefaultPositions()} 一次生成。 */
-  private static final Map<ClassPositionId, ClassPosition> DEFAULT_POSITIONS =
+  private static final Map<ClassPositionId, ProductionRole> DEFAULT_POSITIONS =
       buildDefaultPositions();
 
   /** ★ 默认阶层结构：包含全部 7 个位置 + 全零默认份额（份额口径见类注释）。 */
@@ -154,7 +154,7 @@ public final class LegacyClassStructure {
    *
    * <p>返回的是每次新建的防御性副本（仍是不可变包装）：调用方拿不到也改不动类内的常量表；顺序与 {@link SocialClassId#all()} 相同，因而同一输入恒得逐项相同的序列。
    */
-  public static Map<ClassPositionId, ClassPosition> defaultClassPositions() {
+  public static Map<ClassPositionId, ProductionRole> defaultProductionRoles() {
     return Collections.unmodifiableMap(new LinkedHashMap<>(DEFAULT_POSITIONS)); // ★ 防御性副本
   }
 
@@ -175,12 +175,12 @@ public final class LegacyClassStructure {
    * ★ <b>社会阶层 → 默认位置本体</b>（只读便利查询；角色三档从返回值读，不需要调用方自己再拼映射）。
    *
    * @param socialClass 旧档社会阶层；不得为 null
-   * @return 该社会阶层的默认 {@link ClassPosition}
+   * @return 该社会阶层的默认 {@link ProductionRole}
    * @throws IllegalStateException 默认结构缺少该位置（意味着常量表与词表漂开，fail-closed 不猜）
    */
-  public static ClassPosition defaultClassPosition(SocialClassId socialClass) {
+  public static ProductionRole defaultProductionRole(SocialClassId socialClass) {
     Objects.requireNonNull(socialClass, "socialClass");
-    ClassPosition position = DEFAULT_POSITIONS.get(positionIdOf(socialClass));
+    ProductionRole position = DEFAULT_POSITIONS.get(positionIdOf(socialClass));
     if (position == null) {
       throw new IllegalStateException("旧档默认阶层结构缺少社会阶层的位置：" + socialClass);
     }
@@ -228,19 +228,19 @@ public final class LegacyClassStructure {
   }
 
   /** 按 {@link SocialClassId#all()} 的稳定顺序生成 7 个位置；键 = 值内 id。 */
-  private static Map<ClassPositionId, ClassPosition> buildDefaultPositions() {
-    Map<ClassPositionId, ClassPosition> positions = new LinkedHashMap<>();
+  private static Map<ClassPositionId, ProductionRole> buildDefaultPositions() {
+    Map<ClassPositionId, ProductionRole> positions = new LinkedHashMap<>();
     for (SocialClassId socialClass : SocialClassId.all()) {
-      ClassPosition position = positionOf(socialClass);
+      ProductionRole position = positionOf(socialClass);
       positions.put(position.id(), position);
     }
     return Collections.unmodifiableMap(positions); // ★ 冻在赋值处
   }
 
   /** 一个社会阶层的位置本体：id 由 {@link #positionIdOf} 生成，三个 role 由 {@link #roleSpecOf} 裁决。 */
-  private static ClassPosition positionOf(SocialClassId socialClass) {
+  private static ProductionRole positionOf(SocialClassId socialClass) {
     RoleSpec spec = roleSpecOf(socialClass);
-    return new ClassPosition(
+    return new ProductionRole(
         positionIdOf(socialClass),
         DEFAULT_MODE_ID,
         spec.name(),
@@ -277,7 +277,7 @@ public final class LegacyClassStructure {
 
   /** 默认份额：对每个位置写确定性 0 —— 语义见类注释（仅兼容占位，不驱动生产）。 */
   private static Map<ClassPositionId, Long> zeroDefaultShares(
-      Map<ClassPositionId, ClassPosition> positions) {
+      Map<ClassPositionId, ProductionRole> positions) {
     Map<ClassPositionId, Long> shares = new LinkedHashMap<>();
     for (ClassPositionId positionId : positions.keySet()) {
       shares.put(positionId, 0L);
@@ -288,7 +288,7 @@ public final class LegacyClassStructure {
   /**
    * 一个位置的不可变角色模板（只在本类的 7 个分支里构造）。
    *
-   * <p>它不落进任何状态：{@link ClassPosition} 才是权威形状；本 record 只是"常量表在代码里的中间变量"， 避免 7 个分支各写 6 个参数的重复。
+   * <p>它不落进任何状态：{@link ProductionRole} 才是权威形状；本 record 只是"常量表在代码里的中间变量"， 避免 7 个分支各写 6 个参数的重复。
    */
   private record RoleSpec(
       String name, RelationToMeans relationToMeans, LaborRole laborRole, SurplusRole surplusRole) {}

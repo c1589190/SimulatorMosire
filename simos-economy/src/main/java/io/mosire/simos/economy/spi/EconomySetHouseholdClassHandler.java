@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.ClassPosition;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -21,7 +21,7 @@ import java.util.Set;
 
 /**
  * ★★ {@code economy.SetHouseholdClass}（P2-B §13.6）：把某个家户的 {@link HouseholdClassMembership#currentPositionId()}
- * 改到一个**已存在**的 {@link ClassPosition} 上；只写 {@code classStandings} 一张表。
+ * 改到一个**已存在**的 {@link ProductionRole} 上；只写 {@code classStandings} 一张表。
  *
  * <pre>{@code
  * {"household":"hh-...","position":"wage-farm-wage-laborer","originalPosition"?:"...",
@@ -74,7 +74,7 @@ public final class EconomySetHouseholdClassHandler implements CommandHandler, Co
       HouseholdId household = HouseholdEconomyCommands.requireHousehold(TYPE, base, payload);
       Optional<HexCoord> at = HouseholdEconomyCommands.optionalAt(TYPE, payload);
       HouseholdEconomyCommands.requireAtMatchesHousehold(TYPE, base, household, at);
-      ClassPosition position =
+      ProductionRole position =
           HouseholdEconomyCommands.requirePosition(
               TYPE, base, EconomyCommandPayloads.requireText(TYPE, payload, "position"));
       String reason = EconomyCommandPayloads.optionalText(TYPE, payload, "reason", "gm:" + TYPE);
@@ -109,7 +109,7 @@ public final class EconomySetHouseholdClassHandler implements CommandHandler, Co
           new LinkedHashMap<>(base.classStandings());
       classMemberships.put(household, afterClassMembership);
       EconomyData projected = base.withClassMemberships(classMemberships);
-      io.mosire.simos.economy.EconomyLog.organization()
+      io.mosire.simos.economy.EconomyLog.enterprise()
           .info(
               "event=HOUSEHOLD_CLASS household={} currentPosition={} originalPosition={} reason={}",
               household.value(),

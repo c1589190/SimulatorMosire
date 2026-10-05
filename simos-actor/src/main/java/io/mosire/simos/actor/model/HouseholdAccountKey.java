@@ -12,8 +12,8 @@ import java.util.Objects;
  * <ul>
  *   <li><b>唯一主体 = 家户</b>：键就是 {@link HouseholdId}（不是 {@code ActorRef}：账户主体统一为家户，见 §13.3）；
  *   <li><b>没有 {@code HexCoord}</b>：位置从 {@code Household.location} 派生 —— 家户搬家，账自动跟走；
- *   <li>庄园/作坊不是账户主体：它们是生产方式/生产活动（{@code ProductionMode} / {@code ProductionOrganization} /
- *       {@code ProductionUnit}），投入/产出/收款走组织者/经营者<b>家户</b>的这本账。
+ *   <li>庄园/作坊不是账户主体：它们是生产方式/生产活动（{@code ProductionMode} / {@code ProductionEnterprise} /
+ *       {@code ProductionProcess}），投入/产出/收款走组织者/经营者<b>家户</b>的这本账。
  * </ul>
  *
  * <p>★★ <b>旧账户直接报废、不做迁移</b>（§13.3 的既定口径）：旧键 {@code <owner>|<hex>} 的 JSON 在新 codec 下解析即抛，

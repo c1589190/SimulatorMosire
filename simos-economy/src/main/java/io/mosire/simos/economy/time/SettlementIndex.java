@@ -12,15 +12,15 @@ import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.Payee;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -36,7 +36,7 @@ import java.util.Set;
  * ★★ <b>一次日结算（或一批人口回写）内只读的派生索引</b>（R4-B.3a-perf）。
  *
  * <p>★★ <b>为什么要有它</b>：结算里有几组问题每天、每个市场轮、每个 unit 都要回答很多次，而它们的答案在一天内不变 —— "这个 unit
- * 的可用资产/产能规模"（AssetShare 聚合）、"这个 unit 的家户行"（HouseholdLaborCommitment 反查）、"这一格有哪些 unit"、 "这家户供给哪些
+ * 的可用资产/产能规模"（OwnershipStake 聚合）、"这个 unit 的家户行"（HouseholdLaborCommitment 反查）、"这一格有哪些 unit"、 "这家户供给哪些
  * unit"、"每个债务人的债务"、"这一格有哪些产业"。旧实现每次现扫全表：真档新世界 8,940 unit × 44,564 配额、8,940 unit × 8,940 份额，把 0→120
  * 推到 752 秒。索引把这些答案在入口算一次，结算全程只查表。
  *
@@ -46,20 +46,20 @@ import java.util.Set;
  * <p>★★ <b>并发安全</b>：所有字段在构造后不再变化；每个 {@code Map}/{@code List}/{@code Set} 都是不可修改视图， worker
  * 只读同一份快照。索引在协调器线程构建；worker 不持有可写结构。
  *
- * <p>★★ <b>与状态变更的关系</b>：{@code AssetShare}/{@code Industry}/{@code ProductionUnit}
+ * <p>★★ <b>与状态变更的关系</b>：{@code OwnershipStake}/{@code Industry}/{@code ProductionProcess}
  * 的身份与份额在一天内不被本切片修改，故 资产/产能/格索引一次构建即可；{@code HouseholdLaborCommitment} 会在劳动再分配与饿死缩放中被改写，故 {@link #withLabor}
  * 在改写的 阶段边界重建“配额侧”的视图；{@code DebtContract} 会在借粮/偿还/计息中被改写，故 {@link #withDebtContracts}
  * 在债务阶段边界重建债务视图。 这两次重建都仍是“每阶段一次”，不是逐查询一次 —— 语义由 {@link #build} 中逐字保留的旧遍历序保证。
  */
 final class SettlementIndex {
 
-  /** 资产聚合键：{@code ProductionUnitBook.usableAssets} 的归属判据是 (industry, operator)，不是 unit id。 */
+  /** 资产聚合键：{@code ProductionProcessBook.usableAssets} 的归属判据是 (industry, operator)，不是 unit id。 */
   private record AssetScope(IndustryId industry, ActorRef operator) {}
 
   // ── 资产生成 ─────────────────────────────────────────────────────────────────────────
   private final Map<ProductionUnitId, Map<AssetKind, Long>> usableAssetsByUnit;
   private final Map<ProductionUnitId, Long> capacityScaleByUnit;
-  private final Map<ProductionUnitId, List<AssetShareId>> assetShareIdsByUnit;
+  private final Map<ProductionUnitId, List<AssetShareId>> ownershipStakeIdsByProcess;
 
   // ── 经营者 → 关联经济家户（E1：唯一解析结果的索引化快照）────────────────────────────
   private final Map<ProductionUnitId, HouseholdId> economicHouseholdByUnit;
@@ -82,12 +82,12 @@ final class SettlementIndex {
 
   // ── E4c/P2：主体 → 相关生产 unit / 生产组织（只读；旧 DebtPartyResolver 解析器已随旧结算引擎删除）────────
   private final Map<ActorRef, List<ProductionUnitId>> unitsByParty;
-  private final Map<ActorRef, List<ProductionOrganization>> organizationsByActor;
+  private final Map<ActorRef, List<ProductionEnterprise>> enterprisesByActor;
 
   private SettlementIndex(
       Map<ProductionUnitId, Map<AssetKind, Long>> usableAssetsByUnit,
       Map<ProductionUnitId, Long> capacityScaleByUnit,
-      Map<ProductionUnitId, List<AssetShareId>> assetShareIdsByUnit,
+      Map<ProductionUnitId, List<AssetShareId>> ownershipStakeIdsByProcess,
       Map<ProductionUnitId, HouseholdId> economicHouseholdByUnit,
       Map<ProductionUnitId, List<HouseholdLaborCommitment>> laborCommitmentsByUnit,
       Map<ProductionUnitId, List<LaborAllocationId>> allocationIdsByUnit,
@@ -102,10 +102,10 @@ final class SettlementIndex {
       Map<String, List<IndustryId>> industriesByHex,
       Map<HouseholdId, List<DebtContract>> debtsByDebtor,
       Map<ActorRef, List<ProductionUnitId>> unitsByParty,
-      Map<ActorRef, List<ProductionOrganization>> organizationsByActor) {
+      Map<ActorRef, List<ProductionEnterprise>> enterprisesByActor) {
     this.usableAssetsByUnit = usableAssetsByUnit;
     this.capacityScaleByUnit = capacityScaleByUnit;
-    this.assetShareIdsByUnit = assetShareIdsByUnit;
+    this.ownershipStakeIdsByProcess = ownershipStakeIdsByProcess;
     this.economicHouseholdByUnit = economicHouseholdByUnit;
     this.laborCommitmentsByUnit = laborCommitmentsByUnit;
     this.allocationIdsByUnit = allocationIdsByUnit;
@@ -120,7 +120,7 @@ final class SettlementIndex {
     this.industriesByHex = industriesByHex;
     this.debtsByDebtor = debtsByDebtor;
     this.unitsByParty = unitsByParty;
-    this.organizationsByActor = organizationsByActor;
+    this.enterprisesByActor = enterprisesByActor;
   }
 
   /**
@@ -130,13 +130,13 @@ final class SettlementIndex {
    * unitsByHex} 按 unit 表序）。这一点是 A/B 逐值等价的一部分，注释在 各 helper 上。
    */
   static SettlementIndex build(
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<IndustryId, Industry> industries,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<DebtContractId, DebtContract> debts,
-      Map<ProductionUnitId, ProductionRelation> relations) {
+      Map<ProductionUnitId, ProductionRules> relations) {
     return build(units, industries, assetShares, laborCommitments, householdEconomies, debts, relations, Map.of());
   }
 
@@ -145,25 +145,25 @@ final class SettlementIndex {
    * session.sheet().productionOrganizations()}，让今天的 E2 组织也能被旧 DebtPartyResolver 的同类解析看见。
    */
   static SettlementIndex build(
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<IndustryId, Industry> industries,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<DebtContractId, DebtContract> debts,
-      Map<ProductionUnitId, ProductionRelation> relations,
-      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
+      Map<ProductionUnitId, ProductionRules> relations,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises) {
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(industries, "industries");
     Objects.requireNonNull(assetShares, "assetShares");
     Objects.requireNonNull(laborCommitments, "allocations");
     Objects.requireNonNull(householdEconomies, "rows");
     Objects.requireNonNull(relations, "relations");
-    Objects.requireNonNull(organizations, "organizations");
+    Objects.requireNonNull(enterprises, "organizations");
 
     Map<ProductionUnitId, Map<AssetKind, Long>> usable = usableAssets(units, assetShares);
     Map<ProductionUnitId, Long> capacity = capacityScale(units, industries, usable);
-    Map<ProductionUnitId, List<AssetShareId>> shareIds = assetShareIdsByUnit(units, assetShares);
+    Map<ProductionUnitId, List<AssetShareId>> shareIds = ownershipStakeIdsByProcess(units, assetShares);
     Map<ActorRef, HouseholdId> householdOfActor = householdByActor(householdEconomies);
     return new SettlementIndex(
         usable,
@@ -183,12 +183,12 @@ final class SettlementIndex {
         industriesByHex(industries),
         debtsByDebtor(debts),
         unitsByParty(units, relations, assetShares, shareIds),
-        organizationsByActor(organizations, units));
+        enterprisesByActor(enterprises, units));
   }
 
   /** ★ 劳动配额被改写之后的阶段边界视图：共享资产/格/产业/债务，只重建配额侧派生量。 */
   SettlementIndex withLabor(
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
     Objects.requireNonNull(units, "units");
@@ -197,7 +197,7 @@ final class SettlementIndex {
     return new SettlementIndex(
         usableAssetsByUnit,
         capacityScaleByUnit,
-        assetShareIdsByUnit,
+        ownershipStakeIdsByProcess,
         economicHouseholdByUnit,
         laborCommitmentsByUnit(laborCommitments),
         allocationIdsByUnit(laborCommitments),
@@ -212,7 +212,7 @@ final class SettlementIndex {
         industriesByHex,
         debtsByDebtor,
         unitsByParty,
-        organizationsByActor);
+        enterprisesByActor);
   }
 
   /** ★ 债务被改写之后的阶段边界视图：共享资产/劳动/格/产业，只重建债务人索引。 */
@@ -221,7 +221,7 @@ final class SettlementIndex {
     return new SettlementIndex(
         usableAssetsByUnit,
         capacityScaleByUnit,
-        assetShareIdsByUnit,
+        ownershipStakeIdsByProcess,
         economicHouseholdByUnit,
         laborCommitmentsByUnit,
         allocationIdsByUnit,
@@ -236,12 +236,12 @@ final class SettlementIndex {
         industriesByHex,
         debtsByDebtor(debts),
         unitsByParty,
-        organizationsByActor);
+        enterprisesByActor);
   }
 
   // ── 读口（一律 O(1) 查表；缺项返回空/0，与旧“无份额/无配额”口径同侧）────────────────────
 
-  Map<AssetKind, Long> usableAssetsOf(ProductionUnit unit) {
+  Map<AssetKind, Long> usableAssetsOf(ProductionProcess unit) {
     return usableAssetsByUnit.getOrDefault(unit.id(), Map.of());
   }
 
@@ -254,8 +254,8 @@ final class SettlementIndex {
   }
 
   /** 某个 unit 名下（{@code industry + operator} 作用域）的份额 id 快照（序 = 全局份额表序）。 */
-  List<AssetShareId> assetShareIdsOfUnit(ProductionUnitId unit) {
-    return assetShareIdsByUnit.getOrDefault(unit, List.of());
+  List<AssetShareId> ownershipStakeIdsOfProcess(ProductionUnitId unit) {
+    return ownershipStakeIdsByProcess.getOrDefault(unit, List.of());
   }
 
   /**
@@ -312,8 +312,8 @@ final class SettlementIndex {
    * ★★ <b>P2：某个主体关联到的生产组织列表</b>（{@code organizer == actor} 或对应 unit 的 {@code operator == actor}；序 =
    * 组织表首次出现序）。只读查询；空白 ⇒ 空表。
    */
-  List<ProductionOrganization> organizationsOf(ActorRef actor) {
-    return organizationsByActor.getOrDefault(actor, List.of());
+  List<ProductionEnterprise> enterprisesOf(ActorRef actor) {
+    return enterprisesByActor.getOrDefault(actor, List.of());
   }
 
   List<ProductionUnitId> unitsInHex(String hexKey) {
@@ -335,16 +335,16 @@ final class SettlementIndex {
   // ── 构建（静态 helper；顺序口径都写在注释里）──────────────────────────────────────────
 
   /**
-   * 从 AssetShare 一次聚合出逐 unit 可用资产。
+   * 从 OwnershipStake 一次聚合出逐 unit 可用资产。
    *
    * <p>★ 一个 (industry, operator) 可以有多个 unit —— 旧 {@code usableAssets} 每次按 unit 的 (industry,
    * operator) 现扫，故同 scope 的每个 unit 得到同一张表；这里一次算好、按 unit 各存一份。
    */
   private static Map<ProductionUnitId, Map<AssetKind, Long>> usableAssets(
-      Map<ProductionUnitId, ProductionUnit> units, Map<AssetShareId, AssetShare> assetShares) {
+      Map<ProductionUnitId, ProductionProcess> units, Map<AssetShareId, OwnershipStake> assetShares) {
     Map<AssetScope, List<ProductionUnitId>> unitsByScope = new LinkedHashMap<>();
     Map<ProductionUnitId, Map<AssetKind, Long>> raw = new LinkedHashMap<>();
-    for (ProductionUnit unit : units.values()) {
+    for (ProductionProcess unit : units.values()) {
       // ★ 每个 unit 都在表里（无份额 ⇒ 空表），与旧实现的“无份额 ⇒ 空表”逐值相同。
       raw.put(unit.id(), new LinkedHashMap<>());
       unitsByScope
@@ -352,7 +352,7 @@ final class SettlementIndex {
               new AssetScope(unit.industry(), unit.operator()), ignored -> new ArrayList<>())
           .add(unit.id());
     }
-    for (AssetShare share : assetShares.values()) {
+    for (OwnershipStake share : assetShares.values()) {
       List<ProductionUnitId> scoped =
           unitsByScope.get(new AssetScope(share.industry(), share.operator()));
       if (scoped == null) {
@@ -376,18 +376,18 @@ final class SettlementIndex {
    * <p>★ 与 {@link #usableAssets} 同一套作用域判定：一个作用域下的每个 unit 都拿到同一串 id（同 scope 多 unit 是合法形态）； 退出处置用 id
    * 回活表取当前行，绝不缓存 record（处置会改 {@code operator}）。
    */
-  private static Map<ProductionUnitId, List<AssetShareId>> assetShareIdsByUnit(
-      Map<ProductionUnitId, ProductionUnit> units, Map<AssetShareId, AssetShare> assetShares) {
+  private static Map<ProductionUnitId, List<AssetShareId>> ownershipStakeIdsByProcess(
+      Map<ProductionUnitId, ProductionProcess> units, Map<AssetShareId, OwnershipStake> assetShares) {
     Map<AssetScope, List<ProductionUnitId>> unitsByScope = new LinkedHashMap<>();
     Map<ProductionUnitId, List<AssetShareId>> raw = new LinkedHashMap<>();
-    for (ProductionUnit unit : units.values()) {
+    for (ProductionProcess unit : units.values()) {
       raw.put(unit.id(), new ArrayList<>());
       unitsByScope
           .computeIfAbsent(
               new AssetScope(unit.industry(), unit.operator()), ignored -> new ArrayList<>())
           .add(unit.id());
     }
-    for (AssetShare share : assetShares.values()) {
+    for (OwnershipStake share : assetShares.values()) {
       List<ProductionUnitId> scoped =
           unitsByScope.get(new AssetScope(share.industry(), share.operator()));
       if (scoped == null) {
@@ -409,16 +409,16 @@ final class SettlementIndex {
    * 份额)），结果在整天内共享（unit/relation/份额/行键集在日结算的处置之前不变）。解析不到 ⇒ 不进表。
    */
   private static Map<ProductionUnitId, HouseholdId> economicHouseholds(
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<ProductionUnitId, ProductionRelation> relations,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, ProductionRules> relations,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, List<AssetShareId>> shareIdsByUnit,
       Map<ActorRef, HouseholdId> householdOfActor) {
     Map<ProductionUnitId, HouseholdId> raw = new LinkedHashMap<>();
-    for (ProductionUnit unit : units.values()) {
-      List<AssetShare> shares = new ArrayList<>();
+    for (ProductionProcess unit : units.values()) {
+      List<OwnershipStake> shares = new ArrayList<>();
       for (AssetShareId id : shareIdsByUnit.getOrDefault(unit.id(), List.of())) {
-        AssetShare share = assetShares.get(id);
+        OwnershipStake share = assetShares.get(id);
         if (share != null) {
           shares.add(share);
         }
@@ -435,11 +435,11 @@ final class SettlementIndex {
    * 缺产业模板的 unit 记 0（调用方在旧路径上会先因缺模板抛，这里不制造第二套公式）。
    */
   private static Map<ProductionUnitId, Long> capacityScale(
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<IndustryId, Industry> industries,
       Map<ProductionUnitId, Map<AssetKind, Long>> usable) {
     Map<ProductionUnitId, Long> scaleByUnit = new LinkedHashMap<>();
-    for (ProductionUnit unit : units.values()) {
+    for (ProductionProcess unit : units.values()) {
       Industry industry = industries.get(unit.industry());
       Map<AssetKind, Long> sums = usable.getOrDefault(unit.id(), Map.of());
       long scale = Long.MAX_VALUE;
@@ -525,7 +525,7 @@ final class SettlementIndex {
 
   /** 家户 → 它供给的 unit 集合（只认现存 unit 与现存行；序 = 全局配额表首次出现序）。 */
   private static Map<HouseholdId, Set<ProductionUnitId>> unitsByHousehold(
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Map<HouseholdId, LinkedHashSet<ProductionUnitId>> raw = new LinkedHashMap<>();
@@ -546,7 +546,7 @@ final class SettlementIndex {
 
   /** 批次 → 它供给的 unit（旧 {@code unitsOfHouseholds} 的按 group 口径；序 = 全局配额首次出现序）。 */
   private static Map<PeopleLotId, List<ProductionUnitId>> unitsByGroup(
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
     Map<PeopleLotId, LinkedHashSet<ProductionUnitId>> raw = new LinkedHashMap<>();
     for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
@@ -584,9 +584,9 @@ final class SettlementIndex {
 
   /** unit → 产业 id 里的格键（保序 = unit 表序；无格键的 unit 不进表，与旧 {@code hexKeyOf(...).ifPresent} 同）。 */
   private static Map<ProductionUnitId, String> hexByUnit(
-      Map<ProductionUnitId, ProductionUnit> units) {
+      Map<ProductionUnitId, ProductionProcess> units) {
     Map<ProductionUnitId, String> byUnit = new LinkedHashMap<>();
-    for (ProductionUnit unit : units.values()) {
+    for (ProductionProcess unit : units.values()) {
       IndustryHexKeys.hexKeyOf(unit.industry()).ifPresent(hex -> byUnit.put(unit.id(), hex));
     }
     return Collections.unmodifiableMap(byUnit);
@@ -594,9 +594,9 @@ final class SettlementIndex {
 
   /** 格 → 该格 unit（序 = unit 表序；旧 {@code participantsFor}/{@code reallocateLabor} 的分组同此序）。 */
   private static Map<String, List<ProductionUnitId>> unitsByHex(
-      Map<ProductionUnitId, ProductionUnit> units) {
+      Map<ProductionUnitId, ProductionProcess> units) {
     Map<String, List<ProductionUnitId>> raw = new LinkedHashMap<>();
-    for (ProductionUnit unit : units.values()) {
+    for (ProductionProcess unit : units.values()) {
       IndustryHexKeys.hexKeyOf(unit.industry())
           .ifPresent(hex -> raw.computeIfAbsent(hex, ignored -> new ArrayList<>()).add(unit.id()));
     }
@@ -643,30 +643,30 @@ final class SettlementIndex {
    * ★★ <b>P2：主体 → 它在哪些 unit 里出现</b>（只读派生）。
    *
    * <p>命中集合固定为：{@code unit.operator}、{@code relation.operator}、{@code relation.residualOwner}、
-   * {@code relation.inputSupplier(ToActor)}、该 unit 名下 AssetShare 的 {@code owner} / {@code
+   * {@code relation.inputSupplier(ToActor)}、该 unit 名下 OwnershipStake 的 {@code owner} / {@code
    * operator}。 一条 unit 对同一 actor 只记一次；最终 List 的序 = unit 表首次出现序（可复现）。
    *
-   * <p>★ 为什么把份额 owner/operator 也收进来：E1 的解析顺序里份额是第③档，而 {@code AssetShare} 的归属判据是 {@code (industry,
-   * operator)} 作用域 —— 同一作用域下的每个 unit 拿到同一串份额，故这里逐 unit 展开， 与 {@link #assetShareIdsByUnit} 的口径保持一致。
+   * <p>★ 为什么把份额 owner/operator 也收进来：E1 的解析顺序里份额是第③档，而 {@code OwnershipStake} 的归属判据是 {@code (industry,
+   * operator)} 作用域 —— 同一作用域下的每个 unit 拿到同一串份额，故这里逐 unit 展开， 与 {@link #ownershipStakeIdsByProcess} 的口径保持一致。
    */
   private static Map<ActorRef, List<ProductionUnitId>> unitsByParty(
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<ProductionUnitId, ProductionRelation> relations,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, ProductionRules> relations,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<ProductionUnitId, List<AssetShareId>> shareIdsByUnit) {
     Map<ActorRef, LinkedHashSet<ProductionUnitId>> raw = new LinkedHashMap<>();
-    for (ProductionUnit unit : units.values()) {
+    for (ProductionProcess unit : units.values()) {
       addPartyUnit(raw, unit.operator(), unit.id());
-      ProductionRelation relation = relations.get(unit.id());
+      ProductionRules relation = relations.get(unit.id());
       if (relation != null) {
         addPartyUnit(raw, relation.operator(), unit.id());
         addPartyUnit(raw, relation.residualOwner(), unit.id());
-        if (relation.inputSupplier() instanceof Recipient.ToActor toActor) {
+        if (relation.inputSupplier() instanceof Payee.ToActor toActor) {
           addPartyUnit(raw, toActor.actor(), unit.id());
         }
       }
       for (AssetShareId shareId : shareIdsByUnit.getOrDefault(unit.id(), List.of())) {
-        AssetShare share = assetShares.get(shareId);
+        OwnershipStake share = assetShares.get(shareId);
         if (share == null) {
           continue;
         }
@@ -697,32 +697,32 @@ final class SettlementIndex {
    * <p>它服务旧 DebtPartyResolver 的聚合主体解析（R3a 已删除）：优先用 E2 自动组织登记的 {@code laborSources} / 家户归属，
    * 而不是直接按阶层人口猜。
    */
-  private static Map<ActorRef, List<ProductionOrganization>> organizationsByActor(
-      Map<ProductionOrganizationId, ProductionOrganization> organizations,
-      Map<ProductionUnitId, ProductionUnit> units) {
-    Map<ActorRef, LinkedHashSet<ProductionOrganization>> raw = new LinkedHashMap<>();
-    for (ProductionOrganization organization : organizations.values()) {
-      addOrganizationActor(raw, organization.organizer(), organization);
-      organization
+  private static Map<ActorRef, List<ProductionEnterprise>> enterprisesByActor(
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      Map<ProductionUnitId, ProductionProcess> units) {
+    Map<ActorRef, LinkedHashSet<ProductionEnterprise>> raw = new LinkedHashMap<>();
+    for (ProductionEnterprise enterprise : enterprises.values()) {
+      addEnterpriseActor(raw, enterprise.organizer(), enterprise);
+      enterprise
           .unitId()
           .map(units::get)
-          .ifPresent(unit -> addOrganizationActor(raw, unit.operator(), organization));
+          .ifPresent(unit -> addEnterpriseActor(raw, unit.operator(), enterprise));
     }
-    Map<ActorRef, List<ProductionOrganization>> frozen = new LinkedHashMap<>();
-    for (Map.Entry<ActorRef, LinkedHashSet<ProductionOrganization>> entry : raw.entrySet()) {
+    Map<ActorRef, List<ProductionEnterprise>> frozen = new LinkedHashMap<>();
+    for (Map.Entry<ActorRef, LinkedHashSet<ProductionEnterprise>> entry : raw.entrySet()) {
       frozen.put(entry.getKey(), List.copyOf(entry.getValue()));
     }
     return Collections.unmodifiableMap(frozen);
   }
 
   /** 同一 (actor, 组织) 只记一次（保序）。 */
-  private static void addOrganizationActor(
-      Map<ActorRef, LinkedHashSet<ProductionOrganization>> raw,
+  private static void addEnterpriseActor(
+      Map<ActorRef, LinkedHashSet<ProductionEnterprise>> raw,
       ActorRef actor,
-      ProductionOrganization organization) {
-    if (actor == null || organization == null) {
+      ProductionEnterprise enterprise) {
+    if (actor == null || enterprise == null) {
       return;
     }
-    raw.computeIfAbsent(actor, ignored -> new LinkedHashSet<>()).add(organization);
+    raw.computeIfAbsent(actor, ignored -> new LinkedHashSet<>()).add(enterprise);
   }
 }

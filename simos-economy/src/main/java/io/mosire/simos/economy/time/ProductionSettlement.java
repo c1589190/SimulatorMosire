@@ -8,8 +8,8 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.TransferId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Pool;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.SubsistenceObligation;
 import io.mosire.simos.economy.api.relation.Weight;
@@ -31,7 +31,7 @@ import java.util.OptionalLong;
 /**
  * ★★ <b>一次生产关账的结算「计算」</b>（S1 阶段 4+5 Task 3；spec §四 ①→⑤ 里"怎么分"那一步）。
  *
- * <p>★★ <b>纯函数、无 IO、无历史余额</b>：输入 = 一条关系（{@link ProductionRelation}）+ 本周期的事实（{@link Facts}）， 输出 =
+ * <p>★★ <b>纯函数、无 IO、无历史余额</b>：输入 = 一条关系（{@link ProductionRules}）+ 本周期的事实（{@link Facts}）， 输出 =
  * <b>转移</b>（{@link Transfer}，每条实付一条）+ <b>逐规则的应付/实付/欠读数</b>（{@link RuleSettlement}）+ 待 S2/S4
  * 的货币规则（{@link Outcome#deferredMoney()}）。它<b>不碰状态</b>：账户怎么落盘是 app 协调器的事 （{@code
  * OwnershipBooks}，T5）、家户的账怎么落是 economy 的 {@code harvest}（H1 起它落进会话工作副本）。
@@ -113,7 +113,7 @@ public final class ProductionSettlement {
    * 累加器盖</b>（{@code ProductionLedger.Accumulator#mint}）—— ★ 序号是"当天该账本内第几条"，只有那个累加器 知道 ⇒
    * 分配点<b>恰一处</b>，重放/分支可比。
    *
-   * <p>★ 纯函数调用方（夹具、公式读法）走 {@link #settle(ProductionRelation, Facts)}：它自持一个日号为 0（创世）、序号自 1 起的 铸造口 ——
+   * <p>★ 纯函数调用方（夹具、公式读法）走 {@link #settle(ProductionRules, Facts)}：它自持一个日号为 0（创世）、序号自 1 起的 铸造口 ——
    * <b>落账的路径一律传当天的累加器</b>。
    */
   public record Outcome(
@@ -212,7 +212,7 @@ public final class ProductionSettlement {
    * ★★ <b>把一条关系按公式表结清</b>（纯函数；见类注的公式表、次序、上限与两条落点）。
    *
    * <p>★ 本重载<b>自持铸造口</b>（日号 0 = 创世、序号自 1 起）：它服务"不落账的读法"（夹具、纯函数调用）。 <b>落账的路径一律走 {@link
-   * #settle(ProductionRelation, Facts, TransferMint)}</b>，把当天的 ledger 累加器传进来 —— 那样 id
+   * #settle(ProductionRules, Facts, TransferMint)}</b>，把当天的 ledger 累加器传进来 —— 那样 id
    * 的序号才是"当天该账本内第几条"。
    *
    * @param relation 生产关系（身份 = 它结算的那个 activity；付方恒为它的 {@code operator}）；不得为 null
@@ -220,7 +220,7 @@ public final class ProductionSettlement {
    * @throws IllegalArgumentException 规则指名的商品不在 {@link Facts#outputPerUnit()} 里（E14）、 或者规则的 (type ×
    *     pool × weight) 组合在公式表里没有登记（E11）—— 两者都<b>当场抛</b>，不静默兜底
    */
-  public static Outcome settle(ProductionRelation relation, Facts facts) {
+  public static Outcome settle(ProductionRules relation, Facts facts) {
     return settle(relation, facts, selfMint());
   }
 
@@ -229,7 +229,7 @@ public final class ProductionSettlement {
    *
    * @param mint 转移凭据的铸造口（**落账路径 = 当天的 ledger 累加器**，见 {@link TransferMint}）；不得为 null
    */
-  public static Outcome settle(ProductionRelation relation, Facts facts, TransferMint mint) {
+  public static Outcome settle(ProductionRules relation, Facts facts, TransferMint mint) {
     if (relation == null) {
       throw new IllegalArgumentException("relation 不得为 null");
     }
@@ -269,7 +269,7 @@ public final class ProductionSettlement {
               due.getAsLong(),
               paidNow,
               relation.operator(),
-              recipientOf(rule),
+              payeeOf(rule),
               relation.activity()));
       if (paidNow <= 0L) {
         continue; // 归零 ⇒ 不产生转移（自留的 0、付不出的 0、受方不在账里的 0 都走这一支）
@@ -277,11 +277,11 @@ public final class ProductionSettlement {
       paid.merge(commodity, paidNow, Long::sum);
       // ★★ H2：实付 = 一条 `from=operator → to=受方` 的转移（受方恒为 actor —— 裁定 D1-A）。
       //   {@code ToCohort} 的家户 actor 由 {@link HouseholdActors#of(CohortKey)} 给出（家户身份的唯一拼写点，K9）。
-      //   ★ H4：受方的解析收进 recipientOf（货币档与实物档共用同一处，不许两处各拼一遍）。
+      //   ★ H4：受方的解析收进 payeeOf（货币档与实物档共用同一处，不许两处各拼一遍）。
       transfers.add(
           mint.mint(
               relation.operator(),
-              recipientOf(rule),
+              payeeOf(rule),
               facts.location(),
               Map.of(commodity, paidNow),
               TransferReason.RELATION_PAYMENT));
@@ -367,7 +367,7 @@ public final class ProductionSettlement {
    */
   private static void settleMoneyRule(
       CompensationRule rule,
-      ProductionRelation relation,
+      ProductionRules relation,
       Facts facts,
       Map<CurrencyId, Long> paidMoney,
       List<Transfer> transfers,
@@ -394,7 +394,7 @@ public final class ProductionSettlement {
             due,
             paidNow,
             relation.operator(),
-            recipientOf(rule),
+            payeeOf(rule),
             relation.activity()));
     if (paidNow <= 0L) {
       return; // 归零 ⇒ 不铸转移（同商品档的"实付 0 不产生转移"）
@@ -403,7 +403,7 @@ public final class ProductionSettlement {
     transfers.add(
         mint.mint(
             relation.operator(),
-            recipientOf(rule),
+            payeeOf(rule),
             facts.location(),
             Map.of(),
             Map.of(currency, paidNow),
@@ -425,12 +425,12 @@ public final class ProductionSettlement {
   }
 
   /** 受方的 actor 引用（{@code ToCohort} 的家户 actor = {@code HouseholdActors.of(cohort)}；两档合流成同一条）。 */
-  private static ActorRef recipientOf(CompensationRule rule) {
+  private static ActorRef payeeOf(CompensationRule rule) {
     return switch (rule.recipient()) {
-      case Recipient.ToActor toActor -> toActor.actor();
-      case Recipient.ToHousehold toHousehold -> HouseholdActors.of(toHousehold.household());
+      case Payee.ToActor toActor -> toActor.actor();
+      case Payee.ToHousehold toHousehold -> HouseholdActors.of(toHousehold.household());
       // ★ 旧档变体（S1 迁移前）：仍按旧视图拼 actor（constructor 归一化会把一对一转到 ToHousehold）。
-      case Recipient.ToCohort toCohort -> HouseholdActors.of(toCohort.cohort());
+      case Payee.ToCohort toCohort -> HouseholdActors.of(toCohort.cohort());
     };
   }
 
@@ -447,7 +447,7 @@ public final class ProductionSettlement {
    * <b>可观察的</b>：手工业的工资档先于分成档（WAGE）；庄园的给养先于地租（SERF）；佃农的自留先于地租（TENANT）。 同一制度档内仍完全尊重数据里的 {@code
    * priority} 与表序。
    */
-  private static List<CompensationRule> inPaymentOrder(ProductionRelation relation) {
+  private static List<CompensationRule> inPaymentOrder(ProductionRules relation) {
     List<CompensationRule> ordered = new ArrayList<>(relation.rules());
     ordered.sort(
         Comparator.comparingInt(
@@ -466,7 +466,7 @@ public final class ProductionSettlement {
    * commodity} 的那些）：货币档没有商品可判。
    */
   private static void requireProducibleCommodities(
-      List<CompensationRule> ordered, ProductionRelation relation, Facts facts) {
+      List<CompensationRule> ordered, ProductionRules relation, Facts facts) {
     for (CompensationRule rule : ordered) {
       if (rule.commodity().isEmpty()) {
         continue;
@@ -604,10 +604,10 @@ public final class ProductionSettlement {
   /**
    * 本受方的<b>劳动量</b>：cohort 查 {@code laborOfCohort}；★ actor 在本阶段<b>没有劳动账</b> ⇒ 0（归零，见类注）。
    *
-   * <p>★ <b>M1.7：委托给具名义务类型的同一个函数</b>（{@link SubsistenceObligation#laborOf(Recipient, Map)}）——
+   * <p>★ <b>M1.7：委托给具名义务类型的同一个函数</b>（{@link SubsistenceObligation#laborOf(Payee, Map)}）——
    * "谁有劳动账、谁的劳动量是 0"只有一处拼写点，读口与实付不会各答一套。
    */
-  private static long laborOf(Facts facts, Recipient recipient) {
+  private static long laborOf(Facts facts, Payee recipient) {
     return SubsistenceObligation.laborOf(recipient, facts.laborOfHousehold());
   }
 

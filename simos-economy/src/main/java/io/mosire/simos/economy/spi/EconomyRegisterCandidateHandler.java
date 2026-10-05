@@ -8,7 +8,7 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionCandidate;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -93,7 +93,7 @@ public final class EconomyRegisterCandidateHandler implements CommandHandler {
       LaborSource laborSource =
           EconomyCommandPayloads.optionalLaborSource(
               COMMAND, payload, "laborSource", LaborSource.SELF);
-      Set<AssetShare.RightKind> acceptedRightKinds =
+      Set<OwnershipStake.RightKind> acceptedRightKinds =
           EconomyCommandPayloads.optionalRightKinds(COMMAND, payload, "acceptedRightKinds");
       String name =
           EconomyCommandPayloads.optionalText(COMMAND, payload, "name", candidateId.value());

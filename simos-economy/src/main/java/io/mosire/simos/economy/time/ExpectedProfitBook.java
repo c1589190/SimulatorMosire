@@ -16,12 +16,12 @@ import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Pool;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.SubsistenceObligation;
 import io.mosire.simos.economy.api.relation.Weight;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassPosition;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DefaultProductionModes;
@@ -31,8 +31,8 @@ import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
@@ -53,7 +53,7 @@ import java.util.Set;
  * ★★ <b>D-024 / 2026-10-06 设计 §3.2：单个（家户 × 候选生产方式 × 市场）的预期净收益/劳动</b>（纯函数；只读入参，不写状态）。
  *
  * <p>★★ <b>它替代的旧口径</b>：候选门槛不再是"这个 mode/hex 有没有既存组织/真实利润读数"，而是按
- * 产业配方 + 市场价（bid/ask）+ 可寻址需求 + 家户资产/劳动 + 关系/地租规则现算。旧 {@link OrganizationProfitBook}
+ * 产业配方 + 市场价（bid/ask）+ 可寻址需求 + 家户资产/劳动 + 关系/地租规则现算。旧 {@link EnterpriseProfitBook}
  * 退位为事后对账（本类不读它）。
  *
  * <p>★★ <b>量纲（一次写清，实现里不再猜）</b>：
@@ -67,7 +67,7 @@ import java.util.Set;
  *   <li>劳动成本折算：{@code laborNeed（千分劳动·日） × subsistence（毫粮/1000 千分劳动） ÷ 1000 = 毫粮}，
  *       再 × 粮价（毫钱/商品单位） ÷ 1000 = 毫钱（两步合一：÷ 1_000_000，内部用 {@link BigInteger} 防截断/溢出）；
  *   <li>{@code netPerLaborScaled = floor(net × 1_000_000 / max(1, laborNeed))}（负数也向下取整；同
- *       {@link OrganizationProfitBook#PER_LABOR_SCALE} 的百万分之一刻度）。
+ *       {@link EnterpriseProfitBook#PER_LABOR_SCALE} 的百万分之一刻度）。
  * </ul>
  *
  * <p>★★ <b>与设计文档 §3.2.1 的一处量纲更正（如实记）</b>：文档写
@@ -82,21 +82,21 @@ import java.util.Set;
  * fail-closed 为具名不可行，不抛异常——本类是"候选评估器"，一个不可行候选不该让整轮关账失败。
  *
  * <p>★★ <b>claimed 集合的唯一来源（D-024 修复 1/1b，2026-10-06）</b>：判"闲置份额"所需的
- * {@code claimedByOrganizations} <b>由调用方用当天工作副本 {@code organizations}/{@code units}/{@code assetShares}
+ * {@code claimedByEnterprises} <b>由调用方用当天工作副本 {@code enterprises}/{@code units}/{@code assetShares}
  * 算出后传入</b>（{@code ModeMigrationPolicy.plan} 已经这么做：
- * {@code claimedAssetShares(organizations, units, assetShares)}）；本类<b>不再</b>从
+ * {@code claimedOwnershipStakes(enterprises, units, assetShares)}）；本类<b>不再</b>从
  * {@code base.productionOrganizations()} 重算——周期关账时 {@code base} 是本周期开始时的 revision，重算会把所有
  * {@code owner==operator} 的份额（含 ESTATE 名下全部土地）误判成"闲置可租"。claimed 含两格：组织
  * {@code assetSources} 引用 + 与在产 unit 同产业同 operator 且 {@code quantity>0} 的份额（seeder 直接建立的
  * ESTATE 主 unit 没有组织行，必须靠 unit 格才不漏）。闲置判据仍只经
- * {@link ModeMigrationPolicy#isIdleShare(AssetShare, Set)} 这一处谓词，本类不新增第二套判据。
+ * {@link ModeMigrationPolicy#isIdleShare(OwnershipStake, Set)} 这一处谓词，本类不新增第二套判据。
  *
  * <p>★★ <b>雇主读数的来源（D-024 修复 1b）</b>：{@code employerOf} 只从当天工作副本 {@code units} 按"同格 + 同产业 +
- * operator != 本户"找雇主，规模 = {@code ProductionUnitBook.capacityScaleOf}；不再读
- * {@code base.productionOrganizations()} 的 {@code organization.modeId}（那是周期开始时的过期快照）。
+ * operator != 本户"找雇主，规模 = {@code ProductionProcessBook.capacityScaleOf}；不再读
+ * {@code base.productionOrganizations()} 的 {@code enterprise.modeId}（那是周期开始时的过期快照）。
  *
  * <p>★★ <b>仍保留的具名近似（如实记）</b>：merchant 分支的商号/组织查找仍读 {@code base.merchantFirms()} 与
- * {@code base.productionOrganizations()}（签名拿不到当天工作副本 organizations）；当天自动组织阶段刚新建的组织可能不在
+ * {@code base.productionOrganizations()}（签名拿不到当天工作副本 enterprises）；当天自动组织阶段刚新建的组织可能不在
  * base 里，会让 merchant 候选的"现有商号"侧略偏乐观；真正落地由 {@code ModeMigrationPolicy} 的预留账本与
  * {@code ModeMigrationSettlement} 的逐笔拆份额复核（计划可新建 ⇔ 执行可拆到）。merchant 分支的"路线需求"用
  * {@link MarketDemandBook.Book#externalDemandTotal}/{@code unfilledBuyerTotal}（Book 里保留的读数），因为签名同样拿不到
@@ -108,8 +108,8 @@ public final class ExpectedProfitBook {
 
   private ExpectedProfitBook() {}
 
-  /** 单位劳动净收益的高精度刻度（与 {@link OrganizationProfitBook#PER_LABOR_SCALE} 同一把尺）。 */
-  public static final long PER_LABOR_SCALE = OrganizationProfitBook.PER_LABOR_SCALE;
+  /** 单位劳动净收益的高精度刻度（与 {@link EnterpriseProfitBook#PER_LABOR_SCALE} 同一把尺）。 */
+  public static final long PER_LABOR_SCALE = EnterpriseProfitBook.PER_LABOR_SCALE;
 
   /** merchant 分支没有产业模板时的视界兜底（天）：本轮真实世界产业周期都是 120。 */
   public static final long DEFAULT_MERCHANT_CYCLE_DAYS = 120L;
@@ -178,10 +178,10 @@ public final class ExpectedProfitBook {
    * @param marketOrNull 该格所在市场的价表；{@code null} ⇒ 无价（收入只算自给折算，标 NO_MARKET）
    * @param demand 需求簿（可寻址需求上限）
    * @param shares 实物资产份额（候选：自有自营 + 同格可租闲置）
-   * @param claimedByOrganizations 已被组织引用、或在产 unit 占用的资产份额 id 集合；<b>必须由调用方用当天工作副本
-   *     {@code organizations}/{@code units}/{@code assetShares} 算出</b>
-   *     （{@link ModeMigrationPolicy#claimedAssetShares(Map, Map, Map)}），本类不从 {@code base} 重算（过期快照会让已
-   *     使用份额被误判成闲置）；闲置判据只经 {@link ModeMigrationPolicy#isIdleShare(AssetShare, Set)}
+   * @param claimedByEnterprises 已被组织引用、或在产 unit 占用的资产份额 id 集合；<b>必须由调用方用当天工作副本
+   *     {@code enterprises}/{@code units}/{@code assetShares} 算出</b>
+   *     （{@link ModeMigrationPolicy#claimedOwnershipStakes(Map, Map, Map)}），本类不从 {@code base} 重算（过期快照会让已
+   *     使用份额被误判成闲置）；闲置判据只经 {@link ModeMigrationPolicy#isIdleShare(OwnershipStake, Set)}
    * @param accounts 账户会话（只读；本类当前不读它，保留入参以承接后续流动性/工资口径）
    * @param units 生产单元表（找现有雇主/现有规模）
    * @param relations 生产关系表（显式关系优先；缺则制度默认）
@@ -196,11 +196,11 @@ public final class ExpectedProfitBook {
       Industry industryOrNull,
       Market marketOrNull,
       MarketDemandBook.Book demand,
-      Map<AssetShareId, AssetShare> shares,
-      Set<AssetShareId> claimedByOrganizations,
+      Map<AssetShareId, OwnershipStake> shares,
+      Set<AssetShareId> claimedByEnterprises,
       AccountSession accounts,
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<ProductionUnitId, ProductionRelation> relations,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, ProductionRules> relations,
       MarketTopology topology,
       long day) {
     Objects.requireNonNull(base, "base");
@@ -210,7 +210,7 @@ public final class ExpectedProfitBook {
     Objects.requireNonNull(demand, "demand");
     Objects.requireNonNull(shares, "shares");
     Objects.requireNonNull(
-        claimedByOrganizations,
+        claimedByEnterprises,
         "claimedByOrganizations（必须由调用方用当天工作副本 organizations 算出，不得传 null）");
     Objects.requireNonNull(accounts, "accounts");
     Objects.requireNonNull(units, "units");
@@ -226,20 +226,20 @@ public final class ExpectedProfitBook {
     if (structure == null) {
       return infeasible(household, modeId, null, hex, null, "NO_STRUCTURE");
     }
-    List<ClassPosition> producing = producingPositions(structure);
+    List<ProductionRole> producing = producingPositions(structure);
     if (producing.isEmpty()) {
       return infeasible(household, modeId, null, hex, null, "NO_POSITION");
     }
     // ★ 当前户在本 mode 的位置若是纯收租/被供养位置（landlord / destitute），不进入生产候选（E2 的 shouldProduce 同口径）：
     //   它没有"生产净收益"可算（租金收入本批不建模）⇒ 具名不可行、net=0；A 规则不会被它触发。
-    ClassPosition currentPosition = currentPositionOf(base, household);
+    ProductionRole currentPosition = currentPositionOf(base, household);
     if (currentPosition != null
         && modeId.equals(currentPosition.modeId())
-        && (currentPosition.laborRole() == ClassPosition.LaborRole.NONE
-            || currentPosition.surplusRole() == ClassPosition.SurplusRole.DEPENDENT)) {
+        && (currentPosition.laborRole() == ProductionRole.LaborRole.NONE
+            || currentPosition.surplusRole() == ProductionRole.SurplusRole.DEPENDENT)) {
       return infeasible(household, modeId, currentPosition.id(), hex, null, "DEPENDENT");
     }
-    ClassPosition position = choosePosition(base, household, modeId, producing);
+    ProductionRole position = choosePosition(base, household, modeId, producing);
     HouseholdEconomy householdEconomy = base.classes().get(household);
     if (householdEconomy == null || householdEconomy.population() <= 0L) {
       return infeasible(household, modeId, position.id(), hex, null, "NO_ROW");
@@ -253,7 +253,7 @@ public final class ExpectedProfitBook {
     if (DefaultProductionModes.MERCHANT.equals(modeId)) {
       return merchantProspect(
           base, household, householdEconomy, modeId, position, hex, industry, marketOrNull, demand, shares,
-          claimedByOrganizations, units, relations, topology, day);
+          claimedByEnterprises, units, relations, topology, day);
     }
     if (industry == null) {
       return infeasible(household, modeId, position.id(), hex, null, "NO_INDUSTRY");
@@ -264,7 +264,7 @@ public final class ExpectedProfitBook {
     }
     return productionProspect(
         household, householdEconomy, modeId, position, hex, industry, marketOrNull, demand, shares,
-        claimedByOrganizations, units, relations);
+        claimedByEnterprises, units, relations);
   }
 
   // ── 生产位置（OWNER / SURPLUS_RECEIVER / TENANCY）─────────────────────────────────────────
@@ -273,28 +273,28 @@ public final class ExpectedProfitBook {
       HouseholdId household,
       HouseholdEconomy householdEconomy,
       ProductionModeId modeId,
-      ClassPosition position,
+      ProductionRole position,
       HexCoord hex,
       Industry industry,
       Market market,
       MarketDemandBook.Book demand,
-      Map<AssetShareId, AssetShare> shares,
-      Set<AssetShareId> claimedByOrganizations,
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<ProductionUnitId, ProductionRelation> relations) {
+      Map<AssetShareId, OwnershipStake> shares,
+      Set<AssetShareId> claimedByEnterprises,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, ProductionRules> relations) {
     long horizonDays = industry.cycleDays();
     long laborPerUnit = industry.recipe().laborPerUnit();
     ActorRef operator = HouseholdActors.of(household);
     ProductionUnitId unitId = existingUnitId(industry, operator, units);
-    ProductionUnit existingUnit = units.get(unitId);
+    ProductionProcess existingUnit = units.get(unitId);
     long assetScale;
     if (existingUnit != null) {
       // 当前在产：用这个 unit 的真实可用资产（含租佃而来的 operator==组织者份额）——与旧 A 规则同一口径。
-      assetScale = ProductionUnitBook.capacityScaleOf(existingUnit, industry, shares);
+      assetScale = ProductionProcessBook.capacityScaleOf(existingUnit, industry, shares);
     } else {
       // 候选：自有自营 + 同格可租闲置（闲置判据的唯一拼写点在 ModeMigrationPolicy）。
-      // ★★ D-024 修复 1：claimed 由调用方从当天工作副本 organizations 算出并传入，本类不再从 base 重算。
-      assetScale = assetScaleOf(industry, household, shares, claimedByOrganizations);
+      // ★★ D-024 修复 1：claimed 由调用方从当天工作副本 enterprises 算出并传入，本类不再从 base 重算。
+      assetScale = assetScaleOf(industry, household, shares, claimedByEnterprises);
     }
     long laborScale =
         laborPerUnit <= 0L
@@ -407,7 +407,7 @@ public final class ExpectedProfitBook {
             ? 0L
             : laborCostMilli(laborNeed, RegimeRelations.subsistenceMilliPerLabor(), grainPrice);
 
-    ProductionRelation relation =
+    ProductionRules relation =
         relationFor(relations, unitId, modeId, industry, householdEconomy, operator);
     Obligations obligations =
         obligationsOf(
@@ -464,13 +464,13 @@ public final class ExpectedProfitBook {
       HouseholdId household,
       HouseholdEconomy householdEconomy,
       ProductionModeId modeId,
-      ClassPosition position,
+      ProductionRole position,
       HexCoord hex,
       Industry industry,
       Market market,
-      Map<AssetShareId, AssetShare> shares,
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<ProductionUnitId, ProductionRelation> relations) {
+      Map<AssetShareId, OwnershipStake> shares,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, ProductionRules> relations) {
     long horizonDays = industry.cycleDays();
     long laborPerUnit = industry.recipe().laborPerUnit();
     Employer employer = employerOf(modeId, industry, hex, household, units, shares);
@@ -494,7 +494,7 @@ public final class ExpectedProfitBook {
         laborPerUnit <= 0L
             ? 0L
             : Math.multiplyExact(Math.multiplyExact(laborPerUnit, scale), horizonDays);
-    ProductionRelation relation =
+    ProductionRules relation =
         relationFor(
             relations, employer.unitId(), modeId, industry, householdEconomy, employer.operator());
     long income = 0L;
@@ -504,7 +504,7 @@ public final class ExpectedProfitBook {
       notes.add("NO_RELATION");
     } else {
       for (CompensationRule rule : relation.rules()) {
-        if (!isWorkerRecipient(rule.recipient(), household, householdEconomy, hex)) {
+        if (!isWorkerPayee(rule.recipient(), household, householdEconomy, hex)) {
           continue;
         }
         switch (rule.type()) {
@@ -573,15 +573,15 @@ public final class ExpectedProfitBook {
       HouseholdId household,
       HouseholdEconomy householdEconomy,
       ProductionModeId modeId,
-      ClassPosition position,
+      ProductionRole position,
       HexCoord hex,
       Industry industryOrNull,
       Market market,
       MarketDemandBook.Book demand,
-      Map<AssetShareId, AssetShare> shares,
-      Set<AssetShareId> claimedByOrganizations,
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<ProductionUnitId, ProductionRelation> relations,
+      Map<AssetShareId, OwnershipStake> shares,
+      Set<AssetShareId> claimedByEnterprises,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, ProductionRules> relations,
       MarketTopology topology,
       long day) {
     Industry trade =
@@ -598,18 +598,18 @@ public final class ExpectedProfitBook {
     }
     ActorRef actor = HouseholdActors.of(household);
     MerchantFirm firm = null;
-    ProductionOrganization firmOrganization = null;
-    for (ProductionOrganizationId organizationId : sortedOrganizationIds(base)) {
+    ProductionEnterprise firmEnterprise = null;
+    for (ProductionOrganizationId organizationId : sortedEnterpriseIds(base)) {
       MerchantFirm candidate = base.merchantFirms().get(organizationId);
       if (candidate == null || !candidate.homeHex().equals(hex)) {
         continue;
       }
       // ★ 仍读 base.productionOrganizations() 过期快照（D-024 修复 1b 只修 employer/claimed，merchant 分支留下一轮）：
-      //   当天自动组织阶段新建的组织不在 base 里，会让"现有商号"侧偏乐观；下一轮应传入当天工作副本 organizations。
-      ProductionOrganization organization = base.productionOrganizations().get(organizationId);
-      if (organization != null && organization.organizer().equals(actor)) {
+      //   当天自动组织阶段新建的组织不在 base 里，会让"现有商号"侧偏乐观；下一轮应传入当天工作副本 enterprises。
+      ProductionEnterprise enterprise = base.productionOrganizations().get(organizationId);
+      if (enterprise != null && enterprise.organizer().equals(actor)) {
         firm = candidate;
-        firmOrganization = organization;
+        firmEnterprise = enterprise;
         break;
       }
     }
@@ -622,15 +622,15 @@ public final class ExpectedProfitBook {
       capacity = Math.max(0L, firm.capacityPerRound() - firm.capacityUsedThisRound());
       tier = firm.tier();
       unitId =
-          firmOrganization != null && firmOrganization.unitId().isPresent()
-              ? firmOrganization.unitId().get()
+          firmEnterprise != null && firmEnterprise.unitId().isPresent()
+              ? firmEnterprise.unitId().get()
               : ProductionUnitId.idOf(trade.id(), actor);
       assetUpkeep =
           shipCattleUpkeepOf(
-              firmOrganization == null ? List.of() : firmOrganization.assetSources(), shares);
+              firmEnterprise == null ? List.of() : firmEnterprise.assetSources(), shares);
     } else {
       Map<AssetKind, Long> assets =
-          merchantAssetsOf(hex, actor, shares, claimedByOrganizations);
+          merchantAssetsOf(hex, actor, shares, claimedByEnterprises);
       long cattle = assets.getOrDefault(AssetKind.CATTLE, 0L);
       long ships = assets.getOrDefault(AssetKind.SHIP, 0L);
       capacity = Math.addExact(cattle, ships);
@@ -670,7 +670,7 @@ public final class ExpectedProfitBook {
         notes.add("NO_LANE");
       }
     }
-    ProductionRelation relation = relationFor(relations, unitId, modeId, trade, householdEconomy, actor);
+    ProductionRules relation = relationFor(relations, unitId, modeId, trade, householdEconomy, actor);
     if (derivedCapacity) {
       notes.add("DERIVED_MERCHANT_CAPACITY");
     }
@@ -742,16 +742,16 @@ public final class ExpectedProfitBook {
   private static long assetScaleOf(
       Industry industry,
       HouseholdId household,
-      Map<AssetShareId, AssetShare> shares,
-      Set<AssetShareId> claimedByOrganizations) {
+      Map<AssetShareId, OwnershipStake> shares,
+      Set<AssetShareId> claimedByEnterprises) {
     ActorRef actor = HouseholdActors.of(household);
     Map<AssetKind, Long> available = new LinkedHashMap<>();
-    for (AssetShare share : shares.values()) {
+    for (OwnershipStake share : shares.values()) {
       if (!share.industry().equals(industry.id()) || share.quantity() <= 0L) {
         continue;
       }
       boolean own = share.operator().equals(actor);
-      boolean idle = ModeMigrationPolicy.isIdleShare(share, claimedByOrganizations);
+      boolean idle = ModeMigrationPolicy.isIdleShare(share, claimedByEnterprises);
       if (!own && !idle) {
         continue;
       }
@@ -768,10 +768,10 @@ public final class ExpectedProfitBook {
   private static Map<AssetKind, Long> merchantAssetsOf(
       HexCoord hex,
       ActorRef actor,
-      Map<AssetShareId, AssetShare> shares,
-      Set<AssetShareId> claimedByOrganizations) {
+      Map<AssetShareId, OwnershipStake> shares,
+      Set<AssetShareId> claimedByEnterprises) {
     Map<AssetKind, Long> available = new LinkedHashMap<>();
-    for (AssetShare share : shares.values()) {
+    for (OwnershipStake share : shares.values()) {
       if (share.asset() != AssetKind.CATTLE && share.asset() != AssetKind.SHIP) {
         continue;
       }
@@ -779,7 +779,7 @@ public final class ExpectedProfitBook {
         continue;
       }
       boolean own = share.operator().equals(actor);
-      boolean idle = ModeMigrationPolicy.isIdleShare(share, claimedByOrganizations);
+      boolean idle = ModeMigrationPolicy.isIdleShare(share, claimedByEnterprises);
       if (!own && !idle) {
         continue;
       }
@@ -789,10 +789,10 @@ public final class ExpectedProfitBook {
   }
 
   private static long shipCattleUpkeepOf(
-      List<AssetShareId> assetSources, Map<AssetShareId, AssetShare> shares) {
+      List<AssetShareId> assetSources, Map<AssetShareId, OwnershipStake> shares) {
     long upkeep = 0L;
     for (AssetShareId assetShareId : assetSources) {
-      AssetShare share = shares.get(assetShareId);
+      OwnershipStake share = shares.get(assetShareId);
       if (share == null || share.quantity() <= 0L) {
         continue;
       }
@@ -808,21 +808,21 @@ public final class ExpectedProfitBook {
   }
 
   /** 显式关系优先；缺则按产业 regime 推制度默认；制度未登记/拿不到 ⇒ null（调用方标 NO_RELATION，rent=0）。 */
-  private static ProductionRelation relationFor(
-      Map<ProductionUnitId, ProductionRelation> relations,
+  private static ProductionRules relationFor(
+      Map<ProductionUnitId, ProductionRules> relations,
       ProductionUnitId unitId,
       ProductionModeId modeId,
       Industry industry,
       HouseholdEconomy householdEconomy,
       ActorRef operator) {
-    ProductionRelation explicit = relations.get(unitId);
+    ProductionRules explicit = relations.get(unitId);
     if (explicit != null) {
       return explicit;
     }
     // ★ 制度默认的 regime 先取 mode 的默认制度（租佃 mode ⇒ tenant 规则——farm@hex 的产业 regime 是 feudal，
     //   直接按产业会错配成庄园规则）；mode 未登记（如 merchant）或该 regime 无默认表 ⇒ 退回产业 regime。
     // ★ family_farm 是桥接 mode：它的产业是复用的农场（regime=feudal），household 默认规则的
-    //   CLOTH 不在农场产出表里（E14 会拒）⇒ 这一档一律用产业 regime，与 EconomyOrganizationSettlement 同口径。
+    //   CLOTH 不在农场产出表里（E14 会拒）⇒ 这一档一律用产业 regime，与 EconomyEnterpriseSettlement 同口径。
     Optional<String> modeRegime = RegimeOperators.defaultRegimeForMode(modeId);
     boolean useModeRegime =
         !DefaultProductionModes.FAMILY_FARM.equals(modeId)
@@ -842,10 +842,10 @@ public final class ExpectedProfitBook {
    *
    * <p>★ 规则口径与 {@code ProductionSettlement} 对齐：固定租是每周期一笔；分成按池 × 率；按劳动给养按
    * {@link SubsistenceObligation#perLaborDue}。★ 受方 == 本家户自己（同 actor / 同 household / 同 cohort）的规则是自付，
-   * 直接跳过（与 E2 的 {@code normalizeRecipients} 同一口径）。
+   * 直接跳过（与 E2 的 {@code normalizePayees} 同一口径）。
    */
   private static Obligations obligationsOf(
-      ProductionRelation relation,
+      ProductionRules relation,
       HouseholdId household,
       HouseholdEconomy householdEconomy,
       HexCoord hex,
@@ -870,7 +870,7 @@ public final class ExpectedProfitBook {
     //   · Weight.LABOR_AMOUNT 拿不到 Σ劳动 ⇒ 对同一池取最大率、只计一次（标 SHARE_WEIGHT_ESTIMATE），是上界。
     Map<String, long[]> sharePools = new LinkedHashMap<>();
     for (CompensationRule rule : relation.rules()) {
-      if (isSelfRecipient(rule.recipient(), relation.operator(), household, householdEconomy, hex)) {
+      if (isSelfPayee(rule.recipient(), relation.operator(), household, householdEconomy, hex)) {
         continue;
       }
       switch (rule.type()) {
@@ -975,11 +975,11 @@ public final class ExpectedProfitBook {
 
   // ── 位置 / 产业 / 雇主 ────────────────────────────────────────────────────────────────────
 
-  private static List<ClassPosition> producingPositions(ClassStructure structure) {
-    List<ClassPosition> positions = new ArrayList<>();
-    for (ClassPosition position : structure.positions().values()) {
-      if (position.laborRole() != ClassPosition.LaborRole.NONE
-          && position.surplusRole() != ClassPosition.SurplusRole.DEPENDENT) {
+  private static List<ProductionRole> producingPositions(ClassStructure structure) {
+    List<ProductionRole> positions = new ArrayList<>();
+    for (ProductionRole position : structure.positions().values()) {
+      if (position.laborRole() != ProductionRole.LaborRole.NONE
+          && position.surplusRole() != ProductionRole.SurplusRole.DEPENDENT) {
         positions.add(position);
       }
     }
@@ -991,19 +991,19 @@ public final class ExpectedProfitBook {
    * 目标位置：先取家户当前位置（若它属于本 mode），否则同 relationToMeans/surplusRole 的第一个可生产位置，再否则 id 升序第一个
    * —— 与 {@code ModeMigrationSettlement.pickTargetPosition} 同一口径（本类不另立一套）。
    */
-  private static ClassPosition currentPositionOf(EconomyData base, HouseholdId household) {
+  private static ProductionRole currentPositionOf(EconomyData base, HouseholdId household) {
     var classMembership = base.classStandings().get(household);
     return classMembership == null ? null : base.classPositions().get(classMembership.currentPositionId());
   }
 
-  private static ClassPosition choosePosition(
-      EconomyData base, HouseholdId household, ProductionModeId modeId, List<ClassPosition> producing) {
-    ClassPosition current = currentPositionOf(base, household);
+  private static ProductionRole choosePosition(
+      EconomyData base, HouseholdId household, ProductionModeId modeId, List<ProductionRole> producing) {
+    ProductionRole current = currentPositionOf(base, household);
     if (current != null && modeId.equals(current.modeId()) && producing.contains(current)) {
       return current;
     }
     if (current != null) {
-      for (ClassPosition position : producing) {
+      for (ProductionRole position : producing) {
         if (position.relationToMeans() == current.relationToMeans()
             && position.surplusRole() == current.surplusRole()) {
           return position;
@@ -1013,12 +1013,12 @@ public final class ExpectedProfitBook {
     return producing.get(0);
   }
 
-  private static boolean isWagePosition(ClassPosition position) {
-    if (position.surplusRole() == ClassPosition.SurplusRole.WAGE_EARNER) {
+  private static boolean isWagePosition(ProductionRole position) {
+    if (position.surplusRole() == ProductionRole.SurplusRole.WAGE_EARNER) {
       return true;
     }
-    return position.relationToMeans() == ClassPosition.RelationToMeans.DIRECT_LABORER
-        && position.surplusRole() != ClassPosition.SurplusRole.SELF_SUBSISTENCE;
+    return position.relationToMeans() == ProductionRole.RelationToMeans.DIRECT_LABORER
+        && position.surplusRole() != ProductionRole.SurplusRole.SELF_SUBSISTENCE;
   }
 
   private static boolean isMerchantRegime(Industry industry) {
@@ -1045,7 +1045,7 @@ public final class ExpectedProfitBook {
 
   /**
    * 本 mode 在本格现有的最大雇主：<b>只读当天工作副本 {@code units}</b>，不再读
-   * {@code base.productionOrganizations()}（周期关账时 base 是本周期开始时的 revision，organization.modeId 是过期读数）。
+   * {@code base.productionOrganizations()}（周期关账时 base 是本周期开始时的 revision，enterprise.modeId 是过期读数）。
    *
    * <p>筛选判据（唯一拼写点 = 本方法 + {@link #employerModeRank}）：
    *
@@ -1056,7 +1056,7 @@ public final class ExpectedProfitBook {
    *   <li>mode/产业兼容性按 {@link #employerModeRank} 分档（2 &gt; 1 &gt; 0）：有高秩候选时只在最高秩里选。
    * </ol>
    *
-   * <p>规模 = {@link ProductionUnitBook#capacityScaleOf(ProductionUnit, Industry, Map)}；规模 &lt; 1 的候选先跳过
+   * <p>规模 = {@link ProductionProcessBook#capacityScaleOf(ProductionProcess, Industry, Map)}；规模 &lt; 1 的候选先跳过
    * （没有真实产能可雇人，且 wageProspect 也会以 scale&lt;1 判 NO_EMPLOYER）；同秩同规模按
    * {@link ProductionUnitId#value()} 升序取第一个（确定性）。
    *
@@ -1068,15 +1068,15 @@ public final class ExpectedProfitBook {
       Industry industry,
       HexCoord hex,
       HouseholdId household,
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<AssetShareId, AssetShare> shares) {
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<AssetShareId, OwnershipStake> shares) {
     ActorRef self = HouseholdActors.of(household);
     Employer best = null;
     int bestRank = -1;
     List<ProductionUnitId> unitIds = new ArrayList<>(units.keySet());
     unitIds.sort(Comparator.comparing(ProductionUnitId::value));
     for (ProductionUnitId unitId : unitIds) {
-      ProductionUnit unit = units.get(unitId);
+      ProductionProcess unit = units.get(unitId);
       if (unit == null
           || !unit.industry().equals(industry.id())
           || unit.operator().equals(self)) {
@@ -1087,7 +1087,7 @@ public final class ExpectedProfitBook {
         continue;
       }
       int rank = employerModeRank(unit, modeId, industry);
-      long scale = ProductionUnitBook.capacityScaleOf(unit, industry, shares);
+      long scale = ProductionProcessBook.capacityScaleOf(unit, industry, shares);
       if (scale < 1L) {
         continue; // 规模 0 的 unit 不是真实雇主（wageProspect 同样以 scale<1 判 NO_EMPLOYER），不让它挡住低秩的可用雇主
       }
@@ -1105,7 +1105,7 @@ public final class ExpectedProfitBook {
    *
    * <ol>
    *   <li>2 = 直接命中：{@code unit.modeKey()} 等于"本 mode 组织阶段/迁移新建"的 key
-   *       （{@link EconomyOrganizationSettlement#MODE_KEY_PREFIX} + modeId.value()）；
+   *       （{@link EconomyEnterpriseSettlement#MODE_KEY_PREFIX} + modeId.value()）；
    *   <li>1 = 产业 regime 相符：目标 mode 有默认 regime（{@link RegimeOperators#defaultRegimeForMode}）且等于该
    *       unit 所在产业的 {@code regime().value()}；
    *   <li>0 = 同产业回退：mode 未登记默认制度或制度不符 ⇒ 仍可在同产业 unit 里找工作（保持"同产业即可"语义）。
@@ -1115,8 +1115,8 @@ public final class ExpectedProfitBook {
    * {@code candidateId@version} 无法反解 modeId ⇒ 按产业 regime 落第 1/0 档（具名近似，不猜版本内容）。
    */
   private static int employerModeRank(
-      ProductionUnit unit, ProductionModeId modeId, Industry industry) {
-    if (unit.modeKey().equals(EconomyOrganizationSettlement.MODE_KEY_PREFIX + modeId.value())) {
+      ProductionProcess unit, ProductionModeId modeId, Industry industry) {
+    if (unit.modeKey().equals(EconomyEnterpriseSettlement.MODE_KEY_PREFIX + modeId.value())) {
       return 2;
     }
     Optional<String> wanted = RegimeOperators.defaultRegimeForMode(modeId);
@@ -1133,7 +1133,7 @@ public final class ExpectedProfitBook {
    * 用 canonical id 去查 {@code relations} 会漏掉真实关系、退回制度默认（那会让佃农拿到封建庄园规则）。
    */
   private static ProductionUnitId existingUnitId(
-      Industry industry, ActorRef operator, Map<ProductionUnitId, ProductionUnit> units) {
+      Industry industry, ActorRef operator, Map<ProductionUnitId, ProductionProcess> units) {
     ProductionUnitId canonical = ProductionUnitId.idOf(industry.id(), operator);
     if (units.containsKey(canonical)) {
       return canonical;
@@ -1141,7 +1141,7 @@ public final class ExpectedProfitBook {
     List<ProductionUnitId> unitIds = new ArrayList<>(units.keySet());
     unitIds.sort(Comparator.comparing(ProductionUnitId::value));
     for (ProductionUnitId unitId : unitIds) {
-      ProductionUnit unit = units.get(unitId);
+      ProductionProcess unit = units.get(unitId);
       if (unit != null
           && unit.industry().equals(industry.id())
           && unit.operator().equals(operator)) {
@@ -1184,7 +1184,7 @@ public final class ExpectedProfitBook {
     return numerator.divide(BigInteger.valueOf(1_000_000L)).longValueExact();
   }
 
-  /** {@code floor(net × PER_LABOR_SCALE / max(1, laborNeed))}；负数也向下取整（同 OrganizationProfitBook）。 */
+  /** {@code floor(net × PER_LABOR_SCALE / max(1, laborNeed))}；负数也向下取整（同 EnterpriseProfitBook）。 */
   private static long scaledNetPerLabor(long net, long laborNeed) {
     BigInteger numerator =
         BigInteger.valueOf(net).multiply(BigInteger.valueOf(PER_LABOR_SCALE));
@@ -1253,15 +1253,15 @@ public final class ExpectedProfitBook {
     return IndustryHexKeys.hexKeyOf(industryId).map(HexCoord::parse).orElse(null);
   }
 
-  private static boolean isSelfRecipient(
-      Recipient recipient, ActorRef operator, HouseholdId household, HouseholdEconomy householdEconomy, HexCoord hex) {
-    if (recipient instanceof Recipient.ToActor toActor) {
+  private static boolean isSelfPayee(
+      Payee recipient, ActorRef operator, HouseholdId household, HouseholdEconomy householdEconomy, HexCoord hex) {
+    if (recipient instanceof Payee.ToActor toActor) {
       return toActor.actor().equals(operator) || toActor.actor().equals(HouseholdActors.of(household));
     }
-    if (recipient instanceof Recipient.ToHousehold toHousehold) {
+    if (recipient instanceof Payee.ToHousehold toHousehold) {
       return toHousehold.household().equals(household);
     }
-    if (recipient instanceof Recipient.ToCohort toCohort) {
+    if (recipient instanceof Payee.ToCohort toCohort) {
       return toCohort.cohort().hex().equals(hex)
           && toCohort.cohort().residence() == householdEconomy.view().residence()
           && toCohort.cohort().stratum().equals(householdEconomy.view().stratum());
@@ -1269,7 +1269,7 @@ public final class ExpectedProfitBook {
     return false;
   }
 
-  private static boolean hasInKindPerLaborRule(ProductionRelation relation) {
+  private static boolean hasInKindPerLaborRule(ProductionRules relation) {
     if (relation == null) {
       return false;
     }
@@ -1281,15 +1281,15 @@ public final class ExpectedProfitBook {
     return false;
   }
 
-  private static boolean isWorkerRecipient(
-      Recipient recipient, HouseholdId household, HouseholdEconomy householdEconomy, HexCoord hex) {
-    if (recipient instanceof Recipient.ToActor toActor) {
+  private static boolean isWorkerPayee(
+      Payee recipient, HouseholdId household, HouseholdEconomy householdEconomy, HexCoord hex) {
+    if (recipient instanceof Payee.ToActor toActor) {
       return toActor.actor().equals(HouseholdActors.of(household));
     }
-    if (recipient instanceof Recipient.ToHousehold toHousehold) {
+    if (recipient instanceof Payee.ToHousehold toHousehold) {
       return toHousehold.household().equals(household);
     }
-    if (recipient instanceof Recipient.ToCohort toCohort) {
+    if (recipient instanceof Payee.ToCohort toCohort) {
       return toCohort.cohort().hex().equals(hex)
           && toCohort.cohort().residence() == householdEconomy.view().residence()
           && toCohort.cohort().stratum().equals(householdEconomy.view().stratum());
@@ -1354,9 +1354,9 @@ public final class ExpectedProfitBook {
   /**
    * ★★ <b>仍读过期快照（D-024 修复 1b 未改的 merchant 分支专用）</b>：只服务 {@code merchantProspect} 的商号/组织查找，
    * 键集仍读 {@code base.productionOrganizations()}——周期关账时 base 是本周期开始时的 revision，当天自动组织阶段刚新建的
-   * 组织不在其中。下一轮若修 merchant 分支，应把当天工作副本 {@code organizations} 作为入参传进来，而不是改这里去猜。
+   * 组织不在其中。下一轮若修 merchant 分支，应把当天工作副本 {@code enterprises} 作为入参传进来，而不是改这里去猜。
    */
-  private static List<ProductionOrganizationId> sortedOrganizationIds(EconomyData base) {
+  private static List<ProductionOrganizationId> sortedEnterpriseIds(EconomyData base) {
     List<ProductionOrganizationId> ids =
         new ArrayList<>(base.productionOrganizations().keySet());
     ids.sort(Comparator.comparing(ProductionOrganizationId::value));

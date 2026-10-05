@@ -16,8 +16,8 @@ import java.util.Arrays;
  *
  * <ul>
  *   <li><b>★★ P2-A §13.3（2026-10-09 用户裁定）：{@code ESTATE} / {@code WORKSHOP} 已整体退役</b>——
- *       庄园/作坊是生产方式/生产活动（{@code ProductionMode} / {@code ProductionOrganization} /
- *       {@code ProductionUnit}），不是 ActorRef 的种类；它们的投入/产出/收款走组织者/经营者家户账户；
+ *       庄园/作坊是生产方式/生产活动（{@code ProductionMode} / {@code ProductionEnterprise} /
+ *       {@code ProductionProcess}），不是 ActorRef 的种类；它们的投入/产出/收款走组织者/经营者家户账户；
  *       <b>只有 {@link #HOUSEHOLD} 允许持有账户</b>（{@code HouseholdAccountKey} 的键就是家户身份）；
  *   <li>{@link #HOUSEHOLD} —— 家户（自给自足的家庭经济单位）：本轮**只由夹具**使用（"同一批人农闲织布"那条压力测试）；它不属任何产业，
  *       故在结算里**不占任何产业的劳动投入**，但照样进守恒（{@code Σ allocated ≤ available}）与读口。 ★ 真正让它产出布的配方（{@code FIBER

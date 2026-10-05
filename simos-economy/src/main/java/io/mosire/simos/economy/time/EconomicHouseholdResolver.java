@@ -2,17 +2,17 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.Payee;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionProcess;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
 /**
- * ★★ <b>E1：一个 {@link ProductionUnit} 的"关联经济家户"解析器（唯一拼写点）</b>。
+ * ★★ <b>E1：一个 {@link ProductionProcess} 的"关联经济家户"解析器（唯一拼写点）</b>。
  *
  * <p>★★ <b>为什么必须只有一处</b>：旧实现把"经营者 → 家户"写成 {@code householdOfActor.get(unit.operator())}， 只有
  * operator 恰为家户 actor 时命中；ESTATE / WORKSHOP / 聚合 weave 这类主体的债务压力因此恒 false（它们永远走不到 {@code
@@ -21,11 +21,11 @@ import java.util.Optional;
  * <pre>
  * ① operator 本身是家户 actor（HouseholdActors.of(HouseholdId)）        ⇒ 该 HouseholdId
  * ② relation.residualOwner（ActorRef 反查）或 inputSupplier（ToHousehold / 可反查的 ToActor）⇒ 该 HouseholdId
- * ③ unit 名下 AssetShare 的 owner（先）或 operator（后）能反解成家户 actor ⇒ 该 HouseholdId
+ * ③ unit 名下 OwnershipStake 的 owner（先）或 operator（后）能反解成家户 actor ⇒ 该 HouseholdId
  * ④ 否则 Optional.empty()（ESTATE / WORKSHOP / 聚合 weave：不伪造家户、不强行借债；仍可缩产/停业/退出）
  * </pre>
  *
- * <p>★★ <b>③ 为什么 owner 先于 operator</b>：{@code AssetShare.owner} 是所有权事实，"这份生产的地/工具是谁的"比"谁在用"更接近
+ * <p>★★ <b>③ 为什么 owner 先于 operator</b>：{@code OwnershipStake.owner} 是所有权事实，"这份生产的地/工具是谁的"比"谁在用"更接近
  * "这块生产关联到哪个家户"；operator 兜底服务的是"实际经营者本身就是一个未登记为行 actor 的家户"这种旧数据。两者都只做反向查表 （不解析/不猜 id）。
  *
  * <p>★ <b>只做纯查表</b>：{@code householdOfActor} 由 {@code SettlementIndex.householdByActor()} 一次建好（键 =
@@ -45,9 +45,9 @@ final class EconomicHouseholdResolver {
    * @return 解析到的家户；解析不到 ⇒ {@link Optional#empty()}（不伪造）
    */
   static Optional<HouseholdId> resolve(
-      ProductionUnit unit,
-      ProductionRelation relation,
-      List<AssetShare> unitShares,
+      ProductionProcess unit,
+      ProductionRules relation,
+      List<OwnershipStake> unitShares,
       Map<ActorRef, HouseholdId> householdOfActor) {
     Objects.requireNonNull(unit, "unit");
     Objects.requireNonNull(householdOfActor, "householdOfActor");
@@ -58,26 +58,26 @@ final class EconomicHouseholdResolver {
     }
     // ② 关系里的家庭受方/余额归属（residualOwner 先于 inputSupplier：它是余额归属，比投入来源更接近"这家生产归谁"）。
     //   residualOwner 的类型是 ActorRef ⇒ 用 householdOfActor 反查（聚合主体不在表里 ⇒ null）；
-    //   inputSupplier 是 Recipient：ToHousehold 直接给，ToActor 再走同一张反查表（旧数据/显式家户 actor 两种写法归一）。
+    //   inputSupplier 是 Payee：ToHousehold 直接给，ToActor 再走同一张反查表（旧数据/显式家户 actor 两种写法归一）。
     if (relation != null) {
       HouseholdId residualOwner = householdOfActor.get(relation.residualOwner());
       if (residualOwner != null) {
         return Optional.of(residualOwner);
       }
-      HouseholdId inputSupplier = recipientHousehold(relation.inputSupplier(), householdOfActor);
+      HouseholdId inputSupplier = payeeHousehold(relation.inputSupplier(), householdOfActor);
       if (inputSupplier != null) {
         return Optional.of(inputSupplier);
       }
     }
     // ③ 份额的 owner（先）或 operator（后）能反解成家户 actor。
     if (unitShares != null) {
-      for (AssetShare share : unitShares) {
+      for (OwnershipStake share : unitShares) {
         HouseholdId owner = householdOfActor.get(share.owner());
         if (owner != null) {
           return Optional.of(owner);
         }
       }
-      for (AssetShare share : unitShares) {
+      for (OwnershipStake share : unitShares) {
         HouseholdId operator = householdOfActor.get(share.operator());
         if (operator != null) {
           return Optional.of(operator);
@@ -92,12 +92,12 @@ final class EconomicHouseholdResolver {
    * 关系某一端的受方 → 家户：{@code ToHousehold} 直接取；{@code ToActor} 走家户 actor 反查表（不是家户 actor ⇒ null）；其余变体（含旧
    * {@code ToCohort}）⇒ null（不猜）。
    */
-  private static HouseholdId recipientHousehold(
-      Recipient recipient, Map<ActorRef, HouseholdId> householdOfActor) {
+  private static HouseholdId payeeHousehold(
+      Payee recipient, Map<ActorRef, HouseholdId> householdOfActor) {
     return switch (recipient) {
-      case Recipient.ToHousehold toHousehold -> toHousehold.household();
-      case Recipient.ToActor toActor -> householdOfActor.get(toActor.actor());
-      case Recipient.ToCohort ignored -> null;
+      case Payee.ToHousehold toHousehold -> toHousehold.household();
+      case Payee.ToActor toActor -> householdOfActor.get(toActor.actor());
+      case Payee.ToCohort ignored -> null;
     };
   }
 }

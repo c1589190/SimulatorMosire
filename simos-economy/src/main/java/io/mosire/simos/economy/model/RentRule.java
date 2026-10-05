@@ -37,7 +37,7 @@ import java.util.Optional;
  * </ol>
  *
  * <p>★ <b>本类型只存模板、不含公式</b>：怎么把 leg 变成 {@code CompensationRule}、以及"欠租"怎么读，都在 E2 的 生产组织阶段（{@code
- * EconomyOrganizationSettlement}）与既有结算侧。★ 不可变（legs 冻结在赋值处，绝不用 {@code Map.copyOf}）。
+ * EconomyEnterpriseSettlement}）与既有结算侧。★ 不可变（legs 冻结在赋值处，绝不用 {@code Map.copyOf}）。
  *
  * @param type 租金类型（四档词表；MIXED = 由 legs 表达的组合）
  * @param priority 付款次序（≥ 0；允许重复，同值按 legs 表序稳定 —— 与结算的 priority 口径同源）

@@ -27,7 +27,7 @@ import java.util.Map;
  * @param surplusRole 剩余/分配角色；不得为 null
  * @param ruleExtensions 未裁决规则的扩展位；不得为 null（没有规则给空表）；键非空白、值非 null，保序不可变
  */
-public record ClassPosition(
+public record ProductionRole(
     ClassPositionId id,
     ProductionModeId modeId,
     String name,
@@ -72,37 +72,37 @@ public record ClassPosition(
     DEPENDENT
   }
 
-  public ClassPosition {
+  public ProductionRole {
     if (id == null) {
-      throw new IllegalArgumentException("ClassPosition.id 不得为 null");
+      throw new IllegalArgumentException("ProductionRole.id 不得为 null");
     }
     if (modeId == null) {
-      throw new IllegalArgumentException("ClassPosition.modeId 不得为 null");
+      throw new IllegalArgumentException("ProductionRole.modeId 不得为 null");
     }
     if (name == null || name.isBlank()) {
-      throw new IllegalArgumentException("ClassPosition.name 不得为空白");
+      throw new IllegalArgumentException("ProductionRole.name 不得为空白");
     }
     if (relationToMeans == null) {
-      throw new IllegalArgumentException("ClassPosition.relationToMeans 不得为 null");
+      throw new IllegalArgumentException("ProductionRole.relationToMeans 不得为 null");
     }
     if (laborRole == null) {
-      throw new IllegalArgumentException("ClassPosition.laborRole 不得为 null");
+      throw new IllegalArgumentException("ProductionRole.laborRole 不得为 null");
     }
     if (surplusRole == null) {
-      throw new IllegalArgumentException("ClassPosition.surplusRole 不得为 null");
+      throw new IllegalArgumentException("ProductionRole.surplusRole 不得为 null");
     }
     if (ruleExtensions == null) {
-      throw new IllegalArgumentException("ClassPosition.ruleExtensions 不得为 null（没有规则给空表）");
+      throw new IllegalArgumentException("ProductionRole.ruleExtensions 不得为 null（没有规则给空表）");
     }
     Map<String, String> copy = new LinkedHashMap<>();
     for (Map.Entry<String, String> entry : ruleExtensions.entrySet()) {
       if (entry.getKey() == null || entry.getKey().isBlank()) {
         throw new IllegalArgumentException(
-            "ClassPosition.ruleExtensions 的键不得为空白: " + entry.getKey());
+            "ProductionRole.ruleExtensions 的键不得为空白: " + entry.getKey());
       }
       if (entry.getValue() == null) {
         throw new IllegalArgumentException(
-            "ClassPosition.ruleExtensions 的值不得为 null: " + entry.getKey());
+            "ProductionRole.ruleExtensions 的值不得为 null: " + entry.getKey());
       }
       copy.put(entry.getKey(), entry.getValue());
     }
@@ -110,7 +110,7 @@ public record ClassPosition(
   }
 
   /** 六参便利构造：没有额外规则时用空扩展表（本批所有调用点都走这里）。 */
-  public ClassPosition(
+  public ProductionRole(
       ClassPositionId id,
       ProductionModeId modeId,
       String name,

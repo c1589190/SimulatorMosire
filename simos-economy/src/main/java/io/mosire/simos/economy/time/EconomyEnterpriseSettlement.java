@@ -19,17 +19,17 @@ import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Pool;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
-import io.mosire.simos.economy.migrate.ClassPositionResolver;
+import io.mosire.simos.economy.migrate.ProductionRoleResolver;
 import io.mosire.simos.economy.model.AssetRule;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassPosition.LaborRole;
-import io.mosire.simos.economy.model.ClassPosition.RelationToMeans;
-import io.mosire.simos.economy.model.ClassPosition.SurplusRole;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRole.LaborRole;
+import io.mosire.simos.economy.model.ProductionRole.RelationToMeans;
+import io.mosire.simos.economy.model.ProductionRole.SurplusRole;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.DefaultProductionModes;
@@ -38,10 +38,10 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionOrganization.Status;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionEnterprise.Status;
 import io.mosire.simos.economy.model.ProductionRecipe;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.economy.model.RentRule;
@@ -60,8 +60,8 @@ import java.util.Set;
 /**
  * ★★ <b>E2：自动生产组织阶段</b>（理想架构 §2.4/§4.2 ①；计划 E2）。
  *
- * <p>★★ <b>它回答的唯一问题</b>："按当前生产方式 + 阶层结构 + 各阶层可支配劳动 + 可用 {@code AssetShare}，本期应当存在 哪些生产组织与生产单元？" ——
- * 为每个"应当生产的阶层位置 × 家户"建立/激活一条 {@link ProductionOrganization} 与对应 {@link ProductionUnit}；组织不起来就落具名
+ * <p>★★ <b>它回答的唯一问题</b>："按当前生产方式 + 阶层结构 + 各阶层可支配劳动 + 可用 {@code OwnershipStake}，本期应当存在 哪些生产组织与生产单元？" ——
+ * 为每个"应当生产的阶层位置 × 家户"建立/激活一条 {@link ProductionEnterprise} 与对应 {@link ProductionProcess}；组织不起来就落具名
  * {@link Status#SHORTAGE}，<b>不静默跳过、不凭空造资产</b>。
  *
  * <p>★★ <b>闸门（兼容性第一判据）</b>：{@link #organize} 的第一行就是 {@code base.modes().isEmpty()} ⇒ 直接返回空结果，
@@ -73,7 +73,7 @@ import java.util.Set;
  * <ol>
  *   <li><b>遍历序</b>：mode 按 id 升序 → 阶层位置按 id 升序 → 家户按 id 升序。家户的参与位置由
  *       {@link HouseholdClassMembership#effectivePositionIds()} 给（当前位置 ∪ 追加参与集合；无 standing 的旧档退回
- *       {@link ClassPositionResolver#resolveCurrent} 的单值旧口径）⇒ <b>同一家户可同时参与多个
+ *       {@link ProductionRoleResolver#resolveCurrent} 的单值旧口径）⇒ <b>同一家户可同时参与多个
  *       mode/position，各建一条组织与 unit</b>；无位置/无行/0 人口的家户不建组织；
  *   <li><b>应当生产的位置</b>：{@code laborRole != NONE} 且 {@code surplusRole !=
  *       DEPENDENT}（地主与无劳动角色的官署位置不组织； 三个农民档、佃农/雇工档、匠户都组织）；
@@ -87,7 +87,7 @@ import java.util.Set;
  *       LaborSupply.availableLabor() − 已分配}封顶）；投入按 {@code Industry.recipe().inputPerUnit()}
  *       与家户会话库存判。任一路 {@code < 1} ⇒ SHORTAGE（原因里带该路的名字/数字）；
  *   <li><b>租佃（TENANCY）</b>：自有资产不够目标规模时，按 {@code AssetRule(mode, assetKind)} 的 {@code RentRule}
- *       从同产业、同格、<b>自有自营（operator == owner）</b>且不属于本户的闲置份额里拆分出 {@code AssetShare{owner 不变, operator
+ *       从同产业、同格、<b>自有自营（operator == owner）</b>且不属于本户的闲置份额里拆分出 {@code OwnershipStake{owner 不变, operator
  *       = 组织者, kind = TENANCY}} —— 只转移使用权，<b>总量不变、不造资产</b>； 缺 AssetRule/缺 RentRule/无闲置份额 ⇒ 具名
  *       SHORTAGE；
  *   <li><b>关系生成</b>：新 unit 优先用已有 relation；没有时用该产业 regime 的 {@link RegimeRelations#defaultRelation}
@@ -101,13 +101,13 @@ import java.util.Set;
  * </ol>
  *
  * <p>★★ <b>确定性</b>：全程无随机、无时钟、无 UUID；所有遍历序都按稳定 id 排序或来自不可变表的保序迭代；同一入参在同一 状态上重放恒得同一批组织/unit/份额 id（份额
- * id 的 sequence 由 {@link AssetShareBook} 按"同 tuple 已有 id"确定性推出）。
+ * id 的 sequence 由 {@link OwnershipStakeBook} 按"同 tuple 已有 id"确定性推出）。
  * 本类是纯协调器单线程阶段：只写调用方交给它的工作副本，不发布、不并行、不跨日持有状态。
  *
  * <p>★ <b>本阶段不做</b>（如实边界）：不做完整 mode 产业模板体系（复用现有 industry）；不发明 Industry 模板；不做独立的市场
  * 准入判定（"无市场"只作为投入缺失的具名原因出现）；不落租金债务（E4）；不改已有 relation 的规则；已 ACTIVE 的组织逐日幂等跳过。
  */
-final class EconomyOrganizationSettlement {
+final class EconomyEnterpriseSettlement {
 
   /** 新 unit 的 {@code modeKey} 前缀（唯一拼写点）：识别"这条生产由 mode 组织阶段建立"。 */
   static final String MODE_KEY_PREFIX = "mode:";
@@ -130,7 +130,7 @@ final class EconomyOrganizationSettlement {
   /** 一个"无约束"的规模（劳动/投入那一路不施加约束时用它；任何真实规模都远小于它）。 */
   private static final long UNCONSTRAINED = Long.MAX_VALUE;
 
-  private EconomyOrganizationSettlement() {}
+  private EconomyEnterpriseSettlement() {}
 
   /** 本阶段的结果：是否写了状态 + 今天新建的 unit id（供日结算把新 unit 加进"不触发本格重排"的豁免集）。 */
   record Outcome(boolean changed, Set<ProductionUnitId> createdUnitIds) {
@@ -146,10 +146,10 @@ final class EconomyOrganizationSettlement {
   }
 
   /** 一条 (mode, position, household) 的决策结果：组织 + 这条决策是否当场新建了 unit。 */
-  private record OrganizeResult(ProductionOrganization organization, boolean unitCreated) {
+  private record OrganizeResult(ProductionEnterprise enterprise, boolean unitCreated) {
 
     OrganizeResult {
-      Objects.requireNonNull(organization, "organization");
+      Objects.requireNonNull(enterprise, "organization");
     }
   }
 
@@ -191,8 +191,8 @@ final class EconomyOrganizationSettlement {
     }
   }
 
-  /** 生成的关系 + 它的模板来源串（进 ProductionOrganization.relationTemplateRef）。 */
-  private record GeneratedRelation(ProductionRelation relation, String templateRef) {
+  /** 生成的关系 + 它的模板来源串（进 ProductionEnterprise.relationTemplateRef）。 */
+  private record GeneratedRelation(ProductionRules relation, String templateRef) {
 
     GeneratedRelation {
       Objects.requireNonNull(relation, "GeneratedRelation.relation");
@@ -220,14 +220,14 @@ final class EconomyOrganizationSettlement {
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<IndustryId, Industry> industries,
       Map<PledgeId, Pledge> pledges,
-      LinkedHashMap<ProductionUnitId, ProductionUnit> units,
-      LinkedHashMap<ProductionUnitId, ProductionRelation> relations,
-      LinkedHashMap<AssetShareId, AssetShare> assetShares,
+      LinkedHashMap<ProductionUnitId, ProductionProcess> units,
+      LinkedHashMap<ProductionUnitId, ProductionRules> relations,
+      LinkedHashMap<AssetShareId, OwnershipStake> assetShares,
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HexCoord, Market> markets,
-      LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations) {
+      LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises) {
     return organize(
         base,
         base.classStandings(),
@@ -241,7 +241,7 @@ final class EconomyOrganizationSettlement {
         composition,
         householdGoods,
         markets,
-        organizations);
+        enterprises);
   }
 
   /**
@@ -252,7 +252,7 @@ final class EconomyOrganizationSettlement {
    * @param classStandings 家户阶层归属视图（E6a：模式变迁在同一日刚写过的工作副本优先；无变迁时 = {@code base.classStandings()}）
    * @param rows 家户工作副本（只读本阶段；键 = 稳定身份）
    * @param industries 产业模板（只读；本阶段不新建模板）
-   * @param pledges 质押表（只读；E5a 起作为 {@code AssetShareBook} 的活跃质押上界来源；空表 = 不判）
+   * @param pledges 质押表（只读；E5a 起作为 {@code OwnershipStakeBook} 的活跃质押上界来源；空表 = 不判）
    * @param units 生产单元工作副本（可能被 upsert）
    * @param relations 生产关系工作副本（可能被 upsert）
    * @param assetShares 实物资产份额工作副本（可能被租佃拆分：只改 operator/kind，总量不变）
@@ -260,7 +260,7 @@ final class EconomyOrganizationSettlement {
    * @param composition 家户人口组成的只读投影（{@code household → (lot → count)}；来自 Social，不是经济状态）
    * @param householdGoods 家户商品账会话副本（只读；判投入约束）
    * @param markets 市场表（只读；只用于"缺投入时有没有市场"的具名区分）
-   * @param organizations 生产组织工作副本（upsert）
+   * @param enterprises 生产组织工作副本（upsert）
    * @return 是否写了状态 + 今天新建的 unit id
    */
   static Outcome organize(
@@ -269,14 +269,14 @@ final class EconomyOrganizationSettlement {
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<IndustryId, Industry> industries,
       Map<PledgeId, Pledge> pledges,
-      LinkedHashMap<ProductionUnitId, ProductionUnit> units,
-      LinkedHashMap<ProductionUnitId, ProductionRelation> relations,
-      LinkedHashMap<AssetShareId, AssetShare> assetShares,
+      LinkedHashMap<ProductionUnitId, ProductionProcess> units,
+      LinkedHashMap<ProductionUnitId, ProductionRules> relations,
+      LinkedHashMap<AssetShareId, OwnershipStake> assetShares,
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       Map<HexCoord, Market> markets,
-      LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations) {
+      LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises) {
     Objects.requireNonNull(base, "base");
     if (base.modes().isEmpty()) {
       return Outcome.empty(); // ★★ 闸门：旧档/未接线世界完全不执行本阶段
@@ -292,14 +292,14 @@ final class EconomyOrganizationSettlement {
     Objects.requireNonNull(composition, "composition");
     Objects.requireNonNull(householdGoods, "householdGoods");
     Objects.requireNonNull(markets, "markets");
-    Objects.requireNonNull(organizations, "organizations");
+    Objects.requireNonNull(enterprises, "organizations");
 
     boolean changed = false;
     Set<ProductionUnitId> created = new LinkedHashSet<>();
 
     // 家户 → **本 tick 的有效参与位置集合**（P2-B §13.5：一家户可参与多个生产方式/生产位置）。
     //   ★ 口径：HouseholdClassMembership.effectivePositionIds() = {currentPositionId} ∪ participatingPositionIds；
-    //     没有 standing 的旧档退回 ClassPositionResolver.resolveCurrent（旧单值口径），逐值不变。
+    //     没有 standing 的旧档退回 ProductionRoleResolver.resolveCurrent（旧单值口径），逐值不变。
     Map<HouseholdId, List<ClassPositionId>> positionsByHousehold = new LinkedHashMap<>();
     List<HouseholdId> orderedHouseholds = new ArrayList<>(householdEconomies.keySet());
     orderedHouseholds.sort(Comparator.comparing(HouseholdId::value));
@@ -335,7 +335,7 @@ final class EconomyOrganizationSettlement {
       //   到 revision 边界留下指向已删除份额的 assetSources（实测的构造期守卫失败）。
       Set<ActorRef> reservedHouseholdOwners = new LinkedHashSet<>();
       for (ClassPositionId positionId : orderedPositions) {
-        ClassPosition position = structure.positions().get(positionId);
+        ProductionRole position = structure.positions().get(positionId);
         if (position == null || !shouldProduce(position)) {
           continue;
         }
@@ -350,7 +350,7 @@ final class EconomyOrganizationSettlement {
         }
       }
       for (ClassPositionId positionId : orderedPositions) {
-        ClassPosition position = structure.positions().get(positionId);
+        ProductionRole position = structure.positions().get(positionId);
         if (position == null || !shouldProduce(position)) {
           continue;
         }
@@ -367,7 +367,7 @@ final class EconomyOrganizationSettlement {
           ProductionOrganizationId orgId = null;
           try {
             orgId = ProductionOrganizationId.idOf(mode.id(), positionId, household, hexKey);
-            ProductionOrganization existing = organizations.get(orgId);
+            ProductionEnterprise existing = enterprises.get(orgId);
             if (existing != null && existing.status() == Status.EXITING) {
               // ★★ E6a：模式变迁把旧 mode 的组织钉在 EXITING —— 该位置即使仍有家户停留（retain=1000），
               //   也不得被自动组织阶段重建/覆盖成 SHORTAGE/ACTIVE（旧 unit 已改挂新 mode，重组织必然失败）。
@@ -401,16 +401,16 @@ final class EconomyOrganizationSettlement {
                     composition,
                                 householdGoods,
                     markets);
-            ProductionOrganization previous = organizations.put(orgId, result.organization());
-            if (!result.organization().equals(previous)) {
+            ProductionEnterprise previous = enterprises.put(orgId, result.enterprise());
+            if (!result.enterprise().equals(previous)) {
               changed = true;
             }
             if (result.unitCreated()) {
-              created.add(result.organization().unitId().orElseThrow());
+              created.add(result.enterprise().unitId().orElseThrow());
             }
           } catch (IllegalArgumentException e) {
             // 坏 id/坏模板：不半建、不静默 —— 落一条具名 SHORTAGE（状态里能看到原因，读口/报告可追溯）。
-            ProductionOrganization refused =
+            ProductionEnterprise refused =
                 shortage(
                     orgId != null ? orgId : orgIdFallback(mode, positionId, household, hexKey),
                     mode,
@@ -418,7 +418,7 @@ final class EconomyOrganizationSettlement {
                     household,
                     List.of(),
                     REASON_REFUSED + ":" + e.getMessage());
-            if (!refused.equals(organizations.put(refused.id(), refused))) {
+            if (!refused.equals(enterprises.put(refused.id(), refused))) {
               changed = true;
             }
           }
@@ -435,7 +435,7 @@ final class EconomyOrganizationSettlement {
   private static OrganizeResult organizeOne(
       Map<String, AssetRule> assetRuleByModeKind,
       ProductionMode mode,
-      ClassPosition position,
+      ProductionRole position,
       ClassPositionId positionId,
       HouseholdId household,
       HouseholdEconomy householdEconomy,
@@ -446,9 +446,9 @@ final class EconomyOrganizationSettlement {
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<IndustryId, Industry> industries,
       Map<PledgeId, Pledge> pledges,
-      LinkedHashMap<ProductionUnitId, ProductionUnit> units,
-      LinkedHashMap<ProductionUnitId, ProductionRelation> relations,
-      LinkedHashMap<AssetShareId, AssetShare> assetShares,
+      LinkedHashMap<ProductionUnitId, ProductionProcess> units,
+      LinkedHashMap<ProductionUnitId, ProductionRules> relations,
+      LinkedHashMap<AssetShareId, OwnershipStake> assetShares,
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HouseholdId, Map<PeopleLotId, Long>> composition,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
@@ -474,22 +474,22 @@ final class EconomyOrganizationSettlement {
     IndustryId industryId = selected.get();
     Industry industry = industries.get(industryId);
     ProductionUnitId unitId = ProductionUnitId.idOf(industryId, organizer);
-    ProductionUnit existingUnit = units.get(unitId);
+    ProductionProcess existingUnit = units.get(unitId);
 
     // ── 路由 ①：采用已有 unit（本 mode 之前建的，或旧档/播种的 preset unit）────────────────
     if (existingUnit != null) {
       boolean ours = existingUnit.modeKey().equals(modeKey);
       boolean preset = existingUnit.modeKey().equals(existingUnit.industry().value());
       if (ours || preset) {
-        ProductionRelation relation = relations.get(unitId);
-        List<Recipient> inputSources =
+        ProductionRules relation = relations.get(unitId);
+        List<Payee> inputSources =
             relation == null ? List.of() : List.of(relation.inputSupplier());
-        Recipient outputOwnership =
+        Payee outputOwnership =
             relation == null
-                ? new Recipient.ToActor(organizer)
-                : new Recipient.ToActor(relation.residualOwner());
+                ? new Payee.ToActor(organizer)
+                : new Payee.ToActor(relation.residualOwner());
         return new OrganizeResult(
-            new ProductionOrganization(
+            new ProductionEnterprise(
                 orgId,
                 mode.id(),
                 positionId,
@@ -583,13 +583,13 @@ final class EconomyOrganizationSettlement {
     }
     long target = Math.min(laborScale, inputScale);
     Map<AssetKind, Long> usable =
-        ProductionUnitBook.usableAssets(industryId, organizer, assetShares);
+        ProductionProcessBook.usableAssets(industryId, organizer, assetShares);
     long ownCapacity =
-        ProductionUnitBook.capacityScaleOf(industryId, organizer, industry, assetShares);
+        ProductionProcessBook.capacityScaleOf(industryId, organizer, industry, assetShares);
     // ★★ P2-E：**已被某个生产 unit 使用的 (industry, operator) 作用域** —— 该作用域下的 OWNED 份额
     //   是那条 unit 的产能来源，不是"闲置可租"的份额（否则自动组织会把别人正在用的 unit 拆空）。
     Set<ActorRef> operatorsWithUnit = new LinkedHashSet<>();
-    for (ProductionUnit candidate : units.values()) {
+    for (ProductionProcess candidate : units.values()) {
       if (candidate.industry().equals(industryId)) {
         operatorsWithUnit.add(candidate.operator());
       }
@@ -659,10 +659,10 @@ final class EconomyOrganizationSettlement {
             shareIdsOf(industryId, organizer, assetShares),
             REASON_NO_RENT_RULE + ":" + grant.asset().name());
       }
-      rules.addAll(rentRules(rentRule, new Recipient.ToActor(grant.owner())));
+      rules.addAll(rentRules(rentRule, new Payee.ToActor(grant.owner())));
     }
-    ProductionRelation relation =
-        new ProductionRelation(
+    ProductionRules relation =
+        new ProductionRules(
             unitId,
             organizer,
             generated.relation().inputSupplier(),
@@ -688,7 +688,7 @@ final class EconomyOrganizationSettlement {
 
     // ── apply：全部可失败判断已在上面做完，这里只落工作副本（不重置/不覆盖既有 unit）──────────
     applyGrants(grants, organizer, industries, pledges, assetShares);
-    units.put(unitId, new ProductionUnit(unitId, industryId, organizer, modeKey, 0L, 0L, Map.of()));
+    units.put(unitId, new ProductionProcess(unitId, industryId, organizer, modeKey, 0L, 0L, Map.of()));
     relations.put(unitId, relation);
     allocation.ifPresent(
         plan -> {
@@ -705,7 +705,7 @@ final class EconomyOrganizationSettlement {
                   plan.period()));
         });
     return new OrganizeResult(
-        new ProductionOrganization(
+        new ProductionEnterprise(
             orgId,
             mode.id(),
             positionId,
@@ -714,7 +714,7 @@ final class EconomyOrganizationSettlement {
             List.of(household),
             shareIdsOf(industryId, organizer, assetShares),
             List.of(relation.inputSupplier()),
-            new Recipient.ToActor(relation.residualOwner()),
+            new Payee.ToActor(relation.residualOwner()),
             Optional.of(generated.templateRef()),
             Status.ACTIVE,
             ""),
@@ -724,7 +724,7 @@ final class EconomyOrganizationSettlement {
   // ── 位置/产业/批次选择 ─────────────────────────────────────────────────────────────────
 
   /** 应当生产的位置：有劳动角色且不是纯被供养者；地主（NONE）与官署（NONE）不组织。 */
-  private static boolean shouldProduce(ClassPosition position) {
+  private static boolean shouldProduce(ProductionRole position) {
     return position.laborRole() != LaborRole.NONE
         && position.surplusRole() != SurplusRole.DEPENDENT;
   }
@@ -740,13 +740,13 @@ final class EconomyOrganizationSettlement {
     if (classMembership != null) {
       return Optional.of(classMembership.currentPositionId());
     }
-    return ClassPositionResolver.resolveCurrent(base, household);
+    return ProductionRoleResolver.resolveCurrent(base, household);
   }
 
   /**
    * ★★ <b>P2-B：本户的有效参与位置集合</b>（多生产方式的唯一读口）。有 {@code HouseholdClassMembership} ⇒
    * {@link HouseholdClassMembership#effectivePositionIds()}（当前位置 ∪ 追加集合，按 id 升序）；无 standing 的旧档 ⇒
-   * 退回 {@link ClassPositionResolver#resolveCurrent} 的单值旧口径。位置自身的合法性（已存在、mode 已存在）
+   * 退回 {@link ProductionRoleResolver#resolveCurrent} 的单值旧口径。位置自身的合法性（已存在、mode 已存在）
    * 由 {@code EconomyData} 构造期判死，本方法只读。
    */
   private static List<ClassPositionId> effectivePositions(
@@ -755,13 +755,13 @@ final class EconomyOrganizationSettlement {
     if (classMembership != null) {
       return classMembership.effectivePositionIds();
     }
-    return ClassPositionResolver.resolveCurrent(base, household)
+    return ProductionRoleResolver.resolveCurrent(base, household)
         .map(List::of)
         .orElseGet(List::of);
   }
 
   /** 位置角色 → 优先 regime（E2 的产业模板选择启发式；只是"先试哪一个"，不是规则权威）。 */
-  private static String preferredRegime(ClassPosition position) {
+  private static String preferredRegime(ProductionRole position) {
     // ★★ P11.7 / D-024：merchant 位置优先 regime==merchant 的产业模板（trade）；没有才回退下面的现有顺序。
     if (DefaultProductionModes.MERCHANT.equals(position.modeId())) {
       return RegimeOperators.MERCHANT;
@@ -784,10 +784,10 @@ final class EconomyOrganizationSettlement {
   private static Optional<IndustryId> selectIndustry(
       Map<IndustryId, Industry> industries,
       List<IndustryId> candidates,
-      ClassPosition position,
+      ProductionRole position,
       String modeKey,
       ActorRef organizer,
-      Map<ProductionUnitId, ProductionUnit> units) {
+      Map<ProductionUnitId, ProductionProcess> units) {
     String wanted = preferredRegime(position);
     List<IndustryId> preferred = new ArrayList<>();
     List<IndustryId> rest = new ArrayList<>();
@@ -805,7 +805,7 @@ final class EconomyOrganizationSettlement {
     ordered.addAll(rest);
     for (IndustryId industryId : ordered) {
       ProductionUnitId unitId = ProductionUnitId.idOf(industryId, organizer);
-      ProductionUnit existing = units.get(unitId);
+      ProductionProcess existing = units.get(unitId);
       if (existing == null
           || existing.modeKey().equals(modeKey)
           || existing.modeKey().equals(existing.industry().value())) {
@@ -873,7 +873,7 @@ final class EconomyOrganizationSettlement {
       ActorRef organizer,
       Map<AssetKind, Long> usable,
       long desiredScale,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Set<ActorRef> reservedHouseholdOwners,
       Set<ActorRef> operatorsWithUnit) {
     List<AssetGrant> grants = new ArrayList<>();
@@ -906,7 +906,7 @@ final class EconomyOrganizationSettlement {
         continue;
       }
       long taken = 0L;
-      for (AssetShare source :
+      for (OwnershipStake source :
           idleSources(
               industry.id(),
               assetKind,
@@ -944,14 +944,14 @@ final class EconomyOrganizationSettlement {
       Industry industry,
       ActorRef organizer,
       Map<AssetKind, Long> usable,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Set<ActorRef> reservedHouseholdOwners,
       Set<ActorRef> operatorsWithUnit) {
     long ceiling = Long.MAX_VALUE;
     for (Map.Entry<AssetKind, Long> entry : industry.capacityPerUnit().entrySet()) {
       AssetKind assetKind = entry.getKey();
       long available = usable.getOrDefault(assetKind, 0L);
-      for (AssetShare source :
+      for (OwnershipStake source :
           idleSources(
               industry.id(),
               assetKind,
@@ -982,19 +982,19 @@ final class EconomyOrganizationSettlement {
    * (industry, operator) 作用域下的份额是那条 unit 的产能来源，不是闲置份额 —— 否则自动组织会为另一个家户
    * "租"走别人正在用的产能，把原 unit 拆成没有份额的空壳（P2-E 的 weave 红点即此路径）。
    */
-  private static List<AssetShare> idleSources(
+  private static List<OwnershipStake> idleSources(
       IndustryId industryId,
       AssetKind assetKind,
       ActorRef organizer,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Set<ActorRef> reservedHouseholdOwners,
       Set<ActorRef> operatorsWithUnit) {
-    List<AssetShare> sources = new ArrayList<>();
-    for (AssetShare share : assetShares.values()) {
+    List<OwnershipStake> sources = new ArrayList<>();
+    for (OwnershipStake share : assetShares.values()) {
       if (!share.industry().equals(industryId) || share.asset() != assetKind) {
         continue;
       }
-      if (share.kind() == AssetShare.RightKind.TENANCY) {
+      if (share.kind() == OwnershipStake.RightKind.TENANCY) {
         continue; // 已租出的份额不再转租（E2 不做转租；TransferRule.allowSublease 由后续阶段读）
       }
       if (!share.operator().equals(share.owner())) {
@@ -1019,7 +1019,7 @@ final class EconomyOrganizationSettlement {
   }
 
   /**
-   * 把 grants 落到份额工作副本：<b>委托 {@link AssetShareBook#apply}</b> —— 源份额减量/删行，新建 owner 不变、
+   * 把 grants 落到份额工作副本：<b>委托 {@link OwnershipStakeBook#apply}</b> —— 源份额减量/删行，新建 owner 不变、
    * operator=组织者、kind=TENANCY 的份额（Σ 逐 {@code (industry, asset)} 守恒）。★ E5a 起不再在本类直接 {@code
    * put}/{@code remove} 份额：新 id 的确定性序号、源数量上界、industry/质押守卫全部收在唯一写口，且失败时工作副本一字不动。
    */
@@ -1028,24 +1028,24 @@ final class EconomyOrganizationSettlement {
       ActorRef organizer,
       Map<IndustryId, Industry> industries,
       Map<PledgeId, Pledge> pledges,
-      LinkedHashMap<AssetShareId, AssetShare> assetShares) {
+      LinkedHashMap<AssetShareId, OwnershipStake> assetShares) {
     if (grants.isEmpty()) {
       return;
     }
-    List<AssetShareBook.Move> moves = new ArrayList<>(grants.size());
+    List<OwnershipStakeBook.Move> moves = new ArrayList<>(grants.size());
     for (AssetGrant grant : grants) {
       moves.add(
-          new AssetShareBook.Move(
+          new OwnershipStakeBook.Move(
               grant.source(),
               grant.quantity(),
               grant.owner(),
               organizer,
-              AssetShare.RightKind.TENANCY));
+              OwnershipStake.RightKind.TENANCY));
     }
-    AssetShareBook.apply(assetShares, industries, pledges, moves);
+    OwnershipStakeBook.apply(assetShares, industries, pledges, moves);
   }
 
-  /** 租佃拆分后的产能规模（与 {@code ProductionUnitBook} 同式的只读预估；grants 尚未落盘）。 */
+  /** 租佃拆分后的产能规模（与 {@code ProductionProcessBook} 同式的只读预估；grants 尚未落盘）。 */
   private static long expectedCapacityAfterGrants(
       Industry industry, Map<AssetKind, Long> usable, List<AssetGrant> grants) {
     Map<AssetKind, Long> granted = new LinkedHashMap<>();
@@ -1077,7 +1077,7 @@ final class EconomyOrganizationSettlement {
   }
 
   /** {@link RentRule} → 结算侧规则（逐腿一条；货币腿走既有 FIXED_MONEY_RENT 路径）。 */
-  private static List<CompensationRule> rentRules(RentRule rentRule, Recipient recipient) {
+  private static List<CompensationRule> rentRules(RentRule rentRule, Payee recipient) {
     List<CompensationRule> rules = new ArrayList<>();
     for (RentRule.RentLeg leg : rentRule.legs()) {
       CompensationRule rule =
@@ -1130,7 +1130,7 @@ final class EconomyOrganizationSettlement {
    */
   private static GeneratedRelation generateRelation(
       ProductionMode mode,
-      ClassPosition position,
+      ProductionRole position,
       Industry industry,
       IndustryId industryId,
       ProductionUnitId unitId,
@@ -1138,10 +1138,10 @@ final class EconomyOrganizationSettlement {
       HouseholdEconomy householdEconomy,
       Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     try {
-      ProductionRelation byRegime =
+      ProductionRules byRegime =
           RegimeRelations.defaultRelation(
               industry.regime(), unitId, industryId, organizer, Set.of(householdEconomy.view().residence()));
-      ProductionRelation normalized = normalizeRecipients(byRegime, householdEconomies, householdEconomy.view().hex());
+      ProductionRules normalized = normalizePayees(byRegime, householdEconomies, householdEconomy.view().hex());
       if (normalized != null) {
         return new GeneratedRelation(
             normalized, "mode:" + mode.id().value() + ":regime:" + industry.regime().value());
@@ -1149,11 +1149,11 @@ final class EconomyOrganizationSettlement {
     } catch (IllegalArgumentException ignored) {
       // regime 未登记（没有默认关系模板）⇒ 退回最小自留关系；不猜制度。
     }
-    ProductionRelation minimal =
-        new ProductionRelation(
+    ProductionRules minimal =
+        new ProductionRules(
             unitId,
             organizer,
-            new Recipient.ToActor(organizer),
+            new Payee.ToActor(organizer),
             List.of(),
             organizer,
             laborSourceOf(position));
@@ -1162,7 +1162,7 @@ final class EconomyOrganizationSettlement {
   }
 
   /**
-   * ★★ <b>把 regime 默认模板里的 cohort 受方一对一归一成 {@link Recipient.ToHousehold}，并剔除 受方 == organizer
+   * ★★ <b>把 regime 默认模板里的 cohort 受方一对一归一成 {@link Payee.ToHousehold}，并剔除 受方 == organizer
    * 的自付规则</b>。
    *
    * <p>★★ <b>为什么必须在 E2 就地归一</b>：新建 unit 的关系当天就会被 harvest/settle 使用，而 {@code EconomyData} 的构造期归一到
@@ -1176,8 +1176,8 @@ final class EconomyOrganizationSettlement {
    * <p>★★ <b>GAP-3 共用</b>：{@code ModeMigrationSettlement.buildMigrationRelation} 走同一条模板也必须就地归一
    * —— 否则迁移新建的关系会在**当天** harvest 时被 {@code requireCohortRows} 的"视图不再是唯一身份"守卫拒绝。归一只有这一份拼写点。
    */
-  static ProductionRelation normalizeRecipients(
-      ProductionRelation relation, Map<HouseholdId, HouseholdEconomy> householdEconomies, HexCoord hex) {
+  static ProductionRules normalizePayees(
+      ProductionRules relation, Map<HouseholdId, HouseholdEconomy> householdEconomies, HexCoord hex) {
     Map<CohortKey, HouseholdId> householdByView = new LinkedHashMap<>();
     Set<CohortKey> ambiguous = new LinkedHashSet<>();
     for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
@@ -1191,8 +1191,8 @@ final class EconomyOrganizationSettlement {
     List<CompensationRule> rules = new ArrayList<>(relation.rules().size());
     boolean changed = false;
     for (CompensationRule rule : relation.rules()) {
-      Recipient recipient = rule.recipient();
-      if (recipient instanceof Recipient.ToHousehold toHousehold) {
+      Payee recipient = rule.recipient();
+      if (recipient instanceof Payee.ToHousehold toHousehold) {
         if (HouseholdActors.of(toHousehold.household()).equals(relation.operator())) {
           changed = true; // 自付：净额恒等，不落转移（见类注）
           continue;
@@ -1202,7 +1202,7 @@ final class EconomyOrganizationSettlement {
           return null;
         }
         rules.add(rule);
-      } else if (recipient instanceof Recipient.ToCohort toCohort) {
+      } else if (recipient instanceof Payee.ToCohort toCohort) {
         HouseholdId household = householdByView.get(toCohort.cohort());
         if (household == null) {
           return null;
@@ -1218,7 +1218,7 @@ final class EconomyOrganizationSettlement {
         rules.add(
             new CompensationRule(
                 rule.type(),
-                new Recipient.ToHousehold(household),
+                new Payee.ToHousehold(household),
                 rule.pool(),
                 rule.weight(),
                 rule.ratePerMille(),
@@ -1227,7 +1227,7 @@ final class EconomyOrganizationSettlement {
                 rule.currency(),
                 rule.priority()));
         changed = true;
-      } else if (recipient instanceof Recipient.ToActor toActor
+      } else if (recipient instanceof Payee.ToActor toActor
           && toActor.actor().equals(relation.operator())) {
         changed = true; // 自付：同一条口径（默认模板不走这档，留给将来）
         continue;
@@ -1236,7 +1236,7 @@ final class EconomyOrganizationSettlement {
       }
     }
     return changed
-        ? new ProductionRelation(
+        ? new ProductionRules(
             relation.activity(),
             relation.operator(),
             relation.inputSupplier(),
@@ -1247,7 +1247,7 @@ final class EconomyOrganizationSettlement {
   }
 
   /** 位置 → 劳动来源档（最小自留关系用；E2 只做形状，逐档结算差异属后续阶段）。 */
-  private static LaborSource laborSourceOf(ClassPosition position) {
+  private static LaborSource laborSourceOf(ProductionRole position) {
     return switch (position.surplusRole()) {
       case WAGE_EARNER ->
           position.relationToMeans() == RelationToMeans.DIRECT_LABORER
@@ -1262,9 +1262,9 @@ final class EconomyOrganizationSettlement {
 
   /** 一个组织指名的资产份额列表（同产业、同 operator；按 id 升序 ⇒ 字节可复现）。 */
   private static List<AssetShareId> shareIdsOf(
-      IndustryId industryId, ActorRef operator, Map<AssetShareId, AssetShare> assetShares) {
+      IndustryId industryId, ActorRef operator, Map<AssetShareId, OwnershipStake> assetShares) {
     List<AssetShareId> ids = new ArrayList<>();
-    for (AssetShare share : assetShares.values()) {
+    for (OwnershipStake share : assetShares.values()) {
       if (share.industry().equals(industryId) && share.operator().equals(operator)) {
         ids.add(share.id());
       }
@@ -1286,14 +1286,14 @@ final class EconomyOrganizationSettlement {
   }
 
   /** 具名缺口组织本体（没有 unit）。 */
-  private static ProductionOrganization shortage(
+  private static ProductionEnterprise shortage(
       ProductionOrganizationId orgId,
       ProductionMode mode,
       ClassPositionId positionId,
       HouseholdId household,
       List<AssetShareId> assetSources,
       String reason) {
-    return new ProductionOrganization(
+    return new ProductionEnterprise(
         orgId,
         mode.id(),
         positionId,
@@ -1302,7 +1302,7 @@ final class EconomyOrganizationSettlement {
         List.of(household),
         assetSources,
         List.of(),
-        new Recipient.ToActor(HouseholdActors.of(household)),
+        new Payee.ToActor(HouseholdActors.of(household)),
         Optional.empty(),
         Status.SHORTAGE,
         reason);

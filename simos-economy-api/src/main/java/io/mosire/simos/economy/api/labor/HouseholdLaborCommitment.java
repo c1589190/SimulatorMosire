@@ -11,7 +11,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
  * ★★ **一次劳动分配**（第三阶段设计稿 §四）："**这批人**把**这么多**劳动供给**这个主体**，在这个周期里"。
  *
  * <pre>
- * Household(时间预算) ──→ HouseholdLaborCommitment ──→ ProductionUnit（生产活动）
+ * Household(时间预算) ──→ HouseholdLaborCommitment ──→ ProductionProcess（生产活动）
  * </pre>
  *
  * <p>★★ **它存在的理由**（设计稿 §一.2 实测的空洞）：此前"劳动投入"是**按产业各自累加**的（每格 farm 与 craft 各带一份人口与劳动、 互不知道对方）⇒

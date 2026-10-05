@@ -33,12 +33,12 @@ import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.api.relation.Pool;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassPosition;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DefaultProductionModes;
@@ -1098,7 +1098,7 @@ public final class EconomySeeder {
     // ★★ P2：基础六表（mode/结构/位置/standing）后追加资产规则；清算政策与规则 id 同源派生 ⇒ 引用必然对得上。
     payload.put("modes", productionModeNodes());
     payload.put("classStructures", classStructureNodes());
-    payload.put("classPositions", classPositionNodes());
+    payload.put("classPositions", productionRoleNodes());
     payload.put("classStandings", productionRuntimeClassMemberships(entries));
     payload.put("assetRules", productionRuntimeAssetRuleNodes());
     payload.put("liquidationPolicies", productionRuntimeLiquidationPolicyNodes());
@@ -1164,7 +1164,7 @@ public final class EconomySeeder {
    * ★★ <b>默认阶层结构 → {@code classStructures[]} 节点</b>：{@code
    * {id,modeId,positions:[...],defaultSharesPerMille:{...}}}。
    *
-   * <p>{@code positions} 与下面的扁平 {@code classPositions[]} 由<b>同一个</b> {@link #classPositionNode} 生成
+   * <p>{@code positions} 与下面的扁平 {@code classPositions[]} 由<b>同一个</b> {@link #productionRoleNode} 生成
    * ⇒ 结构内位置与全局表逐字段同形，{@code EconomyData} 的“结构内位置 == 全局位置表”守卫自然成立。
    */
   private static List<Map<String, Object>> classStructureNodes() {
@@ -1174,8 +1174,8 @@ public final class EconomySeeder {
       node.put("id", structure.id().value());
       node.put("modeId", structure.modeId().value());
       List<Map<String, Object>> positions = new ArrayList<>();
-      for (ClassPosition position : structure.positions().values()) {
-        positions.add(classPositionNode(position));
+      for (ProductionRole position : structure.positions().values()) {
+        positions.add(productionRoleNode(position));
       }
       node.put("positions", positions);
       Map<String, Object> shares = new LinkedHashMap<>();
@@ -1189,10 +1189,10 @@ public final class EconomySeeder {
   }
 
   /** ★ 默认全局位置表 → 扁平的 {@code classPositions[]} 节点（与结构内 {@code positions} 逐字段相同）。 */
-  private static List<Map<String, Object>> classPositionNodes() {
+  private static List<Map<String, Object>> productionRoleNodes() {
     List<Map<String, Object>> nodes = new ArrayList<>();
-    for (ClassPosition position : DefaultProductionModes.classPositions().values()) {
-      nodes.add(classPositionNode(position));
+    for (ProductionRole position : DefaultProductionModes.classPositions().values()) {
+      nodes.add(productionRoleNode(position));
     }
     return nodes;
   }
@@ -1202,7 +1202,7 @@ public final class EconomySeeder {
    *
    * <p>{@code ruleExtensions} 只在非空时发出（P1 全空）；缺键 ⇒ 解析器给空表，不在这里多写一个空对象。
    */
-  private static Map<String, Object> classPositionNode(ClassPosition position) {
+  private static Map<String, Object> productionRoleNode(ProductionRole position) {
     Map<String, Object> node = new LinkedHashMap<>();
     node.put("id", position.id().value());
     node.put("modeId", position.modeId().value());
@@ -2039,16 +2039,16 @@ public final class EconomySeeder {
   }
 
   /**
-   * 一条 {@code AssetShare} 载荷节点：{@code {industry, owner, operator, asset, quantity, kind}} —— 新形状显式给
-   * owner/operator（租佃时两者不等），id 由 {@code EconomyPayloads.addAssetShare} 的确定性序号生成 （同一 {@code
+   * 一条 {@code OwnershipStake} 载荷节点：{@code {industry, owner, operator, asset, quantity, kind}} —— 新形状显式给
+   * owner/operator（租佃时两者不等），id 由 {@code EconomyPayloads.addOwnershipStake} 的确定性序号生成 （同一 {@code
    * (industry, asset, owner, operator, kind)} 从 0 递增）。
    */
-  private static Map<String, Object> assetShareNode(
+  private static Map<String, Object> ownershipStakeNode(
       String industry,
       String asset,
       ActorRef owner,
       ActorRef operator,
-      AssetShare.RightKind kind,
+      OwnershipStake.RightKind kind,
       long quantity) {
     Map<String, Object> share = new LinkedHashMap<>();
     share.put("industry", industry);
@@ -2472,13 +2472,13 @@ public final class EconomySeeder {
     Map<String, Long> sequences = new LinkedHashMap<>();
     Map<String, Long> conservedBefore = new LinkedHashMap<>();
     for (int entryIndex = 0; entryIndex < entries.size(); entryIndex++) {
-      for (Map<String, Object> node : assetSharesList(entries.get(entryIndex), entryIndex)) {
+      for (Map<String, Object> node : ownershipStakesList(entries.get(entryIndex), entryIndex)) {
         ShareHandle handle = parseShareHandle(node, entryIndex);
         String sequenceKey = sequenceKeyOf(handle);
         long sequence = sequences.getOrDefault(sequenceKey, 0L);
         sequences.put(sequenceKey, sequence + 1L);
         AssetShareId id =
-            AssetShare.idOf(
+            OwnershipStake.idOf(
                 handle.industry(),
                 handle.asset(),
                 handle.owner(),
@@ -2498,7 +2498,7 @@ public final class EconomySeeder {
       requireSeededHousehold(
           split.targetHousehold(), householdStocks, householdMoney, where + ".targetHousehold");
       ShareHandle source = resolveSourceShare(split, shares, where);
-      if (source.kind() != AssetShare.RightKind.OWNED) {
+      if (source.kind() != OwnershipStake.RightKind.OWNED) {
         throw new IllegalArgumentException(
             "test-condition: " + where + " 的源份额必须是 OWNED（拆分只拆自有份额）: id 对应 " + source.kind());
       }
@@ -2518,26 +2518,26 @@ public final class EconomySeeder {
               + "|"
               + target
               + "|"
-              + AssetShare.RightKind.OWNED;
+              + OwnershipStake.RightKind.OWNED;
       long sequence = sequences.getOrDefault(sequenceKey, 0L);
       sequences.put(sequenceKey, sequence + 1L);
       AssetShareId newId =
-          AssetShare.idOf(
+          OwnershipStake.idOf(
               source.industry(),
               source.asset(),
               target,
               target,
-              AssetShare.RightKind.OWNED,
+              OwnershipStake.RightKind.OWNED,
               sequence);
       Map<String, Object> newNode =
-          assetShareNode(
+          ownershipStakeNode(
               source.industry().value(),
               source.asset().name(),
               target,
               target,
-              AssetShare.RightKind.OWNED,
+              OwnershipStake.RightKind.OWNED,
               split.quantity());
-      assetSharesList(entries.get(source.entryIndex()), source.entryIndex()).add(newNode);
+      ownershipStakesList(entries.get(source.entryIndex()), source.entryIndex()).add(newNode);
       if (shares.putIfAbsent(
               newId,
               new ShareHandle(
@@ -2547,7 +2547,7 @@ public final class EconomySeeder {
                   source.asset(),
                   target,
                   target,
-                  AssetShare.RightKind.OWNED))
+                  OwnershipStake.RightKind.OWNED))
           != null) {
         throw new IllegalStateException("拆分新建份额 id 冲突（plan 内部构造错误）: " + newId);
       }
@@ -2555,7 +2555,7 @@ public final class EconomySeeder {
     }
     Map<String, Long> conservedAfter = new LinkedHashMap<>();
     for (int entryIndex = 0; entryIndex < entries.size(); entryIndex++) {
-      for (Map<String, Object> node : assetSharesList(entries.get(entryIndex), entryIndex)) {
+      for (Map<String, Object> node : ownershipStakesList(entries.get(entryIndex), entryIndex)) {
         ShareHandle handle = parseShareHandle(node, entryIndex);
         conservedAfter.merge(assetTotalsKey(handle), handle.quantity(), Math::addExact);
       }
@@ -2586,7 +2586,7 @@ public final class EconomySeeder {
         throw new IllegalArgumentException(
             "test-condition: " + where + " 指名的资产份额不在本次 seed 的份额表里: " + pledge.assetShareId());
       }
-      if (share.kind() != AssetShare.RightKind.OWNED) {
+      if (share.kind() != OwnershipStake.RightKind.OWNED) {
         throw new IllegalArgumentException(
             "test-condition: " + where + " 的质押份额必须是真实 OWNED 份额（当前 " + share.kind() + "）");
       }
@@ -2857,7 +2857,7 @@ public final class EconomySeeder {
       AssetKind asset,
       ActorRef owner,
       ActorRef operator,
-      AssetShare.RightKind kind) {
+      OwnershipStake.RightKind kind) {
 
     long quantity() {
       return ((Number) node.get("quantity")).longValue();
@@ -2866,7 +2866,7 @@ public final class EconomySeeder {
 
   /**
    * ★★ <b>与经济载荷解析器逐字同式的确定性 id 口径</b>：序列键 = {@code industry|asset|owner|operator|kind} （{@code
-   * EconomyPayloads.addAssetShare} 的 {@code sequenceKey}），序号 = 该键在<b>整份载荷</b>里出现的第几条（从 0 起）。
+   * EconomyPayloads.addOwnershipStake} 的 {@code sequenceKey}），序号 = 该键在<b>整份载荷</b>里出现的第几条（从 0 起）。
    * 本类先在拆分前对全部既有份额算一遍，拆分新建的份额再按同一张计数器往后发 —— 于是本类算出的 id 与 economy 侧解析出的 id <b>逐值相同</b>（拆分创建的目标份额因此可被
    * {@code InitialPledge.assetShareId} 直接引用）。
    */
@@ -2889,7 +2889,7 @@ public final class EconomySeeder {
 
   /** entry 的资产份额列表（plan 内部构造保证存在）。 */
   @SuppressWarnings("unchecked")
-  private static List<Map<String, Object>> assetSharesList(
+  private static List<Map<String, Object>> ownershipStakesList(
       Map<String, Object> entry, int entryIndex) {
     Object value = entry.get("assetShares");
     if (!(value instanceof List<?>)) {
@@ -2920,7 +2920,7 @@ public final class EconomySeeder {
         AssetKind.valueOf(asset),
         parseActorNode(owner),
         parseActorNode(operator),
-        AssetShare.RightKind.valueOf(kind));
+        OwnershipStake.RightKind.valueOf(kind));
   }
 
   private static ActorRef parseActorNode(Map<?, ?> node) {
@@ -2949,7 +2949,7 @@ public final class EconomySeeder {
     ActorRef sourceOwner = split.sourceOwner().orElseThrow();
     List<ShareHandle> matches = new ArrayList<>();
     for (ShareHandle handle : shares.values()) {
-      if (handle.kind() == AssetShare.RightKind.OWNED
+      if (handle.kind() == OwnershipStake.RightKind.OWNED
           && handle.industry().equals(industry)
           && handle.asset() == asset
           && handle.owner().equals(sourceOwner)) {
@@ -3082,12 +3082,12 @@ public final class EconomySeeder {
       }
       // ★★ P2-A：主 unit 的显式关系 —— operator/residualOwner = 组织者家户，inputSupplier 仍指**原产业主体 actor**
       //   （{@code ToActor(org)} 在 supplierAccountsOf 里代理到 unit 名下劳动家户 ⇒ 播种期"谁出种/出料"逐字不变）。
-      ProductionRelation farmMainRelation =
+      ProductionRules farmMainRelation =
           organizerRelation(
               farmPlanMain,
               Set.of(ResidenceKind.RURAL),
               new ActorRef(ActorKind.ORGANIZATION, farmId.value()));
-      ProductionRelation craftMainRelation =
+      ProductionRules craftMainRelation =
           hasCraft
               ? organizerRelation(
                   planOf(plans, craftId),
@@ -3098,7 +3098,7 @@ public final class EconomySeeder {
       //   它必须显式带一条"无规则"关系：净产出已由 harvest 的 creditOutput 按劳动权重分给各家家户账；
       //   若沿用制度默认的 HOUSEHOLD 模板，模板的四个受方 cohort 与集体成员是同一批家户 ⇒ 规则结算会在
       //   成员之间铸出"付给自己"的转移（Transfer 两端不得相等，首个收获日当场抛）。
-      ProductionRelation weaveMainRelation =
+      ProductionRules weaveMainRelation =
           hasRural ? collectiveRelation(planOf(plans, weaveId)) : null;
       List<Map<String, Object>> industries = new ArrayList<>(plans.size());
       for (IndustryPlan plan : plans) {
@@ -3178,7 +3178,7 @@ public final class EconomySeeder {
         // ★★ P11.7/D-024：trade 的 unit 由解析器从 industry 节点的 legacy operator 合成（见 {@link #trade} 的
         //   兼容读口注释）—— 这里不重发，避免解析器判"同一 (产业, 经营者) 两处拼写"；CATTLE 份额仍照发。
         if (!TRADE.equals(plan.kind())) {
-          ProductionRelation mainRelation =
+          ProductionRules mainRelation =
               switch (plan.kind()) {
                 case FARM -> farmMainRelation;
                 case CRAFT -> craftMainRelation;
@@ -3190,13 +3190,13 @@ public final class EconomySeeder {
                   ? unitOf(plan)
                   : unitOf(plan, plan.operator(), mainRelation));
         }
-        assetShares.addAll(assetSharesOf(plan, split.mainCapacity()));
+        assetShares.addAll(ownershipStakesOf(plan, split.mainCapacity()));
         // 副 unit：owner/operator/kind 显式落 assetShares；relation 显式随 unit 发出。
         for (HouseholdUnit secondary : split.secondaries()) {
           units.add(unitOf(plan, secondary));
           for (Map.Entry<String, Long> asset : secondary.quantities().entrySet()) {
             assetShares.add(
-                assetShareNode(
+                ownershipStakeNode(
                     plan.id(),
                     asset.getKey(),
                     secondary.owner(),
@@ -3213,7 +3213,7 @@ public final class EconomySeeder {
         }
       }
       allocations.addAll(splitAllocations);
-      // ★★ P11.7/D-024：城市格恰一条商号 —— 组织 id 必须与 EconomyOrganizationSettlement 自动组织将创建的
+      // ★★ P11.7/D-024：城市格恰一条商号 —— 组织 id 必须与 EconomyEnterpriseSettlement 自动组织将创建的
       //   ProductionOrganizationId 逐字一致（同走 ProductionOrganizationId.idOf(merchant, principalPosition,
       //   merchantPrincipalHousehold, hexKey)）；tier/capacity 都是具名 GM 默认。
       if (hasCraft) {
@@ -3544,7 +3544,7 @@ public final class EconomySeeder {
         node.put("protectedReserve", 1000L);
         node.put("priceSource", LiquidationPolicy.PriceSource.POLICY.name());
         node.put("policyValuePerUnitMilli", 4L);
-        node.put("recipientRule", LiquidationPolicy.RecipientRule.CREDITOR_FIRST.name());
+        node.put("recipientRule", LiquidationPolicy.PayeeRule.CREDITOR_FIRST.name());
         nodes.add(node);
       }
     }
@@ -3569,7 +3569,7 @@ public final class EconomySeeder {
    * 这不是"静默付 0"：付不出是**账面上读得出来**的状态； 要让它长期成立，得让经营者**卖得掉它的布与工具**（市场参与者扩容）。
    */
   static long operatorWageReserveMilli(String regime, IndustryId id, ActorRef owner) {
-    ProductionRelation relation =
+    ProductionRules relation =
         RegimeRelations.defaultRelation(
             new RegimeId(regime),
             ProductionUnitId.idOf(id, owner),
@@ -3902,7 +3902,7 @@ public final class EconomySeeder {
    * 经营者           = 该格 merchant principal 家户 actor
    * </pre>
    *
-   * <p>★ {@code capacity} 会在 {@code assetSharesOf(plan, mainCapacity)} 出口物化成 {@code owner = operator} 的
+   * <p>★ {@code capacity} 会在 {@code ownershipStakesOf(plan, mainCapacity)} 出口物化成 {@code owner = operator} 的
    * {@code OWNED} CATTLE 份额（trade 没有家户副 unit 的配额 ⇒ 不拆分、整额给商号本金主）。
    */
   private static IndustryPlan trade(HexCoord hex, ActorRef merchantPrincipal) {
@@ -3939,23 +3939,23 @@ public final class EconomySeeder {
    * ★★ <b>trade 的最小自留生产关系</b>：{@code merchant} 不在 {@code RegimeRelations} 的四档默认表里，载荷若无显式
    * {@code relation} 会在解析期 fail-closed（{@code EconomyPayloads} 的 defaultRelation 分支）⇒ seeder 必须显式给一条。
    *
-   * <p>空 {@code rules} = 产出全归 {@link ProductionRelation#residualOwner()}（这与"缺 relation 走最小自留"逐值同效）；
+   * <p>空 {@code rules} = 产出全归 {@link ProductionRules#residualOwner()}（这与"缺 relation 走最小自留"逐值同效）；
    * {@code trade} 没有商品产出，劳动来源按其本金主/经营者自营记 {@link LaborSource#SELF}。投入供方就是 operator（无投入，
    * 这一栏只是形状）。
    */
-  private static ProductionRelation tradeRelation(IndustryPlan plan) {
+  private static ProductionRules tradeRelation(IndustryPlan plan) {
     ActorRef operator = plan.operator();
-    return new ProductionRelation(
+    return new ProductionRules(
         plan.unitId(),
         operator,
-        new Recipient.ToActor(operator),
+        new Payee.ToActor(operator),
         List.of(),
         operator,
         LaborSource.SELF);
   }
 
   /**
-   * ★★ <b>一条城市商号</b>：id 由调用方按与 {@code EconomyOrganizationSettlement} 相同的四元组公式给出；tier/capacity
+   * ★★ <b>一条城市商号</b>：id 由调用方按与 {@code EconomyEnterpriseSettlement} 相同的四元组公式给出；tier/capacity
    * 都是具名 GM 默认，三个金额读数从 0 起（本批只落形状）。
    */
   private static MerchantFirm merchantFirm(
@@ -4062,7 +4062,7 @@ public final class EconomySeeder {
     payload.put("slots", slots);
     // ★★ R3B.2：**模板不再带 operator/capacity/progress/cycleState** —— 这些是 unit/份额的事实：
     //   经营者 = RegimeOperators 的默认（与 operatorSeed 同源）；进度/劳动/投入由 unitOf(plan) 显式发出；
-    //   产能总量由 assetSharesOf(plan) 整额 OWNED 物化。这样新载荷不会触发"旧形状"兼容路径。
+    //   产能总量由 ownershipStakesOf(plan) 整额 OWNED 物化。这样新载荷不会触发"旧形状"兼容路径。
     Map<String, Long> capacityLongs = new LinkedHashMap<>();
     for (Map.Entry<String, Object> entry : capacity.entrySet()) {
       if (!(entry.getValue() instanceof Number number)) {
@@ -4111,7 +4111,7 @@ public final class EconomySeeder {
    * @param relation 只在副 unit 上显式发出（主 unit 仍走制度默认关系）；主 unit 传 {@code null}
    */
   private static Map<String, Object> unitOf(
-      IndustryPlan plan, ActorRef operator, ProductionRelation relation) {
+      IndustryPlan plan, ActorRef operator, ProductionRules relation) {
     Map<String, Object> unit = new LinkedHashMap<>();
     unit.put("id", ProductionUnitId.idOf(new IndustryId(plan.id()), operator).value());
     unit.put("industry", plan.id());
@@ -4127,25 +4127,25 @@ public final class EconomySeeder {
   }
 
   /** 一个受方的载荷节点（{@code actor|household|cohort} 恰其一）——与 {@code EconomyPayloads.recipient} 同一形状。 */
-  private static Map<String, Object> recipientNode(Recipient recipient) {
+  private static Map<String, Object> payeeNode(Payee recipient) {
     Map<String, Object> node = new LinkedHashMap<>();
-    if (recipient instanceof Recipient.ToActor toActor) {
+    if (recipient instanceof Payee.ToActor toActor) {
       node.put("actor", actorNode(toActor.actor()));
-    } else if (recipient instanceof Recipient.ToHousehold toHousehold) {
+    } else if (recipient instanceof Payee.ToHousehold toHousehold) {
       node.put("household", toHousehold.household().value());
-    } else if (recipient instanceof Recipient.ToCohort toCohort) {
+    } else if (recipient instanceof Payee.ToCohort toCohort) {
       node.put("cohort", toCohort.cohort().toString());
     } else {
-      throw new IllegalStateException("未知 Recipient 变体：" + recipient);
+      throw new IllegalStateException("未知 Payee 变体：" + recipient);
     }
     return node;
   }
 
   /** 一条显式生产关系 → 载荷节点（{@code operator/inputSupplier/residualOwner/rules/laborSource}）。 */
-  private static Map<String, Object> relationNode(ProductionRelation relation) {
+  private static Map<String, Object> relationNode(ProductionRules relation) {
     Map<String, Object> node = new LinkedHashMap<>();
     node.put("operator", actorNode(relation.operator()));
-    node.put("inputSupplier", recipientNode(relation.inputSupplier()));
+    node.put("inputSupplier", payeeNode(relation.inputSupplier()));
     node.put("residualOwner", actorNode(relation.residualOwner()));
     List<Map<String, Object>> rules = new ArrayList<>(relation.rules().size());
     for (CompensationRule rule : relation.rules()) {
@@ -4160,7 +4160,7 @@ public final class EconomySeeder {
   private static Map<String, Object> ruleNode(CompensationRule rule) {
     Map<String, Object> node = new LinkedHashMap<>();
     node.put("type", rule.type().name());
-    node.put("recipient", recipientNode(rule.recipient()));
+    node.put("recipient", payeeNode(rule.recipient()));
     node.put("pool", rule.pool().name());
     node.put("weight", rule.weight().name());
     node.put("ratePerMille", rule.ratePerMille());
@@ -4210,17 +4210,17 @@ public final class EconomySeeder {
    * {@code inputSupplier} 仍指原产业主体 actor（它在 {@code supplierAccountsOf} 里代理到 unit 名下劳动家户，
    * 播种期的"谁出种/出料"因此逐字不变）。
    */
-  private static ProductionRelation organizerRelation(
+  private static ProductionRules organizerRelation(
       IndustryPlan plan, Set<ResidenceKind> residences, ActorRef inputSupplierOrg) {
     IndustryId industryId = new IndustryId(plan.id());
     ProductionUnitId activity = ProductionUnitId.idOf(industryId, plan.operator());
-    ProductionRelation base =
+    ProductionRules base =
         RegimeRelations.defaultRelation(
             new RegimeId(plan.regime()), activity, industryId, plan.operator(), residences);
-    return new ProductionRelation(
+    return new ProductionRules(
         base.activity(),
         base.operator(),
-        new Recipient.ToActor(inputSupplierOrg),
+        new Payee.ToActor(inputSupplierOrg),
         withoutSelfPayments(base.rules(), plan.operator()),
         base.residualOwner(),
         base.laborSource());
@@ -4231,7 +4231,7 @@ public final class EconomySeeder {
    * 的两端不得相等（自转移是坏数据）。P2-A 起主 farm/craft unit 的 operator 就是组织者家户，而 FEUDAL/HANDICRAFT
    * 默认模板里"付给该家户所在 cohort"的给养/地租/工资就是自付 —— 不剔除会在首个收获日当场抛。
    *
-   * <p>★ 口径与 {@code EconomyOrganizationSettlement.normalizeRecipients} 逐条相同（那里管自动组织新建的 unit，
+   * <p>★ 口径与 {@code EconomyEnterpriseSettlement.normalizePayees} 逐条相同（那里管自动组织新建的 unit，
    * 这里管 seeder 创世载荷）；本类不另立第二套判定。
    */
   private static List<CompensationRule> withoutSelfPayments(
@@ -4246,12 +4246,12 @@ public final class EconomySeeder {
   }
 
   /** 一条规则的受方是否就是 operator（cohort 受方按创世家户 id 的同一拼写点还原）。 */
-  private static boolean paysOperator(Recipient recipient, ActorRef operator) {
+  private static boolean paysOperator(Payee recipient, ActorRef operator) {
     return switch (recipient) {
-      case Recipient.ToHousehold toHousehold ->
+      case Payee.ToHousehold toHousehold ->
           HouseholdActors.of(toHousehold.household()).equals(operator);
-      case Recipient.ToActor toActor -> toActor.actor().equals(operator);
-      case Recipient.ToCohort toCohort ->
+      case Payee.ToActor toActor -> toActor.actor().equals(operator);
+      case Payee.ToCohort toCohort ->
           HouseholdActors.of(
                   HouseholdIds.ofSeed(
                       toCohort.cohort().hex(),
@@ -4271,11 +4271,11 @@ public final class EconomySeeder {
    * 模板规则会让成员之间互相转移（同一对家户既是付方又是受方 ⇒ 自转移，{@code Transfer} 的两端不得相等，
    * 实测首个收获日当场抛）。集体经营的产出归属由 {@code HouseholdRouting} 的劳动权重表达，模板在这里是第二本账。
    */
-  private static ProductionRelation collectiveRelation(IndustryPlan plan) {
-    return new ProductionRelation(
+  private static ProductionRules collectiveRelation(IndustryPlan plan) {
+    return new ProductionRules(
         plan.unitId(),
         plan.operator(),
-        new Recipient.ToActor(plan.operator()),
+        new Payee.ToActor(plan.operator()),
         List.of(),
         plan.operator(),
         LaborSource.FAMILY);
@@ -4286,22 +4286,22 @@ public final class EconomySeeder {
    * plan.operator，即新世界播种的"自有自营"档）。
    *
    * <p>★ <b>逐项含 0 值</b>：0 产能是合法形态（沙漠格 LAND=0），但"非 EXITED/ABANDONED 的 unit 必须至少有一条同 industry 的
-   * AssetShare"这条守卫要求 0 也登记；数量 0 不改变规模（capacityScale 对每键读到 0 ⇒ 规模 0，与旧档 capacity 0 等价）。 {@code kind
+   * OwnershipStake"这条守卫要求 0 也登记；数量 0 不改变规模（capacityScale 对每键读到 0 ⇒ 规模 0，与旧档 capacity 0 等价）。 {@code kind
    * = OWNED} 是创世默认档。★ B.2 不拆多 unit：一块 capacity 只发一条整额份额。
    */
-  private static List<Map<String, Object>> assetSharesOf(
+  private static List<Map<String, Object>> ownershipStakesOf(
       IndustryPlan plan, Map<String, Long> quantities) {
     List<Map<String, Object>> shares = new ArrayList<>();
     for (Map.Entry<String, Long> entry : quantities.entrySet()) {
       // ★★ 逐项**含 0 值**：0 产能是合法形态（沙漠格 LAND=0），但"非退出 unit 必须有至少一条同 industry 的
-      //   AssetShare"这条守卫要求 0 也要登记（数量 0 不改变规模：capacityScale 对每键读到 0 ⇒ 规模 0）。
+      //   OwnershipStake"这条守卫要求 0 也要登记（数量 0 不改变规模：capacityScale 对每键读到 0 ⇒ 规模 0）。
       shares.add(
-          assetShareNode(
+          ownershipStakeNode(
               plan.id(),
               entry.getKey(),
               plan.operator(),
               plan.operator(),
-              AssetShare.RightKind.OWNED,
+              OwnershipStake.RightKind.OWNED,
               entry.getValue()));
     }
     return shares;
@@ -4458,12 +4458,12 @@ public final class EconomySeeder {
               household,
               operator,
               operator,
-              AssetShare.RightKind.OWNED,
+              OwnershipStake.RightKind.OWNED,
               quantities,
-              new ProductionRelation(
+              new ProductionRules(
                   ProductionUnitId.idOf(new IndustryId(plan.id()), operator),
                   operator,
-                  new Recipient.ToHousehold(household),
+                  new Payee.ToHousehold(household),
                   List.of(),
                   operator,
                   LaborSource.FAMILY));
@@ -4472,13 +4472,13 @@ public final class EconomySeeder {
               household,
               operator,
               plan.operator(),
-              AssetShare.RightKind.TENANCY,
+              OwnershipStake.RightKind.TENANCY,
               quantities,
-              new ProductionRelation(
+              new ProductionRules(
                   ProductionUnitId.idOf(new IndustryId(plan.id()), operator),
                   operator,
-                  new Recipient.ToActor(plan.operator()),
-                  List.of(outputShareRule(new Recipient.ToActor(plan.operator()), COMMODITY_CLOTH)),
+                  new Payee.ToActor(plan.operator()),
+                  List.of(outputShareRule(new Payee.ToActor(plan.operator()), COMMODITY_CLOTH)),
                   operator,
                   LaborSource.TENANT));
       default -> throw new IllegalStateException("未知产业 kind：" + plan.kind());
@@ -4507,22 +4507,22 @@ public final class EconomySeeder {
     // ★ 自租退化（operator == landlord）必须与"没有地主"同档：转移的两端不许相等（Transfer 构造期守卫）。
     boolean hasLandlord = landlordPopulation > 0L && !landlord.equals(household);
     ActorRef owner = hasLandlord ? HouseholdActors.of(landlord) : plan.operator();
-    Recipient rentRecipient =
-        hasLandlord ? new Recipient.ToHousehold(landlord) : new Recipient.ToActor(plan.operator());
-    ProductionRelation relation =
-        new ProductionRelation(
+    Payee rentPayee =
+        hasLandlord ? new Payee.ToHousehold(landlord) : new Payee.ToActor(plan.operator());
+    ProductionRules relation =
+        new ProductionRules(
             ProductionUnitId.idOf(new IndustryId(plan.id()), operator),
             operator,
-            new Recipient.ToHousehold(household),
-            List.of(outputShareRule(rentRecipient, COMMODITY_GRAIN)),
+            new Payee.ToHousehold(household),
+            List.of(outputShareRule(rentPayee, COMMODITY_GRAIN)),
             operator,
             LaborSource.TENANT);
     return new HouseholdUnit(
-        household, operator, owner, AssetShare.RightKind.TENANCY, quantities, relation);
+        household, operator, owner, OwnershipStake.RightKind.TENANCY, quantities, relation);
   }
 
   /** 一条 {@code OUTPUT_SHARE × GROSS_OUTPUT} 实物分成规则（佃租/匠户分成共用这一处拼写）。 */
-  private static CompensationRule outputShareRule(Recipient recipient, String commodity) {
+  private static CompensationRule outputShareRule(Payee recipient, String commodity) {
     return new CompensationRule(
         RuleType.OUTPUT_SHARE,
         recipient,
@@ -4547,9 +4547,9 @@ public final class EconomySeeder {
       HouseholdId household,
       ActorRef operator,
       ActorRef owner,
-      AssetShare.RightKind kind,
+      OwnershipStake.RightKind kind,
       Map<String, Long> quantities,
-      ProductionRelation relation) {}
+      ProductionRules relation) {}
 
   /** 拆分**中间态**：一条候选配额行（household/moved 已算好，副 unit 是否建尚未定）。 */
   private record MovedRow(Map<String, Object> row, HouseholdId household, long moved) {}

@@ -3,9 +3,9 @@ package io.mosire.simos.economy.model;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
-import io.mosire.simos.economy.model.ClassPosition.LaborRole;
-import io.mosire.simos.economy.model.ClassPosition.RelationToMeans;
-import io.mosire.simos.economy.model.ClassPosition.SurplusRole;
+import io.mosire.simos.economy.model.ProductionRole.LaborRole;
+import io.mosire.simos.economy.model.ProductionRole.RelationToMeans;
+import io.mosire.simos.economy.model.ProductionRole.SurplusRole;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -19,7 +19,7 @@ import java.util.Optional;
  *
  * <p>★★ <b>它解决什么问题</b>：探针已经把佃农制（定额实物租/分成租/货币租）、雇农制与手工业验证成可运行的经济形态，
  * 但正式世界还没有它们的权威状态。本类把探针口径翻成确定、可复现、可审计的静态出厂数据：每个生产方式一件 {@link ClassStructure} 与一组 {@link
- * ClassPosition}；{@code EconomySeeder} 的 {@code production-runtime} profile 直接以本目录为唯一拼写点发 {@code
+ * ProductionRole}；{@code EconomySeeder} 的 {@code production-runtime} profile 直接以本目录为唯一拼写点发 {@code
  * modes} / {@code classStructures} / {@code classPositions} / {@code classStandings} 四个顶层键。
  *
  * <p>★★ <b>八个 mode 与位置角色（P1 的六个 + P6 追加的商人 mode + P10.1 追加的流民 mode；本表是唯一裁决表）</b>：
@@ -64,7 +64,7 @@ import java.util.Optional;
  *   <li><b>mode id 是规范词表值</b>（{@code tenancy_fixed_kind} 等，下划线），结构 id 与位置 id 一律
  *       <b>kebab-case</b>：结构 = mode id 的下划线换连字符 + {@code -structure}；位置 = mode id 的下划线换连字符 + {@code
  *       -} + role（下划线换连字符）。全部不含 {@code "."}（地址在第一个点处切段，含点即被 ID 构造期拒绝）。
- *   <li><b>每个 mode 独立结构 + 独立位置 id</b>：{@link ClassPosition#modeId()} 在构造期判“同一个位置 id 不能在两个 mode
+ *   <li><b>每个 mode 独立结构 + 独立位置 id</b>：{@link ProductionRole#modeId()} 在构造期判“同一个位置 id 不能在两个 mode
  *       下有两种形状”，故 {@code landlord} / {@code tenant_operator} 这类同形角色也按 mode 前缀各拿一个 id，不跨 mode 复用。
  *   <li><b>不留孤儿位置</b>：{@code classPositions()} 里的每个位置都恰属于本目录的一个 {@code ClassStructure}。 P1 曾因为没有
  *       {@code merchant} mode 而不定义商人位置；P6 追加 {@code merchant} mode 后，{@code
@@ -167,11 +167,11 @@ public final class DefaultProductionModes {
       indexStructures(MODE_SPECS);
 
   /** ★ 全局位置表（键 = 值内 id；保序不可变；每个位置恰属于一个结构）。 */
-  private static final Map<ClassPositionId, ClassPosition> CLASS_POSITIONS =
+  private static final Map<ClassPositionId, ProductionRole> CLASS_POSITIONS =
       indexPositions(MODE_SPECS);
 
   /** ★ (mode, role) → 位置 的稳定查询索引；role 是本类的 {@code ROLE_*} 常量。 */
-  private static final Map<ProductionModeId, Map<String, ClassPosition>> POSITIONS_BY_MODE_ROLE =
+  private static final Map<ProductionModeId, Map<String, ProductionRole>> POSITIONS_BY_MODE_ROLE =
       indexPositionRoles(MODE_SPECS);
 
   private DefaultProductionModes() {}
@@ -191,8 +191,8 @@ public final class DefaultProductionModes {
     return Collections.unmodifiableMap(new LinkedHashMap<>(CLASS_STRUCTURES));
   }
 
-  /** ★ 默认阶层位置目录（键 = {@link ClassPosition#id()}；保序；防御性副本）。 */
-  public static Map<ClassPositionId, ClassPosition> classPositions() {
+  /** ★ 默认阶层位置目录（键 = {@link ProductionRole#id()}；保序；防御性副本）。 */
+  public static Map<ClassPositionId, ProductionRole> classPositions() {
     return Collections.unmodifiableMap(new LinkedHashMap<>(CLASS_POSITIONS));
   }
 
@@ -209,7 +209,7 @@ public final class DefaultProductionModes {
   }
 
   /** ★ 按 id 查默认阶层位置；不在目录里 ⇒ 空。 */
-  public static Optional<ClassPosition> position(ClassPositionId positionId) {
+  public static Optional<ProductionRole> position(ClassPositionId positionId) {
     Objects.requireNonNull(positionId, "positionId");
     return Optional.ofNullable(CLASS_POSITIONS.get(positionId));
   }
@@ -220,12 +220,12 @@ public final class DefaultProductionModes {
    * <p>role 是本类的 {@code ROLE_*} 常量（如 {@link #ROLE_LANDLORD}、{@link #ROLE_WAGE_LABORER}）； 未知
    * mode、未知/空白 role ⇒ 空。哪个社会阶层映射到哪个 (mode, role) 由调用方（{@code EconomySeeder}）决定， 本类不内建“贫农 → 雇农”一类判断。
    */
-  public static Optional<ClassPosition> position(ProductionModeId modeId, String role) {
+  public static Optional<ProductionRole> position(ProductionModeId modeId, String role) {
     Objects.requireNonNull(modeId, "modeId");
     if (role == null || role.isBlank()) {
       return Optional.empty();
     }
-    Map<String, ClassPosition> byRole = POSITIONS_BY_MODE_ROLE.get(modeId);
+    Map<String, ProductionRole> byRole = POSITIONS_BY_MODE_ROLE.get(modeId);
     if (byRole == null) {
       return Optional.empty();
     }
@@ -234,7 +234,7 @@ public final class DefaultProductionModes {
 
   /** ★ {@link #position(ProductionModeId, String)} 的 id 形态（位置 id 不是调用方拼出来的第二处真相）。 */
   public static Optional<ClassPositionId> positionId(ProductionModeId modeId, String role) {
-    return position(modeId, role).map(ClassPosition::id);
+    return position(modeId, role).map(ProductionRole::id);
   }
 
   /**
@@ -394,11 +394,11 @@ public final class DefaultProductionModes {
   private static ModeSpec modeSpec(
       ProductionModeId modeId, String name, PositionSpec... positionSpecs) {
     ClassStructureId structureId = structureIdOf(modeId);
-    Map<ClassPositionId, ClassPosition> positions = new LinkedHashMap<>();
-    Map<String, ClassPosition> byRole = new LinkedHashMap<>();
+    Map<ClassPositionId, ProductionRole> positions = new LinkedHashMap<>();
+    Map<String, ProductionRole> byRole = new LinkedHashMap<>();
     for (PositionSpec spec : positionSpecs) {
-      ClassPosition position =
-          new ClassPosition(
+      ProductionRole position =
+          new ProductionRole(
               positionIdOf(modeId, spec.role()),
               modeId,
               spec.name(),
@@ -463,10 +463,10 @@ public final class DefaultProductionModes {
   }
 
   /** 稳定索引全局位置表；id 重复 ⇒ fail-closed。 */
-  private static Map<ClassPositionId, ClassPosition> indexPositions(List<ModeSpec> specs) {
-    Map<ClassPositionId, ClassPosition> positions = new LinkedHashMap<>();
+  private static Map<ClassPositionId, ProductionRole> indexPositions(List<ModeSpec> specs) {
+    Map<ClassPositionId, ProductionRole> positions = new LinkedHashMap<>();
     for (ModeSpec spec : specs) {
-      for (ClassPosition position : spec.orderedPositions()) {
+      for (ProductionRole position : spec.orderedPositions()) {
         if (positions.putIfAbsent(position.id(), position) != null) {
           throw new IllegalStateException("默认生产方式目录内全局位置 id 重复: " + position.id());
         }
@@ -476,9 +476,9 @@ public final class DefaultProductionModes {
   }
 
   /** 稳定索引 (mode, role) 查询表；同名 role 在同一 mode 下重复 ⇒ fail-closed。 */
-  private static Map<ProductionModeId, Map<String, ClassPosition>> indexPositionRoles(
+  private static Map<ProductionModeId, Map<String, ProductionRole>> indexPositionRoles(
       List<ModeSpec> specs) {
-    Map<ProductionModeId, Map<String, ClassPosition>> index = new LinkedHashMap<>();
+    Map<ProductionModeId, Map<String, ProductionRole>> index = new LinkedHashMap<>();
     for (ModeSpec spec : specs) {
       if (index.putIfAbsent(spec.mode().id(), spec.positionsByRole()) != null) {
         throw new IllegalStateException("默认生产方式目录内 mode 查询索引重复: " + spec.mode().id());
@@ -499,8 +499,8 @@ public final class DefaultProductionModes {
   private record ModeSpec(
       ProductionMode mode,
       ClassStructure structure,
-      List<ClassPosition> orderedPositions,
-      Map<String, ClassPosition> positionsByRole) {
+      List<ProductionRole> orderedPositions,
+      Map<String, ProductionRole> positionsByRole) {
 
     /** ★ 冻在赋值处（SpotBugs 的 EI_EXPOSE_REP2 只看构造器；与 {@code ClassStructure} 同款）。 */
     private ModeSpec {

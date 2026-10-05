@@ -11,13 +11,13 @@ import java.util.Map;
  * ★★ <b>阶层结构</b>（理想架构 §2.2）：某个生产方式下<b>允许</b>的阶层位置集合，以及各位置的默认人口份额。
  *
  * <p>★★ <b>它是"mode 下的位置清单"的权威</b>：{@link #positions} 是 id → 位置本体；{@link #defaultSharesPerMille} 是 该
- * mode 的初始/默认人口份额（千分比）。位置身份可由多个 mode 复用，但每个 {@link ClassPosition} 的 {@code modeId} 必须与本结构的 {@code
+ * mode 的初始/默认人口份额（千分比）。位置身份可由多个 mode 复用，但每个 {@link ProductionRole} 的 {@code modeId} 必须与本结构的 {@code
  * modeId} 一致 —— 否则同一个 id 会在两处说不清自己属于哪个 mode。
  *
  * <p>★★ <b>三条构造期判据</b>：
  *
  * <ol>
- *   <li>{@code positions} 键 == 值内 {@link ClassPosition#id()}（同一身份不许两处拼写）；
+ *   <li>{@code positions} 键 == 值内 {@link ProductionRole#id()}（同一身份不许两处拼写）；
  *   <li>{@code modeId} 非 null（{@link ProductionModeId} 自身已判空白）；
  *   <li>{@code defaultSharesPerMille} 逐值非负，且键必须是 {@code positions} 里已有的位置（默认份额不许指向清单外的位置）。
  * </ol>
@@ -33,7 +33,7 @@ import java.util.Map;
 public record ClassStructure(
     ClassStructureId id,
     ProductionModeId modeId,
-    Map<ClassPositionId, ClassPosition> positions,
+    Map<ClassPositionId, ProductionRole> positions,
     Map<ClassPositionId, Long> defaultSharesPerMille) {
 
   public ClassStructure {
@@ -50,15 +50,15 @@ public record ClassStructure(
       throw new IllegalArgumentException(
           "ClassStructure.defaultSharesPerMille 不得为 null（没有默认份额给空表）");
     }
-    Map<ClassPositionId, ClassPosition> positionsCopy = new LinkedHashMap<>();
-    for (Map.Entry<ClassPositionId, ClassPosition> entry : positions.entrySet()) {
+    Map<ClassPositionId, ProductionRole> positionsCopy = new LinkedHashMap<>();
+    for (Map.Entry<ClassPositionId, ProductionRole> entry : positions.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
         throw new IllegalArgumentException("ClassStructure.positions 的键与值都不得为 null");
       }
-      ClassPosition position = entry.getValue();
+      ProductionRole position = entry.getValue();
       if (!entry.getKey().equals(position.id())) {
         throw new IllegalArgumentException(
-            "ClassStructure.positions 的键必须与 ClassPosition.id 一致：键="
+            "ClassStructure.positions 的键必须与 ProductionRole.id 一致：键="
                 + entry.getKey()
                 + "，行内 id="
                 + position.id());

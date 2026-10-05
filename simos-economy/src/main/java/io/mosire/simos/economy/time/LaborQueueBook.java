@@ -6,7 +6,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OperatorCondition;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -26,7 +26,7 @@ import java.util.Optional;
  *
  * <pre>
  * ① 每个生产单元先算"本 tick 最大可吸收劳动"
- *      usableScale = min( 产能/资产那一路（ProductionUnitBook.plannedCapacityScaleOf）,
+ *      usableScale = min( 产能/资产那一路（ProductionProcessBook.plannedCapacityScaleOf）,
  *                        每项投入那一路（⌊本周期已扣到的投入 ÷ 单位规模需求⌋） )
  *      maxAbsorbableLaborMilli = usableScale × laborPerUnit        // laborPerUnit > 0
  *    ★ 投入那一路为 0（没有、也拿不到）⇒ maxAbsorbableLaborMilli = 0 ⇒ 对应劳动就是空缺（不凭空开工）。
@@ -60,7 +60,7 @@ public final class LaborQueueBook {
 
   private LaborQueueBook() {}
 
-  /** 单位劳动净收益的刻度（百万分之一毫钱 / 单位劳动；与 {@code OrganizationProfitBook.PER_LABOR_SCALE} 同尺）。 */
+  /** 单位劳动净收益的刻度（百万分之一毫钱 / 单位劳动；与 {@code EnterpriseProfitBook.PER_LABOR_SCALE} 同尺）。 */
   public static final long PER_LABOR_SCALE = 1_000_000L;
 
   /**
@@ -171,7 +171,7 @@ public final class LaborQueueBook {
    * @param rankModeKey 并列时的 mode 键（modeId 值；旧 unit 用 modeKey）
    */
   public static Offer offer(
-      ProductionUnit unit,
+      ProductionProcess unit,
       Industry industry,
       Market market,
       OperatorCondition condition,
@@ -184,7 +184,7 @@ public final class LaborQueueBook {
     Objects.requireNonNull(modeId, "modeId");
     Objects.requireNonNull(rankModeKey, "rankModeKey");
 
-    long capacityScale = ProductionUnitBook.plannedCapacityScaleOf(unit, industry, index, condition);
+    long capacityScale = ProductionProcessBook.plannedCapacityScaleOf(unit, industry, index, condition);
     long inputScale = Long.MAX_VALUE;
     CommodityId bindingInput = null;
     long bindingDrawn = 0L;
@@ -379,7 +379,7 @@ public final class LaborQueueBook {
    * 的同一算式，唯一拼写点移到这里）。
    *
    * <pre>
-   * capacityScale = ProductionUnitBook.plannedCapacityScaleOf(unit, industry, index, condition)
+   * capacityScale = ProductionProcessBook.plannedCapacityScaleOf(unit, industry, index, condition)
    * inputScale    = min over j: ⌊unit.cycleInputUsedMilli[j] ÷ recipe.inputPerUnit[j]⌋   （无投入表 ⇒ 不约束）
    * scale         = min(capacityScale, inputScale)
    * maxAbsorbable = scale × recipe.laborPerUnit                       （laborPerUnit ≤ 0 ⇒ 0，不施加约束）
@@ -388,7 +388,7 @@ public final class LaborQueueBook {
    * <p>★ 与收获日的规模算式是同一个前缀：这里**刻意不含劳动那一路** —— 劳动正是要求解的量。
    */
   public static long maxAbsorbableLaborMilli(
-      ProductionUnit unit,
+      ProductionProcess unit,
       Industry industry,
       SettlementIndex index,
       OperatorCondition condition) {
@@ -396,7 +396,7 @@ public final class LaborQueueBook {
     if (laborPerUnit <= 0L) {
       return 0L;
     }
-    long scale = ProductionUnitBook.plannedCapacityScaleOf(unit, industry, index, condition);
+    long scale = ProductionProcessBook.plannedCapacityScaleOf(unit, industry, index, condition);
     for (Map.Entry<CommodityId, Long> entry : industry.recipe().inputPerUnit().entrySet()) {
       if (entry.getValue() == null || entry.getValue() <= 0L) {
         continue;

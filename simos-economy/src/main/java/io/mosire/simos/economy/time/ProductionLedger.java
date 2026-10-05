@@ -188,7 +188,7 @@ public record ProductionLedger(
    *     {@code HouseholdId}，<b>不能靠猜</b> —— 解析不到（聚合主体/外部主体）就具名跳过，不伪造端点。
    * @param payee ★★ <b>E4c：受款人 actor</b>（规则受方；{@code ToHousehold}/{@code ToCohort} 经 {@code
    *     HouseholdActors.of} 归一，{@code ToActor} 原样）；不得为 null。语义同上。
-   * @param activity ★★ <b>E4c：这条欠款所属的生产单元/活动</b>（{@code ProductionRelation.activity()}）；不得为 null。
+   * @param activity ★★ <b>E4c：这条欠款所属的生产单元/活动</b>（{@code ProductionRules.activity()}）；不得为 null。
    *     它是同一天内"同一付款人 × 同一受款人 × 同一 unit × 同一规则"的两笔事件<b>不被误合成一笔</b>的事件维； {@code DebtContractId}
    *     只含四元组，事件维不参与合同身份（同四元组仍是同一条连续欠账）。
    */
@@ -477,7 +477,7 @@ public record ProductionLedger(
    *       {@code HouseholdEconomy.view.stratum}，保留旧 view 并具名报告。
    * </ul>
    *
-   * <p>★ <b>窗口/单位</b>：{@code day} = 本次结算日；{@code quantity} 与 AssetShare 同单位；{@code *Milli}
+   * <p>★ <b>窗口/单位</b>：{@code day} = 本次结算日；{@code quantity} 与 OwnershipStake 同单位；{@code *Milli}
    * 均为"毫值"（粮债口径 = 毫粮）；F 读不到的条目在 evidence 里用 {@code FUnavailable=1} 标注，<b>不填 0</b> 冒充。
    *
    * <p>★ 可选引用一律用 {@link Optional} 表达"这一条没有这个对象"，不用 null 冒充。

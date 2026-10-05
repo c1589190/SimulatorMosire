@@ -9,7 +9,7 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.population.AgeBracket;
@@ -251,7 +251,7 @@ public final class CrisisMonitor {
     HexCoord hex = economy.classes().get(key).view().hex();
     // ★★ R3B.2：相位住在 unit 上（同一格可能有多个 unit）；产业模板只回答 cycleDays。
     String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
-    for (ProductionUnit unit : economy.units().values()) {
+    for (ProductionProcess unit : economy.units().values()) {
       if (IndustryHexKeys.hexKeyOf(unit.industry()).filter(hexKey::equals).isEmpty()) {
         continue;
       }
@@ -282,7 +282,7 @@ public final class CrisisMonitor {
    *
    * <p>★ 一个家户的相位取自**它那一格的产业**（H0.2：行键里没有产业）：同一格的产业由同一条日推进同步走 ⇒ 取其中最大的那个与旧口径（逐行各取自己产业的相位、再取 max）同值。
    */
-  private static long phaseDaysOf(ProductionUnit unit, Industry industry) {
+  private static long phaseDaysOf(ProductionProcess unit, Industry industry) {
     if (unit == null || industry == null) {
       return 1L;
     }

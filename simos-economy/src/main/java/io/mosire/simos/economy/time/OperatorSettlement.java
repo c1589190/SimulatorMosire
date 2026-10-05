@@ -9,7 +9,7 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.Industry;
@@ -17,7 +17,7 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OperatorCondition.IndustryStatus;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -28,7 +28,7 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * ★★ <b>S3.2 经营者状态机（R3B.2 起主体 = {@link ProductionUnit}）</b>——
+ * ★★ <b>S3.2 经营者状态机（R3B.2 起主体 = {@link ProductionProcess}）</b>——
  * 全部转移由可观察量触发（滞销/被挤出/投入不足/现金与库存缓冲/债务本息/自用可覆盖量）， 阈值取 {@link StressPolicy}，不在 {@code switch} 里写死。
  *
  * <pre>
@@ -46,7 +46,7 @@ import java.util.TreeMap;
  *
  * <p>★★ <b>本类只判"状态怎么变 + 谁该退出"</b>；退出时的库存/货币偿债与 {@code DebtContract.status} 处置由 {@code
  * EconomySettlement.settleOperatorExits} 落账（那里才有唯一写口 {@code applyTransfer}）。缩产只乘进"计划规模系数"，
- * <b>不销毁</b> {@code AssetShare}。
+ * <b>不销毁</b> {@code OwnershipStake}。
  *
  * <p>★★ <b>S3 修复：关账证据改成"本周期累计"</b>—— 一个周期里会有多轮市场（例行轮 + 低库存轮 + 关账轮），
  * 旧实现只取关账日当天那一轮报告作证据，于是"更早的轮里已经滞销/被挤出"在关账日完全看不见。现在每个市场轮结束后由 {@link #accumulateMarketEvidence}
@@ -89,7 +89,7 @@ final class OperatorSettlement {
    */
   static void accumulateMarketEvidence(
       LinkedHashMap<ProductionUnitId, OperatorCondition> conditions,
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<IndustryId, Industry> industries,
       MarketReport report) {
     if (report == null) {
@@ -99,7 +99,7 @@ final class OperatorSettlement {
     //   ★ 累加顺序仍逐 unit 保持“报告内的 outcome/fill 顺序”：外层按报告序，内层才按 unit —— 每个 unit 看到的
     //     仍是同一串发生额的同一序，故整数和与旧实现逐值相同（含 outcompeted 的入场条件）。
     Map<ActorRef, List<ProductionUnitId>> unitsByOperator = new LinkedHashMap<>();
-    for (ProductionUnit unit : units.values()) {
+    for (ProductionProcess unit : units.values()) {
       if (unit == null) {
         continue;
       }
@@ -112,7 +112,7 @@ final class OperatorSettlement {
         continue;
       }
       for (ProductionUnitId id : candidates) {
-        ProductionUnit unit = units.get(id);
+        ProductionProcess unit = units.get(id);
         Industry industry = unit == null ? null : industries.get(unit.industry());
         if (unit == null || industry == null || !belongsTo(outcome, unit, industry)) {
           continue;
@@ -133,7 +133,7 @@ final class OperatorSettlement {
         continue;
       }
       for (ProductionUnitId id : candidates) {
-        ProductionUnit unit = units.get(id);
+        ProductionProcess unit = units.get(id);
         Industry industry = unit == null ? null : industries.get(unit.industry());
         if (unit == null
             || industry == null
@@ -145,7 +145,7 @@ final class OperatorSettlement {
       }
     }
     for (ProductionUnitId id : new ArrayList<>(units.keySet())) {
-      ProductionUnit unit = units.get(id);
+      ProductionProcess unit = units.get(id);
       if (unit == null) {
         continue;
       }
@@ -197,9 +197,9 @@ final class OperatorSettlement {
    */
   static List<Exit> advance(
       LinkedHashMap<ProductionUnitId, OperatorCondition> conditions,
-      LinkedHashMap<ProductionUnitId, ProductionUnit> units,
+      LinkedHashMap<ProductionUnitId, ProductionProcess> units,
       Map<IndustryId, Industry> industries,
-      Map<ProductionUnitId, ProductionRelation> relations,
+      Map<ProductionUnitId, ProductionRules> relations,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       SettlementIndex index,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
@@ -212,7 +212,7 @@ final class OperatorSettlement {
       if (!closingUnits.contains(id)) {
         continue; // ★ 未关账：周期证据与连续计数都保留到它自己的关账日
       }
-      ProductionUnit unit = units.get(id);
+      ProductionProcess unit = units.get(id);
       if (unit == null) {
         continue;
       }
@@ -376,7 +376,7 @@ final class OperatorSettlement {
         status = IndustryStatus.ACTIVE;
         reason = "trial_complete:firstHarvest";
       }
-      long plannedScale = ProductionUnitBook.plannedCapacityScaleOf(unit, industry, index, prev);
+      long plannedScale = ProductionProcessBook.plannedCapacityScaleOf(unit, industry, index, prev);
       long costEstimate = 0L;
       HexCoord hex = IndustryHexKeys.hexKeyOf(industry.id()).map(HexCoord::parse).orElse(null);
       if (hex != null) {
@@ -446,7 +446,7 @@ final class OperatorSettlement {
    * 本模板产出商品}（与 R3 首版口径兼容）。
    */
   private static boolean belongsTo(
-      MarketReport.SellerOutcome outcome, ProductionUnit unit, Industry industry) {
+      MarketReport.SellerOutcome outcome, ProductionProcess unit, Industry industry) {
     if (!outcome.actor().equals(unit.operator())) {
       return false;
     }
@@ -526,7 +526,7 @@ final class OperatorSettlement {
    * <p>★ 本判据不改任何状态；{@code CONTRACTING/INDEBTED/SUSPENDED} 的转移用它作硬门。
    */
   static boolean canSelfProvision(
-      ProductionUnit unit,
+      ProductionProcess unit,
       HouseholdId household,
       Industry industry,
       SettlementIndex index,
@@ -555,12 +555,12 @@ final class OperatorSettlement {
 
   /** 下一周期投入需求是否被自用库存全覆盖（{@code Σ min(库存,需求) == Σ 需求}；无投入需求视为已覆盖）。 */
   private static boolean coversNextCycleInputs(
-      ProductionUnit unit,
+      ProductionProcess unit,
       HouseholdId household,
       Industry industry,
       SettlementIndex index,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods) {
-    long scale = ProductionUnitBook.capacityScaleOf(unit, industry, index);
+    long scale = ProductionProcessBook.capacityScaleOf(unit, industry, index);
     if (scale <= 0L) {
       return false; // 没有可用资产 ⇒ 没有"下一周期生产"可谈（不是"投入需求为零所以已覆盖"）
     }
@@ -581,11 +581,11 @@ final class OperatorSettlement {
   /** 自用可覆盖量 = Σ_c min(库存_c, 下一周期投入需求_c)（库存能顶多少再生产，不是估价）。 */
   private static long selfUsableOf(
       HouseholdId household,
-      ProductionUnit unit,
+      ProductionProcess unit,
       Industry industry,
       SettlementIndex index,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods) {
-    long scale = ProductionUnitBook.capacityScaleOf(unit, industry, index);
+    long scale = ProductionProcessBook.capacityScaleOf(unit, industry, index);
     long sum = 0L;
     for (Map.Entry<CommodityId, Long> entry : industry.inputPerUnit().entrySet()) {
       if (entry.getValue() <= 0L) {

@@ -8,7 +8,7 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.Payee;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -18,15 +18,15 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ <b>生产组织</b>（理想架构 §2.4；E2）：生产方式 + 阶层结构 + 可支配劳动 + 可用 {@link AssetShare} 之间的桥 ——
+ * ★★ <b>生产组织</b>（理想架构 §2.4；E2）：生产方式 + 阶层结构 + 可支配劳动 + 可用 {@link OwnershipStake} 之间的桥 ——
  * 它回答"本期应当存在哪条生产活动、由谁组织、用哪些劳动/资产、产出先归谁、是否短缺"。
  *
  * <pre>
- * ProductionOrganization(id, modeId, classPositionId,
- *                       unitId,              // 对应的 ProductionUnit（SHORTAGE 早期可以为空：还没建出可生产的 unit）
+ * ProductionEnterprise(id, modeId, classPositionId,
+ *                       unitId,              // 对应的 ProductionProcess（SHORTAGE 早期可以为空：还没建出可生产的 unit）
  *                       organizer,           // ActorRef：谁组织/经营（经济主体，不等于阶层本身、也不等于地主）
  *                       laborSources,        // 参与劳动的家户（稳定身份；批次维度在各 HouseholdLaborCommitment 里）
- *                       assetSources,        // 实际使用的 AssetShare（份额身份，不复制数量）
+ *                       assetSources,        // 实际使用的 OwnershipStake（份额身份，不复制数量）
  *                       inputSources,        // 谁出种子/原料/工具（来自 relation.inputSupplier）
  *                       outputOwnership,     // 产出先归谁（来自 relation.residualOwner）
  *                       relationTemplateRef, // 规则模板的具名来源（mode / existing unit）
@@ -70,7 +70,7 @@ import java.util.Set;
 @SuppressFBWarnings(
     value = "EI_EXPOSE_REP",
     justification = "三张来源表由 freezeDistinct 复制并 unmodifiableList；SpotBugs 看不穿该私有 helper 的返回值")
-public record ProductionOrganization(
+public record ProductionEnterprise(
     ProductionOrganizationId id,
     ProductionModeId modeId,
     ClassPositionId classPositionId,
@@ -78,8 +78,8 @@ public record ProductionOrganization(
     ActorRef organizer,
     List<HouseholdId> laborSources,
     List<AssetShareId> assetSources,
-    List<Recipient> inputSources,
-    Recipient outputOwnership,
+    List<Payee> inputSources,
+    Payee outputOwnership,
     Optional<String> relationTemplateRef,
     Status status,
     String statusReason) {
@@ -96,41 +96,41 @@ public record ProductionOrganization(
     EXITING
   }
 
-  public ProductionOrganization {
-    Objects.requireNonNull(id, "ProductionOrganization.id 不得为 null");
-    Objects.requireNonNull(modeId, "ProductionOrganization.modeId 不得为 null");
-    Objects.requireNonNull(classPositionId, "ProductionOrganization.classPositionId 不得为 null");
+  public ProductionEnterprise {
+    Objects.requireNonNull(id, "ProductionEnterprise.id 不得为 null");
+    Objects.requireNonNull(modeId, "ProductionEnterprise.modeId 不得为 null");
+    Objects.requireNonNull(classPositionId, "ProductionEnterprise.classPositionId 不得为 null");
     Objects.requireNonNull(
-        unitId, "ProductionOrganization.unitId 不得为 null（没有 unit 请用 Optional.empty()）");
-    Objects.requireNonNull(organizer, "ProductionOrganization.organizer 不得为 null");
-    Objects.requireNonNull(outputOwnership, "ProductionOrganization.outputOwnership 不得为 null");
+        unitId, "ProductionEnterprise.unitId 不得为 null（没有 unit 请用 Optional.empty()）");
+    Objects.requireNonNull(organizer, "ProductionEnterprise.organizer 不得为 null");
+    Objects.requireNonNull(outputOwnership, "ProductionEnterprise.outputOwnership 不得为 null");
     Objects.requireNonNull(
         relationTemplateRef,
-        "ProductionOrganization.relationTemplateRef 不得为 null（没有请用 Optional.empty()）");
-    Objects.requireNonNull(status, "ProductionOrganization.status 不得为 null");
-    Objects.requireNonNull(statusReason, "ProductionOrganization.statusReason 不得为 null（没有就给空串）");
+        "ProductionEnterprise.relationTemplateRef 不得为 null（没有请用 Optional.empty()）");
+    Objects.requireNonNull(status, "ProductionEnterprise.status 不得为 null");
+    Objects.requireNonNull(statusReason, "ProductionEnterprise.statusReason 不得为 null（没有就给空串）");
     if (laborSources == null) {
-      throw new IllegalArgumentException("ProductionOrganization.laborSources 不得为 null（没有给空表）");
+      throw new IllegalArgumentException("ProductionEnterprise.laborSources 不得为 null（没有给空表）");
     }
     if (assetSources == null) {
-      throw new IllegalArgumentException("ProductionOrganization.assetSources 不得为 null（没有给空表）");
+      throw new IllegalArgumentException("ProductionEnterprise.assetSources 不得为 null（没有给空表）");
     }
     if (inputSources == null) {
-      throw new IllegalArgumentException("ProductionOrganization.inputSources 不得为 null（没有给空表）");
+      throw new IllegalArgumentException("ProductionEnterprise.inputSources 不得为 null（没有给空表）");
     }
     if (!statusReason.isBlank() && (status == Status.ACTIVE)) {
       throw new IllegalArgumentException(
-          "ProductionOrganization.ACTIVE 不携带缺口原因（要写原因请用 SHORTAGE）: " + statusReason);
+          "ProductionEnterprise.ACTIVE 不携带缺口原因（要写原因请用 SHORTAGE）: " + statusReason);
     }
     if (status == Status.SHORTAGE && statusReason.isBlank()) {
-      throw new IllegalArgumentException("ProductionOrganization.SHORTAGE 必须带具名原因（不许静默短缺）");
+      throw new IllegalArgumentException("ProductionEnterprise.SHORTAGE 必须带具名原因（不许静默短缺）");
     }
     if ((status == Status.ACTIVE || status == Status.EXITING) && unitId.isEmpty()) {
       throw new IllegalArgumentException(
-          "ProductionOrganization." + status + " 必须有 unitId（没有 unit 的在产/退出说不通）");
+          "ProductionEnterprise." + status + " 必须有 unitId（没有 unit 的在产/退出说不通）");
     }
     if (relationTemplateRef.isPresent() && relationTemplateRef.get().isBlank()) {
-      throw new IllegalArgumentException("ProductionOrganization.relationTemplateRef 给了就必须非空白");
+      throw new IllegalArgumentException("ProductionEnterprise.relationTemplateRef 给了就必须非空白");
     }
     laborSources = freezeDistinct(laborSources, "laborSources");
     assetSources = freezeDistinct(assetSources, "assetSources");
@@ -142,7 +142,7 @@ public record ProductionOrganization(
     Set<T> seen = new LinkedHashSet<>();
     for (T value : values) {
       if (value == null) {
-        throw new IllegalArgumentException("ProductionOrganization." + field + " 不得含 null");
+        throw new IllegalArgumentException("ProductionEnterprise." + field + " 不得含 null");
       }
       seen.add(value);
     }

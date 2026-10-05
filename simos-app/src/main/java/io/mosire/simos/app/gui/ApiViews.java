@@ -49,11 +49,11 @@ import io.mosire.simos.economy.api.money.MoneyInstrument;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.SubsistenceObligation;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassSlot;
@@ -73,8 +73,8 @@ import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionCandidate;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.time.ClassTransition;
 import io.mosire.simos.economy.time.ClassTransitionFeed;
 import io.mosire.simos.economy.time.DebtCapacityBook;
@@ -84,7 +84,7 @@ import io.mosire.simos.economy.time.HouseholdClassRule;
 import io.mosire.simos.economy.time.HouseholdCondition;
 import io.mosire.simos.economy.time.MarketReport;
 import io.mosire.simos.economy.time.ProductionLedger;
-import io.mosire.simos.economy.time.ProductionUnitBook;
+import io.mosire.simos.economy.time.ProductionProcessBook;
 import io.mosire.simos.map.City;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -1208,20 +1208,20 @@ public final class ApiViews {
     for (IndustryId id : IndustryHexKeys.at(data.industries(), coord.q(), coord.r())) {
       Industry industry = data.industries().get(id);
       // ★★ R3B.2：该行业在本格的 unit（按 unit id canonical 序；旧口径"一产业一 unit"下恰一条）。
-      List<ProductionUnit> units = new ArrayList<>();
-      for (ProductionUnit unit : data.units().values()) {
+      List<ProductionProcess> units = new ArrayList<>();
+      for (ProductionProcess unit : data.units().values()) {
         if (unit.industry().equals(id)) {
           units.add(unit);
         }
       }
       units.sort(Comparator.comparing(unit -> unit.id().value()));
-      // ★★ R3B.2：土地不再是**产业模板**的产能，而是 unit 从 AssetShare 派生的可用资产 ⇒ 该格的亩数
+      // ★★ R3B.2：土地不再是**产业模板**的产能，而是 unit 从 OwnershipStake 派生的可用资产 ⇒ 该格的亩数
       //   由各 unit 的 usableAssets[LAND] 求和（一产业一 unit 时与旧 capacity 逐值相同）。
       Map<AssetKind, Long> unitAssets = new TreeMap<>();
       Map<String, Long> cycleInputUsed = new TreeMap<>();
-      for (ProductionUnit unit : units) {
+      for (ProductionProcess unit : units) {
         for (Map.Entry<AssetKind, Long> asset :
-            ProductionUnitBook.usableAssets(unit, data.assetShares()).entrySet()) {
+            ProductionProcessBook.usableAssets(unit, data.assetShares()).entrySet()) {
           unitAssets.merge(asset.getKey(), asset.getValue(), Long::sum);
         }
         for (Map.Entry<CommodityId, Long> used : unit.cycleInputUsedMilli().entrySet()) {
@@ -1235,7 +1235,7 @@ public final class ApiViews {
           laborOfCohort(data.classes(), coord, industry.cycleDays());
       // ★★ R3B.2：关系挂在 unit 上 ⇒ 产业行的"给养义务"兼容字段取**第一条 unit** 的关系
       //   （一产业一 unit 时与旧读法逐值相同；多 unit 时逐条见 units[].relation）。
-      ProductionUnit compatUnit = units.isEmpty() ? null : units.get(0);
+      ProductionProcess compatUnit = units.isEmpty() ? null : units.get(0);
       Map<String, Object> industryView =
           industryView(
               industry,
@@ -1243,10 +1243,10 @@ public final class ApiViews {
               cycleLabor);
       // ★★ 旧 industry 字段的兼容一版：operator/progressDays/capacity/cycleInputUsedMilli 从 unit 汇总
       //   （一产业一 unit 时逐值等于旧读法；多 unit 时是确定性聚合，读口新增 units[] 逐条可见）。
-      ProductionUnit first = compatUnit;
+      ProductionProcess first = compatUnit;
       industryView.put("operator", first == null ? null : actorRefView(first.operator()));
       long progressDays = 0L;
-      for (ProductionUnit unit : units) {
+      for (ProductionProcess unit : units) {
         progressDays = Math.max(progressDays, unit.progressDays());
       }
       industryView.put("progressDays", progressDays);
@@ -1258,9 +1258,9 @@ public final class ApiViews {
       industryView.put("cycleInputUsedMilli", cycleInputUsed);
       // ★★ R3B.2 的正式读口：逐 unit 一行（operator/mode/assets/progress/condition/relation）。
       List<Map<String, Object>> unitViews = new ArrayList<>(units.size());
-      for (ProductionUnit unit : units) {
+      for (ProductionProcess unit : units) {
         unitViews.add(
-            productionUnitView(
+            productionProcessView(
                 unit,
                 industry,
                 data.assetShares(),
@@ -1373,7 +1373,7 @@ public final class ApiViews {
     view.put("classShares", classShareViews(data));
     // ★★ R4-E2b：**本格的实物资产份额**只读视图（逐条 id/industry/asset/owner/operator/quantity/kind）——
     //   份额的 owner/operator 是"谁拥有/谁经营"的唯一实物总账，进入动作的拆分必须在这里逐条可见（守恒靠它核对）。
-    view.put("assetShares", assetShareViews(data, coord));
+    view.put("assetShares", ownershipStakeViews(data, coord));
     view.put("debtCount", debtCount);
     view.put("debtPrincipal", debtPrincipal);
     // ★★ M1.5：同一条事实的另一半（债权人侧）。两个方向来自同一张债务表 ⇒ 逐条本金一致。
@@ -1968,7 +1968,7 @@ public final class ApiViews {
    * ├─ stocks                   【时点存量】
    * │  ├─ debtPrincipal         按 unit：principal / contractCount / defaultedCount / delinquentCount；
    * │  │                        逐户 + 合计（债务人侧；复用 HouseholdEconomy.debts 权威引用，按 id 去重）
-   * │  ├─ assetSharesByKind     按 AssetKind：totalQuantity / ownershipByActor / operationByActor /
+   * │  ├─ ownershipStakesByKind     按 AssetKind：totalQuantity / ownershipByActor / operationByActor /
    * │  │                        selfOperatedQuantity / ownerNotOperatorQuantity / tenancy* / kind*
    * │  ├─ moneyByActorKind      复用 {@link #moneyByActorKind(ActorData)}
    * │  ├─ moneyByHouseholdClass 复用 {@link #moneyByHouseholdClass(EconomyData, ActorData)}
@@ -1989,7 +1989,7 @@ public final class ApiViews {
    * DebtCapacityBook} 与 {@link DebtCapacity}；货币聚合走 {@link #moneyByActorKind}/{@link
    * #moneyByHouseholdClass}；危机信号走 {@link #crisisSignalViews}； 流量的逐字段 shape 与 {@link #flowView}
    * 同源（窗口字符串亦同源）。新增的聚合 helper 都住本文件： {@link #hexDebtStock}/{@link #UnitDebtAggregate}/{@link
-   * #AssetKindAggregate}/ {@link #ClassPositionAggregate}/{@link #HexFlowAggregate}。
+   * #AssetKindAggregate}/ {@link #ProductionRoleAggregate}/{@link #HexFlowAggregate}。
    *
    * <p>★★ <b>缺数据纪律</b>：29 个组件空表/缺键时，数组为空、比值为 null，并给出具名 reason；绝不填 0 冒充 「没有发生」「没有缺口」「没有信用」。库存读不到时沿用
    * E4b 的 {@link #DEBT_CAPACITY_STOCK_UNREADABLE}。
@@ -2054,7 +2054,7 @@ public final class ApiViews {
       HexDebtStock hexDebt) {
     Map<String, Object> stocks = new LinkedHashMap<>();
     stocks.put("debtPrincipal", debtPrincipalStockView(hexDebt));
-    stocks.put("assetSharesByKind", assetSharesByKindStockView(data, coord));
+    stocks.put("assetSharesByKind", ownershipStakesByKindStockView(data, coord));
     stocks.put(
         "assetSharesNote",
         "assetSharesByKind 只统计 industry 格键 = 本格的份额；ownershipByActor/operationByActor 的 Σ 都等于"
@@ -2185,11 +2185,11 @@ public final class ApiViews {
    * totalQuantity（产权/经营数量来自同一批份额）。TENANCY 数量单列； selfOperatedQuantity = owner ==
    * operator，ownerNotOperatorQuantity = owner != operator。
    */
-  private static List<Map<String, Object>> assetSharesByKindStockView(
+  private static List<Map<String, Object>> ownershipStakesByKindStockView(
       EconomyData data, HexCoord coord) {
     String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
     Map<AssetKind, AssetKindAggregate> byKind = new TreeMap<>();
-    for (AssetShare share : data.assetShares().values()) {
+    for (OwnershipStake share : data.assetShares().values()) {
       if (IndustryHexKeys.hexKeyOf(share.industry()).filter(hexKey::equals).isEmpty()) {
         continue;
       }
@@ -2223,7 +2223,7 @@ public final class ApiViews {
       this.asset = asset;
     }
 
-    private void add(AssetShare share) {
+    private void add(OwnershipStake share) {
       long quantity = share.quantity();
       totalQuantity += quantity;
       shareCount++;
@@ -2238,7 +2238,7 @@ public final class ApiViews {
       } else {
         ownerNotOperatorQuantity += quantity;
       }
-      if (share.kind() == AssetShare.RightKind.TENANCY) {
+      if (share.kind() == OwnershipStake.RightKind.TENANCY) {
         tenancyQuantity += quantity;
         tenancyShareCount++;
       }
@@ -2282,7 +2282,7 @@ public final class ApiViews {
    */
   private static Map<String, Object> populationByClassPositionStockView(
       EconomyData data, List<HouseholdId> householdKeys) {
-    Map<String, ClassPositionAggregate> groups = new TreeMap<>();
+    Map<String, ProductionRoleAggregate> groups = new TreeMap<>();
     int standingHouseholds = 0;
     int legacyFallbackHouseholds = 0;
     for (HouseholdId key : householdKeys) {
@@ -2291,25 +2291,25 @@ public final class ApiViews {
         continue;
       }
       HouseholdClassMembership classMembership = data.classStandings().get(key);
-      String classPosition;
+      String productionRole;
       boolean fromStanding;
       if (classMembership != null) {
         // ★ 位置键就是 currentPositionId（不与 legacy 投影共享命名空间前缀）。
-        classPosition = classMembership.currentPositionId().value();
+        productionRole = classMembership.currentPositionId().value();
         fromStanding = true;
         standingHouseholds++;
       } else {
         // ★ 旧档兼容：把 view.stratum 直接投影成位置键；来源由每条 source 字段标明。
-        classPosition = householdEconomy.view().stratum().value();
+        productionRole = householdEconomy.view().stratum().value();
         fromStanding = false;
         legacyFallbackHouseholds++;
       }
       groups
-          .computeIfAbsent(classPosition, ignored -> new ClassPositionAggregate())
+          .computeIfAbsent(productionRole, ignored -> new ProductionRoleAggregate())
           .add(householdEconomy, fromStanding);
     }
     List<Map<String, Object>> out = new ArrayList<>(groups.size());
-    for (Map.Entry<String, ClassPositionAggregate> entry : groups.entrySet()) {
+    for (Map.Entry<String, ProductionRoleAggregate> entry : groups.entrySet()) {
       out.add(entry.getValue().view(entry.getKey()));
     }
     Map<String, Object> view = new LinkedHashMap<>();
@@ -2328,7 +2328,7 @@ public final class ApiViews {
   }
 
   /** 一个阶层位置组的聚合中间量（读口私有）。 */
-  private static final class ClassPositionAggregate {
+  private static final class ProductionRoleAggregate {
     private long population;
     private long householdCount;
     private long laborMilli;
@@ -2356,9 +2356,9 @@ public final class ApiViews {
       return standingHouseholds > 0L ? "ClassStanding.currentPositionId" : "ClassRow.view.stratum";
     }
 
-    private Map<String, Object> view(String classPosition) {
+    private Map<String, Object> view(String productionRole) {
       Map<String, Object> view = new LinkedHashMap<>();
-      view.put("classPosition", classPosition);
+      view.put("classPosition", productionRole);
       view.put("source", source());
       view.put("population", population);
       view.put("householdCount", householdCount);
@@ -2746,7 +2746,7 @@ public final class ApiViews {
   /**
    * 下一轮投入缺口：复用 E4b 的 {@link DebtCapacity#nextRoundNecessaryInput()} 与 {@link
    * DebtCapacity#nextRoundNecessaryInputSource()}；另附本格相关 {@link
-   * ProductionOrganization.Status#SHORTAGE} 的具名 statusReason 汇总。
+   * ProductionEnterprise.Status#SHORTAGE} 的具名 statusReason 汇总。
    */
   private static Map<String, Object> nextRoundInputGapDerivedView(
       EconomyData data,
@@ -2795,48 +2795,48 @@ public final class ApiViews {
             : null);
     view.put("unavailableHouseholds", unavailableHouseholds);
     view.put("households", households);
-    view.put("shortageOrganizations", shortageOrganizationSummary(data, actors, coord));
+    view.put("shortageOrganizations", shortageEnterpriseSummary(data, actors, coord));
     return view;
   }
 
   /**
-   * ★★ E6c：本格相关的 {@link ProductionOrganization.Status#SHORTAGE} 汇总（同时给 world 总数）。
+   * ★★ E6c：本格相关的 {@link ProductionEnterprise.Status#SHORTAGE} 汇总（同时给 world 总数）。
    *
-   * <p>「本格相关」唯一判据（唯一拼写点，见 {@link #productionOrganizationTouchesHex}）：unit 产业格 = 本格，或 organizer
+   * <p>「本格相关」唯一判据（唯一拼写点，见 {@link #productionEnterpriseTouchesHex}）：unit 产业格 = 本格，或 organizer
    * 的账户在本格，或 laborSource 家户住在该格，或 assetSource 份额登记在本格；四者任一命中。 无 unit 且四路线索都不在本格的组织不冒名计入本格，但仍进 world
    * 汇总。
    */
-  private static Map<String, Object> shortageOrganizationSummary(
+  private static Map<String, Object> shortageEnterpriseSummary(
       EconomyData data, ActorData actors, HexCoord coord) {
     Set<ActorRef> organizersAtHex = new LinkedHashSet<>();
     for (HouseholdInventory inventory : inventoriesAt(data, actors, coord)) {
       organizersAtHex.add(HouseholdActors.of(inventory.key().household()));
     }
-    List<ProductionOrganization> organizations =
+    List<ProductionEnterprise> enterprises =
         new ArrayList<>(data.productionOrganizations().values());
-    organizations.sort(Comparator.comparing(organization -> organization.id().value()));
+    enterprises.sort(Comparator.comparing(enterprise -> enterprise.id().value()));
     List<Map<String, Object>> local = new ArrayList<>();
     Map<String, Long> localByReason = new TreeMap<>();
     Map<String, Long> worldByReason = new TreeMap<>();
     long worldTotal = 0L;
-    for (ProductionOrganization organization : organizations) {
-      if (organization.status() != ProductionOrganization.Status.SHORTAGE) {
+    for (ProductionEnterprise enterprise : enterprises) {
+      if (enterprise.status() != ProductionEnterprise.Status.SHORTAGE) {
         continue;
       }
       worldTotal++;
-      worldByReason.merge(organization.statusReason(), 1L, Long::sum);
-      if (!productionOrganizationTouchesHex(data, organization, coord, organizersAtHex)) {
+      worldByReason.merge(enterprise.statusReason(), 1L, Long::sum);
+      if (!productionEnterpriseTouchesHex(data, enterprise, coord, organizersAtHex)) {
         continue;
       }
-      localByReason.merge(organization.statusReason(), 1L, Long::sum);
+      localByReason.merge(enterprise.statusReason(), 1L, Long::sum);
       Map<String, Object> item = new LinkedHashMap<>();
-      item.put("id", organization.id().value());
-      item.put("modeId", organization.modeId().value());
-      item.put("classPositionId", organization.classPositionId().value());
-      item.put("unitId", organization.unitId().map(unitId -> unitId.value()).orElse(null));
-      item.put("organizer", actorRefView(organization.organizer()));
-      item.put("status", organization.status().name());
-      item.put("statusReason", organization.statusReason());
+      item.put("id", enterprise.id().value());
+      item.put("modeId", enterprise.modeId().value());
+      item.put("classPositionId", enterprise.classPositionId().value());
+      item.put("unitId", enterprise.unitId().map(unitId -> unitId.value()).orElse(null));
+      item.put("organizer", actorRefView(enterprise.organizer()));
+      item.put("status", enterprise.status().name());
+      item.put("statusReason", enterprise.statusReason());
       local.add(item);
     }
     Map<String, Object> view = new LinkedHashMap<>();
@@ -2850,31 +2850,31 @@ public final class ApiViews {
     return view;
   }
 
-  /** ProductionOrganization 是否与本格相关（见 {@link #shortageOrganizationSummary} 的四路判据）。 */
-  private static boolean productionOrganizationTouchesHex(
+  /** ProductionEnterprise 是否与本格相关（见 {@link #shortageEnterpriseSummary} 的四路判据）。 */
+  private static boolean productionEnterpriseTouchesHex(
       EconomyData data,
-      ProductionOrganization organization,
+      ProductionEnterprise enterprise,
       HexCoord coord,
       Set<ActorRef> organizersAtHex) {
     String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
-    if (organization.unitId().isPresent()) {
-      ProductionUnit unit = data.units().get(organization.unitId().get());
+    if (enterprise.unitId().isPresent()) {
+      ProductionProcess unit = data.units().get(enterprise.unitId().get());
       if (unit != null
           && IndustryHexKeys.hexKeyOf(unit.industry()).filter(hexKey::equals).isPresent()) {
         return true;
       }
     }
-    if (organizersAtHex.contains(organization.organizer())) {
+    if (organizersAtHex.contains(enterprise.organizer())) {
       return true;
     }
-    for (HouseholdId household : organization.laborSources()) {
+    for (HouseholdId household : enterprise.laborSources()) {
       HouseholdEconomy householdEconomy = data.classes().get(household);
       if (householdEconomy != null && householdEconomy.view().hex().equals(coord)) {
         return true;
       }
     }
-    for (AssetShareId shareId : organization.assetSources()) {
-      AssetShare share = data.assetShares().get(shareId);
+    for (AssetShareId shareId : enterprise.assetSources()) {
+      OwnershipStake share = data.assetShares().get(shareId);
       if (share != null
           && IndustryHexKeys.hexKeyOf(share.industry()).filter(hexKey::equals).isPresent()) {
         return true;
@@ -3490,14 +3490,14 @@ public final class ApiViews {
 
   /**
    * ★★ <b>R3B.2：一个 unit 的读口行</b>（{@code id/industry/operator/modeKey/progressDays/cycleLaborMilli/
-   * cycleInputUsedMilli/assets/condition/relation}）。资产走 {@link ProductionUnitBook#usableAssets}
+   * cycleInputUsedMilli/assets/condition/relation}）。资产走 {@link ProductionProcessBook#usableAssets}
    * 纯派生。
    */
-  private static Map<String, Object> productionUnitView(
-      ProductionUnit unit,
+  private static Map<String, Object> productionProcessView(
+      ProductionProcess unit,
       Industry industry,
-      Map<io.mosire.simos.economy.api.id.AssetShareId, AssetShare> assetShares,
-      ProductionRelation relation,
+      Map<io.mosire.simos.economy.api.id.AssetShareId, OwnershipStake> assetShares,
+      ProductionRules relation,
       OperatorCondition condition) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", unit.id().value());
@@ -3510,7 +3510,7 @@ public final class ApiViews {
     view.put("cycleInputUsedMilli", sortedCommodities(unit.cycleInputUsedMilli()));
     Map<String, Object> assets = new TreeMap<>();
     for (Map.Entry<AssetKind, Long> entry :
-        ProductionUnitBook.usableAssets(unit, assetShares).entrySet()) {
+        ProductionProcessBook.usableAssets(unit, assetShares).entrySet()) {
       assets.put(entry.getKey().name(), entry.getValue());
     }
     view.put("assets", assets);
@@ -3529,7 +3529,7 @@ public final class ApiViews {
    *
    * <p>★★ <b>M1.7：把"实物给养义务"发出来</b>（{@code subsistenceObligations} / {@code subsistencePromised}）——
    * 改前"谁给谁多少给养"只能从规则表 + 劳动账现算，读口里根本不存在；现在它由**契约层的** {@link
-   * SubsistenceObligation#of(ProductionRelation, Map)} 纯派生（受方 / 按什么劳动量 / 每周期应付 / 商品），
+   * SubsistenceObligation#of(ProductionRules, Map)} 纯派生（受方 / 按什么劳动量 / 每周期应付 / 商品），
    * 而"按什么量"用的是**结算侧的同一个** {@code 旧结算引擎（R3a 已删除）.laborOfCohort}（M1.8 的折扣后口径）⇒ 读到的义务与实付的应付**同源**。 ★ 缺
    * relation ⇒ 空表（"没有规则 ⇒ 全归 residualOwner"的等价路径，不是读不到）；{@code subsistencePromised} = 逐商品 Σ 应付，也正是
    * M2 保留算式经 {@link SubsistenceObligation#retentionOf} 封顶时用的"承诺额"。
@@ -3538,7 +3538,7 @@ public final class ApiViews {
    * @param laborOfCohort 本周期各 cohort 的劳动量（由 {@code 旧结算引擎（R3a 已删除）.laborOfCohort} 算好传入；不得为 null）
    */
   private static Map<String, Object> industryView(
-      Industry industry, ProductionRelation relation, Map<HouseholdId, Long> laborOfHousehold) {
+      Industry industry, ProductionRules relation, Map<HouseholdId, Long> laborOfHousehold) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("id", industry.id().value());
     view.put("name", industry.name());
@@ -3571,7 +3571,7 @@ public final class ApiViews {
     for (SubsistenceObligation obligation : obligations) {
       Map<String, Object> item = new LinkedHashMap<>();
       item.put("provider", actorRefView(obligation.provider())); // 谁（= 本产业的 operator，自含一份便于逐条核）
-      item.put("recipient", recipientView(obligation.recipient())); // 向谁
+      item.put("recipient", payeeView(obligation.recipient())); // 向谁
       item.put("commodity", obligation.commodity().value()); // 给养是什么
       item.put("laborMilli", obligation.laborMilli()); // 按什么量（本周期劳动量）
       item.put("perLaborMilli", obligation.perLaborMilli()); // 每 1000 千分劳动给多少
@@ -3590,36 +3590,36 @@ public final class ApiViews {
    * ★★ <b>R3B.2：一条生产关系的读口形状</b>（activity/operator/inputSupplier/residualOwner/laborSource） ——
    * 规则的逐条明细不在这里（读口用 {@code subsistenceObligations} 与市场读数回答"谁拿多少"）。
    */
-  private static Map<String, Object> relationView(ProductionRelation relation) {
+  private static Map<String, Object> relationView(ProductionRules relation) {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("activity", relation.activity().value());
     view.put("operator", actorRefView(relation.operator()));
-    view.put("inputSupplier", recipientView(relation.inputSupplier()));
+    view.put("inputSupplier", payeeView(relation.inputSupplier()));
     view.put("residualOwner", actorRefView(relation.residualOwner()));
     view.put("laborSource", relation.laborSource().name());
     return view;
   }
 
   /**
-   * 一个 {@link Recipient} 的读口形状（M1.7 给养义务用；两档恰其一）。
+   * 一个 {@link Payee} 的读口形状（M1.7 给养义务用；两档恰其一）。
    *
    * <p>★ {@code ToActor} → {@code {kind:"actor", actor:{kind,id}}}；{@code ToCohort} → {@code
    * {kind:"cohort", cohort:"<q>_<r>|<residence>|<stratum>"}} —— cohort 用契约自带的规范串（{@link
    * CohortKey#toString()}），视图层不另拼一套。★ 保序 {@code LinkedHashMap} ⇒ 同状态两次响应逐字节相同。
    */
-  private static Map<String, Object> recipientView(Recipient recipient) {
+  private static Map<String, Object> payeeView(Payee recipient) {
     Map<String, Object> view = new LinkedHashMap<>();
     switch (recipient) {
-      case Recipient.ToActor toActor -> {
+      case Payee.ToActor toActor -> {
         view.put("kind", "actor");
         view.put("actor", actorRefView(toActor.actor()));
       }
-      case Recipient.ToHousehold toHousehold -> {
+      case Payee.ToHousehold toHousehold -> {
         view.put("kind", "household");
         view.put("household", toHousehold.household().value());
       }
       // ★ 旧档变体（S1 迁移前）：仍按旧视图规范串发出来（读口兼容；S3 再解释为视图选择器）。
-      case Recipient.ToCohort toCohort -> {
+      case Payee.ToCohort toCohort -> {
         view.put("kind", "cohort");
         view.put("cohort", toCohort.cohort().toString());
       }
@@ -4367,7 +4367,7 @@ public final class ApiViews {
       view.put("regime", candidate.regime().value());
       view.put("laborSource", candidate.laborSource().name());
       List<String> rights = new ArrayList<>();
-      for (AssetShare.RightKind right : candidate.acceptedRightKinds()) {
+      for (OwnershipStake.RightKind right : candidate.acceptedRightKinds()) {
         rights.add(right.name());
       }
       rights.sort(Comparator.naturalOrder());
@@ -4383,17 +4383,17 @@ public final class ApiViews {
    * {@code assetSource} 名下的份额：owner 不变、operator 改本户、kind 按 acceptedRightKinds，总量不变。
    * 这一栏是那条守恒的逐条证据（{@code EconomyData.assetShares()} 的唯一真源，视图不重算）。
    */
-  private static List<Map<String, Object>> assetShareViews(EconomyData data, HexCoord coord) {
+  private static List<Map<String, Object>> ownershipStakeViews(EconomyData data, HexCoord coord) {
     String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
-    List<AssetShare> shares = new ArrayList<>();
-    for (AssetShare share : data.assetShares().values()) {
+    List<OwnershipStake> shares = new ArrayList<>();
+    for (OwnershipStake share : data.assetShares().values()) {
       if (IndustryHexKeys.hexKeyOf(share.industry()).filter(hexKey::equals).isPresent()) {
         shares.add(share);
       }
     }
     shares.sort(Comparator.comparing(share -> share.id().value()));
     List<Map<String, Object>> out = new ArrayList<>(shares.size());
-    for (AssetShare share : shares) {
+    for (OwnershipStake share : shares) {
       Map<String, Object> view = new LinkedHashMap<>();
       view.put("id", share.id().value());
       view.put("industry", share.industry().value());
@@ -4467,13 +4467,13 @@ public final class ApiViews {
 
   /**
    * ★★ <b>E5b：本格质押只读视图</b>（按 {@code pledgeId} 排序 ⇒ 响应字节是内容的纯函数）。★ 只列份额登记在本格的质押；
-   * 份额在别的格的质押请查那一格。{@code quantity} 与 AssetShare 同单位；{@code status} 是 ACTIVE/RELEASED/EXECUTED。
+   * 份额在别的格的质押请查那一格。{@code quantity} 与 OwnershipStake 同单位；{@code status} 是 ACTIVE/RELEASED/EXECUTED。
    */
   private static List<Map<String, Object>> pledgeViews(EconomyData data, HexCoord coord) {
     String hexKey = IndustryHexKeys.hexKey(coord.q(), coord.r());
     List<Pledge> pledges = new ArrayList<>();
     for (Pledge pledge : data.pledges().values()) {
-      AssetShare share = data.assetShares().get(pledge.assetShareId());
+      OwnershipStake share = data.assetShares().get(pledge.assetShareId());
       if (share == null) {
         continue; // 份额缺失 = 坏状态；逐条具名留给 ownership/资产读数，不在这里伪造
       }
@@ -4547,7 +4547,7 @@ public final class ApiViews {
    * ★★ <b>E5b：本日清算/阶层下滑/投影回退的瞬态审计</b>（{@code ProductionLedger.liquidationAudits}；只列与本格相关的条目）。
    *
    * <p>★ <b>窗口</b>：只在读数 tick 与最近一次结算 tick 相同时可读（旧 EconomyDayFeed，R3a 已删除）；不落盘。 ★ <b>单位</b>：{@code
-   * quantity} 与 AssetShare 同单位；{@code *Milli} 为毫值（粮债口径 = 毫粮）。 ★ <b>读不到</b>：上层返回 null + {@link
+   * quantity} 与 OwnershipStake 同单位；{@code *Milli} 为毫值（粮债口径 = 毫粮）。 ★ <b>读不到</b>：上层返回 null + {@link
    * #LIQUIDATION_AUDIT_PROCESS_ONLY}，<b>不填空数组</b>冒充"当天没有清算"。
    */
   private static Map<String, Object> liquidationAuditView(
@@ -4611,7 +4611,7 @@ public final class ApiViews {
       }
     }
     if (audit.sourceAssetShareId().isPresent()) {
-      AssetShare share = data.assetShares().get(audit.sourceAssetShareId().get());
+      OwnershipStake share = data.assetShares().get(audit.sourceAssetShareId().get());
       if (share != null
           && IndustryHexKeys.hexKeyOf(share.industry()).filter(hexKey::equals).isPresent()) {
         return true;

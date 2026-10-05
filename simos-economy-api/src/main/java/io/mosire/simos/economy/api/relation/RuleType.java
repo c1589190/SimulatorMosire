@@ -22,7 +22,7 @@ import java.util.Arrays;
 public enum RuleType {
 
   /**
-   * 自留：这一档<b>不动</b>任何东西（余额归 {@code ProductionRelation.residualOwner}）。
+   * 自留：这一档<b>不动</b>任何东西（余额归 {@code ProductionRules.residualOwner}）。
    *
    * <p>★ 它是「自留」这件事的<b>显式</b>写法（读关系表的人不必去猜缺省）；把自留写成「没有这条规则」也等价（空表 ⇒ 全归 residualOwner）。
    */

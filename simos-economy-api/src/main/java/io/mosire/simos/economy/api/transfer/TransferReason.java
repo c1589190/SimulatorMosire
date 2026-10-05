@@ -30,7 +30,7 @@ public enum TransferReason {
   /** 净产出归经营者（★ 见类注：今天由产出计提读数表达，不走 {@code Transfer}）。 */
   PRODUCTION_OUTPUT("production_output"),
 
-  /** 按 {@code ProductionRelation} 的分成 / 给养 / 地租（制度规定的分配）。 */
+  /** 按 {@code ProductionRules} 的分成 / 给养 / 地租（制度规定的分配）。 */
   RELATION_PAYMENT("relation_payment"),
 
   /** 同格按需取材（生产投入的征调：田里的纤维 → 同格织机）。 */

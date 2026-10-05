@@ -30,7 +30,7 @@ import io.mosire.simos.map.hex.HexCoord;
  * 在<b>合法</b>串上这种切法与任何切法恒等， 而坏输入上它把<b>整段尾巴</b>交给词表（报错点落在真正的坏段上）。
  *
  * <p>★ <b>本类型是 {@code EconomyData.classes} 与 {@code EconomyData.flows} 的键</b>， 也是 {@code
- * ProductionRelation} 的 {@code CompensationRule.recipient} 的一种 （"这笔实物报酬 / 这笔钱是给哪个家户的"）。
+ * ProductionRules} 的 {@code CompensationRule.recipient} 的一种 （"这笔实物报酬 / 这笔钱是给哪个家户的"）。
  *
  * @param hex 居住格（{@code HexCoord} 是身份；"某人在哪一格"不影响它）
  * @param residence 居住类型（农村 / 城镇）★ H0.1 新增的那一维

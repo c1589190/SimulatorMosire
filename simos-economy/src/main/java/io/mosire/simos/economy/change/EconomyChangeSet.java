@@ -25,10 +25,10 @@ import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.AssetRule;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassPosition;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
@@ -48,8 +48,8 @@ import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionCandidate;
 import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -98,7 +98,7 @@ import java.util.function.Function;
  * / {@link LaborAllocationId#parse}），与 {@link CohortKey} 一族同款。
  *
  * <p>★ **T2 的第 8 个组件同款**（{@code relations} = 每个产业一次生产的结算规则）：键 = {@code IndustryId} （已有键反序列化器），值 =
- * {@link ProductionRelation}（**深层**带一个 sealed 多态类型 {@code Recipient} ⇒ 它的 线格式由类型上的 Jackson
+ * {@link ProductionRules}（**深层**带一个 sealed 多态类型 {@code Payee} ⇒ 它的 线格式由类型上的 Jackson
  * 注解把守，见那个接口的类注；此处无须有任何分支）。
  */
 public record EconomyChangeSet(
@@ -108,19 +108,19 @@ public record EconomyChangeSet(
     FieldDelta<DebtContract> debtContracts,
     FieldDelta<FlowRow> flows,
     FieldDelta<HouseholdLaborCommitment> allocations,
-    FieldDelta<ProductionRelation> relations,
+    FieldDelta<ProductionRules> relations,
     FieldDelta<Market> markets,
     FieldDelta<ShipmentBatch> shipments,
-    FieldDelta<AssetShare> assetShares,
+    FieldDelta<OwnershipStake> assetShares,
     FieldDelta<OperatorCondition> operatorConditions,
-    FieldDelta<ProductionUnit> units,
+    FieldDelta<ProductionProcess> units,
     FieldDelta<HouseholdDemand> demands,
     FieldDelta<ProductionCandidate> candidates,
     FieldDelta<ProductionMode> modes,
     FieldDelta<ClassStructure> classStructures,
-    FieldDelta<ClassPosition> classPositions,
+    FieldDelta<ProductionRole> classPositions,
     FieldDelta<HouseholdClassMembership> classStandings,
-    FieldDelta<ProductionOrganization> productionOrganizations,
+    FieldDelta<ProductionEnterprise> productionOrganizations,
     FieldDelta<AssetRule> assetRules,
     FieldDelta<Government> governments,
     FieldDelta<MoneyIssuanceRecord> moneyIssuances,

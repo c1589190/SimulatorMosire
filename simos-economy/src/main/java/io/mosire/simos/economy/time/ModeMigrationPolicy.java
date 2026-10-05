@@ -16,9 +16,9 @@ import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassPosition;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.ClassStructure;
@@ -29,8 +29,8 @@ import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
@@ -51,9 +51,9 @@ import java.util.TreeSet;
  * {@link ExpectedProfitBook} 对（家户 × 候选 mode × hex × 市场）现算的<b>预期</b>单位劳动净收益做权重，输出确定性的
  * "人/钱/债转移到目标 mode 家户"的计划。
  *
- * <p>★★ <b>D-024 的两处替换</b>：① 候选门槛不再要求该 (mode, hex) 已有 {@link OrganizationProfitBook} 真实读数
+ * <p>★★ <b>D-024 的两处替换</b>：① 候选门槛不再要求该 (mode, hex) 已有 {@link EnterpriseProfitBook} 真实读数
  * （`hasReading`/`labor>0` 门槛已删）；② A 规则不再读旧 {@code output × 价 − 投入} 的局部公式，改读同一个
- * {@link ExpectedProfitBook.Prospect}。{@link OrganizationProfitBook} 仍由 {@code collect} 产出、供读数对账，只是
+ * {@link ExpectedProfitBook.Prospect}。{@link EnterpriseProfitBook} 仍由 {@code collect} 产出、供读数对账，只是
  * 不再是候选门槛。
  *
  * <pre>
@@ -70,12 +70,12 @@ import java.util.TreeSet;
  *                claimed = 既有组织 assetSources ∪ 在产 unit 所占份额（同 industry、同 operator、quantity>0），
  *                任一 required 不足则整笔不预留。
  *                后一个新建户/后一遍 allocate 只看前面计划消费后的剩余，与执行期逐笔拆份额一致。
- *                ★ 闲置判据的唯一拼写点 = {@link #isIdleShare(AssetShare, Set)}（policy/settlement 共用）：
+ *                ★ 闲置判据的唯一拼写点 = {@link #isIdleShare(OwnershipStake, Set)}（policy/settlement 共用）：
  *                  只有 owner==operator 且不被任何组织/在产 unit 使用的份额才算闲置（D-024 修复 1b）。
  * </pre>
  *
  * <p>★★ <b>D-022 硬约束</b>：计划里只有 {@code MigrationMove}（源户 → 目标户）；{@code targetMode} 只属于目标家户，
- * 绝不产生"把源户 mode/standing/organization/unit.modeKey 原地改成 targetMode"的计划项。
+ * 绝不产生"把源户 mode/standing/enterprise/unit.modeKey 原地改成 targetMode"的计划项。
  *
  * <p>★★ <b>确定性</b>：无随机、无时钟、无 UUID；全部遍历按稳定 id / (q,r) 排序；同输入同计划。
  */
@@ -237,22 +237,22 @@ public final class ModeMigrationPolicy {
   /** 计划入口：只读全部入参，返回确定性计划。 */
   public static MigrationPlan plan(
       EconomyData base,
-      Map<ProductionOrganizationId, ProductionOrganization> organizations,
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, HouseholdClassMembership> classMemberships,
-      Map<AssetShareId, AssetShare> assetShares,
-      Map<ProductionUnitId, ProductionRelation> relations,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<ProductionUnitId, ProductionRules> relations,
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
       Map<HexCoord, Market> markets,
       Map<DebtContractId, DebtContract> debts,
       AccountSession accounts,
-      OrganizationProfitBook.Book book,
+      EnterpriseProfitBook.Book book,
       long day,
       MarketTopology topology,
       List<MarketReport> marketReports) {
     Objects.requireNonNull(base, "base");
-    Objects.requireNonNull(organizations, "organizations");
+    Objects.requireNonNull(enterprises, "organizations");
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(householdEconomies, "rows");
     Objects.requireNonNull(classMemberships, "standings");
@@ -268,18 +268,18 @@ public final class ModeMigrationPolicy {
     // ★★ P10.6：计划期共享的"闲置资产预留账本"。同一 plan() 的所有源户、所有目标新建户、allocate 的两遍
     //    都读写同一份账本 ⇒ 后一个新建户看到的是前面计划已消费后的剩余闲置资产，与执行期逐笔拆份额一致。
     Map<IndustryId, Map<AssetKind, Long>> reservedIdle = new LinkedHashMap<>();
-    // ★★ P10.7 / P10.8：既有 ProductionOrganization.assetSources 正在使用的份额不是"闲置"——执行期把它拆/移走后，
+    // ★★ P10.7 / P10.8：既有 ProductionEnterprise.assetSources 正在使用的份额不是"闲置"——执行期把它拆/移走后，
     //    组织引用会指向已删除的份额 id，EconomyData 当即以「生产组织使用的资产份额必须已存在」拒绝。
-    //    claimed 必须读调用方传入的当天工作副本 organizations + units + assetShares（可能已被当天自动组织阶段加入
+    //    claimed 必须读调用方传入的当天工作副本 enterprises + units + assetShares（可能已被当天自动组织阶段加入
     //    新组织/新 unit），不能用当天开始时的不可变 base；只在这里构建一次，与预留账本一起透传；谓词与执行期共用
     //    {@link #isIdleShare}，不新增持久组件。
     //    ★★ D-024 修复 1：同一份集合也作为唯一入参透传给所有 {@link ExpectedProfitBook#prospect} 调用
     //    （当前户读数 + 候选），prospect 内部不得再从 base.productionOrganizations() 重算（那是过期快照）。
     //    ★★ D-024 修复 1b：claimed 的"单位占用"格 = 与在产 unit 同 industry、同 operator 且 quantity>0 的份额。
     //    seeder 直接以 RegimeOperators.defaultOperator(...)（ESTATE 等）建立的 farm/weave/craft/trade 主 unit 没有
-    //    对应 ProductionOrganization，只按组织引用格会把它们的土地/作坊/船畜误判成"闲置可租"。
+    //    对应 ProductionEnterprise，只按组织引用格会把它们的土地/作坊/船畜误判成"闲置可租"。
     //    单参兼容重载只算组织引用格，生产路径一律走三参版本。
-    Set<AssetShareId> claimedByOrganizations = claimedAssetShares(organizations, units, assetShares);
+    Set<AssetShareId> claimedByEnterprises = claimedOwnershipStakes(enterprises, units, assetShares);
     if (base.modes().isEmpty()) {
       return MigrationPlan.empty(); // 旧档（无 modes）：逐字 no-op
     }
@@ -308,7 +308,7 @@ public final class ModeMigrationPolicy {
       if (householdEconomy == null || householdEconomy.population() <= 0L || classMembership == null) {
         continue;
       }
-      ClassPosition position = base.classPositions().get(classMembership.currentPositionId());
+      ProductionRole position = base.classPositions().get(classMembership.currentPositionId());
       if (position == null) {
         continue;
       }
@@ -321,7 +321,7 @@ public final class ModeMigrationPolicy {
 
     List<HexCoord> hexes = globalHexes(householdEconomies, units, markets);
     List<ProductionMode> modes = sortedModes(base);
-    Map<ProductionModeId, List<ClassPosition>> producingPositions =
+    Map<ProductionModeId, List<ProductionRole>> producingPositions =
         producingPositionsByMode(base, modes);
 
     LinkedHashMap<HouseholdId, List<MoveDraft>> draftsBySource = new LinkedHashMap<>();
@@ -341,7 +341,7 @@ public final class ModeMigrationPolicy {
               modes,
               producingPositions,
               modeByHousehold,
-              organizations,
+              enterprises,
               units,
               householdEconomies,
               assetShares,
@@ -349,7 +349,7 @@ public final class ModeMigrationPolicy {
               markets,
               accounts,
               reservedIdle,
-              claimedByOrganizations,
+              claimedByEnterprises,
               demandBook,
               topology,
               day);
@@ -410,23 +410,23 @@ public final class ModeMigrationPolicy {
       HouseholdMode current,
       List<HexCoord> hexes,
       List<ProductionMode> modes,
-      Map<ProductionModeId, List<ClassPosition>> producingPositions,
+      Map<ProductionModeId, List<ProductionRole>> producingPositions,
       Map<HouseholdId, HouseholdMode> modeByHousehold,
-      Map<ProductionOrganizationId, ProductionOrganization> organizations,
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<AssetShareId, AssetShare> assetShares,
-      Map<ProductionUnitId, ProductionRelation> relations,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<ProductionUnitId, ProductionRules> relations,
       Map<HexCoord, Market> markets,
       AccountSession accounts,
       Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
-      Set<AssetShareId> claimedByOrganizations,
+      Set<AssetShareId> claimedByEnterprises,
       MarketDemandBook.Book demandBook,
       MarketTopology topology,
       long day) {
     // ★★ D-024：当前户读数改由同一个预期利润计算器现算（真实利润账退位为事后对账）。
     Industry currentIndustry =
-        currentIndustryOf(base, source, current, units, organizations);
+        currentIndustryOf(base, source, current, units, enterprises);
     ExpectedProfitBook.Prospect currentProspect =
         ExpectedProfitBook.prospect(
             base,
@@ -437,7 +437,7 @@ public final class ModeMigrationPolicy {
             marketOf(markets, topology, current.hex),
             demandBook,
             assetShares,
-            claimedByOrganizations,
+            claimedByEnterprises,
             accounts,
             units,
             relations,
@@ -458,7 +458,7 @@ public final class ModeMigrationPolicy {
             householdEconomies,
             units,
             assetShares,
-            claimedByOrganizations,
+            claimedByEnterprises,
             relations,
             markets,
             accounts,
@@ -487,7 +487,7 @@ public final class ModeMigrationPolicy {
             sourceHouseholdEconomy,
             assetShares,
             reservedIdle,
-            claimedByOrganizations);
+            claimedByEnterprises);
       }
       if (!expected.canSustainProduction()) {
         List<Target> displaced =
@@ -504,7 +504,7 @@ public final class ModeMigrationPolicy {
               sourceHouseholdEconomy,
               assetShares,
               reservedIdle,
-              claimedByOrganizations);
+              claimedByEnterprises);
         }
       }
       // 当前户已是最优（或没有可承载目标）：不转移，债务按现有路径继续增长。
@@ -533,18 +533,18 @@ public final class ModeMigrationPolicy {
         sourceHouseholdEconomy,
         assetShares,
         reservedIdle,
-        claimedByOrganizations);
+        claimedByEnterprises);
   }
 
   /**
    * 目标候选（已有家户 + 可新建；同 (hex, mode) 一条，已有家户优先）。
    *
-   * <p>★★ <b>D-024</b>：删除"该 (mode, hex) 必须有 {@link OrganizationProfitBook} 真实读数"的门槛，
+   * <p>★★ <b>D-024</b>：删除"该 (mode, hex) 必须有 {@link EnterpriseProfitBook} 真实读数"的门槛，
    * 对每个 距离≤1 的 hex × 每个 mode 调 {@link ExpectedProfitBook#prospect} 现算；不可行/规模 0 ⇒ 跳过。
    * 权重仍是同一把百万分之一尺：{@code max(0, target.netPerLaborScaled − current.netPerLaborScaled)}。
    *
-   * <p>★★ <b>D-024 修复 1 / 1b</b>：{@code claimedByOrganizations} 由 {@link #plan} 从当天工作副本
-   * {@code organizations + units + assetShares} 算出后传入，并原样透传给每个候选 {@code prospect(...)}；本方法不从
+   * <p>★★ <b>D-024 修复 1 / 1b</b>：{@code claimedByEnterprises} 由 {@link #plan} 从当天工作副本
+   * {@code enterprises + units + assetShares} 算出后传入，并原样透传给每个候选 {@code prospect(...)}；本方法不从
    * {@code base} 重算 claimed，避免周期开始时的过期快照把既有组织/在产 unit 正在使用的份额（含 ESTATE 土地）当
    * "闲置可租"。
    */
@@ -556,13 +556,13 @@ public final class ModeMigrationPolicy {
       long currentPerLabor,
       List<HexCoord> hexes,
       List<ProductionMode> modes,
-      Map<ProductionModeId, List<ClassPosition>> producingPositions,
+      Map<ProductionModeId, List<ProductionRole>> producingPositions,
       Map<HouseholdId, HouseholdMode> modeByHousehold,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<AssetShareId, AssetShare> assetShares,
-      Set<AssetShareId> claimedByOrganizations,
-      Map<ProductionUnitId, ProductionRelation> relations,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Set<AssetShareId> claimedByEnterprises,
+      Map<ProductionUnitId, ProductionRules> relations,
       Map<HexCoord, Market> markets,
       AccountSession accounts,
       MarketDemandBook.Book demandBook,
@@ -581,7 +581,7 @@ public final class ModeMigrationPolicy {
         if (mode.id().equals(current.modeId) && hex.equals(current.hex)) {
           continue;
         }
-        List<ClassPosition> positions = producingPositions.get(mode.id());
+        List<ProductionRole> positions = producingPositions.get(mode.id());
         if (positions == null || positions.isEmpty()) {
           continue;
         }
@@ -602,7 +602,7 @@ public final class ModeMigrationPolicy {
                 marketOf(markets, topology, hex),
                 demandBook,
                 assetShares,
-                claimedByOrganizations,
+                claimedByEnterprises,
                 accounts,
                 units,
                 relations,
@@ -650,7 +650,7 @@ public final class ModeMigrationPolicy {
       HouseholdMode current,
       List<HexCoord> hexes,
       List<ProductionMode> modes,
-      Map<ProductionModeId, List<ClassPosition>> producingPositions,
+      Map<ProductionModeId, List<ProductionRole>> producingPositions,
       Map<HouseholdId, HouseholdMode> modeByHousehold,
       Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     ProductionMode displaced =
@@ -667,7 +667,7 @@ public final class ModeMigrationPolicy {
       if (distance > 1) {
         continue;
       }
-      List<ClassPosition> positions = producingPositions.get(displaced.id());
+      List<ProductionRole> positions = producingPositions.get(displaced.id());
       if (positions == null || positions.isEmpty()) {
         continue;
       }
@@ -723,9 +723,9 @@ public final class ModeMigrationPolicy {
       List<Target> targets,
       EconomyData base,
       HouseholdEconomy sourceHouseholdEconomy,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
-      Set<AssetShareId> claimedByOrganizations) {
+      Set<AssetShareId> claimedByEnterprises) {
     List<MoveDraft> drafts = new ArrayList<>();
     if (targets.isEmpty()) {
       return drafts;
@@ -760,7 +760,7 @@ public final class ModeMigrationPolicy {
               drafts,
               newOrdinal,
               reservedIdle,
-              claimedByOrganizations);
+              claimedByEnterprises);
       remaining -= placed;
     }
     // 第二遍：把前面目标没承载下的余量按目标序顺延（仍受真实容量/资产约束）。
@@ -778,7 +778,7 @@ public final class ModeMigrationPolicy {
               drafts,
               newOrdinal,
               reservedIdle,
-              claimedByOrganizations);
+              claimedByEnterprises);
       remaining -= placed;
     }
     return drafts;
@@ -798,11 +798,11 @@ public final class ModeMigrationPolicy {
       String reason,
       EconomyData base,
       HouseholdEconomy sourceHouseholdEconomy,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       List<MoveDraft> drafts,
       int[] newOrdinal,
       Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
-      Set<AssetShareId> claimedByOrganizations) {
+      Set<AssetShareId> claimedByEnterprises) {
     long placed = 0L;
     if (allow <= 0L) {
       return 0L;
@@ -825,7 +825,7 @@ public final class ModeMigrationPolicy {
             sourceHouseholdEconomy,
             assetShares,
             reservedIdle,
-            claimedByOrganizations);
+            claimedByEnterprises);
     long take = Math.min(want, room);
     if (take > 0L) {
       drafts.add(
@@ -851,9 +851,9 @@ public final class ModeMigrationPolicy {
       long take,
       EconomyData base,
       HouseholdEconomy sourceHouseholdEconomy,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
-      Set<AssetShareId> claimedByOrganizations) {
+      Set<AssetShareId> claimedByEnterprises) {
     if (DefaultProductionModes.DISPLACED.equals(mode)) {
       return take;
     }
@@ -862,13 +862,13 @@ public final class ModeMigrationPolicy {
         sourceHouseholdEconomy.population() <= 0L
             ? take
             : Math.multiplyExact(sourceHouseholdEconomy.laborMilli(), take) / sourceHouseholdEconomy.population();
-    // ★ 与执行期（ModeMigrationSettlement.createOrganizationAndUnit）同一份"该 mode 能用哪些产业模板"：
+    // ★ 与执行期（ModeMigrationSettlement.createEnterpriseAndProcess）同一份"该 mode 能用哪些产业模板"：
     //   按 mode 的默认 regime 优先；merchant 找不到 trade 模板 ⇒ 空（绝不把农场模板当商号）。
     for (IndustryId industryId : industriesForMode(base, hex, mode)) {
       Industry industry = base.industries().get(industryId);
       if (industry != null
           && reserveIdleAssetsFor(
-              industry, laborEstimate, assetShares, reservedIdle, claimedByOrganizations)) {
+              industry, laborEstimate, assetShares, reservedIdle, claimedByEnterprises)) {
         return take;
       }
     }
@@ -880,16 +880,16 @@ public final class ModeMigrationPolicy {
    * need 累加进共享 {@code reservedIdle} 并返回 true；任一 required 不足 ⇒ false，<b>且不做任何部分预留</b>。
    *
    * <p>★ 口径与执行期 {@code ModeMigrationSettlement.planAssetMoves} 对齐：同一份"闲置"定义
-   * （{@link #isIdleShare}：{@code quantity > 0 && operator == owner && id ∉ claimedByOrganizations}）与同一个
+   * （{@link #isIdleShare}：{@code quantity > 0 && operator == owner && id ∉ claimedByEnterprises}）与同一个
    * {@code scale} 公式；按 {@link IndustryId} 预留 ⇒ 同一产业的多个 mode 共享同一个闲置分母，不会各看各的快照。
    * 执行侧逐笔拆完 share 后，各产业/种类的剩余量与本账本一致。
    */
   private static boolean reserveIdleAssetsFor(
       Industry industry,
       long laborMilli,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Map<IndustryId, Map<AssetKind, Long>> reservedIdle,
-      Set<AssetShareId> claimedByOrganizations) {
+      Set<AssetShareId> claimedByEnterprises) {
     long scale =
         industry.recipe().laborPerUnit() <= 0L
             ? 1L
@@ -900,10 +900,10 @@ public final class ModeMigrationPolicy {
     for (Map.Entry<AssetKind, Long> required : industry.recipe().capacityPerUnit().entrySet()) {
       long need = Math.multiplyExact(scale, required.getValue());
       long available = 0L;
-      for (AssetShare share : assetShares.values()) {
+      for (OwnershipStake share : assetShares.values()) {
         if (!share.industry().equals(industry.id())
             || share.asset() != required.getKey()
-            || !isIdleShare(share, claimedByOrganizations)) {
+            || !isIdleShare(share, claimedByEnterprises)) {
           continue;
         }
         available = Math.addExact(available, share.quantity());
@@ -928,10 +928,10 @@ public final class ModeMigrationPolicy {
       HexCoord hex,
       ProductionMode mode,
       Map<HouseholdId, HouseholdMode> modeByHousehold,
-      List<ClassPosition> producingPositions,
+      List<ProductionRole> producingPositions,
       Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Set<ClassPositionId> positionIds = new LinkedHashSet<>();
-    for (ClassPosition position : producingPositions) {
+    for (ProductionRole position : producingPositions) {
       positionIds.add(position.id());
     }
     HouseholdId best = null;
@@ -985,18 +985,18 @@ public final class ModeMigrationPolicy {
       EconomyData base,
       HouseholdId household,
       HouseholdMode current,
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises) {
     ActorRef actor = HouseholdActors.of(household);
-    for (ProductionOrganizationId organizationId : sortedOrganizationIds(organizations)) {
-      ProductionOrganization organization = organizations.get(organizationId);
-      if (organization == null
-          || !organization.organizer().equals(actor)
-          || !current.modeId.equals(organization.modeId())
-          || organization.unitId().isEmpty()) {
+    for (ProductionOrganizationId organizationId : sortedEnterpriseIds(enterprises)) {
+      ProductionEnterprise enterprise = enterprises.get(organizationId);
+      if (enterprise == null
+          || !enterprise.organizer().equals(actor)
+          || !current.modeId.equals(enterprise.modeId())
+          || enterprise.unitId().isEmpty()) {
         continue;
       }
-      ProductionUnit unit = units.get(organization.unitId().get());
+      ProductionProcess unit = units.get(enterprise.unitId().get());
       if (unit != null) {
         Industry industry = base.industries().get(unit.industry());
         if (industry != null) {
@@ -1008,7 +1008,7 @@ public final class ModeMigrationPolicy {
     List<ProductionUnitId> unitIds = new ArrayList<>(units.keySet());
     unitIds.sort(Comparator.comparing(ProductionUnitId::value));
     for (ProductionUnitId unitId : unitIds) {
-      ProductionUnit unit = units.get(unitId);
+      ProductionProcess unit = units.get(unitId);
       if (unit == null || !unit.operator().equals(actor)) {
         continue;
       }
@@ -1102,9 +1102,9 @@ public final class ModeMigrationPolicy {
    * 所有产业都是 120）。没有 unit（或 unit 模板缺失）时退回"全部产业的最大者"，再没有 ⇒ 120。
    */
   private static long demandHorizonDays(
-      EconomyData base, Map<ProductionUnitId, ProductionUnit> units) {
+      EconomyData base, Map<ProductionUnitId, ProductionProcess> units) {
     long horizon = 0L;
-    for (ProductionUnit unit : units.values()) {
+    for (ProductionProcess unit : units.values()) {
       Industry industry = base.industries().get(unit.industry());
       if (industry != null) {
         horizon = Math.max(horizon, industry.cycleDays());
@@ -1156,13 +1156,13 @@ public final class ModeMigrationPolicy {
     return List.copyOf(candidates);
   }
 
-  private static HexCoord unitHexOrNull(ProductionUnit unit) {
+  private static HexCoord unitHexOrNull(ProductionProcess unit) {
     return IndustryHexKeys.hexKeyOf(unit.industry()).map(HexCoord::parse).orElse(null);
   }
 
-  private static List<ProductionOrganizationId> sortedOrganizationIds(
-      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
-    List<ProductionOrganizationId> ids = new ArrayList<>(organizations.keySet());
+  private static List<ProductionOrganizationId> sortedEnterpriseIds(
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises) {
+    List<ProductionOrganizationId> ids = new ArrayList<>(enterprises.keySet());
     ids.sort(Comparator.comparing(ProductionOrganizationId::value));
     return ids;
   }
@@ -1299,17 +1299,17 @@ public final class ModeMigrationPolicy {
     return !IndustryHexKeys.at(base.industries(), hex.q(), hex.r()).isEmpty();
   }
 
-  private static Map<ProductionModeId, List<ClassPosition>> producingPositionsByMode(
+  private static Map<ProductionModeId, List<ProductionRole>> producingPositionsByMode(
       EconomyData base, List<ProductionMode> modes) {
-    Map<ProductionModeId, List<ClassPosition>> result = new LinkedHashMap<>();
+    Map<ProductionModeId, List<ProductionRole>> result = new LinkedHashMap<>();
     for (ProductionMode mode : modes) {
       ClassStructure structure = base.classStructures().get(mode.classStructureId());
       if (structure == null) {
         result.put(mode.id(), List.of());
         continue;
       }
-      List<ClassPosition> positions = new ArrayList<>();
-      for (ClassPosition position : structure.positions().values()) {
+      List<ProductionRole> positions = new ArrayList<>();
+      for (ProductionRole position : structure.positions().values()) {
         if (shouldProduce(position)) {
           positions.add(position);
         }
@@ -1320,9 +1320,9 @@ public final class ModeMigrationPolicy {
     return result;
   }
 
-  private static boolean shouldProduce(ClassPosition position) {
-    return position.laborRole() != ClassPosition.LaborRole.NONE
-        && position.surplusRole() != ClassPosition.SurplusRole.DEPENDENT;
+  private static boolean shouldProduce(ProductionRole position) {
+    return position.laborRole() != ProductionRole.LaborRole.NONE
+        && position.surplusRole() != ProductionRole.SurplusRole.DEPENDENT;
   }
 
   // ── 闲置资产判据的唯一拼写点（policy / settlement 共用；纯谓词，不新增持久组件）─────────────
@@ -1334,9 +1334,9 @@ public final class ModeMigrationPolicy {
    * <ol>
    *   <li>{@code quantity() > 0}；
    *   <li>{@code operator().equals(owner())}（自有自营；{@code operator != owner} 已被人实际使用）；
-   *   <li>{@code id()} <b>不在</b> claimed 集合里 —— claimed = 既有 {@code ProductionOrganization.assetSources}
+   *   <li>{@code id()} <b>不在</b> claimed 集合里 —— claimed = 既有 {@code ProductionEnterprise.assetSources}
    *       的并集 ∪ 在产 unit 占用的份额（同 industry、同 operator、{@code quantity>0}，见
-   *       {@link #claimedAssetShares(Map, Map, Map)}）。既有商号/组织/在产 unit 正在使用的份额不是闲置：
+   *       {@link #claimedOwnershipStakes(Map, Map, Map)}）。既有商号/组织/在产 unit 正在使用的份额不是闲置：
    *       执行期若把它整条拆走，源份额行会被删除，组织引用会指向不存在的份额 id，{@code EconomyData} 当即以
    *       「生产组织使用的资产份额必须已存在」fail-closed；在产 unit 被抽走资产则会让产能凭空消失。
    * </ol>
@@ -1344,23 +1344,23 @@ public final class ModeMigrationPolicy {
    * <p>★ 结论一句话：<b>只有 {@code owner==operator} 且不被任何组织/在产 unit 使用的份额才算闲置</b>（与 P10.7 的原始
    * 意图一致；"unit 占用"是 D-024 修复 1b 新增的显式一格）。
    */
-  static boolean isIdleShare(AssetShare share, Set<AssetShareId> claimedByOrganizations) {
+  static boolean isIdleShare(OwnershipStake share, Set<AssetShareId> claimedByEnterprises) {
     Objects.requireNonNull(share, "share");
-    Objects.requireNonNull(claimedByOrganizations, "claimedByOrganizations");
+    Objects.requireNonNull(claimedByEnterprises, "claimedByOrganizations");
     return share.quantity() > 0L
         && share.operator().equals(share.owner())
-        && !claimedByOrganizations.contains(share.id());
+        && !claimedByEnterprises.contains(share.id());
   }
 
   /**
    * ★★ <b>兼容重载：只算"被既有组织引用"这一格</b>，等价于
-   * {@code claimedAssetShares(organizations, Map.of(), Map.of())}。测试/旧调用点可继续用；生产路径
-   * （{@link #plan} 与 {@code ModeMigrationSettlement.createOrganizationAndUnit}）一律走三参版本，把当天工作副本
+   * {@code claimedOwnershipStakes(enterprises, Map.of(), Map.of())}。测试/旧调用点可继续用；生产路径
+   * （{@link #plan} 与 {@code ModeMigrationSettlement.createEnterpriseAndProcess}）一律走三参版本，把当天工作副本
    * {@code units}/{@code assetShares} 一并传入。两参/三参共用下面同一个谓词，不存在第二套拼写。
    */
-  static Set<AssetShareId> claimedAssetShares(
-      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
-    return claimedAssetShares(organizations, Map.of(), Map.of());
+  static Set<AssetShareId> claimedOwnershipStakes(
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises) {
+    return claimedOwnershipStakes(enterprises, Map.of(), Map.of());
   }
 
   /**
@@ -1369,36 +1369,36 @@ public final class ModeMigrationPolicy {
    * <p>两格显式占用：
    *
    * <ol>
-   *   <li>既有 {@link ProductionOrganization#assetSources()} 引用的份额（组织正在用）；
-   *   <li>传入的 {@code units} 里每个在产 unit 所占的份额：满足 {@link #usedByUnit(AssetShare, ProductionUnit)}
+   *   <li>既有 {@link ProductionEnterprise#assetSources()} 引用的份额（组织正在用）；
+   *   <li>传入的 {@code units} 里每个在产 unit 所占的份额：满足 {@link #usedByUnit(OwnershipStake, ProductionProcess)}
    *       —— 同 {@code industry}、同 {@code operator}、{@code quantity>0}。seeder 直接以
    *       {@code RegimeOperators.defaultOperator(...)}（ESTATE 等）建立的 {@code farm/weave/craft/trade} 主 unit
-   *       没有对应的 {@code ProductionOrganization}，只靠第 ① 格会漏掉它们，让城市户把 ESTATE 的土地/作坊/船畜当
+   *       没有对应的 {@code ProductionEnterprise}，只靠第 ① 格会漏掉它们，让城市户把 ESTATE 的土地/作坊/船畜当
    *       "闲置可租"抢占（D-024 第二轮根因 A）。
    * </ol>
    *
    * <p>计划期在 {@link #plan} 顶层从当天工作副本构建一次并透传；执行期在 {@link
-   * ModeMigrationSettlement#createOrganizationAndUnit} 从同一份当天工作副本再构建一次。集合只用于
+   * ModeMigrationSettlement#createEnterpriseAndProcess} 从同一份当天工作副本再构建一次。集合只用于
    * {@link #isIdleShare} 的包含判断，不参与排序，故迭代序不影响计划确定性。
    */
-  static Set<AssetShareId> claimedAssetShares(
-      Map<ProductionOrganizationId, ProductionOrganization> organizations,
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<AssetShareId, AssetShare> assetShares) {
-    Objects.requireNonNull(organizations, "organizations");
+  static Set<AssetShareId> claimedOwnershipStakes(
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<AssetShareId, OwnershipStake> assetShares) {
+    Objects.requireNonNull(enterprises, "organizations");
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(assetShares, "assetShares");
     Set<AssetShareId> claimed = new LinkedHashSet<>();
-    for (ProductionOrganization organization : organizations.values()) {
-      if (organization != null) {
-        claimed.addAll(organization.assetSources());
+    for (ProductionEnterprise enterprise : enterprises.values()) {
+      if (enterprise != null) {
+        claimed.addAll(enterprise.assetSources());
       }
     }
-    for (ProductionUnit unit : units.values()) {
+    for (ProductionProcess unit : units.values()) {
       if (unit == null) {
         continue;
       }
-      for (AssetShare share : assetShares.values()) {
+      for (OwnershipStake share : assetShares.values()) {
         if (usedByUnit(share, unit)) {
           claimed.add(share.id());
         }
@@ -1410,10 +1410,10 @@ public final class ModeMigrationPolicy {
   /**
    * "在产 unit 占用份额"的唯一谓词：{@code share.industry == unit.industry ∧ share.operator == unit.operator ∧
    * share.quantity > 0}。产业 id 自带格键 ⇒ 不需要另判 hex；不判 {@code modeKey}（同产业下一条在产 unit 就是一种
-   * 占用，mode 只决定生产方式，不决定实物占用）。{@link #claimedAssetShares(Map, Map, Map)} 的两格都经本方法/同一
+   * 占用，mode 只决定生产方式，不决定实物占用）。{@link #claimedOwnershipStakes(Map, Map, Map)} 的两格都经本方法/同一
    * 循环拼装，别处不得再写一份。
    */
-  private static boolean usedByUnit(AssetShare share, ProductionUnit unit) {
+  private static boolean usedByUnit(OwnershipStake share, ProductionProcess unit) {
     Objects.requireNonNull(share, "share");
     Objects.requireNonNull(unit, "unit");
     return share.quantity() > 0L
@@ -1435,7 +1435,7 @@ public final class ModeMigrationPolicy {
 
   private static List<HexCoord> globalHexes(
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<HexCoord, Market> markets) {
     TreeSet<HexCoord> hexes =
         new TreeSet<>(Comparator.comparingInt(HexCoord::q).thenComparingInt(HexCoord::r));
@@ -1443,7 +1443,7 @@ public final class ModeMigrationPolicy {
       hexes.add(householdEconomy.view().hex());
     }
     hexes.addAll(markets.keySet());
-    for (ProductionUnit unit : units.values()) {
+    for (ProductionProcess unit : units.values()) {
       Optional<String> key = IndustryHexKeys.hexKeyOf(unit.industry());
       if (key.isPresent()) {
         int separator = key.get().lastIndexOf('_');

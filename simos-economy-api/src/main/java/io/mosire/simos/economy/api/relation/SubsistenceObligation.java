@@ -18,8 +18,8 @@ import java.util.Map;
  *
  * <p>★★ <b>它为什么存在</b>：改前"给养"只是某一条通用规则（{@code RuleType.FIXED_IN_KIND_PER_LABOR}）的一种用法 ——
  * 谁也答不出"这个主体对哪些家户、还欠多少给养"：受方集合要从 {@code rules} + 劳动账现算，欠额只进**当日**的 {@code RuleSettlement} 读数（ledger
- * 当日丢弃）。本类型把这件事<b>具名</b>：它是<b>纯派生</b>的（{@link #of(ProductionRelation, Map)} 由既有 {@code
- * relation.rules()} + 本周期实际劳动量算出）， <b>不给 {@code ProductionRelation} 加组件、不给 {@code EconomyData}
+ * 当日丢弃）。本类型把这件事<b>具名</b>：它是<b>纯派生</b>的（{@link #of(ProductionRules, Map)} 由既有 {@code
+ * relation.rules()} + 本周期实际劳动量算出）， <b>不给 {@code ProductionRules} 加组件、不给 {@code EconomyData}
  * 加状态</b>（零契约改动、零 codec/往返牵动）。
  *
  * <p>★★ <b>口径与实付同源</b>：{@link #dueAmount()} 逐字等于 {@code ProductionSettlement} 公式表里 {@code
@@ -28,21 +28,21 @@ import java.util.Map;
  * <b>它是"本周期应付"，不是跨周期债务</b>： 实付上限仍由 R6（本周期可用产出）在结算里咬合，付不出的部分<b>只进读数、不落债权</b>（"记欠"开关未定，M1.5
  * 已裁不做跨周期债务）。
  *
- * <p>★★ <b>M1.7 判据②的落点：经营者保留算式从这里接</b>（唯一入口 = {@link #retentionOf(ProductionRelation, Map,
+ * <p>★★ <b>M1.7 判据②的落点：经营者保留算式从这里接</b>（唯一入口 = {@link #retentionOf(ProductionRules, Map,
  * Map)}）。用户的裁定是"<b>经营者不能因为关联了某批人口，就再替这批人口扣一次完整口粮</b>" —— 本类型把这条做成<b>结构性事实</b>：
  *
  * <ul>
  *   <li>保留额<b>只由已具名的实物给养义务派生</b>（{@code Σ dueAmount}），派生入口<b>只收 relation + 劳动量表</b>，
  *       <b>不接受任何人口参数</b> ⇒ "按关联人口再算一份口粮"在类型上就无从表达；
- *   <li>{@link #retentionOf(ProductionRelation, Map, Map)} 还逐商品把策略请求<b>钉在承诺额以内</b>（{@code min(请求,
+ *   <li>{@link #retentionOf(ProductionRules, Map, Map)} 还逐商品把策略请求<b>钉在承诺额以内</b>（{@code min(请求,
  *       承诺)}） ⇒ 即使 M2 的保留策略把"生活保留"算大了，也<b>不可能超过它承诺的给养</b>（判据②：Σ经营者保留 ≤ 它承诺的）。
  * </ul>
  *
  * <p>★ <b>M2 的接缝</b>：M2 的订单/保留算式是 {@code 可售库存 = max(0, 持有 − 已冻结 − 必要生产投入 − 生活保留)}； 其中经营者的"生活保留"必须走
- * {@link #retentionOf(ProductionRelation, Map, Map)} —— 类注见该方法的 Javadoc。
+ * {@link #retentionOf(ProductionRules, Map, Map)} —— 类注见该方法的 Javadoc。
  *
  * <p>★ <b>受方的两档与结算同源</b>：{@code ToHousehold} 的劳动量查本周期劳动量表，{@code ToActor} 在本阶段没有劳动账 ⇒ 0 （口径与 {@code
- * ProductionSettlement.laborOf} 逐字相同，且本类型的 {@link #laborOf(Recipient, Map)} 就是它的唯一拼写点）。 ★ <b>未归一化的
+ * ProductionSettlement.laborOf} 逐字相同，且本类型的 {@link #laborOf(Payee, Map)} 就是它的唯一拼写点）。 ★ <b>未归一化的
  * {@code ToCohort}</b> 没有家户身份可查 ⇒ <b>当场抛</b>（M5：与结算侧 {@code requireCohortRows} 的 fail-closed
  * 同向）；不得读成 0 —— "算不出"与"劳动量是 0"在给养义务里会给出完全不同的应付额。
  *
@@ -50,8 +50,8 @@ import java.util.Map;
  * 明确不做的跨周期债务）。实数计算一律毫单位、整数、向下取整。
  *
  * @param activity 这条义务出自哪个生产活动（身份 = 生产单元 unit；铁律 1，不另造 id）
- * @param provider <b>谁承担</b>（= 该关系的经营者 {@code ProductionRelation.operator()}；不得为 null）
- * @param recipient <b>向谁</b>（{@code Recipient}：家户 cohort 或 actor，恰其一；不得为 null）
+ * @param provider <b>谁承担</b>（= 该关系的经营者 {@code ProductionRules.operator()}；不得为 null）
+ * @param recipient <b>向谁</b>（{@code Payee}：家户 cohort 或 actor，恰其一；不得为 null）
  * @param laborMilli <b>按什么量</b>：本受方本周期（周期口径，非日口径）的实际劳动量（千分劳动）；不得为负
  * @param rule 这条义务的<b>来源规则</b>（{@code FIXED_IN_KIND_PER_LABOR}；每周期多少与商品都由它给；不得为 null） ★
  *     带上它是为了可追溯：读口/用例能把一条义务逐值对回关系表里的那一条，而不是看一个孤立数字。
@@ -59,7 +59,7 @@ import java.util.Map;
 public record SubsistenceObligation(
     ProductionUnitId activity,
     ActorRef provider,
-    Recipient recipient,
+    Payee recipient,
     long laborMilli,
     CompensationRule rule) {
 
@@ -145,7 +145,7 @@ public record SubsistenceObligation(
    * 找不到/有歧义就抛；这里若返回 0，读口会显示一条"应付 0"的给养义务，而结算会在同一天抛 —— 两处口径分叉， 且分叉的方向正是本仓最忌的"静默付 0"。⇒ 统一为具名 {@link
    * IllegalStateException}，让归一化缺口在第一次派生时现形。
    */
-  public static long laborOf(Recipient recipient, Map<HouseholdId, Long> laborOfHousehold) {
+  public static long laborOf(Payee recipient, Map<HouseholdId, Long> laborOfHousehold) {
     if (recipient == null) {
       throw new IllegalArgumentException("laborOf 的 recipient 不得为 null");
     }
@@ -153,16 +153,16 @@ public record SubsistenceObligation(
       throw new IllegalArgumentException("laborOf 的 laborOfHousehold 不得为 null（没有劳动请给空 map）");
     }
     return switch (recipient) {
-      case Recipient.ToHousehold toHousehold ->
+      case Payee.ToHousehold toHousehold ->
           laborOfHousehold.getOrDefault(toHousehold.household(), 0L);
       // ★ M5：旧档变体（S1 迁移前）没有可查的家户身份 ⇒ fail-closed（与结算侧 requireCohortRows 同向），不读成 0。
-      case Recipient.ToCohort toCohort ->
+      case Payee.ToCohort toCohort ->
           throw new IllegalStateException(
-              "未归一化的 Recipient.ToCohort 没有家户身份，无法查本周期劳动量（拒绝把算不出读成 0）：cohort="
+              "未归一化的 Payee.ToCohort 没有家户身份，无法查本周期劳动量（拒绝把算不出读成 0）：cohort="
                   + toCohort.cohort()
-                  + "。请先在 EconomyData 构造期把一对一视图归一为 Recipient.ToHousehold；视图有歧义时结算与读口都拒绝猜");
+                  + "。请先在 EconomyData 构造期把一对一视图归一为 Payee.ToHousehold；视图有歧义时结算与读口都拒绝猜");
       // ★ 本阶段没有 actor 劳动账（与 ProductionSettlement 的类注同款）：归零，不猜。
-      case Recipient.ToActor ignored -> 0L;
+      case Payee.ToActor ignored -> 0L;
     };
   }
 
@@ -179,7 +179,7 @@ public record SubsistenceObligation(
    * @return 该关系的全部实物给养义务（保序、不可变；没有 ⇒ 空表）
    */
   public static List<SubsistenceObligation> of(
-      ProductionRelation relation, Map<HouseholdId, Long> laborOfHousehold) {
+      ProductionRules relation, Map<HouseholdId, Long> laborOfHousehold) {
     if (relation == null) {
       throw new IllegalArgumentException("SubsistenceObligation.of 的 relation 不得为 null");
     }
@@ -261,12 +261,12 @@ public record SubsistenceObligation(
    * <p>★ <b>本阶段没有生产调用方</b>（经营者还没进市场）；M2.1/M2.2 的订单与保留算式落地时接这里（见类注）。
    *
    * @param relation 生产关系；不得为 null
-   * @param laborOfHousehold 本周期各家户的劳动量（见 {@link #of(ProductionRelation, Map)}）；不得为 null
+   * @param laborOfHousehold 本周期各家户的劳动量（见 {@link #of(ProductionRules, Map)}）；不得为 null
    * @param requestedRetention 策略想保留的量（逐商品；不得为 null，没有请求给空 map）——逐值不得为负
    * @return 逐商品的保留额（保序不可变；只在有承诺的商品上有键）
    */
   public static Map<CommodityId, Long> retentionOf(
-      ProductionRelation relation,
+      ProductionRules relation,
       Map<HouseholdId, Long> laborOfHousehold,
       Map<CommodityId, Long> requestedRetention) {
     if (requestedRetention == null) {

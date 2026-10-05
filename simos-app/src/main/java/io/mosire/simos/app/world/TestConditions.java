@@ -19,7 +19,7 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -534,14 +534,14 @@ public record TestConditions(
   // ── 资产份额确定性 id 助手（fixture 预测"拆分新建份额"的 id 用；与 EconomyPayloads 的序列口径同式）────
 
   /**
-   * ★★ <b>家户自有 OWNED 份额的确定性 id</b> = {@code AssetShare.idOf(industry, asset, household, household,
+   * ★★ <b>家户自有 OWNED 份额的确定性 id</b> = {@code OwnershipStake.idOf(industry, asset, household, household,
    * OWNED, sequence)}。{@code sequence} 是该 {@code entry} 内同 {@code (industry, asset, owner,
    * operator, kind)} 键的第几条（从 0 起）—— 拆分出来的新份额通常 {@code sequence=0}（目标家户此前没有同键份额）。
    */
   public static AssetShareId ownedShareIdForHousehold(
       IndustryId industry, AssetKind asset, HouseholdId household, long sequence) {
     ActorRef actor = HouseholdActors.of(household);
-    return AssetShare.idOf(industry, asset, actor, actor, AssetShare.RightKind.OWNED, sequence);
+    return OwnershipStake.idOf(industry, asset, actor, actor, OwnershipStake.RightKind.OWNED, sequence);
   }
 
   // ── JSON 解析（fail-closed、具名）──────────────────────────────────────────────────────

@@ -4,12 +4,12 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.ArrayList;
@@ -39,7 +39,7 @@ import java.util.function.LongSupplier;
  * （不抛，否则旧档/小夹具根本开不了市），但估计结果必须带上"哪一个商品缺价" —— <b>不得假装便宜</b>：读数是给竞争
  * 归因用的，缺价卖方在报表里要能被一眼认出来，而不是被当成"成本很低所以卖得快"。
  *
- * <p>★★ <b>地租/工具租</b>：从 {@link ProductionRelation#rules()} 里取 {@link RuleType#FIXED_IN_KIND_RENT} /
+ * <p>★★ <b>地租/工具租</b>：从 {@link ProductionRules#rules()} 里取 {@link RuleType#FIXED_IN_KIND_RENT} /
  * {@link RuleType#FIXED_MONEY_RENT}，按参考价折成同一刻度后除以 {@code capacityScaleOf(industry)}（满规模）。没有关系表 /
  * 没有租规则 ⇒ 0（不是"必有的成本"）。
  *
@@ -119,18 +119,18 @@ public final class ProducerCostBook {
    * 按计划公式算单位成本估计。{@code market} 提供参考价（{@code prices}）；{@code market == null} ⇒ 所有投入都缺价（逐项按
    * 0、标记缺失），不抛 —— 读口要能对"这一格没有市场表"如实给估计。
    *
-   * @param unit 生产单元（可用资产从 AssetShare 派生）；不得为 null
+   * @param unit 生产单元（可用资产从 OwnershipStake 派生）；不得为 null
    * @param industry 产业模板（配方）；不得为 null
    * @param assetShares 实物总账（产能规模的来源）；不得为 null
    * @param market 本格市场（参考价唯一真值源）；可为 null（= 没有价表）
    * @param relation 生产关系（固定租规则的来源）；可为 null
    */
   public static Estimate estimate(
-      ProductionUnit unit,
+      ProductionProcess unit,
       Industry industry,
-      Map<AssetShareId, AssetShare> assetShares,
+      Map<AssetShareId, OwnershipStake> assetShares,
       Market market,
-      ProductionRelation relation) {
+      ProductionRules relation) {
     if (unit == null) {
       throw new IllegalArgumentException("ProducerCostBook.estimate 的 unit 不得为 null");
     }
@@ -150,14 +150,14 @@ public final class ProducerCostBook {
 
   /**
    * ★★ <b>索引口径的单位成本估计</b>（R4-B.3a-perf）：产能规模从日结算入口的 {@link SettlementIndex} 查，不再逐 unit 扫 {@code
-   * AssetShare}。除“规模从哪里来”以外，公式、量纲、缺价读数与旧签名逐字相同。
+   * OwnershipStake}。除“规模从哪里来”以外，公式、量纲、缺价读数与旧签名逐字相同。
    */
   public static Estimate estimate(
-      ProductionUnit unit,
+      ProductionProcess unit,
       Industry industry,
       SettlementIndex index,
       Market market,
-      ProductionRelation relation) {
+      ProductionRules relation) {
     if (index == null) {
       throw new IllegalArgumentException("ProducerCostBook.estimate 的 index 不得为 null");
     }
@@ -171,10 +171,10 @@ public final class ProducerCostBook {
 
   /** 单位成本估计的唯一算式：{@code capacityScale} 作为延迟取值在**与旧实现相同的位置**调用，故异常/取整顺序都保持不变。 */
   private static Estimate estimate(
-      ProductionUnit unit,
+      ProductionProcess unit,
       Industry industry,
       Market market,
-      ProductionRelation relation,
+      ProductionRules relation,
       LongSupplier capacityScale) {
     if (unit == null) {
       throw new IllegalArgumentException("ProducerCostBook.estimate 的 unit 不得为 null");
@@ -226,7 +226,7 @@ public final class ProducerCostBook {
    * <p>★ 只读规则类型 + {@code fixedAmount}；不解释规则公式（那是 {@code ProductionSettlement} 的职责）。
    */
   public static long assetRentPerUnit(
-      Industry industry, Market market, ProductionRelation relation, long capacityScale) {
+      Industry industry, Market market, ProductionRules relation, long capacityScale) {
     if (relation == null || relation.rules().isEmpty()) {
       return DEFAULT_ASSET_RENT_PER_UNIT;
     }

@@ -13,8 +13,8 @@ import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OperatorCondition;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -82,23 +82,23 @@ final class LaborQueueSettlement {
     Objects.requireNonNull(composition, "composition");
     Objects.requireNonNull(entryTrialUnits, "entryTrialUnits");
     LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments = session.sheet().laborCommitments();
-    LinkedHashMap<ProductionUnitId, ProductionUnit> units = session.sheet().units();
+    LinkedHashMap<ProductionUnitId, ProductionProcess> units = session.sheet().units();
     LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies = session.sheet().householdEconomies();
     Map<IndustryId, Industry> industryTemplates = session.sheet().industries();
     LinkedHashMap<HexCoord, Market> markets = session.sheet().markets();
     Map<ProductionUnitId, OperatorCondition> conditions = session.sheet().operatorConditions();
-    LinkedHashMap<ProductionOrganizationId, ProductionOrganization> organizations =
+    LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises =
         session.sheet().productionOrganizations();
 
     // ── 组织 → unit（mode 读数的来源；旧 unit 没有组织 ⇒ Optional.empty）────────────────────
-    Map<ProductionUnitId, ProductionOrganization> organizationByUnit = new LinkedHashMap<>();
-    for (ProductionOrganization organization : organizations.values()) {
-      if (organization.unitId().isEmpty()) {
+    Map<ProductionUnitId, ProductionEnterprise> enterpriseByProcess = new LinkedHashMap<>();
+    for (ProductionEnterprise enterprise : enterprises.values()) {
+      if (enterprise.unitId().isEmpty()) {
         continue;
       }
-      ProductionUnitId unitId = organization.unitId().get();
+      ProductionUnitId unitId = enterprise.unitId().get();
       if (units.containsKey(unitId)) {
-        organizationByUnit.putIfAbsent(unitId, organization);
+        enterpriseByProcess.putIfAbsent(unitId, enterprise);
       }
     }
 
@@ -117,21 +117,21 @@ final class LaborQueueSettlement {
     // ── 候选 unit 按家户归集 ─────────────────────────────────────────────────────────────
     List<HouseholdId> orderedHouseholds = new ArrayList<>(householdEconomies.keySet());
     orderedHouseholds.sort(Comparator.comparing(HouseholdId::value));
-    Map<HouseholdId, List<ProductionUnit>> candidatesByHousehold = new LinkedHashMap<>();
+    Map<HouseholdId, List<ProductionProcess>> candidatesByHousehold = new LinkedHashMap<>();
     for (HouseholdId household : orderedHouseholds) {
       candidatesByHousehold.put(household, new ArrayList<>());
     }
-    for (ProductionUnit unit : units.values()) {
+    for (ProductionProcess unit : units.values()) {
       for (HouseholdId household :
           candidateHouseholdsOf(
-              unit, householdEconomies, organizationByUnit, allocationHouseholdsByActivity, index)) {
-        List<ProductionUnit> list = candidatesByHousehold.get(household);
+              unit, householdEconomies, enterpriseByProcess, allocationHouseholdsByActivity, index)) {
+        List<ProductionProcess> list = candidatesByHousehold.get(household);
         if (list != null && !list.contains(unit)) {
           list.add(unit);
         }
       }
     }
-    for (List<ProductionUnit> list : candidatesByHousehold.values()) {
+    for (List<ProductionProcess> list : candidatesByHousehold.values()) {
       list.sort(Comparator.comparing(candidate -> candidate.id().value()));
     }
 
@@ -139,7 +139,7 @@ final class LaborQueueSettlement {
     List<HouseholdWork> works = new ArrayList<>();
     for (HouseholdId household : orderedHouseholds) {
       HouseholdEconomy householdEconomy = householdEconomies.get(household);
-      List<ProductionUnit> candidates = candidatesByHousehold.getOrDefault(household, List.of());
+      List<ProductionProcess> candidates = candidatesByHousehold.getOrDefault(household, List.of());
       if (candidates.isEmpty()) {
         continue; // 没有可参与的生产活动：不动它的任何既有配额（自由家户劳动/纯消费户）
       }
@@ -155,23 +155,23 @@ final class LaborQueueSettlement {
         }
         continue; // 没有可挂批次 ⇒ 不猜、不重排（既有配额原样保留；预算不变量不动）
       }
-      Map<ProductionUnitId, ProductionUnit> candidateUnitsById = new LinkedHashMap<>();
-      for (ProductionUnit unit : candidates) {
+      Map<ProductionUnitId, ProductionProcess> candidateUnitsById = new LinkedHashMap<>();
+      for (ProductionProcess unit : candidates) {
         candidateUnitsById.put(unit.id(), unit);
       }
       Market market = marketOf(householdEconomy, candidates, markets);
       List<LaborQueueBook.Offer> offers = new ArrayList<>();
       Set<ProductionUnitId> queuedUnits = new LinkedHashSet<>();
-      for (ProductionUnit unit : candidates) {
+      for (ProductionProcess unit : candidates) {
         if (entryTrialUnits.contains(unit.id())
-            && !unit.modeKey().startsWith(EconomyOrganizationSettlement.MODE_KEY_PREFIX)) {
+            && !unit.modeKey().startsWith(EconomyEnterpriseSettlement.MODE_KEY_PREFIX)) {
           continue; // ★ R4-E2b 试产 unit：本日保留试产配额（不放进队列 ⇒ 被算进 preserved）
         }
         Industry industry = industryTemplates.get(unit.industry());
         if (industry == null) {
           continue; // 坏状态：不静默删配额（候选里没有 offer ⇒ 被算进 preserved）
         }
-        Optional<ProductionModeId> modeId = modeIdOf(unit, organizationByUnit);
+        Optional<ProductionModeId> modeId = modeIdOf(unit, enterpriseByProcess);
         String rankModeKey = modeId.map(ProductionModeId::value).orElse(unit.modeKey());
         LaborQueueBook.Offer offer =
             LaborQueueBook.offer(
@@ -300,8 +300,8 @@ final class LaborQueueSettlement {
       applyPlan(laborCommitments, work.householdLaborCommitments(), plan, work.lot(), work.candidateUnitsById());
       plans.add(plan);
 
-      if (EconomyLog.organization().isDebugEnabled()) {
-        EconomyLog.organization()
+      if (EconomyLog.enterprise().isDebugEnabled()) {
+        EconomyLog.enterprise()
             .debug("event=LABOR_QUEUE_PLAN day={} {}", day, LaborQueueBook.describe(plan));
       }
       if (EconomyLog.trace().isTraceEnabled()) {
@@ -341,7 +341,7 @@ final class LaborQueueSettlement {
       long budget,
       long preserved,
       PeopleLotId lot,
-      Map<ProductionUnitId, ProductionUnit> candidateUnitsById,
+      Map<ProductionUnitId, ProductionProcess> candidateUnitsById,
       List<HouseholdLaborCommitment> householdLaborCommitments,
       LaborQueueBook.Plan desired) {
 
@@ -363,9 +363,9 @@ final class LaborQueueSettlement {
 
   /** 该 unit 归哪些家户（operator、组织的 organizer/laborSources、既有配额的 household）——稳定去重。 */
   private static Set<HouseholdId> candidateHouseholdsOf(
-      ProductionUnit unit,
+      ProductionProcess unit,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      Map<ProductionUnitId, ProductionOrganization> organizationByUnit,
+      Map<ProductionUnitId, ProductionEnterprise> enterpriseByProcess,
       Map<String, Set<HouseholdId>> allocationHouseholdsByActivity,
       SettlementIndex index) {
     Set<HouseholdId> households = new LinkedHashSet<>();
@@ -375,13 +375,13 @@ final class LaborQueueSettlement {
         households.add(operatorHousehold);
       }
     }
-    ProductionOrganization organization = organizationByUnit.get(unit.id());
-    if (organization != null) {
-      HouseholdId organizerHousehold = index.householdByActor().get(organization.organizer());
+    ProductionEnterprise enterprise = enterpriseByProcess.get(unit.id());
+    if (enterprise != null) {
+      HouseholdId organizerHousehold = index.householdByActor().get(enterprise.organizer());
       if (organizerHousehold != null && householdEconomies.containsKey(organizerHousehold)) {
         households.add(organizerHousehold);
       }
-      for (HouseholdId laborSource : organization.laborSources()) {
+      for (HouseholdId laborSource : enterprise.laborSources()) {
         if (householdEconomies.containsKey(laborSource)) {
           households.add(laborSource);
         }
@@ -398,19 +398,19 @@ final class LaborQueueSettlement {
 
   /** 该 unit 的组织 mode；没有组织 ⇒ 空（旧 unit 的并列键退回 {@code modeKey}）。 */
   private static Optional<ProductionModeId> modeIdOf(
-      ProductionUnit unit, Map<ProductionUnitId, ProductionOrganization> organizationByUnit) {
-    ProductionOrganization organization = organizationByUnit.get(unit.id());
-    return organization == null ? Optional.empty() : Optional.of(organization.modeId());
+      ProductionProcess unit, Map<ProductionUnitId, ProductionEnterprise> enterpriseByProcess) {
+    ProductionEnterprise enterprise = enterpriseByProcess.get(unit.id());
+    return enterprise == null ? Optional.empty() : Optional.of(enterprise.modeId());
   }
 
   /** 居住格的价表（没有 ⇒ 该 unit 所在格的价表；都没有 ⇒ null = 无价，排队读数按 0 估值并具名）。 */
   private static Market marketOf(
-      HouseholdEconomy householdEconomy, List<ProductionUnit> candidates, Map<HexCoord, Market> markets) {
+      HouseholdEconomy householdEconomy, List<ProductionProcess> candidates, Map<HexCoord, Market> markets) {
     Market market = markets.get(householdEconomy.view().hex());
     if (market != null) {
       return market;
     }
-    for (ProductionUnit unit : candidates) {
+    for (ProductionProcess unit : candidates) {
       Optional<HexCoord> hex = hexOf(unit);
       if (hex.isPresent() && markets.get(hex.get()) != null) {
         return markets.get(hex.get());
@@ -419,7 +419,7 @@ final class LaborQueueSettlement {
     return null;
   }
 
-  private static Optional<HexCoord> hexOf(ProductionUnit unit) {
+  private static Optional<HexCoord> hexOf(ProductionProcess unit) {
     return IndustryHexKeys.hexKeyOf(unit.industry()).map(HexCoord::parse);
   }
 
@@ -463,7 +463,7 @@ final class LaborQueueSettlement {
       List<HouseholdLaborCommitment> householdLaborCommitments,
       LaborQueueBook.Plan plan,
       PeopleLotId lot,
-      Map<ProductionUnitId, ProductionUnit> candidateUnitsById) {
+      Map<ProductionUnitId, ProductionProcess> candidateUnitsById) {
     Set<ProductionUnitId> queuedUnits = new LinkedHashSet<>();
     for (LaborQueueBook.Decision decision : plan.decisions()) {
       queuedUnits.add(decision.offer().unitId());
@@ -486,7 +486,7 @@ final class LaborQueueSettlement {
         laborCommitments.put(template.id(), withLaborMilli(template, decision.grantedLaborMilli()));
         continue;
       }
-      ProductionUnit unit = candidateUnitsById.get(unitId);
+      ProductionProcess unit = candidateUnitsById.get(unitId);
       if (unit == null) {
         throw new IllegalStateException(
             "排队结果指向一个不在候选表里的 unit（内部不一致）：" + unitId.value());

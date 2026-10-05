@@ -7,9 +7,9 @@
  * <p>★★ **S1 阶段 4+5 起，本口径放宽一格**（裁定 E10）：本模块现在也放**关系契约的数据记录**—— {@link
  * io.mosire.simos.economy.api.relation.RuleType} / {@link
  * io.mosire.simos.economy.api.relation.Pool} / {@link io.mosire.simos.economy.api.relation.Weight}
- * / {@link io.mosire.simos.economy.api.relation.Recipient} / {@link
+ * / {@link io.mosire.simos.economy.api.relation.Payee} / {@link
  * io.mosire.simos.economy.api.relation.CompensationRule} / {@link
- * io.mosire.simos.economy.api.relation.ProductionRelation} 与 {@link
+ * io.mosire.simos.economy.api.relation.ProductionRules} 与 {@link
  * io.mosire.simos.economy.api.cohort.CohortKey}。★ 它们**不是 ID**，而是"一次生产如何在经营者 / 劳动者 /
  * 资产所有者之间结算"的**形状**；★★ **H2（裁定 D2-A/K4）起还放转移原语**（{@link
  * io.mosire.simos.economy.api.transfer.Transfer} 与 {@link

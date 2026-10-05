@@ -14,8 +14,8 @@ import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
@@ -52,21 +52,21 @@ import java.util.Optional;
  * <p>★★ <b>货币口径</b>：每个组织按它所在格市场的 {@link Market#numeraire()} 计价；该格没有市场时只累计运费/货款腿里
  * <b>出现的币种</b>（混合币种不求和，取份额最大的？不 —— 本实现取 <b>规范串最小的币种</b>，确定性；缺口写入报告）。
  */
-public final class OrganizationProfitBook {
+public final class EnterpriseProfitBook {
 
-  private OrganizationProfitBook() {}
+  private EnterpriseProfitBook() {}
 
   /**
    * ★★ <b>单位劳动净收益的高精度比例尺</b>：{@link Book#netPerLaborScaled} 返回
    * {@code floor(Σnet × PER_LABOR_SCALE ÷ Σlabor)}，即百万分之一单位的单位劳动净收益。
    *
    * <p>旧读数 {@code net / max(1, labor)} 在劳动很大时会把真实利润比率整数截断为 0；本常量是修复口径，
-   * 不改变逐组织读数 {@link OrganizationProfit} 的既有字段与构造期守卫。
+   * 不改变逐组织读数 {@link EnterpriseProfit} 的既有字段与构造期守卫。
    */
   public static final long PER_LABOR_SCALE = 1_000_000L;
 
   /** 一个生产组织（= 一个 mode/hex/家户的生产身份）的本周期真实利润读数。 */
-  public record OrganizationProfit(
+  public record EnterpriseProfit(
       ProductionOrganizationId organizationId,
       ProductionModeId modeId,
       Optional<ProductionUnitId> unitId,
@@ -79,7 +79,7 @@ public final class OrganizationProfitBook {
       long laborMilli,
       long netPerLaborMilli) {
 
-    public OrganizationProfit {
+    public EnterpriseProfit {
       Objects.requireNonNull(organizationId, "organizationId");
       Objects.requireNonNull(modeId, "modeId");
       Objects.requireNonNull(unitId, "unitId");
@@ -87,7 +87,7 @@ public final class OrganizationProfitBook {
       Objects.requireNonNull(hex, "hex");
       if (revenueMilli < 0L || costPaidMilli < 0L || arrearsMilli < 0L) {
         throw new IllegalArgumentException(
-            "OrganizationProfit 的 revenue/costPaid/arrears 不得为负: "
+            "EnterpriseProfit 的 revenue/costPaid/arrears 不得为负: "
                 + revenueMilli
                 + "/"
                 + costPaidMilli
@@ -95,12 +95,12 @@ public final class OrganizationProfitBook {
                 + arrearsMilli);
       }
       if (laborMilli < 0L) {
-        throw new IllegalArgumentException("OrganizationProfit.laborMilli 不得为负: " + laborMilli);
+        throw new IllegalArgumentException("EnterpriseProfit.laborMilli 不得为负: " + laborMilli);
       }
       long expectedNet = revenueMilli - costPaidMilli;
       if (netMilli != expectedNet) {
         throw new IllegalArgumentException(
-            "OrganizationProfit.netMilli 必须逐值等于 revenue − costPaid: "
+            "EnterpriseProfit.netMilli 必须逐值等于 revenue − costPaid: "
                 + netMilli
                 + " != "
                 + expectedNet);
@@ -108,7 +108,7 @@ public final class OrganizationProfitBook {
       long expectedPerLabor = netMilli / Math.max(1L, laborMilli);
       if (netPerLaborMilli != expectedPerLabor) {
         throw new IllegalArgumentException(
-            "OrganizationProfit.netPerLaborMilli 必须逐值等于 net ÷ max(1, labor): "
+            "EnterpriseProfit.netPerLaborMilli 必须逐值等于 net ÷ max(1, labor): "
                 + netPerLaborMilli
                 + " != "
                 + expectedPerLabor);
@@ -137,7 +137,7 @@ public final class OrganizationProfitBook {
 
   /** 汇总结果（不可变；同输入同态恒逐值相同）。 */
   public record Book(
-      Map<ProductionOrganizationId, OrganizationProfit> byOrganization,
+      Map<ProductionOrganizationId, EnterpriseProfit> byOrganization,
       Map<ModeHex, Long> netByModeHex,
       Map<ModeHex, Long> netPerLaborByModeHex,
       Map<ModeHex, Long> laborByModeHex) {
@@ -159,7 +159,7 @@ public final class OrganizationProfitBook {
      * 让旧的逐值可重建；新的生产路径（{@link #collect}）恒走四参构造，传入真实本期 Σnet。
      */
     public Book(
-        Map<ProductionOrganizationId, OrganizationProfit> byOrganization,
+        Map<ProductionOrganizationId, EnterpriseProfit> byOrganization,
         Map<ModeHex, Long> netPerLaborByModeHex,
         Map<ModeHex, Long> laborByModeHex) {
       this(
@@ -409,14 +409,14 @@ public final class OrganizationProfitBook {
    */
   public static Book collect(
       CycleAccumulator cycle,
-      Map<ProductionOrganizationId, ProductionOrganization> organizations,
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<IndustryId, Industry> industries,
       Map<HexCoord, Market> markets,
       AccountSession accounts) {
     Objects.requireNonNull(cycle, "cycle");
-    Objects.requireNonNull(organizations, "organizations");
+    Objects.requireNonNull(enterprises, "organizations");
     Objects.requireNonNull(units, "units");
     Objects.requireNonNull(householdEconomies, "rows");
     Objects.requireNonNull(industries, "industries");
@@ -428,22 +428,22 @@ public final class OrganizationProfitBook {
       householdByActor.put(io.mosire.simos.economy.api.cohort.HouseholdActors.of(household), household);
     }
     // 组织按 household 归集：生产运行时 organizer = 该家户 actor（E2 的唯一拼写点）。
-    Map<HouseholdId, ProductionOrganization> orgByHousehold = new LinkedHashMap<>();
-    Map<ProductionUnitId, ProductionOrganization> orgByUnit = new LinkedHashMap<>();
-    List<ProductionOrganizationId> orderedOrgIds = new ArrayList<>(organizations.keySet());
+    Map<HouseholdId, ProductionEnterprise> orgByHousehold = new LinkedHashMap<>();
+    Map<ProductionUnitId, ProductionEnterprise> orgByUnit = new LinkedHashMap<>();
+    List<ProductionOrganizationId> orderedOrgIds = new ArrayList<>(enterprises.keySet());
     orderedOrgIds.sort(Comparator.comparing(ProductionOrganizationId::value));
     for (ProductionOrganizationId orgId : orderedOrgIds) {
-      ProductionOrganization organization = organizations.get(orgId);
-      if (organization == null) {
+      ProductionEnterprise enterprise = enterprises.get(orgId);
+      if (enterprise == null) {
         continue;
       }
-      HouseholdId household = householdOfActor(organization.organizer(), householdEconomies, householdByActor);
+      HouseholdId household = householdOfActor(enterprise.organizer(), householdEconomies, householdByActor);
       if (household != null) {
-        orgByHousehold.putIfAbsent(household, organization);
+        orgByHousehold.putIfAbsent(household, enterprise);
       }
-      organization
+      enterprise
           .unitId()
-          .ifPresent(unitId -> orgByUnit.putIfAbsent(unitId, organization));
+          .ifPresent(unitId -> orgByUnit.putIfAbsent(unitId, enterprise));
     }
 
     Map<ProductionOrganizationId, long[]> acc = new LinkedHashMap<>(); // [revenue, cost, arrears, labor]
@@ -454,21 +454,21 @@ public final class OrganizationProfitBook {
     Map<ProductionOrganizationId, HexCoord> hexOfOrg = new LinkedHashMap<>();
     Map<ProductionOrganizationId, ProductionUnitId> unitOfOrg = new LinkedHashMap<>();
     for (ProductionOrganizationId orgId : orderedOrgIds) {
-      ProductionOrganization organization = organizations.get(orgId);
-      if (organization == null) {
+      ProductionEnterprise enterprise = enterprises.get(orgId);
+      if (enterprise == null) {
         continue;
       }
-      HouseholdId household = householdOfActor(organization.organizer(), householdEconomies, householdByActor);
+      HouseholdId household = householdOfActor(enterprise.organizer(), householdEconomies, householdByActor);
       if (household == null) {
         continue;
       }
-      HexCoord hex = hexOfOrganization(organization, units, householdEconomies, household);
+      HexCoord hex = hexOfEnterprise(enterprise, units, householdEconomies, household);
       if (hex == null) {
         continue;
       }
       householdOfOrg.put(orgId, household);
       hexOfOrg.put(orgId, hex);
-      organization.unitId().ifPresent(unitId -> unitOfOrg.put(orgId, unitId));
+      enterprise.unitId().ifPresent(unitId -> unitOfOrg.put(orgId, unitId));
     }
 
     // ── 收入/成本：逐日转移腿 + 实物投入/损耗 + 欠款读数 ─────────────────────────────
@@ -476,8 +476,8 @@ public final class OrganizationProfitBook {
       for (Transfer transfer : ledger.transfers()) {
         HouseholdId fromHousehold = householdByActor.get(transfer.from());
         HouseholdId toHousehold = householdByActor.get(transfer.to());
-        ProductionOrganization fromOrg = fromHousehold == null ? null : orgByHousehold.get(fromHousehold);
-        ProductionOrganization toOrg = toHousehold == null ? null : orgByHousehold.get(toHousehold);
+        ProductionEnterprise fromOrg = fromHousehold == null ? null : orgByHousehold.get(fromHousehold);
+        ProductionEnterprise toOrg = toHousehold == null ? null : orgByHousehold.get(toHousehold);
         if (transfer.reason() == TransferReason.MARKET_TRADE
             || transfer.reason() == TransferReason.CARRIER_FEE) {
           if (toOrg != null) {
@@ -501,7 +501,7 @@ public final class OrganizationProfitBook {
           continue;
         }
         HouseholdId payerHousehold = householdByActor.get(settlement.payer());
-        ProductionOrganization payerOrg =
+        ProductionEnterprise payerOrg =
             payerHousehold == null ? null : orgByHousehold.get(payerHousehold);
         if (payerOrg == null) {
           continue;
@@ -515,11 +515,11 @@ public final class OrganizationProfitBook {
     }
     // ── 关账 unit 的劳动与投入（unit 周期状态被清零前抓取；投入按 ref 价与 ledger.inputs 同口径）────
     for (CloseFact fact : cycle.closeFacts()) {
-      ProductionOrganization organization = orgByUnit.get(fact.unitId());
-      if (organization == null) {
+      ProductionEnterprise enterprise = orgByUnit.get(fact.unitId());
+      if (enterprise == null) {
         continue;
       }
-      long[] row = acc.get(organization.id());
+      long[] row = acc.get(enterprise.id());
       if (row == null) {
         continue;
       }
@@ -546,12 +546,12 @@ public final class OrganizationProfitBook {
     }
 
     // ── 组装逐组织读数 + (mode, hex) 汇总 ──────────────────────────────────────────
-    LinkedHashMap<ProductionOrganizationId, OrganizationProfit> byOrganization =
+    LinkedHashMap<ProductionOrganizationId, EnterpriseProfit> byOrganization =
         new LinkedHashMap<>();
     LinkedHashMap<ModeHex, long[]> byModeHex = new LinkedHashMap<>(); // [net, labor]
     for (ProductionOrganizationId orgId : orderedOrgIds) {
-      ProductionOrganization organization = organizations.get(orgId);
-      if (organization == null || !householdOfOrg.containsKey(orgId)) {
+      ProductionEnterprise enterprise = enterprises.get(orgId);
+      if (enterprise == null || !householdOfOrg.containsKey(orgId)) {
         continue;
       }
       long[] row = acc.get(orgId);
@@ -561,11 +561,11 @@ public final class OrganizationProfitBook {
       long labor = row[3];
       long net = revenue - cost;
       long perLabor = net / Math.max(1L, labor);
-      OrganizationProfit profit =
-          new OrganizationProfit(
+      EnterpriseProfit profit =
+          new EnterpriseProfit(
               orgId,
-              organization.modeId(),
-              organization.unitId(),
+              enterprise.modeId(),
+              enterprise.unitId(),
               householdOfOrg.get(orgId),
               hexOfOrg.get(orgId),
               revenue,
@@ -575,7 +575,7 @@ public final class OrganizationProfitBook {
               labor,
               perLabor);
       byOrganization.put(orgId, profit);
-      ModeHex key = new ModeHex(organization.modeId(), hexOfOrg.get(orgId));
+      ModeHex key = new ModeHex(enterprise.modeId(), hexOfOrg.get(orgId));
       long[] aggregate = byModeHex.computeIfAbsent(key, ignored -> new long[2]);
       aggregate[0] = Math.addExact(aggregate[0], net);
       aggregate[1] = Math.addExact(aggregate[1], labor);
@@ -594,13 +594,13 @@ public final class OrganizationProfitBook {
   }
 
   /** 组织缺 unit/行时回退到它经营主体的居住格（hex 是收益读数的维度，不能为空）。 */
-  private static HexCoord hexOfOrganization(
-      ProductionOrganization organization,
-      Map<ProductionUnitId, ProductionUnit> units,
+  private static HexCoord hexOfEnterprise(
+      ProductionEnterprise enterprise,
+      Map<ProductionUnitId, ProductionProcess> units,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       HouseholdId household) {
-    if (organization.unitId().isPresent()) {
-      ProductionUnit unit = units.get(organization.unitId().get());
+    if (enterprise.unitId().isPresent()) {
+      ProductionProcess unit = units.get(enterprise.unitId().get());
       if (unit != null) {
         Optional<String> hexKey = IndustryHexKeys.hexKeyOf(unit.industry());
         if (hexKey.isPresent()) {
@@ -704,8 +704,8 @@ public final class OrganizationProfitBook {
       Map<ProductionOrganizationId, long[]> acc,
       IndustryId industry,
       Map<CommodityId, Long> goods,
-      Map<ProductionUnitId, ProductionUnit> units,
-      Map<ProductionUnitId, ProductionOrganization> orgByUnit,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<ProductionUnitId, ProductionEnterprise> orgByUnit,
       Map<ProductionOrganizationId, HexCoord> hexOfOrg,
       Map<HexCoord, Market> markets,
       CycleAccumulator cycle) {
@@ -713,7 +713,7 @@ public final class OrganizationProfitBook {
       return;
     }
     List<ProductionUnitId> industryUnits = new ArrayList<>();
-    for (Map.Entry<ProductionUnitId, ProductionUnit> entry : units.entrySet()) {
+    for (Map.Entry<ProductionUnitId, ProductionProcess> entry : units.entrySet()) {
       if (entry.getValue().industry().equals(industry) && orgByUnit.containsKey(entry.getKey())) {
         industryUnits.add(entry.getKey());
       }
@@ -741,7 +741,7 @@ public final class OrganizationProfitBook {
         if (shares[i] <= 0L) {
           continue;
         }
-        ProductionOrganization org = orgByUnit.get(industryUnits.get(i));
+        ProductionEnterprise org = orgByUnit.get(industryUnits.get(i));
         long[] row = acc.get(org.id());
         if (row == null || !hexOfOrg.containsKey(org.id())) {
           continue;

@@ -3,7 +3,7 @@ package io.mosire.simos.economy.api.id;
 import io.mosire.simos.actor.api.actor.ActorRef;
 
 /**
- * 生产单元 ID（设计稿 §4.2；R3B.2 起真正被 {@code ProductionUnit} 使用）：一次单位生产的稳定身份，归 {@code production} 切片；不复用军事
+ * 生产单元 ID（设计稿 §4.2；R3B.2 起真正被 {@code ProductionProcess} 使用）：一次单位生产的稳定身份，归 {@code production} 切片；不复用军事
  * {@code Unit} 的 ID。
  *
  * <p>裸值 {@code toString()} + {@code static parse} 三件套（铁律 1）；不自增、不用随机 UUID。★ {@code parse} 是
@@ -40,7 +40,7 @@ public record ProductionUnitId(String value) {
    * <p>★ <b>为什么在契约层</b>：{@code EconomyPayloads}（播种）与 {@code EconomyCodec}（旧档 reshape）都要生成默认
    * unit，两处各拼一遍必然漂开 ⇒ 同一 {@code (industry, operator)} 会得到两个"身份"。
    *
-   * <p>★ <b>不含 {@code "."}</b>：地址 {@code economy:<mapId>:productionUnit.<id>} 会被 {@code
+   * <p>★ <b>不含 {@code "."}</b>：地址 {@code economy:<mapId>:productionProcess.<id>} 会被 {@code
    * AddressParser} 在第一个点处截断；含点 ⇒ 当场抛，不静默造一个解析不到的地址。
    *
    * @param industry 技术模板身份；不得为 null（它的 id 里已带格键，unit 的地点由它回答）
@@ -55,7 +55,7 @@ public record ProductionUnitId(String value) {
     }
     String value = "unit-" + industry.value() + "-" + operator.kind() + "-" + operator.id();
     if (value.indexOf('.') >= 0) {
-      throw new IllegalArgumentException("ProductionUnit id 不得含 '.'（地址会被第一个点截断）: " + value);
+      throw new IllegalArgumentException("ProductionProcess id 不得含 '.'（地址会被第一个点截断）: " + value);
     }
     return new ProductionUnitId(value);
   }

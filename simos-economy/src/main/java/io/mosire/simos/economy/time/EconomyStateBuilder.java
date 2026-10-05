@@ -19,8 +19,8 @@ import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.api.relation.ProductionRules;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
@@ -36,8 +36,8 @@ import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.Pledge;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -69,11 +69,11 @@ public final class EconomyStateBuilder {
   private LinkedHashMap<DebtContractId, DebtContract> debtContracts;
   private LinkedHashMap<PledgeId, Pledge> pledges;
   private LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments;
-  private LinkedHashMap<AssetShareId, AssetShare> assetShares;
+  private LinkedHashMap<AssetShareId, OwnershipStake> assetShares;
   private LinkedHashMap<ProductionUnitId, OperatorCondition> operatorConditions;
-  private LinkedHashMap<ProductionUnitId, ProductionUnit> units;
-  private LinkedHashMap<ProductionUnitId, ProductionRelation> relations;
-  private LinkedHashMap<ProductionOrganizationId, ProductionOrganization> productionOrganizations;
+  private LinkedHashMap<ProductionUnitId, ProductionProcess> units;
+  private LinkedHashMap<ProductionUnitId, ProductionRules> relations;
+  private LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> productionOrganizations;
   private LinkedHashMap<HexCoord, Market> markets;
   private LinkedHashMap<ShipmentId, ShipmentBatch> shipments;
   private LinkedHashMap<GovernmentId, Government> governments;
@@ -145,7 +145,7 @@ public final class EconomyStateBuilder {
   }
 
   /** 实物资产份额表工作副本（R3B.1）。 */
-  public LinkedHashMap<AssetShareId, AssetShare> assetShares() {
+  public LinkedHashMap<AssetShareId, OwnershipStake> assetShares() {
     if (assetShares == null) {
       assetShares = new LinkedHashMap<>(base.assetShares());
     }
@@ -161,7 +161,7 @@ public final class EconomyStateBuilder {
   }
 
   /** ★★ R3B.2 生产单元表工作副本（第 14 个组件；日结算推进进度/劳动/投入的唯一写点）。 */
-  public LinkedHashMap<ProductionUnitId, ProductionUnit> units() {
+  public LinkedHashMap<ProductionUnitId, ProductionProcess> units() {
     if (units == null) {
       units = new LinkedHashMap<>(base.units());
     }
@@ -172,7 +172,7 @@ public final class EconomyStateBuilder {
    * ★★ <b>R4-E2b：生产关系表工作副本</b>（第 8 个组件）—— E2b 的进入执行会为新建 unit 插入一条 relation； 未物化时由 {@link
    * #relationsOrBase()} 直接复用 base 的不可变表（空表基线不产生任何拷贝）。
    */
-  public LinkedHashMap<ProductionUnitId, ProductionRelation> relations() {
+  public LinkedHashMap<ProductionUnitId, ProductionRules> relations() {
     if (relations == null) {
       relations = new LinkedHashMap<>(base.relations());
     }
@@ -180,7 +180,7 @@ public final class EconomyStateBuilder {
   }
 
   /** ★ <b>relation 表的只读选择</b>：已物化工作副本则读它，否则读 base 的表 —— 日结算的每个读取点都走这里， 避免"空表也先拷一份"。 */
-  public Map<ProductionUnitId, ProductionRelation> relationsOrBase() {
+  public Map<ProductionUnitId, ProductionRules> relationsOrBase() {
     return relations == null ? base.relations() : relations;
   }
 
@@ -188,7 +188,7 @@ public final class EconomyStateBuilder {
    * ★★ <b>E2：生产组织表工作副本</b>（第 21 个组件）—— 自动组织阶段会 upsert 组织（ACTIVE/SHORTAGE）； 未物化时 {@link #build} 直接复用
    * base 的不可变表（旧的空表基线因此不产生任何拷贝）。
    */
-  public LinkedHashMap<ProductionOrganizationId, ProductionOrganization> productionOrganizations() {
+  public LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> productionOrganizations() {
     if (productionOrganizations == null) {
       productionOrganizations = new LinkedHashMap<>(base.productionOrganizations());
     }

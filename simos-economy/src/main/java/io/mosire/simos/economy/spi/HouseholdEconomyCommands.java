@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
-import io.mosire.simos.economy.migrate.ClassPositionResolver;
-import io.mosire.simos.economy.model.ClassPosition;
+import io.mosire.simos.economy.migrate.ProductionRoleResolver;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.HouseholdEconomy;
@@ -87,9 +87,9 @@ final class HouseholdEconomyCommands {
   }
 
   /** 位置必须已存在于 {@code classPositions}（引用完整性由命令边界给出可读拒绝；构造期守卫是第二道）。 */
-  static ClassPosition requirePosition(String command, EconomyData base, String positionText) {
+  static ProductionRole requirePosition(String command, EconomyData base, String positionText) {
     ClassPositionId id = ClassPositionId.parse(positionText);
-    ClassPosition position = base.classPositions().get(id);
+    ProductionRole position = base.classPositions().get(id);
     if (position == null) {
       throw new IllegalArgumentException(command + " 的阶层位置不存在: " + id.value());
     }
@@ -148,7 +148,7 @@ final class HouseholdEconomyCommands {
   }
 
   /**
-   * 该家户的 {@link HouseholdClassMembership}；没有就用 {@link ClassPositionResolver#resolveCurrent}（旧档 stratum 映射）
+   * 该家户的 {@link HouseholdClassMembership}；没有就用 {@link ProductionRoleResolver#resolveCurrent}（旧档 stratum 映射）
    * 播种一条"只参与当前位置"的归属。解析不出位置 ⇒ 具名拒绝（不伪造归属）。
    */
   static HouseholdClassMembership requireStandingOrSeed(
@@ -158,7 +158,7 @@ final class HouseholdEconomyCommands {
       return existingClassMembership;
     }
     ClassPositionId current =
-        ClassPositionResolver
+        ProductionRoleResolver
             .resolveCurrent(base, household)
             .orElseThrow(
                 () ->

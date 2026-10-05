@@ -105,13 +105,13 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
       case EconomyGmAdjustments.UPSERT_CLASS_STRUCTURE ->
           requireUpsertClassStructureShape(label, parameters);
       case EconomyGmAdjustments.UPSERT_CLASS_POSITION ->
-          requireUpsertClassPositionShape(label, parameters);
+          requireUpsertProductionRoleShape(label, parameters);
       case EconomyGmAdjustments.UPSERT_PRODUCTION_RELATION ->
           EconomyCommandPayloads.requireText(label, parameters, "activity");
       case EconomyGmAdjustments.UPSERT_ASSET_RULE ->
           requireUpsertAssetRuleShape(label, parameters);
       case EconomyGmAdjustments.UPSERT_PRODUCTION_ORGANIZATION ->
-          requireUpsertProductionOrganizationShape(label, parameters);
+          requireUpsertProductionEnterpriseShape(label, parameters);
       case EconomyGmAdjustments.UPSERT_CANDIDATE -> requireUpsertCandidateShape(label, parameters);
       default ->
           throw new IllegalArgumentException(
@@ -167,7 +167,7 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
   }
 
   /** {@code upsertClassPosition} 的形状：id/modeId 必填非空（三个结构维词表与 classStructureId 由 project 统一判）。 */
-  private static void requireUpsertClassPositionShape(String label, JsonNode parameters) {
+  private static void requireUpsertProductionRoleShape(String label, JsonNode parameters) {
     EconomyCommandPayloads.requireText(label, parameters, "id");
     EconomyCommandPayloads.requireText(label, parameters, "modeId");
     if (hasValue(parameters, "classStructureId")) {
@@ -197,7 +197,7 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
    * {@code upsertProductionOrganization} 的形状：modeId/classPositionId/organizer 必填（更新分支的 outputOwnership/
    * status 等可省略并沿用既有值，故这里不把它们当必填）；id/unitId 给了必须非空，outputOwnership/status 给了必须是正确类型。
    */
-  private static void requireUpsertProductionOrganizationShape(String label, JsonNode parameters) {
+  private static void requireUpsertProductionEnterpriseShape(String label, JsonNode parameters) {
     if (hasValue(parameters, "id")) {
       EconomyCommandPayloads.requireText(label, parameters, "id");
     }

@@ -19,7 +19,7 @@ import java.util.Set;
  *
  * <p>★★ <b>版本与 modeKey</b>：{@code (id, version)} 是版本键；{@link #modeKeyOf(CandidateId, int)} 是 {@code
  * id@version} 的**唯一拼写点**（不许在命令/结算/读口各处各拼一遍）。修订 = 同一个 id 登记新 version： 表中该 id 的行换成新版本，但<b>已存在的 {@code
- * ProductionUnit.modeKey} 一字不动</b> —— 运行中的旧 unit 不会悄悄改口径。
+ * ProductionProcess.modeKey} 一字不动</b> —— 运行中的旧 unit 不会悄悄改口径。
  *
  * <p>★★ <b>字段语义（本片只登记，不解释成算式）</b>：
  *
@@ -37,7 +37,7 @@ import java.util.Set;
  * </ul>
  *
  * <p>★ <b>不可变与保序</b>：三张表先拷进 {@code LinkedHashMap} 再包 {@code unmodifiableMap}（同 {@code
- * ProductionUnit} 的先例；绝不用 {@code Map.copyOf} —— 它的迭代序不是内容的纯函数）。
+ * ProductionProcess} 的先例；绝不用 {@code Map.copyOf} —— 它的迭代序不是内容的纯函数）。
  *
  * @param id 稳定身份；不得为 null
  * @param version 版本号；必须 ≥ 1
@@ -66,7 +66,7 @@ public record ProductionCandidate(
     long cycleDays,
     RegimeId regime,
     LaborSource laborSource,
-    Set<AssetShare.RightKind> acceptedRightKinds,
+    Set<OwnershipStake.RightKind> acceptedRightKinds,
     Optional<ActorRef> assetSource,
     String name) {
 
@@ -146,8 +146,8 @@ public record ProductionCandidate(
       assets.put(entry.getKey(), entry.getValue());
     }
     requiredAssets = Collections.unmodifiableMap(assets); // ★ 冻在赋值处
-    Set<AssetShare.RightKind> rights = new LinkedHashSet<>();
-    for (AssetShare.RightKind right : acceptedRightKinds) {
+    Set<OwnershipStake.RightKind> rights = new LinkedHashSet<>();
+    for (OwnershipStake.RightKind right : acceptedRightKinds) {
       if (right == null) {
         throw new IllegalArgumentException("ProductionCandidate.acceptedRightKinds 不得含 null");
       }

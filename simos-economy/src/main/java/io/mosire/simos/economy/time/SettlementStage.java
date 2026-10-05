@@ -16,7 +16,7 @@ package io.mosire.simos.economy.time;
  */
 public enum SettlementStage {
   /**
-   * ★★ <b>E2 自动生产组织</b>：按 mode + 阶层结构 + 可支配劳动 + 可用 {@code AssetShare} 建立/激活生产单元。
+   * ★★ <b>E2 自动生产组织</b>：按 mode + 阶层结构 + 可支配劳动 + 可用 {@code OwnershipStake} 建立/激活生产单元。
    *
    * <p>★ 它是<b>协调器单线程的前置阶段</b>（ordinal 排第一，实际执行在到货/现扣之前，见 {@code
    * EconomySettlement.settleOneDayInto}）： "哪个阶层的哪一批劳动/哪一份资产应当组成哪条生产活动"要看见全天的全局状态（跨 hex 的既有 unit

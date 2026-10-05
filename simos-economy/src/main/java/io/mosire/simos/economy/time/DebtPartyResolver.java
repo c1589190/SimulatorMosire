@@ -9,17 +9,17 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.relation.Recipient;
-import io.mosire.simos.economy.migrate.ClassPositionResolver;
+import io.mosire.simos.economy.api.relation.Payee;
+import io.mosire.simos.economy.migrate.ProductionRoleResolver;
 import io.mosire.simos.economy.migrate.LegacyClassStructure;
-import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassPosition.RelationToMeans;
-import io.mosire.simos.economy.model.ClassPosition.SurplusRole;
+import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRole.RelationToMeans;
+import io.mosire.simos.economy.model.ProductionRole.SurplusRole;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.ProductionOrganization;
+import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
@@ -45,7 +45,7 @@ import java.util.Optional;
  *       找"actor 出现的 unit"（operator / relation.operator / relation.residualOwner /
  *       relation.inputSupplier(ToActor) / 份额 owner / 份额 operator 六路命中均算）。命中且家户唯一 ⇒
  *       1000‰；命中多户时聚合主体继续走 ③；
- *   <li><b>organization</b>：聚合主体先用 E2 的 {@link ProductionOrganization}（{@code organizer == actor} 或
+ *   <li><b>enterprise</b>：聚合主体先用 E2 的 {@link ProductionEnterprise}（{@code organizer == actor} 或
  *       对应 unit 的 {@code operator == actor}）的 {@code laborSources} / 家户归属解析；
  *   <li><b>population-fallback</b>：ESTATE ⇒ 该 hex 上处于"所有者/剩余索取者"位置的家户（优先 {@code relationToMeans ==
  *       OWNER} 或 {@code surplusRole == SURPLUS_RECEIVER}；旧档无位置信息时回落 {@code legacy-landlord} /
@@ -182,7 +182,7 @@ final class DebtPartyResolver {
     }
   }
 
-  /** 解析一个 actor 端（payer 或 {@link Recipient.ToActor} 的受方）。 */
+  /** 解析一个 actor 端（payer 或 {@link Payee.ToActor} 的受方）。 */
   static Resolution resolveActor(
       EconomyData data,
       SettlementIndex index,
@@ -221,17 +221,17 @@ final class DebtPartyResolver {
     }
 
     boolean aggregateKind = isAggregateProductionActor(data, actor);
-    List<ProductionOrganization> organizations = index.organizationsOf(actor);
+    List<ProductionEnterprise> enterprises = index.enterprisesOf(actor);
 
     // ③ 聚合主体优先用 E2 生产组织登记的家户归属（organizer 或 unit.operator == actor）。
-    if (!organizations.isEmpty()) {
-      Resolution organization = resolveViaOrganizations(data, index, actor, organizations);
-      if (organization.isResolved()) {
-        return organization;
+    if (!enterprises.isEmpty()) {
+      Resolution enterprise = resolveViaEnterprises(data, index, actor, enterprises);
+      if (enterprise.isResolved()) {
+        return enterprise;
       }
       // 组织路解析不到（缺 laborSources / 人口为 0）⇒ 记原因后继续人口回退（ESTATE/WORKSHOP）。
       if (!aggregateKind) {
-        return Resolution.unresolved("organization-" + organization.reason());
+        return Resolution.unresolved("organization-" + enterprise.reason());
       }
     }
 
@@ -255,18 +255,18 @@ final class DebtPartyResolver {
     return Resolution.unresolved("actor-kind-not-supported:" + actor.kind());
   }
 
-  /** 解析一个 {@link Recipient} 端（payer 恒为 actor；creditor 可能是家户 / actor / 旧 cohort）。 */
-  static Resolution resolveRecipient(
+  /** 解析一个 {@link Payee} 端（payer 恒为 actor；creditor 可能是家户 / actor / 旧 cohort）。 */
+  static Resolution resolvePayee(
       EconomyData data,
       SettlementIndex index,
-      Recipient recipient,
+      Payee recipient,
       HexCoord hex,
       Optional<ProductionUnitId> activity) {
     Objects.requireNonNull(data, "data");
     Objects.requireNonNull(index, "index");
     Objects.requireNonNull(recipient, "recipient");
     return switch (recipient) {
-      case Recipient.ToHousehold toHousehold -> {
+      case Payee.ToHousehold toHousehold -> {
         HouseholdId household = toHousehold.household();
         if (!data.classes().containsKey(household)) {
           yield Resolution.unresolved("household-row-missing:" + household.value());
@@ -274,8 +274,8 @@ final class DebtPartyResolver {
         yield Resolution.resolved(
             List.of(new PartyShare(household, 1000L, SOURCE_DIRECT, "recipient-to-household")));
       }
-      case Recipient.ToActor toActor -> resolveActor(data, index, toActor.actor(), hex, activity);
-      case Recipient.ToCohort toCohort -> resolveCohort(data, toCohort.cohort());
+      case Payee.ToActor toActor -> resolveActor(data, index, toActor.actor(), hex, activity);
+      case Payee.ToCohort toCohort -> resolveCohort(data, toCohort.cohort());
     };
   }
 
@@ -350,33 +350,33 @@ final class DebtPartyResolver {
   // ── 组织路 / 人口路 / cohort 路 ─────────────────────────────────────────────────────
 
   /** E2 组织路：{@code laborSources} + 组织的家户归属受方。 */
-  private static Resolution resolveViaOrganizations(
+  private static Resolution resolveViaEnterprises(
       EconomyData data,
       SettlementIndex index,
       ActorRef actor,
-      List<ProductionOrganization> organizations) {
+      List<ProductionEnterprise> enterprises) {
     LinkedHashSet<HouseholdId> households = new LinkedHashSet<>();
-    for (ProductionOrganization organization : organizations) {
-      households.addAll(organization.laborSources());
+    for (ProductionEnterprise enterprise : enterprises) {
+      households.addAll(enterprise.laborSources());
       // 组织者如果是家户（例如 unit.operator == actor 而 organizer 是家户），也把组织者算进来。
-      HouseholdId organizerHousehold = index.householdByActor().get(organization.organizer());
+      HouseholdId organizerHousehold = index.householdByActor().get(enterprise.organizer());
       if (organizerHousehold != null) {
         households.add(organizerHousehold);
       }
-      addRecipientHousehold(organization.outputOwnership(), households);
-      for (Recipient source : organization.inputSources()) {
-        addRecipientHousehold(source, households);
+      addPayeeHousehold(enterprise.outputOwnership(), households);
+      for (Payee source : enterprise.inputSources()) {
+        addPayeeHousehold(source, households);
       }
     }
     if (households.isEmpty()) {
-      return Resolution.unresolved("no-household-sources:" + organizations.size());
+      return Resolution.unresolved("no-household-sources:" + enterprises.size());
     }
     Resolution resolution =
         splitByPopulation(
             data,
             households,
             SOURCE_ORGANIZATION,
-            "organization-labor-or-ownership:" + organizations.size());
+            "organization-labor-or-ownership:" + enterprises.size());
     if (resolution.isResolved()) {
       return resolution;
     }
@@ -400,8 +400,8 @@ final class DebtPartyResolver {
       if (!householdEconomy.view().hex().equals(targetHex)) {
         continue;
       }
-      Optional<ClassPositionId> positionId = ClassPositionResolver.resolveCurrent(data, householdEconomy.id());
-      ClassPosition position = positionId.map(data.classPositions()::get).orElse(null);
+      Optional<ClassPositionId> positionId = ProductionRoleResolver.resolveCurrent(data, householdEconomy.id());
+      ProductionRole position = positionId.map(data.classPositions()::get).orElse(null);
       boolean positionMatch = false;
       boolean legacyMatch = false;
       if (isFeudalIndustry(data, actor)) {
@@ -552,13 +552,13 @@ final class DebtPartyResolver {
         return parsed;
       }
     }
-    for (ProductionOrganization organization : index.organizationsOf(actor)) {
-      HexCoord fromId = parseHexKey(organization.id().hexKey().orElse(null));
+    for (ProductionEnterprise enterprise : index.enterprisesOf(actor)) {
+      HexCoord fromId = parseHexKey(enterprise.id().hexKey().orElse(null));
       if (fromId != null) {
         return fromId;
       }
-      if (organization.unitId().isPresent()) {
-        HexCoord fromUnit = parseHexKey(index.hexOf(organization.unitId().get()));
+      if (enterprise.unitId().isPresent()) {
+        HexCoord fromUnit = parseHexKey(index.hexOf(enterprise.unitId().get()));
         if (fromUnit != null) {
           return fromUnit;
         }
@@ -584,9 +584,9 @@ final class DebtPartyResolver {
     }
   }
 
-  private static void addRecipientHousehold(
-      Recipient recipient, LinkedHashSet<HouseholdId> households) {
-    if (recipient instanceof Recipient.ToHousehold toHousehold) {
+  private static void addPayeeHousehold(
+      Payee recipient, LinkedHashSet<HouseholdId> households) {
+    if (recipient instanceof Payee.ToHousehold toHousehold) {
       households.add(toHousehold.household());
     }
   }
