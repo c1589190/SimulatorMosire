@@ -1,0 +1,390 @@
+# 2026-10-09 调查：small-world 真实循环暴露的人口/经济问题
+
+> 状态：**只读调查 + /tmp 探针；未改任何生产代码。**
+> 基线：`HEAD a1e3ac2f`（`origin/main` 同点）；工作树干净。
+> 本文记录 2026-10-09 一次“跳过测试编译、跑真实 small-world 365 天、查 Log”的发现，供后续修复批次使用；不篡改任何历史文档。
+
+## 0. 一句话结论
+
+真实循环本身能跑：`-Dmaven.test.skip=true package` 可绕过当前红掉的 test-compile，small-world 365 天 **0 ERROR / 0 Exception**。
+但 smoke 暴露出一条值得认真修的 bug 链：
+
+```text
+家户行人口对账（CLASSROW_POPULATION_PROJECTION）在正常世界里整批失效
+  → 经济结算读到过期/不完整的 HouseholdEconomy.population
+  → 需求、饥荒、市场、迁移、债务按旧人口算
+出生为 0 另有直接原因：生理压力 1066/1526 > 500，生育抑制归零；
+底层还有逐批次整数截断，以及“首日播种先扣、口粮被吃光”的强嫌疑。
+```
+
+---
+
+## 1. 现场与验证（本轮实测）
+
+### 1.1 生产编译与打包
+
+| 命令 | 结果 |
+|---|---|
+| `tools/mvn-lock.sh -q -pl simos-app -am -DskipTests clean compile` | **rc=0，绿** |
+| `tools/mvn-lock.sh -q -pl simos-app -am -DskipTests test-compile` | **rc=1，红**（首断 `simos-economy-api`） |
+| `tools/mvn-lock.sh -q -pl simos-app -am -Dmaven.test.skip=true package` | **rc=0，成功**；前端门禁 412/412 通过 |
+
+重要口径：
+
+- `-DskipTests` **不够**：它仍会 `test-compile`，当前必红；
+- 要用 `-Dmaven.test.skip=true`，它同时跳过测试编译与执行；
+- 这是诊断路径，不替代最终 `clean verify`。
+
+### 1.2 small-world 365 天 smoke
+
+- 独立 store：`/tmp/simos-smoke-store`；独立端口：GUI 5911 / MCP 5915 / 审批 5913；
+- `0 → 30`、`30 → 365` 两次 `/api/advance`，最终 `main@3`、tick=365；
+- Log：`/tmp/simos-smoke.log`，约 35,025 行；
+- **0 ERROR、0 Exception**；
+- 事件面：365 个 `DAY_START/STEPPER_STEP/DAY_END`、123 轮 `MARKET`、60 次 `DEFICIT_LENDING`、28 次 `DEBT_FORGIVE`、11 次生产组织、7 次人口回写、4 次政府铸币/发债；
+- **没有** `TAX_*` / `GOV_UPKEEP` / `GOV_DAILY` 事件——small-world 当前不带 Unit/Army，`govActive=false`，税与行政俸禄路径一次都没触发。
+
+---
+
+## 2. 发现 A：`CLASSROW_POPULATION_PROJECTION_UNRESOLVED`（人口对账整批失效）
+
+### 2.1 它是什么
+
+`simos-app` 的 `HouseholdEconomyProjection` 是 **Social → Economy 的单向人口对账/投影器**：
+
+```text
+Social 家户成员批次之和（人口真值）
+        ↓
+Economy 侧 HouseholdEconomy.population（经济结算用的行人口视图）
+```
+
+它不移动人、不改 Social、不新建/合并家户；它只调整经济行的 `population`，并把 `laborMilli` 同比例缩放。
+一旦有任何无法无损对账的情况，它 **fail-closed：返回原经济数据，不做任何修改**，并累积 `unresolved`。
+
+### 2.2 实测结果（small-world 创世态）
+
+用探针对 `SmallWorld.state("small-world")` 的 economy/social 直接调用 `HouseholdEconomyProjection.project`：
+
+```text
+projected=false unresolved=135
+  68 条：同一个 (格, 居住类型) 下有多个 Social 家户
+  53 条：家户成员批次为空 / 推不出居住类型
+  13 条：经济侧有该 (格,居住) 的行，但没有对应的 Social 家户
+   1 条：两侧人口总数不一致
+```
+
+构成可解释：
+
+- 15 个格各有 rural 池，每池 5 户（4 常规阶层 + 1 流民户）⇒ 除首户外 4 条重复，共 15×4=60；
+- 2 个城市格的 urban 池各有 5 户（4 常规 + 1 流民户）⇒ 除首户外 4 条重复，共 2×4=8；
+- 以上“同 (格,居住) 多户”合计 68；
+- 13 个非城市格的 urban 池各有 4 个零成员户（合法空壳），推不出居住类型 ⇒ 13×4=52；加政府家户无成员 ⇒ 53；
+- 对应 13 个非城市格的 urban 经济行找不到 Social 户 ⇒ 13；
+- 总数不一致 ⇒ 1。
+
+### 2.3 根因
+
+- P2-A 之后 Social 家户粒度 = `(格, 居住类型, 阶层)` 一户；
+- 但 `HouseholdEconomyProjection` 的分组键仍是 `(格, 居住类型)`，默认“一个组只有一户 Social”；
+- 它拿不到多户时该组的 Social 总人口，也不会把“流民户/空壳户/政府户”分开处理；
+- `UNIT` 家户虽已有排除逻辑，但不能解决 HEX 侧的多户问题。
+
+### 2.4 影响（重点）
+
+由于任何一条 `unresolved` 都会让 `projected=false`：
+
+```text
+Social → Economy 的人口对账在当前任何正常 seeded 世界里从未真正生效。
+```
+
+经济侧 `HouseholdEconomy.population` 被大量经济算式读取，漂移时至少影响：
+
+- 每日口粮/衣着需求、消费与 `unmetNeed`；
+- 饥荒死亡比例与劳动缩放；
+- 生产组织、劳动分配权重、自给保留；
+- 市场参与者、自用保留、放贷能力、需求；
+- 迁移/阶级转换的数量与“是否迁空”判断；
+- 债务容量、政府发债/放贷对象；
+- 经济读口/GUI/MCP 的人口与汇总读数。
+
+**特别说明（避免误解）**：
+
+- 现有需求不是“全国家户平均”，是**逐户** `population × 人均定额`；
+- 但 `population` 可能是旧的，所以这个逐户求和也是错的；
+- `laborMilli` 已每 tick 从 Social 成员结构现算（见发现 C），基础劳动预算方向正确；
+- `HouseholdEconomyProjection` 里那种“按权重分摊”只针对旧身份模型（一户对四行）的补丁；P2-A 后应按 `HouseholdId` 1:1 对账，**不应对家户平均**。
+
+### 2.5 修复方向
+
+1. 经济行与 Social 户按 `HouseholdId` 1:1 投影；同一 `(格,居住,阶层)` 内确有多户才做组内加权，绝不跨阶层平均；
+2. 对零成员家户、UNIT 家户、政府家户、流民户分别具名处理，不再让它们把整批投影判死；
+3. 投影恢复后，经济侧 `population` 才是 Social 的实时投影，而不是可长期不更新的缓存。
+
+---
+
+## 3. 发现 B：出生为 0 是复合 bug
+
+### 3.1 直接原因：生理压力把生育抑制到 0
+
+重开 tick 365 状态读口，首都格 `(0,0)` 实测：
+
+```text
+population=860
+0-14=303，15-59=467，60+=90，FEMALE=428
+physiologicalStress: average=1066，max=1526
+```
+
+`PopulationDynamics.birthsOf` 的抑制公式：
+
+```text
+抑制 = max(0, 1000 − 压力 × FERTILITY_SUPPRESSION_PER_STRESS) / 1000
+FERTILITY_SUPPRESSION_PER_STRESS = 2
+压力 ≥ 500 ⇒ 抑制 = 0 ⇒ 出生 = 0
+```
+
+压力 1066 时出生必为 0。
+
+### 3.2 底层 bug 1：逐批次整数除法截断
+
+用创世态在压力 0 下做月结算探针：
+
+```text
+fertileWomen = 1098
+实际 per-group 出生 = 2
+若先汇总 fertileWomen 再乘率 = 21
+groupsWithBirth = 2
+```
+
+原因：`birthsOf` 对每个批次做：
+
+```text
+count × 20 / 1000
+```
+
+大量 10~40 人的批次被整除截断成 0。压力探针：
+
+```text
+stress=0    births=2
+stress=300  births=0
+stress=500  births=0
+stress=1000 births=0, deaths=4
+```
+
+即：**即使没有饥荒，4000 人小世界每月也只有约 2 个新生儿**，远低于应得的约 21 个；压力到 300 时已经归零。这是确定的 bug。
+
+### 3.3 底层 bug 2（强嫌疑）：首日播种吃掉口粮，触发长期饥荒
+
+创世 checkpoint 实测：
+
+```text
+初始全仓粮食库存 = 21,666,661
+全人口每日口粮需求 = 333,306
+库存 ≈ 65 天口粮
+```
+
+但 day 1：
+
+```text
+[day=1] INPUTS+CONSUMPTION consumedQuantities=21,710,821
+        deficitHouseholds=60 deficitGrainMilli=237,480
+        DEFICIT_LENDING unmetAfter=216,741（≈每日需求的 65%）
+```
+
+首日“投入 + 消费”的消耗量和**全仓初始粮库存同量级**，而真正的口粮只有：
+
+```text
+333,306 − 237,480 = 95,826
+```
+
+这与 `PLANTING_DRAWS_BEFORE_CONSUMPTION = true` 高度吻合：播种日先按“8 粮/亩”扣种子，且没有保留口粮约束，于是首日把 household 粮食几乎全部扣成种子，随后消费没粮、粮食满足率约 29%，压力从 day 1 开始累积。
+**尚未用 TRACE 逐笔坐实具体扣款路径，是下一步第一项验证。**
+
+### 3.4 底层 bug 3：两套生死引擎没接上
+
+- 生产路径调用的是 `PopulationDynamics.monthly`，用**硬编码** `FERTILITY_PER_MILLE_PER_MONTH=20`，完全忽略家户 `vitalRates()`；
+- `HouseholdBook.settleVitalEvents` 才是按 `(年龄档, 性别)` 查家户出生/死亡率表的实现，但 **main 里没有生产调用者**；
+- seed 出来的家户都是 `HouseholdVitalRates(List.of())` 空表；
+- 结论：`social.SetHouseholdVitalRates` / Social 工单里的 `SET_VITAL_RATES` 目前只改读口表象，**不会影响真实出生/死亡**。
+
+### 3.5 正确修复顺序（建议）
+
+1. 先修首日播种/口粮：决定增加初始口粮、降低播种亩数，还是 `drawCycleInputs` 保留 subsistence reserve；修完重跑一年 smoke 看压力/粮食曲线；
+2. 再修逐批次整除：跨批次累积分子后一次取整，避免小批次吞掉全部出生；
+3. 最后统一生死引擎：让 `vitalRates` 真正进生产路径，或明确废除其中一套。
+
+---
+
+## 4. 发现 C：需求与劳动口径
+
+### 4.1 需求当前口径
+
+`EconomySettlement.withDailyNeed`：
+
+```java
+EconomyVocabulary.dailyNeedsMilli(householdEconomy.population(), day, ...)
+```
+
+- **逐户**算，不是全国加总、也不是平均；
+- 但只按 `population × 人均定额`：
+  - 粮：每人每 120 天 10 粮；
+  - 布：每人每年定额；
+- **不看年龄、性别、实际消费结构**。
+
+### 4.2 劳动当前口径（方向是对的）
+
+`PopulationEconomyTimeParticipant.laborBudgetsOf(social, day)`：
+
+```text
+逐户遍历 Household.members
+  → 每个成员批次按年龄档、性别查 HouseholdLaborTimeTable
+  → 相加
+```
+
+即：**劳动基础预算已经是按家户成员结构求和**。问题是需求没有照这个方式做；另外经济结算里还有一部分算式拿 `population` 当权重/上限/保留量，会受过期人口影响。
+
+### 4.3 正确目标形状（用户口径）
+
+```text
+每个 HouseholdId：
+  members = Social.households[h].members
+  demand_grain(h) = Σ_member count × 该成员当日人均口粮
+  demand_cloth(h) = Σ_member count × 该成员当日人均衣需
+  labor(h)        = Σ_member count × 该成员小时预算
+  population(h)   = Σ_member count   ← 只是投影结果，不是独立权威
+```
+
+- 同一 `(格,居住,阶层)` 多户时，**每户各自求和**，不平均；
+- Unit 多户时同样：Unit 只是关系列表 + 决策层规则，经济账始终按家户分别结算；
+- 待定：粮/布需求系数继续全年龄同额，还是按年龄/性别分档。前者只是把求和来源换成 Social 成员；后者才是完整“实际需求”。
+
+---
+
+## 5. 发现 D：Unit 多户 / `MARKET_SUBJECT_COLLECTIVE`
+
+用户口径：**一个 Unit 自然可以挂多个家户；文官集团和武将集团利益不一致，应由 Unit 的决策人自己维护内部规则。**
+
+当前代码事实：
+
+- `Unit.households` 是唯一“谁在这个 Unit 里”的列表；
+- `GovernmentFormation.governmentPostsOfHousehold` / `ArmyFormation.militaryDutiesOfHousehold` 只是逐家户角色配置，没有金额、周期预算、分摊规则；
+- `MarketSettlement` 遇到“解析不到单一户、但名下有多户”的 Unit 时，打 `MARKET_SUBJECT_COLLECTIVE`，**不把该 Unit 当市场参与者**，让其名下各户自行参与市场；
+- 365 天 smoke 中该警告 **1845 次 = 123 轮市场 × 15 个 collective weave unit**，是每轮命中；
+- 全仓目前没有 “Unit → 决策人 / 代表账户 / 内部分摊规则表”；
+- `sd` 的 `Affiliation.Army` 用 `ArmyId`，`Affiliation.Gov` 用 `Gov(UnitId)`，但 `Unit` 本身不直接持有决策人。
+
+结论：这不是“多户非法”，而是 **Unit 决策人维护内部利益的机制还没建**。正确方向是：
+
+```text
+Unit 决策人定义内部分摊规则
+  → 经济侧按每个 HouseholdId 分别执行扣除/发放
+  → 绝不把 Unit 压成一户，也不做跨户平均
+```
+
+---
+
+## 6. 发现 E：small-world 的 GOV / Army 补建路径
+
+`SmallWorld` 当前明确不带 unit/army，只有一个 world-silver 政府家户与国库，因此 smoke 未触发税/俸禄。
+
+- **GOV：现成路径。** `simos.gov.createOffice` 是完整 GM 组合工具，一批包含：
+  `unit.CreateUnit` → `social.CreateHousehold(hh-gov-<unitId>, UNIT 位置)` → `actor.EnsureHouseholdAccount` → `unit.SetGovFormation` → `economy.RegisterGovernment` → 管辖 → `sd.CreateDecisionMaker`。
+- **Army：`simos.unit.spawnArmy` 目前不能 apply。** 其类注明确写着 `Unit.manpower` 已退役、尚未接线到家户来源，apply 会被 `unit.CreateUnit` 具名拒。应改用：
+  - `simos.unit.raiseUnit`（从 Social 家户抽人）；或
+  - 手工组合：Social 家户/工单 → `unit.CreateUnit` → `unit.SetUnitHouseholds` → `unit.SetArmyFormation` → `sd.CreateArmy`。
+- **军俸/维护费还没有数据落脚点**：`ArmyFormation`/`Unit` 都没有薪额、预算、分摊字段；这正好是“通用周期库存增减 + Unit 决策人政策”的落地位置。
+
+---
+
+## 7. 本轮新增的用户裁定 / 口径
+
+1. 军俸可做成“单位周期性维护成本”；
+2. 经济模块应提供**通用、可被外部自定义**的周期性家户库存增减机制（不只扣，也可增）；
+3. Social 工单应尽快在经济模块上真正用起来；
+4. Unit 可以自然挂多个家户；文官/武将利益不通，由 Unit 决策人维护；
+5. 需求应等于“家户内各成员实际需求相加”，**不应该平均**；投影里的平均是旧模型遗留，应改为按 `HouseholdId` 1:1 对账；
+6. 小世界没有 GOV/Army 就补建，用真实 GOV/Army 定义扣什么，模拟真实循环。
+
+---
+
+## 8. 建议的修复顺序
+
+1. **修 `HouseholdEconomyProjection`**：按 `HouseholdId` 1:1；空壳/流民/UNIT/政府户具名处理；`unresolved=135` 应力争归零。
+2. **查并修首日播种/口粮**：确认 `drawCycleInputs` 是否在首日把全部口粮当种子；决定 subsistence reserve / 初始库存 / 播种亩数；重跑 365 天。
+3. **需求改成员求和**：至少先保证从 Social 实时的家户人口求和；再决定是否按年龄/性别分档需求系数。
+4. **修出生量化 + 统一生死引擎**：跨批次累积取整；让 `vitalRates` 真正生效或明确废除一套。
+5. **建 GOV smoke**：用 `simos.gov.createOffice` 在 small-world 加中央 GOV，确认 `TAX_*` / `GOV_UPKEEP` 事件出现。
+6. **建 Army + 周期军俸**：用 `raiseUnit`/手工批建军；实现通用 `RecurringHouseholdStockEffect`，由 Army/GOV 定义规则，Unit 决策人维护内部分摊。
+7. 最后再做测试迁移、`clean verify`、真实小世界总验收。
+
+---
+
+## 9. 未做 / 未验证（诚实边界）
+
+- 未改任何生产代码；本文只是调查。
+- 首日“种子吃掉口粮”尚未用 TRACE 逐笔坐实，是强嫌疑，不是最终结论。
+- 未实际在 small-world 里建 GOV/Army；只盘点了现有工具路径与阻塞点。
+- 未修 `HouseholdEconomyProjection`、未跑修复后的对照 smoke。
+- 测试仍未迁移，`test-compile` 仍红；`clean verify` 仍未跑。
+
+---
+
+## 10. 证据与复现命令
+
+### 10.1 打包与 smoke
+
+```bash
+cd /home/cna/SimulatorMosire
+tools/mvn-lock.sh -q -pl simos-app -am -Dmaven.test.skip=true package
+
+# 独立 store / 端口；后台起
+JAVA_TOOL_OPTIONS='-Dsimos.economy.logLevel=DEBUG -Dsimos.actor.logLevel=DEBUG' \
+SIMOS_SMALL_WORLD_STORE=/tmp/simos-smoke-store \
+SIMOS_SMALL_WORLD_GUI_PORT=5911 \
+SIMOS_SMALL_WORLD_MCP_PORT=5915 \
+SIMOS_SMALL_WORLD_APPROVAL_PORT=5913 \
+./run-small-world.sh > /tmp/simos-smoke.log 2>&1 &
+
+# 等 /api/state 可读后，两次推进
+curl -s -X POST -H 'Content-Type: application/json' \
+  -d '{"branch":"main","expectedRevision":1,"from":0,"to":30}' \
+  http://127.0.0.1:5911/api/advance
+curl -s -X POST -H 'Content-Type: application/json' \
+  -d '{"branch":"main","expectedRevision":2,"from":30,"to":365}' \
+  http://127.0.0.1:5911/api/advance
+```
+
+### 10.2 关键探针输出（当时实测）
+
+```text
+# 投影
+projected=false unresolved=135
+multiple-social-households-per-(hex,residence)=68
+no-residence-from-members=53
+economy-view-without-social-household=13
+total-population-mismatch=1
+
+# 出生
+fertileWomen=1098
+perGroupBirths(monthly actual)=2 groupsWithBirth=2
+aggregatedBirthsIfSummedFirst=21
+stress=0    births=2 deaths=0
+stress=300  births=0 deaths=0
+stress=500  births=0 deaths=0
+stress=1000 births=0 deaths=4
+
+# 首日粮食
+初始全仓粮食 = 21,666,661
+全人口每日口粮需求 = 333,306
+day1 INPUTS+CONSUMPTION consumedQuantities=21,710,821
+day1 deficitGrainMilli=237,480
+day1 DEFICIT_LENDING unmetAfter=216,741
+```
+
+### 10.3 tick 365 人口读口 `(0,0)`
+
+```text
+population=860
+0-14=303，15-59=467，60+=90
+FEMALE=428
+physiologicalStress: average=1066, max=1526
+```
