@@ -166,3 +166,82 @@ namespace ChangeSet。要让 `unit.RecruitStaff`、`economy` 迁移、`gov` 家�
 - 多模块 ChangeSet 要动 Core，影响所有 handler 的授权/资源围栏，需单独测试批。
 - 重命名是大 diff，必须按批走、每批 compile 门禁；不能顺手混进功能改动。
 - 通用扣除若做成 sink，需在守恒式中显式列“行政/军俸消耗”；若是转移，需给 `toHousehold` 并保证同 revision 原子。
+
+---
+
+## 8. 用户第二次修正：Social 工单模型，取消“普遍多模块聚合”
+
+> 用户口径：Unit/Eco 要改一个家户的人口属性，**直接向 Social 提交“更改理由 + 更改方案 + 更改对象”的 Social 工单**即可；
+> Eco 的单条人口转移操作是独立的（甚至可以封装）；Unit 本身不提供人口改动；
+> 主要是 Unit 作为前置的 Army/GOV 模块提供的工具组有组合要求；**不要为此普遍搞多模块聚合**。
+
+本节 supersedes 前文“普遍多模块 ChangeSet”的方向。
+
+### 8.1 新原则
+
+- **Social 是人员/家户变更的唯一受理口**；
+- 外部模块不直接 `SocialData.with...`，也不直接改家户状态；
+- 外部模块提交 **Social 工单**，由 Social 校验、落账、返回 Social ChangeSet；
+- Unit / Economy / Army / GOV 只负责“构造工单 / 读结果 / 自己的状态变更”；
+- 不再把“多 namespace handler”作为普遍要求；只有确实要求同一 revision 原子时，才用 app 级
+  `CommandBus.submitBatch` 做组合。
+
+### 8.2 Social 工单形状（草案）
+
+```text
+social.SubmitHouseholdWorkOrder
+{
+  "orderId": "...",              // 可选：幂等键
+  "target": "hh-...",            // 主对象；也可在 plan 里逐条覆盖
+  "plan": [
+    { "op": "TRANSFER_MEMBERS", "from": "hh-a", "to": "hh-b", "lot": "...", "count": 12 },
+    { "op": "SET_LOCATION", "household": "hh-b", "location": {"type":"HEX","q":1,"r":2} },
+    { "op": "ADD_MEMBERS", ... },
+    { "op": "REMOVE_MEMBERS", ... },
+    { "op": "ADJUST_POPULATION", ... },
+    { "op": "SET_VITAL_RATES", ... }
+  ],
+  "reason": "经济迁移 / 征兵 / 退伍 / 迁都 / 战斗伤亡...",
+  "source": { "module": "economy|unit|army|gov|sd|app", "commandId": "...", "actorId": "..." },
+  "expectedRevision": 123
+}
+```
+
+- 单条操作可以有窄封装（如 `social.TransferHouseholdMembers` 就是只有一条 plan 的工单）；
+- Social 工单 handler 在 `simos-social` 内，产出**一个 Social ChangeSet**、一条 revision；
+- 失败：目标不存在、count 不足、守恒破坏、expectedRevision 冲突 ⇒ 整单具名拒；
+- 日志：`event=HOUSEHOLD_WORK_ORDER ... reason=... source=... plan=...` 与逐条 TRACE。
+
+### 8.3 Economy 的人口转移
+
+- Economy 不直接改 Social；它构造一张人口转移工单：
+  - 例如 `economy` 侧完成迁移决策后，生成 `TRANSFER_MEMBERS` + `SET_LOCATION` 工单；
+  - 单条经济人口转移可以封装成 `economy.TransferPopulation` 或 `SocialPopulationTransferPlan`，
+    内部产出/提交 Social 工单；
+- Economy 自己的生产/市场/债务变更仍写 Economy；
+- 若“经济侧变更 + Social 人口变更”必须同一 revision 原子，则由 app 组合工具用 `submitBatch` 把
+  Economy 命令 + Social 工单打包；否则默认两条 revision，调用方用 `expectedRevision` 串行。
+
+### 8.4 Unit / Army / GOV
+
+- **Unit 本身不提供人口改动**：
+  - `Unit.households` 只是“谁在这个 Unit 里”的实质关系；
+  - Unit 不提供 Add/Remove/Transfer population 命令；
+  - 只保留单位侧的编制/关系/装备/位置命令。
+- Army / GOV 的工具组负责组合：
+  - 征兵：`social.SubmitHouseholdWorkOrder(TRANSFER_MEMBERS)` + `unit.SetUnitHouseholds`；
+  - 退伍：`social.SubmitHouseholdWorkOrder(TRANSFER_MEMBERS)` + `unit.SetUnitHouseholds`；
+  - 迁都/行军：`social.SubmitHouseholdWorkOrder(SET_LOCATION)` + `unit.PlaceAt`；
+  - 政府家户跟随：由 Army/GOV 工具或 app 在移动时提交 `SET_LOCATION` 工单，不再由 Unit 自己改 Social。
+- 要求原子时，上述组合用 app `submitBatch` 打成一条 revision；
+  不要求原子时，分开提交，Social 工单先落，再发 Unit 命令（或反之），失败可用 `expectedRevision` 重试/补偿。
+
+### 8.5 对前文设计的修正
+
+- 前文 §2 的 `HandlerOutcome.AppliedWorld / targetNamespaces / 多模块 ChangeSet` **不再作为普遍能力**；
+  保留 `CommandBus.submitBatch` 作为 app 级原子组合工具即可。
+- 前文 §1 的“允许直接依赖 simos-social”保留，但依赖目的收窄为：
+  读 Social 状态、构造/校验 Social 工单、复用 Social 纯函数；
+  **不允许领域模块直接 `with...` 改 SocialData**。
+- `Unit.households` 单一列表、删除 `GovFormation.households`、政府家户 `UNIT(unitId)` + 位置 resolver 仍成立。
+- 通用 `DeductHouseholdStock` 仍成立；它的落账也只受理“扣除工单”，不把税制塞进 economy。
