@@ -141,8 +141,10 @@ import io.mosire.simos.social.spi.MoveCityHandler;
 import io.mosire.simos.social.spi.MovePopulationLotsHandler;
 import io.mosire.simos.social.spi.RemoveHouseholdMembersHandler;
 import io.mosire.simos.social.spi.SeedGroupsHandler;
+import io.mosire.simos.social.spi.SetDemandCoefficientHandler;
 import io.mosire.simos.social.spi.SetHouseholdLocationHandler;
 import io.mosire.simos.social.spi.SetHouseholdVitalRatesHandler;
+import io.mosire.simos.social.spi.SetLaborCoefficientHandler;
 import io.mosire.simos.social.spi.SetPopulationHandler;
 import io.mosire.simos.social.spi.SubmitHouseholdWorkOrderHandler;
 import io.mosire.simos.social.spi.TransferHouseholdMembersHandler;
@@ -577,6 +579,12 @@ public final class Shell implements AutoCloseable {
                 new TransferHouseholdMembersHandler(),
                 new SetHouseholdVitalRatesHandler(),
                 new AdjustHouseholdPopulationHandler(),
+                // ── Batch 4（2026-10-09 家户结构修复计划）：Social 需求/劳动系数两条 GM 命令——全局默认 + 单家户
+                //   覆盖的 upsert/清除（只写 SocialData 第 6 组件 provisioning，结果经 withProvisioning 写回）。
+                //   两条都标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交与
+                //   simos.social.demand / simos.social.labor 两条窄工具照常可用。──
+                new SetDemandCoefficientHandler(),
+                new SetLaborCoefficientHandler(),
                 // ── S3b（2026-10-09 用户裁定）：**唯一家户人口变更受理口**——工单（target + 有序 plan + reason +
                 //   source）在一张工作副本上顺序应用，任一操作失败整单具名拒；成功落一条 SocialChangeSet。
                 //   ★ 不作 GmOnly：它是本批给 Unit/Eco 等调用方预留的正式入口，且逐操作旧命令仍并存。──

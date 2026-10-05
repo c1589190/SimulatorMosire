@@ -85,10 +85,12 @@ import io.mosire.simos.app.tools.write.RegionClearStructuresTool;
 import io.mosire.simos.app.tools.write.RegionSeedTool;
 import io.mosire.simos.app.tools.write.RejectDirectiveTool;
 import io.mosire.simos.app.tools.write.ResetDecisionMakerConversationTool;
+import io.mosire.simos.app.tools.write.SocialDemandTool;
 import io.mosire.simos.app.tools.write.SocialHouseholdCreateTool;
 import io.mosire.simos.app.tools.write.SocialHouseholdMembersTool;
 import io.mosire.simos.app.tools.write.SocialHouseholdMoveTool;
 import io.mosire.simos.app.tools.write.SocialHouseholdRatesTool;
+import io.mosire.simos.app.tools.write.SocialLaborTool;
 import io.mosire.simos.app.tools.write.UnitAssignHouseholdTool;
 import io.mosire.simos.app.tools.write.UnitDetachHouseholdTool;
 import io.mosire.simos.app.tools.write.ResolveCombatTool;
@@ -691,6 +693,12 @@ public final class SimosToolSource implements ToolSource {
     built.add(new SocialHouseholdMoveTool(core, query, initiator));
     built.add(new SocialHouseholdMembersTool(core, query, initiator));
     built.add(new SocialHouseholdRatesTool(core, query, initiator));
+    // ★★ Batch 4（2026-10-09 家户结构修复计划）：Social 需求/劳动系数 GM 窄写两条。**只在 GM 桶**；
+    //   各自封装一条 GmOnlyCommand（global 默认 + 单家户覆盖的 upsert/清除）；preview（缺省）走 SocialProvisioning
+    //   的纯 copy-with，不写状态、不产生 revision；apply 才经 submitCommand 落一条 revision。
+    //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS（命令类型本体已注册并登记载荷提示）。
+    built.add(new SocialDemandTool(core, query, initiator));
+    built.add(new SocialLaborTool(core, query, initiator));
     built.add(new UnitAssignHouseholdTool(core, query, initiator));
     built.add(new UnitDetachHouseholdTool(core, query, initiator));
     // ★★ P7b（2026-10-01 后端 + MCP 稳定化计划）：GM 审批队列裁决口（控制面，不落世界 revision）。

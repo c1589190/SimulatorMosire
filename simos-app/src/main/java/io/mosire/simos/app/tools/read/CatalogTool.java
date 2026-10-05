@@ -241,6 +241,18 @@ public final class CatalogTool implements AgentTool {
               "householdId, sex(MALE|FEMALE), ageBracketId(如 0-14|15-59|60+), delta(非 0，可负), reason"
                   + "（★ GM 直调；负不得使人数 < 0；未知年龄档 id ⇒ 拒）"),
           Map.entry(
+              "social.SetDemandCoefficient",
+              "householdId?, ageBracket(0-14|15-59|60+), sex(MALE|FEMALE), commodity(如 grain|cloth),"
+                  + " amountMilli?, period?(PER_CYCLE_DAYS|PER_CALENDAR_YEAR), cycleDays?, reason"
+                  + "（★ GM-only：householdId 缺席=改全局默认、给了=改家户覆盖（家户必须存在）；amountMilli 给了=upsert、"
+                  + "缺席=删除该家户覆盖键（全局默认不允许删键 ⇒ 拒）；period/cycleDays 同时缺席则按该商品全局口径推断"
+                  + "（找不到 ⇒ 拒），家户覆盖显式口径必须与全局一致；结果经 SocialData.withProvisioning 写回）"),
+          Map.entry(
+              "social.SetLaborCoefficient",
+              "householdId?, ageBracket(0-14|15-59|60+), sex(MALE|FEMALE), milliHoursPerTick?, reason"
+                  + "（★ GM-only：householdId 缺席=改全局默认、给了=改家户覆盖（家户必须存在）；milliHoursPerTick 给了=upsert、"
+                  + "缺席=删除该家户覆盖键（全局默认不允许删键 ⇒ 拒）；结果经 SocialData.withProvisioning 写回）"),
+          Map.entry(
               "social.SubmitHouseholdWorkOrder",
               "orderId?, target(家户 id), reason(必填非空白), source{module, commandId?, actorId?},"
                   + " dryRun?(缺省 false；true ⇒ 具名拒),"

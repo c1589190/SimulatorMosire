@@ -21,12 +21,15 @@ import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.population.HouseholdVitalRate;
 import io.mosire.simos.social.api.population.Sex;
+import io.mosire.simos.social.population.AgeBracket;
+import io.mosire.simos.social.provisioning.DemandPeriod;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -400,6 +403,52 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
       out.put(key, value);
     }
     return java.util.Collections.unmodifiableMap(out);
+  }
+
+  /**
+   * ★ 必填年龄档参数（Batch 4 的 provisioning 工具共用）：只认 {@link AgeBracket#key()} 的三个稳定拼写
+   * {@code 0-14|15-59|60+}（大小写一致，不做宽容匹配）。
+   */
+  protected static AgeBracket ageBracketArg(Map<String, Object> args, String name) {
+    String text = ToolSupport.requiredText(args, name);
+    for (AgeBracket bracket : AgeBracket.values()) {
+      if (bracket.key().equals(text)) {
+        return bracket;
+      }
+    }
+    throw new IllegalArgumentException("参数 " + name + " 必须是 0-14|15-59|60+: " + text);
+  }
+
+  /** ★ 必填性别参数：只认 {@code MALE|FEMALE}（与命令载荷同一份词表拼写）。 */
+  protected static Sex sexArg(Map<String, Object> args, String name) {
+    String text = ToolSupport.requiredText(args, name);
+    try {
+      return Sex.valueOf(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("参数 " + name + " 必须是 MALE|FEMALE: " + text, e);
+    }
+  }
+
+  /** ★ 必填商品 id 参数：非空白裸值交给 {@code CommodityId.parse}（商品词表由 GM/展开显式给行）。 */
+  protected static CommodityId commodityArg(Map<String, Object> args, String name) {
+    return CommodityId.parse(ToolSupport.requiredText(args, name));
+  }
+
+  /**
+   * ★ 可选时间口径参数（Batch 4 的 {@code simos.social.demand}）：缺席 ⇒ {@code null}（= 从全局口径推断）；
+   * 给了只认 {@link DemandPeriod} 的两个稳定枚举名。
+   */
+  protected static DemandPeriod optionalDemandPeriodArg(Map<String, Object> args, String name) {
+    String text = ToolSupport.optionalText(args, name, null);
+    if (text == null) {
+      return null;
+    }
+    try {
+      return DemandPeriod.valueOf(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "参数 " + name + " 必须是 PER_CYCLE_DAYS|PER_CALENDAR_YEAR: " + text, e);
+    }
   }
 
   /** 可选的率数组成员（S3a 的 {@code [{bracketId,sex,birthRatePerMillePerTick?,deathRatePerMillePerTick?}…]}）。 */

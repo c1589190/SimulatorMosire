@@ -3,15 +3,18 @@ package io.mosire.simos.social.spi;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.social.city.SocialCity;
-import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.api.population.HouseholdVitalRate;
 import io.mosire.simos.social.api.population.Sex;
+import io.mosire.simos.social.city.SocialCity;
+import io.mosire.simos.social.population.AgeBracket;
+import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.provisioning.DemandPeriod;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -204,6 +207,51 @@ final class SocialPayloads {
       return Sex.valueOf(text);
     } catch (IllegalArgumentException e) {
       throw new IllegalArgumentException("字段 " + field + " 必须是 " + Arrays.toString(Sex.values()) + ": " + text, e);
+    }
+  }
+
+  /**
+   * ★ <b>可选家户 id</b>（Batch 4 的 provisioning 命令共用）：缺席 / JSON {@code null} ⇒ {@code null}（= 全局默认）；
+   * 给了 ⇒ 必须非空白，再交给 {@link HouseholdId#parse}。
+   */
+  static HouseholdId optionalHouseholdId(JsonNode payload, String field) {
+    String text = optionalNonBlankText(payload, field);
+    return text == null ? null : HouseholdId.parse(text);
+  }
+
+  /**
+   * ★ <b>必填年龄档</b>（Batch 4 的 provisioning 命令共用）：只认 {@link AgeBracket#key()} 的三个稳定拼写
+   * {@code 0-14 | 15-59 | 60+}（大小写一致，不做宽容匹配——key 就是读口拼写）。
+   */
+  static AgeBracket requireAgeBracket(JsonNode payload, String field) {
+    String text = requireText(payload, field);
+    for (AgeBracket bracket : AgeBracket.values()) {
+      if (bracket.key().equals(text)) {
+        return bracket;
+      }
+    }
+    throw new IllegalArgumentException("字段 " + field + " 必须是 0-14|15-59|60+: " + text);
+  }
+
+  /** ★ <b>必填商品 id</b>（Batch 4）：非空白裸值交给 {@link CommodityId#parse}（商品词表由 GM/展开显式给行）。 */
+  static CommodityId requireCommodity(JsonNode payload, String field) {
+    return CommodityId.parse(requireText(payload, field));
+  }
+
+  /**
+   * ★ <b>可选时间口径</b>（Batch 4 的 {@code social.SetDemandCoefficient.period}）：缺席 / JSON {@code null} ⇒
+   * {@code null}（= 与 {@code cycleDays} 一并从全局默认口径推断）；给了只认 {@link DemandPeriod} 的两个稳定枚举名。
+   */
+  static DemandPeriod optionalDemandPeriod(JsonNode payload, String field) {
+    String text = optionalNonBlankText(payload, field);
+    if (text == null) {
+      return null;
+    }
+    try {
+      return DemandPeriod.valueOf(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          "字段 " + field + " 必须是 PER_CYCLE_DAYS|PER_CALENDAR_YEAR: " + text, e);
     }
   }
 
