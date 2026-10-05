@@ -360,3 +360,49 @@ stepper.updateNaturalNeeds(needsByHousehold)               // 新增接口
 3. **Log 写全**：全局默认/家户覆盖/需求劳动展开/投影对账都必须有可查日志；
 4. **机制正确优先**：逐成员求和、时间口径、家户层一次取整、覆盖回落、具名拒绝，都要由探针与 smoke 证明；
 5. **文档改全**：实现完成后同步更新本计划、调查报告、handoff、AGENTS 相关描述，旧说法标注被取代。
+
+## 10. 施工进度（2026-10-09 实施轮）
+
+### 10.1 已完成（代码提交）
+
+| 提交 | 内容 |
+|---|---|
+| `ea7945eb` | `feat(social/economy)`：Social 人口/劳动/需求权威 + Economy 消费注入投影 |
+| `fca92e30` | `feat(social)`：需求/劳动系数 GM 命令 + 窄工具 |
+
+实现要点：
+
+- `SocialData` 第 6 组件 `SocialProvisioning`：全局默认 + 家户覆盖；六档初始值按 §3.5；
+- `SocialData.householdLaborMilli/householdNaturalNeeds`：逐成员求和；粮家户层一次取整、逐日差分；布走 `YearFraction`；
+- `HouseholdEconomyProjection`：按 `HouseholdId` 1:1，删除 `(格,居住)` 分组平均；small-world 创世态 `unresolved` 135 → 0；
+- `PopulationEconomyTimeParticipant`：每日从 Social 展开 population/labor/needs 并注入 `EconomyDayStepper`；
+- `EconomySettlement`：`consumeOneHousehold` 读注入 `naturalNeeds`；删除 `withDailyNeed(population)`；
+- 市场/债务/饥荒/进入/自用/危机读口：改逐户 `expectedNeedMilli` / `cycleNaturalNeedMilli`，不再按 population 统一折算；
+- GM 命令：`social.SetDemandCoefficient` / `social.SetLaborCoefficient`；GM 工具：`simos.social.demand` / `simos.social.labor`；
+- 日志：默认表载入、逐户展开、GM 改/清、拒绝路径均有可查事件。
+
+### 10.2 实测验证
+
+- `tools/mvn-lock.sh -q -pl simos-app -am -DskipTests clean compile` → **rc=0**；
+- `tools/mvn-lock.sh -q -pl simos-app -am -Dmaven.test.skip=true package` → **rc=0**，前端门禁 412/412；
+- fresh `small-world` 独立 store/端口，`/api/advance` `0→365`：**无 `CLASSROW_POPULATION_PROJECTION_UNRESOLVED`**、无新增运行时 ERROR；
+- `/api/command` 实测 GM 命令：全局设置、家户覆盖设置/清除、劳动覆盖设置/清除全部 `committed`，日志事件成对出现。
+
+### 10.3 仍未完成（如实）
+
+- 出生为 0 的独立 bug 链未修：首日播种/口粮次序、逐批次整数截断、`PopulationDynamics` 与 `HouseholdBook.settleVitalEvents` 两套生死引擎未统一；
+- GM 读口（查看全局默认/家户覆盖/有效 needs·labor）未做；
+- `EconomySeeder` 创世初始库存/口粮种子仍按 population 统一折算（本批不改）；
+- `ApiViews.unmetPersonDays` 仍是全局 83 毫粮/人日的量级读数，已具名标注；
+- `expectedNeedMilli` 是“当前注入日值 × 天数”的线性外推；粮整周期精确窗口另有 `cycleNaturalNeedMilli`；
+- 测试未迁移、`test-compile`/`clean verify` 未跑；本轮只做 compile + package + smoke 自证。
+
+### 10.4 下一批顺序
+
+1. 首日播种/口粮次序与初始库存（修出生为 0 的主因）；
+2. 出生逐批次整除 + 生死引擎统一；
+3. GM 读口 + `EconomySeeder` 创世口径收口；
+4. 小世界 GOV/Army 补建；
+5. 通用周期库存增减 + Unit 决策人军俸规则；
+6. Economy → Social 工单 P9；
+7. 测试迁移 + `clean verify`。

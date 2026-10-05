@@ -388,3 +388,50 @@ population=860
 FEMALE=428
 physiologicalStress: average=1066, max=1526
 ```
+
+---
+
+## 11. 修复后复测（2026-10-09 实施轮）
+
+> 对应计划：`docs/superpowers/plans/2026-10-09-household-structure-repair-plan.md` §10。
+> 代码提交：`ea7945eb`（Social 权威 + Economy 消费注入投影）、`fca92e30`（GM 命令/工具）。
+
+### 11.1 发现 A 已修：人口对账恢复 1:1
+
+- `HouseholdEconomyProjection` 已按 `HouseholdId` 1:1，不再有 `(格,居住)` 分组平均；
+- fresh small-world 创世态探针：`unresolved=0`（修复前 135）；
+- 365 天 smoke：**无 `CLASSROW_POPULATION_PROJECTION_UNRESOLVED`**；
+- 经济行人口回归 Social 投影；`laborMilli/naturalNeeds` 由 app 每日从 Social 逐成员展开后注入。
+
+### 11.2 分档需求/劳动机制已落地
+
+- 全局默认与家户覆盖都在 `simos-social` 的 `SocialProvisioning`（第 6 组件）；
+- 默认六档值按计划 §3.5（粮 6000/6000/10000/9000/7000/7000；
+  布 600/600/1000/1200/800/900；劳动 4000/4000/16000/8000/0/0）；
+- 粮按 120 天累计、家户层一次取整；布按 `YearFraction`；劳动逐成员求和；
+- GM 命令 `social.SetDemandCoefficient` / `social.SetLaborCoefficient` 与工具
+  `simos.social.demand` / `simos.social.labor` 已注册；fresh smoke 中经 `/api/command`
+  实测全局设置、家户覆盖设置/清除、劳动覆盖设置/清除全部成功。
+
+### 11.3 fresh 365 天 smoke 读数
+
+- `-Dmaven.test.skip=true package`：rc=0，前端门禁 412/412；
+- 独立 store/端口，`/api/advance` `0→365`：`main` 推进到 tick 365；
+- 最终 `finalPopulation=3970`（初始 4000；累计死亡 30、出生 0）；
+- **0 个运行时 ERROR**（启动瞬间 `/api/state` 在创世 checkpoint 落盘前被探测到的一次 replay 失败是探针时序，不是新机制错误）；
+- `POPULATION_WRITEBACK` 从 day 120 起每月一次，`births=0` 仍未变。
+
+### 11.4 未修项（与 §3/§4 对应）
+
+- **出生仍为 0**：首日播种/口粮优先次序、逐批次整数截断、两套生死引擎未统一这三件事都未在本轮修；
+  分档需求降低了部分人群需求，但没有解决出生机制问题；
+- `EconomySeeder` 创世初始库存/口粮仍用 population 统一口径；
+- `ApiViews.unmetPersonDays` 仍是全局 83 毫粮/人日的量级读数；
+- GM 读口未做；
+- 测试未迁移，`test-compile`/`clean verify` 未跑。
+
+### 11.5 结论
+
+- 发现 A（人口对账失效）已闭环；
+- 发现 C（需求/劳动权威链）已按用户口径 B 落地并写成代码；
+- 发现 B（出生为 0）仍是下一批的第一优先 bug。
