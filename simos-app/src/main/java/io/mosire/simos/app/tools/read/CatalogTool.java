@@ -240,6 +240,18 @@ public final class CatalogTool implements AgentTool {
               "householdId, sex(MALE|FEMALE), ageBracketId(如 0-14|15-59|60+), delta(非 0，可负), reason"
                   + "（★ GM 直调；负不得使人数 < 0；未知年龄档 id ⇒ 拒）"),
           Map.entry(
+              "social.SubmitHouseholdWorkOrder",
+              "orderId?, target(家户 id), reason(必填非空白), source{module, commandId?, actorId?},"
+                  + " dryRun?(缺省 false；true ⇒ 具名拒),"
+                  + " plan[{op:CREATE_HOUSEHOLD|SET_LOCATION|ADD_MEMBERS|REMOVE_MEMBERS|TRANSFER_MEMBERS|"
+                  + "ADJUST_POPULATION|SET_VITAL_RATES, household|householdId?, from|to?, lotId?, count?,"
+                  + " location?, profile?, vitalRates|rates?, sex?, ageAtAnchorDays?, anchorTick?, ageBracketId?, delta?}...]"
+                  + "（★ 唯一家户人口变更受理口：从 base 顺序应用为一个工作副本，任一步失败 ⇒ 整单具名拒、不部分生效；"
+                  + "成功 ⇒ SocialChangeSet.between 一条 revision；target 必须被 plan 引用；"
+                  + "orderId 给定时为幂等键（重复提交 ⇒ 具名拒，标记事件 id=work-order:<orderId>）；"
+                  + "ADD_MEMBERS 缺 lotId 时用 orderId 确定性派生 work-order:<orderId>:add:<序号>，两者都缺 ⇒ 拒；"
+                  + "旧逐操作 social.* 命令保留并存）"),
+          Map.entry(
               "economy.Seed",
               "mapId, rulesVersion, entries[{q,r,"
                   + "industries[{id,name,regime,cycleDays,"

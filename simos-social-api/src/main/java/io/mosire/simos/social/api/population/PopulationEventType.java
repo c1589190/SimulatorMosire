@@ -8,7 +8,9 @@ package io.mosire.simos.social.api.population;
  *   <li>{@link #DEATH}：按年龄段死亡；
  *   <li>{@link #TRANSFER_IN} / {@link #TRANSFER_OUT}：跨家户/跨 unit 转移人口；
  *   <li>{@link #GM_ADJUST}：GM 直接调整；
- *   <li>{@link #RATE_SET}：逐家户率表变更。
+ *   <li>{@link #RATE_SET}：逐家户率表变更；
+ *   <li>{@link #WORK_ORDER}：Social 工单受理标记（{@code social.SubmitHouseholdWorkOrder} 的幂等/审计落点；
+ *       只进事件表，<b>不改任何人口状态</b>——{@code count=0}，{@code sex}/{@code ageBracketId} 字段不承载语义）。
  * </ul>
  *
  * <p>★ 常量名即稳定拼写（进事件线格式/回放日志），改名视同改线格式。
@@ -19,5 +21,6 @@ public enum PopulationEventType {
   TRANSFER_IN,
   TRANSFER_OUT,
   GM_ADJUST,
-  RATE_SET
+  RATE_SET,
+  WORK_ORDER
 }

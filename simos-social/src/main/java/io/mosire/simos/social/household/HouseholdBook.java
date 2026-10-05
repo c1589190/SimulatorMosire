@@ -497,6 +497,10 @@ public final class HouseholdBook {
         case RATE_SET -> {
           // 率表本体由 setVitalRates 先落进 household；本事件是审计标记，不重复改任何状态。
         }
+        case WORK_ORDER -> {
+          // ★ 工单受理标记（social.SubmitHouseholdWorkOrder 的幂等键载体）：只进事件表（可查 orderId/reason/source），
+          //   不改任何人口状态；配套日志由 HouseholdWorkOrderBook 汇总，这里不重复记。
+        }
       }
       eventsTable.put(event.id(), event);
       applied.add(event);
@@ -1039,6 +1043,11 @@ public final class HouseholdBook {
               .debug(
                   "event=POPULATION_RATE_SET "
                       + SocialLog.kv("household", event.householdId(), "day", event.day()));
+      case WORK_ORDER ->
+          SocialLog.event()
+              .debug(
+                  "event=POPULATION_WORK_ORDER_MARKER "
+                      + SocialLog.kv("id", event.id(), "household", event.householdId(), "day", event.day()));
     }
     SocialLog.event()
         .debug(

@@ -96,6 +96,19 @@ final class SocialPayloads {
     return value.asText();
   }
 
+  /**
+   * 可选字符串字段，但"给了就不许空白"：缺席/JSON {@code null} ⇒ {@code null}；出现且为空白字符串 ⇒ 抛。
+   *
+   * <p>用途是幂等键 / 批次 id / 来源字段这类"要么不给、给就必须有值"的字段——空白是静默无效值，比缺字段更坏。
+   */
+  static String optionalNonBlankText(JsonNode payload, String field) {
+    String text = optionalText(payload, field);
+    if (text != null && text.isBlank()) {
+      throw new IllegalArgumentException("字段 " + field + " 若给必须非空白: " + payload);
+    }
+    return text;
+  }
+
   /** 必填的 {@code {q,r}} 对象 ⇒ {@link HexCoord}。 */
   static HexCoord requireHex(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
@@ -161,6 +174,25 @@ final class SocialPayloads {
    */
   static HouseholdId requireHouseholdId(JsonNode payload, String field) {
     return HouseholdId.parse(requireText(payload, field));
+  }
+
+  /**
+   * 必填的 {@code {name,description?,metadata?}} 家户画像对象（{@code social.CreateHousehold} 与
+   * {@code social.SubmitHouseholdWorkOrder} 的 CREATE_HOUSEHOLD 共用一处解析，避免两份形状漂移）。
+   *
+   * <p>字段名 {@code profile} 的载体由 {@code field} 决定（工单操作里可以是 {@code profile}，将来也可换名）。
+   * {@code name} 非空白由 {@link HouseholdProfile} 构造期判。
+   */
+  static HouseholdProfile requireProfile(JsonNode payload, String field) {
+    JsonNode profile = payload.get(field);
+    if (profile == null || !profile.isObject()) {
+      throw new IllegalArgumentException(
+          "字段 " + field + " 必须是 {name,description?,metadata?} 对象: " + payload);
+    }
+    String name = requireText(profile, "name");
+    String description = optionalText(profile, "description");
+    Map<String, String> metadata = optionalStringMap(profile, "metadata");
+    return new HouseholdProfile(name, description, metadata);
   }
 
   /**

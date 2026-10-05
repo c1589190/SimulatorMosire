@@ -143,6 +143,7 @@ import io.mosire.simos.social.spi.SeedGroupsHandler;
 import io.mosire.simos.social.spi.SetHouseholdLocationHandler;
 import io.mosire.simos.social.spi.SetHouseholdVitalRatesHandler;
 import io.mosire.simos.social.spi.SetPopulationHandler;
+import io.mosire.simos.social.spi.SubmitHouseholdWorkOrderHandler;
 import io.mosire.simos.social.spi.TransferHouseholdMembersHandler;
 import io.mosire.simos.social.spi.UpdateCityHandler;
 import io.mosire.simos.unit.codec.UnitCodec;
@@ -565,7 +566,7 @@ public final class Shell implements AutoCloseable {
                 new DeleteCityHandler(),
                 new MovePopulationLotsHandler(),
                 new SeedGroupsHandler(),
-                // ── S3a（2026-10-09 家户/人口架构 §4.1）：家户生命周期七条命令——创建 / 位置 / 增人 / 减人 /
+                // ── S3a（2026-10-09 家户/人口架构 §4.1）：家户生命周期七条逐操作命令——创建 / 位置 / 增人 / 减人 /
                 //   转移 / 设率 / GM 直调人口。全部只写 SocialData、返回 SocialChangeSet；UNIT 位置的 unit 侧一致性
                 //   由 app 组合工具同批保证（social 域不认识 unit）。非 sd 前缀 ⇒ 自动进 drainableCommandTypes。──
                 new CreateHouseholdHandler(),
@@ -575,6 +576,10 @@ public final class Shell implements AutoCloseable {
                 new TransferHouseholdMembersHandler(),
                 new SetHouseholdVitalRatesHandler(),
                 new AdjustHouseholdPopulationHandler(),
+                // ── S3b（2026-10-09 用户裁定）：**唯一家户人口变更受理口**——工单（target + 有序 plan + reason +
+                //   source）在一张工作副本上顺序应用，任一操作失败整单具名拒；成功落一条 SocialChangeSet。
+                //   ★ 不作 GmOnly：它是本批给 Unit/Eco 等调用方预留的正式入口，且逐操作旧命令仍并存。──
+                new SubmitHouseholdWorkOrderHandler(),
                 // ── P1b1（2026-10-01）：GM-only 区域社会数据清空（目标 Region 格集内的 populations/groups/cities）。
                 //   标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
                 new ClearRegionHandler(),

@@ -14,7 +14,6 @@ import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -68,7 +67,7 @@ public final class CreateHouseholdHandler implements CommandHandler, CommandTarg
       JsonNode payload = SocialPayloads.parse(payloadJson);
       HouseholdId id = SocialPayloads.requireHouseholdId(payload, "householdId");
       HouseholdLocation location = SocialPayloads.requireLocation(payload, "location");
-      HouseholdProfile profile = requireProfile(payload);
+      HouseholdProfile profile = SocialPayloads.requireProfile(payload, "profile");
       HouseholdVitalRates vitalRates =
           new HouseholdVitalRates(SocialPayloads.requireVitalRates(payload, "vitalRates"));
       SocialPayloads.requireReason(payload); // 校验非空白（create 本身不接 reason）
@@ -77,17 +76,5 @@ public final class CreateHouseholdHandler implements CommandHandler, CommandTarg
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());
     }
-  }
-
-  /** 必填的 {@code profile:{name,description?,metadata?}} 对象；name 非空白由 {@link HouseholdProfile} 判。 */
-  private static HouseholdProfile requireProfile(JsonNode payload) {
-    JsonNode profile = payload.get("profile");
-    if (profile == null || !profile.isObject()) {
-      throw new IllegalArgumentException("字段 profile 必须是 {name,description?,metadata?} 对象: " + payload);
-    }
-    String name = SocialPayloads.requireText(profile, "name");
-    String description = SocialPayloads.optionalText(profile, "description");
-    Map<String, String> metadata = SocialPayloads.optionalStringMap(profile, "metadata");
-    return new HouseholdProfile(name, description, metadata);
   }
 }
