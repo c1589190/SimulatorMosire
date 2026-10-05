@@ -166,7 +166,8 @@ public final class HouseholdBook {
     }
     events.put(event.id(), event);
     SocialData result =
-        new SocialData(base.populations(), base.cities(), groups, households, events);
+        new SocialData(
+            base.populations(), base.cities(), groups, households, events, base.provisioning());
     SocialLog.household()
         .info(
             "event=HOUSEHOLD_MEMBER_ADD "
@@ -319,7 +320,8 @@ public final class HouseholdBook {
             movedLot));
 
     SocialData result =
-        new SocialData(base.populations(), base.cities(), groups, households, events);
+        new SocialData(
+            base.populations(), base.cities(), groups, households, events, base.provisioning());
     SocialLog.household()
         .info(
             "event=HOUSEHOLD_MEMBER_TRANSFER "
@@ -507,7 +509,13 @@ public final class HouseholdBook {
       logEvent(event);
     }
     SocialData result =
-        new SocialData(base.populations(), base.cities(), groups, households, eventsTable);
+        new SocialData(
+            base.populations(),
+            base.cities(),
+            groups,
+            households,
+            eventsTable,
+            base.provisioning());
     for (HouseholdPopulationEvent event : applied) {
       SocialLog.event()
           .debug(

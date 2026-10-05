@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * ★★ <b>家户行</b>（新经济设计 §3.2；<b>2026-09-27 H0 起行就是家户</b>，裁定 K2；<b>H1 起行里没有商品库存</b>，裁定 D3-C/K1）： 人口 /
@@ -54,11 +55,13 @@ import java.util.Map;
  * @param participationPerMille 本期实际劳动投入率（≤ 该格各产业的槽位上限）；必须 ∈ [0, 1000]
  * @param money 货币（最小币值）；不得为负
  * @param debts 指向债务表的引用；可空、不得含 null
- * @param naturalNeeds 本期自然需求（生存/再生产；v1 只做前两档）；键值非空、逐值 ≥ 0
+ * @param naturalNeeds ★★ 本期自然需求（生存/再生产；v1 只做前两档）；键值非空、逐值 ≥ 0。**2026-10-09 起它是
+ *     app 逐户从 Social 成员结构展开并注入的当日物化读模型**（{@code EconomySettlement.applyNaturalNeedsInto}
+ *     是唯一写入点）；经济侧不再按 {@code population} 反推 —— 无需求用空 map。
  * @param effectiveDemand 有效需求（= 有支付力的那部分，§十四/§十五 的分野）；键值非空、逐值 ≥ 0
  * @param cycleNaturalNeedMilli ★★ <b>M2.7 丙条仪器：本周期累计自然口粮需要</b>（毫粮）= {@code Σ_d
- *     dailyRationMilli(population_d, d)}，{@code population_d} = 第 d 天结算前的行人口（日初人口）—— 由 {@code
- *     旧结算引擎（R3a 已删除）} 逐日累加、新周期第一天重置为当天需要（见 {@code withDailyNeed} 与流水清零点旁的注释）。
+ *     当日本行 naturalNeeds[grain]}—— 由消费步（{@code EconomySettlement.consumeOneHousehold}）逐日累加、新周期第一天在
+ *     流水清零点重置为当天需要。**它不是独立口径**：分母与每日需求同源于 app 注入值。
  *     <b>它是唯一与"周期累计未满足需求"同窗口的自然需求分母</b>；旧的"某一天人口 × 整周期配额"不得再与它并排当同一分母（丙条）。 旧档（M2.7 之前）缺本键 ⇒
  *     0（fail-closed 的"还没开始累计"），由 {@code EconomyPayloads.householdEconomy} 与 Jackson 的记录绑定分别兜底。 不得为负
  */
@@ -174,6 +177,87 @@ public record HouseholdEconomy(
         naturalNeeds,
         effectiveDemand,
         cycleNaturalNeedMilli);
+  }
+
+  /**
+   * ★★ <b>2026-10-09 家户结构修复：只换当日自然需求，别的字段一字不动</b>——身份、视图、人口、劳动、参与率、货币、债务引用、
+   * 有效需求与周期累计自然需要全部原样保留。
+   *
+   * <p>★★ <b>与 {@link #withView}/{@link #withPopulationAndLabor} 同族的理由</b>：需求表的写入点必须只有一处（app 注入 →
+   * {@code EconomySettlement.applyNaturalNeedsInto}），若调用点逐字段手抄，任何一次 {@code HouseholdEconomy} 加字段都会让
+   * 注入路径静默丢字段；本方法把“只改 naturalNeeds”的承诺钉在类型内部。键/值/非负由规范构造器当场拒（坏数据不静默补 0）。
+   */
+  public HouseholdEconomy withNaturalNeeds(Map<CommodityId, Long> newNaturalNeeds) {
+    return new HouseholdEconomy(
+        id,
+        view,
+        population,
+        laborMilli,
+        participationPerMille,
+        money,
+        debts,
+        newNaturalNeeds,
+        effectiveDemand,
+        cycleNaturalNeedMilli);
+  }
+
+  /**
+   * ★★ <b>2026-10-09 家户结构修复 Batch 3：当前注入值下的多日前瞻需求（纯派生、不落盘、不写状态）</b>。
+   *
+   * <pre>
+   * expectedNeedMilli(commodity, days) = naturalNeeds.getOrDefault(commodity, 0) × days   // days ≤ 0 ⇒ 0
+   * </pre>
+   *
+   * <p>★★ <b>它不是第二本权威</b>：乘数 {@code naturalNeeds[commodity]} 是 app 当日从 Social
+   * 逐成员展开并注入的<b>当日份额</b>（见 {@link #naturalNeeds()}）；本方法只把<b>当前注入值</b>按天数线性外推。
+   * 人口/年龄性别结构/需求系数变化由下一次 app 注入刷新，经济侧不自己按 {@code population} 反推，也不缓存第二套需求表。
+   *
+   * <p>★ <b>用途</b>：放贷/债务容量的整周期保留额、粮覆盖率分母、经营者守卫口粮、市场自用保留、app 危机读数的多日窗口
+   * —— 这些“整周期/多日前瞻需求”的统一入口。窗口多少天由调用方按原语义给（如本户产业 {@code cycleDays}、
+   * 市场补货窗口），本方法不猜周期。
+   *
+   * <p>★ <b>与 {@link #cycleNaturalNeedMilli()} 的分工</b>：本方法是“从今天往后看 N 天”的线性外推；若需要“本周期
+   * 已经过窗口”的精确累计（粮），读 {@code cycleNaturalNeedMilli()}，不要用本方法回放历史。
+   *
+   * <p>★ <b>边界</b>：当前 profile 里没有该商品的注入键 ⇒ 返回 0（不抛、不另造默认表）；{@code days ≤ 0} ⇒ 返回 0；
+   * 溢出走 {@link Math#multiplyExact} 具名抛，不静默回绕。
+   *
+   * @param commodity 商品 id（非 null）
+   * @param days 前瞻天数；≤ 0 ⇒ 0
+   * @throws ArithmeticException 当前份额 × 天数 超出 long
+   */
+  public long expectedNeedMilli(CommodityId commodity, long days) {
+    Objects.requireNonNull(commodity, "expectedNeedMilli 的商品 id 不得为 null");
+    if (days <= 0L) {
+      return 0L;
+    }
+    long dailyShareMilli = naturalNeeds.getOrDefault(commodity, 0L);
+    if (dailyShareMilli == 0L) {
+      return 0L;
+    }
+    return Math.multiplyExact(dailyShareMilli, days);
+  }
+
+  /**
+   * ★★ <b>2026-10-09 家户结构修复：只换当日自然需求与周期累计口粮需要</b>——其余字段原样带过。
+   *
+   * <p>消费步用它把当天注入的 {@code naturalNeeds[GRAIN]} 累加进 {@link #cycleNaturalNeedMilli()}（一天一次）；
+   * 新周期第一天的重置仍由 {@code EconomySettlement.withCycleNaturalNeed} 在流水清零点完成。新周期累计值为负 ⇒
+   * 规范构造器当场拒。
+   */
+  public HouseholdEconomy withNaturalNeedsAndCycle(
+      Map<CommodityId, Long> newNaturalNeeds, long newCycleNaturalNeedMilli) {
+    return new HouseholdEconomy(
+        id,
+        view,
+        population,
+        laborMilli,
+        participationPerMille,
+        money,
+        debts,
+        newNaturalNeeds,
+        effectiveDemand,
+        newCycleNaturalNeedMilli);
   }
 
   /**

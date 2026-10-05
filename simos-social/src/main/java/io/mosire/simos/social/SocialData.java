@@ -1,6 +1,7 @@
 package io.mosire.simos.social;
 
 import io.mosire.simos.calendar.CalendarClock;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
@@ -18,13 +19,19 @@ import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.PopulationSource;
 import io.mosire.simos.social.population.UrbanRural;
+import io.mosire.simos.social.provisioning.DemandBasis;
+import io.mosire.simos.social.provisioning.DemandCoefficient;
+import io.mosire.simos.social.provisioning.LaborCoefficient;
+import io.mosire.simos.social.provisioning.SocialProvisioning;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 社会状态（M3 spec §3.1 + 城市节点 + 第三阶段设计稿 §三的**人口实体** + 2026-10-09 家户架构 §4）。
@@ -50,19 +57,28 @@ import java.util.Optional;
  * <p>★ {@code populationEvents} 以 {@code event.id()} 为键（架构 §4.3：事件进持久表、可回放；重复 id 由
  * {@code HouseholdBook.applyEvent} 拒绝）。
  *
- * <p>★ <b>五个 map 都保序不可变</b>：{@code LinkedHashMap} + {@code unmodifiableMap}，**绝不用 {@code
- * Map.copyOf}**——它的迭代序不是内容的纯函数（M2 实测），字节级往返因此不成立。
+ * <p>★ <b>六个组件都保序不可变</b>：{@code LinkedHashMap} + {@code unmodifiableMap}，**绝不用 {@code
+ * Map.copyOf}**——它的迭代序不是内容的纯函数（M2 实测），字节级往返因此不成立。第 6 个组件
+ * {@link #provisioning()} 是 2026-10-09 家户结构修复计划的 Batch 1 权威旁表（需求/劳动全局默认 + 逐户覆盖），
+ * 由 {@link io.mosire.simos.social.provisioning.SocialProvisioning#defaults()} 给出初始六档值。
  */
 public record SocialData(
     Map<HexCoord, PopulationSeries> populations,
     Map<CityId, SocialCity> cities,
     Map<PeopleLotId, PopulationGroup> groups,
     Map<HouseholdId, Household> households,
-    Map<String, HouseholdPopulationEvent> populationEvents) {
+    Map<String, HouseholdPopulationEvent> populationEvents,
+    SocialProvisioning provisioning) {
 
   public SocialData {
     if (populations == null) {
       throw new IllegalArgumentException("populations 不得为 null");
+    }
+    // ★★ 一切从新（用户 2026-10-09 裁定）：第 6 个组件缺键 = 旧档不可读，**不做缺省补默认值**。
+    //   新档由 5 参便捷构造器或显式传入的 SocialProvisioning 给出；读旧档在这里具名拒。
+    if (provisioning == null) {
+      throw provisioningReject(
+          "SocialData.provisioning 不得为 null（旧档缺此组件已作废，不做缺省兜底；新世界请显式给 provisioning）");
     }
     // ★ **老档兼容**（旧字节没有这个键，如 `worlds/v17levant.json` 与升级前落盘的每条 social revision）：
     //   缺省 = 空表，**此处不抛** —— 抛了等于"整个世界打不开"（先例：SdInfoEntry 的 affiliations/adjudicationStatus）。
@@ -190,19 +206,35 @@ public record SocialData(
     this(populations, cities, groups, Map.of(), Map.of());
   }
 
-  /** 往返用例的起点。 */
+  /**
+   * ★ <b>旧 5 参便捷构造器</b>（第 6 组件缺省的过渡形态）：只服务"还没有 provisioning 表"的装配点与既有测试，
+   * <b>一律委托 {@link SocialProvisioning#defaults()}</b>。
+   *
+   * <p>★★ 新主路径与状态重建必须显式带过第 6 参（六个 {@code with*} 已全部原样带过），否则每次重建都会把 GM
+   * 调过的覆盖表退回默认值——这是"旧档作废、一切从新"（用户 2026-10-09 裁定）下唯一保留的便捷口。
+   */
+  public SocialData(
+      Map<HexCoord, PopulationSeries> populations,
+      Map<CityId, SocialCity> cities,
+      Map<PeopleLotId, PopulationGroup> groups,
+      Map<HouseholdId, Household> households,
+      Map<String, HouseholdPopulationEvent> populationEvents) {
+    this(populations, cities, groups, households, populationEvents, SocialProvisioning.defaults());
+  }
+
+  /** 往返用例的起点；需求/劳动表走 {@link SocialProvisioning#defaults()}。 */
   public static SocialData empty() {
     return new SocialData(Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
   }
 
-  /** 一个组件一个 with（照 M2 的形制）。 */
+  /** 一个组件一个 with（照 M2 的形制）；{@code provisioning} 原样带过。 */
   public SocialData withPopulations(Map<HexCoord, PopulationSeries> value) {
-    return new SocialData(value, cities, groups, households, populationEvents);
+    return new SocialData(value, cities, groups, households, populationEvents, provisioning);
   }
 
-  /** 一个组件一个 with（照 M2 的形制）。 */
+  /** 一个组件一个 with（照 M2 的形制）；{@code provisioning} 原样带过。 */
   public SocialData withCities(Map<CityId, SocialCity> value) {
-    return new SocialData(populations, value, groups, households, populationEvents);
+    return new SocialData(populations, value, groups, households, populationEvents, provisioning);
   }
 
   /**
@@ -210,23 +242,31 @@ public record SocialData(
    * ★ 新增批次（新生批次）不能用它——那会造出无主批次；请用 {@link #withGroupsAndHouseholds}。
    */
   public SocialData withGroups(Map<PeopleLotId, PopulationGroup> value) {
-    return new SocialData(populations, cities, value, households, populationEvents);
+    return new SocialData(populations, cities, value, households, populationEvents, provisioning);
   }
 
   /** 只换家户表（成员关系变了就要求 {@code groups} 同步：见 {@link #withGroupsAndHouseholds}）。 */
   public SocialData withHouseholds(Map<HouseholdId, Household> value) {
-    return new SocialData(populations, cities, groups, value, populationEvents);
+    return new SocialData(populations, cities, groups, value, populationEvents, provisioning);
   }
 
   /** 批次与家户**一起**换（新增/删除成员、跨家户转移的唯一安全写口：中间态不经过构造期校验）。 */
   public SocialData withGroupsAndHouseholds(
       Map<PeopleLotId, PopulationGroup> newGroups, Map<HouseholdId, Household> newHouseholds) {
-    return new SocialData(populations, cities, newGroups, newHouseholds, populationEvents);
+    return new SocialData(
+        populations, cities, newGroups, newHouseholds, populationEvents, provisioning);
   }
 
   /** 只换事件表。 */
   public SocialData withPopulationEvents(Map<String, HouseholdPopulationEvent> value) {
-    return new SocialData(populations, cities, groups, households, value);
+    return new SocialData(populations, cities, groups, households, value, provisioning);
+  }
+
+  /**
+   * ★★ 只换需求/劳动权威旁表（全局默认 + 逐户覆盖）：其余组件原样带过，是 GM 调参与创世装配的写口形制。
+   */
+  public SocialData withProvisioning(SocialProvisioning value) {
+    return new SocialData(populations, cities, groups, households, populationEvents, value);
   }
 
   // ── 家户/位置派生量（★ 一律现算，别找地方存 —— 见类注）────────────────────────────────
@@ -342,6 +382,267 @@ public record SocialData(
       }
     }
     return total;
+  }
+
+  // ── Batch 1：需求/劳动权威表的逐家户展开（★ 纯函数，不落盘）────────────────────────────
+
+  /**
+   * ★★ <b>家户当日劳动预算</b>（毫小时/tick）：
+   *
+   * <pre>
+   * Σ_{成员批次} 份额 × provisioning.findLabor(家户, AgeBracket.of(该批次在 day 的年龄), 性别)
+   * </pre>
+   *
+   * <p>★★ <b>逐成员整数乘加、无时间分数、不取整</b>（计划 §3.5 机制第 1/4 条）：份额与系数都是整数，
+   * {@code Math.multiplyExact}/{@code Math.addExact} 天然精确；不存在"逐成员除法丢残差"的问题。
+   * 年龄档一律由 {@link AgeBracket#of(io.mosire.simos.calendar.CalendarSystem, long, long)} 现算，
+   * 不读任何落盘的"当前档位"。
+   *
+   * <p>★★ <b>坏数据具名拒</b>：家户不存在 / 成员批次不在 {@code groups} / {@code day < 0} / {@code clock}
+   * 为 null / 批次年龄为负 / 该 {@code (年龄档, 性别)} 在覆盖与默认表里都查不到，都当场抛
+   * {@link IllegalArgumentException}（ERROR 日志带上下文），绝不静默给 0。
+   *
+   * @param householdId 家户 id；不得为 null
+   * @param day 世界日（tick）；不得为负
+   * @param clock 历法时钟（tick→JDN 与历年折算的唯一入口）；不得为 null
+   * @throws IllegalArgumentException 见上
+   */
+  public long householdLaborMilli(HouseholdId householdId, long day, CalendarClock clock) {
+    requireProvisioningArgs(householdId, day, clock, "householdLaborMilli");
+    Household household = requireHouseholdForProvisioning(householdId, "householdLaborMilli");
+    long total = 0L;
+    for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
+      long share = member.getValue();
+      if (share == 0L) {
+        continue; // 显式的零份额条目：不贡献劳动，也不触发该批次的口径查找。
+      }
+      PopulationGroup group =
+          requireMemberGroup(householdId, member.getKey(), "householdLaborMilli");
+      AgeBracket bracket =
+          bracketAtForProvisioning(
+              group, day, clock, householdId, member.getKey(), "householdLaborMilli");
+      LaborCoefficient coefficient = provisioning.findLabor(householdId, bracket, group.sex());
+      total = Math.addExact(total, Math.multiplyExact(share, coefficient.milliHoursPerTick()));
+    }
+    long population = householdPopulation(householdId);
+    if (SocialLog.provisioning().isDebugEnabled()) {
+      SocialLog.provisioning()
+          .debug(
+              "event=SOCIAL_HOUSEHOLD_LABOR_EXPANDED "
+                  + SocialLog.kv(
+                      "household",
+                      householdId,
+                      "day",
+                      day,
+                      "population",
+                      population,
+                      "laborMilli",
+                      total));
+    }
+    return total;
+  }
+
+  /**
+   * ★★ <b>家户当日逐商品自然需求</b>（{@code CommodityId → 毫单位/日}）：
+   *
+   * <pre>
+   * 1. 逐成员批次按 (年龄档, 性别) 查覆盖 ?? 默认（findDemand 的逐键回落）；
+   * 2. 同一商品先做家户总额：Σ(份额 × amountMilli)（整数乘加，精确）；
+   * 3. 再按该商品的 period 折算 day 当天的份额：
+   *      PER_CYCLE_DAYS     ⇒ 累计 = total × day / cycleDays，日值 = 累计(day) − 累计(day−1)（家户层一次取整）
+   *      PER_CALENDAR_YEAR  ⇒ clock.yearFraction(day, day+1).multiplyFloor(total)（年长 365/366 由时钟给）
+   * 4. 只返回日值 &gt; 0 的商品（0 与"没有这项需求"在账上等价）。
+   * </pre>
+   *
+   * <p>★★ <b>同一商品在家户内只允许一个时间口径</b>：不同成员的系数若对同一商品给出互相矛盾的
+   * {@link DemandBasis}（例如粮一部分按 120 天、一部分按历年），聚合口径没有唯一解释 ⇒ 具名拒；
+   * 这保证"先汇总、再按商品口径折算"不会悄悄挑一个口径。
+   *
+   * <p>★★ <b>坏数据具名拒</b>：家户不存在 / 成员批次不在 {@code groups} / {@code day < 0} /
+   * {@code clock} 为 null / 年龄为负 / 系数查不到 / 同商品口径冲突，都当场抛
+   * {@link IllegalArgumentException}（ERROR 日志带上下文），绝不静默给 0。
+   *
+   * <p>★ 返回的 map 保序不可变：序 = 按成员批次插入序首次遇到该商品的序（先覆盖表序、再全局默认序）；
+   * 不硬编码任何商品名——商品集合完全来自 provisioning 表里实际存在的行。
+   *
+   * @param householdId 家户 id；不得为 null
+   * @param day 世界日（tick）；不得为负
+   * @param clock 历法时钟（历年折算的唯一入口）；不得为 null
+   * @throws IllegalArgumentException 见上
+   */
+  public Map<CommodityId, Long> householdNaturalNeeds(
+      HouseholdId householdId, long day, CalendarClock clock) {
+    requireProvisioningArgs(householdId, day, clock, "householdNaturalNeeds");
+    Household household = requireHouseholdForProvisioning(householdId, "householdNaturalNeeds");
+    Map<CommodityId, Long> totals = new LinkedHashMap<>();
+    Map<CommodityId, DemandBasis> bases = new LinkedHashMap<>();
+    for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
+      long share = member.getValue();
+      if (share == 0L) {
+        continue;
+      }
+      PopulationGroup group =
+          requireMemberGroup(householdId, member.getKey(), "householdNaturalNeeds");
+      AgeBracket bracket =
+          bracketAtForProvisioning(
+              group, day, clock, householdId, member.getKey(), "householdNaturalNeeds");
+      for (CommodityId commodity : commodityKeysFor(householdId, bracket, group.sex())) {
+        DemandCoefficient coefficient =
+            provisioning.findDemand(householdId, bracket, group.sex(), commodity);
+        DemandBasis basis = coefficient.basis();
+        DemandBasis existingBasis = bases.get(commodity);
+        if (existingBasis == null) {
+          bases.put(commodity, basis);
+        } else if (!existingBasis.equals(basis)) {
+          throw provisioningReject(
+              "householdNaturalNeeds：同一家户同一商品出现多个时间口径（无法聚合成一个日值）"
+                  + " household="
+                  + householdId
+                  + " commodity="
+                  + commodity
+                  + " "
+                  + existingBasis
+                  + " vs "
+                  + basis);
+        }
+        totals.merge(commodity, Math.multiplyExact(share, coefficient.amountMilli()), Math::addExact);
+      }
+    }
+    Map<CommodityId, Long> needs = new LinkedHashMap<>();
+    for (Map.Entry<CommodityId, Long> entry : totals.entrySet()) {
+      CommodityId commodity = entry.getKey();
+      long total = entry.getValue();
+      if (total <= 0L) {
+        continue;
+      }
+      DemandBasis basis = bases.get(commodity);
+      long daily =
+          switch (basis.period()) {
+            case PER_CYCLE_DAYS -> dailyShareFromCycle(total, day, basis.cycleDays());
+            case PER_CALENDAR_YEAR ->
+                clock.yearFraction(day, Math.addExact(day, 1L)).multiplyFloor(total);
+          };
+      if (daily > 0L) {
+        needs.put(commodity, daily);
+      }
+    }
+    Map<CommodityId, Long> result = Collections.unmodifiableMap(needs);
+    long population = householdPopulation(householdId);
+    if (SocialLog.provisioning().isDebugEnabled()) {
+      SocialLog.provisioning()
+          .debug(
+              "event=SOCIAL_HOUSEHOLD_NEEDS_EXPANDED "
+                  + SocialLog.kv(
+                      "household", householdId, "day", day, "population", population, "needs", result));
+    }
+    return result;
+  }
+
+  /**
+   * 某成员 {@code (年龄档, 性别)} 在本户可命中的商品键集合（保序、去重）：先覆盖表、再全局默认表。
+   *
+   * <p>它是"不硬编码商品名"的落点之一：{@code householdNaturalNeeds} 要知道"该成员有哪些商品行"，
+   * 只能从 provisioning 的两张需求表里读，不能写死 {@code grain/cloth}。逐个键最终仍走
+   * {@link SocialProvisioning#findDemand} 的"覆盖优先、默认兜底"解析。
+   */
+  private List<CommodityId> commodityKeysFor(
+      HouseholdId householdId, AgeBracket ageBracket, Sex sex) {
+    Set<CommodityId> keys = new LinkedHashSet<>();
+    List<DemandCoefficient> overrides = provisioning.householdDemandOverrides().get(householdId);
+    if (overrides != null) {
+      for (DemandCoefficient coefficient : overrides) {
+        if (coefficient.ageBracket() == ageBracket && coefficient.sex() == sex) {
+          keys.add(coefficient.commodity());
+        }
+      }
+    }
+    for (DemandCoefficient coefficient : provisioning.globalDemandDefaults()) {
+      if (coefficient.ageBracket() == ageBracket && coefficient.sex() == sex) {
+        keys.add(coefficient.commodity());
+      }
+    }
+    return List.copyOf(keys);
+  }
+
+  /**
+   * {@code PER_CYCLE_DAYS} 的"家户层一次取整"：返回 {@code 累计(day) − 累计(day−1)}。
+   *
+   * <p>{@code day == 0} ⇒ 返回 0（累计(0) = 0，累计(−1) 视为 0）；其余天用
+   * {@link Math#floorDiv(long, long)} 逐日差分，整个周期恰好铺满 {@code total}（{@code Σ 日值 == total}），
+   * 不出现"先化成日均再乘天数"的周期残差丢失。
+   */
+  private static long dailyShareFromCycle(long totalMilli, long day, long cycleDays) {
+    if (day == 0L) {
+      return 0L;
+    }
+    long current = Math.floorDiv(Math.multiplyExact(totalMilli, day), cycleDays);
+    long previous =
+        Math.floorDiv(Math.multiplyExact(totalMilli, Math.subtractExact(day, 1L)), cycleDays);
+    return Math.subtractExact(current, previous);
+  }
+
+  /** 逐户展开的公共入参校验（null / 负 day 一律具名拒 + ERROR 日志）。 */
+  private static void requireProvisioningArgs(
+      HouseholdId householdId, long day, CalendarClock clock, String caller) {
+    if (householdId == null) {
+      throw provisioningReject(caller + "：householdId 不得为 null");
+    }
+    if (clock == null) {
+      throw provisioningReject(caller + "：clock 不得为 null");
+    }
+    if (day < 0L) {
+      throw provisioningReject(caller + "：day 不得为负: " + day);
+    }
+  }
+
+  /** 要求家户存在；不存在 ⇒ 具名拒（不静默给 0——"空家户"必须显式存在且成员为空）。 */
+  private Household requireHouseholdForProvisioning(HouseholdId householdId, String caller) {
+    Household household = households.get(householdId);
+    if (household == null) {
+      throw provisioningReject(caller + "：家户不存在: " + householdId);
+    }
+    return household;
+  }
+
+  /** 要求成员批次存在于 {@code groups}；缺失 ⇒ 具名拒（这是坏数据，不是"没人"）。 */
+  private PopulationGroup requireMemberGroup(
+      HouseholdId householdId, PeopleLotId lotId, String caller) {
+    PopulationGroup group = groups.get(lotId);
+    if (group == null) {
+      throw provisioningReject(
+          caller + "：家户 " + householdId + " 的成员批次不在 groups 里: " + lotId);
+    }
+    return group;
+  }
+
+  /** 现算批次在 {@code day} 的年龄档；年龄为负（day 早于锚点）⇒ 具名拒，不交给 AgeBracket 的裸异常。 */
+  private static AgeBracket bracketAtForProvisioning(
+      PopulationGroup group,
+      long day,
+      CalendarClock clock,
+      HouseholdId householdId,
+      PeopleLotId lotId,
+      String caller) {
+    long ageDays = group.ageDaysAt(day);
+    if (ageDays < 0L) {
+      throw provisioningReject(
+          caller
+              + "：批次年龄为负（day 早于锚点） household="
+              + householdId
+              + " lot="
+              + lotId
+              + " day="
+              + day
+              + " anchorTick="
+              + group.anchorTick());
+    }
+    return AgeBracket.of(clock.system(), clock.dayNumberOfTick(day), ageDays);
+  }
+
+  /** 需求/劳动展开路径的具名拒绝出口：ERROR 日志 + {@link IllegalArgumentException}（与 provisioning 包同制）。 */
+  private static IllegalArgumentException provisioningReject(String message) {
+    SocialLog.provisioning().error("event=SOCIAL_PROVISIONING_REJECTED reason={}", message);
+    return new IllegalArgumentException(message);
   }
 
   /**

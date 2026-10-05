@@ -513,7 +513,7 @@ final class OperatorSettlement {
    *
    * <pre>
    * 家户可解析（且行存在）：
-   *   ① 粮库存 ≥ 本周期基本口粮 = cumulativeRationMilli(人口, industry.cycleDays)          ⇒ true
+   *   ① 粮库存 ≥ 本周期基本口粮 = expectedNeedMilli(GRAIN, industry.cycleDays)                   ⇒ true
    *   ② 否则：粮库存 ≥ SELF_PROVISION_GUARD_DAYS 天的口粮（守卫，防"有种子没饭吃"）
    *      且 selfUsableOf 覆盖下一周期全部投入需求                                          ⇒ true
    *   ③ 其余                                                                              ⇒ false
@@ -522,6 +522,11 @@ final class OperatorSettlement {
    *
    * <p>★★ <b>为什么自用品要"覆盖全部投入"而不是"有正数"</b>：只要有一种投入覆盖不到，下一周期就开不了工；把 {@code Σ min(库存, 需求)} 与 {@code Σ
    * 需求} 比较，两者相等当且仅当每种投入都覆盖到 —— 与 {@link #selfUsableOf} 同一口径。
+   *
+   * <p>★★ <b>2026-10-09 Batch 3：口粮保留额来源 = 本户当前注入的 {@code naturalNeeds[grain]} 逐日前瞻</b>
+   * （{@link HouseholdEconomy#expectedNeedMilli(io.mosire.simos.economy.api.id.CommodityId, long)}），
+   * <b>不再</b>按 {@code population × 人均口粮定额} 现算；窗口沿用原来的 industry.cycleDays() 与
+   * SELF_PROVISION_GUARD_DAYS 不变。
    *
    * <p>★ 本判据不改任何状态；{@code CONTRACTING/INDEBTED/SUSPENDED} 的转移用它作硬门。
    */
@@ -537,14 +542,13 @@ final class OperatorSettlement {
       if (householdEconomy != null) {
         long grainStock = stockOf(household, EconomySettlement.GRAIN, householdGoods);
         long cycleRation =
-            io.mosire.simos.util.economy.EconomyVocabulary.cumulativeRationMilli(
-                householdEconomy.population(), industry.cycleDays());
+            householdEconomy.expectedNeedMilli(EconomySettlement.GRAIN, industry.cycleDays());
         if (grainStock >= cycleRation) {
           return true;
         }
         long guardRation =
-            io.mosire.simos.util.economy.EconomyVocabulary.cumulativeRationMilli(
-                householdEconomy.population(), StressPolicy.SELF_PROVISION_GUARD_DAYS);
+            householdEconomy.expectedNeedMilli(
+                EconomySettlement.GRAIN, StressPolicy.SELF_PROVISION_GUARD_DAYS);
         return grainStock >= guardRation
             && coversNextCycleInputs(unit, household, industry, index, householdGoods);
       }

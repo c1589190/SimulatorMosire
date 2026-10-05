@@ -8,6 +8,12 @@ import java.util.Objects;
 /**
  * 跨模块共用的**经济词表**：全仓恰一份，由源扫描护栏钉住（{@code EconomyVocabularyGuardTest}）。
  *
+ * <p>★★ <b>2026-10-09 起运行时的自然需求不再由本类的 population 口径现算</b>：Social 按 (年龄档, 性别) 逐户展开、
+ * app 每日注入 {@code HouseholdEconomy.naturalNeeds}，整周期/多日前瞻走 {@code HouseholdEconomy.expectedNeedMilli}
+ * （逐户取值，见家户结构修复 Batch 3）。本类的 {@link #cumulativeRationMilli}/{@link #dailyRationMilli}/
+ * {@link #dailyNeedsMilli}/{@link #cumulativeClothMilli}/{@link #dailyClothNeedMilli} 只剩**非运行时**用途：
+ * 创世播种（{@code EconomySeeder}）与 unit 出厂政策默认值（{@code OfficePolicy}）；<b>新增运行时消费点不得再调用</b>。
+ *
  * <p>★★ **为什么在 {@code simos-util} 而不是 {@code simos-economy-api}**：军队（{@code simos-unit}）将来也要按同一
  * 口径吃粮，而 {@code simos-unit} 只依赖 util + map ⇒ **只有 util 是 economy 与 unit 都能看见的共同上游**。
  *

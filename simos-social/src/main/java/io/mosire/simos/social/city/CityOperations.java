@@ -116,8 +116,9 @@ public final class CityOperations {
         households.put(entry.getKey(), household.withMembers(remaining));
       }
     }
-    // 事件表是历史留痕，不删（被删批次的 id 只作历史引用）；其余四个组件原样带过。
-    return new SocialData(base.populations(), cities, groups, households, base.populationEvents());
+    // 事件表是历史留痕，不删（被删批次的 id 只作历史引用）；其余组件原样带过（含第 6 组件 provisioning）。
+    return new SocialData(
+        base.populations(), cities, groups, households, base.populationEvents(), base.provisioning());
   }
 
   /** 该城名下的全部批次（按 {@code groups} 的插入序；前缀判法走 {@link PopulationLots#urbanPrefix} 的唯一拼写点）。 */

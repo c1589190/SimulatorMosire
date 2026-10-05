@@ -496,18 +496,22 @@ public final class DebtCapacityBook {
   }
 
   /**
-   * ★★ <b>放贷行的可贷额（余粮）</b>：{@code reserve = 整周期口粮 × 1000‰ ÷ 1000；lendable = max(0, 库存 − reserve)}。
+   * ★★ <b>放贷行的可贷额（余粮）</b>：{@code reserve = 本户 expectedNeedMilli(GRAIN, 整周期天数) × 1000‰ ÷ 1000；
+   * lendable = max(0, 库存 − reserve)}。
    *
-   * <p>★ R3a：本方法从旧 {@code 旧结算引擎（R3a 已删除）.lendableOf} 原样搬来（算式与保留额一字不改）；它是 {@link
+   * <p>★ R3a：本方法从旧 {@code 旧结算引擎（R3a 已删除）.lendableOf} 原样搬来；它是 {@link
    * #capacitiesForState} 里"可自用余粮"那一栏的唯一实现，不新增第二处口径。
+   *
+   * <p>★★ <b>2026-10-09 Batch 3：保留额来源 = 该户当前注入的 {@code naturalNeeds[grain]} 逐日前瞻</b>
+   * （{@link HouseholdEconomy#expectedNeedMilli(io.mosire.simos.economy.api.id.CommodityId, long)}），
+   * <b>不再</b>按 {@code population × 人均口粮定额} 现算。
    */
   static long lendableOf(HouseholdEconomy lenderHouseholdEconomy, long stock, long cycleDays) {
     if (stock <= 0L) {
       return 0L;
     }
     long reserve =
-        io.mosire.simos.util.economy.EconomyVocabulary.cumulativeRationMilli(
-                lenderHouseholdEconomy.population(), cycleDays)
+        lenderHouseholdEconomy.expectedNeedMilli(EconomyCommodities.GRAIN, cycleDays)
             * LENDER_SUBSISTENCE_RESERVE_PER_MILLE
             / 1000L;
     return Math.max(0L, stock - reserve);

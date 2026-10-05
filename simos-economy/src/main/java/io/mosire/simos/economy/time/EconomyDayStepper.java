@@ -256,6 +256,9 @@ public final class EconomyDayStepper implements AutoCloseable {
   /**
    * ★★ <b>结算一天</b>（{@code day} 是绝对世界日）：与 {@code EconomySettlement.settleOneDay} 是同一条实现， 并交回当天的
    * {@link ProductionLedger}（产出的产权条目交给看得见 actor 的那一侧落账）。
+   *
+   * <p>★ <b>调用契约（2026-10-09 家户结构修复 Batch 3 起）</b>：本日应收的调用方必须先在当天调用 {@link
+   * #updateNaturalNeeds(Map)} 注入逐户需求 —— 消费步只读它，不再按 {@code population} 现算。
    */
   public ProductionLedger step(long day) {
     if (day < 1L) {
@@ -297,6 +300,19 @@ public final class EconomyDayStepper implements AutoCloseable {
    */
   public void recomputeLaborBudgets(Map<HouseholdId, Long> budgetsByHousehold) {
     EconomySettlement.applyLaborBudgetsInto(session, budgetsByHousehold);
+  }
+
+  /**
+   * ★★ <b>2026-10-09 家户结构修复 Batch 3：注入当日逐户逐商品自然需求</b> —— 由 app 从 Social 逐户展开后传入；
+   * 本方法把它写进 {@code HouseholdEconomy.naturalNeeds}（当日物化读模型），日结算消费步直接读它，不再按
+   * {@code population} 另算一份。
+   *
+   * <p>★ 写口语义与拒绝口径见 {@link EconomySettlement#applyNaturalNeedsInto(EconomySession,
+   * Map)}：入参 key 缺经济行 ⇒ 具名拒；空表 = 无需求；本方法**不**累加 {@code cycleNaturalNeedMilli}
+   * （周期累加在消费步按粮需求执行一次）。
+   */
+  public void updateNaturalNeeds(Map<HouseholdId, Map<CommodityId, Long>> needsByHousehold) {
+    EconomySettlement.applyNaturalNeedsInto(session, needsByHousehold);
   }
 
   /** ★★ 把逐批次出生/死亡回写经济侧（行人口、劳动配额与流水；成员份额由 Social 权威维护，本侧不再持副本）。 */

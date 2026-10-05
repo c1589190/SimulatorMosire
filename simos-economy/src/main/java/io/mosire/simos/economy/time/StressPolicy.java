@@ -44,8 +44,8 @@ public final class StressPolicy {
    * ★★ <b>E1：自用覆盖判据的守卫窗（天）</b>—— 用"库存可覆盖下一周期投入"代替"粮库存够一整个周期口粮"时，家户还必须至少有这一窗天数的
    * 基本口粮；否则"有种子、没饭吃"会被误判成"可自用维生"。
    *
-   * <p>建议出厂值 30 天（一个月的安全垫），口径走 {@link
-   * io.mosire.simos.util.economy.EconomyVocabulary#cumulativeRationMilli}，不另写"每人每天多少"。
+   * <p>建议出厂值 30 天（一个月的安全垫），口径走 {@code HouseholdEconomy.expectedNeedMilli(GRAIN, 本常量)}
+   * （逐户注入需求 × 30 天），不另写"每人每天多少"、也不按人口统一折算。
    */
   public static final long SELF_PROVISION_GUARD_DAYS = 30L;
 

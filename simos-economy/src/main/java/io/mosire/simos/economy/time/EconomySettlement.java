@@ -60,7 +60,6 @@ import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
-import io.mosire.simos.util.time.YearFraction;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -84,9 +83,9 @@ import org.slf4j.Logger;
  * <ol>
  *   <li>**播种**：周期的第一天（{@code progressDays == 0}）先扣种子（{@link #sowIfCycleStart}）——**先于当天消费** （{@link
  *       #PLANTING_DRAWS_BEFORE_CONSUMPTION}，v2 spec §3.2）。种子粮与口粮是同一个商品，优先性来自**时点**。
- *   <li>**消费**：每行扣当天口粮 {@code EconomyVocabulary.dailyRationMilli(人口, 绝对日号)}（= 累计口粮的**逐日差分**， 口径"每人每
- *       120 天 10 粮"，v2 spec §八.6），**并把该数写进** {@link HouseholdEconomy#naturalNeeds()}（§八.8"读数与结算同源"
- *       的**一条真相**：读口直接读它，不再各算一遍）。
+ *   <li>**消费**：每行扣当天口粮 = app 在本日 step 之前注入的 {@link HouseholdEconomy#naturalNeeds()}（2026-10-09
+ *       家户结构修复 Batch 3：逐户、逐商品、按 Social 成员展开，经济侧不再按 {@code population} 反推），消费开始时把粮需求
+ *       累加进 {@link HouseholdEconomy#cycleNaturalNeedMilli()}（一天一次，见 {@link #consumeOneHousehold}）。
  *   <li>**缺口**：库存不够 ⇒ 先在同格内借粮（**按可贷余粮降序**放贷 —— 旧"地主 → 富农 → 中农"的阶层白名单已由可观察余粮取代，见 {@link
  *       #lendDeficitsInHex}；从有粮的行的**余粮**划转 —— 余粮 = 库存 − **本周期自需** × {@link
  *       #LENDER_SUBSISTENCE_RESERVE_PER_MILLE} ÷ 1000，见 {@link
@@ -360,9 +359,12 @@ public final class EconomySettlement {
    * ★★ **放贷方必须留口粮的千分比**（相对**本周期自需**；v2 spec §7.1 第一处，V6 落地）：**默认 1000‰**。
    *
    * <pre>
-   * 保留额 = cumulativeRationMilli(放贷行人口, 该行产业的 cycleDays) × 本常量 ÷ 1000   // 毫粮
+   * 保留额 = lender.expectedNeedMilli(GRAIN, 该行产业的 cycleDays) × 本常量 ÷ 1000   // 毫粮
    * 可贷额 = max(0, 放贷行库存 − 保留额)
    * </pre>
+   *
+   * <p>★★ **2026-10-09 Batch 3：保留额来源 = 本户 app 注入的 {@code naturalNeeds[grain]}**（逐户），
+   * <b>不再</b>按 {@code population × 人均口粮定额} 现算。
    *
    * <p>★★ **1000‰ 不是"不贷"，是"只贷余粮"**：放贷方先扣下**整周期**的口粮，剩下的才是余粮 —— 地主 250 天储备 − 120 天自需 = 130
    * 天的余粮照样贷得出去。取 {@code 0} 即 V1 的现状（消费后的**全部**库存都能借出 ⇒ 地主一次把 250 天存粮全借出去、次日自己变成缺口行 ⇒ 设计意图"地主最厚 =
@@ -1168,7 +1170,7 @@ public final class EconomySettlement {
         cycleDaysByHousehold(
             householdEconomies, industries, units, unitsOfHousehold, settlementIndex.industriesByHex());
     consumeOwnStockPartitioned(
-        householdEconomies, accounts, consumedGoods, unmetToday, deficitToday, day, parallelism);
+        householdEconomies, accounts, consumedGoods, unmetToday, deficitToday, parallelism);
 
     if (!plantingDrawsFirst) {
       drawCycleInputsPartitioned(
@@ -1296,7 +1298,6 @@ public final class EconomySettlement {
                 id,
                 industry.id(),
                 keys,
-                industry.cycleDays(),
                 inputShortfallOf(unit, industry, settlementIndex, operatorConditions.get(id))));
         // ★★ P10.2：周期劳动/投入在 unit.cycleState 清零前抓（clear 的写就在下面几行）。
         closedFacts.add(
@@ -1742,8 +1743,6 @@ public final class EconomySettlement {
             key,
             householdEconomies.get(key),
             famineUnmet,
-            day,
-            closing.cycleDays(),
             famineMortalityPerMille);
         HouseholdEconomy afterFamineHouseholdEconomy = householdEconomies.get(key);
         long famineDeaths =
@@ -2004,8 +2003,8 @@ public final class EconomySettlement {
     for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomies.entrySet()) {
       HouseholdId key = householdEconomyEntry.getKey();
       // ★★ **M2.7（丙条仪器）：周期累加器的清零点与流水同一天** —— 新周期第一天把
-      //   {@code cycleNaturalNeedMilli} 重置为"今天这一份"（{@code withDailyNeed} 在消费步刚累加过）。
-      //   ★ 放在这里而不是 {@code withDailyNeed} 里：只有这里同时看得见 {@code newCycleHouseholds}
+      //   {@code cycleNaturalNeedMilli} 重置为"今天这一份"（消费步刚按注入的 {@code naturalNeeds[grain]} 累加过）。
+      //   ★ 放在这里而不是消费步里：只有这里同时看得见 {@code newCycleHouseholds}
       //     （由产业 progressDays 推、且与 FlowRow 的清零同一判据）。重置为"当天那一份"而不是 0 —— 理由见
       //     {@link #withCycleNaturalNeed}。
       if (newCycleHouseholds.contains(key)) {
@@ -2474,7 +2473,6 @@ public final class EconomySettlement {
       LinkedHashMap<HouseholdId, Map<CommodityId, Long>> consumedGoods,
       LinkedHashMap<HouseholdId, Map<CommodityId, Long>> unmetNeed,
       LinkedHashMap<HouseholdId, Long> deficitToday,
-      long day,
       EconomyParallelism parallelism) {
     Map<String, List<HouseholdId>> hexToRows = rowsByHex(householdEconomies);
     if (hexToRows.isEmpty()) {
@@ -2502,7 +2500,7 @@ public final class EconomySettlement {
               for (String hex : partition.canonicalKeys()) {
                 for (HouseholdId key : hexToRows.get(hex)) {
                   consumeOneHousehold(
-                      householdEconomies, tables.householdGoods, key, day, householdEconomyUpdates, consumed, unmet, deficits);
+                      householdEconomies, tables.householdGoods, key, householdEconomyUpdates, consumed, unmet, deficits);
                 }
               }
               return new ConsumptionPartition(
@@ -2526,27 +2524,40 @@ public final class EconomySettlement {
     }
   }
 
-  /** 消费一户（{@link #consumeOwnStockPartitioned} 的逐户版；读共享行/意向视图，写本地累加器）。 */
+  /**
+   * 消费一户（{@link #consumeOwnStockPartitioned} 的逐户版；读共享行/意向视图，写本地累加器）。
+   *
+   * <p>★★ <b>2026-10-09 家户结构修复 Batch 3：需求不再按 {@code population} 现算</b> —— 直接读 app 在本日
+   * {@link #applyNaturalNeedsInto} 注入的 {@code naturalNeeds}；消费开始时把当日粮需求累加进
+   * {@code cycleNaturalNeedMilli}（一天只此一次；新周期第一天的重置仍在流水清零点由 {@link
+   * #withCycleNaturalNeed} 完成）。{@code population <= 0} 的行只做这次 0 增量写回，不读账、不消费。
+   */
   private static void consumeOneHousehold(
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
       HouseholdId key,
-      long day,
       Map<HouseholdId, HouseholdEconomy> householdEconomyUpdates,
       Map<HouseholdId, Map<CommodityId, Long>> consumedGoods,
       Map<HouseholdId, Map<CommodityId, Long>> unmetNeed,
       Map<HouseholdId, Long> deficitToday) {
-    HouseholdEconomy householdEconomy = withDailyNeed(householdEconomies.get(key), day);
+    HouseholdEconomy current = householdEconomies.get(key);
+    if (current == null) {
+      throw new IllegalStateException("消费步的家户行不存在（分区键与工作表不一致，拒绝把缺行当成 0 需求）: " + key);
+    }
+    Map<CommodityId, Long> needs = current.naturalNeeds();
+    long need = needs.getOrDefault(GRAIN, 0L);
+    HouseholdEconomy householdEconomy =
+        current.withNaturalNeedsAndCycle(
+            needs, Math.addExact(current.cycleNaturalNeedMilli(), need));
     householdEconomyUpdates.put(key, householdEconomy);
     if (householdEconomy.population() <= 0L) {
       return;
     }
-    long need = householdEconomy.naturalNeeds().getOrDefault(GRAIN, 0L);
     long stock = stockOf(householdGoods, key, GRAIN);
     long eaten = Math.min(stock, need);
     setStock(householdGoods, key, GRAIN, stock - eaten);
     addGoods(consumedGoods, key, GRAIN, eaten);
-    long clothNeed = householdEconomy.naturalNeeds().getOrDefault(CLOTH, 0L);
+    long clothNeed = needs.getOrDefault(CLOTH, 0L);
     long clothStock = stockOf(householdGoods, key, CLOTH);
     long clothGot = Math.min(clothStock, clothNeed);
     if (clothNeed > 0L) {
@@ -3070,8 +3081,8 @@ public final class EconomySettlement {
    *      {@code 存活 == 0} ⇒ 全额减免），只动本金/状态、**不搬任何粮/钱、不产生利息**；删债额记进会话瞬态累加器。
    * </pre>
    *
-   * <p>★★ **为什么经济侧必须跟着动**（而不是"人死了只在社会侧少几个人"）：行人口是**口粮需求**与**分配权重**的来源 （{@code
-   * dailyRationMilli(row.population, day)}）⇒ 不回写就会得到"人已经死了、饭还照吃"这种更糟的账。
+   * <p>★★ **为什么经济侧必须跟着动**（而不是"人死了只在社会侧少几个人"）：行人口是**分配权重**与劳动缩放的来源；
+   * 当日口粮需求已由 app 按 Social 成员逐户展开注入（Batch 3）⇒ 不回写人口/劳动，权重与配额仍会停在旧账上。
    *
    * <p>★★ **为什么配额要按 #③ 缩两次也不同**：{@code applyFamine}（直接按缺口处死的那条路径）缩的是**产业**那一侧， 本步缩的是**批次**那一侧 ——
    * 两条路径各自知道自己死了谁，各自缩自己那份账。两者都落在同一条不变量上 （{@code Σ allocated ≤ available}）。
@@ -3144,6 +3155,58 @@ public final class EconomySettlement {
           laborCommitments.put(id, withLaborMilli(laborCommitment, parts[i]));
         }
       }
+    }
+  }
+
+  /**
+   * ★★ <b>2026-10-09 家户结构修复 Batch 3：把 app 注入的当日逐户需求写进家户行</b>（{@code naturalNeeds} 的唯一写入点）。
+   *
+   * <pre>
+   * 入参：Map&lt;HouseholdId, Map&lt;CommodityId, Long&gt;&gt;   // app 逐户调 Social.householdNaturalNeeds(...) 的展开结果
+   * 逐行：row.naturalNeeds = 入参.get(row.id())          // 缺键 = 空 map = 无需求（调用方给的 map 可能为空）
+   * </pre>
+   *
+   * <p>★★ <b>本方法只换 {@code naturalNeeds}，绝不在这里累加 {@code cycleNaturalNeedMilli}</b>：周期累加按"消费步对
+   * 当日粮需求执行一次"（见 {@link #consumeOneHousehold}）；若注入也加一遍，周期分母会翻倍。
+   *
+   * <p>★ <b>拒绝语义</b>：入参 key 不在经济家户行里 ⇒ 具名 {@link IllegalStateException}（Social/Economy 投影不一致，不静默丢）；
+   * 需求表为 null ⇒ 具名 {@link IllegalArgumentException}（无需求用空 map）；map 的键/值/非负由 {@link HouseholdEconomy}
+   * 规范构造器当场拒。★ 日志只把计数放 DEBUG（逐户明细由 app 展开日志承担），不刷 INFO；拒绝路径另记 ERROR 具名。
+   */
+  static void applyNaturalNeedsInto(
+      EconomySession session, Map<HouseholdId, Map<CommodityId, Long>> needsByHousehold) {
+    Objects.requireNonNull(session, "session");
+    Objects.requireNonNull(needsByHousehold, "needsByHousehold");
+    LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies = session.sheet().householdEconomies();
+    for (Map.Entry<HouseholdId, Map<CommodityId, Long>> entry : needsByHousehold.entrySet()) {
+      HouseholdId household = entry.getKey();
+      if (household == null) {
+        TRACE.error("event=HOUSEHOLD_NATURAL_NEEDS_REJECTED reason=null-household-key");
+        throw new IllegalArgumentException("自然需求注入含 null 家户键（app 展开表不得含 null）");
+      }
+      if (!householdEconomies.containsKey(household)) {
+        TRACE.error(
+            "event=HOUSEHOLD_NATURAL_NEEDS_REJECTED reason=unknown-household-row household={}",
+            household);
+        throw new IllegalStateException(
+            "自然需求注入指向不存在的经济家户行（Social/Economy 投影不一致，拒绝静默丢弃）: " + household);
+      }
+      if (entry.getValue() == null) {
+        TRACE.error(
+            "event=HOUSEHOLD_NATURAL_NEEDS_REJECTED reason=null-needs household={}", household);
+        throw new IllegalArgumentException(
+            "自然需求注入的家户需求表不得为 null（无需求用空 map）: household=" + household);
+      }
+    }
+    for (Map.Entry<HouseholdId, HouseholdEconomy> row : householdEconomies.entrySet()) {
+      Map<CommodityId, Long> needs = needsByHousehold.get(row.getKey());
+      row.setValue(row.getValue().withNaturalNeeds(needs == null ? Map.of() : needs));
+    }
+    if (TRACE.isDebugEnabled()) {
+      TRACE.debug(
+          "event=HOUSEHOLD_NATURAL_NEEDS_INJECTED households={} rows={}",
+          needsByHousehold.size(),
+          householdEconomies.size());
     }
   }
 
@@ -4566,11 +4629,11 @@ public final class EconomySettlement {
    * 同一对主体**跨周期命中同一条** {@link DebtContract}（本金递增），不同 unit/terms 必然分开；旧“周期在 id
    * 里、新周期开新条”的行为到此结束（这是本阶段的**有意**行为变化，见交付报告）。
    *
-   * <p>★★ **当日需求的唯一算法 + 唯一落点**（V5；v2 spec §八.6/§八.8）：
+   * <p>★★ **当日需求来自 app 注入的物化读模型**（2026-10-09 家户结构修复 Batch 3；V5/§八.8）：
    *
    * <pre>
-   * need = EconomyVocabulary.dailyRationMilli(row.population(), day)   // 逐日差分，残差不丢
-   * row.naturalNeeds = { grain: need }                                 // ★ 结算写、读口读（同源）
+   * need = row.naturalNeeds[grain]                    // app 逐户按 Social 成员展开后注入（唯一来源）
+   * row.naturalNeeds 由 applyNaturalNeedsInto 写      // 结算不再按 population 反推、也不再重写
    * eaten = min(家户账余额, need)；差额进 deficit（借粮/缺口）
    * </pre>
    *
@@ -4583,14 +4646,14 @@ public final class EconomySettlement {
    * @param dueCycle 借粮的到期周期 = 当前周期 + 1（滚动写进合同；连续余额只保留最新一笔的到期）
    */
   /**
-   * ★ <b>本日关账的一个 unit</b>（H5/R3B.2）：它的 id、产业模板 id、它名下的家户行、它的周期天数 —— 饿死判据（{@link #applyFamine}）
-   * 与死亡后的劳动缩放（{@link #scaleLaborOfUnit}）要等**市场与借粮**走完才跑，故先把这四样收起来。
+   * ★ <b>本日关账的一个 unit</b>（H5/R3B.2）：它的 id、产业模板 id、它名下的家户行 —— 饿死判据（{@link #applyFamine}）
+   * 与死亡后的劳动缩放（{@link #scaleLaborOfUnit}）要等**市场与借粮**走完才跑，故先把这三样收起来。
+   * ★ Batch 3 起饿死判据分母取行上的 {@code cycleNaturalNeedMilli}，不再需要该 unit 的周期天数。
    */
   private record ClosedUnit(
       ProductionUnitId unit,
       IndustryId industry,
       List<HouseholdId> keys,
-      long cycleDays,
       boolean inputShortfall) {}
 
   /**
@@ -4760,7 +4823,7 @@ public final class EconomySettlement {
    * ★★ **放贷行的可贷额（余粮）**（v2 spec §7.1 第一处；V6 落地）：
    *
    * <pre>
-   * reserve  = EconomyVocabulary.cumulativeRationMilli(放贷行人口, 该家户的 cycleDays)
+   * reserve  = lender.expectedNeedMilli(GRAIN, 该家户的 cycleDays)
    *            × {@link #LENDER_SUBSISTENCE_RESERVE_PER_MILLE} ÷ 1000        // 毫粮
    * lendable = max(0, 余额 − reserve)
    * </pre>
@@ -4769,12 +4832,13 @@ public final class EconomySettlement {
    * #cycleDaysByHousehold}）。真档三个产业都是 120 天 ⇒ 与改前逐值相同。 ★ <b>H1 起"余额"由调用方从会话工作副本读好传进来</b> （{@code
    * stock}；行里已经没有库存了）。
    *
-   * <p>★★ **"本周期自需"取的是整周期**（{@code cumulativeRationMilli(pop, cycleDays)}），不是"今日一餐"、也不是
+   * <p>★★ **"本周期自需"取的是整周期**（{@code expectedNeedMilli(GRAIN, cycleDays)}），不是"今日一餐"、也不是
    * "消费后的全部库存"：放贷方先把这一周期自己**全部**的口粮扣下来，剩下的才是余粮。默认千分比 1000 ⇒ 保留额就是整周期口粮（"地主 250 天储备 − 120 天自需 = 130
    * 天余粮仍贷得出去"）。
    *
-   * <p>★ **为什么用累计函数而不是"人口 × 一天的量 × 天数"**：日耗是逐日差分，乘不出来（§八.6）； {@code cumulativeRationMilli(pop,
-   * cycleDays)} 才是"该行一整个周期的口粮"的唯一写法。
+   * <p>★★ **来源口径（2026-10-09 Batch 3）**：前瞻需求 = 该户<b>当前注入</b>的 {@code naturalNeeds[grain]}
+   * × 周期天数；逐户读取、逐户保留，<b>不再</b>按 {@code population × 人均定额} 现算（人口/系数变化由下一次 app
+   * 注入刷新，见 {@link HouseholdEconomy#expectedNeedMilli(io.mosire.simos.economy.api.id.CommodityId, long)}）。
    *
    * <p>★ **它只读、不写**：保留额不是"冻结起来的一笔粮"，放贷行自己每天照吃不误 —— 它只是"可贷额"的下界。 ⇒
    * 周期后半段会**多留**（那时已经用不到整周期的口粮了），这是本口径的可读后果，端到端用例逐值钉着它。
@@ -4790,7 +4854,7 @@ public final class EconomySettlement {
       return 0L;
     }
     long reserve =
-        EconomyVocabulary.cumulativeRationMilli(lenderHouseholdEconomy.population(), cycleDays)
+        lenderHouseholdEconomy.expectedNeedMilli(GRAIN, cycleDays)
             * LENDER_SUBSISTENCE_RESERVE_PER_MILLE
             / 1000L;
     return Math.max(0L, stock - reserve);
@@ -7140,13 +7204,14 @@ public final class EconomySettlement {
    * {@code famineMortalityPerMille} 致死。
    *
    * <pre>
-   * long cycleNeed = cumulativeRationMilli(pop, day) − cumulativeRationMilli(pop, day − cycleDays); // 本周期总需求
+   * long cycleNeed = householdEconomy.cycleNaturalNeedMilli(); // 本周期总需求：逐日注入 naturalNeeds[grain] 的累加
    * int  faminePerMille = cycleNeed == 0 ? 0 : min(1000, cycleUnmet × 1000 / cycleNeed);
    * long deaths = population × faminePerMille / 1000 × famineMortalityPerMille / 1000;
    * </pre>
    *
-   * <p>★ **本周期总需求用累计函数之差**（不是 {@code 人口 × 一天的量 × 天数}）：日耗是逐日差分的，乘不出来； 而两个累计值之差**恰好**等于本周期各日口粮之和
-   * （逐日差分的望远镜求和）。
+   * <p>★★ **2026-10-09 Batch 3：本周期总需求分母改读行上的 {@code cycleNaturalNeedMilli}**
+   * （每日 app 逐户注入的 {@code naturalNeeds[grain]} 在消费步逐日累加，窗口 = 本周期实际经过的天）；
+   * <b>不再</b>用 {@code 人口 × 累计口粮定额} 现算 —— 分子（本周期累计未满足）与分母从此同源、同窗口。
    *
    * <p>★ 人口减少后，**有效劳动按同一比例缩**（{@code labor = labor × (population − deaths) / population}；{@code
    * population == 0} ⇒ {@code labor = 0}，**不除零**）；死亡数记入本行流水（{@code deaths}）。**死亡不回溯产出**：
@@ -7169,17 +7234,11 @@ public final class EconomySettlement {
       HouseholdId key,
       HouseholdEconomy householdEconomy,
       long cycleUnmet,
-      long day,
-      long cycleDays,
       int famineMortalityPerMille) {
     long population = householdEconomy.population();
-    // ★ 本周期总需求 = 本周期**实际经过的那些天**的口粮之和 = 累计(day) − 累计(周期起点)。
-    //   ★ 周期起点取 max(0, day − cycleDays)：夹具/存档可以在"周期已满"（progressDays == cycleDays）处入场，
-    //     那时起点算到第 0 天之前 —— 而世界之前没有天，需求与缺口都只覆盖真实经过的天（两者口径一致）。
-    long cycleStart = Math.max(0L, day - cycleDays);
-    long cycleNeed =
-        EconomyVocabulary.cumulativeRationMilli(population, day)
-            - EconomyVocabulary.cumulativeRationMilli(population, cycleStart);
+    // ★★ 2026-10-09 Batch 3：本周期总需求 = 行上的 cycleNaturalNeedMilli（消费步对逐日注入
+    //   naturalNeeds[grain] 的累加，新周期第一天在流水清零点重置）；不再按 population 现算累计口粮差。
+    long cycleNeed = householdEconomy.cycleNaturalNeedMilli();
     int faminePerMille =
         cycleNeed == 0L ? 0 : (int) Math.min(1000L, cycleUnmet * 1000L / cycleNeed);
     long dead = population * faminePerMille / 1000L * famineMortalityPerMille / 1000L;
@@ -7596,44 +7655,6 @@ public final class EconomySettlement {
             + missing.subList(0, Math.min(8, missing.size())));
   }
 
-  /**
-   * 换**当日自然需求**（**逐商品**；{@code 0} 的那一项不落键）。
-   *
-   * <p>★★ 这是 {@link HouseholdEconomy#naturalNeeds()} 的**唯一写入点**（v2 spec §八.8 的"一条真相"）：结算每天把当日需求写进去，
-   * 读口（{@code ApiViews.economyHex} / GUI / MCP）直接读它，不再各算一遍 —— 否则人口一变（饿死、将来的任何人口变动）
-   * 同一面板上的"人口"与"日耗"就会分叉。
-   *
-   * <p>★★ **R3 起口径来自 {@link EconomyVocabulary#dailyNeedsMilli}**（每商品一条：粮 + 布）："粮食不足与衣物不足对死亡的时间尺度
-   * 显然不能一样"（spec §七）—— 形状先做出来，**阈值与死亡作用留 R4**（故布的缺口本轮只被记下来、不参与饿死判据）。 ★ H1：{@code population == 0}
-   * 的行也照写（空表）—— 需求是人口的函数，读口不许留一个陈旧的旧值。
-   *
-   * <p>★★ <b>M2.7（丙条仪器）：同一步里累加 {@code cycleNaturalNeedMilli}</b> —— 粮的当日需要（同一份 {@code
-   * dailyNeedsMilli}，不另立公式）加到行上的本周期累加器；<b>新周期的重置不在这里</b>，而在流水清零点（新周期第一天） 把它置为"当天那一份"（见 {@code
-   * settleOneDay} 的流水循环旁注释）—— 那里才能同时看见"今天是不是新周期第一天"。
-   */
-  private static HouseholdEconomy withDailyNeed(HouseholdEconomy householdEconomy, long day) {
-    Map<CommodityId, Long> needs = new LinkedHashMap<>();
-    for (Map.Entry<String, Long> entry :
-        EconomyVocabulary.dailyNeedsMilli(householdEconomy.population(), day, new YearFraction(1L, 365L))
-            .entrySet()) {
-      if (entry.getValue() > 0L) {
-        needs.put(new CommodityId(entry.getKey()), entry.getValue());
-      }
-    }
-    long dayGrainNeed = needs.getOrDefault(GRAIN, 0L);
-    return new HouseholdEconomy(
-        householdEconomy.id(),
-        householdEconomy.view(),
-        householdEconomy.population(),
-        householdEconomy.laborMilli(),
-        householdEconomy.participationPerMille(),
-        householdEconomy.money(),
-        householdEconomy.debts(),
-        needs,
-        householdEconomy.effectiveDemand(),
-        householdEconomy.cycleNaturalNeedMilli() + dayGrainNeed);
-  }
-
   /** 追加一条债务引用（其余字段原样带过）。 */
   private static HouseholdEconomy withExtraDebt(HouseholdEconomy householdEconomy, DebtContractId debtId) {
     if (householdEconomy.debts().contains(debtId)) {
@@ -7672,7 +7693,7 @@ public final class EconomySettlement {
   /**
    * ★★ <b>M2.7：把周期累加器重置为"今天这一份"</b>（新周期第一天用）。
    *
-   * <p>★ 为什么不是置 0：今天已经吃掉的这一份**属于新周期**（{@code withDailyNeed} 在消费步刚累加过）—— 置 0 会把新周期第一天的需要
+   * <p>★ 为什么不是置 0：今天已经吃掉的这一份**属于新周期**（消费步按注入的 {@code naturalNeeds[grain]} 刚累加过）—— 置 0 会把新周期第一天的需要
    * 抹掉，整周期分母因此少一天。调用点必须用"最近结算日写下的 {@code naturalNeeds[grain]}"作为参数（同源，不另算）。
    */
   private static HouseholdEconomy withCycleNaturalNeed(HouseholdEconomy householdEconomy, long cycleNaturalNeedMilli) {

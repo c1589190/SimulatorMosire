@@ -50,7 +50,6 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
-import io.mosire.simos.util.time.YearFraction;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -4772,11 +4771,15 @@ final class MarketSettlement {
 
   private static Map<CommodityId, Long> householdLifeReserveOf(HouseholdEconomy householdEconomy) {
     Map<CommodityId, Long> life = new LinkedHashMap<>();
-    long grain = selfNeedOf(householdEconomy.population(), EconomySettlement.GRAIN, MARKET_LIFE_RESERVE_DAYS);
+    // ★★ 2026-10-09 Batch 3：保留额 = 本户当前注入 naturalNeeds 在补货窗口上的前瞻（逐户读取），
+    //    不再按 population × 人均定额现算。
+    long grain =
+        householdEconomy.expectedNeedMilli(EconomySettlement.GRAIN, MARKET_LIFE_RESERVE_DAYS);
     if (grain > 0L) {
       life.put(EconomySettlement.GRAIN, grain);
     }
-    long cloth = selfNeedOf(householdEconomy.population(), EconomySettlement.CLOTH, MARKET_LIFE_RESERVE_DAYS);
+    long cloth =
+        householdEconomy.expectedNeedMilli(EconomySettlement.CLOTH, MARKET_LIFE_RESERVE_DAYS);
     if (cloth > 0L) {
       life.put(EconomySettlement.CLOTH, cloth);
     }
@@ -4800,20 +4803,30 @@ final class MarketSettlement {
           && !relation.operator().equals(participant.actor)) {
         continue;
       }
-      long population = 0L;
+      long grain = 0L;
+      long cloth = 0L;
       // ★ R4-B.3a-perf：家户行由入口索引给（旧实现每个 unit 现扫全量配额）。
+      // ★★ 2026-10-09 Batch 3：逐户用 expectedNeedMilli 求补货窗口保留额再求和，
+      //    不再先把人头相加、再乘全局人均定额。
       for (HouseholdId key : round.index.householdsOf(id)) {
         HouseholdEconomy householdEconomy = round.householdEconomies.get(key);
         if (householdEconomy != null) {
-          population += householdEconomy.population();
+          grain =
+              Math.addExact(
+                  grain,
+                  householdEconomy.expectedNeedMilli(
+                      EconomySettlement.GRAIN, MARKET_LIFE_RESERVE_DAYS));
+          cloth =
+              Math.addExact(
+                  cloth,
+                  householdEconomy.expectedNeedMilli(
+                      EconomySettlement.CLOTH, MARKET_LIFE_RESERVE_DAYS));
         }
       }
       Map<CommodityId, Long> requested = new LinkedHashMap<>();
-      long grain = selfNeedOf(population, EconomySettlement.GRAIN, MARKET_LIFE_RESERVE_DAYS);
       if (grain > 0L) {
         requested.put(EconomySettlement.GRAIN, grain);
       }
-      long cloth = selfNeedOf(population, EconomySettlement.CLOTH, MARKET_LIFE_RESERVE_DAYS);
       if (cloth > 0L) {
         requested.put(EconomySettlement.CLOTH, cloth);
       }
@@ -4838,16 +4851,6 @@ final class MarketSettlement {
       case Payee.ToCohort toCohort ->
           participant.view != null && participant.view.equals(toCohort.cohort());
     };
-  }
-
-  private static long selfNeedOf(long population, CommodityId commodity, long days) {
-    if (commodity.equals(EconomySettlement.GRAIN)) {
-      return EconomyVocabulary.cumulativeRationMilli(population, days);
-    }
-    if (commodity.equals(EconomySettlement.CLOTH)) {
-      return EconomyVocabulary.cumulativeClothMilli(population, new YearFraction(days, 365L));
-    }
-    return 0L;
   }
 
   // ── 账户读取 / 冻结写入（唯一拼写点）────────────────────────────────────────────────

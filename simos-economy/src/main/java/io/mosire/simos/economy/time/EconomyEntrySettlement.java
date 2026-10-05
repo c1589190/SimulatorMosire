@@ -31,7 +31,6 @@ import io.mosire.simos.economy.model.ProductionCandidate;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -75,7 +74,8 @@ import java.util.TreeMap;
  *       availableLabor} − 已分配）都 ≥ {@code laborPerUnit × trialScale}；批次按成员份额选（没有成员份额的旧夹具退回该户既有配额
  *       的批次），并列取余量大者、再按批次 id 升序；
  *   <li><b>投入/生计</b>：本户库存要覆盖 {@code inputPerUnit × trialScale × (buildDays+cycleDays)}，并额外留出同窗口 + 1
- *       天的 基本口粮（按 {@link EconomyVocabulary#cumulativeRationMilli} 的区间差，不另写"每人每天"）；
+ *       天的 基本口粮（按 {@link HouseholdEconomy#expectedNeedMilli} 的当前注入需求 × 原窗口 {horizon+1} 天，
+ *       不另写"每人每天"）；
  *   <li><b>收益/成本只用可观察价</b>：主产出、任一正投入、以及给养要用的粮，<b>缺价一律具名拒绝</b>（{@code PRICE_MISSING:...}）—— "缺价按 0
  *       计"会把无价成本当成免费，不是保守口径；自留口粮成本按 {@link RegimeRelations#subsistenceMilliPerLabor()}（与 {@code
  *       ProducerCostBook} 同源）；score &lt; 0 ⇒ 不可行。
@@ -473,9 +473,11 @@ final class EconomyEntrySettlement {
 
       // ④ 投入/生计：库存覆盖 inputPerUnit × trialScale × horizon + (horizon+1) 天基本口粮。
       long grainStock = stockOf(context.householdGoods, household, EconomySettlement.GRAIN);
+      // ★★ 2026-10-09 Batch 3：口粮预留 = 本户当前注入 naturalNeeds[grain] × 原窗口天数（原区间 [day−1, day+horizon]
+      //   是 horizon+1 天），不再按 population × 人均定额现算。
       long grainReserve =
-          EconomyVocabulary.cumulativeRationMilli(householdEconomy.population(), context.day + horizon)
-              - EconomyVocabulary.cumulativeRationMilli(householdEconomy.population(), context.day - 1L);
+          householdEconomy.expectedNeedMilli(
+              EconomySettlement.GRAIN, Math.addExact(horizon, 1L));
       if (grainStock < grainReserve) {
         return Attempt.rejection(
             reject(

@@ -37,8 +37,7 @@ import java.util.Set;
  *       <b>读时现算</b>，入口是 {@link MarketSettlement#planOrders}（与真正成交用的是同一条订单生成实现）—— 供给 = 卖订单 {@code
  *       sellable} 之和；有效需求 = 买订单数量之和（已含"预算 &gt; 0 + 按参考价买得起"两重过滤；买方限价 ask 在订单生成时已写入）；
  *   <li>{@code naturalNeedMilli} / {@code cycleNaturalNeedMilli}：读 {@code HouseholdEconomy}。 <b>粮</b>用 M2.7
- *       丙条累加器（{@code cycleNaturalNeedMilli} = {@code Σ_d dailyRationMilli(pop_d, d)}， {@code pop_d}
- *       = 第 d 天结算前的行人口 = 日初人口）；<b>其它商品</b>用 {@code naturalNeeds}（最近一次结算日那一份日需求）， {@code
+ *       丙条累加器（{@code cycleNaturalNeedMilli} = {@code Σ_d 当户注入的 naturalNeeds[grain]}， 窗口 = 本周期实际经过的天）；<b>其它商品</b>用 {@code naturalNeeds}（最近一次结算日那一份日需求）， {@code
  *       cycleNaturalNeedMilli} 对它们恒 0（逐商品累加器尚未实现，<b>不拿日需求冒充周期需要</b>）。★ 粮的累加器尚未累计 （旧档 / 还没结算过）⇒
  *       {@code naturalNeedWindow = last-settled-day}，退回该字段并如实标注；绝不把"还没累计"读成"没有需要"；
  *   <li>{@code referencePriceMilli} / {@code bidPriceMilli} / {@code askPriceMilli}：从 {@code
@@ -693,11 +692,11 @@ public record MarketReadout(
   private static final String SUPPLY_DEMAND_PROVENANCE =
       "供给 = 卖订单 sellable 之和、有效需求 = 买订单数量之和：读时经 MarketSettlement.planOrders（与成交同一条订单生成）";
   private static final String NATURAL_NEED_PROVENANCE =
-      "生理需要：粮用 ClassRow.cycleNaturalNeedMilli（本周期累计，日初人口逐日累加）；"
+      "生理需要：粮用 ClassRow.cycleNaturalNeedMilli（本周期累计，逐日累加当户注入 naturalNeeds[grain]）；"
           + "累加器尚未累计（旧档/未结算）⇒ 退回最近结算日的 naturalNeeds 并把 naturalNeedWindow 标成 last-settled-day；"
           + "其它商品用 ClassRow.naturalNeeds（最近结算日当日）";
   private static final String CYCLE_NATURAL_NEED_PROVENANCE =
-      "cycleNaturalNeedMilli = Σ_d dailyRationMilli(pop_d, d)，pop_d = 第 d 天结算前的行人口（日初人口）；本周期第一天重置为当天那一份";
+      "cycleNaturalNeedMilli = Σ_d 当户注入的 naturalNeeds[grain]（各结算日结算前那一份）；本周期第一天重置为当天那一份";
   private static final String MATCH_REPORT_PROVENANCE =
       "撮合结果来自进程内 MarketReport（不落盘、重启即失）；缺失时 match=null 且 unavailable.matchResults 具名";
   private static final String LAST_SETTLED_DAY_PROVENANCE =

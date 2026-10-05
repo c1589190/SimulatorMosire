@@ -1329,7 +1329,7 @@ public final class ApiViews {
     view.put("grainStock", grainStock);
     view.put("grainDailyConsumption", grainDailyConsumption);
     // ★★ M2.7 丙条仪器：本周期累计自然需要（与 unmetNeed/income/consumed 同为"本周期累计"窗口；新周期第一天重置）。
-    //   ★ 人口快照口径随值发出：它用**每个结算日的日初人口**逐日累加，不是读口时刻的人口。
+    //   ★ 口径随值发出：它累加的是每个结算日**逐户注入**的 naturalNeeds[grain]，不是读口时刻人口 × 系数。
     view.put("cycleNaturalNeedMilli", cycleNaturalNeedMilli);
     view.put("cycleNaturalNeedClock", CYCLE_NATURAL_NEED_CLOCK);
     // ★ 日耗那一栏的窗口（与上面那栏不可并排当同一分母：丙条已查清两者口径本就不可比）。
@@ -1736,7 +1736,7 @@ public final class ApiViews {
    *                                        （{@code ProductionLedger.Accumulator} 在协调器落账后即丢）⇒ 状态里没有
    *                                        周期累计的毛产/损耗/投入。FlowRow.income/consumed 不是毛产/损耗/投入，
    *                                        不许冒充。落点：将来把 ledger 的周期累计落成一个持久读数组件
-   * ② 可用库存覆盖天数                  ✓   grainStock ÷ 该格当日口粮（日初人口那一份）
+   * ② 可用库存覆盖天数                  ✓   grainStock ÷ 该格逐户注入的当日口粮（naturalNeeds[grain] 合计）
    * ③ 预计进口需求                      ✓   = 本周期累计未满足需求（unmetNeed）
    * ④ 有效购买力缺口                    ✓   = 未满足 − 该格全部账本按本格粮价**ask**能买到的量（上限）
    * ⑤ 物流缺口                          ~   M2.7：拿到进程内 MarketReport 时可算（买方侧未成交 × 物流原因档：
@@ -1744,8 +1744,9 @@ public final class ApiViews {
    * ⑥ 币种/支付缺口                     ~   只给"逐币种货币"与"能买到多少"；★ M1.1 起工具的**身份**已读得出、
    *                                        M2.1 起订单里也有 payWith/receiveWith 字段，但**接受规则**（谁收哪种
    *                                        工具、多工具校验/兑现）仍未实现（本层市场只收 silver-specie）⇒ 不判
-   * ⑦ 实际满足率与未满足人日            ✓   分母 = **cycleNaturalNeedMilli**（逐日累加，见丙条），
-   *                                        满足率 = (周期自然需要 − 本周期未满足) ÷ 周期自然需要；人日由未满足反解
+   * ⑦ 实际满足率与未满足人日            ✓   分母 = **cycleNaturalNeedMilli**（逐日累加逐户注入需求，见丙条），
+   *                                        满足率 = (周期自然需要 − 本周期未满足) ÷ 周期自然需要；人日仍按全局人均日定额反解，
+   *                                        逐户分档后只作量级读数（见 window 字符串）
    * </pre>
    *
    * <p>★★ <b>窗口标注（M0.2 的纪律 + 丙条裁定）</b>：{@code importDemand} / {@code satisfactionPerMille} / {@code
@@ -1777,14 +1778,11 @@ public final class ApiViews {
     for (HouseholdId key : keys) {
       HouseholdEconomy householdEconomy = data.classes().get(key);
       population += householdEconomy.population();
-      // ★ 日耗读结算写下的 naturalNeeds（与面板同源）；★ 结算还没跑过 ⇒ 那一栏是 0，此处**按口粮公式兜底**
-      //   （兜底也要有，否则"未激活的世界"会显示成"这一格没有需求"——那是假的）。
-      long rowDaily = householdEconomy.naturalNeeds().getOrDefault(GRAIN, 0L);
-      if (rowDaily <= 0L && householdEconomy.population() > 0L) {
-        rowDaily = EconomyVocabulary.dailyRationMilli(householdEconomy.population(), 1L);
-      }
+      // ★ 日耗读结算写下的逐户注入需求（与面板同源）。★★ 2026-10-09 Batch 3：**不再按 population × 人均定额兜底**
+      //   —— 注入缺失（旧档/未结算）就如实是 0；需要多日前瞻的读者走 expectedNeedMilli。
+      long rowDaily = householdEconomy.expectedNeedMilli(GRAIN, 1L);
       dailyNeed += rowDaily;
-      // ★★ M2.7：周期分母改读**丙条累加器**（逐日、日初人口累加）—— 不再用"读口时刻人口 × 整周期配额"现算。
+      // ★★ M2.7：周期分母读**丙条累加器**（消费步对逐日注入 naturalNeeds[grain] 的累加）—— 不再按人口现算。
       cycleNeed += householdEconomy.cycleNaturalNeedMilli();
       FlowRow flow = data.flows().get(key);
       if (flow == null) {
@@ -1795,7 +1793,7 @@ public final class ApiViews {
     view.put("unit", "milli-grain");
     view.put("population", population);
     view.put(
-        "populationSnapshot", "读口时刻的行人口（日末口径，月末回写之后）；cycleNaturalNeedMilli 用的是逐日日初人口，两者不可并排当同一时点");
+        "populationSnapshot", "读口时刻的行人口（日末口径，月末回写之后）；cycleNaturalNeedMilli 用的是逐日结算前那份逐户注入需求（不是读口时刻人口 × 系数），两者不可并排当同一时点");
     view.put("grainStock", grainStock);
     view.put("grainDailyNeed", dailyNeed);
     view.put("grainDailyNeedClock", GRAIN_DAILY_CONSUMPTION_CLOCK);
@@ -1832,15 +1830,18 @@ public final class ApiViews {
     view.put(
         "satisfactionPerMille",
         cycleNeed <= 0L ? null : Math.max(0L, (cycleNeed - unmet)) * 1000L / cycleNeed);
+    // ★ 2026-10-09 Batch 3 如实边界（未收口）：这个"人日"仍用全局旧口径 83 毫粮/人日反解；
+    //   逐户 naturalNeeds 已按年龄/性别分档 ⇒ 它只剩量级读数，不得与逐户 expectedNeedMilli 并排当同一分母。
     view.put(
         "unmetPersonDays",
         unmet / (EconomyVocabulary.RATION_MILLI_PER_PERSON / EconomyVocabulary.RATION_CYCLE_DAYS));
     view.put(
         "window",
-        "importDemand / satisfactionPerMille / unmetPersonDays / cycleNaturalNeedMilli 是**本周期累计**"
-            + "（新周期第一天重置）⇒ 只有关账日读到的才是整周期的量；cycleNeed="
+        "importDemand / satisfactionPerMille / cycleNaturalNeedMilli 是**本周期累计**（新周期第一天重置）⇒ "
+            + "只有关账日读到的才是整周期的量；cycleNeed="
             + cycleNeed
-            + "（= Σ_d dailyRationMilli(pop_d, d)，pop_d = 每日结算前的日初人口）");
+            + "（= Σ_d 逐户注入 naturalNeeds[grain] 的累加，窗口=本周期）；unmetPersonDays 仍是"
+            + "「未满足毫粮 ÷ 全局人均日定额」的旧折算（逐户分档后它只是量级读数，不得与逐户 expectedNeedMilli 并排当同一分母）");
     // ★★ 七项里**仍做不到**的项：具名列出（不是留空、更不是填 0 —— 那会被读成"没有缺口"）。
     Map<String, Object> unavailable = new LinkedHashMap<>();
     unavailable.put("productionSelfSufficiency", PRODUCTION_NEEDS_LEDGER);
@@ -1952,7 +1953,7 @@ public final class ApiViews {
   private static final String DASHBOARD_DERIVED_INTEREST_F_WINDOW =
       "interestDue=本周期至今（FlowRow.interestDue 合计）；F=混合窗口（同 DebtCapacity）";
   private static final String DASHBOARD_DERIVED_NEED_GAP_WINDOW =
-      "unmetNeed=本周期至今（FlowRow.unmetNeed 合计）；cycleNaturalNeedMilli=本周期累计（逐日日初人口累加；仅粮）";
+      "unmetNeed=本周期至今（FlowRow.unmetNeed 合计）；cycleNaturalNeedMilli=本周期累计（逐日累加当户注入 naturalNeeds[grain]；仅粮）";
   private static final String DASHBOARD_DERIVED_NEXT_INPUT_WINDOW =
       "nextRoundNecessaryInput=读口时点配方口径；source=NON_RATION_CONSUMED_PROXY 时是本周期实际非口粮投入的代理，"
           + "不是真实下一轮投入；SHORTAGE=时点（ProductionOrganization.statusReason 具名）";
@@ -2711,7 +2712,7 @@ public final class ApiViews {
       item.put("unmetNeed", unmet);
       if (GRAIN.value().equals(commodity)) {
         item.put("naturalNeed", naturalNeedGrain);
-        item.put("naturalNeedWindow", "本周期累计（ClassRow.cycleNaturalNeedMilli；逐日按日初人口累加，新周期第一天重置）");
+        item.put("naturalNeedWindow", "本周期累计（ClassRow.cycleNaturalNeedMilli；逐日累加当户注入 naturalNeeds[grain]，新周期第一天重置）");
         OptionalLong gap = perMilleOrEmpty(unmet, naturalNeedGrain);
         item.put("gapPerMille", gap.isPresent() ? gap.getAsLong() : null);
         item.put(
@@ -3085,7 +3086,7 @@ public final class ApiViews {
             : null);
     view.put(
         "grainCoverageNote",
-        "grainCoveragePerMille=库存粮 ÷ cumulativeRationMilli(人口, 本户 cycleDays)，封顶 1000；null=读不到账/算不出分母（不填 0）");
+        "grainCoveragePerMille=库存粮 ÷ 本户当前注入 naturalNeeds[grain] × 本户 cycleDays（expectedNeedMilli），封顶 1000；null=读不到账/算不出分母（不填 0）");
     view.put(
         "statusNote",
         "status=派生（AssetShare owner/operator、laborSource、自用粮覆盖、未满足、债务）；stressCycles 只给当前周期证据 0/1，不冒充历史连续计数");
@@ -3340,15 +3341,16 @@ public final class ApiViews {
           + "但**接受规则**（谁收哪种工具、按什么条件收、多工具校验与兑现）仍未实现 —— 本层市场只收 silver-specie 单一工具"
           + "⇒ 今天不判「付得出去吗」";
 
-  /** ★ M2.7 丙条：{@code cycleNaturalNeedMilli} 的人口快照口径（唯一拼写点）。 */
+  /** ★ M2.7 丙条：{@code cycleNaturalNeedMilli} 的逐户注入快照口径（唯一拼写点）。 */
   private static final String CYCLE_NATURAL_NEED_CLOCK =
-      "Σ_d dailyRationMilli(pop_d, d)：pop_d = 第 d 天经济结算前的行人口（= 日初人口）；本周期第一天重置为"
-          + "当天那一份，此后逐日累加。它是与「本周期累计未满足需求」同窗口的唯一自然需求分母";
+      "Σ_d 第 d 天经济结算前逐户注入的 naturalNeeds[grain]（消费步逐日累加）；本周期第一天重置为"
+          + "当天那一份，此后逐日累加。它是与「本周期累计未满足需求」同窗口的唯一自然需求分母，"
+          + "不再按人口 × 统一系数现算";
 
   /** ★ M2.7 丙条：日耗那一栏的窗口（与周期累加器不可并排当同一分母）。 */
   private static final String GRAIN_DAILY_CONSUMPTION_CLOCK =
-      "最近一次结算日 d 的当天自然口粮需要（逐日覆盖，不是周期累计、也不是周期均值）；"
-          + "人口时点 = 该日结算前的日初人口。不得用它 × 120 与周期量并排比较（丙条：口径不可比）";
+      "最近一次结算日 d 的当天自然口粮需要（逐户注入 naturalNeeds[grain] 的合计；逐日覆盖，不是周期累计、也不是周期均值）；"
+          + "不得用它 × 120 与周期量并排比较（丙条：口径不可比）";
 
   /** 千分率的分母（口粮折算用；与 {@code 旧结算引擎（R3a 已删除）.MILLI_PER_GRAIN} 同值，此处只服务读口）。 */
   private static final long MILLI_PER_GRAIN = EconomyVocabulary.MILLI_PER_COMMODITY_UNIT;
@@ -3749,7 +3751,7 @@ public final class ApiViews {
   private static Map<String, Object> debtCapacityWindowView() {
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("afterAllocationGrainIncome", "本周期已实现（FlowRow.income[grain]；逐日累加，新周期第一天清零；没有 = 0）");
-    view.put("basicRation", "本周期累计（ClassRow.cycleNaturalNeedMilli；逐日按日初人口累加，新周期第一天重置为当天那一份）");
+    view.put("basicRation", "本周期累计（ClassRow.cycleNaturalNeedMilli；逐日累加当户注入 naturalNeeds[grain]，新周期第一天重置为当天那一份）");
     view.put(
         "nextRoundNecessaryInput",
         "下一周期配方口径（读口时点的 unit/资产/状态）；nextRoundNecessaryInputSource=NON_RATION_CONSUMED_PROXY 时"

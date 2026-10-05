@@ -18,7 +18,6 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.ProductionProcess;
-import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -37,7 +36,7 @@ import java.util.OptionalLong;
  * laborSelfMilli           = Σ HouseholdLaborCommitment(household=本户 且 actor=本户 actor).laborMilli
  * rentPaidMilli            = 本日 ledger 里本户作为付方的租规则实付（账本缺失 ⇒ empty，不填 0）
  * wageArrearsMilli         = 本日 ledger 里本户作为受方的工资欠款（WageArrears）
- * grainCoveragePerMille    = 库存粮 ÷ cumulativeRationMilli(人口, 本户 cycleDays)，封顶 1000（读不到账 ⇒ empty）
+ * grainCoveragePerMille    = 库存粮 ÷ 本户 expectedNeedMilli(GRAIN, 本户 cycleDays)，封顶 1000（读不到账 ⇒ empty）
  * status                   = 由 laborSource / 资产份额 / 自用粮覆盖 / 劳动去向推出
  * </pre>
  *
@@ -54,8 +53,9 @@ import java.util.OptionalLong;
  * @param wageArrearsMilli 本户作为受方的工资欠款（毫；账本缺失或无工资规则 ⇒ empty）
  * @param status 生计状态（派生）
  * @param stressCycles 当前周期的压力证据（0/1；见类注的边界）
- * @param grainCoveragePerMille ★ E1：库存粮 ÷ 本周期基本口粮（{@code cumulativeRationMilli(人口, 本户
- *     cycleDays)}），封顶 1000；读不到账/算不出分母 ⇒ {@link OptionalLong#empty()}（明确哨兵，不填 0 冒充"断粮"）
+ * @param grainCoveragePerMille ★ E1：库存粮 ÷ 本周期基本口粮（本户当前注入 {@code naturalNeeds[grain]} × 本户
+ *     cycleDays，见 {@link HouseholdEconomy#expectedNeedMilli(io.mosire.simos.economy.api.id.CommodityId, long)}），
+ *     封顶 1000；读不到账/算不出分母 ⇒ {@link OptionalLong#empty()}（明确哨兵，不填 0 冒充"断粮"）
  */
 public record HouseholdCondition(
     HouseholdId household,
@@ -216,17 +216,18 @@ public record HouseholdCondition(
   /**
    * ★ E1：库存粮覆盖本周期基本口粮的千分数（封顶 1000）。
    *
-   * <p>分母 = {@link EconomyVocabulary#cumulativeRationMilli}(人口, 本户 cycleDays)；读不到账、算不出正分母 ⇒ {@link
-   * OptionalLong#empty()}（明确哨兵，不填 0）。
+   * <p>★★ 2026-10-09 Batch 3：分母 = 本户 {@link HouseholdEconomy#expectedNeedMilli}(当前注入的
+   * {@code naturalNeeds[grain]}, 本户 cycleDays)；<b>不再</b>按 {@code population × 人均口粮定额} 现算。
+   * 读不到账、算不出正分母 ⇒ {@link OptionalLong#empty()}（明确哨兵，不填 0）。
    */
   private static OptionalLong grainCoveragePerMille(
       HouseholdEconomy householdEconomy, long cycleDays, OptionalLong grainStockMilli) {
     if (householdEconomy == null || grainStockMilli.isEmpty() || cycleDays <= 0L) {
       return OptionalLong.empty();
     }
-    long cycleNeed = EconomyVocabulary.cumulativeRationMilli(householdEconomy.population(), cycleDays);
+    long cycleNeed = householdEconomy.expectedNeedMilli(EconomyCommodities.GRAIN, cycleDays);
     if (cycleNeed <= 0L) {
-      return OptionalLong.empty(); // 0 人口/0 天：覆盖率没有定义，不猜 1000 也不猜 0
+      return OptionalLong.empty(); // 0 注入需求/0 天：覆盖率没有定义，不猜 1000 也不猜 0
     }
     long stock = Math.max(0L, grainStockMilli.getAsLong());
     return OptionalLong.of(Math.min(1_000L, stock * 1_000L / cycleNeed));

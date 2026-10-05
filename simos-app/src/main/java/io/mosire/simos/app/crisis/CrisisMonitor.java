@@ -155,17 +155,15 @@ public final class CrisisMonitor {
       //   分子是"本周期**至今**累计的 unmetNeed"（FlowRow 在新周期第一天归零、此后逐日累加），
       //   故分母必须是"本周期**至今**的需求"，而不是整周期的需求 —— 否则周期初分子只累计了几天、
       //   分母却已按 120 天算 ⇒ 满足率被严重高估 ⇒ **一场持续危机在周期切换后会暂时读成"没有危机"**。
-      //   `cumulativeRationMilli` 的类注本就写明它是"**天的函数**（不是'周期内第几天'的函数）：
-      //   调用方传**绝对天数/绝对日号**" —— 传 cycleDays 这个常量正是误用。
+      // ★★ 2026-10-09 Batch 3：粮分母直接读行上的 cycleNaturalNeedMilli（消费步对逐日注入
+      //   naturalNeeds[grain] 的累加，窗口 = 本周期实际经过的天），不再按 population 现算；布的逐商品累加器
+      //   尚未实现（见 ClassRow.cycleNaturalNeedMilli 类注），故用该户当前注入的 naturalNeeds[cloth] × 已过天数
+      //   —— 两栏都来自逐户注入，不再按人口 × 统一系数。
       long elapsedDays = elapsedDaysOf(economy, key);
       elapsedDaysSeen = Math.max(elapsedDaysSeen, elapsedDays);
       cycleDaysSeen = Math.max(cycleDaysSeen, cycleDaysOf(economy, key));
-      grainNeed += EconomyVocabulary.cumulativeRationMilli(householdEconomy.population(), elapsedDays);
-      // C4a：衣着按历法年分数精确折算：区间 [atTick - elapsedDays, atTick) 由 CalendarClock 按历年逐段求和；
-      // 不夹取负 tick —— yearFraction 本身支持负数 tick。
-      clothNeed +=
-          EconomyVocabulary.cumulativeClothMilli(
-              householdEconomy.population(), clock.yearFraction(atTick - elapsedDays, atTick));
+      grainNeed += householdEconomy.cycleNaturalNeedMilli();
+      clothNeed += householdEconomy.expectedNeedMilli(commodityCloth(), elapsedDays);
       if (flow != null) {
         grainUnmet += flow.unmetNeed().getOrDefault(commodityGrain(), 0L);
         clothUnmet += flow.unmetNeed().getOrDefault(commodityCloth(), 0L);

@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
  *   <tr><td>{@link #population()}</td><td>{@code .population}</td><td>逐家户出生/死亡/调整汇总</td></tr>
  *   <tr><td>{@link #event()}</td><td>{@code .event}</td><td>逐事件落账</td></tr>
  *   <tr><td>{@link #workOrder()}</td><td>{@code .workorder}</td><td>Social 工单受理：汇总/成功/拒收/幂等命中（reason+source 必记）</td></tr>
+ *   <tr><td>{@link #provisioning()}</td><td>{@code .provisioning}</td><td><b>需求/劳动权威表</b>：默认 provisioning 载入、逐户 labor/needs 展开、系数查不到的具名拒</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐批次/逐移出移入明细</b></td></tr>
  * </table>
  *
@@ -47,12 +48,14 @@ public final class SocialLog {
   public static final String POPULATION_LOGGER_NAME = ROOT_LOGGER_NAME + ".population";
   public static final String EVENT_LOGGER_NAME = ROOT_LOGGER_NAME + ".event";
   public static final String WORK_ORDER_LOGGER_NAME = ROOT_LOGGER_NAME + ".workorder";
+  public static final String PROVISIONING_LOGGER_NAME = ROOT_LOGGER_NAME + ".provisioning";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
 
   private static final Logger HOUSEHOLD = LoggerFactory.getLogger(HOUSEHOLD_LOGGER_NAME);
   private static final Logger POPULATION = LoggerFactory.getLogger(POPULATION_LOGGER_NAME);
   private static final Logger EVENT = LoggerFactory.getLogger(EVENT_LOGGER_NAME);
   private static final Logger WORK_ORDER = LoggerFactory.getLogger(WORK_ORDER_LOGGER_NAME);
+  private static final Logger PROVISIONING = LoggerFactory.getLogger(PROVISIONING_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
   private SocialLog() {}
@@ -75,6 +78,11 @@ public final class SocialLog {
   /** Social 工单受理：汇总 / 成功 / 拒收 / 幂等命中（reason + source 必记；逐操作明细也走这里）。 */
   public static Logger workOrder() {
     return WORK_ORDER;
+  }
+
+  /** 需求/劳动权威表：默认 provisioning 载入、逐户 labor/needs 展开、系数缺失的具名拒。 */
+  public static Logger provisioning() {
+    return PROVISIONING;
   }
 
   /** 逐批次/逐移出移入明细。 */

@@ -146,7 +146,12 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
 
       SocialData next =
           new SocialData(
-              base.populations(), base.cities(), groups, households, base.populationEvents());
+              base.populations(),
+              base.cities(),
+              groups,
+              households,
+              base.populationEvents(),
+              base.provisioning());
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

@@ -61,8 +61,9 @@ import java.util.Objects;
  *       grossLaborMilli} 与配额由 social 侧迁移后的批次重发/缩编）；P9 必须在同一 revision 里接上，否则 “行劳动减了、批次配额没减”会让 {@code
  *       Σ allocated ≤ available} 与行/批次两侧漂开；
  *   <li><b>货币/商品</b>：迁移只带人、劳动与债务；{@code HouseholdEconomy.money} 留在源行（本记录没有“第二份钱账”）， P9 若决定财富随行必须另立显式契约；
- *   <li><b>naturalNeeds/effectiveDemand/cycleNaturalNeedMilli</b>：不随行；目标行由日结算的 {@code
- *       withDailyNeed} 在下一次结算时按新人口重算（源行余留的一日需求同样是下一次结算会覆盖的量）。
+ *   <li><b>naturalNeeds/effectiveDemand/cycleNaturalNeedMilli</b>：不随行；下一次推进的日循环开始时由 app 从 Social
+ *       逐户重新展开并经 {@code EconomyDayStepper.updateNaturalNeeds} 注入，按新人口覆盖目标/源行（源行余留的一日需求同样是
+ *       下一次注入会覆盖的量）。
  * </ul>
  *
  * <p>★ <b>确定性</b>：全部遍历按 {@code HouseholdId} 规范串升序、切分走 {@link ProportionalSplit}
