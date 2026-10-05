@@ -158,7 +158,9 @@ P2-F 行政/世界/Log 剩余缺口 + 真实小世界冒烟
   - 军队/政府这些社会组织已经由家户表达：政府国库 = 政府家户账户；军官团/领导层 = 小家户；`Unit.households` 是关系。
   - 庄园/作坊 = `ProductionMode` / `ProductionOrganization` / `ProductionUnit`；它们的投入、产出、收款通过组织者/经营者家户账户结算。
   - `ESTATE` / `WORKSHOP` 这类 actor 身份不再拥有 `GoodsAccount`；现有账户路径必须重映射到家户，旧世界直接报废重建。
-  - 待确认：`ActorKind.ESTATE` / `WORKSHOP` 是否从 actor 词表整体退役，还是只保留为“生产方式标签/生产组织身份”，明确禁止进入账户主体位置。
+  - **已裁定（2026-10-09 用户）**：`ActorKind.ESTATE` / `WORKSHOP` **整体退役**。生产方式身份改用
+    `ProductionModeId` / `ProductionOrganizationId` / `ProductionUnitId`；庄园/作坊不再作为 `ActorRef` 种类出现，
+    账户主体位置只允许家户（或后续另行裁定的家户化主体）。实施时先从账户/生产路径停用这两个 kind，再清理 actor 词表与旧测试。
 
 ### 13.4 劳动
 
