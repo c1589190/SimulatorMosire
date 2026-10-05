@@ -16,6 +16,8 @@
   <!-- ★ 新经济设计 §2：economy 切片独占产业表 / 阶层行 / 债务表 / 周期流水 / 分配函数。
        依赖面 = actor-api（AssetKind——S1 阶段 2 上移的产权基础词表）+ util（FieldDelta/Snapshot/地址与解析机制）
        + economy-api（IndustryId/ClassSlotId/RegimeId/DebtId/CommodityId——共用稳定 ID）+ Jackson。
+       ★ 方案 A（2026-10-09）：另允许直接依赖 social（人员/家户唯一域）与低层契约 social-api
+         （HouseholdId / PeopleLotId）。
        ★★ H4 起**也依赖 map**：市场表按**格**索引（EconomyData.markets 的键 = HexCoord，裁定 M1-A），
        而"依赖传递不是契约"（AGENTS.md §〇）⇒ 显式声明，不再靠 economy-api 的传递依赖拿 HexCoord。
        ★ 这不是新开的口子：economy-api 本来就依赖 map（LotChange.hex），本切片此前已在用它的传递类型。 -->
@@ -36,9 +38,16 @@
       <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
     </dependency>
     <!-- ★ 阶段 S1（2026-10-09 家户/人口架构 §3.2）：HouseholdId / PeopleLotId 迁入 simos-social-api 后，
-         本模块 main 直接 import 这两个稳定 ID ⇒ 显式声明（不靠 economy-api 传递）。 -->
+         本模块 main 直接 import 这两个稳定 ID ⇒ 显式声明（不靠 economy-api / simos-social 传递——
+         "依赖传递不是契约"）。 -->
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-social-api</artifactId>
+    </dependency>
+    <!-- ★ 方案 A（2026-10-09 用户裁定）：Social 是人员/家户的唯一域，economy 允许**大方直连**
+         `simos-social` 实现（家户人口份额 / 工单受理口等状态与服务），不再受"只许走 social-api"的旧边界。
+         版本由父 POM 的 dependencyManagement 提供。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-social</artifactId>
     </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
@@ -71,7 +80,9 @@
               <rules>
                 <bannedDependencies>
                   <excludes>
-                    <exclude>io.mosire:simos-social</exclude>
+                    <!-- ★ 2026-10-09 方案 A（用户裁定）：原 `exclude simos-social` 已删——
+                         Social 是人员/家户的唯一域，economy 允许直接依赖其实现（与 social 单向，不成环）。
+                         契约层 economy-api / social-api / actor-api 与纯计算 calendar 都不在禁列。 -->
                     <exclude>io.mosire:simos-unit</exclude>
                     <exclude>io.mosire:simos-sd</exclude>
                     <exclude>io.mosire:simos-core</exclude>
@@ -79,7 +90,7 @@
                     <exclude>io.mosire:agentlib-mosire</exclude>
                     <exclude>io.mosire:simos-ledger</exclude>
                   </excludes>
-                  <message>切片之间互不依赖（新经济设计 §2）：economy 只依赖 economy-api/util，不依赖任何别的领域切片（含 ledger）、也不依赖 core/app/agentlib。</message>
+                  <message>切片之间互不依赖（新经济设计 §2）：economy 不依赖 unit/sd/core/app/agentlib/ledger 实现；★ 方案 A（2026-10-09）：允许直接依赖 simos-social（人员/家户唯一域）及其低层契约 social-api（social 侧仍由 enforcer 禁反向依赖 economy）。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

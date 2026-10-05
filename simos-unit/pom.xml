@@ -20,11 +20,16 @@
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-map</artifactId>
     </dependency>
-    <!-- ★ S3a（2026-10-09 Unit/Gov 家户容纳 §3）：unit 是领域模块，social-api 是契约层
-         （HouseholdId 等稳定 ID / 只读 SPI），依赖方向为领域 → 契约，不依赖 simos-social 实现。
-         版本由父 POM 的 dependencyManagement 提供（"依赖传递不是契约"）。 -->
+    <!-- ★ S3a（2026-10-09 Unit/Gov 家户容纳 §3）：unit 直接 import social-api 的 HouseholdId 等稳定 ID，
+         按"依赖传递不是契约"继续显式声明这份**更上游的低层身份契约**。 -->
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-social-api</artifactId>
+    </dependency>
+    <!-- ★ 方案 A（2026-10-09 用户裁定）：Social 是人员/家户的唯一域，业务模块允许**大方直连**
+         `simos-social` 实现（家户状态 + 人员流动服务/工单受理口），不再只走 social-api 这道旧门。
+         版本由父 POM 的 dependencyManagement 提供。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-social</artifactId>
     </dependency>
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId>
@@ -50,7 +55,6 @@
               <rules>
                 <bannedDependencies>
                   <excludes>
-                    <exclude>io.mosire:simos-social</exclude>
                     <exclude>io.mosire:simos-core</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
                     <!-- ★ Task 10 回填（AGENTS.md §〇 点名的欠账：本表停在 M0，此后新增模块从未回填）：
@@ -58,8 +62,11 @@
                          不 import 任何单位类型）⇒ 互不依赖由构建期强制。
                          ★ `simos-actor-api` **不在此列**（契约层，与 `economy-api` 同待遇）。 -->
                     <exclude>io.mosire:simos-actor</exclude>
+                    <!-- ★ 2026-10-09 方案 A（用户裁定）：原 `exclude simos-social` 已删——
+                         Social 是人员/家户的唯一域，unit 允许**直接依赖 simos-social 实现**；
+                         更上游的 `simos-social-api` 低层身份契约仍显式声明、不在禁列。 -->
                   </excludes>
-                  <message>UnitSimos 与 SocialSimos 实现互不依赖（spec §3.1 / G8）；也不得依赖 ActorSimos（兄弟切片，Task 10 回填）。★ `simos-social-api` **不在禁列**（S3a：unit 是领域模块，social-api 是契约层，与 actor-api/economy-api 同待遇——只引 HouseholdId 契约，不引 simos-social 实现）。</message>
+                  <message>UnitSimos 不得依赖 core / agentlib（铁律 3/4），也不得依赖 ActorSimos（兄弟切片，Task 10 回填）。★ 方案 A（2026-10-09）：允许直接依赖 simos-social 实现（人员/家户唯一域）；`simos-social-api` 是更上游的低层身份契约，不在禁列。</message>
                 </bannedDependencies>
               </rules>
             </configuration>

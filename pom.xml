@@ -17,9 +17,11 @@
     <module>simos-util</module>
     <module>simos-map</module>
     <module>simos-calendar</module>
-    <!-- ★ 阶段 S1（2026-10-09 家户/人口计划）：social 切片共用的稳定契约层
+    <!-- ★ 阶段 S1（2026-10-09 家户/人口计划）：social 切片共用的低层人口/家户身份契约
          （HouseholdId / PeopleLotId / Sex / 家户画像 / 人口事件与率 / 只读 SPI）。
-         只依赖 map，不依赖任何领域模块、不依赖 Jackson；排在 simos-social 之前。 -->
+         只依赖 map + jackson-annotations（类型注解），不依赖任何领域模块；排在 simos-social 之前。
+         ★ 方案 A（2026-10-09 用户裁定）：保留它是为了让 economy-api / actor 等更上游契约可依赖它，
+         破 social ↔ economy-api 环；业务模块对 Social 的直连走 simos-social 实现。 -->
     <module>simos-social-api</module>
     <module>simos-social</module>
     <module>simos-unit</module>
@@ -41,15 +43,17 @@
          （`LaborAllocation.actor`），**不拥有**定义。 -->
     <module>simos-economy-api</module>
     <!-- ★ R1（2026-09-25 新经济设计）：聚合式社会经济切片骨架——产业表/阶层行/债务表/周期流水 + 激活元信息，
-         **无公式**（§八 R1 行）。只依赖 util/economy-api，不被 core 依赖。
+         **无公式**（§八 R1 行）。依赖 util/economy-api/map/actor-api/social-api，并按方案 A（2026-10-09）
+         直连 social（人员/家户唯一域）；不被 core 依赖。
          后续 R2+ 的结算逻辑（人口→阶层、日/周期结算、税、市场）在本切片内续做。 -->
     <module>simos-economy</module>
     <!-- ★ 阶段 10a（2026-09-30 GOV/Army 计划 §2.2）：行政切片骨架——每 tick 行政读数（GovOfficeState）
          + 落盘切片/变更集/编解码。只依赖 util/map/unit/social/economy-api（本阶段只用 unit/economy-api 的类型），
          **不得依赖 core/app**（铁律 3：领域模块不认识组合与调度）。 -->
     <module>simos-gov</module>
-    <!-- ★ 阶段 12（2026-10-01 用户裁定 6/8）：军队切片——一期只把“辖区 = 视野”做成纯派生视图（ArmyVision），
-         不落盘、不算战力；只依赖 util/map/unit，不得依赖 sd/economy/app/core。 -->
+    <!-- ★ 阶段 12（2026-10-01 用户裁定 6/8）+ 方案 A（2026-10-09）：军队切片——一期只把“辖区 = 视野”
+         做成纯派生视图（ArmyVision），不落盘、不算战力；方案 A 起允许直连 simos-social（人员/家户唯一域），
+         连同 util/map/unit 一起是显式依赖面；仍不得依赖 sd/economy/actor/app/core 实现。 -->
     <module>simos-army</module>
     <!-- ★ M5 T1：组合根。依赖全部领域模块 + AgentLib/MCP，是 reactor 末位；
          它不被任何模块依赖（父 POM 不引它 ⇒ 无反向依赖）。不设 enforcer（spec §2.2）。 -->

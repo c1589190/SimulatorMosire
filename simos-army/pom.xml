@@ -13,9 +13,11 @@
   <name>ArmySimos</name>
   <description>军队切片（阶段 12 最小版）：只做“军队辖区 = 视野”的纯派生视图（ArmyVision），不算任何战力。</description>
 
-  <!-- ★ 依赖面（用户阶段 12 裁定）：util（SimosTimestamp）、map（HexCoord/HexGrid）、unit（Unit/UnitState/UnitId）。
-       ★ 不依赖 sd / economy / app / core（铁律 3：领域模块不认识组合与调度）；也刻意不依赖 social/gov/actor
-         —— 本模块一期只有纯几何派生，没有跨切片读取。
+  <!-- ★ 依赖面（用户阶段 12 裁定 + 2026-10-09 方案 A）：util（SimosTimestamp）、map（HexCoord/HexGrid）、
+       unit（Unit/UnitState/UnitId）、social（人员/家户唯一域——方案 A 允许业务模块大方直连）。
+       ★ 仍不依赖 sd / gov / economy / actor / app / core（铁律 3：领域模块不认识组合与调度；
+         兄弟切片**实现**互不依赖）。social 传递带出的 economy-api / actor-api / social-api / calendar
+         都是更上游的契约层或纯计算层，不是禁止对象。
        ★ 依赖由下面的 enforcer 构建期强制。 -->
   <dependencies>
     <!-- ★ T2 收尾（2026-10-02，照 simos-app 先例）：CombatResolution 的“每阶段一次投骰必须可复现”
@@ -33,6 +35,12 @@
     </dependency>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-unit</artifactId>
+    </dependency>
+    <!-- ★ 方案 A（2026-10-09 用户裁定）：Social 是人员/家户的唯一域，army 允许直接依赖 simos-social 实现；
+         它传递带出的 economy-api / actor-api / social-api / calendar 是更上游的契约层或纯计算层。
+         版本由父 POM 的 dependencyManagement 提供。 -->
+    <dependency>
+      <groupId>io.mosire</groupId><artifactId>simos-social</artifactId>
     </dependency>
     <!-- ★ 阶段 D1（2026-10-02）：Army 切片落地 —— ArmyCodec 真 import Jackson（ObjectMapper /
          SimpleModule / KeyDeserializer / JsonIgnore）。★ 版本由父 POM 的 dependencyManagement
@@ -68,16 +76,16 @@
                     <exclude>io.mosire:simos-core</exclude>
                     <exclude>io.mosire:simos-app</exclude>
                     <exclude>io.mosire:agentlib-mosire</exclude>
-                    <!-- 阶段 12 明确：Army 不再是 sd 的下游，也不是经济/行政/社会/actor 切片的一部分。 -->
+                    <!-- 阶段 12 + 方案 A（2026-10-09）：Army 不再是 sd 的下游，也不属于经济/行政切片**实现**。
+                         ★ 兄弟切片实现仍禁（防环）：economy / actor；sd / gov 也禁。
+                         ★ simos-social 是方案 A 允许直连的人员/家户唯一域；economy-api / actor-api /
+                           social-api 虽由它传递带出，但都是更上游的契约层 ⇒ 全部不在禁列。 -->
                     <exclude>io.mosire:simos-sd</exclude>
                     <exclude>io.mosire:simos-gov</exclude>
                     <exclude>io.mosire:simos-economy</exclude>
-                    <exclude>io.mosire:simos-economy-api</exclude>
                     <exclude>io.mosire:simos-actor</exclude>
-                    <exclude>io.mosire:simos-actor-api</exclude>
-                    <exclude>io.mosire:simos-social</exclude>
                   </excludes>
-                  <message>ArmySimos 只允许 util/map/unit（阶段 12 裁定）：不得依赖 core/app/agentlib，也不得反向依赖 sd/gov/economy/actor/social</message>
+                  <message>ArmySimos：组合/调度层（core/app/agentlib）与 sd/gov、兄弟切片实现（economy/actor）一律禁；★ 方案 A（2026-10-09）：允许直接依赖 simos-social（人员/家户唯一域）及其传递带出的契约层 economy-api/actor-api/social-api 与纯计算 calendar。</message>
                 </bannedDependencies>
               </rules>
             </configuration>
