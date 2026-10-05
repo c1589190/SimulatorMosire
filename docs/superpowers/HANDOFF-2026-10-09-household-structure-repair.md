@@ -67,6 +67,12 @@
 - `/api/command` 实测 GM 命令：
   - 全局需求设置、家户覆盖设置/清除、劳动覆盖设置/清除全部 `committed`；
   - 日志事件成对出现。
+- 360 tick 基线复跑（HEAD `a5b28bc8`，fresh store）：
+  - projection warnings 0、runtime ERROR 0；
+  - 最终人口 3970（死亡 30、出生 0）；
+  - tick 360 `(0,0)` stress average=1012 / max=1590；
+  - day1 consumedQuantities=21,692,009，初始粮库存 21,666,661，deficit=190,500，unmetAfter=174,908；
+  - 证明出生为 0 不是投影/需求 bug 的单纯连带结果，而是播种口粮 + 逐批次整除 + 两套生死引擎的复合 bug。
 - 未跑：`test` / `test-compile` / `clean verify`；测试未迁移。
 
 ## 3. 当前已知缺口（按优先级）

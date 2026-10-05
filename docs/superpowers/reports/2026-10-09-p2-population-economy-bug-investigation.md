@@ -435,3 +435,52 @@ physiologicalStress: average=1066, max=1526
 - 发现 A（人口对账失效）已闭环；
 - 发现 C（需求/劳动权威链）已按用户口径 B 落地并写成代码；
 - 发现 B（出生为 0）仍是下一批的第一优先 bug。
+
+---
+
+## 12. 360 tick 基线复跑（用户建议；HEAD `a5b28bc8`）
+
+> 目的：在需求权威链修复后，单独跑一轮 360 tick，判断“出生为 0”是不是原需求问题的单纯连带 bug。
+
+### 12.1 运行
+
+- fresh store `/tmp/goal-b360-store`，独立端口 5941/5945/5943；
+- 一次 `/api/advance` `from=0,to=360`；`main` revision 1→2；
+- 日志：`/tmp/goal-b360.log`。
+
+### 12.2 结果
+
+```text
+projection warnings = 0
+runtime ERROR      = 0
+最终人口           = 3970（初始 4000；死亡 30、出生 0）
+每月写回           = births=0（day 120/180/210/240/270/300/330）
+tick 360 (0,0)     = stress average=1012, max=1590
+day1 投入+消费     = consumedQuantities=21,692,009
+初始全仓粮库存     = 21,666,661
+day1 deficitGrain  = 190,500
+day1 unmetAfter    = 174,908（借贷后）
+```
+
+### 12.3 解释
+
+- **出生仍为 0，不能归因于原来的投影/人口对账 bug**：投影已 0 unresolved，365/360 tick 内需求注入正常；
+- 分档需求确实改变幅度：day1 粮缺口从修复前 `237,480` 降到 `190,500`，unmetAfter 从 `216,741` 降到 `174,908`，但没有改变“首日播种把口粮吃光”的结构；
+- 当前主要链条仍然是：
+
+```text
+day1 播种先扣、口粮被吃光 → 长期粮食满足率低 → 压力 >1000
+  → 生育抑制 >=500 归零；
+与此同时 PopulationDynamics.birthsOf 的逐批次整数截断
+  → 即使压力归零，1098 育龄女性也只生约 2/月（应先汇总为 21）；
+另有 PopulationDynamics 与 HouseholdBook.settleVitalEvents 两套生死引擎未统一。
+```
+
+- 结论：出生为 0 是**独立且复合的 bug 链**，不是原需求/投影 bug 的单纯连带结果；360 tick 复跑可作为下一批“首日播种/口粮 + 出生机制”修复的基线。
+
+### 12.4 下一批建议
+
+1. 先修首日播种/口粮：`drawCycleInputs` / `sowIfCycleStart` 保留 subsistence reserve，或调整初始库存/播种亩数；
+2. 再修 `PopulationDynamics.birthsOf` 的逐批次整除：跨批次累积后一次取整；
+3. 最后收敛 `PopulationDynamics` 与 `HouseholdBook.settleVitalEvents` 两套生死引擎；
+4. 每步用 360 tick 复跑对照本节基线。
