@@ -12,6 +12,7 @@ import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.crisis.CrisisMonitor;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
 import io.mosire.simos.app.gm.GmToolUsage;
+import io.mosire.simos.app.household.HouseholdPositionResolver;
 import io.mosire.simos.app.query.SdQueryService;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.army.ArmyData;
@@ -529,8 +530,9 @@ public final class ApiViews {
     //   PopulationLots.isUrban 是城乡归属的唯一拼写点）。long[2] = [urban, rural]。
     Map<HexCoord, long[]> urbanRuralByHex = new LinkedHashMap<>();
     for (PopulationGroup group : social.groups().values()) {
-      // ★ S2：位置来自所属家户（UNIT 家户没有格，不进逐格汇总）。
-      HexCoord lotHex = social.hexOfLot(group.id()).orElse(null);
+      // ★ S2：位置来自所属家户；★ 2026-10-09：UNIT 家户经 resolver 派生 unit 当刻 hex（政府/军队家户跟随单位）。
+      HexCoord lotHex =
+          HouseholdPositionResolver.hexOfLot(group.id(), social, units, at).orElse(null);
       if (lotHex == null) {
         continue;
       }
@@ -551,7 +553,8 @@ public final class ApiViews {
     Map<HexCoord, Long> silverByHex = new LinkedHashMap<>();
     Map<HexCoord, Map<String, Long>> goodsByHex = new LinkedHashMap<>();
     for (GoodsAccount account : actors.accounts().values()) {
-      HexCoord hex = householdHex(social, account.key().household());
+      // ★ 2026-10-09：政府家户位置是 UNIT(unitId) ⇒ 账本落格必须走 resolver（否则读口会因"家户不在 HEX 上"炸）。
+      HexCoord hex = householdHex(social, units, at, account.key().household());
       grainStockByHex.merge(hex, account.balances().getOrDefault(GRAIN, 0L), Long::sum);
       silverByHex.merge(
           hex, account.money().getOrDefault(MoneyVocabulary.SILVER_CURRENCY, 0L), Long::sum);
@@ -5022,12 +5025,8 @@ public final class ApiViews {
       view.put("level", gov.level().name());
       view.put("superiorGov", gov.superiorGov().map(UnitId::value).orElse(null));
       view.put("staff", unitStaffView(gov.staff()));
-      // ★★ S3a（2026-10-09）：官府下辖家户（保序原样透出；空表也发——"没有下辖"是编制自身状态）。
-      List<String> govHouseholds = new ArrayList<>(gov.households().size());
-      for (HouseholdId household : gov.households()) {
-        govHouseholds.add(household.value());
-      }
-      view.put("households", govHouseholds);
+      // ★★ 2026-10-09 唯一列表裁定：编制视图不再发 households（该字段已从 GovFormation 删除）；"谁在这个 Unit 里"
+      //   只读 unit 视图的 households[]（含政府家户 hh-gov-<unitId>）。
       // ★★ S3b（2026-10-09）：领导层家户配置（以 HouseholdId 为键的具名状态；空表也发）。
       List<Map<String, Object>> posts = new ArrayList<>(gov.householdPosts().size());
       for (GovernmentHouseholdPost post : gov.householdPosts().values()) {
@@ -6047,14 +6046,24 @@ public final class ApiViews {
     return householdHex(economyData(state), household);
   }
 
-  /** {@link #householdHex(EconomyData, HouseholdId)} 的 social 形态（region 汇总没有 economy 上下文时用）。 */
-  private static HexCoord householdHex(SocialData social, HouseholdId household) {
+  /**
+   * {@link #householdHex(EconomyData, HouseholdId)} 的 social 形态（region 汇总没有 economy 上下文时用）：位置走
+   * {@link HouseholdPositionResolver}——{@code HEX} 原样、{@code UNIT(unitId)} 由 unit 当刻 {@code effectivePosition} 派生。
+   * 家户不存在或所在 unit 查无/无位置 ⇒ 抛（读口不静默造一个假格）。
+   */
+  private static HexCoord householdHex(
+      SocialData social, UnitState units, SimosTimestamp at, HouseholdId household) {
     var householdData = social.households().get(household);
-    if (householdData == null
-        || !(householdData.location()
-            instanceof io.mosire.simos.social.api.household.HouseholdLocation.Hex hex)) {
-      throw new IllegalStateException("家户不在 HEX 上或不存在（无法定位账户所在格）: " + household);
+    if (householdData == null) {
+      throw new IllegalStateException("家户不存在（无法定位账户所在格）: " + household);
     }
-    return hex.hex();
+    return HouseholdPositionResolver.effectiveHex(household, social, units, at)
+        .orElseThrow(
+            () ->
+                new IllegalStateException(
+                    "家户位置解析不出有效格（UNIT 家户所在单位不存在/无位置）: "
+                        + household
+                        + " location="
+                        + householdData.location()));
   }
 }

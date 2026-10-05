@@ -133,8 +133,8 @@ public final class ProvinceApplyTool implements AgentTool {
   public String description() {
     return "GM 省份一键落盘（组合工具，一批 = 一条 revision）：复用 simos.province.divide 的同一份只读建议，"
         + "按固定批序落 map.CreateRegion（省 → 首都区 __CAP）→ unit.CreateUnit（中央 -gov-central + 省 -gov-PNN）"
-        + "→ social.CreateHousehold（每个 GOV 一个政府家户 hh-gov-<unitId>）× (N+1) → "
-        + "actor.EnsureHouseholdAccount × (N+1) → unit.SetGovFormation（households 含自己的政府家户；省 superiorGov=中央）→ "
+        + "→ social.CreateHousehold（每个 GOV 一个政府家户 hh-gov-<unitId>，位置 UNIT(unitId)）× (N+1) → "
+        + "actor.EnsureHouseholdAccount × (N+1) → unit.SetGovFormation（域层把政府家户编入 Unit.households；省 superiorGov=中央）→ "
         + "economy.RegisterGovernment × (N+1)（gov-unit-<unitId>，要求 economy 已激活）→ "
         + "unit.SetJurisdiction（中央仅首都区；省本省）→ sd.CreateDecisionMaker × (N+1) → "
         + "[providerId: sd.SetDecisionMakerProvider] → sd.PutInfo。"

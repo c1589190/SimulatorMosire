@@ -142,8 +142,8 @@ public final class GovCreateOfficeTool implements AgentTool {
         + "level=PROVINCE 时 regions 必须非空，level=CENTRAL 时可为空（缺省空 = 不落 SetJurisdiction、无管辖）；"
         + "superiorGov 非空须存在且带 GovFormation。"
         + "新单位固定 manpower=[]/equipment=[]/speed=1/mobilityPerMille=500/position=(q,r)/无 parent。"
-        + "批顺序：unit.CreateUnit → social.CreateHousehold（政府家户 hh-gov-<unitId>）→ "
-        + "actor.EnsureHouseholdAccount（政府家户零余额账户）→ unit.SetGovFormation（households 含该政府家户）→ "
+        + "批顺序：unit.CreateUnit → social.CreateHousehold（政府家户 hh-gov-<unitId>，位置 UNIT(unitId)）→ "
+        + "actor.EnsureHouseholdAccount（政府家户零余额账户）→ unit.SetGovFormation（域层把该政府家户编入 Unit.households）→ "
         + "economy.RegisterGovernment（gov-unit-<unitId>，要求 economy 已激活）→ [regions 非空: unit.SetJurisdiction] → "
         + "sd.CreateDecisionMaker → [provider] → [access] → sd.PutInfo(key="
         + INFO_KEY

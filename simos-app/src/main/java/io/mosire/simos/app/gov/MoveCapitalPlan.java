@@ -256,7 +256,8 @@ public final class MoveCapitalPlan {
     }
 
     // ④ 国库：P2-A §13.3 起账随家户走（键不带格）⇒ 迁都**不再需要**搬账命令；
-    //   政府家户的落点/成员更新由 social/unit 的迁都编排处理（P2-C 的政府家户路径）。
+    //   政府家户位置是 UNIT(unitId)（2026-10-09 唯一列表裁定），随本批 unit.PlaceAt 自动跟随（有效 hex 由
+    //   HouseholdPositionResolver 从 unit 当刻 effectivePosition 派生），不再需要 social.SetHouseholdLocation。
     // ⑤ 编制/管辖：首都区必须在中央 GOV 的管辖集里（已有税率与上限留给 SetJurisdiction 保原值）。
     boolean jurisdictionHasCapital =
         gov.jurisdiction()

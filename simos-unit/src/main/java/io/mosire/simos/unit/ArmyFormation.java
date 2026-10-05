@@ -43,7 +43,7 @@ public record ArmyFormation(
       throw new IllegalArgumentException("role 不得为空白");
     }
     if (householdDuties == null) {
-      // ★ S3b：旧档/旧调用点没有该键 ⇒ Jackson 给 null；这里归一成空表（与 GovFormation.households 同款旧档兼容）。
+      // ★ S3b：旧档/旧调用点没有该键 ⇒ Jackson 给 null；这里归一成空表（与 Unit 的 jurisdiction/module/stateDescriptions 同款旧档兼容）。
       householdDuties = Map.of();
     }
     Map<HouseholdId, MilitaryHouseholdDuty> copy = new LinkedHashMap<>();

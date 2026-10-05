@@ -363,11 +363,12 @@ final class GovCreateOfficePlan {
     }
 
     /**
-     * {@code unit.SetGovFormation} 载荷：{@code {unitId, level, superiorGov?, staff, policy, households}}；
+     * {@code unit.SetGovFormation} 载荷：{@code {unitId, level, superiorGov?, staff, policy}}；
      * {@code staff}/{@code policy} 都显式给全（而不是靠 handler 缺省），让 revision 里的意图可读、可回放。
-     * ★★ P2-C §13.7：{@code households} 显式带<b>该 GOV 单位的政府家户</b>（{@code hh-gov-<unitId>}）——
-     * 新建 GOV 的 households 本来为空，同批写入后 {@code UnitState} 的"GOV 恰一个政府家户"不变量与
-     * {@code economy.RegisterGovernment} 的国库引用指向同一把家户键。
+     * ★★ 2026-10-09 唯一列表裁定：载荷<b>不再带 {@code households}</b>（该线格式键已删）——政府家户
+     * {@code hh-gov-<unitId>} 由域层 {@code UnitOperations.setGovFormation} 在改编制时同批编入
+     * {@code Unit.households}，与同批 {@code social.CreateHousehold(UNIT)} 和 {@code economy.RegisterGovernment}
+     * 的国库引用指向同一把家户键。
      */
     String setGovFormationPayloadJson() {
       Map<String, Object> payload = new LinkedHashMap<>();
@@ -376,7 +377,6 @@ final class GovCreateOfficePlan {
       superiorGov.ifPresent(superior -> payload.put("superiorGov", superior));
       payload.put("staff", staffView());
       payload.put("policy", policyView());
-      payload.put("households", List.of(governmentHouseholdId()));
       return ToolSupport.json(payload);
     }
 
@@ -390,14 +390,15 @@ final class GovCreateOfficePlan {
       return superiorGov.orElse(unitId);
     }
 
-    /** {@code social.CreateHousehold} 载荷：政府家户落在 GOV 单位当刻位置那一格（HEX 位置，国库可入市）。 */
+    /**
+     * {@code social.CreateHousehold} 载荷：政府家户位置是 {@code UNIT(unitId)}（不再钉创建时 HEX）——
+     * 有效 hex 由 app 侧 {@code HouseholdPositionResolver} 从 unit 当刻 {@code effectivePosition} 派生，
+     * 国库/入市/生产随 {@code unit.PlaceAt}、行军、迁都自动跟随。
+     */
     String createGovernmentHouseholdPayloadJson(String reason) {
-      Map<String, Object> hex = new LinkedHashMap<>();
-      hex.put("q", at.q());
-      hex.put("r", at.r());
       Map<String, Object> location = new LinkedHashMap<>();
-      location.put("type", "HEX");
-      location.put("hex", hex);
+      location.put("type", "UNIT");
+      location.put("unitId", unitId);
       Map<String, Object> profile = new LinkedHashMap<>();
       profile.put("name", name + "政府家户");
       Map<String, Object> payload = new LinkedHashMap<>();

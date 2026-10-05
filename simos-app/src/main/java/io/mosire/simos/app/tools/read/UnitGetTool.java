@@ -54,8 +54,9 @@ public final class UnitGetTool implements AgentTool {
     return "按 id 查单位详情：name/equipment[{type,amount}]/speed/mobilityPerMille/"
         + "parent/position/stateDescriptions/households[{id,name?,location?,memberLots?,population?}]/population（实时人口，"
         + "从 Social 家户汇总现算；S3b 起 manpower 已退役）；"
-        + "若单位带编制/管辖，另含 module（gov: level/superiorGov/households/householdPosts/staff/policy；"
-        + "army: masterGov/role/householdDuties）与 "
+        + "若单位带编制/管辖，另含 module（gov: level/superiorGov/householdPosts/staff/policy；"
+        + "army: masterGov/role/householdDuties；★ 编制里没有 households——谁在这个 Unit 里只看 unit 视图的 "
+        + "households[]，GOV 单位必含政府家户 hh-gov-<unitId>）与 "
         + "jurisdiction（regions→每周期税率‰、levy*CapPerCommand、administrationPerMille）";
   }
 

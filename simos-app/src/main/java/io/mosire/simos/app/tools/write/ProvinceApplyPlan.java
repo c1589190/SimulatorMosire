@@ -633,8 +633,9 @@ final class ProvinceApplyPlan {
     }
 
     /**
-     * {@code unit.SetGovFormation} 载荷：{@code {unitId, level, superiorGov?, staff, policy, households}}。
-     * ★★ P2-C §13.7：{@code households} 显式带该 GOV 的政府家户（{@code hh-gov-<unitId>}），与同批
+     * {@code unit.SetGovFormation} 载荷：{@code {unitId, level, superiorGov?, staff, policy}}。
+     * ★★ 2026-10-09 唯一列表裁定：载荷不再带 {@code households}（该线格式键已删）——政府家户
+     * {@code hh-gov-<unitId>} 由域层在改编制时同批编入 {@code Unit.households}，与同批
      * {@code economy.RegisterGovernment} 的国库引用指向同一把键。
      */
     String setGovFormationPayload(GovEntry gov) {
@@ -644,7 +645,6 @@ final class ProvinceApplyPlan {
       gov.superiorGov().ifPresent(superior -> payload.put("superiorGov", superior));
       payload.put("staff", params.staffView());
       payload.put("policy", params.policyView());
-      payload.put("households", List.of(governmentHouseholdId(gov)));
       return ToolSupport.json(payload);
     }
 
@@ -658,14 +658,14 @@ final class ProvinceApplyPlan {
       return gov.superiorGov().orElse(gov.unitId());
     }
 
-    /** {@code social.CreateHousehold} 载荷：政府家户落在该 GOV 单位的位置那一格。 */
+    /**
+     * {@code social.CreateHousehold} 载荷：政府家户位置是 {@code UNIT(unitId)}（不再钉创建时 HEX）——有效 hex
+     * 由 app 侧 {@code HouseholdPositionResolver} 从 unit 当刻 {@code effectivePosition} 派生，迁都/行军自动跟随。
+     */
     String createGovernmentHouseholdPayload(GovEntry gov, String reason) {
-      Map<String, Object> hex = new LinkedHashMap<>();
-      hex.put("q", gov.at().q());
-      hex.put("r", gov.at().r());
       Map<String, Object> location = new LinkedHashMap<>();
-      location.put("type", "HEX");
-      location.put("hex", hex);
+      location.put("type", "UNIT");
+      location.put("unitId", gov.unitId());
       Map<String, Object> profile = new LinkedHashMap<>();
       profile.put("name", gov.unitName() + "政府家户");
       Map<String, Object> payload = new LinkedHashMap<>();

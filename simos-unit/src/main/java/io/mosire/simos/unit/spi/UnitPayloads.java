@@ -456,8 +456,9 @@ final class UnitPayloads {
   }
 
   /**
-   * 可选的家户 id 数组（阶段 S3a 的 {@code unit.SetGovFormation.households}）：缺失或 {@code null} ⇒ 空 Optional
-   * （**未给 ⇒ 保持既有**，不是清空）；给了 ⇒ 形状与语义同 {@link #requireHouseholdIds}（空数组 = 显式清空）。
+   * 可选的家户 id 数组（{@code unit.CreateUnit.households}）：缺失或 {@code null} ⇒ 空 Optional；给了 ⇒ 形状与语义同
+   * {@link #requireHouseholdIds}（空数组 = 显式空表）。★ 2026-10-09 起 {@code unit.SetGovFormation} 不再接收
+   * {@code households} 键（唯一实质列表是 {@code Unit.households}；政府家户由域层立编制时同批编入）。
    */
   static Optional<List<HouseholdId>> optionalHouseholdIds(JsonNode payload, String field) {
     JsonNode value = payload.get(field);

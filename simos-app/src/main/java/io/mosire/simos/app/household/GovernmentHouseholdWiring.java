@@ -7,8 +7,10 @@ import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.household.Household;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -24,15 +26,18 @@ import java.util.Optional;
  *
  * <pre>
  * 每个带 GovFormation 的 unit：
- *   GovFormation.households 里恰一个政府家户 H = hh-gov-&lt;unitId&gt;
+ *   Unit.households 里恰一个政府家户 H = hh-gov-&lt;unitId&gt;
+ *   Social.households[H].location == UNIT(&lt;unitId&gt;)          ← 2026-10-09 位置锚点（政府家户跟随单位）
  *   economy.governments[gov-unit-&lt;unitId&gt;].treasury == HouseholdActors.of(H)
  *   economy.classes 里有 H 的 ClassRow（人口层/劳动层可配置、可入市）
  * </pre>
  *
- * <p>★★ <b>为什么必须有这一处</b>：三条事实分布在三个切片 —— {@link GovFormation#households()}（unit）、 {@link
- * Government#treasury()}（economy）、{@code actor} 的账户（政府家户账户）。创建侧由 {@code economy.RegisterGovernment}
- * + {@code actor.EnsureHouseholdAccount} 成对写；本类在推进入口把"三边都在且逐值对应" 判死 —— 少了任何一边都
- * fail-closed，不把"没有政府记录"读成"没有政府"、也不让某个 GOV 单位悄悄共用别家的国库。
+ * <p>★★ <b>为什么必须有这一处</b>：四条事实分布在三个切片 —— {@link Unit#households()}（unit）、 {@link
+ * HouseholdLocation.Unit}（social）、{@link Government#treasury()}（economy）、{@code actor} 的账户（政府家户账户）。
+ * 创建侧由 {@code social.CreateHousehold(UNIT)} + {@code economy.RegisterGovernment} + {@code
+ * actor.EnsureHouseholdAccount} 成对写；本类在推进入口把“四边都在且逐值对应”判死 —— 少了任何一边都 fail-closed，不把“没有政府记录”读成“没有政府”、也不让某个
+ * GOV 单位悄悄共用别家的国库。★ 2026-10-09 唯一列表裁定后本类不再读 {@code GovFormation.households}（该组件已删除），改读
+ * {@code Unit.households}；并新增位置锚点校验，拒绝“家户列表里有、位置却钉在旧 HEX”的僵尸国库。
  *
  * <p>★ <b>只读 + 纯函数</b>：不改入参；不一致以 {@link Mismatch} 具名列出，{@link #requireConsistent} 折成一条异常。
  * 世界级政府（{@code world-silver} 这类非单位派生 id）不在本类射程内（{@link GovernmentIds#unitRefOf(GovernmentId)}
@@ -63,15 +68,15 @@ public final class GovernmentHouseholdWiring {
     Objects.requireNonNull(units, "units");
     List<Mismatch> out = new ArrayList<>();
 
-    // 正向：每个 GOV 单位都要有"政府家户 → ClassRow → 政府记录 → 国库=家户"这条链。
+    // 正向：每个 GOV 单位都要有"政府家户 → Social UNIT 位置 → ClassRow → 政府记录 → 国库=家户"这条链。
     List<Unit> ordered = new ArrayList<>(units.units().values());
     ordered.sort(Comparator.comparing(unit -> unit.id().value()));
     for (Unit unit : ordered) {
-      if (!(unit.module().orElse(null) instanceof GovFormation gov)) {
+      if (!(unit.module().orElse(null) instanceof GovFormation)) {
         continue;
       }
       HouseholdId governmentHousehold = null;
-      for (HouseholdId household : gov.households()) {
+      for (HouseholdId household : unit.households()) {
         if (GovernmentHouseholds.isGovernment(household)) {
           if (governmentHousehold != null) {
             out.add(
@@ -88,7 +93,7 @@ public final class GovernmentHouseholdWiring {
                 "GOV_HOUSEHOLD_MISSING",
                 "unit "
                     + unit.id()
-                    + " 的 GovFormation.households 没有政府家户（应为 "
+                    + " 的 Unit.households 没有政府家户（应为 "
                     + GovernmentHouseholds.of(unit.id().value())
                     + "）"));
         continue;
@@ -105,7 +110,8 @@ public final class GovernmentHouseholdWiring {
                     + "，实际="
                     + governmentHousehold));
       }
-      if (!social.households().containsKey(governmentHousehold)) {
+      Household socialHousehold = social.households().get(governmentHousehold);
+      if (socialHousehold == null) {
         out.add(
             new Mismatch(
                 "GOV_HOUSEHOLD_NOT_IN_SOCIAL",
@@ -113,7 +119,24 @@ public final class GovernmentHouseholdWiring {
                     + unit.id()
                     + " 的政府家户 "
                     + governmentHousehold
-                    + " 不在 Social 家户表里（先 social.CreateHousehold 建户，再 unit.SetGovFormation）"));
+                    + " 不在 Social 家户表里（先 social.CreateHousehold(UNIT) 建户，再 unit.SetGovFormation）"));
+      } else {
+        // ★★ 位置锚点：政府家户必须是 UNIT(该 GOV 单位)，不是创建时钉死的 HEX——迁都/行军后由 resolver 派生
+        //    当前 hex；钉在 HEX 的旧国库在这里被具名拒。
+        HouseholdLocation expectedLocation = new HouseholdLocation.Unit(unit.id().value());
+        if (!expectedLocation.equals(socialHousehold.location())) {
+          out.add(
+              new Mismatch(
+                  "GOV_HOUSEHOLD_LOCATION_MISMATCH",
+                  "unit "
+                      + unit.id()
+                      + " 的政府家户 "
+                      + governmentHousehold
+                      + " 的位置必须是 "
+                      + expectedLocation
+                      + "（随单位 effectivePosition 派生 hex），实际="
+                      + socialHousehold.location()));
+        }
       }
       if (!economy.classes().containsKey(governmentHousehold)) {
         out.add(
@@ -152,14 +175,14 @@ public final class GovernmentHouseholdWiring {
       }
     }
 
-    // 反向：每条单位派生的政府记录都必须对应一个真 GOV 单位，且家户仍在它的 GovFormation.households 里。
+    // 反向：每条单位派生的政府记录都必须对应一个真 GOV 单位，且家户仍在它的 Unit.households 里。
     for (Government government : economy.governments().values()) {
       Optional<String> unitRef = GovernmentIds.unitRefOf(government.id());
       if (unitRef.isEmpty()) {
         continue;
       }
       Unit unit = units.units().get(UnitId.parse(unitRef.get()));
-      if (unit == null || !(unit.module().orElse(null) instanceof GovFormation gov)) {
+      if (unit == null || !(unit.module().orElse(null) instanceof GovFormation)) {
         out.add(
             new Mismatch(
                 "GOV_RECORD_WITHOUT_UNIT",
@@ -167,17 +190,17 @@ public final class GovernmentHouseholdWiring {
         continue;
       }
       HouseholdId household = GovernmentHouseholds.of(unitRef.get());
-      if (!gov.households().contains(household)) {
+      if (!unit.households().contains(household)) {
         out.add(
             new Mismatch(
-                "GOV_TREASURY_NOT_IN_FORMATION",
+                "GOV_TREASURY_NOT_IN_UNIT_HOUSEHOLDS",
                 "政府 "
                     + government.id().value()
                     + " 的政府家户 "
                     + household
                     + " 不在 unit "
                     + unit.id()
-                    + " 的 GovFormation.households 里"));
+                    + " 的 Unit.households 里"));
       }
     }
     return List.copyOf(out);

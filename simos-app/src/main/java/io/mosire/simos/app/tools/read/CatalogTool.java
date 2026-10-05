@@ -128,12 +128,13 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "unit.SetGovFormation",
               "unitId, level(CENTRAL|PROVINCE), superiorGov?,"
-                  + " households?[家户 id...], householdPosts?[{household,role,level,head?}],"
+                  + " householdPosts?[{household,role,level,head?}],"
                   + " staff?{SCRIBE|YAMEN|POST:整数}, policy?{grainPerStaffPerTick?,"
                   + " clothPerStaffPerCycle?, moneyPerStaffPerTick?, retirementPerStaff?,"
                   + " staffCap?{SCRIBE|YAMEN|POST:整数}}"
                   + "（★ staff 缺省空表、policy 缺省 OfficePolicy.defaults() 且可给部分字段；"
-                  + "households 缺省 = 保持既有 GOV 的下辖家户（不是清空）、给了（含空数组）⇒ 整体替换；"
+                  + "★ 2026-10-09 唯一列表裁定：载荷不再有 households 键——域层立编制时把政府家户 "
+                  + "hh-gov-<unitId> 编入 Unit.households，其余家户先走 unit.SetUnitHouseholds（GOV 单位须保留该政府家户）；"
                   + "householdPosts 缺省 = 保持既有领导配置；S3b 起 householdPosts 是以 HouseholdId 为键的"
                   + "领导层家户具名配置（键必须在本单位 households 里；非空时 staff 只是家户人口投影、"
                   + "unit.RecruitStaff/DismissStaff 具名拒）；"

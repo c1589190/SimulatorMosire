@@ -29,7 +29,7 @@ import org.slf4j.Logger;
  *
  * <p>★★ <b>与旧装配的唯一区别</b>：旧路径的国库账键是 {@code (ActorRef(UNIT, unitId), 有效位置)}；P2-A §13.3 起非家户主体 不得持账，国库
  * = 政府家户账户。付款不再需要位置参数（{@code at} 只作 GovDaily 的读数/信号落点），账户身份由 {@link GovernmentHouseholdResolver} 从
- * {@code GovFormation.households()} 按稳定 id 解析——不取列表第一个、不猜。
+ * {@code Unit.households} 按稳定 id 解析——不取列表第一个、不猜。
  *
  * <p>★★ <b>失败语义（不静默付 0）</b>：
  *

@@ -7,6 +7,7 @@ import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.household.GovernmentHouseholdWiring;
 import io.mosire.simos.app.household.HouseholdClassRowProjection;
+import io.mosire.simos.app.household.HouseholdPositionResolver;
 import io.mosire.simos.app.household.HouseholdUnitConsistency;
 import io.mosire.simos.app.world.EconomySeeder;
 import io.mosire.simos.calendar.CalendarClock;
@@ -62,6 +63,7 @@ import io.mosire.simos.util.spi.WorldTimeProposal;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
+import io.mosire.simos.util.time.SimosTimestamp;
 import io.mosire.simos.util.time.TimeRange;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -200,8 +202,24 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             staffProjection);
       }
     }
+    EconomyData economyAligned = economyBase;
+    if (units != null && !social.households().isEmpty()) {
+      // ★★ 2026-10-09：UNIT 家户（政府/军队小家户）的 economy 行视图对齐到 unit 当刻 effectivePosition 的 hex——
+      //   市场参与 / 生产组织 / 贷款等 economy 内部一律读 ClassRow.view().hex()，本对齐让它们无需 new dependency
+      //   就跟随 unit.PlaceAt / 行军 / 迁都。HEX 家户原样不动。
+      HouseholdPositionResolver.Alignment alignment =
+          HouseholdPositionResolver.alignClassRowViews(economyBase, social, units, range.from());
+      economyAligned = alignment.data();
+      if (alignment.moved() > 0) {
+        LOG.info(
+            "event=UNIT_HOUSEHOLD_ECONOMY_VIEW_ALIGNED mapId={} moved={} tick={}",
+            mapId,
+            alignment.moved(),
+            range.from().tick());
+      }
+    }
     HouseholdClassRowProjection.Result classRowProjection =
-        HouseholdClassRowProjection.project(economyBase, social);
+        HouseholdClassRowProjection.project(economyAligned, social);
     if (!classRowProjection.unresolved().isEmpty()) {
       LOG.warn(
           "event=CLASSROW_POPULATION_PROJECTION_UNRESOLVED mapId={} count={} first={}",
@@ -418,7 +436,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           currentBooks = OwnershipBooks.landAccountSession(currentBooks, stepper.accounts());
           // ② 逐日生理压力（读**当天**的需求与实得 —— 两者都在刚结算完的账上）。
           currentSocial =
-              applyDailyStress(stepper.classRows(), currentSocial, stepper.flows(), unmetBefore);
+              applyDailyStress(
+                  stepper.classRows(), currentSocial, stepper.flows(), unmetBefore, units, day);
           // ③ 月度结算：出生/死亡 → 先改人口（真值源），再按同一份账回写经济侧。
           if (day % PopulationDynamics.SETTLEMENT_DAYS == 0L) {
             PopulationDynamics.Outcome outcome =
@@ -536,31 +555,42 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
    * 逐批次：取**它住的那一格、它那一种居住类型**的家户（四行求和）⇒ 满足率‰ ⇒ {@link PopulationDynamics#stressAfter}
    * </pre>
    *
-   * <p>★★ **H0.2 起批次 ↔ 家户的对应不再经产业**：批次的<b>落点格</b>由所属家户给出（{@code social.hexOfLot(group.id())}）与
-   * <b>居住类型</b>（批次 id 的前缀 ⇒ {@link ResidenceKind#ofLot}，唯一拼写点），而家户行的键正是 {@code (格, 居住类型,
-   * 阶层)}（{@code CohortKey}） ⇒ 两维直接对上，**不需要中间映射表**。旧版要经"批次供给哪些产业"（{@code
-   * LaborAllocation}）再回退到"该格的产业"， 那一步在"一格既有农村又有城镇"时会把两池并起来算 —— 正是 R-N1 要堵的"农村余粮喂城市缺口"。
+   * <p>★★ **H0.2 起批次 ↔ 家户的对应不再经产业**：批次的<b>落点格</b>由所属家户给出（HEX 家户直接取，
+   * {@code UNIT} 家户经 {@link HouseholdPositionResolver} 派生 unit 当刻 hex）与 <b>居住类型</b>（批次 id 的前缀 ⇒
+   * {@link ResidenceKind#ofLot}，唯一拼写点），而家户行的键正是 {@code (格, 居住类型, 阶层)}（{@code CohortKey}）
+   * ⇒ 两维直接对上，**不需要中间映射表**。旧版要经"批次供给哪些产业"（{@code LaborAllocation}）再回退到"该格的产业"， 那一步在"一格既有农村又有城镇"时会把两池并起来算
+   * —— 正是 R-N1 要堵的"农村余粮喂城市缺口"。
    *
    * <p>★ **没有配额的批次照样吃饭**（0-14 档与全部新生儿）：它们的居住类型与落点格本来就在批次上 ⇒ 这条兜底现在是**结构上白拿的**（旧版要为它单独查一次"该格的产业"）。 ★
    * **没有需求的批次不动**（{@code 需求 == 0} ⇒ 满足率按 1000‰ 计，压力照常消退）："这一天没记账"不等于"饿了一天"。
    *
    * @param unmetBefore 当日结算**之前**的 {@code FlowRow.unmetNeed} 快照（用于取"当天新增的那一笔"）
+   * @param units unit 切片（UNIT 家户的有效格由 {@link HouseholdPositionResolver} 现算；可为 {@code null} ⇒ 只用
+   *     HEX 家户）
+   * @param day 世界日（resolver 的取位时刻）
    */
   private static SocialData applyDailyStress(
       Map<HouseholdId, ClassRow> classes,
       SocialData social,
       Map<HouseholdId, FlowRow> flows,
-      Map<HouseholdId, Map<CommodityId, Long>> unmetBefore) {
+      Map<HouseholdId, Map<CommodityId, Long>> unmetBefore,
+      UnitState units,
+      long day) {
     if (social.groups().isEmpty() || classes.isEmpty()) {
       return social; // 没有批次/没有经济 ⇒ 没有可算的人
     }
     Map<HouseholdRef, long[]> byHousehold = dailyProvisioning(classes, flows, unmetBefore);
     Map<PeopleLotId, PopulationGroup> next = new LinkedHashMap<>(social.groups());
     for (PopulationGroup group : social.groups().values()) {
-      // ★ 批次 → 家户：**落点格 + 居住类型**（落点从所属家户取；前缀的唯一判定在 {@link ResidenceKind#ofLot}）。
-      HexCoord at = social.hexOfLot(group.id()).orElse(null);
+      // ★ 批次 → 家户：**落点格 + 居住类型**（落点从所属家户取；UNIT 家户经 resolver 派生 unit 当刻 hex）。
+      HexCoord at =
+          units == null
+              ? social.hexOfLot(group.id()).orElse(null)
+              : HouseholdPositionResolver.hexOfLot(
+                      group.id(), social, units, SimosTimestamp.of(day))
+                  .orElse(null);
       if (at == null) {
-        continue; // UNIT 家户的满足率口径属 S3 消费方集成；S2 不臆造"哪个格的账"
+        continue; // 家户不在 HEX 上且所在 unit 无位置 ⇒ 没有可算的格
       }
       long[] row = byHousehold.get(new HouseholdRef(at, ResidenceKind.ofLot(group.id())));
       if (row == null) {

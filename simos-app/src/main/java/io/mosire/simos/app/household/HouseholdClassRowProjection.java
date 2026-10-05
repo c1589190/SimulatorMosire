@@ -13,9 +13,11 @@ import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,6 +70,10 @@ public final class HouseholdClassRowProjection {
    * 把 {@code economy.classes()} 的人口投影到 {@code social.households()} 的成员之和。
    *
    * <p>★ Social 家户为空（旧世界/未播种）⇒ 原样返回（投影无从谈起，不是坏数据）；经济侧为空同理。
+   *
+   * <p>★★ <b>2026-10-09 UNIT 家户口径</b>：位置为 {@code HouseholdLocation.Unit} 的家户（政府/军队小家户）不参与
+   * {@code (格,居住)} 分组——它们的经济行视图另由 {@link HouseholdPositionResolver#alignClassRowViews} 对齐到 unit
+   * 当刻位置；其行人口也从“非 UNIT 行总量”分母里剔除，既不摊给同格民户，也不因其存在把整批 HEX 投影判为未决。
    */
   public static Result project(EconomyData economy, SocialData social) {
     Objects.requireNonNull(economy, "economy");
@@ -80,11 +86,16 @@ public final class HouseholdClassRowProjection {
     // ① Social 侧：每个 HEX 家户 → (格, 居住类型) 目标人口。
     Map<HouseholdView, Long> targetPopulation = new LinkedHashMap<>();
     Map<HouseholdView, HouseholdId> householdOfView = new LinkedHashMap<>();
+    // ★ 2026-10-09：UNIT 家户（政府家户 / 军队小家户）没有独立的 (格,居住) 目标；它们的经济行视图由
+    //   HouseholdPositionResolver.alignClassRowViews 对齐到 unit 当刻位置，人口**不并入同格的 HEX 组**——
+    //   否则政府家户人口会被按权重摊给同格民户（静默并账）。它们的 id 在这里先收集，用于从经济侧分组/总量里剔除。
+    Set<HouseholdId> unitHouseholds = new LinkedHashSet<>();
     List<Household> households = new ArrayList<>(social.households().values());
     households.sort(Comparator.comparing(household -> household.id().value()));
     for (Household household : households) {
       if (!(household.location() instanceof HouseholdLocation.Hex hex)) {
-        continue; // UNIT 家户没有格行；它们的人口不落 ClassRow。
+        unitHouseholds.add(household.id());
+        continue; // UNIT 家户没有格行；它们的人口不落 HEX ClassRow 组。
       }
       ResidenceKind residence = residenceOf(household);
       if (residence == null) {
@@ -109,9 +120,12 @@ public final class HouseholdClassRowProjection {
       targetPopulation.put(view, social.householdPopulation(household.id()));
     }
 
-    // ② 经济侧：按 (格, 居住类型) 分组 ClassRow（保序）。
+    // ② 经济侧：按 (格, 居住类型) 分组 ClassRow（保序）；UNIT 家户的行不参与 HEX 组（见上）。
     Map<HouseholdView, List<HouseholdId>> rowsByView = new LinkedHashMap<>();
     for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
+      if (unitHouseholds.contains(entry.getKey())) {
+        continue;
+      }
       ClassRow row = entry.getValue();
       HouseholdView view = new HouseholdView(row.view().hex(), row.view().residence());
       rowsByView.computeIfAbsent(view, ignored -> new ArrayList<>()).add(entry.getKey());
@@ -126,24 +140,26 @@ public final class HouseholdClassRowProjection {
                 + ") 的 ClassRow，但没有对应的 HEX Social 家户");
       }
     }
-    // ★ 投影只在"HEX 家户总人口 == 经济侧行人口总和"时进行：UNIT 家户 / 未接线人口会让两侧总量不等，
-    //   那种状态下强行按比例投影会把差额摊掉（静默丢人）⇒ 这里记未决、原样返回，让后面的跨切片守恒校验
-    //   （MembershipWriteback）去 fail-closed。
+    // ★ 投影只在"HEX 家户总人口 == 经济侧**非 UNIT** 行人口总和"时进行：UNIT 家户的人口不在 HEX 组里，
+    //   其经济行人口也一并从分母里剔除（否则政府家户人口会让两侧总量恒不等、整批投影被跳过）。
     long targetTotal = 0L;
     for (long population : targetPopulation.values()) {
       targetTotal = Math.addExact(targetTotal, population);
     }
     long rowTotal = 0L;
-    for (ClassRow row : economy.classes().values()) {
-      rowTotal = Math.addExact(rowTotal, row.population());
+    for (Map.Entry<HouseholdId, ClassRow> entry : economy.classes().entrySet()) {
+      if (unitHouseholds.contains(entry.getKey())) {
+        continue;
+      }
+      rowTotal = Math.addExact(rowTotal, entry.getValue().population());
     }
     if (targetTotal != rowTotal) {
       unresolved.add(
           "HEX Social 家户总人口("
               + targetTotal
-              + ") != 经济侧 ClassRow 行人口总和("
+              + ") != 经济侧非 UNIT ClassRow 行人口总和("
               + rowTotal
-              + ")（可能有 UNIT 家户或尚未接线的人口）");
+              + ")（可能有尚未接线的人口）");
     }
     if (!unresolved.isEmpty()) {
       LOG.warn(

@@ -263,7 +263,7 @@ public final class GovRemitTool implements AgentTool {
     if (unit == null) {
       throw new IllegalArgumentException("参数 " + field + " 指定的单位不存在: " + rawUnitId);
     }
-    if (!(unit.module().orElse(null) instanceof GovFormation gov)) {
+    if (!(unit.module().orElse(null) instanceof GovFormation)) {
       throw new IllegalArgumentException(
           "参数 " + field + " 指定的单位没有 GovFormation，不能作为 GOV: " + rawUnitId);
     }
@@ -275,7 +275,7 @@ public final class GovRemitTool implements AgentTool {
                     new IllegalArgumentException(
                         "参数 " + field + " 指定的 GOV 单位没有当刻有效位置（国库落点未知）: " + rawUnitId));
     return new TreasuryLocation(
-        rawUnitId, at, GovernmentHouseholdResolver.requireGovernmentHousehold(gov, rawUnitId).value());
+        rawUnitId, at, GovernmentHouseholdResolver.requireGovernmentHousehold(unit, rawUnitId).value());
   }
 
   /** 一条 {@code actor.RemitGovTreasury} 的载荷（字段名与 handler 的解析契约一致；三个金额显式写出）。 */

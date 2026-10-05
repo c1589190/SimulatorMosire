@@ -265,40 +265,29 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
                   + "（先 unit.SetUnitHouseholds / social.SetHouseholdLocation 把家户编入本单位）");
         }
       }
-      // ★★ P2-C §13.7：中央/地方 GOV 各恰一个政府家户，且身份必须是该 GOV 单位稳定 id 的派生物
-      //   （hh-gov-<unitId>）。"先到者胜"或"随便挂第一户"在这里进不了状态：恰好一个、且引用逐字相等。
+      // ★★ P2-C §13.7 + 2026-10-09 唯一列表裁定：中央/地方 GOV 各恰一个政府家户，且身份必须是该 GOV 单位稳定
+      //   id 的派生物（hh-gov-<unitId>）；这个家户必须出现在 Unit.households（唯一实质列表）里——GovFormation
+      //   不再有 households 重复列表。"先到者胜"或"随便挂第一户"在这里进不了状态：恰好一个、且引用逐字相等。
+      HouseholdId expectedGovernmentHousehold = GovernmentHouseholds.of(unit.id().value());
       List<HouseholdId> governmentHouseholds = new ArrayList<>();
-      for (HouseholdId household : gov.households()) {
+      for (HouseholdId household : unit.households()) {
         if (GovernmentHouseholds.isGovernment(household)) {
           governmentHouseholds.add(household);
         }
       }
-      if (governmentHouseholds.size() != 1) {
+      if (governmentHouseholds.size() != 1
+          || !expectedGovernmentHousehold.equals(governmentHouseholds.get(0))) {
         throw new IllegalArgumentException(
             "GOV 单位 "
                 + unit.id()
-                + " 必须恰有一个政府家户（hh-gov-<unitId>），实际 "
+                + " 的 Unit.households 必须恰含一个政府家户 "
+                + expectedGovernmentHousehold
+                + "（按 GOV 单位稳定 id 建户），实际 "
                 + governmentHouseholds.size()
                 + " 个: "
                 + governmentHouseholds
-                + "（请用 unit.SetGovFormation 的 households 配上同批创建的政府家户）");
-      }
-      HouseholdId governmentHousehold = governmentHouseholds.get(0);
-      String governmentRef =
-          GovernmentHouseholds
-              .unitRefOf(governmentHousehold)
-              .orElseThrow(
-                  () ->
-                      new IllegalArgumentException(
-                          "政府家户 id 形状非法（前缀无引用）: " + governmentHousehold));
-      if (!governmentRef.equals(unit.id().value())) {
-        throw new IllegalArgumentException(
-            "GOV 单位 "
-                + unit.id()
-                + " 的政府家户必须是 "
-                + GovernmentHouseholds.of(unit.id().value())
-                + "（按 GOV 单位稳定 id 建户），实际="
-                + governmentHousehold);
+                + "（请用 unit.SetGovFormation 立编制——域层会把该政府家户编入 Unit.households；"
+                + "下辖其他家户请用 unit.SetUnitHouseholds 且务必保留这个政府家户）");
       }
     } else if (module instanceof ArmyFormation army) {
       for (HouseholdId household : army.householdDuties().keySet()) {
