@@ -142,7 +142,9 @@ public final class GovCreateOfficeTool implements AgentTool {
         + "level=PROVINCE 时 regions 必须非空，level=CENTRAL 时可为空（缺省空 = 不落 SetJurisdiction、无管辖）；"
         + "superiorGov 非空须存在且带 GovFormation。"
         + "新单位固定 manpower=[]/equipment=[]/speed=1/mobilityPerMille=500/position=(q,r)/无 parent。"
-        + "批顺序：unit.CreateUnit → unit.SetGovFormation → [regions 非空: unit.SetJurisdiction] → "
+        + "批顺序：unit.CreateUnit → social.CreateHousehold（政府家户 hh-gov-<unitId>）→ "
+        + "actor.EnsureHouseholdAccount（政府家户零余额账户）→ unit.SetGovFormation（households 含该政府家户）→ "
+        + "economy.RegisterGovernment（gov-unit-<unitId>，要求 economy 已激活）→ [regions 非空: unit.SetJurisdiction] → "
         + "sd.CreateDecisionMaker → [provider] → [access] → sd.PutInfo(key="
         + INFO_KEY
         + "，value 回显 regions)。"
@@ -531,7 +533,7 @@ public final class GovCreateOfficeTool implements AgentTool {
       String reason,
       BranchId branch,
       RevisionId expectedRevision) {
-    List<CommandEnvelope> batch = new ArrayList<>(7);
+    List<CommandEnvelope> batch = new ArrayList<>(10);
     batch.add(
         envelope(
             batchId,
@@ -539,6 +541,22 @@ public final class GovCreateOfficeTool implements AgentTool {
             expectedRevision,
             GovCreateOfficePlan.CREATE_UNIT_TYPE,
             plan.createUnitPayloadJson()));
+    // ★★ P2-C §13.7：每个 GOV 单位同批创建它自己的政府家户、零余额账户、编制引用与政府记录 —— 四件事共享
+    //   batchId/branch/expectedRevision ⇒ 一条 revision 内"单位 ↔ 家户 ↔ 国库"三边同时成立，不留半截态。
+    batch.add(
+        envelope(
+            batchId,
+            branch,
+            expectedRevision,
+            GovCreateOfficePlan.CREATE_HOUSEHOLD_TYPE,
+            plan.createGovernmentHouseholdPayloadJson(reason)));
+    batch.add(
+        envelope(
+            batchId,
+            branch,
+            expectedRevision,
+            GovCreateOfficePlan.ENSURE_HOUSEHOLD_ACCOUNT_TYPE,
+            plan.ensureHouseholdAccountPayloadJson(reason)));
     batch.add(
         envelope(
             batchId,
@@ -546,6 +564,13 @@ public final class GovCreateOfficeTool implements AgentTool {
             expectedRevision,
             GovCreateOfficePlan.SET_GOV_FORMATION_TYPE,
             plan.setGovFormationPayloadJson()));
+    batch.add(
+        envelope(
+            batchId,
+            branch,
+            expectedRevision,
+            GovCreateOfficePlan.REGISTER_GOVERNMENT_TYPE,
+            plan.registerGovernmentPayloadJson(reason)));
     if (plan.hasJurisdictionCommand()) {
       batch.add(
           envelope(

@@ -19,6 +19,7 @@ import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.actor.spi.RemitGovTreasuryHandler;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.gui.ApiViews;
+import io.mosire.simos.app.household.GovernmentHouseholdResolver;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.tools.ToolSupport;
@@ -262,7 +263,10 @@ public final class GovPayTool implements AgentTool {
             .orElseThrow(
                 () ->
                     new PaymentRejected("调用者所属 GOV 没有当刻有效位置（付款国库落点未知）: " + gov.govUnit().value()));
-    return new Payer(gov.govUnit().value(), at, govHousehold(unit, gov.govUnit().value()));
+    return new Payer(
+        gov.govUnit().value(),
+        at,
+        GovernmentHouseholdResolver.requireGovernmentHousehold(unit, gov.govUnit().value()).value());
   }
 
   /**
@@ -289,19 +293,8 @@ public final class GovPayTool implements AgentTool {
                 () ->
                     new IllegalArgumentException(
                         "参数 " + field + " 指定的 GOV 单位没有当刻有效位置（国库落点未知）: " + rawUnitId));
-    return new TreasuryLocation(rawUnitId, at, govHousehold(unit, rawUnitId));
-  }
-
-  /**
-   * 政府国库家户（P2-A §13.3：国库 = 政府家户账户）：取单位 {@code households()} 的第一个（保序、确定性）。
-   * 没有家户 ⇒ 拒（不猜、不退回已退役的单位账户）。
-   */
-  private static String govHousehold(Unit unit, String unitId) {
-    if (unit.households().isEmpty()) {
-      throw new IllegalArgumentException(
-          "GOV 单位 " + unitId + " 没有家户（P2-A 起国库 = 政府家户账户；请先配置 unit.households）");
-    }
-    return unit.households().get(0).value();
+    return new TreasuryLocation(
+        rawUnitId, at, GovernmentHouseholdResolver.requireGovernmentHousehold(unit, rawUnitId).value());
   }
 
   /** 可选金额（缺省 0；类型错由 {@link ToolSupport#optionalLong} 抛 ⇒ BAD_REQUEST）。 */

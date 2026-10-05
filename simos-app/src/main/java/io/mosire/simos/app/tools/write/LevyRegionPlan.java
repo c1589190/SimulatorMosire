@@ -4,6 +4,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.app.gui.ApiViews;
+import io.mosire.simos.app.household.GovernmentHouseholdResolver;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyCommodities;
@@ -14,6 +15,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -166,13 +168,19 @@ final class LevyRegionPlan {
                 () ->
                     new IllegalArgumentException(
                         "单位 " + unitId + " 当刻没有有效位置，国库落点无法确定；先 unit.PlaceAt"));
-    // ★★ P2-A §13.3：国库 = 政府家户账户 ⇒ 从单位 households 取（保序第一个、确定性）。
-    //   需要动账（粮/钱/布任一 > 0）而没有家户 ⇒ 拒（不退回已退役的单位账户）。
-    String treasuryHousehold =
-        unit.households().isEmpty() ? null : unit.households().get(0).value();
-    if (treasuryHousehold == null && (grain > 0L || money > 0L || cloth > 0L)) {
-      throw new IllegalArgumentException(
-          "单位 " + unitId + " 没有家户（P2-A 起国库 = 政府家户账户；请先配置 unit.households）");
+    // ★★ P2-C §13.7：GOV 单位的国库 = 它自己的**政府家户**（hh-gov-<unitId>，从 GovFormation.households
+    //   按稳定 id 解析），不再取 unit.households 的第一个；非 GOV 单位（带 jurisdiction 的普通单位）才退回
+    //   旧口径（保序第一个）。需要动账（粮/钱/布任一 > 0）而没有国库家户 ⇒ 拒（不退回已退役的单位账户）。
+    String treasuryHousehold;
+    if (unit.module().orElse(null) instanceof GovFormation) {
+      treasuryHousehold =
+          GovernmentHouseholdResolver.requireGovernmentHousehold(unit, unitId).value();
+    } else {
+      treasuryHousehold = unit.households().isEmpty() ? null : unit.households().get(0).value();
+      if (treasuryHousehold == null && (grain > 0L || money > 0L || cloth > 0L)) {
+        throw new IllegalArgumentException(
+            "单位 " + unitId + " 没有家户（P2-A 起国库 = 家户账户；请先配置 unit.households）");
+      }
     }
     // ★ requested = 0 的维度整段跳过：不扫描来源、不进 Plan 的来源表（available 记 0 = "未求值"）。
     Dimension grainDimension =

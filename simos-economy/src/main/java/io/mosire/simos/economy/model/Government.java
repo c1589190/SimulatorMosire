@@ -41,7 +41,7 @@ public record Government(
   /**
    * ★ 旧形状兼容构造器：两个财政旋钮都取 0（逐值等于它们引入前的政府）。
    *
-   * <p>旧夹具与旧载荷走它；production-runtime 的内置 GOV 家户才显式给铸币/发债量。
+   * <p>旧夹具与旧载荷走它；带政府家户的世界（demo 的 world-silver / P2-C 的 GOV 单位政府）才显式给铸币/发债量。
    */
   public Government(
       GovernmentId id, String nationRef, ActorRef treasury, Set<CurrencyId> issuable) {

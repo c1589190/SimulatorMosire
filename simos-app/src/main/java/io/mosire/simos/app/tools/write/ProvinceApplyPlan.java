@@ -9,6 +9,7 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.GovLevel;
 import io.mosire.simos.unit.Jurisdiction;
@@ -97,8 +98,18 @@ final class ProvinceApplyPlan {
   /** {@code unit.CreateUnit} 的命令类型。 */
   static final String CREATE_UNIT_TYPE = GovCreateOfficePlan.CREATE_UNIT_TYPE;
 
+  /** {@code social.CreateHousehold} 的命令类型（每个 GOV 的政府家户；P2-C §13.7）。 */
+  static final String CREATE_HOUSEHOLD_TYPE = GovCreateOfficePlan.CREATE_HOUSEHOLD_TYPE;
+
+  /** {@code actor.EnsureHouseholdAccount} 的命令类型（政府家户零余额账户；P2-C §13.7）。 */
+  static final String ENSURE_HOUSEHOLD_ACCOUNT_TYPE =
+      GovCreateOfficePlan.ENSURE_HOUSEHOLD_ACCOUNT_TYPE;
+
   /** {@code unit.SetGovFormation} 的命令类型。 */
   static final String SET_GOV_FORMATION_TYPE = GovCreateOfficePlan.SET_GOV_FORMATION_TYPE;
+
+  /** {@code economy.RegisterGovernment} 的命令类型（政府记录 + ClassRow；P2-C §13.7）。 */
+  static final String REGISTER_GOVERNMENT_TYPE = GovCreateOfficePlan.REGISTER_GOVERNMENT_TYPE;
 
   /** {@code unit.SetJurisdiction} 的命令类型（中央无首都圈时缺席）。 */
   static final String SET_JURISDICTION_TYPE = GovCreateOfficePlan.SET_JURISDICTION_TYPE;
@@ -477,7 +488,10 @@ final class ProvinceApplyPlan {
       Map<String, Integer> counts = new LinkedHashMap<>();
       counts.put(CREATE_REGION_TYPE, createdRegions().size());
       counts.put(CREATE_UNIT_TYPE, govs.size());
+      counts.put(CREATE_HOUSEHOLD_TYPE, govs.size());
+      counts.put(ENSURE_HOUSEHOLD_ACCOUNT_TYPE, govs.size());
       counts.put(SET_GOV_FORMATION_TYPE, govs.size());
+      counts.put(REGISTER_GOVERNMENT_TYPE, govs.size());
       int jurisdictions = 0;
       for (GovEntry gov : govs) {
         if (gov.hasJurisdictionCommand()) {
@@ -618,7 +632,11 @@ final class ProvinceApplyPlan {
       return ToolSupport.json(payload);
     }
 
-    /** {@code unit.SetGovFormation} 载荷：{@code {unitId, level, superiorGov?, staff, policy}}。 */
+    /**
+     * {@code unit.SetGovFormation} 载荷：{@code {unitId, level, superiorGov?, staff, policy, households}}。
+     * ★★ P2-C §13.7：{@code households} 显式带该 GOV 的政府家户（{@code hh-gov-<unitId>}），与同批
+     * {@code economy.RegisterGovernment} 的国库引用指向同一把键。
+     */
     String setGovFormationPayload(GovEntry gov) {
       Map<String, Object> payload = new LinkedHashMap<>();
       payload.put("unitId", gov.unitId());
@@ -626,6 +644,57 @@ final class ProvinceApplyPlan {
       gov.superiorGov().ifPresent(superior -> payload.put("superiorGov", superior));
       payload.put("staff", params.staffView());
       payload.put("policy", params.policyView());
+      payload.put("households", List.of(governmentHouseholdId(gov)));
+      return ToolSupport.json(payload);
+    }
+
+    /** 该 GOV 单位的政府家户稳定 id（{@code hh-gov-<unitId>}；唯一拼写点在 social-api）。 */
+    String governmentHouseholdId(GovEntry gov) {
+      return GovernmentHouseholds.of(gov.unitId()).value();
+    }
+
+    /** 政府记录的辖区引用：中央取自身、省取上级（与 createOffice 同口径）。 */
+    String governmentNationRef(GovEntry gov) {
+      return gov.superiorGov().orElse(gov.unitId());
+    }
+
+    /** {@code social.CreateHousehold} 载荷：政府家户落在该 GOV 单位的位置那一格。 */
+    String createGovernmentHouseholdPayload(GovEntry gov, String reason) {
+      Map<String, Object> hex = new LinkedHashMap<>();
+      hex.put("q", gov.at().q());
+      hex.put("r", gov.at().r());
+      Map<String, Object> location = new LinkedHashMap<>();
+      location.put("type", "HEX");
+      location.put("hex", hex);
+      Map<String, Object> profile = new LinkedHashMap<>();
+      profile.put("name", gov.unitName() + "政府家户");
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("householdId", governmentHouseholdId(gov));
+      payload.put("location", location);
+      payload.put("profile", profile);
+      payload.put("reason", reason);
+      return ToolSupport.json(payload);
+    }
+
+    /** {@code actor.EnsureHouseholdAccount} 载荷：给该 GOV 的政府家户补零余额账户（幂等）。 */
+    String ensureHouseholdAccountPayload(GovEntry gov, String reason) {
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("household", governmentHouseholdId(gov));
+      payload.put("reason", reason);
+      return ToolSupport.json(payload);
+    }
+
+    /**
+     * {@code economy.RegisterGovernment} 载荷：政府记录 + 政府家户 ClassRow；身份只给 {@code govUnitId}
+     * （政府/家户 id 由 handler 派生）。人口/劳动/参与率/issuable/铸币/发债一律缺席：新建取 0/空集、重复登记逐值保留。
+     */
+    String registerGovernmentPayload(GovEntry gov, String reason) {
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("govUnitId", gov.unitId());
+      payload.put("nationRef", governmentNationRef(gov));
+      payload.put("q", gov.at().q());
+      payload.put("r", gov.at().r());
+      payload.put("reason", reason);
       return ToolSupport.json(payload);
     }
 

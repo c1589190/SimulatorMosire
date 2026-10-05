@@ -313,7 +313,9 @@ public final class WorldgenInitializeTool implements AgentTool {
             "string",
             "经济地基 profile：唯一值 production-runtime（缺省即它）：entries 带 farm/weave/craft industries、units、"
                 + "assetShares、劳动配额、memberships 与经营者开缸账，另发默认生产方式/阶层结构/位置/家户归属/"
-                + "资产规则，并内置 GOV 家户（国库 = 其家户账户）；其它值 fail-closed"));
+                + "资产规则；政府家户与政府记录不在 seed 里，由 GOV 单位路径（unit.SetGovFormation + "
+                + "economy.RegisterGovernment + actor.EnsureHouseholdAccount）按 GOV 单位稳定 id 建立；"
+                + "其它值 fail-closed"));
     props.put(
         "economyTestConditions",
         ToolSupport.prop(

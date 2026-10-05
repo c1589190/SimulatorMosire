@@ -20,7 +20,8 @@ import java.util.Set;
  *       {@code householdPosts} 非空，staff 只是那些领导家户人口的**投影**（app 组合根现算校核），不得再当第二本权威；
  *   <li>{@code households}（S3a，2026-10-09）：官府下辖的 {@link HouseholdId} 列表（保序、冻结不可变；空表 = 尚无下辖家户）。 ★
  *       <b>它不是第二本人数</b>：官府人口从 Social 家户实时汇总（{@code PopulationLookup.unitPopulation}），本列表只是 unit 侧的
- *       "谁归我管"的账；
+ *       "谁归我管"的账；★★ <b>P2-C §13.7 起它还必须恰含一个政府家户</b>（{@code hh-gov-<unitId>}，由
+ *       {@code UnitState} 构造期强制）—— 该家户就是 {@code Government.treasury} 指向的国库家户，中央/地方概莫能外；
  *   <li>{@code householdPosts}（S3b，2026-10-09 用户裁定）：以 {@link HouseholdId} 为键的领导层家户配置（{@link
  *       GovernmentHouseholdPost}）。领导层可单独建小家户，再在本表挂配置；本表不含人数——人数从家户成员现算；
  *   <li>{@code policy}：编制政策（定额/上限/退休待遇）；

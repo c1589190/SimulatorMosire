@@ -5,6 +5,7 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.cohort.CohortKey;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
@@ -17,6 +18,7 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.api.id.GovernmentId;
+import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
@@ -62,6 +64,7 @@ import io.mosire.simos.economy.model.ProductionOrganization;
 import io.mosire.simos.economy.model.ProductionUnit;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -1192,6 +1195,33 @@ public record EconomyData(
         throw new IllegalArgumentException(
             "同一个国库 actor 不能同时是两届政府（发行记录无法归属）：" + government.treasury());
       }
+      // ★★ P2-C §13.7：按 GOV 单位派生的政府记录必须把国库钉在该单位的政府家户上
+      //   （id = gov-unit-<unitId> ⇒ 家户 id = hh-gov-<unitId>）。这条不变量在状态构造期判死：
+      //   任何"登记了单位政府却指向别的家户/别的 actor"的数据都进不了世界，也不靠"先到者胜"兜底。
+      GovernmentIds.unitRefOf(government.id())
+          .ifPresent(
+              unitRef -> {
+                if (government.treasury().kind() != ActorKind.HOUSEHOLD) {
+                  throw new IllegalArgumentException(
+                      "单位政府 "
+                          + government.id()
+                          + " 的国库必须是该 GOV 单位的政府家户账户（HOUSEHOLD）："
+                          + government.treasury());
+                }
+                HouseholdId expected = GovernmentHouseholds.of(unitRef);
+                HouseholdId actual = HouseholdActors.householdOf(government.treasury());
+                if (!expected.equals(actual)) {
+                  throw new IllegalArgumentException(
+                      "单位政府 "
+                          + government.id()
+                          + " 的国库家户必须是 "
+                          + expected
+                          + "（govUnitId="
+                          + unitRef
+                          + "），实际="
+                          + actual);
+                }
+              });
       for (CurrencyId currency : government.issuable()) {
         ActorRef issuer = government.authorityOf(currency);
         if (issuer == null) {

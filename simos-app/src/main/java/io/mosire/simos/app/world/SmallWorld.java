@@ -73,7 +73,7 @@ import java.util.Set;
  *   <li><b>1 座首都</b>（{@value #CAPITAL_ID}，{@value #CAPITAL_URBAN_POPULATION} 城镇人口）+ <b>1
  *       座镇</b>（{@value #TOWN_ID}，{@value #TOWN_URBAN_POPULATION} 城镇人口）；
  *   <li><b>人口 4,000</b>：15 格 × {@value #RURAL_POPULATION_PER_HEX} 农村人口 = 3,000，加城镇
- *       1,000；人口最多的是首都格（200 + 700 = 900）⇒ {@code EconomySeeder} 内置的 GOV 家户落在首都；
+ *       1,000；人口最多的是首都格（200 + 700 = 900）⇒ 世界级政府家户 {@code hh-gov-world-silver} 落在首都；
  *   <li><b>地形</b>：平原为主（11 格）+ 低丘 4 格（城市两格取平原，故土地的"满可耕/低丘"两档都真的被 economic 播种读到）。
  * </ul>
  *
@@ -84,7 +84,7 @@ import java.util.Set;
  * social.SetPopulation（15 格农村人口序列）
  * → social.CreateCity ×2（首都 + 镇）
  * → social.SeedGroups（同一份批次/家户，PopulationSeeder）
- * → economy.Seed（EconomySeeder.plan 的 production-runtime 载荷：产业/阶层/劳动/资产/市场 + 内置 GOV 家户/国库/周期铸币政策）
+ * → economy.Seed（EconomySeeder.plan 的 production-runtime 载荷：产业/阶层/劳动/资产/市场 + world-silver 政府家户/国库/周期铸币政策）
  * → actor.Seed（HouseholdSeeder 载荷：与 economy.Seed 同一次 plan 的家户/经营者 actor + 账本 + 创世货币）
  * </pre>
  *
@@ -207,7 +207,10 @@ public final class SmallWorld {
       throw new IllegalStateException("小世界装配故障：地图里没有 Region " + REGION_ID);
     }
     SettlementPlan plan = settlementPlan();
-    PopulationSeeder.Seeding seeding = PopulationSeeder.seed(plan, AT.tick());
+    // ★★ P2-C §13.7：小世界 demo 的政府是**世界级** world-silver（不是 GOV 单位）⇒ 显式把它的稳定 id 作为
+    //   政府引用交给播种器；家户身份 = hh-gov-world-silver（确定性），不再靠"第一个 seed 撞上的 official 户"。
+    PopulationSeeder.Seeding seeding =
+        PopulationSeeder.seed(plan, AT.tick(), EconomySeeder.GENESIS_GOVERNMENT_ID.value());
     // ★ 经济与 actor 读**同一次** plan（H1/H4/H5 的同源接缝）：商品库存/货币/经营者账本与
     //   economy.Seed 的逐格状态出自同一次计算，两处各算一遍必然漂开（本仓明令禁止）。
     EconomySeeder.Seed economy = EconomySeeder.plan(mapId, seeding, map);

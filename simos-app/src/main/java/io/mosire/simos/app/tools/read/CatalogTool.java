@@ -286,6 +286,40 @@ public final class CatalogTool implements AgentTool {
                   + "只写 demands）"),
           Map.entry("economy.CancelDemand", "demand(需求 id 文本)（★ 不存在 ⇒ 拒；只写 demands）"),
           Map.entry(
+              "economy.SetHouseholdClass",
+              "household(家户 id), position(已存在的 ClassPositionId), originalPosition?, reason?, day?(≥0),"
+                  + " at{q,r}?（★ P2-B：只改 classStandings 的当前职业；position 必须已在 classPositions；"
+                  + "家户没有 standing ⇒ 新建（original=current=position）；追加参与集合走 "
+                  + "economy.SetHouseholdParticipation；at 给了必须等于家户当刻居住格）"),
+          Map.entry(
+              "economy.SetHouseholdParticipation",
+              "household, positions[ClassPositionId]?, modes[ProductionModeId]?, reason?, day?(≥0), at{q,r}?"
+                  + "（★ P2-B：至少给 positions 或 modes；两者取并集，空数组 = 清空追加集合；"
+                  + "位置与所属 mode 都必须已存在；当前位置自动并入、不能借本命令改当前职业；"
+                  + "家户没有 standing ⇒ 先按旧 stratum 播种；at 给了必须等于家户当刻居住格）"),
+          Map.entry(
+              "economy.SetHouseholdLabor",
+              "household, laborMilli?(≥0，毫小时/ tick), participationPerMille?(0..1000), at{q,r}?"
+                  + "（★ P2-B：至少给一个；只改 ClassRow 的这两个字段；"
+                  + "laborMilli 的常规来源是 Social 成员逐 tick 投影，下一轮推进可能覆盖；"
+                  + "要持久改劳动时间需同时编辑 Social 成员；at 给了必须等于家户当刻居住格）"),
+          Map.entry(
+              "economy.UpdateDemand",
+              "demand(需求 id), scope(HOUSEHOLD|HEX)?, household?, hex{q,r}?, commodity?, kind(RECURRING|ONE_OFF)?,"
+                  + " unit(TOTAL|PER_CAPITA)?, quantityPerCycle?(>0), createdDay?(≥0), expiresDay?, priority?(≥0),"
+                  + " source?, at{q,r}?（★ P2-B：部分更新，缺省字段逐值沿用；scope 换档必须给新档属主、"
+                  + "不得同时给另一档；更新后属主格必须有该商品市价，否则拒并指名 economy.SetMarketPrice；"
+                  + "只写 demands）"),
+          Map.entry(
+              "economy.RegisterGovernment",
+              "govUnitId(必填), governmentId?(须逐字等于 gov-unit-<govUnitId>), household?(须逐字等于 hh-gov-<govUnitId>),"
+                  + " nationRef(必填非空白), q, r(economy 落点), residence?(缺省 urban；大小写敏感；既有行缺席=保持), stratum?(缺省 official；既有行缺席=保持),"
+                  + " population?/laborMilli?/participationPerMille?, classPosition?(须已存在), issuable?[币种],"
+                  + " seignioragePerCycle?(≥0), debtIssuePerCycle?(≥0), reason?"
+                  + "（★ P2-C：一个 GOV 单位恰一份政府 + 恰一个政府家户；身份由 govUnitId 派生；"
+                  + "写 classes/classStandings/governments 三张表；缺省字段新建取 0/空集、重复登记逐值保留；"
+                  + "要求 economy 已激活；GM-only；账户由同批 actor.EnsureHouseholdAccount 补）"),
+          Map.entry(
               "economy.RegisterCandidate",
               "id, version?(缺省 1；修订须严格更大), name?, output, outputPerUnit{商品:>0 整数},"
                   + " inputPerUnit{商品:≥0 整数}?, requiredAssets{资产种类:≥0 整数}?, laborPerUnit?(缺省 0),"
@@ -356,7 +390,13 @@ public final class CatalogTool implements AgentTool {
                   + "（★ P2-A §13.3：GOV 国库 = 政府家户账户；源/目标都是家户 id，两个不得相同；"
                   + "三个金额可选缺省 0、不得为负、至少一个 > 0；源账必须存在、逐资源走 AvailableStock"
                   + "（可支配 = 余额 − 冻结）判足量；整条原子，任一违例全拒；"
-                  + "★ 本批缺口：层级校验（省 → superiorGov）待 P2-C 重建，决策令路径暂被 app 层 fail-closed 拒）"),
+                  + "★ P2-C：决策令路径的层级校验已重建 = 只能从自己 GOV 的政府家户上缴给 superiorGov 的政府家户，"
+                  + "且双方位置须在出令决策人 actor 可达面内；GM 工具（simos.gov.remit/pay）不受层级限制）"),
+          Map.entry(
+              "actor.EnsureHouseholdAccount",
+              "household(家户 id 文本), reason?"
+                  + "（★ P2-C：给家户补一本零余额账户，幂等；只动 actor.accounts，不碰 actors/meta/余额；"
+                  + "GM-only；供 GOV 组合工具在 social.CreateHousehold + economy.RegisterGovernment 之后开户）"),
           Map.entry(
               "actor.ClearRegion",
               "regionId（必填；必须在当前 map.regions() 里）"

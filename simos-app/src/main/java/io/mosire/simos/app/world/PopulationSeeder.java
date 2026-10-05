@@ -9,6 +9,7 @@ import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.HouseholdVitalRates;
@@ -95,6 +96,19 @@ public final class PopulationSeeder {
    * @param anchorTick 锚点（世界日）：批次记"锚点时刻的年龄"，故这一步必须由调用方一次定死（创世 = 世界当前日）
    */
   public static Seeding seed(SettlementPlan plan, long anchorTick) {
+    return seed(plan, anchorTick, null);
+  }
+
+  /**
+   * 同上，但额外按政府引用建一个政府家户（P2-C §13.7）。
+   *
+   * <p>★ {@code governmentRef} 的语义：<b>世界级政府</b>给 {@code GovernmentId.value()}（如 {@code world-silver}）；
+   * <b>GOV 单位</b>给该单位稳定 id（{@code UnitId.value()}）。家户身份 =
+   * {@link GovernmentHouseholds#of(String)}，同一个引用恒得同一个身份 —— 不再"每个 seed 先造一个 official 家户"。
+   * {@code null} = 本次播种不建政府家户（多国/多省播种各自建 GOV 单位时另走
+   * {@code economy.RegisterGovernment} + {@code actor.EnsureHouseholdAccount}）。
+   */
+  public static Seeding seed(SettlementPlan plan, long anchorTick, String governmentRef) {
     Map<HexCoord, Long> ruralByHex = new LinkedHashMap<>(plan.ruralPopulation());
     Map<HexCoord, Long> urbanByHex = new LinkedHashMap<>();
     Map<HexCoord, CityId> cityIdByHex = new LinkedHashMap<>();
@@ -150,23 +164,25 @@ public final class PopulationSeeder {
           householdByCohort,
           populationByHousehold);
     }
-    // ★★ P2-A §13.7：中央/地方政府恰一个政府家户（国库 = 它的账户）。它的身份与落点在这里与普通家户同源，
-    //   EconomySeeder 只读（不再自己挑格、另拼 id）。落点 = 人口最多的格（并列取 (q,r) 字典序最小）。
-    HexCoord governmentAt = governmentHex(hexes, ruralByHex, urbanByHex);
-    HouseholdId governmentHousehold =
-        HouseholdIds.ofSeed(governmentAt, ResidenceKind.URBAN, SocialClassId.OFFICIAL);
-    households.add(
-        new Household(
-            governmentHousehold,
-            new HouseholdLocation.Hex(governmentAt),
-            new HouseholdProfile(governmentHousehold.value(), null, Map.of()),
-            Map.of(),
-            new HouseholdVitalRates(List.of())));
-    putCohort(
-        householdByCohort,
-        new CohortKey(governmentAt, ResidenceKind.URBAN, SocialClassId.OFFICIAL),
-        governmentHousehold);
-    populationByHousehold.put(governmentHousehold, 0L);
+    // ★★ P2-C §13.7：政府家户不再由每个 seed 各自造一个 official 家户（那会多国播种时先到者胜/
+    //   留下孤儿家户），而是**按政府引用稳定建户**：调用方给 `governmentRef` 才建，id =
+    //   GovernmentHouseholds.of(ref)（世界级政府用 GovernmentId；GOV 单位用单位 id）。
+    //   落点 = 人口最多的格（并列取 (q,r) 字典序最小），EconomySeeder 只读这份产物。
+    Optional<HouseholdId> governmentHousehold = Optional.empty();
+    if (governmentRef != null) {
+      HexCoord governmentAt = governmentHex(hexes, ruralByHex, urbanByHex);
+      HouseholdId id = GovernmentHouseholds.of(governmentRef);
+      households.add(
+          new Household(
+              id,
+              new HouseholdLocation.Hex(governmentAt),
+              new HouseholdProfile(id.value(), null, Map.of()),
+              Map.of(),
+              new HouseholdVitalRates(List.of())));
+      putCohort(householdByCohort, new CohortKey(governmentAt, ResidenceKind.URBAN, SocialClassId.OFFICIAL), id);
+      populationByHousehold.put(id, 0L);
+      governmentHousehold = Optional.of(id);
+    }
     return new Seeding(
         groups,
         households,
@@ -387,12 +403,12 @@ public final class PopulationSeeder {
       Map<PeopleLotId, HouseholdId> householdByLot,
       Map<CohortKey, HouseholdId> householdByCohort,
       Map<HouseholdId, Long> populationByHousehold,
-      HouseholdId governmentHousehold) {
+      Optional<HouseholdId> governmentHousehold) {
 
     public Seeding {
       groups = List.copyOf(Objects.requireNonNull(groups, "groups"));
       households = List.copyOf(Objects.requireNonNull(households, "households"));
-      Objects.requireNonNull(governmentHousehold, "governmentHousehold");
+      governmentHousehold = Objects.requireNonNull(governmentHousehold, "governmentHousehold");
       locations =
           Collections.unmodifiableMap(
               new LinkedHashMap<>(Objects.requireNonNull(locations, "locations")));
@@ -468,6 +484,13 @@ public final class PopulationSeeder {
               "播种家户的人数表与成员份额不一致: " + household + " population=" + population + " Σshare=" + actual);
         }
       }
+      governmentHousehold.ifPresent(
+          household -> {
+            if (!byHousehold.containsKey(household)) {
+              throw new IllegalArgumentException(
+                  "播种声明的政府家户不在家户表里: " + household);
+            }
+          });
     }
 
     public HexCoord locationOf(PeopleLotId lot) {

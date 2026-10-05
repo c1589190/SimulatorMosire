@@ -26,6 +26,7 @@ import io.mosire.simos.actor.resolve.ActorResolver;
 import io.mosire.simos.actor.spi.ActorClearRegionHandler;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
 import io.mosire.simos.actor.spi.AdjustAccountsHandler;
+import io.mosire.simos.actor.spi.EnsureHouseholdAccountHandler;
 import io.mosire.simos.actor.spi.RemitGovTreasuryHandler;
 import io.mosire.simos.actor.spi.TransferAccountsHandler;
 import io.mosire.simos.app.access.DecisionCallerFactory;
@@ -66,6 +67,7 @@ import io.mosire.simos.economy.spi.EconomyAddDemandHandler;
 import io.mosire.simos.economy.spi.EconomyCancelDemandHandler;
 import io.mosire.simos.economy.spi.EconomyClearRegionHandler;
 import io.mosire.simos.economy.spi.EconomyGmAdjustHandler;
+import io.mosire.simos.economy.spi.EconomyRegisterGovernmentHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdClassHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdParticipationHandler;
@@ -576,6 +578,10 @@ public final class Shell implements AutoCloseable {
                 new ClearRegionHandler(),
                 // ── economy（1 条，R2a）：一次播种某国全部格的初始经济状态（§十"验收目标 A"）──
                 new EconomySeedHandler(),
+                // ── economy（P2-C §13.7）：把一个 GOV 单位登记成"该单位恰一份政府 + 恰一个政府家户"。
+                //   身份由 govUnitId 派生（政府 = gov-unit-<id>、家户 = hh-gov-<id>），写
+                //   classes/classStandings/governments 三张表。★ GM-only（结构身份，非日常家户配置）。
+                new EconomyRegisterGovernmentHandler(),
                 // ── economy（S3）：家户迁移的最小合法入口（只搬视图/份额，不生成人口；账 location 不搬）──
                 new EconomyMigrateHouseholdHandler(),
                 // ── economy（R4-B.3b）：GM/事件用的实物资产份额拆分/转移（确定性新 id、逐资产守恒）──
@@ -614,6 +620,9 @@ public final class Shell implements AutoCloseable {
                 //   （整条原子；缺账 + 纯正增量新建）。非 sd 前缀 ⇒ 自动进 drainableCommandTypes；
                 //   同时进 commandTypes ⇒ simos.command.submit 的目标声明表（CommandTargets）同源认得它。──
                 new AdjustAccountsHandler(),
+                // ── P2-C §13.7：给政府家户（或任意新家户）补一本零余额账户（幂等；账户键 = 家户身份）。
+                //   ★ GM-only：它是组合工具的裸原语；GM 直接提交照常可用。
+                new EnsureHouseholdAccountHandler(),
                 // ── P1.2 / P2-A：actor.TransferAccounts（任意两个**家户**账户间商品/货币原子转移）。
                 //   GM-only、只写 accounts。★ actor.MoveAccount 已随 P2-A §13.3 退役（账户键不再带格，
                 //   位置从 Household.location 派生 ⇒ "搬账"不再是一个动作）。

@@ -119,11 +119,12 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             // ★★ E2 第 21/22 个组件：同一套"该格已被占用 ⇒ 上面就拒"的口径追加（空表播种 ⇒ 逐值带过已有状态）。
             merge(base.productionOrganizations(), seeded.productionOrganizations()),
             merge(base.assetRules(), seeded.assetRules()),
-            // ★★ E3 第 23/24 个组件：政府表按 id **先到者胜**，发行记录按 id 追加（每个 seed 一条
+            // ★★ E3 第 23/24 个组件：政府表按 id 合并，发行记录按 id 追加（每个 seed 一条
             //   INITIAL_ENDOWMENT 聚合记录；id 含该 seed 的格集指纹）。
-            //   ★ 2026-10-09：production-runtime 每个 seed 都内置一个 GOV 家户，并把世界政府国库指向它的家户账户 ⇒
-            //     若后播 seed 覆盖政府记录，世界国库会随播种顺序漂移。世界级政府只应有一份 ⇒ 保留已存在者。
-            //     （每个 seed 自带的 official 家户行仍各自保留；它们不生产、人口 0，世界政府只认第一份。）
+            //   ★ P2-C §13.7 起：普通 nation seed 的 governments 只有一条**逐值确定性**的创世审计主体
+            //     （world-silver、GOVERNMENT actor、空 issuable/旋钮 0）⇒ 多国重复播种逐值相同，不存在"第一份赢"的漂移；
+            //     真正的政府（中央/地方、国库 = 政府家户账户）由 economy.RegisterGovernment 按
+            //     gov-unit-<unitId> 派生 id 登记，重复登记是同键 upsert（幂等），也不靠播种顺序。
             mergeKeepingExisting(base.governments(), seeded.governments()),
             merge(base.moneyIssuances(), seeded.moneyIssuances()),
             // ★★ E4a 的第 25 个组件：质押按同一套“该格已被占用 ⇒ 上面就拒”的口径追加（空表播种 ⇒ 逐值带过已有状态）。

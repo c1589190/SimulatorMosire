@@ -5,6 +5,7 @@ import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.app.ShellConfig;
+import io.mosire.simos.app.household.GovernmentHouseholdWiring;
 import io.mosire.simos.app.household.HouseholdClassRowProjection;
 import io.mosire.simos.app.household.HouseholdUnitConsistency;
 import io.mosire.simos.calendar.CalendarClock;
@@ -185,6 +186,11 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           classRowProjection.unresolved().get(0));
     }
     EconomyData economy = classRowProjection.data();
+    // ★★ P2-C §13.7：经济已激活 + 存在 GOV 单位时，推进入口把"GovFormation 政府家户 ↔ ClassRow ↔ 政府记录 ↔ 国库账户"
+    //   这条闭环判死 —— 缺任何一边都具名失败，不把"没有政府记录"读成"没有政府"。
+    if (economy.meta().isPresent() && units != null) {
+      GovernmentHouseholdWiring.requireConsistent(economy, social, units);
+    }
 
     LinkedHashSet<String> reads = new LinkedHashSet<>();
     LinkedHashSet<String> writes = new LinkedHashSet<>();

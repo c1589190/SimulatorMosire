@@ -1610,7 +1610,8 @@ public final class ApiViews {
       node.put("seignioragePerCycle", government.seignioragePerCycle());
       node.put("debtIssuePerCycle", government.debtIssuePerCycle());
       node.put("mintCurrency", issuable.isEmpty() ? null : issuable.get(0));
-      // ★ production-runtime 的国库是 GOV 家户（kind=HOUSEHOLD）⇒ 这里能反查出它的家户行（人口 0、slot=official）。
+      // ★ 国库在两种形态间：带政府家户的世界是 kind=HOUSEHOLD（这里反查它的家户行，人口/slot 可配置）；
+      //   普通 nation seed 的创世审计主体是 kind=GOVERNMENT（不持户、treasuryHousehold=null，读口如实给 null）。
       HouseholdId treasuryHousehold =
           government.treasury().kind() == ActorKind.HOUSEHOLD
               ? HouseholdActors.householdOf(government.treasury())
@@ -1629,12 +1630,12 @@ public final class ApiViews {
 
   /** ★★ P1.4：内置政府读数的 scope 说明（唯一拼写点）。 */
   private static final String GOVERNMENT_SCOPE =
-      "世界级：EconomyData.governments 的内置政府（production-runtime 政府家户）；"
-          + "国库 = 该家户的 GoodsAccount，逐币种不跨币种求和";
+      "全部 EconomyData.governments：世界级创世审计主体 + 按 GOV 单位稳定 id 登记的中央/地方政府；"
+          + "带政府家户的国库 = 该家户的 GoodsAccount，逐币种不跨币种求和";
 
   /**
-   * 政府家户的 {@code ClassRow} 读侧形：**它是 GOV 的口袋行**（production-runtime 里 population=0、slot=official），
-   * 不是第二本人账；人口/劳动/参与率都来自行本身，读口不重算。
+   * 政府家户的 {@code ClassRow} 读侧形：**它是 GOV 的口袋行**（可配置人口/劳动/参与率；P2-C 起不再恒为 0），
+   * 不是第二本人账；读口只读行本身、不重算。
    */
   private static Map<String, Object> governmentClassRowView(ClassRow row) {
     Map<String, Object> view = new LinkedHashMap<>();

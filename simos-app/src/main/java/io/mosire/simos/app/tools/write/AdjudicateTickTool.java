@@ -1,5 +1,6 @@
 package io.mosire.simos.app.tools.write;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.agentlib.approval.AskKind;
 import io.mosire.agentlib.approval.ToolGate;
@@ -19,6 +20,7 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.spi.RemitGovTreasuryHandler;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
+import io.mosire.simos.app.household.GovernmentHouseholdResolver;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.core.command.BatchResult;
@@ -34,10 +36,16 @@ import io.mosire.simos.sd.model.DirectiveCommand;
 import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import io.mosire.simos.sd.spi.SetDirectiveStatusHandler;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.address.Address;
+import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandTargets;
+import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -462,7 +470,7 @@ public final class AdjudicateTickTool implements AgentTool {
 
   /**
    * 三类前置校验（不过的记下拒因、**不进批**）：① 白名单；② **命令类型专属的层级/归属校验**（今天只有 {@code actor.RemitGovTreasury} 的"省 →
-   * 自己的 {@code superiorGov}"，见 {@link #remitHierarchyRejection}）；③ **按出令决策人可达面**的逐目标资源授权。
+   * 自己的 {@code superiorGov}"，见 {@link #remitPrecheckRejection}）；③ **按出令决策人可达面**的逐目标资源授权。
    *
    * <p>★ 顺序有意：白名单先（最便宜、且 sd 自指与未注册类型不该走到资源判定），再做命令专属校验，最后解析目标、逐条判——换单位/换坐标的恶意令在②或③被拒。
    */
@@ -482,11 +490,10 @@ public final class AdjudicateTickTool implements AgentTool {
       return Optional.of("决策命令不在白名单: " + command.type());
     }
     // ★ 命令类型专属校验（放在白名单之后、targetPaths 之前）：其他命令类型的行为一字不动。
+    //   ★★ P2-C：actor.RemitGovTreasury 的家户口径到这里整条判完（归属 + 上级 + 家户引用 + 双方位置的可达面），
+    //   不再落回下方"handler.targetPaths 为空 ⇒ 拒"的通用分支（handler 在 actor 模块里看不到 unit 位置）。
     if (RemitGovTreasuryHandler.TYPE.equals(command.type())) {
-      Optional<String> rejection = remitHierarchyRejection(state, directive, command);
-      if (rejection.isPresent()) {
-        return rejection;
-      }
+      return remitPrecheckRejection(fence, state, directive, command);
     }
     CommandTargets targets = commandTargets.get(command.type());
     if (targets == null) {
@@ -515,24 +522,117 @@ public final class AdjudicateTickTool implements AgentTool {
   }
 
   /**
-   * {@code actor.RemitGovTreasury} 的命令类型专属前置校验（R3b）：**只能由 GOV 决策人把自己的国库显式上缴给自己的 {@code
-   * superiorGov}**，且双方坐标必须各自是该单位**当刻有效位置**。
+   * {@code actor.RemitGovTreasury} 的命令类型专属前置校验（R3b 的 P2-C 家户口径重建）：**只能由 GOV 决策人把自己的
+   * 政府家户账户，显式上缴给自己 {@code superiorGov} 的政府家户账户**；两笔家户引用必须逐字等于双方 GOV 单位按稳定 id
+   * 派生的政府家户（{@code hh-gov-<unitId>}），且双方单位当刻有效位置都在出令决策人的 actor 可达面内。
    *
-   * <p>★ 本层只判**归属与坐标形状**：金额（grain/cloth/money）的符号、全零、余额与冻结**不在这里判**，留给域层 handler ——避免第二份口径。载荷 JSON
-   * 解析失败 / 字段缺失 / 类型不对 ⇒ 具名拒（不抛到外层 TOOL_ERROR）。
+   * <p>★ <b>金额不判</b>：符号/全零/余额/冻结留给域层 {@code actor.RemitGovTreasuryHandler}，本层只判归属与可达面 ——
+   * 避免第二份口径。载荷 JSON 解析失败 / 字段缺失 / 类型不对 ⇒ 具名拒（不抛到外层 TOOL_ERROR）。
    *
-   * <p>★ 通过后仍要走 {@link CommandTargets#targetPaths} + scope：{@code GovScope} 的 actor
-   * 命名空间已包含源/目标两个国库格； 恶意换单位/换坐标的令会在本层或 scope 层被拒。其他命令类型不经过本方法，行为一字不动。
+   * <p>★ <b>为什么位置仍要判</b>：家户账户无格，域层 handler 的 {@code targetPaths} 给不出格路径；若在这里直接放行，
+   * "省 → 中央"的上缴就完全绕过了 {@code GovScope} 的 actor 围栏。本方法用双方 GOV 单位当刻有效位置合成
+   * {@link ResourcePaths#actor(int, int)} 两条目标，走与其余命令同一条 {@link #violations} 判据。
+   * 其他命令类型不走本方法，行为一字不动。
    */
-  private static Optional<String> remitHierarchyRejection(
-      SimulationState state, Directive directive, DirectiveCommand command) {
-    // ★★ P2-A §13.3：国库 = 政府家户账户；actor.RemitGovTreasury 的载荷已改为
-    //   {fromHousehold,toHousehold} 家户口径。原"省 → superiorGov + 双方坐标必须等于当刻有效位置"的
-    //   层级/坐标校验依赖已退役的单位国库账 ⇒ 本批**fail-closed**：在 P2-C 重建家户口径的层级校验之前，
-    //   不接受任何该类型的决策令（宁拒不放行）。
+  private static Optional<String> remitPrecheckRejection(
+      ResourceScopeMap fence, SimulationState state, Directive directive, DirectiveCommand command) {
+    DecisionMaker maker = ToolSupport.sdState(state).decisionMakers().get(directive.decisionMakerId());
+    if (maker == null) {
+      return Optional.of("决策人不存在: " + directive.decisionMakerId().value());
+    }
+    if (!(maker.affiliation() instanceof io.mosire.simos.sd.model.Affiliation.Gov gov)) {
+      return Optional.of(
+          "只有 GOV 归属的决策人可上缴国库（调用者 "
+              + directive.decisionMakerId().value()
+              + " 归属: "
+              + maker.affiliation()
+              + "）");
+    }
+    UnitState units = ToolSupport.unitState(state);
+    Unit fromUnit = units.units().get(gov.govUnit());
+    if (fromUnit == null || !(fromUnit.module().orElse(null) instanceof GovFormation fromGov)) {
+      return Optional.of("出令决策人所属 GOV 单位不存在或不是 GOV: " + gov.govUnit().value());
+    }
+    UnitId superiorId =
+        fromGov
+            .superiorGov()
+            .orElse(null);
+    if (superiorId == null) {
+      return Optional.of("中央 GOV 没有 superiorGov：上缴命令只对地方 GOV 有意义: " + fromUnit.id().value());
+    }
+    Unit toUnit = units.units().get(superiorId);
+    if (toUnit == null || !(toUnit.module().orElse(null) instanceof GovFormation toGov)) {
+      return Optional.of("上级 GOV 不存在或不是 GOV: " + superiorId.value());
+    }
+    JsonNode payload;
+    try {
+      payload = MAPPER.readTree(command.payloadJson());
+    } catch (java.io.IOException e) {
+      return Optional.of("actor.RemitGovTreasury 载荷不是合法 JSON: " + e.getMessage());
+    }
+    String fromHousehold = textual(payload, "fromHousehold");
+    String toHousehold = textual(payload, "toHousehold");
+    if (fromHousehold == null || toHousehold == null) {
+      return Optional.of(
+          "actor.RemitGovTreasury 载荷缺 fromHousehold/toHousehold（P2-C 家户口径）: "
+              + command.payloadJson());
+    }
+    String expectedFrom;
+    String expectedTo;
+    try {
+      expectedFrom =
+          GovernmentHouseholdResolver.requireGovernmentHousehold(fromUnit, fromUnit.id().value()).value();
+      expectedTo =
+          GovernmentHouseholdResolver.requireGovernmentHousehold(toUnit, toUnit.id().value()).value();
+    } catch (IllegalArgumentException e) {
+      return Optional.of("上缴前置校验失败: " + e.getMessage());
+    }
+    if (!expectedFrom.equals(fromHousehold)) {
+      return Optional.of(
+          "上缴源必须是自己 GOV 的政府家户账户 "
+              + expectedFrom
+              + "，载荷给的是 "
+              + fromHousehold);
+    }
+    if (!expectedTo.equals(toHousehold)) {
+      return Optional.of(
+          "上缴目标必须是 superiorGov "
+              + superiorId.value()
+              + " 的政府家户账户 "
+              + expectedTo
+              + "，载荷给的是 "
+              + toHousehold);
+    }
+    HexCoord fromAt = units.effectivePosition(fromUnit.id(), state.meta().timestamp()).orElse(null);
+    HexCoord toAt = units.effectivePosition(toUnit.id(), state.meta().timestamp()).orElse(null);
+    if (fromAt == null || toAt == null) {
+      return Optional.of("源/目标 GOV 单位当刻有效位置不完整（国库围栏落点未知）");
+    }
+    List<String> paths =
+        List.of(
+            ResourcePaths.actor(fromAt.q(), fromAt.r()),
+            ResourcePaths.actor(toAt.q(), toAt.r()));
+    List<String> violations = violations(fence, "actor", paths);
+    if (violations.isEmpty()) {
+      return Optional.empty();
+    }
     return Optional.of(
-        "P2-A：actor.RemitGovTreasury 已改家户口径（国库 = 政府家户账户）；"
-            + "层级校验待 P2-C 重建 —— 本批暂不接受该类型决策令");
+        "超出出令决策人 "
+            + directive.decisionMakerId().value()
+            + " 的可达面，命令被拒（目标资源）: "
+            + String.join("、", violations));
+  }
+
+  /** 载荷里的必填文本字段；缺失 / 非文本 / 空白 ⇒ null（由调用方折成具名拒因）。 */
+  private static String textual(JsonNode payload, String field) {
+    if (payload == null || !payload.isObject()) {
+      return null;
+    }
+    JsonNode node = payload.get(field);
+    if (node == null || !node.isTextual() || node.asText().isBlank()) {
+      return null;
+    }
+    return node.asText();
   }
 
   /**

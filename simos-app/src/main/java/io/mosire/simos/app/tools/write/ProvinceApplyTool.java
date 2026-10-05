@@ -133,8 +133,11 @@ public final class ProvinceApplyTool implements AgentTool {
   public String description() {
     return "GM 省份一键落盘（组合工具，一批 = 一条 revision）：复用 simos.province.divide 的同一份只读建议，"
         + "按固定批序落 map.CreateRegion（省 → 首都区 __CAP）→ unit.CreateUnit（中央 -gov-central + 省 -gov-PNN）"
-        + "→ unit.SetGovFormation（省 superiorGov=中央）→ unit.SetJurisdiction（中央仅首都区；省本省）"
-        + "→ sd.CreateDecisionMaker × (N+1) → [providerId: sd.SetDecisionMakerProvider] → sd.PutInfo。"
+        + "→ social.CreateHousehold（每个 GOV 一个政府家户 hh-gov-<unitId>）× (N+1) → "
+        + "actor.EnsureHouseholdAccount × (N+1) → unit.SetGovFormation（households 含自己的政府家户；省 superiorGov=中央）→ "
+        + "economy.RegisterGovernment × (N+1)（gov-unit-<unitId>，要求 economy 已激活）→ "
+        + "unit.SetJurisdiction（中央仅首都区；省本省）→ sd.CreateDecisionMaker × (N+1) → "
+        + "[providerId: sd.SetDecisionMakerProvider] → sd.PutInfo。"
         + "参数 {regionId(必填，必须在当前 map.regions() 里), maxHexPerProvince?(缺省 "
         + ProvinceDivider.DEFAULT_MAX_HEX_PER_PROVINCE
         + "), minHexPerProvince?(缺省 "
@@ -619,7 +622,7 @@ public final class ProvinceApplyTool implements AgentTool {
     List<ProvinceApplyPlan.RegionUnitEntry> createdRegions = plan.createdRegions();
     List<ProvinceApplyPlan.GovEntry> govs = plan.govs();
     ProvinceApplyPlan.GovEntry central = govs.get(0);
-    List<CommandEnvelope> batch = new ArrayList<>(createdRegions.size() + govs.size() * 4 + 2);
+    List<CommandEnvelope> batch = new ArrayList<>(createdRegions.size() + govs.size() * 7 + 2);
 
     for (ProvinceApplyPlan.RegionUnitEntry province : plan.provinces()) {
       batch.add(
@@ -657,6 +660,27 @@ public final class ProvinceApplyTool implements AgentTool {
               plan.createUnitPayload(govs.get(i))));
     }
 
+    // ★★ P2-C §13.7：每个 GOV（中央 + 省）同批建政府家户 + 零余额账户 + 编制引用 + 政府记录。
+    //   四件事与单位创建共享同一 batchId/branch/expectedRevision ⇒ 一条 revision 内三边同时成立。
+    for (ProvinceApplyPlan.GovEntry gov : govs) {
+      batch.add(
+          envelope(
+              batchId,
+              branch,
+              expectedRevision,
+              ProvinceApplyPlan.CREATE_HOUSEHOLD_TYPE,
+              plan.createGovernmentHouseholdPayload(gov, reason)));
+    }
+    for (ProvinceApplyPlan.GovEntry gov : govs) {
+      batch.add(
+          envelope(
+              batchId,
+              branch,
+              expectedRevision,
+              ProvinceApplyPlan.ENSURE_HOUSEHOLD_ACCOUNT_TYPE,
+              plan.ensureHouseholdAccountPayload(gov, reason)));
+    }
+
     batch.add(
         envelope(
             batchId,
@@ -672,6 +696,16 @@ public final class ProvinceApplyTool implements AgentTool {
               expectedRevision,
               ProvinceApplyPlan.SET_GOV_FORMATION_TYPE,
               plan.setGovFormationPayload(govs.get(i))));
+    }
+
+    for (ProvinceApplyPlan.GovEntry gov : govs) {
+      batch.add(
+          envelope(
+              batchId,
+              branch,
+              expectedRevision,
+              ProvinceApplyPlan.REGISTER_GOVERNMENT_TYPE,
+              plan.registerGovernmentPayload(gov, reason)));
     }
 
     for (ProvinceApplyPlan.GovEntry gov : govs) {

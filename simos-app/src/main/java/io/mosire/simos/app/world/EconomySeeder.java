@@ -130,7 +130,10 @@ public final class EconomySeeder {
 
   /**
    * ★★ <b>经济地基 profile</b>（2026-10-09 起唯一值）：{@link #PRODUCTION_RUNTIME} —— 旧完整生产路径 +
-   * 默认生产方式目录/资产规则 + 内置 GOV 家户（国库 = 它的家户账户；周期铸币/发债为固定组成）。
+   * 默认生产方式目录/资产规则。★★ P2-C §13.7 起：{@code governmentRef} 给了才建那个政府家户
+   * （国库 = 它的家户账户；demo 世界才带周期铸币/发债），没给则只落一条不持户的创世审计主体
+   * （{@link #genesisAuditGovernment()}）给 INITIAL_ENDOWMENT 归属 —— 单位政府由
+   * {@code economy.RegisterGovernment} 按 GOV 单位稳定 id 建立。
    *
    * <p>★ 旧 {@code class-first} / {@code legacy} / {@code complete} 与
    * {@code production-runtime-government} 线格式名不再可解析（fail-closed，不把缺省猜成旧 profile）。
@@ -673,8 +676,11 @@ public final class EconomySeeder {
   }
 
   /**
-   * ★★ E3：创世发行政府的稳定 id（世界级最小政府；唯一拼写点）。当前市场单一计价货币 {@code silver}， 因此全世界只有一个发行主体声称 silver ——
-   * 不静默让三国各自主张同一币种。
+   * ★★ E3：创世发行/审计主体的稳定 id（唯一拼写点）。当前市场单一计价货币 {@code silver}。
+   *
+   * <p>★ P2-C 后的两种形态：给了政府家户的 demo 世界里它是"国库 = 家户账户"的发行政府；普通 nation seed 里它是
+   * {@link #genesisAuditGovernment()}（不持户、issuable 空集、旋钮 0），只为 INITIAL_ENDOWMENT 提供归属，不声称任何家户。
+   * 单位政府（中央/地方）另用 {@code gov-unit-<unitId>} 的派生 id，不再共用这一把 key。
    */
   public static final GovernmentId GENESIS_GOVERNMENT_ID = new GovernmentId("world-silver");
 
@@ -684,8 +690,9 @@ public final class EconomySeeder {
   /**
    * ★★ <b>2026-10-07 GOV 非生产家户试点：周期铸币的出厂量</b>（毫计价货币 / 产业周期；{@code 10_000} = 10 银）。
    *
-   * <p>它是 production-runtime **内置政府**的具名 GM 默认值：写进 {@link Government#seignioragePerCycle()}。
-   * 当前还没有 GM 实时编辑命令；要改本批口径就改这个常量并重播（与其余 seeder 初态参数同制）。
+   * <p>它是 production-runtime **带政府家户的 demo 世界**（小世界）的具名 GM 默认值：写进
+   * {@link Government#seignioragePerCycle()}。当前还没有 GM 实时编辑命令；要改本批口径就改这个常量并重播
+   * （与其余 seeder 初态参数同制）。
    */
   public static final long GOVERNMENT_SEIGNIORAGE_PER_CYCLE_MILLI = 2_000L;
 
@@ -1494,7 +1501,8 @@ public final class EconomySeeder {
 
   /**
    * ★★ <b>P2：纯函数主入口 + 初始禀赋 + profile</b>。{@link FoundationProfile#PRODUCTION_RUNTIME} 走完整生产
-   * entries，并在 {@code Seed.economyPayload()} 追加生产方式目录/阶层/资产规则 + 内置 GOV 家户。
+   * entries，并在 {@code Seed.economyPayload()} 追加生产方式目录/阶层/资产规则；政府家户/政府记录只在
+   * {@link PopulationSeeder.Seeding#governmentHousehold()} 非空（SmallWorld 的 world-silver）时内置。
    */
   static Seed plan(
       String mapId,
@@ -1522,8 +1530,8 @@ public final class EconomySeeder {
     }
     // ★ P3：缺省/空 conditions = P1 路径（不新增任何键、不碰任何账）。
     conditions = conditions == null ? TestConditions.EMPTY : conditions;
-    // ★★ 2026-10-09：唯一路线 = production-runtime（完整生产 entries + 默认生产方式目录/资产规则 +
-    //   内置 GOV 家户），见 planProductionRuntime/jsonOf。
+    // ★★ 2026-10-09：唯一路线 = production-runtime（完整生产 entries + 默认生产方式目录/资产规则；
+    //   政府家户/政府记录只在 seeding.governmentHousehold() 非空时内置，见 planProductionRuntime/jsonOf）。
     return planProductionRuntime(
         mapId, seeding, terrainOf, genesisMoneyMilliPerCapita, profile, conditions);
   }
@@ -2979,7 +2987,8 @@ public final class EconomySeeder {
    *
    * <p>★ 载荷出口的 {@code modes} / {@code classStructures} / {@code classPositions} / {@code
    * classStandings} / {@code assetRules} / {@code liquidationPolicies} 由 {@link #jsonOf} 追加（mode 目录来自
-   * {@code DefaultProductionModes}）；GOV 家户与政府国库由本方法内置。
+   * {@code DefaultProductionModes}）；有政府引用（{@code seeding.governmentHousehold()}）时内置 GOV 家户与政府国库，
+   * 否则只落一条不持户的创世审计主体（P2-C §13.7）。
    */
   private static Seed planProductionRuntime(
       String mapId,
@@ -3276,23 +3285,28 @@ public final class EconomySeeder {
       //   "这一格没有市场"（格不在本表的键集里）是合法状态，不是缺数据。
       markets.put(hex, MARKET_FACTORY);
     }
-    // ★★ 政府内置（2026-10-09 起固定组成）：在全部普通家户之后追加一个 GOV 家户。
-    //   ★★ P2-A：它的**身份与落点由 Social 的播种产物给出**（{@code seeding.governmentHousehold()}），经济侧只读；
-    //   它必须在 genesisEndowmentOf / applyTestConditions **之前**落进 entries 与三张家户表：
-    //   ① 条件注入（extraGoodsByHousehold / extraMoneyByHousehold）才能指向它；
-    //   ② INITIAL_ENDOWMENT 的“条件注入之前”口径才不会被 GOV 政策铸币污染。
-    HouseholdId governmentHousehold =
-        seedGovernmentHousehold(
-            entries,
-            seeding.households(),
-            seeding.governmentHousehold(),
-            householdLocations,
-            householdStocks,
-            householdMoney);
+    // ★★ P2-C §13.7：政府家户**按调用方给出的政府引用稳定建户**（Social 侧已建好，经济侧只读）。
+    //   给了引用（世界级 demo / GOV 单位）⇒ 追加该家户的空行+空账；没给（多国/多省的普通 seed）⇒
+    //   本次播种不产生政府家户，也不产生"先到者胜"的世界政府 —— 单位政府由
+    //   economy.RegisterGovernment + actor.EnsureHouseholdAccount 按 GOV 单位稳定 id 建。
+    Optional<HouseholdId> governmentHousehold = seeding.governmentHousehold();
+    if (governmentHousehold.isPresent()) {
+      seedGovernmentHousehold(
+          entries,
+          seeding.households(),
+          governmentHousehold.get(),
+          householdLocations,
+          householdStocks,
+          householdMoney);
+    }
     // ★★ S1.4 出口自检：tick0 seed 是"人工造份额"的唯一入口 ⇒ 这里逐 lot 对账，不等就播不出去（fail-closed）。
-    // 国库 = GOV 家户账户；seigniorage/debtIssue 取本类具名 GM 默认值（固定组成）。
+    //   给了政府家户 ⇒ 国库 = 它的账户，seigniorage/debtIssue 取具名 GM 默认值（demo 世界才有铸币/发债）；
+    //   没给 ⇒ 只落一条**不持户的创世审计主体**（world-silver 的 legacy 形状）给 INITIAL_ENDOWMENT 归属，
+    //   不声称任何家户/账户，也不参与铸币/发债（旋钮恒 0）。
     Map<GovernmentId, Government> governments =
-        Map.of(GENESIS_GOVERNMENT_ID, governmentHouseholdGovernment(governmentHousehold));
+        governmentHousehold
+            .map(hh -> Map.of(GENESIS_GOVERNMENT_ID, governmentHouseholdGovernment(hh)))
+            .orElseGet(() -> Map.of(GENESIS_GOVERNMENT_ID, genesisAuditGovernment()));
     // ★★ P3：INITIAL_ENDOWMENT 的总量取**条件注入之前**的家户+经营者钱包 —— 外部注入的货币走独立
     //   FISCAL_ISSUE 审计（见 applyTestConditions），绝不混进"每人禀赋"这条记录。
     Map<CurrencyId, Long> genesisEndowment = genesisEndowmentOf(householdMoney, operators);
@@ -3406,7 +3420,7 @@ public final class EconomySeeder {
     return row;
   }
 
-  /** GOV 家户政府的国库指向它的家户账户；周期铸币/发债量取本类的两个具名 GM 默认值。 */
+  /** GOV 家户政府的国库指向它的家户账户；周期铸币/发债量取本类的两个具名 GM 默认值（只在 demo 世界有政府家户时调用）。 */
   private static Government governmentHouseholdGovernment(HouseholdId governmentHousehold) {
     Objects.requireNonNull(governmentHousehold, "governmentHousehold");
     return new Government(
@@ -3416,6 +3430,27 @@ public final class EconomySeeder {
         Set.of(MARKET_NUMERAIRE),
         GOVERNMENT_SEIGNIORAGE_PER_CYCLE_MILLI,
         GOVERNMENT_DEBT_ISSUE_PER_CYCLE_MILLI);
+  }
+
+  /**
+   * ★★ <b>P2-C：没有政府家户的 seed 所用的"创世审计主体"</b>（多国/多省播种的普通路径）。
+   *
+   * <p>它<b>不持户、不持账、不发生额</b>：国库是 legacy 形状的 {@code GOVERNMENT} actor（不是家户），
+   * {@code issuable} 为空、两个财政旋钮恒 0。它存在的唯一理由是 {@code INITIAL_ENDOWMENT} 发行记录必须有归属
+   * （{@code MoneyIssuanceRecord.governmentId} 必须存在于 {@code governments}）；每次 seed 生成的这份记录逐值相同，
+   * 因此多国重复播种是幂等叠加，而不是"第一份赢"。
+   *
+   * <p>真正的政府（有家户国库、可铸币/发债/入市/生产）由 GOV 单位路径
+   * {@code economy.RegisterGovernment} 按 GOV 单位稳定 id 建立。
+   */
+  private static Government genesisAuditGovernment() {
+    return new Government(
+        GENESIS_GOVERNMENT_ID,
+        GENESIS_GOVERNMENT_NATION_REF,
+        new ActorRef(ActorKind.GOVERNMENT, GENESIS_GOVERNMENT_ID.value()),
+        Set.of(),
+        0L,
+        0L);
   }
 
   // ── P2：PRODUCTION_RUNTIME 的资产规则 / 清算政策（DefaultProductionModes 是唯一 mode 来源）──────────
