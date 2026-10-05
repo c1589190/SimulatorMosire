@@ -414,6 +414,14 @@ public final class CatalogTool implements AgentTool {
                   + "缺账 + 纯正增量 ⇒ 新建，缺账 + 任何负增量 ⇒ 拒；"
                   + "负增量使余额 < 0 或侵占冻结额（可支配 = 余额 − 冻结）⇒ 拒；整条原子）"),
           Map.entry(
+              "actor.DeductHouseholdStock",
+              "entries[{household, goods{商品:>0}?, money{币种:>0}?, reason, detail?, toHousehold?}...]"
+                  + "（★ 2026-10-09 通用扣除：reason 走封闭词表 military_salary|jurisdiction_tax|"
+                  + "admin_upkeep|corvee；goods/money 至少一个非空、值必须 > 0；"
+                  + "toHousehold 缺席 = 明确 sink、给出 = 原子转移；"
+                  + "整条原子按载荷序应用；家户不存在 / 账户不存在 / 余额不足 / 侵占冻结（可支配 = 余额 − 冻结）"
+                  + "/ reason 非法 ⇒ 全拒；GmOnly）"),
+          Map.entry(
               "actor.RemitGovTreasury",
               "fromHousehold, toHousehold, grain?, cloth?, money?, reason?"
                   + "（★ P2-A §13.3：GOV 国库 = 政府家户账户；源/目标都是家户 id，两个不得相同；"

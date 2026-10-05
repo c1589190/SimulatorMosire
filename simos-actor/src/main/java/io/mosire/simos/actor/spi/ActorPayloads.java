@@ -12,6 +12,8 @@ import io.mosire.simos.actor.model.GoodsAccount;
 import io.mosire.simos.actor.model.GoodsAccountKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.stock.DeductionReason;
+import io.mosire.simos.economy.api.stock.HouseholdStockDeduction;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.ResourcePaths;
@@ -29,8 +31,9 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * actor 切片的载荷解析助手（与 {@code EconomyPayloads} / {@code SocialPayloads} 同制）：目前两条命令 —— {@code
- * actor.Seed}（见下）与 {@code actor.AdjustAccounts}（见 {@link #adjustments}）。
+ * actor 切片的载荷解析助手（与 {@code EconomyPayloads} / {@code SocialPayloads} 同制）：目前三条命令 —— {@code
+ * actor.Seed}（见下）、{@code actor.AdjustAccounts}（见 {@link #adjustments}）与 {@code
+ * actor.DeductHouseholdStock}（见 {@link #deductions}）。
  *
  * <p>★ <b>载荷形态是本模块的私事</b>（C26）：Core 只转交 {@code payloadJson} 字节串。{@code actor.Seed} 的形态如下（<b>与三个
  * record 的字段一一对应</b>）：
@@ -289,6 +292,150 @@ final class ActorPayloads {
       parsed.put(id, delta);
     }
     return parsed;
+  }
+
+  // ── actor.DeductHouseholdStock（通用家户库存扣除，P1.2）────────────────────────────
+
+  /**
+   * ★★ <b>解析 {@code actor.DeductHouseholdStock} 的载荷</b>（形状见 handler 类注）：
+   *
+   * <pre>{@code
+   * {"entries":[
+   *   {"household":"hh-1","goods":{"grain":120},"money":{"silver":30},
+   *    "reason":"jurisdiction_tax","detail":"unit=u-1","toHousehold":"hh-gov-u-1"},
+   *   {"household":"hh-2","money":{"silver":5},"reason":"admin_upkeep"}
+   * ]}
+   * }</pre>
+   *
+   * <p>★ <b>本层只判形状 / 类型 / 词表 / 正数 / 至少一维非空</b>；"家户/账户是否存在、余额是否够、是否侵占冻结"是数值语义， 由 {@link
+   * io.mosire.simos.actor.ops.StockDeductionOperations} 判（本层不重复实现）。★ <b>同一家户可以出现多次</b>：
+   * 条目按载荷序顺序应用（前一条的收款后一条看得见），不是"净增量表"那种必须去重的形状。
+   *
+   * @throws IllegalArgumentException 形状/类型/词表/正数/自转任一不合法（消息带 entries 下标与家户）
+   */
+  static List<HouseholdStockDeduction> deductions(JsonNode payload) {
+    JsonNode entries = requireArray(payload, "entries");
+    if (entries.isEmpty()) {
+      throw new IllegalArgumentException("entries 不得为空");
+    }
+    List<HouseholdStockDeduction> parsed = new ArrayList<>(entries.size());
+    int index = 0;
+    for (JsonNode entry : entries) {
+      if (entry == null || !entry.isObject()) {
+        throw new IllegalArgumentException(
+            "字段 entries 的元素必须是 {household,goods?,money?,reason,...} 对象: " + entry);
+      }
+      HouseholdId household;
+      try {
+        household = AccountPayloads.household(entry, "entries[" + index + "].household");
+      } catch (IllegalArgumentException e) {
+        throw new IllegalArgumentException("entries[" + index + "] 的家户不合法: " + e.getMessage(), e);
+      }
+      Map<CommodityId, Long> goods =
+          positiveAmounts(entry, index, household, "goods", CommodityId::parse);
+      Map<CurrencyId, Long> money =
+          positiveAmounts(entry, index, household, "money", CurrencyId::parse);
+      if (goods.isEmpty() && money.isEmpty()) {
+        throw new IllegalArgumentException(
+            "entries[" + index + "] 的 goods/money 至少一个必须非空（household=" + household + "）");
+      }
+      DeductionReason reason;
+      try {
+        reason = DeductionReason.parse(requireText(entry, "reason"));
+      } catch (IllegalArgumentException e) {
+        throw new IllegalArgumentException(
+            "entries[" + index + "] 的 reason 不合法（household=" + household + "）: " + e.getMessage(),
+            e);
+      }
+      String detail = optionalText(entry, "detail");
+      Optional<HouseholdId> toHousehold = Optional.empty();
+      JsonNode toNode = entry.get("toHousehold");
+      if (toNode != null && !toNode.isNull()) {
+        if (!toNode.isTextual() || toNode.asText().isBlank()) {
+          throw new IllegalArgumentException(
+              "entries[" + index + "].toHousehold 必须是非空家户 id 字符串: " + toNode);
+        }
+        try {
+          toHousehold = Optional.of(HouseholdId.parse(toNode.asText()));
+        } catch (IllegalArgumentException e) {
+          throw new IllegalArgumentException(
+              "entries[" + index + "].toHousehold 的家户 id 不合法: " + e.getMessage(), e);
+        }
+      }
+      try {
+        parsed.add(
+            new HouseholdStockDeduction(household, goods, money, reason, detail, toHousehold));
+      } catch (IllegalArgumentException e) {
+        throw new IllegalArgumentException(
+            "entries[" + index + "] 的扣除不合法（household=" + household + "）: " + e.getMessage(), e);
+      }
+      index++;
+    }
+    return List.copyOf(parsed);
+  }
+
+  /**
+   * 一张<b>正数</b>扣除量表（{@code goods} / {@code money} 共用）：缺键 / {@code null} ⇒ 空表（"这张表没有动作"）； 不是对象 ⇒
+   * 拒；值为 0 或负 ⇒ 拒（扣除量是正数 —— 0 不是一条发生额，请在载荷里删键）。
+   */
+  private static <A> Map<A, Long> positiveAmounts(
+      JsonNode entry,
+      int index,
+      HouseholdId household,
+      String dimension,
+      Function<String, A> idParser) {
+    Map<A, Long> parsed = new LinkedHashMap<>();
+    JsonNode node = optionalObject(entry, dimension);
+    if (node == null) {
+      return parsed;
+    }
+    Iterator<Map.Entry<String, JsonNode>> it = node.fields();
+    while (it.hasNext()) {
+      Map.Entry<String, JsonNode> field = it.next();
+      A id;
+      long amount;
+      try {
+        id = idParser.apply(field.getKey());
+        amount = requireIntegral(field.getValue(), dimension + "." + field.getKey());
+      } catch (IllegalArgumentException e) {
+        throw new IllegalArgumentException(
+            "entries["
+                + index
+                + "] 的 "
+                + dimension
+                + " 键/值不合法（household="
+                + household
+                + "）: "
+                + e.getMessage(),
+            e);
+      }
+      if (amount <= 0L) {
+        throw new IllegalArgumentException(
+            dimension
+                + " 的扣除量必须 > 0（0 不是一条发生额，请删键）：household="
+                + household
+                + "，"
+                + dimension
+                + "."
+                + field.getKey()
+                + "="
+                + amount);
+      }
+      parsed.put(id, amount);
+    }
+    return parsed;
+  }
+
+  /** 可选文本：缺键 / {@code null} ⇒ 空串；给了但非文本 ⇒ 拒（空串合法 = 没有 detail）。 */
+  private static String optionalText(JsonNode node, String field) {
+    JsonNode value = node.get(field);
+    if (value == null || value.isNull()) {
+      return "";
+    }
+    if (!value.isTextual()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是字符串: " + value);
+    }
+    return value.asText();
   }
 
   // ── 主体 / 库存 ────────────────────────────────────────────────────────────────────

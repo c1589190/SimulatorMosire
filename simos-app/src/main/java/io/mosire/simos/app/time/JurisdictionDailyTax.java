@@ -8,11 +8,10 @@ import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
+import io.mosire.simos.economy.api.stock.DeductionReason;
+import io.mosire.simos.economy.api.stock.HouseholdStockDeduction;
 import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.time.AccountDelta;
-import io.mosire.simos.economy.time.AccountPartitionKey;
 import io.mosire.simos.economy.time.AccountSession;
-import io.mosire.simos.economy.time.SettlementStage;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
@@ -60,9 +59,11 @@ import org.slf4j.Logger;
  *   <li><b>算式</b>：{@code assessed = floor(balance × rate‰)}； {@code attainable = floor(assessed ×
  *       efficiency‰)}（效率 ∈ [0,1100]，&gt;1000 = 超编加成带来的超收能力）； {@code collected = min(attainable,
  *       available)}，{@code available} 走 {@link AvailableStock}（余额 − 冻结，
- *       仓储唯一算法）；粮、银两个维度<b>各按同一本税前账算足</b>，再合并成一次账户提交；
- *   <li><b>落账</b>：{@code collected > 0} 才走 {@link AccountSession#commit} （家户账负增量 + 国库家户账正增量，同一批两条
- *       {@link AccountDelta}；不侵冻结）；
+ *       仓储唯一算法）；粮、银两个维度<b>各按同一本税前账算足</b>；
+ *   <li><b>落账</b>：{@code collected > 0} 才构造一条 {@link HouseholdStockDeduction#transfer 原子转移扣除}
+ *       （reason = {@link DeductionReason#JURISDICTION_TAX}，收款方 = 政府家户）并调 {@link
+ *       StockDeductionService} —— 税侧<b>不再</b>自己拼负增量、不再直接碰 {@code AccountSession.commit}（2026-10-09
+ *       用户裁定：通用扣除接口）；
  *   <li><b>缺口累计（有符号）</b>：{@code adminShortfall += assessed − attainable}、 {@code stockShortfall +=
  *       attainable − collected}，恒等式 {@code collected + adminShortfall + stockShortfall == assessed}
  *       逐维成立；
@@ -73,9 +74,9 @@ import org.slf4j.Logger;
  * 的俸禄物资格里出现，一次性抽取工具另有 cloth 一路。**人力不重现**——{@code Unit.manpower} 已退役， 家户劳动是按 tick
  * 的有限时间预算，不是可抽取的存量；抽人要走社会批次路径（另一个工具的裁定范围）。
  *
- * <p>★★ <b>纯推导 + 唯一账户写口的混合体</b>：它不改 {@code EconomyData}/unit/gov 状态，只把账户增量交给 {@link
- * AccountSession#commit}（会话的唯一落账口）；返回的 {@link Report} 是不可变读数（含逐户粮税明细，供调用方 写回 {@code
- * FlowRow.taxPaid} 与写日志）。同一输入 + 同一会话状态 ⇒ 逐字段相同的结果。
+ * <p>★★ <b>纯推导 + 唯一账户写口的混合体</b>：它不改 {@code EconomyData}/unit/gov 状态，只把账户变动交给 {@link
+ * StockDeductionService}（它内部才调 {@link AccountSession#commit}，会话的唯一落账口）；返回的 {@link Report}
+ * 是不可变读数（含逐户粮税明细，供调用方 写回 {@code FlowRow.taxPaid} 与写日志）。同一输入 + 同一会话状态 ⇒ 逐字段相同的结果。
  *
  * <p>★ <b>日志</b>（AGENTS §一.9）：INFO = 每日一行"发生了什么 + 具名计数"；DEBUG = 每条跳过理由；TRACE = 逐笔征收。
  */
@@ -286,34 +287,34 @@ final class JurisdictionDailyTax {
               continue;
             }
 
-            Map<CommodityId, Long> householdGoods = new LinkedHashMap<>();
-            Map<CurrencyId, Long> householdMoney = new LinkedHashMap<>();
-            Map<CommodityId, Long> treasuryGoods = new LinkedHashMap<>();
-            Map<CurrencyId, Long> treasuryMoney = new LinkedHashMap<>();
+            // ★★ P1.2 / 2026-10-09 用户裁定：税不再自己拼负增量 + 直接 AccountSession.commit，而是"构造通用扣除
+            //   + 调共享服务"。收款方 = 政府家户 ⇒ 原子转移（扣减与收款在同一次 commit 里）。
+            //   ★ 可用量在 assess() 里已按 AvailableStock 算过 collected ≤ available ⇒ 服务侧的余额/冻结判据必然通过；
+            //     这里仍走服务，是为了让"税 / 行政俸禄 / 军俸"只有一条落账路径、只有一份扣账语义。
+            Map<CommodityId, Long> taxGoods = new LinkedHashMap<>();
+            Map<CurrencyId, Long> taxMoney = new LinkedHashMap<>();
             if (grain.collected() > 0L) {
-              householdGoods.put(GRAIN, Math.negateExact(grain.collected()));
-              treasuryGoods.put(GRAIN, grain.collected());
+              taxGoods.put(GRAIN, grain.collected());
             }
             if (money.collected() > 0L) {
-              householdMoney.put(SILVER, Math.negateExact(money.collected()));
-              treasuryMoney.put(SILVER, money.collected());
+              taxMoney.put(SILVER, money.collected());
             }
-            accounts.commit(
-                List.of(
-                    AccountDelta.of(
-                        new AccountPartitionKey(household),
-                        SettlementStage.TAX_AND_UPKEEP,
-                        0,
-                        0,
-                        householdGoods,
-                        householdMoney),
-                    AccountDelta.of(
-                        new AccountPartitionKey(treasury),
-                        SettlementStage.TAX_AND_UPKEEP,
-                        0,
-                        0,
-                        treasuryGoods,
-                        treasuryMoney)));
+            StockDeductionService.deduct(
+                accounts,
+                HouseholdStockDeduction.transfer(
+                    household,
+                    treasury,
+                    taxGoods,
+                    taxMoney,
+                    DeductionReason.JURISDICTION_TAX,
+                    "unit="
+                        + unit.id().value()
+                        + " region="
+                        + regionEntry.getKey().value()
+                        + " ratePerMille="
+                        + rate
+                        + " efficiencyPerMille="
+                        + efficiency));
             if (grain.collected() > 0L) {
               grainByHousehold.merge(household, grain.collected(), Math::addExact);
             }

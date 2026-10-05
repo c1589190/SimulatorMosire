@@ -26,6 +26,7 @@ import io.mosire.simos.actor.resolve.ActorResolver;
 import io.mosire.simos.actor.spi.ActorClearRegionHandler;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
 import io.mosire.simos.actor.spi.AdjustAccountsHandler;
+import io.mosire.simos.actor.spi.DeductHouseholdStockHandler;
 import io.mosire.simos.actor.spi.EnsureHouseholdAccountHandler;
 import io.mosire.simos.actor.spi.RemitGovTreasuryHandler;
 import io.mosire.simos.actor.spi.TransferAccountsHandler;
@@ -632,6 +633,12 @@ public final class Shell implements AutoCloseable {
                 //   （整条原子；缺账 + 纯正增量新建）。非 sd 前缀 ⇒ 自动进 drainableCommandTypes；
                 //   同时进 commandTypes ⇒ simos.command.submit 的目标声明表（CommandTargets）同源认得它。──
                 new AdjustAccountsHandler(),
+                // ── P1.2（2026-10-09 通用扣除接口裁定）：actor.DeductHouseholdStock —— 传入「家户 + 库存 + reason
+                //   (+ 可选收款方)」的通用扣除；整条原子、走 AvailableStock、reason 为封闭词表。
+                //   ★ GM-only：与 Adjust/Transfer 同待遇的裸账目原语；税 / 行政俸禄由 app 侧共享 StockDeductionService
+                //     直接落 AccountSession，军队俸禄先用本命令 + reason=military_salary 提供后端可用路径。
+                //   只写 accounts ⇒ 单 namespace ActorChangeSet；家户账户无格 ⇒ targetPaths 空。──
+                new DeductHouseholdStockHandler(),
                 // ── P2-C §13.7：给政府家户（或任意新家户）补一本零余额账户（幂等；账户键 = 家户身份）。
                 //   ★ GM-only：它是组合工具的裸原语；GM 直接提交照常可用。
                 new EnsureHouseholdAccountHandler(),

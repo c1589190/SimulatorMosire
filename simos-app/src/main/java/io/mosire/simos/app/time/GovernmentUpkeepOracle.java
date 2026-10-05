@@ -7,10 +7,9 @@ import io.mosire.simos.app.household.GovernmentHouseholdResolver;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.economy.time.AccountDelta;
-import io.mosire.simos.economy.time.AccountPartitionKey;
+import io.mosire.simos.economy.api.stock.DeductionReason;
+import io.mosire.simos.economy.api.stock.HouseholdStockDeduction;
 import io.mosire.simos.economy.time.AccountSession;
-import io.mosire.simos.economy.time.SettlementStage;
 import io.mosire.simos.gov.GovDaily;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -18,7 +17,6 @@ import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.slf4j.Logger;
@@ -41,9 +39,10 @@ import org.slf4j.Logger;
  *   <li><b>可用量</b> = 余额 − 冻结，走 {@link AvailableStock} 的唯一算法；冻结表原样保留，付款不侵冻结。
  * </ul>
  *
- * <p>★ 付款直接走 {@link AccountSession#commit}（账户会话唯一的落账口）：每笔一条 {@link AccountDelta}， 同一本账同一天按 {@link
- * GovDaily} 的固定资源次序（grain → cloth → money）串行发生，后一次看得到前一次的扣减。 账户提交阶段 = {@link
- * SettlementStage#TAX_AND_UPKEEP}（组合根在 {@code EconomyDayStepper.step(day)} 之后提交）。
+ * <p>★ 付款走共享的 {@link StockDeductionService}（reason = {@link
+ * DeductionReason#ADMIN_UPKEEP}，sink）：同一本账同一天按 {@link GovDaily} 的固定资源次序（grain → cloth →
+ * money）串行发生，后一次看得到前一次的扣减。 账户提交阶段 = {@code SettlementStage.TAX_AND_UPKEEP}（组合根在 {@code
+ * EconomyDayStepper.step(day)} 之后提交）。
  */
 final class GovernmentUpkeepOracle implements GovDaily.PaymentOracle {
 
@@ -103,24 +102,35 @@ final class GovernmentUpkeepOracle implements GovDaily.PaymentOracle {
           available);
       return 0L;
     }
-    Map<CommodityId, Long> goodsDelta = new LinkedHashMap<>();
-    Map<CurrencyId, Long> moneyDelta = new LinkedHashMap<>();
+    Map<CommodityId, Long> goods = new LinkedHashMap<>();
+    Map<CurrencyId, Long> money = new LinkedHashMap<>();
     if (resource instanceof GovDaily.Commodity commodity) {
-      goodsDelta.put(commodity.commodity(), Math.negateExact(paid));
-    } else if (resource instanceof GovDaily.Money money) {
-      moneyDelta.put(money.currency(), Math.negateExact(paid));
+      goods.put(commodity.commodity(), paid);
+    } else if (resource instanceof GovDaily.Money moneyResource) {
+      money.put(moneyResource.currency(), paid);
     } else {
       throw new IllegalArgumentException("未知 GovResource: " + resource);
     }
-    accounts.commit(
-        List.of(
-            AccountDelta.of(
-                new AccountPartitionKey(treasury),
-                SettlementStage.TAX_AND_UPKEEP,
-                0,
-                0,
-                goodsDelta,
-                moneyDelta)));
+    // ★★ 2026-10-09 用户裁定：行政俸禄不再自己拼负增量 + 直接 AccountSession.commit，而是构造通用扣除（reason =
+    //   ADMIN_UPKEEP）+ 调共享服务。★ 本路径无可信收款对端（GovDaily 旧合约：编制人员的俸禄付给"整编"而非具名家户）⇒
+    //   显式 sink（日志记 to=<sink>），不假装有一笔转移；缺额语义仍由 GovDaily 记 shortfall + 发 ADMIN_SUPPLY 信号。
+    StockDeductionService.deduct(
+        accounts,
+        HouseholdStockDeduction.sink(
+            treasury,
+            goods,
+            money,
+            DeductionReason.ADMIN_UPKEEP,
+            "unit="
+                + unitId.value()
+                + " resource="
+                + resource.name()
+                + " requested="
+                + requested
+                + " paid="
+                + paid
+                + " availableBefore="
+                + available));
     if (TRACE.isTraceEnabled()) {
       TRACE.trace(
           "event=GOV_UPKEEP_PAID unit={} treasury={} resource={} requested={} paid={}"
