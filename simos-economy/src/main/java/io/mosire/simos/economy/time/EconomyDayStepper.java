@@ -4,12 +4,13 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.api.population.LotMigration;
-import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.HexCrisisSignal;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,8 +53,8 @@ public final class EconomyDayStepper implements AutoCloseable {
   private final EconomyParallelism parallelism;
 
   /**
-   * ★★ <b>P10.2：本周期利润/迁移累加器</b>（{@code modes} 非空才有；逐日喂当天账本，关账日 ⑦⑧⑨ 后在
-   * {@code EconomySettlement} 内复位）。旧档 {@code modes} 为空时恒为 {@code null} ⇒ 逐值不变。
+   * ★★ <b>P10.2：本周期利润/迁移累加器</b>（{@code modes} 非空才有；逐日喂当天账本，关账日 ⑦⑧⑨ 后在 {@code EconomySettlement}
+   * 内复位）。旧档 {@code modes} 为空时恒为 {@code null} ⇒ 逐值不变。
    */
   private final OrganizationProfitBook.CycleAccumulator profitCycle;
 
@@ -121,7 +122,8 @@ public final class EconomyDayStepper implements AutoCloseable {
     this.plantingDrawsFirst = plantingDrawsFirst;
     this.famineMortalityPerMille = famineMortalityPerMille;
     this.parallelism = EconomyParallelism.requireNonNull(parallelism);
-    this.profitCycle = base.modes().isEmpty() ? null : new OrganizationProfitBook.CycleAccumulator();
+    this.profitCycle =
+        base.modes().isEmpty() ? null : new OrganizationProfitBook.CycleAccumulator();
   }
 
   /** ★ R2：本条会话的并行度（只读；见类注的"1 线程不是另一套实现"）。 */
@@ -143,9 +145,9 @@ public final class EconomyDayStepper implements AutoCloseable {
   }
 
   /**
-   * ★★ <b>家户人口组成的只读投影</b>（P2-A A3）：{@code household → (lot → count)}，由调用方（app 组合根）从
-   * Social 的 {@code Household.members} 现算后注入；<b>不进 Economy 状态、不进变更集</b>。组织/进入阶段用它
-   * 为"没有既有配额的家户"挑批次。缺省空表 ⇒ 那些路径按具名 SHORTAGE 退回（不伪造批次）。
+   * ★★ <b>家户人口组成的只读投影</b>（P2-A A3）：{@code household → (lot → count)}，由调用方（app 组合根）从 Social 的 {@code
+   * Household.members} 现算后注入；<b>不进 Economy 状态、不进变更集</b>。组织/进入阶段用它 为"没有既有配额的家户"挑批次。缺省空表 ⇒ 那些路径按具名
+   * SHORTAGE 退回（不伪造批次）。
    */
   public Map<HouseholdId, Map<PeopleLotId, Long>> composition() {
     return composition;
@@ -160,7 +162,8 @@ public final class EconomyDayStepper implements AutoCloseable {
         throw new IllegalArgumentException("composition 不得含 null 键/值");
       }
       frozen.put(
-          entry.getKey(), java.util.Collections.unmodifiableMap(new LinkedHashMap<>(entry.getValue())));
+          entry.getKey(),
+          java.util.Collections.unmodifiableMap(new LinkedHashMap<>(entry.getValue())));
     }
     this.composition = java.util.Collections.unmodifiableMap(frozen);
   }
@@ -173,6 +176,44 @@ public final class EconomyDayStepper implements AutoCloseable {
   /** 本期的流水累加器（**只读视图**；键序 = 行的插入序）。 */
   public Map<HouseholdId, FlowRow> flows() {
     return session.flowsView();
+  }
+
+  /**
+   * ★★ <b>P2-D：把辖区日税的粮口径实缴记进当行流水读数</b>（协调器线程；唯一写法见 {@link
+   * FlowRow#withAdditionalGrainTaxPaid(long)}）。
+   *
+   * <p>它<b>只改流水读数</b>：真正的粮去哪了由账户会话（{@link #accounts()} 的 {@link AccountSession#commit}）
+   * 落定——两者是同一天、同一笔事实的两个面，调用方必须先扣账再调本方法。缺该家户的流水行 ⇒ 返回 {@code false}（不造行、不抛；调用方按"这一笔没有流水读数"具名记
+   * DEBUG），因为 GOV 家户等零人口行在 某些旧档里可能没有流水行。
+   *
+   * @return 真的写进了流水 ⇒ true；该家户没有流水行 ⇒ false（调用方自己记具名缺口）
+   */
+  public boolean recordTaxPaid(HouseholdId household, long grainMilli) {
+    Objects.requireNonNull(household, "household");
+    if (grainMilli < 0L) {
+      throw new IllegalArgumentException("recordTaxPaid 的 grainMilli 不得为负: " + grainMilli);
+    }
+    if (grainMilli == 0L) {
+      return true;
+    }
+    LinkedHashMap<HouseholdId, FlowRow> flows = session.flows();
+    FlowRow flow = flows.get(household);
+    if (flow == null) {
+      return false;
+    }
+    flows.put(household, flow.withAdditionalGrainTaxPaid(grainMilli));
+    return true;
+  }
+
+  /**
+   * ★★ <b>P2-D：把一条行政危机信号写进本会话的 {@code crisisSignals}</b>（同 {@code (hex,kind)} 覆盖 = 保留最新）。
+   *
+   * <p>地图/负荷明文不进日志；本方法只把调用方已构造好的 {@link HexCrisisSignal} 放进会话工作表， 与 {@code EconomySettlement}
+   * 自己的危机信号共用同一个组件，不另立第二本信号账。
+   */
+  public void putCrisisSignal(HexCrisisSignal signal) {
+    Objects.requireNonNull(signal, "signal");
+    session.sheet().crisisSignals().put(signal.id(), signal);
   }
 
   /**
@@ -251,8 +292,8 @@ public final class EconomyDayStepper implements AutoCloseable {
   }
 
   /**
-   * ★★ <b>P2-A §13.4：每个 tick 重算家户时间预算</b>（毫小时）—— 由协调器从 Social 人口组成 × 系数表现算后传入；
-   * 本方法把它写进 {@code ClassRow.laborMilli} 并把超预算的配额按比例缩回（不变量在下一 revision 边界仍成立）。
+   * ★★ <b>P2-A §13.4：每个 tick 重算家户时间预算</b>（毫小时）—— 由协调器从 Social 人口组成 × 系数表现算后传入； 本方法把它写进 {@code
+   * ClassRow.laborMilli} 并把超预算的配额按比例缩回（不变量在下一 revision 边界仍成立）。
    */
   public void recomputeLaborBudgets(Map<HouseholdId, Long> budgetsByHousehold) {
     EconomySettlement.applyLaborBudgetsInto(session, budgetsByHousehold);

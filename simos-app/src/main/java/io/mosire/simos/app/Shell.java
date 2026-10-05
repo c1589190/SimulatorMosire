@@ -67,17 +67,19 @@ import io.mosire.simos.economy.spi.EconomyAddDemandHandler;
 import io.mosire.simos.economy.spi.EconomyCancelDemandHandler;
 import io.mosire.simos.economy.spi.EconomyClearRegionHandler;
 import io.mosire.simos.economy.spi.EconomyGmAdjustHandler;
+import io.mosire.simos.economy.spi.EconomyMigrateHouseholdHandler;
+import io.mosire.simos.economy.spi.EconomyRegisterCandidateHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterGovernmentHandler;
+import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdClassHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdParticipationHandler;
-import io.mosire.simos.economy.spi.EconomyUpdateDemandHandler;
-import io.mosire.simos.economy.spi.EconomyMigrateHouseholdHandler;
-import io.mosire.simos.economy.spi.EconomyRegisterCandidateHandler;
-import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.spi.EconomySetMarketPriceHandler;
 import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
 import io.mosire.simos.economy.spi.EconomyTransferAssetShareHandler;
+import io.mosire.simos.economy.spi.EconomyUpdateDemandHandler;
+import io.mosire.simos.economy.spi.UnitBorrowHandler;
+import io.mosire.simos.economy.spi.UnitRepayHandler;
 import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.resolve.MapResolver;
@@ -612,6 +614,11 @@ public final class Shell implements AutoCloseable {
                 // ── P1b1（2026-10-01）：GM-only 区域经济数据清空（目标格 industries/markets + 可靠可定位的连带记录）。
                 //   标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
                 new EconomyClearRegionHandler(),
+                // ── P2-D：单位向放贷方借/还的债务腿两条（GM-only；放贷方 = 家户/政府家户）。
+                //   资金腿由组合根用 actor.TransferAccounts 与它们同批提交（单条命令只能落一个命名空间）；
+                //   见两个 handler 的类注与 P2-D 报告。──
+                new UnitBorrowHandler(),
+                new UnitRepayHandler(),
                 // ── actor（1 条，S1 阶段 2）：actor.Seed —— 一次种入某地图的 actor 分片（主体/产权/商品库存三张表）。
                 //   非 sd 前缀 ⇒ 自动进 drainableCommandTypes（见下）；同时也进 commandTypes ⇒
                 //   simos.command.submit 的目标声明表（CommandTargets）同源认得它。──

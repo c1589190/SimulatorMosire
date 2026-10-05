@@ -341,6 +341,22 @@ public final class CatalogTool implements AgentTool {
                   + "debtContracts/pledges/productionOrganizations/modeTransitions/classShares/classStandings/demands/"
                   + "crisisSignals）整条删除；世界级发行审计/在途货物/laborSupply/制度定义不动）"),
           Map.entry(
+              "economy.UnitBorrow",
+              "unitId, borrowerHousehold, lenderHousehold, unit(money|grain), principal(≥1),"
+                  + " interestRatePerMille(≥0), nextDueTick(>当前 tick), terms?, reason?"
+                  + "（★ P2-D / GM-only：单位向放贷方借入的**债务腿**；放贷方与借款方都必须是已知家户"
+                  + "（有账户主体）——不再有 class-first ExternalLender。资金腿必须同批提"
+                  + " actor.TransferAccounts {from:{household:lenderHousehold},"
+                  + " to:{household:borrowerHousehold}}；单提本命令 = 有债无钱。nextDueTick 落"
+                  + " DebtTerms.dueDay（合同身份/审计维），本批无到期催收）"),
+          Map.entry(
+              "economy.UnitRepay",
+              "unitId, borrowerHousehold, lenderHousehold, unit(money|grain), amount(≥1), debtId?, reason?"
+                  + "（★ P2-D / GM-only：单位向放贷方偿还的**债务腿**；同 (借款人,放贷方,unit) 有多条未结清"
+                  + "合同时必须用 debtId 指明；amount ≤ 未结清本金、不超付。资金腿必须同批提"
+                  + " actor.TransferAccounts {from:{household:borrowerHousehold},"
+                  + " to:{household:lenderHousehold}}）"),
+          Map.entry(
               "economy.GmAdjust",
               "adjustment(forgiveDebt|setLiquidationPolicy"
                   + "|upsertProductionMode|deactivateProductionMode|upsertClassStructure|upsertClassPosition"

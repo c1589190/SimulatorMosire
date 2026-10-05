@@ -51,7 +51,17 @@ public enum SettlementStage {
   /** 流水组装（读当日全部阶段累加器；必须最后）。 */
   FLOW_ASSEMBLY(PartitionBasis.COORDINATOR, "流水组装"),
   /** 家户迁移/分家（命令面 batch；跨 economy+actor，由组合根协调器提交）。 */
-  HOUSEHOLD_MIGRATION(PartitionBasis.COORDINATOR, "家户迁移");
+  HOUSEHOLD_MIGRATION(PartitionBasis.COORDINATOR, "家户迁移"),
+
+  /**
+   * ★★ <b>P2-D：辖区日税 / GOV 行政俸禄的账户提交阶段</b>。
+   *
+   * <p>它<b>不在</b> {@code EconomySettlement.settleOneDayInto} 内部，而是由组合根 （{@code
+   * PopulationEconomyTimeParticipant}）在 {@code EconomyDayStepper.step(day)} <b>之后</b>提交： 税是家户账户 →
+   * 政府家户账户，俸禄是政府家户账户 → 消失（旧 {@code GovDaily} 合约：付款无可信对端）。 ordinal 放在最后 =
+   * 与"日结算之后"的实际次序一致；本阶段只含协调器产出的 {@link AccountDelta}， 不参与并行分区计算。
+   */
+  TAX_AND_UPKEEP(PartitionBasis.COORDINATOR, "辖区日税/行政俸禄");
 
   /** 阶段实体的分区依据（R2 的静态声明；见类注）。 */
   public enum PartitionBasis {

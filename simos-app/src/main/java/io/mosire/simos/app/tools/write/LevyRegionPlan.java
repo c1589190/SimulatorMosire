@@ -15,6 +15,7 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.GovFormation;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Unit;
@@ -168,19 +169,50 @@ final class LevyRegionPlan {
                 () ->
                     new IllegalArgumentException(
                         "单位 " + unitId + " 当刻没有有效位置，国库落点无法确定；先 unit.PlaceAt"));
-    // ★★ P2-C §13.7：GOV 单位的国库 = 它自己的**政府家户**（hh-gov-<unitId>，从 GovFormation.households
-    //   按稳定 id 解析），不再取 unit.households 的第一个；非 GOV 单位（带 jurisdiction 的普通单位）才退回
-    //   旧口径（保序第一个）。需要动账（粮/钱/布任一 > 0）而没有国库家户 ⇒ 拒（不退回已退役的单位账户）。
+    // ★★ P2-C §13.7 / P2-D：国库 = **有账户的家户**（GOV 单位 = 政府家户；非 GOV 单位 = 可确定性解析的家户），
+    //   不再取 unit.households 的第一个（那是"先到者胜"的列表顺序口径）。解析规则：
+    //     ① GOV 单位 → 它自己的政府家户 hh-gov-<unitId>（GovernmentHouseholdResolver 按稳定 id 解析）；
+    //     ② 认领了 masterGov 的军队单位 → 该 GOV 的政府家户；
+    //     ③ 否则 unit.households 恰一个 → 用它；零个/多个 ⇒ 不猜（多个 = 具名拒，零个且要动账 = 具名拒）。
     String treasuryHousehold;
     if (unit.module().orElse(null) instanceof GovFormation) {
       treasuryHousehold =
           GovernmentHouseholdResolver.requireGovernmentHousehold(unit, unitId).value();
     } else {
-      treasuryHousehold = unit.households().isEmpty() ? null : unit.households().get(0).value();
-      if (treasuryHousehold == null && (grain > 0L || money > 0L || cloth > 0L)) {
+      ArmyFormation army =
+          unit.module().orElse(null) instanceof ArmyFormation formation ? formation : null;
+      String resolved = null;
+      if (army != null && army.masterGov().isPresent()) {
+        UnitId masterId = army.masterGov().get();
+        Unit master = units.units().get(masterId);
+        if (master == null || !(master.module().orElse(null) instanceof GovFormation)) {
+          throw new IllegalArgumentException(
+              "单位 "
+                  + unitId
+                  + " 认领的 masterGov "
+                  + masterId
+                  + " 不是存在的 GOV 单位（国库家户无法解析；先 AssignArmyGov / unit.SetArmyFormation）");
+        }
+        resolved =
+            GovernmentHouseholdResolver.requireGovernmentHousehold(master, masterId.value())
+                .value();
+      } else if (unit.households().size() == 1) {
+        resolved = unit.households().get(0).value();
+      } else if (unit.households().size() > 1) {
         throw new IllegalArgumentException(
-            "单位 " + unitId + " 没有家户（P2-A 起国库 = 家户账户；请先配置 unit.households）");
+            "单位 "
+                + unitId
+                + " 有多个家户且没有可解析的 GOV 主子：不得按列表顺序猜国库（先 unit.SetGovFormation / "
+                + "AssignArmyGov，或只保留一个 unit.households）: "
+                + unit.households());
       }
+      if (resolved == null && (grain > 0L || money > 0L || cloth > 0L)) {
+        throw new IllegalArgumentException(
+            "单位 "
+                + unitId
+                + " 没有可解析的国库家户（P2-A 起国库 = 家户账户；请先 unit.SetGovFormation 或配置恰一个 unit.households）");
+      }
+      treasuryHousehold = resolved;
     }
     // ★ requested = 0 的维度整段跳过：不扫描来源、不进 Plan 的来源表（available 记 0 = "未求值"）。
     Dimension grainDimension =
@@ -234,7 +266,12 @@ final class LevyRegionPlan {
       ToLongFunction<GoodsAccount> availableOf) {
     RegionAllocations.AccountAllocation allocation =
         RegionAllocations.allocateAccounts(
-            ApiViews.actorData(state), ToolSupport.socialData(state), region, label, requested, availableOf);
+            ApiViews.actorData(state),
+            ToolSupport.socialData(state),
+            region,
+            label,
+            requested,
+            availableOf);
     List<AccountSource> sources = new ArrayList<>(allocation.sources().size());
     for (RegionAllocations.AccountSource source : allocation.sources()) {
       sources.add(new AccountSource(source.owner(), source.at(), source.amount()));

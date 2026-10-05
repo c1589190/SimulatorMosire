@@ -75,8 +75,8 @@ import java.util.Map;
  * @param births 本期出生的人口（人）；不得为负；与 {@code deaths} **对称**（R4 起人口两头都会动，只记死亡会让 "年末人口 − 创世人口 == 出生 −
  *     死亡"写不出来）
  * @param repaidMoney ★★ <b>P11.1 / D-023：本期偿还**实际走货币腿**的逐币种毫钱</b>—— 键值非空、逐值 ≥ 0。 <b>不塞进 {@link
- *     #repaid()}</b>（那个标量是粮口径；把钱记成粮 = 篡改单位）。窗口与 {@code income}/消费同：
- *     本周期累计、新周期第一天归零。★ 它不再等于“货币债本金”：钱可以按价折付任何计价口径的债务，这里记真实出账的钱；贷方收到的钱由 actor 账户与合同本金下降读，两处同值。
+ *     #repaid()}</b>（那个标量是粮口径；把钱记成粮 = 篡改单位）。窗口与 {@code income}/消费同： 本周期累计、新周期第一天归零。★
+ *     它不再等于“货币债本金”：钱可以按价折付任何计价口径的债务，这里记真实出账的钱；贷方收到的钱由 actor 账户与合同本金下降读，两处同值。
  * @param capitalizedArrears ★★ <b>E4c：本期资本化的欠租/欠薪（按 {@code DebtUnit.key()} 分组，例如 {@code
  *     "commodity:grain"} / {@code "money:silver"}）</b>—— 键为稳定 unit 串、值为本金增量（该 unit 的最小计量单位）。
  *     它<b>不是</b>库存/货币流动（资本化只记债权，不搬粮/钱），故<b>不</b>进 {@code newBorrowing}（借入才是那个字段）；
@@ -196,6 +196,41 @@ public record FlowRow(
       consumedCopy.put(entry.getKey(), entry.getValue());
     }
     consumed = Collections.unmodifiableMap(consumedCopy); // ★ 冻在赋值处
+  }
+
+  /**
+   * ★★ <b>P2-D：辖区日税落进本行流水读数的唯一写法</b>。
+   *
+   * <p>语义：本期"粮口径"纳税累加 {@code delta}（毫粮），同时按本记录的既定恒等式 {@code netSurplus = income[grain] −
+   * consumed[grain] − taxPaid − interestDue} 把 {@code netSurplus}
+   * 同额减少——两处一起动，读口才不会出现"税涨了、净盈余没动"的自相矛盾。
+   *
+   * <p>★ <b>为什么只收粮口径</b>：{@code taxPaid} 的文档量纲是毫粮（{@link #netSurplus} 与 {@code DebtCapacityBook}
+   * 都按粮读它）。货币税没有这个字段，只能在账户余额与日志里读 （P2-D 具名缺口：{@code FlowRow} 没有货币税位）。调用方对银税不要调本方法。
+   *
+   * <p>★ {@code delta == 0} ⇒ 返回 {@code this}（不是新实例）；{@code delta < 0} 当场抛（税不倒退）。
+   */
+  public FlowRow withAdditionalGrainTaxPaid(long delta) {
+    if (delta < 0L) {
+      throw new IllegalArgumentException("withAdditionalGrainTaxPaid 的 delta 不得为负: " + delta);
+    }
+    if (delta == 0L) {
+      return this;
+    }
+    return new FlowRow(
+        id,
+        income,
+        consumed,
+        Math.addExact(taxPaid, delta),
+        interestDue,
+        newBorrowing,
+        repaid,
+        Math.subtractExact(netSurplus, delta),
+        unmetNeed,
+        deaths,
+        births,
+        repaidMoney,
+        capitalizedArrears);
   }
 
   /**
