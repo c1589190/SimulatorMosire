@@ -3855,6 +3855,9 @@ public final class EconomySeeder {
    * 把它从"田里"搬到"织机上"是**跨行的实物转移**，正是 spec §六 V8（统一转移）的活， 而 brief 明说"**不建议本轮做跨行实物转移**" ⇒
    * 本轮织机吃的是这份**明标为"估计来源"**的创世库存； 农业自己产的那份照常累积在农业行里（读口看得见）。★ **后果如实记**：一个周期之后织机没有原料 ⇒ 停工，等 V8
    * 把田里的纤维送过来。
+   *
+   * <p>★★ <b>它不是市场主体</b>（2026-10-23 裁定 B）：产出/库存已按劳动落各成员家户账，市场参与者只在成员家户这一层；{@code
+   * MarketSettlement.participantsFor} 对集体 unit 静默跳过（只留默认关闭的 TRACE），不把它登记/警告为市场主体。
    */
   private static IndustryPlan householdWeaving(HexCoord hex, long looms) {
     return industry(
@@ -4298,6 +4301,10 @@ public final class EconomySeeder {
    * <p>★ <b>为什么必须显式空规则</b>：HOUSEHOLD 模板的四个受方 cohort 与这个集体 unit 的成员是同一批家户 ⇒
    * 模板规则会让成员之间互相转移（同一对家户既是付方又是受方 ⇒ 自转移，{@code Transfer} 的两端不得相等， 实测首个收获日当场抛）。集体经营的产出归属由 {@code
    * HouseholdRouting} 的劳动权重表达，模板在这里是第二本账。
+   *
+   * <p>★★ 2026-10-23 裁定 B：这个集体 unit <b>不是市场主体</b>（产出/库存落成员家户、各家自行入市，{@code
+   * MarketSettlement.participantsFor} 的集体分支静默跳过）；{@code plan.operator()} 仍按本关系继续作为结算
+   * payee（清理/迁移它是另一责任区）。
    */
   private static ProductionRules collectiveRelation(IndustryPlan plan) {
     return new ProductionRules(

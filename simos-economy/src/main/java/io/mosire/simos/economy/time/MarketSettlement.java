@@ -4581,8 +4581,9 @@ final class MarketSettlement {
     }
     // ★★ P2-A §13.3：经营者角色（庄园/作坊/商号）不持账 —— 逐 unit 解析到组织者/经营者家户：
     //   ① 单一家户（operator/relation/份额可解析）⇒ 把 unit 挂到该家户的参与者上；
-    //   ② 解析不到单一主体但有名下劳动家户（集体经营，如家户纺织主 unit）⇒ 本批**具名缺口**：
-    //      不把聚合 unit 当市场参与者（其产出已按劳动分给各家家户账，各家按自己的库存买卖）；
+    //   ② 解析不到单一主体但有名下劳动家户（集体经营，如家户纺织主 unit）⇒ **不是市场主体**（2026-10-23
+    //      裁定 B）：不把聚合 unit 当市场参与者，静默跳过（只留默认关闭的 TRACE）；其产出已按劳动分给
+    //      各成员家户账，各家按自己的库存与预算买卖；
     //   ③ 连劳动家户都没有 ⇒ 具名抛（坏数据，不静默当成"零库存参与者"）。
     for (Map.Entry<ActorRef, List<ProductionUnitId>> entry : unitsByOperator.entrySet()) {
       for (ProductionUnitId unitId : entry.getValue()) {
@@ -4620,23 +4621,26 @@ final class MarketSettlement {
                     + " operator="
                     + entry.getKey());
           }
-          // ② 集体经营（如家户纺织主 unit）：具名缺口 —— 不进市场参与者（产出已按劳动分给各家家户账，
-          //    各家按自己的库存与预算参与市场）。
-          EventLog.channel(MARKET)
-              .warn(
-                  LogEvent.of(
-                      "MARKET_SUBJECT_COLLECTIVE",
-                      EconomyLogSource.ECONOMY_MARKET,
-                      "day",
-                      round.day,
-                      "unit",
-                      unitId.value(),
-                      "operator",
-                      entry.getKey(),
-                      "households",
-                      collective,
-                      "reason",
-                      "aggregate-unit-not-a-single-household"));
+          // ② 集体经营（如家户纺织主 unit）：**by design 不是市场主体**（2026-10-23 裁定 B）—— 该聚合
+          //    unit 的产出/库存已按劳动落各成员家户账，成员家户各自入市；这里静默跳过，只留一条默认
+          //    关闭（TRACE）的审计事件，不再发 WARN。不变量：参与者列表与该 unit 仍是 WARN 跳过时逐值一致。
+          if (MARKET.isTraceEnabled()) {
+            EventLog.channel(MARKET)
+                .trace(
+                    LogEvent.of(
+                        "MARKET_SUBJECT_COLLECTIVE_SKIPPED",
+                        EconomyLogSource.ECONOMY_MARKET,
+                        "day",
+                        round.day,
+                        "unit",
+                        unitId.value(),
+                        "operator",
+                        entry.getKey(),
+                        "households",
+                        collective,
+                        "reason",
+                        "by-design-not-a-market-subject"));
+          }
           continue;
         }
         HouseholdId household = single.get();
