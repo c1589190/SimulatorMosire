@@ -64,7 +64,7 @@ app（组合根）依赖全部领域模块 + core + agentlib + MCP —— **唯�
 | `simos-actor` | actor-api + util + map + economy-api + jackson | 聚合式 actor 切片（S1 阶段 2）：`Actor` 身份本体 + 产权（`AssetHolding`，**键到格** ⇒ 依赖 map 拿 `HexCoord`）+ 商品库存（`GoodsAccount`，键是 `CommodityId` ⇒ 依赖 economy-api）+ 状态树/落盘切片/变更集 + `ActorCodec`（`namespace() = "actor"`）。组件**恰四件**：`(meta, actors, holdings, accounts)`。禁 economy/ledger（同层切片）与 social/unit/sd/core/app/agentlib；★ economy-api 与 actor-api **不在禁列**（契约层，与 social 依赖 economy-api 同待遇） |
 | `simos-economy-api` | **actor-api** + util + map（util 与 jackson 实际**零 import**：前者是死依赖；★ map：**2026-09-27 回代码更正**——不是"只有 `LotChange` 一处"，实测 **4 个文件**用 `HexCoord`：`CohortKey` / `HouseholdActors` / `Transfer` / `LotChange`） | 只放**经济切片共用的稳定契约**（各类稳定 ID / `CommodityId`）；无 Snapshot、无存储、无公式。★ `ActorRef` / `ActorKind` **已不在本模块**（上移到更底层的 `simos-actor-api`，本模块只**引用**它们——`LaborAllocation.actor`）。禁一切领域/编排模块 |
 | `simos-economy` | util + economy-api + **map** + **actor-api** | 聚合式经济切片（产业 / 阶层行 / 债务 / 流水）。禁 social/unit/sd/core/app/agentlib/**ledger**（切片间互不依赖）。★ **2026-09-27 回 pom 更正**：本行原写"util + economy-api"——**漏了 map 与 actor-api**；实测 `simos-economy/pom.xml:34-37` 显式声明 `simos-map`（H4 起市场表键 = `HexCoord`，`pom` 自述见 `:19-21`）、`main` 里有 **9 文件 / 11 处** `import io.mosire.simos.map.hex.HexCoord`。★ 另记一句自相矛盾：同 pom `:77` 的 ban `<message>` 仍写"economy 只依赖 economy-api/util"（**文案陈旧，不是禁令**；事实以依赖块为准）。★★ 2026-10-09 家户结构修复：`HouseholdEconomy.population/laborMilli/naturalNeeds` 是 **app 从 Social 展开后注入的当日物化视图**，不是独立权威；运行时自然需求不得再用 `population × 统一系数` 折算，前瞻保留/覆盖改用逐户 `expectedNeedMilli`，饥荒分母改用 `cycleNaturalNeedMilli`。★★ 2026-10-09 每 tick 生死：日常出生/死亡只由 Social 结算，经济只收逐户 population delta。★★ 2026-10-10 P0 已关闭迁移写人旁路：`ModeMigrationSettlement` 只推投影账 + 瞬态 outbox（`EconomyPopulationTransfer`），App 的 `MigrationSocialBridge` 同 revision 落 Social 工单并回写经济行 delta；fresh 0→360 实测逐户 138/138 Social == Economy。设计/实施见 `docs/superpowers/plans/2026-10-10-p0-mode-migration-social-outbox.md`。。
-★★ 2026-10-14 P4a：EconomyData 新增 periodicAdjustments 组件与 `economy.Upsert/RemoveHouseholdPeriodicAdjustment`（GM-only），app 日循环按无状态到期部分支付；Unit 军俸政策/分摊（P4b）未做 |
+★★ 2026-10-14 P4a：EconomyData 新增 periodicAdjustments 组件与 `economy.Upsert/RemoveHouseholdPeriodicAdjustment`（GM-only），app 日循环按无状态到期部分支付；Unit 军俸政策/分摊（P4b）未做（★★ **2026-10-23 更正**：P4b 已于 `bfb246a3` 落地——`MilitaryPayPolicy` 第 4 组件 + `unit.SetArmyPayPolicy` + `MilitaryPayRuleBridge`；GM 窄工具由 D4 的 `simos.gm.armyPayPolicy` 补上。**P4c 仍开放**：决策人受限军俸工具/审批白名单、军俸 FlowRow/ledger 维度、与 GovDaily 共享国库预算优先级。未做项总表见 `docs/superpowers/status/2026-10-23-planned-not-implemented-inventory.md`） |
 | ~~`simos-ledger`~~ | —— | ★★ **已于 2026-09-27 退役**（裁定 D2-A）：它零外部引用、无 handler、无人依赖；`Transfer` 的**形状**（不是它的 `ActorRef` 主体类型）已搬进 `simos-economy-api` 的 `transfer` 包。原模块连同 `Account`/`Claim`/三个测试一并删除；`economy-api` 的 ID 契约（`TransferId`/`ClaimId`/`AccountId`…）**保留**。★ 全仓对它的引用现在只剩历史叙述（设计文档与若干类注的留痕） |
 | `simos-app`（组合根） | core + map + social + unit + sd + economy + **calendar** + agentlib + mcp-core + mcp-json-jackson2 + jackson + 日志实现 | **不设 enforcer**：按 `/map` `/social` `/unit` 路由 ⇒ 天然认识各模块。`Shell`/`ShellConfig`/`ShellMain`、`gui/`(5711)、`query/`、`tools/`、`binding/`、`demo/`。★ 2026-10-02 年份系统起 `calendar` **显式声明**（C4a：`CalendarClock`/`CalendarService`；不靠传递依赖）。★ 它**用了** `util`（56 个 main 文件）与 `economy-api`（2 个）却**未声明**，靠传递依赖（2026-09-26 查实；同款情形在 `simos-core/pom.xml:33-36` 曾被定性为缺陷并修过——**"依赖传递不是契约"**） |
 
@@ -92,9 +92,11 @@ app（组合根）依赖全部领域模块 + core + agentlib + MCP —— **唯�
 | `docs/superpowers/specs/` 与 `plans/` 下的其余按日期文件 | 各阶段的 spec/plan：M1 util、M2 map、M3 social+unit、M4 core、M5 shell、M6 导入器、M7 webui、**M8 地图编辑**、M9 大图性能、M10 部署、Unit 扩容、SDSimos、工具面… |
 | `.superpowers/sdd/<topic>/` | **SDD 台账与逐任务证据**（`progress.md` / `task-N-report.md` / 各 `*-evidence/`）。想要"当时到底怎么验的"看这里 |
 | `docs/superpowers/HANDOFF-*.md` | 跨会话进度存档 |
+| `docs/superpowers/status/*.md` | **阶段状态与未实现清单**（最新：`2026-10-23-planned-not-implemented-inventory.md` = 全项目「计划内未实现功能」代码核对版，含待裁定项） |
 
-★ **"当前状态"不在这里抄一遍**：看 `git log --oneline -20`、最近的 `.superpowers/sdd/*/progress.md`，
-以及各计划自己那节关账记录。★ 历史里程碑的逐条台账**已随 CLAUDE.md 退役**（在 git 历史里，`git show <sha>:CLAUDE.md` 可取）。
+★ **"当前状态"不在这里抄一遍**：看 `git log --oneline -20`、最近的 `.superpowers/sdd/*/progress.md`、
+以及各计划自己那节关账记录；**未实现功能总表**看 `docs/superpowers/status/2026-10-23-planned-not-implemented-inventory.md`。
+★ 历史里程碑的逐条台账**已随 CLAUDE.md 退役**（在 git 历史里，`git show <sha>:CLAUDE.md` 可取）。
 
 ## 一、并发：这是最容易造成返工的一类
 
