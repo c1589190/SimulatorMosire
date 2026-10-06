@@ -147,6 +147,7 @@ commit + push。**不在批次里顺手扩无关功能。**
   4. 预算中止/运行时失败 ⇒ 保守结算已写进 DRAFT packet 的内容，不让模型跑飞丢决策。
 - 真 LLM 1 tick、6 DM、物理并发 6 的同时决策 GOV 场景已绿：`blockers=[]`、`modelAborts=[]`、
   `modelFailures=[]`、`allFourToolsRun=true`、`scenarioToolTypesCount=2`。证据见 D5 子文档。
+- 当前工作状态/恢复入口：`docs/superpowers/HANDOFF-2026-10-22-d5-decision-turn-economy.md`。
 
 ## 9. 恢复命令
 
