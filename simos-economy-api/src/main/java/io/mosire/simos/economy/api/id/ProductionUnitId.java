@@ -3,8 +3,8 @@ package io.mosire.simos.economy.api.id;
 import io.mosire.simos.actor.api.actor.ActorRef;
 
 /**
- * 生产单元 ID（设计稿 §4.2；R3B.2 起真正被 {@code ProductionProcess} 使用）：一次单位生产的稳定身份，归 {@code production} 切片；不复用军事
- * {@code Unit} 的 ID。
+ * 生产单元 ID（设计稿 §4.2；R3B.2 起真正被 {@code ProductionProcess} 使用）：一次单位生产的稳定身份，归 {@code production}
+ * 切片；不复用军事 {@code Unit} 的 ID。
  *
  * <p>裸值 {@code toString()} + {@code static parse} 三件套（铁律 1）；不自增、不用随机 UUID。★ {@code parse} 是
  * <b>opaque</b> 的：旧档里已经落盘的 id 原样读回，不因本类新增工厂而重算/改写。

@@ -1,15 +1,15 @@
 package io.mosire.simos.social.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import io.mosire.simos.social.api.household.HouseholdLocation;
-import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.household.HouseholdLocation;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.household.Household;
@@ -41,16 +41,16 @@ import java.util.Set;
  *
  * <ul>
  *   <li>{@code SocialData.populations}：键落在目标 hex 集的序列整条删除；
- *   <li>{@code SocialData.households}：{@code location} 的 HEX 落在目标 hex 集的家户整条删除，其
- *       {@code memberLots} 引用的批次同步从 {@code groups} 删除（S2：位置归家户）；
+ *   <li>{@code SocialData.households}：{@code location} 的 HEX 落在目标 hex 集的家户整条删除，其 {@code memberLots}
+ *       引用的批次同步从 {@code groups} 删除（S2：位置归家户）；
  *   <li>{@code SocialData.cities}：{@code SocialCity.at} 落在目标 hex 集，或 {@code city.region == 目标
  *       Region} 的城市整条删除（两个判据并列，任一命中即删）；
  *   <li>其余 social 组件与其它 Region 的记录<b>一字不动</b>（populationEvents 保留：它是审计账，不随人口清空）。
  * </ul>
  *
- * <p>★★ <b>为什么家户与批次一起删</b>：{@code SocialData} 构造期有一条跨组件校验—— 每个批次的 {@code memberLots}
- * 必须指向存在的 groups，且每个 group 必须且只能被一个家户引用。若先删家户、留批次，中间态会立刻违约；
- * 同一趟里把"命中家户 + 其成员批次"一起删掉则每个中间态都合法。两条删除合起来仍是"一次命令、一条 revision、整条原子"。
+ * <p>★★ <b>为什么家户与批次一起删</b>：{@code SocialData} 构造期有一条跨组件校验—— 每个批次的 {@code memberLots} 必须指向存在的
+ * groups，且每个 group 必须且只能被一个家户引用。若先删家户、留批次，中间态会立刻违约； 同一趟里把"命中家户 +
+ * 其成员批次"一起删掉则每个中间态都合法。两条删除合起来仍是"一次命令、一条 revision、整条原子"。
  *
  * <p>★ <b>Region 必须先在 {@code map.regions()} 里存在</b>：缺 map 切片/切片类型不对是装配故障（{@link
  * IllegalStateException} 当场炸，不走拒绝路径）；payload 里的 regionId 在 map 里查不到才是 {@link

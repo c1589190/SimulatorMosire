@@ -22,8 +22,10 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * S2 率与事件验收（架构 §4.3/§7 第 4、5 条）：逐家户率、逐日死亡按年龄段、出生只从育龄女性且并入最小档、
- * 同日生死互不干扰、重复结算被拒。
+ * S2 率与事件验收（架构 §4.3/§7 第 4、5 条）：逐家户率、逐日死亡按年龄段、出生只从育龄女性且按 (母亲批次, 性别, 日) 落新生批次、同日生死互不干扰、重复结算被拒。
+ *
+ * <p>★ 旧 {@code PopulationDynamicsTest}（生理压力 + 月度结算）随旧机制整条退役删除：它引用的 {@code PopulationDynamics}
+ * 已不在主代码；本类是新 {@code HouseholdBook} 每 tick 生死引擎的判据落点。
  */
 class HouseholdVitalEventsTest {
 
@@ -49,23 +51,26 @@ class HouseholdVitalEventsTest {
     data = add(data, A, adult, Sex.MALE, 100L, 20L * YEAR);
     data = add(data, A, female, Sex.FEMALE, 40L, 30L * YEAR);
     data = add(data, A, elder, Sex.MALE, 5L, 70L * YEAR);
+    // ★ ppm/tick 引擎首见余数键会落 [0, 999_999] 的稳定哈希初相位（HouseholdBook#initialRemainder）。
+    //   夹具把"率 × 份额"取成 1_000_000 的整数倍（即份额 × 10^6 的率），初相位就影响不到整除结果：
+    //   人数 = (相位 + k×10^6)/10^6 = k，无论相位是多少。判据仍逐档、逐性别地钉住率路由。
     data =
         HouseholdBook.setVitalRates(
             data,
             A,
             rates(
-                new HouseholdVitalRate(AgeBracket.CHILD.key(), Sex.MALE, 0L, 1000L),
-                new HouseholdVitalRate(AgeBracket.ADULT.key(), Sex.MALE, 0L, 100L),
-                new HouseholdVitalRate(AgeBracket.ADULT.key(), Sex.FEMALE, 0L, 50L),
-                new HouseholdVitalRate(AgeBracket.ELDER.key(), Sex.MALE, 0L, 200L)),
+                new HouseholdVitalRate(AgeBracket.CHILD.key(), Sex.MALE, 0L, 1_000_000L),
+                new HouseholdVitalRate(AgeBracket.ADULT.key(), Sex.MALE, 0L, 100_000L),
+                new HouseholdVitalRate(AgeBracket.ADULT.key(), Sex.FEMALE, 0L, 50_000L),
+                new HouseholdVitalRate(AgeBracket.ELDER.key(), Sex.MALE, 0L, 200_000L)),
             "率表");
 
     SocialData after = HouseholdBook.settleVitalEvents(data, 0L);
 
-    assertThat(after.groups()).as("10×1000‰ = 10 ⇒ 该批次减到 0 被删").doesNotContainKey(child);
-    assertThat(after.groups().get(adult).count()).as("100×100‰ = 10").isEqualTo(90L);
-    assertThat(after.groups().get(female).count()).as("40×50‰ = 2").isEqualTo(38L);
-    assertThat(after.groups().get(elder).count()).as("5×200‰ = 1").isEqualTo(4L);
+    assertThat(after.groups()).as("10×1_000_000ppm = 10 ⇒ 该批次减到 0 被删").doesNotContainKey(child);
+    assertThat(after.groups().get(adult).count()).as("100×100_000ppm = 10").isEqualTo(90L);
+    assertThat(after.groups().get(female).count()).as("40×50_000ppm = 2").isEqualTo(38L);
+    assertThat(after.groups().get(elder).count()).as("5×200_000ppm = 1").isEqualTo(4L);
 
     List<HouseholdPopulationEvent> deaths =
         after.populationEvents().values().stream()
@@ -75,7 +80,9 @@ class HouseholdVitalEventsTest {
     assertThat(deaths)
         .allSatisfy(
             event -> {
-              assertThat(event.id()).startsWith("death:" + A + ":0:");
+              assertThat(event.id())
+                  .as("每 tick 引擎的事件 id = vital:<KIND>:<家户>:<批次>:<日>:<性别>")
+                  .isEqualTo("vital:DEATH:" + A + ":" + event.lotId() + ":0:" + event.sex());
               assertThat(event.ageBracketId()).isNotBlank();
               assertThat(event.count()).isPositive();
               assertThat(event.lotId()).isNotNull();
@@ -111,24 +118,23 @@ class HouseholdVitalEventsTest {
     data = add(data, B, bBoy, Sex.MALE, 3L, 7L * YEAR); // 已有最小档男性批次
     data = add(data, C, bGrandma, Sex.FEMALE, 100L, 70L * YEAR); // 非育龄
 
+    // ★ 400_000 ppm = 旧 per-mille 口径的 400‰；份额 × 率 = k×10^6 ⇒ 整除结果不受稳定哈希初相位影响。
     HouseholdVitalRates fertile =
         rates(
-            new HouseholdVitalRate(AgeBracket.ADULT.key(), Sex.FEMALE, 400L, 0L),
+            new HouseholdVitalRate(AgeBracket.ADULT.key(), Sex.FEMALE, 400_000L, 0L),
             // ★ 男性也给出生率：实现必须只认 FEMALE（这一条把"性别真的进了生育判定"钉住）。
-            new HouseholdVitalRate(AgeBracket.ADULT.key(), Sex.MALE, 400L, 0L));
+            new HouseholdVitalRate(AgeBracket.ADULT.key(), Sex.MALE, 400_000L, 0L));
     data = HouseholdBook.setVitalRates(data, A, fertile, "甲率");
     data = HouseholdBook.setVitalRates(data, B, fertile, "乙率");
     // C 刻意不设任何出生率：它的 CHILD/ELDER 女性一个人都不该多出来。
 
     SocialData after = HouseholdBook.settleVitalEvents(data, 0L);
 
-    // 甲：50×400‰ = 20 ⇒ 男 10 / 女 10；无既有最小档 ⇒ 新建两个 age=0 的批次。
+    // 甲：50×400_000ppm = 20 ⇒ 男 10 / 女 10；母亲批次 id 是自定义短名 ⇒ 新生批次走 born: fallback，
+    //   每个性别各自成批（新生儿 age=0、anchorTick=0）。
     assertThat(after.groups().get(aFather).count()).as("男性批次不因出生率生孩子").isEqualTo(100L);
     assertThat(after.requireHousehold(A).memberLots()).as("甲户 = 父母 + 两个新生儿").hasSize(4);
-    List<PeopleLotId> aChildren =
-        after.requireHousehold(A).memberLots().stream()
-            .filter(lot -> lot.value().startsWith("evt:birth:"))
-            .toList();
+    List<PeopleLotId> aChildren = bornLotsOf(after, A);
     assertThat(aChildren).as("甲户新生男/女两个批次").hasSize(2);
     assertThat(aChildren)
         .allSatisfy(
@@ -143,11 +149,18 @@ class HouseholdVitalEventsTest {
         .extracting(lot -> after.groups().get(lot).count())
         .containsExactlyInAnyOrder(10L, 10L);
 
-    // 乙：25×400‰ = 10 ⇒ 男 5 / 女 5；已有最小档 ⇒ 并入既有 CHILD 批次（不新建身份）。
-    assertThat(after.groups().get(bGirl).count()).as("4 + 5").isEqualTo(9L);
-    assertThat(after.groups().get(bBoy).count()).as("3 + 5").isEqualTo(8L);
+    // 乙：25×400_000ppm = 10 ⇒ 男 5 / 女 5。★ 每 tick 引擎按 (母亲批次, 性别, 日) 派生新生批次，
+    //   既有的最小档批次原样不动（P2-E 起不再并入既有批次——跨家户/跨母各自成批是防 id 相撞的口径）。
+    assertThat(after.groups().get(bGirl).count()).as("既有最小档不被并入").isEqualTo(4L);
+    assertThat(after.groups().get(bBoy).count()).as("既有最小档不被并入").isEqualTo(3L);
     assertThat(after.groups().get(bGrandma).count()).as("非育龄不生孩子").isEqualTo(100L);
-    assertThat(after.requireHousehold(B).memberLots()).containsExactly(bMother, bGirl, bBoy);
+    List<PeopleLotId> bChildren = bornLotsOf(after, B);
+    assertThat(bChildren).as("乙户新生男/女两个批次").hasSize(2);
+    assertThat(bChildren)
+        .extracting(lot -> after.groups().get(lot).count())
+        .containsExactlyInAnyOrder(5L, 5L);
+    assertThat(after.requireHousehold(B).memberLots()).contains(bMother, bGirl, bBoy).hasSize(5);
+    assertThat(after.requireHousehold(B).memberLots()).containsAll(bChildren);
     assertThat(after.groups().get(aGirl).count()).as("非育龄 CHILD 批次不生孩子").isEqualTo(30L);
     assertThat(after.groups().get(bGrandma).count()).as("非育龄 ELDER 批次不生孩子").isEqualTo(100L);
 
@@ -160,7 +173,10 @@ class HouseholdVitalEventsTest {
         .allSatisfy(
             event -> {
               assertThat(event.ageBracketId()).isEqualTo(AgeBracket.CHILD.key());
-              assertThat(event.lotId()).as("BIRTH 是按最小档/既有档聚合，不指向母亲批次").isNull();
+              assertThat(event.lotId()).as("BIRTH 事件带新生批次的 id").isNotNull();
+              assertThat(event.lotId().value())
+                  .as("自定义母亲短名走 born: fallback 命名")
+                  .startsWith("born:");
               assertThat(event.count()).isPositive();
             });
     assertThat(births)
@@ -188,24 +204,23 @@ class HouseholdVitalEventsTest {
     data = HouseholdBook.create(data, A, new HouseholdLocation.Hex(H00), profile("甲"), rates());
     PeopleLotId mother = PeopleLotId.parse("mother");
     data = add(data, A, mother, Sex.FEMALE, 100L, 30L * YEAR);
+    // ★ 100_000 ppm：100 人 × 率 = 10_000_000（10 的整数倍 × 10^6）⇒ 生死数不受初相位影响。
     data =
         HouseholdBook.setVitalRates(
             data,
             A,
-            rates(new HouseholdVitalRate(AgeBracket.ADULT.key(), Sex.FEMALE, 100L, 100L)),
+            rates(new HouseholdVitalRate(AgeBracket.ADULT.key(), Sex.FEMALE, 100_000L, 100_000L)),
             "率表");
 
     SocialData after = HouseholdBook.settleVitalEvents(data, 0L);
 
-    assertThat(after.groups().get(mother).count()).as("死亡 100×100‰ = 10").isEqualTo(90L);
+    assertThat(after.groups().get(mother).count()).as("死亡 100×100_000ppm = 10").isEqualTo(90L);
     long births =
         after.populationEvents().values().stream()
             .filter(event -> event.type() == PopulationEventType.BIRTH)
             .mapToLong(HouseholdPopulationEvent::count)
             .sum();
-    assertThat(births)
-        .as("出生也按结算前 100 人算 ⇒ 10（若按死后 90 算会得 9，本条当场红）")
-        .isEqualTo(10L);
+    assertThat(births).as("出生也按结算前 100 人算 ⇒ 10（若按死后 90 算会得 9，本条当场红）").isEqualTo(10L);
     assertThat(
             after.ageBrackets(A, 0L, CLOCK).stream()
                 .filter(view -> view.bracketId().equals(AgeBracket.CHILD.key()))
@@ -243,7 +258,8 @@ class HouseholdVitalEventsTest {
     List<AgeBracketView> views = data.ageBrackets(A, 0L, CLOCK);
     assertThat(views).as("3 档 × 2 性别，键齐").hasSize(6);
     assertThat(views)
-        .filteredOn(view -> view.bracketId().equals(AgeBracket.CHILD.key()) && view.sex() == Sex.FEMALE)
+        .filteredOn(
+            view -> view.bracketId().equals(AgeBracket.CHILD.key()) && view.sex() == Sex.FEMALE)
         .singleElement()
         .satisfies(
             view -> {
@@ -252,7 +268,8 @@ class HouseholdVitalEventsTest {
               assertThat(view.deathRatePerTick()).isEqualTo(2L);
             });
     assertThat(views)
-        .filteredOn(view -> view.bracketId().equals(AgeBracket.ADULT.key()) && view.sex() == Sex.MALE)
+        .filteredOn(
+            view -> view.bracketId().equals(AgeBracket.ADULT.key()) && view.sex() == Sex.MALE)
         .singleElement()
         .satisfies(
             view -> {
@@ -261,7 +278,8 @@ class HouseholdVitalEventsTest {
               assertThat(view.deathRatePerTick()).isEqualTo(5L);
             });
     assertThat(views)
-        .filteredOn(view -> view.bracketId().equals(AgeBracket.ELDER.key()) && view.sex() == Sex.FEMALE)
+        .filteredOn(
+            view -> view.bracketId().equals(AgeBracket.ELDER.key()) && view.sex() == Sex.FEMALE)
         .singleElement()
         .satisfies(
             view -> {
@@ -269,7 +287,8 @@ class HouseholdVitalEventsTest {
               assertThat(view.deathRatePerTick()).isEqualTo(30L);
             });
     assertThat(views)
-        .filteredOn(view -> view.bracketId().equals(AgeBracket.ADULT.key()) && view.sex() == Sex.FEMALE)
+        .filteredOn(
+            view -> view.bracketId().equals(AgeBracket.ADULT.key()) && view.sex() == Sex.FEMALE)
         .singleElement()
         .satisfies(view -> assertThat(view.count()).isZero());
   }
@@ -279,11 +298,13 @@ class HouseholdVitalEventsTest {
     SocialData data = SocialData.empty();
     data = HouseholdBook.create(data, A, new HouseholdLocation.Hex(H00), profile("甲"), rates());
     data = add(data, A, PeopleLotId.parse("mother"), Sex.FEMALE, 100L, 30L * YEAR);
+    // ★ 100_000 ppm 保证 day 0 一定产生 DEATH/BIRTH 事件（初相位压不过 100 人 × 率的量级），
+    //   重复结算才会撞上事件 id 守卫。
     data =
         HouseholdBook.setVitalRates(
             data,
             A,
-            rates(new HouseholdVitalRate(AgeBracket.ADULT.key(), Sex.FEMALE, 100L, 100L)),
+            rates(new HouseholdVitalRate(AgeBracket.ADULT.key(), Sex.FEMALE, 100_000L, 100_000L)),
             "率表");
     SocialData once = HouseholdBook.settleVitalEvents(data, 0L);
 
@@ -291,6 +312,13 @@ class HouseholdVitalEventsTest {
         .as("同一天重复结算不是静默重复出生/死亡")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("已存在");
+  }
+
+  /** 某户结算后的新生批次：母亲 id 是自定义短名 ⇒ {@code HouseholdBook} 走 {@code born:} fallback 命名。 */
+  private static List<PeopleLotId> bornLotsOf(SocialData data, HouseholdId household) {
+    return data.requireHousehold(household).memberLots().stream()
+        .filter(lot -> lot.value().startsWith("born:"))
+        .toList();
   }
 
   private static SocialData add(

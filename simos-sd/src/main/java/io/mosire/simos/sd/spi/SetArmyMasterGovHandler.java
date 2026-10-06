@@ -28,8 +28,8 @@ import java.util.Optional;
  * }</pre>
  *
  * <p>★ <b>载荷语义</b>：{@code masterGovUnitId} 缺席 / {@code null} / 空串（含空白串）= 解除认领；给了非空白值必须存在、 且带 {@link
- * GovernmentFormation}（与 {@code sd.CreateArmy} / {@code unit.SetArmyFormation} 同口径，认主子只认 GOV）。armyId 不存在 ⇒
- * 具名拒。
+ * GovernmentFormation}（与 {@code sd.CreateArmy} / {@code unit.SetArmyFormation} 同口径，认主子只认
+ * GOV）。armyId 不存在 ⇒ 具名拒。
  *
  * <p>★ <b>只改一个字段</b>：成功时只换 {@link Army#masterGovUnitId()}，{@code id}/{@code rootUnit}/{@code name}
  * 原样保留；变更经 {@link SdChangeSet#between} 派生（铁律 2 + 5）。本命令<b>不碰 unit 切片</b>——{@code

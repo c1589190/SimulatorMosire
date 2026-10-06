@@ -51,8 +51,8 @@ import java.util.UUID;
  * <p>★★ <b>preview / apply 共用同一份只读 pre-scan</b>：唯一语义落点在 {@link
  * RegionClearStructuresPlan#scan}；本类只做四件事——参数形状解析、读 base state、把 Plan 折成视图、组批与折叠结局。
  *
- * <p>★★ <b>候选识别（详见 Plan 类注）</b>：GOV 单位按"带 GovernmentFormation + 当刻有效位置在目标 Region hex 集"；决策人按 Gov 归属且
- * govUnit 在候选单位集；Region 只自动认 {@code sanitize(regionId) + "__P" + 两位以上数字} 且真子集的省， 其余相交 Region 只列
+ * <p>★★ <b>候选识别（详见 Plan 类注）</b>：GOV 单位按"带 GovernmentFormation + 当刻有效位置在目标 Region hex 集"；决策人按 Gov
+ * 归属且 govUnit 在候选单位集；Region 只自动认 {@code sanitize(regionId) + "__P" + 两位以上数字} 且真子集的省， 其余相交 Region 只列
  * preview + warning，必须显式 {@code regionIds} 才删。显式清单里不满足自动规则的项仍按显式执行， 但会在 warning 里逐条说明。
  *
  * <p>★★ <b>批内域拒不做前置预演</b>：{@code unit.DisbandUnit} 的"仍有下属 / 仍在命令链"约束由域层在批内真判；本工具 pre-scan 只对这两种形状给

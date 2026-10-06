@@ -44,7 +44,8 @@ class SocialHouseholdCodecTest {
 
     assertThat(back).isEqualTo(snapshot);
     assertThat(back.data().households()).as("家户位置/画像/成员表必须活过 JSON").isEqualTo(data.households());
-    assertThat(back.data().populationEvents()).as("事件表逐条（含负 GM_ADJUST）必须活过 JSON")
+    assertThat(back.data().populationEvents())
+        .as("事件表逐条（含负 GM_ADJUST）必须活过 JSON")
         .isEqualTo(data.populationEvents());
   }
 
@@ -71,9 +72,7 @@ class SocialHouseholdCodecTest {
   void byteLevelEncodingIsStableForHouseholdBearingSnapshots() {
     SocialSnapshot snapshot =
         new SocialSnapshot(
-            new StateRef(new BranchId("main"), new RevisionId(1)),
-            SimosTimestamp.of(0),
-            fixture());
+            new StateRef(new BranchId("main"), new RevisionId(1)), SimosTimestamp.of(0), fixture());
     String once = CODEC.encodeSnapshot(snapshot);
     String twice = CODEC.encodeSnapshot(CODEC.decodeSnapshot(once));
 
@@ -101,13 +100,18 @@ class SocialHouseholdCodecTest {
 
     PeopleLotId man = PeopleLotId.parse("codec-man");
     PeopleLotId woman = PeopleLotId.parse("codec-woman");
-    data = HouseholdBook.addMembers(data, hexHousehold, man, Sex.MALE, 100L, 20L * YEAR, 0L, "seed");
+    data =
+        HouseholdBook.addMembers(data, hexHousehold, man, Sex.MALE, 100L, 20L * YEAR, 0L, "seed");
     data =
         HouseholdBook.addMembers(
             data, hexHousehold, woman, Sex.FEMALE, 50L, 30L * YEAR, 0L, "seed");
+    // ★ ppm/tick 引擎首见余数键会给稳定的哈希初相位（0..999_999），低率（如 40 ppm）在 day 0 不会凑满一人。
+    //   夹具要把 BIRTH 事件钉进事件表，故用 1_000_000 ppm（每 1 人 1 tick 生 1 个）压过初相位；死亡给 0。
     HouseholdVitalRates table =
         new HouseholdVitalRates(
-            List.of(new HouseholdVitalRate(AgeBracket.ADULT.key(), Sex.FEMALE, 40L, 5L)));
+            List.of(
+                new HouseholdVitalRate(AgeBracket.ADULT.key(), Sex.FEMALE, 1_000_000L, 0L),
+                new HouseholdVitalRate(AgeBracket.ADULT.key(), Sex.MALE, 0L, 0L)));
     data = HouseholdBook.setVitalRates(data, hexHousehold, table, "率表");
     data = HouseholdBook.setVitalRates(data, unitHousehold, table, "乙率");
     data = HouseholdBook.removeMembers(data, hexHousehold, woman, 10L, "征收");
@@ -117,7 +121,8 @@ class SocialHouseholdCodecTest {
     assertThat(settled.populationEvents().values())
         .anySatisfy(
             event -> {
-              assertThat(event.type()).isEqualTo(io.mosire.simos.social.api.population.PopulationEventType.GM_ADJUST);
+              assertThat(event.type())
+                  .isEqualTo(io.mosire.simos.social.api.population.PopulationEventType.GM_ADJUST);
               assertThat(event.count()).isNegative();
             });
     assertThat(settled.populationEvents().values())

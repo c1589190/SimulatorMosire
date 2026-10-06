@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.codec.UnitCodec;
@@ -23,19 +24,22 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import org.junit.jupiter.api.Test;
 
 /**
- * ★★ <b>S3a 正式验收：Unit / GovFormation 的家户容纳</b>（架构 {@code
+ * ★★ <b>S3a/S3b 正式验收：Unit / 编制模块的家户容纳</b>（架构 {@code
  * docs/superpowers/specs/2026-10-09-s3a-unit-household-containment.md} §3、§7）。
  *
  * <p>覆盖四组判据：
  *
  * <ol>
  *   <li>第 17 组件 {@code households} 的构造语义（旧 16 参缺省空表、canonical 保序/拒重/冻结）；
- *   <li>{@link UnitState} 的两条跨单位守卫（同一家户两个 unit、unit id 与 household id 撞名）；
- *   <li>JSON/ChangeSet/快照往返保留 households（空表与非空表）；
- *   <li>{@link GovFormation#households()} 的旧 4 参缺省、canonical 语义、往返，以及 unit 侧拷贝点不丢家户。
+ *   <li>{@link UnitState} 的跨单位守卫（同一家户两个 unit、unit id 与 household id 撞名）；
+ *   <li>S3b 的家户配置容纳：GOV 单位恰含自己的政府家户，{@code GovernmentFormation.householdPosts}、 {@code
+ *       ArmyFormation.householdDuties}/{@code militaryPayPolicy} 三张表的键 ⊆ {@code Unit.households}，
+ *       以及 JSON/ChangeSet 往返保留这些配置（编制里<b>没有</b>重复的 households 组件——2026-10-09 唯一列表裁定）；
+ *   <li>Unit 侧拷贝点与 GOV 编制重建点不丢 households / 领导配置。
  * </ol>
  */
 class UnitHouseholdContainmentTest {
@@ -172,106 +176,218 @@ class UnitHouseholdContainmentTest {
         .hasMessageContaining(U2.value());
   }
 
-  // ── 3. GovFormation.households ────────────────────────────────────────
+  // ── 3. 编制配置的家户容纳（S3b；编制里已无重复 households 列表） ──────
 
+  /**
+   * ★★ GOV 单位必须恰含一个家户、且必须是它自己稳定 id 派生的 {@code hh-gov-<unitId>}（2026-10-09 唯一列表裁定）。
+   * 空表与"挂了别的政府家户"两条都要拒。
+   */
   @Test
-  void fourArgGovFormationDefaultsToEmptyHouseholds() {
-    GovFormation gov =
-        new GovFormation(Map.of(), OfficePolicy.defaults(), Optional.empty(), GovLevel.CENTRAL);
+  void govUnitMustContainExactlyItsOwnGovernmentHousehold() {
+    GovernmentFormation gov = gov(Map.of(), Optional.empty(), GovernmentLevel.CENTRAL);
 
-    assertThat(gov.households()).as("旧 4 参构造器没有下辖家户来源 ⇒ 空表").isEmpty();
+    Unit withoutGovernmentHousehold = unit(U1, List.of(), Optional.of(gov));
+    assertThatThrownBy(() -> new UnitState(Map.of(U1, withoutGovernmentHousehold)))
+        .as("GOV 编制但不含政府家户 ⇒ 拒")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("必须恰含一个政府家户")
+        .hasMessageContaining("hh-gov-u-1");
+
+    Unit withForeignGovernmentHousehold =
+        unit(U1, List.of(GovernmentHouseholds.of("other-gov")), Optional.of(gov));
+    assertThatThrownBy(() -> new UnitState(Map.of(U1, withForeignGovernmentHousehold)))
+        .as("政府家户只能挂在它自己的 GOV 单位上 ⇒ 拒")
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("必须恰含一个政府家户")
+        .hasMessageContaining("hh-gov-u-1");
   }
 
+  /** ★ S3b：{@code governmentPostsOfHousehold} 的键必须 ⊆ 本单位的 {@code households}（否则配置与人口脱钩）。 */
   @Test
-  void canonicalGovFormationKeepsOrderRejectsDuplicatesAndFreezes() {
-    List<HouseholdId> input = new ArrayList<>(List.of(HH_B, HH_A));
-    GovFormation gov = gov(input);
+  void governmentPostsKeysMustBelongToUnitHouseholds() {
+    HouseholdId outsider = HouseholdId.parse("hh-outsider");
+    GovernmentFormation gov =
+        gov(
+            Map.of(
+                outsider,
+                new GovernmentPostOfHousehold(
+                    outsider, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true)),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL);
+    Unit bad = unit(U1, List.of(govHouseholdOf(U1)), Optional.of(gov));
 
-    assertThat(gov.households()).containsExactly(HH_B, HH_A);
-    assertThatThrownBy(() -> gov.households().add(HouseholdId.parse("hh-c")))
-        .as("返回的列表必须冻结")
-        .isInstanceOf(UnsupportedOperationException.class);
-    input.add(HouseholdId.parse("hh-c"));
-    assertThat(gov.households()).as("防御性拷贝").containsExactly(HH_B, HH_A);
-
-    assertThatThrownBy(() -> gov(List.of(HH_A, HH_A)))
+    assertThatThrownBy(() -> new UnitState(Map.of(U1, bad)))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("households 不得有重复");
-    assertThatThrownBy(() -> gov(Arrays.asList(HH_A, null)))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("households 的元素不得为 null");
+        .hasMessageContaining("householdPosts")
+        .hasMessageContaining("households")
+        .hasMessageContaining(outsider.value());
   }
 
-  /** GovFormation JSON 往返（经 Unit 编制线格式）：下辖家户逐值保序。 */
+  /** 领导配置与 households 一起过 JSON 快照 / 变更集往返，且 {@code householdPosts} 用旧线格式键落盘。 */
   @Test
-  void govFormationSnapshotRoundTripPreservesHouseholds() {
-    GovFormation gov = gov(List.of(HH_B, HH_A));
-    UnitState state = new UnitState(Map.of(U1, unit(U1, List.of(), Optional.of(gov))));
+  void governmentPostsSurviveSnapshotAndChangeSetRoundTrip() {
+    HouseholdId member = HouseholdId.parse("hh-member");
+    GovernmentPostOfHousehold post =
+        new GovernmentPostOfHousehold(member, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true);
+    GovernmentFormation gov =
+        gov(orderedPosts(Map.entry(member, post)), Optional.empty(), GovernmentLevel.CENTRAL);
+    UnitState state =
+        new UnitState(Map.of(U1, unit(U1, List.of(govHouseholdOf(U1), member), Optional.of(gov))));
 
     String json = CODEC.encodeSnapshot(new UnitSnapshot(REF, T0, state));
+    assertThat(json).as("领导配置的线格式键仍钉在旧名 householdPosts（零迁移）").contains("\"householdPosts\"");
     UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(json);
-    GovFormation decoded = (GovFormation) back.state().units().get(U1).module().orElseThrow();
+    assertThat(back.state()).as("整份状态逐值往返").isEqualTo(state);
+    GovernmentFormation decoded =
+        (GovernmentFormation) back.state().units().get(U1).module().orElseThrow();
+    assertThat(decoded.governmentPostsOfHousehold()).containsExactly(Map.entry(member, post));
+    assertThat(back.state().units().get(U1).households())
+        .as("GOV 家户与领导配置家户都往返保留")
+        .containsExactly(govHouseholdOf(U1), member);
 
-    assertThat(json).contains("\"@class\":\"gov\"");
-    assertThat(decoded.households()).containsExactly(HH_B, HH_A);
-    assertThat(decoded).as("整个 GovFormation 逐值往返").isEqualTo(gov);
-  }
-
-  /** GovFormation 的 households 变化必须进变更集，且过线后 apply 逐值重建 target。 */
-  @Test
-  void govFormationChangeSetRoundTripPreservesHouseholds() {
-    UnitState base = stateWithGov(U1, gov(List.of(HH_A)));
-    UnitState target = stateWithGov(U1, gov(List.of(HH_B, HH_A)));
-
-    UnitChangeSet changeSet = UnitChangeSet.between(base, target);
-    String json = CODEC.encodeChangeSet(changeSet);
-    UnitState applied = UnitChangeSet.apply((UnitChangeSet) CODEC.decodeChangeSet(json), base);
-
+    // 变更集：追加第二条领导配置 + 对应家户，过线后逐值重建。
+    HouseholdId member2 = HouseholdId.parse("hh-member-2");
+    GovernmentPostOfHousehold post2 =
+        new GovernmentPostOfHousehold(member2, StaffRole.YAMEN, GovernmentLevel.PROVINCE, false);
+    GovernmentFormation gov2 =
+        gov(
+            orderedPosts(Map.entry(member, post), Map.entry(member2, post2)),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL);
+    UnitState target =
+        new UnitState(
+            Map.of(U1, unit(U1, List.of(govHouseholdOf(U1), member, member2), Optional.of(gov2))));
+    UnitChangeSet changeSet = UnitChangeSet.between(state, target);
     assertThat(changeSet.isEmpty()).isFalse();
-    assertThat(applied).isEqualTo(target);
-    assertThat(((GovFormation) applied.units().get(U1).module().orElseThrow()).households())
-        .containsExactly(HH_B, HH_A);
+    UnitState applied =
+        UnitChangeSet.apply(
+            (UnitChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(changeSet)), state);
+    assertThat(applied).as("领导配置变更也必须过线并逐值重建（铁律 5）").isEqualTo(target);
+    assertThat(
+            ((GovernmentFormation) applied.units().get(U1).module().orElseThrow())
+                .governmentPostsOfHousehold())
+        .containsExactly(Map.entry(member, post), Map.entry(member2, post2));
   }
 
-  /** GOV 的三个拷贝点（policy/superior/staff）必须原样带过 households（漏传 = 静默丢下辖家户）。 */
+  /** GOV 的两个重建点（policy / superior）必须原样带过领导配置与 households（漏传 = 静默丢配置）。 */
   @Test
-  void govRebuildPointsPreserveHouseholds() {
-    GovFormation gov = gov(List.of(HH_B, HH_A));
-    UnitState base = stateWithGov(U1, gov);
+  void govRebuildPointsPreserveGovernmentPostsAndHouseholds() {
+    HouseholdId member = HouseholdId.parse("hh-member");
+    GovernmentPostOfHousehold post =
+        new GovernmentPostOfHousehold(member, StaffRole.SCRIBE, GovernmentLevel.PROVINCE, false);
+    GovernmentFormation gov =
+        gov(orderedPosts(Map.entry(member, post)), Optional.empty(), GovernmentLevel.PROVINCE);
+    UnitState base =
+        new UnitState(Map.of(U1, unit(U1, List.of(govHouseholdOf(U1), member), Optional.of(gov))));
 
-    GovFormation afterPolicy =
-        (GovFormation)
-            UnitOperations.setGovPolicy(
-                    base,
-                    U1,
-                    Optional.of(1L),
-                    Optional.empty(),
-                    Optional.of(2L),
-                    Optional.empty(),
-                    Optional.empty())
-                .units()
-                .get(U1)
-                .module()
-                .orElseThrow();
-    assertThat(afterPolicy.households()).as("setGovPolicy 保留下辖家户").containsExactly(HH_B, HH_A);
+    UnitState afterPolicyState =
+        UnitOperations.setGovPolicy(
+            base,
+            U1,
+            Optional.of(1L),
+            Optional.empty(),
+            Optional.of(2L),
+            Optional.empty(),
+            Optional.empty());
+    GovernmentFormation afterPolicy =
+        (GovernmentFormation) afterPolicyState.units().get(U1).module().orElseThrow();
+    assertThat(afterPolicy.governmentPostsOfHousehold())
+        .as("setGovPolicy 保留下辖领导配置")
+        .containsExactly(Map.entry(member, post));
+    assertThat(afterPolicyState.units().get(U1).households())
+        .as("setGovPolicy 保留 households")
+        .containsExactly(govHouseholdOf(U1), member);
 
-    GovFormation afterSuperior =
-        (GovFormation)
-            UnitOperations.setGovSuperior(base, U1, Optional.empty())
-                .units()
-                .get(U1)
-                .module()
-                .orElseThrow();
-    assertThat(afterSuperior.households()).as("setGovSuperior 保留下辖家户").containsExactly(HH_B, HH_A);
+    UnitState afterSuperiorState = UnitOperations.setGovSuperior(base, U1, Optional.empty());
+    GovernmentFormation afterSuperior =
+        (GovernmentFormation) afterSuperiorState.units().get(U1).module().orElseThrow();
+    assertThat(afterSuperior.governmentPostsOfHousehold())
+        .as("setGovSuperior 保留下辖领导配置")
+        .containsExactly(Map.entry(member, post));
+    assertThat(afterSuperiorState.units().get(U1).households())
+        .as("setGovSuperior 保留 households")
+        .containsExactly(govHouseholdOf(U1), member);
+  }
 
-    GovFormation afterStaff =
-        (GovFormation)
-            UnitOperations.recruitStaff(base, U1, StaffRole.SCRIBE, 2L)
-                .units()
-                .get(U1)
-                .module()
-                .orElseThrow();
-    assertThat(afterStaff.households()).as("recruitStaff 保留下辖家户").containsExactly(HH_B, HH_A);
+  /** ★ S3b：领导配置非空 ⇒ {@code staff} 只是家户投影，直改 staff 必须具名拒（不制造第二本权威）。 */
+  @Test
+  void staffEditsAreRejectedWhenPostsMakeStaffAProjection() {
+    HouseholdId member = HouseholdId.parse("hh-member");
+    GovernmentPostOfHousehold post =
+        new GovernmentPostOfHousehold(member, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true);
+    GovernmentFormation gov =
+        gov(orderedPosts(Map.entry(member, post)), Optional.empty(), GovernmentLevel.CENTRAL);
+    UnitState base =
+        new UnitState(Map.of(U1, unit(U1, List.of(govHouseholdOf(U1), member), Optional.of(gov))));
+
+    assertThatThrownBy(() -> UnitOperations.recruitStaff(base, U1, StaffRole.YAMEN, 1L))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("householdPosts")
+        .hasMessageContaining("投影");
+    assertThatThrownBy(() -> UnitOperations.dismissStaff(base, U1, StaffRole.SCRIBE, 1L))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("householdPosts")
+        .hasMessageContaining("投影");
+  }
+
+  /** ★ S3b：Army 的军官配置键必须 ⊆ 本单位 households。 */
+  @Test
+  void armyDutyKeysMustBelongToUnitHouseholds() {
+    HouseholdId outsider = HouseholdId.parse("hh-outsider");
+    MilitaryDutyOfHousehold duty =
+        new MilitaryDutyOfHousehold(outsider, MilitaryDutyKind.OFFICER, "百人将", Optional.empty());
+    ArmyFormation army = new ArmyFormation(Optional.empty(), "garrison", Map.of(outsider, duty));
+    Unit bad = unit(U1, List.of(), Optional.of(army));
+
+    assertThatThrownBy(() -> new UnitState(Map.of(U1, bad)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("householdDuties")
+        .hasMessageContaining(outsider.value());
+  }
+
+  /** ★ P4b：{@code militaryPayPolicy} 三张表的键必须 ⊆ 本单位 households（"给不存在于本单位的人发钱"具名拒）。 */
+  @Test
+  void armyPayPolicyKeysMustBelongToUnitHouseholds() {
+    HouseholdId member = HouseholdId.parse("hh-member");
+    HouseholdId outsider = HouseholdId.parse("hh-outsider");
+    MilitaryPayPolicy policy =
+        new MilitaryPayPolicy(
+            30L, 0L, 0L, OptionalLong.empty(), Map.of(outsider, 5L), Map.of(), Map.of());
+    ArmyFormation army = new ArmyFormation(Optional.empty(), "garrison", Map.of(), policy);
+    Unit bad = unit(U1, List.of(member), Optional.of(army));
+
+    assertThatThrownBy(() -> new UnitState(Map.of(U1, bad)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("grainPerHouseholdPerCycle")
+        .hasMessageContaining(outsider.value());
+  }
+
+  /** Army 的军官配置 + 军俸政策一起过 JSON 快照往返（配置不是第二本人头账，但必须逐值不丢）。 */
+  @Test
+  void armyHouseholdConfigsRoundTripThroughSnapshot() {
+    HouseholdId member = HouseholdId.parse("hh-member");
+    MilitaryDutyOfHousehold duty =
+        new MilitaryDutyOfHousehold(member, MilitaryDutyKind.OFFICER, "百人将", Optional.empty());
+    MilitaryPayPolicy policy =
+        new MilitaryPayPolicy(
+            30L,
+            0L,
+            0L,
+            OptionalLong.empty(),
+            Map.of(member, 5L),
+            Map.of(member, 2L),
+            Map.of(member, 7L));
+    ArmyFormation army =
+        new ArmyFormation(Optional.empty(), "garrison", Map.of(member, duty), policy);
+    UnitState state = new UnitState(Map.of(U1, unit(U1, List.of(member), Optional.of(army))));
+
+    String json = CODEC.encodeSnapshot(new UnitSnapshot(REF, T0, state));
+    assertThat(json).contains("\"householdDuties\"").contains("\"militaryPayPolicy\"");
+    UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(json);
+    assertThat(back.state()).as("整份状态逐值往返").isEqualTo(state);
+    ArmyFormation decoded = (ArmyFormation) back.state().units().get(U1).module().orElseThrow();
+    assertThat(decoded.militaryDutiesOfHousehold()).containsExactly(Map.entry(member, duty));
+    assertThat(decoded.militaryPayPolicy()).isEqualTo(policy);
   }
 
   // ── 4. Unit 侧拷贝点不丢 households ───────────────────────────────────
@@ -313,6 +429,11 @@ class UnitHouseholdContainmentTest {
     assertThat(unit.households())
         .as("拷贝点漏传 before.households() ⇒ 家户被静默丢")
         .containsExactly(HH_B, HH_A);
+  }
+
+  /** 该 GOV 单位稳定 id 派生的政府家户 {@code hh-gov-<unitId>}（唯一列表裁定）。 */
+  private static HouseholdId govHouseholdOf(UnitId id) {
+    return GovernmentHouseholds.of(id.value());
   }
 
   /** canonical 17 参 Unit（第 17 组件 households 显式给，其余取固定夹具值）。 */
@@ -366,16 +487,21 @@ class UnitHouseholdContainmentTest {
         Map.of("回合", "map:Map1"));
   }
 
-  private static GovFormation gov(List<HouseholdId> households) {
-    return new GovFormation(
-        Map.of(StaffRole.SCRIBE, 1L),
-        households,
-        OfficePolicy.defaults(),
-        Optional.empty(),
-        GovLevel.CENTRAL);
+  /** GOV 编制：{@code staff} 空、policy 取缺省；领导配置与层级逐值给。 */
+  private static GovernmentFormation gov(
+      Map<HouseholdId, GovernmentPostOfHousehold> posts,
+      Optional<UnitId> superior,
+      GovernmentLevel level) {
+    return new GovernmentFormation(Map.of(), posts, OfficePolicy.defaults(), superior, level);
   }
 
-  private static UnitState stateWithGov(UnitId id, GovFormation gov) {
-    return new UnitState(Map.of(id, unit(id, List.of(), Optional.of(gov))));
+  @SafeVarargs
+  private static Map<HouseholdId, GovernmentPostOfHousehold> orderedPosts(
+      Map.Entry<HouseholdId, GovernmentPostOfHousehold>... entries) {
+    Map<HouseholdId, GovernmentPostOfHousehold> posts = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, GovernmentPostOfHousehold> entry : entries) {
+      posts.put(entry.getKey(), entry.getValue());
+    }
+    return posts;
   }
 }

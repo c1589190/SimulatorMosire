@@ -19,8 +19,7 @@ class TransportTeamProbeTest {
     initialPrice.put(Good.GRAIN, 100L);
     initialPrice.put(Good.CLOTH, 200L);
     initialPrice.put(Good.FIBER, 100L);
-    Params params =
-        new Params(200L, 100L, 100L, 10_000L, 0L, 0L, 500L, 0L, 50L, 50L, initialPrice);
+    Params params = new Params(200L, 100L, 100L, 10_000L, 0L, 0L, 500L, 0L, 50L, 50L, initialPrice);
     ProbeEconomy economy = new ProbeEconomy(params);
     economy.addHex("H0-grain", 0, 0);
     economy.addHex("H2-buyer", 2, 0);
@@ -36,8 +35,7 @@ class TransportTeamProbeTest {
     economy.addHousehold(carrier);
 
     TransportTeam team =
-        economy.addTransportTeam(
-            new TransportTeam("T1", carrier, "H0-grain", "H2-buyer", 100L));
+        economy.addTransportTeam(new TransportTeam("T1", carrier, "H0-grain", "H2-buyer", 100L));
 
     RoundResult round = economy.runRound(1);
 
@@ -55,8 +53,7 @@ class TransportTeamProbeTest {
     initialPrice.put(Good.GRAIN, 100L);
     initialPrice.put(Good.CLOTH, 200L);
     initialPrice.put(Good.FIBER, 100L);
-    Params params =
-        new Params(200L, 100L, 100L, 10_000L, 0L, 0L, 500L, 0L, 50L, 50L, initialPrice);
+    Params params = new Params(200L, 100L, 100L, 10_000L, 0L, 0L, 500L, 0L, 50L, 50L, initialPrice);
     ProbeEconomy economy = new ProbeEconomy(params);
     economy.addHex("H0-grain", 0, 0);
     economy.addHex("H2-buyer", 2, 0);
@@ -70,8 +67,7 @@ class TransportTeamProbeTest {
     economy.addHousehold(grainSeller);
     economy.addHousehold(buyer);
     economy.addHousehold(carrier);
-    economy.addTransportTeam(
-        new TransportTeam("T1", carrier, "H0-grain", "H2-buyer", 10L));
+    economy.addTransportTeam(new TransportTeam("T1", carrier, "H0-grain", "H2-buyer", 10L));
 
     RoundResult round = economy.runRound(1);
 

@@ -5,13 +5,12 @@ import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.relation.ProductionRules;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
@@ -19,6 +18,7 @@ import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OperatorCondition.IndustryStatus;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -523,8 +523,8 @@ final class OperatorSettlement {
    * <p>★★ <b>为什么自用品要"覆盖全部投入"而不是"有正数"</b>：只要有一种投入覆盖不到，下一周期就开不了工；把 {@code Σ min(库存, 需求)} 与 {@code Σ
    * 需求} 比较，两者相等当且仅当每种投入都覆盖到 —— 与 {@link #selfUsableOf} 同一口径。
    *
-   * <p>★★ <b>2026-10-09 Batch 3：口粮保留额来源 = 本户当前注入的 {@code naturalNeeds[grain]} 逐日前瞻</b>
-   * （{@link HouseholdEconomy#expectedNeedMilli(io.mosire.simos.economy.api.id.CommodityId, long)}），
+   * <p>★★ <b>2026-10-09 Batch 3：口粮保留额来源 = 本户当前注入的 {@code naturalNeeds[grain]} 逐日前瞻</b> （{@link
+   * HouseholdEconomy#expectedNeedMilli(io.mosire.simos.economy.api.id.CommodityId, long)}），
    * <b>不再</b>按 {@code population × 人均口粮定额} 现算；窗口沿用原来的 industry.cycleDays() 与
    * SELF_PROVISION_GUARD_DAYS 不变。
    *

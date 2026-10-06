@@ -1,6 +1,7 @@
 package io.mosire.simos.social.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialLog;
 import io.mosire.simos.social.api.household.HouseholdLocation;
@@ -8,7 +9,6 @@ import io.mosire.simos.social.api.household.HouseholdProfile;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.HouseholdVitalRates;
-import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.population.PopulationGroup;
@@ -39,20 +39,19 @@ import java.util.Objects;
  *
  * <ul>
  *   <li>条目带 {@code household} 字段 ⇒ 挂进该家户（{@code households[]} 里声明的新家户，或已存在的家户）；
- *   <li>条目不带 ⇒ 若该批次已在某个家户里（整组覆盖路径）保持原归属；否则按 {@code {q,r}} 归位——该格恰有一个家户
- *       就并进去，否则复用/新建 {@code hh:hex:<q>_<r>}（零人口格也落家户，见 {@code PopulationSeeder}）；
+ *   <li>条目不带 ⇒ 若该批次已在某个家户里（整组覆盖路径）保持原归属；否则按 {@code {q,r}} 归位——该格恰有一个家户 就并进去，否则复用/新建 {@code
+ *       hh:hex:<q>_<r>}（零人口格也落家户，见 {@code PopulationSeeder}）；
  *   <li>同一批次被声明的家户与既有家户**不一致** ⇒ 拒（不做静默迁移；迁移是 {@code HouseholdBook.transferMembers} 的事）。
  * </ul>
  *
  * <p>★ **一条命令 = 一条 revision**：全部 entries 由同一个 {@link SocialChangeSet} 承载（{@link
  * SocialChangeSet#between} 逐组件比一次），批内不存在"落了一半"的中间态。
  *
- * <p>★ **覆盖语义**：同一 id 已在状态里 ⇒ **整条替换**批次的人数/年龄/压力（成员关系不变）；
- * {@code households[]} 里声明的家户若已存在 ⇒ 更新位置/画像（成员表保持并集，不因本次载荷丢人）。
+ * <p>★ **覆盖语义**：同一 id 已在状态里 ⇒ **整条替换**批次的人数/年龄/压力（成员关系不变）； {@code households[]} 里声明的家户若已存在 ⇒
+ * 更新位置/画像（成员表保持并集，不因本次载荷丢人）。
  *
- * <p>★ **坏载荷与域规则违反都折成 {@code Rejected}**（照本模块惯例，见 {@link SocialPayloads}）：空 entries、
- * {@code sex} 不在词表里、id 空白各抛 {@link IllegalArgumentException}；跨组件归位冲突由 {@code SocialData}
- * 构造期校验拒。
+ * <p>★ **坏载荷与域规则违反都折成 {@code Rejected}**（照本模块惯例，见 {@link SocialPayloads}）：空 entries、 {@code sex}
+ * 不在词表里、id 空白各抛 {@link IllegalArgumentException}；跨组件归位冲突由 {@code SocialData} 构造期校验拒。
  */
 public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
 
@@ -79,8 +78,7 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
     try {
       JsonNode payload = SocialPayloads.parse(payloadJson);
       long nowTick = state.meta().timestamp().tick();
-      SocialPayloads.GroupEntries entries =
-          SocialPayloads.requireGroupEntries(payload, nowTick);
+      SocialPayloads.GroupEntries entries = SocialPayloads.requireGroupEntries(payload, nowTick);
       Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>(base.groups());
       groups.putAll(entries.groups()); // ★ 同 id 覆盖（见类注的覆盖语义）
       Map<HouseholdId, Household> households = new LinkedHashMap<>(base.households());
@@ -128,7 +126,13 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
           HouseholdId existingOwner = existingOwners.get(0);
           if (declared != null && !declared.equals(existingOwner)) {
             throw new IllegalArgumentException(
-                "批次 " + lot + " 已在家户 " + existingOwner + "，不能改挂到 " + declared + "（迁移请走 transferMembers）");
+                "批次 "
+                    + lot
+                    + " 已在家户 "
+                    + existingOwner
+                    + "，不能改挂到 "
+                    + declared
+                    + "（迁移请走 transferMembers）");
           }
           Household household = households.get(existingOwner);
           requireLocationMatches(household, at, lot);
@@ -173,16 +177,14 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
   }
 
   /**
-   * 无 {@code household} 字段时的自动归位：该格恰有一个家户 ⇒ 并入；否则复用/新建 {@code hh:hex:<q>_<r>}。
-   * （创世主路径始终显式给 {@code household}；这里只服务旧载荷/单条命令的向后兼容。）
+   * 无 {@code household} 字段时的自动归位：该格恰有一个家户 ⇒ 并入；否则复用/新建 {@code hh:hex:<q>_<r>}。 （创世主路径始终显式给 {@code
+   * household}；这里只服务旧载荷/单条命令的向后兼容。）
    */
-  private static HouseholdId autoHouseholdId(
-      Map<HouseholdId, Household> households, HexCoord at) {
+  private static HouseholdId autoHouseholdId(Map<HouseholdId, Household> households, HexCoord at) {
     HouseholdId synthetic = HouseholdId.parse("hh:hex:" + at.q() + "_" + at.r());
     List<Household> atHex = new ArrayList<>();
     for (Household household : households.values()) {
-      if (household.location() instanceof HouseholdLocation.Hex hex
-          && hex.hex().equals(at)) {
+      if (household.location() instanceof HouseholdLocation.Hex hex && hex.hex().equals(at)) {
         atHex.add(household);
       }
     }
@@ -204,7 +206,8 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
     SocialLog.household()
         .info(
             "event=HOUSEHOLD_CREATED "
-                + SocialLog.kv("id", synthetic, "location", "HEX:" + at, "source", "social.SeedGroups(auto)"));
+                + SocialLog.kv(
+                    "id", synthetic, "location", "HEX:" + at, "source", "social.SeedGroups(auto)"));
     return synthetic;
   }
 

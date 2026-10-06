@@ -173,7 +173,10 @@ final class ActorPayloads {
     ActorMeta meta = new ActorMeta(mapId, at.tick(), rulesVersion);
     // ★ 两张表 + 元信息**批量**装配（`ActorData` 的 bulk wither 的调用面就在这里，见裁定 R-ae / R-ah：Task 8 用不到就删，
     //   而本任务正是它们要等的那条路）："键从值派生"的校验由 ActorData 的构造期守卫统一把守，本类不自己拼键。
-    return ActorData.empty().withMeta(Optional.of(meta)).withActors(actors).withInventories(inventories);
+    return ActorData.empty()
+        .withMeta(Optional.of(meta))
+        .withActors(actors)
+        .withInventories(inventories);
   }
 
   // ── actor.AdjustAccounts（净增量账，阶段 6 / 计划 §6.2）────────────────────────────
@@ -202,8 +205,8 @@ final class ActorPayloads {
    * 解析 {@code actor.AdjustAccounts} 的载荷（形状见 {@code AdjustAccountsHandler} 的类注）： {@code
    * entries[{household, goods?, money?}...]}。
    *
-   * <p>★ <b>本层只判形状 / 类型 / 词表 / 0 增量 / 同一家户重复</b>；"负增量是否使余额 &lt; 0 / 侵占冻结额、
-   * 缺账能否新建"是<b>数值语义</b>，由 {@code AdjustAccountsHandler} 判（本层不重复实现）。
+   * <p>★ <b>本层只判形状 / 类型 / 词表 / 0 增量 / 同一家户重复</b>；"负增量是否使余额 &lt; 0 / 侵占冻结额、 缺账能否新建"是<b>数值语义</b>，由
+   * {@code AdjustAccountsHandler} 判（本层不重复实现）。
    *
    * @throws IllegalArgumentException 形状/类型/词表/0 增量/重复任一不合法（消息带家户、维度与数字）
    */
@@ -222,13 +225,12 @@ final class ActorPayloads {
       }
       HouseholdId household;
       try {
-        household = AccountPayloads.household(entry, "entries[" + index + "].household");
+        household = AccountPayloads.household(entry, "household");
       } catch (IllegalArgumentException e) {
         throw new IllegalArgumentException("entries[" + index + "] 的家户不合法: " + e.getMessage(), e);
       }
       if (!seen.add(household)) {
-        throw new IllegalArgumentException(
-            "同一份载荷里账目重复：household=" + household + "（同一家户只能出现一次）");
+        throw new IllegalArgumentException("同一份载荷里账目重复：household=" + household + "（同一家户只能出现一次）");
       }
       Map<CommodityId, Long> goods = deltas(entry, index, household, "goods", CommodityId::parse);
       Map<CurrencyId, Long> money = deltas(entry, index, household, "money", CurrencyId::parse);
@@ -252,7 +254,11 @@ final class ActorPayloads {
    * </ul>
    */
   private static <A> Map<A, Long> deltas(
-      JsonNode entry, int index, HouseholdId household, String dimension, Function<String, A> idParser) {
+      JsonNode entry,
+      int index,
+      HouseholdId household,
+      String dimension,
+      Function<String, A> idParser) {
     Map<A, Long> parsed = new LinkedHashMap<>();
     JsonNode node = optionalObject(entry, dimension);
     if (node == null) {
@@ -327,7 +333,7 @@ final class ActorPayloads {
       }
       HouseholdId household;
       try {
-        household = AccountPayloads.household(entry, "entries[" + index + "].household");
+        household = AccountPayloads.household(entry, "household");
       } catch (IllegalArgumentException e) {
         throw new IllegalArgumentException("entries[" + index + "] 的家户不合法: " + e.getMessage(), e);
       }
@@ -462,8 +468,7 @@ final class ActorPayloads {
       throw new IllegalArgumentException("库存行不合法: " + e.getMessage(), e);
     }
     if (!declaredHouseholds.contains(household)) {
-      throw new IllegalArgumentException(
-          "库存的 household 既不在载荷的家户集里、也不在现有状态里（悬空家户）: " + household);
+      throw new IllegalArgumentException("库存的 household 既不在载荷的家户集里、也不在现有状态里（悬空家户）: " + household);
     }
     JsonNode balances = optionalObject(node, "balances");
     if (balances == null) {

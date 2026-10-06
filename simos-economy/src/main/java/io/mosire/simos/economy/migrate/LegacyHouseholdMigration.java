@@ -10,12 +10,12 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.ProductionRules;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.EconomyMeta;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -50,13 +50,13 @@ import java.util.Set;
  *       {@code 值内 activity} 也是旧串。能按 {@code (industry, operator)}（条件按 {@code industry}）解析到<b>唯一</b>
  *       unit 的就改写； <b>解析不到 unit 的条目丢弃</b>（没有 unit = 这个产业本周期没有任何生产活动 ⇒ 行为与旧档"产能 0"逐值等价）； <b>解析到多个
  *       unit 的抛</b>（混合态说不清哪个，fail-closed，不猜）；
- *   <li><b>配额 activity 改写</b>：旧 {@code HouseholdLaborCommitment.activity} 是活动标签（{@code farm}/{@code weave}，
- *       或旧档直接写 actor id）⇒ 按 {@code actor.id()} 当产业串 + 唯一 unit 改写为 unit id。解析不到（自由家户劳动， 没有对应产业）⇒
- *       原样保留（它本来就不喂任何生产，旧档同义）。
+ *   <li><b>配额 activity 改写</b>：旧 {@code HouseholdLaborCommitment.activity} 是活动标签（{@code farm}/{@code
+ *       weave}， 或旧档直接写 actor id）⇒ 按 {@code actor.id()} 当产业串 + 唯一 unit 改写为 unit id。解析不到（自由家户劳动，
+ *       没有对应产业）⇒ 原样保留（它本来就不喂任何生产，旧档同义）。
  * </ol>
  *
- * <p>★★ <b>R3B.1 的实物份额口径（旧档迁移）</b>：旧档已有 UseRight 时 codec 已一对一整形成 OwnershipStake（只原样搬运）； 旧档没有 useRights
- * 但有 {@code Industry.capacity} 时，由 <b>EconomyData 构造期归一化</b>（Timeline 直读旧 changeset 的兜底）或
+ * <p>★★ <b>R3B.1 的实物份额口径（旧档迁移）</b>：旧档已有 UseRight 时 codec 已一对一整形成 OwnershipStake（只原样搬运）； 旧档没有
+ * useRights 但有 {@code Industry.capacity} 时，由 <b>EconomyData 构造期归一化</b>（Timeline 直读旧 changeset 的兜底）或
  * <b>codec/载荷边缘</b>（节点 reshape）在构造新形状之前物化整额 OWNED 份额并合成默认 unit。★ 这些兼容位（B.2b 起又挂回 {@code Industry}
  * 末尾，只读）在本迁移器<b>之前</b>已被归一化清成中性，故本迁移器看不到 {@code capacity}； 本迁移器只做键/activity 对齐，不再从 {@code
  * OwnershipStake} 反推 unit（防停产复活）。
@@ -141,7 +141,8 @@ public final class LegacyHouseholdMigration {
           if (laborCommitment == null) {
             continue;
           }
-          ProductionUnitId resolved = resolveLaborCommitmentUnit(laborCommitment, byIndustry, units.keySet());
+          ProductionUnitId resolved =
+              resolveLaborCommitmentUnit(laborCommitment, byIndustry, units.keySet());
           if (resolved != null) {
             ProductionProcess unit = units.get(resolved);
             if (!resolved.value().equals(laborCommitment.activity())
@@ -165,8 +166,10 @@ public final class LegacyHouseholdMigration {
       Map<ProductionUnitId, ProductionRules> relations,
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       Optional<EconomyMeta> meta) {
-    Map<LaborAllocationId, HouseholdLaborCommitment> migratedLaborCommitments = new LinkedHashMap<>();
-    for (Map.Entry<LaborAllocationId, HouseholdLaborCommitment> laborCommitmentEntry : laborCommitments.entrySet()) {
+    Map<LaborAllocationId, HouseholdLaborCommitment> migratedLaborCommitments =
+        new LinkedHashMap<>();
+    for (Map.Entry<LaborAllocationId, HouseholdLaborCommitment> laborCommitmentEntry :
+        laborCommitments.entrySet()) {
       HouseholdLaborCommitment laborCommitment = laborCommitmentEntry.getValue();
       Optional<HexCoord> maybeHex = industryHexOf(industries, laborCommitment.actor());
       if (maybeHex.isEmpty()) {
@@ -187,7 +190,8 @@ public final class LegacyHouseholdMigration {
         migratedLaborCommitments.put(laborCommitmentEntry.getKey(), laborCommitment);
         continue;
       }
-      List<HouseholdEconomy> candidateHouseholdEconomies = candidateHouseholdEconomies(householdEconomies, hex, residence);
+      List<HouseholdEconomy> candidateHouseholdEconomies =
+          candidateHouseholdEconomies(householdEconomies, hex, residence);
       if (candidateHouseholdEconomies.isEmpty()) {
         throw new IllegalStateException(
             "旧档迁移失败：配额 "
@@ -206,11 +210,13 @@ public final class LegacyHouseholdMigration {
         weights[i] = candidateHouseholdEconomies.get(i).population();
         totalWeight = Math.addExact(totalWeight, weights[i]);
       }
-      long[] parts = ProportionalSplit.byDenominator(laborCommitment.laborMilli(), weights, totalWeight);
+      long[] parts =
+          ProportionalSplit.byDenominator(laborCommitment.laborMilli(), weights, totalWeight);
       IndustryId industry = industryIdOf(industries, laborCommitment.actor(), hex);
       for (int i = 0; i < candidateHouseholdEconomies.size(); i++) {
         HouseholdId household = candidateHouseholdEconomies.get(i).id();
-        LaborAllocationId newId = HouseholdLaborCommitment.idOf(industry, laborCommitment.group(), household);
+        LaborAllocationId newId =
+            HouseholdLaborCommitment.idOf(industry, laborCommitment.group(), household);
         if (migratedLaborCommitments.putIfAbsent(
                 newId,
                 new HouseholdLaborCommitment(
@@ -248,7 +254,8 @@ public final class LegacyHouseholdMigration {
         canonicalizeRelations(relations, migratedUnits, industries);
     Map<ProductionUnitId, OperatorCondition> migratedConditions =
         canonicalizeConditions(operatorConditions, migratedUnits, industries);
-    migratedLaborCommitments = canonicalizeLaborCommitmentActivities(migratedLaborCommitments, migratedUnits);
+    migratedLaborCommitments =
+        canonicalizeLaborCommitmentActivities(migratedLaborCommitments, migratedUnits);
     Optional<EconomyMeta> migratedMeta = migrateMeta(meta);
     return new Result(
         migratedUnits,
@@ -363,16 +370,20 @@ public final class LegacyHouseholdMigration {
   }
 
   /** ★★ <b>配额 activity 对齐</b>：能解析到唯一 unit 的改写为 unit id；解析不到的自由家户劳动原样保留。 */
-  private static Map<LaborAllocationId, HouseholdLaborCommitment> canonicalizeLaborCommitmentActivities(
-      Map<LaborAllocationId, HouseholdLaborCommitment> rawLaborCommitment, Map<ProductionUnitId, ProductionProcess> units) {
+  private static Map<LaborAllocationId, HouseholdLaborCommitment>
+      canonicalizeLaborCommitmentActivities(
+          Map<LaborAllocationId, HouseholdLaborCommitment> rawLaborCommitment,
+          Map<ProductionUnitId, ProductionProcess> units) {
     if (rawLaborCommitment == null) {
       return new LinkedHashMap<>();
     }
     Map<String, List<ProductionProcess>> byIndustry = unitsByIndustry(units.values());
     Map<LaborAllocationId, HouseholdLaborCommitment> outLaborCommitments = new LinkedHashMap<>();
-    for (Map.Entry<LaborAllocationId, HouseholdLaborCommitment> laborCommitmentEntry : rawLaborCommitment.entrySet()) {
+    for (Map.Entry<LaborAllocationId, HouseholdLaborCommitment> laborCommitmentEntry :
+        rawLaborCommitment.entrySet()) {
       HouseholdLaborCommitment laborCommitment = laborCommitmentEntry.getValue();
-      ProductionUnitId resolved = resolveLaborCommitmentUnit(laborCommitment, byIndustry, units.keySet());
+      ProductionUnitId resolved =
+          resolveLaborCommitmentUnit(laborCommitment, byIndustry, units.keySet());
       ProductionProcess unit = resolved == null ? null : units.get(resolved);
       if (resolved == null
           || (resolved.value().equals(laborCommitment.activity())
@@ -413,7 +424,8 @@ public final class LegacyHouseholdMigration {
       // ★ 看起来是 unit id 但不存在 ⇒ 悬空引用：不按 actor/产业重定向（交给 EconomyData 守卫 fail-closed）。
       return null;
     }
-    ProductionUnitId byActor = resolveUnit(byIndustry, laborCommitment.actor().id(), laborCommitment.actor());
+    ProductionUnitId byActor =
+        resolveUnit(byIndustry, laborCommitment.actor().id(), laborCommitment.actor());
     if (byActor != null) {
       return byActor;
     }
@@ -458,7 +470,8 @@ public final class LegacyHouseholdMigration {
   }
 
   /** 产业串 → 该产业的全部 unit（保序：unit 表插入序）。 */
-  private static Map<String, List<ProductionProcess>> unitsByIndustry(Iterable<ProductionProcess> units) {
+  private static Map<String, List<ProductionProcess>> unitsByIndustry(
+      Iterable<ProductionProcess> units) {
     Map<String, List<ProductionProcess>> byIndustry = new LinkedHashMap<>();
     for (ProductionProcess unit : units) {
       byIndustry.computeIfAbsent(unit.industry().value(), ignored -> new ArrayList<>()).add(unit);
@@ -468,7 +481,9 @@ public final class LegacyHouseholdMigration {
 
   /** 家户行的候选：同格 + 同居住类型 + population &gt; 0，按 HouseholdId 字典序（残差顺序确定）。 */
   private static List<HouseholdEconomy> candidateHouseholdEconomies(
-      Map<HouseholdId, HouseholdEconomy> householdEconomies, HexCoord hex, ResidenceKind residence) {
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      HexCoord hex,
+      ResidenceKind residence) {
     List<HouseholdEconomy> candidateHouseholdEconomies = new ArrayList<>();
     for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
       if (householdEconomy.view().hex().equals(hex)
@@ -477,7 +492,8 @@ public final class LegacyHouseholdMigration {
         candidateHouseholdEconomies.add(householdEconomy);
       }
     }
-    candidateHouseholdEconomies.sort(Comparator.comparing(householdEconomy -> householdEconomy.id().value()));
+    candidateHouseholdEconomies.sort(
+        Comparator.comparing(householdEconomy -> householdEconomy.id().value()));
     return candidateHouseholdEconomies;
   }
 
@@ -520,5 +536,4 @@ public final class LegacyHouseholdMigration {
                 ? value.migrationSource()
                 : Optional.of(LEGACY_MIGRATION_SOURCE)));
   }
-
 }

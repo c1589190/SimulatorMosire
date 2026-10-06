@@ -5,22 +5,22 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
-import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.Payee;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.DebtContract;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -36,9 +36,9 @@ import java.util.Set;
  * ★★ <b>一次日结算（或一批人口回写）内只读的派生索引</b>（R4-B.3a-perf）。
  *
  * <p>★★ <b>为什么要有它</b>：结算里有几组问题每天、每个市场轮、每个 unit 都要回答很多次，而它们的答案在一天内不变 —— "这个 unit
- * 的可用资产/产能规模"（OwnershipStake 聚合）、"这个 unit 的家户行"（HouseholdLaborCommitment 反查）、"这一格有哪些 unit"、 "这家户供给哪些
- * unit"、"每个债务人的债务"、"这一格有哪些产业"。旧实现每次现扫全表：真档新世界 8,940 unit × 44,564 配额、8,940 unit × 8,940 份额，把 0→120
- * 推到 752 秒。索引把这些答案在入口算一次，结算全程只查表。
+ * 的可用资产/产能规模"（OwnershipStake 聚合）、"这个 unit 的家户行"（HouseholdLaborCommitment 反查）、"这一格有哪些 unit"、
+ * "这家户供给哪些 unit"、"每个债务人的债务"、"这一格有哪些产业"。旧实现每次现扫全表：真档新世界 8,940 unit × 44,564 配额、8,940 unit × 8,940
+ * 份额，把 0→120 推到 752 秒。索引把这些答案在入口算一次，结算全程只查表。
  *
  * <p>★★ <b>它不是状态</b>：不进 {@link io.mosire.simos.economy.EconomyData}、不进 ChangeSet、不进 Codec，也不跨
  * revision 存活；一次 {@code settleOneDayInto}/{@code applyPopulationChangeInto} 构建一次，方法返回后即可被 GC。
@@ -47,8 +47,8 @@ import java.util.Set;
  * 只读同一份快照。索引在协调器线程构建；worker 不持有可写结构。
  *
  * <p>★★ <b>与状态变更的关系</b>：{@code OwnershipStake}/{@code Industry}/{@code ProductionProcess}
- * 的身份与份额在一天内不被本切片修改，故 资产/产能/格索引一次构建即可；{@code HouseholdLaborCommitment} 会在劳动再分配与饿死缩放中被改写，故 {@link #withLabor}
- * 在改写的 阶段边界重建“配额侧”的视图；{@code DebtContract} 会在借粮/偿还/计息中被改写，故 {@link #withDebtContracts}
+ * 的身份与份额在一天内不被本切片修改，故 资产/产能/格索引一次构建即可；{@code HouseholdLaborCommitment} 会在劳动再分配与饿死缩放中被改写，故 {@link
+ * #withLabor} 在改写的 阶段边界重建“配额侧”的视图；{@code DebtContract} 会在借粮/偿还/计息中被改写，故 {@link #withDebtContracts}
  * 在债务阶段边界重建债务视图。 这两次重建都仍是“每阶段一次”，不是逐查询一次 —— 语义由 {@link #build} 中逐字保留的旧遍历序保证。
  */
 final class SettlementIndex {
@@ -137,7 +137,15 @@ final class SettlementIndex {
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
       Map<DebtContractId, DebtContract> debts,
       Map<ProductionUnitId, ProductionRules> relations) {
-    return build(units, industries, assetShares, laborCommitments, householdEconomies, debts, relations, Map.of());
+    return build(
+        units,
+        industries,
+        assetShares,
+        laborCommitments,
+        householdEconomies,
+        debts,
+        relations,
+        Map.of());
   }
 
   /**
@@ -163,7 +171,8 @@ final class SettlementIndex {
 
     Map<ProductionUnitId, Map<AssetKind, Long>> usable = usableAssets(units, assetShares);
     Map<ProductionUnitId, Long> capacity = capacityScale(units, industries, usable);
-    Map<ProductionUnitId, List<AssetShareId>> shareIds = ownershipStakeIdsByProcess(units, assetShares);
+    Map<ProductionUnitId, List<AssetShareId>> shareIds =
+        ownershipStakeIdsByProcess(units, assetShares);
     Map<ActorRef, HouseholdId> householdOfActor = householdByActor(householdEconomies);
     return new SettlementIndex(
         usable,
@@ -341,7 +350,8 @@ final class SettlementIndex {
    * operator) 现扫，故同 scope 的每个 unit 得到同一张表；这里一次算好、按 unit 各存一份。
    */
   private static Map<ProductionUnitId, Map<AssetKind, Long>> usableAssets(
-      Map<ProductionUnitId, ProductionProcess> units, Map<AssetShareId, OwnershipStake> assetShares) {
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<AssetShareId, OwnershipStake> assetShares) {
     Map<AssetScope, List<ProductionUnitId>> unitsByScope = new LinkedHashMap<>();
     Map<ProductionUnitId, Map<AssetKind, Long>> raw = new LinkedHashMap<>();
     for (ProductionProcess unit : units.values()) {
@@ -377,7 +387,8 @@ final class SettlementIndex {
    * 回活表取当前行，绝不缓存 record（处置会改 {@code operator}）。
    */
   private static Map<ProductionUnitId, List<AssetShareId>> ownershipStakeIdsByProcess(
-      Map<ProductionUnitId, ProductionProcess> units, Map<AssetShareId, OwnershipStake> assetShares) {
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<AssetShareId, OwnershipStake> assetShares) {
     Map<AssetScope, List<ProductionUnitId>> unitsByScope = new LinkedHashMap<>();
     Map<ProductionUnitId, List<AssetShareId>> raw = new LinkedHashMap<>();
     for (ProductionProcess unit : units.values()) {
@@ -456,14 +467,20 @@ final class SettlementIndex {
   /** 配额全量快照（旧 {@code householdKeysOf} 的“按 activity 归组”方向）；序 = 全局配额表序。 */
   private static Map<ProductionUnitId, List<HouseholdLaborCommitment>> laborCommitmentsByUnit(
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
-    Map<ProductionUnitId, List<HouseholdLaborCommitment>> rawLaborCommitment = new LinkedHashMap<>();
+    Map<ProductionUnitId, List<HouseholdLaborCommitment>> rawLaborCommitment =
+        new LinkedHashMap<>();
     for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
-      rawLaborCommitment.computeIfAbsent(new ProductionUnitId(laborCommitment.activity()), ignored -> new ArrayList<>())
+      rawLaborCommitment
+          .computeIfAbsent(
+              new ProductionUnitId(laborCommitment.activity()), ignored -> new ArrayList<>())
           .add(laborCommitment);
     }
-    Map<ProductionUnitId, List<HouseholdLaborCommitment>> frozenLaborCommitments = new LinkedHashMap<>();
-    for (Map.Entry<ProductionUnitId, List<HouseholdLaborCommitment>> laborCommitmentEntry : rawLaborCommitment.entrySet()) {
-      frozenLaborCommitments.put(laborCommitmentEntry.getKey(), List.copyOf(laborCommitmentEntry.getValue()));
+    Map<ProductionUnitId, List<HouseholdLaborCommitment>> frozenLaborCommitments =
+        new LinkedHashMap<>();
+    for (Map.Entry<ProductionUnitId, List<HouseholdLaborCommitment>> laborCommitmentEntry :
+        rawLaborCommitment.entrySet()) {
+      frozenLaborCommitments.put(
+          laborCommitmentEntry.getKey(), List.copyOf(laborCommitmentEntry.getValue()));
     }
     return Collections.unmodifiableMap(frozenLaborCommitments);
   }
@@ -473,7 +490,8 @@ final class SettlementIndex {
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
     Map<ProductionUnitId, List<LaborAllocationId>> raw = new LinkedHashMap<>();
     for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
-      raw.computeIfAbsent(new ProductionUnitId(laborCommitment.activity()), ignored -> new ArrayList<>())
+      raw.computeIfAbsent(
+              new ProductionUnitId(laborCommitment.activity()), ignored -> new ArrayList<>())
           .add(laborCommitment.id());
     }
     Map<ProductionUnitId, List<LaborAllocationId>> frozen = new LinkedHashMap<>();
@@ -488,7 +506,8 @@ final class SettlementIndex {
       Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
     Map<PeopleLotId, List<LaborAllocationId>> raw = new LinkedHashMap<>();
     for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
-      raw.computeIfAbsent(laborCommitment.group(), ignored -> new ArrayList<>()).add(laborCommitment.id());
+      raw.computeIfAbsent(laborCommitment.group(), ignored -> new ArrayList<>())
+          .add(laborCommitment.id());
     }
     Map<PeopleLotId, List<LaborAllocationId>> frozen = new LinkedHashMap<>();
     for (Map.Entry<PeopleLotId, List<LaborAllocationId>> entry : raw.entrySet()) {
@@ -502,7 +521,8 @@ final class SettlementIndex {
    * 升序）。
    */
   private static Map<ProductionUnitId, List<HouseholdId>> householdsByUnit(
-      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments, Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Map<ProductionUnitId, LinkedHashSet<HouseholdId>> raw = new LinkedHashMap<>();
     for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
       raw.computeIfAbsent(
@@ -531,10 +551,12 @@ final class SettlementIndex {
     Map<HouseholdId, LinkedHashSet<ProductionUnitId>> raw = new LinkedHashMap<>();
     for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
       ProductionUnitId unitId = new ProductionUnitId(laborCommitment.activity());
-      if (!units.containsKey(unitId) || !householdEconomies.containsKey(laborCommitment.household())) {
+      if (!units.containsKey(unitId)
+          || !householdEconomies.containsKey(laborCommitment.household())) {
         continue;
       }
-      raw.computeIfAbsent(laborCommitment.household(), ignored -> new LinkedHashSet<>()).add(unitId);
+      raw.computeIfAbsent(laborCommitment.household(), ignored -> new LinkedHashSet<>())
+          .add(unitId);
     }
     Map<HouseholdId, Set<ProductionUnitId>> frozen = new LinkedHashMap<>();
     for (Map.Entry<HouseholdId, LinkedHashSet<ProductionUnitId>> entry : raw.entrySet()) {
@@ -574,7 +596,8 @@ final class SettlementIndex {
   }
 
   /** 旧 {@code householdActorsOf}：家户 actor → 家户身份（键序 = 行表序）。 */
-  private static Map<ActorRef, HouseholdId> householdByActor(Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+  private static Map<ActorRef, HouseholdId> householdByActor(
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Map<ActorRef, HouseholdId> byActor = new LinkedHashMap<>();
     for (HouseholdId key : householdEconomies.keySet()) {
       byActor.put(HouseholdActors.of(key), key);
@@ -646,8 +669,9 @@ final class SettlementIndex {
    * {@code relation.inputSupplier(ToActor)}、该 unit 名下 OwnershipStake 的 {@code owner} / {@code
    * operator}。 一条 unit 对同一 actor 只记一次；最终 List 的序 = unit 表首次出现序（可复现）。
    *
-   * <p>★ 为什么把份额 owner/operator 也收进来：E1 的解析顺序里份额是第③档，而 {@code OwnershipStake} 的归属判据是 {@code (industry,
-   * operator)} 作用域 —— 同一作用域下的每个 unit 拿到同一串份额，故这里逐 unit 展开， 与 {@link #ownershipStakeIdsByProcess} 的口径保持一致。
+   * <p>★ 为什么把份额 owner/operator 也收进来：E1 的解析顺序里份额是第③档，而 {@code OwnershipStake} 的归属判据是 {@code
+   * (industry, operator)} 作用域 —— 同一作用域下的每个 unit 拿到同一串份额，故这里逐 unit 展开， 与 {@link
+   * #ownershipStakeIdsByProcess} 的口径保持一致。
    */
   private static Map<ActorRef, List<ProductionUnitId>> unitsByParty(
       Map<ProductionUnitId, ProductionProcess> units,

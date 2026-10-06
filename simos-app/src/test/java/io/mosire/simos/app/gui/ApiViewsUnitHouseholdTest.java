@@ -9,6 +9,7 @@ import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.HouseholdVitalRates;
@@ -29,7 +30,8 @@ import org.junit.jupiter.api.Test;
  * ★★ <b>S3a 正式验收：ApiViews 的 unit 详情/清单读口</b>（S3a spec §5/§7；任务书 B7）。
  *
  * <ul>
- *   <li>带 lookup：{@code households[]}（逐项 id/name/location/memberLots/population）+ {@code population}（实时汇总）；
+ *   <li>带 lookup：{@code households[]}（逐项 id/name/location/memberLots/population）+ {@code
+ *       population}（实时汇总）；
  *   <li>旧无 lookup 重载：{@code households[]} 只发 id、{@code population=null}（"没有注入"必须与"是 0 人"可分）；
  *   <li>GOV 编制视图的 {@code module.households} 与顶层 households 同序同值。
  * </ul>
@@ -41,6 +43,9 @@ class ApiViewsUnitHouseholdTest {
   private static final UnitId EMPTY = new UnitId("u-empty");
   private static final HouseholdId HH_ONE = HouseholdId.parse("hh-one");
   private static final HouseholdId HH_TWO = HouseholdId.parse("hh-two");
+
+  /** S3b：GOV 单位必含的政府家户（fixture 自动追加在 households 末尾）。 */
+  private static final HouseholdId GOV_HH = GovernmentHouseholds.of(GOV.value());
 
   @Test
   void unitDetailAndListExposeHouseholdsAndLivePopulation() {
@@ -60,7 +65,9 @@ class ApiViewsUnitHouseholdTest {
 
     assertThat(detail.get("population")).as("实时人口 = 5 + 3").isEqualTo(8L);
     List<Map<String, Object>> households = householdsOf(detail);
-    assertThat(idsOf(households)).as("保序原样透出").containsExactly(HH_ONE.value(), HH_TWO.value());
+    assertThat(idsOf(households))
+        .as("保序原样透出（含 S3b 必含的政府家户）")
+        .containsExactly(HH_ONE.value(), HH_TWO.value(), GOV_HH.value());
     assertThat(households.get(0))
         .as("注入 lookup 时补 name/location/memberLots/population")
         .containsEntry("name", "甲户")
@@ -71,8 +78,10 @@ class ApiViewsUnitHouseholdTest {
 
     @SuppressWarnings("unchecked")
     Map<String, Object> module = (Map<String, Object>) detail.get("module");
-    assertThat((List<String>) module.get("households"))
-        .as("GOV 编制视图 households 与顶层一致")
+    assertThat(
+            ((List<Map<String, Object>>) module.get("householdPosts"))
+                .stream().map(row -> row.get("household")).toList())
+        .as("S3b：编制视图改发 householdPosts（顶层 households 才是唯一实质列表）")
         .containsExactly(HH_ONE.value(), HH_TWO.value());
 
     List<Map<String, Object>> list =
@@ -88,7 +97,8 @@ class ApiViewsUnitHouseholdTest {
     Map<String, Object> listGov =
         list.stream().filter(row -> GOV.value().equals(row.get("id"))).findFirst().orElseThrow();
     assertThat(listGov.get("population")).isEqualTo(8L);
-    assertThat(idsOf(householdsOf(listGov))).containsExactly(HH_ONE.value(), HH_TWO.value());
+    assertThat(idsOf(householdsOf(listGov)))
+        .containsExactly(HH_ONE.value(), HH_TWO.value(), GOV_HH.value());
 
     Map<String, Object> listEmpty =
         list.stream().filter(row -> EMPTY.value().equals(row.get("id"))).findFirst().orElseThrow();
@@ -111,7 +121,7 @@ class ApiViewsUnitHouseholdTest {
 
     assertThat(detail.get("population")).isNull();
     List<Map<String, Object>> households = householdsOf(detail);
-    assertThat(idsOf(households)).containsExactly(HH_ONE.value(), HH_TWO.value());
+    assertThat(idsOf(households)).containsExactly(HH_ONE.value(), HH_TWO.value(), GOV_HH.value());
     assertThat(households.get(0).keySet()).as("旧无 lookup 重载只发 id").containsExactly("id");
 
     List<Map<String, Object>> list =
@@ -145,7 +155,9 @@ class ApiViewsUnitHouseholdTest {
             new HouseholdLocation.Unit(GOV.value()),
             new HouseholdProfile("甲户", null, Map.of()),
             new HouseholdVitalRates(List.of()));
-    social = HouseholdBook.addMembers(social, HH_ONE, PeopleLotId.parse("lot-one"), Sex.MALE, 5L, 0L, 0L, "seed");
+    social =
+        HouseholdBook.addMembers(
+            social, HH_ONE, PeopleLotId.parse("lot-one"), Sex.MALE, 5L, 0L, 0L, "seed");
     social =
         HouseholdBook.create(
             social,
@@ -153,7 +165,8 @@ class ApiViewsUnitHouseholdTest {
             new HouseholdLocation.Unit(GOV.value()),
             new HouseholdProfile("乙户", null, Map.of()),
             new HouseholdVitalRates(List.of()));
-    return HouseholdBook.addMembers(social, HH_TWO, PeopleLotId.parse("lot-two"), Sex.FEMALE, 3L, 0L, 0L, "seed");
+    return HouseholdBook.addMembers(
+        social, HH_TWO, PeopleLotId.parse("lot-two"), Sex.FEMALE, 3L, 0L, 0L, "seed");
   }
 
   private static SocialLookupAdapter lookup(SocialData social) {

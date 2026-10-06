@@ -36,8 +36,7 @@ import io.mosire.simos.social.api.id.HouseholdId;
   @JsonSubTypes.Type(value = Payee.ToHousehold.class, name = "to_household"),
   @JsonSubTypes.Type(value = Payee.ToCohort.class, name = "to_cohort"),
 })
-public sealed interface Payee
-    permits Payee.ToActor, Payee.ToHousehold, Payee.ToCohort {
+public sealed interface Payee permits Payee.ToActor, Payee.ToHousehold, Payee.ToCohort {
 
   /** 受方是<b>经济主体</b>（{@code ActorRef} 是身份；actor 的种类/粒度由产出方定，本层不解释）。 */
   record ToActor(ActorRef actor) implements Payee {

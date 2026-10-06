@@ -7,8 +7,8 @@ import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.sd.testing.SdFixtures;
 import io.mosire.simos.sd.testing.SdWorlds;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentLevel;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.ops.UnitOperations;
@@ -133,12 +133,17 @@ class CreateArmyHandlerTest {
     assertThat(((HandlerOutcome.Rejected) outcome).reason()).isEqualTo("rootUnitId 不存在: ghost");
   }
 
-  /** 既有根单位 u-1 挂上 GovFormation，作为 masterGov 的合法目标。 */
+  /** 既有根单位 u-1 挂上 GovernmentFormation，作为 masterGov 的合法目标。 */
   private static UnitState govUnits() {
-    return UnitOperations.setGovFormation(
+    return UnitOperations.setGovernmentFormation(
         SdWorlds.units(),
         SdWorlds.ROOT_UNIT,
-        new GovFormation(Map.of(), OfficePolicy.defaults(), Optional.empty(), GovLevel.CENTRAL));
+        new GovernmentFormation(
+            Map.of(),
+            Map.of(),
+            OfficePolicy.defaults(),
+            Optional.empty(),
+            GovernmentLevel.CENTRAL));
   }
 
   private static SdState applied(SdState base, SimulationState world, String payload) {

@@ -363,7 +363,9 @@ public record SdState(
         lossRecords,
         info,
         v,
-        diplomaticEvents);
+        diplomaticEvents,
+        decisionPackets,
+        mergedEffectPlans);
   }
 
   /** 仅替换 {@code diplomaticEvents}（D-005 多国谈判/外交事件记录）。 */
@@ -623,8 +625,8 @@ public record SdState(
    *
    * <ul>
    *   <li>两张表的键必须等于值内 id；
-   *   <li>packet 的 {@code proposerId} 允许指向**已被删除**的决策人（历史包不级联删；新写入由
-   *       {@code UpsertDecisionPacketHandler} 校验 proposer 存在）；
+   *   <li>packet 的 {@code proposerId} 允许指向**已被删除**的决策人（历史包不级联删；新写入由 {@code
+   *       UpsertDecisionPacketHandler} 校验 proposer 存在）；
    *   <li>包内 {@code callIndex} 严格递增、不重复（{@link DecisionPacket} 自己也守一遍，这里是状态期后备）；
    *   <li>{@code MERGED} 的 call 必须带 {@code mergedPlanId}；
    *   <li>{@code mergedEffectPlans} 的键 == 值内 id（D3 用；D2 只查 shape）。

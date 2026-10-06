@@ -36,31 +36,33 @@ import java.util.Optional;
  * {@link io.mosire.agentlib.tool.ToolContext}/{@code CoreSimos}。
  *
  * <p>★★ <b>调查组 = 纯人员单位 +（可选）小军队编制</b>（用户裁定 3/10 的口径）：人口腿 = 一张 {@code
- * social.SubmitHouseholdWorkOrder}（从政府家户 {@code hh-gov-<unitId>} 逐 share {@code TRANSFER_MEMBERS} 到新人口家户
- * {@code hh-unit:<newUnitId>}）；单位腿 = {@code unit.CreateUnit}（untagged，households=[新家户]，speed=6、
- * mobilityPerMille=900、position=来源 GOV 当刻有效位置；<b>无 manpower</b>，已退役）；{@code armed=true} 时同批落 {@code
- * unit.SetArmyFormation}（masterGov=来源 GOV、role="armed-team"）——不造任何“调查组”新类型。
+ * social.SubmitHouseholdWorkOrder}（从政府家户 {@code hh-gov-<unitId>} 逐 share {@code TRANSFER_MEMBERS}
+ * 到新人口家户 {@code hh-unit:<newUnitId>}）；单位腿 = {@code
+ * unit.CreateUnit}（untagged，households=[新家户]，speed=6、 mobilityPerMille=900、position=来源 GOV
+ * 当刻有效位置；<b>无 manpower</b>，已退役）；{@code armed=true} 时同批落 {@code unit.SetArmyFormation}（masterGov=来源
+ * GOV、role="armed-team"）——不造任何“调查组”新类型。
  *
  * <p>★★ <b>来源口径 = 政府家户的 share-aware 份额瀑布</b>：只调 {@link
  * HouseholdManpowerAllocator#allocateFromHousehold}（{@code hh-gov-<unitId>} 的家户成员份额，MALE + {@link
- * AgeBracket#ADULT}；家户/lot 全序瀑布），本类不另写排序、过滤或扣减；不足 ⇒ 整条具名拒（不部分、不截断）。{@code staff[role]
- * ≥ count} 校验照旧（编制口径保持）。
+ * AgeBracket#ADULT}；家户/lot 全序瀑布），本类不另写排序、过滤或扣减；不足 ⇒ 整条具名拒（不部分、不截断）。{@code staff[role] ≥ count}
+ * 校验照旧（编制口径保持）。
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SubmitHouseholdWorkOrder}（{@code
- * orderId=gov-dispatch-team:<batchId>:<newUnitId>}；{@code plan = CREATE_HOUSEHOLD(hh-unit:<newUnitId>, UNIT(newUnitId),
- * profile=name+"·人口家户") + 逐 share TRANSFER_MEMBERS(from=hh-gov:<unitId>, to=新家户, lotId, count=taken)}）→ {@code
+ * orderId=gov-dispatch-team:<batchId>:<newUnitId>}；{@code plan =
+ * CREATE_HOUSEHOLD(hh-unit:<newUnitId>, UNIT(newUnitId), profile=name+"·人口家户") + 逐 share
+ * TRANSFER_MEMBERS(from=hh-gov:<unitId>, to=新家户, lotId, count=taken)}）→ {@code
  * unit.CreateUnit}（households=[新家户]、无 manpower）→（armed）{@code unit.SetArmyFormation} → {@code
  * economy.RegisterHousehold}（新家户经济行）→ {@code actor.EnsureHouseholdAccount}（新家户零余额账户，幂等）→ {@code
- * unit.DismissStaff}（{@code {unitId, role, count}}，出人不付待遇）→ {@code sd.PutInfo}（地址 = 来源 GOV canonical，
- * key={@code dispatchTeam}，value 含 armed 标记/新家户/来源 shares）。
+ * unit.DismissStaff}（{@code {unitId, role, count}}，出人不付待遇）→ {@code sd.PutInfo}（地址 = 来源 GOV
+ * canonical， key={@code dispatchTeam}，value 含 armed 标记/新家户/来源 shares）。
  *
  * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：来源 GOV 存在且带 {@link
- * GovernmentFormation}；{@code count ≥ 1}；{@code roster[role] ≥ count}（缺省 role = SCRIBE）否则具名拒（带现有/请求数字）；
- * 来源 GOV 当刻必须有有效位置；新单位 id 未占用；政府家户必须同时在 {@code Unit.households()} 与 {@code
+ * GovernmentFormation}；{@code count ≥ 1}；{@code roster[role] ≥ count}（缺省 role =
+ * SCRIBE）否则具名拒（带现有/请求数字）； 来源 GOV 当刻必须有有效位置；新单位 id 未占用；政府家户必须同时在 {@code Unit.households()} 与 {@code
  * SocialData.households()} 里；新单位人口家户 id 未占用；政府家户的 MALE+ADULT 份额不足 ⇒ 整条拒。
  *
- * <p>★ <b>守恒</b>：{@code roster[role] − count == 出人后 roster}；{@code Σ share.taken == count == 新人口家户成员增量}；
- * Plan 构造期逐值互校。
+ * <p>★ <b>守恒</b>：{@code roster[role] − count == 出人后 roster}；{@code Σ share.taken == count ==
+ * 新人口家户成员增量}； Plan 构造期逐值互校。
  */
 final class GovDispatchTeamPlan {
 
@@ -189,9 +191,7 @@ final class GovDispatchTeamPlan {
     String householdId = RaiseUnitPlan.householdIdFor(newId);
     if (social.households().containsKey(HouseholdId.parse(householdId))) {
       throw new IllegalArgumentException(
-          "P1.5 新单位的人口家户 id 已被占用: "
-              + householdId
-              + "（先清掉同名家户，或换 newUnitId）");
+          "P1.5 新单位的人口家户 id 已被占用: " + householdId + "（先清掉同名家户，或换 newUnitId）");
     }
     HouseholdManpowerAllocator.Allocation allocation;
     try {
@@ -326,14 +326,12 @@ final class GovDispatchTeamPlan {
         throw new IllegalArgumentException("available 不得为负: " + available);
       }
       if (available < count) {
-        throw new IllegalArgumentException(
-            "内部分摊不自洽：available=" + available + " < count=" + count);
+        throw new IllegalArgumentException("内部分摊不自洽：available=" + available + " < count=" + count);
       }
       requireNonBlank(householdId, "householdId");
       Objects.requireNonNull(governmentHouseholdId, "governmentHouseholdId");
       if (householdId.equals(governmentHouseholdId.value())) {
-        throw new IllegalArgumentException(
-            "内部分摊不自洽：新单位人口家户与政府家户相同 " + householdId);
+        throw new IllegalArgumentException("内部分摊不自洽：新单位人口家户与政府家户相同 " + householdId);
       }
       sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
       long total = 0L;
@@ -354,8 +352,8 @@ final class GovDispatchTeamPlan {
     }
 
     /**
-     * 工单确定性幂等键：{@code gov-dispatch-team:<batchId>:<newUnitId>}。{@code batchId} 是本工具 apply 生成的
-     * batch UUID（同一 apply 内稳定 ⇒ 同批可复现）。
+     * 工单确定性幂等键：{@code gov-dispatch-team:<batchId>:<newUnitId>}。{@code batchId} 是本工具 apply 生成的 batch
+     * UUID（同一 apply 内稳定 ⇒ 同批可复现）。
      */
     String orderId(String batchId) {
       requireNonBlank(batchId, "batchId");
@@ -364,8 +362,8 @@ final class GovDispatchTeamPlan {
 
     /**
      * P1.5 人口腿的<b>唯一</b>命令载荷（{@code social.SubmitHouseholdWorkOrder}）——第一步 {@code
-     * CREATE_HOUSEHOLD}（location = {@code UNIT(newUnitId)}、画像 {@code name+"·人口家户"}、vitalRates 空表），随后逐来源
-     * {@code TRANSFER_MEMBERS(from=hh-gov:<unitId>, to=新家户, lotId, count=taken)}。
+     * CREATE_HOUSEHOLD}（location = {@code UNIT(newUnitId)}、画像 {@code name+"·人口家户"}、vitalRates
+     * 空表），随后逐来源 {@code TRANSFER_MEMBERS(from=hh-gov:<unitId>, to=新家户, lotId, count=taken)}。
      */
     String submitHouseholdWorkOrderPayloadJson(String batchId, String reason) {
       requireNonBlank(reason, "reason");
@@ -429,8 +427,8 @@ final class GovDispatchTeamPlan {
     }
 
     /**
-     * {@code economy.RegisterHousehold} 载荷：落点 = {@code at}，居住类型 = {@link #residence()}，阶层 =
-     * {@code landless_laborer}（无资产的中性档），参与率 = 0。
+     * {@code economy.RegisterHousehold} 载荷：落点 = {@code at}，居住类型 = {@link #residence()}，阶层 = {@code
+     * landless_laborer}（无资产的中性档），参与率 = 0。
      */
     String registerHouseholdPayloadJson(String reason) {
       requireNonBlank(reason, "reason");

@@ -20,9 +20,9 @@ import java.util.Map;
  * S2 家户模型下的测试夹具：把旧夹具的"每个批次自带落点"翻译成"批次挂在家户上，家户给出位置"。
  *
  * <p>这是 2026-10-09 架构 §4.2 的直接产物：{@code PopulationGroup.residence} 已删，{@code SocialData}
- * 构造期要求"每个批次恰被一个家户引用"。本类按调用方给的 {@code lot → hex} 表，为每个出现过的 hex 造一个家户
- * （{@code hh:<q>_<r>}），成员表按 {@code groups} 的插入序，从而让旧读口用例（{@code populationAt} /
- * {@code groupsAt} / {@code ageStructureAt} 等）继续有判别力。
+ * 构造期要求"每个批次恰被一个家户引用"。本类按调用方给的 {@code lot → hex} 表，为每个出现过的 hex 造一个家户 （{@code hh:<q>_<r>}），成员表按
+ * {@code groups} 的插入序，从而让旧读口用例（{@code populationAt} / {@code groupsAt} / {@code ageStructureAt}
+ * 等）继续有判别力。
  *
  * <p>★ 只在测试里用；生产装配走 {@code PopulationSeeder} / {@code social.SeedGroups}。
  */

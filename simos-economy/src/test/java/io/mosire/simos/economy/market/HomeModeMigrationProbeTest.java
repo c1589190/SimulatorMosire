@@ -36,8 +36,8 @@ import org.junit.jupiter.api.Test;
  *   <li>不做死亡/出生/资产买卖；这些留给正式运行时。
  * </ul>
  *
- * <p>7 hex = 中心城 {@code C} + 环绕的 {@code R0..R5}。城市只允许手工业/商人；农村允许佃农/雇农/流民。
- * 城市利润随该 mode 城市人口上升而下降，因此会形成均衡，而不是全部挤进城市。
+ * <p>7 hex = 中心城 {@code C} + 环绕的 {@code R0..R5}。城市只允许手工业/商人；农村允许佃农/雇农/流民。 城市利润随该 mode
+ * 城市人口上升而下降，因此会形成均衡，而不是全部挤进城市。
  */
 class HomeModeMigrationProbeTest {
 
@@ -58,9 +58,7 @@ class HomeModeMigrationProbeTest {
     World first = simulate();
     World second = simulate();
 
-    assertThat(second.fingerprint())
-        .as("同一输入两次运行必须逐字段相同（确定性）")
-        .isEqualTo(first.fingerprint());
+    assertThat(second.fingerprint()).as("同一输入两次运行必须逐字段相同（确定性）").isEqualTo(first.fingerprint());
     assertThat(first.totalPopulation()).as("人口总量守恒").isEqualTo(first.initialPopulation);
     assertThat(first.totalMoney()).as("货币只随迁移移动，不新造不销毁").isEqualTo(first.initialMoney);
     assertThat(first.totalDebt())
@@ -76,7 +74,8 @@ class HomeModeMigrationProbeTest {
 
     long initialCity =
         first.initialPopulationOf(Mode.HANDICRAFT) + first.initialPopulationOf(Mode.MERCHANT);
-    long finalCity = first.totalPopulationOf(Mode.HANDICRAFT) + first.totalPopulationOf(Mode.MERCHANT);
+    long finalCity =
+        first.totalPopulationOf(Mode.HANDICRAFT) + first.totalPopulationOf(Mode.MERCHANT);
     assertThat(finalCity)
         .as("手工业 + 商人人口显著上升：初始 %s ⇒ 终局 %s", initialCity, finalCity)
         .isGreaterThan(initialCity);
@@ -278,10 +277,7 @@ class HomeModeMigrationProbeTest {
     }
 
     long totalDebtOf(Mode mode) {
-      return households.values().stream()
-          .filter(h -> h.mode == mode)
-          .mapToLong(h -> h.debt)
-          .sum();
+      return households.values().stream().filter(h -> h.mode == mode).mapToLong(h -> h.debt).sum();
     }
 
     long householdsOf(Mode mode) {
@@ -319,7 +315,8 @@ class HomeModeMigrationProbeTest {
         Household origin, Map<Hex, Map<Mode, Long>> profits, Map<String, Long> capacityLedger) {
       long currentProfit = profitAt(origin.mode, origin.hex, profits);
       long moveable =
-          Math.min(origin.population, Math.max(1L, origin.population * MIGRATION_PER_MILLE / 1000L));
+          Math.min(
+              origin.population, Math.max(1L, origin.population * MIGRATION_PER_MILLE / 1000L));
       if (moveable <= 0L) {
         return;
       }
@@ -404,7 +401,8 @@ class HomeModeMigrationProbeTest {
           moneyShare = origin.money - moneyMoved;
           debtShare = origin.debt - debtMoved;
         }
-        moves.set(i, new Move(move.origin(), move.target(), move.population(), moneyShare, debtShare));
+        moves.set(
+            i, new Move(move.origin(), move.target(), move.population(), moneyShare, debtShare));
         moneyMoved = Math.addExact(moneyMoved, moneyShare);
         debtMoved = Math.addExact(debtMoved, debtShare);
       }
@@ -590,9 +588,7 @@ class HomeModeMigrationProbeTest {
     }
   }
 
-  /**
-   * 最大余数法：把 {@code total} 按权重拆成整数份额，Σ = total；确定性（余数同分按下标升序处理）。
-   */
+  /** 最大余数法：把 {@code total} 按权重拆成整数份额，Σ = total；确定性（余数同分按下标升序处理）。 */
   static long[] splitByWeights(long total, long[] weights) {
     long sum = 0L;
     for (long weight : weights) {

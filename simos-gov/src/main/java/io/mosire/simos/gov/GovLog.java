@@ -1,7 +1,6 @@
 package io.mosire.simos.gov;
 
 import io.mosire.simos.util.log.EventLog;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

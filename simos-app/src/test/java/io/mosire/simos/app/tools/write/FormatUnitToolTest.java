@@ -107,8 +107,7 @@ class FormatUnitToolTest {
       JsonNode a = JSON.readTree(first.message());
       JsonNode b = JSON.readTree(second.message());
 
-      long expectedSeed =
-          fnv1a64("u-1|1|7|M[]E[步枪:50:400:0:" + MAX + ";]");
+      long expectedSeed = fnv1a64("u-1|1|7|M[]E[步枪:50:400:0:" + MAX + ";]");
       assertThat(a.get("seedProvided").asBoolean()).isFalse();
       assertThat(a.get("seed").asLong())
           .as("无 seed ⇒ FNV-1a(unitId|baseRevision|tick|M[...]E[...])")
@@ -130,10 +129,8 @@ class FormatUnitToolTest {
   void explicitSeedIsReproducibleAndAuditedInTheSameBatch() throws Exception {
     try (Fixture fx = Fixture.open(tempDir.resolve("apply-explicit"))) {
       // 同 seed 的两次 preview 逐值相等（同 seed 同结果）。
-      JsonNode p1 =
-          JSON.readTree(fx.call(formatArgs("u-1", 400L, 42L, null, null)).message());
-      JsonNode p2 =
-          JSON.readTree(fx.call(formatArgs("u-1", 400L, 42L, null, null)).message());
+      JsonNode p1 = JSON.readTree(fx.call(formatArgs("u-1", 400L, 42L, null, null)).message());
+      JsonNode p2 = JSON.readTree(fx.call(formatArgs("u-1", 400L, 42L, null, null)).message());
       assertThat(amounts(p2.get("equipment"))).isEqualTo(amounts(p1.get("equipment")));
 
       ToolResult result = fx.call(formatArgs("u-1", 400L, 42L, 1L, Boolean.FALSE));
@@ -268,6 +265,8 @@ class FormatUnitToolTest {
     equipment.put("jitterPerMille", equipmentJitterPerMille);
     Map<String, Object> args = new LinkedHashMap<>();
     args.put("unitId", unitId);
+    // ★ S3b：manpower 已退役；参数仍必填，但只接受空数组（带非空 ⇒ 具名拒）。
+    args.put("manpower", List.of());
     args.put("equipment", List.of(equipment));
     if (seed != null) {
       args.put("seed", seed);

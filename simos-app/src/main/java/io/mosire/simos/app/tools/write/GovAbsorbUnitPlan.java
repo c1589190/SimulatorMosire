@@ -28,36 +28,36 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ {@code simos.gov.absorbUnit} 的<b>纯推导</b>（阶段 13A 人员流转；2026-10-19 家户口径接线）：把纯人员单位
- * {@code Unit.households()} 里的<b>真实家户成员</b>转移进 GOV 的政府家户 {@code hh-gov-<govUnitId>}（可顺带解散已空的源单位），
- * 一批落一条 revision——<b>不碰</b> {@link io.mosire.agentlib.tool.ToolContext}/{@code CoreSimos}。
+ * ★★ {@code simos.gov.absorbUnit} 的<b>纯推导</b>（阶段 13A 人员流转；2026-10-19 家户口径接线）：把纯人员单位 {@code
+ * Unit.households()} 里的<b>真实家户成员</b>转移进 GOV 的政府家户 {@code hh-gov-<govUnitId>}（可顺带解散已空的源单位）， 一批落一条
+ * revision——<b>不碰</b> {@link io.mosire.agentlib.tool.ToolContext}/{@code CoreSimos}。
  *
- * <p>★★ <b>S3b 口径</b>：{@code Unit.manpower} 已退役，吸收<b>不再写 Unit 侧第二本 headcount</b>；人只从 Social 家户里出、
- * 进 Social 家户，人口权威始终在 Social。批里的 {@code unit.RecruitStaff} 只把编制 {@code staff[role] += count}，
+ * <p>★★ <b>S3b 口径</b>：{@code Unit.manpower} 已退役，吸收<b>不再写 Unit 侧第二本 headcount</b>；人只从 Social 家户里出、 进
+ * Social 家户，人口权威始终在 Social。批里的 {@code unit.RecruitStaff} 只把编制 {@code staff[role] += count}，
  * 人员本身由同批第一条 {@code social.SubmitHouseholdWorkOrder} 的 {@code TRANSFER_MEMBERS} 真转移。
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SubmitHouseholdWorkOrder}（逐来源 {@code
  * TRANSFER_MEMBERS(from=源家户, to=政府家户, lotId, count)}；{@code disbandDispatched} 时再逐源家户 {@code
  * SET_LOCATION(HEX=GOV 单位当刻 effectivePosition)}）→ {@code unit.RecruitStaff}（{@code role += count}）→
- *（{@code disbandDispatched} 才落）{@code unit.DisbandUnit} → {@code sd.PutInfo}（行动记录）。
- * ★ {@code SET_LOCATION} 必须在 {@code unit.DisbandUnit} 之前：否则源家户的 {@code UNIT(sourceUnitId)} 会变成孤儿位置，
- * 下轮 {@code HouseholdUnitConsistency} 会 unresolved（且无法单侧修复）。
+ * （{@code disbandDispatched} 才落）{@code unit.DisbandUnit} → {@code sd.PutInfo}（行动记录）。 ★ {@code
+ * SET_LOCATION} 必须在 {@code unit.DisbandUnit} 之前：否则源家户的 {@code UNIT(sourceUnitId)} 会变成孤儿位置， 下轮
+ * {@code HouseholdUnitConsistency} 会 unresolved（且无法单侧修复）。
  *
- * <p>★★ <b>来源口径（用户 2026-10-19 裁定 2）</b>：来源 = 源单位 {@code Unit.households()} 的成员份额；本类只调
- * {@link HouseholdManpowerAllocator#allocateFromHouseholds}（显式过滤 {@code MALE} + {@link AgeBracket#ADULT}，
+ * <p>★★ <b>来源口径（用户 2026-10-19 裁定 2）</b>：来源 = 源单位 {@code Unit.households()} 的成员份额；本类只调 {@link
+ * HouseholdManpowerAllocator#allocateFromHouseholds}（显式过滤 {@code MALE} + {@link AgeBracket#ADULT}，
  * 排除集 {@code Set.of()}）抽恰好 {@code count} 人，不另写份额读取/排序/过滤/瀑布。合格份额不足 ⇒ 整条具名拒，不部分抽取。
  *
  * <p>★★ <b>disbandSource 的条件语义</b>：{@code disbandDispatched = disbandSource && 所有源家户迁移后剩余人口 == 0}
- * （{@code 剩余人口 = householdPopulation − Σ该户 taken}）。请求了但源仍有剩余人口 ⇒ <b>不解散</b>，在计划里给具名
- * {@code disbandSkippedReason}（不丢剩下的人）。{@code disbandDispatched} 时若 GOV 单位当刻没有可确定的有效位置 ⇒
- * <b>plan 级拒</b>（不落 SET_LOCATION/DisbandUnit；不留下孤儿 {@code UNIT} 位置）。
+ * （{@code 剩余人口 = householdPopulation − Σ该户 taken}）。请求了但源仍有剩余人口 ⇒ <b>不解散</b>，在计划里给具名 {@code
+ * disbandSkippedReason}（不丢剩下的人）。{@code disbandDispatched} 时若 GOV 单位当刻没有可确定的有效位置 ⇒ <b>plan 级拒</b>（不落
+ * SET_LOCATION/DisbandUnit；不留下孤儿 {@code UNIT} 位置）。
  *
  * <p>★★ <b>守恒（Plan 构造期逐值互校）</b>：{@code Σ share.taken == count}；{@code Σ源家户迁移后剩余 == 源人口前 − count}；
- * {@code staffBefore + count == staffAfter}；每条 {@code share} 的家户都在源单位 {@code Unit.households()} 里且逐户 taken 与
- * 剩余人口互校。批载荷全部从同一份 {@code shares}/{@code remainders} 派生，没有第二份数字。
+ * {@code staffBefore + count == staffAfter}；每条 {@code share} 的家户都在源单位 {@code Unit.households()}
+ * 里且逐户 taken 与 剩余人口互校。批载荷全部从同一份 {@code shares}/{@code remainders} 派生，没有第二份数字。
  *
- * <p>★ <b>确定性 / 保序不可变</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；来源表按
- * {@link HouseholdManpowerAllocator} 的全序瀑布序，家户剩余表按 household id 字符串升序，全部用 {@link List#copyOf} 冻结。
+ * <p>★ <b>确定性 / 保序不可变</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；来源表按 {@link
+ * HouseholdManpowerAllocator} 的全序瀑布序，家户剩余表按 household id 字符串升序，全部用 {@link List#copyOf} 冻结。
  */
 final class GovAbsorbUnitPlan {
 
@@ -104,8 +104,8 @@ final class GovAbsorbUnitPlan {
    * 纯推导入口（见类注的校验、来源口径与守恒）。
    *
    * @param state 读数所在的状态（preview / apply 都取<b>同一坐标</b>的状态）
-   * @param govUnitId 吸收方 GOV 单位 id（必须存在、带 {@link GovernmentFormation}，且政府家户同时在其
-   *     {@code Unit.households()} 与 Social 里）
+   * @param govUnitId 吸收方 GOV 单位 id（必须存在、带 {@link GovernmentFormation}，且政府家户同时在其 {@code
+   *     Unit.households()} 与 Social 里）
    * @param roleText 入编角色词表（SCRIBE|YAMEN|POST）
    * @param sourceUnitId 源人口单位 id（必须存在、无 module、{@code Unit.households()} 非空、且 ≠ 吸收方）
    * @param count 吸收人数（≥ 1；必须能从源家户份额里抽出 MALE+ADULT 恰好 count 人）
@@ -176,7 +176,8 @@ final class GovAbsorbUnitPlan {
     }
     long staffAfter = staffBefore + count;
     // ★ staffCap 校验照旧（GovRecruitPlan 的口径）：现有 + count > cap ⇒ 具名拒（带现有/上限/请求，不截断）。
-    Optional<Long> staffCap = Optional.ofNullable(governmentFormation.policy().staffCap().get(role));
+    Optional<Long> staffCap =
+        Optional.ofNullable(governmentFormation.policy().staffCap().get(role));
     if (staffCap.isPresent() && staffBefore > staffCap.get() - count) {
       throw new IllegalArgumentException(
           "吸收 "
@@ -255,20 +256,14 @@ final class GovAbsorbUnitPlan {
         }
         sourcePopulationBefore = Math.addExact(sourcePopulationBefore, populationBefore);
         remainders.add(
-            new HouseholdRemainder(
-                householdId, populationBefore, taken, populationBefore - taken));
+            new HouseholdRemainder(householdId, populationBefore, taken, populationBefore - taken));
       }
     } catch (ArithmeticException e) {
-      throw new IllegalArgumentException(
-          "源家户人口合计溢出 long：源单位 " + sourceUnitId + "（状态数据异常）", e);
+      throw new IllegalArgumentException("源家户人口合计溢出 long：源单位 " + sourceUnitId + "（状态数据异常）", e);
     }
     if (sourcePopulationBefore < count) {
       throw new IllegalStateException(
-          "内部分摊不自洽：源家户人口合计 "
-              + sourcePopulationBefore
-              + " < count="
-              + count
-              + "（选人层本应整条拒）");
+          "内部分摊不自洽：源家户人口合计 " + sourcePopulationBefore + " < count=" + count + "（选人层本应整条拒）");
     }
     long sourcePopulationAfter = sourcePopulationBefore - count;
     boolean allEmptied = remainders.stream().allMatch(HouseholdRemainder::emptied);
@@ -351,9 +346,7 @@ final class GovAbsorbUnitPlan {
     }
     if (module instanceof GovernmentFormation) {
       throw new IllegalArgumentException(
-          "源单位 "
-              + unitId
-              + " 带 GovernmentFormation：GOV 单位不是人口容器，不能被吸收；只有无 module 的纯人员单位才能被吸收");
+          "源单位 " + unitId + " 带 GovernmentFormation：GOV 单位不是人口容器，不能被吸收；只有无 module 的纯人员单位才能被吸收");
     }
     throw new IllegalArgumentException(
         "源单位 "
@@ -404,7 +397,10 @@ final class GovAbsorbUnitPlan {
       }
       if (taken < 0L || taken > populationBefore) {
         throw new IllegalArgumentException(
-            "taken 必须在 [0, populationBefore]：taken=" + taken + " populationBefore=" + populationBefore);
+            "taken 必须在 [0, populationBefore]：taken="
+                + taken
+                + " populationBefore="
+                + populationBefore);
       }
       if (populationAfter != populationBefore - taken) {
         throw new IllegalArgumentException(
@@ -425,8 +421,8 @@ final class GovAbsorbUnitPlan {
    * 一份吸收计划（全部字段是状态的纯函数；来源 shares 与逐户剩余人口在构造期冻结并互校）。
    *
    * @param govUnitId 吸收方 GOV
-   * @param governmentHouseholdId 吸收目标政府家户（{@code hh-gov-<govUnitId>}；构造期已由 plan 前置校验同时在
-   *     {@code Unit.households()} 与 Social）
+   * @param governmentHouseholdId 吸收目标政府家户（{@code hh-gov-<govUnitId>}；构造期已由 plan 前置校验同时在 {@code
+   *     Unit.households()} 与 Social）
    * @param sourceUnitId 源纯人员单位
    * @param role 入编角色
    * @param count 吸收人数（= Σ share.taken = roster 增量）
@@ -439,7 +435,8 @@ final class GovAbsorbUnitPlan {
    * @param remainders 逐源家户迁移后剩余人口（与 shares 逐户互校；Σremaining == sourcePopulationAfter）
    * @param govHex GOV 单位当刻有效位置（disbandDispatched 时必在；SET_LOCATION 的目标 HEX）
    * @param disbandSource 调用方是否请求“源清空则解散”
-   * @param disbandDispatched 批里是否真的落 {@code SET_LOCATION + unit.DisbandUnit}（disbandSource 且所有源家户剩余 == 0）
+   * @param disbandDispatched 批里是否真的落 {@code SET_LOCATION + unit.DisbandUnit}（disbandSource 且所有源家户剩余
+   *     == 0）
    * @param disbandSkippedReason 请求了但没落解散时的具名原因（其余 = empty）
    */
   record Plan(
@@ -481,7 +478,8 @@ final class GovAbsorbUnitPlan {
         throw new IllegalArgumentException(
             "守恒破坏：roster " + staffBefore + " + count " + count + " != " + staffAfter);
       }
-      if (sourcePopulationBefore < count || sourcePopulationAfter != sourcePopulationBefore - count) {
+      if (sourcePopulationBefore < count
+          || sourcePopulationAfter != sourcePopulationBefore - count) {
         throw new IllegalArgumentException(
             "守恒破坏：源人口 "
                 + sourcePopulationBefore
@@ -526,14 +524,11 @@ final class GovAbsorbUnitPlan {
       for (HouseholdManpowerAllocator.ManpowerShare share : shares) {
         if (!remainderByHousehold.containsKey(share.householdId())) {
           throw new IllegalArgumentException(
-              "内部分摊不自洽：share 来源家户不在源单位 households 表里: "
-                  + share.householdId().value());
+              "内部分摊不自洽：share 来源家户不在源单位 households 表里: " + share.householdId().value());
         }
         if (share.householdId().equals(governmentHouseholdId)) {
           throw new IllegalArgumentException(
-              "内部分摊不自洽：share 来源不得是目标政府家户 "
-                  + governmentHouseholdId.value()
-                  + "（自我转移会被域层拒）");
+              "内部分摊不自洽：share 来源不得是目标政府家户 " + governmentHouseholdId.value() + "（自我转移会被域层拒）");
         }
         takenByHousehold.merge(share.householdId(), share.taken(), Long::sum);
         shareTotal += share.taken();
@@ -595,8 +590,8 @@ final class GovAbsorbUnitPlan {
     }
 
     /**
-     * 工单确定性幂等键：{@code gov-absorb-unit:<batchId>:<govUnitId>:<sourceUnitId>}
-     * （{@code batchId} 由 Tool 每次 apply 生成，本类不造随机数）。
+     * 工单确定性幂等键：{@code gov-absorb-unit:<batchId>:<govUnitId>:<sourceUnitId>} （{@code batchId} 由 Tool
+     * 每次 apply 生成，本类不造随机数）。
      */
     String orderId(String batchId) {
       requireNonBlank(batchId, "batchId");
@@ -604,10 +599,11 @@ final class GovAbsorbUnitPlan {
     }
 
     /**
-     * {@code social.SubmitHouseholdWorkOrder} 载荷：{@code target = hh-gov-<govUnitId>}；{@code plan} 先逐来源
-     * {@code TRANSFER_MEMBERS(from=源家户, to=政府家户, lotId, count=taken)}；{@code disbandDispatched} 时再逐源家户
-     * {@code SET_LOCATION(location = {type:"HEX", hex {q,r}} = GOV 单位当刻有效位置)}。
-     * {@code SET_LOCATION} 在同一工单里排在 {@code TRANSFER_MEMBERS} 之后、{@code unit.DisbandUnit} 之前。
+     * {@code social.SubmitHouseholdWorkOrder} 载荷：{@code target = hh-gov-<govUnitId>}；{@code plan}
+     * 先逐来源 {@code TRANSFER_MEMBERS(from=源家户, to=政府家户, lotId, count=taken)}；{@code
+     * disbandDispatched} 时再逐源家户 {@code SET_LOCATION(location = {type:"HEX", hex {q,r}} = GOV
+     * 单位当刻有效位置)}。 {@code SET_LOCATION} 在同一工单里排在 {@code TRANSFER_MEMBERS} 之后、{@code
+     * unit.DisbandUnit} 之前。
      */
     String submitHouseholdWorkOrderPayloadJson(String batchId, String reason) {
       requireReason(reason);
@@ -713,7 +709,10 @@ final class GovAbsorbUnitPlan {
       return disbandDispatched ? govHex.map(ToolSupport::hexCoord).orElse(null) : null;
     }
 
-    /** {@code sd.PutInfo} 的 {@code value}（JSON 字符串；含 govUnitId/sourceUnitId/role/count/shares/disbanded/disbandSkippedReason）。 */
+    /**
+     * {@code sd.PutInfo} 的 {@code value}（JSON 字符串；含
+     * govUnitId/sourceUnitId/role/count/shares/disbanded/disbandSkippedReason）。
+     */
     String infoValueJson(String reason) {
       requireReason(reason);
       Map<String, Object> value = new LinkedHashMap<>();

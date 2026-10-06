@@ -1313,10 +1313,7 @@ class UnitOperationsTest {
         .as("rename")
         .isEqualTo(chains);
     assertThat(
-            UnitOperations.setComposition(
-                    base,
-                    SUB,
-                    List.of(new CompositionEntry("炮", 1)))
+            UnitOperations.setComposition(base, SUB, List.of(new CompositionEntry("炮", 1)))
                 .commandChains())
         .as("setComposition")
         .isEqualTo(chains);
@@ -1546,10 +1543,7 @@ class UnitOperationsTest {
   void applyCasualtiesSubtractsFromTheCurrentValueInsteadOfOverwriting() {
     UnitState base = twoUnits();
     UnitState next =
-        UnitOperations.applyCasualties(
-            base,
-            BRIGADE,
-            List.of(new CompositionDelta("步枪", -10)));
+        UnitOperations.applyCasualties(base, BRIGADE, List.of(new CompositionDelta("步枪", -10)));
 
     Unit brigade = next.units().get(BRIGADE);
     assertThat(brigade.equipment())
@@ -1577,10 +1571,7 @@ class UnitOperationsTest {
             BRIGADE,
             List.of(new CompositionEntry("步枪", 50), new CompositionEntry("炮", 4)));
     UnitState next =
-        UnitOperations.applyCasualties(
-            base,
-            BRIGADE,
-            List.of(new CompositionDelta("步枪", -10)));
+        UnitOperations.applyCasualties(base, BRIGADE, List.of(new CompositionDelta("步枪", -10)));
 
     Unit brigade = next.units().get(BRIGADE);
     assertThat(brigade.equipment())
@@ -1607,8 +1598,7 @@ class UnitOperationsTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("装备战损超出当前值");
     assertThat(
-            UnitOperations.applyCasualties(
-                    base, BRIGADE, List.of(new CompositionDelta("步枪", -50)))
+            UnitOperations.applyCasualties(base, BRIGADE, List.of(new CompositionDelta("步枪", -50)))
                 .units()
                 .get(BRIGADE)
                 .equipment())
@@ -1646,8 +1636,7 @@ class UnitOperationsTest {
         .as("未知 type 判定在符号之前：正 Δ 也报'未知'而不是'必须 ≤ 0'")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("未知装备类型");
-    assertThatThrownBy(
-            () -> UnitOperations.applyCasualties(base, new UnitId("u-ghost"), List.of()))
+    assertThatThrownBy(() -> UnitOperations.applyCasualties(base, new UnitId("u-ghost"), List.of()))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("单位不存在");
   }
@@ -1663,10 +1652,7 @@ class UnitOperationsTest {
   void applyCasualtiesKeepsTheCommandChains() {
     UnitState base = chained();
     UnitState next =
-        UnitOperations.applyCasualties(
-            base,
-            ROOT,
-            List.of(new CompositionDelta("步枪", -10)));
+        UnitOperations.applyCasualties(base, ROOT, List.of(new CompositionDelta("步枪", -10)));
 
     assertThat(next.units().get(ROOT).equipment())
         .as("前提：战损真的发生了")

@@ -210,8 +210,7 @@ class UnitTest {
                     "第一连",
                     noParent(),
                     positionAt(H11),
-                    List.of(
-                        new CompositionEntry("步兵", 100), new CompositionEntry("步兵", 50)),
+                    List.of(new CompositionEntry("步兵", 100), new CompositionEntry("步兵", 50)),
                     2,
                     1000,
                     Optional.empty()))
@@ -226,7 +225,7 @@ class UnitTest {
                     "第一连",
                     noParent(),
                     positionAt(H11),
-                    List.of(),
+                    (List<CompositionEntry>) null,
                     2,
                     1000,
                     Optional.empty()))

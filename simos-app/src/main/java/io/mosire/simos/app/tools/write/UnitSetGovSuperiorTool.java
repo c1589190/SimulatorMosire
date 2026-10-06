@@ -10,8 +10,8 @@ import java.util.Map;
  * 调用时走审批门链。
  *
  * <p>★ <b>载荷</b>：{@code {unitId, superiorGov?}}；{@code superiorGov} 缺省或 JSON {@code null} ⇒ 中央
- * （无上级）。非空上级必须存在、带 {@code GovernmentFormation}、不得指向自身，且不得成环（沿 {@code superiorGov} 上溯， 命中自己即拒；seen + 最多 64
- * 层兜底）。
+ * （无上级）。非空上级必须存在、带 {@code GovernmentFormation}、不得指向自身，且不得成环（沿 {@code superiorGov} 上溯， 命中自己即拒；seen +
+ * 最多 64 层兜底）。
  *
  * <p>★ 工具层不做前置校验（那份校验能被 {@code simos.command.submit} 绕过 ⇒ 是装饰），拒绝理由由域层给、经 {@code ToolSupport.fold}
  * 变成可读的 {@code REJECTED}。

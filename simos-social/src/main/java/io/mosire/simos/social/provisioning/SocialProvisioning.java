@@ -1,5 +1,6 @@
 package io.mosire.simos.social.provisioning;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.social.SocialLog;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -64,6 +65,9 @@ import java.util.Set;
  * @param householdDemandOverrides 逐家户需求覆盖（键不得为 null；每户列表内三维键唯一）；不得为 null
  * @param householdLaborOverrides 逐家户劳动覆盖（键不得为 null；每户列表内二维键唯一）；不得为 null
  */
+@SuppressFBWarnings(
+    value = "EI_EXPOSE_REP",
+    justification = "compact constructor 已做防御性拷贝并冻结；SpotBugs 不跨辅助方法识别")
 public record SocialProvisioning(
     List<DemandCoefficient> globalDemandDefaults,
     List<LaborCoefficient> globalLaborDefaults,
@@ -313,7 +317,8 @@ public record SocialProvisioning(
     requireArg(householdId, "householdId");
     requireArg(ageBracket, "ageBracket");
     requireArg(sex, "sex");
-    return Optional.ofNullable(findLaborIn(householdLaborOverrides.get(householdId), ageBracket, sex));
+    return Optional.ofNullable(
+        findLaborIn(householdLaborOverrides.get(householdId), ageBracket, sex));
   }
 
   // ── 不可变 copy-with（GM 命令/窄工具的唯一写口；所有不变量仍由本 record 构造期校验）──────────
@@ -321,8 +326,8 @@ public record SocialProvisioning(
   /**
    * ★★ <b>全局需求默认表的 upsert</b>：同键 ⇒ 原位替换（保持表序）、新键 ⇒ 追加表尾；返回新实例。
    *
-   * <p>旧档作废、不迁移：本方法只服务"从当前权威表构造下一份权威表"，不做任何旧字段兼容； 坏数据（null、负值、period/cycleDays 不自洽、重复键）
-   * 一律由 {@link DemandCoefficient} 与 record 构造期具名拒。
+   * <p>旧档作废、不迁移：本方法只服务"从当前权威表构造下一份权威表"，不做任何旧字段兼容； 坏数据（null、负值、period/cycleDays 不自洽、重复键） 一律由 {@link
+   * DemandCoefficient} 与 record 构造期具名拒。
    *
    * @param coefficient 新行；不得为 null
    */
@@ -336,8 +341,8 @@ public record SocialProvisioning(
   }
 
   /**
-   * ★★ <b>某家户需求覆盖的 upsert</b>：同 {@code (年龄档, 性别, 商品)} ⇒ 原位替换；新键 ⇒ 追加该户列表表尾。 该户原本没有覆盖 ⇒ 新建一张只含这一行的覆盖表；
-   * 不触碰全局表与其它户。
+   * ★★ <b>某家户需求覆盖的 upsert</b>：同 {@code (年龄档, 性别, 商品)} ⇒ 原位替换；新键 ⇒ 追加该户列表表尾。 该户原本没有覆盖 ⇒
+   * 新建一张只含这一行的覆盖表； 不触碰全局表与其它户。
    *
    * @param householdId 家户 id；不得为 null
    * @param coefficient 新覆盖行；不得为 null
@@ -346,12 +351,9 @@ public record SocialProvisioning(
       HouseholdId householdId, DemandCoefficient coefficient) {
     requireArg(householdId, "householdId");
     requireArg(coefficient, "coefficient");
-    Map<HouseholdId, List<DemandCoefficient>> next =
-        new LinkedHashMap<>(householdDemandOverrides);
+    Map<HouseholdId, List<DemandCoefficient>> next = new LinkedHashMap<>(householdDemandOverrides);
     List<DemandCoefficient> existing = next.get(householdId);
-    next.put(
-        householdId,
-        upsertDemand(existing == null ? List.of() : existing, coefficient));
+    next.put(householdId, upsertDemand(existing == null ? List.of() : existing, coefficient));
     return new SocialProvisioning(
         globalDemandDefaults, globalLaborDefaults, next, householdLaborOverrides);
   }

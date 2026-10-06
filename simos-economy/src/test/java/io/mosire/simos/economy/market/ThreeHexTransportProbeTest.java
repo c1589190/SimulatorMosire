@@ -6,7 +6,6 @@ import io.mosire.simos.economy.market.ProbeEconomy.Good;
 import io.mosire.simos.economy.market.ProbeEconomy.Household;
 import io.mosire.simos.economy.market.ProbeEconomy.Params;
 import io.mosire.simos.economy.market.ProbeEconomy.RoundResult;
-import io.mosire.simos.economy.market.ProbeEconomy.Trade;
 import java.util.EnumMap;
 import org.junit.jupiter.api.Test;
 
@@ -18,15 +17,18 @@ class ThreeHexTransportProbeTest {
     EnumMap<Good, Long> initialPrice = new EnumMap<>(Good.class);
     initialPrice.put(Good.GRAIN, 100L);
     initialPrice.put(Good.CLOTH, 200L);
-    Params params = new Params(200L, 100L, 100L, 10_000L, 50L, 0L, 500L, 0L, 50L, 50L, initialPrice);
+    Params params =
+        new Params(200L, 100L, 100L, 10_000L, 50L, 0L, 500L, 0L, 50L, 50L, initialPrice);
     ProbeEconomy economy = new ProbeEconomy(params);
     economy.addHex("H0-grain", 0, 0);
     economy.addHex("H1-cloth", 2, 0);
     economy.addHex("H2-poor", 1, 0);
 
-    Household grainSeller = new Household("G", "H0-grain").stock(Good.GRAIN, 100L).need(Good.CLOTH, 20L);
+    Household grainSeller =
+        new Household("G", "H0-grain").stock(Good.GRAIN, 100L).need(Good.CLOTH, 20L);
     grainSeller.population = 0L;
-    Household clothSeller = new Household("C", "H1-cloth").stock(Good.CLOTH, 100L).need(Good.GRAIN, 20L);
+    Household clothSeller =
+        new Household("C", "H1-cloth").stock(Good.CLOTH, 100L).need(Good.GRAIN, 20L);
     clothSeller.population = 0L;
     Household poor = new Household("P", "H2-poor").need(Good.GRAIN, 30L).need(Good.CLOTH, 10L);
     poor.population = 1L;

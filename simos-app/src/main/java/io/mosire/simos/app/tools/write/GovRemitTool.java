@@ -48,9 +48,9 @@ import java.util.UUID;
  * GOV 单位当刻有效位置折成一条 {@code actor.RemitGovTreasury} 命令：源国库扣、目标国库加， 一条命令、一条 revision、整条原子。
  *
  * <p>★★ <b>preview / apply 共用同一份解析与视图</b>：preview 只读 {@link QueryService} 给出的 base state，找两个单位、
- * 要求都带 {@link GovernmentFormation} 且当刻有效位置非空，返回源/目标位置、请求量与命令预览（含源国库可支配量）， <b>一个字节都不写</b>；preview=false
- * 把同一份解析结果组一条 {@link CommandEnvelope} 走 {@link CoreSimos#submit}。 金额语义（源账必须存在、可支配量足、目标缺账正增量新建）由域层
- * handler 判，本工具不重复实现。
+ * 要求都带 {@link GovernmentFormation} 且当刻有效位置非空，返回源/目标位置、请求量与命令预览（含源国库可支配量），
+ * <b>一个字节都不写</b>；preview=false 把同一份解析结果组一条 {@link CommandEnvelope} 走 {@link CoreSimos#submit}。
+ * 金额语义（源账必须存在、可支配量足、目标缺账正增量新建）由域层 handler 判，本工具不重复实现。
  *
  * <p>★★ <b>GM 特权</b>：允许任意两个 GOV 单位之间转移，<b>不</b>要求 {@code to} 是 {@code from} 的 {@code superiorGov}
  * —— 该约束属于省份决策人的指令 scope / 校验（R3b），GM 走这里时不受限。
@@ -125,9 +125,11 @@ public final class GovRemitTool implements AgentTool {
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put(
-        "fromGovUnitId", ToolSupport.prop("string", "源 GOV 单位 id（必填；必须存在且带 GovernmentFormation、有当刻有效位置）"));
+        "fromGovUnitId",
+        ToolSupport.prop("string", "源 GOV 单位 id（必填；必须存在且带 GovernmentFormation、有当刻有效位置）"));
     props.put(
-        "toGovUnitId", ToolSupport.prop("string", "目标 GOV 单位 id（必填；必须存在且带 GovernmentFormation、有当刻有效位置）"));
+        "toGovUnitId",
+        ToolSupport.prop("string", "目标 GOV 单位 id（必填；必须存在且带 GovernmentFormation、有当刻有效位置）"));
     props.put(
         "grain",
         ToolSupport.prop("integer", "上缴粮（最小计量单位；可选，缺省 0；不得为负；grain/cloth/money 至少一个 > 0）"));
@@ -251,9 +253,9 @@ public final class GovRemitTool implements AgentTool {
   }
 
   /**
-   * 解析一个 GOV 单位的国库落点：必须存在、带 {@link GovernmentFormation}、有<b>当刻有效位置</b> （与 GUI / scope / facet 同口径走 {@link
-   * UnitState#effectivePosition}）—— 任一不满足 ⇒ {@link IllegalArgumentException}（由 {@link #execute} 折成
-   * BAD_REQUEST，零 revision）。
+   * 解析一个 GOV 单位的国库落点：必须存在、带 {@link GovernmentFormation}、有<b>当刻有效位置</b> （与 GUI / scope / facet 同口径走
+   * {@link UnitState#effectivePosition}）—— 任一不满足 ⇒ {@link IllegalArgumentException}（由 {@link
+   * #execute} 折成 BAD_REQUEST，零 revision）。
    */
   private static TreasuryLocation resolveGov(
       SimulationState state, String rawUnitId, String field) {
@@ -275,7 +277,9 @@ public final class GovRemitTool implements AgentTool {
                     new IllegalArgumentException(
                         "参数 " + field + " 指定的 GOV 单位没有当刻有效位置（国库落点未知）: " + rawUnitId));
     return new TreasuryLocation(
-        rawUnitId, at, GovernmentHouseholdResolver.requireGovernmentHousehold(unit, rawUnitId).value());
+        rawUnitId,
+        at,
+        GovernmentHouseholdResolver.requireGovernmentHousehold(unit, rawUnitId).value());
   }
 
   /** 一条 {@code actor.RemitGovTreasury} 的载荷（字段名与 handler 的解析契约一致；三个金额显式写出）。 */
@@ -407,9 +411,7 @@ public final class GovRemitTool implements AgentTool {
   private static Map<String, Object> availableOf(SimulationState state, TreasuryLocation from) {
     ActorData actors = ApiViews.actorData(state);
     HouseholdInventory inventory =
-        actors
-            .accounts()
-            .get(new HouseholdAccountKey(HouseholdId.parse(from.householdId())));
+        actors.accounts().get(new HouseholdAccountKey(HouseholdId.parse(from.householdId())));
     if (inventory == null) {
       return null;
     }

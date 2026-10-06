@@ -12,30 +12,29 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * ★★ <b>市场总调控</b>（D-027 的第二层：市场区这一层的聚合规则，按区施加一次）。它是<b>纯值类型</b>——
- * 不落盘、不进 {@code EconomyData}/Codec/ChangeSet，本批只作为逐轮瞬态传入
- * {@link MarketSettlement.MarketRound}；GM 命令面/落盘是后续批次。
+ * ★★ <b>市场总调控</b>（D-027 的第二层：市场区这一层的聚合规则，按区施加一次）。它是<b>纯值类型</b>—— 不落盘、不进 {@code
+ * EconomyData}/Codec/ChangeSet，本批只作为逐轮瞬态传入 {@link MarketSettlement.MarketRound}；GM 命令面/落盘是后续批次。
  *
- * <p>★★ <b>与单 hex 贸易成本的分层</b>：本类回答"这一区本轮按什么参考价/限价撮合、最多成交多少、开不开市、税费读数是多少"，
- * <b>不</b>表达逐格物流成本（那是 {@link HexTradeCost} 的职责）。参考价/限价/配额是<b>区级</b>的，不得实现成逐 hex extra
- * cost；单 hex 损耗也不得承担价格/配额职能。
+ * <p>★★ <b>与单 hex 贸易成本的分层</b>：本类回答"这一区本轮按什么参考价/限价撮合、最多成交多少、开不开市、税费读数是多少"， <b>不</b>表达逐格物流成本（那是
+ * {@link HexTradeCost} 的职责）。参考价/限价/配额是<b>区级</b>的，不得实现成逐 hex extra cost；单 hex 损耗也不得承担价格/配额职能。
  *
  * <p>★★ <b>默认实例 = 逐值现状</b>（{@link #defaults}）：
  *
  * <ul>
  *   <li>{@code referencePrices} 空 ⇒ 沿用各 hex {@link Market#prices()}；
- *   <li>{@code bidPerMille}/{@code askPerMille} = 0 ⇒ 沿用 {@link Market#BID_PER_MILLE}/{@link Market#ASK_PER_MILLE}；
+ *   <li>{@code bidPerMille}/{@code askPerMille} = 0 ⇒ 沿用 {@link Market#BID_PER_MILLE}/{@link
+ *       Market#ASK_PER_MILLE}；
  *   <li>{@code quotaPerWindow} 空 ⇒ 无配额；
  *   <li>{@code tariffPerUnit} 空/0 ⇒ 无税费（本批只记读数，不搬钱）；
  *   <li>{@code open = true} ⇒ 正常撮合；{@code rules} 空 ⇒ 没有制度标签。
  * </ul>
  *
  * <p>★ <b>覆盖口径（唯一拼写点 = {@link #referencePriceOf} / {@link #bidPriceOf} / {@link #askPriceOf}）</b>：
- * 参考价只覆盖该 hex <b>已经定价</b>的商品（缺价 = 本格不交易它，不凭空造一行）；限价按覆盖后的参考价现算，
- * 未覆盖的一侧沿用 {@link Market} 的两个常量。
+ * 参考价只覆盖该 hex <b>已经定价</b>的商品（缺价 = 本格不交易它，不凭空造一行）；限价按覆盖后的参考价现算， 未覆盖的一侧沿用 {@link Market} 的两个常量。
  *
  * @param anchor 区级参考价锚格；单区 = 规范序第一个有市场的 hex；不得为 null
- * @param referencePrices 商品 → 区级参考价（毫计价货币/商品单位；空 = 沿用各 hex {@code Market.prices}；值必须 ≥ 0，0 = 明确免费交易）
+ * @param referencePrices 商品 → 区级参考价（毫计价货币/商品单位；空 = 沿用各 hex {@code Market.prices}；值必须 ≥ 0，0 =
+ *     明确免费交易）
  * @param bidPerMille 卖方挂牌底价（‰；0 = 沿用 {@link Market#BID_PER_MILLE}）
  * @param askPerMille 买方挂牌限价（‰；0 = 沿用 {@link Market#ASK_PER_MILLE}）
  * @param quotaPerWindow 商品 → 本区本轮卖方成交量上限（毫商品；空 = 无配额；0 = 配额用尽）
@@ -72,8 +71,8 @@ public record MarketRegulation(
   }
 
   /**
-   * ★★ <b>出厂默认</b>：与现状逐值相同。{@code referencePrices}/{@code quotaPerWindow}/
-   * {@code tariffPerUnit} 空、{@code bidPerMille}/{@code askPerMille} = 0、{@code open = true}、{@code rules} 空。
+   * ★★ <b>出厂默认</b>：与现状逐值相同。{@code referencePrices}/{@code quotaPerWindow}/ {@code tariffPerUnit}
+   * 空、{@code bidPerMille}/{@code askPerMille} = 0、{@code open = true}、{@code rules} 空。
    */
   public static MarketRegulation defaults(HexCoord anchor) {
     return new MarketRegulation(anchor, Map.of(), 0L, 0L, Map.of(), Map.of(), true, List.of());
@@ -82,8 +81,7 @@ public record MarketRegulation(
   /**
    * ★★ <b>单区默认锚格</b>：取 {@code markets} 规范序（q, r 升序）第一个 hex；空 markets ⇒ {@link #none()}。
    *
-   * <p>★ 它只做"锚格在哪"这一件事：单区语义（全部市场格归一个区）由 {@link MarketTopology#singleRegion} 承担；
-   * 本方法不猜币种、不拆区。
+   * <p>★ 它只做"锚格在哪"这一件事：单区语义（全部市场格归一个区）由 {@link MarketTopology#singleRegion} 承担； 本方法不猜币种、不拆区。
    */
   public static MarketRegulation defaultsFor(Map<HexCoord, Market> markets) {
     Objects.requireNonNull(markets, "markets");
@@ -92,9 +90,9 @@ public record MarketRegulation(
   }
 
   /**
-   * ★ <b>没有调控</b>：占位锚格（{@link HexCoord#HexCoord(int, int) (0, 0)}）上的默认实例，且
-   * {@link #defined()} 为 {@code false}。调用方（{@code MarketSettlement} 的旧入口 / {@code MarketReadout}）
-   * 用它表达"这一轮没有区级调控"——此时 {@link MarketSettlement} 逐值走原路径。
+   * ★ <b>没有调控</b>：占位锚格（{@link HexCoord#HexCoord(int, int) (0, 0)}）上的默认实例，且 {@link #defined()} 为
+   * {@code false}。调用方（{@code MarketSettlement} 的旧入口 / {@code MarketReadout}） 用它表达"这一轮没有区级调控"——此时
+   * {@link MarketSettlement} 逐值走原路径。
    */
   public static MarketRegulation none() {
     return NONE;
@@ -112,9 +110,8 @@ public record MarketRegulation(
   }
 
   /**
-   * ★ <b>该 hex 的商品参考价</b>：{@link #referencePrices} 覆盖优先；缺项回退该 hex
-   * {@link Market#priceOf(CommodityId)}。★ 未定价与明确 0 价都返回 0 ⇒ 要用 {@link #hasPrice} 区分
-   * "不交易"与"免费交易"。
+   * ★ <b>该 hex 的商品参考价</b>：{@link #referencePrices} 覆盖优先；缺项回退该 hex {@link
+   * Market#priceOf(CommodityId)}。★ 未定价与明确 0 价都返回 0 ⇒ 要用 {@link #hasPrice} 区分 "不交易"与"免费交易"。
    */
   public long referencePriceOf(Market market, CommodityId commodity) {
     Objects.requireNonNull(market, "market");
@@ -124,8 +121,8 @@ public record MarketRegulation(
   }
 
   /**
-   * ★★ <b>该 hex 的商品有没有有效定价</b>：区级覆盖里有该商品，或该格 {@link Market#hasPrice} ——
-   * <b>值为 0 也算定价</b>（明确 0 价免费交易）。
+   * ★★ <b>该 hex 的商品有没有有效定价</b>：区级覆盖里有该商品，或该格 {@link Market#hasPrice} —— <b>值为 0 也算定价</b>（明确 0
+   * 价免费交易）。
    */
   public boolean hasPrice(Market market, CommodityId commodity) {
     Objects.requireNonNull(market, "market");
@@ -134,8 +131,8 @@ public record MarketRegulation(
   }
 
   /**
-   * ★ <b>该 hex 商品的卖方挂牌底价</b>：{@code max(1, ⌊有效参考价 × bid‰ ÷ 1000⌋)}；{@code bidPerMille == 0} 时
-   * 与 {@link Market#bidPriceOf} 逐值同源。未定价 ⇒ 0；明确 0 价 ⇒ 0（免费交易的卖方底价为 0）。
+   * ★ <b>该 hex 商品的卖方挂牌底价</b>：{@code max(1, ⌊有效参考价 × bid‰ ÷ 1000⌋)}；{@code bidPerMille == 0} 时 与
+   * {@link Market#bidPriceOf} 逐值同源。未定价 ⇒ 0；明确 0 价 ⇒ 0（免费交易的卖方底价为 0）。
    */
   public long bidPriceOf(Market market, CommodityId commodity) {
     if (!hasPrice(market, commodity)) {
@@ -179,12 +176,7 @@ public record MarketRegulation(
       }
       if (entry.getValue() < 0L) {
         throw new IllegalArgumentException(
-            "MarketRegulation."
-                + field
-                + " 的值不得为负: "
-                + entry.getKey()
-                + " = "
-                + entry.getValue());
+            "MarketRegulation." + field + " 的值不得为负: " + entry.getKey() + " = " + entry.getValue());
       }
       copy.put(entry.getKey(), entry.getValue());
     }

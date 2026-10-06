@@ -4,8 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -20,8 +20,9 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ {@code economy.SetHouseholdClass}（P2-B §13.6）：把某个家户的 {@link HouseholdClassMembership#currentPositionId()}
- * 改到一个**已存在**的 {@link ProductionRole} 上；只写 {@code classStandings} 一张表。
+ * ★★ {@code economy.SetHouseholdClass}（P2-B §13.6）：把某个家户的 {@link
+ * HouseholdClassMembership#currentPositionId()} 改到一个**已存在**的 {@link ProductionRole} 上；只写 {@code
+ * classStandings} 一张表。
  *
  * <pre>{@code
  * {"household":"hh-...","position":"wage-farm-wage-laborer","originalPosition"?:"...",
@@ -33,18 +34,18 @@ import java.util.Set;
  * <ul>
  *   <li>{@code position} 必须已在 {@code classPositions} 里（引用完整性在本命令边界给出可读拒绝；{@code EconomyData}
  *       构造期守卫是第二道）；
- *   <li>{@code originalPosition} 缺省 = 既有 standing 的原所属 / 新建时 = {@code position}；
- *       {@code participatingPositionIds}（追加参与集合）与 {@code retainedShares}、债务压力计数**逐值保留** ——
+ *   <li>{@code originalPosition} 缺省 = 既有 standing 的原所属 / 新建时 = {@code position}； {@code
+ *       participatingPositionIds}（追加参与集合）与 {@code retainedShares}、债务压力计数**逐值保留** ——
  *       本命令的承诺就是"只改当前职业"，要改追加集合请用 {@code economy.SetHouseholdParticipation}；
  *   <li>家户没有 {@code HouseholdClassMembership} ⇒ 新建一条（original = current = position，追加集合空）；
- *   <li>它<b>不改</b> {@code HouseholdEconomy.view}（那是 Social 阶层名/旧分类器的投影），也不动人口/劳动/资产 ——
- *       "家户 Class"的权威是 {@code HouseholdClassMembership}，组织阶段按它解析可参与位置；
+ *   <li>它<b>不改</b> {@code HouseholdEconomy.view}（那是 Social 阶层名/旧分类器的投影），也不动人口/劳动/资产 —— "家户
+ *       Class"的权威是 {@code HouseholdClassMembership}，组织阶段按它解析可参与位置；
  *   <li>{@code at} 是给 {@link CommandTargets} 的目标声明（见 {@link HouseholdEconomyCommands}）；给了就必须等于
  *       该家户当刻居住格。
  * </ul>
  *
- * <p>★ <b>权限</b>：非 {@code GmOnlyCommand}（与 social 的家户命令同待遇）⇒ 可进决策令白名单与
- * {@code sd.RegisterEffect}；是否真的到得了那条路径由决策人的资源可达面（{@code economy} 命名空间的目标格）决定。
+ * <p>★ <b>权限</b>：非 {@code GmOnlyCommand}（与 social 的家户命令同待遇）⇒ 可进决策令白名单与 {@code
+ * sd.RegisterEffect}；是否真的到得了那条路径由决策人的资源可达面（{@code economy} 命名空间的目标格）决定。
  */
 public final class EconomySetHouseholdClassHandler implements CommandHandler, CommandTargets {
 
@@ -87,7 +88,9 @@ public final class EconomySetHouseholdClassHandler implements CommandHandler, Co
       if (payload.hasNonNull("originalPosition")) {
         originalPosition =
             HouseholdEconomyCommands.requirePosition(
-                    TYPE, base, EconomyCommandPayloads.requireText(TYPE, payload, "originalPosition"))
+                    TYPE,
+                    base,
+                    EconomyCommandPayloads.requireText(TYPE, payload, "originalPosition"))
                 .id();
       } else if (existingClassMembership != null) {
         originalPosition = existingClassMembership.originalPositionId();
@@ -97,9 +100,13 @@ public final class EconomySetHouseholdClassHandler implements CommandHandler, Co
               household,
               originalPosition,
               position.id(),
-              existingClassMembership == null ? Set.of() : existingClassMembership.participatingPositionIds(),
+              existingClassMembership == null
+                  ? Set.of()
+                  : existingClassMembership.participatingPositionIds(),
               existingClassMembership == null ? Map.of() : existingClassMembership.retainedShares(),
-              existingClassMembership == null ? 0L : existingClassMembership.consecutiveDebtStressCycles(),
+              existingClassMembership == null
+                  ? 0L
+                  : existingClassMembership.consecutiveDebtStressCycles(),
               day,
               reason);
       if (afterClassMembership.equals(existingClassMembership)) {

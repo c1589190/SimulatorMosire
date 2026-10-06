@@ -34,34 +34,31 @@ import java.util.Objects;
  *  ]}
  * }</pre>
  *
- * <p>★★ <b>语义</b>：从 base {@link SocialData} 起把 plan 顺序应用为一个<b>工作副本</b>（见
- * {@link HouseholdWorkOrderBook}）——任一步失败 ⇒ 整单具名拒、不部分生效；成功 ⇒
- * {@link SocialChangeSet#between(SocialData, SocialData)} 一条 revision。逐操作写口仍全部收口在 {@code HouseholdBook}
- * （本 handler 不直接改任何状态字段；铁律 2）。
+ * <p>★★ <b>语义</b>：从 base {@link SocialData} 起把 plan 顺序应用为一个<b>工作副本</b>（见 {@link
+ * HouseholdWorkOrderBook}）——任一步失败 ⇒ 整单具名拒、不部分生效；成功 ⇒ {@link SocialChangeSet#between(SocialData,
+ * SocialData)} 一条 revision。逐操作写口仍全部收口在 {@code HouseholdBook} （本 handler 不直接改任何状态字段；铁律 2）。
  *
- * <p>★ <b>幂等</b>：{@code orderId} 给定时是幂等键；同 orderId 重复提交 ⇒ 具名拒（见
- * {@link HouseholdWorkOrder#markerEventId()} 与 {@code WORK_ORDER} 标记事件）。未给 ⇒ 不做幂等。
- * {@code expectedRevision} 不在载荷里：它由命令信封承载，Core 在任何 handler 之前做乐观并发检查。
+ * <p>★ <b>幂等</b>：{@code orderId} 给定时是幂等键；同 orderId 重复提交 ⇒ 具名拒（见 {@link
+ * HouseholdWorkOrder#markerEventId()} 与 {@code WORK_ORDER} 标记事件）。未给 ⇒ 不做幂等。 {@code
+ * expectedRevision} 不在载荷里：它由命令信封承载，Core 在任何 handler 之前做乐观并发检查。
  *
- * <p>★ <b>dryRun</b>：命令 handler 只有 {@code Applied}/{@code Rejected} 两种结局，没有"只算不写"；{@code dryRun=true}
- * 在 {@code HouseholdWorkOrderPayloads} 里具名拒（不假装成功、不落空 revision）。预览由 app 工具预览路径承担。
+ * <p>★ <b>dryRun</b>：命令 handler 只有 {@code Applied}/{@code Rejected} 两种结局，没有"只算不写"；{@code
+ * dryRun=true} 在 {@code HouseholdWorkOrderPayloads} 里具名拒（不假装成功、不落空 revision）。预览由 app 工具预览路径承担。
  *
- * <p>★ <b>旧命令保留</b>：{@code social.CreateHousehold} / {@code SetHouseholdLocation} / {@code Add/Remove/
- * TransferHouseholdMembers} / {@code AdjustHouseholdPopulation} / {@code SetHouseholdVitalRates} 逐操作入口继续可用；
- * 本命令是新增的统一受理口，不替换它们。
+ * <p>★ <b>旧命令保留</b>：{@code social.CreateHousehold} / {@code SetHouseholdLocation} / {@code
+ * Add/Remove/ TransferHouseholdMembers} / {@code AdjustHouseholdPopulation} / {@code
+ * SetHouseholdVitalRates} 逐操作入口继续可用； 本命令是新增的统一受理口，不替换它们。
  *
  * <p>★ <b>目标声明</b>（{@link CommandTargets}）：2026-10-20 起走跨命名空间 {@link #targetResources}——解析整张 plan 的
- * CREATE_HOUSEHOLD.location / SET_LOCATION（旧位置 + 新位置）/ 全部 household/from/to 引用；创建型用载荷 location， 现有家户用
- * SocialData 现值（plan 内先建的户按工作副本位置解析）。旧 {@link #targetPaths} 保留为空列表（它看不到 state， 升级前逐字一致）。
+ * CREATE_HOUSEHOLD.location / SET_LOCATION（旧位置 + 新位置）/ 全部 household/from/to 引用；创建型用载荷 location，
+ * 现有家户用 SocialData 现值（plan 内先建的户按工作副本位置解析）。旧 {@link #targetPaths} 保留为空列表（它看不到 state， 升级前逐字一致）。
  */
 public final class SubmitHouseholdWorkOrderHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点：Shell 注册、组合工具与 catalog 都从这里取/对齐）。 */
   public static final String TYPE = "social.SubmitHouseholdWorkOrder";
 
-  /**
-   * 目标 = plan 的逐步骤解析结果（保序去重）。★ 用与 {@code handle} 同一台载荷解析器 + 同一 worldTick 口径，不造第二份 plan 语义。
-   */
+  /** 目标 = plan 的逐步骤解析结果（保序去重）。★ 用与 {@code handle} 同一台载荷解析器 + 同一 worldTick 口径，不造第二份 plan 语义。 */
   @Override
   public List<CommandTarget> targetResources(
       String commandType, SimulationState state, String mapId, String payloadJson) {

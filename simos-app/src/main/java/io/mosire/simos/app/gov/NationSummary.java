@@ -22,8 +22,8 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * <b>Nation 的只读派生概括视图</b>（阶段 12，计划 §2.4 / 用户裁定 4/5/7）：每个 {@link GovernmentLevel#CENTRAL} 的中央 GOV 沿 {@link
- * GovernmentFormation#superiorGov()} <b>向下</b>收集自己 + 全部下级 GOV，汇总显示名、名义辖区与人口。
+ * <b>Nation 的只读派生概括视图</b>（阶段 12，计划 §2.4 / 用户裁定 4/5/7）：每个 {@link GovernmentLevel#CENTRAL} 的中央 GOV 沿
+ * {@link GovernmentFormation#superiorGov()} <b>向下</b>收集自己 + 全部下级 GOV，汇总显示名、名义辖区与人口。
  *
  * <p>★★ <b>只给显示/后续外交，绝不进任何授权判定</b>（裁定 4）：它不给 {@code GovScope}/{@code ArmyScope}/{@code
  * AdjudicateTick} 使用，也不是 {@code sd.Nation} 的替代或状态。{@link #of} 是**纯函数**——不落盘、不新增状态、 不改任何切片；每次调用现算。

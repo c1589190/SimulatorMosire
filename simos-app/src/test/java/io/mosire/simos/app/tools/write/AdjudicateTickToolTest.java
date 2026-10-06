@@ -543,10 +543,10 @@ class AdjudicateTickToolTest {
             "economy.TransferAssetShare");
     assertThat(tool.allowedCommandTypes())
         .as(
-            "白名单 = 注册面（93）− GmOnly（15）− sd 自指（21）= 57（旧 47：SetStrength→SetComposition 换名，"
-                + "D1 的 SetStateDescription 与 R3a 的 actor.RemitGovTreasury 各 +1，S3a 的 7 条 social 家户命令"
-                + "与 unit.SetUnitHouseholds +8）")
-        .hasSize(57);
+            "白名单 = 注册面（121）− GmOnly（15）− sd 自指（42）= 64（D0–D4 新增 7 条有目标声明的命令："
+                + "economy 家户劳动/参与/阶层/需求 4 条 + social.SubmitHouseholdWorkOrder + "
+                + "unit.SetVisionRadius / unit.SetArmyPayPolicy）")
+        .hasSize(64);
 
     // ② 其余 47 条白名单类型 + 10 条 GM-only（实现 CommandTargets 的）= 57 条样本：逐条给真载荷、钉死输出路径。
     //   ★ 10 条 GM-only 里 4 条经济命令（SwitchMode/GmAdjust/UnitBorrow/UnitRepay）与三条区域清空
@@ -563,11 +563,7 @@ class AdjudicateTickToolTest {
             "u-9"));
     samples.put("unit.CancelRoute", List.of("{\"id\":\"u-1\"}", "u-1"));
     samples.put("unit.DisbandUnit", List.of("{\"id\":\"u-1\"}", "u-1"));
-    samples.put(
-        "unit.SetComposition",
-        List.of(
-            "{\"id\":\"u-1\",\"equipment\":[]}",
-            "u-1"));
+    samples.put("unit.SetComposition", List.of("{\"id\":\"u-1\",\"equipment\":[]}", "u-1"));
     samples.put("unit.SetStatus", List.of("{\"id\":\"u-1\",\"status\":\"RESTING\"}", "u-1"));
     // ★ D1/D3a：状态描述链接与有符号直改都按载荷点名的 unitId 给目标（AdjustComposition 是 GM-only，
     //   但同样实现 CommandTargets ⇒ 必须在 samples 里钉住输出路径）。
@@ -576,14 +572,10 @@ class AdjudicateTickToolTest {
         List.of("{\"id\":\"u-1\",\"state\":\"交战\",\"address\":\"map:Map1\"}", "u-1"));
     samples.put(
         "unit.AdjustComposition",
-        List.of(
-            "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-1}]}",
-            "u-1"));
+        List.of("{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-1}]}", "u-1"));
     samples.put(
         "unit.ApplyCasualties",
-        List.of(
-            "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-1}]}",
-            "u-1"));
+        List.of("{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-1}]}", "u-1"));
     samples.put("unit.DetachUnit", List.of("{\"id\":\"u-3\"}", "u-3"));
     samples.put("unit.SetFormationOffset", List.of("{\"id\":\"u-3\",\"dq\":1,\"dr\":0}", "u-3"));
     samples.put("unit.PlaceAt", List.of("{\"id\":\"u-1\",\"hex\":{\"q\":1,\"r\":2}}", "u-1"));
@@ -677,21 +669,10 @@ class AdjudicateTickToolTest {
         List.of(
             "{\"mapId\":\"Map1\",\"rulesVersion\":\"v\",\"entries\":[{\"q\":1,\"r\":1,\"actors\":[]}]}",
             "1_1"));
-    // actor 一条（辖区阶段 6）：净增量账按 entries[] 的**格**给目标（`<q>_<r>`）；owner 不参与目标声明。
+    // actor 一条（P2-A 后）：账户主体只有家户、地址由家户位置给出 ⇒ 目标声明为空（不再发 owner/q/r）。
     samples.put(
         "actor.AdjustAccounts",
-        List.of(
-            "{\"entries\":[{\"owner\":{\"kind\":\"UNIT\",\"id\":\"u-1\"},\"q\":1,\"r\":1,"
-                + "\"goods\":{\"grain\":1}}]}",
-            "1_1"));
-    // ★ R3a：国库上缴按源/目标两格给目标（actor 路径 = `<q>_<r>`，不带 mapId）。
-    samples.put(
-        "actor.RemitGovTreasury",
-        List.of(
-            "{\"fromUnitId\":\"u-1\",\"fromQ\":1,\"fromR\":1,\"toUnitId\":\"u-3\","
-                + "\"toQ\":2,\"toR\":2,\"grain\":1}",
-            "1_1",
-            "2_2"));
+        List.of("{\"entries\":[{\"household\":\"hh-1\",\"goods\":{\"grain\":1}}]}"));
     // ★ P1b1/P1b2/R4：三条区域清空 + map.RenameRegion（都实现 CommandTargets）。
     samples.put("actor.ClearRegion", List.of("{\"regionId\":\"701\"}"));
     samples.put("economy.ClearRegion", List.of("{\"regionId\":\"701\"}"));
@@ -715,12 +696,14 @@ class AdjudicateTickToolTest {
     samples.put(
         "economy.UnitBorrow",
         List.of(
-            "{\"unitId\":\"u-1\",\"lenderId\":\"lender-cov\",\"unit\":\"money\",\"principal\":1,"
+            "{\"unitId\":\"u-1\",\"borrowerHousehold\":\"hh-1\","
+                + "\"lenderHousehold\":\"hh-2\",\"unit\":\"money\",\"principal\":1,"
                 + "\"interestRatePerMille\":0,\"nextDueTick\":400}"));
     samples.put(
         "economy.UnitRepay",
         List.of(
-            "{\"unitId\":\"u-1\",\"lenderId\":\"lender-cov\",\"unit\":\"money\",\"amount\":1}"));
+            "{\"unitId\":\"u-1\",\"borrowerHousehold\":\"hh-1\","
+                + "\"lenderHousehold\":\"hh-2\",\"unit\":\"money\",\"amount\":1}"));
     // ★ S3a（2026-10-09）：7 条 social 家户命令 + unit.SetUnitHouseholds。
     //   CreateHousehold / SetHouseholdLocation 的 HEX 位置 ⇒ social 命名空间格路径；UNIT 位置 ⇒ 空（fail-closed）。
     //   其余家户命令的目标对象不是资源命名空间（无 hex/unit 入参）⇒ 有意返回空列表，同样登记为"无路径"。
@@ -757,7 +740,113 @@ class AdjudicateTickToolTest {
     samples.put(
         "unit.SetUnitHouseholds",
         List.of("{\"unitId\":\"u-1\",\"households\":[],\"reason\":\"x\"}", "u-1"));
+    // ★ P1/P2/R4 新命令：实现 CommandTargets ⇒ 逐条登记目标声明形状。
+    samples.put("unit.SetVisionRadius", List.of("{\"id\":\"u-1\",\"visionRadius\":2}", "u-1"));
+    samples.put("unit.SetArmyPayPolicy", List.of("{\"unitId\":\"u-1\"}", "u-1"));
+    samples.put(
+        "economy.SetHouseholdClass",
+        List.of("{\"household\":\"hh-1\",\"position\":\"p-1\",\"at\":{\"q\":1,\"r\":1}}", "1_1"));
+    samples.put(
+        "economy.SetHouseholdLabor",
+        List.of("{\"household\":\"hh-1\",\"laborMilli\":1000,\"at\":{\"q\":1,\"r\":1}}", "1_1"));
+    samples.put(
+        "economy.SetHouseholdParticipation",
+        List.of("{\"household\":\"hh-1\",\"positions\":[],\"at\":{\"q\":1,\"r\":1}}", "1_1"));
+    samples.put(
+        "economy.UpdateDemand", List.of("{\"demand\":\"d-1\",\"hex\":{\"q\":1,\"r\":1}}", "1_1"));
+    samples.put("social.SubmitHouseholdWorkOrder", List.of("{}"));
+    samples.put(
+        "actor.RemitGovTreasury",
+        List.of("{\"fromHousehold\":\"hh-1\",\"toHousehold\":\"hh-2\",\"grain\":1}"));
 
+    // ★ P2-A/D0–D4 新增的实现 CommandTargets 的类型：逐条登记目标声明形状。
+    samples.put(
+        "actor.DeductHouseholdStock",
+        List.of(
+            "{\"entries\":[{\"household\":\"hh-missing\",\"goods\":{\"grain\":1},"
+                + "\"reason\":\"jurisdiction_tax\"}]}"));
+    samples.put(
+        "actor.EnsureHouseholdAccount", List.of("{\"household\":\"hh-missing\",\"reason\":\"x\"}"));
+    samples.put(
+        "actor.TransferAccounts",
+        List.of(
+            "{\"from\":{\"household\":\"hh-missing-a\"},"
+                + "\"to\":{\"household\":\"hh-missing-b\"},\"goods\":{\"grain\":1}}"));
+    samples.put(
+        "economy.RegisterGovernment",
+        List.of("{\"govUnitId\":\"u-missing\",\"nationRef\":\"u-missing\",\"q\":9,\"r\":9}"));
+    samples.put(
+        "economy.RegisterHousehold",
+        List.of("{\"household\":\"hh-missing\",\"q\":9,\"r\":9,\"residence\":\"rural\"}"));
+    samples.put("economy.RemoveHouseholdPeriodicAdjustment", List.of("{\"id\":\"adj-missing\"}"));
+    samples.put(
+        "economy.UpsertHouseholdPeriodicAdjustment",
+        List.of(
+            "{\"id\":\"adj-missing\",\"payer\":\"hh-missing\","
+                + "\"goodsPerCycle\":{\"grain\":1},\"reason\":\"military_salary\","
+                + "\"periodDays\":1,\"phaseDay\":0,\"startsOnDay\":0,"
+                + "\"policySource\":\"gm:coverage\"}"));
+    samples.put(
+        "map.MergeRegions",
+        List.of(
+            "{\"targetRegionId\":\"r-target\",\"sourceRegionIds\":[\"r-source\"]}",
+            MAP_ID + "/region/r-target",
+            MAP_ID + "/region/r-source"));
+    samples.put(
+        "map.ReassignHexes",
+        List.of(
+            "{\"toRegionId\":\"r-target\",\"fromRegionIds\":[\"r-source\"],"
+                + "\"hexes\":[{\"q\":1,\"r\":1}]}",
+            MAP_ID + "/region/r-target",
+            MAP_ID + "/region/r-source",
+            MAP_ID + "/hex/1_1"));
+    samples.put(
+        "map.SplitRegion",
+        List.of(
+            "{\"sourceRegionId\":\"r-source\",\"keepSource\":false,"
+                + "\"parts\":[{\"regionId\":\"r-part\",\"name\":\"部\","
+                + "\"hexes\":[{\"q\":1,\"r\":1}]}]}",
+            MAP_ID + "/region/r-source",
+            MAP_ID + "/region/r-part",
+            MAP_ID + "/hex/1_1"));
+    samples.put(
+        "sd.DecideDecisionPacket",
+        List.of(
+            "{\"id\":\"pkt-x\",\"decision\":\"APPROVE\",\"decidedBy\":\"external-mcp\"}",
+            "decision-packet/pkt-x"));
+    samples.put("sd.DeleteNation", List.of("{\"nationId\":\"n-x\"}", "nation/n-x"));
+    samples.put(
+        "sd.SubmitDecisionPacket",
+        List.of("{\"id\":\"pkt-x\",\"proposerId\":\"dm-x\"}", "decision-packet/dm-x"));
+    samples.put(
+        "sd.UpsertDecisionPacket",
+        List.of("{\"id\":\"pkt-x\",\"proposerId\":\"dm-x\"}", "decision-packet/dm-x"));
+    samples.put(
+        "sd.UpsertMergedEffectPlan", List.of("{\"id\":\"merge-x\"}", "merged-plan/merge-x"));
+    samples.put("social.DeleteCity", List.of("{\"id\":\"c-missing\"}"));
+    samples.put(
+        "social.MoveCity", List.of("{\"id\":\"c-missing\",\"at\":{\"q\":1,\"r\":1}}", "1_1"));
+    samples.put(
+        "social.MovePopulationLots",
+        List.of(
+            "{\"fromHouseholdId\":\"hh-missing\",\"to\":{\"q\":1,\"r\":2},\"reason\":\"x\"}",
+            "1_2"));
+    samples.put(
+        "social.SetDemandCoefficient",
+        List.of(
+            "{\"ageBracket\":\"0-14\",\"sex\":\"MALE\",\"commodity\":\"grain\","
+                + "\"amountMilli\":1,\"reason\":\"x\"}"));
+    samples.put(
+        "social.SetGlobalVitalRates",
+        List.of(
+            "{\"rates\":[{\"bracketId\":\"15-59\",\"sex\":\"MALE\","
+                + "\"birthRatePerMillionPerTick\":1,\"deathRatePerMillionPerTick\":1}],"
+                + "\"reason\":\"x\"}"));
+    samples.put(
+        "social.SetLaborCoefficient",
+        List.of(
+            "{\"ageBracket\":\"0-14\",\"sex\":\"MALE\",\"milliHoursPerTick\":1,"
+                + "\"reason\":\"x\"}"));
     for (Map.Entry<String, List<String>> sample : samples.entrySet()) {
       List<String> expected = sample.getValue();
       String type = sample.getKey();
@@ -767,8 +856,8 @@ class AdjudicateTickToolTest {
           .containsExactlyInAnyOrderElementsOf(expected.subList(1, expected.size()));
     }
     assertThat(samples.keySet())
-        .as("57 条样本一条不漏（47 条白名单目标 + 10 条 GM-only；少一条 ⇒ 上面那条断言根本不会跑）")
-        .hasSize(57);
+        .as("85 条样本一条不漏（75 条有目标声明 + 10 条 GM-only 空目标；少一条 ⇒ 上面那条断言根本不会跑）")
+        .hasSize(85);
     assertThat(targets.keySet())
         .as("表里不该有白名单外的类型")
         .containsExactlyInAnyOrderElementsOf(samples.keySet());

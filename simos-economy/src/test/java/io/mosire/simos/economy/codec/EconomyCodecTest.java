@@ -23,23 +23,23 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -63,12 +63,12 @@ import org.junit.jupiter.api.Test;
  * <p>★ 覆盖：{@code Optional<EconomyMeta>} 两侧向（未激活 / 已激活）、{@code OptionalLong}（{@code lastClosedCycle}
  * 两侧向）、{@code Optional<String>}/{@code Optional<CommodityId>}、自定义键（{@code IndustryId} / {@code
  * HouseholdId}（S1 起 classes/flows 的键；旧档 {@code CohortKey} 串由 codec 映射成 {@code ofLegacy}）/ {@code
- * DebtContractId} / {@code CommodityId} + R2 的 {@code PeopleLotId} / {@code LaborAllocationId} + S1/R3B 的
- * {@code AssetShareId} + R3B.2 的 {@code ProductionUnitId}）、{@code
- * AssetKind} 的**枚举键**、 {@code AllocationRule} 的 **sealed 多态**（{@code Split}/{@code WageFirst}
- * 各一）、{@code FieldDelta} 四变体、 单值组件的投影往返、**字节级**往返（含"派生判断 {@code empty} 不进线格式"的观察点），以及旧档缺键的兼容。
+ * DebtContractId} / {@code CommodityId} + R2 的 {@code PeopleLotId} / {@code LaborAllocationId} +
+ * S1/R3B 的 {@code AssetShareId} + R3B.2 的 {@code ProductionUnitId}）、{@code AssetKind} 的**枚举键**、
+ * {@code AllocationRule} 的 **sealed 多态**（{@code Split}/{@code WageFirst} 各一）、{@code FieldDelta}
+ * 四变体、 单值组件的投影往返、**字节级**往返（含"派生判断 {@code empty} 不进线格式"的观察点），以及旧档缺键的兼容。
  *
- * <p>★ T2 补第 8 个组件（{@code relations}）：它的值里嵌着**第二个 sealed 多态**（{@code Recipient}）与 {@code
+ * <p>★ T2 补第 8 个组件（{@code relations}）：它的值里嵌着**第二个 sealed 多态**（{@code Payee}）与 {@code
  * CompensationRule} 的 {@code Optional<CommodityId>} —— 见 {@code
  * relationCarriesTheSealedRecipientAndTheMoneyRuleOverTheWire}。★ R3B.2 起它的键 / {@code activity} 都是
  * {@link ProductionUnitId}（关系挂在 unit 上，不再是 {@code IndustryId}），故夹具必须先有同 operator 的 unit。
@@ -87,8 +87,8 @@ class EconomyCodecTest {
 
   /**
    * ★ S1 起 {@code classes}/{@code flows} 的键 = **稳定家户身份** {@link HouseholdId}（视图住在 {@code
-   * ClassRow.view}）；旧档的 {@link CohortKey} 由 {@code EconomyCodec} 读入时映射成 {@code ofLegacy}。本测试的夹具
-   * 直接按旧视图造 id，等价于"旧档读入后的新形状"。
+   * HouseholdEconomy.view}）；旧档的 {@link CohortKey} 由 {@code EconomyCodec} 读入时映射成 {@code
+   * ofLegacy}。本测试的夹具 直接按旧视图造 id，等价于"旧档读入后的新形状"。
    */
   private static final HouseholdId FARM_HH = HouseholdIds.ofLegacy(PEASANT_KEY);
 
@@ -133,11 +133,10 @@ class EconomyCodecTest {
 
   /** ★ S1：成员份额（键 == 值内 id；Σcount 必须等于 Σ行人口）。 */
 
-
   /** ★ R3B.1：实物资产份额（键 == 值内 id；industry 必须存在）。 */
   private static final AssetShareId FARM_LAND_SHARE =
-      AssetShare.idOf(
-          FARM, AssetKind.LAND, FARM_OPERATOR, FARM_OPERATOR, AssetShare.RightKind.OWNED, 0L);
+      OwnershipStake.idOf(
+          FARM, AssetKind.LAND, FARM_OPERATOR, FARM_OPERATOR, OwnershipStake.RightKind.OWNED, 0L);
 
   private static final EconomyCodec CODEC = new EconomyCodec();
 
@@ -244,7 +243,7 @@ class EconomyCodecTest {
   }
 
   /**
-   * ★★ <b>R3B.2：operator / 周期状态的真值搬进了 {@link ProductionUnit}</b> —— 旧用例在 {@code Industry} 上断言
+   * ★★ <b>R3B.2：operator / 周期状态的真值搬进了 {@link ProductionProcess}</b> —— 旧用例在 {@code Industry} 上断言
    * {@code operator()} / {@code cycleInputUsedMilli()}（那两个字段现在只是旧档兼容位，新代码一律走 12 参模板、恒中性），
    * 故这里把**同一条判别力** 迁到 unit 上：
    *
@@ -257,13 +256,13 @@ class EconomyCodecTest {
    */
   @Test
   void unitOperatorAndCycleStateSurviveAsProductionUnit() {
-    ProductionUnit unit =
-        new ProductionUnit(
+    ProductionProcess unit =
+        new ProductionProcess(
             FARM_UNIT, FARM, FARM_OPERATOR, FARM.value(), 7L, 1234L, Map.of(GRAIN, 400L));
     EconomyData target =
         EconomyData.empty()
             .withIndustries(Map.of(FARM, industry(FARM, 143L)))
-            .withUnits(Map.of(FARM_UNIT, unit));
+            .withProcesses(Map.of(FARM_UNIT, unit));
 
     EconomyChangeSet back =
         (EconomyChangeSet)
@@ -271,8 +270,9 @@ class EconomyCodecTest {
                 CODEC.encodeChangeSet(EconomyChangeSet.between(EconomyData.empty(), target)));
 
     assertThat(back.units()).isInstanceOf(FieldDelta.Upsert.class);
-    FieldDelta.Upsert<ProductionUnit> upsert = (FieldDelta.Upsert<ProductionUnit>) back.units();
-    ProductionUnit read = upsert.entries().get(FARM_UNIT.value());
+    FieldDelta.Upsert<ProductionProcess> upsert =
+        (FieldDelta.Upsert<ProductionProcess>) back.units();
+    ProductionProcess read = upsert.entries().get(FARM_UNIT.value());
 
     assertThat(read).isNotNull();
     assertThat(read.operator())
@@ -291,14 +291,14 @@ class EconomyCodecTest {
    * ★★ **T2：第 8 个组件的关系表必须真的过线**，且它值里的**两个"不可能裸往返"的形状**都要被走到：
    *
    * <ul>
-   *   <li>{@code Recipient}（**sealed 多态**）：两个变体各一条规则（{@code ToActor} / {@code ToCohort}），
+   *   <li>{@code Payee}（**sealed 多态**）：两个变体各一条规则（{@code ToActor} / {@code ToCohort}），
    *       读回时"造哪个变体"只可能来自线格式（类型上的 Jackson 注解）；
    *   <li>{@code CompensationRule.commodity} 的**空侧**（{@code Optional.empty()} = 货币档）与**有值侧**（粮） 各一条
    *       —— 空侧写成 {@code null} 会让货币档与"字段没进线格式"无法区分。
    * </ul>
    *
-   * <p>★ 判别力（两条）：把 {@code Recipient} 的注解去掉 ⇒ 解码当场抛（{@code no Creators / abstract types}）⇒ 红； 把
-   * {@code compensations} 的 {@code Optional} 换成裸引用 ⇒ 空侧那条红（读回是 null 或抛）。
+   * <p>★ 判别力（两条）：把 {@code Payee} 的注解去掉 ⇒ 解码当场抛（{@code no Creators / abstract types}）⇒ 红； 把 {@code
+   * compensations} 的 {@code Optional} 换成裸引用 ⇒ 空侧那条红（读回是 null 或抛）。
    *
    * <p>★ R3B.2：关系挂在 unit 上 ⇒ 夹具必须先建同 operator 的 unit（键 = unit id，值内 activity 逐字相等）。
    */
@@ -308,7 +308,7 @@ class EconomyCodecTest {
     EconomyData target =
         EconomyData.empty()
             .withIndustries(Map.of(FARM, industry(FARM, 143L)))
-            .withUnits(Map.of(FARM_UNIT, farmUnit()))
+            .withProcesses(Map.of(FARM_UNIT, farmUnit()))
             .withRelations(Map.of(FARM_UNIT, relation(FARM_UNIT, operator)));
 
     EconomyChangeSet back =
@@ -317,9 +317,9 @@ class EconomyCodecTest {
                 CODEC.encodeChangeSet(EconomyChangeSet.between(EconomyData.empty(), target)));
 
     assertThat(back.relations()).isInstanceOf(FieldDelta.Upsert.class);
-    FieldDelta.Upsert<ProductionRelation> upsert =
-        (FieldDelta.Upsert<ProductionRelation>) back.relations();
-    ProductionRelation relation = upsert.entries().get(FARM_UNIT.value());
+    FieldDelta.Upsert<ProductionRules> upsert =
+        (FieldDelta.Upsert<ProductionRules>) back.relations();
+    ProductionRules relation = upsert.entries().get(FARM_UNIT.value());
     assertThat(relation.activity()).as("activity 过线（身份 = 它结算的那个生产单元）").isEqualTo(FARM_UNIT);
     assertThat(relation.operator()).isEqualTo(operator);
     assertThat(relation.residualOwner())
@@ -328,12 +328,12 @@ class EconomyCodecTest {
     assertThat(relation.rules()).as("三条规则逐字过线").hasSize(3);
     assertThat(relation.rules().get(0).recipient())
         .as("★ sealed 多态变体一：读回的是 ToActor（不是 Map、不是别的变体）")
-        .isEqualTo(new Recipient.ToActor(operator));
+        .isEqualTo(new Payee.ToActor(operator));
     assertThat(relation.rules().get(0).commodity()).contains(GRAIN);
     assertThat(relation.rules().get(1).recipient())
         .as("★ sealed 多态变体二：读回的是 ToCohort（`CohortKey` 的规范串过线）")
         .isEqualTo(
-            new Recipient.ToCohort(
+            new Payee.ToCohort(
                 new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.LANDLORD)));
     assertThat(relation.rules().get(2).commodity()).as("★ 货币档的**空侧**必须过线（空 = 货币是类型事实）").isEmpty();
     assertThat(EconomyChangeSet.apply(back, EconomyData.empty())).isEqualTo(target);
@@ -527,17 +527,17 @@ class EconomyCodecTest {
   // ── 夹具 ──
 
   /**
-   * 非平凡数据：产业 / 阶层 / 债务 / 流水 / 劳动分配 / 生产关系 / 资产份额 / 生产单元**都非空**，两层自定义键、 各 Optional
-   * 的有值侧至少出现一次、两种 AllocationRule 都在；市场 / 在途 / 经营者状态 / 需求 / 候选留空（追加在尾部的中性值）。
+   * 非平凡数据：产业 / 阶层 / 债务 / 流水 / 劳动分配 / 生产关系 / 资产份额 / 生产单元**都非空**，两层自定义键、 各 Optional 的有值侧至少出现一次、两种
+   * AllocationRule 都在；市场 / 在途 / 经营者状态 / 需求 / 候选留空（追加在尾部的中性值）。
    *
-   * <p>★ 夹具必须是**当前形状且自洽**：{@code allocations} 的 activity 指到 unit 且 actor == unit.operator、
-   * {@code relations} 键 == unit id —— 于是构造期迁移是 no-op，往返量的就是本夹具本身。
+   * <p>★ 夹具必须是**当前形状且自洽**：{@code allocations} 的 activity 指到 unit 且 actor == unit.operator、 {@code
+   * relations} 键 == unit id —— 于是构造期迁移是 no-op，往返量的就是本夹具本身。
    */
   private static EconomyData fullData() {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(FARM, industry(FARM, 143L));
     industries.put(WORKSHOP, workshopIndustry());
-    Map<HouseholdId, ClassRow> classes = new LinkedHashMap<>();
+    Map<HouseholdId, HouseholdEconomy> classes = new LinkedHashMap<>();
     classes.put(FARM_HH, classRow(FARM_HH, PEASANT_KEY, 120L));
     classes.put(LANDLORD_HH, classRow(LANDLORD_HH, LANDLORD_KEY, 8L));
     Map<DebtContractId, DebtContract> debts = new LinkedHashMap<>();
@@ -547,40 +547,40 @@ class EconomyCodecTest {
     flows.put(FARM_HH, flowRow(FARM_HH));
     flows.put(LANDLORD_HH, flowRow(LANDLORD_HH));
     // ★★ R2：配额表也**非空** —— LaborAllocationId 要过 JSON 的键反序列化器；空表会让那个注册项永远不被走到。
-    Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
+    Map<LaborAllocationId, HouseholdLaborCommitment> allocations = new LinkedHashMap<>();
     allocations.put(
         ALLOCATION,
-        new LaborAllocation(
+        new HouseholdLaborCommitment(
             ALLOCATION, LOT, FARM_HH, FARM_OPERATOR, FARM_UNIT.value(), 58_000L, 1L));
-    // ★★ T2/R3B.2：第 8 个组件也**非空** —— 它的值里嵌着**一个 sealed 多态类型**（{@code Recipient}）与**一条货币规则**
+    // ★★ T2/R3B.2：第 8 个组件也**非空** —— 它的值里嵌着**一个 sealed 多态类型**（{@code Payee}）与**一条货币规则**
     //   （{@code commodity} 空 = `Optional` 的空侧）；空表会让那两处**永远不被走到**（"注册了却测不到"= 假覆盖）。
     //   ★ 键 / activity = unit id，operator 与 unit.operator 逐字相同（跨表守卫要求两处拼写一致）。
-    Map<ProductionUnitId, ProductionRelation> relations = new LinkedHashMap<>();
+    Map<ProductionUnitId, ProductionRules> relations = new LinkedHashMap<>();
     relations.put(FARM_UNIT, relation(FARM_UNIT, FARM_OPERATOR));
-    Map<ProductionUnitId, ProductionUnit> units = new LinkedHashMap<>();
+    Map<ProductionUnitId, ProductionProcess> units = new LinkedHashMap<>();
     units.put(FARM_UNIT, farmUnit());
     // ★ R3B.1：实物资产份额非空 —— AssetShareId 是另一处自定义键反序列化注册项。
-    Map<AssetShareId, AssetShare> assetShares = new LinkedHashMap<>();
+    Map<AssetShareId, OwnershipStake> assetShares = new LinkedHashMap<>();
     assetShares.put(
         FARM_LAND_SHARE,
-        new AssetShare(
+        new OwnershipStake(
             FARM_LAND_SHARE,
             FARM,
             AssetKind.LAND,
             FARM_OPERATOR,
             FARM_OPERATOR,
             1000L,
-            AssetShare.RightKind.OWNED));
+            OwnershipStake.RightKind.OWNED));
     // ★ E1–E6：用 withX 逐组件搭（避免 28 参 record arity 漂移）。P2-A 已删 laborSupply / memberships。
     return EconomyData.empty()
         .withMeta(Optional.of(meta()))
         .withIndustries(industries)
-        .withClasses(classes)
-        .withAssetShares(assetShares)
-        .withUnits(units)
+        .withHouseholdEconomies(classes)
+        .withOwnershipStakes(assetShares)
+        .withProcesses(units)
         .withDebtContracts(debts)
         .withFlows(flows)
-        .withAllocations(allocations)
+        .withLaborCommitments(allocations)
         .withRelations(relations);
   }
 
@@ -625,14 +625,14 @@ class EconomyCodecTest {
   }
 
   /** 本夹具共用的生产单元：{@link #FARM_UNIT} + 显式 operator + 中性周期状态。 */
-  private static ProductionUnit farmUnit() {
-    return new ProductionUnit(FARM_UNIT, FARM, FARM_OPERATOR, FARM.value(), 0L, 0L, Map.of());
+  private static ProductionProcess farmUnit() {
+    return new ProductionProcess(FARM_UNIT, FARM, FARM_OPERATOR, FARM.value(), 0L, 0L, Map.of());
   }
 
   /**
-   * 一个合规矩的产业（R3B.2 起是**纯技术模板**的 12 参构造；operator / 周期状态在 {@link ProductionUnit} 上）：两个槽位各持**劳动投入率上限**
-   * （R1.1 起不再是"人口占比"，故**不必合计 1000‰**），{@code Split(700,300)}。{@code capacityPerUnit}
-   * 非空且为正（"单位规模"的锚）， 各表的值侧都带商品维度。
+   * 一个合规矩的产业（R3B.2 起是**纯技术模板**的 12 参构造；operator / 周期状态在 {@link ProductionProcess}
+   * 上）：两个槽位各持**劳动投入率上限** （R1.1 起不再是"人口占比"，故**不必合计 1000‰**），{@code Split(700,300)}。{@code
+   * capacityPerUnit} 非空且为正（"单位规模"的锚）， 各表的值侧都带商品维度。
    *
    * @param laborPerUnit 每 1 单位规模需要的劳动（千分劳动）；顺带当 {@code changeSetRoundTripsWithAllFourDeltaVariants}
    *     制造"同键不同值"的差异维
@@ -666,15 +666,15 @@ class EconomyCodecTest {
    *
    * <p>★ R3B.2：键 / {@code activity} = 生产单元 id（不再是 {@code IndustryId}）。
    */
-  private static ProductionRelation relation(ProductionUnitId activity, ActorRef operator) {
-    return new ProductionRelation(
+  private static ProductionRules relation(ProductionUnitId activity, ActorRef operator) {
+    return new ProductionRules(
         activity,
         operator,
         null,
         List.of(
             new CompensationRule(
                 RuleType.OUTPUT_SHARE,
-                new Recipient.ToActor(operator),
+                new Payee.ToActor(operator),
                 Pool.GROSS_OUTPUT,
                 Weight.NONE,
                 300,
@@ -684,7 +684,7 @@ class EconomyCodecTest {
                 10),
             new CompensationRule(
                 RuleType.FIXED_IN_KIND_RENT,
-                new Recipient.ToCohort(
+                new Payee.ToCohort(
                     new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, LANDLORD)),
                 Pool.FIXED_AMOUNT,
                 Weight.NONE,
@@ -695,8 +695,7 @@ class EconomyCodecTest {
                 20),
             new CompensationRule(
                 RuleType.FIXED_MONEY_WAGE,
-                new Recipient.ToCohort(
-                    new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, PEASANT)),
+                new Payee.ToCohort(new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, PEASANT)),
                 Pool.FIXED_AMOUNT,
                 Weight.NONE,
                 0,
@@ -728,10 +727,10 @@ class EconomyCodecTest {
         new AllocationRule.WageFirst(4L, residual));
   }
 
-  private static ClassRow classRow(HouseholdId id, CohortKey view, long population) {
-    // ★★ H1（K1）：行里没有 goods 了（家户的商品库存住在 actor 切片的 GoodsAccount / 经济侧的会话工作副本里）。
+  private static HouseholdEconomy classRow(HouseholdId id, CohortKey view, long population) {
+    // ★★ H1（K1）：行里没有 goods 了（家户的商品库存住在 actor 切片的 HouseholdInventory / 经济侧的会话工作副本里）。
     // ★ S1：键 = 家户稳定身份，视图住在 view；id 与 view 是两件事（本夹具按旧视图造 id）。
-    return new ClassRow(
+    return new HouseholdEconomy(
         id,
         view,
         population,

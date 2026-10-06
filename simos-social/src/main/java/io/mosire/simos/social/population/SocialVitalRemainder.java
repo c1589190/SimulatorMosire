@@ -4,15 +4,15 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 
 /**
- * 一条<b>每 tick 生死余数</b>（2026-10-09 Social 每 tick 计划 §3.4）：键 =
- * {@code (householdId, lotId, kind)}，值 = 累计分子（{@code 0..999_999}）。
+ * 一条<b>每 tick 生死余数</b>（2026-10-09 Social 每 tick 计划 §3.4）：键 = {@code (householdId, lotId, kind)}，值 =
+ * 累计分子（{@code 0..999_999}）。
  *
- * <p>★★ <b>为什么需要它</b>：ppm/tick 的率乘上小批次人数后常常不足 1 人，若每 tick 各自整除，分子会被截断吞光。
- * 余数跨 tick 保留，{@code numerator = 旧余数 + 份额 × rate}，{@code 人数 = numerator / 1_000_000}、
- * {@code 新余数 = numerator % 1_000_000}。</p>
+ * <p>★★ <b>为什么需要它</b>：ppm/tick 的率乘上小批次人数后常常不足 1 人，若每 tick 各自整除，分子会被截断吞光。 余数跨 tick 保留，{@code
+ * numerator = 旧余数 + 份额 × rate}，{@code 人数 = numerator / 1_000_000}、 {@code 新余数 = numerator %
+ * 1_000_000}。
  *
  * <p>★ <b>为什么组件用列表不用复合键 map</b>：map 的键若用 record 会逼 {@code SocialCodec} 再注册一套 key
- * deserializer；列表的键是记录字段，Jackson 的 record 内省直接处理。</p>
+ * deserializer；列表的键是记录字段，Jackson 的 record 内省直接处理。
  *
  * @param householdId 家户 id；不得为 null
  * @param lotId 批次 id；不得为 null

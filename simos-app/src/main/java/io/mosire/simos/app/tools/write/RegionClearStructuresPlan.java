@@ -35,8 +35,8 @@ import java.util.Set;
  * <p>★★ <b>候选识别规则（本类唯一语义落点）</b>：
  *
  * <ol>
- *   <li><b>候选 GOV 单位</b>：带 {@link GovernmentFormation} 且**当刻有效位置**落在目标 Region hex 集内的单位 + 调用方显式给的 {@code
- *       unitIds}（必须存在）。自动候选只认"位置在目标 Region 内"的 GOV，不因为别的 Region 使用同一个单位就扩大；
+ *   <li><b>候选 GOV 单位</b>：带 {@link GovernmentFormation} 且**当刻有效位置**落在目标 Region hex 集内的单位 + 调用方显式给的
+ *       {@code unitIds}（必须存在）。自动候选只认"位置在目标 Region 内"的 GOV，不因为别的 Region 使用同一个单位就扩大；
  *   <li><b>候选决策人</b>：{@link Affiliation.Gov} 且其 {@code govUnit} 落在上述候选单位集合内的决策人 + 调用方显式给的 {@code
  *       decisionMakerIds}（必须存在；本批选择"必须是 Gov 归属"的严格口径，非 Gov 的显式 id 具名拒，见 {@link
  *       #scanDecisionMakers}）；

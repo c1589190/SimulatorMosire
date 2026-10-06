@@ -29,8 +29,8 @@ import java.util.Optional;
  * 故它<b>不进</b> {@link Actor}，而是独立成表（{@code accounts}），键<b>从值派生</b>。若哪天有人把库存 同时写进 {@code Actor}
  * 本体，spec §三 L283 的禁令就被绕过 —— 那条禁令由 {@code ActorRoundTripTest} 的反射断言把守。
  *
- * <p>★★ <b>跨表同键不变式</b>（照 {@code EconomyData} 的"classes 的每个键必须等于其 {@code HouseholdEconomy.key()}"） ：{@code
- * actors} 的每个键必须等于其 {@link Actor#ref()}；{@code accounts} 的每个键必须等于其 {@link
+ * <p>★★ <b>跨表同键不变式</b>（照 {@code EconomyData} 的"classes 的每个键必须等于其 {@code HouseholdEconomy.key()}"）
+ * ：{@code actors} 的每个键必须等于其 {@link Actor#ref()}；{@code accounts} 的每个键必须等于其 {@link
  * HouseholdInventory#key()}。否则同一份身份 / 同一本账就有两处可能不一致的记录。
  *
  * <p>★★ <b>缺键 = 空</b>（照 {@code EconomyData} 的旧档兼容口径）：三个组件在本切片都是新引入的，故 Jackson 绑成 null 时一律收成空表 /
@@ -136,8 +136,8 @@ public record ActorData(
    * {@code (owner, location)}"就退化成 {@code java.util.Map} <b>自己的</b>语义 —— 测试会<b>恒真</b>、 判别力为零。⇒
    * "键从值派生"这件事<b>必须只有一个拼写点</b>，测试才咬得住。
    *
-   * <p>★ <b>同一个键写两次 = 后写覆盖前写</b>：调用方给的是"<b>这本账现在是多少</b>"，不是"加多少"（{@link HouseholdInventory} 的语义是存量 ——
-   * 余额是覆盖、且 0 也是一个值）。★ 若哪天要表达"转入 500"，那是**命令**（由一个 handler 先读余额、再算出新余额）， 不是状态类型的方法（同 {@link
+   * <p>★ <b>同一个键写两次 = 后写覆盖前写</b>：调用方给的是"<b>这本账现在是多少</b>"，不是"加多少"（{@link HouseholdInventory} 的语义是存量
+   * —— 余额是覆盖、且 0 也是一个值）。★ 若哪天要表达"转入 500"，那是**命令**（由一个 handler 先读余额、再算出新余额）， 不是状态类型的方法（同 {@link
    * #withActor}）。
    */
   public ActorData withInventory(HouseholdInventory inventory) {

@@ -14,9 +14,9 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.map.hex.HexCoord;
@@ -62,7 +62,7 @@ class RegimeRelationsTest {
    */
   @Test
   void theFeudalRegimePaysSubsistenceToEveryStratumAndRentToTheLandlord() {
-    ProductionRelation relation =
+    ProductionRules relation =
         RegimeRelations.defaultRelation(
             new RegimeId("feudal"), UNIT, FARM, ESTATE, java.util.Set.of(ResidenceKind.RURAL));
 
@@ -127,7 +127,7 @@ class RegimeRelationsTest {
   @Test
   void theHouseholdRegimeSharesTheClothWithTheWeaversInsteadOfRetainingEverything() {
     ActorRef household = new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0");
-    ProductionRelation relation =
+    ProductionRules relation =
         RegimeRelations.defaultRelation(
             new RegimeId("household"),
             unitFor(household),
@@ -151,7 +151,7 @@ class RegimeRelationsTest {
   @Test
   void theHandicraftRegimePaysAWageInClothAndDefinesButDoesNotSettleAMoneyWage() {
     ActorRef workshop = new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
-    ProductionRelation relation =
+    ProductionRules relation =
         RegimeRelations.defaultRelation(
             new RegimeId("handicraft"),
             unitFor(workshop),
@@ -179,7 +179,7 @@ class RegimeRelationsTest {
   @Test
   void theTenantRegimePaysAFixedRentInGrainToTheLandlordCohortOnly() {
     ActorRef household = new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0");
-    ProductionRelation relation =
+    ProductionRules relation =
         RegimeRelations.defaultRelation(
             new RegimeId("tenant"),
             unitFor(household),
@@ -191,7 +191,7 @@ class RegimeRelationsTest {
         .containsExactly(
             new CompensationRule(
                 RuleType.FIXED_IN_KIND_RENT,
-                new Recipient.ToCohort(
+                new Payee.ToCohort(
                     new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.LANDLORD)),
                 Pool.FIXED_AMOUNT,
                 Weight.NONE,
@@ -210,8 +210,8 @@ class RegimeRelationsTest {
    */
   @Test
   void theRentIsAddressedToTheLandlordCohortExplicitlyInBothRentPayingRegimes() {
-    Recipient landlord =
-        new Recipient.ToCohort(
+    Payee landlord =
+        new Payee.ToCohort(
             new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.LANDLORD));
 
     assertThat(
@@ -246,12 +246,12 @@ class RegimeRelationsTest {
                 .toList())
         .as("★ 副产纤维那四条**不写给地主**：它们给四个阶层 cohort（劳动分成，与地租各管一种商品）")
         .containsExactly(
-            new Recipient.ToCohort(
+            new Payee.ToCohort(
                 new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.POOR_PEASANT)),
-            new Recipient.ToCohort(
+            new Payee.ToCohort(
                 new CohortKey(
                     new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.MIDDLE_PEASANT)),
-            new Recipient.ToCohort(
+            new Payee.ToCohort(
                 new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.RICH_PEASANT)),
             landlord);
     ActorRef household = new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0");
@@ -276,15 +276,15 @@ class RegimeRelationsTest {
    */
   @Test
   void everyLaborRuleAddressesOneOfTheFourStratumCohortsAtTheIndustrysHex() {
-    ProductionRelation relation =
+    ProductionRules relation =
         RegimeRelations.defaultRelation(
             new RegimeId("household"), UNIT, FARM, ESTATE, java.util.Set.of(ResidenceKind.RURAL));
 
     assertThat(
             relation.rules().stream()
                 .map(CompensationRule::recipient)
-                .map(recipient -> (Recipient.ToCohort) recipient)
-                .map(Recipient.ToCohort::cohort)
+                .map(recipient -> (Payee.ToCohort) recipient)
+                .map(Payee.ToCohort::cohort)
                 .map(CohortKey::stratum)
                 .toList())
         .as("四个阶层各一条（保序：贫 → 中 → 富 → 地）")
@@ -300,7 +300,7 @@ class RegimeRelationsTest {
   void theCohortResidenceFollowsTheIndustrysHexKey() {
     IndustryId farmAt32 = new IndustryId("farm@3_-2");
     CohortKey cohort =
-        ((Recipient.ToCohort)
+        ((Payee.ToCohort)
                 RegimeRelations.defaultRelation(
                         new RegimeId("tenant"),
                         ProductionUnitId.idOf(farmAt32, ESTATE),
@@ -423,7 +423,7 @@ class RegimeRelationsTest {
   @Test
   void theFourTablesExpressSelfRetentionAsTheResidualOwner() {
     for (String regime : List.of("feudal", "household", "handicraft", "tenant")) {
-      ProductionRelation relation =
+      ProductionRules relation =
           RegimeRelations.defaultRelation(
               new RegimeId(regime), UNIT, FARM, ESTATE, java.util.Set.of(ResidenceKind.RURAL));
 
@@ -509,8 +509,8 @@ class RegimeRelationsTest {
   }
 
   /** 本文件默认那一格（{@code 0_0}）上的某个阶层 cohort。 */
-  private static Recipient cohort(SocialClassId stratum) {
-    return new Recipient.ToCohort(new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, stratum));
+  private static Payee cohort(SocialClassId stratum) {
+    return new Payee.ToCohort(new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, stratum));
   }
 
   /** 该 operator 在该产业下的 unit 身份（关系 activity 的当前拼写点）。 */

@@ -1,5 +1,6 @@
 package io.mosire.simos.social.api.household;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.AgeBracketView;
@@ -25,6 +26,9 @@ import java.util.List;
  * @param memberLots 成员批次身份；冻结、不得含 null 元素
  * @param ageBrackets 年龄档视图；冻结、不得含 null 元素
  */
+@SuppressFBWarnings(
+    value = "EI_EXPOSE_REP",
+    justification = "compact constructor 已做防御性拷贝并冻结；SpotBugs 不跨辅助方法识别")
 public record HouseholdView(
     HouseholdId id,
     HouseholdLocation location,

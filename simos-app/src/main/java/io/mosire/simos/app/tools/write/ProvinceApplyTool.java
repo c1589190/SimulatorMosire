@@ -52,8 +52,8 @@ import java.util.UUID;
  * 切片；单条命令只能落一个命名空间。本工具走 {@link CoreSimos#submitBatch}（同 batchId/branch/expectedRevision ⇒ 一批 = 一条
  * revision，原子）。
  *
- * <p>★★ <b>相关结构门</b>（目标 Region 内/指向目标 Region 的既有结构，只读 base state）：命中带 {@code GovernmentFormation} 的单位 / 其
- * Gov 决策人 / 覆盖目标 Region（或完全落在目标 hex 集内的 Region）的 jurisdiction / id 形如 {@code
+ * <p>★★ <b>相关结构门</b>（目标 Region 内/指向目标 Region 的既有结构，只读 base state）：命中带 {@code GovernmentFormation}
+ * 的单位 / 其 Gov 决策人 / 覆盖目标 Region（或完全落在目标 hex 集内的 Region）的 jurisdiction / id 形如 {@code
  * sanitize(regionId)+"__P"+数字} 或 {@code __CAP} 的既有 Region ⇒ <b>不 submit、零 revision</b>，返回 {@code
  * ToolResult.error("NEEDS_CLEAR", JSON)}，hint 指路 {@code simos.region.clearStructures}。
  *

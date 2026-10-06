@@ -9,12 +9,14 @@ import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStateId;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.LossRecordId;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.CombatState;
+import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.model.LossRecord;
@@ -101,6 +103,37 @@ class SdStateInvariantTest {
     SdState after = base.withArmies(next);
 
     assertThat(after.armies().get(extra).masterGovUnitId()).contains(new UnitId("ghost-gov"));
+  }
+
+  /**
+   * ★ D2 历史包兼容：{@code packet.proposerId} **允许指向已被删除的决策人**（历史包不级联删；新建/改写时的存在性由 {@code
+   * UpsertDecisionPacketHandler} 判）。判别力：整份状态里只删 DM2，P2 仍带 proposer=DM2，构造不得抛。
+   */
+  @Test
+  void decisionPacketMayReferenceADeletedProposer() {
+    SdState base = SdFixtures.full();
+
+    SdState after =
+        base.withDecisionMakers(Map.of(SdFixtures.DM1, SdFixtures.decisionMaker(SdFixtures.DM1)));
+
+    assertThat(after.decisionPackets()).containsKey(SdFixtures.P2);
+    assertThat(after.decisionPackets().get(SdFixtures.P2).proposerId())
+        .as("proposerId 指向已删除的 DM2，历史包仍读得出来")
+        .isEqualTo(SdFixtures.DM2);
+  }
+
+  /** ★ D2/D3 构造期后备：决策包的键必须等于值内 id（键写歪 = 该包在按 id 查找时凭空消失）。 */
+  @Test
+  void decisionPacketKeyMustMatchTheIdInsideTheValue() {
+    SdState base = SdFixtures.full();
+    Map<DecisionPacketId, DecisionPacket> bad = new LinkedHashMap<>(base.decisionPackets());
+    bad.put(
+        new DecisionPacketId("pkt-wrong-key"),
+        SdFixtures.draftPacket(SdFixtures.P1, SdFixtures.DM1));
+
+    assertThatThrownBy(() -> base.withDecisionPackets(bad))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("决策包键必须等于值内 id");
   }
 
   @Test

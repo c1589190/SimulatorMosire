@@ -4,12 +4,12 @@ import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
+import io.mosire.simos.economy.model.ClassStructure;
+import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ProductionRole.LaborRole;
 import io.mosire.simos.economy.model.ProductionRole.RelationToMeans;
 import io.mosire.simos.economy.model.ProductionRole.SurplusRole;
-import io.mosire.simos.economy.model.ClassStructure;
-import io.mosire.simos.economy.model.ProductionMode;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -23,8 +23,8 @@ import java.util.Optional;
  * ProductionRole} / {@code HouseholdClassMembership} 四张新表落进 {@code EconomyData}，但旧档只有 {@code
  * HouseholdEconomy.view.stratum}（{@link SocialClassId}）这一件事实。本类把"旧档的 7
  * 个社会阶层"翻译成一套<b>确定、可复现、可审计</b>的默认阶层结构：一个默认 {@link ProductionMode}、一个默认 {@link ClassStructure}、7 个
- * {@link ProductionRole}。迁移器（{@code ProductionRoleResolver.seedLegacyClassMemberships}）与只读解析器都以本类为唯一拼写点
- * —— 其它任何地方不得再写第二套默认映射。
+ * {@link ProductionRole}。迁移器（{@code
+ * ProductionRoleResolver.seedLegacyClassMemberships}）与只读解析器都以本类为唯一拼写点 —— 其它任何地方不得再写第二套默认映射。
  *
  * <p>★★ <b>ID 三条硬约束</b>（E1b 判据）：
  *

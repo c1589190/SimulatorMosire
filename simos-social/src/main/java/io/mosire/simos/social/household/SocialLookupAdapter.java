@@ -14,12 +14,12 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * ★★ <b>只读 SPI 的 social 侧实现</b>（2026-10-09 家户/人口架构 §5）：把一份 {@link SocialData} 包成
- * {@link HouseholdLookup} + {@link PopulationLookup}，供 Unit/Gov/Economy/Culture/Religion 只依赖契约层消费
- * （S3 的挂接点；本阶段先落在这里，避免 S3 再写第二份读取口径）。
+ * ★★ <b>只读 SPI 的 social 侧实现</b>（2026-10-09 家户/人口架构 §5）：把一份 {@link SocialData} 包成 {@link
+ * HouseholdLookup} + {@link PopulationLookup}，供 Unit/Gov/Economy/Culture/Religion 只依赖契约层消费 （S3
+ * 的挂接点；本阶段先落在这里，避免 S3 再写第二份读取口径）。
  *
- * <p>★ <b>时间口径</b>：{@code ageBrackets} 的档位要"锚点 + 时间差"现算 ⇒ 本适配器在构造期绑定 {@code nowTick} 与
- * {@link CalendarClock}。它因此是<b>一次查询窗口</b>的只读视图（快照 + 时刻），不是长期持有的服务；推进后要重建。
+ * <p>★ <b>时间口径</b>：{@code ageBrackets} 的档位要"锚点 + 时间差"现算 ⇒ 本适配器在构造期绑定 {@code nowTick} 与 {@link
+ * CalendarClock}。它因此是<b>一次查询窗口</b>的只读视图（快照 + 时刻），不是长期持有的服务；推进后要重建。
  *
  * <p>★ 所有查询无副作用；家户不存在 ⇒ {@link Optional#empty()}，人口类 ⇒ {@code 0} / 空表（与 SPI 的 Javadoc 一致）。
  */

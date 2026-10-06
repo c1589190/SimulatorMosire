@@ -12,12 +12,14 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.LaborSource;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -29,7 +31,8 @@ import org.junit.jupiter.api.Test;
  * ★★ S1 阶段 4+5 的**契约层**护栏：{@link CohortKey} 的规范串与它的逆 + {@code api.relation} 包的构造期守卫。
  *
  * <p>★ <b>为什么两类东西同处一个测试类</b>：本任务（Task 1）只有**一个**测试文件（brief 的 Files 行点名 {@code
- * CohortKeyTest}）；契约的六份产物是一体交付的（受方身份 + 规则类型 + 关系类型），断言的分组见下面的小节注释。
+ * CohortKeyTest}）；契约的六份产物是一体交付的（受方身份 {@link Payee} + 规则类型 {@link RuleType} + 生产关系 {@link
+ * ProductionRules}），断言的分组见下面的小节注释。
  *
  * <p>★ <b>本任务的实现里零公式</b>（结算计算是 Task 3 的 {@code ProductionSettlement}）⇒ 这里测的全是
  * <b>构造期守卫</b>与<b>形状事实</b>，没有一条算术断言。
@@ -138,20 +141,20 @@ class CohortKeyTest {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
-  // ── 二、RuleType / Basis：两套六档词表 ──────────────────────────────────────────
+  // ── 二、RuleType（六档词表） / Basis（旧档五档词表） ─────────────────────────────
 
   /**
-   * ★★ <b>两套词表都恰是六档、且保序</b>（spec §2.4 的表序 + 本计划的补档）：{@code containsExactly} 同时钉住
-   * <b>成员</b>与<b>次序</b> ⇒ 少一档、多一档、换序都红。
+   * ★★ <b>RuleType 恰六档、Basis 恰五档，且都保序</b>（spec §2.4 的表序 + 裁定 E5；ASSET_QUANTITY 已在 H0.5 整块退役）：{@code
+   * containsExactly} 同时钉住 <b>成员</b>与<b>次序</b> ⇒ 少一档、多一档、换序都红。
    *
-   * <p>★ {@code Basis.FIXED_AMOUNT} 是<b>第 6 档</b>（裁定 E5）：spec §2.4 的五个 {@code basis} 说的是「每单位什么」， 而
-   * {@code FIXED_IN_KIND_RENT} / {@code FIXED_MONEY_*} 的「数量从哪来」在那五档里<b>没有落点</b>。
+   * <p>★ {@code Basis} 的 {@code FIXED_AMOUNT} 是<b>第 5 档</b>（裁定 E5）。★ H2 起 {@code Basis} 只是**旧档读侧**
+   * 的兼容词表（生产代码不再读它），当前口径是 {@code Pool} × {@code Weight}；逐档映射见下一条断言。
    *
    * <p>★ <b>fail-closed</b>：词表外的输入即抛、消息列出合法值（照 {@code ActorKind.parse} 的形制）—— 静默兜底会让
    * "写错规则类型"变成运行时幽灵。
    */
   @Test
-  void bothVocabulariesAreExactlySixInOrderAndParseFailsClosed() {
+  void ruleTypeIsExactlySixAndLegacyBasisIsExactlyFiveInOrderAndParseFailsClosed() {
     assertThat(RuleType.values())
         .containsExactly(
             RuleType.SELF_RETENTION,
@@ -176,7 +179,7 @@ class CohortKeyTest {
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("FIXED_MONEY_WAGE");
     assertThatThrownBy(() -> Basis.parse("GROSS"))
-        .as("★ 词表外即抛，且消息列出六档")
+        .as("★ 词表外即抛，且消息列出五档")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("FIXED_AMOUNT");
     assertThatThrownBy(() -> RuleType.parse(null))
@@ -187,10 +190,26 @@ class CohortKeyTest {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
+  /** ★★ 旧 {@code basis} 的逐档映射是 {@link Basis#pool()} / {@link Basis#weight()} 的可执行形态（H2 的读侧翻译表）。 */
+  @Test
+  void legacyBasisMapsOneToOneOntoPoolAndWeight() {
+    assertThat(Basis.GROSS_OUTPUT.pool()).isEqualTo(Pool.GROSS_OUTPUT);
+    assertThat(Basis.GROSS_OUTPUT.weight()).isEqualTo(Weight.NONE);
+    assertThat(Basis.NET_AFTER_INPUTS.pool()).isEqualTo(Pool.NET_AFTER_INPUTS);
+    assertThat(Basis.NET_AFTER_INPUTS.weight()).isEqualTo(Weight.NONE);
+    assertThat(Basis.OPERATOR_SURPLUS.pool()).isEqualTo(Pool.OPERATOR_SURPLUS);
+    assertThat(Basis.OPERATOR_SURPLUS.weight()).isEqualTo(Weight.NONE);
+    assertThat(Basis.LABOR_AMOUNT.pool())
+        .as("★ 旧名听起来像「池是劳动」，而池其实是净产：劳动只是权重")
+        .isEqualTo(Pool.NET_AFTER_INPUTS);
+    assertThat(Basis.LABOR_AMOUNT.weight()).isEqualTo(Weight.LABOR_AMOUNT);
+    assertThat(Basis.FIXED_AMOUNT.pool()).isEqualTo(Pool.FIXED_AMOUNT);
+    assertThat(Basis.FIXED_AMOUNT.weight()).as("★ 固定额没有『按什么分』这一维 ⇒ 恒 NONE").isEqualTo(Weight.NONE);
+  }
+
   /**
-   * ★★ <b>「货币档」这条事实的唯拼写点在 {@link RuleType}</b>（{@code money()}）：Task 3 的结算据它把规则分流进 {@code
-   * deferredMoney}（I5.3「只定义、不结算」）。若把这条事实改写成别处的字符串判断（{@code name().contains}）， 就是同一个格式的第二处拼写点 ——
-   * 本测试把它钉在类型上。
+   * ★★ <b>「货币档」这条事实的唯拼写点在 {@link RuleType}</b>（{@code money()}）：H4 起结算据它把规则分流到货币那一支
+   * （铸只带货币腿的转移），而不是在别处用字符串判断（{@code name().contains}）复述这条事实 —— 本测试把它钉在类型上。
    */
   @Test
   void moneyFlagIsPinnedPerRuleType() {
@@ -202,34 +221,41 @@ class CohortKeyTest {
     assertThat(RuleType.FIXED_IN_KIND_RENT.money()).isFalse();
   }
 
-  // ── 三、Recipient：sealed ⇒「恰其一」是类型事实 ─────────────────────────────────
+  // ── 三、Payee：sealed ⇒「恰其一」是类型事实 ─────────────────────────────────
 
   /**
-   * ★★ 判据②：{@code Recipient} 是 <b>sealed</b> 且只有 {@code ToActor} / {@code ToHousehold} / {@code
+   * ★★ 判据②：{@code Payee} 是 <b>sealed</b> 且只有 {@code ToActor} / {@code ToHousehold} / {@code
    * ToCohort} 三个变体 ⇒ 「受方是 actor、家户还是 cohort，<b>恰其一</b>」是<b>类型事实</b>，不是运行时检查（不许出现"两个都填了怎么办"的分支）。
    *
    * <p>★ {@code getPermittedSubclasses()} 是这条事实唯一的机械读法：加第四个变体、或去掉 {@code sealed} 都当场红。 上游（spec §2.4
    * 的两个规则列表）正是靠这条事实被合成了<b>一张</b>表（裁定 E4）。
    */
   @Test
-  void recipientIsSealedSoActorAndCohortAreExactlyOne() {
-    assertThat(Recipient.class.isSealed()).as("★ 判据②：sealed").isTrue();
-    assertThat(Recipient.class.getPermittedSubclasses())
+  void payeeIsSealedSoActorHouseholdAndCohortAreExactlyOne() {
+    assertThat(Payee.class.isSealed()).as("★ 判据②：sealed").isTrue();
+    assertThat(Payee.class.getPermittedSubclasses())
         .as("★ 恰三个变体（ToActor / ToHousehold / ToCohort；加第四个 ⇒ 「恰其一」失守）")
         .containsExactlyInAnyOrder(
-            Recipient.ToActor.class, Recipient.ToHousehold.class, Recipient.ToCohort.class);
+            Payee.ToActor.class, Payee.ToHousehold.class, Payee.ToCohort.class);
 
     ActorRef organization = new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
+    HouseholdId household = new HouseholdId("hh-0_0-rural-landlord");
     CohortKey cohort =
         new CohortKey(new HexCoord(2, -1), ResidenceKind.RURAL, SocialClassId.LANDLORD);
 
-    assertThat(new Recipient.ToActor(organization).actor()).isEqualTo(organization);
-    assertThat(new Recipient.ToCohort(cohort).cohort()).isEqualTo(cohort);
+    assertThat(new Payee.ToActor(organization).actor()).isEqualTo(organization);
+    assertThat(new Payee.ToHousehold(household).household())
+        .as("★ S1 起主口径：受方是家户的稳定身份 HouseholdId（不再由运行期生产 ToCohort）")
+        .isEqualTo(household);
+    assertThat(new Payee.ToCohort(cohort).cohort()).as("★ ToCohort 只作旧档变体保留").isEqualTo(cohort);
 
-    assertThatThrownBy(() -> new Recipient.ToActor(null))
+    assertThatThrownBy(() -> new Payee.ToActor(null))
         .as("ToActor 的 actor 不得为 null")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new Recipient.ToCohort(null))
+    assertThatThrownBy(() -> new Payee.ToHousehold(null))
+        .as("ToHousehold 的 household 不得为 null")
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> new Payee.ToCohort(null))
         .as("ToCohort 的 cohort 不得为 null")
         .isInstanceOf(IllegalArgumentException.class);
   }
@@ -242,8 +268,8 @@ class CohortKeyTest {
    */
   @Test
   void moneyRulesCarryNoCommodityAndInKindRulesRequireOne() {
-    Recipient rec =
-        new Recipient.ToCohort(
+    Payee rec =
+        new Payee.ToCohort(
             new CohortKey(
                 new HexCoord(0, 0), ResidenceKind.RURAL, new SocialClassId("poor_peasant")));
     assertThatThrownBy(
@@ -307,12 +333,12 @@ class CohortKeyTest {
   /**
    * ★ 上一条的<b>许可面</b>（判别力来自夹具的另一半）：{@code FIXED_MONEY_*} <b>不带</b>商品、<b>带</b>币种时必须能构造出来。
    *
-   * <p>★ 为什么必须补这一条：否则「货币规则一律抛」这种过度实现也会让上一条全绿 —— 上一条只证明了「带商品 ⇒ 抛」， 没证明「不带商品 ⇒ 收」。I5.3
-   * 要的是<b>定义得住</b>（货币档在位、字段齐、待 S2 结算），不是<b>构造不出来</b>。
+   * <p>★ 为什么必须补这一条：否则「货币规则一律抛」这种过度实现也会让上一条全绿 —— 上一条只证明了「带商品 ⇒ 抛」， 没证明「不带商品 ⇒
+   * 收」。货币档在契约层要的是<b>定义得住</b>（H4 起结算真的走货币那一支），不是<b>构造不出来</b>。
    */
   @Test
   void moneyRulesConstructFineWithoutACommodity() {
-    Recipient toActor = new Recipient.ToActor(new ActorRef(ActorKind.ORGANIZATION, "craft@1_0"));
+    Payee toActor = new Payee.ToActor(new ActorRef(ActorKind.ORGANIZATION, "craft@1_0"));
     CompensationRule rule =
         rule(
             RuleType.FIXED_MONEY_RENT,
@@ -326,16 +352,16 @@ class CohortKeyTest {
             10);
 
     assertThat(rule.type()).isEqualTo(RuleType.FIXED_MONEY_RENT);
-    assertThat(rule.commodity()).as("★ 货币档的商品位是空的（这就是『只定义、不结算』的字段形态）").isEmpty();
+    assertThat(rule.commodity()).as("★ 货币档的商品位是空的（空 = 货币是类型事实，结算走货币那一支）").isEmpty();
     assertThat(rule.currency()).as("★ H2：币种位必须说清是哪一种钱（实物档那一侧恒空）").contains(CURRENCY);
-    assertThat(rule.fixedAmount()).as("★ 但固定额在（字段是齐的，待 S2 的 ledger 来结算）").isEqualTo(5_000L);
+    assertThat(rule.fixedAmount()).as("★ 固定额在位（H4 起结算按付方本期可用货币付款）").isEqualTo(5_000L);
   }
 
   /** ★ 判据④：{@code ratePerMille ∈ [0, 1000]}、{@code fixedAmount ≥ 0}；判据③：{@code priority ≥ 0}。 */
   @Test
   void compensationRuleRejectsOutOfRangeNumbersAndNullHalves() {
-    Recipient rec =
-        new Recipient.ToCohort(
+    Payee rec =
+        new Payee.ToCohort(
             new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, SocialClassId.POOR_PEASANT));
 
     // ★ 边界合法：1000‰ = 全给出去；0‰ = 这一档不分成
@@ -488,14 +514,14 @@ class CohortKeyTest {
         .isInstanceOf(IllegalArgumentException.class);
   }
 
-  // ── 五、ProductionRelation：单列表 + priority ──────────────────────────────────
+  // ── 五、ProductionRules：单列表 + priority ──────────────────────────────────
 
   /** ★★ 判据③：{@code rules} <b>保序不可变</b>、逐项非空、{@code priority} <b>允许重复</b>。 */
   @Test
-  void productionRelationKeepsRuleOrderAndAllowsDuplicatePriorities() {
+  void productionRulesKeepRuleOrderAndAllowDuplicatePriorities() {
     ActorRef operator = new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0");
-    Recipient landlord =
-        new Recipient.ToCohort(
+    Payee landlord =
+        new Payee.ToCohort(
             new CohortKey(new HexCoord(2, -1), ResidenceKind.RURAL, SocialClassId.LANDLORD));
     CompensationRule first =
         inKind(
@@ -520,12 +546,17 @@ class CohortKeyTest {
     List<CompensationRule> incoming = new ArrayList<>(List.of(first, second));
 
     ProductionUnitId activity = ProductionUnitId.idOf(new IndustryId("farm@0_0"), operator);
-    ProductionRelation relation =
-        new ProductionRelation(activity, operator, null, incoming, operator);
+    ProductionRules relation = new ProductionRules(activity, operator, null, incoming, operator);
 
     assertThat(relation.activity())
         .as("★ R3B.2：activity 是生产单元身份（由 (产业, 经营者) 唯一派生）")
         .isEqualTo(activity);
+    assertThat(relation.inputSupplier())
+        .as("★ H3：inputSupplier 缺省（传 null）⇒ 投入由经营者出（唯一拼写点在构造期）")
+        .isEqualTo(new Payee.ToActor(operator));
+    assertThat(relation.laborSource())
+        .as("★ S1：laborSource 缺省 ⇒ SELF（旧档没有这一维时的保守读法）")
+        .isEqualTo(LaborSource.SELF);
 
     assertThat(relation.rules())
         .as("★ 保序：与传入次序逐一相同（次序是数据 —— Task 3 按它排 priority）")
@@ -535,7 +566,7 @@ class CohortKeyTest {
     incoming.add(
         inKind(
             RuleType.SELF_RETENTION,
-            new Recipient.ToActor(operator),
+            new Payee.ToActor(operator),
             Pool.OPERATOR_SURPLUS,
             Weight.NONE,
             0,
@@ -549,14 +580,14 @@ class CohortKeyTest {
   }
 
   @Test
-  void productionRelationRejectsMissingHalvesAndNullRulesButAllowsNoRules() {
+  void productionRulesRejectMissingHalvesAndNullRulesButAllowNoRules() {
     ActorRef operator = new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0");
     ProductionUnitId activity = ProductionUnitId.idOf(new IndustryId("farm@0_0"), operator);
     List<CompensationRule> rules =
         List.of(
             inKind(
                 RuleType.FIXED_IN_KIND_RENT,
-                new Recipient.ToCohort(
+                new Payee.ToCohort(
                     new CohortKey(
                         new HexCoord(2, -1), ResidenceKind.RURAL, SocialClassId.LANDLORD)),
                 Pool.FIXED_AMOUNT,
@@ -566,36 +597,58 @@ class CohortKeyTest {
                 Optional.of(GRAIN),
                 10));
 
-    assertThatThrownBy(() -> new ProductionRelation(null, operator, null, rules, operator))
+    assertThatThrownBy(() -> new ProductionRules(null, operator, null, rules, operator))
         .as("activity 不得为 null（身份 = 它结算的那个 activity，不另造 id）")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new ProductionRelation(activity, null, null, rules, operator))
+    assertThatThrownBy(() -> new ProductionRules(activity, null, null, rules, operator))
         .as("operator 不得为 null")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new ProductionRelation(activity, operator, null, null, operator))
+    assertThatThrownBy(() -> new ProductionRules(activity, operator, null, null, operator))
         .as("rules 不得为 null")
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new ProductionRelation(activity, operator, null, rules, null))
+    assertThatThrownBy(() -> new ProductionRules(activity, operator, null, rules, null))
         .as("residualOwner 不得为 null")
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(
             () ->
-                new ProductionRelation(
+                new ProductionRules(
                     activity, operator, null, Arrays.asList(rules.get(0), null), operator))
         .as("★ 逐项非空：一条 null 规则不许混进去")
         .isInstanceOf(IllegalArgumentException.class);
 
-    assertThat(new ProductionRelation(activity, operator, null, List.of(), operator).rules())
+    assertThat(new ProductionRules(activity, operator, null, List.of(), operator).rules())
         .as("★ 空表合法：一条规则都没有 ⇒ 产出全部归 residualOwner（自留是缺省，不是坏数据）")
         .isEmpty();
+  }
+
+  /**
+   * ★ S1/H3 补的两个维度都可显式给：{@code inputSupplier} 说"投入由谁出"、{@code laborSource} 说"劳动是谁的" ——
+   * 旧档迁移/真档播种把这两件事写进数据，而不是让结算按人口或 operator 猜。
+   */
+  @Test
+  void productionRulesCarryExplicitInputSupplierAndLaborSource() {
+    ActorRef operator = new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0");
+    ProductionUnitId activity = ProductionUnitId.idOf(new IndustryId("farm@0_0"), operator);
+    HouseholdId household = new HouseholdId("hh-0_0-rural-poor_peasant");
+    Payee supplier = new Payee.ToHousehold(household);
+
+    ProductionRules relation =
+        new ProductionRules(activity, operator, supplier, List.of(), operator, LaborSource.TENANT);
+
+    assertThat(relation.inputSupplier())
+        .as("★ H3：投入由谁出是数据（这里 = 家户，而不是默认回落到 operator）")
+        .isEqualTo(supplier);
+    assertThat(relation.laborSource())
+        .as("★ S1：劳动来源是数据（这里 = 佃农；结算对逐档差异的解释属 S3）")
+        .isEqualTo(LaborSource.TENANT);
   }
 
   /**
    * ★★ 判据⑤（H2 重述）：{@code Optional} <b>只用于两个位置</b> —— 机械读法 = 「{@code CompensationRule} 的 {@code
    * Optional} 组件恰是 {@code commodity} 与 {@code currency}，且各自只有一个含义」。
    *
-   * <p>★ 为什么值得一条断言：{@code commodity} 的"空"是 <b>I5.3 的信号本身</b>（空 = 货币档、待 S2）； {@code currency} 的"空"是
-   * <b>H2 的信号本身</b>（非空 = 货币档）—— ★★ <b>两者互为反相</b>（一个空、另一个必非空），
+   * <p>★ 为什么值得一条断言：{@code commodity} 的"空"是 <b>货币档的信号本身</b>（空 = 货币档，H4 起结算走货币那一支）； {@code currency}
+   * 的"空"是 <b>H2 的信号本身</b>（非空 = 货币档）—— ★★ <b>两者互为反相</b>（一个空、另一个必非空），
    * 由构造期守卫判死，故"空"仍然<b>只有两种含义且可互相判定</b>：别处再冒出第三个 {@code Optional}，货币档的判别力才会消失。
    */
   @Test
@@ -603,8 +656,8 @@ class CohortKeyTest {
     assertThat(optionalComponents(CompensationRule.class))
         .as("★ CompensationRule 的 Optional 组件恰有两个：commodity（空 = 货币档）与 currency（非空 = 货币档），互为反相")
         .containsExactly("commodity", "currency");
-    assertThat(optionalComponents(ProductionRelation.class))
-        .as("★ ProductionRelation 一个 Optional 都没有")
+    assertThat(optionalComponents(ProductionRules.class))
+        .as("★ ProductionRules 一个 Optional 都没有")
         .isEmpty();
   }
 
@@ -626,8 +679,8 @@ class CohortKeyTest {
   void theSingleRuleListCanAddressTheLandlordCohortExplicitly() {
     HexCoord hex = new HexCoord(0, 0);
     ActorRef tenantHousehold = new ActorRef(ActorKind.HOUSEHOLD, "farm@0_0");
-    Recipient landlord =
-        new Recipient.ToCohort(new CohortKey(hex, ResidenceKind.RURAL, SocialClassId.LANDLORD));
+    Payee landlord =
+        new Payee.ToCohort(new CohortKey(hex, ResidenceKind.RURAL, SocialClassId.LANDLORD));
 
     CompensationRule rent =
         inKind(
@@ -642,7 +695,7 @@ class CohortKeyTest {
     CompensationRule selfRetention =
         inKind(
             RuleType.SELF_RETENTION,
-            new Recipient.ToActor(tenantHousehold),
+            new Payee.ToActor(tenantHousehold),
             Pool.OPERATOR_SURPLUS,
             Weight.NONE,
             0,
@@ -651,8 +704,8 @@ class CohortKeyTest {
             20);
 
     ProductionUnitId activity = ProductionUnitId.idOf(new IndustryId("farm@0_0"), tenantHousehold);
-    ProductionRelation relation =
-        new ProductionRelation(
+    ProductionRules relation =
+        new ProductionRules(
             activity, tenantHousehold, null, List.of(rent, selfRetention), tenantHousehold);
 
     assertThat(relation.activity()).as("★ R3B.2：activity 是生产单元身份，不再是产业 id").isEqualTo(activity);
@@ -660,13 +713,13 @@ class CohortKeyTest {
     assertThat(relation.rules().get(0).recipient())
         .as("★ 地租的受方是**地主 cohort**（不是 actor、也不是行键）")
         .isEqualTo(landlord);
-    assertThat(((Recipient.ToCohort) relation.rules().get(0).recipient()).cohort().stratum())
+    assertThat(((Payee.ToCohort) relation.rules().get(0).recipient()).cohort().stratum())
         .as("★ 地主是同格的一个**阶层**（产业无关的身份）")
         .isEqualTo(SocialClassId.LANDLORD);
-    assertThat(((Recipient.ToCohort) relation.rules().get(0).recipient()).cohort().hex())
+    assertThat(((Payee.ToCohort) relation.rules().get(0).recipient()).cohort().hex())
         .as("★ 而且带**格**（cohort 的居住格，不是产业的 id）")
         .isEqualTo(hex);
-    assertThat(((Recipient.ToCohort) relation.rules().get(0).recipient()).cohort().residence())
+    assertThat(((Payee.ToCohort) relation.rules().get(0).recipient()).cohort().residence())
         .as("★ 居住类型也在键里（H0.1 新增的那一维）")
         .isEqualTo(ResidenceKind.RURAL);
     assertThat(relation.rules().get(0).pool())
@@ -691,7 +744,7 @@ class CohortKeyTest {
    */
   private static CompensationRule rule(
       RuleType type,
-      Recipient recipient,
+      Payee recipient,
       Pool pool,
       Weight weight,
       int ratePerMille,
@@ -706,7 +759,7 @@ class CohortKeyTest {
   /** <b>实物规则</b>的短名：币种恒空（二选一的实物那一侧，逐值由构造期守卫判死）。 */
   private static CompensationRule inKind(
       RuleType type,
-      Recipient recipient,
+      Payee recipient,
       Pool pool,
       Weight weight,
       int ratePerMille,

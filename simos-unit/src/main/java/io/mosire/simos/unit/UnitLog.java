@@ -1,15 +1,14 @@
 package io.mosire.simos.unit;
 
 import io.mosire.simos.util.log.EventLog;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * ★★ <b>unit 系统日志门面</b>（2026-10-09 S3a / 家户人口架构 §6；形态照 {@code SocialLog} / {@code EconomyLog}）。
  *
- * <p><b>唯一拼写点</b>：所有 unit 日志的 logger 名都从这里取，调用方不得自己拼字符串。分类如下（全部挂在
- * {@value #ROOT_LOGGER_NAME} 之下 ⇒ 一个开关可整体升降级）：
+ * <p><b>唯一拼写点</b>：所有 unit 日志的 logger 名都从这里取，调用方不得自己拼字符串。分类如下（全部挂在 {@value #ROOT_LOGGER_NAME} 之下 ⇒
+ * 一个开关可整体升降级）：
  *
  * <table border="1">
  *   <caption>分类与用途</caption>
@@ -21,8 +20,8 @@ import org.slf4j.LoggerFactory;
  * <p><b>级别约定</b>（消费者按级别裁剪）：
  *
  * <ul>
- *   <li><b>INFO</b>：生命周期事件——{@code UNIT_HOUSEHOLDS_SET} / {@code UNIT_HOUSEHOLD_ASSIGN} /
- *       {@code UNIT_HOUSEHOLD_DETACH}；
+ *   <li><b>INFO</b>：生命周期事件——{@code UNIT_HOUSEHOLDS_SET} / {@code UNIT_HOUSEHOLD_ASSIGN} / {@code
+ *       UNIT_HOUSEHOLD_DETACH}；
  *   <li><b>DEBUG</b>：对账（家户位置 ↔ unit 列表一致性的汇总读数）；
  *   <li><b>TRACE</b>：逐项明细（逐家户 id、逐 unit 列表）。
  * </ul>

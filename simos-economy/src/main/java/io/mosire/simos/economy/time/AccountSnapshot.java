@@ -19,11 +19,10 @@ import java.util.Set;
 /**
  * ★★ <b>账户会话的只读快照</b>（R1 并行内核；P2-A §13.3 起账户主体统一为家户）。
  *
- * <p>worker 唯一允许持有的账户视图；四张表（商品/货币 × 余额/冻结）在构造时逐值拷贝、按 canonical key
- * 排序后冻结，之后任何线程读它都不会看到写。
+ * <p>worker 唯一允许持有的账户视图；四张表（商品/货币 × 余额/冻结）在构造时逐值拷贝、按 canonical key 排序后冻结，之后任何线程读它都不会看到写。
  *
- * <p>★ <b>放行的语义</b>：快照是"本阶段开始那一刻"的余额，不随后续提交变化。worker 的本地增量必须自己叠加
- * （见 {@link AccountIntentBuffer#goods}），而最终校验在提交器里对着<b>提交时的活表</b>重做。
+ * <p>★ <b>放行的语义</b>：快照是"本阶段开始那一刻"的余额，不随后续提交变化。worker 的本地增量必须自己叠加 （见 {@link
+ * AccountIntentBuffer#goods}），而最终校验在提交器里对着<b>提交时的活表</b>重做。
  *
  * <p>★ <b>顺序</b>：账户按家户 id 升序、位置索引按家户 id 升序 —— 迭代序是内容的纯函数。
  */
@@ -47,12 +46,12 @@ public final class AccountSnapshot {
   private final Map<AccountPartitionKey, SnapshotAccount> accounts;
   private final Map<HouseholdId, AccountPartitionKey> householdIndex;
   private final Map<ActorRef, AccountPartitionKey> householdActorIndex;
+
   /** 家户登记位置（分区与转移 location 的派生读口；<b>不是</b>账户身份）。 */
   private final Map<HouseholdId, HexCoord> locations;
 
   private AccountSnapshot(
-      Map<AccountPartitionKey, SnapshotAccount> accounts,
-      Map<HouseholdId, HexCoord> locations) {
+      Map<AccountPartitionKey, SnapshotAccount> accounts, Map<HouseholdId, HexCoord> locations) {
     List<Map.Entry<AccountPartitionKey, SnapshotAccount>> accountEntries =
         new ArrayList<>(Objects.requireNonNull(accounts, "accounts").entrySet());
     accountEntries.sort(Comparator.comparing(entry -> entry.getKey().canonical()));
@@ -170,8 +169,7 @@ public final class AccountSnapshot {
   public AccountPartitionKey requireActorKey(ActorRef actor) {
     AccountPartitionKey key = actorKeyOrNull(actor);
     if (key == null) {
-      throw new IllegalStateException(
-          "账户快照里没有这个家户主体的账（账户主体只有家户；非家户 actor 必须先在结算侧解析到家户）: " + actor);
+      throw new IllegalStateException("账户快照里没有这个家户主体的账（账户主体只有家户；非家户 actor 必须先在结算侧解析到家户）: " + actor);
     }
     return key;
   }

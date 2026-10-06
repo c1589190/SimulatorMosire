@@ -7,12 +7,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.CommandChain;
 import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentLevel;
+import io.mosire.simos.unit.GovernmentPostOfHousehold;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.OfficePolicy;
@@ -58,6 +61,11 @@ class UnitCodecTest {
   private static final HexCoord H11 = new HexCoord(1, 1);
 
   private static final HexCoord H12 = new HexCoord(1, 2);
+
+  /** S3b 的领导/军职家户（`GovernmentFormation.governmentPostsOfHousehold` 的键）。 */
+  private static final HouseholdId HH_A = HouseholdId.parse("hh-a");
+
+  private static final HouseholdId HH_B = HouseholdId.parse("hh-b");
 
   private static final UnitCodec CODEC = new UnitCodec();
 
@@ -281,12 +289,21 @@ class UnitCodecTest {
             Map.entry(StaffRole.SCRIBE, 5L));
     Map<StaffRole, Long> staffCap =
         orderedStaff(Map.entry(StaffRole.POST, 9L), Map.entry(StaffRole.SCRIBE, 6L));
-    GovFormation gov =
-        new GovFormation(
+    GovernmentFormation gov =
+        new GovernmentFormation(
             staff,
+            orderedPosts(
+                Map.entry(
+                    HH_B,
+                    new GovernmentPostOfHousehold(
+                        HH_B, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true)),
+                Map.entry(
+                    HH_A,
+                    new GovernmentPostOfHousehold(
+                        HH_A, StaffRole.YAMEN, GovernmentLevel.PROVINCE, false))),
             new OfficePolicy(111L, 222L, 3L, 7L, staffCap),
             Optional.of(new UnitId("g-9")),
-            GovLevel.PROVINCE);
+            GovernmentLevel.PROVINCE);
     Jurisdiction jurisdiction =
         new Jurisdiction(orderedRates(new RegionId("r-1"), 100L), 1L, 2L, 3L, 4);
     UnitSnapshot snapshot =
@@ -302,7 +319,7 @@ class UnitCodecTest {
 
     assertThat(back).as("整份快照往返相等").isEqualTo(snapshot);
     Unit unit = back.state().units().get(new UnitId("u-1"));
-    GovFormation decoded = (GovFormation) unit.module().orElseThrow();
+    GovernmentFormation decoded = (GovernmentFormation) unit.module().orElseThrow();
     assertThat(new ArrayList<>(decoded.staff().keySet()))
         .as("★ staff 保序：插入序 YAMEN→POST→SCRIBE 不能被哈希序替换")
         .containsExactly(StaffRole.YAMEN, StaffRole.POST, StaffRole.SCRIBE);
@@ -321,7 +338,27 @@ class UnitCodecTest {
     assertThat(decoded.policy().staffCap())
         .containsExactly(Map.entry(StaffRole.POST, 9L), Map.entry(StaffRole.SCRIBE, 6L));
     assertThat(decoded.superiorGov()).as("Optional 的 present 侧逐值在线").contains(new UnitId("g-9"));
-    assertThat(decoded.level()).isEqualTo(GovLevel.PROVINCE);
+    assertThat(decoded.level()).isEqualTo(GovernmentLevel.PROVINCE);
+    assertThat(json)
+        .as("S3b 的领导家户配置用旧线格式键 householdPosts 落盘")
+        .contains("\"householdPosts\"")
+        .contains("hh-b");
+    assertThat(new ArrayList<>(decoded.governmentPostsOfHousehold().keySet()))
+        .as("governmentPostsOfHousehold 保序：插入序 HH_B→HH_A 不能被哈希序替换")
+        .containsExactly(HH_B, HH_A);
+    assertThat(decoded.governmentPostsOfHousehold())
+        .containsExactly(
+            Map.entry(
+                HH_B,
+                new GovernmentPostOfHousehold(
+                    HH_B, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true)),
+            Map.entry(
+                HH_A,
+                new GovernmentPostOfHousehold(
+                    HH_A, StaffRole.YAMEN, GovernmentLevel.PROVINCE, false)));
+    assertThat(unit.households())
+        .as("GOV 单位必须带自己的政府家户，且领导配置家户也在列表里")
+        .contains(GovernmentHouseholds.of("u-1"), HH_B, HH_A);
     assertThat(unit.jurisdiction()).as("module 往返不得顺手吞掉 jurisdiction").contains(jurisdiction);
     assertThat(unit.visionRadius()).as("非缺省视野半径也要活着").isEqualTo(3);
   }
@@ -391,12 +428,13 @@ class UnitCodecTest {
   /** ★ GOV 的 {@code superiorGov} **empty 侧**也要过线：写 null、读回 empty（不是 present、不是丢键）。 */
   @Test
   void snapshotRoundTripsAGovWithEmptySuperior() {
-    GovFormation gov =
-        new GovFormation(
+    GovernmentFormation gov =
+        new GovernmentFormation(
             orderedStaff(Map.entry(StaffRole.SCRIBE, 2L)),
+            Map.of(),
             OfficePolicy.defaults(),
             Optional.empty(),
-            GovLevel.CENTRAL);
+            GovernmentLevel.CENTRAL);
     UnitSnapshot snapshot =
         snapshotOf(
             stateOf(oneUnitWithModule("u-1", H11, Optional.empty(), Optional.of(gov))),
@@ -408,10 +446,10 @@ class UnitCodecTest {
     UnitSnapshot back = (UnitSnapshot) CODEC.decodeSnapshot(json);
 
     assertThat(back).isEqualTo(snapshot);
-    GovFormation decoded =
-        (GovFormation) back.state().units().get(new UnitId("u-1")).module().orElseThrow();
+    GovernmentFormation decoded =
+        (GovernmentFormation) back.state().units().get(new UnitId("u-1")).module().orElseThrow();
     assertThat(decoded.superiorGov()).as("中央 = 无上级，读回仍 empty").isEmpty();
-    assertThat(decoded.level()).isEqualTo(GovLevel.CENTRAL);
+    assertThat(decoded.level()).isEqualTo(GovernmentLevel.CENTRAL);
     assertThat(decoded.staff()).containsExactly(Map.entry(StaffRole.SCRIBE, 2L));
   }
 
@@ -422,8 +460,9 @@ class UnitCodecTest {
   @Test
   void legacySnapshotWithoutModuleKeyDecodesToEmptyAndKeepsOtherFields() throws Exception {
     Map<StaffRole, Long> staff = orderedStaff(Map.entry(StaffRole.SCRIBE, 5L));
-    GovFormation gov =
-        new GovFormation(staff, OfficePolicy.defaults(), Optional.empty(), GovLevel.CENTRAL);
+    GovernmentFormation gov =
+        new GovernmentFormation(
+            staff, Map.of(), OfficePolicy.defaults(), Optional.empty(), GovernmentLevel.CENTRAL);
     Jurisdiction jurisdiction =
         new Jurisdiction(orderedRates(new RegionId("r-9"), 900L), 11L, 22L, 33L, 250);
     UnitSnapshot snapshot =
@@ -454,12 +493,17 @@ class UnitCodecTest {
   @Test
   void changeSetRoundTripsAGovModuleChange() {
     UnitState base = stateOf(oneUnitWithModule("u-1", H11, Optional.empty(), Optional.empty()));
-    GovFormation target =
-        new GovFormation(
+    GovernmentFormation target =
+        new GovernmentFormation(
             orderedStaff(Map.entry(StaffRole.YAMEN, 2L), Map.entry(StaffRole.SCRIBE, 5L)),
+            orderedPosts(
+                Map.entry(
+                    HH_A,
+                    new GovernmentPostOfHousehold(
+                        HH_A, StaffRole.YAMEN, GovernmentLevel.PROVINCE, false))),
             new OfficePolicy(7L, 8L, 9L, 10L, orderedStaff(Map.entry(StaffRole.SCRIBE, 40L))),
             Optional.of(new UnitId("g-central")),
-            GovLevel.PROVINCE);
+            GovernmentLevel.PROVINCE);
     UnitState changed =
         stateOf(oneUnitWithModule("u-1", H11, Optional.empty(), Optional.of(target)));
 
@@ -468,6 +512,9 @@ class UnitCodecTest {
             CODEC.decodeChangeSet(CODEC.encodeChangeSet(UnitChangeSet.between(base, changed)));
 
     assertThat(UnitChangeSet.apply(encoded, base)).as("编制变更也必须过线并逐值重建（铁律 5）").isEqualTo(changed);
+    assertThat(UnitChangeSet.apply(encoded, base).units().get(new UnitId("u-1")).households())
+        .as("households 也随变更集过线（GOV 家户 + 领导配置家户）")
+        .contains(GovernmentHouseholds.of("u-1"), HH_A);
   }
 
   /** 变更集往返：四条变体各造一条（Unchanged / Upsert / Remove / Patch），逐条过线。 */
@@ -707,7 +754,12 @@ class UnitCodecTest {
     return oneUnitWithModule(id, at, jurisdiction, module, Unit.DEFAULT_VISION_RADIUS);
   }
 
-  /** 视野半径逐值给的 canonical 16 参形态（阶段 9 的编制往返夹具）。 */
+  /**
+   * 视野半径逐值给的 canonical 17 参形态（阶段 9 的编制往返夹具；S3b 起 households 也逐值给）。
+   *
+   * <p>★ 带 {@link GovernmentFormation} 的单位必须把政府家户 {@code hh-gov-<id>} 编进 households（{@code
+   * UnitState} 构造期不变量），领导家户配置的键也必须在列表里；本夹具按这两条自动补齐，好让各往返用例的靶子落在编解码上。
+   */
   private static Unit oneUnitWithModule(
       String id,
       HexCoord at,
@@ -731,7 +783,35 @@ class UnitCodecTest {
         Optional.empty(),
         visionRadius,
         jurisdiction,
-        module);
+        module,
+        Map.of(),
+        householdsFor(id, module));
+  }
+
+  /** 单位 households：GOV 编制 ⇒ 政府家户 + 领导配置家户（保序、去重）；其余编制 ⇒ 空表。 */
+  private static List<HouseholdId> householdsFor(String id, Optional<UnitModule> module) {
+    if (!(module.orElse(null) instanceof GovernmentFormation governmentFormation)) {
+      return List.of();
+    }
+    List<HouseholdId> households = new ArrayList<>();
+    households.add(GovernmentHouseholds.of(id));
+    for (HouseholdId household : governmentFormation.governmentPostsOfHousehold().keySet()) {
+      if (!households.contains(household)) {
+        households.add(household);
+      }
+    }
+    return households;
+  }
+
+  /** 保序的领导家户配置表（判据同 `staff`：顺序不被哈希序替换）。 */
+  @SafeVarargs
+  private static Map<HouseholdId, GovernmentPostOfHousehold> orderedPosts(
+      Map.Entry<HouseholdId, GovernmentPostOfHousehold>... entries) {
+    Map<HouseholdId, GovernmentPostOfHousehold> posts = new LinkedHashMap<>();
+    for (Map.Entry<HouseholdId, GovernmentPostOfHousehold> entry : entries) {
+      posts.put(entry.getKey(), entry.getValue());
+    }
+    return posts;
   }
 
   /** 保序的编制表（`staff`/`staffCap` 共用；判据要的是"顺序不被哈希序替换"）。 */

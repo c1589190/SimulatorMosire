@@ -18,14 +18,15 @@ import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.unit.ArmyFormation;
-import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentLevel;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.RelativeOffset;
@@ -55,7 +56,7 @@ import org.junit.jupiter.api.Test;
  *   <li>全额/部分/零支付 ⇒ dues 的 assessed/paid/shortfall 逐值；缺口 ⇒ 每 office 至多一条 ADMIN_SUPPLY，evidence =
  *       三资源合计；
  *   <li>覆盖率不足 ⇒ ADMIN_SECURITY / ADMIN_PAPERWORK 各自独立，evidence 带 coverage/supply/demand；
- *   <li>无位置 ⇒ dues/signals 空、六表空、efficiency/tick 仍更新；状态损坏（缺单位/缺 GovFormation）⇒
+ *   <li>无位置 ⇒ dues/signals 空、六表空、efficiency/tick 仍更新；状态损坏（缺单位/缺 GovernmentFormation）⇒
  *       IllegalStateException；oracle 越界 ⇒ IllegalArgumentException；
  *   <li>确定性：同输入两次 Outcome 逐字段相等；{@link GovState#empty()} ⇒ changed=false；
  *   <li>布料折日：{@code clothNeed = totalStaff ×
@@ -79,7 +80,7 @@ class GovDailyTest {
 
   @Test
   void fullPaymentPaysGrainThenClothThenMoneyAndWritesAllSixTables() {
-    GovFormation gov = gov(staff(1L, 1L, 1L), policy(10L, 500L, 3L, 0L));
+    GovernmentFormation gov = gov(staff(1L, 1L, 1L), policy(10L, 500L, 3L, 0L));
     UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
     GovState base = state(GovOfficeState.empty(U1, 0L));
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
@@ -126,7 +127,7 @@ class GovDailyTest {
    */
   @Test
   void defaultPolicyChargesDailyRationAndNotThe120DayConstant() {
-    GovFormation gov = gov(staff(1L, 0L, 0L), OfficePolicy.defaults());
+    GovernmentFormation gov = gov(staff(1L, 0L, 0L), OfficePolicy.defaults());
     UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
@@ -156,7 +157,7 @@ class GovDailyTest {
 
   @Test
   void zeroNeedResourceIsNotSentToOracle() {
-    GovFormation gov = gov(staff(2L, 0L, 0L), policy(10L, 0L, 0L, 0L));
+    GovernmentFormation gov = gov(staff(2L, 0L, 0L), policy(10L, 0L, 0L, 0L));
     UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
@@ -185,7 +186,7 @@ class GovDailyTest {
 
   @Test
   void partialPaymentRecordsPerResourceShortfallAndOneAggregatedSupplySignal() {
-    GovFormation gov = gov(staff(1L, 1L, 0L), policy(10L, 365L, 5L, 0L));
+    GovernmentFormation gov = gov(staff(1L, 1L, 0L), policy(10L, 365L, 5L, 0L));
     UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
     RecordingOracle oracle =
         new RecordingOracle(
@@ -232,7 +233,7 @@ class GovDailyTest {
 
   @Test
   void zeroPaymentStillEmitsExactlyOneSupplySignalWithFullShortfall() {
-    GovFormation gov = gov(staff(1L, 1L, 0L), policy(10L, 365L, 5L, 0L));
+    GovernmentFormation gov = gov(staff(1L, 1L, 0L), policy(10L, 365L, 5L, 0L));
     UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> 0L);
 
@@ -267,7 +268,7 @@ class GovDailyTest {
   @Test
   void securityAndPaperworkShortfallsEmitIndependentSignalsWithCoverageEvidence() {
     // 人口 100000、非城市 ⇒ 需求 (200,100)；staff YAMEN=100、SCRIBE=POST=0 ⇒ coverage 500/0。
-    GovFormation gov = gov(staff(100L, 0L, 0L), policy(0L, 0L, 0L, 0L));
+    GovernmentFormation gov = gov(staff(100L, 0L, 0L), policy(0L, 0L, 0L, 0L));
     UnitState units = units(govUnit(gov, Optional.of(H1), Optional.of(jurisdiction(R1))));
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
@@ -311,7 +312,7 @@ class GovDailyTest {
   @Test
   void oneSidedCoverageShortfallEmitsOnlyItsOwnSignal() {
     // 治安满、文书 0 ⇒ 只发 ADMIN_PAPERWORK。
-    GovFormation paperworkShort = gov(staff(200L, 0L, 0L), policy(0L, 0L, 0L, 0L));
+    GovernmentFormation paperworkShort = gov(staff(200L, 0L, 0L), policy(0L, 0L, 0L, 0L));
     GovDaily.Outcome onlyPaper =
         GovDaily.settle(
             state(GovOfficeState.empty(U1, 0L)),
@@ -326,7 +327,7 @@ class GovDailyTest {
         .containsExactly(GovDaily.KIND_ADMIN_PAPERWORK);
 
     // 治安 100（500‰）、文书 100（1000‰）⇒ 只发 ADMIN_SECURITY。
-    GovFormation securityShort = gov(staff(100L, 100L, 0L), policy(0L, 0L, 0L, 0L));
+    GovernmentFormation securityShort = gov(staff(100L, 100L, 0L), policy(0L, 0L, 0L, 0L));
     GovDaily.Outcome onlySecurity =
         GovDaily.settle(
             state(GovOfficeState.empty(U1, 0L)),
@@ -345,7 +346,7 @@ class GovDailyTest {
 
   @Test
   void noSeatSkipsDuesAndSignalsButStillUpdatesEfficiencyAndTick() {
-    GovFormation gov = gov(staff(0L, 0L, 0L), policy(100L, 365L, 100L, 0L));
+    GovernmentFormation gov = gov(staff(0L, 0L, 0L), policy(100L, 365L, 100L, 0L));
     UnitState units = units(govUnit(gov, Optional.empty(), Optional.of(jurisdiction(R1))));
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
@@ -400,7 +401,7 @@ class GovDailyTest {
   }
 
   @Test
-  void unitWithoutGovFormationThrowsIllegalState() {
+  void unitWithoutGovernmentFormationThrowsIllegalState() {
     Unit plain = unitWithModule(Optional.empty(), Optional.of(H1), Optional.empty());
     GovState base = state(GovOfficeState.empty(U1, 0L));
 
@@ -415,7 +416,7 @@ class GovDailyTest {
                     365L,
                     new RecordingOracle((resource, requested) -> requested)))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("缺少 GovFormation")
+        .hasMessageContaining("缺少 GovernmentFormation")
         .hasMessageContaining("gov-1");
 
     Unit army =
@@ -434,12 +435,12 @@ class GovDailyTest {
                     365L,
                     new RecordingOracle((resource, requested) -> requested)))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("缺少 GovFormation");
+        .hasMessageContaining("缺少 GovernmentFormation");
   }
 
   @Test
   void oracleReturningMoreThanRequestedThrows() {
-    GovFormation gov = gov(staff(1L, 0L, 0L), policy(1L, 0L, 0L, 0L));
+    GovernmentFormation gov = gov(staff(1L, 0L, 0L), policy(1L, 0L, 0L, 0L));
     UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
 
     assertThatThrownBy(
@@ -460,7 +461,7 @@ class GovDailyTest {
 
   @Test
   void oracleReturningNegativeThrows() {
-    GovFormation gov = gov(staff(1L, 0L, 0L), policy(1L, 0L, 0L, 0L));
+    GovernmentFormation gov = gov(staff(1L, 0L, 0L), policy(1L, 0L, 0L, 0L));
     UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
 
     assertThatThrownBy(
@@ -482,7 +483,7 @@ class GovDailyTest {
 
   @Test
   void sameInputTwoOutcomesAreEqualFieldByField() {
-    GovFormation gov = gov(staff(2L, 1L, 1L), policy(10L, 365L, 2L, 0L));
+    GovernmentFormation gov = gov(staff(2L, 1L, 1L), policy(10L, 365L, 2L, 0L));
     Unit plain = govUnit(gov, Optional.of(H1), Optional.empty());
     GovState base = state(GovOfficeState.empty(U1, 0L));
     RecordingOracle first =
@@ -539,7 +540,7 @@ class GovDailyTest {
   void clothNeedFloorsPerStaffBeforeMultiplying() {
     // totalStaff=3、clothPerStaffPerCycle=500 ⇒ 每人每日 floor(500/365)=1，日需求 = 3。
     // 若误算成 3×500/365 = 4，本用例红。
-    GovFormation gov = gov(staff(1L, 1L, 1L), policy(0L, 500L, 0L, 0L));
+    GovernmentFormation gov = gov(staff(1L, 1L, 1L), policy(0L, 500L, 0L, 0L));
     UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
     RecordingOracle oracle = new RecordingOracle((resource, requested) -> requested);
 
@@ -573,7 +574,7 @@ class GovDailyTest {
    */
   @Test
   void clothNeedUsesTheSettlementYearsDayCountForOneStaff() {
-    GovFormation gov = gov(staff(1L, 0L, 0L), policy(0L, 730L, 0L, 0L));
+    GovernmentFormation gov = gov(staff(1L, 0L, 0L), policy(0L, 730L, 0L, 0L));
     UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
     GovState base = state(GovOfficeState.empty(U1, 0L));
 
@@ -608,7 +609,7 @@ class GovDailyTest {
    */
   @Test
   void clothNeedFloorsPerStaffBeforeMultiplyingInLeapYears() {
-    GovFormation gov = gov(staff(1L, 1L, 1L), policy(0L, 730L, 0L, 0L));
+    GovernmentFormation gov = gov(staff(1L, 1L, 1L), policy(0L, 730L, 0L, 0L));
     UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
     GovState base = state(GovOfficeState.empty(U1, 0L));
 
@@ -628,7 +629,7 @@ class GovDailyTest {
   /** ★ **年长护栏**：{@code daysInYearAtSettlement} 只接受 365/366；364、0 在评估前当场抛（拒绝臆造年长）。 */
   @Test
   void settleRejectsDaysInYearOtherThan365Or366() {
-    GovFormation gov = gov(staff(1L, 0L, 0L), policy(0L, 730L, 0L, 0L));
+    GovernmentFormation gov = gov(staff(1L, 0L, 0L), policy(0L, 730L, 0L, 0L));
     UnitState units = units(govUnit(gov, Optional.of(H1), Optional.empty()));
     GovState base = state(GovOfficeState.empty(U1, 0L));
 
@@ -697,7 +698,7 @@ class GovDailyTest {
   }
 
   private static Unit govUnit(
-      GovFormation gov, Optional<HexCoord> position, Optional<Jurisdiction> jurisdiction) {
+      GovernmentFormation gov, Optional<HexCoord> position, Optional<Jurisdiction> jurisdiction) {
     return unitWithModule(Optional.of(gov), position, jurisdiction);
   }
 
@@ -705,6 +706,12 @@ class GovDailyTest {
       Optional<UnitModule> module,
       Optional<HexCoord> position,
       Optional<Jurisdiction> jurisdiction) {
+    // ★ S3b/P2-C：带 GovernmentFormation 的单位必须恰含派生的政府家户 hh-gov-<unitId>，
+    //   否则 UnitState 构造期具名拒（GOV 家户身份 = 单位 id 的纯函数）。
+    List<HouseholdId> households =
+        module.orElse(null) instanceof GovernmentFormation
+            ? List.of(GovernmentHouseholds.of(U1.value()))
+            : List.of();
     return new Unit(
         U1,
         "gov-unit",
@@ -722,11 +729,14 @@ class GovDailyTest {
         Optional.empty(),
         Unit.DEFAULT_VISION_RADIUS,
         jurisdiction,
-        module);
+        module,
+        Map.of(),
+        households);
   }
 
-  private static GovFormation gov(Map<StaffRole, Long> staff, OfficePolicy policy) {
-    return new GovFormation(staff, policy, Optional.empty(), GovLevel.CENTRAL);
+  private static GovernmentFormation gov(Map<StaffRole, Long> staff, OfficePolicy policy) {
+    return new GovernmentFormation(
+        staff, Map.of(), policy, Optional.empty(), GovernmentLevel.CENTRAL);
   }
 
   private static Map<StaffRole, Long> staff(long yamen, long scribe, long post) {

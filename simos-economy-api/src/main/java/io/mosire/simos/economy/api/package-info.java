@@ -18,8 +18,8 @@
  * io.mosire.simos.economy.api.relation.Basis} 仍在，但它已是**只服务旧档读侧**的兼容词表（H2 把它拆成池 × 权重）。
  *
  * <p>★ **为什么放宽的是"数据记录可以有"而不是"公式也可以有"**：两侧切片（{@code economy} 算、{@code actor} 存）都要看得见这批类型，而它们分属两个模块 ⇒
- * 只能住契约层（先例 = {@code HouseholdLaborCommitment} / {@code LotChange}）。★ **"没有经济公式"这一条一字不改**：哪些规则组合有公式、公式怎么算，仍在
- * {@code simos-economy} 的结算里；本包只有枚举、字段与构造期守卫。
+ * 只能住契约层（先例 = {@code HouseholdLaborCommitment} / {@code LotChange}）。★
+ * **"没有经济公式"这一条一字不改**：哪些规则组合有公式、公式怎么算，仍在 {@code simos-economy} 的结算里；本包只有枚举、字段与构造期守卫。
  *
  * <p>★ **落点曾在 spec 里写错**（裁定 E3）：spec §三 把这批契约列在 {@code simos-actor-api}，而那个模块的 **主依赖为零**（连 util/map
  * 都不声明）⇒ 装不下要用 {@code CommodityId} / {@code HexCoord} 的类型，硬放会成 {@code actor-api → economy-api →

@@ -7,8 +7,8 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
-import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -31,36 +31,34 @@ import java.util.Set;
  * </pre>
  *
  * <p>★★ <b>先全量校验、生成好全部新 id、再写表</b>：本类用一份<b>覆盖层</b>（每条源份额的剩余量 + 本批新建行）完成全部移动与新 id
- * 生成，只有所有校验（源存在/数量够/industry 存在/守恒/质押终态上界/新 id 唯一）都通过后才开始写调用方的可写表。
- * 任一步校验失败 ⇒ 输入表<b>一字不动</b>。
+ * 生成，只有所有校验（源存在/数量够/industry 存在/守恒/质押终态上界/新 id 唯一）都通过后才开始写调用方的可写表。 任一步校验失败 ⇒ 输入表<b>一字不动</b>。
  *
  * <p>★★ <b>2026-10-09 用户口径：ACTIVE 质押按比例跟到新份额</b>（不再是"移走就质押越界"的 fail-closed）：
  *
  * <ul>
  *   <li><b>拆分</b>：被移动那一份质押按比例拆到新份额（按各目标份额的接收量做最大余数法定点分配）；
- *   <li><b>合并</b>：同 {@code (industry, asset, owner, operator, kind)} 的行合并成一行，跟过去的质押也按
- *       {@code (debtContractId, modeId, priority)} 合并（同一债务合同在同一目标份额上的多笔 ACTIVE 质押累加）；
+ *   <li><b>合并</b>：同 {@code (industry, asset, owner, operator, kind)} 的行合并成一行，跟过去的质押也按 {@code
+ *       (debtContractId, modeId, priority)} 合并（同一债务合同在同一目标份额上的多笔 ACTIVE 质押累加）；
  *   <li><b>整对象转移</b>：整条源份额被移空 ⇒ 质押全部跟到目标份额，原质押行删除（不再留 0 数量的 ACTIVE 质押）；
  *   <li>部分转移 ⇒ 原质押按剩余量减量，跟走的部分落到目标份额。
  * </ul>
  *
- * <p>★★ <b>非 ACTIVE 质押（RELEASED / EXECUTED）的具名语义</b>：它们是<b>历史凭据</b>，不随份额走 ——
- * 保留对旧份额 id 的引用；若源份额被本批移空，<b>保留一条 {@code quantity = 0} 的零行</b>，让"质押 → 份额"的引用继续成立。
- * 零行不占任何额度，也不参与实物总量。
+ * <p>★★ <b>非 ACTIVE 质押（RELEASED / EXECUTED）的具名语义</b>：它们是<b>历史凭据</b>，不随份额走 —— 保留对旧份额 id
+ * 的引用；若源份额被本批移空，<b>保留一条 {@code quantity = 0} 的零行</b>，让"质押 → 份额"的引用继续成立。 零行不占任何额度，也不参与实物总量。
  *
- * <p>★★ <b>新份额 id 确定性</b>：新 id 走 {@link OwnershipStake#idOf(IndustryId, AssetKind, ActorRef, ActorRef,
- * OwnershipStake.RightKind, long)}，序号 = 从 0 起第一个既不在同表、也不在本批已生成集合里的空闲序号。★ 旧档 opaque id
+ * <p>★★ <b>新份额 id 确定性</b>：新 id 走 {@link OwnershipStake#idOf(IndustryId, AssetKind, ActorRef,
+ * ActorRef, OwnershipStake.RightKind, long)}，序号 = 从 0 起第一个既不在同表、也不在本批已生成集合里的空闲序号。★ 旧档 opaque id
  * 不解析、不改写，只按「同 tuple 已有行」直接合并。
  *
  * <p>★★ <b>新质押 id 确定性</b>：跟随产生的质押走 {@link #nextPledgeId}，形如 {@code pledge-follow-N}（N 从 0 起找
- * 第一个未占用序号）。它只表达"由跟随产生的新质押行"，与旧 {@code PledgeId} 不解析、不拼接（旧 id 可能带 {@code "."}，
- * 拼进新 id 会破坏地址解析）。同输入状态 ⇒ 同 id。
+ * 第一个未占用序号）。它只表达"由跟随产生的新质押行"，与旧 {@code PledgeId} 不解析、不拼接（旧 id 可能带 {@code "."}， 拼进新 id
+ * 会破坏地址解析）。同输入状态 ⇒ 同 id。
  *
  * <p>★ <b>不造粮/钱/权利</b>：本类只在份额表内部改 owner/operator/kind/quantity、拆分/合并行，并在质押表里按比例
  * 改数量/引用；不碰商品、货币、债务、劳动或 unit。
  *
- * <p>★ <b>可写表要求</b>：传入的 {@code shares} 与（非空时的）{@code pledges} 必须是可写 map（各调用点传的都是
- * {@code LinkedHashMap} 工作副本）；全部校验完成后才写它们。
+ * <p>★ <b>可写表要求</b>：传入的 {@code shares} 与（非空时的）{@code pledges} 必须是可写 map（各调用点传的都是 {@code
+ * LinkedHashMap} 工作副本）；全部校验完成后才写它们。
  */
 public final class OwnershipStakeBook {
 
@@ -95,8 +93,8 @@ public final class OwnershipStakeBook {
   }
 
   /**
-   * ★★ <b>整条或部分转移</b>（{@code quantity} 可等于源数量；等于 = 整条转移，旧 id 删除）。被任何质押引用时保留
-   * {@code quantity = 0} 行；ACTIVE 质押按比例跟到目标份额。
+   * ★★ <b>整条或部分转移</b>（{@code quantity} 可等于源数量；等于 = 整条转移，旧 id 删除）。被任何质押引用时保留 {@code quantity = 0}
+   * 行；ACTIVE 质押按比例跟到目标份额。
    *
    * @return 目标份额的稳定 id（若目标 tuple 已有现成行 ⇒ 返回那一行的 id）
    */
@@ -156,8 +154,7 @@ public final class OwnershipStakeBook {
    * @param industries 产业模板（只读；空表 = 对侧尚未提供 ⇒ 不判 industry 存在）；可为 null（按空处理）
    * @param pledges 质押表（<b>可写</b>：ACTIVE 质押按比例跟随会就地改写它；空表/null = 不做跟随、也不判上界）
    * @param moves 移动列表；不得为 null、不得含 null；空列表 = no-op
-   * @return 每次 Move 对应落到的目标份额 id（按 Move 顺序；一个新 id 可被多条 Move 共用 —— 同 tuple 合并）；
-   *     与传入 {@code moves} 等长
+   * @return 每次 Move 对应落到的目标份额 id（按 Move 顺序；一个新 id 可被多条 Move 共用 —— 同 tuple 合并）； 与传入 {@code moves} 等长
    */
   public static List<AssetShareId> apply(
       Map<AssetShareId, OwnershipStake> shares,
@@ -170,7 +167,12 @@ public final class OwnershipStakeBook {
       Objects.requireNonNull(move, "OwnershipStakeBook.apply 的 moves 不得含 null");
       planned.add(
           new PlannedMove(
-              move.source(), move.quantity(), null, move.toOwner(), move.toOperator(), move.kind()));
+              move.source(),
+              move.quantity(),
+              null,
+              move.toOwner(),
+              move.toOperator(),
+              move.kind()));
     }
     return execute(shares, industries, pledges, planned, false);
   }
@@ -278,12 +280,14 @@ public final class OwnershipStakeBook {
     for (PlannedMove move : moves) {
       OwnershipStake source = shares.get(move.source());
       if (source == null) {
-        throw new IllegalArgumentException(
-            "OwnershipStakeBook 的源份额不存在（拒绝半笔操作）: " + move.source());
+        throw new IllegalArgumentException("OwnershipStakeBook 的源份额不存在（拒绝半笔操作）: " + move.source());
       }
       if (!move.source().equals(source.id())) {
         throw new IllegalArgumentException(
-            "OwnershipStakeBook 的键必须与 OwnershipStake.id 一致：键=" + move.source() + "，行内 id=" + source.id());
+            "OwnershipStakeBook 的键必须与 OwnershipStake.id 一致：键="
+                + move.source()
+                + "，行内 id="
+                + source.id());
       }
       if (!knownIndustries.isEmpty() && !knownIndustries.containsKey(source.industry())) {
         throw new IllegalArgumentException(
@@ -297,8 +301,7 @@ public final class OwnershipStakeBook {
       if (targetIndustry == null) {
         // ★ 旧口径保留：industries 为空 = 对侧尚未提供 ⇒ apply 不判产业存在；rebuild 仍必须给出可承载模板。
         if (rebuildMode || !knownIndustries.isEmpty()) {
-          throw new IllegalArgumentException(
-              "OwnershipStakeBook 的目标产业不存在（拒绝凭空造产业）: " + toIndustry);
+          throw new IllegalArgumentException("OwnershipStakeBook 的目标产业不存在（拒绝凭空造产业）: " + toIndustry);
         }
       }
       if (rebuildMode
@@ -364,7 +367,8 @@ public final class OwnershipStakeBook {
       OwnershipStake source = shares.get(move.source());
       IndustryId toIndustry = rebuildMode ? move.toIndustry() : source.industry();
       ShareTuple tuple =
-          new ShareTuple(toIndustry, source.asset(), move.toOwner(), move.toOperator(), move.kind());
+          new ShareTuple(
+              toIndustry, source.asset(), move.toOwner(), move.toOperator(), move.kind());
       AssetShareId destination = tupleIndex.get(tuple);
       if (destination == null) {
         destination =
@@ -471,7 +475,8 @@ public final class OwnershipStakeBook {
   }
 
   /** 目标 tuple → 现成份额行 id（按 id 升序取第一条；重复 tuple 的旧档行不猜、确定性取最小 id）。 */
-  private static Map<ShareTuple, AssetShareId> buildTupleIndex(Map<AssetShareId, OwnershipStake> shares) {
+  private static Map<ShareTuple, AssetShareId> buildTupleIndex(
+      Map<AssetShareId, OwnershipStake> shares) {
     List<OwnershipStake> ordered = new ArrayList<>(shares.values());
     ordered.sort(Comparator.comparing(share -> share.id().value()));
     Map<ShareTuple, AssetShareId> index = new LinkedHashMap<>();
@@ -485,8 +490,8 @@ public final class OwnershipStakeBook {
   }
 
   /**
-   * ★★ ACTIVE 质押跟随的核心：逐源份额、逐 ACTIVE 质押按"移动量 / 源数量"做定点比例分配
-   * （最大余数法，余数相同按目标 id 升序），生成/合并目标份额上的质押；原质押按剩余量减量，整条移走则删除。
+   * ★★ ACTIVE 质押跟随的核心：逐源份额、逐 ACTIVE 质押按"移动量 / 源数量"做定点比例分配 （最大余数法，余数相同按目标 id
+   * 升序），生成/合并目标份额上的质押；原质押按剩余量减量，整条移走则删除。
    *
    * <p>★ 非 ACTIVE 质押原样保留（引用旧份额；{@link #execute} 已把被移空的旧行留成 quantity=0 零行）。
    *
@@ -606,7 +611,13 @@ public final class OwnershipStakeBook {
               continue;
             }
             followPledgeTo(
-                plannedPledges, mergeIndex, createdPledgeIds, pledgeId, pledge, destination, amount);
+                plannedPledges,
+                mergeIndex,
+                createdPledgeIds,
+                pledgeId,
+                pledge,
+                destination,
+                amount);
             activeByShare.merge(destination, amount, Math::addExact);
             activeByShare.merge(sourceId, -amount, Math::addExact);
             excess -= amount;
@@ -641,7 +652,8 @@ public final class OwnershipStakeBook {
       AssetShareId destination,
       long amount) {
     PledgeMergeKey key =
-        new PledgeMergeKey(destination, pledge.debtContractId(), pledge.modeId(), pledge.priority());
+        new PledgeMergeKey(
+            destination, pledge.debtContractId(), pledge.modeId(), pledge.priority());
     PledgeId existingId = mergeIndex.get(key);
     Pledge existing = existingId == null ? null : plannedPledges.get(existingId);
     if (existing != null
@@ -694,9 +706,9 @@ public final class OwnershipStakeBook {
   }
 
   /**
-   * ★★ <b>定点比例分配（最大余数法）</b>：把 {@code pledgeQuantity} 按 {@code flows}（目标 → 接收量）的比例
-   * 分到各目标，余数按 remainder 降序、同余数按目标 id 升序补 1。★ 全源移走（Σflows == sourceQuantity）时
-   * 结果精确等于 {@code pledgeQuantity}（不会留下 0 数量的 ACTIVE 质押）。
+   * ★★ <b>定点比例分配（最大余数法）</b>：把 {@code pledgeQuantity} 按 {@code flows}（目标 → 接收量）的比例 分到各目标，余数按
+   * remainder 降序、同余数按目标 id 升序补 1。★ 全源移走（Σflows == sourceQuantity）时 结果精确等于 {@code
+   * pledgeQuantity}（不会留下 0 数量的 ACTIVE 质押）。
    */
   private static Map<AssetShareId, Long> proportionalFollow(
       long pledgeQuantity, long sourceQuantity, Map<AssetShareId, Long> flows) {
@@ -727,7 +739,10 @@ public final class OwnershipStakeBook {
     long leftover = Math.subtractExact(targetQuantity, assigned);
     if (leftover < 0L) {
       throw new IllegalStateException(
-          "OwnershipStakeBook 质押跟随分配超过目标量（内部错误）: target=" + targetQuantity + " assigned=" + assigned);
+          "OwnershipStakeBook 质押跟随分配超过目标量（内部错误）: target="
+              + targetQuantity
+              + " assigned="
+              + assigned);
     }
     if (leftover > 0L) {
       List<AssetShareId> byRemainder = new ArrayList<>(destinations);
@@ -748,8 +763,8 @@ public final class OwnershipStakeBook {
   }
 
   /**
-   * ACTIVE 质押上界终态守卫：Σ活跃质押 ≤ 终态 quantity；所有质押（不分状态）指名的份额都必须仍在终态里
-   * （被移空的旧行由零行保留兜住）。{@code plannedPledges} 为空 = 对侧尚未提供 ⇒ 整体 no-op。
+   * ACTIVE 质押上界终态守卫：Σ活跃质押 ≤ 终态 quantity；所有质押（不分状态）指名的份额都必须仍在终态里 （被移空的旧行由零行保留兜住）。{@code
+   * plannedPledges} 为空 = 对侧尚未提供 ⇒ 整体 no-op。
    */
   private static void requireFinalPledgeBounds(
       Map<AssetShareId, OwnershipStake> shares,
@@ -792,7 +807,9 @@ public final class OwnershipStakeBook {
 
   /** 某份额的终态数量（本批碰过的看覆盖层；没碰过的看原表）；不存在 ⇒ -1。 */
   private static long quantityAfter(
-      AssetShareId id, Map<AssetShareId, OwnershipStake> shares, Map<AssetShareId, Long> finalQuantity) {
+      AssetShareId id,
+      Map<AssetShareId, OwnershipStake> shares,
+      Map<AssetShareId, Long> finalQuantity) {
     Long after = finalQuantity.get(id);
     if (after != null) {
       return after;
@@ -811,7 +828,8 @@ public final class OwnershipStakeBook {
       ActorRef operator,
       OwnershipStake.RightKind kind) {
     for (long sequence = 0L; sequence >= 0L; sequence++) {
-      AssetShareId candidate = OwnershipStake.idOf(industry, asset, owner, operator, kind, sequence);
+      AssetShareId candidate =
+          OwnershipStake.idOf(industry, asset, owner, operator, kind, sequence);
       if (!shares.containsKey(candidate) && !pending.containsKey(candidate)) {
         return candidate;
       }

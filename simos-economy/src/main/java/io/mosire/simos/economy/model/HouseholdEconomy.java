@@ -20,8 +20,8 @@ import java.util.Objects;
  * I1.2），而"哪些行属于这个产业"改由**劳动配额表**推（见 {@code 旧结算引擎（R3a 已删除）.householdKeysOf}）。
  *
  * <p>★★ <b>为什么没有 {@code goods}</b>（H1；裁定 D3-C "家户主体化" + I6.1/I7.1 "一本账"）：商品库存的**唯一持久真源**是 actor
- * 切片里该家户 actor 的 {@code HouseholdInventory}（键 {@code (HouseholdActors.of(key), key.hex())}）。 economy
- * 的日结算要读库存 ⇒ 它在**会话工作副本**里读（{@code 旧日推进器（R3a 已删除）} 持有、就地更新，见 {@link
+ * 切片里该家户 actor 的 {@code HouseholdInventory}（键 {@code (HouseholdActors.of(key), key.hex())}）。
+ * economy 的日结算要读库存 ⇒ 它在**会话工作副本**里读（{@code 旧日推进器（R3a 已删除）} 持有、就地更新，见 {@link
  * io.mosire.simos.economy.time.旧日推进器（R3a 已删除）}），**不是第二本持久账**。 ★ <b>辨别口径</b>：本字段一旦回来（或守恒式里重新出现
  * {@code ΔΣRowGoods} 这一项），就说明"还有一本账没搬完"。
  *
@@ -33,8 +33,9 @@ import java.util.Objects;
  * <p>★ **它是存量**（§3.3 末条"存量/流量分离"）：本期的发生额在 {@link FlowRow} 里、**结算后清零**；绝不用"生产成本"或"资产减少"
  * 冒充负债——债务只能由借入/赊购产生，引用 {@link #debts} 指向债务表。
  *
- * <p>★ **量纲**（§7；P2-A §13.4 起）：{@code population} 人；{@code laborMilli} = **每 tick 家户时间预算（毫小时）**；{@code naturalNeeds}/{@code
- * effectiveDemand} 按最小计量单位；{@code money} 最小币值；{@code participationPerMille} 千分数。
+ * <p>★ **量纲**（§7；P2-A §13.4 起）：{@code population} 人；{@code laborMilli} = **每 tick
+ * 家户时间预算（毫小时）**；{@code naturalNeeds}/{@code effectiveDemand} 按最小计量单位；{@code money} 最小币值；{@code
+ * participationPerMille} 千分数。
  *
  * <p>★ **不变量（构造期判，§6.4）**：{@code population ≥ 0}、{@code laborMilli ≥ 0}、{@code money ≥ 0}、两个表的逐值
  * {@code ≥ 0}、{@code participationPerMille ∈ [0, 1000]}（§6.3 的上界部分；"≤ 槽位上限"要跨对象，见 §6.3，判在 {@code
@@ -47,23 +48,23 @@ import java.util.Objects;
  * @param id ★★ <b>家户稳定身份</b>（S1）：是 {@code EconomyData.classes} 的键，迁移/分层/居住变化都不改它
  * @param view 当前视图（格 + 居住类型 + 阶层）：可变，不再是身份
  * @param population 人口（人）；不得为负
- * @param laborMilli ★★ <b>本 tick 家户时间预算（毫小时）</b>（P2-A §13.4）——由 Social 的家户成员 ×
- *     {@code HouseholdLaborTimeTable} 现算（每 tick 重算、创世由 {@code EconomySeeder} 算同一张表）；不得为负。
- *     ★ 它是劳动配额的上限：不变量 {@code Σ allocations(household).laborMilli ≤ laborMilli}（见 {@code EconomyData}）。
- *     ★ 旧的"千分劳动/日"口径（{@code AGE_LABOR_COEF_BY_SEX} 折算量）已退役；{@code participationPerMille} 仍保留为
+ * @param laborMilli ★★ <b>本 tick 家户时间预算（毫小时）</b>（P2-A §13.4）——由 Social 的家户成员 × {@code
+ *     HouseholdLaborTimeTable} 现算（每 tick 重算、创世由 {@code EconomySeeder} 算同一张表）；不得为负。 ★ 它是劳动配额的上限：不变量
+ *     {@code Σ allocations(household).laborMilli ≤ laborMilli}（见 {@code EconomyData}）。 ★
+ *     旧的"千分劳动/日"口径（{@code AGE_LABOR_COEF_BY_SEX} 折算量）已退役；{@code participationPerMille} 仍保留为
  *     分配权重（不再是硬上限）
  * @param participationPerMille 本期实际劳动投入率（≤ 该格各产业的槽位上限）；必须 ∈ [0, 1000]
  * @param money 货币（最小币值）；不得为负
  * @param debts 指向债务表的引用；可空、不得含 null
- * @param naturalNeeds ★★ 本期自然需求（生存/再生产；v1 只做前两档）；键值非空、逐值 ≥ 0。**2026-10-09 起它是
- *     app 逐户从 Social 成员结构展开并注入的当日物化读模型**（{@code EconomySettlement.applyNaturalNeedsInto}
- *     是唯一写入点）；经济侧不再按 {@code population} 反推 —— 无需求用空 map。
+ * @param naturalNeeds ★★ 本期自然需求（生存/再生产；v1 只做前两档）；键值非空、逐值 ≥ 0。**2026-10-09 起它是 app 逐户从 Social
+ *     成员结构展开并注入的当日物化读模型**（{@code EconomySettlement.applyNaturalNeedsInto} 是唯一写入点）；经济侧不再按 {@code
+ *     population} 反推 —— 无需求用空 map。
  * @param effectiveDemand 有效需求（= 有支付力的那部分，§十四/§十五 的分野）；键值非空、逐值 ≥ 0
- * @param cycleNaturalNeedMilli ★★ <b>M2.7 丙条仪器：本周期累计自然口粮需要</b>（毫粮）= {@code Σ_d
- *     当日本行 naturalNeeds[grain]}—— 由消费步（{@code EconomySettlement.consumeOneHousehold}）逐日累加、新周期第一天在
- *     流水清零点重置为当天需要。**它不是独立口径**：分母与每日需求同源于 app 注入值。
- *     <b>它是唯一与"周期累计未满足需求"同窗口的自然需求分母</b>；旧的"某一天人口 × 整周期配额"不得再与它并排当同一分母（丙条）。 旧档（M2.7 之前）缺本键 ⇒
- *     0（fail-closed 的"还没开始累计"），由 {@code EconomyPayloads.householdEconomy} 与 Jackson 的记录绑定分别兜底。 不得为负
+ * @param cycleNaturalNeedMilli ★★ <b>M2.7 丙条仪器：本周期累计自然口粮需要</b>（毫粮）= {@code Σ_d 当日本行
+ *     naturalNeeds[grain]}—— 由消费步（{@code EconomySettlement.consumeOneHousehold}）逐日累加、新周期第一天在
+ *     流水清零点重置为当天需要。**它不是独立口径**：分母与每日需求同源于 app 注入值。 <b>它是唯一与"周期累计未满足需求"同窗口的自然需求分母</b>；旧的"某一天人口 ×
+ *     整周期配额"不得再与它并排当同一分母（丙条）。 旧档（M2.7 之前）缺本键 ⇒ 0（fail-closed 的"还没开始累计"），由 {@code
+ *     EconomyPayloads.householdEconomy} 与 Jackson 的记录绑定分别兜底。 不得为负
  */
 public record HouseholdEconomy(
     HouseholdId id,
@@ -180,8 +181,7 @@ public record HouseholdEconomy(
   }
 
   /**
-   * ★★ <b>2026-10-09 家户结构修复：只换当日自然需求，别的字段一字不动</b>——身份、视图、人口、劳动、参与率、货币、债务引用、
-   * 有效需求与周期累计自然需要全部原样保留。
+   * ★★ <b>2026-10-09 家户结构修复：只换当日自然需求，别的字段一字不动</b>——身份、视图、人口、劳动、参与率、货币、债务引用、 有效需求与周期累计自然需要全部原样保留。
    *
    * <p>★★ <b>与 {@link #withView}/{@link #withPopulationAndLabor} 同族的理由</b>：需求表的写入点必须只有一处（app 注入 →
    * {@code EconomySettlement.applyNaturalNeedsInto}），若调用点逐字段手抄，任何一次 {@code HouseholdEconomy} 加字段都会让
@@ -209,18 +209,17 @@ public record HouseholdEconomy(
    * </pre>
    *
    * <p>★★ <b>它不是第二本权威</b>：乘数 {@code naturalNeeds[commodity]} 是 app 当日从 Social
-   * 逐成员展开并注入的<b>当日份额</b>（见 {@link #naturalNeeds()}）；本方法只把<b>当前注入值</b>按天数线性外推。
-   * 人口/年龄性别结构/需求系数变化由下一次 app 注入刷新，经济侧不自己按 {@code population} 反推，也不缓存第二套需求表。
+   * 逐成员展开并注入的<b>当日份额</b>（见 {@link #naturalNeeds()}）；本方法只把<b>当前注入值</b>按天数线性外推。 人口/年龄性别结构/需求系数变化由下一次
+   * app 注入刷新，经济侧不自己按 {@code population} 反推，也不缓存第二套需求表。
    *
-   * <p>★ <b>用途</b>：放贷/债务容量的整周期保留额、粮覆盖率分母、经营者守卫口粮、市场自用保留、app 危机读数的多日窗口
-   * —— 这些“整周期/多日前瞻需求”的统一入口。窗口多少天由调用方按原语义给（如本户产业 {@code cycleDays}、
-   * 市场补货窗口），本方法不猜周期。
+   * <p>★ <b>用途</b>：放贷/债务容量的整周期保留额、粮覆盖率分母、经营者守卫口粮、市场自用保留、app 危机读数的多日窗口 ——
+   * 这些“整周期/多日前瞻需求”的统一入口。窗口多少天由调用方按原语义给（如本户产业 {@code cycleDays}、 市场补货窗口），本方法不猜周期。
    *
    * <p>★ <b>与 {@link #cycleNaturalNeedMilli()} 的分工</b>：本方法是“从今天往后看 N 天”的线性外推；若需要“本周期
    * 已经过窗口”的精确累计（粮），读 {@code cycleNaturalNeedMilli()}，不要用本方法回放历史。
    *
-   * <p>★ <b>边界</b>：当前 profile 里没有该商品的注入键 ⇒ 返回 0（不抛、不另造默认表）；{@code days ≤ 0} ⇒ 返回 0；
-   * 溢出走 {@link Math#multiplyExact} 具名抛，不静默回绕。
+   * <p>★ <b>边界</b>：当前 profile 里没有该商品的注入键 ⇒ 返回 0（不抛、不另造默认表）；{@code days ≤ 0} ⇒ 返回 0； 溢出走 {@link
+   * Math#multiplyExact} 具名抛，不静默回绕。
    *
    * @param commodity 商品 id（非 null）
    * @param days 前瞻天数；≤ 0 ⇒ 0
@@ -242,8 +241,7 @@ public record HouseholdEconomy(
    * ★★ <b>2026-10-09 家户结构修复：只换当日自然需求与周期累计口粮需要</b>——其余字段原样带过。
    *
    * <p>消费步用它把当天注入的 {@code naturalNeeds[GRAIN]} 累加进 {@link #cycleNaturalNeedMilli()}（一天一次）；
-   * 新周期第一天的重置仍由 {@code EconomySettlement.withCycleNaturalNeed} 在流水清零点完成。新周期累计值为负 ⇒
-   * 规范构造器当场拒。
+   * 新周期第一天的重置仍由 {@code EconomySettlement.withCycleNaturalNeed} 在流水清零点完成。新周期累计值为负 ⇒ 规范构造器当场拒。
    */
   public HouseholdEconomy withNaturalNeedsAndCycle(
       Map<CommodityId, Long> newNaturalNeeds, long newCycleNaturalNeedMilli) {
@@ -284,12 +282,13 @@ public record HouseholdEconomy(
    * ★★ <b>P2-B：后端命令配置家户劳动时间/参与率</b>（{@code economy.SetHouseholdLabor}）——只换这两个字段，身份、视图、
    * 货币、债务引用、两类需求与周期累计自然需要全部原样保留。
    *
-   * <p>★ <b>与每 tick 投影的关系（如实边界）</b>：{@code laborMilli} 的常规来源是 Social 成员 ×
-   * {@code HouseholdLaborTimeTable} 的逐 tick 投影（P2-A §13.4）。本写口直接落一个显式配置值；下一次推进时若 Social 侧该户
-   * 成员组成存在，投影会按 Social 重算并覆盖它 —— 要持久改变劳动时间，应同时编辑 Social 成员组成（那不在经济命令的边界里）。
+   * <p>★ <b>与每 tick 投影的关系（如实边界）</b>：{@code laborMilli} 的常规来源是 Social 成员 × {@code
+   * HouseholdLaborTimeTable} 的逐 tick 投影（P2-A §13.4）。本写口直接落一个显式配置值；下一次推进时若 Social 侧该户 成员组成存在，投影会按
+   * Social 重算并覆盖它 —— 要持久改变劳动时间，应同时编辑 Social 成员组成（那不在经济命令的边界里）。
    * 这里不做"覆盖位"之类的第二权威：显式配置就是一次状态写入，读口读到的永远是当前状态。
    */
-  public HouseholdEconomy withLaborAndParticipation(long newLaborMilli, int newParticipationPerMille) {
+  public HouseholdEconomy withLaborAndParticipation(
+      long newLaborMilli, int newParticipationPerMille) {
     return new HouseholdEconomy(
         id,
         view,

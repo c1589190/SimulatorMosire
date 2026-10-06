@@ -169,9 +169,9 @@ class SdDecisionScopeApiTest {
           .as("命名空间 %s 的前缀必须与现算逐值相等（且有序）", entry.getKey())
           .containsExactlyElementsOf(want);
     }
-    // sd 维是机制不是配权：决策人只能以自己名义下决策 ⇒ 三层范围都要报出来。
+    // sd 维是机制不是配权：决策人只能以自己名义下决策/提交决策包 ⇒ 前缀逐条报出来。
     assertThat(texts(namespaces.get("sd").get("prefixes")))
-        .containsExactly("decision-maker/dm-nation");
+        .containsExactly("decision-maker/dm-nation", "decision-packet/dm-nation");
     assertThat(body.get("unparsedPrefixes")).as("内置范围函数产出的前缀形状必须全可解码（解不出的要显式列出，不静默丢）").isEmpty();
 
     // ★ GM 的 accessLimit 是**交集**：dm-narrow 与国家决策人同归属，但限制只指向乙国的区域 ⇒ 交集为空。

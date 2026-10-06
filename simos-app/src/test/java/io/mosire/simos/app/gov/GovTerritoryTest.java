@@ -15,9 +15,10 @@ import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.state.SdState;
-import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentLevel;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.RelativeOffset;
@@ -70,7 +71,7 @@ class GovTerritoryTest {
 
   @Test
   void singleLevelRootIncludesItsOwnJurisdiction() {
-    UnitState units = stateOf(gov(G1, Optional.empty(), GovLevel.CENTRAL, R_A));
+    UnitState units = stateOf(gov(G1, Optional.empty(), GovernmentLevel.CENTRAL, R_A));
 
     Set<RegionId> nominal = GovTerritory.nominalRegions(units, G1);
 
@@ -82,10 +83,10 @@ class GovTerritoryTest {
     // g-1 → {g-2, g-4}，g-2 → g-3；units 插入序决定同层子节点的 BFS 序。
     UnitState units =
         stateOf(
-            gov(G1, Optional.empty(), GovLevel.CENTRAL, R_B, R_A),
-            gov(G2, Optional.of(G1), GovLevel.PROVINCE, R_A, R_C),
-            gov(G3, Optional.of(G2), GovLevel.PROVINCE, R_D),
-            gov(G4, Optional.of(G1), GovLevel.PROVINCE, R_E));
+            gov(G1, Optional.empty(), GovernmentLevel.CENTRAL, R_B, R_A),
+            gov(G2, Optional.of(G1), GovernmentLevel.PROVINCE, R_A, R_C),
+            gov(G3, Optional.of(G2), GovernmentLevel.PROVINCE, R_D),
+            gov(G4, Optional.of(G1), GovernmentLevel.PROVINCE, R_E));
 
     Set<RegionId> nominal = GovTerritory.nominalRegions(units, G1);
 
@@ -103,9 +104,9 @@ class GovTerritoryTest {
   void anEmptyJurisdictionGovIsSkippedButItsSubtreeIsStillTraversed() {
     UnitState units =
         stateOf(
-            gov(G1, Optional.empty(), GovLevel.CENTRAL, new RegionId[0]),
-            gov(G2, Optional.of(G1), GovLevel.PROVINCE, new RegionId[0]),
-            gov(G3, Optional.of(G2), GovLevel.PROVINCE, R_G));
+            gov(G1, Optional.empty(), GovernmentLevel.CENTRAL, new RegionId[0]),
+            gov(G2, Optional.of(G1), GovernmentLevel.PROVINCE, new RegionId[0]),
+            gov(G3, Optional.of(G2), GovernmentLevel.PROVINCE, R_G));
 
     assertThat(new ArrayList<>(GovTerritory.nominalRegions(units, G1)))
         .as("空 jurisdiction 的 GOV 自己不加，但子树继续向下（g-3 的 r-g 必须收到）")
@@ -118,8 +119,8 @@ class GovTerritoryTest {
     // UnitState 不校验 superiorGov 环（unit.SetGovSuperior 才拒）；手工拼出的坏状态不能让显示端死循环。
     UnitState units =
         stateOf(
-            gov(G1, Optional.of(G2), GovLevel.CENTRAL, R_A),
-            gov(G2, Optional.of(G1), GovLevel.PROVINCE, R_B));
+            gov(G1, Optional.of(G2), GovernmentLevel.CENTRAL, R_A),
+            gov(G2, Optional.of(G1), GovernmentLevel.PROVINCE, R_B));
 
     assertThat(new ArrayList<>(GovTerritory.nominalRegions(units, G1)))
         .as("环由访问集兜底：两个 GOV 各出现一次即停")
@@ -128,11 +129,12 @@ class GovTerritoryTest {
 
   @Test
   void unknownOrNonGovRootReturnsEmptySet() {
-    UnitState units = stateOf(plain("u-plain"), gov(G1, Optional.empty(), GovLevel.CENTRAL, R_A));
+    UnitState units =
+        stateOf(plain("u-plain"), gov(G1, Optional.empty(), GovernmentLevel.CENTRAL, R_A));
 
     assertThat(GovTerritory.nominalRegions(units, new UnitId("ghost"))).isEmpty();
     assertThat(GovTerritory.nominalRegions(units, new UnitId("u-plain")))
-        .as("起点没有 GovFormation ⇒ 没有名义全境可谈（不是把它的 jurisdiction 当根）")
+        .as("起点没有 GovernmentFormation ⇒ 没有名义全境可谈（不是把它的 jurisdiction 当根）")
         .isEmpty();
   }
 
@@ -143,12 +145,12 @@ class GovTerritoryTest {
     GameMap map = ScopeFixtures.mapOf(ScopeFixtures.taggedRegion("r-child", null, H12, H13));
     UnitState units =
         stateOf(
-            govAt(G1, H11, Optional.empty(), GovLevel.CENTRAL, new RegionId[0]),
+            govAt(G1, H11, Optional.empty(), GovernmentLevel.CENTRAL, new RegionId[0]),
             govAt(
                 G2,
                 H12,
                 Optional.of(G1),
-                GovLevel.PROVINCE,
+                GovernmentLevel.PROVINCE,
                 new RegionId[] {new RegionId("r-child")}));
     SimulationState state = ScopeFixtures.state(map, units, SdState.empty());
 
@@ -209,7 +211,7 @@ class GovTerritoryTest {
   }
 
   private static Unit gov(
-      UnitId id, Optional<UnitId> superior, GovLevel level, RegionId... regions) {
+      UnitId id, Optional<UnitId> superior, GovernmentLevel level, RegionId... regions) {
     return govAt(id, H11, superior, level, regions);
   }
 
@@ -217,13 +219,15 @@ class GovTerritoryTest {
       UnitId id,
       HexCoord position,
       Optional<UnitId> superior,
-      GovLevel level,
+      GovernmentLevel level,
       RegionId... regions) {
     return unit(
         id,
         position,
-        Optional.of(new GovFormation(Map.of(), OfficePolicy.defaults(), superior, level)),
-        Optional.of(jurisdiction(regions)));
+        Optional.of(
+            new GovernmentFormation(Map.of(), Map.of(), OfficePolicy.defaults(), superior, level)),
+        Optional.of(jurisdiction(regions)),
+        List.of(GovernmentHouseholds.of(id.value())));
   }
 
   private static Unit plain(String id) {
@@ -235,6 +239,15 @@ class GovTerritoryTest {
       HexCoord position,
       Optional<UnitModule> module,
       Optional<Jurisdiction> jurisdiction) {
+    return unit(id, position, module, jurisdiction, List.of());
+  }
+
+  private static Unit unit(
+      UnitId id,
+      HexCoord position,
+      Optional<UnitModule> module,
+      Optional<Jurisdiction> jurisdiction,
+      List<HouseholdId> households) {
     return new Unit(
         id,
         "单位 " + id.value(),
@@ -255,7 +268,9 @@ class GovTerritoryTest {
         Optional.empty(),
         Unit.DEFAULT_VISION_RADIUS,
         jurisdiction,
-        module);
+        module,
+        Map.of(),
+        households);
   }
 
   private static Jurisdiction jurisdiction(RegionId... regions) {

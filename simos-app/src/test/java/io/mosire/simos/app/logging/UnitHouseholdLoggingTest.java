@@ -21,18 +21,15 @@ import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.HouseholdVitalRates;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.household.HouseholdBook;
-import io.mosire.simos.unit.Unit;
-import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitLog;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.spi.SetUnitHouseholdsHandler;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
-import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.StateMeta;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -56,14 +53,14 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>用 log4j2 appender 同时捕获 {@code io.mosire.simos.unit} 与 {@code io.mosire.simos.social}：
  *
  * <ul>
- *   <li>{@code UNIT_HOUSEHOLDS_SET} / {@code UNIT_HOUSEHOLD_ASSIGN} / {@code UNIT_HOUSEHOLD_DETACH} 及
- *       unit/household/reason 关键字段；
+ *   <li>{@code UNIT_HOUSEHOLDS_SET} / {@code UNIT_HOUSEHOLD_ASSIGN} / {@code UNIT_HOUSEHOLD_DETACH}
+ *       及 unit/household/reason 关键字段；
  *   <li>assign/detach 同批的 Social 侧 {@code HOUSEHOLD_LOCATION_SET}（from/to）；
  *   <li>{@code simos.unit.logLevel} / {@code simos.unit.traceLevel} 升降级真的改变输出（TRACE 明细出现/消失）。
  * </ul>
  *
- * <p>★ 装置住 app 模块（只有 app 测试类路径有 log4j-core + log4j-slf4j2-impl）；{@link #logLinesAreActuallyCaptured}
- * 是前提断言——空集上的"不含某串"会假绿。
+ * <p>★ 装置住 app 模块（只有 app 测试类路径有 log4j-core + log4j-slf4j2-impl）；{@link
+ * #logLinesAreActuallyCaptured} 是前提断言——空集上的"不含某串"会假绿。
  */
 class UnitHouseholdLoggingTest {
 
@@ -161,11 +158,16 @@ class UnitHouseholdLoggingTest {
                       context(
                           assign,
                           Map.of(
-                              "householdId", HH_A.value(),
-                              "unitId", UnitHouseholdWorldFixture.GOV.value(),
-                              "reason", "编入",
-                              "expectedRevision", head,
-                              "preview", false)))
+                              "householdId",
+                              HH_A.value(),
+                              "unitId",
+                              UnitHouseholdWorldFixture.GOV.value(),
+                              "reason",
+                              "编入",
+                              "expectedRevision",
+                              head,
+                              "preview",
+                              false)))
                   .success())
           .isTrue();
       long afterAssign = UnitHouseholdWorldFixture.head(core);
@@ -175,17 +177,28 @@ class UnitHouseholdLoggingTest {
                       context(
                           detach,
                           Map.of(
-                              "householdId", HH_A.value(),
-                              "unitId", UnitHouseholdWorldFixture.GOV.value(),
-                              "hex", Map.of("q", 1, "r", 2),
-                              "reason", "移出",
-                              "expectedRevision", afterAssign,
-                              "preview", false)))
+                              "householdId",
+                              HH_A.value(),
+                              "unitId",
+                              UnitHouseholdWorldFixture.GOV.value(),
+                              "hex",
+                              Map.of("q", 1, "r", 2),
+                              "reason",
+                              "移出",
+                              "expectedRevision",
+                              afterAssign,
+                              "preview",
+                              false)))
                   .success())
           .isTrue();
 
       List<String> lines = appender.messages();
-      assertEvent(lines, "UNIT_HOUSEHOLDS_SET", "unit=u-gov", "households=[hh-a]", "reason=编入");
+      assertEvent(
+          lines,
+          "UNIT_HOUSEHOLDS_SET",
+          "unit=u-gov",
+          "households=[hh-gov-u-gov, hh-a]",
+          "reason=编入");
       assertEvent(
           lines,
           "UNIT_HOUSEHOLD_ASSIGN",
@@ -246,13 +259,16 @@ class UnitHouseholdLoggingTest {
         new SimulationState(
             new StateMeta(UnitHouseholdWorldFixture.ref(1), UnitHouseholdWorldFixture.T0),
             Map.of(
-                "unit", new UnitSnapshot(UnitHouseholdWorldFixture.ref(1), UnitHouseholdWorldFixture.T0, units)),
+                "unit",
+                new UnitSnapshot(
+                    UnitHouseholdWorldFixture.ref(1), UnitHouseholdWorldFixture.T0, units)),
             InMemoryInfoSystem.empty());
     var outcome =
         new SetUnitHouseholdsHandler()
             .handle(
                 state,
-                "{\"unitId\":\"u-gov\",\"households\":[\"hh-a\"],\"reason\":\"切级\"}");
+                "{\"unitId\":\"u-gov\",\"households\":[\"hh-gov-u-gov\",\"hh-a\"],"
+                    + "\"reason\":\"切级\"}");
     assertThat(outcome).isInstanceOf(io.mosire.simos.util.spi.HandlerOutcome.Applied.class);
   }
 

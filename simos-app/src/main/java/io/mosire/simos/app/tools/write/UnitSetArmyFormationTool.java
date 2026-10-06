@@ -10,8 +10,8 @@ import java.util.Map;
  * 调用时走审批门链。
  *
  * <p>★ <b>载荷</b>：{@code {unitId, masterGov?, role}}；{@code role} 必填非空白，{@code masterGov} 可缺省（未认主子），
- * 给了就必须存在且带 {@code GovernmentFormation}。既有 GovernmentFormation ⇒ 具名拒（一单位一标签，不静默替换）。拒绝理由由域层给、经 {@code
- * ToolSupport.fold} 变成可读的 {@code REJECTED}。
+ * 给了就必须存在且带 {@code GovernmentFormation}。既有 GovernmentFormation ⇒ 具名拒（一单位一标签，不静默替换）。拒绝理由由域层给、经
+ * {@code ToolSupport.fold} 变成可读的 {@code REJECTED}。
  */
 public final class UnitSetArmyFormationTool extends AbstractNarrowWriteTool {
 

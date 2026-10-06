@@ -2,8 +2,8 @@ package io.mosire.simos.economy.model;
 
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DemandId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Objects;
 import java.util.Optional;
 

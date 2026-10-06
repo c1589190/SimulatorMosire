@@ -32,8 +32,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ <b>军俸政策 → P4a 周期规则桥接</b>（P4b，2026-10-15；纯函数，不写任何状态）：把每个 Army 单位的
- * {@link MilitaryPayPolicy} 现算成若干条 {@link HouseholdPeriodicAdjustment}，交给 P4a 的无状态到期执行器。
+ * ★★ <b>军俸政策 → P4a 周期规则桥接</b>（P4b，2026-10-15；纯函数，不写任何状态）：把每个 Army 单位的 {@link MilitaryPayPolicy}
+ * 现算成若干条 {@link HouseholdPeriodicAdjustment}，交给 P4a 的无状态到期执行器。
  *
  * <pre>
  * 逐 Army 单位（unitId 升序）：
@@ -52,16 +52,15 @@ import java.util.Set;
  *        grain→GRAIN、cloth→CLOTH、money→SILVER_CURRENCY。
  * </pre>
  *
- * <p>★★ <b>为什么规则是“现算派生件”、不写 EconomyData</b>：政策的唯一权威是 unit 的
- * {@code ArmyFormation.militaryPayPolicy}；把它复制进 {@code EconomyData.periodicAdjustments} 会造出第二份真相，
+ * <p>★★ <b>为什么规则是“现算派生件”、不写 EconomyData</b>：政策的唯一权威是 unit 的 {@code
+ * ArmyFormation.militaryPayPolicy}；把它复制进 {@code EconomyData.periodicAdjustments} 会造出第二份真相，
  * 政策变更/删除后还要维护两侧同步。本类每天在日循环里从当前 unit 状态重算，执行器只读这些瞬态规则。
  *
- * <p>★★ <b>失败语义（不抛、不阻断）</b>：单位级“国库户/账户不成立”、家户级“坏数据/自转”、以及单条规则构造被
- * {@link HouseholdPeriodicAdjustment} 拒，都记一条具名 gap 后继续下一个单位/家户；只有入参 null 才 {@link
+ * <p>★★ <b>失败语义（不抛、不阻断）</b>：单位级“国库户/账户不成立”、家户级“坏数据/自转”、以及单条规则构造被 {@link
+ * HouseholdPeriodicAdjustment} 拒，都记一条具名 gap 后继续下一个单位/家户；只有入参 null 才 {@link
  * NullPointerException}。规则表保序不可变（单位 id 升序 → 家户 id 升序）。
  *
- * <p>★ {@code day} 不在本类做到期筛选（到期判据唯一在执行器：无状态 due）；保留该参数是为了与日循环的调用坐标一致，
- * 也便于将来在不改签名的前提下加“当日可见性”读数。
+ * <p>★ {@code day} 不在本类做到期筛选（到期判据唯一在执行器：无状态 due）；保留该参数是为了与日循环的调用坐标一致， 也便于将来在不改签名的前提下加“当日可见性”读数。
  */
 public final class MilitaryPayRuleBridge {
 
@@ -74,17 +73,15 @@ public final class MilitaryPayRuleBridge {
   private MilitaryPayRuleBridge() {}
 
   /**
-   * 纯函数主入口：返回当天应从军俸政策派生的规则（<b>不</b>筛到期——由 {@link
-   * PeriodicHouseholdAdjustmentExecutor#isDue} 按绝对世界日判）。需要 gap 读数时走 {@link #deriveReport}。
+   * 纯函数主入口：返回当天应从军俸政策派生的规则（<b>不</b>筛到期——由 {@link PeriodicHouseholdAdjustmentExecutor#isDue}
+   * 按绝对世界日判）。需要 gap 读数时走 {@link #deriveReport}。
    */
   public static List<HouseholdPeriodicAdjustment> derive(
       UnitState units, SocialData social, EconomyData economy, long day) {
     return deriveReport(units, social, economy, day).rules();
   }
 
-  /**
-   * 与 {@link #derive} 同一份推导，附带单位/政策/gap 读数（P4b 的 DEBUG 汇总用）。返回的规则与 gap 都保序不可变。
-   */
+  /** 与 {@link #derive} 同一份推导，附带单位/政策/gap 读数（P4b 的 DEBUG 汇总用）。返回的规则与 gap 都保序不可变。 */
   public static Report deriveReport(
       UnitState units, SocialData social, EconomyData economy, long day) {
     Objects.requireNonNull(units, "units");
@@ -125,8 +122,7 @@ public final class MilitaryPayRuleBridge {
         continue;
       }
       if (!social.households().containsKey(payer)) {
-        gaps.add(
-            "unit=" + unit.id().value() + " gap=payer-not-in-social payer=" + payer.value());
+        gaps.add("unit=" + unit.id().value() + " gap=payer-not-in-social payer=" + payer.value());
         continue;
       }
       GovernmentId governmentId;
@@ -255,8 +251,8 @@ public final class MilitaryPayRuleBridge {
   }
 
   /**
-   * 推导读数：{@code units} = 扫到的 Army 单位数；{@code policies} = 其中 enabled 政策数；{@code rules} = 派生规则（保序
-   * = 单位 id 升序 → 家户 id 升序）；{@code gaps} = 具名跳过读数（每条形如 {@code unit=... household=... gap=...}）。
+   * 推导读数：{@code units} = 扫到的 Army 单位数；{@code policies} = 其中 enabled 政策数；{@code rules} = 派生规则（保序 =
+   * 单位 id 升序 → 家户 id 升序）；{@code gaps} = 具名跳过读数（每条形如 {@code unit=... household=... gap=...}）。
    */
   public record Report(
       int units, int policies, List<HouseholdPeriodicAdjustment> rules, List<String> gaps) {

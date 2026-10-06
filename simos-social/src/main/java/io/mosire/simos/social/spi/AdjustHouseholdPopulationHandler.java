@@ -15,17 +15,18 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * {@code social.AdjustHouseholdPopulation} 命令的处理器（S3a，2026-10-09 / 架构 §4.1）：GM 直调某个家户某个
- * {@code (性别, 年龄档)} 的人数。
+ * {@code social.AdjustHouseholdPopulation} 命令的处理器（S3a，2026-10-09 / 架构 §4.1）：GM 直调某个家户某个 {@code (性别,
+ * 年龄档)} 的人数。
  *
  * <pre>{@code
  * {"householdId":"hh-1","sex":"MALE","ageBracketId":"15-59","delta":30,"reason":"补录"}
  * }</pre>
  *
- * <p>★ <b>载荷语义</b>：{@code delta} 可正可负（负不得使批次人数 &lt; 0）；{@code delta == 0} 明令拒（没有可调整的人数，
- * 落一条空 revision 不是"成功"）；未知年龄档 id 由 {@link HouseholdBook#adjustPopulation} 经事件落账路径具名拒。
+ * <p>★ <b>载荷语义</b>：{@code delta} 可正可负（负不得使批次人数 &lt; 0）；{@code delta == 0} 明令拒（没有可调整的人数， 落一条空
+ * revision 不是"成功"）；未知年龄档 id 由 {@link HouseholdBook#adjustPopulation} 经事件落账路径具名拒。
  *
- * <p>★ <b>语义</b>：只调 {@link HouseholdBook#adjustPopulation}——走 {@code GM_ADJUST} 事件（可正可负、可回放），守恒检查在域层收口。
+ * <p>★ <b>语义</b>：只调 {@link HouseholdBook#adjustPopulation}——走 {@code GM_ADJUST}
+ * 事件（可正可负、可回放），守恒检查在域层收口。
  */
 public final class AdjustHouseholdPopulationHandler implements CommandHandler, CommandTargets {
 

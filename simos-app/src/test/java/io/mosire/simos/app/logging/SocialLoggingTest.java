@@ -39,11 +39,11 @@ import org.junit.jupiter.api.Test;
  *   <li>DEBUG / TRACE 明细只在级别打开时出现；{@code Configurator} 把 social logger 调回 INFO 后消失。
  * </ul>
  *
- * <p>★ 装置住 app 模块：只有 app 的测试类路径上有 log4j-core + log4j-slf4j2-impl（social 模块自身没有，
- * 见依赖树）；这里只借 app 的类路径，被验对象仍是 {@code io.mosire.simos.social} 及其子 logger。
+ * <p>★ 装置住 app 模块：只有 app 的测试类路径上有 log4j-core + log4j-slf4j2-impl（social 模块自身没有， 见依赖树）；这里只借 app
+ * 的类路径，被验对象仍是 {@code io.mosire.simos.social} 及其子 logger。
  *
- * <p>★ {@link #logLinesAreActuallyCaptured()} 是前提断言：log4j2 没有配置时 root level 是 ERROR，只挂 appender
- * 不抬 level 会收到空集；空集上"不含某串"会假绿（core 的 {@code CommandBusLoggingTest} 已记过这个坑）。
+ * <p>★ {@link #logLinesAreActuallyCaptured()} 是前提断言：log4j2 没有配置时 root level 是 ERROR，只挂 appender 不抬
+ * level 会收到空集；空集上"不含某串"会假绿（core 的 {@code CommandBusLoggingTest} 已记过这个坑）。
  */
 class SocialLoggingTest {
 
@@ -69,8 +69,7 @@ class SocialLoggingTest {
     configuration = (AbstractConfiguration) context.getConfiguration();
     socialConfig = configuration.getLoggerConfig(SocialLog.ROOT_LOGGER_NAME);
     originalRootLevel = socialConfig.getLevel();
-    originalTraceLevel =
-        configuration.getLoggerConfig(SocialLog.TRACE_LOGGER_NAME).getLevel();
+    originalTraceLevel = configuration.getLoggerConfig(SocialLog.TRACE_LOGGER_NAME).getLevel();
 
     appender = new CollectingAppender();
     appender.start();
@@ -126,18 +125,43 @@ class SocialLoggingTest {
 
     List<String> lines = appender.messages();
     assertEvent(lines, "HOUSEHOLD_CREATED", "id=" + HEX_HOUSEHOLD, "location=HEX:0_0");
-    assertEvent(lines, "HOUSEHOLD_LOCATION_SET", "id=" + HEX_HOUSEHOLD, "from=HEX:0_0", "to=UNIT:u-1");
+    assertEvent(
+        lines, "HOUSEHOLD_LOCATION_SET", "id=" + HEX_HOUSEHOLD, "from=HEX:0_0", "to=UNIT:u-1");
     assertEvent(lines, "HOUSEHOLD_PROFILE_SET", "id=" + HEX_HOUSEHOLD, "name=改名户");
-    assertEvent(lines, "HOUSEHOLD_MEMBER_ADD", "id=" + HEX_HOUSEHOLD, "lot=" + MALE, "count=100", "sex=MALE", "ageAnchor=" + (20L * YEAR));
-    assertEvent(lines, "HOUSEHOLD_MEMBER_REMOVE", "id=" + HEX_HOUSEHOLD, "lot=" + MALE, "count=40", "remaining=60");
-    assertEvent(lines, "HOUSEHOLD_MEMBER_TRANSFER", "from=" + HEX_HOUSEHOLD, "to=" + UNIT_HOUSEHOLD, "lot=" + FEMALE, "count=50", "mode=SPLIT");
+    assertEvent(
+        lines,
+        "HOUSEHOLD_MEMBER_ADD",
+        "id=" + HEX_HOUSEHOLD,
+        "lot=" + MALE,
+        "count=100",
+        "sex=MALE",
+        "ageAnchor=" + (20L * YEAR));
+    assertEvent(
+        lines,
+        "HOUSEHOLD_MEMBER_REMOVE",
+        "id=" + HEX_HOUSEHOLD,
+        "lot=" + MALE,
+        "count=40",
+        "remaining=60");
+    assertEvent(
+        lines,
+        "HOUSEHOLD_MEMBER_TRANSFER",
+        "from=" + HEX_HOUSEHOLD,
+        "to=" + UNIT_HOUSEHOLD,
+        "lot=" + FEMALE,
+        "count=50",
+        "mode=PARTIAL_SHARE");
     assertEvent(lines, "HOUSEHOLD_RATE_SET", "id=" + HEX_HOUSEHOLD, "rates=2");
-    assertEvent(lines, "POPULATION_BIRTH", "household=" + HEX_HOUSEHOLD, "sex=", "ageBracket=0-14", "count=", "day=0");
-    assertEvent(lines, "POPULATION_DEATH", "household=" + HEX_HOUSEHOLD, "sex=MALE", "ageBracket=15-59", "count=5", "day=0");
-    assertEvent(lines, "POPULATION_TRANSFER_IN", "to=" + UNIT_HOUSEHOLD, "lot=" + FEMALE, "count=50");
-    assertEvent(lines, "POPULATION_TRANSFER_OUT", "from=" + HEX_HOUSEHOLD, "lot=" + FEMALE, "count=50");
+    // ★ 2026-10-09 每 tick 生死引擎取代旧月度 PopulationDynamics：本夹具不再产生
+    //   POPULATION_BIRTH / POPULATION_DEATH（生死走 HouseholdBook.settleOneTick 的
+    //   POPULATION_SETTLE + 逐户事件，不在本用例的触发路径里）。
+    assertEvent(
+        lines, "POPULATION_TRANSFER_IN", "to=" + UNIT_HOUSEHOLD, "lot=" + FEMALE, "count=50");
+    assertEvent(
+        lines, "POPULATION_TRANSFER_OUT", "from=" + HEX_HOUSEHOLD, "lot=" + FEMALE, "count=50");
     assertEvent(lines, "GM_POPULATION_ADJUST", "delta=");
-    assertEvent(lines, "POPULATION_CONSERVATION_CHECK", "ok=true", "households=", "lots=", "population=");
+    assertEvent(
+        lines, "POPULATION_CONSERVATION_CHECK", "ok=true", "households=", "lots=", "population=");
     assertThat(data.populationEvents()).as("夹具必须真的落过事件，否则上面的日志断言可能只是空跑").isNotEmpty();
   }
 
@@ -167,7 +191,15 @@ class SocialLoggingTest {
             new HouseholdLocation.Hex(H00),
             new HouseholdProfile("乙", null, Map.of()),
             new HouseholdVitalRates(List.of()));
-    HouseholdBook.addMembers(second, HouseholdId.parse("hh-log-second"), FEMALE, Sex.FEMALE, 10L, 20L * YEAR, 0L, "seed");
+    HouseholdBook.addMembers(
+        second,
+        HouseholdId.parse("hh-log-second"),
+        FEMALE,
+        Sex.FEMALE,
+        10L,
+        20L * YEAR,
+        0L,
+        "seed");
 
     assertThat(appender.messages())
         .as("改回 INFO 后 TRACE 明细不得再出现；实得 %s", appender.messages())
@@ -191,9 +223,14 @@ class SocialLoggingTest {
             new HouseholdProfile("乙户", null, Map.of()),
             new HouseholdVitalRates(List.of()));
     data = HouseholdBook.setLocation(data, HEX_HOUSEHOLD, new HouseholdLocation.Unit("u-1"), "调防");
-    data = HouseholdBook.setProfile(data, HEX_HOUSEHOLD, new HouseholdProfile("改名户", null, Map.of()), "改名");
-    data = HouseholdBook.addMembers(data, HEX_HOUSEHOLD, MALE, Sex.MALE, 100L, 20L * YEAR, 0L, "增人");
-    data = HouseholdBook.addMembers(data, HEX_HOUSEHOLD, FEMALE, Sex.FEMALE, 100L, 30L * YEAR, 0L, "增人");
+    data =
+        HouseholdBook.setProfile(
+            data, HEX_HOUSEHOLD, new HouseholdProfile("改名户", null, Map.of()), "改名");
+    data =
+        HouseholdBook.addMembers(data, HEX_HOUSEHOLD, MALE, Sex.MALE, 100L, 20L * YEAR, 0L, "增人");
+    data =
+        HouseholdBook.addMembers(
+            data, HEX_HOUSEHOLD, FEMALE, Sex.FEMALE, 100L, 30L * YEAR, 0L, "增人");
     data = HouseholdBook.removeMembers(data, HEX_HOUSEHOLD, MALE, 40L, "抽丁");
     data = HouseholdBook.transferMembers(data, HEX_HOUSEHOLD, UNIT_HOUSEHOLD, FEMALE, 50L, "调防");
     data =
@@ -213,7 +250,8 @@ class SocialLoggingTest {
 
   private void setSocialLevel(Level level) {
     Configurator.setLevel(SocialLog.ROOT_LOGGER_NAME, level);
-    Configurator.setLevel(SocialLog.TRACE_LOGGER_NAME, level == Level.TRACE ? Level.TRACE : Level.INFO);
+    Configurator.setLevel(
+        SocialLog.TRACE_LOGGER_NAME, level == Level.TRACE ? Level.TRACE : Level.INFO);
     attachAppender();
     context.updateLoggers();
   }

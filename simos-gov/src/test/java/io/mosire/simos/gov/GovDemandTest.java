@@ -20,7 +20,6 @@ import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
@@ -214,7 +213,9 @@ class GovDemandTest {
         Optional.empty(),
         Unit.DEFAULT_VISION_RADIUS,
         jurisdiction,
-        Optional.empty());
+        Optional.empty(),
+        Map.of(),
+        List.of());
   }
 
   private static Unit unitWithJurisdiction(Jurisdiction jurisdiction) {

@@ -21,8 +21,8 @@ import java.util.Objects;
  * {"householdId":"hh-1","lotId":"hh-1-m","count":12,"reason":"征兵"}
  * }</pre>
  *
- * <p>★ <b>语义</b>：只调 {@link HouseholdBook#removeMembers}（走 {@code GM_ADJUST} 负事件，可回放）；家户不存在、批次不属于该家户、
- * 扣减超量、{@code count ≤ 0} 都由域层具名拒。
+ * <p>★ <b>语义</b>：只调 {@link HouseholdBook#removeMembers}（走 {@code GM_ADJUST}
+ * 负事件，可回放）；家户不存在、批次不属于该家户、 扣减超量、{@code count ≤ 0} 都由域层具名拒。
  */
 public final class RemoveHouseholdMembersHandler implements CommandHandler, CommandTargets {
 

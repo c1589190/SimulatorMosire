@@ -20,11 +20,9 @@ import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
-import io.mosire.simos.actor.api.actor.ActorKind;
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.codec.ActorCodec;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.access.DecisionCallerFactory;
@@ -57,14 +55,16 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
-import io.mosire.simos.social.codec.SocialCodec;
-import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.social.codec.SocialCodec;
+import io.mosire.simos.unit.CompositionEntry;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentLevel;
+import io.mosire.simos.unit.GovernmentPostOfHousehold;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.RelativeOffset;
+import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -100,8 +100,8 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <ul>
  *   <li>非 GOV 归属的决策人 ⇒ 具名 {@code REJECTED}（"只有 GOV 归属的决策人可付款"），零 revision；
- *   <li>收款 {@code toGovId} 不存在 / 没有 {@code GovFormation} / 没有当刻有效位置 ⇒ 具名 {@code BAD_REQUEST}，零
- *       revision；
+ *   <li>收款 {@code toGovId} 不存在 / 没有 {@code GovernmentFormation} / 没有当刻有效位置 ⇒ 具名 {@code
+ *       BAD_REQUEST}，零 revision；
  *   <li>preview（缺省 true）只读：双方落点与可支配量，不写；
  *   <li><b>审批链</b>：真壳 + 真决策人 authorizer ⇒ DM 调用落待批（工具名可读）、head 不动；GM 点头后同一批提交成功并真的转账；
  *   <li>付款人身份派生：载荷没有 from 字段（schema 不含），<b>由调用者 sd 决策人 → GOV 归属解析</b>。
@@ -170,7 +170,7 @@ class GovPayToolD5Test {
         world.tool.execute(context(world.tool, "dm-gov", args(PLAIN_UNIT, 1L, 0L, 0L, null)));
     assertThat(plain.success()).isFalse();
     assertThat(plain.code()).isEqualTo("BAD_REQUEST");
-    assertThat(plain.message()).contains("没有 GovFormation").contains(PLAIN_UNIT);
+    assertThat(plain.message()).contains("没有 GovernmentFormation").contains(PLAIN_UNIT);
 
     ToolResult noPosition =
         world.tool.execute(context(world.tool, "dm-gov", args(GOV_NO_POS, 1L, 0L, 0L, null)));
@@ -242,10 +242,10 @@ class GovPayToolD5Test {
     assertThat(world.head()).as("放行后才推 revision").isEqualTo(2L);
 
     ActorData actors = world.actor(world.stateAt(2L));
-    GoodsAccount from =
-        actors.accounts().get(new GoodsAccountKey(GovernmentHouseholds.of(GOV_A)));
-    GoodsAccount to =
-        actors.accounts().get(new GoodsAccountKey(GovernmentHouseholds.of(GOV_B)));
+    HouseholdInventory from =
+        actors.accounts().get(new HouseholdAccountKey(GovernmentHouseholds.of(GOV_A)));
+    HouseholdInventory to =
+        actors.accounts().get(new HouseholdAccountKey(GovernmentHouseholds.of(GOV_B)));
     assertThat(from.balances().getOrDefault(GRAIN, 0L)).as("付款国库 grain 1000 − 100").isEqualTo(900L);
     assertThat(to.balances().getOrDefault(GRAIN, 0L)).as("收款国库 grain 0 + 100").isEqualTo(100L);
     assertThat(world.shell.pendingApprovals().pending()).as("决议后不再待批").isEmpty();
@@ -389,34 +389,51 @@ class GovPayToolD5Test {
     Map<UnitId, Unit> units = new LinkedHashMap<>();
     units.put(
         new UnitId(GOV_A),
-        unit(GOV_A, H11, Optional.of(govFormation(GOV_A, GovLevel.CENTRAL, Optional.empty()))));
+        unit(
+            GOV_A,
+            H11,
+            Optional.of(govFormation(GOV_A, GovernmentLevel.CENTRAL, Optional.empty()))));
     units.put(
         new UnitId(GOV_B),
         unit(
             GOV_B,
             H12,
-            Optional.of(govFormation(GOV_B, GovLevel.PROVINCE, Optional.of(new UnitId(GOV_A))))));
+            Optional.of(
+                govFormation(GOV_B, GovernmentLevel.PROVINCE, Optional.of(new UnitId(GOV_A))))));
     units.put(
         new UnitId(GOV_NO_POS),
         unit(
             GOV_NO_POS,
             null,
             Optional.of(
-                govFormation(GOV_NO_POS, GovLevel.PROVINCE, Optional.of(new UnitId(GOV_A))))));
+                govFormation(
+                    GOV_NO_POS, GovernmentLevel.PROVINCE, Optional.of(new UnitId(GOV_A))))));
     units.put(new UnitId(PLAIN_UNIT), unit(PLAIN_UNIT, H11, Optional.empty()));
     return new UnitState(units);
   }
 
-  private static GovFormation govFormation(
-      String unitId, GovLevel level, Optional<UnitId> superiorGov) {
+  private static GovernmentFormation govFormation(
+      String unitId, GovernmentLevel level, Optional<UnitId> superiorGov) {
     // ★ P2-C §13.7：GOV 单位必须恰含自己的政府家户 hh-gov-<unitId>（UnitState 构造期强制）。
     HouseholdId governmentHousehold = GovernmentHouseholds.of(unitId);
-    return new GovFormation(
-        Map.of(), List.of(governmentHousehold), Map.of(), OfficePolicy.defaults(), superiorGov, level);
+    return new GovernmentFormation(
+        Map.of(),
+        Map.of(
+            governmentHousehold,
+            new GovernmentPostOfHousehold(governmentHousehold, StaffRole.SCRIBE, level, true)),
+        OfficePolicy.defaults(),
+        superiorGov,
+        level);
   }
 
   private static Unit unit(
       String id, HexCoord at, Optional<io.mosire.simos.unit.UnitModule> module) {
+    HouseholdId governmentHousehold = GovernmentHouseholds.of(id);
+    List<HouseholdId> households =
+        module
+            .filter(GovernmentFormation.class::isInstance)
+            .map(ignored -> List.of(governmentHousehold))
+            .orElseGet(List::of);
     return new Unit(
         new UnitId(id),
         "单位 " + id,
@@ -435,7 +452,8 @@ class GovPayToolD5Test {
         Unit.DEFAULT_VISION_RADIUS,
         Optional.empty(),
         module,
-        Map.of());
+        Map.of(),
+        households);
   }
 
   private static SdState sdState() {
@@ -457,14 +475,14 @@ class GovPayToolD5Test {
   }
 
   private static ActorData actors() {
-    GoodsAccount account =
-        new GoodsAccount(
-            new GoodsAccountKey(GovernmentHouseholds.of(GOV_A)),
+    HouseholdInventory account =
+        new HouseholdInventory(
+            new HouseholdAccountKey(GovernmentHouseholds.of(GOV_A)),
             Map.of(GRAIN, 1000L, new CommodityId("cloth"), 50L),
             Map.of(SILVER, 500L),
             Map.of(),
             Map.of());
-    return ActorData.empty().withAccount(account);
+    return ActorData.empty().withInventory(account);
   }
 
   private static BranchId main() {

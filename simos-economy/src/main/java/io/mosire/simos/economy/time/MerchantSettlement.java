@@ -10,7 +10,6 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
@@ -18,15 +17,16 @@ import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.MerchantPolicy;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -49,9 +49,9 @@ import java.util.OptionalLong;
  * <p>★★ <b>与既有承运路径的关系</b>：{@code merchantFirms} 为空时 {@code MarketSettlement} 保持旧行为（第一个有货币账的
  * ORGANIZATION）；非空时改走本类。★ 本类不搬货、不卖买，只做承运与商号财务。
  *
- * <p>★★ <b>upkeep 的口径</b>：城区当量 upkeep（{@code tier.districtUse × MerchantPolicy.UPKEEP_PER_DISTRICT_USE}）
- * 与船畜维护在本批是<b>成本计提</b>（没有可收方主体；若真的扣钱就会让货币凭空消失）。它进 {@code lastProfitMilli} 与
- * {@link EnterpriseProfitBook} 的成本，<b>不</b>移动任何余额。这是本批具名收窄（见收口报告）。
+ * <p>★★ <b>upkeep 的口径</b>：城区当量 upkeep（{@code tier.districtUse ×
+ * MerchantPolicy.UPKEEP_PER_DISTRICT_USE}） 与船畜维护在本批是<b>成本计提</b>（没有可收方主体；若真的扣钱就会让货币凭空消失）。它进 {@code
+ * lastProfitMilli} 与 {@link EnterpriseProfitBook} 的成本，<b>不</b>移动任何余额。这是本批具名收窄（见收口报告）。
  */
 public final class MerchantSettlement {
 
@@ -70,22 +70,23 @@ public final class MerchantSettlement {
   public static final long CAPACITY_FLOOR = MerchantPolicy.CITY_CAPACITY_SHRINK_FLOOR;
 
   /** 农村累积惩罚步长（‰/活跃轮；架构 §10：+2）。 */
-  public static final long RURAL_PENALTY_STEP_PER_ROUND = MerchantPolicy.RURAL_PENALTY_STEP_PER_ROUND;
+  public static final long RURAL_PENALTY_STEP_PER_ROUND =
+      MerchantPolicy.RURAL_PENALTY_STEP_PER_ROUND;
 
   /** 农村累积惩罚上限（‰；架构 §10：100）。 */
   public static final long RURAL_PENALTY_CAP_PER_MILLE = MerchantPolicy.RURAL_PENALTY_CAP_PER_MILLE;
 
   /**
-   * ★ <b>船畜维护单价（毫/单位；本批具名缺省值）</b>：海运/畜力的每单位每周期维护。架构 §10 没有给数值，本批取 10 毫/单位
-   * （合理量级、可 GM 改；见收口报告的"受影响硬编码字面量"）。
+   * ★ <b>船畜维护单价（毫/单位；本批具名缺省值）</b>：海运/畜力的每单位每周期维护。架构 §10 没有给数值，本批取 10 毫/单位 （合理量级、可 GM
+   * 改；见收口报告的"受影响硬编码字面量"）。
    */
   public static final long SHIP_CATTLE_UPKEEP_PER_UNIT_MILLI = 10L;
 
   /**
    * ★★ <b>一条承运选择结果（P11.3 起：多承运商按容量分摊）</b>。
    *
-   * <p>★★ <b>与 P10.2 旧形状的差异（具名）</b>：{@code select} 不再拿 lane 单价，因此本记录<b>不存</b>单条
-   * {@code freightMilli}；运费由 {@code MarketSettlement} 按 lane 名义费率现算各条有效费率下的金额，再按承运量比例分摊并封顶。
+   * <p>★★ <b>与 P10.2 旧形状的差异（具名）</b>：{@code select} 不再拿 lane 单价，因此本记录<b>不存</b>单条 {@code
+   * freightMilli}；运费由 {@code MarketSettlement} 按 lane 名义费率现算各条有效费率下的金额，再按承运量比例分摊并封顶。
    *
    * @param organizationId 商号对应的生产组织
    * @param principalActor 商号 principal 家户 actor（CARRIER_FEE 收款人）
@@ -119,8 +120,7 @@ public final class MerchantSettlement {
       return Math.max(
           0L,
           Math.addExact(
-              Math.subtractExact(nominalRatePerMille, cityDiscountPerMille),
-              ruralPenaltyPerMille));
+              Math.subtractExact(nominalRatePerMille, cityDiscountPerMille), ruralPenaltyPerMille));
     }
 
     /** P10.2 旧访问器名（旧形状字段叫 {@code quantity}）；语义 = {@link #quantityMilli()}。 */
@@ -132,8 +132,9 @@ public final class MerchantSettlement {
   /**
    * ★★ <b>一次 select 的完整结果（P11.3）</b>：分给了哪些商号、各多少、以及没分出去的剩余需求。
    *
-   * <p>★★ <b>不变量</b>：{@code Σ choices.quantityMilli + unallocatedMilli == requestedMilli}；{@code unallocatedMilli}
-   * 必须由调用方显式处理（{@code MarketSettlement} 记 {@code freightUncollectedMilli}），本类不静默丢。
+   * <p>★★ <b>不变量</b>：{@code Σ choices.quantityMilli + unallocatedMilli == requestedMilli}；{@code
+   * unallocatedMilli} 必须由调用方显式处理（{@code MarketSettlement} 记 {@code
+   * freightUncollectedMilli}），本类不静默丢。
    *
    * @param choices 已分配条目（按有效到货费率升序 → organizationId 升序）
    * @param requestedMilli 本次请求分配的承运量
@@ -183,9 +184,7 @@ public final class MerchantSettlement {
     }
   }
 
-  /**
-   * ★★ <b>一轮市场/一整周期的承运池</b>：持有商号工作副本（容量扣减就地写回），只允许协调器单线程使用。
-   */
+  /** ★★ <b>一轮市场/一整周期的承运池</b>：持有商号工作副本（容量扣减就地写回），只允许协调器单线程使用。 */
   public static final class CarrierPool {
 
     private final Map<ProductionOrganizationId, MerchantFirm> firms;
@@ -217,14 +216,15 @@ public final class MerchantSettlement {
     }
 
     /**
-     * ★★ <b>P11.3 多承运商按容量分摊</b>：按"有效到货费率升序 → organizationId 升序"依次取服务商号，每家取
-     * {@code min(剩余需求, capacityPerRound − capacityUsedThisRound)}，扣减该商号本轮已用运力，直到需求放完或没有可服务商号。
-     * 总可分配量仍不足的部分原样放进 {@code unallocatedMilli}，不静默丢。
+     * ★★ <b>P11.3 多承运商按容量分摊</b>：按"有效到货费率升序 → organizationId 升序"依次取服务商号，每家取 {@code min(剩余需求,
+     * capacityPerRound − capacityUsedThisRound)}，扣减该商号本轮已用运力，直到需求放完或没有可服务商号。 总可分配量仍不足的部分原样放进 {@code
+     * unallocatedMilli}，不静默丢。
      *
      * <p>★ 排序口径保留 P10.2：有效费率 = {@code max(0, nominal − 城市折扣 + 农村惩罚)}；同一 lane 的 nominal 对所有候选相同，
      * 但它参与 {@code max(0,·)} 截断 ⇒ 必须传入才能与旧序逐值一致。
      *
-     * @param nominalRatePerMille lane 名义到货费率（‰，{@code MarketTopology.freightPerMilleBetween} 给出的唯一来源）
+     * @param nominalRatePerMille lane 名义到货费率（‰，{@code MarketTopology.freightPerMilleBetween}
+     *     给出的唯一来源）
      */
     public CarrierAllocation select(
         HexCoord from, HexCoord to, long quantityMilli, long nominalRatePerMille) {
@@ -242,9 +242,9 @@ public final class MerchantSettlement {
     }
 
     /**
-     * ★ <b>3 参便捷入口（任务书签名）</b>：调用方不知道 lane 名义费率时，按"费率调整量（农村惩罚 − 城市折扣）"升序 →
-     * organizationId 升序。nominal 对同一 lane 的所有候选取同一值，因此该序在常规区间（不被 {@code max(0,·)} 截平）与 4 参口径
-     * 逐值一致；{@code MarketSettlement} 的实际收费走 4 参版本，以保留 P10.2 的逐值排序。
+     * ★ <b>3 参便捷入口（任务书签名）</b>：调用方不知道 lane 名义费率时，按"费率调整量（农村惩罚 − 城市折扣）"升序 → organizationId 升序。nominal
+     * 对同一 lane 的所有候选取同一值，因此该序在常规区间（不被 {@code max(0,·)} 截平）与 4 参口径 逐值一致；{@code MarketSettlement}
+     * 的实际收费走 4 参版本，以保留 P10.2 的逐值排序。
      */
     public CarrierAllocation select(HexCoord from, HexCoord to, long quantityMilli) {
       Objects.requireNonNull(from, "from");
@@ -355,8 +355,8 @@ public final class MerchantSettlement {
   }
 
   /**
-   * ★★ <b>周期末商号结算</b>：收入 = 本周期 CARRIER_FEE 实收；成本 = porter 工资实付 + upkeep 计提；付不出的工资走
-   * {@link DebtContractBook#upsert} 资本化；盈利/亏损与农村惩罚写回 {@code merchantFirms}。
+   * ★★ <b>周期末商号结算</b>：收入 = 本周期 CARRIER_FEE 实收；成本 = porter 工资实付 + upkeep 计提；付不出的工资走 {@link
+   * DebtContractBook#upsert} 资本化；盈利/亏损与农村惩罚写回 {@code merchantFirms}。
    */
   public static void settleCycle(
       EnterpriseProfitBook.CycleAccumulator cycle,
@@ -399,7 +399,8 @@ public final class MerchantSettlement {
             "商号 principal 不是已登记家户（说不出收款人，拒绝静默丢钱）: " + organizationId + " actor=" + principalActor);
       }
       long revenue = feeRevenueOf(cycle, principalActor);
-      List<Porter> porters = portersOf(enterprise, principalHousehold, laborCommitments, householdEconomies);
+      List<Porter> porters =
+          portersOf(enterprise, principalHousehold, laborCommitments, householdEconomies);
       List<Long> porterWeights = new ArrayList<>(porters.size());
       long totalPorterLabor = 0L;
       for (Porter porter : porters) {
@@ -421,8 +422,7 @@ public final class MerchantSettlement {
       long wagesPaidInKindValue = 0L;
       long arrearsInKindValue = 0L;
       if (wagesDueMoney > 0L && !porters.isEmpty() && numeraire == null) {
-        throw new IllegalStateException(
-            "商人有应付货币工资但找不到计价币（说不出欠薪币种，拒绝静默丢债）: " + organizationId);
+        throw new IllegalStateException("商人有应付货币工资但找不到计价币（说不出欠薪币种，拒绝静默丢债）: " + organizationId);
       }
       if (wagesDueMoney > 0L && !porters.isEmpty() && numeraire != null) {
         long[] dueShares = split(porters.size(), wagesDueMoney, porterWeights, totalPorterLabor);
@@ -431,7 +431,8 @@ public final class MerchantSettlement {
         long[] paidShares = split(porters.size(), paid, porterWeights, totalPorterLabor);
         for (int i = 0; i < porters.size(); i++) {
           if (paidShares[i] > 0L) {
-            moveMoney(accounts, principalHousehold, porters.get(i).household, numeraire, paidShares[i]);
+            moveMoney(
+                accounts, principalHousehold, porters.get(i).household, numeraire, paidShares[i]);
             wagesPaidMoney = Math.addExact(wagesPaidMoney, paidShares[i]);
           }
           long unpaid = dueShares[i] - paidShares[i];
@@ -462,11 +463,10 @@ public final class MerchantSettlement {
         long[] paidShares = split(porters.size(), paid, porterWeights, totalPorterLabor);
         for (int i = 0; i < porters.size(); i++) {
           if (paidShares[i] > 0L) {
-            moveGoods(accounts, principalHousehold, porters.get(i).household, commodity, paidShares[i]);
+            moveGoods(
+                accounts, principalHousehold, porters.get(i).household, commodity, paidShares[i]);
             wagesPaidInKindValue =
-                Math.addExact(
-                    wagesPaidInKindValue,
-                    goodsValue(paidShares[i], commodity, market));
+                Math.addExact(wagesPaidInKindValue, goodsValue(paidShares[i], commodity, market));
           }
           long unpaid = dueShares[i] - paidShares[i];
           if (unpaid > 0L) {
@@ -485,10 +485,7 @@ public final class MerchantSettlement {
         }
       }
       long upkeep = upkeepOf(firm, enterprise, assetShares);
-      long costPaid =
-          Math.addExact(
-              Math.addExact(wagesPaidMoney, wagesPaidInKindValue),
-              upkeep);
+      long costPaid = Math.addExact(Math.addExact(wagesPaidMoney, wagesPaidInKindValue), upkeep);
       long arrears = Math.addExact(arrearsMoney, arrearsInKindValue);
       long profit = revenue - costPaid;
 
@@ -502,7 +499,8 @@ public final class MerchantSettlement {
       long ruralPenalty = firm.ruralTradeCostPenaltyPerMille();
       boolean active = revenue > 0L || firm.capacityUsedThisRound() > 0L;
       if (!firm.homeIsCity() && active) {
-        ruralPenalty = Math.min(RURAL_PENALTY_CAP_PER_MILLE, ruralPenalty + RURAL_PENALTY_STEP_PER_ROUND);
+        ruralPenalty =
+            Math.min(RURAL_PENALTY_CAP_PER_MILLE, ruralPenalty + RURAL_PENALTY_STEP_PER_ROUND);
       }
       MerchantFirm updated =
           firm.withTradeResult(revenue, upkeep, profit)
@@ -511,7 +509,8 @@ public final class MerchantSettlement {
               .withRoundReset();
       firms.put(organizationId, updated);
 
-      cycle.recordMerchantWages(organizationId, Math.addExact(wagesPaidMoney, wagesPaidInKindValue));
+      cycle.recordMerchantWages(
+          organizationId, Math.addExact(wagesPaidMoney, wagesPaidInKindValue));
       cycle.recordMerchantUpkeep(organizationId, upkeep);
       cycle.recordMerchantArrears(organizationId, arrears);
       cycle.recordMerchantLabor(organizationId, totalPorterLabor);
@@ -567,7 +566,9 @@ public final class MerchantSettlement {
       MerchantFirm firm,
       ProductionEnterprise enterprise,
       Map<AssetShareId, OwnershipStake> assetShares) {
-    long district = Math.multiplyExact((long) firm.tier().districtUse(), MerchantPolicy.UPKEEP_PER_DISTRICT_USE);
+    long district =
+        Math.multiplyExact(
+            (long) firm.tier().districtUse(), MerchantPolicy.UPKEEP_PER_DISTRICT_USE);
     long assets = 0L;
     for (AssetShareId shareId : enterprise.assetSources()) {
       OwnershipStake share = assetShares.get(shareId);
@@ -602,10 +603,12 @@ public final class MerchantSettlement {
       }
       matchingLaborCommitments.sort(Comparator.comparing(allocation -> allocation.id().value()));
       for (HouseholdLaborCommitment laborCommitment : matchingLaborCommitments) {
-        if (laborCommitment.household().equals(principal) || !householdEconomies.containsKey(laborCommitment.household())) {
+        if (laborCommitment.household().equals(principal)
+            || !householdEconomies.containsKey(laborCommitment.household())) {
           continue;
         }
-        laborByHousehold.merge(laborCommitment.household(), laborCommitment.laborMilli(), Math::addExact);
+        laborByHousehold.merge(
+            laborCommitment.household(), laborCommitment.laborMilli(), Math::addExact);
       }
     }
     if (laborByHousehold.isEmpty()) {
@@ -679,7 +682,11 @@ public final class MerchantSettlement {
   }
 
   private static void moveMoney(
-      AccountSession accounts, HouseholdId source, HouseholdId target, CurrencyId currency, long amount) {
+      AccountSession accounts,
+      HouseholdId source,
+      HouseholdId target,
+      CurrencyId currency,
+      long amount) {
     if (amount <= 0L) {
       return;
     }
@@ -690,7 +697,8 @@ public final class MerchantSettlement {
     }
     long balance = sourceMoney.getOrDefault(currency, 0L);
     if (amount > balance) {
-      throw new IllegalStateException("商人工资超过 principal 余额（拒绝透支）: need=" + amount + " balance=" + balance);
+      throw new IllegalStateException(
+          "商人工资超过 principal 余额（拒绝透支）: need=" + amount + " balance=" + balance);
     }
     LinkedHashMap<CurrencyId, Long> nextSource = new LinkedHashMap<>(sourceMoney);
     if (balance - amount <= 0L) {
@@ -705,7 +713,11 @@ public final class MerchantSettlement {
   }
 
   private static void moveGoods(
-      AccountSession accounts, HouseholdId source, HouseholdId target, CommodityId commodity, long amount) {
+      AccountSession accounts,
+      HouseholdId source,
+      HouseholdId target,
+      CommodityId commodity,
+      long amount) {
     if (amount <= 0L) {
       return;
     }
@@ -716,7 +728,8 @@ public final class MerchantSettlement {
     }
     long balance = sourceGoods.getOrDefault(commodity, 0L);
     if (amount > balance) {
-      throw new IllegalStateException("商人实物工资超过 principal 库存（拒绝透支）: need=" + amount + " balance=" + balance);
+      throw new IllegalStateException(
+          "商人实物工资超过 principal 库存（拒绝透支）: need=" + amount + " balance=" + balance);
     }
     LinkedHashMap<CommodityId, Long> nextSource = new LinkedHashMap<>(sourceGoods);
     if (balance - amount <= 0L) {
@@ -745,7 +758,8 @@ public final class MerchantSettlement {
 
   private static CurrencyId firstCurrency(AccountSession accounts, HouseholdId household) {
     CurrencyId smallest = null;
-    for (CurrencyId currency : accounts.householdMoney().getOrDefault(household, Map.of()).keySet()) {
+    for (CurrencyId currency :
+        accounts.householdMoney().getOrDefault(household, Map.of()).keySet()) {
       if (smallest == null || currency.value().compareTo(smallest.value()) < 0) {
         smallest = currency;
       }
@@ -753,7 +767,8 @@ public final class MerchantSettlement {
     return smallest;
   }
 
-  private static List<HouseholdId> sortedHouseholds(Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+  private static List<HouseholdId> sortedHouseholds(
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     List<HouseholdId> keys = new ArrayList<>(householdEconomies.keySet());
     keys.sort(Comparator.comparing(HouseholdId::value));
     return keys;

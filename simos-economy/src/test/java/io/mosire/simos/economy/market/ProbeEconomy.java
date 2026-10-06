@@ -5,12 +5,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * 测试用小型经济探针模型（M0+）。
@@ -218,12 +216,7 @@ final class ProbeEconomy {
   }
 
   record Trade(
-      String buyerHex,
-      String sellerHex,
-      Good good,
-      long basePrice,
-      long landedPrice,
-      long qty) {}
+      String buyerHex, String sellerHex, Good good, long basePrice, long landedPrice, long qty) {}
 
   /** 佃农制的租形。 */
   enum RentForm {
@@ -232,9 +225,7 @@ final class ProbeEconomy {
     FIXED_CASH
   }
 
-  /**
-   * 佃农制：地主只出土地；佃农家户是 operator，出劳动/投入，产出先归佃农，再按租约给地主。
-   */
+  /** 佃农制：地主只出土地；佃农家户是 operator，出劳动/投入，产出先归佃农，再按租约给地主。 */
   static final class Tenancy {
     final String id;
     final Household landlord;
@@ -399,8 +390,8 @@ final class ProbeEconomy {
     }
 
     /**
-     * 城市商人扩散构造：{@code fromHex/toHex} 用 {@code "*"} 表示通配；
-     * 只要 lane 两端都在 {@code homeHex} 的 {@code serviceRadiusHex} 半径内，本队就能承运。
+     * 城市商人扩散构造：{@code fromHex/toHex} 用 {@code "*"} 表示通配； 只要 lane 两端都在 {@code homeHex} 的 {@code
+     * serviceRadiusHex} 半径内，本队就能承运。
      */
     TransportTeam(
         String id,
@@ -550,8 +541,7 @@ final class ProbeEconomy {
     int distance = Math.abs(from.q - to.q) + Math.abs(from.r - to.r);
     long radialDistance = Long.MAX_VALUE;
     for (CityState city : cities) {
-      long near =
-          Math.min(hexDistance(city.hexId, fromHex), hexDistance(city.hexId, toHex));
+      long near = Math.min(hexDistance(city.hexId, fromHex), hexDistance(city.hexId, toHex));
       radialDistance = Math.min(radialDistance, near);
     }
     if (radialDistance == Long.MAX_VALUE) {
@@ -608,8 +598,12 @@ final class ProbeEconomy {
       if (parts.length != 2) {
         continue;
       }
-      adjacency.computeIfAbsent(parts[0], k -> new ArrayList<>()).add(Map.entry(parts[1], entry.getValue()));
-      adjacency.computeIfAbsent(parts[1], k -> new ArrayList<>()).add(Map.entry(parts[0], entry.getValue()));
+      adjacency
+          .computeIfAbsent(parts[0], k -> new ArrayList<>())
+          .add(Map.entry(parts[1], entry.getValue()));
+      adjacency
+          .computeIfAbsent(parts[1], k -> new ArrayList<>())
+          .add(Map.entry(parts[0], entry.getValue()));
     }
     Map<String, Long> bestBottleneck = new HashMap<>();
     ArrayDeque<String> queue = new ArrayDeque<>();
@@ -917,18 +911,12 @@ final class ProbeEconomy {
         long unsold = Math.max(0L, offered - sold);
         if (unsold > 0L) {
           long ratio = unsold * PER_MILLE / Math.max(1L, offered);
-          next =
-              next
-                  * (PER_MILLE - params.alphaDownPerMille() * ratio / PER_MILLE)
-                  / PER_MILLE;
+          next = next * (PER_MILLE - params.alphaDownPerMille() * ratio / PER_MILLE) / PER_MILLE;
         }
         if (missed > 0L) {
           long demandQty = sold + missed;
           long gap = missed * PER_MILLE / Math.max(1L, demandQty);
-          next =
-              next
-                  * (PER_MILLE + params.alphaUpPerMille() * gap / PER_MILLE)
-                  / PER_MILLE;
+          next = next * (PER_MILLE + params.alphaUpPerMille() * gap / PER_MILLE) / PER_MILLE;
         }
         hex.ref.put(good, Math.max(0L, Math.min(params.pMax(), next)));
       }
@@ -936,9 +924,7 @@ final class ProbeEconomy {
 
     // ⑦ 计息。
     for (Household household : households) {
-      household.debt =
-          household.debt
-              + household.debt * params.interestPerMille() / PER_MILLE;
+      household.debt = household.debt + household.debt * params.interestPerMille() / PER_MILLE;
     }
 
     // ⑧ 吃饭/消费/死亡：口粮不足 → 效率下降 + 人口死亡 → 债务按人口比例删除。
@@ -1137,8 +1123,7 @@ final class ProbeEconomy {
       city.cumulativeTradeVolume = Math.addExact(city.cumulativeTradeVolume, city.lastTradeVolume);
       used += city.cumulativeTradeVolume / 1000L; // 累计贸易量转化为承载压力
       city.usedCapacity = used;
-      if (used * PER_MILLE
-          >= city.capacity * CITY_EXPANSION_PRESSURE_PER_MILLE) {
+      if (used * PER_MILLE >= city.capacity * CITY_EXPANSION_PRESSURE_PER_MILLE) {
         city.expansionProgress += CITY_EXPANSION_SPEED;
         if (city.expansionProgress >= CITY_EXPANSION_THRESHOLD) {
           city.capacity += CITY_EXPANSION_STEP;
@@ -1217,8 +1202,7 @@ final class ProbeEconomy {
         Math.max(
             0L,
             Math.min(
-                Math.min(tenancy.desiredScale, laborLimited),
-                Math.min(inputLimited, landLimited)));
+                Math.min(tenancy.desiredScale, laborLimited), Math.min(inputLimited, landLimited)));
     if (scale <= 0L) {
       return;
     }
@@ -1314,8 +1298,7 @@ final class ProbeEconomy {
         Math.max(
             0L,
             Math.min(
-                Math.min(farm.desiredScale, laborLimited),
-                Math.min(inputLimited, landLimited)));
+                Math.min(farm.desiredScale, laborLimited), Math.min(inputLimited, landLimited)));
     if (scale <= 0L) {
       return;
     }
@@ -1351,8 +1334,7 @@ final class ProbeEconomy {
       long grainArrears = grainDue - grainPaid;
       if (grainArrears > 0L) {
         long price = Math.max(1L, currentPrice(operator.hexId, Good.GRAIN));
-        operator.debt =
-            Math.addExact(operator.debt, Math.multiplyExact(grainArrears, price));
+        operator.debt = Math.addExact(operator.debt, Math.multiplyExact(grainArrears, price));
       }
       long cashDue = Math.multiplyExact(allocated, contract.cashPerLabor);
       long cashPaid = Math.min(cashDue, operator.money);

@@ -46,8 +46,8 @@ import java.util.function.Function;
  * 的默认键序列化器调 {@code toString()} 恰好就对了，同 {@code LedgerCodec} 的口径）。
  *
  * <p>★ <b>值类型一个注解都不加</b>：{@code ActorKind} 是 enum，走 Jackson 默认的 {@code name()}；{@code ActorRef} /
- * {@code Actor} / {@code HouseholdInventory} / {@code HexCoord} 是<b>零 Jackson 注解</b>的 record，走默认的 record
- * 序列化 ——<b>本类不引入任何会改格式的注解</b>（本模块的领域类型至今零 Jackson 注解，这条路要保持）。
+ * {@code Actor} / {@code HouseholdInventory} / {@code HexCoord} 是<b>零 Jackson 注解</b>的 record，走默认的
+ * record 序列化 ——<b>本类不引入任何会改格式的注解</b>（本模块的领域类型至今零 Jackson 注解，这条路要保持）。
  *
  * <p>★ <b>字节是内容的纯函数</b>：两张表一律 {@code LinkedHashMap} 保插入序（{@link ActorData} 的构造器冻在赋值处）， 共享基座又**没有**开
  * {@code ORDER_MAP_ENTRIES_BY_KEYS}（台账裁定 11：开了即抛，且打不中靶）⇒ 同一份状态编码两次逐字节相同。
@@ -88,9 +88,9 @@ public final class ActorCodec implements ModuleCodec, ModuleDiffer {
    * 四路键反序列化器。<b>只注册读侧</b>：四者都重写了 {@code toString()}（= 裸值），Jackson 的默认键序列化器恰好就调它。
    *
    * <p>★★ <b>前两个是顶层两张表的键，后两个（{@code CommodityId} / {@code CurrencyId}）在嵌套位置</b>（{@code
-   * HouseholdInventory.balances} 与 {@code HouseholdInventory.money}）。 前两个**不注册就必炸**：{@code ActorRef} / {@code
-   * HouseholdAccountKey} 都是多构件 record， Jackson 推不出键的类型（实测：摘掉任一条 ⇒ 解码当场报 {@code Cannot find a (Map) Key
-   * deserializer for type …}）。
+   * HouseholdInventory.balances} 与 {@code HouseholdInventory.money}）。 前两个**不注册就必炸**：{@code
+   * ActorRef} / {@code HouseholdAccountKey} 都是多构件 record， Jackson 推不出键的类型（实测：摘掉任一条 ⇒ 解码当场报 {@code
+   * Cannot find a (Map) Key deserializer for type …}）。
    *
    * <p>★★ <b>后两个则在「表空着」时测不到、在「表非空」时才走到</b>——故往返用例的夹具**必须是两张表都非空的** （{@code ActorCodecTest}
    * 的正例正是为此）。★ 而它们的注册**今日与"不注册"行为等价**（实测：两者都是单 {@code String} 构件的 record，Jackson

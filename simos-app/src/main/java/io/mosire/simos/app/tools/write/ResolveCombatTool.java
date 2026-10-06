@@ -35,10 +35,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * ★★ {@code simos.army.resolveCombat}（阶段 D4 / 用户设计 D-009 补裁 + D-010 + D-012，2026-10-02；P2 人员伤亡
- * 回写 Social，2026-10-13）：GM-only 组合工具——**结算一个交战阶段**：一批（一条 revision）= 逐单位人员伤亡
- * {@code social.SubmitHouseholdWorkOrder}（{@code REMOVE_MEMBERS}，从该单位的 Social 家户份额里真减人）+ 逐单位装备
- * {@code unit.AdjustComposition}（只带 equipment 维度）+ 一条 {@code army.ResolveCombatStage}（选定结局/seed 落记录）
+ * ★★ {@code simos.army.resolveCombat}（阶段 D4 / 用户设计 D-009 补裁 + D-010 + D-012，2026-10-02；P2 人员伤亡 回写
+ * Social，2026-10-13）：GM-only 组合工具——**结算一个交战阶段**：一批（一条 revision）= 逐单位人员伤亡 {@code
+ * social.SubmitHouseholdWorkOrder}（{@code REMOVE_MEMBERS}，从该单位的 Social 家户份额里真减人）+ 逐单位装备 {@code
+ * unit.AdjustComposition}（只带 equipment 维度）+ 一条 {@code army.ResolveCombatStage}（选定结局/seed 落记录）
  * +（记录内所有阶段都已判定时）逐单位 {@code unit.SetStateDescription} 清除 {@code combat} 状态链接。
  *
  * <p>★★ <b>判定语义（三条，与 {@code CombatResolution} 同源）</b>：
@@ -50,17 +50,17 @@ import java.util.UUID;
  *   <li>都不给 ⇒ 由 {@code combatId+stageId+tick+概率表} 确定性派生 seed 后投骰（可复现；seed 落记录）。
  * </ol>
  *
- * <p>★★ <b>P2 人员损失口径</b>：选中结局的 {@code CombatUnitLoss.manpower} 只接受负增量；工具按 {@code MALE + ADULT}
- * 从 {@code Unit.households()} 的 Social 份额里抽人（唯一选人层 = {@link HouseholdManpowerAllocator}），不足 ⇒
- * {@code BAD_REQUEST}（零 revision，不部分抽）。人员只从 Social 走，<b>Unit 侧不写第二本 headcount</b>；装备损失仍走
- * {@code unit.AdjustComposition} 且载荷不含 manpower。<b>批内顺序</b>（P2 文档 §3）：每个 unit 先人员工单（如有）再装备命令
- * （如有）→ {@code army.ResolveCombatStage} → 清链接。
+ * <p>★★ <b>P2 人员损失口径</b>：选中结局的 {@code CombatUnitLoss.manpower} 只接受负增量；工具按 {@code MALE + ADULT} 从
+ * {@code Unit.households()} 的 Social 份额里抽人（唯一选人层 = {@link HouseholdManpowerAllocator}），不足 ⇒ {@code
+ * BAD_REQUEST}（零 revision，不部分抽）。人员只从 Social 走，<b>Unit 侧不写第二本 headcount</b>；装备损失仍走 {@code
+ * unit.AdjustComposition} 且载荷不含 manpower。<b>批内顺序</b>（P2 文档 §3）：每个 unit 先人员工单（如有）再装备命令 （如有）→ {@code
+ * army.ResolveCombatStage} → 清链接。
  *
  * <p>★★ <b>状态链接的"结束"口径（R3）</b>：本次判定后若记录里所有阶段都已判定，工具在**同一批**里显式清除所有"状态键 combat 且地址恰为 {@code
  * army:combat.<id>}"的链接（只清恰链到本记录的；本来没有链接的不发命令）。还有未判定阶段 ⇒ 链接保留到下一次显式清除。
  *
- * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：它既改记录又改单位/家户，是战果结算；工具名不是命令类型 ⇒ 不进 catalog /
- * {@code PAYLOAD_HINTS}。它提交的 {@code unit.AdjustComposition} 本身标了 {@code GmOnlyCommand}（GM
+ * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：它既改记录又改单位/家户，是战果结算；工具名不是命令类型 ⇒ 不进
+ * catalog / {@code PAYLOAD_HINTS}。它提交的 {@code unit.AdjustComposition} 本身标了 {@code GmOnlyCommand}（GM
  * 直改原语），与此工具同一条权限边界。
  *
  * <p>★ <b>资源声明</b>：写 {@code social}/{@code unit}/{@code army} 三个命名空间（{@link
@@ -71,8 +71,8 @@ import java.util.UUID;
  * expectedRevision?(preview=false 必填)}。
  *
  * <p>★ <b>失败具名</b>：记录/阶段不存在、阶段已判定、显式 outcome 不在表里、seed 与 outcome 不一致、损失指向不存在单位、manpower
- * 非负增量、单位无家户或合格人口不足 ⇒ {@code BAD_REQUEST}（零 revision）；批内域拒 ⇒ {@code REJECTED} 带逐条真拒因；冲突 ⇒
- * {@code CONFLICT} 带真实 head。
+ * 非负增量、单位无家户或合格人口不足 ⇒ {@code BAD_REQUEST}（零 revision）；批内域拒 ⇒ {@code REJECTED} 带逐条真拒因；冲突 ⇒ {@code
+ * CONFLICT} 带真实 head。
  */
 public final class ResolveCombatTool implements AgentTool {
 
@@ -108,10 +108,7 @@ public final class ResolveCombatTool implements AgentTool {
 
   /** 生产构造器：历法时钟来自启动期 {@link CalendarService#load} 的同一实例。 */
   public ResolveCombatTool(
-      CoreSimos core,
-      QueryService query,
-      String initiator,
-      CalendarService calendarService) {
+      CoreSimos core, QueryService query, String initiator, CalendarService calendarService) {
     this.core = Objects.requireNonNull(core, "core");
     this.query = Objects.requireNonNull(query, "query");
     this.initiator = Objects.requireNonNull(initiator, "initiator");
@@ -245,10 +242,10 @@ public final class ResolveCombatTool implements AgentTool {
     String batchId = UUID.randomUUID().toString();
     // ★ P2 §3：批内顺序由 Plan.unitCommands() 唯一给出——逐 unit 先人员工单（如有）再装备命令（如有），再 ResolveStage、清链接。
     List<ResolveCombatPlan.PlannedCommand> unitCommands = plan.unitCommands();
-    List<CommandEnvelope> batch = new ArrayList<>(unitCommands.size() + 1 + plan.clearLinkUnits().size());
+    List<CommandEnvelope> batch =
+        new ArrayList<>(unitCommands.size() + 1 + plan.clearLinkUnits().size());
     for (ResolveCombatPlan.PlannedCommand command : unitCommands) {
-      batch.add(
-          envelope(batchId, branch, expectedRevision, command.type(), command.payloadJson()));
+      batch.add(envelope(batchId, branch, expectedRevision, command.type(), command.payloadJson()));
     }
     batch.add(
         envelope(

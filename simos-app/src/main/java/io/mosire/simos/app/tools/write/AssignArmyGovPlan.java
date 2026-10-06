@@ -47,9 +47,9 @@ import java.util.Optional;
  * GovernmentFormation}（与 {@code sd.CreateArmy}/{@code unit.SetArmyFormation} 同口径）。
  *
  * <p>★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：{@code armyId}/{@code reason}
- * 非空白；Army 必须存在；root unit 必须存在；新主子若给必须存在且带 {@link GovernmentFormation}；{@code syncUnitSide=true} 时 unit 侧
- * role 必须能确定（见上）。批内域层拒（如 root 已带 {@code GovernmentFormation}、同 tick 二次改编）由 {@code submitBatch} 整条拒，逐条真拒因折成
- * {@code REJECTED}。
+ * 非空白；Army 必须存在；root unit 必须存在；新主子若给必须存在且带 {@link GovernmentFormation}；{@code syncUnitSide=true} 时
+ * unit 侧 role 必须能确定（见上）。批内域层拒（如 root 已带 {@code GovernmentFormation}、同 tick 二次改编）由 {@code
+ * submitBatch} 整条拒，逐条真拒因折成 {@code REJECTED}。
  *
  * <p>★ <b>确定性</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；字段序固定（{@code LinkedHashMap}）。
  */
@@ -133,7 +133,8 @@ final class AssignArmyGovPlan {
       throw new IllegalArgumentException(field + " 指定的 GOV 单位不存在: " + govId);
     }
     if (!(unit.module().orElse(null) instanceof GovernmentFormation)) {
-      throw new IllegalArgumentException(field + " 指定的单位 " + govId + " 没有 GovernmentFormation：不能作为 GOV");
+      throw new IllegalArgumentException(
+          field + " 指定的单位 " + govId + " 没有 GovernmentFormation：不能作为 GOV");
     }
   }
 

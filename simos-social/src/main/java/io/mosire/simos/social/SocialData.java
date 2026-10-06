@@ -2,11 +2,11 @@ package io.mosire.simos.social;
 
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.household.HouseholdLocation;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.AgeBracketView;
 import io.mosire.simos.social.api.population.HouseholdPopulationEvent;
 import io.mosire.simos.social.api.population.HouseholdVitalRate;
@@ -37,12 +37,11 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * 社会状态（M3 spec §3.1 + 城市节点 + 第三阶段设计稿 §三的**人口实体** + 2026-10-09 家户架构 §4 +
- * 2026-10-09 每 tick 生死计划 §2）。
+ * 社会状态（M3 spec §3.1 + 城市节点 + 第三阶段设计稿 §三的**人口实体** + 2026-10-09 家户架构 §4 + 2026-10-09 每 tick 生死计划 §2）。
  *
- * <p>★★ <b>2026-10-09 家户架构：位置的真值源是 {@code households}</b>。{@code PopulationGroup} 已删除
- * {@code residence}；"某批次在哪一格/哪个 unit"只能从 {@link #locationOfLot(PeopleLotId)} /
- * {@link #householdOfLot(PeopleLotId)} 得到。hex/unit 人口由家户成员<b>现算</b>（{@link #populationAt(HexCoord)} /
+ * <p>★★ <b>2026-10-09 家户架构：位置的真值源是 {@code households}</b>。{@code PopulationGroup} 已删除 {@code
+ * residence}；"某批次在哪一格/哪个 unit"只能从 {@link #locationOfLot(PeopleLotId)} / {@link
+ * #householdOfLot(PeopleLotId)} 得到。hex/unit 人口由家户成员<b>现算</b>（{@link #populationAt(HexCoord)} /
  * {@link #unitPopulation(String)}），不落盘。
  *
  * <p>★★ <b>跨组件不变量（构造期判，坏数据当场抛）</b>：
@@ -55,25 +54,24 @@ import java.util.Set;
  *   <li>位置冲突：同一批次被两个家户引用由上一行覆盖（同一个 {@code PeopleLotId} 不可能有两个位置）。
  * </ul>
  *
- * <p>★★ <b>旧字段 {@code populations}/{@code cities} 保留</b>（旧世界不迁移、新主路径不再读它们当位置真值）：
- * {@code populations} 仍是"该格农村序列"的旧账，{@code cities} 仍是城市节点表；新主路径的"有多少人"走家户汇总。
+ * <p>★★ <b>旧字段 {@code populations}/{@code cities} 保留</b>（旧世界不迁移、新主路径不再读它们当位置真值）： {@code
+ * populations} 仍是"该格农村序列"的旧账，{@code cities} 仍是城市节点表；新主路径的"有多少人"走家户汇总。
  *
- * <p>★ {@code populationEvents} 以 {@code event.id()} 为键（架构 §4.3：事件进持久表、可回放；重复 id 由
- * {@code HouseholdBook.applyEvent} 拒绝）。
+ * <p>★ {@code populationEvents} 以 {@code event.id()} 为键（架构 §4.3：事件进持久表、可回放；重复 id 由 {@code
+ * HouseholdBook.applyEvent} 拒绝）。
  *
  * <p>★ <b>八个组件都保序不可变</b>：{@code LinkedHashMap} + {@code unmodifiableMap}，**绝不用 {@code
  * Map.copyOf}**——它的迭代序不是内容的纯函数（M2 实测），字节级往返因此不成立。
  *
  * <ul>
  *   <li>第 6 个组件 {@link #provisioning()}：需求/劳动权威旁表（全局默认 + 逐户覆盖）；
- *   <li>第 7 个组件 {@link #vitalRates()}：每 tick 生死率<b>全局默认表</b>；家户覆盖复用
- *       {@code Household.vitalRates}，查找走 {@link #findVitalRate(HouseholdId, AgeBracket, Sex)}；
- *   <li>第 8 个组件 {@link #vitalRemainders()}：每 tick 生死<b>余数累加器</b>
- *       （键 {@code (家户, 批次, BIRTH|DEATH)}）。
+ *   <li>第 7 个组件 {@link #vitalRates()}：每 tick 生死率<b>全局默认表</b>；家户覆盖复用 {@code
+ *       Household.vitalRates}，查找走 {@link #findVitalRate(HouseholdId, AgeBracket, Sex)}；
+ *   <li>第 8 个组件 {@link #vitalRemainders()}：每 tick 生死<b>余数累加器</b> （键 {@code (家户, 批次, BIRTH|DEATH)}）。
  * </ul>
  *
- * <p>★★ <b>旧档缺第 6/7/8 组件 = 不可读</b>（用户 2026-10-09 裁定"一切从新、旧档作废、不做迁移/双读"）：
- * canonical 构造期具名拒；新档由 5 参便捷构造器（委托默认 provisioning / vitalRates / 空余数）或 seeder 显式给值。
+ * <p>★★ <b>旧档缺第 6/7/8 组件 = 不可读</b>（用户 2026-10-09 裁定"一切从新、旧档作废、不做迁移/双读"）： canonical 构造期具名拒；新档由 5
+ * 参便捷构造器（委托默认 provisioning / vitalRates / 空余数）或 seeder 显式给值。
  */
 public record SocialData(
     Map<HexCoord, PopulationSeries> populations,
@@ -138,7 +136,8 @@ public record SocialData(
       }
       populationsCopy.put(entry.getKey(), entry.getValue());
     }
-    populations = Collections.unmodifiableMap(populationsCopy); // ★ 冻在赋值处（SpotBugs 的 EI_EXPOSE_REP 只认它看得见的）
+    populations =
+        Collections.unmodifiableMap(populationsCopy); // ★ 冻在赋值处（SpotBugs 的 EI_EXPOSE_REP 只认它看得见的）
     Map<CityId, SocialCity> citiesCopy = new LinkedHashMap<>();
     for (Map.Entry<CityId, SocialCity> entry : cities.entrySet()) {
       if (entry.getKey() == null || entry.getValue() == null) {
@@ -200,8 +199,7 @@ public record SocialData(
     for (Map.Entry<PeopleLotId, PopulationGroup> entry : groupsCopy.entrySet()) {
       Long shared = sharedByLot.get(entry.getKey());
       if (shared == null) {
-        throw new IllegalArgumentException(
-            "批次 " + entry.getKey() + " 没有被任何家户引用（位置只能由家户给出；拒绝无主批次）");
+        throw new IllegalArgumentException("批次 " + entry.getKey() + " 没有被任何家户引用（位置只能由家户给出；拒绝无主批次）");
       }
       if (shared.longValue() != entry.getValue().count()) {
         throw new IllegalArgumentException(
@@ -229,8 +227,8 @@ public record SocialData(
   }
 
   /**
-   * ★ 旧 3 参构造的便捷形态（{@code households}/{@code populationEvents} 为空）：只服务"只有旧账"的装配点
-   * （如 {@code CorridorWorld}）。★ 只要 {@code groups} 非空就会在构造期被跨组件校验拒——新世界必须同时给家户。
+   * ★ 旧 3 参构造的便捷形态（{@code households}/{@code populationEvents} 为空）：只服务"只有旧账"的装配点 （如 {@code
+   * CorridorWorld}）。★ 只要 {@code groups} 非空就会在构造期被跨组件校验拒——新世界必须同时给家户。
    */
   public SocialData(
       Map<HexCoord, PopulationSeries> populations,
@@ -241,7 +239,8 @@ public record SocialData(
 
   /**
    * ★ <b>旧 5 参便捷构造器</b>（第 6/7/8 组件缺省的过渡形态）：只服务"还没有 provisioning / vitalRates / 余数表"的
-   * 装配点与既有测试，<b>一律委托</b> {@link SocialProvisioning#defaults()}、{@link SocialVitalRates#defaults()} 与空余数表。
+   * 装配点与既有测试，<b>一律委托</b> {@link SocialProvisioning#defaults()}、{@link SocialVitalRates#defaults()}
+   * 与空余数表。
    *
    * <p>★★ 新主路径与状态重建必须显式带过第 6/7/8 参（八个 {@code with*} 已全部原样带过），否则每次重建都会把 GM
    * 调过的表/余数退回默认值——这是"旧档作废、一切从新"（用户 2026-10-09 裁定）下唯一保留的便捷口。
@@ -295,8 +294,8 @@ public record SocialData(
   }
 
   /**
-   * 只换批次表的形态：**成员关系一字不动** ⇒ 批次人数可以在原位更新。
-   * ★ 新增批次（新生批次）不能用它——那会造出无主批次；请用 {@link #withGroupsAndHouseholds}。
+   * 只换批次表的形态：**成员关系一字不动** ⇒ 批次人数可以在原位更新。 ★ 新增批次（新生批次）不能用它——那会造出无主批次；请用 {@link
+   * #withGroupsAndHouseholds}。
    */
   public SocialData withGroups(Map<PeopleLotId, PopulationGroup> value) {
     return new SocialData(
@@ -340,19 +339,10 @@ public record SocialData(
   /** 只换事件表。 */
   public SocialData withPopulationEvents(Map<String, HouseholdPopulationEvent> value) {
     return new SocialData(
-        populations,
-        cities,
-        groups,
-        households,
-        value,
-        provisioning,
-        vitalRates,
-        vitalRemainders);
+        populations, cities, groups, households, value, provisioning, vitalRates, vitalRemainders);
   }
 
-  /**
-   * ★★ 只换需求/劳动权威旁表（全局默认 + 逐户覆盖）：其余组件原样带过，是 GM 调参与创世装配的写口形制。
-   */
+  /** ★★ 只换需求/劳动权威旁表（全局默认 + 逐户覆盖）：其余组件原样带过，是 GM 调参与创世装配的写口形制。 */
   public SocialData withProvisioning(SocialProvisioning value) {
     return new SocialData(
         populations,
@@ -365,9 +355,7 @@ public record SocialData(
         vitalRemainders);
   }
 
-  /**
-   * ★★ 只换每 tick 生死率的<b>全局默认表</b>（家户覆盖不在本组件里）：其余组件原样带过。
-   */
+  /** ★★ 只换每 tick 生死率的<b>全局默认表</b>（家户覆盖不在本组件里）：其余组件原样带过。 */
   public SocialData withVitalRates(SocialVitalRates value) {
     return new SocialData(
         populations,
@@ -380,35 +368,24 @@ public record SocialData(
         vitalRemainders);
   }
 
-  /**
-   * ★★ 只换每 tick 生死<b>余数表</b>：其余组件原样带过，是每 tick 引擎的落账口。
-   */
+  /** ★★ 只换每 tick 生死<b>余数表</b>：其余组件原样带过，是每 tick 引擎的落账口。 */
   public SocialData withVitalRemainders(SocialVitalRemainders value) {
     return new SocialData(
-        populations,
-        cities,
-        groups,
-        households,
-        populationEvents,
-        provisioning,
-        vitalRates,
-        value);
+        populations, cities, groups, households, populationEvents, provisioning, vitalRates, value);
   }
 
   /**
-   * ★★ <b>生死率的唯一查找入口</b>（计划 §2.1）：家户覆盖
-   * （{@link Household#vitalRates()}，空表/缺键即回落）优先，全局默认 {@link SocialVitalRates#require}
-   * 兜底；两边都没有 ⇒ 具名拒（ERROR 日志 + {@link IllegalArgumentException}）。
+   * ★★ <b>生死率的唯一查找入口</b>（计划 §2.1）：家户覆盖 （{@link Household#vitalRates()}，空表/缺键即回落）优先，全局默认 {@link
+   * SocialVitalRates#require} 兜底；两边都没有 ⇒ 具名拒（ERROR 日志 + {@link IllegalArgumentException}）。
    *
-   * <p>★ 查找是<b>逐键</b>的：家户只覆盖 0-14 ⇒ 它的 15-59 仍走全局默认；覆盖表空 ⇒ 整户走全局默认。</p>
+   * <p>★ 查找是<b>逐键</b>的：家户只覆盖 0-14 ⇒ 它的 15-59 仍走全局默认；覆盖表空 ⇒ 整户走全局默认。
    *
    * @param householdId 家户 id；不得为 null，且家户必须存在（不存在是坏数据，不静默给全局值）
    * @param ageBracket 年龄档；不得为 null
    * @param sex 性别；不得为 null
    * @throws IllegalArgumentException 任一参数为 null、家户不存在，或覆盖与全局两边都缺该键
    */
-  public HouseholdVitalRate findVitalRate(
-      HouseholdId householdId, AgeBracket ageBracket, Sex sex) {
+  public HouseholdVitalRate findVitalRate(HouseholdId householdId, AgeBracket ageBracket, Sex sex) {
     if (householdId == null) {
       throw vitalRateReject("findVitalRate：householdId 不得为 null");
     }
@@ -422,8 +399,7 @@ public record SocialData(
     if (household == null) {
       throw vitalRateReject("findVitalRate：家户不存在: " + householdId);
     }
-    Optional<HouseholdVitalRate> override =
-        household.vitalRates().find(ageBracket.key(), sex);
+    Optional<HouseholdVitalRate> override = household.vitalRates().find(ageBracket.key(), sex);
     if (override.isPresent()) {
       return override.get();
     }
@@ -441,8 +417,8 @@ public record SocialData(
   /**
    * 某批次所属的**第一个**家户（架构 §5 的只读查询；保序 households 的插入序）。
    *
-   * <p>★★ P2-A：一个批次可按 count 拆给多个家户 ⇒ "唯一所有者"不再是模型不变量。本方法保留为兼容读法（旧调用点
-   * 只关心"至少有一个家户"）；要拿全部份额请用 {@link #householdsOfLot(PeopleLotId)}。
+   * <p>★★ P2-A：一个批次可按 count 拆给多个家户 ⇒ "唯一所有者"不再是模型不变量。本方法保留为兼容读法（旧调用点 只关心"至少有一个家户"）；要拿全部份额请用 {@link
+   * #householdsOfLot(PeopleLotId)}。
    */
   public Optional<Household> householdOfLot(PeopleLotId lotId) {
     if (lotId == null) {
@@ -476,8 +452,8 @@ public record SocialData(
   }
 
   /**
-   * 某批次所在的格（仅当所属家户挂在 {@code HEX} 上）：{@code UNIT} 家户的批次没有格，返回空。
-   * ★ 它是 app 侧经济/读口从"批次 → 格"的唯一桥（不许再解析批次 id 的位置），unit 消费方属 S3。
+   * 某批次所在的格（仅当所属家户挂在 {@code HEX} 上）：{@code UNIT} 家户的批次没有格，返回空。 ★ 它是 app 侧经济/读口从"批次 → 格"的唯一桥（不许再解析批次
+   * id 的位置），unit 消费方属 S3。
    */
   public Optional<HexCoord> hexOfLot(PeopleLotId lotId) {
     return locationOfLot(lotId)
@@ -525,8 +501,7 @@ public record SocialData(
     }
     List<Household> out = new ArrayList<>();
     for (Household household : households.values()) {
-      if (household.location() instanceof HouseholdLocation.Unit at
-          && at.unitId().equals(unitId)) {
+      if (household.location() instanceof HouseholdLocation.Unit at && at.unitId().equals(unitId)) {
         out.add(household);
       }
     }
@@ -560,14 +535,13 @@ public record SocialData(
    * Σ_{成员批次} 份额 × provisioning.findLabor(家户, AgeBracket.of(该批次在 day 的年龄), 性别)
    * </pre>
    *
-   * <p>★★ <b>逐成员整数乘加、无时间分数、不取整</b>（计划 §3.5 机制第 1/4 条）：份额与系数都是整数，
-   * {@code Math.multiplyExact}/{@code Math.addExact} 天然精确；不存在"逐成员除法丢残差"的问题。
-   * 年龄档一律由 {@link AgeBracket#of(io.mosire.simos.calendar.CalendarSystem, long, long)} 现算，
-   * 不读任何落盘的"当前档位"。
+   * <p>★★ <b>逐成员整数乘加、无时间分数、不取整</b>（计划 §3.5 机制第 1/4 条）：份额与系数都是整数， {@code Math.multiplyExact}/{@code
+   * Math.addExact} 天然精确；不存在"逐成员除法丢残差"的问题。 年龄档一律由 {@link
+   * AgeBracket#of(io.mosire.simos.calendar.CalendarSystem, long, long)} 现算， 不读任何落盘的"当前档位"。
    *
-   * <p>★★ <b>坏数据具名拒</b>：家户不存在 / 成员批次不在 {@code groups} / {@code day < 0} / {@code clock}
-   * 为 null / 批次年龄为负 / 该 {@code (年龄档, 性别)} 在覆盖与默认表里都查不到，都当场抛
-   * {@link IllegalArgumentException}（ERROR 日志带上下文），绝不静默给 0。
+   * <p>★★ <b>坏数据具名拒</b>：家户不存在 / 成员批次不在 {@code groups} / {@code day < 0} / {@code clock} 为 null /
+   * 批次年龄为负 / 该 {@code (年龄档, 性别)} 在覆盖与默认表里都查不到，都当场抛 {@link IllegalArgumentException}（ERROR
+   * 日志带上下文），绝不静默给 0。
    *
    * @param householdId 家户 id；不得为 null
    * @param day 世界日（tick）；不得为负
@@ -621,16 +595,14 @@ public record SocialData(
    * 4. 只返回日值 &gt; 0 的商品（0 与"没有这项需求"在账上等价）。
    * </pre>
    *
-   * <p>★★ <b>同一商品在家户内只允许一个时间口径</b>：不同成员的系数若对同一商品给出互相矛盾的
-   * {@link DemandBasis}（例如粮一部分按 120 天、一部分按历年），聚合口径没有唯一解释 ⇒ 具名拒；
-   * 这保证"先汇总、再按商品口径折算"不会悄悄挑一个口径。
+   * <p>★★ <b>同一商品在家户内只允许一个时间口径</b>：不同成员的系数若对同一商品给出互相矛盾的 {@link DemandBasis}（例如粮一部分按 120
+   * 天、一部分按历年），聚合口径没有唯一解释 ⇒ 具名拒； 这保证"先汇总、再按商品口径折算"不会悄悄挑一个口径。
    *
-   * <p>★★ <b>坏数据具名拒</b>：家户不存在 / 成员批次不在 {@code groups} / {@code day < 0} /
-   * {@code clock} 为 null / 年龄为负 / 系数查不到 / 同商品口径冲突，都当场抛
-   * {@link IllegalArgumentException}（ERROR 日志带上下文），绝不静默给 0。
+   * <p>★★ <b>坏数据具名拒</b>：家户不存在 / 成员批次不在 {@code groups} / {@code day < 0} / {@code clock} 为 null /
+   * 年龄为负 / 系数查不到 / 同商品口径冲突，都当场抛 {@link IllegalArgumentException}（ERROR 日志带上下文），绝不静默给 0。
    *
-   * <p>★ 返回的 map 保序不可变：序 = 按成员批次插入序首次遇到该商品的序（先覆盖表序、再全局默认序）；
-   * 不硬编码任何商品名——商品集合完全来自 provisioning 表里实际存在的行。
+   * <p>★ 返回的 map 保序不可变：序 = 按成员批次插入序首次遇到该商品的序（先覆盖表序、再全局默认序）； 不硬编码任何商品名——商品集合完全来自 provisioning
+   * 表里实际存在的行。
    *
    * @param householdId 家户 id；不得为 null
    * @param day 世界日（tick）；不得为负
@@ -672,7 +644,8 @@ public record SocialData(
                   + " vs "
                   + basis);
         }
-        totals.merge(commodity, Math.multiplyExact(share, coefficient.amountMilli()), Math::addExact);
+        totals.merge(
+            commodity, Math.multiplyExact(share, coefficient.amountMilli()), Math::addExact);
       }
     }
     Map<CommodityId, Long> needs = new LinkedHashMap<>();
@@ -700,7 +673,14 @@ public record SocialData(
           .debug(
               "event=SOCIAL_HOUSEHOLD_NEEDS_EXPANDED "
                   + SocialLog.kv(
-                      "household", householdId, "day", day, "population", population, "needs", result));
+                      "household",
+                      householdId,
+                      "day",
+                      day,
+                      "population",
+                      population,
+                      "needs",
+                      result));
     }
     return result;
   }
@@ -708,9 +688,8 @@ public record SocialData(
   /**
    * 某成员 {@code (年龄档, 性别)} 在本户可命中的商品键集合（保序、去重）：先覆盖表、再全局默认表。
    *
-   * <p>它是"不硬编码商品名"的落点之一：{@code householdNaturalNeeds} 要知道"该成员有哪些商品行"，
-   * 只能从 provisioning 的两张需求表里读，不能写死 {@code grain/cloth}。逐个键最终仍走
-   * {@link SocialProvisioning#findDemand} 的"覆盖优先、默认兜底"解析。
+   * <p>它是"不硬编码商品名"的落点之一：{@code householdNaturalNeeds} 要知道"该成员有哪些商品行"， 只能从 provisioning
+   * 的两张需求表里读，不能写死 {@code grain/cloth}。逐个键最终仍走 {@link SocialProvisioning#findDemand} 的"覆盖优先、默认兜底"解析。
    */
   private List<CommodityId> commodityKeysFor(
       HouseholdId householdId, AgeBracket ageBracket, Sex sex) {
@@ -734,9 +713,8 @@ public record SocialData(
   /**
    * {@code PER_CYCLE_DAYS} 的"家户层一次取整"：返回 {@code 累计(day) − 累计(day−1)}。
    *
-   * <p>{@code day == 0} ⇒ 返回 0（累计(0) = 0，累计(−1) 视为 0）；其余天用
-   * {@link Math#floorDiv(long, long)} 逐日差分，整个周期恰好铺满 {@code total}（{@code Σ 日值 == total}），
-   * 不出现"先化成日均再乘天数"的周期残差丢失。
+   * <p>{@code day == 0} ⇒ 返回 0（累计(0) = 0，累计(−1) 视为 0）；其余天用 {@link Math#floorDiv(long, long)}
+   * 逐日差分，整个周期恰好铺满 {@code total}（{@code Σ 日值 == total}）， 不出现"先化成日均再乘天数"的周期残差丢失。
    */
   private static long dailyShareFromCycle(long totalMilli, long day, long cycleDays) {
     if (day == 0L) {
@@ -776,8 +754,7 @@ public record SocialData(
       HouseholdId householdId, PeopleLotId lotId, String caller) {
     PopulationGroup group = groups.get(lotId);
     if (group == null) {
-      throw provisioningReject(
-          caller + "：家户 " + householdId + " 的成员批次不在 groups 里: " + lotId);
+      throw provisioningReject(caller + "：家户 " + householdId + " 的成员批次不在 groups 里: " + lotId);
     }
     return group;
   }
@@ -813,8 +790,8 @@ public record SocialData(
   }
 
   /**
-   * 该格的**人口总量**（现算）：Σ 挂在该格的家户的成员批次 count —— 农村 + 城镇都在内（一处算法，架构 §5）。
-   * ★ 旧 {@code populations} 序列不再是新主路径的位置真值；旧世界未迁移（S2 范围）。
+   * 该格的**人口总量**（现算）：Σ 挂在该格的家户的成员批次 count —— 农村 + 城镇都在内（一处算法，架构 §5）。 ★ 旧 {@code populations}
+   * 序列不再是新主路径的位置真值；旧世界未迁移（S2 范围）。
    */
   public long populationAt(HexCoord hex) {
     if (hex == null) {
@@ -840,11 +817,10 @@ public record SocialData(
   }
 
   /**
-   * 某个家户的年龄档视图（**锚点口径**：用各成员批次自己的 {@code anchorTick} 上记的 {@code ageAtAnchorDays}
-   * 现算档位；不随世界时钟推进）。
+   * 某个家户的年龄档视图（**锚点口径**：用各成员批次自己的 {@code anchorTick} 上记的 {@code ageAtAnchorDays} 现算档位；不随世界时钟推进）。
    *
-   * <p>★ S2 的该重载服务"没有 now 的只读装配点"（{@code HouseholdView} 等）；推进后的真实年龄结构请走
-   * {@link #ageBrackets(HouseholdId, long, CalendarClock)}。两者都只在查询期聚合，不落任何字段（设计稿 §三）。
+   * <p>★ S2 的该重载服务"没有 now 的只读装配点"（{@code HouseholdView} 等）；推进后的真实年龄结构请走 {@link
+   * #ageBrackets(HouseholdId, long, CalendarClock)}。两者都只在查询期聚合，不落任何字段（设计稿 §三）。
    */
   public List<AgeBracketView> ageBrackets(HouseholdId householdId) {
     return ageBrackets(householdId, CalendarClock.julianDefault(), -1L);
@@ -863,7 +839,8 @@ public record SocialData(
   }
 
   /** 内部：{@code nowTick < 0} = 按各批次自己的锚点现算（{@link #ageBrackets(HouseholdId)} 的形态）。 */
-  private List<AgeBracketView> ageBrackets(HouseholdId householdId, CalendarClock clock, long nowTick) {
+  private List<AgeBracketView> ageBrackets(
+      HouseholdId householdId, CalendarClock clock, long nowTick) {
     if (householdId == null) {
       throw new IllegalArgumentException("householdId 不得为 null");
     }
@@ -887,7 +864,9 @@ public record SocialData(
       long atTick = nowTick < 0L ? group.anchorTick() : nowTick;
       long ageDays = group.ageDaysAt(atTick);
       AgeBracket bracket = AgeBracket.of(clock.system(), clock.dayNumberOfTick(atTick), ageDays);
-      counts.get(bracket).put(group.sex(), counts.get(bracket).get(group.sex()) + member.getValue());
+      counts
+          .get(bracket)
+          .put(group.sex(), counts.get(bracket).get(group.sex()) + member.getValue());
     }
     List<AgeBracketView> out = new ArrayList<>(AgeBracket.values().length * Sex.values().length);
     long[] minDays = {0L, 15L * 365L, 60L * 365L};
@@ -896,8 +875,7 @@ public record SocialData(
       for (Sex sex : Sex.values()) {
         HouseholdVitalRate rate = findVitalRate(householdId, bracket, sex);
         long deathRate = rate.deathRatePerMillionPerTick();
-        long increaseRate =
-            bracket == AgeBracket.CHILD ? rate.birthRatePerMillionPerTick() : 0L;
+        long increaseRate = bracket == AgeBracket.CHILD ? rate.birthRatePerMillionPerTick() : 0L;
         out.add(
             new AgeBracketView(
                 bracket.key(),
@@ -936,8 +914,8 @@ public record SocialData(
   }
 
   /**
-   * ★★ **该格有没有批次**（R2 的 T0：读口口径的判据）：不是"人数是否为 0" —— 创世给**零人口的格**也落 {@code count=0} 的批次
-   * （见 {@code PopulationSeeder} 的类注），那是"有批次、且为 0"，读口该报 {@code 0} 而**不是**回退旧序列。
+   * ★★ **该格有没有批次**（R2 的 T0：读口口径的判据）：不是"人数是否为 0" —— 创世给**零人口的格**也落 {@code count=0} 的批次 （见 {@code
+   * PopulationSeeder} 的类注），那是"有批次、且为 0"，读口该报 {@code 0} 而**不是**回退旧序列。
    *
    * <p>★ S2 起"有批次"的判据是"该格有家户、且家户成员批次非空"（位置已归家户）；旧序列仍按 R2 回退口径使用。
    */
@@ -957,8 +935,8 @@ public record SocialData(
    * ★★ **该格人口的读口口径**（R2 的 T0，控制器已裁定）：**有批次 ⇒ 家户成员求和（真值源）；无批次 ⇒ 回退旧序列**。
    *
    * <p>★★ **为什么不是"一律用批次"**：随包的 bootstrap 世界（{@code worlds/v17levant.json}）**只有旧序列** ——
-   * 一律读批次会让"世界还没初始化"看起来像"这一格没人"（0 与"没有数据"在界面上长得一模一样）。 故回退是**口径的一部分**，而"用的是哪一个"必须**读得出来**
-   * （{@link PopulationHeadline#source()}）。
+   * 一律读批次会让"世界还没初始化"看起来像"这一格没人"（0 与"没有数据"在界面上长得一模一样）。 故回退是**口径的一部分**，而"用的是哪一个"必须**读得出来** （{@link
+   * PopulationHeadline#source()}）。
    *
    * @param series 该格的农村人口序列（**回退**时读它）；不得为 null
    * @param at 回退时的取值时刻
@@ -981,8 +959,7 @@ public record SocialData(
   }
 
   /**
-   * 某城的**城镇人口**（现算）：该城各批次的 {@code count} 之和 —— {@code SocialCity} 上**不再有这个字段**
-   * （R1 的 T5：降级为派生量）。
+   * 某城的**城镇人口**（现算）：该城各批次的 {@code count} 之和 —— {@code SocialCity} 上**不再有这个字段** （R1 的 T5：降级为派生量）。
    *
    * <p>★ 归属由 {@link PopulationLots#urbanPrefix(CityId)} 的**前缀**给出（{@code urban:&lt;cityId&gt;:}）——
    * 有多少个性别/年龄细分都不影响；故本方法**不需要**读 {@code cities} 的落点、也不需要 {@code tick}。

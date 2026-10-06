@@ -63,10 +63,11 @@ import java.util.Set;
  *
  * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：{@code unitId}/{@code name}/
  * {@code decisionMakerId} 非空白；{@code unitId} 在 unit 切片里<b>必须不存在</b>；{@code decisionMakerId} 在 sd
- * 切片里 <b>必须不存在</b>；{@code level} 必须是 {@link GovernmentLevel} 词表；{@code regions} 每个元素必须存在于当前 map 的 {@code
- * regions()}（具名拒，不静默丢）；{@code level=PROVINCE} ⇒ {@code regions} 必须非空；{@code level=CENTRAL} ⇒ {@code
- * regions} 可为空（缺省空）；{@code superiorGov} 非空 ⇒ 必须存在、带 {@link GovernmentFormation}、且不得等于新 unitId；{@code
- * cadence ≥ 1}。批内域层拒（如一单位一标签、N9 白名单）由 {@code submitBatch} 整条拒，逐条真拒因折成 {@code REJECTED}。
+ * 切片里 <b>必须不存在</b>；{@code level} 必须是 {@link GovernmentLevel} 词表；{@code regions} 每个元素必须存在于当前 map 的
+ * {@code regions()}（具名拒，不静默丢）；{@code level=PROVINCE} ⇒ {@code regions} 必须非空；{@code level=CENTRAL} ⇒
+ * {@code regions} 可为空（缺省空）；{@code superiorGov} 非空 ⇒ 必须存在、带 {@link GovernmentFormation}、且不得等于新
+ * unitId；{@code cadence ≥ 1}。批内域层拒（如一单位一标签、N9 白名单）由 {@code submitBatch} 整条拒，逐条真拒因折成 {@code
+ * REJECTED}。
  *
  * <p>★ <b>确定性 / 保序不可变</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；{@code staff} 用 {@code
  * LinkedHashMap} 拷贝 + 赋值处冻结，{@code allowedTools} 用 {@code LinkedHashSet} 保留调用方给的顺序，{@code regions}
@@ -363,12 +364,11 @@ final class GovCreateOfficePlan {
     }
 
     /**
-     * {@code unit.SetGovFormation} 载荷：{@code {unitId, level, superiorGov?, staff, policy}}；
-     * {@code staff}/{@code policy} 都显式给全（而不是靠 handler 缺省），让 revision 里的意图可读、可回放。
-     * ★★ 2026-10-09 唯一列表裁定：载荷<b>不再带 {@code households}</b>（该线格式键已删）——政府家户
-     * {@code hh-gov-<unitId>} 由域层 {@code UnitOperations.setGovernmentFormation} 在改编制时同批编入
-     * {@code Unit.households}，与同批 {@code social.CreateHousehold(UNIT)} 和 {@code economy.RegisterGovernment}
-     * 的国库引用指向同一把家户键。
+     * {@code unit.SetGovFormation} 载荷：{@code {unitId, level, superiorGov?, staff, policy}}； {@code
+     * staff}/{@code policy} 都显式给全（而不是靠 handler 缺省），让 revision 里的意图可读、可回放。 ★★ 2026-10-09
+     * 唯一列表裁定：载荷<b>不再带 {@code households}</b>（该线格式键已删）——政府家户 {@code hh-gov-<unitId>} 由域层 {@code
+     * UnitOperations.setGovernmentFormation} 在改编制时同批编入 {@code Unit.households}，与同批 {@code
+     * social.CreateHousehold(UNIT)} 和 {@code economy.RegisterGovernment} 的国库引用指向同一把家户键。
      */
     String setGovFormationPayloadJson() {
       Map<String, Object> payload = new LinkedHashMap<>();
@@ -391,9 +391,9 @@ final class GovCreateOfficePlan {
     }
 
     /**
-     * {@code social.CreateHousehold} 载荷：政府家户位置是 {@code UNIT(unitId)}（不再钉创建时 HEX）——
-     * 有效 hex 由 app 侧 {@code HouseholdPositionResolver} 从 unit 当刻 {@code effectivePosition} 派生，
-     * 国库/入市/生产随 {@code unit.PlaceAt}、行军、迁都自动跟随。
+     * {@code social.CreateHousehold} 载荷：政府家户位置是 {@code UNIT(unitId)}（不再钉创建时 HEX）—— 有效 hex 由 app 侧
+     * {@code HouseholdPositionResolver} 从 unit 当刻 {@code effectivePosition} 派生， 国库/入市/生产随 {@code
+     * unit.PlaceAt}、行军、迁都自动跟随。
      */
     String createGovernmentHouseholdPayloadJson(String reason) {
       Map<String, Object> location = new LinkedHashMap<>();
@@ -418,10 +418,10 @@ final class GovCreateOfficePlan {
     }
 
     /**
-     * {@code economy.RegisterGovernment} 载荷：政府记录 + 政府家户的 {@code HouseholdEconomy}。身份字段只给
-     * {@code govUnitId}，{@code governmentId}/{@code household} 由 handler 派生（不在这里写第二份 id 拼法）。
-     * ★ 人口/劳动/参与率/issuable/铸币/发债<b>一律缺席</b>：新建时 handler 取 0/空集，重复登记时逐值保留既有配置
-     * —— 一次"补登记"不得把 GM 配好的政府经济层静默清零。
+     * {@code economy.RegisterGovernment} 载荷：政府记录 + 政府家户的 {@code HouseholdEconomy}。身份字段只给 {@code
+     * govUnitId}，{@code governmentId}/{@code household} 由 handler 派生（不在这里写第二份 id 拼法）。 ★
+     * 人口/劳动/参与率/issuable/铸币/发债<b>一律缺席</b>：新建时 handler 取 0/空集，重复登记时逐值保留既有配置 —— 一次"补登记"不得把 GM
+     * 配好的政府经济层静默清零。
      */
     String registerGovernmentPayloadJson(String reason) {
       Map<String, Object> payload = new LinkedHashMap<>();

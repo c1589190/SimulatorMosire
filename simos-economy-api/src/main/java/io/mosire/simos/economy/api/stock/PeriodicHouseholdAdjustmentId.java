@@ -3,8 +3,8 @@ package io.mosire.simos.economy.api.stock;
 /**
  * ★★ <b>周期家户库存扣增规则的稳定身份</b>（P4a；2026-10-14 用户确认路线 C+PARTIAL）。
  *
- * <p>★ 它只校验非空白，<b>不校验格式</b>—— 规则名的拼法由命令面唯一决定（{@code gm:<id>} / {@code army:<unitId>} 等）。
- * 裸值 {@code toString()} + {@code static parse} 三件套（铁律 1）：它既进 {@code EconomyData.periodicAdjustments} 的
+ * <p>★ 它只校验非空白，<b>不校验格式</b>—— 规则名的拼法由命令面唯一决定（{@code gm:<id>} / {@code army:<unitId>} 等）。 裸值 {@code
+ * toString()} + {@code static parse} 三件套（铁律 1）：它既进 {@code EconomyData.periodicAdjustments} 的
  * 键，也进日志与审计串，必须跨 revision 稳定。
  */
 public record PeriodicHouseholdAdjustmentId(String value) {

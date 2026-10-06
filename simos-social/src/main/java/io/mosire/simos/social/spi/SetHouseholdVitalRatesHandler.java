@@ -24,14 +24,14 @@ import java.util.Objects;
  *  "reason":"设定率"}
  * }</pre>
  *
- * <p>★ <b>载荷语义</b>：{@code rates} 缺失 / JSON {@code null} ⇒ 空表（= 清空覆盖表，全部键回落全局默认）；两个率缺省 0
- * （0 是"这一档确实按 0 率结算"，不是"没有这一行"）；负数、重复 {@code (bracketId, sex)} 由
- * {@link io.mosire.simos.social.api.population.HouseholdVitalRate} / {@link HouseholdVitalRates} 构造期具名拒。
- * ★ 单位是 <b>ppm/tick</b>。
+ * <p>★ <b>载荷语义</b>：{@code rates} 缺失 / JSON {@code null} ⇒ 空表（= 清空覆盖表，全部键回落全局默认）；两个率缺省 0 （0 是"这一档确实按
+ * 0 率结算"，不是"没有这一行"）；负数、重复 {@code (bracketId, sex)} 由 {@link
+ * io.mosire.simos.social.api.population.HouseholdVitalRate} / {@link HouseholdVitalRates} 构造期具名拒。 ★
+ * 单位是 <b>ppm/tick</b>。
  *
- * <p>★ <b>语义</b>：只调 {@link HouseholdBook#setVitalRates}——覆盖表本体进状态的 {@code Household.vitalRates}，另落一条
- * {@code RATE_SET} 审计事件；查找时家户覆盖优先、全局默认兜底，见
- * {@link io.mosire.simos.social.SocialData#findVitalRate(io.mosire.simos.social.api.id.HouseholdId,
+ * <p>★ <b>语义</b>：只调 {@link HouseholdBook#setVitalRates}——覆盖表本体进状态的 {@code
+ * Household.vitalRates}，另落一条 {@code RATE_SET} 审计事件；查找时家户覆盖优先、全局默认兜底，见 {@link
+ * io.mosire.simos.social.SocialData#findVitalRate(io.mosire.simos.social.api.id.HouseholdId,
  * io.mosire.simos.social.population.AgeBracket, io.mosire.simos.social.api.population.Sex)}。
  */
 public final class SetHouseholdVitalRatesHandler implements CommandHandler, CommandTargets {

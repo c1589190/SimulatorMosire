@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.api.stock;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -28,8 +29,8 @@ import java.util.OptionalLong;
  *     policySource)       // 非空白审计串（如 army:&lt;unitId&gt; / gm:&lt;id&gt;）
  * </pre>
  *
- * <p>★★ <b>无 lastPaidTick</b>：到期判据只依赖规则字段与绝对世界日 ⇒ 同一份状态在 1×N 与 N×1 两条推进路径下必然
- * 同日到期（执行位置见 {@code app.PopulationEconomyTimeParticipant}，判据见 executor）。
+ * <p>★★ <b>无 lastPaidTick</b>：到期判据只依赖规则字段与绝对世界日 ⇒ 同一份状态在 1×N 与 N×1 两条推进路径下必然 同日到期（执行位置见 {@code
+ * app.PopulationEconomyTimeParticipant}，判据见 executor）。
  *
  * <p>★★ <b>构造期不变量（坏数据 fail-closed）</b>：
  *
@@ -44,6 +45,9 @@ import java.util.OptionalLong;
  * <p>★ <b>两张表都保序不可变</b>（{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，绝不用 {@code
  * Map.copyOf}——它的迭代序不是内容的纯函数）；冻结写在字段赋值处。
  */
+@SuppressFBWarnings(
+    value = "EI_EXPOSE_REP",
+    justification = "compact constructor 已做防御性拷贝并冻结；SpotBugs 不跨辅助方法识别")
 public record HouseholdPeriodicAdjustment(
     PeriodicHouseholdAdjustmentId id,
     HouseholdId payer,
@@ -115,9 +119,8 @@ public record HouseholdPeriodicAdjustment(
   /**
    * {@code true} = 明确 sink（没有收款方）；执行日志将记 {@code to=<sink>}。
    *
-   * <p>★ 方法名刻意<b>不用 {@code is} 前缀</b>：Jackson 会把 {@code isXxx()} 当派生布尔属性写进线格式，而
-   * Timeline 的第四台 mapper 装不上本模块的 mixin；用 {@code sink()} 则所有 mapper 都只序列化 record 组件，
-   * 不会多出未知字段。
+   * <p>★ 方法名刻意<b>不用 {@code is} 前缀</b>：Jackson 会把 {@code isXxx()} 当派生布尔属性写进线格式，而 Timeline 的第四台
+   * mapper 装不上本模块的 mixin；用 {@code sink()} 则所有 mapper 都只序列化 record 组件， 不会多出未知字段。
    */
   public boolean sink() {
     return payee.isEmpty();

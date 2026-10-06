@@ -533,8 +533,7 @@ class UnitCommandHandlersTest {
 
   @Test
   void setCompositionRejectsUnknownId() {
-    assertThat(
-            reason(SET_COMPOSITION, world(oneUnit()), "{\"id\":\"u-404\",\"equipment\":[]}"))
+    assertThat(reason(SET_COMPOSITION, world(oneUnit()), "{\"id\":\"u-404\",\"equipment\":[]}"))
         .contains("单位不存在");
   }
 
@@ -1820,8 +1819,7 @@ class UnitCommandHandlersTest {
         .satisfies(
             u ->
                 assertThat(u.equipment())
-                    .containsExactly(
-                        new CompositionEntry("步枪", 0), new CompositionEntry("炮", 4)));
+                    .containsExactly(new CompositionEntry("步枪", 0), new CompositionEntry("炮", 4)));
     Unit unchanged = unitSlice(world).units().get(SpiFixture.U1);
     assertThat(unchanged.equipment())
         .as("拒绝 ⇒ 输入状态不动（纯函数）")
@@ -1900,8 +1898,7 @@ class UnitCommandHandlersTest {
                 "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":\"-1\"}]}"))
         .as("amount 非整数")
         .contains("字段 amount 必须是整数");
-    assertThat(
-            reason(APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"equipment\":[{\"amount\":-1}]}"))
+    assertThat(reason(APPLY_CASUALTIES, world, "{\"id\":\"u-1\",\"equipment\":[{\"amount\":-1}]}"))
         .as("type 缺失")
         .contains("字段 type 必须是");
     assertThat(

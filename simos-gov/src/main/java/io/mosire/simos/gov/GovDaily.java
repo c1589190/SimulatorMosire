@@ -30,8 +30,8 @@ import org.slf4j.Logger;
  * <p>★★ <b>边界与裁定</b>：
  *
  * <ul>
- *   <li><b>行政力与战力分开算</b>（用户裁定 1/2）：本类只读 {@code Unit.module} 里的 {@link GovernmentFormation}（编制/政策），不产出任何战力；
- *       军队 {@code ArmyFormation} 不参与本结算；
+ *   <li><b>行政力与战力分开算</b>（用户裁定 1/2）：本类只读 {@code Unit.module} 里的 {@link
+ *       GovernmentFormation}（编制/政策），不产出任何战力； 军队 {@code ArmyFormation} 不参与本结算；
  *   <li><b>只发信号，不扣市场</b>（用户裁定 5/6）：缺口只写 {@link SignalDraft} 与 {@code lastShortfall*}
  *       读数，<b>不</b>自动去市场拿粮、 <b>不</b>自动裁人、<b>不</b>自动加税；决策人自己决定下一步；
  *   <li><b>付款回调</b>：{@link PaymentOracle} 由调用方（11b 的 participant）装配，本模块不依赖 economy/actor

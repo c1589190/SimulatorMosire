@@ -8,17 +8,16 @@ import io.mosire.simos.social.population.AgeBracket;
 import java.util.Optional;
 
 /**
- * ★★ <b>Social 需求/劳动系数表的 GM 编辑纯推导</b>（2026-10-09 家户结构修复计划 Batch 4）：
- * {@code social.SetDemandCoefficient} / {@code social.SetLaborCoefficient} 两条命令与 app 侧
- * {@code simos.social.demand} / {@code simos.social.labor} 两条窄工具<b>共用这一份语义</b>——
- * 命令 handler 与工具预览因此不可能各写一套"要不要推断全局口径 / 能不能清键"的分叉。
+ * ★★ <b>Social 需求/劳动系数表的 GM 编辑纯推导</b>（2026-10-09 家户结构修复计划 Batch 4）： {@code
+ * social.SetDemandCoefficient} / {@code social.SetLaborCoefficient} 两条命令与 app 侧 {@code
+ * simos.social.demand} / {@code simos.social.labor} 两条窄工具<b>共用这一份语义</b>—— 命令 handler
+ * 与工具预览因此不可能各写一套"要不要推断全局口径 / 能不能清键"的分叉。
  *
- * <p>★★ <b>纯函数</b>：不写任何外部状态、不落 revision、不自己拼四张表；每一处只调用
- * {@link SocialProvisioning} 的不可变 copy-with（{@code withGlobalDemand} / {@code withHouseholdDemand} /
- * {@code withoutHouseholdDemand} / 同名 labor 版本），最后经 {@link SocialData#withProvisioning(SocialProvisioning)}
- * 写回一份新的 {@link SocialData}。所有不变量（null、负值、period/cycleDays 自洽、重复键）仍在
- * {@link DemandCoefficient} / {@link LaborCoefficient} / {@link SocialProvisioning} 的构造期校验，
- * 本类<b>不复制</b>那些校验。
+ * <p>★★ <b>纯函数</b>：不写任何外部状态、不落 revision、不自己拼四张表；每一处只调用 {@link SocialProvisioning} 的不可变
+ * copy-with（{@code withGlobalDemand} / {@code withHouseholdDemand} / {@code withoutHouseholdDemand}
+ * / 同名 labor 版本），最后经 {@link SocialData#withProvisioning(SocialProvisioning)} 写回一份新的 {@link
+ * SocialData}。所有不变量（null、负值、period/cycleDays 自洽、重复键）仍在 {@link DemandCoefficient} / {@link
+ * LaborCoefficient} / {@link SocialProvisioning} 的构造期校验， 本类<b>不复制</b>那些校验。
  *
  * <p>★★ <b>命令语义（两条命令同制）</b>：
  *
@@ -26,18 +25,17 @@ import java.util.Optional;
  *   <li>{@code householdId == null} = 改全局默认；给了 = 改该家户覆盖（家户必须存在）；
  *   <li>{@code amountMilli}/{@code milliHoursPerTick} 给了 = upsert 该键；
  *   <li>系数缺席 = 删除该家户覆盖键（只允许 householdId 在场；全局删键具名拒，避免破坏默认表完整性）；
- *   <li>需求系数 {@code period}/{@code cycleDays}：两者都缺席 ⇒ 从该商品的全局默认口径推断（
- *       {@link SocialProvisioning#globalDemandBasis(CommodityId)} 找不到 ⇒ 具名拒）；两者都给 ⇒ 按值构造；
- *       只给一个 ⇒ 具名拒。家户覆盖若显式给口径，必须与全局口径一致（全局没有该商品行时允许显式口径，
- *       让"其它商品由 GM 显式写入行"的路径仍可用）；
+ *   <li>需求系数 {@code period}/{@code cycleDays}：两者都缺席 ⇒ 从该商品的全局默认口径推断（ {@link
+ *       SocialProvisioning#globalDemandBasis(CommodityId)} 找不到 ⇒ 具名拒）；两者都给 ⇒ 按值构造； 只给一个 ⇒
+ *       具名拒。家户覆盖若显式给口径，必须与全局口径一致（全局没有该商品行时允许显式口径， 让"其它商品由 GM 显式写入行"的路径仍可用）；
  *   <li>删除家户覆盖键时该键必须存在（不存在 ⇒ 具名拒，不落一条假的成功 revision）。
  * </ul>
  *
- * <p>★★ <b>旧档作废、不迁移</b>（用户 2026-10-09 裁定）：本类只认第 6 组件 {@code provisioning} 已经存在的
- * 新档；缺该组件的旧档由 {@link SocialData} / {@code SocialChangeSet} 的构造期具名拒，不在这里做缺省补值 / 双读。
+ * <p>★★ <b>旧档作废、不迁移</b>（用户 2026-10-09 裁定）：本类只认第 6 组件 {@code provisioning} 已经存在的 新档；缺该组件的旧档由 {@link
+ * SocialData} / {@code SocialChangeSet} 的构造期具名拒，不在这里做缺省补值 / 双读。
  *
- * <p>★ 本类别名 {@code 命令层}：它不认识命令信封、载荷 JSON、revision——那些是 {@code simos-social/spi} 与
- * {@code simos-app} 的私事。
+ * <p>★ 本类别名 {@code 命令层}：它不认识命令信封、载荷 JSON、revision——那些是 {@code simos-social/spi} 与 {@code simos-app}
+ * 的私事。
  */
 public final class SocialProvisioningEdits {
 
@@ -79,8 +77,7 @@ public final class SocialProvisioningEdits {
     if (period == null) {
       // 两者都缺席：按该商品的全局默认口径推断；找不到 ⇒ 具名拒（不静默给 0/不猜天数）。
       basis =
-          base
-              .provisioning()
+          base.provisioning()
               .globalDemandBasis(commodity)
               .orElseThrow(
                   () ->
@@ -136,11 +133,12 @@ public final class SocialProvisioningEdits {
     requireArg(sex, "sex");
     requireArg(commodity, "commodity");
     if (householdId == null) {
-      throw ProvisioningReject.reject(
-          "全局需求默认表不允许删键（会破坏默认完整性）；请给 householdId 指定要清除覆盖的家户");
+      throw ProvisioningReject.reject("全局需求默认表不允许删键（会破坏默认完整性）；请给 householdId 指定要清除覆盖的家户");
     }
     requireHouseholdExists(base, householdId);
-    if (base.provisioning().householdDemandOverride(householdId, ageBracket, sex, commodity).isEmpty()) {
+    if (base.provisioning()
+        .householdDemandOverride(householdId, ageBracket, sex, commodity)
+        .isEmpty()) {
       throw ProvisioningReject.reject(
           "家户 "
               + householdId
@@ -198,20 +196,15 @@ public final class SocialProvisioningEdits {
     requireArg(ageBracket, "ageBracket");
     requireArg(sex, "sex");
     if (householdId == null) {
-      throw ProvisioningReject.reject(
-          "全局劳动默认表不允许删键（会破坏默认完整性）；请给 householdId 指定要清除覆盖的家户");
+      throw ProvisioningReject.reject("全局劳动默认表不允许删键（会破坏默认完整性）；请给 householdId 指定要清除覆盖的家户");
     }
     requireHouseholdExists(base, householdId);
     if (base.provisioning().householdLaborOverride(householdId, ageBracket, sex).isEmpty()) {
       throw ProvisioningReject.reject(
-          "家户 "
-              + householdId
-              + " 没有这条劳动覆盖键，无需清除: ageBracket="
-              + ageBracket.key()
-              + " sex="
-              + sex);
+          "家户 " + householdId + " 没有这条劳动覆盖键，无需清除: ageBracket=" + ageBracket.key() + " sex=" + sex);
     }
-    return base.withProvisioning(base.provisioning().withoutHouseholdLabor(householdId, ageBracket, sex));
+    return base.withProvisioning(
+        base.provisioning().withoutHouseholdLabor(householdId, ageBracket, sex));
   }
 
   /** base 不得为 null（具名拒，供 handler 折 Rejected / 工具折 BAD_REQUEST）。 */

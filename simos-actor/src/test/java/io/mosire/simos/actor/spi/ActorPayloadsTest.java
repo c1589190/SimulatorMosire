@@ -8,8 +8,8 @@ import io.mosire.simos.actor.ActorMeta;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.Actor;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.ResourcePaths;
@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
  * {@code actor.Seed} 载荷的形状与拒因（本类只测**载荷层**：{@link ActorPayloads} 的解析与 materialize）。
  *
  * <p>★ 分工照 {@code EconomyPayloads}：**形状/类型/词表在本层**判（坏载荷一律以 {@link IllegalArgumentException}
- * 面世，带可读中文原因）；**数值语义**（余额 ≥ 0）交给领域类型（{@link GoodsAccount}）的构造期守卫 ——**不重复实现，一处真相**。
+ * 面世，带可读中文原因）；**数值语义**（余额 ≥ 0）交给领域类型（{@link HouseholdInventory}）的构造期守卫 ——**不重复实现，一处真相**。
  *
  * <p>★ 库存行的引用判据（P2-A §13.3 起）：账户主体只有家户 ⇒ 载荷是 {@code {"household":"hh-…","balances":{…}}}。
  * 家户由该行自声明，故"悬空 owner"那条旧判据随之退役。
@@ -35,7 +35,8 @@ class ActorPayloadsTest {
 
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
 
-  private static final ActorRef ORGANIZATION_FARM = new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
+  private static final ActorRef ORGANIZATION_FARM =
+      new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
 
   private static final ActorRef HOUSEHOLD_ACTOR = new ActorRef(ActorKind.HOUSEHOLD, "house@0_0");
 
@@ -70,10 +71,10 @@ class ActorPayloadsTest {
     assertThat(organization.ref()).as("键从值派生：键 == Actor.ref()").isEqualTo(ORGANIZATION_FARM);
     assertThat(organization.label()).isEqualTo("农业组织者");
 
-    GoodsAccountKey accountKey = new GoodsAccountKey(HOUSEHOLD);
+    HouseholdAccountKey accountKey = new HouseholdAccountKey(HOUSEHOLD);
     assertThat(data.accounts()).containsOnlyKeys(accountKey);
-    GoodsAccount account = data.accounts().get(accountKey);
-    assertThat(account.key()).as("键从值派生：键 == GoodsAccount.key()").isEqualTo(accountKey);
+    HouseholdInventory account = data.accounts().get(accountKey);
+    assertThat(account.key()).as("键从值派生：键 == HouseholdInventory.key()").isEqualTo(accountKey);
     assertThat(account.key().household()).as("账户主体 = 载荷里声明的家户").isEqualTo(HOUSEHOLD);
     assertThat(account.balances())
         .as("余额逐值；**0 保留**（存量不是空表）")
@@ -84,8 +85,8 @@ class ActorPayloadsTest {
   /**
    * ★★ **主体声明在别的格、库存落在这一格 ⇒ 合法**（载荷的格序**不是**依赖序；两趟走）。
    *
-   * <p>★ <b>P2-A 迁移</b>：库存行不再引用 actor，而是自声明家户 ⇒ 本用例改为钉"多 entry 的 actors 与 goods 各自
-   * 都落盘、互不要求同一条 entry"（两趟走仍在：actors 先全收齐再建表）。
+   * <p>★ <b>P2-A 迁移</b>：库存行不再引用 actor，而是自声明家户 ⇒ 本用例改为钉"多 entry 的 actors 与 goods 各自 都落盘、互不要求同一条
+   * entry"（两趟走仍在：actors 先全收齐再建表）。
    */
   @Test
   void acceptsActorsAndHouseholdAccountsSpreadAcrossEntries() {
@@ -229,7 +230,7 @@ class ActorPayloadsTest {
 
   // ── 拒因：数值语义（交给领域类型的构造期守卫）──────────────────────────────────────
 
-  /** ★ 负库存余额 ⇒ 拒（{@link GoodsAccount} 的构造期守卫）。 */
+  /** ★ 负库存余额 ⇒ 拒（{@link HouseholdInventory} 的构造期守卫）。 */
   @Test
   void rejectsANegativeGoodsBalance() {
     String payload = PAYLOAD.replace("\"grain\":2241000", "\"grain\":-2241000");
@@ -281,8 +282,7 @@ class ActorPayloadsTest {
   @Test
   void rejectsAGoodsRowWithoutAHouseholdField() {
     String payload =
-        PAYLOAD.replace(
-            "{\"household\":\"hh-house-0_0\",", "{"); // 去掉 household 键，balances 留着
+        PAYLOAD.replace("{\"household\":\"hh-house-0_0\",", "{"); // 去掉 household 键，balances 留着
 
     assertThat(payload).as("替换必须真的发生").isNotEqualTo(PAYLOAD);
     assertThatThrownBy(

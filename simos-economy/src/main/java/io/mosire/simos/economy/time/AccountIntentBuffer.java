@@ -122,8 +122,7 @@ public final class AccountIntentBuffer {
           io.mosire.simos.map.hex.HexCoord location = snapshot.locationOf(key.household());
           if (location == null) {
             throw new IllegalStateException(
-                "家户未登记位置，无法按格分区（账户身份与位置解耦后，位置索引是分区唯一读口）: "
-                    + key.canonical());
+                "家户未登记位置，无法按格分区（账户身份与位置解耦后，位置索引是分区唯一读口）: " + key.canonical());
           }
           return AccountPartitionKey.partitionIndexOf(location.toString(), partitionCount)
               == partitionIndex;

@@ -22,8 +22,8 @@ import java.util.Map;
  * io.mosire.simos.app.gui.ApiViews#economyOwnership}）⇒ 读的人当场看得见两者差多少。
  *
  * <p>★★ <b>H1 之后它同时是"一本账"的判据</b>：家户 actor 已按"格 × 两组四行"播全（真档 799 × 8 = 6392 个） ⇒ {@code accounts} /
- * {@code actorGoodsTotal} **有数**，而 {@code rowGoodsTotal} **恒空** （{@code HouseholdEconomy} 里已经没有 {@code
- * goods} 这一栏）—— 行侧还是全 0/非空，一眼就能看出账搬完没有。
+ * {@code actorGoodsTotal} **有数**，而 {@code rowGoodsTotal} **恒空** （{@code HouseholdEconomy} 里已经没有
+ * {@code goods} 这一栏）—— 行侧还是全 0/非空，一眼就能看出账搬完没有。
  *
  * <p>★★ <b>只在 GM 桶</b>（{@link GmOnlyRead}）：响应里含 **actor 切片的商品余额**（{@code HouseholdInventory}）——
  * 那条面在本仓的资源表态里是 **缺省拒**（{@link ToolSupport#ALL_READ} 的 {@code actor} 一档就是 {@code DENY}），故本工具与

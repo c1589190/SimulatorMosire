@@ -1,12 +1,12 @@
 package io.mosire.simos.app.time;
 
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
-import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.population.LotMigration;
 import io.mosire.simos.economy.model.MigrationPolicy;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
@@ -41,8 +41,8 @@ import java.util.Set;
  *   <li><b>城市优先级</b>：pull 降序；同 pull 按 {@link CityId#value()} 升序（消除 map 迭代序）。
  * </ol>
  *
- * <p>★★ <b>本类不读 {@code EconomyData}</b>：规划只看 social 与外部读数；把计划落到经济侧（{@code HouseholdEconomy}/债务）是 {@code
- * LotMigrationBook} 的职责，跨切片“social 拆/合批次 + 经济侧行列 + 成员份额对账”的原子接线留给 P9。
+ * <p>★★ <b>本类不读 {@code EconomyData}</b>：规划只看 social 与外部读数；把计划落到经济侧（{@code HouseholdEconomy}/债务）是
+ * {@code LotMigrationBook} 的职责，跨切片“social 拆/合批次 + 经济侧行列 + 成员份额对账”的原子接线留给 P9。
  */
 public final class PopulationMigrationPlanner {
 

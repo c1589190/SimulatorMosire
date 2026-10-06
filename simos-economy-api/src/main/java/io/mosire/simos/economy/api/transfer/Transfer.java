@@ -22,8 +22,8 @@ import java.util.Optional;
  * <p>★★ <b>两端恒为 actor</b>（裁定 D1-A）：产权主体只有 actor；cohort 只出现在"消费取得"的读数里， <b>永远不是转移的一端</b>。★ 家户那一端用
  * {@code HouseholdActors.of(cohort)}（家户身份的唯一拼写点）—— 本类不认识 cohort，只认 actor。
  *
- * <p>★★ <b>必须带格</b>：账户 = <b>{@code (actor, location)}</b>（{@code HouseholdInventory} 的形状）⇒ 同一个人在两地各有账，
- * 一条不带格的转移<b>说不清落进哪一本</b>。
+ * <p>★★ <b>必须带格</b>：账户 = <b>{@code (actor, location)}</b>（{@code HouseholdInventory} 的形状）⇒
+ * 同一个人在两地各有账， 一条不带格的转移<b>说不清落进哪一本</b>。
  *
  * <p>★★ <b>方向由 {@code from}/{@code to} 表达，不用负号</b>：{@code goods} 逐值 {@code ≥ 0} —— "−5
  * 粮"这种写法会让"方向"与"数量"两个概念揉进一个符号里（本类型最容易长出的那种病）。

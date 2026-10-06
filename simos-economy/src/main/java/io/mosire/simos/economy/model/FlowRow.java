@@ -10,8 +10,8 @@ import java.util.Map;
 /**
  * 周期流水（新经济设计 §3.3 逐字，表 3）：**本期发生额**——结算后清零，绝不回流成存量。
  *
- * <p>★★ **存量/流量分离**（§3.3 末条 + §6.5）：{@link HouseholdEconomy} 是存量；本类型只记本期发生额，**结算后清零**。 绝不用"生产成本"或"资产减少"
- * 冒充负债——{@code newBorrowing} 才是借入，{@code repaid} 才是偿债。
+ * <p>★★ **存量/流量分离**（§3.3 末条 + §6.5）：{@link HouseholdEconomy} 是存量；本类型只记本期发生额，**结算后清零**。
+ * 绝不用"生产成本"或"资产减少" 冒充负债——{@code newBorrowing} 才是借入，{@code repaid} 才是偿债。
  *
  * <p>★ **量纲**（§7）：货币类字段按**最小币值**；{@code income}/{@code consumed} 按**最小计量单位**、**逐商品**。
  *
@@ -70,9 +70,9 @@ import java.util.Map;
  *     次日（新周期第一天）清零。⇒ ① <b>关账日</b>读到的是一整个周期缺的量（正确用法）；② <b>非关账日</b>读到的是"本周期到现在为止"
  *     的量（会逐日长大，**不可**当成整周期缺口）；③ 关账日的 {@code income}/{@code consumed} 同样是一整个周期的量。 三处读法混用是本仓踩过六次的口径坑。
  * @param deaths 本期死亡的人口（人）；不得为负。★★ **2026-10-09 每 tick 生死 Batch B 起本字段只承载 {@code applyFamine}
- *     那条路**（直接按缺口处死，默认致死率 0‰ ⇒ 默认路径不死人）：新主路径的出生/死亡由 Social 每 tick 结算，经济侧只同步
- *     家户行 {@code population}（{@code EconomyDayStepper.applyHouseholdPopulationDeltas}），<b>不再</b>写这里的逐户
- *     {@code births}/{@code deaths} 流水（本批已知边界，见 Batch B 报告）。
+ *     那条路**（直接按缺口处死，默认致死率 0‰ ⇒ 默认路径不死人）：新主路径的出生/死亡由 Social 每 tick 结算，经济侧只同步 家户行 {@code
+ *     population}（{@code EconomyDayStepper.applyHouseholdPopulationDeltas}），<b>不再</b>写这里的逐户 {@code
+ *     births}/{@code deaths} 流水（本批已知边界，见 Batch B 报告）。
  *     <p>★ <b>它不是饿死数</b>：默认致死率 0‰ ⇒ 缺粮本身不产生 {@code deaths}（M0.2 的口径澄清）。报"饿死多少人"必须写清用的是哪条通道。
  * @param births 本期出生的人口（人）；不得为负；与 {@code deaths} **对称**（R4 起人口两头都会动，只记死亡会让 "年末人口 − 创世人口 == 出生 −
  *     死亡"写不出来）

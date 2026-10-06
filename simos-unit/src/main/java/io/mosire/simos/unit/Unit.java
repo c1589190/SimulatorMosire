@@ -49,8 +49,8 @@ import java.util.Set;
  * household id 撞名）由 {@link UnitState} 构造期把关。
  *
  * <p>★ **编制模块（阶段 9，2026-09-30）**：第 16 组件 {@code module} = 单位侧的编制标签（{@link UnitModule} 的 sealed 子类型：
- * {@link GovernmentFormation} 或 {@link ArmyFormation}，一单位至多一个，互斥由类型保证）。缺省 {@link Optional#empty()} ⇒
- * 旧档/旧调用点行为逐字不变；**所有重建既有 Unit 的拷贝点都必须原样带过 {@code before.module()}**（漏传 = 静默丢编制，同一条最贵教训）； 创建点显式给
+ * {@link GovernmentFormation} 或 {@link ArmyFormation}，一单位至多一个，互斥由类型保证）。缺省 {@link Optional#empty()}
+ * ⇒ 旧档/旧调用点行为逐字不变；**所有重建既有 Unit 的拷贝点都必须原样带过 {@code before.module()}**（漏传 = 静默丢编制，同一条最贵教训）； 创建点显式给
  * {@link Optional#empty()}。★ 它只放编制成分/隶属/层级，**不算任何力量**（用户裁定 1/2：行政力与战斗力分开算，分别归 gov/army 模块）。
  *
  * <p>★ **状态描述地址（阶段 D1，2026-10-02 / D-012）**：第 17 组件 {@code stateDescriptions} = **当前回合状态**（自由文本键）→

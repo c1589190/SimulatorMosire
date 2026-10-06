@@ -24,8 +24,8 @@ import org.slf4j.Logger;
  * {"id":"army-pay-1", "reason"?: "gm 撤回军俸计划"}
  * }</pre>
  *
- * <p>★ <b>不存在 ⇒ 具名拒</b>：不静默成功（"删了"与"本来就没有"是两件事；前者应留下一个可审计的发生额，
- * 后者不该悄悄消耗一条 revision）。{@code reason} 只进日志，不参与任何判定。
+ * <p>★ <b>不存在 ⇒ 具名拒</b>：不静默成功（"删了"与"本来就没有"是两件事；前者应留下一个可审计的发生额， 后者不该悄悄消耗一条 revision）。{@code reason}
+ * 只进日志，不参与任何判定。
  */
 public final class EconomyRemovePeriodicAdjustmentHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
@@ -56,8 +56,7 @@ public final class EconomyRemovePeriodicAdjustmentHandler
       Removal removal = parse(TYPE, payloadJson);
       HouseholdPeriodicAdjustment removed = base.periodicAdjustments().get(removal.id());
       if (removed == null) {
-        return new HandlerOutcome.Rejected(
-            "周期家户扣增规则不存在，拒绝静默成功: id=" + removal.id().value());
+        return new HandlerOutcome.Rejected("周期家户扣增规则不存在，拒绝静默成功: id=" + removal.id().value());
       }
       Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> adjustments =
           new LinkedHashMap<>(base.periodicAdjustments());
@@ -80,9 +79,7 @@ public final class EconomyRemovePeriodicAdjustmentHandler
     PeriodicHouseholdAdjustmentId id =
         PeriodicHouseholdAdjustmentId.parse(
             EconomyCommandPayloads.requireText(command, payload, "id"));
-    String reason =
-        EconomyCommandPayloads.optionalText(
-            command, payload, "reason", "gm:" + TYPE);
+    String reason = EconomyCommandPayloads.optionalText(command, payload, "reason", "gm:" + TYPE);
     return new Removal(id, reason);
   }
 

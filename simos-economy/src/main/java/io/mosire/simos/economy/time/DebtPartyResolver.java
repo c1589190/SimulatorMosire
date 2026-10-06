@@ -5,22 +5,22 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.id.ClassPositionId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.relation.Payee;
-import io.mosire.simos.economy.migrate.ProductionRoleResolver;
 import io.mosire.simos.economy.migrate.LegacyClassStructure;
-import io.mosire.simos.economy.model.ProductionRole;
-import io.mosire.simos.economy.model.ProductionRole.RelationToMeans;
-import io.mosire.simos.economy.model.ProductionRole.SurplusRole;
+import io.mosire.simos.economy.migrate.ProductionRoleResolver;
 import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRole.RelationToMeans;
+import io.mosire.simos.economy.model.ProductionRole.SurplusRole;
+import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -45,8 +45,8 @@ import java.util.Optional;
  *       找"actor 出现的 unit"（operator / relation.operator / relation.residualOwner /
  *       relation.inputSupplier(ToActor) / 份额 owner / 份额 operator 六路命中均算）。命中且家户唯一 ⇒
  *       1000‰；命中多户时聚合主体继续走 ③；
- *   <li><b>enterprise</b>：聚合主体先用 E2 的 {@link ProductionEnterprise}（{@code organizer == actor} 或
- *       对应 unit 的 {@code operator == actor}）的 {@code laborSources} / 家户归属解析；
+ *   <li><b>enterprise</b>：聚合主体先用 E2 的 {@link ProductionEnterprise}（{@code organizer == actor} 或 对应
+ *       unit 的 {@code operator == actor}）的 {@code laborSources} / 家户归属解析；
  *   <li><b>population-fallback</b>：ESTATE ⇒ 该 hex 上处于"所有者/剩余索取者"位置的家户（优先 {@code relationToMeans ==
  *       OWNER} 或 {@code surplusRole == SURPLUS_RECEIVER}；旧档无位置信息时回落 {@code legacy-landlord} /
  *       {@link SocialClassId#LANDLORD}）；WORKSHOP ⇒ {@code legacy-artisan} / {@link
@@ -400,7 +400,8 @@ final class DebtPartyResolver {
       if (!householdEconomy.view().hex().equals(targetHex)) {
         continue;
       }
-      Optional<ClassPositionId> positionId = ProductionRoleResolver.resolveCurrent(data, householdEconomy.id());
+      Optional<ClassPositionId> positionId =
+          ProductionRoleResolver.resolveCurrent(data, householdEconomy.id());
       ProductionRole position = positionId.map(data.classPositions()::get).orElse(null);
       boolean positionMatch = false;
       boolean legacyMatch = false;
@@ -436,7 +437,9 @@ final class DebtPartyResolver {
     }
 
     String legacyDetail =
-        isFeudalIndustry(data, actor) ? "estate-legacy-landlord" : "workshop-legacy-artisan-stratum";
+        isFeudalIndustry(data, actor)
+            ? "estate-legacy-landlord"
+            : "workshop-legacy-artisan-stratum";
     Resolution legacyResolution =
         splitByPopulation(data, legacyMatches, SOURCE_POPULATION_FALLBACK, legacyDetail);
     if (legacyResolution.isResolved()) {
@@ -519,8 +522,8 @@ final class DebtPartyResolver {
   }
 
   /**
-   * ★★ P2-A §13.3：庄园/作坊不再是 ActorKind ⇒ 聚合生产主体改用 {@code ORGANIZATION}（身份 = 产业 id）。
-   * 判据 = kind == ORGANIZATION 且 id 命中一个现存产业（不命中的 ORGANIZATION 不是产业经营者）。
+   * ★★ P2-A §13.3：庄园/作坊不再是 ActorKind ⇒ 聚合生产主体改用 {@code ORGANIZATION}（身份 = 产业 id）。 判据 = kind ==
+   * ORGANIZATION 且 id 命中一个现存产业（不命中的 ORGANIZATION 不是产业经营者）。
    */
   private static boolean isAggregateProductionActor(EconomyData data, ActorRef actor) {
     return actor.kind() == ActorKind.ORGANIZATION
@@ -584,8 +587,7 @@ final class DebtPartyResolver {
     }
   }
 
-  private static void addPayeeHousehold(
-      Payee recipient, LinkedHashSet<HouseholdId> households) {
+  private static void addPayeeHousehold(Payee recipient, LinkedHashSet<HouseholdId> households) {
     if (recipient instanceof Payee.ToHousehold toHousehold) {
       households.add(toHousehold.household());
     }

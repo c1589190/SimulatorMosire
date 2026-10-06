@@ -33,20 +33,20 @@ import java.util.Objects;
  *
  * <ul>
  *   <li>{@code householdId} 缺席 = 改<b>全局默认</b>（必须给 {@code amountMilli}）；给了 = 改该<b>家户覆盖</b>（家户必须存在）；
- *   <li>{@code amountMilli} 给了 = upsert 该 {@code (年龄档, 性别, 商品)}；缺席 = 删除该家户覆盖键
- *       （只允许 householdId 在场；全局默认不允许删键 ⇒ 具名拒）；
- *   <li>{@code period}/{@code cycleDays}：两者都缺席 ⇒ 从该商品的全局默认口径推断（找不到 ⇒ 具名拒）；
- *       两者都给 ⇒ 按值构造；只给一个 ⇒ 具名拒。家户覆盖的显式口径必须与全局口径一致；
+ *   <li>{@code amountMilli} 给了 = upsert 该 {@code (年龄档, 性别, 商品)}；缺席 = 删除该家户覆盖键 （只允许 householdId
+ *       在场；全局默认不允许删键 ⇒ 具名拒）；
+ *   <li>{@code period}/{@code cycleDays}：两者都缺席 ⇒ 从该商品的全局默认口径推断（找不到 ⇒ 具名拒）； 两者都给 ⇒ 按值构造；只给一个 ⇒
+ *       具名拒。家户覆盖的显式口径必须与全局口径一致；
  *   <li>结果只经 {@link SocialData#withProvisioning} 写回，产出 {@link SocialChangeSet}；改/清各 INFO 一条带
  *       scope/household/年龄档/性别/商品/amount 的事件，失败一律 {@link HandlerOutcome.Rejected} 带中文原因。
  * </ul>
  *
- * <p>★★ <b>GM-only</b>（实现 {@link GmOnlyCommand}）：本命令仍注册到 Core、仍进 {@code commandTargets}、GM 的
- * {@code simos.command.submit} 与窄工具照常可用；但不得作为决策人令 / {@code RegisterEffect} 嵌入， 也不进决策人目录——
+ * <p>★★ <b>GM-only</b>（实现 {@link GmOnlyCommand}）：本命令仍注册到 Core、仍进 {@code commandTargets}、GM 的 {@code
+ * simos.command.submit} 与窄工具照常可用；但不得作为决策人令 / {@code RegisterEffect} 嵌入， 也不进决策人目录——
  * 需求系数是全世界/全户的调参面，不是普通 GOV 的政治能力。
  *
- * <p>★ <b>旧档作废、不迁移</b>（用户 2026-10-09 裁定"一切从新"）：本命令只认已经带第 6 组件 {@code provisioning}
- * 的新档；旧档缺该组件在 {@link SocialData} / {@link SocialChangeSet} 构造期即具名拒，本命令不补默认值、不做双读。
+ * <p>★ <b>旧档作废、不迁移</b>（用户 2026-10-09 裁定"一切从新"）：本命令只认已经带第 6 组件 {@code provisioning} 的新档；旧档缺该组件在
+ * {@link SocialData} / {@link SocialChangeSet} 构造期即具名拒，本命令不补默认值、不做双读。
  */
 public final class SetDemandCoefficientHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
@@ -82,8 +82,7 @@ public final class SetDemandCoefficientHandler
       String reason = SocialPayloads.requireReason(payload);
       if (amountMilli == null) {
         if (period != null || cycleDays != null) {
-          throw new IllegalArgumentException(
-              TYPE + "：删除家户覆盖键时不接受 period/cycleDays（没有系数可构造）");
+          throw new IllegalArgumentException(TYPE + "：删除家户覆盖键时不接受 period/cycleDays（没有系数可构造）");
         }
         SocialData next =
             SocialProvisioningEdits.clearDemand(base, householdId, ageBracket, sex, commodity);

@@ -7,24 +7,24 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassShareId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionRole;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
-import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.ClassStructure;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.ModeTransition;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
-import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionEnterprise.Status;
+import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -47,11 +47,12 @@ import java.util.TreeSet;
  *       inputSources/outputOwnership/relationTemplateRef）；新组织 {@code ACTIVE} 复用**同一条** {@code
  *       ProductionProcess}（不复制实物、不新 progress）；该 unit 的 {@code modeKey} 改为新 mode key；旧 {@code
  *       Pledge.modeId == fromMode} 的质押改成 toMode（暴露出的 mode 维）；对旧组织 laborSources ∪ organizer 家户逐户写
- *       {@link ClassShare}（旧位置 retain‰、新位置 (1000−retain)‰，0‰ 省略）并更新 {@link HouseholdClassMembership}
+ *       {@link ClassShare}（旧位置 retain‰、新位置 (1000−retain)‰，0‰ 省略）并更新 {@link
+ *       HouseholdClassMembership}
  *       （currentPosition/retainedShares/lastTransitionDay=day/reason；originalPosition 不动）。
  *   <li><b>按身份不动</b>：{@code OwnershipStake} 本身按 industry 存在，owner/operator/quantity/kind 一律不拆不复制；
- *       债务是家户间债权，不随 mode 复制；已有 {@code HouseholdLaborCommitment} 的 activity 就是复用中的 unit id，原样有效； relation 挂在
- *       unit 上，原样有效。
+ *       债务是家户间债权，不随 mode 复制；已有 {@code HouseholdLaborCommitment} 的 activity 就是复用中的 unit id，原样有效；
+ *       relation 挂在 unit 上，原样有效。
  *   <li><b>失败不改状态</b>：规划阶段（找 mode/structure/position/hex/unit）任一具名失败 ⇒ 该 transition 落 {@code FAILED
  *       + 具名原因}，不修改组织/unit/质押/份额/standing；其余 transition 继续（逐条独立）。
  * </ul>
@@ -315,8 +316,7 @@ final class EconomyModeTransitionSettlement {
     ProductionOrganizationId newEnterpriseId =
         ProductionOrganizationId.idOf(
             transition.toModeId(), newPosition, organizerHousehold, hexKey);
-    if (newEnterpriseId.equals(enterprise.id())
-        || enterprises.containsKey(newEnterpriseId)) {
+    if (newEnterpriseId.equals(enterprise.id()) || enterprises.containsKey(newEnterpriseId)) {
       return failed(REASON_TARGET_ORGANIZATION_EXISTS + ":" + newEnterpriseId.value());
     }
 
@@ -358,8 +358,7 @@ final class EconomyModeTransitionSettlement {
       }
 
       HouseholdClassMembership existingClassMembership = classMemberships.get(household);
-      ClassPositionId currentPosition =
-          retain == 1000 ? enterprise.classPositionId() : newPosition;
+      ClassPositionId currentPosition = retain == 1000 ? enterprise.classPositionId() : newPosition;
       Map<ClassPositionId, Long> retainedShares = new LinkedHashMap<>();
       if (retain > 0) {
         retainedShares.put(enterprise.classPositionId(), (long) retain);
@@ -377,7 +376,9 @@ final class EconomyModeTransitionSettlement {
               // ★ P2-B：模式变迁后只参与新位置；旧的可参与集合属于旧 mode，不再沿用。
               Set.of(),
               retainedShares,
-              existingClassMembership == null ? 0L : existingClassMembership.consecutiveDebtStressCycles(),
+              existingClassMembership == null
+                  ? 0L
+                  : existingClassMembership.consecutiveDebtStressCycles(),
               day,
               transition.reason());
       updatedClassMemberships.put(household, nextClassMembership);

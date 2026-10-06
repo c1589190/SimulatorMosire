@@ -1,15 +1,14 @@
 package io.mosire.simos.economy;
 
 import io.mosire.simos.util.log.EventLog;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * ★★ <b>经济系统日志门面</b>（2026-10-04 用户裁定："先把经济系统全量 Log 化"）。
  *
- * <p><b>唯一拼写点</b>：所有经济日志的 logger 名都从这里取，调用方不得自己拼字符串。分类如下（全部挂在
- * {@value #ROOT_LOGGER_NAME} 之下 ⇒ 一个开关可整体升降级）：
+ * <p><b>唯一拼写点</b>：所有经济日志的 logger 名都从这里取，调用方不得自己拼字符串。分类如下（全部挂在 {@value #ROOT_LOGGER_NAME} 之下 ⇒
+ * 一个开关可整体升降级）：
  *
  * <table border="1">
  *   <caption>分类与用途</caption>
@@ -29,12 +28,12 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li><b>INFO</b>：一天/一轮的<b>生命周期</b>与<b>发生了多少次什么</b>——一个只看 INFO 的人能回答"今天经济系统做了什么"；
  *   <li><b>DEBUG</b>：每个阶段的<b>池子/汇总/理由</b>（谁的额度是 0、市场为什么不开、资本化/清算/退出各多少条）；
- *   <li><b>TRACE</b>：<b>逐条</b>明细（每笔转移、每个成交/未成交槽、每条债务变动、每个迁移 move）——用于对账与定位；
- *       并行分区 worker 的铸造序不保证跨分区稳定（id 里的分区段仍稳定），诊断时按业务键读、不要按行号读。
+ *   <li><b>TRACE</b>：<b>逐条</b>明细（每笔转移、每个成交/未成交槽、每条债务变动、每个迁移 move）——用于对账与定位； 并行分区 worker
+ *       的铸造序不保证跨分区稳定（id 里的分区段仍稳定），诊断时按业务键读、不要按行号读。
  * </ul>
  *
- * <p><b>打开方式</b>：应用配置（{@code simos-app/src/main/resources/log4j2.xml}）把
- * {@value #ROOT_LOGGER_NAME} 默认设为 INFO；完整调试：
+ * <p><b>打开方式</b>：应用配置（{@code simos-app/src/main/resources/log4j2.xml}）把 {@value #ROOT_LOGGER_NAME}
+ * 默认设为 INFO；完整调试：
  *
  * <pre>{@code
  * ./mvnw ... -Dsimos.economy.logLevel=DEBUG        # 阶段池子/汇总
@@ -42,8 +41,7 @@ import org.slf4j.LoggerFactory;
  *            -Dsimos.economy.traceLevel=TRACE      # 再开逐笔
  * }</pre>
  *
- * <p><b>纪律</b>：不记密钥、不记载荷明文；经济日志只记稳定 id、数量、原因档、汇总值。日志本身不参与状态、不写磁盘
- * （由 log4j2 配置决定落点）。
+ * <p><b>纪律</b>：不记密钥、不记载荷明文；经济日志只记稳定 id、数量、原因档、汇总值。日志本身不参与状态、不写磁盘 （由 log4j2 配置决定落点）。
  */
 public final class EconomyLog {
 

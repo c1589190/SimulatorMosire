@@ -12,12 +12,13 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.codec.ActorCodec;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
-import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
+import io.mosire.simos.actor.spi.EnsureHouseholdAccountHandler;
 import io.mosire.simos.app.time.EconomyDayFeed;
 import io.mosire.simos.app.time.MarketReportFeed;
+import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.write.WorldgenInitializeTool;
 import io.mosire.simos.core.CoreConfig;
@@ -39,18 +40,22 @@ import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.codec.EconomyCodec;
-import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.spi.EconomyAddDemandHandler;
+import io.mosire.simos.economy.spi.EconomyRegisterGovernmentHandler;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.time.MarketReport;
 import io.mosire.simos.economy.time.ProductionLedger;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.spi.UpdateRegionHandler;
@@ -58,15 +63,18 @@ import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.spi.CreateArmyHandler;
 import io.mosire.simos.sd.spi.CreateNationHandler;
 import io.mosire.simos.sd.time.SdTimeParticipant;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.spi.CreateCityHandler;
+import io.mosire.simos.social.spi.CreateHouseholdHandler;
 import io.mosire.simos.social.spi.SeedGroupsHandler;
 import io.mosire.simos.social.spi.SetPopulationHandler;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.unit.move.TerrainMovementCost;
 import io.mosire.simos.unit.spi.CreateCommandChainHandler;
 import io.mosire.simos.unit.spi.CreateUnitHandler;
+import io.mosire.simos.unit.spi.SetGovernmentFormationHandler;
 import io.mosire.simos.unit.spi.UnitTimeParticipant;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -97,8 +105,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * ★★ <b>真实 12hex 生产运行时「1 tick 追踪」</b>（诊断/读账，不是新验收）。
  *
- * <p>它做三件事，全部走真实程序路径（{@code CoreSimos} + 真实 {@link WorldgenInitializeTool} production-runtime +
- * 真实 {@code AdvanceTime} 时间参与者），不手搭 {@code EconomyData}：
+ * <p>它做三件事，全部走真实程序路径（{@code CoreSimos} + 真实 {@link WorldgenInitializeTool} production-runtime + 真实
+ * {@code AdvanceTime} 时间参与者），不手搭 {@code EconomyData}：
  *
  * <ol>
  *   <li>把 {@code io.mosire.simos.economy.trace} 调到 DEBUG，跑 <b>0→1 一天</b>，让经济引擎自己按阶段打印"先干什么后干什么"；
@@ -154,8 +162,8 @@ class RealTwelveOneTickTraceTest {
   }
 
   /**
-   * 0→5 天：第 5 天是 {@code MARKET_RESTOCK_INTERVAL_DAYS} 的例行开市日 ⇒ 用真实日志验证市场路径
-   * （MARKET_ROUND_START / MARKET / MARKET_FILL / MARKET_SELLER_OUTCOME / MARKET_BUYER_OUTCOME / 信用成交/未成交）。
+   * 0→5 天：第 5 天是 {@code MARKET_RESTOCK_INTERVAL_DAYS} 的例行开市日 ⇒ 用真实日志验证市场路径 （MARKET_ROUND_START /
+   * MARKET / MARKET_FILL / MARKET_SELLER_OUTCOME / MARKET_BUYER_OUTCOME / 信用成交/未成交）。
    */
   @Test
   void realTwelveHexFiveTickMarketTrace() throws Exception {
@@ -264,10 +272,10 @@ class RealTwelveOneTickTraceTest {
   /**
    * ★★ 2026-10-07 GOV 非生产家户试点：0→1000 tick 真实路径。
    *
-   * <p>与 {@link #realTwelveHexThousandTickDebug()} 同一条 12hex 路径，只换
-   * {@code economyProfile=production-runtime-government}：seed 追加一个 population=0、slot=official 的 GOV 家户；
-   * 测试通过 GM 命令 {@code economy.AddDemand} 给它注入粮/布需求；周期开始日政府按
-   * {@link EconomySeeder#GOVERNMENT_SEIGNIORAGE_PER_CYCLE_MILLI} 自行铸币；现金不足的部分走市场信用形成政府债务。
+   * <p>与 {@link #realTwelveHexThousandTickDebug()} 同一条 12hex 路径，只换 {@code
+   * economyProfile=production-runtime-government}：seed 追加一个 population=0、slot=official 的 GOV 家户；
+   * 测试通过 GM 命令 {@code economy.AddDemand} 给它注入粮/布需求；周期开始日政府按 {@link
+   * EconomySeeder#GOVERNMENT_SEIGNIORAGE_PER_CYCLE_MILLI} 自行铸币；现金不足的部分走市场信用形成政府债务。
    */
   @Test
   void realTwelveHexGovernmentThousandTickDebug() throws Exception {
@@ -278,16 +286,32 @@ class RealTwelveOneTickTraceTest {
         shellAlikeCore(Files.createDirectories(tempDir.resolve("gov-thousand-tick-store")))) {
       EconomyDayFeed.clear(MAP_ID);
       MarketReportFeed.clear(MAP_ID);
-      long head = seed(core, tempDir, "production-runtime-government");
+      long head = seed(core, tempDir, "production-runtime");
+      // ★ 2026-10-09/控制方裁定：production-runtime-government 已并入唯一 profile production-runtime，
+      //   唯一 profile 的 seed 不再自带"带铸币政策的政府" ⇒ 本诊断用例用 GM 命令显式登记一个 GOV
+      //   （economy.RegisterGovernment + actor.EnsureHouseholdAccount），保持原试点语义。
       SimulationState seeded = core.replay(ref(head));
       EconomyData seededEconomy = CompactThreeNationsWorld.economyOf(seeded);
+      HexCoord govHex =
+          seededEconomy.classes().values().stream()
+              .findFirst()
+              .map(row -> row.view().hex())
+              .orElseThrow(() -> new IllegalStateException("seed 后没有任何家户行，找不到 GOV 落点"));
+      HouseholdId traceGovernmentHousehold = GovernmentHouseholds.of("u-gov-trace");
+      head = submitTraceGovernmentUnit(core, head, govHex);
+      head = submitTraceGovernmentFormation(core, head);
+      head = submitTraceGovernmentHousehold(core, head, traceGovernmentHousehold);
+      head = submitTraceGovernment(core, head, govHex);
+      head = submitTraceGovernmentAccount(core, head, traceGovernmentHousehold);
+      seeded = core.replay(ref(head));
+      seededEconomy = CompactThreeNationsWorld.economyOf(seeded);
       Government government =
           seededEconomy.governments().values().stream()
               .filter(candidate -> candidate.seignioragePerCycle() > 0L)
               .findFirst()
               .orElseThrow(() -> new IllegalStateException("GOV profile seed 没有带铸币政策的政府"));
       HouseholdId governmentHousehold = HouseholdActors.householdOf(government.treasury());
-      ClassRow governmentRow = seededEconomy.classes().get(governmentHousehold);
+      HouseholdEconomy governmentRow = seededEconomy.classes().get(governmentHousehold);
       if (governmentRow == null) {
         throw new IllegalStateException("GOV 家户行不存在: " + governmentHousehold);
       }
@@ -340,20 +364,17 @@ class RealTwelveOneTickTraceTest {
   // ── 状态/账本读法 ───────────────────────────────────────────────────────────────────
 
   private static void printState(
-      String tag,
-      SimulationState state,
-      EconomyData economy,
-      Optional<ProductionLedger> ledger) {
+      String tag, SimulationState state, EconomyData economy, Optional<ProductionLedger> ledger) {
     long population = 0L;
     Map<ProductionModeId, Long> modes = new LinkedHashMap<>();
     Map<String, Long> byHex = new TreeMap<>();
-    for (ClassRow row : economy.classes().values()) {
+    for (HouseholdEconomy row : economy.classes().values()) {
       population += row.population();
       byHex.merge(row.view().hex().q() + "," + row.view().hex().r(), row.population(), Long::sum);
     }
-    for (ClassStanding standing : economy.classStandings().values()) {
-      ClassPosition position = economy.classPositions().get(standing.currentPositionId());
-      ClassRow row = economy.classes().get(standing.householdId());
+    for (HouseholdClassMembership standing : economy.classStandings().values()) {
+      ProductionRole position = economy.classPositions().get(standing.currentPositionId());
+      HouseholdEconomy row = economy.classes().get(standing.householdId());
       if (position != null && row != null) {
         modes.merge(position.modeId(), row.population(), Long::sum);
       }
@@ -391,7 +412,9 @@ class RealTwelveOneTickTraceTest {
         new TreeMap<>(Comparator.comparing(CommodityId::value));
     for (Market market : economy.markets().values()) {
       for (Map.Entry<CommodityId, Long> price : market.prices().entrySet()) {
-        byCommodity.computeIfAbsent(price.getKey(), ignored -> new ArrayList<>()).add(price.getValue());
+        byCommodity
+            .computeIfAbsent(price.getKey(), ignored -> new ArrayList<>())
+            .add(price.getValue());
       }
     }
     List<String> lines = new ArrayList<>();
@@ -466,7 +489,8 @@ class RealTwelveOneTickTraceTest {
     int shown = 0;
     for (Transfer transfer : ledger.transfers()) {
       if (shown++ >= 60) {
-        System.out.println("[TRACE-1T][LEDGER][TRANSFER] ...（只打印前 60 笔，共 " + ledger.transfers().size() + " 笔）");
+        System.out.println(
+            "[TRACE-1T][LEDGER][TRANSFER] ...（只打印前 60 笔，共 " + ledger.transfers().size() + " 笔）");
         break;
       }
       System.out.println(
@@ -735,7 +759,8 @@ class RealTwelveOneTickTraceTest {
         continue;
       }
       if (shown++ >= 30) {
-        System.out.println("[TRACE-1T][FLOW] ...（只打印前 30 个有发生额的户；总户数 " + economy.flows().size() + "）");
+        System.out.println(
+            "[TRACE-1T][FLOW] ...（只打印前 30 个有发生额的户；总户数 " + economy.flows().size() + "）");
         break;
       }
       System.out.println(
@@ -854,9 +879,8 @@ class RealTwelveOneTickTraceTest {
             + fiscalIssue
             + " withdrawal="
             + withdrawal);
-    GoodsAccountKey accountKey =
-        new GoodsAccountKey(governmentHousehold);
-    GoodsAccount account = actor.accounts().get(accountKey);
+    HouseholdAccountKey accountKey = new HouseholdAccountKey(governmentHousehold);
+    HouseholdInventory account = actor.accounts().get(accountKey);
     if (account == null) {
       System.out.println("[TRACE-GOV][ACCOUNT] 缺失: " + accountKey);
     } else {
@@ -910,7 +934,7 @@ class RealTwelveOneTickTraceTest {
     Map<CommodityId, Long> frozenGoods = new LinkedHashMap<>();
     Map<CurrencyId, Long> frozenMoney = new LinkedHashMap<>();
     long accounts = 0L;
-    for (GoodsAccount account : actor.accounts().values()) {
+    for (HouseholdInventory account : actor.accounts().values()) {
       accounts++;
       for (Map.Entry<CurrencyId, Long> entry : account.money().entrySet()) {
         money.merge(entry.getKey(), entry.getValue(), Long::sum);
@@ -974,7 +998,13 @@ class RealTwelveOneTickTraceTest {
   }
 
   private static long seed(CoreSimos core, Path dir, String economyProfile) throws Exception {
-    core.bootstrapGenesis(RealTwelveHexWorld.state(MAP_ID));
+    SimulationState baseState = RealTwelveHexWorld.state(MAP_ID);
+    Map<String, Snapshot> modules = new LinkedHashMap<>(baseState.modules());
+    // ★ P2-C：建 GOV 编制的世界必须带空 gov 切片（advance 的行政读数写口要求它在场）。
+    modules.putIfAbsent(
+        "gov",
+        new GovSnapshot(baseState.meta().ref(), baseState.meta().timestamp(), GovState.empty()));
+    core.bootstrapGenesis(new SimulationState(baseState.meta(), modules, baseState.info()));
     Path config = RealTwelveHexWorld.writeConfig(dir);
     AgentTool tool = new WorldgenInitializeTool(core, INITIATOR, MAP_ID, config);
     Map<String, Object> args = new LinkedHashMap<>();
@@ -992,10 +1022,87 @@ class RealTwelveOneTickTraceTest {
   }
 
   /**
-   * ★ 用 GM 命令 {@code economy.AddDemand} 给 GOV 家户追加一条 {@code HOUSEHOLD} 范围、{@code RECURRING/TOTAL} 需求。
+   * ★ 用 GM 命令 {@code economy.AddDemand} 给 GOV 家户追加一条 {@code HOUSEHOLD} 范围、{@code RECURRING/TOTAL}
+   * 需求。
    *
    * <p>每次提交一条 revision，返回新的 head。需求落在 {@code EconomyData.demands} 后，市场订单路径与普通家户同一份实现。
    */
+  /** 诊断用：建一个普通单位作为 GOV 本体（advance 的闭环检查要求政府记录指向存在的 GOV 单位）。 */
+  private static long submitTraceGovernmentUnit(CoreSimos core, long head, HexCoord hex) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("id", "u-gov-trace");
+    payload.put("name", "诊断 GOV");
+    payload.put("position", Map.of("q", hex.q(), "r", hex.r()));
+    payload.put("equipment", List.of());
+    payload.put("speed", 1);
+    payload.put("mobilityPerMille", 1);
+    return submitTraceCommand(core, head, "unit.CreateUnit", payload);
+  }
+
+  /** 诊断用：给 GOV 单位立编制（域层会把 hh-gov-u-gov-trace 编入 Unit.households）。 */
+  private static long submitTraceGovernmentFormation(CoreSimos core, long head) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("unitId", "u-gov-trace");
+    payload.put("level", "PROVINCE");
+    return submitTraceCommand(core, head, "unit.SetGovFormation", payload);
+  }
+
+  /** 诊断用：在 Social 侧建出政府家户并挂到 GOV 单位（UNIT 位置）。 */
+  private static long submitTraceGovernmentHousehold(
+      CoreSimos core, long head, HouseholdId household) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("householdId", household.value());
+    payload.put("location", Map.of("type", "UNIT", "unitId", "u-gov-trace"));
+    payload.put("profile", Map.of("name", "诊断 GOV 户"));
+    payload.put("reason", "trace-gov");
+    return submitTraceCommand(core, head, "social.CreateHousehold", payload);
+  }
+
+  /** 诊断用：登记一个带铸币政策的 GOV（旧 production-runtime-government 的核心语义）。 */
+  private static long submitTraceGovernment(CoreSimos core, long head, HexCoord hex) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("govUnitId", "u-gov-trace");
+    payload.put("nationRef", "trace-government");
+    payload.put("q", hex.q());
+    payload.put("r", hex.r());
+    payload.put("population", 0L);
+    payload.put("laborMilli", 0L);
+    payload.put("participationPerMille", 0);
+    payload.put("issuable", List.of("silver"));
+    payload.put("seignioragePerCycle", EconomySeeder.GOVERNMENT_SEIGNIORAGE_PER_CYCLE_MILLI);
+    payload.put("debtIssuePerCycle", 0L);
+    payload.put("reason", "trace-gov");
+    return submitTraceCommand(core, head, "economy.RegisterGovernment", payload);
+  }
+
+  /** 诊断用：给 GOV 家户建 actor 零余额账户（否则推进的家户账闭包检查 fail-closed）。 */
+  private static long submitTraceGovernmentAccount(
+      CoreSimos core, long head, HouseholdId household) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("household", household.value());
+    payload.put("reason", "trace-gov");
+    return submitTraceCommand(core, head, "actor.EnsureHouseholdAccount", payload);
+  }
+
+  private static long submitTraceCommand(
+      CoreSimos core, long head, String type, Map<String, Object> payload) {
+    String commandId = "trace-" + type;
+    CommandResult result =
+        core.submit(
+            new CommandEnvelope(
+                commandId,
+                commandId,
+                INITIATOR,
+                MAIN,
+                new RevisionId(head),
+                type,
+                ToolSupport.json(payload)));
+    if (!(result instanceof CommandResult.Committed)) {
+      throw new IllegalStateException("诊断 GOV 命令未提交: type=" + type + " result=" + result);
+    }
+    return head + 1L;
+  }
+
   private static long addGovernmentDemand(
       CoreSimos core,
       long head,
@@ -1024,8 +1131,7 @@ class RealTwelveOneTickTraceTest {
                 "economy.AddDemand",
                 ToolSupport.json(payload)));
     if (!(result instanceof CommandResult.Committed)) {
-      throw new IllegalStateException(
-          "GOV 需求命令未提交: commodity=" + commodity + " result=" + result);
+      throw new IllegalStateException("GOV 需求命令未提交: commodity=" + commodity + " result=" + result);
     }
     return head + 1L;
   }
@@ -1041,7 +1147,8 @@ class RealTwelveOneTickTraceTest {
                 new RevisionId(head),
                 new TimeRange(SimosTimestamp.of(from), Optional.of(SimosTimestamp.of(to)))));
     if (!(result instanceof CommandResult.Committed)) {
-      throw new IllegalStateException("AdvanceTime 未提交: " + from + " -> " + to + " result=" + result);
+      throw new IllegalStateException(
+          "AdvanceTime 未提交: " + from + " -> " + to + " result=" + result);
     }
     return head + 1L;
   }
@@ -1059,17 +1166,22 @@ class RealTwelveOneTickTraceTest {
             new UnitCodec(),
             new SdCodec(),
             new EconomyCodec(),
-            new ActorCodec())) {
+            new ActorCodec(),
+            new GovCodec())) {
       core.register(codec);
     }
     for (CommandHandler handler :
         List.of(
             new SetPopulationHandler(),
             new CreateCityHandler(),
+            new CreateHouseholdHandler(),
+            new SetGovernmentFormationHandler(),
             new SeedGroupsHandler(),
             new EconomySeedHandler(),
             new EconomyAddDemandHandler(),
             new ActorSeedHandler(),
+            new EconomyRegisterGovernmentHandler(),
+            new EnsureHouseholdAccountHandler(),
             new UpdateRegionHandler(),
             new CreateNationHandler(),
             new CreateUnitHandler(),
@@ -1077,8 +1189,7 @@ class RealTwelveOneTickTraceTest {
             new CreateArmyHandler())) {
       core.register(handler);
     }
-    core.register(
-        new UnitTimeParticipant(TerrainMovementCost.INSTANCE, RealTwelveHexWorld.MAP_ID));
+    core.register(new UnitTimeParticipant(TerrainMovementCost.INSTANCE, RealTwelveHexWorld.MAP_ID));
     core.register(new SdTimeParticipant(RealTwelveHexWorld.MAP_ID));
     core.register(new PopulationEconomyTimeParticipant(RealTwelveHexWorld.MAP_ID));
     return core;

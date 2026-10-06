@@ -6,9 +6,9 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.api.population.LotMigration;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import java.util.LinkedHashMap;
@@ -122,8 +122,7 @@ public final class EconomyDayStepper implements AutoCloseable {
     this.plantingDrawsFirst = plantingDrawsFirst;
     this.famineMortalityPerMille = famineMortalityPerMille;
     this.parallelism = EconomyParallelism.requireNonNull(parallelism);
-    this.profitCycle =
-        base.modes().isEmpty() ? null : new EnterpriseProfitBook.CycleAccumulator();
+    this.profitCycle = base.modes().isEmpty() ? null : new EnterpriseProfitBook.CycleAccumulator();
   }
 
   /** ★ R2：本条会话的并行度（只读；见类注的"1 线程不是另一套实现"）。 */
@@ -132,8 +131,8 @@ public final class EconomyDayStepper implements AutoCloseable {
   }
 
   /**
-   * ★ 当前状态快照（**会跑一次全量守卫并构造 {@link EconomyData}**）—— 只服务读口/测试；日循环内部请走 {@link #householdEconomies()} 与 {@link
-   * #flows()}（P1.5：不在日循环里构造状态）。
+   * ★ 当前状态快照（**会跑一次全量守卫并构造 {@link EconomyData}**）—— 只服务读口/测试；日循环内部请走 {@link #householdEconomies()}
+   * 与 {@link #flows()}（P1.5：不在日循环里构造状态）。
    */
   public EconomyData data() {
     return session.preview();
@@ -257,8 +256,8 @@ public final class EconomyDayStepper implements AutoCloseable {
    * ★★ <b>结算一天</b>（{@code day} 是绝对世界日）：与 {@code EconomySettlement.settleOneDay} 是同一条实现， 并交回当天的
    * {@link ProductionLedger}（产出的产权条目交给看得见 actor 的那一侧落账）。
    *
-   * <p>★ <b>调用契约（2026-10-09 家户结构修复 Batch 3 起）</b>：本日应收的调用方必须先在当天调用 {@link
-   * #updateNaturalNeeds(Map)} 注入逐户需求 —— 消费步只读它，不再按 {@code population} 现算。
+   * <p>★ <b>调用契约（2026-10-09 家户结构修复 Batch 3 起）</b>：本日应收的调用方必须先在当天调用 {@link #updateNaturalNeeds(Map)}
+   * 注入逐户需求 —— 消费步只读它，不再按 {@code population} 现算。
    */
   public ProductionLedger step(long day) {
     if (day < 1L) {
@@ -303,13 +302,11 @@ public final class EconomyDayStepper implements AutoCloseable {
   }
 
   /**
-   * ★★ <b>2026-10-09 家户结构修复 Batch 3：注入当日逐户逐商品自然需求</b> —— 由 app 从 Social 逐户展开后传入；
-   * 本方法把它写进 {@code HouseholdEconomy.naturalNeeds}（当日物化读模型），日结算消费步直接读它，不再按
-   * {@code population} 另算一份。
+   * ★★ <b>2026-10-09 家户结构修复 Batch 3：注入当日逐户逐商品自然需求</b> —— 由 app 从 Social 逐户展开后传入； 本方法把它写进 {@code
+   * HouseholdEconomy.naturalNeeds}（当日物化读模型），日结算消费步直接读它，不再按 {@code population} 另算一份。
    *
-   * <p>★ 写口语义与拒绝口径见 {@link EconomySettlement#applyNaturalNeedsInto(EconomySession,
-   * Map)}：入参 key 缺经济行 ⇒ 具名拒；空表 = 无需求；本方法**不**累加 {@code cycleNaturalNeedMilli}
-   * （周期累加在消费步按粮需求执行一次）。
+   * <p>★ 写口语义与拒绝口径见 {@link EconomySettlement#applyNaturalNeedsInto(EconomySession, Map)}：入参 key
+   * 缺经济行 ⇒ 具名拒；空表 = 无需求；本方法**不**累加 {@code cycleNaturalNeedMilli} （周期累加在消费步按粮需求执行一次）。
    */
   public void updateNaturalNeeds(Map<HouseholdId, Map<CommodityId, Long>> needsByHousehold) {
     EconomySettlement.applyNaturalNeedsInto(session, needsByHousehold);
@@ -325,8 +322,8 @@ public final class EconomyDayStepper implements AutoCloseable {
   }
 
   /**
-   * ★★ <b>2026-10-09 每 tick 生死 Batch B：把 Social 结算出的逐家户净人口变化落到经济行</b>（{@code
-   * population += delta}）——委托 {@link EconomySettlement#applyHouseholdPopulationDeltasInto(EconomySession,
+   * ★★ <b>2026-10-09 每 tick 生死 Batch B：把 Social 结算出的逐家户净人口变化落到经济行</b>（{@code population +=
+   * delta}）——委托 {@link EconomySettlement#applyHouseholdPopulationDeltasInto(EconomySession,
    * Map)}；键缺行/结果为负都具名拒，不静默跳过。
    *
    * <p>★★ <b>调用方次序（app 日循环）</b>：先 {@link #updateComposition(Map)} + {@link
@@ -363,9 +360,9 @@ public final class EconomyDayStepper implements AutoCloseable {
   /**
    * ★★ <b>P0（2026-10-10）：本会话已记但尚未被 App 取走的迁移人口 outbox</b>（只读视图；保序 = move 执行序）。
    *
-   * <p>由 {@link ModeMigrationSettlement} 在每笔 move 成功落账后追加；App 的
-   * {@code PopulationEconomyTimeParticipant} 在 {@code step(day)} 之后用
-   * {@link #drainPendingPopulationTransfers()} 取走并翻译成 Social 工单。
+   * <p>由 {@link ModeMigrationSettlement} 在每笔 move 成功落账后追加；App 的 {@code
+   * PopulationEconomyTimeParticipant} 在 {@code step(day)} 之后用 {@link
+   * #drainPendingPopulationTransfers()} 取走并翻译成 Social 工单。
    */
   public List<EconomyPopulationTransfer> pendingPopulationTransfers() {
     return session.pendingPopulationTransfers();

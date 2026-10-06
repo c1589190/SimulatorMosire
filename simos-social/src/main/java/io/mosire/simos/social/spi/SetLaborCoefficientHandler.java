@@ -29,9 +29,10 @@ import java.util.Objects;
  * <p>★★ <b>语义</b>（与 {@link SocialProvisioningEdits} 同源）：
  *
  * <ul>
- *   <li>{@code householdId} 缺席 = 改<b>全局默认</b>（必须给 {@code milliHoursPerTick}）；给了 = 改该<b>家户覆盖</b>（家户必须存在）；
- *   <li>{@code milliHoursPerTick} 给了 = upsert 该 {@code (年龄档, 性别)}；缺席 = 删除该家户覆盖键并回落全局
- *       （只允许 householdId 在场；全局默认不允许删键 ⇒ 具名拒）；
+ *   <li>{@code householdId} 缺席 = 改<b>全局默认</b>（必须给 {@code milliHoursPerTick}）；给了 =
+ *       改该<b>家户覆盖</b>（家户必须存在）；
+ *   <li>{@code milliHoursPerTick} 给了 = upsert 该 {@code (年龄档, 性别)}；缺席 = 删除该家户覆盖键并回落全局 （只允许
+ *       householdId 在场；全局默认不允许删键 ⇒ 具名拒）；
  *   <li>结果只经 {@link SocialData#withProvisioning} 写回，产出 {@link SocialChangeSet}；改/清各 INFO 一条带
  *       scope/household/年龄档/性别/milliHoursPerTick 的事件，失败一律 {@link HandlerOutcome.Rejected} 带中文原因。
  * </ul>
@@ -39,8 +40,8 @@ import java.util.Objects;
  * <p>★★ <b>GM-only</b>（实现 {@link GmOnlyCommand}）：仍注册到 Core、仍进 {@code commandTargets}、GM 直接提交与窄工具
  * 照常可用；但不得嵌入决策人令，也不进决策人目录——劳动系数是全世界/全户的调参面。
  *
- * <p>★ <b>旧档作废、不迁移</b>（用户 2026-10-09 裁定"一切从新"）：本命令只认带第 6 组件 {@code provisioning} 的新档；
- * 旧档缺该组件在 {@link SocialData} / {@link SocialChangeSet} 构造期即具名拒，本命令不补默认值、不做双读。
+ * <p>★ <b>旧档作废、不迁移</b>（用户 2026-10-09 裁定"一切从新"）：本命令只认带第 6 组件 {@code provisioning} 的新档； 旧档缺该组件在
+ * {@link SocialData} / {@link SocialChangeSet} 构造期即具名拒，本命令不补默认值、不做双读。
  */
 public final class SetLaborCoefficientHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
@@ -94,12 +95,13 @@ public final class SetLaborCoefficientHandler
         return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
       }
       SocialData next =
-          SocialProvisioningEdits.setLabor(
-              base, householdId, ageBracket, sex, milliHoursPerTick);
+          SocialProvisioningEdits.setLabor(base, householdId, ageBracket, sex, milliHoursPerTick);
       LaborCoefficient effective =
           householdId == null
               ? next.provisioning().globalLabor(ageBracket, sex).orElse(null)
-              : next.provisioning().householdLaborOverride(householdId, ageBracket, sex).orElse(null);
+              : next.provisioning()
+                  .householdLaborOverride(householdId, ageBracket, sex)
+                  .orElse(null);
       SocialLog.provisioning()
           .info(
               "event=SOCIAL_LABOR_COEFFICIENT_SET "

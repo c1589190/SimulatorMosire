@@ -33,15 +33,13 @@ import java.util.function.Function;
  * populationEvents} 的键是事件 id 的裸字符串（恒等还原）。
  *
  * <p>★★ <b>三个单值组件 {@code provisioning} / {@code vitalRates} / {@code vitalRemainders} 照 {@code
- * EconomyChangeSet.meta} 的"单键表"投影法</b>：它们各是一个<b>单值</b>组件（后两者本身是 record，不是 map），
- * 若为它们另写"单值差异"机制，就有了与 {@link FieldDelta} 分叉的第二/三份实现。故各投影成"恰一行的表"（键固定为
- * {@link #PROVISIONING_KEY} / {@link #VITAL_RATES_KEY} / {@link #VITAL_REMAINDERS_KEY}），diff/rebuild
- * 全走既有机制，再投影回单值。语义是纯的：{@code 旧值 → 新值} = {@code Upsert}、{@code 不变} = {@code Unchanged}；
- * 本项目不存在"把某个恒在组件删掉"的合法状态，故不产生 {@code Remove}。
+ * EconomyChangeSet.meta} 的"单键表"投影法</b>：它们各是一个<b>单值</b>组件（后两者本身是 record，不是 map）， 若为它们另写"单值差异"机制，就有了与
+ * {@link FieldDelta} 分叉的第二/三份实现。故各投影成"恰一行的表"（键固定为 {@link #PROVISIONING_KEY} / {@link
+ * #VITAL_RATES_KEY} / {@link #VITAL_REMAINDERS_KEY}），diff/rebuild 全走既有机制，再投影回单值。语义是纯的：{@code 旧值 →
+ * 新值} = {@code Upsert}、{@code 不变} = {@code Unchanged}； 本项目不存在"把某个恒在组件删掉"的合法状态，故不产生 {@code Remove}。
  *
- * <p>★★ <b>旧档不兼容</b>（用户 2026-10-09 裁定"一切从新、旧档作废、不做迁移/双读"）：其余五个组件的旧档缺键仍按既有口径读成
- * {@code Unchanged}（那是更早变更集的既有语义，本批不动），但第 6/7/8 三个组件缺键 ⇒ 构造期具名拒——旧变更集读不回是
- * 可接受结果，不给它们补默认值。
+ * <p>★★ <b>旧档不兼容</b>（用户 2026-10-09 裁定"一切从新、旧档作废、不做迁移/双读"）：其余五个组件的旧档缺键仍按既有口径读成 {@code
+ * Unchanged}（那是更早变更集的既有语义，本批不动），但第 6/7/8 三个组件缺键 ⇒ 构造期具名拒——旧变更集读不回是 可接受结果，不给它们补默认值。
  */
 public record SocialChangeSet(
     FieldDelta<PopulationSeries> populations,
@@ -84,8 +82,7 @@ public record SocialChangeSet(
           "provisioning", "SocialChangeSet.provisioning 不得为 null（旧档缺此组件已作废，不做缺省兜底）");
     }
     if (vitalRates == null) {
-      rejectMissingComponent(
-          "vitalRates", "SocialChangeSet.vitalRates 不得为 null（旧档缺此组件已作废，不做缺省兜底）");
+      rejectMissingComponent("vitalRates", "SocialChangeSet.vitalRates 不得为 null（旧档缺此组件已作废，不做缺省兜底）");
     }
     if (vitalRemainders == null) {
       rejectMissingComponent(
@@ -182,8 +179,7 @@ public record SocialChangeSet(
       Map<String, T> table, String key, String label, String rejectEvent) {
     T value = table.get(key);
     if (value == null) {
-      String message =
-          "SocialChangeSet.apply 后 " + label + " 键缺席（坏数据；旧档已作废，不做缺省兜底）";
+      String message = "SocialChangeSet.apply 后 " + label + " 键缺席（坏数据；旧档已作废，不做缺省兜底）";
       SocialLog.population().error("event={} reason={}", rejectEvent, message);
       throw new IllegalArgumentException(message);
     }

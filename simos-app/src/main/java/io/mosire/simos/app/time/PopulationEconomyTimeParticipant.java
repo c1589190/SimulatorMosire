@@ -18,8 +18,8 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.HexCrisisSignal;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.time.AccountPartitionKey;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.EconomyDayStepper;
@@ -76,15 +76,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * ★★ **人口—经济协调器**（R4）：**唯一同时看得见 {@code social} 与 {@code economy} 的推进参与者** —— 于是"人"第一次真的随时间变：
- * **日初每 tick 生死结算（Social 唯一权威）+ 经济结算一天 + 逐户净人口变化同步到经济行**。
+ * ★★ **人口—经济协调器**（R4）：**唯一同时看得见 {@code social} 与 {@code economy} 的推进参与者** —— 于是"人"第一次真的随时间变： **日初每
+ * tick 生死结算（Social 唯一权威）+ 经济结算一天 + 逐户净人口变化同步到经济行**。
  *
  * <p>★★ **为什么必须有它**（不是"图省事"，是结构上只能如此）：
  *
  * <ol>
- *   <li>**出生/死亡只算在 Social 那一侧**（年龄/性别/率表都是 {@code Household} + {@code PopulationGroup}
- *       的属性，见 {@code HouseholdBook.settleOneTick}）；**而"经济行人口"只住在 economy 那一侧** ⇒ 两边必须在一个参与者里按
- *       "先 Social 结算、再刷新经济投影、最后把 delta 加到经济行"的次序接线；
+ *   <li>**出生/死亡只算在 Social 那一侧**（年龄/性别/率表都是 {@code Household} + {@code PopulationGroup} 的属性，见 {@code
+ *       HouseholdBook.settleOneTick}）；**而"经济行人口"只住在 economy 那一侧** ⇒ 两边必须在一个参与者里按 "先 Social
+ *       结算、再刷新经济投影、最后把 delta 加到经济行"的次序接线；
  *   <li>**§十一 等价性**（一次推 N 天 == N 次单日）要求"逐日"这条语义落在**同一个参与者内部** —— 若让两个参与者各自读对方的**基态**，一次推 365
  *       天时社会侧只能看到第 0 天的经济状态， 而 365 次单日推进每天都能看到前一天的 ⇒ **两条路径必然不等价**；
  *   <li>跨切片写要求"同一模块只能有一个写者"（{@code TimeProposalResolver} 的写-写检查）⇒ 同时写这两片的参与者**只能有一份**。
@@ -106,15 +106,16 @@ import org.slf4j.LoggerFactory;
  *     composition / laborBudgets / naturalNeeds（与②同属本次 advance 的同一条 revision）
  * </pre>
  *
- * <p>★ 旧口径的"日末生理压力 + 每 30 天月度出生/死亡"已在 Batch B 整体删除；出生/死亡不再进
- * {@code FlowRow.births/deaths} 的逐户流水（本批只同步行人口，见报告"未完成/风险"）。
+ * <p>★ 旧口径的"日末生理压力 + 每 30 天月度出生/死亡"已在 Batch B 整体删除；出生/死亡不再进 {@code FlowRow.births/deaths}
+ * 的逐户流水（本批只同步行人口，见报告"未完成/风险"）。
  *
  * <p>★★ <b>H4：两份副本（商品 + 货币）按同一顺序收尾</b>：<b>载入</b>（{@link OwnershipBooks#loadHouseholdGoods} / {@link
  * OwnershipBooks#loadHouseholdMoney}）→ step（两者都由 {@code EconomyDayStepper} 就地更新）→ 条目落账 （{@link
- * OwnershipBooks#apply}）→ **两份副本按绝对值落回**（先商品、后货币；顺序不能反，因为它们写的是同一本 {@code HouseholdInventory} 的两个余额表）。
+ * OwnershipBooks#apply}）→ **两份副本按绝对值落回**（先商品、后货币；顺序不能反，因为它们写的是同一本 {@code HouseholdInventory}
+ * 的两个余额表）。
  *
- * <p>★★ **它是"人口守恒"的落点**：出生与死亡在 Social 侧算出（唯一权威），本参与者把逐户净变化同步到经济行 ⇒
- * {@code Σ经济行新人口 == Σ经济行旧人口 + 出生 − 死亡} 逐值可核。
+ * <p>★★ **它是"人口守恒"的落点**：出生与死亡在 Social 侧算出（唯一权威），本参与者把逐户净变化同步到经济行 ⇒ {@code Σ经济行新人口 == Σ经济行旧人口 + 出生 −
+ * 死亡} 逐值可核。
  *
  * <p>★ **未激活/无上界**：经济未激活（{@code meta} 空）⇒ **两侧都交不变变更集**（没有生活资料信号 ⇒ 人口不动， 这正是"世界还没播种"该有的样子）；{@code
  * range.to} 缺省 ⇒ 同样交不变变更集、不抛（该推进随后必被 Core 拒）。
@@ -214,7 +215,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       //   市场参与 / 生产组织 / 贷款等 economy 内部一律读 HouseholdEconomy.view().hex()，本对齐让它们无需 new dependency
       //   就跟随 unit.PlaceAt / 行军 / 迁都。HEX 家户原样不动。
       HouseholdPositionResolver.Alignment alignment =
-          HouseholdPositionResolver.alignHouseholdEconomyViews(economyBase, social, units, range.from());
+          HouseholdPositionResolver.alignHouseholdEconomyViews(
+              economyBase, social, units, range.from());
       economyAligned = alignment.data();
       if (alignment.moved() > 0) {
         LOG.info(
@@ -234,7 +236,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           householdEconomyProjection.unresolved().get(0));
     }
     EconomyData economy = householdEconomyProjection.data();
-    // ★★ P2-C §13.7：经济已激活 + 存在 GOV 单位时，推进入口把"GovernmentFormation 政府家户 ↔ HouseholdEconomy ↔ 政府记录 ↔ 国库账户"
+    // ★★ P2-C §13.7：经济已激活 + 存在 GOV 单位时，推进入口把"GovernmentFormation 政府家户 ↔ HouseholdEconomy ↔ 政府记录 ↔
+    // 国库账户"
     //   这条闭环判死 —— 缺任何一边都具名失败，不把"没有政府记录"读成"没有政府"。
     if (economy.meta().isPresent() && units != null) {
       GovernmentHouseholdWiring.requireConsistent(economy, social, units);
@@ -432,15 +435,22 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                 .info(
                     LogEvent.of(
                         "MODE_MIGRATION_BRIDGED",
-                        "mapId", mapId,
-                        "day", day,
-                        "transfers", populationTransfers.size(),
-                        "migratedPopulation", migratedPopulation,
-                        "createdTargets", createdTargets,
-                        "socialPopulationBefore", socialPopulationBefore,
-                        "socialPopulationAfter", totalSocialPopulation(currentSocial),
+                        "mapId",
+                        mapId,
+                        "day",
+                        day,
+                        "transfers",
+                        populationTransfers.size(),
+                        "migratedPopulation",
+                        migratedPopulation,
+                        "createdTargets",
+                        createdTargets,
+                        "socialPopulationBefore",
+                        socialPopulationBefore,
+                        "socialPopulationAfter",
+                        totalSocialPopulation(currentSocial),
                         "economyPopulationAfter",
-                            totalEconomyPopulation(stepper.householdEconomies())));
+                        totalEconomyPopulation(stepper.householdEconomies())));
           }
           // ★★ P2-D：日结算之后的税 / 行政俸禄 —— **同一账户会话、同一个日循环**（不另起 participant，避免 gov/actor 同名模块冲突）。
           //   顺序沿用阶段 11b：先税（收入侧）、后 GovDaily（支出侧）⇒ 当天税可先供当天俸禄；两者都写账户会话，
@@ -484,7 +494,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           }
           // ★★ P4a：通用周期家户库存扣增 —— 在日税的**收入侧**与 GovDaily 的**支出侧**之后、市场报告/日末之前执行。
           //   规则表来自本推进的只读基态（命令只写规则、不写账户）；执行器按绝对世界日无状态到期、逐腿部分支付，
-          //   与 JurisdictionDailyTax/GovernmentUpkeepOracle 共用同一个 AccountSession 与 TAX_AND_UPKEEP 阶段。
+          //   与 JurisdictionDailyTax/GovernmentUpkeepOracle 共用同一个 AccountSession 与 TAX_AND_UPKEEP
+          // 阶段。
           //   ★ 没有到期规则时执行器完全 no-op（不打日志、不动账户）。
           // ★★ P4b：军俸政策 → P4a 规则的每日派生（不把政策写进 EconomyData；政策是唯一权威，规则是当日现算的瞬态件）。
           //   次序：日税（收入）→ GovDaily（支出）→ 军俸派生 + 持久/瞬态合并执行；执行器同一条部分支付路径，没有第二套扣账。
@@ -707,7 +718,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     LinkedHashMap<UnitId, GovOfficeState> offices = new LinkedHashMap<>(base.offices());
     List<UnitId> missing = new ArrayList<>();
     for (Unit unit : units.units().values()) {
-      if (unit.module().orElse(null) instanceof GovernmentFormation && !offices.containsKey(unit.id())) {
+      if (unit.module().orElse(null) instanceof GovernmentFormation
+          && !offices.containsKey(unit.id())) {
         missing.add(unit.id());
       }
     }
@@ -724,9 +736,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
   /**
    * ★★ <b>算当日 GOV 效率表</b>（单位 → efficiency‰），供辖区日税查表。
    *
-   * <p>口径：{@code govState.offices()} 里每个 office 先取单位上的 {@link GovernmentFormation}（没有 ⇒ 不进表 = 税侧整单位跳过）； 再用
-   * {@link GovDemand#of} + {@link GovEfficiency#of} 现算。★ 检查该单位管辖的每个 Region 是否都在 map 里， 缺的累积进 {@code
-   * missingRegions}（只累积、不抛；调用方整轮汇总成一条具名 WARN）。
+   * <p>口径：{@code govState.offices()} 里每个 office 先取单位上的 {@link GovernmentFormation}（没有 ⇒ 不进表 =
+   * 税侧整单位跳过）； 再用 {@link GovDemand#of} + {@link GovEfficiency#of} 现算。★ 检查该单位管辖的每个 Region 是否都在 map 里，
+   * 缺的累积进 {@code missingRegions}（只累积、不抛；调用方整轮汇总成一条具名 WARN）。
    *
    * @param missingRegions 跨日累积的 {@code unit=…,region=…} 明细（调用方只在整轮结束时汇总 WARN 一次）
    */
@@ -850,8 +862,8 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
   // ── P0 迁移桥的净 delta / 对账读数（纯函数，不写状态）─────────────────────────────────────
 
   /**
-   * ★★ <b>P0：迁移 outbox → 逐户净人口 delta</b>（源 {@code -population}、目标 {@code +population}，同户出现多次
-   * 则 Σ 合并；结果为 0 的家户不入表——{@code applyHouseholdPopulationDeltasInto} 拒绝 0 delta）。
+   * ★★ <b>P0：迁移 outbox → 逐户净人口 delta</b>（源 {@code -population}、目标 {@code +population}，同户出现多次 则 Σ
+   * 合并；结果为 0 的家户不入表——{@code applyHouseholdPopulationDeltasInto} 拒绝 0 delta）。
    */
   private static Map<HouseholdId, Long> netPopulationDeltas(
       List<EconomyPopulationTransfer> transfers) {
@@ -901,9 +913,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
   }
 
   /**
-   * ★★ <b>2026-10-09 家户结构修复 Batch 3：Social 逐户展开当日劳动预算</b>（毫小时/tick；只读投影）——
-   * 唯一实现 = {@link SocialData#householdLaborMilli(HouseholdId, long, CalendarClock)}（逐成员份额 ×
-   * provisioning 劳动系数，家户覆盖优先、全局默认兜底）。经济侧只收结果，不再自己查表。
+   * ★★ <b>2026-10-09 家户结构修复 Batch 3：Social 逐户展开当日劳动预算</b>（毫小时/tick；只读投影）—— 唯一实现 = {@link
+   * SocialData#householdLaborMilli(HouseholdId, long, CalendarClock)}（逐成员份额 × provisioning
+   * 劳动系数，家户覆盖优先、全局默认兜底）。经济侧只收结果，不再自己查表。
    */
   private Map<HouseholdId, Long> laborBudgetsOf(SocialData social, long day) {
     CalendarClock clock = CalendarClock.julianDefault();
@@ -926,10 +938,9 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
   }
 
   /**
-   * ★★ <b>2026-10-09 家户结构修复 Batch 3：Social 逐户展开当日逐商品自然需求</b>（毫单位/日；只读投影）——
-   * 唯一实现 = {@link SocialData#householdNaturalNeeds(HouseholdId, long, CalendarClock)}（逐成员求和、粮 120
-   * 天家户层一次取整、布历年 {@code YearFraction}）；经济侧收到后由
-   * {@link EconomyDayStepper#updateNaturalNeeds(Map)} 原样注入。
+   * ★★ <b>2026-10-09 家户结构修复 Batch 3：Social 逐户展开当日逐商品自然需求</b>（毫单位/日；只读投影）—— 唯一实现 = {@link
+   * SocialData#householdNaturalNeeds(HouseholdId, long, CalendarClock)}（逐成员求和、粮 120 天家户层一次取整、布历年
+   * {@code YearFraction}）；经济侧收到后由 {@link EconomyDayStepper#updateNaturalNeeds(Map)} 原样注入。
    *
    * <p>★ 空家户返回空需求（合法的"没有人"）；坏数据（家户/批次缺失、口径冲突、系数查不到）由 Social 侧具名拒并带 ERROR 日志。
    */

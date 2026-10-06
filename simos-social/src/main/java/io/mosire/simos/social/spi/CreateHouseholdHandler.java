@@ -28,10 +28,10 @@ import java.util.Objects;
  *  "reason":"创世播种"}
  * }</pre>
  *
- * <p>★ <b>语义</b>：只调 {@link HouseholdBook#create}（家户创建的唯一落点）并把 {@code base → next} 包成
- * {@link SocialChangeSet}；id 已存在、profile 形状不符、vitalRates 重复/负数都由域层具名拒（边界只折 {@code Rejected}）。
- * ★ 家户位置可以是 {@code HEX} 或 {@code UNIT}；{@code UNIT} 的 unit 存在性与 unit 侧列表由 app 组合工具同批保证（social
- * 域不认识 unit，铁律 3）。
+ * <p>★ <b>语义</b>：只调 {@link HouseholdBook#create}（家户创建的唯一落点）并把 {@code base → next} 包成 {@link
+ * SocialChangeSet}；id 已存在、profile 形状不符、vitalRates 重复/负数都由域层具名拒（边界只折 {@code Rejected}）。 ★ 家户位置可以是
+ * {@code HEX} 或 {@code UNIT}；{@code UNIT} 的 unit 存在性与 unit 侧列表由 app 组合工具同批保证（social 域不认识 unit，铁律
+ * 3）。
  *
  * <p>★ <b>载荷 {@code reason}</b>：{@link HouseholdBook#create} 没有 reason 入参（创建事件固定），本命令仍要求非空白 ——
  * 与其余家户命令同一口径，避免"有的命令有原因、有的没有"。
@@ -45,9 +45,7 @@ public final class CreateHouseholdHandler implements CommandHandler, CommandTarg
   /** 命令类型（唯一拼写点：Shell 注册、组合工具与 catalog 都从这里取/对齐）。 */
   public static final String TYPE = "social.CreateHousehold";
 
-  /**
-   * 创建型目标：按载荷 {@code location} 判（HEX ⇒ social / UNIT ⇒ unit）。家户此刻还不存在，故不查 SocialData。
-   */
+  /** 创建型目标：按载荷 {@code location} 判（HEX ⇒ social / UNIT ⇒ unit）。家户此刻还不存在，故不查 SocialData。 */
   @Override
   public List<CommandTarget> targetResources(
       String commandType, SimulationState state, String mapId, String payloadJson) {

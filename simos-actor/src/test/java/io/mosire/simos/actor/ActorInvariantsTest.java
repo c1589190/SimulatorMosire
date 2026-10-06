@@ -6,8 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.Actor;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Collections;
@@ -26,9 +26,9 @@ import org.junit.jupiter.api.Test;
  * <p>★★ <b>为什么这些规则必须各有一条断言</b>（Task 3 评审的 Important 教训）：B 段曾出现"7 条校验里有 3 条零测试、 零变异自证 ——
  * 删掉照样全绿"。<b>零覆盖的分支就是装饰</b>，故本类逐条钉住。
  *
- * <p>★ <b>2026-09-27 裁定 S3</b>：产权表（{@code holdings}）整块退役 ⇒ 本类里 holdings 那一组五条随之删除。
- * ★ <b>P2-A §13.3（2026-10-09）</b>：账户主体统一为家户、键去掉 {@code HexCoord}；庄园/作坊 kind 退役 ⇒ 夹具里的
- * {@code ESTATE}/{@code WORKSHOP} 换成现存词表（UNIT/ORGANIZATION/GOVERNMENT/HOUSEHOLD），账户夹具换成 {@link HouseholdId}。
+ * <p>★ <b>2026-09-27 裁定 S3</b>：产权表（{@code holdings}）整块退役 ⇒ 本类里 holdings 那一组五条随之删除。 ★ <b>P2-A
+ * §13.3（2026-10-09）</b>：账户主体统一为家户、键去掉 {@code HexCoord}；庄园/作坊 kind 退役 ⇒ 夹具里的 {@code ESTATE}/{@code
+ * WORKSHOP} 换成现存词表（UNIT/ORGANIZATION/GOVERNMENT/HOUSEHOLD），账户夹具换成 {@link HouseholdId}。
  * <b>五条不变量的判据本身（跨表同键 / null / 保序不可变 / 防御性拷贝 / 缺键=空表）一字未动。</b>
  */
 class ActorInvariantsTest {
@@ -46,7 +46,7 @@ class ActorInvariantsTest {
   private static final HouseholdId HH_C = new HouseholdId("hh-1_0-urban-artisan");
   private static final HouseholdId HH_D = new HouseholdId("hh-1_0-urban-merchant");
 
-  /** ★ Task 6 的库存夹具：粮（{@code GoodsAccount} 的余额表按商品聚合）。 */
+  /** ★ Task 6 的库存夹具：粮（{@code HouseholdInventory} 的余额表按商品聚合）。 */
   private static final CommodityId GRAIN = new CommodityId("grain");
 
   // ── Actor（身份本体） ─────────────────────────────────────────────────────────────
@@ -197,19 +197,19 @@ class ActorInvariantsTest {
   }
 
   /**
-   * ★★ <b>跨表同键不变式（库存那一路）</b>：{@code accounts} 的键必须等于 {@link GoodsAccount#key()}。
+   * ★★ <b>跨表同键不变式（库存那一路）</b>：{@code accounts} 的键必须等于 {@link HouseholdInventory#key()}。
    *
-   * <p>★ 同 {@code actors} 那条：它是 {@code withAccount} 那个"唯一拼写点"的<b>兜底</b>——绕过 wither 直接塞表（codec
+   * <p>★ 同 {@code actors} 那条：它是 {@code withInventory} 那个"唯一拼写点"的<b>兜底</b>——绕过 wither 直接塞表（codec
    * 读入、夹具、将来的 handler）时，也造不出"键与值各说各话"的库存。
    */
   @Test
   void rejectsAnAccountKeyThatDisagreesWithTheValueKey() {
-    Map<GoodsAccountKey, GoodsAccount> mismatched = new LinkedHashMap<>();
-    mismatched.put(new GoodsAccountKey(HH_A), account(HH_B, 1L));
+    Map<HouseholdAccountKey, HouseholdInventory> mismatched = new LinkedHashMap<>();
+    mismatched.put(new HouseholdAccountKey(HH_A), account(HH_B, 1L));
 
     assertThatThrownBy(() -> new ActorData(Optional.empty(), Map.of(), mismatched))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("键必须与 GoodsAccount.key 一致");
+        .hasMessageContaining("键必须与 HouseholdInventory.key 一致");
   }
 
   /** ★ 键与值都不得为 {@code null}（同 {@code actors} 那条：{@code null} 是"没有"，不是"空账"）。 */
@@ -218,9 +218,7 @@ class ActorInvariantsTest {
     assertThatThrownBy(
             () ->
                 new ActorData(
-                    Optional.empty(),
-                    Map.of(),
-                    Collections.singletonMap(null, account(HH_A, 1L))))
+                    Optional.empty(), Map.of(), Collections.singletonMap(null, account(HH_A, 1L))))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("都不得为 null");
     assertThatThrownBy(
@@ -240,9 +238,9 @@ class ActorInvariantsTest {
    */
   @Test
   void accountsKeepsInsertionOrderAndIsFrozen() {
-    Map<GoodsAccountKey, GoodsAccount> input = new LinkedHashMap<>();
+    Map<HouseholdAccountKey, HouseholdInventory> input = new LinkedHashMap<>();
     for (HouseholdId household : List.of(HH_A, HH_B, HH_C, HH_D)) {
-      GoodsAccount row = account(household, 1L);
+      HouseholdInventory row = account(household, 1L);
       input.put(row.key(), row);
     }
 
@@ -251,10 +249,10 @@ class ActorInvariantsTest {
     assertThat(data.accounts().keySet())
         .as("插入序即迭代序（字节级往返的前提）")
         .containsExactly(
-            new GoodsAccountKey(HH_A),
-            new GoodsAccountKey(HH_B),
-            new GoodsAccountKey(HH_C),
-            new GoodsAccountKey(HH_D));
+            new HouseholdAccountKey(HH_A),
+            new HouseholdAccountKey(HH_B),
+            new HouseholdAccountKey(HH_C),
+            new HouseholdAccountKey(HH_D));
     assertThatThrownBy(() -> data.accounts().clear())
         .as("冻在字段赋值处")
         .isInstanceOf(UnsupportedOperationException.class);
@@ -263,8 +261,8 @@ class ActorInvariantsTest {
   /** ★ <b>防御性拷贝</b>（同 {@code actors} 那条）：建完之后改调用方那张表，状态树里的数不许跟着变。 */
   @Test
   void accountsIsCopiedNotAliased() {
-    Map<GoodsAccountKey, GoodsAccount> mutable = new LinkedHashMap<>();
-    GoodsAccount kept = account(HH_A, 100L);
+    Map<HouseholdAccountKey, HouseholdInventory> mutable = new LinkedHashMap<>();
+    HouseholdInventory kept = account(HH_A, 100L);
     mutable.put(kept.key(), kept);
     ActorData data = new ActorData(Optional.of(META), Map.of(), mutable);
 
@@ -277,7 +275,7 @@ class ActorInvariantsTest {
   }
 
   /** ★ 库存夹具：家户身份 + 一个商品余额（粮）。 */
-  private static GoodsAccount account(HouseholdId household, long grain) {
-    return new GoodsAccount(new GoodsAccountKey(household), Map.of(GRAIN, grain));
+  private static HouseholdInventory account(HouseholdId household, long grain) {
+    return new HouseholdInventory(new HouseholdAccountKey(household), Map.of(GRAIN, grain));
   }
 }

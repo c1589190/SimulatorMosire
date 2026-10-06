@@ -2,20 +2,15 @@ package io.mosire.simos.app.world;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.actor.model.Actor;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.map.hex.HexCoord;
@@ -36,9 +31,9 @@ import org.junit.jupiter.api.Test;
  * ★★ **I3.2：租佃档 + `AssetOwner ≠ Operator`**（S1 阶段 3 Task 5；spec §2.1「四者可以大量重合，但模型<b>不预设</b>它们必然相同。
  * 佃制（`AssetOwner ≠ Operator`）是第一个实例」、§2.3 末段、§六 末行）。
  *
- * <p>★ <b>为什么本用例只能住 {@code simos-app}</b>：所有权记录住在 `simos-actor`（{@link GoodsAccount}；★ 2026-09-27
- * H0.5 之前是已退役的 {@code AssetHolding}），经营主体住在 `simos-economy`（{@link Industry#operator()}）——
- * 两个切片<b>互不依赖</b>（enforcer 把守），<b>只有 app 同时认识两边</b>。
+ * <p>★ <b>为什么本用例只能住 {@code simos-app}</b>：所有权记录住在 `simos-actor`（{@link HouseholdInventory}；★
+ * 2026-09-27 H0.5 之前是已退役的 {@code AssetHolding}），经营主体住在 `simos-economy`（{@link
+ * Industry#operator()}）—— 两个切片<b>互不依赖</b>（enforcer 把守），<b>只有 app 同时认识两边</b>。
  *
  * <p>★★ <b>佃制 = 两条互不牵连的记录</b>（spec §2.3 的原文形状，本文件的夹具逐字落实）：
  *
@@ -53,8 +48,8 @@ import org.junit.jupiter.api.Test;
  * <p>★★ <b>追加标注（2026-09-27，H0.5 / 裁定 S3，上文一字不改）</b>：产权表（{@code AssetHolding} / {@code
  * AssetHoldingKey} / {@code AssetClassKey}）已<b>整块退役</b> —— 实测它在生产侧<b>零写入者</b>（真档创世把 actor 起成 {@code
  * ActorData.empty()}）、economy 侧的 {@code harvest} 更是硬编码空表 ⇒ 那条路径收益为 0。资产（土地 / 工具 /
- * 牲畜）推迟到真需要时再加，<b>届时"用多少"以产业产能（{@code Industry.capacity}）表达、"谁拿收益"以 {@code ProductionRelation}
- * 的一条规则表达</b>。⇒ 本切片里"谁在<b>哪一格</b>持有什么"的<b>唯一</b>记录是 {@link GoodsAccount}（键 = {@code (owner,
+ * 牲畜）推迟到真需要时再加，<b>届时"用多少"以产业产能（{@code Industry.capacity}）表达、"谁拿收益"以 {@code ProductionRules}
+ * 的一条规则表达</b>。⇒ 本切片里"谁在<b>哪一格</b>持有什么"的<b>唯一</b>记录是 {@link HouseholdInventory}（键 = {@code (owner,
  * location)}，与 {@code Actor} 本体<b>不嵌套</b>：资产是 Actor <b>拥有的关系</b>）—— 本用例的"所有权那一侧"由它承载，判据因此逐字保持为
  * <b>"所有权记录 ≠ 经营记录，两者互不牵连"</b>。★ 夹具里那笔商品余额是<b>记录存在性</b>的载体，<b>不</b>冒充"这块地值多少"： 土地量那一维现在只住在 {@code
  * Industry.capacity} 里（本用例的载荷逐字写了 {@code "capacity":{"LAND":10000}}）。
@@ -72,8 +67,8 @@ class S1Stage3TenancyTest {
   private static final HexCoord HEX = new HexCoord(0, 0);
 
   /**
-   * <b>非租佃的默认经营主体</b>（P2-A 后 {@code ESTATE} 已退役 ⇒ 用 {@code ORGANIZATION} 表达"自营组织者"）。★ id 取
-   * <b>产业 id</b>（{@code RegimeOperators} 类注 R3：播种器写下的劳动侧 actor id 本就是产业 id，两侧同字面）—— 这正是"领主自营"
+   * <b>非租佃的默认经营主体</b>（P2-A 后 {@code ESTATE} 已退役 ⇒ 用 {@code ORGANIZATION} 表达"自营组织者"）。★ id 取 <b>产业
+   * id</b>（{@code RegimeOperators} 类注 R3：播种器写下的劳动侧 actor id 本就是产业 id，两侧同字面）—— 这正是"领主自营"
    * 那一档的拼法，故它也代表了"把 operator 当成同一种拼法"的变异体会给出的那个值。
    */
   private static final ActorRef ESTATE = new ActorRef(ActorKind.ORGANIZATION, FARM.value());
@@ -100,7 +95,7 @@ class S1Stage3TenancyTest {
   /** ★★ I3.2：租佃档<b>存在</b>（登记在推导表里），且默认经营主体是<b>佃农家户</b>、不是地主。 */
   @Test
   void theTenancyRegimeIsRegisteredAndDefaultsToTheTenantHousehold() {
-    ProductionUnit unit = seededUnit(RegimeOperators.TENANT);
+    ProductionProcess unit = seededUnit(RegimeOperators.TENANT);
 
     assertThat(unit.operator().kind())
         .as("★ 佃农家户经营（spec §六 第四行）—— 不是组织者")
@@ -111,12 +106,12 @@ class S1Stage3TenancyTest {
   // ── 夹具：真载荷 → 真 handler → 变更集重建（照 EconomyRealScaleSeedBottleneckTest 的 REF / snapshots 写法）──
 
   /** 真载荷，<b>不带</b> {@code operator} 键 ⇒ 走载荷边缘的 regime 推导（{@code RegimeOperators}）。 */
-  private static ProductionUnit seededUnit(String regime) {
+  private static ProductionProcess seededUnit(String regime) {
     return unitOf(seededEconomy(regime, ""));
   }
 
   /** 该载荷重建后本产业对应的 unit（operator/进度/产量的真值落点）。 */
-  private static ProductionUnit unitOf(EconomyData data) {
+  private static ProductionProcess unitOf(EconomyData data) {
     return data.units().values().stream()
         .filter(unit -> unit.industry().equals(FARM))
         .findFirst()
@@ -131,9 +126,9 @@ class S1Stage3TenancyTest {
    * operator}，多填的行会把别的面的校验也拉进来。
    *
    * <p>★★ <b>H0 的载荷新形状（2026-09-27，K2/K3）</b>：{@code classes} 从"产业节点内"搬到<b>格 entry 级</b>（行里带 {@code
-   * residence}）；产业节点新增 {@code capacity} = <b>本格该产业的产能总量</b>（旧 {@code ClassRow.meansOfProduction}
-   * 的落点）。★ 本载荷两侧都<b>整段省略/保持最小</b>：省略的行不必搬家（它本来就没有行）， 而 {@code capacity} 逐字写上那份"这块地有多大"（千分亩）——
-   * 于是"用多少"这一维与"谁经营"（{@code operator}）各写各的， 与本用例的判据（两条记录互不牵连）同一形状。
+   * residence}）；产业节点新增 {@code capacity} = <b>本格该产业的产能总量</b>（旧 {@code
+   * HouseholdEconomy.meansOfProduction} 的落点）。★ 本载荷两侧都<b>整段省略/保持最小</b>：省略的行不必搬家（它本来就没有行）， 而 {@code
+   * capacity} 逐字写上那份"这块地有多大"（千分亩）—— 于是"用多少"这一维与"谁经营"（{@code operator}）各写各的， 与本用例的判据（两条记录互不牵连）同一形状。
    *
    * @param operatorField {@code industries[]} 里的整段可选键（含前导逗号）；空串 = 该键<b>整段缺席</b>
    */

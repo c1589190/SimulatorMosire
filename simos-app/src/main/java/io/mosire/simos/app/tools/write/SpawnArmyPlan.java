@@ -36,25 +36,25 @@ import java.util.Optional;
  * 命名空间。本工具走 {@link io.mosire.simos.core.CoreSimos#submitBatch}（同 branch + 同 expectedRevision ⇒ 一批 =
  * 一条 revision，原子）。
  *
- * <p>★★ <b>批顺序（固定七步，可复现；{@code role} 缺席时只有六步）</b>：{@code
- * social.SubmitHouseholdWorkOrder}（建人口家户 + 凭空加成年男丁）→ {@code unit.CreateUnit}（{@code households=[人口家户]}，
- * 不携带 {@code manpower}）→（{@code role} 非空才落）{@code unit.SetArmyFormation} → {@code sd.CreateArmy} →
- * {@code economy.RegisterHousehold} → {@code actor.EnsureHouseholdAccount} → {@code sd.PutInfo}。后几条都看得见前一条累积后的候选态，故
- * {@code sd.CreateArmy} 的 {@code rootUnitId} 就是同批刚创建的 root 单位，{@code sd.CreateArmy} 之前的家户也已由 Social 权威建好。
+ * <p>★★ <b>批顺序（固定七步，可复现；{@code role} 缺席时只有六步）</b>：{@code social.SubmitHouseholdWorkOrder}（建人口家户 +
+ * 凭空加成年男丁）→ {@code unit.CreateUnit}（{@code households=[人口家户]}， 不携带 {@code manpower}）→（{@code role}
+ * 非空才落）{@code unit.SetArmyFormation} → {@code sd.CreateArmy} → {@code economy.RegisterHousehold} →
+ * {@code actor.EnsureHouseholdAccount} → {@code sd.PutInfo}。后几条都看得见前一条累积后的候选态，故 {@code
+ * sd.CreateArmy} 的 {@code rootUnitId} 就是同批刚创建的 root 单位，{@code sd.CreateArmy} 之前的家户也已由 Social 权威建好。
  *
- * <p>★★ <b>造人走 Social 权威（用户 2026-10-19 裁定）</b>：GM 可以直接建军、可以凭空造人，但人口加口必须经
- * {@code social.SubmitHouseholdWorkOrder} 的 {@code ADD_MEMBERS} 落进 Social 家户——{@code member} 是 GM 授权下
- * 经 Social 家户工单创建的成年男丁数（MALE、20 岁），<b>新单位人口不再走 {@code unit.CreateUnit(manpower=...)} 的旧口径</b>；
+ * <p>★★ <b>造人走 Social 权威（用户 2026-10-19 裁定）</b>：GM 可以直接建军、可以凭空造人，但人口加口必须经 {@code
+ * social.SubmitHouseholdWorkOrder} 的 {@code ADD_MEMBERS} 落进 Social 家户——{@code member} 是 GM 授权下 经
+ * Social 家户工单创建的成年男丁数（MALE、20 岁），<b>新单位人口不再走 {@code unit.CreateUnit(manpower=...)} 的旧口径</b>；
  * 新单位的人力表只作视图口径单条 {@code {type:"士兵", amount=member}}，人口权威在家户。
  *
- * <p>★★ <b>GM 特权口径</b>：直接建军<b>不抽地方人口、不抽粮饷</b>（用户 2026-10-01 裁定 6）；允许无粮无钱、无国库，人口由
- * Social 工单凭空创建；{@code member} 仍须 ≥ 1（P5 计划明文）。{@code raiseUnit} 保持抽取语义，一个字不动。
+ * <p>★★ <b>GM 特权口径</b>：直接建军<b>不抽地方人口、不抽粮饷</b>（用户 2026-10-01 裁定 6）；允许无粮无钱、无国库，人口由 Social
+ * 工单凭空创建；{@code member} 仍须 ≥ 1（P5 计划明文）。{@code raiseUnit} 保持抽取语义，一个字不动。
  *
- * <p>★★ <b>{@code masterGov} 的双边语义</b>：{@code masterGov} 给了 ⇒ 必须存在且带 {@link GovernmentFormation}；同批写入
- * {@code sd.CreateArmy.masterGovUnitId}。{@code role} 非空 ⇒ 同批再落 {@code unit.SetArmyFormation}，并把同一个
- * {@code masterGov} 写进它的 {@code masterGov} 字段。{@code role} 为空但 {@code masterGov} 给了 ⇒ <b>只写 sd
- * 侧</b>（unit 侧不落 ArmyFormation，也就不设 {@code ArmyFormation.masterGov}）——preview 由 {@link
- * Plan#armyFormationNote()} 明确说明。
+ * <p>★★ <b>{@code masterGov} 的双边语义</b>：{@code masterGov} 给了 ⇒ 必须存在且带 {@link
+ * GovernmentFormation}；同批写入 {@code sd.CreateArmy.masterGovUnitId}。{@code role} 非空 ⇒ 同批再落 {@code
+ * unit.SetArmyFormation}，并把同一个 {@code masterGov} 写进它的 {@code masterGov} 字段。{@code role} 为空但 {@code
+ * masterGov} 给了 ⇒ <b>只写 sd 侧</b>（unit 侧不落 ArmyFormation，也就不设 {@code
+ * ArmyFormation.masterGov}）——preview 由 {@link Plan#armyFormationNote()} 明确说明。
  *
  * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：{@code unitId}/{@code name}/
  * {@code armyId} 非空白；{@code member ≥ 1}；{@code speed ≥ 1}；{@code mobilityPerMille ∈
@@ -255,8 +255,8 @@ final class SpawnArmyPlan {
   }
 
   /**
-   * {@code masterGov} 必须存在且带 {@link GovernmentFormation}（与 {@code sd.CreateArmy}/{@code UnitOperations}
-   * 同口径）。
+   * {@code masterGov} 必须存在且带 {@link GovernmentFormation}（与 {@code sd.CreateArmy}/{@code
+   * UnitOperations} 同口径）。
    */
   private static void requireGovUnit(UnitState units, String govId, String field) {
     requireNonBlank(govId, field);
@@ -266,7 +266,8 @@ final class SpawnArmyPlan {
       throw new IllegalArgumentException(field + " 指定的 GOV 单位不存在: " + govId);
     }
     if (!(unit.module().orElse(null) instanceof GovernmentFormation)) {
-      throw new IllegalArgumentException(field + " 指定的单位 " + govId + " 没有 GovernmentFormation：不能作为 GOV");
+      throw new IllegalArgumentException(
+          field + " 指定的单位 " + govId + " 没有 GovernmentFormation：不能作为 GOV");
     }
   }
 
@@ -358,8 +359,8 @@ final class SpawnArmyPlan {
     }
 
     /**
-     * 新单位的人力表<b>视图</b>：单条 {@value #DEFAULT_MANPOWER_TYPE}（= member）；人口权威在 Social 家户
-     * {@code hh-unit:<unitId>}，本视图只供 preview/结果读取，<b>不</b>进任何命令载荷。
+     * 新单位的人力表<b>视图</b>：单条 {@value #DEFAULT_MANPOWER_TYPE}（= member）；人口权威在 Social 家户 {@code
+     * hh-unit:<unitId>}，本视图只供 preview/结果读取，<b>不</b>进任何命令载荷。
      */
     List<CompositionEntry> manpowerEntries() {
       return List.of(new CompositionEntry(DEFAULT_MANPOWER_TYPE, member));
@@ -388,10 +389,10 @@ final class SpawnArmyPlan {
     /**
      * ★★ 人口腿的<b>唯一</b>命令载荷（{@code social.SubmitHouseholdWorkOrder}）——{@code orderId =
      * spawn-army:<batchId>:<unitId>}（{@code batchId} 由 Tool 每次 apply 生成，本类不造随机数），{@code target =
-     * hh-unit:<unitId>}，{@code source.module="unit"}；{@code plan} 严格两步：先 {@code CREATE_HOUSEHOLD}（位置 =
-     * {@code UNIT(unitId)}、画像 = {@code name+"·人口家户"}、vitalRates 空表），再 {@code ADD_MEMBERS}（GM 造人：
-     * MALE、count=member、{@code ageAtAnchorDays=20*365}、{@code anchorTick=tick}、lotId =
-     * {@code spawn-army:<unitId>:<tick>}）。
+     * hh-unit:<unitId>}，{@code source.module="unit"}；{@code plan} 严格两步：先 {@code
+     * CREATE_HOUSEHOLD}（位置 = {@code UNIT(unitId)}、画像 = {@code name+"·人口家户"}、vitalRates 空表），再 {@code
+     * ADD_MEMBERS}（GM 造人： MALE、count=member、{@code ageAtAnchorDays=20*365}、{@code
+     * anchorTick=tick}、lotId = {@code spawn-army:<unitId>:<tick>}）。
      */
     String submitHouseholdWorkOrderPayloadJson(String batchId, String reason) {
       requireNonBlank(batchId, "batchId");
@@ -428,8 +429,8 @@ final class SpawnArmyPlan {
     }
 
     /**
-     * ★★ 新人口家户的 economy 登记载荷（{@code economy.RegisterHousehold}）——落点 = {@code at}，居住类型 =
-     * {@link #residence()}，阶层 = {@code landless_laborer}，参与率 = 0（由 Social 逐户劳动预算在后续日循环注入，不在登记时猜）。
+     * ★★ 新人口家户的 economy 登记载荷（{@code economy.RegisterHousehold}）——落点 = {@code at}，居住类型 = {@link
+     * #residence()}，阶层 = {@code landless_laborer}，参与率 = 0（由 Social 逐户劳动预算在后续日循环注入，不在登记时猜）。
      */
     String registerHouseholdPayloadJson(String reason) {
       requireNonBlank(reason, "reason");
@@ -455,8 +456,9 @@ final class SpawnArmyPlan {
 
     /**
      * {@code unit.CreateUnit} 载荷（字段名逐字照 handler：{@code
-     * id/name/position/households/equipment/speed/mobilityPerMille/status/parent?}）；{@code households=[hh-unit:<unitId>]}
-     * 承载人口家户，<b>绝不出现 {@code manpower} 键</b>；status 显式写入（缺省 RESTING 不靠 handler 的 MOVING 缺省）。
+     * id/name/position/households/equipment/speed/mobilityPerMille/status/parent?}）；{@code
+     * households=[hh-unit:<unitId>]} 承载人口家户，<b>绝不出现 {@code manpower} 键</b>；status 显式写入（缺省 RESTING
+     * 不靠 handler 的 MOVING 缺省）。
      */
     String createUnitPayloadJson() {
       Map<String, Object> payload = new LinkedHashMap<>();

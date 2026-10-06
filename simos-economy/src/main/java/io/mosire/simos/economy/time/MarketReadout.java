@@ -5,7 +5,6 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.market.BuyOrder;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
@@ -14,6 +13,7 @@ import io.mosire.simos.economy.api.market.SellOrder;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,8 +36,9 @@ import java.util.Set;
  *   <li>{@code supplyMilli} / {@code effectiveDemandMilli} / {@code needsButCannotAffordMilli}：
  *       <b>读时现算</b>，入口是 {@link MarketSettlement#planOrders}（与真正成交用的是同一条订单生成实现）—— 供给 = 卖订单 {@code
  *       sellable} 之和；有效需求 = 买订单数量之和（已含"预算 &gt; 0 + 按参考价买得起"两重过滤；买方限价 ask 在订单生成时已写入）；
- *   <li>{@code naturalNeedMilli} / {@code cycleNaturalNeedMilli}：读 {@code HouseholdEconomy}。 <b>粮</b>用 M2.7
- *       丙条累加器（{@code cycleNaturalNeedMilli} = {@code Σ_d 当户注入的 naturalNeeds[grain]}， 窗口 = 本周期实际经过的天）；<b>其它商品</b>用 {@code naturalNeeds}（最近一次结算日那一份日需求）， {@code
+ *   <li>{@code naturalNeedMilli} / {@code cycleNaturalNeedMilli}：读 {@code HouseholdEconomy}。
+ *       <b>粮</b>用 M2.7 丙条累加器（{@code cycleNaturalNeedMilli} = {@code Σ_d 当户注入的 naturalNeeds[grain]}，
+ *       窗口 = 本周期实际经过的天）；<b>其它商品</b>用 {@code naturalNeeds}（最近一次结算日那一份日需求）， {@code
  *       cycleNaturalNeedMilli} 对它们恒 0（逐商品累加器尚未实现，<b>不拿日需求冒充周期需要</b>）。★ 粮的累加器尚未累计 （旧档 / 还没结算过）⇒
  *       {@code naturalNeedWindow = last-settled-day}，退回该字段并如实标注；绝不把"还没累计"读成"没有需要"；
  *   <li>{@code referencePriceMilli} / {@code bidPriceMilli} / {@code askPriceMilli}：从 {@code
@@ -60,8 +61,8 @@ import java.util.Set;
  * @param adaptivePricingEnabled 自适应开关的当值（2026-10-07 起默认 true）
  * @param crossRegionSettlementImmediate 跨区结算暂设即时（恒 true；M2.0 #4 必须在读数里标注）
  * @param priceUpdates 自适应模式下的逐 (集散节点, 商品) 改价记录；固定模式恒空
- * @param creditFills ★★ D-030：来自进程内 {@link MarketReport#creditFills()} 的信用成交透传（只读；没有报告 ⇒ 空表，
- *     不填 0）；{@code deriveFor} 时只含落点在该焦点区成员格上的信用成交
+ * @param creditFills ★★ D-030：来自进程内 {@link MarketReport#creditFills()} 的信用成交透传（只读；没有报告 ⇒ 空表， 不填
+ *     0）；{@code deriveFor} 时只含落点在该焦点区成员格上的信用成交
  * @param regions 逐区读数（{@code deriveFor} 时只含焦点区）
  * @param provenance 每个数"从哪来、什么窗口、人口快照是什么"的机器可读标注
  * @param unavailable 读不到的项与**具名原因**（键 = 项名；绝不填 0）
@@ -194,7 +195,8 @@ public record MarketReadout(
     for (MarketRegion region : regions) {
       rowsByRegion.put(region, new ArrayList<>());
     }
-    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : data.classes().entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry :
+        data.classes().entrySet()) {
       MarketRegion region = regionByHex.get(householdEconomyEntry.getValue().view().hex());
       if (region != null) {
         rowsByRegion.get(region).add(householdEconomyEntry.getKey());
@@ -316,7 +318,8 @@ public record MarketReadout(
       unavailable.put("matchResults", MATCH_REPORT_PROCESS_ONLY);
     }
     long missingHouseholdAccounts = 0L;
-    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : data.classes().entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry :
+        data.classes().entrySet()) {
       if (regionByHex.containsKey(householdEconomyEntry.getValue().view().hex())
           && !accounts.householdGoods().containsKey(householdEconomyEntry.getKey())) {
         missingHouseholdAccounts++;

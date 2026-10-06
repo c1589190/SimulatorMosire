@@ -73,7 +73,8 @@ public final class EnsureHouseholdAccountHandler
       ActorData projected = base;
       boolean created = false;
       if (!base.accounts().containsKey(key)) {
-        Map<HouseholdAccountKey, HouseholdInventory> inventories = new LinkedHashMap<>(base.accounts());
+        Map<HouseholdAccountKey, HouseholdInventory> inventories =
+            new LinkedHashMap<>(base.accounts());
         inventories.put(key, new HouseholdInventory(key, Map.of(), Map.of(), Map.of(), Map.of()));
         projected = base.withInventories(inventories);
         created = true;

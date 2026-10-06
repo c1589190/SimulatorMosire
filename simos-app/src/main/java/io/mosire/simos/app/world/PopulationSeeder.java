@@ -29,26 +29,25 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * ★★ **创世期的人口播种器**（R1 的 T4；S2 起同时产出家户；**P2-A 起家户粒度 = (格, 居住类型, 阶层)**）：
- * 把一次世界生成的 {@link SettlementPlan} 翻成**一份** {@link Seeding} —— 批次 + 家户 + 逐批次位置/归属。这份结果
- * **同一份**喂给两条命令/两处计算：
+ * ★★ **创世期的人口播种器**（R1 的 T4；S2 起同时产出家户；**P2-A 起家户粒度 = (格, 居住类型, 阶层)**）： 把一次世界生成的 {@link
+ * SettlementPlan} 翻成**一份** {@link Seeding} —— 批次 + 家户 + 逐批次位置/归属。这份结果 **同一份**喂给两条命令/两处计算：
  *
  * <pre>
  * social.SeedGroups   ← 同一份（落人口与家户：人口/位置的唯一真值源）
  * economy.Seed        ← 同一份（EconomySeeder 直接读这份家户集与成员份额，不再另造经济家户 id）
  * </pre>
  *
- * <p>★★ <b>P2-A 的粒度收敛（A1/A3）</b>：改前家户 = (位置 × 农村/城镇) 一戸，经济侧却按 {@code (格, 居住类型, 阶层)} 另造
- * {@code hh-<hex>-<residence>-<stratum>} 的家户 id ⇒ 同一个家户在两侧有两个身份。现在 Social 就用
- * {@link HouseholdIds#ofSeed} 造家户：**一个 {@code (hex, 居住类型, 阶层)} 一户**，每个池 4 个常规户 + 可选 1 个流民户；
- * EconomySeeder 只读这份家户集与逐户人数（不重算），两侧身份逐字相同。
+ * <p>★★ <b>P2-A 的粒度收敛（A1/A3）</b>：改前家户 = (位置 × 农村/城镇) 一戸，经济侧却按 {@code (格, 居住类型, 阶层)} 另造 {@code
+ * hh-<hex>-<residence>-<stratum>} 的家户 id ⇒ 同一个家户在两侧有两个身份。现在 Social 就用 {@link HouseholdIds#ofSeed}
+ * 造家户：**一个 {@code (hex, 居住类型, 阶层)} 一户**，每个池 4 个常规户 + 可选 1 个流民户； EconomySeeder
+ * 只读这份家户集与逐户人数（不重算），两侧身份逐字相同。
  *
- * <p>★★ **批次按"居住 × 阶层 × 性别 × 年龄档"分组**：每个池每个阶层每性别每档一条 ⇒ 一个池最多
- * {@code 4 阶层 × 6} 条常规批次（+ 流民 6 条）。年龄档的三个占比 {@link EconomySeeder#AGE_SHARE_PER_MILLE} 与阶层占比
- * {@link EconomySeeder#CLASS_SHARE_PER_MILLE} 都是**同一个 D4 preset**；代表性年龄取**档中点**。
+ * <p>★★ **批次按"居住 × 阶层 × 性别 × 年龄档"分组**：每个池每个阶层每性别每档一条 ⇒ 一个池最多 {@code 4 阶层 × 6} 条常规批次（+ 流民 6
+ * 条）。年龄档的三个占比 {@link EconomySeeder#AGE_SHARE_PER_MILLE} 与阶层占比 {@link
+ * EconomySeeder#CLASS_SHARE_PER_MILLE} 都是**同一个 D4 preset**；代表性年龄取**档中点**。
  *
- * <p>★ **零人口的格/池也落批次与家户**：只要该格在"农村序列或城市"的并集里，就按居住类型各落一组阶层家户（人口 0 时批次
- * count=0）—— 于是"有经济状态的格 ⇔ 有家户的格"成为全域成立；count=0 是合法状态。
+ * <p>★ **零人口的格/池也落批次与家户**：只要该格在"农村序列或城市"的并集里，就按居住类型各落一组阶层家户（人口 0 时批次 count=0）—— 于是"有经济状态的格 ⇔
+ * 有家户的格"成为全域成立；count=0 是合法状态。
  *
  * <p>★ **不做**：出生/死亡/迁移（R4/后续）、劳动分配（R2）。
  */
@@ -59,8 +58,7 @@ public final class PopulationSeeder {
       Map.of(Sex.MALE, 500, Sex.FEMALE, 500);
 
   /**
-   * 代表年龄字面量的折算天数（**创世 preset 的采样口径**，不代表历法年）。C4b 起年龄档本身按整历法年判定，本常量只用于生成下面那三个
-   * 字面量；不要拿它去当"一年"的通用换算。
+   * 代表年龄字面量的折算天数（**创世 preset 的采样口径**，不代表历法年）。C4b 起年龄档本身按整历法年判定，本常量只用于生成下面那三个 字面量；不要拿它去当"一年"的通用换算。
    */
   private static final long DAYS_PER_YEAR = 365L;
 
@@ -90,8 +88,8 @@ public final class PopulationSeeder {
   private PopulationSeeder() {}
 
   /**
-   * 把计划翻成**批次 + 家户 + 逐批次位置**（**保序、可复现**：格按 {@code (q,r)}、居住类型按 RURAL→URBAN、
-   * 阶层按占比表序、性别按 {@link Sex} 词表序、档按占比表序）。
+   * 把计划翻成**批次 + 家户 + 逐批次位置**（**保序、可复现**：格按 {@code (q,r)}、居住类型按 RURAL→URBAN、 阶层按占比表序、性别按 {@link Sex}
+   * 词表序、档按占比表序）。
    *
    * @param anchorTick 锚点（世界日）：批次记"锚点时刻的年龄"，故这一步必须由调用方一次定死（创世 = 世界当前日）
    */
@@ -102,11 +100,11 @@ public final class PopulationSeeder {
   /**
    * 同上，但额外按政府引用建一个政府家户（P2-C §13.7）。
    *
-   * <p>★ {@code governmentRef} 的语义：<b>世界级政府</b>给 {@code GovernmentId.value()}（如 {@code world-silver}）；
-   * <b>GOV 单位</b>给该单位稳定 id（{@code UnitId.value()}）。家户身份 =
-   * {@link GovernmentHouseholds#of(String)}，同一个引用恒得同一个身份 —— 不再"每个 seed 先造一个 official 家户"。
-   * {@code null} = 本次播种不建政府家户（多国/多省播种各自建 GOV 单位时另走
-   * {@code economy.RegisterGovernment} + {@code actor.EnsureHouseholdAccount}）。
+   * <p>★ {@code governmentRef} 的语义：<b>世界级政府</b>给 {@code GovernmentId.value()}（如 {@code
+   * world-silver}）； <b>GOV 单位</b>给该单位稳定 id（{@code UnitId.value()}）。家户身份 = {@link
+   * GovernmentHouseholds#of(String)}，同一个引用恒得同一个身份 —— 不再"每个 seed 先造一个 official 家户"。 {@code null} =
+   * 本次播种不建政府家户（多国/多省播种各自建 GOV 单位时另走 {@code economy.RegisterGovernment} + {@code
+   * actor.EnsureHouseholdAccount}）。
    */
   public static Seeding seed(SettlementPlan plan, long anchorTick, String governmentRef) {
     Map<HexCoord, Long> ruralByHex = new LinkedHashMap<>(plan.ruralPopulation());
@@ -179,7 +177,10 @@ public final class PopulationSeeder {
               new HouseholdProfile(id.value(), null, Map.of()),
               Map.of(),
               new HouseholdVitalRates(List.of())));
-      putCohort(householdByCohort, new CohortKey(governmentAt, ResidenceKind.URBAN, SocialClassId.OFFICIAL), id);
+      putCohort(
+          householdByCohort,
+          new CohortKey(governmentAt, ResidenceKind.URBAN, SocialClassId.OFFICIAL),
+          id);
       populationByHousehold.put(id, 0L);
       governmentHousehold = Optional.of(id);
     }
@@ -235,7 +236,8 @@ public final class PopulationSeeder {
       Map<PeopleLotId, HouseholdId> householdOfLot,
       Map<CohortKey, HouseholdId> householdByCohort,
       Map<HouseholdId, Long> populationByHousehold) {
-    long[] people = EconomySeeder.splitByShares(poolPopulation, EconomySeeder.CLASS_SHARE_PER_MILLE);
+    long[] people =
+        EconomySeeder.splitByShares(poolPopulation, EconomySeeder.CLASS_SHARE_PER_MILLE);
     long displaced = EconomySeeder.displacedSeedPopulation(poolPopulation);
     if (displaced > 0L) {
       if (displaced > people[0]) {
@@ -244,12 +246,12 @@ public final class PopulationSeeder {
       }
       people[0] -= displaced;
     }
-    PopulationKind kind = residence == ResidenceKind.RURAL ? PopulationKind.RURAL : PopulationKind.URBAN;
+    PopulationKind kind =
+        residence == ResidenceKind.RURAL ? PopulationKind.RURAL : PopulationKind.URBAN;
     for (int slot = 0; slot < EconomySeeder.CLASS_IDS.length; slot++) {
       SocialClassId stratum = new SocialClassId(EconomySeeder.CLASS_IDS[slot]);
       HouseholdId id = HouseholdIds.ofSeed(hex, residence, stratum);
-      List<PopulationGroup> lots =
-          lotsAt(hex, kind, city, people[slot], anchorTick, "s" + slot);
+      List<PopulationGroup> lots = lotsAt(hex, kind, city, people[slot], anchorTick, "s" + slot);
       groups.addAll(lots);
       households.add(
           household(id, new HouseholdLocation.Hex(hex), lots, locations, householdOfLot));
@@ -259,8 +261,7 @@ public final class PopulationSeeder {
     if (displaced > 0L) {
       HouseholdId id =
           HouseholdIds.ofSeedRole(hex, residence, SocialClassId.LANDLESS_LABORER, "displaced");
-      List<PopulationGroup> lots =
-          lotsAt(hex, kind, city, displaced, anchorTick, DISPLACED_TAG);
+      List<PopulationGroup> lots = lotsAt(hex, kind, city, displaced, anchorTick, DISPLACED_TAG);
       groups.addAll(lots);
       households.add(
           household(id, new HouseholdLocation.Hex(hex), lots, locations, householdOfLot));
@@ -275,7 +276,8 @@ public final class PopulationSeeder {
       Map<CohortKey, HouseholdId> householdByCohort, CohortKey cohort, HouseholdId household) {
     HouseholdId previous = householdByCohort.put(cohort, household);
     if (previous != null) {
-      throw new IllegalStateException("同一个 (格, 居住类型, 阶层) 出现两个家户: " + cohort + " → " + previous + " / " + household);
+      throw new IllegalStateException(
+          "同一个 (格, 居住类型, 阶层) 出现两个家户: " + cohort + " → " + previous + " / " + household);
     }
   }
 
@@ -328,7 +330,11 @@ public final class PopulationSeeder {
       }
     }
     return new Household(
-        id, location, new HouseholdProfile(id.value(), null, Map.of()), members, new HouseholdVitalRates(List.of()));
+        id,
+        location,
+        new HouseholdProfile(id.value(), null, Map.of()),
+        members,
+        new HouseholdVitalRates(List.of()));
   }
 
   /**
@@ -352,8 +358,7 @@ public final class PopulationSeeder {
    * {@code social.SeedGroups} 的载荷（S2 的形状）：{@code
    * {entries:[{id,q,r,sex,count,ageDays,anchorTick,household}…], households:[{id,q,r,name}…]}}。
    *
-   * <p>★ {@code anchorTick} **逐条显式给**（不用"缺省 = 世界当前时刻"）：这一份列表同时喂给经济侧，
-   * 两侧的年龄必须指向**同一个锚点**。
+   * <p>★ {@code anchorTick} **逐条显式给**（不用"缺省 = 世界当前时刻"）：这一份列表同时喂给经济侧， 两侧的年龄必须指向**同一个锚点**。
    *
    * <p>★★ Batch B：旧 {@code stress} 字段已退役（{@code social.SeedGroups} 出现即具名拒），本载荷不再携带。
    */
@@ -443,7 +448,8 @@ public final class PopulationSeeder {
         for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
           PopulationGroup group = byId.get(member.getKey());
           if (group == null) {
-            throw new IllegalArgumentException("家户 " + household.id() + " 的成员不在批次表里: " + member.getKey());
+            throw new IllegalArgumentException(
+                "家户 " + household.id() + " 的成员不在批次表里: " + member.getKey());
           }
           if (member.getValue() != group.count()) {
             throw new IllegalArgumentException(
@@ -468,7 +474,12 @@ public final class PopulationSeeder {
         HouseholdId declared = householdByLot.get(group.id());
         if (declared == null || !declared.equals(owner.get(group.id()))) {
           throw new IllegalArgumentException(
-              "播种批次的归属表与家户 members 不一致: " + group.id() + " declared=" + declared + " owner=" + owner.get(group.id()));
+              "播种批次的归属表与家户 members 不一致: "
+                  + group.id()
+                  + " declared="
+                  + declared
+                  + " owner="
+                  + owner.get(group.id()));
         }
       }
       for (HouseholdId household : byHousehold.keySet()) {
@@ -488,8 +499,7 @@ public final class PopulationSeeder {
       governmentHousehold.ifPresent(
           household -> {
             if (!byHousehold.containsKey(household)) {
-              throw new IllegalArgumentException(
-                  "播种声明的政府家户不在家户表里: " + household);
+              throw new IllegalArgumentException("播种声明的政府家户不在家户表里: " + household);
             }
           });
     }

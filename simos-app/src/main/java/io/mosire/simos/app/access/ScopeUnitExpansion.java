@@ -18,15 +18,15 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ <b>单位子树展开</b>（2026-10-20 用户裁定：可见单位的下属单位家户也可操作；
- * 2026-10-21 修订：GovScope 撤销下辖 GOV/后代自动可见，本类仅供 ArmyScope/NationScope 使用）。
+ * ★★ <b>单位子树展开</b>（2026-10-20 用户裁定：可见单位的下属单位家户也可操作； 2026-10-21 修订：GovScope 撤销下辖 GOV/后代自动可见，本类仅供
+ * ArmyScope/NationScope 使用）。
  *
  * <p>★★ <b>为什么要有这一层</b>：三个范围函数（{@code GovScope}/{@code NationScope}/{@code ArmyScope}）都按
  * "单位当刻位置落在范围内"来授 {@code unit} 前缀；但编制是树（{@link Unit#parent()}）——只授根单位会让"上级能指挥、不能看下属编制"
  * 的权限与编制语义脱节。本类把"沿当刻 {@code parent} 索引收集全部后代"这一件事收口成一个实现，三个范围函数共用。
  *
- * <p>★ <b>按时刻物化</b>：{@code parent} 是时态序列（改编/换隶属会变），所以按 {@code at} 时刻 {@code valueAt} 建 parent→children
- * 索引，而不是读某个"当前值"。这与 {@link UnitState#formationMembers} 同一取数口径。
+ * <p>★ <b>按时刻物化</b>：{@code parent} 是时态序列（改编/换隶属会变），所以按 {@code at} 时刻 {@code valueAt} 建
+ * parent→children 索引，而不是读某个"当前值"。这与 {@link UnitState#formationMembers} 同一取数口径。
  *
  * <p>★ <b>防环</b>：正常状态下 {@code UnitState} 构造期已拒环；这里仍用 {@code visited} 兜底——手工拼出的坏状态（工具/夹具）不该让
  * 范围函数死循环。{@code visited} 先放入 roots，根与根之间的交叉边只走一次。

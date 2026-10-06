@@ -14,11 +14,11 @@ import java.util.Objects;
 import org.slf4j.Logger;
 
 /**
- * ★★ <b>家户账户的转移原语</b>（P1.2 后端行政命令；P2-A §13.3 起账户主体统一为家户）：纯函数进 {@link ActorData}、出新
- * {@link ActorData}，不做任何状态写入；命令 handler 只负责解析载荷、调这里、再由 {@code ActorChangeSet.between} 派生变更集（铁律 5）。
+ * ★★ <b>家户账户的转移原语</b>（P1.2 后端行政命令；P2-A §13.3 起账户主体统一为家户）：纯函数进 {@link ActorData}、出新 {@link
+ * ActorData}，不做任何状态写入；命令 handler 只负责解析载荷、调这里、再由 {@code ActorChangeSet.between} 派生变更集（铁律 5）。
  *
- * <p>★★ <b>P2-A 的形状变化（如实记）</b>：改前有 {@code transfer}（两个 {@code (owner,hex)} 账户）与 {@code move}
- * （按 owner 把整本账从一格搬到另一格）两条。现在：
+ * <p>★★ <b>P2-A 的形状变化（如实记）</b>：改前有 {@code transfer}（两个 {@code (owner,hex)} 账户）与 {@code move} （按
+ * owner 把整本账从一格搬到另一格）两条。现在：
  *
  * <ul>
  *   <li><b>只有 {@link #transfer}</b>：{@code (fromHousehold, toHousehold)} 两本账之间的显式转移；源必须存在且可支配量足够，

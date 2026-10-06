@@ -18,12 +18,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * ★★ {@code simos.social.household.rates}（S3a，2026-10-09）：<b>GM 设置家户出生/死亡率窄工具</b>——
- * {@code social.SetHouseholdVitalRates} 的封装（率表<b>整体替换</b>）。
+ * ★★ {@code simos.social.household.rates}（S3a，2026-10-09）：<b>GM 设置家户出生/死亡率窄工具</b>—— {@code
+ * social.SetHouseholdVitalRates} 的封装（率表<b>整体替换</b>）。
  *
- * <p>★ <b>载荷</b>：{@code rates = [{bracketId, sex, birthRatePerMillionPerTick?, deathRatePerMillionPerTick?}]}；缺失 ⇒
- * 空表（= 清空率表）；两个率缺省 0（= 这一档按 0 率结算）；负数 / 重复 {@code (bracketId, sex)} 由契约类型具名拒。单位
- * ppm/tick。
+ * <p>★ <b>载荷</b>：{@code rates = [{bracketId, sex, birthRatePerMillionPerTick?,
+ * deathRatePerMillionPerTick?}]}；缺失 ⇒ 空表（= 清空率表）；两个率缺省 0（= 这一档按 0 率结算）；负数 / 重复 {@code (bracketId,
+ * sex)} 由契约类型具名拒。单位 ppm/tick。
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：preview 先调 {@link HouseholdBook#setVitalRates} 并把前后率表折进视图，
  * <b>一个字节都不写</b>；apply 组一条命令走 {@link CoreSimos#submitBatch}。
@@ -71,7 +71,8 @@ public final class SocialHouseholdRatesTool extends AbstractHouseholdGmTool {
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
-        ToolSupport.prop("integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=该分支 head）"));
+        ToolSupport.prop(
+            "integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=该分支 head）"));
     return ToolSupport.schema(props, List.of("householdId", "reason"));
   }
 
@@ -107,7 +108,8 @@ public final class SocialHouseholdRatesTool extends AbstractHouseholdGmTool {
     view.put("householdId", id.value());
     view.put("ratesBefore", ratesPayload(household.vitalRates().rates()));
     view.put("ratesAfter", ratesPayload(projected.requireHousehold(id).vitalRates().rates()));
-    view.put("commandsPreview", List.of(commandPreview(SetHouseholdVitalRatesHandler.TYPE, payload)));
+    view.put(
+        "commandsPreview", List.of(commandPreview(SetHouseholdVitalRatesHandler.TYPE, payload)));
     view.put("reason", request.reason());
     if (request.preview()) {
       return preview(view);

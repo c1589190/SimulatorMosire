@@ -2,19 +2,19 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.market.MarketRegion;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
-import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -234,7 +234,9 @@ public final class MarketDemandBook {
 
     Map<HexCoord, HexCoord> regionAnchorByHex = regionAnchors(topology, markets);
     // ★ 覆盖全部会用到的 hex：家户、unit（产业 id 里的格）、市场、在途收货格、报告里的格。
-    Set<CommodityId> commodities = commodityUniverse(householdEconomies, units, industries, householdGoods, shipments, markets);
+    Set<CommodityId> commodities =
+        commodityUniverse(
+            householdEconomies, units, industries, householdGoods, shipments, markets);
     MarketReport latest = latestReport(reports);
     addReportCommodities(commodities, latest);
 
@@ -480,13 +482,15 @@ public final class MarketDemandBook {
     return Math.floorDiv(numerator + denominator - 1L, denominator);
   }
 
-  private static List<HouseholdId> sortedHouseholds(Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+  private static List<HouseholdId> sortedHouseholds(
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     List<HouseholdId> keys = new ArrayList<>(householdEconomies.keySet());
     keys.sort(Comparator.comparing(HouseholdId::value));
     return keys;
   }
 
-  private static List<ProductionUnitId> sortedUnits(Map<ProductionUnitId, ProductionProcess> units) {
+  private static List<ProductionUnitId> sortedUnits(
+      Map<ProductionUnitId, ProductionProcess> units) {
     List<ProductionUnitId> keys = new ArrayList<>(units.keySet());
     keys.sort(Comparator.comparing(ProductionUnitId::value));
     return keys;
@@ -497,6 +501,4 @@ public final class MarketDemandBook {
     keys.sort(Comparator.comparing(ShipmentId::value));
     return keys;
   }
-
-
 }

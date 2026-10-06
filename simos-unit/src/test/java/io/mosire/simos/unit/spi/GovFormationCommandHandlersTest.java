@@ -3,10 +3,13 @@ package io.mosire.simos.unit.spi;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentLevel;
+import io.mosire.simos.unit.GovernmentPostOfHousehold;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.StaffRole;
@@ -18,6 +21,7 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.codec.UnitCodec;
+import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -47,7 +51,7 @@ import org.junit.jupiter.api.Test;
  */
 class GovFormationCommandHandlersTest {
 
-  private static final SetGovFormationHandler SET_GOV = new SetGovFormationHandler();
+  private static final SetGovernmentFormationHandler SET_GOV = new SetGovernmentFormationHandler();
   private static final SetArmyFormationHandler SET_ARMY = new SetArmyFormationHandler();
   private static final SetGovPolicyHandler SET_POLICY = new SetGovPolicyHandler();
   private static final SetGovSuperiorHandler SET_SUPERIOR = new SetGovSuperiorHandler();
@@ -114,7 +118,7 @@ class GovFormationCommandHandlersTest {
                 + "\"policy\":{\"moneyPerStaffPerTick\":4,\"staffCap\":{\"SCRIBE\":40}}}");
 
     Unit unit = target.units().get(GOV2);
-    GovFormation gov = (GovFormation) unit.module().orElseThrow();
+    GovernmentFormation gov = (GovernmentFormation) unit.module().orElseThrow();
     assertThat(new ArrayList<>(gov.staff().keySet()))
         .as("staff 词表按载荷序落成保序表")
         .containsExactly(StaffRole.SCRIBE, StaffRole.YAMEN);
@@ -131,19 +135,20 @@ class GovFormationCommandHandlersTest {
     assertThat(gov.policy().retirementPerStaff()).as("没给 ⇒ 默认 0").isZero();
     assertThat(gov.policy().staffCap()).containsExactly(Map.entry(StaffRole.SCRIBE, 40L));
     assertThat(gov.superiorGov()).contains(GOV1);
-    assertThat(gov.level()).isEqualTo(GovLevel.PROVINCE);
+    assertThat(gov.level()).isEqualTo(GovernmentLevel.PROVINCE);
     assertThat(unit.name()).as("其余字段照常").isEqualTo("单位 g-2");
     assertThat(unit.position().valueAt(SpiFixture.T0)).contains(SpiFixture.H11);
   }
 
   @Test
   void setGovFormationReplacesAnExistingGovFormationWholesale() {
-    GovFormation old =
-        new GovFormation(
+    GovernmentFormation old =
+        new GovernmentFormation(
             orderedStaff(Map.entry(StaffRole.YAMEN, 9L)),
+            Map.of(),
             new OfficePolicy(1L, 2L, 3L, 4L, orderedStaff(Map.entry(StaffRole.YAMEN, 7L))),
             Optional.of(GOV1),
-            GovLevel.PROVINCE);
+            GovernmentLevel.PROVINCE);
     UnitState base = stateWith(govUnit(GOV1, central()), govUnit(GOV2, old));
 
     UnitState target =
@@ -153,7 +158,7 @@ class GovFormationCommandHandlersTest {
             world(base),
             "{\"unitId\":\"g-2\",\"level\":\"CENTRAL\",\"staff\":{\"POST\":1}}");
 
-    GovFormation gov = (GovFormation) target.units().get(GOV2).module().orElseThrow();
+    GovernmentFormation gov = (GovernmentFormation) target.units().get(GOV2).module().orElseThrow();
     assertThat(gov.staff())
         .as("同类型重复设置 = 整体替换：旧 YAMEN 不被合并保留")
         .containsExactly(Map.entry(StaffRole.POST, 1L));
@@ -161,7 +166,7 @@ class GovFormationCommandHandlersTest {
         .as("policy 缺省 = defaults()，不是保留旧 policy")
         .isEqualTo(OfficePolicy.defaults());
     assertThat(gov.superiorGov()).as("缺 superiorGov ⇒ 中央（empty）").isEmpty();
-    assertThat(gov.level()).isEqualTo(GovLevel.CENTRAL);
+    assertThat(gov.level()).isEqualTo(GovernmentLevel.CENTRAL);
   }
 
   @Test
@@ -172,6 +177,94 @@ class GovFormationCommandHandlersTest {
 
     assertThat(reason).as("一单位至多一个标签，且不静默替换").contains("ArmyFormation").contains("至多一个");
     assertThat(unitOf(base, ARMY).module().orElseThrow()).isInstanceOf(ArmyFormation.class);
+  }
+
+  /** ★ S3b：{@code householdPosts} 载荷落进编制，且政府家户同批进 {@code Unit.households}（唯一列表）。 */
+  @Test
+  void setGovFormationCarriesHouseholdPostsAndAddsGovernmentHousehold() {
+    HouseholdId postHousehold = HouseholdId.parse("hh-a");
+    UnitState seeded =
+        UnitOperations.setUnitHouseholds(
+            stateWith(govUnit(GOV1, central()), plainUnit(GOV2)), GOV2, List.of(postHousehold));
+
+    UnitState target =
+        applied(
+            SET_GOV,
+            "g-2",
+            world(seeded),
+            "{\"unitId\":\"g-2\",\"level\":\"CENTRAL\",\"householdPosts\":"
+                + "[{\"household\":\"hh-a\",\"role\":\"SCRIBE\",\"level\":\"CENTRAL\",\"head\":true}]}");
+
+    GovernmentFormation gov = (GovernmentFormation) target.units().get(GOV2).module().orElseThrow();
+    GovernmentPostOfHousehold post =
+        new GovernmentPostOfHousehold(
+            postHousehold, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true);
+    assertThat(gov.governmentPostsOfHousehold()).containsExactly(Map.entry(postHousehold, post));
+    assertThat(target.units().get(GOV2).households())
+        .as("唯一列表：领导配置家户 + 该 GOV 单位自己的政府家户")
+        .containsExactly(postHousehold, GovernmentHouseholds.of(GOV2.value()));
+  }
+
+  /** ★ S3b 不变量：{@code householdPosts} 的键必须 ⊆ {@code Unit.households}（挂外部家户 = 配置与人口脱钩）。 */
+  @Test
+  void setGovFormationRejectsHouseholdPostsOutsideUnitHouseholds() {
+    UnitState base = stateWith(govUnit(GOV1, central()), plainUnit(GOV2));
+
+    String reason =
+        reason(
+            SET_GOV,
+            "g-2",
+            world(base),
+            "{\"unitId\":\"g-2\",\"level\":\"CENTRAL\",\"householdPosts\":"
+                + "[{\"household\":\"hh-ghost\",\"role\":\"SCRIBE\",\"level\":\"CENTRAL\"}]}");
+
+    assertThat(reason)
+        .as("拒因必须点名配置键与所在列表")
+        .contains("householdPosts")
+        .contains("households")
+        .contains("hh-ghost");
+  }
+
+  /** ★ S3b 兼容口径：载荷缺 {@code householdPosts} ⇒ 保持既有领导配置（不是清空）。 */
+  @Test
+  void setGovFormationWithoutHouseholdPostsKeepsExistingPosts() {
+    HouseholdId postHousehold = HouseholdId.parse("hh-a");
+    GovernmentPostOfHousehold post =
+        new GovernmentPostOfHousehold(
+            postHousehold, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, true);
+    UnitState base =
+        stateWith(
+            govUnit(GOV1, central()), govUnit(GOV2, govWithPosts(Map.of(postHousehold, post))));
+
+    UnitState target =
+        applied(
+            SET_GOV,
+            "g-2",
+            world(base),
+            "{\"unitId\":\"g-2\",\"level\":\"CENTRAL\",\"staff\":{\"POST\":1}}");
+
+    GovernmentFormation gov = (GovernmentFormation) target.units().get(GOV2).module().orElseThrow();
+    assertThat(gov.governmentPostsOfHousehold())
+        .as("缺 householdPosts ⇒ 保持既有配置")
+        .containsExactly(Map.entry(postHousehold, post));
+  }
+
+  /** ★ 2026-10-09 唯一列表裁定：旧线格式键 {@code households} 必须具名拒（不是静默忽略）。 */
+  @Test
+  void setGovFormationRejectsRetiredHouseholdsKey() {
+    UnitState base = stateWith(govUnit(GOV1, central()), plainUnit(GOV2));
+
+    String reason =
+        reason(
+            SET_GOV,
+            "g-2",
+            world(base),
+            "{\"unitId\":\"g-2\",\"level\":\"CENTRAL\",\"households\":[\"hh-a\"]}");
+
+    assertThat(reason)
+        .as("旧键必须指路唯一整体替换口")
+        .contains("不再接收 households")
+        .contains("unit.SetUnitHouseholds");
   }
 
   @Test
@@ -196,7 +289,7 @@ class GovFormationCommandHandlersTest {
                 "{\"unitId\":\"g-2\",\"level\":\"PROVINCE\",\"superiorGov\":\"u-plain\"}"))
         .as("上级不是 GOV ⇒ 另一条纠正方向")
         .contains("superiorGov")
-        .contains("没有 GovFormation");
+        .contains("没有 GovernmentFormation");
     assertThat(
             reason(
                 SET_GOV,
@@ -276,7 +369,7 @@ class GovFormationCommandHandlersTest {
     String reason =
         reason(SET_ARMY, "g-1", world(base), "{\"unitId\":\"g-1\",\"role\":\"garrison\"}");
 
-    assertThat(reason).as("一单位至多一个标签，且不静默替换").contains("GovFormation").contains("至多一个");
+    assertThat(reason).as("一单位至多一个标签，且不静默替换").contains("GovernmentFormation").contains("至多一个");
   }
 
   @Test
@@ -301,7 +394,7 @@ class GovFormationCommandHandlersTest {
                 "{\"unitId\":\"u-plain\",\"masterGov\":\"g-1\",\"role\":\"garrison\"}"))
         .as("masterGov 存在但不是 GOV ⇒ 另一条纠正方向")
         .contains("masterGov")
-        .contains("没有 GovFormation");
+        .contains("没有 GovernmentFormation");
     assertThat(
             reason(
                 SET_ARMY, "u-plain", world(base), "{\"unitId\":\"u-plain\",\"role\":\"  \\t \"}"))
@@ -321,7 +414,8 @@ class GovFormationCommandHandlersTest {
             "g-1",
             world(base),
             "{\"unitId\":\"g-1\",\"moneyPerStaffPerTick\":9,\"staffCap\":{\"SCRIBE\":40}}");
-    GovFormation gov = (GovFormation) partial.units().get(GOV1).module().orElseThrow();
+    GovernmentFormation gov =
+        (GovernmentFormation) partial.units().get(GOV1).module().orElseThrow();
     assertThat(gov.policy().moneyPerStaffPerTick()).as("给了 ⇒ 覆盖").isEqualTo(9L);
     assertThat(gov.policy().grainPerStaffPerTick()).as("没给 ⇒ 保持").isEqualTo(101L);
     assertThat(gov.policy().clothPerStaffPerCycle()).as("没给 ⇒ 保持").isEqualTo(202L);
@@ -332,7 +426,8 @@ class GovFormationCommandHandlersTest {
 
     UnitState cleared =
         applied(SET_POLICY, "g-1", world(base), "{\"unitId\":\"g-1\",\"staffCap\":{}}");
-    GovFormation clearedGov = (GovFormation) cleared.units().get(GOV1).module().orElseThrow();
+    GovernmentFormation clearedGov =
+        (GovernmentFormation) cleared.units().get(GOV1).module().orElseThrow();
     assertThat(clearedGov.policy().staffCap()).as("空表 = 清空上限").isEmpty();
     assertThat(clearedGov.policy().grainPerStaffPerTick()).as("清上限不得动别的字段").isEqualTo(101L);
   }
@@ -363,7 +458,7 @@ class GovFormationCommandHandlersTest {
             reason(
                 SET_POLICY, "g-2", world(base), "{\"unitId\":\"g-2\",\"moneyPerStaffPerTick\":1}"))
         .as("无编制 ⇒ 指路 SetGovFormation")
-        .contains("没有 GovFormation")
+        .contains("没有 GovernmentFormation")
         .contains("unit.SetGovFormation");
     assertThat(
             reason(
@@ -387,12 +482,14 @@ class GovFormationCommandHandlersTest {
 
     UnitState linked =
         applied(SET_SUPERIOR, "g-2", world(base), "{\"unitId\":\"g-2\",\"superiorGov\":\"g-1\"}");
-    assertThat(((GovFormation) linked.units().get(GOV2).module().orElseThrow()).superiorGov())
+    assertThat(
+            ((GovernmentFormation) linked.units().get(GOV2).module().orElseThrow()).superiorGov())
         .contains(GOV1);
 
     UnitState cleared =
         applied(SET_SUPERIOR, "g-2", world(linked), "{\"unitId\":\"g-2\",\"superiorGov\":null}");
-    assertThat(((GovFormation) cleared.units().get(GOV2).module().orElseThrow()).superiorGov())
+    assertThat(
+            ((GovernmentFormation) cleared.units().get(GOV2).module().orElseThrow()).superiorGov())
         .as("缺省 / null = 中央（无上级）")
         .isEmpty();
   }
@@ -441,7 +538,7 @@ class GovFormationCommandHandlersTest {
                 "g-1",
                 world(base),
                 "{\"unitId\":\"g-1\",\"superiorGov\":\"u-plain\"}"))
-        .contains("没有 GovFormation");
+        .contains("没有 GovernmentFormation");
     assertThat(
             reason(
                 SET_SUPERIOR,
@@ -459,7 +556,7 @@ class GovFormationCommandHandlersTest {
     UnitState accepted =
         applied(SET_SUPERIOR, "g-0", atBoundary, "{\"unitId\":\"g-0\",\"superiorGov\":\"g-1\"}");
     assertThat(
-            ((GovFormation) accepted.units().get(new UnitId("g-0")).module().orElseThrow())
+            ((GovernmentFormation) accepted.units().get(new UnitId("g-0")).module().orElseThrow())
                 .superiorGov())
         .contains(new UnitId("g-1"));
 
@@ -480,11 +577,12 @@ class GovFormationCommandHandlersTest {
         stateWith(
             govUnit(
                 GOV1,
-                new GovFormation(
+                new GovernmentFormation(
                     orderedStaff(Map.entry(StaffRole.YAMEN, 1L), Map.entry(StaffRole.POST, 2L)),
+                    Map.of(),
                     new OfficePolicy(0L, 0L, 0L, 0L, orderedStaff(Map.entry(StaffRole.SCRIBE, 5L))),
                     Optional.empty(),
-                    GovLevel.CENTRAL)));
+                    GovernmentLevel.CENTRAL)));
 
     UnitState target =
         applied(
@@ -495,7 +593,7 @@ class GovFormationCommandHandlersTest {
                 + "\"sources\":[{\"kind\":\"social_group\",\"id\":\"g-9\",\"count\":2},"
                 + "{\"kind\":\"unit\",\"id\":\"u-9\",\"count\":1}]}");
 
-    GovFormation gov = (GovFormation) target.units().get(GOV1).module().orElseThrow();
+    GovernmentFormation gov = (GovernmentFormation) target.units().get(GOV1).module().orElseThrow();
     assertThat(new ArrayList<>(gov.staff().keySet()))
         .as("既有键保持原位、新角色追加在末尾")
         .containsExactly(StaffRole.YAMEN, StaffRole.POST, StaffRole.SCRIBE);
@@ -549,11 +647,12 @@ class GovFormationCommandHandlersTest {
         stateWith(
             govUnit(
                 GOV1,
-                new GovFormation(
+                new GovernmentFormation(
                     orderedStaff(Map.entry(StaffRole.SCRIBE, 3L)),
+                    Map.of(),
                     new OfficePolicy(0L, 0L, 0L, 0L, orderedStaff(Map.entry(StaffRole.SCRIBE, 5L))),
                     Optional.empty(),
-                    GovLevel.CENTRAL)));
+                    GovernmentLevel.CENTRAL)));
 
     String reason =
         reason(RECRUIT, "g-1", world(base), "{\"unitId\":\"g-1\",\"role\":\"SCRIBE\",\"count\":3}");
@@ -599,7 +698,7 @@ class GovFormationCommandHandlersTest {
                 world(base),
                 "{\"unitId\":\"g-2\",\"role\":\"SCRIBE\",\"count\":1}"))
         .as("无编制")
-        .contains("没有 GovFormation");
+        .contains("没有 GovernmentFormation");
     assertThat(
             reason(
                 RECRUIT,
@@ -625,18 +724,19 @@ class GovFormationCommandHandlersTest {
         stateWith(
             govUnit(
                 GOV1,
-                new GovFormation(
+                new GovernmentFormation(
                     orderedStaff(
                         Map.entry(StaffRole.SCRIBE, 5L),
                         Map.entry(StaffRole.YAMEN, 3L),
                         Map.entry(StaffRole.POST, 2L)),
+                    Map.of(),
                     OfficePolicy.defaults(),
                     Optional.empty(),
-                    GovLevel.CENTRAL)));
+                    GovernmentLevel.CENTRAL)));
 
     UnitState target =
         applied(DISMISS, "g-1", world(base), "{\"unitId\":\"g-1\",\"role\":\"YAMEN\",\"count\":3}");
-    GovFormation gov = (GovFormation) target.units().get(GOV1).module().orElseThrow();
+    GovernmentFormation gov = (GovernmentFormation) target.units().get(GOV1).module().orElseThrow();
 
     assertThat(new ArrayList<>(gov.staff().keySet()))
         .as("减到 0 保留键、键序不变")
@@ -683,7 +783,7 @@ class GovFormationCommandHandlersTest {
                 "g-2",
                 world(base),
                 "{\"unitId\":\"g-2\",\"role\":\"SCRIBE\",\"count\":1}"))
-        .contains("没有 GovFormation");
+        .contains("没有 GovernmentFormation");
     assertThat(
             reason(
                 DISMISS,
@@ -762,28 +862,32 @@ class GovFormationCommandHandlersTest {
   }
 
   private static Map<StaffRole, Long> staffOf(UnitState state, UnitId id) {
-    return ((GovFormation) state.units().get(id).module().orElseThrow()).staff();
+    return ((GovernmentFormation) state.units().get(id).module().orElseThrow()).staff();
   }
 
-  private static GovFormation central() {
-    return new GovFormation(Map.of(), OfficePolicy.defaults(), Optional.empty(), GovLevel.CENTRAL);
+  private static GovernmentFormation central() {
+    return new GovernmentFormation(
+        Map.of(), Map.of(), OfficePolicy.defaults(), Optional.empty(), GovernmentLevel.CENTRAL);
   }
 
-  private static GovFormation province(Optional<UnitId> superior) {
-    return new GovFormation(Map.of(), OfficePolicy.defaults(), superior, GovLevel.PROVINCE);
+  private static GovernmentFormation province(Optional<UnitId> superior) {
+    return new GovernmentFormation(
+        Map.of(), Map.of(), OfficePolicy.defaults(), superior, GovernmentLevel.PROVINCE);
   }
 
-  private static GovFormation provinceWithStaff(long scribe) {
-    return new GovFormation(
+  private static GovernmentFormation provinceWithStaff(long scribe) {
+    return new GovernmentFormation(
         orderedStaff(Map.entry(StaffRole.SCRIBE, scribe)),
+        Map.of(),
         OfficePolicy.defaults(),
         Optional.empty(),
-        GovLevel.PROVINCE);
+        GovernmentLevel.PROVINCE);
   }
 
-  private static GovFormation govWithPolicy() {
-    return new GovFormation(
+  private static GovernmentFormation govWithPolicy() {
+    return new GovernmentFormation(
         orderedStaff(Map.entry(StaffRole.SCRIBE, 4L), Map.entry(StaffRole.YAMEN, 2L)),
+        Map.of(),
         new OfficePolicy(
             101L,
             202L,
@@ -791,10 +895,21 @@ class GovFormationCommandHandlersTest {
             7L,
             orderedStaff(Map.entry(StaffRole.SCRIBE, 6L), Map.entry(StaffRole.YAMEN, 8L))),
         Optional.empty(),
-        GovLevel.CENTRAL);
+        GovernmentLevel.CENTRAL);
   }
 
-  private static Unit govUnit(UnitId id, GovFormation gov) {
+  /** 带领导家户配置的 GOV 编制（配置键会被 {@link #householdsFor} 编进 unit households）。 */
+  private static GovernmentFormation govWithPosts(
+      Map<HouseholdId, GovernmentPostOfHousehold> governmentPostsOfHousehold) {
+    return new GovernmentFormation(
+        Map.of(),
+        governmentPostsOfHousehold,
+        OfficePolicy.defaults(),
+        Optional.empty(),
+        GovernmentLevel.CENTRAL);
+  }
+
+  private static Unit govUnit(UnitId id, GovernmentFormation gov) {
     return unit(id, Optional.of(gov));
   }
 
@@ -831,7 +946,27 @@ class GovFormationCommandHandlersTest {
         Optional.empty(),
         3,
         Optional.empty(),
-        module);
+        module,
+        Map.of(),
+        householdsFor(id, module));
+  }
+
+  /**
+   * 单位 households（S3b 唯一列表裁定）：GOV 编制 ⇒ 恰含自己的政府家户 {@code hh-gov-<unitId>}，领导家户配置的键也在列表里； 其余编制 ⇒
+   * 空表。夹具自动补齐，好让各用例把靶子放在命令面上。
+   */
+  private static List<HouseholdId> householdsFor(UnitId id, Optional<UnitModule> module) {
+    if (!(module.orElse(null) instanceof GovernmentFormation governmentFormation)) {
+      return List.of();
+    }
+    List<HouseholdId> households = new ArrayList<>();
+    households.add(GovernmentHouseholds.of(id.value()));
+    for (HouseholdId household : governmentFormation.governmentPostsOfHousehold().keySet()) {
+      if (!households.contains(household)) {
+        households.add(household);
+      }
+    }
+    return households;
   }
 
   private static UnitState stateWith(Unit... units) {

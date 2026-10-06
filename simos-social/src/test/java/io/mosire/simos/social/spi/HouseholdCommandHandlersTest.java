@@ -8,7 +8,6 @@ import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
-import io.mosire.simos.social.api.population.HouseholdVitalRate;
 import io.mosire.simos.social.api.population.HouseholdVitalRates;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.change.SocialChangeSet;
@@ -34,9 +33,12 @@ class HouseholdCommandHandlersTest {
   private static final SetHouseholdLocationHandler SET_LOCATION = new SetHouseholdLocationHandler();
   private static final AddHouseholdMembersHandler ADD = new AddHouseholdMembersHandler();
   private static final RemoveHouseholdMembersHandler REMOVE = new RemoveHouseholdMembersHandler();
-  private static final TransferHouseholdMembersHandler TRANSFER = new TransferHouseholdMembersHandler();
-  private static final SetHouseholdVitalRatesHandler SET_RATES = new SetHouseholdVitalRatesHandler();
-  private static final AdjustHouseholdPopulationHandler ADJUST = new AdjustHouseholdPopulationHandler();
+  private static final TransferHouseholdMembersHandler TRANSFER =
+      new TransferHouseholdMembersHandler();
+  private static final SetHouseholdVitalRatesHandler SET_RATES =
+      new SetHouseholdVitalRatesHandler();
+  private static final AdjustHouseholdPopulationHandler ADJUST =
+      new AdjustHouseholdPopulationHandler();
 
   private static final HexCoord H11 = new HexCoord(1, 1);
   private static final HexCoord H12 = new HexCoord(1, 2);
@@ -69,7 +71,7 @@ class HouseholdCommandHandlersTest {
                 + "\"location\":{\"type\":\"HEX\",\"hex\":{\"q\":1,\"r\":1}},"
                 + "\"profile\":{\"name\":\"城东民户\",\"description\":\"d\",\"metadata\":{\"k\":\"v\"}},"
                 + "\"vitalRates\":[{\"bracketId\":\"0-14\",\"sex\":\"MALE\","
-                + "\"birthRatePerMillePerTick\":0,\"deathRatePerMillePerTick\":5}],"
+                + "\"birthRatePerMillionPerTick\":0,\"deathRatePerMillionPerTick\":5}],"
                 + "\"reason\":\"seed\"}");
 
     SocialData after = roundTrip(applied, base);
@@ -77,13 +79,14 @@ class HouseholdCommandHandlersTest {
     assertThat(household.location()).isEqualTo(new HouseholdLocation.Hex(H11));
     assertThat(household.profile().name()).isEqualTo("城东民户");
     assertThat(household.profile().metadata()).containsEntry("k", "v");
-    assertThat(household.vitalRates().find("0-14", Sex.MALE))
-        .as("vitalRates 进了家户本体")
-        .isPresent();
+    assertThat(household.vitalRates().find("0-14", Sex.MALE)).as("vitalRates 进了家户本体").isPresent();
 
     HandlerOutcome.Rejected rejected =
-        rejected(CREATE, base, "{\"householdId\":\"hh-main\",\"location\":{\"type\":\"HEX\","
-            + "\"hex\":{\"q\":1,\"r\":1}},\"profile\":{},\"reason\":\"seed\"}");
+        rejected(
+            CREATE,
+            base,
+            "{\"householdId\":\"hh-main\",\"location\":{\"type\":\"HEX\","
+                + "\"hex\":{\"q\":1,\"r\":1}},\"profile\":{},\"reason\":\"seed\"}");
     assertThat(rejected.reason()).isNotBlank().contains("name");
   }
 
@@ -205,13 +208,18 @@ class HouseholdCommandHandlersTest {
             SET_RATES,
             base,
             "{\"householdId\":\"hh-main\",\"rates\":[{\"bracketId\":\"0-14\",\"sex\":\"FEMALE\","
-                + "\"birthRatePerMillePerTick\":7,\"deathRatePerMillePerTick\":2}],"
+                + "\"birthRatePerMillionPerTick\":7,\"deathRatePerMillionPerTick\":2}],"
                 + "\"reason\":\"gm-rates\"}");
 
     SocialData after = roundTrip(applied, base);
     Household household = after.requireHousehold(HH_MAIN);
     assertThat(household.vitalRates().rates()).hasSize(1);
-    assertThat(household.vitalRates().find("0-14", Sex.FEMALE).orElseThrow().birthRatePerMillePerTick())
+    assertThat(
+            household
+                .vitalRates()
+                .find("0-14", Sex.FEMALE)
+                .orElseThrow()
+                .birthRatePerMillionPerTick())
         .isEqualTo(7L);
     assertThat(after.populationEvents().values())
         .as("RATE_SET 审计事件进持久事件表（可回放）")
@@ -222,7 +230,7 @@ class HouseholdCommandHandlersTest {
             SET_RATES,
             base,
             "{\"householdId\":\"hh-main\",\"rates\":[{\"bracketId\":\"0-14\",\"sex\":\"FEMALE\","
-                + "\"deathRatePerMillePerTick\":-1}],\"reason\":\"gm-rates\"}");
+                + "\"deathRatePerMillionPerTick\":-1}],\"reason\":\"gm-rates\"}");
     assertThat(rejected.reason()).contains("不得为负");
   }
 
@@ -286,14 +294,18 @@ class HouseholdCommandHandlersTest {
   private static HandlerOutcome.Applied applied(
       io.mosire.simos.util.spi.CommandHandler handler, SocialData base, String payload) {
     HandlerOutcome outcome = handler.handle(SocialSpiFixture.state(base), payload);
-    assertThat(outcome).as("合法载荷必须 Applied: %s", payload).isInstanceOf(HandlerOutcome.Applied.class);
+    assertThat(outcome)
+        .as("合法载荷必须 Applied: %s", payload)
+        .isInstanceOf(HandlerOutcome.Applied.class);
     return (HandlerOutcome.Applied) outcome;
   }
 
   private static HandlerOutcome.Rejected rejected(
       io.mosire.simos.util.spi.CommandHandler handler, SocialData base, String payload) {
     HandlerOutcome outcome = handler.handle(SocialSpiFixture.state(base), payload);
-    assertThat(outcome).as("坏载荷必须 Rejected: %s", payload).isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(outcome)
+        .as("坏载荷必须 Rejected: %s", payload)
+        .isInstanceOf(HandlerOutcome.Rejected.class);
     return (HandlerOutcome.Rejected) outcome;
   }
 

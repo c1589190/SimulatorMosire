@@ -42,10 +42,9 @@ import java.util.Set;
  * {@link Plan}——<b>不碰 {@link io.mosire.agentlib.tool.ToolContext}、不碰 {@code CoreSimos}</b>，preview
  * 与 apply 因此共用同一份语义（工具只负责读态、组批、折叠结局）。
  *
- * <p>★★ <b>它为什么不是一条命令</b>：组军同时动 {@code unit}（新单位）、{@code actor}（家户出粮/钱 + 新单位国库入账 +
- * 新家户账户）、{@code social}（批次出人）、{@code economy}（新家户经济行登记）、{@code sd}（行动记录）五片，
- * 单条命令只能落一个命名空间。本类只推导"现在能不能落、各项来源是谁"， 组批与提交在 {@link
- * RaiseUnitTool}。
+ * <p>★★ <b>它为什么不是一条命令</b>：组军同时动 {@code unit}（新单位）、{@code actor}（家户出粮/钱 + 新单位国库入账 + 新家户账户）、{@code
+ * social}（批次出人）、{@code economy}（新家户经济行登记）、{@code sd}（行动记录）五片， 单条命令只能落一个命名空间。本类只推导"现在能不能落、各项来源是谁"，
+ * 组批与提交在 {@link RaiseUnitTool}。
  *
  * <p>★★ <b>共享同一份分摊</b>：人力的唯一选人层 = {@link HouseholdManpowerAllocator}（share-aware 的 Social
  * 家户份额瀑布：MALE + {@code AgeBracket.ADULT}、家户/lot 全序、同一 lot 可被多户按份额持有）；粮 / 钱仍走 {@link
@@ -65,15 +64,15 @@ import java.util.Set;
  *       里（<b>不默认、 不猜中心</b>）；
  *   <li><b>parent</b>：若给 ⇒ 必须存在且<b>当刻有效位置与 {@code at} 同格</b>（{@code unit.CreateUnit} 的硬要求：
  *       只有同格的单位才能编入同一支）；新单位自身位置恒为 {@code at}；
- *   <li><b>三项来源</b>：人力 = region 内 MALE + 成年档的 Social 家户份额（share-aware；同一 lot 多户持有各自成候选）；
- *       粮 / 钱 = region 各 hex 上 HOUSEHOLD 账；不足 ⇒ 整条具名拒（不部分、不截断）；
+ *   <li><b>三项来源</b>：人力 = region 内 MALE + 成年档的 Social 家户份额（share-aware；同一 lot 多户持有各自成候选）； 粮 / 钱 =
+ *       region 各 hex 上 HOUSEHOLD 账；不足 ⇒ 整条具名拒（不部分、不截断）；
  *   <li><b>国库落点 = {@code at}</b>：新单位国库账 = {@code ActorRef(UNIT, newUnitId)} @ {@code at}，与 levy /
  *       债同族；
- *   <li><b>产出（P1.3）</b>：人口由新人口家户承载（{@code unit.CreateUnit} 的 {@code households=[新人口家户]}），
- *       <b>Unit 不再写已退役的 {@code manpower}</b>；粮 / 钱进新单位国库；人口腿收成<b>一张</b> {@code
- *       social.SubmitHouseholdWorkOrder}（{@code CREATE_HOUSEHOLD} + 逐来源 {@code TRANSFER_MEMBERS}；旧 {@code
- *       social.CreateHousehold}/{@code social.TransferHouseholdMembers}×N 两条腿已不再发），行动记录进 {@code
- *       sd.PutInfo}；<b>不另造第二份账</b>。
+ *   <li><b>产出（P1.3）</b>：人口由新人口家户承载（{@code unit.CreateUnit} 的 {@code households=[新人口家户]}）， <b>Unit
+ *       不再写已退役的 {@code manpower}</b>；粮 / 钱进新单位国库；人口腿收成<b>一张</b> {@code
+ *       social.SubmitHouseholdWorkOrder}（{@code CREATE_HOUSEHOLD} + 逐来源 {@code TRANSFER_MEMBERS}；旧
+ *       {@code social.CreateHousehold}/{@code social.TransferHouseholdMembers}×N 两条腿已不再发），行动记录进
+ *       {@code sd.PutInfo}；<b>不另造第二份账</b>。
  * </ol>
  *
  * <p>★ <b>为什么载荷组装也在这个类</b>：各条命令的载荷都是这份计划的纯函数（照 {@code LevyRegionPlan} 的拆法）——把载荷留在
@@ -228,7 +227,12 @@ final class RaiseUnitPlan {
         grain == 0L
             ? RegionAllocations.AccountAllocation.skipped()
             : RegionAllocations.allocateAccounts(
-                actors, social, region, "粮", grain, inventory -> AvailableStock.available(inventory, GRAIN));
+                actors,
+                social,
+                region,
+                "粮",
+                grain,
+                inventory -> AvailableStock.available(inventory, GRAIN));
     RegionAllocations.AccountAllocation moneyAllocation =
         money == 0L
             ? RegionAllocations.AccountAllocation.skipped()
@@ -273,7 +277,10 @@ final class RaiseUnitPlan {
         parent);
   }
 
-  /** P3：落点是否某座 Social 城 ⇒ 新家户 economy 视图取 {@link ResidenceKind#URBAN}，否则 {@link ResidenceKind#RURAL}。 */
+  /**
+   * P3：落点是否某座 Social 城 ⇒ 新家户 economy 视图取 {@link ResidenceKind#URBAN}，否则 {@link
+   * ResidenceKind#RURAL}。
+   */
   private static ResidenceKind residenceAt(SocialData social, HexCoord at) {
     for (var city : social.cities().values()) {
       if (city.at().equals(at)) {
@@ -461,8 +468,9 @@ final class RaiseUnitPlan {
     /**
      * ★★ P1.3：人口腿的<b>唯一</b>命令载荷（{@code social.SubmitHouseholdWorkOrder}）——第一步 {@code
      * CREATE_HOUSEHOLD}（位置 = {@code UNIT(unitId)}、画像 {@code name+"·人口家户"}、vitalRates 空表），随后逐来源
-     * {@code TRANSFER_MEMBERS(from=share.householdId, to=hh-unit:<unitId>, lotId, count=taken)}。{@code orderId} =
-     * {@link #orderId()}，{@code source.module="unit"}，reason = 工具 reason。
+     * {@code TRANSFER_MEMBERS(from=share.householdId, to=hh-unit:<unitId>, lotId,
+     * count=taken)}。{@code orderId} = {@link #orderId()}，{@code source.module="unit"}，reason = 工具
+     * reason。
      */
     String submitHouseholdWorkOrderPayloadJson(String reason) {
       requireNonBlank(reason, "reason");
@@ -498,8 +506,8 @@ final class RaiseUnitPlan {
     }
 
     /**
-     * ★★ P3：新人口家户的 economy 登记载荷（{@code economy.RegisterHousehold}）——落点 = {@code at}，居住类型 =
-     * {@link #residence()}，阶层 = {@code landless_laborer}（无资产的中性档），参与率 = 0（由 Social 逐户劳动预算在后续日循环注入，
+     * ★★ P3：新人口家户的 economy 登记载荷（{@code economy.RegisterHousehold}）——落点 = {@code at}，居住类型 = {@link
+     * #residence()}，阶层 = {@code landless_laborer}（无资产的中性档），参与率 = 0（由 Social 逐户劳动预算在后续日循环注入，
      * 不在登记时猜）。
      */
     String registerHouseholdPayloadJson(String reason) {
@@ -515,9 +523,7 @@ final class RaiseUnitPlan {
       return ToolSupport.json(payload);
     }
 
-    /**
-     * ★★ P3：新人口家户的零余额 actor 账户载荷（{@code actor.EnsureHouseholdAccount}，幂等；账户归 actor 切片）。
-     */
+    /** ★★ P3：新人口家户的零余额 actor 账户载荷（{@code actor.EnsureHouseholdAccount}，幂等；账户归 actor 切片）。 */
     String ensureHouseholdAccountPayloadJson(String reason) {
       requireNonBlank(reason, "reason");
       Map<String, Object> payload = new LinkedHashMap<>();
@@ -579,11 +585,13 @@ final class RaiseUnitPlan {
       }
       LinkedHashMap<HouseholdAccountKey, Long> grainByKey = new LinkedHashMap<>();
       for (RegionAllocations.AccountSource source : grain.sources()) {
-        grainByKey.put(new HouseholdAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
+        grainByKey.put(
+            new HouseholdAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
       }
       LinkedHashMap<HouseholdAccountKey, Long> moneyByKey = new LinkedHashMap<>();
       for (RegionAllocations.AccountSource source : money.sources()) {
-        moneyByKey.put(new HouseholdAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
+        moneyByKey.put(
+            new HouseholdAccountKey(HouseholdActors.householdOf(source.owner())), -source.amount());
       }
       LinkedHashSet<HouseholdAccountKey> order = new LinkedHashSet<>(grainByKey.keySet());
       order.addAll(moneyByKey.keySet());
@@ -623,8 +631,9 @@ final class RaiseUnitPlan {
     }
 
     /**
-     * {@code sd.PutInfo} 的 {@code value}（JSON <b>字符串</b>；字段序固定：unit/region/at/三项数量/来源计数/sources/reason）。
-     * {@code sources} = 逐来源 {@code {householdId, lotId, taken, hex}}（share-aware 瀑布序）。
+     * {@code sd.PutInfo} 的 {@code value}（JSON
+     * <b>字符串</b>；字段序固定：unit/region/at/三项数量/来源计数/sources/reason）。 {@code sources} = 逐来源 {@code
+     * {householdId, lotId, taken, hex}}（share-aware 瀑布序）。
      */
     String infoValueJson(String reason) {
       requireNonBlank(reason, "reason");
@@ -648,8 +657,8 @@ final class RaiseUnitPlan {
     }
 
     /**
-     * 逐来源视图（工具结果与 {@code sd.PutInfo.value.sources} 共用；保序）。{@code hex} 只有 {@code HEX} 来源家户才有；
-     * {@code UNIT} 来源没有格 ⇒ 值为 {@code null}（不伪造位置）。
+     * 逐来源视图（工具结果与 {@code sd.PutInfo.value.sources} 共用；保序）。{@code hex} 只有 {@code HEX} 来源家户才有； {@code
+     * UNIT} 来源没有格 ⇒ 值为 {@code null}（不伪造位置）。
      */
     List<Map<String, Object>> sourcesView() {
       List<Map<String, Object>> rows = new ArrayList<>(sources.size());

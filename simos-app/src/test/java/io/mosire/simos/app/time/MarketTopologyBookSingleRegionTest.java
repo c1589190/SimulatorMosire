@@ -17,11 +17,11 @@ import io.mosire.simos.economy.time.MarketTopology;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.sd.state.SdSnapshot;
+import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.city.SocialCity;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
@@ -37,9 +37,8 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
- * ★★ <b>D-027 组合根单区选择判据（设计 §7.1/§3.1）</b>：生产路径
- * {@link MarketTopologyBook#from(SimulationState)} 只在"有城市权威且所有市场同币"时走
- * {@link MarketTopology#singleRegion}；同币多城仍是一个区，不同币/无城市权威退回旧城市半径路径。
+ * ★★ <b>D-027 组合根单区选择判据（设计 §7.1/§3.1）</b>：生产路径 {@link MarketTopologyBook#from(SimulationState)}
+ * 只在"有城市权威且所有市场同币"时走 {@link MarketTopology#singleRegion}；同币多城仍是一个区，不同币/无城市权威退回旧城市半径路径。
  *
  * <p>本类住 {@code io.mosire.simos.app.time} 包，可直接调包内可见的生产装配入口 —— 不复制装配逻辑。
  */
@@ -54,10 +53,7 @@ class MarketTopologyBookSingleRegionTest {
     LinkedHashMap<HexCoord, Market> markets = new LinkedHashMap<>();
     markets.put(H1, market(MoneyVocabulary.SILVER_CURRENCY, 10L));
     markets.put(H2, market(MoneyVocabulary.SILVER_CURRENCY, 12L));
-    SocialData social =
-        socialData(
-            city("city-a", H1, "MarketTown"),
-            city("city-b", H2, "Town"));
+    SocialData social = socialData(city("city-a", H1, "MarketTown"), city("city-b", H2, "Town"));
 
     MarketTopology topology = MarketTopologyBook.from(state(markets, social));
 
@@ -76,10 +72,7 @@ class MarketTopologyBookSingleRegionTest {
     LinkedHashMap<HexCoord, Market> markets = new LinkedHashMap<>();
     markets.put(H1, market(MoneyVocabulary.SILVER_CURRENCY, 10L));
     markets.put(H2, market(new CurrencyId("copper"), 12L));
-    SocialData social =
-        socialData(
-            city("city-a", H1, "MarketTown"),
-            city("city-b", H2, "Town"));
+    SocialData social = socialData(city("city-a", H1, "MarketTown"), city("city-b", H2, "Town"));
 
     MarketTopology topology = MarketTopologyBook.from(state(markets, social));
 
@@ -99,8 +92,7 @@ class MarketTopologyBookSingleRegionTest {
     markets.put(H1, market(MoneyVocabulary.SILVER_CURRENCY, 10L));
     markets.put(H2, market(MoneyVocabulary.SILVER_CURRENCY, 12L));
 
-    MarketTopology topology =
-        MarketTopologyBook.from(state(markets, SocialData.empty()));
+    MarketTopology topology = MarketTopologyBook.from(state(markets, SocialData.empty()));
 
     assertThat(topology.regions()).as("没有城市权威 ⇒ 每格一区（不猜单区）").hasSize(2);
     assertThat(topology.regions())
@@ -115,11 +107,7 @@ class MarketTopologyBookSingleRegionTest {
 
   private static SocialCity city(String id, HexCoord at, String tier) {
     return new SocialCity(
-        new CityId(id),
-        id,
-        at,
-        Optional.of(RealTwelveHexWorld.REGION),
-        Map.of("tier", tier));
+        new CityId(id), id, at, Optional.of(RealTwelveHexWorld.REGION), Map.of("tier", tier));
   }
 
   private static SocialData socialData(SocialCity... cities) {
@@ -130,8 +118,7 @@ class MarketTopologyBookSingleRegionTest {
     return new SocialData(Map.of(), byId, Map.of());
   }
 
-  private static SimulationState state(
-      Map<HexCoord, Market> markets, SocialData social) {
+  private static SimulationState state(Map<HexCoord, Market> markets, SocialData social) {
     StateRef ref = new StateRef(new BranchId("main"), new RevisionId(1));
     SimosTimestamp t0 = SimosTimestamp.of(0L);
     return new SimulationState(

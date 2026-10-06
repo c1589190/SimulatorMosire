@@ -26,8 +26,8 @@ import java.util.Set;
 import org.slf4j.Logger;
 
 /**
- * ★★ <b>周期家户库存扣增执行器（P4a；无状态）</b>：给定规则表、账户会话与世界日，挑出当天到期的规则、按可用量
- * <b>部分支付</b>，并复用 {@link StockDeductionService}（{@code TAX_AND_UPKEEP} 阶段）落账。
+ * ★★ <b>周期家户库存扣增执行器（P4a；无状态）</b>：给定规则表、账户会话与世界日，挑出当天到期的规则、按可用量 <b>部分支付</b>，并复用 {@link
+ * StockDeductionService}（{@code TAX_AND_UPKEEP} 阶段）落账。
  *
  * <p>★★ <b>到期判据只有规则字段与绝对世界日</b>：
  *
@@ -37,8 +37,8 @@ import org.slf4j.Logger;
  *                &amp;&amp; ((day - startsOnDay) % periodDays == phaseDay)
  * </pre>
  *
- * <p>没有 {@code lastPaidTick}、没有进度状态 ⇒ 同一份状态在“一次推 N 天”与“N 次推 1 天”两条路径下同日到期，
- * 最终账户逐值相等（1×N == N×1 由调用方集成验证）。
+ * <p>没有 {@code lastPaidTick}、没有进度状态 ⇒ 同一份状态在“一次推 N 天”与“N 次推 1 天”两条路径下同日到期， 最终账户逐值相等（1×N == N×1
+ * 由调用方集成验证）。
  *
  * <p>★★ <b>失败语义（C+PARTIAL）</b>：
  *
@@ -82,11 +82,11 @@ public final class PeriodicHouseholdAdjustmentExecutor {
    *
    * <p>★★ <b>同 id 冲突策略 = 持久规则优先</b>：{@code extraRules} 里与持久规则同 id 的条目被<b>忽略（不抛）</b>。理由：
    * 持久规则是命令面显式注册的权威；extraRules 是每天重算的派生件（军俸桥接）， 让派生件覆盖会把 GM 的显式规则在某个 unitId 撞名时悄悄改写。忽略是静默的，但方向
-   * fail-closed（保留显式权威），且派生的同名规则下一轮仍会生成、不存在“丢一条政策”的累积漂移。 ★ {@code extraRules} <b>内部</b>重复
-   * id 是编程错误 ⇒ 具名 {@link IllegalArgumentException}（同一份推导不该生成两条同 id 规则）。
+   * fail-closed（保留显式权威），且派生的同名规则下一轮仍会生成、不存在“丢一条政策”的累积漂移。 ★ {@code extraRules} <b>内部</b>重复 id 是编程错误
+   * ⇒ 具名 {@link IllegalArgumentException}（同一份推导不该生成两条同 id 规则）。
    *
-   * <p>★ 本方法只读 {@code economy} 与 {@code extraRules}，不把瞬态规则写进 {@code EconomyData}；账户落账仍唯一走
-   * {@link StockDeductionService}。
+   * <p>★ 本方法只读 {@code economy} 与 {@code extraRules}，不把瞬态规则写进 {@code EconomyData}；账户落账仍唯一走 {@link
+   * StockDeductionService}。
    *
    * @param economy 经济状态（持久规则表 + 元信息；{@code periodicAdjustments} 的键 == 值内 id 由状态构造期把守）
    * @param extraRules 额外瞬态规则（如 {@code MilitaryPayRuleBridge.derive(...)} 的产物；可为空集合，不得含 null）
@@ -122,10 +122,7 @@ public final class PeriodicHouseholdAdjustmentExecutor {
     return applyDueRules(merged.values(), accounts, day);
   }
 
-  /**
-   * 唯一执行体：把给定规则集合里当天到期者按 id 升序执行。旧/新两个公开入口都委托到这里 ⇒ due、部分支付、shortfall、gap
-   * 语义只有一份实现（“其余语义逐字复用”）。
-   */
+  /** 唯一执行体：把给定规则集合里当天到期者按 id 升序执行。旧/新两个公开入口都委托到这里 ⇒ due、部分支付、shortfall、gap 语义只有一份实现（“其余语义逐字复用”）。 */
   private static Report applyDueRules(
       Collection<HouseholdPeriodicAdjustment> rules, AccountSession accounts, long day) {
     List<HouseholdPeriodicAdjustment> due = new ArrayList<>();
@@ -202,33 +199,18 @@ public final class PeriodicHouseholdAdjustmentExecutor {
       AccountSession accounts, HouseholdPeriodicAdjustment rule, long day) {
     HouseholdId payer = rule.payer();
     if (accounts.householdKeyOf(payer) == null || accounts.householdAccount(payer) == null) {
-      return skip(
-          rule,
-          "payer-account-missing",
-          rule.goodsPerCycle(),
-          rule.moneyPerCycle(),
-          day);
+      return skip(rule, "payer-account-missing", rule.goodsPerCycle(), rule.moneyPerCycle(), day);
     }
     Optional<HouseholdId> payee = rule.payee();
     if (payee.isPresent()
         && (accounts.householdKeyOf(payee.get()) == null
             || accounts.householdAccount(payee.get()) == null)) {
-      return skip(
-          rule,
-          "payee-account-missing",
-          rule.goodsPerCycle(),
-          rule.moneyPerCycle(),
-          day);
+      return skip(rule, "payee-account-missing", rule.goodsPerCycle(), rule.moneyPerCycle(), day);
     }
 
     AccountSession.ActorAccount payerAccount = accounts.householdAccount(payer);
     if (payerAccount == null) {
-      return skip(
-          rule,
-          "payer-account-missing",
-          rule.goodsPerCycle(),
-          rule.moneyPerCycle(),
-          day);
+      return skip(rule, "payer-account-missing", rule.goodsPerCycle(), rule.moneyPerCycle(), day);
     }
     HouseholdInventory inventory =
         new HouseholdInventory(
@@ -279,8 +261,7 @@ public final class PeriodicHouseholdAdjustmentExecutor {
         payee.isPresent()
             ? HouseholdStockDeduction.transfer(
                 payer, payee.get(), paidGoods, paidMoney, rule.reason(), detail)
-            : HouseholdStockDeduction.sink(
-                payer, paidGoods, paidMoney, rule.reason(), detail);
+            : HouseholdStockDeduction.sink(payer, paidGoods, paidMoney, rule.reason(), detail);
     try {
       StockDeductionService.deduct(accounts, deduction); // 默认阶段 = SettlementStage.TAX_AND_UPKEEP
     } catch (IllegalArgumentException defensiveReject) {
@@ -436,8 +417,7 @@ public final class PeriodicHouseholdAdjustmentExecutor {
     }
 
     public static Report empty(long day) {
-      return new Report(
-          day, 0, 0, 0, Map.of(), Map.of(), Map.of(), Map.of(), List.of(), List.of());
+      return new Report(day, 0, 0, 0, Map.of(), Map.of(), Map.of(), Map.of(), List.of(), List.of());
     }
   }
 

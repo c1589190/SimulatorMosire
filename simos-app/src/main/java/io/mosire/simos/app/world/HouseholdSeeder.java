@@ -10,8 +10,8 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -25,14 +25,14 @@ import java.util.Objects;
  *
  * <p>★★ <b>为什么必须每个家户都有 actor</b>（哪怕它一本空账）：economy 侧的关系规则（地租那类）<b>按人口过滤</b>不了 —— 规则可以把实物付给<b>人口为
  * 0</b> 的家户。少一个 actor ⇒ 那条分配<b>没有地方落</b>（要么静默丢、要么当场炸）。 故本类的口径是：<b>行集（{@code EconomyData.classes}
- * 的键集）里每一个家户都要有一个 actor + 一本账</b>， 账本可以全 0（"这个家户在这一格有一本账"与"它现在有东西"是两件事，见 {@code HouseholdInventory} 的"0
- * 余额保留"）。
+ * 的键集）里每一个家户都要有一个 actor + 一本账</b>， 账本可以全 0（"这个家户在这一格有一本账"与"它现在有东西"是两件事，见 {@code HouseholdInventory}
+ * 的"0 余额保留"）。
  *
  * <p>★★ <b>真档判据</b>：799 格 × 8 行（2 种居住类型 × 4 个阶层）= <b>6392</b> 个家户 actor + 同样多的账户。
  *
  * <p>★★ <b>身份的唯一拼写点是 {@link HouseholdActors}</b>（{@code of(cohort)} / {@code cohortOf(actor)} 互逆）——
- * 本类 <b>不自己拼 id</b>；账户键 = {@code new HouseholdAccountKey(该 actor, cohort.hex())}（"某人<b>在某一格</b>有多少商品"，
- * 键的第二段是格，见 {@code HouseholdAccountKey}）。
+ * 本类 <b>不自己拼 id</b>；账户键 = {@code new HouseholdAccountKey(该 actor,
+ * cohort.hex())}（"某人<b>在某一格</b>有多少商品"， 键的第二段是格，见 {@code HouseholdAccountKey}）。
  *
  * <p>★★ <b>它落在哪条创世路径上</b>（本类只有两个入口，各自服务一类调用方）：
  *
@@ -165,8 +165,8 @@ public final class HouseholdSeeder {
    * 诊断、将来的存档迁移）。
    *
    * <p>★ <b>元信息不在这里</b>（{@code meta} 有自己的激活语义：空 = 本世界尚未落 actor 切片）⇒ 调用方按 {@code
-   * ActorData.empty().withMeta(...).withActors(...).withInventories(...)} 自己拼（{@code ActorData} 是三件：
-   * meta / actors / accounts）。
+   * ActorData.empty().withMeta(...).withActors(...).withInventories(...)} 自己拼（{@code ActorData}
+   * 是三件： meta / actors / accounts）。
    *
    * <p>★★ 与 {@link #payload(String, Map, Map)} <b>读的是同一份库存表、同一份货币表、同一套 id</b>（{@link
    * HouseholdActors}）⇒ "命令播出来的世界"与"夹具手搭的世界"在这两张表上逐字段同形。
@@ -285,8 +285,8 @@ public final class HouseholdSeeder {
    * <p>★ {@code location} 是 {@code {q,r}} 对象（载荷形状），而 {@code balances} 的键是 {@link
    * CommodityId#toString()} 的产物 —— ★ <b>本类不复述那个格式</b>（键序沿用库存表的插入序：粮在前）。
    *
-   * <p>★★ <b>H4：{@code money} 与 {@code balances} 并列在同一本账里</b>（{@code HouseholdInventory} 的两个余额表）—— 键是
-   * {@link CurrencyId#value()}（币种名，例如 {@code silver}），值是**最小币值**。★ <b>钱不是商品</b>（裁定 M2：{@code
+   * <p>★★ <b>H4：{@code money} 与 {@code balances} 并列在同一本账里</b>（{@code HouseholdInventory} 的两个余额表）——
+   * 键是 {@link CurrencyId#value()}（币种名，例如 {@code silver}），值是**最小币值**。★ <b>钱不是商品</b>（裁定 M2：{@code
    * CurrencyId} 与 {@code CommodityId} 各守各的余额与守恒）⇒ 它是**同一条 {@code goods} 记录里的另一个键**， 不是 {@code
    * balances} 里的第六个商品。
    *

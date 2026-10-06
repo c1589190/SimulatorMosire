@@ -26,8 +26,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * ★★ {@code simos.social.household.create}（S3a，2026-10-09）：<b>GM 创建家户窄工具</b>——
- * {@code social.CreateHousehold} 的封装；若位置是 {@code UNIT(...)}，同批追加 {@code unit.SetUnitHouseholds}
+ * ★★ {@code simos.social.household.create}（S3a，2026-10-09）：<b>GM 创建家户窄工具</b>—— {@code
+ * social.CreateHousehold} 的封装；若位置是 {@code UNIT(...)}，同批追加 {@code unit.SetUnitHouseholds}
  * 把家户加入目标单位，保证"Household.location = UNIT(unitId) 且 unit.households 含该家户"两个切片在<b>同一条 revision</b>
  * 内同时成立（架构 §3.3）。
  *
@@ -36,7 +36,8 @@ import java.util.UUID;
  * 目标状态视图与逐条命令预览，一个字节都不写；{@code preview=false} 才走 {@link CoreSimos#submitBatch}（一批 = 一条 revision，
  * 任一条失败整批不落）。
  *
- * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：工具名不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。
+ * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：工具名不是命令类型 ⇒ 不进 catalog / {@code
+ * PAYLOAD_HINTS}。
  *
  * <p>★ <b>资源声明</b>：写 {@code social} + {@code unit} 两个命名空间（UNIT 位置会同时写 unit 侧；GM 侧两者 unlimited）。
  */
@@ -77,8 +78,7 @@ public final class SocialHouseholdCreateTool extends AbstractHouseholdGmTool {
     props.put(
         "location",
         ToolSupport.prop(
-            "object",
-            "位置 {type:HEX|UNIT, hex:{q,r}（HEX 必填）| unitId（UNIT 必填）}；HEX 必须在本世界地图上"));
+            "object", "位置 {type:HEX|UNIT, hex:{q,r}（HEX 必填）| unitId（UNIT 必填）}；HEX 必须在本世界地图上"));
     props.put("name", ToolSupport.prop("string", "家户画像显示名（必填非空白）"));
     props.put("description", ToolSupport.prop("string", "家户画像描述（可选）"));
     props.put("metadata", ToolSupport.prop("object", "家户画像元数据 {键:字符串}（可选）"));
@@ -93,9 +93,9 @@ public final class SocialHouseholdCreateTool extends AbstractHouseholdGmTool {
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
-        ToolSupport.prop("integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=该分支 head）"));
-    return ToolSupport.schema(
-        props, List.of("householdId", "location", "name", "reason"));
+        ToolSupport.prop(
+            "integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=该分支 head）"));
+    return ToolSupport.schema(props, List.of("householdId", "location", "name", "reason"));
   }
 
   @Override

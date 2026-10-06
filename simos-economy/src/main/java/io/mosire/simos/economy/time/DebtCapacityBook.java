@@ -8,22 +8,22 @@ import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtCapacity;
 import io.mosire.simos.economy.model.DebtCapacity.NextRoundNecessaryInputSource;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DebtIndex;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -59,13 +59,13 @@ import java.util.function.Function;
  * <p>★★ <b>既有债务怎么算</b>（D-030 §3.4）：
  *
  * <ul>
- *   <li>价格源由调用方给的 {@link DebtUnitValueLookup} 决定：缺省重载传 {@link #NO_UNIT_PRICES} 时，粮 unit 按
- *       identity 原值计入（旧 E4b 行为逐值保留），其它 unit 一律无法折价；
- *   <li>生产路径改传 {@link #marketPriceLookup(Map)} ⇒ 用该家户所在市场的价格表按 §3.4 公式折算成粮等值：
- *       {@code Commodity(c): principal × price(c) / price(grain)}；{@code Money(cur): principal × 1000 /
- *       price(grain)}（只在 {@code cur == market.numeraire} 时；市场缺该单位价 ⇒ 不可定价）；
- *   <li><b>可定价债务全部进 {@link DebtCapacity#existingDebt()}</b>；仍有任一不可定价债务 ⇒ 该户新信用额度按 0
- *       fail-closed，见 {@link #newCreditHeadroomMilli(DebtCapacity)}；不可定价的本金原始和与条数仍从 {@link
+ *   <li>价格源由调用方给的 {@link DebtUnitValueLookup} 决定：缺省重载传 {@link #NO_UNIT_PRICES} 时，粮 unit 按 identity
+ *       原值计入（旧 E4b 行为逐值保留），其它 unit 一律无法折价；
+ *   <li>生产路径改传 {@link #marketPriceLookup(Map)} ⇒ 用该家户所在市场的价格表按 §3.4 公式折算成粮等值： {@code Commodity(c):
+ *       principal × price(c) / price(grain)}；{@code Money(cur): principal × 1000 / price(grain)}（只在
+ *       {@code cur == market.numeraire} 时；市场缺该单位价 ⇒ 不可定价）；
+ *   <li><b>可定价债务全部进 {@link DebtCapacity#existingDebt()}</b>；仍有任一不可定价债务 ⇒ 该户新信用额度按 0 fail-closed，见
+ *       {@link #newCreditHeadroomMilli(DebtCapacity)}；不可定价的本金原始和与条数仍从 {@link
  *       DebtCapacity#unpricedDebtAmount()}／{@link DebtCapacity#unpricedDebtCount()} 读出。
  * </ul>
  *
@@ -79,8 +79,8 @@ public final class DebtCapacityBook {
   /**
    * ★★ <b>债务标的价格钩子</b>：返回该债本金折成粮的等值（毫粮）；返回负数 = <b>没有有效价格</b> ⇒ 记 unpriced。
    *
-   * <p>生产路径不再传本常量：它只保留给旧读口/旧测试（粮 identity、其它 unit 不折的旧口径）。生产借贷路径用
-   * {@link #marketPriceLookup(Map)} 按市场价目表现算。
+   * <p>生产路径不再传本常量：它只保留给旧读口/旧测试（粮 identity、其它 unit 不折的旧口径）。生产借贷路径用 {@link #marketPriceLookup(Map)}
+   * 按市场价目表现算。
    */
   @FunctionalInterface
   public interface DebtUnitValueLookup {
@@ -92,8 +92,8 @@ public final class DebtCapacityBook {
   }
 
   /**
-   * ★ 未落地价格源的旧口径：任何 unit 都返回负数（不折）。{@link #capacities} 对 {@code null} 或本常量保留旧
-   * “粮 identity、其它 unit 不折”的行为；直接调用本 lambda 则按契约恒返回负数。
+   * ★ 未落地价格源的旧口径：任何 unit 都返回负数（不折）。{@link #capacities} 对 {@code null} 或本常量保留旧 “粮 identity、其它 unit
+   * 不折”的行为；直接调用本 lambda 则按契约恒返回负数。
    */
   public static final DebtUnitValueLookup NO_UNIT_PRICES = debt -> -1L;
 
@@ -123,8 +123,8 @@ public final class DebtCapacityBook {
    * 否则                    ⇒ capacity.headroom()（读不到 ⇒ 0，与旧调用点“缺键/读不到 = 0”一致）
    * </pre>
    *
-   * <p>★ {@link DebtCapacity} 的字段与公式未变：headroom 仍只减 “可定价债务合计”；本方法把“仍有不可定价债务” 这一条
-   * fail-closed 规则收在唯一拼写点，借贷调用方必须用它而不是直接读 {@code capacity.headroom()}。
+   * <p>★ {@link DebtCapacity} 的字段与公式未变：headroom 仍只减 “可定价债务合计”；本方法把“仍有不可定价债务” 这一条 fail-closed
+   * 规则收在唯一拼写点，借贷调用方必须用它而不是直接读 {@code capacity.headroom()}。
    */
   public static long newCreditHeadroomMilli(DebtCapacity capacity) {
     if (capacity == null || capacity.unpricedDebtCount() > 0) {
@@ -482,7 +482,9 @@ public final class DebtCapacityBook {
         if (householdEconomy != null) {
           for (IndustryId industryId :
               industriesByHex.getOrDefault(
-                  IndustryHexKeys.hexKey(householdEconomy.view().hex().q(), householdEconomy.view().hex().r()), List.of())) {
+                  IndustryHexKeys.hexKey(
+                      householdEconomy.view().hex().q(), householdEconomy.view().hex().r()),
+                  List.of())) {
             Industry industry = data.industries().get(industryId);
             if (industry != null) {
               cycleDays = Math.max(cycleDays, industry.cycleDays());
@@ -499,11 +501,11 @@ public final class DebtCapacityBook {
    * ★★ <b>放贷行的可贷额（余粮）</b>：{@code reserve = 本户 expectedNeedMilli(GRAIN, 整周期天数) × 1000‰ ÷ 1000；
    * lendable = max(0, 库存 − reserve)}。
    *
-   * <p>★ R3a：本方法从旧 {@code 旧结算引擎（R3a 已删除）.lendableOf} 原样搬来；它是 {@link
-   * #capacitiesForState} 里"可自用余粮"那一栏的唯一实现，不新增第二处口径。
+   * <p>★ R3a：本方法从旧 {@code 旧结算引擎（R3a 已删除）.lendableOf} 原样搬来；它是 {@link #capacitiesForState}
+   * 里"可自用余粮"那一栏的唯一实现，不新增第二处口径。
    *
-   * <p>★★ <b>2026-10-09 Batch 3：保留额来源 = 该户当前注入的 {@code naturalNeeds[grain]} 逐日前瞻</b>
-   * （{@link HouseholdEconomy#expectedNeedMilli(io.mosire.simos.economy.api.id.CommodityId, long)}），
+   * <p>★★ <b>2026-10-09 Batch 3：保留额来源 = 该户当前注入的 {@code naturalNeeds[grain]} 逐日前瞻</b> （{@link
+   * HouseholdEconomy#expectedNeedMilli(io.mosire.simos.economy.api.id.CommodityId, long)}），
    * <b>不再</b>按 {@code population × 人均口粮定额} 现算。
    */
   static long lendableOf(HouseholdEconomy lenderHouseholdEconomy, long stock, long cycleDays) {

@@ -463,10 +463,7 @@ class UnitJurisdictionOperationsTest {
     UnitState base = stateOf(unit(U1, Optional.empty(), Optional.of(H11), sampleJurisdiction()));
     assertCopied(
         base.units().get(U1),
-        UnitOperations.setComposition(
-                base,
-                U1,
-                List.of(new CompositionEntry("步枪", 40)))
+        UnitOperations.setComposition(base, U1, List.of(new CompositionEntry("步枪", 40)))
             .units()
             .get(U1),
         "setComposition",
@@ -478,10 +475,7 @@ class UnitJurisdictionOperationsTest {
     UnitState base = stateOf(unit(U1, Optional.empty(), Optional.of(H11), sampleJurisdiction()));
     assertCopied(
         base.units().get(U1),
-        UnitOperations.applyCasualties(
-                base,
-                U1,
-                List.of(new CompositionDelta("步枪", -10)))
+        UnitOperations.applyCasualties(base, U1, List.of(new CompositionDelta("步枪", -10)))
             .units()
             .get(U1),
         "applyCasualties",

@@ -12,11 +12,11 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /**
- * actor 账户行政命令的载荷解析助手（P2-A §13.3 起账户主体只有家户）：{@code actor.TransferAccounts} /
- * {@code actor.AdjustAccounts} 共用的家户引用与正数量表。形状是 actor 模块私有的事（Core 只转交 JSON 文本）。
+ * actor 账户行政命令的载荷解析助手（P2-A §13.3 起账户主体只有家户）：{@code actor.TransferAccounts} / {@code
+ * actor.AdjustAccounts} 共用的家户引用与正数量表。形状是 actor 模块私有的事（Core 只转交 JSON 文本）。
  *
- * <p>★★ <b>P2-A 的形状变化（如实记）</b>：改前账户引用是 {@code {"owner":{"kind","id"},"q":..,"r":..}}
- * （{@code ActorRef} + 格）；现在只有家户，格从 {@code Household.location} 派生 ⇒ 引用是 {@code {"household":"hh-…"}}。
+ * <p>★★ <b>P2-A 的形状变化（如实记）</b>：改前账户引用是 {@code {"owner":{"kind","id"},"q":..,"r":..}} （{@code
+ * ActorRef} + 格）；现在只有家户，格从 {@code Household.location} 派生 ⇒ 引用是 {@code {"household":"hh-…"}}。
  * 旧账户直接报废（§13.3）：本层**不**保留旧形状的兼容解析。
  *
  * <p>★ <b>只判形状/类型/非零：</b>数值语义（源是否有账、可支配是否够、相加是否溢出）由 {@link
@@ -51,13 +51,15 @@ final class AccountPayloads {
     try {
       return new AccountRef(HouseholdId.parse(value.asText()));
     } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("字段 " + field + ".household 的家户 id 不合法: " + e.getMessage(), e);
+      throw new IllegalArgumentException(
+          "字段 " + field + ".household 的家户 id 不合法: " + e.getMessage(), e);
     }
   }
 
   /** 解析独立 {@code household} 字段（字符串 id）。 */
   static HouseholdId household(JsonNode node, String field) {
-    JsonNode value = node.get("household");
+    // ★ D5 修：必须按调用方给的字段名读；旧实现恒读 "household"，使 fromHousehold/toHousehold 永远解析成同一个键。
+    JsonNode value = node.get(field);
     if (value == null || !value.isTextual()) {
       throw new IllegalArgumentException("字段 " + field + " 必须是家户 id 字符串: " + node);
     }

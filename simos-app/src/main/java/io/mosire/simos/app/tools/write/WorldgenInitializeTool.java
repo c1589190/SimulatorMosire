@@ -163,8 +163,9 @@ public final class WorldgenInitializeTool implements AgentTool {
    * ★★ <b>H1：家户 actor 的播种命令</b>（{@code actor.Seed}）—— 与人口/经济**同批**（同一 branch + 同一 expectedRevision
    * ⇒ 一条 revision），载荷由 {@link HouseholdSeeder} 从 {@link EconomySeeder#plan} 交回的 **同一份**家户开缸库存算出。
    *
-   * <p>★★ <b>为什么它必须与经济同批</b>：H1 起"商品库存"的唯一持久真源是 actor 切片的 {@code HouseholdInventory} （裁定 D3-C/K1）—— 若只播
-   * economy 而不播 actor，世界起来的当天就<b>没有一本家户账</b>， 而日结算的消费与投入都要读它（{@code 旧日推进器（R3a 已删除）} 当场抛，不静默当 0）。
+   * <p>★★ <b>为什么它必须与经济同批</b>：H1 起"商品库存"的唯一持久真源是 actor 切片的 {@code HouseholdInventory} （裁定 D3-C/K1）——
+   * 若只播 economy 而不播 actor，世界起来的当天就<b>没有一本家户账</b>， 而日结算的消费与投入都要读它（{@code 旧日推进器（R3a 已删除）} 当场抛，不静默当
+   * 0）。
    */
   public static final String SEED_ACTOR_TYPE = "actor.Seed";
 

@@ -7,13 +7,13 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.time.MarketReadout;
 import io.mosire.simos.economy.time.MarketReadoutAccounts;
 import io.mosire.simos.economy.time.MarketReport;
 import io.mosire.simos.economy.time.MarketTopology;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
 import java.util.LinkedHashMap;
@@ -88,10 +88,10 @@ public final class MarketReadoutAssembly {
     Map<HouseholdId, Map<CurrencyId, Long>> householdMoney = new LinkedHashMap<>();
     Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods = new LinkedHashMap<>();
     Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : economy.classes().entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry :
+        economy.classes().entrySet()) {
       HouseholdId key = householdEconomyEntry.getKey();
-      HouseholdInventory inventory =
-          actor.accounts().get(OwnershipBooks.accountKeyOf(key));
+      HouseholdInventory inventory = actor.accounts().get(OwnershipBooks.accountKeyOf(key));
       if (inventory == null) {
         continue; // 读口覆盖不足：由 MarketReadout 的 unavailable.householdAccounts 计数点名
       }

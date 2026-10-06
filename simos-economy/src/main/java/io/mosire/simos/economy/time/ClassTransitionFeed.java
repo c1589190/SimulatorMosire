@@ -11,11 +11,12 @@ import java.util.concurrent.ConcurrentSkipListMap;
 /**
  * ★★ <b>关账日阶层写回的进程内审计投递点</b>—— 把 {@link ClassTransition} 交给读口（{@code ApiViews}）。
  *
- * <p>★★ <b>为什么需要它</b>：写回只改 {@code HouseholdEconomy.view.stratum}；写完之后状态里只剩"新阶层"，从 {@code SimulationState}
- * 反查不到"从哪一档跳过来"。没有这份审计，读口只能看到"现在是什么"，看不到"变化发生了"。
+ * <p>★★ <b>为什么需要它</b>：写回只改 {@code HouseholdEconomy.view.stratum}；写完之后状态里只剩"新阶层"，从 {@code
+ * SimulationState} 反查不到"从哪一档跳过来"。没有这份审计，读口只能看到"现在是什么"，看不到"变化发生了"。
  *
  * <p>★★ <b>如实边界</b>：进程内、不落盘、重启即失；按 mapId 分开，按关账日（绝对 world day）取 {@code floorEntry(readTick)} ——
- * 读到的是"读这一刻已经发生过的最近一次关账"的写回。写回本身（{@code HouseholdEconomy.view}）在快照里持久，重放/换进程后阶层的当前值仍可读，只是"从哪跳来"的审计读不到。
+ * 读到的是"读这一刻已经发生过的最近一次关账"的写回。写回本身（{@code
+ * HouseholdEconomy.view}）在快照里持久，重放/换进程后阶层的当前值仍可读，只是"从哪跳来"的审计读不到。
  *
  * <p>★ <b>为什么用 ConcurrentSkipListMap + floorEntry 而不是像 MarketReportFeed 那样要求 tick 严格相等</b>：一次
  * {@code simos.advance} 可能跨过多个关账日（例如 30→360 一跳），严格相等会让中间关账日的写回审计全部消失；floorEntry 读的是"截至当前 tick

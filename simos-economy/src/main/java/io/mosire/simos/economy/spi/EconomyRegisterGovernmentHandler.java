@@ -12,10 +12,10 @@ import io.mosire.simos.economy.api.id.GovernmentId;
 import io.mosire.simos.economy.api.id.GovernmentIds;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.ProductionRole;
-import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.Government;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -192,7 +192,8 @@ public final class EconomyRegisterGovernmentHandler
       householdEconomies.put(registration.household(), householdEconomy);
 
       // ── ② classStandings：给了 productionRole 才写（位置引用必须存在）──────────────
-      Map<HouseholdId, HouseholdClassMembership> classMemberships = new LinkedHashMap<>(base.classStandings());
+      Map<HouseholdId, HouseholdClassMembership> classMemberships =
+          new LinkedHashMap<>(base.classStandings());
       if (registration.classPositionId() != null) {
         ClassPositionId positionId = registration.classPositionId();
         ProductionRole position = base.classPositions().get(positionId);
@@ -202,16 +203,23 @@ public final class EconomyRegisterGovernmentHandler
                   + " 的 classPosition 不存在（先 economy.GmAdjust.upsertClassPosition）: "
                   + positionId.value());
         }
-        HouseholdClassMembership previousClassMembership = base.classStandings().get(registration.household());
+        HouseholdClassMembership previousClassMembership =
+            base.classStandings().get(registration.household());
         classMemberships.put(
             registration.household(),
             new HouseholdClassMembership(
                 registration.household(),
                 positionId,
                 positionId,
-                previousClassMembership == null ? Set.of() : previousClassMembership.participatingPositionIds(),
-                previousClassMembership == null ? Map.of() : previousClassMembership.retainedShares(),
-                previousClassMembership == null ? 0L : previousClassMembership.consecutiveDebtStressCycles(),
+                previousClassMembership == null
+                    ? Set.of()
+                    : previousClassMembership.participatingPositionIds(),
+                previousClassMembership == null
+                    ? Map.of()
+                    : previousClassMembership.retainedShares(),
+                previousClassMembership == null
+                    ? 0L
+                    : previousClassMembership.consecutiveDebtStressCycles(),
                 day,
                 reason));
       }
@@ -266,7 +274,9 @@ public final class EconomyRegisterGovernmentHandler
       governments.put(governmentId, government);
 
       EconomyData projected =
-          base.withHouseholdEconomies(householdEconomies).withClassMemberships(classMemberships).withGovernments(governments);
+          base.withHouseholdEconomies(householdEconomies)
+              .withClassMemberships(classMemberships)
+              .withGovernments(governments);
       EconomyLog.enterprise()
           .info(
               "event=GOVERNMENT_REGISTERED government={} govUnit={} household={} population={}"

@@ -23,26 +23,26 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * ★★ <b>家户位置的唯一解析落点</b>（2026-10-09 唯一列表裁定）：{@code HouseholdLocation.UNIT(unitId)} →
- * 该 unit 当刻 {@link UnitState#effectivePosition} 的 hex；{@code HEX} 原样返回。
+ * ★★ <b>家户位置的唯一解析落点</b>（2026-10-09 唯一列表裁定）：{@code HouseholdLocation.UNIT(unitId)} → 该 unit 当刻
+ * {@link UnitState#effectivePosition} 的 hex；{@code HEX} 原样返回。
  *
- * <p>★★ <b>为什么必须有它</b>：政府家户（以及 {@code unit.RaiseUnit} 造的小家户）的位置不再是创建时钉死的 HEX，而是
- * {@code UNIT(unitId)}。{@code unit.PlaceAt} / 行军 / 迁都只改 unit 的位置，家户的“有效 hex”必须由 resolver 现算——
+ * <p>★★ <b>为什么必须有它</b>：政府家户（以及 {@code unit.RaiseUnit} 造的小家户）的位置不再是创建时钉死的 HEX，而是 {@code
+ * UNIT(unitId)}。{@code unit.PlaceAt} / 行军 / 迁都只改 unit 的位置，家户的“有效 hex”必须由 resolver 现算——
  * 否则政府家户的国库/入市/生产组织会停在旧格。{@code HouseholdAccountKey} 早已只按 {@code HouseholdId}（P2-A §13.3）⇒ 账户键不因此变。
  *
  * <p>★★ <b>谁必须走它</b>（本批接线）：
  *
  * <ul>
- *   <li>{@link #alignHouseholdEconomyViews}：经济侧 {@code HouseholdEconomy.view.hex} 是市场参与 / 生产组织 / 贷款等读位置的载体；
- *       UNIT 家户的行视图由 unit 当刻位置刷新（HEX 家户原样不动），于是 economy 的既有 {@code view().hex()} 读点全部跟随；
+ *   <li>{@link #alignHouseholdEconomyViews}：经济侧 {@code HouseholdEconomy.view.hex} 是市场参与 / 生产组织 /
+ *       贷款等读位置的载体； UNIT 家户的行视图由 unit 当刻位置刷新（HEX 家户原样不动），于是 economy 的既有 {@code view().hex()} 读点全部跟随；
  *   <li>{@link #hexOfLot}：app 层“批次在哪一格”的读点（逐日生计满足率）；
  *   <li>{@link #effectiveHex}：读口/汇总（如区域账本汇总）取家户有效格。
  * </ul>
  *
- * <p>★ <b>只读 + 纯函数</b>：不抛“查无此人”的模糊错——{@code UNIT} 单位不存在/无位置时返回 {@link Optional#empty()}；
- * 调用方按各自口径 fail-closed（一致性校核另在 {@link HouseholdUnitConsistency} / {@link GovernmentHouseholdWiring}）。
- * ★ {@link #alignHouseholdEconomyViews} 对“有流水行”的家户只在目标格有产业登记（或经济里存在无格键产业）时才动车——
- * {@code EconomyData} 构造期要求有流水的家户视图落点有产业登记；移不动的留在原格，属本批具名缺口（见报告）。
+ * <p>★ <b>只读 + 纯函数</b>：不抛“查无此人”的模糊错——{@code UNIT} 单位不存在/无位置时返回 {@link Optional#empty()}； 调用方按各自口径
+ * fail-closed（一致性校核另在 {@link HouseholdUnitConsistency} / {@link GovernmentHouseholdWiring}）。 ★
+ * {@link #alignHouseholdEconomyViews} 对“有流水行”的家户只在目标格有产业登记（或经济里存在无格键产业）时才动车—— {@code EconomyData}
+ * 构造期要求有流水的家户视图落点有产业登记；移不动的留在原格，属本批具名缺口（见报告）。
  */
 public final class HouseholdPositionResolver {
 
@@ -92,10 +92,10 @@ public final class HouseholdPositionResolver {
   }
 
   /**
-   * ★★ <b>把 UNIT 家户的经济行视图对齐到 unit 当刻位置</b>：逐家户（按 {@link HouseholdId#value()} 稳定序）找
-   * {@code economy.classes} 的同 id 行；位置是 {@code UNIT(u)}、解析出的 hex 与行视图不同时，只改
-   * {@code view.hex}（{@code residence}/{@code stratum} 与其余字段原样）。有流水行的家户还要求目标格具备产业登记
-   * （构造期约束）；HEX 家户、无经济行的家户、移不动的家户一律不动 ⇒ 无变化时返回入参本身（零变更）。
+   * ★★ <b>把 UNIT 家户的经济行视图对齐到 unit 当刻位置</b>：逐家户（按 {@link HouseholdId#value()} 稳定序）找 {@code
+   * economy.classes} 的同 id 行；位置是 {@code UNIT(u)}、解析出的 hex 与行视图不同时，只改 {@code view.hex}（{@code
+   * residence}/{@code stratum} 与其余字段原样）。有流水行的家户还要求目标格具备产业登记 （构造期约束）；HEX 家户、无经济行的家户、移不动的家户一律不动 ⇒
+   * 无变化时返回入参本身（零变更）。
    *
    * <p>★ 目标格的产业登记判据与 {@code EconomyData} 构造期 {@code requireIndustryRegistered} 同源：存在无格键产业 ⇒
    * 任何格都算已登记；否则该格必须恰有一个产业 id 的格键逐字相等。
@@ -131,7 +131,11 @@ public final class HouseholdPositionResolver {
       }
       nextHouseholdEconomies.put(
           household.id(),
-          householdEconomy.withView(new CohortKey(atHex.get(), householdEconomy.view().residence(), householdEconomy.view().stratum())));
+          householdEconomy.withView(
+              new CohortKey(
+                  atHex.get(),
+                  householdEconomy.view().residence(),
+                  householdEconomy.view().stratum())));
       moved++;
     }
     if (nextHouseholdEconomies == null) {

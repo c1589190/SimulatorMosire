@@ -30,16 +30,16 @@ import java.util.UUID;
  *
  * <ol>
  *   <li>{@code social.SetHouseholdLocation(householdId, UNIT(unitId))}（家户位置先动）；
- *   <li>{@code unit.SetUnitHouseholds(unitId, 原列表 + household)}（unit 侧容纳列表随后）；若家户当前在<b>另一个</b> unit，
- *       再追加一条从旧 unit 列表移除的命令（同一批、同一 revision，保证"家户只能属于一个 unit"）。
+ *   <li>{@code unit.SetUnitHouseholds(unitId, 原列表 + household)}（unit 侧容纳列表随后）；若家户当前在<b>另一个</b>
+ *       unit， 再追加一条从旧 unit 列表移除的命令（同一批、同一 revision，保证"家户只能属于一个 unit"）。
  * </ol>
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：{@link HouseholdBook#setLocation} + {@link
  * UnitOperations#setUnitHouseholds}（新旧 unit 两侧）都在 preview 先跑；{@code preview=true（缺省）}一个字节都不写。
  * 目标单位已含该家户且位置一致 ⇒ 幂等 no-op。
  *
- * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；资源声明 social + unit。提交成功后记 INFO
- * {@code event=UNIT_HOUSEHOLD_ASSIGN}（{@link UnitLog}）。
+ * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；资源声明 social + unit。提交成功后记 INFO {@code
+ * event=UNIT_HOUSEHOLD_ASSIGN}（{@link UnitLog}）。
  */
 public final class UnitAssignHouseholdTool extends AbstractHouseholdGmTool {
 
@@ -81,7 +81,8 @@ public final class UnitAssignHouseholdTool extends AbstractHouseholdGmTool {
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
-        ToolSupport.prop("integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=该分支 head）"));
+        ToolSupport.prop(
+            "integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=该分支 head）"));
     return ToolSupport.schema(props, List.of("householdId", "unitId", "reason"));
   }
 
@@ -141,7 +142,8 @@ public final class UnitAssignHouseholdTool extends AbstractHouseholdGmTool {
     }
 
     SocialData projected =
-        HouseholdBook.setLocation(base, id, new HouseholdLocation.Unit(rawUnitId), request.reason());
+        HouseholdBook.setLocation(
+            base, id, new HouseholdLocation.Unit(rawUnitId), request.reason());
     List<HouseholdId> targetAfter = new ArrayList<>(target.households());
     targetAfter.add(id);
     UnitOperations.setUnitHouseholds(units, target.id(), targetAfter);
@@ -172,7 +174,8 @@ public final class UnitAssignHouseholdTool extends AbstractHouseholdGmTool {
       detachedAfter.remove(id);
       UnitOperations.setUnitHouseholds(units, currentUnit.id(), detachedAfter);
       Map<String, Object> oldPayload =
-          SocialHouseholdMoveTool.unitHouseholdsPayload(currentUnit, detachedAfter, request.reason());
+          SocialHouseholdMoveTool.unitHouseholdsPayload(
+              currentUnit, detachedAfter, request.reason());
       batch.add(envelope(request, batchId, SetUnitHouseholdsHandler.TYPE, oldPayload));
       commandsPreview.add(commandPreview(SetUnitHouseholdsHandler.TYPE, oldPayload));
       detachedUnit = currentUnit;

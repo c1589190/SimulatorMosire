@@ -20,8 +20,8 @@ import java.util.Map;
 /**
  * app 测试的 S2 家户夹具：把"批次自带落点"的旧夹具翻译成"家户给位置"（架构 §4.2）。
  *
- * <p>用法：调用方给逐批次的 {@code lot → hex} 表，本类为每个 hex 造一个 {@code hh:<q>_<r>} 家户并挂上全部成员；
- * 旧读口（populationAt / groupsAt / ageStructureAt / urbanPopulationAt）因此保持同一批读数。
+ * <p>用法：调用方给逐批次的 {@code lot → hex} 表，本类为每个 hex 造一个 {@code hh:<q>_<r>} 家户并挂上全部成员； 旧读口（populationAt /
+ * groupsAt / ageStructureAt / urbanPopulationAt）因此保持同一批读数。
  *
  * <p>★ 只在测试里用；生产装配走 {@code PopulationSeeder} / {@code social.SeedGroups}。
  */

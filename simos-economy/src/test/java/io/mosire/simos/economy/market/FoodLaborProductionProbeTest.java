@@ -66,9 +66,7 @@ class FoodLaborProductionProbeTest {
     assertThat(producer.lastFoodNeed).as("口粮需求 100×5").isEqualTo(500L);
     assertThat(producer.lastFoodEaten).as("断粮，吃不到").isZero();
     assertThat(producer.lastEfficiency).as("吃饱度 0 → 保底效率 300‰").isEqualTo(300L);
-    assertThat(producer.lastProduced)
-        .as("可用劳动 100 × 300‰ / laborPerUnit 1 = 30 产出")
-        .isEqualTo(30L);
+    assertThat(producer.lastProduced).as("可用劳动 100 × 300‰ / laborPerUnit 1 = 30 产出").isEqualTo(30L);
   }
 
   @Test

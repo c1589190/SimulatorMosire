@@ -58,12 +58,10 @@ import java.util.Objects;
  * <p>★★ <b>E5a：份额表写入委托 {@link OwnershipStakeBook#transfer}</b>（计划 §4 硬约束 2 的唯一写口）。本类只做
  * 命令语义的准入判断（份额存在/数量范围/至少一栏变化），真正的校验/新 id/守恒/活跃质押上界全在 Book 里一次完成： 任一失败 ⇒ 调用方的表一字不动（不再有"先改源行、后生成 id
  * 抛错"的半笔风险）。
- *
  */
 public final class EconomyTransferOwnershipStakeHandler implements CommandHandler {
 
   private static final String COMMAND = "economy.TransferAssetShare";
-
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 

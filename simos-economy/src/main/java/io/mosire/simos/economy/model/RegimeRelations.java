@@ -5,7 +5,6 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
@@ -13,13 +12,14 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRules;
-import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.SubsistenceObligation;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -338,8 +338,7 @@ public final class RegimeRelations {
    * ★★ <b>S1：四档默认的 {@link LaborSource}</b>（唯一拼写点）—— {@code feudal=SERF}、{@code tenant=TENANT}、
    * {@code household=FAMILY}、{@code handicraft=WAGE}。
    *
-   * <p>★ 旧档没有这一维时 {@code ProductionRules} 的构造期兜底是 {@code SELF}；本方法服务"按制度推导"的新路径。 未登记 ⇒
-   * 抛（与其余入口同口径）。
+   * <p>★ 旧档没有这一维时 {@code ProductionRules} 的构造期兜底是 {@code SELF}；本方法服务"按制度推导"的新路径。 未登记 ⇒ 抛（与其余入口同口径）。
    */
   public static LaborSource laborSourceFor(RegimeId regime) {
     if (regime == null) {
@@ -567,11 +566,11 @@ public final class RegimeRelations {
    * 该格**四个传统阶层** cohort 各一条同类规则（R7/R8：受方是 cohort，劳动者是一个集合）。
    *
    * <p>★★ <b>S3 审计结论（保持原样）</b>：本方法只服务**创世缺省关系模板**（{@code EconomyPayloads} / {@code EconomySeeder}
-   * 在载荷缺 {@code relation} 时调用），不按运行期 {@code HouseholdEconomy.view} 派生。模板产出的 {@code ToCohort} 会在 {@code
-   * EconomyData} 构造期由 {@code normalizePayees} 一对一归一成 {@code ToHousehold(稳定 HouseholdId)} ⇒ S3
-   * 关账写回把 {@code HouseholdEconomy.view.stratum} 改成 {@code landless_laborer}/{@code artisan}/{@code
-   * official} 后，这些默认规则的对象仍然是同一家户， 不会漏行/错行。 新阶层没有创世行，由 S2/S3 的显式关系数据点名，不在这里追加（见 {@link
-   * #TRADITIONAL_STRATA} 的类注）。
+   * 在载荷缺 {@code relation} 时调用），不按运行期 {@code HouseholdEconomy.view} 派生。模板产出的 {@code ToCohort} 会在
+   * {@code EconomyData} 构造期由 {@code normalizePayees} 一对一归一成 {@code ToHousehold(稳定 HouseholdId)} ⇒
+   * S3 关账写回把 {@code HouseholdEconomy.view.stratum} 改成 {@code landless_laborer}/{@code
+   * artisan}/{@code official} 后，这些默认规则的对象仍然是同一家户， 不会漏行/错行。 新阶层没有创世行，由 S2/S3 的显式关系数据点名，不在这里追加（见
+   * {@link #TRADITIONAL_STRATA} 的类注）。
    */
   private static List<RuleSpec> laborCohorts(
       RuleType type,

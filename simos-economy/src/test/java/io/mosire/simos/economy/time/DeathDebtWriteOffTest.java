@@ -19,15 +19,15 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -159,9 +159,10 @@ class DeathDebtWriteOffTest {
             Map.of(),
             List.of(new ClassSlot(SocialClassId.POOR_PEASANT, "贫农", 700)),
             new AllocationRule.Split(700, 300));
-    ProductionUnit unit = new ProductionUnit(UNIT, FARM, ESTATE, FARM.value(), 0L, 0L, Map.of());
-    ClassRow debtor =
-        new ClassRow(
+    ProductionProcess unit =
+        new ProductionProcess(UNIT, FARM, ESTATE, FARM.value(), 0L, 0L, Map.of());
+    HouseholdEconomy debtor =
+        new HouseholdEconomy(
             DEBTOR,
             new CohortKey(HEX, ResidenceKind.RURAL, SocialClassId.POOR_PEASANT),
             population,
@@ -172,8 +173,8 @@ class DeathDebtWriteOffTest {
             Map.of(),
             Map.of(),
             0L);
-    ClassRow creditor =
-        new ClassRow(
+    HouseholdEconomy creditor =
+        new HouseholdEconomy(
             CREDITOR,
             new CohortKey(HEX, ResidenceKind.RURAL, SocialClassId.LANDLORD),
             10L,
@@ -196,7 +197,7 @@ class DeathDebtWriteOffTest {
             OptionalLong.empty(),
             OptionalLong.empty(),
             DebtStatus.NORMAL);
-    LinkedHashMap<HouseholdId, ClassRow> rows = new LinkedHashMap<>();
+    LinkedHashMap<HouseholdId, HouseholdEconomy> rows = new LinkedHashMap<>();
     rows.put(DEBTOR, debtor);
     rows.put(CREDITOR, creditor);
 
@@ -210,11 +211,13 @@ class DeathDebtWriteOffTest {
                     EconomyMeta.RULES_VERSION_PRE_MODERN_V1,
                     Optional.empty())))
         .withIndustries(Map.of(FARM, industry))
-        .withUnits(Map.of(UNIT, unit))
-        .withClasses(rows)
+        .withProcesses(Map.of(UNIT, unit))
+        .withHouseholdEconomies(rows)
         .withDebtContracts(Map.of(DEBT, debt))
-        .withAllocations(
+        .withLaborCommitments(
             Map.of(
-                ALLOC, new LaborAllocation(ALLOC, LOT, DEBTOR, ESTATE, UNIT.value(), 60_000L, 1L)));
+                ALLOC,
+                new HouseholdLaborCommitment(
+                    ALLOC, LOT, DEBTOR, ESTATE, UNIT.value(), 60_000L, 1L)));
   }
 }

@@ -62,8 +62,8 @@ import java.util.UUID;
  *
  * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / armyId 不存在 / root unit 不存在 / 新主子不存在或非 GOV / 需要同步 unit 侧却没有 role ⇒
  * {@link IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒（如 root 已带 {@code
- * GovernmentFormation}、同 tick 二次改编）⇒ {@code REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛
- * {@link ResourceDeniedException}（由唯一入口折资源拒因）。
+ * GovernmentFormation}、同 tick 二次改编）⇒ {@code REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配
+ * ⇒ 原样抛 {@link ResourceDeniedException}（由唯一入口折资源拒因）。
  */
 public final class AssignArmyGovTool implements AgentTool {
 

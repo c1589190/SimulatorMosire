@@ -10,8 +10,8 @@ import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.Actor;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.state.BranchId;
@@ -42,17 +42,20 @@ import org.junit.jupiter.api.Test;
  * <p>★ <b>2026-09-27 裁定 S3</b>：产权表（{@code holdings}）整块退役 ⇒ {@link ActorData} 从四张表变三张 （{@code meta}
  * / {@code actors} / {@code accounts}），本类里 holdings 那一组用例随之整组删除。
  *
- * <p>★★ <b>P2-A §13.3（2026-10-09）迁移</b>：账户主体统一为家户、键去掉 {@code HexCoord}（{@code GoodsAccountKey} 只剩
- * {@link HouseholdId}），庄园/作坊 kind 退役。本类把账户夹具改成家户键、把 {@code ESTATE} 夹具换成
- * {@code ORGANIZATION}，并删掉"按第一个 {@code |} 切"那组旧格式用例（那种格式已不存在）； <b>铁律 5 的三条结构/往返判据与坏键宁抛的口径一字未动。</b>
+ * <p>★★ <b>P2-A §13.3（2026-10-09）迁移</b>：账户主体统一为家户、键去掉 {@code HexCoord}（{@code HouseholdAccountKey}
+ * 只剩 {@link HouseholdId}），庄园/作坊 kind 退役。本类把账户夹具改成家户键、把 {@code ESTATE} 夹具换成 {@code
+ * ORGANIZATION}，并删掉"按第一个 {@code |} 切"那组旧格式用例（那种格式已不存在）； <b>铁律 5 的三条结构/往返判据与坏键宁抛的口径一字未动。</b>
  */
 class ActorRoundTripTest {
 
-  /** 产业型主体（spec §三：生产活动的制度身份现在由 {@code ProductionMode/Organization/Unit} 表达，actor 层用 ORGANIZATION）。 */
+  /**
+   * 产业型主体（spec §三：生产活动的制度身份现在由 {@code ProductionMode/Organization/Unit} 表达，actor 层用 ORGANIZATION）。
+   */
   private static final ActorRef ORGANIZATION = new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
 
   /** ★ 人口批次型主体：{@code id} 里**自带两个冒号**（批次的 id 就是这个形状）—— 键的规范串逆靠它取得判别力。 */
-  private static final ActorRef HOUSEHOLD_REF = new ActorRef(ActorKind.HOUSEHOLD, "rural:0_0:MALE:1");
+  private static final ActorRef HOUSEHOLD_REF =
+      new ActorRef(ActorKind.HOUSEHOLD, "rural:0_0:MALE:1");
 
   private static final ActorMeta META = new ActorMeta("levant", 7L, "rules-r1");
 
@@ -122,8 +125,8 @@ class ActorRoundTripTest {
    * ★★ <b>{@link Actor} 的组件必须恰是 {@code ref} 与 {@code label}</b>（brief Step 5）。
    *
    * <p>★ <b>用 {@code containsExactlyInAnyOrder} 而不是 {@code contains}</b>：这条断言的价值全在<b>否定性</b> ——
-   * spec §三 L283 的禁令点名 {@code ActorRow { Money money; List&lt;Debt&gt; debts; }} 这种形状，多一个组件就必须当场红。 {@code
-   * contains} 挡不住"塞回来的那个"，等于没测。
+   * spec §三 L283 的禁令点名 {@code ActorRow { Money money; List&lt;Debt&gt; debts; }} 这种形状，多一个组件就必须当场红。
+   * {@code contains} 挡不住"塞回来的那个"，等于没测。
    */
   @Test
   void actorHasExactlyRefAndLabel() {
@@ -148,8 +151,11 @@ class ActorRoundTripTest {
         base.withMeta(Optional.of(META))
             .withActor(new Actor(ORGANIZATION, "组织者"))
             .withActor(new Actor(HOUSEHOLD_REF, "佃农家户"))
-            .withAccount(new GoodsAccount(new GoodsAccountKey(HH_A), Map.of(GRAIN, 100L, CLOTH, 0L)))
-            .withAccount(new GoodsAccount(new GoodsAccountKey(HH_B), Map.of(GRAIN, 7L)));
+            .withInventory(
+                new HouseholdInventory(
+                    new HouseholdAccountKey(HH_A), Map.of(GRAIN, 100L, CLOTH, 0L)))
+            .withInventory(
+                new HouseholdInventory(new HouseholdAccountKey(HH_B), Map.of(GRAIN, 7L)));
 
     ActorChangeSet cs = ActorChangeSet.between(base, target);
     ActorData rebuilt = ActorChangeSet.apply(cs, base);
@@ -178,14 +184,14 @@ class ActorRoundTripTest {
 
     // ④ 逐字段：accounts 的键（家户身份）+ 每本账的余额表（逐个商品，含一条 0）
     assertThat(rebuilt.accounts()).containsExactlyEntriesOf(target.accounts());
-    GoodsAccountKey accountA = new GoodsAccountKey(HH_A);
+    HouseholdAccountKey accountA = new HouseholdAccountKey(HH_A);
     assertThat(rebuilt.accounts().get(accountA).key().household()).isEqualTo(HH_A);
     assertThat(rebuilt.accounts().get(accountA).balances())
         .as("★ 逐商品断言；其中一条是 0 ⇒ 0 在往返里也不许被归一掉（库存是存量）")
         .containsOnlyKeys(GRAIN, CLOTH)
         .containsEntry(GRAIN, 100L)
         .containsEntry(CLOTH, 0L);
-    GoodsAccountKey accountB = new GoodsAccountKey(HH_B);
+    HouseholdAccountKey accountB = new HouseholdAccountKey(HH_B);
     assertThat(rebuilt.accounts().get(accountB).key().household()).isEqualTo(HH_B);
     assertThat(rebuilt.accounts().get(accountB).balances())
         .as("另一本账的余额不许被前一本来回串（两本账各自独立）")
@@ -209,15 +215,18 @@ class ActorRoundTripTest {
             .withMeta(Optional.of(META))
             .withActor(new Actor(ORGANIZATION, "组织者"))
             .withActor(new Actor(HOUSEHOLD_REF, "佃农家户"))
-            .withAccount(new GoodsAccount(new GoodsAccountKey(HH_A), Map.of(GRAIN, 100L)))
-            .withAccount(new GoodsAccount(new GoodsAccountKey(HH_B), Map.of(GRAIN, 7L)));
+            .withInventory(
+                new HouseholdInventory(new HouseholdAccountKey(HH_A), Map.of(GRAIN, 100L)))
+            .withInventory(
+                new HouseholdInventory(new HouseholdAccountKey(HH_B), Map.of(GRAIN, 7L)));
     // target：撤掉家户这个主体与它的库存、给组织者改名、把粮覆盖成 40
     //   ⇒ 两张表上"既删又改"
     ActorData target =
         ActorData.empty()
             .withMeta(Optional.of(META))
             .withActor(new Actor(ORGANIZATION, "东家组织"))
-            .withAccount(new GoodsAccount(new GoodsAccountKey(HH_A), Map.of(GRAIN, 40L)));
+            .withInventory(
+                new HouseholdInventory(new HouseholdAccountKey(HH_A), Map.of(GRAIN, 40L)));
 
     ActorChangeSet cs = ActorChangeSet.between(base, target);
     assertThat(cs.actors()).as("既删又改 ⇒ Patch（两侧都不许丢）").isInstanceOf(FieldDelta.Patch.class);
@@ -233,12 +242,12 @@ class ActorRoundTripTest {
     assertThat(rebuilt.actors().get(ORGANIZATION).label()).isEqualTo("东家组织");
     assertThat(rebuilt.actors()).as("被撤掉的主体不许留在重建结果里").doesNotContainKey(HOUSEHOLD_REF);
     assertThat(rebuilt.accounts()).containsExactlyEntriesOf(target.accounts());
-    assertThat(rebuilt.accounts().get(new GoodsAccountKey(HH_A)).balances())
+    assertThat(rebuilt.accounts().get(new HouseholdAccountKey(HH_A)).balances())
         .as("覆盖后的库存（不是 100 与 40 相加，也不是留在 100）")
         .containsExactlyInAnyOrderEntriesOf(Map.of(GRAIN, 40L));
     assertThat(rebuilt.accounts())
         .as("被销账的那本不许留在重建结果里")
-        .doesNotContainKey(new GoodsAccountKey(HH_B));
+        .doesNotContainKey(new HouseholdAccountKey(HH_B));
     assertThat(rebuilt).isEqualTo(target);
   }
 
@@ -251,13 +260,14 @@ class ActorRoundTripTest {
    */
   @Test
   void accountDeltaRoundTripsBothRemoveAndOverwrite() {
-    GoodsAccountKey accountA = new GoodsAccountKey(HH_A);
-    GoodsAccountKey accountB = new GoodsAccountKey(HH_B);
+    HouseholdAccountKey accountA = new HouseholdAccountKey(HH_A);
+    HouseholdAccountKey accountB = new HouseholdAccountKey(HH_B);
     ActorData base =
         ActorData.empty()
-            .withAccount(new GoodsAccount(accountA, Map.of(GRAIN, 100L, CLOTH, 5L)))
-            .withAccount(new GoodsAccount(accountB, Map.of(GRAIN, 7L)));
-    ActorData target = ActorData.empty().withAccount(new GoodsAccount(accountA, Map.of(GRAIN, 0L)));
+            .withInventory(new HouseholdInventory(accountA, Map.of(GRAIN, 100L, CLOTH, 5L)))
+            .withInventory(new HouseholdInventory(accountB, Map.of(GRAIN, 7L)));
+    ActorData target =
+        ActorData.empty().withInventory(new HouseholdInventory(accountA, Map.of(GRAIN, 0L)));
 
     ActorChangeSet cs = ActorChangeSet.between(base, target);
 
@@ -409,7 +419,8 @@ class ActorRoundTripTest {
   @Test
   void withActorDerivesTheKeyFromTheValue() {
     ActorData once = ActorData.empty().withActor(new Actor(ORGANIZATION, "组织者"));
-    assertThat(once.actors()).containsExactly(Map.entry(ORGANIZATION, new Actor(ORGANIZATION, "组织者")));
+    assertThat(once.actors())
+        .containsExactly(Map.entry(ORGANIZATION, new Actor(ORGANIZATION, "组织者")));
     assertThat(once.actors().keySet().iterator().next())
         .as("键恰是 value.ref()（不是另一条独立入参，故调用方拼不出不一致的键）")
         .isEqualTo(once.actors().values().iterator().next().ref());
@@ -420,57 +431,56 @@ class ActorRoundTripTest {
   }
 
   /**
-   * ★★ <b>{@code withAccount} 的键从值派生</b>（同 {@code withActor}，"键从值派生"只许有一个拼写点）。
+   * ★★ <b>{@code withInventory} 的键从值派生</b>（同 {@code withActor}，"键从值派生"只许有一个拼写点）。
    *
    * <p>★ 判别力同 {@code withActor} 那条：wither <b>不接受另一个独立的键入参</b>，故"键与值各说各话"在类型上就造不出来 （绕过 wither
    * 直接塞表的那条路由构造器挡）。
    */
   @Test
-  void withAccountDerivesTheKeyFromTheValue() {
-    GoodsAccount row = new GoodsAccount(new GoodsAccountKey(HH_A), Map.of(GRAIN, 100L));
-    ActorData once = ActorData.empty().withAccount(row);
+  void withInventoryDerivesTheKeyFromTheValue() {
+    HouseholdInventory row =
+        new HouseholdInventory(new HouseholdAccountKey(HH_A), Map.of(GRAIN, 100L));
+    ActorData once = ActorData.empty().withInventory(row);
 
     assertThat(once.accounts()).containsExactly(Map.entry(row.key(), row));
-    GoodsAccountKey key = once.accounts().keySet().iterator().next();
+    HouseholdAccountKey key = once.accounts().keySet().iterator().next();
     assertThat(key).as("键恰是 value.key()（判据：不是另一条独立入参）").isEqualTo(row.key());
     assertThat(key.household()).as("键里的家户身份与值一致").isEqualTo(HH_A);
 
-    GoodsAccount overwritten =
-        new GoodsAccount(new GoodsAccountKey(HH_A), Map.of(GRAIN, 40L));
-    assertThat(once.withAccount(overwritten).accounts()).as("同一个键写两次 ⇒ 只有一本").hasSize(1);
-    assertThat(once.withAccount(overwritten).accounts().get(key).balances())
+    HouseholdInventory overwritten =
+        new HouseholdInventory(new HouseholdAccountKey(HH_A), Map.of(GRAIN, 40L));
+    assertThat(once.withInventory(overwritten).accounts()).as("同一个键写两次 ⇒ 只有一本").hasSize(1);
+    assertThat(once.withInventory(overwritten).accounts().get(key).balances())
         .containsEntry(GRAIN, 40L);
   }
 
   // ── 库存的键：规范串与它的逆（同 R-48-f 的配对） ──────────────────────────────────
 
   /**
-   * ★★ <b>{@link GoodsAccountKey} 的"裸 {@code toString()} + 单参 {@code parse}"这一对</b>（裁定 R-48-f）：
+   * ★★ <b>{@link HouseholdAccountKey} 的"裸 {@code toString()} + 单参 {@code parse}"这一对</b>（裁定 R-48-f）：
    * {@code FieldDelta} 的键模型假定"各 key 类型自带裸 {@code toString()} + {@code static
    * parse}"，缺了它，本切片就被迫自己写规范串的逆 —— 同一个格式就有了两处拼写点。
    *
-   * <p>★ <b>冻结串 = 家户 id 本身</b>（P2-A §13.3）：格式一旦定下就是<b>落盘契约</b>（变更集的 key），改它必须有人当场拍板，故用字面量钉死。
-   * ★ <b>判别力来自夹具的家户 id</b>：它自带 {@code :} 与 {@code |} 两种字符，若谁把逆写成"按某个分隔符切"，这段文本会当场被切碎。
+   * <p>★ <b>冻结串 = 家户 id 本身</b>（P2-A §13.3）：格式一旦定下就是<b>落盘契约</b>（变更集的 key），改它必须有人当场拍板，故用字面量钉死。 ★
+   * <b>判别力来自夹具的家户 id</b>：它自带 {@code :} 与 {@code |} 两种字符，若谁把逆写成"按某个分隔符切"，这段文本会当场被切碎。
    */
   @Test
   void accountKeyToStringIsAFrozenCanonicalLiteralAndItsOwnInverse() {
     HouseholdId funkyHousehold = new HouseholdId("hh:0_0|rural");
-    GoodsAccountKey key = new GoodsAccountKey(funkyHousehold);
+    HouseholdAccountKey key = new HouseholdAccountKey(funkyHousehold);
 
-    assertThat(key.toString())
-        .as("★ 冻结串：裸家户 id（不再有 owner|location 两段）")
-        .isEqualTo("hh:0_0|rural");
+    assertThat(key.toString()).as("★ 冻结串：裸家户 id（不再有 owner|location 两段）").isEqualTo("hh:0_0|rural");
     assertThat(key.toString().chars().filter(c -> c == ':' || c == '|').count())
         .as("前置：夹具的规范串确实自带两种分隔符（否则这条用例没有判别力）")
         .isEqualTo(2);
 
-    GoodsAccountKey back = GoodsAccountKey.parse(key.toString());
+    HouseholdAccountKey back = HouseholdAccountKey.parse(key.toString());
     assertThat(back.household()).as("家户身份原样还原").isEqualTo(funkyHousehold);
     assertThat(back).isEqualTo(key);
   }
 
   /**
-   * ★★ <b>往返：{@code apply} 真的用 {@code GoodsAccountKey.parse} 把新键还原回来</b>（R-48-f 的用处所在）。
+   * ★★ <b>往返：{@code apply} 真的用 {@code HouseholdAccountKey.parse} 把新键还原回来</b>（R-48-f 的用处所在）。
    *
    * <p>★ <b>判别力在夹具的形状上</b>：家户 id 自带 {@code :} 与 {@code |} ⇒ 逆若写成"按某个分隔符切"，这条当场红。
    */
@@ -478,12 +488,13 @@ class ActorRoundTripTest {
   void roundTripParsesAccountKeys() {
     ActorData target =
         ActorData.empty()
-            .withAccount(new GoodsAccount(new GoodsAccountKey(HH_A), Map.of(GRAIN, 7L)));
+            .withInventory(
+                new HouseholdInventory(new HouseholdAccountKey(HH_A), Map.of(GRAIN, 7L)));
 
     ActorData rebuilt =
         ActorChangeSet.apply(ActorChangeSet.between(ActorData.empty(), target), ActorData.empty());
 
-    GoodsAccountKey rebuiltKey = rebuilt.accounts().keySet().iterator().next();
+    HouseholdAccountKey rebuiltKey = rebuilt.accounts().keySet().iterator().next();
     assertThat(rebuiltKey.household()).isEqualTo(HH_A);
     assertThat(rebuiltKey)
         .as("还原出来的键必须与 target 的键相等")
@@ -500,8 +511,9 @@ class ActorRoundTripTest {
    * Unchanged} 直接返回 base、连解析器都不会被调用。
    */
   @Test
-  void aGoodsAccountKeyThatIsNotWellFormedIsRejected() {
-    GoodsAccount account = new GoodsAccount(new GoodsAccountKey(HH_A), Map.of(GRAIN, 1L));
+  void aHouseholdAccountKeyThatIsNotWellFormedIsRejected() {
+    HouseholdInventory account =
+        new HouseholdInventory(new HouseholdAccountKey(HH_A), Map.of(GRAIN, 1L));
     for (String bad : new String[] {"", "   "}) {
       ActorChangeSet handMade =
           new ActorChangeSet(null, null, new FieldDelta.Upsert<>(Map.of(bad, account)));
@@ -512,15 +524,16 @@ class ActorRoundTripTest {
           .hasMessageContaining("HouseholdId");
     }
 
-    assertThatThrownBy(() -> GoodsAccountKey.parse(null))
+    assertThatThrownBy(() -> HouseholdAccountKey.parse(null))
         .as("null 键同样即抛")
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   /** ★ 上一条的对照：<b>键合法时一个都不抛</b>（否则上一条的"红"可能来自 {@code apply} 的别处，读不出是哪条规则失守）。 */
   @Test
-  void aWellFormedGoodsAccountKeyIsAccepted() {
-    GoodsAccount account = new GoodsAccount(new GoodsAccountKey(HH_A), Map.of(GRAIN, 1L));
+  void aWellFormedHouseholdAccountKeyIsAccepted() {
+    HouseholdInventory account =
+        new HouseholdInventory(new HouseholdAccountKey(HH_A), Map.of(GRAIN, 1L));
     ActorChangeSet handMade =
         new ActorChangeSet(
             null, null, new FieldDelta.Upsert<>(Map.of(account.key().toString(), account)));
@@ -554,7 +567,8 @@ class ActorRoundTripTest {
       case "meta" -> base.withMeta(Optional.of(META));
       case "actors" -> base.withActor(new Actor(ORGANIZATION, "组织者"));
       case "accounts" ->
-          base.withAccount(new GoodsAccount(new GoodsAccountKey(HH_A), Map.of(GRAIN, 100L)));
+          base.withInventory(
+              new HouseholdInventory(new HouseholdAccountKey(HH_A), Map.of(GRAIN, 100L)));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }

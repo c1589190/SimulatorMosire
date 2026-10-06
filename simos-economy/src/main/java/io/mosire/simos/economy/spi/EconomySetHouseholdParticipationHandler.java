@@ -5,8 +5,8 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -21,8 +21,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ {@code economy.SetHouseholdParticipation}（P2-B §13.5）：配置一个家户"除当前职业外还参与哪些生产方式"
- * = {@link HouseholdClassMembership#participatingPositionIds()}；只写 {@code classStandings} 一张表。
+ * ★★ {@code economy.SetHouseholdParticipation}（P2-B §13.5）：配置一个家户"除当前职业外还参与哪些生产方式" = {@link
+ * HouseholdClassMembership#participatingPositionIds()}；只写 {@code classStandings} 一张表。
  *
  * <pre>{@code
  * {"household":"hh-...","positions":["family-farm-family-farmer"],"modes"?["family_farm"],
@@ -32,20 +32,22 @@ import java.util.Set;
  * <p>★ <b>语义</b>：
  *
  * <ul>
- *   <li>{@code positions} 是 {@code ClassPositionId} 数组，逐项必须已存在；{@code modes} 是
- *       {@code ProductionModeId} 数组，展开成该 mode 阶层结构下的全部位置（具体哪些位置真的生产由组织阶段的
- *       {@code shouldProduce} 过滤，本命令不复制那份判据）；两者可同时给，取并集；
+ *   <li>{@code positions} 是 {@code ClassPositionId} 数组，逐项必须已存在；{@code modes} 是 {@code
+ *       ProductionModeId} 数组，展开成该 mode 阶层结构下的全部位置（具体哪些位置真的生产由组织阶段的 {@code shouldProduce}
+ *       过滤，本命令不复制那份判据）；两者可同时给，取并集；
  *   <li><b>空数组 = 清空追加集合</b>（回到"只参与 {@code currentPositionId}"的旧口径）；两个字段都缺 ⇒ 具名拒绝
  *       （"想清空"必须显式写空数组，不能靠漏字段）；
- *   <li>当前位置由 {@code currentPositionId} 自动并入（{@link HouseholdClassMembership#effectivePositionIds()}），
- *       所以这里<b>不需要也不允许</b>借本命令改"当前职业"（那是 {@code economy.SetHouseholdClass} 的职责）；
+ *   <li>当前位置由 {@code currentPositionId} 自动并入（{@link
+ *       HouseholdClassMembership#effectivePositionIds()}）， 所以这里<b>不需要也不允许</b>借本命令改"当前职业"（那是 {@code
+ *       economy.SetHouseholdClass} 的职责）；
  *   <li>家户没有 standing ⇒ 先按旧 stratum 解析当前位置播种一条，再写追加集合；解析不出 ⇒ 具名拒绝（不伪造归属）；
  *   <li>{@code at} 是给 {@link CommandTargets} 的目标声明；给了就必须等于该家户当刻居住格。
  * </ul>
  *
  * <p>★ <b>权限</b>：非 {@code GmOnlyCommand}（同 {@link EconomySetHouseholdClassHandler}）。
  */
-public final class EconomySetHouseholdParticipationHandler implements CommandHandler, CommandTargets {
+public final class EconomySetHouseholdParticipationHandler
+    implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.SetHouseholdParticipation";
@@ -97,8 +99,7 @@ public final class EconomySetHouseholdParticipationHandler implements CommandHan
                   + position.modeId().value());
         }
       }
-      String reason =
-          EconomyCommandPayloads.optionalText(TYPE, payload, "reason", "gm:" + TYPE);
+      String reason = EconomyCommandPayloads.optionalText(TYPE, payload, "reason", "gm:" + TYPE);
       long day = EconomyCommandPayloads.optionalLong(TYPE, payload, "day", 0L);
       if (day < 0L) {
         throw new IllegalArgumentException(TYPE + " 的 day 不得为负: " + day);

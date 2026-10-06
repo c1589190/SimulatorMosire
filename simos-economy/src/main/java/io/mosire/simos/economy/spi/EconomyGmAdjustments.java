@@ -10,33 +10,33 @@ import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
-import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.Payee;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AssetRule;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.ModeTransition;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionCandidate;
-import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RentRule;
 import io.mosire.simos.economy.model.TransferRule;
 import io.mosire.simos.economy.time.DebtContractBook;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -50,25 +50,25 @@ import java.util.Set;
 /**
  * ★★ <b>{@code economy.GmAdjust} 的纯函数项目</b>（E6b + P7）：handler（{@code simos-economy}）与 GM 窄写工具
  * {@code simos.economy.adjust}（{@code simos-app}）<b>共用同一份</b>调整语义 —— 载荷解析、白名单拒绝、前后差异与 {@link
- * EconomyChangeSet} 都在这里算一次，两处只做各自的边界折叠（handler → {@code Rejected}/`Applied`；工具 →
- * {@code BAD_REQUEST} /预览视图）。
+ * EconomyChangeSet} 都在这里算一次，两处只做各自的边界折叠（handler → {@code Rejected}/`Applied`；工具 → {@code
+ * BAD_REQUEST} /预览视图）。
  *
  * <p>★★ <b>十条源状态白名单</b>（{@link #ADJUSTMENTS}）：
  *
  * <ul>
- *   <li><b>旧表（两）</b>：{@link #FORGIVE_DEBT}（{@link DebtContractBook#forgive} +
- *       {@link EconomyData#withDebtContracts}）与 {@link #SET_LIQUIDATION_POLICY}（{@link
+ *   <li><b>旧表（两）</b>：{@link #FORGIVE_DEBT}（{@link DebtContractBook#forgive} + {@link
+ *       EconomyData#withDebtContracts}）与 {@link #SET_LIQUIDATION_POLICY}（{@link
  *       EconomyData#withLiquidationPolicies}）；
  *   <li><b>P7 生产方式编辑（八）</b>：{@link #UPSERT_PRODUCTION_MODE}/{@link
- *       #DEACTIVATE_PRODUCTION_MODE}/{@link #UPSERT_CLASS_STRUCTURE}/{@link #UPSERT_CLASS_POSITION}/
- *       {@link #UPSERT_PRODUCTION_RELATION}/{@link #UPSERT_ASSET_RULE}/{@link
- *       #UPSERT_PRODUCTION_ORGANIZATION}/{@link #UPSERT_CANDIDATE} —— 只编辑 {@code
- *       modes/classStructures/classPositions/relations/assetRules/productionOrganizations/candidates} 七张
- *       源状态表（class 两表同批落值走 {@link EconomyData#withClassStructuresAndPositions} 成对写口）。
+ *       #DEACTIVATE_PRODUCTION_MODE}/{@link #UPSERT_CLASS_STRUCTURE}/{@link
+ *       #UPSERT_CLASS_POSITION}/ {@link #UPSERT_PRODUCTION_RELATION}/{@link
+ *       #UPSERT_ASSET_RULE}/{@link #UPSERT_PRODUCTION_ORGANIZATION}/{@link #UPSERT_CANDIDATE} ——
+ *       只编辑 {@code
+ *       modes/classStructures/classPositions/relations/assetRules/productionOrganizations/candidates}
+ *       七张 源状态表（class 两表同批落值走 {@link EconomyData#withClassStructuresAndPositions} 成对写口）。
  * </ul>
  *
- * <p>★★ <b>只改源状态、只走既有写口</b>：本类全部 kind 经既有 {@code with*}
- * 写口落在对应组件上，不搬粮/钱/商品，不新增/删除任何其它表。
+ * <p>★★ <b>只改源状态、只走既有写口</b>：本类全部 kind 经既有 {@code with*} 写口落在对应组件上，不搬粮/钱/商品，不新增/删除任何其它表。
  *
  * <p>★★ <b>派生读数不可直写</b>：{@code flows} / {@code demandBook} / {@code crisisSignals} / {@code
  * classStandings.consecutiveDebtStressCycles} / {@code debtCapacity} 这类派生读数一律以 {@link
@@ -285,21 +285,6 @@ public final class EconomyGmAdjustments {
     return new Projection(SET_LIQUIDATION_POLICY, reason, day, projected, changeSet, changes);
   }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   // ── P7：生产方式 / 阶层结构 / 关系 / 资产规则 / 组织 / 候选的 GM 编辑 ────────────────────────────────
   //
   // ★★ 全部只改源状态、只走既有 with* 写口（class 结构+位置两表需要同批落值时走
@@ -312,9 +297,9 @@ public final class EconomyGmAdjustments {
   /**
    * {@code upsertProductionMode}：{@code {id,name,version?,classStructureId}}。
    *
-   * <p>version 规则：新 id 缺省 = 1；既有 id 缺省 = 沿用现有 version（仅当其余字段逐值相同 ⇒ 幂等 no-op，否则要求显式推进）；
-   * 显式给时必须 ≥ 现有 version+1（同 version 的逐值重放仍幂等 no-op，同 version 的改值 ⇒ 具名拒绝）。
-   * {@code classStructureId} 必须已存在（请先用 {@code upsertClassStructure} 创建）。
+   * <p>version 规则：新 id 缺省 = 1；既有 id 缺省 = 沿用现有 version（仅当其余字段逐值相同 ⇒ 幂等 no-op，否则要求显式推进）； 显式给时必须 ≥ 现有
+   * version+1（同 version 的逐值重放仍幂等 no-op，同 version 的改值 ⇒ 具名拒绝）。 {@code classStructureId} 必须已存在（请先用
+   * {@code upsertClassStructure} 创建）。
    */
   private static Projection upsertProductionMode(
       EconomyData base, JsonNode parameters, String reason, long day) {
@@ -382,13 +367,13 @@ public final class EconomyGmAdjustments {
   }
 
   /**
-   * {@code deactivateProductionMode}：{@code {id}}。被任一跨表引用 ⇒ 具名拒绝并列出引用者：
-   * {@code classStructures}/{@code classPositions}（modeId）、{@code productionOrganizations}（modeId）、
-   * {@code assetRules}（modeId）、{@code modeTransitions}（from/to）、{@code pledges}（modeId）。
+   * {@code deactivateProductionMode}：{@code {id}}。被任一跨表引用 ⇒ 具名拒绝并列出引用者： {@code
+   * classStructures}/{@code classPositions}（modeId）、{@code productionOrganizations}（modeId）、 {@code
+   * assetRules}（modeId）、{@code modeTransitions}（from/to）、{@code pledges}（modeId）。
    *
-   * <p>★ {@code ProductionCandidate} 现有字段里<b>没有</b> modeId（见 {@link ProductionCandidate}），候选与本表没有持久引用，
-   * 故删除守卫不检查它；候选的"模式关联"是 {@code regime}（由 {@code upsertCandidate} 按 {@code
-   * RegimeOperators.registered()} 判）。
+   * <p>★ {@code ProductionCandidate} 现有字段里<b>没有</b> modeId（见 {@link
+   * ProductionCandidate}），候选与本表没有持久引用， 故删除守卫不检查它；候选的"模式关联"是 {@code regime}（由 {@code
+   * upsertCandidate} 按 {@code RegimeOperators.registered()} 判）。
    */
   private static Projection deactivateProductionMode(
       EconomyData base, JsonNode parameters, String reason, long day) {
@@ -459,11 +444,7 @@ public final class EconomyGmAdjustments {
     }
     if (!references.isEmpty()) {
       throw new IllegalArgumentException(
-          label
-              + " 的生产方式仍被引用，不能停用: "
-              + id.value()
-              + "；"
-              + String.join("，", references));
+          label + " 的生产方式仍被引用，不能停用: " + id.value() + "；" + String.join("，", references));
     }
     Map<ProductionModeId, ProductionMode> modes = new LinkedHashMap<>(base.modes());
     modes.remove(id);
@@ -481,10 +462,9 @@ public final class EconomyGmAdjustments {
   /**
    * {@code upsertClassStructure}：{@code {id,modeId,positions?,defaultSharesPerMille?}}（至少给一项）。
    *
-   * <p>语义：{@code positions} 逐项 upsert（同一位置 id 的全局表与<b>所有</b>含它的结构副本同值更新；不删除未列出的位置 ——
-   * 删除会牵动 classStandings/classShares/enterprises 的引用，本阶段不做）；{@code
-   * defaultSharesPerMille} 给到即整体替换（给 {@code {}} 可清空），未给保持原值。modeId 必须存在；既有结构的 modeId
-   * 不可改（换绑要删除重建）。新结构必须至少给一个 position。
+   * <p>语义：{@code positions} 逐项 upsert（同一位置 id 的全局表与<b>所有</b>含它的结构副本同值更新；不删除未列出的位置 —— 删除会牵动
+   * classStandings/classShares/enterprises 的引用，本阶段不做）；{@code defaultSharesPerMille} 给到即整体替换（给
+   * {@code {}} 可清空），未给保持原值。modeId 必须存在；既有结构的 modeId 不可改（换绑要删除重建）。新结构必须至少给一个 position。
    */
   private static Projection upsertClassStructure(
       EconomyData base, JsonNode parameters, String reason, long day) {
@@ -519,9 +499,7 @@ public final class EconomyGmAdjustments {
             && !parameters.get("defaultSharesPerMille").isNull();
     if (sharesGiven && !parameters.get("defaultSharesPerMille").isObject()) {
       throw new IllegalArgumentException(
-          label
-              + " 的 defaultSharesPerMille 必须是对象: "
-              + parameters.get("defaultSharesPerMille"));
+          label + " 的 defaultSharesPerMille 必须是对象: " + parameters.get("defaultSharesPerMille"));
     }
     if (before == null && !positionsGiven) {
       throw new IllegalArgumentException(label + " 新建 classStructure 必须给非空 positions");
@@ -530,14 +508,10 @@ public final class EconomyGmAdjustments {
       throw new IllegalArgumentException(
           label + " 至少需要给 positions 或 defaultSharesPerMille（两者都给 = 结构+份额同批更新）");
     }
-    Map<ClassStructureId, ClassStructure> structures =
-        new LinkedHashMap<>(base.classStructures());
-    Map<ClassPositionId, ProductionRole> positions =
-        new LinkedHashMap<>(base.classPositions());
+    Map<ClassStructureId, ClassStructure> structures = new LinkedHashMap<>(base.classStructures());
+    Map<ClassPositionId, ProductionRole> positions = new LinkedHashMap<>(base.classPositions());
     Map<ClassPositionId, ProductionRole> targetPositions =
-        before == null
-            ? new LinkedHashMap<>()
-            : new LinkedHashMap<>(before.positions());
+        before == null ? new LinkedHashMap<>() : new LinkedHashMap<>(before.positions());
     if (positionsGiven) {
       JsonNode positionNodes = parameters.get("positions");
       if (!positionNodes.isArray()) {
@@ -633,15 +607,13 @@ public final class EconomyGmAdjustments {
     for (Map.Entry<ClassPositionId, ProductionRole> entry : positions.entrySet()) {
       ProductionRole old = base.classPositions().get(entry.getKey());
       if (!Objects.equals(old, entry.getValue())) {
-        changes.add(
-            new Change("classPositions", entry.getKey().value(), old, entry.getValue()));
+        changes.add(new Change("classPositions", entry.getKey().value(), old, entry.getValue()));
       }
     }
     for (Map.Entry<ClassStructureId, ClassStructure> entry : structures.entrySet()) {
       ClassStructure old = base.classStructures().get(entry.getKey());
       if (!Objects.equals(old, entry.getValue())) {
-        changes.add(
-            new Change("classStructures", entry.getKey().value(), old, entry.getValue()));
+        changes.add(new Change("classStructures", entry.getKey().value(), old, entry.getValue()));
       }
     }
     if (changes.isEmpty()) {
@@ -654,9 +626,8 @@ public final class EconomyGmAdjustments {
    * {@code upsertClassPosition}：{@code {id,modeId,name?,relationToMeans?,laborRole?,surplusRole?,
    * ruleExtensions?,classStructureId?}}。
    *
-   * <p>位置已属于某结构 ⇒ 同步更新全局表与<b>所有</b>结构内副本；位置未属于任何结构（或给了新的
-   * classStructureId）⇒ 必须给 classStructureId 以挂进该结构。modeId 必须存在，既有位置的 modeId 不可改。
-   * 未给的字段沿用既有值（新建时三个结构维与 name 必填，ruleExtensions 缺省空表）。
+   * <p>位置已属于某结构 ⇒ 同步更新全局表与<b>所有</b>结构内副本；位置未属于任何结构（或给了新的 classStructureId）⇒ 必须给 classStructureId
+   * 以挂进该结构。modeId 必须存在，既有位置的 modeId 不可改。 未给的字段沿用既有值（新建时三个结构维与 name 必填，ruleExtensions 缺省空表）。
    */
   private static Projection upsertClassPosition(
       EconomyData base, JsonNode parameters, String reason, long day) {
@@ -711,8 +682,7 @@ public final class EconomyGmAdjustments {
         ruleExtensions = Map.of();
       } else {
         if (!node.isObject()) {
-          throw new IllegalArgumentException(
-              label + " 的 ruleExtensions 必须是对象: " + node);
+          throw new IllegalArgumentException(label + " 的 ruleExtensions 必须是对象: " + node);
         }
         ruleExtensions = EconomyPayloads.stringMap(node, label + ".ruleExtensions");
       }
@@ -720,7 +690,8 @@ public final class EconomyGmAdjustments {
       ruleExtensions = before == null ? Map.of() : before.ruleExtensions();
     }
     ProductionRole after =
-        new ProductionRole(id, modeId, name, relationToMeans, laborRole, surplusRole, ruleExtensions);
+        new ProductionRole(
+            id, modeId, name, relationToMeans, laborRole, surplusRole, ruleExtensions);
 
     ClassStructureId targetStructureId = null;
     if (hasValue(parameters, "classStructureId")) {
@@ -728,8 +699,7 @@ public final class EconomyGmAdjustments {
           classStructureId(
               label, EconomyCommandPayloads.requireText(label, parameters, "classStructureId"));
     }
-    Map<ClassStructureId, ClassStructure> structures =
-        new LinkedHashMap<>(base.classStructures());
+    Map<ClassStructureId, ClassStructure> structures = new LinkedHashMap<>(base.classStructures());
     List<ClassStructureId> containing = new ArrayList<>();
     for (ClassStructure structure : structures.values()) {
       if (structure.positions().containsKey(id)) {
@@ -758,9 +728,7 @@ public final class EconomyGmAdjustments {
     }
     if (containing.isEmpty()) {
       throw new IllegalArgumentException(
-          label
-              + " 的位置不属于任何 ClassStructure，必须给 classStructureId 指明挂进哪个结构: "
-              + id.value());
+          label + " 的位置不属于任何 ClassStructure，必须给 classStructureId 指明挂进哪个结构: " + id.value());
     }
     for (ClassStructureId structureId : containing) {
       ClassStructure structure = structures.get(structureId);
@@ -771,8 +739,7 @@ public final class EconomyGmAdjustments {
           new ClassStructure(
               structure.id(), structure.modeId(), updated, structure.defaultSharesPerMille()));
     }
-    Map<ClassPositionId, ProductionRole> positions =
-        new LinkedHashMap<>(base.classPositions());
+    Map<ClassPositionId, ProductionRole> positions = new LinkedHashMap<>(base.classPositions());
     positions.put(id, after);
     EconomyData projected = base.withClassStructuresAndPositions(structures, positions);
     EconomyChangeSet changeSet = EconomyChangeSet.between(base, projected);
@@ -794,19 +761,20 @@ public final class EconomyGmAdjustments {
   }
 
   /**
-   * {@code upsertProductionRelation}：{@code {activity,operator?,inputSupplier?,rules?,residualOwner?,
-   * laborSource?}}。activity 必须对应既有 unit；operator（给了必须与 {@code unit.operator} 逐值相等，未给取
-   * unit.operator —— 那个值由守卫判死，是唯一合法值）。未给的可选字段沿用既有 relation。
+   * {@code upsertProductionRelation}：{@code
+   * {activity,operator?,inputSupplier?,rules?,residualOwner?, laborSource?}}。activity 必须对应既有
+   * unit；operator（给了必须与 {@code unit.operator} 逐值相等，未给取 unit.operator ——
+   * 那个值由守卫判死，是唯一合法值）。未给的可选字段沿用既有 relation。
    */
   private static Projection upsertProductionRelation(
       EconomyData base, JsonNode parameters, String reason, long day) {
     String label = COMMAND + "." + UPSERT_PRODUCTION_RELATION;
     ProductionUnitId activity =
-        productionProcessId(label, EconomyCommandPayloads.requireText(label, parameters, "activity"));
+        productionProcessId(
+            label, EconomyCommandPayloads.requireText(label, parameters, "activity"));
     ProductionProcess unit = base.units().get(activity);
     if (unit == null) {
-      throw new IllegalArgumentException(
-          label + " 的 activity 必须对应已存在的 unit: " + activity.value());
+      throw new IllegalArgumentException(label + " 的 activity 必须对应已存在的 unit: " + activity.value());
     }
     ProductionRules before = base.relations().get(activity);
     ActorRef operator =
@@ -861,14 +829,14 @@ public final class EconomyGmAdjustments {
     LaborSource laborSource;
     if (parameters.has("laborSource")) {
       // 显式 null ⇒ null ⇒ ProductionRules 构造期缺省 SELF（清回"经营者自营"）。
-      laborSource = EconomyCommandPayloads.optionalLaborSource(label, parameters, "laborSource", null);
+      laborSource =
+          EconomyCommandPayloads.optionalLaborSource(label, parameters, "laborSource", null);
     } else {
       laborSource = before == null ? null : before.laborSource();
     }
     ProductionRules after =
         new ProductionRules(activity, operator, inputSupplier, rules, residualOwner, laborSource);
-    Map<ProductionUnitId, ProductionRules> relations =
-        new LinkedHashMap<>(base.relations());
+    Map<ProductionUnitId, ProductionRules> relations = new LinkedHashMap<>(base.relations());
     relations.put(activity, after);
     EconomyData projected = base.withRelations(relations);
     // ★ EconomyData 会把旧档 ToCohort 受方按一一对应归一到 ToHousehold；幂等与审计读数必须取**投影里真正落下的**
@@ -909,7 +877,8 @@ public final class EconomyGmAdjustments {
             io.mosire.simos.actor.api.asset.AssetKind.class);
     AssetRuleId id = AssetRuleId.idOf(modeId, assetKind);
     if (parameters.hasNonNull("id")) {
-      AssetRuleId declared = parseAssetRuleId(label, EconomyCommandPayloads.requireText(label, parameters, "id"));
+      AssetRuleId declared =
+          parseAssetRuleId(label, EconomyCommandPayloads.requireText(label, parameters, "id"));
       if (!declared.equals(id)) {
         throw new IllegalArgumentException(
             label
@@ -924,8 +893,7 @@ public final class EconomyGmAdjustments {
         booleanField(
             label, parameters, "isCoreMeans", before == null ? null : before.isCoreMeans());
     boolean pledgeable =
-        booleanField(
-            label, parameters, "pledgeable", before == null ? null : before.pledgeable());
+        booleanField(label, parameters, "pledgeable", before == null ? null : before.pledgeable());
     int liquidationPriority =
         intField(
             label,
@@ -1050,12 +1018,10 @@ public final class EconomyGmAdjustments {
       }
       ProductionProcess unitForHex = base.units().get(unitId.get());
       if (unitForHex == null) {
-        throw new IllegalArgumentException(
-            label + " 的 unitId 必须已存在: " + unitId.get().value());
+        throw new IllegalArgumentException(label + " 的 unitId 必须已存在: " + unitId.get().value());
       }
       String hexKey =
-          IndustryHexKeys
-              .hexKeyOf(unitForHex.industry())
+          IndustryHexKeys.hexKeyOf(unitForHex.industry())
               .orElseThrow(
                   () ->
                       new IllegalArgumentException(
@@ -1073,8 +1039,7 @@ public final class EconomyGmAdjustments {
     if (unitId.isPresent()) {
       ProductionProcess unit = base.units().get(unitId.get());
       if (unit == null) {
-        throw new IllegalArgumentException(
-            label + " 的 unitId 必须已存在: " + unitId.get().value());
+        throw new IllegalArgumentException(label + " 的 unitId 必须已存在: " + unitId.get().value());
       }
       if (!unit.operator().equals(organizer)) {
         throw new IllegalArgumentException(
@@ -1129,8 +1094,7 @@ public final class EconomyGmAdjustments {
         statusReason = "";
       } else {
         if (!node.isTextual()) {
-          throw new IllegalArgumentException(
-              label + " 的 statusReason 必须是文本: " + node);
+          throw new IllegalArgumentException(label + " 的 statusReason 必须是文本: " + node);
         }
         statusReason = node.asText();
       }
@@ -1140,8 +1104,7 @@ public final class EconomyGmAdjustments {
     if ((status == ProductionEnterprise.Status.ACTIVE
             || status == ProductionEnterprise.Status.EXITING)
         && unitId.isEmpty()) {
-      throw new IllegalArgumentException(
-          label + " 的 " + status + " 必须有 unitId（没有 unit 的在产/退出说不通）");
+      throw new IllegalArgumentException(label + " 的 " + status + " 必须有 unitId（没有 unit 的在产/退出说不通）");
     }
     if (status == ProductionEnterprise.Status.SHORTAGE && statusReason.isBlank()) {
       throw new IllegalArgumentException(label + " 的 SHORTAGE 必须带具名 statusReason");
@@ -1187,10 +1150,9 @@ public final class EconomyGmAdjustments {
    * laborSource?,acceptedRightKinds?,assetSource?,name?}）；未给字段沿用既有值，新建时 output/outputPerUnit/
    * cycleDays/regime 必填。
    *
-   * <p>★★ <b>与任务书的一处如实偏离</b>：{@link ProductionCandidate} 的现有字段里<b>没有</b> modeId，候选与本表的
-   * {@code modes} 没有持久引用；它真正关联的已登记制度是 {@code regime}（{@code EconomyData} 守卫按
-   * {@code RegimeOperators.registered()} 判）。故这里按模型实现并拒绝显式 {@code modeId}（避免"看起来记了"），
-   * 详见交付报告。
+   * <p>★★ <b>与任务书的一处如实偏离</b>：{@link ProductionCandidate} 的现有字段里<b>没有</b> modeId，候选与本表的 {@code
+   * modes} 没有持久引用；它真正关联的已登记制度是 {@code regime}（{@code EconomyData} 守卫按 {@code
+   * RegimeOperators.registered()} 判）。故这里按模型实现并拒绝显式 {@code modeId}（避免"看起来记了"）， 详见交付报告。
    */
   private static Projection upsertCandidate(
       EconomyData base, JsonNode parameters, String reason, long day) {
@@ -1206,9 +1168,7 @@ public final class EconomyGmAdjustments {
     ProductionCandidate before = base.candidates().get(id);
     boolean versionGiven = hasValue(parameters, "version");
     int version =
-        versionGiven
-            ? optionalVersion(label, parameters)
-            : (before == null ? 1 : before.version());
+        versionGiven ? optionalVersion(label, parameters) : (before == null ? 1 : before.version());
     if (version < 1) {
       throw new IllegalArgumentException(label + " 的 version 必须 ≥ 1: " + version);
     }
@@ -1228,10 +1188,7 @@ public final class EconomyGmAdjustments {
     }
     if (!outputPerUnit.containsKey(output)) {
       throw new IllegalArgumentException(
-          label
-              + " 的 output 必须出现在 outputPerUnit 的键里: "
-              + output.value()
-              + "（主产出不许另写一份）");
+          label + " 的 output 必须出现在 outputPerUnit 的键里: " + output.value() + "（主产出不许另写一份）");
     }
     Map<CommodityId, Long> inputPerUnit =
         parameters.has("inputPerUnit")
@@ -1358,8 +1315,7 @@ public final class EconomyGmAdjustments {
 
   /** 必填 version（JSON 整数）；仅由调用方在 hasValue 后调用。 */
   private static int optionalVersion(String label, JsonNode parameters) {
-    int value =
-        EconomyCommandPayloads.optionalInt(label, parameters, "version", VERSION_ABSENT);
+    int value = EconomyCommandPayloads.optionalInt(label, parameters, "version", VERSION_ABSENT);
     if (value == VERSION_ABSENT) {
       throw new IllegalArgumentException(label + " 的 version 必须是整数: " + parameters);
     }
@@ -1369,8 +1325,7 @@ public final class EconomyGmAdjustments {
   /** 缺失即具名拒绝的既有字段取值（更新分支的 fallback）。 */
   private static <T> T requireExistingField(String label, String field, T fallback) {
     if (fallback == null) {
-      throw new IllegalArgumentException(
-          label + " 新建对象缺少必填字段: " + field + "（既有对象更新时可省略）");
+      throw new IllegalArgumentException(label + " 新建对象缺少必填字段: " + field + "（既有对象更新时可省略）");
     }
     return fallback;
   }
@@ -1402,8 +1357,7 @@ public final class EconomyGmAdjustments {
   }
 
   /** 可选 int：给了 ⇒ 整数且 ∈ int；没给 ⇒ fallback（null 则具名拒绝）。 */
-  private static int intField(
-      String label, JsonNode parameters, String field, Integer fallback) {
+  private static int intField(String label, JsonNode parameters, String field, Integer fallback) {
     if (hasValue(parameters, field)) {
       long value = EconomyCommandPayloads.requireLong(label, parameters, field);
       if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
@@ -1484,8 +1438,7 @@ public final class EconomyGmAdjustments {
     return List.copyOf(out);
   }
 
-  private static List<Payee> parsePayeeList(
-      String label, JsonNode parameters, String field) {
+  private static List<Payee> parsePayeeList(String label, JsonNode parameters, String field) {
     JsonNode node = requireArrayNode(label, parameters, field);
     List<Payee> out = new ArrayList<>();
     for (JsonNode element : node) {
@@ -1569,7 +1522,6 @@ public final class EconomyGmAdjustments {
     }
   }
 
-
   private static boolean hasValue(JsonNode parameters, String field) {
     JsonNode node = parameters.get(field);
     return node != null && !node.isNull();
@@ -1622,10 +1574,6 @@ public final class EconomyGmAdjustments {
             + String.join(" | ", ADJUSTMENTS)
             + "）");
   }
-
-
-
-
 
   private static DebtContractId parseDebtId(String label, String text) {
     try {

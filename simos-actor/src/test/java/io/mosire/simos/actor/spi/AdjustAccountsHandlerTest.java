@@ -11,8 +11,8 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.model.Actor;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -33,15 +33,15 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@code actor.AdjustAccounts} 处理器边界（收尾期 T2；P2-A §13.3 起账户主体只有家户）：有符号净增量、整条原子、缺账纯正新建、 负增量不破余额/冻结、重复与
- * 0 值拒、只动 {@code accounts} 一张表、变更集重建与 JSON 线往返。
+ * {@code actor.AdjustAccounts} 处理器边界（收尾期 T2；P2-A §13.3 起账户主体只有家户）：有符号净增量、整条原子、缺账纯正新建、
+ * 负增量不破余额/冻结、重复与 0 值拒、只动 {@code accounts} 一张表、变更集重建与 JSON 线往返。
  *
  * <p>★ 断言逐值：拒因点名 household / 维度 / 数字，成功路径把余额、键序、两张冻结表与未点名键逐条钉住。 ★ "原子性"一条的判别力在于：第一条合法 entry
  * 本可单独生效，第二条违例时整条必须 {@code Rejected}，且**基态一个键都不许多**（不是"部分生效"）。
  *
  * <p>★ <b>P2-A 迁移（如实记）</b>：载荷从 {@code owner{kind,id}+q+r} 收敛为 {@code {household,goods?,money?}} ⇒
- * 本类删掉 q/r 与 owner 词表那两条用例（对应字段已不存在），目标声明从"逐格 hex"改为"家户账户无格 ⇒ 空表"
- * （{@code AdjustAccountsHandler.targetPaths} 的新契约）。数值语义那组判据（缺账 / 侵占冻结 / 原子性）一字未动。
+ * 本类删掉 q/r 与 owner 词表那两条用例（对应字段已不存在），目标声明从"逐格 hex"改为"家户账户无格 ⇒ 空表" （{@code
+ * AdjustAccountsHandler.targetPaths} 的新契约）。数值语义那组判据（缺账 / 侵占冻结 / 原子性）一字未动。
  */
 class AdjustAccountsHandlerTest {
 
@@ -77,9 +77,7 @@ class AdjustAccountsHandlerTest {
     assertThat(HANDLER).isInstanceOf(CommandHandler.class);
   }
 
-  /**
-   * 目标声明：P2-A 后账户主体只有家户、账户键不再带格 ⇒ 本命令**没有 hex 目标**（空表），但载荷仍必须先解析得动。
-   */
+  /** 目标声明：P2-A 后账户主体只有家户、账户键不再带格 ⇒ 本命令**没有 hex 目标**（空表），但载荷仍必须先解析得动。 */
   @Test
   void targetPathsAreEmptyBecauseHouseholdAccountsCarryNoHex() {
     String payload = payload(entry("hh-1", "{\"grain\":1}", null));
@@ -110,17 +108,15 @@ class AdjustAccountsHandlerTest {
 
     ActorData after =
         apply(
-            payload(
-                entry("hh-1", "{\"grain\":120}", null),
-                entry("hh-2", null, "{\"silver\":30}")),
+            payload(entry("hh-1", "{\"grain\":120}", null), entry("hh-2", null, "{\"silver\":30}")),
             base);
 
     assertThat(after.meta()).as("meta 原样").isEqualTo(base.meta());
     assertThat(after.actors()).as("actors 原样（不给 household 建 Actor 行）").isEqualTo(base.actors());
-    GoodsAccountKey grainKey = new GoodsAccountKey(HH1);
-    GoodsAccountKey moneyKey = new GoodsAccountKey(HH2);
+    HouseholdAccountKey grainKey = new HouseholdAccountKey(HH1);
+    HouseholdAccountKey moneyKey = new HouseholdAccountKey(HH2);
     assertThat(after.accounts()).containsOnlyKeys(grainKey, moneyKey);
-    GoodsAccount grainAccount = after.accounts().get(grainKey);
+    HouseholdInventory grainAccount = after.accounts().get(grainKey);
     assertThat(grainAccount.balances())
         .as("纯正增量按载荷值落账；未点名的其余商品不存在")
         .containsOnlyKeys(GRAIN)
@@ -128,7 +124,7 @@ class AdjustAccountsHandlerTest {
     assertThat(grainAccount.money()).as("goods-only 新建 ⇒ 货币表空").isEmpty();
     assertThat(grainAccount.frozenBalances()).as("新建账的两张冻结表为空").isEmpty();
     assertThat(grainAccount.frozenMoney()).as("新建账的两张冻结表为空").isEmpty();
-    GoodsAccount moneyAccount = after.accounts().get(moneyKey);
+    HouseholdInventory moneyAccount = after.accounts().get(moneyKey);
     assertThat(moneyAccount.money())
         .as("money-only 新建 ⇒ 货币表只有点名的币种")
         .containsOnlyKeys(SILVER)
@@ -145,12 +141,12 @@ class AdjustAccountsHandlerTest {
    */
   @Test
   void upsertsExistingAccountKeepingKeyOrderAndFrozenTables() {
-    ActorData base = ActorData.empty().withAccount(baseAccount());
+    ActorData base = ActorData.empty().withInventory(baseAccount());
 
     ActorData after =
         apply(payload(entry("hh-1", "{\"fiber\":2,\"grain\":-10}", "{\"copper\":7}")), base);
 
-    GoodsAccount account = after.accounts().get(new GoodsAccountKey(HH1));
+    HouseholdInventory account = after.accounts().get(new HouseholdAccountKey(HH1));
     assertThat(new ArrayList<>(account.balances().keySet()))
         .as("原键序保留：[grain, cloth, fiber]（不是载荷顺序）")
         .containsExactly(GRAIN, CLOTH, FIBER);
@@ -175,11 +171,11 @@ class AdjustAccountsHandlerTest {
   void keepsZeroBalanceWhenDeltaDrainsExactlyToZero() {
     ActorData base =
         ActorData.empty()
-            .withAccount(new GoodsAccount(new GoodsAccountKey(HH1), Map.of(GRAIN, 5L)));
+            .withInventory(new HouseholdInventory(new HouseholdAccountKey(HH1), Map.of(GRAIN, 5L)));
 
     ActorData after = apply(payload(entry("hh-1", "{\"grain\":-5}", null)), base);
 
-    GoodsAccount account = after.accounts().get(new GoodsAccountKey(HH1));
+    HouseholdInventory account = after.accounts().get(new HouseholdAccountKey(HH1));
     assertThat(account.balances())
         .as("0 保留、且键仍在（归一化会删掉这一条）")
         .containsOnlyKeys(GRAIN)
@@ -191,7 +187,8 @@ class AdjustAccountsHandlerTest {
   void adjustsMultipleAccountsInOneCommand() {
     ActorData base =
         ActorData.empty()
-            .withAccount(new GoodsAccount(new GoodsAccountKey(HH1), Map.of(GRAIN, 100L)));
+            .withInventory(
+                new HouseholdInventory(new HouseholdAccountKey(HH1), Map.of(GRAIN, 100L)));
 
     ActorData after =
         apply(
@@ -201,9 +198,9 @@ class AdjustAccountsHandlerTest {
             base);
 
     assertThat(after.accounts()).hasSize(2);
-    assertThat(after.accounts().get(new GoodsAccountKey(HH1)).balances())
+    assertThat(after.accounts().get(new HouseholdAccountKey(HH1)).balances())
         .containsExactlyEntriesOf(Map.of(GRAIN, 60L));
-    GoodsAccount created = after.accounts().get(new GoodsAccountKey(HH2));
+    HouseholdInventory created = after.accounts().get(new HouseholdAccountKey(HH2));
     assertThat(created.balances()).containsExactlyEntriesOf(Map.of(GRAIN, 40L));
     assertThat(created.money()).containsExactlyEntriesOf(Map.of(SILVER, 5L));
   }
@@ -253,8 +250,7 @@ class AdjustAccountsHandlerTest {
     assertThat(
             reason(
                 payload(
-                    entry("hh-1", "{\"grain\":1}", null),
-                    entry("hh-1", "{\"grain\":2}", null))))
+                    entry("hh-1", "{\"grain\":1}", null), entry("hh-1", "{\"grain\":2}", null))))
         .contains("同一份载荷里账目重复")
         .contains("hh-1");
   }
@@ -276,7 +272,8 @@ class AdjustAccountsHandlerTest {
   void rejectsNegativeResultBelowZero() {
     ActorData base =
         ActorData.empty()
-            .withAccount(new GoodsAccount(new GoodsAccountKey(HH1), Map.of(GRAIN, 50L)));
+            .withInventory(
+                new HouseholdInventory(new HouseholdAccountKey(HH1), Map.of(GRAIN, 50L)));
 
     HandlerOutcome outcome =
         HANDLER.handle(state(base), payload(entry("hh-1", "{\"grain\":-51}", null)));
@@ -292,13 +289,17 @@ class AdjustAccountsHandlerTest {
   /** ★ 100 / 30 边界：可支配 = 70 ⇒ −70 放行、−71 拒（拒因把余额 / 冻结 / 可支配 / 增量一起报出来）。 */
   @Test
   void frozenBalanceBoundaryAllowsExactlyAvailableAndRejectsOneMore() {
-    GoodsAccount frozen =
-        new GoodsAccount(
-            new GoodsAccountKey(HH1), Map.of(GRAIN, 100L), Map.of(), Map.of(GRAIN, 30L), Map.of());
-    ActorData base = ActorData.empty().withAccount(frozen);
+    HouseholdInventory frozen =
+        new HouseholdInventory(
+            new HouseholdAccountKey(HH1),
+            Map.of(GRAIN, 100L),
+            Map.of(),
+            Map.of(GRAIN, 30L),
+            Map.of());
+    ActorData base = ActorData.empty().withInventory(frozen);
 
     ActorData after = apply(payload(entry("hh-1", "{\"grain\":-70}", null)), base);
-    GoodsAccount drained = after.accounts().get(new GoodsAccountKey(HH1));
+    HouseholdInventory drained = after.accounts().get(new HouseholdAccountKey(HH1));
     assertThat(drained.balances()).as("−70 恰好吃掉可支配额 ⇒ 余额落到冻结额 30（不是负数）").containsEntry(GRAIN, 30L);
     assertThat(drained.frozenBalances()).as("冻结额原样").containsEntry(GRAIN, 30L);
 
@@ -326,7 +327,8 @@ class AdjustAccountsHandlerTest {
     ActorData base =
         ActorData.empty()
             .withMeta(Optional.of(META))
-            .withAccount(new GoodsAccount(new GoodsAccountKey(HH1), Map.of(GRAIN, 10L)));
+            .withInventory(
+                new HouseholdInventory(new HouseholdAccountKey(HH1), Map.of(GRAIN, 10L)));
 
     HandlerOutcome outcome =
         HANDLER.handle(
@@ -341,10 +343,10 @@ class AdjustAccountsHandlerTest {
         .contains("增量=-11");
     assertThat(base.accounts())
         .as("基态一字未动：没有 hh-2 的新账，hh-1 仍是 10")
-        .containsOnlyKeys(new GoodsAccountKey(HH1));
-    assertThat(base.accounts().get(new GoodsAccountKey(HH1)).balances())
+        .containsOnlyKeys(new HouseholdAccountKey(HH1));
+    assertThat(base.accounts().get(new HouseholdAccountKey(HH1)).balances())
         .containsExactlyEntriesOf(Map.of(GRAIN, 10L));
-    assertThat(base.accounts()).doesNotContainKey(new GoodsAccountKey(HH2));
+    assertThat(base.accounts()).doesNotContainKey(new HouseholdAccountKey(HH2));
   }
 
   /**
@@ -358,7 +360,7 @@ class AdjustAccountsHandlerTest {
         ActorData.empty()
             .withMeta(Optional.of(META))
             .withActor(new Actor(ORGANIZATION, "组织者"))
-            .withAccount(richAccount());
+            .withInventory(richAccount());
 
     ActorData after = apply(payload(entry("hh-1", "{\"grain\":-5}", "{\"silver\":1}")), base);
 
@@ -366,7 +368,7 @@ class AdjustAccountsHandlerTest {
         .as("meta 原样（含 mapId / activatedDay / rulesVersion）")
         .isEqualTo(Optional.of(META));
     assertThat(after.actors()).as("actors 原样（同一条 ORGANIZATION 行）").isEqualTo(base.actors());
-    GoodsAccount account = after.accounts().get(new GoodsAccountKey(HH1));
+    HouseholdInventory account = after.accounts().get(new HouseholdAccountKey(HH1));
     assertThat(account.balances())
         .as("点名键按增量、未点名键逐值保留（含 0）")
         .containsOnlyKeys(GRAIN, CLOTH, FIBER)
@@ -392,7 +394,7 @@ class AdjustAccountsHandlerTest {
    */
   @Test
   void changeSetRebuildsAndSurvivesTheJsonWire() {
-    ActorData base = ActorData.empty().withAccount(richAccount());
+    ActorData base = ActorData.empty().withInventory(richAccount());
     ActorData direct = apply(payload(entry("hh-1", "{\"grain\":-5}", null)), base);
 
     ActorChangeSet fromHandler =
@@ -403,7 +405,7 @@ class AdjustAccountsHandlerTest {
     ActorData rebuilt = ActorChangeSet.apply(overWire, base);
 
     assertThat(rebuilt).as("线往返重建 = 直接重建").isEqualTo(direct);
-    GoodsAccount account = rebuilt.accounts().get(new GoodsAccountKey(HH1));
+    HouseholdInventory account = rebuilt.accounts().get(new HouseholdAccountKey(HH1));
     assertThat(account.balances())
         .containsOnlyKeys(GRAIN, CLOTH, FIBER)
         .containsEntry(GRAIN, 95L)
@@ -417,7 +419,7 @@ class AdjustAccountsHandlerTest {
   // ── 夹具 ────────────────────────────────────────────────────────────────────────────
 
   /** 键序刻意：余额 [grain, cloth, fiber]、货币 [silver, copper]、冻结各一条。 */
-  private static GoodsAccount richAccount() {
+  private static HouseholdInventory richAccount() {
     Map<CommodityId, Long> balances = new LinkedHashMap<>();
     balances.put(GRAIN, 100L);
     balances.put(CLOTH, 7L);
@@ -429,13 +431,14 @@ class AdjustAccountsHandlerTest {
     frozenBalances.put(GRAIN, 20L);
     Map<CurrencyId, Long> frozenMoney = new LinkedHashMap<>();
     frozenMoney.put(SILVER, 3L);
-    return new GoodsAccount(new GoodsAccountKey(HH1), balances, money, frozenBalances, frozenMoney);
+    return new HouseholdInventory(
+        new HouseholdAccountKey(HH1), balances, money, frozenBalances, frozenMoney);
   }
 
   /**
    * 与 {@link #upsertsExistingAccountKeepingKeyOrderAndFrozenTables} 对照的基账：冻结 grain=40 / silver=5。
    */
-  private static GoodsAccount baseAccount() {
+  private static HouseholdInventory baseAccount() {
     Map<CommodityId, Long> balances = new LinkedHashMap<>();
     balances.put(GRAIN, 100L);
     balances.put(CLOTH, 0L);
@@ -447,7 +450,8 @@ class AdjustAccountsHandlerTest {
     frozenBalances.put(GRAIN, 40L);
     Map<CurrencyId, Long> frozenMoney = new LinkedHashMap<>();
     frozenMoney.put(SILVER, 5L);
-    return new GoodsAccount(new GoodsAccountKey(HH1), balances, money, frozenBalances, frozenMoney);
+    return new HouseholdInventory(
+        new HouseholdAccountKey(HH1), balances, money, frozenBalances, frozenMoney);
   }
 
   private static String payload(String... entriesJson) {

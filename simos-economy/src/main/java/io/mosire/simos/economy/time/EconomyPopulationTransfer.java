@@ -6,9 +6,9 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Objects;
 
 /**
- * ★★ <b>P0（2026-10-10）：经济腿的一笔迁移人口事实（瞬态 outbox 条目）</b>——{@link ModeMigrationSettlement}
- * 在每笔 {@code MigrationMove} 成功落账后追加一条，由 {@code simos-app} 的
- * {@code PopulationEconomyTimeParticipant} 在 {@code stepper.step(day)} 之后取走并翻译成 Social 工单。
+ * ★★ <b>P0（2026-10-10）：经济腿的一笔迁移人口事实（瞬态 outbox 条目）</b>——{@link ModeMigrationSettlement} 在每笔 {@code
+ * MigrationMove} 成功落账后追加一条，由 {@code simos-app} 的 {@code PopulationEconomyTimeParticipant} 在 {@code
+ * stepper.step(day)} 之后取走并翻译成 Social 工单。
  *
  * <pre>
  * EconomyPopulationTransfer(
@@ -22,12 +22,11 @@ import java.util.Objects;
  * </pre>
  *
  * <p>★★ <b>为什么它是瞬态而不是持久组件</b>：人口权威在 Social；经济行 {@code population} 只是 App 按 Social
- * 真值落下的当日物化视图。outbox 只承载"这一天经济腿执行了哪些人口移动"这一条事实，不新增
- * {@code EconomyData} 组件、不进 Codec/ChangeSet；重启后同一份 {@code MigrationPlan} 重放会产生同一批
- * outbox（工单 orderId 含 day/序号/source/target，由 Social 侧幂等键挡重复）。
+ * 真值落下的当日物化视图。outbox 只承载"这一天经济腿执行了哪些人口移动"这一条事实，不新增 {@code EconomyData} 组件、不进 Codec/ChangeSet；重启后同一份
+ * {@code MigrationPlan} 重放会产生同一批 outbox（工单 orderId 含 day/序号/source/target，由 Social 侧幂等键挡重复）。
  *
- * <p>★ 本记录只做形状校验（非 null / population &gt; 0 / source != target）；"人够不够、Social 家户在不在"
- * 由 Social 工单受理方（{@code HouseholdWorkOrderBook}）具名拒绝，不在两条路上各判一份。
+ * <p>★ 本记录只做形状校验（非 null / population &gt; 0 / source != target）；"人够不够、Social 家户在不在" 由 Social
+ * 工单受理方（{@code HouseholdWorkOrderBook}）具名拒绝，不在两条路上各判一份。
  *
  * @param source 源家户稳定 id；非 null
  * @param target 目标家户稳定 id；非 null 且不得等于 {@code source}

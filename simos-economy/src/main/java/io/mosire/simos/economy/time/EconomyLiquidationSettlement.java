@@ -11,26 +11,26 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.migrate.LegacyClassStructure;
 import io.mosire.simos.economy.model.AssetRule;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionRole;
-import io.mosire.simos.economy.model.ProductionRole.RelationToMeans;
-import io.mosire.simos.economy.model.ProductionRole.SurplusRole;
-import io.mosire.simos.economy.model.HouseholdEconomy;
-import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.DebtCapacity;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.HexCrisisSignal;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
+import io.mosire.simos.economy.model.ProductionRole;
+import io.mosire.simos.economy.model.ProductionRole.RelationToMeans;
+import io.mosire.simos.economy.model.ProductionRole.SurplusRole;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -69,8 +69,8 @@ import java.util.Set;
  * 阶层归属变化在同一原子流程里完成"）。
  *
  * <p>★★ <b>planner 只读、apply 不再抛业务异常</b>：planner 把所有数量（处置量、减本额、质押减量、保护线、退化选择、无法处置的具名原因）
- * 一次算完并校验；apply 只做"照单执行"。唯一的 fail-closed 守卫在 {@link OwnershipStakeBook#apply} 里（源存在/数量够/质押上界）， planner
- * 已按同一批 Move 在覆盖层上预演过 ⇒ apply 正常路径不抛。
+ * 一次算完并校验；apply 只做"照单执行"。唯一的 fail-closed 守卫在 {@link OwnershipStakeBook#apply} 里（源存在/数量够/质押上界），
+ * planner 已按同一批 Move 在覆盖层上预演过 ⇒ apply 正常路径不抛。
  *
  * <p>★★ <b>不硬折</b>：{@code MARKET}/{@code AGREED} 目前没有稳定价格源 ⇒ 具名 {@code unpriced} 跳过；{@code POLICY}
  * 按 {@code policyValuePerUnitMilli} 折算。价格以"毫值/单位"计，只对<b>粮债</b>接线（粮是硬通货；货币/其它商品债需要汇率， 没有就不折，记 {@code
@@ -314,7 +314,8 @@ public final class EconomyLiquidationSettlement {
       String failureReason) {}
 
   /** 自动挂质押的候选（折后可用量的自有份额 + 可质押规则）。 */
-  private record AutoPledgeCandidate(OwnershipStake share, AssetRule rule, long availableQuantity) {}
+  private record AutoPledgeCandidate(
+      OwnershipStake share, AssetRule rule, long availableQuantity) {}
 
   /** 价格选路结果：{@code pricePerUnitMilli} 与政策一起返回，保证"价"与"保护线/比例"同源。 */
   private record SelectedPrice(long pricePerUnitMilli, LiquidationPolicy policy) {}
@@ -1111,7 +1112,8 @@ public final class EconomyLiquidationSettlement {
     LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships =
         context.session().sheet().classMemberships();
     Map<ClassPositionId, ProductionRole> positions = context.base().classPositions();
-    Map<HouseholdId, HouseholdClassMembership> baseClassMemberships = context.base().classStandings();
+    Map<HouseholdId, HouseholdClassMembership> baseClassMemberships =
+        context.base().classStandings();
 
     for (StressUpdate update : plan.stressUpdates()) {
       HouseholdClassMembership existingClassMembership = classMemberships.get(update.household());
@@ -1133,7 +1135,8 @@ public final class EconomyLiquidationSettlement {
                 0L,
                 STANDING_SEED_REASON);
       }
-      classMemberships.put(update.household(), withStressCount(existingClassMembership, update.nextCount()));
+      classMemberships.put(
+          update.household(), withStressCount(existingClassMembership, update.nextCount()));
     }
 
     for (ClassDeclinePlan decline : plan.declines()) {
@@ -1508,7 +1511,8 @@ public final class EconomyLiquidationSettlement {
     };
   }
 
-  private static HouseholdClassMembership withStressCount(HouseholdClassMembership classMembership, long count) {
+  private static HouseholdClassMembership withStressCount(
+      HouseholdClassMembership classMembership, long count) {
     return new HouseholdClassMembership(
         classMembership.householdId(),
         classMembership.originalPositionId(),
@@ -1661,7 +1665,8 @@ public final class EconomyLiquidationSettlement {
     return index;
   }
 
-  private static List<HouseholdId> sortedHouseholds(Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+  private static List<HouseholdId> sortedHouseholds(
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     List<HouseholdId> households = new ArrayList<>(householdEconomies.keySet());
     households.sort(Comparator.comparing(HouseholdId::value));
     return households;

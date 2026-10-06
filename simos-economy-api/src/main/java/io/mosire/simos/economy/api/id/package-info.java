@@ -6,7 +6,7 @@
  *
  * <p>本包不含任何账本余额、面积、价格或公式。
  *
- * <p>★ 2026-10-09 S1：{@code HouseholdId} / {@code PeopleLotId} 已迁入契约层
- * {@code io.mosire.simos.social.api.id}（架构 §3.1/§3.2）——本包不再拥有家户/人口批次身份的定义。
+ * <p>★ 2026-10-09 S1：{@code HouseholdId} / {@code PeopleLotId} 已迁入契约层 {@code
+ * io.mosire.simos.social.api.id}（架构 §3.1/§3.2）——本包不再拥有家户/人口批次身份的定义。
  */
 package io.mosire.simos.economy.api.id;

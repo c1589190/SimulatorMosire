@@ -6,8 +6,8 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.HouseholdDemand;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -21,8 +21,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * ★★ {@code economy.UpdateDemand}（P2-B §13.6）：**更新**一条已存在的需求（{@link HouseholdDemand}）。
- * 取消走既有的 {@code economy.CancelDemand}，新增走既有的 {@code economy.AddDemand} —— 三条命令各管一件事。
+ * ★★ {@code economy.UpdateDemand}（P2-B §13.6）：**更新**一条已存在的需求（{@link HouseholdDemand}）。 取消走既有的
+ * {@code economy.CancelDemand}，新增走既有的 {@code economy.AddDemand} —— 三条命令各管一件事。
  *
  * <pre>{@code
  * {"demand":"demand-HOUSEHOLD-hh-...-grain-RECURRING-TOTAL-0",
@@ -37,11 +37,11 @@ import java.util.Optional;
  *   <li>{@code demand} 必须已存在；缺省字段**逐字段沿用旧值**（部分更新，不是整体替换）；
  *   <li>{@code scope} 可换：HOUSEHOLD ⟷ HEX。换档时必须给新档的属主（{@code household} 或 {@code hex}），且不得同时
  *       给另一档的属主；{@link HouseholdDemand} 的构造期守卫再判一遍互斥；
- *   <li>价格存在性：按**更新后的**属主格判（HOUSEHOLD ⇒ 该户居住格；HEX ⇒ 该格），缺市场/缺该商品价 ⇒ 具名拒绝并指名
- *       {@code economy.SetMarketPrice}（与 {@code AddDemand} 同一条口径）；{@code PER_CAPITA} 还做溢出预检；
+ *   <li>价格存在性：按**更新后的**属主格判（HOUSEHOLD ⇒ 该户居住格；HEX ⇒ 该格），缺市场/缺该商品价 ⇒ 具名拒绝并指名 {@code
+ *       economy.SetMarketPrice}（与 {@code AddDemand} 同一条口径）；{@code PER_CAPITA} 还做溢出预检；
  *   <li>只写 {@code demands} 一张表；不改商品/货币/账户/市场；
- *   <li>{@code at} 是给 {@link CommandTargets} 的目标声明（见 {@link HouseholdEconomyCommands}）：HOUSEHOLD 档必须
- *       等于该户居住格；HEX 档必须等于目标格；不给 ⇒ 不进决策令（GM 直通照常）。
+ *   <li>{@code at} 是给 {@link CommandTargets} 的目标声明（见 {@link HouseholdEconomyCommands}）：HOUSEHOLD
+ *       档必须 等于该户居住格；HEX 档必须等于目标格；不给 ⇒ 不进决策令（GM 直通照常）。
  * </ul>
  *
  * <p>★ <b>权限</b>：非 {@code GmOnlyCommand}（与 {@code AddDemand}/{@code CancelDemand} 同待遇）。
@@ -131,7 +131,8 @@ public final class EconomyUpdateDemandHandler implements CommandHandler, Command
         return new HandlerOutcome.Rejected("priority 不得为负: " + priority);
       }
       String source =
-          EconomyCommandPayloads.optionalText(TYPE, payload, "source", existingHouseholdDemand.source());
+          EconomyCommandPayloads.optionalText(
+              TYPE, payload, "source", existingHouseholdDemand.source());
       Optional<HexCoord> at = HouseholdEconomyCommands.optionalAt(TYPE, payload);
 
       Optional<HouseholdId> household = Optional.empty();
@@ -157,7 +158,8 @@ public final class EconomyUpdateDemandHandler implements CommandHandler, Command
           throw new IllegalArgumentException(
               TYPE + " 的 at 必须等于家户当刻居住格：家户=" + householdId.value() + " at=" + at.get());
         }
-        EconomyAddDemandHandler.requirePriced(base, householdEconomy.view().hex(), commodity, "该家户居住格");
+        EconomyAddDemandHandler.requirePriced(
+            base, householdEconomy.view().hex(), commodity, "该家户居住格");
         if (unit == HouseholdDemand.DemandUnit.PER_CAPITA) {
           try {
             Math.multiplyExact(quantityPerCycle, householdEconomy.population());
@@ -232,7 +234,8 @@ public final class EconomyUpdateDemandHandler implements CommandHandler, Command
               unit.name(),
               quantityPerCycle,
               priority);
-      return new HandlerOutcome.Applied(EconomyChangeSet.between(base, base.withHouseholdDemands(householdDemands)));
+      return new HandlerOutcome.Applied(
+          EconomyChangeSet.between(base, base.withHouseholdDemands(householdDemands)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());
     }

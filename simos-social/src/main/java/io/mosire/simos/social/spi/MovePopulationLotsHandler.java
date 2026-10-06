@@ -55,8 +55,8 @@ import java.util.Set;
  * <p>★ <b>GM-only</b>：批量人口迁移是行政/迁移原语，不开放给决策令直调。
  *
  * <p>★ <b>目标声明</b>（{@link CommandTargets}）：2026-10-20 起走跨命名空间 {@link #targetResources}——源/目标**各自**
- * 可能给家户 id 或格：家户 ⇒ 该家户 SocialData 现值（social / unit）；格 ⇒ {@code social:<q>_<r>}。 同一侧两个字段都给时两条都列出（更严，不静默漏判）；一侧都没给 ⇒
- * 该侧无目标；整条都没有可寻址目标 ⇒ 空列表（调用方 fail-closed 拒，与升级前同方向）。
+ * 可能给家户 id 或格：家户 ⇒ 该家户 SocialData 现值（social / unit）；格 ⇒ {@code social:<q>_<r>}。
+ * 同一侧两个字段都给时两条都列出（更严，不静默漏判）；一侧都没给 ⇒ 该侧无目标；整条都没有可寻址目标 ⇒ 空列表（调用方 fail-closed 拒，与升级前同方向）。
  */
 public final class MovePopulationLotsHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
@@ -87,8 +87,7 @@ public final class MovePopulationLotsHandler
     String toHouseholdText = SocialPayloads.optionalText(payload, "toHouseholdId");
     HexCoord toHex = SocialPayloads.optionalHex(payload, "to");
     if (toHouseholdText != null) {
-      targets.add(
-          HouseholdCommandTargets.currentTarget(state, HouseholdId.parse(toHouseholdText)));
+      targets.add(HouseholdCommandTargets.currentTarget(state, HouseholdId.parse(toHouseholdText)));
     }
     if (toHex != null) {
       targets.add(HouseholdCommandTargets.hexTarget(toHex));

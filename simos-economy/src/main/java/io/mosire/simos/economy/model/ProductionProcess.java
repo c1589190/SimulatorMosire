@@ -28,8 +28,8 @@ import java.util.Objects;
  * EconomyData} 的跨表守卫判 —— 本类型看不见产业模板）；{@code cycleLaborMilli} = 本周期累计实际投入劳动（千分劳动·日）； {@code
  * cycleInputUsedMilli} = 本周期实际扣到的投入（毫单位，按商品）。
  *
- * <p>★ <b>规模不在这里</b>：unit 的可用实物资产由 {@link ProductionProcessBook#usableAssets(ProductionProcess, Map)} 从
- * {@code OwnershipStake} <b>纯派生</b>，本记录不存第二份（存了就会与总账漂开）。
+ * <p>★ <b>规模不在这里</b>：unit 的可用实物资产由 {@link ProductionProcessBook#usableAssets(ProductionProcess,
+ * Map)} 从 {@code OwnershipStake} <b>纯派生</b>，本记录不存第二份（存了就会与总账漂开）。
  *
  * <p>★ <b>命名</b>：{@code modeKey} 是"这次生产按哪种方式做"的稳定键（E3 的经验/学习读物）—— 旧档 = {@code
  * industry.id().value()}，将来的候选预设 = {@code candidateId+"@"+version}。本批只保证它在 unit 上稳定存在。
@@ -62,7 +62,8 @@ public record ProductionProcess(
       throw new IllegalArgumentException("ProductionProcess.progressDays 不得为负: " + progressDays);
     }
     if (cycleLaborMilli < 0L) {
-      throw new IllegalArgumentException("ProductionProcess.cycleLaborMilli 不得为负: " + cycleLaborMilli);
+      throw new IllegalArgumentException(
+          "ProductionProcess.cycleLaborMilli 不得为负: " + cycleLaborMilli);
     }
     if (cycleInputUsedMilli == null) {
       throw new IllegalArgumentException("ProductionProcess.cycleInputUsedMilli 不得为 null（未投入用空表）");
@@ -76,7 +77,10 @@ public record ProductionProcess(
       }
       if (entry.getValue() < 0L) {
         throw new IllegalArgumentException(
-            "ProductionProcess.cycleInputUsedMilli 不得为负：" + entry.getKey() + " = " + entry.getValue());
+            "ProductionProcess.cycleInputUsedMilli 不得为负："
+                + entry.getKey()
+                + " = "
+                + entry.getValue());
       }
       copy.put(entry.getKey(), entry.getValue());
     }

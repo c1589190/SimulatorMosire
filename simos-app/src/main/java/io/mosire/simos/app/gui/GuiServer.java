@@ -731,9 +731,7 @@ public final class GuiServer implements AutoCloseable {
       UnitState units = ApiViews.unitState(state);
       SocialLookupAdapter lookup =
           new SocialLookupAdapter(
-              ApiViews.socialData(state),
-              state.meta().timestamp().tick(),
-              calendarService.clock());
+              ApiViews.socialData(state), state.meta().timestamp().tick(), calendarService.clock());
       return Reply.of(
           200,
           Map.of(
@@ -1215,9 +1213,7 @@ public final class GuiServer implements AutoCloseable {
     }
     SocialLookupAdapter householdLookup =
         new SocialLookupAdapter(
-            ApiViews.socialData(state),
-            state.meta().timestamp().tick(),
-            calendarService.clock());
+            ApiViews.socialData(state), state.meta().timestamp().tick(), calendarService.clock());
     return redactedIfRequested(
         asPresent,
         actor,

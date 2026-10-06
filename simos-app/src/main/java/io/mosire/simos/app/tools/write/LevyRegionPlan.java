@@ -54,21 +54,20 @@ import java.util.function.ToLongFunction;
  *       requested / available / 缺口，不部分、不截断）；
  *   <li><b>分摊 = 瀑布</b>：三个账维度共用 {@link RegionAllocations#allocateAccounts}（可用量降序、同量按账键 {@link
  *       io.mosire.simos.actor.model.HouseholdAccountKey#toString()} 升序，逐户扣满为止）；
- *   <li><b>人力来源（2026-10-17 接线）</b>：目标家户 = {@code unit.households()} <b>恰一个</b>且该家户在 Social 里；
- *       来源 = {@link HouseholdManpowerAllocator#allocateMalesOfAdult}（{@link
+ *   <li><b>人力来源（2026-10-17 接线）</b>：目标家户 = {@code unit.households()} <b>恰一个</b>且该家户在 Social 里； 来源 =
+ *       {@link HouseholdManpowerAllocator#allocateMalesOfAdult}（{@link
  *       io.mosire.simos.social.api.population.Sex#MALE} + {@link
  *       io.mosire.simos.social.population.AgeBracket#ADULT}，share-aware，年龄按当前 tick + 历法现算；目标家户排除，
- *       避免自我转移）对 {@code region.hexes()} 的逐份额瀑布，产出 {@code (household, lot, hex, taken)} 的
- *       {@link HouseholdManpowerAllocator.ManpowerShare}；不足 ⇒ 整条拒（不部分、不截断）；Σ {@code share.taken}
- *       == {@code manpower}；
- *   <li><b>四项独立</b>：requested = 0 的维度整段跳过（不扫描、不产生来源条目、不建账）；manpower = 0 时不解析目标家户、
- *       不扫描 Social 家户份额。
+ *       避免自我转移）对 {@code region.hexes()} 的逐份额瀑布，产出 {@code (household, lot, hex, taken)} 的 {@link
+ *       HouseholdManpowerAllocator.ManpowerShare}；不足 ⇒ 整条拒（不部分、不截断）；Σ {@code share.taken} == {@code
+ *       manpower}；
+ *   <li><b>四项独立</b>：requested = 0 的维度整段跳过（不扫描、不产生来源条目、不建账）；manpower = 0 时不解析目标家户、 不扫描 Social 家户份额。
  * </ol>
  *
- * <p>★★ <b>manpower 接线（2026-10-17）</b>：{@code manpower > 0} 不再 plan 级 fail-closed——目标家户取
- * {@code unit.households()} 恰一个、且该家户必须已存在于 Social（为空 / 多个 / 不在 Social ⇒ plan 级具名拒，本次调用零
- * revision；多户需显式 target 政策，不按列表顺序猜）；来源与守恒走 {@link HouseholdManpowerAllocator}；粮 / 钱 / 布三维与
- * treasury 解析逐字不变（不走旧 {@code social.SeedGroups} 删人路径）。
+ * <p>★★ <b>manpower 接线（2026-10-17）</b>：{@code manpower > 0} 不再 plan 级 fail-closed——目标家户取 {@code
+ * unit.households()} 恰一个、且该家户必须已存在于 Social（为空 / 多个 / 不在 Social ⇒ plan 级具名拒，本次调用零 revision；多户需显式
+ * target 政策，不按列表顺序猜）；来源与守恒走 {@link HouseholdManpowerAllocator}；粮 / 钱 / 布三维与 treasury 解析逐字不变（不走旧
+ * {@code social.SeedGroups} 删人路径）。
  *
  * <p>★ <b>确定性</b>：本类是状态的纯函数——同一状态 + 同一参数 ⇒ 逐字段相同的 {@link Plan}（来源表是显式 {@link List}，排序键是内容的全序；没有遍历
  * {@code Map} 迭代序的余地）。Plan 里没有随机量、也没有墙钟时间：{@code tick} 是状态 meta 的函数。
@@ -281,8 +280,7 @@ final class LevyRegionPlan {
     Manpower manpowerDimension =
         manpower == 0L
             ? Manpower.skipped()
-            : manpowerDimension(
-                state, region, tick, manpower, clock, manpowerTargetHousehold);
+            : manpowerDimension(state, region, tick, manpower, clock, manpowerTargetHousehold);
     return new Plan(
         unitId,
         regionId,
@@ -329,8 +327,8 @@ final class LevyRegionPlan {
 
   /**
    * 人力维度的分摊：委托给 {@link HouseholdManpowerAllocator#allocateMalesOfAdult}（<b>全仓唯一一份 share-aware
-   * 选人层</b>，MALE + 成年档；口径见类注第 6 条）。目标家户整体排除（自我转移会被 Social 域层拒）；本类只做结果类型转换，保证
-   * {@link Manpower}/{@link HouseholdManpowerAllocator.ManpowerShare} 的对外形状逐字不变。
+   * 选人层</b>，MALE + 成年档；口径见类注第 6 条）。目标家户整体排除（自我转移会被 Social 域层拒）；本类只做结果类型转换，保证 {@link
+   * Manpower}/{@link HouseholdManpowerAllocator.ManpowerShare} 的对外形状逐字不变。
    *
    * @param target 目标家户（manpower &gt; 0 时由调用方保证非 null 且已在 Social 里）
    */
@@ -385,8 +383,8 @@ final class LevyRegionPlan {
    * @param tick 推导时的世界日（人力的现算年龄与行动记录的 tick 都用它）
    * @param treasuryLocation 国库落点 = 单位当刻有效位置
    * @param treasuryHousehold 国库家户（粮/钱/布动账时非空白；解析口径与 P2-C 完全一致）
-   * @param manpowerTargetHousehold 人力目标家户（{@code manpower > 0} 时非 null；= {@code unit.households()} 恰一个
-   *     且已存在于 Social 的那一个）；{@code manpower = 0} 时为 null（该维度整段跳过）
+   * @param manpowerTargetHousehold 人力目标家户（{@code manpower > 0} 时非 null；= {@code unit.households()}
+   *     恰一个 且已存在于 Social 的那一个）；{@code manpower = 0} 时为 null（该维度整段跳过）
    * @param cloth 布维度（阶段 11b；★ 无单命令上限，只受可用量约束）
    */
   record Plan(
@@ -427,9 +425,7 @@ final class LevyRegionPlan {
         for (HouseholdManpowerAllocator.ManpowerShare share : manpower.shares()) {
           if (share.householdId().equals(manpowerTargetHousehold)) {
             throw new IllegalArgumentException(
-                "内部分摊不自洽：来源家户不得是目标家户 "
-                    + manpowerTargetHousehold.value()
-                    + "（自我转移会被 Social 域层拒）");
+                "内部分摊不自洽：来源家户不得是目标家户 " + manpowerTargetHousehold.value() + "（自我转移会被 Social 域层拒）");
           }
         }
       }

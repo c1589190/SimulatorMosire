@@ -20,8 +20,7 @@ class HandicraftProbeTest {
     initialPrice.put(Good.GRAIN, 100L);
     initialPrice.put(Good.FIBER, 100L);
     initialPrice.put(Good.CLOTH, 300L);
-    Params params =
-        new Params(200L, 100L, 100L, 10_000L, 0L, 0L, 700L, 1L, 0L, 0L, initialPrice);
+    Params params = new Params(200L, 100L, 100L, 10_000L, 0L, 0L, 700L, 1L, 0L, 0L, initialPrice);
     ProbeEconomy economy = new ProbeEconomy(params);
     economy.addHex("H", 0, 0);
 
@@ -35,8 +34,7 @@ class HandicraftProbeTest {
         new Household("F", "H").stock(Good.FIBER, 400L).cost(Good.FIBER, 10L);
     fiberHousehold.population = 100L;
     fiberHousehold.need(Good.GRAIN, 1L);
-    fiberHousehold.recipe =
-        new Recipe(Good.FIBER, 10L, new EnumMap<>(Good.class), 1L, 40L);
+    fiberHousehold.recipe = new Recipe(Good.FIBER, 10L, new EnumMap<>(Good.class), 1L, 40L);
     economy.addHousehold(fiberHousehold);
 
     // 作坊主：出场地/原料/工资，产出归自己；不吃粮（聚焦手工业）。
@@ -62,7 +60,8 @@ class HandicraftProbeTest {
     clothInput.put(Good.FIBER, 1L);
     WageFarm workshop =
         economy.addWageFarm(
-            new WageFarm("workshop", owner, new Recipe(Good.CLOTH, 1L, clothInput, 1L, 400L), 400L));
+            new WageFarm(
+                "workshop", owner, new Recipe(Good.CLOTH, 1L, clothInput, 1L, 400L), 400L));
     workshop.hire(artisan, 150L, 0L);
 
     RoundResult first = economy.runRound(1);

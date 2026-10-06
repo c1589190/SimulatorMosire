@@ -71,8 +71,7 @@ class AdjustCompositionHandlerTest {
   void positiveDeltaOnANewTypeAppendsAtTheTail() {
     UnitState next =
         applied(
-            twoKeyEquipment(),
-            "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"坦克\",\"amount\":2}]}");
+            twoKeyEquipment(), "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"坦克\",\"amount\":2}]}");
 
     assertThat(next.units().get(SpiFixture.U1).equipment())
         .as("新建条目追加在表尾，既有条目顺序不变")
@@ -86,8 +85,7 @@ class AdjustCompositionHandlerTest {
   void negativeDeltaSubtractsAndLeavesUnmentionedTypesUntouched() {
     UnitState next =
         applied(
-            twoKeyEquipment(),
-            "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-10}]}");
+            twoKeyEquipment(), "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-10}]}");
 
     assertThat(next.units().get(SpiFixture.U1).equipment())
         .as("只动提及 type；未提及的 炮 逐条逐位不变")
@@ -130,7 +128,8 @@ class AdjustCompositionHandlerTest {
         .contains("装备减少超出当前值");
     assertThat(
             reason(
-                twoKeyEquipment(), "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"炮\",\"amount\":-5}]}"))
+                twoKeyEquipment(),
+                "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"炮\",\"amount\":-5}]}"))
         .contains("装备减少超出当前值");
   }
 

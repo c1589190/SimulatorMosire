@@ -60,8 +60,7 @@ public record BuyOrder(
     }
     if (maxLandedPrice < 0L) {
       throw new IllegalArgumentException(
-          "BuyOrder.maxLandedPrice 不得为负（0 = 明确免费交易；未定价的商品不生成订单）: "
-              + maxLandedPrice);
+          "BuyOrder.maxLandedPrice 不得为负（0 = 明确免费交易；未定价的商品不生成订单）: " + maxLandedPrice);
     }
     if (latestArrivalTick < 0L) {
       throw new IllegalArgumentException(

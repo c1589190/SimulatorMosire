@@ -19,8 +19,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * S2 聚合读口验收（架构 §5/§7 第 3 条）：hex 人口 = 该 hex 家户成员之和；unit 人口 = 该 Unit 家户成员之和；
- * 家户年龄档给出 count / increase / death 读数；SPI 视图与状态本体同源。
+ * S2 聚合读口验收（架构 §5/§7 第 3 条）：hex 人口 = 该 hex 家户成员之和；unit 人口 = 该 Unit 家户成员之和； 家户年龄档给出 count / increase
+ * / death 读数；SPI 视图与状态本体同源。
  */
 class SocialHouseholdQueriesTest {
 
@@ -46,9 +46,11 @@ class SocialHouseholdQueriesTest {
     assertThat(data.populationAt(H00)).as("H00 家户：100 + 50").isEqualTo(150L);
     assertThat(data.populationAt(H10)).as("H10 家户：7").isEqualTo(7L);
     assertThat(data.populationAt(new HexCoord(9, 9))).as("没有家户 ⇒ 0（不是异常）").isZero();
-    assertThat(data.householdsAt(H00)).extracting(household -> household.id())
+    assertThat(data.householdsAt(H00))
+        .extracting(household -> household.id())
         .containsExactly(HEX_A);
-    assertThat(data.householdsAt(H10)).extracting(household -> household.id())
+    assertThat(data.householdsAt(H10))
+        .extracting(household -> household.id())
         .containsExactly(HEX_B);
   }
 
@@ -58,7 +60,8 @@ class SocialHouseholdQueriesTest {
 
     assertThat(data.unitPopulation("u-7")).as("Unit 家户：40").isEqualTo(40L);
     assertThat(data.unitPopulation("u-missing")).isZero();
-    assertThat(data.householdsInUnit("u-7")).extracting(household -> household.id())
+    assertThat(data.householdsInUnit("u-7"))
+        .extracting(household -> household.id())
         .containsExactly(UNIT);
     assertThat(data.unitOfLot(SOLDIER)).contains("u-7");
     assertThat(data.hexOfLot(SOLDIER)).as("Unit 家户的成员没有 hex").isEmpty();
@@ -87,7 +90,8 @@ class SocialHouseholdQueriesTest {
     List<AgeBracketView> views = data.ageBrackets(HEX_A, NOW, CLOCK);
     assertThat(views).as("恒为 3 档 × 2 性别（即使人数为 0，键也在）").hasSize(6);
     assertThat(views)
-        .filteredOn(view -> view.bracketId().equals(AgeBracket.ADULT.key()) && view.sex() == Sex.MALE)
+        .filteredOn(
+            view -> view.bracketId().equals(AgeBracket.ADULT.key()) && view.sex() == Sex.MALE)
         .singleElement()
         .satisfies(
             view -> {
@@ -96,7 +100,8 @@ class SocialHouseholdQueriesTest {
               assertThat(view.deathRatePerTick()).as("率表读数逐档带出").isEqualTo(7L);
             });
     assertThat(views)
-        .filteredOn(view -> view.bracketId().equals(AgeBracket.ADULT.key()) && view.sex() == Sex.FEMALE)
+        .filteredOn(
+            view -> view.bracketId().equals(AgeBracket.ADULT.key()) && view.sex() == Sex.FEMALE)
         .singleElement()
         .satisfies(
             view -> {
@@ -118,8 +123,7 @@ class SocialHouseholdQueriesTest {
     assertThat(adapter.household(HEX_A)).isPresent();
     assertThat(adapter.household(HEX_A).orElseThrow().location())
         .isEqualTo(new HouseholdLocation.Hex(H00));
-    assertThat(adapter.household(HEX_A).orElseThrow().memberLots())
-        .containsExactly(MAN, WOMAN);
+    assertThat(adapter.household(HEX_A).orElseThrow().memberLots()).containsExactly(MAN, WOMAN);
     assertThat(adapter.household(HouseholdId.parse("hh-missing"))).isEmpty();
 
     assertThat(adapter.at(H00)).extracting(view -> view.id()).containsExactly(HEX_A);
@@ -137,7 +141,8 @@ class SocialHouseholdQueriesTest {
     SocialData data = SocialData.empty();
     data = HouseholdBook.create(data, HEX_A, new HouseholdLocation.Hex(H00), profile("甲"), rates());
     data = HouseholdBook.create(data, HEX_B, new HouseholdLocation.Hex(H10), profile("乙"), rates());
-    data = HouseholdBook.create(data, UNIT, new HouseholdLocation.Unit("u-7"), profile("丙"), rates());
+    data =
+        HouseholdBook.create(data, UNIT, new HouseholdLocation.Unit("u-7"), profile("丙"), rates());
 
     data = HouseholdBook.addMembers(data, HEX_A, MAN, Sex.MALE, 100L, 30L * YEAR, 0L, "seed");
     data = HouseholdBook.addMembers(data, HEX_A, WOMAN, Sex.FEMALE, 50L, 30L * YEAR, 0L, "seed");

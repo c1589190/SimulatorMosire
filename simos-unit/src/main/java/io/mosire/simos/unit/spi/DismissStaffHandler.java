@@ -22,8 +22,9 @@ import java.util.Objects;
  * {"unitId":"gov-province-1","role":"YAMEN","count":2}
  * }</pre>
  *
- * <p>★★ <b>只离编、不支付退休待遇、也不回写社会</b>：本 handler 只做 {@code GovernmentFormation.staff[role] -= count}；{@code
- * policy.retirementPerStaff} 的一次性支付与人员回写 由 10b-ii 的配套工具批（actor 支付 + social 回写）或决策令批承担——本命令不是完整退休入口。
+ * <p>★★ <b>只离编、不支付退休待遇、也不回写社会</b>：本 handler 只做 {@code GovernmentFormation.staff[role] -=
+ * count}；{@code policy.retirementPerStaff} 的一次性支付与人员回写 由 10b-ii 的配套工具批（actor 支付 + social
+ * 回写）或决策令批承担——本命令不是完整退休入口。
  *
  * <p>★ <b>拒因</b>（由 {@link UnitOperations#dismissStaff} 给出，边界只折 {@code Rejected}）：单位不存在； 单位不是
  * GOV；{@code role} 未知；{@code count < 1}；{@code 现有 < count}（消息带现有与请求数字）。 减到 0 时<b>保留该角色键</b>（不删键）。

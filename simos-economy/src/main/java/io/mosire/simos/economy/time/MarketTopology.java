@@ -140,21 +140,21 @@ public final class MarketTopology {
   }
 
   /**
-   * ★★ <b>单市场区入口</b>（D-027：同币即同区）：{@code marketHexes} 里所有格归入<b>恰好一个</b>
-   * {@link MarketRegion}，没有跨区候选、没有第二个区。
+   * ★★ <b>单市场区入口</b>（D-027：同币即同区）：{@code marketHexes} 里所有格归入<b>恰好一个</b> {@link
+   * MarketRegion}，没有跨区候选、没有第二个区。
    *
-   * <p>★★ <b>锚格 = 规范序第一个格</b>（q, r 升序；与 {@code marketHexes} 的迭代序无关），
-   * {@code nodeId = "single-region"}、{@code radiusHex = 0}（单区语义不用半径；{@link #adjacent} 对同区/自身恒
-   * false）；{@code numeraire} 取该锚格 {@link Market#numeraire()}。
+   * <p>★★ <b>锚格 = 规范序第一个格</b>（q, r 升序；与 {@code marketHexes} 的迭代序无关）， {@code nodeId =
+   * "single-region"}、{@code radiusHex = 0}（单区语义不用半径；{@link #adjacent} 对同区/自身恒 false）；{@code
+   * numeraire} 取该锚格 {@link Market#numeraire()}。
    *
    * <p>★★ <b>fail-closed</b>：{@code markets} 为空、{@code marketHexes} 为空、成员格没有市场表条目、锚格没有市场表条目、
    * 两个入参不同源（{@code markets} 的某个键不在 {@code marketHexes} 里）⇒ {@link IllegalArgumentException}
    * （"没有报价币种的区不能交易"这条既有守卫在这里也是具名拒绝，不静默退化）。
    *
-   * <p>★ <b>地形/道路/费率入口与旧入口逐字同源</b>：{@code moveCostAt}/{@code roadBottleneckBetween}/
-   * {@code tariff} 原样交给 {@link #transportCost}/{@link #travelTicks}/{@link #roadBottleneckBetween}/{@link
-   * #freightPerMilleBetween}；城市折扣/农村惩罚沿用 {@link #NO_CITY_DISCOUNT_PER_MILLE}/
-   * {@link #NO_RURAL_PENALTY_PER_MILLE}（没有政策时恒 0）。逐格贸易成本本身由 {@link HexTradeCost} 现算，本类不内建。
+   * <p>★ <b>地形/道路/费率入口与旧入口逐字同源</b>：{@code moveCostAt}/{@code roadBottleneckBetween}/ {@code tariff}
+   * 原样交给 {@link #transportCost}/{@link #travelTicks}/{@link #roadBottleneckBetween}/{@link
+   * #freightPerMilleBetween}；城市折扣/农村惩罚沿用 {@link #NO_CITY_DISCOUNT_PER_MILLE}/ {@link
+   * #NO_RURAL_PENALTY_PER_MILLE}（没有政策时恒 0）。逐格贸易成本本身由 {@link HexTradeCost} 现算，本类不内建。
    *
    * @param markets 逐格市场表（键 = 有市场的格；每个键都必须在 {@code marketHexes} 里）
    * @param marketHexes 单区成员格（本批 = 有市场的全部 hex）；不得为空，且必须覆盖 {@code markets} 的全部键
@@ -234,9 +234,7 @@ public final class MarketTopology {
   private static HexCoord canonicalFirstHex(Set<HexCoord> hexes) {
     HexCoord first = null;
     for (HexCoord hex : hexes) {
-      if (first == null
-          || hex.q() < first.q()
-          || (hex.q() == first.q() && hex.r() < first.r())) {
+      if (first == null || hex.q() < first.q() || (hex.q() == first.q() && hex.r() < first.r())) {
         first = hex;
       }
     }

@@ -310,7 +310,8 @@ final class EconomyCommandPayloads {
     }
   }
 
-  private static OwnershipStake.RightKind parseRightKind(String command, String field, String text) {
+  private static OwnershipStake.RightKind parseRightKind(
+      String command, String field, String text) {
     try {
       return OwnershipStake.RightKind.valueOf(text);
     } catch (IllegalArgumentException e) {

@@ -517,14 +517,14 @@ final class UnitPayloads {
   }
 
   /**
-   * ★★ <b>P4b：军俸政策的逐家户金额表</b>（{@code grainPerHouseholdPerCycle} /
-   * {@code clothPerHouseholdPerCycle} / {@code moneyPerHouseholdPerCycle}）：
+   * ★★ <b>P4b：军俸政策的逐家户金额表</b>（{@code grainPerHouseholdPerCycle} / {@code clothPerHouseholdPerCycle}
+   * / {@code moneyPerHouseholdPerCycle}）：
    *
    * <pre>{@code {"hh-unit:army-1":300,"hh-unit:army-2":120}}</pre>
    *
-   * <p>★ 缺失或 {@code null} ⇒ 空表（命令层语义：未给的表 = 空表）；给了 ⇒ 必须是
-   * {@code {家户 id:整数}} 对象。本方法只管形状与类型：键非空白（走 {@link HouseholdId#parse}）、值是 long
-   * 量纲整数；<b>值域 &gt; 0 不在这里判</b>——留给 {@link MilitaryPayPolicy} 构造期，两处不重复实现。
+   * <p>★ 缺失或 {@code null} ⇒ 空表（命令层语义：未给的表 = 空表）；给了 ⇒ 必须是 {@code {家户 id:整数}} 对象。本方法只管形状与类型：键非空白（走
+   * {@link HouseholdId#parse}）、值是 long 量纲整数；<b>值域 &gt; 0 不在这里判</b>——留给 {@link MilitaryPayPolicy}
+   * 构造期，两处不重复实现。
    */
   static Map<HouseholdId, Long> optionalHouseholdAmountMap(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
@@ -532,7 +532,8 @@ final class UnitPayloads {
       return Map.of();
     }
     if (!value.isObject()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是 {\"家户 id\":整数} 对象或 null: " + payload);
+      throw new IllegalArgumentException(
+          "字段 " + field + " 必须是 {\"家户 id\":整数} 对象或 null: " + payload);
     }
     Map<HouseholdId, Long> amounts = new LinkedHashMap<>();
     Iterator<Map.Entry<String, JsonNode>> fields = value.fields();
@@ -550,21 +551,20 @@ final class UnitPayloads {
   }
 
   /**
-   * ★★ <b>P4b：从给定 JSON 对象解析一份军俸政策</b>（{@code unit.SetArmyPayPolicy} 的顶层载荷，或
-   * {@code unit.SetArmyFormation.militaryPayPolicy} 的内嵌对象）。
+   * ★★ <b>P4b：从给定 JSON 对象解析一份军俸政策</b>（{@code unit.SetArmyPayPolicy} 的顶层载荷，或 {@code
+   * unit.SetArmyFormation.militaryPayPolicy} 的内嵌对象）。
    *
-   * <p>字段：{@code expiresOnDay} 缺失或 {@code null} = 永久；三张逐家户表缺失或 {@code null} = 空表；可选
-   * {@code enabled} 只作为“全空 = 停发”的显式边界：{@code enabled=true} + 三表全空 ⇒ 具名拒（声明要发却没有一条腿），
-   * {@code enabled=false} + 非空腿同样具名拒。
+   * <p>字段：{@code expiresOnDay} 缺失或 {@code null} = 永久；三张逐家户表缺失或 {@code null} = 空表；可选 {@code enabled}
+   * 只作为“全空 = 停发”的显式边界：{@code enabled=true} + 三表全空 ⇒ 具名拒（声明要发却没有一条腿）， {@code enabled=false} +
+   * 非空腿同样具名拒。
    *
    * <p>排期字段 {@code periodDays}/{@code phaseDay}/{@code startsOnDay}（可选带 {@code expiresOnDay}）：
-   * <b>带非空腿时必须三个都给</b>（部分给 ⇒ 具名拒）；<b>三表全空且排期字段一个都没给</b> ⇒ 直接归一成
-   * {@link MilitaryPayPolicy#disabled()}（“停发”的最短载荷：{@code {"unitId":...}} 三张表全空）；三表全空但排期字段给了
-   * ⇒ 仍按 {@link MilitaryPayPolicy#requireValidSchedule} 验一遍再归一成 disabled（避免 {@code periodDays=0}
-   * 被“停发”静默放过）。
+   * <b>带非空腿时必须三个都给</b>（部分给 ⇒ 具名拒）；<b>三表全空且排期字段一个都没给</b> ⇒ 直接归一成 {@link
+   * MilitaryPayPolicy#disabled()}（“停发”的最短载荷：{@code {"unitId":...}} 三张表全空）；三表全空但排期字段给了 ⇒ 仍按 {@link
+   * MilitaryPayPolicy#requireValidSchedule} 验一遍再归一成 disabled（避免 {@code periodDays=0} 被“停发”静默放过）。
    *
-   * <p>★ 本方法只管形状/词表归一；“值 &gt; 0、至少一腿非空、排期自洽、键 ⊆ Unit.households”由
-   * {@link MilitaryPayPolicy} / {@link UnitState} 构造期判。
+   * <p>★ 本方法只管形状/词表归一；“值 &gt; 0、至少一腿非空、排期自洽、键 ⊆ Unit.households”由 {@link MilitaryPayPolicy} /
+   * {@link UnitState} 构造期判。
    */
   static MilitaryPayPolicy requireMilitaryPayPolicy(JsonNode object) {
     Map<HouseholdId, Long> grain = optionalHouseholdAmountMap(object, "grainPerHouseholdPerCycle");
@@ -614,13 +614,14 @@ final class UnitPayloads {
       MilitaryPayPolicy.requireValidSchedule(periodDays, phaseDay, startsOnDay, expiresOnDay);
       return MilitaryPayPolicy.disabled();
     }
-    return new MilitaryPayPolicy(periodDays, phaseDay, startsOnDay, expiresOnDay, grain, cloth, money);
+    return new MilitaryPayPolicy(
+        periodDays, phaseDay, startsOnDay, expiresOnDay, grain, cloth, money);
   }
 
   /**
-   * ★★ <b>P4b：可选的军俸政策</b>（{@code unit.SetArmyFormation.militaryPayPolicy}）：缺失或 {@code null}
-   * ⇒ 空 Optional（<b>未给 ⇒ 保持既有 policy</b>，与 {@code householdDuties} 的兼容口径同款）；
-   * 给了 ⇒ 必须是以 {@link #requireMilitaryPayPolicy} 同口径解析的对象（整体替换）。
+   * ★★ <b>P4b：可选的军俸政策</b>（{@code unit.SetArmyFormation.militaryPayPolicy}）：缺失或 {@code null} ⇒ 空
+   * Optional（<b>未给 ⇒ 保持既有 policy</b>，与 {@code householdDuties} 的兼容口径同款）； 给了 ⇒ 必须是以 {@link
+   * #requireMilitaryPayPolicy} 同口径解析的对象（整体替换）。
    */
   static Optional<MilitaryPayPolicy> optionalMilitaryPayPolicy(JsonNode payload, String field) {
     JsonNode value = payload.get(field);

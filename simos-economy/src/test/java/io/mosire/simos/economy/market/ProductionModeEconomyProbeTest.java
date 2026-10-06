@@ -27,8 +27,7 @@ import org.junit.jupiter.api.Test;
  *   <li>雇农制：L 经营、雇 P 做工，发 191 粮 + 131,026 钱工资。
  * </ul>
  *
- * <p>市场价：粮 100、布 400；无运输、零利息。这个价格/数量组合使四条循环都严格闭合，
- * 便于对比“租/工资”对收入、库存、债务和风险的影响。
+ * <p>市场价：粮 100、布 400；无运输、零利息。这个价格/数量组合使四条循环都严格闭合， 便于对比“租/工资”对收入、库存、债务和风险的影响。
  */
 class ProductionModeEconomyProbeTest {
 
@@ -139,8 +138,7 @@ class ProductionModeEconomyProbeTest {
     Household laborer = addFarmer(economy, 382L);
     Household weaver = addWeaver(economy);
 
-    WageFarm farm =
-        economy.addWageFarm(new WageFarm("wage-farm", landlord, farmRecipe(), 191L));
+    WageFarm farm = economy.addWageFarm(new WageFarm("wage-farm", landlord, farmRecipe(), 191L));
     farm.hire(laborer, 585L, 2L).fixedCash(65L);
 
     List<RoundResult> results = run(economy, 1_460);
@@ -399,8 +397,7 @@ class ProductionModeEconomyProbeTest {
     initialPrice.put(Good.GRAIN, GRAIN_PRICE);
     initialPrice.put(Good.CLOTH, CLOTH_PRICE);
     // 零利息、零运输，先把租/工资的结构跑清楚。
-    Params params =
-        new Params(200L, 100L, 100L, 10_000L, 0L, 100L, 700L, 1L, 0L, 0L, initialPrice);
+    Params params = new Params(200L, 100L, 100L, 10_000L, 0L, 100L, 700L, 1L, 0L, 0L, initialPrice);
     ProbeEconomy economy = new ProbeEconomy(params);
     economy.addHex("H", 0, 0);
     return economy;

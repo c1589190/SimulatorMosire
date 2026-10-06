@@ -8,29 +8,29 @@ import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DemandId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
-import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.Payee;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.HouseholdDemand;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OperatorCondition.IndustryStatus;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionCandidate;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -45,8 +45,8 @@ import java.util.TreeMap;
 
 /**
  * ★★ <b>R4-E2b：候选预设 → 合条件主体的实际采用（运行期进入/试产）</b>—— 本片只做"GM 登记了预设 + 本格有有效需求"时， 让可行家户形成一条 {@code
- * OperatorCondition.IndustryStatus#TRIALING} 的新 {@code ProductionProcess}；<b>不做</b>自动发明、全局 ROI 切换、E3
- * 经验、E4 梯度消费。
+ * OperatorCondition.IndustryStatus#TRIALING} 的新 {@code ProductionProcess}；<b>不做</b>自动发明、全局 ROI
+ * 切换、E3 经验、E4 梯度消费。
  *
  * <p>★★ <b>两段式（纯意向 + 执行）</b>，理由与计划一致：
  *
@@ -437,7 +437,8 @@ final class EconomyEntrySettlement {
       long laborPeriod = 0L;
       if (candidate.laborPerUnit() > 0L) {
         long householdRoom =
-            householdEconomy.laborMilli() - context.allocationMilliByHousehold.getOrDefault(household, 0L);
+            householdEconomy.laborMilli()
+                - context.allocationMilliByHousehold.getOrDefault(household, 0L);
         if (householdRoom < candidate.laborPerUnit()) {
           return Attempt.rejection(
               reject(
@@ -464,7 +465,10 @@ final class EconomyEntrySettlement {
                   context,
                   household,
                   candidate,
-                  "LABOR_SHORT:householdRoom=" + householdRoom + ",need=" + candidate.laborPerUnit()));
+                  "LABOR_SHORT:householdRoom="
+                      + householdRoom
+                      + ",need="
+                      + candidate.laborPerUnit()));
         }
         lots = List.of(bestLot);
         laborPeriod = 1L; // ★ 只是审计标签（供给表删除后 period 不再有供给权威）
@@ -476,8 +480,7 @@ final class EconomyEntrySettlement {
       // ★★ 2026-10-09 Batch 3：口粮预留 = 本户当前注入 naturalNeeds[grain] × 原窗口天数（原区间 [day−1, day+horizon]
       //   是 horizon+1 天），不再按 population × 人均定额现算。
       long grainReserve =
-          householdEconomy.expectedNeedMilli(
-              EconomySettlement.GRAIN, Math.addExact(horizon, 1L));
+          householdEconomy.expectedNeedMilli(EconomySettlement.GRAIN, Math.addExact(horizon, 1L));
       if (grainStock < grainReserve) {
         return Attempt.rejection(
             reject(
@@ -793,7 +796,8 @@ final class EconomyEntrySettlement {
   }
 
   /** 拆分后新份额的权利性质：按 acceptedRightKinds 里选 TENANCY → COMMUNAL → OWNED（登记期已保证非空）。 */
-  private static OwnershipStake.RightKind chooseGrantKind(Set<OwnershipStake.RightKind> acceptedKinds) {
+  private static OwnershipStake.RightKind chooseGrantKind(
+      Set<OwnershipStake.RightKind> acceptedKinds) {
     for (OwnershipStake.RightKind kind :
         List.of(
             OwnershipStake.RightKind.TENANCY,
@@ -976,8 +980,8 @@ final class EconomyEntrySettlement {
   /**
    * ★★ <b>E5a 如实边界：本方法仍是份额表的直接写入点，不委托 {@link OwnershipStakeBook}</b>。理由：进入动作要把 assetSource
    * 的空闲份额<b>改登记到候选的新产业</b>（{@code intent.industryId()}）后交给本户经营，这样新 unit 才 通过 {@code
-   * ProductionProcessBook.usableAssets} 的 {@code industry==unit.industry} 判据看见它；而 Book 的守恒式是 逐 {@code
-   * (industry, asset)} 的，跨产业的重新登记不在它的语义内。这是记为遗留的显式例外，不是新增写路径； E5b 清算新增的转移/拆分一律只走 {@link
+   * ProductionProcessBook.usableAssets} 的 {@code industry==unit.industry} 判据看见它；而 Book 的守恒式是 逐
+   * {@code (industry, asset)} 的，跨产业的重新登记不在它的语义内。这是记为遗留的显式例外，不是新增写路径； E5b 清算新增的转移/拆分一律只走 {@link
    * OwnershipStakeBook}。
    */
   private static AssetShareId nextShareId(
@@ -988,7 +992,8 @@ final class EconomyEntrySettlement {
       ActorRef operator,
       OwnershipStake.RightKind kind) {
     for (long sequence = 0L; ; sequence++) {
-      AssetShareId candidate = OwnershipStake.idOf(industry, asset, owner, operator, kind, sequence);
+      AssetShareId candidate =
+          OwnershipStake.idOf(industry, asset, owner, operator, kind, sequence);
       if (!tables.assetShares.containsKey(candidate)) {
         return candidate;
       }
@@ -1148,7 +1153,7 @@ final class EconomyEntrySettlement {
         Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
         Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
         Map<HouseholdId, Map<PeopleLotId, Long>> composition,
-          Map<HexCoord, Market> markets,
+        Map<HexCoord, Market> markets,
         long day) {
       this.tables = tables;
       this.householdDemands = householdDemands;
@@ -1171,11 +1176,15 @@ final class EconomyEntrySettlement {
             .add(share.id());
       }
       // ★ P2-A A3：家户人口组成来自 Social 的只读投影（不是 Economy 状态里的成员份额表）。
-      for (Map.Entry<HouseholdId, Map<PeopleLotId, Long>> householdMembers : composition.entrySet()) {
+      for (Map.Entry<HouseholdId, Map<PeopleLotId, Long>> householdMembers :
+          composition.entrySet()) {
         List<PeopleLotId> lots =
-            lotsByHousehold.computeIfAbsent(householdMembers.getKey(), ignored -> new ArrayList<>());
+            lotsByHousehold.computeIfAbsent(
+                householdMembers.getKey(), ignored -> new ArrayList<>());
         for (Map.Entry<PeopleLotId, Long> member : householdMembers.getValue().entrySet()) {
-          if (member.getValue() != null && member.getValue() > 0L && !lots.contains(member.getKey())) {
+          if (member.getValue() != null
+              && member.getValue() > 0L
+              && !lots.contains(member.getKey())) {
             lots.add(member.getKey());
           }
         }
@@ -1183,9 +1192,11 @@ final class EconomyEntrySettlement {
       for (HouseholdLaborCommitment laborCommitment : tables.laborCommitments.values()) {
         allocationMilliByHousehold.merge(
             laborCommitment.household(), laborCommitment.laborMilli(), Long::sum);
-        allocationMilliByGroup.merge(laborCommitment.group(), laborCommitment.laborMilli(), Long::sum);
+        allocationMilliByGroup.merge(
+            laborCommitment.group(), laborCommitment.laborMilli(), Long::sum);
         List<PeopleLotId> lots =
-            lotsByHousehold.computeIfAbsent(laborCommitment.household(), ignored -> new ArrayList<>());
+            lotsByHousehold.computeIfAbsent(
+                laborCommitment.household(), ignored -> new ArrayList<>());
         if (!lots.contains(laborCommitment.group())) {
           lots.add(laborCommitment.group());
         }

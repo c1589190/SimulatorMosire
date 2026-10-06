@@ -10,7 +10,6 @@ import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;

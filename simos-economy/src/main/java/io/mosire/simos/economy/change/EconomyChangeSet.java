@@ -29,29 +29,29 @@ import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
 import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.model.AssetRule;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionRole;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
-import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DebtContract;
-import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdDemand;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionCandidate;
-import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -65,13 +65,13 @@ import java.util.function.Function;
 /**
  * 经济状态的变更集。**组件与 {@link EconomyData} 的 record 组件一一对应**（当前 31 个：{@code meta} / {@code industries} /
  * {@code classes} / {@code debtContracts} / {@code flows} / {@code laborSupply} / {@code
- * allocations} / {@code relations} / {@code markets} / {@code shipments} /
- * {@code assetShares} / {@code operatorConditions} / {@code units} / {@code demands} / {@code
- * candidates} / {@code modes} / {@code classStructures} / {@code classPositions} / {@code
- * classStandings} / {@code productionOrganizations} / {@code assetRules} + E3 的 {@code governments}
- * / {@code moneyIssuances} + E4a 的 {@code debtContracts} / {@code pledges} + E5a 的 {@code
- * liquidationPolicies} / {@code crisisSignals} + E6a 的 {@code modeTransitions} / {@code
- * classShares} + P10.1 的 {@code merchantFirms} + P4a 的 {@code periodicAdjustments}）。
+ * allocations} / {@code relations} / {@code markets} / {@code shipments} / {@code assetShares} /
+ * {@code operatorConditions} / {@code units} / {@code demands} / {@code candidates} / {@code modes}
+ * / {@code classStructures} / {@code classPositions} / {@code classStandings} / {@code
+ * productionOrganizations} / {@code assetRules} + E3 的 {@code governments} / {@code moneyIssuances}
+ * + E4a 的 {@code debtContracts} / {@code pledges} + E5a 的 {@code liquidationPolicies} / {@code
+ * crisisSignals} + E6a 的 {@code modeTransitions} / {@code classShares} + P10.1 的 {@code
+ * merchantFirms} + P4a 的 {@code periodicAdjustments}）。
  *
  * <p>铁律 5：变更集从完整状态类型派生，由 {@code EconomyRoundTripTest} 的**反射枚举**把守——新增状态组件若不进 变更集，那个测试自动红。
  *
@@ -80,8 +80,8 @@ import java.util.function.Function;
  * productionOrganizations/assetRules}；E3 {@code governments/moneyIssuances}；E4 {@code
  * debtContracts} （替换旧 {@code debts} 槽）/{@code pledges}；E5 {@code
  * liquidationPolicies/crisisSignals}；E6 {@code modeTransitions/classShares}。E6b（GM 经济调整命令）与 E6c（统一
- * dashboard 读口）都只读写既有组件， **零新状态组件**；P10.1 追加 {@code merchantFirms}、P4a 追加 {@code periodicAdjustments}
- * 后，本变更集与 {@link EconomyData} 的组件面逐条对应（上面那份逐条清单就是全表）。
+ * dashboard 读口）都只读写既有组件， **零新状态组件**；P10.1 追加 {@code merchantFirms}、P4a 追加 {@code
+ * periodicAdjustments} 后，本变更集与 {@link EconomyData} 的组件面逐条对应（上面那份逐条清单就是全表）。
  *
  * <p>★ **差异与重建的语义不在这里**：一律委托 {@link FieldDelta#diff} / {@link FieldDelta#rebuild}（与 {@code
  * MapChangeSet} / {@code SocialChangeSet} / {@code UnitChangeSet} / {@code SdChangeSet} / {@code
@@ -335,12 +335,10 @@ public record EconomyChangeSet(
         || classes.changed()
         || debtContracts.changed()
         || flows.changed()
-
         || allocations.changed()
         || relations.changed()
         || markets.changed()
         || shipments.changed()
-
         || assetShares.changed()
         || operatorConditions.changed()
         || units.changed()

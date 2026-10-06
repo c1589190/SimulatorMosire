@@ -3,8 +3,8 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
-import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
@@ -20,8 +20,8 @@ import java.util.Optional;
 /**
  * ★★ <b>账户主体解析（P2-A §13.3 的唯一拼写点）</b>：把"经营者/组织者 actor"解析到家户账。
  *
- * <p>★★ <b>为什么必须有它</b>：账户主体只有家户，而生产单元上写的是 {@code ActorRef operator}（庄园/作坊/商号可能是
- * {@code ORGANIZATION}/{@code ESTATE}/{@code WORKSHOP} 的 id）。解析规则固定为：
+ * <p>★★ <b>为什么必须有它</b>：账户主体只有家户，而生产单元上写的是 {@code ActorRef operator}（庄园/作坊/商号可能是 {@code
+ * ORGANIZATION}/{@code ESTATE}/{@code WORKSHOP} 的 id）。解析规则固定为：
  *
  * <pre>
  * ① unit 的既有经济家户解析（{@link EconomicHouseholdResolver}：operator / relation / 份额 owner）⇒ 单一家户
@@ -44,8 +44,7 @@ final class HouseholdRouting {
   static HouseholdId requireHouseholdOf(ActorRef actor) {
     Objects.requireNonNull(actor, "actor");
     if (actor.kind() != ActorKind.HOUSEHOLD) {
-      throw new IllegalStateException(
-          "账户主体只有家户：非家户 actor 必须先由结算侧解析到组织者/经营者家户（不得静默跳过）：" + actor);
+      throw new IllegalStateException("账户主体只有家户：非家户 actor 必须先由结算侧解析到组织者/经营者家户（不得静默跳过）：" + actor);
     }
     return HouseholdActors.householdOf(actor);
   }
@@ -73,7 +72,8 @@ final class HouseholdRouting {
       Objects.requireNonNull(collective, "collective");
       collective = List.copyOf(collective);
       if (single.isPresent() && !collective.isEmpty()) {
-        throw new IllegalArgumentException("账户主体不能同时是单一家户与集体：single=" + single + " collective=" + collective);
+        throw new IllegalArgumentException(
+            "账户主体不能同时是单一家户与集体：single=" + single + " collective=" + collective);
       }
     }
 
@@ -102,9 +102,7 @@ final class HouseholdRouting {
     }
   }
 
-  /**
-   * 解析一个 unit 的账户主体（见类注的 ①→④）。不抛（解析不到 ⇒ {@link Subject#unresolved()}，由调用方具名处理）。
-   */
+  /** 解析一个 unit 的账户主体（见类注的 ①→④）。不抛（解析不到 ⇒ {@link Subject#unresolved()}，由调用方具名处理）。 */
   static Subject subjectOf(
       ProductionProcess unit,
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -124,7 +122,8 @@ final class HouseholdRouting {
     ProductionEnterprise enterprise =
         enterpriseByProcess == null ? null : enterpriseByProcess.get(unit.id());
     if (enterprise != null) {
-      Optional<HouseholdId> organizer = householdOfActorOrNull(enterprise.organizer(), householdEconomies);
+      Optional<HouseholdId> organizer =
+          householdOfActorOrNull(enterprise.organizer(), householdEconomies);
       if (organizer.isPresent()) {
         return Subject.single(organizer.get());
       }
@@ -137,14 +136,16 @@ final class HouseholdRouting {
   }
 
   /**
-   * 集体主体的分配权重：该 unit 名下逐家户的劳动配额之和（{@code laborMilli}）；全为 0 时退回人口；
-   * 仍无权重 ⇒ 等权。返回表保序（首次出现序），只含主体成员。
+   * 集体主体的分配权重：该 unit 名下逐家户的劳动配额之和（{@code laborMilli}）；全为 0 时退回人口； 仍无权重 ⇒ 等权。返回表保序（首次出现序），只含主体成员。
    */
   static Map<HouseholdId, Long> weightsOf(
-      ProductionUnitId unitId, SettlementIndex index, Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+      ProductionUnitId unitId,
+      SettlementIndex index,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Map<HouseholdId, Long> weights = new LinkedHashMap<>();
     for (HouseholdLaborCommitment laborCommitment : index.allocationsOfUnit(unitId)) {
-      weights.merge(laborCommitment.household(), Math.max(0L, laborCommitment.laborMilli()), Math::addExact);
+      weights.merge(
+          laborCommitment.household(), Math.max(0L, laborCommitment.laborMilli()), Math::addExact);
     }
     long positive = 0L;
     for (long weight : weights.values()) {
@@ -156,7 +157,8 @@ final class HouseholdRouting {
     weights.clear();
     for (HouseholdId household : index.householdsOf(unitId)) {
       HouseholdEconomy householdEconomy = householdEconomies.get(household);
-      weights.put(household, Math.max(1L, householdEconomy == null ? 1L : householdEconomy.population()));
+      weights.put(
+          household, Math.max(1L, householdEconomy == null ? 1L : householdEconomy.population()));
     }
     return weights;
   }

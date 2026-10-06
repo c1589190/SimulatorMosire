@@ -12,17 +12,18 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * {@code social.SubmitHouseholdWorkOrder} 的 <b>计划</b>：一组<b>有序</b>操作，逐条对应 {@code HouseholdBook} 的一个纯函数写口。
+ * {@code social.SubmitHouseholdWorkOrder} 的 <b>计划</b>：一组<b>有序</b>操作，逐条对应 {@code HouseholdBook}
+ * 的一个纯函数写口。
  *
- * <p>★ <b>为什么有序</b>：同一批里的后一条操作看到的是前一条已生效的工作副本（例如先 {@code CREATE_HOUSEHOLD} 再
- * {@code ADD_MEMBERS}），顺序是语义的一部分（与 {@code CommandBus.submitBatch} 同口径）。
+ * <p>★ <b>为什么有序</b>：同一批里的后一条操作看到的是前一条已生效的工作副本（例如先 {@code CREATE_HOUSEHOLD} 再 {@code
+ * ADD_MEMBERS}），顺序是语义的一部分（与 {@code CommandBus.submitBatch} 同口径）。
  *
- * <p>★ <b>失败语义</b>：整单要么全成、要么整单具名拒——{@link HouseholdWorkOrderBook} 在接收方的私有工作副本上顺序应用，
- * 任一步抛 {@link IllegalArgumentException} 就带着"第几步 + 操作名"整单拒，<b>不部分生效</b>（base 从不被改）。
+ * <p>★ <b>失败语义</b>：整单要么全成、要么整单具名拒——{@link HouseholdWorkOrderBook} 在接收方的私有工作副本上顺序应用， 任一步抛 {@link
+ * IllegalArgumentException} 就带着"第几步 + 操作名"整单拒，<b>不部分生效</b>（base 从不被改）。
  *
  * <p>★ <b>本类型不做状态校验</b>：成员保序冻结 + 逐条非 null；人数/份额/存在性等域规则留给 {@code HouseholdBook}
- * （不在两条路上各写一份）。计划本身是契约形状，能被 app/后续调用方直接构造（"单条人口转移"见
- * {@link #transfer}）；JSON 载荷的解析在 {@code simos-social} 的 spi 层。
+ * （不在两条路上各写一份）。计划本身是契约形状，能被 app/后续调用方直接构造（"单条人口转移"见 {@link #transfer}）；JSON 载荷的解析在 {@code
+ * simos-social} 的 spi 层。
  *
  * <p>★ <b>与旧命令的关系</b>：既有 {@code social.CreateHousehold} 等逐操作命令与本工单入口并存；本类型不改变它们的语义。
  */
@@ -161,7 +162,8 @@ public record HouseholdWorkOrderPlan(List<Step> steps) {
   }
 
   /** {@code REMOVE_MEMBERS}：对应 {@code HouseholdBook.removeMembers}（扣到 0 删批次）。 */
-  public record RemoveMembers(HouseholdId householdId, PeopleLotId lotId, long count) implements Step {
+  public record RemoveMembers(HouseholdId householdId, PeopleLotId lotId, long count)
+      implements Step {
 
     public RemoveMembers {
       requireHousehold(householdId, "REMOVE_MEMBERS");
@@ -180,8 +182,8 @@ public record HouseholdWorkOrderPlan(List<Step> steps) {
   }
 
   /** {@code TRANSFER_MEMBERS}：对应 {@code HouseholdBook.transferMembers}（源/目标两条腿原子落账）。 */
-  public record TransferMembers(
-      HouseholdId from, HouseholdId to, PeopleLotId lotId, long count) implements Step {
+  public record TransferMembers(HouseholdId from, HouseholdId to, PeopleLotId lotId, long count)
+      implements Step {
 
     public TransferMembers {
       requireHousehold(from, "TRANSFER_MEMBERS.from");
@@ -201,8 +203,8 @@ public record HouseholdWorkOrderPlan(List<Step> steps) {
   }
 
   /** {@code ADJUST_POPULATION}：对应 {@code HouseholdBook.adjustPopulation}（delta 可正可负、不得为 0）。 */
-  public record AdjustPopulation(
-      HouseholdId householdId, Sex sex, String ageBracketId, long delta) implements Step {
+  public record AdjustPopulation(HouseholdId householdId, Sex sex, String ageBracketId, long delta)
+      implements Step {
 
     public AdjustPopulation {
       requireHousehold(householdId, "ADJUST_POPULATION");
@@ -211,7 +213,8 @@ public record HouseholdWorkOrderPlan(List<Step> steps) {
         throw new IllegalArgumentException("ADJUST_POPULATION.ageBracketId 不得为空白");
       }
       if (delta == 0L) {
-        throw new IllegalArgumentException("ADJUST_POPULATION.delta 不得为 0（没有可调整的人数；空改动不落 revision）");
+        throw new IllegalArgumentException(
+            "ADJUST_POPULATION.delta 不得为 0（没有可调整的人数；空改动不落 revision）");
       }
     }
 

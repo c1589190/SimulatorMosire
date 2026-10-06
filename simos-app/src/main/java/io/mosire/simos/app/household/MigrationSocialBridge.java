@@ -19,12 +19,12 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * ★★ <b>P0（2026-10-10）：迁移 outbox → Social 工单的桥</b>（住在 {@code simos-app}：唯一同时认识 economy 与
- * social 的组合根）。
+ * ★★ <b>P0（2026-10-10）：迁移 outbox → Social 工单的桥</b>（住在 {@code simos-app}：唯一同时认识 economy 与 social
+ * 的组合根）。
  *
  * <p>App 的 {@code PopulationEconomyTimeParticipant} 在 {@code EconomyDayStepper.step(day)} 之后拿到
- * {@link EconomyPopulationTransfer} 的有序 outbox，逐条翻译成 Social 工单并调用
- * {@link HouseholdWorkOrderBook#apply(SocialData, HouseholdWorkOrder, long)}：
+ * {@link EconomyPopulationTransfer} 的有序 outbox，逐条翻译成 Social 工单并调用 {@link
+ * HouseholdWorkOrderBook#apply(SocialData, HouseholdWorkOrder, long)}：
  *
  * <pre>
  * 逐条 transfer（保持 outbox 顺序）：
@@ -39,12 +39,11 @@ import java.util.Objects;
  * </pre>
  *
  * <p>★★ <b>为什么是"整单具名抛"而不是逐户 try/catch</b>：人口权威只有 Social 一份；经济腿已经把资产/钱/债按
- * "这笔搬多少人"落好了，任何一条人的转移失败都意味着两条腿要一起回滚 —— 具名失败让整条 advance 红色拒绝，
- * 而不是在部分家户上留下错账。
+ * "这笔搬多少人"落好了，任何一条人的转移失败都意味着两条腿要一起回滚 —— 具名失败让整条 advance 红色拒绝， 而不是在部分家户上留下错账。
  *
- * <p>★ <b>日志归属</b>：本类不另开 logger —— Social 腿的工单日志（受理/逐操作/拒绝/幂等命中）全部由
- * {@link HouseholdWorkOrderBook} 记在 {@code SocialLog.workOrder()}，App 只记跨域汇总
- * {@code MODE_MIGRATION_BRIDGED}（见 {@code PopulationEconomyTimeParticipant}）。
+ * <p>★ <b>日志归属</b>：本类不另开 logger —— Social 腿的工单日志（受理/逐操作/拒绝/幂等命中）全部由 {@link HouseholdWorkOrderBook}
+ * 记在 {@code SocialLog.workOrder()}，App 只记跨域汇总 {@code MODE_MIGRATION_BRIDGED}（见 {@code
+ * PopulationEconomyTimeParticipant}）。
  *
  * <p>★ <b>纯函数</b>：不写任何外部状态；同一输入（base + transfers + day）⇒ 同一输出。
  */
@@ -65,8 +64,8 @@ public final class MigrationSocialBridge {
    * @param transfers 经济腿 outbox（保序 = 经济 move 执行序；非 null，元素非 null）
    * @param day 世界当前日（进 orderId 与标记事件）
    * @return 受理全部工单后的新 {@link SocialData}（base 从不被改）
-   * @throws IllegalStateException 任一工单失败（含源户人口不足 / 批次份额不足 / Social 守恒失败 / 目标冲突）；
-   *     具名带 source/target/orderId 上下文
+   * @throws IllegalStateException 任一工单失败（含源户人口不足 / 批次份额不足 / Social 守恒失败 / 目标冲突）； 具名带
+   *     source/target/orderId 上下文
    */
   public static SocialData apply(
       SocialData base, List<EconomyPopulationTransfer> transfers, long day) {
@@ -93,8 +92,7 @@ public final class MigrationSocialBridge {
         "mode-migration:" + day + ":" + index + ":" + source.value() + ":" + target.value();
     try {
       if (source.equals(target)) {
-        throw new IllegalStateException(
-            "迁移 outbox 的 source == target（Social 侧无法表达自转移）: " + source);
+        throw new IllegalStateException("迁移 outbox 的 source == target（Social 侧无法表达自转移）: " + source);
       }
       Household sourceHousehold = current.households().get(source);
       if (sourceHousehold == null) {
@@ -122,9 +120,7 @@ public final class MigrationSocialBridge {
                 target,
                 new HouseholdLocation.Hex(transfer.targetHex()),
                 new HouseholdProfile(
-                    "迁入户:" + target.value(),
-                    PROFILE_DESCRIPTION,
-                    Map.of("source", SOURCE)),
+                    "迁入户:" + target.value(), PROFILE_DESCRIPTION, Map.of("source", SOURCE)),
                 new HouseholdVitalRates(List.of())));
       }
       // ② 按成员份额确定性选人（今序 + 最大余数法）：权重 = 该批次份额，分母 = 源户当前总人口。

@@ -48,9 +48,7 @@ class MarketRegulationTest {
             MarketRegulation.defaults(H1),
             MarketRegulation.none(),
             MarketRegulation.defaultsFor(new LinkedHashMap<>(Map.of(H2, market, H1, market))))) {
-      assertThat(regulation.defined())
-          .as("默认实例 = 没有真要施加的调控（defined=false）")
-          .isFalse();
+      assertThat(regulation.defined()).as("默认实例 = 没有真要施加的调控（defined=false）").isFalse();
       assertThat(regulation.referencePrices()).isEmpty();
       assertThat(regulation.quotaPerWindow()).isEmpty();
       assertThat(regulation.tariffPerUnit()).isEmpty();
@@ -96,8 +94,7 @@ class MarketRegulationTest {
     Market h1Market = market(Map.of(GRAIN, 10L, CLOTH, 7L));
     Market h2Market = market(Map.of(GRAIN, 20L, CLOTH, 8L));
     MarketRegulation regulation =
-        new MarketRegulation(
-            H1, Map.of(GRAIN, 100L), 0L, 0L, Map.of(), Map.of(), true, List.of());
+        new MarketRegulation(H1, Map.of(GRAIN, 100L), 0L, 0L, Map.of(), Map.of(), true, List.of());
 
     assertThat(regulation.referencePriceOf(h1Market, GRAIN))
         .as("H1 的 grain 被区级参考价覆盖")
@@ -105,9 +102,7 @@ class MarketRegulationTest {
     assertThat(regulation.referencePriceOf(h2Market, GRAIN))
         .as("★ H2 同区也必须读到同一个覆盖价（区内一价）")
         .isEqualTo(100L);
-    assertThat(regulation.referencePriceOf(h1Market, CLOTH))
-        .as("未覆盖商品回退 H1 原价")
-        .isEqualTo(7L);
+    assertThat(regulation.referencePriceOf(h1Market, CLOTH)).as("未覆盖商品回退 H1 原价").isEqualTo(7L);
     assertThat(regulation.referencePriceOf(h2Market, CLOTH))
         .as("未覆盖商品回退 H2 原价（各 hex 自己的价）")
         .isEqualTo(8L);
@@ -128,9 +123,7 @@ class MarketRegulationTest {
 
     MarketRegulation bidOnly =
         new MarketRegulation(H1, Map.of(), 500L, 0L, Map.of(), Map.of(), true, List.of());
-    assertThat(bidOnly.bidPriceOf(market, GRAIN))
-        .as("★ bid 单侧覆盖：500‰ × 10 = 5")
-        .isEqualTo(5L);
+    assertThat(bidOnly.bidPriceOf(market, GRAIN)).as("★ bid 单侧覆盖：500‰ × 10 = 5").isEqualTo(5L);
     assertThat(bidOnly.askPriceOf(market, GRAIN))
         .as("ask 未覆盖 ⇒ 沿用 Market.ASK_PER_MILLE = 11")
         .isEqualTo(11L);
@@ -190,21 +183,24 @@ class MarketRegulationTest {
   @Test
   void defaultsForIsValueIdenticalToLegacyNonePath() {
     World legacyWorld = simpleCrossHexWorld();
-    Round legacyRound =
-        MarketSettlementFixtures.round(legacyWorld, MarketRegulation.none());
-    MarketSettlement.MarketOutcome legacy = MarketSettlementFixtures.settle(legacyWorld, legacyRound);
+    Round legacyRound = MarketSettlementFixtures.round(legacyWorld, MarketRegulation.none());
+    MarketSettlement.MarketOutcome legacy =
+        MarketSettlementFixtures.settle(legacyWorld, legacyRound);
 
     World defaultWorld = simpleCrossHexWorld();
     Round defaultRound =
         MarketSettlementFixtures.round(
             defaultWorld, MarketRegulation.defaultsFor(defaultWorld.markets()));
-    MarketSettlement.MarketOutcome defaults = MarketSettlementFixtures.settle(defaultWorld, defaultRound);
+    MarketSettlement.MarketOutcome defaults =
+        MarketSettlementFixtures.settle(defaultWorld, defaultRound);
 
-    assertThat(defaults.report()).as("★ 默认 regulation 与旧 none 路径逐值相同（含成交/未成交/运费/税费）")
+    assertThat(defaults.report())
+        .as("★ 默认 regulation 与旧 none 路径逐值相同（含成交/未成交/运费/税费）")
         .isEqualTo(legacy.report());
     assertThat(defaults.report().fills()).as("默认必须仍开市且有成交（不是空报告）").isNotEmpty();
     assertThat(defaults.report().regulatedTariffMilli()).isZero();
-    assertThat(defaults.report().immediateCrossHexFills()).isEqualTo(legacy.report().immediateCrossHexFills());
+    assertThat(defaults.report().immediateCrossHexFills())
+        .isEqualTo(legacy.report().immediateCrossHexFills());
     assertThat(defaults.report().immediateCrossHexLossMilli())
         .isEqualTo(legacy.report().immediateCrossHexLossMilli());
     assertThat(snapshotByHousehold(defaultWorld, true))
@@ -227,8 +223,7 @@ class MarketRegulationTest {
             .household(BUYER, H2, 1L, 0L, 1_000_000L)
             .build();
     MarketRegulation regulation =
-        new MarketRegulation(
-            H1, Map.of(GRAIN, 100L), 0L, 0L, Map.of(), Map.of(), true, List.of());
+        new MarketRegulation(H1, Map.of(GRAIN, 100L), 0L, 0L, Map.of(), Map.of(), true, List.of());
     Round round = MarketSettlementFixtures.round(world, regulation);
 
     MarketSettlement.MarketOutcome outcome = MarketSettlementFixtures.settle(world, round);
@@ -237,9 +232,7 @@ class MarketRegulationTest {
     MarketReport.Fill fill = outcome.report().fills().get(0);
     assertThat(fill.from()).isEqualTo(H1);
     assertThat(fill.to()).isEqualTo(H2);
-    assertThat(fill.unitPriceMilli())
-        .as("★ 区内成交单价 = 区级覆盖参考价（不是 H2 的原价 20）")
-        .isEqualTo(100L);
+    assertThat(fill.unitPriceMilli()).as("★ 区内成交单价 = 区级覆盖参考价（不是 H2 的原价 20）").isEqualTo(100L);
     assertThat(fill.goodsPaymentMilli())
         .as("按毛量 × 覆盖价付款")
         .isEqualTo(ceilDiv(fill.quantity() * 100L, 1000L));
@@ -265,8 +258,7 @@ class MarketRegulationTest {
             .build();
     long quota = 1_000L;
     MarketRegulation regulation =
-        new MarketRegulation(
-            H1, Map.of(), 0L, 0L, Map.of(GRAIN, quota), Map.of(), true, List.of());
+        new MarketRegulation(H1, Map.of(), 0L, 0L, Map.of(GRAIN, quota), Map.of(), true, List.of());
     Round round = MarketSettlementFixtures.round(world, regulation);
 
     MarketSettlement.MarketOutcome outcome = MarketSettlementFixtures.settle(world, round);
@@ -298,7 +290,8 @@ class MarketRegulationTest {
 
     World defaultWorld = simpleCrossHexWorld();
     Round defaultRound =
-        MarketSettlementFixtures.round(defaultWorld, MarketRegulation.defaultsFor(defaultWorld.markets()));
+        MarketSettlementFixtures.round(
+            defaultWorld, MarketRegulation.defaultsFor(defaultWorld.markets()));
     MarketSettlement.MarketOutcome defaultOutcome =
         MarketSettlementFixtures.settle(defaultWorld, defaultRound);
 
@@ -317,9 +310,7 @@ class MarketRegulationTest {
         .as("★ 税费只进读数：⌊毛量 × 单位税 ÷ 1000⌋")
         .isEqualTo(expectedTariff);
     assertThat(expectedTariff).isPositive();
-    assertThat(defaultOutcome.report().regulatedTariffMilli())
-        .as("默认无税费 ⇒ 读数 0")
-        .isZero();
+    assertThat(defaultOutcome.report().regulatedTariffMilli()).as("默认无税费 ⇒ 读数 0").isZero();
 
     // 钱货不动：与默认路径逐值比较（税费没有多扣一分钱、也没有多扣一毫货）。
     assertThat(snapshotByHousehold(tariffWorld, true))
@@ -334,12 +325,11 @@ class MarketRegulationTest {
             .flatMap(transfer -> transfer.money().values().stream())
             .mapToLong(Long::longValue)
             .sum();
-    assertThat(moneyLegs)
-        .as("★ 唯一货币腿 = 货款，没有税费腿")
-        .isEqualTo(fill.goodsPaymentMilli());
+    assertThat(moneyLegs).as("★ 唯一货币腿 = 货款，没有税费腿").isEqualTo(fill.goodsPaymentMilli());
     assertThat(tariffRound.ledger().toLedger().transfers())
         .as("税费只记读数，不铸额外转移")
-        .allSatisfy(transfer -> assertThat(transfer.reason()).isEqualTo(TransferReason.MARKET_TRADE));
+        .allSatisfy(
+            transfer -> assertThat(transfer.reason()).isEqualTo(TransferReason.MARKET_TRADE));
   }
 
   // ── 夹具 ────────────────────────────────────────────────────────────────────────────
@@ -364,7 +354,10 @@ class MarketRegulationTest {
           household,
           goods
               ? world.goods().getOrDefault(household, Map.of()).getOrDefault(GRAIN, 0L)
-              : world.money().getOrDefault(household, Map.of()).getOrDefault(MarketSettlementFixtures.SILVER, 0L));
+              : world
+                  .money()
+                  .getOrDefault(household, Map.of())
+                  .getOrDefault(MarketSettlementFixtures.SILVER, 0L));
     }
     return snapshot;
   }

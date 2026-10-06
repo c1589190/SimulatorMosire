@@ -23,22 +23,20 @@ import java.util.Set;
  * 与键身份是状态合法性判据；"份额合计是否等于 1000"等规则留到 E6 模式变迁裁决。
  *
  * <p>★★ <b>E5a 追加 {@code consecutiveDebtStressCycles}</b>：连续债务压力周期数（≥ 0）。★ <b>旧 JSON 缺这个键 ⇒
- * 0</b>（Jackson 对 record 的缺失原始 {@code long} 取类型默认值，与 {@code HouseholdEconomy.cycleNaturalNeedMilli} 同款约定），
- * 故本字段不需要另写迁移层；E5a 只落字段与构造期 ≥ 0 守卫，递增/清零在 E5b。
+ * 0</b>（Jackson 对 record 的缺失原始 {@code long} 取类型默认值，与 {@code HouseholdEconomy.cycleNaturalNeedMilli}
+ * 同款约定）， 故本字段不需要另写迁移层；E5a 只落字段与构造期 ≥ 0 守卫，递增/清零在 E5b。
  *
  * <p>★★ <b>P2-B §13.5 追加 {@code participatingPositionIds}</b>：本家户**除当前位置之外还参与**的阶层位置集合
- * （"可参与生产方式"的状态表达；每个位置的 {@code modeId} 给出它属于哪个 {@code ProductionMode}）。★ <b>空集 =
- * 只参与 {@link #currentPositionId}（旧档/旧口径，逐值不变）</b>；非空集是**追加**集合，不是替换集合
- * —— {@link #effectivePositionIds()} 给出"当前位置 ∪ 追加集合"的规范化结果。这样"不能再由
- * currentPositionId 单值决定唯一生产方式"（计划 P2-B.1）与"旧档只有单值"两个口径在同一个字段里表达，
- * 不需要第二张状态表。位置的引用完整性（必须已在 {@code classPositions} 里、且 {@code modeId} 已在 {@code modes} 里）
- * 由 {@code EconomyData} 构造期判死；本类型只判形状。
+ * （"可参与生产方式"的状态表达；每个位置的 {@code modeId} 给出它属于哪个 {@code ProductionMode}）。★ <b>空集 = 只参与 {@link
+ * #currentPositionId}（旧档/旧口径，逐值不变）</b>；非空集是**追加**集合，不是替换集合 —— {@link #effectivePositionIds()}
+ * 给出"当前位置 ∪ 追加集合"的规范化结果。这样"不能再由 currentPositionId 单值决定唯一生产方式"（计划 P2-B.1）与"旧档只有单值"两个口径在同一个字段里表达，
+ * 不需要第二张状态表。位置的引用完整性（必须已在 {@code classPositions} 里、且 {@code modeId} 已在 {@code modes} 里） 由 {@code
+ * EconomyData} 构造期判死；本类型只判形状。
  *
  * @param householdId 家户稳定身份；不得为 null（键 = 值内 householdId）
  * @param originalPositionId 原所属阶层位置；不得为 null（创世迁移时通常等于当前位置）
  * @param currentPositionId 当前阶层位置；不得为 null
- * @param participatingPositionIds 追加参与的生产位置（当前位置之外；可空集 = 只参与当前位置）；不得为 null（缺省给空集）、
- *     不得含 null、保序不可变
+ * @param participatingPositionIds 追加参与的生产位置（当前位置之外；可空集 = 只参与当前位置）；不得为 null（缺省给空集）、 不得含 null、保序不可变
  * @param retainedShares 保留份额（位置 → 千分比）；不得为 null、键值不得为 null、逐值 ≥ 0，保序不可变
  * @param consecutiveDebtStressCycles 连续债务压力周期数（≥ 0）；E5a 只落字段，递增/清零在 E5b
  * @param lastTransitionDay 最近一次阶层变更日；不得为负
@@ -56,8 +54,7 @@ public record HouseholdClassMembership(
 
   /**
    * ★ <b>旧七参构造（P2-B 之前）的源码兼容别名</b>：追加集合取空集（= 只参与 {@code currentPositionId} 的旧口径），
-   * 使尚未迁移的旧调用方/用例仍能按原签名构造。新代码请直接给 {@code participatingPositionIds}（没有就给
-   * {@code Set.of()}，语义相同）。
+   * 使尚未迁移的旧调用方/用例仍能按原签名构造。新代码请直接给 {@code participatingPositionIds}（没有就给 {@code Set.of()}，语义相同）。
    */
   public HouseholdClassMembership(
       HouseholdId householdId,

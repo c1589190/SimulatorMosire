@@ -12,8 +12,8 @@ import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.codec.ActorCodec;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.testing.SocialHouseholdFixture;
 import io.mosire.simos.app.tools.SimosToolSource;
 import io.mosire.simos.app.tools.write.LevyRegionTool;
@@ -27,6 +27,7 @@ import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
@@ -49,26 +50,28 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
-import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.HouseholdVitalRates;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovLevel;
-import io.mosire.simos.unit.OfficePolicy;
-import io.mosire.simos.unit.UnitModule;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentLevel;
+import io.mosire.simos.unit.GovernmentPostOfHousehold;
 import io.mosire.simos.unit.Jurisdiction;
+import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.RelativeOffset;
+import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitModule;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
@@ -137,8 +140,10 @@ class LevyRegionToolTest {
   private static final ActorRef HH1 = new ActorRef(ActorKind.HOUSEHOLD, "house@1_1");
   private static final ActorRef HH2 = new ActorRef(ActorKind.HOUSEHOLD, "house@1_2");
   private static final ActorRef HH_OUT = new ActorRef(ActorKind.HOUSEHOLD, "house@1_3");
+
   /** ★ P2-A：账户主体只有家户（悬空家户 = 不在 Social 里，仅供"被过滤"判据）。 */
   private static final ActorRef DANGLING_HH = new ActorRef(ActorKind.HOUSEHOLD, "hh-dangling");
+
   private static final String TREASURY_UNIT = "u-1";
   private static final String TREASURY_SMALL_UNIT = "u-cap-1";
   private static final HouseholdId TREASURY_HH = GovernmentHouseholds.of(TREASURY_UNIT);
@@ -216,10 +221,14 @@ class LevyRegionToolTest {
 
     assertThat(view.get("manpower").get("requested").asLong()).isEqualTo(40L);
     assertThat(view.get("manpower").get("available").asLong()).isEqualTo(50L);
-    assertThat(view.get("manpower").get("sources").get(0).get("taken").asLong()).isEqualTo(30L);
-    assertThat(view.get("manpower").get("sources").get(0).get("after").asLong()).isZero();
-    assertThat(view.get("manpower").get("sources").get(1).get("taken").asLong()).isEqualTo(10L);
-    assertThat(view.get("manpower").get("sources").get(1).get("after").asLong()).isEqualTo(10L);
+    JsonNode manpowerSource0 = view.get("manpower").get("sources").get(0);
+    assertThat(manpowerSource0.get("household").asText()).isEqualTo("house@1_1");
+    assertThat(manpowerSource0.get("lot").asText()).isEqualTo("g1");
+    assertThat(manpowerSource0.get("taken").asLong()).isEqualTo(30L);
+    JsonNode manpowerSource1 = view.get("manpower").get("sources").get(1);
+    assertThat(manpowerSource1.get("household").asText()).isEqualTo("house@1_2");
+    assertThat(manpowerSource1.get("lot").asText()).isEqualTo("g2");
+    assertThat(manpowerSource1.get("taken").asLong()).isEqualTo(10L);
 
     // ★ 阶段 11b：cloth=0 ⇒ 视图有规范空维度（requested/available=0、来源空）。
     assertThat(view.get("cloth").get("requested").asLong()).isZero();
@@ -247,35 +256,34 @@ class LevyRegionToolTest {
     assertThat(batch)
         .extracting(CommandEnvelope::type)
         .containsExactly(
+            LevyRegionTool.SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE,
             LevyRegionTool.ADJUST_ACCOUNTS_TYPE,
-            LevyRegionTool.SEED_GROUPS_TYPE,
             LevyRegionTool.PUT_INFO_TYPE);
     assertThat(batch)
         .allMatch(envelope -> envelope.correlationId().equals(batch.get(0).correlationId()));
     assertThat(batch).allMatch(envelope -> envelope.branch().equals(main()));
     assertThat(batch).allMatch(envelope -> envelope.expectedRevision().equals(new RevisionId(1)));
 
-    JsonNode adjust = JSON.readTree(batch.get(0).payloadJson());
+    JsonNode adjust = JSON.readTree(batch.get(1).payloadJson());
     JsonNode entries = adjust.get("entries");
-    assertThat(entries).as("粮钱来源合并 + 国库一条：hh1 / hh2 / u-1").hasSize(3);
-    assertTreasurySource(entries.get(0), "house@1_1", -80L, -20L);
-    assertTreasurySource(entries.get(1), "house@1_2", -40L, -80L);
+    assertThat(entries).as("粮钱来源合并 + 目标家户国库一条：house@1_1 / house@1_2 / hh-gov-u-1").hasSize(3);
+    assertAccountEntry(entries.get(0), "house@1_1", -80L, -20L);
+    assertAccountEntry(entries.get(1), "house@1_2", -40L, -80L);
     JsonNode treasury = entries.get(2);
-    assertThat(treasury.get("owner").get("kind").asText()).isEqualTo("UNIT");
-    assertThat(treasury.get("owner").get("id").asText()).isEqualTo("u-1");
-    assertThat(treasury.get("q").asInt()).isEqualTo(1);
-    assertThat(treasury.get("r").asInt()).isEqualTo(1);
+    assertThat(treasury.get("household").asText()).as("GOV 单位国库 = 政府家户").isEqualTo("hh-gov-u-1");
     assertThat(treasury.get("goods").get("grain").asLong()).as("国库粮 = 请求量（恒在最后一条）").isEqualTo(120L);
     assertThat(treasury.get("money").get("silver").asLong()).as("国库钱 = 请求量").isEqualTo(100L);
     // ★ 阶段 11b：cloth=0 ⇒ AdjustAccounts 的 goods 表里不出现 cloth 键（也不为它建条目）。
     assertThat(treasury.get("goods").has("cloth")).as("国库 goods 不得有 cloth 键").isFalse();
     assertThat(entries.get(0).get("goods").has("cloth")).as("家户 goods 不得有 cloth 键").isFalse();
 
-    JsonNode seedGroups = JSON.readTree(batch.get(1).payloadJson());
-    JsonNode groupEntries = seedGroups.get("entries");
-    assertThat(groupEntries).hasSize(2);
-    assertSeedGroup(groupEntries.get(0), "g1", 0L);
-    assertSeedGroup(groupEntries.get(1), "g2", 10L);
+    // ★ 2026-10-17 接线：人力腿 = 一张 SubmitHouseholdWorkOrder（逐 share TRANSFER_MEMBERS）。
+    JsonNode workOrder = JSON.readTree(batch.get(0).payloadJson());
+    assertThat(workOrder.get("target").asText()).isEqualTo("hh-gov-u-1");
+    JsonNode steps = workOrder.get("plan");
+    assertThat(steps).hasSize(2);
+    assertWorkOrderStep(steps.get(0), "house@1_1", "g1", 30L);
+    assertWorkOrderStep(steps.get(1), "house@1_2", "g2", 10L);
 
     JsonNode putInfo = JSON.readTree(batch.get(2).payloadJson());
     assertThat(putInfo.get("address").asText()).as("单位 canonical 地址").isEqualTo("unit:u-1");
@@ -351,8 +359,9 @@ class LevyRegionToolTest {
     long grainFromHouseholds = 0L;
     long silverFromHouseholds = 0L;
     SocialData socialBeforeForFilter = socialData(stateAt(1L));
-    for (Map.Entry<GoodsAccountKey, GoodsAccount> account : before.accounts().entrySet()) {
-      GoodsAccountKey key = account.getKey();
+    for (Map.Entry<HouseholdAccountKey, HouseholdInventory> account :
+        before.accounts().entrySet()) {
+      HouseholdAccountKey key = account.getKey();
       // ★ P2-A：账户主体只有家户 ⇒ 位置从 Social 家户派生；政府家户（国库）不是"区内家户"。
       if (GovernmentHouseholds.isGovernment(key.household())
           || !isInNation(socialBeforeForFilter, key.household())) {
@@ -362,11 +371,11 @@ class LevyRegionToolTest {
       silverFromHouseholds += silverOf(after, key) - silverOf(before, key);
     }
     long grainToTreasury =
-        grainOf(after, new GoodsAccountKey(TREASURY_HH))
-            - grainOf(before, new GoodsAccountKey(TREASURY_HH));
+        grainOf(after, new HouseholdAccountKey(TREASURY_HH))
+            - grainOf(before, new HouseholdAccountKey(TREASURY_HH));
     long silverToTreasury =
-        silverOf(after, new GoodsAccountKey(TREASURY_HH))
-            - silverOf(before, new GoodsAccountKey(TREASURY_HH));
+        silverOf(after, new HouseholdAccountKey(TREASURY_HH))
+            - silverOf(before, new HouseholdAccountKey(TREASURY_HH));
 
     assertThat(grainToTreasury).as("国库粮正增量 == 请求量").isEqualTo(120L);
     assertThat(grainFromHouseholds).as("Σ区内家户粮增量（含符号） == −120").isEqualTo(-120L);
@@ -375,26 +384,50 @@ class LevyRegionToolTest {
     assertThat(silverFromHouseholds).as("Σ区内家户钱增量（含符号） == −100").isEqualTo(-100L);
     assertThat(silverFromHouseholds + silverToTreasury).as("钱守恒").isZero();
 
-    assertThat(grainOf(after, new GoodsAccountKey(HouseholdActors.householdOf(HH1)))).as("hh-1 粮：100−80").isEqualTo(20L);
-    assertThat(grainOf(after, new GoodsAccountKey(HouseholdActors.householdOf(HH2)))).as("hh-2 粮：40−40（落到 0 保留）").isZero();
-    assertThat(silverOf(after, new GoodsAccountKey(HouseholdActors.householdOf(HH2)))).as("hh-2 钱：80−80").isZero();
-    assertThat(silverOf(after, new GoodsAccountKey(HouseholdActors.householdOf(HH1)))).as("hh-1 钱：50−20").isEqualTo(30L);
-    assertThat(after.accounts().get(new GoodsAccountKey(HouseholdActors.householdOf(HH1))).frozenBalances())
+    assertThat(grainOf(after, new HouseholdAccountKey(HouseholdActors.householdOf(HH1))))
+        .as("hh-1 粮：100−80")
+        .isEqualTo(20L);
+    assertThat(grainOf(after, new HouseholdAccountKey(HouseholdActors.householdOf(HH2))))
+        .as("hh-2 粮：40−40（落到 0 保留）")
+        .isZero();
+    assertThat(silverOf(after, new HouseholdAccountKey(HouseholdActors.householdOf(HH2))))
+        .as("hh-2 钱：80−80")
+        .isZero();
+    assertThat(silverOf(after, new HouseholdAccountKey(HouseholdActors.householdOf(HH1))))
+        .as("hh-1 钱：50−20")
+        .isEqualTo(30L);
+    assertThat(
+            after
+                .accounts()
+                .get(new HouseholdAccountKey(HouseholdActors.householdOf(HH1)))
+                .frozenBalances())
         .as("冻结额不许被抽走（粮冻结 20 原样）")
         .containsEntry(GRAIN, 20L);
 
-    SocialData socialBefore = socialData(stateAt(1L));
     SocialData socialAfter = socialData(stateAt(2L));
-    long taken = 0L;
-    for (Map.Entry<PeopleLotId, PopulationGroup> group : socialBefore.groups().entrySet()) {
-      PopulationGroup beforeGroup = group.getValue();
-      PopulationGroup afterGroup = socialAfter.groups().get(group.getKey());
-      taken += beforeGroup.count() - afterGroup.count();
-    }
-    assertThat(taken).as("Σ各批次被抽走人数 == 请求量 40").isEqualTo(40L);
-    assertThat(socialAfter.groups().get(new PeopleLotId("g1")).count()).as("g1：30−30=0").isZero();
+    // ★ P1.3：人力腿 = 家户间份额转移（不动批次总数）；守恒落在"目标家户新增份额 == 请求 40"上。
+    var targetMembers = socialAfter.requireHousehold(TREASURY_HH).members();
+    assertThat(targetMembers.get(new PeopleLotId("g1"))).as("目标家户 g1 份额 +30").isEqualTo(30L);
+    assertThat(targetMembers.get(new PeopleLotId("g2"))).as("目标家户 g2 份额 +10").isEqualTo(10L);
+    assertThat(socialAfter.groups().get(new PeopleLotId("g1")).count())
+        .as("批次总数不因家户间份额转移而变：g1 仍 30")
+        .isEqualTo(30L);
     assertThat(socialAfter.groups().get(new PeopleLotId("g2")).count())
-        .as("g2：20−10=10")
+        .as("批次总数不因家户间份额转移而变：g2 仍 20")
+        .isEqualTo(20L);
+    assertThat(
+            socialAfter
+                .requireHousehold(HouseholdActors.householdOf(HH1))
+                .members()
+                .getOrDefault(new PeopleLotId("g1"), 0L))
+        .as("来源家户 house@1_1 的 g1 份额转走")
+        .isZero();
+    assertThat(
+            socialAfter
+                .requireHousehold(HouseholdActors.householdOf(HH2))
+                .members()
+                .getOrDefault(new PeopleLotId("g2"), 0L))
+        .as("来源家户 house@1_2 的 g2 份额 20−10=10")
         .isEqualTo(10L);
     assertThat(socialAfter.groups().get(new PeopleLotId("g-female")).count())
         .as("女性批次不动")
@@ -424,14 +457,15 @@ class LevyRegionToolTest {
     SimulationState afterState = stateAt(headBefore + 1L);
     ActorData after = actorData(afterState);
 
-    GoodsAccountKey treasuryKey = new GoodsAccountKey(TREASURY_HH);
+    HouseholdAccountKey treasuryKey = new HouseholdAccountKey(TREASURY_HH);
     long clothToTreasury = clothOf(after, treasuryKey) - clothOf(before, treasuryKey);
     assertThat(clothToTreasury).as("国库 (UNIT,u-1)@H11 的 cloth 正增量 == 请求量 100").isEqualTo(100L);
 
     long clothFromHouseholds = 0L;
     SocialData socialBeforeForFilter = socialData(stateAt(1L));
-    for (Map.Entry<GoodsAccountKey, GoodsAccount> account : before.accounts().entrySet()) {
-      GoodsAccountKey key = account.getKey();
+    for (Map.Entry<HouseholdAccountKey, HouseholdInventory> account :
+        before.accounts().entrySet()) {
+      HouseholdAccountKey key = account.getKey();
       if (GovernmentHouseholds.isGovernment(key.household())
           || !isInNation(socialBeforeForFilter, key.household())) {
         continue;
@@ -441,8 +475,8 @@ class LevyRegionToolTest {
     assertThat(clothFromHouseholds).as("Σ本区家户 cloth 增量（含符号）== −100").isEqualTo(-100L);
     assertThat(clothFromHouseholds + clothToTreasury).as("cloth 守恒：Σ本区家户负增量 + 国库正增量 == 0").isZero();
 
-    GoodsAccountKey hh1Key = new GoodsAccountKey(HouseholdActors.householdOf(HH1));
-    GoodsAccountKey hh2Key = new GoodsAccountKey(HouseholdActors.householdOf(HH2));
+    HouseholdAccountKey hh1Key = new HouseholdAccountKey(HouseholdActors.householdOf(HH1));
+    HouseholdAccountKey hh2Key = new HouseholdAccountKey(HouseholdActors.householdOf(HH2));
     long hh1Before = clothOf(before, hh1Key);
     long hh2Before = clothOf(before, hh2Key);
     assertThat(hh1Before).as("hh-1 抽前 cloth 余额 = 100").isEqualTo(100L);
@@ -453,22 +487,22 @@ class LevyRegionToolTest {
     assertThat(clothOf(after, hh2Key))
         .as("hh-2 扣后 = 40 − 20（计划来源额；可用量 = 余额 40 − 冻结 0）")
         .isEqualTo(hh2Before - 20L);
-    assertThat(clothOf(after, new GoodsAccountKey(HouseholdActors.householdOf(HH_OUT))))
+    assertThat(clothOf(after, new HouseholdAccountKey(HouseholdActors.householdOf(HH_OUT))))
         .as("区外 hh-out 的 cloth 一字不动")
         .isEqualTo(1000L);
-    assertThat(clothOf(after, new GoodsAccountKey(HouseholdActors.householdOf(DANGLING_HH))))
+    assertThat(clothOf(after, new HouseholdAccountKey(HouseholdActors.householdOf(DANGLING_HH))))
         .as("DANGLING_HH 的 cloth 一字不动")
         .isEqualTo(1000L);
 
-    GoodsAccount hh1After = after.accounts().get(hh1Key);
-    GoodsAccount hh1BeforeBook = before.accounts().get(hh1Key);
+    HouseholdInventory hh1After = after.accounts().get(hh1Key);
+    HouseholdInventory hh1BeforeBook = before.accounts().get(hh1Key);
     assertThat(hh1After.frozenBalances())
         .as("hh-1 商品冻结表逐值不动（粮 20 + 布 20）")
         .isEqualTo(hh1BeforeBook.frozenBalances())
         .containsEntry(GRAIN, 20L)
         .containsEntry(CLOTH, 20L);
     assertThat(hh1After.frozenMoney()).as("hh-1 货币冻结表逐值不动").isEqualTo(hh1BeforeBook.frozenMoney());
-    GoodsAccount hh2After = after.accounts().get(hh2Key);
+    HouseholdInventory hh2After = after.accounts().get(hh2Key);
     assertThat(hh2After.frozenBalances())
         .as("hh-2 商品冻结表逐值不动（空）")
         .isEqualTo(before.accounts().get(hh2Key).frozenBalances())
@@ -525,7 +559,8 @@ class LevyRegionToolTest {
     List<CommandEnvelope> manpowerOnly = batchOf(0L, 0L, 0L, 40L);
     assertThat(manpowerOnly)
         .extracting(CommandEnvelope::type)
-        .containsExactly(LevyRegionTool.SEED_GROUPS_TYPE, LevyRegionTool.PUT_INFO_TYPE);
+        .containsExactly(
+            LevyRegionTool.SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE, LevyRegionTool.PUT_INFO_TYPE);
     JsonNode putInfo = JSON.readTree(manpowerOnly.get(1).payloadJson());
     JsonNode value = JSON.readTree(putInfo.get("value").asText());
     assertThat(value.get("grain").asLong()).isZero();
@@ -569,22 +604,22 @@ class LevyRegionToolTest {
     JsonNode clothAdjust = JSON.readTree(clothOnly.get(0).payloadJson());
     JsonNode clothEntries = clothAdjust.get("entries");
     assertThat(clothEntries).as("cloth 来源 2 户 + 国库 1 条").hasSize(3);
-    assertThat(clothEntries.get(0).get("owner").get("id").asText())
-        .as("第一条家户来源 owner = house@1_1")
+    assertThat(clothEntries.get(0).get("household").asText())
+        .as("第一条家户来源 household = house@1_1")
         .isEqualTo("house@1_1");
     assertThat(clothEntries.get(0).get("goods").get("cloth").asLong())
         .as("hh-1 cloth −80")
         .isEqualTo(-80L);
-    assertThat(clothEntries.get(1).get("owner").get("id").asText())
-        .as("第二条家户来源 owner = house@1_2")
+    assertThat(clothEntries.get(1).get("household").asText())
+        .as("第二条家户来源 household = house@1_2")
         .isEqualTo("house@1_2");
     assertThat(clothEntries.get(1).get("goods").get("cloth").asLong())
         .as("hh-2 cloth −20")
         .isEqualTo(-20L);
     JsonNode nodeTreasury = clothEntries.get(2);
-    assertThat(nodeTreasury.get("owner").get("id").asText())
-        .as("国库条目 owner = u-1")
-        .isEqualTo("u-1");
+    assertThat(nodeTreasury.get("household").asText())
+        .as("国库条目 household = GOV 的政府家户")
+        .isEqualTo(TREASURY_HH.value());
     assertThat(nodeTreasury.get("goods").get("cloth").asLong()).as("国库 cloth +100").isEqualTo(100L);
     assertThat(nodeTreasury.get("goods").has("grain"))
         .as("cloth-only ⇒ 国库 goods 无 grain 键")
@@ -606,7 +641,8 @@ class LevyRegionToolTest {
     assertThat(applied.success()).as(applied.message()).isTrue();
     SimulationState afterState = stateAt(head());
     ActorData after = actorData(afterState);
-    for (Map.Entry<GoodsAccountKey, GoodsAccount> account : before.accounts().entrySet()) {
+    for (Map.Entry<HouseholdAccountKey, HouseholdInventory> account :
+        before.accounts().entrySet()) {
       assertThat(clothOf(after, account.getKey()))
           .as("cloth=0 时每本账的 cloth 余额都不动")
           .isEqualTo(clothOf(before, account.getKey()));
@@ -676,14 +712,15 @@ class LevyRegionToolTest {
     assertThat(head()).as("cloth 80 ≫ 三条 cap=1 仍成功 ⇒ 恰好一条 revision").isEqualTo(2L);
 
     ActorData after = actorData(stateAt(2L));
-    GoodsAccountKey treasuryKey = new GoodsAccountKey(TREASURY_SMALL_HH);
+    HouseholdAccountKey treasuryKey = new HouseholdAccountKey(TREASURY_SMALL_HH);
     long clothToTreasury = clothOf(after, treasuryKey) - clothOf(before, treasuryKey);
     assertThat(clothToTreasury).as("国库 (UNIT,u-cap-1)@H13 的 cloth 增量 == 请求量 80").isEqualTo(80L);
 
     long clothFromHouseholds = 0L;
     SocialData socialBeforeForFilter = socialData(stateAt(1L));
-    for (Map.Entry<GoodsAccountKey, GoodsAccount> account : before.accounts().entrySet()) {
-      GoodsAccountKey key = account.getKey();
+    for (Map.Entry<HouseholdAccountKey, HouseholdInventory> account :
+        before.accounts().entrySet()) {
+      HouseholdAccountKey key = account.getKey();
       if (GovernmentHouseholds.isGovernment(key.household())
           || !isInNation(socialBeforeForFilter, key.household())) {
         continue;
@@ -695,13 +732,17 @@ class LevyRegionToolTest {
         .as("cap=1 下的 cloth 守恒：Σ家户 + 国库 == 0")
         .isZero();
 
-    assertThat(clothOf(after, new GoodsAccountKey(HouseholdActors.householdOf(HH1))))
+    assertThat(clothOf(after, new HouseholdAccountKey(HouseholdActors.householdOf(HH1))))
         .as("hh-1 扣后 = 100 − 80 = 20（可用量 = 余额 100 − 冻结 20）")
         .isEqualTo(20L);
-    assertThat(clothOf(after, new GoodsAccountKey(HouseholdActors.householdOf(HH2))))
+    assertThat(clothOf(after, new HouseholdAccountKey(HouseholdActors.householdOf(HH2))))
         .as("请求 80 落在 hh-1 可用量内 ⇒ hh-2 的 40 不动")
         .isEqualTo(40L);
-    assertThat(after.accounts().get(new GoodsAccountKey(HouseholdActors.householdOf(HH1))).frozenBalances())
+    assertThat(
+            after
+                .accounts()
+                .get(new HouseholdAccountKey(HouseholdActors.householdOf(HH1)))
+                .frozenBalances())
         .as("冻结表逐值不动")
         .containsEntry(GRAIN, 20L)
         .containsEntry(CLOTH, 20L);
@@ -898,21 +939,20 @@ class LevyRegionToolTest {
     }
   }
 
-  private static void assertTreasurySource(
-      JsonNode entry, String ownerId, long grainDelta, long silverDelta) {
-    assertThat(entry.get("owner").get("kind").asText()).isEqualTo("HOUSEHOLD");
-    assertThat(entry.get("owner").get("id").asText()).isEqualTo(ownerId);
+  /** P4-A 起 actor.AdjustAccounts 条目按 {@code household} 键寻址（不再发 owner/q/r）。 */
+  private static void assertAccountEntry(
+      JsonNode entry, String household, long grainDelta, long silverDelta) {
+    assertThat(entry.get("household").asText()).isEqualTo(household);
     assertThat(entry.get("goods").get("grain").asLong()).isEqualTo(grainDelta);
     assertThat(entry.get("money").get("silver").asLong()).isEqualTo(silverDelta);
   }
 
-  private static void assertSeedGroup(JsonNode entry, String id, long countAfter) {
-    assertThat(entry.get("id").asText()).isEqualTo(id);
-    assertThat(entry.get("sex").asText()).isEqualTo(Sex.MALE.name());
-    assertThat(entry.get("count").asLong()).as("整组覆盖为扣后 count").isEqualTo(countAfter);
-    assertThat(entry.get("ageDays").asLong()).as("锚点年龄保真").isEqualTo(20L * 365L);
-    assertThat(entry.get("anchorTick").asLong()).as("锚点 tick 保真").isZero();
-    assertThat(entry.get("stress").asLong()).as("生理压力保真").isZero();
+  /** 人力工单一步：{@code TRANSFER_MEMBERS(from=来源家户, lotId, count)}（目标家户的断言在调用点）。 */
+  private static void assertWorkOrderStep(JsonNode step, String from, String lotId, long count) {
+    assertThat(step.get("op").asText()).isEqualTo("TRANSFER_MEMBERS");
+    assertThat(step.get("from").asText()).isEqualTo(from);
+    assertThat(step.get("lotId").asText()).isEqualTo(lotId);
+    assertThat(step.get("count").asLong()).isEqualTo(count);
   }
 
   // ── 夹具 ────────────────────────────────────────────────────────────────────────────
@@ -949,18 +989,18 @@ class LevyRegionToolTest {
     return at.equals(H11) || at.equals(H12);
   }
 
-  private static long grainOf(ActorData data, GoodsAccountKey key) {
-    GoodsAccount account = data.accounts().get(key);
+  private static long grainOf(ActorData data, HouseholdAccountKey key) {
+    HouseholdInventory account = data.accounts().get(key);
     return account == null ? 0L : account.balances().getOrDefault(GRAIN, 0L);
   }
 
-  private static long silverOf(ActorData data, GoodsAccountKey key) {
-    GoodsAccount account = data.accounts().get(key);
+  private static long silverOf(ActorData data, HouseholdAccountKey key) {
+    HouseholdInventory account = data.accounts().get(key);
     return account == null ? 0L : account.money().getOrDefault(SILVER, 0L);
   }
 
-  private static long clothOf(ActorData data, GoodsAccountKey key) {
-    GoodsAccount account = data.accounts().get(key);
+  private static long clothOf(ActorData data, HouseholdAccountKey key) {
+    HouseholdInventory account = data.accounts().get(key);
     return account == null ? 0L : account.balances().getOrDefault(CLOTH, 0L);
   }
 
@@ -1025,13 +1065,13 @@ class LevyRegionToolTest {
 
   private static ActorData actors() {
     return ActorData.empty()
-        .withAccount(account(HH1, H11, 100L, 20L, 50L, 100L, 20L))
-        .withAccount(account(HH2, H12, 40L, 0L, 80L, 40L, 0L))
-        .withAccount(account(HH_OUT, H13, 1000L, 0L, 1000L, 1000L, 0L))
-        .withAccount(account(DANGLING_HH, H11, 1000L, 0L, 1000L, 1000L, 0L));
+        .withInventory(account(HH1, H11, 100L, 20L, 50L, 100L, 20L))
+        .withInventory(account(HH2, H12, 40L, 0L, 80L, 40L, 0L))
+        .withInventory(account(HH_OUT, H13, 1000L, 0L, 1000L, 1000L, 0L))
+        .withInventory(account(DANGLING_HH, H11, 1000L, 0L, 1000L, 1000L, 0L));
   }
 
-  private static GoodsAccount account(
+  private static HouseholdInventory account(
       ActorRef owner,
       HexCoord at,
       long grain,
@@ -1046,8 +1086,8 @@ class LevyRegionToolTest {
     if (frozenCloth != 0L) {
       frozenBalances.put(CLOTH, frozenCloth);
     }
-    return new GoodsAccount(
-        new GoodsAccountKey(HouseholdActors.householdOf(owner)),
+    return new HouseholdInventory(
+        new HouseholdAccountKey(HouseholdActors.householdOf(owner)),
         Map.of(GRAIN, grain, CLOTH, cloth),
         Map.of(SILVER, silver),
         frozenBalances,
@@ -1063,14 +1103,37 @@ class LevyRegionToolTest {
     for (HexCoord at : List.of(H11, H12, H13)) {
       populations.put(at, populationSeries());
     }
-    return accountHouseholdSocial(
-        SocialHouseholdFixture.withHouseholdsAt(
-            populations, Map.of(), groups, groupLocations(groups)));
+    SocialData base =
+        accountHouseholdSocial(
+            SocialHouseholdFixture.withHouseholdsAt(
+                populations, Map.of(), groups, groupLocations(groups)));
+    // ★ P1.3/UnitState 不变量：两个 GOV 单位各自的政府家户必须已在 Social 里（manpower 目标家户不静默造户）。
+    Map<HouseholdId, Household> households = new LinkedHashMap<>(base.households());
+    for (UnitId gov : List.of(U1, U_SMALL_CAPS)) {
+      HouseholdId id = GovernmentHouseholds.of(gov.value());
+      households.put(
+          id,
+          new Household(
+              id,
+              new HouseholdLocation.Unit(gov.value()),
+              new HouseholdProfile(id.value(), null, Map.of()),
+              Map.of(),
+              new HouseholdVitalRates(List.of())));
+    }
+    return new SocialData(
+        base.populations(),
+        base.cities(),
+        base.groups(),
+        households,
+        base.populationEvents(),
+        base.provisioning(),
+        base.vitalRates(),
+        base.vitalRemainders());
   }
 
   /**
-   * ★ P2-A：账户主体 = 家户 ⇒ 让 Social 家户 id 与账本夹具的 {@link HouseholdId} 逐字一致
-   * （{@code house@1_1 / house@1_2 / house@1_3}）；否则瀑布按 Social 查家户会全部落空。
+   * ★ P2-A：账户主体 = 家户 ⇒ 让 Social 家户 id 与账本夹具的 {@link HouseholdId} 逐字一致 （{@code house@1_1 / house@1_2
+   * / house@1_3}）；否则瀑布按 Social 查家户会全部落空。
    */
   private static SocialData accountHouseholdSocial(SocialData base) {
     Map<HexCoord, HouseholdId> byHex = new LinkedHashMap<>();
@@ -1144,13 +1207,15 @@ class LevyRegionToolTest {
       HouseholdId governmentHousehold = GovernmentHouseholds.of(id.value());
       module =
           Optional.of(
-              new GovFormation(
+              new GovernmentFormation(
                   Map.of(),
-                  List.of(governmentHousehold),
-                  Map.of(),
+                  Map.of(
+                      governmentHousehold,
+                      new GovernmentPostOfHousehold(
+                          governmentHousehold, StaffRole.SCRIBE, GovernmentLevel.PROVINCE, true)),
                   OfficePolicy.defaults(),
                   Optional.empty(),
-                  GovLevel.PROVINCE));
+                  GovernmentLevel.PROVINCE));
       households = List.of(governmentHousehold);
     }
     return new Unit(

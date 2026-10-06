@@ -36,20 +36,20 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ {@code simos.gov.selectExaminees} 的<b>纯推导</b>（阶段 13A 人员流转；P1.5 接完整 Social 工单路径）：从一份
- * {@link SimulationState} 与参数算出 {@link Plan}——<b>不碰 {@link io.mosire.agentlib.tool.ToolContext}、不碰
- * {@code CoreSimos}</b>，preview 与 apply 因此共用同一份语义。
+ * ★★ {@code simos.gov.selectExaminees} 的<b>纯推导</b>（阶段 13A 人员流转；P1.5 接完整 Social 工单路径）：从一份 {@link
+ * SimulationState} 与参数算出 {@link Plan}——<b>不碰 {@link io.mosire.agentlib.tool.ToolContext}、不碰 {@code
+ * CoreSimos}</b>，preview 与 apply 因此共用同一份语义。
  *
- * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：人在 {@code social} 切片、新单位/路线在 {@code unit} 切片、 家户经济行在
- * {@code economy} 切片、家户账户在 {@code actor} 切片、行动记录在 {@code sd} 切片；单条命令只能落一个命名空间。本工具走
- * {@link io.mosire.simos.core.CoreSimos#submitBatch}（同 branch + 同 expectedRevision ⇒ 一批 = 一条 revision，原子）。
+ * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：人在 {@code social} 切片、新单位/路线在 {@code unit} 切片、 家户经济行在 {@code
+ * economy} 切片、家户账户在 {@code actor} 切片、行动记录在 {@code sd} 切片；单条命令只能落一个命名空间。本工具走 {@link
+ * io.mosire.simos.core.CoreSimos#submitBatch}（同 branch + 同 expectedRevision ⇒ 一批 = 一条 revision，原子）。
  *
  * <p>★★ <b>来源口径 = 来源 GOV 辖区的 share-aware 家户份额瀑布</b>（P1.5 起与 {@code simos.gov.recruit} 同源）：
  *
  * <ol>
- *   <li><b>辖区顺序</b>：{@code Unit.jurisdiction.taxRatePerMilleByRegion} 的 key 插入序（构造期保序冻结），逐 Region
- *       把 {@code region.hexes()} 追加成 {@link HouseholdManpowerAllocator#allocateMalesOfAdult} 的
- *       {@code jurisdictionHexesInOrder}；
+ *   <li><b>辖区顺序</b>：{@code Unit.jurisdiction.taxRatePerMilleByRegion} 的 key 插入序（构造期保序冻结），逐 Region 把
+ *       {@code region.hexes()} 追加成 {@link HouseholdManpowerAllocator#allocateMalesOfAdult} 的 {@code
+ *       jurisdictionHexesInOrder}；
  *   <li><b>选人唯一拼写点</b>：只调 {@link HouseholdManpowerAllocator#allocateMalesOfAdult}（MALE + {@link
  *       io.mosire.simos.social.population.AgeBracket#ADULT}；家户 id 升序 / lotId 升序瀑布），本类不另写排序、过滤或扣减；
  *       <b>旧</b> {@link RegionAllocations} 的整批 count 瀑布与 {@code social.SeedGroups} 批不再进入本路径；
@@ -61,15 +61,16 @@ import java.util.Set;
  * SocialData.households()}（不得复用既有家户），再作为工单 target；新单位的 {@code unit.households} 恰好是该家户。
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SubmitHouseholdWorkOrder}（{@code
- * orderId=gov-select-examinees:<batchId>:<newUnitId>}；{@code plan = CREATE_HOUSEHOLD(hh-unit:<newUnitId>, UNIT(newUnitId),
- * profile=name+"·人口家户") + 逐 share TRANSFER_MEMBERS(from=来源家户, to=新家户, lotId, count=taken)}）→ {@code
- * unit.CreateUnit}（{@code households=[新家户]}、equipment=[]、speed=4、mobilityPerMille=800；<b>无 manpower</b>）→
- * （目的 GOV 给了且不同格时）{@code unit.PlanRoute}（A* 逐格路径）→ {@code economy.RegisterHousehold}（新家户经济行）→
- * {@code actor.EnsureHouseholdAccount}（新家户零余额账户，幂等）→ {@code sd.PutInfo}（地址 = 来源 GOV canonical，
- * key={@code selectExaminees}，value 含新单位/人数/家户/来源 shares/route）。
+ * orderId=gov-select-examinees:<batchId>:<newUnitId>}；{@code plan =
+ * CREATE_HOUSEHOLD(hh-unit:<newUnitId>, UNIT(newUnitId), profile=name+"·人口家户") + 逐 share
+ * TRANSFER_MEMBERS(from=来源家户, to=新家户, lotId, count=taken)}）→ {@code unit.CreateUnit}（{@code
+ * households=[新家户]}、equipment=[]、speed=4、mobilityPerMille=800；<b>无 manpower</b>）→ （目的 GOV
+ * 给了且不同格时）{@code unit.PlanRoute}（A* 逐格路径）→ {@code economy.RegisterHousehold}（新家户经济行）→ {@code
+ * actor.EnsureHouseholdAccount}（新家户零余额账户，幂等）→ {@code sd.PutInfo}（地址 = 来源 GOV canonical， key={@code
+ * selectExaminees}，value 含新单位/人数/家户/来源 shares/route）。
  *
- * <p>★★ <b>目的 GOV route 逻辑保留</b>：来源与目的都是 GOV、当刻都有有效位置；同格 ⇒ 不发 {@code unit.PlanRoute}，不同格 ⇒
- * A* 可达才发（不可达具名拒）。
+ * <p>★★ <b>目的 GOV route 逻辑保留</b>：来源与目的都是 GOV、当刻都有有效位置；同格 ⇒ 不发 {@code unit.PlanRoute}，不同格 ⇒ A*
+ * 可达才发（不可达具名拒）。
  *
  * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：来源单位存在且带 {@link
  * GovernmentFormation}；{@code count ≥ 1}；来源 GOV 当刻必须有有效位置；{@code targetGovUnitId} 若给必须是存在的 GOV，且可达；
@@ -239,9 +240,7 @@ final class GovSelectExamineesPlan {
     String householdId = RaiseUnitPlan.householdIdFor(newId);
     if (social.households().containsKey(HouseholdId.parse(householdId))) {
       throw new IllegalArgumentException(
-          "P1.5 新单位的人口家户 id 已被占用: "
-              + householdId
-              + "（先清掉同名家户，或换 newUnitId）");
+          "P1.5 新单位的人口家户 id 已被占用: " + householdId + "（先清掉同名家户，或换 newUnitId）");
     }
     GameMap map = ToolSupport.gameMap(state);
     List<Set<HexCoord>> jurisdictionHexesInOrder = new ArrayList<>();
@@ -324,8 +323,8 @@ final class GovSelectExamineesPlan {
   }
 
   /**
-   * P1.5：新人口家户 economy 视图的居住类型（与 {@link RaiseUnitPlan} 同口径）——落点是某座 {@code SocialCity} 的
-   * {@code at} ⇒ {@link ResidenceKind#URBAN}，否则 {@link ResidenceKind#RURAL}。两个 P1.5 工具共用这一份，不另写第二份判据。
+   * P1.5：新人口家户 economy 视图的居住类型（与 {@link RaiseUnitPlan} 同口径）——落点是某座 {@code SocialCity} 的 {@code at}
+   * ⇒ {@link ResidenceKind#URBAN}，否则 {@link ResidenceKind#RURAL}。两个 P1.5 工具共用这一份，不另写第二份判据。
    */
   static ResidenceKind residenceAt(SocialData social, HexCoord at) {
     for (var city : social.cities().values()) {
@@ -435,16 +434,14 @@ final class GovSelectExamineesPlan {
         throw new IllegalArgumentException("available 不得为负: " + available);
       }
       if (available < count) {
-        throw new IllegalArgumentException(
-            "内部分摊不自洽：available=" + available + " < count=" + count);
+        throw new IllegalArgumentException("内部分摊不自洽：available=" + available + " < count=" + count);
       }
       requireNonBlank(householdId, "householdId");
       sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
       long total = 0L;
       for (HouseholdManpowerAllocator.ManpowerShare share : sources) {
         if (share.householdId().value().equals(householdId)) {
-          throw new IllegalArgumentException(
-              "内部分摊不自洽：来源家户不得是目标家户 " + householdId + "（自我转移会被域层拒）");
+          throw new IllegalArgumentException("内部分摊不自洽：来源家户不得是目标家户 " + householdId + "（自我转移会被域层拒）");
         }
         total = saturatedAdd(total, share.taken());
       }
@@ -476,8 +473,8 @@ final class GovSelectExamineesPlan {
 
     /**
      * P1.5 人口腿的<b>唯一</b>命令载荷（{@code social.SubmitHouseholdWorkOrder}）——第一步 {@code
-     * CREATE_HOUSEHOLD}（location = {@code UNIT(newUnitId)}、画像 {@code name+"·人口家户"}、vitalRates 空表），随后逐来源
-     * {@code TRANSFER_MEMBERS(from=share.householdId, to=新家户, lotId, count=taken)}。
+     * CREATE_HOUSEHOLD}（location = {@code UNIT(newUnitId)}、画像 {@code name+"·人口家户"}、vitalRates
+     * 空表），随后逐来源 {@code TRANSFER_MEMBERS(from=share.householdId, to=新家户, lotId, count=taken)}。
      */
     String submitHouseholdWorkOrderPayloadJson(String batchId, String reason) {
       requireNonBlank(reason, "reason");
@@ -513,9 +510,9 @@ final class GovSelectExamineesPlan {
     }
 
     /**
-     * {@code unit.CreateUnit} 载荷：untagged 纯人员单位；人口由 {@code households=[新人口家户]} 承载，<b>不再发已退役的
-     * {@code manpower}</b>。{@code jurisdiction} 不在载荷里——{@code CreateUnitHandler} 对新建单位一律取
-     * {@code Optional.empty()}。
+     * {@code unit.CreateUnit} 载荷：untagged 纯人员单位；人口由 {@code households=[新人口家户]} 承载，<b>不再发已退役的 {@code
+     * manpower}</b>。{@code jurisdiction} 不在载荷里——{@code CreateUnitHandler} 对新建单位一律取 {@code
+     * Optional.empty()}。
      */
     String createUnitPayloadJson() {
       Map<String, Object> payload = new LinkedHashMap<>();
@@ -545,8 +542,8 @@ final class GovSelectExamineesPlan {
     }
 
     /**
-     * {@code economy.RegisterHousehold} 载荷：落点 = {@code at}，居住类型 = {@link #residence()}，阶层 =
-     * {@code landless_laborer}（无资产的中性档），参与率 = 0（由 Social 逐户劳动预算在后续日循环注入）。
+     * {@code economy.RegisterHousehold} 载荷：落点 = {@code at}，居住类型 = {@link #residence()}，阶层 = {@code
+     * landless_laborer}（无资产的中性档），参与率 = 0（由 Social 逐户劳动预算在后续日循环注入）。
      */
     String registerHouseholdPayloadJson(String reason) {
       requireNonBlank(reason, "reason");

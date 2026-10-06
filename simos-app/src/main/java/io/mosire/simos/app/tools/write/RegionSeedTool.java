@@ -57,8 +57,7 @@ import java.util.UUID;
  * social.populations} / {@code PopulationGroup} 落点 / {@code SocialCity.at} 或 city.region / actor 账户
  * location / economy 逐格 industries·markets；任一命中 ⇒ <b>不 submit、零 revision</b>，返回 {@code NEEDS_CLEAR}
  * 具名 JSON（类型 / 数量 / 示例 id），并提示用 {@code simos.region.clearData} / {@code
- * simos.region.clearStructures} 清空后重试。世界级共享经济状态不作为 Region 命中，只在 {@code
- * warnings} 里警告。
+ * simos.region.clearStructures} 清空后重试。世界级共享经济状态不作为 Region 命中，只在 {@code warnings} 里警告。
  *
  * <p>★★ <b>默认带经济与 actor</b>：{@code includeEconomy}/{@code includeActors} 缺省均为 true（用户 2026-10-01 裁定
  * 3）； 低人口 / 零人口（economic 播种无法建家户账）⇒ {@code BAD_REQUEST} 具名拒绝，并提示可显式关掉两个开关只播种人口与城市。

@@ -10,10 +10,9 @@ import java.util.Optional;
 /**
  * ★★ <b>Social 全局默认生死率表的权威落点</b>（2026-10-09 Social 每 tick 计划 §2.1 / §2.2）。
  *
- * <p>它是 {@code SocialData} 的组件（第七个），只装<b>全局默认</b>；家户覆盖仍复用
- * {@link io.mosire.simos.social.household.Household#vitalRates()}（空表/缺键 ⇒ 逐键回落本组件）。
- * 唯一查找入口是 {@code SocialData.findVitalRate(householdId, ageBracket, sex)}：家户覆盖优先、本组件兜底；
- * 两边都没有 ⇒ 具名拒（不静默给 0）。
+ * <p>它是 {@code SocialData} 的组件（第七个），只装<b>全局默认</b>；家户覆盖仍复用 {@link
+ * io.mosire.simos.social.household.Household#vitalRates()}（空表/缺键 ⇒ 逐键回落本组件）。 唯一查找入口是 {@code
+ * SocialData.findVitalRate(householdId, ageBracket, sex)}：家户覆盖优先、本组件兜底； 两边都没有 ⇒ 具名拒（不静默给 0）。
  *
  * <p>★★ <b>默认值</b>（{@link #defaults()}，全仓唯一拼写点；计划 §2.2 的初始策略值）：
  *
@@ -38,8 +37,7 @@ public record SocialVitalRates(HouseholdVitalRates globalDefaults) {
   /**
    * ★★ <b>计划 §2.2 的默认率表</b>：死亡 67/33/667（男女同值），出生仅 15-59 FEMALE = 667。
    *
-   * <p>顺序固定为「未成年 → 成年 → 老年、每档 MALE → FEMALE」，让新档字节可复现；调用即构造一份新的
-   * 保序不可变实例，并按 INFO 记一行默认表载入。</p>
+   * <p>顺序固定为「未成年 → 成年 → 老年、每档 MALE → FEMALE」，让新档字节可复现；调用即构造一份新的 保序不可变实例，并按 INFO 记一行默认表载入。
    */
   public static SocialVitalRates defaults() {
     List<HouseholdVitalRate> rows =
@@ -71,8 +69,7 @@ public record SocialVitalRates(HouseholdVitalRates globalDefaults) {
   }
 
   /**
-   * 查全局默认率；缺键 ⇒ 具名 ERROR 日志 + {@link IllegalArgumentException}（"这一档没有口径"是坏数据，
-   * 不静默给 0）。
+   * 查全局默认率；缺键 ⇒ 具名 ERROR 日志 + {@link IllegalArgumentException}（"这一档没有口径"是坏数据， 不静默给 0）。
    *
    * @param bracket 年龄档；不得为 null
    * @param sex 性别；不得为 null

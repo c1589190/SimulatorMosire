@@ -21,8 +21,7 @@ import java.util.Optional;
  * ★★ <b>P2-B §13.5：家户劳动时间的"预期单位劳动净收益"排队簿</b>（纯函数；只读入参，不写状态）。
  *
  * <p>★★ <b>它替代的旧口径</b>：改前 {@code EconomySettlement.reallocateLabor} 只按"这一周期真用得上的劳动"修剪
- * 既有配额、再按家户预算等比例封顶（释放出来的时间留在空缺，不重排）—— 没有"这家户这几小时为什么给这个 mode"的
- * 利润判据。本类把 §13.5 的两步显式化：
+ * 既有配额、再按家户预算等比例封顶（释放出来的时间留在空缺，不重排）—— 没有"这家户这几小时为什么给这个 mode"的 利润判据。本类把 §13.5 的两步显式化：
  *
  * <pre>
  * ① 每个生产单元先算"本 tick 最大可吸收劳动"
@@ -43,13 +42,13 @@ import java.util.Optional;
  * <p>★★ <b>首版的具名近似（如实记，不静默）</b>：
  *
  * <ol>
- *   <li><b>净收益只减投入成本</b>：租金/工资等 relation 分账（{@code ProductionSettlement} 的那一套）不在本类重算 ——
- *       跨主体分账需要每条 relation 的规则与付款能力，属 {@code ExpectedProfitBook.prospect} 的职责；本类保证排序键
- *       与"劳动约束下每小时产出"一致，分账差异留待把 prospect 接进排队时收口；
- *   <li><b>需求封顶不建模</b>：产出按本格 bid 价全额估值，不计"卖不掉"的部分（对应 {@code ExpectedProfitBook} 的
- *       {@code sellable}/{@code DEMAND_CAPPED}）；
- *   <li><b>未定价产出/投入</b>按 0 计并标具名 {@code NO_PRICE}/{@code NO_INPUT_PRICE}（与 {@code Market} 的
- *       "未定价 vs 明确 0 价"口径同源）；
+ *   <li><b>净收益只减投入成本</b>：租金/工资等 relation 分账（{@code ProductionSettlement} 的那一套）不在本类重算 —— 跨主体分账需要每条
+ *       relation 的规则与付款能力，属 {@code ExpectedProfitBook.prospect} 的职责；本类保证排序键 与"劳动约束下每小时产出"一致，分账差异留待把
+ *       prospect 接进排队时收口；
+ *   <li><b>需求封顶不建模</b>：产出按本格 bid 价全额估值，不计"卖不掉"的部分（对应 {@code ExpectedProfitBook} 的 {@code
+ *       sellable}/{@code DEMAND_CAPPED}）；
+ *   <li><b>未定价产出/投入</b>按 0 计并标具名 {@code NO_PRICE}/{@code NO_INPUT_PRICE}（与 {@code Market} 的 "未定价 vs
+ *       明确 0 价"口径同源）；
  *   <li><b>投入"能不能拿到"以已经扣进 unit 的 {@code cycleInputUsedMilli} 为准</b>：本 tick 的市场采购排在劳动分配
  *       之后，故"市场有价可买"不改变本 tick 的最大可吸收量（这正是 §13.4"借不到 ⇒ 劳动空缺"的实现口径）。
  * </ol>
@@ -66,8 +65,8 @@ public final class LaborQueueBook {
   /**
    * ★ 首版可调参数：预期单位劳动净收益低于它就**不参与利润队列**（0 = 白干、负 = 亏本）。
    *
-   * <p>★ 为什么用 1 而不是 0：{@code scaledRatio} 是整数除法，0 恰好能被"刚好保本"与"略负"同时命中；取 1 让
-   * "预期 ≤ 0 不参与"这条线在整数网格上不歧义（计划 §13.5："预期 ≤ 0 的生产方式不参与利润队列（首版默认，可写注释留调参）"）。
+   * <p>★ 为什么用 1 而不是 0：{@code scaledRatio} 是整数除法，0 恰好能被"刚好保本"与"略负"同时命中；取 1 让 "预期 ≤ 0
+   * 不参与"这条线在整数网格上不歧义（计划 §13.5："预期 ≤ 0 的生产方式不参与利润队列（首版默认，可写注释留调参）"）。
    */
   public static final long MIN_NET_PER_LABOR_SCALED = 1L;
 
@@ -112,8 +111,7 @@ public final class LaborQueueBook {
       Objects.requireNonNull(offer, "Decision.offer 不得为 null");
       Objects.requireNonNull(outcome, "Decision.outcome 不得为 null");
       if (grantedLaborMilli < 0L) {
-        throw new IllegalArgumentException(
-            "Decision.grantedLaborMilli 不得为负: " + grantedLaborMilli);
+        throw new IllegalArgumentException("Decision.grantedLaborMilli 不得为负: " + grantedLaborMilli);
       }
     }
   }
@@ -184,7 +182,8 @@ public final class LaborQueueBook {
     Objects.requireNonNull(modeId, "modeId");
     Objects.requireNonNull(rankModeKey, "rankModeKey");
 
-    long capacityScale = ProductionProcessBook.plannedCapacityScaleOf(unit, industry, index, condition);
+    long capacityScale =
+        ProductionProcessBook.plannedCapacityScaleOf(unit, industry, index, condition);
     long inputScale = Long.MAX_VALUE;
     CommodityId bindingInput = null;
     long bindingDrawn = 0L;
@@ -362,9 +361,7 @@ public final class LaborQueueBook {
     return new Plan(household, budget, preserved, allocated, remaining, decisions);
   }
 
-  /**
-   * ★★ <b>并列 tie-break</b>：排序键（预期单位劳动净收益）降序 → mode 键字典序 → unit id 字典序（计划 §13.5）。
-   */
+  /** ★★ <b>并列 tie-break</b>：排序键（预期单位劳动净收益）降序 → mode 键字典序 → unit id 字典序（计划 §13.5）。 */
   public static Comparator<Offer> offerOrder() {
     return Comparator.comparingLong(Offer::netPerLaborScaled)
         .reversed()
@@ -455,7 +452,8 @@ public final class LaborQueueBook {
 
   /** 一份"没有候选"的空计划（读口/日志用它表示"这家户本 tick 没有可排的生产方式"）。 */
   public static Plan emptyPlan(HouseholdId household, long budgetMilli) {
-    return new Plan(household, Math.max(0L, budgetMilli), 0L, 0L, Math.max(0L, budgetMilli), List.of());
+    return new Plan(
+        household, Math.max(0L, budgetMilli), 0L, 0L, Math.max(0L, budgetMilli), List.of());
   }
 
   /** 只读：把 offer 的预期读数摆成一行可读文本（日志/报告共用；不参与任何状态）。 */

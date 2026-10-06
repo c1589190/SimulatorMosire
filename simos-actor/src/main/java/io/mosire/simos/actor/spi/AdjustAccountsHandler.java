@@ -39,7 +39,8 @@ import org.slf4j.Logger;
  *   <li>{@code entries} 必填、非空数组；每项 {@code owner{kind,id}}、{@code q}、{@code r} 必填；
  *   <li>{@code goods} / {@code money} <b>至少一个非空</b>（缺省 / {@code null} = 空表）：键 = 商品 id / 币种 id，值 =
  *       <b>有符号净增量</b>（long，<b>0 不得出现</b>，无操作条目请删）；
- *   <li>{@code (owner, 格)} 就是 {@link HouseholdAccountKey} 的 {@code (owner, location)}：增量打在**那一本账**上。
+ *   <li>{@code (owner, 格)} 就是 {@link HouseholdAccountKey} 的 {@code (owner,
+ *       location)}：增量打在**那一本账**上。
  * </ul>
  *
  * <p>★★ <b>数值语义（整条原子：任一违例 ⇒ 全拒，不做部分生效）</b>：
@@ -125,7 +126,8 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
       HouseholdInventory inventory = next.get(key);
       if (inventory == null) {
         requireNoNegativeForMissingInventory(entry); // 缺账：任何负增量拒绝（0 已在解析期拒）
-        next.put(key, new HouseholdInventory(key, entry.goods(), entry.money(), Map.of(), Map.of()));
+        next.put(
+            key, new HouseholdInventory(key, entry.goods(), entry.money(), Map.of(), Map.of()));
         continue;
       }
       Map<CommodityId, Long> balances = new LinkedHashMap<>(inventory.balances());
@@ -139,7 +141,8 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
       // ★ 五参写回：两张冻结表**原样带过**（用三参便捷构造器会把已有冻结静默清零）。
       next.put(
           key,
-          new HouseholdInventory(key, balances, money, inventory.frozenBalances(), inventory.frozenMoney()));
+          new HouseholdInventory(
+              key, balances, money, inventory.frozenBalances(), inventory.frozenMoney()));
     }
     // ★ 只换 accounts：meta / actors 原样带过（不给 owner 建 Actor 行）。
     return base.withInventories(next);

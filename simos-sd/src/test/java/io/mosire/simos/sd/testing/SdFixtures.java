@@ -8,10 +8,12 @@ import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStageId;
 import io.mosire.simos.sd.id.CombatStateId;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.id.DiplomaticEventId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
+import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.id.SdInfoId;
 import io.mosire.simos.sd.id.VerdictId;
@@ -20,12 +22,14 @@ import io.mosire.simos.sd.model.Action;
 import io.mosire.simos.sd.model.AdjudicationBreakpoint;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.Army;
+import io.mosire.simos.sd.model.CallStatus;
 import io.mosire.simos.sd.model.CasualtyDelta;
 import io.mosire.simos.sd.model.CasualtySpec;
 import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.CombatState;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.DiplomaticEvent;
 import io.mosire.simos.sd.model.DiplomaticRelation;
 import io.mosire.simos.sd.model.DiplomaticRelationKey;
@@ -34,11 +38,15 @@ import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.model.Effect;
 import io.mosire.simos.sd.model.EffectKind;
 import io.mosire.simos.sd.model.EffectStatus;
+import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.LossClass;
 import io.mosire.simos.sd.model.LossRecord;
+import io.mosire.simos.sd.model.MergedEffect;
+import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.sd.model.Nation;
 import io.mosire.simos.sd.model.OutcomeOption;
 import io.mosire.simos.sd.model.OutcomeTable;
+import io.mosire.simos.sd.model.PacketStatus;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.Trigger;
 import io.mosire.simos.sd.model.Verdict;
@@ -46,15 +54,17 @@ import io.mosire.simos.sd.model.VerdictMeta;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.address.Address;
+import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 
-/** A3 的共享测试夹具：一份**十二个组件全非空**的合法 {@link SdState}，以及逐组件变体。 */
+/** A3 的共享测试夹具：一份**十四个组件全非空**的合法 {@link SdState}，以及逐组件变体。 */
 public final class SdFixtures {
 
   public static final SimosTimestamp T0 = SimosTimestamp.of(0);
@@ -87,6 +97,10 @@ public final class SdFixtures {
   public static final DiplomaticRelationKey DR21 = new DiplomaticRelationKey(N2, N1);
   public static final DiplomaticEventId DE1 = new DiplomaticEventId("de1");
   public static final DiplomaticEventId DE2 = new DiplomaticEventId("de2");
+  public static final DecisionPacketId P1 = new DecisionPacketId("pkt-dm1-0");
+  public static final DecisionPacketId P2 = new DecisionPacketId("pkt-dm2-0");
+  public static final MergedEffectPlanId MP1 = new MergedEffectPlanId("merge-0-1");
+  public static final MergedEffectPlanId MP2 = new MergedEffectPlanId("merge-0-2");
   public static final UnitId U1 = new UnitId("u-1");
   public static final RegionId R1 = new RegionId("r1");
   public static final RegionId R2 = new RegionId("r2");
@@ -99,7 +113,7 @@ public final class SdFixtures {
     return SdState.empty();
   }
 
-  /** 十二个组件全非空的合法状态。 */
+  /** 十四个组件全非空的合法状态。 */
   public static SdState full() {
     return new SdState(
         Map.of(N1, nation(N1, R1), N2, nation(N2, R2)),
@@ -125,7 +139,9 @@ public final class SdFixtures {
             DE1,
             new DiplomaticEvent(DE1, 7L, List.of(N1, N2), "N1 与 N2 谈判（夹具）"),
             DE2,
-            new DiplomaticEvent(DE2, 9L, List.of(N2, N1), "N2 与 N1 联动裁决（夹具）")));
+            new DiplomaticEvent(DE2, 9L, List.of(N2, N1), "N2 与 N1 联动裁决（夹具）")),
+        Map.of(P1, draftPacket(P1, DM1), P2, mergedPacket(P2, DM2)),
+        Map.of(MP1, mergedEffectPlan(MP1, false), MP2, mergedEffectPlan(MP2, true)));
   }
 
   /** 在 {@code base} 上只让指定组件多出一个条目；其余组件原样。 */
@@ -197,8 +213,109 @@ public final class SdFixtures {
         next.put(extra, new DiplomaticEvent(extra, 11L, List.of(N1, N2), "追加外交事件（夹具）"));
         yield base.withDiplomaticEvents(next);
       }
+      case "decisionPackets" -> {
+        Map<DecisionPacketId, DecisionPacket> next = new LinkedHashMap<>(base.decisionPackets());
+        DecisionPacketId extra = new DecisionPacketId("pkt-extra");
+        next.put(extra, draftPacket(extra, DM1));
+        yield base.withDecisionPackets(next);
+      }
+      case "mergedEffectPlans" -> {
+        Map<MergedEffectPlanId, MergedEffectPlan> next =
+            new LinkedHashMap<>(base.mergedEffectPlans());
+        MergedEffectPlanId extra = new MergedEffectPlanId("merge-extra");
+        next.put(extra, mergedEffectPlan(extra, false));
+        yield base.withMergedEffectPlans(next);
+      }
       default -> throw new IllegalStateException("未登记的组件: " + component);
     };
+  }
+
+  /** 一条 DRAFT 决策包（夹具）：两条 PENDING call，未裁决。 */
+  public static DecisionPacket draftPacket(DecisionPacketId id, DecisionMakerId proposer) {
+    return new DecisionPacket(
+        id,
+        "main",
+        0L,
+        proposer,
+        PacketStatus.DRAFT,
+        "夹具意图-" + id.value(),
+        List.of(
+            new FormattedCall(
+                0,
+                "simos.unit.raiseUnit",
+                "{\"unit\":\"u-1\"}",
+                List.of(new CommandTarget("unit", "u-1")),
+                "{\"preview\":\"新增\"}",
+                List.of("scope-ok", "preview-ok"),
+                CallStatus.PENDING,
+                Optional.empty(),
+                Optional.empty()),
+            new FormattedCall(
+                1,
+                "sd.PutInfo",
+                "{\"key\":\"k1\"}",
+                List.of(new CommandTarget("sd", "nation/n1")),
+                "{}",
+                List.of("scope-ok"),
+                CallStatus.PENDING,
+                Optional.empty(),
+                Optional.empty())),
+        1L,
+        Optional.empty(),
+        OptionalLong.empty(),
+        Optional.empty(),
+        Optional.empty());
+  }
+
+  /** 一条已 MERGED 的决策包（夹具）：call 0 并入 {@link #MP1} 且带执行摘要，call 1 已批准。 */
+  public static DecisionPacket mergedPacket(DecisionPacketId id, DecisionMakerId proposer) {
+    return new DecisionPacket(
+        id,
+        "main",
+        0L,
+        proposer,
+        PacketStatus.MERGED,
+        "夹具合并意图-" + id.value(),
+        List.of(
+            new FormattedCall(
+                0,
+                "simos.unit.raiseUnit",
+                "{\"unit\":\"u-1\"}",
+                List.of(new CommandTarget("unit", "u-1")),
+                "{\"preview\":\"新增\"}",
+                List.of("scope-ok", "preview-ok"),
+                CallStatus.MERGED,
+                Optional.of(MP1.value()),
+                Optional.of("{\"applied\":true}")),
+            new FormattedCall(
+                1,
+                "sd.PutInfo",
+                "{\"key\":\"k2\"}",
+                List.of(new CommandTarget("sd", "nation/n2")),
+                "{}",
+                List.of("scope-ok"),
+                CallStatus.APPROVED,
+                Optional.empty(),
+                Optional.empty())),
+        2L,
+        Optional.of("gm"),
+        OptionalLong.of(5L),
+        Optional.of("info-reason"),
+        Optional.of("并入合并集"));
+  }
+
+  /** 合并效果集（夹具）：{@code executed=true} 的带 outcome 回写、{@code false} 的未执行。 */
+  public static MergedEffectPlan mergedEffectPlan(MergedEffectPlanId id, boolean executed) {
+    return new MergedEffectPlan(
+        id,
+        0L,
+        List.of(DM1, DM2),
+        List.of(
+            new MergedEffect(
+                "simos.unit.raiseUnit", "{\"unit\":\"u-1\"}", List.of(P1.value() + ":0"))),
+        List.of(P1.value() + ":0"),
+        Optional.of("info-merge"),
+        executed ? Optional.of("{\"applied\":true}") : Optional.empty());
   }
 
   public static Nation nation(NationId id, RegionId region) {

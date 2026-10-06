@@ -4,11 +4,11 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
-import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.population.HouseholdVitalRate;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.city.SocialCity;
@@ -172,19 +172,17 @@ final class SocialPayloads {
     return entries;
   }
 
-  /**
-   * 必填家户 id 字段（S3a 的家户命令共用）：{@code HouseholdId.parse} 只校验非空白。
-   */
+  /** 必填家户 id 字段（S3a 的家户命令共用）：{@code HouseholdId.parse} 只校验非空白。 */
   static HouseholdId requireHouseholdId(JsonNode payload, String field) {
     return HouseholdId.parse(requireText(payload, field));
   }
 
   /**
-   * 必填的 {@code {name,description?,metadata?}} 家户画像对象（{@code social.CreateHousehold} 与
-   * {@code social.SubmitHouseholdWorkOrder} 的 CREATE_HOUSEHOLD 共用一处解析，避免两份形状漂移）。
+   * 必填的 {@code {name,description?,metadata?}} 家户画像对象（{@code social.CreateHousehold} 与 {@code
+   * social.SubmitHouseholdWorkOrder} 的 CREATE_HOUSEHOLD 共用一处解析，避免两份形状漂移）。
    *
-   * <p>字段名 {@code profile} 的载体由 {@code field} 决定（工单操作里可以是 {@code profile}，将来也可换名）。
-   * {@code name} 非空白由 {@link HouseholdProfile} 构造期判。
+   * <p>字段名 {@code profile} 的载体由 {@code field} 决定（工单操作里可以是 {@code profile}，将来也可换名）。 {@code name}
+   * 非空白由 {@link HouseholdProfile} 构造期判。
    */
   static HouseholdProfile requireProfile(JsonNode payload, String field) {
     JsonNode profile = payload.get(field);
@@ -198,21 +196,20 @@ final class SocialPayloads {
     return new HouseholdProfile(name, description, metadata);
   }
 
-  /**
-   * 必填性别字段（S3a 的家户命令共用）：只认词表里那两个名字（大小写一致，不做宽容匹配——见 {@link Sex} 的线格式约定）。
-   */
+  /** 必填性别字段（S3a 的家户命令共用）：只认词表里那两个名字（大小写一致，不做宽容匹配——见 {@link Sex} 的线格式约定）。 */
   static Sex requireSex(JsonNode element, String field) {
     String text = requireText(element, field);
     try {
       return Sex.valueOf(text);
     } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是 " + Arrays.toString(Sex.values()) + ": " + text, e);
+      throw new IllegalArgumentException(
+          "字段 " + field + " 必须是 " + Arrays.toString(Sex.values()) + ": " + text, e);
     }
   }
 
   /**
-   * ★ <b>可选家户 id</b>（Batch 4 的 provisioning 命令共用）：缺席 / JSON {@code null} ⇒ {@code null}（= 全局默认）；
-   * 给了 ⇒ 必须非空白，再交给 {@link HouseholdId#parse}。
+   * ★ <b>可选家户 id</b>（Batch 4 的 provisioning 命令共用）：缺席 / JSON {@code null} ⇒ {@code null}（= 全局默认）； 给了
+   * ⇒ 必须非空白，再交给 {@link HouseholdId#parse}。
    */
   static HouseholdId optionalHouseholdId(JsonNode payload, String field) {
     String text = optionalNonBlankText(payload, field);
@@ -220,8 +217,8 @@ final class SocialPayloads {
   }
 
   /**
-   * ★ <b>必填年龄档</b>（Batch 4 的 provisioning 命令共用）：只认 {@link AgeBracket#key()} 的三个稳定拼写
-   * {@code 0-14 | 15-59 | 60+}（大小写一致，不做宽容匹配——key 就是读口拼写）。
+   * ★ <b>必填年龄档</b>（Batch 4 的 provisioning 命令共用）：只认 {@link AgeBracket#key()} 的三个稳定拼写 {@code 0-14 |
+   * 15-59 | 60+}（大小写一致，不做宽容匹配——key 就是读口拼写）。
    */
   static AgeBracket requireAgeBracket(JsonNode payload, String field) {
     String text = requireText(payload, field);
@@ -256,8 +253,8 @@ final class SocialPayloads {
   }
 
   /**
-   * 必填的 {@code location} 对象（S3a 的家户位置）：两档，形状与 {@link HouseholdLocation} 的线格式同源但更宽容
-   * （命令载荷是 social 模块私事，C26）：
+   * 必填的 {@code location} 对象（S3a 的家户位置）：两档，形状与 {@link HouseholdLocation} 的线格式同源但更宽容 （命令载荷是 social
+   * 模块私事，C26）：
    *
    * <pre>{@code
    * {"type":"HEX","hex":{"q":1,"r":0}}   // type 也接受 "@type"/"hex"（大小写不敏感）
@@ -287,8 +284,7 @@ final class SocialPayloads {
       }
       return new HouseholdLocation.Unit(unitId.asText());
     }
-    throw new IllegalArgumentException(
-        "字段 " + field + " 的 type 只认 HEX|UNIT（大小写不敏感）: " + value);
+    throw new IllegalArgumentException("字段 " + field + " 的 type 只认 HEX|UNIT（大小写不敏感）: " + value);
   }
 
   /** location 对象的档位文本：{@code type} / {@code @type}，缺省时按 {@code hex}/{@code unitId} 推断。 */
@@ -311,15 +307,16 @@ final class SocialPayloads {
     if (hasUnit && !hasHex) {
       return "unit";
     }
-    throw new IllegalArgumentException("字段 " + field + " 必须给 type（HEX|UNIT）或二选一的 hex/unitId: " + value);
+    throw new IllegalArgumentException(
+        "字段 " + field + " 必须给 type（HEX|UNIT）或二选一的 hex/unitId: " + value);
   }
 
   /**
-   * 可选的出生/死亡率数组（S3a 的 {@code social.SetHouseholdVitalRates.rates}）：缺失或 JSON {@code null} ⇒ 空表
-   * （= 清空率表，全部键回落全局默认）；给了 ⇒ 必须是
-   * {@code [{bracketId,sex,birthRatePerMillionPerTick?,deathRatePerMillionPerTick?}…]}，两个率缺省 0
-   * （0 是"这一档确实按 0 率结算"，不是"没有这一行"；要回落全局默认就别给这个键）。元素形状/数值非负由
-   * {@link HouseholdVitalRate} 构造期判；(bracketId, sex) 重复由率表构造期判。
+   * 可选的出生/死亡率数组（S3a 的 {@code social.SetHouseholdVitalRates.rates}）：缺失或 JSON {@code null} ⇒ 空表 （=
+   * 清空率表，全部键回落全局默认）；给了 ⇒ 必须是 {@code
+   * [{bracketId,sex,birthRatePerMillionPerTick?,deathRatePerMillionPerTick?}…]}，两个率缺省 0 （0 是"这一档确实按
+   * 0 率结算"，不是"没有这一行"；要回落全局默认就别给这个键）。元素形状/数值非负由 {@link HouseholdVitalRate} 构造期判；(bracketId, sex)
+   * 重复由率表构造期判。
    */
   static List<HouseholdVitalRate> requireVitalRates(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
@@ -361,9 +358,7 @@ final class SocialPayloads {
     return List.copyOf(rates);
   }
 
-  /**
-   * 可选的字符串表（S3a 的 {@code profile.metadata}）：缺失或 JSON {@code null} ⇒ 空表；出现但非对象、或值非字符串 ⇒ 抛。
-   */
+  /** 可选的字符串表（S3a 的 {@code profile.metadata}）：缺失或 JSON {@code null} ⇒ 空表；出现但非对象、或值非字符串 ⇒ 抛。 */
   static Map<String, String> optionalStringMap(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull()) {
@@ -379,8 +374,7 @@ final class SocialPayloads {
             entry -> {
               JsonNode item = entry.getValue();
               if (item == null || !item.isTextual()) {
-                throw new IllegalArgumentException(
-                    "字段 " + field + " 的值必须是字符串: " + entry.getKey());
+                throw new IllegalArgumentException("字段 " + field + " 的值必须是字符串: " + entry.getKey());
               }
               map.put(entry.getKey(), item.asText());
             });
@@ -388,12 +382,12 @@ final class SocialPayloads {
   }
 
   /**
-   * 必填的 {@code [{id,q,r,sex,count,ageDays,anchorTick?,household?}…]} 数组 + 可选
-   * {@code households:[{id,q,r,name?,description?}…]} ⇒ **保序**的批次/位置/归户表（R1 的 {@code social.SeedGroups}，
+   * 必填的 {@code [{id,q,r,sex,count,ageDays,anchorTick?,household?}…]} 数组 + 可选 {@code
+   * households:[{id,q,r,name?,description?}…]} ⇒ **保序**的批次/位置/归户表（R1 的 {@code social.SeedGroups}，
    * S2 作家户归位）。
    *
-   * <p>★★ <b>S2 的家户归位语义</b>：{@code PopulationGroup} 已无位置，位置只能来自家户
-   * （{@code SocialData.locationOfLot}）。本层把载荷翻译成三张表：
+   * <p>★★ <b>S2 的家户归位语义</b>：{@code PopulationGroup} 已无位置，位置只能来自家户 （{@code
+   * SocialData.locationOfLot}）。本层把载荷翻译成三张表：
    *
    * <ul>
    *   <li>{@code groups}：批次本体（与旧载荷逐值一致）；
@@ -406,8 +400,8 @@ final class SocialPayloads {
    * <p>★ **形状与类型在本层判**；{@code count}/{@code ageDays} 为负由 {@link PopulationGroup}
    * 构造期守卫拒；`households[]` 的 {@code q}/{@code r} 只表达 {@code HEX} 位置（unit 家户由命令/服务另建，不走本载荷）。
    *
-   * <p>★★ <b>旧 {@code stress} 字段已退役</b>（用户 2026-10-09 裁定：生理压力与压力自动传导一起删，旧档作废）：
-   * 本层对出现的 {@code stress} 字段具名拒，不静默忽略——静默会让"我设了压力"变成一句假话。
+   * <p>★★ <b>旧 {@code stress} 字段已退役</b>（用户 2026-10-09 裁定：生理压力与压力自动传导一起删，旧档作废）： 本层对出现的 {@code
+   * stress} 字段具名拒，不静默忽略——静默会让"我设了压力"变成一句假话。
    *
    * @param defaultAnchorTick 载荷没给 {@code anchorTick} 时的缺省（= 世界当前世界日）
    */
@@ -458,19 +452,14 @@ final class SocialPayloads {
       JsonNode stressNode = element.get("stress");
       if (stressNode != null && !stressNode.isNull()) {
         throw new IllegalArgumentException(
-            "字段 entries 不再接受 stress（用户 2026-10-09 裁定：生理压力与压力自动传导一起删，旧档作废）: "
-                + element);
+            "字段 entries 不再接受 stress（用户 2026-10-09 裁定：生理压力与压力自动传导一起删，旧档作废）: " + element);
       }
       String householdText = optionalText(element, "household");
       // ★ 域不变量（count/ageDays/anchorTick 非负）由 PopulationGroup 的构造期守卫抛，本层不重复实现。
       groups.put(
           id,
           new PopulationGroup(
-              id,
-              sex,
-              count,
-              ageDays,
-              anchorTick == null ? defaultAnchorTick : anchorTick));
+              id, sex, count, ageDays, anchorTick == null ? defaultAnchorTick : anchorTick));
       locations.put(id, residence);
       if (householdText != null) {
         HouseholdId householdId = HouseholdId.parse(householdText);
@@ -482,7 +471,15 @@ final class SocialPayloads {
           HouseholdDraft draft = households.get(householdId);
           if (draft.profile() == null && !draft.hex().equals(residence)) {
             throw new IllegalArgumentException(
-                "批次 " + id + " 的落点 " + residence + " 与家户 " + householdId + " 的声明落点 " + draft.hex() + " 不符");
+                "批次 "
+                    + id
+                    + " 的落点 "
+                    + residence
+                    + " 与家户 "
+                    + householdId
+                    + " 的声明落点 "
+                    + draft.hex()
+                    + " 不符");
           }
         }
       }

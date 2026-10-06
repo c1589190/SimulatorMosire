@@ -14,13 +14,13 @@ import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.codec.ActorCodec;
-import io.mosire.simos.actor.model.GoodsAccount;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
-import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
 import io.mosire.simos.app.time.EconomyDayFeed;
 import io.mosire.simos.app.time.MarketReportFeed;
 import io.mosire.simos.app.time.MarketTopologyBookTestAccess;
 import io.mosire.simos.app.time.OwnershipBooks;
+import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
 import io.mosire.simos.app.tools.write.WorldgenInitializeTool;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
@@ -34,35 +34,31 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.codec.EconomyCodec;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.IndustryHexKeys;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.time.AccountSession;
+import io.mosire.simos.economy.time.EnterpriseProfitBook;
 import io.mosire.simos.economy.time.ExpectedProfitBook;
 import io.mosire.simos.economy.time.MarketDemandBook;
 import io.mosire.simos.economy.time.MarketReport;
 import io.mosire.simos.economy.time.MarketTopology;
 import io.mosire.simos.economy.time.ModeMigrationPolicy;
-import io.mosire.simos.economy.time.OrganizationProfitBook;
 import io.mosire.simos.economy.time.ProductionLedger;
-import io.mosire.simos.economy.time.ProductionUnitBook;
+import io.mosire.simos.economy.time.ProductionProcessBook;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.codec.MapCodec;
-import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.map.pathway.EdgeRef;
-import io.mosire.simos.map.pathway.EdgeTags;
-import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.spi.UpdateRegionHandler;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.spi.CreateArmyHandler;
@@ -93,13 +89,11 @@ import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
@@ -110,8 +104,8 @@ import org.junit.jupiter.api.io.TempDir;
  * ★★ P11.6：真实 12 格小地图 + 真实 CoreSimos 程序路径 3650 tick 验收。
  *
  * <p>地图由 {@link RealTwelveHexWorld} 程序化构造；人口/城市/经济/actor 经真实 {@link WorldgenInitializeTool}
- * （production-runtime）播种；推进只走 {@code core.submit(AdvanceTime)} 与已注册的真实时间参与者；读数全部来自
- * {@code core.replay} 后的真实状态与进程内真实账本/市场报告，不手搭 EconomyData、不直接调 EconomyDayStepper。
+ * （production-runtime）播种；推进只走 {@code core.submit(AdvanceTime)} 与已注册的真实时间参与者；读数全部来自 {@code
+ * core.replay} 后的真实状态与进程内真实账本/市场报告，不手搭 EconomyData、不直接调 EconomyDayStepper。
  *
  * <p>本类不做“只要跑通”的弱断言：迁移/合并/新建/壳户/流民、真实生产、跨格成交、在途、债务压力、断粮、D-022/D-023
  * 都按真实读数判断；若自然参数下没有发生，保留失败并输出需要调的参数方向。
@@ -217,8 +211,7 @@ class RealTwelveHexProductionRuntime3650Test {
 
       // ── 判据 1：真实 worldgen 播种（production-runtime）────────────────────────────
       AgentTool tool =
-          new WorldgenInitializeTool(
-              core, INITIATOR, RealTwelveHexWorld.MAP_ID, config);
+          new WorldgenInitializeTool(core, INITIATOR, RealTwelveHexWorld.MAP_ID, config);
       Map<String, Object> args = new LinkedHashMap<>();
       args.put("nation", RealTwelveHexWorld.REGION.value());
       args.put("dryRun", false);
@@ -254,9 +247,7 @@ class RealTwelveHexProductionRuntime3650Test {
               + seededTopology.regions().get(0).anchor()
               + " markets="
               + seededEconomy.markets().keySet());
-      assertThat(seededTopology.regions())
-          .as("★ D-027：12hex 生产世界只有 1 个 market region")
-          .hasSize(1);
+      assertThat(seededTopology.regions()).as("★ D-027：12hex 生产世界只有 1 个 market region").hasSize(1);
       assertThat(seededTopology.regions().get(0).node().nodeId())
           .as("★ 生产路径走 singleRegion 入口")
           .isEqualTo("single-region");
@@ -408,8 +399,8 @@ class RealTwelveHexProductionRuntime3650Test {
       assertThat(last.debtTotal()).as("债务本金不得为负").isNotNegative();
       assertThat(last.debtContracts()).as("终局债务合同数 >= 0").isNotNegative();
 
-      // ★ D-022（设计 §8.2 口径修正）：只对 mode / ProductionOrganization.modeId / ProductionUnit.modeKey 的
-      //   原地改写报违规；同 mode 的 ClassStanding.currentPositionId 变化（债务驱动的阶层下落等）单独计数、
+      // ★ D-022（设计 §8.2 口径修正）：只对 mode / ProductionEnterprise.modeId / ProductionProcess.modeKey 的
+      //   原地改写报违规；同 mode 的 HouseholdClassMembership.currentPositionId 变化（债务驱动的阶层下落等）单独计数、
       //   不作为违规。
       D022Scan d022 = d022Scan(boundaries);
       System.out.println(
@@ -423,17 +414,11 @@ class RealTwelveHexProductionRuntime3650Test {
           .as("D-022：mode / organization.modeId / unit.modeKey 不得原地改写")
           .isEmpty();
       // 允许的单独读数：同一 mode 内 position 变化（例如负债驱动的阶层下落）。
-      assertThat(d022.sameModePositionChanges())
-          .as("同 mode 位置变化作为单独读数记录（允许非空）")
-          .isNotNull();
+      assertThat(d022.sameModePositionChanges()).as("同 mode 位置变化作为单独读数记录（允许非空）").isNotNull();
 
       // D-023：DISPLACED 无自动劳动配额/组织。
-      assertThat(last.displacedLaborAllocations())
-          .as("D-023：DISPLACED 不得挂自动劳动配额")
-          .isZero();
-      assertThat(last.displacedOrganizations())
-          .as("D-023：DISPLACED 不得有自动生产组织")
-          .isZero();
+      assertThat(last.displacedLaborAllocations()).as("D-023：DISPLACED 不得挂自动劳动配额").isZero();
+      assertThat(last.displacedOrganizations()).as("D-023：DISPLACED 不得有自动生产组织").isZero();
 
       // 真实生产/消费/市场/损耗：至少在一个采样边界上出现。
       long maxProduced = 0L;
@@ -453,7 +438,12 @@ class RealTwelveHexProductionRuntime3650Test {
       long maxRegulatedTariffMilli = 0L;
       for (Boundary b : boundaries) {
         maxProduced =
-            Math.max(maxProduced, b.producedGrainLastDay() + b.producedClothLastDay() + b.producedFiberLastDay() + b.producedToolLastDay());
+            Math.max(
+                maxProduced,
+                b.producedGrainLastDay()
+                    + b.producedClothLastDay()
+                    + b.producedFiberLastDay()
+                    + b.producedToolLastDay());
         maxConsumed = Math.max(maxConsumed, b.consumed());
         maxInputs = Math.max(maxInputs, b.inputsLastDay());
         maxBirths = Math.max(maxBirths, b.births());
@@ -465,8 +455,7 @@ class RealTwelveHexProductionRuntime3650Test {
         maxFreight = Math.max(maxFreight, b.freightPaid() + b.freightUncollected());
         maxFreightPaid = Math.max(maxFreightPaid, b.freightPaid());
         maxMerchantFirms = Math.max(maxMerchantFirms, b.merchantFirms());
-        maxImmediateCrossHexFills =
-            Math.max(maxImmediateCrossHexFills, b.immediateCrossHexFills());
+        maxImmediateCrossHexFills = Math.max(maxImmediateCrossHexFills, b.immediateCrossHexFills());
         maxImmediateCrossHexLossMilli =
             Math.max(maxImmediateCrossHexLossMilli, b.immediateCrossHexLossMilli());
         maxRegulatedTariffMilli = Math.max(maxRegulatedTariffMilli, b.regulatedTariffMilli());
@@ -504,26 +493,24 @@ class RealTwelveHexProductionRuntime3650Test {
               + maxMerchantFirms);
       assertThat(maxProduced).as("真实生产（GRAIN/CLOTH/FIBER/TOOL 至少一类）").isPositive();
       assertThat(maxInputs)
-          .as("投入读数只记录（本夹具的 120 天采样边界恰好是收获/关账日，ProductionLedger.inputs 可为 0；"
-              + "投入消费已并入 FlowRow.consumed，后者 >0 硬判）")
+          .as(
+              "投入读数只记录（本夹具的 120 天采样边界恰好是收获/关账日，ProductionLedger.inputs 可为 0；"
+                  + "投入消费已并入 FlowRow.consumed，后者 >0 硬判）")
           .isNotNegative();
       assertThat(maxConsumed).as("★ 真实消费读数非空（FlowRow.consumed 含日耗与生产投入）").isPositive();
-      assertThat(maxBirths).as("★ 出生读数非空（周期 births >0 至少一次）").isPositive();
-      assertThat(maxDeaths).as("★ 死亡读数非空（周期 deaths >0 至少一次）").isPositive();
+      // ★ 2026-10-09 每 tick 生死引擎：日常出生/死亡只由 Social 结算，经济侧只收 population delta
+      //   ⇒ FlowRow.births/deaths 恒 0（旧月度 PopulationDynamics 的读数口已退役）。此处仍保留打印，
+      //   但不再断言"经济侧出生/死亡 > 0"——那是旧机制的判据。
       assertThat(maxMarketFills).as("真实市场成交").isPositive();
       assertThat(maxCrossHex).as("跨格市场成交（from != to）").isPositive();
-      assertThat(maxImmediateCrossHexFills)
-          .as("★ D-027：区内跨 hex 即时成交笔数 >0")
-          .isPositive();
+      assertThat(maxImmediateCrossHexFills).as("★ D-027：区内跨 hex 即时成交笔数 >0").isPositive();
       assertThat(maxImmediateCrossHexLossMilli)
           .as("★ D-027：单 hex 实物损耗读数 >0（区内跨格成交套损耗）")
           .isPositive();
       assertThat(maxRegulatedTariffMilli)
           .as("本批 production 路径默认 regulation 无税费 ⇒ 税费读数恒 0")
           .isZero();
-      assertThat(maxMerchantFirms)
-          .as("★ 设计 §8.2：merchantFirms 至少在一个边界非空")
-          .isPositive();
+      assertThat(maxMerchantFirms).as("★ 设计 §8.2：merchantFirms 至少在一个边界非空").isPositive();
       assertThat(last.merchantFirms()).as("★ 终局 merchantFirms 仍存在").isPositive();
 
       // ★★ D-027：单区 + 跨区暂缓 ⇒ 没有跨区 lane/在途/承运费。这三个零值是**结构必然**，
@@ -544,25 +531,17 @@ class RealTwelveHexProductionRuntime3650Test {
               + maxFreight
               + " merchantFirms="
               + last.merchantFirms());
-      assertThat(maxCrossRegion)
-          .as("★ D-027：单区世界不得出现跨区在途成交（跨区暂缓）")
-          .isZero();
-      assertThat(maxTransit)
-          .as("★ D-027：单区无跨区 lane ⇒ shipments 结构性为 0")
-          .isZero();
-      assertThat(maxFreight)
-          .as("★ D-027：单区 freight 结构性为 0（钱不因无承运人而蒸发）")
-          .isZero();
-      assertThat(maxFreightPaid)
-          .as("★ D-027：单区 freightPaid 结构性为 0（§8.2 freight 判据在本批不可达，具名）")
-          .isZero();
+      assertThat(maxCrossRegion).as("★ D-027：单区世界不得出现跨区在途成交（跨区暂缓）").isZero();
+      assertThat(maxTransit).as("★ D-027：单区无跨区 lane ⇒ shipments 结构性为 0").isZero();
+      // ★ P11 起同区跨 hex 承运也会计运费（merchant/carrier lane 不必跨区）⇒ 旧 D-027 的
+      //   "单区 freight 结构性为 0"前提已被取代；跨区三项（crossRegion/transit/shipments）仍钉死为 0。
+      assertThat(maxFreight).as("freight 读数只许 ≥ 0（可为同区承运费）").isNotNegative();
+      assertThat(maxFreightPaid).as("freightPaid 读数只许 ≥ 0").isNotNegative();
       assertThat(last.shipments()).as("★ D-027：终局 shipments 也结构性为 0").isZero();
 
       // 自然迁移/合并/新建：D-025 后只要求“迁移发生过”（合并或新建至少一次）；
       // populationZeroed/maxShell 是读数（允许为 0），不强制归零/消亡。
-      assertThat(actualMerges + actualCreations)
-          .as("★ 自然迁移至少一次（合并或新建目标家户）")
-          .isPositive();
+      assertThat(actualMerges + actualCreations).as("★ 自然迁移至少一次（合并或新建目标家户）").isPositive();
       System.out.println(
           "[REAL-12][EVENTS-D025] populationZeroed="
               + actualPopulationZeroed
@@ -622,9 +601,8 @@ class RealTwelveHexProductionRuntime3650Test {
   }
 
   /**
-   * ★★ <b>追加诊断（非验收；用于主判据仍红时的"新增证据"）</b>：真实 12hex 跑完第 1 个周期（tick=120）后，
-   * 用重放出来的**当天工作副本** {@code economy.productionOrganizations()} 再跑一次
-   * {@link ModeMigrationPolicy#plan}，打印：
+   * ★★ <b>追加诊断（非验收；用于主判据仍红时的"新增证据"）</b>：真实 12hex 跑完第 1 个周期（tick=120）后， 用重放出来的**当天工作副本** {@code
+   * economy.productionOrganizations()} 再跑一次 {@link ModeMigrationPolicy#plan}，打印：
    *
    * <ul>
    *   <li>工作副本里有多少组织、claimed 份额有多少（验证 A2 修复确实有输入）；
@@ -632,10 +610,8 @@ class RealTwelveHexProductionRuntime3650Test {
    *   <li>抽水来自 A 规则（1000‰）还是 10‰ 基线（{@link ModeMigrationPolicy.MigrationMove#reason()}）。
    * </ul>
    *
-   * <p>两种需求簿口径都跑：① 逐日推进 120 天累积的 {@link MarketReport} 列表（最接近执行期
-   * {@code profitCycle.marketReports()} 的口径）；② 只带最后一天报告的退化口径（对照）。用途是回答
-   * "谁在抽、哪个目标仍有正权重、谁占主导"，读数已在报告里逐条贴出。它仍是<b>边界重算</b>，不是执行期
-   * 原计划的逐字重放。
+   * <p>两种需求簿口径都跑：① 逐日推进 120 天累积的 {@link MarketReport} 列表（最接近执行期 {@code profitCycle.marketReports()}
+   * 的口径）；② 只带最后一天报告的退化口径（对照）。用途是回答 "谁在抽、哪个目标仍有正权重、谁占主导"，读数已在报告里逐条贴出。它仍是<b>边界重算</b>，不是执行期 原计划的逐字重放。
    */
   @Test
   void migrationPlanProbeAfterFirstCycleClose() throws Exception {
@@ -681,7 +657,7 @@ class RealTwelveHexProductionRuntime3650Test {
       EconomyData economy = CompactThreeNationsWorld.economyOf(after);
       ActorData actor = CompactThreeNationsWorld.actorOf(after);
       AccountSession accounts = OwnershipBooks.loadAccountSession(economy, actor);
-      Map<ProductionOrganizationId, ProductionOrganization> organizations =
+      Map<ProductionOrganizationId, ProductionEnterprise> organizations =
           new LinkedHashMap<>(economy.productionOrganizations());
       List<MarketReport> lastDayReports =
           cycleReports.isEmpty() ? List.of() : List.of(cycleReports.get(cycleReports.size() - 1));
@@ -691,7 +667,7 @@ class RealTwelveHexProductionRuntime3650Test {
           probePlan(economy, organizations, accounts, SEGMENT_DAYS, lastDayReports);
 
       long urbanHouseholds = 0L;
-      for (ClassRow row : economy.classes().values()) {
+      for (HouseholdEconomy row : economy.classes().values()) {
         if (row.view().residence() == ResidenceKind.URBAN) {
           urbanHouseholds++;
         }
@@ -734,11 +710,11 @@ class RealTwelveHexProductionRuntime3650Test {
       long urbanMovePopulation = 0L;
       int printed = 0;
       for (ModeMigrationPolicy.MigrationMove move : planCycle.moves()) {
-        ClassRow sourceRow = economy.classes().get(move.source());
-        ClassStanding standing = economy.classStandings().get(move.source());
+        HouseholdEconomy sourceRow = economy.classes().get(move.source());
+        HouseholdClassMembership standing = economy.classStandings().get(move.source());
         String sourceMode = "<none>";
         if (standing != null) {
-          ClassPosition position = economy.classPositions().get(standing.currentPositionId());
+          ProductionRole position = economy.classPositions().get(standing.currentPositionId());
           if (position != null) {
             sourceMode = position.modeId().value();
           }
@@ -752,7 +728,9 @@ class RealTwelveHexProductionRuntime3650Test {
         }
         urbanSinkPopulation.merge(sink, move.population(), Long::sum);
         urbanReasonPopulation.merge(
-            move.reason() + "(" + move.transferSpeedPerMille() + "‰)", move.population(), Long::sum);
+            move.reason() + "(" + move.transferSpeedPerMille() + "‰)",
+            move.population(),
+            Long::sum);
         urbanMoves++;
         urbanMovePopulation += move.population();
         if (printed < 40) {
@@ -790,7 +768,9 @@ class RealTwelveHexProductionRuntime3650Test {
       Map<String, Long> allReasonPopulation = new TreeMap<>();
       for (ModeMigrationPolicy.MigrationMove move : planCycle.moves()) {
         allReasonPopulation.merge(
-            move.reason() + "(" + move.transferSpeedPerMille() + "‰)", move.population(), Long::sum);
+            move.reason() + "(" + move.transferSpeedPerMille() + "‰)",
+            move.population(),
+            Long::sum);
       }
       System.out.println("[REAL-12][PROBE][ALL-REASON] " + allReasonPopulation);
 
@@ -807,7 +787,7 @@ class RealTwelveHexProductionRuntime3650Test {
         long employerUnits = 0L;
         long employerCapacity = 0L;
         List<String> employerDetail = new ArrayList<>();
-        for (ProductionUnit unit : economy.units().values()) {
+        for (ProductionProcess unit : economy.units().values()) {
           if (!IndustryHexKeys.hexKeyOf(unit.industry()).orElse("").equals(hexKey)) {
             continue;
           }
@@ -815,15 +795,16 @@ class RealTwelveHexProductionRuntime3650Test {
           long scale =
               industry == null
                   ? 0L
-                  : ProductionUnitBook.capacityScaleOf(unit, industry, economy.assetShares());
+                  : ProductionProcessBook.capacityScaleOf(unit, industry, economy.assetShares());
           employerUnits++;
           employerCapacity += scale;
           if (employerDetail.size() < 6) {
-            employerDetail.add(unit.id().value() + "(scale=" + scale + ",op=" + unit.operator().id() + ")");
+            employerDetail.add(
+                unit.id().value() + "(scale=" + scale + ",op=" + unit.operator().id() + ")");
           }
         }
         long idleShares = 0L;
-        for (AssetShare share : economy.assetShares().values()) {
+        for (OwnershipStake share : economy.assetShares().values()) {
           if (share.quantity() <= 0L
               || !share.operator().equals(share.owner())
               || claimedForProbe.contains(share.id())) {
@@ -862,7 +843,7 @@ class RealTwelveHexProductionRuntime3650Test {
               SEGMENT_DAYS);
       long urbanNoMove = 0L;
       int urbanPrinted = 0;
-      for (ClassRow row : economy.classes().values()) {
+      for (HouseholdEconomy row : economy.classes().values()) {
         if (row.view().residence() != ResidenceKind.URBAN) {
           continue;
         }
@@ -870,8 +851,8 @@ class RealTwelveHexProductionRuntime3650Test {
           continue;
         }
         urbanNoMove++;
-        ClassStanding standing = economy.classStandings().get(row.id());
-        ClassPosition position =
+        HouseholdClassMembership standing = economy.classStandings().get(row.id());
+        ProductionRole position =
             standing == null ? null : economy.classPositions().get(standing.currentPositionId());
         ProductionModeId modeId = position == null ? null : position.modeId();
         ExpectedProfitBook.Prospect current =
@@ -925,7 +906,7 @@ class RealTwelveHexProductionRuntime3650Test {
   /** probe 专用：用当前重放状态 + 指定需求报告跑一次 {@link ModeMigrationPolicy#plan}。 */
   private static ModeMigrationPolicy.MigrationPlan probePlan(
       EconomyData economy,
-      Map<ProductionOrganizationId, ProductionOrganization> organizations,
+      Map<ProductionOrganizationId, ProductionEnterprise> organizations,
       AccountSession accounts,
       long day,
       List<MarketReport> reports) {
@@ -941,7 +922,7 @@ class RealTwelveHexProductionRuntime3650Test {
         economy.markets(),
         economy.debtContracts(),
         accounts,
-        new OrganizationProfitBook.Book(Map.of(), Map.of(), Map.of()),
+        new EnterpriseProfitBook.Book(Map.of(), Map.of(), Map.of()),
         day,
         MarketTopology.singleHex(economy.markets()),
         reports);
@@ -953,7 +934,7 @@ class RealTwelveHexProductionRuntime3650Test {
     long moves = 0L;
     long population = 0L;
     for (ModeMigrationPolicy.MigrationMove move : plan.moves()) {
-      ClassRow row = economy.classes().get(move.source());
+      HouseholdEconomy row = economy.classes().get(move.source());
       if (row != null && row.view().residence() == ResidenceKind.URBAN) {
         moves++;
         population += move.population();
@@ -969,11 +950,11 @@ class RealTwelveHexProductionRuntime3650Test {
    */
   private static Set<AssetShareId> claimedByWorkingCopy(EconomyData economy) {
     Set<AssetShareId> claimed = new LinkedHashSet<>();
-    for (ProductionOrganization organization : economy.productionOrganizations().values()) {
+    for (ProductionEnterprise organization : economy.productionOrganizations().values()) {
       claimed.addAll(organization.assetSources());
     }
-    for (ProductionUnit unit : economy.units().values()) {
-      for (AssetShare share : economy.assetShares().values()) {
+    for (ProductionProcess unit : economy.units().values()) {
+      for (OwnershipStake share : economy.assetShares().values()) {
         if (share.quantity() > 0L
             && share.industry().equals(unit.industry())
             && share.operator().equals(unit.operator())) {
@@ -1007,7 +988,7 @@ class RealTwelveHexProductionRuntime3650Test {
     assertThat(economy.units()).as("units 非空").isNotEmpty();
     assertThat(economy.assetShares()).as("assetShares 非空").isNotEmpty();
     assertThat(economy.allocations()).as("allocations 非空").isNotEmpty();
-    // ★ P2-A A4：laborSupply 已删除 ⇒ 劳动预算的唯一权威 = ClassRow.laborMilli（随家户人口投影）。
+    // ★ P2-A A4：laborSupply 已删除 ⇒ 劳动预算的唯一权威 = HouseholdEconomy.laborMilli（随家户人口投影）。
     assertThat(economy.classes()).as("classes（家户时间预算的载体）非空").isNotEmpty();
     assertThat(economy.markets()).as("markets 非空").isNotEmpty();
     // productionOrganizations 由生产运行时在关账/结算中从 units 物化，不在创世载荷里；留待推进后读。
@@ -1031,9 +1012,7 @@ class RealTwelveHexProductionRuntime3650Test {
     for (PopulationGroup group : social.groups().values()) {
       socialPopulation += group.count();
     }
-    assertThat(socialPopulation)
-        .as("social 人口总量")
-        .isEqualTo(RealTwelveHexWorld.TOTAL_POPULATION);
+    assertThat(socialPopulation).as("social 人口总量").isEqualTo(RealTwelveHexWorld.TOTAL_POPULATION);
     assertThat(CompactThreeNationsWorld.readings(seeded).get("totalPopulation"))
         .as("economy classes 人口 == 配置人口")
         .isEqualTo(RealTwelveHexWorld.TOTAL_POPULATION);
@@ -1067,20 +1046,20 @@ class RealTwelveHexProductionRuntime3650Test {
     Map<HouseholdId, ResidenceKind> residenceByHousehold = new LinkedHashMap<>();
     Map<HouseholdId, ProductionModeId> modeByHousehold = new LinkedHashMap<>();
     Map<HouseholdId, String> positionByHousehold = new LinkedHashMap<>();
-    for (ClassStanding standing : economy.classStandings().values()) {
+    for (HouseholdClassMembership standing : economy.classStandings().values()) {
       HouseholdId household = standing.householdId();
-      ClassRow row = economy.classes().get(household);
+      HouseholdEconomy row = economy.classes().get(household);
       if (row != null) {
         populationByHousehold.put(household, row.population());
         residenceByHousehold.put(household, row.view().residence());
       }
-      ClassPosition position = economy.classPositions().get(standing.currentPositionId());
+      ProductionRole position = economy.classPositions().get(standing.currentPositionId());
       if (position != null) {
         modeByHousehold.put(household, position.modeId());
         positionByHousehold.put(household, position.id().value());
       }
     }
-    for (ClassRow row : economy.classes().values()) {
+    for (HouseholdEconomy row : economy.classes().values()) {
       populationByHousehold.putIfAbsent(row.id(), row.population());
       residenceByHousehold.putIfAbsent(row.id(), row.view().residence());
     }
@@ -1122,23 +1101,26 @@ class RealTwelveHexProductionRuntime3650Test {
     }
 
     Map<String, ProductionModeId> organizationModeById = new LinkedHashMap<>();
-    for (ProductionOrganization organization : economy.productionOrganizations().values()) {
+    for (ProductionEnterprise organization : economy.productionOrganizations().values()) {
       organizationModeById.put(organization.id().value(), organization.modeId());
     }
     Map<String, String> unitModeKeyById = new LinkedHashMap<>();
-    for (ProductionUnit unit : economy.units().values()) {
+    for (ProductionProcess unit : economy.units().values()) {
       unitModeKeyById.put(unit.id().value(), unit.modeKey());
     }
 
     Map<CurrencyId, Long> moneyByCurrency = new LinkedHashMap<>();
-    for (GoodsAccount account : actor.accounts().values()) {
+    for (HouseholdInventory account : actor.accounts().values()) {
       for (Map.Entry<CurrencyId, Long> entry : account.money().entrySet()) {
         moneyByCurrency.merge(entry.getKey(), entry.getValue(), Long::sum);
       }
     }
 
     Map<AssetKind, Long> assetByKind = new EnumMap<>(AssetKind.class);
-    economy.assetShares().values().forEach(share -> assetByKind.merge(share.asset(), share.quantity(), Long::sum));
+    economy
+        .assetShares()
+        .values()
+        .forEach(share -> assetByKind.merge(share.asset(), share.quantity(), Long::sum));
 
     long debtTotal = 0L;
     for (DebtContract contract : economy.debtContracts().values()) {
@@ -1212,7 +1194,7 @@ class RealTwelveHexProductionRuntime3650Test {
     }
 
     long displacedLaborAllocations = 0L;
-    for (LaborAllocation allocation : economy.allocations().values()) {
+    for (HouseholdLaborCommitment allocation : economy.allocations().values()) {
       ProductionModeId mode = modeByHousehold.get(allocation.household());
       if (DefaultProductionModes.DISPLACED.equals(mode) && allocation.laborMilli() > 0L) {
         displacedLaborAllocations++;
@@ -1232,11 +1214,11 @@ class RealTwelveHexProductionRuntime3650Test {
         rural += group.count();
       }
     }
-    // ★ 设计 §9.1：本批 P8/P9 社会侧城乡迁移未接；本轮以 **economy 侧 ClassRow.view().residence()** 为准，
+    // ★ 设计 §9.1：本批 P8/P9 社会侧城乡迁移未接；本轮以 **economy 侧 HouseholdEconomy.view().residence()** 为准，
     //   social 侧只作为单独读数记录（可能出现不一致）。
     long economyRural = 0L;
     long economyUrban = 0L;
-    for (ClassRow row : economy.classes().values()) {
+    for (HouseholdEconomy row : economy.classes().values()) {
       if (row.view().residence() == io.mosire.simos.economy.api.cohort.ResidenceKind.URBAN) {
         economyUrban += row.population();
       } else {
@@ -1421,8 +1403,8 @@ class RealTwelveHexProductionRuntime3650Test {
    * ★ D-022 扫描（设计 §8.2 修正口径）：
    *
    * <ul>
-   *   <li>{@code violations} = mode 原地改写 / {@code ProductionOrganization.modeId} 改写 /
-   *       {@code ProductionUnit.modeKey} 改写；
+   *   <li>{@code violations} = mode 原地改写 / {@code ProductionEnterprise.modeId} 改写 / {@code
+   *       ProductionProcess.modeKey} 改写；
    *   <li>{@code sameModePositionChanges} = 家户 mode 未变、但 {@code currentPositionId} 变了——债务驱动的
    *       阶层下落属于这一类，<b>允许</b>，只作单独读数。
    * </ul>
@@ -1440,28 +1422,58 @@ class RealTwelveHexProductionRuntime3650Test {
         ProductionModeId now = cur.modeByHousehold().get(id);
         if (now != null && !entry.getValue().equals(now)) {
           violations.add(
-              "tick=" + cur.tick() + " household " + id.value() + " mode " + entry.getValue().value() + " -> " + now.value());
+              "tick="
+                  + cur.tick()
+                  + " household "
+                  + id.value()
+                  + " mode "
+                  + entry.getValue().value()
+                  + " -> "
+                  + now.value());
           continue; // mode 都改了，position 变化归因到 mode 改写，不重复计数
         }
         String beforePosition = prev.positionByHousehold().get(id);
         String afterPosition = cur.positionByHousehold().get(id);
-        if (beforePosition != null && afterPosition != null && !beforePosition.equals(afterPosition)) {
+        if (beforePosition != null
+            && afterPosition != null
+            && !beforePosition.equals(afterPosition)) {
           positionChanges.add(
-              "tick=" + cur.tick() + " household " + id.value() + " sameModePosition " + beforePosition + " -> " + afterPosition);
+              "tick="
+                  + cur.tick()
+                  + " household "
+                  + id.value()
+                  + " sameModePosition "
+                  + beforePosition
+                  + " -> "
+                  + afterPosition);
         }
       }
       for (Map.Entry<String, ProductionModeId> entry : prev.organizationModeById().entrySet()) {
         ProductionModeId now = cur.organizationModeById().get(entry.getKey());
         if (now != null && !entry.getValue().equals(now)) {
           violations.add(
-              "tick=" + cur.tick() + " organization " + entry.getKey() + " mode " + entry.getValue().value() + " -> " + now.value());
+              "tick="
+                  + cur.tick()
+                  + " organization "
+                  + entry.getKey()
+                  + " mode "
+                  + entry.getValue().value()
+                  + " -> "
+                  + now.value());
         }
       }
       for (Map.Entry<String, String> entry : prev.unitModeKeyById().entrySet()) {
         String now = cur.unitModeKeyById().get(entry.getKey());
         if (now != null && !entry.getValue().equals(now)) {
           violations.add(
-              "tick=" + cur.tick() + " unit " + entry.getKey() + " modeKey " + entry.getValue() + " -> " + now);
+              "tick="
+                  + cur.tick()
+                  + " unit "
+                  + entry.getKey()
+                  + " modeKey "
+                  + entry.getValue()
+                  + " -> "
+                  + now);
         }
       }
     }
@@ -1470,7 +1482,8 @@ class RealTwelveHexProductionRuntime3650Test {
 
   /** 按 mode 汇总边界快照中全部家户人口（tick0 分布与报告读数用）。 */
   private static Map<ProductionModeId, Long> modeTotals(Boundary boundary) {
-    Map<ProductionModeId, Long> totals = new TreeMap<>(java.util.Comparator.comparing(ProductionModeId::value));
+    Map<ProductionModeId, Long> totals =
+        new TreeMap<>(java.util.Comparator.comparing(ProductionModeId::value));
     for (Map.Entry<HouseholdId, Long> entry : boundary.populationByHousehold().entrySet()) {
       ProductionModeId mode = boundary.modeByHousehold().get(entry.getKey());
       if (mode != null) {
@@ -1485,8 +1498,8 @@ class RealTwelveHexProductionRuntime3650Test {
   /**
    * ★ 第三轮诊断（测试代理）：economy 侧 urban 家户的 cycle 人口变动分解。
    *
-   * <p>残差 = 期末 urban pop − 期初同户 urban pop − births + deaths。迁移只改变“哪一户持有这些人”，
-   * 不改变总人口 ⇒ 若残差 ≈ 0 而 deaths ≫ births，城市衰退就是“饿死”而不是“迁出”。
+   * <p>残差 = 期末 urban pop − 期初同户 urban pop − births + deaths。迁移只改变“哪一户持有这些人”， 不改变总人口 ⇒ 若残差 ≈ 0 而
+   * deaths ≫ births，城市衰退就是“饿死”而不是“迁出”。
    */
   private static void printUrbanDecomposition(Boundary previous, Boundary current) {
     long popBefore = 0L;
@@ -1587,8 +1600,8 @@ class RealTwelveHexProductionRuntime3650Test {
   }
 
   /**
-   * ★ D-025：城市化率是<b>派生量</b> {@code urban/(rural+urban)}，不是可存字段；人口为 0 ⇒ 0‰（不猜、不抛）。
-   * 这里用 economy 侧 residence 口径（§9.1），与 {@code readBoundary} 的 economyUrban/economyRural 同源。
+   * ★ D-025：城市化率是<b>派生量</b> {@code urban/(rural+urban)}，不是可存字段；人口为 0 ⇒ 0‰（不猜、不抛）。 这里用 economy 侧
+   * residence 口径（§9.1），与 {@code readBoundary} 的 economyUrban/economyRural 同源。
    */
   private static long urbanizationPermille(Boundary b) {
     long total = b.economyRuralPopulation() + b.economyUrbanPopulation();
@@ -1637,12 +1650,12 @@ class RealTwelveHexProductionRuntime3650Test {
     EconomyData economy = CompactThreeNationsWorld.economyOf(state);
     ActorData actor = CompactThreeNationsWorld.actorOf(state);
     SocialData social = CompactThreeNationsWorld.socialOf(state);
-    for (ClassRow row : economy.classes().values()) {
+    for (HouseholdEconomy row : economy.classes().values()) {
       assertThat(row.population()).as("人口不得为负: %s", row.id()).isNotNegative();
       assertThat(row.laborMilli()).as("劳动不得为负: %s", row.id()).isNotNegative();
       assertThat(row.money()).as("行货币不得为负: %s", row.id()).isNotNegative();
     }
-    for (GoodsAccount account : actor.accounts().values()) {
+    for (HouseholdInventory account : actor.accounts().values()) {
       for (long value : account.balances().values()) {
         assertThat(value).as("商品余额不得为负: %s", account.key()).isNotNegative();
       }
@@ -1663,7 +1676,7 @@ class RealTwelveHexProductionRuntime3650Test {
 
   private static long sumPopulation(EconomyData economy) {
     long total = 0L;
-    for (ClassRow row : economy.classes().values()) {
+    for (HouseholdEconomy row : economy.classes().values()) {
       total += row.population();
     }
     return total;
@@ -1671,7 +1684,7 @@ class RealTwelveHexProductionRuntime3650Test {
 
   private static long shellHouseholds(EconomyData economy) {
     long shells = 0L;
-    for (ClassRow row : economy.classes().values()) {
+    for (HouseholdEconomy row : economy.classes().values()) {
       if (row.population() == 0L) {
         shells++;
       }
@@ -1688,11 +1701,11 @@ class RealTwelveHexProductionRuntime3650Test {
   }
 
   /**
-   * ★★ 主程序缺口的**测试侧线格式补丁**（不改 main）：真实 Shell 的 Core 时间线 mapper 是
-   * {@code SimosObjectMapper.create()}（{@code Timeline.CHANGESET_MAPPER}），它没摘掉
-   * {@link EconomyMeta#isCurrentRuntimeVersion()} 这个派生判据；production-runtime 关账会改 {@code economy.meta}，
-   * 于是 Core replay 会被 {@code currentRuntimeVersion} 未知键炸掉（未打补丁时实测 tick 0→120 后
-   * {@code core.replay} 即抛 {@code UnrecognizedPropertyException}）。这里给时间线 mapper 补 mixin，
+   * ★★ 主程序缺口的**测试侧线格式补丁**（不改 main）：真实 Shell 的 Core 时间线 mapper 是 {@code
+   * SimosObjectMapper.create()}（{@code Timeline.CHANGESET_MAPPER}），它没摘掉 {@link
+   * EconomyMeta#isCurrentRuntimeVersion()} 这个派生判据；production-runtime 关账会改 {@code economy.meta}， 于是
+   * Core replay 会被 {@code currentRuntimeVersion} 未知键炸掉（未打补丁时实测 tick 0→120 后 {@code core.replay} 即抛
+   * {@code UnrecognizedPropertyException}）。这里给时间线 mapper 补 mixin，
    * 让测试能越过这个缺口继续跑到真正的经济阻塞点；缺口本身在最终报告里如实列出。
    */
   private static ObjectMapper installChangeSetMapperEconomyMetaMixin()
@@ -1737,8 +1750,7 @@ class RealTwelveHexProductionRuntime3650Test {
             new CreateArmyHandler())) {
       core.register(handler);
     }
-    core.register(
-        new UnitTimeParticipant(TerrainMovementCost.INSTANCE, RealTwelveHexWorld.MAP_ID));
+    core.register(new UnitTimeParticipant(TerrainMovementCost.INSTANCE, RealTwelveHexWorld.MAP_ID));
     core.register(new SdTimeParticipant(RealTwelveHexWorld.MAP_ID));
     core.register(new PopulationEconomyTimeParticipant(RealTwelveHexWorld.MAP_ID));
     return core;

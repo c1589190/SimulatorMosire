@@ -9,16 +9,16 @@ import java.util.Arrays;
  * 那样会把共用契约层绑到各领域模块的内部类型上（本模块不依赖任何领域模块，理由见 {@link ActorRef} 的类注）。
  *
  * <p>★★ **R2 追加的后三档**（第三阶段设计稿 §二 的三层拆分：{@code PopulationGroup} 回答"是谁"、{@code EconomicActor}
- * 回答"谁持有"、{@code HouseholdLaborCommitment} 回答"人与主体是什么关系"）：原四档里**没有**家户/庄园/作坊，而"这批人的劳动给了谁" 必须能指名一个**生产主体** ——
- * 拿 {@code ORGANIZATION} 顶替等于把"制度"这一维抹掉（庄园 ≠ 作坊 ≠ 家户，三者的劳动义务与产出归属都不同）。
+ * 回答"谁持有"、{@code HouseholdLaborCommitment} 回答"人与主体是什么关系"）：原四档里**没有**家户/庄园/作坊，而"这批人的劳动给了谁"
+ * 必须能指名一个**生产主体** —— 拿 {@code ORGANIZATION} 顶替等于把"制度"这一维抹掉（庄园 ≠ 作坊 ≠ 家户，三者的劳动义务与产出归属都不同）。
  *
  * <p>★ **本轮的用法**（R2 = 劳动底座，尚无 {@code EconomicActor} 的完整类型）：
  *
  * <ul>
  *   <li><b>★★ P2-A §13.3（2026-10-09 用户裁定）：{@code ESTATE} / {@code WORKSHOP} 已整体退役</b>——
- *       庄园/作坊是生产方式/生产活动（{@code ProductionMode} / {@code ProductionEnterprise} /
- *       {@code ProductionProcess}），不是 ActorRef 的种类；它们的投入/产出/收款走组织者/经营者家户账户；
- *       <b>只有 {@link #HOUSEHOLD} 允许持有账户</b>（{@code HouseholdAccountKey} 的键就是家户身份）；
+ *       庄园/作坊是生产方式/生产活动（{@code ProductionMode} / {@code ProductionEnterprise} / {@code
+ *       ProductionProcess}），不是 ActorRef 的种类；它们的投入/产出/收款走组织者/经营者家户账户； <b>只有 {@link #HOUSEHOLD}
+ *       允许持有账户</b>（{@code HouseholdAccountKey} 的键就是家户身份）；
  *   <li>{@link #HOUSEHOLD} —— 家户（自给自足的家庭经济单位）：本轮**只由夹具**使用（"同一批人农闲织布"那条压力测试）；它不属任何产业，
  *       故在结算里**不占任何产业的劳动投入**，但照样进守恒（{@code Σ allocated ≤ available}）与读口。 ★ 真正让它产出布的配方（{@code FIBER
  *       + LABOR + TOOL → CLOTH}）属 R3 的 V7 —— 本轮不给它产出，也**不**假装给了。
@@ -33,9 +33,7 @@ public enum ActorKind {
   GOVERNMENT,
   ORGANIZATION,
 
-  /**
-   * 家户（自给自足的家庭经济单位；R3 的落点；**P2-A 起也是唯一允许持有 HouseholdInventory 的主体**）。
-   */
+  /** 家户（自给自足的家庭经济单位；R3 的落点；**P2-A 起也是唯一允许持有 HouseholdInventory 的主体**）。 */
   HOUSEHOLD;
 
   /**

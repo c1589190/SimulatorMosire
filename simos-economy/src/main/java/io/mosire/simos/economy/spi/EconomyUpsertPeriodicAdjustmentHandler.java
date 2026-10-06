@@ -24,7 +24,8 @@ import java.util.OptionalLong;
 import org.slf4j.Logger;
 
 /**
- * ★★ {@code economy.UpsertHouseholdPeriodicAdjustment}（P4a，GM-only）：<b>按 id 全量 upsert 一条周期家户库存扣增规则</b>。
+ * ★★ {@code economy.UpsertHouseholdPeriodicAdjustment}（P4a，GM-only）：<b>按 id 全量 upsert
+ * 一条周期家户库存扣增规则</b>。
  *
  * <pre>{@code
  * {"id":"army-pay-1",
@@ -38,12 +39,11 @@ import org.slf4j.Logger;
  *  "policySource":"gm:p4a"}
  * }</pre>
  *
- * <p>★★ <b>全量替换，不静默合并</b>：同 id 已存在 ⇒ 整条旧规则被新规则取代；字段缺省 = 按本命令的显式语义
- * （{@code payee}/{@code expiresOnDay} 空 = sink/永久），不是"沿用旧值"。规则构造期守卫判字段不变量；
- * {@code EconomyData} 构造期再判"键 == 值内 id"。
+ * <p>★★ <b>全量替换，不静默合并</b>：同 id 已存在 ⇒ 整条旧规则被新规则取代；字段缺省 = 按本命令的显式语义 （{@code payee}/{@code
+ * expiresOnDay} 空 = sink/永久），不是"沿用旧值"。规则构造期守卫判字段不变量； {@code EconomyData} 构造期再判"键 == 值内 id"。
  *
- * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 的
- * {@code simos.command.submit} 仍可直接调用（P4b 才做窄工具）。
+ * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand} ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 的 {@code
+ * simos.command.submit} 仍可直接调用（P4b 才做窄工具）。
  */
 public final class EconomyUpsertPeriodicAdjustmentHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
@@ -98,7 +98,8 @@ public final class EconomyUpsertPeriodicAdjustmentHandler
   static HouseholdPeriodicAdjustment parse(String command, String payloadJson) {
     JsonNode payload = EconomyCommandPayloads.parseObject(command, payloadJson);
     PeriodicHouseholdAdjustmentId id =
-        PeriodicHouseholdAdjustmentId.parse(EconomyCommandPayloads.requireText(command, payload, "id"));
+        PeriodicHouseholdAdjustmentId.parse(
+            EconomyCommandPayloads.requireText(command, payload, "id"));
     HouseholdId payer =
         HouseholdId.parse(EconomyCommandPayloads.requireText(command, payload, "payer"));
     Optional<HouseholdId> payee =
@@ -111,8 +112,7 @@ public final class EconomyUpsertPeriodicAdjustmentHandler
     Map<CurrencyId, Long> money =
         EconomyCommandPayloads.optionalCurrencyMap(command, payload, "moneyPerCycle", true);
     DeductionReason reason =
-        DeductionReason.parse(
-            EconomyCommandPayloads.requireText(command, payload, "reason"));
+        DeductionReason.parse(EconomyCommandPayloads.requireText(command, payload, "reason"));
     long periodDays = EconomyCommandPayloads.requireLong(command, payload, "periodDays");
     long phaseDay = EconomyCommandPayloads.requireLong(command, payload, "phaseDay");
     long startsOnDay = EconomyCommandPayloads.requireLong(command, payload, "startsOnDay");
@@ -120,8 +120,7 @@ public final class EconomyUpsertPeriodicAdjustmentHandler
         payload.hasNonNull("expiresOnDay")
             ? OptionalLong.of(EconomyCommandPayloads.requireLong(command, payload, "expiresOnDay"))
             : OptionalLong.empty();
-    String policySource =
-        EconomyCommandPayloads.requireText(command, payload, "policySource");
+    String policySource = EconomyCommandPayloads.requireText(command, payload, "policySource");
     return new HouseholdPeriodicAdjustment(
         id,
         payer,

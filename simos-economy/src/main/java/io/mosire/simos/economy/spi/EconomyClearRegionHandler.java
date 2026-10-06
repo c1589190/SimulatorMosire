@@ -8,7 +8,6 @@ import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
@@ -18,20 +17,20 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
-import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.DebtContract;
-import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdDemand;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
@@ -39,6 +38,7 @@ import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -68,8 +68,9 @@ import java.util.Set;
  *
  * <ul>
  *   <li>{@code assetShares}（按 {@code industry} 定位）与引用它们的 {@code pledges}；
- *   <li>{@code classes}（按 {@code HouseholdEconomy.view().hex()} 定位）、同键的 {@code flows}、{@code memberships}、
- *       {@code classStandings}、{@code classShares}、{@code allocations}（按 {@code household} 定位）；
+ *   <li>{@code classes}（按 {@code HouseholdEconomy.view().hex()} 定位）、同键的 {@code flows}、{@code
+ *       memberships}、 {@code classStandings}、{@code classShares}、{@code allocations}（按 {@code
+ *       household} 定位）；
  *   <li>清空区域内家户所涉的 {@code debtContracts}（按 debtor/creditor 定位）；引用被清合同/份额的 {@code pledges}；
  *   <li>{@code demands}：HEX 范围按格键命中；HOUSEHOLD 范围按被清家户命中；
  *   <li>{@code crisisSignals}：{@code signal.hex()} 命中目标格，或点名的家户被清（避免悬空引用）；
@@ -189,7 +190,8 @@ public final class EconomyClearRegionHandler
 
     // ③ 家户行：view().hex() 定位（CohortKey 的"家户当前视图"就是区域归属）。
     Set<HouseholdId> removedClasses = new LinkedHashSet<>();
-    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : base.classes().entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry :
+        base.classes().entrySet()) {
       if (targetHexes.contains(householdEconomyEntry.getValue().view().hex())) {
         removedClasses.add(householdEconomyEntry.getKey());
       }
@@ -199,13 +201,14 @@ public final class EconomyClearRegionHandler
     Map<IndustryId, Industry> industries = withoutKeys(base.industries(), removedIndustries);
     Map<ProductionUnitId, ProductionProcess> units = withoutKeys(base.units(), removedUnits);
     Map<AssetShareId, OwnershipStake> assetShares = withoutKeys(base.assetShares(), removedShares);
-    Map<ProductionUnitId, ProductionRules> relations =
-        withoutKeys(base.relations(), removedUnits);
+    Map<ProductionUnitId, ProductionRules> relations = withoutKeys(base.relations(), removedUnits);
     Map<ProductionUnitId, OperatorCondition> operatorConditions =
         withoutKeys(base.operatorConditions(), removedUnits);
-    Map<HouseholdId, HouseholdEconomy> householdEconomies = withoutKeys(base.classes(), removedClasses);
+    Map<HouseholdId, HouseholdEconomy> householdEconomies =
+        withoutKeys(base.classes(), removedClasses);
     Map<HouseholdId, FlowRow> flows = withoutKeys(base.flows(), removedClasses);
-    Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments = new LinkedHashMap<>(base.allocations());
+    Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments =
+        new LinkedHashMap<>(base.allocations());
     laborCommitments
         .entrySet()
         .removeIf(

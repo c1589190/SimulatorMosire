@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.api.stock;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -52,6 +53,9 @@ import java.util.Optional;
  * @param detail 审计自由文本（可缺省；不进任何判定）
  * @param toHousehold 收款家户；<b>缺席 = 明确 sink</b>，给出 = 原子转移
  */
+@SuppressFBWarnings(
+    value = "EI_EXPOSE_REP",
+    justification = "compact constructor 已做防御性拷贝并冻结；SpotBugs 不跨辅助方法识别")
 public record HouseholdStockDeduction(
     HouseholdId household,
     Map<CommodityId, Long> goods,

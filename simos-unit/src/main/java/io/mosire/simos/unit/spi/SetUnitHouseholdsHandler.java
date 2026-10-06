@@ -23,8 +23,8 @@ import java.util.Objects;
  * }</pre>
  *
  * <p>★ <b>载荷语义</b>：{@code unitId} 必填；{@code households} 必填数组（空数组合法 = 清空，保序）；{@code reason} 必填非空白
- * （事件/日志要能回答为什么）。元素重复/空白在边界具名拒；unit 不存在、跨单位家户冲突（同一家户同时属于两个 unit、Unit id 与
- * household id 撞名）由 {@link UnitOperations#setUnitHouseholds} / {@link UnitState} 构造期具名拒。
+ * （事件/日志要能回答为什么）。元素重复/空白在边界具名拒；unit 不存在、跨单位家户冲突（同一家户同时属于两个 unit、Unit id 与 household id 撞名）由 {@link
+ * UnitOperations#setUnitHouseholds} / {@link UnitState} 构造期具名拒。
  *
  * <p>★ <b>本命令只动 unit 切片</b>（返回 {@link UnitChangeSet}）：家户在 Social 侧的位置由 {@code
  * social.SetHouseholdLocation} 负责；"加入 Unit"的两侧原子一致由 app 组合工具（同批）保证（架构 §3.3）。
@@ -81,7 +81,15 @@ public final class SetUnitHouseholdsHandler implements CommandHandler, CommandTa
     UnitLog.household()
         .info(
             "event=UNIT_HOUSEHOLDS_SET "
-                + UnitLog.kv("unit", id, "count", households.size(), "households", households, "reason", reason));
+                + UnitLog.kv(
+                    "unit",
+                    id,
+                    "count",
+                    households.size(),
+                    "households",
+                    households,
+                    "reason",
+                    reason));
     if (UnitLog.trace().isTraceEnabled()) {
       for (HouseholdId household : households) {
         UnitLog.trace()

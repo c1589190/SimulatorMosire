@@ -1,9 +1,9 @@
 package io.mosire.simos.economy.api.population;
 
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
-import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.PeopleLotId;
 
 /**
  * ★★ <b>一笔跨居住地的批次迁移（P8 契约）</b>：{@code count} 个属性相同的人从 {@link #sourceLot()} 拆出、并入 {@link

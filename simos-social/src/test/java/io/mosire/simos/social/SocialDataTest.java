@@ -133,8 +133,7 @@ class SocialDataTest {
         SocialDataTestSupport.withHouseholdsAt(Map.of(H00, population()), Map.of(), mutable, H00);
     mutable.put(
         PopulationLots.rural(H00, Sex.FEMALE, "1"),
-        new PopulationGroup(
-            PopulationLots.rural(H00, Sex.FEMALE, "1"), Sex.FEMALE, 7L, 0L, 0L));
+        new PopulationGroup(PopulationLots.rural(H00, Sex.FEMALE, "1"), Sex.FEMALE, 7L, 0L, 0L));
     assertThat(data.groups()).containsOnlyKeys(ruralLot());
   }
 
@@ -189,11 +188,10 @@ class SocialDataTest {
   }
 
   /**
-   * ★★ **S2 跨组件校验**：位置真值源已从 {@code PopulationGroup.residence} 迁到 {@code Household.location}
-   * （架构 §4.2）⇒ 每个批次必须**恰被一个家户引用**，无主批次（本用例）与双主批次都被构造期拒。
+   * ★★ **S2 跨组件校验**：位置真值源已从 {@code PopulationGroup.residence} 迁到 {@code Household.location} （架构
+   * §4.2）⇒ 每个批次必须**恰被一个家户引用**，无主批次（本用例）与双主批次都被构造期拒。
    *
-   * <p>★ 判别力：把 {@code SocialData} 构造期这条校验删掉，本用例当场红——那正是"这批人没有位置、任何读口都看不见"
-   * 的入口。
+   * <p>★ 判别力：把 {@code SocialData} 构造期这条校验删掉，本用例当场红——那正是"这批人没有位置、任何读口都看不见" 的入口。
    */
   @Test
   void rejectsGroupsWithoutAnyHousehold() {
@@ -512,7 +510,8 @@ class SocialDataTest {
         adult,
         new PopulationGroup(
             adult, Sex.FEMALE, 1L, ageDaysBeforeBirthdayAt(ANCHOR + 1L, 60L), ANCHOR));
-    SocialData data = SocialDataTestSupport.withHouseholdsAt(Map.of(hex, population()), Map.of(), groups, hex);
+    SocialData data =
+        SocialDataTestSupport.withHouseholdsAt(Map.of(hex, population()), Map.of(), groups, hex);
 
     // ★ **锚点那一刻**的整张结构（两条边各钉下侧）——★ **如实记：这一条对"现算"没有判别力**
     //   （{@code nowTick == anchorTick} 时 {@code ageDaysAt} 与 {@code ageAtAnchorDays}
@@ -544,7 +543,8 @@ class SocialDataTest {
     PeopleLotId lot = PopulationLots.rural(hex, Sex.MALE, "0");
     Map<PeopleLotId, PopulationGroup> groups =
         new LinkedHashMap<>(Map.of(lot, new PopulationGroup(lot, Sex.MALE, 1L, 0L, ANCHOR)));
-    SocialData data = SocialDataTestSupport.withHouseholdsAt(Map.of(hex, population()), Map.of(), groups, hex);
+    SocialData data =
+        SocialDataTestSupport.withHouseholdsAt(Map.of(hex, population()), Map.of(), groups, hex);
 
     assertThatThrownBy(() -> data.ageStructureAt(hex, ANCHOR - 1L, CLOCK))
         .isInstanceOf(IllegalArgumentException.class)

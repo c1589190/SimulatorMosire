@@ -4,8 +4,9 @@
  * <p>★★ <b>本切片承担什么</b>（用户裁定，spec §三 L277 原文）：{@code Actor identity · AssetHolding · Goods
  * ownership/inventory · ProductionRules}。★ <b>已落地</b>（C 段逐块增量）：{@link
  * io.mosire.simos.actor.model.Actor}（身份本体）+ 状态树骨架（{@code meta} / {@code actors}）+ <b>库存</b> （{@link
- * io.mosire.simos.actor.model.HouseholdInventory}，Task 6 加：聚合键 {@code (owner, location)}，★ 它是新产权模型里商品余额的
- * 唯一真源 —— 见裁定 R6 与该类的类注）；{@code ProductionRules} 属后续阶段 —— 状态树的表按任务顺序<b>增量</b>加，每个任务自身可编译可测。
+ * io.mosire.simos.actor.model.HouseholdInventory}，Task 6 加：聚合键 {@code (owner, location)}，★
+ * 它是新产权模型里商品余额的 唯一真源 —— 见裁定 R6 与该类的类注）；{@code ProductionRules} 属后续阶段 ——
+ * 状态树的表按任务顺序<b>增量</b>加，每个任务自身可编译可测。
  *
  * <p>★★ <b>2026-09-27 裁定 S3：产权（{@code AssetHolding} / {@code AssetClassKey} / {@code
  * AssetHoldingKey}）整块退役</b> —— 实测生产侧零写入者（真档创世把 actor 起成 {@code ActorData.empty()}）、economy 侧 {@code

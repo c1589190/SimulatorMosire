@@ -34,10 +34,9 @@ import java.util.UUID;
  *   <li>目标与当前位置相同（且两侧列表一致）⇒ 幂等 no-op（不组命令、不落 revision）。
  * </ul>
  *
- * <p>★★ <b>位置关联硬化（2026-10-19 计划 §4）</b>：家户只要出现在任一 {@code Unit.households()} 里（看真实成员列表，不看
- * {@code household.location()}），就只允许目标恰为 {@code UNIT(同一个且唯一的 owner unitId)}；目标是 HEX、别的 UNIT、或多重归属
- * ⇒ 具名拒，要求先走 {@code simos.unit.detachHousehold} 的合法脱离路径（它同时改位置与列表）。非在编家户（HEX ↔ UNIT
- * 移动）与 no-op 语义不变。
+ * <p>★★ <b>位置关联硬化（2026-10-19 计划 §4）</b>：家户只要出现在任一 {@code Unit.households()} 里（看真实成员列表，不看 {@code
+ * household.location()}），就只允许目标恰为 {@code UNIT(同一个且唯一的 owner unitId)}；目标是 HEX、别的 UNIT、或多重归属 ⇒
+ * 具名拒，要求先走 {@code simos.unit.detachHousehold} 的合法脱离路径（它同时改位置与列表）。非在编家户（HEX ↔ UNIT 移动）与 no-op 语义不变。
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：{@link HouseholdBook#setLocation} + {@link
  * UnitOperations#setUnitHouseholds} 在 preview 先跑；{@code preview=true（缺省）}一个字节都不写。
@@ -90,7 +89,8 @@ public final class SocialHouseholdMoveTool extends AbstractHouseholdGmTool {
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
-        ToolSupport.prop("integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=该分支 head）"));
+        ToolSupport.prop(
+            "integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=该分支 head）"));
     return ToolSupport.schema(props, List.of("householdId", "location", "reason"));
   }
 
@@ -134,10 +134,7 @@ public final class SocialHouseholdMoveTool extends AbstractHouseholdGmTool {
               && owningUnitIds.get(0).equals(targetUnitLocation.unitId());
       if (!sameSoleOwner) {
         String owners = String.join(", ", owningUnitIds);
-        String multiOwnerNote =
-            owningUnitIds.size() > 1
-                ? "（坏状态：多个单位同时持有同一家户，先修掉重复归属再移动）"
-                : "";
+        String multiOwnerNote = owningUnitIds.size() > 1 ? "（坏状态：多个单位同时持有同一家户，先修掉重复归属再移动）" : "";
         throw new IllegalArgumentException(
             "在编家户 "
                 + id
@@ -207,16 +204,19 @@ public final class SocialHouseholdMoveTool extends AbstractHouseholdGmTool {
         List<HouseholdId> nextHouseholds = new ArrayList<>(targetUnit.households());
         nextHouseholds.add(id);
         UnitOperations.setUnitHouseholds(units, targetUnit.id(), nextHouseholds);
-        Map<String, Object> payload = unitHouseholdsPayload(targetUnit, nextHouseholds, request.reason());
+        Map<String, Object> payload =
+            unitHouseholdsPayload(targetUnit, nextHouseholds, request.reason());
         batch.add(envelope(request, batchId, SetUnitHouseholdsHandler.TYPE, payload));
         commandsPreview.add(commandPreview(SetUnitHouseholdsHandler.TYPE, payload));
         unitChanges.add(unitChange(targetUnit, nextHouseholds));
       }
-      if (currentUnit != null && (targetUnit == null || !currentUnit.id().equals(targetUnit.id()))) {
+      if (currentUnit != null
+          && (targetUnit == null || !currentUnit.id().equals(targetUnit.id()))) {
         List<HouseholdId> nextHouseholds = new ArrayList<>(currentUnit.households());
         nextHouseholds.remove(id);
         UnitOperations.setUnitHouseholds(units, currentUnit.id(), nextHouseholds);
-        Map<String, Object> payload = unitHouseholdsPayload(currentUnit, nextHouseholds, request.reason());
+        Map<String, Object> payload =
+            unitHouseholdsPayload(currentUnit, nextHouseholds, request.reason());
         batch.add(envelope(request, batchId, SetUnitHouseholdsHandler.TYPE, payload));
         commandsPreview.add(commandPreview(SetUnitHouseholdsHandler.TYPE, payload));
         unitChanges.add(unitChange(currentUnit, nextHouseholds));
@@ -258,7 +258,8 @@ public final class SocialHouseholdMoveTool extends AbstractHouseholdGmTool {
         batch,
         view,
         () -> {
-          if (assignTarget != null && (detachSource == null || !detachSource.id().equals(assignTarget.id()))) {
+          if (assignTarget != null
+              && (detachSource == null || !detachSource.id().equals(assignTarget.id()))) {
             UnitLog.household()
                 .info(
                     "event=UNIT_HOUSEHOLD_ASSIGN "

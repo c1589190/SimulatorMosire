@@ -7,8 +7,8 @@ import java.util.List;
  * ★★ <b>市场报价模式</b>（M2.6 的第一版与可选自适应）—— 它是<b>读数契约</b>的一部分：报表必须能让读的人分清"这是固定价，还是
  * 结算按供需调过价"，否则同一列数字在两种模式下的含义完全不同。
  *
- * <p>★★ <b>模式只有一个开关</b>：{@code MarketSettlement.MARKET_ADAPTIVE_PRICING_ENABLED}（2026-10-07 用户裁定打开 =
- * {@link #ADAPTIVE}）。本枚举是那个开关的稳定读侧拼法，GUI / MCP 都读它，不各自解释一个布尔。
+ * <p>★★ <b>模式只有一个开关</b>：{@code MarketSettlement.MARKET_ADAPTIVE_PRICING_ENABLED}（2026-10-07 用户裁定打开
+ * = {@link #ADAPTIVE}）。本枚举是那个开关的稳定读侧拼法，GUI / MCP 都读它，不各自解释一个布尔。
  *
  * <ul>
  *   <li>{@link #FIXED}（{@code fixed}）—— 固定报价：价格表是 GM 数据，结算只按它过滤/成交，不改它；

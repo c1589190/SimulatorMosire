@@ -131,10 +131,7 @@ public final class TreasuryWithdrawal {
     Map<CurrencyId, Long> wallet = accounts.householdMoney().get(treasuryHousehold);
     if (wallet == null) {
       throw new IllegalStateException(
-          "国库家户账户不在本会话副本里（拒绝从看不见的账上销账）：国库家户="
-              + treasuryHousehold
-              + "，政府="
-              + governmentId);
+          "国库家户账户不在本会话副本里（拒绝从看不见的账上销账）：国库家户=" + treasuryHousehold + "，政府=" + governmentId);
     }
     long balance = wallet.getOrDefault(currency, 0L);
     long frozen =

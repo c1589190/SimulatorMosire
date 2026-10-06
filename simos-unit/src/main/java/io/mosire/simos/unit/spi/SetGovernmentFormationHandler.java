@@ -35,14 +35,14 @@ import java.util.Optional;
  * staff} 缺省空表、{@code policy} 缺省 {@link OfficePolicy#defaults()}（也可给部分字段，缺省字段取 defaults）；{@code
  * householdPosts?} 是以 {@link HouseholdId} 为键的领导层家户配置，缺省 = 保持既有配置。
  *
- * <p>★★ <b>线格式已删键 {@code households}</b>（2026-10-09 唯一列表裁定）：编制里不再有家户列表；“谁在这个 Unit 里”的唯一实质列表是
- * {@code Unit.households}，本命令不再接收、也不维护它。政府家户 {@code hh-gov-<unitId>} 由
- * {@link UnitOperations#setGovernmentFormation} 在改编制时同批编入 {@code Unit.households}；其余家户请先用
- * {@code unit.SetUnitHouseholds} 编入（GOV 单位上必须保留政府家户）。
+ * <p>★★ <b>线格式已删键 {@code households}</b>（2026-10-09 唯一列表裁定）：编制里不再有家户列表；“谁在这个 Unit 里”的唯一实质列表是 {@code
+ * Unit.households}，本命令不再接收、也不维护它。政府家户 {@code hh-gov-<unitId>} 由 {@link
+ * UnitOperations#setGovernmentFormation} 在改编制时同批编入 {@code Unit.households}；其余家户请先用 {@code
+ * unit.SetUnitHouseholds} 编入（GOV 单位上必须保留政府家户）。
  *
- * <p>★ <b>拒因</b>（全部由 {@link UnitOperations#setGovernmentFormation} 给出，边界只折 {@code Rejected}）：单位不存在；单位已带
- * {@code ArmyFormation}（一单位至多一个标签，不静默替换）；{@code superiorGov} 不存在 / 不是 GOV / 指向自身；单位已容纳别的政府家户。
- * 同类型重复设置 = 整体替换（文档见操作面）。
+ * <p>★ <b>拒因</b>（全部由 {@link UnitOperations#setGovernmentFormation} 给出，边界只折 {@code
+ * Rejected}）：单位不存在；单位已带 {@code ArmyFormation}（一单位至多一个标签，不静默替换）；{@code superiorGov} 不存在 / 不是 GOV /
+ * 指向自身；单位已容纳别的政府家户。 同类型重复设置 = 整体替换（文档见操作面）。
  *
  * <p>★ <b>目标声明</b>（{@link CommandTargets}）：按载荷点名的 unitId 判（与既有 unit 命令同制）。本命令只写 unit 命名空间。
  */

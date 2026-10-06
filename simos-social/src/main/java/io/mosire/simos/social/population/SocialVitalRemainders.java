@@ -21,8 +21,8 @@ import java.util.Set;
  *   <li>所有元素自己保证 {@code numerator ∈ [0, 999_999]}。
  * </ul>
  *
- * <p>★ <b>0 不落键</b>：没有余数就不进本表（{@link #withNumerator} 在 0 时删除条目）。旧档缺本组件按"旧档作废"
- * 口径具名拒，不做缺省兜底；新世界由 {@code SocialData.empty()} / 便捷构造器给空表。</p>
+ * <p>★ <b>0 不落键</b>：没有余数就不进本表（{@link #withNumerator} 在 0 时删除条目）。旧档缺本组件按"旧档作废" 口径具名拒，不做缺省兜底；新世界由
+ * {@code SocialData.empty()} / 便捷构造器给空表。
  *
  * @param entries 余数条目（保序、冻结、键唯一）；不得为 null
  */
@@ -38,7 +38,8 @@ public record SocialVitalRemainders(List<SocialVitalRemainder> entries) {
     for (int index = 0; index < entries.size(); index++) {
       SocialVitalRemainder entry = entries.get(index);
       if (entry == null) {
-        throw new IllegalArgumentException("SocialVitalRemainders.entries 第 " + index + " 项不得为 null");
+        throw new IllegalArgumentException(
+            "SocialVitalRemainders.entries 第 " + index + " 项不得为 null");
       }
       if (!seen.add(RemainderKey.of(entry))) {
         throw new IllegalArgumentException(
@@ -69,11 +70,12 @@ public record SocialVitalRemainders(List<SocialVitalRemainder> entries) {
   /**
    * 写入/覆盖某个键的余数：新键追加表尾、已有键原位替换；{@code numerator == 0} ⇒ 删除该条目（0 不落键）。
    *
-   * <p>取值范围与键的非 null 由 {@link SocialVitalRemainder} 构造期判。</p>
+   * <p>取值范围与键的非 null 由 {@link SocialVitalRemainder} 构造期判。
    */
   public SocialVitalRemainders withNumerator(
       HouseholdId householdId, PeopleLotId lotId, VitalKind kind, long numerator) {
-    return new SocialVitalRemainders(upsert(entries, new SocialVitalRemainder(householdId, lotId, kind, numerator)));
+    return new SocialVitalRemainders(
+        upsert(entries, new SocialVitalRemainder(householdId, lotId, kind, numerator)));
   }
 
   /** 某个键是否存在余数条目。 */
@@ -81,7 +83,8 @@ public record SocialVitalRemainders(List<SocialVitalRemainder> entries) {
     return findEntry(householdId, lotId, kind) != null;
   }
 
-  private SocialVitalRemainder findEntry(HouseholdId householdId, PeopleLotId lotId, VitalKind kind) {
+  private SocialVitalRemainder findEntry(
+      HouseholdId householdId, PeopleLotId lotId, VitalKind kind) {
     if (householdId == null) {
       throw new IllegalArgumentException("SocialVitalRemainders 查余数：householdId 不得为 null");
     }
@@ -103,7 +106,8 @@ public record SocialVitalRemainders(List<SocialVitalRemainder> entries) {
   /** 表内 upsert：同键原位替换、新键追加表尾；0 ⇒ 删除。 */
   private static List<SocialVitalRemainder> upsert(
       List<SocialVitalRemainder> source, SocialVitalRemainder incoming) {
-    List<SocialVitalRemainder> next = new ArrayList<>(source.size() + (incoming.numerator() == 0L ? 0 : 1));
+    List<SocialVitalRemainder> next =
+        new ArrayList<>(source.size() + (incoming.numerator() == 0L ? 0 : 1));
     boolean replaced = false;
     for (SocialVitalRemainder existing : source) {
       if (RemainderKey.of(existing).equals(RemainderKey.of(incoming))) {

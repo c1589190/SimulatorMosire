@@ -22,8 +22,8 @@ import java.util.Objects;
 
 /**
  * ★★ {@code economy.RegisterHousehold}（P3 2026-10-12）：<b>给任意 Social 家户补一条 {@link HouseholdEconomy}
- * 经济行</b>——经济侧的人口/劳动/需求物化视图落点。新 UNIT 家户由 {@code simos.unit.raiseUnit} 在同批内登记，
- * 否则次日推进会在 {@code CLASSROW_POPULATION_PROJECTION_UNRESOLVED} 处 fail-closed。
+ * 经济行</b>——经济侧的人口/劳动/需求物化视图落点。新 UNIT 家户由 {@code simos.unit.raiseUnit} 在同批内登记， 否则次日推进会在 {@code
+ * CLASSROW_POPULATION_PROJECTION_UNRESOLVED} 处 fail-closed。
  *
  * <pre>{@code
  * {"household":"hh-unit:u-1",
@@ -37,17 +37,18 @@ import java.util.Objects;
  * <p>★★ <b>行为（一条命令只写 {@code classes} 一张表）</b>：
  *
  * <ol>
- *   <li>行不存在 ⇒ 新建 {@link HouseholdEconomy}：{@code view=(q,r|residence|stratum)}、{@code population=0}、
- *       {@code laborMilli=0}、{@code money=0}、空债务/空需求/空周期累计；{@code participationPerMille} 取载荷值；
- *   <li>行已存在 ⇒ <b>幂等 + 视图守卫</b>：{@code q/r/residence/stratum}（缺省已归一）与既有 view 不一致 ⇒ 具名拒
- *       （要搬迁走 {@code economy.MigrateHousehold}，本命令不静默挪行）；一致 ⇒ 只按<b>显式</b>
- *       {@code participationPerMille} 更新，其余字段逐值保留；
- *   <li><b>不创建</b> {@code FlowRow}、{@code HouseholdClassMembership}、政府、账户——账户归 actor 切片，由同批
- *       {@code actor.EnsureHouseholdAccount} 补；成员真值始终在 Social。
+ *   <li>行不存在 ⇒ 新建 {@link HouseholdEconomy}：{@code view=(q,r|residence|stratum)}、{@code
+ *       population=0}、 {@code laborMilli=0}、{@code money=0}、空债务/空需求/空周期累计；{@code
+ *       participationPerMille} 取载荷值；
+ *   <li>行已存在 ⇒ <b>幂等 + 视图守卫</b>：{@code q/r/residence/stratum}（缺省已归一）与既有 view 不一致 ⇒ 具名拒 （要搬迁走 {@code
+ *       economy.MigrateHousehold}，本命令不静默挪行）；一致 ⇒ 只按<b>显式</b> {@code participationPerMille}
+ *       更新，其余字段逐值保留；
+ *   <li><b>不创建</b> {@code FlowRow}、{@code HouseholdClassMembership}、政府、账户——账户归 actor 切片，由同批 {@code
+ *       actor.EnsureHouseholdAccount} 补；成员真值始终在 Social。
  * </ol>
  *
- * <p>★ <b>{@code q/r} 不要求该格有产业</b>：{@code EconomyData} 只在 flows 行存在时要求 view 有产业；本命令建的是零人口登记行，
- * 没有 flow。
+ * <p>★ <b>{@code q/r} 不要求该格有产业</b>：{@code EconomyData} 只在 flows 行存在时要求 view 有产业；本命令建的是零人口登记行， 没有
+ * flow。
  *
  * <p>★ <b>GM-only</b>：实现 {@link GmOnlyCommand} —— 它写的是经济身份注册（结构写口），排除出决策令白名单 / RegisterEffect /
  * 决策人目录；仍注册到 Core、GM 的 {@code simos.command.submit} 与 app 组合工具（{@code simos.unit.raiseUnit}）在 GM
@@ -170,8 +171,8 @@ public final class EconomyRegisterHouseholdHandler
   }
 
   /**
-   * 已解析的一条家户登记：{@code q/r/residence/stratum} 是"归一后的视图"（缺省在此补 urban / landless_laborer），
-   * {@code participationSpecified} 标记"载荷是否显式给了参与率"（缺省 = 新建取 0、既有限有值保留）。
+   * 已解析的一条家户登记：{@code q/r/residence/stratum} 是"归一后的视图"（缺省在此补 urban / landless_laborer）， {@code
+   * participationSpecified} 标记"载荷是否显式给了参与率"（缺省 = 新建取 0、既有限有值保留）。
    */
   private record Registration(
       HouseholdId household,

@@ -109,9 +109,7 @@ class HexTradeCostTest {
   @Test
   void singleRegionCostMilliPerUnitIsAlwaysZero() {
     HexTradeCost cost = new HexTradeCost(topology());
-    assertThat(HexTradeCost.HEX_TRADE_COST_MILLI_PER_UNIT)
-        .as("★ 第一版单区货币运费恒 0（唯一拼写点）")
-        .isZero();
+    assertThat(HexTradeCost.HEX_TRADE_COST_MILLI_PER_UNIT).as("★ 第一版单区货币运费恒 0（唯一拼写点）").isZero();
     assertThat(cost.costMilliPerUnit(H00, H00)).as("同格 0").isZero();
     assertThat(cost.costMilliPerUnit(H00, H99)).as("跨格也是 0（货币运费留给后续承运人批次）").isZero();
   }

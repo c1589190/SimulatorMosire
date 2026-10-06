@@ -16,19 +16,18 @@ import io.mosire.simos.app.testing.UnitHouseholdWorldFixture;
 import io.mosire.simos.app.time.CalendarService;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.core.CoreSimos;
-import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
-import io.mosire.simos.social.api.lookup.PopulationLookup;
 import io.mosire.simos.social.api.population.HouseholdVitalRates;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.household.HouseholdBook;
 import io.mosire.simos.social.household.SocialLookupAdapter;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
@@ -46,9 +45,9 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * ★★ <b>S3a 正式验收：unit/social 一致性组合工具</b>（S3a spec §3.3/§4.3/§7；任务书 B5/B6）。
  *
- * <p>判据：{@code simos.unit.assignHousehold} 同一批命令让 Social 的 {@code location=UNIT(unitId)} 与
- * {@code Unit.households} 同时变化（一条 revision）；{@code detachHousehold} 反向；preview 零写；未知 unit/household
- * 或一侧失败 ⇒ 整批不落 revision、无半更新；GOV 多群体示例的实时人口 = 两户成员数之和。
+ * <p>判据：{@code simos.unit.assignHousehold} 同一批命令让 Social 的 {@code location=UNIT(unitId)} 与 {@code
+ * Unit.households} 同时变化（一条 revision）；{@code detachHousehold} 反向；preview 零写；未知 unit/household 或一侧失败
+ * ⇒ 整批不落 revision、无半更新；GOV 多群体示例的实时人口 = 两户成员数之和。
  */
 class UnitHouseholdGmToolTest {
 
@@ -56,6 +55,11 @@ class UnitHouseholdGmToolTest {
   private static final HouseholdId HH_A = HouseholdId.parse("hh-a");
   private static final HouseholdId HH_HINDU = HouseholdId.parse("hh-hindu-001");
   private static final HouseholdId HH_HAN = HouseholdId.parse("hh-han-001");
+
+  /** S3b：GOV 单位必含的政府家户（fixture 自动追加；GM assign/detach 不得把它挪走）。 */
+  private static final HouseholdId GOV_HH =
+      GovernmentHouseholds.of(UnitHouseholdWorldFixture.GOV.value());
+
   private static final PeopleLotId LOT_A = PeopleLotId.parse("lot-a");
 
   @TempDir Path tempDir;
@@ -89,11 +93,16 @@ class UnitHouseholdGmToolTest {
     ToolResult result =
         assign(
             Map.of(
-                "householdId", HH_A.value(),
-                "unitId", gov().value(),
-                "reason", "编入",
-                "expectedRevision", before,
-                "preview", false));
+                "householdId",
+                HH_A.value(),
+                "unitId",
+                gov().value(),
+                "reason",
+                "编入",
+                "expectedRevision",
+                before,
+                "preview",
+                false));
 
     assertThat(result.success()).as(result.message()).isTrue();
     long after = UnitHouseholdWorldFixture.head(core);
@@ -104,8 +113,8 @@ class UnitHouseholdGmToolTest {
         .as("Social 侧 location 变 UNIT(unitId)")
         .isEqualTo(new HouseholdLocation.Unit(gov().value()));
     assertThat(UnitHouseholdWorldFixture.unit(at, gov()).households())
-        .as("Unit 侧 households 含该家户")
-        .containsExactly(HH_A);
+        .as("Unit 侧 households 含该家户，且 S3b 政府家户必须原样保留")
+        .containsExactlyInAnyOrder(GOV_HH, HH_A);
     assertThat(UnitHouseholdWorldFixture.socialSlice(at).unitPopulation(gov().value()))
         .as("实时人口 = 家户成员数")
         .isEqualTo(7L);
@@ -119,12 +128,18 @@ class UnitHouseholdGmToolTest {
     ToolResult result =
         detach(
             Map.of(
-                "householdId", HH_A.value(),
-                "unitId", gov().value(),
-                "hex", Map.of("q", 1, "r", 2),
-                "reason", "移出",
-                "expectedRevision", headAfterAssign,
-                "preview", false));
+                "householdId",
+                HH_A.value(),
+                "unitId",
+                gov().value(),
+                "hex",
+                Map.of("q", 1, "r", 2),
+                "reason",
+                "移出",
+                "expectedRevision",
+                headAfterAssign,
+                "preview",
+                false));
 
     assertThat(result.success()).as(result.message()).isTrue();
     long after = UnitHouseholdWorldFixture.head(core);
@@ -135,8 +150,8 @@ class UnitHouseholdGmToolTest {
         .as("location 变回 HEX(1,2)")
         .isEqualTo(new HouseholdLocation.Hex(UnitHouseholdWorldFixture.H12));
     assertThat(UnitHouseholdWorldFixture.unit(at, gov()).households())
-        .as("Unit.households 移除该家户")
-        .isEmpty();
+        .as("Unit.households 移除该家户，政府家户保留")
+        .containsExactly(GOV_HH);
     assertThat(UnitHouseholdWorldFixture.socialSlice(at).unitPopulation(gov().value())).isZero();
   }
 
@@ -144,21 +159,24 @@ class UnitHouseholdGmToolTest {
   void previewWritesNoRevisionAndNoHalfUpdate() throws Exception {
     long before = UnitHouseholdWorldFixture.head(core);
 
-    ToolResult result = assign(Map.of("householdId", HH_A.value(), "unitId", gov().value(), "reason", "预览"));
+    ToolResult result =
+        assign(Map.of("householdId", HH_A.value(), "unitId", gov().value(), "reason", "预览"));
 
     assertThat(result.success()).as(result.message()).isTrue();
     JsonNode view = JSON.readTree(result.message());
     assertThat(view.path("preview").asBoolean()).as("缺省 preview=true").isTrue();
     assertThat(view.path("submitted").asBoolean()).isFalse();
-    assertThat(UnitHouseholdWorldFixture.head(core)).as("preview 一个 revision 都不写").isEqualTo(before);
+    assertThat(UnitHouseholdWorldFixture.head(core))
+        .as("preview 一个 revision 都不写")
+        .isEqualTo(before);
 
     SimulationState at = UnitHouseholdWorldFixture.replay(core, before);
     assertThat(UnitHouseholdWorldFixture.socialSlice(at).requireHousehold(HH_A).location())
         .as("preview 不写 Social 侧")
         .isEqualTo(new HouseholdLocation.Hex(UnitHouseholdWorldFixture.H11));
     assertThat(UnitHouseholdWorldFixture.unit(at, gov()).households())
-        .as("preview 不写 Unit 侧")
-        .isEmpty();
+        .as("preview 不写 Unit 侧（政府家户原样）")
+        .containsExactly(GOV_HH);
   }
 
   @Test
@@ -168,22 +186,32 @@ class UnitHouseholdGmToolTest {
     ToolResult unknownHousehold =
         assign(
             Map.of(
-                "householdId", "hh-missing",
-                "unitId", gov().value(),
-                "reason", "x",
-                "expectedRevision", head,
-                "preview", false));
+                "householdId",
+                "hh-missing",
+                "unitId",
+                gov().value(),
+                "reason",
+                "x",
+                "expectedRevision",
+                head,
+                "preview",
+                false));
     assertThat(unknownHousehold.success()).isFalse();
     assertThat(UnitHouseholdWorldFixture.head(core)).as("未知 household 零 revision").isEqualTo(head);
 
     ToolResult unknownUnit =
         assign(
             Map.of(
-                "householdId", HH_A.value(),
-                "unitId", "u-missing",
-                "reason", "x",
-                "expectedRevision", head,
-                "preview", false));
+                "householdId",
+                HH_A.value(),
+                "unitId",
+                "u-missing",
+                "reason",
+                "x",
+                "expectedRevision",
+                head,
+                "preview",
+                false));
     assertThat(unknownUnit.success()).isFalse();
     assertThat(UnitHouseholdWorldFixture.head(core)).as("未知 unit 零 revision").isEqualTo(head);
 
@@ -192,15 +220,18 @@ class UnitHouseholdGmToolTest {
     ToolResult failingSide =
         assign(
             Map.of(
-                "householdId", UnitHouseholdWorldFixture.OTHER.value(),
-                "unitId", gov().value(),
-                "reason", "x",
-                "expectedRevision", head,
-                "preview", false));
+                "householdId",
+                UnitHouseholdWorldFixture.OTHER.value(),
+                "unitId",
+                gov().value(),
+                "reason",
+                "x",
+                "expectedRevision",
+                head,
+                "preview",
+                false));
     assertThat(failingSide.success()).isFalse();
-    assertThat(failingSide.message())
-        .as("拒因必须指名撞名（不是被吞成空成功）")
-        .contains("撞名");
+    assertThat(failingSide.message()).as("拒因必须指名撞名（不是被吞成空成功）").contains("撞名");
     assertThat(UnitHouseholdWorldFixture.head(core)).as("失败一侧整批零 revision").isEqualTo(head);
 
     SimulationState at = UnitHouseholdWorldFixture.replay(core, head);
@@ -213,7 +244,7 @@ class UnitHouseholdGmToolTest {
                 .location())
         .as("失败批的第一条 social 命令不得落盘")
         .isEqualTo(new HouseholdLocation.Hex(UnitHouseholdWorldFixture.H11));
-    assertThat(UnitHouseholdWorldFixture.unit(at, gov()).households()).isEmpty();
+    assertThat(UnitHouseholdWorldFixture.unit(at, gov()).households()).containsExactly(GOV_HH);
   }
 
   // ── B6：GOV 多群体示例 ────────────────────────────────────────────────
@@ -237,9 +268,14 @@ class UnitHouseholdGmToolTest {
     assertThat(lookup.householdPopulation(HH_HAN)).isEqualTo(3L);
 
     Unit gov = UnitHouseholdWorldFixture.unit(UnitHouseholdWorldFixture.replay(core, 1), gov());
-    GovFormation formation = (GovFormation) gov.module().orElseThrow();
-    assertThat(gov.households()).containsExactly(HH_HINDU, HH_HAN);
-    assertThat(formation.households()).as("GovFormation 下辖家户读口一致").containsExactly(HH_HINDU, HH_HAN);
+    GovernmentFormation formation = (GovernmentFormation) gov.module().orElseThrow();
+    HouseholdId govHousehold = GovernmentHouseholds.of(gov().value());
+    assertThat(gov.households())
+        .as("S3b：GOV 的 households 必含政府家户；编制配置的家户同表")
+        .containsExactly(HH_HINDU, HH_HAN, govHousehold);
+    assertThat(formation.governmentPostsOfHousehold().keySet())
+        .as("GovernmentFormation 领导层家户配置读口")
+        .containsExactly(HH_HINDU, HH_HAN);
 
     Map<String, Object> view =
         ApiViews.unit(
@@ -254,13 +290,16 @@ class UnitHouseholdGmToolTest {
     assertThat(view.get("population")).as("读口 population 同样是两户之和").isEqualTo(8L);
     @SuppressWarnings("unchecked")
     List<String> unitHouseholds =
-        ((List<Map<String, Object>>) view.get("households")).stream()
-            .map(row -> (String) row.get("id"))
-            .toList();
-    assertThat(unitHouseholds).containsExactly(HH_HINDU.value(), HH_HAN.value());
+        ((List<Map<String, Object>>) view.get("households"))
+            .stream().map(row -> (String) row.get("id")).toList();
+    assertThat(unitHouseholds)
+        .containsExactly(HH_HINDU.value(), HH_HAN.value(), govHousehold.value());
     @SuppressWarnings("unchecked")
     Map<String, Object> module = (Map<String, Object>) view.get("module");
-    assertThat((List<String>) module.get("households")).containsExactly(HH_HINDU.value(), HH_HAN.value());
+    List<Map<String, Object>> posts = (List<Map<String, Object>>) module.get("householdPosts");
+    assertThat(posts.stream().map(row -> row.get("household")).toList())
+        .as("唯一列表裁定：编制视图改发 householdPosts，不再发 households")
+        .containsExactly(HH_HINDU.value(), HH_HAN.value());
   }
 
   // ── 装置 ──────────────────────────────────────────────────────────────
@@ -273,12 +312,15 @@ class UnitHouseholdGmToolTest {
     Map<UnitId, Unit> units = new LinkedHashMap<>();
     units.put(gov(), UnitHouseholdWorldFixture.govUnit(List.of(), List.of(), Optional.empty()));
     units.put(
-        UnitHouseholdWorldFixture.OTHER, UnitHouseholdWorldFixture.plainUnit(UnitHouseholdWorldFixture.OTHER));
+        UnitHouseholdWorldFixture.OTHER,
+        UnitHouseholdWorldFixture.plainUnit(UnitHouseholdWorldFixture.OTHER));
     return new UnitState(units);
   }
 
   private static SocialData oneHouseholdSocial() {
-    SocialData social = createHousehold(SocialData.empty(), HH_A, new HouseholdLocation.Hex(UnitHouseholdWorldFixture.H11));
+    SocialData social =
+        createHousehold(
+            SocialData.empty(), HH_A, new HouseholdLocation.Hex(UnitHouseholdWorldFixture.H11));
     social = HouseholdBook.addMembers(social, HH_A, LOT_A, Sex.MALE, 7L, 0L, 0L, "seed");
     // 「失败一侧」样本：household id 与现存 unit id 撞名（social 不管 unit，故这里合法）。
     return createHousehold(
@@ -295,12 +337,13 @@ class UnitHouseholdGmToolTest {
 
   private static SocialData twoHouseholdSocial() {
     SocialData social =
-        createHousehold(
-            SocialData.empty(), HH_HINDU, new HouseholdLocation.Unit(gov().value()));
-    social = HouseholdBook.addMembers(social, HH_HINDU, PeopleLotId.parse("lot-hindu"), Sex.MALE, 5L, 0L, 0L, "seed");
+        createHousehold(SocialData.empty(), HH_HINDU, new HouseholdLocation.Unit(gov().value()));
     social =
-        createHousehold(social, HH_HAN, new HouseholdLocation.Unit(gov().value()));
-    return HouseholdBook.addMembers(social, HH_HAN, PeopleLotId.parse("lot-han"), Sex.FEMALE, 3L, 0L, 0L, "seed");
+        HouseholdBook.addMembers(
+            social, HH_HINDU, PeopleLotId.parse("lot-hindu"), Sex.MALE, 5L, 0L, 0L, "seed");
+    social = createHousehold(social, HH_HAN, new HouseholdLocation.Unit(gov().value()));
+    return HouseholdBook.addMembers(
+        social, HH_HAN, PeopleLotId.parse("lot-han"), Sex.FEMALE, 3L, 0L, 0L, "seed");
   }
 
   private static SocialData createHousehold(
@@ -318,11 +361,16 @@ class UnitHouseholdGmToolTest {
     ToolResult result =
         assign(
             Map.of(
-                "householdId", household.value(),
-                "unitId", unit.value(),
-                "reason", "编入",
-                "expectedRevision", head,
-                "preview", false));
+                "householdId",
+                household.value(),
+                "unitId",
+                unit.value(),
+                "reason",
+                "编入",
+                "expectedRevision",
+                head,
+                "preview",
+                false));
     assertThat(result.success()).as(result.message()).isTrue();
     return UnitHouseholdWorldFixture.head(core);
   }

@@ -34,17 +34,16 @@ import java.util.Optional;
  * <p>★★ <b>目标家户必须明确（缺一 ⇒ plan 级具名拒，人不能凭空消失）</b>：
  *
  * <ol>
- *   <li>{@code toHouseholdId} 精确指定：必须存在于 {@code SocialData.households()}，且 ≠ 本次退休源政府家户
- *       {@code hh-gov-<unitId>}；
+ *   <li>{@code toHouseholdId} 精确指定：必须存在于 {@code SocialData.households()}，且 ≠ 本次退休源政府家户 {@code
+ *       hh-gov-<unitId>}；
  *   <li>未给 {@code toHouseholdId} 但给了 {@code reinsertQ}/{@code reinsertR}（必须成对）：在该 hex 的 {@code
  *       social.householdsAt(hex)} 里按 {@code HouseholdId.value()} 升序取<b>第一个有人口</b>的家户；没有 ⇒ 具名拒；
  *   <li>两者都没给 ⇒ <b>plan 级具名拒</b>（本工具不再允许"人不回写社会"；也不再用"并入最小 id 批次"的旧近似）。
  * </ol>
  *
- * <p>★★ <b>政府家户前置（缺一 ⇒ plan 级具名拒，不猜、不新建第二户）</b>：退休源恒为 {@link
- * GovernmentHouseholds#of(String)} = {@code hh-gov-<unitId>}；必须<b>同时</b>出现在 {@code Unit.households()}（否则该 GOV
- * 单位的家户关系数据坏）与 {@code social.households()}（否则 Social 里没有可转人的源家户）；且政府家户人口必须
- * ≥ {@code count}（不足 ⇒ 具名拒，不发批、零 revision）。
+ * <p>★★ <b>政府家户前置（缺一 ⇒ plan 级具名拒，不猜、不新建第二户）</b>：退休源恒为 {@link GovernmentHouseholds#of(String)} =
+ * {@code hh-gov-<unitId>}；必须<b>同时</b>出现在 {@code Unit.households()}（否则该 GOV 单位的家户关系数据坏）与 {@code
+ * social.households()}（否则 Social 里没有可转人的源家户）；且政府家户人口必须 ≥ {@code count}（不足 ⇒ 具名拒，不发批、零 revision）。
  *
  * <p>★★ <b>选人唯一拼写点</b>：只调 {@link HouseholdManpowerAllocator#allocateFromHousehold}（家户份额瀑布；本类不另写
  * 排序/过滤/扣减），退休调用<b>不传过滤</b>（{@code Optional.empty()} / {@code Optional.empty()}）——政府编制家户里可能含
@@ -52,14 +51,13 @@ import java.util.Optional;
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SubmitHouseholdWorkOrder}（{@code
  * orderId=gov-retire:<unitId>:<role>:<tick>:<count>:<目标家户>} 确定性幂等键；target = 目标家户；逐来源 {@code
- * TRANSFER_MEMBERS(from=hh-gov-<unitId>, to=目标家户, lotId, count=taken)}）→ {@code unit.DismissStaff}（形状不变）
- * →（待遇 &gt; 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}（地址 = 单位 canonical，key={@code retireStaff}，
- * value=JSON <b>字符串</b>，含目标家户/来源 shares，note=人可读摘要）。四条共享同一 batchId 与同一
- * branch/expectedRevision ⇒ 一条 revision。
+ * TRANSFER_MEMBERS(from=hh-gov-<unitId>, to=目标家户, lotId, count=taken)}）→ {@code
+ * unit.DismissStaff}（形状不变） →（待遇 &gt; 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}（地址 = 单位
+ * canonical，key={@code retireStaff}， value=JSON <b>字符串</b>，含目标家户/来源 shares，note=人可读摘要）。四条共享同一
+ * batchId 与同一 branch/expectedRevision ⇒ 一条 revision。
  *
- * <p>★★ <b>守恒</b>：GOV roster 前 − count == roster 后；待遇支付额 == {@code retirementPerStaff × count}；政府家户人口
- * 前 − count == 后；目标家户人口 前 + count == 后；世界 Social 总人口不变（转移只改份额归属，不改批次人数）。Plan
- * 构造期逐值互校。
+ * <p>★★ <b>守恒</b>：GOV roster 前 − count == roster 后；待遇支付额 == {@code retirementPerStaff ×
+ * count}；政府家户人口 前 − count == 后；目标家户人口 前 + count == 后；世界 Social 总人口不变（转移只改份额归属，不改批次人数）。Plan 构造期逐值互校。
  *
  * <p>★ <b>确定性 / 保序不可变</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；来源表按 {@code
  * HouseholdManpowerAllocator} 的全序瀑布序，用 {@link List#copyOf} 冻结。
@@ -166,15 +164,11 @@ final class GovRetireStaffPlan {
       Household target = social.households().get(requested);
       if (target == null) {
         throw new IllegalArgumentException(
-            "toHouseholdId 指向的家户不存在: "
-                + requested.value()
-                + "（目标家户必须在 Social 里；本工具不猜、不新建第二户）");
+            "toHouseholdId 指向的家户不存在: " + requested.value() + "（目标家户必须在 Social 里；本工具不猜、不新建第二户）");
       }
       if (requested.equals(governmentHousehold)) {
         throw new IllegalArgumentException(
-            "toHouseholdId 不得是退休源政府家户 "
-                + governmentHousehold.value()
-                + "（源与目标相同会被域层拒；人必须转到别的家户）");
+            "toHouseholdId 不得是退休源政府家户 " + governmentHousehold.value() + "（源与目标相同会被域层拒；人必须转到别的家户）");
       }
       targetHousehold = requested;
       if (target.location() instanceof HouseholdLocation.Hex at) {
@@ -330,35 +324,22 @@ final class GovRetireStaffPlan {
       }
       if (governmentPopulationBefore < dismissal.count()) {
         throw new IllegalArgumentException(
-            "内部分摊不自洽：政府家户人口 "
-                + governmentPopulationBefore
-                + " < count="
-                + dismissal.count());
+            "内部分摊不自洽：政府家户人口 " + governmentPopulationBefore + " < count=" + dismissal.count());
       }
       if (targetPopulationBefore < 0L || targetPopulationAfter < targetPopulationBefore) {
         throw new IllegalArgumentException(
-            "内部分摊不自洽：目标家户人口 "
-                + targetPopulationBefore
-                + "→"
-                + targetPopulationAfter);
+            "内部分摊不自洽：目标家户人口 " + targetPopulationBefore + "→" + targetPopulationAfter);
       }
       long expectedTargetAfter;
       try {
         expectedTargetAfter = Math.addExact(targetPopulationBefore, dismissal.count());
       } catch (ArithmeticException e) {
         throw new IllegalArgumentException(
-            "目标家户人口溢出 long: before="
-                + targetPopulationBefore
-                + " + count="
-                + dismissal.count(),
-            e);
+            "目标家户人口溢出 long: before=" + targetPopulationBefore + " + count=" + dismissal.count(), e);
       }
       if (targetPopulationAfter != expectedTargetAfter) {
         throw new IllegalArgumentException(
-            "内部分摊不自洽：目标家户人口后 "
-                + targetPopulationAfter
-                + " != before+count="
-                + expectedTargetAfter);
+            "内部分摊不自洽：目标家户人口后 " + targetPopulationAfter + " != before+count=" + expectedTargetAfter);
       }
       if (available < dismissal.count()) {
         throw new IllegalArgumentException(
@@ -393,9 +374,8 @@ final class GovRetireStaffPlan {
     }
 
     /**
-     * 本工具将落的命令类型（批内固定顺序；preview 视图与 apply 组批共用这一处）：
-     * {@code social.SubmitHouseholdWorkOrder} → {@code unit.DismissStaff} →
-     * （待遇 &gt; 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}。
+     * 本工具将落的命令类型（批内固定顺序；preview 视图与 apply 组批共用这一处）： {@code social.SubmitHouseholdWorkOrder} →
+     * {@code unit.DismissStaff} → （待遇 &gt; 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}。
      */
     List<String> commandTypes() {
       List<String> types = new ArrayList<>(4);
@@ -409,8 +389,8 @@ final class GovRetireStaffPlan {
     }
 
     /**
-     * 工单确定性幂等键：{@code gov-retire:<unitId>:<role>:<tick>:<count>:<目标家户>}。同一批参数在同一 tick
-     * 重放 ⇒ 命中幂等键、整单具名拒，不重复改人口。
+     * 工单确定性幂等键：{@code gov-retire:<unitId>:<role>:<tick>:<count>:<目标家户>}。同一批参数在同一 tick 重放 ⇒
+     * 命中幂等键、整单具名拒，不重复改人口。
      */
     String orderId() {
       return "gov-retire:"
@@ -426,9 +406,9 @@ final class GovRetireStaffPlan {
     }
 
     /**
-     * {@code social.SubmitHouseholdWorkOrder} 载荷（Map 形态；preview 视图直接可用）：
-     * {@code orderId}/{@code target}/{@code reason}/{@code source.module="gov"} + 逐来源一条
-     * {@code TRANSFER_MEMBERS(from=政府家户, to=目标家户, lotId, count=taken)}。
+     * {@code social.SubmitHouseholdWorkOrder} 载荷（Map 形态；preview 视图直接可用）： {@code orderId}/{@code
+     * target}/{@code reason}/{@code source.module="gov"} + 逐来源一条 {@code TRANSFER_MEMBERS(from=政府家户,
+     * to=目标家户, lotId, count=taken)}。
      */
     Map<String, Object> workOrderPayload(String reason) {
       requireReason(reason);

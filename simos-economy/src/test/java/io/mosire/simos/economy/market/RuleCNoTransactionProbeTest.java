@@ -37,9 +37,7 @@ class RuleCNoTransactionProbeTest {
 
     RoundResult second = economy.runRound(2);
     assertThat(second.trades()).as("有人买 ⇒ 成交").isNotEmpty();
-    assertThat(second.trades().get(0).basePrice())
-        .as("ref=0 时按 GM 初始价 100 成交")
-        .isEqualTo(100L);
+    assertThat(second.trades().get(0).basePrice()).as("ref=0 时按 GM 初始价 100 成交").isEqualTo(100L);
     assertThat(second.refs().get("H").get(Good.GRAIN)).as("成交后 ref 出现").isPositive();
   }
 }

@@ -8,13 +8,13 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
-import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentLevel;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.RelativeOffset;
@@ -32,7 +32,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
- * ★★ **{@code NationSummary} 派生视图**（阶段 12，计划 §2.4）：每个 {@link GovLevel#CENTRAL} 根沿 {@code
+ * ★★ **{@code NationSummary} 派生视图**（阶段 12，计划 §2.4）：每个 {@link GovernmentLevel#CENTRAL} 根沿 {@code
  * superiorGov} 向下聚合自己 + 全部下级 GOV，汇总显示名、名义区域与人口。
  *
  * <p>★ 判据逐值：
@@ -66,9 +66,9 @@ class NationSummaryTest {
   void centralRootAggregatesItselfAndItsWholeSubtree() {
     UnitState units =
         stateOf(
-            gov(CENTRAL, "中央 GOV", Optional.empty(), GovLevel.CENTRAL, R_ROOT),
-            gov(PROVINCE, "省 GOV", Optional.of(CENTRAL), GovLevel.PROVINCE, R_CHILD),
-            gov(GRAND, "县 GOV", Optional.of(PROVINCE), GovLevel.PROVINCE, R_GRAND));
+            gov(CENTRAL, "中央 GOV", Optional.empty(), GovernmentLevel.CENTRAL, R_ROOT),
+            gov(PROVINCE, "省 GOV", Optional.of(CENTRAL), GovernmentLevel.PROVINCE, R_CHILD),
+            gov(GRAND, "县 GOV", Optional.of(PROVINCE), GovernmentLevel.PROVINCE, R_GRAND));
     GameMap map =
         ScopeFixtures.mapOf(
             ScopeFixtures.taggedRegion("r-root", null, H11, H12),
@@ -100,7 +100,8 @@ class NationSummaryTest {
 
   @Test
   void noCentralGovMeansAnEmptyList() {
-    UnitState units = stateOf(gov(PROVINCE, "省 GOV", Optional.empty(), GovLevel.PROVINCE, R_CHILD));
+    UnitState units =
+        stateOf(gov(PROVINCE, "省 GOV", Optional.empty(), GovernmentLevel.PROVINCE, R_CHILD));
     GameMap map = ScopeFixtures.mapOf(ScopeFixtures.taggedRegion("r-child", null, H11));
 
     assertThat(NationSummary.of(units, map, social(Map.of(H11, 10L))))
@@ -112,9 +113,9 @@ class NationSummaryTest {
   void everyCentralGovGetsItsOwnSubtree() {
     UnitState units =
         stateOf(
-            gov(CENTRAL, "甲国中央", Optional.empty(), GovLevel.CENTRAL, R_ROOT),
-            gov(PROVINCE, "甲国省", Optional.of(CENTRAL), GovLevel.PROVINCE, R_CHILD),
-            gov(CENTRAL_B, "乙国中央", Optional.empty(), GovLevel.CENTRAL, R_OTHER));
+            gov(CENTRAL, "甲国中央", Optional.empty(), GovernmentLevel.CENTRAL, R_ROOT),
+            gov(PROVINCE, "甲国省", Optional.of(CENTRAL), GovernmentLevel.PROVINCE, R_CHILD),
+            gov(CENTRAL_B, "乙国中央", Optional.empty(), GovernmentLevel.CENTRAL, R_OTHER));
     GameMap map =
         ScopeFixtures.mapOf(
             ScopeFixtures.taggedRegion("r-root", null, H11),
@@ -140,8 +141,8 @@ class NationSummaryTest {
   void aCentralWithEmptyJurisdictionStillAggregatesChildren() {
     UnitState units =
         stateOf(
-            gov(CENTRAL, "中央 GOV", Optional.empty(), GovLevel.CENTRAL),
-            gov(PROVINCE, "省 GOV", Optional.of(CENTRAL), GovLevel.PROVINCE, R_CHILD));
+            gov(CENTRAL, "中央 GOV", Optional.empty(), GovernmentLevel.CENTRAL),
+            gov(PROVINCE, "省 GOV", Optional.of(CENTRAL), GovernmentLevel.PROVINCE, R_CHILD));
     GameMap map = ScopeFixtures.mapOf(ScopeFixtures.taggedRegion("r-child", null, H12, H13));
     SocialData social = social(Map.of(H12, 200L, H13, 35L));
 
@@ -156,8 +157,8 @@ class NationSummaryTest {
   void aHandBuiltCycleDoesNotHang() {
     UnitState units =
         stateOf(
-            gov(CENTRAL, "环中央", Optional.of(PROVINCE), GovLevel.CENTRAL, R_ROOT),
-            gov(PROVINCE, "环省", Optional.of(CENTRAL), GovLevel.PROVINCE, R_CHILD));
+            gov(CENTRAL, "环中央", Optional.of(PROVINCE), GovernmentLevel.CENTRAL, R_ROOT),
+            gov(PROVINCE, "环省", Optional.of(CENTRAL), GovernmentLevel.PROVINCE, R_CHILD));
     GameMap map =
         ScopeFixtures.mapOf(
             ScopeFixtures.taggedRegion("r-root", null, H11),
@@ -182,7 +183,11 @@ class NationSummaryTest {
   }
 
   private static Unit gov(
-      UnitId id, String name, Optional<UnitId> superior, GovLevel level, RegionId... regions) {
+      UnitId id,
+      String name,
+      Optional<UnitId> superior,
+      GovernmentLevel level,
+      RegionId... regions) {
     return new Unit(
         id,
         name,
@@ -203,7 +208,10 @@ class NationSummaryTest {
         Optional.empty(),
         Unit.DEFAULT_VISION_RADIUS,
         Optional.of(jurisdiction(regions)),
-        Optional.of(new GovFormation(Map.of(), OfficePolicy.defaults(), superior, level)));
+        Optional.of(
+            new GovernmentFormation(Map.of(), Map.of(), OfficePolicy.defaults(), superior, level)),
+        Map.of(),
+        List.of(GovernmentHouseholds.of(id.value())));
   }
 
   private static Jurisdiction jurisdiction(RegionId... regions) {

@@ -25,10 +25,10 @@ import java.util.Map;
  * </pre>
  *
  * <p>★★ <b>0 价的两种含义（2026-10-09 用户口径）</b>：本表<b>没有这一行</b> = 这一格从未给该商品定价 ⇒
- * <b>不交易</b>（合法状态，不抛）；本表<b>有这一行且值为 0</b> = <b>明确 0 价免费交易</b> —— 买方不付货款（货款腿为 0）， 但<b>运费照付</b>（运费与商品价格解耦，见
- * {@code MarketSettlement} 的运费算式）。⇒ 构造期只拒绝<b>负价</b>；"有没有定价"由 {@link #hasPrice(CommodityId)}
- * 回答、"是不是免费"由 {@link #isFree(CommodityId)} 回答。{@link #priceOf(CommodityId)} 对"未定价"与"明确 0 价"
- * 都返回 0，因此<b>凡是要区分这两种状态的判定</b>必须先查 {@code hasPrice}。
+ * <b>不交易</b>（合法状态，不抛）；本表<b>有这一行且值为 0</b> = <b>明确 0 价免费交易</b> —— 买方不付货款（货款腿为 0），
+ * 但<b>运费照付</b>（运费与商品价格解耦，见 {@code MarketSettlement} 的运费算式）。⇒ 构造期只拒绝<b>负价</b>；"有没有定价"由 {@link
+ * #hasPrice(CommodityId)} 回答、"是不是免费"由 {@link #isFree(CommodityId)} 回答。{@link #priceOf(CommodityId)}
+ * 对"未定价"与"明确 0 价" 都返回 0，因此<b>凡是要区分这两种状态的判定</b>必须先查 {@code hasPrice}。
  *
  * <p>★★ <b>M2.6：本类同时给出买卖两侧的挂牌限价</b>（{@link #bidPriceOf} / {@link #askPriceOf}）—— 参考价仍在 {@link
  * #prices()} 里，两个限价由 {@link #BID_PER_MILLE} / {@link #ASK_PER_MILLE} <b>两个各自独立</b>的具名常量现算；
@@ -75,8 +75,8 @@ public record Market(CurrencyId numeraire, Map<CommodityId, Long> prices) {
   }
 
   /**
-   * ★★ <b>这一格有没有给该商品定价</b>：{@code prices} 里有这一行即为 true —— 值为 <b>0 也算定价</b>
-   * （明确 0 价免费交易）。{@link #priceOf} 无法区分"未定价"与"定价为 0"，故凡是要区分这两种状态的判定必须先查本方法。
+   * ★★ <b>这一格有没有给该商品定价</b>：{@code prices} 里有这一行即为 true —— 值为 <b>0 也算定价</b> （明确 0 价免费交易）。{@link
+   * #priceOf} 无法区分"未定价"与"定价为 0"，故凡是要区分这两种状态的判定必须先查本方法。
    */
   public boolean hasPrice(CommodityId commodity) {
     return prices.containsKey(commodity);
@@ -95,8 +95,8 @@ public record Market(CurrencyId numeraire, Map<CommodityId, Long> prices) {
    * "价差"常量同时推两边，改一边就会悄悄改另一边；照本仓"不许一个常量兼两职"的纪律拆成两个数，各自可调、各自可读。
    *
    * <p>★ <b>它只决定限价，不决定成交价</b>：成交仍按参考价（区内 = 集散节点市价、跨区 = 卖方格市价）—— 买卖双方都比自己的限价占优，
-   * 价差没有中间人截留（钱不许凭空消失）。未定价 ⇒ 返回 {@code 0}；明确 0 价（免费）也返回 {@code 0} —— 调用方必须用
-   * {@link #hasPrice(CommodityId)} 区分"不交易"与"免费"。
+   * 价差没有中间人截留（钱不许凭空消失）。未定价 ⇒ 返回 {@code 0}；明确 0 价（免费）也返回 {@code 0} —— 调用方必须用 {@link
+   * #hasPrice(CommodityId)} 区分"不交易"与"免费"。
    *
    * @param commodity 商品；不得为 null
    * @return 卖方最低可接受价（毫计价货币 / 商品单位）；没有定价 ⇒ 0；明确 0 价 ⇒ 0

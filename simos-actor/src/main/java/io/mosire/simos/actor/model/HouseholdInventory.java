@@ -20,8 +20,8 @@ import java.util.Map;
  *
  * <blockquote>
  *
- * {@code HouseholdInventory} 是新产权模型中商品余额的 {@code authoritative state}；既有 {@code simos-ledger.Account} 保持
- * legacy/unwired —— <b>不读、不写、不同步、不做镜像</b>。
+ * {@code HouseholdInventory} 是新产权模型中商品余额的 {@code authoritative state}；既有 {@code
+ * simos-ledger.Account} 保持 legacy/unwired —— <b>不读、不写、不同步、不做镜像</b>。
  *
  * </blockquote>
  *
@@ -85,11 +85,11 @@ import java.util.Map;
  * CurrencyId} 在余额表与冻结表里的键是同一个，读的人不必记两套规则， 构造期守卫也能按<b>逐条同款</b>的两段写（口径一致 —— 与 H4 把货币并进本账时给的理由是同一条）。
  *
  * <p>★ <b>冻结额也是存量</b>：<b>绝对值</b>（"现在被占用多少"），不是增量 —— 写入口给的是"这本账现在的冻结额是多少"， 与余额同一口径（{@code
- * ActorData.withInventory} 是整本覆盖）。<b>幂等由这条语义来</b>：同一个数写两次 ⇒ 状态逐字段相同。 ★ <b>0 保留</b>：冻结表同样不做任何归一 —— 一条
- * {@code 0} 的意思是"这个商品的占用<u>曾经</u>存在、现在是 0"，与"根本没有这一条"在审计上不是同一件事。
+ * ActorData.withInventory} 是整本覆盖）。<b>幂等由这条语义来</b>：同一个数写两次 ⇒ 状态逐字段相同。 ★ <b>0 保留</b>：冻结表同样不做任何归一 ——
+ * 一条 {@code 0} 的意思是"这个商品的占用<u>曾经</u>存在、现在是 0"，与"根本没有这一条"在审计上不是同一件事。
  *
- * <p>★ <b>缺键（{@code null}）⇒ 空表</b>（旧档兼容，照 {@code ActorData} 的同款口径）：M1.2 之前落盘的 {@code HouseholdInventory}
- * 没有这两张表，Jackson 会绑成 {@code null} ⇒ 收成空表、<b>此处不抛</b>（抛了等于"旧档全部读不回来"）。 ★ 方向是
+ * <p>★ <b>缺键（{@code null}）⇒ 空表</b>（旧档兼容，照 {@code ActorData} 的同款口径）：M1.2 之前落盘的 {@code
+ * HouseholdInventory} 没有这两张表，Jackson 会绑成 {@code null} ⇒ 收成空表、<b>此处不抛</b>（抛了等于"旧档全部读不回来"）。 ★ 方向是
  * fail-closed：旧档没提冻结，就是<b>没有冻结</b>。★ 而余额那两张表不适用本条：它们是这本账的<b>本体</b>，{@code null} 仍是坏数据、照样抛。
  *
  * @param key 聚合键（{@code (owner, location)}）

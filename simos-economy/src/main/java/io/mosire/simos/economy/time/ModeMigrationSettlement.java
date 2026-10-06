@@ -13,7 +13,6 @@ import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.PledgeId;
@@ -23,26 +22,27 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.LaborSource;
-import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.Payee;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionRole;
-import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.ClassShare;
-import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DefaultProductionModes;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.HouseholdDemand;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.MerchantFirm;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
-import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
@@ -76,12 +76,13 @@ import java.util.Set;
  *      实际行 population 由 App 按 outbox delta 回写为 0
  * </pre>
  *
- * <p>★★ <b>D-022 硬不变量</b>：源户的 {@code HouseholdClassMembership} / {@code ProductionEnterprise.modeId} /
- * {@code ProductionProcess.modeKey} 在本类里<b>一字不改</b>；目标 mode 只出现在目标家户（已有或新建）上。
+ * <p>★★ <b>D-022 硬不变量</b>：源户的 {@code HouseholdClassMembership} / {@code
+ * ProductionEnterprise.modeId} / {@code ProductionProcess.modeKey} 在本类里<b>一字不改</b>；目标 mode
+ * 只出现在目标家户（已有或新建）上。
  *
  * <p>★★ <b>P0 人口权威（2026-10-10）</b>：Economy 不再把人写进 {@code HouseholdEconomy.population} 当权威。
- * 投影账只服务"本笔搬多少、按什么比例搬钱/债/资产/劳动配额"；人的最终落点由 Social 工单决定，经济行人口是 App
- * 回写的物化视图。{@link EconomyPopulationTransfer} 是两条腿之间唯一的瞬态接口。
+ * 投影账只服务"本笔搬多少、按什么比例搬钱/债/资产/劳动配额"；人的最终落点由 Social 工单决定，经济行人口是 App 回写的物化视图。{@link
+ * EconomyPopulationTransfer} 是两条腿之间唯一的瞬态接口。
  *
  * <p>★★ <b>失败具名抛</b>：不静默丢人/丢债/丢钱；整段写入发生在同一个 {@link EconomySession}/revision 内。
  */
@@ -137,8 +138,10 @@ public final class ModeMigrationSettlement {
     //    （本类只允许写投影账；新建目标行不在快照里）。这条例行守卫把"经济域写人"挡在运行时。
     LinkedHashMap<HouseholdId, Long> initialPopulation = new LinkedHashMap<>(plannedPopulation);
     LinkedHashMap<HouseholdId, Long> initialLabor = new LinkedHashMap<>(plannedLabor);
-    LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships = session.sheet().classMemberships();
-    LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments = session.sheet().laborCommitments();
+    LinkedHashMap<HouseholdId, HouseholdClassMembership> classMemberships =
+        session.sheet().classMemberships();
+    LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments =
+        session.sheet().laborCommitments();
     LinkedHashMap<AssetShareId, OwnershipStake> assetShares = session.sheet().assetShares();
     LinkedHashMap<ProductionOrganizationId, ProductionEnterprise> enterprises =
         session.sheet().productionOrganizations();
@@ -189,8 +192,7 @@ public final class ModeMigrationSettlement {
     for (Map.Entry<HouseholdId, Long> entry : initialPopulation.entrySet()) {
       HouseholdEconomy row = householdEconomies.get(entry.getKey());
       if (row == null) {
-        throw new IllegalStateException(
-            "迁移不得删除已有经济行（P0：源户人口归零留 0 人口壳行）: " + entry.getKey());
+        throw new IllegalStateException("迁移不得删除已有经济行（P0：源户人口归零留 0 人口壳行）: " + entry.getKey());
       }
       long laborBefore = initialLabor.get(entry.getKey());
       if (row.population() != entry.getValue() || row.laborMilli() != laborBefore) {
@@ -266,7 +268,8 @@ public final class ModeMigrationSettlement {
               + sourcePopulation);
     }
 
-    LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> sourceLaborCommitments = new LinkedHashMap<>();
+    LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> sourceLaborCommitments =
+        new LinkedHashMap<>();
     for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
       if (laborCommitment.household().equals(source) && laborCommitment.laborMilli() > 0L) {
         sourceLaborCommitments.put(laborCommitment.id(), laborCommitment);
@@ -319,7 +322,8 @@ public final class ModeMigrationSettlement {
                   + " actual="
                   + (targetPosition == null ? "<无此位置>" : targetPosition.modeId()));
         }
-        ProductionEnterprise targetOrg = enterpriseOf(move.target(), householdEconomies, enterprises);
+        ProductionEnterprise targetOrg =
+            enterpriseOf(move.target(), householdEconomies, enterprises);
         targetUnit =
             targetOrg != null && targetOrg.unitId().isPresent() ? targetOrg.unitId().get() : null;
       } else {
@@ -365,8 +369,7 @@ public final class ModeMigrationSettlement {
       }
       plannedPopulation.put(source, Math.subtractExact(plannedPopulation.get(source), popTake));
       plannedLabor.put(source, Math.subtractExact(plannedLabor.get(source), laborTake));
-      plannedPopulation.put(
-          move.target(), Math.addExact(targetPlannedPopulationBox, popTake));
+      plannedPopulation.put(move.target(), Math.addExact(targetPlannedPopulationBox, popTake));
       plannedLabor.put(move.target(), Math.addExact(targetPlannedLaborBox, laborTake));
       populationLeft = plannedPopulation.get(source);
       laborLeft = plannedLabor.get(source);
@@ -499,14 +502,22 @@ public final class ModeMigrationSettlement {
             .trace(
                 LogEvent.of(
                     "MIGRATION_POPULATION_OUTBOX",
-                    "day", day,
-                    "source", source.value(),
-                    "target", move.target().value(),
-                    "population", popTake,
-                    "targetHex", move.targetHex().q() + "," + move.targetHex().r(),
-                    "targetMode", move.targetMode().value(),
-                    "newTarget", newTarget,
-                    "reason", move.reason()));
+                    "day",
+                    day,
+                    "source",
+                    source.value(),
+                    "target",
+                    move.target().value(),
+                    "population",
+                    popTake,
+                    "targetHex",
+                    move.targetHex().q() + "," + move.targetHex().r(),
+                    "targetMode",
+                    move.targetMode().value(),
+                    "newTarget",
+                    newTarget,
+                    "reason",
+                    move.reason()));
       }
 
       if (empties) {
@@ -555,10 +566,9 @@ public final class ModeMigrationSettlement {
   /**
    * 源户计划人口清零后的清点与退役：钱/债必须为 0；组织/unit/关系/劳动配额/商号照旧退役。
    *
-   * <p>★★ <b>P0（2026-10-10）：始终保留 0 人口壳行</b> —— {@code HouseholdEconomy} + {@code FlowRow} +
-   * {@code HouseholdClassMembership} 一律不删（不再区分"有无资产/合同残留"），不摘 crisisSignal 引用；实际行的
-   * {@code population} 由 App 在同一 revision 内按 outbox delta 回写成 0。{@code plannedPopulation} 只用于
-   * 判"源户计划归零"这一入口条件。
+   * <p>★★ <b>P0（2026-10-10）：始终保留 0 人口壳行</b> —— {@code HouseholdEconomy} + {@code FlowRow} + {@code
+   * HouseholdClassMembership} 一律不删（不再区分"有无资产/合同残留"），不摘 crisisSignal 引用；实际行的 {@code population} 由
+   * App 在同一 revision 内按 outbox delta 回写成 0。{@code plannedPopulation} 只用于 判"源户计划归零"这一入口条件。
    */
   private static void retireSource(
       HouseholdId source,
@@ -751,9 +761,13 @@ public final class ModeMigrationSettlement {
     if (householdEconomies.containsKey(target)) {
       throw new IllegalStateException("新建目标家户 id 已存在（拒绝覆盖）: " + target);
     }
-    ClassPositionId positionId = pickTargetPosition(base, move.targetMode(), sourceHouseholdEconomy);
+    ClassPositionId positionId =
+        pickTargetPosition(base, move.targetMode(), sourceHouseholdEconomy);
     CohortKey view =
-        new CohortKey(move.targetHex(), sourceHouseholdEconomy.view().residence(), sourceHouseholdEconomy.view().stratum());
+        new CohortKey(
+            move.targetHex(),
+            sourceHouseholdEconomy.view().residence(),
+            sourceHouseholdEconomy.view().stratum());
     HouseholdEconomy createdHouseholdEconomy =
         new HouseholdEconomy(
             target,
@@ -771,17 +785,15 @@ public final class ModeMigrationSettlement {
         target,
         new HouseholdClassMembership(
             target,
-            positionId, positionId,
+            positionId,
+            positionId,
             // ★ P2-B：迁移到新 mode ⇒ 只参与新位置（旧的可参与集合已随旧 mode 退出）
             Set.of(),
-            Map.of(), 0L, day, "AUTO_MIGRATION:" + move.reason()));
-    accounts.registerHousehold(
-        target,
-        move.targetHex(),
-        Map.of(),
-        Map.of(),
-        Map.of(),
-        Map.of());
+            Map.of(),
+            0L,
+            day,
+            "AUTO_MIGRATION:" + move.reason()));
+    accounts.registerHousehold(target, move.targetHex(), Map.of(), Map.of(), Map.of(), Map.of());
     return positionId;
   }
 
@@ -832,13 +844,13 @@ public final class ModeMigrationSettlement {
   }
 
   /**
-   * 为一个产业模板规划"从该 hex 的闲置份额拆出 TENANCY"的资产移动（{@link OwnershipStakeBook#apply} 唯一写口）； 任一 capacity 种类不足 ⇒
-   * null（该模板不可行）。
+   * 为一个产业模板规划"从该 hex 的闲置份额拆出 TENANCY"的资产移动（{@link OwnershipStakeBook#apply} 唯一写口）； 任一 capacity 种类不足
+   * ⇒ null（该模板不可行）。
    *
    * <p>★★ P10.7 / D-024 修复 1b：闲置判据的唯一拼写点是 {@link ModeMigrationPolicy#isIdleShare} —— {@code
-   * quantity > 0 && operator == owner && id ∉ claimed}，claimed = 既有组织 assetSources ∪ 在产 unit 占用的份额（同
-   * industry、同 operator、quantity>0）。既有商号/组织/在产 unit 在用的份额不是闲置，拆空会让组织的 assetSources
-   * 指向已删除的份额 id，或在产 unit 的产能凭空消失。
+   * quantity > 0 && operator == owner && id ∉ claimed}，claimed = 既有组织 assetSources ∪ 在产 unit
+   * 占用的份额（同 industry、同 operator、quantity>0）。既有商号/组织/在产 unit 在用的份额不是闲置，拆空会让组织的 assetSources 指向已删除的份额
+   * id，或在产 unit 的产能凭空消失。
    *
    * <p>★★ D-023：{@code availableByKind} = 本目标户随迁进来、已登记在该产业下的份额（{@code AssetKind → quantity}）。
    * 它们已经是目标户自有的产能 ⇒ 先从需求里抵减，只对缺口租闲置份额，避免同一份资产既随迁又租一遍。
@@ -931,7 +943,9 @@ public final class ModeMigrationSettlement {
       long scale =
           candidateIndustry.recipe().laborPerUnit() <= 0L
               ? 1L
-              : Math.max(1L, targetHouseholdEconomy.laborMilli() / candidateIndustry.recipe().laborPerUnit());
+              : Math.max(
+                  1L,
+                  targetHouseholdEconomy.laborMilli() / candidateIndustry.recipe().laborPerUnit());
       List<OwnershipStakeBook.Move> planned =
           planAssetMoves(
               candidate,
@@ -994,7 +1008,15 @@ public final class ModeMigrationSettlement {
     // ★★ D-023 第 5 项：新家户必须用目标产业 regime + 目标 mode 的**完整关系模板**（不再空规则全归 operator）。
     MigrationRelationPlan relationPlan =
         buildMigrationRelation(
-            move, unitId, industryId, targetActor, householdEconomies, targetHouseholdEconomy, base, day, auditLedger);
+            move,
+            unitId,
+            industryId,
+            targetActor,
+            householdEconomies,
+            targetHouseholdEconomy,
+            base,
+            day,
+            auditLedger);
     ProductionRules relation = relationPlan.relation();
     relations.put(unitId, relation);
     ProductionOrganizationId organizationId =
@@ -1045,7 +1067,8 @@ public final class ModeMigrationSettlement {
             target,
             HouseholdActors.of(target),
             activity,
-            (existingLaborCommitment == null ? 0L : existingLaborCommitment.laborMilli()) + laborTake,
+            (existingLaborCommitment == null ? 0L : existingLaborCommitment.laborMilli())
+                + laborTake,
             sourceLaborCommitment.period());
     laborCommitments.put(targetId, createdLaborCommitment);
     if (targetHouseholdEconomy == null) {
@@ -1251,7 +1274,8 @@ public final class ModeMigrationSettlement {
       OwnershipStake.RightKind kind = transferRightKind(share);
       ActorRef newOperator = transferOperator(share, targetActor);
       if (sameHex) {
-        sameHexMoves.add(new OwnershipStakeBook.Move(share.id(), take, targetActor, newOperator, kind));
+        sameHexMoves.add(
+            new OwnershipStakeBook.Move(share.id(), take, targetActor, newOperator, kind));
       } else {
         if (!isMobileAsset(asset)) {
           residualReasons.putIfAbsent(share.id(), "immobile-cross-hex:" + asset.name());
@@ -1288,7 +1312,8 @@ public final class ModeMigrationSettlement {
     int coverageIndex = 0;
     for (OwnershipStakeBook.Move assetMove : sameHexMoves) {
       coverageIndex =
-          accumulateCoverage(coverage, assetShares, createdIds, coverageIndex, assetMove.quantity());
+          accumulateCoverage(
+              coverage, assetShares, createdIds, coverageIndex, assetMove.quantity());
     }
     for (OwnershipStakeBook.RebuildMove rebuildMove : rebuildMoves) {
       coverageIndex =
@@ -1307,8 +1332,7 @@ public final class ModeMigrationSettlement {
       long quantity) {
     OwnershipStake created = assetShares.get(createdIds.get(index));
     if (created == null) {
-      throw new IllegalStateException(
-          "资产随迁目标份额在表里不存在（拒绝静默丢资产）: " + createdIds.get(index));
+      throw new IllegalStateException("资产随迁目标份额在表里不存在（拒绝静默丢资产）: " + createdIds.get(index));
     }
     coverage
         .computeIfAbsent(created.industry(), ignored -> new LinkedHashMap<>())
@@ -1512,10 +1536,9 @@ public final class ModeMigrationSettlement {
    * <p>★ 规则里的受方/工资/租率全部来自 {@link RegimeRelations#defaultRelation}；组织 inputSources/outputOwnership
    * 也取自同一关系。回退空规则时把原因同时写进持久 {@code relationTemplateRef} 与当天瞬态 ledger 审计，绝不静默。
    *
-   * <p>★★ <b>GAP-3 同源收口</b>：模板里的 {@code ToCohort(view)} 受方必须像 E2 自动组织一样在**落盘前**用当前
-   * rows 归一成 {@link Payee.ToHousehold}（唯一视图）或退回最小自留关系；否则本关系会在**当天** harvest 时被
-   * {@code requireCohortRows} 的"视图不再是唯一身份"守卫拒绝。归一逻辑不另写一份，直接复用
-   * {@link EconomyEnterpriseSettlement} 的唯一拼写点。
+   * <p>★★ <b>GAP-3 同源收口</b>：模板里的 {@code ToCohort(view)} 受方必须像 E2 自动组织一样在**落盘前**用当前 rows 归一成 {@link
+   * Payee.ToHousehold}（唯一视图）或退回最小自留关系；否则本关系会在**当天** harvest 时被 {@code requireCohortRows}
+   * 的"视图不再是唯一身份"守卫拒绝。归一逻辑不另写一份，直接复用 {@link EconomyEnterpriseSettlement} 的唯一拼写点。
    */
   private static MigrationRelationPlan buildMigrationRelation(
       ModeMigrationPolicy.MigrationMove move,
@@ -1540,8 +1563,7 @@ public final class ModeMigrationSettlement {
                 relation, householdEconomies, targetHouseholdEconomy.view().hex());
         if (normalized != null) {
           return new MigrationRelationPlan(
-              normalized,
-              "migration:" + move.reason() + ":regime:" + templateRegime.get().value());
+              normalized, "migration:" + move.reason() + ":regime:" + templateRegime.get().value());
         }
         String reason = "recipient-unresolved:" + templateRegime.get().value();
         recordRelationFallbackAudit(auditLedger, day, move, reason);

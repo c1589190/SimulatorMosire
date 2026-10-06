@@ -27,6 +27,7 @@ import io.mosire.simos.core.command.BatchResult;
 import io.mosire.simos.core.command.CommandEnvelope;
 import io.mosire.simos.core.command.CommandOutcome;
 import io.mosire.simos.core.command.CommandResult;
+import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.model.AdjudicationStatus;
@@ -36,13 +37,12 @@ import io.mosire.simos.sd.model.DirectiveCommand;
 import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
 import io.mosire.simos.sd.spi.SetDirectiveStatusHandler;
-import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.state.SdState;
-import io.mosire.simos.util.address.Address;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -524,21 +524,24 @@ public final class AdjudicateTickTool implements AgentTool {
   }
 
   /**
-   * {@code actor.RemitGovTreasury} 的命令类型专属前置校验（R3b 的 P2-C 家户口径重建）：**只能由 GOV 决策人把自己的
-   * 政府家户账户，显式上缴给自己 {@code superiorGov} 的政府家户账户**；两笔家户引用必须逐字等于双方 GOV 单位按稳定 id
-   * 派生的政府家户（{@code hh-gov-<unitId>}），且双方单位当刻有效位置都在出令决策人的 actor 可达面内。
+   * {@code actor.RemitGovTreasury} 的命令类型专属前置校验（R3b 的 P2-C 家户口径重建）：**只能由 GOV 决策人把自己的 政府家户账户，显式上缴给自己
+   * {@code superiorGov} 的政府家户账户**；两笔家户引用必须逐字等于双方 GOV 单位按稳定 id 派生的政府家户（{@code
+   * hh-gov-<unitId>}），且双方单位当刻有效位置都在出令决策人的 actor 可达面内。
    *
-   * <p>★ <b>金额不判</b>：符号/全零/余额/冻结留给域层 {@code actor.RemitGovTreasuryHandler}，本层只判归属与可达面 ——
-   * 避免第二份口径。载荷 JSON 解析失败 / 字段缺失 / 类型不对 ⇒ 具名拒（不抛到外层 TOOL_ERROR）。
+   * <p>★ <b>金额不判</b>：符号/全零/余额/冻结留给域层 {@code actor.RemitGovTreasuryHandler}，本层只判归属与可达面 —— 避免第二份口径。载荷
+   * JSON 解析失败 / 字段缺失 / 类型不对 ⇒ 具名拒（不抛到外层 TOOL_ERROR）。
    *
-   * <p>★ <b>为什么位置仍要判</b>：家户账户无格，域层 handler 的 {@code targetPaths} 给不出格路径；若在这里直接放行，
-   * "省 → 中央"的上缴就完全绕过了 {@code GovScope} 的 actor 围栏。本方法用双方 GOV 单位当刻有效位置合成
-   * {@link ResourcePaths#actor(int, int)} 两条目标，走与其余命令同一条 {@link #violations} 判据。
-   * 其他命令类型不走本方法，行为一字不动。
+   * <p>★ <b>为什么位置仍要判</b>：家户账户无格，域层 handler 的 {@code targetPaths} 给不出格路径；若在这里直接放行， "省 → 中央"的上缴就完全绕过了
+   * {@code GovScope} 的 actor 围栏。本方法用双方 GOV 单位当刻有效位置合成 {@link ResourcePaths#actor(int, int)}
+   * 两条目标，走与其余命令同一条 {@link #violations} 判据。 其他命令类型不走本方法，行为一字不动。
    */
   private static Optional<String> remitPrecheckRejection(
-      ResourceScopeMap fence, SimulationState state, Directive directive, DirectiveCommand command) {
-    DecisionMaker maker = ToolSupport.sdState(state).decisionMakers().get(directive.decisionMakerId());
+      ResourceScopeMap fence,
+      SimulationState state,
+      Directive directive,
+      DirectiveCommand command) {
+    DecisionMaker maker =
+        ToolSupport.sdState(state).decisionMakers().get(directive.decisionMakerId());
     if (maker == null) {
       return Optional.of("决策人不存在: " + directive.decisionMakerId().value());
     }
@@ -552,18 +555,18 @@ public final class AdjudicateTickTool implements AgentTool {
     }
     UnitState units = ToolSupport.unitState(state);
     Unit fromUnit = units.units().get(gov.govUnit());
-    if (fromUnit == null || !(fromUnit.module().orElse(null) instanceof GovernmentFormation fromGovernmentFormation)) {
+    if (fromUnit == null
+        || !(fromUnit.module().orElse(null)
+            instanceof GovernmentFormation fromGovernmentFormation)) {
       return Optional.of("出令决策人所属 GOV 单位不存在或不是 GOV: " + gov.govUnit().value());
     }
-    UnitId superiorId =
-        fromGovernmentFormation
-            .superiorGov()
-            .orElse(null);
+    UnitId superiorId = fromGovernmentFormation.superiorGov().orElse(null);
     if (superiorId == null) {
       return Optional.of("中央 GOV 没有 superiorGov：上缴命令只对地方 GOV 有意义: " + fromUnit.id().value());
     }
     Unit toUnit = units.units().get(superiorId);
-    if (toUnit == null || !(toUnit.module().orElse(null) instanceof GovernmentFormation toGovernmentFormation)) {
+    if (toUnit == null
+        || !(toUnit.module().orElse(null) instanceof GovernmentFormation toGovernmentFormation)) {
       return Optional.of("上级 GOV 不存在或不是 GOV: " + superiorId.value());
     }
     JsonNode payload;
@@ -583,18 +586,16 @@ public final class AdjudicateTickTool implements AgentTool {
     String expectedTo;
     try {
       expectedFrom =
-          GovernmentHouseholdResolver.requireGovernmentHousehold(fromUnit, fromUnit.id().value()).value();
+          GovernmentHouseholdResolver.requireGovernmentHousehold(fromUnit, fromUnit.id().value())
+              .value();
       expectedTo =
-          GovernmentHouseholdResolver.requireGovernmentHousehold(toUnit, toUnit.id().value()).value();
+          GovernmentHouseholdResolver.requireGovernmentHousehold(toUnit, toUnit.id().value())
+              .value();
     } catch (IllegalArgumentException e) {
       return Optional.of("上缴前置校验失败: " + e.getMessage());
     }
     if (!expectedFrom.equals(fromHousehold)) {
-      return Optional.of(
-          "上缴源必须是自己 GOV 的政府家户账户 "
-              + expectedFrom
-              + "，载荷给的是 "
-              + fromHousehold);
+      return Optional.of("上缴源必须是自己 GOV 的政府家户账户 " + expectedFrom + "，载荷给的是 " + fromHousehold);
     }
     if (!expectedTo.equals(toHousehold)) {
       return Optional.of(
@@ -612,8 +613,7 @@ public final class AdjudicateTickTool implements AgentTool {
     }
     List<String> paths =
         List.of(
-            ResourcePaths.actor(fromAt.q(), fromAt.r()),
-            ResourcePaths.actor(toAt.q(), toAt.r()));
+            ResourcePaths.actor(fromAt.q(), fromAt.r()), ResourcePaths.actor(toAt.q(), toAt.r()));
     List<String> violations = violations(fence, "actor", paths);
     if (violations.isEmpty()) {
       return Optional.empty();
@@ -644,8 +644,8 @@ public final class AdjudicateTickTool implements AgentTool {
    * none()}**"两条**方向相反**的语义——前者按既有语义回落到 {@link #TARGET_MANIFEST}（不收紧），后者必须拒。
    * 端到端路径上今天走不到"不表态"（三个内置范围函数都把 map/social/unit/actor 显式表态），故必须在这一层可测。
    *
-   * <p>★ 这是**旧签名**（单命名空间 + 裸路径），保留给既有测试/调用点；实现委托给跨命名空间重载（逐条包成
-   * {@link CommandTarget} 后走同一台 {@link ResourceAuthorizer}）。
+   * <p>★ 这是**旧签名**（单命名空间 + 裸路径），保留给既有测试/调用点；实现委托给跨命名空间重载（逐条包成 {@link CommandTarget} 后走同一台 {@link
+   * ResourceAuthorizer}）。
    */
   static List<String> violations(ResourceScopeMap fence, String namespace, List<String> paths) {
     List<CommandTarget> targets = new ArrayList<>(paths.size());
@@ -656,12 +656,12 @@ public final class AdjudicateTickTool implements AgentTool {
   }
 
   /**
-   * ★★ **2026-10-20 的跨命名空间重载**（用户裁定）：逐条判 {@link CommandTarget} 是否落在该决策人的可达面内，返回**越界的那几条资源**
-   * （空 = 全部放行）。
+   * ★★ **2026-10-20 的跨命名空间重载**（用户裁定）：逐条判 {@link CommandTarget} 是否落在该决策人的可达面内，返回**越界的那几条资源** （空 =
+   * 全部放行）。
    *
-   * <p>★★ **路径归一化按各自 namespace 做**：决策人常从读口拿到 canonical 地址（如 {@code unit:<裸 id>} /
-   * {@code social:<q>_<r>}）并原样塞回命令载荷；而目标声明约定是命名空间内路径。这里对**每个目标**去掉与它自己命名空间同名的前缀
-   * （{@code "unit:"}/{@code "social:"}…），不改其余任何字符——否则 {@code unit:unit:<id>} 会撞不上围栏（2026-10-01 R5 真实决策轮实测）。
+   * <p>★★ **路径归一化按各自 namespace 做**：决策人常从读口拿到 canonical 地址（如 {@code unit:<裸 id>} / {@code
+   * social:<q>_<r>}）并原样塞回命令载荷；而目标声明约定是命名空间内路径。这里对**每个目标**去掉与它自己命名空间同名的前缀 （{@code "unit:"}/{@code
+   * "social:"}…），不改其余任何字符——否则 {@code unit:unit:<id>} 会撞不上围栏（2026-10-01 R5 真实决策轮实测）。
    * 家户命令的目标会**跨命名空间**，所以归一化不能再看"命令类型第一段"，只能看目标自己的 namespace。
    */
   static List<String> violations(ResourceScopeMap fence, List<CommandTarget> targets) {
@@ -669,8 +669,7 @@ public final class AdjudicateTickTool implements AgentTool {
     List<String> violations = new ArrayList<>();
     for (CommandTarget target : targets) {
       ResourceId id =
-          ResourceId.of(
-              target.namespace(), normalizeTargetPath(target.namespace(), target.path()));
+          ResourceId.of(target.namespace(), normalizeTargetPath(target.namespace(), target.path()));
       if (!authorizer.allows(Operation.WRITE, id)) {
         violations.add(id.fullId());
       }

@@ -324,7 +324,8 @@ class RedactingQueryServiceTest {
     core.register(new MapCodec());
     core.register(new UnitCodec());
     core.register(new SdCodec());
-    // ★ S3a：unit 读口（RedactingQueryService.units/UnitGetTool）现在经 SocialLookupAdapter 取 households/population
+    // ★ S3a：unit 读口（RedactingQueryService.units/UnitGetTool）现在经 SocialLookupAdapter 取
+    // households/population
     //   ⇒ 夹具必须有 social 切片，否则会按"装配故障"抛（生产状态恒有该切片）。
     core.register(new SocialCodec());
     core.bootstrapGenesis(genesis());

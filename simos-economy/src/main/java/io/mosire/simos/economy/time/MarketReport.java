@@ -4,11 +4,11 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.market.PriceMode;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -55,8 +55,7 @@ import java.util.OptionalLong;
  * @param sellerOutcomes ★ S3：逐卖方槽位的只读结果（成本估计 / 成交 / 未成交原因 / 被谁挤掉）；空表 = 本轮没有卖方槽
  * @param buyerOutcomes ★ S3：逐买方槽位的只读结果（库存/覆盖/缺口/预算/下单/成交/原因）；空表 = 本轮没有买方槽
  * @param creditFills ★★ D-030：本轮信用成交的债务来源（钱货销售另在 {@link #fills()} 里一笔；借实物只有本表一笔）。
- *     它是"信用成交"与"现金成交"的分辨点：同一笔钱货销售同时出现在 {@code fills} 与 {@code creditFills}，纯现金成交
- *     只在 {@code fills}。
+ *     它是"信用成交"与"现金成交"的分辨点：同一笔钱货销售同时出现在 {@code fills} 与 {@code creditFills}，纯现金成交 只在 {@code fills}。
  */
 public record MarketReport(
     long day,
@@ -127,11 +126,11 @@ public record MarketReport(
    * ★★ <b>D-027：带区级税费读数的报告工厂</b>（唯一会填 {@link #regulatedTariffMilli()} 的入口）。
    *
    * <p>★ 为什么税费不落成 {@link Fill} 字段：本批税费<b>只记读数、不搬钱</b>（收款方未定），把它塞进成交形状会诱导
-   * 读口把它加进到货价；放在这里则"谁要是真收了"这件事一眼可辨。{@code tariffPerUnit} 里非 0 的项才产生读数；
-   * 税费按<b>成交毛量</b>折算（{@code ⌊量 × 单价税 ÷ 1000⌋}，向下取整）。
+   * 读口把它加进到货价；放在这里则"谁要是真收了"这件事一眼可辨。{@code tariffPerUnit} 里非 0 的项才产生读数； 税费按<b>成交毛量</b>折算（{@code ⌊量 ×
+   * 单价税 ÷ 1000⌋}，向下取整）。
    *
-   * @param tariffByFill 逐票单位税费（毫计价货币/商品单位；空/缺项/≤0 = 该票不记税费）—— 税费按<b>成交毛量</b>折算
-   *     （{@code ⌊量 × 单价税 ÷ 1000⌋}，向下取整）
+   * @param tariffByFill 逐票单位税费（毫计价货币/商品单位；空/缺项/≤0 = 该票不记税费）—— 税费按<b>成交毛量</b>折算 （{@code ⌊量 × 单价税 ÷
+   *     1000⌋}，向下取整）
    */
   public static MarketReport withRegulatedTariff(
       long day,
@@ -191,9 +190,7 @@ public record MarketReport(
     return report;
   }
 
-  /**
-   * ★★ <b>D-027：单 hex 即时成交笔数</b>（{@code immediate && !from.equals(to)}）—— 同一格不跨 hex，不计。
-   */
+  /** ★★ <b>D-027：单 hex 即时成交笔数</b>（{@code immediate && !from.equals(to)}）—— 同一格不跨 hex，不计。 */
   public long immediateCrossHexFills() {
     long count = 0L;
     for (Fill fill : fills) {
@@ -218,9 +215,7 @@ public record MarketReport(
     return sum;
   }
 
-  /**
-   * ★★ <b>D-027：区级税费读数合计</b>（毫计价货币）—— 本批<b>只记读数，不搬钱</b>（收款方未定）。没有调控/没有成交 ⇒ 0。
-   */
+  /** ★★ <b>D-027：区级税费读数合计</b>（毫计价货币）—— 本批<b>只记读数，不搬钱</b>（收款方未定）。没有调控/没有成交 ⇒ 0。 */
   public long regulatedTariffMilli() {
     Map<Fill, Long> byFill = REGULATED_TARIFF_BY_REPORT.get(new IdentityKey(this));
     if (byFill == null) {
@@ -353,10 +348,7 @@ public record MarketReport(
       Objects.requireNonNull(commodity, "commodity");
       if (previousPriceMilli < 0L || nextPriceMilli < 0L) {
         throw new IllegalArgumentException(
-            "PriceUpdate 的两个价格都不得为负（0 = 明确免费交易）: "
-                + previousPriceMilli
-                + " -> "
-                + nextPriceMilli);
+            "PriceUpdate 的两个价格都不得为负（0 = 明确免费交易）: " + previousPriceMilli + " -> " + nextPriceMilli);
       }
     }
   }
@@ -388,12 +380,11 @@ public record MarketReport(
    *
    * <p>★★ <b>量纲</b>：{@code quantityMilli} = 该合同本笔**本金**，单位由 {@code unit} 给出 —— {@code
    * DebtUnit.Money} 时是毫计价货币（借银买货），{@code DebtUnit.Commodity} 时是毫商品（借实物）。{@code commodity}
-   * 是这笔信用服务的商品：借货币买货 ⇒ 买到的商品；借实物 ⇒ 借出的商品。{@code hex} = 卖方槽位所在格（区内信用成交的
-   * 货物起点；单区世界里就是区内某格）。
+   * 是这笔信用服务的商品：借货币买货 ⇒ 买到的商品；借实物 ⇒ 借出的商品。{@code hex} = 卖方槽位所在格（区内信用成交的 货物起点；单区世界里就是区内某格）。
    *
    * <p>★ <b>与 {@link #fills()} 的关系</b>：借货币买货对卖方仍是一笔现金销售 ⇒ 同一笔同时写一条普通 {@code Fill}
-   * （钱货）与本条（债务来源）；借实物没有货币腿 ⇒ 只写本条，{@code fills} 不伪造一条 0 货款销售。因此"现金成交"与
-   * "信用成交"的分辨点是本表：出现在这里的 {@code (borrower, commodity)} 对应的那笔成交即信用成交。
+   * （钱货）与本条（债务来源）；借实物没有货币腿 ⇒ 只写本条，{@code fills} 不伪造一条 0 货款销售。因此"现金成交"与 "信用成交"的分辨点是本表：出现在这里的 {@code
+   * (borrower, commodity)} 对应的那笔成交即信用成交。
    *
    * @param hex 卖方槽位所在格（区内信用的货物起点）
    * @param commodity 本笔信用服务的商品（买到的或借出的）

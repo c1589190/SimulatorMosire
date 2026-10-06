@@ -36,7 +36,7 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.LossBearer;
 import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
@@ -45,26 +45,27 @@ import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
+import io.mosire.simos.economy.api.stock.DeductionReason;
+import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
+import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.model.AllocationRule;
 import io.mosire.simos.economy.model.AssetRule;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassShare;
 import io.mosire.simos.economy.model.ClassSlot;
-import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DebtContract;
-import io.mosire.simos.economy.model.DemandEntry;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdDemand;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
@@ -72,11 +73,13 @@ import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.MerchantPolicy;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionCandidate;
+import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.TransferRule;
 import io.mosire.simos.map.hex.HexCoord;
@@ -105,8 +108,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>★★ <b>S1/R3B.2/R4/E1–E6 的 API 漂移已在这里就位</b>：{@code classes}/{@code flows} 的键 = {@link
  * HouseholdId}（旧视图用 {@code HouseholdIds.ofLegacy}）；{@code relations} 挂 {@link ProductionUnitId}；
- * operator / 周期进度住在 {@link ProductionUnit} 上（不是 {@code Industry} 的旧档兼容位）；{@code EconomyData} 是 30
- * 组件记录（E1–E6 追加组件 + P10.1 {@code merchantFirms}，全部在 {@link EconomyChangeSet} 里逐一对齐）。
+ * operator / 周期进度住在 {@link ProductionProcess} 上（不是 {@code Industry} 的旧档兼容位）；{@code EconomyData} 是
+ * 29 组件记录（E1–E6 追加组件 + P10.1 {@code merchantFirms} + P4a {@code periodicAdjustments}，全部在 {@link
+ * EconomyChangeSet} 里逐一对齐）。
  *
  * <p>★ P0.1（2026-10-05）删除了 {@code classFirst} 组件：唯一经济路线是 production-runtime，本往返面同步收敛为 30 组件。
  */
@@ -164,9 +168,13 @@ class EconomyRoundTripTest {
       ModeTransitionId.idOf(ORGANIZATION, MODE_TARGET, 10L);
   private static final ClassShareId CLASS_SHARE = ClassShareId.idOf(TRANSITION, KEY_HH, POSITION);
 
+  /** ★ P4a：周期家户扣增规则夹具身份（键 == 值内 id）。 */
+  private static final PeriodicHouseholdAdjustmentId PERIODIC_ADJUSTMENT =
+      new PeriodicHouseholdAdjustmentId("adjustment-1");
+
   /**
    * ★★ T2/D9 的 operator 夹具：**非派生值**（`HOUSEHOLD:house-7`；本文件 `industry` 的 regime 是 `tenant`， 推导值 =
-   * `HOUSEHOLD:farm`）。R3B.2 起它是 {@link ProductionUnit} 的字段，不再挂在 {@code Industry} 上。
+   * `HOUSEHOLD:farm`）。R3B.2 起它是 {@link ProductionProcess} 的字段，不再挂在 {@code Industry} 上。
    */
   static final ActorRef NON_DEFAULT_OPERATOR = new ActorRef(ActorKind.HOUSEHOLD, "house-7");
 
@@ -176,12 +184,12 @@ class EconomyRoundTripTest {
 
   /** ★ R3B.1：assetShares 夹具的键（键 == 值内 id；industry 必须存在）。 */
   private static final AssetShareId FARM_SHARE =
-      AssetShare.idOf(
+      OwnershipStake.idOf(
           FARM,
           AssetKind.CATTLE,
           NON_DEFAULT_OPERATOR,
           NON_DEFAULT_OPERATOR,
-          AssetShare.RightKind.OWNED,
+          OwnershipStake.RightKind.OWNED,
           0L);
 
   /** ★ R4-E2：后两个组件的夹具键。 */
@@ -211,14 +219,14 @@ class EconomyRoundTripTest {
 
   /**
    * ★★ **I3.1「不丢失」的第二个面**（裁定 D9-1）：**显式绑定的、与制度默认值不同的** operator 参与 {@code
-   * FieldDelta<ProductionUnit>} 的差异与重建 —— 变更集既不能"看不见"它（差异退化成 {@code Unchanged}）， 也不能在重建时把它换成别的值。
+   * FieldDelta<ProductionProcess>} 的差异与重建 —— 变更集既不能"看不见"它（差异退化成 {@code Unchanged}）， 也不能在重建时把它换成别的值。
    *
    * <p>★★ <b>为什么夹具必须是非默认值</b>：{@code tenant} 的推导值是 {@code HOUSEHOLD:farm}；本用例在同一 unit id 上把
    * operator 换成 {@code HOUSEHOLD:house-7}（同一个 kind、**不同的 id**）⇒ 判别力落在 id
    * 那一维上。用派生值的话，差异与重建两边都会得到**同一个** 推导值 ⇒ 断言恒真，"operator 是标签"以最隐蔽的形式复活也没人发现。
    *
-   * <p>★ R3B.2 漂移：operator 的真值已从 {@code Industry} 移进 {@link ProductionUnit} ⇒ 本用例把同一条判别力钉在 {@code
-   * units} 组件上（旧用例的 {@code Industry.operator} 现在只是旧档兼容位，新代码不读）。
+   * <p>★ R3B.2 漂移：operator 的真值已从 {@code Industry} 移进 {@link ProductionProcess} ⇒ 本用例把同一条判别力钉在
+   * {@code units} 组件上（旧用例的 {@code Industry.operator} 现在只是旧档兼容位，新代码不读）。
    *
    * <p>★ 判别力（两条变异体各自实测）：把 {@code EconomyChangeSet.between} 的差异改成"先把两边的 operator 都归一到 regime 推导值再
    * diff"（"operator 是标签"在**变更集层**复活）⇒ 本用例的 {@code isInstanceOf(Upsert)} 那句红 （差异退化成 {@code
@@ -233,11 +241,11 @@ class EconomyRoundTripTest {
     EconomyData base =
         EconomyData.empty()
             .withIndustries(Map.of(FARM, industry(FARM)))
-            .withUnits(Map.of(unitId, unit(unitId, derived)));
+            .withProcesses(Map.of(unitId, unit(unitId, derived)));
     EconomyData target =
         EconomyData.empty()
             .withIndustries(Map.of(FARM, industry(FARM)))
-            .withUnits(Map.of(unitId, unit(unitId, explicit)));
+            .withProcesses(Map.of(unitId, unit(unitId, explicit)));
 
     // ★ 前置：夹具真的是"非默认"（`tenant` 的推导值是 HOUSEHOLD:farm，本用例给的是 HOUSEHOLD:house-7）——
     //   若两者相同，本用例的每条断言都能被"重新推导"这条规则满足 ⇒ 白写。
@@ -252,7 +260,8 @@ class EconomyRoundTripTest {
         .isInstanceOf(FieldDelta.Upsert.class);
     assertThat(cs.units().changed()).as("差异必须看得见 operator").isTrue();
     @SuppressWarnings("unchecked")
-    FieldDelta.Upsert<ProductionUnit> upserts = (FieldDelta.Upsert<ProductionUnit>) cs.units();
+    FieldDelta.Upsert<ProductionProcess> upserts =
+        (FieldDelta.Upsert<ProductionProcess>) cs.units();
     assertThat(upserts.entries().get(unitId.value()).operator())
         .as("★ 差异里带的就是 operator 那一维的**新值**（不是旧值、也不是推导值）")
         .isEqualTo(explicit);
@@ -269,18 +278,20 @@ class EconomyRoundTripTest {
   }
 
   /**
-   * ★★ <b>组件计数（E6 = 29 + P10.1 merchantFirms = 30，P2-A 删 laborSupply / memberships ⇒ 28；classFirst 已删）</b>：
-   * {@code meta} / {@code industries} / {@code classes} / {@code debtContracts} / {@code flows} / {@code
-   * allocations} / {@code relations} / {@code markets} / {@code shipments} / {@code assetShares} / {@code
+   * ★★ <b>组件计数（R4 16 → E3 24 → E4 25 → E5 27 → E6 29 → P10.1 30 → P2-A 删 laborSupply / memberships
+   * ⇒ 28 → P4a {@code periodicAdjustments} ⇒ 29；classFirst 已删）</b>： {@code meta} / {@code
+   * industries} / {@code classes} / {@code debtContracts} / {@code flows} / {@code allocations} /
+   * {@code relations} / {@code markets} / {@code shipments} / {@code assetShares} / {@code
    * operatorConditions} / {@code units} / {@code demands} / {@code candidates} / E1 的四个 / E2 的两个 /
-   * E3 的两个 / E4 的 {@code pledges} / E5 的两个 / E6 的两个 / P10.1 的 {@code merchantFirms}。
+   * E3 的两个 / E4 的 {@code pledges} / E5 的两个 / E6 的两个 / P10.1 的 {@code merchantFirms} / P4a 的 {@code
+   * periodicAdjustments}。
    *
-   * <p>★ 这个名字里的数字**故意写死**（R4 16 → E3 24 → E4 25 → E5 27 → E6 29 → P10.1 30 → P2-A 28）：
+   * <p>★ 这个名字里的数字**故意写死**（R4 16 → … → P2-A 28 → P4a 29 → 本次迁移 29）：
    * 它就是"又加/删了一个状态组件"这件事在编译/测试面上的**唯一提醒**——改动 {@code EconomyData} 而没同步变更集时，本用例当场红。
    */
   @Test
-  void changeSetHasExactlyTwentyEightComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(28);
+  void changeSetHasExactlyTwentyNineComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(29);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -315,6 +326,22 @@ class EconomyRoundTripTest {
         0L);
   }
 
+  /** ★ P4a：最小自洽的周期扣增规则（sink 档；商品腿正数即可，无需账户/家户支撑）。 */
+  private static HouseholdPeriodicAdjustment periodicAdjustment() {
+    return new HouseholdPeriodicAdjustment(
+        PERIODIC_ADJUSTMENT,
+        KEY_HH,
+        Optional.empty(),
+        Map.of(GRAIN, 5L),
+        Map.of(),
+        DeductionReason.MILITARY_SALARY,
+        30L,
+        0L,
+        0L,
+        OptionalLong.empty(),
+        "gm:test");
+  }
+
   private static EconomyData mutate(EconomyData base, String name) {
     return switch (name) {
       case "meta" -> base.withMeta(Optional.of(meta()));
@@ -323,29 +350,29 @@ class EconomyRoundTripTest {
           // ★ S1：键 = HouseholdId（视图住在行内）。先落 meta 标记（见 meta()），避免构造期自动跑旧档迁移。
           base.withMeta(Optional.of(meta()))
               .withIndustries(Map.of(FARM, industry(FARM)))
-              .withClasses(Map.of(KEY_HH, classRow(KEY_HH, KEY)));
+              .withHouseholdEconomies(Map.of(KEY_HH, classRow(KEY_HH, KEY)));
       case "debtContracts" ->
           // ★ E4a：债务的两端必须在 classes 里（v2 spec §八.2）⇒ 这个变异体必须**自带支撑的 classes**：
           //   从 EconomyData.empty() 只改债务表的旧形态在新不变量下无法自洽（本用例只断言
           //   "目标组件进了变更集 + 往返相等"，多带支撑组件不破坏任何断言）。
           base.withMeta(Optional.of(meta()))
               .withIndustries(Map.of(FARM, industry(FARM)))
-              .withClasses(
+              .withHouseholdEconomies(
                   Map.of(KEY_HH, classRow(KEY_HH, KEY), OTHER_HH, classRow(OTHER_HH, OTHER_KEY)))
               .withDebtContracts(Map.of(D1, debt()));
       case "flows" ->
           base.withMeta(Optional.of(meta()))
               .withIndustries(Map.of(FARM, industry(FARM)))
-              .withClasses(Map.of(KEY_HH, classRow(KEY_HH, KEY)))
+              .withHouseholdEconomies(Map.of(KEY_HH, classRow(KEY_HH, KEY)))
               .withFlows(Map.of(KEY_HH, flowRow(KEY_HH)));
       // ★ R2 的配额组件：自带 unit 支撑 —— activity 指到 unit、actor == unit.operator（同一件事不许两处拼写），
-      //   家户必须在 classes 里；P2-A 起上限是 ClassRow.laborMilli（这里 60_000 恰好用满）。
+      //   家户必须在 classes 里；P2-A 起上限是 HouseholdEconomy.laborMilli（这里 60_000 恰好用满）。
       case "allocations" ->
           base.withMeta(Optional.of(meta()))
               .withIndustries(Map.of(FARM, industry(FARM)))
-              .withUnits(Map.of(FARM_UNIT, unit(FARM_UNIT, NON_DEFAULT_OPERATOR)))
-              .withClasses(Map.of(KEY_HH, classRow(KEY_HH, KEY)))
-              .withAllocations(Map.of(ALLOCATION, laborAllocation()));
+              .withProcesses(Map.of(FARM_UNIT, unit(FARM_UNIT, NON_DEFAULT_OPERATOR)))
+              .withHouseholdEconomies(Map.of(KEY_HH, classRow(KEY_HH, KEY)))
+              .withLaborCommitments(Map.of(ALLOCATION, laborAllocation()));
       // ★ T2 的第 8 个组件：**自带同 operator 的 unit**（跨表守卫要求 relations 键 == 值内 activity == 已存在的
       //   unit id，且 relation.operator() == unit.operator()）。
       //   ★ 夹具是**非派生**值：operator 取 `HOUSEHOLD:house-7`（本文件夹具的 regime 是 `tenant`，
@@ -353,7 +380,7 @@ class EconomyRoundTripTest {
       case "relations" ->
           base.withMeta(Optional.of(meta()))
               .withIndustries(Map.of(FARM, industry(FARM)))
-              .withUnits(Map.of(FARM_UNIT, unit(FARM_UNIT, NON_DEFAULT_OPERATOR)))
+              .withProcesses(Map.of(FARM_UNIT, unit(FARM_UNIT, NON_DEFAULT_OPERATOR)))
               .withRelations(Map.of(FARM_UNIT, relation(FARM_UNIT, NON_DEFAULT_OPERATOR)));
       // ★ H4 的第 9 个组件：**自带支撑的格**（市场的键 = 格；本夹具的格就是 {@link #KEY} 所在那一格）。
       //   ★ 价表**非空**：空价表与"字段没进变更集"在值层面不可区分（同上面 outputPerUnit 那条理由），
@@ -365,30 +392,31 @@ class EconomyRoundTripTest {
       // ★ R3B.1 的第 12 个组件：**自带支撑的产业**（份额指名的 industry 必须存在；键 == 值内 id）。
       case "assetShares" ->
           base.withIndustries(Map.of(FARM, industry(FARM)))
-              .withAssetShares(Map.of(FARM_SHARE, share()));
+              .withOwnershipStakes(Map.of(FARM_SHARE, share()));
       // ★ S3.2 的第 13 个组件：**自带支撑的 unit**（键 = unit id；值内 industry 必须等于 unit.industry）。
       case "operatorConditions" ->
           base.withMeta(Optional.of(meta()))
               .withIndustries(Map.of(FARM, industry(FARM)))
-              .withUnits(Map.of(FARM_UNIT, unit(FARM_UNIT, NON_DEFAULT_OPERATOR)))
+              .withProcesses(Map.of(FARM_UNIT, unit(FARM_UNIT, NON_DEFAULT_OPERATOR)))
               .withOperatorConditions(Map.of(FARM_UNIT, operatorCondition()));
       // ★ R3B.2 的第 14 个组件：**自带支撑的产业**（unit 指名的技术模板必须存在；progressDays ≤ cycleDays）。
       case "units" ->
           base.withIndustries(Map.of(FARM, industry(FARM)))
-              .withUnits(Map.of(FARM_UNIT, unit(FARM_UNIT, NON_DEFAULT_OPERATOR)));
+              .withProcesses(Map.of(FARM_UNIT, unit(FARM_UNIT, NON_DEFAULT_OPERATOR)));
       // ★ R4-E2 的第 15 个组件：HEX 范围的需求自带一张**登记了该格的市场**（hexRegistered 的口径）。
       case "demands" ->
-          base.withMarkets(Map.of(KEY.hex(), market())).withDemands(Map.of(DEMAND, demand()));
+          base.withMarkets(Map.of(KEY.hex(), market()))
+              .withHouseholdDemands(Map.of(DEMAND, demand()));
       // ★ R4-E2 的第 16 个组件：候选预设自带已登记的 regime 与自洽的 output/outputPerUnit。
       case "candidates" -> base.withCandidates(Map.of(CANDIDATE, candidate()));
       // ★★ E1–E6 的追加组件：每个都自带一个最小自洽实例（引用完整性按"对侧是否提供"分段，
       //   故单组件 target 合法；moneyIssuances 是唯一需要连带 government 支撑的一组）。
       case "modes" -> base.withModes(Map.of(MODE, productionMode()));
       case "classStructures" -> base.withClassStructures(Map.of(STRUCTURE, classStructure()));
-      case "classPositions" -> base.withClassPositions(Map.of(POSITION, classPosition()));
-      case "classStandings" -> base.withClassStandings(Map.of(KEY_HH, classStanding()));
+      case "classPositions" -> base.withProductionRoles(Map.of(POSITION, classPosition()));
+      case "classStandings" -> base.withClassMemberships(Map.of(KEY_HH, classStanding()));
       case "productionOrganizations" ->
-          base.withProductionOrganizations(Map.of(ORGANIZATION, productionOrganization()));
+          base.withProductionEnterprises(Map.of(ORGANIZATION, productionOrganization()));
       case "assetRules" -> base.withAssetRules(Map.of(ASSET_RULE, assetRule()));
       case "governments" -> base.withGovernments(Map.of(GOVERNMENT, government()));
       case "moneyIssuances" ->
@@ -400,8 +428,10 @@ class EconomyRoundTripTest {
       case "crisisSignals" -> base.withCrisisSignals(Map.of(CRISIS, crisisSignal()));
       case "modeTransitions" -> base.withModeTransitions(Map.of(TRANSITION, modeTransition()));
       case "classShares" -> base.withClassShares(Map.of(CLASS_SHARE, classShare()));
-      case "merchantFirms" ->
-          base.withMerchantFirms(Map.of(MERCHANT_ORGANIZATION, merchantFirm()));
+      case "merchantFirms" -> base.withMerchantFirms(Map.of(MERCHANT_ORGANIZATION, merchantFirm()));
+      // ★ P4a 的第 31 个组件：规则只描述"从谁扣多少"，不落账户；键 == 值内 id 是唯一守卫。
+      case "periodicAdjustments" ->
+          base.withPeriodicAdjustments(Map.of(PERIODIC_ADJUSTMENT, periodicAdjustment()));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -436,6 +466,7 @@ class EconomyRoundTripTest {
       case "modeTransitions" -> cs.modeTransitions().changed();
       case "classShares" -> cs.classShares().changed();
       case "merchantFirms" -> cs.merchantFirms().changed();
+      case "periodicAdjustments" -> cs.periodicAdjustments().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -461,7 +492,7 @@ class EconomyRoundTripTest {
   }
 
   /**
-   * 一个合规矩的产业（R3B.2 起是**纯技术模板**的 12 参构造；operator / 周期进度住在 {@link ProductionUnit}
+   * 一个合规矩的产业（R3B.2 起是**纯技术模板**的 12 参构造；operator / 周期进度住在 {@link ProductionProcess}
    * 上）：两个槽位各持**劳动投入率上限** （R1.1 起不再是"人口占比"，故**不必合计 1000‰**）。{@code capacityPerUnit}
    * 非空且为正（"单位规模"的锚），各表的值侧都带商品维度。
    */
@@ -486,8 +517,8 @@ class EconomyRoundTripTest {
   }
 
   /** 一个合规矩的生产单元：身份 / operator 由调用方给，modeKey = 产业 id，周期状态取中性值。 */
-  static ProductionUnit unit(ProductionUnitId id, ActorRef operator) {
-    return new ProductionUnit(id, FARM, operator, FARM.value(), 0L, 0L, Map.of());
+  static ProductionProcess unit(ProductionUnitId id, ActorRef operator) {
+    return new ProductionProcess(id, FARM, operator, FARM.value(), 0L, 0L, Map.of());
   }
 
   static CohortKey otherKey() {
@@ -500,9 +531,9 @@ class EconomyRoundTripTest {
    *
    * <p>★ S1：行 = {@code (id, view, …)} 两件事（键 = 稳定家户身份，view = 当前格/居住/阶层）。
    */
-  static ClassRow classRow(HouseholdId id, CohortKey view) {
-    // ★★ H1（K1）：行里没有 goods 了（家户的商品库存住在 actor 切片的 GoodsAccount / 经济侧的会话工作副本里）。
-    return new ClassRow(
+  static HouseholdEconomy classRow(HouseholdId id, CohortKey view) {
+    // ★★ H1（K1）：行里没有 goods 了（家户的商品库存住在 actor 切片的 HouseholdInventory / 经济侧的会话工作副本里）。
+    return new HouseholdEconomy(
         id, view, 120L, 60000L, 800, 50L, List.of(), Map.of(GRAIN, 40L), Map.of(GRAIN, 30L), 0L);
   }
 
@@ -543,21 +574,21 @@ class EconomyRoundTripTest {
    * ★ R2 的配额夹具：批次 {@link #LOT} 把 60,000 千分劳动供给 {@link #FARM_UNIT}（activity = unit id、actor =
    * unit.operator，R3B.2 的一致性两处逐字相同）。
    */
-  static LaborAllocation laborAllocation() {
-    return new LaborAllocation(
+  static HouseholdLaborCommitment laborAllocation() {
+    return new HouseholdLaborCommitment(
         ALLOCATION, LOT, KEY_HH, NON_DEFAULT_OPERATOR, FARM_UNIT.value(), 60_000L, 1L);
   }
 
   /** ★ R3B.1 的资产份额夹具：键 == 值内 id、industry 存在；键与值都由 {@link #FARM_SHARE} 一处拼写。 */
-  static AssetShare share() {
-    return new AssetShare(
+  static OwnershipStake share() {
+    return new OwnershipStake(
         FARM_SHARE,
         FARM,
         AssetKind.CATTLE,
         NON_DEFAULT_OPERATOR,
         NON_DEFAULT_OPERATOR,
         1L,
-        AssetShare.RightKind.OWNED);
+        OwnershipStake.RightKind.OWNED);
   }
 
   /** ★ S3.2 的经营者状态夹具：键 = {@link #FARM_UNIT}，值内 industry = {@link #FARM}（跨表守卫要求两者一致）。 */
@@ -623,15 +654,15 @@ class EconomyRoundTripTest {
   }
 
   /** ★★ <b>R4-E2 的需求夹具</b>（第 15 个组件）：HEX 范围 ⇒ 自带一张登记了该格的市场（{@code hexRegistered} 接受市场键）。 */
-  static DemandEntry demand() {
-    return new DemandEntry(
+  static HouseholdDemand demand() {
+    return new HouseholdDemand(
         DEMAND,
-        DemandEntry.DemandScope.HEX,
+        HouseholdDemand.DemandScope.HEX,
         Optional.empty(),
         Optional.of(KEY.hex()),
         GRAIN,
-        DemandEntry.DemandKind.RECURRING,
-        DemandEntry.DemandUnit.TOTAL,
+        HouseholdDemand.DemandKind.RECURRING,
+        HouseholdDemand.DemandUnit.TOTAL,
         100L,
         0L,
         -1L,
@@ -653,7 +684,7 @@ class EconomyRoundTripTest {
         120L,
         new RegimeId("tenant"),
         LaborSource.SELF,
-        Set.of(AssetShare.RightKind.OWNED),
+        Set.of(OwnershipStake.RightKind.OWNED),
         Optional.empty(),
         "候选-粮");
   }
@@ -668,22 +699,22 @@ class EconomyRoundTripTest {
     return new ClassStructure(STRUCTURE, MODE, Map.of(), Map.of());
   }
 
-  static ClassPosition classPosition() {
-    return new ClassPosition(
+  static ProductionRole classPosition() {
+    return new ProductionRole(
         POSITION,
         MODE,
         "阶层位置",
-        ClassPosition.RelationToMeans.DIRECT_LABORER,
-        ClassPosition.LaborRole.PROVIDER,
-        ClassPosition.SurplusRole.WAGE_EARNER);
+        ProductionRole.RelationToMeans.DIRECT_LABORER,
+        ProductionRole.LaborRole.PROVIDER,
+        ProductionRole.SurplusRole.WAGE_EARNER);
   }
 
-  static ClassStanding classStanding() {
-    return new ClassStanding(KEY_HH, POSITION, POSITION, Map.of(), 0L, 0L, "");
+  static HouseholdClassMembership classStanding() {
+    return new HouseholdClassMembership(KEY_HH, POSITION, POSITION, Map.of(), 0L, 0L, "");
   }
 
-  static ProductionOrganization productionOrganization() {
-    return new ProductionOrganization(
+  static ProductionEnterprise productionOrganization() {
+    return new ProductionEnterprise(
         ORGANIZATION,
         MODE,
         POSITION,
@@ -692,9 +723,9 @@ class EconomyRoundTripTest {
         List.of(),
         List.of(),
         List.of(),
-        new Recipient.ToActor(NON_DEFAULT_OPERATOR),
+        new Payee.ToActor(NON_DEFAULT_OPERATOR),
         Optional.empty(),
-        ProductionOrganization.Status.SHORTAGE,
+        ProductionEnterprise.Status.SHORTAGE,
         "缺资产");
   }
 
@@ -731,7 +762,7 @@ class EconomyRoundTripTest {
         0L,
         LiquidationPolicy.PriceSource.POLICY,
         3L,
-        LiquidationPolicy.RecipientRule.CREDITOR_FIRST);
+        LiquidationPolicy.PayeeRule.CREDITOR_FIRST);
   }
 
   static HexCrisisSignal crisisSignal() {
@@ -768,15 +799,15 @@ class EconomyRoundTripTest {
    * ★★ T2 的关系夹具（R3B.2：键 / activity = unit id；**逐值非派生**）：两条规则把 E4 的两个要点各钉一条 —— 地租**显式**给 {@code
    * (hex, landlord)} cohort、自留由 {@code residualOwner} 表达而不是写一条 {@code SELF_RETENTION}。
    */
-  static ProductionRelation relation(ProductionUnitId activity, ActorRef operator) {
-    return new ProductionRelation(
+  static ProductionRules relation(ProductionUnitId activity, ActorRef operator) {
+    return new ProductionRules(
         activity,
         operator,
         null,
         List.of(
             new CompensationRule(
                 RuleType.OUTPUT_SHARE,
-                new Recipient.ToCohort(
+                new Payee.ToCohort(
                     new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, LANDLORD)),
                 Pool.GROSS_OUTPUT,
                 Weight.NONE,
@@ -787,8 +818,7 @@ class EconomyRoundTripTest {
                 10),
             new CompensationRule(
                 RuleType.FIXED_IN_KIND_PER_LABOR,
-                new Recipient.ToCohort(
-                    new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, PEASANT)),
+                new Payee.ToCohort(new CohortKey(new HexCoord(0, 0), ResidenceKind.RURAL, PEASANT)),
                 Pool.NET_AFTER_INPUTS,
                 Weight.LABOR_AMOUNT,
                 0,

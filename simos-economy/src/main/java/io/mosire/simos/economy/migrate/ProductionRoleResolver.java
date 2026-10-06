@@ -2,9 +2,9 @@ package io.mosire.simos.economy.migrate;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.ClassPositionId;
-import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -13,18 +13,19 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ <b>阶层位置解析器（E1b）</b>：旧 {@code HouseholdEconomy.view.stratum} ↔ 新 {@code HouseholdClassMembership} / {@code
- * ProductionRole} 之间的唯一纯函数入口。
+ * ★★ <b>阶层位置解析器（E1b）</b>：旧 {@code HouseholdEconomy.view.stratum} ↔ 新 {@code
+ * HouseholdClassMembership} / {@code ProductionRole} 之间的唯一纯函数入口。
  *
  * <p>★★ <b>它不参与结算，也不改变旧路径</b>：旧 {@code HouseholdClassRule} / {@code 旧结算引擎（R3a 已删除）} / {@code
- * EconomySeedHandler} / {@code EconomyStateBuilder} <b>全部原样不动</b>（旧路径仍以 {@code HouseholdEconomy.view}
- * 为准）；本类只有"未来显式迁移器或读口主动调用"时才起作用。调用与不调用都不构成行为变化 —— 唯一的区别是后者状态树里多/少四张新表。
+ * EconomySeedHandler} / {@code EconomyStateBuilder} <b>全部原样不动</b>（旧路径仍以 {@code
+ * HouseholdEconomy.view} 为准）；本类只有"未来显式迁移器或读口主动调用"时才起作用。调用与不调用都不构成行为变化 —— 唯一的区别是后者状态树里多/少四张新表。
  *
  * <p>★★ <b>只读解析的唯一口径 {@link #resolveCurrent(EconomyData, HouseholdId)}</b>（按优先级）：
  *
  * <ol>
- *   <li>{@code classStandings} 里有该户 ⇒ 返回其 {@link HouseholdClassMembership#currentPositionId()}。<b>新状态优先</b>：
- *       有显式归属后，不再回看旧 stratum，也不在这里做再分类（分类是 {@code HouseholdClassRule} 的职责）。
+ *   <li>{@code classStandings} 里有该户 ⇒ 返回其 {@link
+ *       HouseholdClassMembership#currentPositionId()}。<b>新状态优先</b>： 有显式归属后，不再回看旧
+ *       stratum，也不在这里做再分类（分类是 {@code HouseholdClassRule} 的职责）。
  *   <li>否则该户在旧 {@code classes} 里有行 ⇒ 按 {@link LegacyClassStructure#positionIdOf} 把 {@code
  *       view.stratum} 映射成默认结构的对应位置。<b>这一步不要求 {@code classPositions} 已经存在</b>：
  *       未迁移的旧档四张新表全空，此时读口仍应能回答"这户在默认结构里对应哪个位置"（否则"旧档空表兼容"会退化成 "读口必须先迁移才能读"）。
@@ -39,12 +40,13 @@ import java.util.Set;
  *       EconomyChangeSet.between(before, after)} 因此没有可提交的差异；
  *   <li><b>无事可做</b>：新状态为空且旧 {@code classes} 也为空 ⇒ 同样返回入参同一实例（没有可播种的家户）；
  *   <li><b>显式播种</b>：新状态为空且旧 {@code classes} 非空 ⇒ 返回一个新的 {@code EconomyData}，写入 E1a 的 四张表：默认 mode +
- *       默认 classStructure + 7 个默认 classPositions + 每户一条 {@code HouseholdClassMembership} （{@code original =
- *       current = positionIdOf(row.view().stratum)}，{@code retainedShares} 空表， {@code
+ *       默认 classStructure + 7 个默认 classPositions + 每户一条 {@code HouseholdClassMembership} （{@code
+ *       original = current = positionIdOf(row.view().stratum)}，{@code retainedShares} 空表， {@code
  *       lastTransitionDay = 0}，{@code reason = LegacyClassStructure.SEED_REASON}）；
- *   <li><b>最小改动面</b>：只读旧 {@code HouseholdEconomy.view.stratum} 做映射，<b>不回写</b> {@code HouseholdEconomy}，不动 {@code
- *       view}/{@code debts}/{@code memberships}/{@code assetShares} 等任何已有组件；四张新表的写入走 {@code
- *       EconomyData.with*} 逐组件写口，不新增绕过变更集的入口。本方法返回的仍是状态值，交给调用方按 Command → ChangeSet → Revision 提交。
+ *   <li><b>最小改动面</b>：只读旧 {@code HouseholdEconomy.view.stratum} 做映射，<b>不回写</b> {@code
+ *       HouseholdEconomy}，不动 {@code view}/{@code debts}/{@code memberships}/{@code assetShares}
+ *       等任何已有组件；四张新表的写入走 {@code EconomyData.with*} 逐组件写口，不新增绕过变更集的入口。本方法返回的仍是状态值，交给调用方按 Command →
+ *       ChangeSet → Revision 提交。
  * </ul>
  *
  * <p>★★ <b>为什么 {@code retainedShares} 留空而不是写 1000‰</b>：{@code original == current} 已经表达"没有发生
@@ -96,7 +98,8 @@ public final class ProductionRoleResolver {
       return data; // ★ 无事可做：没有旧家户可映射
     }
     Map<HouseholdId, HouseholdClassMembership> classMemberships = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : data.classes().entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry :
+        data.classes().entrySet()) {
       ClassPositionId positionId =
           LegacyClassStructure.positionIdOf(householdEconomyEntry.getValue().view().stratum());
       classMemberships.put(

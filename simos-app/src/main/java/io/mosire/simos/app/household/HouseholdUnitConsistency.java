@@ -229,7 +229,8 @@ public final class HouseholdUnitConsistency {
         continue;
       }
       Map<String, Long> byRole = new LinkedHashMap<>();
-      for (io.mosire.simos.unit.GovernmentPostOfHousehold post : governmentFormation.governmentPostsOfHousehold().values()) {
+      for (io.mosire.simos.unit.GovernmentPostOfHousehold post :
+          governmentFormation.governmentPostsOfHousehold().values()) {
         long population = social.householdPopulation(post.householdId());
         byRole.merge(post.role().name(), population, Long::sum);
       }

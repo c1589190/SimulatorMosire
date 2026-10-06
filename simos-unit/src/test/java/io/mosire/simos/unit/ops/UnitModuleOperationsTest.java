@@ -12,11 +12,13 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.CompositionDelta;
 import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentLevel;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.OfficePolicy;
@@ -67,15 +69,15 @@ import org.junit.jupiter.api.Test;
  * {@code MapDiff} 没人提醒要跟上，四个字段静默漂移）。
  *
  * <p>★ 本文件的每个拷贝点夹具都**同时**给非空 {@code module} 与非空 {@code jurisdiction}：丢编制（第 16 分量）或顺手清掉管辖 （第 15
- * 分量）都会当场红。**Gov 与 Army 两种编制都跑**——只测一种的话，"拷贝点只认 GovFormation"这种坏实现会活下来。
+ * 分量）都会当场红。**Gov 与 Army 两种编制都跑**——只测一种的话，"拷贝点只认 GovernmentFormation"这种坏实现会活下来。
  *
  * <p>★ 覆盖的生产写点：{@code UnitOperations} 的 {@code copy} 调用方（reparent / rename / setComposition /
  * applyCasualties / placeAt / planRoute / cancelRoute）、{@code copyFormation} 调用方（attachSubtree /
  * detachUnit / splitFormation / setOffset / reparentSubtree）、{@code
  * withSpeed}（mergeFormation）、{@code withStatus}（setStatus）、{@code
  * withRejoinTarget}（setRejoinTarget）、{@code withJurisdiction}（setJurisdiction / setTaxRate）、{@code
- * withModule}（setGovFormation / setArmyFormation），以及 {@code UnitMoves.evaluate} 的 frozen 视图、{@code
- * UnitTimeParticipant} 的 withPositionAndMovement / withMovement 两处。
+ * withModule}（setGovernmentFormation / setArmyFormation），以及 {@code UnitMoves.evaluate} 的 frozen
+ * 视图、{@code UnitTimeParticipant} 的 withPositionAndMovement / withMovement 两处。
  *
  * <p>★ 四条 GOV 编制编辑命令（{@code setGovPolicy}/{@code setGovSuperior}/{@code recruitStaff}/{@code
  * dismissStaff}）：逐条断言**只改目标字段、其余 15 组件不动**（{@link #changedComponents} 恰为 {@code module}）。
@@ -100,11 +102,12 @@ class UnitModuleOperationsTest {
 
   /** 非空 GOV 编制：三键、**故意不按枚举序**（YAMEN→POST→SCRIBE），policy 全非默认。 */
   private static final UnitModule GOV_MODULE =
-      new GovFormation(
+      new GovernmentFormation(
           orderedStaff(
               Map.entry(StaffRole.YAMEN, 2L),
               Map.entry(StaffRole.POST, 1L),
               Map.entry(StaffRole.SCRIBE, 5L)),
+          Map.of(),
           new OfficePolicy(
               111L,
               222L,
@@ -112,7 +115,7 @@ class UnitModuleOperationsTest {
               7L,
               orderedStaff(Map.entry(StaffRole.POST, 9L), Map.entry(StaffRole.SCRIBE, 6L))),
           Optional.of(U9),
-          GovLevel.PROVINCE);
+          GovernmentLevel.PROVINCE);
 
   /** 非空 Army 编制：认领一个主子 + 非空 role。 */
   private static final UnitModule ARMY_MODULE = new ArmyFormation(Optional.of(U9), "garrison");
@@ -142,14 +145,11 @@ class UnitModuleOperationsTest {
       assertCopied(
           module,
           base.units().get(U1),
-          UnitOperations.setComposition(
-                  base,
-                  U1,
-                  List.of(new CompositionEntry("步枪", 40)))
+          UnitOperations.setComposition(base, U1, List.of(new CompositionEntry("步枪", 40)))
               .units()
               .get(U1),
           op("setComposition", module),
-            "equipment");
+          "equipment");
     }
   }
 
@@ -160,14 +160,11 @@ class UnitModuleOperationsTest {
       assertCopied(
           module,
           base.units().get(U1),
-          UnitOperations.applyCasualties(
-                  base,
-                  U1,
-                  List.of(new CompositionDelta("步枪", -10)))
+          UnitOperations.applyCasualties(base, U1, List.of(new CompositionDelta("步枪", -10)))
               .units()
               .get(U1),
           op("applyCasualties", module),
-            "equipment");
+          "equipment");
     }
   }
 
@@ -388,18 +385,23 @@ class UnitModuleOperationsTest {
 
   // ── withModule：两条立编制命令 ─────────────────────────────────
 
-  /** {@code withModule} 只换第 16 分量：目标编制落上，管辖/视野/编队等 15 个分量一个不动。 */
+  /** {@code withModule} 只换 module：目标编制落上；GOV 编制还会把政府家户编入 households（唯一列表裁定）。 */
   @Test
   void setGovFormationOnlyChangesModule() {
     Unit before = plainWithJurisdiction();
     UnitState base = stateOf(before, govUnit(U9));
-    UnitState next = UnitOperations.setGovFormation(base, U1, (GovFormation) GOV_MODULE);
+    UnitState next =
+        UnitOperations.setGovernmentFormation(base, U1, (GovernmentFormation) GOV_MODULE);
 
     Unit after = next.units().get(U1);
     assertThat(after.module()).as("目标编制逐值落上").contains(GOV_MODULE);
+    assertThat(after.households())
+        .as("立 GOV 编制必须同批编入自己的政府家户")
+        .containsExactly(GovernmentHouseholds.of(U1.value()));
     assertThat(after.jurisdiction()).as("立编制不得顺手清掉管辖").isEqualTo(before.jurisdiction());
     assertThat(after.visionRadius()).as("立编制不得顺手重置视野半径").isEqualTo(before.visionRadius());
-    assertChangedExactly(before, after, "setGovFormation 的 withModule", "module");
+    assertChangedExactly(
+        before, after, "setGovernmentFormation 的 withModule", "module", "households");
   }
 
   @Test
@@ -431,7 +433,7 @@ class UnitModuleOperationsTest {
             Optional.empty());
 
     Unit after = next.units().get(U1);
-    GovFormation gov = (GovFormation) after.module().orElseThrow();
+    GovernmentFormation gov = (GovernmentFormation) after.module().orElseThrow();
     assertThat(gov.policy().grainPerStaffPerTick()).as("给了 ⇒ 覆盖").isEqualTo(999L);
     assertThat(gov.policy().clothPerStaffPerCycle()).as("没给 ⇒ 保持").isEqualTo(222L);
     assertThat(gov.policy().staffCap())
@@ -439,7 +441,7 @@ class UnitModuleOperationsTest {
         .containsExactly(Map.entry(StaffRole.POST, 9L), Map.entry(StaffRole.SCRIBE, 6L));
     assertThat(gov.staff()).as("政策编辑不得动 roster").isEqualTo(GOV_MODULE_GOV().staff());
     assertThat(gov.superiorGov()).as("政策编辑不得动上级").contains(U9);
-    assertThat(gov.level()).isEqualTo(GovLevel.PROVINCE);
+    assertThat(gov.level()).isEqualTo(GovernmentLevel.PROVINCE);
     assertChangedExactly(before, after, "setGovPolicy：只换 module（policy 在 module 内）", "module");
   }
 
@@ -450,11 +452,11 @@ class UnitModuleOperationsTest {
     UnitState next = UnitOperations.setGovSuperior(base, U1, Optional.empty());
 
     Unit after = next.units().get(U1);
-    GovFormation gov = (GovFormation) after.module().orElseThrow();
+    GovernmentFormation gov = (GovernmentFormation) after.module().orElseThrow();
     assertThat(gov.superiorGov()).as("空 = 中央（无上级）").isEmpty();
     assertThat(gov.staff()).as("改上级不得动 roster").isEqualTo(GOV_MODULE_GOV().staff());
     assertThat(gov.policy()).as("改上级不得动政策").isEqualTo(GOV_MODULE_GOV().policy());
-    assertThat(gov.level()).as("改上级不得动层级").isEqualTo(GovLevel.PROVINCE);
+    assertThat(gov.level()).as("改上级不得动层级").isEqualTo(GovernmentLevel.PROVINCE);
     assertChangedExactly(before, after, "setGovSuperior：只换 module（superior 在 module 内）", "module");
   }
 
@@ -465,7 +467,7 @@ class UnitModuleOperationsTest {
     UnitState next = UnitOperations.recruitStaff(base, U1, StaffRole.POST, 3L);
 
     Unit after = next.units().get(U1);
-    GovFormation gov = (GovFormation) after.module().orElseThrow();
+    GovernmentFormation gov = (GovernmentFormation) after.module().orElseThrow();
     assertThat(gov.staff())
         .as("roster += count；既有键保持原位（YAMEN→POST→SCRIBE）")
         .containsExactly(
@@ -474,7 +476,7 @@ class UnitModuleOperationsTest {
             Map.entry(StaffRole.SCRIBE, 5L));
     assertThat(gov.policy()).as("入编不得动政策").isEqualTo(GOV_MODULE_GOV().policy());
     assertThat(gov.superiorGov()).as("入编不得动上级").contains(U9);
-    assertThat(gov.level()).isEqualTo(GovLevel.PROVINCE);
+    assertThat(gov.level()).isEqualTo(GovernmentLevel.PROVINCE);
     assertChangedExactly(before, after, "recruitStaff：只换 module（staff 在 module 内）", "module");
   }
 
@@ -485,7 +487,7 @@ class UnitModuleOperationsTest {
     UnitState next = UnitOperations.dismissStaff(base, U1, StaffRole.YAMEN, 2L);
 
     Unit after = next.units().get(U1);
-    GovFormation gov = (GovFormation) after.module().orElseThrow();
+    GovernmentFormation gov = (GovernmentFormation) after.module().orElseThrow();
     assertThat(new ArrayList<>(gov.staff().keySet()))
         .as("减到 0 保留键、键序不变")
         .containsExactly(StaffRole.YAMEN, StaffRole.POST, StaffRole.SCRIBE);
@@ -593,8 +595,8 @@ class UnitModuleOperationsTest {
   }
 
   /** GOV_MODULE 的类型化视图（保持 record 相等语义，避免每处强转）。 */
-  private static GovFormation GOV_MODULE_GOV() {
-    return (GovFormation) GOV_MODULE;
+  private static GovernmentFormation GOV_MODULE_GOV() {
+    return (GovernmentFormation) GOV_MODULE;
   }
 
   // ── 夹具 ───────────────────────────────────────────────────────
@@ -638,7 +640,8 @@ class UnitModuleOperationsTest {
   private static Unit govUnit(UnitId id) {
     return unit(
         id,
-        new GovFormation(Map.of(), OfficePolicy.defaults(), Optional.empty(), GovLevel.CENTRAL),
+        new GovernmentFormation(
+            Map.of(), Map.of(), OfficePolicy.defaults(), Optional.empty(), GovernmentLevel.CENTRAL),
         2);
   }
 
@@ -676,7 +679,27 @@ class UnitModuleOperationsTest {
         Optional.empty(),
         Unit.DEFAULT_VISION_RADIUS,
         jurisdiction,
-        Optional.ofNullable(module));
+        Optional.ofNullable(module),
+        Map.of(),
+        householdsFor(id, module));
+  }
+
+  /**
+   * 单位 households：GOV 编制 ⇒ 恰含自己的政府家户 {@code hh-gov-<unitId>}（{@code UnitState} 构造期不变量）；
+   * 领导配置家户（本夹具的编制都不带配置）与 Army 编制 ⇒ 空表。
+   */
+  private static List<HouseholdId> householdsFor(UnitId id, UnitModule module) {
+    if (!(module instanceof GovernmentFormation governmentFormation)) {
+      return List.of();
+    }
+    List<HouseholdId> households = new ArrayList<>();
+    households.add(GovernmentHouseholds.of(id.value()));
+    for (HouseholdId household : governmentFormation.governmentPostsOfHousehold().keySet()) {
+      if (!households.contains(household)) {
+        households.add(household);
+      }
+    }
+    return households;
   }
 
   /** 无编制的 canonical 16 参形态（jurisdiction/视野非默认，给 withModule 的"只改 module"用例防顺手清字段）。 */
@@ -756,7 +779,9 @@ class UnitModuleOperationsTest {
         unit.rejoinTarget(),
         unit.visionRadius(),
         unit.jurisdiction(),
-        unit.module());
+        unit.module(),
+        unit.stateDescriptions(),
+        unit.households());
   }
 
   private static Route corridor() {

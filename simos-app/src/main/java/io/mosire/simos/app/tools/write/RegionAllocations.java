@@ -1,17 +1,17 @@
 package io.mosire.simos.app.tools.write;
 
 import io.mosire.simos.actor.ActorData;
-import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.calendar.CalendarClock;
+import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.population.PopulationGroup;
-import io.mosire.simos.social.api.population.Sex;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -28,8 +28,8 @@ import java.util.function.ToLongFunction;
  * 都只准调它，不许再写第二份。
  *
  * <p>★ <b>家户账瀑布</b>（{@link #allocateAccounts}）：region 各 hex 上 {@link ActorKind#HOUSEHOLD} 的账 → 可用量
- * ≤ 0 的 不进来源表 → 按“可用量降序、同量按 {@link io.mosire.simos.actor.model.HouseholdAccountKey#toString()} 升序”逐户扣满。
- * 额度函数由调用方给（粮 / 钱各走 {@link io.mosire.simos.actor.model.AvailableStock} 的对应重载，本类不写减法）。
+ * ≤ 0 的 不进来源表 → 按“可用量降序、同量按 {@link io.mosire.simos.actor.model.HouseholdAccountKey#toString()}
+ * 升序”逐户扣满。 额度函数由调用方给（粮 / 钱各走 {@link io.mosire.simos.actor.model.AvailableStock} 的对应重载，本类不写减法）。
  *
  * <p>★ <b>人力瀑布</b>（{@link #allocateManpower}）：{@code social.groups()} 里家户位置在 region、{@link
  * Sex#MALE}、 且 {@code AgeBracket.of(clock.system(), clock.dayNumberOfTick(tick), ageDaysAt(tick))}
@@ -95,7 +95,8 @@ final class RegionAllocations {
         continue; // 可支配为 0 的账供不出任何量，不进来源表（也不占用瀑布位次）。
       }
       candidates.add(
-          new AccountCandidate(HouseholdActors.of(key.household()), at.hex(), available, key.toString()));
+          new AccountCandidate(
+              HouseholdActors.of(key.household()), at.hex(), available, key.toString()));
     }
     // ★ 瀑布全序：可用量降序、同量按账键规范串升序（键在 Map 里唯一 ⇒ 无并列歧义）。
     candidates.sort(
@@ -283,10 +284,7 @@ final class RegionAllocations {
     }
   }
 
-  /**
-   * 一个被动批次：整组覆盖用的原始批次 + **它的来源格**（S2：位置来自家户，随来源一起冻住）+ 抽走的人数；
-   * {@code countAfter} 可为 0（合法空批）。
-   */
+  /** 一个被动批次：整组覆盖用的原始批次 + **它的来源格**（S2：位置来自家户，随来源一起冻住）+ 抽走的人数； {@code countAfter} 可为 0（合法空批）。 */
   record GroupSource(PopulationGroup group, HexCoord at, long taken) {
 
     GroupSource {

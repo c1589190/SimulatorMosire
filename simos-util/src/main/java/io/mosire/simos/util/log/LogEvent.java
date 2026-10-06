@@ -8,10 +8,9 @@ import java.util.Objects;
 /**
  * ★★ <b>通用结构化日志事件</b>（2026-10-09 用户裁定：单纯 event 完全应该放在 util）。
  *
- * <p>它只知道"事件名 + 保序字段表"，<b>不认识任何领域类型、事件词表或模块</b>：
- * {@code MIGRATION_PLAN} / {@code POPULATION_SETTLE} / {@code TAX_COLLECTED} 这些名字以及每个字段
- * 都由产生事件的那一行代码传入。领域事件（如 {@code HouseholdPopulationEvent}）仍是各域的状态类型，
- * 不搬进 util；本类型只做日志信封。
+ * <p>它只知道"事件名 + 保序字段表"，<b>不认识任何领域类型、事件词表或模块</b>： {@code MIGRATION_PLAN} / {@code POPULATION_SETTLE}
+ * / {@code TAX_COLLECTED} 这些名字以及每个字段 都由产生事件的那一行代码传入。领域事件（如 {@code
+ * HouseholdPopulationEvent}）仍是各域的状态类型， 不搬进 util；本类型只做日志信封。
  *
  * <p>行格式与既有 {@code EconomyLog}/{@code SocialLog} 的 {@code kv} 行完全一致：
  *
@@ -19,8 +18,7 @@ import java.util.Objects;
  * event=MIGRATION_PLAN day=120 moves=7 rowsBefore=138
  * </pre>
  *
- * <p>★ 与 {@link io.mosire.simos.util.time.Event} 区分：那个是"时刻 + 值 + ADD/SET"的时态值类型，
- * 不是日志事件；两者不合并。
+ * <p>★ 与 {@link io.mosire.simos.util.time.Event} 区分：那个是"时刻 + 值 + ADD/SET"的时态值类型， 不是日志事件；两者不合并。
  *
  * @param name 非空白的事件名（线格式里 {@code event=} 后面的规范串）
  * @param fields 保序不可变字段表；键非 null/空白，值可为 null（按既有 {@code kv} 原样打印）
@@ -58,8 +56,7 @@ public record LogEvent(String name, Map<String, Object> fields) {
     for (int index = 0; index < keyValues.length; index += 2) {
       Object rawKey = keyValues[index];
       if (rawKey == null || rawKey.toString().isBlank()) {
-        throw new IllegalArgumentException(
-            "LogEvent.of 第 " + (index / 2) + " 个键不得为 null/空白");
+        throw new IllegalArgumentException("LogEvent.of 第 " + (index / 2) + " 个键不得为 null/空白");
       }
       fields.put(rawKey.toString(), keyValues[index + 1]);
     }

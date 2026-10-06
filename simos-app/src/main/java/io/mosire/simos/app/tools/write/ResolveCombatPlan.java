@@ -36,26 +36,28 @@ import java.util.Set;
 
 /**
  * ★★ {@code simos.army.resolveCombat} 的<b>纯推导</b>（阶段 D4 / 用户设计 D-009 补裁 + D-010 +
- * D-012，2026-10-02；P2 人员伤亡回写 Social，2026-10-13）：从一份 {@link SimulationState} 与参数算出结算
- * {@link Plan}——<b>不碰 {@code ToolContext} / {@code CoreSimos}</b>，preview 与 apply 因此共用同一份语义 （工具只负责读态、组批、折叠结局）。
+ * D-012，2026-10-02；P2 人员伤亡回写 Social，2026-10-13）：从一份 {@link SimulationState} 与参数算出结算 {@link
+ * Plan}——<b>不碰 {@code ToolContext} / {@code CoreSimos}</b>，preview 与 apply 因此共用同一份语义
+ * （工具只负责读态、组批、折叠结局）。
  *
- * <p>★★ <b>职责边界（D-010/R2 + P2）</b>：Army 只做编排/随机化——判定算法委托 {@link CombatResolution}（全仓唯一）；命中结局的损失拆成两条腿：
+ * <p>★★ <b>职责边界（D-010/R2 + P2）</b>：Army 只做编排/随机化——判定算法委托 {@link
+ * CombatResolution}（全仓唯一）；命中结局的损失拆成两条腿：
  *
  * <ol>
  *   <li><b>人员损失（P2）</b>：{@code CombatUnitLoss.manpower} 只接受<b>负增量</b>；{@code lossCount = Σ|amount|}
  *       从 {@code Unit.households()} 的 Social 家户份额里抽 {@code MALE + ADULT} 人（{@link
- *       HouseholdManpowerAllocator#allocateFromHouseholds}），逐单位落一张 {@code social.SubmitHouseholdWorkOrder}
- *       （{@code REMOVE_MEMBERS} 步骤）；<b>Unit 侧不写第二本 headcount</b>；
- *   <li><b>装备损失</b>：{@code unit.AdjustComposition} 只带 {@code equipment} 维度（{@code {id,equipment}} 形状；
- *       空装备不发命令），语义与本批之前一致。
+ *       HouseholdManpowerAllocator#allocateFromHouseholds}），逐单位落一张 {@code
+ *       social.SubmitHouseholdWorkOrder} （{@code REMOVE_MEMBERS} 步骤）；<b>Unit 侧不写第二本 headcount</b>；
+ *   <li><b>装备损失</b>：{@code unit.AdjustComposition} 只带 {@code equipment} 维度（{@code {id,equipment}}
+ *       形状； 空装备不发命令），语义与本批之前一致。
  * </ol>
  *
- * <p>★★ <b>命中结局无损/只有装备损失时行为不变</b>：没有人员损失 ⇒ 不读 Social、不发 Social 工单，批内只有原来的逐单位
- * {@code unit.AdjustComposition}；装备为空的条目本来就不生成命令。
+ * <p>★★ <b>命中结局无损/只有装备损失时行为不变</b>：没有人员损失 ⇒ 不读 Social、不发 Social 工单，批内只有原来的逐单位 {@code
+ * unit.AdjustComposition}；装备为空的条目本来就不生成命令。
  *
  * <p>★★ <b>批顺序（P2 文档 §3，固定可复现）</b>：对每个涉事 unit（顺序 = 结局 {@code losses} 表序）——
- * <b>先</b>人员工单（如有）、<b>再</b>装备命令（如有）；全部单位之后是 {@code army.ResolveCombatStage}；若记录内所有阶段都已判定，
- * 再逐单位 {@code unit.SetStateDescription} 清链接；本工具无 {@code sd.PutInfo} 腿。
+ * <b>先</b>人员工单（如有）、<b>再</b>装备命令（如有）；全部单位之后是 {@code army.ResolveCombatStage}；若记录内所有阶段都已判定， 再逐单位
+ * {@code unit.SetStateDescription} 清链接；本工具无 {@code sd.PutInfo} 腿。
  *
  * <p>★★ <b>状态链接的"结束"口径（R3：不自动清，由本工具显式处理）</b>：本次判定之后若记录里**所有阶段都已判定**，则清除所有"状态键 {@code combat} 且地址恰为
  * {@code army:combat.<id>}"的单位链接（{@code unit.SetStateDescription} 省略 address = 删除）。只清**恰好链到本记录**的那些
@@ -66,9 +68,9 @@ import java.util.Set;
  * outcomeId(+seed)} 传给命令，命令再按同一种子复核一遍（见 {@link CombatResolution} 的三条语义）。
  *
  * <p>★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：记录/阶段必须存在；阶段不得已判定；显式 outcome
- * 必须在概率表里；投骰必须有概率表；命中结局里**有实际增量**的单位必须存在于 unit 切片；人员损失必须全为负增量且 {@code Σ|amount|}
- * 不溢出；人员损失单位的 {@code Unit.households()} 必须非空、其中 {@code MALE + ADULT} 份额必须够 {@code lossCount}
- * （不足 ⇒ 带 unit/requested/available/缺口具名拒，不部分抽、不换年龄档）。
+ * 必须在概率表里；投骰必须有概率表；命中结局里**有实际增量**的单位必须存在于 unit 切片；人员损失必须全为负增量且 {@code Σ|amount|} 不溢出；人员损失单位的 {@code
+ * Unit.households()} 必须非空、其中 {@code MALE + ADULT} 份额必须够 {@code lossCount} （不足 ⇒ 带
+ * unit/requested/available/缺口具名拒，不部分抽、不换年龄档）。
  */
 final class ResolveCombatPlan {
 
@@ -222,7 +224,11 @@ final class ResolveCombatPlan {
       // ★ target = 第一个被抽家户（工单要求 target 被 plan 引用；plan 的 REMOVE_MEMBERS 逐步点名全部被抽家户）。
       casualtyOrders.add(
           new CasualtyOrder(
-              unit.id(), orderId, allocation.shares().get(0).householdId(), allocation.shares(), reason));
+              unit.id(),
+              orderId,
+              allocation.shares().get(0).householdId(),
+              allocation.shares(),
+              reason));
     }
 
     boolean allResolvedAfter = true;
@@ -356,7 +362,9 @@ final class ResolveCombatPlan {
       requireNonBlank(reason, "reason");
     }
 
-    /** {@code social.SubmitHouseholdWorkOrder} 载荷：source.module=army；plan = 逐 share REMOVE_MEMBERS。 */
+    /**
+     * {@code social.SubmitHouseholdWorkOrder} 载荷：source.module=army；plan = 逐 share REMOVE_MEMBERS。
+     */
     String payloadJson() {
       List<Map<String, Object>> steps = new ArrayList<>(shares.size());
       for (HouseholdManpowerAllocator.ManpowerShare share : shares) {
@@ -518,8 +526,8 @@ final class ResolveCombatPlan {
     }
 
     /**
-     * ★ 批内前段命令（ResolveCombatStage 之前）的精确顺序：逐 unit 先人员工单（如有）再装备命令（如有）。
-     * apply 组批与 preview 命令视图都只认这一处，避免视图与真实批序漂移。
+     * ★ 批内前段命令（ResolveCombatStage 之前）的精确顺序：逐 unit 先人员工单（如有）再装备命令（如有）。 apply 组批与 preview
+     * 命令视图都只认这一处，避免视图与真实批序漂移。
      */
     List<PlannedCommand> unitCommands() {
       List<PlannedCommand> commands = new ArrayList<>();
@@ -527,8 +535,7 @@ final class ResolveCombatPlan {
       for (CombatUnitLoss loss : outcome.losses()) {
         if (!loss.manpower().isEmpty()) {
           CasualtyOrder order = casualtyOrders.get(casualtyIndex++);
-          commands.add(
-              new PlannedCommand(SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE, order.payloadJson()));
+          commands.add(new PlannedCommand(SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE, order.payloadJson()));
         }
         if (!loss.equipment().isEmpty()) {
           commands.add(

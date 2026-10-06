@@ -8,7 +8,6 @@ import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
@@ -16,15 +15,16 @@ import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
 import io.mosire.simos.economy.api.relation.ProductionRules;
-import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.RuleType;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -37,13 +37,14 @@ import java.util.OptionalLong;
 import java.util.Set;
 
 /**
- * ★★ <b>S3.4 阶层分化：{@code classify(household)} 的唯一拼写点</b>—— 判据全部来自可观察状态：{@code OwnershipStake} + {@code
- * ProductionRules}（{@code laborSource}/{@code operator}/{@code inputSupplier}/{@code
- * residualOwner} + 规则受方） + {@code HouseholdLaborCommitment} + 地租/工资 + 债务；<b>没有</b>"产量达到 X 就产生地主"这类硬编码产量阈值。
+ * ★★ <b>S3.4 阶层分化：{@code classify(household)} 的唯一拼写点</b>—— 判据全部来自可观察状态：{@code OwnershipStake} +
+ * {@code ProductionRules}（{@code laborSource}/{@code operator}/{@code inputSupplier}/{@code
+ * residualOwner} + 规则受方） + {@code HouseholdLaborCommitment} + 地租/工资 + 债务；<b>没有</b>"产量达到 X
+ * 就产生地主"这类硬编码产量阈值。
  *
- * <p>★★ <b>R3B.1 的字段口径</b>：{@code OwnershipStake} 有 {@code owner}（所有权主体）与 {@code operator}（实际经营/使用主体）
- * 两栏，本规则两栏都读（同一条份额 owner == operator 时只计一次）；旧 {@code UseRight.holder} 的读取对应 {@code
- * operator}，判自耕/所有权的那几步结合 {@code owner}。真档里 {@code owner/operator} 常是<strong>产业的经营者
+ * <p>★★ <b>R3B.1 的字段口径</b>：{@code OwnershipStake} 有 {@code owner}（所有权主体）与 {@code
+ * operator}（实际经营/使用主体） 两栏，本规则两栏都读（同一条份额 owner == operator 时只计一次）；旧 {@code UseRight.holder} 的读取对应
+ * {@code operator}，判自耕/所有权的那几步结合 {@code owner}。真档里 {@code owner/operator} 常是<strong>产业的经营者
  * actor</strong>（{@code ESTATE:farm@…} / {@code WORKSHOP:craft@…} / {@code HOUSEHOLD:weave@…}）
  * ——它们不是家户行 ⇒ 绝大多数家户 {@code ownLand=0}、直接落到 {@code LANDLESS_LABORER}。本版按"本户在生产关系里 出什么/以什么身份参与"分类：
  *
@@ -158,7 +159,8 @@ public final class HouseholdClassRule {
       Map<DebtContractId, DebtContract> debts,
       HouseholdId household,
       Optional<ProductionLedger> ledger) {
-    return Index.of(assetShares, laborCommitments, units, industries, relations, householdEconomies, debts)
+    return Index.of(
+            assetShares, laborCommitments, units, industries, relations, householdEconomies, debts)
         .classify(household, ledger);
   }
 
@@ -208,8 +210,8 @@ public final class HouseholdClassRule {
   }
 
   /**
-   * ★★ <b>一次性索引</b>：把 {@code OwnershipStake} / 生产关系 / {@code HouseholdLaborCommitment} / 租规则 / 债务折成逐家户可 O(1)
-   * 分类的判据。
+   * ★★ <b>一次性索引</b>：把 {@code OwnershipStake} / 生产关系 / {@code HouseholdLaborCommitment} / 租规则 /
+   * 债务折成逐家户可 O(1) 分类的判据。
    *
    * <p>★★ <b>为什么必须一次建索引</b>：关账日要对全部家户写回（真档 4,000+ 行），若每户都重扫全部关系与配额， 就是 O(行 × 关系 × 规则)
    * 的重复劳动；而且"同一事实只算一次"也要求这些派生量在一处生成。
@@ -311,7 +313,8 @@ public final class HouseholdClassRule {
       Map<ProductionUnitId, Set<HouseholdId>> rentPayeesByActivity = new LinkedHashMap<>();
       for (ProductionRules relation : relations.values()) {
         ProductionUnitId activity = relation.activity();
-        HouseholdId operator = householdOf(relation.operator(), householdEconomies, householdByActor);
+        HouseholdId operator =
+            householdOf(relation.operator(), householdEconomies, householdByActor);
         if (operator != null) {
           operatedActivities(operator).add(activity);
           controlledActivities(operator).add(activity);
@@ -334,7 +337,8 @@ public final class HouseholdClassRule {
         }
         for (CompensationRule rule : relation.rules()) {
           HouseholdId recipient =
-              payeeHousehold(rule.recipient(), householdEconomies, householdByActor, householdByView);
+              payeeHousehold(
+                  rule.recipient(), householdEconomies, householdByActor, householdByView);
           if (recipient == null) {
             continue;
           }
@@ -385,8 +389,7 @@ public final class HouseholdClassRule {
 
       // ②b 租权推定控制：地租受方按"该产业有几个受方"均分该产业的 LAND，只用于把租权受方的雇入劳动算进净劳动
       //    （真档一格一个地主，故就是整块地）；不写进 ownLand，避免再用"租受方=土地所有者"的旧近似。
-      for (Map.Entry<ProductionUnitId, Set<HouseholdId>> entry :
-          rentPayeesByActivity.entrySet()) {
+      for (Map.Entry<ProductionUnitId, Set<HouseholdId>> entry : rentPayeesByActivity.entrySet()) {
         ProductionProcess unit = units.get(entry.getKey());
         if (unit == null || entry.getValue().isEmpty()) {
           continue;
@@ -421,7 +424,8 @@ public final class HouseholdClassRule {
         activityLaborByHousehold
             .computeIfAbsent(activity, ignored -> new LinkedHashMap<>())
             .merge(household, laborMilli, Math::addExact);
-        HouseholdId employer = householdOf(laborCommitment.actor(), householdEconomies, householdByActor);
+        HouseholdId employer =
+            householdOf(laborCommitment.actor(), householdEconomies, householdByActor);
         if (employer != null && !employer.equals(household)) {
           directHiredByActivity
               .computeIfAbsent(employer, ignored -> new LinkedHashMap<>())
@@ -501,7 +505,8 @@ public final class HouseholdClassRule {
       Objects.requireNonNull(householdEconomies, "classes");
       Objects.requireNonNull(debts, "debts");
       // ★ B.4：industries 形参保留（结算/读口的公开重载不换签名），但 Index 不再读 Industry.slots。
-      return new Index(assetShares, laborCommitments, units, relations, householdEconomies, debts, null);
+      return new Index(
+          assetShares, laborCommitments, units, relations, householdEconomies, debts, null);
     }
 
     /**
@@ -526,7 +531,14 @@ public final class HouseholdClassRule {
       Objects.requireNonNull(debts, "debts");
       Objects.requireNonNull(settlementIndex, "settlementIndex");
       // ★ B.4：industries 形参保留（结算侧公开重载不换签名），但 Index 不再读 Industry.slots。
-      return new Index(assetShares, laborCommitments, units, relations, householdEconomies, debts, settlementIndex);
+      return new Index(
+          assetShares,
+          laborCommitments,
+          units,
+          relations,
+          householdEconomies,
+          debts,
+          settlementIndex);
     }
 
     /** 资产汇总的唯一取值口：有结算索引走索引，旧读口/测试路径仍逐份额扫（两者同一个算式）。 */
@@ -901,7 +913,9 @@ public final class HouseholdClassRule {
 
   /** actor 引用 → 本状态里真实存在的家户（经营者 actor 与产业型 HOUSEHOLD actor 都不算）。 */
   private static HouseholdId householdOf(
-      ActorRef actor, Map<HouseholdId, HouseholdEconomy> householdEconomies, Map<ActorRef, HouseholdId> byActor) {
+      ActorRef actor,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<ActorRef, HouseholdId> byActor) {
     HouseholdId exact = byActor.get(actor);
     if (exact != null) {
       return exact;

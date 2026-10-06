@@ -26,9 +26,10 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ {@code simos.gov.recruit} 的<b>纯推导</b>（阶段 10b-ii，2026-10-01 GOV/Army 计划 §2.2/§2.6；P1.1 改走 Social
- * 家户工单）：从一份 {@link SimulationState} 与参数算出 {@link Plan}——<b>不碰 {@link io.mosire.agentlib.tool.ToolContext}、不碰
- * {@code CoreSimos}</b>，preview 与 apply 因此共用同一份语义（工具只负责读态、把 Plan 折成视图、组批、折叠结局）。
+ * ★★ {@code simos.gov.recruit} 的<b>纯推导</b>（阶段 10b-ii，2026-10-01 GOV/Army 计划 §2.2/§2.6；P1.1 改走
+ * Social 家户工单）：从一份 {@link SimulationState} 与参数算出 {@link Plan}——<b>不碰 {@link
+ * io.mosire.agentlib.tool.ToolContext}、不碰 {@code CoreSimos}</b>，preview 与 apply 因此共用同一份语义（工具只负责读态、把
+ * Plan 折成视图、组批、折叠结局）。
  *
  * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：人在 {@code social} 切片、编制在 {@code unit} 切片、行动记录在 {@code sd}
  * 切片；单条命令只能落一个命名空间。本工具走 {@link io.mosire.simos.core.CoreSimos#submitBatch}（同 branch + 同
@@ -43,32 +44,31 @@ import java.util.Set;
  *   <li><b>选人唯一拼写点</b>：只调 {@link HouseholdManpowerAllocator#allocateMalesOfAdult}（MALE + {@link
  *       io.mosire.simos.social.population.AgeBracket#ADULT}；家户 id 升序 / lotId 升序瀑布），本类不另写排序、过滤或扣减；
  *       <b>旧</b> {@link RegionAllocations} 的整批 count 瀑布不再进入本路径；
- *   <li><b>排除目标政府家户</b>：分配时把 {@code hh-gov-<unitId>} 放进排除集——它是本批的<b>目标</b>，不得再作为来源
- *       （自我转移会在域层被拒）；
+ *   <li><b>排除目标政府家户</b>：分配时把 {@code hh-gov-<unitId>} 放进排除集——它是本批的<b>目标</b>，不得再作为来源 （自我转移会在域层被拒）；
  *   <li><b>不足 ⇒ 整条拒</b>：家户份额总量不足时带 requested / available / 缺口具名抛出，<b>不部分抽取、不截断</b>；
- *   <li><b>守恒</b>：Σ share.taken == {@code count} == {@code unit.RecruitStaff} 的 roster 增量；三个数字在 Plan
- *       构造期逐值互校，批载荷逐值对应（同一份 sources 同时喂 {@code social.SubmitHouseholdWorkOrder}、{@code
+ *   <li><b>守恒</b>：Σ share.taken == {@code count} == {@code unit.RecruitStaff} 的 roster 增量；三个数字在
+ *       Plan 构造期逐值互校，批载荷逐值对应（同一份 sources 同时喂 {@code social.SubmitHouseholdWorkOrder}、{@code
  *       unit.RecruitStaff} 与 {@code sd.PutInfo}）。
  * </ol>
  *
- * <p>★★ <b>目标政府家户前置（缺一 ⇒ plan 级具名拒，不猜、不新建第二户）</b>：目标恒为 {@link
- * GovernmentHouseholds#of(String)} = {@code hh-gov-<unitId>}；必须<b>同时</b>出现在 {@code Unit.households()}（否则该 GOV
- * 单位的家户关系数据坏）与 {@code social.households()}（否则 Social 里没有可落人的目标家户）。缺任一项都不发批、零 revision。
+ * <p>★★ <b>目标政府家户前置（缺一 ⇒ plan 级具名拒，不猜、不新建第二户）</b>：目标恒为 {@link GovernmentHouseholds#of(String)} =
+ * {@code hh-gov-<unitId>}；必须<b>同时</b>出现在 {@code Unit.households()}（否则该 GOV 单位的家户关系数据坏）与 {@code
+ * social.households()}（否则 Social 里没有可落人的目标家户）。缺任一项都不发批、零 revision。
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SubmitHouseholdWorkOrder}（{@code
  * orderId=gov-recruit:<unitId>:<role>:<tick>:<count>} 确定性幂等键；target = 政府家户；逐来源 {@code
- * TRANSFER_MEMBERS(from=来源家户, to=政府家户, lotId, count=taken)}）→ {@code unit.RecruitStaff}（{@code sources}
- * = 逐来源 {@code {kind:"household", id, lotId, count}}）→ {@code sd.PutInfo}（地址 = 单位 canonical，key={@code
- * recruit}，value=JSON <b>字符串</b>，含 role/count/来源家户/reason/tick，note=人可读摘要）。三条共享同一 batchId 与同一
- * branch/expectedRevision ⇒ 一条 revision。
+ * TRANSFER_MEMBERS(from=来源家户, to=政府家户, lotId, count=taken)}）→ {@code unit.RecruitStaff}（{@code
+ * sources} = 逐来源 {@code {kind:"household", id, lotId, count}}）→ {@code sd.PutInfo}（地址 = 单位
+ * canonical，key={@code recruit}，value=JSON <b>字符串</b>，含
+ * role/count/来源家户/reason/tick，note=人可读摘要）。三条共享同一 batchId 与同一 branch/expectedRevision ⇒ 一条 revision。
  *
  * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：单位存在且带 {@link
- * GovernmentFormation}；{@code count ≥ 1}；{@code role} 词表；{@code staffCap[role]} 若存在且 {@code 现有 + count >
- * cap} ⇒ 具名拒（带现有 / 上限 / 请求，不截断）；现有 + count 溢出 long ⇒ 具名拒；无 jurisdiction / 辖区 Region 在地图里查无 ⇒
- * 具名拒；政府家户不在 {@code Unit.households()} 或 {@code social.households()} ⇒ 具名拒；合格来源不足 ⇒ 整条具名拒。
+ * GovernmentFormation}；{@code count ≥ 1}；{@code role} 词表；{@code staffCap[role]} 若存在且 {@code 现有 +
+ * count > cap} ⇒ 具名拒（带现有 / 上限 / 请求，不截断）；现有 + count 溢出 long ⇒ 具名拒；无 jurisdiction / 辖区 Region 在地图里查无
+ * ⇒ 具名拒；政府家户不在 {@code Unit.households()} 或 {@code social.households()} ⇒ 具名拒；合格来源不足 ⇒ 整条具名拒。
  *
- * <p>★ <b>确定性 / 保序不可变</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；来源表按辖区顺序 + 家户全序瀑布序，
- * 用 {@link List#copyOf} 冻结；{@code staffCap} 只读不改。
+ * <p>★ <b>确定性 / 保序不可变</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；来源表按辖区顺序 + 家户全序瀑布序， 用 {@link
+ * List#copyOf} 冻结；{@code staffCap} 只读不改。
  *
  * <p>★ <b>遗留形状</b>：{@link GroupSource}（整批 count 形状）仍被 {@link GovSelectExamineesPlan} 引用（该工具在 P1.0 已
  * fail-closed，P1.3 再迁移）；本类的 recruit 路径不再构造/消费它，且不再发出 {@code social.SeedGroups}。
@@ -128,7 +128,8 @@ final class GovRecruitPlan {
           "招募后 " + role + " 在编人数溢出 long: 现有 " + staffBefore + " + 请求 " + count);
     }
     long staffAfter = staffBefore + count;
-    Optional<Long> staffCap = Optional.ofNullable(governmentFormation.policy().staffCap().get(role));
+    Optional<Long> staffCap =
+        Optional.ofNullable(governmentFormation.policy().staffCap().get(role));
     if (staffCap.isPresent() && staffBefore > staffCap.get() - count) {
       throw new IllegalArgumentException(
           "招募 "
@@ -298,9 +299,7 @@ final class GovRecruitPlan {
       for (HouseholdManpowerAllocator.ManpowerShare share : sources) {
         if (share.householdId().equals(governmentHouseholdId)) {
           throw new IllegalArgumentException(
-              "内部分摊不自洽：来源家户不得是目标政府家户 "
-                  + governmentHouseholdId.value()
-                  + "（自我转移会被域层拒）");
+              "内部分摊不自洽：来源家户不得是目标政府家户 " + governmentHouseholdId.value() + "（自我转移会被域层拒）");
         }
         total = saturatedAdd(total, share.taken());
       }
@@ -320,8 +319,8 @@ final class GovRecruitPlan {
     }
 
     /**
-     * 工单确定性幂等键：{@code gov-recruit:<unitId>:<role>:<tick>:<count>}。同一批参数在同一 tick
-     * 重放 ⇒ 命中幂等键、整单具名拒，不重复改人口。
+     * 工单确定性幂等键：{@code gov-recruit:<unitId>:<role>:<tick>:<count>}。同一批参数在同一 tick 重放 ⇒
+     * 命中幂等键、整单具名拒，不重复改人口。
      */
     String orderId() {
       return "gov-recruit:" + unitId + ":" + role.name() + ":" + tick + ":" + count;
@@ -329,8 +328,8 @@ final class GovRecruitPlan {
 
     /**
      * {@code social.SubmitHouseholdWorkOrder} 载荷：target = 政府家户；逐来源一条 {@code
-     * TRANSFER_MEMBERS(from=来源家户, to=政府家户, lotId, count=taken)}；{@code orderId} = {@link #orderId()}，{@code
-     * source.module="gov"}，reason = 工具 reason。
+     * TRANSFER_MEMBERS(from=来源家户, to=政府家户, lotId, count=taken)}；{@code orderId} = {@link
+     * #orderId()}，{@code source.module="gov"}，reason = 工具 reason。
      */
     String submitHouseholdWorkOrderPayloadJson(String reason) {
       requireReason(reason);
@@ -355,8 +354,8 @@ final class GovRecruitPlan {
 
     /**
      * {@code unit.RecruitStaff} 载荷：{@code {unitId, role, count, sources}}；{@code sources} = 逐来源
-     * {@code {kind:"household", id:householdId, lotId, count:taken}}，与 {@link #sources} 逐值对应（命令本身只入编、
-     * 不扣人；扣人在同批 {@code social.SubmitHouseholdWorkOrder}）。
+     * {@code {kind:"household", id:householdId, lotId, count:taken}}，与 {@link #sources}
+     * 逐值对应（命令本身只入编、 不扣人；扣人在同批 {@code social.SubmitHouseholdWorkOrder}）。
      */
     String recruitStaffPayloadJson() {
       List<Map<String, Object>> rows = new ArrayList<>(sources.size());
@@ -377,8 +376,8 @@ final class GovRecruitPlan {
     }
 
     /**
-     * {@code sd.PutInfo} 的 {@code value}（JSON <b>字符串</b>；含 role/count/来源家户份额/reason/tick）。其余字段沿用旧口径，
-     * 仅 {@code sources} 行改成 householdId/lotId/taken/hex。
+     * {@code sd.PutInfo} 的 {@code value}（JSON <b>字符串</b>；含
+     * role/count/来源家户份额/reason/tick）。其余字段沿用旧口径， 仅 {@code sources} 行改成 householdId/lotId/taken/hex。
      */
     String infoValueJson(String reason) {
       requireReason(reason);

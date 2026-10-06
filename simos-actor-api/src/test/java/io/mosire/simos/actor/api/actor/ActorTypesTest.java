@@ -23,9 +23,9 @@ import org.junit.jupiter.api.Test;
 class ActorTypesTest {
 
   /**
-   * ★★ **逐值断言**（P2-A §13.3 由七档收敛到五档）：{@code ESTATE} / {@code WORKSHOP} 已随"庄园/作坊 =
-   * 生产方式，不是 ActorRef 种类"的整体退役删除，本断言跟着改为五档。前四档的**次序与拼写一字不动**
-   * （它们已进过 JSON：{@code LedgerCodec} 写 {@code kind} 用 {@code name()}）；{@code HOUSEHOLD} 仍在末尾。
+   * ★★ **逐值断言**（P2-A §13.3 由七档收敛到五档）：{@code ESTATE} / {@code WORKSHOP} 已随"庄园/作坊 = 生产方式，不是 ActorRef
+   * 种类"的整体退役删除，本断言跟着改为五档。前四档的**次序与拼写一字不动** （它们已进过 JSON：{@code LedgerCodec} 写 {@code kind} 用 {@code
+   * name()}）；{@code HOUSEHOLD} 仍在末尾。
    */
   @Test
   void actorKindCoversTheFiveDocumentedKinds() {

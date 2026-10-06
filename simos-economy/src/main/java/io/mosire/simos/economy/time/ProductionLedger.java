@@ -8,7 +8,6 @@ import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
@@ -18,6 +17,7 @@ import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -61,9 +61,9 @@ import org.slf4j.Logger;
  *       <b>不搬粮/钱</b>）。它是 {@link #ruleSettlements()} 的 owed 那一侧真的落成债权之后的具名审计；
  *   <li>★★ {@link #unresolvedDebtCapitalizations()} <b>E4c：资本化跳过的具名原因</b>——付款人/受款人 actor 解析不到 家户
  *       {@code HouseholdId} 时，<b>不伪造端点</b>，把 owed 与原因留在这里（欠款读数本身仍留在 {@code ruleSettlements}）；
- *   <li>★★ {@link #debtRepaymentSkips()} <b>P11.1 / D-023：偿还跳过的具名原因</b>——债务人手头持有资产、但没有稳定价格/比价
- *       （如非本格 numeraire 的币种、没有市场价的商品）⇒ <b>不折算、不静默付 0</b>；把剩余本金与
- *       {@code unpriced-repayment-assets:…} 的资产清单记在这里。
+ *   <li>★★ {@link #debtRepaymentSkips()} <b>P11.1 / D-023：偿还跳过的具名原因</b>——债务人手头持有资产、但没有稳定价格/比价 （如非本格
+ *       numeraire 的币种、没有市场价的商品）⇒ <b>不折算、不静默付 0</b>；把剩余本金与 {@code unpriced-repayment-assets:…}
+ *       的资产清单记在这里。
  * </ul>
  *
  * <p>★ <b>三张表都保序不可变</b>：{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，<b>绝不用 {@code
@@ -433,8 +433,8 @@ public record ProductionLedger(
   }
 
   /**
-   * ★★ <b>P11.1 / D-023：一条偿还被具名跳过的条目</b>——债务人持有资产但该资产没有稳定价格/比价（或合同计价口径的价目表里
-   * 没有对应价格）：按 D-023 的<b>不折算、不静默付 0</b>，合同本金保持不动；此处把剩余本金与原因发出来。
+   * ★★ <b>P11.1 / D-023：一条偿还被具名跳过的条目</b>——债务人持有资产但该资产没有稳定价格/比价（或合同计价口径的价目表里 没有对应价格）：按 D-023
+   * 的<b>不折算、不静默付 0</b>，合同本金保持不动；此处把剩余本金与原因发出来。
    *
    * <p>★ {@code reason} 的 P11.1 取值：{@code "unpriced-repayment-assets:commodity:<id>,money:<id>…"}
    * （持有但缺价的资产清单；不拿别的价硬折、也不做 FX）。
@@ -473,8 +473,9 @@ public record ProductionLedger(
    *   <li>{@code degraded-rule-selection}：政策按 assetKind 退化为 id 最小的一条（仍可能继续处置）；
    *   <li>{@code class-decline} / {@code debt-explosion}：阶层下滑与债务爆炸信号同样落一条审计（信号本体进 {@code
    *       crisisSignals}）；
-   *   <li>{@code class-projection-fallback}：5c 发现 {@code HouseholdClassMembership.currentPositionId} 投影不回旧
-   *       {@code HouseholdEconomy.view.stratum}，保留旧 view 并具名报告。
+   *   <li>{@code class-projection-fallback}：5c 发现 {@code
+   *       HouseholdClassMembership.currentPositionId} 投影不回旧 {@code
+   *       HouseholdEconomy.view.stratum}，保留旧 view 并具名报告。
    * </ul>
    *
    * <p>★ <b>窗口/单位</b>：{@code day} = 本次结算日；{@code quantity} 与 OwnershipStake 同单位；{@code *Milli}
@@ -553,9 +554,9 @@ public record ProductionLedger(
   /**
    * ★★ <b>这一天有没有"产出"</b>（E7/R4 的 fail-closed 判据）：有毛产、或有产出计提。
    *
-   * <p>★ 为什么这两样：它们正是<b>离开 {@code HouseholdEconomy} 的部分</b> —— 没有产权落账口的入口拿它们<b>无处可放</b>。 ★ 为什么不含 {@link
-   * #inputs()}：投入扣在家户账（会话副本）里、记在流水的 {@code consumed} 里，账是完整的。 ★ 为什么不含 {@link #deferredMoney()}：H4
-   * 起它<b>恒为空</b>（货币档真的结算了），对判据没有影响。 ★ 为什么不含 {@link
+   * <p>★ 为什么这两样：它们正是<b>离开 {@code HouseholdEconomy} 的部分</b> —— 没有产权落账口的入口拿它们<b>无处可放</b>。 ★ 为什么不含
+   * {@link #inputs()}：投入扣在家户账（会话副本）里、记在流水的 {@code consumed} 里，账是完整的。 ★ 为什么不含 {@link
+   * #deferredMoney()}：H4 起它<b>恒为空</b>（货币档真的结算了），对判据没有影响。 ★ 为什么不含 {@link
    * #transfers()}：借粮与取材<b>不是产出</b>（它们是既有库存的换手）；而本判据服务的入口（多日静态 {@code settle}）
    * 在全零人口之外<b>根本进不来</b>（第一天之前就抛），那个状态里三者恒空。
    */

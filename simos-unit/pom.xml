@@ -14,6 +14,12 @@
   <description>军事单位：编制树、装备与人数、位置继承、基于通行成本的移动与寻路。</description>
 
   <dependencies>
+    <!-- ★ D5：门禁若在本地类型上报 EI_EXPOSE_REP 类误报，@SuppressFBWarnings 注解住在这里
+         （version 与 spotbugs 插件同代；照 social-api/economy-api 的先例）。 -->
+    <dependency>
+      <groupId>com.github.spotbugs</groupId><artifactId>spotbugs-annotations</artifactId>
+      <version>4.10.4</version><scope>provided</scope>
+    </dependency>
     <dependency>
       <groupId>io.mosire</groupId><artifactId>simos-util</artifactId>
     </dependency>

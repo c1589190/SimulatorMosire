@@ -6,11 +6,11 @@ import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.Government;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.time.AccountSession.ActorAccount;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -23,9 +23,8 @@ import java.util.OptionalLong;
  * ★★ <b>2026-10-07 GOV 非生产家户试点：周期开始日的政府发债写口</b>。
  *
  * <p>对每个 {@code debtIssuePerCycle > 0} 的政府，在每个产业大周期开始日按固定目标向**家户**借入货币：
- * 出借人的货币余额真实减少、政府国库账户真实增加，并写一条 {@link DebtContract}(debtor=政府家户, creditor=家户,
- * unit={@code money}, terms=legacyDefault)。它<b>不</b>发行新钱 —— 钱只是从家户搬家到政府；政府日后再用这笔钱买粮/布，
- * 从而把“发债→支出→货币回流家户”的链条跑通。
+ * 出借人的货币余额真实减少、政府国库账户真实增加，并写一条 {@link DebtContract}(debtor=政府家户, creditor=家户, unit={@code money},
+ * terms=legacyDefault)。它<b>不</b>发行新钱 —— 钱只是从家户搬家到政府；政府日后再用这笔钱买粮/布， 从而把“发债→支出→货币回流家户”的链条跑通。
  *
  * <pre>
  * 出借人筛选：EconomyData.classes 里 population > 0 的家户（按 HouseholdId 规范序）
@@ -35,8 +34,8 @@ import java.util.OptionalLong;
  * </pre>
  *
  * <p>★★ <b>为什么不复用市场信用路径</b>：市场信用是“买方缺钱买货”的内生结果，金额由缺口/放贷头寸决定；
- * 本批要的是<b>政府主动发行的定量债务</b>（政策量），两者是不同事实，各有显式写口与审计。两者最终都落同一张
- * {@code debtContracts} 表、同一批 {@link DebtContractBook} 写口，故不会出现第二本债账。
+ * 本批要的是<b>政府主动发行的定量债务</b>（政策量），两者是不同事实，各有显式写口与审计。两者最终都落同一张 {@code debtContracts} 表、同一批 {@link
+ * DebtContractBook} 写口，故不会出现第二本债账。
  */
 final class GovernmentDebtIssuance {
 
@@ -45,9 +44,7 @@ final class GovernmentDebtIssuance {
 
   private GovernmentDebtIssuance() {}
 
-  /**
-   * 在周期开始日执行全部政府的发债政策；返回本次实际借入的货币总量（跨政府/币种直接相加，只作日志/调用方读数）。
-   */
+  /** 在周期开始日执行全部政府的发债政策；返回本次实际借入的货币总量（跨政府/币种直接相加，只作日志/调用方读数）。 */
   static long issueCycleStart(
       EconomyData base,
       EconomySession session,
@@ -114,7 +111,8 @@ final class GovernmentDebtIssuance {
         long balance = lenderAccount.money().getOrDefault(currency, 0L);
         long reserve =
             Math.multiplyExact(
-                lenderHouseholdEconomy.population(), MarketSettlement.LENDER_MONEY_BUFFER_PER_CAPITA_MILLI);
+                lenderHouseholdEconomy.population(),
+                MarketSettlement.LENDER_MONEY_BUFFER_PER_CAPITA_MILLI);
         long lendable = Math.max(0L, balance - reserve);
         long take = Math.min(remaining, lendable);
         if (take <= 0L) {
@@ -186,11 +184,13 @@ final class GovernmentDebtIssuance {
   private static List<HouseholdId> sortedLenders(
       Map<HouseholdId, HouseholdEconomy> householdEconomies, HouseholdId governmentHousehold) {
     List<HouseholdId> lenders = new ArrayList<>();
-    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomies.entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry :
+        householdEconomies.entrySet()) {
       if (householdEconomyEntry.getKey().equals(governmentHousehold)) {
         continue;
       }
-      if (householdEconomyEntry.getValue() != null && householdEconomyEntry.getValue().population() > 0L) {
+      if (householdEconomyEntry.getValue() != null
+          && householdEconomyEntry.getValue().population() > 0L) {
         lenders.add(householdEconomyEntry.getKey());
       }
     }

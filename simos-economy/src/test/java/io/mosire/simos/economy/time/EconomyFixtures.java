@@ -14,27 +14,26 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.ShipmentId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.relation.CompensationRule;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.Pool;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.relation.Weight;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -66,7 +65,8 @@ final class EconomyFixtures {
 
   /** 稳定身份 → 旧视图（只服务本包旧用例的读回）。 */
   static CohortKey view(HouseholdId id) {
-    return HouseholdIds.legacyView(id).orElseThrow(() -> new IllegalArgumentException("不是本夹具的旧档身份: " + id));
+    return HouseholdIds.legacyView(id)
+        .orElseThrow(() -> new IllegalArgumentException("不是本夹具的旧档身份: " + id));
   }
 
   /**
@@ -124,7 +124,7 @@ final class EconomyFixtures {
   static AccountSession accountSession(
       EconomyData base, Map<CohortKey, Map<CommodityId, Long>> goods) {
     AccountSession accounts = AccountSession.empty();
-    for (ClassRow row : base.classes().values()) {
+    for (HouseholdEconomy row : base.classes().values()) {
       CohortKey key = goodsKeyFor(goods, row);
       accounts.registerHousehold(
           row.id(),
@@ -135,7 +135,7 @@ final class EconomyFixtures {
           Map.of());
     }
     Set<ActorRef> registeredOperators = new LinkedHashSet<>();
-    for (ProductionUnit unit : base.units().values()) {
+    for (ProductionProcess unit : base.units().values()) {
       ActorRef operator = unit.operator();
       if (!registeredOperators.add(operator)) {
         continue;
@@ -150,7 +150,7 @@ final class EconomyFixtures {
   /** 把账户会话里的家户商品余额写回旧形状的工作副本（只写家户；经营者账不进本夹具）。 */
   private static void copyBack(
       EconomyData base, AccountSession accounts, Map<CohortKey, Map<CommodityId, Long>> goods) {
-    for (ClassRow row : base.classes().values()) {
+    for (HouseholdEconomy row : base.classes().values()) {
       Map<CommodityId, Long> balance = accounts.householdGoods().get(row.id());
       goods.put(goodsKeyFor(goods, row), balance == null ? Map.of() : new LinkedHashMap<>(balance));
     }
@@ -161,7 +161,8 @@ final class EconomyFixtures {
    *
    * <p>★ 家户阶层在周期关账时会被重分类（view 变），若按 view 写回会留下旧键、下一轮又读错一本账。
    */
-  private static CohortKey goodsKeyFor(Map<CohortKey, Map<CommodityId, Long>> goods, ClassRow row) {
+  private static CohortKey goodsKeyFor(
+      Map<CohortKey, Map<CommodityId, Long>> goods, HouseholdEconomy row) {
     for (CohortKey key : goods.keySet()) {
       if (hh(key).equals(row.id())) {
         return key;
@@ -253,7 +254,7 @@ final class EconomyFixtures {
   }
 
   /** ★ 旧 9 参 ClassRow（无稳定 id）→ 当前 10 参；身份取 {@code HouseholdIds.ofLegacy(view)}。 */
-  static ClassRow classRow(
+  static HouseholdEconomy classRow(
       CohortKey view,
       long population,
       long laborMilli,
@@ -263,7 +264,7 @@ final class EconomyFixtures {
       Map<CommodityId, Long> naturalNeeds,
       Map<CommodityId, Long> effectiveDemand,
       long cycleNaturalNeedMilli) {
-    return new ClassRow(
+    return new HouseholdEconomy(
         hh(view),
         view,
         population,
@@ -277,14 +278,14 @@ final class EconomyFixtures {
   }
 
   /** ★ 旧 5 参 ProductionRelation（activity = 产业 id）→ 当前 unit 键。 */
-  static ProductionRelation relation(
+  static ProductionRules relation(
       IndustryId activity,
       ActorRef operator,
-      Recipient inputSupplier,
+      Payee inputSupplier,
       List<CompensationRule> rules,
       ActorRef residualOwner) {
     ProductionUnitId unit = ProductionUnitId.idOf(activity, operator);
-    return new ProductionRelation(unit, operator, inputSupplier, rules, residualOwner);
+    return new ProductionRules(unit, operator, inputSupplier, rules, residualOwner);
   }
 
   /**
@@ -294,20 +295,20 @@ final class EconomyFixtures {
   static EconomyData data(
       Optional<EconomyMeta> meta,
       Map<IndustryId, Industry> industries,
-      Map<CohortKey, ClassRow> classesByView,
+      Map<CohortKey, HouseholdEconomy> classesByView,
       Map<DebtContractId, DebtContract> debtContracts,
       Map<CohortKey, FlowRow> flowsByView,
-      Map<LaborAllocationId, LaborAllocation> allocations,
-      Map<?, ProductionRelation> relationsByIndustry,
+      Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
+      Map<?, ProductionRules> relationsByIndustry,
       Map<HexCoord, Market> markets,
       Map<ShipmentId, ShipmentBatch> shipments) {
-    LinkedHashMap<HouseholdId, ClassRow> classes = new LinkedHashMap<>();
-    for (Map.Entry<CohortKey, ClassRow> entry : classesByView.entrySet()) {
-      ClassRow row = entry.getValue();
-      ClassRow fixed =
+    LinkedHashMap<HouseholdId, HouseholdEconomy> classes = new LinkedHashMap<>();
+    for (Map.Entry<CohortKey, HouseholdEconomy> entry : classesByView.entrySet()) {
+      HouseholdEconomy row = entry.getValue();
+      HouseholdEconomy fixed =
           row.id().equals(hh(entry.getKey()))
               ? row
-              : new ClassRow(
+              : new HouseholdEconomy(
                   hh(entry.getKey()),
                   entry.getKey(),
                   row.population(),
@@ -341,9 +342,9 @@ final class EconomyFixtures {
               flow.repaidMoney(),
               flow.capitalizedArrears()));
     }
-    LinkedHashMap<ProductionUnitId, ProductionRelation> relations = new LinkedHashMap<>();
-    for (Map.Entry<?, ProductionRelation> entry : relationsByIndustry.entrySet()) {
-      ProductionRelation relation = entry.getValue();
+    LinkedHashMap<ProductionUnitId, ProductionRules> relations = new LinkedHashMap<>();
+    for (Map.Entry<?, ProductionRules> entry : relationsByIndustry.entrySet()) {
+      ProductionRules relation = entry.getValue();
       Object rawKey = entry.getKey();
       ActorRef operator = relation.operator();
       ProductionUnitId unit;
@@ -364,7 +365,7 @@ final class EconomyFixtures {
       }
       relations.put(
           unit,
-          new ProductionRelation(
+          new ProductionRules(
               unit,
               operator,
               relation.inputSupplier(),
@@ -375,23 +376,23 @@ final class EconomyFixtures {
     return EconomyData.empty()
         .withMeta(meta)
         .withIndustries(industries)
-        .withClasses(classes)
+        .withHouseholdEconomies(classes)
         .withDebtContracts(debtContracts)
         .withFlows(flows)
-        .withAllocations(allocations)
+        .withLaborCommitments(allocations)
         .withRelations(relations)
         .withMarkets(markets)
         .withShipments(shipments);
   }
 
   /**
-   * ★ R3B.2 起生产状态挂在 {@link ProductionUnit} 上：按产业汇总 unit 的进度。
+   * ★ R3B.2 起生产状态挂在 {@link ProductionProcess} 上：按产业汇总 unit 的进度。
    *
    * <p>旧用例夹具每产业一个 unit；这里用汇总形态，未来多 unit 夹具也能用（进度求和仍守恒）。
    */
   static long progressDaysOf(EconomyData data, IndustryId industry) {
     long total = 0L;
-    for (ProductionUnit unit : data.units().values()) {
+    for (ProductionProcess unit : data.units().values()) {
       if (unit.industry().equals(industry)) {
         total += unit.progressDays();
       }
@@ -400,7 +401,7 @@ final class EconomyFixtures {
   }
 
   /** 旧视图 → 当前 {@link EconomyData.classes} 表里的行（找不到 ⇒ null，与 {@code Map.get} 同口径）。 */
-  static ClassRow classOf(EconomyData data, CohortKey view) {
+  static HouseholdEconomy classOf(EconomyData data, CohortKey view) {
     return data.classes().get(hh(view));
   }
 
@@ -412,7 +413,7 @@ final class EconomyFixtures {
   /** 按产业汇总 unit 的本周期累计劳动（千分劳动·日）。 */
   static long cycleLaborOf(EconomyData data, IndustryId industry) {
     long total = 0L;
-    for (ProductionUnit unit : data.units().values()) {
+    for (ProductionProcess unit : data.units().values()) {
       if (unit.industry().equals(industry)) {
         total += unit.cycleLaborMilli();
       }
@@ -423,7 +424,7 @@ final class EconomyFixtures {
   /** 按产业汇总 unit 的本周期实扣投入（毫单位，按商品）。 */
   static long cycleInputUsedOf(EconomyData data, IndustryId industry, CommodityId commodity) {
     long total = 0L;
-    for (ProductionUnit unit : data.units().values()) {
+    for (ProductionProcess unit : data.units().values()) {
       if (unit.industry().equals(industry)) {
         total += unit.cycleInputUsedMilli().getOrDefault(commodity, 0L);
       }
@@ -432,13 +433,13 @@ final class EconomyFixtures {
   }
 
   /** 按产业取第一个 unit（旧用例每产业一个 unit；无 unit ⇒ 抛，不静默）。 */
-  static ProductionUnit unitOf(EconomyData data, IndustryId industry) {
-    for (ProductionUnit unit : data.units().values()) {
+  static ProductionProcess unitOf(EconomyData data, IndustryId industry) {
+    for (ProductionProcess unit : data.units().values()) {
       if (unit.industry().equals(industry)) {
         return unit;
       }
     }
-    throw new IllegalStateException("本产业没有 ProductionUnit（夹具形状不对）: " + industry);
+    throw new IllegalStateException("本产业没有 ProductionProcess（夹具形状不对）: " + industry);
   }
 
   /** 按产业取 unit 的经营者（旧用例每产业一个 unit）。 */
@@ -452,9 +453,9 @@ final class EconomyFixtures {
    * <p>键 = {@link ProductionUnitId}（R3B.2 起关系结算挂在 unit 上）；本助手按产业旧档的 operator （缺省按制度推导）拼出与 {@code
    * EconomyData} 归一化一致的 unit 身份。
    */
-  static Map<ProductionUnitId, ProductionRelation> laborShareToPeasant(
+  static Map<ProductionUnitId, ProductionRules> laborShareToPeasant(
       Map<IndustryId, Industry> industries) {
-    Map<ProductionUnitId, ProductionRelation> relations = new LinkedHashMap<>();
+    Map<ProductionUnitId, ProductionRules> relations = new LinkedHashMap<>();
     for (Map.Entry<IndustryId, Industry> entry : industries.entrySet()) {
       IndustryId id = entry.getKey();
       Industry industry = entry.getValue();
@@ -466,7 +467,7 @@ final class EconomyFixtures {
       CompensationRule rule =
           new CompensationRule(
               RuleType.OUTPUT_SHARE,
-              new Recipient.ToCohort(
+              new Payee.ToCohort(
                   new CohortKey(
                       hexOfIndustry(id), ResidenceKind.RURAL, new SocialClassId(PEASANT_SLOT))),
               Pool.NET_AFTER_INPUTS,
@@ -477,7 +478,7 @@ final class EconomyFixtures {
               Optional.empty(),
               10);
       relations.put(
-          activity, new ProductionRelation(activity, operator, null, List.of(rule), operator));
+          activity, new ProductionRules(activity, operator, null, List.of(rule), operator));
     }
     return relations;
   }

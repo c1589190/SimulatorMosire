@@ -18,12 +18,10 @@ import java.util.Objects;
  * <pre>{@code {"demand":"demand-HEX--20_-81-wool-RECURRING-PER_CAPITA-1"}}</pre>
  *
  * <p>★ 不存在 ⇒ {@link HandlerOutcome.Rejected}（不静默成功）；<b>只写 {@code demands}</b>。
- *
  */
 public final class EconomyCancelDemandHandler implements CommandHandler {
 
   private static final String COMMAND = "economy.CancelDemand";
-
 
   @Override
   public String type() {
@@ -44,7 +42,8 @@ public final class EconomyCancelDemandHandler implements CommandHandler {
       }
       Map<DemandId, HouseholdDemand> householdDemands = new LinkedHashMap<>(base.demands());
       householdDemands.remove(demandId);
-      return new HandlerOutcome.Applied(EconomyChangeSet.between(base, base.withHouseholdDemands(householdDemands)));
+      return new HandlerOutcome.Applied(
+          EconomyChangeSet.between(base, base.withHouseholdDemands(householdDemands)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());
     }

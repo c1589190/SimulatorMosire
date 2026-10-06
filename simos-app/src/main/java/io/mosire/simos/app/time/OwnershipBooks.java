@@ -13,10 +13,10 @@ import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.time.AccountPartitionKey;
-import io.mosire.simos.economy.time.AccountSession.ActorAccount;
 import io.mosire.simos.economy.time.AccountSession;
-import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
+import io.mosire.simos.economy.time.AccountSession.ActorAccount;
 import io.mosire.simos.economy.time.ProductionLedger;
+import io.mosire.simos.economy.time.ProductionLedger.ActorEntry;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
@@ -39,8 +39,8 @@ import java.util.Set;
  *   <li><b>账户会话唯一</b>：{@link #loadAccountSession(EconomyData, ActorData)} / {@link
  *       #landAccountSession(ActorData, AccountSession)} 一次装载/落回<b>全部主体</b> （家户 + 经营者 + 将来的
  *       GOV/UNIT），键恒为 {@code (ActorRef, HexCoord)}。旧的四张会话地图与四张 frozen 表的平行装载/落回已删除（它们只是同一份账的不同切面）；
- *   <li><b>{@link #apply} 批处理</b>（P1.4）：先把条目按 {@link HouseholdAccountKey} 聚合，再按**首次入账序**逐账户一次 {@code
- *       withInventory}；每条条目的**前缀余额**仍逐条校验（与旧逐条实现同一处抛点），故入账序的中间态语义不变；
+ *   <li><b>{@link #apply} 批处理</b>（P1.4）：先把条目按 {@link HouseholdAccountKey} 聚合，再按**首次入账序**逐账户一次
+ *       {@code withInventory}；每条条目的**前缀余额**仍逐条校验（与旧逐条实现同一处抛点），故入账序的中间态语义不变；
  *   <li><b>绝对值落回</b>：{@link #landAccountSession} 按会话的绝对值一次 {@code withInventories} 写回全部账
  *       （家户的商品/货币/冻结与经营者的四张表一起），不再有"先商品后货币"的顺序约定 —— 同一本账一次写全。
  * </ol>
@@ -195,10 +195,12 @@ public final class OwnershipBooks {
         balances.put(delta.getKey(), after);
       }
       Map<CurrencyId, Long> money = inventory == null ? Map.of() : inventory.money();
-      Map<CommodityId, Long> frozenBalances = inventory == null ? Map.of() : inventory.frozenBalances();
+      Map<CommodityId, Long> frozenBalances =
+          inventory == null ? Map.of() : inventory.frozenBalances();
       Map<CurrencyId, Long> frozenMoney = inventory == null ? Map.of() : inventory.frozenMoney();
       // ★★ 整本覆盖必须把货币与两张冻结表带过（漏带 = 静默清零）。
-      inventories.put(key, new HouseholdInventory(key, balances, money, frozenBalances, frozenMoney));
+      inventories.put(
+          key, new HouseholdInventory(key, balances, money, frozenBalances, frozenMoney));
     }
     return base.withInventories(inventories);
   }
@@ -217,7 +219,8 @@ public final class OwnershipBooks {
     Objects.requireNonNull(books, "books");
     AccountSession session = AccountSession.empty();
     List<String> missing = new ArrayList<>();
-    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : economy.classes().entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry :
+        economy.classes().entrySet()) {
       HouseholdId household = householdEconomyEntry.getKey();
       HouseholdEconomy householdEconomy = householdEconomyEntry.getValue();
       HexCoord location = householdEconomy.view().hex();
@@ -257,7 +260,8 @@ public final class OwnershipBooks {
     Objects.requireNonNull(books, "books");
     Objects.requireNonNull(session, "session");
     session.checkCoordinatorThread();
-    Map<HouseholdAccountKey, HouseholdInventory> inventories = new LinkedHashMap<>(books.accounts());
+    Map<HouseholdAccountKey, HouseholdInventory> inventories =
+        new LinkedHashMap<>(books.accounts());
     for (Map.Entry<AccountPartitionKey, ActorAccount> entry : session.accounts().entrySet()) {
       AccountPartitionKey sessionKey = entry.getKey();
       ActorAccount account = entry.getValue();
@@ -275,24 +279,20 @@ public final class OwnershipBooks {
     return books.withInventories(inventories);
   }
 
-  /**
-   * ★★ <b>一个家户的账本键 = 家户身份本身</b>（P2-A §13.3：一个家户一本账，键不再带 {@code HexCoord}）——
-   * <b>本类里唯一的拼写点</b>。
-   */
+  /** ★★ <b>一个家户的账本键 = 家户身份本身</b>（P2-A §13.3：一个家户一本账，键不再带 {@code HexCoord}）—— <b>本类里唯一的拼写点</b>。 */
   public static HouseholdAccountKey accountKeyOf(HouseholdId household) {
     Objects.requireNonNull(household, "household");
     return new HouseholdAccountKey(household);
   }
 
   /**
-   * 家户 actor 引用的家户身份；非 {@code HOUSEHOLD} actor ⇒ <b>具名拒绝</b>（P2-A §13.3：账户主体只有家户，
-   * 组织角色必须由 economy 侧先解析到组织者/经营者家户；这里不再静默跳过、也不造 {@code retired-actor:} 占位键）。
+   * 家户 actor 引用的家户身份；非 {@code HOUSEHOLD} actor ⇒ <b>具名拒绝</b>（P2-A §13.3：账户主体只有家户， 组织角色必须由 economy
+   * 侧先解析到组织者/经营者家户；这里不再静默跳过、也不造 {@code retired-actor:} 占位键）。
    */
   private static HouseholdId requireHouseholdOf(ActorRef actor) {
     Objects.requireNonNull(actor, "actor");
     if (actor.kind() != ActorKind.HOUSEHOLD) {
-      throw new IllegalStateException(
-          "产权账条目指名的不是家户主体（账户主体只有家户；庄园/作坊/商号必须解析到组织者/经营者家户）：" + actor);
+      throw new IllegalStateException("产权账条目指名的不是家户主体（账户主体只有家户；庄园/作坊/商号必须解析到组织者/经营者家户）：" + actor);
     }
     return HouseholdActors.householdOf(actor);
   }
@@ -358,7 +358,8 @@ public final class OwnershipBooks {
     Map<CommodityId, Long> frozen = new LinkedHashMap<>(inventory.frozenBalances());
     frozen.put(commodity, amount);
     return books.withInventory(
-        new HouseholdInventory(key, inventory.balances(), inventory.money(), frozen, inventory.frozenMoney()));
+        new HouseholdInventory(
+            key, inventory.balances(), inventory.money(), frozen, inventory.frozenMoney()));
   }
 
   private static ActorData withFrozenMoney(

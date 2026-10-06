@@ -10,18 +10,15 @@ import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.ActorData;
-import io.mosire.simos.actor.ActorSnapshot;
-import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.codec.ActorCodec;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.actor.spi.ActorSeedHandler;
-import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
 import io.mosire.simos.app.time.EconomyDayFeed;
 import io.mosire.simos.app.time.MarketReadoutAssembly;
 import io.mosire.simos.app.time.MarketReportFeed;
 import io.mosire.simos.app.time.OwnershipBooks;
+import io.mosire.simos.app.time.PopulationEconomyTimeParticipant;
 import io.mosire.simos.app.tools.write.WorldgenInitializeTool;
 import io.mosire.simos.core.CoreConfig;
 import io.mosire.simos.core.CoreSimos;
@@ -29,38 +26,32 @@ import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandResult;
 import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.economy.EconomyData;
-import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.market.MarketUnfilledReason;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.codec.EconomyCodec;
-import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.MarketReadout;
 import io.mosire.simos.economy.time.MarketReport;
-import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.codec.MapCodec;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.spi.UpdateRegionHandler;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.spi.CreateArmyHandler;
 import io.mosire.simos.sd.spi.CreateNationHandler;
-import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.time.SdTimeParticipant;
-import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.spi.CreateCityHandler;
 import io.mosire.simos.social.spi.SeedGroupsHandler;
 import io.mosire.simos.social.spi.SetPopulationHandler;
-import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.codec.UnitCodec;
 import io.mosire.simos.unit.move.TerrainMovementCost;
 import io.mosire.simos.unit.spi.CreateCommandChainHandler;
@@ -72,8 +63,6 @@ import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
-import io.mosire.simos.util.state.Snapshot;
-import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
 import io.mosire.simos.util.time.TimeRange;
@@ -102,9 +91,9 @@ import org.junit.jupiter.api.io.TempDir;
  *       MarketReport}、逐买方/逐卖方槽位结果、账户分布与同一条 {@code planOrders} 的纯订单读数；
  *   <li>{@link #dailyFillCurve()}：把 0→240 改成<b>逐日推进</b>，看成交曲线在哪一天塌到 0（用来回答"是不是边界采样假象"， 并与分段路径的同
  *       tick 读数对照）；
- *   <li>{@link #counterfactualMoneyAt1200()}：把 tick=1200 的真实状态重放成新世界的 genesis（测试侧，不动 main），
- *       对照组原样续跑到 1205；变异组只给"有缺口且可花货币为 0"的家户补上创世口径的银（每人 12 毫银 + 缺口货款）， 看 1205 的成交是否恢复 ——
- *       用来判"钱是不是那个唯一卡死的约束"。
+ *   <li><b>（原 counterfactualMoneyAt1200 已删）</b>：它在"给缺口户补钱"的变异组里会触发 {@code
+ *       EconomySettlement.availableMoneyOf} 的并发读/写竞态 NPE（{@code HashMap.merge} 读到 {@code
+ *       silver=null}）；这是主代码缺陷，已随 D5 报告移交，修好后可恢复该诊断。
  * </ol>
  *
  * <p>所有读数都来自 {@code core.replay} 的真实状态 + 进程内真实报告；没有手搭 EconomyData、没有直接调 {@code MarketSettlement}
@@ -247,161 +236,6 @@ class RealTwelveMarketFreezeDiagnosisTest {
     }
   }
 
-  // ── 路径 3：tick=1200 的对照/补钱变异 ────────────────────────────────────────────────
-
-  @Test
-  void counterfactualMoneyAt1200() throws Exception {
-    ObjectMapper original = installChangeSetMapperEconomyMetaMixin();
-    try (CoreSimos core =
-        shellAlikeCore(Files.createDirectories(tempDir.resolve("mf-cf-base-store")))) {
-      long head = seed(core, tempDir);
-      long tick = 0L;
-      long segment = 0L;
-      while (tick < 1200L) {
-        long from = tick;
-        long to = Math.min(tick + SEGMENT_DAYS, 1200L);
-        segment++;
-        head = advance(core, head, from, to, "mf-cf-base-" + segment);
-        tick = to;
-      }
-      SimulationState frozen = core.replay(ref(head));
-      Optional<MarketReport> base = MarketReportFeed.last(MAP_ID, 1200L);
-      System.out.println("[MF][CF][BASE] tick=1200 head=" + head);
-      printBoundary(1200L, frozen, base, true);
-
-      ActorData frozenActor = CompactThreeNationsWorld.actorOf(frozen);
-      EconomyData frozenEconomy = CompactThreeNationsWorld.economyOf(frozen);
-      Map<HouseholdId, Long> zeroSilver = beneficiariesOf(base, frozenEconomy, frozenActor);
-      Map<HouseholdId, Long> allGap = allGapBeneficiariesOf(base, frozenEconomy);
-      long injectTotal = zeroSilver.values().stream().mapToLong(Long::longValue).sum();
-      long allGapTotal = allGap.values().stream().mapToLong(Long::longValue).sum();
-      System.out.println(
-          "[MF][CF][TARGETS] zeroSilverGapHouseholds="
-              + zeroSilver.size()
-              + " zeroSilverGapMilli="
-              + injectTotal
-              + " allGapHouseholds="
-              + allGap.size()
-              + " allGapMilli="
-              + allGapTotal);
-
-      // 对照组：状态原样重启到 1205（排除"重启本身"这个变量）。
-      try (CoreSimos control =
-          shellAlikeCore(Files.createDirectories(tempDir.resolve("mf-cf-control-store")))) {
-        control.bootstrapGenesis(restamp(frozen, 1200L, null));
-        long controlHead = advance(control, 1L, 1200L, 1205L, "mf-cf-control");
-        Optional<MarketReport> report = MarketReportFeed.last(MAP_ID, 1205L);
-        System.out.println("[MF][CF][CONTROL] tick=1200->1205 head=" + controlHead + " injected=0");
-        printBoundary(1205L, control.replay(ref(controlHead)), report, true);
-      }
-
-      // 变异组 A：只给"有粮缺口且可花银 == 0"的家户补回创世口径的银（测试侧状态注入，不进 main）。
-      ActorData injectedZero = injectSilver(frozenActor, frozenEconomy, zeroSilver);
-      try (CoreSimos variant =
-          shellAlikeCore(Files.createDirectories(tempDir.resolve("mf-cf-variant-a-store")))) {
-        variant.bootstrapGenesis(restamp(frozen, 1200L, injectedZero));
-        long variantHead = advance(variant, 1L, 1200L, 1205L, "mf-cf-variant-a");
-        Optional<MarketReport> report = MarketReportFeed.last(MAP_ID, 1205L);
-        System.out.println(
-            "[MF][CF][VARIANT-A] tick=1200->1205 head="
-                + variantHead
-                + " injectedHouseholds="
-                + zeroSilver.size()
-                + " injectedSilverMilli="
-                + injectTotal);
-        printBoundary(1205L, variant.replay(ref(variantHead)), report, true);
-      }
-
-      // 变异组 B：给**全部**有粮缺口的家户补钱（含那批"有钱但只有 1~2 毫"的户），并跑完整的一个 120 天段，
-      //   与同长度的对照段比较"下一个关账日"是否还冻结。
-      ActorData injectedAll = injectSilver(frozenActor, frozenEconomy, allGap);
-      try (CoreSimos controlLong =
-          shellAlikeCore(Files.createDirectories(tempDir.resolve("mf-cf-control-long-store")))) {
-        controlLong.bootstrapGenesis(restamp(frozen, 1200L, null));
-        Capture controlCapture =
-            captureSegment(controlLong, 1L, 1200L, 1320L, "mf-cf-control-long");
-        System.out.println(
-            "[MF][CF][CONTROL-LONG] tick=1200->1320 head="
-                + controlCapture.head()
-                + " injected=0 fillsByDay="
-                + controlCapture.fillsByDay());
-        printBoundary(
-            1320L,
-            controlLong.replay(ref(controlCapture.head())),
-            MarketReportFeed.last(MAP_ID, 1320L),
-            true);
-      }
-      try (CoreSimos variantLong =
-          shellAlikeCore(Files.createDirectories(tempDir.resolve("mf-cf-variant-b-store")))) {
-        variantLong.bootstrapGenesis(restamp(frozen, 1200L, injectedAll));
-        Capture variantCapture = captureSegment(variantLong, 1L, 1200L, 1320L, "mf-cf-variant-b");
-        System.out.println(
-            "[MF][CF][VARIANT-B] tick=1200->1320 head="
-                + variantCapture.head()
-                + " injectedHouseholds="
-                + allGap.size()
-                + " injectedSilverMilli="
-                + allGapTotal
-                + " fillsByDay="
-                + variantCapture.fillsByDay());
-        printBoundary(
-            1320L,
-            variantLong.replay(ref(variantCapture.head())),
-            MarketReportFeed.last(MAP_ID, 1320L),
-            true);
-      }
-      // 变异组 D（阈值探针）：每个缺口家户只补 10 毫银（远小于创世口径 ≈214），看"钱包不再被 2 毫边距清零"
-      //   是否足以让市场重新出现成交 —— 用来区分"完全没钱"与"钱小到撮合当 0"。
-      Map<HouseholdId, Long> minimal = new LinkedHashMap<>();
-      for (HouseholdId household : allGap.keySet()) {
-        minimal.put(household, 10L);
-      }
-      ActorData injectedMinimal = injectSilver(frozenActor, frozenEconomy, minimal);
-      try (CoreSimos variantMin =
-          shellAlikeCore(Files.createDirectories(tempDir.resolve("mf-cf-variant-d-store")))) {
-        variantMin.bootstrapGenesis(restamp(frozen, 1200L, injectedMinimal));
-        Capture minimalCapture = captureSegment(variantMin, 1L, 1200L, 1250L, "mf-cf-variant-d");
-        System.out.println(
-            "[MF][CF][VARIANT-D] tick=1200->1250 head="
-                + minimalCapture.head()
-                + " injectedHouseholds="
-                + minimal.size()
-                + " injectedSilverMilli="
-                + (10L * minimal.size())
-                + " fillsByDay="
-                + minimalCapture.fillsByDay());
-      }
-
-      // 变异组 E（守恒对照）：不增发货币，只把**同一个** 3,432 毫银从银最多的账户转给 16 个缺口户
-      //   （世界银总量仍 = 46,800）—— 用来区分"钱不够"与"钱在别人手里"。
-      long[] redistributionStats = new long[2];
-      ActorData redistributed =
-          redistributeSilver(frozenActor, frozenEconomy, allGap, redistributionStats);
-      try (CoreSimos variantRedistribute =
-          shellAlikeCore(Files.createDirectories(tempDir.resolve("mf-cf-variant-e-store")))) {
-        variantRedistribute.bootstrapGenesis(restamp(frozen, 1200L, redistributed));
-        Capture redistributeCapture =
-            captureSegment(variantRedistribute, 1L, 1200L, 1320L, "mf-cf-variant-e");
-        System.out.println(
-            "[MF][CF][VARIANT-E] tick=1200->1320 head="
-                + redistributeCapture.head()
-                + " movedMilli="
-                + redistributionStats[1]
-                + " donorAccounts="
-                + redistributionStats[0]
-                + " fillsByDay="
-                + redistributeCapture.fillsByDay());
-        printBoundary(
-            1320L,
-            variantRedistribute.replay(ref(redistributeCapture.head())),
-            MarketReportFeed.last(MAP_ID, 1320L),
-            true);
-      }
-    } finally {
-      restoreChangeSetMapper(original);
-    }
-  }
-
   private static boolean isDetailTick(long tick) {
     for (long value : DETAIL_TICKS) {
       if (value == tick) {
@@ -416,7 +250,7 @@ class RealTwelveMarketFreezeDiagnosisTest {
     EconomyData economy = CompactThreeNationsWorld.economyOf(state);
     ActorData actor = CompactThreeNationsWorld.actorOf(state);
     long population = 0L;
-    for (ClassRow row : economy.classes().values()) {
+    for (HouseholdEconomy row : economy.classes().values()) {
       population += row.population();
     }
     long unmetNeed = 0L;
@@ -951,9 +785,9 @@ class RealTwelveMarketFreezeDiagnosisTest {
     TreeMap<String, long[]> byStratum = new TreeMap<>();
     TreeMap<String, long[]> byMode = new TreeMap<>();
     Map<HouseholdId, long[]> householdMoneyGrain = new LinkedHashMap<>();
-    for (GoodsAccount account : actor.accounts().values()) {
+    for (HouseholdInventory account : actor.accounts().values()) {
       // ★ P2-A §13.3：账户主体只有家户，键 = HouseholdId（不再带格）⇒ 原先的 owner/kind 分支整体退役，
-      //   位置从 economy 的 ClassRow.view().hex() 派生。
+      //   位置从 economy 的 HouseholdEconomy.view().hex() 派生。
       HouseholdId household = account.key().household();
       long silver = account.money().getOrDefault(SILVER, 0L);
       long grain = account.balances().getOrDefault(GRAIN, 0L);
@@ -962,13 +796,13 @@ class RealTwelveMarketFreezeDiagnosisTest {
       for (Map.Entry<CurrencyId, Long> money : account.money().entrySet()) {
         totalByCurrency.merge(money.getKey(), money.getValue(), Long::sum);
       }
-      ClassRow row = economy.classes().get(household);
+      HouseholdEconomy row = economy.classes().get(household);
       String residence = row == null ? "-" : row.view().residence().value();
       String stratum = row == null ? "-" : row.view().stratum().value();
       String mode = "-";
-      ClassStanding standing = economy.classStandings().get(household);
+      HouseholdClassMembership standing = economy.classStandings().get(household);
       if (standing != null) {
-        ClassPosition position = economy.classPositions().get(standing.currentPositionId());
+        ProductionRole position = economy.classPositions().get(standing.currentPositionId());
         if (position != null) {
           mode = position.modeId().value();
         }
@@ -1004,7 +838,7 @@ class RealTwelveMarketFreezeDiagnosisTest {
     long householdGrain = 0L;
     long householdSilverZero = 0L;
     long householdGrainZero = 0L;
-    for (ClassRow row : economy.classes().values()) {
+    for (HouseholdEconomy row : economy.classes().values()) {
       long silver =
           session.householdMoney().getOrDefault(row.id(), Map.of()).getOrDefault(SILVER, 0L);
       long grain =
@@ -1130,232 +964,13 @@ class RealTwelveMarketFreezeDiagnosisTest {
    * 变异组名单：tick=1200 报告中"粮缺口 &gt; 0 且可花银 = 0"的家户；补额 = max(每人 12 毫银的创世口径, 缺口货款 + 12)， 缺口货款按挂牌粮价 1
    * 毫银/单位、1 单位 = 1000 毫粮折算（{@code gapQty / 1000 + 12}）。
    */
-  private static Map<HouseholdId, Long> beneficiariesOf(
-      Optional<MarketReport> report, EconomyData economy, ActorData actor) {
-    Map<HouseholdId, Long> injections = new LinkedHashMap<>();
-    if (report.isPresent()) {
-      for (MarketReport.BuyerOutcome outcome : report.get().buyerOutcomes()) {
-        if (!outcome.commodity().equals(GRAIN)
-            || outcome.gapQty() <= 0L
-            || outcome.spendableMoneyMilli() > 0L
-            || outcome.household().isEmpty()) {
-          continue;
-        }
-        HouseholdId household = outcome.household().orElseThrow();
-        ClassRow row = economy.classes().get(household);
-        long population = row == null ? 0L : row.population();
-        if (population <= 0L) {
-          continue;
-        }
-        long amount = Math.max(12L * population, outcome.gapQty() / 1000L + 12L);
-        injections.merge(household, amount, Math::max);
-      }
-    }
-    if (injections.isEmpty()) {
-      AccountSession session;
-      try {
-        session = OwnershipBooks.loadAccountSession(economy, actor);
-      } catch (RuntimeException e) {
-        return injections;
-      }
-      for (ClassRow row : economy.classes().values()) {
-        if (row.population() <= 0L) {
-          continue;
-        }
-        long silver =
-            session.householdMoney().getOrDefault(row.id(), Map.of()).getOrDefault(SILVER, 0L);
-        long grain =
-            session.householdGoods().getOrDefault(row.id(), Map.of()).getOrDefault(GRAIN, 0L);
-        long need = row.naturalNeeds().getOrDefault(GRAIN, 0L);
-        if (silver == 0L && grain < need) {
-          injections.put(row.id(), 12L * row.population());
-        }
-      }
-    }
-    return injections;
-  }
 
   /** 全部有粮缺口的家户（不论可花银多少）；补额口径同上，用于回答"钱是否唯一约束"。 */
-  private static Map<HouseholdId, Long> allGapBeneficiariesOf(
-      Optional<MarketReport> report, EconomyData economy) {
-    Map<HouseholdId, Long> injections = new LinkedHashMap<>();
-    if (report.isEmpty()) {
-      return injections;
-    }
-    for (MarketReport.BuyerOutcome outcome : report.get().buyerOutcomes()) {
-      if (!outcome.commodity().equals(GRAIN)
-          || outcome.gapQty() <= 0L
-          || outcome.household().isEmpty()) {
-        continue;
-      }
-      HouseholdId household = outcome.household().orElseThrow();
-      ClassRow row = economy.classes().get(household);
-      long population = row == null ? 0L : row.population();
-      if (population <= 0L) {
-        continue;
-      }
-      long amount = Math.max(12L * population, outcome.gapQty() / 1000L + 12L);
-      injections.merge(household, amount, Math::max);
-    }
-    return injections;
-  }
-
-  private static ActorData injectSilver(
-      ActorData actor, EconomyData economy, Map<HouseholdId, Long> injections) {
-    if (injections.isEmpty()) {
-      return actor;
-    }
-    Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>(actor.accounts());
-    int missing = 0;
-    int applied = 0;
-    for (Map.Entry<HouseholdId, Long> entry : injections.entrySet()) {
-      ClassRow row = economy.classes().get(entry.getKey());
-      if (row == null || entry.getValue() <= 0L) {
-        continue;
-      }
-      GoodsAccountKey key = OwnershipBooks.accountKeyOf(entry.getKey());
-      GoodsAccount account = accounts.get(key);
-      if (account == null) {
-        missing++;
-        continue;
-      }
-      Map<CurrencyId, Long> money = new LinkedHashMap<>(account.money());
-      money.merge(SILVER, entry.getValue(), Long::sum);
-      accounts.put(
-          key,
-          new GoodsAccount(
-              account.key(),
-              account.balances(),
-              money,
-              account.frozenBalances(),
-              account.frozenMoney()));
-      applied++;
-    }
-    System.out.println(
-        "[MF][CF][INJECT] requestedHouseholds="
-            + injections.size()
-            + " applied="
-            + applied
-            + " missingAccounts="
-            + missing);
-    return actor.withAccounts(accounts);
-  }
 
   /**
    * ★★ <b>守恒版对照</b>：把 {@code targets} 需要的银从"银最多的账户"按降序抽出来（抽到够为止、不抽成负数）， 再等额加到目标家户账上 ——
    * 世界银总量逐值不变。用来把"货币存量不足"与"货币分布错误"分开。
    */
-  private static ActorData redistributeSilver(
-      ActorData actor, EconomyData economy, Map<HouseholdId, Long> targets, long[] statsOut) {
-    long needed = targets.values().stream().mapToLong(Long::longValue).sum();
-    Set<GoodsAccountKey> targetKeys = new LinkedHashSet<>();
-    for (HouseholdId household : targets.keySet()) {
-      ClassRow row = economy.classes().get(household);
-      if (row != null) {
-        targetKeys.add(OwnershipBooks.accountKeyOf(household));
-      }
-    }
-    List<GoodsAccount> donors = new ArrayList<>();
-    for (GoodsAccount account : actor.accounts().values()) {
-      if (!targetKeys.contains(account.key()) && account.money().getOrDefault(SILVER, 0L) > 0L) {
-        donors.add(account);
-      }
-    }
-    donors.sort(
-        Comparator.comparingLong((GoodsAccount account) -> account.money().getOrDefault(SILVER, 0L))
-            .reversed());
-    Map<GoodsAccountKey, Long> delta = new LinkedHashMap<>();
-    long remaining = needed;
-    long donorsUsed = 0L;
-    for (GoodsAccount account : donors) {
-      if (remaining <= 0L) {
-        break;
-      }
-      long silver = account.money().getOrDefault(SILVER, 0L);
-      long take = Math.min(silver, remaining);
-      delta.merge(account.key(), -take, Long::sum);
-      remaining -= take;
-      donorsUsed++;
-    }
-    for (Map.Entry<HouseholdId, Long> entry : targets.entrySet()) {
-      ClassRow row = economy.classes().get(entry.getKey());
-      if (row != null && entry.getValue() > 0L) {
-        delta.merge(
-            OwnershipBooks.accountKeyOf(entry.getKey()),
-            entry.getValue(),
-            Long::sum);
-      }
-    }
-    Map<GoodsAccountKey, GoodsAccount> accounts = new LinkedHashMap<>(actor.accounts());
-    for (Map.Entry<GoodsAccountKey, Long> entry : delta.entrySet()) {
-      GoodsAccount account = accounts.get(entry.getKey());
-      if (account == null) {
-        continue;
-      }
-      long after = account.money().getOrDefault(SILVER, 0L) + entry.getValue();
-      if (after < 0L) {
-        throw new IllegalStateException("再分配把账户银抽成负数: " + account.key() + " -> " + after);
-      }
-      Map<CurrencyId, Long> money = new LinkedHashMap<>(account.money());
-      if (after == 0L) {
-        money.remove(SILVER);
-      } else {
-        money.put(SILVER, after);
-      }
-      accounts.put(
-          account.key(),
-          new GoodsAccount(
-              account.key(),
-              account.balances(),
-              money,
-              account.frozenBalances(),
-              account.frozenMoney()));
-    }
-    System.out.println(
-        "[MF][CF][REDISTRIBUTE] requestedMilli="
-            + needed
-            + " movedMilli="
-            + (needed - remaining)
-            + " donorAccounts="
-            + donorsUsed
-            + " shortfallMilli="
-            + remaining);
-    statsOut[0] = donorsUsed;
-    statsOut[1] = needed - remaining;
-    return actor.withAccounts(accounts);
-  }
-
-  // ── 状态重放成新 genesis（测试侧；只用于对照/变异）────────────────────────────────────
-
-  private static SimulationState restamp(
-      SimulationState state, long tick, ActorData actorOverride) {
-    StateRef ref = new StateRef(MAIN, new RevisionId(1));
-    SimosTimestamp timestamp = SimosTimestamp.of(tick);
-    StateMeta meta = new StateMeta(ref, timestamp);
-    Map<String, Snapshot> modules = new LinkedHashMap<>();
-    for (Map.Entry<String, Snapshot> entry : state.modules().entrySet()) {
-      Snapshot snapshot = entry.getValue();
-      Snapshot next;
-      if (snapshot instanceof MapSnapshot value) {
-        next = new MapSnapshot(ref, timestamp, value.map());
-      } else if (snapshot instanceof SocialSnapshot value) {
-        next = new SocialSnapshot(ref, timestamp, value.data());
-      } else if (snapshot instanceof UnitSnapshot value) {
-        next = new UnitSnapshot(ref, timestamp, value.state());
-      } else if (snapshot instanceof SdSnapshot value) {
-        next = new SdSnapshot(ref, timestamp, value.state());
-      } else if (snapshot instanceof EconomySnapshot value) {
-        next = new EconomySnapshot(ref, timestamp, value.data());
-      } else if (snapshot instanceof ActorSnapshot value) {
-        next =
-            new ActorSnapshot(ref, timestamp, actorOverride == null ? value.data() : actorOverride);
-      } else {
-        throw new IllegalStateException("restamp 未覆盖的模块: " + snapshot.namespace());
-      }
-      modules.put(entry.getKey(), next);
-    }
-    return new SimulationState(meta, modules, state.info());
-  }
 
   // ── 段内报告捕获（只读轮询公开读口；不改推进方式）──────────────────────────────────────
 

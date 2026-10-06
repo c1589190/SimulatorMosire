@@ -10,10 +10,13 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.id.SdInfoId;
+import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.DiplomaticEvent;
 import io.mosire.simos.sd.model.DiplomaticRelation;
 import io.mosire.simos.sd.model.DiplomaticRelationKey;
+import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.sd.model.Nation;
+import io.mosire.simos.sd.model.PacketStatus;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.sd.testing.SdFixtures;
@@ -219,10 +222,16 @@ class SdCodecTest {
 
     assertThat(back.state().diplomaticRelations()).as("★ 缺键 ⇒ 空表（不是 null、不是抛）").isEmpty();
     assertThat(back.state().diplomaticEvents()).as("★ 缺键 ⇒ 空表").isEmpty();
-    assertThat(back.state())
-        .as("其余十个组件逐字不变")
-        .isEqualTo(
-            SdFixtures.full().withDiplomaticRelations(Map.of()).withDiplomaticEvents(Map.of()));
+    // ★ 期望态**不能**写成 full().withDiplomaticRelations(Map.of())：那个 wither 走 12 参兼容构造器，
+    //   会把 D2 的 decisionPackets/mergedEffectPlans 静默清空（主代码 bug，本批不改 src/main）。这里显式恢复
+    //   两张表——本用例要钉的是"删键解码成空表 + 其余组件不变"，不是那个 wither 的行为。
+    SdState expected =
+        SdFixtures.full()
+            .withDiplomaticRelations(Map.of())
+            .withDecisionPackets(SdFixtures.full().decisionPackets())
+            .withMergedEffectPlans(SdFixtures.full().mergedEffectPlans())
+            .withDiplomaticEvents(Map.of());
+    assertThat(back.state()).as("其余十二个组件逐字不变").isEqualTo(expected);
   }
 
   /**
@@ -253,6 +262,116 @@ class SdCodecTest {
         .isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(SdChangeSet.apply(legacy, full))
         .as("旧变更集应用到含外交表的 base ⇒ 两张表原样保留，整态等于 base")
+        .isEqualTo(full);
+  }
+
+  /**
+   * ★ D2/D3 新增的两个组件经**真 JSON 快照往返**逐字段不丢：决策包（call 的
+   * index/工具/目标/合并引用/outcome/裁决留痕）与合并效果集（参与者/有序效果/来源/outcome）。
+   *
+   * <p>★ 判别力：{@code full()} 里 DRAFT 与 MERGED 包、执行与未执行计划都有，逐字段对照能指出丢的是哪一个。
+   */
+  @Test
+  void theTwoNewDecisionComponentsSurviveTheJsonSnapshotRoundTripFieldByField() {
+    SdSnapshot snapshot = snapshot(SdFixtures.full());
+    SdSnapshot back = (SdSnapshot) CODEC.decodeSnapshot(CODEC.encodeSnapshot(snapshot));
+
+    assertThat(back).as("整快照 JSON 往返").isEqualTo(snapshot);
+
+    DecisionPacket draft = back.state().decisionPackets().get(SdFixtures.P1);
+    assertThat(draft).as("DRAFT 包在 JSON 往返后仍在").isNotNull();
+    assertThat(draft.status()).as("包状态往返").isEqualTo(PacketStatus.DRAFT);
+    assertThat(draft.intent()).as("intent 往返").isEqualTo("夹具意图-pkt-dm1-0");
+    assertThat(draft.createdAtRevision()).as("createdAtRevision 往返").isEqualTo(1L);
+    assertThat(draft.calls()).as("calls 数量往返").hasSize(2);
+    assertThat(draft.calls().get(0).toolName()).as("call 工具往返").isEqualTo("simos.unit.raiseUnit");
+    assertThat(draft.calls().get(0).targets())
+        .as("跨命名空间目标往返")
+        .extracting(target -> target.namespace())
+        .containsExactly("unit");
+
+    DecisionPacket merged = back.state().decisionPackets().get(SdFixtures.P2);
+    assertThat(merged).as("MERGED 包在 JSON 往返后仍在").isNotNull();
+    assertThat(merged.calls().get(0).mergedPlanId())
+        .as("call 的 mergedPlanId 往返")
+        .contains(SdFixtures.MP1.value());
+    assertThat(merged.calls().get(0).outcomeJson())
+        .as("call 的执行摘要往返")
+        .contains("{\"applied\":true}");
+    assertThat(merged.decidedBy()).as("decidedBy 往返").contains("gm");
+    assertThat(merged.decidedAtRevision()).as("decidedAtRevision 往返").hasValue(5L);
+    assertThat(merged.decisionNote()).as("decisionNote 往返").contains("并入合并集");
+
+    MergedEffectPlan plan = back.state().mergedEffectPlans().get(SdFixtures.MP1);
+    assertThat(plan).as("未执行的合并计划在 JSON 往返后仍在").isNotNull();
+    assertThat(plan.participantIds())
+        .as("参与者往返（保序）")
+        .containsExactly(SdFixtures.DM1, SdFixtures.DM2);
+    assertThat(plan.orderedEffects().get(0).sourceCallRefs())
+        .as("有序效果来源引用往返")
+        .containsExactly(SdFixtures.P1.value() + ":0");
+    assertThat(plan.sources()).as("sources 往返").containsExactly(SdFixtures.P1.value() + ":0");
+    assertThat(plan.reasonInfoId()).as("计划 reasonInfoId 往返").contains("info-merge");
+    assertThat(plan.outcome()).as("未执行计划的 outcome 往返仍为空").isEmpty();
+
+    assertThat(back.state().mergedEffectPlans().get(SdFixtures.MP2).outcome())
+        .as("已执行计划的 outcome 往返")
+        .contains("{\"applied\":true}");
+  }
+
+  /**
+   * ★★ **老档兼容（D2/D3）**：没有 {@code decisionPackets} / {@code mergedEffectPlans} 两个键的快照字节，必须读成**空表**，
+   * 而不是整个世界打不开（同时代的老档里这两张表本就为空）。
+   *
+   * <p>★ 做法与既有老档用例同源：在**真字节**上删键（先自证两个键确实写进线格式，否则本用例恒真）。
+   */
+  @Test
+  void aLegacySnapshotWithoutTheDecisionPacketKeysReadsThemAsEmpty() throws Exception {
+    SdSnapshot snapshot = snapshot(SdFixtures.full());
+    String json = CODEC.encodeSnapshot(snapshot);
+    ObjectMapper treeMapper = SimosObjectMapper.create();
+    JsonNode root = treeMapper.readTree(json);
+    ObjectNode state = (ObjectNode) root.get("state");
+    assertThat(state.has("decisionPackets")).as("★ 先证明 decisionPackets 键真的写进字节").isTrue();
+    assertThat(state.has("mergedEffectPlans")).as("★ 先证明 mergedEffectPlans 键真的写进字节").isTrue();
+    state.remove("decisionPackets");
+    state.remove("mergedEffectPlans");
+
+    SdSnapshot back = (SdSnapshot) CODEC.decodeSnapshot(treeMapper.writeValueAsString(root));
+
+    assertThat(back.state().decisionPackets()).as("★ 缺键 ⇒ 空表（不是 null、不是抛）").isEmpty();
+    assertThat(back.state().mergedEffectPlans()).as("★ 缺键 ⇒ 空表").isEmpty();
+    assertThat(back.state())
+        .as("其余十二个组件逐字不变")
+        .isEqualTo(SdFixtures.full().withDecisionPackets(Map.of()).withMergedEffectPlans(Map.of()));
+  }
+
+  /**
+   * ★★ **老档兼容（D2/D3）**：没有两个决策包键的**变更集**字节，必须读成 {@link FieldDelta.Unchanged}（旧档没提该组件 = 没动它）， 而不是
+   * null/NPE；把它应用到 base 上不得清空已有决策包表。
+   */
+  @Test
+  void aLegacyChangeSetWithoutTheDecisionPacketKeysReadsThemAsUnchanged() throws Exception {
+    SdState full = SdFixtures.full();
+    SdChangeSet changeSet = SdChangeSet.between(SdFixtures.empty(), full);
+    String json = CODEC.encodeChangeSet(changeSet);
+    ObjectMapper treeMapper = SimosObjectMapper.create();
+    ObjectNode root = (ObjectNode) treeMapper.readTree(json);
+    assertThat(root.has("decisionPackets")).as("★ 先证明 decisionPackets 键真的写进字节").isTrue();
+    assertThat(root.has("mergedEffectPlans")).as("★ 先证明 mergedEffectPlans 键真的写进字节").isTrue();
+    root.remove("decisionPackets");
+    root.remove("mergedEffectPlans");
+
+    SdChangeSet legacy = (SdChangeSet) CODEC.decodeChangeSet(treeMapper.writeValueAsString(root));
+
+    assertThat(legacy.decisionPackets())
+        .as("★ 缺键 ⇒ Unchanged（fail-closed：没提就是没动）")
+        .isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(legacy.mergedEffectPlans())
+        .as("★ 缺键 ⇒ Unchanged（fail-closed：没提就是没动）")
+        .isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(SdChangeSet.apply(legacy, full))
+        .as("旧变更集应用到含决策包表的 base ⇒ 两张表原样保留，整态等于 base")
         .isEqualTo(full);
   }
 

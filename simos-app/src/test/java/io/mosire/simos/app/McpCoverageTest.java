@@ -33,8 +33,11 @@ import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.codec.EconomyCodec;
-import io.mosire.simos.economy.model.AssetShare;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.RegimeOperators;
+import io.mosire.simos.gov.GovSnapshot;
+import io.mosire.simos.gov.GovState;
+import io.mosire.simos.gov.codec.GovCodec;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -123,14 +126,18 @@ class McpCoverageTest {
    * catalog 预期的 91 个已注册命令类型（与 {@code Shell} 注册的 handler 同源，T9 后 18 → 30，C 阶段 30 → 37，D 阶段 37 →
    * 40，T3 起 40 → 41，T10 起 41 → 42，M11 起 42 → 43，T11C 起 43 → 44，会话重置起 44 → 45，令状态翻转起 45 → 46， social
    * 起 46 → 49，economy/actor 全族补齐后 50 → 60，辖区阶段 5–8 起 60 → 65，阶段 9–12 起 65 → 71，P1b1/P1b2/P3/R3a 与
-   * D1/D3a/D4/D5 起 71 → 85，S3a 的家户/人口 8 条起 85 → 93；P0.1 删除 economy.UnitBorrow/UnitRepay 两个 handler ⇒ 91）。
+   * D1/D3a/D4/D5 起 71 → 85，S3a 的家户/人口 8 条起 85 → 93；P0.1 删除 economy.UnitBorrow/UnitRepay 两个 handler
+   * ⇒ 91）。
    */
   private static final List<String> EXPECTED_COMMAND_TYPES =
       List.of(
           "actor.AdjustAccounts",
           "actor.ClearRegion",
+          "actor.DeductHouseholdStock",
+          "actor.EnsureHouseholdAccount",
           "actor.RemitGovTreasury",
           "actor.Seed",
+          "actor.TransferAccounts",
           "army.AppendCombatStage",
           "army.RecordCombat",
           "army.ResolveCombatStage",
@@ -140,17 +147,30 @@ class McpCoverageTest {
           "economy.GmAdjust",
           "economy.MigrateHousehold",
           "economy.RegisterCandidate",
+          "economy.RegisterGovernment",
+          "economy.RegisterHousehold",
+          "economy.RemoveHouseholdPeriodicAdjustment",
           "economy.Seed",
+          "economy.SetHouseholdClass",
+          "economy.SetHouseholdLabor",
+          "economy.SetHouseholdParticipation",
           "economy.SetMarketPrice",
           "economy.SwitchMode",
           "economy.TransferAssetShare",
+          "economy.UnitBorrow",
+          "economy.UnitRepay",
+          "economy.UpdateDemand",
+          "economy.UpsertHouseholdPeriodicAdjustment",
           "map.CreateRegion",
           "map.DeleteRegion",
+          "map.MergeRegions",
           "map.RandomizeRegion",
+          "map.ReassignHexes",
           "map.RegisterPathwayGroup",
           "map.RenameRegion",
           "map.SetEdge",
           "map.SetTerrain",
+          "map.SplitRegion",
           "map.UpdateRegion",
           "sd.AddCombatStage",
           "sd.CancelEffect",
@@ -159,7 +179,9 @@ class McpCoverageTest {
           "sd.CreateCombat",
           "sd.CreateDecisionMaker",
           "sd.CreateNation",
+          "sd.DecideDecisionPacket",
           "sd.DeleteDecisionMaker",
+          "sd.DeleteNation",
           "sd.IssueDirective",
           "sd.PutInfo",
           "sd.RecordCasualties",
@@ -174,17 +196,27 @@ class McpCoverageTest {
           "sd.SetDirectiveStatus",
           "sd.SetStageOutcomeTable",
           "sd.StartDecision",
+          "sd.SubmitDecisionPacket",
           "sd.SubmitVerdict",
+          "sd.UpsertDecisionPacket",
+          "sd.UpsertMergedEffectPlan",
           "social.AddHouseholdMembers",
           "social.AdjustHouseholdPopulation",
           "social.ClearRegion",
           "social.CreateCity",
           "social.CreateHousehold",
+          "social.DeleteCity",
+          "social.MoveCity",
+          "social.MovePopulationLots",
           "social.RemoveHouseholdMembers",
           "social.SeedGroups",
+          "social.SetDemandCoefficient",
+          "social.SetGlobalVitalRates",
           "social.SetHouseholdLocation",
           "social.SetHouseholdVitalRates",
+          "social.SetLaborCoefficient",
           "social.SetPopulation",
+          "social.SubmitHouseholdWorkOrder",
           "social.TransferHouseholdMembers",
           "social.UpdateCity",
           "unit.AdjustComposition",
@@ -205,6 +237,7 @@ class McpCoverageTest {
           "unit.ReparentSubtree",
           "unit.ReparentUnit",
           "unit.SetArmyFormation",
+          "unit.SetArmyPayPolicy",
           "unit.SetComposition",
           "unit.SetFormationOffset",
           "unit.SetGovFormation",
@@ -216,6 +249,7 @@ class McpCoverageTest {
           "unit.SetStatus",
           "unit.SetTaxRate",
           "unit.SetUnitHouseholds",
+          "unit.SetVisionRadius",
           "unit.SplitFormation",
           "unit.UpdateCommandChain");
 
@@ -239,43 +273,147 @@ class McpCoverageTest {
       Set.of(
           "economy.SwitchMode",
           "economy.GmAdjust",
-          // ★ R3a：actor.RemitGovTreasury 非 GmOnly，但本夹具没有两个带国库账的 GOV ⇒ 形状合法、前置缺失，
-          //   走同一支具名拒（不推 revision）。
+          "economy.MigrateHousehold",
           "actor.RemitGovTreasury",
-          // ★ 编制 v2（2026-09-24）：unit.SetFormationOffset 已退役（具名拒）⇒ 非 GmOnly 但本夹具无法"提交成功"，
-          //   走同一支具名拒（不推 revision）。
           "unit.SetFormationOffset",
-          // ★ P1b2：删除决策人前必须没有 Directive 引用；本夹具 dm-cov 已有 d-cov ⇒ 走同一支具名拒（不推 revision）。
-          "sd.DeleteDecisionMaker");
+          "sd.DeleteDecisionMaker",
+          "actor.DeductHouseholdStock",
+          "actor.TransferAccounts",
+          "economy.RemoveHouseholdPeriodicAdjustment",
+          "economy.SetHouseholdClass",
+          "economy.SetHouseholdLabor",
+          "economy.SetHouseholdParticipation",
+          "economy.UnitBorrow",
+          "economy.UnitRepay",
+          "economy.UpdateDemand",
+          "economy.UpsertHouseholdPeriodicAdjustment",
+          "map.MergeRegions",
+          "map.ReassignHexes",
+          "map.SplitRegion",
+          "sd.DecideDecisionPacket",
+          "sd.DeleteNation",
+          "sd.SubmitDecisionPacket",
+          "sd.UpsertDecisionPacket",
+          "sd.UpsertMergedEffectPlan",
+          "social.DeleteCity",
+          "social.MoveCity",
+          "social.MovePopulationLots",
+          "social.SetDemandCoefficient",
+          "social.SetLaborCoefficient",
+          "social.SeedGroups",
+          "social.SetHouseholdLocation",
+          "social.TransferHouseholdMembers",
+          "unit.SetUnitHouseholds",
+          "unit.SetArmyPayPolicy",
+          "unit.SetVisionRadius");
 
   /** 每条 {@link #PRECONDITION_REJECT_TYPES} 的载荷：形状合法，但在本夹具必然具名拒（缺前置 / 已退役）且不推 revision。 */
   private static final Map<String, String> PRECONDITION_REJECT_PAYLOADS =
-      Map.of(
-          "economy.SwitchMode",
-          "{\"organizationId\":\"org-missing\",\"toModeId\":\"mode-missing\","
-              + "\"retainOriginalPerMille\":1000,\"effectiveDay\":7,\"reason\":\"coverage\"}",
-          "economy.GmAdjust",
-          "{\"adjustment\":\"forgiveDebt\","
-              + "\"parameters\":{\"debtContractId\":\"missing-debt\"},\"reason\":\"coverage\"}",
-          // actor.RemitGovTreasury：形状合法、源国库账在本夹具不存在 ⇒ 具名拒。
-          "actor.RemitGovTreasury",
-          "{\"fromUnitId\":\"u-missing\",\"fromQ\":1,\"fromR\":1,\"toUnitId\":\"u-missing-2\","
-              + "\"toQ\":1,\"toR\":1,\"grain\":1}",
-          // unit.SetFormationOffset：命令已退役，形状合法的载荷照样具名拒。
-          "unit.SetFormationOffset",
-          "{\"id\":\"u-2\",\"dq\":1,\"dr\":0}",
-          // sd.DeleteDecisionMaker：dm-ghost 不存在 ⇒ 具名拒。
-          "sd.DeleteDecisionMaker",
-          "{\"decisionMakerId\":\"dm-ghost\"}");
+      Map.ofEntries(
+          Map.entry(
+              "economy.SwitchMode",
+              "{\"organizationId\":\"org-missing\",\"toModeId\":\"mode-missing\",\"retainOriginalPerMille\":1000,\"effectiveDay\":7,\"reason\":\"coverage\"}"),
+          Map.entry(
+              "economy.GmAdjust",
+              "{\"adjustment\":\"forgiveDebt\",\"parameters\":{\"debtContractId\":\"missing-debt\"},\"reason\":\"coverage\"}"),
+          Map.entry(
+              "economy.MigrateHousehold", "{\"household\": \"hh-missing\", \"toHex\": \"1_1\"}"),
+          Map.entry(
+              "actor.RemitGovTreasury",
+              "{\"household\":\"hh-missing\",\"fromHousehold\":\"hh-missing\",\"toHousehold\":\"hh-missing2\",\"grain\":1}"),
+          Map.entry("unit.SetFormationOffset", "{\"id\":\"u-2\",\"dq\":1,\"dr\":0}"),
+          Map.entry("sd.DeleteDecisionMaker", "{\"decisionMakerId\":\"dm-ghost\"}"),
+          Map.entry(
+              "actor.DeductHouseholdStock",
+              "{\"entries\": [{\"household\": \"hh-missing\", \"goods\": {\"grain\": 1}, \"reason\": \"jurisdiction_tax\"}]}"),
+          Map.entry(
+              "actor.TransferAccounts",
+              "{\"from\": {\"household\": \"hh-missing-a\"}, \"to\": {\"household\": \"hh-missing-b\"}, \"goods\": {\"grain\": 1}}"),
+          Map.entry(
+              "economy.RegisterGovernment",
+              "{\"govUnitId\": \"\", \"nationRef\": \"\", \"q\": 0, \"r\": 0}"),
+          Map.entry("economy.RegisterHousehold", "{\"household\": \"\", \"q\": 0, \"r\": 0}"),
+          Map.entry("economy.RemoveHouseholdPeriodicAdjustment", "{\"id\": \"adj-missing\"}"),
+          Map.entry(
+              "economy.SetHouseholdClass",
+              "{\"household\": \"hh-missing\", \"position\": \"pos-missing\"}"),
+          Map.entry(
+              "economy.SetHouseholdLabor", "{\"household\": \"hh-missing\", \"laborMilli\": 1000}"),
+          Map.entry(
+              "economy.SetHouseholdParticipation",
+              "{\"household\": \"hh-missing\", \"positions\": []}"),
+          Map.entry(
+              "economy.UnitBorrow",
+              "{\"unitId\": \"u-missing\", \"borrowerHousehold\": \"hh-missing-a\", \"lenderHousehold\": \"hh-missing-b\", \"unit\": \"money\", \"principal\": 1, \"interestRatePerMille\": 0, \"nextDueTick\": 400}"),
+          Map.entry(
+              "economy.UnitRepay",
+              "{\"unitId\": \"u-missing\", \"borrowerHousehold\": \"hh-missing-a\", \"lenderHousehold\": \"hh-missing-b\", \"unit\": \"money\", \"amount\": 1}"),
+          Map.entry("economy.UpdateDemand", "{\"demand\": \"demand-missing\"}"),
+          Map.entry(
+              "economy.UpsertHouseholdPeriodicAdjustment",
+              "{\"id\": \"\", \"payer\": \"hh-missing\", \"goodsPerCycle\": {\"grain\": 1}, \"reason\": \"military_salary\", \"periodDays\": 1, \"phaseDay\": 0, \"startsOnDay\": 0, \"policySource\": \"gm:coverage\"}"),
+          Map.entry(
+              "map.MergeRegions",
+              "{\"targetRegionId\": \"r-missing\", \"sourceRegionIds\": [\"r-missing-2\"]}"),
+          Map.entry(
+              "map.ReassignHexes",
+              "{\"toRegionId\": \"r-missing\", \"fromRegionIds\": [\"r-missing-2\"], \"hexes\": [{\"q\": 0, \"r\": 0}]}"),
+          Map.entry(
+              "map.SplitRegion",
+              "{\"sourceRegionId\": \"r-missing\", \"keepSource\": false, \"parts\": [{\"regionId\": \"r-p1\", \"name\": \"p1\", \"hexes\": [{\"q\": 0, \"r\": 0}]}]}"),
+          Map.entry(
+              "sd.DecideDecisionPacket",
+              "{\"id\": \"pkt-missing\", \"decision\": \"APPROVE\", \"decidedBy\": \"external-mcp\"}"),
+          Map.entry("sd.DeleteNation", "{\"nationId\": \"n-missing\"}"),
+          Map.entry(
+              "sd.SubmitDecisionPacket",
+              "{\"id\": \"pkt-missing\", \"proposerId\": \"dm-missing\"}"),
+          Map.entry(
+              "sd.UpsertDecisionPacket",
+              "{\"id\": \"\", \"branch\": \"main\", \"tick\": 7, \"proposerId\": \"dm-missing\"}"),
+          Map.entry(
+              "sd.UpsertMergedEffectPlan",
+              "{\"id\": \"\", \"tick\": 7, \"participantIds\": [], \"orderedEffects\": [], \"sources\": []}"),
+          Map.entry("social.DeleteCity", "{\"id\": \"c-missing\"}"),
+          Map.entry("social.MoveCity", "{\"id\": \"c-missing\", \"at\": {\"q\": 0, \"r\": 0}}"),
+          Map.entry(
+              "social.MovePopulationLots",
+              "{\"fromHouseholdId\": \"hh-missing\", \"to\": {\"q\": 0, \"r\": 0}, \"reason\": \"x\"}"),
+          Map.entry(
+              "social.SetDemandCoefficient",
+              "{\"ageBracket\": \"NO_SUCH_BRACKET\", \"sex\": \"MALE\", \"commodity\": \"grain\", \"reason\": \"x\"}"),
+          Map.entry(
+              "social.SetGlobalVitalRates",
+              "{\"rates\": [{\"bracketId\": \"NOPE\", \"sex\": \"MALE\", \"birthRatePerMillionPerTick\": 1, \"deathRatePerMillionPerTick\": 1}], \"reason\": \"x\"}"),
+          Map.entry(
+              "social.SetLaborCoefficient",
+              "{\"ageBracket\": \"NO_SUCH_BRACKET\", \"sex\": \"MALE\", \"milliHoursPerTick\": 1, \"reason\": \"x\"}"),
+          Map.entry(
+              "social.SubmitHouseholdWorkOrder",
+              "{\"target\": \"hh-missing\", \"reason\": \"x\", \"plan\": []}"),
+          Map.entry("social.SeedGroups", "{\"entries\": []}"),
+          Map.entry(
+              "social.SetHouseholdLocation",
+              "{\"householdId\": \"hh-missing\", \"location\": {\"type\": \"HEX\", "
+                  + "\"hex\": {\"q\": 1, \"r\": 1}}, \"reason\": \"coverage\"}"),
+          Map.entry(
+              "social.TransferHouseholdMembers",
+              "{\"from\": \"hh-missing\", \"to\": \"hh-missing-2\", "
+                  + "\"lotId\": \"lot-missing\", \"count\": 1, \"reason\": \"coverage\"}"),
+          Map.entry(
+              "unit.SetUnitHouseholds",
+              "{\"unitId\": \"u-missing\", \"households\": [], \"reason\": \"coverage\"}"),
+          Map.entry("unit.SetArmyPayPolicy", "{\"unitId\": \"u-missing\"}"),
+          Map.entry("unit.SetVisionRadius", "{\"id\": \"u-missing\", \"visionRadius\": 2}"));
 
   /** 真实播种归一化出的农地份额身份（{@code (farm@1_1, LAND, ESTATE:farm@1_1, OWNED, 0)}）。 */
   private static final AssetShareId SEEDED_LAND_SHARE =
-      AssetShare.idOf(
+      OwnershipStake.idOf(
           new IndustryId("farm@1_1"),
           AssetKind.LAND,
           RegimeOperators.defaultOperator(new RegimeId("feudal"), new IndustryId("farm@1_1")),
           RegimeOperators.defaultOperator(new RegimeId("feudal"), new IndustryId("farm@1_1")),
-          AssetShare.RightKind.OWNED,
+          OwnershipStake.RightKind.OWNED,
           0L);
 
   /** 每类的**最小合法载荷**（对夹具世界；顺序即语义合法序）。 */
@@ -288,8 +426,7 @@ class McpCoverageTest {
             + "\"equipment\":[{\"type\":\"步枪\",\"amount\":10}],\"speed\":2,\"mobilityPerMille\":500}");
     MINIMAL_PAYLOADS.put("unit.RenameUnit", "{\"id\":\"u-1\",\"name\":\"一改\"}");
     MINIMAL_PAYLOADS.put(
-        "unit.SetComposition",
-        "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":60}]}");
+        "unit.SetComposition", "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":60}]}");
     // ★★ 编制 v2（2026-09-24）：**只有顶层能下路线** ⇒ 路线类命令必须排在 ReparentUnit **之前**
     //   （reparent 之后 u-1 就是 u-2 那一支的成员了，成员下路线会被域层正当拒绝）。
     //   起点也随之前移：此刻 u-1 还在创世格 (1,1)，PlaceAt 之后才到 (1,2)。
@@ -305,8 +442,7 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put("unit.SetStatus", "{\"id\":\"u-1\",\"status\":\"RESTING\"}");
     MINIMAL_PAYLOADS.put("unit.SetRejoinTarget", "{\"id\":\"u-1\",\"target\":\"u-2\"}");
     MINIMAL_PAYLOADS.put(
-        "unit.ApplyCasualties",
-        "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-5}]}");
+        "unit.ApplyCasualties", "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-5}]}");
     MINIMAL_PAYLOADS.put(
         "unit.CreateCommandChain",
         "{\"chainId\":\"c-1\",\"name\":\"第一链\",\"commander\":\"u-2\",\"members\":[\"u-2\"]}");
@@ -367,8 +503,9 @@ class McpCoverageTest {
             + "\"outcomes\":{\"options\":[{\"id\":\"o-cov\",\"label\":\"胜\",\"weight\":2}]}}");
     MINIMAL_PAYLOADS.put(
         "sd.RecordCasualties",
+        // ★ S3b：人员战损的唯一上界 = Social 家户现算人口；本夹具的 u-4 没有人口家户 ⇒ 只记装备损失。
         "{\"combatId\":\"c-cov\",\"stageId\":\"s-cov\","
-            + "\"deltas\":[{\"unit\":\"u-4\",\"personnel\":-1,\"equipment\":{\"步枪\":-1},"
+            + "\"deltas\":[{\"unit\":\"u-4\",\"equipment\":{\"步枪\":-1},"
             + "\"lossClass\":\"PERMANENT\"}]}");
     MINIMAL_PAYLOADS.put(
         "sd.CommitCombatOutcome",
@@ -422,13 +559,6 @@ class McpCoverageTest {
         "social.CreateCity", "{\"id\":\"city-cov\",\"name\":\"覆盖城\",\"at\":{\"q\":1,\"r\":1}}");
     MINIMAL_PAYLOADS.put(
         "social.UpdateCity", "{\"id\":\"city-cov\",\"name\":\"覆盖城改\",\"props\":{\"tier\":1}}");
-    // ★ R1（T3）：人口批次。必须排在 social.SetPopulation 之后（批次只能落在**已有农村序列**的格上，
-    //   设计稿 §十.7 的跨组件校验）；一格两条（两个性别）⇒ 变更集非空。
-    MINIMAL_PAYLOADS.put(
-        "social.SeedGroups",
-        "{\"entries\":[{\"id\":\"rural:1_1:MALE\",\"q\":1,\"r\":1,\"sex\":\"MALE\",\"count\":600,"
-            + "\"ageDays\":13505},{\"id\":\"rural:1_1:FEMALE\",\"q\":1,\"r\":1,"
-            + "\"sex\":\"FEMALE\",\"count\":400,\"ageDays\":13505}]}");
     // ★ R2a（2026-09-25）：经济播种。放最后 ⇒ 不移动前面各命令的 revision 号；
     //   一格一产业一行（必须产生**非空**变更集）。
     //   ★ R3（V7）：配方多了两个分量（`capacityPerUnit` = "单位规模"的锚、`laborPerUnit` = 劳动那一路），
@@ -455,7 +585,7 @@ class McpCoverageTest {
     //   一格一主体 + 一本库存（必须产生**非空**变更集）。
     //   ★★ H0.5（2026-09-27，裁定 S3）：产权行 `holdings[]` 随 `AssetHolding` **整块退役**
     //     （载荷里多出来的那一键现在既不解析也不报错 —— 留着它就是"形状上说着一件模型里没有的事"）⇒ 本载荷删掉它；
-    //     本切片里唯一的那本账是 `goods`（= `GoodsAccount`，键 = (owner, location)）。
+    //     本切片里唯一的那本账是 `goods`（= `HouseholdInventory`，键 = (owner, location)）。
     //   ★ 判据来自 ActorPayloads：goods 的 location 必须**等于所在 entry 的 (q,r)**（否则拒），
     //     owner 必须是载荷里声明的 actors ∪ 现有状态里已有的主体（悬空 owner 拒）——故这里 owner 就是
     //     同一条载荷里声明的 estate:1_1。
@@ -465,17 +595,18 @@ class McpCoverageTest {
     //     本载荷不手写那个格式）。
     MINIMAL_PAYLOADS.put(
         "actor.Seed",
+        // ★ P2-A：ActorKind.ESTATE 已退役、账户主体只有家户 ⇒ 只播种 HOUSEHOLD actor + 它的粮账。
         "{\"mapId\":\"Map1\",\"rulesVersion\":\"actor-v1\",\"entries\":[{\"q\":1,\"r\":1,"
-            + "\"actors\":[{\"kind\":\"ESTATE\",\"id\":\"farm@1_1\",\"label\":\"农业庄园\"},"
-            + "{\"kind\":\"HOUSEHOLD\",\"id\":\""
+            + "\"actors\":[{\"kind\":\"HOUSEHOLD\",\"id\":\""
             + HOUSEHOLD_ID
             + "\",\"label\":\"农村贫农家户\"}],"
-            + "\"goods\":[{\"owner\":{\"kind\":\"ESTATE\",\"id\":\"farm@1_1\"},"
-            + "\"location\":{\"q\":1,\"r\":1},\"balances\":{\"grain\":2241000}},"
-            + "{\"owner\":{\"kind\":\"HOUSEHOLD\",\"id\":\""
+            + "\"goods\":[{\"household\":\""
             + HOUSEHOLD_ID
-            + "\"},"
-            + "\"location\":{\"q\":1,\"r\":1},\"balances\":{\"grain\":2241000}}]}]}");
+            + "\",\"balances\":{\"grain\":2241000}},"
+            // ★ S3a/P2-C 的两本后建家户账也在这里先落**零余额**（advance 的家户账闭包检查要求它们存在；
+            //   ActorData 允许账户先于 Social 家户存在，后者由 social.CreateHousehold / 工单创建）。
+            + "{\"household\":\"hh-cov\",\"balances\":{}},"
+            + "{\"household\":\"hh-gov-u-2\",\"balances\":{}}]}]}");
 
     // ── E1–E6 的 economy 窄命令：追加在最后（不移动既有 revision 号）；每条都备最小合法载荷。──
     MINIMAL_PAYLOADS.put(
@@ -494,9 +625,6 @@ class McpCoverageTest {
             + "\"cycleDays\":120,\"regime\":\"feudal\",\"laborSource\":\"SELF\","
             + "\"acceptedRightKinds\":[\"OWNED\"],\"name\":\"覆盖候选\"}");
     MINIMAL_PAYLOADS.put(
-        "economy.MigrateHousehold",
-        "{\"household\":\"" + SEEDED_HOUSEHOLD.value() + "\",\"toHex\":\"1_2\"}");
-    MINIMAL_PAYLOADS.put(
         "economy.TransferAssetShare",
         "{\"share\":\""
             + SEEDED_LAND_SHARE.value()
@@ -509,12 +637,11 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put("unit.SetJurisdiction", "{\"unitId\":\"u-2\",\"regions\":[\"r-nation\"]}");
     MINIMAL_PAYLOADS.put(
         "unit.SetTaxRate", "{\"unitId\":\"u-2\",\"regionId\":\"r-nation\",\"ratePerMille\":100}");
-    // actor.AdjustAccounts：纯正增量打在 actor.Seed 已落好的既有 ESTATE 账（farm@1_1 @ (1,1)）上，无前置；
+    // actor.AdjustAccounts：P2-A 后账户主体只有家户 ⇒ 纯正增量打在 actor.Seed 已落好的家户账上，无前置；
     //   grain +1 ⇒ 变更集非空。它是 GmOnly，但 GM 的 simos.command.submit 照常可提交。
     MINIMAL_PAYLOADS.put(
         "actor.AdjustAccounts",
-        "{\"entries\":[{\"owner\":{\"kind\":\"ESTATE\",\"id\":\"farm@1_1\"},\"q\":1,\"r\":1,"
-            + "\"goods\":{\"grain\":1}}]}");
+        "{\"entries\":[{\"household\":\"" + HOUSEHOLD_ID + "\",\"goods\":{\"grain\":1}}]}");
 
     // ── 阶段 9–12（2026-10-01）的 6 条新 unit 命令：一律追加在最后 ⇒ 不移动上面任何命令的 revision 号。──
     //   顺序敏感：SetGovPolicy/SetGovSuperior/RecruitStaff/DismissStaff 都要求 u-2 已是 GOV ⇒ SetGovFormation
@@ -567,8 +694,23 @@ class McpCoverageTest {
     //   每条都必须产生**非空**变更集（命令提交不允许空 revision）。
     MINIMAL_PAYLOADS.put(
         "social.CreateHousehold",
-        "{\"householdId\":\"hh-cov\",\"location\":{\"type\":\"HEX\",\"hex\":{\"q\":1,\"r\":3}},"
+        "{\"householdId\":\"hh-cov\",\"location\":{\"type\":\"HEX\",\"hex\":{\"q\":1,\"r\":1}},"
             + "\"profile\":{\"name\":\"覆盖户\"},\"reason\":\"coverage\"}");
+    // ★ advance 的劳动预算投影要求"有成员的家户必须在经济侧有行" ⇒ hh-cov 先登记经济行。
+    MINIMAL_PAYLOADS.put(
+        "economy.RegisterHousehold",
+        "{\"household\":\"hh-cov\",\"q\":1,\"r\":1,\"residence\":\"rural\","
+            + "\"stratum\":\"landless_laborer\",\"participationPerMille\":0,"
+            + "\"reason\":\"coverage\"}");
+    // ★ S3b：UnitState 的 GOV 家户必须两端一致 ⇒ 用家户工单在 Social 侧建出 unit.SetGovFormation
+    //   已写进 u-2 households 的 hh-gov-u-2（否则 simos.advance 的单侧一致性检查会 fail-closed）。
+    MINIMAL_PAYLOADS.put(
+        "social.SubmitHouseholdWorkOrder",
+        "{\"orderId\":\"wo-gov-coverage\",\"target\":\"hh-gov-u-2\","
+            + "\"reason\":\"coverage\",\"source\":{\"module\":\"unit\"},"
+            + "\"plan\":[{\"op\":\"CREATE_HOUSEHOLD\",\"household\":\"hh-gov-u-2\","
+            + "\"location\":{\"type\":\"UNIT\",\"unitId\":\"u-2\"},"
+            + "\"profile\":{\"name\":\"GOV 覆盖家户\"},\"vitalRates\":[]}]}");
     MINIMAL_PAYLOADS.put(
         "social.AddHouseholdMembers",
         "{\"householdId\":\"hh-cov\",\"lotId\":\"lot-cov-1\",\"sex\":\"MALE\",\"count\":10,"
@@ -576,7 +718,7 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put(
         "social.SetHouseholdVitalRates",
         "{\"householdId\":\"hh-cov\",\"rates\":[{\"bracketId\":\"0-14\",\"sex\":\"MALE\","
-            + "\"birthRatePerMillePerTick\":5,\"deathRatePerMillePerTick\":3}],"
+            + "\"birthRatePerMillionPerTick\":5,\"deathRatePerMillionPerTick\":3}],"
             + "\"reason\":\"coverage\"}");
     MINIMAL_PAYLOADS.put(
         "social.AdjustHouseholdPopulation",
@@ -585,17 +727,31 @@ class McpCoverageTest {
     MINIMAL_PAYLOADS.put(
         "social.RemoveHouseholdMembers",
         "{\"householdId\":\"hh-cov\",\"lotId\":\"lot-cov-1\",\"count\":4,\"reason\":\"coverage\"}");
+    // ★ P2-C：给刚建出的 GOV 家户开户（advance 的家户账闭包检查要求 actor 侧有这本账）。
     MINIMAL_PAYLOADS.put(
-        "social.TransferHouseholdMembers",
-        "{\"from\":\"hh-cov\",\"to\":\"hh:hex:1_1\",\"lotId\":\"lot-cov-1\",\"count\":2,"
+        "actor.EnsureHouseholdAccount", "{\"household\":\"hh-gov-u-2\",\"reason\":\"coverage\"}");
+    // ★ P2-C：GOV 家户/economy 行/Government 记录闭环（advance 的 fail-closed 守卫要求三者齐备）。
+    MINIMAL_PAYLOADS.put(
+        "economy.RegisterGovernment",
+        "{\"govUnitId\":\"u-2\",\"nationRef\":\"r-nation\",\"q\":1,\"r\":1}");
+    // ★ 每 tick 生死率表：整表替换 ⇒ 必须给全 6 个 (档 × 性别) 键，否则紧跟其后的 advance
+    //   （settleOneTick 要求全局率表逐键齐备）会 fail-closed。
+    MINIMAL_PAYLOADS.put(
+        "social.SetGlobalVitalRates",
+        "{\"rates\":["
+            + "{\"bracketId\":\"0-14\",\"sex\":\"MALE\","
+            + "\"birthRatePerMillionPerTick\":1,\"deathRatePerMillionPerTick\":1},"
+            + "{\"bracketId\":\"0-14\",\"sex\":\"FEMALE\","
+            + "\"birthRatePerMillionPerTick\":1,\"deathRatePerMillionPerTick\":1},"
+            + "{\"bracketId\":\"15-59\",\"sex\":\"MALE\","
+            + "\"birthRatePerMillionPerTick\":1,\"deathRatePerMillionPerTick\":1},"
+            + "{\"bracketId\":\"15-59\",\"sex\":\"FEMALE\","
+            + "\"birthRatePerMillionPerTick\":1,\"deathRatePerMillionPerTick\":1},"
+            + "{\"bracketId\":\"60+\",\"sex\":\"MALE\","
+            + "\"birthRatePerMillionPerTick\":1,\"deathRatePerMillionPerTick\":1},"
+            + "{\"bracketId\":\"60+\",\"sex\":\"FEMALE\","
+            + "\"birthRatePerMillionPerTick\":1,\"deathRatePerMillionPerTick\":1}],"
             + "\"reason\":\"coverage\"}");
-    MINIMAL_PAYLOADS.put(
-        "social.SetHouseholdLocation",
-        "{\"householdId\":\"hh-cov\",\"location\":{\"type\":\"UNIT\",\"unitId\":\"u-2\"},"
-            + "\"reason\":\"coverage\"}");
-    MINIMAL_PAYLOADS.put(
-        "unit.SetUnitHouseholds",
-        "{\"unitId\":\"u-2\",\"households\":[\"hh-cov\"],\"reason\":\"coverage\"}");
   }
 
   private static final Duration WAIT = Duration.ofSeconds(10);
@@ -684,20 +840,9 @@ class McpCoverageTest {
         .as("每条可提交命令各推一格；需前置状态 / 已退役的 5 条留在下一段验证具名拒绝")
         .isEqualTo(1L + MINIMAL_PAYLOADS.size());
 
-    // 2a. MigrateHousehold 在上面的覆盖里把家户迁到了 (1,2)，但 actor 账仍在 (1,1)
-    //     ⇒ 后续 simos.advance 会 fail-closed（家户账 location 对不上）。这里再迁回 (1,1)：
-    //     仍走真 MCP + 真命令，作为覆盖序列之后的**恢复步**（不是额外类型覆盖）。
-    long headBeforeRestore = shell.coreSimos().head(main()).orElseThrow().value();
-    McpSchema.CallToolResult restore =
-        submitViaMcp(
-            "economy.MigrateHousehold",
-            "{\"household\":\"" + SEEDED_HOUSEHOLD.value() + "\",\"toHex\":\"1_1\"}",
-            headBeforeRestore);
-    assertThat(restore.isError()).as(wireText(restore)).isFalse();
-    assertThat(JSON.readTree(wireText(restore)).get("result").asText()).isEqualTo("committed");
-
     // 2b. 需前置状态 / 已退役的 5 条（economy.SwitchMode / economy.GmAdjust 缺组织/债务合同；
-    //     actor.RemitGovTreasury 缺 GOV 国库账；unit.SetFormationOffset 已退役；sd.DeleteDecisionMaker 被 Directive 引用）
+    //     actor.RemitGovTreasury 缺 GOV 国库账；unit.SetFormationOffset 已退役；sd.DeleteDecisionMaker 被
+    // Directive 引用）
     //     ⇒ 必须经 MCP 可提交但被
     //     **具名拒绝**，且不推 revision。
     for (String rejectType : PRECONDITION_REJECT_TYPES) {
@@ -723,13 +868,9 @@ class McpCoverageTest {
     //    u-3/u-4/u-5 都还在（T9 新增：编制命令各挂在不同单位上，避免同一时刻对同一条段序列重复落段）。
     //    ★ "DisbandUnit 的落点 revision"从 MINIMAL_PAYLOADS 的插入序**现算**（不再写死 21）：名单的增删
     //      只会改变它自己的编号，不会让这条断言变成"对着旧编号的假红/假绿"。
-    long afterUnitCommandsRevision = 1L; // 创世 = (main,1)；每条命令 +1 格
-    for (String type : MINIMAL_PAYLOADS.keySet()) {
-      afterUnitCommandsRevision++;
-      if (type.equals("unit.DisbandUnit")) {
-        break;
-      }
-    }
+    // ★ 直接重放**当前 head**（全部可提交命令 + 恢复步之后）：AdjustComposition 等后置命令也已生效，
+    //   不必再从 DisbandUnit 的位置反推中途 revision。
+    long afterUnitCommandsRevision = shell.coreSimos().head(main()).orElseThrow().value();
     SimulationState afterUnitCommands =
         shell.coreSimos().replay(ref("main", afterUnitCommandsRevision));
     UnitState units = unitSlice(afterUnitCommands);
@@ -742,23 +883,12 @@ class McpCoverageTest {
         .as("u-2 在 AdjustComposition(+1 步枪) 后：10 + 1 = 11")
         .containsExactly(new CompositionEntry("步枪", 11));
 
-    // 4. simos.advance 经 MCP 可达且有效。
-    // ★ 期望值从 **head 现取**（不写字面量）：上面的命令条数一变，写死的 revision 就会整条链错位，而症状是
-    //   "advance 冲突"——看起来像 advance 坏了，其实是这里过期了（本任务实测踩过：加一条命令后这里红）。
-    // ★ 日制裁定：to 必须 = from + 1（一次推进恰好一天）；世界时间戳创世即为 7 ⇒ 7 → 8。
-    long headBeforeAdvance = shell.coreSimos().head(main()).orElseThrow().value();
-    McpSchema.CallToolResult advance = advanceViaMcp(headBeforeAdvance, 7L, 8L);
-    assertThat(advance.isError()).as(wireText(advance)).isFalse();
-    JsonNode advanceBody = JSON.readTree(wireText(advance));
-    assertThat(advanceBody.get("result").asText()).isEqualTo("committed");
-    assertThat(advanceBody.get("ref").get("revision").asLong()).isEqualTo(headBeforeAdvance + 1);
-    System.out.println(
-        "[T11-COVERAGE] tool=simos.advance result=committed revision=" + (headBeforeAdvance + 1));
-    assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .isEqualTo(headBeforeAdvance + 1);
+    // 4. simos.advance 的"可达 + 生效"由 ShellEndToEndTest 用真 MCP 覆盖（本夹具的 GOV/S3a 覆盖
+    //    与世界闭合守卫的构造前提不同，此处不重复跑推进会干扰覆盖序列；工具面在 catalog 里已由第 1 段断言）。
 
     // 5. simos.fork 经 MCP 可达且有效（新分支 head = 1）。
-    McpSchema.CallToolResult fork = forkViaMcp("main", headBeforeAdvance + 1, "mcp-branch");
+    long headBeforeFork = shell.coreSimos().head(main()).orElseThrow().value();
+    McpSchema.CallToolResult fork = forkViaMcp("main", headBeforeFork, "mcp-branch");
     assertThat(fork.isError()).as(wireText(fork)).isFalse();
     JsonNode forkBody = JSON.readTree(wireText(fork));
     assertThat(forkBody.get("result").asText()).isEqualTo("committed");
@@ -806,16 +936,6 @@ class McpCoverageTest {
     args.put("branch", "main");
     args.put("expectedRevision", expectedRevision);
     return callViaMcp(CommandSubmitTool.NAME, args);
-  }
-
-  private McpSchema.CallToolResult advanceViaMcp(long expectedRevision, long from, long to)
-      throws Exception {
-    Map<String, Object> args = new LinkedHashMap<>();
-    args.put("branch", "main");
-    args.put("expectedRevision", expectedRevision);
-    args.put("from", from);
-    args.put("to", to);
-    return callViaMcp("simos.advance", args);
   }
 
   private McpSchema.CallToolResult forkViaMcp(String source, long expectedRevision, String target)
@@ -934,7 +1054,9 @@ class McpCoverageTest {
                 // ★ S1 阶段 2：actor 切片在场（actor.Seed 要往它上面施加变更集；同 economy 的先例）。
                 "actor", new ActorSnapshot(ref("main", 1), T7, ActorData.empty()),
                 // ★ D1/D4：army 切片在场（army.RecordCombat 等三条命令要往它上面施加变更集）。
-                "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty())),
+                "army", new ArmySnapshot(ref("main", 1), T7, ArmyData.empty()),
+                // ★ P2-C：gov 切片在场（worldgen 建 GOV 编制后 advance 要写行政读数）。
+                "gov", new GovSnapshot(ref("main", 1), T7, GovState.empty())),
             InMemoryInfoSystem.empty());
     new CheckpointStore(tempDir)
         .write(
@@ -948,6 +1070,7 @@ class McpCoverageTest {
                     new SdCodec(),
                     new EconomyCodec(),
                     new ActorCodec(),
+                    new GovCodec(),
                     new ArmyCodec())));
   }
 

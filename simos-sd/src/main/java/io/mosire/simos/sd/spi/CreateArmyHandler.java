@@ -25,9 +25,9 @@ import org.slf4j.Logger;
  * {"armyId":"a1","masterGovUnitId":"g1","rootUnitId":"u-1","name":"第一军"}
  * }</pre>
  *
- * <p>★ <b>载荷语义</b>：{@code masterGovUnitId} 可缺省/null（未认主子）；给了必须存在、且带 {@link GovernmentFormation}（认主子只认
- * GOV，与 {@code unit.SetArmyFormation} 同口径）。{@code rootUnitId} 是否存在仍经 {@link SdSnapshots#unitExists}
- * 只读 unit 切片（铁律 3）。
+ * <p>★ <b>载荷语义</b>：{@code masterGovUnitId} 可缺省/null（未认主子）；给了必须存在、且带 {@link
+ * GovernmentFormation}（认主子只认 GOV，与 {@code unit.SetArmyFormation} 同口径）。{@code rootUnitId} 是否存在仍经
+ * {@link SdSnapshots#unitExists} 只读 unit 切片（铁律 3）。
  *
  * <p>★ <b>旧 {@code nationId} 键具名拒并指路</b>（本阶段二选一，选拒绝不选静默忽略）：字段已从 {@link Army}
  * 删除，继续兼容读会让人以为"军队还记着国家"。拒因直接指向 {@code masterGovUnitId} 与 {@code unit.SetArmyFormation}——既

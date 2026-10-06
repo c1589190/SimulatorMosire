@@ -166,7 +166,8 @@ public final class GovCreateOfficeTool implements AgentTool {
             "array",
             "初始管辖区域 RegionId 字符串数组（可选；每个必须存在于当前地图；PROVINCE 必须非空，CENTRAL 可空缺省；"
                 + "仅非空时同批落 unit.SetJurisdiction，载荷不带 levy caps）"));
-    props.put("superiorGov", ToolSupport.prop("string", "上级 GOV 单位 id（可选；非空必须存在且带 GovernmentFormation）"));
+    props.put(
+        "superiorGov", ToolSupport.prop("string", "上级 GOV 单位 id（可选；非空必须存在且带 GovernmentFormation）"));
     props.put("staff", ToolSupport.prop("object", "初始编制 {SCRIBE|YAMEN|POST:整数}（可选，缺省空表；值必须 ≥ 0）"));
     props.put(
         "policy",

@@ -21,16 +21,14 @@ import org.slf4j.LoggerFactory;
  *     （人口变化时，laborMilli 按同一比例缩放；当日的 labor 预算随后由 app 从 Social 成员重新展开）
  * </pre>
  *
- * <p>★★ <b>为什么必须是 1:1 按 HouseholdId</b>：P2-A 之后 Social 与 Economy 的家户身份已经统一为
- * {@code (格, 居住类型, 阶层)} 的 {@link HouseholdId}；Economy 的 `classes` 键就是同一个 id。把
- * `(格, 居住类型)` 当作“一组多户”再平均，会把贫农/中农/富农/地主之间的人口差在投影里悄悄抹平——
- * 那是**跨阶层错账**，不是对账。
+ * <p>★★ <b>为什么必须是 1:1 按 HouseholdId</b>：P2-A 之后 Social 与 Economy 的家户身份已经统一为 {@code (格, 居住类型, 阶层)} 的
+ * {@link HouseholdId}；Economy 的 `classes` 键就是同一个 id。把 `(格, 居住类型)`
+ * 当作“一组多户”再平均，会把贫农/中农/富农/地主之间的人口差在投影里悄悄抹平—— 那是**跨阶层错账**，不是对账。
  *
- * <p>★★ <b>本类不做的事</b>：不移动人、不改 Social 成员份额、不新建/合并家户、不做任何组内分摊/平均。
- * 它只把经济侧的人口视图拉回 Social 真值。
+ * <p>★★ <b>本类不做的事</b>：不移动人、不改 Social 成员份额、不新建/合并家户、不做任何组内分摊/平均。 它只把经济侧的人口视图拉回 Social 真值。
  *
- * <p>★ <b>fail-closed</b>：经济侧出现 Social 不存在的家户、或 Social 家户缺经济行，都进 {@code unresolved}，
- * 调用方据此告警；**不静默按 0 处理、也不做平均兜底**。
+ * <p>★ <b>fail-closed</b>：经济侧出现 Social 不存在的家户、或 Social 家户缺经济行，都进 {@code unresolved}， 调用方据此告警；**不静默按
+ * 0 处理、也不做平均兜底**。
  */
 public final class HouseholdEconomyProjection {
 

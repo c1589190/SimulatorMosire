@@ -32,43 +32,42 @@ import java.util.Set;
 /**
  * ★★ <b>P2-B §13.4/§13.5：每 tick 的家户劳动利润率排队落点</b>（写 {@code allocations} 工作副本的唯一新写者）。
  *
- * <p>★★ <b>两阶段（为什么不是一个家户一个家户就地写）</b>：一条 unit 是**共享**的生产活动（主 unit 由多个家户按
- * {@code HouseholdLaborCommitment} 出工；家户自营 unit 通常只有一个 operator 家户）。因此"这个 unit 本 tick 最大可吸收多少劳动"
+ * <p>★★ <b>两阶段（为什么不是一个家户一个家户就地写）</b>：一条 unit 是**共享**的生产活动（主 unit 由多个家户按 {@code
+ * HouseholdLaborCommitment} 出工；家户自营 unit 通常只有一个 operator 家户）。因此"这个 unit 本 tick 最大可吸收多少劳动"
  * 是<b>全局</b>上界，不能每家各算一次满额。本类分两阶段：
  *
  * <ol>
  *   <li><b>逐家户排队（只算不写）</b>：按 {@link LaborQueueBook#plan} 用家户自己的时间预算排队，得到"想要多少"；
- *   <li><b>逐 unit 全局封顶</b>：Σ 各家户对同一 unit 的想要量若超过该 unit 的最大可吸收量，按各户想要量比例
- *       （最大余数法）缩到上界 —— 公平、确定、且只减不增；
- *   <li><b>逐家户写回</b>：同 (家户, unit) 复用既有配额行的 id/批次/actor，只改 laborMilli（没有才新发）；
- *       最终拿不到量/预期 ≤ 0 的 unit 的旧行整条删除（劳动留在空缺，不塞给别的 unit）。
+ *   <li><b>逐 unit 全局封顶</b>：Σ 各家户对同一 unit 的想要量若超过该 unit 的最大可吸收量，按各户想要量比例 （最大余数法）缩到上界 —— 公平、确定、且只减不增；
+ *   <li><b>逐家户写回</b>：同 (家户, unit) 复用既有配额行的 id/批次/actor，只改 laborMilli（没有才新发）； 最终拿不到量/预期 ≤ 0 的 unit
+ *       的旧行整条删除（劳动留在空缺，不塞给别的 unit）。
  * </ol>
  *
- * <p>★★ <b>哪些活动"被保留、不排队"</b>（既有配额原样保留并先占预算，见
- * {@link LaborQueueBook#isPreservedByQueue}）：{@code laborPerUnit ≤ 0} 的非劳动活动、没有产出配方的承运/贸易、
- * 产出一个价都没有的活动，以及 R4-E2b 当天刚进入的试产 unit。只有"确实定过价、且预期 ≤ 0"的活动会被判为空缺。
+ * <p>★★ <b>哪些活动"被保留、不排队"</b>（既有配额原样保留并先占预算，见 {@link LaborQueueBook#isPreservedByQueue}）：{@code
+ * laborPerUnit ≤ 0} 的非劳动活动、没有产出配方的承运/贸易、 产出一个价都没有的活动，以及 R4-E2b 当天刚进入的试产 unit。只有"确实定过价、且预期 ≤
+ * 0"的活动会被判为空缺。
  *
- * <p>★ <b>为什么按家户全局串行而不是按 hex 并行</b>：时间预算是**家户**的资源，可能有多条 unit（多生产方式）跨组织；
- * 按 hex 分区会让"保留配额"与"新分配"在合并后才对账。家户数 × unit 数是可控量级，串行保证
- * {@code Σallocations(household) ≤ laborMilli} 在写回前就成立（{@code EconomyData} 的构造期守卫是第二道）。
+ * <p>★ <b>为什么按家户全局串行而不是按 hex 并行</b>：时间预算是**家户**的资源，可能有多条 unit（多生产方式）跨组织； 按 hex
+ * 分区会让"保留配额"与"新分配"在合并后才对账。家户数 × unit 数是可控量级，串行保证 {@code Σallocations(household) ≤ laborMilli}
+ * 在写回前就成立（{@code EconomyData} 的构造期守卫是第二道）。
  *
- * <p>★ <b>确定性</b>：家户 / unit / 配额全部按稳定 id 排序遍历；比例缩放在每个 unit 内按下标序（= 家户 id 升序）；
- * 无随机、无时钟、无 UUID；同输入同输出。
+ * <p>★ <b>确定性</b>：家户 / unit / 配额全部按稳定 id 排序遍历；比例缩放在每个 unit 内按下标序（= 家户 id 升序）； 无随机、无时钟、无
+ * UUID；同输入同输出。
  */
 final class LaborQueueSettlement {
 
   private LaborQueueSettlement() {}
 
   /**
-   * 对 {@code session} 的 {@code allocations} 工作副本执行一次全量排队（每个世界日调用一次；旧档
-   * {@code modes} 为空时不调用，旧路径逐值不变）。
+   * 对 {@code session} 的 {@code allocations} 工作副本执行一次全量排队（每个世界日调用一次；旧档 {@code modes}
+   * 为空时不调用，旧路径逐值不变）。
    *
    * @param session 结算会话（读 base/工作副本；只写 {@code allocations}）
    * @param index 当天的派生索引（可用资产/产能/actor→家户只读）
    * @param day 当前世界日（报告/日志用）
    * @param composition 家户人口组成的只读投影（挑新配额挂哪个批次）
-   * @param entryTrialUnits 今天刚由候选预设进入的试产 unit（R4-E2b）：它们的 {@code modeKey} 不是
-   *     {@code mode:} 前缀 ⇒ **本日保留试产配额原样**；自动组织阶段今天新建的 unit（{@code mode:} 前缀）照常进队列
+   * @param entryTrialUnits 今天刚由候选预设进入的试产 unit（R4-E2b）：它们的 {@code modeKey} 不是 {@code mode:} 前缀 ⇒
+   *     **本日保留试产配额原样**；自动组织阶段今天新建的 unit（{@code mode:} 前缀）照常进队列
    * @return 本日的可读排队报告
    */
   static LaborQueueReport apply(
@@ -81,9 +80,11 @@ final class LaborQueueSettlement {
     Objects.requireNonNull(index, "index");
     Objects.requireNonNull(composition, "composition");
     Objects.requireNonNull(entryTrialUnits, "entryTrialUnits");
-    LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments = session.sheet().laborCommitments();
+    LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments =
+        session.sheet().laborCommitments();
     LinkedHashMap<ProductionUnitId, ProductionProcess> units = session.sheet().units();
-    LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies = session.sheet().householdEconomies();
+    LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies =
+        session.sheet().householdEconomies();
     Map<IndustryId, Industry> industryTemplates = session.sheet().industries();
     LinkedHashMap<HexCoord, Market> markets = session.sheet().markets();
     Map<ProductionUnitId, OperatorCondition> conditions = session.sheet().operatorConditions();
@@ -103,7 +104,8 @@ final class LaborQueueSettlement {
     }
 
     // ── 既有配额按家户分组 + activity → 家户 索引（候选判定的 O(1) 来源）────────────────────
-    Map<HouseholdId, List<HouseholdLaborCommitment>> laborCommitmentsByHousehold = new LinkedHashMap<>();
+    Map<HouseholdId, List<HouseholdLaborCommitment>> laborCommitmentsByHousehold =
+        new LinkedHashMap<>();
     Map<String, Set<HouseholdId>> allocationHouseholdsByActivity = new LinkedHashMap<>();
     for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
       laborCommitmentsByHousehold
@@ -124,7 +126,11 @@ final class LaborQueueSettlement {
     for (ProductionProcess unit : units.values()) {
       for (HouseholdId household :
           candidateHouseholdsOf(
-              unit, householdEconomies, enterpriseByProcess, allocationHouseholdsByActivity, index)) {
+              unit,
+              householdEconomies,
+              enterpriseByProcess,
+              allocationHouseholdsByActivity,
+              index)) {
         List<ProductionProcess> list = candidatesByHousehold.get(household);
         if (list != null && !list.contains(unit)) {
           list.add(unit);
@@ -193,7 +199,8 @@ final class LaborQueueSettlement {
       }
       if (preserved > budget) {
         // 合法状态到不了这里（构造期守卫），但排队写回不得以坏状态为借口超预算：按既有量比例缩到预算以内。
-        preserveIntoBudget(laborCommitments, householdLaborCommitments, queuedUnits, budget, preserved);
+        preserveIntoBudget(
+            laborCommitments, householdLaborCommitments, queuedUnits, budget, preserved);
         preserved = budget;
       }
       LaborQueueBook.Plan desired = LaborQueueBook.plan(household, budget, preserved, offers);
@@ -297,7 +304,12 @@ final class LaborQueueSettlement {
               allocated,
               Math.max(0L, work.budget() - allocated),
               decisions);
-      applyPlan(laborCommitments, work.householdLaborCommitments(), plan, work.lot(), work.candidateUnitsById());
+      applyPlan(
+          laborCommitments,
+          work.householdLaborCommitments(),
+          plan,
+          work.lot(),
+          work.candidateUnitsById());
       plans.add(plan);
 
       if (EconomyLog.enterprise().isDebugEnabled()) {
@@ -405,7 +417,9 @@ final class LaborQueueSettlement {
 
   /** 居住格的价表（没有 ⇒ 该 unit 所在格的价表；都没有 ⇒ null = 无价，排队读数按 0 估值并具名）。 */
   private static Market marketOf(
-      HouseholdEconomy householdEconomy, List<ProductionProcess> candidates, Map<HexCoord, Market> markets) {
+      HouseholdEconomy householdEconomy,
+      List<ProductionProcess> candidates,
+      Map<HexCoord, Market> markets) {
     Market market = markets.get(householdEconomy.view().hex());
     if (market != null) {
       return market;
@@ -423,10 +437,7 @@ final class LaborQueueSettlement {
     return IndustryHexKeys.hexKeyOf(unit.industry()).map(HexCoord::parse);
   }
 
-  /**
-   * 新配额挂哪个批次：家户人口组成里 count &gt; 0 的最小批次 id；没有 ⇒ 该户既有配额的批次；再没有 ⇒ 空
-   * （调用方跳过本户排队，不猜）。
-   */
+  /** 新配额挂哪个批次：家户人口组成里 count &gt; 0 的最小批次 id；没有 ⇒ 该户既有配额的批次；再没有 ⇒ 空 （调用方跳过本户排队，不猜）。 */
   private static PeopleLotId chooseLot(
       HouseholdId household,
       Map<HouseholdId, List<HouseholdLaborCommitment>> laborCommitmentsByHousehold,
@@ -443,7 +454,8 @@ final class LaborQueueSettlement {
       return lots.get(0);
     }
     List<PeopleLotId> existing = new ArrayList<>();
-    for (HouseholdLaborCommitment laborCommitment : laborCommitmentsByHousehold.getOrDefault(household, List.of())) {
+    for (HouseholdLaborCommitment laborCommitment :
+        laborCommitmentsByHousehold.getOrDefault(household, List.of())) {
       if (laborCommitment.group() != null) {
         existing.add(laborCommitment.group());
       }
@@ -455,8 +467,8 @@ final class LaborQueueSettlement {
   // ── 写回 ────────────────────────────────────────────────────────────────────────────────
 
   /**
-   * 把最终排队结果写回配额工作副本：先删本户所有排队的旧行，再按决定写回（复用旧行的 id/group/actor/period；
-   * 没有旧行 ⇒ 用 unit.operator() / 选定批次新发一条）。保留活动的旧行一律不动。
+   * 把最终排队结果写回配额工作副本：先删本户所有排队的旧行，再按决定写回（复用旧行的 id/group/actor/period； 没有旧行 ⇒ 用 unit.operator() /
+   * 选定批次新发一条）。保留活动的旧行一律不动。
    */
   private static void applyPlan(
       LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
@@ -488,8 +500,7 @@ final class LaborQueueSettlement {
       }
       ProductionProcess unit = candidateUnitsById.get(unitId);
       if (unit == null) {
-        throw new IllegalStateException(
-            "排队结果指向一个不在候选表里的 unit（内部不一致）：" + unitId.value());
+        throw new IllegalStateException("排队结果指向一个不在候选表里的 unit（内部不一致）：" + unitId.value());
       }
       LaborAllocationId id = HouseholdLaborCommitment.idOf(unitId, lot, plan.household());
       HouseholdLaborCommitment freshLaborCommitment =
@@ -501,9 +512,11 @@ final class LaborQueueSettlement {
               unitId.value(),
               decision.grantedLaborMilli(),
               1L);
-      HouseholdLaborCommitment previousLaborCommitment = laborCommitments.putIfAbsent(id, freshLaborCommitment);
+      HouseholdLaborCommitment previousLaborCommitment =
+          laborCommitments.putIfAbsent(id, freshLaborCommitment);
       if (previousLaborCommitment != null) {
-        laborCommitments.put(id, withLaborMilli(previousLaborCommitment, decision.grantedLaborMilli()));
+        laborCommitments.put(
+            id, withLaborMilli(previousLaborCommitment, decision.grantedLaborMilli()));
       }
     }
   }
@@ -543,7 +556,8 @@ final class LaborQueueSettlement {
   }
 
   /** 换劳动量（其余字段原样带过）—— 与 {@code EconomySettlement.withLaborMilli} 同一形制。 */
-  private static HouseholdLaborCommitment withLaborMilli(HouseholdLaborCommitment laborCommitment, long laborMilli) {
+  private static HouseholdLaborCommitment withLaborMilli(
+      HouseholdLaborCommitment laborCommitment, long laborMilli) {
     return new HouseholdLaborCommitment(
         laborCommitment.id(),
         laborCommitment.group(),

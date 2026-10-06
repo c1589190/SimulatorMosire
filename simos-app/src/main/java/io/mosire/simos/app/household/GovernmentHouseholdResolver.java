@@ -23,7 +23,10 @@ public final class GovernmentHouseholdResolver {
 
   private GovernmentHouseholdResolver() {}
 
-  /** 单位必须带 {@link GovernmentFormation}；取它 {@code Unit.households} 里唯一的政府家户（形状/引用对不上 ⇒ 具名 {@link IllegalArgumentException}）。 */
+  /**
+   * 单位必须带 {@link GovernmentFormation}；取它 {@code Unit.households} 里唯一的政府家户（形状/引用对不上 ⇒ 具名 {@link
+   * IllegalArgumentException}）。
+   */
   public static HouseholdId requireGovernmentHousehold(Unit unit, String unitId) {
     Objects.requireNonNull(unit, "unit");
     UnitModule module = unit.module().orElse(null);

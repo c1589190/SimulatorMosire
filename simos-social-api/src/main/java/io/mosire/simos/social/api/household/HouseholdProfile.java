@@ -1,5 +1,6 @@
 package io.mosire.simos.social.api.household;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -23,6 +24,9 @@ import java.util.Map;
  * @param description 描述；可空
  * @param metadata 冻结的字符串元数据；不得含 null 键/值
  */
+@SuppressFBWarnings(
+    value = "EI_EXPOSE_REP",
+    justification = "compact constructor 已做防御性拷贝并冻结；SpotBugs 不跨辅助方法识别")
 public record HouseholdProfile(String name, String description, Map<String, String> metadata) {
 
   public HouseholdProfile {

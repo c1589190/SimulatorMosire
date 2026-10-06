@@ -33,12 +33,10 @@ import java.util.Objects;
  * <p>★ <b>不做的事</b>：不校验"该格在图上"（命令层只要求格坐标合法；市场可以在尚未播种的格上先建，等人口/产业后到 —— 那是 GM 的判断，不是状态守卫）；不实现 {@code
  * CommandTargets}（同 {@code economy.MigrateHousehold}：GM {@code simos.command.submit} 可用，directive
  * 内会被 fail-closed 拒）。
- *
  */
 public final class EconomySetMarketPriceHandler implements CommandHandler {
 
   private static final String COMMAND = "economy.SetMarketPrice";
-
 
   @Override
   public String type() {

@@ -52,11 +52,11 @@ import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.RuleType;
 import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
 import io.mosire.simos.map.hex.HexCoord;
@@ -95,17 +95,18 @@ import java.util.function.Function;
  * String-argument constructor}）。★★ E1 追加 {@code ProductionModeId}（{@code modes}）、{@code
  * ClassStructureId}（{@code classStructures}）与 {@code ClassPositionId}（{@code classPositions}，以及
  * {@code ClassStructure.positions} / {@code ClassStructure.defaultSharesPerMille} / {@code
- * HouseholdClassMembership.retainedShares} 三个嵌套键表）；{@code classStandings} 的键仍是上面已注册的 {@code HouseholdId}。
- * 旧档缺这四个键 ⇒ 快照侧收成空表、变更集侧收成 {@code Unchanged}，见各自的构造器兜底。
+ * HouseholdClassMembership.retainedShares} 三个嵌套键表）；{@code classStandings} 的键仍是上面已注册的 {@code
+ * HouseholdId}。 旧档缺这四个键 ⇒ 快照侧收成空表、变更集侧收成 {@code Unchanged}，见各自的构造器兜底。
  *
  * <p>★ <b>P10.1</b>：{@code merchantFirms}（第 30 个组件）的键复用已注册的 {@code ProductionOrganizationId}；值
  * {@link io.mosire.simos.economy.model.MerchantFirm} 按 record 组件字段显式绑定， 缺键 ⇒ 空表（{@code EconomyData}
  * 构造期归一），写侧按构造期 {@code LinkedHashMap} 的插入序保序。
  *
- * <p>★ <b>P4a</b>：{@code periodicAdjustments}（第 31 个组件）的键复用 {@code PeriodicHouseholdAdjustmentId}
- * 的 {@code toString()/parse} 配对；规则值 {@link io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment} 按 record 组件绑定（派生读法
- * {@code sink()} 不用 {@code is} 前缀，避免被 Jackson 当成属性写进线格式）。旧档缺该键 ⇒ 快照侧收成空表、变更集侧收成
- * {@code Unchanged}，见 {@code EconomyData}/{@code EconomyChangeSet} 构造器兜底。
+ * <p>★ <b>P4a</b>：{@code periodicAdjustments}（第 31 个组件）的键复用 {@code PeriodicHouseholdAdjustmentId} 的
+ * {@code toString()/parse} 配对；规则值 {@link
+ * io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment} 按 record 组件绑定（派生读法 {@code sink()}
+ * 不用 {@code is} 前缀，避免被 Jackson 当成属性写进线格式）。旧档缺该键 ⇒ 快照侧收成空表、变更集侧收成 {@code Unchanged}，见 {@code
+ * EconomyData}/{@code EconomyChangeSet} 构造器兜底。
  *
  * <p>★ {@code AssetKind} 作键（{@code dailyInputPerUnit}/{@code capacity}）走 Jackson **默认的枚举键** 绑定（按
  * {@code name()}），无需自定义；其余 ID/键类型都重写了 {@code toString()}（= 裸值）并与各自的 {@code parse} 互为逆，故只需读侧。
@@ -115,8 +116,8 @@ import java.util.function.Function;
  * <p>★ **同时实现 {@link ModuleDiffer}**（"一批命令 = 一条 revision" 的原子批量提交需要）：委托 {@link
  * EconomyChangeSet#between(EconomyData, EconomyData)}。
  *
- * <p>★★ <b>M2.7 的类结构增量与旧档兼容</b>：{@code HouseholdEconomy.cycleNaturalNeedMilli} 是追加在记录末尾的原始 {@code long} ——
- * Jackson 的记录绑定对<b>缺失的原始组件</b>取默认值 {@code 0}（本批实测过：把该键从 JSON 里删掉仍能读出 0，不抛），这就是"旧档缺该键 ⇒ 0 =
+ * <p>★★ <b>M2.7 的类结构增量与旧档兼容</b>：{@code HouseholdEconomy.cycleNaturalNeedMilli} 是追加在记录末尾的原始 {@code
+ * long} —— Jackson 的记录绑定对<b>缺失的原始组件</b>取默认值 {@code 0}（本批实测过：把该键从 JSON 里删掉仍能读出 0，不抛），这就是"旧档缺该键 ⇒ 0 =
  * 还没开始累计"的兜底；载荷边缘的 {@code EconomyPayloads.householdEconomy} 另有一条 {@code optionalLong(..., 0L)}
  * 的同款兜底。两条都<b>不新增迁移代码</b>：缺键的方向本来就是 fail-closed 的 0。
  */
@@ -140,10 +141,10 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       withEconomyMixins(SimosObjectMapper.create(keyModule(), compatModule()));
 
   /**
-   * ★ 把 {@code EconomyChangeSet.isEmpty()} 摘出 JSON 形态（与 {@code
-   * LedgerCodec} 同制）：Jackson 会把 {@code isEmpty()} 当成属性 {@code "empty"} 写进字节，而严格读入随即炸掉。 {@code
-   * isEmpty} 是派生判断不是状态，**不进线格式**；mixin 放本类（mapper 与 mixin 同处一地、谁也丢不了），领域类型保持零 Jackson 注解（{@code
-   * AllocationRule} 的 sealed 多态注解除外——那是往返的硬前提）。
+   * ★ 把 {@code EconomyChangeSet.isEmpty()} 摘出 JSON 形态（与 {@code LedgerCodec} 同制）：Jackson 会把 {@code
+   * isEmpty()} 当成属性 {@code "empty"} 写进字节，而严格读入随即炸掉。 {@code isEmpty} 是派生判断不是状态，**不进线格式**；mixin
+   * 放本类（mapper 与 mixin 同处一地、谁也丢不了），领域类型保持零 Jackson 注解（{@code AllocationRule} 的 sealed
+   * 多态注解除外——那是往返的硬前提）。
    */
   private static ObjectMapper withEconomyMixins(ObjectMapper mapper) {
     mapper.addMixIn(EconomyChangeSet.class, EconomyChangeSetMixin.class);
@@ -168,17 +169,18 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     abstract boolean isCurrentRuntimeVersion();
   }
 
-
   private static SimpleModule keyModule() {
     SimpleModule module = new SimpleModule("economy-json-keys");
     module.addKeyDeserializer(IndustryId.class, keyDeserializer(IndustryId::parse));
     // ★★ S1：classes/flows 的键 = HouseholdId。旧档的键是 CohortKey 规范串 ⇒ 这里做一次"旧视图 → ofLegacy"
-    //   识别（新档 id 的 parse 是恒等）。识别器同时注册为**值**反序列化器（HouseholdEconomy.id；旧 Debt.debtor/creditor 由旧档迁移层手工解析）。
+    //   识别（新档 id 的 parse 是恒等）。识别器同时注册为**值**反序列化器（HouseholdEconomy.id；旧 Debt.debtor/creditor
+    // 由旧档迁移层手工解析）。
     module.addKeyDeserializer(
         HouseholdId.class, keyDeserializer(EconomyCodec::legacyAwareHouseholdId));
     module.addDeserializer(HouseholdId.class, new HouseholdIdDeserializer());
     // ★★ S1：HouseholdId 迁入无 Jackson 注解的 simos-social-api ⇒ 值侧必须显式写回裸字符串（旧 @JsonValue
-    //   行为），否则 HouseholdEconomy.id / HouseholdLaborCommitment.household 等值会变成 {"value":…}，而上面的值反序列化器
+    //   行为），否则 HouseholdEconomy.id / HouseholdLaborCommitment.household 等值会变成
+    // {"value":…}，而上面的值反序列化器
     //   只认字符串（写出来的档自己读不回）。键侧仍走 toString/parse 配对。
     module.addSerializer(HouseholdId.class, new HouseholdIdSerializer());
     // ★★ E4a：债务合同表 / 质押表的新键（toString/parse 互逆，只需读侧）。
@@ -207,7 +209,8 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(DemandId.class, keyDeserializer(DemandId::parse));
     module.addKeyDeserializer(CandidateId.class, keyDeserializer(CandidateId::parse));
     // ★★ E1：modes / classStructures / classPositions / classStandings（键 = HouseholdId）四张新表，
-    //   以及 ClassStructure.positions / defaultSharesPerMille 与 HouseholdClassMembership.retainedShares
+    //   以及 ClassStructure.positions / defaultSharesPerMille 与
+    // HouseholdClassMembership.retainedShares
     //   三个**嵌套** ClassPositionId 键表 —— 都必须在这里注册键反序列化器（写侧走各自 toString）。
     module.addKeyDeserializer(ProductionModeId.class, keyDeserializer(ProductionModeId::parse));
     module.addKeyDeserializer(ClassStructureId.class, keyDeserializer(ClassStructureId::parse));
@@ -241,10 +244,12 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     SimpleModule module = new SimpleModule("economy-json-legacy-values");
     // ★★ H2：补偿规则的旧线格式（单个 `basis` → `pool` + `weight`）。
     module.addDeserializer(CompensationRule.class, new CompensationRuleDeserializer());
-    // ★★ S1：HouseholdEconomy/FlowRow 的旧键 `key`（CohortKey）→ `id` + `view`；HouseholdLaborCommitment 缺 household。
+    // ★★ S1：HouseholdEconomy/FlowRow 的旧键 `key`（CohortKey）→ `id` + `view`；HouseholdLaborCommitment 缺
+    // household。
     module.addDeserializer(HouseholdEconomy.class, new LegacyHouseholdEconomyDeserializer());
     module.addDeserializer(FlowRow.class, new LegacyFlowRowDeserializer());
-    module.addDeserializer(HouseholdLaborCommitment.class, new LegacyHouseholdLaborCommitmentDeserializer());
+    module.addDeserializer(
+        HouseholdLaborCommitment.class, new LegacyHouseholdLaborCommitmentDeserializer());
     // ★★ R3B.1：旧档组件键 `useRights` → `assetShares`，旧值 `activity/holder` → `industry/owner+operator`。
     //   两条都在 codec 边缘做**显式节点整形**，领域类型保持零 Jackson 注解；Delegate 给 PLAIN 以免递归。
     module.addDeserializer(EconomyData.class, new LegacyEconomyDataDeserializer());
@@ -351,25 +356,27 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   /**
    * ★★ S1：{@link HouseholdId} 的值序列化——写裸值字符串（与 {@link HouseholdIdDeserializer} 严格互补）。
    *
-   * <p>旧 {@code economy-api} 的 {@code HouseholdId} 带 {@code @JsonValue}，迁移到无 Jackson 注解的
-   * {@code simos-social-api} 后注解随类消失；本序列化器把它逐字节补回来，线格式不变。
+   * <p>旧 {@code economy-api} 的 {@code HouseholdId} 带 {@code @JsonValue}，迁移到无 Jackson 注解的 {@code
+   * simos-social-api} 后注解随类消失；本序列化器把它逐字节补回来，线格式不变。
    */
   private static final class HouseholdIdSerializer extends JsonSerializer<HouseholdId> {
 
     @Override
-    public void serialize(HouseholdId value, JsonGenerator generator, SerializerProvider serializers)
+    public void serialize(
+        HouseholdId value, JsonGenerator generator, SerializerProvider serializers)
         throws IOException {
       generator.writeString(value.value());
     }
   }
 
   /**
-   * ★★ S1：旧档 {@code HouseholdEconomy} 的整形（旧键 {@code key} = CohortKey 规范串，没有 {@code id}/{@code view}） ⇒
-   * 新形状（{@code id = HouseholdIds.ofLegacy(key)}、{@code view = key}）。
+   * ★★ S1：旧档 {@code HouseholdEconomy} 的整形（旧键 {@code key} = CohortKey 规范串，没有 {@code id}/{@code
+   * view}） ⇒ 新形状（{@code id = HouseholdIds.ofLegacy(key)}、{@code view = key}）。
    *
    * <p>★ 新形状原样交给 {@link #PLAIN}；**缺 {@code id} 且缺 {@code key} ⇒ 抛**（不猜"大概是哪个家户"）。
    */
-  private static final class LegacyHouseholdEconomyDeserializer extends JsonDeserializer<HouseholdEconomy> {
+  private static final class LegacyHouseholdEconomyDeserializer
+      extends JsonDeserializer<HouseholdEconomy> {
 
     @Override
     public HouseholdEconomy deserialize(JsonParser parser, DeserializationContext context)
@@ -398,7 +405,8 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /**
-   * ★★ S1：旧档 {@code FlowRow} 的整形（{@code key = CohortKey} ⇒ {@code id = HouseholdIds.ofLegacy(key)}）。
+   * ★★ S1：旧档 {@code FlowRow} 的整形（{@code key = CohortKey} ⇒ {@code id =
+   * HouseholdIds.ofLegacy(key)}）。
    */
   private static final class LegacyFlowRowDeserializer extends JsonDeserializer<FlowRow> {
 
@@ -428,8 +436,9 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /**
-   * ★★ S1：旧档 {@code HouseholdLaborCommitment} 的整形（缺 {@code household}）⇒ 造 {@link HouseholdIds#pendingLegacy}
-   * 占位；真正的家户归属由 {@code LegacyHouseholdMigration} 在 {@code EconomyData} 构造期按行人口拆出。
+   * ★★ S1：旧档 {@code HouseholdLaborCommitment} 的整形（缺 {@code household}）⇒ 造 {@link
+   * HouseholdIds#pendingLegacy} 占位；真正的家户归属由 {@code LegacyHouseholdMigration} 在 {@code EconomyData}
+   * 构造期按行人口拆出。
    */
   private static final class LegacyHouseholdLaborCommitmentDeserializer
       extends JsonDeserializer<HouseholdLaborCommitment> {
@@ -542,8 +551,8 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /**
-   * ★★ 2026-10-09：class-first 经济档已退役 —— 快照/变更集里的顶层 {@code classFirst} 组件不再存在；
-   * 明确 fail-closed（而不是让 Jackson 以"未知字段"兜底），旧 class-first 世界需按 production-runtime 重建。
+   * ★★ 2026-10-09：class-first 经济档已退役 —— 快照/变更集里的顶层 {@code classFirst} 组件不再存在； 明确 fail-closed（而不是让
+   * Jackson 以"未知字段"兜底），旧 class-first 世界需按 production-runtime 重建。
    */
   private static void rejectRetiredClassFirst(ObjectNode node, String what) {
     if (node.has("classFirst")) {
@@ -1430,7 +1439,8 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /** root 的 {@code assetShares} 增量节点：把合成的整额份额 upsert 合并进去（变体落点同 {@link #upsertProcessesDelta}）。 */
-  private static void upsertOwnershipStakesDelta(ObjectNode root, Map<String, ObjectNode> shareNodes) {
+  private static void upsertOwnershipStakesDelta(
+      ObjectNode root, Map<String, ObjectNode> shareNodes) {
     ObjectNode delta =
         root.has("assetShares") && root.get("assetShares").isObject()
             ? (ObjectNode) root.get("assetShares")
@@ -1540,7 +1550,8 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /** 按 id 找 unit（跨产业索引线性扫；reshape 期规模小，且只在读档一次）。 */
-  private static ProcessRef findUnitById(Map<String, List<ProcessRef>> unitsByIndustry, String unitId) {
+  private static ProcessRef findUnitById(
+      Map<String, List<ProcessRef>> unitsByIndustry, String unitId) {
     for (List<ProcessRef> refs : unitsByIndustry.values()) {
       for (ProcessRef ref : refs) {
         if (ref.id().equals(unitId)) {
@@ -1551,7 +1562,8 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     return null;
   }
 
-  private static boolean unitIdExists(Map<String, List<ProcessRef>> unitsByIndustry, String unitId) {
+  private static boolean unitIdExists(
+      Map<String, List<ProcessRef>> unitsByIndustry, String unitId) {
     for (List<ProcessRef> refs : unitsByIndustry.values()) {
       for (ProcessRef ref : refs) {
         if (ref.id().equals(unitId)) {
@@ -1563,7 +1575,8 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   }
 
   /** 一个 unit 的 reshape 中间表示（id + operator 节点 + 产业串 + 完整 unit 节点，后者可空）。 */
-  private record ProcessRef(String id, JsonNode operatorNode, String industryKey, JsonNode unitNode) {}
+  private record ProcessRef(
+      String id, JsonNode operatorNode, String industryKey, JsonNode unitNode) {}
 
   /** 读顶层组件的对象字段；缺席/非对象 ⇒ null（调用方按"没有该组件"处理）。 */
   private static ObjectNode objectField(ObjectNode node, String field) {

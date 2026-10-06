@@ -19,20 +19,20 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.Payee;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
-import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.DefaultProductionModes;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
@@ -68,7 +68,8 @@ class ModeMigrationPolicyD024Test {
   private static final IndustryId TARGET_INDUSTRY = IndustryHexKeys.id("target", H2.q(), H2.r());
 
   /** ★ 过期快照回归：H2 目标份额的 ESTATE 所有者（owner==operator，且不是迁移源户）。 */
-  private static final ActorRef ESTATE = new ActorRef(ActorKind.ORGANIZATION, TARGET_INDUSTRY.value());
+  private static final ActorRef ESTATE =
+      new ActorRef(ActorKind.ORGANIZATION, TARGET_INDUSTRY.value());
 
   private record Fixture(
       EconomyData base,
@@ -87,9 +88,7 @@ class ModeMigrationPolicyD024Test {
 
   private static Industry industry(IndustryId id, String label, long outputUnits, long inputMilli) {
     Map<io.mosire.simos.actor.api.asset.AssetKind, Map<CommodityId, Long>> cycleInput =
-        inputMilli <= 0L
-            ? Map.of()
-            : Map.of(AssetKind.WORKSHOP, Map.of(GRAIN, inputMilli));
+        inputMilli <= 0L ? Map.of() : Map.of(AssetKind.WORKSHOP, Map.of(GRAIN, inputMilli));
     return new Industry(
         id,
         label,
@@ -105,9 +104,13 @@ class ModeMigrationPolicyD024Test {
         new AllocationRule.Split(500, 500));
   }
 
-  private static ClassRow row(
-      HouseholdId id, HexCoord hex, long population, long laborMilli, Map<CommodityId, Long> needs) {
-    return new ClassRow(
+  private static HouseholdEconomy row(
+      HouseholdId id,
+      HexCoord hex,
+      long population,
+      long laborMilli,
+      Map<CommodityId, Long> needs) {
+    return new HouseholdEconomy(
         id,
         new CohortKey(hex, ResidenceKind.RURAL, POOR),
         population,
@@ -121,8 +124,8 @@ class ModeMigrationPolicyD024Test {
   }
 
   private static ClassPositionId familyPosition() {
-    return DefaultProductionModes
-        .positionId(DefaultProductionModes.FAMILY_FARM, DefaultProductionModes.ROLE_FAMILY_FARMER)
+    return DefaultProductionModes.positionId(
+            DefaultProductionModes.FAMILY_FARM, DefaultProductionModes.ROLE_FAMILY_FARMER)
         .orElseThrow();
   }
 
@@ -132,7 +135,7 @@ class ModeMigrationPolicyD024Test {
    * @param buyer1NeedPerDay H1 额外买方日需求（毫 GRAIN/日）
    * @param buyer2NeedPerDay H2 买方日需求（毫 GRAIN/日）
    * @param sourceMoney 源户银余额（毫；控制 A 规则流动性）
-   * @param sourceHasOrganization 是否给源户挂 ProductionOrganization（D-022 执行用例需要）
+   * @param sourceHasOrganization 是否给源户挂 ProductionEnterprise（D-022 执行用例需要）
    */
   private static Fixture build(
       long sourceOutputUnits,
@@ -164,23 +167,21 @@ class ModeMigrationPolicyD024Test {
       boolean sourceHasOrganization,
       boolean targetShareOwnedByEstate) {
     ClassPositionId position = familyPosition();
-    Map<HouseholdId, ClassRow> classes = new LinkedHashMap<>();
-    classes.put(
-        SOURCE,
-        row(SOURCE, H1, 100L, 1_000L, Map.of(GRAIN, 100L)));
-    classes.put(
-        BUYER1, row(BUYER1, H1, 100L, 0L, Map.of(GRAIN, buyer1NeedPerDay)));
-    classes.put(
-        BUYER2, row(BUYER2, H2, 100L, 0L, Map.of(GRAIN, buyer2NeedPerDay)));
+    Map<HouseholdId, HouseholdEconomy> classes = new LinkedHashMap<>();
+    classes.put(SOURCE, row(SOURCE, H1, 100L, 1_000L, Map.of(GRAIN, 100L)));
+    classes.put(BUYER1, row(BUYER1, H1, 100L, 0L, Map.of(GRAIN, buyer1NeedPerDay)));
+    classes.put(BUYER2, row(BUYER2, H2, 100L, 0L, Map.of(GRAIN, buyer2NeedPerDay)));
 
-    Map<HouseholdId, ClassStanding> standings = new LinkedHashMap<>();
+    Map<HouseholdId, HouseholdClassMembership> standings = new LinkedHashMap<>();
     for (HouseholdId household : List.of(SOURCE, BUYER1, BUYER2)) {
       standings.put(
           household,
-          new ClassStanding(household, position, position, Map.of(), 0L, 0L, "test-d024"));
+          new HouseholdClassMembership(
+              household, position, position, Map.of(), 0L, 0L, "test-d024"));
     }
 
-    Industry sourceIndustry = industry(SOURCE_INDUSTRY, "source-industry", sourceOutputUnits, sourceInputMilli);
+    Industry sourceIndustry =
+        industry(SOURCE_INDUSTRY, "source-industry", sourceOutputUnits, sourceInputMilli);
     Industry targetIndustry = industry(TARGET_INDUSTRY, "target-industry", 100L, 0L);
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(SOURCE_INDUSTRY, sourceIndustry);
@@ -188,36 +189,51 @@ class ModeMigrationPolicyD024Test {
 
     ActorRef sourceActor = HouseholdActors.of(SOURCE);
     AssetShareId h1ShareId =
-        AssetShare.idOf(
-            SOURCE_INDUSTRY, AssetKind.WORKSHOP, sourceActor, sourceActor, AssetShare.RightKind.OWNED, 0L);
-    AssetShare h1Share =
-        new AssetShare(
-            h1ShareId, SOURCE_INDUSTRY, AssetKind.WORKSHOP, sourceActor, sourceActor, 1L,
-            AssetShare.RightKind.OWNED);
+        OwnershipStake.idOf(
+            SOURCE_INDUSTRY,
+            AssetKind.WORKSHOP,
+            sourceActor,
+            sourceActor,
+            OwnershipStake.RightKind.OWNED,
+            0L);
+    OwnershipStake h1Share =
+        new OwnershipStake(
+            h1ShareId,
+            SOURCE_INDUSTRY,
+            AssetKind.WORKSHOP,
+            sourceActor,
+            sourceActor,
+            1L,
+            OwnershipStake.RightKind.OWNED);
     ActorRef targetShareOwner = targetShareOwnedByEstate ? ESTATE : sourceActor;
     AssetShareId h2ShareId =
-        AssetShare.idOf(
+        OwnershipStake.idOf(
             TARGET_INDUSTRY,
             AssetKind.WORKSHOP,
             targetShareOwner,
             targetShareOwner,
-            AssetShare.RightKind.OWNED,
+            OwnershipStake.RightKind.OWNED,
             0L);
-    AssetShare h2Share =
-        new AssetShare(
-            h2ShareId, TARGET_INDUSTRY, AssetKind.WORKSHOP, targetShareOwner, targetShareOwner, 100L,
-            AssetShare.RightKind.OWNED);
-    Map<AssetShareId, AssetShare> shares = new LinkedHashMap<>();
+    OwnershipStake h2Share =
+        new OwnershipStake(
+            h2ShareId,
+            TARGET_INDUSTRY,
+            AssetKind.WORKSHOP,
+            targetShareOwner,
+            targetShareOwner,
+            100L,
+            OwnershipStake.RightKind.OWNED);
+    Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
     shares.put(h1ShareId, h1Share);
     shares.put(h2ShareId, h2Share);
 
     ProductionUnitId sourceUnitId = ProductionUnitId.idOf(SOURCE_INDUSTRY, sourceActor);
-    ProductionUnit sourceUnit =
-        new ProductionUnit(
+    ProductionProcess sourceUnit =
+        new ProductionProcess(
             sourceUnitId, SOURCE_INDUSTRY, sourceActor, "mode:family_farm", 0L, 0L, Map.of());
-    ProductionRelation sourceRelation =
-        new ProductionRelation(
-            sourceUnitId, sourceActor, new Recipient.ToActor(sourceActor), List.of(), sourceActor);
+    ProductionRules sourceRelation =
+        new ProductionRules(
+            sourceUnitId, sourceActor, new Payee.ToActor(sourceActor), List.of(), sourceActor);
 
     Map<HexCoord, Market> markets = new LinkedHashMap<>();
     markets.put(H1, market());
@@ -227,13 +243,13 @@ class ModeMigrationPolicyD024Test {
         EconomyData.empty()
             .withModes(DefaultProductionModes.modes())
             .withClassStructures(DefaultProductionModes.classStructures())
-            .withClassPositions(DefaultProductionModes.classPositions())
-            .withClasses(classes)
-            .withClassStandings(standings)
+            .withProductionRoles(DefaultProductionModes.classPositions())
+            .withHouseholdEconomies(classes)
+            .withClassMemberships(standings)
             .withIndustries(industries)
-            .withUnits(Map.of(sourceUnitId, sourceUnit))
+            .withProcesses(Map.of(sourceUnitId, sourceUnit))
             .withRelations(Map.of(sourceUnitId, sourceRelation))
-            .withAssetShares(shares)
+            .withOwnershipStakes(shares)
             .withMarkets(markets);
     if (sourceHasOrganization) {
       ProductionOrganizationId organizationId =
@@ -243,10 +259,10 @@ class ModeMigrationPolicyD024Test {
               SOURCE,
               IndustryHexKeys.hexKey(H1.q(), H1.r()));
       base =
-          base.withProductionOrganizations(
+          base.withProductionEnterprises(
               Map.of(
                   organizationId,
-                  new ProductionOrganization(
+                  new ProductionEnterprise(
                       organizationId,
                       DefaultProductionModes.FAMILY_FARM,
                       position,
@@ -254,15 +270,18 @@ class ModeMigrationPolicyD024Test {
                       sourceActor,
                       List.of(SOURCE),
                       List.of(h1ShareId),
-                      List.of(new Recipient.ToActor(sourceActor)),
-                      new Recipient.ToActor(sourceActor),
+                      List.of(new Payee.ToActor(sourceActor)),
+                      new Payee.ToActor(sourceActor),
                       Optional.of("fixture:d024"),
-                      ProductionOrganization.Status.ACTIVE,
+                      ProductionEnterprise.Status.ACTIVE,
                       "")));
     }
 
     AccountSession accounts = AccountSession.empty();
-    accounts.registerHousehold(SOURCE, H1, Map.of(),
+    accounts.registerHousehold(
+        SOURCE,
+        H1,
+        Map.of(),
         sourceMoney <= 0L ? Map.of() : Map.of(SILVER, sourceMoney),
         Map.of(),
         Map.of());
@@ -270,23 +289,28 @@ class ModeMigrationPolicyD024Test {
     accounts.registerHousehold(BUYER2, H2, Map.of(), Map.of(), Map.of(), Map.of());
 
     return new Fixture(
-        base, accounts, MarketTopology.singleHex(markets), markets, h1ShareId, h2ShareId, sourceUnitId);
+        base,
+        accounts,
+        MarketTopology.singleHex(markets),
+        markets,
+        h1ShareId,
+        h2ShareId,
+        sourceUnitId);
   }
 
   /**
-   * ★★ claimed 的唯一正确来源是调用方传入的**当天工作副本**（{@code organizations + units + assetShares}）：
-   * 生产路径 {@code plan} 内部走三参 {@link ModeMigrationPolicy#claimedAssetShares(Map, Map, Map)}。
-   * 这里显式复制一份组织工作副本，绝不把 {@code base} 的 tick0 快照当工作副本递进去；unit 占用那一格也按
-   * 当天 units/shares 一并传入。
+   * ★★ claimed 的唯一正确来源是调用方传入的**当天工作副本**（{@code organizations + units + assetShares}）： 生产路径 {@code
+   * plan} 内部走三参 {@link ModeMigrationPolicy#claimedOwnershipStakes(Map, Map, Map)}。
+   * 这里显式复制一份组织工作副本，绝不把 {@code base} 的 tick0 快照当工作副本递进去；unit 占用那一格也按 当天 units/shares 一并传入。
    */
-  private static Map<ProductionOrganizationId, ProductionOrganization> workingCopy(
-      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
+  private static Map<ProductionOrganizationId, ProductionEnterprise> workingCopy(
+      Map<ProductionOrganizationId, ProductionEnterprise> organizations) {
     return new LinkedHashMap<>(organizations);
   }
 
   private static Set<AssetShareId> claimedFrom(
-      Fixture fixture, Map<ProductionOrganizationId, ProductionOrganization> organizations) {
-    return ModeMigrationPolicy.claimedAssetShares(
+      Fixture fixture, Map<ProductionOrganizationId, ProductionEnterprise> organizations) {
+    return ModeMigrationPolicy.claimedOwnershipStakes(
         organizations, fixture.base().units(), fixture.base().assetShares());
   }
 
@@ -295,7 +319,7 @@ class ModeMigrationPolicyD024Test {
   }
 
   private static ModeMigrationPolicy.MigrationPlan plan(
-      Fixture fixture, Map<ProductionOrganizationId, ProductionOrganization> organizations) {
+      Fixture fixture, Map<ProductionOrganizationId, ProductionEnterprise> organizations) {
     return ModeMigrationPolicy.plan(
         fixture.base(),
         organizations,
@@ -308,7 +332,7 @@ class ModeMigrationPolicyD024Test {
         fixture.markets(),
         fixture.base().debtContracts(),
         fixture.accounts(),
-        new OrganizationProfitBook.Book(Map.of(), Map.of(), Map.of()),
+        new EnterpriseProfitBook.Book(Map.of(), Map.of(), Map.of()),
         10L,
         fixture.topology(),
         List.of());
@@ -319,7 +343,7 @@ class ModeMigrationPolicyD024Test {
   }
 
   private static ExpectedProfitBook.Prospect currentProspect(
-      Fixture fixture, Map<ProductionOrganizationId, ProductionOrganization> organizations) {
+      Fixture fixture, Map<ProductionOrganizationId, ProductionEnterprise> organizations) {
     return ExpectedProfitBook.prospect(
         fixture.base(),
         SOURCE,
@@ -337,14 +361,15 @@ class ModeMigrationPolicyD024Test {
         10L);
   }
 
-  private static ExpectedProfitBook.Prospect targetProspect(Fixture fixture, ProductionModeId mode) {
+  private static ExpectedProfitBook.Prospect targetProspect(
+      Fixture fixture, ProductionModeId mode) {
     return targetProspect(fixture, mode, workingCopy(fixture.base().productionOrganizations()));
   }
 
   private static ExpectedProfitBook.Prospect targetProspect(
       Fixture fixture,
       ProductionModeId mode,
-      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
+      Map<ProductionOrganizationId, ProductionEnterprise> organizations) {
     return ExpectedProfitBook.prospect(
         fixture.base(),
         SOURCE,
@@ -397,7 +422,8 @@ class ModeMigrationPolicyD024Test {
             move -> {
               assertThat(move.source()).isEqualTo(SOURCE);
               assertThat(move.target()).isNotEqualTo(move.source());
-              assertThat(move.transferSpeedPerMille()).isEqualTo(ModeMigrationPolicy.MIGRATION_PER_MILLE);
+              assertThat(move.transferSpeedPerMille())
+                  .isEqualTo(ModeMigrationPolicy.MIGRATION_PER_MILLE);
               assertThat(move.reason())
                   .isEqualTo(ModeMigrationPolicy.MigrationMove.REASON_PROFIT_WEIGHTED);
             });
@@ -464,7 +490,8 @@ class ModeMigrationPolicyD024Test {
             move ->
                 move.source().equals(SOURCE)
                     && move.transferSpeedPerMille() == 1000L
-                    && move.reason().equals(ModeMigrationPolicy.MigrationMove.REASON_A_RULE_MAX_SPEED));
+                    && move.reason()
+                        .equals(ModeMigrationPolicy.MigrationMove.REASON_A_RULE_MAX_SPEED));
     assertThat(liquidPlan.moves())
         .as("但目标预期更高 ⇒ 仍可走 10‰ 基线")
         .allSatisfy(
@@ -484,20 +511,21 @@ class ModeMigrationPolicyD024Test {
         .noneMatch(
             move ->
                 move.source().equals(SOURCE)
-                    && move.reason().equals(ModeMigrationPolicy.MigrationMove.REASON_A_RULE_MAX_SPEED));
+                    && move.reason()
+                        .equals(ModeMigrationPolicy.MigrationMove.REASON_A_RULE_MAX_SPEED));
   }
 
   @Test
   void planAndExecutionKeepSourceModeStandingOrganizationAndUnitModeKey() {
     Fixture fixture = build(100L, 0L, 5_000L, 10_000L, 0L, true);
     EconomyData before = fixture.base();
-    ClassStanding beforeStanding = before.classStandings().get(SOURCE);
-    ProductionOrganization beforeOrganization =
+    HouseholdClassMembership beforeStanding = before.classStandings().get(SOURCE);
+    ProductionEnterprise beforeOrganization =
         before.productionOrganizations().values().stream()
             .filter(org -> org.organizer().equals(HouseholdActors.of(SOURCE)))
             .findFirst()
             .orElseThrow();
-    ProductionUnit beforeUnit = before.units().get(fixture.sourceUnitId());
+    ProductionProcess beforeUnit = before.units().get(fixture.sourceUnitId());
 
     ModeMigrationPolicy.MigrationPlan plan = plan(fixture);
     assertThat(plan.moves()).as("基线迁移计划非空").isNotEmpty();
@@ -506,11 +534,12 @@ class ModeMigrationPolicyD024Test {
     assertThat(before.classStandings().get(SOURCE)).isEqualTo(beforeStanding);
     assertThat(before.classPositions().get(beforeStanding.currentPositionId()).modeId())
         .isEqualTo(DefaultProductionModes.FAMILY_FARM);
-    assertThat(before.productionOrganizations().values().stream()
-            .filter(org -> org.organizer().equals(HouseholdActors.of(SOURCE)))
-            .findFirst()
-            .orElseThrow()
-            .modeId())
+    assertThat(
+            before.productionOrganizations().values().stream()
+                .filter(org -> org.organizer().equals(HouseholdActors.of(SOURCE)))
+                .findFirst()
+                .orElseThrow()
+                .modeId())
         .isEqualTo(DefaultProductionModes.FAMILY_FARM);
     assertThat(before.units().get(fixture.sourceUnitId()).modeKey()).isEqualTo("mode:family_farm");
 
@@ -521,29 +550,36 @@ class ModeMigrationPolicyD024Test {
         .put(
             SOURCE,
             new FlowRow(
-                SOURCE,
-                Map.of(),
-                Map.of(),
-                0L,
-                0L,
-                0L,
-                0L,
-                0L,
-                Map.of(),
-                0L,
-                0L,
-                Map.of(),
+                SOURCE, Map.of(), Map.of(), 0L, 0L, 0L, 0L, 0L, Map.of(), 0L, 0L, Map.of(),
                 Map.of()));
     ModeMigrationSettlement.apply(session, fixture.accounts(), plan, before, 10L);
+    // ★★ P0（2026-10-10）：经济域**不写** householdEconomies 的 population/laborMilli —— 每笔 move 成功后
+    //    只在会话 outbox 里留一条人口事实；由 App 翻译成 Social 工单、再把 Social 真值 delta 回写经济行。
+    List<EconomyPopulationTransfer> transfers = session.drainPendingPopulationTransfers();
+    assertThat(transfers).as("P0：成功迁移必须留下人口 outbox").isNotEmpty();
+    Map<HouseholdId, Long> deltas = new LinkedHashMap<>();
+    for (EconomyPopulationTransfer transfer : transfers) {
+      deltas.merge(transfer.source(), -transfer.population(), Long::sum);
+      deltas.merge(transfer.target(), transfer.population(), Long::sum);
+    }
+    assertThat(session.preview().classes().get(SOURCE).population())
+        .as("P0：App 回写前，经济行人口一字未改")
+        .isEqualTo(100L);
+    // 模拟 App 的"Social 真值 delta 回写经济行"那一半（本测试的 Social 等价物 = outbox 本身）。
+    EconomySettlement.applyHouseholdPopulationDeltasInto(session, deltas);
     EconomyData after = session.preview();
 
     assertThat(after.classStandings().get(SOURCE))
-        .as("★ D-022：执行后源户 ClassStanding 逐值不变")
+        .as("★ D-022：执行后源户 HouseholdClassMembership 逐值不变")
         .isEqualTo(beforeStanding);
-    assertThat(after.classPositions().get(after.classStandings().get(SOURCE).currentPositionId()).modeId())
+    assertThat(
+            after
+                .classPositions()
+                .get(after.classStandings().get(SOURCE).currentPositionId())
+                .modeId())
         .as("★ D-022：源户当前 position 仍指向 family_farm")
         .isEqualTo(DefaultProductionModes.FAMILY_FARM);
-    ProductionOrganization afterOrganization =
+    ProductionEnterprise afterOrganization =
         after.productionOrganizations().values().stream()
             .filter(org -> org.organizer().equals(HouseholdActors.of(SOURCE)))
             .findFirst()
@@ -555,15 +591,14 @@ class ModeMigrationPolicyD024Test {
         .as("★ D-022：源户 unit.modeKey 不变")
         .isEqualTo(beforeUnit.modeKey());
     assertThat(after.classes().get(SOURCE).population())
-        .as("基线迁移只缩编 1 人，源户仍在")
+        .as("基线迁移只缩编 1 人（P0：outbox 回写后），源户仍在")
         .isEqualTo(99L);
   }
 
   /**
    * ★★ <b>D-024 修复 1 端到端回归（过期快照）</b>：H2 目标产业的 WORKSHOP 份额由 {@link #ESTATE} 自营
    * （owner==operator），tick0 快照 {@code base.productionOrganizations()} 为空，但当天工作副本里有一条既有组织
-   * 正在使用该份额。claimed 必须从工作副本算，H2 候选才不可行；若退回 base 快照重算（空），旧的"可抢占"行为会让
-   * 计划把源户迁往 H2。
+   * 正在使用该份额。claimed 必须从工作副本算，H2 候选才不可行；若退回 base 快照重算（空），旧的"可抢占"行为会让 计划把源户迁往 H2。
    */
   @Test
   void workingCopyClaimedSetStopsStaleSnapshotFromRentingOrganizationAssets() {
@@ -578,10 +613,10 @@ class ModeMigrationPolicyD024Test {
             familyPosition(),
             SOURCE,
             IndustryHexKeys.hexKey(H2.q(), H2.r()));
-    Map<ProductionOrganizationId, ProductionOrganization> workingCopy = new LinkedHashMap<>();
+    Map<ProductionOrganizationId, ProductionEnterprise> workingCopy = new LinkedHashMap<>();
     workingCopy.put(
         organizationId,
-        new ProductionOrganization(
+        new ProductionEnterprise(
             organizationId,
             DefaultProductionModes.FAMILY_FARM,
             familyPosition(),
@@ -590,13 +625,14 @@ class ModeMigrationPolicyD024Test {
             List.of(),
             List.of(fixture.targetShareId()),
             List.of(),
-            new Recipient.ToActor(ESTATE),
+            new Payee.ToActor(ESTATE),
             Optional.of("fixture:estate-claim"),
-            ProductionOrganization.Status.SHORTAGE,
+            ProductionEnterprise.Status.SHORTAGE,
             "夹具：ESTATE 自营份额已被组织使用"));
 
     Set<AssetShareId> fromWorkingCopy = claimedFrom(fixture, workingCopy);
-    Set<AssetShareId> fromStaleBase = claimedFrom(fixture, fixture.base().productionOrganizations());
+    Set<AssetShareId> fromStaleBase =
+        claimedFrom(fixture, fixture.base().productionOrganizations());
     assertThat(fromWorkingCopy).contains(fixture.targetShareId());
     assertThat(fromStaleBase).doesNotContain(fixture.targetShareId());
 

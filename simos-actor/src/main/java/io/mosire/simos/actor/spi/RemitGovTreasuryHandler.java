@@ -138,17 +138,12 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
   }
 
   /**
-   * 已通过形状解析的一条上缴（P2-A §13.3：国库 = 政府家户账户）：{@code fromHousehold} → {@code toHousehold} +
-   * 三个可选金额。
+   * 已通过形状解析的一条上缴（P2-A §13.3：国库 = 政府家户账户）：{@code fromHousehold} → {@code toHousehold} + 三个可选金额。
    *
    * <p>构造期把"账户不得相同、金额不得为负、至少一个 &gt; 0"这三条语义违例判掉 —— 解析出即合法。
    */
   private record Remit(
-      HouseholdId fromHousehold,
-      HouseholdId toHousehold,
-      long grain,
-      long cloth,
-      long money) {
+      HouseholdId fromHousehold, HouseholdId toHousehold, long grain, long cloth, long money) {
 
     Remit {
       if (fromHousehold == null) {
@@ -253,7 +248,8 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
   }
 
   /** 逐资源判可支配量：不足 ⇒ 具名拒（资源、请求、可用各写清；可用走 {@link AvailableStock} 唯一算法）。 */
-  private static void requireAvailable(HouseholdInventory source, HouseholdAccountKey key, Remit remit) {
+  private static void requireAvailable(
+      HouseholdInventory source, HouseholdAccountKey key, Remit remit) {
     if (remit.grain() > 0L) {
       requireCommodityAvailable(source, key, GRAIN, "grain", remit.grain());
     }
@@ -319,14 +315,6 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
   }
 
   // ── 形状 ─────────────────────────────────────────────────────────────────────────
-
-  private static String requireText(JsonNode node, String field) {
-    JsonNode value = node.get(field);
-    if (value == null || !value.isTextual() || value.asText().isBlank()) {
-      throw new IllegalArgumentException("字段 " + field + " 必须是非空字符串: " + value);
-    }
-    return value.asText();
-  }
 
   /** 可选金额：缺键 / {@code null} ⇒ 0；类型不是整数 ⇒ 抛（负数在 {@link Remit} 构造期拒）。 */
   private static long optionalAmount(JsonNode node, String field) {

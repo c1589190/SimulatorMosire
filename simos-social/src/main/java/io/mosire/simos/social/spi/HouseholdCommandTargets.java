@@ -29,8 +29,8 @@ import java.util.Set;
  * <p>★★ <b>为什么只有一个实现</b>：同一条"家户位置 → 目标"的规则如果散在 9 个 handler 里，改一处漏一处不会报错， 只会让某条命令静默多判/少判一条资源
  * ——所以这里集中解析，各 handler 只负责"从载荷里取出家户 id / 新位置"。
  *
- * <p>★ <b>现有家户查无 ⇒ 具名 {@link IllegalArgumentException}</b>（"家户不存在: …"），由命令边界折成拒因； 创建型（CREATE_HOUSEHOLD /
- * SetHouseholdLocation 的**新位置**）按载荷给的位置判，不查家户是否存在。
+ * <p>★ <b>现有家户查无 ⇒ 具名 {@link IllegalArgumentException}</b>（"家户不存在: …"），由命令边界折成拒因；
+ * 创建型（CREATE_HOUSEHOLD / SetHouseholdLocation 的**新位置**）按载荷给的位置判，不查家户是否存在。
  *
  * <p>★ <b>WorkOrder 的计划内可见性</b>：plan 是有序工作副本，前一步 CREATE / SET_LOCATION 的结果对后一步可见 ⇒ 本类按 plan 顺序维护
  * {@code planned} 位置表：创建型用载荷 location，后续引用先查工作副本、再查 {@link SocialData} 现值。 这样
@@ -83,8 +83,7 @@ final class HouseholdCommandTargets {
   }
 
   /** 转移类命令的双边目标：{@code from + to}，保序逐条（同一家户重复也给两条，交给调用方逐条判）。 */
-  static List<CommandTarget> bothCurrent(
-      SimulationState state, HouseholdId from, HouseholdId to) {
+  static List<CommandTarget> bothCurrent(SimulationState state, HouseholdId from, HouseholdId to) {
     return List.of(currentTarget(state, from), currentTarget(state, to));
   }
 
@@ -96,12 +95,13 @@ final class HouseholdCommandTargets {
    * <ul>
    *   <li>{@code CREATE_HOUSEHOLD} ⇒ 载荷 {@code location}（创建型，不查 SocialData）；
    *   <li>{@code SET_LOCATION} ⇒ 该家户的**旧位置（工作副本现值）+ 新位置**（与独立命令同一条双边规则）；
-   *   <li>{@code ADD/REMOVE_MEMBERS} / {@code ADJUST_POPULATION} / {@code SET_VITAL_RATES} ⇒ 该家户的目标；
+   *   <li>{@code ADD/REMOVE_MEMBERS} / {@code ADJUST_POPULATION} / {@code SET_VITAL_RATES} ⇒
+   *       该家户的目标；
    *   <li>{@code TRANSFER_MEMBERS} ⇒ {@code from + to} 两条。
    * </ul>
    *
-   * <p>★ **创建型只认载荷 location**；现有家户（含本 plan 先前步骤新建/改位的）按工作副本现值解析——与
-   * {@code HouseholdWorkOrderBook.apply} 的顺序语义同源。
+   * <p>★ **创建型只认载荷 location**；现有家户（含本 plan 先前步骤新建/改位的）按工作副本现值解析——与 {@code
+   * HouseholdWorkOrderBook.apply} 的顺序语义同源。
    */
   static List<CommandTarget> workOrderTargets(SimulationState state, HouseholdWorkOrder order) {
     Objects.requireNonNull(order, "order");

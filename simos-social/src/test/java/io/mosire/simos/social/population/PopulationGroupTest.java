@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 class PopulationGroupTest {
 
   private static final PeopleLotId ID = PeopleLotId.parse("rural:0_0:MALE");
+
   private static PopulationGroup group(long count, long ageDays, long anchorTick) {
     return new PopulationGroup(ID, Sex.MALE, count, ageDays, anchorTick);
   }
@@ -18,8 +19,6 @@ class PopulationGroupTest {
   @Test
   void rejectsNullsAndNegativeNumbers() {
     assertThatThrownBy(() -> new PopulationGroup(null, Sex.MALE, 1L, 0L, 0L))
-        .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new PopulationGroup(ID, null, 1L, 0L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> new PopulationGroup(ID, null, 1L, 0L, 0L))
         .isInstanceOf(IllegalArgumentException.class);

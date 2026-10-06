@@ -35,12 +35,10 @@ import java.util.Set;
  *
  * <p>★ <b>本命令只登记、不采用</b>：不建 unit、不改关系/资产/劳动/市场；进入算法留 E2b。不实现 {@code CommandTargets} （同 {@code
  * economy.MigrateHousehold}：GM {@code simos.command.submit} 可用，directive 内会被 fail-closed 拒）。
- *
  */
 public final class EconomyRegisterCandidateHandler implements CommandHandler {
 
   private static final String COMMAND = "economy.RegisterCandidate";
-
 
   @Override
   public String type() {

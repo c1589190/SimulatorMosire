@@ -19,6 +19,11 @@ import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.social.population.SocialVitalRates;
+import io.mosire.simos.social.population.SocialVitalRemainder;
+import io.mosire.simos.social.population.SocialVitalRemainders;
+import io.mosire.simos.social.population.VitalKind;
+import io.mosire.simos.social.provisioning.SocialProvisioning;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.StateRef;
@@ -67,8 +72,8 @@ class SocialRoundTripTest {
   }
 
   @Test
-  void changeSetHasExactlyFiveComponents() {
-    assertThat(SocialChangeSet.class.getRecordComponents()).hasSize(5);
+  void changeSetHasExactlyEightComponents() {
+    assertThat(SocialChangeSet.class.getRecordComponents()).hasSize(8);
     assertThat(componentNames(SocialChangeSet.class))
         .as("变更集的每个组件都必须在 SocialData 里有同名的 record 组件")
         .isSubsetOf(componentNames(SocialData.class));
@@ -103,6 +108,20 @@ class SocialRoundTripTest {
           base.withPopulations(onePopulation())
               .withGroupsAndHouseholds(oneGroup(), oneHousehold())
               .withPopulationEvents(Map.of(oneEvent().id(), oneEvent()));
+      // ★ 第 6/7/8 组件（Batch A）：都是单值 record，换一个与默认不同的合法实例即可。
+      case "provisioning" ->
+          base.withProvisioning(new SocialProvisioning(List.of(), List.of(), Map.of(), Map.of()));
+      case "vitalRates" ->
+          base.withVitalRates(new SocialVitalRates(new HouseholdVitalRates(List.of())));
+      case "vitalRemainders" ->
+          base.withVitalRemainders(
+              new SocialVitalRemainders(
+                  List.of(
+                      new SocialVitalRemainder(
+                          HOUSEHOLD,
+                          PopulationLots.rural(H00, Sex.MALE, "1"),
+                          VitalKind.DEATH,
+                          7L))));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -114,6 +133,9 @@ class SocialRoundTripTest {
       case "groups" -> cs.groups().changed();
       case "households" -> cs.households().changed();
       case "populationEvents" -> cs.populationEvents().changed();
+      case "provisioning" -> cs.provisioning().changed();
+      case "vitalRates" -> cs.vitalRates().changed();
+      case "vitalRemainders" -> cs.vitalRemainders().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -145,8 +167,7 @@ class SocialRoundTripTest {
   private static Map<PeopleLotId, PopulationGroup> oneGroup() {
     return Map.of(
         PopulationLots.rural(H00, Sex.MALE, "1"),
-        new PopulationGroup(
-            PopulationLots.rural(H00, Sex.MALE, "1"), Sex.MALE, 300L, 250L, 0L));
+        new PopulationGroup(PopulationLots.rural(H00, Sex.MALE, "1"), Sex.MALE, 300L, 250L, 0L));
   }
 
   private static final HouseholdId HOUSEHOLD = HouseholdId.parse("hh-0_0");

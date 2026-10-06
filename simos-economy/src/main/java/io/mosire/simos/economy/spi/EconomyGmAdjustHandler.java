@@ -38,17 +38,16 @@ import java.util.Objects;
  *             recipientRule(CREDITOR_FIRST|MARKET_FIRST)}； upsert 到 {@code liquidationPolicies}；引用的
  *             {@code AssetRule} 不存在 ⇒ 具名拒绝。
  *       </ul>
- *   <li><b>P7 生产方式编辑（八）</b>：
- *       {@code upsertProductionMode}（{@code id,name,version?,classStructureId}；version 必须推进，classStructureId
- *       必须已存在）、{@code deactivateProductionMode}（被结构/位置/组织/资产规则/变迁/质押引用
- *       ⇒ 具名拒绝）、{@code upsertClassStructure}（{@code id,modeId,positions?,defaultSharesPerMille?}；
- *       位置 upsert 并同步全局表与所有结构副本）、{@code upsertClassPosition}（{@code
- *       id,modeId,字段?,classStructureId?}）、{@code upsertProductionRelation}（{@code activity,operator?,
- *       inputSupplier?,rules?,residualOwner?,laborSource?}；operator 必须与 unit.operator 一致）、
- *       {@code upsertAssetRule}（{@code modeId,assetKind,...}；id 由 {@code AssetRuleId.idOf} 派生）、
- *       {@code upsertProductionOrganization}（引用与四档状态守卫）、{@code upsertCandidate}（按
- *       ProductionCandidate 现有字段；见 {@link EconomyGmAdjustments#project}）。八个 kind 只做形状校验，
- *       引用存在性与幂等由 {@code project} 统一判。
+ *   <li><b>P7 生产方式编辑（八）</b>： {@code upsertProductionMode}（{@code
+ *       id,name,version?,classStructureId}；version 必须推进，classStructureId 必须已存在）、{@code
+ *       deactivateProductionMode}（被结构/位置/组织/资产规则/变迁/质押引用 ⇒ 具名拒绝）、{@code
+ *       upsertClassStructure}（{@code id,modeId,positions?,defaultSharesPerMille?}； 位置 upsert
+ *       并同步全局表与所有结构副本）、{@code upsertClassPosition}（{@code id,modeId,字段?,classStructureId?}）、{@code
+ *       upsertProductionRelation}（{@code activity,operator?,
+ *       inputSupplier?,rules?,residualOwner?,laborSource?}；operator 必须与 unit.operator 一致）、 {@code
+ *       upsertAssetRule}（{@code modeId,assetKind,...}；id 由 {@code AssetRuleId.idOf} 派生）、 {@code
+ *       upsertProductionOrganization}（引用与四档状态守卫）、{@code upsertCandidate}（按 ProductionCandidate
+ *       现有字段；见 {@link EconomyGmAdjustments#project}）。八个 kind 只做形状校验， 引用存在性与幂等由 {@code project} 统一判。
  * </ul>
  *
  * <p>★★ <b>派生读数不可直写</b>：{@code flows} / {@code demandBook} / {@code crisisSignals} / {@code
@@ -108,8 +107,7 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
           requireUpsertProductionRoleShape(label, parameters);
       case EconomyGmAdjustments.UPSERT_PRODUCTION_RELATION ->
           EconomyCommandPayloads.requireText(label, parameters, "activity");
-      case EconomyGmAdjustments.UPSERT_ASSET_RULE ->
-          requireUpsertAssetRuleShape(label, parameters);
+      case EconomyGmAdjustments.UPSERT_ASSET_RULE -> requireUpsertAssetRuleShape(label, parameters);
       case EconomyGmAdjustments.UPSERT_PRODUCTION_ORGANIZATION ->
           requireUpsertProductionEnterpriseShape(label, parameters);
       case EconomyGmAdjustments.UPSERT_CANDIDATE -> requireUpsertCandidateShape(label, parameters);
@@ -126,12 +124,6 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
     }
     return List.of();
   }
-
-
-
-
-
-
 
   /** {@code upsertProductionMode} 的形状：id/name/classStructureId 必填非空；version 可选但必须是整数。 */
   private static void requireUpsertProductionModeShape(String label, JsonNode parameters) {
@@ -194,8 +186,9 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
   }
 
   /**
-   * {@code upsertProductionOrganization} 的形状：modeId/classPositionId/organizer 必填（更新分支的 outputOwnership/
-   * status 等可省略并沿用既有值，故这里不把它们当必填）；id/unitId 给了必须非空，outputOwnership/status 给了必须是正确类型。
+   * {@code upsertProductionOrganization} 的形状：modeId/classPositionId/organizer 必填（更新分支的
+   * outputOwnership/ status 等可省略并沿用既有值，故这里不把它们当必填）；id/unitId 给了必须非空，outputOwnership/status
+   * 给了必须是正确类型。
    */
   private static void requireUpsertProductionEnterpriseShape(String label, JsonNode parameters) {
     if (hasValue(parameters, "id")) {
@@ -207,10 +200,10 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
       EconomyCommandPayloads.requireText(label, parameters, "unitId");
     }
     EconomyCommandPayloads.requireActor(label, parameters, "organizer");
-    if (hasValue(parameters, "outputOwnership")
-        && !parameters.get("outputOwnership").isObject()) {
+    if (hasValue(parameters, "outputOwnership") && !parameters.get("outputOwnership").isObject()) {
       throw new IllegalArgumentException(
-          label + " 的 outputOwnership 必须是对象（actor/household/cohort 恰给其一）: "
+          label
+              + " 的 outputOwnership 必须是对象（actor/household/cohort 恰给其一）: "
               + parameters.get("outputOwnership"));
     }
     if (hasValue(parameters, "status")) {

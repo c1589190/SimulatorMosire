@@ -48,7 +48,7 @@ import org.junit.jupiter.api.Test;
  * 自己出现在差集里，红点**直接指名丢的是哪个字段** （而不是"某个断言不成立"）。这条纪律的由来是本仓最贵的教训：{@code MapData} 加字段时 {@code MapDiff}
  * 没人提醒要跟上，四个字段漂移出去、对非 root 节点写连通性**静默丢失**（CLAUDE.md 铁律 5）。
  *
- * <p>★ 兼容构造器（9 参与 13 参）**取缺省**是**唯一正确**的语义：那里没有来源。判据是"**创建点给缺省、拷贝点给原值**"——
+ * <p>★ 兼容构造器（8 参与 12 参）**取缺省**是**唯一正确**的语义：那里没有来源。判据是"**创建点给缺省、拷贝点给原值**"——
  * 两者都有用例，故"一律给缺省"与"一律给原值"都活不过。
  */
 class UnitVisionRadiusTest {
@@ -74,9 +74,9 @@ class UnitVisionRadiusTest {
     List<String> names = componentNames();
     assertThat(names)
         .as(
-            "Unit 应为 18 分量（S3a 第 18 = households）；visionRadius 是倒数第五个"
+            "Unit 应为 17 分量（S3a 第 17 = households；S3b 已砍 manpower）；visionRadius 是倒数第五个"
                 + "（其后依次为 jurisdiction / module / stateDescriptions / households）")
-        .hasSize(18);
+        .hasSize(17);
     assertThat(names.get(names.size() - 5)).isEqualTo("visionRadius");
     assertThat(components[components.length - 5].getType()).as("视野半径是 int").isEqualTo(int.class);
     assertThat(names.get(names.size() - 4)).isEqualTo("jurisdiction");
@@ -105,13 +105,13 @@ class UnitVisionRadiusTest {
   }
 
   @Test
-  void nineParameterCompatibilityConstructorTakesTheDefault() {
-    assertThat(nineParameterUnit().visionRadius()).isEqualTo(Unit.DEFAULT_VISION_RADIUS);
+  void eightParameterCompatibilityConstructorTakesTheDefault() {
+    assertThat(eightParameterUnit().visionRadius()).isEqualTo(Unit.DEFAULT_VISION_RADIUS);
   }
 
   @Test
-  void thirteenParameterCompatibilityConstructorTakesTheDefault() {
-    assertThat(thirteenParameterUnit().visionRadius())
+  void twelveParameterCompatibilityConstructorTakesTheDefault() {
+    assertThat(twelveParameterUnit().visionRadius())
         .as("13 参形态没有视野的来源 ⇒ 取缺省（它的调用点是夹具，不是拷贝点）")
         .isEqualTo(Unit.DEFAULT_VISION_RADIUS);
   }
@@ -137,15 +137,15 @@ class UnitVisionRadiusTest {
   }
 
   @Test
-  void constructorMatrixIsCanonical18PlusSixCompatibilityShapes() {
-    // 六条兼容构造器（9/13/14/15/16/17 参）都只补缺省、不接受新字段的显式来源 ⇒ 它们不可能绕过构造期校验（这是结构断言，不靠"我记得")。
+  void constructorMatrixIsCanonical17PlusSixCompatibilityShapes() {
+    // 六条兼容构造器（8/12/13/14/15/16 参）都只补缺省、不接受新字段的显式来源 ⇒ 它们不可能绕过构造期校验（这是结构断言，不靠"我记得")。
     Set<Integer> arities = new LinkedHashSet<>();
     for (var constructor : Unit.class.getConstructors()) {
       arities.add(constructor.getParameterCount());
     }
     assertThat(arities)
-        .as("恰七种构造形态：18 参 canonical + 9/13/14/15/16/17 参兼容（兼容形态没有新增字段的显式来源）")
-        .isEqualTo(Set.of(9, 13, 14, 15, 16, 17, 18));
+        .as("恰七种构造形态：17 参 canonical + 8/12/13/14/15/16 参兼容（兼容形态没有新增字段的显式来源）")
+        .isEqualTo(Set.of(8, 12, 13, 14, 15, 16, 17));
   }
 
   // ── ★★ 9 处生产拷贝/创建点：逐处不丢字段 ──────────────────────────
@@ -177,8 +177,7 @@ class UnitVisionRadiusTest {
     UnitState base = stateOf(unit(U1, Optional.empty(), Optional.of(H11), RADIUS));
     assertCopied(
         base.units().get(U1),
-        UnitOperations.applyCasualties(
-                base, U1, List.of(new CompositionDelta("步枪", -10)))
+        UnitOperations.applyCasualties(base, U1, List.of(new CompositionDelta("步枪", -10)))
             .units()
             .get(U1),
         "applyCasualties",
@@ -398,7 +397,7 @@ class UnitVisionRadiusTest {
     return unit(id, Optional.empty(), Optional.of(H13), Unit.DEFAULT_VISION_RADIUS);
   }
 
-  private static Unit nineParameterUnit() {
+  private static Unit eightParameterUnit() {
     return new Unit(
         U1,
         "第一连",
@@ -411,7 +410,7 @@ class UnitVisionRadiusTest {
         Optional.empty());
   }
 
-  private static Unit thirteenParameterUnit() {
+  private static Unit twelveParameterUnit() {
     return new Unit(
         U1,
         "第一连",

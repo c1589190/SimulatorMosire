@@ -1,11 +1,10 @@
 package io.mosire.simos.sd.adjudication;
 
-import io.mosire.simos.sd.SdLog;
-import org.slf4j.Logger;
-
 import io.mosire.agentlib.llm.LlmException;
+import io.mosire.simos.sd.SdLog;
 import io.mosire.simos.sd.model.AdjudicationBreakpoint;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * 基于 LLM 的裁决器实现（spec §八.5，N10/N13）：模块内**边界内聚**的那一半。

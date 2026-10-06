@@ -32,26 +32,24 @@ import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.CompensationRule;
-import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.Payee;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
 import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.migrate.DebtReferenceReconciler;
 import io.mosire.simos.economy.migrate.LegacyHouseholdMigration;
 import io.mosire.simos.economy.model.AssetRule;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.ProductionRole;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
-import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DefaultProductionModes;
-import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdDemand;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
@@ -59,11 +57,13 @@ import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionCandidate;
-import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
@@ -100,19 +100,19 @@ import java.util.Set;
  *   <li>E4（第 25 个，另替换第 4 个组件的旧 {@code debts} 槽为 {@code debtContracts}）：{@code pledges}；
  *   <li>E5（第 26–27 个，2 个）：{@code liquidationPolicies} / {@code crisisSignals}；
  *   <li>E6（第 28–29 个，2 个）：{@code modeTransitions} / {@code classShares}；
-  *   <li>P10.1（第 30 个，1 个）：{@code merchantFirms}（商号表，见 {@link MerchantFirm}；键 = 值内 organizationId）。
- *   <li>P4a（第 31 个，1 个）：{@code periodicAdjustments}（周期家户库存扣增规则表，见 {@link HouseholdPeriodicAdjustment}；
- *       键 = 值内 id；P4a 只落规则与无状态到期执行，单位政策留 P4b）。
+ *   <li>P10.1（第 30 个，1 个）：{@code merchantFirms}（商号表，见 {@link MerchantFirm}；键 = 值内 organizationId）。
+ *   <li>P4a（第 31 个，1 个）：{@code periodicAdjustments}（周期家户库存扣增规则表，见 {@link
+ *       HouseholdPeriodicAdjustment}； 键 = 值内 id；P4a 只落规则与无状态到期执行，单位政策留 P4b）。
  * </ul>
  *
  * E6b（GM 经济调整命令与预览审计）与 E6c（统一 dashboard 读口）都只读/写既有组件，**不追加新状态组件**， 故本记录的全表组件数在 E6 之后仍为 **29 个组件**；★
- * <b>P10.1 追加第 30 个组件 {@code merchantFirms}</b>（商号表，见 {@link MerchantFirm}）；★ <b>P4a 追加
- * {@code periodicAdjustments}</b>（周期家户库存扣增规则表，见 {@link HouseholdPeriodicAdjustment}）。逐条对应关系以
- * {@link EconomyChangeSet} 的组件列为准。
+ * <b>P10.1 追加第 30 个组件 {@code merchantFirms}</b>（商号表，见 {@link MerchantFirm}）；★ <b>P4a 追加 {@code
+ * periodicAdjustments}</b>（周期家户库存扣增规则表，见 {@link HouseholdPeriodicAdjustment}）。逐条对应关系以 {@link
+ * EconomyChangeSet} 的组件列为准。
  *
- * <p>★★ **跨表同键不变式**（§6.2 的身份部分）：{@code classes} 的每个键必须等于其 {@link HouseholdEconomy#key()}；{@code flows}
- * 的每个键必须等于其 {@link FlowRow#key()}；{@code laborSupply} / {@code allocations} 同理各自等于行内的 group / id。
- * 否则同一份身份就有两处可能不一致的记录。
+ * <p>★★ **跨表同键不变式**（§6.2 的身份部分）：{@code classes} 的每个键必须等于其 {@link HouseholdEconomy#key()}；{@code
+ * flows} 的每个键必须等于其 {@link FlowRow#key()}；{@code laborSupply} / {@code allocations} 同理各自等于行内的 group
+ * / id。 否则同一份身份就有两处可能不一致的记录。
  *
  * <p>★★ **R2：本阶段最重要的不变量在这里判死**（第三阶段设计稿 §四）：
  *
@@ -150,8 +150,8 @@ import java.util.Set;
  * <ol>
  *   <li>每个键**必须**是该格上已存在的产业（"{@code 关系指名的产业不存在}"）——否则结算时按 id 取不到产业；
  *   <li>{@code relations[k].operator()} **必须**等于 {@code industries[k].operator()}：**同一件事不许有两处拼写**
- *       （"谁经营"若能在关系表里另写一遍，两边不一致时没有任何一处能判谁对）；键还**必须**等于 {@code ProductionRules.activity()}（同
- *       {@code classes}/{@code flows} 的"键 == 值内 key"口径）。
+ *       （"谁经营"若能在关系表里另写一遍，两边不一致时没有任何一处能判谁对）；键还**必须**等于 {@code ProductionRules.activity()}（同 {@code
+ *       classes}/{@code flows} 的"键 == 值内 key"口径）。
  * </ol>
  *
  * <p>★ <b>S1 起 {@code classes}/{@code flows} 的键都是稳定家户身份 {@link HouseholdId}</b>（旧档的 {@link
@@ -177,13 +177,14 @@ import java.util.Set;
  * <p>★★ **S1 的第 12 个组件 {@code assetShares}**（键 = {@link AssetShareId}；R3B.1 起是<b>独立的实物资产份额总账</b>，
  * 逐行判"键 == 值内 id / industry 存在 / 非空 / quantity ≥ 0"；★ <b>没有</b>"Σ quantity ≤ Industry.capacity" 这类
  * 把技术模板与实物账本绑死的上界守卫）。★ 第 13 个组件 {@code operatorConditions}（{@link OperatorCondition}；S3.2 的经营者状态机）由
- * S1 一次性补齐，本阶段空表缺省。★ <b>P2-A A3：成员份额已从本切片整体删除</b>——家户人口组成的唯一权威是 Social 的
- * {@code Household.members}，Economy 只在结算入口读一份只读投影（不进状态、不进变更集/Codec）。
+ * S1 一次性补齐，本阶段空表缺省。★ <b>P2-A A3：成员份额已从本切片整体删除</b>——家户人口组成的唯一权威是 Social 的 {@code
+ * Household.members}，Economy 只在结算入口读一份只读投影（不进状态、不进变更集/Codec）。
  *
  * <p>★★ **E1 追加第 17–20 个组件**（{@code modes} / {@code classStructures} / {@code classPositions} /
  * {@code classStandings}）：它们建立"生产方式 → 阶层结构 → 阶层位置 → 家户归属"的权威状态。★ **E1 不接线结算**： 这四张表为空时，旧 {@code
- * HouseholdClassRule}、旧 {@code settle*} 路径与旧档行为逐值不变；有值时也只做状态与读口， 旧路径仍以 {@code HouseholdEconomy.view} 为准（见
- * {@code HouseholdClassMembership} 的类注）。★ 跨表守卫按"对侧是否已提供"分段生效， 以便 {@code with*} 能逐组件构造；两侧都非空时引用完整性 fail-closed。
+ * HouseholdClassRule}、旧 {@code settle*} 路径与旧档行为逐值不变；有值时也只做状态与读口， 旧路径仍以 {@code
+ * HouseholdEconomy.view} 为准（见 {@code HouseholdClassMembership} 的类注）。★ 跨表守卫按"对侧是否已提供"分段生效， 以便 {@code
+ * with*} 能逐组件构造；两侧都非空时引用完整性 fail-closed。
  *
  * <p>★★ **E2 追加第 21–22 个组件**（{@code productionOrganizations} / {@code assetRules}）：前者是"生产方式 + 阶层结构
  * + 劳动 + 资产"之间的桥（{@code ProductionEnterprise}），由日结算的自动组织阶段 upsert；后者是 mode 下每种生产资料的
@@ -219,7 +220,8 @@ import java.util.Set;
 //   28 个 Map 记录组件的生成访问器保守报"暴露内部表示"；ArmyPlan 已有同类豁免先例。
 @SuppressFBWarnings(
     value = "EI_EXPOSE_REP",
-    justification = "28 张 Map 组件（含 P4a periodicAdjustments）均在 compact 构造器内逐键复制并 Collections.unmodifiableMap；访问器返回冻结副本")
+    justification =
+        "28 张 Map 组件（含 P4a periodicAdjustments）均在 compact 构造器内逐键复制并 Collections.unmodifiableMap；访问器返回冻结副本")
 public record EconomyData(
     Optional<EconomyMeta> meta,
     Map<IndustryId, Industry> industries,
@@ -252,9 +254,8 @@ public record EconomyData(
     Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustments) {
 
   /**
-   * ★ P4a 旧组件面的便捷构造器（原 28 参 canonical 形状）：{@code periodicAdjustments}
-   * 取空表，让既有调用点无需为了新增第 31 组件逐个改动；所有 {@code with*} 与
-   * codec/changeset 路径都必须显式携带该组件。
+   * ★ P4a 旧组件面的便捷构造器（原 28 参 canonical 形状）：{@code periodicAdjustments} 取空表，让既有调用点无需为了新增第 31
+   * 组件逐个改动；所有 {@code with*} 与 codec/changeset 路径都必须显式携带该组件。
    */
   public EconomyData(
       Optional<EconomyMeta> meta,
@@ -321,10 +322,34 @@ public record EconomyData(
   public static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
-        Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-        Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-        Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-        Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of(),
+        Map.of());
   }
 
   public EconomyData {
@@ -578,7 +603,8 @@ public record EconomyData(
     Map<HouseholdId, HouseholdEconomy> householdEconomiesCopy = new LinkedHashMap<>();
     for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : classes.entrySet()) {
       if (householdEconomyEntry.getKey() == null || householdEconomyEntry.getValue() == null) {
-        throw new IllegalArgumentException("classes 的键与值都不得为 null: " + householdEconomyEntry.getKey());
+        throw new IllegalArgumentException(
+            "classes 的键与值都不得为 null: " + householdEconomyEntry.getKey());
       }
       if (!householdEconomyEntry.getKey().equals(householdEconomyEntry.getValue().id())) {
         throw new IllegalArgumentException(
@@ -625,7 +651,8 @@ public record EconomyData(
     //   DebtContractId canonical 升序重建每个 HouseholdEconomy.debts 引用。★ 必须在**跨表守卫之前**：
     //   守卫要求“引用的合同存在”，而孤儿债是“合同存在、引用缺失”；对账不碰合同表本身
     //   （principal/status 守恒），只在 debtor/creditor 家户行缺失时 fail-closed 具名抛。
-    householdEconomiesCopy = DebtReferenceReconciler.reconcile(debtContractsCopy, householdEconomiesCopy);
+    householdEconomiesCopy =
+        DebtReferenceReconciler.reconcile(debtContractsCopy, householdEconomiesCopy);
     classes = Collections.unmodifiableMap(householdEconomiesCopy); // ★ 冻在赋值处（可能与上面同一实例）
     // ★ v2 spec §八.2：两张表的**交叉引用完整性**。★ 必须等两张表都建完再判 ——
     //   在任一段内查对方会陷入循环依赖（debtContracts 要查 classes、classes 要查 debtContracts），故不能靠调顺序解决。
@@ -643,11 +670,15 @@ public record EconomyData(
                 + contract.creditor());
       }
     }
-    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomiesCopy.entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry :
+        householdEconomiesCopy.entrySet()) {
       for (DebtContractId contractId : householdEconomyEntry.getValue().debts()) {
         if (!debtContractsCopy.containsKey(contractId)) {
           throw new IllegalArgumentException(
-              "ClassRow.debts 引用了不存在的债务合同（v2 spec §八.2）：" + householdEconomyEntry.getKey() + " → " + contractId);
+              "ClassRow.debts 引用了不存在的债务合同（v2 spec §八.2）："
+                  + householdEconomyEntry.getKey()
+                  + " → "
+                  + contractId);
         }
       }
     }
@@ -684,9 +715,11 @@ public record EconomyData(
     }
     Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitmentsCopy = new LinkedHashMap<>();
     Map<HouseholdId, Long> allocatedPerHousehold = new LinkedHashMap<>();
-    for (Map.Entry<LaborAllocationId, HouseholdLaborCommitment> laborCommitmentEntry : allocations.entrySet()) {
+    for (Map.Entry<LaborAllocationId, HouseholdLaborCommitment> laborCommitmentEntry :
+        allocations.entrySet()) {
       if (laborCommitmentEntry.getKey() == null || laborCommitmentEntry.getValue() == null) {
-        throw new IllegalArgumentException("allocations 的键与值都不得为 null: " + laborCommitmentEntry.getKey());
+        throw new IllegalArgumentException(
+            "allocations 的键与值都不得为 null: " + laborCommitmentEntry.getKey());
       }
       HouseholdLaborCommitment laborCommitment = laborCommitmentEntry.getValue();
       if (!laborCommitmentEntry.getKey().equals(laborCommitment.id())) {
@@ -699,7 +732,8 @@ public record EconomyData(
       // ①-b ★★ S1：这份劳动必须属于一个已存在的家户（或旧档迁移期的 pending 占位 —— 只有
       //   EconomyCodec 的旧档反序列化器会造它，迁移器必须在交回状态前换成真实家户）。
       HouseholdId allocatedHousehold = laborCommitment.household();
-      if (!HouseholdIds.isPending(allocatedHousehold) && !householdEconomiesCopy.containsKey(allocatedHousehold)) {
+      if (!HouseholdIds.isPending(allocatedHousehold)
+          && !householdEconomiesCopy.containsKey(allocatedHousehold)) {
         throw new IllegalArgumentException(
             "劳动分配的家户必须是已存在的家户（S1 起身份与视图分离）："
                 + laborCommitmentEntry.getKey()
@@ -713,8 +747,7 @@ public record EconomyData(
       //   ★★ **P2-A §13.3**：ESTATE/WORKSHOP 退役 ⇒ 生产主体身份改走 ORGANIZATION（产业经营者）与 HOUSEHOLD；
       //     两者都允许命中产业 id（不再有"必须命中"的 kind —— ORGANIZATION 也可用来表示非产业组织）。
       ActorKind kind = laborCommitment.actor().kind();
-      boolean mayResolveToIndustry =
-          kind == ActorKind.ORGANIZATION || kind == ActorKind.HOUSEHOLD;
+      boolean mayResolveToIndustry = kind == ActorKind.ORGANIZATION || kind == ActorKind.HOUSEHOLD;
       boolean resolvesToIndustry = industryIds.contains(laborCommitment.actor().id());
       if (resolvesToIndustry && !mayResolveToIndustry) {
         throw new IllegalArgumentException(
@@ -746,7 +779,8 @@ public record EconomyData(
       }
       // ★★ P2-A A4：配额上限改为**家户每 tick 时间预算**（{@code HouseholdEconomy.laborMilli}，毫小时）——
       //   不再有"每批次供给表"这第二权威（LaborSupply 已删除；预算每 tick 由 Social 人口组成重算）。
-      allocatedPerHousehold.merge(laborCommitment.household(), laborCommitment.laborMilli(), Long::sum);
+      allocatedPerHousehold.merge(
+          laborCommitment.household(), laborCommitment.laborMilli(), Long::sum);
       laborCommitmentsCopy.put(laborCommitmentEntry.getKey(), laborCommitment);
     }
     allocations = Collections.unmodifiableMap(laborCommitmentsCopy); // ★ 冻在赋值处
@@ -935,7 +969,10 @@ public record EconomyData(
       HouseholdDemand demand = householdDemand.getValue();
       if (!householdDemand.getKey().equals(demand.id())) {
         throw new IllegalArgumentException(
-            "demands 的键必须与 DemandEntry.id 一致：键=" + householdDemand.getKey() + "，行内 id=" + demand.id());
+            "demands 的键必须与 DemandEntry.id 一致：键="
+                + householdDemand.getKey()
+                + "，行内 id="
+                + demand.id());
       }
       if (demand.scope() == HouseholdDemand.DemandScope.HOUSEHOLD) {
         HouseholdId household = demand.household().orElseThrow();
@@ -1096,9 +1133,11 @@ public record EconomyData(
     }
     classPositions = Collections.unmodifiableMap(positionsCopy); // ★ 冻在赋值处
     Map<HouseholdId, HouseholdClassMembership> classMembershipsCopy = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, HouseholdClassMembership> classMembershipEntry : classStandings.entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdClassMembership> classMembershipEntry :
+        classStandings.entrySet()) {
       if (classMembershipEntry.getKey() == null || classMembershipEntry.getValue() == null) {
-        throw new IllegalArgumentException("classStandings 的键与值都不得为 null: " + classMembershipEntry.getKey());
+        throw new IllegalArgumentException(
+            "classStandings 的键与值都不得为 null: " + classMembershipEntry.getKey());
       }
       HouseholdClassMembership classMembership = classMembershipEntry.getValue();
       if (!classMembershipEntry.getKey().equals(classMembership.householdId())) {
@@ -1108,7 +1147,8 @@ public record EconomyData(
                 + "，行内 householdId="
                 + classMembership.householdId());
       }
-      if (!householdEconomiesCopy.isEmpty() && !householdEconomiesCopy.containsKey(classMembershipEntry.getKey())) {
+      if (!householdEconomiesCopy.isEmpty()
+          && !householdEconomiesCopy.containsKey(classMembershipEntry.getKey())) {
         throw new IllegalArgumentException(
             "classStandings 的家户必须是已存在的家户（S1 起身份与视图分离）：" + classMembershipEntry.getKey());
       }
@@ -1205,8 +1245,7 @@ public record EconomyData(
         }
         if (!assetShares.isEmpty()) {
           OwnershipStake organizedShare = assetShares.get(assetSource);
-          if (organizedShare != null
-              && !organizedShare.operator().equals(enterprise.organizer())) {
+          if (organizedShare != null && !organizedShare.operator().equals(enterprise.organizer())) {
             throw new IllegalArgumentException(
                 "生产组织使用的 OwnershipStake 必须由 organizer 经营（operator 一致）：组织="
                     + entry.getKey()
@@ -1365,7 +1404,8 @@ public record EconomyData(
         throw new IllegalArgumentException(
             "质押指名的债务合同必须已存在：质押=" + entry.getKey() + "，合同=" + pledge.debtContractId());
       }
-      if (!ownershipStakesCopy.isEmpty() && !ownershipStakesCopy.containsKey(pledge.assetShareId())) {
+      if (!ownershipStakesCopy.isEmpty()
+          && !ownershipStakesCopy.containsKey(pledge.assetShareId())) {
         throw new IllegalArgumentException(
             "质押指名的资产份额必须已存在：质押=" + entry.getKey() + "，份额=" + pledge.assetShareId());
       }
@@ -1488,8 +1528,7 @@ public record EconomyData(
             "模式变迁指名的生产组织不存在：变迁=" + entry.getKey() + "，组织=" + transition.organizationId());
       }
       if (!productionOrganizations.isEmpty()) {
-        ProductionEnterprise enterprise =
-            productionOrganizations.get(transition.organizationId());
+        ProductionEnterprise enterprise = productionOrganizations.get(transition.organizationId());
         if (enterprise != null && !enterprise.modeId().equals(transition.fromModeId())) {
           throw new IllegalArgumentException(
               "模式变迁的 fromModeId 必须等于组织当前的 modeId（同一件事不许两处拼写）：变迁="
@@ -1543,7 +1582,8 @@ public record EconomyData(
         throw new IllegalArgumentException(
             "阶层保留份额指名的模式变迁不存在：份额=" + entry.getKey() + "，变迁=" + share.transitionId());
       }
-      if (!householdEconomiesCopy.isEmpty() && !householdEconomiesCopy.containsKey(share.householdId())) {
+      if (!householdEconomiesCopy.isEmpty()
+          && !householdEconomiesCopy.containsKey(share.householdId())) {
         throw new IllegalArgumentException(
             "阶层保留份额指名的家户不存在：份额=" + entry.getKey() + "，家户=" + share.householdId());
       }
@@ -1654,8 +1694,8 @@ public record EconomyData(
    *
    * <p>★★ <b>R4-B.4 收窄</b>：本方法**只**判"该格存在产业"。旧版还判 view 必须命中该格产业的 {@code ClassSlot}、并返回最紧槽位供调用方限制
    * {@code participationPerMille}；该槽位耦合已删除 —— {@code Industry.slots} / {@code ClassSlot}
-   * 只作为生产方式内部的角色/劳动配置， 不再是 {@code HouseholdEconomy.view} 的限制来源。{@code classes} 侧也不再调用本方法（view 完全由 {@code
-   * HouseholdClassRule} 纯派生）。
+   * 只作为生产方式内部的角色/劳动配置， 不再是 {@code HouseholdEconomy.view} 的限制来源。{@code classes} 侧也不再调用本方法（view 完全由
+   * {@code HouseholdClassRule} 纯派生）。
    */
   private static void requireIndustryRegistered(
       Map<IndustryId, Industry> industries, CohortKey key, String what) {
@@ -1848,7 +1888,8 @@ public record EconomyData(
         periodicAdjustments);
   }
 
-  public EconomyData withLaborCommitments(Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
+  public EconomyData withLaborCommitments(
+      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
     return new EconomyData(
         meta,
         industries,
@@ -2308,7 +2349,8 @@ public record EconomyData(
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
-  public EconomyData withClassMemberships(Map<HouseholdId, HouseholdClassMembership> classMemberships) {
+  public EconomyData withClassMemberships(
+      Map<HouseholdId, HouseholdClassMembership> classMemberships) {
     return new EconomyData(
         meta,
         industries,
@@ -2787,11 +2829,12 @@ public record EconomyData(
    * 的视图选择器解释。归一化是构造期的纯函数、幂等（归一后的规则不再含 ToCohort）。
    *
    * <p>★ <b>S3 审计</b>：索引每次都用**当前** {@code classes} 行集合重建，不缓存历史 view。默认关系在第一次构造时就已归一为 {@code
-   * ToHousehold(稳定身份)} ⇒ 之后的阶层写回只改 {@code HouseholdEconomy.view}，不会让这些规则改指到别的家户；仍保留的 {@code ToCohort}
-   * 是旧档/多义视图的兼容窄口，按当前行集合解释。
+   * ToHousehold(稳定身份)} ⇒ 之后的阶层写回只改 {@code HouseholdEconomy.view}，不会让这些规则改指到别的家户；仍保留的 {@code
+   * ToCohort} 是旧档/多义视图的兼容窄口，按当前行集合解释。
    */
   private static Map<ProductionUnitId, ProductionRules> normalizePayees(
-      Map<ProductionUnitId, ProductionRules> raw, Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+      Map<ProductionUnitId, ProductionRules> raw,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Map<CohortKey, HouseholdId> unique = new LinkedHashMap<>();
     Set<CohortKey> ambiguous = new LinkedHashSet<>();
     for (HouseholdEconomy householdEconomy : householdEconomies.values()) {

@@ -1,5 +1,6 @@
 package io.mosire.simos.social.household;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -12,7 +13,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * ★★ <b>家户状态本体</b>（2026-10-09 家户/人口架构 §4.1 + P2-A §13.2）：Social 的<b>基本单元</b>——家户在哪、由谁组成（逐批次的人数份额）、按什么生死/生育率结算。
+ * ★★ <b>家户状态本体</b>（2026-10-09 家户/人口架构 §4.1 + P2-A §13.2）：Social
+ * 的<b>基本单元</b>——家户在哪、由谁组成（逐批次的人数份额）、按什么生死/生育率结算。
  *
  * <pre>
  * Household(id, location, profile, members, vitalRates)
@@ -20,11 +22,11 @@ import java.util.Objects;
  * </pre>
  *
  * <p>★★ <b>{@code members} 是唯一成员关系</b>（架构 §4.1 原文）：不建 {@code HouseholdMember} 表，不存第二份
- * "谁属于谁"。批次（{@link io.mosire.simos.social.population.PopulationGroup}）本身不再带位置，
- * "人在哪"只能从所属家户的 {@link #location()} 得到（架构 §4.2）。
+ * "谁属于谁"。批次（{@link io.mosire.simos.social.population.PopulationGroup}）本身不再带位置， "人在哪"只能从所属家户的 {@link
+ * #location()} 得到（架构 §4.2）。
  *
- * <p>★★ <b>P2-A 的口径变化（如实记）</b>：改前成员表是 {@code List<PeopleLotId>}（一个批次只能整批属于一个家户）；
- * 现在换成 {@code Map<PeopleLotId, Long>} 的<b>份额表</b>（{@code (PeopleLotId, HouseholdId, count)} 的 Social 侧形态）。
+ * <p>★★ <b>P2-A 的口径变化（如实记）</b>：改前成员表是 {@code List<PeopleLotId>}（一个批次只能整批属于一个家户）； 现在换成 {@code
+ * Map<PeopleLotId, Long>} 的<b>份额表</b>（{@code (PeopleLotId, HouseholdId, count)} 的 Social 侧形态）。
  * 份额的<b>跨家户守恒</b>（逐 lot {@code Σ count == PopulationGroup.count}）由 {@code SocialData} 的跨组件校验收口——
  * 本类型只判自身合法性。
  *
@@ -37,7 +39,8 @@ import java.util.Objects;
  * </ul>
  *
  * <p>★ <b>copy-with 语义</b>：{@link #withLocation} / {@link #withProfile} / {@link #withMembers} /
- * {@link #withMember} / {@link #withoutMember} / {@link #withVitalRates} 都是"换一件事、其余原样带过"，不做就地修改（record 不可变）。
+ * {@link #withMember} / {@link #withoutMember} / {@link #withVitalRates}
+ * 都是"换一件事、其余原样带过"，不做就地修改（record 不可变）。
  *
  * <p>★ 本类型<b>零 Jackson 注解</b>：线格式由 {@code SocialCodec} 负责（架构 §3.1 的"契约层不放实现"同款纪律）。
  *
@@ -45,9 +48,11 @@ import java.util.Objects;
  * @param location 家户位置（{@code HEX} / {@code UNIT}）；不得为 null
  * @param profile 家户画像；不得为 null
  * @param members 成员份额（批次 → 人数）；冻结、不得含 null 键或负值
- * @param vitalRates 逐 {@code (年龄档, 性别)} 的出生/死亡率<b>家户覆盖表</b>（ppm/tick；空表/缺键逐键回落全局默认）；
- *     不得为 null
+ * @param vitalRates 逐 {@code (年龄档, 性别)} 的出生/死亡率<b>家户覆盖表</b>（ppm/tick；空表/缺键逐键回落全局默认）； 不得为 null
  */
+@SuppressFBWarnings(
+    value = "EI_EXPOSE_REP",
+    justification = "compact constructor 已做防御性拷贝并冻结；SpotBugs 不跨辅助方法识别")
 public record Household(
     HouseholdId id,
     HouseholdLocation location,
@@ -120,8 +125,8 @@ public record Household(
   }
 
   /**
-   * 写入/覆盖某批次的份额（{@code count < 0} 由规范构造器拒；{@code count == 0} 合法但等价于"这个家户此刻没有这一份"，
-   * 调用方若想删条目请用 {@link #withoutMember}）。
+   * 写入/覆盖某批次的份额（{@code count < 0} 由规范构造器拒；{@code count == 0} 合法但等价于"这个家户此刻没有这一份"， 调用方若想删条目请用 {@link
+   * #withoutMember}）。
    *
    * <p>★ 键的插入序：新键追加到末尾；已有键保留原位置（{@link LinkedHashMap} 的既有语义）。
    */

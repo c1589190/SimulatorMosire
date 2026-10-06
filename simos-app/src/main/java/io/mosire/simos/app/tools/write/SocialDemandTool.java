@@ -22,24 +22,24 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * ★★ {@code simos.social.demand}（2026-10-09 家户结构修复计划 Batch 4）：<b>GM 改/清 social 需求系数窄工具</b>——
- * {@code social.SetDemandCoefficient} 的封装（全局默认或单家户覆盖，键 {@code (年龄档, 性别, 商品)}）。
+ * ★★ {@code simos.social.demand}（2026-10-09 家户结构修复计划 Batch 4）：<b>GM 改/清 social 需求系数窄工具</b>—— {@code
+ * social.SetDemandCoefficient} 的封装（全局默认或单家户覆盖，键 {@code (年龄档, 性别, 商品)}）。
  *
  * <p>★ <b>参数语义</b>（与命令同源）：
  *
  * <ul>
  *   <li>{@code householdId} 缺席 = 改全局默认；给了 = 改该家户覆盖（家户必须存在）；
  *   <li>{@code amountMilli} 给了 = upsert；缺席 = 清除该家户覆盖键并回落全局（无 householdId ⇒ 命令具名拒，全局删键不允许）；
- *   <li>{@code period}/{@code cycleDays}：两者都缺席 ⇒ 从该商品的全局默认口径推断；两者都给 ⇒ 按值构造；
- *       只给一个 ⇒ 拒。家户覆盖显式口径必须与全局口径一致。
+ *   <li>{@code period}/{@code cycleDays}：两者都缺席 ⇒ 从该商品的全局默认口径推断；两者都给 ⇒ 按值构造； 只给一个 ⇒
+ *       拒。家户覆盖显式口径必须与全局口径一致。
  * </ul>
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：preview 与 apply 都先经 {@link SocialProvisioningEdits} 调
- * {@link SocialProvisioning} 的不可变 copy-with 算出目标 provisioning（零状态写入、零 revision）；若 {@code preview=false}
- * 才把同一份载荷提交给 {@link CoreSimos#submitBatch}。所以预览绝不产生 revision，也不依赖另一套算法。
+ * {@link SocialProvisioning} 的不可变 copy-with 算出目标 provisioning（零状态写入、零 revision）；若 {@code
+ * preview=false} 才把同一份载荷提交给 {@link CoreSimos#submitBatch}。所以预览绝不产生 revision，也不依赖另一套算法。
  *
- * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；命令本身标 {@code GmOnlyCommand}，工具名不是命令类型
- * ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。只写 social 命名空间。
+ * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；命令本身标 {@code GmOnlyCommand}，工具名不是命令类型 ⇒
+ * 不进 catalog / {@code PAYLOAD_HINTS}。只写 social 命名空间。
  *
  * <p>★ <b>旧档作废、不迁移</b>：预览/提交都只认带第 6 组件 {@code provisioning} 的新档；旧档在状态构造期即具名拒。
  */
@@ -75,17 +75,14 @@ public final class SocialDemandTool extends AbstractHouseholdGmTool {
   @Override
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
-    props.put(
-        "householdId",
-        ToolSupport.prop("string", "家户稳定 id；缺席 = 改全局默认，给了 = 改该家户覆盖（家户必须存在）"));
+    props.put("householdId", ToolSupport.prop("string", "家户稳定 id；缺席 = 改全局默认，给了 = 改该家户覆盖（家户必须存在）"));
     props.put("ageBracket", ToolSupport.prop("string", "年龄档 0-14 | 15-59 | 60+（必填）"));
     props.put("sex", ToolSupport.prop("string", "MALE | FEMALE（必填）"));
     props.put("commodity", ToolSupport.prop("string", "商品 id，如 grain | cloth（必填）"));
     props.put(
         "amountMilli",
         ToolSupport.prop(
-            "integer",
-            "每人每个时间口径的最小计量单位数（≥ 0）；给了 = upsert，缺席 = 清除家户覆盖键（无 householdId ⇒ 拒）"));
+            "integer", "每人每个时间口径的最小计量单位数（≥ 0）；给了 = upsert，缺席 = 清除家户覆盖键（无 householdId ⇒ 拒）"));
     props.put(
         "period",
         ToolSupport.prop(
@@ -94,14 +91,14 @@ public final class SocialDemandTool extends AbstractHouseholdGmTool {
     props.put(
         "cycleDays",
         ToolSupport.prop(
-            "integer",
-            "PER_CYCLE_DAYS 的周期天数（≥ 1）；PER_CALENDAR_YEAR 必须为 0；与 period 同进同出"));
+            "integer", "PER_CYCLE_DAYS 的周期天数（≥ 1）；PER_CALENDAR_YEAR 必须为 0；与 period 同进同出"));
     props.put("reason", ToolSupport.prop("string", "改动原因（必填非空白；进命令载荷与事件）"));
     props.put("preview", ToolSupport.prop("boolean", "true（缺省）= 只算不写；false = 提交命令"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
-        ToolSupport.prop("integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=该分支 head）"));
+        ToolSupport.prop(
+            "integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=该分支 head）"));
     return ToolSupport.schema(props, List.of("ageBracket", "sex", "commodity", "reason"));
   }
 
@@ -128,8 +125,7 @@ public final class SocialDemandTool extends AbstractHouseholdGmTool {
     DemandPeriod period = optionalDemandPeriodArg(args, "period");
     Long cycleDays = ToolSupport.optionalLong(args, "cycleDays");
     if (amountMilli == null && (period != null || cycleDays != null)) {
-      throw new IllegalArgumentException(
-          "amountMilli 缺席（= 清除家户覆盖键）时不得给 period/cycleDays（没有系数可构造）");
+      throw new IllegalArgumentException("amountMilli 缺席（= 清除家户覆盖键）时不得给 period/cycleDays（没有系数可构造）");
     }
     SocialData projected =
         amountMilli == null

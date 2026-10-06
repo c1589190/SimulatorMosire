@@ -71,7 +71,7 @@ final class EconomyOwnershipFixture {
    * EconomyDayStepper}）更可信：**每一条断言量的世界都是"完整账"那个世界**。
    *
    * <p>★★ <b>H1 起 {@code books} 是必填的</b>（裁定 K1/D3-C）：商品库存的唯一真源是 actor 侧的 {@code
-   * GoodsAccount}，日结算的消费与投入都要读它的会话副本 ⇒ 家户 actor 缺席时协调器**当场抛** （旧版的 {@code NO_BOOKS}
+   * HouseholdInventory}，日结算的消费与投入都要读它的会话副本 ⇒ 家户 actor 缺席时协调器**当场抛** （旧版的 {@code NO_BOOKS}
    * 常量因此删除：它代表的世界已经不存在了，留着只会把一个必炸的入参摆在手边）。
    */
   static EconomyData advanceEconomy(EconomyData base, ActorData books, String mapId, long days) {

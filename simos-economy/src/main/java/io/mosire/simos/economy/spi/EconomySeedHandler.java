@@ -153,7 +153,9 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
       IndustryHexKeys.hexKeyOf(id).ifPresent(hexes::add);
     }
     for (var householdEconomy : base.classes().values()) {
-      hexes.add(IndustryHexKeys.hexKey(householdEconomy.view().hex().q(), householdEconomy.view().hex().r()));
+      hexes.add(
+          IndustryHexKeys.hexKey(
+              householdEconomy.view().hex().q(), householdEconomy.view().hex().r()));
     }
     return hexes;
   }

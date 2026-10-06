@@ -99,9 +99,9 @@ final class MarketTopologyBook {
    * MarketTopology#NO_RURAL_PENALTY_PER_MILLE}（= 旧 {@link #from(SimulationState)}）；P9/P7 在组合根按
    * {@code MerchantPolicy} 汇总后注入。
    *
-   * <p>★★ <b>D-027（同币即同区）的生产路径</b>：{@code economy.markets()} 非空、有城市权威、且<b>所有
-   * {@code Market.numeraire} 相同</b> ⇒ 直接返回 {@link MarketTopology#singleRegion}（全部有市场的 hex 归一个区，
-   * 锚格 = 规范序第一个 hex、{@code nodeId = "single-region"}）；币种不一致时才退回既有的"城市节点 + tier 半径"路径
+   * <p>★★ <b>D-027（同币即同区）的生产路径</b>：{@code economy.markets()} 非空、有城市权威、且<b>所有 {@code
+   * Market.numeraire} 相同</b> ⇒ 直接返回 {@link MarketTopology#singleRegion}（全部有市场的 hex 归一个区， 锚格 =
+   * 规范序第一个 hex、{@code nodeId = "single-region"}）；币种不一致时才退回既有的"城市节点 + tier 半径"路径
    * （D-027：跨市场区本批暂缓，不新增跨区撮合）。地形索引/道路/费率的装配方式逐字不变。
    */
   static MarketTopology from(
@@ -136,16 +136,12 @@ final class MarketTopologyBook {
           TransportTariff.probeDefaults());
     }
     return byCityRadius(
-        economy,
-        gameMap,
-        social,
-        cityDiscountPerMilleBetween,
-        ruralPenaltyPerMilleBetween);
+        economy, gameMap, social, cityDiscountPerMilleBetween, ruralPenaltyPerMilleBetween);
   }
 
   /**
-   * ★★ <b>旧路径（城市节点 + tier 半径 / craft@ 退化）</b>：币种不一致或城市权威缺席时使用；装配口径与
-   * D-027 之前逐字相同（地形索引一次构建、道路/辐射由组合根注入、两个商人调整量落在费率公式里）。
+   * ★★ <b>旧路径（城市节点 + tier 半径 / craft@ 退化）</b>：币种不一致或城市权威缺席时使用；装配口径与 D-027
+   * 之前逐字相同（地形索引一次构建、道路/辐射由组合根注入、两个商人调整量落在费率公式里）。
    */
   private static MarketTopology byCityRadius(
       EconomyData economy,

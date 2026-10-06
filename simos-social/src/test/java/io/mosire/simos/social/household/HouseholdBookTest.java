@@ -20,8 +20,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /**
- * S2 家户生命周期验收（架构 §5/§7 第 2、4、5 条）：建户 / 位置 / 画像 / 成员增删 / 整体转移与拆分 / 守恒 /
- * 重复事件拒绝 / 事件回放。
+ * S2 家户生命周期验收（架构 §5/§7 第 2、4、5 条）：建户 / 位置 / 画像 / 成员增删 / 整体转移与拆分 / 守恒 / 重复事件拒绝 / 事件回放。
  *
  * <p>★ 这些用例按架构 §5 的接口逐条写，不按实现反推；断言逐值（count / id / location），不用"非空"式弱断言。
  */
@@ -181,7 +180,8 @@ class HouseholdBookTest {
             new HouseholdProfile("乙户", null, Map.of()),
             new HouseholdVitalRates(List.of()));
 
-    SocialData moved = HouseholdBook.transferMembers(data, HEX_HOUSEHOLD, UNIT_HOUSEHOLD, LOT, 100L, "整户调");
+    SocialData moved =
+        HouseholdBook.transferMembers(data, HEX_HOUSEHOLD, UNIT_HOUSEHOLD, LOT, 100L, "整户调");
 
     assertThat(moved.requireHousehold(HEX_HOUSEHOLD).memberLots()).isEmpty();
     assertThat(moved.requireHousehold(UNIT_HOUSEHOLD).memberLots()).containsExactly(LOT);
@@ -196,7 +196,7 @@ class HouseholdBookTest {
   }
 
   @Test
-  void transferSplitKeepsSourceAndDerivesStableMovedLotMergingOnRepeat() {
+  void transferSplitKeepsLotIdAndMovesSharesBetweenHouseholds() {
     SocialData data = seedHexHouseholdWithOneLot();
     data =
         HouseholdBook.create(
@@ -206,34 +206,42 @@ class HouseholdBookTest {
             new HouseholdProfile("乙户", null, Map.of()),
             new HouseholdVitalRates(List.of()));
 
-    SocialData split = HouseholdBook.transferMembers(data, HEX_HOUSEHOLD, UNIT_HOUSEHOLD, LOT, 40L, "分户");
-    PeopleLotId movedLot = PeopleLotId.parse(LOT.value() + "@" + UNIT_HOUSEHOLD.value());
+    SocialData split =
+        HouseholdBook.transferMembers(data, HEX_HOUSEHOLD, UNIT_HOUSEHOLD, LOT, 40L, "分户");
 
-    assertThat(split.groups().get(LOT).count()).as("源批次保留 id、只减人数").isEqualTo(60L);
-    assertThat(split.groups().get(movedLot).count()).isEqualTo(40L);
+    // ★ P2-A 份额制：转移只改"这一批人里多少归哪个家户"，批次 id 与总人数都一字不动。
+    assertThat(split.groups().get(LOT).count()).as("批次总人数一字不动").isEqualTo(100L);
+    assertThat(split.requireHousehold(HEX_HOUSEHOLD).memberCount(LOT))
+        .as("源户份额 100−40")
+        .isEqualTo(60L);
+    assertThat(split.requireHousehold(UNIT_HOUSEHOLD).memberCount(LOT))
+        .as("目标户份额 +40")
+        .isEqualTo(40L);
     assertThat(split.requireHousehold(HEX_HOUSEHOLD).memberLots()).containsExactly(LOT);
-    assertThat(split.requireHousehold(UNIT_HOUSEHOLD).memberLots()).containsExactly(movedLot);
+    assertThat(split.requireHousehold(UNIT_HOUSEHOLD).memberLots()).containsExactly(LOT);
+    assertThat(split.householdsOfLot(LOT)).as("同一批次被两个家户按份额持有").hasSize(2);
 
-    SocialData splitAgain = HouseholdBook.transferMembers(split, HEX_HOUSEHOLD, UNIT_HOUSEHOLD, LOT, 10L, "再分");
-    assertThat(splitAgain.groups().get(LOT).count()).as("源 60−10").isEqualTo(50L);
-    assertThat(splitAgain.groups().get(movedLot).count())
-        .as("同一目标重复拆分 ⇒ 合并进同一个派生批次（不产生第二份身份）")
+    SocialData splitAgain =
+        HouseholdBook.transferMembers(split, HEX_HOUSEHOLD, UNIT_HOUSEHOLD, LOT, 10L, "再分");
+    assertThat(splitAgain.groups().get(LOT).count()).as("重复拆分仍然不动批次总数").isEqualTo(100L);
+    assertThat(splitAgain.requireHousehold(HEX_HOUSEHOLD).memberCount(LOT))
+        .as("源 60−10")
         .isEqualTo(50L);
-    assertThat(splitAgain.requireHousehold(UNIT_HOUSEHOLD).memberLots()).containsExactly(movedLot);
+    assertThat(splitAgain.requireHousehold(UNIT_HOUSEHOLD).memberCount(LOT))
+        .as("目标 40+10（合并进同一份身份，不产生第二份）")
+        .isEqualTo(50L);
 
     SocialData relocated =
         HouseholdBook.setLocation(splitAgain, UNIT_HOUSEHOLD, new HouseholdLocation.Hex(H00), "驻防");
-    assertThat(relocated.groups().get(movedLot).id()).as("派生批次 id 迁位后不变").isEqualTo(movedLot);
-    assertThat(relocated.hexOfLot(movedLot)).contains(H00);
+    assertThat(relocated.groups().get(LOT).id()).as("位置变了，批次 id 仍不变").isEqualTo(LOT);
+    assertThat(relocated.hexOfLot(LOT)).contains(H00);
   }
 
   @Test
   void conservationHoldsForEveryOperationAndConstructorRejectsIllegalOwnership() {
     SocialData data = seedHexHouseholdWithOneLot();
     data = ensureUnitHousehold(data, UNIT_HOUSEHOLD, "u-1");
-    data =
-        HouseholdBook.transferMembers(
-            data, HEX_HOUSEHOLD, UNIT_HOUSEHOLD, LOT, 100L, "整移");
+    data = HouseholdBook.transferMembers(data, HEX_HOUSEHOLD, UNIT_HOUSEHOLD, LOT, 100L, "整移");
 
     assertThat(HouseholdBook.requireConservation(data)).isSameAs(data);
     assertThat(data.householdOfLot(LOT)).isPresent();
@@ -259,17 +267,22 @@ class HouseholdBookTest {
             Map.of(LOT, 1L),
             new HouseholdVitalRates(List.of()));
 
+    // ★ P2-A：双主不再是非法状态（同一批次可按 count 拆给多个家户），真正的守卫是逐 lot 守恒 Σshare == count。
+    PopulationGroup twoPeople = new PopulationGroup(LOT, Sex.MALE, 2L, 0L, 0L);
+    SocialData shared =
+        new SocialData(
+            Map.of(), Map.of(), Map.of(LOT, twoPeople), Map.of(h1, hh1, h2, hh2), Map.of());
+    assertThat(shared.householdsOfLot(LOT)).as("同一批次两个持份家户都读得到").hasSize(2);
+    assertThat(shared.householdPopulation(h1)).isEqualTo(1L);
+    assertThat(shared.householdPopulation(h2)).isEqualTo(1L);
+
     assertThatThrownBy(
             () ->
                 new SocialData(
-                    Map.of(),
-                    Map.of(),
-                    Map.of(LOT, group),
-                    Map.of(h1, hh1, h2, hh2),
-                    Map.of()))
-        .as("双主批次必须被构造期拒")
+                    Map.of(), Map.of(), Map.of(LOT, group), Map.of(h1, hh1, h2, hh2), Map.of()))
+        .as("两份 share=1 对 count=1 ⇒ Σshare 超批次人数，必须被构造期拒")
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("同时被家户");
+        .hasMessageContaining("份额之和必须等于批次人数");
     assertThatThrownBy(
             () -> new SocialData(Map.of(), Map.of(), Map.of(LOT, group), Map.of(), Map.of()))
         .as("无主批次必须被构造期拒")
@@ -289,8 +302,7 @@ class HouseholdBookTest {
         .hasMessageContaining("扣减不足");
     assertThat(data.groups().get(LOT).count()).isEqualTo(100L);
 
-    assertThatThrownBy(
-            () -> HouseholdBook.removeMembers(data, HEX_HOUSEHOLD, LOT, 101L, "GM 超扣"))
+    assertThatThrownBy(() -> HouseholdBook.removeMembers(data, HEX_HOUSEHOLD, LOT, 101L, "GM 超扣"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("超出批次人数");
     assertThat(data.groups().get(LOT).count()).isEqualTo(100L);
@@ -318,8 +330,7 @@ class HouseholdBookTest {
         .as("同 id 单条重复落账必须拒")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("已存在");
-    assertThatThrownBy(
-            () -> HouseholdBook.applyEvents(data, List.of(event, event, event)))
+    assertThatThrownBy(() -> HouseholdBook.applyEvents(data, List.of(event, event, event)))
         .as("批内重复同样拒")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("批内重复");
@@ -465,10 +476,11 @@ class HouseholdBookTest {
     assertThat(whole.householdOfLot(LOT).orElseThrow().id()).isEqualTo(UNIT_HOUSEHOLD);
     assertThat(whole.requireHousehold(HEX_HOUSEHOLD).memberLots()).isEmpty();
 
-    // 拒绝方向：目标家户还不是该批次的 owner 就 IN ⇒ 拒。
-    HouseholdPopulationEvent inWhileStillOwned =
+    // ★ P2-A 份额制：目标户尚未持有该批次时，IN 会给它落一份份额（批次总人数按事件 +10）；
+    //   旧「批次仍属源户 ⇒ 直接 IN 必须拒」依赖“整批只能有一个家户”的旧口径，已随份额制退役。
+    HouseholdPopulationEvent inToSecondOwner =
         new HouseholdPopulationEvent(
-            "evt-in-rejected",
+            "evt-in-second-owner",
             UNIT_HOUSEHOLD,
             PopulationEventType.TRANSFER_IN,
             Sex.MALE,
@@ -478,11 +490,11 @@ class HouseholdBookTest {
             "replay",
             "replay",
             LOT);
-    SocialData current = base;
-    assertThatThrownBy(() -> HouseholdBook.applyEvent(current, inWhileStillOwned))
-        .as("批次仍属于源家户 ⇒ 直接 IN 到目标家户必须拒（不做静默改挂）")
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("属于家户");
+    SocialData sharedAgain = HouseholdBook.applyEvent(base, inToSecondOwner);
+    assertThat(sharedAgain.groups().get(LOT).count()).isEqualTo(110L);
+    assertThat(sharedAgain.requireHousehold(HEX_HOUSEHOLD).memberCount(LOT)).isEqualTo(100L);
+    assertThat(sharedAgain.requireHousehold(UNIT_HOUSEHOLD).memberCount(LOT)).isEqualTo(10L);
+    assertThat(sharedAgain.householdsOfLot(LOT)).hasSize(2);
   }
 
   private static SocialData seedHexHouseholdWithOneLot() {
@@ -497,8 +509,7 @@ class HouseholdBookTest {
         data, HEX_HOUSEHOLD, LOT, Sex.MALE, 100L, ADULT_AGE_DAYS, 0L, "创世播种");
   }
 
-  private static SocialData ensureUnitHousehold(
-      SocialData data, HouseholdId id, String unitId) {
+  private static SocialData ensureUnitHousehold(SocialData data, HouseholdId id, String unitId) {
     if (data.households().containsKey(id)) {
       return data;
     }

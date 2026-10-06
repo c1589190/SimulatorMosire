@@ -14,9 +14,9 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.economy.api.population.LotMigration;
-import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -72,8 +72,8 @@ class LotMigrationBookTest {
         HouseholdIds.ofSeed(CITY_HEX, ResidenceKind.URBAN, SocialClassId.POOR_PEASANT);
     assertThat(after.classes()).as("目标行缺失 ⇒ 新建规范身份行").containsKey(target);
 
-    ClassRow sourceRow = after.classes().get(SOURCE);
-    ClassRow targetRow = after.classes().get(target);
+    HouseholdEconomy sourceRow = after.classes().get(SOURCE);
+    HouseholdEconomy targetRow = after.classes().get(target);
     assertThat(sourceRow.population()).as("源行人口 100−20").isEqualTo(80L);
     assertThat(targetRow.population()).as("目标行人口 20").isEqualTo(20L);
     assertThat(sourceRow.population() + targetRow.population())
@@ -106,8 +106,8 @@ class LotMigrationBookTest {
   void migrationMergesIntoExistingTargetRowWithoutLosingPeopleOrDebt() {
     HouseholdId target =
         HouseholdIds.ofSeed(CITY_HEX, ResidenceKind.URBAN, SocialClassId.POOR_PEASANT);
-    ClassRow existingTarget =
-        new ClassRow(
+    HouseholdEconomy existingTarget =
+        new HouseholdEconomy(
             target,
             new CohortKey(CITY_HEX, ResidenceKind.URBAN, SocialClassId.POOR_PEASANT),
             5L,
@@ -122,7 +122,7 @@ class LotMigrationBookTest {
 
     EconomyData after = LotMigrationBook.apply(base, List.of(migration(20L)), 3L);
 
-    ClassRow targetRow = after.classes().get(target);
+    HouseholdEconomy targetRow = after.classes().get(target);
     assertThat(targetRow.population()).as("既有目标行合并：5+20").isEqualTo(25L);
     assertThat(targetRow.laborMilli()).as("既有目标行合并：3500+14000").isEqualTo(17_500L);
     assertThat(after.classes().get(SOURCE).population()).as("源行同步减少").isEqualTo(80L);
@@ -165,8 +165,8 @@ class LotMigrationBookTest {
     HouseholdId target =
         HouseholdIds.ofSeed(CITY_HEX, ResidenceKind.URBAN, SocialClassId.POOR_PEASANT);
     // 同一个规范 id 已被一个不同视图（农村居住）占用 ⇒ 新建目标行会覆盖既有身份，必须拒绝。
-    ClassRow occupied =
-        new ClassRow(
+    HouseholdEconomy occupied =
+        new HouseholdEconomy(
             target,
             new CohortKey(CITY_HEX, ResidenceKind.RURAL, SocialClassId.POOR_PEASANT),
             5L,
@@ -191,9 +191,9 @@ class LotMigrationBookTest {
     return new LotMigration(SOURCE_LOT, TARGET_LOT, RURAL_HEX, CITY, CITY_HEX, count, "测试：城市化迁移");
   }
 
-  private static EconomyData base(Map<HouseholdId, ClassRow> extraRows) {
-    ClassRow source =
-        new ClassRow(
+  private static EconomyData base(Map<HouseholdId, HouseholdEconomy> extraRows) {
+    HouseholdEconomy source =
+        new HouseholdEconomy(
             SOURCE,
             new CohortKey(RURAL_HEX, ResidenceKind.RURAL, SocialClassId.POOR_PEASANT),
             SOURCE_POPULATION,
@@ -204,8 +204,8 @@ class LotMigrationBookTest {
             Map.of(),
             Map.of(),
             0L);
-    ClassRow creditor =
-        new ClassRow(
+    HouseholdEconomy creditor =
+        new HouseholdEconomy(
             CREDITOR,
             new CohortKey(CREDITOR_HEX, ResidenceKind.RURAL, SocialClassId.LANDLORD),
             10L,
@@ -228,7 +228,7 @@ class LotMigrationBookTest {
             OptionalLong.empty(),
             OptionalLong.empty(),
             DebtStatus.NORMAL);
-    LinkedHashMap<HouseholdId, ClassRow> rows = new LinkedHashMap<>();
+    LinkedHashMap<HouseholdId, HouseholdEconomy> rows = new LinkedHashMap<>();
     rows.put(SOURCE, source);
     rows.put(CREDITOR, creditor);
     rows.putAll(extraRows);
@@ -242,7 +242,7 @@ class LotMigrationBookTest {
                     OptionalLong.empty(),
                     EconomyMeta.RULES_VERSION_PRE_MODERN_V1,
                     Optional.empty())))
-        .withClasses(rows)
+        .withHouseholdEconomies(rows)
         .withDebtContracts(Map.of(SOURCE_DEBT, debt));
   }
 }

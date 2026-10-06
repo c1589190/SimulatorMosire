@@ -254,42 +254,43 @@ class SocialCodecTest {
   }
 
   /**
-   * ★★ **老档兼容：升级前的 `social` 快照必须读得回来**（这条是 16 条真红的现场复现）。
+   * ★★ **旧档拒读（2026-10-09 用户裁定"一切从新、旧档作废、不做迁移/双读"）**：第 6/7/8 个组件 （{@code provisioning} / {@code
+   * vitalRates} / {@code vitalRemainders}）在旧 social 快照里并不存在。
    *
-   * <p>字节取自真档：`simos-app/src/main/resources/worlds/v17levant.json` 的 `modules.social` —— 那个键**没有**
-   * `cities`。若让构造器对 null 抛，等于"整个世界打不开"（`RichWorldTest` 全组当场红）。缺省方向是 fail-closed：旧档没有城市 ⇒ 空表。
+   * <p>方向必须是**具名拒**、不是静默补默认值（旧世界请由 GM 重置；静默补默认会把"没有这份口径"伪装成 "GM 从没调过参"）。样例字节取自真档
+   * `simos-app/src/main/resources/worlds/v17levant.json` 的 `modules.social` 形态。
    */
   @Test
-  void legacySnapshotWithoutCitiesKeyDecodesToEmptyCities() {
+  void legacySnapshotWithoutProvisioningComponentsIsRejectedNotDefaulted() {
     String legacy =
         "{\"ref\":{\"branch\":{\"value\":\"main\"},\"revision\":{\"value\":1}},"
             + "\"timestamp\":{\"tick\":0,\"calendarLabel\":null},"
             + "\"data\":{\"populations\":{}}}";
 
-    SocialSnapshot back = (SocialSnapshot) CODEC.decodeSnapshot(legacy);
-
-    assertThat(back.data().populations()).isEmpty();
-    assertThat(back.data().cities()).as("旧档没有城市 ⇒ 空表，不抛").isEmpty();
-    assertThat(back.data().groups()).as("旧档没有人口批次 ⇒ 空表，不抛（R1 唯一保留的兼容行）").isEmpty();
+    assertThatThrownBy(() -> CODEC.decodeSnapshot(legacy))
+        .as("缺第 6/7/8 组件的旧快照必须具名拒，不补默认值")
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("social 侧 JSON 解码失败")
+        .rootCause()
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("旧档缺此组件已作废");
   }
 
   /**
-   * ★★ **老档兼容：升级前的 `social` 变更集必须读得回来**。
-   *
-   * <p>升级前落盘的每条 social revision 都只有 `populations` 一个组件。缺省 = {@link FieldDelta.Unchanged} （"一字未动"）——
-   * 若读成 null，`isEmpty()` 与 `apply` 都会 NPE，**旧 revision 全部重放不了**。
+   * ★★ **旧档变更集同样拒读**（同一条"一切从新"裁定）：升级前的 social revision 只有 {@code populations} 一个键， 第 6/7/8 个组件缺键 =
+   * 旧档，**具名拒**而不是补默认值 / 读成 null。
    */
   @Test
-  void legacyChangeSetWithoutCitiesKeyDecodesToUnchangedCities() {
+  void legacyChangeSetWithoutProvisioningComponentsIsRejectedNotDefaulted() {
     String legacy = "{\"populations\":{\"@class\":\"unchanged\"}}";
 
-    SocialChangeSet back = (SocialChangeSet) CODEC.decodeChangeSet(legacy);
-
-    assertThat(back.cities()).as("旧档没提城市 ⇒ Unchanged，不抛").isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.groups())
-        .as("旧档没提人口批次 ⇒ Unchanged，不抛（R1 唯一保留的兼容行）")
-        .isInstanceOf(FieldDelta.Unchanged.class);
-    assertThat(back.isEmpty()).as("三个组件都未变 ⇒ 这份旧变更集是空的").isTrue();
+    assertThatThrownBy(() -> CODEC.decodeChangeSet(legacy))
+        .as("缺第 6/7/8 组件的旧 revision 必须具名拒，不补默认值")
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("social 侧 JSON 解码失败")
+        .rootCause()
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("旧档缺此组件已作废");
   }
 
   // ── R1：第三个组件 groups（人口批次）的 JSON 往返 ──────────────────────────────────────
@@ -316,8 +317,7 @@ class SocialCodecTest {
     Map<PeopleLotId, PopulationGroup> changedGroups = new LinkedHashMap<>();
     changedGroups.put(
         PopulationLots.rural(H00, Sex.MALE, "1"),
-        new PopulationGroup(
-            PopulationLots.rural(H00, Sex.MALE, "1"), Sex.MALE, 999L, 30L, 7L));
+        new PopulationGroup(PopulationLots.rural(H00, Sex.MALE, "1"), Sex.MALE, 999L, 30L, 7L));
     changedGroups.put(
         PopulationLots.rural(H00, Sex.FEMALE, "1"),
         new PopulationGroup(

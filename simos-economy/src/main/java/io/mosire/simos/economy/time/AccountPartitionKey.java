@@ -6,8 +6,8 @@ import java.util.Objects;
 /**
  * ★★ <b>账户分区键 = 家户身份</b>（P2-A §13.3：账户主体统一为家户，一本账一个家户）。
  *
- * <p>★★ <b>形状变化（如实记）</b>：改前是 {@code (ActorRef, HexCoord)} —— 同一主体可在多格各有一本账，
- * {@code ESTATE}/{@code WORKSHOP} 之类非家户主体也持账。现在：
+ * <p>★★ <b>形状变化（如实记）</b>：改前是 {@code (ActorRef, HexCoord)} —— 同一主体可在多格各有一本账， {@code ESTATE}/{@code
+ * WORKSHOP} 之类非家户主体也持账。现在：
  *
  * <ul>
  *   <li><b>唯一主体 = 家户</b>：键就是 {@link HouseholdId}；actor 只是家户身份的读法（{@code HouseholdActors.of}），
@@ -21,7 +21,8 @@ import java.util.Objects;
  *
  * <p>★ <b>确定性分区函数</b>：{@code floorMod(canonical.hashCode(), partitionCount)}（1/4/8 线程同一函数）。
  */
-public record AccountPartitionKey(HouseholdId household) implements Comparable<AccountPartitionKey> {
+public record AccountPartitionKey(HouseholdId household)
+    implements Comparable<AccountPartitionKey> {
 
   public AccountPartitionKey {
     Objects.requireNonNull(household, "AccountPartitionKey.household 不得为 null");

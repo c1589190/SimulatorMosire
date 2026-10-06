@@ -24,10 +24,9 @@ import java.util.Objects;
  * <p>★ <b>语义</b>：只调 {@link HouseholdBook#transferMembers}——整批移动保持 id 不变；拆分批次的迁出部分落派生 id（同一目标重复拆分
  * 自动合并）；两条腿的事件原子写入。源/目标相同、批次不属于源、扣减超量都由域层具名拒。
  *
- * <p>★ <b>目标声明</b>（{@link CommandTargets}）：2026-10-20 起走跨命名空间 {@link #targetResources}——**from + to 两条都判**
- * （任一越界 ⇒ 整条命令拒；这是用户裁定的双边规则："调人"不能只判一侧）。两侧各自按家户 SocialData 现值解析为
- * {@code social:<q>_<r>} 或 {@code unit:<unitId>}。旧 {@link #targetPaths} 保留为空列表（它看不到 state，
- * 升级前逐字一致）。
+ * <p>★ <b>目标声明</b>（{@link CommandTargets}）：2026-10-20 起走跨命名空间 {@link #targetResources}——**from + to
+ * 两条都判** （任一越界 ⇒ 整条命令拒；这是用户裁定的双边规则："调人"不能只判一侧）。两侧各自按家户 SocialData 现值解析为 {@code social:<q>_<r>} 或
+ * {@code unit:<unitId>}。旧 {@link #targetPaths} 保留为空列表（它看不到 state， 升级前逐字一致）。
  */
 public final class TransferHouseholdMembersHandler implements CommandHandler, CommandTargets {
 

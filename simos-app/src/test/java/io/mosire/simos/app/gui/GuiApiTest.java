@@ -16,8 +16,8 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.actor.codec.ActorCodec;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
@@ -43,15 +43,15 @@ import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.labor.LaborAllocation;
+import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.codec.EconomyCodec;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
 import io.mosire.simos.economy.model.EconomyMeta;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -138,7 +138,7 @@ class GuiApiTest {
   private static final HexCoord H13 = new HexCoord(1, 3);
   private static final HexCoord H14 = new HexCoord(1, 4);
 
-  /** ★ S1：本夹具的两个家户稳定身份（{@code classes} 的键；格/居住/阶层只在 {@link ClassRow#view()} 上）。 */
+  /** ★ S1：本夹具的两个家户稳定身份（{@code classes} 的键；格/居住/阶层只在 {@link HouseholdEconomy#view()} 上）。 */
   private static final SocialClassId PEASANT = new SocialClassId("poor_peasant");
 
   private static final HouseholdId H11_HOUSEHOLD =
@@ -459,8 +459,9 @@ class GuiApiTest {
 
     JsonNode detail = getJson("/api/unit/u-1");
     assertThat(detail.get("name").asText()).isEqualTo("第一连");
-    assertThat(detail.get("manpower").get(0).get("type").asText()).isEqualTo("步兵");
-    assertThat(detail.get("manpower").get(0).get("amount").asLong()).isEqualTo(100L);
+    // ★ S3b：Unit.manpower 已退役；装备仍走 equipment（本夹具 = 步枪×50）。
+    assertThat(detail.get("equipment").get(0).get("type").asText()).isEqualTo("步枪");
+    assertThat(detail.get("equipment").get(0).get("amount").asLong()).isEqualTo(50L);
     // ★ B9：单位自身状态要真发出来（此前两处视图都没发；新建单位缺省 MOVING，见 Unit 的缺省）。
     assertThat(detail.get("status").asText()).isEqualTo("MOVING");
     assertThat(detail.get("position").get("q").asInt()).isEqualTo(1);
@@ -667,7 +668,8 @@ class GuiApiTest {
     JsonNode groups = body.get("groups");
     assertThat(fieldNames(groups))
         .as("块内键序（三个派生量：城乡 / 年龄档 / 性别 / R4 的生理压力）")
-        .containsExactly("total", "urban", "rural", "ageBrackets", "sex", "physiologicalStress");
+        .containsExactly(
+            "total", "urban", "rural", "ageBrackets", "sex", "physiologicalStress", "lots");
     assertThat(groups.get("total").asLong()).as("Σ 批次 = 1,350（这就是与经济侧对拍的那一侧）").isEqualTo(1_350L);
     assertThat(groups.get("urban").asLong()).as("城镇：男 10 岁 300 + 女 30 岁 700").isEqualTo(1_000L);
     assertThat(groups.get("rural").asLong())
@@ -797,8 +799,8 @@ class GuiApiTest {
    * industries[0]}（既有断言一字不动）。
    *
    * <p>★★ **S1/R3B.2 的新形状**：{@code classes} 的键是家户稳定身份 {@link HouseholdId}（本夹具 = H11/H12 的农村贫农； H12
-   * 那行人口为 0，只为让 H12 的配额有真实家户可指）；经营主体与周期进度住在 {@link ProductionUnit}，本格产能总量住在 {@link
-   * AssetShare}，{@link Industry} 只留 12 参技术模板（不再携带 {@code operator/capacity/progress} 兼容位）。
+   * 那行人口为 0，只为让 H12 的配额有真实家户可指）；经营主体与周期进度住在 {@link ProductionProcess}，本格产能总量住在 {@link
+   * OwnershipStake}，{@link Industry} 只留 12 参技术模板（不再携带 {@code operator/capacity/progress} 兼容位）。
    */
   private static EconomyData economyData() {
     IndustryId farm = new IndustryId(FARM_1_1);
@@ -819,14 +821,14 @@ class GuiApiTest {
             List.of(new ClassSlot(PEASANT, "贫农", 950)),
             new AllocationRule.Split(700, 300));
     CohortKey peasantView = new CohortKey(H11, ResidenceKind.RURAL, PEASANT);
-    // ★★ H1：行里**没有商品**（{@code ClassRow} 无 goods，裁定 D3-C/K1）—— 那 498,000 毫粮住在 actor 侧的
-    //   {@code GoodsAccount} 上（见 {@link #actorData()}）；读口的 {@code goods} 就是从它读的。
-    ClassRow row =
-        new ClassRow(
+    // ★★ H1：行里**没有商品**（{@code HouseholdEconomy} 无 goods，裁定 D3-C/K1）—— 那 498,000 毫粮住在 actor 侧的
+    //   {@code HouseholdInventory} 上（见 {@link #actorData()}）；读口的 {@code goods} 就是从它读的。
+    HouseholdEconomy row =
+        new HouseholdEconomy(
             H11_HOUSEHOLD,
             peasantView,
             100L,
-            // ★ P2-A：时间预算的唯一权威 = ClassRow.laborMilli ⇒ 夹具把它设成旧供给毛额 915,000，
+            // ★ P2-A：时间预算的唯一权威 = HouseholdEconomy.laborMilli ⇒ 夹具把它设成旧供给毛额 915,000，
             //   使「可用 / 已分配 / 占用率」三条既有期望值仍成立。
             915_000L,
             950,
@@ -837,8 +839,8 @@ class GuiApiTest {
             0L);
     // ★ S1：H12 的配额需要 household 指向真实存在的家户；0 人口行合法，且让 H12 的
     //   `/api/economy/hex` 仍报 population == 0（既有断言不动）。
-    ClassRow otherRow =
-        new ClassRow(
+    HouseholdEconomy otherRow =
+        new HouseholdEconomy(
             H12_HOUSEHOLD,
             new CohortKey(H12, ResidenceKind.RURAL, PEASANT),
             0L,
@@ -850,7 +852,7 @@ class GuiApiTest {
             Map.of(),
             Map.of(),
             0L);
-    // ★★ R3B.2：operator/progress/实扣投入的真值在 ProductionUnit；产能总量在 AssetShare。
+    // ★★ R3B.2：operator/progress/实扣投入的真值在 ProductionProcess；产能总量在 OwnershipStake。
     ActorRef farmOperator = new ActorRef(ActorKind.ORGANIZATION, FARM_1_1);
     ActorRef workshopOperator = new ActorRef(ActorKind.ORGANIZATION, WORKSHOP_1_1);
     ActorRef workshopHouseholdOperator = new ActorRef(ActorKind.HOUSEHOLD, "house-7");
@@ -858,10 +860,10 @@ class GuiApiTest {
     ProductionUnitId workshopUnit = ProductionUnitId.idOf(workshop, workshopOperator);
     ProductionUnitId householdWorkshopUnit =
         ProductionUnitId.idOf(workshop, workshopHouseholdOperator);
-    Map<ProductionUnitId, ProductionUnit> units = new LinkedHashMap<>();
+    Map<ProductionUnitId, ProductionProcess> units = new LinkedHashMap<>();
     units.put(
         farmUnit,
-        new ProductionUnit(
+        new ProductionProcess(
             farmUnit,
             farm,
             farmOperator,
@@ -872,11 +874,11 @@ class GuiApiTest {
     // 第二条 unit 的 operator 刻意非派生（见 workshopIndustry）；第一条让 WORKSHOP 配额有 unit 可挂。
     units.put(
         workshopUnit,
-        new ProductionUnit(
+        new ProductionProcess(
             workshopUnit, workshop, workshopOperator, workshop.value(), 0L, 0L, Map.of()));
     units.put(
         householdWorkshopUnit,
-        new ProductionUnit(
+        new ProductionProcess(
             householdWorkshopUnit,
             workshop,
             workshopHouseholdOperator,
@@ -885,19 +887,20 @@ class GuiApiTest {
             0L,
             Map.of()));
     AssetShareId farmLandShareId =
-        AssetShare.idOf(
-            farm, AssetKind.LAND, farmOperator, farmOperator, AssetShare.RightKind.OWNED, 0L);
-    AssetShare farmLandShare =
-        new AssetShare(
+        OwnershipStake.idOf(
+            farm, AssetKind.LAND, farmOperator, farmOperator, OwnershipStake.RightKind.OWNED, 0L);
+    OwnershipStake farmLandShare =
+        new OwnershipStake(
             farmLandShareId,
             farm,
             AssetKind.LAND,
             farmOperator,
             farmOperator,
             1_000_000L,
-            AssetShare.RightKind.OWNED);
+            OwnershipStake.RightKind.OWNED);
     // ★ P2-A：memberships 已迁 Social（EconomyData 不再持有）⇒ 夹具直接以 classes + allocations 自洽；
-    //   LaborSupply 也已删除，配额上限由 ClassRow.laborMilli 承担（本夹具 H11 行 = 915,000 / H12 行 = 91,500）。
+    //   LaborSupply 也已删除，配额上限由 HouseholdEconomy.laborMilli 承担（本夹具 H11 行 = 915,000 / H12 行 =
+    // 91,500）。
     return EconomyData.empty()
         .withMeta(
             Optional.of(
@@ -908,13 +911,13 @@ class GuiApiTest {
                     EconomyMeta.RUNTIME_VERSION_SEVEN_HEX_V2,
                     Optional.empty())))
         .withIndustries(Map.of(farm, industry, workshop, workshopIndustry(workshop)))
-        .withClasses(Map.of(H11_HOUSEHOLD, row, H12_HOUSEHOLD, otherRow))
+        .withHouseholdEconomies(Map.of(H11_HOUSEHOLD, row, H12_HOUSEHOLD, otherRow))
         // ★★ H4：第 9 个组件（市场表）—— 本夹具那一格给一个市场（计价货币 + 出厂价表都取真装载器的
         //   {@link EconomySeeder#MARKET_FACTORY}，**本夹具不另拍价**）。
         .withMarkets(Map.of(H11, EconomySeeder.MARKET_FACTORY))
-        .withUnits(units)
-        .withAssetShares(Map.of(farmLandShareId, farmLandShare))
-        .withAllocations(laborAllocations())
+        .withProcesses(units)
+        .withOwnershipStakes(Map.of(farmLandShareId, farmLandShare))
+        .withLaborCommitments(laborAllocations())
         .withMeta(
             Optional.of(
                 new EconomyMeta(
@@ -934,20 +937,20 @@ class GuiApiTest {
    */
   private static ActorData actorData() {
     // ★ P2-A：账户主体 = 家户身份（键不再带格）。
-    GoodsAccountKey accountKey = new GoodsAccountKey(H11_HOUSEHOLD);
+    HouseholdAccountKey accountKey = new HouseholdAccountKey(H11_HOUSEHOLD);
     return ActorData.empty()
         .withActor(
             new io.mosire.simos.actor.model.Actor(HouseholdActors.of(H11_HOUSEHOLD), "农村贫农家户"))
-        // ★★ H4：货币账与商品账同住一本（同一本 GoodsAccount 的两个余额表）——
+        // ★★ H4：货币账与商品账同住一本（同一本 HouseholdInventory 的两个余额表）——
         //   本夹具给这个家户**创世禀赋**那笔钱（口径同真播种器：{@link EconomySeeder#genesisMoney(long)}）。
-        .withAccount(
-            new GoodsAccount(
+        .withInventory(
+            new HouseholdInventory(
                 accountKey,
                 Map.of(new CommodityId("grain"), 498_000L),
                 EconomySeeder.genesisMoney(100L)));
   }
 
-  /** 第二个产业（手工业 = 作坊）：12 参技术模板；operator 的真值在 ProductionUnit（见 economyData）。 */
+  /** 第二个产业（手工业 = 作坊）：12 参技术模板；operator 的真值在 ProductionProcess（见 economyData）。 */
   private static Industry workshopIndustry(IndustryId id) {
     return new Industry(
         id,
@@ -971,16 +974,18 @@ class GuiApiTest {
 
     assertThat(body.get("activated").asBoolean()).isTrue();
     assertThat(body.get("population").asLong()).isEqualTo(100L);
-    assertThat(body.get("laborMilli").asLong()).isEqualTo(58_000L);
+    assertThat(body.get("laborMilli").asLong())
+        .as("★ P2-A：laborMilli 的唯一权威 = HouseholdEconomy.laborMilli（夹具 H11 行 = 915,000）")
+        .isEqualTo(915_000L);
     assertThat(body.get("landMilliMu").asLong()).isEqualTo(1_000_000L);
     assertThat(body.get("goods").get("grain").asLong()).isEqualTo(498_000L);
-    // ★★ H6：**钱的那一栏换口径了**（旧断言是 `money == 12`）。旧栏读的是 `Σ ClassRow.money()` —— 那是**结构性的 0**
-    //   （H1 起行里没有钱，`EconomySeeder` 写下的 `ClassRow.money` 恒为 0），把这行夹具手填的 12 当成了"这一格的钱"。
+    // ★★ H6：**钱的那一栏换口径了**（旧断言是 `money == 12`）。旧栏读的是 `Σ HouseholdEconomy.money()` —— 那是**结构性的 0**
+    //   （H1 起行里没有钱，`EconomySeeder` 写下的 `HouseholdEconomy.money` 恒为 0），把这行夹具手填的 12 当成了"这一格的钱"。
     //   真值在 actor 侧的家户账上、而且**逐币种**（`actorMoneyTotal`）⇒ 旧栏已删，断言改读真值：
     //   本夹具唯一那本家户账 = `EconomySeeder.genesisMoney(100L)`（见 `actorData()`）= 100 人 × 每人 12 毫银
     //   （12 = 一个周期的口粮 10,000 毫粮 × 粮价 1 ÷ 1000 × 缓冲 1200‰）= **1,200 毫银**。
     assertThat(body.has("money"))
-        .as("★★ H6：读 Σ ClassRow.money()（结构性 0）的旧栏**已删** —— 不许再发一个会说谎的 0")
+        .as("★★ H6：读 Σ HouseholdEconomy.money()（结构性 0）的旧栏**已删** —— 不许再发一个会说谎的 0")
         .isFalse();
     assertThat(body.get("actorMoneyTotal").get("silver").asLong())
         .as("★ H6：钱的真值 = actor 侧家户账的逐币种合计（本夹具 = genesisMoney(100) = 1,200 毫银）")
@@ -1010,7 +1015,7 @@ class GuiApiTest {
     assertThat(farmUnit.get("operator").get("id").asText()).isEqualTo("farm@1_1");
     assertThat(farmUnit.get("progressDays").asLong()).as("unit 的周期进度真值").isEqualTo(33L);
     assertThat(farmUnit.get("assets").get("LAND").asLong())
-        .as("unit 的可用资产来自 AssetShare 总账")
+        .as("unit 的可用资产来自 OwnershipStake 总账")
         .isEqualTo(1_000_000L);
     assertThat(industry.get("cycleDays").asLong()).isEqualTo(120L);
     assertThat(industry.get("progressDays").asLong()).as("周期进度（unit 聚合）").isEqualTo(33L);
@@ -1020,10 +1025,10 @@ class GuiApiTest {
     assertThat(industry.get("capacityPerUnit").get("LAND").asLong())
         .as("单位规模 = 1 亩")
         .isEqualTo(1_000L);
-    // ★★ K3/B.2：`capacity` 兼容栏从 unit（其可用资产来自 AssetShare）聚合 —— 行级 `landMilliMu` 已删，
+    // ★★ K3/B.2：`capacity` 兼容栏从 unit（其可用资产来自 OwnershipStake）聚合 —— 行级 `landMilliMu` 已删，
     //   产业模板也不再直接携带产能总量。
     assertThat(industry.get("capacity").get("LAND").asLong())
-        .as("★★ farm 的 unit 可用资产 LAND == 1,000,000 千分亩（= 1,000 亩；真值在 AssetShare）")
+        .as("★★ farm 的 unit 可用资产 LAND == 1,000,000 千分亩（= 1,000 亩；真值在 OwnershipStake）")
         .isEqualTo(1_000_000L);
     assertThat(industry.has("classes"))
         .as("★ H0.2：家户行**挂在格上** ⇒ 产业对象里不再有 classes（旧路径 `industries[].classes[]` 已废）")
@@ -1417,8 +1422,7 @@ class GuiApiTest {
       Sex sex,
       long count,
       long ageAtAnchorDays) {
-    PopulationGroup group =
-        new PopulationGroup(id, sex, count, ageAtAnchorDays, T0.tick());
+    PopulationGroup group = new PopulationGroup(id, sex, count, ageAtAnchorDays, T0.tick());
     GROUP_LOCATIONS.put(group.id(), hex);
     groups.put(id, group);
   }
@@ -1461,8 +1465,8 @@ class GuiApiTest {
    *   <li>"**占用率写成固定 1000‰ / 或拿 available 当分母以外的数**"⇒ 781 与 874 两个非平凡值一起挡。
    * </ul>
    */
-  private static Map<LaborAllocationId, LaborAllocation> laborAllocations() {
-    Map<LaborAllocationId, LaborAllocation> allocations = new LinkedHashMap<>();
+  private static Map<LaborAllocationId, HouseholdLaborCommitment> laborAllocations() {
+    Map<LaborAllocationId, HouseholdLaborCommitment> allocations = new LinkedHashMap<>();
     PeopleLotId ruralAdult = PopulationLots.rural(H11, Sex.FEMALE, "1");
     PeopleLotId ruralElder = PopulationLots.rural(H11, Sex.MALE, "2");
     PeopleLotId urbanAdult = PopulationLots.urban(CITY_1_1, Sex.FEMALE, "1");
@@ -1501,7 +1505,7 @@ class GuiApiTest {
 
   /** 一条配额：id 由 {@code (actor, 批次)} 确定性拼出；household = 这批劳动所属的稳定家户身份。 */
   private static void addAllocation(
-      Map<LaborAllocationId, LaborAllocation> allocations,
+      Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
       PeopleLotId group,
       HouseholdId household,
       ActorRef actor,
@@ -1509,7 +1513,9 @@ class GuiApiTest {
       long laborMilli) {
     LaborAllocationId id = new LaborAllocationId("alloc-" + actor.id() + "-" + group.value());
     allocations.put(
-        id, new LaborAllocation(id, group, household, actor, activity, laborMilli, FIRST_PERIOD));
+        id,
+        new HouseholdLaborCommitment(
+            id, group, household, actor, activity, laborMilli, FIRST_PERIOD));
   }
 
   /** 与 {@code QueryServiceTest.populationSeries()} 同款：anchor 10000、growth 2%→1%→−3%、t=45 减 800。 */

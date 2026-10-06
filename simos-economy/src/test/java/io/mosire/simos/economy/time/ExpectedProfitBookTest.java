@@ -18,20 +18,19 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.relation.ProductionRelation;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.Payee;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
-import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.DefaultProductionModes;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
@@ -45,8 +44,9 @@ import org.junit.jupiter.api.Test;
  * ★★ <b>设计 §8.1 第 2 条：{@link ExpectedProfitBook} 的单元判据</b>。
  *
  * <ul>
- *   <li>没有任何既有组织（无 {@code ProductionOrganization}、无真实利润账）的 (mode, hex) + 有价格 + 有可寻址需求
- *       ⇒ {@code feasible=true}、{@code scale>0}、{@code sellable>0}、{@code netPerLaborScaled != 0}——D-024 的核心反转；
+ *   <li>没有任何既有组织（无 {@code ProductionEnterprise}、无真实利润账）的 (mode, hex) + 有价格 + 有可寻址需求 ⇒ {@code
+ *       feasible=true}、{@code scale>0}、{@code sellable>0}、{@code netPerLaborScaled != 0}——D-024
+ *       的核心反转；
  *   <li>可寻址需求为 0 ⇒ {@code sellable=0}、{@code netPerLaborScaled<=0}、{@code demandCapped=true}；
  *   <li>缺资产/缺劳动/缺产业模板/缺运力 ⇒ {@code feasible=false} 且 reason 具名；
  *   <li>同 mode 不同 hex 独立计算；
@@ -66,21 +66,23 @@ class ExpectedProfitBookTest {
   private static final IndustryId CRAFT2 = IndustryHexKeys.id("craft", H2.q(), H2.r());
   private static final HouseholdId HOUSE = HouseholdId.parse("hh-profit");
   private static final ActorRef ACTOR = HouseholdActors.of(HOUSE);
+
   /** ★ 过期快照回归用的第二个家户：在 H 格没有任何自有资产，只能靠同格"闲置"份额进产。 */
   private static final HouseholdId NEWCOMER = HouseholdId.parse("hh-estate-newcomer");
+
   /** ★ 过期快照回归用的 ESTATE 主体（owner==operator 自营份额；产业型 id 必须指向已存在产业）。 */
   private static final ActorRef ESTATE = new ActorRef(ActorKind.ORGANIZATION, CRAFT.value());
 
-  /** 一个手搭的最小世界（新形状 Industry/Unit/AssetShare/Relation；无组织、无真实利润账）。 */
+  /** 一个手搭的最小世界（新形状 Industry/Unit/OwnershipStake/Relation；无组织、无真实利润账）。 */
   private record Fixture(
       EconomyData base,
-      Map<AssetShareId, AssetShare> shares,
+      Map<AssetShareId, OwnershipStake> shares,
       AccountSession accounts,
       MarketTopology topology,
       Map<HexCoord, Market> markets,
       MarketDemandBook.Book demand,
       /** ★ 当天工作副本 organizations；claimed 集合的唯一正确来源（绝不用 base.productionOrganizations()）。 */
-      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
+      Map<ProductionOrganizationId, ProductionEnterprise> organizations) {
 
     /** 本夹具的 H 格市场（H2 独立用例不走这里）。 */
     Market market() {
@@ -113,8 +115,8 @@ class ExpectedProfitBookTest {
         new AllocationRule.Split(500, 500));
   }
 
-  private static ClassRow row(long laborMilli, Map<CommodityId, Long> naturalNeeds) {
-    return new ClassRow(
+  private static HouseholdEconomy row(long laborMilli, Map<CommodityId, Long> naturalNeeds) {
+    return new HouseholdEconomy(
         HOUSE,
         new CohortKey(H, ResidenceKind.RURAL, POOR),
         10L,
@@ -127,26 +129,19 @@ class ExpectedProfitBookTest {
         0L);
   }
 
-  private static AssetShare workshopShare(IndustryId industry, long quantity) {
+  private static OwnershipStake workshopShare(IndustryId industry, long quantity) {
     AssetShareId id =
-        AssetShare.idOf(industry, AssetKind.WORKSHOP, ACTOR, ACTOR, AssetShare.RightKind.OWNED, 0L);
-    return new AssetShare(
-        id, industry, AssetKind.WORKSHOP, ACTOR, ACTOR, quantity, AssetShare.RightKind.OWNED);
+        OwnershipStake.idOf(
+            industry, AssetKind.WORKSHOP, ACTOR, ACTOR, OwnershipStake.RightKind.OWNED, 0L);
+    return new OwnershipStake(
+        id, industry, AssetKind.WORKSHOP, ACTOR, ACTOR, quantity, OwnershipStake.RightKind.OWNED);
   }
 
-  private static MarketDemandBook.Book demandBook(IndustryId industry, CommodityId commodity, long addressable) {
+  private static MarketDemandBook.Book demandBook(
+      IndustryId industry, CommodityId commodity, long addressable) {
     MarketDemandBook.Demand demand =
         new MarketDemandBook.Demand(
-            H,
-            commodity,
-            0L,
-            0L,
-            0L,
-            0L,
-            0L,
-            0L,
-            addressable,
-            List.of("test"));
+            H, commodity, 0L, 0L, 0L, 0L, 0L, 0L, addressable, List.of("test"));
     return new MarketDemandBook.Book(Map.of(H, Map.of(commodity, demand)), 0L, 10L);
   }
 
@@ -154,63 +149,62 @@ class ExpectedProfitBookTest {
       Industry industry, long workshopQuantity, long laborMilli, MarketDemandBook.Book demand) {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(industry.id(), industry);
-    Map<AssetShareId, AssetShare> shares = new LinkedHashMap<>();
-    AssetShare share = workshopShare(industry.id(), workshopQuantity);
+    Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
+    OwnershipStake share = workshopShare(industry.id(), workshopQuantity);
     shares.put(share.id(), share);
 
     ProductionUnitId unitId = ProductionUnitId.idOf(industry.id(), ACTOR);
-    ProductionUnit unit =
-        new ProductionUnit(
+    ProductionProcess unit =
+        new ProductionProcess(
             unitId, industry.id(), ACTOR, "mode:handicraft_workshop", 0L, 0L, Map.of());
-    ProductionRelation relation =
-        new ProductionRelation(
-            unitId, ACTOR, new Recipient.ToActor(ACTOR), List.of(), ACTOR);
+    ProductionRules relation =
+        new ProductionRules(unitId, ACTOR, new Payee.ToActor(ACTOR), List.of(), ACTOR);
 
     ClassPositionId position =
-        DefaultProductionModes
-            .positionId(DefaultProductionModes.HANDICRAFT_WORKSHOP, DefaultProductionModes.ROLE_WORKSHOP_OWNER)
+        DefaultProductionModes.positionId(
+                DefaultProductionModes.HANDICRAFT_WORKSHOP,
+                DefaultProductionModes.ROLE_WORKSHOP_OWNER)
             .orElseThrow();
-    ClassRow row = row(laborMilli, Map.of(CLOTH, 100L));
+    HouseholdEconomy row = row(laborMilli, Map.of(CLOTH, 100L));
     EconomyData base =
         EconomyData.empty()
             .withModes(DefaultProductionModes.modes())
             .withClassStructures(DefaultProductionModes.classStructures())
-            .withClassPositions(DefaultProductionModes.classPositions())
-            .withClasses(Map.of(HOUSE, row))
-            .withClassStandings(
+            .withProductionRoles(DefaultProductionModes.classPositions())
+            .withHouseholdEconomies(Map.of(HOUSE, row))
+            .withClassMemberships(
                 Map.of(
                     HOUSE,
-                    new ClassStanding(HOUSE, position, position, Map.of(), 0L, 0L, "test-profit")))
+                    new HouseholdClassMembership(
+                        HOUSE, position, position, Map.of(), 0L, 0L, "test-profit")))
             .withIndustries(industries)
-            .withUnits(Map.of(unitId, unit))
+            .withProcesses(Map.of(unitId, unit))
             .withRelations(Map.of(unitId, relation))
-            .withAssetShares(shares)
+            .withOwnershipStakes(shares)
             .withMarkets(Map.of(H, market()));
 
     AccountSession accounts = AccountSession.empty();
     accounts.registerHousehold(HOUSE, H, Map.of(), Map.of(), Map.of(), Map.of());
     MarketTopology topology = MarketTopology.singleHex(Map.of(H, market()));
-    return new Fixture(
-        base, shares, accounts, topology, Map.of(H, market()), demand, Map.of());
+    return new Fixture(base, shares, accounts, topology, Map.of(H, market()), demand, Map.of());
   }
 
   /**
-   * ★ 兼容重载专项：本类夹具的 claimed 证据只有“组织引用”一格，故保留单参
-   * {@link ModeMigrationPolicy#claimedAssetShares(Map)}（等价于三参传空 units/shares）的兼容用法，
-   * 同时验证“不得退回 {@code base.productionOrganizations()} 的 tick0 快照”。
+   * ★ 兼容重载专项：本类夹具的 claimed 证据只有“组织引用”一格，故保留单参 {@link
+   * ModeMigrationPolicy#claimedOwnershipStakes(Map)}（等价于三参传空 units/shares）的兼容用法， 同时验证“不得退回 {@code
+   * base.productionOrganizations()} 的 tick0 快照”。
    *
-   * <p>★ 生产路径 = 三参 {@link ModeMigrationPolicy#claimedAssetShares(Map, Map, Map)}（{@code plan} 内部按
-   * 当天工作副本 organizations + units + shares 构建）；unit 占用与“organizations 空 + 在产 ESTATE unit”的
+   * <p>★ 生产路径 = 三参 {@link ModeMigrationPolicy#claimedOwnershipStakes(Map, Map, Map)}（{@code plan}
+   * 内部按 当天工作副本 organizations + units + shares 构建）；unit 占用与“organizations 空 + 在产 ESTATE unit”的
    * 新语义单测见 {@code ModeMigrationPolicyClaimedAssetsTest}。
    */
   private static Set<AssetShareId> claimedFrom(
-      Map<ProductionOrganizationId, ProductionOrganization> organizations) {
-    return ModeMigrationPolicy.claimedAssetShares(organizations);
+      Map<ProductionOrganizationId, ProductionEnterprise> organizations) {
+    return ModeMigrationPolicy.claimedOwnershipStakes(organizations);
   }
 
   private static ExpectedProfitBook.Prospect prospect(Fixture fixture, Industry industry) {
-    return prospectWithClaimed(
-        fixture, HOUSE, industry, claimedFrom(fixture.organizations()));
+    return prospectWithClaimed(fixture, HOUSE, industry, claimedFrom(fixture.organizations()));
   }
 
   private static ExpectedProfitBook.Prospect prospectWithClaimed(
@@ -255,9 +249,7 @@ class ExpectedProfitBookTest {
 
     ExpectedProfitBook.Prospect p = prospect(fixture, craft(CRAFT));
 
-    assertThat(p.sellableMilli().getOrDefault(CLOTH, 0L))
-        .as("★ 可寻址需求 0 ⇒ 卖不出去")
-        .isZero();
+    assertThat(p.sellableMilli().getOrDefault(CLOTH, 0L)).as("★ 可寻址需求 0 ⇒ 卖不出去").isZero();
     assertThat(p.demandCapped()).as("plan − self = 5,000 > 0 ⇒ demandCapped").isTrue();
     assertThat(p.netPerLaborScaled()).as("★ 需求上限真实限制收入：单位劳动净收益不得为正").isLessThanOrEqualTo(0L);
     assertThat(p.reason()).contains("DEMAND_CAPPED");
@@ -284,8 +276,8 @@ class ExpectedProfitBookTest {
         noIndustry
             .base()
             .withRelations(Map.of())
-            .withUnits(Map.of())
-            .withAssetShares(Map.of())
+            .withProcesses(Map.of())
+            .withOwnershipStakes(Map.of())
             .withIndustries(Map.of());
     ExpectedProfitBook.Prospect c2 =
         ExpectedProfitBook.prospect(
@@ -407,37 +399,41 @@ class ExpectedProfitBookTest {
     Map<IndustryId, Industry> industries = new LinkedHashMap<>();
     industries.put(CRAFT, craft(CRAFT));
     industries.put(CRAFT2, craft2);
-    Map<AssetShareId, AssetShare> shares = new LinkedHashMap<>();
-    AssetShare s1 = workshopShare(CRAFT, 3L);
-    AssetShare s2 = workshopShare(CRAFT2, 3L);
+    Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
+    OwnershipStake s1 = workshopShare(CRAFT, 3L);
+    OwnershipStake s2 = workshopShare(CRAFT2, 3L);
     shares.put(s1.id(), s1);
     shares.put(s2.id(), s2);
     ProductionUnitId unit1 = ProductionUnitId.idOf(CRAFT, ACTOR);
     ProductionUnitId unit2 = ProductionUnitId.idOf(CRAFT2, ACTOR);
-    ProductionUnit u1 = new ProductionUnit(unit1, CRAFT, ACTOR, "m1", 0L, 0L, Map.of());
-    ProductionUnit u2 = new ProductionUnit(unit2, CRAFT2, ACTOR, "m1", 0L, 0L, Map.of());
-    ProductionRelation r1 =
-        new ProductionRelation(unit1, ACTOR, new Recipient.ToActor(ACTOR), List.of(), ACTOR);
-    ProductionRelation r2 =
-        new ProductionRelation(unit2, ACTOR, new Recipient.ToActor(ACTOR), List.of(), ACTOR);
+    ProductionProcess u1 = new ProductionProcess(unit1, CRAFT, ACTOR, "m1", 0L, 0L, Map.of());
+    ProductionProcess u2 = new ProductionProcess(unit2, CRAFT2, ACTOR, "m1", 0L, 0L, Map.of());
+    ProductionRules r1 =
+        new ProductionRules(unit1, ACTOR, new Payee.ToActor(ACTOR), List.of(), ACTOR);
+    ProductionRules r2 =
+        new ProductionRules(unit2, ACTOR, new Payee.ToActor(ACTOR), List.of(), ACTOR);
     ClassPositionId position =
-        DefaultProductionModes
-            .positionId(DefaultProductionModes.HANDICRAFT_WORKSHOP, DefaultProductionModes.ROLE_WORKSHOP_OWNER)
+        DefaultProductionModes.positionId(
+                DefaultProductionModes.HANDICRAFT_WORKSHOP,
+                DefaultProductionModes.ROLE_WORKSHOP_OWNER)
             .orElseThrow();
-    ClassRow row = row(10_000L, Map.of(CLOTH, 100L));
+    HouseholdEconomy row = row(10_000L, Map.of(CLOTH, 100L));
     Map<HexCoord, Market> markets = Map.of(H, market(), H2, market());
     EconomyData base =
         EconomyData.empty()
             .withModes(DefaultProductionModes.modes())
             .withClassStructures(DefaultProductionModes.classStructures())
-            .withClassPositions(DefaultProductionModes.classPositions())
-            .withClasses(Map.of(HOUSE, row))
-            .withClassStandings(
-                Map.of(HOUSE, new ClassStanding(HOUSE, position, position, Map.of(), 0L, 0L, "test")))
+            .withProductionRoles(DefaultProductionModes.classPositions())
+            .withHouseholdEconomies(Map.of(HOUSE, row))
+            .withClassMemberships(
+                Map.of(
+                    HOUSE,
+                    new HouseholdClassMembership(
+                        HOUSE, position, position, Map.of(), 0L, 0L, "test")))
             .withIndustries(industries)
-            .withUnits(Map.of(unit1, u1, unit2, u2))
+            .withProcesses(Map.of(unit1, u1, unit2, u2))
             .withRelations(Map.of(unit1, r1, unit2, r2))
-            .withAssetShares(shares)
+            .withOwnershipStakes(shares)
             .withMarkets(markets);
     AccountSession accounts = AccountSession.empty();
     accounts.registerHousehold(HOUSE, H, Map.of(), Map.of(), Map.of(), Map.of());
@@ -453,21 +449,42 @@ class ExpectedProfitBookTest {
                 H2,
                 Map.of(
                     CLOTH,
-                    new MarketDemandBook.Demand(
-                        H2, CLOTH, 0, 0, 0, 0, 0, 0, 0L, List.of("test")))),
+                    new MarketDemandBook.Demand(H2, CLOTH, 0, 0, 0, 0, 0, 0, 0L, List.of("test")))),
             0L,
             10L);
 
     ExpectedProfitBook.Prospect atH =
         ExpectedProfitBook.prospect(
-            base, HOUSE, DefaultProductionModes.HANDICRAFT_WORKSHOP, H, craft(CRAFT),
-            markets.get(H), demand, shares, claimedFrom(Map.of()), accounts, base.units(),
-            base.relations(), topology, 0L);
+            base,
+            HOUSE,
+            DefaultProductionModes.HANDICRAFT_WORKSHOP,
+            H,
+            craft(CRAFT),
+            markets.get(H),
+            demand,
+            shares,
+            claimedFrom(Map.of()),
+            accounts,
+            base.units(),
+            base.relations(),
+            topology,
+            0L);
     ExpectedProfitBook.Prospect atH2 =
         ExpectedProfitBook.prospect(
-            base, HOUSE, DefaultProductionModes.HANDICRAFT_WORKSHOP, H2, craft2,
-            markets.get(H2), demand, shares, claimedFrom(Map.of()), accounts, base.units(),
-            base.relations(), topology, 0L);
+            base,
+            HOUSE,
+            DefaultProductionModes.HANDICRAFT_WORKSHOP,
+            H2,
+            craft2,
+            markets.get(H2),
+            demand,
+            shares,
+            claimedFrom(Map.of()),
+            accounts,
+            base.units(),
+            base.relations(),
+            topology,
+            0L);
 
     assertThat(atH.sellableMilli().get(CLOTH)).isEqualTo(3_000L);
     assertThat(atH2.sellableMilli()).as("★ 同 mode 不同 hex 独立：H2 可寻址需求 0 ⇒ 无销量").isEmpty();
@@ -475,19 +492,19 @@ class ExpectedProfitBookTest {
   }
 
   /**
-   * ★★ <b>D-024 修复 1 回归（过期快照）夹具</b>：刻意让 {@code base.productionOrganizations()} 为空（tick0 快照），
-   * 而某条 {@code owner==operator} 的 ESTATE 份额已被**当天工作副本** {@code organizations} 里的组织引用。
-   * 候选家户 {@link #NEWCOMER} 在该格没有任何自有资产，因此它能否进产完全取决于这条份额是否被判为"闲置"。
+   * ★★ <b>D-024 修复 1 回归（过期快照）夹具</b>：刻意让 {@code base.productionOrganizations()} 为空（tick0 快照）， 而某条
+   * {@code owner==operator} 的 ESTATE 份额已被**当天工作副本** {@code organizations} 里的组织引用。 候选家户 {@link
+   * #NEWCOMER} 在该格没有任何自有资产，因此它能否进产完全取决于这条份额是否被判为"闲置"。
    */
   private static Fixture staleSnapshotFixture() {
     Industry industry = craft(CRAFT);
     ClassPositionId position =
-        DefaultProductionModes
-            .positionId(
-                DefaultProductionModes.HANDICRAFT_WORKSHOP, DefaultProductionModes.ROLE_WORKSHOP_OWNER)
+        DefaultProductionModes.positionId(
+                DefaultProductionModes.HANDICRAFT_WORKSHOP,
+                DefaultProductionModes.ROLE_WORKSHOP_OWNER)
             .orElseThrow();
-    ClassRow newcomerRow =
-        new ClassRow(
+    HouseholdEconomy newcomerRow =
+        new HouseholdEconomy(
             NEWCOMER,
             new CohortKey(H, ResidenceKind.RURAL, POOR),
             10L,
@@ -498,31 +515,32 @@ class ExpectedProfitBookTest {
             Map.of(CLOTH, 100L),
             Map.of(),
             0L);
-    AssetShare estateShare =
-        new AssetShare(
-            AssetShare.idOf(
-                CRAFT, AssetKind.WORKSHOP, ESTATE, ESTATE, AssetShare.RightKind.OWNED, 0L),
+    OwnershipStake estateShare =
+        new OwnershipStake(
+            OwnershipStake.idOf(
+                CRAFT, AssetKind.WORKSHOP, ESTATE, ESTATE, OwnershipStake.RightKind.OWNED, 0L),
             CRAFT,
             AssetKind.WORKSHOP,
             ESTATE,
             ESTATE,
             3L,
-            AssetShare.RightKind.OWNED);
-    Map<AssetShareId, AssetShare> shares = new LinkedHashMap<>();
+            OwnershipStake.RightKind.OWNED);
+    Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
     shares.put(estateShare.id(), estateShare);
 
     EconomyData base =
         EconomyData.empty()
             .withModes(DefaultProductionModes.modes())
             .withClassStructures(DefaultProductionModes.classStructures())
-            .withClassPositions(DefaultProductionModes.classPositions())
-            .withClasses(Map.of(NEWCOMER, newcomerRow))
-            .withClassStandings(
+            .withProductionRoles(DefaultProductionModes.classPositions())
+            .withHouseholdEconomies(Map.of(NEWCOMER, newcomerRow))
+            .withClassMemberships(
                 Map.of(
                     NEWCOMER,
-                    new ClassStanding(NEWCOMER, position, position, Map.of(), 0L, 0L, "test-stale")))
+                    new HouseholdClassMembership(
+                        NEWCOMER, position, position, Map.of(), 0L, 0L, "test-stale")))
             .withIndustries(Map.of(CRAFT, industry))
-            .withAssetShares(shares)
+            .withOwnershipStakes(shares)
             .withMarkets(Map.of(H, market()));
 
     AccountSession accounts = AccountSession.empty();
@@ -547,9 +565,9 @@ class ExpectedProfitBookTest {
     AssetShareId estateShareId = fixture.shares().keySet().iterator().next();
 
     ClassPositionId position =
-        DefaultProductionModes
-            .positionId(
-                DefaultProductionModes.HANDICRAFT_WORKSHOP, DefaultProductionModes.ROLE_WORKSHOP_OWNER)
+        DefaultProductionModes.positionId(
+                DefaultProductionModes.HANDICRAFT_WORKSHOP,
+                DefaultProductionModes.ROLE_WORKSHOP_OWNER)
             .orElseThrow();
     ProductionOrganizationId organizationId =
         ProductionOrganizationId.idOf(
@@ -557,10 +575,10 @@ class ExpectedProfitBookTest {
             position,
             NEWCOMER,
             IndustryHexKeys.hexKey(H.q(), H.r()));
-    Map<ProductionOrganizationId, ProductionOrganization> workingCopy = new LinkedHashMap<>();
+    Map<ProductionOrganizationId, ProductionEnterprise> workingCopy = new LinkedHashMap<>();
     workingCopy.put(
         organizationId,
-        new ProductionOrganization(
+        new ProductionEnterprise(
             organizationId,
             DefaultProductionModes.HANDICRAFT_WORKSHOP,
             position,
@@ -569,9 +587,9 @@ class ExpectedProfitBookTest {
             List.of(),
             List.of(estateShareId),
             List.of(),
-            new Recipient.ToActor(ESTATE),
+            new Payee.ToActor(ESTATE),
             Optional.of("fixture:stale-claimed"),
-            ProductionOrganization.Status.SHORTAGE,
+            ProductionEnterprise.Status.SHORTAGE,
             "夹具：ESTATE 自营份额已被既有组织使用"));
 
     Set<AssetShareId> fromWorkingCopy = claimedFrom(workingCopy);

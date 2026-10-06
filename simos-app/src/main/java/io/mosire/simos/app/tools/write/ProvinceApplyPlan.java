@@ -51,7 +51,8 @@ import java.util.Set;
  * <ol>
  *   <li><b>相关结构门</b>（{@link Gate#NEEDS_CLEAR}）——四条任一命中：
  *       <ul>
- *         <li>目标 Region hex 集内存在带 {@link GovernmentFormation} 的 Unit（按当刻 {@code effectivePosition}）；
+ *         <li>目标 Region hex 集内存在带 {@link GovernmentFormation} 的 Unit（按当刻 {@code
+ *             effectivePosition}）；
  *         <li>存在 {@link Affiliation.Gov} 且其 {@code govUnit} 属于上述 Unit 的 DecisionMaker；
  *         <li>存在任何 Unit 的 {@code jurisdiction} 覆盖目标 Region 的 key，或覆盖一个 hex 集完全落在目标 Region hex 集内的
  *             Region；
@@ -633,10 +634,9 @@ final class ProvinceApplyPlan {
     }
 
     /**
-     * {@code unit.SetGovFormation} 载荷：{@code {unitId, level, superiorGov?, staff, policy}}。
-     * ★★ 2026-10-09 唯一列表裁定：载荷不再带 {@code households}（该线格式键已删）——政府家户
-     * {@code hh-gov-<unitId>} 由域层在改编制时同批编入 {@code Unit.households}，与同批
-     * {@code economy.RegisterGovernment} 的国库引用指向同一把键。
+     * {@code unit.SetGovFormation} 载荷：{@code {unitId, level, superiorGov?, staff, policy}}。 ★★
+     * 2026-10-09 唯一列表裁定：载荷不再带 {@code households}（该线格式键已删）——政府家户 {@code hh-gov-<unitId>}
+     * 由域层在改编制时同批编入 {@code Unit.households}，与同批 {@code economy.RegisterGovernment} 的国库引用指向同一把键。
      */
     String setGovFormationPayload(GovEntry gov) {
       Map<String, Object> payload = new LinkedHashMap<>();
@@ -659,8 +659,8 @@ final class ProvinceApplyPlan {
     }
 
     /**
-     * {@code social.CreateHousehold} 载荷：政府家户位置是 {@code UNIT(unitId)}（不再钉创建时 HEX）——有效 hex
-     * 由 app 侧 {@code HouseholdPositionResolver} 从 unit 当刻 {@code effectivePosition} 派生，迁都/行军自动跟随。
+     * {@code social.CreateHousehold} 载荷：政府家户位置是 {@code UNIT(unitId)}（不再钉创建时 HEX）——有效 hex 由 app 侧
+     * {@code HouseholdPositionResolver} 从 unit 当刻 {@code effectivePosition} 派生，迁都/行军自动跟随。
      */
     String createGovernmentHouseholdPayload(GovEntry gov, String reason) {
       Map<String, Object> location = new LinkedHashMap<>();

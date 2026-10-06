@@ -8,9 +8,9 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * ★★ <b>P2-B：最近一次"家户劳动利润率排队"结果的进程内投递点</b>（读侧接缝；不进 {@code EconomyData}、不落盘）。
  *
- * <p>★ <b>为什么需要它</b>：排队结果（{@link LaborQueueBook.Plan}）住在一次日结算的局部变量里，结算结束就丢；
- * 而“这家户这几小时为什么给这个 mode”是读口/诊断要回答的问题。投递点是同一形状的既有接缝（照 {@code MarketReportFeed}），
- * 只把最近一日的报告留到读侧，重启即失、只在同一 tick 内可信、一份报告覆盖一个 map。
+ * <p>★ <b>为什么需要它</b>：排队结果（{@link LaborQueueBook.Plan}）住在一次日结算的局部变量里，结算结束就丢； 而“这家户这几小时为什么给这个
+ * mode”是读口/诊断要回答的问题。投递点是同一形状的既有接缝（照 {@code MarketReportFeed}）， 只把最近一日的报告留到读侧，重启即失、只在同一 tick
+ * 内可信、一份报告覆盖一个 map。
  *
  * <p><b>边界（与 MarketReportFeed 逐条同款）</b>：
  *

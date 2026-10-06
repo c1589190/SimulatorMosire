@@ -25,8 +25,7 @@ import org.junit.jupiter.api.Test;
  * 运输：H0→H1 运粮/纤维，H1→H0 运布；运费进 T 家户，不再沉没
  * </pre>
  *
- * 价格（出厂）：粮 100、纤维 25、布 205；运输费率 100‰（距离 1）。
- * 目标是把农业、手工业、运输三个部门都跑起来，不是为了精确稳态。
+ * 价格（出厂）：粮 100、纤维 25、布 205；运输费率 100‰（距离 1）。 目标是把农业、手工业、运输三个部门都跑起来，不是为了精确稳态。
  */
 class DiversifiedEconomyProbeTest {
 
@@ -59,8 +58,7 @@ class DiversifiedEconomyProbeTest {
     fiberHousehold.population = 100L;
     fiberHousehold.need(Good.GRAIN, 1L);
     fiberHousehold.stock(Good.FIBER, 400L);
-    fiberHousehold.recipe =
-        new Recipe(Good.FIBER, 10L, new EnumMap<>(Good.class), 1L, 40L);
+    fiberHousehold.recipe = new Recipe(Good.FIBER, 10L, new EnumMap<>(Good.class), 1L, 40L);
     economy.addHousehold(fiberHousehold);
 
     // H1：作坊主 + 雇工 + 运输队
@@ -98,7 +96,8 @@ class DiversifiedEconomyProbeTest {
     clothInput.put(Good.FIBER, 1L);
     WageFarm workshop =
         economy.addWageFarm(
-            new WageFarm("workshop", owner, new Recipe(Good.CLOTH, 1L, clothInput, 1L, 400L), 400L));
+            new WageFarm(
+                "workshop", owner, new Recipe(Good.CLOTH, 1L, clothInput, 1L, 400L), 400L));
     workshop.hire(artisan, 150L, 0L);
 
     // 运输队：两条 lane，每轮重置运力。
@@ -195,9 +194,7 @@ class DiversifiedEconomyProbeTest {
     assertThat(last.totalPopulation()).as("出生略高于死亡 ⇒ 人口缓慢增长").isGreaterThan(1_030L);
     assertThat(workshop.lastOutput).as("作坊稳定产 400 布").isEqualTo(400L);
     assertThat(economy.tenancies.get(0).lastOutput).as("农场稳定产 1020 粮").isEqualTo(1_020L);
-    assertThat(ruralToTown.lastFeeEarned + townToRural.lastFeeEarned)
-        .as("运输队有运费收入")
-        .isPositive();
+    assertThat(ruralToTown.lastFeeEarned + townToRural.lastFeeEarned).as("运输队有运费收入").isPositive();
     assertThat(last.transportEscrow()).as("运力足够时运费不落 escrow").isZero();
     assertThat(fiberHousehold.stockOf(Good.FIBER)).as("纤维仍在生产").isPositive();
     assertThat(last.refs().get("H0-rural").get(Good.GRAIN)).as("粮价仍为正").isPositive();

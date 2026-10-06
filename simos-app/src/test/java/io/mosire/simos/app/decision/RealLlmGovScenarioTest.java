@@ -21,10 +21,9 @@ import io.mosire.agentlib.store.SqliteConversationStore;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorKind;
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.codec.ActorCodec;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.access.DecisionCallerFactory;
@@ -82,8 +81,7 @@ import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.population.PopulationGroup;
-import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.unit.GovFormation;
+import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -1651,8 +1649,7 @@ class RealLlmGovScenarioTest {
   private Map<String, Object> halveCapitalPopulation(NationFixture nf, int round) throws Exception {
     long headBefore = head();
     SimulationState before = stateAt(headBefore);
-    List<PopulationGroup> groups =
-        groupsAt(CompactThreeNationsWorld.socialOf(before), nf.capital);
+    List<PopulationGroup> groups = groupsAt(CompactThreeNationsWorld.socialOf(before), nf.capital);
     assertThat(groups).as("%s 首都格必须有批次", nf.key).isNotEmpty();
     Map<String, Object> payload = new LinkedHashMap<>();
     List<Map<String, Object>> entries = new ArrayList<>();
@@ -1665,7 +1662,6 @@ class RealLlmGovScenarioTest {
       entry.put("count", group.count() / 2L);
       entry.put("ageDays", group.ageAtAnchorDays());
       entry.put("anchorTick", group.anchorTick());
-      entry.put("stress", group.physiologicalStress());
       entries.add(entry);
     }
     payload.put("entries", entries);
@@ -1762,12 +1758,12 @@ class RealLlmGovScenarioTest {
       assertThat(central).as("中央 GOV %s 存在", nf.centralGov.value()).isNotNull();
       assertThat(province).as("省 GOV %s 存在", nf.provinceGov.value()).isNotNull();
       assertThat(central.module().orElse(null))
-          .as("中央挂 GovFormation")
-          .isInstanceOf(GovFormation.class);
+          .as("中央挂 GovernmentFormation")
+          .isInstanceOf(GovernmentFormation.class);
       assertThat(province.module().orElse(null))
-          .as("省挂 GovFormation")
-          .isInstanceOf(GovFormation.class);
-      GovFormation pf = (GovFormation) province.module().orElseThrow();
+          .as("省挂 GovernmentFormation")
+          .isInstanceOf(GovernmentFormation.class);
+      GovernmentFormation pf = (GovernmentFormation) province.module().orElseThrow();
       assertThat(pf.superiorGov()).contains(nf.centralGov);
       assertThat(province.jurisdiction()).isPresent();
       assertThat(province.jurisdiction().orElseThrow().taxRatePerMilleByRegion())
@@ -2032,7 +2028,7 @@ class RealLlmGovScenarioTest {
 
   private static long govStaff(SimulationState state, UnitId govUnit, StaffRole role) {
     Unit unit = CompactThreeNationsWorld.unitOf(state).units().get(govUnit);
-    if (unit == null || !(unit.module().orElse(null) instanceof GovFormation formation)) {
+    if (unit == null || !(unit.module().orElse(null) instanceof GovernmentFormation formation)) {
       return -1L;
     }
     return formation.staff().getOrDefault(role, 0L);
@@ -2048,8 +2044,8 @@ class RealLlmGovScenarioTest {
     if (at.isEmpty()) {
       return 0L;
     }
-    GoodsAccountKey key = new GoodsAccountKey(GovernmentHouseholds.of(govUnit.value()));
-    GoodsAccount account = CompactThreeNationsWorld.actorOf(state).accounts().get(key);
+    HouseholdAccountKey key = new HouseholdAccountKey(GovernmentHouseholds.of(govUnit.value()));
+    HouseholdInventory account = CompactThreeNationsWorld.actorOf(state).accounts().get(key);
     return account == null ? 0L : account.money().getOrDefault(SILVER, 0L);
   }
 

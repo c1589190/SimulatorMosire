@@ -25,13 +25,13 @@ import java.util.Optional;
  * {"unitId":"army-1","masterGov":"gov-central","role":"garrison"}
  * }</pre>
  *
- * <p>★ <b>载荷语义</b>：{@code masterGov} 可缺省（未认主子）；{@code role} 必填、非空白（词表后置，自由短名）；
- * {@code householdDuties} 与 {@code militaryPayPolicy} 都可缺省——<b>未给 ⇒ 保持既有配置/政策（不是清空）</b>， 给了 ⇒ 该组件整体替换（P4b
+ * <p>★ <b>载荷语义</b>：{@code masterGov} 可缺省（未认主子）；{@code role} 必填、非空白（词表后置，自由短名）； {@code
+ * householdDuties} 与 {@code militaryPayPolicy} 都可缺省——<b>未给 ⇒ 保持既有配置/政策（不是清空）</b>， 给了 ⇒ 该组件整体替换（P4b
  * 2026-10-15：否则一次 SetArmyFormation 会静默清掉军俸政策）。
  *
  * <p>★ <b>拒因</b>（由 {@link UnitOperations#setArmyFormation} / {@link ArmyFormation} 给出）：单位不存在；单位已带
- * {@code GovernmentFormation}（一单位至多一个标签，不静默替换）；{@code masterGov} 不存在 / 不是 GOV；{@code role} 空白；政策自身或政策家户键
- * ⊆ {@code Unit.households} 不成立。同类型重复设置 = 整体替换（文档见操作面）。
+ * {@code GovernmentFormation}（一单位至多一个标签，不静默替换）；{@code masterGov} 不存在 / 不是 GOV；{@code role}
+ * 空白；政策自身或政策家户键 ⊆ {@code Unit.households} 不成立。同类型重复设置 = 整体替换（文档见操作面）。
  *
  * <p>★ <b>目标声明</b>（{@link CommandTargets}）：按载荷点名的 unitId 判。本命令只写 unit 命名空间。
  */
@@ -82,9 +82,10 @@ public final class SetArmyFormationHandler implements CommandHandler, CommandTar
       Optional<UnitId> masterGov = UnitPayloads.optionalId(payload, "masterGov");
       String role = UnitPayloads.requireText(payload, "role");
       // ★ S3b：householdDuties 与 GOV households 同款兼容口径——载荷缺席 ⇒ 保持既有军官配置（不是清空）。
-      Map<io.mosire.simos.social.api.id.HouseholdId, MilitaryDutyOfHousehold> militaryDutiesOfHousehold =
-          UnitPayloads.optionalMilitaryDuties(payload, "householdDuties")
-              .orElseGet(() -> existingArmyDuties(snapshot.state(), id));
+      Map<io.mosire.simos.social.api.id.HouseholdId, MilitaryDutyOfHousehold>
+          militaryDutiesOfHousehold =
+              UnitPayloads.optionalMilitaryDuties(payload, "householdDuties")
+                  .orElseGet(() -> existingArmyDuties(snapshot.state(), id));
       // ★ P4b：militaryPayPolicy 同款——载荷缺席 ⇒ 保持既有政策（一次 SetArmyFormation 不得静默清掉军俸政策）。
       io.mosire.simos.unit.MilitaryPayPolicy militaryPayPolicy =
           UnitPayloads.optionalMilitaryPayPolicy(payload, "militaryPayPolicy")

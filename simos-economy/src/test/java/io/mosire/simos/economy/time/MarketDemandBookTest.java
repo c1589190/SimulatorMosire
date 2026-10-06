@@ -19,13 +19,13 @@ import io.mosire.simos.economy.api.market.ShipmentAllocation;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.market.TradeRoute;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
@@ -57,8 +57,9 @@ class MarketDemandBookTest {
   private static final HouseholdId HOUSE = HouseholdId.parse("hh-demand");
   private static final ActorRef ACTOR = HouseholdActors.of(HOUSE);
 
-  private static ClassRow row(long population, long laborMilli, Map<CommodityId, Long> needs) {
-    return new ClassRow(
+  private static HouseholdEconomy row(
+      long population, long laborMilli, Map<CommodityId, Long> needs) {
+    return new HouseholdEconomy(
         HOUSE,
         new CohortKey(H, ResidenceKind.RURAL, POOR),
         population,
@@ -123,7 +124,7 @@ class MarketDemandBookTest {
     Market market = market();
     Map<HexCoord, Market> markets = Map.of(H, market);
     MarketTopology topology = MarketTopology.singleHex(markets);
-    Map<HouseholdId, ClassRow> rows = Map.of(HOUSE, row(10L, 10_000L, Map.of(GRAIN, 100L)));
+    Map<HouseholdId, HouseholdEconomy> rows = Map.of(HOUSE, row(10L, 10_000L, Map.of(GRAIN, 100L)));
     AccountSession accounts = AccountSession.empty();
     accounts.registerHousehold(HOUSE, H, Map.of(), Map.of(), Map.of(), Map.of());
 
@@ -174,19 +175,19 @@ class MarketDemandBookTest {
     Market market = market();
     Map<HexCoord, Market> markets = Map.of(H, market);
     MarketTopology topology = MarketTopology.singleHex(markets);
-    Map<HouseholdId, ClassRow> rows = Map.of(HOUSE, row(10L, 10_000L, Map.of(GRAIN, 100L)));
+    Map<HouseholdId, HouseholdEconomy> rows = Map.of(HOUSE, row(10L, 10_000L, Map.of(GRAIN, 100L)));
 
     // 该 unit 的引致需求：FIBER 500 毫/规模 × 1 规模 × ceil(10/10)=1 = 500。
     Industry craft = craftWithFiberInput();
     ProductionUnitId unitId = ProductionUnitId.idOf(CRAFT, ACTOR);
-    ProductionUnit unit =
-        new ProductionUnit(unitId, CRAFT, ACTOR, "mode:test", 0L, 0L, Map.of());
+    ProductionProcess unit =
+        new ProductionProcess(unitId, CRAFT, ACTOR, "mode:test", 0L, 0L, Map.of());
     AssetShareId shareId =
-        AssetShare.idOf(
-            CRAFT, AssetKind.WORKSHOP, ACTOR, ACTOR, AssetShare.RightKind.OWNED, 0L);
-    AssetShare share =
-        new AssetShare(
-            shareId, CRAFT, AssetKind.WORKSHOP, ACTOR, ACTOR, 1L, AssetShare.RightKind.OWNED);
+        OwnershipStake.idOf(
+            CRAFT, AssetKind.WORKSHOP, ACTOR, ACTOR, OwnershipStake.RightKind.OWNED, 0L);
+    OwnershipStake share =
+        new OwnershipStake(
+            shareId, CRAFT, AssetKind.WORKSHOP, ACTOR, ACTOR, 1L, OwnershipStake.RightKind.OWNED);
 
     AccountSession accounts = AccountSession.empty();
     accounts.registerHousehold(HOUSE, H, Map.of(GRAIN, 300L), Map.of(), Map.of(), Map.of());
@@ -224,13 +225,13 @@ class MarketDemandBookTest {
     assertThat(grain.addressableMilli())
         .as("★ 无报告回退 = max(0, 1,000 + 0 + 0 − 300 − 400) = 300")
         .isEqualTo(300L);
-    assertThat(grain.evidence()).as("回退路径必须具名 fundamental/noReport").contains("fundamental", "noReport");
+    assertThat(grain.evidence())
+        .as("回退路径必须具名 fundamental/noReport")
+        .contains("fundamental", "noReport");
 
     MarketDemandBook.Demand fiber = book.byMarketHex().get(H).get(FIBER);
     assertThat(fiber.inputNeedMilli()).as("引致需求 = 500 × 1 × 1").isEqualTo(500L);
-    assertThat(fiber.addressableMilli())
-        .as("★ 引致需求 − 库存 = 500")
-        .isEqualTo(500L);
+    assertThat(fiber.addressableMilli()).as("★ 引致需求 − 库存 = 500").isEqualTo(500L);
     assertThat(fiber.evidence()).contains("fundamental", "noReport");
   }
 
@@ -241,7 +242,7 @@ class MarketDemandBookTest {
     markets.put(H, market);
     markets.put(new HexCoord(1, 0), market);
     MarketTopology topology = MarketTopology.singleHex(markets);
-    Map<HouseholdId, ClassRow> rows = new LinkedHashMap<>();
+    Map<HouseholdId, HouseholdEconomy> rows = new LinkedHashMap<>();
     rows.put(HOUSE, row(10L, 10_000L, Map.of(GRAIN, 100L, CLOTH, 7L)));
 
     MarketDemandBook.Book first =

@@ -5,11 +5,11 @@ import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.migrate.ProductionRoleResolver;
-import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.economy.model.ClassStructure;
-import io.mosire.simos.economy.model.ProductionMode;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.ProductionMode;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.ResourcePaths;
@@ -28,10 +28,10 @@ import java.util.Set;
  * io.mosire.simos.util.spi.CommandTargets#targetPaths} 的签名拿不到状态、只能从载荷里读声明目标。四处各写一遍
  * "坐标→路径""家户是否存在""standing 是否在场"必然漂开；本类把它们钉成一份。
  *
- * <p>★ <b>{@code at} 的语义（诚实边界）</b>：家户资源在 {@code economy} 命名空间里以"格"为可寻址单位
- * （{@link ResourcePaths#economy(int, int)}）。{@code CommandTargets} 看不到状态 ⇒ 决策令必须**显式带上**目标格；
- * handler 再核对"这个格就是该家户当刻所在的格"，因此声明目标与实在目标不可能错位。GM 直接提交可以省略 {@code at}
- * （{@code targetPaths} 返回空 ⇒ 决策令路径 fail-closed，直通不受影响）。
+ * <p>★ <b>{@code at} 的语义（诚实边界）</b>：家户资源在 {@code economy} 命名空间里以"格"为可寻址单位 （{@link
+ * ResourcePaths#economy(int, int)}）。{@code CommandTargets} 看不到状态 ⇒ 决策令必须**显式带上**目标格； handler
+ * 再核对"这个格就是该家户当刻所在的格"，因此声明目标与实在目标不可能错位。GM 直接提交可以省略 {@code at} （{@code targetPaths} 返回空 ⇒ 决策令路径
+ * fail-closed，直通不受影响）。
  */
 final class HouseholdEconomyCommands {
 
@@ -42,10 +42,7 @@ final class HouseholdEconomyCommands {
     return EconomyCommandPayloads.optionalHex(command, payload, "at");
   }
 
-  /**
-   * 若给了 {@code at}，它必须逐值等于该家户当前居住格（防止决策令"声明辖区内的格、实际改辖区外的家户"）。
-   * 不给 ⇒ 不判（GM 直通路径）。
-   */
+  /** 若给了 {@code at}，它必须逐值等于该家户当前居住格（防止决策令"声明辖区内的格、实际改辖区外的家户"）。 不给 ⇒ 不判（GM 直通路径）。 */
   static void requireAtMatchesHousehold(
       String command, EconomyData base, HouseholdId household, Optional<HexCoord> at) {
     if (at.isEmpty()) {
@@ -97,8 +94,8 @@ final class HouseholdEconomyCommands {
   }
 
   /**
-   * {@code modes} 字段 → 该 mode 结构下的全部位置（"可参与生产方式"的粗粒度配置）。mode 必须已存在；没有结构 ⇒ 拒绝。
-   * ★ 具体哪些位置真的生产由组织阶段的 {@code shouldProduce} 过滤（本类不复制那份判据）。
+   * {@code modes} 字段 → 该 mode 结构下的全部位置（"可参与生产方式"的粗粒度配置）。mode 必须已存在；没有结构 ⇒ 拒绝。 ★ 具体哪些位置真的生产由组织阶段的
+   * {@code shouldProduce} 过滤（本类不复制那份判据）。
    */
   static Set<ClassPositionId> expandModes(String command, EconomyData base, JsonNode payload) {
     JsonNode modes = payload.get("modes");
@@ -120,8 +117,7 @@ final class HouseholdEconomyCommands {
       }
       ClassStructure structure = base.classStructures().get(mode.classStructureId());
       if (structure == null) {
-        throw new IllegalArgumentException(
-            command + " 的生产方式没有阶层结构，无法展开位置: " + modeId.value());
+        throw new IllegalArgumentException(command + " 的生产方式没有阶层结构，无法展开位置: " + modeId.value());
       }
       positions.addAll(structure.positions().keySet());
     }
@@ -148,8 +144,8 @@ final class HouseholdEconomyCommands {
   }
 
   /**
-   * 该家户的 {@link HouseholdClassMembership}；没有就用 {@link ProductionRoleResolver#resolveCurrent}（旧档 stratum 映射）
-   * 播种一条"只参与当前位置"的归属。解析不出位置 ⇒ 具名拒绝（不伪造归属）。
+   * 该家户的 {@link HouseholdClassMembership}；没有就用 {@link ProductionRoleResolver#resolveCurrent}（旧档
+   * stratum 映射） 播种一条"只参与当前位置"的归属。解析不出位置 ⇒ 具名拒绝（不伪造归属）。
    */
   static HouseholdClassMembership requireStandingOrSeed(
       String command, EconomyData base, HouseholdId household, String reason, long day) {
@@ -158,8 +154,7 @@ final class HouseholdEconomyCommands {
       return existingClassMembership;
     }
     ClassPositionId current =
-        ProductionRoleResolver
-            .resolveCurrent(base, household)
+        ProductionRoleResolver.resolveCurrent(base, household)
             .orElseThrow(
                 () ->
                     new IllegalArgumentException(
@@ -167,14 +162,7 @@ final class HouseholdEconomyCommands {
                             + " 的家户没有阶层归属、也解析不出旧 stratum 对应位置；请先用 economy.SetHouseholdClass: "
                             + household.value()));
     return new HouseholdClassMembership(
-        household,
-        current,
-        current,
-        Set.of(),
-        Map.of(),
-        0L,
-        day,
-        reason);
+        household, current, current, Set.of(), Map.of(), 0L, day, reason);
   }
 
   /** 只读：把位置 id 清单按字典序规范化（报告/日志用）。 */

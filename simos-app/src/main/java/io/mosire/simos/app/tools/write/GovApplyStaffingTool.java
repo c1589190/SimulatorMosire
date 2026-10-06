@@ -51,9 +51,9 @@ import java.util.UUID;
  * GovDemand.HexDemand#paperwork()} 逐格求和得 {@code securityDemand}/{@code paperworkDemand}。
  *
  * <p>★★ <b>目标编制</b>：{@code YAMEN = securityDemand}、{@code SCRIBE = paperworkDemand}、{@code POST} 不设
- * （= 0）；两维都为 0 ⇒ 空 staff map（不写 0 键）；当前 {@code GovernmentFormation.staff()} 与目标相等 ⇒ 该 GOV 不改。 每个要改的 GOV
- * 折一条 {@code unit.SetGovFormation}：载荷带全 {@code level}、{@code superiorGov?}（有才给）、 {@code staff} 与
- * <b>当前 policy 的五个字段</b>（{@code grainPerStaffPerTick}/{@code clothPerStaffPerCycle}/{@code
+ * （= 0）；两维都为 0 ⇒ 空 staff map（不写 0 键）；当前 {@code GovernmentFormation.staff()} 与目标相等 ⇒ 该 GOV 不改。 每个要改的
+ * GOV 折一条 {@code unit.SetGovFormation}：载荷带全 {@code level}、{@code superiorGov?}（有才给）、 {@code staff}
+ * 与 <b>当前 policy 的五个字段</b>（{@code grainPerStaffPerTick}/{@code clothPerStaffPerCycle}/{@code
  * moneyPerStaffPerTick}/{@code retirementPerStaff}/{@code staffCap}）——同类型是整体 替换，缺 policy 会回落
  * defaults、缺 staffCap 会静默丢上限，故必须逐字段原样带全。
  *
@@ -224,8 +224,8 @@ public final class GovApplyStaffingTool implements AgentTool {
   // ── 推导（preview / apply 共用；纯读，不碰 core）──────────────────────────────────────
 
   /**
-   * ★ 唯一推导入口：扫描所有 {@link Unit}，按 {@code unit.id().value()} 字典序只处理带 {@link GovernmentFormation} 的单位； 逐 GOV
-   * 用 {@link GovDemand#of} 求和并算出目标 staff 与是否要改。不改任何状态。
+   * ★ 唯一推导入口：扫描所有 {@link Unit}，按 {@code unit.id().value()} 字典序只处理带 {@link GovernmentFormation} 的单位；
+   * 逐 GOV 用 {@link GovDemand#of} 求和并算出目标 staff 与是否要改。不改任何状态。
    */
   private static List<GovAssessment> derive(GameMap map, SocialData social, UnitState units) {
     Objects.requireNonNull(map, "map");

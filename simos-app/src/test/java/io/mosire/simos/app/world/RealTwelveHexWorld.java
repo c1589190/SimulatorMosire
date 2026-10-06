@@ -4,6 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorSnapshot;
+import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapSnapshot;
@@ -17,6 +21,8 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.map.terrain.TerrainCatalog;
+import io.mosire.simos.sd.state.SdSnapshot;
+import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.unit.UnitSnapshot;
@@ -29,12 +35,6 @@ import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateMeta;
 import io.mosire.simos.util.state.StateRef;
 import io.mosire.simos.util.time.SimosTimestamp;
-import io.mosire.simos.actor.ActorData;
-import io.mosire.simos.actor.ActorSnapshot;
-import io.mosire.simos.economy.EconomyData;
-import io.mosire.simos.economy.EconomySnapshot;
-import io.mosire.simos.sd.state.SdSnapshot;
-import io.mosire.simos.sd.state.SdState;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -51,11 +51,11 @@ import java.util.Set;
 /**
  * ★★ P11.6 测试夹具：真实 12 格小地图。
  *
- * <p>地图由本类程序化构造：1 个 12 格 Region（11 格陆地 + 1 格海洋；一条 4 格干流），不复制
- * {@link CompactThreeNationsWorld} 的 48 格整块，也不手搭 EconomyData。
+ * <p>地图由本类程序化构造：1 个 12 格 Region（11 格陆地 + 1 格海洋；一条 4 格干流），不复制 {@link CompactThreeNationsWorld} 的 48
+ * 格整块，也不手搭 EconomyData。
  *
- * <p>人口 / 城市 / 经济 / 家户 actor 一律走真工具 {@code simos.worldgen.initialize}（production-runtime），
- * 其配置由本类从 {@code test-three-nations.json} 改出单国版本后写进临时文件，不另写第二套播种逻辑。
+ * <p>人口 / 城市 / 经济 / 家户 actor 一律走真工具 {@code simos.worldgen.initialize}（production-runtime）， 其配置由本类从
+ * {@code test-three-nations.json} 改出单国版本后写进临时文件，不另写第二套播种逻辑。
  */
 public final class RealTwelveHexWorld {
 
@@ -152,7 +152,8 @@ public final class RealTwelveHexWorld {
     if (hex.equals(OCEAN)) {
       return "ocean";
     }
-    if (hex.equals(new HexCoord(1, 1)) || hex.equals(new HexCoord(2, 1))
+    if (hex.equals(new HexCoord(1, 1))
+        || hex.equals(new HexCoord(2, 1))
         || hex.equals(new HexCoord(1, 2))) {
       return "low_hills";
     }
@@ -190,9 +191,7 @@ public final class RealTwelveHexWorld {
 
   // ── worldgen 配置（单国、production-runtime 可解析）────────────────────────────────────
 
-  /**
-   * 从测试 resource 的 {@code test-three-nations.json} 改出单国 12 格配置：只改 nation 字段，不手写整份 schema。
-   */
+  /** 从测试 resource 的 {@code test-three-nations.json} 改出单国 12 格配置：只改 nation 字段，不手写整份 schema。 */
   public static Path writeConfig(Path dir) throws IOException {
     Objects.requireNonNull(dir, "dir");
     Path source = configFile();

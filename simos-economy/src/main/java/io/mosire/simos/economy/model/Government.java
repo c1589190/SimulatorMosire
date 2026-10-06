@@ -15,8 +15,8 @@ import java.util.Set;
  *
  * <p>★★ <b>本批的取舍（如实记）</b>：当前市场的计价货币是单一的 {@code silver}（唯一拼写点 {@code
  * RegimeRelations.DEFAULT_CURRENCY}），而世界有三个国家。E3 采用<b>世界级最小政府</b>：一个 {@link GovernmentId} 指向一本
- * 国库，<b>只有一个发行主体声称 silver</b>。 每国一个政府、多币种/多发行主体留给后续阶段（见交付报告）。★★ 2026-10-07 起，
- * 国库可以是 {@code GOVERNMENT} actor，也可以是<b>非生产家户</b>的 {@code HOUSEHOLD} actor（GOV 家户试点）：后者让政府直接复用
+ * 国库，<b>只有一个发行主体声称 silver</b>。 每国一个政府、多币种/多发行主体留给后续阶段（见交付报告）。★★ 2026-10-07 起， 国库可以是 {@code
+ * GOVERNMENT} actor，也可以是<b>非生产家户</b>的 {@code HOUSEHOLD} actor（GOV 家户试点）：后者让政府直接复用
  * 家户的市场、账户与债务路径；{@code seignioragePerCycle} 是周期铸币旋钮（0 = 不自动铸币）。
  *
  * <p>★ <b>{@code issuable} 为空 = 这个政府不是任何币种的发行人</b>（它可以只是财政主体）；{@code authorityOf} 对集合外的币种 当场抛 ——
@@ -75,8 +75,7 @@ public record Government(
           "Government.seignioragePerCycle 不得为负: " + seignioragePerCycle);
     }
     if (debtIssuePerCycle < 0L) {
-      throw new IllegalArgumentException(
-          "Government.debtIssuePerCycle 不得为负: " + debtIssuePerCycle);
+      throw new IllegalArgumentException("Government.debtIssuePerCycle 不得为负: " + debtIssuePerCycle);
     }
     if (issuable == null) {
       throw new IllegalArgumentException("Government.issuable 不得为 null（不是发行人就给空集）");

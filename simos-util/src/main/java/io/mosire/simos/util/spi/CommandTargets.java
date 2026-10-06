@@ -29,9 +29,9 @@ import java.util.List;
  *   <li>**空列表 = 本命令没有可寻址目标**（与"未实现本契约"同一条 fail-closed 路径）。
  *   <li>**创建型**（{@code unit.CreateUnit.id} / {@code map.CreateRegion.regionId}）按**载荷里点名的新 id** 判：
  *       命令生效后该资源就会存在，按"将要成为的目标"判是唯一可判的口径。
- *   <li>★★ **2026-10-20 起有第二条方法** {@link #targetResources(String, SimulationState, String, String)}：默认把本方法的
- *       路径包成"命令类型命名空间 + path"的 {@link CommandTarget}；**家户命令**（目标可能落在 social 的 hex 或 unit 命名空间）
- *       覆盖它给出跨命名空间目标。旧 {@code targetPaths} 原样保留（80 个 handler 不必重写）。
+ *   <li>★★ **2026-10-20 起有第二条方法** {@link #targetResources(String, SimulationState, String,
+ *       String)}：默认把本方法的 路径包成"命令类型命名空间 + path"的 {@link CommandTarget}；**家户命令**（目标可能落在 social 的 hex
+ *       或 unit 命名空间） 覆盖它给出跨命名空间目标。旧 {@code targetPaths} 原样保留（80 个 handler 不必重写）。
  * </ul>
  *
  * <p>★ **诚实边界（不假装覆盖）**：只声明**载荷里点名的**目标。命令的**级联影响**不在声明里——{@code unit.DisbandUnit} 会解散整棵子树、{@code
@@ -57,14 +57,14 @@ public interface CommandTargets {
   /**
    * 本命令要写哪些资源（**跨命名空间**，2026-10-20 用户裁定的新契约）。
    *
-   * <p>★ **默认实现 = 旧口径的逐条包装**：命名空间取 {@code commandType} 的第一段（{@link CommandTarget#namespaceOf(String)}）， 把
-   * {@link #targetPaths(String, String)} 的每条路径原样包成 {@code CommandTarget(namespace, path)}。因此 80 个只实现旧方法的 handler
-   * **行为一字不变**。
+   * <p>★ **默认实现 = 旧口径的逐条包装**：命名空间取 {@code commandType} 的第一段（{@link
+   * CommandTarget#namespaceOf(String)}）， 把 {@link #targetPaths(String, String)} 的每条路径原样包成 {@code
+   * CommandTarget(namespace, path)}。因此 80 个只实现旧方法的 handler **行为一字不变**。
    *
-   * <p>★★ **只有目标会跨命名空间的命令才覆盖它**：家户的位置有 HEX / UNIT 两档，{@code social.CreateHousehold} /
-   * {@code social.SetHouseholdLocation} / {@code social.TransferHouseholdMembers} /
-   * {@code social.SubmitHouseholdWorkOrder} / {@code social.MovePopulationLots} 的目标因此可能是
-   * {@code social:<q>_<r>} 或 {@code unit:<unitId>}。覆盖实现自己知道该读载荷还是读状态（{@code state} 就是为它准备的）。
+   * <p>★★ **只有目标会跨命名空间的命令才覆盖它**：家户的位置有 HEX / UNIT 两档，{@code social.CreateHousehold} / {@code
+   * social.SetHouseholdLocation} / {@code social.TransferHouseholdMembers} / {@code
+   * social.SubmitHouseholdWorkOrder} / {@code social.MovePopulationLots} 的目标因此可能是 {@code
+   * social:<q>_<r>} 或 {@code unit:<unitId>}。覆盖实现自己知道该读载荷还是读状态（{@code state} 就是为它准备的）。
    *
    * <p>★ **坏载荷仍以 {@link IllegalArgumentException} 面世**（与 {@link #targetPaths} 同口径）：调用方折成具名拒因。查无家户等
    * **目标引用不存在**的情形同样是具名 {@code IllegalArgumentException}——判不出目标就不得放行。

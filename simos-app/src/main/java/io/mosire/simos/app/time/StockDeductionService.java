@@ -29,9 +29,10 @@ import org.slf4j.Logger;
  * AccountSession.commit}，而是"构造 {@link HouseholdStockDeduction} + 调本服务"。
  *
  * <p>★★ <b>为什么在 app 而不是 economy 模块</b>（实现裁定，如实记）：本服务要同时看见 <b>economy 的 {@code
- * AccountSession}</b>（唯一落账口）与 <b>actor 的 {@code HouseholdInventory} / {@code AvailableStock}</b>（唯一"余额 −
- * 冻结" 算法）。{@code simos-economy} 的 enforcer 只允许 {@code actor-api}（契约），看不见 {@code simos-actor} 的实现类型
- * ⇒ 把服务塞进 economy 就只能自己再写一遍减法，正是本次要消灭的"第二处拼写点"。app 是唯一同时认识两片的组合根（五条铁律 3/4），故落在这里。
+ * AccountSession}</b>（唯一落账口）与 <b>actor 的 {@code HouseholdInventory} / {@code
+ * AvailableStock}</b>（唯一"余额 − 冻结" 算法）。{@code simos-economy} 的 enforcer 只允许 {@code
+ * actor-api}（契约），看不见 {@code simos-actor} 的实现类型 ⇒ 把服务塞进 economy 就只能自己再写一遍减法，正是本次要消灭的"第二处拼写点"。app
+ * 是唯一同时认识两片的组合根（五条铁律 3/4），故落在这里。
  *
  * <p>★★ <b>一条 {@link HouseholdStockDeduction} 的完整语义（整批原子）</b>：
  *
@@ -48,12 +49,12 @@ import org.slf4j.Logger;
  *       线程的稳定提交 序同源。
  * </ol>
  *
- * <p>★★ <b>可用量只有一处算法</b>：影子账户用 {@link HouseholdInventory} 视图承载，减法走 {@link AvailableStock#available}；本类
- * <b>不</b>内联 {@code balances - frozen}。冻结表原样带过（扣减只动余额）。
+ * <p>★★ <b>可用量只有一处算法</b>：影子账户用 {@link HouseholdInventory} 视图承载，减法走 {@link
+ * AvailableStock#available}；本类 <b>不</b>内联 {@code balances - frozen}。冻结表原样带过（扣减只动余额）。
  *
- * <p>★ <b>日志</b>（AGENTS §一.9）：TRACE = 逐条 {@code event=HOUSEHOLD_STOCK_DEDUCTED household=… reason=… detail=…}
- * （与 actor 命令侧同一条事件名，便于跨模块 grep）；批量调用 INFO 一条"发生了什么 + 具名计数"；单条调用 DEBUG 一条；拒绝路径
- * DEBUG。⇒ 默认 INFO 下税 / 俸禄不逐户刷屏（阶段级 INFO 由 {@code TAX_DAILY_END} / {@code GOV_DAILY_END} 负责）。
+ * <p>★ <b>日志</b>（AGENTS §一.9）：TRACE = 逐条 {@code event=HOUSEHOLD_STOCK_DEDUCTED household=… reason=…
+ * detail=…} （与 actor 命令侧同一条事件名，便于跨模块 grep）；批量调用 INFO 一条"发生了什么 + 具名计数"；单条调用 DEBUG 一条；拒绝路径 DEBUG。⇒ 默认
+ * INFO 下税 / 俸禄不逐户刷屏（阶段级 INFO 由 {@code TAX_DAILY_END} / {@code GOV_DAILY_END} 负责）。
  */
 public final class StockDeductionService {
 

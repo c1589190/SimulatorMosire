@@ -1,9 +1,9 @@
 package io.mosire.simos.economy.model;
 
 import io.mosire.simos.economy.api.id.CrisisSignalId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.SocialClassId;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;

@@ -2,10 +2,10 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DemandId;
-import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.HouseholdDemand;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -21,8 +21,9 @@ import java.util.Map;
  * <ul>
  *   <li>{@link HouseholdDemand.DemandScope#HOUSEHOLD}：直接归该家户；{@code PER_CAPITA} = 每人量 × 该户人口，{@code
  *       TOTAL} = 总量；
- *   <li>{@link HouseholdDemand.DemandScope#HEX}：按本格家户人口摊到户（{@link ProportionalSplit} 最大余数法；并列按 {@link
- *       HouseholdId#value()} 升序 —— 排序后的下标序就是并列序）。{@code PER_CAPITA} 先乘本格总人口再摊，{@code TOTAL} 直接摊。
+ *   <li>{@link HouseholdDemand.DemandScope#HEX}：按本格家户人口摊到户（{@link ProportionalSplit} 最大余数法；并列按
+ *       {@link HouseholdId#value()} 升序 —— 排序后的下标序就是并列序）。{@code PER_CAPITA} 先乘本格总人口再摊，{@code TOTAL}
+ *       直接摊。
  * </ul>
  *
  * <p>★★ <b>处理顺序 = 预算优先级</b>：返回的每个 list 按 {@code (priority 升序, DemandId 值升序)} 追加 ——
@@ -127,14 +128,18 @@ final class DemandTargets {
 
   /** 全格的需求总量快照（读口归因用）：{@code hexKey → 家户 → 商品 → 目标总量}。与 {@link #partsForHex} 走同一段逻辑。 */
   static Map<String, Map<HouseholdId, Map<CommodityId, Long>>> totalsByHex(
-      Map<DemandId, HouseholdDemand> householdDemands, Map<HouseholdId, HouseholdEconomy> householdEconomies, long day) {
+      Map<DemandId, HouseholdDemand> householdDemands,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      long day) {
     if (householdDemands.isEmpty() || householdEconomies.isEmpty()) {
       return Map.of();
     }
     Map<HexCoord, List<HouseholdId>> keysByHex = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomies.entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry :
+        householdEconomies.entrySet()) {
       keysByHex
-          .computeIfAbsent(householdEconomyEntry.getValue().view().hex(), ignored -> new ArrayList<>())
+          .computeIfAbsent(
+              householdEconomyEntry.getValue().view().hex(), ignored -> new ArrayList<>())
           .add(householdEconomyEntry.getKey());
     }
     Map<String, Map<HouseholdId, Map<CommodityId, Long>>> totals = new LinkedHashMap<>();

@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
-import io.mosire.simos.economy.time.MarketSettlementFixtures.Builder;
 import io.mosire.simos.economy.time.MarketSettlementFixtures.Round;
 import io.mosire.simos.economy.time.MarketSettlementFixtures.World;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -54,7 +53,9 @@ class MarketSettlementSingleHexLossTest {
     long buyerBefore = 0L;
     long loss =
         ledgerLoss(
-            round.ledger().toLedger(), MarketSettlement.TRANSPORT_LOSS_ACCOUNT, MarketSettlementFixtures.GRAIN);
+            round.ledger().toLedger(),
+            MarketSettlement.TRANSPORT_LOSS_ACCOUNT,
+            MarketSettlementFixtures.GRAIN);
     assertThat(loss).as("同格不记运输损耗").isZero();
     assertThat(world.grainOf(SELLER) + world.grainOf(BUYER)).isEqualTo(sellerBefore + buyerBefore);
   }
@@ -79,9 +80,7 @@ class MarketSettlementSingleHexLossTest {
     assertThat(outcome.report().fills()).as("跨 hex 应有且只有一笔即时成交").hasSize(1);
     MarketReport.Fill fill = outcome.report().fills().get(0);
     assertThat(fill.immediate()).as("区内即时（不是跨区在途）").isTrue();
-    assertThat(fill.lossMilli())
-        .as("★ 跨格损耗必须可见且 > 0（同格/损耗被去掉时这条先红）")
-        .isPositive();
+    assertThat(fill.lossMilli()).as("★ 跨格损耗必须可见且 > 0（同格/损耗被去掉时这条先红）").isPositive();
     assertThat(fill.from()).isEqualTo(MarketSettlementFixtures.H1);
     assertThat(fill.to()).isEqualTo(MarketSettlementFixtures.H2);
     assertThat(fill.quantity())
@@ -91,7 +90,11 @@ class MarketSettlementSingleHexLossTest {
         .as("★ 距离 1 × moveCost 1 × 2‰ = 2‰，向下取整")
         .isEqualTo(fill.quantity() * 2L * 1L / 1000L);
     assertThat(fill.unitPriceMilli()).as("成交单价仍是区内参考价，不被损耗加价").isEqualTo(10L);
-    assertThat(world.markets().get(MarketSettlementFixtures.H1).priceOf(MarketSettlementFixtures.GRAIN))
+    assertThat(
+            world
+                .markets()
+                .get(MarketSettlementFixtures.H1)
+                .priceOf(MarketSettlementFixtures.GRAIN))
         .as("★ §7.2.4：单 hex 损耗不写进 Market.prices 参考价")
         .isEqualTo(10L);
 
@@ -99,7 +102,9 @@ class MarketSettlementSingleHexLossTest {
     long buyerAfter = world.grainOf(BUYER);
     long loss =
         ledgerLoss(
-            round.ledger().toLedger(), MarketSettlement.TRANSPORT_LOSS_ACCOUNT, MarketSettlementFixtures.GRAIN);
+            round.ledger().toLedger(),
+            MarketSettlement.TRANSPORT_LOSS_ACCOUNT,
+            MarketSettlementFixtures.GRAIN);
 
     // 诊断读数：这条 println 在守恒断言失败时留在 surefire stdout 里，便于把“卖方按净量出”的证据钉死。
     System.out.println(
@@ -146,7 +151,9 @@ class MarketSettlementSingleHexLossTest {
     assertThat(fill.goodsPaymentMilli())
         .as("★ 买方按毛量付款：⌈毛量 × 单价 ÷ 1000⌉")
         .isEqualTo(ceilDiv(fill.quantity() * fill.unitPriceMilli(), 1000L));
-    assertThat(world.silverOf(BUYER)).as("买方货币 = 初始 − 货款").isEqualTo(buyerSilverBefore - fill.goodsPaymentMilli());
+    assertThat(world.silverOf(BUYER))
+        .as("买方货币 = 初始 − 货款")
+        .isEqualTo(buyerSilverBefore - fill.goodsPaymentMilli());
     assertThat(world.silverOf(SELLER)).as("卖方货币 = 初始 + 货款").isEqualTo(fill.goodsPaymentMilli());
     assertThat(outcome.report().immediateCrossHexFills()).as("跨 hex 即时成交笔数").isEqualTo(1L);
     assertThat(outcome.report().immediateCrossHexLossMilli())
@@ -171,7 +178,9 @@ class MarketSettlementSingleHexLossTest {
     MarketSettlement.MarketOutcome outcome = MarketSettlementFixtures.settle(world, round);
 
     assertThat(outcome.report().freightPaidMilli()).as("★ 单区 freightPaid = 0").isZero();
-    assertThat(outcome.report().freightUncollectedMilli()).as("★ 单区 freightUncollected = 0").isZero();
+    assertThat(outcome.report().freightUncollectedMilli())
+        .as("★ 单区 freightUncollected = 0")
+        .isZero();
     assertThat(outcome.report().scheduledLossMilli()).as("单区没有在途预排损耗").isZero();
     assertThat(outcome.report().routes()).as("单区没有跨区路线").isEmpty();
     for (MarketReport.Fill fill : outcome.report().fills()) {

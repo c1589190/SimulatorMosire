@@ -11,8 +11,8 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.Actor;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -35,21 +35,24 @@ import org.junit.jupiter.api.Test;
  * actor 模块的 JSON 往返守卫（照 {@code EconomyCodecTest} / {@code LedgerCodecTest} 同制，夹具是 actor 自己的）。
  *
  * <p>★ 覆盖：{@code Optional<ActorMeta>} 两侧向（未激活 / 已激活）、**两张表各自的键类型**（{@code ActorRef}/ {@code
- * GoodsAccountKey}，以及嵌套在 {@code GoodsAccount.balances} 里的 {@code CommodityId}）、值的类型绑定（{@code
- * Actor}/{@code GoodsAccount} 不许退化成 {@code Map}）、 {@code FieldDelta} 四变体、单值组件的投影往返、**字节级**往返（含"派生判断
- * {@code empty} 不进线格式"的观察点）、 外来切片的两条拒绝、坏键与缺 {@code data} 的响亮失败，以及旧档缺键的兼容。
+ * HouseholdAccountKey}，以及嵌套在 {@code HouseholdInventory.balances} 里的 {@code
+ * CommodityId}）、值的类型绑定（{@code Actor}/{@code HouseholdInventory} 不许退化成 {@code Map}）、 {@code
+ * FieldDelta} 四变体、单值组件的投影往返、**字节级**往返（含"派生判断 {@code empty} 不进线格式"的观察点）、 外来切片的两条拒绝、坏键与缺 {@code data}
+ * 的响亮失败，以及旧档缺键的兼容。
  *
  * <p>★★ <b>{@code namespace()} 那一条不写成"字面量等于字符串"就完事</b>：{@code SimulationState} 构造期校验"modules 的键 ==
  * {@code snapshot.namespace()}"，故本测试**真的构造一次 {@code SimulationState}**（并配一条反例证明那条校验是活的）——
  * 把本类的字面量与装配期校验**钉在一起**， 而不是把字面量抄一遍。
  *
- * <p>★★ <b>P2-A §13.3（2026-10-09）迁移</b>：账户主体统一为家户、{@code GoodsAccountKey} 从 {@code (owner,hex)} 收敛为
- * {@link HouseholdId}，庄园/作坊 kind 退役。本类把账户夹具换成家户键、把 {@code ESTATE} 换成 {@code ORGANIZATION}，
+ * <p>★★ <b>P2-A §13.3（2026-10-09）迁移</b>：账户主体统一为家户、{@code HouseholdAccountKey} 从 {@code (owner,hex)}
+ * 收敛为 {@link HouseholdId}，庄园/作坊 kind 退役。本类把账户夹具换成家户键、把 {@code ESTATE} 换成 {@code ORGANIZATION}，
  * 并把坏库存键的判据改到上游 {@code HouseholdId.parse}。<b>往返/字节稳定/坏键宁抛这些判据一条未删。</b>
  */
 class ActorCodecTest {
 
-  /** 产业型主体（spec §三：生产活动的制度身份现在由 {@code ProductionMode/Organization/Unit} 表达，actor 层用 ORGANIZATION）。 */
+  /**
+   * 产业型主体（spec §三：生产活动的制度身份现在由 {@code ProductionMode/Organization/Unit} 表达，actor 层用 ORGANIZATION）。
+   */
   private static final ActorRef ORGANIZATION = new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
 
   /** ★ 人口批次型主体：{@code id} 里**自带两个冒号**（批次的 id 就是这个形状）—— 键的规范串逆靠它取得判别力。 */
@@ -174,8 +177,8 @@ class ActorCodecTest {
     assertThat(back.actors().get(HOUSEHOLD).label()).isEqualTo("佃农家户");
 
     // ③ accounts：键（家户身份）+ 余额表（键是 CommodityId —— 那是**嵌套**的一层自定义键）
-    GoodsAccountKey accountA = new GoodsAccountKey(HH_A);
-    GoodsAccountKey accountB = new GoodsAccountKey(HH_B);
+    HouseholdAccountKey accountA = new HouseholdAccountKey(HH_A);
+    HouseholdAccountKey accountB = new HouseholdAccountKey(HH_B);
     assertThat(back.accounts()).containsOnlyKeys(accountA, accountB);
     assertThat(back.accounts().get(accountA).key().household()).isEqualTo(HH_A);
     assertThat(back.accounts().get(accountA).balances())
@@ -296,9 +299,9 @@ class ActorCodecTest {
   }
 
   /**
-   * ★ 值类型的绑定不能在读入侧丢成 {@code Map}：{@code Actor} / {@code GoodsAccount} 得还是它们自己，
-   * 且**它们的键**得还原成各自的自定义键类型（{@code ActorRef} / {@code GoodsAccountKey} 以及嵌套的 {@code CommodityId}）——
-   * 键退化成 {@code String} 的话本仓 {@code FieldDelta.rebuild} 的键解析器就白写了。
+   * ★ 值类型的绑定不能在读入侧丢成 {@code Map}：{@code Actor} / {@code HouseholdInventory} 得还是它们自己，
+   * 且**它们的键**得还原成各自的自定义键类型（{@code ActorRef} / {@code HouseholdAccountKey} 以及嵌套的 {@code
+   * CommodityId}）—— 键退化成 {@code String} 的话本仓 {@code FieldDelta.rebuild} 的键解析器就白写了。
    */
   @Test
   void deltaValuesSurviveAsTypedRowsWithParsedKeys() {
@@ -314,10 +317,10 @@ class ActorCodecTest {
     assertThat(organization.ref()).isEqualTo(ORGANIZATION);
     assertThat(organization.label()).isEqualTo("组织者");
 
-    FieldDelta.Upsert<GoodsAccount> accounts = upsert(back.accounts());
-    GoodsAccountKey accountB = new GoodsAccountKey(HH_B);
-    GoodsAccount account = accounts.entries().get(accountB.toString());
-    assertThat(account).isInstanceOf(GoodsAccount.class);
+    FieldDelta.Upsert<HouseholdInventory> accounts = upsert(back.accounts());
+    HouseholdAccountKey accountB = new HouseholdAccountKey(HH_B);
+    HouseholdInventory account = accounts.entries().get(accountB.toString());
+    assertThat(account).isInstanceOf(HouseholdInventory.class);
     assertThat(account.key()).isEqualTo(accountB);
     assertThat(account.balances())
         .as("★ 嵌套那一层的键也得是 CommodityId，且 0 不许被归一掉")
@@ -399,7 +402,7 @@ class ActorCodecTest {
    * <p>★ 冻结串在这里，正是因为"键的（反）序列化走 {@code toString()}/{@code parse} 配对"是**落盘契约**： 谁改了某个键类型的 {@code
    * toString()}，这条当场红，而不是等到读旧档时才发现键对不上。
    *
-   * <p>★ P2-A 起 {@code GoodsAccountKey} 的裸串 = 家户 id；本断言同时钉住"账户表的键是**家户**（不再有 hex 段）"。
+   * <p>★ P2-A 起 {@code HouseholdAccountKey} 的裸串 = 家户 id；本断言同时钉住"账户表的键是**家户**（不再有 hex 段）"。
    */
   @Test
   void mapKeysGoToWireAsTheirBareToString() {
@@ -407,13 +410,13 @@ class ActorCodecTest {
 
     assertThat(json).as("ActorRef 作键").contains("\"ORGANIZATION:farm@0_0\"");
     assertThat(json)
-        .as("GoodsAccountKey 作键（家户身份；不再有 owner|hex 两段）")
+        .as("HouseholdAccountKey 作键（家户身份；不再有 owner|hex 两段）")
         .contains("\"accounts\":{\"hh-0_0-rural-poor_peasant\":{")
         .contains("\"hh-1_0-urban-artisan\":{");
   }
 
   /**
-   * ★ 嵌套那一层的键：{@code GoodsAccount.balances} 的键是 {@code CommodityId}，写成裸值，且 0 保留、插入序保留。
+   * ★ 嵌套那一层的键：{@code HouseholdInventory.balances} 的键是 {@code CommodityId}，写成裸值，且 0 保留、插入序保留。
    *
    * <p>★ <b>夹具刻意用 {@code LinkedHashMap} 而不是 {@code Map.of}</b>：{@code Map.of} 的迭代序**不是内容的纯函数**
    * （{@code ImmutableCollections} 的 SALT 每次 JVM 启动都不同）⇒ 拿它当夹具，这条冻结串会**跨运行抖动**， 那是夹具自己的病、不是被测量的规则。
@@ -425,7 +428,7 @@ class ActorCodecTest {
     balances.put(CLOTH, 0L);
     ActorData data =
         ActorData.empty()
-            .withAccount(new GoodsAccount(new GoodsAccountKey(HH_A), balances));
+            .withInventory(new HouseholdInventory(new HouseholdAccountKey(HH_A), balances));
 
     String json = CODEC.encodeSnapshot(snapshotOf(data, TS));
 
@@ -435,13 +438,13 @@ class ActorCodecTest {
   }
 
   /**
-   * ★★ <b>钱（{@code GoodsAccount.money}）的序列化往返</b>：一本带<b>多币种</b>余额的账经真 {@code ActorCodec} 出去再回来，
-   * <b>逐值</b>断言商品表与货币表都一字不差。
+   * ★★ <b>钱（{@code HouseholdInventory.money}）的序列化往返</b>：一本带<b>多币种</b>余额的账经真 {@code ActorCodec}
+   * 出去再回来， <b>逐值</b>断言商品表与货币表都一字不差。
    *
-   * <p>★★ <b>它为什么必须存在</b>（2026-09-27，M1.0 的由来，本仓第 5 例幻影判别力）：{@code GoodsAccount} 的类注曾声称"钱有没有被序列化丢 由
-   * {@code ActorCodec} 的往返用例守着"——而<b>那条用例当时并不存在</b>（{@code simos-actor/src/test} 对 {@code money()}
-   * 零断言），且 {@code ActorCodec} 给 {@code CommodityId} 注册了键反序列化器却<b>没给</b> {@code CurrencyId} 注册（而
-   * {@code money} 的键正是它）。⇒ 钱的落盘能力在这条用例出现之前，本模块内<b>没有任何判别力</b>。
+   * <p>★★ <b>它为什么必须存在</b>（2026-09-27，M1.0 的由来，本仓第 5 例幻影判别力）：{@code HouseholdInventory}
+   * 的类注曾声称"钱有没有被序列化丢 由 {@code ActorCodec} 的往返用例守着"——而<b>那条用例当时并不存在</b>（{@code simos-actor/src/test}
+   * 对 {@code money()} 零断言），且 {@code ActorCodec} 给 {@code CommodityId} 注册了键反序列化器却<b>没给</b> {@code
+   * CurrencyId} 注册（而 {@code money} 的键正是它）。⇒ 钱的落盘能力在这条用例出现之前，本模块内<b>没有任何判别力</b>。
    *
    * <p>★★ <b>夹具的形状就是判别力</b>——三个币种各代表一种"钱在不在"：
    *
@@ -462,9 +465,9 @@ class ActorCodecTest {
     Map<CurrencyId, Long> money = new LinkedHashMap<>();
     money.put(SILVER, 1_200L);
     money.put(COPPER, 0L);
-    GoodsAccountKey account = new GoodsAccountKey(HH_B);
+    HouseholdAccountKey account = new HouseholdAccountKey(HH_B);
     ActorData data =
-        ActorData.empty().withAccount(new GoodsAccount(account, Map.of(GRAIN, 7L), money));
+        ActorData.empty().withInventory(new HouseholdInventory(account, Map.of(GRAIN, 7L), money));
 
     String json = CODEC.encodeSnapshot(snapshotOf(data, TS));
     ActorData back = dataOf(CODEC.decodeSnapshot(json));
@@ -511,7 +514,7 @@ class ActorCodecTest {
     assertThat(applied.timestamp()).isEqualTo(NEW_META.timestamp());
     assertThat(applied.data().actors()).containsOnlyKeys(ORGANIZATION, HOUSEHOLD);
     assertThat(applied.data().accounts())
-        .containsOnlyKeys(new GoodsAccountKey(HH_A), new GoodsAccountKey(HH_B));
+        .containsOnlyKeys(new HouseholdAccountKey(HH_A), new HouseholdAccountKey(HH_B));
     assertThat(base.data()).as("base 不得被就地改").isEqualTo(ActorData.empty());
   }
 
@@ -580,7 +583,7 @@ class ActorCodecTest {
    * 不存在地格的档。
    *
    * <p>★ <b>三档各打一路</b>：{@code actors}（{@code ActorRef}）、 {@code accounts}（{@code
-   * GoodsAccountKey} → 家户身份），以及<b>嵌套那一层</b>的 {@code CommodityId}。
+   * HouseholdAccountKey} → 家户身份），以及<b>嵌套那一层</b>的 {@code CommodityId}。
    */
   @Test
   void aSnapshotWithAMalformedKeyFailsLoudly() {
@@ -637,12 +640,11 @@ class ActorCodecTest {
             new FieldDelta.Upsert<>(
                 Map.of(
                     "   ",
-                    new GoodsAccount(new GoodsAccountKey(HH_A), Map.of(GRAIN, 1L)))));
+                    new HouseholdInventory(new HouseholdAccountKey(HH_A), Map.of(GRAIN, 1L)))));
 
     for (Map.Entry<ActorChangeSet, String> each :
         List.of(
-            Map.entry(badActors, "非法 actor 规范串"),
-            Map.entry(badAccounts, "HouseholdId 不得为空白"))) {
+            Map.entry(badActors, "非法 actor 规范串"), Map.entry(badAccounts, "HouseholdId 不得为空白"))) {
       ActorChangeSet handMade = each.getKey();
       ActorChangeSet back = (ActorChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(handMade));
 
@@ -770,8 +772,8 @@ class ActorCodecTest {
         .withMeta(Optional.of(META))
         .withActor(new Actor(ORGANIZATION, "组织者"))
         .withActor(new Actor(HOUSEHOLD, "佃农家户"))
-        .withAccount(new GoodsAccount(new GoodsAccountKey(HH_A), accountABalances))
-        .withAccount(new GoodsAccount(new GoodsAccountKey(HH_B), accountBBalances));
+        .withInventory(new HouseholdInventory(new HouseholdAccountKey(HH_A), accountABalances))
+        .withInventory(new HouseholdInventory(new HouseholdAccountKey(HH_B), accountBBalances));
   }
 
   private static ActorSnapshot snapshotOf(ActorData data, SimosTimestamp timestamp) {

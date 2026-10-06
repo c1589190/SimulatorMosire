@@ -34,7 +34,8 @@ class ActorSeedHandlerTest {
   private static final StateRef REF = new StateRef(new BranchId("main"), new RevisionId(1));
   private static final SimosTimestamp T7 = SimosTimestamp.of(7);
 
-  private static final ActorRef ORGANIZATION_FARM = new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
+  private static final ActorRef ORGANIZATION_FARM =
+      new ActorRef(ActorKind.ORGANIZATION, "farm@0_0");
   private static final ActorRef HOUSEHOLD = new ActorRef(ActorKind.HOUSEHOLD, "house@0_0");
 
   /** 一格的最小合法 entry：两个主体 + 一本账。 */

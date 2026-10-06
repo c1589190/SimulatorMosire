@@ -19,19 +19,18 @@ import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.id.RegimeId;
 import io.mosire.simos.economy.api.id.SocialClassId;
-import io.mosire.simos.economy.api.relation.Recipient;
+import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.model.AllocationRule;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.ClassSlot;
-import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.DefaultProductionModes;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
-import io.mosire.simos.economy.model.ProductionOrganization;
-import io.mosire.simos.economy.model.ProductionUnit;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
@@ -42,11 +41,11 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * ★★ <b>D-024 修复 1b：三参 {@link ModeMigrationPolicy#claimedAssetShares(Map, Map, Map)} 的单元判据</b>。
+ * ★★ <b>D-024 修复 1b：三参 {@link ModeMigrationPolicy#claimedOwnershipStakes(Map, Map, Map)} 的单元判据</b>。
  *
- * <p>claimed = 组织引用 ∪ 在产 unit 占用（同 industry、同 operator、quantity&gt;0）。这里逐格钉死：
- * 组织引用、unit 占用、operator/industry/quantity 不匹配、单参旧重载的兼容语义，以及
- * “organizations 空 + 在产 ESTATE unit + 对应份额”必须让新进入者判 NO_ASSET（不得把在产份额当闲置租用）。
+ * <p>claimed = 组织引用 ∪ 在产 unit 占用（同 industry、同 operator、quantity&gt;0）。这里逐格钉死： 组织引用、unit
+ * 占用、operator/industry/quantity 不匹配、单参旧重载的兼容语义，以及 “organizations 空 + 在产 ESTATE unit + 对应份额”必须让新进入者判
+ * NO_ASSET（不得把在产份额当闲置租用）。
  */
 class ModeMigrationPolicyClaimedAssetsTest {
 
@@ -58,37 +57,44 @@ class ModeMigrationPolicyClaimedAssetsTest {
   private static final SocialClassId POOR = new SocialClassId("poor_peasant");
   private static final ProductionModeId CRAFT = DefaultProductionModes.HANDICRAFT_WORKSHOP;
 
-  private static final IndustryId FARM =
-      IndustryHexKeys.id("farm", H.q(), H.r());
-  private static final IndustryId CRAFT_INDUSTRY =
-      IndustryHexKeys.id("craft", H.q(), H.r());
-  private static final IndustryId OTHER_INDUSTRY =
-      IndustryHexKeys.id("craft", H2.q(), H2.r());
+  private static final IndustryId FARM = IndustryHexKeys.id("farm", H.q(), H.r());
+  private static final IndustryId CRAFT_INDUSTRY = IndustryHexKeys.id("craft", H.q(), H.r());
+  private static final IndustryId OTHER_INDUSTRY = IndustryHexKeys.id("craft", H2.q(), H2.r());
   private static final HouseholdId HOUSE = HouseholdId.parse("hh-claimed-house");
   private static final HouseholdId NEWCOMER = HouseholdId.parse("hh-claimed-newcomer");
 
-  private static final ActorRef ESTATE = new ActorRef(ActorKind.ORGANIZATION, "estate-claimed-test");
+  private static final ActorRef ESTATE =
+      new ActorRef(ActorKind.ORGANIZATION, "estate-claimed-test");
   private static final ActorRef OP1 = new ActorRef(ActorKind.ORGANIZATION, "op-1");
   private static final ActorRef OP2 = new ActorRef(ActorKind.ORGANIZATION, "op-2");
 
-  private static AssetShare share(
-      IndustryId industry, AssetKind asset, ActorRef owner, ActorRef operator, long quantity, long sequence) {
+  private static OwnershipStake share(
+      IndustryId industry,
+      AssetKind asset,
+      ActorRef owner,
+      ActorRef operator,
+      long quantity,
+      long sequence) {
     AssetShareId id =
-        AssetShare.idOf(
-            industry, asset, owner, operator, AssetShare.RightKind.OWNED, sequence);
-    return new AssetShare(id, industry, asset, owner, operator, quantity, AssetShare.RightKind.OWNED);
+        OwnershipStake.idOf(
+            industry, asset, owner, operator, OwnershipStake.RightKind.OWNED, sequence);
+    return new OwnershipStake(
+        id, industry, asset, owner, operator, quantity, OwnershipStake.RightKind.OWNED);
   }
 
-  private static ProductionUnit unit(IndustryId industry, ActorRef operator) {
+  private static ProductionProcess unit(IndustryId industry, ActorRef operator) {
     ProductionUnitId id = ProductionUnitId.idOf(industry, operator);
-    return new ProductionUnit(id, industry, operator, industry.value(), 0L, 0L, Map.of());
+    return new ProductionProcess(id, industry, operator, industry.value(), 0L, 0L, Map.of());
   }
 
-  private static ProductionOrganization organization(
-      ProductionModeId mode, ClassPositionId position, HouseholdId organizer, String hexKey, List<AssetShareId> sources) {
-    ProductionOrganizationId id =
-        ProductionOrganizationId.idOf(mode, position, organizer, hexKey);
-    return new ProductionOrganization(
+  private static ProductionEnterprise organization(
+      ProductionModeId mode,
+      ClassPositionId position,
+      HouseholdId organizer,
+      String hexKey,
+      List<AssetShareId> sources) {
+    ProductionOrganizationId id = ProductionOrganizationId.idOf(mode, position, organizer, hexKey);
+    return new ProductionEnterprise(
         id,
         mode,
         position,
@@ -96,16 +102,15 @@ class ModeMigrationPolicyClaimedAssetsTest {
         HouseholdActors.of(organizer),
         List.of(organizer),
         sources,
-        List.of(new Recipient.ToActor(HouseholdActors.of(organizer))),
-        new Recipient.ToActor(HouseholdActors.of(organizer)),
+        List.of(new Payee.ToActor(HouseholdActors.of(organizer))),
+        new Payee.ToActor(HouseholdActors.of(organizer)),
         Optional.of("fixture:claimed-test"),
-        ProductionOrganization.Status.SHORTAGE,
+        ProductionEnterprise.Status.SHORTAGE,
         "fixture: organization status is irrelevant for claimed-asset set");
   }
 
   private static ClassPositionId craftOwnerPosition() {
-    return DefaultProductionModes
-        .positionId(CRAFT, DefaultProductionModes.ROLE_WORKSHOP_OWNER)
+    return DefaultProductionModes.positionId(CRAFT, DefaultProductionModes.ROLE_WORKSHOP_OWNER)
         .orElseThrow();
   }
 
@@ -134,8 +139,7 @@ class ModeMigrationPolicyClaimedAssetsTest {
 
   private static MarketDemandBook.Book demand() {
     MarketDemandBook.Demand demand =
-        new MarketDemandBook.Demand(
-            H, CLOTH, 0L, 0L, 0L, 0L, 0L, 0L, 10_000L, List.of("test"));
+        new MarketDemandBook.Demand(H, CLOTH, 0L, 0L, 0L, 0L, 0L, 0L, 10_000L, List.of("test"));
     return new MarketDemandBook.Book(Map.of(H, Map.of(CLOTH, demand)), 0L, 1L);
   }
 
@@ -146,23 +150,23 @@ class ModeMigrationPolicyClaimedAssetsTest {
    */
   private record EstateUnitFixture(
       EconomyData base,
-      Map<AssetShareId, AssetShare> shares,
-      Map<ProductionUnitId, ProductionUnit> units,
+      Map<AssetShareId, OwnershipStake> shares,
+      Map<ProductionUnitId, ProductionProcess> units,
       AssetShareId estateShareId,
       AccountSession accounts,
       MarketTopology topology) {}
 
   private static EstateUnitFixture estateUnitFixture() {
-    AssetShare estateShare = share(CRAFT_INDUSTRY, AssetKind.WORKSHOP, ESTATE, ESTATE, 3L, 0L);
-    ProductionUnit estateUnit = unit(CRAFT_INDUSTRY, ESTATE);
-    Map<AssetShareId, AssetShare> shares = new LinkedHashMap<>();
+    OwnershipStake estateShare = share(CRAFT_INDUSTRY, AssetKind.WORKSHOP, ESTATE, ESTATE, 3L, 0L);
+    ProductionProcess estateUnit = unit(CRAFT_INDUSTRY, ESTATE);
+    Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
     shares.put(estateShare.id(), estateShare);
-    Map<ProductionUnitId, ProductionUnit> units = new LinkedHashMap<>();
+    Map<ProductionUnitId, ProductionProcess> units = new LinkedHashMap<>();
     units.put(estateUnit.id(), estateUnit);
 
     ClassPositionId position = craftOwnerPosition();
-    ClassRow row =
-        new ClassRow(
+    HouseholdEconomy row =
+        new HouseholdEconomy(
             NEWCOMER,
             new CohortKey(H, ResidenceKind.RURAL, POOR),
             50L,
@@ -177,16 +181,17 @@ class ModeMigrationPolicyClaimedAssetsTest {
         EconomyData.empty()
             .withModes(DefaultProductionModes.modes())
             .withClassStructures(DefaultProductionModes.classStructures())
-            .withClassPositions(DefaultProductionModes.classPositions())
-            .withClasses(Map.of(NEWCOMER, row))
-            .withClassStandings(
+            .withProductionRoles(DefaultProductionModes.classPositions())
+            .withHouseholdEconomies(Map.of(NEWCOMER, row))
+            .withClassMemberships(
                 Map.of(
                     NEWCOMER,
-                    new ClassStanding(NEWCOMER, position, position, Map.of(), 0L, 0L, "test-claimed")))
+                    new HouseholdClassMembership(
+                        NEWCOMER, position, position, Map.of(), 0L, 0L, "test-claimed")))
             .withIndustries(Map.of(CRAFT_INDUSTRY, craftIndustry()))
-            .withUnits(units)
+            .withProcesses(units)
             .withRelations(Map.of())
-            .withAssetShares(shares)
+            .withOwnershipStakes(shares)
             .withMarkets(Map.of(H, market()));
 
     AccountSession accounts = AccountSession.empty();
@@ -220,35 +225,38 @@ class ModeMigrationPolicyClaimedAssetsTest {
   void organizationReferencesAreClaimed() {
     AssetShareId s1 = AssetShareId.parse("share-org-1");
     AssetShareId s2 = AssetShareId.parse("share-org-2");
-    Map<ProductionOrganizationId, ProductionOrganization> organizations = new LinkedHashMap<>();
-    ProductionOrganization organization =
-        organization(CRAFT, craftOwnerPosition(), HOUSE, IndustryHexKeys.hexKey(H.q(), H.r()), List.of(s1, s2));
+    Map<ProductionOrganizationId, ProductionEnterprise> organizations = new LinkedHashMap<>();
+    ProductionEnterprise organization =
+        organization(
+            CRAFT,
+            craftOwnerPosition(),
+            HOUSE,
+            IndustryHexKeys.hexKey(H.q(), H.r()),
+            List.of(s1, s2));
     organizations.put(organization.id(), organization);
 
     Set<AssetShareId> claimed =
-        ModeMigrationPolicy.claimedAssetShares(organizations, Map.of(), Map.of());
+        ModeMigrationPolicy.claimedOwnershipStakes(organizations, Map.of(), Map.of());
 
-    assertThat(claimed)
-        .as("第 ① 格：组织 assetSources 全部计入 claimed")
-        .containsExactlyInAnyOrder(s1, s2);
+    assertThat(claimed).as("第 ① 格：组织 assetSources 全部计入 claimed").containsExactlyInAnyOrder(s1, s2);
   }
 
   @Test
   void producingUnitClaimsMatchingShareOnly() {
-    ProductionUnit farmUnit = unit(FARM, OP1);
-    AssetShare sMatch = share(FARM, AssetKind.LAND, OP1, OP1, 3L, 0L);
-    AssetShare sZeroQty = share(FARM, AssetKind.LAND, OP1, OP1, 0L, 1L);
-    AssetShare sOtherOperator = share(FARM, AssetKind.LAND, OP1, OP2, 3L, 2L);
-    AssetShare sOtherIndustry = share(CRAFT_INDUSTRY, AssetKind.WORKSHOP, OP1, OP1, 3L, 3L);
+    ProductionProcess farmUnit = unit(FARM, OP1);
+    OwnershipStake sMatch = share(FARM, AssetKind.LAND, OP1, OP1, 3L, 0L);
+    OwnershipStake sZeroQty = share(FARM, AssetKind.LAND, OP1, OP1, 0L, 1L);
+    OwnershipStake sOtherOperator = share(FARM, AssetKind.LAND, OP1, OP2, 3L, 2L);
+    OwnershipStake sOtherIndustry = share(CRAFT_INDUSTRY, AssetKind.WORKSHOP, OP1, OP1, 3L, 3L);
 
-    Map<AssetShareId, AssetShare> shares = new LinkedHashMap<>();
+    Map<AssetShareId, OwnershipStake> shares = new LinkedHashMap<>();
     shares.put(sMatch.id(), sMatch);
     shares.put(sZeroQty.id(), sZeroQty);
     shares.put(sOtherOperator.id(), sOtherOperator);
     shares.put(sOtherIndustry.id(), sOtherIndustry);
 
     Set<AssetShareId> claimed =
-        ModeMigrationPolicy.claimedAssetShares(
+        ModeMigrationPolicy.claimedOwnershipStakes(
             Map.of(), Map.of(farmUnit.id(), farmUnit), shares);
 
     assertThat(claimed)
@@ -262,8 +270,8 @@ class ModeMigrationPolicyClaimedAssetsTest {
   @Test
   void singleArgOverloadCountsOnlyOrganizationReferences() {
     AssetShareId organizationShare = AssetShareId.parse("share-compat-org");
-    Map<ProductionOrganizationId, ProductionOrganization> organizations = new LinkedHashMap<>();
-    ProductionOrganization organization =
+    Map<ProductionOrganizationId, ProductionEnterprise> organizations = new LinkedHashMap<>();
+    ProductionEnterprise organization =
         organization(
             CRAFT,
             craftOwnerPosition(),
@@ -272,17 +280,17 @@ class ModeMigrationPolicyClaimedAssetsTest {
             List.of(organizationShare));
     organizations.put(organization.id(), organization);
 
-    ProductionUnit farmUnit = unit(FARM, OP1);
-    AssetShare unitShare = share(FARM, AssetKind.LAND, OP1, OP1, 3L, 0L);
+    ProductionProcess farmUnit = unit(FARM, OP1);
+    OwnershipStake unitShare = share(FARM, AssetKind.LAND, OP1, OP1, 3L, 0L);
 
-    Set<AssetShareId> singleArg = ModeMigrationPolicy.claimedAssetShares(organizations);
+    Set<AssetShareId> singleArg = ModeMigrationPolicy.claimedOwnershipStakes(organizations);
     Set<AssetShareId> threeArg =
-        ModeMigrationPolicy.claimedAssetShares(
+        ModeMigrationPolicy.claimedOwnershipStakes(
             organizations, Map.of(farmUnit.id(), farmUnit), Map.of(unitShare.id(), unitShare));
 
     assertThat(singleArg)
         .as("★ 兼容重载的语义只算组织引用（等价于三参传空 units/shares）")
-        .isEqualTo(ModeMigrationPolicy.claimedAssetShares(organizations, Map.of(), Map.of()))
+        .isEqualTo(ModeMigrationPolicy.claimedOwnershipStakes(organizations, Map.of(), Map.of()))
         .contains(organizationShare)
         .doesNotContain(unitShare.id());
     assertThat(threeArg)
@@ -298,13 +306,13 @@ class ModeMigrationPolicyClaimedAssetsTest {
         .isEmpty();
 
     Set<AssetShareId> claimed =
-        ModeMigrationPolicy.claimedAssetShares(
+        ModeMigrationPolicy.claimedOwnershipStakes(
             fixture.base().productionOrganizations(), fixture.units(), fixture.shares());
 
     assertThat(claimed)
         .as("★ organizations 空 + 在产 ESTATE unit + 对应份额 ⇒ unit 占用必须进 claimed")
         .contains(fixture.estateShareId());
-    AssetShare estateShare = fixture.shares().get(fixture.estateShareId());
+    OwnershipStake estateShare = fixture.shares().get(fixture.estateShareId());
     assertThat(ModeMigrationPolicy.isIdleShare(estateShare, claimed))
         .as("★ owner==operator 的份额被在产 unit 占用 ⇒ 不是闲置可租")
         .isFalse();
@@ -313,15 +321,12 @@ class ModeMigrationPolicyClaimedAssetsTest {
         .isTrue();
 
     ExpectedProfitBook.Prospect blocked = newcomerProspect(fixture, claimed);
-    assertThat(blocked.feasible())
-        .as("★ 新进入者不得把 ESTATE 在产份额当闲置租用 ⇒ NO_ASSET")
-        .isFalse();
+    assertThat(blocked.feasible()).as("★ 新进入者不得把 ESTATE 在产份额当闲置租用 ⇒ NO_ASSET").isFalse();
     assertThat(blocked.reason()).startsWith("NO_ASSET");
 
-    ExpectedProfitBook.Prospect idle = newcomerProspect(fixture, ModeMigrationPolicy.claimedAssetShares(Map.of()));
-    assertThat(idle.feasible())
-        .as("正对照：单参兼容重载（只算组织引用，空）仍把该份额当闲置 ⇒ 可行")
-        .isTrue();
+    ExpectedProfitBook.Prospect idle =
+        newcomerProspect(fixture, ModeMigrationPolicy.claimedOwnershipStakes(Map.of()));
+    assertThat(idle.feasible()).as("正对照：单参兼容重载（只算组织引用，空）仍把该份额当闲置 ⇒ 可行").isTrue();
     assertThat(idle.feasibleScale()).as("闲置份额 3 ⇒ assetScale=3").isEqualTo(3L);
   }
 }

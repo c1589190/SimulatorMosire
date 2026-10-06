@@ -1,11 +1,11 @@
 package io.mosire.simos.economy.api.labor;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
-import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
 
 /**
  * ★★ **一次劳动分配**（第三阶段设计稿 §四）："**这批人**把**这么多**劳动供给**这个主体**，在这个周期里"。
@@ -22,10 +22,11 @@ import io.mosire.simos.economy.api.id.ProductionUnitId;
  * 本模块**不认识** {@code PopulationGroup}（social 的类型）—— 只认它的稳定身份 {@link PeopleLotId}。方向是 {@code social →
  * economy-api}（设计稿 §八.1 明文允许），不是反过来。
  *
- * <p>★★ <b>{@code laborMilli} 的口径（P2-A §13.4 起）</b>：它是**本家户这一 tick 分给该生产活动/unit 的时间**，
- * 单位 = <b>毫小时</b>（{@code 1 小时 = 1000 毫小时}，定点整数，无浮点）。它是 {@code HouseholdLaborCommitment} 唯一的量纲；
- * 家户每 tick 的总时间预算 = {@code HouseholdEconomy.laborMilli}（由 Social 人口组成 × {@code HouseholdLaborTimeTable} 每 tick 重算），
- * 不变量 = {@code Σ allocations(household).laborMilli ≤ HouseholdEconomy.laborMilli}。★ 第二权威 {@code LaborSupply} 已删除。
+ * <p>★★ <b>{@code laborMilli} 的口径（P2-A §13.4 起）</b>：它是**本家户这一 tick 分给该生产活动/unit 的时间**， 单位 =
+ * <b>毫小时</b>（{@code 1 小时 = 1000 毫小时}，定点整数，无浮点）。它是 {@code HouseholdLaborCommitment} 唯一的量纲； 家户每 tick
+ * 的总时间预算 = {@code HouseholdEconomy.laborMilli}（由 Social 人口组成 × {@code HouseholdLaborTimeTable} 每
+ * tick 重算）， 不变量 = {@code Σ allocations(household).laborMilli ≤ HouseholdEconomy.laborMilli}。★ 第二权威
+ * {@code LaborSupply} 已删除。
  *
  * <p>★ **{@code period} = 发放周期**（世界周期序号，从 1 起）：本轮配额是**常设**的（跨周期不变，见 {@code 旧结算引擎（R3a 已删除）}
  * 的取用口径），故它现在由**构造期守卫**读（"该批次的供给记录必须与它同期"，见 {@code EconomyData}）；将来有了"按周期重发配额" 的命令，再按 {@code

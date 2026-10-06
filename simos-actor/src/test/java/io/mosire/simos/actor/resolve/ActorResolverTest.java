@@ -9,8 +9,8 @@ import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.Actor;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.address.Address;
@@ -33,9 +33,8 @@ import org.junit.jupiter.api.Test;
  * {@code actor:} 命名空间的地址解析（照 {@code EconomyResolver} 的形制与"空候选 / 抛"分工）。
  *
  * <p>★ <b>认两类主体</b>（{@code ActorData} 的两张带记录的表，每类各一个 kind）：{@code actor}（主体） / {@code goods}（库存）。 ★
- * 库存那一类的名字是**它聚合键的规范串**（P2-A §13.3 起 = 家户 id）—— 它的逆住在那 个类型自己的 {@code parse}
- * 里，<b>本解析器不复述任何格式</b>； 名字里带 {@code :} 时 canonical 会自动加引（§3.4 的按需加引，由 {@code Address} AST
- * 产出，本类不手写）。
+ * 库存那一类的名字是**它聚合键的规范串**（P2-A §13.3 起 = 家户 id）—— 它的逆住在那 个类型自己的 {@code parse} 里，<b>本解析器不复述任何格式</b>；
+ * 名字里带 {@code :} 时 canonical 会自动加引（§3.4 的按需加引，由 {@code Address} AST 产出，本类不手写）。
  *
  * <p>★ <b>2026-09-27 裁定 S3</b>：产权（{@code holding} kind）整块退役 ⇒ 本类不再认领它，相关用例随之删除。
  */
@@ -51,7 +50,7 @@ class ActorResolverTest {
   /** ★ P2-A 起库存键 = 家户身份（不再有 owner|hex 两段）。 */
   private static final HouseholdId HOUSEHOLD = new HouseholdId("hh-0_0-rural-poor_peasant");
 
-  private static final GoodsAccountKey GRAIN = new GoodsAccountKey(HOUSEHOLD);
+  private static final HouseholdAccountKey HOUSEHOLD_ACCOUNT = new HouseholdAccountKey(HOUSEHOLD);
 
   /** 一份已激活的切片：一个组织者主体（AGE）+ 一本家户账，外加一个 id 里含 {@code :} 的人口批次。 */
   private static final ActorData DATA =
@@ -61,8 +60,10 @@ class ActorResolverTest {
               Map.of(
                   ORGANIZATION, new Actor(ORGANIZATION, "农业组织者"),
                   LOT, new Actor(LOT, "0_0 的男性批次")))
-          .withAccounts(
-              Map.of(GRAIN, new GoodsAccount(GRAIN, Map.of(new CommodityId("grain"), 7L))));
+          .withInventories(
+              Map.of(
+                  HOUSEHOLD_ACCOUNT,
+                  new HouseholdInventory(HOUSEHOLD_ACCOUNT, Map.of(new CommodityId("grain"), 7L))));
 
   @Test
   void namespaceIsActor() {
@@ -114,13 +115,15 @@ class ActorResolverTest {
         .isEqualTo("PEOPLE_LOT:rural:0_0:MALE:1");
   }
 
-  /** 库存：名字是 {@code GoodsAccountKey} 的规范串（P2-A 起 = 家户 id）。 */
+  /** 库存：名字是 {@code HouseholdAccountKey} 的规范串（P2-A 起 = 家户 id）。 */
   @Test
-  void resolvesAGoodsAccountByItsCompositeKey() {
+  void resolvesAHouseholdInventoryByItsCompositeKey() {
     ResolvedSubject subject = only("actor:Map1:goods.hh-0_0-rural-poor_peasant");
 
     assertThat(subject.id().namespace()).isEqualTo("actor.goods");
-    assertThat(subject.id().localId()).isEqualTo(GRAIN.toString());
+    assertThat(subject.id().localId()).isEqualTo(HOUSEHOLD_ACCOUNT.toString());
+    // ★ 类型名仍是主代码 ActorResolver.resolveGoods 里写死的 "GoodsAccount"（类已改名 HouseholdInventory）：
+    //   本断言钉的是**当前主代码的对外契约**；陈旧字面量是否该跟着改名见测试报告的"主代码发现"。
     assertThat(subject.typeName()).isEqualTo("GoodsAccount");
     assertThat(subject.canonicalAddress()).isEqualTo("actor:Map1:goods.hh-0_0-rural-poor_peasant");
   }
@@ -156,8 +159,8 @@ class ActorResolverTest {
    *
    * <p>判别力：若把这些异常吞成空候选，"拼错主体种类"与"这个主体不存在"就再也分不开了。
    *
-   * <p>★ <b>P2-A 迁移（如实记）</b>：库存键缩小成"家户 id"后，非空白的名字一律合法（唯一拒绝是空白，而地址语法不会产生空白名）⇒
-   * 旧第三条"缺接缝的库存键 ⇒ 抛"不再可达，改为断言"合法但不存在 ⇒ 空候选"（同一判据的另一面：不吞也不误造）。
+   * <p>★ <b>P2-A 迁移（如实记）</b>：库存键缩小成"家户 id"后，非空白的名字一律合法（唯一拒绝是空白，而地址语法不会产生空白名）⇒ 旧第三条"缺接缝的库存键 ⇒
+   * 抛"不再可达，改为断言"合法但不存在 ⇒ 空候选"（同一判据的另一面：不吞也不误造）。
    */
   @Test
   void aBadNameInsideAClaimedKindThrows() {

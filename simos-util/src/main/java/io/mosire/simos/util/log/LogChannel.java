@@ -4,11 +4,10 @@ import java.util.Objects;
 import org.slf4j.Logger;
 
 /**
- * ★★ <b>logger 的薄 channel</b>（2026-10-09 用户裁定：通用 event 机制放 util）：只把
- * {@link LogEvent} 按级别转给 {@link EventLog#emit}，不持有任何领域状态、事件名或配置。
+ * ★★ <b>logger 的薄 channel</b>（2026-10-09 用户裁定：通用 event 机制放 util）：只把 {@link LogEvent} 按级别转给 {@link
+ * EventLog#emit}，不持有任何领域状态、事件名或配置。
  *
- * <p>模块门面继续只负责 logger 命名空间（如 {@code EconomyLog.migration()}），需要新式结构化日志的调用点
- * 可以：
+ * <p>模块门面继续只负责 logger 命名空间（如 {@code EconomyLog.migration()}），需要新式结构化日志的调用点 可以：
  *
  * <pre>{@code
  * LogChannel channel = EventLog.channel(EconomyLog.migration());

@@ -4,8 +4,8 @@ import io.mosire.simos.social.api.population.Sex;
 import java.util.Objects;
 
 /**
- * ★★ <b>家户劳动时间预算的可调系数表</b>（P2-A §13.4，2026-10-09 用户裁定）：每个家户每 tick 有一段有限时间，
- * 按成员人数与（年龄档 × 性别）折算；单位 = <b>毫小时</b>（{@code 1 小时 = 1000 毫小时}，定点整数、无浮点）。
+ * ★★ <b>家户劳动时间预算的可调系数表</b>（P2-A §13.4，2026-10-09 用户裁定）：每个家户每 tick 有一段有限时间， 按成员人数与（年龄档 × 性别）折算；单位 =
+ * <b>毫小时</b>（{@code 1 小时 = 1000 毫小时}，定点整数、无浮点）。
  *
  * <pre>
  * 默认（本批控制方给定值，可调；后续调试校准）：
@@ -15,13 +15,13 @@ import java.util.Objects;
  *   老年（60+）        0（待补；先确定口径，不等同于"永远不会配置"）
  * </pre>
  *
- * <p>★★ <b>口径</b>：{@link #perPersonMilliHours(int, Sex)} 是**每人每 tick** 的预算；家户预算 = Σ 成员
- * {@code count × perPersonMilliHours}。它是**重算量**（每 tick 从 Social 的家户成员与年龄现算），
- * 不是经济状态里的第二权威 —— {@code HouseholdEconomy.laborMilli} 只是它在本 tick 的投影。
+ * <p>★★ <b>口径</b>：{@link #perPersonMilliHours(int, Sex)} 是**每人每 tick** 的预算；家户预算 = Σ 成员 {@code count
+ * × perPersonMilliHours}。它是**重算量**（每 tick 从 Social 的家户成员与年龄现算）， 不是经济状态里的第二权威 —— {@code
+ * HouseholdEconomy.laborMilli} 只是它在本 tick 的投影。
  *
- * <p>★ <b>可编辑性</b>：默认值只有 {@link #DEFAULT} 一个拼写点；调用方（创世播种 / 协调器）可注入别的实例。
- * 年龄档序号与 {@code PopulationSeeder} 的 D4 三档同序：{@link #BRACKET_CHILD} / {@link #BRACKET_ADULT} /
- * {@link #BRACKET_ELDER}。
+ * <p>★ <b>可编辑性</b>：默认值只有 {@link #DEFAULT} 一个拼写点；调用方（创世播种 / 协调器）可注入别的实例。 年龄档序号与 {@code
+ * PopulationSeeder} 的 D4 三档同序：{@link #BRACKET_CHILD} / {@link #BRACKET_ADULT} / {@link
+ * #BRACKET_ELDER}。
  *
  * @param childMilliHoursPerTick 未成年每人每 tick 毫小时；不得为负
  * @param adultMaleMilliHoursPerTick 成年男每人每 tick 毫小时；不得为负
@@ -75,8 +75,7 @@ public record HouseholdLaborTimeTable(
           sex == Sex.MALE ? adultMaleMilliHoursPerTick : adultFemaleMilliHoursPerTick;
       case BRACKET_ELDER -> elderMilliHoursPerTick;
       default ->
-          throw new IllegalArgumentException(
-              "未知年龄档 " + ageBracket + "（合法值: 0=未成年 / 1=成年 / 2=老年）");
+          throw new IllegalArgumentException("未知年龄档 " + ageBracket + "（合法值: 0=未成年 / 1=成年 / 2=老年）");
     };
   }
 }

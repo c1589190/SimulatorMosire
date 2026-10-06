@@ -8,7 +8,8 @@ import java.util.Objects;
  * ★★ <b>一批在途货物</b>（M2.4）：路线 + 商品 + 发运/到达日 + 总量 + <b>逐票分配</b>。
  *
  * <p>★★ <b>它是跨 tick 状态</b>（{@code EconomyData} 的第 10 个组件 {@code shipments} 的值）：发运日建、到达日（或更晚） 才销账。★
- * 判据"到货前目的地不得消费"就落在这一维上 —— 货在 {@link #quantity()} 里、不在任何 {@code HouseholdInventory} 的余额里，消费与市场都读不到它。
+ * 判据"到货前目的地不得消费"就落在这一维上 —— 货在 {@link #quantity()} 里、不在任何 {@code HouseholdInventory}
+ * 的余额里，消费与市场都读不到它。
  *
  * <p>★★ <b>基线合同（M2.5）</b>：发运时买方付货款与运费、货权归买方（进入其在途资产）；卖方库存减少； 到达日"在途减、目的地库存增"；约定由买方承担运输损耗（{@link
  * ShipmentAllocation#lossBearer()} 逐票保留， **不为聚合丢掉**）。

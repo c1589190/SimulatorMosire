@@ -15,9 +15,9 @@ import org.junit.jupiter.api.Test;
  * S1/S2 模块边界验收（架构 §3.1/§3.2/§7 第 1、7 条，计划 §阶段 S4）：
  *
  * <ul>
- *   <li>{@code simos-social-api} 的 main 只 import {@code simos-map}、自己的 {@code social.api} 包与
- *       {@code com.fasterxml.jackson.annotation}（sealed 类型的线格式注解；2026-10-09 集成修复），
- *       不 import 任何领域模块、不 import {@code jackson-databind}；
+ *   <li>{@code simos-social-api} 的 main 只 import {@code simos-map}、自己的 {@code social.api} 包与 {@code
+ *       com.fasterxml.jackson.annotation}（sealed 类型的线格式注解；2026-10-09 集成修复）， 不 import 任何领域模块、不
+ *       import {@code jackson-databind}；
  *   <li>{@code HouseholdId}/{@code PeopleLotId}/{@code Sex} 的定义在全仓 main 里恰一份（都在本模块）；
  *   <li>旧包 {@code io.mosire.simos.economy.api.id.HouseholdId/PeopleLotId} 与 {@code
  *       io.mosire.simos.social.population.Sex} 在 src/main + src/test 均 0 引用。

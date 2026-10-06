@@ -45,9 +45,9 @@ import java.util.Optional;
  * 那条链路 = 阶段 13 的 {@code simos.gov.dispatchTeam}/{@code absorbUnit} 一类人员流转工具）。因此本工具绝不生成 {@code
  * social.*} 命令，也绝不把"没回写"伪装成"人员已安置"——需要回写的调用方必须走阶段 13 的完整链路。
  *
- * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：单位存在且带 {@link GovernmentFormation}；
- * {@code count ≥ 1}；{@code role} 词表；{@code 现有在编 < count} ⇒ 具名拒；待遇乘法溢出 ⇒ 具名拒；{@code payment > 0} 时无
- * 有效位置或国库可支配银不足 ⇒ 具名拒。
+ * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：单位存在且带 {@link
+ * GovernmentFormation}； {@code count ≥ 1}；{@code role} 词表；{@code 现有在编 < count} ⇒ 具名拒；待遇乘法溢出 ⇒
+ * 具名拒；{@code payment > 0} 时无 有效位置或国库可支配银不足 ⇒ 具名拒。
  *
  * <p>★ <b>确定性 / 保序不可变</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；Plan 不持有可变集合。
  */

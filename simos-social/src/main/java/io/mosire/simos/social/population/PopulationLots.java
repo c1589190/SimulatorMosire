@@ -21,8 +21,9 @@ import io.mosire.simos.social.api.population.Sex;
  * urban:<cityId>:}，见 {@link #urbanPrefix}）归属，与有多少个细分无关。
  *
  * <p>★★ **为什么命名而不是加字段**：{@code PopulationGroup} 的形状由设计稿 §三 + 架构 §4.2 定死（id / sex / count / age /
- * anchor），**不许多一个"城乡"或"属于哪座城"的字段** —— 那正是把 {@code HouseholdEconomy} 的老毛病（拿标签当主键）换个地方重演。 而"城里的人"这条关系在 R2+ 会由
- * {@code Relation}/{@code HouseholdLaborCommitment} **显式**表达（人 ↔ 主体 ↔ 活动）， 届时本类 只是**创世期的命名**，不再是判据的唯一来源。
+ * anchor），**不许多一个"城乡"或"属于哪座城"的字段** —— 那正是把 {@code HouseholdEconomy} 的老毛病（拿标签当主键）换个地方重演。
+ * 而"城里的人"这条关系在 R2+ 会由 {@code Relation}/{@code HouseholdLaborCommitment} **显式**表达（人 ↔ 主体 ↔ 活动）， 届时本类
+ * 只是**创世期的命名**，不再是判据的唯一来源。
  *
  * <p>★★ **一份拼写点**：lot id 只在本类里拼。{@link io.mosire.simos.social.SocialData#urbanPopulationAt(CityId)}
  * 按同一份 规则**反查**城的批次，故"城的城镇人口"完全从 {@code groups} 派生（R1 的 T5：{@code SocialCity.population} 不再是字段）。
@@ -74,9 +75,9 @@ public final class PopulationLots {
   /**
    * ★★ **生育结算期的**细分短名（R4 的月度遗留形态）：{@code b<结算期序号>}（{@code b} = born）。
    *
-   * <p>★ 它让"同一结算期出生的人"各自成批（同性别、同年龄 0 天、同锚点 ⇒ 属性确实完全相同），从而**年龄结构随推进演化**。
-   * ★ 2026-10-09 每 tick 引擎不再走月度结算，{@code HouseholdBook} 直接按 {@code b<day>-<家户>} 拼新生 cohort（见
-   * {@link #born(PopulationGroup, Sex, String)}）；本方法保留给仍按固定周期切批的调用方。
+   * <p>★ 它让"同一结算期出生的人"各自成批（同性别、同年龄 0 天、同锚点 ⇒ 属性确实完全相同），从而**年龄结构随推进演化**。 ★ 2026-10-09 每 tick
+   * 引擎不再走月度结算，{@code HouseholdBook} 直接按 {@code b<day>-<家户>} 拼新生 cohort（见 {@link
+   * #born(PopulationGroup, Sex, String)}）；本方法保留给仍按固定周期切批的调用方。
    */
   public static String bornCohort(long nowTick, long settlementDays) {
     if (nowTick < 0L || settlementDays < 1L) {
@@ -95,14 +96,13 @@ public final class PopulationLots {
    * </pre>
    *
    * <p>★★ **为什么按"母亲的前缀"而不是另起一套命名**：{@link #isUrban} 与 {@code SocialData#urbanPopulationAt(CityId)}
-   * 都按 id 的**前缀**归属 —— 另起一套会让"城里生的人"在城乡归属上凭空变成农村人（而那条归属正是经济侧分池的依据）。 位置前缀 = 母亲 id
-   * 去掉最后两段（性别 + 细分），故"住在哪、属于哪座城"自动继承，**不需要第二个字段**。
+   * 都按 id 的**前缀**归属 —— 另起一套会让"城里生的人"在城乡归属上凭空变成农村人（而那条归属正是经济侧分池的依据）。 位置前缀 = 母亲 id 去掉最后两段（性别 +
+   * 细分），故"住在哪、属于哪座城"自动继承，**不需要第二个字段**。
    *
-   * <p>★★ <b>P2-E 修：细分段带上母亲的细分</b>。P2-A 起一个 {@code (居住类型, 阶层)} 是一个**独立家户**，而同
-   * (城/格, 性别) 下不同阶层母亲的旧 id 规则（把末段整个换成 {@code b<期>}）会**撞同一个 id** ⇒ 旧月度结算的
-   * "同一新生批次只能归一个家户"守卫当场抛（实测 {@code urban:c-1_0:FEMALE:MALE:b17} 同时落在 poor/middle 两个家户）。
-   * 故新生批次的末段追加母亲的细分，让不同家户的新生批次天然分开；同一家户同一批母亲在同一期生的孩子仍可汇进同一条批次（每 tick
-   * 引擎为避免跨户/跨母撞 id，cohort 另带家户指纹）。
+   * <p>★★ <b>P2-E 修：细分段带上母亲的细分</b>。P2-A 起一个 {@code (居住类型, 阶层)} 是一个**独立家户**，而同 (城/格, 性别) 下不同阶层母亲的旧
+   * id 规则（把末段整个换成 {@code b<期>}）会**撞同一个 id** ⇒ 旧月度结算的 "同一新生批次只能归一个家户"守卫当场抛（实测 {@code
+   * urban:c-1_0:FEMALE:MALE:b17} 同时落在 poor/middle 两个家户）。
+   * 故新生批次的末段追加母亲的细分，让不同家户的新生批次天然分开；同一家户同一批母亲在同一期生的孩子仍可汇进同一条批次（每 tick 引擎为避免跨户/跨母撞 id，cohort 另带家户指纹）。
    */
   public static PeopleLotId born(PopulationGroup mother, Sex sex, String cohort) {
     if (mother == null) {
@@ -115,8 +115,7 @@ public final class PopulationLots {
     int lastSeparator = id.lastIndexOf(':');
     int sexSeparator = lastSeparator < 0 ? -1 : id.lastIndexOf(':', lastSeparator - 1);
     if (sexSeparator <= 0 || sexSeparator == lastSeparator - 1) {
-      throw new IllegalArgumentException(
-          "母亲批次的 id 必须形如 <前缀>:<性别>:<细分>（R4 的新生批次按前缀继承城乡归属）: " + id);
+      throw new IllegalArgumentException("母亲批次的 id 必须形如 <前缀>:<性别>:<细分>（R4 的新生批次按前缀继承城乡归属）: " + id);
     }
     String motherCohort = id.substring(lastSeparator + 1);
     return PeopleLotId.parse(

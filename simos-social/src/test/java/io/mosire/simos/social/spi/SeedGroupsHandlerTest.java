@@ -128,8 +128,7 @@ class SeedGroupsHandlerTest {
     assertThat(after.groups().get(PopulationLots.rural(H00, Sex.MALE, "1")))
         .as("整条替换（count 与 ageDays 一起换）")
         .isEqualTo(
-            new PopulationGroup(
-                PopulationLots.rural(H00, Sex.MALE, "1"), Sex.MALE, 200L, 20L, 0L));
+            new PopulationGroup(PopulationLots.rural(H00, Sex.MALE, "1"), Sex.MALE, 200L, 20L, 0L));
   }
 
   /** ★ 已有批次的其他 id 原样保留（本命令是"追加/覆盖点名的那些"，不是整表替换）。 */
@@ -205,8 +204,8 @@ class SeedGroupsHandlerTest {
   }
 
   /**
-   * ★★ **S2 位置语义**（架构 §4.2）：{@code PopulationGroup.residence} 已删，位置只由家户给出 ⇒ 条目没有声明家户时，
-   * handler 按 {@code {q,r}} 自动并入/新建 {@code hh:hex:<q>_<r>}（旧"必须已有 populations 序列"的判据已随 residence
+   * ★★ **S2 位置语义**（架构 §4.2）：{@code PopulationGroup.residence} 已删，位置只由家户给出 ⇒ 条目没有声明家户时， handler 按
+   * {@code {q,r}} 自动并入/新建 {@code hh:hex:<q>_<r>}（旧"必须已有 populations 序列"的判据已随 residence
    * 删除；本阶段不做旧世界迁移，仍接受无序列格的命令归属）。
    */
   @Test

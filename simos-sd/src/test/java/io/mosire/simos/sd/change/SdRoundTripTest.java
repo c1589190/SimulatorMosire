@@ -2,11 +2,18 @@ package io.mosire.simos.sd.change;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.id.DiplomaticEventId;
+import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.id.NationId;
+import io.mosire.simos.sd.model.CallStatus;
+import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.DiplomaticEvent;
 import io.mosire.simos.sd.model.DiplomaticRelation;
 import io.mosire.simos.sd.model.DiplomaticRelationKey;
+import io.mosire.simos.sd.model.FormattedCall;
+import io.mosire.simos.sd.model.MergedEffectPlan;
+import io.mosire.simos.sd.model.PacketStatus;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.sd.testing.SdFixtures;
@@ -49,8 +56,8 @@ class SdRoundTripTest {
   }
 
   @Test
-  void changeSetHasExactlyTwelveComponentsMatchingTheState() {
-    assertThat(SdChangeSet.class.getRecordComponents()).hasSize(12);
+  void changeSetHasExactlyFourteenComponentsMatchingTheState() {
+    assertThat(SdChangeSet.class.getRecordComponents()).hasSize(14);
     assertThat(componentNames(SdChangeSet.class))
         .as("变更集的每个组件都必须在 SdState 里有同名的 record 组件")
         .isSubsetOf(componentNames(SdState.class));
@@ -104,6 +111,82 @@ class SdRoundTripTest {
         .as("事件 participants 往返（保序）")
         .containsExactly(SdFixtures.N1, SdFixtures.N2);
     assertThat(extraEvent.text()).as("事件 text 往返").isEqualTo("追加外交事件（夹具）");
+  }
+
+  /**
+   * ★ D2/D3 新增的两个组件**逐字段**往返：决策包（状态/意图/calls 的 index
+   * 与工具/目标/合并引用/outcome/裁决留痕）与合并效果集（参与者/有序效果/来源/outcome）。
+   *
+   * <p>★ 判别力：{@code full()} 里既有 DRAFT 包也有 MERGED 包、两个计划一执行一未执行；目标态再各加一条。任何"重建时丢一个字段、但整态 equals
+   * 被别的字段掩盖"都不会发生，因为这里逐字段对照。
+   */
+  @Test
+  void theTwoNewDecisionComponentsSurviveTheRoundTripFieldByField() {
+    SdState base = SdFixtures.full();
+    SdState target =
+        SdFixtures.mutated(SdFixtures.mutated(base, "decisionPackets"), "mergedEffectPlans");
+    SdChangeSet cs = SdChangeSet.between(base, target);
+
+    assertThat(cs.decisionPackets().changed()).as("新增决策包必须被 between 看见").isTrue();
+    assertThat(cs.mergedEffectPlans().changed()).as("新增合并计划必须被 between 看见").isTrue();
+
+    SdState rebuilt = SdChangeSet.apply(cs, base);
+    assertThat(rebuilt).as("逐字段重建出 target").isEqualTo(target);
+
+    DecisionPacket extra = rebuilt.decisionPackets().get(new DecisionPacketId("pkt-extra"));
+    assertThat(extra).as("新增决策包本身在重建态里").isNotNull();
+    assertThat(extra.branch()).as("branch 往返").isEqualTo("main");
+    assertThat(extra.tick()).as("tick 往返").isZero();
+    assertThat(extra.proposerId()).as("proposerId 往返").isEqualTo(SdFixtures.DM1);
+    assertThat(extra.status()).as("status 往返").isEqualTo(PacketStatus.DRAFT);
+    assertThat(extra.intent()).as("intent 往返").isEqualTo("夹具意图-pkt-extra");
+    assertThat(extra.createdAtRevision()).as("createdAtRevision 往返").isEqualTo(1L);
+    assertThat(extra.calls()).as("call 数量往返").hasSize(2);
+    FormattedCall second = extra.calls().get(1);
+    assertThat(second.callIndex()).as("callIndex 往返").isEqualTo(1);
+    assertThat(second.toolName()).as("toolName 往返").isEqualTo("sd.PutInfo");
+    assertThat(second.argsJson()).as("argsJson 往返").contains("k1");
+    assertThat(second.targets())
+        .as("targets 往返")
+        .extracting(callTarget -> callTarget.namespace())
+        .containsExactly("sd");
+    assertThat(second.status()).as("call status 往返").isEqualTo(CallStatus.PENDING);
+    assertThat(second.mergedPlanId()).as("未合并的 call 缺省 mergedPlanId 不丢").isEmpty();
+    assertThat(second.outcomeJson()).as("未执行的 call 缺省 outcomeJson 不丢").isEmpty();
+
+    DecisionPacket merged = rebuilt.decisionPackets().get(SdFixtures.P2);
+    assertThat(merged).as("既有 MERGED 包原样保留").isNotNull();
+    assertThat(merged.status()).as("既有包状态往返").isEqualTo(PacketStatus.MERGED);
+    assertThat(merged.calls().get(0).mergedPlanId())
+        .as("MERGED call 的 mergedPlanId 往返")
+        .contains(SdFixtures.MP1.value());
+    assertThat(merged.calls().get(0).outcomeJson())
+        .as("MERGED call 的执行摘要往返")
+        .contains("{\"applied\":true}");
+    assertThat(merged.decidedBy()).as("decidedBy 往返").contains("gm");
+    assertThat(merged.decidedAtRevision()).as("decidedAtRevision 往返").hasValue(5L);
+    assertThat(merged.decisionNote()).as("decisionNote 往返").contains("并入合并集");
+
+    MergedEffectPlan extraPlan =
+        rebuilt.mergedEffectPlans().get(new MergedEffectPlanId("merge-extra"));
+    assertThat(extraPlan).as("新增合并计划本身在重建态里").isNotNull();
+    assertThat(extraPlan.tick()).as("计划 tick 往返").isZero();
+    assertThat(extraPlan.participantIds())
+        .as("参与者往返（保序）")
+        .containsExactly(SdFixtures.DM1, SdFixtures.DM2);
+    assertThat(extraPlan.orderedEffects()).as("有序效果数量往返").hasSize(1);
+    assertThat(extraPlan.orderedEffects().get(0).toolName())
+        .as("有序效果 toolName 往返")
+        .isEqualTo("simos.unit.raiseUnit");
+    assertThat(extraPlan.orderedEffects().get(0).sourceCallRefs())
+        .as("有序效果来源引用往返")
+        .containsExactly(SdFixtures.P1.value() + ":0");
+    assertThat(extraPlan.sources()).as("sources 往返").containsExactly(SdFixtures.P1.value() + ":0");
+    assertThat(extraPlan.reasonInfoId()).as("计划 reasonInfoId 往返").contains("info-merge");
+    assertThat(extraPlan.outcome()).as("未执行计划的 outcome 缺省不丢").isEmpty();
+
+    MergedEffectPlan executed = rebuilt.mergedEffectPlans().get(SdFixtures.MP2);
+    assertThat(executed.outcome()).as("已执行计划的 outcome 往返").contains("{\"applied\":true}");
   }
 
   @Test
@@ -183,6 +266,8 @@ class SdRoundTripTest {
       case "info" -> cs.info().changed();
       case "diplomaticRelations" -> cs.diplomaticRelations().changed();
       case "diplomaticEvents" -> cs.diplomaticEvents().changed();
+      case "decisionPackets" -> cs.decisionPackets().changed();
+      case "mergedEffectPlans" -> cs.mergedEffectPlans().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }

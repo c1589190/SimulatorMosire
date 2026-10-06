@@ -23,9 +23,9 @@ import java.util.Objects;
  *  "ageAtAnchorDays"?: 7200, "anchorTick"?: 30, "reason":"入籍"}
  * }</pre>
  *
- * <p>★ <b>载荷语义</b>：{@code lotId} 可缺省——缺省时用 {@link #deriveLotId} 生成确定性的新批次 id（同一 base 状态 + 同一家户
- * ⇒ 同一 id；app 工具预览与命令落盘共用这一份规则）；{@code count} &gt; 0；{@code ageAtAnchorDays} 缺省 0；{@code
- * anchorTick} 缺省 = 当前世界日（{@code state.meta().timestamp().tick()}）。批次 id 已存在 ⇒ 具名拒（不做静默合并）。
+ * <p>★ <b>载荷语义</b>：{@code lotId} 可缺省——缺省时用 {@link #deriveLotId} 生成确定性的新批次 id（同一 base 状态 + 同一家户 ⇒ 同一
+ * id；app 工具预览与命令落盘共用这一份规则）；{@code count} &gt; 0；{@code ageAtAnchorDays} 缺省 0；{@code anchorTick} 缺省
+ * = 当前世界日（{@code state.meta().timestamp().tick()}）。批次 id 已存在 ⇒ 具名拒（不做静默合并）。
  *
  * <p>★ <b>语义</b>：只调 {@link HouseholdBook#addMembers}；落一条 {@code GM_ADJUST} 事件（可回放），守恒检查在域层收口。
  */

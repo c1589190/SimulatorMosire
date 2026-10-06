@@ -215,9 +215,7 @@ class UnitCasualtyRevisionTest {
     assertThat(payload)
         .as("★ 载荷里只有 payloadDigest，且形状是 `sha256:` + 32 位十六进制（sha256 前 16 字节，裁定 45）")
         .containsPattern("\"payloadDigest\":\"sha256:[0-9a-f]{32}\"");
-    assertThat(payload)
-        .as("★ m6：delta 的字段名不进事件载荷")
-        .doesNotContain("equipment");
+    assertThat(payload).as("★ m6：delta 的字段名不进事件载荷").doesNotContain("equipment");
     assertThat(payload)
         .as("★ m6：delta 的数值不进事件载荷（负数一定带 `-`，十六进制里不可能出现）")
         .doesNotContain("-30")

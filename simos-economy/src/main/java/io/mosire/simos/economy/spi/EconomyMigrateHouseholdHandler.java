@@ -4,11 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.CohortKey;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.json.SimosObjectMapper;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -21,8 +21,9 @@ import java.util.Objects;
 /**
  * ★★ <b>S3.3 {@code economy.MigrateHousehold} 的最小合法入口</b>（计划 §S3.5 命令面）：
  * 把一条家户行从原格搬到目标格，<b>身份不变</b>（{@link HouseholdId} 仍是同一把键）、 <b>人口不变</b>（只搬 {@code
- * HouseholdEconomy.view}，不新增/删除任何人）、 <b>成员份额不变</b>（{@code Membership} 只挂 household + lot，不含格，故原样带过）、
- * <b>资产份额不变</b>（{@code OwnershipStake.industry/owner/operator} 不含居住格；人迁走而份额留在原产业是合法形态， 如不在村地主）。
+ * HouseholdEconomy.view}，不新增/删除任何人）、 <b>成员份额不变</b>（{@code Membership} 只挂 household +
+ * lot，不含格，故原样带过）、 <b>资产份额不变</b>（{@code OwnershipStake.industry/owner/operator}
+ * 不含居住格；人迁走而份额留在原产业是合法形态， 如不在村地主）。
  *
  * <pre>{@code
  * {"household":"hh-0_0-rural-poor_peasant","toHex":"1_0"}
@@ -33,12 +34,10 @@ import java.util.Objects;
  * actor 命名空间的第二条命令，也不会把同一笔粮变成两本账。
  *
  * <p>★ <b>fail-closed</b>：家户不存在 / 目标格不在图上 / 目标格就是原格 ⇒ {@code Rejected}（不产生半截 revision）。
- *
  */
 public final class EconomyMigrateHouseholdHandler implements CommandHandler {
 
   private static final String COMMAND = "economy.MigrateHousehold";
-
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
@@ -79,7 +78,8 @@ public final class EconomyMigrateHouseholdHandler implements CommandHandler {
               householdEconomy.id(),
               // ★ S3 审计：迁移只换格，**阶层原样保留当前 view**（可能是 landless_laborer/artisan/official）；
               //   不从旧四档反推，也不改 participationPerMille（EconomyData 守卫对派生阶层不施加创世槽位上限）。
-              new CohortKey(to, householdEconomy.view().residence(), householdEconomy.view().stratum()),
+              new CohortKey(
+                  to, householdEconomy.view().residence(), householdEconomy.view().stratum()),
               householdEconomy.population(),
               householdEconomy.laborMilli(),
               householdEconomy.participationPerMille(),
@@ -90,7 +90,8 @@ public final class EconomyMigrateHouseholdHandler implements CommandHandler {
               householdEconomy.cycleNaturalNeedMilli());
       Map<HouseholdId, HouseholdEconomy> householdEconomies = new LinkedHashMap<>(base.classes());
       householdEconomies.put(household, movedHouseholdEconomy);
-      return new HandlerOutcome.Applied(EconomyChangeSet.between(base, base.withHouseholdEconomies(householdEconomies)));
+      return new HandlerOutcome.Applied(
+          EconomyChangeSet.between(base, base.withHouseholdEconomies(householdEconomies)));
     } catch (IllegalArgumentException | com.fasterxml.jackson.core.JsonProcessingException e) {
       return new HandlerOutcome.Rejected(e.getMessage());
     }

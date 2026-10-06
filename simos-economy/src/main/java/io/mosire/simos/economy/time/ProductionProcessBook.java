@@ -4,9 +4,9 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -146,7 +146,10 @@ public final class ProductionProcessBook {
 
   /** ★★ 索引口径的计划规模（产能规模查 {@link SettlementIndex}；计划系数的算式与旧签名逐字相同）。 */
   public static long plannedCapacityScaleOf(
-      ProductionProcess unit, Industry industry, SettlementIndex index, OperatorCondition condition) {
+      ProductionProcess unit,
+      Industry industry,
+      SettlementIndex index,
+      OperatorCondition condition) {
     return capacityScaleOf(unit, industry, index)
         * StressPolicy.plannedScalePerMille(
             condition == null ? OperatorCondition.IndustryStatus.ACTIVE : condition.status())

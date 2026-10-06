@@ -16,19 +16,19 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * {@code social.SetHouseholdLocation} 命令的处理器（S3a，2026-10-09 / 架构 §4.1）：把家户在 {@code HEX ↔ UNIT} 之间移动。
+ * {@code social.SetHouseholdLocation} 命令的处理器（S3a，2026-10-09 / 架构 §4.1）：把家户在 {@code HEX ↔ UNIT}
+ * 之间移动。
  *
  * <pre>{@code
  * {"householdId":"hh-1","location":{"type":"UNIT","unitId":"gov-central"},"reason":"编入官府"}
  * }</pre>
  *
- * <p>★ <b>语义</b>：只调 {@link HouseholdBook#setLocation}（位置唯一真值源）；家户不存在、位置形状不符 ⇒ 具名拒。
- * ★ <b>UNIT 的 unit 侧一致性</b>（{@code unit.households} 同步）由 app 组合工具同批保证（架构 §3.3）——本命令只动 Social 切片，
- * 不认识 unit（铁律 3）。
+ * <p>★ <b>语义</b>：只调 {@link HouseholdBook#setLocation}（位置唯一真值源）；家户不存在、位置形状不符 ⇒ 具名拒。 ★ <b>UNIT 的 unit
+ * 侧一致性</b>（{@code unit.households} 同步）由 app 组合工具同批保证（架构 §3.3）——本命令只动 Social 切片， 不认识 unit（铁律 3）。
  *
- * <p>★ <b>目标声明</b>（{@link CommandTargets}）：2026-10-20 起走跨命名空间 {@link #targetResources}——**旧位置 + 新位置**
- * 两条（旧位置查 SocialData 现值，新位置读载荷），各自按 HEX ⇒ {@code social:<q>_<r>} / UNIT ⇒ {@code unit:<unitId>}
- * 解析。双边都判是刻意的：只判新位置会让"把范围内家户改到范围外"从授权面溜过去。旧 {@link #targetPaths} 保留（只给新 HEX
+ * <p>★ <b>目标声明</b>（{@link CommandTargets}）：2026-10-20 起走跨命名空间 {@link #targetResources}——**旧位置 +
+ * 新位置** 两条（旧位置查 SocialData 现值，新位置读载荷），各自按 HEX ⇒ {@code social:<q>_<r>} / UNIT ⇒ {@code
+ * unit:<unitId>} 解析。双边都判是刻意的：只判新位置会让"把范围内家户改到范围外"从授权面溜过去。旧 {@link #targetPaths} 保留（只给新 HEX
  * 位置，升级前逐字一致）。
  */
 public final class SetHouseholdLocationHandler implements CommandHandler, CommandTargets {

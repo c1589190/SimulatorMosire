@@ -10,16 +10,16 @@ import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
-import io.mosire.simos.actor.model.GoodsAccount;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.tools.write.WorldgenInitializeTool;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.model.ClassRow;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.map.GameMap;
@@ -444,12 +444,11 @@ public final class CompactThreeNationsWorld {
         conditions,
         conditionsNation,
         NATION_REGIONS,
-        EconomySeeder.FoundationProfile.PRODUCTION_RUNTIME); // P0.1：class-first 已删，唯一路线是 production-runtime
+        EconomySeeder.FoundationProfile
+            .PRODUCTION_RUNTIME); // P0.1：class-first 已删，唯一路线是 production-runtime
   }
 
-  /**
-   * ★★ <b>R2a：用 profile 初始化单个 region</b>（唯一值 = {@code PRODUCTION_RUNTIME}）。
-   */
+  /** ★★ <b>R2a：用 profile 初始化单个 region</b>（唯一值 = {@code PRODUCTION_RUNTIME}）。 */
   public static JsonNode initializeNation(
       CoreSimos core, RegionId region, EconomySeeder.FoundationProfile profile) throws IOException {
     return initializeNations(
@@ -695,7 +694,7 @@ public final class CompactThreeNationsWorld {
   public static long grainAccountMilli(ActorData books) {
     CommodityId grain = new CommodityId(EconomyVocabulary.GRAIN_COMMODITY_ID);
     long total = 0L;
-    for (GoodsAccount account : books.accounts().values()) {
+    for (HouseholdInventory account : books.accounts().values()) {
       total += account.balances().getOrDefault(grain, 0L);
     }
     return total;
@@ -716,7 +715,7 @@ public final class CompactThreeNationsWorld {
   /** 全部 actor 货币账的余额合计（最小币值）。 */
   public static long moneyTotalMilli(ActorData books) {
     long total = 0L;
-    for (GoodsAccount account : books.accounts().values()) {
+    for (HouseholdInventory account : books.accounts().values()) {
       for (long value : account.money().values()) {
         total += value;
       }
@@ -773,7 +772,7 @@ public final class CompactThreeNationsWorld {
       }
       long population = 0L;
       long classRows = 0L;
-      for (ClassRow row : economy.classes().values()) {
+      for (HouseholdEconomy row : economy.classes().values()) {
         if (area.contains(row.view().hex())) {
           population += row.population();
           classRows++;
@@ -795,7 +794,7 @@ public final class CompactThreeNationsWorld {
       long income = 0L;
       long unmet = 0L;
       for (FlowRow flow : economy.flows().values()) {
-        ClassRow row = economy.classes().get(flow.id());
+        HouseholdEconomy row = economy.classes().get(flow.id());
         if (row == null || !area.contains(row.view().hex())) {
           continue;
         }
@@ -805,7 +804,7 @@ public final class CompactThreeNationsWorld {
       }
       long debts = 0L;
       for (DebtContract debt : economy.debtContracts().values()) {
-        ClassRow row = economy.classes().get(debt.debtor());
+        HouseholdEconomy row = economy.classes().get(debt.debtor());
         if (row != null && area.contains(row.view().hex())) {
           debts++;
         }

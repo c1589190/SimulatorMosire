@@ -598,8 +598,8 @@ public final class HouseholdQueryService {
   private record MemberHits(List<MemberHit> hits, boolean partial) {}
 
   /**
-   * 逐成员计算命中集合；{@code partial=true} 表示这个家户有成员被成员级过滤器挡掉——家户级指标（劳动/需求/账户/参与率/债务）
-   * 不能只按命中成员拆，故后续置为 {@code member-filter-partial} unavailable（见 §5 的正确性补条）。
+   * 逐成员计算命中集合；{@code partial=true} 表示这个家户有成员被成员级过滤器挡掉——家户级指标（劳动/需求/账户/参与率/债务） 不能只按命中成员拆，故后续置为
+   * {@code member-filter-partial} unavailable（见 §5 的正确性补条）。
    */
   private static MemberHits memberHits(
       Household household, SocialData social, CalendarClock clock, long nowTick, Filters filters) {
@@ -787,7 +787,10 @@ public final class HouseholdQueryService {
 
   /** 事件是否通过成员级 filters（年龄档/性别/城乡）；不通过则不落桶、不计人数。 */
   private static boolean eventPassesFilters(
-      HouseholdPopulationEvent event, SelectedHousehold household, Filters filters, SocialData social) {
+      HouseholdPopulationEvent event,
+      SelectedHousehold household,
+      Filters filters,
+      SocialData social) {
     AgeBracket bracket = eventBracket(event);
     if (!filters.ageBrackets().isEmpty() && !filters.ageBrackets().contains(bracket)) {
       return false;

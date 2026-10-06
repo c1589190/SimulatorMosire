@@ -127,7 +127,9 @@ class CityLandP6Test {
         .hasMessageContaining("builtAreaMu");
   }
 
-  /** 探针 {@code ProbeEconomy.hexDistance} 的只读口径（{@code |Δq|+|Δr|}，不是 {@link HexCoord#distanceTo}）。 */
+  /**
+   * 探针 {@code ProbeEconomy.hexDistance} 的只读口径（{@code |Δq|+|Δr|}，不是 {@link HexCoord#distanceTo}）。
+   */
   private static long probeHexDistance(HexCoord left, HexCoord right) {
     return Math.abs((long) left.q() - right.q()) + Math.abs((long) left.r() - right.r());
   }

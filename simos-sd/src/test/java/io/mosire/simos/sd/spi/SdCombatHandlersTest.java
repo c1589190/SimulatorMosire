@@ -17,6 +17,15 @@ import io.mosire.simos.sd.model.OutcomeTable;
 import io.mosire.simos.sd.model.Trigger;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.sd.testing.SdWorlds;
+import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.household.HouseholdLocation;
+import io.mosire.simos.social.api.household.HouseholdProfile;
+import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.social.api.population.HouseholdVitalRates;
+import io.mosire.simos.social.api.population.Sex;
+import io.mosire.simos.social.household.Household;
+import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -44,6 +53,8 @@ class SdCombatHandlersTest {
   private static final CombatOutcomeId O2 = new CombatOutcomeId("o2");
   private static final UnitId U1 = SdWorlds.ROOT_UNIT;
   private static final UnitId U2 = new UnitId("u-2");
+  private static final PeopleLotId GARRISON_LOT = new PeopleLotId("lot-garrison");
+  private static final HouseholdId GARRISON_HOUSEHOLD = new HouseholdId("hh-u-1");
 
   // ── C1 ──────────────────────────────────────────────────────────────
 
@@ -198,7 +209,10 @@ class SdCombatHandlersTest {
     HandlerOutcome outcome =
         handle(
             new RecordCasualtiesHandler(), combatState(twoStages()), casualtiesPayload(-101, -5));
-    assertThat(rejected(outcome)).contains("人员战损超出当前值");
+    assertThat(rejected(outcome))
+        .as("上界来自 social 现算的家户人口 100（S3b）")
+        .contains("人员战损超出家户人口")
+        .contains("100");
   }
 
   @Test
@@ -247,7 +261,26 @@ class SdCombatHandlersTest {
 
   private static SimulationState world(SdState sd) {
     UnitState units = withSecondUnit(SdWorlds.units());
-    return SdWorlds.world(sd, SdWorlds.map(), units);
+    return SdWorlds.world(sd, SdWorlds.map(), units, social(), 0L);
+  }
+
+  /**
+   * S3b：人员上界 = 该 unit 的家户人口现算。恰 100 人 ⇒ {@code -100} 收、{@code -101} 拒（既有边界用例的字面量由此而来）。
+   *
+   * <p>批次 {@code count} 与家户份额必须相等（{@link SocialData} 构造期跨组件守恒）。
+   */
+  private static SocialData social() {
+    PopulationGroup lot =
+        new PopulationGroup(GARRISON_LOT, Sex.MALE, 100L, 3650L, SdWorlds.T0.tick());
+    Household household =
+        new Household(
+            GARRISON_HOUSEHOLD,
+            new HouseholdLocation.Unit(U1.value()),
+            new HouseholdProfile("第一连家户", null, Map.of()),
+            Map.of(GARRISON_LOT, 100L),
+            new HouseholdVitalRates(List.of()));
+    return SocialData.empty()
+        .withGroupsAndHouseholds(Map.of(GARRISON_LOT, lot), Map.of(GARRISON_HOUSEHOLD, household));
   }
 
   private static UnitState withSecondUnit(UnitState base) {

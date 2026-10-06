@@ -13,10 +13,12 @@ import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentLevel;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.RelativeOffset;
@@ -288,17 +290,18 @@ class GovScopeTest {
       String id,
       Optional<HexCoord> position,
       Optional<Jurisdiction> jurisdiction,
-      Optional<GovLevel> level) {
+      Optional<GovernmentLevel> level) {
     return withModule(
         id,
         position,
         jurisdiction,
         Optional.of(
-            new GovFormation(
+            new GovernmentFormation(
+                Map.of(),
                 Map.of(),
                 OfficePolicy.defaults(),
                 Optional.empty(),
-                level.orElse(GovLevel.CENTRAL))));
+                level.orElse(GovernmentLevel.CENTRAL))));
   }
 
   private static Unit plainUnit(String id, HexCoord position) {
@@ -314,6 +317,11 @@ class GovScopeTest {
       Optional<HexCoord> position,
       Optional<Jurisdiction> jurisdiction,
       Optional<UnitModule> module) {
+    List<HouseholdId> households =
+        module
+            .filter(GovernmentFormation.class::isInstance)
+            .map(ignored -> List.of(GovernmentHouseholds.of(id)))
+            .orElseGet(List::of);
     return new Unit(
         new UnitId(id),
         "单位 " + id,
@@ -333,7 +341,9 @@ class GovScopeTest {
         Optional.empty(),
         Unit.DEFAULT_VISION_RADIUS,
         jurisdiction,
-        module);
+        module,
+        Map.of(),
+        households);
   }
 
   /** 防御性自检：夹具的 region 前缀真的与 map 对得上（拼错 id 时用例会全红而不是恒真）。 */

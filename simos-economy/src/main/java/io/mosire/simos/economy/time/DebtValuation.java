@@ -6,8 +6,8 @@ import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.model.Market;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -26,11 +26,11 @@ import java.util.OptionalLong;
  * <p>本类回答两组问题：
  *
  * <ol>
- *   <li><b>估值顺序</b>：先看调用方给的<b>单个家户价目表</b>（{@link HouseholdPriceTable}；当前正式状态没有这个字段 ⇒
- *       调用方传 {@code null}）；该户没有对应价格时，回落该户所在<b>市场区默认价目表</b>（{@link Market#prices()}）；
+ *   <li><b>估值顺序</b>：先看调用方给的<b>单个家户价目表</b>（{@link HouseholdPriceTable}；当前正式状态没有这个字段 ⇒ 调用方传 {@code
+ *       null}）；该户没有对应价格时，回落该户所在<b>市场区默认价目表</b>（{@link Market#prices()}）；
  *   <li><b>任意 medium ↔ 任意 {@link DebtUnit} 的折算</b>：commodity ↔ commodity、commodity ↔ money、money ↔
- *       money；缺任一侧价格 ⇒ 该 medium 对这条债具名不可折算（{@link PaymentPlan#unpricedAssets()}），调用方据此跳下一条，
- *       <b>不静默当 0</b>。
+ *       money；缺任一侧价格 ⇒ 该 medium 对这条债具名不可折算（{@link PaymentPlan#unpricedAssets()}），调用方据此跳下一条， <b>不静默当
+ *       0</b>。
  * </ol>
  *
  * <p>★★ <b>共同尺度（唯一拼写点）</b>：一个单位的共同价值 {@code unitValue} 定义成
@@ -40,10 +40,9 @@ import java.util.OptionalLong;
  * Money(cur)   = 1000                     // 仅当 cur == 价目表 numeraire；1 商品单位 = 1000 毫商品
  * </pre>
  *
- * <p>于是 {@code q(毫 medium) → debtUnits(毫 debt)} 的整数折算恒为
- * {@code ⌊q × unitValue(medium) ÷ unitValue(debt)⌋}。这条式子同时给出本类类注里那四条既有算式：粮价
- * {@code price(grain)} 作为分母把共同尺度落回“毫粮等值”时，商品债为 {@code principal × price(c) / price(grain)}、
- * 货币债为 {@code principal × 1000 / price(grain)}（D-030 §3.4）。
+ * <p>于是 {@code q(毫 medium) → debtUnits(毫 debt)} 的整数折算恒为 {@code ⌊q × unitValue(medium) ÷
+ * unitValue(debt)⌋}。这条式子同时给出本类类注里那四条既有算式：粮价 {@code price(grain)} 作为分母把共同尺度落回“毫粮等值”时，商品债为 {@code
+ * principal × price(c) / price(grain)}、 货币债为 {@code principal × 1000 / price(grain)}（D-030 §3.4）。
  *
  * <p>★★ <b>量纲与整数口径</b>（与 {@link Market#prices()} 一致；1 商品单位 = {@value
  * EconomyVocabulary#MILLI_PER_COMMODITY_UNIT} 毫商品）：
@@ -55,11 +54,10 @@ import java.util.OptionalLong;
  * 同商品 / 同币种                                  :  1:1（identity，不需要价目表）
  * </pre>
  *
- * <p>★★ <b>防 1000 倍错（量纲写死）</b>：{@link Market#prices()} 的价格 p 是<b>毫 numeraire / 1 商品单位</b>，而
- * 1 商品单位 = {@value EconomyVocabulary#MILLI_PER_COMMODITY_UNIT} 毫商品；本类的 {@code quantity/amount/principal}
- * 又全是<b>毫</b>单位。所以商品价直接取 {@code price(c)}（不是 {@code price(c)/1000}），货币的“单位价”取 1000
- * —— 两条腿的毫数量乘各自的 unitValue 后才是同一量纲；{@code 商品↔货币} 的 1000 因子正是从
- * “1 商品单位 = 1000 毫商品”来的。
+ * <p>★★ <b>防 1000 倍错（量纲写死）</b>：{@link Market#prices()} 的价格 p 是<b>毫 numeraire / 1 商品单位</b>，而 1 商品单位
+ * = {@value EconomyVocabulary#MILLI_PER_COMMODITY_UNIT} 毫商品；本类的 {@code quantity/amount/principal}
+ * 又全是<b>毫</b>单位。所以商品价直接取 {@code price(c)}（不是 {@code price(c)/1000}），货币的“单位价”取 1000 —— 两条腿的毫数量乘各自的
+ * unitValue 后才是同一量纲；{@code 商品↔货币} 的 1000 因子正是从 “1 商品单位 = 1000 毫商品”来的。
  *
  * <p>★ <b>identity 腿为什么不需要价格</b>：粮还粮、银还银是"原物原还"，不是折算；没有市场的格子里这笔债也必须能还。
  *
@@ -83,9 +81,7 @@ public final class DebtValuation {
     /** 家户价目表的计价货币；不得为 null。 */
     CurrencyId numeraire();
 
-    /**
-     * 该户对某商品的单价（毫 {@code numeraire} / 商品单位）；{@code <= 0} = <b>本户没有对应价格</b> ⇒ 回落市场默认。
-     */
+    /** 该户对某商品的单价（毫 {@code numeraire} / 商品单位）；{@code <= 0} = <b>本户没有对应价格</b> ⇒ 回落市场默认。 */
     long priceOf(HouseholdId household, CommodityId commodity);
   }
 
@@ -120,8 +116,8 @@ public final class DebtValuation {
   }
 
   /**
-   * ★★ <b>债权人 → 收款 actor 的唯一解析口</b>：默认 {@link #HOUSEHOLD_ACTORS}（家户 actor）；外部放贷主体 / 政府的账户
-   * 只要在 {@code AccountSession}/{@code actor} 账里可收，就可以由调用方换一份 resolver 把债权人 id 指到那个 actor。
+   * ★★ <b>债权人 → 收款 actor 的唯一解析口</b>：默认 {@link #HOUSEHOLD_ACTORS}（家户 actor）；外部放贷主体 / 政府的账户 只要在
+   * {@code AccountSession}/{@code actor} 账里可收，就可以由调用方换一份 resolver 把债权人 id 指到那个 actor。
    */
   @FunctionalInterface
   public interface RepayeeResolver {
@@ -129,9 +125,7 @@ public final class DebtValuation {
     /** 默认：债权人是家户，收款 actor = {@link HouseholdActors#of(HouseholdId)}。 */
     RepayeeResolver HOUSEHOLD_ACTORS = HouseholdActors::of;
 
-    /**
-     * 解析收款 actor；返回 {@code null} = 说不出收款人（调用方必须具名 fail-closed，不许静默吞款）。
-     */
+    /** 解析收款 actor；返回 {@code null} = 说不出收款人（调用方必须具名 fail-closed，不许静默吞款）。 */
     ActorRef resolve(HouseholdId creditor);
   }
 
@@ -172,10 +166,10 @@ public final class DebtValuation {
    * 一次付款选择的纯结果。
    *
    * @param legs 有序付款腿（按调用方给的介质序；逐值 &gt; 0；保序不可变）
-   * @param totalContractUnits Σ {@link PaymentLeg#contractUnits()}（= 本次可减少的本金；≤ 传入本金，≤
-   *     {@code Long.MAX_VALUE}）
-   * @param unpricedAssets 手头持有、但<b>没有价格</b>因而没有折算的资产（稳定序：{@code commodity:…} / {@code money:…}）；
-   *     非空 = 调用方必须落具名 skip，不许静默付 0
+   * @param totalContractUnits Σ {@link PaymentLeg#contractUnits()}（= 本次可减少的本金；≤ 传入本金，≤ {@code
+   *     Long.MAX_VALUE}）
+   * @param unpricedAssets 手头持有、但<b>没有价格</b>因而没有折算的资产（稳定序：{@code commodity:…} / {@code money:…}）； 非空
+   *     = 调用方必须落具名 skip，不许静默付 0
    */
   public record PaymentPlan(
       List<PaymentLeg> legs, long totalContractUnits, List<String> unpricedAssets) {
@@ -184,7 +178,8 @@ public final class DebtValuation {
       Objects.requireNonNull(legs, "PaymentPlan.legs 不得为 null");
       Objects.requireNonNull(unpricedAssets, "PaymentPlan.unpricedAssets 不得为 null");
       if (totalContractUnits < 0L) {
-        throw new IllegalArgumentException("PaymentPlan.totalContractUnits 不得为负: " + totalContractUnits);
+        throw new IllegalArgumentException(
+            "PaymentPlan.totalContractUnits 不得为负: " + totalContractUnits);
       }
       List<PaymentLeg> legsCopy = new ArrayList<>(legs.size());
       long sum = 0L;
@@ -248,8 +243,8 @@ public final class DebtValuation {
    * Money(cur):   amount × 1000 ÷ price(grain)      // 仅 cur == market.numeraire
    * </pre>
    *
-   * <p>返回空 = 不可定价（market 缺、缺 grain 价、缺该单位价）。{@code amount == 0} ⇒ 返回 0（已结清的历史合同不再占
-   * unpriced）。本方法是 {@link DebtCapacityBook#marketPriceLookup(Map)} 的唯一算式来源。
+   * <p>返回空 = 不可定价（market 缺、缺 grain 价、缺该单位价）。{@code amount == 0} ⇒ 返回 0（已结清的历史合同不再占 unpriced）。本方法是
+   * {@link DebtCapacityBook#marketPriceLookup(Map)} 的唯一算式来源。
    */
   public static OptionalLong grainEquivalentMilli(long amountMilli, DebtUnit unit, Market market) {
     Objects.requireNonNull(unit, "unit 不得为 null");
@@ -298,9 +293,7 @@ public final class DebtValuation {
     return OptionalLong.of(convert(amountMilli, unitValue, 1L));
   }
 
-  /**
-   * 一条单位在已解析价目表下的共同价值（毫 numeraire / 商品单位，或货币的 1000）：<b>不要</b>在别处重写这条 switch。
-   */
+  /** 一条单位在已解析价目表下的共同价值（毫 numeraire / 商品单位，或货币的 1000）：<b>不要</b>在别处重写这条 switch。 */
   private static long commonUnitValue(Pricing pricing, DebtUnit unit) {
     return switch (unit) {
       case DebtUnit.Commodity commodity -> pricing.priceOf(commodity.commodity());
@@ -314,12 +307,11 @@ public final class DebtValuation {
   // ── 付款选择 ───────────────────────────────────────────────────────────────────────────────
 
   /**
-   * ★★ <b>按调用方给定的介质序，给一笔债挑一组"能付得最多"的实际介质腿</b>（纯函数；D-030 §3.5 的逐 debt × 逐
-   * medium 口径）。
+   * ★★ <b>按调用方给定的介质序，给一笔债挑一组"能付得最多"的实际介质腿</b>（纯函数；D-030 §3.5 的逐 debt × 逐 medium 口径）。
    *
-   * <p>介质序由调用方定（生产路径 = 全部货币按余额降序、再全部商品按余额降序）；本方法只按该序逐项尝试：identity
-   * 直接 1:1；其它单位用 {@link #commonValueMilli} 同一套价目表折成共同价值，floor、最多还清本金；缺价项进 {@link
-   * PaymentPlan#unpricedAssets()} 具名跳过，换下一条 medium。
+   * <p>介质序由调用方定（生产路径 = 全部货币按余额降序、再全部商品按余额降序）；本方法只按该序逐项尝试：identity 直接 1:1；其它单位用 {@link
+   * #commonValueMilli} 同一套价目表折成共同价值，floor、最多还清本金；缺价项进 {@link PaymentPlan#unpricedAssets()}
+   * 具名跳过，换下一条 medium。
    *
    * @param outstandingPrincipal 合同未偿本金（合同计价单位；必须 &gt; 0）
    * @param unit 合同计价口径（商品 / 货币）
@@ -341,7 +333,8 @@ public final class DebtValuation {
     Objects.requireNonNull(unit, "DebtValuation.choosePayment 的 unit 不得为 null");
     Objects.requireNonNull(debtor, "DebtValuation.choosePayment 的 debtor 不得为 null");
     Objects.requireNonNull(mediumOrder, "DebtValuation.choosePayment 的 mediumOrder 不得为 null");
-    Objects.requireNonNull(availableByUnit, "DebtValuation.choosePayment 的 availableByUnit 不得为 null");
+    Objects.requireNonNull(
+        availableByUnit, "DebtValuation.choosePayment 的 availableByUnit 不得为 null");
     if (outstandingPrincipal <= 0L) {
       throw new IllegalArgumentException(
           "DebtValuation.choosePayment 的 outstandingPrincipal 必须 > 0: " + outstandingPrincipal);
@@ -415,9 +408,8 @@ public final class DebtValuation {
   /**
    * ★★ <b>旧 P11.1 入口（兼容保留）</b>：给一笔债挑一组"能付得最多"的实际介质腿。
    *
-   * <p>它按旧顺序构造介质表（合同单位 identity → 其它商品 id 升序 → 币种 id 升序）后委托给上面的
-   * {@link #choosePayment(long, DebtUnit, HouseholdId, List, Map, Market, HouseholdPriceTable)}，因此旧调用方行为不变；
-   * 生产偿还路径使用显式介质序的重载。
+   * <p>它按旧顺序构造介质表（合同单位 identity → 其它商品 id 升序 → 币种 id 升序）后委托给上面的 {@link #choosePayment(long,
+   * DebtUnit, HouseholdId, List, Map, Market, HouseholdPriceTable)}，因此旧调用方行为不变； 生产偿还路径使用显式介质序的重载。
    *
    * @param outstandingPrincipal 合同未偿本金（合同计价单位；必须 &gt; 0）
    * @param unit 合同计价口径（商品 / 货币）
@@ -518,7 +510,10 @@ public final class DebtValuation {
 
   /** 已解析的价目表视图：家户表优先、否则市场默认；两者计价货币不同 ⇒ 不混用（缺价 ⇒ 0 = 无价格）。 */
   private record Pricing(
-      CurrencyId numeraire, Market market, HouseholdPriceTable householdPrices, HouseholdId household) {
+      CurrencyId numeraire,
+      Market market,
+      HouseholdPriceTable householdPrices,
+      HouseholdId household) {
 
     long priceOf(CommodityId commodity) {
       if (householdPrices != null) {
@@ -570,8 +565,7 @@ public final class DebtValuation {
   }
 
   /**
-   * 在 {@code convert(q) = ⌊q × numerator ÷ denominator⌋ ≤ targetUnits} 下取最大的 {@code q ≤
-   * available}。
+   * 在 {@code convert(q) = ⌊q × numerator ÷ denominator⌋ ≤ targetUnits} 下取最大的 {@code q ≤ available}。
    *
    * <p>★ 这不是"(target × denominator ÷ numerator) 再 floor"的近似：那个写法在整数网格上会少用 1 毫资产（如
    * target=10、num=3、den=2 时只取 6 而正解是 7）。正解：{@code q ≤ ⌊(((target+1) × den − 1)) ÷ num⌋}。
@@ -587,8 +581,7 @@ public final class DebtValuation {
     long bound;
     try {
       bound =
-          Math.subtractExact(
-                  Math.multiplyExact(Math.addExact(targetUnits, 1L), denominator), 1L)
+          Math.subtractExact(Math.multiplyExact(Math.addExact(targetUnits, 1L), denominator), 1L)
               / numerator;
     } catch (ArithmeticException overflow) {
       throw new IllegalStateException(

@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentLevel;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.StaffRole;
 import java.util.LinkedHashMap;
@@ -126,7 +126,7 @@ class GovEfficiencyTest {
   void nullGovOrDemandThrows() {
     assertThatThrownBy(() -> GovEfficiency.of(null, demand(200L, 100L)))
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("gov 不得为 null");
+        .hasMessageContaining("governmentFormation 不得为 null");
     assertThatThrownBy(() -> GovEfficiency.of(gov(1L, 1L, 0L), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("demand 不得为 null");
@@ -159,13 +159,17 @@ class GovEfficiencyTest {
 
   // ── 夹具 ────────────────────────────────────────────────────────────────────────────
 
-  private static GovFormation gov(long yamen, long scribe, long post) {
+  private static GovernmentFormation gov(long yamen, long scribe, long post) {
     Map<StaffRole, Long> staff = new LinkedHashMap<>();
     staff.put(StaffRole.YAMEN, yamen);
     staff.put(StaffRole.SCRIBE, scribe);
     staff.put(StaffRole.POST, post);
-    return new GovFormation(
-        staff, new OfficePolicy(0L, 0L, 0L, 0L, Map.of()), Optional.empty(), GovLevel.CENTRAL);
+    return new GovernmentFormation(
+        staff,
+        Map.of(),
+        new OfficePolicy(0L, 0L, 0L, 0L, Map.of()),
+        Optional.empty(),
+        GovernmentLevel.CENTRAL);
   }
 
   private static Map<HexCoord, GovDemand.HexDemand> demand(long security, long paperwork) {

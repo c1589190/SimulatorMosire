@@ -47,12 +47,12 @@ import org.slf4j.Logger;
  * <ol>
  *   <li><b>逐单位</b>：{@code units.units()} 按 {@link UnitId#value()} 升序；只征 {@code
  *       efficiencyPerMilleByUnit} 里<b>查得到</b>的单位；
- *   <li><b>无 GOV ⇒ 不征</b>：查不到效率（没有 {@code GovernmentFormation}/没有 GOV 读数）⇒ <b>整单位跳过、不征</b>； 不读已退役的 {@code
- *       Jurisdiction.administrationPerMille}、不补 0；
+ *   <li><b>无 GOV ⇒ 不征</b>：查不到效率（没有 {@code GovernmentFormation}/没有 GOV 读数）⇒ <b>整单位跳过、不征</b>； 不读已退役的
+ *       {@code Jurisdiction.administrationPerMille}、不补 0；
  *   <li><b>逐区域</b>：{@code Jurisdiction.taxRatePerMilleByRegion} 的 key 按 {@link RegionId#value()}
  *       升序， rate = 0 跳过；区域不在 {@code map.regions()} ⇒ 具名 {@link GapKind#REGION_MISSING} 并跳过；
- *   <li><b>税基</b>：区域各 hex 上的家户行（{@code rows} 的 location = {@link HouseholdEconomy#view()}.hex()）， 按 {@link
- *       HouseholdId#value()} 升序；余额 ≤ 0 跳过；<b>征着自己的国库家户排除</b> （自征自返只是账面噪声）；
+ *   <li><b>税基</b>：区域各 hex 上的家户行（{@code rows} 的 location = {@link HouseholdEconomy#view()}.hex()）， 按
+ *       {@link HouseholdId#value()} 升序；余额 ≤ 0 跳过；<b>征着自己的国库家户排除</b> （自征自返只是账面噪声）；
  *   <li><b>国库落点</b>：GOV 单位 → {@link GovernmentHouseholdResolver} 解析出的政府家户（{@code
  *       hh-gov-&lt;unitId&gt;}， 资金先入它的账户，俸禄再从同一账户支出）；无有效位置 ⇒ 具名 {@link GapKind#NO_POSITION} 并跳过该单位
  *       （沿用旧合约：无座位 = 无行政，不征）；

@@ -24,8 +24,8 @@ import org.junit.jupiter.api.Test;
  * <p>判据分四块：
  *
  * <ol>
- *   <li>{@link GovFormation}/{@link ArmyFormation}/{@link OfficePolicy} 的 null / 负值 / 空白 role
- *       一律当场抛，不静默钳制；
+ *   <li>{@link GovernmentFormation}/{@link ArmyFormation}/{@link OfficePolicy} 的 null / 负值 / 空白
+ *       role 一律当场抛，不静默钳制；
  *   <li>{@code staff}/{@code staffCap} **保序不可变**——入参 map 事后改动不影响结果，直接 put 抛（{@code Map.copyOf}
  *       会打乱序，这里必须是 LinkedHashMap + unmodifiableMap）；
  *   <li>{@link OfficePolicy#defaults()} 的常量**来源**逐值等于 {@link EconomyVocabulary}（粮/布），其余为 0/空；
@@ -39,13 +39,18 @@ class UnitModuleTest {
   private static final HexCoord H11 = new HexCoord(1, 1);
   private static final UnitId U1 = new UnitId("u-1");
 
-  // ── GovFormation：构造期不变量 ─────────────────────────────────
+  // ── GovernmentFormation：构造期不变量 ─────────────────────────────────
 
   @Test
   void govFormationRejectsNullStaff() {
     assertThatThrownBy(
             () ->
-                new GovFormation(null, OfficePolicy.defaults(), Optional.empty(), GovLevel.CENTRAL))
+                new GovernmentFormation(
+                    null,
+                    Map.of(),
+                    OfficePolicy.defaults(),
+                    Optional.empty(),
+                    GovernmentLevel.CENTRAL))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("staff 不得为 null（无人员用 Map.of()）");
   }
@@ -56,8 +61,12 @@ class UnitModuleTest {
     nullKey.put(null, 1L);
     assertThatThrownBy(
             () ->
-                new GovFormation(
-                    nullKey, OfficePolicy.defaults(), Optional.empty(), GovLevel.CENTRAL))
+                new GovernmentFormation(
+                    nullKey,
+                    Map.of(),
+                    OfficePolicy.defaults(),
+                    Optional.empty(),
+                    GovernmentLevel.CENTRAL))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("staff 的键与值都不得为 null");
 
@@ -65,8 +74,12 @@ class UnitModuleTest {
     nullValue.put(StaffRole.SCRIBE, null);
     assertThatThrownBy(
             () ->
-                new GovFormation(
-                    nullValue, OfficePolicy.defaults(), Optional.empty(), GovLevel.CENTRAL))
+                new GovernmentFormation(
+                    nullValue,
+                    Map.of(),
+                    OfficePolicy.defaults(),
+                    Optional.empty(),
+                    GovernmentLevel.CENTRAL))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("staff 的键与值都不得为 null");
   }
@@ -75,26 +88,34 @@ class UnitModuleTest {
   void govFormationRejectsNegativeStaffWithoutClamping() {
     assertThatThrownBy(
             () ->
-                new GovFormation(
+                new GovernmentFormation(
                     Map.of(StaffRole.YAMEN, -1L),
+                    Map.of(),
                     OfficePolicy.defaults(),
                     Optional.empty(),
-                    GovLevel.CENTRAL))
+                    GovernmentLevel.CENTRAL))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("staff 的值必须 ≥ 0: YAMEN=-1");
   }
 
   @Test
   void govFormationRejectsNullPolicySuperiorAndLevel() {
-    assertThatThrownBy(() -> new GovFormation(Map.of(), null, Optional.empty(), GovLevel.CENTRAL))
+    assertThatThrownBy(
+            () ->
+                new GovernmentFormation(
+                    Map.of(), Map.of(), null, Optional.empty(), GovernmentLevel.CENTRAL))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("policy 不得为 null");
     assertThatThrownBy(
-            () -> new GovFormation(Map.of(), OfficePolicy.defaults(), null, GovLevel.CENTRAL))
+            () ->
+                new GovernmentFormation(
+                    Map.of(), Map.of(), OfficePolicy.defaults(), null, GovernmentLevel.CENTRAL))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("superiorGov 不得为 null（无上级用 Optional.empty()）");
     assertThatThrownBy(
-            () -> new GovFormation(Map.of(), OfficePolicy.defaults(), Optional.empty(), null))
+            () ->
+                new GovernmentFormation(
+                    Map.of(), Map.of(), OfficePolicy.defaults(), Optional.empty(), null))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("level 不得为 null");
   }
@@ -107,8 +128,9 @@ class UnitModuleTest {
     staff.put(StaffRole.POST, 1L);
     staff.put(StaffRole.SCRIBE, 5L);
 
-    GovFormation formation =
-        new GovFormation(staff, OfficePolicy.defaults(), Optional.empty(), GovLevel.CENTRAL);
+    GovernmentFormation formation =
+        new GovernmentFormation(
+            staff, Map.of(), OfficePolicy.defaults(), Optional.empty(), GovernmentLevel.CENTRAL);
 
     staff.put(StaffRole.YAMEN, 99L);
     staff.put(StaffRole.SCRIBE, 88L);
@@ -245,9 +267,9 @@ class UnitModuleTest {
     assertThat(StaffRole.values())
         .as("GOV 编制角色恰三个（古称；Army.role 是自由短名、词表后置）")
         .containsExactly(StaffRole.SCRIBE, StaffRole.YAMEN, StaffRole.POST);
-    assertThat(GovLevel.values())
+    assertThat(GovernmentLevel.values())
         .as("层级恰中央/省两档")
-        .containsExactly(GovLevel.CENTRAL, GovLevel.PROVINCE);
+        .containsExactly(GovernmentLevel.CENTRAL, GovernmentLevel.PROVINCE);
   }
 
   // ── 一单位一标签：sealed 类型层 ────────────────────────────────
@@ -256,8 +278,8 @@ class UnitModuleTest {
   void unitModuleIsSealedWithExactlyGovAndArmyPermitted() {
     assertThat(UnitModule.class.isSealed()).as("互斥由 sealed 类型层保证").isTrue();
     assertThat(UnitModule.class.getPermittedSubclasses())
-        .as("许可子类恰 GovFormation / ArmyFormation，没有第三条路")
-        .containsExactlyInAnyOrder(GovFormation.class, ArmyFormation.class);
+        .as("许可子类恰 GovernmentFormation / ArmyFormation，没有第三条路")
+        .containsExactlyInAnyOrder(GovernmentFormation.class, ArmyFormation.class);
   }
 
   @Test
@@ -283,11 +305,15 @@ class UnitModuleTest {
 
     assertThatThrownBy(
             () ->
-                UnitOperations.setGovFormation(
+                UnitOperations.setGovernmentFormation(
                     withArmy,
                     U1,
-                    new GovFormation(
-                        Map.of(), OfficePolicy.defaults(), Optional.empty(), GovLevel.CENTRAL)))
+                    new GovernmentFormation(
+                        Map.of(),
+                        Map.of(),
+                        OfficePolicy.defaults(),
+                        Optional.empty(),
+                        GovernmentLevel.CENTRAL)))
         .as("一单位至多一个编制标签：不静默替换")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("ArmyFormation")
@@ -300,11 +326,15 @@ class UnitModuleTest {
   @Test
   void aUnitThatAlreadyHasGovFormationRejectsArmyFormation() {
     UnitState withGov =
-        UnitOperations.setGovFormation(
+        UnitOperations.setGovernmentFormation(
             stateOf(plainUnit()),
             U1,
-            new GovFormation(
-                Map.of(), OfficePolicy.defaults(), Optional.empty(), GovLevel.CENTRAL));
+            new GovernmentFormation(
+                Map.of(),
+                Map.of(),
+                OfficePolicy.defaults(),
+                Optional.empty(),
+                GovernmentLevel.CENTRAL));
 
     assertThatThrownBy(
             () ->
@@ -312,11 +342,11 @@ class UnitModuleTest {
                     withGov, U1, new ArmyFormation(Optional.empty(), "garrison")))
         .as("一单位至多一个编制标签：不静默替换")
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("GovFormation")
+        .hasMessageContaining("GovernmentFormation")
         .hasMessageContaining("至多一个");
     assertThat(withGov.units().get(U1).module().orElseThrow())
         .as("拒绝后原标签一字不动")
-        .isInstanceOf(GovFormation.class);
+        .isInstanceOf(GovernmentFormation.class);
   }
 
   // ── 夹具 ───────────────────────────────────────────────────────

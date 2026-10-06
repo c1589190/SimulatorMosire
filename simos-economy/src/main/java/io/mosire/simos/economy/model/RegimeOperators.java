@@ -52,8 +52,8 @@ public final class RegimeOperators {
    * ★★ <b>P11.7 / D-024：商人 regime 的唯一拼写点</b> —— 该制度下的产业是贸易/承运（如 seeder 的 {@code trade}）。
    *
    * <p>★ <b>本批只落 regime 字面量</b>：{@code BY_REGIME} 的"默认经营主体"表<b>不</b>登记它（贸易产业的 operator 必须由载荷
-   * 显式给出；未给 ⇒ 既有的 fail-closed），{@code RegimeRelations} 的四档默认关系表也仍不含它（那两个表不在本阶段文件所有权内）。
-   * 它服务的是"按 mode 选产业模板"这条映射（{@link #defaultRegimeForMode(ProductionModeId)}）。
+   * 显式给出；未给 ⇒ 既有的 fail-closed），{@code RegimeRelations} 的四档默认关系表也仍不含它（那两个表不在本阶段文件所有权内）。 它服务的是"按 mode
+   * 选产业模板"这条映射（{@link #defaultRegimeForMode(ProductionModeId)}）。
    */
   public static final String MERCHANT = "merchant";
 
@@ -108,11 +108,11 @@ public final class RegimeOperators {
 
   /**
    * ★★ <b>生产方式 → 它默认使用的生产制度（唯一映射点）</b>：{@code tenancy_* → tenant}、{@code wage_farm → feudal}、
-   * {@code handicraft_workshop → handicraft}、{@code family_farm → household}、{@code merchant → merchant}；
-   * 其余（{@code displaced}/GM 自定义 mode）⇒ 空（调用方按自己的 fail-closed 回退）。
+   * {@code handicraft_workshop → handicraft}、{@code family_farm → household}、{@code merchant →
+   * merchant}； 其余（{@code displaced}/GM 自定义 mode）⇒ 空（调用方按自己的 fail-closed 回退）。
    *
-   * <p>★ 它是"按 mode 选产业模板"的唯一拼写点：{@code EconomyEnterpriseSettlement.selectIndustry}、
-   * {@code ModeMigrationPolicy.industriesForMode}、{@code ModeMigrationSettlement} 都读它，免得三处各写一遍 if 链。
+   * <p>★ 它是"按 mode 选产业模板"的唯一拼写点：{@code EconomyEnterpriseSettlement.selectIndustry}、 {@code
+   * ModeMigrationPolicy.industriesForMode}、{@code ModeMigrationSettlement} 都读它，免得三处各写一遍 if 链。
    */
   public static Optional<String> defaultRegimeForMode(ProductionModeId modeId) {
     if (modeId == null) {

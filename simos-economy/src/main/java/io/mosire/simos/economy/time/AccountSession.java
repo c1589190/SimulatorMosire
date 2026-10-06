@@ -26,18 +26,18 @@ import java.util.function.Function;
 /**
  * ★★ <b>结算会话的唯一账户表</b>（S1 / P1.4-P1.5 / R1 线程安全内核；P2-A §13.3 起账户主体统一为家户）。
  *
- * <p>★★ <b>形状变化（如实记）</b>：改前是按 {@link AccountPartitionKey}（{@code (ActorRef, HexCoord)}）索引的
- * "家户账 + 经营者账"双轨表 —— 庄园/作坊/商号的 operator 也各持一本会话账。现在：
+ * <p>★★ <b>形状变化（如实记）</b>：改前是按 {@link AccountPartitionKey}（{@code (ActorRef, HexCoord)}）索引的 "家户账 +
+ * 经营者账"双轨表 —— 庄园/作坊/商号的 operator 也各持一本会话账。现在：
  *
  * <ul>
  *   <li><b>唯一主体 = 家户</b>：键 = {@link HouseholdId}（{@link AccountPartitionKey} 就是它）；
- *   <li><b>没有 operator 索引/视图</b>：一切账户读写都走家户地图；组织角色（庄园/作坊/商号）必须先由调用方
- *       解析到组织者/经营者家户，解析不到 ⇒ 具名拒绝（本类不提供"静默跳过"的旁路）；
+ *   <li><b>没有 operator 索引/视图</b>：一切账户读写都走家户地图；组织角色（庄园/作坊/商号）必须先由调用方 解析到组织者/经营者家户，解析不到 ⇒
+ *       具名拒绝（本类不提供"静默跳过"的旁路）；
  *   <li><b>位置不参与身份</b>：{@code registerHousehold} 收一份登记位置，只服务分区与转移 location 的核对。
  * </ul>
  *
- * <p>★ <b>R1 的线程安全分工</b>：活表只有协调器线程可读写；worker 只拿 {@link AccountSnapshot} 与本地
- * {@link AccountIntentBuffer}；唯一写口是 {@link #commit(Collection)}。
+ * <p>★ <b>R1 的线程安全分工</b>：活表只有协调器线程可读写；worker 只拿 {@link AccountSnapshot} 与本地 {@link
+ * AccountIntentBuffer}；唯一写口是 {@link #commit(Collection)}。
  */
 public final class AccountSession {
 
@@ -142,7 +142,8 @@ public final class AccountSession {
   /** 取（必要时建）一本家户账；本方法只服务"该家户应有账"的路径，不会静默返回 null。 */
   public ActorAccount account(HouseholdId household) {
     checkCoordinatorThread();
-    AccountPartitionKey key = new AccountPartitionKey(Objects.requireNonNull(household, "household"));
+    AccountPartitionKey key =
+        new AccountPartitionKey(Objects.requireNonNull(household, "household"));
     return accounts.computeIfAbsent(key, ActorAccount::new);
   }
 
@@ -274,8 +275,7 @@ public final class AccountSession {
             boolean fromKnown = actorKeyOrNull(transfer.from()) != null;
             boolean toKnown = actorKeyOrNull(transfer.to()) != null;
             if (!fromKnown || !toKnown) {
-              throw new IllegalStateException(
-                  "账户主体只有家户：转移两端必须先解析到已登记家户账（不得静默跳过）：转移=" + transfer);
+              throw new IllegalStateException("账户主体只有家户：转移两端必须先解析到已登记家户账（不得静默跳过）：转移=" + transfer);
             }
             EconomySettlement.applyTransfer(
                 householdGoods(),

@@ -35,9 +35,10 @@ import java.util.Optional;
  * <p>★★ <b>为什么必须有这一处</b>：四条事实分布在三个切片 —— {@link Unit#households()}（unit）、 {@link
  * HouseholdLocation.Unit}（social）、{@link Government#treasury()}（economy）、{@code actor} 的账户（政府家户账户）。
  * 创建侧由 {@code social.CreateHousehold(UNIT)} + {@code economy.RegisterGovernment} + {@code
- * actor.EnsureHouseholdAccount} 成对写；本类在推进入口把“四边都在且逐值对应”判死 —— 少了任何一边都 fail-closed，不把“没有政府记录”读成“没有政府”、也不让某个
- * GOV 单位悄悄共用别家的国库。★ 2026-10-09 唯一列表裁定后本类不再读 {@code GovernmentFormation.households}（该组件已删除），改读
- * {@code Unit.households}；并新增位置锚点校验，拒绝“家户列表里有、位置却钉在旧 HEX”的僵尸国库。
+ * actor.EnsureHouseholdAccount} 成对写；本类在推进入口把“四边都在且逐值对应”判死 —— 少了任何一边都
+ * fail-closed，不把“没有政府记录”读成“没有政府”、也不让某个 GOV 单位悄悄共用别家的国库。★ 2026-10-09 唯一列表裁定后本类不再读 {@code
+ * GovernmentFormation.households}（该组件已删除），改读 {@code Unit.households}；并新增位置锚点校验，拒绝“家户列表里有、位置却钉在旧
+ * HEX”的僵尸国库。
  *
  * <p>★ <b>只读 + 纯函数</b>：不改入参；不一致以 {@link Mismatch} 具名列出，{@link #requireConsistent} 折成一条异常。
  * 世界级政府（{@code world-silver} 这类非单位派生 id）不在本类射程内（{@link GovernmentIds#unitRefOf(GovernmentId)}

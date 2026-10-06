@@ -34,18 +34,18 @@ import java.util.Set;
  * ★★ <b>家户生命周期服务</b>（2026-10-09 家户/人口架构 §5）：纯函数式——进 {@link SocialData}、出**新的</b> {@link
  * SocialData}，不改入参。家户创建/位置/画像/成员增删/转移/率设置/GM 直调/事件落账/逐日生死结算都在这里收口。
  *
- * <p>★★ <b>唯一落账口</b>：人口事件表（{@code SocialData.populationEvents}）只由本类的 {@link #applyEvent} /
- * {@link #applyEvents}（单事件与批量）与 {@link #transferMembers}（原子双腿转移：事件形状里没有"对手方"，两条腿必须
+ * <p>★★ <b>唯一落账口</b>：人口事件表（{@code SocialData.populationEvents}）只由本类的 {@link #applyEvent} / {@link
+ * #applyEvents}（单事件与批量）与 {@link #transferMembers}（原子双腿转移：事件形状里没有"对手方"，两条腿必须
  * 同时落，否则中间态会出现"人凭空消失/两个家户引用同一批次"）写入。{@link #applyEvent} 的重复 id 一律拒。
  *
  * <p>★★ <b>守恒检查</b>：每个写方法出口都调 {@link #requireConservation(SocialData)} —— 逐 lot 有且只有一个家户、
  * 成员批次都存在、无负人数；失败 ⇒ 具名 {@link IllegalArgumentException} + ERROR 日志（DEBUG 级记通过时的读数）。
  *
- * <p>★★ <b>日志</b>（架构 §6 的事件名与级别语义）：生命周期/汇总走 INFO（事件名见各方法），
- * 对账/守恒走 DEBUG，逐批次明细走 TRACE；logger 一律从 {@link SocialLog} 取，调用方不得自拼 logger 名。
+ * <p>★★ <b>日志</b>（架构 §6 的事件名与级别语义）：生命周期/汇总走 INFO（事件名见各方法）， 对账/守恒走 DEBUG，逐批次明细走 TRACE；logger 一律从
+ * {@link SocialLog} 取，调用方不得自拼 logger 名。
  *
- * <p>★ <b>时间口径</b>：{@link #settleVitalEvents(SocialData, long)} 显式接世界日；手工命令类方法
- * （{@link #removeMembers} / {@link #transferMembers} / {@link #setVitalRates} / {@link #adjustPopulation}）
+ * <p>★ <b>时间口径</b>：{@link #settleVitalEvents(SocialData, long)} 显式接世界日；手工命令类方法 （{@link
+ * #removeMembers} / {@link #transferMembers} / {@link #setVitalRates} / {@link #adjustPopulation}）
  * 没有 {@code day} 入参 ⇒ 事件 {@code day} 取"状态内已知的最大日"（{@link #latestDay(SocialData)}），
  * 时间参与者接入（S3+）后由调用方改用带 {@code day}/{@link CalendarClock} 的重载。
  */
@@ -84,7 +84,8 @@ public final class HouseholdBook {
     SocialLog.household()
         .info(
             "event=HOUSEHOLD_CREATED "
-                + SocialLog.kv("id", id, "location", location, "name", profile.name(), "members", 0));
+                + SocialLog.kv(
+                    "id", id, "location", location, "name", profile.name(), "members", 0));
     SocialLog.trace()
         .trace("event=HOUSEHOLD_CREATED_DETAIL " + SocialLog.kv("id", id, "profile", profile));
     return requireConservation(result);
@@ -113,8 +114,7 @@ public final class HouseholdBook {
     Objects.requireNonNull(profile, "profile");
     requireReason(reason);
     Household household = base.requireHousehold(id);
-    SocialData result =
-        base.withHouseholds(replaceHousehold(base, household.withProfile(profile)));
+    SocialData result = base.withHouseholds(replaceHousehold(base, household.withProfile(profile)));
     SocialLog.household()
         .info(
             "event=HOUSEHOLD_PROFILE_SET "
@@ -122,10 +122,7 @@ public final class HouseholdBook {
     return requireConservation(result);
   }
 
-  /**
-   * 新建一个成员批次并挂进家户（GM/创世/命令路径）：{@code lotId} 若已存在 ⇒ 拒（不做静默合并——合并是把两批属性不同的人
-   * 并成一批，必须由调用方决定 id）。
-   */
+  /** 新建一个成员批次并挂进家户（GM/创世/命令路径）：{@code lotId} 若已存在 ⇒ 拒（不做静默合并——合并是把两批属性不同的人 并成一批，必须由调用方决定 id）。 */
   public static SocialData addMembers(
       SocialData base,
       HouseholdId id,
@@ -146,8 +143,7 @@ public final class HouseholdBook {
       throw new IllegalArgumentException("批次已存在，拒绝 addMembers（id 冲突）: " + lotId);
     }
     Household household = base.requireHousehold(id);
-    PopulationGroup group =
-        new PopulationGroup(lotId, sex, count, ageAtAnchorDays, anchorTick);
+    PopulationGroup group = new PopulationGroup(lotId, sex, count, ageAtAnchorDays, anchorTick);
     Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>(base.groups());
     groups.put(lotId, group);
     Map<HouseholdId, Household> households = new LinkedHashMap<>(base.households());
@@ -202,13 +198,23 @@ public final class HouseholdBook {
     SocialLog.event()
         .debug(
             "event=GM_POPULATION_ADJUST "
-                + SocialLog.kv("id", event.id(), "household", id, "lot", lotId, "delta", count, "day", anchorTick));
+                + SocialLog.kv(
+                    "id",
+                    event.id(),
+                    "household",
+                    id,
+                    "lot",
+                    lotId,
+                    "delta",
+                    count,
+                    "day",
+                    anchorTick));
     return requireConservation(result);
   }
 
   /**
-   * 从家户移除 {@code count} 个人；{@code count} 到 0 时删批次与 group（架构 §5 的原文）。
-   * ★ 走 {@link #applyEvent} 的负向 {@code GM_ADJUST}（带 lotId）⇒ 可回放且是唯一落账口。
+   * 从家户移除 {@code count} 个人；{@code count} 到 0 时删批次与 group（架构 §5 的原文）。 ★ 走 {@link #applyEvent} 的负向
+   * {@code GM_ADJUST}（带 lotId）⇒ 可回放且是唯一落账口。
    */
   public static SocialData removeMembers(
       SocialData base, HouseholdId id, PeopleLotId lotId, long count, String reason) {
@@ -242,7 +248,16 @@ public final class HouseholdBook {
         .info(
             "event=HOUSEHOLD_MEMBER_REMOVE "
                 + SocialLog.kv(
-                    "id", id, "lot", lotId, "count", count, "remaining", group.count() - count, "reason", reason));
+                    "id",
+                    id,
+                    "lot",
+                    lotId,
+                    "count",
+                    count,
+                    "remaining",
+                    group.count() - count,
+                    "reason",
+                    reason));
     return applyEvent(base, event);
   }
 
@@ -363,15 +378,27 @@ public final class HouseholdBook {
     SocialLog.population()
         .info(
             "event=POPULATION_TRANSFER_OUT "
-                + SocialLog.kv("from", fromHousehold, "lot", lotId, "count", count, "reason", reason));
+                + SocialLog.kv(
+                    "from", fromHousehold, "lot", lotId, "count", count, "reason", reason));
     SocialLog.population()
         .info(
             "event=POPULATION_TRANSFER_IN "
-                + SocialLog.kv("to", toHousehold, "lot", movedLot, "count", count, "reason", reason));
+                + SocialLog.kv(
+                    "to", toHousehold, "lot", movedLot, "count", count, "reason", reason));
     SocialLog.trace()
         .trace(
             "event=POPULATION_TRANSFER_DETAIL "
-                + SocialLog.kv("from", fromHousehold, "to", toHousehold, "lot", lotId, "movedLot", movedLot, "count", count));
+                + SocialLog.kv(
+                    "from",
+                    fromHousehold,
+                    "to",
+                    toHousehold,
+                    "lot",
+                    lotId,
+                    "movedLot",
+                    movedLot,
+                    "count",
+                    count));
     return requireConservation(result);
   }
 
@@ -389,7 +416,9 @@ public final class HouseholdBook {
             "event=HOUSEHOLD_RATE_SET "
                 + SocialLog.kv("id", id, "rates", vitalRates.rates().size(), "reason", reason));
     SocialLog.trace()
-        .trace("event=HOUSEHOLD_RATE_SET_DETAIL " + SocialLog.kv("id", id, "rates", vitalRates.rates()));
+        .trace(
+            "event=HOUSEHOLD_RATE_SET_DETAIL "
+                + SocialLog.kv("id", id, "rates", vitalRates.rates()));
     long day = latestDay(withRates);
     HouseholdPopulationEvent event =
         new HouseholdPopulationEvent(
@@ -407,16 +436,11 @@ public final class HouseholdBook {
   }
 
   /**
-   * ★★ <b>GM 直调人口</b>：{@code delta} 可正可负（负不得使 count &lt; 0）；按 {@code ageBracketId} 找/建 group
-   * （架构 §5）。走 {@link #applyEvent} 的 {@code GM_ADJUST} ⇒ 唯一落账口。
+   * ★★ <b>GM 直调人口</b>：{@code delta} 可正可负（负不得使 count &lt; 0）；按 {@code ageBracketId} 找/建 group （架构
+   * §5）。走 {@link #applyEvent} 的 {@code GM_ADJUST} ⇒ 唯一落账口。
    */
   public static SocialData adjustPopulation(
-      SocialData base,
-      HouseholdId id,
-      Sex sex,
-      String ageBracketId,
-      long delta,
-      String reason) {
+      SocialData base, HouseholdId id, Sex sex, String ageBracketId, long delta, String reason) {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(sex, "sex");
     requireReason(reason);
@@ -455,7 +479,16 @@ public final class HouseholdBook {
         .info(
             "event=GM_POPULATION_ADJUST "
                 + SocialLog.kv(
-                    "id", id, "sex", sex, "ageBracket", ageBracketId, "delta", delta, "reason", reason));
+                    "id",
+                    id,
+                    "sex",
+                    sex,
+                    "ageBracket",
+                    ageBracketId,
+                    "delta",
+                    delta,
+                    "reason",
+                    reason));
     return applyEvent(base, event);
   }
 
@@ -473,14 +506,13 @@ public final class HouseholdBook {
   }
 
   /** 批量事件落账（缺省儒略历）。 */
-  public static SocialData applyEvents(
-      SocialData base, List<HouseholdPopulationEvent> events) {
+  public static SocialData applyEvents(SocialData base, List<HouseholdPopulationEvent> events) {
     return applyEvents(base, events, CalendarClock.julianDefault());
   }
 
   /**
-   * ★★ <b>批量事件落账</b>：同一条 revision 里多条事件只在**出口**构造一次 {@link SocialData}（中间态不经过
-   * 跨组件校验），事件 id 与既有表/批内都不得重复。
+   * ★★ <b>批量事件落账</b>：同一条 revision 里多条事件只在**出口**构造一次 {@link SocialData}（中间态不经过 跨组件校验），事件 id
+   * 与既有表/批内都不得重复。
    */
   public static SocialData applyEvents(
       SocialData base, List<HouseholdPopulationEvent> events, CalendarClock clock) {
@@ -504,7 +536,8 @@ public final class HouseholdBook {
       requireEventIdFree(eventsTable, event.id());
       Household household = households.get(event.householdId());
       if (household == null) {
-        throw new IllegalArgumentException("事件 " + event.id() + " 指向不存在的家户: " + event.householdId());
+        throw new IllegalArgumentException(
+            "事件 " + event.id() + " 指向不存在的家户: " + event.householdId());
       }
       switch (event.type()) {
         case BIRTH, TRANSFER_IN -> increase(groups, households, household, event, clock);
@@ -574,8 +607,8 @@ public final class HouseholdBook {
   }
 
   /**
-   * ★★ <b>每 tick 生死结算（新引擎，计划 §3）</b>：逐家户、逐成员批次，按 ppm/tick 率与余数累加器算
-   * {@code DEATH} / {@code BIRTH} 事件，一次 {@link #applyEvents} 落账，并清理无主余数。
+   * ★★ <b>每 tick 生死结算（新引擎，计划 §3）</b>：逐家户、逐成员批次，按 ppm/tick 率与余数累加器算 {@code DEATH} / {@code BIRTH}
+   * 事件，一次 {@link #applyEvents} 落账，并清理无主余数。
    *
    * <pre>
    * 死亡：numerator = 旧余数 + 份额 × deathRatePerMillionPerTick
@@ -585,17 +618,17 @@ public final class HouseholdBook {
    *       births    = numerator / 1_000_000；新余数 = numerator % 1_000_000
    * </pre>
    *
-   * <p>★★ <b>首次见到某余数键时用稳定哈希给 [0, 999_999] 的初相位</b>（{@link #initialRemainder}），
-   * <b>不是 0</b>：零初值会让每个小批次的首个事件被推迟到 {@code 1_000_000 ÷ (份额 × 率)} 个 tick 之后——
-   * 2026-10-09 的 360 tick smoke 实测死亡 20 人，而率表连续期望 156 人（≈136 人的差额全冻在 450 个批次各自的
-   * 余数里，Python 逐步模拟复现 20）。哈希相位让有限窗口内的事件数期望等于连续期望；余数仍跨 tick 累加、
-   * 长期速率不变，且同一状态重放逐字节相同（哈希只用稳定 id 与 kind 名，不用 {@code Object.hashCode}/枚举身份）。</p>
+   * <p>★★ <b>首次见到某余数键时用稳定哈希给 [0, 999_999] 的初相位</b>（{@link #initialRemainder}）， <b>不是
+   * 0</b>：零初值会让每个小批次的首个事件被推迟到 {@code 1_000_000 ÷ (份额 × 率)} 个 tick 之后—— 2026-10-09 的 360 tick smoke
+   * 实测死亡 20 人，而率表连续期望 156 人（≈136 人的差额全冻在 450 个批次各自的 余数里，Python 逐步模拟复现
+   * 20）。哈希相位让有限窗口内的事件数期望等于连续期望；余数仍跨 tick 累加、 长期速率不变，且同一状态重放逐字节相同（哈希只用稳定 id 与 kind 名，不用 {@code
+   * Object.hashCode}/枚举身份）。
    *
-   * <p>★ 结算先按<b>结算前</b>的批次算齐全部事件，再一次性 {@link #applyEvents} ⇒ 同一天内死亡与出生互不干扰、
-   * 结果对同一输入确定。事件 id = {@code (household, lot, day, kind, sex)}，同日重复调用由事件 id 幂等守卫拒绝。</p>
+   * <p>★ 结算先按<b>结算前</b>的批次算齐全部事件，再一次性 {@link #applyEvents} ⇒ 同一天内死亡与出生互不干扰、 结果对同一输入确定。事件 id =
+   * {@code (household, lot, day, kind, sex)}，同日重复调用由事件 id 幂等守卫拒绝。
    *
-   * <p>★ 余数键语义 = {@code (HouseholdId, PeopleLotId, kind)}；批次/家户份额消失后，其余数在本次结算出口清理，
-   * 不留无主余数（{@code vitalRemainders} 组件本身只管范围与键唯一）。</p>
+   * <p>★ 余数键语义 = {@code (HouseholdId, PeopleLotId, kind)}；批次/家户份额消失后，其余数在本次结算出口清理， 不留无主余数（{@code
+   * vitalRemainders} 组件本身只管范围与键唯一）。
    *
    * @param base 结算前状态；不得为 null
    * @param day 世界日（tick）；不得为负
@@ -639,8 +672,7 @@ public final class HouseholdBook {
         }
         PopulationGroup group = base.groups().get(lot);
         if (group == null) {
-          throw vitalReject(
-              "家户 " + household.id() + " 的成员批次不在 groups 里（坏数据）: " + lot);
+          throw vitalReject("家户 " + household.id() + " 的成员批次不在 groups 里（坏数据）: " + lot);
         }
         long ageDays = group.ageDaysAt(day);
         if (ageDays < 0L) {
@@ -770,15 +802,15 @@ public final class HouseholdBook {
               "event=POPULATION_SETTLE_REMAINDERS_CLEANED "
                   + SocialLog.kv("day", day, "count", cleanedRemainders));
     }
-    return new VitalSettlementResult(
-        data, populationDeltas, totalBirths, totalDeaths, day, events);
+    return new VitalSettlementResult(data, populationDeltas, totalBirths, totalDeaths, day, events);
   }
 
   /**
-   * 计划 §3.1 的 App 侧调用名：与 {@link #settleVitalEventsResult} 同一条每 tick 引擎（旧
-   * {@code settleVitalEvents(...)} 签名保留为只返回 {@link SocialData} 的兼容口）。
+   * 计划 §3.1 的 App 侧调用名：与 {@link #settleVitalEventsResult} 同一条每 tick 引擎（旧 {@code
+   * settleVitalEvents(...)} 签名保留为只返回 {@link SocialData} 的兼容口）。
    */
-  public static VitalSettlementResult settleOneTick(SocialData base, long day, CalendarClock clock) {
+  public static VitalSettlementResult settleOneTick(
+      SocialData base, long day, CalendarClock clock) {
     return settleVitalEventsResult(base, day, clock);
   }
 
@@ -795,7 +827,8 @@ public final class HouseholdBook {
   }
 
   /** 0 ⇒ 删键（"没有余数不落键"）；非 0 ⇒ 覆盖/追加。 */
-  private static void putRemainder(Map<RemainderKey, Long> remainders, RemainderKey key, long value) {
+  private static void putRemainder(
+      Map<RemainderKey, Long> remainders, RemainderKey key, long value) {
     if (value == 0L) {
       remainders.remove(key);
     } else {
@@ -806,8 +839,7 @@ public final class HouseholdBook {
   /**
    * 取某键的当前余数；<b>首次见键</b>用 {@link #initialRemainder} 落稳定哈希初相位并写进工作副本。
    *
-   * <p>★ 为什么不是 0：见 {@link #settleVitalEventsResult} 的类注——零初值会把小批次首事件推迟数年，
-   * 使有限窗口内的实际生死数系统性低于率表期望。</p>
+   * <p>★ 为什么不是 0：见 {@link #settleVitalEventsResult} 的类注——零初值会把小批次首事件推迟数年， 使有限窗口内的实际生死数系统性低于率表期望。
    */
   private static long remainderFor(
       Map<RemainderKey, Long> remainders,
@@ -825,10 +857,10 @@ public final class HouseholdBook {
   }
 
   /**
-   * 稳定哈希初相位 ∈ {@code [0, 999_999]}：FNV-1a 64 位（只用稳定 id 与 {@link VitalKind#name()}，
-   * 不用 {@code Object.hashCode}/枚举身份）⇒ 同一状态重放逐字节相同，不同批次/家户的相位互不相同。
+   * 稳定哈希初相位 ∈ {@code [0, 999_999]}：FNV-1a 64 位（只用稳定 id 与 {@link VitalKind#name()}， 不用 {@code
+   * Object.hashCode}/枚举身份）⇒ 同一状态重放逐字节相同，不同批次/家户的相位互不相同。
    *
-   * <p>★ 它是"余数不为 0"的一次性初值，不是每 tick 加的噪声；之后完全由 {@code numerator % 1_000_000} 推进。</p>
+   * <p>★ 它是"余数不为 0"的一次性初值，不是每 tick 加的噪声；之后完全由 {@code numerator % 1_000_000} 推进。
    */
   private static long initialRemainder(HouseholdId householdId, PeopleLotId lotId, VitalKind kind) {
     String key = householdId.value() + "|" + lotId.value() + "|" + kind.name();
@@ -846,7 +878,10 @@ public final class HouseholdBook {
     for (Map.Entry<RemainderKey, Long> entry : remainders.entrySet()) {
       entries.add(
           new SocialVitalRemainder(
-              entry.getKey().householdId(), entry.getKey().lotId(), entry.getKey().kind(), entry.getValue()));
+              entry.getKey().householdId(),
+              entry.getKey().lotId(),
+              entry.getKey().kind(),
+              entry.getValue()));
     }
     return new SocialVitalRemainders(entries);
   }
@@ -854,8 +889,7 @@ public final class HouseholdBook {
   /**
    * 同日幂等的事件 id（计划 §3.3）：{@code (household, lot, day, kind, sex)} 的稳定拼写。
    *
-   * <p>★ 它不含任何计数/序号 —— 同一批人在同一天只能落一次账；重复调用会命中
-   * {@link #applyEvents} 的"事件 id 已存在"守卫。</p>
+   * <p>★ 它不含任何计数/序号 —— 同一批人在同一天只能落一次账；重复调用会命中 {@link #applyEvents} 的"事件 id 已存在"守卫。
    */
   private static String vitalEventId(
       VitalKind kind, HouseholdId householdId, PeopleLotId lotId, long day, Sex sex) {
@@ -863,9 +897,8 @@ public final class HouseholdBook {
   }
 
   /**
-   * 新生批次的 id：优先走 {@link PopulationLots#born} 保住 {@code rural:/urban:} 前缀（经济侧按前缀分池）；
-   * 母亲批次 id 不符合标准形状（命令造的自定义批次）时退化为 {@code born:<家户 hex>:<母亲>:<day>:<性别>}，
-   * 保证同日同户不撞 id、且不因一个自定义 lot 让整次结算失败。
+   * 新生批次的 id：优先走 {@link PopulationLots#born} 保住 {@code rural:/urban:} 前缀（经济侧按前缀分池）； 母亲批次 id
+   * 不符合标准形状（命令造的自定义批次）时退化为 {@code born:<家户 hex>:<母亲>:<day>:<性别>}， 保证同日同户不撞 id、且不因一个自定义 lot 让整次结算失败。
    */
   private static PeopleLotId birthLotId(
       HouseholdId householdId, PopulationGroup mother, Sex childSex, long day) {
@@ -903,8 +936,8 @@ public final class HouseholdBook {
   // ── 守恒检查 ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * ★★ <b>守恒检查</b>（架构 §5/§7 的判据）：逐 lot 有且只有一个家户、成员批次都存在、无负人数、键 == id。
-   * 失败 ⇒ ERROR 日志 + 具名 {@link IllegalArgumentException}；通过 ⇒ DEBUG 对账读数。
+   * ★★ <b>守恒检查</b>（架构 §5/§7 的判据）：逐 lot 有且只有一个家户、成员批次都存在、无负人数、键 == id。 失败 ⇒ ERROR 日志 + 具名 {@link
+   * IllegalArgumentException}；通过 ⇒ DEBUG 对账读数。
    *
    * @return 原样返回 {@code data}（便于写方法 `return requireConservation(result)` 链式收口）
    */
@@ -920,14 +953,21 @@ public final class HouseholdBook {
         for (Map.Entry<PeopleLotId, Long> member : household.members().entrySet()) {
           PopulationGroup group = data.groups().get(member.getKey());
           if (group == null) {
-            throw new IllegalArgumentException("家户 " + household.id() + " 的成员批次不存在: " + member.getKey());
+            throw new IllegalArgumentException(
+                "家户 " + household.id() + " 的成员批次不存在: " + member.getKey());
           }
           if (group.count() < 0L) {
-            throw new IllegalArgumentException("批次人数为负: " + member.getKey() + " count=" + group.count());
+            throw new IllegalArgumentException(
+                "批次人数为负: " + member.getKey() + " count=" + group.count());
           }
           if (member.getValue() < 0L) {
             throw new IllegalArgumentException(
-                "家户份额为负: household=" + household.id() + " lot=" + member.getKey() + " share=" + member.getValue());
+                "家户份额为负: household="
+                    + household.id()
+                    + " lot="
+                    + member.getKey()
+                    + " share="
+                    + member.getValue());
           }
           sharedByLot.merge(member.getKey(), member.getValue(), Math::addExact);
         }
@@ -967,7 +1007,15 @@ public final class HouseholdBook {
       SocialLog.population()
           .error(
               "event=POPULATION_CONSERVATION_CHECK "
-                  + SocialLog.kv("ok", false, "households", data.households().size(), "lots", data.groups().size(), "error", failure.getMessage()));
+                  + SocialLog.kv(
+                      "ok",
+                      false,
+                      "households",
+                      data.households().size(),
+                      "lots",
+                      data.groups().size(),
+                      "error",
+                      failure.getMessage()));
       throw failure;
     }
     return data;
@@ -988,9 +1036,7 @@ public final class HouseholdBook {
       PopulationGroup group = groups.get(event.lotId());
       if (group != null) {
         requireSex(group, event);
-        groups.put(
-            group.id(),
-            group.withCount(group.count() + delta));
+        groups.put(group.id(), group.withCount(group.count() + delta));
         // 批次若已存在但本家户没有份额（回放中间态 / 跨户拆分的另一半），给它加份额。
         households.put(household.id(), addMemberShare(current, event.lotId(), delta));
         return;
@@ -1003,9 +1049,7 @@ public final class HouseholdBook {
     MemberSlot bucket = findBucket(current, groups, event, clock);
     if (bucket != null) {
       PopulationGroup group = bucket.group();
-      groups.put(
-          group.id(),
-          group.withCount(group.count() + delta));
+      groups.put(group.id(), group.withCount(group.count() + delta));
       households.put(household.id(), addMemberShare(current, group.id(), delta));
       return;
     }
@@ -1079,7 +1123,16 @@ public final class HouseholdBook {
     }
     if (remaining != 0L) {
       throw new IllegalArgumentException(
-          "事件 " + event.id() + " 扣减不足: 家户=" + household.id() + " 性别=" + event.sex() + " 档=" + event.ageBracketId() + " 缺口=" + remaining);
+          "事件 "
+              + event.id()
+              + " 扣减不足: 家户="
+              + household.id()
+              + " 性别="
+              + event.sex()
+              + " 档="
+              + event.ageBracketId()
+              + " 缺口="
+              + remaining);
     }
     households.put(household.id(), nextHousehold);
   }
@@ -1201,7 +1254,15 @@ public final class HouseholdBook {
   private static void requireSex(PopulationGroup group, HouseholdPopulationEvent event) {
     if (group.sex() != event.sex()) {
       throw new IllegalArgumentException(
-          "事件 " + event.id() + " 的性别 " + event.sex() + " 与批次 " + group.id() + " 的性别 " + group.sex() + " 不符");
+          "事件 "
+              + event.id()
+              + " 的性别 "
+              + event.sex()
+              + " 与批次 "
+              + group.id()
+              + " 的性别 "
+              + group.sex()
+              + " 不符");
     }
   }
 
@@ -1219,8 +1280,8 @@ public final class HouseholdBook {
   }
 
   /**
-   * 状态内已知的最大日：全部事件 {@code day} 与批次 {@code anchorTick} 的最大值；空状态 ⇒ 0。
-   * S2 的手工接口没有 {@code day} 入参，事件落账用它在"没有时间参与者"的窗口里保持单调、可复现。
+   * 状态内已知的最大日：全部事件 {@code day} 与批次 {@code anchorTick} 的最大值；空状态 ⇒ 0。 S2 的手工接口没有 {@code day}
+   * 入参，事件落账用它在"没有时间参与者"的窗口里保持单调、可复现。
    */
   static long latestDay(SocialData base) {
     long day = 0L;
@@ -1315,7 +1376,9 @@ public final class HouseholdBook {
           SocialLog.event()
               .debug(
                   "event=POPULATION_WORK_ORDER_MARKER "
-                      + SocialLog.kv("id", event.id(), "household", event.householdId(), "day", event.day()));
+                      + SocialLog.kv(
+                          "id", event.id(), "household", event.householdId(), "day", event.day()));
+      default -> throw new IllegalStateException("未知 PopulationEventType: " + event.type());
     }
     SocialLog.event()
         .debug(

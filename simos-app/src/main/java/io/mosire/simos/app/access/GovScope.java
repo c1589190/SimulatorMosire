@@ -43,11 +43,11 @@ import java.util.TreeSet;
  *       上缴；<b>不是</b>全辖区 actor，也不把辖区里的其他账列进来。
  * </ul>
  *
- * <p>★★ <b>2026-10-21 用户裁定（覆盖 2026-10-20 的“中央看下辖编制”口径）</b>：
- * 中央决策人也只能看自己<b>直辖区</b>内的 hex 相关数据；下辖 GOV / 辖区外单位**不自动进入任何命名空间**，
- * 辖区外信息必须走<b>上报</b>（见 `docs/superpowers/plans/2026-10-22-decision-packet-household-query-llm-mcp-plan.md` D4）。
- * {@code unit} 面只含：自己 + 位置落在直辖区 hex 内的单位（不沿 {@code superiorGov} 扩、不自动扩辖区外后代）；
- * {@code actor} 仍只保留自己 + {@code superiorGov} 的国库路径（显式上缴，不代表读权）。
+ * <p>★★ <b>2026-10-21 用户裁定（覆盖 2026-10-20 的“中央看下辖编制”口径）</b>： 中央决策人也只能看自己<b>直辖区</b>内的 hex 相关数据；下辖 GOV
+ * / 辖区外单位**不自动进入任何命名空间**， 辖区外信息必须走<b>上报</b>（见
+ * `docs/superpowers/plans/2026-10-22-decision-packet-household-query-llm-mcp-plan.md` D4）。 {@code
+ * unit} 面只含：自己 + 位置落在直辖区 hex 内的单位（不沿 {@code superiorGov} 扩、不自动扩辖区外后代）； {@code actor} 仍只保留自己 +
+ * {@code superiorGov} 的国库路径（显式上缴，不代表读权）。
  *
  * <p>★★ <b>两条边界（控制方口径，逐条实现）</b>：
  *

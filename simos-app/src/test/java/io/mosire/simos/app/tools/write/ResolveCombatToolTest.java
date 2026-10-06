@@ -355,8 +355,7 @@ class ResolveCombatToolTest {
 
   private static Fixture singleStageFixture(Path dir) {
     // ★ S3b：Unit.manpower 已退役 ⇒ 战损只走 equipment（人力战损会被 ResolveCombatPlan 具名拒）。
-    return fixtureWithDeclaredLosses(
-        dir, List.of(), List.of(new CompositionDelta("步枪", -5)));
+    return fixtureWithDeclaredLosses(dir, List.of(), List.of(new CompositionDelta("步枪", -5)));
   }
 
   private static Fixture fixtureWithDeclaredLosses(

@@ -20,58 +20,55 @@ import java.util.Set;
 
 /**
  * ★★ <b>P1.0：share-aware 的辖区分人层</b>（P1.1 征兵 / P1.3 组军共用）。从一份 {@link SocialData} 的
- * <b>家户成员份额</b>里，按辖区优先级与全序瀑布抽出恰好 {@code requested} 人，逐步给出
- * {@code (householdId, lotId, hex, taken)}。
+ * <b>家户成员份额</b>里，按辖区优先级与全序瀑布抽出恰好 {@code requested} 人，逐步给出 {@code (householdId, lotId, hex, taken)}。
  *
- * <p>★★ <b>纯函数边界</b>：本类不 submit 任何命令、不碰 {@link io.mosire.agentlib.tool.ToolContext} /
- * {@code CoreSimos}、不写任何状态；只读传入的 {@code social} 并返回新造的不可变结果。同一状态 + 同一参数 ⇒ 逐字段相同的结果。
+ * <p>★★ <b>纯函数边界</b>：本类不 submit 任何命令、不碰 {@link io.mosire.agentlib.tool.ToolContext} / {@code
+ * CoreSimos}、不写任何状态；只读传入的 {@code social} 并返回新造的不可变结果。同一状态 + 同一参数 ⇒ 逐字段相同的结果。
  *
- * <p>★★ <b>候选 = 家户份额，不是整批 count</b>：对每个候选家户，逐个遍历 {@code household.members()} 的
- * {@code (lotId, share)}，只取 {@code share > 0}。{@code share} 是该户对 lot 的份额；同一个 lot 被多个家户按份额持有时，
- * 每个家户各自成为一条独立候选（例如 hh-a share 6、hh-b share 4 会各出一条 {@code ManpowerShare}），<b>禁止</b>用旧
- * 单户持有读法 / 组覆盖读法 / 整批 {@code count} 来选人。{@code hex} 只从 {@code HEX} 家户的 {@code location()} 取，
- * 不得从批次反查位置；{@code UNIT} 家户没有格 ⇒ 结果里的 {@code hex} 为 null。
+ * <p>★★ <b>候选 = 家户份额，不是整批 count</b>：对每个候选家户，逐个遍历 {@code household.members()} 的 {@code (lotId,
+ * share)}，只取 {@code share > 0}。{@code share} 是该户对 lot 的份额；同一个 lot 被多个家户按份额持有时， 每个家户各自成为一条独立候选（例如
+ * hh-a share 6、hh-b share 4 会各出一条 {@code ManpowerShare}），<b>禁止</b>用旧 单户持有读法 / 组覆盖读法 / 整批 {@code
+ * count} 来选人。{@code hex} 只从 {@code HEX} 家户的 {@code location()} 取， 不得从批次反查位置；{@code UNIT} 家户没有格 ⇒
+ * 结果里的 {@code hex} 为 null。
  *
- * <p>★★ <b>属性过滤</b>：候选的 {@code lotId} 必须能在 {@code social.groups()} 里找到对应的
- * {@link PopulationGroup}（找不到，或该户份额超过 {@code group.count()} ⇒ 状态已破坏 SocialData 不变量，抛具名
- * {@link IllegalStateException}，<b>不静默跳过</b>）；{@code sexFilter} 非空时按 {@code group.sex()} 过滤；
- * {@code ageBracketFilter} 非空时用 {@link AgeBracket#of(io.mosire.simos.calendar.CalendarSystem, long, long)}
- * 当场现算（{@code clock.system()} + {@code clock.dayNumberOfTick(tick)} + {@code group.ageDaysAt(tick)}）后比对，
- * 不在本类另写 15/60 阈值。
+ * <p>★★ <b>属性过滤</b>：候选的 {@code lotId} 必须能在 {@code social.groups()} 里找到对应的 {@link
+ * PopulationGroup}（找不到，或该户份额超过 {@code group.count()} ⇒ 状态已破坏 SocialData 不变量，抛具名 {@link
+ * IllegalStateException}，<b>不静默跳过</b>）；{@code sexFilter} 非空时按 {@code group.sex()} 过滤； {@code
+ * ageBracketFilter} 非空时用 {@link AgeBracket#of(io.mosire.simos.calendar.CalendarSystem, long, long)}
+ * 当场现算（{@code clock.system()} + {@code clock.dayNumberOfTick(tick)} + {@code
+ * group.ageDaysAt(tick)}）后比对， 不在本类另写 15/60 阈值。
  *
- * <p>★★ <b>辖区优先级与重叠</b>：{@code jurisdictionHexesInOrder} 的外层 {@link List} 顺序 = 辖区优先级顺序；内层
- * {@code Set<HexCoord>} 只表达“哪些格属于本辖区”，本类<b>不依赖 Set 的迭代序</b>。构造格 → 优先级索引时按外层顺序
- * {@code putIfAbsent}，因此同一 hex 出现在多个辖区（区域重叠）时取<b>第一个</b>出现的辖区；一个家户只有一处 location，
- * 故不会因重叠被算两次。
+ * <p>★★ <b>辖区优先级与重叠</b>：{@code jurisdictionHexesInOrder} 的外层 {@link List} 顺序 = 辖区优先级顺序；内层 {@code
+ * Set<HexCoord>} 只表达“哪些格属于本辖区”，本类<b>不依赖 Set 的迭代序</b>。构造格 → 优先级索引时按外层顺序 {@code putIfAbsent}，因此同一 hex
+ * 出现在多个辖区（区域重叠）时取<b>第一个</b>出现的辖区；一个家户只有一处 location， 故不会因重叠被算两次。
  *
- * <p>★★ <b>排序全序</b>：候选按“辖区优先级索引升序 → {@code householdId.value()} 字符串升序 →
- * {@code lotId.value()} 字符串升序”排序；这是内容的全序（家户 id + lot id 在各自的表里唯一 ⇒ 无并列歧义），
- * 与 {@code Set}/{@code Map} 的迭代序无关。
+ * <p>★★ <b>排序全序</b>：候选按“辖区优先级索引升序 → {@code householdId.value()} 字符串升序 → {@code lotId.value()}
+ * 字符串升序”排序；这是内容的全序（家户 id + lot id 在各自的表里唯一 ⇒ 无并列歧义）， 与 {@code Set}/{@code Map} 的迭代序无关。
  *
  * <p>★★ <b>瀑布与守恒</b>：先对全部合格候选的 {@code share} 做<b>饱和加法</b>得 {@code available}（防 long 回绕；只用于合计与拒因）；
- * 再按排序顺序逐个 {@code take = min(share, remaining)}。请求量为正时，成功返回的
- * {@code Allocation.shares()} 满足 {@code Σ take == requested}，且每个单户条目 {@code take ≤ 该户对该 lot 的 share}。
- * 某户只被取走份额的一部分时，不会清掉该 lot、不会给 lot 派生新 id、也不改变其它家户的份额。
+ * 再按排序顺序逐个 {@code take = min(share, remaining)}。请求量为正时，成功返回的 {@code Allocation.shares()} 满足 {@code
+ * Σ take == requested}，且每个单户条目 {@code take ≤ 该户对该 lot 的 share}。 某户只被取走份额的一部分时，不会清掉该 lot、不会给 lot 派生新
+ * id、也不改变其它家户的份额。
  *
- * <p>★★ <b>不足整条拒（不部分、不截断）</b>：{@code available < requested} 时抛具名
- * {@link IllegalArgumentException}（消息带 requested / available / 缺口，并说明“不部分抽取、不截断；先扩辖区或降低
- * requested”），绝不返回部分结果。分流后 {@code remaining != 0} 属于内部自相矛盾（总量已足够却分不满）⇒
- * {@link IllegalStateException}。
+ * <p>★★ <b>不足整条拒（不部分、不截断）</b>：{@code available < requested} 时抛具名 {@link
+ * IllegalArgumentException}（消息带 requested / available / 缺口，并说明“不部分抽取、不截断；先扩辖区或降低
+ * requested”），绝不返回部分结果。分流后 {@code remaining != 0} 属于内部自相矛盾（总量已足够却分不满）⇒ {@link
+ * IllegalStateException}。
  *
- * <p>★★ <b>参数与失败语义</b>：{@code requested == 0} 在参数校验后立即返回 {@code new Allocation(0, 0, List.of())}
- * —— 0 = 整段跳过（§2.2 语义），不扫描任何候选；{@code requested < 0} / {@code tick < 0} / 入参为 null /
- * 辖区集合含 null hex / {@code excludedHouseholds} 含 null 元素 ⇒ 具名 {@link IllegalArgumentException}。
- * 因 SocialData 不变量已坏而失败时用 {@link IllegalStateException}（与参数错误区分）。
+ * <p>★★ <b>参数与失败语义</b>：{@code requested == 0} 在参数校验后立即返回 {@code new Allocation(0, 0, List.of())} ——
+ * 0 = 整段跳过（§2.2 语义），不扫描任何候选；{@code requested < 0} / {@code tick < 0} / 入参为 null / 辖区集合含 null hex /
+ * {@code excludedHouseholds} 含 null 元素 ⇒ 具名 {@link IllegalArgumentException}。 因 SocialData
+ * 不变量已坏而失败时用 {@link IllegalStateException}（与参数错误区分）。
  *
- * <p>★★ <b>输出保序不可变</b>：{@link Allocation} 与 {@link ManpowerShare} 都在紧凑构造器里校验并以
- * {@link List#copyOf} 冻结；{@code shares()} 的顺序 = 瀑布选取顺序。
+ * <p>★★ <b>输出保序不可变</b>：{@link Allocation} 与 {@link ManpowerShare} 都在紧凑构造器里校验并以 {@link List#copyOf}
+ * 冻结；{@code shares()} 的顺序 = 瀑布选取顺序。
  *
- * <p>★★ <b>指定家户入口（P1.2 退休 / P2 战斗伤亡）</b>：{@link #allocateFromHousehold}（单个）与
- * {@link #allocateFromHouseholds}（指定集合）都与辖区入口复用同一份候选校验、全序排序与瀑布/守恒实现，差别只在候选集 =
- * <b>调用方点名的家户</b>：家户必须已存在于 {@code social.households()}；{@code UNIT} 位置的家户（如政府编制家户
- * {@code hh-gov-<unitId>}、组军的人口家户 {@code hh-unit:<unitId>}）没有格 ⇒ 产出 {@link ManpowerShare#hex()} 为
- * {@code null}。两个入口都不按辖区 HEX 扫描，也不要求来源家户在任一辖区里；指定集合入口的候选全序 = 家户 id 升序 →
- * lotId 升序（{@code jurisdictionIndex} 恒为 0，排序仍走同一份 {@link #CANDIDATE_ORDER}）。
+ * <p>★★ <b>指定家户入口（P1.2 退休 / P2 战斗伤亡）</b>：{@link #allocateFromHousehold}（单个）与 {@link
+ * #allocateFromHouseholds}（指定集合）都与辖区入口复用同一份候选校验、全序排序与瀑布/守恒实现，差别只在候选集 = <b>调用方点名的家户</b>：家户必须已存在于
+ * {@code social.households()}；{@code UNIT} 位置的家户（如政府编制家户 {@code hh-gov-<unitId>}、组军的人口家户 {@code
+ * hh-unit:<unitId>}）没有格 ⇒ 产出 {@link ManpowerShare#hex()} 为 {@code null}。两个入口都不按辖区 HEX
+ * 扫描，也不要求来源家户在任一辖区里；指定集合入口的候选全序 = 家户 id 升序 → lotId 升序（{@code jurisdictionIndex} 恒为 0，排序仍走同一份 {@link
+ * #CANDIDATE_ORDER}）。
  *
  * <p>★ <b>P1.1 / P1.2 / P1.3 用法</b>（本层只选人；落 Social 家户工单由上层 plan 组装）：
  *
@@ -195,11 +192,10 @@ final class HouseholdManpowerAllocator {
   /**
    * ★★ <b>P1.2：从指定的单个家户里抽人</b>（退休源 = {@code UNIT} 位置的 {@code hh-gov-<unitId>}，不适用辖区 HEX 扫描）。
    *
-   * <p>与辖区入口<b>复用同一份</b>候选校验、全序排序与瀑布/守恒实现（{@link #appendCandidates} /
-   * {@link #allocateFromCandidates}），差别只在候选集：本方法不查 jurisdiction、不要求家户在任一辖区，只要求
-   * {@code householdId} 已在 {@code social.households()} 里。家户是 {@code HEX} 位置时逐条 share 带该格；是
-   * {@code UNIT} 位置（如政府编制家户）时没有格 ⇒ {@code ManpowerShare.hex() == null}（工单/离编只需要
-   * householdId + lotId + taken）。
+   * <p>与辖区入口<b>复用同一份</b>候选校验、全序排序与瀑布/守恒实现（{@link #appendCandidates} / {@link
+   * #allocateFromCandidates}），差别只在候选集：本方法不查 jurisdiction、不要求家户在任一辖区，只要求 {@code householdId} 已在
+   * {@code social.households()} 里。家户是 {@code HEX} 位置时逐条 share 带该格；是 {@code UNIT} 位置（如政府编制家户）时没有格 ⇒
+   * {@code ManpowerShare.hex() == null}（工单/离编只需要 householdId + lotId + taken）。
    *
    * <p>★ <b>过滤口径</b>：退休调用方建议传 {@code Optional.empty()} / {@code Optional.empty()}——政府编制家户里可能
    * 含各年龄/性别的家属，过滤过窄会把真实人口误判为"不足"；需要过滤时由调用方显式给。
@@ -247,28 +243,30 @@ final class HouseholdManpowerAllocator {
     }
     HexCoord hex = household.location() instanceof HouseholdLocation.Hex at ? at.hex() : null;
     List<Candidate> candidates = new ArrayList<>();
-    appendCandidates(social, household, hex, 0, clock, tick, sexFilter, ageBracketFilter, candidates);
+    appendCandidates(
+        social, household, hex, 0, clock, tick, sexFilter, ageBracketFilter, candidates);
     return allocateFromCandidates(candidates, requested, "先向该家户补人、放宽过滤或降低 requested");
   }
 
   /**
-   * ★★ <b>P2：从调用方点名的家户集合里抽人</b>（战斗人员伤亡的来源 = {@code Unit.households()}，不适用辖区 HEX
-   * 扫描）。与 {@link #allocateFromHousehold} / 辖区入口<b>复用同一份</b>候选校验（{@link #appendCandidates}）、全序排序与
-   * 瀑布/守恒实现（{@link #allocateFromCandidates}），差别只在候选集 = 指定集合：
+   * ★★ <b>P2：从调用方点名的家户集合里抽人</b>（战斗人员伤亡的来源 = {@code Unit.households()}，不适用辖区 HEX 扫描）。与 {@link
+   * #allocateFromHousehold} / 辖区入口<b>复用同一份</b>候选校验（{@link #appendCandidates}）、全序排序与 瀑布/守恒实现（{@link
+   * #allocateFromCandidates}），差别只在候选集 = 指定集合：
    *
    * <ul>
-   *   <li><b>家户必须存在</b>：集合里每个 id 都必须在 {@code social.households()} 里；缺一个 ⇒ 具名
-   *       {@link IllegalArgumentException}（不猜、不新建、不静默跳过）；
+   *   <li><b>家户必须存在</b>：集合里每个 id 都必须在 {@code social.households()} 里；缺一个 ⇒ 具名 {@link
+   *       IllegalArgumentException}（不猜、不新建、不静默跳过）；
    *   <li><b>允许 UNIT 家户</b>：{@code HEX} 位置逐 share 带格；{@code UNIT} 位置（如 {@code hh-unit:<unitId>}）
-   *       没有格 ⇒ {@link ManpowerShare#hex()} 为 {@code null}（REMOVE_MEMBERS 工单只需要 householdId + lotId + taken）；
-   *   <li><b>顺序</b>：候选按 household id 字符串升序 → lotId 字符串升序（{@code jurisdictionIndex} 恒为 0，仍走
-   *       {@link #CANDIDATE_ORDER}），与入参 Set 的迭代序无关；家户 id 在 Social 表里唯一 ⇒ 无并列歧义；
+   *       没有格 ⇒ {@link ManpowerShare#hex()} 为 {@code null}（REMOVE_MEMBERS 工单只需要 householdId + lotId
+   *       + taken）；
+   *   <li><b>顺序</b>：候选按 household id 字符串升序 → lotId 字符串升序（{@code jurisdictionIndex} 恒为 0，仍走 {@link
+   *       #CANDIDATE_ORDER}），与入参 Set 的迭代序无关；家户 id 在 Social 表里唯一 ⇒ 无并列歧义；
    *   <li><b>不足整条拒</b>：合格份额总量 &lt; {@code requested} ⇒ 具名 {@link IllegalArgumentException}（带
    *       requested / available / 缺口），不部分抽取、不截断。
    * </ul>
    *
-   * <p>★ {@code excludedHouseholds} 只把命中的家户从候选里剔除（不改变"集合里每个家户必须存在"的前置）；P2 战斗伤亡调用点传
-   * {@code Set.of()}。
+   * <p>★ {@code excludedHouseholds} 只把命中的家户从候选里剔除（不改变"集合里每个家户必须存在"的前置）；P2 战斗伤亡调用点传 {@code
+   * Set.of()}。
    *
    * @param social 社会状态（只读）
    * @param householdIds 指定来源家户 id 集合（非空；每个元素非 null 且必须已存在；允许 UNIT 位置的家户）
@@ -336,14 +334,15 @@ final class HouseholdManpowerAllocator {
       }
       Household household = social.households().get(householdId);
       HexCoord hex = household.location() instanceof HouseholdLocation.Hex at ? at.hex() : null;
-      appendCandidates(social, household, hex, 0, clock, tick, sexFilter, ageBracketFilter, candidates);
+      appendCandidates(
+          social, household, hex, 0, clock, tick, sexFilter, ageBracketFilter, candidates);
     }
     return allocateFromCandidates(candidates, requested, "先向指定家户补人、放宽过滤或降低 requested");
   }
 
   /**
-   * 单辖区便捷入口：把 {@code jurisdictionHexes} 包成 {@code List.of(...)} 后委托
-   * {@link #allocate(SocialData, List, long, CalendarClock, long, Optional, Optional, Set)}。
+   * 单辖区便捷入口：把 {@code jurisdictionHexes} 包成 {@code List.of(...)} 后委托 {@link #allocate(SocialData,
+   * List, long, CalendarClock, long, Optional, Optional, Set)}。
    *
    * @throws IllegalArgumentException {@code jurisdictionHexes} 为 null 或其余参数校验失败（见主入口）
    */
@@ -371,11 +370,11 @@ final class HouseholdManpowerAllocator {
   }
 
   /**
-   * 最常见的 MALE + {@link AgeBracket#ADULT} 口径便捷入口：委托主入口并固定
-   * {@code Optional.of(Sex.MALE)} / {@code Optional.of(AgeBracket.ADULT)}。
+   * 最常见的 MALE + {@link AgeBracket#ADULT} 口径便捷入口：委托主入口并固定 {@code Optional.of(Sex.MALE)} / {@code
+   * Optional.of(AgeBracket.ADULT)}。
    *
-   * <p>★ P1.1 / P1.3 的推荐用法：
-   * {@code allocateMalesOfAdult(social, List.of(region.hexes()), count, clock, tick, Set.of())}。
+   * <p>★ P1.1 / P1.3 的推荐用法： {@code allocateMalesOfAdult(social, List.of(region.hexes()), count,
+   * clock, tick, Set.of())}。
    *
    * @throws IllegalArgumentException 参数校验失败或合格份额总量不足（见主入口）
    */
@@ -400,8 +399,8 @@ final class HouseholdManpowerAllocator {
   // ── 候选装配 / 瀑布（两个入口共用的唯一实现）─────────────────────────────────────────
 
   /**
-   * 把<b>一个家户</b>的全部正份额成员批次追加为候选：逐 {@code (lotId, share)} 校验 SocialData 不变量（lot 必须
-   * 在 {@code social.groups()}、份额不得超过批次人数），再按 {@code sexFilter}/{@code ageBracketFilter} 过滤。
+   * 把<b>一个家户</b>的全部正份额成员批次追加为候选：逐 {@code (lotId, share)} 校验 SocialData 不变量（lot 必须 在 {@code
+   * social.groups()}、份额不得超过批次人数），再按 {@code sexFilter}/{@code ageBracketFilter} 过滤。
    *
    * <p>★ 辖区入口与指定家户入口都只经过这一条装配路径——不许在任何调用点另写第二套份额读取/排序/过滤。
    *
@@ -459,8 +458,8 @@ final class HouseholdManpowerAllocator {
   }
 
   /**
-   * 两个入口共用的<b>排序 → 饱和合计 → 瀑布 → 守恒</b>实现：按 {@link #CANDIDATE_ORDER} 全序排序，逐候选
-   * {@code take = min(share, remaining)}；合格总量不足 ⇒ 整条具名拒（不部分、不截断）。
+   * 两个入口共用的<b>排序 → 饱和合计 → 瀑布 → 守恒</b>实现：按 {@link #CANDIDATE_ORDER} 全序排序，逐候选 {@code take =
+   * min(share, remaining)}；合格总量不足 ⇒ 整条具名拒（不部分、不截断）。
    *
    * @param shortageHint 不足拒因里给调用方的修复提示（辖区 = 扩辖区；指定家户 = 补人/放宽过滤）
    */
@@ -537,7 +536,11 @@ final class HouseholdManpowerAllocator {
    * @param hex 家户落格；{@code UNIT} 位置的家户没有格 ⇒ null（指定家户入口的合法输入）
    */
   private record Candidate(
-      HouseholdId householdId, PeopleLotId lotId, HexCoord hex, long share, int jurisdictionIndex) {}
+      HouseholdId householdId,
+      PeopleLotId lotId,
+      HexCoord hex,
+      long share,
+      int jurisdictionIndex) {}
 
   // ── 结果（全部保序不可变）──────────────────────────────────────────────────────────
 
@@ -586,8 +589,8 @@ final class HouseholdManpowerAllocator {
    *
    * @param householdId 来源家户 id
    * @param lotId 来源批次 id（保持原 id，不派生新 id）
-   * @param hex 来源格 = {@code HEX} 家户 {@code location()} 的 hex（不得从批次反查位置）；{@code UNIT} 家户（如
-   *     {@code hh-gov-<unitId>}）没有格 ⇒ <b>null</b>（合法值：工单/离编只需要 householdId + lotId + taken）
+   * @param hex 来源格 = {@code HEX} 家户 {@code location()} 的 hex（不得从批次反查位置）；{@code UNIT} 家户（如 {@code
+   *     hh-gov-<unitId>}）没有格 ⇒ <b>null</b>（合法值：工单/离编只需要 householdId + lotId + taken）
    * @param taken 从该户份额里抽走的人数（&gt; 0）
    */
   record ManpowerShare(HouseholdId householdId, PeopleLotId lotId, HexCoord hex, long taken) {

@@ -30,10 +30,10 @@ import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.map.hex.HexCoord;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -123,7 +123,8 @@ public final class GovPayTool implements AgentTool {
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put(
-        "toGovId", ToolSupport.prop("string", "收款 GOV 单位 id（必填；必须存在且带 GovernmentFormation、有当刻有效位置）"));
+        "toGovId",
+        ToolSupport.prop("string", "收款 GOV 单位 id（必填；必须存在且带 GovernmentFormation、有当刻有效位置）"));
     props.put("grain", ToolSupport.prop("integer", "支付粮（可选，缺省 0；不得为负；三项至少一个 > 0）"));
     props.put("cloth", ToolSupport.prop("integer", "支付布（可选，缺省 0；不得为负；三项至少一个 > 0）"));
     props.put("money", ToolSupport.prop("integer", "支付银（毫银；可选，缺省 0；不得为负；三项至少一个 > 0）"));
@@ -266,7 +267,8 @@ public final class GovPayTool implements AgentTool {
     return new Payer(
         gov.govUnit().value(),
         at,
-        GovernmentHouseholdResolver.requireGovernmentHousehold(unit, gov.govUnit().value()).value());
+        GovernmentHouseholdResolver.requireGovernmentHousehold(unit, gov.govUnit().value())
+            .value());
   }
 
   /**
@@ -294,7 +296,9 @@ public final class GovPayTool implements AgentTool {
                     new IllegalArgumentException(
                         "参数 " + field + " 指定的 GOV 单位没有当刻有效位置（国库落点未知）: " + rawUnitId));
     return new TreasuryLocation(
-        rawUnitId, at, GovernmentHouseholdResolver.requireGovernmentHousehold(unit, rawUnitId).value());
+        rawUnitId,
+        at,
+        GovernmentHouseholdResolver.requireGovernmentHousehold(unit, rawUnitId).value());
   }
 
   /** 可选金额（缺省 0；类型错由 {@link ToolSupport#optionalLong} 抛 ⇒ BAD_REQUEST）。 */
@@ -440,9 +444,7 @@ public final class GovPayTool implements AgentTool {
   private static Map<String, Object> availableOf(SimulationState state, Payer payer) {
     ActorData actors = ApiViews.actorData(state);
     HouseholdInventory inventory =
-        actors
-            .accounts()
-            .get(new HouseholdAccountKey(HouseholdId.parse(payer.householdId())));
+        actors.accounts().get(new HouseholdAccountKey(HouseholdId.parse(payer.householdId())));
     if (inventory == null) {
       return null;
     }

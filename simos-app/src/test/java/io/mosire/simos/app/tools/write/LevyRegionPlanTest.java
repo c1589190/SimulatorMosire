@@ -7,8 +7,8 @@ import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
-import io.mosire.simos.actor.model.GoodsAccount;
-import io.mosire.simos.actor.model.GoodsAccountKey;
+import io.mosire.simos.actor.model.HouseholdAccountKey;
+import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.app.testing.SocialHouseholdFixture;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -26,8 +26,12 @@ import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.household.HouseholdLocation;
+import io.mosire.simos.social.api.household.HouseholdProfile;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.Sex;
+import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.unit.CompositionEntry;
@@ -75,6 +79,9 @@ class LevyRegionPlanTest {
 
   private static final UnitId U1 = new UnitId("u-1");
   private static final RegionId NATION = new RegionId("r-nation");
+
+  /** ★ P1.3：plain unit 的国库家户 = 唯一 unit.households 元素；同时当 manpower 目标家户（目标在区外的 H13， 故不会进人力来源表）。 */
+  private static final HouseholdId TARGET_HH = HouseholdId.parse("hh:1_3");
 
   private static final CommodityId GRAIN = new CommodityId("grain");
   private static final CommodityId CLOTH = new CommodityId("cloth");
@@ -227,7 +234,7 @@ class LevyRegionPlanTest {
     assertThat(plan.money()).as("money 维度 = 规范空维度").isEqualTo(LevyRegionPlan.Dimension.skipped());
     assertThat(plan.manpower().requested()).as("manpower=0 ⇒ 整维跳过：requested=0").isZero();
     assertThat(plan.manpower().available()).as("manpower=0 ⇒ available=0（未求值）").isZero();
-    assertThat(plan.manpower().sources()).as("manpower=0 ⇒ 不扫描批次").isEmpty();
+    assertThat(plan.manpower().shares()).as("manpower=0 ⇒ 不扫描批次").isEmpty();
     assertThat(plan.manpower())
         .as("manpower 维度 = 规范空维度")
         .isEqualTo(LevyRegionPlan.Manpower.skipped());
@@ -316,11 +323,11 @@ class LevyRegionPlanTest {
     assertThat(plan.manpower().available())
         .as("人力合计 = MALE + 成年：30 + 20（女性 / 未成年 / 老年 / 区外 / 空批都不算）")
         .isEqualTo(50L);
-    assertThat(plan.manpower().sources())
-        .extracting(source -> source.group().id().value())
+    assertThat(plan.manpower().shares())
+        .extracting(share -> share.lotId().value())
         .containsExactly("g1", "g2");
-    assertThat(plan.manpower().sources())
-        .extracting(LevyRegionPlan.GroupSource::taken)
+    assertThat(plan.manpower().shares())
+        .extracting(HouseholdManpowerAllocator.ManpowerShare::taken)
         .containsExactly(30L, 10L);
 
     // ★ 阶段 11b：cloth=0 的维度整段跳过（不扫描、不产生来源、available 记 0 = 未求值）。
@@ -345,7 +352,7 @@ class LevyRegionPlanTest {
     assertThat(grainOnly.cloth().sources()).isEmpty();
     assertThat(grainOnly.manpower().requested()).isZero();
     assertThat(grainOnly.manpower().available()).isZero();
-    assertThat(grainOnly.manpower().sources()).isEmpty();
+    assertThat(grainOnly.manpower().shares()).isEmpty();
     assertThat(grainOnly.hasManpower()).as("人力 0 ⇒ 批次里没有 SeedGroups").isFalse();
     assertThat(grainOnly.hasAccountMovements()).isTrue();
 
@@ -358,7 +365,7 @@ class LevyRegionPlanTest {
     assertThat(manpowerOnly.cloth().sources()).isEmpty();
     assertThat(manpowerOnly.cloth()).isEqualTo(LevyRegionPlan.Dimension.skipped());
     assertThat(manpowerOnly.grain()).isEqualTo(LevyRegionPlan.Dimension.skipped());
-    assertThat(manpowerOnly.manpower().sources()).hasSize(2);
+    assertThat(manpowerOnly.manpower().shares()).hasSize(2);
     assertThat(manpowerOnly.hasAccountMovements()).as("粮/钱/布全 0 ⇒ 批次里没有 AdjustAccounts").isFalse();
   }
 
@@ -430,7 +437,10 @@ class LevyRegionPlanTest {
             List.of(new Segment<>(T0, Optional.<RelativeOffset>empty())), List.of(), null),
         Optional.empty(),
         Unit.DEFAULT_VISION_RADIUS,
-        jurisdiction);
+        jurisdiction,
+        Optional.empty(),
+        Map.of(),
+        List.of(TARGET_HH));
   }
 
   private static SimulationState state(Unit unit) {
@@ -470,14 +480,14 @@ class LevyRegionPlanTest {
 
   private static ActorData actors() {
     return ActorData.empty()
-        .withAccount(account(HH1, H11, 100L, 20L, 50L, 0L, 60L, 10L))
-        .withAccount(account(HH2, H12, 40L, 0L, 80L, 0L, 70L, 20L))
-        .withAccount(account(DANGLING_HH, H11, 1000L, 0L, 1000L, 0L, 1000L, 0L))
-        .withAccount(account(HH_OUT, H13, 1000L, 0L, 1000L, 0L, 1000L, 0L))
-        .withAccount(account(HH_ZERO, H11, 10L, 10L, 0L, 0L, 0L, 0L));
+        .withInventory(account(HH1, H11, 100L, 20L, 50L, 0L, 60L, 10L))
+        .withInventory(account(HH2, H12, 40L, 0L, 80L, 0L, 70L, 20L))
+        .withInventory(account(DANGLING_HH, H11, 1000L, 0L, 1000L, 0L, 1000L, 0L))
+        .withInventory(account(HH_OUT, H13, 1000L, 0L, 1000L, 0L, 1000L, 0L))
+        .withInventory(account(HH_ZERO, H11, 10L, 10L, 0L, 0L, 0L, 0L));
   }
 
-  private static GoodsAccount account(
+  private static HouseholdInventory account(
       ActorRef owner,
       HexCoord at,
       long grain,
@@ -496,8 +506,9 @@ class LevyRegionPlanTest {
     if (frozenCloth != 0L) {
       frozenBalances.put(CLOTH, frozenCloth);
     }
-    return new GoodsAccount(
-        new GoodsAccountKey(io.mosire.simos.economy.api.cohort.HouseholdActors.householdOf(owner)),
+    return new HouseholdInventory(
+        new HouseholdAccountKey(
+            io.mosire.simos.economy.api.cohort.HouseholdActors.householdOf(owner)),
         balances,
         Map.of(SILVER, silver),
         frozenBalances,
@@ -513,12 +524,15 @@ class LevyRegionPlanTest {
     groups.put(lot("g-elder"), group("g-elder", H12, Sex.MALE, 7L, 70L * 365L));
     groups.put(lot("g-zero"), group("g-zero", H11, Sex.MALE, 0L, 20L * 365L));
     groups.put(lot("g-out"), group("g-out", H13, Sex.MALE, 1000L, 20L * 365L));
+    // ★ P1.3：manpower 目标家户 hh:1_3 必须已在 Social 里（不静默造户）。
+    groups.put(lot("g-target"), group("g-target", H13, Sex.MALE, 1L, 20L * 365L));
     Map<HexCoord, PopulationSeries> populations = new LinkedHashMap<>();
     for (HexCoord at : List.of(H11, H12, H13)) {
       populations.put(at, populationSeries());
     }
-    return SocialHouseholdFixture.withHouseholdsAt(
-        populations, Map.of(), groups, groupLocations(groups));
+    return accountHouseholdSocial(
+        SocialHouseholdFixture.withHouseholdsAt(
+            populations, Map.of(), groups, groupLocations(groups)));
   }
 
   private static Map<PeopleLotId, HexCoord> groupLocations(
@@ -550,5 +564,34 @@ class LevyRegionPlanTest {
         new Segment<>(T0, 1000L),
         new SegmentedSeries<>(List.of(new Segment<>(T0, 0.0)), List.of(), null),
         List.of());
+  }
+
+  /**
+   * ★ P2-A：账户主体 = 家户 ⇒ 让 Social 家户 id 与账本夹具的 {@link HouseholdId} 逐字一致 （hh-1 / hh-2 / hh:1_3）；否则账瀑布按
+   * Social 查家户会全部落空。
+   */
+  private static SocialData accountHouseholdSocial(SocialData base) {
+    Map<HexCoord, HouseholdId> byHex = new LinkedHashMap<>();
+    byHex.put(H11, HouseholdId.parse("hh-1"));
+    byHex.put(H12, HouseholdId.parse("hh-2"));
+    byHex.put(H13, HouseholdId.parse("hh:1_3"));
+    Map<HouseholdId, Household> renamed = new LinkedHashMap<>();
+    for (Household household : base.households().values()) {
+      HexCoord at = ((HouseholdLocation.Hex) household.location()).hex();
+      HouseholdId id = byHex.get(at);
+      if (id == null) {
+        throw new IllegalStateException("没有为格 " + at + " 指定家户 id");
+      }
+      renamed.put(
+          id,
+          new Household(
+              id,
+              household.location(),
+              new HouseholdProfile(id.value(), null, Map.of()),
+              household.members(),
+              household.vitalRates()));
+    }
+    return new SocialData(
+        base.populations(), base.cities(), base.groups(), renamed, base.populationEvents());
   }
 }

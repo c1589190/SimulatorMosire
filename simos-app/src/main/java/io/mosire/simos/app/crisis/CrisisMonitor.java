@@ -3,15 +3,15 @@ package io.mosire.simos.app.crisis;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.CommodityId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import java.util.ArrayList;
@@ -83,8 +83,7 @@ public final class CrisisMonitor {
    * 一起删）。读口保留键并给 {@code null}，另用本常量说明为什么没有数——**不填 0 冒充"没有压力"**。
    */
   public static final String STRESS_BY_AGE_BRACKET_UNAVAILABLE =
-      "生理压力字段已退役（2026-10-09 每 tick 生死计划 §4）：生死改由 Social ppm/tick 率表 + 余数累加器每 tick 结算，"
-          + "本读口不再有数";
+      "生理压力字段已退役（2026-10-09 每 tick 生死计划 §4）：生死改由 Social ppm/tick 率表 + 余数累加器每 tick 结算，" + "本读口不再有数";
 
   private CrisisMonitor() {}
 
@@ -102,10 +101,13 @@ public final class CrisisMonitor {
     //   反解两次，现在一次都不必（"行在哪一格"与"产业在哪一格"从此是两件事，各读各的）。
     //   ★ 分组键仍是 {@code <q>_<r>} 字符串（{@link IndustryHexKeys#hexKey}），排序口径与旧版逐字相同（字典序）。
     Map<String, List<HouseholdId>> byHex = new LinkedHashMap<>();
-    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : economy.classes().entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry :
+        economy.classes().entrySet()) {
       HexCoord hex = householdEconomyEntry.getValue().view().hex();
       String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
-      byHex.computeIfAbsent(hexKey, ignored -> new ArrayList<>()).add(householdEconomyEntry.getKey());
+      byHex
+          .computeIfAbsent(hexKey, ignored -> new ArrayList<>())
+          .add(householdEconomyEntry.getKey());
     }
     List<String> hexKeys = new ArrayList<>(byHex.keySet());
     hexKeys.sort(String::compareTo);
@@ -128,7 +130,8 @@ public final class CrisisMonitor {
   public static List<Light> lightsAt(
       HexCoord coord, EconomyData economy, SocialData social, long atTick, CalendarClock clock) {
     List<HouseholdId> keys = new ArrayList<>();
-    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : economy.classes().entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry :
+        economy.classes().entrySet()) {
       if (householdEconomyEntry.getValue().view().hex().equals(coord)) {
         keys.add(householdEconomyEntry.getKey());
       }

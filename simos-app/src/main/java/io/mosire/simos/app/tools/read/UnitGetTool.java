@@ -18,8 +18,8 @@ import java.util.Map;
  * {@code simos.unit.get}（spec §7.1 读工具）：单个单位详情（冻结字段 + 有效位置 + parent）。
  *
  * <p>★ <b>P4 只读 additive（2026-10-01）</b>：视图层仍在 {@link ToolSupport#unit} → {@code ApiViews.unit} 这一份
- * ——单位带 {@code module}（GovernmentFormation/ArmyFormation）时追加 {@code module}，带 {@code jurisdiction} 时追加
- * {@code jurisdiction}；缺席 ⇒ 键缺席，旧键逐字不变。工具的资源/级别/桶归属一字不动。
+ * ——单位带 {@code module}（GovernmentFormation/ArmyFormation）时追加 {@code module}，带 {@code jurisdiction}
+ * 时追加 {@code jurisdiction}；缺席 ⇒ 键缺席，旧键逐字不变。工具的资源/级别/桶归属一字不动。
  *
  * <p>★ <b>D1 只读 additive（2026-10-02 / D-012）</b>：{@code stateDescriptions}（当前回合状态 → canonical
  * 状态描述地址的 链接表，空表也发）同样只在 {@code ApiViews.unit} 一处加 —— GUI 与 MCP 两面同源。

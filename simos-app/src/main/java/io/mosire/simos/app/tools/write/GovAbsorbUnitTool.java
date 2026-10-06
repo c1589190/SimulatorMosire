@@ -31,9 +31,9 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * ★★ {@code simos.gov.absorbUnit}（阶段 13A 人员流转；2026-10-19 家户口径接线）：<b>GM 组合工具</b>——把无 module
- * 纯人员单位 {@code Unit.households()} 里的<b>真实家户成员</b>吸收进 GOV 的政府家户 {@code hh-gov-<govUnitId>}
- *（可顺带解散已空的源单位），一批落一条 revision。
+ * ★★ {@code simos.gov.absorbUnit}（阶段 13A 人员流转；2026-10-19 家户口径接线）：<b>GM 组合工具</b>——把无 module 纯人员单位
+ * {@code Unit.households()} 里的<b>真实家户成员</b>吸收进 GOV 的政府家户 {@code hh-gov-<govUnitId>}
+ * （可顺带解散已空的源单位），一批落一条 revision。
  *
  * <p>★★ <b>S3b 口径（用户 2026-10-19 裁定 2）</b>：{@code Unit.manpower} 已退役，本工具<b>不再发 {@code
  * unit.ApplyCasualties}、不写 Unit 侧第二本 headcount</b>；人口只从 Social 家户出、进 Social 家户（{@code
@@ -46,9 +46,10 @@ import java.util.UUID;
  * <p>★★ <b>批顺序（固定，一条 revision）</b>：
  *
  * <ol>
- *   <li>{@code social.SubmitHouseholdWorkOrder}（恒有）：{@code orderId=gov-absorb-unit:<batchId>:<govUnitId>:<sourceUnitId>}；
- *       {@code target = hh-gov-<govUnitId>}；{@code plan} = 逐来源 {@code TRANSFER_MEMBERS(from=源家户, to=政府家户,
- *       lotId, count)}；{@code disbandDispatched} 时再逐源家户 {@code SET_LOCATION(HEX = GOV 单位当刻
+ *   <li>{@code social.SubmitHouseholdWorkOrder}（恒有）：{@code
+ *       orderId=gov-absorb-unit:<batchId>:<govUnitId>:<sourceUnitId>}； {@code target =
+ *       hh-gov-<govUnitId>}；{@code plan} = 逐来源 {@code TRANSFER_MEMBERS(from=源家户, to=政府家户, lotId,
+ *       count)}；{@code disbandDispatched} 时再逐源家户 {@code SET_LOCATION(HEX = GOV 单位当刻
  *       effectivePosition)}——必须在 {@code unit.DisbandUnit} 之前，避免孤儿 {@code UNIT(sourceUnitId)} 位置；
  *   <li>{@code unit.RecruitStaff}（恒有）：{@code {unitId, role, count, sources}}，只入编、不扣人；
  *   <li>{@code unit.DisbandUnit}（仅 {@link GovAbsorbUnitPlan.Plan#disbandDispatched()}）：解散已清空的源单位；
@@ -65,8 +66,8 @@ import java.util.UUID;
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字不是命令类型 ⇒ 不进 catalog / {@code
  * PAYLOAD_HINTS}。★ 资源声明：写 {@code social}/{@code unit}/{@code sd} 三个命名空间（GM 侧三者 unlimited）。
  *
- * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / role 不在词表 / count &lt; 1 / GOV 或源单位不存在 / 源不是纯人员单位 / 源 households
- * 为空 / 政府家户不在 Unit.households 或 Social / 源合格人口不足 / 超 staffCap ⇒ {@link IllegalArgumentException} 折
+ * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / role 不在词表 / count &lt; 1 / GOV 或源单位不存在 / 源不是纯人员单位 / 源 households 为空
+ * / 政府家户不在 Unit.households 或 Social / 源合格人口不足 / 超 staffCap ⇒ {@link IllegalArgumentException} 折
  * {@code BAD_REQUEST}（零 revision）；批内域层拒 ⇒ {@code REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；
  * 资源不匹配 ⇒ 原样抛 {@link ResourceDeniedException}。
  */
@@ -104,8 +105,8 @@ public final class GovAbsorbUnitTool implements AgentTool {
    * @param core 唯一写入口（本工具走 {@code submitBatch}；preview=true 时一个字节都不写）
    * @param query 只读入口（读 branch/revision 的当前 {@link SimulationState}；preview 与同一份推导共用它）
    * @param initiator 落盘时的发起者（C21 的 {@code <kind>:<id>} 形态）
-   * @param mapId 本世界的 map 称谓（★ 保留在装配签名里以与同批 GOV 工具同制；本工具资源声明是三个命名空间的粗断言、
-   *     来源按源单位 {@code Unit.households()} 定位，不当路径用）
+   * @param mapId 本世界的 map 称谓（★ 保留在装配签名里以与同批 GOV 工具同制；本工具资源声明是三个命名空间的粗断言、 来源按源单位 {@code
+   *     Unit.households()} 定位，不当路径用）
    */
   // ★ 测试/旧路径：全缺省时钟，不读 store；生产 Shell 必须用带 CalendarService 的重载（CalendarService.load）。
   public GovAbsorbUnitTool(CoreSimos core, QueryService query, String initiator, String mapId) {

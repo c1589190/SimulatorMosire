@@ -17,12 +17,13 @@ import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialSnapshot;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.codec.SocialCodec;
 import io.mosire.simos.social.spi.SetHouseholdLocationHandler;
-import io.mosire.simos.unit.CompositionEntry;
-import io.mosire.simos.unit.GovFormation;
-import io.mosire.simos.unit.GovLevel;
+import io.mosire.simos.unit.GovernmentFormation;
+import io.mosire.simos.unit.GovernmentLevel;
+import io.mosire.simos.unit.GovernmentPostOfHousehold;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
@@ -53,8 +54,9 @@ import java.util.Optional;
 /**
  * ★ S3a GM 工具/读口用例的共享小世界（app 侧测试夹具）：一张 3 格走廊图 + unit/social/sd 切片，创世 revision = 1。
  *
- * <p>形态照 {@code SimosToolsTest.seedGenesis}，但不走 Shell/落盘：直接用 {@link CoreSimos#bootstrapGenesis} 建世界，
- * 让 GM 组合工具（{@code UnitAssignHouseholdTool}/{@code UnitDetachHouseholdTool}）在真 core 上提交命令批、真 revision 可数。
+ * <p>形态照 {@code SimosToolsTest.seedGenesis}，但不走 Shell/落盘：直接用 {@link CoreSimos#bootstrapGenesis}
+ * 建世界， 让 GM 组合工具（{@code UnitAssignHouseholdTool}/{@code UnitDetachHouseholdTool}）在真 core 上提交命令批、真
+ * revision 可数。
  */
 public final class UnitHouseholdWorldFixture {
 
@@ -120,11 +122,24 @@ public final class UnitHouseholdWorldFixture {
     return unitSlice(state).units().get(id);
   }
 
-  /** 一个 GOV 单位：顶层 {@code households} 与 {@link GovFormation#households()} 都可显式给（两账并存）。 */
+  /** 一个 GOV 单位：顶层 {@code households} 与 {@link GovernmentFormation#households()} 都可显式给（两账并存）。 */
   public static Unit govUnit(
       List<HouseholdId> unitHouseholds,
       List<HouseholdId> govHouseholds,
       Optional<UnitId> superiorGov) {
+    // ★ S3b/D5：GOV 单位必须恰含按稳定 id 建的政府家户 hh-gov-<unitId>（UnitState 构造期强制）。
+    List<HouseholdId> households = new java.util.ArrayList<>(unitHouseholds);
+    HouseholdId governmentHousehold = GovernmentHouseholds.of(GOV.value());
+    if (!households.contains(governmentHousehold)) {
+      households.add(governmentHousehold);
+    }
+    Map<HouseholdId, GovernmentPostOfHousehold> posts = new LinkedHashMap<>();
+    for (HouseholdId household : govHouseholds) {
+      posts.put(
+          household,
+          new GovernmentPostOfHousehold(
+              household, StaffRole.SCRIBE, GovernmentLevel.CENTRAL, false));
+    }
     return new Unit(
         GOV,
         "官府",
@@ -141,14 +156,14 @@ public final class UnitHouseholdWorldFixture {
         Unit.DEFAULT_VISION_RADIUS,
         Optional.empty(),
         Optional.of(
-            new GovFormation(
+            new GovernmentFormation(
                 Map.of(StaffRole.SCRIBE, 2L),
-                govHouseholds,
+                posts,
                 OfficePolicy.defaults(),
                 superiorGov,
-                GovLevel.CENTRAL)),
+                GovernmentLevel.CENTRAL)),
         Map.of(),
-        unitHouseholds);
+        households);
   }
 
   /** 一个无编制的普通单位（用于"目标 unit id 与 household id 撞名"的批回滚样本）。 */

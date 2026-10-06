@@ -3,31 +3,31 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.economy.EconomyCommodities;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.LaborSource;
-import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.Payee;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionProcess;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 
 /**
- * ★★ <b>S3.3 劳动家户状态读数（派生、不落盘）</b>—— 计划允许"并入 {@code HouseholdEconomy} 的派生读数或独立组件"；本类选择 <b>读时派生</b>：不新增
- * {@code EconomyData} 组件、不改变更集/codec 形状，字段由 {@code FlowRow + HouseholdLaborCommitment + OwnershipStake +
- * DebtContract + ProductionLedger(瞬态)} 逐值复算；E1 的 {@code grainCoveragePerMille} 另由调用方传入库存粮（库存真源在
- * actor 侧，economy 不另存一本账）。
+ * ★★ <b>S3.3 劳动家户状态读数（派生、不落盘）</b>—— 计划允许"并入 {@code HouseholdEconomy} 的派生读数或独立组件"；本类选择
+ * <b>读时派生</b>：不新增 {@code EconomyData} 组件、不改变更集/codec 形状，字段由 {@code FlowRow +
+ * HouseholdLaborCommitment + OwnershipStake + DebtContract + ProductionLedger(瞬态)} 逐值复算；E1 的 {@code
+ * grainCoveragePerMille} 另由调用方传入库存粮（库存真源在 actor 侧，economy 不另存一本账）。
  *
  * <pre>
  * unmetNeedMilliGrain/Cloth = 本周期累计未满足（FlowRow.unmetNeed；与"本周期"同窗口）
@@ -54,8 +54,9 @@ import java.util.OptionalLong;
  * @param status 生计状态（派生）
  * @param stressCycles 当前周期的压力证据（0/1；见类注的边界）
  * @param grainCoveragePerMille ★ E1：库存粮 ÷ 本周期基本口粮（本户当前注入 {@code naturalNeeds[grain]} × 本户
- *     cycleDays，见 {@link HouseholdEconomy#expectedNeedMilli(io.mosire.simos.economy.api.id.CommodityId, long)}），
- *     封顶 1000；读不到账/算不出分母 ⇒ {@link OptionalLong#empty()}（明确哨兵，不填 0 冒充"断粮"）
+ *     cycleDays，见 {@link
+ *     HouseholdEconomy#expectedNeedMilli(io.mosire.simos.economy.api.id.CommodityId, long)}）， 封顶
+ *     1000；读不到账/算不出分母 ⇒ {@link OptionalLong#empty()}（明确哨兵，不填 0 冒充"断粮"）
  */
 public record HouseholdCondition(
     HouseholdId household,
@@ -174,7 +175,9 @@ public record HouseholdCondition(
     HouseholdEconomy householdEconomy = data.classes().get(household);
     if (cycleDays == 0L && householdEconomy != null) {
       // ★ 兜底：一条配额都没有的家户退回"它住的那一格的产业"（同 cycleDaysByHousehold 的兜底）。
-      String hexKey = IndustryHexKeys.hexKey(householdEconomy.view().hex().q(), householdEconomy.view().hex().r());
+      String hexKey =
+          IndustryHexKeys.hexKey(
+              householdEconomy.view().hex().q(), householdEconomy.view().hex().r());
       for (Map.Entry<IndustryId, Industry> entry : data.industries().entrySet()) {
         if (IndustryHexKeys.hexKeyOf(entry.getKey()).filter(hexKey::equals).isPresent()) {
           cycleDays = Math.max(cycleDays, entry.getValue().cycleDays());
@@ -196,7 +199,8 @@ public record HouseholdCondition(
     //   的接线不在 E4c 范围：为了避免在没接线前拿一半数据冒充，rentPaid 仍保持 empty（"读不到"），
     //   由后续阶段的逐关系落账读数补。
     OptionalLong rentPaid = OptionalLong.empty();
-    OptionalLong grainCoverage = grainCoveragePerMille(householdEconomy, cycleDays, grainStockMilli);
+    OptionalLong grainCoverage =
+        grainCoveragePerMille(householdEconomy, cycleDays, grainStockMilli);
     LivelihoodStatus status = livelihoodOf(data, household, laborSold, grainCoverage);
     long stressCycles = status == LivelihoodStatus.DESTITUTE && unmetGrain > 0L ? 1L : 0L;
     return new HouseholdCondition(
@@ -216,9 +220,9 @@ public record HouseholdCondition(
   /**
    * ★ E1：库存粮覆盖本周期基本口粮的千分数（封顶 1000）。
    *
-   * <p>★★ 2026-10-09 Batch 3：分母 = 本户 {@link HouseholdEconomy#expectedNeedMilli}(当前注入的
-   * {@code naturalNeeds[grain]}, 本户 cycleDays)；<b>不再</b>按 {@code population × 人均口粮定额} 现算。
-   * 读不到账、算不出正分母 ⇒ {@link OptionalLong#empty()}（明确哨兵，不填 0）。
+   * <p>★★ 2026-10-09 Batch 3：分母 = 本户 {@link HouseholdEconomy#expectedNeedMilli}(当前注入的 {@code
+   * naturalNeeds[grain]}, 本户 cycleDays)；<b>不再</b>按 {@code population × 人均口粮定额} 现算。 读不到账、算不出正分母 ⇒
+   * {@link OptionalLong#empty()}（明确哨兵，不填 0）。
    */
   private static OptionalLong grainCoveragePerMille(
       HouseholdEconomy householdEconomy, long cycleDays, OptionalLong grainStockMilli) {

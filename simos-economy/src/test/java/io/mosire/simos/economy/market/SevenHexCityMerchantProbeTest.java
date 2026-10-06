@@ -38,8 +38,7 @@ class SevenHexCityMerchantProbeTest {
     initialPrice.put(Good.GRAIN, 100L);
     initialPrice.put(Good.FIBER, 25L);
     initialPrice.put(Good.CLOTH, 185L);
-    Params params =
-        new Params(200L, 100L, 100L, 10_000L, 0L, 100L, 700L, 1L, 5L, 5L, initialPrice);
+    Params params = new Params(200L, 100L, 100L, 10_000L, 0L, 100L, 700L, 1L, 5L, 5L, initialPrice);
     ProbeEconomy economy = new ProbeEconomy(params);
 
     economy.addHex("C", 0, 0);
@@ -149,15 +148,15 @@ class SevenHexCityMerchantProbeTest {
     // ── 生产组织 ─────────────────────────────────────────────────────────
     economy.addTenancy(
         new Tenancy(
-            "tenancy-r0",
-            landlord,
-            farmer,
-            new Recipe(Good.GRAIN, 10L, new EnumMap<>(Good.class), 1L, 142L),
-            142L,
-            RentForm.FIXED_KIND,
-            410L,
-            0L,
-            0L)
+                "tenancy-r0",
+                landlord,
+                farmer,
+                new Recipe(Good.GRAIN, 10L, new EnumMap<>(Good.class), 1L, 142L),
+                142L,
+                RentForm.FIXED_KIND,
+                410L,
+                0L,
+                0L)
             .landPerUnit(22L));
 
     EnumMap<Good, Long> clothInput = new EnumMap<>(Good.class);
@@ -299,9 +298,7 @@ class SevenHexCityMerchantProbeTest {
             + last.refs());
 
     // 城市商人扩散：R1→C 没有专属城市商队，但城市总池半径覆盖它。
-    assertThat(initialPeripheralLaneCost)
-        .as("R1→C 也被城市折扣覆盖（小于基础 10‰）")
-        .isLessThan(10L);
+    assertThat(initialPeripheralLaneCost).as("R1→C 也被城市折扣覆盖（小于基础 10‰）").isLessThan(10L);
     assertThat(finalPeripheralLaneCost)
         .as("城市商人运力扩散到周边 lane")
         .isLessThanOrEqualTo(initialPeripheralLaneCost);
@@ -323,9 +320,7 @@ class SevenHexCityMerchantProbeTest {
     assertThat(afterRoadCost).as("道路降低运输费").isLessThan(fartherRuralCost);
     assertThat(migratedPopulation).as("周边小农迁入城市").isPositive();
     assertThat(cityLaborer.population).as("城市工坊新增劳动力").isPositive();
-    assertThat(workshop.lastScale)
-        .as("迁入后作坊达到目标规模（650）")
-        .isEqualTo(workshop.desiredScale);
+    assertThat(workshop.lastScale).as("迁入后作坊达到目标规模（650）").isEqualTo(workshop.desiredScale);
     assertThat(economy.tenancies.get(0).lastOutput)
         .as("城区辐射占用可耕地后，农业规模被 landPerUnit 压住")
         .isLessThan(1_420L);

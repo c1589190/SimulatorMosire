@@ -15,10 +15,8 @@ import org.junit.jupiter.api.Test;
 /**
  * 闭环收入 + 还债 wave 探针：和断粮长程场景形成对照。
  *
- * <p>地主产粮 1000/轮、需要布 250/轮；织户 500 人，每人产 0.5 布、需要 2 粮/轮。
- * 两边实物收支在初始价格（粮 100、布 400）刚好平衡，因此有收入、能还债。
- * 运行 3000 轮后，每轮发行 = 每轮还款 = 20 万，存量债务稳定在 20 万；
- * 说明“人口死亡删债”之外，还需要劳动→收入→还债闭环，信贷才会真正稳定。
+ * <p>地主产粮 1000/轮、需要布 250/轮；织户 500 人，每人产 0.5 布、需要 2 粮/轮。 两边实物收支在初始价格（粮 100、布 400）刚好平衡，因此有收入、能还债。 运行
+ * 3000 轮后，每轮发行 = 每轮还款 = 20 万，存量债务稳定在 20 万； 说明“人口死亡删债”之外，还需要劳动→收入→还债闭环，信贷才会真正稳定。
  */
 class CircularFlowCreditProbeTest {
 
@@ -27,8 +25,7 @@ class CircularFlowCreditProbeTest {
     EnumMap<Good, Long> initialPrice = new EnumMap<>(Good.class);
     initialPrice.put(Good.GRAIN, 100L);
     initialPrice.put(Good.CLOTH, 400L);
-    Params params =
-        new Params(200L, 100L, 100L, 10_000L, 0L, 0L, 500L, 2L, 0L, 0L, initialPrice);
+    Params params = new Params(200L, 100L, 100L, 10_000L, 0L, 0L, 500L, 2L, 0L, 0L, initialPrice);
 
     ProbeEconomy economy = new ProbeEconomy(params);
     economy.addHex("H", 0, 0);
@@ -44,10 +41,7 @@ class CircularFlowCreditProbeTest {
     economy.addHousehold(landlord);
 
     Household weaver =
-        new Household("W", "H")
-            .stock(Good.CLOTH, 250L)
-            .need(Good.GRAIN, 2L)
-            .cost(Good.CLOTH, 10L);
+        new Household("W", "H").stock(Good.CLOTH, 250L).need(Good.GRAIN, 2L).cost(Good.CLOTH, 10L);
     weaver.population = 500L;
     weaver.recipe = new Recipe(Good.CLOTH, 1L, new EnumMap<>(Good.class), 1L, 250L);
     economy.addHousehold(weaver);

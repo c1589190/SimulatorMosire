@@ -6,12 +6,12 @@ import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
-import io.mosire.simos.economy.model.AssetShare;
-import io.mosire.simos.economy.model.ClassPosition;
-import io.mosire.simos.economy.model.ClassRow;
-import io.mosire.simos.economy.model.ClassStanding;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.DefaultProductionModes;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -24,8 +24,7 @@ import org.junit.jupiter.api.Test;
  * ★★ D-023 第 3 项：不额外种“事件户”的自然 7hex 3650 tick 验收。
  *
  * <p>世界由 {@code SevenHexFullChain3650Test.buildNaturalWorld()} 提供：只放正常分布的家户（佃农/雇农/自耕农/
- * 手工业/商人/少量流民）、正常产业、正常商号、正常市场；利润差来自正常产业配方差与真实成交。本类只做 3650 tick
- * 后的读数与判据，不构造事件触发器。
+ * 手工业/商人/少量流民）、正常产业、正常商号、正常市场；利润差来自正常产业配方差与真实成交。本类只做 3650 tick 后的读数与判据，不构造事件触发器。
  */
 class SevenHexNatural3650Test {
 
@@ -34,8 +33,8 @@ class SevenHexNatural3650Test {
   @Test
   void sevenHexNatural3650() {
     SevenHexFullChain3650Test.World world = SevenHexFullChain3650Test.buildNaturalWorld();
-    OrganizationProfitBook.Book firstCycle = SevenHexFullChain3650Test.collectFirstCycleBook(world);
-    for (OrganizationProfitBook.ModeHex key : firstCycle.laborByModeHex().keySet()) {
+    EnterpriseProfitBook.Book firstCycle = SevenHexFullChain3650Test.collectFirstCycleBook(world);
+    for (EnterpriseProfitBook.ModeHex key : firstCycle.laborByModeHex().keySet()) {
       long labor = firstCycle.labor(key.modeId(), key.hex());
       if (labor > 0L) {
         System.out.println(
@@ -62,7 +61,7 @@ class SevenHexNatural3650Test {
     assertThat(result.creations()).as("[7HEX-NAT] 自然世界新建目标 mode 家户次数").isPositive();
 
     // ── 真实利润差存在 + 高利润吸引子 mode 人口份额上升。────────────────────────────────────
-    // 主实现的迁移计划只读真实 OrganizationProfitBook 的 netPerLaborScaled；这里先用首周期真实利润簿
+    // 主实现的迁移计划只读真实 EnterpriseProfitBook 的 netPerLaborScaled；这里先用首周期真实利润簿
     // 证明世界存在正的“单位劳动净收益”读数（不是全零/全负的空世界），再断言自然迁移中人口增长最大的
     // 生产 mode（= 利润权重迁移的实际吸引子）份额上升。
     Map<ProductionModeId, Long> beforeByMode = modePopulations(world.initial());
@@ -70,7 +69,7 @@ class SevenHexNatural3650Test {
     boolean hasPositiveRealProfit = false;
     long bestScaled = Long.MIN_VALUE;
     ProductionModeId bestProfitMode = null;
-    for (OrganizationProfitBook.ModeHex key : firstCycle.laborByModeHex().keySet()) {
+    for (EnterpriseProfitBook.ModeHex key : firstCycle.laborByModeHex().keySet()) {
       if (firstCycle.labor(key.modeId(), key.hex()) <= 0L) {
         continue;
       }
@@ -97,8 +96,7 @@ class SevenHexNatural3650Test {
     Set<ProductionModeId> modes = new LinkedHashSet<>(beforeByMode.keySet());
     modes.addAll(afterByMode.keySet());
     for (ProductionModeId mode : modes) {
-      long gain =
-          afterByMode.getOrDefault(mode, 0L) - beforeByMode.getOrDefault(mode, 0L);
+      long gain = afterByMode.getOrDefault(mode, 0L) - beforeByMode.getOrDefault(mode, 0L);
       if (gain > bestGain) {
         bestGain = gain;
         migrationAttractor = mode;
@@ -180,18 +178,17 @@ class SevenHexNatural3650Test {
   private static void assertNoDisplacedAutoWork(EconomyData data) {
     assertThat(data.productionOrganizations().values())
         .as("[7HEX-NAT] DISPLACED 不得有生产组织")
-        .noneMatch(
-            organization ->
-                DefaultProductionModes.DISPLACED.equals(organization.modeId()));
+        .noneMatch(organization -> DefaultProductionModes.DISPLACED.equals(organization.modeId()));
     assertThat(data.units().values())
         .as("[7HEX-NAT] DISPLACED 不得由自动组织产生 unit")
         .noneMatch(
             unit ->
-                (EconomyOrganizationSettlement.MODE_KEY_PREFIX + DefaultProductionModes.DISPLACED.value())
+                (EconomyEnterpriseSettlement.MODE_KEY_PREFIX
+                        + DefaultProductionModes.DISPLACED.value())
                     .equals(unit.modeKey()));
     Set<HouseholdId> displacedHouseholds = new LinkedHashSet<>();
     Map<HouseholdId, ProductionModeId> modeOf = modeOf(data);
-    for (ClassRow row : data.classes().values()) {
+    for (HouseholdEconomy row : data.classes().values()) {
       if (DefaultProductionModes.DISPLACED.equals(modeOf.get(row.id()))) {
         displacedHouseholds.add(row.id());
       }
@@ -200,13 +197,14 @@ class SevenHexNatural3650Test {
         .as("[7HEX-NAT] DISPLACED 家户不得挂劳动配额")
         .noneMatch(
             allocation ->
-                displacedHouseholds.contains(allocation.household()) && allocation.laborMilli() > 0L);
+                displacedHouseholds.contains(allocation.household())
+                    && allocation.laborMilli() > 0L);
   }
 
   private static Map<HouseholdId, ProductionModeId> modeOf(EconomyData data) {
     Map<HouseholdId, ProductionModeId> result = new LinkedHashMap<>();
-    for (ClassStanding standing : data.classStandings().values()) {
-      ClassPosition position = data.classPositions().get(standing.currentPositionId());
+    for (HouseholdClassMembership standing : data.classStandings().values()) {
+      ProductionRole position = data.classPositions().get(standing.currentPositionId());
       if (position != null) {
         result.put(standing.householdId(), position.modeId());
       }
@@ -217,7 +215,7 @@ class SevenHexNatural3650Test {
   private static Map<ProductionModeId, Long> modePopulations(EconomyData data) {
     Map<HouseholdId, ProductionModeId> modeOf = modeOf(data);
     Map<ProductionModeId, Long> totals = new LinkedHashMap<>();
-    for (ClassRow row : data.classes().values()) {
+    for (HouseholdEconomy row : data.classes().values()) {
       ProductionModeId mode = modeOf.get(row.id());
       if (mode != null) {
         totals.merge(mode, row.population(), Long::sum);
@@ -228,7 +226,7 @@ class SevenHexNatural3650Test {
 
   private static long totalPopulation(EconomyData data) {
     long total = 0L;
-    for (ClassRow row : data.classes().values()) {
+    for (HouseholdEconomy row : data.classes().values()) {
       total += row.population();
     }
     return total;
@@ -254,14 +252,14 @@ class SevenHexNatural3650Test {
 
   private static Map<AssetKind, Long> assetQuantitiesByKind(EconomyData data) {
     Map<AssetKind, Long> totals = new EnumMap<>(AssetKind.class);
-    for (AssetShare share : data.assetShares().values()) {
+    for (OwnershipStake share : data.assetShares().values()) {
       totals.merge(share.asset(), share.quantity(), Math::addExact);
     }
     return totals;
   }
 
   private static void assertNoNegativeBalances(EconomyData data, AccountSession accounts) {
-    for (ClassRow row : data.classes().values()) {
+    for (HouseholdEconomy row : data.classes().values()) {
       assertThat(row.population()).as("[7HEX-NAT] 人口不得为负: %s", row.id()).isNotNegative();
       assertThat(row.laborMilli()).as("[7HEX-NAT] 劳动不得为负: %s", row.id()).isNotNegative();
       assertThat(row.money()).as("[7HEX-NAT] 行货币不得为负: %s", row.id()).isNotNegative();
@@ -277,13 +275,11 @@ class SevenHexNatural3650Test {
         assertThat(amount).as("[7HEX-NAT] 货币余额不得为负").isNotNegative();
       }
     }
-    for (AssetShare share : data.assetShares().values()) {
+    for (OwnershipStake share : data.assetShares().values()) {
       assertThat(share.quantity()).as("[7HEX-NAT] 资产份额不得为负: %s", share.id()).isNotNegative();
     }
     for (DebtContract contract : data.debtContracts().values()) {
-      assertThat(contract.principal())
-          .as("[7HEX-NAT] 债务本金不得为负: %s", contract.id())
-          .isNotNegative();
+      assertThat(contract.principal()).as("[7HEX-NAT] 债务本金不得为负: %s", contract.id()).isNotNegative();
     }
   }
 }

@@ -62,7 +62,8 @@ public final class GovEfficiency {
    * @param demand 逐格需求（{@link GovDemand#of} 的输出；空表 = 无需求）；不得为 null、键值不得为 null
    * @return 覆盖率 / 加成 / 效率读数（四个字段都做界校验）
    */
-  public static Efficiency of(GovernmentFormation governmentFormation, Map<HexCoord, GovDemand.HexDemand> demand) {
+  public static Efficiency of(
+      GovernmentFormation governmentFormation, Map<HexCoord, GovDemand.HexDemand> demand) {
     requireGovernmentFormation(governmentFormation);
     requireDemand(demand);
 

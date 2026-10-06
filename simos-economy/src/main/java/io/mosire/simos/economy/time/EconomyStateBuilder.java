@@ -7,7 +7,6 @@ import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.GovernmentId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
@@ -20,25 +19,26 @@ import io.mosire.simos.economy.api.labor.HouseholdLaborCommitment;
 import io.mosire.simos.economy.api.market.ShipmentBatch;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.ProductionRules;
-import io.mosire.simos.economy.model.OwnershipStake;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.ClassShare;
-import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HexCrisisSignal;
+import io.mosire.simos.economy.model.HouseholdClassMembership;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
+import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -89,8 +89,8 @@ public final class EconomyStateBuilder {
   private LinkedHashMap<ClassShareId, ClassShare> classShares;
 
   /**
-   * ★★ <b>P10.2：商号表工作副本（第 30 个组件）</b> —— 承运选择扣本周期运力、周期末结算写 lastFee/upkeep/profit/容量；
-   * 未物化时 {@link #build} 原样复用 base 的不可变表（无商号世界零拷贝）。
+   * ★★ <b>P10.2：商号表工作副本（第 30 个组件）</b> —— 承运选择扣本周期运力、周期末结算写 lastFee/upkeep/profit/容量； 未物化时 {@link
+   * #build} 原样复用 base 的不可变表（无商号世界零拷贝）。
    */
   private LinkedHashMap<ProductionOrganizationId, MerchantFirm> merchantFirms;
 
@@ -196,8 +196,8 @@ public final class EconomyStateBuilder {
   }
 
   /**
-   * ★★ <b>P10.2：商号表工作副本</b>（键 = 值内 organizationId）。本批的写口：{@link MerchantSettlement} 的承运扣量
-   * 与周期末 {@code withTradeResult/withCapacityDelta}。
+   * ★★ <b>P10.2：商号表工作副本</b>（键 = 值内 organizationId）。本批的写口：{@link MerchantSettlement} 的承运扣量 与周期末
+   * {@code withTradeResult/withCapacityDelta}。
    */
   public LinkedHashMap<ProductionOrganizationId, MerchantFirm> merchantFirms() {
     if (merchantFirms == null) {

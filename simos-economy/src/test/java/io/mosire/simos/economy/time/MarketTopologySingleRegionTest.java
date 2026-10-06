@@ -88,11 +88,7 @@ class MarketTopologySingleRegionTest {
     Map<HexCoord, Market> sameQMarkets = markets(new HexCoord(1, 2), new HexCoord(1, 0));
     assertThat(
             MarketTopology.singleRegion(
-                    sameQMarkets,
-                    sameQ,
-                    hex -> 1,
-                    (from, to) -> 0,
-                    TransportTariff.probeDefaults())
+                    sameQMarkets, sameQ, hex -> 1, (from, to) -> 0, TransportTariff.probeDefaults())
                 .regions()
                 .get(0)
                 .anchor())
@@ -108,9 +104,7 @@ class MarketTopologySingleRegionTest {
             markets, markets.keySet(), hex -> 1, (from, to) -> 0, TransportTariff.probeDefaults());
     MarketRegion region = topology.regions().get(0);
 
-    assertThat(topology.adjacent(region, region))
-        .as("★ 单区对自身不构成跨区邻接")
-        .isFalse();
+    assertThat(topology.adjacent(region, region)).as("★ 单区对自身不构成跨区邻接").isFalse();
     assertThat(topology.regions()).as("没有第二个区可判邻接").hasSize(1);
     assertThat(topology.freightPerMilleBetween(H00, H10))
         .as("跨区费率入口仍可用于同区运费读数，但它不是本批判据（本批区内走实物损耗）")
@@ -169,7 +163,11 @@ class MarketTopologySingleRegionTest {
     assertThatThrownBy(
             () ->
                 MarketTopology.singleRegion(
-                    markets, shortMembers, hex -> 1, (from, to) -> 0, TransportTariff.probeDefaults()))
+                    markets,
+                    shortMembers,
+                    hex -> 1,
+                    (from, to) -> 0,
+                    TransportTariff.probeDefaults()))
         .as("markets 有成员表之外的格（两入参不同源）必须拒绝")
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessageContaining("两个入参不同源");

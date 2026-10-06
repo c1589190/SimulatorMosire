@@ -30,10 +30,10 @@ import java.util.Objects;
  * day}）**自动组织之前**执行（见 {@code EconomyModeTransitionSettlement}）。因此命令成功 = 恰好新增一条 {@link
  * ModeTransition.Status#PENDING}；一次 revision 原子。
  *
- * <p>★★ <b>校验（命令期，逐条 fail-closed）</b>：enterprise 存在；toMode 存在且 ≠ 组织当前 mode；同一组织没有 PENDING
- * 变迁；{@code retainOriginalPerMille ∈ [0,1000]}；{@code effectiveDay >= 当前日}（缺省 = 当前日）。★
- * <b>同一请求重复提交幂等</b>： id 由 {@link ModeTransitionId#idOf(ProductionOrganizationId, ProductionModeId,
- * long)} 确定性派生，同 id 且请求字段逐值相同 ⇒ 返回空变更集（不再落第二条）。
+ * <p>★★ <b>校验（命令期，逐条 fail-closed）</b>：enterprise 存在；toMode 存在且 ≠ 组织当前 mode；同一组织没有 PENDING 变迁；{@code
+ * retainOriginalPerMille ∈ [0,1000]}；{@code effectiveDay >= 当前日}（缺省 = 当前日）。★ <b>同一请求重复提交幂等</b>： id
+ * 由 {@link ModeTransitionId#idOf(ProductionOrganizationId, ProductionModeId, long)} 确定性派生，同 id
+ * 且请求字段逐值相同 ⇒ 返回空变更集（不再落第二条）。
  *
  * <p>★★ <b>GM-only</b>：实现 {@link GmOnlyCommand} —— 注册面（Core / {@code commandTargets}）照常可见、GM 的
  * {@code simos.command.submit} 可提交；组合根在构造 {@code DirectiveWhitelist} 时排除它，普通 GOV Agent 无法把它写进令里执行。
@@ -43,13 +43,11 @@ import java.util.Objects;
  * 的 unit/industry 或 assetSources 推格键"；这里走 {@link ProductionOrganizationId#hexKey()} —— 它读的是 {@link
  * ProductionOrganizationId#idOf} 已经写进稳定身份末尾的同一个格键（唯一拼写点，不内联切串）。旧档/手写 org id 末尾不是 {@code q_r} ⇒
  * 返回空目标（裁决侧 fail-closed 拒绝"无目标声明"），不伪造坐标。
- *
  */
 public final class EconomySwitchModeHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
 
   private static final String COMMAND = "economy.SwitchMode";
-
 
   @Override
   public String type() {

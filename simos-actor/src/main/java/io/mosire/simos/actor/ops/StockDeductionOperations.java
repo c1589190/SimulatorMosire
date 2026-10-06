@@ -91,7 +91,8 @@ public final class StockDeductionOperations {
       // ★ 五参写回：两张冻结表原样带过（用便捷构造器会把已有冻结静默清零）。
       next.put(
           key,
-          new HouseholdInventory(key, balances, money, source.frozenBalances(), source.frozenMoney()));
+          new HouseholdInventory(
+              key, balances, money, source.frozenBalances(), source.frozenMoney()));
 
       deduction.toHousehold().ifPresent(recipient -> credit(next, base, recipient, deduction));
 
@@ -173,7 +174,9 @@ public final class StockDeductionOperations {
               leg.getKey().toString()));
     }
     next.put(
-        key, new HouseholdInventory(key, balances, money, target.frozenBalances(), target.frozenMoney()));
+        key,
+        new HouseholdInventory(
+            key, balances, money, target.frozenBalances(), target.frozenMoney()));
   }
 
   /** 被扣家户没有账时的具名拒（区分"有主体行但没开账"与"连主体行都没有"）。 */

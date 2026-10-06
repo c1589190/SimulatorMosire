@@ -5,13 +5,13 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DemandId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.HouseholdDemand;
+import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -41,12 +41,10 @@ import java.util.Optional;
  *       尾段最大值 + 1；尾段不可解析 ⇒ 拒，不猜）；给了 id 且已存在 ⇒ 拒（要改请先 CancelDemand）；
  *   <li><b>只写 {@code demands}</b>；不造商品/货币/账户/市场。
  * </ul>
- *
  */
 public final class EconomyAddDemandHandler implements CommandHandler {
 
   private static final String COMMAND = "economy.AddDemand";
-
 
   @Override
   public String type() {
@@ -159,15 +157,15 @@ public final class EconomyAddDemandHandler implements CommandHandler {
               source);
       Map<DemandId, HouseholdDemand> householdDemands = new LinkedHashMap<>(base.demands());
       householdDemands.put(demandId, householdDemand);
-      return new HandlerOutcome.Applied(EconomyChangeSet.between(base, base.withHouseholdDemands(householdDemands)));
+      return new HandlerOutcome.Applied(
+          EconomyChangeSet.between(base, base.withHouseholdDemands(householdDemands)));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }
 
   /** 该格必须有市场行、且该商品有价；否则拒绝并**指名** {@code economy.SetMarketPrice}。★ 明确 0 价（免费）算"有价"。 */
-  static void requirePriced(
-      EconomyData base, HexCoord hex, CommodityId commodity, String where) {
+  static void requirePriced(EconomyData base, HexCoord hex, CommodityId commodity, String where) {
     Market market = base.markets().get(hex);
     if (market == null || !market.hasPrice(commodity)) {
       throw new IllegalArgumentException(
@@ -184,10 +182,12 @@ public final class EconomyAddDemandHandler implements CommandHandler {
   static long populationAt(EconomyData base, HexCoord hex) {
     long population = 0L;
     String hexKey = IndustryHexKeys.hexKey(hex.q(), hex.r());
-    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : base.classes().entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry :
+        base.classes().entrySet()) {
       String rowHex =
           IndustryHexKeys.hexKey(
-              householdEconomyEntry.getValue().view().hex().q(), householdEconomyEntry.getValue().view().hex().r());
+              householdEconomyEntry.getValue().view().hex().q(),
+              householdEconomyEntry.getValue().view().hex().r());
       if (rowHex.equals(hexKey)) {
         population = Math.addExact(population, householdEconomyEntry.getValue().population());
       }

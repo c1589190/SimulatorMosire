@@ -3,8 +3,8 @@ package io.mosire.simos.economy.resolve;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.AddressSegment;
 import io.mosire.simos.util.address.Entity;
@@ -25,9 +25,9 @@ import java.util.Objects;
  *   <li>{@code economy:<mapId>} —— 该地图的经济切片根主体（第 2 段是根主体 {@code Entity(∅,·)}）
  *   <li>{@code economy:<mapId>:industry.<id>} —— 产业（类型名 {@code "Industry"}）；无记录 ⇒ 空候选
  *   <li>{@code economy:<mapId>:debt.<id>} —— 债务（类型名 {@code "Debt"}）；无记录 ⇒ 空候选
- *   <li>{@code economy:<mapId>:class.<cohort>} —— 家户经济（Java 类型 {@code HouseholdEconomy}；对外类型名 wire 仍为
- *       {@code "ClassRow"}）；无记录 ⇒ 空候选。 {@code
- *       <cohort>} = {@link CohortKey#toString()} 的**规范串**（如 {@code 0_0|rural|poor_peasant}）
+ *   <li>{@code economy:<mapId>:class.<cohort>} —— 家户经济（Java 类型 {@code HouseholdEconomy}；对外类型名 wire
+ *       仍为 {@code "ClassRow"}）；无记录 ⇒ 空候选。 {@code <cohort>} = {@link CohortKey#toString()}
+ *       的**规范串**（如 {@code 0_0|rural|poor_peasant}）
  *   <li>{@code economy:<mapId>:flow.<cohort>} —— 周期流水（类型名 {@code "FlowRow"}）；无记录 ⇒ 空候选
  * </ul>
  *

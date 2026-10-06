@@ -20,20 +20,18 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * ★★ {@code simos.social.labor}（2026-10-09 家户结构修复计划 Batch 4）：<b>GM 改/清 social 劳动系数窄工具</b>——
- * {@code social.SetLaborCoefficient} 的封装（全局默认或单家户覆盖，键 {@code (年龄档, 性别)}，值
- * {@code milliHoursPerTick}）。
+ * ★★ {@code simos.social.labor}（2026-10-09 家户结构修复计划 Batch 4）：<b>GM 改/清 social 劳动系数窄工具</b>—— {@code
+ * social.SetLaborCoefficient} 的封装（全局默认或单家户覆盖，键 {@code (年龄档, 性别)}，值 {@code milliHoursPerTick}）。
  *
- * <p>★ <b>参数语义</b>（与命令同源）：{@code householdId} 缺席 = 改全局默认；给了 = 改该家户覆盖（家户必须存在）；
- * {@code milliHoursPerTick} 给了 = upsert，缺席 = 清除该家户覆盖键并回落全局（无 householdId ⇒ 命令具名拒，
- * 全局删键不允许）。
+ * <p>★ <b>参数语义</b>（与命令同源）：{@code householdId} 缺席 = 改全局默认；给了 = 改该家户覆盖（家户必须存在）； {@code
+ * milliHoursPerTick} 给了 = upsert，缺席 = 清除该家户覆盖键并回落全局（无 householdId ⇒ 命令具名拒， 全局删键不允许）。
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：preview 与 apply 都先经 {@link SocialProvisioningEdits} 调
- * {@link SocialProvisioning} 的不可变 copy-with 算出目标 provisioning（零状态写入、零 revision）；若 {@code preview=false}
- * 才把同一份载荷提交给 {@link CoreSimos#submitBatch}。
+ * {@link SocialProvisioning} 的不可变 copy-with 算出目标 provisioning（零状态写入、零 revision）；若 {@code
+ * preview=false} 才把同一份载荷提交给 {@link CoreSimos#submitBatch}。
  *
- * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；命令本身标 {@code GmOnlyCommand}，工具名不是命令类型
- * ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。只写 social 命名空间。
+ * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；命令本身标 {@code GmOnlyCommand}，工具名不是命令类型 ⇒
+ * 不进 catalog / {@code PAYLOAD_HINTS}。只写 social 命名空间。
  *
  * <p>★ <b>旧档作废、不迁移</b>：只认带第 6 组件 {@code provisioning} 的新档；旧档在状态构造期即具名拒。
  */
@@ -68,9 +66,7 @@ public final class SocialLaborTool extends AbstractHouseholdGmTool {
   @Override
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
-    props.put(
-        "householdId",
-        ToolSupport.prop("string", "家户稳定 id；缺席 = 改全局默认，给了 = 改该家户覆盖（家户必须存在）"));
+    props.put("householdId", ToolSupport.prop("string", "家户稳定 id；缺席 = 改全局默认，给了 = 改该家户覆盖（家户必须存在）"));
     props.put("ageBracket", ToolSupport.prop("string", "年龄档 0-14 | 15-59 | 60+（必填）"));
     props.put("sex", ToolSupport.prop("string", "MALE | FEMALE（必填）"));
     props.put(
@@ -82,7 +78,8 @@ public final class SocialLaborTool extends AbstractHouseholdGmTool {
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
-        ToolSupport.prop("integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=该分支 head）"));
+        ToolSupport.prop(
+            "integer", "preview=false 必填：提交的乐观并发 base revision；preview 的读数也取它（缺省=该分支 head）"));
     return ToolSupport.schema(props, List.of("ageBracket", "sex", "reason"));
   }
 

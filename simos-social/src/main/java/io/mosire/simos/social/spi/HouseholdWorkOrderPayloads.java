@@ -11,9 +11,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * {@code social.SubmitHouseholdWorkOrder} 的载荷解析（social 模块私事，C26）：把 JSON 形状翻成
- * {@link HouseholdWorkOrder}（{@link HouseholdWorkOrderPlan} 的一组有序操作），形状/类型不对一律以
- * {@link IllegalArgumentException} 具名面世（handler 折 {@code Rejected}）。
+ * {@code social.SubmitHouseholdWorkOrder} 的载荷解析（social 模块私事，C26）：把 JSON 形状翻成 {@link
+ * HouseholdWorkOrder}（{@link HouseholdWorkOrderPlan} 的一组有序操作），形状/类型不对一律以 {@link
+ * IllegalArgumentException} 具名面世（handler 折 {@code Rejected}）。
  *
  * <pre>{@code
  * {
@@ -34,16 +34,16 @@ import java.util.Locale;
  * }
  * }</pre>
  *
- * <p>★ <b>字段名的容错</b>：操作名认 {@code op} / {@code type} / {@code kind}（大小写不敏感）；
- * 家户 id 认 {@code household} / {@code householdId}，转移认 {@code from}/{@code to} 及其
- * {@code fromHousehold}/{@code toHousehold} 写法，率表认 {@code vitalRates} / {@code rates}。
- * location/profile/vitalRates/sex/count 等复用 {@link SocialPayloads} 的既有解析（与逐操作命令同一份形状）。
+ * <p>★ <b>字段名的容错</b>：操作名认 {@code op} / {@code type} / {@code kind}（大小写不敏感）； 家户 id 认 {@code
+ * household} / {@code householdId}，转移认 {@code from}/{@code to} 及其 {@code fromHousehold}/{@code
+ * toHousehold} 写法，率表认 {@code vitalRates} / {@code rates}。 location/profile/vitalRates/sex/count 等复用
+ * {@link SocialPayloads} 的既有解析（与逐操作命令同一份形状）。
  *
- * <p>★ <b>ADD_MEMBERS 的 lotId</b>：给了就用；没给而工单有 {@code orderId} ⇒ 派生
- * {@code work-order:<orderId>:add:<计划序号>}（同载荷确定性）；两者都没有 ⇒ 具名拒（批次身份必须显式给出）。
+ * <p>★ <b>ADD_MEMBERS 的 lotId</b>：给了就用；没给而工单有 {@code orderId} ⇒ 派生 {@code
+ * work-order:<orderId>:add:<计划序号>}（同载荷确定性）；两者都没有 ⇒ 具名拒（批次身份必须显式给出）。
  *
- * <p>★ <b>dryRun</b>：命令 handler 只有"给出变更集"或"拒绝"两种结局（{@code HandlerOutcome}），没有"只算不写"的
- * 结局；因此 {@code dryRun=true} 在命令面具名拒（不静默假装成功、也不落空 revision）。预览由 app 工具的预览路径承担。
+ * <p>★ <b>dryRun</b>：命令 handler 只有"给出变更集"或"拒绝"两种结局（{@code HandlerOutcome}），没有"只算不写"的 结局；因此 {@code
+ * dryRun=true} 在命令面具名拒（不静默假装成功、也不落空 revision）。预览由 app 工具的预览路径承担。
  */
 final class HouseholdWorkOrderPayloads {
 
@@ -80,7 +80,8 @@ final class HouseholdWorkOrderPayloads {
         throw new IllegalArgumentException("工单 plan 第 " + index + " 步解析失败: " + e.getMessage(), e);
       }
     }
-    return new HouseholdWorkOrder(orderId, target, reason, source, new HouseholdWorkOrderPlan(steps));
+    return new HouseholdWorkOrder(
+        orderId, target, reason, source, new HouseholdWorkOrderPlan(steps));
   }
 
   private static HouseholdWorkOrderPlan.Step parseStep(
@@ -188,8 +189,8 @@ final class HouseholdWorkOrderPayloads {
   }
 
   /**
-   * ADD_MEMBERS 的批次身份：显式 {@code lotId} 优先；缺省且工单带 {@code orderId} ⇒ 确定性派生
-   * {@code work-order:<orderId>:add:<计划序号>}；两者都没有 ⇒ 具名拒（身份不能由实现随手编）。
+   * ADD_MEMBERS 的批次身份：显式 {@code lotId} 优先；缺省且工单带 {@code orderId} ⇒ 确定性派生 {@code
+   * work-order:<orderId>:add:<计划序号>}；两者都没有 ⇒ 具名拒（身份不能由实现随手编）。
    */
   private static PeopleLotId requireLotId(JsonNode step, String orderId, int index) {
     String lotText = SocialPayloads.optionalNonBlankText(step, "lotId");
@@ -224,8 +225,8 @@ final class HouseholdWorkOrderPayloads {
   }
 
   /**
-   * 率表字段：{@code vitalRates}（{@code HouseholdBook.setVitalRates} 的形参名；新建命令的线格式）优先，
-   * 也接受既有 {@code social.SetHouseholdVitalRates} 的字段名 {@code rates}；两者都没给 ⇒ 空表（= 清空，与既有命令同口径）。
+   * 率表字段：{@code vitalRates}（{@code HouseholdBook.setVitalRates} 的形参名；新建命令的线格式）优先， 也接受既有 {@code
+   * social.SetHouseholdVitalRates} 的字段名 {@code rates}；两者都没给 ⇒ 空表（= 清空，与既有命令同口径）。
    */
   private static HouseholdVitalRates requireVitalRates(JsonNode step) {
     if (!step.has("vitalRates") && step.has("rates")) {

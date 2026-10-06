@@ -14,6 +14,8 @@ import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.sd.spi.NationTag;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
@@ -78,6 +80,23 @@ public final class SdWorlds {
             "sd", new SdSnapshot(REF, at, sd),
             "map", new MapSnapshot(REF, at, map),
             "unit", new UnitSnapshot(REF, at, units)),
+        InMemoryInfoSystem.empty());
+  }
+
+  /**
+   * 带 social 切片的世界（S3b 起 {@code sd.RecordCasualties} 的人员上界从 {@link
+   * SocialData#unitPopulation(String)} 现算 ⇒ 它的 handler 用例必须装 social 切片）。
+   */
+  public static SimulationState world(
+      SdState sd, GameMap map, UnitState units, SocialData social, long tick) {
+    SimosTimestamp at = SimosTimestamp.of(tick);
+    return new SimulationState(
+        new StateMeta(REF, at),
+        Map.of(
+            "sd", new SdSnapshot(REF, at, sd),
+            "map", new MapSnapshot(REF, at, map),
+            "unit", new UnitSnapshot(REF, at, units),
+            "social", new SocialSnapshot(REF, at, social)),
         InMemoryInfoSystem.empty());
   }
 

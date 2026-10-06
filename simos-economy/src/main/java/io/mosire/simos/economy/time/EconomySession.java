@@ -1,8 +1,8 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.EconomyData;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.model.FlowRow;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,10 +40,10 @@ public final class EconomySession {
   /**
    * ★★ <b>P0（2026-10-10）：本会话的迁移人口 outbox</b>（瞬态；保序 = move 执行序）。
    *
-   * <p>★★ <b>为什么不进 {@link EconomyData}/变更集/{@code Codec}</b>：人口权威在 Social；
-   * {@code ModeMigrationSettlement} 只把"这一天经济腿搬了多少人、从谁到谁"记在这里，由 {@code simos-app} 的
-   * 人口—经济协调器在 {@code stepper.step(day)} 之后取走、翻译成 Social 工单，再把 Social 真值 delta 写回经济行。
-   * 与 {@link #debtWriteOffs()} 同制：进程内本会话发生额，用完即弃；重启后由同一 plan 重放产生同一批条目。
+   * <p>★★ <b>为什么不进 {@link EconomyData}/变更集/{@code Codec}</b>：人口权威在 Social； {@code
+   * ModeMigrationSettlement} 只把"这一天经济腿搬了多少人、从谁到谁"记在这里，由 {@code simos-app} 的 人口—经济协调器在 {@code
+   * stepper.step(day)} 之后取走、翻译成 Social 工单，再把 Social 真值 delta 写回经济行。 与 {@link #debtWriteOffs()}
+   * 同制：进程内本会话发生额，用完即弃；重启后由同一 plan 重放产生同一批条目。
    */
   private final List<EconomyPopulationTransfer> populationTransfers = new ArrayList<>();
 
@@ -111,8 +111,7 @@ public final class EconomySession {
   /**
    * ★★ P0：App 每日取走并清空 outbox（返回保序快照）。
    *
-   * <p>★ 空 ⇒ {@link List#of()}（共享空单例）；非空 ⇒ {@link List#copyOf} 的不可变快照，之后本会话记录清零，
-   * 保证"同一条事实只被翻译一次"。
+   * <p>★ 空 ⇒ {@link List#of()}（共享空单例）；非空 ⇒ {@link List#copyOf} 的不可变快照，之后本会话记录清零， 保证"同一条事实只被翻译一次"。
    */
   public List<EconomyPopulationTransfer> drainPendingPopulationTransfers() {
     if (populationTransfers.isEmpty()) {

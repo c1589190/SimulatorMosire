@@ -243,7 +243,8 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
       }
     }
     // ★★ S3b（2026-10-09）：军官/领导层家户配置（ArmyFormation.militaryDutiesOfHousehold /
-    //   GovernmentFormation.governmentPostsOfHousehold）的键必须出现在本单位的 households 列表里——配置是"这个家户在我这里是什么身份"，
+    //   GovernmentFormation.governmentPostsOfHousehold）的键必须出现在本单位的 households
+    // 列表里——配置是"这个家户在我这里是什么身份"，
     //   挂一个不属于本单位的家户 = 配置与人口关系脱钩（本仓最忌的静默漂移，当场具名拒）。
     for (Unit unit : units.values()) {
       requireModuleConfigsBelongToUnit(unit);

@@ -95,10 +95,7 @@ class SdCommandDrainTest {
     CoreSimos core = start();
     core.submit(
         registerEffect(
-            1,
-            "e1",
-            5,
-            "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-9999}]}"));
+            1, "e1", 5, "{\"id\":\"u-1\",\"equipment\":[{\"type\":\"步枪\",\"amount\":-9999}]}"));
     // ★ 日制裁定：到 tick 5 = 连续 5 次单日推进（revision 2 → 7）。
     long atTick5 = advanceDays(2, 5);
     long beforeDrain = revisionRowCount();

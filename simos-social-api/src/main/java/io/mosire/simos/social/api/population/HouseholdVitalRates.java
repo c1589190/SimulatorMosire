@@ -1,5 +1,6 @@
 package io.mosire.simos.social.api.population;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -8,9 +9,9 @@ import java.util.Set;
 /**
  * 一个家户的率表（2026-10-09 家户/人口架构 §4.3）：{@link HouseholdVitalRate} 的冻结列表。
  *
- * <p>它同时是<b>家户覆盖表</b>与<b>全局默认表</b>的形状：作为 {@code Household.vitalRates} 时是逐户覆盖，
- * 空表/缺键 ⇒ 由 {@code SocialData.findVitalRate} <b>逐键回落</b>全局默认；作为
- * {@code SocialVitalRates.globalDefaults} 时是全局兜底。两边都没有 ⇒ 具名拒（不静默给 0）。
+ * <p>它同时是<b>家户覆盖表</b>与<b>全局默认表</b>的形状：作为 {@code Household.vitalRates} 时是逐户覆盖， 空表/缺键 ⇒ 由 {@code
+ * SocialData.findVitalRate} <b>逐键回落</b>全局默认；作为 {@code SocialVitalRates.globalDefaults} 时是全局兜底。两边都没有
+ * ⇒ 具名拒（不静默给 0）。
  *
  * <p>不变量（构造期判）：
  *
@@ -23,6 +24,9 @@ import java.util.Set;
  *
  * @param rates 冻结的率表；不得含重复 {@code (bracketId, sex)} 键、不得含 null 元素
  */
+@SuppressFBWarnings(
+    value = "EI_EXPOSE_REP",
+    justification = "compact constructor 已做防御性拷贝并冻结；SpotBugs 不跨辅助方法识别")
 public record HouseholdVitalRates(List<HouseholdVitalRate> rates) {
 
   public HouseholdVitalRates {
@@ -39,8 +43,7 @@ public record HouseholdVitalRates(List<HouseholdVitalRate> rates) {
   /**
    * 按 {@code (bracketId, sex)} 查本表；缺失 ⇒ {@link java.util.Optional#empty()}。
    *
-   * <p>★ 缺失的语义由持有方决定：作为家户覆盖表 ⇒ 该键回落全局默认；作为全局默认表 ⇒ 全局缺键（结算方具名拒）。
-   * 本方法本身不臆造 0，也不替调用方决定兜底。
+   * <p>★ 缺失的语义由持有方决定：作为家户覆盖表 ⇒ 该键回落全局默认；作为全局默认表 ⇒ 全局缺键（结算方具名拒）。 本方法本身不臆造 0，也不替调用方决定兜底。
    */
   public java.util.Optional<HouseholdVitalRate> find(String bracketId, Sex sex) {
     for (HouseholdVitalRate rate : rates) {

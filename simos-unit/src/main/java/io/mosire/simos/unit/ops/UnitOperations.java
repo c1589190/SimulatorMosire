@@ -58,8 +58,8 @@ import java.util.Set;
  * #reparentSubtree} 同制。
  *
  * <p>★ **GOV 编制编辑四件（阶段 10b-i，2026-10-01）**：{@link #setGovPolicy}/{@link #setGovSuperior}/{@link
- * #recruitStaff}/{@link #dismissStaff} 都只认 {@link GovernmentFormation}，结果统一走 {@link #withModule} canonical
- * 拷贝（18 个组件一个不丢）。
+ * #recruitStaff}/{@link #dismissStaff} 都只认 {@link GovernmentFormation}，结果统一走 {@link #withModule}
+ * canonical 拷贝（18 个组件一个不丢）。
  */
 public final class UnitOperations {
 
@@ -146,9 +146,9 @@ public final class UnitOperations {
    * （同一家户不得同时属于两个 unit、Unit id 不得与 household id 撞名）由 {@link UnitState} 构造期判——{@link #withUnit}
    * 重建状态时自然强制执行，本方法不另写一份。
    *
-   * <p>★★ <b>2026-10-09 唯一列表裁定</b>：本方法是“谁在这个 Unit 里”的<b>唯一整体替换口</b>，只改结构性关系、不增删人口。
-   * 调用方在 <b>GOV 单位</b>上替换列表时必须保留该单位的政府家户 {@code hh-gov-<unitId>}（否则
-   * {@link UnitState} 构造期因“GOV 恰一个政府家户”具名拒）；立/改 GOV 编制请走 {@link #setGovernmentFormation}（它会把该家户编入列表）。
+   * <p>★★ <b>2026-10-09 唯一列表裁定</b>：本方法是“谁在这个 Unit 里”的<b>唯一整体替换口</b>，只改结构性关系、不增删人口。 调用方在 <b>GOV
+   * 单位</b>上替换列表时必须保留该单位的政府家户 {@code hh-gov-<unitId>}（否则 {@link UnitState} 构造期因“GOV 恰一个政府家户”具名拒）；立/改
+   * GOV 编制请走 {@link #setGovernmentFormation}（它会把该家户编入列表）。
    *
    * <p>★ 纯函数；结果走 {@link #withHouseholds} 的 canonical 17 参拷贝（其余组件一个不丢）。
    */
@@ -652,8 +652,8 @@ public final class UnitOperations {
   // ── 编制标签（阶段 10a，控制方修订：编制在 unit 片，故这两条是 unit.* 域命令） ─────────────
 
   /**
-   * ★ <b>立 GOV 编制</b>（{@code unit.SetGovFormation} 的领域实现，阶段 10a）：把给定 {@link GovernmentFormation} 挂到单位上，
-   * 并保证该单位的 {@link Unit#households()} 里恰有它的政府家户 {@code hh-gov-<unitId>}（2026-10-09 唯一列表裁定）。
+   * ★ <b>立 GOV 编制</b>（{@code unit.SetGovFormation} 的领域实现，阶段 10a）：把给定 {@link GovernmentFormation}
+   * 挂到单位上， 并保证该单位的 {@link Unit#households()} 里恰有它的政府家户 {@code hh-gov-<unitId>}（2026-10-09 唯一列表裁定）。
    *
    * <p>★ <b>语义与拒因</b>：
    *
@@ -662,20 +662,21 @@ public final class UnitOperations {
    *   <li><b>一单位至多一个编制标签</b>：既有 {@link ArmyFormation} ⇒ 具名拒，<b>不做静默替换</b>；
    *   <li>{@code superiorGov} 非空 ⇒ 必须存在、必须是带 {@link GovernmentFormation} 的单位、且不得指向自身；
    *   <li>单位已容纳<b>别的</b>政府家户（{@code hh-gov-<other>}）⇒ 具名拒：政府家户只能挂在它自己的 GOV 单位上；
-   *   <li><b>同类型重复设置 = 整体替换</b>：已有 {@code GovernmentFormation} 时不做字段级合并，直接换成传入的整份（命令层缺省 = 空 staff + {@code
-   *       OfficePolicy.defaults()}）。这条是文档化的：要改一部分就先把完整目标编制造出来。
+   *   <li><b>同类型重复设置 = 整体替换</b>：已有 {@code GovernmentFormation} 时不做字段级合并，直接换成传入的整份（命令层缺省 = 空 staff +
+   *       {@code OfficePolicy.defaults()}）。这条是文档化的：要改一部分就先把完整目标编制造出来。
    * </ol>
    *
-   * <p>★★ <b>政府家户如何进入 {@code Unit.households}</b>：本方法在改 {@code module} 的同一次重建里，把
-   * {@code GovernmentHouseholds.of(unitId)} 缺失则<b>追加到列表尾</b>（已有则原样保留、其余家户顺序不变）。因此
-   * {@code unit.CreateUnit}（空 households）→ {@code unit.SetGovFormation} 一条命令即达“GOV 恰一个政府家户”不变量；
-   * {@link #setUnitHouseholds} 仍是“谁在这个 Unit 里”的唯一整体替换口，但调用方在 GOV 单位上必须自行保留该政府家户（否则
-   * {@link UnitState} 构造期具名拒）。
+   * <p>★★ <b>政府家户如何进入 {@code Unit.households}</b>：本方法在改 {@code module} 的同一次重建里，把 {@code
+   * GovernmentHouseholds.of(unitId)} 缺失则<b>追加到列表尾</b>（已有则原样保留、其余家户顺序不变）。因此 {@code
+   * unit.CreateUnit}（空 households）→ {@code unit.SetGovFormation} 一条命令即达“GOV 恰一个政府家户”不变量； {@link
+   * #setUnitHouseholds} 仍是“谁在这个 Unit 里”的唯一整体替换口，但调用方在 GOV 单位上必须自行保留该政府家户（否则 {@link UnitState}
+   * 构造期具名拒）。
    *
    * <p>★ 纯函数：产新 {@code UnitState}；变更集仍由 {@code UnitChangeSet.between} 派生（不做第二条拼增量路径）。 结果单位走 {@link
    * #withHouseholds} / {@link #withModule} 的 canonical 18 参拷贝，组件一个不丢。
    */
-  public static UnitState setGovernmentFormation(UnitState state, UnitId id, GovernmentFormation formation) {
+  public static UnitState setGovernmentFormation(
+      UnitState state, UnitId id, GovernmentFormation formation) {
     Objects.requireNonNull(formation, "formation");
     Unit unit = require(state, id);
     if (unit.module().orElse(null) instanceof ArmyFormation) {
@@ -759,8 +760,8 @@ public final class UnitOperations {
    * <ol>
    *   <li>单位必须存在（{@link #require}）；
    *   <li>单位必须带 {@link ArmyFormation}（无编制 / GOV 编制 ⇒ 具名拒——政策挂在 ArmyFormation 上，不凭空造编制）；
-   *   <li>政策自身不变量（排期、逐值 &gt; 0、至少一腿非空）由 {@link MilitaryPayPolicy} 构造期拒；政策家户键 ⊆
-   *       {@code Unit.households} 由 {@link UnitState} 构造期拒（本方法不重复实现）。
+   *   <li>政策自身不变量（排期、逐值 &gt; 0、至少一腿非空）由 {@link MilitaryPayPolicy} 构造期拒；政策家户键 ⊆ {@code
+   *       Unit.households} 由 {@link UnitState} 构造期拒（本方法不重复实现）。
    * </ol>
    *
    * <p>★ 纯函数；结果单位走 {@link #withModule}，18 个组件一个不丢；变更集仍由 {@code UnitChangeSet.between} 派生。
@@ -822,7 +823,8 @@ public final class UnitOperations {
             moneyPerStaffPerTick.orElse(current.moneyPerStaffPerTick()),
             retirementPerStaff.orElse(current.retirementPerStaff()),
             staffCap.orElse(current.staffCap()));
-    return withUnit(state, withModule(unit, Optional.of(withGovernmentPolicy(governmentFormation, next))));
+    return withUnit(
+        state, withModule(unit, Optional.of(withGovernmentPolicy(governmentFormation, next))));
   }
 
   /**
@@ -852,7 +854,9 @@ public final class UnitOperations {
           requireGovUnit(state, superior, "superiorGov");
           requireNoSuperiorCycle(state, id, superior);
         });
-    return withUnit(state, withModule(unit, Optional.of(withGovernmentSuperior(governmentFormation, superiorGov))));
+    return withUnit(
+        state,
+        withModule(unit, Optional.of(withGovernmentSuperior(governmentFormation, superiorGov))));
   }
 
   /**
@@ -894,7 +898,8 @@ public final class UnitOperations {
     }
     Map<StaffRole, Long> staff = new LinkedHashMap<>(governmentFormation.staff());
     staff.put(role, current + count);
-    return withUnit(state, withModule(unit, Optional.of(withGovernmentStaff(governmentFormation, staff))));
+    return withUnit(
+        state, withModule(unit, Optional.of(withGovernmentStaff(governmentFormation, staff))));
   }
 
   /**
@@ -919,7 +924,8 @@ public final class UnitOperations {
     }
     Map<StaffRole, Long> staff = new LinkedHashMap<>(governmentFormation.staff());
     staff.put(role, current - count); // ★ 0 保留键，不删（保序 + 保留角色编制事实）。
-    return withUnit(state, withModule(unit, Optional.of(withGovernmentStaff(governmentFormation, staff))));
+    return withUnit(
+        state, withModule(unit, Optional.of(withGovernmentStaff(governmentFormation, staff))));
   }
 
   /**
@@ -982,7 +988,8 @@ public final class UnitOperations {
    * <p>{@code staff} 是兼容字段；一旦 GOV 用 {@link GovernmentPostOfHousehold} 把领导层家户配置起来，编制人数只能由家户人口现算 （app
    * 组合根按 {@code PopulationLookup} 投影）。直接加减 staff 会制造第二本权威 ⇒ 具名拒，指路 Social 家户命令。
    */
-  private static void requireStaffNotProjected(GovernmentFormation governmentFormation, UnitId id, String action) {
+  private static void requireStaffNotProjected(
+      GovernmentFormation governmentFormation, UnitId id, String action) {
     if (!governmentFormation.governmentPostsOfHousehold().isEmpty()) {
       throw new IllegalArgumentException(
           "单位 "
@@ -994,21 +1001,36 @@ public final class UnitOperations {
   }
 
   /** 只换 {@link GovernmentFormation#policy()}，其余组件原样带过（阶段 10b-i；2026-10-09 起 households 已不在编制上）。 */
-  private static GovernmentFormation withGovernmentPolicy(GovernmentFormation governmentFormation, OfficePolicy policy) {
+  private static GovernmentFormation withGovernmentPolicy(
+      GovernmentFormation governmentFormation, OfficePolicy policy) {
     return new GovernmentFormation(
-        governmentFormation.staff(), governmentFormation.governmentPostsOfHousehold(), policy, governmentFormation.superiorGov(), governmentFormation.level());
+        governmentFormation.staff(),
+        governmentFormation.governmentPostsOfHousehold(),
+        policy,
+        governmentFormation.superiorGov(),
+        governmentFormation.level());
   }
 
   /** 只换 {@link GovernmentFormation#superiorGov()}，其余组件原样带过（阶段 10b-i）。 */
-  private static GovernmentFormation withGovernmentSuperior(GovernmentFormation governmentFormation, Optional<UnitId> superiorGov) {
+  private static GovernmentFormation withGovernmentSuperior(
+      GovernmentFormation governmentFormation, Optional<UnitId> superiorGov) {
     return new GovernmentFormation(
-        governmentFormation.staff(), governmentFormation.governmentPostsOfHousehold(), governmentFormation.policy(), superiorGov, governmentFormation.level());
+        governmentFormation.staff(),
+        governmentFormation.governmentPostsOfHousehold(),
+        governmentFormation.policy(),
+        superiorGov,
+        governmentFormation.level());
   }
 
   /** 只换 {@link GovernmentFormation#staff()}，其余组件原样带过（阶段 10b-i）。 */
-  private static GovernmentFormation withGovernmentStaff(GovernmentFormation governmentFormation, Map<StaffRole, Long> staff) {
+  private static GovernmentFormation withGovernmentStaff(
+      GovernmentFormation governmentFormation, Map<StaffRole, Long> staff) {
     return new GovernmentFormation(
-        staff, governmentFormation.governmentPostsOfHousehold(), governmentFormation.policy(), governmentFormation.superiorGov(), governmentFormation.level());
+        staff,
+        governmentFormation.governmentPostsOfHousehold(),
+        governmentFormation.policy(),
+        governmentFormation.superiorGov(),
+        governmentFormation.level());
   }
 
   /**

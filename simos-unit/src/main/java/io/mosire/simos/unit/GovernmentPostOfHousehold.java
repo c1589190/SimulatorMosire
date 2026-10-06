@@ -13,9 +13,9 @@ import io.mosire.simos.social.api.id.HouseholdId;
  * <p>★ <b>为什么必须有具名类型</b>：各级政府领导层是"人少但配置特殊"的主体，可以单独建小家户，再挂 GOV 适用的特殊配置；只要参与编制人数、供给、
  * 行政计算，就必须是具名状态类型——{@code Info}/{@code stateDescriptions} 只放描述性、叙事性内容。
  *
- * <p>★★ <b>与 {@code GovernmentFormation.staff} 的关系（兼容期）</b>：{@code staff} 是旧口径的在编人数，本阶段保留为兼容字段；一旦某 GOV 单位的
- * {@code governmentPostsOfHousehold} 非空，{@code staff} 就**只是这些家户人口的投影**（app 组合根按家户人口现算校核），不得再被任何写口当作第二本权威。
- * 本类型本身不存人数——人数从 Social 家户成员现算。
+ * <p>★★ <b>与 {@code GovernmentFormation.staff} 的关系（兼容期）</b>：{@code staff} 是旧口径的在编人数，本阶段保留为兼容字段；一旦某
+ * GOV 单位的 {@code governmentPostsOfHousehold} 非空，{@code staff} 就**只是这些家户人口的投影**（app
+ * 组合根按家户人口现算校核），不得再被任何写口当作第二本权威。 本类型本身不存人数——人数从 Social 家户成员现算。
  *
  * <p>★ <b>不变量</b>：{@code householdId}/{@code role}/{@code level} 非 null；{@code headOfGovernment}
  * 是普通布尔。

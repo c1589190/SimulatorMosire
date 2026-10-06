@@ -3,7 +3,6 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
-import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
@@ -17,6 +16,7 @@ import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
 import java.math.BigInteger;
@@ -45,9 +45,9 @@ import java.util.Optional;
  * 劳动 labor   = 本周期实际投入劳动（关账 unit 的 cycleLaborMilli，关账日结算前抓取）
  * </pre>
  *
- * <p>★★ <b>真实来源</b>：{@link ProductionLedger#transfers()} / {@link ProductionLedger#inputs()} / {@link
- * ProductionLedger#losses()} / {@link ProductionLedger#ruleSettlements()}（逐日累加）+ 关账 unit 的周期劳动/投入快照。
- * MarketReport 只作旁证，不作为金额来源（逐 unit 成交归属不足时宁缺勿造，见收口报告）。
+ * <p>★★ <b>真实来源</b>：{@link ProductionLedger#transfers()} / {@link ProductionLedger#inputs()} /
+ * {@link ProductionLedger#losses()} / {@link ProductionLedger#ruleSettlements()}（逐日累加）+ 关账 unit
+ * 的周期劳动/投入快照。 MarketReport 只作旁证，不作为金额来源（逐 unit 成交归属不足时宁缺勿造，见收口报告）。
  *
  * <p>★★ <b>货币口径</b>：每个组织按它所在格市场的 {@link Market#numeraire()} 计价；该格没有市场时只累计运费/货款腿里
  * <b>出现的币种</b>（混合币种不求和，取份额最大的？不 —— 本实现取 <b>规范串最小的币种</b>，确定性；缺口写入报告）。
@@ -57,11 +57,11 @@ public final class EnterpriseProfitBook {
   private EnterpriseProfitBook() {}
 
   /**
-   * ★★ <b>单位劳动净收益的高精度比例尺</b>：{@link Book#netPerLaborScaled} 返回
-   * {@code floor(Σnet × PER_LABOR_SCALE ÷ Σlabor)}，即百万分之一单位的单位劳动净收益。
+   * ★★ <b>单位劳动净收益的高精度比例尺</b>：{@link Book#netPerLaborScaled} 返回 {@code floor(Σnet × PER_LABOR_SCALE
+   * ÷ Σlabor)}，即百万分之一单位的单位劳动净收益。
    *
-   * <p>旧读数 {@code net / max(1, labor)} 在劳动很大时会把真实利润比率整数截断为 0；本常量是修复口径，
-   * 不改变逐组织读数 {@link EnterpriseProfit} 的既有字段与构造期守卫。
+   * <p>旧读数 {@code net / max(1, labor)} 在劳动很大时会把真实利润比率整数截断为 0；本常量是修复口径， 不改变逐组织读数 {@link
+   * EnterpriseProfit} 的既有字段与构造期守卫。
    */
   public static final long PER_LABOR_SCALE = 1_000_000L;
 
@@ -149,14 +149,13 @@ public final class EnterpriseProfitBook {
       Objects.requireNonNull(laborByModeHex, "laborByModeHex");
       byOrganization = Collections.unmodifiableMap(new LinkedHashMap<>(byOrganization));
       netByModeHex = Collections.unmodifiableMap(new LinkedHashMap<>(netByModeHex));
-      netPerLaborByModeHex =
-          Collections.unmodifiableMap(new LinkedHashMap<>(netPerLaborByModeHex));
+      netPerLaborByModeHex = Collections.unmodifiableMap(new LinkedHashMap<>(netPerLaborByModeHex));
       laborByModeHex = Collections.unmodifiableMap(new LinkedHashMap<>(laborByModeHex));
     }
 
     /**
-     * ★ 兼容旧三参调用点（旧调用没有原始净收益表）：按旧口径 {@code perLabor × max(1, labor)} 反推原始净收益，
-     * 让旧的逐值可重建；新的生产路径（{@link #collect}）恒走四参构造，传入真实本期 Σnet。
+     * ★ 兼容旧三参调用点（旧调用没有原始净收益表）：按旧口径 {@code perLabor × max(1, labor)} 反推原始净收益， 让旧的逐值可重建；新的生产路径（{@link
+     * #collect}）恒走四参构造，传入真实本期 Σnet。
      */
     public Book(
         Map<ProductionOrganizationId, EnterpriseProfit> byOrganization,
@@ -187,8 +186,8 @@ public final class EnterpriseProfitBook {
     /**
      * ★★ <b>高精度单位劳动净收益</b>：{@code floor(Σnet × PER_LABOR_SCALE ÷ Σlabor)}，百万分之一单位。
      *
-     * <p>无本期读数或 {@code labor <= 0} ⇒ 0。计算用 {@link BigInteger} 精确求 floor（负数也向下取整，不是向零截断）；
-     * 结果超出 {@code long} 时抛 {@link ArithmeticException}（fail-closed，不静默回绕）。
+     * <p>无本期读数或 {@code labor <= 0} ⇒ 0。计算用 {@link BigInteger} 精确求 floor（负数也向下取整，不是向零截断）； 结果超出
+     * {@code long} 时抛 {@link ArithmeticException}（fail-closed，不静默回绕）。
      */
     public long netPerLaborScaled(ProductionModeId modeId, HexCoord hex) {
       ModeHex key = new ModeHex(modeId, hex);
@@ -210,8 +209,8 @@ public final class EnterpriseProfitBook {
   }
 
   /**
-   * 旧三参 {@link Book} 兼容构造的反推：只有旧的截断 per-labor 表与 labor 表时，
-   * {@code net = perLabor × max(1, labor)}（与旧构造期守卫同式）。新生产路径不使用本方法。
+   * 旧三参 {@link Book} 兼容构造的反推：只有旧的截断 per-labor 表与 labor 表时， {@code net = perLabor × max(1,
+   * labor)}（与旧构造期守卫同式）。新生产路径不使用本方法。
    */
   private static Map<ModeHex, Long> reconstructNetByModeHex(
       Map<ModeHex, Long> netPerLaborByModeHex, Map<ModeHex, Long> laborByModeHex) {
@@ -233,12 +232,11 @@ public final class EnterpriseProfitBook {
   }
 
   /**
-   * 高精度缩放：{@code floor(net × PER_LABOR_SCALE / labor)}（{@code labor > 0} 由调用方保证）。
-   * 商超出 {@code long} ⇒ 具名异常 fail-closed。
+   * 高精度缩放：{@code floor(net × PER_LABOR_SCALE / labor)}（{@code labor > 0} 由调用方保证）。 商超出 {@code long}
+   * ⇒ 具名异常 fail-closed。
    */
   private static long scaledNetPerLabor(long net, long labor) {
-    BigInteger numerator =
-        BigInteger.valueOf(net).multiply(BigInteger.valueOf(PER_LABOR_SCALE));
+    BigInteger numerator = BigInteger.valueOf(net).multiply(BigInteger.valueOf(PER_LABOR_SCALE));
     BigInteger denominator = BigInteger.valueOf(labor);
     BigInteger[] quotientAndRemainder = numerator.divideAndRemainder(denominator);
     BigInteger scaled = quotientAndRemainder[0];
@@ -292,10 +290,14 @@ public final class EnterpriseProfitBook {
     private final List<ProductionLedger> ledgers = new ArrayList<>();
     private final List<MarketReport> marketReports = new ArrayList<>();
     private final List<CloseFact> closeFacts = new ArrayList<>();
-    private final LinkedHashMap<ProductionOrganizationId, Long> merchantWagesPaid = new LinkedHashMap<>();
-    private final LinkedHashMap<ProductionOrganizationId, Long> merchantUpkeep = new LinkedHashMap<>();
-    private final LinkedHashMap<ProductionOrganizationId, Long> merchantArrears = new LinkedHashMap<>();
-    private final LinkedHashMap<ProductionOrganizationId, Long> merchantLabor = new LinkedHashMap<>();
+    private final LinkedHashMap<ProductionOrganizationId, Long> merchantWagesPaid =
+        new LinkedHashMap<>();
+    private final LinkedHashMap<ProductionOrganizationId, Long> merchantUpkeep =
+        new LinkedHashMap<>();
+    private final LinkedHashMap<ProductionOrganizationId, Long> merchantArrears =
+        new LinkedHashMap<>();
+    private final LinkedHashMap<ProductionOrganizationId, Long> merchantLabor =
+        new LinkedHashMap<>();
     private boolean cycleClosed;
 
     /** 逐日喂入当天账本（含市场报告；可空）。 */
@@ -404,9 +406,7 @@ public final class EnterpriseProfitBook {
     }
   }
 
-  /**
-   * ★★ <b>汇总一本 {@link Book}</b>：只读入参，不改任何状态；同输入恒同输出。
-   */
+  /** ★★ <b>汇总一本 {@link Book}</b>：只读入参，不改任何状态；同输入恒同输出。 */
   public static Book collect(
       CycleAccumulator cycle,
       Map<ProductionOrganizationId, ProductionEnterprise> enterprises,
@@ -425,7 +425,8 @@ public final class EnterpriseProfitBook {
 
     Map<ActorRef, HouseholdId> householdByActor = new LinkedHashMap<>();
     for (HouseholdId household : sortedHouseholds(householdEconomies)) {
-      householdByActor.put(io.mosire.simos.economy.api.cohort.HouseholdActors.of(household), household);
+      householdByActor.put(
+          io.mosire.simos.economy.api.cohort.HouseholdActors.of(household), household);
     }
     // 组织按 household 归集：生产运行时 organizer = 该家户 actor（E2 的唯一拼写点）。
     Map<HouseholdId, ProductionEnterprise> orgByHousehold = new LinkedHashMap<>();
@@ -437,16 +438,16 @@ public final class EnterpriseProfitBook {
       if (enterprise == null) {
         continue;
       }
-      HouseholdId household = householdOfActor(enterprise.organizer(), householdEconomies, householdByActor);
+      HouseholdId household =
+          householdOfActor(enterprise.organizer(), householdEconomies, householdByActor);
       if (household != null) {
         orgByHousehold.putIfAbsent(household, enterprise);
       }
-      enterprise
-          .unitId()
-          .ifPresent(unitId -> orgByUnit.putIfAbsent(unitId, enterprise));
+      enterprise.unitId().ifPresent(unitId -> orgByUnit.putIfAbsent(unitId, enterprise));
     }
 
-    Map<ProductionOrganizationId, long[]> acc = new LinkedHashMap<>(); // [revenue, cost, arrears, labor]
+    Map<ProductionOrganizationId, long[]> acc =
+        new LinkedHashMap<>(); // [revenue, cost, arrears, labor]
     for (ProductionOrganizationId orgId : orderedOrgIds) {
       acc.put(orgId, new long[4]);
     }
@@ -458,7 +459,8 @@ public final class EnterpriseProfitBook {
       if (enterprise == null) {
         continue;
       }
-      HouseholdId household = householdOfActor(enterprise.organizer(), householdEconomies, householdByActor);
+      HouseholdId household =
+          householdOfActor(enterprise.organizer(), householdEconomies, householdByActor);
       if (household == null) {
         continue;
       }
@@ -476,16 +478,22 @@ public final class EnterpriseProfitBook {
       for (Transfer transfer : ledger.transfers()) {
         HouseholdId fromHousehold = householdByActor.get(transfer.from());
         HouseholdId toHousehold = householdByActor.get(transfer.to());
-        ProductionEnterprise fromOrg = fromHousehold == null ? null : orgByHousehold.get(fromHousehold);
+        ProductionEnterprise fromOrg =
+            fromHousehold == null ? null : orgByHousehold.get(fromHousehold);
         ProductionEnterprise toOrg = toHousehold == null ? null : orgByHousehold.get(toHousehold);
         if (transfer.reason() == TransferReason.MARKET_TRADE
             || transfer.reason() == TransferReason.CARRIER_FEE) {
           if (toOrg != null) {
-            addRevenue(acc, toOrg.id(), transfer.money(), currencyOf(hexOfOrg.get(toOrg.id()), markets));
+            addRevenue(
+                acc, toOrg.id(), transfer.money(), currencyOf(hexOfOrg.get(toOrg.id()), markets));
           }
         } else if (transfer.reason() == TransferReason.RELATION_PAYMENT) {
           if (fromOrg != null) {
-            addCost(acc, fromOrg.id(), transfer.money(), currencyOf(hexOfOrg.get(fromOrg.id()), markets));
+            addCost(
+                acc,
+                fromOrg.id(),
+                transfer.money(),
+                currencyOf(hexOfOrg.get(fromOrg.id()), markets));
             addCostGoods(acc, fromOrg.id(), transfer.goods(), hexOfOrg.get(fromOrg.id()), markets);
           }
         }
@@ -493,7 +501,8 @@ public final class EnterpriseProfitBook {
       // 生产损耗：账本只有"逐 industry"的实物量（没有逐 unit 拆分）⇒ 按同期该 industry 各 unit 的真实劳动
       // 份额分摊（floor + 最大余数，确定性；见收口报告的"逐 unit 归属不足"具名缺口）。
       for (Map.Entry<IndustryId, Map<CommodityId, Long>> entry : ledger.losses().entrySet()) {
-        attributeLosses(acc, entry.getKey(), entry.getValue(), units, orgByUnit, hexOfOrg, markets, cycle);
+        attributeLosses(
+            acc, entry.getKey(), entry.getValue(), units, orgByUnit, hexOfOrg, markets, cycle);
       }
       // 欠款：payer 组织 × 它的 unit 的活动；单列，不混进成本。
       for (ProductionLedger.RuleSettlement settlement : ledger.ruleSettlements()) {
@@ -509,7 +518,11 @@ public final class EnterpriseProfitBook {
         long value =
             settlement.currency().isPresent()
                 ? settlement.owed()
-                : goodsValue(settlement.owed(), settlement.commodity().orElse(null), hexOfOrg.get(payerOrg.id()), markets);
+                : goodsValue(
+                    settlement.owed(),
+                    settlement.commodity().orElse(null),
+                    hexOfOrg.get(payerOrg.id()),
+                    markets);
         addArrears(acc, payerOrg.id(), value);
       }
     }
@@ -620,7 +633,9 @@ public final class EnterpriseProfitBook {
   }
 
   private static HouseholdId householdOfActor(
-      ActorRef actor, Map<HouseholdId, HouseholdEconomy> householdEconomies, Map<ActorRef, HouseholdId> householdByActor) {
+      ActorRef actor,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies,
+      Map<ActorRef, HouseholdId> householdByActor) {
     HouseholdId direct = householdByActor.get(actor);
     if (direct != null) {
       return direct;
@@ -628,8 +643,7 @@ public final class EnterpriseProfitBook {
     // 旧路径兜底：actor 是 HOUSEHOLD 但不是本表键（不应发生；不猜则返回 null）
     if (actor.kind() == io.mosire.simos.actor.api.actor.ActorKind.HOUSEHOLD) {
       try {
-        HouseholdId parsed =
-            io.mosire.simos.economy.api.cohort.HouseholdActors.householdOf(actor);
+        HouseholdId parsed = io.mosire.simos.economy.api.cohort.HouseholdActors.householdOf(actor);
         return householdEconomies.containsKey(parsed) ? parsed : null;
       } catch (RuntimeException ignored) {
         return null;
@@ -638,7 +652,8 @@ public final class EnterpriseProfitBook {
     return null;
   }
 
-  private static List<HouseholdId> sortedHouseholds(Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+  private static List<HouseholdId> sortedHouseholds(
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     List<HouseholdId> keys = new ArrayList<>(householdEconomies.keySet());
     keys.sort(Comparator.comparing(HouseholdId::value));
     return keys;
@@ -697,8 +712,8 @@ public final class EnterpriseProfitBook {
   }
 
   /**
-   * 把逐 industry 的实物损耗按该 industry 各 unit 的周期劳动份额分摊给组织（单位数/劳动都取不到时按 unit id 均分）。
-   * 这是"账本没有逐 unit 损耗归属"时唯一可核的分摊维；不按产出价值反推（那会再引一次价格）。
+   * 把逐 industry 的实物损耗按该 industry 各 unit 的周期劳动份额分摊给组织（单位数/劳动都取不到时按 unit id 均分）。 这是"账本没有逐 unit
+   * 损耗归属"时唯一可核的分摊维；不按产出价值反推（那会再引一次价格）。
    */
   private static void attributeLosses(
       Map<ProductionOrganizationId, long[]> acc,
@@ -774,5 +789,4 @@ public final class EnterpriseProfitBook {
     Market market = hex == null ? null : markets.get(hex);
     return market == null ? null : market.numeraire();
   }
-
 }

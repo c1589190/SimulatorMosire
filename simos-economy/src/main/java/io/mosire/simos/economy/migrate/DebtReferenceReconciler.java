@@ -1,9 +1,9 @@
 package io.mosire.simos.economy.migrate;
 
 import io.mosire.simos.economy.api.id.DebtContractId;
-import io.mosire.simos.social.api.id.HouseholdId;
-import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.DebtContract;
+import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -46,7 +46,8 @@ public final class DebtReferenceReconciler {
    * @throws IllegalArgumentException debtor 或 creditor 的家户行不存在（具名 fail-closed）
    */
   public static Map<HouseholdId, HouseholdEconomy> reconcile(
-      Map<DebtContractId, DebtContract> debtContracts, Map<HouseholdId, HouseholdEconomy> householdEconomies) {
+      Map<DebtContractId, DebtContract> debtContracts,
+      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
     Objects.requireNonNull(debtContracts, "debtContracts");
     Objects.requireNonNull(householdEconomies, "classes");
     // 按债务人分组；组内规范串升序 ⇒ 同一份合同表给出唯一顺序。
@@ -79,9 +80,11 @@ public final class DebtReferenceReconciler {
     // 逐行重建；全部一致时返回原实例（幂等 no-op 的判据）。
     Map<HouseholdId, HouseholdEconomy> rebuiltHouseholdEconomies = new LinkedHashMap<>();
     boolean changed = false;
-    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry : householdEconomies.entrySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEconomyEntry :
+        householdEconomies.entrySet()) {
       HouseholdEconomy householdEconomy = householdEconomyEntry.getValue();
-      List<DebtContractId> expected = byDebtor.getOrDefault(householdEconomyEntry.getKey(), List.of());
+      List<DebtContractId> expected =
+          byDebtor.getOrDefault(householdEconomyEntry.getKey(), List.of());
       if (householdEconomy.debts().equals(expected)) {
         rebuiltHouseholdEconomies.put(householdEconomyEntry.getKey(), householdEconomy);
         continue;

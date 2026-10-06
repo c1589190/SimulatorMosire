@@ -23,8 +23,8 @@ import java.util.Objects;
  *  "reason":"行政调拨"}
  * }</pre>
  *
- * <p>★ <b>源/目标语义</b>：{@code from} 与 {@code to} 各是一个家户账户；来源账必须存在，目标账缺失 ⇒
- * 以净转入量新建。转移量是<b>正数</b>（0 请删键）；两本账相同 ⇒ 拒。
+ * <p>★ <b>源/目标语义</b>：{@code from} 与 {@code to} 各是一个家户账户；来源账必须存在，目标账缺失 ⇒ 以净转入量新建。转移量是<b>正数</b>（0
+ * 请删键）；两本账相同 ⇒ 拒。
  *
  * <p>★ <b>位置</b>：账户键不再带格（P2-A）—— 位置从 {@code Household.location} 派生，家户搬家账自动跟走。
  *
@@ -33,8 +33,8 @@ import java.util.Objects;
  *
  * <p>★ <b>GM-only</b>：这是裸账目原语；受管辖/额度约束的路径应走组合工具或专属命令，不能让决策令随意动用任意账户。
  *
- * <p>★★ <b>目标声明</b>：家户账户没有格 ⇒ 本命令返回空目标清单（{@link CommandTargets} 的"没有可寻址目标"档）。
- * 它是 GM-only 命令，不走决策令的资源围栏；这是 P2-A 的具名缺口（政府家户的采购/上缴路径在 P2-C 重建）。
+ * <p>★★ <b>目标声明</b>：家户账户没有格 ⇒ 本命令返回空目标清单（{@link CommandTargets} 的"没有可寻址目标"档）。 它是 GM-only
+ * 命令，不走决策令的资源围栏；这是 P2-A 的具名缺口（政府家户的采购/上缴路径在 P2-C 重建）。
  */
 public final class TransferAccountsHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
