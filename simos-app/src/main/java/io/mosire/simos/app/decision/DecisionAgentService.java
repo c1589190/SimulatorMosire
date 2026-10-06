@@ -1,5 +1,6 @@
 package io.mosire.simos.app.decision;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.llm.LlmMessage;
 import io.mosire.agentlib.store.ConversationStore;
 import io.mosire.agentlib.tool.ToolRegistry;
@@ -213,6 +214,9 @@ public final class DecisionAgentService {
   }
 
   /** **全参运行**（{@code frozen == null} = 旧模式）：{@link DecisionAgentRunner} 的冻结工具面与冻结坐标从这里注入。 */
+  @SuppressFBWarnings(
+      value = "THROWS_METHOD_THROWS_RUNTIMEEXCEPTION",
+      justification = "转发语义：抢救完已写 packet 后，原始运行时异常必须按原实例/原类型上抛（批量口按类型记 failed）；换新异常会改调用方判据")
   public DecisionAgentRunner.DecisionTurn runRound(
       BranchId branch,
       RevisionId revision,

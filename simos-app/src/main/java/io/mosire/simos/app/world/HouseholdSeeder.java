@@ -128,7 +128,6 @@ public final class HouseholdSeeder {
     Objects.requireNonNull(householdStocks, "householdStocks");
     Objects.requireNonNull(householdMoney, "householdMoney");
     Objects.requireNonNull(operators, "operators（没有经营者就给空表）");
-    Map<HexCoord, List<EconomySeeder.OperatorSeed>> operatorsByHex = operatorsByHex(operators);
     List<Map<String, Object>> entries = new ArrayList<>();
     for (Map.Entry<HexCoord, List<HouseholdId>> atHex :
         byHex(householdLocations, householdStocks).entrySet()) {
@@ -223,16 +222,6 @@ public final class HouseholdSeeder {
       actors.put(operator.owner(), new Actor(operator.owner(), operator.label()));
     }
     return ActorData.empty().withActors(actors).withInventories(inventories);
-  }
-
-  /** 经营者按格分组（键序 = 传入序；格序 = 首次出现序）—— 载荷按格装 {@code actors}/{@code goods} 用。 */
-  private static Map<HexCoord, List<EconomySeeder.OperatorSeed>> operatorsByHex(
-      List<EconomySeeder.OperatorSeed> operators) {
-    Map<HexCoord, List<EconomySeeder.OperatorSeed>> byHex = new LinkedHashMap<>();
-    for (EconomySeeder.OperatorSeed operator : operators) {
-      byHex.computeIfAbsent(operator.location(), ignored -> new ArrayList<>()).add(operator);
-    }
-    return byHex;
   }
 
   /** 家户的显示名（{@code <居住类型> <阶层> 家户}）—— ★ **只为读**，不参与任何身份判定（身份是 {@link ActorRef}）。 */

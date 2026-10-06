@@ -565,8 +565,7 @@ public final class AdjudicateTickTool implements AgentTool {
       return Optional.of("中央 GOV 没有 superiorGov：上缴命令只对地方 GOV 有意义: " + fromUnit.id().value());
     }
     Unit toUnit = units.units().get(superiorId);
-    if (toUnit == null
-        || !(toUnit.module().orElse(null) instanceof GovernmentFormation toGovernmentFormation)) {
+    if (toUnit == null || !(toUnit.module().orElse(null) instanceof GovernmentFormation)) {
       return Optional.of("上级 GOV 不存在或不是 GOV: " + superiorId.value());
     }
     JsonNode payload;

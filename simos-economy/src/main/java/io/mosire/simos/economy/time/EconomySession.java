@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.time;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -62,6 +63,9 @@ public final class EconomySession {
   }
 
   /** 本期流水累加器（**就地更新**；一次推进会话内跨日累计，{@link #build()} 时挂上）。 */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification = "flows() 是会话内就地更新的流水累加器（类注：协调器单线程、用完即弃），返回拷贝会切断\"跨日累计\"语义；只读出口是 flowsView()")
   public LinkedHashMap<HouseholdId, FlowRow> flows() {
     return flows;
   }

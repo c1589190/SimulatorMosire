@@ -77,7 +77,6 @@ public final class SocialHouseholdsTool implements AgentTool {
               ToolSupport.ACTOR_NAMESPACE, ResourcePolicy.READ_ONLY));
 
   private final QueryService query;
-  private final CalendarService calendarService;
   private final HouseholdQueryService householdQueryService;
   private final String mapId;
 
@@ -88,7 +87,7 @@ public final class SocialHouseholdsTool implements AgentTool {
    */
   public SocialHouseholdsTool(QueryService query, CalendarService calendarService, String mapId) {
     this.query = Objects.requireNonNull(query, "query");
-    this.calendarService = Objects.requireNonNull(calendarService, "calendarService");
+    Objects.requireNonNull(calendarService, "calendarService");
     this.householdQueryService = new HouseholdQueryService(calendarService);
     this.mapId = Objects.requireNonNull(mapId, "mapId");
   }
@@ -667,7 +666,7 @@ public final class SocialHouseholdsTool implements AgentTool {
   private static int requireInt(Object raw, String label) {
     if (raw instanceof Number number) {
       double value = number.doubleValue();
-      if (!Double.isFinite(value) || value != Math.rint(value)) {
+      if (!Double.isFinite(value) || Double.compare(value, Math.rint(value)) != 0) {
         throw new IllegalArgumentException("参数 " + label + " 必须是整数");
       }
       long longValue = number.longValue();
@@ -689,7 +688,7 @@ public final class SocialHouseholdsTool implements AgentTool {
   private static long requireLong(Object raw, String label) {
     if (raw instanceof Number number) {
       double value = number.doubleValue();
-      if (!Double.isFinite(value) || value != Math.rint(value)) {
+      if (!Double.isFinite(value) || Double.compare(value, Math.rint(value)) != 0) {
         throw new IllegalArgumentException("参数 " + label + " 必须是整数");
       }
       return number.longValue();

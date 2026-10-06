@@ -1969,11 +1969,8 @@ public final class EconomySeeder {
       Map<HouseholdId, Map<CurrencyId, Long>> money,
       long genesisMoneyMilliPerCapita,
       PoolCohorts cohorts) {
-    long poolPopulation = populationOf(pool);
     long[] people = cohorts.classPopulations();
     long displacedPopulation = cohorts.displacedPopulation();
-    long poolLabor = laborMilli(pool);
-    long poolCount = poolPopulation;
     List<Map<String, Object>> rows =
         new ArrayList<>(CLASS_IDS.length + (displacedPopulation > 0L ? 1 : 0));
     for (int i = 0; i < CLASS_IDS.length; i++) {

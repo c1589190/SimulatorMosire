@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.time;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -39,7 +40,20 @@ final class BufferedAccountTables {
 
   final Map<HouseholdId, Map<CommodityId, Long>> householdGoods;
   final Map<HouseholdId, Map<CurrencyId, Long>> householdMoney;
+
+  /**
+   * ★ 冻结视图（见类注 M8）：worker 侧只读，冻结写的绝对值表形制保留给协调器路径。SpotBugs 看不到"留给协调器"的读点， 按设计豁免 URF_UNREAD_FIELD ——
+   * 删字段等于删掉既定接口形状。
+   */
+  @SuppressFBWarnings(
+      value = "URF_UNREAD_FIELD",
+      justification = "冻结视图（商品）是 worker/协调器表形制的一部分：worker 侧 M8 只读，写口保留给协调器路径，当前 main 无读点但不得删除既定接口")
   final Map<HouseholdId, Map<CommodityId, Long>> householdFrozenGoods;
+
+  /** 同上：冻结视图（货币）保留给协调器路径。 */
+  @SuppressFBWarnings(
+      value = "URF_UNREAD_FIELD",
+      justification = "冻结视图（货币）是 worker/协调器表形制的一部分：worker 侧 M8 只读，写口保留给协调器路径，当前 main 无读点但不得删除既定接口")
   final Map<HouseholdId, Map<CurrencyId, Long>> householdFrozenMoney;
 
   BufferedAccountTables(AccountSnapshot snapshot, AccountIntentBuffer buffer) {
@@ -225,6 +239,10 @@ final class BufferedAccountTables {
     }
 
     @Override
+    @SuppressFBWarnings(
+        value = "SE_BAD_FIELD",
+        justification =
+            "entrySet 的 Map.Entry 是视图即时代理：SimpleEntry 的 Serializable 是 JDK 附带；捕获的缓冲/快照视图按设计不做 Java 序列化，序列化这些 entry 不是契约 ⇒ 误报")
     public Set<Entry<K, Map<V, Long>>> entrySet() {
       return new AbstractSet<>() {
         @Override

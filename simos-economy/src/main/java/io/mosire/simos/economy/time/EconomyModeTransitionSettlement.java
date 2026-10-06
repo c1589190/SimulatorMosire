@@ -200,7 +200,7 @@ final class EconomyModeTransitionSettlement {
                       "effectiveDay",
                       transition.effectiveDay(),
                       "reasonLength",
-                      plan.failureReason == null ? 0 : plan.failureReason.length()));
+                      plan.failureReason.length()));
         }
         continue;
       }

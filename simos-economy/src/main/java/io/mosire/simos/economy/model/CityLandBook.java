@@ -89,7 +89,7 @@ public final class CityLandBook {
     if (value instanceof Number number) {
       if (number instanceof Double || number instanceof Float) {
         double asDouble = number.doubleValue();
-        if (!Double.isFinite(asDouble) || asDouble != Math.rint(asDouble)) {
+        if (!Double.isFinite(asDouble) || Double.compare(asDouble, Math.rint(asDouble)) != 0) {
           throw new IllegalArgumentException("城市土地属性 " + key + " 必须是整数: " + value);
         }
       }

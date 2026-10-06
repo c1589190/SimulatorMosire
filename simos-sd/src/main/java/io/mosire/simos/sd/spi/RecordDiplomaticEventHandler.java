@@ -66,13 +66,13 @@ public final class RecordDiplomaticEventHandler implements CommandHandler {
       long tick = SdPayloads.optionalLong(payload, "tick", worldTick);
       tickForLog = tick;
       if (tick < 0L) {
-        return rejected("外交事件 tick 不得为负: " + tick, "event", eventForLog, "tick", tickForLog);
+        return rejected("外交事件 tick 不得为负: " + tick, "event", "-", "tick", tickForLog);
       }
       if (tick > worldTick) {
         return rejected(
             "外交事件不得记在未来：载荷 tick " + tick + " > 世界 tick " + worldTick,
             "event",
-            eventForLog,
+            "-",
             "tick",
             tickForLog);
       }

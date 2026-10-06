@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.time;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.map.hex.HexCoord;
@@ -42,6 +43,10 @@ import java.util.Objects;
  * @param open false = 该区本轮不撮合（返回空 {@code MarketReport}，不抛）
  * @param rules 只读制度标签（保序；空 = 没有标签）
  */
+@SuppressFBWarnings(
+    value = "EI_EXPOSE_REP",
+    justification =
+        "compact constructor 经 freeze(...) 防御性拷贝并冻结（Collections.unmodifiableMap）；SpotBugs 不跨辅助方法识别")
 public record MarketRegulation(
     HexCoord anchor,
     Map<CommodityId, Long> referencePrices,

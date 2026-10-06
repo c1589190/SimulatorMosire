@@ -1,5 +1,6 @@
 package io.mosire.simos.app.time;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
@@ -411,6 +412,10 @@ public final class PeriodicHouseholdAdjustmentExecutor {
   }
 
   /** 一条规则的执行读数。 */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "compact constructor 经 freezeGoods/freezeMoney 逐表拷贝并冻结（Collections.unmodifiableMap）；SpotBugs 不跨辅助方法识别")
   public record RuleReadout(
       PeriodicHouseholdAdjustmentId ruleId,
       Status status,
@@ -442,6 +447,10 @@ public final class PeriodicHouseholdAdjustmentExecutor {
   }
 
   /** 当天总读数（{@code rules} 保序 = id.value() 升序；空表 == 当天没有到期规则）。 */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "compact constructor 经 freezeGoods/freezeMoney 逐表拷贝并冻结（Collections.unmodifiableMap）、rules/gaps 走 List.copyOf；SpotBugs 不跨辅助方法识别")
   public record Report(
       long day,
       int due,

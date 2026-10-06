@@ -73,7 +73,7 @@ public final class SplitRegionHandler implements CommandHandler, CommandTargets,
     GameMap base = MapSnapshots.of(state).map();
     String sourceForLog = null;
     Boolean keepSourceForLog = null;
-    int partsForLog = -1;
+    Integer partsForLog = null;
     try {
       JsonNode payload = MapPayloads.parse(payloadJson);
       RegionId source = MapPayloads.requireRegionId(payload, "sourceRegionId");
@@ -106,7 +106,7 @@ public final class SplitRegionHandler implements CommandHandler, CommandTargets,
                   "source",
                   sourceForLog == null ? "-" : sourceForLog,
                   "parts",
-                  partsForLog < 0 ? "-" : partsForLog,
+                  partsForLog == null ? "-" : partsForLog,
                   "keepSource",
                   keepSourceForLog == null ? "-" : keepSourceForLog));
       return new HandlerOutcome.Rejected(e.getMessage());

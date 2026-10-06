@@ -155,7 +155,9 @@ public final class RoadNetwork {
   private static int positiveIntOrOne(Object value) {
     if (value instanceof Number number) {
       double asDouble = number.doubleValue();
-      if (!Double.isFinite(asDouble) || asDouble != Math.rint(asDouble) || asDouble < 1.0d) {
+      if (!Double.isFinite(asDouble)
+          || Double.compare(asDouble, Math.rint(asDouble)) != 0
+          || asDouble < 1.0d) {
         return 1;
       }
       long asLong = asDouble >= (double) Long.MAX_VALUE ? Long.MAX_VALUE : (long) asDouble;

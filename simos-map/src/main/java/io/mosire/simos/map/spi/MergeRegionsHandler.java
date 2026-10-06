@@ -61,7 +61,7 @@ public final class MergeRegionsHandler implements CommandHandler, CommandTargets
     Objects.requireNonNull(payloadJson, "payloadJson");
     GameMap base = MapSnapshots.of(state).map();
     String targetForLog = null;
-    int sourcesForLog = -1;
+    Integer sourcesForLog = null;
     try {
       JsonNode payload = MapPayloads.parse(payloadJson);
       RegionId target = MapPayloads.requireRegionId(payload, "targetRegionId");
@@ -90,7 +90,7 @@ public final class MergeRegionsHandler implements CommandHandler, CommandTargets
                   "target",
                   targetForLog == null ? "-" : targetForLog,
                   "sources",
-                  sourcesForLog < 0 ? "-" : sourcesForLog));
+                  sourcesForLog == null ? "-" : sourcesForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

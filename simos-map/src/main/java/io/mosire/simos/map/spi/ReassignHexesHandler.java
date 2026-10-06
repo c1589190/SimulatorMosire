@@ -68,8 +68,8 @@ public final class ReassignHexesHandler implements CommandHandler, CommandTarget
     Objects.requireNonNull(payloadJson, "payloadJson");
     GameMap base = MapSnapshots.of(state).map();
     String targetForLog = null;
-    int sourcesForLog = -1;
-    int hexesForLog = -1;
+    Integer sourcesForLog = null;
+    Integer hexesForLog = null;
     try {
       JsonNode payload = MapPayloads.parse(payloadJson);
       RegionId target = MapPayloads.requireRegionId(payload, "toRegionId");
@@ -103,9 +103,9 @@ public final class ReassignHexesHandler implements CommandHandler, CommandTarget
                   "target",
                   targetForLog == null ? "-" : targetForLog,
                   "sources",
-                  sourcesForLog < 0 ? "-" : sourcesForLog,
+                  sourcesForLog == null ? "-" : sourcesForLog,
                   "hexes",
-                  hexesForLog < 0 ? "-" : hexesForLog));
+                  hexesForLog == null ? "-" : hexesForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

@@ -1527,42 +1527,6 @@ public final class EconomyGmAdjustments {
     return node != null && !node.isNull();
   }
 
-  /** 可选 long：缺键 / JSON null ⇒ fallback；给了 ⇒ 必须为非负整数。 */
-  private static long optionalNonNegative(
-      String label, JsonNode parameters, String field, long fallback) {
-    if (!hasValue(parameters, field)) {
-      return fallback;
-    }
-    return nonNegative(label, field, EconomyCommandPayloads.requireLong(label, parameters, field));
-  }
-
-  /** 可选 long：缺键 / JSON null ⇒ fallback；给了 ⇒ 必须 &ge; min。 */
-  private static long optionalAtLeast(
-      String label, JsonNode parameters, String field, long fallback, long min) {
-    if (!hasValue(parameters, field)) {
-      return fallback;
-    }
-    long value = EconomyCommandPayloads.requireLong(label, parameters, field);
-    if (value < min) {
-      throw new IllegalArgumentException(label + " 的 " + field + " 必须 >= " + min + ": " + value);
-    }
-    return value;
-  }
-
-  /** 可选 long：缺键 / JSON null ⇒ fallback；给了 ⇒ 必须 ∈ [min, max]。 */
-  private static long optionalInRange(
-      String label, JsonNode parameters, String field, long fallback, long min, long max) {
-    if (!hasValue(parameters, field)) {
-      return fallback;
-    }
-    long value = EconomyCommandPayloads.requireLong(label, parameters, field);
-    if (value < min || value > max) {
-      throw new IllegalArgumentException(
-          label + " 的 " + field + " 必须 ∈ [" + min + ", " + max + "]: " + value);
-    }
-    return value;
-  }
-
   private static IllegalArgumentException derivedRejection(String adjustment) {
     return new IllegalArgumentException(
         DERIVED_REJECTION

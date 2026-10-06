@@ -71,7 +71,7 @@ public final class RecordCasualtiesHandler implements CommandHandler {
       List<CasualtyDelta> deltas = SdPayloads.requireDeltas(payload, "deltas");
       Combat combat = base.combats().get(combatId);
       if (combat == null) {
-        return rejected("交战不存在: " + combatId, "record", recordForLog, "combat", combatForLog);
+        return rejected("交战不存在: " + combatId, "record", "-", "combat", combatForLog);
       }
       if (SdCombats.stageOrNull(combat, stageId) == null) {
         return rejected("阶段不存在: " + stageId, "combat", combatForLog, "stage", stageForLog);

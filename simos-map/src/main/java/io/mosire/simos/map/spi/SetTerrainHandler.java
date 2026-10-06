@@ -56,7 +56,7 @@ public final class SetTerrainHandler implements CommandHandler, CommandTargets {
     Objects.requireNonNull(payloadJson, "payloadJson");
     GameMap map = MapSnapshots.of(state).map(); // 装配故障当场炸，不走拒绝路径
     String terrainForLog = null;
-    int hexesForLog = -1;
+    Integer hexesForLog = null;
     try {
       JsonNode payload = MapPayloads.parse(payloadJson);
       String terrain = MapPayloads.requireText(payload, "terrain");
@@ -85,7 +85,7 @@ public final class SetTerrainHandler implements CommandHandler, CommandTargets {
                   "terrain",
                   terrainForLog == null ? "-" : terrainForLog,
                   "hexes",
-                  hexesForLog < 0 ? "-" : hexesForLog));
+                  hexesForLog == null ? "-" : hexesForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

@@ -711,8 +711,6 @@ final class MarketSettlement {
     Objects.requireNonNull(regionId, "regionId");
     Objects.requireNonNull(regulation, "regulation");
     boolean regulated = regulation.defined() && regulation.anchor().toString().equals(regionId);
-    long reference =
-        regulatedReference(market, commodity, regulated ? regulation : MarketRegulation.none());
     // ★★ 2026-10-09：有定价行（含明确 0 价）都进订单生成；"从未定价"才不交易。
     if (!(regulated ? regulation : MarketRegulation.none()).hasPrice(market, commodity)) {
       return new PlannedOrders(List.of(), List.of()); // 没定价的商品不交易（同 Market 的口径）
@@ -1189,12 +1187,6 @@ final class MarketSettlement {
         : market.askPriceOf(commodity);
   }
 
-  /** 生成一个格 × 一个商品上的全部订单（主体各自生成；见类注的算式）。默认 regulation ⇒ 逐值现状。 */
-  private static PlannedOrders ordersFor(
-      MarketRound round, HexPlan plan, HexCoord hex, Market market, CommodityId commodity) {
-    return ordersFor(round, plan, hex, market, commodity, MarketRegulation.none(), false);
-  }
-
   /**
    * ★★ <b>D-027：带区级调控的订单生成</b>：{@code regulated == true} 时参考价/限价按 {@code regulation} 覆盖 （{@link
    * MarketRegulation#referencePriceOf}/{@link MarketRegulation#bidPriceOf}/{@link
@@ -1653,10 +1645,6 @@ final class MarketSettlement {
       }
       if (quantity > quotaLeft) {
         quantity = quotaLeft;
-        if (quantity <= 0L) {
-          ctx.markQuotaExhausted(sell.region, buy.order.commodity());
-          break;
-        }
       }
       long payment = paymentForQuantity(quantity, price);
       if (payment <= 0L || payment > amount) {
@@ -1936,12 +1924,6 @@ final class MarketSettlement {
             reserve,
             safeMulDiv(householdEconomy.population(), LENDER_MONEY_BUFFER_PER_CAPITA_MILLI, 1L));
     return reserve;
-  }
-
-  /** 买方所有格市场（缺则回落该买方所在区的锚格价目表；两者都没有 ⇒ null）。 */
-  private static Market marketForBuy(MatchContext ctx, BuySlot buy) {
-    Market direct = ctx.markets.get(buy.hex);
-    return direct != null ? direct : ctx.markets.get(buy.region.anchor());
   }
 
   /** 参与者所在格市场（缺则回落所在区锚格；参与者必在某个市场格里）。 */
@@ -2897,7 +2879,7 @@ final class MarketSettlement {
       MarketRegion region = sells.get(0).region;
       long quotaLeft = ctx.quotaRemaining(region, commodity);
       long matched = Math.min(demand, Math.min(supply, quotaLeft));
-      if (quotaLeft <= 0L && demand > 0L) {
+      if (quotaLeft <= 0L) {
         ctx.markQuotaExhausted(region, commodity);
       }
       if (matched > 0L) {
@@ -3202,7 +3184,7 @@ final class MarketSettlement {
         long quotaLeft = ctx.quotaRemaining(sellerRegion, commodity);
         long matched =
             Math.min(tierDemand, Math.min(tierSupply, Math.min(capacityLeft, quotaLeft)));
-        if (quotaLeft <= 0L && tierDemand > 0L) {
+        if (quotaLeft <= 0L) {
           ctx.markQuotaExhausted(sellerRegion, commodity);
         }
         if (matched > 0L) {
@@ -3756,21 +3738,6 @@ final class MarketSettlement {
     Map<CommodityId, Long> inner = new LinkedHashMap<>(goods.getOrDefault(key, Map.of()));
     inner.put(commodity, Math.max(0L, value));
     goods.put(key, inner);
-  }
-
-  private static long operatorStockOf(
-      Map<ActorRef, Map<CommodityId, Long>> goods, ActorRef actor, CommodityId commodity) {
-    return goods.getOrDefault(actor, Map.of()).getOrDefault(commodity, 0L);
-  }
-
-  private static void setOperatorStock(
-      Map<ActorRef, Map<CommodityId, Long>> goods,
-      ActorRef actor,
-      CommodityId commodity,
-      long value) {
-    Map<CommodityId, Long> inner = new LinkedHashMap<>(goods.getOrDefault(actor, Map.of()));
-    inner.put(commodity, Math.max(0L, value));
-    goods.put(actor, inner);
   }
 
   /**

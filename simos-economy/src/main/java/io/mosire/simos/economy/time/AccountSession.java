@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.time;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
@@ -533,6 +534,10 @@ public final class AccountSession {
     }
 
     @Override
+    @SuppressFBWarnings(
+        value = "SE_BAD_FIELD",
+        justification =
+            "entrySet 返回的 Map.Entry 是视图即时代理：SimpleEntry 的 Serializable 是 JDK 附带；匿名 entry 捕获的会话/账户视图按设计不参与 Java 序列化，序列化这些 entry 不是契约 ⇒ 误报")
     public Set<Entry<K, Map<V, Long>>> entrySet() {
       owner.checkCoordinatorThread();
       return new AbstractSet<>() {

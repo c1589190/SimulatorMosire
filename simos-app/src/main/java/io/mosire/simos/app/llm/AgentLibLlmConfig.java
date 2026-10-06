@@ -411,7 +411,7 @@ public final class AgentLibLlmConfig {
     }
     int migrated = migrateFrom(storeRoot.resolve(LEGACY_FILE_NAME));
     if (migrated == 0) {
-      migrated = migrateFrom(repoDefaultConfig);
+      migrateFrom(repoDefaultConfig);
     }
     // ★ 2026-10-23：成功一行由 migrateFrom 的 LLM_CONFIG_MIGRATED_FROM 统一发射（本处原 LOG.info 与它
     //   是同一事实的两个副本，删去以免重复记）。

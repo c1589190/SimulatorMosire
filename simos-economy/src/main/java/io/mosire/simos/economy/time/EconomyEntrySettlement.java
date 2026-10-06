@@ -226,7 +226,6 @@ final class EconomyEntrySettlement {
             householdDemands,
             householdEconomies,
             householdGoods,
-            householdMoney,
             composition,
             markets,
             day);
@@ -295,7 +294,6 @@ final class EconomyEntrySettlement {
             householdDemands,
             householdEconomies,
             householdGoods,
-            householdMoney,
             composition,
             markets,
             day);
@@ -1136,7 +1134,6 @@ final class EconomyEntrySettlement {
     private final Map<DemandId, HouseholdDemand> householdDemands;
     private final Map<HouseholdId, HouseholdEconomy> householdEconomies;
     private final Map<HouseholdId, Map<CommodityId, Long>> householdGoods;
-    private final Map<HouseholdId, Map<CurrencyId, Long>> householdMoney;
     private final Map<HexCoord, Market> markets;
     private final long day;
     private final Map<ActorRef, List<ProductionUnitId>> unitIdsByOperator = new LinkedHashMap<>();
@@ -1151,7 +1148,6 @@ final class EconomyEntrySettlement {
         Map<DemandId, HouseholdDemand> householdDemands,
         Map<HouseholdId, HouseholdEconomy> householdEconomies,
         Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
-        Map<HouseholdId, Map<CurrencyId, Long>> householdMoney,
         Map<HouseholdId, Map<PeopleLotId, Long>> composition,
         Map<HexCoord, Market> markets,
         long day) {
@@ -1159,7 +1155,6 @@ final class EconomyEntrySettlement {
       this.householdDemands = householdDemands;
       this.householdEconomies = householdEconomies;
       this.householdGoods = householdGoods;
-      this.householdMoney = householdMoney;
       this.markets = markets;
       this.day = day;
       for (ProductionProcess unit : tables.units.values()) {

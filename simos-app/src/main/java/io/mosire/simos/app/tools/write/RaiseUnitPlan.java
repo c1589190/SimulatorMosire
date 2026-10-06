@@ -1,7 +1,6 @@
 package io.mosire.simos.app.tools.write;
 
 import io.mosire.simos.actor.ActorData;
-import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.spi.EnsureHouseholdAccountHandler;
@@ -352,14 +351,6 @@ final class RaiseUnitPlan {
   /** 格的可读文本（拒因与行动记录共用；格式不与任何资源路径语法绑定）。 */
   private static String hexText(HexCoord at) {
     return "(" + at.q() + "," + at.r() + ")";
-  }
-
-  /** 行内 owner 视图（{@code {kind,id}}；与 AdjustAccounts 载荷的 owner 同形）。 */
-  private static Map<String, Object> actorRefView(ActorRef owner) {
-    Map<String, Object> view = new LinkedHashMap<>();
-    view.put("kind", owner.kind().name());
-    view.put("id", owner.id());
-    return view;
   }
 
   /**

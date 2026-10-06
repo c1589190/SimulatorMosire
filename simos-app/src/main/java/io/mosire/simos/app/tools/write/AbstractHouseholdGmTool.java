@@ -1,6 +1,7 @@
 package io.mosire.simos.app.tools.write;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.approval.AskKind;
 import io.mosire.agentlib.approval.ToolGate;
 import io.mosire.agentlib.permission.AccessToken;
@@ -38,6 +39,7 @@ import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -81,6 +83,10 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
   protected final QueryService query;
   protected final String initiator;
 
+  @SuppressFBWarnings(
+      value = "CT_CONSTRUCTOR_THROW",
+      justification =
+          "本类是包内可见的 abstract 类（不可实例化、外部无法子类化），构造器只做 Objects.requireNonNull ⇒ finalizer 攻击面不存在，属 SpotBugs 对 abstract 的启发式误报")
   protected AbstractHouseholdGmTool(CoreSimos core, QueryService query, String initiator) {
     this.core = Objects.requireNonNull(core, "core");
     this.query = Objects.requireNonNull(query, "query");
@@ -172,7 +178,14 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
       boolean preview,
       boolean planOnly,
       String reason,
-      Map<String, Object> args) {}
+      Map<String, Object> args) {
+
+    public Request {
+      // ★ 参数树来自工具上下文，构造期做只读快照：run() 只读它（全仓 grep 无 args 写点），
+      //   快照既不改值也不改迭代序（LinkedHashMap 保序），只是不再把外部可变引用透传出去。
+      args = Collections.unmodifiableMap(new LinkedHashMap<>(Objects.requireNonNull(args, "args")));
+    }
+  }
 
   /** 子类实现：读 base、跑纯推导、preview 出视图或提交命令批。 */
   protected abstract ToolResult run(Request request);

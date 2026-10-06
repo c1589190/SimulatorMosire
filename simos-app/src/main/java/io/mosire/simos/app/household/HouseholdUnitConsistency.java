@@ -66,10 +66,6 @@ public final class HouseholdUnitConsistency {
     Objects.requireNonNull(social, "social");
     Objects.requireNonNull(units, "units");
     List<Mismatch> out = new ArrayList<>();
-    Set<String> unitIds = new LinkedHashSet<>();
-    for (UnitId id : units.units().keySet()) {
-      unitIds.add(id.value());
-    }
     for (Unit unit : sortedUnits(units)) {
       if (social.households().containsKey(new HouseholdId(unit.id().value()))) {
         out.add(

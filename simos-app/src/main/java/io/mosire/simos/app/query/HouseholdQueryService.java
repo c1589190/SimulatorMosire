@@ -1,5 +1,6 @@
 package io.mosire.simos.app.query;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
@@ -161,6 +162,10 @@ public final class HouseholdQueryService {
     }
   }
 
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "Spec 是 parseSpec 的瞬态解析产物（同链只读）：groupBy/metrics 构造后无写点，normalize 路径也已 List.copyOf/Set.copyOf 冻结；SpotBugs 不跨构造路径识别")
   public record Spec(
       Scope scope,
       Filters filters,
@@ -180,6 +185,10 @@ public final class HouseholdQueryService {
 
   public record Scope(ScopeKind kind, Integer q, Integer r, String unitId, String householdId) {}
 
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "Filters 是 parseFilters 的瞬态解析产物（同链只读）：八个 Set 构造后无写点，normalizeFilters 已用 Set.copyOf 冻结；SpotBugs 不跨构造路径识别")
   public record Filters(
       Set<AgeBracket> ageBrackets,
       Set<Sex> sexes,

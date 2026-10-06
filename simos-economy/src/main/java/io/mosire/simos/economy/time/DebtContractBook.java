@@ -457,7 +457,7 @@ public final class DebtContractBook {
                   "to",
                   status,
                   "reasonLength",
-                  reason == null ? 0 : reason.length()));
+                  reason.length()));
     }
     return new Forgiveness(
         id, debt.principal(), amount, remaining, debt.status(), status, remaining == 0L, reason);

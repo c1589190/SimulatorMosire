@@ -47,7 +47,7 @@ public final class SetEdgeHandler implements CommandHandler {
     GameMap map = MapSnapshots.of(state).map(); // 装配故障当场炸，不走拒绝路径
     String kindForLog = null;
     String modeForLog = null;
-    int edgesForLog = -1;
+    Integer edgesForLog = null;
     try {
       JsonNode payload = MapPayloads.parse(payloadJson);
       String kind = MapPayloads.requireText(payload, "kind");
@@ -82,7 +82,7 @@ public final class SetEdgeHandler implements CommandHandler {
                   "mode",
                   modeForLog == null ? "-" : modeForLog,
                   "edges",
-                  edgesForLog < 0 ? "-" : edgesForLog));
+                  edgesForLog == null ? "-" : edgesForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

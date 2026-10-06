@@ -482,13 +482,14 @@ public final class PopulationSeeder {
                   + owner.get(group.id()));
         }
       }
-      for (HouseholdId household : byHousehold.keySet()) {
+      for (Map.Entry<HouseholdId, Household> entry : byHousehold.entrySet()) {
+        HouseholdId household = entry.getKey();
         Long population = populationByHousehold.get(household);
         if (population == null) {
           throw new IllegalArgumentException("播种家户缺人数: " + household);
         }
         long actual = 0L;
-        for (long share : byHousehold.get(household).members().values()) {
+        for (long share : entry.getValue().members().values()) {
           actual = Math.addExact(actual, share);
         }
         if (actual != population) {

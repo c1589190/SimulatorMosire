@@ -1351,11 +1351,12 @@ public final class EconomySettlement {
     //     （实测：`EconomyDebtTest` 的 interestDue 读成两个周期之和）。
     Map<String, List<IndustryId>> hexToIndustries = settlementIndex.industriesByHex();
     Set<HouseholdId> newCycleHouseholds = new LinkedHashSet<>();
-    for (HouseholdId key : householdEconomies.keySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEntry : householdEconomies.entrySet()) {
+      HouseholdId key = householdEntry.getKey();
       Set<ProductionUnitId> supplied = unitsOfHousehold.getOrDefault(key, Set.of());
       if (supplied.isEmpty()) {
         // ★ 兜底：没有配额的户按它住的那一格的产业找 unit（与 cycleDaysByHousehold 同一条兜底）。
-        HouseholdEconomy cycleHouseholdEconomy = householdEconomies.get(key);
+        HouseholdEconomy cycleHouseholdEconomy = householdEntry.getValue();
         if (cycleHouseholdEconomy != null) {
           // ★ R4-B.3a-perf：格 → unit 由入口索引一次给出（旧实现逐无配额家户全量扫 8,940 个 unit）。
           supplied =
@@ -2077,10 +2078,8 @@ public final class EconomySettlement {
                       "unmetGrainMilli",
                       famineUnmet));
         }
-        if (afterFamineHouseholdEconomy != null) {
-          // ★ P2-A A3：成员份额已迁 Social —— 饿死只改 HouseholdEconomy.population；Social 侧的家户成员回写由
-          //   跨切片协调器负责（本批如实记为缺口，见交付报告）。
-        }
+        // ★ P2-A A3：成员份额已迁 Social —— 饿死只改 HouseholdEconomy.population；Social 侧的家户成员回写由
+        //   跨切片协调器负责（本批如实记为缺口，见交付报告）。
       }
       long populationAfter = 0L;
       for (HouseholdId key : closing.keys()) {
@@ -3763,7 +3762,6 @@ public final class EconomySettlement {
     if (changes.isEmpty()) {
       return;
     }
-    EconomyData base = session.base();
     LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies =
         session.sheet().householdEconomies();
     LinkedHashMap<HouseholdId, FlowRow> flows = session.flows();
@@ -3791,7 +3789,6 @@ public final class EconomySettlement {
             //   不再直读 base.relations()（否则这一次人口回写的经济家户索引会漏掉刚建的 unit）。
             session.sheet().relationsOrBase());
     // 批次 → 它供给的 unit（保序、去重；只认 activity 命中现存 unit 的配额）。
-    Map<ProductionUnitId, ProductionProcess> units = session.sheet().units();
     Map<PeopleLotId, List<ProductionUnitId>> unitsOf = index.unitsByGroup();
     for (LotChange change : changes) {
       if (change.isEmpty()) {
@@ -4105,17 +4102,6 @@ public final class EconomySettlement {
     return industriesByHex.getOrDefault(IndustryHexKeys.hexKey(at.q(), at.r()), List.of());
   }
 
-  /** 同 {@link #industriesByHex(EconomyData)}，但吃**产业表本身**（日结算的工作副本不是 {@code EconomyData}）。 */
-  private static Map<String, List<IndustryId>> industriesByHexMap(
-      Map<IndustryId, Industry> industries) {
-    Map<String, List<IndustryId>> byHex = new LinkedHashMap<>();
-    for (IndustryId id : industries.keySet()) {
-      IndustryHexKeys.hexKeyOf(id)
-          .ifPresent(hex -> byHex.computeIfAbsent(hex, ignored -> new ArrayList<>()).add(id));
-    }
-    return byHex;
-  }
-
   /**
    * ★★ **按格索引全部产业**（{@code q_r → 产业表}，保序：产业表的插入序）。
    *
@@ -4409,9 +4395,6 @@ public final class EconomySettlement {
     /** unit 本体（**第一遍的那一份**：第三遍只读它的 operator / cycleInputUsedMilli 并写回新状态）。 */
     private final ProductionProcess unit;
 
-    /** 技术模板（只读：inputPerUnit / cycleDays）。 */
-    private final Industry industry;
-
     /** 本格（unit.industry 解析出来的那一格；"同格争用"的分组键）。★ 产业 id 里没有格键 ⇒ null（它不属于任何一格 ⇒ 不参与争用）。 */
     private final HexCoord hex;
 
@@ -4436,7 +4419,6 @@ public final class EconomySettlement {
     private InputPlan(
         ProductionUnitId id,
         ProductionProcess unit,
-        Industry industry,
         HexCoord hex,
         Map<CommodityId, Long> perScale,
         long capacityScale,
@@ -4444,7 +4426,6 @@ public final class EconomySettlement {
         Map<CommodityId, Long> available) {
       this.id = id;
       this.unit = unit;
-      this.industry = industry;
       this.hex = hex;
       this.perScale = perScale;
       this.capacityScale = capacityScale;
@@ -4517,7 +4498,6 @@ public final class EconomySettlement {
           new InputPlan(
               id,
               unit,
-              industry,
               // ★ 拿不到格键 ⇒ null（**不抛**：改前这条路径也不需要格，{@code householdKeysOf} 会给空表 ⇒ 逐值同旧），
               //   它因此不属于任何一格、也就不参与"同格争用"。
               IndustryHexKeys.hexKeyOf(unit.industry()).map(HexCoord::parse).orElse(null),
@@ -5114,54 +5094,6 @@ public final class EconomySettlement {
     return index.householdsOf(unit);
   }
 
-  /**
-   * ★★ S1：由"格 + 居住类型集合"筛出**该处的全部家户**（只留真的存在的行）—— 视图与身份分离后， 只有 {@link HouseholdEconomy#view()}
-   * 还能回答"住哪"；键本身不再带格。
-   */
-  private static List<HouseholdId> householdKeysAt(
-      Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      HexCoord hex,
-      Set<ResidenceKind> residences) {
-    List<HouseholdId> keys = new ArrayList<>();
-    for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
-      if (householdEconomy.view().hex().equals(hex)
-          && residences.contains(householdEconomy.view().residence())) {
-        keys.add(householdEconomy.id());
-      }
-    }
-    keys.sort(Comparator.comparing(HouseholdId::value));
-    return keys;
-  }
-
-  /**
-   * ★★ <b>一个批次的出生/死亡该摊到哪些家户行</b>（{@link #applyPopulationChange} 用）：它供给的那些产业名下、 {@code
-   * HouseholdLaborCommitment.household} 指名且居住类型匹配的家户，**并集去重**。
-   *
-   * <p>★★ <b>去重不是优化，是正确性</b>：真档里农村批次同时供给 {@code farm@hex} 与 {@code weave@hex}，而两者落在**同一批农村家户行**
-   * 上（H0 之后行不含产业段）—— 不去重会把这批人的出生/死亡**算两遍**（人口账当场对不上）。
-   *
-   * <p>★ <b>S3：不按阶层枚举</b>——旧注释里的"× 四个阶层"在 H0 已作废；阶层写回只改 {@code HouseholdEconomy.view}， 而本方法的键来自
-   * {@code HouseholdLaborCommitment.household} 与 {@code ResidenceKind.ofLot}，故新派生阶层不会漏行/错行。
-   */
-  private static List<HouseholdId> householdKeysOfLot(
-      Map<HouseholdId, HouseholdEconomy> householdEconomies,
-      List<ProductionUnitId> units,
-      ResidenceKind residence,
-      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
-    LinkedHashSet<ProductionUnitId> targets = new LinkedHashSet<>(units);
-    LinkedHashSet<HouseholdId> keys = new LinkedHashSet<>();
-    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
-      if (targets.contains(new ProductionUnitId(laborCommitment.activity()))
-          && ResidenceKind.ofLot(laborCommitment.group()) == residence
-          && householdEconomies.containsKey(laborCommitment.household())) {
-        keys.add(laborCommitment.household());
-      }
-    }
-    List<HouseholdId> sorted = new ArrayList<>(keys);
-    sorted.sort(Comparator.comparing(HouseholdId::value));
-    return sorted;
-  }
-
   /** ★★ 索引口径的“一个批次摊到哪些家户行”（R4-B.3a-perf；只有调用方仍需给 target 集合，不再扫全量配额）。 */
   private static List<HouseholdId> householdKeysOfLot(
       Map<HouseholdId, HouseholdEconomy> householdEconomies,
@@ -5229,7 +5161,8 @@ public final class EconomySettlement {
       Map<HouseholdId, Set<ProductionUnitId>> unitsOfHousehold,
       Map<String, List<IndustryId>> industriesByHex) {
     Map<HouseholdId, Long> byHousehold = new LinkedHashMap<>();
-    for (HouseholdId key : householdEconomies.keySet()) {
+    for (Map.Entry<HouseholdId, HouseholdEconomy> householdEntry : householdEconomies.entrySet()) {
+      HouseholdId key = householdEntry.getKey();
       Set<ProductionUnitId> supplied = unitsOfHousehold.getOrDefault(key, Set.of());
       long cycleDays = 0L;
       for (ProductionUnitId unitId : supplied) {
@@ -5240,7 +5173,7 @@ public final class EconomySettlement {
         }
       }
       if (cycleDays == 0L) {
-        HouseholdEconomy householdEconomy = householdEconomies.get(key);
+        HouseholdEconomy householdEconomy = householdEntry.getValue();
         if (householdEconomy != null) {
           // ★ R4-B.3a-perf：本格产业由入口索引一次给出（旧实现逐无配额家户扫全量产业表）。
           for (IndustryId industryId :
@@ -6620,9 +6553,13 @@ public final class EconomySettlement {
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       SettlementIndex index) {
     Map<String, List<ProductionUnitId>> hexToUnits = new LinkedHashMap<>();
-    for (ProductionUnitId id : units.keySet()) {
-      IndustryHexKeys.hexKeyOf(units.get(id).industry())
-          .ifPresent(hex -> hexToUnits.computeIfAbsent(hex, ignored -> new ArrayList<>()).add(id));
+    for (Map.Entry<ProductionUnitId, ProductionProcess> unitEntry : units.entrySet()) {
+      IndustryHexKeys.hexKeyOf(unitEntry.getValue().industry())
+          .ifPresent(
+              hex ->
+                  hexToUnits
+                      .computeIfAbsent(hex, ignored -> new ArrayList<>())
+                      .add(unitEntry.getKey()));
     }
     for (Map.Entry<String, List<ProductionUnitId>> hex : hexToUnits.entrySet()) {
       List<ProductionUnitId> ids = hex.getValue();
@@ -6747,64 +6684,6 @@ public final class EconomySettlement {
     // ★★ P2-B：产能×投入那一路的算式**只有一处拼写点** —— {@link LaborQueueBook#maxAbsorbableLaborMilli}
     //   （本方法保留"laborPerUnit ≤ 0 ⇒ 返回已分配量"的旧包装语义，旧档逐值不变）。
     return LaborQueueBook.maxAbsorbableLaborMilli(unit, industry, index, condition);
-  }
-
-  /**
-   * 给某 (批次, unit) 加劳动：已有配额 ⇒ 累加；没有 ⇒ **新发一条**（id 由 {@link
-   * HouseholdLaborCommitment#idOf(ProductionUnitId, PeopleLotId, HouseholdId)} 给出）。
-   *
-   * <p>★★ <b>B.2c：旧档迁移过来的配额要按语义键命中，不能只看新 unit 型 id</b>。{@code
-   * LegacyHouseholdMigration.canonicalizeLaborCommitmentActivities} 只改 activity/actor、**保留旧
-   * id**（{@code alloc-<产业>-<批次>-<家户>}）⇒ 旧档续跑时，同一 (unit, group, household) 的既有行不在 unit 型 id 上。 若这里只看
-   * {@code idOf(unit,...)}，会为同一语义键再发一条新 id：两行并存后，死亡缩放 （{@code scaleLaborOfGroup}/{@code
-   * scaleLaborOfUnit}）会对两行**各取整一次**， 比旧口径的单行 {@code floor(ΣA×r)} 少 1 毫劳动（实测：799 条旧档 farm
-   * 配额首次再分配后各多一行， tick30 月度死亡缩放时 388 条各少 1，且随时间可重复出现）。因此先按**旧口径的产业型 id** 找一次；找到后仍要核对 {@code
-   * activity == 本 unit id}，防止同一产业将来有多 unit 时误并到别的 unit 的行上。
-   */
-  private static void addLabor(
-      LinkedHashMap<LaborAllocationId, HouseholdLaborCommitment> laborCommitments,
-      ProductionProcess unit,
-      PeopleLotId group,
-      HouseholdId household,
-      long amount) {
-    if (amount <= 0L) {
-      return;
-    }
-    LaborAllocationId id = HouseholdLaborCommitment.idOf(unit.id(), group, household);
-    HouseholdLaborCommitment existingLaborCommitment = laborCommitments.get(id);
-    if (existingLaborCommitment == null) {
-      // ★ B.2c：旧档 id 形如 alloc-<产业>-<批次>-<家户> ⇒ 用产业型 id 再找一次；activity 必须就是本 unit（见上）。
-      HouseholdLaborCommitment legacyLaborCommitment =
-          laborCommitments.get(HouseholdLaborCommitment.idOf(unit.industry(), group, household));
-      if (legacyLaborCommitment != null
-          && legacyLaborCommitment.activity().equals(unit.id().value())) {
-        existingLaborCommitment = legacyLaborCommitment;
-      }
-    }
-    if (existingLaborCommitment != null) {
-      laborCommitments.put(
-          existingLaborCommitment.id(),
-          withLaborMilli(existingLaborCommitment, existingLaborCommitment.laborMilli() + amount));
-      return;
-    }
-    // ★ 新配额的 activity = unit id（结算按它归集）；period 取该 unit 既有条目的（没有 ⇒ 1）。
-    HouseholdLaborCommitment template = templateAllocationOf(laborCommitments, unit.id());
-    long period = template == null ? 1L : template.period();
-    laborCommitments.put(
-        id,
-        new HouseholdLaborCommitment(
-            id, group, household, unit.operator(), unit.id().value(), amount, period));
-  }
-
-  /** 同一 unit 在配额表里的**既有条目**（用来抄 {@code period}；activity 就是 unit id 本身，不再是"调用方给的词"）。 */
-  private static HouseholdLaborCommitment templateAllocationOf(
-      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments, ProductionUnitId unitId) {
-    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
-      if (laborCommitment.activity().equals(unitId.value())) {
-        return laborCommitment;
-      }
-    }
-    return null;
   }
 
   /** 换劳动量（其余字段原样带过）—— 配额缩小与累加共用。 */
@@ -7753,21 +7632,6 @@ public final class EconomySettlement {
   }
 
   /**
-   * ★ <b>家户 actor → 家户身份</b>的反查表（H2；一天建一次）：三个落点共用同一份 —— "这条转移的某一端是不是家户" 只能有一个答案。
-   *
-   * <p>★ 键 = {@code HouseholdActors.of(cohort)}（家户 actor id 的唯一拼写点，K9）；★ 表**不含**经营者 （它们的账在 actor
-   * 切片上，见 {@link #applyTransferToHouseholds}）。
-   */
-  private static Map<ActorRef, HouseholdId> householdActorsOf(
-      Map<HouseholdId, HouseholdEconomy> householdEconomies) {
-    Map<ActorRef, HouseholdId> householdOfActor = new LinkedHashMap<>();
-    for (HouseholdId key : householdEconomies.keySet()) {
-      householdOfActor.put(HouseholdActors.of(key), key);
-    }
-    return householdOfActor;
-  }
-
-  /**
    * ★★ <b>受方家户的 fail-closed 守卫</b>（H1.3；{@code deliverCohortIntake} 的替代品）：逐条 {@code Payee.ToCohort}
    * 规则判两件事 —— <b>行在</b>、<b>它住在本格</b>。
    *
@@ -8159,29 +8023,6 @@ public final class EconomySettlement {
   // ── 分组与排序 ─────────────────────────────────────────────────────────────────────
 
   /**
-   * ★★ **按 actor id 归集全部劳动配额**（R2；第三阶段设计稿 §四）：{@code actor id → 承诺投入的劳动之和}。
-   *
-   * <p>★ **归属的唯一判据就是 {@code actor.id()}**：产业型主体的 id 就是该产业的 {@link IndustryId}（{@code EconomyData}
-   * 的构造期守卫把这个对应关系判死 —— 产业型（庄园/作坊）必须指名已存在的产业，非产业型（家户）不得与产业 id 撞名）。
-   * 于是"这一格的劳动被哪个产业占了多少"在结算侧**不需要**额外的映射表。
-   *
-   * <p>★ **本轮配额是常设的**（跨周期不变）：{@code HouseholdLaborCommitment.period()} 是"哪一周期发的"，
-   * 由构造期守卫判它必须与供给记录同期；"按周期重发配额"（设计稿 §四 的"同一 period 内"）要等产生它的命令落地，届时这里改成取当前周期的那些配额。
-   *
-   * <p>★ **非产业型主体（家户）的配额照归集**：它不进任何产业的 {@code cycleLaborMilli}（家户织布是 R3 的配方）， 但**照进守恒与读口** ——
-   * 不是"记了没人看"的字段：它是 {@code Σ allocated ≤ available} 那条不变量的一部分（少算它，家户的配额就成了第二个可凭空重复的来源）。
-   */
-  private static Map<String, Long> laborByUnit(
-      Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
-    Map<String, Long> byUnit = new LinkedHashMap<>();
-    for (HouseholdLaborCommitment laborCommitment : laborCommitments.values()) {
-      // ★★ R3B.2：按 activity（= unit id）归集；activity 不是现存 unit 的配额不进任何 unit 的劳动账。
-      byUnit.merge(laborCommitment.activity(), laborCommitment.laborMilli(), Long::sum);
-    }
-    return byUnit;
-  }
-
-  /**
    * 按格（{@link IndustryHexKeys} 的 {@code <q>_<r>}）分组，格的顺序与行序都显式排序（可复现）。
    *
    * <p>★ H4：可见性从 {@code private} 放宽到**包内** —— {@code MarketSettlement} 要问同一个问题（"这一格有哪些家户"），
@@ -8422,27 +8263,6 @@ public final class EconomySettlement {
             + "（那会让这一家人当天静默地不吃饭）。app 协调器必须在推进前从 actor 侧的 HouseholdInventory 载入家户账；"
             + "单模块用例请用 EconomyDayStepper 的 householdGoods 参数显式给账。缺失的家户（最多列 8 个）："
             + missing.subList(0, Math.min(8, missing.size())));
-  }
-
-  /** 追加一条债务引用（其余字段原样带过）。 */
-  private static HouseholdEconomy withExtraDebt(
-      HouseholdEconomy householdEconomy, DebtContractId debtId) {
-    if (householdEconomy.debts().contains(debtId)) {
-      return householdEconomy; // 行里的引用只加一次（E4a 起同一合同跨周期恒同 id，幂等由这里兜底）
-    }
-    List<DebtContractId> debts = new ArrayList<>(householdEconomy.debts());
-    debts.add(debtId);
-    return new HouseholdEconomy(
-        householdEconomy.id(),
-        householdEconomy.view(),
-        householdEconomy.population(),
-        householdEconomy.laborMilli(),
-        householdEconomy.participationPerMille(),
-        householdEconomy.money(),
-        debts,
-        householdEconomy.naturalNeeds(),
-        householdEconomy.effectiveDemand(),
-        householdEconomy.cycleNaturalNeedMilli());
   }
 
   /** 换人口与有效劳动（饿死惩罚用；其余字段原样带过）。 */

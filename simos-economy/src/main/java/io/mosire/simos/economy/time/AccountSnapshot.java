@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.time;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
@@ -29,6 +30,10 @@ import java.util.Set;
 public final class AccountSnapshot {
 
   /** 一本账的不可变投影（四张保序表）。 */
+  @SuppressFBWarnings(
+      value = "EI_EXPOSE_REP",
+      justification =
+          "compact constructor 经 freezeGoods/freezeMoney 拷贝并按 canonical key 冻结（Collections.unmodifiableMap）；SpotBugs 不跨辅助方法识别")
   public record SnapshotAccount(
       Map<CommodityId, Long> goods,
       Map<CurrencyId, Long> money,
@@ -45,7 +50,6 @@ public final class AccountSnapshot {
 
   private final Map<AccountPartitionKey, SnapshotAccount> accounts;
   private final Map<HouseholdId, AccountPartitionKey> householdIndex;
-  private final Map<ActorRef, AccountPartitionKey> householdActorIndex;
 
   /** 家户登记位置（分区与转移 location 的派生读口；<b>不是</b>账户身份）。 */
   private final Map<HouseholdId, HexCoord> locations;
@@ -75,7 +79,6 @@ public final class AccountSnapshot {
         throw new IllegalStateException("同一家户 actor 在快照里有多本账（装配错误）: " + actor);
       }
     }
-    this.householdActorIndex = Collections.unmodifiableMap(actorToHousehold);
 
     List<Map.Entry<HouseholdId, HexCoord>> locationEntries =
         new ArrayList<>(Objects.requireNonNull(locations, "locations").entrySet());

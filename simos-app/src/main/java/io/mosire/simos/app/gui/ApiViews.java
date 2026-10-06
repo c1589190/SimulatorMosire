@@ -5664,7 +5664,6 @@ public final class ApiViews {
    */
   private static Map<String, Object> laborView(
       SocialData data, EconomyData economy, HexCoord coord) {
-    List<PopulationGroup> groups = data.groupsAt(coord);
     // ★★ P2-A A4：可用量 = 该格各家的**每 tick 时间预算**（HouseholdEconomy.laborMilli，毫小时）；
     //   批次级供给表已删除（唯一权威是 Social 人口组成 × 系数表）。
     long available = 0L;

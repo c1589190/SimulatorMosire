@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.time;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -58,6 +59,10 @@ public final class SettlementExecutor {
    * @param worker 分区 → 纯计算结果（通常是 {@code AccountIntentBuffer} 或不可变记录）
    * @param pool 线程池；{@code null} = 单线程退化路径（R1 默认）。跨日期并行被禁止：池只服务本阶段
    */
+  @SuppressFBWarnings(
+      value = "THROWS_METHOD_THROWS_RUNTIMEEXCEPTION",
+      justification =
+          "转发语义：分区 worker 的运行时异常必须按原实例/原类型上抛（ExecutionException 只做线程边界包装）；换成新异常会改变调用方按类型/身份的判据")
   public static <T> List<T> execute(
       PartitionPlan plan, Function<PartitionPlan.Partition, T> worker, ExecutorService pool) {
     Objects.requireNonNull(plan, "plan");

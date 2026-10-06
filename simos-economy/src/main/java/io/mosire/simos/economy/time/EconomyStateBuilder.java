@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.time;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.api.id.AssetRuleId;
 import io.mosire.simos.economy.api.id.AssetShareId;
@@ -60,6 +61,10 @@ import java.util.Optional;
  *
  * <p>★ <b>不变式</b>：工作表只在一次推进会话内使用（单线程、用完即弃）；{@code base} 永不被修改。
  */
+@SuppressFBWarnings(
+    value = "EI_EXPOSE_REP",
+    justification =
+        "本类是日结算的可变工作表（协调器单线程独占，见类注）：各 accessor 返回惰性拷贝的工作副本本身即设计语义（结算写回 base 的唯一通道），防御性拷贝会破坏工作表语义")
 public final class EconomyStateBuilder {
 
   private final EconomyData base;

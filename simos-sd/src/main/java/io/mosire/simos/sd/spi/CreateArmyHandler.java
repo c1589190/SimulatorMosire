@@ -58,7 +58,7 @@ public final class CreateArmyHandler implements CommandHandler {
                 + "（可选，缺省 = 未认主子）。国家归属请用 sd.CreateNation/Affiliation.Nation；"
                 + "认领 GOV 请用 unit.SetArmyFormation。",
             "army",
-            armyForLog);
+            "-");
       }
       ArmyId id = ArmyId.parse(SdPayloads.requireText(payload, "armyId"));
       armyForLog = id.value();

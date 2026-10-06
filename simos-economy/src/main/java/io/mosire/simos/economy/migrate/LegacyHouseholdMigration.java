@@ -83,13 +83,6 @@ public final class LegacyHouseholdMigration {
       Map<ProductionUnitId, OperatorCondition> operatorConditions,
       Optional<EconomyMeta> meta) {}
 
-  /** ★ 迁移是否已完成（meta 的 rulesVersion 标记；无 meta 视为未迁移）。 */
-  private static boolean isMigrated(Optional<EconomyMeta> meta) {
-    return meta != null
-        && meta.isPresent()
-        && EconomyMeta.RULES_VERSION_PRE_MODERN_V1.equals(meta.get().rulesVersion());
-  }
-
   /** ★ 是否还需迁移（见类注的三类触发条件；幂等的判据）。 */
   public static boolean needed(
       Map<IndustryId, Industry> industries,

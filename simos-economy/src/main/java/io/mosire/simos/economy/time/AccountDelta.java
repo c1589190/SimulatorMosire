@@ -1,5 +1,6 @@
 package io.mosire.simos.economy.time;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import java.util.ArrayList;
@@ -27,6 +28,10 @@ import java.util.Objects;
  * <p>★ <b>提交序</b>：{@link #order()} 的 {@code canonicalKey} 恒等于账户分区键的 canonical 串；{@code intraIndex}
  * 由产出它的 {@link AccountIntentBuffer} 分配（同一分区的意向计数器；增量取"首次触碰该账"的序号）。
  */
+@SuppressFBWarnings(
+    value = "EI_EXPOSE_REP",
+    justification =
+        "compact constructor 经 freezeSortedGoods/freezeSortedMoney 防御性拷贝并按 canonical key 冻结；SpotBugs 不跨辅助方法识别")
 public record AccountDelta(
     CommitOrder order, Map<CommodityId, Long> goods, Map<CurrencyId, Long> money)
     implements OrderedAccountIntent {

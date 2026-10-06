@@ -686,7 +686,7 @@ public final class OwnershipStakeBook {
     } else {
       plannedPledges.remove(sourcePledgeId);
       PledgeMergeKey ownKey = mergeKeyOf(pledge);
-      if (ownKey != null && sourcePledgeId.equals(mergeIndex.get(ownKey))) {
+      if (sourcePledgeId.equals(mergeIndex.get(ownKey))) {
         mergeIndex.remove(ownKey);
       }
     }

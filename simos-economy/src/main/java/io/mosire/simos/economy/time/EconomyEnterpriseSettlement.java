@@ -739,22 +739,6 @@ final class EconomyEnterpriseSettlement {
   }
 
   /**
-   * ★★ <b>E6a：当前阶层位置的解析（结算工作副本优先）</b>：日结算可能在自动组织之前刚应用了模式变迁， {@code classStandings} 工作副本里的
-   * currentPositionId 已是新位置；若仍读 {@code base} 的旧归属，本日组织会按旧位置 重来一遍。传进来的表在无变迁时逐字等于 {@code
-   * base.classStandings()}（{@code classMembershipsOrBase()}），旧路径不变。
-   */
-  private static Optional<ClassPositionId> resolveCurrent(
-      EconomyData base,
-      Map<HouseholdId, HouseholdClassMembership> classMemberships,
-      HouseholdId household) {
-    HouseholdClassMembership classMembership = classMemberships.get(household);
-    if (classMembership != null) {
-      return Optional.of(classMembership.currentPositionId());
-    }
-    return ProductionRoleResolver.resolveCurrent(base, household);
-  }
-
-  /**
    * ★★ <b>P2-B：本户的有效参与位置集合</b>（多生产方式的唯一读口）。有 {@code HouseholdClassMembership} ⇒ {@link
    * HouseholdClassMembership#effectivePositionIds()}（当前位置 ∪ 追加集合，按 id 升序）；无 standing 的旧档 ⇒ 退回
    * {@link ProductionRoleResolver#resolveCurrent} 的单值旧口径。位置自身的合法性（已存在、mode 已存在） 由 {@code

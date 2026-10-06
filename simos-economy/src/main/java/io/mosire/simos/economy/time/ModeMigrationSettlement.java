@@ -1705,14 +1705,6 @@ public final class ModeMigrationSettlement {
     return false;
   }
 
-  private static long[] toLongArray(List<Long> values) {
-    long[] array = new long[values.size()];
-    for (int i = 0; i < values.size(); i++) {
-      array[i] = values.get(i);
-    }
-    return array;
-  }
-
   private static void putOrRemove(Map<CurrencyId, Long> table, CurrencyId key, long amount) {
     if (amount <= 0L) {
       table.remove(key);
