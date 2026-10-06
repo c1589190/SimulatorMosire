@@ -271,6 +271,14 @@ hh-1_1-rural-rich_peasant     Social 31  Economy 28
 
 ### 7.3 Unit 对接批次（四件套 + 决策人模型）
 
+> **2026-10-14 进度**：P1.0 share-aware 选人层/安全闸（`999b1db9`）、P1.1 GovRecruit 工单化（`7adb748b`）、
+> P1.2 GovRetire 工单化（`ac5ca16e`）、P1.3 RaiseUnit 工单化（`c0218a5d`）、P3 UNIT 家户经济行登记
+> （`0fded9d2`）、P2 战斗伤亡回写 Social（`d1b2ba17`）、P4a 通用周期规则表 + 无状态到期执行器
+> （`b663b357`）均已完成并推送。施工文档：`2026-10-11-unit-integration-p1.md`、
+> `2026-10-12-unit-integration-p3.md`、`2026-10-13-unit-integration-p2.md`、
+> `2026-10-14-unit-integration-p4a.md`。剩余：P4b（Unit MilitaryPayPolicy/军职分摊/GM 工具/决策人白名单）、
+> GovSelectExaminees/GovDispatchTeam/SpawnArmy 的完整接线、测试迁移与 clean verify。以下原文保留。
+
 1. **征兵/退伍：组合工具迁移到 Social 工单**
    - 现状：app 组合旧 `social.*` 命令；
    - 目标：Army/GOV 工具只提交 `social.SubmitHouseholdWorkOrder`

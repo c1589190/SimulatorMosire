@@ -118,6 +118,10 @@ P4 经济通用“周期家户库存扣增” + Unit 决策人内部分摊规则
 
 ## 5. 未做清单（按优先级）
 
+> **2026-10-14 进度**：Unit 对接 P1.0–P1.3、P2 战斗伤亡、P3 UNIT 家户经济行、P4a 通用周期扣增
+> 均已完成并推送（提交见主计划 §7.3 进度块）。当前唯一未做的大块 = P4b（Unit 政策/分摊/工具/白名单）；
+> 另外 `GovSelectExaminees`/`GovDispatchTeam`/`SpawnArmy` 仍 plan 级 fail-closed，测试迁移仍后置。
+
 1. ~~P0 `ModeMigrationSettlement` → Social 工单 outbox~~ ✅ 2026-10-10 已关闭；
 2. Unit 四件套 + Unit 决策人模型（当前最高优先级）；
 3. `FlowRow.births/deaths` 仍不承载每 tick 生死，`CrisisMonitor.MORTALITY` 看不到 ppm 死亡；
