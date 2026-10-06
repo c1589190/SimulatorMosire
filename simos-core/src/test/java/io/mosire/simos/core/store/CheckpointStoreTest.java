@@ -3,6 +3,7 @@ package io.mosire.simos.core.store;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import io.mosire.simos.core.CoreLog;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
@@ -74,7 +75,8 @@ class CheckpointStoreTest {
     // appender 之前就被滤掉）。正确做法是给本类的名字挂一个专属 LoggerConfig，走 Configuration 的正式生命周期。
     LoggerContext context = (LoggerContext) LogManager.getContext(false);
     AbstractConfiguration configuration = (AbstractConfiguration) context.getConfiguration();
-    String loggerName = CheckpointStore.class.getName();
+    // ★ 2026-10-23 L1：logger 从类 logger 移到门面分类 io.mosire.simos.core.store（CoreLog.store()）。
+    String loggerName = CoreLog.STORE_LOGGER_NAME;
     CapturingAppender appender = new CapturingAppender();
     appender.start();
     LoggerConfig config = new LoggerConfig(loggerName, Level.WARN, true);
@@ -88,8 +90,13 @@ class CheckpointStoreTest {
           .anySatisfy(
               event -> {
                 assertThat(event.getLevel()).isEqualTo(Level.WARN);
-                assertThat(event.getMessage().getFormattedMessage()).contains("checkpoint");
-                assertThat(event.getMessage().getFormattedMessage()).contains("main");
+                assertThat(event.getMessage().getFormattedMessage())
+                    .as("事件名 + 具名字段 + 来源（§4.4）")
+                    .contains("event=CHECKPOINT_MISSING")
+                    .contains("origin=checkpoint")
+                    .contains("originKind=system")
+                    .contains("branch=main")
+                    .contains("revision=1");
               });
     } finally {
       configuration.removeLogger(loggerName);

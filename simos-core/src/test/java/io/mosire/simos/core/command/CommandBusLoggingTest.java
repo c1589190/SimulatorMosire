@@ -2,6 +2,7 @@ package io.mosire.simos.core.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.core.CoreLog;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
@@ -93,7 +94,8 @@ class CommandBusLoggingTest {
     context = (LoggerContext) LogManager.getContext(false);
     // ★ 收窄到 AbstractConfiguration：`removeAppender` 只在它上面，不在 Configuration 接口上（javap 实测）
     configuration = (AbstractConfiguration) context.getConfiguration();
-    loggerConfig = configuration.getLoggerConfig(CommandBus.class.getName());
+    // ★ 2026-10-23 L1：logger 从类 logger 移到门面分类 io.mosire.simos.core.command（CoreLog.command()）。
+    loggerConfig = configuration.getLoggerConfig(CoreLog.COMMAND_LOGGER_NAME);
     originalLevel = loggerConfig.getLevel(); // ★ 记下来，拆装置时还原（否则 DEBUG 会漏给同 JVM 的其它用例）
     appender = new CollectingAppender();
     appender.start();
@@ -139,10 +141,69 @@ class CommandBusLoggingTest {
 
     List<String> lines = appender.messages();
     assertThat(lines).as("实得 %s", lines).hasSize(6);
-    assertThat(countStartingWith(lines, "命令接收")).as("三条命令各一条接收日志").isEqualTo(3);
-    assertThat(countStartingWith(lines, "命令提交")).isEqualTo(1);
-    assertThat(countStartingWith(lines, "命令被拒")).isEqualTo(1);
-    assertThat(countStartingWith(lines, "命令冲突")).isEqualTo(1);
+    assertThat(countStartingWith(lines, "event=COMMAND_RECEIVED")).as("三条命令各一条接收日志").isEqualTo(3);
+    assertThat(countStartingWith(lines, "event=COMMAND_COMMITTED")).isEqualTo(1);
+    assertThat(countStartingWith(lines, "event=COMMAND_REJECTED")).isEqualTo(1);
+    assertThat(countStartingWith(lines, "event=COMMAND_CONFLICTED")).isEqualTo(1);
+  }
+
+  /**
+   * ★ L1/§4.4：每条事件必须带 {@code origin=} 与 {@code originKind=}（小写三档），且命令入口 = interaction、批执行 = tick。
+   *
+   * <p>不只看"字段存在"：{@code origin=} 后面若为空（{@code origin= originKind=}）也算没做完，故断言具体来源 id 与 kind 的配对。
+   */
+  @Test
+  void everyLineCarriesOriginAndOriginKindFromTheModuleSourceTable() {
+    CommandBus bus = busReturning(new HandlerOutcome.Applied(new ToyChangeSet(1)));
+    bus.submit(envelope("cmd-a", "corr-a", 1L));
+    bus.submit(unknownTypeEnvelope("cmd-b", "corr-b", 2L));
+
+    assertThat(appender.messages())
+        .as("实得 %s", appender.messages())
+        .allSatisfy(
+            line -> {
+              assertThat(line).contains("origin=");
+              assertThat(line).contains("originKind=");
+              assertThat(line).doesNotContain("origin= ").doesNotContain("originKind= ");
+            });
+    assertThat(linesStartingWith("event=COMMAND_RECEIVED"))
+        .as("两次提交 ⇒ 两条接收日志，均按工作性质记 interaction")
+        .hasSize(2)
+        .allSatisfy(
+            line ->
+                assertThat(line)
+                    .contains("origin=command-entry")
+                    .contains("originKind=interaction"));
+    assertThat(onlyLineStartingWith("event=COMMAND_REJECTED"))
+        .as("被拒结局同样来自命令入口层")
+        .contains("origin=command-entry")
+        .contains("originKind=interaction");
+  }
+
+  /**
+   * ★ TICK 类事件必带 {@code day}：批执行面（算法推进）用 batch 入口触发，断言批日志带 day 且 kind=tick。
+   *
+   * <p>判别力：{@code STUB_STATE.meta().timestamp().tick()} = 7L（本类夹具的确定读数）；把它写成常量 0 或漏字段当场红。
+   *
+   * <p>用未知类型的整批（不落 revision）触发：跑得到 {@code COMMAND_BATCH_SUBMIT}（入口 interaction）与 {@code
+   * COMMAND_BATCH_REJECTED}（执行面 tick），不需要为夹具装配 ModuleCodec；同时守"被拒一律 INFO"（用户 2026-10-23 原话）。
+   */
+  @Test
+  void batchTickLinesCarryDayAndTickOriginKind() {
+    CommandBus bus = busReturning(new HandlerOutcome.Applied(new ToyChangeSet(1)));
+    bus.submitBatch(List.of(unknownTypeEnvelope("cmd-batch", "corr-batch", 1L)));
+
+    assertThat(onlyLineStartingWith("event=COMMAND_BATCH_SUBMIT"))
+        .as("批入口与单条信封同属命令入口层（interaction）")
+        .contains("origin=command-entry")
+        .contains("originKind=interaction");
+    String rejected = onlyLineStartingWith("event=COMMAND_BATCH_REJECTED");
+    assertThat(rejected)
+        .as("批执行面是 TICK 算法，且必须带 day=7；被拒绝事件必须是 INFO（不是 DEBUG/WARN）")
+        .startsWith("INFO|")
+        .contains("origin=batch-execution")
+        .contains("originKind=tick")
+        .contains("day=7");
   }
 
   /**
@@ -173,9 +234,12 @@ class CommandBusLoggingTest {
     busReturning(new HandlerOutcome.Applied(new ToyChangeSet(1)))
         .submit(envelope("cmd-c", "corr-c", 9L));
 
-    String conflictLine = onlyLineStartingWith("命令冲突");
-    assertThat(conflictLine).as("真实 head 是种子那行 main@1").contains("真实head=main@1");
-    assertThat(conflictLine).as("★ 印期望值就失去诊断价值").doesNotContain("@9");
+    String conflictLine = onlyLineStartingWith("event=COMMAND_CONFLICTED");
+    assertThat(conflictLine)
+        .as("真实 head 是种子那行 main@1")
+        .contains("headBranch=main")
+        .contains("headRevision=1");
+    assertThat(conflictLine).as("★ 印期望值就失去诊断价值").doesNotContain("headRevision=9");
   }
 
   /** 提交日志报**新坐标**；被拒日志报**原因**——各自带上"下一步该看什么"。 */
@@ -183,11 +247,14 @@ class CommandBusLoggingTest {
   void commitAndRejectLinesCarryTheirOwnActionableDetail() {
     busReturning(new HandlerOutcome.Applied(new ToyChangeSet(1)))
         .submit(envelope("cmd-ok", "corr-ok", 1L));
-    assertThat(onlyLineStartingWith("命令提交")).as("种子在 main@1 ⇒ 提交后是 main@2").contains("main@2");
+    assertThat(onlyLineStartingWith("event=COMMAND_COMMITTED"))
+        .as("种子在 main@1 ⇒ 提交后是 main@2")
+        .contains("branch=main")
+        .contains("revision=2");
 
     CommandBus rejecting = busReturning(new HandlerOutcome.Rejected("领域侧不答应"));
     rejecting.submit(envelope("cmd-no", "corr-no", 2L));
-    assertThat(onlyLineStartingWith("命令被拒")).contains("领域侧不答应");
+    assertThat(onlyLineStartingWith("event=COMMAND_REJECTED")).contains("reason=领域侧不答应");
   }
 
   /**

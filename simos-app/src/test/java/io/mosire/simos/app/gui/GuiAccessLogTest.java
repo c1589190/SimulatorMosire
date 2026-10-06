@@ -2,6 +2,7 @@ package io.mosire.simos.app.gui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.app.AppLog;
 import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import java.net.URI;
@@ -56,7 +57,8 @@ class GuiAccessLogTest {
 
     context = (LoggerContext) LogManager.getContext(false);
     configuration = (AbstractConfiguration) context.getConfiguration();
-    loggerConfig = configuration.getLoggerConfig(GuiServer.class.getName());
+    // ★ 2026-10-23 L1：logger 从类 logger 移到门面分类 io.mosire.simos.app.gui（AppLog.gui()）。
+    loggerConfig = configuration.getLoggerConfig(AppLog.GUI_LOGGER_NAME);
     originalLevel = loggerConfig.getLevel();
     appender = new CollectingAppender();
     appender.start();
@@ -104,11 +106,30 @@ class GuiAccessLogTest {
 
     List<String> lines = awaitAccessLines(2);
     assertThat(lines).as("两次请求 ⇒ 两行访问日志，实得 %s", lines).hasSize(2);
-    assertThat(lines).anySatisfy(l -> assertThat(l).contains("access GET / -> 200"));
-    assertThat(lines).anySatisfy(l -> assertThat(l).contains("access GET /api/state -> 200"));
+    assertThat(lines)
+        .anySatisfy(
+            l ->
+                assertThat(l)
+                    .contains("event=GUI_ACCESS")
+                    .contains("method=GET")
+                    .contains("path=/")
+                    .contains("status=200"));
+    assertThat(lines)
+        .anySatisfy(
+            l ->
+                assertThat(l)
+                    .contains("event=GUI_ACCESS")
+                    .contains("path=/api/state")
+                    .contains("status=200"));
     assertThat(lines)
         .allSatisfy(
-            l -> assertThat(l).contains("ms remote=").doesNotContain("remote=-")); // 远端必须真的取到
+            l -> {
+              assertThat(l).contains("origin=gui-request").contains("originKind=interaction");
+              assertThat(l)
+                  .contains("millis=")
+                  .contains("caller=")
+                  .doesNotContain("caller=-"); // 远端必须真的取到
+            });
   }
 
   @Test
@@ -117,8 +138,22 @@ class GuiAccessLogTest {
     assertThat(post("/api/state", "{}").statusCode()).isEqualTo(405);
 
     List<String> lines = awaitAccessLines(2);
-    assertThat(lines).anySatisfy(l -> assertThat(l).contains("access GET /nope -> 404"));
-    assertThat(lines).anySatisfy(l -> assertThat(l).contains("access POST /api/state -> 405"));
+    assertThat(lines)
+        .anySatisfy(
+            l ->
+                assertThat(l)
+                    .contains("event=GUI_ACCESS")
+                    .contains("method=GET")
+                    .contains("path=/nope")
+                    .contains("status=404"));
+    assertThat(lines)
+        .anySatisfy(
+            l ->
+                assertThat(l)
+                    .contains("event=GUI_ACCESS")
+                    .contains("method=POST")
+                    .contains("path=/api/state")
+                    .contains("status=405"));
   }
 
   /** ★ **密钥纪律**：查询串（可能含敏感值）绝不进日志——只记路径。 */
@@ -130,13 +165,21 @@ class GuiAccessLogTest {
     assertThat(lines).as("前提：先得真收到访问日志").isNotEmpty();
     assertThat(lines).allSatisfy(line -> assertThat(line).doesNotContain(CANARY));
     assertThat(lines).allSatisfy(line -> assertThat(line).doesNotContain("?"));
-    assertThat(lines).anySatisfy(line -> assertThat(line).contains("access GET /api/state -> 200"));
+    assertThat(lines)
+        .anySatisfy(
+            line ->
+                assertThat(line)
+                    .contains("event=GUI_ACCESS")
+                    .contains("method=GET")
+                    .contains("path=/api/state")
+                    .contains("status=200"));
   }
 
   // ── 夹具 ────────────────────────────────────────────────────────────────────────
 
   private List<String> accessLines() {
-    return appender.messages().stream().filter(line -> line.contains("access ")).toList();
+    // ★ 注意排除 GUI_ACCESS_LOG_FAILED（前缀同族）：只认带空格结尾的 GUI_ACCESS 事件。
+    return appender.messages().stream().filter(line -> line.contains("event=GUI_ACCESS ")).toList();
   }
 
   /** 等访问日志攒到 {@code expected} 行（日志在 finally 写出，与客户端拿到响应之间有一个极短窗口）。 */

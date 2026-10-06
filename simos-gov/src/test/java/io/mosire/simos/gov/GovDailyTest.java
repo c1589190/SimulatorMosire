@@ -95,6 +95,9 @@ class GovDailyTest {
             new Call(U1, H1, "grain", 30L),
             new Call(U1, H1, "cloth", 3L),
             new Call(U1, H1, "silver", 9L));
+    assertThat(oracle.days())
+        .as("L3 起 pay 的 day 参 = settle 的 tick（7L），三次调用逐值透传")
+        .containsExactly(7L, 7L, 7L);
     assertThat(outcome.dues())
         .as("每 office 三资源各一条 due，评估/实付/缺口逐值")
         .containsExactly(
@@ -674,6 +677,9 @@ class GovDailyTest {
     private final PaymentOutcome outcome;
     private final List<Call> calls = new ArrayList<>();
 
+    /** ★ L3 起 {@code pay} 追加第 5 参 {@code day}（结算 tick）；并行记录，验证它真被透传。 */
+    private final List<Long> days = new ArrayList<>();
+
     RecordingOracle(PaymentOutcome outcome) {
       this.outcome = outcome;
     }
@@ -682,9 +688,15 @@ class GovDailyTest {
       return List.copyOf(calls);
     }
 
+    List<Long> days() {
+      return List.copyOf(days);
+    }
+
     @Override
-    public long pay(UnitId unitId, HexCoord at, GovDaily.GovResource resource, long requested) {
+    public long pay(
+        UnitId unitId, HexCoord at, GovDaily.GovResource resource, long requested, long day) {
       calls.add(new Call(unitId, at, resource.name(), requested));
+      days.add(day);
       return outcome.pay(resource, requested);
     }
   }

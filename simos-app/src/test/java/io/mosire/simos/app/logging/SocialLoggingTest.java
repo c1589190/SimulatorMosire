@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -14,6 +15,15 @@ import io.mosire.simos.social.api.population.HouseholdVitalRates;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.household.HouseholdBook;
 import io.mosire.simos.social.population.AgeBracket;
+import io.mosire.simos.social.spi.CreateHouseholdHandler;
+import io.mosire.simos.util.info.InMemoryInfoSystem;
+import io.mosire.simos.util.spi.HandlerOutcome;
+import io.mosire.simos.util.state.BranchId;
+import io.mosire.simos.util.state.RevisionId;
+import io.mosire.simos.util.state.SimulationState;
+import io.mosire.simos.util.state.StateMeta;
+import io.mosire.simos.util.state.StateRef;
+import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -124,7 +134,13 @@ class SocialLoggingTest {
     SocialData data = runLifecycleFixture();
 
     List<String> lines = appender.messages();
-    assertEvent(lines, "HOUSEHOLD_CREATED", "id=" + HEX_HOUSEHOLD, "location=HEX:0_0");
+    assertEvent(
+        lines,
+        "HOUSEHOLD_CREATED",
+        "id=" + HEX_HOUSEHOLD,
+        "location=HEX:0_0",
+        "origin=social-command",
+        "originKind=system");
     assertEvent(
         lines, "HOUSEHOLD_LOCATION_SET", "id=" + HEX_HOUSEHOLD, "from=HEX:0_0", "to=UNIT:u-1");
     assertEvent(lines, "HOUSEHOLD_PROFILE_SET", "id=" + HEX_HOUSEHOLD, "name=改名户");
@@ -159,9 +175,11 @@ class SocialLoggingTest {
         lines, "POPULATION_TRANSFER_IN", "to=" + UNIT_HOUSEHOLD, "lot=" + FEMALE, "count=50");
     assertEvent(
         lines, "POPULATION_TRANSFER_OUT", "from=" + HEX_HOUSEHOLD, "lot=" + FEMALE, "count=50");
-    assertEvent(lines, "GM_POPULATION_ADJUST", "delta=");
+    assertEvent(lines, "GM_POPULATION_ADJUST", "delta=", "origin=social-command");
     assertEvent(
         lines, "POPULATION_CONSERVATION_CHECK", "ok=true", "households=", "lots=", "population=");
+    // ★ L4/§9：TICK 类事件必带 day；来源表把逐 tick 生死结算标成 social-settle/tick。
+    assertEvent(lines, "POPULATION_SETTLE", "origin=social-settle", "originKind=tick", "day=0");
     assertThat(data.populationEvents()).as("夹具必须真的落过事件，否则上面的日志断言可能只是空跑").isNotEmpty();
   }
 
@@ -276,7 +294,47 @@ class SocialLoggingTest {
             });
   }
 
-  /** 采集 appender：只记 message，不碰状态。 */
+  /**
+   * L4/§9：具名拒绝事件必须是 INFO（用户 2026-10-23：「被拒绝肯定走 INFO」），且带模块来源。
+   *
+   * <p>判别力：把 {@code CreateHouseholdHandler} 的拒绝行改成 DEBUG/WARN 或去掉 origin，这里当场红。
+   */
+  @Test
+  void namedRejectionIsLoggedAsInfoWithOriginAndReason() {
+    setSocialLevel(Level.INFO);
+    appender.clear();
+
+    HandlerOutcome outcome =
+        new CreateHouseholdHandler()
+            .handle(state(SocialData.empty()), "{\"householdId\":\"hh-bad\"}");
+
+    assertThat(outcome)
+        .as("缺 location/profile/vitalRates ⇒ 必须具名 Rejected")
+        .isInstanceOf(HandlerOutcome.Rejected.class);
+    assertThat(appender.messages())
+        .as("实得 %s", appender.messages())
+        .anySatisfy(
+            line ->
+                assertThat(line)
+                    .startsWith("INFO|")
+                    .contains("event=SOCIAL_CREATE_HOUSEHOLD_REJECTED")
+                    .contains("origin=social-command")
+                    .contains("originKind=system")
+                    .contains("reason="));
+  }
+
+  /** 真 {@link SimulationState} + social 切片（不打 DB），形态照 social 模块的 {@code SocialSpiFixture}。 */
+  private static SimulationState state(SocialData data) {
+    BranchId main = new BranchId("main");
+    StateRef ref = new StateRef(main, new RevisionId(1));
+    SimosTimestamp t0 = SimosTimestamp.of(0);
+    return new SimulationState(
+        new StateMeta(ref, t0),
+        Map.of("social", new SocialSnapshot(ref, t0, data)),
+        InMemoryInfoSystem.empty());
+  }
+
+  /** 采集 appender：记 {@code level|message}，不碰状态。 */
   private static final class CollectingAppender extends AbstractAppender {
 
     private final List<String> messages = new ArrayList<>();
@@ -287,7 +345,7 @@ class SocialLoggingTest {
 
     @Override
     public void append(LogEvent event) {
-      messages.add(event.getMessage().getFormattedMessage());
+      messages.add(event.getLevel() + "|" + event.getMessage().getFormattedMessage());
     }
 
     private List<String> messages() {

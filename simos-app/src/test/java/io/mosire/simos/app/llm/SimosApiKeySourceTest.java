@@ -2,6 +2,7 @@ package io.mosire.simos.app.llm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.mosire.simos.app.AppLog;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,7 +38,8 @@ class SimosApiKeySourceTest {
   void attachLogCollector() {
     context = (LoggerContext) LogManager.getContext(false);
     configuration = (AbstractConfiguration) context.getConfiguration();
-    loggerConfig = configuration.getLoggerConfig(SimosApiKeySource.class.getName());
+    // ★ 2026-10-23 L1：logger 从类 logger 移到门面分类 io.mosire.simos.app.llm（AppLog.llm()）。
+    loggerConfig = configuration.getLoggerConfig(AppLog.LLM_LOGGER_NAME);
     originalLevel = loggerConfig.getLevel();
     appender = new CollectingAppender();
     appender.start();
@@ -98,6 +100,29 @@ class SimosApiKeySourceTest {
     assertThat(new SimosApiKeySource(config, tempDir, null, Map.of()).apiKey()).isEmpty();
   }
 
+  /** ★ L4/§9：空白密钥文件是 WARN（既有级别不降级），且带模块来源字段。 */
+  @Test
+  void emptyKeyFileStaysWarnAndCarriesOrigin() throws Exception {
+    AgentLibLlmConfig config = AgentLibLlmConfig.open(tempDir);
+    Path keyDir = tempDir.resolve(SimosApiKeySource.KEY_DIR_NAME);
+    Files.createDirectories(keyDir);
+    Files.writeString(keyDir.resolve("emptykey"), "   \n", StandardCharsets.UTF_8);
+
+    SimosApiKeySource source = new SimosApiKeySource(config, tempDir, "emptykey", Map.of());
+
+    assertThat(source.apiKey()).isEmpty();
+    assertThat(appender.messages())
+        .as("实得 %s", appender.messages())
+        .anySatisfy(
+            m ->
+                assertThat(m)
+                    .startsWith("WARN|")
+                    .contains("event=LLM_KEY_FILE_EMPTY")
+                    .contains("origin=llm-config")
+                    .contains("originKind=system")
+                    .contains("configured=false"));
+  }
+
   @Test
   void unresolvedReferenceReturnsEmptyNotAnException() {
     AgentLibLlmConfig config = AgentLibLlmConfig.open(tempDir);
@@ -140,6 +165,18 @@ class SimosApiKeySourceTest {
     assertThat(source.apiKey()).contains(sentinel);
     assertThat(appender.messages()).as("★ 前提：装置真的在收日志（空捕获上\"不含哨兵\"会假绿）").isNotEmpty();
     assertThat(appender.messages()).allSatisfy(m -> assertThat(m).doesNotContain(sentinel));
+    // ★ L1/§4.4：成功解析确实留痕（只记元信息），且带来源字段；哨兵不在任何一行。
+    //   name 的具体渲染由 safeName 的脱敏策略决定（本夹具引用名含 "." ⇒ 落 REDACTED），这里只钉"有 name 字段"。
+    assertThat(appender.messages())
+        .anySatisfy(
+            m ->
+                assertThat(m)
+                    .contains("event=LLM_KEY_RESOLVED")
+                    .contains("origin=llm-config")
+                    .contains("originKind=system")
+                    .contains("kind=CONFIG")
+                    .contains("name=")
+                    .contains("length=" + sentinel.length()));
   }
 
   /** 把 log4j2 的格式化结果收进一个清单（与 {@code GuiAccessLogTest} 同法）。 */
