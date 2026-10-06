@@ -2,8 +2,12 @@ package io.mosire.simos.map.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.ops.RegionOperations;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -56,12 +60,37 @@ public final class MergeRegionsHandler implements CommandHandler, CommandTargets
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     GameMap base = MapSnapshots.of(state).map();
+    String targetForLog = null;
+    int sourcesForLog = -1;
     try {
       JsonNode payload = MapPayloads.parse(payloadJson);
       RegionId target = MapPayloads.requireRegionId(payload, "targetRegionId");
+      targetForLog = target.value();
       var sources = new LinkedHashSet<>(MapPayloads.requireRegionIds(payload, "sourceRegionIds"));
-      return new HandlerOutcome.Applied(RegionOperations.mergeRegions(base, target, sources));
+      sourcesForLog = sources.size();
+      var applied = RegionOperations.mergeRegions(base, target, sources);
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_MERGE_REGIONS_APPLIED",
+                  MapLogSource.MAP_EDIT,
+                  "target",
+                  target.value(),
+                  "sources",
+                  sources.size()));
+      return new HandlerOutcome.Applied(applied);
     } catch (IllegalArgumentException e) {
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_MERGE_REGIONS_REJECTED",
+                  MapLogSource.MAP_EDIT,
+                  "reason",
+                  MapPayloads.logReason(e.getMessage()),
+                  "target",
+                  targetForLog == null ? "-" : targetForLog,
+                  "sources",
+                  sourcesForLog < 0 ? "-" : sourcesForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

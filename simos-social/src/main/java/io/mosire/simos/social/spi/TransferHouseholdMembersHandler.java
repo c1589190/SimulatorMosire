@@ -2,10 +2,14 @@ package io.mosire.simos.social.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.household.HouseholdBook;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -59,16 +63,48 @@ public final class TransferHouseholdMembersHandler implements CommandHandler, Co
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SocialData base = SocialSnapshots.of(state).data(); // 装配故障当场炸，不走拒绝路径
+    String fromForLog = null;
+    String toForLog = null;
+    String lotForLog = null;
     try {
       JsonNode payload = SocialPayloads.parse(payloadJson);
       HouseholdId from = SocialPayloads.requireHouseholdId(payload, "from");
+      fromForLog = from.value();
       HouseholdId to = SocialPayloads.requireHouseholdId(payload, "to");
+      toForLog = to.value();
       PeopleLotId lotId = PeopleLotId.parse(SocialPayloads.requireText(payload, "lotId"));
+      lotForLog = lotId.value();
       long count = SocialPayloads.requireLong(payload, "count");
       String reason = SocialPayloads.requireReason(payload);
       SocialData next = HouseholdBook.transferMembers(base, from, to, lotId, count, reason);
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_TRANSFER_HOUSEHOLD_MEMBERS_APPLIED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "from",
+                  from.value(),
+                  "to",
+                  to.value(),
+                  "lot",
+                  lotId.value(),
+                  "count",
+                  count));
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_TRANSFER_HOUSEHOLD_MEMBERS_REJECTED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "reason",
+                  SocialPayloads.logReason(e.getMessage()),
+                  "from",
+                  fromForLog == null ? "-" : fromForLog,
+                  "to",
+                  toForLog == null ? "-" : toForLog,
+                  "lot",
+                  lotForLog == null ? "-" : lotForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

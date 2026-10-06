@@ -2,8 +2,12 @@ package io.mosire.simos.map.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.ops.RandomizeOperations;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -54,15 +58,39 @@ public final class RandomizeRegionHandler implements CommandHandler, CommandTarg
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     GameMap map = MapSnapshots.of(state).map(); // 装配故障当场炸，不走拒绝路径
+    Integer hexesForLog = null;
+    Long seedForLog = null;
     try {
       JsonNode payload = MapPayloads.parse(payloadJson);
       Set<HexCoord> hexes = MapPayloads.requireHexes(payload, "hexes");
+      hexesForLog = hexes.size();
       String terrainA = MapPayloads.requireText(payload, "terrainA");
       String terrainB = MapPayloads.requireText(payload, "terrainB");
       long seed = MapPayloads.requireLong(payload, "seed");
-      return new HandlerOutcome.Applied(
-          RandomizeOperations.randomize(map, hexes, terrainA, terrainB, seed));
+      seedForLog = seed;
+      var applied = RandomizeOperations.randomize(map, hexes, terrainA, terrainB, seed);
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_RANDOMIZE_REGION_APPLIED",
+                  MapLogSource.MAP_EDIT,
+                  "hexes",
+                  hexes.size(),
+                  "seed",
+                  seed));
+      return new HandlerOutcome.Applied(applied);
     } catch (IllegalArgumentException e) {
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_RANDOMIZE_REGION_REJECTED",
+                  MapLogSource.MAP_EDIT,
+                  "reason",
+                  MapPayloads.logReason(e.getMessage()),
+                  "hexes",
+                  hexesForLog == null ? "-" : hexesForLog,
+                  "seed",
+                  seedForLog == null ? "-" : seedForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

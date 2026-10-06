@@ -3,10 +3,13 @@ package io.mosire.simos.social.provisioning;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.util.economy.EconomyVocabulary;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -166,19 +169,25 @@ public record SocialProvisioning(
             new LaborCoefficient(AgeBracket.ELDER, Sex.MALE, 0L),
             new LaborCoefficient(AgeBracket.ELDER, Sex.FEMALE, 0L));
     SocialProvisioning defaults = new SocialProvisioning(demands, labor, Map.of(), Map.of());
-    SocialLog.provisioning()
+    EventLog.channel(SocialLog.provisioning())
         .info(
-            "event=SOCIAL_PROVISIONING_DEFAULTS_SEEDED "
-                + SocialLog.kv(
-                    "demandRows",
-                    demands.size(),
-                    "laborRows",
-                    labor.size(),
-                    "commodities",
-                    defaults.globalDemandBases().keySet()));
+            LogEvent.of(
+                "SOCIAL_PROVISIONING_DEFAULTS_SEEDED",
+                SocialLogSource.SOCIAL_PROVISIONING,
+                "demandRows",
+                demands.size(),
+                "laborRows",
+                labor.size(),
+                "commodities",
+                defaults.globalDemandBases().keySet()));
     if (SocialLog.provisioning().isDebugEnabled()) {
-      SocialLog.provisioning()
-          .debug("event=SOCIAL_PROVISIONING_DEFAULTS_ROWS defaults={}", defaults);
+      EventLog.channel(SocialLog.provisioning())
+          .debug(
+              LogEvent.of(
+                  "SOCIAL_PROVISIONING_DEFAULTS_ROWS",
+                  SocialLogSource.SOCIAL_PROVISIONING,
+                  "defaults",
+                  defaults));
     }
     return defaults;
   }

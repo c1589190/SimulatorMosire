@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.change.SocialChangeSet;
@@ -11,6 +12,8 @@ import io.mosire.simos.social.population.AgeBracket;
 import io.mosire.simos.social.provisioning.DemandCoefficient;
 import io.mosire.simos.social.provisioning.DemandPeriod;
 import io.mosire.simos.social.provisioning.SocialProvisioningEdits;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -90,24 +93,25 @@ public final class SetDemandCoefficientHandler
             base.provisioning()
                 .householdDemandOverride(householdId, ageBracket, sex, commodity)
                 .orElse(null);
-        SocialLog.provisioning()
+        EventLog.channel(SocialLog.provisioning())
             .info(
-                "event=SOCIAL_DEMAND_COEFFICIENT_CLEARED "
-                    + SocialLog.kv(
-                        "scope",
-                        "household",
-                        "household",
-                        householdId,
-                        "ageBracket",
-                        ageBracket.key(),
-                        "sex",
-                        sex,
-                        "commodity",
-                        commodity,
-                        "amountMilli",
-                        removed == null ? "none" : removed.amountMilli(),
-                        "reason",
-                        reason));
+                LogEvent.of(
+                    "SOCIAL_DEMAND_COEFFICIENT_CLEARED",
+                    SocialLogSource.SOCIAL_PROVISIONING,
+                    "scope",
+                    "household",
+                    "household",
+                    householdId,
+                    "ageBracket",
+                    ageBracket.key(),
+                    "sex",
+                    sex,
+                    "commodity",
+                    commodity,
+                    "amountMilli",
+                    removed == null ? "none" : removed.amountMilli(),
+                    "reason",
+                    reason));
         return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
       }
       SocialData next =
@@ -119,32 +123,38 @@ public final class SetDemandCoefficientHandler
               : next.provisioning()
                   .householdDemandOverride(householdId, ageBracket, sex, commodity)
                   .orElse(null);
-      SocialLog.provisioning()
+      EventLog.channel(SocialLog.provisioning())
           .info(
-              "event=SOCIAL_DEMAND_COEFFICIENT_SET "
-                  + SocialLog.kv(
-                      "scope",
-                      householdId == null ? "global" : "household",
-                      "household",
-                      householdId == null ? "-" : householdId,
-                      "ageBracket",
-                      ageBracket.key(),
-                      "sex",
-                      sex,
-                      "commodity",
-                      commodity,
-                      "amountMilli",
-                      amountMilli,
-                      "period",
-                      effective == null ? period : effective.period(),
-                      "cycleDays",
-                      effective == null ? cycleDays : effective.cycleDays(),
-                      "reason",
-                      reason));
+              LogEvent.of(
+                  "SOCIAL_DEMAND_COEFFICIENT_SET",
+                  SocialLogSource.SOCIAL_PROVISIONING,
+                  "scope",
+                  householdId == null ? "global" : "household",
+                  "household",
+                  householdId == null ? "-" : householdId,
+                  "ageBracket",
+                  ageBracket.key(),
+                  "sex",
+                  sex,
+                  "commodity",
+                  commodity,
+                  "amountMilli",
+                  amountMilli,
+                  "period",
+                  effective == null ? period : effective.period(),
+                  "cycleDays",
+                  effective == null ? cycleDays : effective.cycleDays(),
+                  "reason",
+                  reason));
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
-      SocialLog.provisioning()
-          .warn("event=SOCIAL_DEMAND_COEFFICIENT_REJECTED reason={}", e.getMessage());
+      EventLog.channel(SocialLog.provisioning())
+          .warn(
+              LogEvent.of(
+                  "SOCIAL_DEMAND_COEFFICIENT_REJECTED",
+                  SocialLogSource.SOCIAL_PROVISIONING,
+                  "reason",
+                  SocialPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

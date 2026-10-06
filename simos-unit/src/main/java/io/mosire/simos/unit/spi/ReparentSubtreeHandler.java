@@ -2,10 +2,14 @@ package io.mosire.simos.unit.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitLog;
+import io.mosire.simos.unit.UnitLogSource;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -48,14 +52,34 @@ public final class ReparentSubtreeHandler implements CommandHandler, CommandTarg
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     UnitSnapshot snapshot = UnitSnapshots.of(state);
+    String rootForLog = null;
     try {
       JsonNode payload = UnitPayloads.parse(payloadJson);
       UnitId rootId = UnitId.parse(UnitPayloads.requireText(payload, "rootId"));
+      rootForLog = rootId.value();
       Optional<UnitId> parent = UnitPayloads.optionalId(payload, "parent");
       SimosTimestamp at = state.meta().timestamp();
       UnitState next = UnitOperations.reparentSubtree(snapshot.state(), rootId, parent, at);
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_REPARENT_SUBTREE_APPLIED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "root",
+                  rootId.value(),
+                  "parent",
+                  parent.map(UnitId::value).orElse("-")));
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_REPARENT_SUBTREE_REJECTED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "reason",
+                  UnitPayloads.logReason(e.getMessage()),
+                  "root",
+                  rootForLog == null ? "-" : rootForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

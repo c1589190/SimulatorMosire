@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.block.BlockId;
 import io.mosire.simos.map.block.TerrainBlocks;
@@ -18,6 +20,8 @@ import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.map.pathway.PathwayId;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
@@ -27,6 +31,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Function;
+import org.slf4j.Logger;
 
 /**
  * map 模块的 {@link ModuleCodec} 实现（spec §八）。
@@ -55,6 +60,9 @@ public final class MapCodec implements ModuleCodec, ModuleDiffer {
   /** 本模块唯一的一台 mapper：共享基座 + 本模块的键反序列化器（建造期一次性配齐，见 SimosObjectMapper.create 的契约）。 */
   private static final ObjectMapper MAPPER =
       withChangeSetMixin(SimosObjectMapper.create(keyModule()));
+
+  /** 编解码日志门面：只记规模/组件 changed 计数这类元信息，**绝不打印 JSON 原文或载荷明文**。 */
+  private static final Logger LOG = MapLog.codec();
 
   /**
    * ★ **把 {@code MapChangeSet.isEmpty()} 摘出 JSON 形态**（M4 Task 3 实测新发现，探针只往返过快照、没往返过变更集）：Jackson 会把
@@ -112,22 +120,48 @@ public final class MapCodec implements ModuleCodec, ModuleDiffer {
 
   @Override
   public ChangeSet decodeChangeSet(String json) {
-    return readJson(json, MapChangeSet.class);
+    MapChangeSet decoded = readJson(json, MapChangeSet.class);
+    EventLog.channel(LOG)
+        .debug(
+            LogEvent.of(
+                "MAP_CODEC_CHANGE_SET_DECODED",
+                MapLogSource.MAP_CODEC,
+                "chars",
+                json == null ? "-" : json.length(),
+                "changedComponents",
+                changedComponentCount(decoded)));
+    return decoded;
   }
 
   @Override
   public String encodeChangeSet(ChangeSet changeSet) {
-    return writeJson((MapChangeSet) changeSet);
+    MapChangeSet encoded = (MapChangeSet) changeSet;
+    String json = writeJson(encoded);
+    EventLog.channel(LOG)
+        .debug(
+            LogEvent.of(
+                "MAP_CODEC_CHANGE_SET_ENCODED",
+                MapLogSource.MAP_CODEC,
+                "chars",
+                json.length(),
+                "changedComponents",
+                changedComponentCount(encoded)));
+    return json;
   }
 
   @Override
   public Snapshot decodeSnapshot(String json) {
-    return readJson(json, MapSnapshot.class);
+    MapSnapshot decoded = readJson(json, MapSnapshot.class);
+    logSnapshot("MAP_CODEC_SNAPSHOT_DECODED", decoded, json == null ? "-" : json.length());
+    return decoded;
   }
 
   @Override
   public String encodeSnapshot(Snapshot snapshot) {
-    return writeJson(asMapSnapshot(snapshot));
+    MapSnapshot mapSnapshot = asMapSnapshot(snapshot);
+    String json = writeJson(mapSnapshot);
+    logSnapshot("MAP_CODEC_SNAPSHOT_ENCODED", mapSnapshot, json.length());
+    return json;
   }
 
   /**
@@ -142,7 +176,19 @@ public final class MapCodec implements ModuleCodec, ModuleDiffer {
   @Override
   public Snapshot apply(ChangeSet changeSet, Snapshot base, StateMeta newMeta) {
     MapSnapshot mapBase = asMapSnapshot(base);
-    GameMap next = MapChangeSet.apply((MapChangeSet) changeSet, mapBase.map());
+    MapChangeSet mapChangeSet = (MapChangeSet) changeSet;
+    GameMap next = MapChangeSet.apply(mapChangeSet, mapBase.map());
+    EventLog.channel(LOG)
+        .debug(
+            LogEvent.of(
+                "MAP_CODEC_CHANGE_SET_APPLIED",
+                MapLogSource.MAP_CODEC,
+                "changedComponents",
+                changedComponentCount(mapChangeSet),
+                "hexes",
+                next.hexes().size(),
+                "regions",
+                next.regions().size()));
     return new MapSnapshot(newMeta.ref(), newMeta.timestamp(), next);
   }
 
@@ -155,6 +201,62 @@ public final class MapCodec implements ModuleCodec, ModuleDiffer {
   @Override
   public ChangeSet diff(Snapshot base, Snapshot target) {
     return MapChangeSet.between(asMapSnapshot(base).map(), asMapSnapshot(target).map());
+  }
+
+  /** 变更集里 changed 的组件数（元信息；不打印任何值）。 */
+  private static int changedComponentCount(MapChangeSet changeSet) {
+    int count = 0;
+    if (changeSet.hexes().changed()) {
+      count++;
+    }
+    if (changeSet.terrainBlocks().changed()) {
+      count++;
+    }
+    if (changeSet.regions().changed()) {
+      count++;
+    }
+    if (changeSet.cities().changed()) {
+      count++;
+    }
+    if (changeSet.terrainTypes().changed()) {
+      count++;
+    }
+    if (changeSet.pathways().changed()) {
+      count++;
+    }
+    if (changeSet.pathwayGroups().changed()) {
+      count++;
+    }
+    if (changeSet.edges().changed()) {
+      count++;
+    }
+    return count;
+  }
+
+  /** 快照编解码的元信息（组件规模 + 文本长度）；不打印 JSON 原文。{@code chars} 传 {@code "-"} 表示输入缺失。 */
+  private static void logSnapshot(String event, MapSnapshot snapshot, Object chars) {
+    GameMap map = snapshot.map();
+    EventLog.channel(LOG)
+        .debug(
+            LogEvent.of(
+                event,
+                MapLogSource.MAP_CODEC,
+                "chars",
+                chars,
+                "hexes",
+                map.hexes().size(),
+                "blocks",
+                map.terrainBlocks().size(),
+                "regions",
+                map.regions().size(),
+                "cities",
+                map.cities().size(),
+                "pathways",
+                map.pathways().size(),
+                "groups",
+                map.pathwayGroups().size(),
+                "edges",
+                map.edges().size()));
   }
 
   /**
@@ -209,6 +311,13 @@ public final class MapCodec implements ModuleCodec, ModuleDiffer {
     }
     JsonNode hexDelta = root.get("hexes");
     if (root.has("hexes") && hexDelta != null && containsTerrainField(hexDelta)) {
+      EventLog.channel(LOG)
+          .warn(
+              LogEvent.of(
+                  "MAP_CODEC_LEGACY_CHANGE_SET_UNMIGRATABLE",
+                  MapLogSource.MAP_CODEC,
+                  "reason",
+                  "旧形状 hexes 带 terrain，块切分依赖 base 全图，无法自动迁移"));
       throw new IllegalStateException(
           "旧形状 map 变更集（hexes 值带 terrain）无法自动迁移：地形块切分依赖 base 全图，变更集自带信息不足。"
               + "请用 tools/gsimap_import.py 重新导入该数据集。");
@@ -241,8 +350,18 @@ public final class MapCodec implements ModuleCodec, ModuleDiffer {
       newHexes.set(entry.getKey(), heightOnly);
     }
     ObjectNode map = (ObjectNode) gameMap;
-    map.set("terrainBlocks", MAPPER.valueToTree(TerrainBlocks.split(terrainByHex)));
+    var blocks = TerrainBlocks.split(terrainByHex);
+    map.set("terrainBlocks", MAPPER.valueToTree(blocks));
     map.set("hexes", newHexes);
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "MAP_CODEC_LEGACY_SNAPSHOT_MIGRATED",
+                MapLogSource.MAP_CODEC,
+                "hexes",
+                terrainByHex.size(),
+                "blocks",
+                blocks.size()));
     return map;
   }
 

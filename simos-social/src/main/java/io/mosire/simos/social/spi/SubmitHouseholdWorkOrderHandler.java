@@ -2,9 +2,13 @@ package io.mosire.simos.social.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.workorder.HouseholdWorkOrder;
 import io.mosire.simos.social.workorder.HouseholdWorkOrderBook;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -84,13 +88,43 @@ public final class SubmitHouseholdWorkOrderHandler implements CommandHandler, Co
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SocialData base = SocialSnapshots.of(state).data(); // 装配故障当场炸，不走拒绝路径
+    String orderForLog = null;
+    String targetForLog = null;
     try {
       JsonNode payload = SocialPayloads.parse(payloadJson);
       long worldTick = state.meta().timestamp().tick();
       HouseholdWorkOrder order = HouseholdWorkOrderPayloads.parse(payload, worldTick);
+      orderForLog = order.orderId() == null ? "(none)" : order.orderId();
+      targetForLog = order.target().value();
       SocialData next = HouseholdWorkOrderBook.apply(base, order, worldTick);
+      EventLog.channel(SocialLog.workOrder())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_SUBMIT_HOUSEHOLD_WORK_ORDER_APPLIED",
+                  SocialLogSource.SOCIAL_WORK_ORDER,
+                  "order",
+                  orderForLog,
+                  "target",
+                  targetForLog,
+                  "steps",
+                  order.plan().steps().size(),
+                  "worldTick",
+                  worldTick,
+                  "source",
+                  order.source()));
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(SocialLog.workOrder())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_SUBMIT_HOUSEHOLD_WORK_ORDER_REJECTED",
+                  SocialLogSource.SOCIAL_WORK_ORDER,
+                  "reason",
+                  SocialPayloads.logReason(e.getMessage()),
+                  "order",
+                  orderForLog == null ? "-" : orderForLog,
+                  "target",
+                  targetForLog == null ? "-" : targetForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

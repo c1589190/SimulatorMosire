@@ -1,9 +1,12 @@
 package io.mosire.simos.social.population;
 
 import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.api.population.HouseholdVitalRate;
 import io.mosire.simos.social.api.population.HouseholdVitalRates;
 import io.mosire.simos.social.api.population.Sex;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.List;
 import java.util.Optional;
 
@@ -49,10 +52,15 @@ public record SocialVitalRates(HouseholdVitalRates globalDefaults) {
             new HouseholdVitalRate(AgeBracket.ELDER.key(), Sex.MALE, 0L, 667L),
             new HouseholdVitalRate(AgeBracket.ELDER.key(), Sex.FEMALE, 0L, 667L));
     SocialVitalRates defaults = new SocialVitalRates(new HouseholdVitalRates(rows));
-    SocialLog.population()
+    EventLog.channel(SocialLog.provisioning())
         .info(
-            "event=SOCIAL_VITAL_RATES_DEFAULTS_SEEDED "
-                + SocialLog.kv("rows", rows.size(), "unit", "ppmPerTick"));
+            LogEvent.of(
+                "SOCIAL_VITAL_RATES_DEFAULTS_SEEDED",
+                SocialLogSource.SOCIAL_PROVISIONING,
+                "rows",
+                rows.size(),
+                "unit",
+                "ppmPerTick"));
     return defaults;
   }
 
@@ -83,7 +91,10 @@ public record SocialVitalRates(HouseholdVitalRates globalDefaults) {
               + (bracket == null ? "null" : bracket.key())
               + " sex="
               + sex;
-      SocialLog.population().error("event=SOCIAL_VITAL_RATE_REJECTED reason={}", message);
+      EventLog.channel(SocialLog.command())
+          .error(
+              LogEvent.of(
+                  "SOCIAL_VITAL_RATE_REJECTED", SocialLogSource.SOCIAL_COMMAND, "reason", message));
       throw new IllegalArgumentException(message);
     }
     return found.get();
@@ -93,7 +104,10 @@ public record SocialVitalRates(HouseholdVitalRates globalDefaults) {
   private static void requireArg(Object value, String field) {
     if (value == null) {
       String message = "SocialVitalRates." + field + " 不得为 null";
-      SocialLog.population().error("event=SOCIAL_VITAL_RATE_REJECTED reason={}", message);
+      EventLog.channel(SocialLog.command())
+          .error(
+              LogEvent.of(
+                  "SOCIAL_VITAL_RATE_REJECTED", SocialLogSource.SOCIAL_COMMAND, "reason", message));
       throw new IllegalArgumentException(message);
     }
   }

@@ -2,10 +2,14 @@ package io.mosire.simos.map.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.ops.RegionOperations;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -53,14 +57,35 @@ public final class CreateRegionHandler implements CommandHandler, CommandTargets
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     GameMap map = MapSnapshots.of(state).map();
+    String regionForLog = null;
     try {
       JsonNode payload = MapPayloads.parse(payloadJson);
       RegionId id = MapPayloads.requireRegionId(payload, "regionId");
+      regionForLog = id.value();
       String name = MapPayloads.requireText(payload, "name");
       Set<HexCoord> hexes = MapPayloads.requireHexes(payload, "hexes");
       RegionMeta meta = MapPayloads.optionalMeta(payload, "meta");
-      return new HandlerOutcome.Applied(RegionOperations.createRegion(map, id, name, hexes, meta));
+      var created = RegionOperations.createRegion(map, id, name, hexes, meta);
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_CREATE_REGION_APPLIED",
+                  MapLogSource.MAP_EDIT,
+                  "region",
+                  id.value(),
+                  "hexes",
+                  hexes.size()));
+      return new HandlerOutcome.Applied(created);
     } catch (IllegalArgumentException e) {
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_CREATE_REGION_REJECTED",
+                  MapLogSource.MAP_EDIT,
+                  "reason",
+                  MapPayloads.logReason(e.getMessage()),
+                  "region",
+                  regionForLog == null ? "-" : regionForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

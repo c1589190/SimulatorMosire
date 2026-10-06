@@ -11,12 +11,16 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
@@ -137,30 +141,126 @@ public final class SocialCodec implements ModuleCodec, ModuleDiffer {
 
   @Override
   public ChangeSet decodeChangeSet(String json) {
-    return readJson(json, SocialChangeSet.class);
+    SocialChangeSet changeSet = readJson(json, SocialChangeSet.class);
+    EventLog.channel(SocialLog.codec())
+        .debug(
+            LogEvent.of(
+                "SOCIAL_CODEC_DECODE_CHANGE_SET",
+                SocialLogSource.SOCIAL_CODEC,
+                "chars",
+                json == null ? 0 : json.length(),
+                "changedComponents",
+                changedComponentCount(changeSet)));
+    return changeSet;
   }
 
   @Override
   public String encodeChangeSet(ChangeSet changeSet) {
-    return writeJson((SocialChangeSet) changeSet);
+    SocialChangeSet socialChangeSet = (SocialChangeSet) changeSet;
+    String json = writeJson(socialChangeSet);
+    EventLog.channel(SocialLog.codec())
+        .debug(
+            LogEvent.of(
+                "SOCIAL_CODEC_ENCODE_CHANGE_SET",
+                SocialLogSource.SOCIAL_CODEC,
+                "chars",
+                json.length(),
+                "changedComponents",
+                changedComponentCount(socialChangeSet)));
+    return json;
   }
 
   @Override
   public Snapshot decodeSnapshot(String json) {
-    return readJson(json, SocialSnapshot.class);
+    SocialSnapshot snapshot = readJson(json, SocialSnapshot.class);
+    logSnapshot("SOCIAL_CODEC_DECODE_SNAPSHOT", snapshot, json == null ? "-" : json.length());
+    return snapshot;
   }
 
   @Override
   public String encodeSnapshot(Snapshot snapshot) {
-    return writeJson(asSocialSnapshot(snapshot));
+    SocialSnapshot socialSnapshot = asSocialSnapshot(snapshot);
+    String json = writeJson(socialSnapshot);
+    logSnapshot("SOCIAL_CODEC_ENCODE_SNAPSHOT", socialSnapshot, json.length());
+    return json;
   }
 
   /** 施加变更集，返回**新的**快照：ref/timestamp 来自 {@code newMeta}（C28），不是 base 的。 */
   @Override
   public Snapshot apply(ChangeSet changeSet, Snapshot base, StateMeta newMeta) {
     SocialSnapshot socialBase = asSocialSnapshot(base);
-    SocialData next = SocialChangeSet.apply((SocialChangeSet) changeSet, socialBase.data());
+    SocialChangeSet socialChangeSet = (SocialChangeSet) changeSet;
+    SocialData next = SocialChangeSet.apply(socialChangeSet, socialBase.data());
+    EventLog.channel(SocialLog.codec())
+        .debug(
+            LogEvent.of(
+                "SOCIAL_CODEC_APPLY",
+                SocialLogSource.SOCIAL_CODEC,
+                "changedComponents",
+                changedComponentCount(socialChangeSet),
+                "populations",
+                next.populations().size(),
+                "cities",
+                next.cities().size(),
+                "groups",
+                next.groups().size(),
+                "households",
+                next.households().size()));
     return new SocialSnapshot(newMeta.ref(), newMeta.timestamp(), next);
+  }
+
+  /** 编解码/施加的组件规模元信息（**只记计数与文本长度，绝不打印 JSON 原文/载荷**）；{@code chars} 传 {@code "-"} 表示输入缺失。 */
+  private static void logSnapshot(String event, SocialSnapshot snapshot, Object chars) {
+    SocialData data = snapshot.data();
+    EventLog.channel(SocialLog.codec())
+        .debug(
+            LogEvent.of(
+                event,
+                SocialLogSource.SOCIAL_CODEC,
+                "chars",
+                chars,
+                "populations",
+                data.populations().size(),
+                "cities",
+                data.cities().size(),
+                "groups",
+                data.groups().size(),
+                "households",
+                data.households().size(),
+                "populationEvents",
+                data.populationEvents().size(),
+                "vitalRemainders",
+                data.vitalRemainders().entries().size()));
+  }
+
+  /** 八个组件里 {@code changed()} 的个数（元信息；不改任何组件）。 */
+  private static int changedComponentCount(SocialChangeSet changeSet) {
+    int changed = 0;
+    if (changeSet.populations().changed()) {
+      changed++;
+    }
+    if (changeSet.cities().changed()) {
+      changed++;
+    }
+    if (changeSet.groups().changed()) {
+      changed++;
+    }
+    if (changeSet.households().changed()) {
+      changed++;
+    }
+    if (changeSet.populationEvents().changed()) {
+      changed++;
+    }
+    if (changeSet.provisioning().changed()) {
+      changed++;
+    }
+    if (changeSet.vitalRates().changed()) {
+      changed++;
+    }
+    if (changeSet.vitalRemainders().changed()) {
+      changed++;
+    }
+    return changed;
   }
 
   /** 从两个切片派生变更集（{@link ModuleDiffer}，铁律 5）：语义委托 {@link SocialChangeSet#between}。 */

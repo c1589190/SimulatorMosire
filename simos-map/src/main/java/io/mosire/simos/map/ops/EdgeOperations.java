@@ -2,9 +2,12 @@ package io.mosire.simos.map.ops;
 
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.map.pathway.EdgeTags;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -51,6 +54,24 @@ public final class EdgeOperations {
   private EdgeOperations() {}
 
   /**
+   * 校验拒绝的 DEBUG 明细（判据/为什么）：事件名固定 {@code MAP_EDGE_EDIT_BLOCKED}，用 {@code operation} 区分入口。 只在 DEBUG
+   * 打开时构造字段；日志只读，不参与任何分支或状态。
+   */
+  private static void debugRejected(String operation, String reason, Object... keyValues) {
+    if (!LOG.isDebugEnabled()) {
+      return;
+    }
+    Object[] fields = new Object[keyValues.length + 4];
+    fields[0] = "operation";
+    fields[1] = operation;
+    fields[2] = "reason";
+    fields[3] = reason;
+    System.arraycopy(keyValues, 0, fields, 4, keyValues.length);
+    EventLog.channel(LOG)
+        .debug(LogEvent.of("MAP_EDGE_EDIT_BLOCKED", MapLogSource.MAP_EDIT, fields));
+  }
+
+  /**
    * 给 {@code edges} 这批边标注 {@code kind}，返回变更集。
    *
    * <p>校验次序（都在算出任何结果之前）：{@code kind} 已注册组 → {@code mode} 词表 → {@code edges} 非空 → 每条边的两端都在图上。
@@ -70,12 +91,14 @@ public final class EdgeOperations {
     String tagKey = resolveKind(base, kind);
     String operation = normalizeMode(mode);
     if (edges.isEmpty()) {
+      debugRejected("setEdge", "edges 不得为空", "kind", tagKey, "mode", operation);
       throw new IllegalArgumentException("edges 不得为空：一条 map.SetEdge 至少要标注一条边");
     }
     List<EdgeRef> ordered = new ArrayList<>(edges);
     ordered.sort(Comparator.naturalOrder());
     for (EdgeRef edge : ordered) {
       if (!base.hexes().containsKey(edge.a()) || !base.hexes().containsKey(edge.b())) {
+        debugRejected("setEdge", "边的端点不在图上", "kind", tagKey, "edge", edge);
         throw new IllegalArgumentException("边的端点不在图上: " + edge);
       }
     }
@@ -98,15 +121,32 @@ public final class EdgeOperations {
       byPathway.putIfAbsent(tagKey, Map.of()); // merge 保留该 kind 既有 props；replace 此刻已摘空
       next.put(edge, new EdgeTags(byPathway));
     }
-    LOG.info(
-        "event=MAP_EDGES_SET kind={} mode={} edges={} taggedEdges={}",
-        tagKey,
-        operation,
-        ordered.size(),
-        next.size());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "MAP_EDGES_SET",
+                MapLogSource.MAP_EDIT,
+                "kind",
+                tagKey,
+                "mode",
+                operation,
+                "edges",
+                ordered.size(),
+                "taggedEdges",
+                next.size()));
     if (TRACE.isTraceEnabled()) {
       for (EdgeRef edge : ordered) {
-        TRACE.trace("event=MAP_EDGE_SET kind={} mode={} edge={}", tagKey, operation, edge);
+        EventLog.channel(TRACE)
+            .trace(
+                LogEvent.of(
+                    "MAP_EDGE_SET",
+                    MapLogSource.MAP_EDIT,
+                    "kind",
+                    tagKey,
+                    "mode",
+                    operation,
+                    "edge",
+                    edge));
       }
     }
     return MapChangeSet.between(base, base.withEdges(next));
@@ -137,6 +177,7 @@ public final class EdgeOperations {
         return registered;
       }
     }
+    debugRejected("resolveKind", "未知连通性类型", "kind", kind);
     throw new IllegalArgumentException("未知连通性类型: " + kind);
   }
 
@@ -144,6 +185,7 @@ public final class EdgeOperations {
   private static String normalizeMode(String mode) {
     String normalized = mode.toLowerCase(Locale.ROOT);
     if (!REPLACE.equals(normalized) && !MERGE.equals(normalized)) {
+      debugRejected("normalizeMode", "未知 mode", "mode", mode);
       throw new IllegalArgumentException("未知 mode: " + mode + "（只能是 replace 或 merge）");
     }
     return normalized;

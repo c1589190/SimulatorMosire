@@ -1,10 +1,14 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -54,16 +58,54 @@ public final class UpsertMergedEffectPlanHandler implements CommandHandler, Comm
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SdState base = SdSnapshots.of(state).state();
+    String planForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       MergedEffectPlan plan = SdPayloads.requireMergedEffectPlan(payload);
+      planForLog = plan.id().value();
       Map<MergedEffectPlanId, MergedEffectPlan> next =
           new LinkedHashMap<>(base.mergedEffectPlans());
+      boolean newPlan = !next.containsKey(plan.id());
       next.put(plan.id(), plan); // 整包覆盖，同 id 幂等替换
+      EventLog.channel(SdLog.decision())
+          .info(
+              LogEvent.of(
+                  "SD_UPSERT_MERGED_EFFECT_PLAN_APPLIED",
+                  SdLogSource.SD_DECISION,
+                  "plan",
+                  plan.id().value(),
+                  "tick",
+                  plan.tick(),
+                  "participants",
+                  plan.participantIds().size(),
+                  "effects",
+                  plan.orderedEffects().size(),
+                  "sources",
+                  plan.sources().size(),
+                  "outcomePresent",
+                  plan.outcome().isPresent(),
+                  "newPlan",
+                  newPlan,
+                  "mergedEffectPlans",
+                  next.size()));
       return new HandlerOutcome.Applied(
           SdChangeSet.between(base, base.withMergedEffectPlans(next)));
     } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
+      return rejected(e.getMessage(), "plan", planForLog);
     }
+  }
+
+  /**
+   * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
+   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   */
+  private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
+    SdPayloads.logRejected(
+        SdLog.decision(),
+        SdLogSource.SD_DECISION,
+        "SD_UPSERT_MERGED_EFFECT_PLAN_REJECTED",
+        reason,
+        idKeyValues);
+    return new HandlerOutcome.Rejected(reason);
   }
 }

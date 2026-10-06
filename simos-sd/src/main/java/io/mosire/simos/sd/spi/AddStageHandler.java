@@ -2,6 +2,8 @@ package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatStateId;
@@ -10,6 +12,8 @@ import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.CombatStages;
 import io.mosire.simos.sd.model.CombatState;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -47,21 +51,30 @@ public final class AddStageHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SdState base = SdSnapshots.of(state).state();
+    String combatForLog = null;
+    String stageForLog = null;
+    String combatStateForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       CombatId combatId = CombatId.parse(SdPayloads.requireText(payload, "combatId"));
+      combatForLog = combatId.value();
       CombatStage stage = SdPayloads.requireStage(payload, "stage");
+      stageForLog = stage.id().value();
       Combat combat = base.combats().get(combatId);
       if (combat == null) {
-        return new HandlerOutcome.Rejected("交战不存在: " + combatId);
+        return rejected("交战不存在: " + combatId, "combat", combatForLog, "stage", stageForLog);
       }
       if (SdCombats.stateOrNull(base, combatId) != null
           && (payload.has("combatStateId") || payload.has("hex"))) {
-        return new HandlerOutcome.Rejected(
+        return rejected(
             "后续阶段不接受 combatStateId/hex；这两个参数只在首阶段生效"
                 + "（交战 "
                 + combatId
-                + " 已有 CombatState，追加阶段不得再指定战斗状态与坐标）");
+                + " 已有 CombatState，追加阶段不得再指定战斗状态与坐标）",
+            "combat",
+            combatForLog,
+            "stage",
+            stageForLog);
       }
       java.util.List<CombatStage> stages = CombatStages.append(combat.stages(), stage);
       Combat nextCombat =
@@ -72,13 +85,34 @@ public final class AddStageHandler implements CommandHandler {
 
       SdState withCombats = base.withCombats(nextCombats);
       if (SdCombats.stateOrNull(withCombats, combatId) != null) {
+        EventLog.channel(SdLog.combat())
+            .info(
+                LogEvent.of(
+                    "SD_ADD_COMBAT_STAGE_APPLIED",
+                    SdLogSource.SD_COMBAT,
+                    "combat",
+                    combatId.value(),
+                    "stage",
+                    stage.id().value(),
+                    "stages",
+                    stages.size(),
+                    "firstStage",
+                    false));
         return new HandlerOutcome.Applied(SdChangeSet.between(base, withCombats));
       }
       CombatStateId combatStateId =
           new CombatStateId(SdPayloads.requireText(payload, "combatStateId"));
+      combatStateForLog = combatStateId.value();
       HexCoord hex = SdPayloads.requireHex(payload, "hex");
       if (withCombats.combatStates().containsKey(combatStateId)) {
-        return new HandlerOutcome.Rejected("CombatState 已存在: " + combatStateId);
+        return rejected(
+            "CombatState 已存在: " + combatStateId,
+            "combat",
+            combatForLog,
+            "stage",
+            stageForLog,
+            "combatState",
+            combatStateForLog);
       }
       CombatState combatState =
           new CombatState(
@@ -91,10 +125,46 @@ public final class AddStageHandler implements CommandHandler {
               Set.of());
       Map<CombatStateId, CombatState> nextStates = new LinkedHashMap<>(withCombats.combatStates());
       nextStates.put(combatStateId, combatState);
+      EventLog.channel(SdLog.combat())
+          .info(
+              LogEvent.of(
+                  "SD_ADD_COMBAT_STAGE_APPLIED",
+                  SdLogSource.SD_COMBAT,
+                  "combat",
+                  combatId.value(),
+                  "stage",
+                  stage.id().value(),
+                  "stages",
+                  stages.size(),
+                  "firstStage",
+                  true,
+                  "combatState",
+                  combatStateId.value(),
+                  "hex",
+                  hex,
+                  "participants",
+                  stage.participants().size()));
       return new HandlerOutcome.Applied(
           SdChangeSet.between(base, withCombats.withCombatStates(nextStates)));
     } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
+      return rejected(
+          e.getMessage(),
+          "combat",
+          combatForLog,
+          "stage",
+          stageForLog,
+          "combatState",
+          combatStateForLog);
     }
+  }
+
+  /**
+   * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
+   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   */
+  private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
+    SdPayloads.logRejected(
+        SdLog.combat(), SdLogSource.SD_COMBAT, "SD_ADD_COMBAT_STAGE_REJECTED", reason, idKeyValues);
+    return new HandlerOutcome.Rejected(reason);
   }
 }

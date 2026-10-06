@@ -2,12 +2,15 @@ package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DiplomaticEventId;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.DiplomaticEvent;
 import io.mosire.simos.sd.model.DiplomaticEventIds;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -19,7 +22,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import org.slf4j.Logger;
 
 /**
  * {@code sd.RecordDiplomaticEvent} 命令的处理器（D-005 / R6）：**追加一条外交事件记录**（多国谈判逐 tick 记录参与国与内容）。
@@ -44,8 +46,6 @@ import org.slf4j.Logger;
  */
 public final class RecordDiplomaticEventHandler implements CommandHandler {
 
-  private static final Logger LOG = SdLog.diplomacy();
-
   @Override
   public String type() {
     return "sd.RecordDiplomaticEvent";
@@ -56,44 +56,80 @@ public final class RecordDiplomaticEventHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SdState base = SdSnapshots.of(state).state();
+    String eventForLog = null;
+    Long tickForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       String text = SdPayloads.requireText(payload, "text");
       List<NationId> participants = parseParticipants(payload);
       long worldTick = state.meta().timestamp().tick();
       long tick = SdPayloads.optionalLong(payload, "tick", worldTick);
+      tickForLog = tick;
       if (tick < 0L) {
-        return new HandlerOutcome.Rejected("外交事件 tick 不得为负: " + tick);
+        return rejected("外交事件 tick 不得为负: " + tick, "event", eventForLog, "tick", tickForLog);
       }
       if (tick > worldTick) {
-        return new HandlerOutcome.Rejected(
-            "外交事件不得记在未来：载荷 tick " + tick + " > 世界 tick " + worldTick);
+        return rejected(
+            "外交事件不得记在未来：载荷 tick " + tick + " > 世界 tick " + worldTick,
+            "event",
+            eventForLog,
+            "tick",
+            tickForLog);
       }
       Map<DiplomaticEventId, DiplomaticEvent> next = new LinkedHashMap<>(base.diplomaticEvents());
       Optional<String> explicitId = SdPayloads.optionalText(payload, "eventId");
       DiplomaticEventId id;
       if (explicitId.isPresent()) {
         id = DiplomaticEventId.parse(explicitId.get());
+        eventForLog = id.value();
         if (next.containsKey(id)) {
-          return new HandlerOutcome.Rejected("外交事件 id 已存在: " + id.value());
+          return rejected("外交事件 id 已存在: " + id.value(), "event", eventForLog, "tick", tickForLog);
         }
       } else {
         id = DiplomaticEventIds.synthesize(tick, countEventsAt(next, tick));
+        eventForLog = id.value();
         if (next.containsKey(id)) {
           // 显式 id 恰好长成合成串时可能命中；响亮拒（不静默换 id——换了重放结果就不再是载荷的纯函数）。
-          return new HandlerOutcome.Rejected("合成外交事件 id 已存在（请给显式 eventId 避开该串）: " + id.value());
+          return rejected(
+              "合成外交事件 id 已存在（请给显式 eventId 避开该串）: " + id.value(),
+              "event",
+              eventForLog,
+              "tick",
+              tickForLog);
         }
       }
       next.put(id, new DiplomaticEvent(id, tick, participants, text));
-      LOG.info(
-          "event=SD_DIPLOMATIC_EVENT_RECORDED id={} tick={} participants={}",
-          id.value(),
-          tick,
-          participants.size());
+      EventLog.channel(SdLog.diplomacy())
+          .info(
+              LogEvent.of(
+                  "SD_DIPLOMATIC_EVENT_RECORDED",
+                  SdLogSource.SD_DIPLOMACY,
+                  "id",
+                  id.value(),
+                  "tick",
+                  tick,
+                  "participants",
+                  participants.size(),
+                  "events",
+                  next.size()));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDiplomaticEvents(next)));
     } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
+      return rejected(e.getMessage(), "event", eventForLog, "tick", tickForLog);
     }
+  }
+
+  /**
+   * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
+   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   */
+  private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
+    SdPayloads.logRejected(
+        SdLog.diplomacy(),
+        SdLogSource.SD_DIPLOMACY,
+        "SD_RECORD_DIPLOMATIC_EVENT_REJECTED",
+        reason,
+        idKeyValues);
+    return new HandlerOutcome.Rejected(reason);
   }
 
   /**

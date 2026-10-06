@@ -26,6 +26,8 @@ import io.mosire.simos.social.provisioning.DemandBasis;
 import io.mosire.simos.social.provisioning.DemandCoefficient;
 import io.mosire.simos.social.provisioning.LaborCoefficient;
 import io.mosire.simos.social.provisioning.SocialProvisioning;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -95,19 +97,25 @@ public record SocialData(
     }
     // ★★ 第 7 个组件（每 tick 生死计划 §2.1）：全局默认率表缺键 = 旧档不可读，不补默认值。
     if (vitalRates == null) {
-      SocialLog.population()
+      EventLog.channel(SocialLog.command())
           .error(
-              "event=SOCIAL_VITAL_RATES_REJECTED reason={}",
-              "SocialData.vitalRates 不得为 null（旧档缺此组件已作废，不做缺省兜底；新世界请显式给 vitalRates）");
+              LogEvent.of(
+                  "SOCIAL_VITAL_RATES_REJECTED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "reason",
+                  "SocialData.vitalRates 不得为 null（旧档缺此组件已作废，不做缺省兜底；新世界请显式给 vitalRates）"));
       throw new IllegalArgumentException(
           "SocialData.vitalRates 不得为 null（旧档缺此组件已作废，不做缺省兜底；新世界请显式给 vitalRates）");
     }
     // ★★ 第 8 个组件（每 tick 生死计划 §3.4）：余数表缺键 = 旧档不可读，不补默认值（空表必须显式 List.of()）。
     if (vitalRemainders == null) {
-      SocialLog.population()
+      EventLog.channel(SocialLog.command())
           .error(
-              "event=SOCIAL_VITAL_REMAINDERS_REJECTED reason={}",
-              "SocialData.vitalRemainders 不得为 null（旧档缺此组件已作废，不做缺省兜底；空表请显式 List.of()）");
+              LogEvent.of(
+                  "SOCIAL_VITAL_REMAINDERS_REJECTED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "reason",
+                  "SocialData.vitalRemainders 不得为 null（旧档缺此组件已作废，不做缺省兜底；空表请显式 List.of()）"));
       throw new IllegalArgumentException(
           "SocialData.vitalRemainders 不得为 null（旧档缺此组件已作废，不做缺省兜底；空表请显式 List.of()）");
     }
@@ -406,9 +414,12 @@ public record SocialData(
     return vitalRates.require(ageBracket, sex);
   }
 
-  /** 生死率查找的具名拒绝出口：ERROR 日志 + {@link IllegalArgumentException}。 */
+  /** 生死率查找的具名拒绝出口：ERROR 日志 + {@link IllegalArgumentException}（命令侧率校验来源）。 */
   private static IllegalArgumentException vitalRateReject(String message) {
-    SocialLog.population().error("event=SOCIAL_VITAL_RATE_REJECTED reason={}", message);
+    EventLog.channel(SocialLog.command())
+        .error(
+            LogEvent.of(
+                "SOCIAL_VITAL_RATE_REJECTED", SocialLogSource.SOCIAL_COMMAND, "reason", message));
     return new IllegalArgumentException(message);
   }
 
@@ -567,18 +578,19 @@ public record SocialData(
     }
     long population = householdPopulation(householdId);
     if (SocialLog.provisioning().isDebugEnabled()) {
-      SocialLog.provisioning()
+      EventLog.channel(SocialLog.provisioning())
           .debug(
-              "event=SOCIAL_HOUSEHOLD_LABOR_EXPANDED "
-                  + SocialLog.kv(
-                      "household",
-                      householdId,
-                      "day",
-                      day,
-                      "population",
-                      population,
-                      "laborMilli",
-                      total));
+              LogEvent.of(
+                  "SOCIAL_HOUSEHOLD_LABOR_EXPANDED",
+                  SocialLogSource.SOCIAL_PROVISIONING,
+                  "household",
+                  householdId,
+                  "day",
+                  day,
+                  "population",
+                  population,
+                  "laborMilli",
+                  total));
     }
     return total;
   }
@@ -669,18 +681,19 @@ public record SocialData(
     Map<CommodityId, Long> result = Collections.unmodifiableMap(needs);
     long population = householdPopulation(householdId);
     if (SocialLog.provisioning().isDebugEnabled()) {
-      SocialLog.provisioning()
+      EventLog.channel(SocialLog.provisioning())
           .debug(
-              "event=SOCIAL_HOUSEHOLD_NEEDS_EXPANDED "
-                  + SocialLog.kv(
-                      "household",
-                      householdId,
-                      "day",
-                      day,
-                      "population",
-                      population,
-                      "needs",
-                      result));
+              LogEvent.of(
+                  "SOCIAL_HOUSEHOLD_NEEDS_EXPANDED",
+                  SocialLogSource.SOCIAL_PROVISIONING,
+                  "household",
+                  householdId,
+                  "day",
+                  day,
+                  "population",
+                  population,
+                  "needs",
+                  result));
     }
     return result;
   }
@@ -785,7 +798,13 @@ public record SocialData(
 
   /** 需求/劳动展开路径的具名拒绝出口：ERROR 日志 + {@link IllegalArgumentException}（与 provisioning 包同制）。 */
   private static IllegalArgumentException provisioningReject(String message) {
-    SocialLog.provisioning().error("event=SOCIAL_PROVISIONING_REJECTED reason={}", message);
+    EventLog.channel(SocialLog.provisioning())
+        .error(
+            LogEvent.of(
+                "SOCIAL_PROVISIONING_REJECTED",
+                SocialLogSource.SOCIAL_PROVISIONING,
+                "reason",
+                message));
     return new IllegalArgumentException(message);
   }
 

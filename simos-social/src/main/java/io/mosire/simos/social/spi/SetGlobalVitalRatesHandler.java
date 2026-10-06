@@ -2,9 +2,13 @@ package io.mosire.simos.social.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.api.population.HouseholdVitalRates;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.population.SocialVitalRates;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -55,15 +59,35 @@ public final class SetGlobalVitalRatesHandler
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SocialData base = SocialSnapshots.of(state).data(); // 装配故障当场炸，不走拒绝路径
+    long ratesForLog = -1L;
     try {
       JsonNode payload = SocialPayloads.parse(payloadJson);
       HouseholdVitalRates rates =
           new HouseholdVitalRates(SocialPayloads.requireVitalRates(payload, "rates"));
-      // reason 形状必填（命令契约统一），语义只进审计；本 handler 与 SetHouseholdVitalRatesHandler 同制不落日志。
-      SocialPayloads.requireReason(payload);
+      ratesForLog = rates.rates().size();
+      // reason 形状必填（命令契约统一），语义只进审计。
+      String reason = SocialPayloads.requireReason(payload);
       SocialData next = base.withVitalRates(new SocialVitalRates(rates));
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_SET_GLOBAL_VITAL_RATES_APPLIED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "rates",
+                  rates.rates().size(),
+                  "reason",
+                  reason));
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_SET_GLOBAL_VITAL_RATES_REJECTED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "reason",
+                  SocialPayloads.logReason(e.getMessage()),
+                  "rates",
+                  ratesForLog < 0L ? "-" : ratesForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

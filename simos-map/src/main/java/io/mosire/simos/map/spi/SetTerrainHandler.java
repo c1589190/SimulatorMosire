@@ -2,8 +2,12 @@ package io.mosire.simos.map.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.ops.TerrainOperations;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -51,12 +55,37 @@ public final class SetTerrainHandler implements CommandHandler, CommandTargets {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     GameMap map = MapSnapshots.of(state).map(); // 装配故障当场炸，不走拒绝路径
+    String terrainForLog = null;
+    int hexesForLog = -1;
     try {
       JsonNode payload = MapPayloads.parse(payloadJson);
       String terrain = MapPayloads.requireText(payload, "terrain");
+      terrainForLog = terrain;
       Set<HexCoord> hexes = MapPayloads.requireHexes(payload, "hexes");
-      return new HandlerOutcome.Applied(TerrainOperations.setTerrain(map, hexes, terrain));
+      hexesForLog = hexes.size();
+      var applied = TerrainOperations.setTerrain(map, hexes, terrain);
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_SET_TERRAIN_APPLIED",
+                  MapLogSource.MAP_EDIT,
+                  "terrain",
+                  terrain,
+                  "hexes",
+                  hexes.size()));
+      return new HandlerOutcome.Applied(applied);
     } catch (IllegalArgumentException e) {
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_SET_TERRAIN_REJECTED",
+                  MapLogSource.MAP_EDIT,
+                  "reason",
+                  MapPayloads.logReason(e.getMessage()),
+                  "terrain",
+                  terrainForLog == null ? "-" : terrainForLog,
+                  "hexes",
+                  hexesForLog < 0 ? "-" : hexesForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

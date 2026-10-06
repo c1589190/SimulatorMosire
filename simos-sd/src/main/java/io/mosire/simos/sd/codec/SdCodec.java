@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.CombatId;
@@ -22,6 +24,9 @@ import io.mosire.simos.sd.model.DiplomaticRelationKey;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
@@ -52,12 +57,19 @@ import java.util.function.Function;
  * <p>★ **同时实现 {@link ModuleDiffer}**（"一批命令 = 一条 revision" 的原子批量提交需要）：委托 {@link
  * SdChangeSet#between(SdState, SdState)}——14 个组件一起比，含 {@code info}、{@code
  * diplomaticRelations}、{@code diplomaticEvents}。
+ *
+ * <p>★ <b>日志（2026-10-23 L2）</b>：五个入口各一条 DEBUG（{@code SD_CODEC_*}），只记组件 changed
+ * 计数/规模/文本长度这类元信息，**绝不打印 JSON 原文/载荷**。本类没有旧形状迁移路径（D2 的 12 参兼容构造器是"组件缺省 = Unchanged"，不是迁移），故无迁移
+ * INFO。
  */
 public final class SdCodec implements ModuleCodec, ModuleDiffer {
 
   /** 本模块唯一的一台 mapper：共享基座 + 本模块的键反序列化器。 */
   private static final ObjectMapper MAPPER =
       withChangeSetMixin(SimosObjectMapper.create(keyModule()));
+
+  /** 编解码/施加的 DEBUG 通道（只记元信息；{@link #changedComponents} 是唯一计数点）。 */
+  private static final LogChannel CODEC = EventLog.channel(SdLog.codec());
 
   /**
    * ★ 把 {@code SdChangeSet.isEmpty()} 摘出 JSON 形态（与 {@code MapCodec}/{@code UnitCodec} 同制）：Jackson
@@ -124,22 +136,93 @@ public final class SdCodec implements ModuleCodec, ModuleDiffer {
 
   @Override
   public ChangeSet decodeChangeSet(String json) {
-    return readJson(json, SdChangeSet.class);
+    ChangeSet changeSet = readJson(json, SdChangeSet.class);
+    if (CODEC.isDebugEnabled()) {
+      CODEC.debug(
+          LogEvent.of(
+              "SD_CODEC_DECODE_CHANGE_SET",
+              SdLogSource.SD_CODEC,
+              "jsonLength",
+              json == null ? -1 : json.length(),
+              "changedComponents",
+              changedComponents((SdChangeSet) changeSet)));
+    }
+    return changeSet;
   }
 
   @Override
   public String encodeChangeSet(ChangeSet changeSet) {
-    return writeJson((SdChangeSet) changeSet);
+    String json = writeJson((SdChangeSet) changeSet);
+    if (CODEC.isDebugEnabled()) {
+      CODEC.debug(
+          LogEvent.of(
+              "SD_CODEC_ENCODE_CHANGE_SET",
+              SdLogSource.SD_CODEC,
+              "jsonLength",
+              json.length(),
+              "changedComponents",
+              changedComponents((SdChangeSet) changeSet)));
+    }
+    return json;
   }
 
   @Override
   public Snapshot decodeSnapshot(String json) {
-    return readJson(json, SdSnapshot.class);
+    SdSnapshot snapshot = readJson(json, SdSnapshot.class);
+    if (CODEC.isDebugEnabled()) {
+      SdState state = snapshot.state();
+      CODEC.debug(
+          LogEvent.of(
+              "SD_CODEC_DECODE_SNAPSHOT",
+              SdLogSource.SD_CODEC,
+              "jsonLength",
+              json == null ? -1 : json.length(),
+              "nations",
+              state.nations().size(),
+              "armies",
+              state.armies().size(),
+              "combats",
+              state.combats().size(),
+              "effects",
+              state.effects().size(),
+              "decisionPackets",
+              state.decisionPackets().size(),
+              "mergedEffectPlans",
+              state.mergedEffectPlans().size(),
+              "infoAddresses",
+              state.info().size()));
+    }
+    return snapshot;
   }
 
   @Override
   public String encodeSnapshot(Snapshot snapshot) {
-    return writeJson(asSdSnapshot(snapshot));
+    SdSnapshot sdSnapshot = asSdSnapshot(snapshot);
+    String json = writeJson(sdSnapshot);
+    if (CODEC.isDebugEnabled()) {
+      SdState state = sdSnapshot.state();
+      CODEC.debug(
+          LogEvent.of(
+              "SD_CODEC_ENCODE_SNAPSHOT",
+              SdLogSource.SD_CODEC,
+              "jsonLength",
+              json.length(),
+              "nations",
+              state.nations().size(),
+              "armies",
+              state.armies().size(),
+              "combats",
+              state.combats().size(),
+              "effects",
+              state.effects().size(),
+              "decisionPackets",
+              state.decisionPackets().size(),
+              "mergedEffectPlans",
+              state.mergedEffectPlans().size(),
+              "infoAddresses",
+              state.info().size()));
+    }
+    return json;
   }
 
   /** 施加变更集，返回**新的**快照：ref/timestamp 来自 {@code newMeta}（C28），不是 base 的。 */
@@ -147,13 +230,52 @@ public final class SdCodec implements ModuleCodec, ModuleDiffer {
   public Snapshot apply(ChangeSet changeSet, Snapshot base, StateMeta newMeta) {
     SdSnapshot sdBase = asSdSnapshot(base);
     SdState next = SdChangeSet.apply((SdChangeSet) changeSet, sdBase.state());
-    return new SdSnapshot(newMeta.ref(), newMeta.timestamp(), next);
+    SdSnapshot applied = new SdSnapshot(newMeta.ref(), newMeta.timestamp(), next);
+    if (CODEC.isDebugEnabled()) {
+      CODEC.debug(
+          LogEvent.of(
+              "SD_CODEC_APPLY",
+              SdLogSource.SD_CODEC,
+              "changedComponents",
+              changedComponents((SdChangeSet) changeSet),
+              "nations",
+              next.nations().size(),
+              "armies",
+              next.armies().size(),
+              "combats",
+              next.combats().size(),
+              "effects",
+              next.effects().size(),
+              "infoAddresses",
+              next.info().size()));
+    }
+    return applied;
   }
 
   /** 从两个切片派生变更集（{@link ModuleDiffer}，铁律 5）：语义委托 {@link SdChangeSet#between}。 */
   @Override
   public ChangeSet diff(Snapshot base, Snapshot target) {
     return SdChangeSet.between(asSdSnapshot(base).state(), asSdSnapshot(target).state());
+  }
+
+  /** 变更集里 changed 的组件数（14 个组件的只读计数；只产出标量元信息，不读也不打印载荷内容）。 */
+  private static int changedComponents(SdChangeSet changeSet) {
+    int changed = 0;
+    changed += changeSet.nations().changed() ? 1 : 0;
+    changed += changeSet.armies().changed() ? 1 : 0;
+    changed += changeSet.combats().changed() ? 1 : 0;
+    changed += changeSet.combatStates().changed() ? 1 : 0;
+    changed += changeSet.decisionMakers().changed() ? 1 : 0;
+    changed += changeSet.directives().changed() ? 1 : 0;
+    changed += changeSet.effects().changed() ? 1 : 0;
+    changed += changeSet.verdicts().changed() ? 1 : 0;
+    changed += changeSet.lossRecords().changed() ? 1 : 0;
+    changed += changeSet.info().changed() ? 1 : 0;
+    changed += changeSet.diplomaticRelations().changed() ? 1 : 0;
+    changed += changeSet.diplomaticEvents().changed() ? 1 : 0;
+    changed += changeSet.decisionPackets().changed() ? 1 : 0;
+    changed += changeSet.mergedEffectPlans().changed() ? 1 : 0;
+    return changed;
   }
 
   /** 切片下转型的唯一入口：**先验后转**，验不过当场炸。 */

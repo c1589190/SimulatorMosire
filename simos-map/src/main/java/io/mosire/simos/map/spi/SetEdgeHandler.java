@@ -2,8 +2,12 @@ package io.mosire.simos.map.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.ops.EdgeOperations;
 import io.mosire.simos.map.pathway.EdgeRef;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -41,13 +45,44 @@ public final class SetEdgeHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     GameMap map = MapSnapshots.of(state).map(); // 装配故障当场炸，不走拒绝路径
+    String kindForLog = null;
+    String modeForLog = null;
+    int edgesForLog = -1;
     try {
       JsonNode payload = MapPayloads.parse(payloadJson);
       String kind = MapPayloads.requireText(payload, "kind");
+      kindForLog = kind;
       Set<EdgeRef> edges = MapPayloads.requireEdgeRefs(payload, "edges");
+      edgesForLog = edges.size();
       String mode = MapPayloads.requireText(payload, "mode");
-      return new HandlerOutcome.Applied(EdgeOperations.setEdge(map, kind, edges, mode));
+      modeForLog = mode;
+      var applied = EdgeOperations.setEdge(map, kind, edges, mode);
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_SET_EDGE_APPLIED",
+                  MapLogSource.MAP_EDIT,
+                  "kind",
+                  kind,
+                  "mode",
+                  mode,
+                  "edges",
+                  edges.size()));
+      return new HandlerOutcome.Applied(applied);
     } catch (IllegalArgumentException e) {
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_SET_EDGE_REJECTED",
+                  MapLogSource.MAP_EDIT,
+                  "reason",
+                  MapPayloads.logReason(e.getMessage()),
+                  "kind",
+                  kindForLog == null ? "-" : kindForLog,
+                  "mode",
+                  modeForLog == null ? "-" : modeForLog,
+                  "edges",
+                  edgesForLog < 0 ? "-" : edgesForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

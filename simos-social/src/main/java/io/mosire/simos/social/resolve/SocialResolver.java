@@ -3,6 +3,8 @@ package io.mosire.simos.social.resolve;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.SocialSnapshot;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.AddressSegment;
@@ -12,6 +14,8 @@ import io.mosire.simos.util.address.Namespace;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.identity.ResolvedSubject;
 import io.mosire.simos.util.identity.SubjectId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.resolve.ResolveContext;
 import io.mosire.simos.util.resolve.Resolver;
 import io.mosire.simos.util.state.Snapshot;
@@ -50,42 +54,45 @@ public final class SocialResolver implements Resolver {
     Objects.requireNonNull(address, "address");
     Objects.requireNonNull(ctx, "ctx");
     if (!NAMESPACE.equals(address.namespace())) {
-      return empty(); // 认领与否由返回值表达；未知命名空间抛是注册表的职责
+      return empty("unknownNamespace", "namespace", address.namespace()); // 认领与否由返回值表达
     }
     // 装配故障在解析任何 social: 地址时就炸，不留到某个查询路径上静默 miss（先于段形状判定）
     SocialData data = dataOf(ctx);
     List<AddressSegment> segments = address.segments();
     if (!(segments.get(1) instanceof Entity root) || root.kind().isPresent()) {
-      return empty(); // 第 2 段必须是根主体 Entity(∅,·)；social:[4,3] / social:hex.4_3 在此列
+      return empty(
+          "secondSegmentNotRootEntity", "segments", segments.size()); // 第 2 段必须是根主体 Entity(∅,·)
     }
     String mapId = root.name();
     if (segments.size() == 2) {
       return single(new SubjectId(NAMESPACE, mapId), rootAddress(mapId), "Social");
     }
     if (segments.size() > 3) {
-      return empty(); // 属性访问（social:m1:hex.0_0:population）M3 不服务
+      return empty(
+          "propertyPathUnsupported", "mapId", mapId, "segments", segments.size()); // 属性访问 M3 不服务
     }
     AddressSegment third = segments.get(2);
     if (third instanceof Index index) {
       if (index.coords().size() != 2) {
-        return empty();
+        return empty("indexArityNotTwo", "mapId", mapId, "coords", index.coords().size());
       }
       return resolveHex(data, mapId, new HexCoord(index.coords().get(0), index.coords().get(1)));
     }
     if (!(third instanceof Entity entity) || entity.kind().isEmpty()) {
-      return empty(); // Property 段与缺 kind 的实体不服务
+      return empty("thirdSegmentUnsupported", "mapId", mapId); // Property 段与缺 kind 的实体不服务
     }
     return switch (entity.kind().get()) {
       case "hex" -> resolveHex(data, mapId, HexCoord.parse(entity.name())); // 名字非法抛它自己的 IAE
       case "city" -> resolveCity(data, mapId, entity.name()); // 名字非法由 CityId.parse 抛
-      default -> empty(); // 其它 kind 的合法地址，本模块不服务
+      default ->
+          empty("kindUnsupported", "mapId", mapId, "kind", entity.kind().get()); // 其它 kind 合法但不服务
     };
   }
 
   private static QueryResult resolveCity(SocialData data, String mapId, String name) {
     CityId id = CityId.parse(name); // 名字非法抛它自己的 IAE，不包不吞
     if (!data.cities().containsKey(id)) {
-      return empty(); // 合法但不存在的城：空候选，不是错误
+      return empty("cityNotFound", "mapId", mapId, "city", id.value()); // 合法但不存在的城：空候选，不是错误
     }
     return single(
         new SubjectId("social.city", id.value()),
@@ -95,7 +102,7 @@ public final class SocialResolver implements Resolver {
 
   private static QueryResult resolveHex(SocialData data, String mapId, HexCoord hex) {
     if (!data.populations().containsKey(hex)) {
-      return empty(); // 合法但不存在的格：空候选，不是错误
+      return empty("hexNotFound", "mapId", mapId, "hex", hex); // 合法但不存在的格：空候选，不是错误
     }
     return single(
         new SubjectId("social.hex", hex.toString()),
@@ -109,14 +116,44 @@ public final class SocialResolver implements Resolver {
         ctx.state()
             .module(NAMESPACE)
             .orElseThrow(
-                () ->
-                    new IllegalArgumentException(
-                        "状态里没有 social 模块切片——SocialResolver 需要 SocialSnapshot（装配故障，不是\"没有候选\"）"));
+                () -> {
+                  debugAssemblyFault("socialSliceMissing");
+                  return new IllegalArgumentException(
+                      "状态里没有 social 模块切片——SocialResolver 需要 SocialSnapshot（装配故障，不是\"没有候选\"）");
+                });
     if (!(snapshot instanceof SocialSnapshot socialSnapshot)) {
+      debugAssemblyFault("socialSliceWrongType", "actual", snapshot.getClass().getName());
       throw new IllegalArgumentException(
           "social 模块切片不是 SocialSnapshot：" + snapshot.getClass().getName());
     }
     return socialSnapshot.data();
+  }
+
+  /** 空候选出口：只在 DEBUG 打开时记「为什么空」（合法但不服务/查无记录），不逐次记成功查询。日志只读、返回值不变。 */
+  private static QueryResult empty(String reason, Object... keyValues) {
+    if (SocialLog.resolve().isDebugEnabled()) {
+      Object[] fields = new Object[keyValues.length + 2];
+      fields[0] = "reason";
+      fields[1] = reason;
+      System.arraycopy(keyValues, 0, fields, 2, keyValues.length);
+      EventLog.channel(SocialLog.resolve())
+          .debug(LogEvent.of("SOCIAL_RESOLVE_EMPTY", SocialLogSource.SOCIAL_RESOLVE, fields));
+    }
+    return new QueryResult(List.of());
+  }
+
+  /** 装配故障（切片缺席/类型不符）的诊断：不改抛出类型与消息，只在 DEBUG 打开时记一行。 */
+  private static void debugAssemblyFault(String reason, Object... keyValues) {
+    if (!SocialLog.resolve().isDebugEnabled()) {
+      return;
+    }
+    Object[] fields = new Object[keyValues.length + 2];
+    fields[0] = "reason";
+    fields[1] = reason;
+    System.arraycopy(keyValues, 0, fields, 2, keyValues.length);
+    EventLog.channel(SocialLog.resolve())
+        .debug(
+            LogEvent.of("SOCIAL_RESOLVE_ASSEMBLY_FAULT", SocialLogSource.SOCIAL_RESOLVE, fields));
   }
 
   // ★ canonical 一律由 Address AST 构造后调 canonical() 产出（R13）：§3.4 的加引规则不许在这里手写重实现。
@@ -133,9 +170,5 @@ public final class SocialResolver implements Resolver {
   private static QueryResult single(SubjectId id, Address canonicalAddress, String typeName) {
     return new QueryResult(
         List.of(new ResolvedSubject(id, canonicalAddress.canonical(), typeName)));
-  }
-
-  private static QueryResult empty() {
-    return new QueryResult(List.of());
   }
 }

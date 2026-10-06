@@ -2,11 +2,14 @@ package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.DiplomaticRelation;
 import io.mosire.simos.sd.model.DiplomaticRelationKey;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -14,7 +17,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import org.slf4j.Logger;
 
 /**
  * {@code sd.SetDiplomaticRelation} 命令的处理器（D-003 / D-005 / R6）：**upsert 一条有向外交关系边**。
@@ -38,8 +40,6 @@ import org.slf4j.Logger;
  */
 public final class SetDiplomaticRelationHandler implements CommandHandler {
 
-  private static final Logger LOG = SdLog.diplomacy();
-
   @Override
   public String type() {
     return "sd.SetDiplomaticRelation";
@@ -50,46 +50,87 @@ public final class SetDiplomaticRelationHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SdState base = SdSnapshots.of(state).state();
+    String fromForLog = null;
+    String toForLog = null;
+    Long tickForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       NationId from = NationId.parse(SdPayloads.requireText(payload, "from"));
+      fromForLog = from.value();
       NationId to = NationId.parse(SdPayloads.requireText(payload, "to"));
+      toForLog = to.value();
       String text = SdPayloads.requireText(payload, "text");
       // kind 可空：缺省 / null / 空白 ⇒ 无 kind（"称臣纳贡"只是它的一个取值，本层不解释）。
       Optional<String> kind =
           SdPayloads.optionalText(payload, "kind").filter(value -> !value.isBlank());
       long worldTick = state.meta().timestamp().tick();
       long tick = SdPayloads.optionalLong(payload, "tick", worldTick);
+      tickForLog = tick;
       if (tick < 0L) {
-        return new HandlerOutcome.Rejected("外交关系 tick 不得为负: " + tick);
+        return rejected(
+            "外交关系 tick 不得为负: " + tick, "from", fromForLog, "to", toForLog, "tick", tickForLog);
       }
       if (tick > worldTick) {
-        return new HandlerOutcome.Rejected(
-            "外交关系不得记在未来：载荷 tick " + tick + " > 世界 tick " + worldTick);
+        return rejected(
+            "外交关系不得记在未来：载荷 tick " + tick + " > 世界 tick " + worldTick,
+            "from",
+            fromForLog,
+            "to",
+            toForLog,
+            "tick",
+            tickForLog);
       }
       if (from.equals(to)) {
-        return new HandlerOutcome.Rejected("外交关系两端不得相同（from=to=" + from.value() + "）");
+        return rejected(
+            "外交关系两端不得相同（from=to=" + from.value() + "）", "from", fromForLog, "to", toForLog);
       }
       if (!base.nations().containsKey(from)) {
-        return new HandlerOutcome.Rejected("外交关系 from Nation 不存在: " + from.value());
+        return rejected(
+            "外交关系 from Nation 不存在: " + from.value(), "from", fromForLog, "to", toForLog);
       }
       if (!base.nations().containsKey(to)) {
-        return new HandlerOutcome.Rejected("外交关系 to Nation 不存在: " + to.value());
+        return rejected("外交关系 to Nation 不存在: " + to.value(), "from", fromForLog, "to", toForLog);
       }
       DiplomaticRelationKey key = new DiplomaticRelationKey(from, to);
+      boolean upsert = base.diplomaticRelations().containsKey(key);
       Map<DiplomaticRelationKey, DiplomaticRelation> next =
           new LinkedHashMap<>(base.diplomaticRelations());
       next.put(key, new DiplomaticRelation(kind, text, tick));
-      LOG.info(
-          "event=SD_DIPLOMATIC_RELATION_SET from={} to={} kindPresent={} tick={}",
-          from.value(),
-          to.value(),
-          kind.isPresent(),
-          tick);
+      EventLog.channel(SdLog.diplomacy())
+          .info(
+              LogEvent.of(
+                  "SD_DIPLOMATIC_RELATION_SET",
+                  SdLogSource.SD_DIPLOMACY,
+                  "from",
+                  from.value(),
+                  "to",
+                  to.value(),
+                  "kindPresent",
+                  kind.isPresent(),
+                  "tick",
+                  tick,
+                  "upsert",
+                  upsert,
+                  "relations",
+                  next.size()));
       return new HandlerOutcome.Applied(
           SdChangeSet.between(base, base.withDiplomaticRelations(next)));
     } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
+      return rejected(e.getMessage(), "from", fromForLog, "to", toForLog, "tick", tickForLog);
     }
+  }
+
+  /**
+   * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
+   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   */
+  private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
+    SdPayloads.logRejected(
+        SdLog.diplomacy(),
+        SdLogSource.SD_DIPLOMACY,
+        "SD_SET_DIPLOMATIC_RELATION_REJECTED",
+        reason,
+        idKeyValues);
+    return new HandlerOutcome.Rejected(reason);
   }
 }

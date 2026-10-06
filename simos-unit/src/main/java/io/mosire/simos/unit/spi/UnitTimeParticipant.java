@@ -7,6 +7,8 @@ import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitLog;
+import io.mosire.simos.unit.UnitLogSource;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
@@ -18,6 +20,8 @@ import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.spi.TimeProposal;
 import io.mosire.simos.util.state.SimulationState;
@@ -98,8 +102,74 @@ public final class UnitTimeParticipant implements TimeParticipant {
     Objects.requireNonNull(range, "range");
     UnitSnapshot snapshot = UnitSnapshots.of(state);
     Optional<SimosTimestamp> to = range.to();
+    // ★ 推进 INFO 起止行（originKind=tick）：day 取上界，无上界时退回下界；计数在进入时先读一次快照。
+    long day = to.orElseGet(range::from).tick();
+    String toForLog = to.map(stamp -> String.valueOf(stamp.tick())).orElse("-");
+    int unitCount = snapshot.state().units().size();
+    int inFlightCount = 0;
+    for (Unit u : snapshot.state().units().values()) {
+      if (u.movement().isPresent()) {
+        inFlightCount++;
+      }
+    }
+    EventLog.channel(UnitLog.advance())
+        .info(
+            LogEvent.of(
+                "UNIT_ADVANCE_START",
+                UnitLogSource.UNIT_ADVANCE,
+                "day",
+                day,
+                "from",
+                range.from().tick(),
+                "to",
+                toForLog,
+                "units",
+                unitCount,
+                "inFlight",
+                inFlightCount));
+    int moved = 0;
+    int arrivedCount = 0;
+    int replanned = 0;
     if (to.isEmpty()) {
       // 无上界推进：没有可评估的时刻，交零变更提案（该推进随后必被 Core 的 Validate 拒绝，spec §5.4 第 0 项）
+      if (UnitLog.advance().isDebugEnabled()) {
+        EventLog.channel(UnitLog.advance())
+            .debug(
+                LogEvent.of(
+                    "UNIT_ADVANCE_SKIPPED",
+                    UnitLogSource.UNIT_ADVANCE,
+                    "day",
+                    day,
+                    "reason",
+                    "noUpperBound",
+                    "units",
+                    unitCount,
+                    "inFlight",
+                    inFlightCount));
+      }
+      EventLog.channel(UnitLog.advance())
+          .info(
+              LogEvent.of(
+                  "UNIT_ADVANCE_END",
+                  UnitLogSource.UNIT_ADVANCE,
+                  "day",
+                  day,
+                  "from",
+                  range.from().tick(),
+                  "to",
+                  toForLog,
+                  "units",
+                  unitCount,
+                  "inFlight",
+                  inFlightCount,
+                  "moved",
+                  0,
+                  "arrived",
+                  0,
+                  "replanned",
+                  0,
+                  "positionWrites",
+                  0));
       return new TimeProposal(
           namespace(),
           UnitChangeSet.between(snapshot.state(), snapshot.state()),
@@ -112,6 +182,19 @@ public final class UnitTimeParticipant implements TimeParticipant {
     Set<String> writes = new LinkedHashSet<>();
     for (Unit unit : snapshot.state().units().values()) {
       if (unit.movement().isEmpty()) {
+        if (UnitLog.advance().isDebugEnabled()) {
+          EventLog.channel(UnitLog.advance())
+              .debug(
+                  LogEvent.of(
+                      "UNIT_ADVANCE_UNIT_SKIPPED",
+                      UnitLogSource.UNIT_ADVANCE,
+                      "day",
+                      day,
+                      "unit",
+                      unit.id().value(),
+                      "reason",
+                      "noInFlight"));
+        }
         continue; // 无在途 Movement ⇒ 不进变更集（spec §9.1 第 3 行）
       }
       Movement inFlight = unit.movement().orElseThrow();
@@ -120,10 +203,56 @@ public final class UnitTimeParticipant implements TimeParticipant {
       //   也把"同一支里两个单位各走各的"这种形态从推进器里排除掉。
       UnitId root = snapshot.state().formationRoot(unit.id(), to.get()).orElse(unit.id());
       if (!root.equals(unit.id())) {
+        if (UnitLog.advance().isDebugEnabled()) {
+          EventLog.channel(UnitLog.advance())
+              .debug(
+                  LogEvent.of(
+                      "UNIT_ADVANCE_UNIT_SKIPPED",
+                      UnitLogSource.UNIT_ADVANCE,
+                      "day",
+                      day,
+                      "unit",
+                      unit.id().value(),
+                      "root",
+                      root.value(),
+                      "reason",
+                      "notFormationTop"));
+        }
         continue;
       }
       MovementState materialized = UnitMoves.evaluate(unit, to.get(), map, cost);
+      moved++;
       boolean arrived = materialized.status() == MovementStatus.ARRIVED;
+      if (arrived) {
+        arrivedCount++;
+      }
+      if (UnitLog.trace().isTraceEnabled()) {
+        String fromForLog = unit.position().valueAt(to.get()).map(HexCoord::toString).orElse("-");
+        String nextForLog = materialized.nextHex().map(HexCoord::toString).orElse("-");
+        long remaining =
+            materialized.remainingEdgeCostMillis().isPresent()
+                ? materialized.remainingEdgeCostMillis().getAsLong()
+                : 0L;
+        EventLog.channel(UnitLog.trace())
+            .trace(
+                LogEvent.of(
+                    "UNIT_ADVANCE_UNIT_MOVED",
+                    UnitLogSource.UNIT_ADVANCE,
+                    "day",
+                    day,
+                    "unit",
+                    unit.id().value(),
+                    "from",
+                    fromForLog,
+                    "to",
+                    materialized.currentHex(),
+                    "next",
+                    nextForLog,
+                    "status",
+                    materialized.status(),
+                    "remaining",
+                    remaining));
+      }
       Optional<Movement> nextMovement = arrived ? Optional.empty() : Optional.of(inFlight);
       HexCoord here = materialized.currentHex();
       units.put(unit.id(), withPositionAndMovement(unit, to.get(), here, nextMovement));
@@ -137,6 +266,21 @@ public final class UnitTimeParticipant implements TimeParticipant {
       for (UnitId member : snapshot.state().formationMembers(root, to.get())) {
         if (member.equals(root)) {
           continue;
+        }
+        if (UnitLog.advance().isDebugEnabled()) {
+          EventLog.channel(UnitLog.advance())
+              .debug(
+                  LogEvent.of(
+                      "UNIT_ADVANCE_MEMBER_CARRIED",
+                      UnitLogSource.UNIT_ADVANCE,
+                      "day",
+                      day,
+                      "unit",
+                      member.value(),
+                      "root",
+                      root.value(),
+                      "to",
+                      here));
         }
         units.put(
             member, withPositionAndMovement(units.get(member), to.get(), here, Optional.empty()));
@@ -156,9 +300,25 @@ public final class UnitTimeParticipant implements TimeParticipant {
       Optional<Route> planned =
           UnitOperations.rejoinRoute(materialized, unit.id(), map, cost, to.get());
       if (planned.isEmpty()) {
+        if (unit.rejoinTarget().isPresent() && UnitLog.advance().isDebugEnabled()) {
+          EventLog.channel(UnitLog.advance())
+              .debug(
+                  LogEvent.of(
+                      "UNIT_ADVANCE_REPLAN_SKIPPED",
+                      UnitLogSource.UNIT_ADVANCE,
+                      "day",
+                      day,
+                      "unit",
+                      unit.id().value(),
+                      "target",
+                      unit.rejoinTarget().orElseThrow().value(),
+                      "reason",
+                      "notEligibleOrUnreachable"));
+        }
         continue; // 无意图 / 没能力回归（不可达 · 位置不可确定 · 非 MOVING）⇒ 不动（不进变更集）
       }
       Route route = planned.orElseThrow();
+      replanned++;
       // ★ 只写 movement（U6：本刻重新装载一条行程，departedAt = 本刻）——**不碰 position**：起点就是该单位此刻
       // 所在格，而 position 段要么已被第一趟写在 to（在途单位），要么本就等于它（非在途单位）⇒ 不写也不会破
       // "路线起点 == departedAt 的有效位置"。更关键的是：**绝不把终点 hex 写进任何持久字段**（§二.3 不变量 3）。
@@ -186,6 +346,29 @@ public final class UnitTimeParticipant implements TimeParticipant {
     // ★ T5-U2：用 withUnits 保留 commandChains——推进改的是 position/movement，链与它无关（旧写法 new UnitState(units)
     // 会把链静默抹掉）
     UnitState target = snapshot.state().withUnits(units);
+    EventLog.channel(UnitLog.advance())
+        .info(
+            LogEvent.of(
+                "UNIT_ADVANCE_END",
+                UnitLogSource.UNIT_ADVANCE,
+                "day",
+                day,
+                "from",
+                range.from().tick(),
+                "to",
+                toForLog,
+                "units",
+                unitCount,
+                "inFlight",
+                inFlightCount,
+                "moved",
+                moved,
+                "arrived",
+                arrivedCount,
+                "replanned",
+                replanned,
+                "positionWrites",
+                writes.size()));
     return new TimeProposal(
         namespace(), UnitChangeSet.between(snapshot.state(), target), reads, writes);
   }

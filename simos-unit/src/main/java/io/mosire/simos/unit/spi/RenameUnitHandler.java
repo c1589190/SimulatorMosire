@@ -4,11 +4,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitLog;
+import io.mosire.simos.unit.UnitLogSource;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -57,22 +61,61 @@ public final class RenameUnitHandler implements CommandHandler, CommandTargets {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     UnitSnapshot snapshot = UnitSnapshots.of(state); // 装配故障当场炸，不走拒绝路径
+    String unitForLog = null;
     JsonNode payload;
     try {
       payload = MAPPER.readTree(payloadJson);
     } catch (JsonProcessingException e) {
+      // ★ 日志纪律：只记静态原因，绝不回显 payload 原文/e.getOriginalMessage()（可能含载荷片段）。
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_RENAME_UNIT_REJECTED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "reason",
+                  "payload 不是合法 JSON",
+                  "unit",
+                  "-"));
       return new HandlerOutcome.Rejected("payload 不是合法 JSON: " + e.getOriginalMessage());
     }
     JsonNode id = payload.get("id");
     JsonNode name = payload.get("name");
     if (id == null || !id.isTextual() || name == null || !name.isTextual()) {
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_RENAME_UNIT_REJECTED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "reason",
+                  "payload 形状必须是 {id,name} 字符串",
+                  "unit",
+                  "-"));
       return new HandlerOutcome.Rejected("payload 必须是 {\"id\":字符串,\"name\":字符串}: " + payloadJson);
     }
+    unitForLog = id.asText();
     try {
       UnitState next =
           UnitOperations.rename(snapshot.state(), UnitId.parse(id.asText()), name.asText());
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_RENAME_UNIT_APPLIED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "unit",
+                  id.asText(),
+                  "nameLength",
+                  name.asText().length()));
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_RENAME_UNIT_REJECTED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "reason",
+                  UnitPayloads.logReason(e.getMessage()),
+                  "unit",
+                  unitForLog == null ? "-" : unitForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

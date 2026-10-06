@@ -18,6 +18,11 @@ import org.slf4j.LoggerFactory;
  *   <tr><td>{@link #event()}</td><td>{@code .event}</td><td>逐事件落账</td></tr>
  *   <tr><td>{@link #workOrder()}</td><td>{@code .workorder}</td><td>Social 工单受理：汇总/成功/拒收/幂等命中（reason+source 必记）</td></tr>
  *   <tr><td>{@link #provisioning()}</td><td>{@code .provisioning}</td><td><b>需求/劳动权威表</b>：默认 provisioning 载入、逐户 labor/needs 展开、系数查不到的具名拒</td></tr>
+ *   <tr><td>{@link #command()}</td><td>{@code .command}</td><td>家户/城市/人口写命令处理（命令面；origin=social-command）</td></tr>
+ *   <tr><td>{@link #settle()}</td><td>{@code .settle}</td><td>逐 tick 人口生命事件结算：出生/死亡/余数池/守恒检查（origin=social-settle，TICK、必带 day）</td></tr>
+ *   <tr><td>{@link #worldgen()}</td><td>{@code .worldgen}</td><td>创世/播种期聚落生成与人口分配（origin=social-worldgen）</td></tr>
+ *   <tr><td>{@link #codec()}</td><td>{@code .codec}</td><td>SocialCodec 编解码与变更集施加（origin=social-codec）</td></tr>
+ *   <tr><td>{@link #resolve()}</td><td>{@code .resolve}</td><td>SocialResolver 空候选/装配故障诊断（origin=social-resolve）</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐批次/逐移出移入明细</b></td></tr>
  * </table>
  *
@@ -50,6 +55,11 @@ public final class SocialLog {
   public static final String EVENT_LOGGER_NAME = ROOT_LOGGER_NAME + ".event";
   public static final String WORK_ORDER_LOGGER_NAME = ROOT_LOGGER_NAME + ".workorder";
   public static final String PROVISIONING_LOGGER_NAME = ROOT_LOGGER_NAME + ".provisioning";
+  public static final String COMMAND_LOGGER_NAME = ROOT_LOGGER_NAME + ".command";
+  public static final String SETTLE_LOGGER_NAME = ROOT_LOGGER_NAME + ".settle";
+  public static final String WORLDGEN_LOGGER_NAME = ROOT_LOGGER_NAME + ".worldgen";
+  public static final String CODEC_LOGGER_NAME = ROOT_LOGGER_NAME + ".codec";
+  public static final String RESOLVE_LOGGER_NAME = ROOT_LOGGER_NAME + ".resolve";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
 
   private static final Logger HOUSEHOLD = LoggerFactory.getLogger(HOUSEHOLD_LOGGER_NAME);
@@ -57,6 +67,11 @@ public final class SocialLog {
   private static final Logger EVENT = LoggerFactory.getLogger(EVENT_LOGGER_NAME);
   private static final Logger WORK_ORDER = LoggerFactory.getLogger(WORK_ORDER_LOGGER_NAME);
   private static final Logger PROVISIONING = LoggerFactory.getLogger(PROVISIONING_LOGGER_NAME);
+  private static final Logger COMMAND = LoggerFactory.getLogger(COMMAND_LOGGER_NAME);
+  private static final Logger SETTLE = LoggerFactory.getLogger(SETTLE_LOGGER_NAME);
+  private static final Logger WORLDGEN = LoggerFactory.getLogger(WORLDGEN_LOGGER_NAME);
+  private static final Logger CODEC = LoggerFactory.getLogger(CODEC_LOGGER_NAME);
+  private static final Logger RESOLVE = LoggerFactory.getLogger(RESOLVE_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
   private SocialLog() {}
@@ -84,6 +99,31 @@ public final class SocialLog {
   /** 需求/劳动权威表：默认 provisioning 载入、逐户 labor/needs 展开、系数缺失的具名拒。 */
   public static Logger provisioning() {
     return PROVISIONING;
+  }
+
+  /** 家户/城市/人口写命令处理（命令面；origin=social-command）。 */
+  public static Logger command() {
+    return COMMAND;
+  }
+
+  /** 逐 tick 人口生命事件结算：出生/死亡/余数池/守恒检查（origin=social-settle，必带 day）。 */
+  public static Logger settle() {
+    return SETTLE;
+  }
+
+  /** 创世/播种期聚落生成与人口分配（origin=social-worldgen；无 day 上下文，走 SYSTEM）。 */
+  public static Logger worldgen() {
+    return WORLDGEN;
+  }
+
+  /** SocialCodec 编解码与变更集施加（origin=social-codec）。 */
+  public static Logger codec() {
+    return CODEC;
+  }
+
+  /** SocialResolver 空候选/装配故障诊断（origin=social-resolve）。 */
+  public static Logger resolve() {
+    return RESOLVE;
   }
 
   /** 逐批次/逐移出移入明细。 */

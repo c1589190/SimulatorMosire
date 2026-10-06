@@ -2,6 +2,8 @@ package io.mosire.simos.map.resolve;
 
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
@@ -13,6 +15,8 @@ import io.mosire.simos.util.address.Namespace;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.identity.ResolvedSubject;
 import io.mosire.simos.util.identity.SubjectId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.resolve.ResolveContext;
 import io.mosire.simos.util.resolve.Resolver;
 import io.mosire.simos.util.state.Snapshot;
@@ -21,6 +25,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * {@code map:} 命名空间的地址解析器（M2 Task 13）。认四类地址（M1 spec §3.2/§3.6 的冻结样例形态）：
@@ -51,6 +56,33 @@ public final class MapResolver implements Resolver {
 
   private static final String NAMESPACE = "map";
 
+  private static final Logger LOG = MapLog.resolve();
+
+  /** 空候选的 DEBUG 诊断（判据/为什么）：只在 DEBUG 打开时构造字段；不逐次记成功的普通查询。 */
+  private static void debugEmpty(String reason, Object... keyValues) {
+    if (!LOG.isDebugEnabled()) {
+      return;
+    }
+    Object[] fields = new Object[keyValues.length + 2];
+    fields[0] = "reason";
+    fields[1] = reason;
+    System.arraycopy(keyValues, 0, fields, 2, keyValues.length);
+    EventLog.channel(LOG).debug(LogEvent.of("MAP_RESOLVE_EMPTY", MapLogSource.MAP_RESOLVE, fields));
+  }
+
+  /** 装配故障的 DEBUG 诊断（抛之前的判据说明；异常本身照旧抛，不吞不改）。 */
+  private static void debugAssembly(String reason, Object... keyValues) {
+    if (!LOG.isDebugEnabled()) {
+      return;
+    }
+    Object[] fields = new Object[keyValues.length + 2];
+    fields[0] = "reason";
+    fields[1] = reason;
+    System.arraycopy(keyValues, 0, fields, 2, keyValues.length);
+    EventLog.channel(LOG)
+        .debug(LogEvent.of("MAP_RESOLVE_ASSEMBLY_FAILED", MapLogSource.MAP_RESOLVE, fields));
+  }
+
   /** 本解析器负责的命名空间（注册表按它建键，与地址首段一致）。 */
   @Override
   public String namespace() {
@@ -62,12 +94,14 @@ public final class MapResolver implements Resolver {
     Objects.requireNonNull(address, "address");
     Objects.requireNonNull(ctx, "ctx");
     if (!NAMESPACE.equals(address.namespace())) {
+      debugEmpty("命名空间不是 map", "namespace", address.namespace());
       return empty(); // 认领与否由返回值表达；未知命名空间抛是注册表的职责（R-13-b）
     }
     // 装配故障在解析任何 map: 地址时就炸，不留到某个查询路径上静默 miss
     GameMap map = mapOf(ctx);
     List<AddressSegment> segments = address.segments();
     if (!(segments.get(1) instanceof Entity root) || root.kind().isPresent()) {
+      debugEmpty("第 2 段必须是根主体 Entity(∅,·)", "segments", segments.size());
       return empty(); // 第 2 段必须是根主体 Entity(∅,·)；map:[4,3] / map:hex.4_3 在此列
     }
     String mapId = root.name();
@@ -75,6 +109,7 @@ public final class MapResolver implements Resolver {
       return single(new SubjectId(NAMESPACE, mapId), mapAddress(mapId), "Map");
     }
     if (segments.size() > 3) {
+      debugEmpty("段数大于 3，M2 不服务", "mapId", mapId, "segments", segments.size());
       return empty(); // 属性访问（map:m1:hex.0_0:height）等更长地址 M2 不服务
     }
     return resolveEntity(map, mapId, segments.get(2));
@@ -84,11 +119,13 @@ public final class MapResolver implements Resolver {
   private static QueryResult resolveEntity(GameMap map, String mapId, AddressSegment third) {
     if (third instanceof Index index) {
       if (index.coords().size() != 2) {
+        debugEmpty("Index 元数不是 2", "mapId", mapId, "coords", index.coords().size());
         return empty();
       }
       return resolveHex(map, mapId, new HexCoord(index.coords().get(0), index.coords().get(1)));
     }
     if (!(third instanceof Entity entity) || entity.kind().isEmpty()) {
+      debugEmpty("第 3 段不是带 kind 的 Entity", "mapId", mapId, "segment", String.valueOf(third));
       return empty(); // Property 段（冒号形式落成的 hex/0_0 两个 Property 在此列）与缺 kind 的实体
     }
     String name = entity.name();
@@ -96,12 +133,16 @@ public final class MapResolver implements Resolver {
       case "hex" -> resolveHex(map, mapId, HexCoord.parse(name)); // 名字非法抛它自己的 IAE，不包不吞
       case "region" -> resolveRegion(map, mapId, name);
       case "city" -> resolveCity(map, mapId, name);
-      default -> empty(); // terra.Grass / conn.river.* 等合法地址，M2 不服务
+      default -> {
+        debugEmpty("kind 不服务", "mapId", mapId, "kind", entity.kind().get());
+        yield empty(); // terra.Grass / conn.river.* 等合法地址，M2 不服务
+      }
     };
   }
 
   private static QueryResult resolveHex(GameMap map, String mapId, HexCoord hex) {
     if (!map.hexes().containsKey(hex)) {
+      debugEmpty("hex 不存在", "mapId", mapId, "hex", hex);
       return empty(); // 合法但不存在的坐标：空候选，不是错误
     }
     return single(
@@ -113,6 +154,7 @@ public final class MapResolver implements Resolver {
   private static QueryResult resolveRegion(GameMap map, String mapId, String name) {
     RegionId id = RegionId.parse(name);
     if (!map.regions().containsKey(id)) {
+      debugEmpty("region 不存在", "mapId", mapId, "region", id.value());
       return empty();
     }
     return single(
@@ -124,6 +166,7 @@ public final class MapResolver implements Resolver {
   private static QueryResult resolveCity(GameMap map, String mapId, String name) {
     CityId id = CityId.parse(name);
     if (!map.cities().containsKey(id)) {
+      debugEmpty("city 不存在", "mapId", mapId, "city", id.value());
       return empty();
     }
     return single(
@@ -165,10 +208,13 @@ public final class MapResolver implements Resolver {
         ctx.state()
             .module(NAMESPACE)
             .orElseThrow(
-                () ->
-                    new IllegalArgumentException(
-                        "状态里没有 map 模块切片——MapResolver 需要 MapSnapshot（装配故障，不是\"没有候选\"）"));
+                () -> {
+                  debugAssembly("状态里没有 map 模块切片");
+                  return new IllegalArgumentException(
+                      "状态里没有 map 模块切片——MapResolver 需要 MapSnapshot（装配故障，不是\"没有候选\"）");
+                });
     if (!(snapshot instanceof MapSnapshot mapSnapshot)) {
+      debugAssembly("map 模块切片类型不是 MapSnapshot", "type", snapshot.getClass().getName());
       throw new IllegalArgumentException("map 模块切片不是 MapSnapshot：" + snapshot.getClass().getName());
     }
     return mapSnapshot.map();

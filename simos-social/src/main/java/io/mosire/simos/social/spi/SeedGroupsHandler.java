@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -12,6 +13,8 @@ import io.mosire.simos.social.api.population.HouseholdVitalRates;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -82,6 +85,10 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
       Map<PeopleLotId, PopulationGroup> groups = new LinkedHashMap<>(base.groups());
       groups.putAll(entries.groups()); // ★ 同 id 覆盖（见类注的覆盖语义）
       Map<HouseholdId, Household> households = new LinkedHashMap<>(base.households());
+      int updatedHouseholds = 0;
+      int overwrittenLots = 0;
+      int assignedLots = 0;
+      int autoAssignedLots = 0;
 
       // ① 声明家户：新建 / 更新位置与画像（成员表并集保留）。
       //   ★ 只有带画像的条目才是"声明"（SocialPayloads：引用既有家户的条目 profile=null）——引用不覆盖位置，
@@ -100,14 +107,21 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
                       : draft.profile(),
                   Map.of(),
                   new HouseholdVitalRates(List.of())));
-          SocialLog.household()
+          EventLog.channel(SocialLog.command())
               .info(
-                  "event=HOUSEHOLD_CREATED "
-                      + SocialLog.kv(
-                          "id", draft.id(), "location", location, "source", "social.SeedGroups"));
+                  LogEvent.of(
+                      "HOUSEHOLD_CREATED",
+                      SocialLogSource.SOCIAL_COMMAND,
+                      "id",
+                      draft.id(),
+                      "location",
+                      location,
+                      "source",
+                      "social.SeedGroups"));
         } else if (draft.profile() != null) {
           Household replaced = existing.withLocation(location).withProfile(draft.profile());
           households.put(draft.id(), replaced);
+          updatedHouseholds++;
         }
       }
 
@@ -137,9 +151,14 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
           Household household = households.get(existingOwner);
           requireLocationMatches(household, at, lot);
           households.put(existingOwner, household.withMember(lot, entry.getValue().count()));
+          overwrittenLots++;
           continue;
         }
         HouseholdId target = declared == null ? autoHouseholdId(households, at) : declared;
+        assignedLots++;
+        if (declared == null) {
+          autoAssignedLots++;
+        }
         Household household = households.get(target);
         if (household == null) {
           throw new IllegalArgumentException("批次 " + lot + " 指向不存在的家户: " + target);
@@ -148,6 +167,27 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
         households.put(target, household.withMember(lot, entry.getValue().count()));
       }
 
+      if (SocialLog.command().isDebugEnabled()) {
+        EventLog.channel(SocialLog.command())
+            .debug(
+                LogEvent.of(
+                    "SOCIAL_SEED_GROUPS_PLAN",
+                    SocialLogSource.SOCIAL_COMMAND,
+                    "declaredHouseholds",
+                    entries.households().size(),
+                    "createdHouseholds",
+                    households.size() - base.households().size(),
+                    "updatedHouseholds",
+                    updatedHouseholds,
+                    "overwrittenLots",
+                    overwrittenLots,
+                    "assignedLots",
+                    assignedLots,
+                    "autoAssignedLots",
+                    autoAssignedLots,
+                    "source",
+                    "social.SeedGroups"));
+      }
       SocialData next =
           new SocialData(
               base.populations(),
@@ -158,8 +198,32 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
               base.provisioning(),
               base.vitalRates(),
               base.vitalRemainders());
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_SEED_GROUPS_APPLIED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "households",
+                  households.size(),
+                  "created",
+                  households.size() - base.households().size(),
+                  "updated",
+                  updatedHouseholds,
+                  "groups",
+                  groups.size(),
+                  "source",
+                  "social.SeedGroups"));
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_SEED_GROUPS_REJECTED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "reason",
+                  SocialPayloads.logReason(e.getMessage()),
+                  "source",
+                  "social.SeedGroups"));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }
@@ -203,11 +267,17 @@ public final class SeedGroupsHandler implements CommandHandler, CommandTargets {
             new HouseholdProfile(synthetic.value(), null, Map.of()),
             Map.of(),
             new HouseholdVitalRates(List.of())));
-    SocialLog.household()
+    EventLog.channel(SocialLog.command())
         .info(
-            "event=HOUSEHOLD_CREATED "
-                + SocialLog.kv(
-                    "id", synthetic, "location", "HEX:" + at, "source", "social.SeedGroups(auto)"));
+            LogEvent.of(
+                "HOUSEHOLD_CREATED",
+                SocialLogSource.SOCIAL_COMMAND,
+                "id",
+                synthetic,
+                "location",
+                "HEX:" + at,
+                "source",
+                "social.SeedGroups(auto)"));
     return synthetic;
   }
 

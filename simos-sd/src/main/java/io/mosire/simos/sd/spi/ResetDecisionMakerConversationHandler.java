@@ -1,10 +1,14 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -56,14 +60,16 @@ public final class ResetDecisionMakerConversationHandler implements CommandHandl
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SdState base = SdSnapshots.of(state).state();
+    String dmForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       DecisionMakerId id =
           DecisionMakerId.parse(SdPayloads.requireText(payload, "decisionMakerId"));
+      dmForLog = id.value();
 
       DecisionMaker existing = base.decisionMakers().get(id);
       if (existing == null) {
-        return new HandlerOutcome.Rejected("决策人不存在: " + id.value());
+        return rejected("决策人不存在: " + id.value(), "dm", dmForLog);
       }
 
       DecisionMaker next =
@@ -79,9 +85,34 @@ public final class ResetDecisionMakerConversationHandler implements CommandHandl
       // ★ **用 withDecisionMakers 派生新状态**（不是 new SdState(...)）：后者会静默清空别的九个组件（本仓那条通则的由来）。
       Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>(base.decisionMakers());
       makers.put(id, next);
+      EventLog.channel(SdLog.decision())
+          .info(
+              LogEvent.of(
+                  "SD_RESET_DECISION_MAKER_CONVERSATION_APPLIED",
+                  SdLogSource.SD_NATION,
+                  "dm",
+                  id.value(),
+                  "fromGeneration",
+                  existing.conversationGeneration(),
+                  "toGeneration",
+                  next.conversationGeneration()));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDecisionMakers(makers)));
     } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
+      return rejected(e.getMessage(), "dm", dmForLog);
     }
+  }
+
+  /**
+   * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
+   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   */
+  private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
+    SdPayloads.logRejected(
+        SdLog.decision(),
+        SdLogSource.SD_NATION,
+        "SD_RESET_DECISION_MAKER_CONVERSATION_REJECTED",
+        reason,
+        idKeyValues);
+    return new HandlerOutcome.Rejected(reason);
   }
 }

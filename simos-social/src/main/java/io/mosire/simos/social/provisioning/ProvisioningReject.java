@@ -1,6 +1,9 @@
 package io.mosire.simos.social.provisioning;
 
 import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 
 /**
  * ★★ <b>provisioning 包的具名拒绝出口</b>（AGENTS §一.9 的日志纪律：具名拒绝必须有日志）。
@@ -23,7 +26,13 @@ final class ProvisioningReject {
    * @param message 具名原因（同一句话既进日志也进异常消息）
    */
   static IllegalArgumentException reject(String message) {
-    SocialLog.provisioning().error("event=SOCIAL_PROVISIONING_REJECTED reason={}", message);
+    EventLog.channel(SocialLog.provisioning())
+        .error(
+            LogEvent.of(
+                "SOCIAL_PROVISIONING_REJECTED",
+                SocialLogSource.SOCIAL_PROVISIONING,
+                "reason",
+                message));
     return new IllegalArgumentException(message);
   }
 }

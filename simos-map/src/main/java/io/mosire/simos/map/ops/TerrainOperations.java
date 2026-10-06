@@ -3,6 +3,7 @@ package io.mosire.simos.map.ops;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.block.BlockId;
 import io.mosire.simos.map.block.TerrainBlock;
 import io.mosire.simos.map.block.TerrainBlocks;
@@ -10,6 +11,8 @@ import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainCatalog;
 import io.mosire.simos.map.terrain.TerrainHeights;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -50,6 +53,24 @@ public final class TerrainOperations {
   private TerrainOperations() {}
 
   /**
+   * 校验拒绝的 DEBUG 明细（判据/为什么）：事件名固定 {@code MAP_TERRAIN_EDIT_BLOCKED}，用 {@code operation} 区分入口。 只在
+   * DEBUG 打开时构造字段；日志只读，不参与任何分支或状态。
+   */
+  private static void debugRejected(String operation, String reason, Object... keyValues) {
+    if (!LOG.isDebugEnabled()) {
+      return;
+    }
+    Object[] fields = new Object[keyValues.length + 4];
+    fields[0] = "operation";
+    fields[1] = operation;
+    fields[2] = "reason";
+    fields[3] = reason;
+    System.arraycopy(keyValues, 0, fields, 4, keyValues.length);
+    EventLog.channel(LOG)
+        .debug(LogEvent.of("MAP_TERRAIN_EDIT_BLOCKED", MapLogSource.MAP_EDIT, fields));
+  }
+
+  /**
    * 把 {@code hexes} 里的每一格地形设为 {@code terrain}，**并把该格高度写为 {@link
    * TerrainHeights#paintHeight}**，返回变更集。
    *
@@ -67,9 +88,15 @@ public final class TerrainOperations {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(hexes, "hexes");
     Objects.requireNonNull(terrain, "terrain");
-    // 调用只为校验：未知 key 由词表自己抛（R-12-h 不包不吞）。
-    TerrainCatalog.of(terrain);
+    // 调用只为校验：未知 key 由词表自己抛（R-12-h 不包不吞）；日志在抛之前记一条诊断，不改异常语义。
+    try {
+      TerrainCatalog.of(terrain);
+    } catch (IllegalArgumentException e) {
+      debugRejected("setTerrain", "地形不在词表", "terrain", terrain);
+      throw e;
+    }
     if (hexes.isEmpty()) {
+      debugRejected("setTerrain", "hexes 不得为空", "terrain", terrain);
       throw new IllegalArgumentException("hexes 不得为空：一条 map.SetTerrain 至少要改一格");
     }
     // ★ 自然序覆盖：迭代序只由集合内容决定，两次同输入必得同一条覆盖序列（不取 Set 迭代序）。
@@ -81,20 +108,37 @@ public final class TerrainOperations {
     Map<HexCoord, HexCell> nextHexes = new LinkedHashMap<>(base.hexes());
     for (HexCoord hex : ordered) {
       if (!base.hexes().containsKey(hex)) {
+        debugRejected("setTerrain", "hex 不在图上", "terrain", terrain, "hex", hex);
         throw new IllegalArgumentException("hex 不在图上: " + hex);
       }
       terrainByHex.put(hex, terrain);
       nextHexes.put(hex, new HexCell(paintHeight));
       if (TRACE.isTraceEnabled()) {
-        TRACE.trace("event=MAP_TERRAIN_HEX hex={} terrain={} height={}", hex, terrain, paintHeight);
+        EventLog.channel(TRACE)
+            .trace(
+                LogEvent.of(
+                    "MAP_TERRAIN_HEX",
+                    MapLogSource.MAP_EDIT,
+                    "hex",
+                    hex,
+                    "terrain",
+                    terrain,
+                    "height",
+                    paintHeight));
       }
     }
     Map<BlockId, TerrainBlock> nextBlocks = TerrainBlocks.split(terrainByHex);
-    LOG.info(
-        "event=MAP_TERRAIN_SET terrain={} hexes={} blocks={}",
-        terrain,
-        ordered.size(),
-        nextBlocks.size());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "MAP_TERRAIN_SET",
+                MapLogSource.MAP_EDIT,
+                "terrain",
+                terrain,
+                "hexes",
+                ordered.size(),
+                "blocks",
+                nextBlocks.size()));
     // ★ withHexes/withTerrainBlocks 触发 GameMap 构造期的分割不变式；between 逐组件比较，未动的组件恒 Unchanged。
     return MapChangeSet.between(base, base.withHexes(nextHexes).withTerrainBlocks(nextBlocks));
   }

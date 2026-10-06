@@ -3,15 +3,19 @@ package io.mosire.simos.map.generate;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
 import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.block.TerrainBlocks;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.hex.HexGrid;
 import io.mosire.simos.map.terrain.TerrainCatalog;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.TreeMap;
 import org.slf4j.Logger;
 
 /**
@@ -97,20 +101,46 @@ public final class MapGenerator {
   /** 由 spec 完全决定。**同 spec 必然同图**（跨进程、跨机器：本方法不读任何环境量）。 */
   public static GameMap generate(GenerationSpec spec) {
     MapGenerator generator = new MapGenerator(spec);
-    LOG.info("event=MAP_GENERATE_START seed={} radius={}", spec.seed(), spec.mapRadius());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "MAP_GENERATE_START",
+                MapLogSource.MAP_GENERATE,
+                "seed",
+                spec.seed(),
+                "radius",
+                spec.mapRadius()));
     GameMap map = generator.build();
-    LOG.info(
-        "event=MAP_GENERATE_END seed={} radius={} hexes={} blocks={} regions={}",
-        spec.seed(),
-        spec.mapRadius(),
-        map.hexes().size(),
-        map.terrainBlocks().size(),
-        map.regions().size());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "MAP_GENERATE_END",
+                MapLogSource.MAP_GENERATE,
+                "seed",
+                spec.seed(),
+                "radius",
+                spec.mapRadius(),
+                "hexes",
+                map.hexes().size(),
+                "blocks",
+                map.terrainBlocks().size(),
+                "regions",
+                map.regions().size()));
     return map;
   }
 
   private GameMap build() {
     placeRidges();
+    // ★ 阶段读数（判据/汇总，不打印坐标明细）：生成在创世期、无 day 上下文，来源固定 map-generate。
+    EventLog.channel(LOG)
+        .debug(
+            LogEvent.of(
+                "MAP_GENERATE_RIDGES",
+                MapLogSource.MAP_GENERATE,
+                "seed",
+                spec.seed(),
+                "ridges",
+                ridges.size()));
 
     Map<HexCoord, HexCell> hexes = new LinkedHashMap<>();
     Map<HexCoord, String> terrainByHex = new LinkedHashMap<>();
@@ -121,6 +151,32 @@ public final class MapGenerator {
       Sample sample = sampleAt(coord);
       hexes.put(coord, new HexCell(sample.height()));
       terrainByHex.put(coord, sample.terrain());
+    }
+
+    if (LOG.isDebugEnabled()) {
+      int water = 0;
+      TreeMap<String, Integer> byTerrain = new TreeMap<>();
+      for (String terrain : terrainByHex.values()) {
+        byTerrain.merge(terrain, 1, Integer::sum);
+        if (OCEAN.equals(terrain)) {
+          water++;
+        }
+      }
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "MAP_GENERATE_TERRAIN_DISTRIBUTION",
+                  MapLogSource.MAP_GENERATE,
+                  "seed",
+                  spec.seed(),
+                  "hexes",
+                  terrainByHex.size(),
+                  "water",
+                  water,
+                  "land",
+                  terrainByHex.size() - water,
+                  "terrains",
+                  byTerrain));
     }
 
     // 生成只产出 hexes/terrainBlocks 与词表：区域/城市/线/组/边是编辑期的东西，生成期一律为空。

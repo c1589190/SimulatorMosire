@@ -31,6 +31,9 @@ import io.mosire.simos.sd.model.Trigger;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
+import io.mosire.simos.util.log.LogOrigin;
 import io.mosire.simos.util.spi.CommandTarget;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -41,6 +44,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * sd 命令 handler 共用的载荷解析助手（spec §四）。形制照 {@code UnitPayloads}/{@code MapPayloads}。
@@ -68,6 +72,58 @@ final class SdPayloads {
       throw new IllegalArgumentException("payload 必须是 JSON 对象: " + payloadJson);
     }
     return payload;
+  }
+
+  /**
+   * ★ <b>日志安全的拒绝理由</b>：本类的校验消息为方便调用方排查会回显字段值/整段载荷，但日志纪律禁止载荷明文与 JSON 原文（plan §4.3）。 这里只保留可读前缀——截到第一个
+   * JSON 起始符/换行；{@code payload ...} 这一类原始文本消息再截到冒号，避免把调用方原文带进日志。 截断只影响日志文本，不影响异常本身，也不改 {@code
+   * Rejected} 的理由。
+   */
+  static String logReason(String message) {
+    if (message == null || message.isBlank()) {
+      return "unknown";
+    }
+    String text = message.strip();
+    int cut = text.length();
+    for (char marker : new char[] {'{', '[', '\n', '\r'}) {
+      int at = text.indexOf(marker);
+      if (at >= 0 && at < cut) {
+        cut = at;
+      }
+    }
+    if (text.startsWith("payload ")) {
+      int colon = text.indexOf(':');
+      if (colon >= 0 && colon < cut) {
+        cut = colon;
+      }
+    }
+    String reason = text.substring(0, cut).strip();
+    return reason.isEmpty() ? "unknown" : reason;
+  }
+
+  /**
+   * ★ <b>具名拒绝的统一 INFO 发射</b>（2026-10-23 用户裁定：被拒绝一律 INFO，必须明显记录）：字段固定 {@code reason=} + 调用方给的关键 id（值
+   * null/空白 ⇒ {@code -}）。理由先过 {@link #logReason}，载荷原文/JSON 原文不进日志。
+   *
+   * <p>每个具名拒绝路径（显式 {@code Rejected} 与 catch）各调用一次；{@code idKeyValues} 是偶数个 {@code key,value}。
+   */
+  static void logRejected(
+      Logger logger, LogOrigin origin, String event, String reason, Object... idKeyValues) {
+    Objects.requireNonNull(logger, "logger");
+    Objects.requireNonNull(origin, "origin");
+    Objects.requireNonNull(event, "event");
+    if (idKeyValues.length % 2 != 0) {
+      throw new IllegalArgumentException("logRejected 需要偶数个 id key/value: " + idKeyValues.length);
+    }
+    Object[] fields = new Object[idKeyValues.length + 2];
+    fields[0] = "reason";
+    fields[1] = logReason(reason);
+    for (int index = 0; index < idKeyValues.length; index += 2) {
+      Object value = idKeyValues[index + 1];
+      fields[index + 2] = idKeyValues[index];
+      fields[index + 3] = value == null || String.valueOf(value).isBlank() ? "-" : value;
+    }
+    EventLog.channel(logger).info(LogEvent.of(event, origin, fields));
   }
 
   static String requireText(JsonNode payload, String field) {

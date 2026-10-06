@@ -2,6 +2,10 @@ package io.mosire.simos.social.gen;
 
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.terrain.TerrainType;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -99,6 +103,23 @@ public final class SettlementGenerator {
     List<HexCoord> hexes = new ArrayList<>(request.hexes());
     Collections.sort(hexes); // ★ 迭代序无关的第一道闸：之后一切下标都从这份有序表出发
     int n = hexes.size();
+    EventLog.channel(SocialLog.worldgen())
+        .info(
+            LogEvent.of(
+                "SOCIAL_WORLDGEN_START",
+                SocialLogSource.SOCIAL_WORLDGEN,
+                "region",
+                request.region().value(),
+                "hexes",
+                n,
+                "population",
+                request.totalPopulation(),
+                "seed",
+                request.seed(),
+                "urbanizationRate",
+                fmt(request.urbanizationRate()),
+                "capital",
+                request.capital().isPresent()));
 
     // ── 步骤 1：逐格权重（坐标哈希噪声）──
     String[] keys = new String[n];
@@ -128,6 +149,31 @@ public final class SettlementGenerator {
     long urbanTotal = Math.round(total * request.urbanizationRate());
     long ruralTotal = total - urbanTotal;
     long[] rural = largestRemainder(weights, ruralTotal);
+    if (SocialLog.worldgen().isDebugEnabled()) {
+      long ruralAssigned = 0L;
+      for (long value : rural) {
+        ruralAssigned += value;
+      }
+      EventLog.channel(SocialLog.worldgen())
+          .debug(
+              LogEvent.of(
+                  "SOCIAL_WORLDGEN_SPLIT",
+                  SocialLogSource.SOCIAL_WORLDGEN,
+                  "region",
+                  request.region().value(),
+                  "arable",
+                  arableCount,
+                  "total",
+                  total,
+                  "urbanTotal",
+                  urbanTotal,
+                  "ruralTotal",
+                  ruralTotal,
+                  "ruralAssigned",
+                  ruralAssigned,
+                  "largestRemainderExact",
+                  ruralAssigned == ruralTotal));
+    }
 
     // ── 步骤 3：逐格 ruralCapacity（= 落在该格的农村人口）与 surplusPotential ──
     double[] surplus = new double[n];
@@ -167,6 +213,36 @@ public final class SettlementGenerator {
               + params.candidateWeights().transport() * t
               + params.candidateWeights().historical() * historical;
     }
+    if (SocialLog.trace().isTraceEnabled()) {
+      for (int i = 0; i < n; i++) {
+        if (!arable[i]) {
+          continue; // 零产格不进候选：逐格 TRACE 同样不记（默认关，守卫）
+        }
+        EventLog.channel(SocialLog.trace())
+            .trace(
+                LogEvent.of(
+                    "SOCIAL_WORLDGEN_CELL",
+                    SocialLogSource.SOCIAL_WORLDGEN,
+                    "region",
+                    request.region().value(),
+                    "hex",
+                    hexes.get(i),
+                    "terrain",
+                    keys[i],
+                    "capacity",
+                    fmt(capacityOf(keys[i], params)),
+                    "weight",
+                    fmt(weights[i]),
+                    "rural",
+                    rural[i],
+                    "surplus",
+                    fmt(surplus[i]),
+                    "transport",
+                    fmt(transport[i]),
+                    "score",
+                    fmt(score[i])));
+      }
+    }
 
     // ── 步骤 5/6：候选市场镇（高分优先 + 最小距离抑制）──
     List<Integer> order = new ArrayList<>(arableCount);
@@ -199,6 +275,23 @@ public final class SettlementGenerator {
       }
     }
     int m = chosen.size();
+    if (SocialLog.worldgen().isDebugEnabled()) {
+      EventLog.channel(SocialLog.worldgen())
+          .debug(
+              LogEvent.of(
+                  "SOCIAL_WORLDGEN_CANDIDATES",
+                  SocialLogSource.SOCIAL_WORLDGEN,
+                  "region",
+                  request.region().value(),
+                  "arable",
+                  arableCount,
+                  "cap",
+                  cap,
+                  "chosen",
+                  m,
+                  "minMarketTownDistanceHex",
+                  minDistance));
+    }
 
     // ── 步骤 5：三级抽样 + Zipf 档位封顶 ──
     boolean hasCapital = request.capital().isPresent();
@@ -228,6 +321,37 @@ public final class SettlementGenerator {
     demote(tier, PlannedCity.TIER_MAJOR_CITY, tierCaps[0], PlannedCity.TIER_CITY);
     demote(tier, PlannedCity.TIER_CITY, tierCaps[1], PlannedCity.TIER_TOWN);
     demote(tier, PlannedCity.TIER_TOWN, tierCaps[2], PlannedCity.TIER_MARKET_TOWN);
+    if (SocialLog.worldgen().isDebugEnabled()) {
+      int majorCities = 0;
+      int cities = 0;
+      int towns = 0;
+      int marketTowns = 0;
+      for (String value : tier) {
+        switch (value) {
+          case PlannedCity.TIER_MAJOR_CITY -> majorCities++;
+          case PlannedCity.TIER_CITY -> cities++;
+          case PlannedCity.TIER_TOWN -> towns++;
+          default -> marketTowns++;
+        }
+      }
+      EventLog.channel(SocialLog.worldgen())
+          .debug(
+              LogEvent.of(
+                  "SOCIAL_WORLDGEN_TIERS",
+                  SocialLogSource.SOCIAL_WORLDGEN,
+                  "region",
+                  request.region().value(),
+                  "majorCities",
+                  majorCities,
+                  "cities",
+                  cities,
+                  "towns",
+                  towns,
+                  "marketTowns",
+                  marketTowns,
+                  "capitalHardTarget",
+                  hasCapital));
+    }
 
     // ── 政治乘数（步骤 8 用；但腹地竞争（步骤 7）的 W 也吃它 —— 首都的政治权重先于人口决定影响半径）──
     double[] politicalMultiplier = new double[m];
@@ -280,6 +404,25 @@ public final class SettlementGenerator {
       catchment[best]++;
       localSurplus[best] += surplus[i];
     }
+    if (SocialLog.worldgen().isDebugEnabled()) {
+      int assigned = 0;
+      for (int value : catchment) {
+        assigned += value;
+      }
+      EventLog.channel(SocialLog.worldgen())
+          .debug(
+              LogEvent.of(
+                  "SOCIAL_WORLDGEN_CATCHMENT",
+                  SocialLogSource.SOCIAL_WORLDGEN,
+                  "region",
+                  request.region().value(),
+                  "arable",
+                  arableCount,
+                  "assigned",
+                  assigned,
+                  "outsideAllRadii",
+                  arableCount - assigned));
+    }
 
     // ── 步骤 8：城市人口初算 ──
     double[] raw = new double[m];
@@ -308,6 +451,33 @@ public final class SettlementGenerator {
     }
     long urbanCapacity = Math.round(capacitySum);
     long shortfall = Math.max(0L, urbanTotal - urbanCapacity);
+    if (SocialLog.worldgen().isDebugEnabled()) {
+      int penalizedCount = 0;
+      for (boolean value : penalized) {
+        if (value) {
+          penalizedCount++;
+        }
+      }
+      EventLog.channel(SocialLog.worldgen())
+          .debug(
+              LogEvent.of(
+                  "SOCIAL_WORLDGEN_CAPACITY",
+                  SocialLogSource.SOCIAL_WORLDGEN,
+                  "region",
+                  request.region().value(),
+                  "urbanCapacity",
+                  urbanCapacity,
+                  "urbanTotal",
+                  urbanTotal,
+                  "shortfall",
+                  shortfall,
+                  "rarityThreshold",
+                  fmt(threshold),
+                  "rarityFactor",
+                  fmt(factor),
+                  "penalizedCities",
+                  penalizedCount));
+    }
 
     long[] cityPopulation = new long[m];
     boolean capitalAbsorbedAll = false;
@@ -334,6 +504,27 @@ public final class SettlementGenerator {
       }
     } else {
       cityPopulation = largestRemainder(raw, urbanTotal);
+    }
+    if (SocialLog.worldgen().isDebugEnabled()
+        && hasCapital
+        && request.capital().get().targetPopulation().isPresent()) {
+      CapitalAnchor anchor = request.capital().get();
+      long wanted = anchor.targetPopulation().getAsLong();
+      EventLog.channel(SocialLog.worldgen())
+          .debug(
+              LogEvent.of(
+                  "SOCIAL_WORLDGEN_CAPITAL",
+                  SocialLogSource.SOCIAL_WORLDGEN,
+                  "region",
+                  request.region().value(),
+                  "wanted",
+                  wanted,
+                  "urbanTotal",
+                  urbanTotal,
+                  "share",
+                  pct(wanted, urbanTotal),
+                  "absorbedAll",
+                  capitalAbsorbedAll));
     }
 
     // ── 命名：首都名/文档名优先，其余坐标哈希取词 ──
@@ -468,6 +659,48 @@ public final class SettlementGenerator {
       throw new IllegalStateException(
           "不变量破坏：ruralTotal + urbanTotal = " + (ruralTotal + urbanTotal) + " != total = " + total);
     }
+
+    int majorCities = 0;
+    int tierCities = 0;
+    int towns = 0;
+    int marketTowns = 0;
+    for (String value : tier) {
+      switch (value) {
+        case PlannedCity.TIER_MAJOR_CITY -> majorCities++;
+        case PlannedCity.TIER_CITY -> tierCities++;
+        case PlannedCity.TIER_TOWN -> towns++;
+        default -> marketTowns++;
+      }
+    }
+    EventLog.channel(SocialLog.worldgen())
+        .info(
+            LogEvent.of(
+                "SOCIAL_WORLDGEN_END",
+                SocialLogSource.SOCIAL_WORLDGEN,
+                "region",
+                request.region().value(),
+                "seed",
+                request.seed(),
+                "arable",
+                arableCount,
+                "cities",
+                cities.size(),
+                "majorCities",
+                majorCities,
+                "tierCities",
+                tierCities,
+                "towns",
+                towns,
+                "marketTowns",
+                marketTowns,
+                "rural",
+                sumRural,
+                "urban",
+                sumCity,
+                "urbanCapacity",
+                urbanCapacity,
+                "shortfall",
+                shortfall));
 
     return new SettlementPlan(ruralPopulation, cities, audit, urbanCapacity, shortfall);
   }

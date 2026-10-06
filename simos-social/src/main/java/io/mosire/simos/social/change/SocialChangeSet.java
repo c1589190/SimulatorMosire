@@ -4,6 +4,7 @@ import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.api.population.HouseholdPopulationEvent;
@@ -14,6 +15,8 @@ import io.mosire.simos.social.population.PopulationSeries;
 import io.mosire.simos.social.population.SocialVitalRates;
 import io.mosire.simos.social.population.SocialVitalRemainders;
 import io.mosire.simos.social.provisioning.SocialProvisioning;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.FieldDelta;
 import java.util.Map;
@@ -180,7 +183,8 @@ public record SocialChangeSet(
     T value = table.get(key);
     if (value == null) {
       String message = "SocialChangeSet.apply 后 " + label + " 键缺席（坏数据；旧档已作废，不做缺省兜底）";
-      SocialLog.population().error("event={} reason={}", rejectEvent, message);
+      EventLog.channel(SocialLog.codec())
+          .error(LogEvent.of(rejectEvent, SocialLogSource.SOCIAL_CODEC, "reason", message));
       throw new IllegalArgumentException(message);
     }
     return value;
@@ -188,7 +192,9 @@ public record SocialChangeSet(
 
   /** 缺组件具名拒（构造期唯一出口）。 */
   private static void rejectMissingComponent(String field, String message) {
-    SocialLog.population().error("event={} reason={}", rejectEventName(field), message);
+    EventLog.channel(SocialLog.codec())
+        .error(
+            LogEvent.of(rejectEventName(field), SocialLogSource.SOCIAL_CODEC, "reason", message));
     throw new IllegalArgumentException(message);
   }
 

@@ -2,6 +2,7 @@ package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.AccessLimit;
@@ -10,6 +11,8 @@ import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Unit;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -18,7 +21,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import org.slf4j.Logger;
 
 /**
  * {@code sd.CreateDecisionMaker} 命令的处理器（spec §四）。
@@ -37,8 +39,6 @@ import org.slf4j.Logger;
  */
 public final class CreateDecisionMakerHandler implements CommandHandler {
 
-  private static final Logger LOG = SdLog.decision();
-
   @Override
   public String type() {
     return "sd.CreateDecisionMaker";
@@ -49,35 +49,64 @@ public final class CreateDecisionMakerHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SdState base = SdSnapshots.of(state).state();
+    String dmForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       DecisionMakerId id = DecisionMakerId.parse(SdPayloads.requireText(payload, "id"));
+      dmForLog = id.value();
       Affiliation affiliation = SdPayloads.requireAffiliation(payload, "affiliation");
       Set<String> allowedTools = SdPayloads.requireTextSet(payload, "allowedTools");
       long cadence = SdPayloads.requireLong(payload, "cadence");
       if (base.decisionMakers().containsKey(id)) {
-        return new HandlerOutcome.Rejected("决策人已存在: " + id);
+        return rejected("决策人已存在: " + id, "dm", dmForLog);
       }
       Optional<String> affiliationProblem = affiliationProblem(state, base, affiliation);
       if (affiliationProblem.isPresent()) {
-        return new HandlerOutcome.Rejected(affiliationProblem.get());
+        return rejected(affiliationProblem.get(), "dm", dmForLog);
       }
       if (allowedTools.contains(SdCommandNames.SIMOS_COMMAND_SUBMIT)) {
-        return new HandlerOutcome.Rejected(
-            "allowedTools 不得含通用写 " + SdCommandNames.SIMOS_COMMAND_SUBMIT + "（N9：决策 Agent 只用窄工具）");
+        return rejected(
+            "allowedTools 不得含通用写 " + SdCommandNames.SIMOS_COMMAND_SUBMIT + "（N9：决策 Agent 只用窄工具）",
+            "dm",
+            dmForLog,
+            "allowedTools",
+            allowedTools.size());
       }
       Map<DecisionMakerId, DecisionMaker> next = new LinkedHashMap<>(base.decisionMakers());
       next.put(id, new DecisionMaker(id, affiliation, allowedTools, AccessLimit.empty(), cadence));
-      LOG.info(
-          "event=SD_DECISION_MAKER_CREATED id={} affiliation={} cadence={} allowedTools={}",
-          id.value(),
-          affiliation,
-          cadence,
-          allowedTools.size());
+      EventLog.channel(SdLog.decision())
+          .info(
+              LogEvent.of(
+                  "SD_DECISION_MAKER_CREATED",
+                  SdLogSource.SD_NATION,
+                  "id",
+                  id.value(),
+                  "affiliation",
+                  affiliation,
+                  "cadence",
+                  cadence,
+                  "allowedTools",
+                  allowedTools.size(),
+                  "decisionMakers",
+                  next.size()));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDecisionMakers(next)));
     } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
+      return rejected(e.getMessage(), "dm", dmForLog);
     }
+  }
+
+  /**
+   * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
+   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   */
+  private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
+    SdPayloads.logRejected(
+        SdLog.decision(),
+        SdLogSource.SD_NATION,
+        "SD_CREATE_DECISION_MAKER_REJECTED",
+        reason,
+        idKeyValues);
+    return new HandlerOutcome.Rejected(reason);
   }
 
   /**

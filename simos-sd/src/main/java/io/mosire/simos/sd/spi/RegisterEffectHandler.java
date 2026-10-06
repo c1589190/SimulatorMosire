@@ -2,6 +2,7 @@ package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatOutcomeId;
@@ -16,6 +17,8 @@ import io.mosire.simos.sd.model.EffectStatus;
 import io.mosire.simos.sd.model.OutcomeOption;
 import io.mosire.simos.sd.model.Trigger;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -23,7 +26,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import org.slf4j.Logger;
 
 /**
  * {@code sd.RegisterEffect} 命令的处理器（spec §四/§三.6，C4）。
@@ -40,8 +42,6 @@ import org.slf4j.Logger;
  * <p>★ **白名单由装配注入**（`Shell` 收全量已注册命令类型后传入，且**排除 `sd.*`**——防自指递归，spec §四）。
  */
 public final class RegisterEffectHandler implements CommandHandler {
-
-  private static final Logger LOG = SdLog.decision();
 
   private final Set<String> allowedCommandTypes;
 
@@ -60,27 +60,54 @@ public final class RegisterEffectHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SdState base = SdSnapshots.of(state).state();
+    String effectForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       EffectId id = EffectId.parse(SdPayloads.requireText(payload, "effectId"));
+      effectForLog = id.value();
       EffectKind kind = SdPayloads.requireEffectKind(payload, "kind");
       Trigger trigger = SdPayloads.requireTrigger(payload, "trigger");
       Action action = SdPayloads.requireAction(payload, "action");
       long createdTick =
           SdPayloads.optionalLong(payload, "createdTick", state.meta().timestamp().tick());
       if (base.effects().containsKey(id)) {
-        return new HandlerOutcome.Rejected("效果已存在: " + id);
+        return rejected("效果已存在: " + id, "effect", effectForLog);
       }
       requireTriggerReferences(state, base, trigger);
       requireActionReferences(state, base, action);
       Map<EffectId, Effect> next = new LinkedHashMap<>(base.effects());
       next.put(id, new Effect(id, kind, trigger, action, EffectStatus.PLANNED, createdTick));
-      LOG.info(
-          "event=SD_EFFECT_REGISTERED id={} kind={} createdTick={}", id.value(), kind, createdTick);
+      EventLog.channel(SdLog.decision())
+          .info(
+              LogEvent.of(
+                  "SD_EFFECT_REGISTERED",
+                  SdLogSource.SD_DECISION,
+                  "id",
+                  id.value(),
+                  "kind",
+                  kind,
+                  "createdTick",
+                  createdTick,
+                  "effects",
+                  next.size()));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withEffects(next)));
     } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
+      return rejected(e.getMessage(), "effect", effectForLog);
     }
+  }
+
+  /**
+   * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
+   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   */
+  private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
+    SdPayloads.logRejected(
+        SdLog.decision(),
+        SdLogSource.SD_DECISION,
+        "SD_REGISTER_EFFECT_REJECTED",
+        reason,
+        idKeyValues);
+    return new HandlerOutcome.Rejected(reason);
   }
 
   private static void requireTriggerReferences(

@@ -2,10 +2,14 @@ package io.mosire.simos.map.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.ops.RegionOperations;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -67,14 +71,44 @@ public final class SplitRegionHandler implements CommandHandler, CommandTargets,
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     GameMap base = MapSnapshots.of(state).map();
+    String sourceForLog = null;
+    Boolean keepSourceForLog = null;
+    int partsForLog = -1;
     try {
       JsonNode payload = MapPayloads.parse(payloadJson);
       RegionId source = MapPayloads.requireRegionId(payload, "sourceRegionId");
+      sourceForLog = source.value();
       boolean keepSource = MapPayloads.optionalBoolean(payload, "keepSource", false);
+      keepSourceForLog = keepSource;
       List<RegionOperations.RegionPart> parts = parseParts(payload);
-      return new HandlerOutcome.Applied(
-          RegionOperations.splitRegion(base, source, parts, keepSource));
+      partsForLog = parts.size();
+      var applied = RegionOperations.splitRegion(base, source, parts, keepSource);
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_SPLIT_REGION_APPLIED",
+                  MapLogSource.MAP_EDIT,
+                  "source",
+                  source.value(),
+                  "parts",
+                  parts.size(),
+                  "keepSource",
+                  keepSource));
+      return new HandlerOutcome.Applied(applied);
     } catch (IllegalArgumentException e) {
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_SPLIT_REGION_REJECTED",
+                  MapLogSource.MAP_EDIT,
+                  "reason",
+                  MapPayloads.logReason(e.getMessage()),
+                  "source",
+                  sourceForLog == null ? "-" : sourceForLog,
+                  "parts",
+                  partsForLog < 0 ? "-" : partsForLog,
+                  "keepSource",
+                  keepSourceForLog == null ? "-" : keepSourceForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

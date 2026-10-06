@@ -2,11 +2,14 @@ package io.mosire.simos.social.workorder;
 
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.api.population.HouseholdPopulationEvent;
 import io.mosire.simos.social.api.population.PopulationEventType;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.household.HouseholdBook;
 import io.mosire.simos.social.population.AgeBracket;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.Objects;
 
 /**
@@ -58,106 +61,113 @@ public final class HouseholdWorkOrderBook {
     String orderKey = order.orderId() == null ? "(none)" : order.orderId();
     String markerId = order.markerEventId();
     if (markerId != null && base.populationEvents().containsKey(markerId)) {
-      SocialLog.workOrder()
+      EventLog.channel(SocialLog.workOrder())
           .info(
-              "event=HOUSEHOLD_WORK_ORDER_DUPLICATE "
-                  + SocialLog.kv(
-                      "order",
-                      orderKey,
-                      "target",
-                      order.target(),
-                      "reason",
-                      order.reason(),
-                      "source",
-                      order.source()));
+              LogEvent.of(
+                  "HOUSEHOLD_WORK_ORDER_DUPLICATE",
+                  SocialLogSource.SOCIAL_WORK_ORDER,
+                  "order",
+                  orderKey,
+                  "target",
+                  order.target(),
+                  "reason",
+                  order.reason(),
+                  "source",
+                  order.source()));
       throw new IllegalArgumentException(
           "工单 orderId 已受理过，拒绝重复提交（幂等键命中，不重复改人口）: " + order.orderId());
     }
 
     long populationBefore = base.householdPopulation(order.target());
-    SocialLog.workOrder()
+    EventLog.channel(SocialLog.workOrder())
         .info(
-            "event=HOUSEHOLD_WORK_ORDER "
-                + SocialLog.kv(
-                    "order",
-                    orderKey,
-                    "target",
-                    order.target(),
-                    "steps",
-                    order.plan().steps().size(),
-                    "populationBefore",
-                    populationBefore,
-                    "worldTick",
-                    worldTick,
-                    "reason",
-                    order.reason(),
-                    "source",
-                    order.source()));
+            LogEvent.of(
+                "HOUSEHOLD_WORK_ORDER",
+                SocialLogSource.SOCIAL_WORK_ORDER,
+                "order",
+                orderKey,
+                "target",
+                order.target(),
+                "steps",
+                order.plan().steps().size(),
+                "populationBefore",
+                populationBefore,
+                "worldTick",
+                worldTick,
+                "reason",
+                order.reason(),
+                "source",
+                order.source()));
 
     SocialData current = base;
     int index = 0;
     for (HouseholdWorkOrderPlan.Step step : order.plan().steps()) {
       index++;
-      SocialLog.trace()
-          .trace(
-              "event=HOUSEHOLD_WORK_ORDER_STEP "
-                  + SocialLog.kv(
-                      "order",
-                      orderKey,
-                      "target",
-                      order.target(),
-                      "step",
-                      index,
-                      "op",
-                      step.op(),
-                      "detail",
-                      describe(step),
-                      "reason",
-                      order.reason(),
-                      "source",
-                      order.source()));
+      if (SocialLog.trace().isTraceEnabled()) {
+        EventLog.channel(SocialLog.trace())
+            .trace(
+                LogEvent.of(
+                    "HOUSEHOLD_WORK_ORDER_STEP",
+                    SocialLogSource.SOCIAL_WORK_ORDER,
+                    "order",
+                    orderKey,
+                    "target",
+                    order.target(),
+                    "step",
+                    index,
+                    "op",
+                    step.op(),
+                    "detail",
+                    describe(step),
+                    "reason",
+                    order.reason(),
+                    "source",
+                    order.source()));
+      }
       try {
         current = applyStep(current, step, order.reason());
       } catch (IllegalArgumentException failure) {
         String message = "工单第 " + index + " 步 [" + step.op() + "] 失败: " + failure.getMessage();
-        SocialLog.workOrder()
+        EventLog.channel(SocialLog.workOrder())
             .info(
-                "event=HOUSEHOLD_WORK_ORDER_REJECTED "
-                    + SocialLog.kv(
-                        "order",
-                        orderKey,
-                        "target",
-                        order.target(),
-                        "step",
-                        index,
-                        "op",
-                        step.op(),
-                        "reason",
-                        order.reason(),
-                        "source",
-                        order.source(),
-                        "error",
-                        failure.getMessage()));
+                LogEvent.of(
+                    "HOUSEHOLD_WORK_ORDER_REJECTED",
+                    SocialLogSource.SOCIAL_WORK_ORDER,
+                    "order",
+                    orderKey,
+                    "target",
+                    order.target(),
+                    "step",
+                    index,
+                    "op",
+                    step.op(),
+                    "reason",
+                    order.reason(),
+                    "source",
+                    order.source(),
+                    "error",
+                    failure.getMessage()));
         throw new IllegalArgumentException(message, failure);
       }
     }
 
     if (!current.households().containsKey(order.target())) {
       String message = "工单执行后目标家户不存在（plan 未创建该家户，或把它从最终状态里移走了）: " + order.target();
-      SocialLog.workOrder()
+      EventLog.channel(SocialLog.workOrder())
           .info(
-              "event=HOUSEHOLD_WORK_ORDER_REJECTED "
-                  + SocialLog.kv(
-                      "order",
-                      orderKey,
-                      "target",
-                      order.target(),
-                      "reason",
-                      order.reason(),
-                      "source",
-                      order.source(),
-                      "error",
-                      message));
+              LogEvent.of(
+                  "HOUSEHOLD_WORK_ORDER_REJECTED",
+                  SocialLogSource.SOCIAL_WORK_ORDER,
+                  "order",
+                  orderKey,
+                  "target",
+                  order.target(),
+                  "reason",
+                  order.reason(),
+                  "source",
+                  order.source(),
+                  "error",
+                  message));
       throw new IllegalArgumentException(message);
     }
 
@@ -179,26 +189,27 @@ public final class HouseholdWorkOrderBook {
       current = HouseholdBook.applyEvent(current, marker);
     }
 
-    SocialLog.workOrder()
+    EventLog.channel(SocialLog.workOrder())
         .info(
-            "event=HOUSEHOLD_WORK_ORDER_APPLIED "
-                + SocialLog.kv(
-                    "order",
-                    orderKey,
-                    "target",
-                    order.target(),
-                    "steps",
-                    order.plan().steps().size(),
-                    "populationBefore",
-                    populationBefore,
-                    "populationAfter",
-                    current.householdPopulation(order.target()),
-                    "marker",
-                    markerId == null ? "(none)" : markerId,
-                    "reason",
-                    order.reason(),
-                    "source",
-                    order.source()));
+            LogEvent.of(
+                "HOUSEHOLD_WORK_ORDER_APPLIED",
+                SocialLogSource.SOCIAL_WORK_ORDER,
+                "order",
+                orderKey,
+                "target",
+                order.target(),
+                "steps",
+                order.plan().steps().size(),
+                "populationBefore",
+                populationBefore,
+                "populationAfter",
+                current.householdPopulation(order.target()),
+                "marker",
+                markerId == null ? "(none)" : markerId,
+                "reason",
+                order.reason(),
+                "source",
+                order.source()));
     return current;
   }
 

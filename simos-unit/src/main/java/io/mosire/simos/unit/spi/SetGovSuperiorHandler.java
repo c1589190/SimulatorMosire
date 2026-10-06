@@ -2,10 +2,14 @@ package io.mosire.simos.unit.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitLog;
+import io.mosire.simos.unit.UnitLogSource;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -48,13 +52,33 @@ public final class SetGovSuperiorHandler implements CommandHandler, CommandTarge
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     UnitSnapshot snapshot = UnitSnapshots.of(state); // 装配故障当场炸，不走拒绝路径
+    String unitForLog = null;
     try {
       JsonNode payload = UnitPayloads.parse(payloadJson);
       UnitId id = UnitId.parse(UnitPayloads.requireText(payload, "unitId"));
+      unitForLog = id.value();
       Optional<UnitId> superiorGov = UnitPayloads.optionalId(payload, "superiorGov");
       UnitState next = UnitOperations.setGovSuperior(snapshot.state(), id, superiorGov);
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_SET_GOV_SUPERIOR_APPLIED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "unit",
+                  id.value(),
+                  "superiorGov",
+                  superiorGov.map(UnitId::value).orElse("-")));
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_SET_GOV_SUPERIOR_REJECTED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "reason",
+                  UnitPayloads.logReason(e.getMessage()),
+                  "unit",
+                  unitForLog == null ? "-" : unitForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

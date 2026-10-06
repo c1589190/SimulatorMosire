@@ -4,6 +4,10 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitLog;
+import io.mosire.simos.unit.UnitLogSource;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.List;
 import java.util.Objects;
@@ -49,8 +53,42 @@ public final class UnitMoves {
     Objects.requireNonNull(map, "map");
     Objects.requireNonNull(cost, "cost");
     Movement movement =
-        unit.movement().orElseThrow(() -> new IllegalArgumentException("单位没有在途路线: " + unit.id()));
+        unit.movement()
+            .orElseThrow(
+                () -> {
+                  if (UnitLog.advance().isDebugEnabled()) {
+                    EventLog.channel(UnitLog.advance())
+                        .debug(
+                            LogEvent.of(
+                                "UNIT_MOVE_REJECTED",
+                                UnitLogSource.UNIT_ADVANCE,
+                                "day",
+                                at.tick(),
+                                "unit",
+                                unit.id().value(),
+                                "at",
+                                at,
+                                "reason",
+                                "noInFlightRoute"));
+                  }
+                  return new IllegalArgumentException("单位没有在途路线: " + unit.id());
+                });
     if (at.compareTo(movement.departedAt()) < 0) {
+      EventLog.channel(UnitLog.advance())
+          .debug(
+              LogEvent.of(
+                  "UNIT_MOVE_REJECTED",
+                  UnitLogSource.UNIT_ADVANCE,
+                  "day",
+                  at.tick(),
+                  "unit",
+                  unit.id().value(),
+                  "at",
+                  at,
+                  "departedAt",
+                  movement.departedAt(),
+                  "reason",
+                  "timestampBeforeDeparture"));
       throw new IllegalArgumentException("查询时刻早于出发时刻: " + at + " < " + movement.departedAt());
     }
     long budget =
@@ -79,23 +117,86 @@ public final class UnitMoves {
             unit.households());
 
     List<HexCoord> path = movement.route().path();
+    long totalBudget = budget;
     for (int i = 0; i + 1 < path.size(); i++) {
       HexCoord from = path.get(i);
       HexCoord to = path.get(i + 1);
       OptionalLong step = cost.costMillis(from, to, frozen, map);
       if (step.isEmpty()) {
-        return new MovementState(
-            from, Optional.empty(), OptionalLong.empty(), MovementStatus.NEED_REPLAN);
+        if (UnitLog.advance().isDebugEnabled()) {
+          EventLog.channel(UnitLog.advance())
+              .debug(
+                  LogEvent.of(
+                      "UNIT_MOVE_NEED_REPLAN",
+                      UnitLogSource.UNIT_ADVANCE,
+                      "unit",
+                      unit.id().value(),
+                      "day",
+                      at.tick(),
+                      "from",
+                      from,
+                      "to",
+                      to,
+                      "reason",
+                      "edgeImpassable"));
+        }
+        MovementState state =
+            new MovementState(
+                from, Optional.empty(), OptionalLong.empty(), MovementStatus.NEED_REPLAN);
+        traceEvaluation(unit, at, state, totalBudget, budget);
+        return state;
       }
       long edgeCost = step.getAsLong();
       if (budget >= edgeCost) {
         budget -= edgeCost;
         continue;
       }
-      return new MovementState(
-          from, Optional.of(to), OptionalLong.of(edgeCost - budget), MovementStatus.IN_TRANSIT);
+      MovementState state =
+          new MovementState(
+              from, Optional.of(to), OptionalLong.of(edgeCost - budget), MovementStatus.IN_TRANSIT);
+      traceEvaluation(unit, at, state, totalBudget, budget);
+      return state;
     }
-    return new MovementState(
-        path.get(path.size() - 1), Optional.empty(), OptionalLong.empty(), MovementStatus.ARRIVED);
+    MovementState state =
+        new MovementState(
+            path.get(path.size() - 1),
+            Optional.empty(),
+            OptionalLong.empty(),
+            MovementStatus.ARRIVED);
+    traceEvaluation(unit, at, state, totalBudget, budget);
+    return state;
+  }
+
+  /** 逐单位逐 tick 的移动物化读数（TRACE，默认关；先看开关再构造事件，避免热点上的无谓分配）。 */
+  private static void traceEvaluation(
+      Unit unit, SimosTimestamp at, MovementState state, long totalBudget, long leftBudget) {
+    if (!UnitLog.trace().isTraceEnabled()) {
+      return;
+    }
+    long edgeRemaining =
+        state.remainingEdgeCostMillis().isPresent()
+            ? state.remainingEdgeCostMillis().getAsLong()
+            : 0L;
+    EventLog.channel(UnitLog.trace())
+        .trace(
+            LogEvent.of(
+                "UNIT_MOVE_EVALUATED",
+                UnitLogSource.UNIT_ADVANCE,
+                "unit",
+                unit.id().value(),
+                "day",
+                at.tick(),
+                "status",
+                state.status(),
+                "from",
+                state.currentHex(),
+                "to",
+                state.nextHex().map(HexCoord::toString).orElse("-"),
+                "budget",
+                totalBudget,
+                "leftBudget",
+                leftBudget,
+                "remaining",
+                edgeRemaining));
   }
 }

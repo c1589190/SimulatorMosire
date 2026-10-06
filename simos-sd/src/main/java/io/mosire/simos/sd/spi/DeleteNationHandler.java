@@ -5,6 +5,7 @@ import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DiplomaticEventId;
@@ -16,6 +17,8 @@ import io.mosire.simos.sd.model.DiplomaticRelation;
 import io.mosire.simos.sd.model.DiplomaticRelationKey;
 import io.mosire.simos.sd.model.Nation;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -27,7 +30,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import org.slf4j.Logger;
 
 /**
  * ★★ {@code sd.DeleteNation}（P1.2 后端行政）：删除国家实体，<b>严格引用检查、默认不静默级联</b>。
@@ -59,8 +61,6 @@ import org.slf4j.Logger;
  */
 public final class DeleteNationHandler implements CommandHandler, CommandTargets, GmOnlyCommand {
 
-  private static final Logger LOG = SdLog.nation();
-
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "sd.DeleteNation";
 
@@ -81,12 +81,14 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SdState base = SdSnapshots.of(state).state();
+    String nationForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       NationId id = NationId.parse(SdPayloads.requireText(payload, "nationId"));
+      nationForLog = id.value();
       boolean clearDiplomatic = optionalBoolean(payload, "clearDiplomaticReferences", false);
       if (!base.nations().containsKey(id)) {
-        return new HandlerOutcome.Rejected("国家不存在: " + id);
+        return rejected("国家不存在: " + id, "nation", nationForLog);
       }
 
       List<String> problems = new ArrayList<>();
@@ -128,8 +130,10 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
                 + "）：先 map.UpdateRegion 改掉这些 tag/归属");
       }
       if (!problems.isEmpty()) {
-        return new HandlerOutcome.Rejected(
-            "国家 " + id + " 引用未清，拒绝删除（不静默级联）：\n- " + String.join("\n- ", problems));
+        return rejected(
+            "国家 " + id + " 引用未清，拒绝删除（不静默级联）：\n- " + String.join("\n- ", problems),
+            "nation",
+            nationForLog);
       }
 
       Map<NationId, Nation> nations = new LinkedHashMap<>(base.nations());
@@ -155,11 +159,35 @@ public final class DeleteNationHandler implements CommandHandler, CommandTargets
         }
         next = next.withDiplomaticEvents(remainingEvents);
       }
-      LOG.info("event=SD_NATION_DELETED id={} clearDiplomatic={}", id.value(), clearDiplomatic);
+      EventLog.channel(SdLog.nation())
+          .info(
+              LogEvent.of(
+                  "SD_NATION_DELETED",
+                  SdLogSource.SD_NATION,
+                  "id",
+                  id.value(),
+                  "clearDiplomatic",
+                  clearDiplomatic,
+                  "relationsCleared",
+                  clearDiplomatic ? relations.size() : 0,
+                  "eventsCleared",
+                  clearDiplomatic ? events.size() : 0,
+                  "nations",
+                  nations.size()));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
+      return rejected(e.getMessage(), "nation", nationForLog);
     }
+  }
+
+  /**
+   * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
+   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   */
+  private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
+    SdPayloads.logRejected(
+        SdLog.nation(), SdLogSource.SD_NATION, "SD_DELETE_NATION_REJECTED", reason, idKeyValues);
+    return new HandlerOutcome.Rejected(reason);
   }
 
   private static List<DecisionMakerId> decisionMakersOf(SdState base, NationId id) {

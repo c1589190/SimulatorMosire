@@ -19,6 +19,8 @@ import org.slf4j.LoggerFactory;
  *   <tr><td>{@link #combat()}</td><td>{@code .combat}</td><td>交战记录/阶段/伤亡</td></tr>
  *   <tr><td>{@link #diplomacy()}</td><td>{@code .diplomacy}</td><td>外交关系与外交事件</td></tr>
  *   <tr><td>{@link #time()}</td><td>{@code .time}</td><td>sd 时间推进（effect 触发、combat stage 推进）</td></tr>
+ *   <tr><td>{@link #codec()}</td><td>{@code .codec}</td><td>SdCodec 编解码、旧形状迁移与变更集施加（只记元信息，不记 JSON 原文）</td></tr>
+ *   <tr><td>{@link #resolve()}</td><td>{@code .resolve}</td><td>SdResolver 空候选与装配故障诊断（不逐次记成功查询）</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐条 effect/combat/令/判决明细</b></td></tr>
  * </table>
  *
@@ -52,12 +54,16 @@ public final class SdLog {
   public static final String COMBAT_LOGGER_NAME = ROOT_LOGGER_NAME + ".combat";
   public static final String DIPLOMACY_LOGGER_NAME = ROOT_LOGGER_NAME + ".diplomacy";
   public static final String TIME_LOGGER_NAME = ROOT_LOGGER_NAME + ".time";
+  public static final String CODEC_LOGGER_NAME = ROOT_LOGGER_NAME + ".codec";
+  public static final String RESOLVE_LOGGER_NAME = ROOT_LOGGER_NAME + ".resolve";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
   private static final Logger DECISION = LoggerFactory.getLogger(DECISION_LOGGER_NAME);
   private static final Logger NATION = LoggerFactory.getLogger(NATION_LOGGER_NAME);
   private static final Logger COMBAT = LoggerFactory.getLogger(COMBAT_LOGGER_NAME);
   private static final Logger DIPLOMACY = LoggerFactory.getLogger(DIPLOMACY_LOGGER_NAME);
   private static final Logger TIME = LoggerFactory.getLogger(TIME_LOGGER_NAME);
+  private static final Logger CODEC = LoggerFactory.getLogger(CODEC_LOGGER_NAME);
+  private static final Logger RESOLVE = LoggerFactory.getLogger(RESOLVE_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
   private SdLog() {}
@@ -85,6 +91,16 @@ public final class SdLog {
   /** sd 时间推进（effect 触发、combat stage 推进）。 */
   public static Logger time() {
     return TIME;
+  }
+
+  /** SdCodec 编解码、旧形状迁移与变更集施加（只记元信息，不记 JSON 原文）。 */
+  public static Logger codec() {
+    return CODEC;
+  }
+
+  /** SdResolver 空候选与装配故障诊断（不逐次记成功查询）。 */
+  public static Logger resolve() {
+    return RESOLVE;
   }
 
   /** <b>逐条 effect/combat/令/判决明细</b>。 */

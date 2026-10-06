@@ -4,6 +4,7 @@ import io.mosire.simos.calendar.CalendarAge;
 import io.mosire.simos.calendar.CalendarClock;
 import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -19,6 +20,8 @@ import io.mosire.simos.social.population.PopulationLots;
 import io.mosire.simos.social.population.SocialVitalRemainder;
 import io.mosire.simos.social.population.SocialVitalRemainders;
 import io.mosire.simos.social.population.VitalKind;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -81,13 +84,30 @@ public final class HouseholdBook {
     Map<HouseholdId, Household> next = new LinkedHashMap<>(base.households());
     next.put(id, household);
     SocialData result = base.withHouseholds(next);
-    SocialLog.household()
+    EventLog.channel(SocialLog.command())
         .info(
-            "event=HOUSEHOLD_CREATED "
-                + SocialLog.kv(
-                    "id", id, "location", location, "name", profile.name(), "members", 0));
-    SocialLog.trace()
-        .trace("event=HOUSEHOLD_CREATED_DETAIL " + SocialLog.kv("id", id, "profile", profile));
+            LogEvent.of(
+                "HOUSEHOLD_CREATED",
+                SocialLogSource.SOCIAL_COMMAND,
+                "id",
+                id,
+                "location",
+                location,
+                "name",
+                profile.name(),
+                "members",
+                0));
+    if (SocialLog.trace().isTraceEnabled()) {
+      EventLog.channel(SocialLog.trace())
+          .trace(
+              LogEvent.of(
+                  "HOUSEHOLD_CREATED_DETAIL",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "id",
+                  id,
+                  "profile",
+                  profile));
+    }
     return requireConservation(result);
   }
 
@@ -100,10 +120,19 @@ public final class HouseholdBook {
     HouseholdLocation previous = household.location();
     SocialData result =
         base.withHouseholds(replaceHousehold(base, household.withLocation(location)));
-    SocialLog.household()
+    EventLog.channel(SocialLog.command())
         .info(
-            "event=HOUSEHOLD_LOCATION_SET "
-                + SocialLog.kv("id", id, "from", previous, "to", location, "reason", reason));
+            LogEvent.of(
+                "HOUSEHOLD_LOCATION_SET",
+                SocialLogSource.SOCIAL_COMMAND,
+                "id",
+                id,
+                "from",
+                previous,
+                "to",
+                location,
+                "reason",
+                reason));
     return requireConservation(result);
   }
 
@@ -115,10 +144,17 @@ public final class HouseholdBook {
     requireReason(reason);
     Household household = base.requireHousehold(id);
     SocialData result = base.withHouseholds(replaceHousehold(base, household.withProfile(profile)));
-    SocialLog.household()
+    EventLog.channel(SocialLog.command())
         .info(
-            "event=HOUSEHOLD_PROFILE_SET "
-                + SocialLog.kv("id", id, "name", profile.name(), "reason", reason));
+            LogEvent.of(
+                "HOUSEHOLD_PROFILE_SET",
+                SocialLogSource.SOCIAL_COMMAND,
+                "id",
+                id,
+                "name",
+                profile.name(),
+                "reason",
+                reason));
     return requireConservation(result);
   }
 
@@ -177,38 +213,40 @@ public final class HouseholdBook {
             base.provisioning(),
             base.vitalRates(),
             base.vitalRemainders());
-    SocialLog.household()
+    EventLog.channel(SocialLog.command())
         .info(
-            "event=HOUSEHOLD_MEMBER_ADD "
-                + SocialLog.kv(
-                    "id",
-                    id,
-                    "lot",
-                    lotId,
-                    "count",
-                    count,
-                    "sex",
-                    sex,
-                    "ageAnchor",
-                    ageAtAnchorDays,
-                    "anchorTick",
-                    anchorTick,
-                    "reason",
-                    reason));
-    SocialLog.event()
+            LogEvent.of(
+                "HOUSEHOLD_MEMBER_ADD",
+                SocialLogSource.SOCIAL_COMMAND,
+                "id",
+                id,
+                "lot",
+                lotId,
+                "count",
+                count,
+                "sex",
+                sex,
+                "ageAnchor",
+                ageAtAnchorDays,
+                "anchorTick",
+                anchorTick,
+                "reason",
+                reason));
+    EventLog.channel(SocialLog.event())
         .debug(
-            "event=GM_POPULATION_ADJUST "
-                + SocialLog.kv(
-                    "id",
-                    event.id(),
-                    "household",
-                    id,
-                    "lot",
-                    lotId,
-                    "delta",
-                    count,
-                    "day",
-                    anchorTick));
+            LogEvent.of(
+                "GM_POPULATION_ADJUST",
+                SocialLogSource.SOCIAL_COMMAND,
+                "id",
+                event.id(),
+                "household",
+                id,
+                "lot",
+                lotId,
+                "delta",
+                count,
+                "day",
+                anchorTick));
     return requireConservation(result);
   }
 
@@ -244,20 +282,21 @@ public final class HouseholdBook {
             reason,
             "HouseholdBook.removeMembers",
             lotId);
-    SocialLog.household()
+    EventLog.channel(SocialLog.command())
         .info(
-            "event=HOUSEHOLD_MEMBER_REMOVE "
-                + SocialLog.kv(
-                    "id",
-                    id,
-                    "lot",
-                    lotId,
-                    "count",
-                    count,
-                    "remaining",
-                    group.count() - count,
-                    "reason",
-                    reason));
+            LogEvent.of(
+                "HOUSEHOLD_MEMBER_REMOVE",
+                SocialLogSource.SOCIAL_COMMAND,
+                "id",
+                id,
+                "lot",
+                lotId,
+                "count",
+                count,
+                "remaining",
+                group.count() - count,
+                "reason",
+                reason));
     return applyEvent(base, event);
   }
 
@@ -357,48 +396,68 @@ public final class HouseholdBook {
             base.provisioning(),
             base.vitalRates(),
             base.vitalRemainders());
-    SocialLog.household()
+    EventLog.channel(SocialLog.command())
         .info(
-            "event=HOUSEHOLD_MEMBER_TRANSFER "
-                + SocialLog.kv(
-                    "from",
-                    fromHousehold,
-                    "to",
-                    toHousehold,
-                    "lot",
-                    lotId,
-                    "movedLot",
-                    movedLot,
-                    "count",
-                    count,
-                    "mode",
-                    fromShare == count ? "WHOLE_HOUSEHOLD_SHARE" : "PARTIAL_SHARE",
-                    "reason",
-                    reason));
-    SocialLog.population()
+            LogEvent.of(
+                "HOUSEHOLD_MEMBER_TRANSFER",
+                SocialLogSource.SOCIAL_COMMAND,
+                "from",
+                fromHousehold,
+                "to",
+                toHousehold,
+                "lot",
+                lotId,
+                "movedLot",
+                movedLot,
+                "count",
+                count,
+                "mode",
+                fromShare == count ? "WHOLE_HOUSEHOLD_SHARE" : "PARTIAL_SHARE",
+                "reason",
+                reason));
+    EventLog.channel(SocialLog.command())
         .info(
-            "event=POPULATION_TRANSFER_OUT "
-                + SocialLog.kv(
-                    "from", fromHousehold, "lot", lotId, "count", count, "reason", reason));
-    SocialLog.population()
+            LogEvent.of(
+                "POPULATION_TRANSFER_OUT",
+                SocialLogSource.SOCIAL_COMMAND,
+                "from",
+                fromHousehold,
+                "lot",
+                lotId,
+                "count",
+                count,
+                "reason",
+                reason));
+    EventLog.channel(SocialLog.command())
         .info(
-            "event=POPULATION_TRANSFER_IN "
-                + SocialLog.kv(
-                    "to", toHousehold, "lot", movedLot, "count", count, "reason", reason));
-    SocialLog.trace()
-        .trace(
-            "event=POPULATION_TRANSFER_DETAIL "
-                + SocialLog.kv(
-                    "from",
-                    fromHousehold,
-                    "to",
-                    toHousehold,
-                    "lot",
-                    lotId,
-                    "movedLot",
-                    movedLot,
-                    "count",
-                    count));
+            LogEvent.of(
+                "POPULATION_TRANSFER_IN",
+                SocialLogSource.SOCIAL_COMMAND,
+                "to",
+                toHousehold,
+                "lot",
+                movedLot,
+                "count",
+                count,
+                "reason",
+                reason));
+    if (SocialLog.trace().isTraceEnabled()) {
+      EventLog.channel(SocialLog.trace())
+          .trace(
+              LogEvent.of(
+                  "POPULATION_TRANSFER_DETAIL",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "from",
+                  fromHousehold,
+                  "to",
+                  toHousehold,
+                  "lot",
+                  lotId,
+                  "movedLot",
+                  movedLot,
+                  "count",
+                  count));
+    }
     return requireConservation(result);
   }
 
@@ -411,14 +470,28 @@ public final class HouseholdBook {
     Household household = base.requireHousehold(id);
     SocialData withRates =
         base.withHouseholds(replaceHousehold(base, household.withVitalRates(vitalRates)));
-    SocialLog.household()
+    EventLog.channel(SocialLog.command())
         .info(
-            "event=HOUSEHOLD_RATE_SET "
-                + SocialLog.kv("id", id, "rates", vitalRates.rates().size(), "reason", reason));
-    SocialLog.trace()
-        .trace(
-            "event=HOUSEHOLD_RATE_SET_DETAIL "
-                + SocialLog.kv("id", id, "rates", vitalRates.rates()));
+            LogEvent.of(
+                "HOUSEHOLD_RATE_SET",
+                SocialLogSource.SOCIAL_COMMAND,
+                "id",
+                id,
+                "rates",
+                vitalRates.rates().size(),
+                "reason",
+                reason));
+    if (SocialLog.trace().isTraceEnabled()) {
+      EventLog.channel(SocialLog.trace())
+          .trace(
+              LogEvent.of(
+                  "HOUSEHOLD_RATE_SET_DETAIL",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "id",
+                  id,
+                  "rates",
+                  vitalRates.rates()));
+    }
     long day = latestDay(withRates);
     HouseholdPopulationEvent event =
         new HouseholdPopulationEvent(
@@ -449,8 +522,17 @@ public final class HouseholdBook {
     }
     base.requireHousehold(id);
     if (delta == 0L) {
-      SocialLog.population()
-          .debug("event=GM_POPULATION_ADJUST " + SocialLog.kv("id", id, "delta", 0L, "noop", true));
+      EventLog.channel(SocialLog.command())
+          .debug(
+              LogEvent.of(
+                  "GM_POPULATION_ADJUST",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "id",
+                  id,
+                  "delta",
+                  0L,
+                  "noop",
+                  true));
       return base;
     }
     long day = latestDay(base);
@@ -475,20 +557,21 @@ public final class HouseholdBook {
             reason,
             "GM",
             null);
-    SocialLog.population()
+    EventLog.channel(SocialLog.command())
         .info(
-            "event=GM_POPULATION_ADJUST "
-                + SocialLog.kv(
-                    "id",
-                    id,
-                    "sex",
-                    sex,
-                    "ageBracket",
-                    ageBracketId,
-                    "delta",
-                    delta,
-                    "reason",
-                    reason));
+            LogEvent.of(
+                "GM_POPULATION_ADJUST",
+                SocialLogSource.SOCIAL_COMMAND,
+                "id",
+                id,
+                "sex",
+                sex,
+                "ageBracket",
+                ageBracketId,
+                "delta",
+                delta,
+                "reason",
+                reason));
     return applyEvent(base, event);
   }
 
@@ -572,24 +655,25 @@ public final class HouseholdBook {
             base.vitalRates(),
             base.vitalRemainders());
     for (HouseholdPopulationEvent event : applied) {
-      SocialLog.event()
+      EventLog.channel(SocialLog.event())
           .debug(
-              "event=POPULATION_EVENT_APPLIED "
-                  + SocialLog.kv(
-                      "id",
-                      event.id(),
-                      "household",
-                      event.householdId(),
-                      "type",
-                      event.type(),
-                      "sex",
-                      event.sex(),
-                      "ageBracket",
-                      event.ageBracketId(),
-                      "count",
-                      event.count(),
-                      "day",
-                      event.day()));
+              LogEvent.of(
+                  "POPULATION_EVENT_APPLIED",
+                  settlementOrigin(event),
+                  "id",
+                  event.id(),
+                  "household",
+                  event.householdId(),
+                  "type",
+                  event.type(),
+                  "sex",
+                  event.sex(),
+                  "ageBracket",
+                  event.ageBracketId(),
+                  "count",
+                  event.count(),
+                  "day",
+                  event.day()));
     }
     return requireConservation(result);
   }
@@ -640,9 +724,22 @@ public final class HouseholdBook {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(clock, "clock");
     if (day < 0L) {
-      throw vitalReject("settleVitalEvents 的 day 不得为负: " + day);
+      throw vitalReject(day, "settleVitalEvents 的 day 不得为负: " + day);
     }
     long currentDayNumber = clock.dayNumberOfTick(day);
+    EventLog.channel(SocialLog.settle())
+        .info(
+            LogEvent.of(
+                "POPULATION_SETTLE_START",
+                SocialLogSource.SOCIAL_SETTLE,
+                "day",
+                day,
+                "households",
+                base.households().size(),
+                "groups",
+                base.groups().size(),
+                "remainders",
+                base.vitalRemainders().entries().size()));
 
     // ① 载入有效余数；旧余数里批次已不存在的键直接清理（不参与本 tick 计算）。
     Map<RemainderKey, Long> remainders = new LinkedHashMap<>();
@@ -655,8 +752,36 @@ public final class HouseholdBook {
         cleanedRemainders++;
       }
     }
+    if (SocialLog.settle().isDebugEnabled()) {
+      int householdRateOverrides = 0;
+      for (Household household : base.households().values()) {
+        if (!household.vitalRates().rates().isEmpty()) {
+          householdRateOverrides++;
+        }
+      }
+      EventLog.channel(SocialLog.settle())
+          .debug(
+              LogEvent.of(
+                  "POPULATION_SETTLE_POOL",
+                  SocialLogSource.SOCIAL_SETTLE,
+                  "day",
+                  day,
+                  "households",
+                  base.households().size(),
+                  "groups",
+                  base.groups().size(),
+                  "rateRows",
+                  base.vitalRates().globalDefaults().rates().size(),
+                  "householdRateOverrides",
+                  householdRateOverrides,
+                  "loadedRemainders",
+                  remainders.size(),
+                  "cleanedRemainders",
+                  cleanedRemainders));
+    }
 
     List<HouseholdPopulationEvent> events = new ArrayList<>();
+    boolean traceEnabled = SocialLog.trace().isTraceEnabled();
     Map<HouseholdId, Long> populationDeltas = new LinkedHashMap<>();
     long totalBirths = 0L;
     long totalDeaths = 0L;
@@ -672,11 +797,12 @@ public final class HouseholdBook {
         }
         PopulationGroup group = base.groups().get(lot);
         if (group == null) {
-          throw vitalReject("家户 " + household.id() + " 的成员批次不在 groups 里（坏数据）: " + lot);
+          throw vitalReject(day, "家户 " + household.id() + " 的成员批次不在 groups 里（坏数据）: " + lot);
         }
         long ageDays = group.ageDaysAt(day);
         if (ageDays < 0L) {
           throw vitalReject(
+              day,
               "settleVitalEvents：批次年龄为负（day 早于锚点） household="
                   + household.id()
                   + " lot="
@@ -717,6 +843,7 @@ public final class HouseholdBook {
         }
 
         // ③ 出生：仅精确育龄窗口（15 ≤ ageYears < 45）的女性；率取 (15-59, FEMALE) 键。
+        long births = 0L;
         if (group.sex() == Sex.FEMALE && ageYears >= 15L && ageYears < 45L) {
           HouseholdVitalRate birthRate =
               base.findVitalRate(household.id(), AgeBracket.ADULT, Sex.FEMALE);
@@ -725,7 +852,7 @@ public final class HouseholdBook {
               Math.addExact(
                   remainderFor(remainders, birthKey, household.id(), lot, VitalKind.BIRTH),
                   Math.multiplyExact(share, birthRate.birthRatePerMillionPerTick()));
-          long births = birthNumerator / 1_000_000L;
+          births = birthNumerator / 1_000_000L;
           putRemainder(remainders, birthKey, birthNumerator % 1_000_000L);
           if (births > 0L) {
             long male = (births + 1L) / 2L;
@@ -753,6 +880,29 @@ public final class HouseholdBook {
             householdBirths = Math.addExact(householdBirths, births);
           }
         }
+        if (traceEnabled) {
+          EventLog.channel(SocialLog.trace())
+              .trace(
+                  LogEvent.of(
+                      "POPULATION_SETTLE_LOT",
+                      SocialLogSource.SOCIAL_SETTLE,
+                      "day",
+                      day,
+                      "household",
+                      household.id(),
+                      "lot",
+                      lot,
+                      "sex",
+                      group.sex(),
+                      "share",
+                      share,
+                      "ageYears",
+                      ageYears,
+                      "deaths",
+                      deaths,
+                      "births",
+                      births));
+        }
       }
       long householdDelta = Math.subtractExact(householdBirths, householdDeaths);
       if (householdDelta != 0L) {
@@ -776,31 +926,37 @@ public final class HouseholdBook {
     }
     SocialData data = settled.withVitalRemainders(toRemainders(finalRemainders));
 
-    SocialLog.population()
+    EventLog.channel(SocialLog.settle())
         .info(
-            "event=POPULATION_SETTLE "
-                + SocialLog.kv(
-                    "day",
-                    day,
-                    "households",
-                    base.households().size(),
-                    "births",
-                    totalBirths,
-                    "deaths",
-                    totalDeaths,
-                    "events",
-                    events.size(),
-                    "deltaHouseholds",
-                    populationDeltas.size(),
-                    "remainders",
-                    finalRemainders.size(),
-                    "cleanedRemainders",
-                    cleanedRemainders));
+            LogEvent.of(
+                "POPULATION_SETTLE",
+                SocialLogSource.SOCIAL_SETTLE,
+                "day",
+                day,
+                "households",
+                base.households().size(),
+                "births",
+                totalBirths,
+                "deaths",
+                totalDeaths,
+                "events",
+                events.size(),
+                "deltaHouseholds",
+                populationDeltas.size(),
+                "remainders",
+                finalRemainders.size(),
+                "cleanedRemainders",
+                cleanedRemainders));
     if (cleanedRemainders > 0) {
-      SocialLog.population()
+      EventLog.channel(SocialLog.settle())
           .warn(
-              "event=POPULATION_SETTLE_REMAINDERS_CLEANED "
-                  + SocialLog.kv("day", day, "count", cleanedRemainders));
+              LogEvent.of(
+                  "POPULATION_SETTLE_REMAINDERS_CLEANED",
+                  SocialLogSource.SOCIAL_SETTLE,
+                  "day",
+                  day,
+                  "count",
+                  cleanedRemainders));
     }
     return new VitalSettlementResult(data, populationDeltas, totalBirths, totalDeaths, day, events);
   }
@@ -908,28 +1064,37 @@ public final class HouseholdBook {
     try {
       return PopulationLots.born(mother, childSex, cohort);
     } catch (IllegalArgumentException malformedMotherLot) {
-      SocialLog.population()
+      EventLog.channel(SocialLog.settle())
           .warn(
-              "event=POPULATION_BIRTH_LOT_ID_FALLBACK "
-                  + SocialLog.kv(
-                      "household",
-                      householdId,
-                      "motherLot",
-                      mother.id(),
-                      "day",
-                      day,
-                      "sex",
-                      childSex,
-                      "reason",
-                      malformedMotherLot.getMessage()));
+              LogEvent.of(
+                  "POPULATION_BIRTH_LOT_ID_FALLBACK",
+                  SocialLogSource.SOCIAL_SETTLE,
+                  "household",
+                  householdId,
+                  "motherLot",
+                  mother.id(),
+                  "day",
+                  day,
+                  "sex",
+                  childSex,
+                  "reason",
+                  malformedMotherLot.getMessage()));
       return PeopleLotId.parse(
           "born:" + householdToken + ":" + mother.id().value() + ":" + day + ":" + childSex.name());
     }
   }
 
-  /** 结算路径的具名拒绝出口：ERROR 日志 + {@link IllegalArgumentException}（与 provisioning 同制）。 */
-  private static IllegalArgumentException vitalReject(String message) {
-    SocialLog.population().error("event=POPULATION_SETTLE_REJECTED reason={}", message);
+  /** 结算路径的具名拒绝出口：ERROR 日志（带 day）+ {@link IllegalArgumentException}（与 provisioning 同制）。 */
+  private static IllegalArgumentException vitalReject(long day, String message) {
+    EventLog.channel(SocialLog.settle())
+        .error(
+            LogEvent.of(
+                "POPULATION_SETTLE_REJECTED",
+                SocialLogSource.SOCIAL_SETTLE,
+                "day",
+                day,
+                "reason",
+                message));
     return new IllegalArgumentException(message);
   }
 
@@ -991,31 +1156,39 @@ public final class HouseholdBook {
       for (PopulationGroup group : data.groups().values()) {
         total += group.count();
       }
-      SocialLog.population()
-          .debug(
-              "event=POPULATION_CONSERVATION_CHECK "
-                  + SocialLog.kv(
-                      "ok",
-                      true,
-                      "households",
-                      data.households().size(),
-                      "lots",
-                      data.groups().size(),
-                      "population",
-                      total));
+      if (SocialLog.settle().isDebugEnabled()) {
+        EventLog.channel(SocialLog.settle())
+            .debug(
+                LogEvent.of(
+                    "POPULATION_CONSERVATION_CHECK",
+                    SocialLogSource.SOCIAL_SETTLE,
+                    "day",
+                    latestDay(data),
+                    "ok",
+                    true,
+                    "households",
+                    data.households().size(),
+                    "lots",
+                    data.groups().size(),
+                    "population",
+                    total));
+      }
     } catch (IllegalArgumentException failure) {
-      SocialLog.population()
+      EventLog.channel(SocialLog.settle())
           .error(
-              "event=POPULATION_CONSERVATION_CHECK "
-                  + SocialLog.kv(
-                      "ok",
-                      false,
-                      "households",
-                      data.households().size(),
-                      "lots",
-                      data.groups().size(),
-                      "error",
-                      failure.getMessage()));
+              LogEvent.of(
+                  "POPULATION_CONSERVATION_CHECK",
+                  SocialLogSource.SOCIAL_SETTLE,
+                  "day",
+                  latestDay(data),
+                  "ok",
+                  false,
+                  "households",
+                  data.households().size(),
+                  "lots",
+                  data.groups().size(),
+                  "error",
+                  failure.getMessage()));
       throw failure;
     }
     return data;
@@ -1294,111 +1467,137 @@ public final class HouseholdBook {
     return day;
   }
 
+  /** 按事件类型取来源：BIRTH/DEATH 是结算算法产物 ⇒ {@code SOCIAL_SETTLE}；其余写口事件 ⇒ {@code SOCIAL_COMMAND}。 */
+  private static SocialLogSource settlementOrigin(HouseholdPopulationEvent event) {
+    return switch (event.type()) {
+      case BIRTH, DEATH -> SocialLogSource.SOCIAL_SETTLE;
+      default -> SocialLogSource.SOCIAL_COMMAND;
+    };
+  }
+
   private static void logEvent(HouseholdPopulationEvent event) {
+    SocialLogSource origin = settlementOrigin(event);
     switch (event.type()) {
       case BIRTH ->
-          SocialLog.population()
+          EventLog.channel(SocialLog.population())
               .debug(
-                  "event=POPULATION_BIRTH "
-                      + SocialLog.kv(
-                          "household",
-                          event.householdId(),
-                          "sex",
-                          event.sex(),
-                          "ageBracket",
-                          event.ageBracketId(),
-                          "count",
-                          event.count(),
-                          "day",
-                          event.day()));
+                  LogEvent.of(
+                      "POPULATION_BIRTH",
+                      origin,
+                      "household",
+                      event.householdId(),
+                      "sex",
+                      event.sex(),
+                      "ageBracket",
+                      event.ageBracketId(),
+                      "count",
+                      event.count(),
+                      "day",
+                      event.day()));
       case DEATH ->
-          SocialLog.population()
+          EventLog.channel(SocialLog.population())
               .debug(
-                  "event=POPULATION_DEATH "
-                      + SocialLog.kv(
-                          "household",
-                          event.householdId(),
-                          "sex",
-                          event.sex(),
-                          "ageBracket",
-                          event.ageBracketId(),
-                          "count",
-                          event.count(),
-                          "day",
-                          event.day()));
+                  LogEvent.of(
+                      "POPULATION_DEATH",
+                      origin,
+                      "household",
+                      event.householdId(),
+                      "sex",
+                      event.sex(),
+                      "ageBracket",
+                      event.ageBracketId(),
+                      "count",
+                      event.count(),
+                      "day",
+                      event.day()));
       case TRANSFER_IN ->
-          SocialLog.population()
+          EventLog.channel(SocialLog.population())
               .info(
-                  "event=POPULATION_TRANSFER_IN "
-                      + SocialLog.kv(
-                          "to",
-                          event.householdId(),
-                          "lot",
-                          event.lotId(),
-                          "count",
-                          event.count(),
-                          "day",
-                          event.day()));
+                  LogEvent.of(
+                      "POPULATION_TRANSFER_IN",
+                      origin,
+                      "to",
+                      event.householdId(),
+                      "lot",
+                      event.lotId(),
+                      "count",
+                      event.count(),
+                      "day",
+                      event.day()));
       case TRANSFER_OUT ->
-          SocialLog.population()
+          EventLog.channel(SocialLog.population())
               .info(
-                  "event=POPULATION_TRANSFER_OUT "
-                      + SocialLog.kv(
-                          "from",
-                          event.householdId(),
-                          "lot",
-                          event.lotId(),
-                          "count",
-                          event.count(),
-                          "day",
-                          event.day()));
+                  LogEvent.of(
+                      "POPULATION_TRANSFER_OUT",
+                      origin,
+                      "from",
+                      event.householdId(),
+                      "lot",
+                      event.lotId(),
+                      "count",
+                      event.count(),
+                      "day",
+                      event.day()));
       case GM_ADJUST ->
-          SocialLog.population()
+          EventLog.channel(SocialLog.population())
               .info(
-                  "event=GM_POPULATION_ADJUST "
-                      + SocialLog.kv(
-                          "household",
-                          event.householdId(),
-                          "sex",
-                          event.sex(),
-                          "ageBracket",
-                          event.ageBracketId(),
-                          "delta",
-                          event.count(),
-                          "day",
-                          event.day()));
+                  LogEvent.of(
+                      "GM_POPULATION_ADJUST",
+                      origin,
+                      "household",
+                      event.householdId(),
+                      "sex",
+                      event.sex(),
+                      "ageBracket",
+                      event.ageBracketId(),
+                      "delta",
+                      event.count(),
+                      "day",
+                      event.day()));
       case RATE_SET ->
-          SocialLog.population()
+          EventLog.channel(SocialLog.population())
               .debug(
-                  "event=POPULATION_RATE_SET "
-                      + SocialLog.kv("household", event.householdId(), "day", event.day()));
+                  LogEvent.of(
+                      "POPULATION_RATE_SET",
+                      origin,
+                      "household",
+                      event.householdId(),
+                      "day",
+                      event.day()));
       case WORK_ORDER ->
-          SocialLog.event()
+          EventLog.channel(SocialLog.event())
               .debug(
-                  "event=POPULATION_WORK_ORDER_MARKER "
-                      + SocialLog.kv(
-                          "id", event.id(), "household", event.householdId(), "day", event.day()));
+                  LogEvent.of(
+                      "POPULATION_WORK_ORDER_MARKER",
+                      origin,
+                      "id",
+                      event.id(),
+                      "household",
+                      event.householdId(),
+                      "day",
+                      event.day()));
       default -> throw new IllegalStateException("未知 PopulationEventType: " + event.type());
     }
-    SocialLog.event()
+    EventLog.channel(SocialLog.event())
         .debug(
-            "event=POPULATION_EVENT "
-                + SocialLog.kv(
-                    "id",
-                    event.id(),
-                    "household",
-                    event.householdId(),
-                    "type",
-                    event.type(),
-                    "lot",
-                    event.lotId(),
-                    "count",
-                    event.count(),
-                    "day",
-                    event.day(),
-                    "reason",
-                    event.reason(),
-                    "source",
-                    event.source()));
+            LogEvent.of(
+                "POPULATION_EVENT",
+                origin,
+                "id",
+                event.id(),
+                "household",
+                event.householdId(),
+                "type",
+                event.type(),
+                "lot",
+                event.lotId(),
+                "count",
+                event.count(),
+                "day",
+                event.day(),
+                "reason",
+                event.reason(),
+                "source",
+                event.source()));
   }
 }

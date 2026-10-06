@@ -2,10 +2,14 @@ package io.mosire.simos.unit.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitLog;
+import io.mosire.simos.unit.UnitLogSource;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -43,14 +47,34 @@ public final class MergeFormationHandler implements CommandHandler, CommandTarge
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     UnitSnapshot snapshot = UnitSnapshots.of(state);
+    String childForLog = null;
     try {
       JsonNode payload = UnitPayloads.parse(payloadJson);
       UnitId childId = UnitId.parse(UnitPayloads.requireText(payload, "childId"));
+      childForLog = childId.value();
       UnitId parentId = UnitId.parse(UnitPayloads.requireText(payload, "parentId"));
       SimosTimestamp at = state.meta().timestamp();
       UnitState next = UnitOperations.mergeFormation(snapshot.state(), childId, parentId, at);
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_MERGE_FORMATION_APPLIED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "child",
+                  childId.value(),
+                  "parent",
+                  parentId.value()));
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_MERGE_FORMATION_REJECTED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "reason",
+                  UnitPayloads.logReason(e.getMessage()),
+                  "child",
+                  childForLog == null ? "-" : childForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

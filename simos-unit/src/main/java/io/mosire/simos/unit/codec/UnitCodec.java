@@ -9,10 +9,14 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitLog;
+import io.mosire.simos.unit.UnitLogSource;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
@@ -130,29 +134,94 @@ public final class UnitCodec implements ModuleCodec, ModuleDiffer {
 
   @Override
   public ChangeSet decodeChangeSet(String json) {
-    return readJson(json, UnitChangeSet.class);
+    UnitChangeSet changeSet = readJson(json, UnitChangeSet.class);
+    EventLog.channel(UnitLog.codec())
+        .debug(
+            LogEvent.of(
+                "UNIT_CODEC_DECODE_CHANGE_SET",
+                UnitLogSource.UNIT_CODEC,
+                "jsonLength",
+                json == null ? 0 : json.length(),
+                "unitsChanged",
+                changeSet.units().changed(),
+                "chainsChanged",
+                changeSet.commandChains().changed()));
+    return changeSet;
   }
 
   @Override
   public String encodeChangeSet(ChangeSet changeSet) {
-    return writeJson((UnitChangeSet) changeSet);
+    UnitChangeSet unitChangeSet = (UnitChangeSet) changeSet;
+    String json = writeJson(unitChangeSet);
+    EventLog.channel(UnitLog.codec())
+        .debug(
+            LogEvent.of(
+                "UNIT_CODEC_ENCODE_CHANGE_SET",
+                UnitLogSource.UNIT_CODEC,
+                "jsonLength",
+                json.length(),
+                "unitsChanged",
+                unitChangeSet.units().changed(),
+                "chainsChanged",
+                unitChangeSet.commandChains().changed()));
+    return json;
   }
 
   @Override
   public Snapshot decodeSnapshot(String json) {
-    return readJson(json, UnitSnapshot.class);
+    UnitSnapshot snapshot = readJson(json, UnitSnapshot.class);
+    EventLog.channel(UnitLog.codec())
+        .debug(
+            LogEvent.of(
+                "UNIT_CODEC_DECODE_SNAPSHOT",
+                UnitLogSource.UNIT_CODEC,
+                "jsonLength",
+                json == null ? 0 : json.length(),
+                "units",
+                snapshot.state().units().size(),
+                "chains",
+                snapshot.state().commandChains().size()));
+    return snapshot;
   }
 
   @Override
   public String encodeSnapshot(Snapshot snapshot) {
-    return writeJson(asUnitSnapshot(snapshot));
+    UnitSnapshot unitSnapshot = asUnitSnapshot(snapshot);
+    String json = writeJson(unitSnapshot);
+    EventLog.channel(UnitLog.codec())
+        .debug(
+            LogEvent.of(
+                "UNIT_CODEC_ENCODE_SNAPSHOT",
+                UnitLogSource.UNIT_CODEC,
+                "jsonLength",
+                json.length(),
+                "units",
+                unitSnapshot.state().units().size(),
+                "chains",
+                unitSnapshot.state().commandChains().size()));
+    return json;
   }
 
   /** 施加变更集，返回**新的**快照：ref/timestamp 来自 {@code newMeta}（C28），不是 base 的。 */
   @Override
   public Snapshot apply(ChangeSet changeSet, Snapshot base, StateMeta newMeta) {
     UnitSnapshot unitBase = asUnitSnapshot(base);
-    UnitState next = UnitChangeSet.apply((UnitChangeSet) changeSet, unitBase.state());
+    UnitChangeSet unitChangeSet = (UnitChangeSet) changeSet;
+    int baseUnits = unitBase.state().units().size();
+    UnitState next = UnitChangeSet.apply(unitChangeSet, unitBase.state());
+    EventLog.channel(UnitLog.codec())
+        .debug(
+            LogEvent.of(
+                "UNIT_CODEC_APPLY",
+                UnitLogSource.UNIT_CODEC,
+                "baseUnits",
+                baseUnits,
+                "targetUnits",
+                next.units().size(),
+                "unitsChanged",
+                unitChangeSet.units().changed(),
+                "chainsChanged",
+                unitChangeSet.commandChains().changed()));
     return new UnitSnapshot(newMeta.ref(), newMeta.timestamp(), next);
   }
 

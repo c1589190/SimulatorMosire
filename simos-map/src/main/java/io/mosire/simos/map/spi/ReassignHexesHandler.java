@@ -2,9 +2,13 @@ package io.mosire.simos.map.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.ops.RegionOperations;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -63,15 +67,45 @@ public final class ReassignHexesHandler implements CommandHandler, CommandTarget
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     GameMap base = MapSnapshots.of(state).map();
+    String targetForLog = null;
+    int sourcesForLog = -1;
+    int hexesForLog = -1;
     try {
       JsonNode payload = MapPayloads.parse(payloadJson);
       RegionId target = MapPayloads.requireRegionId(payload, "toRegionId");
+      targetForLog = target.value();
       Set<RegionId> sources =
           new LinkedHashSet<>(MapPayloads.requireRegionIds(payload, "fromRegionIds"));
+      sourcesForLog = sources.size();
       Set<HexCoord> hexes = MapPayloads.requireHexes(payload, "hexes");
-      return new HandlerOutcome.Applied(
-          RegionOperations.reassignHexes(base, target, sources, hexes));
+      hexesForLog = hexes.size();
+      var applied = RegionOperations.reassignHexes(base, target, sources, hexes);
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_REASSIGN_HEXES_APPLIED",
+                  MapLogSource.MAP_EDIT,
+                  "target",
+                  target.value(),
+                  "sources",
+                  sources.size(),
+                  "hexes",
+                  hexes.size()));
+      return new HandlerOutcome.Applied(applied);
     } catch (IllegalArgumentException e) {
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_REASSIGN_HEXES_REJECTED",
+                  MapLogSource.MAP_EDIT,
+                  "reason",
+                  MapPayloads.logReason(e.getMessage()),
+                  "target",
+                  targetForLog == null ? "-" : targetForLog,
+                  "sources",
+                  sourcesForLog < 0 ? "-" : sourcesForLog,
+                  "hexes",
+                  hexesForLog < 0 ? "-" : hexesForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

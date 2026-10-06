@@ -2,6 +2,7 @@ package io.mosire.simos.sd.time;
 
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatStageId;
@@ -23,6 +24,9 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.spi.TimeProposal;
 import io.mosire.simos.util.state.RevisionId;
@@ -38,7 +42,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import org.slf4j.Logger;
 
 /**
  * sd 侧的时间推进参与者（spec §五.2，C4）：**每个 sd 命名空间只有一个**（{@code putIfAbsent} 重复即抛）。
@@ -57,9 +60,9 @@ import org.slf4j.Logger;
  */
 public final class SdTimeParticipant implements TimeParticipant {
 
-  private static final Logger LOG = SdLog.time();
+  private static final LogChannel TIME = EventLog.channel(SdLog.time());
 
-  private static final Logger TRACE = SdLog.trace();
+  private static final LogChannel TRACE = EventLog.channel(SdLog.trace());
 
   private static final String NAMESPACE = "sd";
 
@@ -81,17 +84,48 @@ public final class SdTimeParticipant implements TimeParticipant {
     SdState base = sdOf(state);
     Optional<SimosTimestamp> to = range.to();
     if (to.isEmpty()) {
+      if (TIME.isDebugEnabled()) {
+        TIME.debug(
+            LogEvent.of(
+                "SD_ADVANCE_SKIPPED",
+                SdLogSource.SD_TICK,
+                "day",
+                range.from().tick(),
+                "from",
+                range.from().tick(),
+                "reason",
+                "range.to 缺省（无上界推进）"));
+      }
       return new TimeProposal(NAMESPACE, SdChangeSet.between(base, base), Set.of(), Set.of());
     }
     SimosTimestamp end = to.get();
-    LOG.debug(
-        "event=SD_ADVANCE_START from={} to={} effects={} combatStates={}",
-        range.from().tick(),
-        end.tick(),
-        base.effects().size(),
-        base.combatStates().size());
+    long startDay = range.from().tick();
+    long endDay = end.tick();
+    long days = endDay - startDay;
+    EventLog.channel(SdLog.time())
+        .info(
+            LogEvent.of(
+                "SD_ADVANCE_START",
+                SdLogSource.SD_TICK,
+                "day",
+                startDay,
+                "from",
+                startDay,
+                "to",
+                endDay,
+                "days",
+                days,
+                "effects",
+                base.effects().size(),
+                "combatStates",
+                base.combatStates().size()));
     long firedEffects = 0L;
     long advancedStages = 0L;
+    long effectsEvaluated = 0L;
+    long effectsStatusSkipped = 0L;
+    long triggersFalse = 0L;
+    long stagesChecked = 0L;
+    long stageExitsFalse = 0L;
     RevisionId atRevision = state.meta().ref().revision();
     UnitState units = unitsOf(state);
     Set<String> reads = new LinkedHashSet<>();
@@ -105,18 +139,27 @@ public final class SdTimeParticipant implements TimeParticipant {
     //   都按**日**推进。一次跳 100 天只按 to 求值，会把中间该发生的阶段转换/触发整段跳过（等价性当场破）。
     //   ★ 每天用**该日开始时的状态快照**（effects/combatStates/info 已含前几天的累计结果）求值，与"N 次单日推进"
     //     的逐步语义逐字一致——这就是等价性的根。
-    for (long day = range.from().tick() + 1L; day <= end.tick(); day++) {
+    for (long day = startDay + 1L; day <= endDay; day++) {
       SimosTimestamp at = SimosTimestamp.of(day);
       SdState todayBegin = base.withEffects(effects).withCombatStates(combatStates).withInfo(info);
+      long firedToday = 0L;
+      long evaluatedToday = 0L;
+      long statusSkippedToday = 0L;
+      long triggersFalseToday = 0L;
+      long stagesCheckedToday = 0L;
+      long stageExitsFalseToday = 0L;
 
       for (Effect effect : sortedEffects(todayBegin)) {
         if (effect.status() != EffectStatus.PLANNED && effect.status() != EffectStatus.COMMITTED) {
+          statusSkippedToday++;
           continue;
         }
+        evaluatedToday++;
         reads.add(effectAddress(effect.id()));
         collectTriggerReads(effect.trigger(), reads);
         if (!TriggerEvaluator.evaluate(
             effect.trigger(), at, todayBegin, units, effect.createdTick())) {
+          triggersFalseToday++;
           continue;
         }
         effects.put(
@@ -129,25 +172,34 @@ public final class SdTimeParticipant implements TimeParticipant {
                 EffectStatus.FIRED,
                 effect.createdTick()));
         firedEffects++;
+        firedToday++;
         if (TRACE.isTraceEnabled()) {
           TRACE.trace(
-              "event=SD_EFFECT_FIRED day={} id={} kind={} action={}",
-              day,
-              effect.id().value(),
-              effect.kind(),
-              effect.action().getClass().getSimpleName());
+              LogEvent.of(
+                  "SD_EFFECT_FIRED",
+                  SdLogSource.SD_TICK,
+                  "day",
+                  day,
+                  "id",
+                  effect.id().value(),
+                  "kind",
+                  effect.kind(),
+                  "action",
+                  effect.action().getClass().getSimpleName()));
         }
         writes.add(effectAddress(effect.id()));
         applyAction(
             effect.action(), atRevision, at.tick(), todayBegin, combatStates, info, reads, writes);
       }
 
+      long advancedToday = 0L;
       for (CombatState combatState : sortedStates(todayBegin)) {
         Combat combat = base.combats().get(combatState.combatId());
         CombatStage current = stageOf(combat, combatState.currentStage());
         if (current == null || current.exit().isEmpty()) {
           continue;
         }
+        stagesCheckedToday++;
         reads.add(stageAddress(combat.id(), current.id()));
         for (Trigger condition : current.exit()) {
           collectTriggerReads(condition, reads);
@@ -160,6 +212,7 @@ public final class SdTimeParticipant implements TimeParticipant {
           }
         }
         if (!satisfied) {
+          stageExitsFalseToday++;
           continue;
         }
         CombatStage next = nextStage(combat, current);
@@ -177,27 +230,85 @@ public final class SdTimeParticipant implements TimeParticipant {
                 combatState.selectedOutcome(),
                 combatState.losses()));
         advancedStages++;
+        advancedToday++;
         if (TRACE.isTraceEnabled()) {
           TRACE.trace(
-              "event=SD_COMBAT_STAGE_ADVANCED day={} combat={} from={} to={}",
-              day,
-              combat.id().value(),
-              current.id().value(),
-              next.id().value());
+              LogEvent.of(
+                  "SD_COMBAT_STAGE_ADVANCED",
+                  SdLogSource.SD_TICK,
+                  "day",
+                  day,
+                  "combat",
+                  combat.id().value(),
+                  "from",
+                  current.id().value(),
+                  "to",
+                  next.id().value()));
         }
         writes.add(stageAddress(combat.id(), next.id()));
+      }
+
+      effectsEvaluated += evaluatedToday;
+      effectsStatusSkipped += statusSkippedToday;
+      triggersFalse += triggersFalseToday;
+      stagesChecked += stagesCheckedToday;
+      stageExitsFalse += stageExitsFalseToday;
+      if (TIME.isDebugEnabled()) {
+        TIME.debug(
+            LogEvent.of(
+                "SD_ADVANCE_DAY",
+                SdLogSource.SD_TICK,
+                "day",
+                day,
+                "effectsEvaluated",
+                evaluatedToday,
+                "effectsFired",
+                firedToday,
+                "effectsStatusSkipped",
+                statusSkippedToday,
+                "triggersFalse",
+                triggersFalseToday,
+                "stagesChecked",
+                stagesCheckedToday,
+                "stagesAdvanced",
+                advancedToday,
+                "stageExitsFalse",
+                stageExitsFalseToday));
       }
     }
 
     SdState target = base.withEffects(effects).withCombatStates(combatStates).withInfo(info);
-    LOG.info(
-        "event=SD_ADVANCE_END from={} to={} firedEffects={} advancedStages={} effects={} combatStates={}",
-        range.from().tick(),
-        end.tick(),
-        firedEffects,
-        advancedStages,
-        effects.size(),
-        combatStates.size());
+    EventLog.channel(SdLog.time())
+        .info(
+            LogEvent.of(
+                "SD_ADVANCE_END",
+                SdLogSource.SD_TICK,
+                "day",
+                endDay,
+                "from",
+                startDay,
+                "to",
+                endDay,
+                "days",
+                days,
+                "firedEffects",
+                firedEffects,
+                "advancedStages",
+                advancedStages,
+                "effectsEvaluated",
+                effectsEvaluated,
+                "effectsStatusSkipped",
+                effectsStatusSkipped,
+                "triggersFalse",
+                triggersFalse,
+                "stagesChecked",
+                stagesChecked,
+                "stageExitsFalse",
+                stageExitsFalse,
+                "effects",
+                effects.size(),
+                "combatStates",
+                combatStates.size()));
     return new TimeProposal(NAMESPACE, SdChangeSet.between(base, target), reads, writes);
   }
 

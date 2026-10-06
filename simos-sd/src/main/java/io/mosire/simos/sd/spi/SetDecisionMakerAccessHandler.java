@@ -1,11 +1,15 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -56,22 +60,28 @@ public final class SetDecisionMakerAccessHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SdState base = SdSnapshots.of(state).state();
+    String dmForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       DecisionMakerId id =
           DecisionMakerId.parse(SdPayloads.requireText(payload, "decisionMakerId"));
+      dmForLog = id.value();
 
       DecisionMaker existing = base.decisionMakers().get(id);
       if (existing == null) {
-        return new HandlerOutcome.Rejected("决策人不存在: " + id.value());
+        return rejected("决策人不存在: " + id.value(), "dm", dmForLog);
       }
 
       Optional<Set<String>> allowedTools =
           SdPayloads.optionalTextSetIfPresent(payload, "allowedTools");
       if (allowedTools.isPresent()
           && allowedTools.get().contains(SdCommandNames.SIMOS_COMMAND_SUBMIT)) {
-        return new HandlerOutcome.Rejected(
-            "allowedTools 不得含通用写 " + SdCommandNames.SIMOS_COMMAND_SUBMIT + "（N9：决策 Agent 只用窄工具）");
+        return rejected(
+            "allowedTools 不得含通用写 " + SdCommandNames.SIMOS_COMMAND_SUBMIT + "（N9：决策 Agent 只用窄工具）",
+            "dm",
+            dmForLog,
+            "allowedTools",
+            allowedTools.get().size());
       }
 
       AccessLimit updated = SdPayloads.accessLimitOrKeep(existing.accessLimit(), payload);
@@ -88,9 +98,42 @@ public final class SetDecisionMakerAccessHandler implements CommandHandler {
               existing.conversationGeneration());
       Map<DecisionMakerId, DecisionMaker> makers = new LinkedHashMap<>(base.decisionMakers());
       makers.put(id, next);
+      EventLog.channel(SdLog.decision())
+          .info(
+              LogEvent.of(
+                  "SD_SET_DECISION_MAKER_ACCESS_APPLIED",
+                  SdLogSource.SD_NATION,
+                  "dm",
+                  id.value(),
+                  "allowedTools",
+                  next.allowedTools().size(),
+                  "allowedToolsProvided",
+                  allowedTools.isPresent(),
+                  "accessNamespaces",
+                  updated.prefixesByNamespace().size(),
+                  "redactedFields",
+                  updated.redactedFields().size(),
+                  "disclosure",
+                  updated.adjudicationDisclosure(),
+                  "decisionMakers",
+                  makers.size()));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDecisionMakers(makers)));
     } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
+      return rejected(e.getMessage(), "dm", dmForLog);
     }
+  }
+
+  /**
+   * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
+   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   */
+  private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
+    SdPayloads.logRejected(
+        SdLog.decision(),
+        SdLogSource.SD_NATION,
+        "SD_SET_DECISION_MAKER_ACCESS_REJECTED",
+        reason,
+        idKeyValues);
+    return new HandlerOutcome.Rejected(reason);
   }
 }

@@ -7,6 +7,8 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
@@ -15,6 +17,8 @@ import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -89,8 +93,10 @@ public final class ClearRegionHandler implements CommandHandler, CommandTargets,
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SocialData base = SocialSnapshots.of(state).data(); // 装配故障当场炸，不走拒绝路径
+    String regionForLog = null;
     try {
       String regionId = requireRegionId(SocialPayloads.parse(payloadJson));
+      regionForLog = regionId;
       Region region = requireRegion(state, regionId);
       Set<HexCoord> hexes = region.hexes();
       // ★ S2：位置在 households 的 location 上。先挑出命中的家户与其成员批次，再一起删——
@@ -121,6 +127,25 @@ public final class ClearRegionHandler implements CommandHandler, CommandTargets,
               city ->
                   hexes.contains(city.at())
                       || city.region().filter(region.id()::equals).isPresent());
+      if (SocialLog.command().isDebugEnabled()) {
+        EventLog.channel(SocialLog.command())
+            .debug(
+                LogEvent.of(
+                    "SOCIAL_CLEAR_REGION_PLAN",
+                    SocialLogSource.SOCIAL_COMMAND,
+                    "region",
+                    region.id().value(),
+                    "hexes",
+                    hexes.size(),
+                    "households",
+                    doomed.size(),
+                    "lots",
+                    doomedLots.size(),
+                    "populations",
+                    base.populations().size() - populations.size(),
+                    "cities",
+                    base.cities().size() - cities.size()));
+      }
       SocialData next =
           new SocialData(
               populations,
@@ -131,9 +156,33 @@ public final class ClearRegionHandler implements CommandHandler, CommandTargets,
               base.provisioning(),
               base.vitalRates(),
               base.vitalRemainders());
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_CLEAR_REGION_APPLIED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "region",
+                  region.id().value(),
+                  "households",
+                  doomed.size(),
+                  "lots",
+                  doomedLots.size(),
+                  "populations",
+                  base.populations().size() - populations.size(),
+                  "cities",
+                  base.cities().size() - cities.size()));
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
       // ★ 域构造期守卫（若清空边界写错）也在这里折成具名拒绝，不穿成整条推进失败。
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_CLEAR_REGION_REJECTED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "reason",
+                  SocialPayloads.logReason(e.getMessage()),
+                  "region",
+                  regionForLog == null ? "-" : regionForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

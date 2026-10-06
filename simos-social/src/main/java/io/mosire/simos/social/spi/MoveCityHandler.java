@@ -5,8 +5,13 @@ import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.city.CityOperations;
+import io.mosire.simos.social.city.SocialCity;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -56,15 +61,42 @@ public final class MoveCityHandler implements CommandHandler, CommandTargets, Gm
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SocialData base = SocialSnapshots.of(state).data();
+    String cityForLog = null;
     try {
       JsonNode payload = SocialPayloads.parse(payloadJson);
       CityId id = CityId.parse(SocialPayloads.requireText(payload, "id"));
+      cityForLog = id.value();
       HexCoord at = SocialPayloads.requireHex(payload, "at");
       Optional<Optional<RegionId>> region = optionalRegion(payload);
+      SocialCity before = base.cities().get(id);
       SocialData next =
           CityOperations.move(base, id, at, region.orElse(Optional.empty()), region.isPresent());
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_MOVE_CITY_APPLIED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "city",
+                  id.value(),
+                  "from",
+                  before == null ? "-" : before.at(),
+                  "to",
+                  at,
+                  "region",
+                  region.isPresent()
+                      ? region.get().map(RegionId::value).orElse("(cleared)")
+                      : "(unchanged)"));
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_MOVE_CITY_REJECTED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "reason",
+                  SocialPayloads.logReason(e.getMessage()),
+                  "city",
+                  cityForLog == null ? "-" : cityForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

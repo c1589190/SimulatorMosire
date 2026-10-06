@@ -2,8 +2,12 @@ package io.mosire.simos.map.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.GameMap;
+import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.ops.PathwayGroupOperations;
 import io.mosire.simos.map.pathway.PathwayGroup;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -38,11 +42,35 @@ public final class RegisterPathwayGroupHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     GameMap map = MapSnapshots.of(state).map(); // 装配故障当场炸，不走拒绝路径
+    String groupForLog = "-";
     try {
       JsonNode payload = MapPayloads.parse(payloadJson);
+      JsonNode idNode = payload.get("id");
+      if (idNode != null && idNode.isTextual()) {
+        groupForLog = idNode.asText();
+      }
       PathwayGroup group = MapPayloads.requirePathwayGroup(payload);
-      return new HandlerOutcome.Applied(PathwayGroupOperations.register(map, group));
+      var applied = PathwayGroupOperations.register(map, group);
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_REGISTER_PATHWAY_GROUP_APPLIED",
+                  MapLogSource.MAP_EDIT,
+                  "group",
+                  group.id(),
+                  "properties",
+                  group.properties().size()));
+      return new HandlerOutcome.Applied(applied);
     } catch (IllegalArgumentException e) {
+      EventLog.channel(MapLog.edit())
+          .info(
+              LogEvent.of(
+                  "MAP_REGISTER_PATHWAY_GROUP_REJECTED",
+                  MapLogSource.MAP_EDIT,
+                  "reason",
+                  MapPayloads.logReason(e.getMessage()),
+                  "group",
+                  groupForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

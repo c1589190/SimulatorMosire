@@ -1,6 +1,8 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.id.MergedEffectPlanId;
@@ -10,6 +12,8 @@ import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.sd.model.PacketStatus;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -71,77 +75,173 @@ public final class DecideDecisionPacketHandler implements CommandHandler, Comman
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SdState base = SdSnapshots.of(state).state();
+    String packetForLog = null;
+    String decisionForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       DecisionPacketId id = DecisionPacketId.parse(SdPayloads.requireText(payload, "id"));
+      packetForLog = id.value();
       String decision = SdPayloads.requireText(payload, "decision").trim();
+      decisionForLog = decision;
       String decidedBy = SdPayloads.requireText(payload, "decidedBy");
       Optional<String> note = SdPayloads.optionalText(payload, "note");
       Optional<Set<Integer>> callIndexes = optionalCallIndexes(payload, "callIndexes");
       DecisionPacket packet = base.decisionPackets().get(id);
       if (packet == null) {
-        return new HandlerOutcome.Rejected("决策包不存在: " + id.value());
+        return rejected("决策包不存在: " + id.value(), "packet", packetForLog);
       }
       if (packet.status() != PacketStatus.PENDING) {
-        return new HandlerOutcome.Rejected(
-            "只有 PENDING 决策包可裁决，当前状态: " + packet.status() + "（" + id.value() + "）");
+        return rejected(
+            "只有 PENDING 决策包可裁决，当前状态: " + packet.status() + "（" + id.value() + "）",
+            "packet",
+            packetForLog,
+            "status",
+            packet.status());
       }
       long decidedAtRevision = state.meta().ref().revision().value();
       Optional<String> mergedPlanId = SdPayloads.optionalText(payload, "mergedPlanId");
       if (!"APPROVE".equals(decision) && !"DENY".equals(decision) && !"MERGE".equals(decision)) {
-        return new HandlerOutcome.Rejected("decision 只允许 APPROVE|DENY|MERGE: " + decision);
+        return rejected(
+            "decision 只允许 APPROVE|DENY|MERGE: " + decision,
+            "packet",
+            packetForLog,
+            "decision",
+            decisionForLog);
       }
       if ("MERGE".equals(decision)) {
         if (callIndexes.isPresent()) {
-          return new HandlerOutcome.Rejected("MERGE 与 callIndexes 互斥：MERGE 是整包并入合并计划");
+          return rejected(
+              "MERGE 与 callIndexes 互斥：MERGE 是整包并入合并计划",
+              "packet",
+              packetForLog,
+              "decision",
+              decisionForLog);
         }
         if (mergedPlanId.isEmpty()) {
-          return new HandlerOutcome.Rejected("decision=MERGE 时必须给 mergedPlanId");
+          return rejected(
+              "decision=MERGE 时必须给 mergedPlanId",
+              "packet",
+              packetForLog,
+              "decision",
+              decisionForLog);
         }
         MergedEffectPlanId planId = MergedEffectPlanId.parse(mergedPlanId.get());
         MergedEffectPlan plan = base.mergedEffectPlans().get(planId);
         if (plan == null) {
-          return new HandlerOutcome.Rejected("合并计划不存在: " + planId.value());
+          return rejected(
+              "合并计划不存在: " + planId.value(), "packet", packetForLog, "mergedPlan", planId.value());
         }
         Map<DecisionPacketId, DecisionPacket> next = new LinkedHashMap<>(base.decisionPackets());
-        next.put(
-            id,
+        DecisionPacket mergedPacket =
             packet.withDecision(
                 PacketStatus.MERGED,
                 mergePending(packet.calls(), planId.value()),
                 Optional.of(decidedBy),
                 OptionalLong.of(decidedAtRevision),
-                note));
+                note);
+        next.put(id, mergedPacket);
+        EventLog.channel(SdLog.decision())
+            .info(
+                LogEvent.of(
+                    "SD_DECIDE_DECISION_PACKET_APPLIED",
+                    SdLogSource.SD_DECISION,
+                    "packet",
+                    id.value(),
+                    "decision",
+                    decision,
+                    "status",
+                    mergedPacket.status(),
+                    "calls",
+                    mergedPacket.calls().size(),
+                    "approved",
+                    countStatus(mergedPacket.calls(), CallStatus.APPROVED),
+                    "rejected",
+                    countStatus(mergedPacket.calls(), CallStatus.REJECTED),
+                    "merged",
+                    countStatus(mergedPacket.calls(), CallStatus.MERGED),
+                    "mergedPlan",
+                    planId.value(),
+                    "decidedBy",
+                    decidedBy,
+                    "notePresent",
+                    note.isPresent()));
         return new HandlerOutcome.Applied(
             SdChangeSet.between(base, base.withDecisionPackets(next)));
       }
       if (mergedPlanId.isPresent()) {
-        return new HandlerOutcome.Rejected("mergedPlanId 只在 decision=MERGE 时有意义");
+        return rejected(
+            "mergedPlanId 只在 decision=MERGE 时有意义",
+            "packet",
+            packetForLog,
+            "decision",
+            decisionForLog);
       }
       List<FormattedCall> nextCalls =
           "DENY".equals(decision)
               ? rejectAll(packet.calls())
               : approve(packet.calls(), callIndexes.orElse(Set.of()));
       if ("APPROVE".equals(decision) && callIndexes.isPresent() && nextCalls.isEmpty()) {
-        return new HandlerOutcome.Rejected("决策包没有可裁决的 call: " + id.value());
+        return rejected(
+            "决策包没有可裁决的 call: " + id.value(), "packet", packetForLog, "decision", decisionForLog);
       }
       PacketStatus nextStatus =
           "DENY".equals(decision)
               ? PacketStatus.REJECTED
               : approvedStatus(packet.calls(), callIndexes);
       Map<DecisionPacketId, DecisionPacket> next = new LinkedHashMap<>(base.decisionPackets());
-      next.put(
-          id,
+      DecisionPacket decidedPacket =
           packet.withDecision(
               nextStatus,
               nextCalls,
               Optional.of(decidedBy),
               OptionalLong.of(decidedAtRevision),
-              note));
+              note);
+      next.put(id, decidedPacket);
+      EventLog.channel(SdLog.decision())
+          .info(
+              LogEvent.of(
+                  "SD_DECIDE_DECISION_PACKET_APPLIED",
+                  SdLogSource.SD_DECISION,
+                  "packet",
+                  id.value(),
+                  "decision",
+                  decision,
+                  "status",
+                  nextStatus,
+                  "calls",
+                  nextCalls.size(),
+                  "approved",
+                  countStatus(nextCalls, CallStatus.APPROVED),
+                  "rejected",
+                  countStatus(nextCalls, CallStatus.REJECTED),
+                  "merged",
+                  countStatus(nextCalls, CallStatus.MERGED),
+                  "decidedBy",
+                  decidedBy,
+                  "notePresent",
+                  note.isPresent()));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDecisionPackets(next)));
     } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
+      return rejected(e.getMessage(), "packet", packetForLog, "decision", decisionForLog);
     }
+  }
+
+  /**
+   * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
+   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   */
+  private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
+    SdPayloads.logRejected(
+        SdLog.decision(),
+        SdLogSource.SD_DECISION,
+        "SD_DECIDE_DECISION_PACKET_REJECTED",
+        reason,
+        idKeyValues);
+    return new HandlerOutcome.Rejected(reason);
+  }
+
+  private static long countStatus(List<FormattedCall> calls, CallStatus status) {
+    return calls.stream().filter(call -> call.status() == status).count();
   }
 
   private static List<FormattedCall> rejectAll(List<FormattedCall> calls) {

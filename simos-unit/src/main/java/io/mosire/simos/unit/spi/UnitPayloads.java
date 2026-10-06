@@ -47,6 +47,33 @@ final class UnitPayloads {
 
   private UnitPayloads() {}
 
+  /**
+   * ★ <b>日志安全的拒绝理由</b>：本类的校验消息为方便调用方排查会回显字段值/整段载荷，但日志纪律禁止载荷明文与 JSON 原文（plan §4.3）。 这里只保留可读前缀——截到第一个
+   * JSON 起始符/换行；{@code payload ...} 这一类原始文本消息再截到冒号，避免把调用方原文带进日志。 截断只影响日志文本，不影响异常本身，也不改 {@code
+   * Rejected} 的理由。
+   */
+  static String logReason(String message) {
+    if (message == null || message.isBlank()) {
+      return "unknown";
+    }
+    String text = message.strip();
+    int cut = text.length();
+    for (char marker : new char[] {'{', '[', '\n', '\r'}) {
+      int at = text.indexOf(marker);
+      if (at >= 0 && at < cut) {
+        cut = at;
+      }
+    }
+    if (text.startsWith("payload ")) {
+      int colon = text.indexOf(':');
+      if (colon >= 0 && colon < cut) {
+        cut = colon;
+      }
+    }
+    String reason = text.substring(0, cut).strip();
+    return reason.isEmpty() ? "unknown" : reason;
+  }
+
   /** 解析载荷文本：非 JSON、或不是 JSON 对象 ⇒ 抛。 */
   static JsonNode parse(String payloadJson) {
     Objects.requireNonNull(payloadJson, "payloadJson");

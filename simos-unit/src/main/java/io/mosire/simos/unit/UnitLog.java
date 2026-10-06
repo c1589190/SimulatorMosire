@@ -14,16 +14,19 @@ import org.slf4j.LoggerFactory;
  *   <caption>分类与用途</caption>
  *   <tr><th>取用方法</th><th>logger 名</th><th>记什么</th></tr>
  *   <tr><td>{@link #household()}</td><td>{@code .household}</td><td>unit 侧家户容纳生命周期：整体替换、加入、移出</td></tr>
- *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td>逐项明细（逐家户 id、逐 unit 列表）</td></tr>
+ *   <tr><td>{@link #command()}</td><td>{@code .command}</td><td>单位/编制/公务/路线写命令处理（成功与具名拒绝）</td></tr>
+ *   <tr><td>{@link #advance()}</td><td>{@code .advance}</td><td>每 tick 推进：在途移动/整支搬运/回归重规划</td></tr>
+ *   <tr><td>{@link #codec()}</td><td>{@code .codec}</td><td>UnitCodec 编解码与变更集施加（只记元信息，不记 JSON 原文）</td></tr>
+ *   <tr><td>{@link #resolve()}</td><td>{@code .resolve}</td><td>UnitResolver 空候选与装配故障诊断（不逐次记成功查询）</td></tr>
+ *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td>逐项明细（逐家户 id、逐 unit 列表、逐单位移动）</td></tr>
  * </table>
  *
  * <p><b>级别约定</b>（消费者按级别裁剪）：
  *
  * <ul>
- *   <li><b>INFO</b>：生命周期事件——{@code UNIT_HOUSEHOLDS_SET} / {@code UNIT_HOUSEHOLD_ASSIGN} / {@code
- *       UNIT_HOUSEHOLD_DETACH}；
- *   <li><b>DEBUG</b>：对账（家户位置 ↔ unit 列表一致性的汇总读数）；
- *   <li><b>TRACE</b>：逐项明细（逐家户 id、逐 unit 列表）。
+ *   <li><b>INFO</b>：生命周期事件——命令写口成功/被拒（{@code *_APPLIED} / {@code *_REJECTED}）、推进 START/END；
+ *   <li><b>DEBUG</b>：对账/判据（家户位置 ↔ unit 列表一致性、字段级拒绝理由、逐单位跳过原因）；
+ *   <li><b>TRACE</b>：逐项明细（逐家户 id、逐 unit 列表、逐单位移动）。
  * </ul>
  *
  * <p><b>打开方式</b>：应用配置（{@code simos-app/src/main/resources/log4j2.xml}）把 {@value #ROOT_LOGGER_NAME}
@@ -43,9 +46,17 @@ public final class UnitLog {
   public static final String ROOT_LOGGER_NAME = "io.mosire.simos.unit";
 
   public static final String HOUSEHOLD_LOGGER_NAME = ROOT_LOGGER_NAME + ".household";
+  public static final String COMMAND_LOGGER_NAME = ROOT_LOGGER_NAME + ".command";
+  public static final String ADVANCE_LOGGER_NAME = ROOT_LOGGER_NAME + ".advance";
+  public static final String CODEC_LOGGER_NAME = ROOT_LOGGER_NAME + ".codec";
+  public static final String RESOLVE_LOGGER_NAME = ROOT_LOGGER_NAME + ".resolve";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
 
   private static final Logger HOUSEHOLD = LoggerFactory.getLogger(HOUSEHOLD_LOGGER_NAME);
+  private static final Logger COMMAND = LoggerFactory.getLogger(COMMAND_LOGGER_NAME);
+  private static final Logger ADVANCE = LoggerFactory.getLogger(ADVANCE_LOGGER_NAME);
+  private static final Logger CODEC = LoggerFactory.getLogger(CODEC_LOGGER_NAME);
+  private static final Logger RESOLVE = LoggerFactory.getLogger(RESOLVE_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
   private UnitLog() {}
@@ -53,6 +64,26 @@ public final class UnitLog {
   /** unit 侧家户容纳生命周期：整体替换、加入、移出。 */
   public static Logger household() {
     return HOUSEHOLD;
+  }
+
+  /** 单位/编制/公务/路线写命令处理：成功 {@code *_APPLIED} 与具名拒绝 {@code *_REJECTED}。 */
+  public static Logger command() {
+    return COMMAND;
+  }
+
+  /** 每 tick 推进：在途移动/整支搬运/回归重规划（START/END/跳过判据）。 */
+  public static Logger advance() {
+    return ADVANCE;
+  }
+
+  /** UnitCodec 编解码与变更集施加（只记元信息，不记 JSON 原文）。 */
+  public static Logger codec() {
+    return CODEC;
+  }
+
+  /** UnitResolver 空候选与装配故障诊断（不逐次记成功查询）。 */
+  public static Logger resolve() {
+    return RESOLVE;
   }
 
   /** 逐项明细（逐家户 id、逐 unit 列表）。 */

@@ -5,10 +5,14 @@ import io.mosire.simos.unit.ArmyFormation;
 import io.mosire.simos.unit.MilitaryDutyOfHousehold;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitLog;
+import io.mosire.simos.unit.UnitLogSource;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -76,9 +80,11 @@ public final class SetArmyFormationHandler implements CommandHandler, CommandTar
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     UnitSnapshot snapshot = UnitSnapshots.of(state); // 装配故障当场炸，不走拒绝路径
+    String unitForLog = null;
     try {
       JsonNode payload = UnitPayloads.parse(payloadJson);
       UnitId id = UnitId.parse(UnitPayloads.requireText(payload, "unitId"));
+      unitForLog = id.value();
       Optional<UnitId> masterGov = UnitPayloads.optionalId(payload, "masterGov");
       String role = UnitPayloads.requireText(payload, "role");
       // ★ S3b：householdDuties 与 GOV households 同款兼容口径——载荷缺席 ⇒ 保持既有军官配置（不是清空）。
@@ -93,8 +99,30 @@ public final class SetArmyFormationHandler implements CommandHandler, CommandTar
       ArmyFormation formation =
           new ArmyFormation(masterGov, role, militaryDutiesOfHousehold, militaryPayPolicy);
       UnitState next = UnitOperations.setArmyFormation(snapshot.state(), id, formation);
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_SET_ARMY_FORMATION_APPLIED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "unit",
+                  id.value(),
+                  "role",
+                  role,
+                  "masterGov",
+                  masterGov.map(UnitId::value).orElse("-"),
+                  "duties",
+                  militaryDutiesOfHousehold.size()));
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_SET_ARMY_FORMATION_REJECTED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "reason",
+                  UnitPayloads.logReason(e.getMessage()),
+                  "unit",
+                  unitForLog == null ? "-" : unitForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

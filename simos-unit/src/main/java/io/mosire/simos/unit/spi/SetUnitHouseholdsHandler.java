@@ -4,10 +4,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitLog;
+import io.mosire.simos.unit.UnitLogSource;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -54,15 +57,26 @@ public final class SetUnitHouseholdsHandler implements CommandHandler, CommandTa
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     UnitSnapshot snapshot = UnitSnapshots.of(state); // 装配故障当场炸，不走拒绝路径
+    String unitForLog = null;
     try {
       JsonNode payload = UnitPayloads.parse(payloadJson);
       UnitId id = UnitId.parse(UnitPayloads.requireText(payload, "unitId"));
+      unitForLog = id.value();
       List<HouseholdId> households = UnitPayloads.requireHouseholdIds(payload, "households");
       String reason = requireReason(payload);
       UnitState next = UnitOperations.setUnitHouseholds(snapshot.state(), id, households);
       logApplied(id, households, reason);
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_SET_UNIT_HOUSEHOLDS_REJECTED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "reason",
+                  UnitPayloads.logReason(e.getMessage()),
+                  "unit",
+                  unitForLog == null ? "-" : unitForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }
@@ -76,26 +90,34 @@ public final class SetUnitHouseholdsHandler implements CommandHandler, CommandTa
     return reason;
   }
 
-  /** INFO 生命周期一条 + TRACE 逐家户明细（架构 §6 的 UNIT_HOUSEHOLDS_SET）。 */
+  /** INFO 生命周期一条 + TRACE 逐家户明细（架构 §6 的 UNIT_HOUSEHOLDS_SET；事件名/字段被既有测试断言，保留）。 */
   private static void logApplied(UnitId id, List<HouseholdId> households, String reason) {
-    UnitLog.household()
+    EventLog.channel(UnitLog.household())
         .info(
-            "event=UNIT_HOUSEHOLDS_SET "
-                + UnitLog.kv(
-                    "unit",
-                    id,
-                    "count",
-                    households.size(),
-                    "households",
-                    households,
-                    "reason",
-                    reason));
+            LogEvent.of(
+                "UNIT_HOUSEHOLDS_SET",
+                UnitLogSource.UNIT_COMMAND,
+                "unit",
+                id,
+                "count",
+                households.size(),
+                "households",
+                households,
+                "reason",
+                reason));
     if (UnitLog.trace().isTraceEnabled()) {
       for (HouseholdId household : households) {
-        UnitLog.trace()
+        EventLog.channel(UnitLog.trace())
             .trace(
-                "event=UNIT_HOUSEHOLD_SET_ITEM "
-                    + UnitLog.kv("unit", id, "household", household, "reason", reason));
+                LogEvent.of(
+                    "UNIT_HOUSEHOLD_SET_ITEM",
+                    UnitLogSource.UNIT_COMMAND,
+                    "unit",
+                    id,
+                    "household",
+                    household,
+                    "reason",
+                    reason));
       }
     }
   }

@@ -4,8 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.city.SocialCity;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -58,11 +62,22 @@ public final class UpdateCityHandler implements CommandHandler, CommandTargets {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SocialData base = SocialSnapshots.of(state).data();
+    String cityForLog = null;
     try {
       JsonNode payload = SocialPayloads.parse(payloadJson);
       CityId id = CityId.parse(SocialPayloads.requireText(payload, "id"));
+      cityForLog = id.value();
       SocialCity existing = base.cities().get(id);
       if (existing == null) {
+        EventLog.channel(SocialLog.command())
+            .info(
+                LogEvent.of(
+                    "SOCIAL_UPDATE_CITY_REJECTED",
+                    SocialLogSource.SOCIAL_COMMAND,
+                    "reason",
+                    SocialPayloads.logReason("城市不存在: " + id),
+                    "city",
+                    id.value()));
         return new HandlerOutcome.Rejected("城市不存在: " + id);
       }
       String name = SocialPayloads.optionalText(payload, "name");
@@ -70,21 +85,48 @@ public final class UpdateCityHandler implements CommandHandler, CommandTargets {
       Map<String, Object> props = SocialPayloads.optionalProps(payload, "props");
       Optional<Optional<RegionId>> region = optionalRegion(payload);
       SocialCity updated = existing;
+      int nameChanges = 0;
       if (name != null) {
         updated = updated.withName(name); // 空白名由 SocialCity 构造期拒
+        nameChanges = 1;
       }
+      int propsMerged = 0;
       if (props != null) {
         Map<String, Object> merged = new LinkedHashMap<>(updated.props());
         merged.putAll(props); // ★ 合并：已有键保留，同键覆盖
         updated = updated.withProps(merged);
+        propsMerged = props.size();
       }
       if (region.isPresent()) {
         updated = updated.withRegion(region.get()); // 键缺席时外层为空，走不到这里；get() 恒非 null
       }
       Map<CityId, SocialCity> next = new LinkedHashMap<>(base.cities());
       next.put(id, updated);
-      return new HandlerOutcome.Applied(SocialChangeSet.between(base, base.withCities(next)));
+      SocialData result = base.withCities(next);
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_UPDATE_CITY_APPLIED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "city",
+                  id.value(),
+                  "nameChanges",
+                  nameChanges,
+                  "propsMerged",
+                  propsMerged,
+                  "regionChanged",
+                  region.isPresent()));
+      return new HandlerOutcome.Applied(SocialChangeSet.between(base, result));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_UPDATE_CITY_REJECTED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "reason",
+                  SocialPayloads.logReason(e.getMessage()),
+                  "city",
+                  cityForLog == null ? "-" : cityForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

@@ -5,8 +5,12 @@ import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.city.SocialCity;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -58,9 +62,11 @@ public final class CreateCityHandler implements CommandHandler, CommandTargets {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SocialData base = SocialSnapshots.of(state).data();
+    String cityForLog = null;
     try {
       JsonNode payload = SocialPayloads.parse(payloadJson);
       CityId id = CityId.parse(SocialPayloads.requireText(payload, "id"));
+      cityForLog = id.value();
       String name = SocialPayloads.requireText(payload, "name");
       HexCoord at = SocialPayloads.requireHex(payload, "at");
       Optional<RegionId> region =
@@ -69,13 +75,47 @@ public final class CreateCityHandler implements CommandHandler, CommandTargets {
       SocialPayloads.rejectRetiredPopulation(payload, "social.CreateCity");
       Map<String, Object> props = SocialPayloads.optionalProps(payload, "props");
       if (base.cities().containsKey(id)) {
+        EventLog.channel(SocialLog.command())
+            .info(
+                LogEvent.of(
+                    "SOCIAL_CREATE_CITY_REJECTED",
+                    SocialLogSource.SOCIAL_COMMAND,
+                    "reason",
+                    SocialPayloads.logReason("城市已存在: " + id),
+                    "city",
+                    id.value()));
         return new HandlerOutcome.Rejected("城市已存在: " + id);
       }
       SocialCity city = new SocialCity(id, name, at, region, props == null ? Map.of() : props);
       Map<CityId, SocialCity> next = new LinkedHashMap<>(base.cities());
       next.put(id, city);
-      return new HandlerOutcome.Applied(SocialChangeSet.between(base, base.withCities(next)));
+      SocialData updated = base.withCities(next);
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_CREATE_CITY_APPLIED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "city",
+                  id.value(),
+                  "at",
+                  at,
+                  "region",
+                  region.map(RegionId::value).orElse("-"),
+                  "props",
+                  city.props().size(),
+                  "cities",
+                  updated.cities().size()));
+      return new HandlerOutcome.Applied(SocialChangeSet.between(base, updated));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_CREATE_CITY_REJECTED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "reason",
+                  SocialPayloads.logReason(e.getMessage()),
+                  "city",
+                  cityForLog == null ? "-" : cityForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

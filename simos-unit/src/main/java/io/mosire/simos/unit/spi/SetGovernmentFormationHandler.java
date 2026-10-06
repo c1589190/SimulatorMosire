@@ -9,10 +9,14 @@ import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitLog;
+import io.mosire.simos.unit.UnitLogSource;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -64,6 +68,7 @@ public final class SetGovernmentFormationHandler implements CommandHandler, Comm
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     UnitSnapshot snapshot = UnitSnapshots.of(state); // 装配故障当场炸，不走拒绝路径
+    String unitForLog = null;
     try {
       JsonNode payload = UnitPayloads.parse(payloadJson);
       // ★ 2026-10-09 唯一列表裁定：本命令不再接收 households（线格式键已删）——静默忽略等于让旧调用点
@@ -75,6 +80,7 @@ public final class SetGovernmentFormationHandler implements CommandHandler, Comm
                 + "其余家户请走 unit.SetUnitHouseholds（GOV 单位须保留该政府家户）");
       }
       UnitId id = UnitId.parse(UnitPayloads.requireText(payload, "unitId"));
+      unitForLog = id.value();
       GovernmentLevel level = UnitPayloads.requireGovernmentLevel(payload, "level");
       Optional<UnitId> superiorGov = UnitPayloads.optionalId(payload, "superiorGov");
       Map<StaffRole, Long> staff = UnitPayloads.optionalStaffMap(payload, "staff").orElse(Map.of());
@@ -86,8 +92,28 @@ public final class SetGovernmentFormationHandler implements CommandHandler, Comm
       GovernmentFormation formation =
           new GovernmentFormation(staff, governmentPostsOfHousehold, policy, superiorGov, level);
       UnitState next = UnitOperations.setGovernmentFormation(snapshot.state(), id, formation);
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_SET_GOV_FORMATION_APPLIED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "unit",
+                  id.value(),
+                  "level",
+                  level,
+                  "staff",
+                  staff.size()));
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_SET_GOV_FORMATION_REJECTED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "reason",
+                  UnitPayloads.logReason(e.getMessage()),
+                  "unit",
+                  unitForLog == null ? "-" : unitForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

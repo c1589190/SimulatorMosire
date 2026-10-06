@@ -1,6 +1,8 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.SdInfoId;
@@ -10,6 +12,8 @@ import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.SdInfoIds;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.address.Address;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.RevisionId;
@@ -71,10 +75,16 @@ public final class PutInfoHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SdState base = SdSnapshots.of(state).state();
+    String addressForLog = null;
+    String keyForLog = null;
+    String infoIdForLog = null;
+    Long tickForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       Address address = SdPayloads.requireAddress(payload, "address");
+      addressForLog = address.canonical();
       String key = SdPayloads.requireText(payload, "key");
+      keyForLog = key;
       Object value = SdPayloads.requireValue(payload, "value");
       Optional<String> note = SdPayloads.optionalText(payload, "note");
       Set<DecisionMakerId> tags = parseTags(payload);
@@ -88,18 +98,33 @@ public final class PutInfoHandler implements CommandHandler {
       //   只收当前 tick，那些令的**决策结果**将永远归不到正确的 tick 上（制造孤儿）。语义是：命令的**效果**仍落在
       //   当下（世界在 current tick），只是**条目带该 tick**（归属正确）。★ 未来 tick 照旧拒（与"令不得记在未来"同口径）。
       long tick = SdPayloads.optionalLong(payload, "tick", worldTick);
+      tickForLog = tick;
       if (tick > worldTick) {
-        return new HandlerOutcome.Rejected(
-            "INFO 不得记在未来：载荷 tick " + tick + " > 世界 tick " + worldTick);
+        return rejected(
+            "INFO 不得记在未来：载荷 tick " + tick + " > 世界 tick " + worldTick,
+            "address",
+            addressForLog,
+            "key",
+            keyForLog,
+            "tick",
+            tickForLog);
       }
       String mapKey = address.canonical();
       Map<String, List<SdInfoEntry>> next = new LinkedHashMap<>(base.info());
       List<SdInfoEntry> entries = new ArrayList<>(next.getOrDefault(mapKey, List.of()));
       SdInfoId id = explicitId.orElseGet(() -> SdInfoIds.synthesize(mapKey, entries.size()));
+      infoIdForLog = id.value();
       if (containsInfoId(base.info(), id)) {
         // ★ 合成 id 按构造注入；只有**载荷显式给的** id 可能与既有条目撞车（连别人合成出来的也算）。
         //   无论哪种，命令期响亮拒绝（不留 revision）——不让"唯一 id"在数据模型里被静默破坏。
-        return new HandlerOutcome.Rejected("INFO 条目 id 已存在: " + id.value());
+        return rejected(
+            "INFO 条目 id 已存在: " + id.value(),
+            "id",
+            infoIdForLog,
+            "address",
+            addressForLog,
+            "key",
+            keyForLog);
       }
       SdInfoEntry entry =
           new SdInfoEntry(
@@ -115,10 +140,52 @@ public final class PutInfoHandler implements CommandHandler {
               adjudicationStatus);
       entries.add(entry);
       next.put(mapKey, List.copyOf(entries));
+      EventLog.channel(SdLog.decision())
+          .info(
+              LogEvent.of(
+                  "SD_PUT_INFO_APPLIED",
+                  SdLogSource.SD_DECISION,
+                  "id",
+                  id.value(),
+                  "address",
+                  mapKey,
+                  "key",
+                  key,
+                  "tick",
+                  tick,
+                  "tags",
+                  tags.size(),
+                  "affiliations",
+                  affiliations.size(),
+                  "notePresent",
+                  note.isPresent(),
+                  "entries",
+                  entries.size(),
+                  "infoAddresses",
+                  next.size()));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withInfo(next)));
     } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
+      return rejected(
+          e.getMessage(),
+          "id",
+          infoIdForLog,
+          "address",
+          addressForLog,
+          "key",
+          keyForLog,
+          "tick",
+          tickForLog);
     }
+  }
+
+  /**
+   * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
+   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   */
+  private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
+    SdPayloads.logRejected(
+        SdLog.decision(), SdLogSource.SD_DECISION, "SD_PUT_INFO_REJECTED", reason, idKeyValues);
+    return new HandlerOutcome.Rejected(reason);
   }
 
   /**

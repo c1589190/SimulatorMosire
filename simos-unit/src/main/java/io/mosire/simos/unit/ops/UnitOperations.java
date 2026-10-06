@@ -21,11 +21,15 @@ import io.mosire.simos.unit.Route;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitLog;
+import io.mosire.simos.unit.UnitLogSource;
 import io.mosire.simos.unit.UnitModule;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.move.MovementCost;
 import io.mosire.simos.unit.move.PathFinder;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.time.Segment;
 import io.mosire.simos.util.time.SegmentedSeries;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -37,6 +41,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * 编制树操作面（M3 spec §4.6，用户裁定 U5 的**全套 8 项**）：创建 / 改编 / 改名 / 人数·装备变更 / 位置设置 / 下达路线 / 取消路线 / 解散； **加上
@@ -66,13 +71,57 @@ public final class UnitOperations {
   /** GOV 上级链环检测的最大层数（阶段 10b-i，2026-10-01）：超过即具名拒，防止深链/环拖爆。 */
   private static final int MAX_GOV_SUPERIOR_CHAIN = 64;
 
+  /** 操作面具名拒绝的 DEBUG 走 unit 命令来源（tick 回归的 A* 读数另走 advance，见 debugPathFinder）。 */
+  private static final Logger LOG = UnitLog.command();
+
   private UnitOperations() {}
+
+  /**
+   * 操作面具名拒绝的 DEBUG（"为什么"）：每条具名 {@code throw new IllegalArgumentException} 前调用；{@code operation}
+   * 是操作名、{@code reason} 是静态原因档，其余是稳定 id / 关键读数。热点循环里先看 DEBUG 开关，关闭时不构造事件； 日志只读、不改变异常/返回值。
+   */
+  private static void debugReject(String operation, String reason, Object... keyValues) {
+    if (!LOG.isDebugEnabled()) {
+      return;
+    }
+    Object[] fields = new Object[keyValues.length + 4];
+    fields[0] = "operation";
+    fields[1] = operation;
+    fields[2] = "reason";
+    fields[3] = reason;
+    System.arraycopy(keyValues, 0, fields, 4, keyValues.length);
+    EventLog.channel(LOG)
+        .debug(LogEvent.of("UNIT_OPERATION_REJECTED", UnitLogSource.UNIT_COMMAND, fields));
+  }
+
+  /** A* 结果的汇总 DEBUG（命令面 / tick 回归按调用点携带来源；不逐格记整条路径）。 */
+  private static void debugPathFinder(
+      UnitLogSource source, HexCoord from, HexCoord to, Optional<List<HexCoord>> path) {
+    Logger logger = source == UnitLogSource.UNIT_ADVANCE ? UnitLog.advance() : UnitLog.command();
+    if (!logger.isDebugEnabled()) {
+      return;
+    }
+    EventLog.channel(logger)
+        .debug(
+            LogEvent.of(
+                "UNIT_PATHFIND_RESULT",
+                source,
+                "from",
+                from,
+                "to",
+                to,
+                "found",
+                path.isPresent(),
+                "length",
+                path.map(List::size).orElse(0)));
+  }
 
   /** 创建：同 id 已在 ⇒ 抛；`parent` 值（若 present）必须在 `units` 里。 */
   public static UnitState create(UnitState state, Unit unit) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(unit, "unit");
     if (state.units().containsKey(unit.id())) {
+      debugReject("create", "单位 id 已存在", "unit", unit.id());
       throw new IllegalArgumentException("单位 id 已存在: " + unit.id());
     }
     for (Segment<Optional<UnitId>> segment : unit.parent().segments()) {
@@ -160,9 +209,11 @@ public final class UnitOperations {
     Set<HouseholdId> seen = new LinkedHashSet<>();
     for (HouseholdId household : households) {
       if (household == null) {
+        debugReject("setUnitHouseholds", "households 元素不得为 null", "unit", id);
         throw new IllegalArgumentException("households 的元素不得为 null");
       }
       if (!seen.add(household)) {
+        debugReject("setUnitHouseholds", "households 不得有重复", "unit", id, "household", household);
         throw new IllegalArgumentException("households 不得有重复: " + household);
       }
       copy.add(household);
@@ -263,6 +314,15 @@ public final class UnitOperations {
         }
         long amount = next.get(at).amount();
         if (amount > Long.MAX_VALUE - delta.amount()) {
+          debugReject(
+              "adjustComposition",
+              "增量溢出 long",
+              "type",
+              delta.type(),
+              "current",
+              amount,
+              "delta",
+              delta.amount());
           throw new IllegalArgumentException(
               field + "增量溢出 long: " + delta.type() + "=" + amount + " + " + delta.amount());
         }
@@ -270,10 +330,20 @@ public final class UnitOperations {
       } else if (delta.amount() < 0L) {
         if (at == null) {
           // ★ 负增量指向一个不存在的 type 是错误（不视作 0 新建——那会让"损失"变成"负资产"，无意义）。
+          debugReject("adjustComposition", "未知类型（负增量不新建）", "type", delta.type());
           throw new IllegalArgumentException("未知" + field + "类型: " + delta.type());
         }
         long amount = next.get(at).amount();
         if (delta.amount() < -amount) {
+          debugReject(
+              "adjustComposition",
+              "减少超出当前值",
+              "type",
+              delta.type(),
+              "current",
+              amount,
+              "delta",
+              delta.amount());
           throw new IllegalArgumentException(
               field + "减少超出当前值: " + delta.type() + "=" + amount + " + (" + delta.amount() + ")");
         }
@@ -294,14 +364,26 @@ public final class UnitOperations {
       if (at == null) {
         // ★ P14：未知 type**拒绝**，不视作 0（"没有这个 type"不是"这个 type 是 0"）；
         //   判定在增量符号之前 ⇒ 未知 type **无论**带什么值都拒。
+        debugReject("applyCasualties", "未知类型", "type", delta.type());
         throw new IllegalArgumentException("未知" + field + "类型: " + delta.type());
       }
       if (delta.amount() > 0L) {
+        debugReject(
+            "applyCasualties", "增量必须 ≤ 0（战损只减员）", "type", delta.type(), "delta", delta.amount());
         throw new IllegalArgumentException(
             field + "增量必须 ≤ 0（战损只减员）: " + delta.type() + "=" + delta.amount());
       }
       long amount = next.get(at).amount();
       if (delta.amount() < -amount) {
+        debugReject(
+            "applyCasualties",
+            "战损超出当前值",
+            "type",
+            delta.type(),
+            "current",
+            amount,
+            "delta",
+            delta.amount());
         throw new IllegalArgumentException(
             field + "战损超出当前值: " + delta.type() + "=" + amount + " + (" + delta.amount() + ")");
       }
@@ -324,6 +406,8 @@ public final class UnitOperations {
     Set<String> seen = new LinkedHashSet<>();
     for (CompositionDelta delta : deltas) {
       if (!seen.add(delta.type())) {
+        debugReject(
+            "requireNoDuplicateDeltaTypes", "增量不得有重复 type", "field", field, "type", delta.type());
         throw new IllegalArgumentException(field + " 增量不得有重复 type: " + delta.type());
       }
     }
@@ -371,9 +455,23 @@ public final class UnitOperations {
         state
             .effectivePosition(id, at)
             .orElseThrow(
-                () -> new IllegalArgumentException("单位 " + id + " 在 " + at + " 没有可确定的位置，无法下达路线"));
+                () -> {
+                  debugReject("planRoute", "单位在该时刻没有可确定的位置", "unit", id, "at", at);
+                  return new IllegalArgumentException("单位 " + id + " 在 " + at + " 没有可确定的位置，无法下达路线");
+                });
     HexCoord routeStart = route.waypoints().get(0);
     if (!start.equals(routeStart)) {
+      debugReject(
+          "planRoute",
+          "路线起点不是单位当前位置",
+          "unit",
+          id,
+          "at",
+          at,
+          "routeStart",
+          routeStart,
+          "current",
+          start);
       throw new IllegalArgumentException("路线起点 " + routeStart + " 不是单位在 " + at + " 的位置 " + start);
     }
     return withUnit(
@@ -398,8 +496,15 @@ public final class UnitOperations {
    */
   private static UnitId requireTopOfFormation(UnitState state, UnitId id, SimosTimestamp at) {
     UnitId root =
-        state.formationRoot(id, at).orElseThrow(() -> new IllegalArgumentException("单位不存在: " + id));
+        state
+            .formationRoot(id, at)
+            .orElseThrow(
+                () -> {
+                  debugReject("requireTopOfFormation", "单位不存在", "unit", id, "at", at);
+                  return new IllegalArgumentException("单位不存在: " + id);
+                });
     if (!root.equals(id)) {
+      debugReject("planRoute", "单位是编制成员（只有顶层能下路线）", "unit", id, "root", root, "at", at);
       throw new IllegalArgumentException(
           "单位 "
               + id
@@ -452,9 +557,14 @@ public final class UnitOperations {
     for (int i = 0; i + 1 < waypoints.size(); i++) {
       HexCoord from = waypoints.get(i);
       HexCoord to = waypoints.get(i + 1);
+      Optional<List<HexCoord>> found = PathFinder.findPath(map, from, to, unit, cost);
+      debugPathFinder(UnitLogSource.UNIT_COMMAND, from, to, found);
       List<HexCoord> segment =
-          PathFinder.findPath(map, from, to, unit, cost)
-              .orElseThrow(() -> new IllegalArgumentException("稀疏路线的段不可达: " + from + " → " + to));
+          found.orElseThrow(
+              () -> {
+                debugReject("expandSparsePath", "稀疏路线的段不可达", "from", from, "to", to);
+                return new IllegalArgumentException("稀疏路线的段不可达: " + from + " → " + to);
+              });
       path.addAll(i == 0 ? segment : segment.subList(1, segment.size()));
     }
     return List.copyOf(path);
@@ -477,6 +587,8 @@ public final class UnitOperations {
    */
   public static UnitState setVisionRadius(UnitState state, UnitId id, int visionRadius) {
     if (visionRadius < 0) {
+      debugReject(
+          "setVisionRadius", "visionRadius 必须 ≥ 0", "unit", id, "visionRadius", visionRadius);
       throw new IllegalArgumentException("visionRadius 必须 ≥ 0: " + visionRadius);
     }
     Unit unit = require(state, id);
@@ -508,12 +620,20 @@ public final class UnitOperations {
       UnitState state, UnitId id, String stateKey, Optional<String> address) {
     Objects.requireNonNull(address, "address");
     if (stateKey == null || stateKey.isBlank()) {
+      debugReject("setStateDescription", "state 不得为空白", "unit", id);
       throw new IllegalArgumentException("state 不得为空白");
     }
     Unit unit = require(state, id);
     Map<String, String> next = new LinkedHashMap<>(unit.stateDescriptions());
     if (address.isEmpty() || address.get().isBlank()) {
       if (!next.containsKey(stateKey)) {
+        debugReject(
+            "setStateDescription",
+            "状态本来就没有描述地址，无可清除",
+            "unit",
+            id,
+            "stateKeyLength",
+            stateKey.length());
         throw new IllegalArgumentException("状态 " + stateKey + " 本来就没有描述地址，无可清除");
       }
       next.remove(stateKey);
@@ -583,9 +703,11 @@ public final class UnitOperations {
     // ★ 先逐条验区域存在（具名拒），再动手——不静默丢任何 regionId。
     for (RegionId region : regions) {
       if (region == null) {
+        debugReject("setJurisdiction", "regions 元素不得为 null", "unit", id);
         throw new IllegalArgumentException("regions 的元素不得为 null");
       }
       if (!map.regions().containsKey(region)) {
+        debugReject("setJurisdiction", "区域不在当前地图", "unit", id, "region", region);
         throw new IllegalArgumentException("区域不存在: " + region + "（当前地图 regions() 里没有它，无法纳入管辖）");
       }
     }
@@ -627,14 +749,26 @@ public final class UnitOperations {
     Jurisdiction current =
         unit.jurisdiction()
             .orElseThrow(
-                () ->
-                    new IllegalArgumentException(
-                        "单位 " + id + " 没有 jurisdiction：先用 unit.SetJurisdiction 设定管辖区域"));
+                () -> {
+                  debugReject("setTaxRate", "单位没有 jurisdiction", "unit", id);
+                  return new IllegalArgumentException(
+                      "单位 " + id + " 没有 jurisdiction：先用 unit.SetJurisdiction 设定管辖区域");
+                });
     if (!current.taxRatePerMilleByRegion().containsKey(regionId)) {
+      debugReject("setTaxRate", "区域不在单位管辖里", "unit", id, "region", regionId);
       throw new IllegalArgumentException(
           "区域 " + regionId + " 不在单位 " + id + " 的管辖里：先用 unit.SetJurisdiction 把它纳入管辖");
     }
     if (ratePerMille < 0 || ratePerMille > 1000) {
+      debugReject(
+          "setTaxRate",
+          "ratePerMille 必须 ∈ [0,1000]",
+          "unit",
+          id,
+          "region",
+          regionId,
+          "ratePerMille",
+          ratePerMille);
       throw new IllegalArgumentException("ratePerMille 必须 ∈ [0,1000]: " + ratePerMille);
     }
     Map<RegionId, Long> nextRates = new LinkedHashMap<>(current.taxRatePerMilleByRegion());
@@ -680,6 +814,8 @@ public final class UnitOperations {
     Objects.requireNonNull(formation, "formation");
     Unit unit = require(state, id);
     if (unit.module().orElse(null) instanceof ArmyFormation) {
+      debugReject(
+          "setGovernmentFormation", "单位已带 ArmyFormation，不能改挂 GovernmentFormation", "unit", id);
       throw new IllegalArgumentException(
           "单位 " + id + " 已带 ArmyFormation（一单位至多一个编制标签）：不能改挂 GovernmentFormation；本命令不做静默替换");
     }
@@ -688,6 +824,7 @@ public final class UnitOperations {
         .ifPresent(
             superior -> {
               if (superior.equals(id)) {
+                debugReject("setGovernmentFormation", "上级 GOV 不得指向自身", "unit", id);
                 throw new IllegalArgumentException("上级 GOV 不得指向自身: " + id);
               }
               requireGovUnit(state, superior, "superiorGov");
@@ -697,6 +834,7 @@ public final class UnitOperations {
     for (HouseholdId household : households) {
       if (GovernmentHouseholds.isGovernment(household)
           && !expectedGovernmentHousehold.equals(household)) {
+        debugReject("setGovernmentFormation", "已容纳别的政府家户", "unit", id, "household", household);
         throw new IllegalArgumentException(
             "单位 "
                 + id
@@ -733,6 +871,7 @@ public final class UnitOperations {
     Objects.requireNonNull(formation, "formation");
     Unit unit = require(state, id);
     if (unit.module().orElse(null) instanceof GovernmentFormation) {
+      debugReject("setArmyFormation", "单位已带 GovernmentFormation，不能改挂 ArmyFormation", "unit", id);
       throw new IllegalArgumentException(
           "单位 " + id + " 已带 GovernmentFormation（一单位至多一个编制标签）：不能改挂 ArmyFormation；本命令不做静默替换");
     }
@@ -743,6 +882,15 @@ public final class UnitOperations {
           .ifPresent(
               commandOf -> {
                 if (!state.units().containsKey(commandOf)) {
+                  debugReject(
+                      "setArmyFormation",
+                      "军官家户 commandOf 指向不存在的单位",
+                      "unit",
+                      id,
+                      "household",
+                      duty.householdId(),
+                      "commandOf",
+                      commandOf);
                   throw new IllegalArgumentException(
                       "军官家户配置 " + duty.householdId() + " 的 commandOf 指向不存在的单位: " + commandOf);
                 }
@@ -772,6 +920,7 @@ public final class UnitOperations {
     Unit unit = require(state, id);
     UnitModule module = unit.module().orElse(null);
     if (!(module instanceof ArmyFormation armyFormation)) {
+      debugReject("setArmyPayPolicy", "单位没有 ArmyFormation", "unit", id);
       throw new IllegalArgumentException(
           "单位 " + id + " 没有 ArmyFormation（军俸政策只挂在 ArmyFormation 上；请先用 unit.SetArmyFormation 立编制）");
     }
@@ -849,6 +998,7 @@ public final class UnitOperations {
     superiorGov.ifPresent(
         superior -> {
           if (superior.equals(id)) {
+            debugReject("setGovSuperior", "上级 GOV 不得指向自身", "unit", id);
             throw new IllegalArgumentException("上级 GOV 不得指向自身: " + id);
           }
           requireGovUnit(state, superior, "superiorGov");
@@ -871,6 +1021,7 @@ public final class UnitOperations {
   public static UnitState recruitStaff(UnitState state, UnitId id, StaffRole role, long count) {
     Objects.requireNonNull(role, "role");
     if (count < 1L) {
+      debugReject("recruitStaff", "招募人数必须 ≥ 1", "unit", id, "count", count);
       throw new IllegalArgumentException("招募人数 count 必须 ≥ 1: " + count);
     }
     Unit unit = require(state, id);
@@ -879,6 +1030,19 @@ public final class UnitOperations {
     long current = governmentFormation.staff().getOrDefault(role, 0L);
     Long cap = governmentFormation.policy().staffCap().get(role);
     if (cap != null && current > cap - count) {
+      debugReject(
+          "recruitStaff",
+          "招募会超编制上限",
+          "unit",
+          id,
+          "role",
+          role,
+          "current",
+          current,
+          "count",
+          count,
+          "cap",
+          cap);
       throw new IllegalArgumentException(
           "招募 "
               + role
@@ -893,6 +1057,17 @@ public final class UnitOperations {
               + "（不截断；先 unit.SetGovPolicy 提上限或减少 count）");
     }
     if (current > Long.MAX_VALUE - count) {
+      debugReject(
+          "recruitStaff",
+          "招募后在编人数溢出 long",
+          "unit",
+          id,
+          "role",
+          role,
+          "current",
+          current,
+          "count",
+          count);
       throw new IllegalArgumentException(
           "招募后 " + role + " 在编人数溢出 long: 现有 " + current + " + 请求 " + count);
     }
@@ -912,6 +1087,7 @@ public final class UnitOperations {
   public static UnitState dismissStaff(UnitState state, UnitId id, StaffRole role, long count) {
     Objects.requireNonNull(role, "role");
     if (count < 1L) {
+      debugReject("dismissStaff", "离编人数必须 ≥ 1", "unit", id, "count", count);
       throw new IllegalArgumentException("离编人数 count 必须 ≥ 1: " + count);
     }
     Unit unit = require(state, id);
@@ -919,6 +1095,8 @@ public final class UnitOperations {
     requireStaffNotProjected(governmentFormation, id, "离编");
     long current = governmentFormation.staff().getOrDefault(role, 0L);
     if (current < count) {
+      debugReject(
+          "dismissStaff", "离编超过现有在编", "unit", id, "role", role, "current", current, "count", count);
       throw new IllegalArgumentException(
           "离编 " + role + " " + count + " 人超过现有在编: 现有 " + current + " < 请求 " + count);
     }
@@ -940,9 +1118,11 @@ public final class UnitOperations {
       return governmentFormation;
     }
     if (module instanceof ArmyFormation) {
+      debugReject("requireGovernmentFormation", "单位带的是 ArmyFormation", "unit", id);
       throw new IllegalArgumentException(
           "单位 " + id + " 带的是 ArmyFormation 而不是 GovernmentFormation：本命令只改 GOV 编制");
     }
+    debugReject("requireGovernmentFormation", "单位没有 GovernmentFormation", "unit", id);
     throw new IllegalArgumentException(
         "单位 " + id + " 没有 GovernmentFormation：先用 unit.SetGovFormation 立 GOV 编制");
   }
@@ -959,14 +1139,33 @@ public final class UnitOperations {
     int depth = 0;
     while (cursor != null) {
       if (cursor.equals(id)) {
+        debugReject("requireNoSuperiorCycle", "上级链上溯会回到自己", "unit", id, "newSuperior", newSuperior);
         throw new IllegalArgumentException(
             "不能把 " + id + " 的上级设为 " + newSuperior + "：沿 superiorGov 上溯会回到自己，会成环");
       }
       if (!seen.add(cursor)) {
+        debugReject(
+            "requireNoSuperiorCycle",
+            "现有上级链重复/成环",
+            "unit",
+            id,
+            "cursor",
+            cursor,
+            "newSuperior",
+            newSuperior);
         throw new IllegalArgumentException(
             "现有上级 GOV 链在 " + cursor + " 处重复/成环，无法安全设置 " + id + " 的上级: " + newSuperior);
       }
       if (depth >= MAX_GOV_SUPERIOR_CHAIN) {
+        debugReject(
+            "requireNoSuperiorCycle",
+            "上级链超过最大层数",
+            "unit",
+            id,
+            "newSuperior",
+            newSuperior,
+            "maxDepth",
+            MAX_GOV_SUPERIOR_CHAIN);
         throw new IllegalArgumentException(
             "上级 GOV 链超过 " + MAX_GOV_SUPERIOR_CHAIN + " 层，拒绝设置 " + id + " 的上级: " + newSuperior);
       }
@@ -991,6 +1190,8 @@ public final class UnitOperations {
   private static void requireStaffNotProjected(
       GovernmentFormation governmentFormation, UnitId id, String action) {
     if (!governmentFormation.governmentPostsOfHousehold().isEmpty()) {
+      debugReject(
+          "requireStaffNotProjected", "已配置领导层家户，staff 是投影不能直改", "unit", id, "action", action);
       throw new IllegalArgumentException(
           "单位 "
               + id
@@ -1042,9 +1243,12 @@ public final class UnitOperations {
   private static void requireGovUnit(UnitState state, UnitId govUnitId, String field) {
     Unit gov = state.units().get(govUnitId);
     if (gov == null) {
+      debugReject("requireGovUnit", "指定的 GOV 单位不存在", "govUnit", govUnitId, "field", field);
       throw new IllegalArgumentException(field + " 指定的 GOV 单位不存在: " + govUnitId);
     }
     if (!(gov.module().orElse(null) instanceof GovernmentFormation)) {
+      debugReject(
+          "requireGovUnit", "指定的单位没有 GovernmentFormation", "govUnit", govUnitId, "field", field);
       throw new IllegalArgumentException(
           field + " 指定的单位 " + govUnitId + " 没有 GovernmentFormation：不能作为 GOV");
     }
@@ -1066,6 +1270,7 @@ public final class UnitOperations {
         continue;
       }
       if (other.parent().valueAt(at).filter(id::equals).isPresent()) {
+        debugReject("disband", "单位仍有下属", "unit", id, "subordinate", other.id(), "at", at);
         throw new IllegalArgumentException(
             "单位 " + id + " 在 " + at + " 仍有下属 " + other.id() + "：先改编、再解散");
       }
@@ -1079,10 +1284,12 @@ public final class UnitOperations {
   private static void requireNotInAnyChain(UnitState state, UnitId id) {
     for (CommandChain chain : state.commandChains().values()) {
       if (chain.commander().equals(id)) {
+        debugReject("requireNotInAnyChain", "单位仍是链 commander", "unit", id, "chain", chain.id());
         throw new IllegalArgumentException(
             "单位 " + id + " 仍是链 " + chain.id() + " 的 commander：先改链、再解散");
       }
       if (chain.members().contains(id)) {
+        debugReject("requireNotInAnyChain", "单位仍是链成员", "unit", id, "chain", chain.id());
         throw new IllegalArgumentException("单位 " + id + " 仍是链 " + chain.id() + " 的成员：先改链、再解散");
       }
     }
@@ -1114,16 +1321,19 @@ public final class UnitOperations {
     requireExists(state, parent);
     List<UnitId> subtree = subtreeOf(state, id, at);
     if (subtree.contains(parent)) {
+      debugReject("attachSubtree", "父单位落在子树内（会成环）", "unit", id, "parent", parent);
       throw new IllegalArgumentException("父单位 " + parent + " 落在 " + id + " 的子树内（含自身）：会成环");
     }
     Optional<HexCoord> parentHex = state.effectivePosition(parent, at);
     if (parentHex.isEmpty()) {
+      debugReject("attachSubtree", "父单位在该时刻没有可确定位置", "unit", parent, "at", at);
       throw new IllegalArgumentException("单位 " + parent + " 在 " + at + " 没有可确定的位置：编制必须同格才能编入");
     }
     // ★ v2：整棵子树逐一校验同格（不是只查根）——编入之后它们都"与父一起走"，而"一起走"的前提就是此刻同格。
     for (UnitId member : subtree) {
       Optional<HexCoord> memberHex = state.effectivePosition(member, at);
       if (memberHex.isEmpty() || !memberHex.get().equals(parentHex.get())) {
+        debugReject("attachSubtree", "子树成员与父不同格", "unit", member, "parent", parent, "at", at);
         throw new IllegalArgumentException(
             "单位 "
                 + member
@@ -1173,6 +1383,7 @@ public final class UnitOperations {
   public static UnitState detachUnit(UnitState state, UnitId id, SimosTimestamp at) {
     Unit unit = require(state, id);
     if (unit.parent().valueAt(at).isEmpty()) {
+      debugReject("detachUnit", "单位本来就是顶层，无需脱离", "unit", id, "at", at);
       throw new IllegalArgumentException("单位 " + id + " 在 " + at + " 没有父：它本来就是顶层，无需脱离编制");
     }
     return withUnit(
@@ -1235,6 +1446,7 @@ public final class UnitOperations {
     newParent.ifPresent(parent -> requireExists(state, parent));
     List<UnitId> subtree = subtreeOf(state, rootId, at);
     if (newParent.isPresent() && subtree.contains(newParent.get())) {
+      debugReject("reparentSubtree", "新父落在子树内（会成环）", "root", rootId, "parent", newParent.get());
       throw new IllegalArgumentException(
           "新父 " + newParent.get() + " 落在 " + rootId + " 的子树内（含自身）：会成环");
     }
@@ -1279,6 +1491,7 @@ public final class UnitOperations {
     Objects.requireNonNull(subUnitIds, "subUnitIds");
     require(state, rootId); // 存在性校验
     if (subUnitIds.isEmpty()) {
+      debugReject("splitFormation", "subUnitIds 不得为空", "root", rootId);
       throw new IllegalArgumentException("subUnitIds 不得为空：拆分命令至少要指名一个目标");
     }
     List<UnitId> subtree = subtreeOf(state, rootId, at);
@@ -1286,6 +1499,7 @@ public final class UnitOperations {
     for (UnitId id : subUnitIds) {
       require(state, id); // 存在性校验（缺 id 时先报"不存在"，而不是"不在子树内"）
       if (!subtree.contains(id)) {
+        debugReject("splitFormation", "单位不在子树内", "root", rootId, "unit", id, "at", at);
         throw new IllegalArgumentException(
             "单位 " + id + " 不在 " + rootId + " 在 " + at + " 的子树内：不能拆分");
       }
@@ -1335,10 +1549,12 @@ public final class UnitOperations {
     Optional<HexCoord> childHex = state.effectivePosition(childId, at);
     Optional<HexCoord> parentHex = state.effectivePosition(parentId, at);
     if (childHex.isEmpty() || parentHex.isEmpty()) {
+      debugReject("mergeFormation", "双方在该时刻位置不可确定", "child", childId, "parent", parentId, "at", at);
       throw new IllegalArgumentException(
           "单位 " + childId + " 或 " + parentId + " 在 " + at + " 没有可确定的位置：只有同格才能合体");
     }
     if (!childHex.get().equals(parentHex.get())) {
+      debugReject("mergeFormation", "双方不同格", "child", childId, "parent", parentId, "at", at);
       throw new IllegalArgumentException(
           "单位 "
               + childId
@@ -1353,6 +1569,7 @@ public final class UnitOperations {
               + " 不同格：只有同格才能合体");
     }
     if (child.status() != UnitStatus.MOVING) {
+      debugReject("mergeFormation", "子单位状态不是 MOVING", "child", childId, "status", child.status());
       throw new IllegalArgumentException(
           "单位 " + childId + " 的状态是 " + child.status() + " 而不是 MOVING：只有移动中的单位才能合体");
     }
@@ -1388,6 +1605,7 @@ public final class UnitOperations {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(chain, "chain");
     if (state.commandChains().containsKey(chain.id())) {
+      debugReject("createChain", "链 id 已存在", "chain", chain.id());
       throw new IllegalArgumentException("链 id 已存在: " + chain.id());
     }
     requireChainMembersResolve(state, chain.id(), chain.commander(), chain.members());
@@ -1424,12 +1642,14 @@ public final class UnitOperations {
     Objects.requireNonNull(members, "members");
     CommandChain existing = state.commandChains().get(id);
     if (existing == null) {
+      debugReject("updateChain", "链不存在", "chain", id);
       throw new IllegalArgumentException("链不存在: " + id);
     }
     Set<UnitId> nextMembers = new LinkedHashSet<>();
     if (members.isPresent()) {
       for (UnitId member : members.get()) {
         if (member == null) {
+          debugReject("updateChain", "members 不得含 null", "chain", id);
           throw new IllegalArgumentException("链 " + id + " 的 members 不得含 null");
         }
         nextMembers.add(member);
@@ -1440,6 +1660,7 @@ public final class UnitOperations {
     UnitId nextCommander = commander.orElse(existing.commander());
     requireChainMembersResolve(state, id, nextCommander, nextMembers);
     if (!nextMembers.contains(nextCommander)) {
+      debugReject("updateChain", "commander 不在 members 内", "chain", id, "commander", nextCommander);
       throw new IllegalArgumentException(
           "链 " + id + " 的 commander " + nextCommander + " 不在 members 内：先把它加进 members 再改链");
     }
@@ -1460,10 +1681,18 @@ public final class UnitOperations {
   private static void requireChainMembersResolve(
       UnitState state, CommandChainId chainId, UnitId commander, Iterable<UnitId> members) {
     if (!state.units().containsKey(commander)) {
+      debugReject(
+          "requireChainMembersResolve",
+          "链 commander 不存在",
+          "chain",
+          chainId,
+          "commander",
+          commander);
       throw new IllegalArgumentException("链 " + chainId + " 的 commander 不存在: " + commander);
     }
     for (UnitId member : members) {
       if (!state.units().containsKey(member)) {
+        debugReject("requireChainMembersResolve", "链成员不存在", "chain", chainId, "member", member);
         throw new IllegalArgumentException("链 " + chainId + " 的成员不存在: " + member);
       }
     }
@@ -1492,9 +1721,11 @@ public final class UnitOperations {
     if (target.isPresent()) {
       UnitId targetId = target.get();
       if (targetId.equals(id)) {
+        debugReject("setRejoinTarget", "回归目标不得是自身", "unit", id);
         throw new IllegalArgumentException("回归目标不得是自身: " + id);
       }
       if (!state.units().containsKey(targetId)) {
+        debugReject("setRejoinTarget", "回归目标不存在", "unit", id, "target", targetId);
         throw new IllegalArgumentException("回归目标不存在: " + targetId);
       }
     }
@@ -1542,8 +1773,9 @@ public final class UnitOperations {
     if (start.isEmpty() || goal.isEmpty() || start.get().equals(goal.get())) {
       return Optional.empty();
     }
-    return PathFinder.findPath(map, start.get(), goal.get(), unit, cost)
-        .map(path -> new Route(List.of(start.get(), goal.get()), path));
+    Optional<List<HexCoord>> found = PathFinder.findPath(map, start.get(), goal.get(), unit, cost);
+    debugPathFinder(UnitLogSource.UNIT_ADVANCE, start.get(), goal.get(), found);
+    return found.map(path -> new Route(List.of(start.get(), goal.get()), path));
   }
 
   // ── 私有助手 ────────────────────────────────────────────────────
@@ -1553,6 +1785,7 @@ public final class UnitOperations {
     Objects.requireNonNull(id, "id");
     Unit unit = state.units().get(id);
     if (unit == null) {
+      debugReject("require", "单位不存在", "unit", id);
       throw new IllegalArgumentException("单位不存在: " + id);
     }
     return unit;
@@ -1560,6 +1793,7 @@ public final class UnitOperations {
 
   private static void requireExists(UnitState state, UnitId id) {
     if (!state.units().containsKey(id)) {
+      debugReject("requireExists", "父单位不存在", "unit", id);
       throw new IllegalArgumentException("父单位不存在: " + id);
     }
   }

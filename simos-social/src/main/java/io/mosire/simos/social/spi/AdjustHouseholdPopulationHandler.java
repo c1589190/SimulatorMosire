@@ -2,10 +2,14 @@ package io.mosire.simos.social.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.household.HouseholdBook;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -58,19 +62,47 @@ public final class AdjustHouseholdPopulationHandler implements CommandHandler, C
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SocialData base = SocialSnapshots.of(state).data(); // 装配故障当场炸，不走拒绝路径
+    String householdForLog = null;
+    String ageBracketForLog = null;
     try {
       JsonNode payload = SocialPayloads.parse(payloadJson);
       HouseholdId id = SocialPayloads.requireHouseholdId(payload, "householdId");
+      householdForLog = id.value();
       Sex sex = SocialPayloads.requireSex(payload, "sex");
       String ageBracketId = SocialPayloads.requireText(payload, "ageBracketId");
+      ageBracketForLog = ageBracketId;
       long delta = SocialPayloads.requireLong(payload, "delta");
       String reason = SocialPayloads.requireReason(payload);
       if (delta == 0L) {
         throw new IllegalArgumentException("delta 不得为 0（没有可调整的人数；空改动不落 revision）");
       }
       SocialData next = HouseholdBook.adjustPopulation(base, id, sex, ageBracketId, delta, reason);
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_ADJUST_HOUSEHOLD_POPULATION_APPLIED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "household",
+                  id.value(),
+                  "sex",
+                  sex,
+                  "ageBracket",
+                  ageBracketId,
+                  "delta",
+                  delta));
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_ADJUST_HOUSEHOLD_POPULATION_REJECTED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "reason",
+                  SocialPayloads.logReason(e.getMessage()),
+                  "household",
+                  householdForLog == null ? "-" : householdForLog,
+                  "ageBracket",
+                  ageBracketForLog == null ? "-" : ageBracketForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

@@ -7,11 +7,15 @@ import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.RelativeOffset;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitLog;
+import io.mosire.simos.unit.UnitLogSource;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.UnitStatus;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -65,9 +69,11 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     UnitSnapshot snapshot = UnitSnapshots.of(state); // 装配故障当场炸，不走拒绝路径
+    String unitForLog = null;
     try {
       JsonNode payload = UnitPayloads.parse(payloadJson);
       UnitId id = UnitId.parse(UnitPayloads.requireText(payload, "id"));
+      unitForLog = id.value();
       String name = UnitPayloads.requireText(payload, "name");
       // ★ position 可选：省略/null ⇒ 无自身位置（跟随父）；但那时必须给 parent（否则单位不在图上，是坏输入）。
       Optional<HexCoord> position = UnitPayloads.optionalHex(payload, "position");
@@ -129,8 +135,30 @@ public final class CreateUnitHandler implements CommandHandler, CommandTargets {
               // ★ S3b：创建期给的家户（缺席 ⇒ 空表）；家户在 Social 侧的位置一致性由组合工具/生产路径保证。
               households);
       UnitState next = UnitOperations.create(snapshot.state(), unit);
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_CREATE_UNIT_APPLIED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "unit",
+                  id.value(),
+                  "equipment",
+                  equipment.size(),
+                  "households",
+                  households.size(),
+                  "parent",
+                  parent.map(UnitId::value).orElse("-")));
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_CREATE_UNIT_REJECTED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "reason",
+                  UnitPayloads.logReason(e.getMessage()),
+                  "unit",
+                  unitForLog == null ? "-" : unitForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

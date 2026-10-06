@@ -3,6 +3,8 @@ package io.mosire.simos.social.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.household.HouseholdProfile;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -12,6 +14,8 @@ import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.household.HouseholdBook;
 import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -115,14 +119,22 @@ public final class MovePopulationLotsHandler
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SocialData base = SocialSnapshots.of(state).data();
+    String fromForLog = null;
+    String toForLog = null;
     try {
       JsonNode payload = SocialPayloads.parse(payloadJson);
       String reason = SocialPayloads.requireReason(payload);
       String fromHouseholdText = SocialPayloads.optionalText(payload, "fromHouseholdId");
       HexCoord fromHex = SocialPayloads.optionalHex(payload, "from");
+      fromForLog =
+          fromHouseholdText != null
+              ? fromHouseholdText
+              : (fromHex == null ? "-" : fromHex.toString());
       requireExactlyOneSource(fromHouseholdText, fromHex);
       String toHouseholdText = SocialPayloads.optionalText(payload, "toHouseholdId");
       HexCoord toHex = SocialPayloads.optionalHex(payload, "to");
+      toForLog =
+          toHouseholdText != null ? toHouseholdText : (toHex == null ? "-" : toHex.toString());
       requireExactlyOneTarget(toHouseholdText, toHex);
       List<PeopleLotId> requested = optionalLots(payload);
 
@@ -149,6 +161,25 @@ public final class MovePopulationLotsHandler
         }
       }
 
+      if (SocialLog.command().isDebugEnabled()) {
+        EventLog.channel(SocialLog.command())
+            .debug(
+                LogEvent.of(
+                    "SOCIAL_MOVE_POPULATION_LOTS_PLAN",
+                    SocialLogSource.SOCIAL_COMMAND,
+                    "from",
+                    fromForLog,
+                    "to",
+                    toForLog,
+                    "sourceHouseholds",
+                    sourceIds.size(),
+                    "lots",
+                    lots.size(),
+                    "targetHousehold",
+                    target.id().value(),
+                    "createdTarget",
+                    target.created()));
+      }
       SocialData working = target.created() ? target.workingState() : base;
       for (PeopleLotId lot : lots) {
         Household owner = requireOwner(working, lot);
@@ -160,8 +191,40 @@ public final class MovePopulationLotsHandler
       if (working.equals(base)) {
         throw new IllegalArgumentException("social.MovePopulationLots 没有造成任何变化");
       }
+      long movedPopulation = 0L;
+      for (PeopleLotId lot : lots) {
+        movedPopulation += requireGroup(base, lot).count();
+      }
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_MOVE_POPULATION_LOTS_APPLIED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "from",
+                  fromForLog,
+                  "to",
+                  toForLog,
+                  "lots",
+                  lots.size(),
+                  "population",
+                  movedPopulation,
+                  "targetHousehold",
+                  target.id().value(),
+                  "createdTarget",
+                  target.created()));
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, working));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_MOVE_POPULATION_LOTS_REJECTED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "reason",
+                  SocialPayloads.logReason(e.getMessage()),
+                  "from",
+                  fromForLog == null ? "-" : fromForLog,
+                  "to",
+                  toForLog == null ? "-" : toForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

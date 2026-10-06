@@ -2,6 +2,7 @@ package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatStageId;
@@ -15,6 +16,8 @@ import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.RevisionId;
@@ -25,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import org.slf4j.Logger;
 
 /**
  * {@code sd.RecordCasualties} 命令的处理器（spec §四，C3）：战损以 **delta（事件）** 记入 {@link
@@ -43,8 +45,6 @@ import org.slf4j.Logger;
  */
 public final class RecordCasualtiesHandler implements CommandHandler {
 
-  private static final Logger LOG = SdLog.combat();
-
   @Override
   public String type() {
     return "sd.RecordCasualties";
@@ -58,29 +58,51 @@ public final class RecordCasualtiesHandler implements CommandHandler {
     UnitState units = SdSnapshots.units(state);
     // ★ S3b：人员上界的唯一来源 = 该 unit 的家户人口现算（不再有 Unit.manpower 第二本账）。
     io.mosire.simos.social.SocialData social = SdSnapshots.social(state);
+    String recordForLog = null;
+    String combatForLog = null;
+    String stageForLog = null;
+    String unitForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       CombatId combatId = CombatId.parse(SdPayloads.requireText(payload, "combatId"));
+      combatForLog = combatId.value();
       CombatStageId stageId = CombatStageId.parse(SdPayloads.requireText(payload, "stageId"));
+      stageForLog = stageId.value();
       List<CasualtyDelta> deltas = SdPayloads.requireDeltas(payload, "deltas");
       Combat combat = base.combats().get(combatId);
       if (combat == null) {
-        return new HandlerOutcome.Rejected("交战不存在: " + combatId);
+        return rejected("交战不存在: " + combatId, "record", recordForLog, "combat", combatForLog);
       }
       if (SdCombats.stageOrNull(combat, stageId) == null) {
-        return new HandlerOutcome.Rejected("阶段不存在: " + stageId);
+        return rejected("阶段不存在: " + stageId, "combat", combatForLog, "stage", stageForLog);
       }
       for (CasualtyDelta delta : deltas) {
         Unit unit = units.units().get(delta.unit());
         if (unit == null) {
-          return new HandlerOutcome.Rejected("单位不存在: " + delta.unit());
+          return rejected(
+              "单位不存在: " + delta.unit(),
+              "combat",
+              combatForLog,
+              "stage",
+              stageForLog,
+              "unit",
+              delta.unit().value());
         }
+        unitForLog = delta.unit().value();
         requireWithinBound(delta, unit, social);
       }
       RevisionId atRevision = state.meta().ref().revision();
       LossRecordId recordId = new LossRecordId(combatId.value() + ":" + atRevision.value());
+      recordForLog = recordId.value();
       if (base.lossRecords().containsKey(recordId)) {
-        return new HandlerOutcome.Rejected("损失记录已存在: " + recordId);
+        return rejected(
+            "损失记录已存在: " + recordId,
+            "record",
+            recordForLog,
+            "combat",
+            combatForLog,
+            "stage",
+            stageForLog);
       }
       LossRecord record = new LossRecord(recordId, combatId, stageId, atRevision, deltas);
       Map<LossRecordId, LossRecord> nextRecords = new LinkedHashMap<>(base.lossRecords());
@@ -106,17 +128,59 @@ public final class RecordCasualtiesHandler implements CommandHandler {
       if (combatState != null) {
         next = next.withCombatStates(nextStates);
       }
-      LOG.info(
-          "event=SD_CASUALTIES_RECORDED record={} combat={} stage={} deltas={} stateLinked={}",
-          recordId.value(),
-          combatId.value(),
-          stageId.value(),
-          deltas.size(),
-          combatState != null);
+      long distinctUnits = deltas.stream().map(delta -> delta.unit().value()).distinct().count();
+      int personnelDelta = deltas.stream().mapToInt(CasualtyDelta::personnel).sum();
+      int equipmentLines = deltas.stream().mapToInt(delta -> delta.equipment().size()).sum();
+      EventLog.channel(SdLog.combat())
+          .info(
+              LogEvent.of(
+                  "SD_CASUALTIES_RECORDED",
+                  SdLogSource.SD_COMBAT,
+                  "record",
+                  recordId.value(),
+                  "combat",
+                  combatId.value(),
+                  "stage",
+                  stageId.value(),
+                  "deltas",
+                  deltas.size(),
+                  "units",
+                  distinctUnits,
+                  "personnelDelta",
+                  personnelDelta,
+                  "equipmentLines",
+                  equipmentLines,
+                  "stateLinked",
+                  combatState != null,
+                  "lossRecords",
+                  nextRecords.size()));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
+      return rejected(
+          e.getMessage(),
+          "record",
+          recordForLog,
+          "combat",
+          combatForLog,
+          "stage",
+          stageForLog,
+          "unit",
+          unitForLog);
     }
+  }
+
+  /**
+   * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
+   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   */
+  private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
+    SdPayloads.logRejected(
+        SdLog.combat(),
+        SdLogSource.SD_COMBAT,
+        "SD_RECORD_CASUALTIES_REJECTED",
+        reason,
+        idKeyValues);
+    return new HandlerOutcome.Rejected(reason);
   }
 
   /**

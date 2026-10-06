@@ -2,11 +2,14 @@ package io.mosire.simos.map.ops;
 
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -45,6 +48,24 @@ public final class RegionOperations {
   private RegionOperations() {}
 
   /**
+   * 校验拒绝的 DEBUG 明细（判据/为什么）：事件名固定 {@code MAP_REGION_EDIT_BLOCKED}，用 {@code operation} 区分入口。 只在 DEBUG
+   * 打开时构造字段（避免关闭时的分配）；日志只读，不参与任何分支或状态。
+   */
+  private static void debugRejected(String operation, String reason, Object... keyValues) {
+    if (!LOG.isDebugEnabled()) {
+      return;
+    }
+    Object[] fields = new Object[keyValues.length + 4];
+    fields[0] = "operation";
+    fields[1] = operation;
+    fields[2] = "reason";
+    fields[3] = reason;
+    System.arraycopy(keyValues, 0, fields, 4, keyValues.length);
+    EventLog.channel(LOG)
+        .debug(LogEvent.of("MAP_REGION_EDIT_BLOCKED", MapLogSource.MAP_EDIT, fields));
+  }
+
+  /**
    * 新建区域。{@code regionId} 已存在 ⇒ 拒绝（不静默覆盖）；{@code hexes} 不得为空、每格都必须在图上。
    *
    * @param base 现图（只读）
@@ -62,12 +83,23 @@ public final class RegionOperations {
     Objects.requireNonNull(name, "name");
     Objects.requireNonNull(hexes, "hexes");
     if (base.regions().containsKey(id)) {
+      debugRejected("create", "区域已存在", "region", id.value());
       throw new IllegalArgumentException("区域已存在: " + id);
     }
     requireNonEmptyHexesInMap(base, hexes);
     Map<RegionId, Region> next = new LinkedHashMap<>(base.regions());
     next.put(id, Region.of(id, name, hexes, meta));
-    LOG.info("event=MAP_REGION_CREATED id={} name={} hexes={}", id, name, hexes.size());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "MAP_REGION_CREATED",
+                MapLogSource.MAP_EDIT,
+                "id",
+                id,
+                "name",
+                name,
+                "hexes",
+                hexes.size()));
     return MapChangeSet.between(base, base.withRegions(next));
   }
 
@@ -89,10 +121,12 @@ public final class RegionOperations {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(id, "id");
     if (hexes == null && meta == null) {
+      debugRejected("update", "hexes 与 meta 至少给一个", "region", id.value());
       throw new IllegalArgumentException("map.UpdateRegion 必须至少给 hexes 与 meta 之一");
     }
     Region existing = base.regions().get(id);
     if (existing == null) {
+      debugRejected("update", "区域不存在", "region", id.value());
       throw new IllegalArgumentException("区域不存在: " + id);
     }
     if (hexes != null) {
@@ -103,11 +137,17 @@ public final class RegionOperations {
     Map<RegionId, Region> next = new LinkedHashMap<>(base.regions());
     // put 已存在的 key 不改 LinkedHashMap 的插入序（区域名下的位置稳定）。
     next.put(id, Region.of(id, existing.name(), nextHexes, nextMeta));
-    LOG.info(
-        "event=MAP_REGION_UPDATED id={} hexes={} metaChanged={}",
-        id,
-        nextHexes.size(),
-        meta != null);
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "MAP_REGION_UPDATED",
+                MapLogSource.MAP_EDIT,
+                "id",
+                id,
+                "hexes",
+                nextHexes.size(),
+                "metaChanged",
+                meta != null));
     return MapChangeSet.between(base, base.withRegions(next));
   }
 
@@ -124,11 +164,12 @@ public final class RegionOperations {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(id, "id");
     if (!base.regions().containsKey(id)) {
+      debugRejected("delete", "区域不存在", "region", id.value());
       throw new IllegalArgumentException("区域不存在: " + id);
     }
     Map<RegionId, Region> next = new LinkedHashMap<>(base.regions());
     next.remove(id);
-    LOG.info("event=MAP_REGION_DELETED id={}", id);
+    EventLog.channel(LOG).info(LogEvent.of("MAP_REGION_DELETED", MapLogSource.MAP_EDIT, "id", id));
     return MapChangeSet.between(base, base.withRegions(next));
   }
 
@@ -147,6 +188,7 @@ public final class RegionOperations {
     Objects.requireNonNull(target, "target");
     Objects.requireNonNull(sources, "sources");
     if (sources.isEmpty()) {
+      debugRejected("merge", "sourceRegionIds 不得为空", "target", target.value());
       throw new IllegalArgumentException("map.MergeRegions 的 sourceRegionIds 不得为空");
     }
     Region targetRegion = requireRegion(base, target);
@@ -154,6 +196,7 @@ public final class RegionOperations {
     for (RegionId sourceId : sources) {
       Objects.requireNonNull(sourceId, "sources 的元素");
       if (sourceId.equals(target)) {
+        debugRejected("merge", "源区域不得包含目标区域自身", "target", target.value(), "source", sourceId);
         throw new IllegalArgumentException("map.MergeRegions 的源区域不得包含目标区域自身: " + target);
       }
       Region source = requireRegion(base, sourceId);
@@ -164,8 +207,17 @@ public final class RegionOperations {
     for (RegionId sourceId : sources) {
       next.remove(sourceId);
     }
-    LOG.info(
-        "event=MAP_REGIONS_MERGED target={} sources={} hexes={}", target, sources, merged.size());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "MAP_REGIONS_MERGED",
+                MapLogSource.MAP_EDIT,
+                "target",
+                target,
+                "sources",
+                sources,
+                "hexes",
+                merged.size()));
     return MapChangeSet.between(base, base.withRegions(next));
   }
 
@@ -184,6 +236,7 @@ public final class RegionOperations {
     Objects.requireNonNull(sourceId, "sourceId");
     Objects.requireNonNull(parts, "parts");
     if (parts.isEmpty()) {
+      debugRejected("split", "parts 不得为空", "source", sourceId.value());
       throw new IllegalArgumentException("map.SplitRegion 的 parts 不得为空");
     }
     Region source = requireRegion(base, sourceId);
@@ -192,25 +245,32 @@ public final class RegionOperations {
     for (RegionPart part : parts) {
       Objects.requireNonNull(part, "parts 的元素");
       if (part.id().equals(sourceId)) {
+        debugRejected("split", "新区域 id 不得等于源区域", "source", sourceId.value(), "part", part.id());
         throw new IllegalArgumentException("map.SplitRegion 的新区域 id 不得等于源区域: " + sourceId);
       }
       if (base.regions().containsKey(part.id())) {
+        debugRejected("split", "新区域 id 已存在", "source", sourceId.value(), "part", part.id());
         throw new IllegalArgumentException("map.SplitRegion 的新区域 id 已存在: " + part.id());
       }
       if (!newIds.add(part.id())) {
+        debugRejected("split", "新区域 id 重复", "source", sourceId.value(), "part", part.id());
         throw new IllegalArgumentException("map.SplitRegion 的新区域 id 重复: " + part.id());
       }
       if (part.hexes().isEmpty()) {
+        debugRejected("split", "每个 part 至少要有一格", "source", sourceId.value(), "part", part.id());
         throw new IllegalArgumentException("map.SplitRegion 的每个 part 至少要有一格: " + part.id());
       }
       for (HexCoord hex : part.hexes()) {
         if (!base.hexes().containsKey(hex)) {
+          debugRejected("split", "hex 不在图上", "source", sourceId.value(), "hex", hex);
           throw new IllegalArgumentException("hex 不在图上: " + hex);
         }
         if (!source.hexes().contains(hex)) {
+          debugRejected("split", "hex 不在源区域内", "source", sourceId.value(), "hex", hex);
           throw new IllegalArgumentException("hex 不在源区域 " + sourceId + " 内: " + hex);
         }
         if (!covered.add(hex)) {
+          debugRejected("split", "parts 相交", "source", sourceId.value(), "hex", hex);
           throw new IllegalArgumentException(
               "map.SplitRegion 的 parts 相交：hex " + hex + " 出现在多个 part 里");
         }
@@ -218,11 +278,13 @@ public final class RegionOperations {
     }
     if (keepSource) {
       if (covered.isEmpty()) {
+        debugRejected("split", "keepSource=true 时 parts 至少覆盖一格", "source", sourceId.value());
         throw new IllegalArgumentException("map.SplitRegion 且 keepSource=true 时 parts 至少覆盖一格");
       }
       Set<HexCoord> residual = new LinkedHashSet<>(source.hexes());
       residual.removeAll(covered);
       if (residual.isEmpty()) {
+        debugRejected("split", "keepSource=true 时剩余为空", "source", sourceId.value());
         throw new IllegalArgumentException(
             "map.SplitRegion 且 keepSource=true 时剩余为空；请用 keepSource=false 让源区域被 parts 取代");
       }
@@ -231,14 +293,31 @@ public final class RegionOperations {
       for (RegionPart part : parts) {
         next.put(part.id(), Region.of(part.id(), part.name(), part.hexes(), part.meta()));
       }
-      LOG.info(
-          "event=MAP_REGION_SPLIT source={} parts={} keepSource=true residualHexes={}",
-          sourceId,
-          parts.size(),
-          residual.size());
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "MAP_REGION_SPLIT",
+                  MapLogSource.MAP_EDIT,
+                  "source",
+                  sourceId,
+                  "parts",
+                  parts.size(),
+                  "keepSource",
+                  true,
+                  "residualHexes",
+                  residual.size()));
       return MapChangeSet.between(base, base.withRegions(next));
     }
     if (!covered.equals(source.hexes())) {
+      debugRejected(
+          "split",
+          "keepSource=false 时 parts 必须恰好覆盖源区域",
+          "source",
+          sourceId.value(),
+          "covered",
+          covered.size(),
+          "sourceHexes",
+          source.hexes().size());
       throw new IllegalArgumentException(
           "map.SplitRegion 且 keepSource=false 时 parts 必须恰好覆盖源区域全部 "
               + source.hexes().size()
@@ -251,11 +330,19 @@ public final class RegionOperations {
     for (RegionPart part : parts) {
       next.put(part.id(), Region.of(part.id(), part.name(), part.hexes(), part.meta()));
     }
-    LOG.info(
-        "event=MAP_REGION_SPLIT source={} parts={} keepSource=false coveredHexes={}",
-        sourceId,
-        parts.size(),
-        covered.size());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "MAP_REGION_SPLIT",
+                MapLogSource.MAP_EDIT,
+                "source",
+                sourceId,
+                "parts",
+                parts.size(),
+                "keepSource",
+                false,
+                "coveredHexes",
+                covered.size()));
     return MapChangeSet.between(base, base.withRegions(next));
   }
 
@@ -274,15 +361,18 @@ public final class RegionOperations {
     Objects.requireNonNull(sources, "sources");
     Objects.requireNonNull(hexes, "hexes");
     if (sources.isEmpty()) {
+      debugRejected("reassign", "fromRegionIds 不得为空", "target", target.value());
       throw new IllegalArgumentException("map.ReassignHexes 的 fromRegionIds 不得为空");
     }
     if (hexes.isEmpty()) {
+      debugRejected("reassign", "hexes 不得为空", "target", target.value());
       throw new IllegalArgumentException("map.ReassignHexes 的 hexes 不得为空");
     }
     Region targetRegion = requireRegion(base, target);
     for (RegionId sourceId : sources) {
       Objects.requireNonNull(sourceId, "sources 的元素");
       if (sourceId.equals(target)) {
+        debugRejected("reassign", "源区域不得包含目标区域自身", "target", target.value(), "source", sourceId);
         throw new IllegalArgumentException("map.ReassignHexes 的源区域不得包含目标区域自身: " + target);
       }
       requireRegion(base, sourceId);
@@ -291,6 +381,7 @@ public final class RegionOperations {
     ordered.sort(Comparator.naturalOrder());
     for (HexCoord hex : ordered) {
       if (!base.hexes().containsKey(hex)) {
+        debugRejected("reassign", "hex 不在图上", "target", target.value(), "hex", hex);
         throw new IllegalArgumentException("hex 不在图上: " + hex);
       }
       boolean owned = false;
@@ -301,6 +392,7 @@ public final class RegionOperations {
         }
       }
       if (!owned) {
+        debugRejected("reassign", "hex 不属于任何源区域", "target", target.value(), "hex", hex);
         throw new IllegalArgumentException("hex " + hex + " 不属于任何源区域: " + sources);
       }
     }
@@ -311,6 +403,7 @@ public final class RegionOperations {
       LinkedHashSet<HexCoord> remaining = new LinkedHashSet<>(source.hexes());
       remaining.removeAll(hexes);
       if (remaining.isEmpty()) {
+        debugRejected("reassign", "源区域会被划空", "target", target.value(), "source", sourceId);
         throw new IllegalArgumentException(
             "源区域 "
                 + sourceId
@@ -323,11 +416,30 @@ public final class RegionOperations {
     LinkedHashSet<HexCoord> targetHexes = new LinkedHashSet<>(targetRegion.hexes());
     targetHexes.addAll(hexes);
     next.put(target, targetRegion.withHexes(Set.copyOf(targetHexes)));
-    LOG.info(
-        "event=MAP_HEXES_REASSIGNED target={} sources={} hexes={}", target, sources, hexes.size());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "MAP_HEXES_REASSIGNED",
+                MapLogSource.MAP_EDIT,
+                "target",
+                target,
+                "sources",
+                sources,
+                "hexes",
+                hexes.size()));
     if (TRACE.isTraceEnabled()) {
       for (HexCoord hex : ordered) {
-        TRACE.trace("event=MAP_HEX_REASSIGNED target={} hex={} sources={}", target, hex, sources);
+        EventLog.channel(TRACE)
+            .trace(
+                LogEvent.of(
+                    "MAP_HEX_REASSIGNED",
+                    MapLogSource.MAP_EDIT,
+                    "target",
+                    target,
+                    "hex",
+                    hex,
+                    "sources",
+                    sources));
       }
     }
     return MapChangeSet.between(base, base.withRegions(next));
@@ -353,6 +465,7 @@ public final class RegionOperations {
   private static Region requireRegion(GameMap base, RegionId id) {
     Region region = base.regions().get(id);
     if (region == null) {
+      debugRejected("requireRegion", "区域不存在", "region", id.value());
       throw new IllegalArgumentException("区域不存在: " + id);
     }
     return region;
@@ -365,12 +478,14 @@ public final class RegionOperations {
    */
   private static void requireNonEmptyHexesInMap(GameMap base, Set<HexCoord> hexes) {
     if (hexes.isEmpty()) {
+      debugRejected("requireHexes", "hexes 不得为空");
       throw new IllegalArgumentException("hexes 不得为空：一个区域至少要有一格");
     }
     List<HexCoord> ordered = new ArrayList<>(hexes);
     ordered.sort(Comparator.naturalOrder());
     for (HexCoord hex : ordered) {
       if (!base.hexes().containsKey(hex)) {
+        debugRejected("requireHexes", "hex 不在图上", "hex", hex);
         throw new IllegalArgumentException("hex 不在图上: " + hex);
       }
     }

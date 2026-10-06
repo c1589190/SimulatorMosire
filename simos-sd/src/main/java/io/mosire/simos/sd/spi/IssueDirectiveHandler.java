@@ -2,6 +2,7 @@ package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.DirectiveId;
@@ -13,6 +14,8 @@ import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.SdInfoIds;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.address.Address;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.RevisionId;
@@ -25,7 +28,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import org.slf4j.Logger;
 
 /**
  * {@code sd.IssueDirective} 命令的处理器（spec §四，D1）：落一条 {@link Directive}，并把**执行原文**写成 sd 侧 INFO。
@@ -54,8 +56,6 @@ import org.slf4j.Logger;
  */
 public final class IssueDirectiveHandler implements CommandHandler {
 
-  private static final Logger LOG = SdLog.decision();
-
   /** 执行原文在 sd INFO 覆盖层里的 key（spec §二.3："单条决策 = 单条 Command，Command 必须自带 INFO 作为执行原文"）。 */
   public static final String INTENT_INFO_KEY = "intent";
 
@@ -75,11 +75,15 @@ public final class IssueDirectiveHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SdState base = SdSnapshots.of(state).state();
+    String directiveForLog = null;
+    String dmForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       DirectiveId id = DirectiveId.parse(SdPayloads.requireText(payload, "directiveId"));
+      directiveForLog = id.value();
       DecisionMakerId decisionMakerId =
           DecisionMakerId.parse(SdPayloads.requireText(payload, "decisionMakerId"));
+      dmForLog = decisionMakerId.value();
       long tick = SdPayloads.requireLong(payload, "tick");
       Optional<Address> target = SdPayloads.optionalAddress(payload, "target");
       String intentInfo = SdPayloads.requireText(payload, "intentInfo");
@@ -87,7 +91,8 @@ public final class IssueDirectiveHandler implements CommandHandler {
       Set<EffectId> effects = parseEffectIds(payload);
 
       if (!base.decisionMakers().containsKey(decisionMakerId)) {
-        return new HandlerOutcome.Rejected("决策人不存在: " + decisionMakerId.value());
+        return rejected(
+            "决策人不存在: " + decisionMakerId.value(), "directive", directiveForLog, "dm", dmForLog);
       }
       long worldTick = state.meta().timestamp().tick();
       if (tick > worldTick) {
@@ -97,18 +102,39 @@ public final class IssueDirectiveHandler implements CommandHandler {
         //   （症状是"点开始决策没反应"，且**没有任何报错**）。
         //   ★ **只拒"未来"，不要求"恰好等于世界 tick"**：过去的 tick 合法（补记 / 滞后一拍都说得通），
         //     且**系统不改写调用方给的值**（不静默兜底——改了值等于让调用方以为自己写对了）。
-        return new HandlerOutcome.Rejected("令不得记在未来：载荷 tick " + tick + " > 世界 tick " + worldTick);
+        return rejected(
+            "令不得记在未来：载荷 tick " + tick + " > 世界 tick " + worldTick,
+            "directive",
+            directiveForLog,
+            "dm",
+            dmForLog,
+            "tick",
+            tick);
       }
       if (base.directives().containsKey(id)) {
-        return new HandlerOutcome.Rejected("决策已存在: " + id.value());
+        return rejected("决策已存在: " + id.value(), "directive", directiveForLog, "dm", dmForLog);
       }
       Optional<String> whiteListViolation = firstWhitelistViolation(commands);
       if (whiteListViolation.isPresent()) {
-        return new HandlerOutcome.Rejected(whiteListViolation.get());
+        return rejected(
+            whiteListViolation.get(),
+            "directive",
+            directiveForLog,
+            "dm",
+            dmForLog,
+            "commands",
+            commands.size());
       }
       for (EffectId effectId : effects) {
         if (!base.effects().containsKey(effectId)) {
-          return new HandlerOutcome.Rejected("效果不存在: " + effectId.value());
+          return rejected(
+              "效果不存在: " + effectId.value(),
+              "directive",
+              directiveForLog,
+              "dm",
+              dmForLog,
+              "effect",
+              effectId.value());
         }
       }
 
@@ -148,18 +174,43 @@ public final class IssueDirectiveHandler implements CommandHandler {
       supersedeOldVersions(nextDirectives, decisionMakerId, tick);
       nextDirectives.put(id, directive);
       SdState target0 = base.withDirectives(nextDirectives).withInfo(nextInfo);
-      LOG.info(
-          "event=SD_DIRECTIVE_ISSUED id={} decisionMaker={} tick={} commands={} effects={} target={}",
-          id.value(),
-          decisionMakerId.value(),
-          tick,
-          commands.size(),
-          effects.size(),
-          target.map(Address::canonical).orElse("-"));
+      EventLog.channel(SdLog.decision())
+          .info(
+              LogEvent.of(
+                  "SD_DIRECTIVE_ISSUED",
+                  SdLogSource.SD_DECISION,
+                  "id",
+                  id.value(),
+                  "decisionMaker",
+                  decisionMakerId.value(),
+                  "tick",
+                  tick,
+                  "commands",
+                  commands.size(),
+                  "effects",
+                  effects.size(),
+                  "target",
+                  target.map(Address::canonical).orElse("-"),
+                  "directives",
+                  nextDirectives.size()));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, target0));
     } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
+      return rejected(e.getMessage(), "directive", directiveForLog, "dm", dmForLog);
     }
+  }
+
+  /**
+   * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
+   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   */
+  private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
+    SdPayloads.logRejected(
+        SdLog.decision(),
+        SdLogSource.SD_DECISION,
+        "SD_ISSUE_DIRECTIVE_REJECTED",
+        reason,
+        idKeyValues);
+    return new HandlerOutcome.Rejected(reason);
   }
 
   /**

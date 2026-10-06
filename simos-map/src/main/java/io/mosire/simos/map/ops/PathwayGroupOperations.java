@@ -2,8 +2,11 @@ package io.mosire.simos.map.ops;
 
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.change.MapChangeSet;
 import io.mosire.simos.map.pathway.PathwayGroup;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -40,11 +43,32 @@ public final class PathwayGroupOperations {
     Objects.requireNonNull(base, "base");
     Objects.requireNonNull(group, "group");
     if (base.pathwayGroups().containsKey(group.id())) {
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "MAP_PATHWAY_GROUP_EDIT_BLOCKED",
+                    MapLogSource.MAP_EDIT,
+                    "operation",
+                    "register",
+                    "reason",
+                    "组已存在",
+                    "group",
+                    group.id()));
+      }
       throw new IllegalArgumentException("组已存在: " + group.id());
     }
     Map<String, PathwayGroup> next = new LinkedHashMap<>(base.pathwayGroups());
     next.put(group.id(), group);
-    LOG.info("event=MAP_PATHWAY_GROUP_REGISTERED id={} name={}", group.id(), group.name());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "MAP_PATHWAY_GROUP_REGISTERED",
+                MapLogSource.MAP_EDIT,
+                "id",
+                group.id(),
+                "name",
+                group.name()));
     return MapChangeSet.between(base, base.withPathwayGroups(next));
   }
 }

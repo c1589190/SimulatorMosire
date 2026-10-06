@@ -1,5 +1,7 @@
 package io.mosire.simos.sd.resolve;
 
+import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatOutcomeId;
@@ -20,6 +22,9 @@ import io.mosire.simos.util.address.Namespace;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.identity.ResolvedSubject;
 import io.mosire.simos.util.identity.SubjectId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.resolve.ResolveContext;
 import io.mosire.simos.util.resolve.Resolver;
 import io.mosire.simos.util.state.Snapshot;
@@ -40,10 +45,15 @@ import java.util.Optional;
  * 切片、或切片类型不对）。
  *
  * <p>★ 决策人地址**不可用 {@code agent:}**（N15）：那是 AgentLib 的绑定值，不进地址。
+ *
+ * <p>★ <b>日志（2026-10-23 L2）</b>：只记空候选与装配故障（DEBUG，{@code SD_RESOLVE_*}/{@code
+ * SD_RESOLVE_UNAVAILABLE}），**不逐次记成功查询**；地址串是领域 id，不是载荷原文。
  */
 public final class SdResolver implements Resolver {
 
   private static final String NAMESPACE = "sd";
+
+  private static final LogChannel RESOLVE = EventLog.channel(SdLog.resolve());
 
   @Override
   public String namespace() {
@@ -57,35 +67,80 @@ public final class SdResolver implements Resolver {
     if (!NAMESPACE.equals(address.namespace())) {
       return empty();
     }
-    SdState state = stateOf(ctx);
+    SdState state;
+    try {
+      state = stateOf(ctx);
+    } catch (IllegalArgumentException e) {
+      if (RESOLVE.isDebugEnabled()) {
+        RESOLVE.debug(
+            LogEvent.of(
+                "SD_RESOLVE_UNAVAILABLE",
+                SdLogSource.SD_RESOLVE,
+                "reason",
+                "sd 切片缺席或类型不对（装配故障）",
+                "address",
+                address.canonical()));
+      }
+      throw e;
+    }
     List<AddressSegment> segments = address.segments();
     if (!(segments.get(1) instanceof Entity root) || root.kind().isEmpty()) {
+      if (RESOLVE.isDebugEnabled()) {
+        RESOLVE.debug(
+            LogEvent.of(
+                "SD_RESOLVE_EMPTY",
+                SdLogSource.SD_RESOLVE,
+                "reason",
+                "路径形状非法或根段缺 kind",
+                "address",
+                address.canonical(),
+                "segments",
+                segments.size()));
+      }
       return empty();
     }
-    return switch (root.kind().get()) {
-      case "nation" ->
-          rootOnly(segments, root, SdResolver::parseNation, state.nations()::containsKey, "Nation");
-      case "army" ->
-          rootOnly(segments, root, SdResolver::parseArmy, state.armies()::containsKey, "Army");
-      case "decision-maker" ->
-          rootOnly(
-              segments,
-              root,
-              SdResolver::parseDecisionMaker,
-              state.decisionMakers()::containsKey,
-              "DecisionMaker");
-      case "directive" ->
-          rootOnly(
-              segments,
-              root,
-              SdResolver::parseDirective,
-              state.directives()::containsKey,
-              "Directive");
-      case "effect" ->
-          rootOnly(segments, root, SdResolver::parseEffect, state.effects()::containsKey, "Effect");
-      case "combat" -> resolveCombat(state, segments, root.name());
-      default -> empty();
-    };
+    QueryResult result =
+        switch (root.kind().get()) {
+          case "nation" ->
+              rootOnly(
+                  segments, root, SdResolver::parseNation, state.nations()::containsKey, "Nation");
+          case "army" ->
+              rootOnly(segments, root, SdResolver::parseArmy, state.armies()::containsKey, "Army");
+          case "decision-maker" ->
+              rootOnly(
+                  segments,
+                  root,
+                  SdResolver::parseDecisionMaker,
+                  state.decisionMakers()::containsKey,
+                  "DecisionMaker");
+          case "directive" ->
+              rootOnly(
+                  segments,
+                  root,
+                  SdResolver::parseDirective,
+                  state.directives()::containsKey,
+                  "Directive");
+          case "effect" ->
+              rootOnly(
+                  segments, root, SdResolver::parseEffect, state.effects()::containsKey, "Effect");
+          case "combat" -> resolveCombat(state, segments, root.name());
+          default -> empty();
+        };
+    if (result.candidates().isEmpty() && RESOLVE.isDebugEnabled()) {
+      RESOLVE.debug(
+          LogEvent.of(
+              "SD_RESOLVE_EMPTY",
+              SdLogSource.SD_RESOLVE,
+              "reason",
+              "候选为空（id 非法/实体不存在/路径不受支持）",
+              "address",
+              address.canonical(),
+              "root",
+              root.kind().get(),
+              "segments",
+              segments.size()));
+    }
+    return result;
   }
 
   private static QueryResult resolveCombat(

@@ -3,18 +3,23 @@ package io.mosire.simos.map.spi;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.map.MapLog;
+import io.mosire.simos.map.MapLogSource;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.pathway.EdgeRef;
 import io.mosire.simos.map.pathway.PathwayGroup;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.map.region.RegionMeta;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * map 命令 handler 共用的载荷解析助手（M8 spec §二）。
@@ -33,7 +38,72 @@ final class MapPayloads {
   /** 本类唯一的一台 mapper：共享基座出厂配置，不认识任何领域类型（载荷是扁平 JSON）。 */
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
+  /** 字段级拒绝的 DEBUG 只走 map 写口来源（命令面；入口交互由 app 层自记）。 */
+  private static final Logger LOG = MapLog.edit();
+
   private MapPayloads() {}
+
+  /**
+   * 字段级拒绝的 DEBUG（形态/类型判据，plan §6 map 行②）：{@code field=} + 脱敏 {@code reason=}，只在 DEBUG 打开时构造。 与
+   * handler 边界的 INFO「被拒绝」事件成对：本条是字段级的「为什么」，INFO 是命令级的结局；不改异常/返回值/行为。
+   */
+  private static void debugFieldRejected(String field, String reason) {
+    if (!LOG.isDebugEnabled()) {
+      return;
+    }
+    EventLog.channel(LOG)
+        .debug(
+            LogEvent.of(
+                "MAP_PAYLOAD_FIELD_REJECTED",
+                MapLogSource.MAP_EDIT,
+                "field",
+                field,
+                "reason",
+                fieldReason(reason)));
+  }
+
+  /** 字段级 reason：先走 {@link #logReason}，再截到第一个冒号，确保冒号后的字段值/原文不回显。 */
+  private static String fieldReason(String message) {
+    String reason = logReason(message);
+    int cut = reason.length();
+    int ascii = reason.indexOf(':');
+    if (ascii >= 0 && ascii < cut) {
+      cut = ascii;
+    }
+    int fullWidth = reason.indexOf('：');
+    if (fullWidth >= 0 && fullWidth < cut) {
+      cut = fullWidth;
+    }
+    String trimmed = reason.substring(0, cut).strip();
+    return trimmed.isEmpty() ? "unknown" : trimmed;
+  }
+
+  /**
+   * ★ <b>日志安全的拒绝理由</b>：本类的校验消息为方便调用方排查会回显字段值/整段载荷，但日志纪律禁止载荷明文与 JSON 原文（plan §4.3）。 这里只保留可读前缀——截到第一个
+   * JSON 起始符/换行；{@code payload ...} 这一类原始文本消息再截到冒号，避免把调用方原文带进日志。 截断只影响日志文本，不影响异常本身，也不改 {@code
+   * Rejected} 的理由。
+   */
+  static String logReason(String message) {
+    if (message == null || message.isBlank()) {
+      return "unknown";
+    }
+    String text = message.strip();
+    int cut = text.length();
+    for (char marker : new char[] {'{', '[', '\n', '\r'}) {
+      int at = text.indexOf(marker);
+      if (at >= 0 && at < cut) {
+        cut = at;
+      }
+    }
+    if (text.startsWith("payload ")) {
+      int colon = text.indexOf(':');
+      if (colon >= 0 && colon < cut) {
+        cut = colon;
+      }
+    }
+    String reason = text.substring(0, cut).strip();
+    return reason.isEmpty() ? "unknown" : reason;
+  }
 
   /** 解析载荷文本：非 JSON、或不是 JSON 对象 ⇒ 抛。 */
   static JsonNode parse(String payloadJson) {
@@ -42,9 +112,11 @@ final class MapPayloads {
     try {
       payload = MAPPER.readTree(payloadJson);
     } catch (JsonProcessingException e) {
+      debugFieldRejected("payload", "payload 不是合法 JSON");
       throw new IllegalArgumentException("payload 不是合法 JSON: " + e.getOriginalMessage(), e);
     }
     if (payload == null || !payload.isObject()) {
+      debugFieldRejected("payload", "payload 必须是 JSON 对象");
       throw new IllegalArgumentException("payload 必须是 JSON 对象: " + payloadJson);
     }
     return payload;
@@ -54,6 +126,7 @@ final class MapPayloads {
   static String requireText(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || !value.isTextual()) {
+      debugFieldRejected(field, "必须是字符串");
       throw new IllegalArgumentException("字段 " + field + " 必须是字符串: " + payload);
     }
     return value.asText();
@@ -68,6 +141,7 @@ final class MapPayloads {
   static long requireLong(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || !value.isIntegralNumber() || !value.canConvertToLong()) {
+      debugFieldRejected(field, "必须是整数");
       throw new IllegalArgumentException("字段 " + field + " 必须是整数: " + payload);
     }
     return value.asLong();
@@ -77,11 +151,13 @@ final class MapPayloads {
   static Set<HexCoord> requireHexes(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull() || !value.isArray()) {
+      debugFieldRejected(field, "必须是 [{q,r}…] 数组");
       throw new IllegalArgumentException("字段 " + field + " 必须是 [{q,r}…] 数组: " + payload);
     }
     Set<HexCoord> hexes = new LinkedHashSet<>();
     for (JsonNode element : value) {
       if (!element.isObject()) {
+        debugFieldRejected(field, "元素必须是 {q,r} 对象");
         throw new IllegalArgumentException("字段 " + field + " 的元素必须是 {q,r} 对象: " + element);
       }
       hexes.add(hexFrom(element, field));
@@ -91,25 +167,41 @@ final class MapPayloads {
 
   /** 必填的 {@code regionId} 字符串 ⇒ {@link RegionId}（空白由 {@link RegionId#parse} 拒绝，消息是它自己的）。 */
   static RegionId requireRegionId(JsonNode payload, String field) {
-    return RegionId.parse(requireText(payload, field));
+    String text = requireText(payload, field);
+    try {
+      return RegionId.parse(text);
+    } catch (IllegalArgumentException e) {
+      debugFieldRejected(field, "RegionId 解析失败");
+      throw e;
+    }
   }
 
   /** 必填的 {@code ["regionId"…]} 数组 ⇒ 保序去重的 {@link RegionId} 列表；空数组 ⇒ 抛（区划语义命令至少要点名一个区域）。 */
   static List<RegionId> requireRegionIds(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull() || !value.isArray()) {
+      debugFieldRejected(field, "必须是 [regionId…] 数组");
       throw new IllegalArgumentException("字段 " + field + " 必须是 [regionId…] 数组: " + payload);
     }
     if (value.isEmpty()) {
+      debugFieldRejected(field, "不得为空数组");
       throw new IllegalArgumentException("字段 " + field + " 不得为空数组");
     }
     java.util.LinkedHashSet<RegionId> ids = new java.util.LinkedHashSet<>();
     for (JsonNode element : value) {
       if (!element.isTextual()) {
+        debugFieldRejected(field, "元素必须是 regionId 字符串");
         throw new IllegalArgumentException("字段 " + field + " 的元素必须是 regionId 字符串: " + element);
       }
-      RegionId id = RegionId.parse(element.asText());
+      RegionId id;
+      try {
+        id = RegionId.parse(element.asText());
+      } catch (IllegalArgumentException e) {
+        debugFieldRejected(field, "RegionId 解析失败");
+        throw e;
+      }
       if (!ids.add(id)) {
+        debugFieldRejected(field, "不得含重复区域");
         throw new IllegalArgumentException("字段 " + field + " 不得含重复区域: " + id);
       }
     }
@@ -123,6 +215,7 @@ final class MapPayloads {
       return defaultValue;
     }
     if (!value.isBoolean()) {
+      debugFieldRejected(field, "必须是布尔");
       throw new IllegalArgumentException("字段 " + field + " 必须是布尔: " + payload);
     }
     return value.asBoolean();
@@ -139,14 +232,21 @@ final class MapPayloads {
   static Set<EdgeRef> requireEdgeRefs(JsonNode payload, String field) {
     JsonNode value = payload.get(field);
     if (value == null || value.isNull() || !value.isArray()) {
+      debugFieldRejected(field, "必须是 [\"q_r|q_r\"…] 数组");
       throw new IllegalArgumentException("字段 " + field + " 必须是 [\"q_r|q_r\"…] 数组: " + payload);
     }
     Set<EdgeRef> edges = new LinkedHashSet<>();
     for (JsonNode element : value) {
       if (!element.isTextual()) {
+        debugFieldRejected(field, "元素必须是 q_r|q_r 字符串");
         throw new IllegalArgumentException("字段 " + field + " 的元素必须是 \"q_r|q_r\" 字符串: " + element);
       }
-      edges.add(EdgeRef.parse(element.asText()));
+      try {
+        edges.add(EdgeRef.parse(element.asText()));
+      } catch (IllegalArgumentException e) {
+        debugFieldRejected(field, "EdgeRef 解析失败");
+        throw e;
+      }
     }
     return edges;
   }
@@ -174,6 +274,7 @@ final class MapPayloads {
       return null;
     }
     if (!value.isObject()) {
+      debugFieldRejected(field, "必须是 {color,tag,description,annexedBy} 对象");
       throw new IllegalArgumentException(
           "字段 " + field + " 必须是 {color,tag,description,annexedBy} 对象: " + payload);
     }
@@ -201,15 +302,20 @@ final class MapPayloads {
     } else if (visibleNode.isBoolean()) {
       visible = visibleNode.asBoolean();
     } else {
+      debugFieldRejected("visible", "必须是布尔");
       throw new IllegalArgumentException("字段 visible 必须是布尔: " + payload);
     }
-    return new PathwayGroup(
-        requireText(payload, "id"),
-        requireText(payload, "name"),
-        requireText(payload, "color"),
-        optionalText(payload, "description"),
-        visible,
-        propertyDefs(payload.get("properties")));
+    String id = requireText(payload, "id");
+    String name = requireText(payload, "name");
+    String color = requireText(payload, "color");
+    String description = optionalText(payload, "description");
+    Map<String, PathwayGroup.PropertyDef> properties = propertyDefs(payload.get("properties"));
+    try {
+      return new PathwayGroup(id, name, color, description, visible, properties);
+    } catch (IllegalArgumentException e) {
+      debugFieldRejected("group", "PathwayGroup 定义校验失败");
+      throw e;
+    }
   }
 
   /** {@code properties}：缺席 / JSON {@code null} ⇒ 空表（保序，不兜任何定义）；非对象 ⇒ 抛。 */
@@ -218,6 +324,7 @@ final class MapPayloads {
       return Map.of();
     }
     if (!value.isObject()) {
+      debugFieldRejected("properties", "必须是 {名:{type,…}} 对象");
       throw new IllegalArgumentException("字段 properties 必须是 {名:{type,…}} 对象: " + value);
     }
     Map<String, PathwayGroup.PropertyDef> out = new LinkedHashMap<>();
@@ -227,6 +334,7 @@ final class MapPayloads {
             entry -> {
               JsonNode def = entry.getValue();
               if (def == null || !def.isObject()) {
+                debugFieldRejected("properties", "属性定义必须是 {type,…} 对象");
                 throw new IllegalArgumentException(
                     "properties." + entry.getKey() + " 必须是 {type,…} 对象: " + value);
               }
@@ -234,10 +342,16 @@ final class MapPayloads {
                   def.hasNonNull("defaultValue")
                       ? MAPPER.convertValue(def.get("defaultValue"), Object.class)
                       : null;
-              out.put(
-                  entry.getKey(),
-                  new PathwayGroup.PropertyDef(
-                      requireText(def, "type"), defaultValue, optionalText(def, "description")));
+              String type = requireText(def, "type");
+              String description = optionalText(def, "description");
+              PathwayGroup.PropertyDef propertyDef;
+              try {
+                propertyDef = new PathwayGroup.PropertyDef(type, defaultValue, description);
+              } catch (IllegalArgumentException e) {
+                debugFieldRejected("properties.type", "type 不得为空白");
+                throw e;
+              }
+              out.put(entry.getKey(), propertyDef);
             });
     return out;
   }
@@ -249,6 +363,7 @@ final class MapPayloads {
       return null;
     }
     if (!value.isTextual()) {
+      debugFieldRejected(field, "必须是字符串");
       throw new IllegalArgumentException("meta 字段 " + field + " 必须是字符串: " + object);
     }
     return value.asText();
@@ -263,6 +378,7 @@ final class MapPayloads {
         || r == null
         || !r.isIntegralNumber()
         || !r.canConvertToInt()) {
+      debugFieldRejected(field, "必须有整数 q 与 r");
       throw new IllegalArgumentException("字段 " + field + " 必须有整数 q 与 r: " + object);
     }
     return new HexCoord(q.asInt(), r.asInt());

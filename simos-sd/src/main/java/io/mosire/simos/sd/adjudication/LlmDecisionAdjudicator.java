@@ -2,9 +2,11 @@ package io.mosire.simos.sd.adjudication;
 
 import io.mosire.agentlib.llm.LlmException;
 import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.model.AdjudicationBreakpoint;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.Objects;
-import org.slf4j.Logger;
 
 /**
  * 基于 LLM 的裁决器实现（spec §八.5，N10/N13）：模块内**边界内聚**的那一半。
@@ -29,11 +31,10 @@ import org.slf4j.Logger;
  * AdjudicationRequest} 本来就携带的、 给模型看的文本），不改任何判据；"字段是否齐"的最终裁决仍在 {@link
  * AdjudicationSchemas#validate}。★ **schema 缺失时 该请求不可裁决**（构造期已保证它非空），不在这里兜底编一个假 schema。
  *
- * <p>★ key / 重试 / 超时在 app 的 LLM 客户端实现里（AgentLib 侧）；本类只做"请求 → 判决"。
+ * <p>★ key / 重试 / 超时在 app 的 LLM 客户端实现里（AgentLib 侧）；本类只做"请求 → 判决"。★ <b>日志纪律</b>：绝不打印 LLM 原文 / 提示词 /
+ * 裁决 payload（{@code Judgement.Accepted(raw)} 的 {@code raw} 不进日志，只记 result 档位）。
  */
 public final class LlmDecisionAdjudicator implements DecisionAdjudicator {
-
-  private static final Logger LOG = SdLog.decision();
 
   private final LlmClient client;
 
@@ -50,8 +51,15 @@ public final class LlmDecisionAdjudicator implements DecisionAdjudicator {
   public Judgement adjudicate(AdjudicationRequest request) {
     Objects.requireNonNull(request, "request");
     AdjudicationBreakpoint breakpoint = AdjudicationBreakpoint.parse(request.breakpoint());
-    LOG.debug(
-        "event=SD_ADJUDICATION_START adjudicator={} breakpoint={}", name(), breakpoint.value());
+    EventLog.channel(SdLog.decision())
+        .debug(
+            LogEvent.of(
+                "SD_ADJUDICATION_START",
+                SdLogSource.SD_DECISION,
+                "adjudicator",
+                name(),
+                "breakpoint",
+                breakpoint.value()));
     String raw;
     try {
       raw =
@@ -59,38 +67,76 @@ public final class LlmDecisionAdjudicator implements DecisionAdjudicator {
               new LlmRequest(breakpoint, systemPrompt(breakpoint), userPrompt(request)));
     } catch (LlmException e) {
       if (!e.degradable()) {
-        LOG.warn(
-            "event=SD_ADJUDICATION_ABORTED adjudicator={} breakpoint={} kind={}",
-            name(),
-            breakpoint.value(),
-            e.kind());
+        EventLog.channel(SdLog.decision())
+            .warn(
+                LogEvent.of(
+                    "SD_ADJUDICATION_ABORTED",
+                    SdLogSource.SD_DECISION,
+                    "adjudicator",
+                    name(),
+                    "breakpoint",
+                    breakpoint.value(),
+                    "reason",
+                    e.kind()));
         throw e; // CONFIG / CANCELLED / INTERNAL：该炸，降级会把真故障藏起来（B3）
       }
-      LOG.info(
-          "event=SD_ADJUDICATION_FINISHED adjudicator={} breakpoint={} result=Failed reason=llm",
-          name(),
-          breakpoint.value());
+      EventLog.channel(SdLog.decision())
+          .info(
+              LogEvent.of(
+                  "SD_ADJUDICATION_FINISHED",
+                  SdLogSource.SD_DECISION,
+                  "adjudicator",
+                  name(),
+                  "breakpoint",
+                  breakpoint.value(),
+                  "result",
+                  "Failed",
+                  "reason",
+                  "llm"));
       return new Judgement.Failed("LLM 调用失败（降级 " + e.kind() + "）：" + e.getMessage());
     }
     try {
       if (AdjudicationSchemas.isAbstention(raw)) {
-        LOG.info(
-            "event=SD_ADJUDICATION_FINISHED adjudicator={} breakpoint={} result=Abstained",
-            name(),
-            breakpoint.value());
+        EventLog.channel(SdLog.decision())
+            .info(
+                LogEvent.of(
+                    "SD_ADJUDICATION_FINISHED",
+                    SdLogSource.SD_DECISION,
+                    "adjudicator",
+                    name(),
+                    "breakpoint",
+                    breakpoint.value(),
+                    "result",
+                    "Abstained"));
         return new Judgement.Abstained(AdjudicationSchemas.abstentionReason(raw));
       }
       AdjudicationSchemas.validate(breakpoint, raw);
-      LOG.info(
-          "event=SD_ADJUDICATION_FINISHED adjudicator={} breakpoint={} result=Accepted",
-          name(),
-          breakpoint.value());
+      EventLog.channel(SdLog.decision())
+          .info(
+              LogEvent.of(
+                  "SD_ADJUDICATION_FINISHED",
+                  SdLogSource.SD_DECISION,
+                  "adjudicator",
+                  name(),
+                  "breakpoint",
+                  breakpoint.value(),
+                  "result",
+                  "Accepted"));
       return new Judgement.Accepted(raw);
     } catch (IllegalArgumentException e) {
-      LOG.info(
-          "event=SD_ADJUDICATION_FINISHED adjudicator={} breakpoint={} result=Failed reason=schema",
-          name(),
-          breakpoint.value());
+      EventLog.channel(SdLog.decision())
+          .info(
+              LogEvent.of(
+                  "SD_ADJUDICATION_FINISHED",
+                  SdLogSource.SD_DECISION,
+                  "adjudicator",
+                  name(),
+                  "breakpoint",
+                  breakpoint.value(),
+                  "result",
+                  "Failed",
+                  "reason",
+                  "schema"));
       return new Judgement.Failed("LLM 输出非法（降级）：" + e.getMessage());
     }
   }

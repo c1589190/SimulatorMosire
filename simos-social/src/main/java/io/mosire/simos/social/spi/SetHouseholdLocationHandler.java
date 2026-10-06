@@ -2,10 +2,15 @@ package io.mosire.simos.social.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.api.household.HouseholdLocation;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.change.SocialChangeSet;
+import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.household.HouseholdBook;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -66,14 +71,37 @@ public final class SetHouseholdLocationHandler implements CommandHandler, Comman
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SocialData base = SocialSnapshots.of(state).data(); // 装配故障当场炸，不走拒绝路径
+    String householdForLog = null;
     try {
       JsonNode payload = SocialPayloads.parse(payloadJson);
       HouseholdId id = SocialPayloads.requireHouseholdId(payload, "householdId");
+      householdForLog = id.value();
       HouseholdLocation location = SocialPayloads.requireLocation(payload, "location");
       String reason = SocialPayloads.requireReason(payload);
+      Household before = base.households().get(id);
       SocialData next = HouseholdBook.setLocation(base, id, location, reason);
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_SET_HOUSEHOLD_LOCATION_APPLIED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "household",
+                  id.value(),
+                  "from",
+                  before == null ? "-" : before.location(),
+                  "to",
+                  location));
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_SET_HOUSEHOLD_LOCATION_REJECTED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "reason",
+                  SocialPayloads.logReason(e.getMessage()),
+                  "household",
+                  householdForLog == null ? "-" : householdForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

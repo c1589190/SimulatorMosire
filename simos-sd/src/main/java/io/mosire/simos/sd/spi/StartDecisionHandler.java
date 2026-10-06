@@ -2,11 +2,14 @@ package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.model.SdInfoIds;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.RevisionId;
@@ -18,7 +21,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import org.slf4j.Logger;
 
 /**
  * {@code sd.StartDecision} 命令的处理器（T10，spec §四.5，D5 已裁）：**「开始决策」= 一条真命令**。
@@ -45,8 +47,6 @@ import org.slf4j.Logger;
  */
 public final class StartDecisionHandler implements CommandHandler {
 
-  private static final Logger LOG = SdLog.decision();
-
   /** 发起记录在 sd INFO 覆盖层里的 key。 */
   public static final String START_INFO_KEY = "start";
 
@@ -63,14 +63,16 @@ public final class StartDecisionHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SdState base = SdSnapshots.of(state).state();
+    String dmForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       DecisionMakerId decisionMakerId =
           DecisionMakerId.parse(SdPayloads.requireText(payload, "decisionMakerId"));
+      dmForLog = decisionMakerId.value();
       Optional<String> note = SdPayloads.optionalText(payload, "note");
 
       if (!base.decisionMakers().containsKey(decisionMakerId)) {
-        return new HandlerOutcome.Rejected("决策人不存在: " + decisionMakerId.value());
+        return rejected("决策人不存在: " + decisionMakerId.value(), "dm", dmForLog);
       }
 
       long tick = state.meta().timestamp().tick();
@@ -95,14 +97,38 @@ public final class StartDecisionHandler implements CommandHandler {
       entries.add(entry);
       nextInfo.put(address, List.copyOf(entries));
 
-      LOG.info(
-          "event=SD_DECISION_STARTED decisionMaker={} tick={} note={}",
-          decisionMakerId.value(),
-          tick,
-          note.isPresent());
+      EventLog.channel(SdLog.decision())
+          .info(
+              LogEvent.of(
+                  "SD_DECISION_STARTED",
+                  SdLogSource.SD_DECISION,
+                  "decisionMaker",
+                  decisionMakerId.value(),
+                  "tick",
+                  tick,
+                  "note",
+                  note.isPresent(),
+                  "entries",
+                  entries.size(),
+                  "infoAddresses",
+                  nextInfo.size()));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withInfo(nextInfo)));
     } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
+      return rejected(e.getMessage(), "dm", dmForLog);
     }
+  }
+
+  /**
+   * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
+   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   */
+  private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
+    SdPayloads.logRejected(
+        SdLog.decision(),
+        SdLogSource.SD_DECISION,
+        "SD_START_DECISION_REJECTED",
+        reason,
+        idKeyValues);
+    return new HandlerOutcome.Rejected(reason);
   }
 }

@@ -1,5 +1,10 @@
 package io.mosire.simos.unit.spi;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.unit.UnitLog;
+import io.mosire.simos.unit.UnitLogSource;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -38,6 +43,23 @@ public final class SetFormationOffsetHandler implements CommandHandler, CommandT
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
+    // 命令已退役、没有成功路径：只有 1 条 INFO 拒绝。id 尽力取（解析失败/形状不符 ⇒ "-"），日志失败不影响结局。
+    String idForLog = "-";
+    try {
+      JsonNode payload = UnitPayloads.parse(payloadJson);
+      idForLog = UnitPayloads.optionalText(payload, "id").orElse("-");
+    } catch (IllegalArgumentException ignored) {
+      // 取不到 id 不是本条命令的判决依据：任何载荷都走同一条具名拒。
+    }
+    EventLog.channel(UnitLog.command())
+        .info(
+            LogEvent.of(
+                "UNIT_SET_FORMATION_OFFSET_REJECTED",
+                UnitLogSource.UNIT_COMMAND,
+                "reason",
+                "命令已退役：RelativeOffset 当前无任何消费点",
+                "unit",
+                idForLog));
     return new HandlerOutcome.Rejected(
         "unit.SetFormationOffset 已退役（具名拒）：RelativeOffset 当前无任何消费点"
             + "——移动、编队、战斗都不读它（编制 v2 取消跟随，位置永远是各单位自己的）。"

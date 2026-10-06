@@ -2,6 +2,8 @@ package io.mosire.simos.unit.resolve;
 
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitLog;
+import io.mosire.simos.unit.UnitLogSource;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.address.Address;
@@ -11,6 +13,8 @@ import io.mosire.simos.util.address.Namespace;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.identity.ResolvedSubject;
 import io.mosire.simos.util.identity.SubjectId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.resolve.ResolveContext;
 import io.mosire.simos.util.resolve.Resolver;
 import io.mosire.simos.util.state.Snapshot;
@@ -51,20 +55,24 @@ public final class UnitResolver implements Resolver {
     Objects.requireNonNull(address, "address");
     Objects.requireNonNull(ctx, "ctx");
     if (!NAMESPACE.equals(address.namespace())) {
-      return empty(); // 认领与否由返回值表达；未知命名空间抛是注册表的职责
+      return empty(
+          "unknownNamespace", "namespace", address.namespace()); // 认领与否由返回值表达；未知命名空间抛是注册表的职责
     }
     // 装配故障先于形状判定：解析任何 unit: 地址时就炸，不留到某条查询路径上静默 miss
     UnitState state = stateOf(ctx);
     SimosTimestamp at = ctx.at();
     List<AddressSegment> segments = address.segments();
     if (!(segments.get(1) instanceof Entity second) || second.kind().isPresent()) {
-      return empty(); // 第 2 段必须是缺 kind 的根主体；unit:hex.4_3 等在此列
+      return empty("secondSegmentNotRootEntity"); // 第 2 段必须是缺 kind 的根主体；unit:hex.4_3 等在此列
     }
     if (segments.size() == 2) {
       return resolveRootLevel(state, second.name(), at);
     }
     if (segments.size() > 3) {
-      return empty(); // 属性访问（unit:u1:equipment.步枪:count）M3 不服务
+      return empty(
+          "propertyPathUnsupported",
+          "segments",
+          segments.size()); // 属性访问（unit:u1:equipment.步枪:count）M3 不服务
     }
     return resolveChild(state, second.name(), segments.get(2));
   }
@@ -96,7 +104,7 @@ public final class UnitResolver implements Resolver {
         }
       }
       if (hits.isEmpty()) {
-        return empty(); // 合法但任一级无命中：空候选，不是错误
+        return empty("chainLevelMiss", "level", level); // 合法但任一级无命中：空候选，不是错误
       }
       if (level == names.size() - 1) {
         hits.sort(Comparator.comparing(unit -> unit.id().value())); // 多解按 UnitId 字典序保序
@@ -108,7 +116,7 @@ public final class UnitResolver implements Resolver {
       }
       frontier = childrenAt(state, hits, at);
     }
-    return empty();
+    return empty("chainExhausted");
   }
 
   /** 下一级：在查询时刻 {@code at} 以这些命中为父的单位。 */
@@ -127,18 +135,24 @@ public final class UnitResolver implements Resolver {
   /** 三段：只服务 {@code unit:<id>:equipment.<名>}（ID 形；链式后接子实体 ⇒ 空候选）。 */
   private static QueryResult resolveChild(UnitState state, String name, AddressSegment third) {
     if (!(third instanceof Entity entity) || entity.kind().isEmpty()) {
-      return empty(); // Property 段与缺 kind 的实体不服务
+      return empty("thirdSegmentUnsupported"); // Property 段与缺 kind 的实体不服务
     }
     UnitId id = UnitId.parse(name);
     Unit unit = state.units().get(id);
     if (unit == null) {
-      return empty();
+      return empty("unitNotFound", "unit", id.value());
     }
     if (!"equipment".equals(entity.kind().get())) {
-      return empty(); // hex.c1 等合法地址，M3 不服务
+      return empty(
+          "childKindUnsupported", "kind", entity.kind().orElse("-")); // hex.c1 等合法地址，M3 不服务
     }
     if (unit.equipment().stream().noneMatch(entry -> entry.type().equals(entity.name()))) {
-      return empty(); // 合法但没有该类型装备：空候选，不是错误
+      return empty(
+          "equipmentTypeNotFound",
+          "unit",
+          id.value(),
+          "type",
+          entity.name()); // 合法但没有该类型装备：空候选，不是错误
     }
     SubjectId subjectId = new SubjectId("unit.equipment", id.value() + "/" + entity.name());
     Address canonical =
@@ -164,10 +178,13 @@ public final class UnitResolver implements Resolver {
         ctx.state()
             .module(NAMESPACE)
             .orElseThrow(
-                () ->
-                    new IllegalArgumentException(
-                        "状态里没有 unit 模块切片——UnitResolver 需要 UnitSnapshot（装配故障，不是\"没有候选\"）"));
+                () -> {
+                  debugAssemblyFault("missingUnitSlice");
+                  return new IllegalArgumentException(
+                      "状态里没有 unit 模块切片——UnitResolver 需要 UnitSnapshot（装配故障，不是\"没有候选\"）");
+                });
     if (!(snapshot instanceof UnitSnapshot unitSnapshot)) {
+      debugAssemblyFault("wrongSliceType", "actual", snapshot.getClass().getName());
       throw new IllegalArgumentException(
           "unit 模块切片不是 UnitSnapshot：" + snapshot.getClass().getName());
     }
@@ -180,7 +197,29 @@ public final class UnitResolver implements Resolver {
     return new QueryResult(List.of(subjectOf(unit, typeName)));
   }
 
-  private static QueryResult empty() {
+  /** 空候选出口：只在 DEBUG 打开时记「为什么空」（合法但不服务/查无此人/链无命中），不逐次记成功查询。 日志只读，返回值与行为不变。 */
+  private static QueryResult empty(String reason, Object... keyValues) {
+    if (UnitLog.resolve().isDebugEnabled()) {
+      Object[] fields = new Object[keyValues.length + 2];
+      fields[0] = "reason";
+      fields[1] = reason;
+      System.arraycopy(keyValues, 0, fields, 2, keyValues.length);
+      EventLog.channel(UnitLog.resolve())
+          .debug(LogEvent.of("UNIT_RESOLVE_EMPTY", UnitLogSource.UNIT_RESOLVE, fields));
+    }
     return new QueryResult(List.of());
+  }
+
+  /** 装配故障（切片缺席/类型不符）的诊断：不进返回值、不改抛出类型与消息，只在 DEBUG 打开时记一行。 */
+  private static void debugAssemblyFault(String reason, Object... keyValues) {
+    if (!UnitLog.resolve().isDebugEnabled()) {
+      return;
+    }
+    Object[] fields = new Object[keyValues.length + 2];
+    fields[0] = "reason";
+    fields[1] = reason;
+    System.arraycopy(keyValues, 0, fields, 2, keyValues.length);
+    EventLog.channel(UnitLog.resolve())
+        .debug(LogEvent.of("UNIT_RESOLVE_ASSEMBLY_FAULT", UnitLogSource.UNIT_RESOLVE, fields));
   }
 }

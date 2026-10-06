@@ -3,8 +3,12 @@ package io.mosire.simos.social.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.population.PopulationSeries;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -56,9 +60,11 @@ public final class SetPopulationHandler implements CommandHandler, CommandTarget
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SocialData base = SocialSnapshots.of(state).data(); // 装配故障当场炸，不走拒绝路径
+    int cellsForLog = -1;
     try {
       JsonNode payload = SocialPayloads.parse(payloadJson);
       Map<HexCoord, Long> entries = SocialPayloads.requireEntries(payload);
+      cellsForLog = entries.size();
       Long anchorTick = SocialPayloads.optionalLong(payload, "anchorTick");
       SimosTimestamp at =
           anchorTick == null ? state.meta().timestamp() : SimosTimestamp.of(anchorTick);
@@ -66,8 +72,32 @@ public final class SetPopulationHandler implements CommandHandler, CommandTarget
       for (Map.Entry<HexCoord, Long> entry : entries.entrySet()) {
         next.put(entry.getKey(), stillPopulation(at, entry.getValue()));
       }
+      long total = 0L;
+      for (Long value : entries.values()) {
+        total += value;
+      }
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_SET_POPULATION_APPLIED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "cells",
+                  entries.size(),
+                  "population",
+                  total,
+                  "anchorTick",
+                  at.tick()));
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, base.withPopulations(next)));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_SET_POPULATION_REJECTED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "reason",
+                  SocialPayloads.logReason(e.getMessage()),
+                  "cells",
+                  cellsForLog < 0 ? "-" : cellsForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

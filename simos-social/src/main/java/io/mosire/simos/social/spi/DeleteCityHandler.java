@@ -3,8 +3,12 @@ package io.mosire.simos.social.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.SocialLog;
+import io.mosire.simos.social.SocialLogSource;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.city.CityOperations;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -52,13 +56,35 @@ public final class DeleteCityHandler implements CommandHandler, CommandTargets, 
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SocialData base = SocialSnapshots.of(state).data();
+    String cityForLog = null;
     try {
       JsonNode payload = SocialPayloads.parse(payloadJson);
       CityId id = CityId.parse(SocialPayloads.requireText(payload, "id"));
+      cityForLog = id.value();
       boolean deletePopulation = SocialPayloads.optionalBoolean(payload, "deletePopulation", false);
       SocialData next = CityOperations.delete(base, id, deletePopulation);
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_DELETE_CITY_APPLIED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "city",
+                  id.value(),
+                  "deletePopulation",
+                  deletePopulation,
+                  "citiesRemoved",
+                  base.cities().size() - next.cities().size()));
       return new HandlerOutcome.Applied(SocialChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(SocialLog.command())
+          .info(
+              LogEvent.of(
+                  "SOCIAL_DELETE_CITY_REJECTED",
+                  SocialLogSource.SOCIAL_COMMAND,
+                  "reason",
+                  SocialPayloads.logReason(e.getMessage()),
+                  "city",
+                  cityForLog == null ? "-" : cityForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

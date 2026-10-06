@@ -16,6 +16,8 @@ import org.slf4j.LoggerFactory;
  *   <tr><th>取用方法</th><th>logger 名</th><th>记什么</th></tr>
  *   <tr><td>{@link #edit()}</td><td>{@code .edit}</td><td>区域/地形/连通性/通路组的语义写口（create/update/delete/merge/split/reassign/set）</td></tr>
  *   <tr><td>{@link #generate()}</td><td>{@code .generate}</td><td>地图生成器生命周期与产物汇总</td></tr>
+ *   <tr><td>{@link #codec()}</td><td>{@code .codec}</td><td>MapCodec 编解码、旧形状迁移与变更集施加（只记元信息，不记 JSON 原文）</td></tr>
+ *   <tr><td>{@link #resolve()}</td><td>{@code .resolve}</td><td>MapResolver 空候选与装配故障诊断（不逐次记成功查询）</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐格/逐边/逐区域明细</b></td></tr>
  * </table>
  *
@@ -46,9 +48,13 @@ public final class MapLog {
 
   public static final String EDIT_LOGGER_NAME = ROOT_LOGGER_NAME + ".edit";
   public static final String GENERATE_LOGGER_NAME = ROOT_LOGGER_NAME + ".generate";
+  public static final String CODEC_LOGGER_NAME = ROOT_LOGGER_NAME + ".codec";
+  public static final String RESOLVE_LOGGER_NAME = ROOT_LOGGER_NAME + ".resolve";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
   private static final Logger EDIT = LoggerFactory.getLogger(EDIT_LOGGER_NAME);
   private static final Logger GENERATE = LoggerFactory.getLogger(GENERATE_LOGGER_NAME);
+  private static final Logger CODEC = LoggerFactory.getLogger(CODEC_LOGGER_NAME);
+  private static final Logger RESOLVE = LoggerFactory.getLogger(RESOLVE_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
   private MapLog() {}
@@ -61,6 +67,16 @@ public final class MapLog {
   /** 地图生成器生命周期与产物汇总。 */
   public static Logger generate() {
     return GENERATE;
+  }
+
+  /** MapCodec 编解码、旧形状迁移与变更集施加（只记元信息，不记 JSON 原文）。 */
+  public static Logger codec() {
+    return CODEC;
+  }
+
+  /** MapResolver 空候选与装配故障诊断（不逐次记成功查询）。 */
+  public static Logger resolve() {
+    return RESOLVE;
   }
 
   /** <b>逐格/逐边/逐区域明细</b>。 */

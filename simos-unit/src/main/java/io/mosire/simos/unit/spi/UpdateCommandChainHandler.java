@@ -3,10 +3,14 @@ package io.mosire.simos.unit.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.unit.CommandChainId;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.unit.UnitLog;
+import io.mosire.simos.unit.UnitLogSource;
 import io.mosire.simos.unit.UnitSnapshot;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.change.UnitChangeSet;
 import io.mosire.simos.unit.ops.UnitOperations;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -41,9 +45,11 @@ public final class UpdateCommandChainHandler implements CommandHandler {
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     UnitSnapshot snapshot = UnitSnapshots.of(state);
+    String chainForLog = null;
     try {
       JsonNode payload = UnitPayloads.parse(payloadJson);
       CommandChainId chainId = CommandChainId.parse(UnitPayloads.requireText(payload, "chainId"));
+      chainForLog = chainId.value();
       Optional<String> name = UnitPayloads.optionalText(payload, "name");
       Optional<UnitId> commander = UnitPayloads.optionalId(payload, "commander");
       Optional<List<UnitId>> members = Optional.empty();
@@ -57,8 +63,28 @@ public final class UpdateCommandChainHandler implements CommandHandler {
       }
       UnitState next =
           UnitOperations.updateChain(snapshot.state(), chainId, name, commander, members);
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_UPDATE_COMMAND_CHAIN_APPLIED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "chain",
+                  chainId.value(),
+                  "commander",
+                  commander.map(UnitId::value).orElse("-"),
+                  "members",
+                  members.map(List::size).orElse(0)));
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(UnitLog.command())
+          .info(
+              LogEvent.of(
+                  "UNIT_UPDATE_COMMAND_CHAIN_REJECTED",
+                  UnitLogSource.UNIT_COMMAND,
+                  "reason",
+                  UnitPayloads.logReason(e.getMessage()),
+                  "chain",
+                  chainForLog == null ? "-" : chainForLog));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

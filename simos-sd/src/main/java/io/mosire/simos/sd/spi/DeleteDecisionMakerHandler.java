@@ -1,11 +1,15 @@
 package io.mosire.simos.sd.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.change.SdChangeSet;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -49,17 +53,19 @@ public final class DeleteDecisionMakerHandler implements CommandHandler, GmOnlyC
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     SdState base = SdSnapshots.of(state).state();
+    String dmForLog = null;
     try {
       JsonNode payload = SdPayloads.parse(payloadJson);
       DecisionMakerId id =
           DecisionMakerId.parse(SdPayloads.requireText(payload, "decisionMakerId"));
+      dmForLog = id.value();
       DecisionMaker existing = base.decisionMakers().get(id);
       if (existing == null) {
-        return new HandlerOutcome.Rejected("决策人不存在: " + id);
+        return rejected("决策人不存在: " + id, "dm", dmForLog);
       }
       List<String> directiveIds = referencingDirectiveIds(base, id);
       if (!directiveIds.isEmpty()) {
-        return new HandlerOutcome.Rejected(
+        return rejected(
             "决策人 "
                 + id
                 + " 仍被 "
@@ -67,14 +73,41 @@ public final class DeleteDecisionMakerHandler implements CommandHandler, GmOnlyC
                 + " 条 Directive 引用（"
                 + summarize(directiveIds)
                 + "）：本命令只删决策人身份，不级联删历史 Directive / 文档 / 会话；删除会破坏 sd 引用完整性，"
-                + "请先处置这些指令");
+                + "请先处置这些指令",
+            "dm",
+            dmForLog,
+            "directives",
+            directiveIds.size());
       }
       Map<DecisionMakerId, DecisionMaker> next = new LinkedHashMap<>(base.decisionMakers());
       next.remove(id);
+      EventLog.channel(SdLog.decision())
+          .info(
+              LogEvent.of(
+                  "SD_DELETE_DECISION_MAKER_APPLIED",
+                  SdLogSource.SD_NATION,
+                  "dm",
+                  id.value(),
+                  "decisionMakers",
+                  next.size()));
       return new HandlerOutcome.Applied(SdChangeSet.between(base, base.withDecisionMakers(next)));
     } catch (IllegalArgumentException e) {
-      return new HandlerOutcome.Rejected(e.getMessage());
+      return rejected(e.getMessage(), "dm", dmForLog);
     }
+  }
+
+  /**
+   * 具名拒绝的唯一发射点（用户 2026-10-23：被拒绝一律 INFO，必须明显记录）：{@code reason} + 关键 id（取不到 {@code -}）。 理由先过 {@link
+   * SdPayloads#logReason}，载荷原文不进日志；返回 {@code Rejected} 保持原有控制流。
+   */
+  private static HandlerOutcome rejected(String reason, Object... idKeyValues) {
+    SdPayloads.logRejected(
+        SdLog.decision(),
+        SdLogSource.SD_NATION,
+        "SD_DELETE_DECISION_MAKER_REJECTED",
+        reason,
+        idKeyValues);
+    return new HandlerOutcome.Rejected(reason);
   }
 
   /** 仍引用该决策人的 Directive id（按 id 自然序，确定性；命令期只读 base 快照）。 */
