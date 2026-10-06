@@ -81,7 +81,7 @@ core/app 的 16 个文件仍在门面外自建 logger；`SettlementGenerator`、
 
 | # | 现状 | 目标 |
 |---|---|---|
-| 1 | map/unit/social 的 handler 大多零日志 | 每个 handler：成功 1 条（事件名 + 具名计数）、每个具名拒绝 1 条 DEBUG（reason 档 + 关键 id） |
+| 1 | map/unit/social 的 handler 大多零日志 | 每个 handler：成功 1 条（事件名 + 具名计数）、每个具名拒绝 1 条 **INFO**（reason 档 + 关键 id；用户 2026-10-23：「被拒绝肯定走 INFO」） |
 | 2 | 时间参与者/结算阶段无 START/END | 每个时间参与者/结算阶段：进入 INFO（范围/计数）、结束 INFO（净结果）、关键判据 DEBUG |
 | 3 | 逐笔写口不可对账 | 逐笔事实走 TRACE（转移/成交/移动/出生死亡/战斗损失），默认关 |
 | 4 | core/app 16 个文件自建 logger | 全部迁移到 `CoreLog`/`AppLog` 门面；门面缺分类时补分类（新分类挂模块根 logger 继承开关）；**被本批触碰的旧日志行按新规范重写**（用户 2026-10-23 裁定） |
