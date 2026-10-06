@@ -31,24 +31,28 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * ★★ {@code simos.gov.retireStaff}（阶段 13A 人员流转，GOV/Army 计划 §2.6）：<b>GM 组合工具</b>—— 离编 + 按政策一次性支付退休待遇
- * + 把人员并入指定 hex 的既有社会批次 + 留行动记录，一批落一条 revision。
+ * ★★ {@code simos.gov.retireStaff}（阶段 13A 人员流转；P1.2 改走 Social 家户工单）：<b>GM 组合工具</b>—— 离编 + 按政策一次性
+ * 支付退休待遇（支付口径未改，仍复用 {@link GovDismissPlan}）+ 从政府家户转出真实成员到明确目标家户 + 留行动记录，一批落一条
+ * revision。
  *
- * <p>★★ <b>批顺序（固定，一条 revision）</b>：{@code unit.DismissStaff} →（待遇 &gt; 0）{@code
- * actor.AdjustAccounts}（国库银负增量）→（给了 reinsertQ/reinsertR）{@code social.SeedGroups}（并入该 hex <b>现有批次里
- * id 最小的一条</b>；<b>不新建批次</b>）→ {@code sd.PutInfo}（key={@value #INFO_KEY}）。
+ * <p>★★ <b>批顺序（固定，一条 revision）</b>：{@code social.SubmitHouseholdWorkOrder}（
+ * {@code orderId=gov-retire:<unitId>:<role>:<tick>:<count>:<目标家户>} 幂等键；逐 lot {@code
+ * TRANSFER_MEMBERS(from=hh-gov-<unitId>, to=目标家户, lotId, count=taken)}）→ {@code unit.DismissStaff}（形状不变）
+ * →（待遇 &gt; 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}（key={@value #INFO_KEY}）。
  *
- * <p>★★ <b>回写是具名近似</b>（类注见 {@link GovRetireStaffPlan}）：退休者并入当地既有批次，"这批人多了 count"， 身份/年龄不做精细分档；该 hex
- * 没有 {@code populations} 序列或没有任何批次时 <b>具名拒</b>（不静默丢人）。
+ * <p>★★ <b>目标家户必须明确</b>：{@code toHouseholdId} 精确指定（必须存在于 Social、≠ 政府家户）；或给
+ * {@code reinsertQ}/{@code reinsertR} 成对坐标，在该 hex 按 household id 升序取第一个有人口的家户；两者都没给 ⇒
+ * plan 级具名拒（人不能凭空消失，也不再合并进最小批次）。
  *
- * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字不是命令类型 ⇒ 不进 catalog / {@code
- * PAYLOAD_HINTS}。★ 资源声明：写 {@code unit}/{@code actor}/{@code social}/{@code sd} 四个命名空间 （GM 侧全部
+ * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字不是命令类型 ⇒ 不进 catalog /
+ * {@code PAYLOAD_HINTS}。★ 资源声明：写 {@code unit}/{@code actor}/{@code social}/{@code sd} 四个命名空间 （GM 侧全部
  * unlimited）。
  *
  * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / role 不在词表 / count &lt; 1 / 单位不是 GOV / roster 不足 / 待遇溢出 / 国库银不足 /
- * reinsertQ/reinsertR 不成对 / 回写格无 populations 序列 / 回写格无批次 ⇒ {@link IllegalArgumentException} 折
- * {@code BAD_REQUEST}（零 revision）；批内域层拒 ⇒ {@code REJECTED} 带逐条真拒因； 提交冲突 ⇒ {@code CONFLICT} 带真实
- * head；资源不匹配 ⇒ 原样抛 {@link ResourceDeniedException}。
+ * 目标家户缺失或与源相同 / 政府家户不在 Unit.households 或 Social / 政府家户人口不足 / reinsert 坐标不成对 /
+ * 回写格无有人口家户 ⇒ {@link IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒 ⇒ {@code
+ * REJECTED} 带逐条真拒因； 提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link
+ * ResourceDeniedException}。
  */
 public final class GovRetireStaffTool implements AgentTool {
 
@@ -93,21 +97,27 @@ public final class GovRetireStaffTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 退休离编 + 待遇支付 + 社会回写（组合工具，一批 = 一条 revision）："
+    return "GM 退休离编 + 待遇校验/支付 + 从政府家户转出真实成员到目标家户（组合工具，一批 = 一条 revision）："
         + "参数 {unitId(必填, 带 GovernmentFormation 的 GOV), role(必填 SCRIBE|YAMEN|POST), count(必填 ≥ 1), "
-        + "reinsertQ?(回写格 q，与 reinsertR 成对), reinsertR?(回写格 r), reason(必填), preview?(缺省 true), "
-        + "branch?(缺省 "
+        + "toHouseholdId?(精确目标家户，必须存在于 Social 且 ≠ 政府家户；与 reinsertQ/reinsertR 二选一), "
+        + "reinsertQ?(回退目标格 q，必须与 reinsertR 成对；在该 hex 按 household id 升序取第一个有人口的家户), "
+        + "reinsertR?(回退目标格 r), reason(必填), preview?(缺省 true), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
+        + "目标家户必须明确：toHouseholdId 与 reinsertQ/reinsertR 二选一；都没给 ⇒ 具名拒（人不能凭空消失，"
+        + "也不会留在政府编制家户）。退休源 = hh-gov-<unitId>，必须同时存在于 Unit.households 与 Social，"
+        + "且政府家户人口 ≥ count，否则具名拒。"
         + "待遇 = policy.retirementPerStaff × count（银）；待遇>0 时国库 = ActorRef(UNIT, unitId) @ 单位当刻有效位置，"
-        + "可支配银不足 ⇒ 整条拒（带 requested/available/缺口）；待遇=0 ⇒ 批里无 actor 命令。"
-        + "回写：向该 hex 现有批次里 id 最小的一条加 count（count=原count+count，其余字段原样，不新建批次）——"
-        + "★ 这是具名近似（身份/年龄不细分档）；该 hex 必须有 populations 序列且已有批次，否则具名拒（不静默丢人）。"
-        + "批：unit.DismissStaff → [actor.AdjustAccounts] → [social.SeedGroups] → sd.PutInfo(key="
+        + "可支配银不足 ⇒ 整条拒（带 requested/available/缺口）；待遇=0 ⇒ 批里无 actor 命令（本批支付口径未改）。"
+        + "批：social.SubmitHouseholdWorkOrder（orderId=gov-retire:<unitId>:<role>:<tick>:<count>:<目标家户> 幂等键，"
+        + "target=目标家户，逐 lot TRANSFER_MEMBERS(from=hh-gov-<unitId>,to=目标家户,lotId,count=taken)）→ "
+        + "unit.DismissStaff → [actor.AdjustAccounts] → sd.PutInfo(key="
         + INFO_KEY
         + ")。"
         + "返回 {preview, submitted, tick, unitId, role, count, staffBefore, staffAfter, retirementPerStaff, "
-        + "payment, treasuryLocation, availableSilver, reinsert, commands, infoText}；apply 另加 submission。";
+        + "payment, treasuryLocation, availableSilver, governmentHouseholdId, governmentPopulationBefore/After, "
+        + "targetHouseholdId, targetHex, targetPopulationBefore/After, available, "
+        + "sources[{householdId,lotId,taken,hex}], workOrder, commands, infoText}；apply 另加 submission。";
   }
 
   @Override
@@ -116,8 +126,17 @@ public final class GovRetireStaffTool implements AgentTool {
     props.put("unitId", ToolSupport.prop("string", "离编主体：带 GovernmentFormation 的 GOV 单位 id"));
     props.put("role", ToolSupport.prop("string", "行政角色：SCRIBE（书吏）|YAMEN（衙门）|POST（驿传）"));
     props.put("count", ToolSupport.prop("integer", "离编人数（≥ 1；不得超过该角色现有在编）"));
-    props.put("reinsertQ", ToolSupport.prop("integer", "社会回写格 q（可选；必须与 reinsertR 成对）"));
-    props.put("reinsertR", ToolSupport.prop("integer", "社会回写格 r（可选；必须与 reinsertQ 成对）"));
+    props.put(
+        "toHouseholdId",
+        ToolSupport.prop(
+            "string",
+            "精确目标家户 id（可选；必须存在于 Social 且 ≠ 政府家户；与 reinsertQ/reinsertR 二选一）"));
+    props.put(
+        "reinsertQ",
+        ToolSupport.prop(
+            "integer",
+            "回退目标格 q（可选；与 reinsertR 成对且不与 toHouseholdId 同给；在该 hex 按 household id 升序取第一个有人口的家户）"));
+    props.put("reinsertR", ToolSupport.prop("integer", "回退目标格 r（可选；必须与 reinsertQ 成对）"));
     props.put("reason", ToolSupport.prop("string", "退休离编原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
     props.put("preview", ToolSupport.prop("boolean", "true（缺省）= 只算不写；false = 提交同一批命令"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
@@ -149,6 +168,8 @@ public final class GovRetireStaffTool implements AgentTool {
             + args.get("role")
             + " count="
             + args.get("count")
+            + " toHouseholdId="
+            + args.get("toHouseholdId")
             + " reinsert=("
             + args.get("reinsertQ")
             + ","
@@ -172,7 +193,9 @@ public final class GovRetireStaffTool implements AgentTool {
       String role = ToolSupport.requiredText(args, "role");
       long count = ToolSupport.requiredLong(args, "count");
       String reason = ToolSupport.requiredText(args, "reason");
-      // ★ 回写格：两个坐标必须成对（成对校验在纯推导里，工具只做类型/缺省解析）。
+      // ★ 目标家户：toHouseholdId 精确指定；未给时用 reinsertQ/reinsertR（成对校验在纯推导里，工具只做类型/缺省解析）。
+      Optional<String> toHouseholdId =
+          Optional.ofNullable(ToolSupport.optionalText(args, "toHouseholdId", null));
       Optional<Long> reinsertQ = Optional.ofNullable(ToolSupport.optionalLong(args, "reinsertQ"));
       Optional<Long> reinsertR = Optional.ofNullable(ToolSupport.optionalLong(args, "reinsertR"));
       boolean preview = ToolSupport.optionalBoolean(args, "preview").orElse(true);
@@ -190,7 +213,7 @@ public final class GovRetireStaffTool implements AgentTool {
                   ? QueryService.QueryTarget.head(branch)
                   : QueryService.QueryTarget.at(branch, new RevisionId(expectedRevision)));
       GovRetireStaffPlan.Plan plan =
-          GovRetireStaffPlan.plan(state, unitId, role, count, reinsertQ, reinsertR);
+          GovRetireStaffPlan.plan(state, unitId, role, count, toHouseholdId, reinsertQ, reinsertR);
       if (preview) {
         return ToolSupport.ok(planView(plan, reason, true, false));
       }
@@ -250,7 +273,10 @@ public final class GovRetireStaffTool implements AgentTool {
     return ToolResult.error("REJECTED", ToolSupport.json(view));
   }
 
-  /** 组批：DismissStaff → [AdjustAccounts] → [SeedGroups] → PutInfo（固定顺序、按需缺席）。 */
+  /**
+   * 组批（固定顺序、按需缺席）：{@code social.SubmitHouseholdWorkOrder} → {@code unit.DismissStaff} →
+   * （待遇 &gt; 0）{@code actor.AdjustAccounts} → {@code sd.PutInfo}。
+   */
   private List<CommandEnvelope> buildBatch(
       String batchId,
       GovRetireStaffPlan.Plan plan,
@@ -258,6 +284,13 @@ public final class GovRetireStaffTool implements AgentTool {
       BranchId branch,
       RevisionId expectedRevision) {
     List<CommandEnvelope> batch = new ArrayList<>(4);
+    batch.add(
+        envelope(
+            batchId,
+            branch,
+            expectedRevision,
+            GovRetireStaffPlan.SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE,
+            plan.submitHouseholdWorkOrderPayloadJson(reason)));
     batch.add(
         envelope(
             batchId,
@@ -273,15 +306,6 @@ public final class GovRetireStaffTool implements AgentTool {
               expectedRevision,
               GovRetireStaffPlan.ADJUST_ACCOUNTS_TYPE,
               plan.adjustAccountsPayloadJson()));
-    }
-    if (plan.hasReinsert()) {
-      batch.add(
-          envelope(
-              batchId,
-              branch,
-              expectedRevision,
-              GovRetireStaffPlan.SEED_GROUPS_TYPE,
-              plan.seedGroupsPayloadJson()));
     }
     batch.add(
         envelope(
@@ -340,7 +364,16 @@ public final class GovRetireStaffTool implements AgentTool {
         "treasuryLocation",
         dismissal.treasuryLocation().map(GovDismissPlan::treasuryView).orElse(null));
     view.put("availableSilver", dismissal.availableSilver());
-    view.put("reinsert", plan.reinsertView());
+    view.put("governmentHouseholdId", plan.governmentHouseholdId().value());
+    view.put("governmentPopulationBefore", plan.governmentPopulationBefore());
+    view.put("governmentPopulationAfter", plan.governmentPopulationAfter());
+    view.put("targetHouseholdId", plan.targetHouseholdId().value());
+    view.put("targetHex", plan.targetHex().map(GovRetireStaffPlan::hexView).orElse(null));
+    view.put("targetPopulationBefore", plan.targetPopulationBefore());
+    view.put("targetPopulationAfter", plan.targetPopulationAfter());
+    view.put("available", plan.available());
+    view.put("sources", plan.sourcesView());
+    view.put("workOrder", plan.workOrderPayload(reason));
     view.put("commands", plan.commandTypes());
     view.put("infoText", plan.infoNote(reason));
     return view;
