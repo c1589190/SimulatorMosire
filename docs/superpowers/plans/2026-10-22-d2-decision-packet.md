@@ -140,6 +140,9 @@
   `simos.gov.selectExaminees`、`simos.gov.dispatchTeam`。
   `simos.unit.setArmyPayPolicy` 工具尚未存在（D4 才补 `simos.gm.armyPayPolicy`）⇒ 本批**不注册**，
   D4 实现后加入 catalog 并补 smoke。
+  ★ **2026-10-23 补记**：D4 实际只做了 **GM** 工具 `simos.gm.armyPayPolicy`；决策人可 propose 的
+  `simos.unit.setArmyPayPolicy` 是否进 catalog/`ProposalCatalog` **仍未定**，属 P4c 未决项
+  （见 `docs/superpowers/status/2026-10-23-planned-not-implemented-inventory.md` §1.1）。
 - 未在 catalog 的工具 ⇒ propose 具名拒。
 
 ## 4. GM 工具

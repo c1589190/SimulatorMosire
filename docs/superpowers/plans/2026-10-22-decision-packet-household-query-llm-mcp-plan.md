@@ -160,9 +160,13 @@ tools/mvn-lock.sh -q -pl simos-app -am -DskipTests clean compile
 
 ## 10. 进度
 
-- [ ] D0 口径修正
-- [ ] D1 家户聚合查询
-- [ ] D2 决策包
-- [ ] D3 MERGED/执行
-- [ ] D4 GM 工具/上报
-- [x] D5 测试迁移 + 真 LLM/MCP + 决策回合统一结算（SpotBugs 基线债见 D5 子文档；D4.1 GUI 仍待办）
+- [x] D0 口径修正（`573cc2e9`）
+- [x] D1 家户聚合查询（`24968ae6`）
+- [x] D2 决策包（`996cfd41`）
+- [x] D3 MERGED/执行（`570f555a`）
+- [x] D4 GM 工具/上报（`a8abc45d`）
+- [x] D5 测试迁移 + 真 LLM/MCP + 决策回合统一结算（`6747ca7c` / `7d944911`；SpotBugs 基线债见 D5 子文档；D4.1 GUI 仍待办）
+
+> ★ 2026-10-23 补记：D0~D5 均已落地（提交号如上），§2 批次总览表的 ✅ 正确；本条为**追加标注**，
+> 原复选框漏勾是笔误，不改动上文任何批次描述。剩余未做项（D4.1 GUI、SpotBugs、P4c、铸币 M1 等）
+> 统一登记在 `docs/superpowers/status/2026-10-23-planned-not-implemented-inventory.md`。

@@ -2,6 +2,14 @@
 
 > 状态：**P2 尚未开工。** 本文件把 P0/P1 实验批次暴露出的后端问题整理成可派单的修复面。
 > 基线：`HEAD ce55cb63`，回退点 tag `agent-experiment-baseline-20261009`。
+>
+> ★★ **2026-10-23 状态更正（追加，不改上文）**：P2 **并非未开工** —— P2-0 测试迁移与 P2-A~E 已落地
+> （`870006d6` P2-A 账户家户化 / Membership 迁 Social / 劳动小时制、`a6a16b58` P2-C 政府家户入市与生产、
+> `5652eeb1` P2-E 测试迁移等）；P2-D 的 `GovDaily`/`JurisdictionDailyTax` 已接回
+> `PopulationEconomyTimeParticipant`。**P2-F 逐条现状**（2026-10-23 回代码核）：F1 部分（map 三条命令已 GmOnly，
+> 缺 app 组合根一条 revision 的下游重算）、F2 部分（`MoveCapitalPlan` 明写不搬人口）、F3 部分（严格拒绝已实现，
+> 缺删/作废 Directive 的入口）、F4 未做（`DeleteCity` 不碰 economy）、F5 未做（`UpdateCity` 仍静默忽略 `at`）。
+> 主清单见 `docs/superpowers/status/2026-10-23-planned-not-implemented-inventory.md`。
 > 纪律：测试迁移是 P2 的前置；前端不急。实现批次沿用 AGENTS §一.10，compile 门禁推进，测试后置；
 > 用户已裁定的口径（唯一 `production-runtime`、政府内置、`Unit.manpower` 退役、装备保留、账户/家户合并方向、
 > 家户每 tick 劳动时间有限、利润率排队等）不得被实现 Agent 颠覆。

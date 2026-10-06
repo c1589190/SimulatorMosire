@@ -137,3 +137,16 @@ tools/mvn-lock.sh -pl simos-economy -am \
   - 本文件
   - `docs/superpowers/plans/2026-10-22-decision-packet-household-query-llm-mcp-plan.md`
   - `docs/superpowers/plans/2026-10-22-d5-tests-llm-mcp.md`
+
+---
+
+## 7. 2026-10-23 补记：全项目「计划内未实现功能」盘点
+
+- 本轮**未改任何代码**；只做只读回代码核对 + 文档更正。
+- 完整现状（完全未做 / 部分实现 / 已作废 / 已补齐 / 待用户裁定）：
+  `docs/superpowers/status/2026-10-23-planned-not-implemented-inventory.md`。
+- 同时更正：主计划 §10 复选框（D0~D4 漏勾）、`AGENTS.md` 的 P4b 行、
+  `docs/superpowers/plans/2026-10-09-p2-backend-fixes.md` 头注「P2 尚未开工」、
+  `docs/superpowers/plans/2026-10-22-d2-decision-packet.md` 的 `simos.unit.setArmyPayPolicy` 指向、
+  `docs/superpowers/plans/2026-10-02-undeveloped-features.md` 追加 2026-10-23 复核更正节。
+- 盘点基线 = 本文件所在提交 `bdf417e6`；工作树干净、与 `origin/main` 同步。

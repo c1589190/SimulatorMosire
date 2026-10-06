@@ -148,3 +148,29 @@
 - 用户 2026-10-04 明确：**只写进规划，不实现**。
 - 详细规划与集成点：`docs/superpowers/plans/2026-10-04-household-culture-and-community-effects-plan.md`
   （含“当前家户存在哪”的坐标表、未来效果形状、riba/无息合同待裁定项）。
+
+---
+
+## 2026-10-23 复核更正（追加；上文保留不改）
+
+> 本节为**追加标注**：以下老条目已被后续批次补掉，**不要再当待办**。完整「计划内未实现功能」现状见
+> `docs/superpowers/status/2026-10-23-planned-not-implemented-inventory.md`（代码核对版，2026-10-23）。
+
+- **外交（原「没有外交关系领域」「称臣纳贡」「无多边谈判/联动裁决」）**：D-003/D-004/D-005 已于 `bed016b4`
+  落地——自然语言关系边表 + `simos.gov.pay` 支付工具 + 外交事件记录（逐条 append、可读可滤）。
+  附庸/贡额/周期仍按 D-004 刻意不建。
+- **`unit.SetVisionRadius`（原「无军队视野半径命令」）**：已实现（handler + catalog + `ArmyScope` 生效链）。
+- **「DM 出令审批链」**：不是缺口——敏感写审批链（`Ask → AutoApproveGate → ConfirmGate → PendingApprovals`）
+  与 GUI 审批页 / `simos.gm.approve` 已具备（「自动批准」仍是开放问题，见新清单 §5）。
+- **「中央政府决策人看不见全国」**：D-002 用户设计（中央不设全视野），不是待补缺口；跨区走 D4 上报工具。
+- **「GM 没有通用原子批提交」**：Core 的 `CommandBus.submitBatch` 早已实现（一批一条 revision）；
+  缺的只是 GM 的 MCP 薄工具 `simos.command.submitBatch`（截至 2026-10-23 仍缺）。
+- **「`social.UpdateCity` 静默忽略 `at`」等六处复核更正**：见上文「2026-10-02 代码级复核更正」节，仍有效；
+  其中 `UpdateCity` 的 `at` 静默问题截至 2026-10-23 **仍未修**（新清单 §1.2）。
+- **后端行政命令（原批次 2 一部分）**：`social.MoveCity/DeleteCity/MovePopulationLots`、
+  `map.MergeRegions/SplitRegion/ReassignHexes`、`sd.DeleteNation`、`MoveCapitalPlan`、`unit.SetVisionRadius`
+  均已落地为后端命令/组合；但**下游重算编排、迁都带人、economy 引用清理**仍按新清单开放。
+- **P4b 军俸政策**：已于 `bfb246a3` 落地（`MilitaryPayPolicy` + `unit.SetArmyPayPolicy` + `MilitaryPayRuleBridge`；
+  GM 窄工具由 D4 补）；**P4c 残留**（决策人受限工具、FlowRow/ledger 维度、共享国库预算优先级）仍开放。
+- **搜索纪律更正**：`git grep … -- 'simos-*/src/main'` 这类 glob pathspec 在本仓会**静默 0 命中**
+  （正对照：`class Shell` 同写法也 0）；老清单里按此写法得出的「不存在」结论已在新清单里逐条重核。
