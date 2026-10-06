@@ -28,6 +28,9 @@ import java.util.Objects;
  */
 public final class PlanRouteHandler implements CommandHandler, CommandTargets {
 
+  /** 命令类型（信封上的 {@code type}；P1.5 起 Plan 类直接引用本常量，不再另抄字面量）。 */
+  public static final String TYPE = "unit.PlanRoute";
+
   /**
    * ★ 目标资源（第 3 波第 2 步，{@link CommandTargets}）：**只**声明被规划路线的那个单位——路线住在 {@code UnitState} 里，{@code
    * waypoints} 是路线的值，**不是**被写的资源。
@@ -40,7 +43,7 @@ public final class PlanRouteHandler implements CommandHandler, CommandTargets {
 
   @Override
   public String type() {
-    return "unit.PlanRoute";
+    return TYPE;
   }
 
   @Override

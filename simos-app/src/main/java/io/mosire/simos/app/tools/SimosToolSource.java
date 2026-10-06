@@ -614,8 +614,10 @@ public final class SimosToolSource implements ToolSource {
     //   armed 时加 ArmyFormation）、absorbUnit（吸收纯人员单位进编制，可解散已空源）、retireStaff（离编 + 退休待遇 +
     //   社会回写）。**只在 GM 桶**；★ 四个工具名都不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；各自走
     //   CoreSimos.submitBatch 一批一条 revision（批内固定顺序与载荷见各自 *Plan 类）。
+    //   ★★ P1.5（2026-10-16）：selectExaminees / dispatchTeam 已接完整 Social 工单路径（新人口家户 hh-unit:<id>），
+    //   两个计划类都需要生产历法时钟判定 MALE+ADULT 年龄档。
     built.add(new GovSelectExamineesTool(core, query, initiator, mapId, calendarService));
-    built.add(new GovDispatchTeamTool(core, query, initiator, mapId));
+    built.add(new GovDispatchTeamTool(core, query, initiator, mapId, calendarService));
     built.add(new GovAbsorbUnitTool(core, query, initiator, mapId));
     built.add(new GovRetireStaffTool(core, query, initiator, mapId));
     // 辖区阶段 6（2026-09-30 / 计划 §6.2）：actor 净增量账原语（app 级抽取/组军组合工具的落账腿）。

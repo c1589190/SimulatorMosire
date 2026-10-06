@@ -37,6 +37,9 @@ import java.util.Optional;
  */
 public final class SetArmyFormationHandler implements CommandHandler, CommandTargets {
 
+  /** 命令类型（信封上的 {@code type}；P1.5 起 Plan 类直接引用本常量，不再另抄字面量）。 */
+  public static final String TYPE = "unit.SetArmyFormation";
+
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {
     JsonNode payload = UnitPayloads.parse(payloadJson);
@@ -45,7 +48,7 @@ public final class SetArmyFormationHandler implements CommandHandler, CommandTar
 
   @Override
   public String type() {
-    return "unit.SetArmyFormation";
+    return TYPE;
   }
 
   /** 既有 ArmyFormation 的军官家户配置（载荷未给 {@code householdDuties} 时的保持值）：不是 Army ⇒ 空表。 */

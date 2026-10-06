@@ -58,9 +58,12 @@ import java.util.Set;
  */
 public final class PutInfoHandler implements CommandHandler {
 
+  /** 命令类型（信封上的 {@code type}；P1.5 起 Plan 类直接引用本常量，不再另抄字面量）。 */
+  public static final String TYPE = "sd.PutInfo";
+
   @Override
   public String type() {
-    return "sd.PutInfo";
+    return TYPE;
   }
 
   @Override

@@ -32,6 +32,9 @@ import java.util.Objects;
  */
 public final class DismissStaffHandler implements CommandHandler, CommandTargets {
 
+  /** 命令类型（信封上的 {@code type}；P1.5 起 Plan 类直接引用本常量，不再另抄字面量）。 */
+  public static final String TYPE = "unit.DismissStaff";
+
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {
     JsonNode payload = UnitPayloads.parse(payloadJson);
@@ -40,7 +43,7 @@ public final class DismissStaffHandler implements CommandHandler, CommandTargets
 
   @Override
   public String type() {
-    return "unit.DismissStaff";
+    return TYPE;
   }
 
   @Override
