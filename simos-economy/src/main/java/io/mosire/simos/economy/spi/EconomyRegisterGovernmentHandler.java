@@ -3,6 +3,7 @@ package io.mosire.simos.economy.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -19,6 +20,8 @@ import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -277,21 +280,31 @@ public final class EconomyRegisterGovernmentHandler
           base.withHouseholdEconomies(householdEconomies)
               .withClassMemberships(classMemberships)
               .withGovernments(governments);
-      EconomyLog.enterprise()
+      EventLog.channel(EconomyLog.enterprise())
           .info(
-              "event=GOVERNMENT_REGISTERED government={} govUnit={} household={} population={}"
-                  + " laborMilli={} participationPerMille={} issuable={} seignioragePerCycle={}"
-                  + " debtIssuePerCycle={} reason={}",
-              governmentId.value(),
-              registration.govUnitId(),
-              registration.household().value(),
-              householdEconomy.population(),
-              householdEconomy.laborMilli(),
-              householdEconomy.participationPerMille(),
-              issuable,
-              seignioragePerCycle,
-              debtIssuePerCycle,
-              reason);
+              LogEvent.of(
+                  "GOVERNMENT_REGISTERED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "government",
+                  governmentId.value(),
+                  "govUnit",
+                  registration.govUnitId(),
+                  "household",
+                  registration.household().value(),
+                  "population",
+                  householdEconomy.population(),
+                  "laborMilli",
+                  householdEconomy.laborMilli(),
+                  "participationPerMille",
+                  householdEconomy.participationPerMille(),
+                  "issuable",
+                  issuable,
+                  "seignioragePerCycle",
+                  seignioragePerCycle,
+                  "debtIssuePerCycle",
+                  debtIssuePerCycle,
+                  "reasonLength",
+                  reason == null ? 0 : reason.length()));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

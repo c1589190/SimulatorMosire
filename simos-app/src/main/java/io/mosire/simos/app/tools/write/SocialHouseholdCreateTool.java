@@ -3,6 +3,8 @@ package io.mosire.simos.app.tools.write;
 import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
@@ -16,9 +18,10 @@ import io.mosire.simos.social.api.population.HouseholdVitalRates;
 import io.mosire.simos.social.household.HouseholdBook;
 import io.mosire.simos.social.spi.CreateHouseholdHandler;
 import io.mosire.simos.unit.Unit;
-import io.mosire.simos.unit.UnitLog;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.unit.spi.SetUnitHouseholdsHandler;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -197,20 +200,21 @@ public final class SocialHouseholdCreateTool extends AbstractHouseholdGmTool {
           batch,
           view,
           () ->
-              UnitLog.household()
+              EventLog.channel(AppLog.tool())
                   .info(
-                      "event=UNIT_HOUSEHOLD_ASSIGN "
-                          + UnitLog.kv(
-                              "unit",
-                              unitLocation.unitId(),
-                              "household",
-                              id,
-                              "location",
-                              "UNIT:" + unitLocation.unitId(),
-                              "created",
-                              true,
-                              "reason",
-                              request.reason())));
+                      LogEvent.of(
+                          "UNIT_HOUSEHOLD_ASSIGN",
+                          AppLogSource.TOOL_CALL,
+                          "unit",
+                          unitLocation.unitId(),
+                          "household",
+                          id,
+                          "location",
+                          "UNIT:" + unitLocation.unitId(),
+                          "created",
+                          true,
+                          "reasonLength",
+                          request.reason() == null ? 0 : request.reason().length())));
     }
     return submitCommand(request, CreateHouseholdHandler.TYPE, createPayload, view);
   }

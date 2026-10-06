@@ -3,8 +3,9 @@ package io.mosire.simos.app.time;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.household.GovernmentHouseholdResolver;
-import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.stock.DeductionReason;
@@ -16,6 +17,8 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -46,11 +49,11 @@ import org.slf4j.Logger;
  */
 final class GovernmentUpkeepOracle implements GovDaily.PaymentOracle {
 
-  /** 行政结算日志（settlement 分类）。 */
-  private static final Logger LOG = EconomyLog.settlement();
+  /** 行政结算日志（app 日循环分类）。 */
+  private static final Logger LOG = AppLog.time();
 
   /** 逐笔日志（trace 分类；默认关闭）。 */
-  private static final Logger TRACE = EconomyLog.trace();
+  private static final Logger TRACE = AppLog.trace();
 
   private final AccountSession accounts;
   private final UnitState units;
@@ -61,7 +64,8 @@ final class GovernmentUpkeepOracle implements GovDaily.PaymentOracle {
   }
 
   @Override
-  public long pay(UnitId unitId, HexCoord at, GovDaily.GovResource resource, long requested) {
+  public long pay(
+      UnitId unitId, HexCoord at, GovDaily.GovResource resource, long requested, long day) {
     Objects.requireNonNull(unitId, "unitId");
     Objects.requireNonNull(at, "at");
     Objects.requireNonNull(resource, "resource");
@@ -93,13 +97,23 @@ final class GovernmentUpkeepOracle implements GovDaily.PaymentOracle {
     long available = availableOf(view, resource);
     long paid = Math.min(available, requested);
     if (paid <= 0L) {
-      LOG.debug(
-          "event=GOV_UPKEEP_NO_STOCK unit={} treasury={} resource={} requested={} available={}",
-          unitId.value(),
-          treasury.value(),
-          resource.name(),
-          requested,
-          available);
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "GOV_UPKEEP_NO_STOCK",
+                  AppLogSource.DAILY_LOOP,
+                  "day",
+                  day,
+                  "unit",
+                  unitId.value(),
+                  "treasury",
+                  treasury.value(),
+                  "resource",
+                  resource.name(),
+                  "requested",
+                  requested,
+                  "available",
+                  available));
       return 0L;
     }
     Map<CommodityId, Long> goods = new LinkedHashMap<>();
@@ -130,17 +144,28 @@ final class GovernmentUpkeepOracle implements GovDaily.PaymentOracle {
                 + " paid="
                 + paid
                 + " availableBefore="
-                + available));
+                + available),
+        day);
     if (TRACE.isTraceEnabled()) {
-      TRACE.trace(
-          "event=GOV_UPKEEP_PAID unit={} treasury={} resource={} requested={} paid={}"
-              + " availableBefore={}",
-          unitId.value(),
-          treasury.value(),
-          resource.name(),
-          requested,
-          paid,
-          available);
+      EventLog.channel(TRACE)
+          .trace(
+              LogEvent.of(
+                  "GOV_UPKEEP_PAID",
+                  AppLogSource.DAILY_LOOP,
+                  "day",
+                  day,
+                  "unit",
+                  unitId.value(),
+                  "treasury",
+                  treasury.value(),
+                  "resource",
+                  resource.name(),
+                  "requested",
+                  requested,
+                  "paid",
+                  paid,
+                  "availableBefore",
+                  available));
     }
     return paid;
   }

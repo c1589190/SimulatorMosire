@@ -5,16 +5,21 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import io.mosire.simos.army.ArmyLog;
+import io.mosire.simos.army.ArmyLogSource;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.CombatRecordId;
 import io.mosire.simos.army.change.ArmyChangeSet;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
 import java.util.function.Function;
+import org.slf4j.Logger;
 
 /**
  * army 模块的 {@link ModuleCodec} 实现（阶段 D1 / 用户设计 D-012，2026-10-02）。形态与 {@code ActorCodec} / {@code
@@ -44,6 +49,8 @@ import java.util.function.Function;
  * ArmyChangeSet#between(io.mosire.simos.army.ArmyData, io.mosire.simos.army.ArmyData)}。
  */
 public final class ArmyCodec implements ModuleCodec, ModuleDiffer {
+
+  private static final Logger LOG = ArmyLog.codec();
 
   /** 本模块唯一的一台 mapper：共享基座 + 本模块的键反序列化器。 */
   private static final ObjectMapper MAPPER =
@@ -124,7 +131,19 @@ public final class ArmyCodec implements ModuleCodec, ModuleDiffer {
   @Override
   public Snapshot apply(ChangeSet changeSet, Snapshot base, StateMeta newMeta) {
     ArmySnapshot armyBase = asArmySnapshot(base);
-    return ((ArmyChangeSet) changeSet).applyTo(armyBase, newMeta);
+    ArmySnapshot next = ((ArmyChangeSet) changeSet).applyTo(armyBase, newMeta);
+    if (LOG.isDebugEnabled()) {
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "ARMY_CODEC_APPLIED",
+                  ArmyLogSource.ARMY_CODEC,
+                  "combats",
+                  next.data().combats().size(),
+                  "ref",
+                  newMeta.ref()));
+    }
+    return next;
   }
 
   /** 从两个切片派生变更集（{@link ModuleDiffer}，铁律 5）：语义委托 {@link ArmyChangeSet#between}。 */

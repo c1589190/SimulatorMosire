@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -19,6 +20,8 @@ import io.mosire.simos.economy.model.OperatorCondition.IndustryStatus;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -423,11 +426,17 @@ final class OperatorSettlement {
       for (OperatorCondition condition : conditions.values()) {
         statusCounts.merge(condition.status(), 1L, Long::sum);
       }
-      LOG.debug(
-          "event=OPERATOR_ADVANCE_END closingUnits={} exits={} statusCounts={}",
-          closingUnits.size(),
-          exits.size(),
-          statusCounts);
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "OPERATOR_ADVANCE_END",
+                  EconomyLogSource.ECONOMY_OPERATOR_STATE,
+                  "closingUnits",
+                  closingUnits.size(),
+                  "exits",
+                  exits.size(),
+                  "statusCounts",
+                  statusCounts));
     }
     return exits;
   }

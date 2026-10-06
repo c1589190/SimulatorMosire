@@ -2,17 +2,22 @@ package io.mosire.simos.sd.channel;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.sd.SdLog;
+import io.mosire.simos.sd.SdLogSource;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * 决策渠道的**模块侧强制**（spec §十三.2，N16/N17）：身份校验、落点校验、按 actor 构造脱敏简报。
@@ -27,6 +32,8 @@ public final class ChannelAdmission {
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
+  private static final Logger LOG = SdLog.decision();
+
   private ChannelAdmission() {}
 
   /** N16：actor 必须落在渠道声明的集合里；否则拒（模块侧判定，渠道自己说"可以"不算）。 */
@@ -35,6 +42,18 @@ public final class ChannelAdmission {
       throw new IllegalArgumentException("actor 不得为 null");
     }
     if (declared == null || !declared.contains(actor)) {
+      // ★ 2026-10-23 用户裁定 A：具名拒绝在 sd 侧补一条 INFO（只加日志、不改判定）。
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "SD_CHANNEL_ADMISSION_REJECTED",
+                  SdLogSource.SD_DECISION,
+                  "actor",
+                  actor.value(),
+                  "commandType",
+                  "-",
+                  "reason",
+                  "actor-not-representable"));
       throw new IllegalArgumentException("actor 不在该渠道声明可代表的集合里（N16）: " + actor.value());
     }
   }
@@ -42,6 +61,18 @@ public final class ChannelAdmission {
   /** R9：决策只能落在两条窄工具上，不得经渠道提交任意命令。 */
   public static void requireLandingPoint(String commandType) {
     if (!LANDING_POINTS.contains(commandType)) {
+      // ★ 2026-10-23 用户裁定 A：具名拒绝在 sd 侧补一条 INFO（只加日志、不改判定）。
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "SD_CHANNEL_ADMISSION_REJECTED",
+                  SdLogSource.SD_DECISION,
+                  "actor",
+                  "-",
+                  "commandType",
+                  commandType == null ? "-" : commandType,
+                  "reason",
+                  "landing-point-not-allowed"));
       throw new IllegalArgumentException(
           "决策只能落在 sd.IssueDirective / sd.SubmitVerdict（R9）: " + commandType);
     }

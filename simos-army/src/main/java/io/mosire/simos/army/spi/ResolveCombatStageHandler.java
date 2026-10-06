@@ -3,6 +3,7 @@ package io.mosire.simos.army.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmyLog;
+import io.mosire.simos.army.ArmyLogSource;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.CombatOutcomeId;
 import io.mosire.simos.army.CombatRecord;
@@ -11,6 +12,8 @@ import io.mosire.simos.army.CombatResolution;
 import io.mosire.simos.army.CombatStage;
 import io.mosire.simos.army.CombatStageId;
 import io.mosire.simos.army.change.ArmyChangeSet;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -63,6 +66,17 @@ public final class ResolveCombatStageHandler implements CommandHandler, GmOnlyCo
       CombatRecordId combatId = CombatRecordId.parse(ArmyPayloads.requireText(payload, "combatId"));
       CombatRecord record = snapshot.data().combats().get(combatId);
       if (record == null) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ARMY_COMBAT_RESOLVE_REJECTED",
+                    ArmyLogSource.ARMY_COMBAT,
+                    "type",
+                    TYPE,
+                    "reason",
+                    "combat-not-found",
+                    "combat",
+                    combatId.value()));
         return new HandlerOutcome.Rejected("交战记录不存在: " + combatId.value());
       }
       CombatStageId stageId = CombatStageId.parse(ArmyPayloads.requireText(payload, "stageId"));
@@ -74,29 +88,89 @@ public final class ResolveCombatStageHandler implements CommandHandler, GmOnlyCo
         }
       }
       if (stage == null) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ARMY_COMBAT_RESOLVE_REJECTED",
+                    ArmyLogSource.ARMY_COMBAT,
+                    "type",
+                    TYPE,
+                    "reason",
+                    "stage-not-found",
+                    "combat",
+                    combatId.value(),
+                    "stage",
+                    stageId.value()));
         return new HandlerOutcome.Rejected(
             "阶段不存在: " + stageId.value() + "（交战记录 " + combatId.value() + "）");
       }
       if (stage.resolved()) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ARMY_COMBAT_RESOLVE_REJECTED",
+                    ArmyLogSource.ARMY_COMBAT,
+                    "type",
+                    TYPE,
+                    "reason",
+                    "stage-already-resolved",
+                    "combat",
+                    combatId.value(),
+                    "stage",
+                    stageId.value()));
         return new HandlerOutcome.Rejected("阶段已判定过，不可重复投骰: " + stageId.value() + "（要改判请追加新阶段）");
       }
       Optional<CombatOutcomeId> outcomeId =
           ArmyPayloads.optionalText(payload, "outcomeId").map(CombatOutcomeId::parse);
       Optional<Long> seed = ArmyPayloads.optionalLong(payload, "seed");
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "ARMY_COMBAT_RESOLVE_INPUTS",
+                    ArmyLogSource.ARMY_COMBAT,
+                    "combat",
+                    combatId.value(),
+                    "stage",
+                    stageId.value(),
+                    "outcomes",
+                    stage.outcomes().size(),
+                    "explicitOutcome",
+                    outcomeId.map(CombatOutcomeId::value).orElse("<derived>"),
+                    "seedGiven",
+                    seed.isPresent()));
+      }
       CombatResolution.Selection selection =
           CombatResolution.select(
               record.id(), stage.id(), record.tick(), stage.outcomes(), outcomeId, seed);
       CombatStage resolved = stage.resolvedAs(selection.outcome().id(), selection.seed());
       CombatRecord next = record.withReplacedStage(resolved);
       ArmyData nextData = snapshot.data().withCombat(next);
-      LOG.info(
-          "event=ARMY_COMBAT_STAGE_RESOLVED combat={} stage={} outcome={} seed={}",
-          combatId.value(),
-          stageId.value(),
-          selection.outcome().id().value(),
-          selection.seed());
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ARMY_COMBAT_STAGE_RESOLVED",
+                  ArmyLogSource.ARMY_COMBAT,
+                  "combat",
+                  combatId.value(),
+                  "stage",
+                  stageId.value(),
+                  "outcome",
+                  selection.outcome().id().value(),
+                  "seed",
+                  selection.seed().map(Object::toString).orElse("-")));
+      ArmyCombatTrace.outcome(combatId, stageId, selection.outcome());
       return new HandlerOutcome.Applied(ArmyChangeSet.between(snapshot.data(), nextData));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ARMY_COMBAT_RESOLVE_REJECTED",
+                  ArmyLogSource.ARMY_COMBAT,
+                  "type",
+                  TYPE,
+                  "reason",
+                  ArmyPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

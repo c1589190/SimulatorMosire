@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -27,6 +28,8 @@ import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -377,7 +380,15 @@ public final class MerchantSettlement {
       return;
     }
     if (LOG.isDebugEnabled()) {
-      LOG.debug("event=MERCHANT_CYCLE_START day={} firms={}", day, firms.size());
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "MERCHANT_CYCLE_START",
+                  EconomyLogSource.ECONOMY_ORGANIZATION,
+                  "day",
+                  day,
+                  "firms",
+                  firms.size()));
     }
     Map<ActorRef, HouseholdId> householdByActor = new LinkedHashMap<>();
     for (HouseholdId household : sortedHouseholds(householdEconomies)) {
@@ -515,24 +526,47 @@ public final class MerchantSettlement {
       cycle.recordMerchantArrears(organizationId, arrears);
       cycle.recordMerchantLabor(organizationId, totalPorterLabor);
       if (LOG.isDebugEnabled()) {
-        LOG.debug(
-            "event=MERCHANT_FIRM_CYCLE day={} firm={} principal={} revenue={} wagesPaidMoney={} wagesPaidInKindValue={} upkeep={} arrears={} profit={} capacityBefore={} capacityAfter={} porters={}",
-            day,
-            organizationId.value(),
-            principalHousehold.value(),
-            revenue,
-            wagesPaidMoney,
-            wagesPaidInKindValue,
-            upkeep,
-            arrears,
-            profit,
-            firm.capacityPerRound(),
-            capacity,
-            porters.size());
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "MERCHANT_FIRM_CYCLE",
+                    EconomyLogSource.ECONOMY_ORGANIZATION,
+                    "day",
+                    day,
+                    "firm",
+                    organizationId.value(),
+                    "principal",
+                    principalHousehold.value(),
+                    "revenue",
+                    revenue,
+                    "wagesPaidMoney",
+                    wagesPaidMoney,
+                    "wagesPaidInKindValue",
+                    wagesPaidInKindValue,
+                    "upkeep",
+                    upkeep,
+                    "arrears",
+                    arrears,
+                    "profit",
+                    profit,
+                    "capacityBefore",
+                    firm.capacityPerRound(),
+                    "capacityAfter",
+                    capacity,
+                    "porters",
+                    porters.size()));
       }
     }
     if (LOG.isDebugEnabled()) {
-      LOG.debug("event=MERCHANT_CYCLE_END day={} firms={}", day, firms.size());
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "MERCHANT_CYCLE_END",
+                  EconomyLogSource.ECONOMY_ORGANIZATION,
+                  "day",
+                  day,
+                  "firms",
+                  firms.size()));
     }
   }
 

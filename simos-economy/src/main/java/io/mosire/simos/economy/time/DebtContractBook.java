@@ -1,6 +1,7 @@
 package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -8,6 +9,8 @@ import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -135,18 +138,33 @@ public final class DebtContractBook {
     }
     contracts.put(id, next);
     if (DEBT.isTraceEnabled()) {
-      DEBT.trace(
-          "event=DEBT_UPSERT new={} id={} debtor={} creditor={} unit={} amount={} principal={} ratePerMille={} dueCycle={} status={}",
-          existing == null,
-          id.value(),
-          debtor.value(),
-          creditor.value(),
-          unit.key(),
-          amount,
-          next.principal(),
-          terms.interestRatePerMillePerCycle(),
-          next.dueCycle(),
-          next.status());
+      EventLog.channel(DEBT)
+          .trace(
+              LogEvent.of(
+                  "DEBT_UPSERT",
+                  EconomyLogSource.ECONOMY_DEBT,
+                  "day",
+                  day,
+                  "new",
+                  existing == null,
+                  "id",
+                  id.value(),
+                  "debtor",
+                  debtor.value(),
+                  "creditor",
+                  creditor.value(),
+                  "unit",
+                  unit.key(),
+                  "amount",
+                  amount,
+                  "principal",
+                  next.principal(),
+                  "ratePerMille",
+                  terms.interestRatePerMillePerCycle(),
+                  "dueCycle",
+                  next.dueCycle(),
+                  "status",
+                  next.status()));
     }
     return next;
   }
@@ -205,15 +223,25 @@ public final class DebtContractBook {
             status);
     contracts.put(id, next);
     if (DEBT.isTraceEnabled()) {
-      DEBT.trace(
-          "event=DEBT_REDUCE id={} debtor={} creditor={} unit={} amount={} remaining={} status={}",
-          id.value(),
-          debt.debtor().value(),
-          debt.creditor().value(),
-          debt.unit().key(),
-          amount,
-          remaining,
-          status);
+      EventLog.channel(DEBT)
+          .trace(
+              LogEvent.of(
+                  "DEBT_REDUCE",
+                  EconomyLogSource.ECONOMY_DEBT_STATE,
+                  "id",
+                  id.value(),
+                  "debtor",
+                  debt.debtor().value(),
+                  "creditor",
+                  debt.creditor().value(),
+                  "unit",
+                  debt.unit().key(),
+                  "amount",
+                  amount,
+                  "remaining",
+                  remaining,
+                  "status",
+                  status));
     }
     return next;
   }
@@ -267,16 +295,27 @@ public final class DebtContractBook {
             status);
     contracts.put(id, next);
     if (DEBT.isTraceEnabled()) {
-      DEBT.trace(
-          "event=DEBT_INTEREST id={} debtor={} creditor={} unit={} charged={} principal={} day={} status={}",
-          id.value(),
-          debt.debtor().value(),
-          debt.creditor().value(),
-          debt.unit().key(),
-          charged,
-          principal,
-          day,
-          status);
+      EventLog.channel(DEBT)
+          .trace(
+              LogEvent.of(
+                  "DEBT_INTEREST",
+                  EconomyLogSource.ECONOMY_DEBT,
+                  "day",
+                  day,
+                  "id",
+                  id.value(),
+                  "debtor",
+                  debt.debtor().value(),
+                  "creditor",
+                  debt.creditor().value(),
+                  "unit",
+                  debt.unit().key(),
+                  "charged",
+                  charged,
+                  "principal",
+                  principal,
+                  "status",
+                  status));
     }
     return next;
   }
@@ -324,15 +363,25 @@ public final class DebtContractBook {
             status);
     contracts.put(id, next);
     if (DEBT.isDebugEnabled()) {
-      DEBT.debug(
-          "event=DEBT_STATUS id={} debtor={} creditor={} unit={} principal={} from={} to={}",
-          id.value(),
-          debt.debtor().value(),
-          debt.creditor().value(),
-          debt.unit().key(),
-          debt.principal(),
-          debt.status(),
-          status);
+      EventLog.channel(DEBT)
+          .debug(
+              LogEvent.of(
+                  "DEBT_STATUS",
+                  EconomyLogSource.ECONOMY_DEBT_STATE,
+                  "id",
+                  id.value(),
+                  "debtor",
+                  debt.debtor().value(),
+                  "creditor",
+                  debt.creditor().value(),
+                  "unit",
+                  debt.unit().key(),
+                  "principal",
+                  debt.principal(),
+                  "from",
+                  debt.status(),
+                  "to",
+                  status));
     }
     return next;
   }
@@ -386,17 +435,29 @@ public final class DebtContractBook {
             status);
     contracts.put(id, next);
     if (DEBT.isDebugEnabled()) {
-      DEBT.debug(
-          "event=DEBT_FORGIVE id={} debtor={} creditor={} unit={} amount={} remaining={} from={} to={} reason={}",
-          id.value(),
-          debt.debtor().value(),
-          debt.creditor().value(),
-          debt.unit().key(),
-          amount,
-          remaining,
-          debt.status(),
-          status,
-          reason);
+      EventLog.channel(DEBT)
+          .debug(
+              LogEvent.of(
+                  "DEBT_FORGIVE",
+                  EconomyLogSource.ECONOMY_DEBT_STATE,
+                  "id",
+                  id.value(),
+                  "debtor",
+                  debt.debtor().value(),
+                  "creditor",
+                  debt.creditor().value(),
+                  "unit",
+                  debt.unit().key(),
+                  "amount",
+                  amount,
+                  "remaining",
+                  remaining,
+                  "from",
+                  debt.status(),
+                  "to",
+                  status,
+                  "reasonLength",
+                  reason == null ? 0 : reason.length()));
     }
     return new Forgiveness(
         id, debt.principal(), amount, remaining, debt.status(), status, remaining == 0L, reason);

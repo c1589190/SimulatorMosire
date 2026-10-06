@@ -2,6 +2,8 @@ package io.mosire.simos.army.resolve;
 
 import io.mosire.simos.army.ArmyAddresses;
 import io.mosire.simos.army.ArmyData;
+import io.mosire.simos.army.ArmyLog;
+import io.mosire.simos.army.ArmyLogSource;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.CombatRecordId;
 import io.mosire.simos.util.address.Address;
@@ -10,11 +12,14 @@ import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.identity.ResolvedSubject;
 import io.mosire.simos.util.identity.SubjectId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.resolve.ResolveContext;
 import io.mosire.simos.util.resolve.Resolver;
 import io.mosire.simos.util.state.Snapshot;
 import java.util.List;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * {@code army:} 命名空间的地址解析器（阶段 D1 / 用户设计 D-012，2026-10-02；形制照 {@code SdResolver} / {@code
@@ -31,6 +36,8 @@ import java.util.Objects;
  * ToolSupport.subjectVisible} 按记录所在格判（与 {@code map.city} 的"没有自己的资源路径 ⇒ 按格判"同款）。
  */
 public final class ArmyResolver implements Resolver {
+
+  private static final Logger LOG = ArmyLog.resolve();
 
   private static final String NAMESPACE = ArmyAddresses.NAMESPACE;
 
@@ -56,6 +63,17 @@ public final class ArmyResolver implements Resolver {
     }
     CombatRecordId id = CombatRecordId.parse(root.name());
     if (!data.combats().containsKey(id)) {
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "ARMY_RESOLVE_EMPTY",
+                    ArmyLogSource.ARMY_RESOLVE,
+                    "entityKind",
+                    "combat",
+                    "entity",
+                    root.name()));
+      }
       return empty(); // 合法但不存在的记录：空候选，不是错误
     }
     return single(

@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtTerms;
@@ -50,6 +51,8 @@ import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -793,15 +796,25 @@ final class MarketSettlement {
     Objects.requireNonNull(merchantFirms, "merchantFirms");
     Objects.requireNonNull(carrierPool, "carrierPool");
     if (MARKET.isDebugEnabled()) {
-      MARKET.debug(
-          "event=MARKET_ROUND_START day={} trigger={} markets={} regions={} merchantFirms={} rows={} creditEnabled={}",
-          round.day,
-          trigger,
-          markets.size(),
-          topology.regions().size(),
-          merchantFirms.size(),
-          round.householdEconomies.size(),
-          round.creditEnabled());
+      EventLog.channel(MARKET)
+          .debug(
+              LogEvent.of(
+                  "MARKET_ROUND_START",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  round.day,
+                  "trigger",
+                  trigger,
+                  "markets",
+                  markets.size(),
+                  "regions",
+                  topology.regions().size(),
+                  "merchantFirms",
+                  merchantFirms.size(),
+                  "rows",
+                  round.householdEconomies.size(),
+                  "creditEnabled",
+                  round.creditEnabled()));
     }
     boolean merchantWorld = !merchantFirms.isEmpty();
     Optional<ActorRef> carrier = merchantWorld ? Optional.empty() : carrierOf(round);
@@ -4618,10 +4631,19 @@ final class MarketSettlement {
                 round.index.usableAssetsOf(unitId).values().stream()
                     .anyMatch(quantity -> quantity != null && quantity > 0L);
             if (!hasCapacity) {
-              MARKET.warn(
-                  "event=MARKET_SUBJECT_EMPTY_UNIT unit={} operator={} reason=no-positive-asset-and-no-labor-allocation",
-                  unitId.value(),
-                  entry.getKey());
+              EventLog.channel(MARKET)
+                  .warn(
+                      LogEvent.of(
+                          "MARKET_SUBJECT_EMPTY_UNIT",
+                          EconomyLogSource.ECONOMY_MARKET,
+                          "day",
+                          round.day,
+                          "unit",
+                          unitId.value(),
+                          "operator",
+                          entry.getKey(),
+                          "reason",
+                          "no-positive-asset-and-no-labor-allocation"));
               continue;
             }
             throw new IllegalStateException(
@@ -4633,11 +4655,21 @@ final class MarketSettlement {
           }
           // ② 集体经营（如家户纺织主 unit）：具名缺口 —— 不进市场参与者（产出已按劳动分给各家家户账，
           //    各家按自己的库存与预算参与市场）。
-          MARKET.warn(
-              "event=MARKET_SUBJECT_COLLECTIVE unit={} operator={} households={} reason=aggregate-unit-not-a-single-household",
-              unitId.value(),
-              entry.getKey(),
-              collective);
+          EventLog.channel(MARKET)
+              .warn(
+                  LogEvent.of(
+                      "MARKET_SUBJECT_COLLECTIVE",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      round.day,
+                      "unit",
+                      unitId.value(),
+                      "operator",
+                      entry.getKey(),
+                      "households",
+                      collective,
+                      "reason",
+                      "aggregate-unit-not-a-single-household"));
           continue;
         }
         HouseholdId household = single.get();

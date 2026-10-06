@@ -3,7 +3,8 @@ package io.mosire.simos.app.time;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
-import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.stock.HouseholdStockDeduction;
@@ -12,6 +13,8 @@ import io.mosire.simos.economy.time.AccountPartitionKey;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.economy.time.SettlementStage;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -53,72 +56,86 @@ import org.slf4j.Logger;
  * AvailableStock#available}；本类 <b>不</b>内联 {@code balances - frozen}。冻结表原样带过（扣减只动余额）。
  *
  * <p>★ <b>日志</b>（AGENTS §一.9）：TRACE = 逐条 {@code event=HOUSEHOLD_STOCK_DEDUCTED household=… reason=…
- * detail=…} （与 actor 命令侧同一条事件名，便于跨模块 grep）；批量调用 INFO 一条"发生了什么 + 具名计数"；单条调用 DEBUG 一条；拒绝路径 DEBUG。⇒ 默认
- * INFO 下税 / 俸禄不逐户刷屏（阶段级 INFO 由 {@code TAX_DAILY_END} / {@code GOV_DAILY_END} 负责）。
+ * detailLength=…} （与 actor 命令侧同一条事件名，便于跨模块 grep）；批量调用 INFO 一条"发生了什么 + 具名计数"；单条调用 DEBUG 一条；拒绝路径
+ * INFO（用户规则：被拒绝一律 INFO）。⇒ 默认 INFO 下税 / 俸禄不逐户刷屏（阶段级 INFO 由 {@code TAX_DAILY_END} / {@code
+ * GOV_DAILY_END} 负责）。
  */
 public final class StockDeductionService {
 
   /** 本批税 / 行政俸禄 / 军俸都发生在日结算之后 ⇒ 沿用既有提交阶段（见 {@link SettlementStage#TAX_AND_UPKEEP}）。 */
   public static final SettlementStage DEFAULT_STAGE = SettlementStage.TAX_AND_UPKEEP;
 
-  private static final Logger LOG = EconomyLog.settlement();
+  private static final Logger LOG = AppLog.time();
 
-  private static final Logger TRACE = EconomyLog.trace();
+  private static final Logger TRACE = AppLog.trace();
 
   private StockDeductionService() {}
 
   /** 单条扣除（多条请走 {@link #deductAll}）。 */
-  public static void deduct(AccountSession accounts, HouseholdStockDeduction deduction) {
+  public static void deduct(AccountSession accounts, HouseholdStockDeduction deduction, long day) {
     Objects.requireNonNull(deduction, "deduction");
-    deductAll(accounts, List.of(deduction), DEFAULT_STAGE);
+    deductAll(accounts, List.of(deduction), DEFAULT_STAGE, day);
   }
 
   /** 一批扣除：整批先校验、后一次 commit（不允许部分生效）。 */
   public static void deductAll(
-      AccountSession accounts, Collection<HouseholdStockDeduction> deductions) {
-    deductAll(accounts, deductions, DEFAULT_STAGE);
+      AccountSession accounts, Collection<HouseholdStockDeduction> deductions, long day) {
+    deductAll(accounts, deductions, DEFAULT_STAGE, day);
   }
 
   /**
    * 一批扣除（显式提交阶段）：整批先校验、后一次 {@link AccountSession#commit}。
    *
    * @param deductions 扣除条目（列表序 = 应用序；不得为空、不得含 null）
+   * @param day 本次扣除所属的世界日（只进日志字段；不参与任何判定/落账）
    * @throws IllegalArgumentException 家户不存在 / 账户不存在 / 余额不足 / 侵占冻结 / 自转 / 收款相加溢出
    */
   public static void deductAll(
       AccountSession accounts,
       Collection<HouseholdStockDeduction> deductions,
-      SettlementStage stage) {
+      SettlementStage stage,
+      long day) {
     Objects.requireNonNull(accounts, "accounts");
     Objects.requireNonNull(deductions, "deductions");
     Objects.requireNonNull(stage, "stage");
     accounts.checkCoordinatorThread();
     if (deductions.isEmpty()) {
-      throw reject("家户库存扣除批次不得为空");
+      throw reject("家户库存扣除批次不得为空", day);
     }
     // ★ 影子副本：本次调用演练出的终值（活表只读，commit 之前一个字节都不改）。
     Map<HouseholdId, HouseholdInventory> shadow = new LinkedHashMap<>();
     List<String> reasons = new ArrayList<>();
     for (HouseholdStockDeduction deduction : deductions) {
       Objects.requireNonNull(deduction, "deductions 的元素不得为 null");
-      HouseholdInventory source = shadowInventory(accounts, shadow, deduction.household());
-      deduct(shadow, source, deduction);
+      HouseholdInventory source = shadowInventory(accounts, shadow, deduction.household(), day);
+      deduct(shadow, source, deduction, day);
       deduction
           .toHousehold()
-          .ifPresent(recipient -> credit(accounts, shadow, recipient, deduction));
+          .ifPresent(recipient -> credit(accounts, shadow, recipient, deduction, day));
       reasons.add(deduction.reason().value());
       if (TRACE.isTraceEnabled()) {
-        TRACE.trace(
-            "event=HOUSEHOLD_STOCK_DEDUCTED household={} reason={} detail={} goods={} money={} to={}",
-            deduction.household().value(),
-            deduction.reason().value(),
-            deduction.detail(),
-            deduction.goods().size(),
-            deduction.money().size(),
-            deduction.toHousehold().map(HouseholdId::value).orElse("<sink>"));
+        EventLog.channel(TRACE)
+            .trace(
+                LogEvent.of(
+                    "HOUSEHOLD_STOCK_DEDUCTED",
+                    AppLogSource.DAILY_LOOP,
+                    "day",
+                    day,
+                    "household",
+                    deduction.household().value(),
+                    "reason",
+                    deduction.reason().value(),
+                    "detailLength",
+                    deduction.detail() == null ? 0 : deduction.detail().length(),
+                    "goods",
+                    deduction.goods().size(),
+                    "money",
+                    deduction.money().size(),
+                    "to",
+                    deduction.toHousehold().map(HouseholdId::value).orElse("<sink>")));
       }
     }
-    List<AccountDelta> deltas = netDeltas(accounts, shadow, stage);
+    List<AccountDelta> deltas = netDeltas(accounts, shadow, stage, day);
     if (!deltas.isEmpty()) {
       accounts.commit(deltas);
     }
@@ -126,21 +143,40 @@ public final class StockDeductionService {
     //   补一条 INFO"发生了什么 + 具名计数"；单条调用补一条 DEBUG（税 / 俸禄的阶段级 INFO 由各自 phase 负责：
     //   TAX_DAILY_END / GOV_DAILY_END / GOV_ADMIN_ADVANCE_END）。⇒ 默认 INFO 下不会逐户刷屏。
     if (deductions.size() > 1) {
-      LOG.info(
-          "event=HOUSEHOLD_STOCK_DEDUCTED entries={} households={} reasons={} netAccounts={}",
-          deductions.size(),
-          shadow.size(),
-          new LinkedHashSet<>(reasons),
-          deltas.size());
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "HOUSEHOLD_STOCK_DEDUCTED",
+                  AppLogSource.DAILY_LOOP,
+                  "day",
+                  day,
+                  "entries",
+                  deductions.size(),
+                  "households",
+                  shadow.size(),
+                  "reasons",
+                  new LinkedHashSet<>(reasons),
+                  "netAccounts",
+                  deltas.size()));
     } else if (LOG.isDebugEnabled()) {
       HouseholdStockDeduction only = deductions.iterator().next();
-      LOG.debug(
-          "event=HOUSEHOLD_STOCK_DEDUCTED household={} reason={} detail={} to={} netAccounts={}",
-          only.household().value(),
-          only.reason().value(),
-          only.detail(),
-          only.toHousehold().map(HouseholdId::value).orElse("<sink>"),
-          deltas.size());
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "HOUSEHOLD_STOCK_DEDUCTED",
+                  AppLogSource.DAILY_LOOP,
+                  "day",
+                  day,
+                  "household",
+                  only.household().value(),
+                  "reason",
+                  only.reason().value(),
+                  "detailLength",
+                  only.detail() == null ? 0 : only.detail().length(),
+                  "to",
+                  only.toHousehold().map(HouseholdId::value).orElse("<sink>"),
+                  "netAccounts",
+                  deltas.size()));
     }
   }
 
@@ -148,18 +184,19 @@ public final class StockDeductionService {
   private static void deduct(
       Map<HouseholdId, HouseholdInventory> shadow,
       HouseholdInventory source,
-      HouseholdStockDeduction deduction) {
+      HouseholdStockDeduction deduction,
+      long day) {
     Map<CommodityId, Long> balances = new LinkedHashMap<>(source.balances());
     for (Map.Entry<CommodityId, Long> leg : deduction.goods().entrySet()) {
       balances.put(
           leg.getKey(),
-          requireAvailableGoods(source, leg.getKey(), leg.getValue(), deduction.household()));
+          requireAvailableGoods(source, leg.getKey(), leg.getValue(), deduction.household(), day));
     }
     Map<CurrencyId, Long> money = new LinkedHashMap<>(source.money());
     for (Map.Entry<CurrencyId, Long> leg : deduction.money().entrySet()) {
       money.put(
           leg.getKey(),
-          requireAvailableMoney(source, leg.getKey(), leg.getValue(), deduction.household()));
+          requireAvailableMoney(source, leg.getKey(), leg.getValue(), deduction.household(), day));
     }
     shadow.put(
         deduction.household(),
@@ -172,11 +209,12 @@ public final class StockDeductionService {
       AccountSession accounts,
       Map<HouseholdId, HouseholdInventory> shadow,
       HouseholdId recipient,
-      HouseholdStockDeduction deduction) {
+      HouseholdStockDeduction deduction,
+      long day) {
     if (recipient.equals(deduction.household())) {
-      throw reject("扣除的收款家户不得等于被扣家户（自转不是一条发生额）: " + recipient);
+      throw reject("扣除的收款家户不得等于被扣家户（自转不是一条发生额）: " + recipient, day);
     }
-    HouseholdInventory target = shadowInventory(accounts, shadow, recipient);
+    HouseholdInventory target = shadowInventory(accounts, shadow, recipient, day);
     Map<CommodityId, Long> balances = new LinkedHashMap<>(target.balances());
     for (Map.Entry<CommodityId, Long> leg : deduction.goods().entrySet()) {
       balances.put(
@@ -186,7 +224,8 @@ public final class StockDeductionService {
               leg.getValue(),
               recipient,
               "商品",
-              leg.getKey().toString()));
+              leg.getKey().toString(),
+              day));
     }
     Map<CurrencyId, Long> money = new LinkedHashMap<>(target.money());
     for (Map.Entry<CurrencyId, Long> leg : deduction.money().entrySet()) {
@@ -197,7 +236,8 @@ public final class StockDeductionService {
               leg.getValue(),
               recipient,
               "货币",
-              leg.getKey().toString()));
+              leg.getKey().toString(),
+              day));
     }
     shadow.put(
         recipient,
@@ -211,17 +251,20 @@ public final class StockDeductionService {
    * <p>★ 只读活表、不写活表：影子的所有变更都留在本方法的内存表里，直到一次 {@code commit}。
    */
   private static HouseholdInventory shadowInventory(
-      AccountSession accounts, Map<HouseholdId, HouseholdInventory> shadow, HouseholdId household) {
+      AccountSession accounts,
+      Map<HouseholdId, HouseholdInventory> shadow,
+      HouseholdId household,
+      long day) {
     HouseholdInventory cached = shadow.get(household);
     if (cached != null) {
       return cached;
     }
     if (accounts.householdKeyOf(household) == null) {
-      throw reject("家户不存在：账户会话里没有登记该家户（拒绝在结算中途造账）: household=" + household.value());
+      throw reject("家户不存在：账户会话里没有登记该家户（拒绝在结算中途造账）: household=" + household.value(), day);
     }
     AccountSession.ActorAccount live = accounts.householdAccount(household);
     if (live == null) {
-      throw reject("账户不存在：家户已登记但没有账户（状态损坏）: household=" + household.value());
+      throw reject("账户不存在：家户已登记但没有账户（状态损坏）: household=" + household.value(), day);
     }
     HouseholdInventory view =
         new HouseholdInventory(
@@ -236,7 +279,11 @@ public final class StockDeductionService {
 
   /** 商品腿的足量判据：<b>先</b>余额、<b>再</b>可支配（{@link AvailableStock} 的唯一算法）；返回扣除后的新余额。 */
   private static long requireAvailableGoods(
-      HouseholdInventory inventory, CommodityId commodity, long amount, HouseholdId household) {
+      HouseholdInventory inventory,
+      CommodityId commodity,
+      long amount,
+      HouseholdId household,
+      long day) {
     return requireAvailable(
         household,
         "商品",
@@ -244,12 +291,17 @@ public final class StockDeductionService {
         inventory.balances().getOrDefault(commodity, 0L),
         inventory.frozenBalances().getOrDefault(commodity, 0L),
         AvailableStock.available(inventory, commodity),
-        amount);
+        amount,
+        day);
   }
 
   /** 货币腿：口径与商品腿逐条同款（同一个算式，两张表各走对应重载）。 */
   private static long requireAvailableMoney(
-      HouseholdInventory inventory, CurrencyId currency, long amount, HouseholdId household) {
+      HouseholdInventory inventory,
+      CurrencyId currency,
+      long amount,
+      HouseholdId household,
+      long day) {
     return requireAvailable(
         household,
         "货币",
@@ -257,7 +309,8 @@ public final class StockDeductionService {
         inventory.money().getOrDefault(currency, 0L),
         inventory.frozenMoney().getOrDefault(currency, 0L),
         AvailableStock.available(inventory, currency),
-        amount);
+        amount,
+        day);
   }
 
   /** 两条具名拒（顺序刻意：先"余额不足"、再"侵占冻结"，两条拒因指向不同的纠正动作）。 */
@@ -268,7 +321,8 @@ public final class StockDeductionService {
       long balance,
       long frozen,
       long available,
-      long amount) {
+      long amount,
+      long day) {
     if (balance < amount) {
       throw reject(
           "余额不足：household="
@@ -280,7 +334,8 @@ public final class StockDeductionService {
               + " 余额="
               + balance
               + "，请求="
-              + amount);
+              + amount,
+          day);
     }
     if (available < amount) {
       throw reject(
@@ -298,7 +353,8 @@ public final class StockDeductionService {
               + available
               + "，请求="
               + amount
-              + "（可支配 = 余额 − 冻结，冻结部分不可动用）");
+              + "（可支配 = 余额 − 冻结，冻结部分不可动用）",
+          day);
     }
     return balance - amount;
   }
@@ -310,7 +366,10 @@ public final class StockDeductionService {
    * SettlementExecutor.commit} 的并列提交键。
    */
   private static List<AccountDelta> netDeltas(
-      AccountSession accounts, Map<HouseholdId, HouseholdInventory> shadow, SettlementStage stage) {
+      AccountSession accounts,
+      Map<HouseholdId, HouseholdInventory> shadow,
+      SettlementStage stage,
+      long day) {
     List<HouseholdId> ordered = new ArrayList<>(shadow.keySet());
     ordered.sort(Comparator.comparing(HouseholdId::value));
     List<AccountDelta> deltas = new ArrayList<>(ordered.size());
@@ -318,7 +377,7 @@ public final class StockDeductionService {
     for (HouseholdId household : ordered) {
       AccountSession.ActorAccount live = accounts.householdAccount(household);
       if (live == null) {
-        throw reject("账户不存在：家户已登记但没有账户（状态损坏）: household=" + household.value());
+        throw reject("账户不存在：家户已登记但没有账户（状态损坏）: household=" + household.value(), day);
       }
       HouseholdInventory target = shadow.get(household);
       Map<CommodityId, Long> goodsDelta = goodsDelta(live, target);
@@ -366,7 +425,7 @@ public final class StockDeductionService {
 
   /** 收款相加的 {@link Math#addExact}：溢出 ⇒ 拒绝，绝不截断/回绕。 */
   private static long addExact(
-      long current, long delta, HouseholdId recipient, String dimension, String asset) {
+      long current, long delta, HouseholdId recipient, String dimension, String asset, long day) {
     try {
       return Math.addExact(current, delta);
     } catch (ArithmeticException overflow) {
@@ -380,13 +439,48 @@ public final class StockDeductionService {
               + "，现有="
               + current
               + "，转入="
-              + delta);
+              + delta,
+          day);
     }
   }
 
-  /** 具名拒的唯一样子：先 DEBUG 记"为什么"，再抛 {@link IllegalArgumentException}（拒绝路径不静默）。 */
-  private static IllegalArgumentException reject(String message) {
-    LOG.debug("event=HOUSEHOLD_STOCK_DEDUCTION_REJECTED reason={}", message);
+  /** 具名拒的唯一样子：先 INFO 记"为什么"（用户规则：被拒绝一律 INFO），再抛 {@link IllegalArgumentException}（拒绝路径不静默）。 */
+  private static IllegalArgumentException reject(String message, long day) {
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "HOUSEHOLD_STOCK_DEDUCTION_REJECTED",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                day,
+                "reason",
+                logReason(message)));
     return new IllegalArgumentException(message);
+  }
+
+  /**
+   * ★ <b>日志安全的拒绝理由</b>（照 L2 的 {@code logReason} 形态）：只保留可读前缀——截到第一个 JSON 起始符/换行；{@code payload ...}
+   * 这一类原始文本消息再截到冒号，避免把载荷原文带进日志。截断只影响日志文本，不影响异常本身。
+   */
+  private static String logReason(String message) {
+    if (message == null || message.isBlank()) {
+      return "unknown";
+    }
+    String text = message.strip();
+    int cut = text.length();
+    for (char marker : new char[] {'{', '[', '\n', '\r'}) {
+      int at = text.indexOf(marker);
+      if (at >= 0 && at < cut) {
+        cut = at;
+      }
+    }
+    if (text.startsWith("payload ")) {
+      int colon = text.indexOf(':');
+      if (colon >= 0 && colon < cut) {
+        cut = colon;
+      }
+    }
+    String reason = text.substring(0, cut).strip();
+    return reason.isEmpty() ? "unknown" : reason;
   }
 }

@@ -5,6 +5,7 @@ import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.id.IndustryId;
@@ -18,6 +19,8 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.spi.WorldTimeProposal;
 import io.mosire.simos.util.state.SimulationState;
@@ -157,12 +160,21 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
           writes);
     }
 
-    LOG.debug(
-        "event=OWNERSHIP_ADVANCE_START from={} to={} accounts={} industries={}",
-        range.from().tick(),
-        to.get().tick(),
-        actor.accounts().size(),
-        economy.industries().size());
+    EventLog.channel(LOG)
+        .debug(
+            LogEvent.of(
+                "OWNERSHIP_ADVANCE_START",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                to.get().tick(),
+                "from",
+                range.from().tick(),
+                "to",
+                to.get().tick(),
+                "accounts",
+                actor.accounts().size(),
+                "industries",
+                economy.industries().size()));
     // ★★ S1：唯一账户会话（家户 + 经营者；商品 + 货币 + 冻结）一次装载。
     //   ★ S1.5 旧档：先把旧三段 actor id 上的账搬到新身份键（移动，不是复制 —— 否则一笔粮变两本账）。
     ActorData migratedBooks = actor; // ★ P2-A：旧账户随旧世界报废，不再做 legacy actor 账户搬家
@@ -201,13 +213,23 @@ public final class EconomyOwnershipTimeParticipant implements TimeParticipant {
       books = OwnershipBooks.landAccountSession(books, stepper.accounts());
     }
     EconomyData currentEconomy = stepper.finish();
-    LOG.info(
-        "event=OWNERSHIP_ADVANCE_END from={} to={} days={} accounts={} industries={}",
-        range.from().tick(),
-        to.get().tick(),
-        to.get().tick() - range.from().tick(),
-        books.accounts().size(),
-        currentEconomy.industries().size());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "OWNERSHIP_ADVANCE_END",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                to.get().tick(),
+                "from",
+                range.from().tick(),
+                "to",
+                to.get().tick(),
+                "days",
+                to.get().tick() - range.from().tick(),
+                "accounts",
+                books.accounts().size(),
+                "industries",
+                currentEconomy.industries().size()));
     return new WorldTimeProposal(
         NAMESPACE,
         Map.of(

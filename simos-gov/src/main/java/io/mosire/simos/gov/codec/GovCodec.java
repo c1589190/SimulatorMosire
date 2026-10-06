@@ -7,16 +7,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.gov.GovLog;
+import io.mosire.simos.gov.GovLogSource;
 import io.mosire.simos.gov.GovSnapshot;
 import io.mosire.simos.gov.change.GovChangeSet;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
 import java.util.function.Function;
+import org.slf4j.Logger;
 
 /**
  * gov 模块的 {@link ModuleCodec} 实现（阶段 10a，计划 §2.2）。形态与 {@link io.mosire.simos.actor.codec.ActorCodec}
@@ -43,6 +48,8 @@ import java.util.function.Function;
  * <p>★ 同时实现 {@link ModuleDiffer}（"一批命令 = 一条 revision"的批量提交需要）：语义委托 {@link GovChangeSet#between}。
  */
 public final class GovCodec implements ModuleCodec, ModuleDiffer {
+
+  private static final Logger LOG = GovLog.codec();
 
   /** 本模块唯一的一台 mapper：共享基座 + 本模块的三路键反序列化器。 */
   private static final ObjectMapper MAPPER =
@@ -124,7 +131,19 @@ public final class GovCodec implements ModuleCodec, ModuleDiffer {
   @Override
   public Snapshot apply(ChangeSet changeSet, Snapshot base, StateMeta newMeta) {
     GovSnapshot govBase = asGovSnapshot(base);
-    return ((GovChangeSet) changeSet).applyTo(govBase, newMeta);
+    GovSnapshot next = ((GovChangeSet) changeSet).applyTo(govBase, newMeta);
+    if (LOG.isDebugEnabled()) {
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "GOV_CODEC_APPLIED",
+                  GovLogSource.GOV_CODEC,
+                  "offices",
+                  next.state().offices().size(),
+                  "ref",
+                  newMeta.ref()));
+    }
+    return next;
   }
 
   /** 从两个切片派生变更集（{@link ModuleDiffer}，铁律 5）：语义委托 {@link GovChangeSet#between}。 */

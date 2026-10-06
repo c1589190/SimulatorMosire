@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -11,6 +12,8 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.time.AccountSession.ActorAccount;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -66,11 +69,19 @@ final class GovernmentDebtIssuance {
         continue;
       }
       if (government.issuable().isEmpty()) {
-        LOG.warn(
-            "event=GOV_DEBT_ISSUE_SKIPPED government={} day={} reason=no-issuable-currency target={}",
-            government.id().value(),
-            day,
-            target);
+        EventLog.channel(LOG)
+            .warn(
+                LogEvent.of(
+                    "GOV_DEBT_ISSUE_SKIPPED",
+                    EconomyLogSource.ECONOMY_DEBT,
+                    "day",
+                    day,
+                    "government",
+                    government.id().value(),
+                    "reason",
+                    "no-issuable-currency",
+                    "target",
+                    target));
         continue;
       }
       // 单政府单币种试点：取第一个可发行币种作为债务币种（LinkedHashSet 保序 ⇒ 确定性）。
@@ -153,28 +164,50 @@ final class GovernmentDebtIssuance {
       }
       issuedTotal = Math.addExact(issuedTotal, borrowed);
       if (remaining > 0L) {
-        LOG.warn(
-            "event=GOV_DEBT_ISSUE_SHORTFALL government={} day={} currency={} target={} issued={} shortfall={} lenders={}",
-            government.id().value(),
-            day,
-            currency.value(),
-            target,
-            borrowed,
-            remaining,
-            lenderCount);
+        EventLog.channel(LOG)
+            .warn(
+                LogEvent.of(
+                    "GOV_DEBT_ISSUE_SHORTFALL",
+                    EconomyLogSource.ECONOMY_DEBT,
+                    "day",
+                    day,
+                    "government",
+                    government.id().value(),
+                    "currency",
+                    currency.value(),
+                    "target",
+                    target,
+                    "issued",
+                    borrowed,
+                    "shortfall",
+                    remaining,
+                    "lenders",
+                    lenderCount));
       }
       if (borrowed > 0L) {
-        LOG.info(
-            "event=GOV_DEBT_ISSUE government={} day={} period={} currency={} target={} issued={} lenders={} treasuryBefore={} treasuryAfter={}",
-            government.id().value(),
-            day,
-            currentCycle,
-            currency.value(),
-            target,
-            borrowed,
-            lenderCount,
-            treasury.money().getOrDefault(currency, 0L) - borrowed,
-            treasury.money().getOrDefault(currency, 0L));
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "GOV_DEBT_ISSUE",
+                    EconomyLogSource.ECONOMY_DEBT,
+                    "day",
+                    day,
+                    "government",
+                    government.id().value(),
+                    "period",
+                    currentCycle,
+                    "currency",
+                    currency.value(),
+                    "target",
+                    target,
+                    "issued",
+                    borrowed,
+                    "lenders",
+                    lenderCount,
+                    "treasuryBefore",
+                    treasury.money().getOrDefault(currency, 0L) - borrowed,
+                    "treasuryAfter",
+                    treasury.money().getOrDefault(currency, 0L)));
       }
     }
     return issuedTotal;

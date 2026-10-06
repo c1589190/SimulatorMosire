@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.MoneyIssuanceId;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
@@ -10,6 +11,8 @@ import io.mosire.simos.economy.model.Government;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.time.AccountSession.ActorAccount;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -117,16 +120,27 @@ final class GovernmentSeigniorage {
           throw new IllegalStateException("政府铸币审计 id 重复（同一天同一政府同一币种只允许一条）：" + id.value());
         }
         minted = Math.addExact(minted, amount);
-        LOG.info(
-            "event=GOV_SEIGNIORAGE government={} day={} period={} currency={} amount={} treasuryBefore={} treasuryAfter={} accountActor={}",
-            government.id().value(),
-            day,
-            currentCycle,
-            currency.value(),
-            amount,
-            before,
-            after,
-            government.treasury());
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "GOV_SEIGNIORAGE",
+                    EconomyLogSource.ECONOMY_DEBT,
+                    "day",
+                    day,
+                    "government",
+                    government.id().value(),
+                    "period",
+                    currentCycle,
+                    "currency",
+                    currency.value(),
+                    "amount",
+                    amount,
+                    "treasuryBefore",
+                    before,
+                    "treasuryAfter",
+                    after,
+                    "accountActor",
+                    government.treasury()));
       }
     }
     return minted;

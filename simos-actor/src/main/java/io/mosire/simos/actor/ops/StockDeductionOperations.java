@@ -2,6 +2,7 @@ package io.mosire.simos.actor.ops;
 
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
+import io.mosire.simos.actor.ActorLogSource;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
@@ -10,6 +11,8 @@ import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.stock.HouseholdStockDeduction;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -96,30 +99,53 @@ public final class StockDeductionOperations {
 
       deduction.toHousehold().ifPresent(recipient -> credit(next, base, recipient, deduction));
 
-      LOG.info(
-          "event=HOUSEHOLD_STOCK_DEDUCTED household={} reason={} detail={} goods={} money={} to={}",
-          household.value(),
-          deduction.reason().value(),
-          deduction.detail(),
-          deduction.goods().size(),
-          deduction.money().size(),
-          deduction.toHousehold().map(HouseholdId::value).orElse("<sink>"));
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "HOUSEHOLD_STOCK_DEDUCTED",
+                  ActorLogSource.ACTOR_STOCK,
+                  "household",
+                  household.value(),
+                  "reason",
+                  deduction.reason().value(),
+                  "detailLength",
+                  deduction.detail() == null ? 0 : deduction.detail().length(),
+                  "goods",
+                  deduction.goods().size(),
+                  "money",
+                  deduction.money().size(),
+                  "to",
+                  deduction.toHousehold().map(HouseholdId::value).orElse("<sink>")));
       if (TRACE.isTraceEnabled()) {
         for (Map.Entry<CommodityId, Long> leg : deduction.goods().entrySet()) {
-          TRACE.trace(
-              "event=HOUSEHOLD_STOCK_DEDUCTED_GOODS household={} reason={} commodity={} amount={}",
-              household.value(),
-              deduction.reason().value(),
-              leg.getKey(),
-              leg.getValue());
+          EventLog.channel(TRACE)
+              .trace(
+                  LogEvent.of(
+                      "HOUSEHOLD_STOCK_DEDUCTED_GOODS",
+                      ActorLogSource.ACTOR_STOCK,
+                      "household",
+                      household.value(),
+                      "reason",
+                      deduction.reason().value(),
+                      "commodity",
+                      leg.getKey(),
+                      "amount",
+                      leg.getValue()));
         }
         for (Map.Entry<CurrencyId, Long> leg : deduction.money().entrySet()) {
-          TRACE.trace(
-              "event=HOUSEHOLD_STOCK_DEDUCTED_MONEY household={} reason={} currency={} amount={}",
-              household.value(),
-              deduction.reason().value(),
-              leg.getKey(),
-              leg.getValue());
+          EventLog.channel(TRACE)
+              .trace(
+                  LogEvent.of(
+                      "HOUSEHOLD_STOCK_DEDUCTED_MONEY",
+                      ActorLogSource.ACTOR_STOCK,
+                      "household",
+                      household.value(),
+                      "reason",
+                      deduction.reason().value(),
+                      "currency",
+                      leg.getKey(),
+                      "amount",
+                      leg.getValue()));
         }
       }
     }

@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.population.LotChange;
@@ -11,6 +12,8 @@ import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -281,14 +284,23 @@ public final class EconomyDayStepper implements AutoCloseable {
     }
     ProductionLedger result = ledger.toLedger();
     if (LOG.isDebugEnabled()) {
-      LOG.debug(
-          "event=STEPPER_STEP day={} rows={} units={} transfers={} marketReport={} shipments={}",
-          day,
-          session.sheet().householdEconomies().size(),
-          session.sheet().units().size(),
-          result.transfers().size(),
-          report != null,
-          session.sheet().shipments().size());
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "STEPPER_STEP",
+                  EconomyLogSource.ECONOMY_DAY,
+                  "day",
+                  day,
+                  "rows",
+                  session.sheet().householdEconomies().size(),
+                  "units",
+                  session.sheet().units().size(),
+                  "transfers",
+                  result.transfers().size(),
+                  "marketReport",
+                  report != null,
+                  "shipments",
+                  session.sheet().shipments().size()));
     }
     return result;
   }
@@ -316,7 +328,13 @@ public final class EconomyDayStepper implements AutoCloseable {
   public void applyPopulationChange(List<LotChange> changes) {
     Objects.requireNonNull(changes, "changes");
     if (!changes.isEmpty()) {
-      LOG.info("event=POPULATION_CHANGE_APPLIED changes={}", changes.size());
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "POPULATION_CHANGE_APPLIED",
+                  EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                  "changes",
+                  changes.size()));
     }
     EconomySettlement.applyPopulationChangeInto(session, changes);
   }
@@ -347,7 +365,15 @@ public final class EconomyDayStepper implements AutoCloseable {
   public void applyMigrations(List<LotMigration> migrations, long day) {
     Objects.requireNonNull(migrations, "migrations");
     if (!migrations.isEmpty()) {
-      LOG.info("event=MIGRATION_APPLIED_INTO_STEPPER day={} count={}", day, migrations.size());
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "MIGRATION_APPLIED_INTO_STEPPER",
+                  EconomyLogSource.ECONOMY_MIGRATION,
+                  "day",
+                  day,
+                  "count",
+                  migrations.size()));
     }
     LotMigrationBook.applyInto(session, migrations, day);
   }

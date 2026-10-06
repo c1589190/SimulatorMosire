@@ -3,6 +3,7 @@ package io.mosire.simos.economy.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.stock.DeductionReason;
@@ -10,6 +11,8 @@ import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
 import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -76,18 +79,29 @@ public final class EconomyUpsertPeriodicAdjustmentHandler
           new LinkedHashMap<>(base.periodicAdjustments());
       HouseholdPeriodicAdjustment previous = adjustments.put(rule.id(), rule);
       EconomyData projected = base.withPeriodicAdjustments(adjustments);
-      LOG.info(
-          "event=PERIODIC_ADJUSTMENT_UPSERTED rule={} payer={} payee={} reason={} periodDays={}"
-              + " phaseDay={} startsOnDay={} expiresOnDay={} replaced={}",
-          rule.id().value(),
-          rule.payer().value(),
-          rule.payee().map(HouseholdId::value).orElse("<sink>"),
-          rule.reason().value(),
-          rule.periodDays(),
-          rule.phaseDay(),
-          rule.startsOnDay(),
-          rule.expiresOnDay().isPresent() ? rule.expiresOnDay().getAsLong() : "<never>",
-          previous != null);
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "PERIODIC_ADJUSTMENT_UPSERTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "rule",
+                  rule.id().value(),
+                  "payer",
+                  rule.payer().value(),
+                  "payee",
+                  rule.payee().map(HouseholdId::value).orElse("<sink>"),
+                  "reason",
+                  rule.reason().value(),
+                  "periodDays",
+                  rule.periodDays(),
+                  "phaseDay",
+                  rule.phaseDay(),
+                  "startsOnDay",
+                  rule.startsOnDay(),
+                  "expiresOnDay",
+                  rule.expiresOnDay().isPresent() ? rule.expiresOnDay().getAsLong() : "<never>",
+                  "replaced",
+                  previous != null));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

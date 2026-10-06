@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.LaborAllocationId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
@@ -19,6 +20,8 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.economy.ProportionalSplit;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -152,12 +155,19 @@ final class LaborQueueSettlement {
       PeopleLotId lot = chooseLot(household, laborCommitmentsByHousehold, composition);
       if (lot == null) {
         if (EconomyLog.population().isDebugEnabled()) {
-          EconomyLog.population()
+          EventLog.channel(EconomyLog.population())
               .debug(
-                  "event=LABOR_QUEUE_NO_LOT day={} household={} candidates={} reason=no-composition-lot",
-                  day,
-                  household.value(),
-                  candidates.size());
+                  LogEvent.of(
+                      "LABOR_QUEUE_NO_LOT",
+                      EconomyLogSource.ECONOMY_POPULATION,
+                      "day",
+                      day,
+                      "household",
+                      household.value(),
+                      "candidates",
+                      candidates.size(),
+                      "reason",
+                      "no-composition-lot"));
         }
         continue; // 没有可挂批次 ⇒ 不猜、不重排（既有配额原样保留；预算不变量不动）
       }
@@ -313,32 +323,52 @@ final class LaborQueueSettlement {
       plans.add(plan);
 
       if (EconomyLog.enterprise().isDebugEnabled()) {
-        EconomyLog.enterprise()
-            .debug("event=LABOR_QUEUE_PLAN day={} {}", day, LaborQueueBook.describe(plan));
+        EventLog.channel(EconomyLog.enterprise())
+            .debug(
+                LogEvent.of(
+                    "LABOR_QUEUE_PLAN",
+                    EconomyLogSource.ECONOMY_POPULATION,
+                    "day",
+                    day,
+                    "plan",
+                    LaborQueueBook.describe(plan)));
       }
       if (EconomyLog.trace().isTraceEnabled()) {
         for (LaborQueueBook.Decision decision : plan.decisions()) {
-          EconomyLog.trace()
+          EventLog.channel(EconomyLog.trace())
               .trace(
-                  "event=LABOR_QUEUE_DECISION day={} household={} rank={} {}",
-                  day,
-                  work.household().value(),
-                  decision.rank(),
-                  LaborQueueBook.describe(decision));
+                  LogEvent.of(
+                      "LABOR_QUEUE_DECISION",
+                      EconomyLogSource.ECONOMY_POPULATION,
+                      "day",
+                      day,
+                      "household",
+                      work.household().value(),
+                      "rank",
+                      decision.rank(),
+                      "decision",
+                      LaborQueueBook.describe(decision)));
         }
       }
     }
 
     LaborQueueReport report = new LaborQueueReport(day, plans);
     if (!plans.isEmpty()) {
-      EconomyLog.settlement()
+      EventLog.channel(EconomyLog.settlement())
           .info(
-              "event=LABOR_QUEUE day={} households={} budgetMilli={} allocatedMilli={} idleMilli={}",
-              day,
-              plans.size(),
-              report.totalBudgetMilli(),
-              report.totalAllocatedMilli(),
-              report.totalIdleMilli());
+              LogEvent.of(
+                  "LABOR_QUEUE",
+                  EconomyLogSource.ECONOMY_POPULATION,
+                  "day",
+                  day,
+                  "households",
+                  plans.size(),
+                  "budgetMilli",
+                  report.totalBudgetMilli(),
+                  "allocatedMilli",
+                  report.totalAllocatedMilli(),
+                  "idleMilli",
+                  report.totalIdleMilli()));
       session
           .sheet()
           .meta()

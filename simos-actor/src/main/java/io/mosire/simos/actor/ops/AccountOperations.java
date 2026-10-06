@@ -2,12 +2,15 @@ package io.mosire.simos.actor.ops;
 
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
+import io.mosire.simos.actor.ActorLogSource;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -118,6 +121,21 @@ public final class AccountOperations {
     HouseholdInventory target = base.accounts().get(toKey);
     if (target == null) {
       // 目标缺失 ⇒ 按转入量新建（冻结表空）；键由值派生，走 withInventory 的同一个拼写点。
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "ACTOR_TRANSFER_TARGET_ABSENT",
+                    ActorLogSource.ACTOR_ACCOUNT,
+                    "from",
+                    fromKey,
+                    "to",
+                    toKey,
+                    "goods",
+                    goods.size(),
+                    "money",
+                    money.size()));
+      }
       next.put(
           toKey,
           new HouseholdInventory(
@@ -152,28 +170,49 @@ public final class AccountOperations {
           new HouseholdInventory(
               toKey, targetBalances, targetMoney, target.frozenBalances(), target.frozenMoney()));
     }
-    LOG.info(
-        "event=ACTOR_ACCOUNTS_TRANSFERRED from={} to={} goods={} money={}",
-        fromKey,
-        toKey,
-        goods.size(),
-        money.size());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "ACTOR_ACCOUNTS_TRANSFERRED",
+                ActorLogSource.ACTOR_ACCOUNT,
+                "from",
+                fromKey,
+                "to",
+                toKey,
+                "goods",
+                goods.size(),
+                "money",
+                money.size()));
     if (TRACE.isTraceEnabled()) {
       for (Map.Entry<CommodityId, Long> entry : goods.entrySet()) {
-        TRACE.trace(
-            "event=ACTOR_TRANSFER_GOODS from={} to={} commodity={} amount={}",
-            fromKey,
-            toKey,
-            entry.getKey(),
-            entry.getValue());
+        EventLog.channel(TRACE)
+            .trace(
+                LogEvent.of(
+                    "ACTOR_TRANSFER_GOODS",
+                    ActorLogSource.ACTOR_ACCOUNT,
+                    "from",
+                    fromKey,
+                    "to",
+                    toKey,
+                    "commodity",
+                    entry.getKey(),
+                    "amount",
+                    entry.getValue()));
       }
       for (Map.Entry<CurrencyId, Long> entry : money.entrySet()) {
-        TRACE.trace(
-            "event=ACTOR_TRANSFER_MONEY from={} to={} currency={} amount={}",
-            fromKey,
-            toKey,
-            entry.getKey(),
-            entry.getValue());
+        EventLog.channel(TRACE)
+            .trace(
+                LogEvent.of(
+                    "ACTOR_TRANSFER_MONEY",
+                    ActorLogSource.ACTOR_ACCOUNT,
+                    "from",
+                    fromKey,
+                    "to",
+                    toKey,
+                    "currency",
+                    entry.getKey(),
+                    "amount",
+                    entry.getValue()));
       }
     }
     return base.withInventories(next);

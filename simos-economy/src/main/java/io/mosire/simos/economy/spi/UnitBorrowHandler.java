@@ -3,6 +3,7 @@ package io.mosire.simos.economy.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.debt.DefaultRemedy;
@@ -18,6 +19,8 @@ import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.time.DebtContractBook;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -168,19 +171,31 @@ public final class UnitBorrowHandler implements CommandHandler, CommandTargets, 
             tick,
             OptionalLong.empty());
     EconomyData projected = base.withDebtContracts(debts);
-    LOG.info(
-        "event=UNIT_BORROW unit={} borrowerHousehold={} lenderHousehold={} unitKey={} principal={}"
-            + " interestRatePerMille={} nextDueTick={} contract={} termsLabel={} reason={}",
-        request.unitId(),
-        request.borrowerHousehold().value(),
-        request.lenderHousehold().value(),
-        debtUnit.key(),
-        request.principal(),
-        request.interestRatePerMille(),
-        request.nextDueTick(),
-        contract.id().value(),
-        request.terms(),
-        request.reason());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "UNIT_BORROW",
+                EconomyLogSource.ECONOMY_COMMAND,
+                "unit",
+                request.unitId(),
+                "borrowerHousehold",
+                request.borrowerHousehold().value(),
+                "lenderHousehold",
+                request.lenderHousehold().value(),
+                "unitKey",
+                debtUnit.key(),
+                "principal",
+                request.principal(),
+                "interestRatePerMille",
+                request.interestRatePerMille(),
+                "nextDueTick",
+                request.nextDueTick(),
+                "contract",
+                contract.id().value(),
+                "termsLength",
+                request.terms() == null ? 0 : request.terms().length(),
+                "reasonLength",
+                request.reason() == null ? 0 : request.reason().length()));
     return EconomyChangeSet.between(base, projected);
   }
 

@@ -3,6 +3,7 @@ package io.mosire.simos.army.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmyLog;
+import io.mosire.simos.army.ArmyLogSource;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.CombatRecord;
 import io.mosire.simos.army.CombatRecordId;
@@ -11,6 +12,8 @@ import io.mosire.simos.army.CombatStageId;
 import io.mosire.simos.army.change.ArmyChangeSet;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.unit.UnitId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -82,18 +85,65 @@ public final class RecordCombatHandler implements CommandHandler, GmOnlyCommand 
       JsonNode payload = ArmyPayloads.parse(payloadJson);
       if (payload.has("losses")) {
         // ★ D-011/R4：旧 D1 载荷形状显式拒（不静默丢、不留双轨）。
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ARMY_COMBAT_RECORD_REJECTED",
+                    ArmyLogSource.ARMY_COMBAT,
+                    "type",
+                    TYPE,
+                    "reason",
+                    "legacy-losses-field"));
         return new HandlerOutcome.Rejected(
             "旧字段 losses 已删除（D-011/R4 不背兼容）：损失写进阶段 outcome 的 losses[...]"
                 + "（CombatUnitLoss：unit + 有符号 manpower/equipment 增量）");
       }
       CombatRecordId id = CombatRecordId.parse(ArmyPayloads.requireText(payload, "id"));
       if (snapshot.data().combats().containsKey(id)) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ARMY_COMBAT_RECORD_REJECTED",
+                    ArmyLogSource.ARMY_COMBAT,
+                    "type",
+                    TYPE,
+                    "reason",
+                    "combat-id-exists",
+                    "combat",
+                    id.value()));
         return new HandlerOutcome.Rejected("交战记录 id 已存在（记录 id 是一次性身份，不覆盖）: " + id.value());
       }
       long worldTick = state.meta().timestamp().tick();
       // ★ tick 缺省 = 世界当前 tick（与 sd.PutInfo 同族口径）；显式给 ⇒ 用它，但不得记在未来。
-      long tick = ArmyPayloads.optionalLong(payload, "tick").orElse(worldTick);
+      Optional<Long> explicitTick = ArmyPayloads.optionalLong(payload, "tick");
+      long tick = explicitTick.orElse(worldTick);
+      if (explicitTick.isEmpty() && LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "ARMY_COMBAT_TICK_DEFAULTED",
+                    ArmyLogSource.ARMY_COMBAT,
+                    "combat",
+                    id.value(),
+                    "tick",
+                    worldTick));
+      }
       if (tick > worldTick) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ARMY_COMBAT_RECORD_REJECTED",
+                    ArmyLogSource.ARMY_COMBAT,
+                    "type",
+                    TYPE,
+                    "reason",
+                    "tick-in-future",
+                    "combat",
+                    id.value(),
+                    "tick",
+                    tick,
+                    "worldTick",
+                    worldTick));
         return new HandlerOutcome.Rejected(
             "交战记录不得记在未来：载荷 tick " + tick + " > 世界 tick " + worldTick);
       }
@@ -112,20 +162,50 @@ public final class RecordCombatHandler implements CommandHandler, GmOnlyCommand 
                 List.of(),
                 Optional.empty(),
                 Optional.empty());
+        if (LOG.isDebugEnabled()) {
+          EventLog.channel(LOG)
+              .debug(
+                  LogEvent.of(
+                      "ARMY_COMBAT_INITIAL_STAGE_SYNTHESIZED",
+                      ArmyLogSource.ARMY_COMBAT,
+                      "combat",
+                      id.value(),
+                      "stage",
+                      INITIAL_STAGE_ID));
+        }
       }
       CombatRecord record =
           new CombatRecord(id, kind, tick, hex, participants, text, List.of(initialStage));
       ArmyData next = snapshot.data().withCombat(record);
-      LOG.info(
-          "event=ARMY_COMBAT_RECORDED id={} kind={} tick={} hex={} participants={} stages={}",
-          id.value(),
-          kind,
-          tick,
-          hex,
-          participants.size(),
-          record.stages().size());
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ARMY_COMBAT_RECORDED",
+                  ArmyLogSource.ARMY_COMBAT,
+                  "combat",
+                  id.value(),
+                  "kind",
+                  kind,
+                  "tick",
+                  tick,
+                  "hex",
+                  hex,
+                  "participants",
+                  participants.size(),
+                  "stages",
+                  record.stages().size()));
+      ArmyCombatTrace.stage(id, initialStage);
       return new HandlerOutcome.Applied(ArmyChangeSet.between(snapshot.data(), next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ARMY_COMBAT_RECORD_REJECTED",
+                  ArmyLogSource.ARMY_COMBAT,
+                  "type",
+                  TYPE,
+                  "reason",
+                  ArmyPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

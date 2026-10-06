@@ -2,8 +2,12 @@ package io.mosire.simos.actor.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorLog;
+import io.mosire.simos.actor.ActorLogSource;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.ops.AccountOperations;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -11,6 +15,7 @@ import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code actor.TransferAccounts} 命令的处理器（P1.2 后端行政；P2-A §13.3 起账户主体只有家户）：
@@ -42,6 +47,8 @@ public final class TransferAccountsHandler
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "actor.TransferAccounts";
 
+  private static final Logger LOG = ActorLog.account();
+
   @Override
   public String type() {
     return TYPE;
@@ -65,13 +72,44 @@ public final class TransferAccountsHandler
       var goods = AccountPayloads.positiveCommodities(payload, "goods");
       var money = AccountPayloads.positiveMoney(payload, "money");
       if (goods.isEmpty() && money.isEmpty()) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ACTOR_TRANSFER_REJECTED",
+                    ActorLogSource.ACTOR_ACCOUNT,
+                    "type",
+                    TYPE,
+                    "reason",
+                    "empty-goods-and-money"));
         return new HandlerOutcome.Rejected(
             "actor.TransferAccounts 至少要转移一种商品或货币（goods/money 不得同时为空）");
       }
       ActorData next =
           AccountOperations.transfer(base, from.household(), to.household(), goods, money);
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ACTOR_TRANSFER_APPLIED",
+                  ActorLogSource.ACTOR_ACCOUNT,
+                  "from",
+                  from.household(),
+                  "to",
+                  to.household(),
+                  "goods",
+                  goods.size(),
+                  "money",
+                  money.size()));
       return new HandlerOutcome.Applied(ActorChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ACTOR_TRANSFER_REJECTED",
+                  ActorLogSource.ACTOR_ACCOUNT,
+                  "type",
+                  TYPE,
+                  "reason",
+                  ActorPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

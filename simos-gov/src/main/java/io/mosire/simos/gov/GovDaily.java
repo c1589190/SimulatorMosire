@@ -13,6 +13,8 @@ import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitModule;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.economy.EconomyVocabulary;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -141,11 +143,17 @@ public final class GovDaily {
           "daysInYearAtSettlement 只接受 365 或 366（拒绝臆造年长）: " + daysInYearAtSettlement);
     }
 
-    LOG.debug(
-        "event=GOV_DAILY_START tick={} offices={} daysInYear={}",
-        tick,
-        govState.offices().size(),
-        daysInYearAtSettlement);
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "GOV_DAILY_START",
+                GovLogSource.GOV_DAILY,
+                "day",
+                tick,
+                "offices",
+                govState.offices().size(),
+                "daysInYear",
+                daysInYearAtSettlement));
     // ★ 返回的 offices 保持输入键序（未被覆盖的部分"原样"），但**处理顺序**按下而排序 ⇒ dues/signals/oracle 调用次序确定。
     Map<UnitId, GovOfficeState> nextOffices = new LinkedHashMap<>(govState.offices());
     List<UpkeepDue> dues = new ArrayList<>();
@@ -171,6 +179,19 @@ public final class GovDaily {
       Optional<HexCoord> seat = units.effectivePosition(unitId, SimosTimestamp.of(tick));
       if (seat.isEmpty()) {
         // ★ 无有效位置：只更新 efficiency 读数；不评估、不支付、不发信号（六表清空 = 本日无结算事实）。
+        if (LOG.isDebugEnabled()) {
+          EventLog.channel(LOG)
+              .debug(
+                  LogEvent.of(
+                      "GOV_OFFICE_NO_SEAT",
+                      GovLogSource.GOV_DAILY,
+                      "day",
+                      tick,
+                      "unit",
+                      unitId.value(),
+                      "reason",
+                      "no-effective-position"));
+        }
         nextOffices.put(unitId, noSeat(unitId, tick, efficiency));
         continue;
       }
@@ -184,9 +205,9 @@ public final class GovDaily {
           totalStaff * Math.floorDiv(policy.clothPerStaffPerCycle(), daysInYearAtSettlement);
       long moneyNeed = totalStaff * policy.moneyPerStaffPerTick();
 
-      long grainPaid = pay(oracle, unitId, at, GRAIN_RESOURCE, grainNeed);
-      long clothPaid = pay(oracle, unitId, at, CLOTH_RESOURCE, clothNeed);
-      long moneyPaid = pay(oracle, unitId, at, MONEY_RESOURCE, moneyNeed);
+      long grainPaid = pay(oracle, unitId, at, GRAIN_RESOURCE, grainNeed, tick);
+      long clothPaid = pay(oracle, unitId, at, CLOTH_RESOURCE, clothNeed, tick);
+      long moneyPaid = pay(oracle, unitId, at, MONEY_RESOURCE, moneyNeed, tick);
       long grainShortfall = grainNeed - grainPaid;
       long clothShortfall = clothNeed - clothPaid;
       long moneyShortfall = moneyNeed - moneyPaid;
@@ -194,6 +215,33 @@ public final class GovDaily {
       dues.add(new UpkeepDue(unitId, at, GRAIN_RESOURCE, grainNeed, grainPaid, grainShortfall));
       dues.add(new UpkeepDue(unitId, at, CLOTH_RESOURCE, clothNeed, clothPaid, clothShortfall));
       dues.add(new UpkeepDue(unitId, at, MONEY_RESOURCE, moneyNeed, moneyPaid, moneyShortfall));
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "GOV_OFFICE_UPKEEP_EVALUATED",
+                    GovLogSource.GOV_DAILY,
+                    "day",
+                    tick,
+                    "unit",
+                    unitId.value(),
+                    "hex",
+                    at,
+                    "staff",
+                    totalStaff,
+                    "grainNeed",
+                    grainNeed,
+                    "grainPaid",
+                    grainPaid,
+                    "clothNeed",
+                    clothNeed,
+                    "clothPaid",
+                    clothPaid,
+                    "moneyNeed",
+                    moneyNeed,
+                    "moneyPaid",
+                    moneyPaid));
+      }
 
       // ---- 信号（顺序固定 supply → security → paperwork）----
       long assessedTotal = grainNeed + clothNeed + moneyNeed;
@@ -267,32 +315,59 @@ public final class GovDaily {
     }
 
     GovState nextState = new GovState(nextOffices);
-    LOG.info(
-        "event=GOV_DAILY_END tick={} offices={} dues={} signals={} changed={}",
-        tick,
-        nextOffices.size(),
-        dues.size(),
-        signals.size(),
-        !nextState.equals(govState));
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "GOV_DAILY_END",
+                GovLogSource.GOV_DAILY,
+                "day",
+                tick,
+                "offices",
+                nextOffices.size(),
+                "dues",
+                dues.size(),
+                "signals",
+                signals.size(),
+                "changed",
+                !nextState.equals(govState)));
     if (TRACE.isTraceEnabled()) {
       for (UpkeepDue due : dues) {
         if (due.shortfall() > 0L) {
-          TRACE.trace(
-              "event=GOV_UPKEEP_SHORTFALL unit={} hex={} resource={} assessed={} paid={} shortfall={}",
-              due.unitId().value(),
-              due.at(),
-              due.resource().name(),
-              due.assessed(),
-              due.paid(),
-              due.shortfall());
+          EventLog.channel(TRACE)
+              .trace(
+                  LogEvent.of(
+                      "GOV_UPKEEP_SHORTFALL",
+                      GovLogSource.GOV_DAILY,
+                      "day",
+                      tick,
+                      "unit",
+                      due.unitId().value(),
+                      "hex",
+                      due.at(),
+                      "resource",
+                      due.resource().name(),
+                      "assessed",
+                      due.assessed(),
+                      "paid",
+                      due.paid(),
+                      "shortfall",
+                      due.shortfall()));
         }
       }
       for (SignalDraft signal : signals) {
-        TRACE.trace(
-            "event=GOV_SIGNAL_DRAFT hex={} kind={} severity={}",
-            signal.hex(),
-            signal.kind(),
-            signal.severity());
+        EventLog.channel(TRACE)
+            .trace(
+                LogEvent.of(
+                    "GOV_SIGNAL_DRAFT",
+                    GovLogSource.GOV_DAILY,
+                    "day",
+                    tick,
+                    "hex",
+                    signal.hex(),
+                    "kind",
+                    signal.kind(),
+                    "severity",
+                    signal.severity()));
       }
     }
     return new Outcome(nextState, dues, signals, !nextState.equals(govState));
@@ -373,13 +448,20 @@ public final class GovDaily {
   /**
    * 走一次付款回调：{@code requested == 0} ⇒ 不发、返回 0；否则返回额必须 ∈ {@code [0, requested]}，越界当场抛 {@link
    * IllegalArgumentException}（回调实现/装配错了，不静默钳制、不当作 0）。
+   *
+   * @param day 本 tick 的世界日（与 {@link #settle} 的 {@code tick} 同值；只透传给回调作日志上下文）
    */
   private static long pay(
-      PaymentOracle oracle, UnitId unitId, HexCoord at, GovResource resource, long requested) {
+      PaymentOracle oracle,
+      UnitId unitId,
+      HexCoord at,
+      GovResource resource,
+      long requested,
+      long day) {
     if (requested == 0L) {
       return 0L;
     }
-    long paid = oracle.pay(unitId, at, resource, requested);
+    long paid = oracle.pay(unitId, at, resource, requested, day);
     if (paid < 0L || paid > requested) {
       throw new IllegalArgumentException(
           "PaymentOracle 违反契约：resource="
@@ -640,8 +722,9 @@ public final class GovDaily {
      * @param at 该单位本 tick 的有效位置
      * @param resource 资源（商品或货币）
      * @param requested 本次请求额（&gt; 0；单位 = 毫）
+     * @param day 本 tick 的世界日（{@link GovDaily#settle} 的 {@code tick}；供实现方日志/回溯）
      * @return 实际支付额，必须 ∈ {@code [0, requested]}
      */
-    long pay(UnitId unitId, HexCoord at, GovResource resource, long requested);
+    long pay(UnitId unitId, HexCoord at, GovResource resource, long requested, long day);
   }
 }

@@ -3,6 +3,7 @@ package io.mosire.simos.actor.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
+import io.mosire.simos.actor.ActorLogSource;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
@@ -12,6 +13,8 @@ import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -110,15 +113,32 @@ public final class RemitGovTreasuryHandler implements CommandHandler, CommandTar
     try {
       Remit remit = parse(payloadJson);
       ActorData remitted = apply(base, remit);
-      LOG.info(
-          "event=ACTOR_GOV_TREASURY_REMITTED fromHousehold={} toHousehold={} grain={} cloth={} money={}",
-          remit.fromHousehold(),
-          remit.toHousehold(),
-          remit.grain(),
-          remit.cloth(),
-          remit.money());
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ACTOR_GOV_TREASURY_REMITTED",
+                  ActorLogSource.ACTOR_ACCOUNT,
+                  "fromHousehold",
+                  remit.fromHousehold(),
+                  "toHousehold",
+                  remit.toHousehold(),
+                  "grain",
+                  remit.grain(),
+                  "cloth",
+                  remit.cloth(),
+                  "money",
+                  remit.money()));
       return new HandlerOutcome.Applied(ActorChangeSet.between(base, remitted));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ACTOR_GOV_TREASURY_REMIT_REJECTED",
+                  ActorLogSource.ACTOR_ACCOUNT,
+                  "type",
+                  TYPE,
+                  "reason",
+                  ActorPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

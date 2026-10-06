@@ -2,6 +2,7 @@ package io.mosire.simos.economy.time;
 
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.debt.DebtTerms;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.AssetShareId;
@@ -18,6 +19,8 @@ import io.mosire.simos.economy.api.transfer.Transfer;
 import io.mosire.simos.economy.api.transfer.TransferReason;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -732,17 +735,27 @@ public record ProductionLedger(
               new TransferId(id), day, from, to, location, goods, money, reason, Optional.empty());
       transfers.add(transfer);
       if (RAW.isTraceEnabled()) {
-        RAW.trace(
-            "event=TRANSFER id={} day={} from={} to={} hex={},{} reason={} goods={} money={}",
-            id,
-            day,
-            from.id(),
-            to.id(),
-            location.q(),
-            location.r(),
-            reason.value(),
-            goods,
-            money);
+        EventLog.channel(RAW)
+            .trace(
+                LogEvent.of(
+                    "TRANSFER",
+                    EconomyLogSource.ECONOMY_DAY,
+                    "day",
+                    day,
+                    "id",
+                    id,
+                    "from",
+                    from.id(),
+                    "to",
+                    to.id(),
+                    "hex",
+                    location.q() + "," + location.r(),
+                    "reason",
+                    reason.value(),
+                    "goods",
+                    goods,
+                    "money",
+                    money));
       }
       return transfer;
     }

@@ -3,10 +3,13 @@ package io.mosire.simos.economy.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -101,12 +104,17 @@ public final class EconomySetHouseholdLaborHandler implements CommandHandler, Co
           new LinkedHashMap<>(base.classes());
       householdEconomies.put(household, afterHouseholdEconomy);
       EconomyData projected = base.withHouseholdEconomies(householdEconomies);
-      EconomyLog.population()
+      EventLog.channel(EconomyLog.population())
           .info(
-              "event=HOUSEHOLD_LABOR_CONFIG household={} laborMilli={} participationPerMille={}",
-              household.value(),
-              laborMilli,
-              participationPerMille);
+              LogEvent.of(
+                  "HOUSEHOLD_LABOR_CONFIG",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "household",
+                  household.value(),
+                  "laborMilli",
+                  laborMilli,
+                  "participationPerMille",
+                  participationPerMille));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

@@ -3,6 +3,7 @@ package io.mosire.simos.economy.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
 import io.mosire.simos.economy.api.id.SocialClassId;
@@ -10,6 +11,8 @@ import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -152,18 +155,27 @@ public final class EconomyRegisterHouseholdHandler
       Map<HouseholdId, HouseholdEconomy> householdEconomies = new LinkedHashMap<>(base.classes());
       householdEconomies.put(registration.household(), registered);
       EconomyData projected = base.withHouseholdEconomies(householdEconomies);
-      EconomyLog.enterprise()
+      EventLog.channel(EconomyLog.enterprise())
           .info(
-              "event=HOUSEHOLD_REGISTERED household={} q={} r={} residence={} stratum={}"
-                  + " participationPerMille={} created={} reason={}",
-              registration.household().value(),
-              registration.hex().q(),
-              registration.hex().r(),
-              registered.view().residence().value(),
-              registered.view().stratum().value(),
-              registered.participationPerMille(),
-              existing == null,
-              registration.reason());
+              LogEvent.of(
+                  "HOUSEHOLD_REGISTERED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "household",
+                  registration.household().value(),
+                  "q",
+                  registration.hex().q(),
+                  "r",
+                  registration.hex().r(),
+                  "residence",
+                  registered.view().residence().value(),
+                  "stratum",
+                  registered.view().stratum().value(),
+                  "participationPerMille",
+                  registered.participationPerMille(),
+                  "created",
+                  existing == null,
+                  "reasonLength",
+                  registration.reason() == null ? 0 : registration.reason().length()));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

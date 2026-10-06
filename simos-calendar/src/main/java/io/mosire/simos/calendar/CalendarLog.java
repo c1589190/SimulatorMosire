@@ -22,8 +22,8 @@ import org.slf4j.LoggerFactory;
  * <p><b>级别约定</b>（消费者按级别裁剪）：
  *
  * <ul>
- *   <li><b>INFO</b>：历法/季节系统绑定生命周期（无状态模块，仅构造期一次）；
- *   <li><b>DEBUG</b>：绑定参数与配置档（anchor、boundary、tropicalModel）；
+ *   <li><b>INFO</b>：历法/季节系统绑定生命周期（无状态模块，仅构造期一次；配置档一并落日志）；
+ *   <li><b>DEBUG</b>：季界当天事件与配置判据（anchor、boundary、tropicalModel）；
  *   <li><b>TRACE</b>：逐次 seasonOf 查询（每格每天，默认关，慎开）。
  * </ul>
  *

@@ -3,12 +3,15 @@ package io.mosire.simos.actor.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
+import io.mosire.simos.actor.ActorLogSource;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -107,13 +110,28 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
       JsonNode payload = ActorPayloads.parse(payloadJson);
       List<ActorPayloads.AccountAdjustment> entries = ActorPayloads.adjustments(payload);
       ActorData adjusted = apply(base, entries);
-      LOG.info(
-          "event=ACTOR_ACCOUNTS_ADJUSTED entries={} accountsBefore={} accountsAfter={}",
-          entries.size(),
-          base.accounts().size(),
-          adjusted.accounts().size());
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ACTOR_ACCOUNTS_ADJUSTED",
+                  ActorLogSource.ACTOR_ACCOUNT,
+                  "entries",
+                  entries.size(),
+                  "accountsBefore",
+                  base.accounts().size(),
+                  "accountsAfter",
+                  adjusted.accounts().size()));
       return new HandlerOutcome.Applied(ActorChangeSet.between(base, adjusted));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ACTOR_ACCOUNTS_ADJUST_REJECTED",
+                  ActorLogSource.ACTOR_ACCOUNT,
+                  "type",
+                  type(),
+                  "reason",
+                  ActorPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }
@@ -126,6 +144,19 @@ public final class AdjustAccountsHandler implements CommandHandler, CommandTarge
       HouseholdInventory inventory = next.get(key);
       if (inventory == null) {
         requireNoNegativeForMissingInventory(entry); // 缺账：任何负增量拒绝（0 已在解析期拒）
+        if (LOG.isDebugEnabled()) {
+          EventLog.channel(LOG)
+              .debug(
+                  LogEvent.of(
+                      "ACTOR_ACCOUNTS_ADJUST_NEW_ACCOUNT",
+                      ActorLogSource.ACTOR_ACCOUNT,
+                      "household",
+                      entry.household(),
+                      "goods",
+                      entry.goods().size(),
+                      "money",
+                      entry.money().size()));
+        }
         next.put(
             key, new HouseholdInventory(key, entry.goods(), entry.money(), Map.of(), Map.of()));
         continue;

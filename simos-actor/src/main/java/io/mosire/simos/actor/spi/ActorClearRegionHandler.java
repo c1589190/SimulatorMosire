@@ -3,11 +3,14 @@ package io.mosire.simos.actor.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
+import io.mosire.simos.actor.ActorLogSource;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -49,7 +52,7 @@ import org.slf4j.Logger;
 public final class ActorClearRegionHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
 
-  private static final Logger LOG = ActorLog.account();
+  private static final Logger LOG = ActorLog.seed();
 
   /** 命令类型（唯一拼写点：catalog 提示、Shell 注册与组合工具都从这里取/对齐）。 */
   public static final String TYPE = "actor.ClearRegion";
@@ -71,22 +74,41 @@ public final class ActorClearRegionHandler
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     ActorData base = ActorSnapshots.of(state).data(); // 装配故障当场炸，不走拒绝路径
+    String regionForLog = null;
     try {
       String regionId = requireRegionId(ActorPayloads.parse(payloadJson));
+      regionForLog = regionId;
       Region region = requireRegion(state, regionId);
       Set<HexCoord> hexes = region.hexes();
       // ★★ P2-A 具名缺口（如实记）：账户键不再带 HexCoord（位置从 Household.location 派生），
       //   而 actor 切片看不见 social ⇒ 本命令**无法**再把"目标 Region 的账本"映射出来。
       //   区域清账必须由组合根（同时看得见 social 与 actor）按"该区域的家户集"协调，属 P2-F。
       //   本命令因此只校验 region 存在性，不改任何账本/主体（不猜、不静默删错）。
-      LOG.info(
-          "event=ACTOR_REGION_CLEAR_SKIPPED region={} hexes={} accounts={} reason=accounts-are-household-owned",
-          regionId,
-          hexes.size(),
-          base.accounts().size());
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ACTOR_REGION_CLEAR_SKIPPED",
+                  ActorLogSource.ACTOR_SEED,
+                  "region",
+                  regionId,
+                  "hexes",
+                  hexes.size(),
+                  "accounts",
+                  base.accounts().size(),
+                  "reason",
+                  "accounts-are-household-owned"));
       return new HandlerOutcome.Applied(ActorChangeSet.between(base, base));
     } catch (IllegalArgumentException e) {
       // ★ 域构造期守卫（若清空边界写错）也在这里折成具名拒绝，不穿成整条推进失败。
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ACTOR_REGION_CLEAR_REJECTED",
+                  ActorLogSource.ACTOR_SEED,
+                  "region",
+                  regionForLog == null ? "-" : regionForLog,
+                  "reason",
+                  ActorPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

@@ -1,6 +1,8 @@
 package io.mosire.simos.actor.resolve;
 
 import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorLog;
+import io.mosire.simos.actor.ActorLogSource;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
@@ -11,11 +13,14 @@ import io.mosire.simos.util.address.Namespace;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.identity.ResolvedSubject;
 import io.mosire.simos.util.identity.SubjectId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.resolve.ResolveContext;
 import io.mosire.simos.util.resolve.Resolver;
 import io.mosire.simos.util.state.Snapshot;
 import java.util.List;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * {@code actor:} 命名空间的地址解析器（S1 spec §三；形制照 {@code EconomyResolver} / {@code SocialResolver}）。认两类主体
@@ -47,6 +52,8 @@ import java.util.Objects;
  * {@code mapId} <b>只回显、不校验</b>（与 social/ledger/economy 同款：地图 ID 没有本切片内的判据）。
  */
 public final class ActorResolver implements Resolver {
+
+  private static final Logger LOG = ActorLog.resolve();
 
   private static final String NAMESPACE = "actor";
 
@@ -101,6 +108,7 @@ public final class ActorResolver implements Resolver {
     }
     ActorRef ref = ActorRef.parse(name.substring(0, dot), name.substring(dot + 1));
     if (!data.actors().containsKey(ref)) {
+      logEmpty("actor", ref.toString());
       return empty(); // 合法但不存在的主体：空候选，不是错误
     }
     return single(
@@ -112,12 +120,28 @@ public final class ActorResolver implements Resolver {
   private static QueryResult resolveGoods(ActorData data, String mapId, String name) {
     HouseholdAccountKey key = HouseholdAccountKey.parse(name);
     if (!data.accounts().containsKey(key)) {
+      logEmpty("goods", key.toString());
       return empty();
     }
     return single(
         new SubjectId("actor.goods", key.toString()),
         entityAddress(mapId, "goods", key.toString()),
         "GoodsAccount");
+  }
+
+  /** 空候选诊断（默认 DEBUG）：只记 stable id，不记载荷原文。 */
+  private static void logEmpty(String entityKind, String entityId) {
+    if (LOG.isDebugEnabled()) {
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "ACTOR_RESOLVE_EMPTY",
+                  ActorLogSource.ACTOR_RESOLVE,
+                  "entityKind",
+                  entityKind,
+                  "entity",
+                  entityId));
+    }
   }
 
   /** 切片只能从 actor 模块拿（铁律 3/4：SimulationState 没有跨模块访问器）。缺席或类型不对都是装配故障。 */

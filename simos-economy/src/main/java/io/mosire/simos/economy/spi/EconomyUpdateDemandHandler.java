@@ -3,6 +3,7 @@ package io.mosire.simos.economy.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DemandId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
@@ -10,6 +11,8 @@ import io.mosire.simos.economy.model.HouseholdDemand;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -223,17 +226,27 @@ public final class EconomyUpdateDemandHandler implements CommandHandler, Command
       }
       Map<DemandId, HouseholdDemand> householdDemands = new LinkedHashMap<>(base.demands());
       householdDemands.put(demandId, afterHouseholdDemand);
-      io.mosire.simos.economy.EconomyLog.market()
+      EventLog.channel(io.mosire.simos.economy.EconomyLog.market())
           .info(
-              "event=DEMAND_UPDATE demand={} scope={} owner={} commodity={} kind={} unit={} quantityPerCycle={} priority={}",
-              demandId.value(),
-              scope.name(),
-              household.map(h -> h.value()).orElse(hex.map(Object::toString).orElse("-")),
-              commodity.value(),
-              kind.name(),
-              unit.name(),
-              quantityPerCycle,
-              priority);
+              LogEvent.of(
+                  "DEMAND_UPDATE",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "demand",
+                  demandId.value(),
+                  "scope",
+                  scope.name(),
+                  "owner",
+                  household.map(h -> h.value()).orElse(hex.map(Object::toString).orElse("-")),
+                  "commodity",
+                  commodity.value(),
+                  "kind",
+                  kind.name(),
+                  "unit",
+                  unit.name(),
+                  "quantityPerCycle",
+                  quantityPerCycle,
+                  "priority",
+                  priority));
       return new HandlerOutcome.Applied(
           EconomyChangeSet.between(base, base.withHouseholdDemands(householdDemands)));
     } catch (IllegalArgumentException e) {

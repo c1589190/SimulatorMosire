@@ -15,14 +15,16 @@ import org.slf4j.LoggerFactory;
  *   <caption>分类与用途</caption>
  *   <tr><th>取用方法</th><th>logger 名</th><th>记什么</th></tr>
  *   <tr><td>{@link #combat()}</td><td>{@code .combat}</td><td>交战记录/阶段追加/投骰判定</td></tr>
+ *   <tr><td>{@link #codec()}</td><td>{@code .codec}</td><td>ArmyCodec 编解码/变更集施加</td></tr>
+ *   <tr><td>{@link #resolve()}</td><td>{@code .resolve}</td><td>ArmyResolver 候选装配/空结果</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐阶段/逐结局明细</b></td></tr>
  * </table>
  *
  * <p><b>级别约定</b>（消费者按级别裁剪）：
  *
  * <ul>
- *   <li><b>INFO</b>：交战生命周期——记录/阶段/判定的落账；
- *   <li><b>DEBUG</b>：候选项/判定详情的汇总读数；
+ *   <li><b>INFO</b>：交战生命周期——记录/阶段/判定落账与一切具名拒绝；
+ *   <li><b>DEBUG</b>：候选项/判定详情的汇总读数与跳过原因；
  *   <li><b>TRACE</b>：逐阶段、逐 outcome 明细。
  * </ul>
  *
@@ -44,8 +46,12 @@ public final class ArmyLog {
   public static final String ROOT_LOGGER_NAME = "io.mosire.simos.army";
 
   public static final String COMBAT_LOGGER_NAME = ROOT_LOGGER_NAME + ".combat";
+  public static final String CODEC_LOGGER_NAME = ROOT_LOGGER_NAME + ".codec";
+  public static final String RESOLVE_LOGGER_NAME = ROOT_LOGGER_NAME + ".resolve";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
   private static final Logger COMBAT = LoggerFactory.getLogger(COMBAT_LOGGER_NAME);
+  private static final Logger CODEC = LoggerFactory.getLogger(CODEC_LOGGER_NAME);
+  private static final Logger RESOLVE = LoggerFactory.getLogger(RESOLVE_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
   private ArmyLog() {}
@@ -53,6 +59,16 @@ public final class ArmyLog {
   /** 交战记录/阶段追加/投骰判定。 */
   public static Logger combat() {
     return COMBAT;
+  }
+
+  /** ArmyCodec 编解码、变更集施加与旧形状迁移。 */
+  public static Logger codec() {
+    return CODEC;
+  }
+
+  /** ArmyResolver 候选装配与空结果诊断。 */
+  public static Logger resolve() {
+    return RESOLVE;
   }
 
   /** <b>逐阶段/逐结局明细</b>。 */

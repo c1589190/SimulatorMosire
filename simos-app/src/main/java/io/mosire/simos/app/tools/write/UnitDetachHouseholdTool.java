@@ -3,6 +3,8 @@ package io.mosire.simos.app.tools.write;
 import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
@@ -15,10 +17,11 @@ import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.household.HouseholdBook;
 import io.mosire.simos.social.spi.SetHouseholdLocationHandler;
 import io.mosire.simos.unit.Unit;
-import io.mosire.simos.unit.UnitLog;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.unit.spi.SetUnitHouseholdsHandler;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,7 +39,7 @@ import java.util.UUID;
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：{@link HouseholdBook#setLocation} + {@link
  * UnitOperations#setUnitHouseholds} 都在 preview 先跑；{@code preview=true（缺省）}一个字节都不写。任一失败 ⇒ 整批不落。
- * 提交成功后记 INFO {@code event=UNIT_HOUSEHOLD_DETACH}（{@link UnitLog}）。
+ * 提交成功后记 INFO {@code event=UNIT_HOUSEHOLD_DETACH}（{@link AppLog} 的 tool 分类）。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；资源声明 social + unit。
  */
@@ -162,17 +165,18 @@ public final class UnitDetachHouseholdTool extends AbstractHouseholdGmTool {
         batch,
         view,
         () ->
-            UnitLog.household()
+            EventLog.channel(AppLog.tool())
                 .info(
-                    "event=UNIT_HOUSEHOLD_DETACH "
-                        + UnitLog.kv(
-                            "unit",
-                            rawUnitId,
-                            "household",
-                            id,
-                            "location",
-                            "HEX:" + hex,
-                            "reason",
-                            request.reason())));
+                    LogEvent.of(
+                        "UNIT_HOUSEHOLD_DETACH",
+                        AppLogSource.TOOL_CALL,
+                        "unit",
+                        rawUnitId,
+                        "household",
+                        id,
+                        "location",
+                        "HEX:" + hex,
+                        "reasonLength",
+                        request.reason() == null ? 0 : request.reason().length())));
   }
 }

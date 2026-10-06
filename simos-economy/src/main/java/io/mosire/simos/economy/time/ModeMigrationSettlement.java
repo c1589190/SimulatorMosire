@@ -4,6 +4,7 @@ import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -502,6 +503,7 @@ public final class ModeMigrationSettlement {
             .trace(
                 LogEvent.of(
                     "MIGRATION_POPULATION_OUTBOX",
+                    EconomyLogSource.ECONOMY_MIGRATION,
                     "day",
                     day,
                     "source",
@@ -516,8 +518,8 @@ public final class ModeMigrationSettlement {
                     move.targetMode().value(),
                     "newTarget",
                     newTarget,
-                    "reason",
-                    move.reason()));
+                    "reasonLength",
+                    move.reason() == null ? 0 : move.reason().length()));
       }
 
       if (empties) {

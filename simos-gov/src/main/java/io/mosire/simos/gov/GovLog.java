@@ -16,14 +16,15 @@ import org.slf4j.LoggerFactory;
  *   <tr><th>取用方法</th><th>logger 名</th><th>记什么</th></tr>
  *   <tr><td>{@link #daily()}</td><td>{@code .daily}</td><td>GOV 日结算（供给/治安/文书/俸禄支付）</td></tr>
  *   <tr><td>{@link #demand()}</td><td>{@code .demand}</td><td>逐格行政需求与效率读数</td></tr>
+ *   <tr><td>{@link #codec()}</td><td>{@code .codec}</td><td>GovCodec 编解码/变更集施加</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐单位/逐格明细</b></td></tr>
  * </table>
  *
  * <p><b>级别约定</b>（消费者按级别裁剪）：
  *
  * <ul>
- *   <li><b>INFO</b>：日结算生命周期——处理的 office 数、应付款、信号；
- *   <li><b>DEBUG</b>：需求/效率/欠俸的汇总读数与原因档；
+ *   <li><b>INFO</b>：日结算生命周期（START/END）——处理的 office 数、应付款、信号；
+ *   <li><b>DEBUG</b>：需求/效率/欠俸的汇总读数、无座跳过与判据；
  *   <li><b>TRACE</b>：逐 office、逐 due、逐 signal 明细。
  * </ul>
  *
@@ -46,9 +47,11 @@ public final class GovLog {
 
   public static final String DAILY_LOGGER_NAME = ROOT_LOGGER_NAME + ".daily";
   public static final String DEMAND_LOGGER_NAME = ROOT_LOGGER_NAME + ".demand";
+  public static final String CODEC_LOGGER_NAME = ROOT_LOGGER_NAME + ".codec";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
   private static final Logger DAILY = LoggerFactory.getLogger(DAILY_LOGGER_NAME);
   private static final Logger DEMAND = LoggerFactory.getLogger(DEMAND_LOGGER_NAME);
+  private static final Logger CODEC = LoggerFactory.getLogger(CODEC_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
   private GovLog() {}
@@ -61,6 +64,11 @@ public final class GovLog {
   /** 逐格行政需求与效率读数。 */
   public static Logger demand() {
     return DEMAND;
+  }
+
+  /** GovCodec 编解码与变更集施加。 */
+  public static Logger codec() {
+    return CODEC;
   }
 
   /** <b>逐单位/逐格明细</b>。 */

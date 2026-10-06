@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
@@ -25,6 +26,8 @@ import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -179,15 +182,25 @@ final class EconomyModeTransitionSettlement {
         changed = true;
         failed++;
         if (LOG.isTraceEnabled()) {
-          LOG.trace(
-              "event=MODE_TRANSITION_FAILED day={} transition={} organization={} fromMode={} toMode={} effectiveDay={} reason={}",
-              day,
-              transition.id().value(),
-              transition.organizationId().value(),
-              transition.fromModeId().value(),
-              transition.toModeId().value(),
-              transition.effectiveDay(),
-              plan.failureReason);
+          EventLog.channel(LOG)
+              .trace(
+                  LogEvent.of(
+                      "MODE_TRANSITION_FAILED",
+                      EconomyLogSource.ECONOMY_MIGRATION,
+                      "day",
+                      day,
+                      "transition",
+                      transition.id().value(),
+                      "organization",
+                      transition.organizationId().value(),
+                      "fromMode",
+                      transition.fromModeId().value(),
+                      "toMode",
+                      transition.toModeId().value(),
+                      "effectiveDay",
+                      transition.effectiveDay(),
+                      "reasonLength",
+                      plan.failureReason == null ? 0 : plan.failureReason.length()));
         }
         continue;
       }
@@ -202,15 +215,25 @@ final class EconomyModeTransitionSettlement {
       changed = true;
       applied++;
       if (LOG.isTraceEnabled()) {
-        LOG.trace(
-            "event=MODE_TRANSITION_APPLIED day={} transition={} organization={} fromMode={} toMode={} newOrganization={} unit={}",
-            day,
-            transition.id().value(),
-            transition.organizationId().value(),
-            transition.fromModeId().value(),
-            transition.toModeId().value(),
-            plan.newOrganization.id().value(),
-            plan.updatedUnit.id().value());
+        EventLog.channel(LOG)
+            .trace(
+                LogEvent.of(
+                    "MODE_TRANSITION_APPLIED",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "day",
+                    day,
+                    "transition",
+                    transition.id().value(),
+                    "organization",
+                    transition.organizationId().value(),
+                    "fromMode",
+                    transition.fromModeId().value(),
+                    "toMode",
+                    transition.toModeId().value(),
+                    "newOrganization",
+                    plan.newOrganization.id().value(),
+                    "unit",
+                    plan.updatedUnit.id().value()));
       }
     }
     return new Outcome(applied, failed, changed);

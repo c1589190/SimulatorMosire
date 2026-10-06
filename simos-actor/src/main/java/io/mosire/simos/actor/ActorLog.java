@@ -16,14 +16,16 @@ import org.slf4j.LoggerFactory;
  *   <tr><th>取用方法</th><th>logger 名</th><th>记什么</th></tr>
  *   <tr><td>{@link #account()}</td><td>{@code .account}</td><td>账户转移/搬迁/调整/国库汇款</td></tr>
  *   <tr><td>{@link #seed()}</td><td>{@code .seed}</td><td>actor 播种与区域清空</td></tr>
+ *   <tr><td>{@link #codec()}</td><td>{@code .codec}</td><td>ActorCodec 编解码/变更集施加</td></tr>
+ *   <tr><td>{@link #resolve()}</td><td>{@code .resolve}</td><td>ActorResolver 候选装配/空结果</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐商品/逐币种/逐账户明细</b></td></tr>
  * </table>
  *
  * <p><b>级别约定</b>（消费者按级别裁剪）：
  *
  * <ul>
- *   <li><b>INFO</b>：账户生命周期——一次命令搬动了哪个 owner/多少账户；
- *   <li><b>DEBUG</b>：逐账户汇总与拒绝原因档；
+ *   <li><b>INFO</b>：账户生命周期与写口成功——一次命令搬动了哪个 owner/多少账户，以及一切具名拒绝；
+ *   <li><b>DEBUG</b>：判据/逐账户汇总与跳过原因档；
  *   <li><b>TRACE</b>：逐个商品/币种/账户键明细。
  * </ul>
  *
@@ -46,9 +48,13 @@ public final class ActorLog {
 
   public static final String ACCOUNT_LOGGER_NAME = ROOT_LOGGER_NAME + ".account";
   public static final String SEED_LOGGER_NAME = ROOT_LOGGER_NAME + ".seed";
+  public static final String CODEC_LOGGER_NAME = ROOT_LOGGER_NAME + ".codec";
+  public static final String RESOLVE_LOGGER_NAME = ROOT_LOGGER_NAME + ".resolve";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
   private static final Logger ACCOUNT = LoggerFactory.getLogger(ACCOUNT_LOGGER_NAME);
   private static final Logger SEED = LoggerFactory.getLogger(SEED_LOGGER_NAME);
+  private static final Logger CODEC = LoggerFactory.getLogger(CODEC_LOGGER_NAME);
+  private static final Logger RESOLVE = LoggerFactory.getLogger(RESOLVE_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
   private ActorLog() {}
@@ -61,6 +67,16 @@ public final class ActorLog {
   /** actor 播种与区域清空。 */
   public static Logger seed() {
     return SEED;
+  }
+
+  /** ActorCodec 编解码、变更集施加与旧形状迁移。 */
+  public static Logger codec() {
+    return CODEC;
+  }
+
+  /** ActorResolver 候选装配与空结果诊断。 */
+  public static Logger resolve() {
+    return RESOLVE;
   }
 
   /** <b>逐商品/逐币种/逐账户明细</b>。 */

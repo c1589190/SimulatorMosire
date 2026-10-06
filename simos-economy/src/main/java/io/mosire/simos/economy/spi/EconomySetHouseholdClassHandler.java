@@ -2,12 +2,15 @@ package io.mosire.simos.economy.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.HouseholdClassMembership;
 import io.mosire.simos.economy.model.ProductionRole;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -116,13 +119,21 @@ public final class EconomySetHouseholdClassHandler implements CommandHandler, Co
           new LinkedHashMap<>(base.classStandings());
       classMemberships.put(household, afterClassMembership);
       EconomyData projected = base.withClassMemberships(classMemberships);
-      io.mosire.simos.economy.EconomyLog.enterprise()
+      EventLog.channel(io.mosire.simos.economy.EconomyLog.enterprise())
           .info(
-              "event=HOUSEHOLD_CLASS household={} currentPosition={} originalPosition={} reason={}",
-              household.value(),
-              position.id().value(),
-              originalPosition.value(),
-              reason);
+              LogEvent.of(
+                  "HOUSEHOLD_CLASS",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "day",
+                  day,
+                  "household",
+                  household.value(),
+                  "currentPosition",
+                  position.id().value(),
+                  "originalPosition",
+                  originalPosition.value(),
+                  "reasonLength",
+                  reason == null ? 0 : reason.length()));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

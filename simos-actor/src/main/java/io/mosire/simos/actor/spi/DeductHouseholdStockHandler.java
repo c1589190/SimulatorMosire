@@ -3,9 +3,12 @@ package io.mosire.simos.actor.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
+import io.mosire.simos.actor.ActorLogSource;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.ops.StockDeductionOperations;
 import io.mosire.simos.economy.api.stock.HouseholdStockDeduction;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -13,6 +16,7 @@ import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code actor.DeductHouseholdStock}（P1.2，2026-10-09 用户裁定）：<b>通用家户库存扣除</b> —— 传入「家户 + 扣除的库存 +
@@ -60,6 +64,8 @@ public final class DeductHouseholdStockHandler
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "actor.DeductHouseholdStock";
 
+  private static final Logger LOG = ActorLog.account();
+
   @Override
   public String type() {
     return TYPE;
@@ -80,11 +86,28 @@ public final class DeductHouseholdStockHandler
       JsonNode payload = ActorPayloads.parse(payloadJson);
       List<HouseholdStockDeduction> deductions = ActorPayloads.deductions(payload);
       ActorData next = StockDeductionOperations.deductAll(base, deductions);
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ACTOR_HOUSEHOLD_STOCK_BATCH_APPLIED",
+                  ActorLogSource.ACTOR_STOCK,
+                  "entries",
+                  deductions.size(),
+                  "households",
+                  base.accounts().size(),
+                  "accountsAfter",
+                  next.accounts().size()));
       return new HandlerOutcome.Applied(ActorChangeSet.between(base, next));
     } catch (IllegalArgumentException e) {
-      ActorLog.account()
-          .debug(
-              "event=HOUSEHOLD_STOCK_DEDUCTION_REJECTED type={} reason={}", TYPE, e.getMessage());
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "HOUSEHOLD_STOCK_DEDUCTION_REJECTED",
+                  ActorLogSource.ACTOR_STOCK,
+                  "type",
+                  TYPE,
+                  "reason",
+                  ActorPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

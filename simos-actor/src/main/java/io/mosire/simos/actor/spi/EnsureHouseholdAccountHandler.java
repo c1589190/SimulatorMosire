@@ -3,10 +3,13 @@ package io.mosire.simos.actor.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
+import io.mosire.simos.actor.ActorLogSource;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -16,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code actor.EnsureHouseholdAccount}（P2-C §13.7）：<b>给一个家户补一本零余额账户（幂等）</b> —— 让"新登记的政府家户"
@@ -44,6 +48,8 @@ public final class EnsureHouseholdAccountHandler
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "actor.EnsureHouseholdAccount";
+
+  private static final Logger LOG = ActorLog.account();
 
   @Override
   public String type() {
@@ -80,15 +86,39 @@ public final class EnsureHouseholdAccountHandler
         created = true;
       }
       if (created) {
-        ActorLog.account()
+        EventLog.channel(LOG)
             .info(
-                "event=HOUSEHOLD_ACCOUNT_ENSURED household={} created={} reason={}",
-                household.value(),
-                true,
-                reason);
+                LogEvent.of(
+                    "HOUSEHOLD_ACCOUNT_ENSURED",
+                    ActorLogSource.ACTOR_ACCOUNT,
+                    "household",
+                    household.value(),
+                    "created",
+                    true,
+                    "reasonLength",
+                    reason.length()));
+      } else if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "HOUSEHOLD_ACCOUNT_ENSURE_SKIPPED",
+                    ActorLogSource.ACTOR_ACCOUNT,
+                    "household",
+                    household.value(),
+                    "reason",
+                    "account-already-exists"));
       }
       return new HandlerOutcome.Applied(ActorChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "HOUSEHOLD_ACCOUNT_ENSURE_REJECTED",
+                  ActorLogSource.ACTOR_ACCOUNT,
+                  "type",
+                  TYPE,
+                  "reason",
+                  ActorPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

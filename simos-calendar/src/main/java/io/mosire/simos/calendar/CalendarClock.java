@@ -1,5 +1,7 @@
 package io.mosire.simos.calendar;
 
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.time.YearFraction;
 import java.util.Objects;
 import org.slf4j.Logger;
@@ -35,11 +37,18 @@ public final class CalendarClock {
     Objects.requireNonNull(system, "system");
     Objects.requireNonNull(epochDate, "epochDate");
     CalendarClock clock = new CalendarClock(system, epochDate, system.dayNumberOf(epochDate));
-    LOG.debug(
-        "event=CALENDAR_CLOCK_BOUND system={} epoch={} epochDayNumber={}",
-        system.id(),
-        epochDate,
-        clock.epochDayNumber());
+    // ★ 2026-10-23 L3：历法绑定是装配期生命周期事件（INFO），带全部配置档，便于查"配置漂移"。
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "CALENDAR_CLOCK_BOUND",
+                CalendarLogSource.CAL_CLOCK,
+                "system",
+                system.id(),
+                "epoch",
+                epochDate,
+                "epochDayNumber",
+                clock.epochDayNumber()));
     return clock;
   }
 

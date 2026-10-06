@@ -125,8 +125,8 @@ import java.util.function.Function;
  */
 public final class EconomySeeder {
 
-  /** 经济播种日志（settlement 分类：播种是经济生命周期的第 0 天）。 */
-  private static final org.slf4j.Logger LOG = io.mosire.simos.economy.EconomyLog.settlement();
+  /** 经济播种日志（app 装配/启动分类：播种是世界装配期的一次动作，无 day 上下文）。 */
+  private static final org.slf4j.Logger LOG = io.mosire.simos.app.AppLog.shell();
 
   /**
    * ★★ <b>经济地基 profile</b>（2026-10-09 起唯一值）：{@link #PRODUCTION_RUNTIME} —— 旧完整生产路径 +
@@ -3335,20 +3335,35 @@ public final class EconomySeeder {
     AppliedConditions applied =
         applyTestConditions(mapId, entries, householdStocks, householdMoney, conditions);
     if (LOG.isDebugEnabled()) {
-      LOG.debug(
-          "event=ECONOMY_SEED profile={} mapId={} entries={} markets={} householdStocks={} householdMoney={} operators={} debtContracts={} pledges={} extraMoneyIssuances={} merchantFirms={} genesisEndowment={}",
-          profile,
-          mapId,
-          entries.size(),
-          markets.size(),
-          householdStocks.size(),
-          householdMoney.size(),
-          operators.size(),
-          applied.debtContracts().size(),
-          applied.pledges().size(),
-          applied.extraMoneyIssuances().size(),
-          merchantFirms.size(),
-          genesisEndowment);
+      io.mosire.simos.util.log.EventLog.channel(LOG)
+          .debug(
+              io.mosire.simos.util.log.LogEvent.of(
+                  "ECONOMY_SEED",
+                  io.mosire.simos.app.AppLogSource.SHELL_LIFECYCLE,
+                  "profile",
+                  profile,
+                  "mapId",
+                  mapId,
+                  "entries",
+                  entries.size(),
+                  "markets",
+                  markets.size(),
+                  "householdStocks",
+                  householdStocks.size(),
+                  "householdMoney",
+                  householdMoney.size(),
+                  "operators",
+                  operators.size(),
+                  "debtContracts",
+                  applied.debtContracts().size(),
+                  "pledges",
+                  applied.pledges().size(),
+                  "extraMoneyIssuances",
+                  applied.extraMoneyIssuances().size(),
+                  "merchantFirms",
+                  merchantFirms.size(),
+                  "genesisEndowment",
+                  genesisEndowment));
     }
     return new Seed(
         mapId,

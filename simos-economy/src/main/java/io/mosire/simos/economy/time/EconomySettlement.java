@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.cohort.ResidenceKind;
@@ -60,6 +61,8 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
 import io.mosire.simos.util.economy.ProportionalSplit;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -767,12 +770,19 @@ public final class EconomySettlement {
       long issued =
           GovernmentDebtIssuance.issueCycleStart(base, session, accounts, day, currentCycle);
       if ((minted > 0L || issued > 0L) && TRACE.isDebugEnabled()) {
-        TRACE.debug(
-            "[day={}] 00a GOV_POLICY minted={} debtIssued={} period={}",
-            day,
-            minted,
-            issued,
-            currentCycle);
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "GOV_POLICY",
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
+                    "day",
+                    day,
+                    "minted",
+                    minted,
+                    "debtIssued",
+                    issued,
+                    "period",
+                    currentCycle));
       }
     }
     // ★★ E3：本次 revision 的发行审计收集器（id 由 transfer id + 币种确定性派生；并行分区也安全）。
@@ -841,30 +851,54 @@ public final class EconomySettlement {
     for (HouseholdEconomy householdEconomy : householdEconomies.values()) {
       dayStartPopulation += householdEconomy.population();
     }
-    TRACE.info(
-        "event=DAY_START day={} mapId={} rows={} population={} units={} markets={} organizations={} debtContracts={} modes={} topologyRegions={}",
-        day,
-        meta.mapId(),
-        householdEconomies.size(),
-        dayStartPopulation,
-        units.size(),
-        markets.size(),
-        session.sheet().productionOrganizations().size(),
-        debts.size(),
-        base.modes().size(),
-        topology.regions().size());
+    EventLog.channel(TRACE)
+        .info(
+            LogEvent.of(
+                "DAY_START",
+                EconomyLogSource.ECONOMY_SETTLEMENT,
+                "day",
+                day,
+                "mapId",
+                meta.mapId(),
+                "rows",
+                householdEconomies.size(),
+                "population",
+                dayStartPopulation,
+                "units",
+                units.size(),
+                "markets",
+                markets.size(),
+                "organizations",
+                session.sheet().productionOrganizations().size(),
+                "debtContracts",
+                debts.size(),
+                "modes",
+                base.modes().size(),
+                "topologyRegions",
+                topology.regions().size()));
 
     if (TRACE.isDebugEnabled()) {
-      TRACE.debug(
-          "[day={}] 00 START rows={} units={} markets={} organizations={} debts={} modes={} topologyRegions={}",
-          day,
-          householdEconomies.size(),
-          units.size(),
-          markets.size(),
-          session.sheet().productionOrganizations().size(),
-          debts.size(),
-          base.modes().size(),
-          topology.regions().size());
+      EventLog.channel(TRACE)
+          .debug(
+              LogEvent.of(
+                  "SETTLEMENT_START_DETAIL",
+                  EconomyLogSource.ECONOMY_SETTLEMENT,
+                  "day",
+                  day,
+                  "rows",
+                  householdEconomies.size(),
+                  "units",
+                  units.size(),
+                  "markets",
+                  markets.size(),
+                  "organizations",
+                  session.sheet().productionOrganizations().size(),
+                  "debtContracts",
+                  debts.size(),
+                  "modes",
+                  base.modes().size(),
+                  "topologyRegions",
+                  topology.regions().size()));
     }
 
     // ── 0-entry. ★★ R4-E2b：候选预设的实际采用（GM 预设 → 合条件家户 → TRIALING 试产）──────────────
@@ -934,35 +968,62 @@ public final class EconomySettlement {
     }
     EntryOutcomeFeed.publish(meta.mapId(), day, entryOutcomes);
     if (!entryOutcomes.isEmpty()) {
-      TRACE.info(
-          "event=ENTRY day={} outcomes={} enteredUnits={} rejected={}",
-          day,
-          entryOutcomes.size(),
-          enteredToday.size(),
-          entryOutcomes.stream().filter(outcome -> !outcome.accepted()).count());
+      EventLog.channel(TRACE)
+          .info(
+              LogEvent.of(
+                  "ENTRY",
+                  EconomyLogSource.ECONOMY_ENTRY,
+                  "day",
+                  day,
+                  "outcomes",
+                  entryOutcomes.size(),
+                  "enteredUnits",
+                  enteredToday.size(),
+                  "rejected",
+                  entryOutcomes.stream().filter(outcome -> !outcome.accepted()).count()));
     }
     if (TRACE.isDebugEnabled() && !entryOutcomes.isEmpty()) {
-      TRACE.debug(
-          "[day={}] 01 ENTRY 候选预设 outcomes={} enteredUnits={}",
-          day,
-          entryOutcomes.size(),
-          enteredToday.size());
+      EventLog.channel(TRACE)
+          .debug(
+              LogEvent.of(
+                  "ENTRY_DETAIL",
+                  EconomyLogSource.ECONOMY_ENTRY,
+                  "day",
+                  day,
+                  "outcomes",
+                  entryOutcomes.size(),
+                  "enteredUnits",
+                  enteredToday.size()));
     }
     if (RAW.isTraceEnabled()) {
       for (EntryOutcome outcome : entryOutcomes) {
-        RAW.trace(
-            "event=ENTRY_OUTCOME day={} household={} candidate={} version={} accepted={} modeKey={} industry={} trialScale={} expectedDay={} laborMilli={} reason={}",
-            day,
-            outcome.household().value(),
-            outcome.candidateId().value(),
-            outcome.version(),
-            outcome.accepted(),
-            outcome.modeKey(),
-            outcome.industryId().value(),
-            outcome.trialScale(),
-            outcome.expectedDay(),
-            outcome.laborMilli(),
-            outcome.reason());
+        EventLog.channel(RAW)
+            .trace(
+                LogEvent.of(
+                    "ENTRY_OUTCOME",
+                    EconomyLogSource.ECONOMY_ENTRY,
+                    "day",
+                    day,
+                    "household",
+                    outcome.household().value(),
+                    "candidate",
+                    outcome.candidateId().value(),
+                    "version",
+                    outcome.version(),
+                    "accepted",
+                    outcome.accepted(),
+                    "modeKey",
+                    outcome.modeKey(),
+                    "industry",
+                    outcome.industryId().value(),
+                    "trialScale",
+                    outcome.trialScale(),
+                    "expectedDay",
+                    outcome.expectedDay(),
+                    "laborMilli",
+                    outcome.laborMilli(),
+                    "reason",
+                    logReason(outcome.reason())));
       }
     }
 
@@ -1018,18 +1079,30 @@ public final class EconomySettlement {
               session.sheet().modeTransitions(),
               session.sheet().classShares());
       if (transitionOutcome.changed()) {
-        TRACE.info(
-            "event=MODE_TRANSITION day={} applied={} failed={}",
-            day,
-            transitionOutcome.applied(),
-            transitionOutcome.failed());
+        EventLog.channel(TRACE)
+            .info(
+                LogEvent.of(
+                    "MODE_TRANSITION",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "day",
+                    day,
+                    "applied",
+                    transitionOutcome.applied(),
+                    "failed",
+                    transitionOutcome.failed()));
       }
       if (TRACE.isDebugEnabled()) {
-        TRACE.debug(
-            "[day={}] 02 MODE_TRANSITION 到期 PENDING 已执行 applied={} failed={}",
-            day,
-            transitionOutcome.applied(),
-            transitionOutcome.failed());
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "MODE_TRANSITION_DETAIL",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "day",
+                    day,
+                    "applied",
+                    transitionOutcome.applied(),
+                    "failed",
+                    transitionOutcome.failed()));
       }
     }
 
@@ -1082,27 +1155,47 @@ public final class EconomySettlement {
         enteredToday = withOrganized;
       }
       if (enterpriseOutcome.changed()) {
-        TRACE.info(
-            "event=ORGANIZE day={} createdUnits={} organizations={} rows={}",
-            day,
-            enterpriseOutcome.createdUnitIds().size(),
-            session.sheet().productionOrganizations().size(),
-            householdEconomies.size());
+        EventLog.channel(TRACE)
+            .info(
+                LogEvent.of(
+                    "ORGANIZE",
+                    EconomyLogSource.ECONOMY_ORGANIZATION,
+                    "day",
+                    day,
+                    "createdUnits",
+                    enterpriseOutcome.createdUnitIds().size(),
+                    "organizations",
+                    session.sheet().productionOrganizations().size(),
+                    "rows",
+                    householdEconomies.size()));
       }
       if (TRACE.isDebugEnabled()) {
-        TRACE.debug(
-            "[day={}] 03 ORGANIZE changed={} createdUnits={} organizations={}",
-            day,
-            enterpriseOutcome.changed(),
-            enterpriseOutcome.createdUnitIds().size(),
-            session.sheet().productionOrganizations().size());
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "ORGANIZE_DETAIL",
+                    EconomyLogSource.ECONOMY_ORGANIZATION,
+                    "day",
+                    day,
+                    "changed",
+                    enterpriseOutcome.changed(),
+                    "createdUnits",
+                    enterpriseOutcome.createdUnitIds().size(),
+                    "organizations",
+                    session.sheet().productionOrganizations().size()));
       }
       if (RAW.isTraceEnabled() && enterpriseOutcome.changed()) {
-        RAW.trace(
-            "event=ORGANIZE_RESULT day={} createdUnits={} organizations={}",
-            day,
-            enterpriseOutcome.createdUnitIds(),
-            session.sheet().productionOrganizations().size());
+        EventLog.channel(RAW)
+            .trace(
+                LogEvent.of(
+                    "ORGANIZE_RESULT",
+                    EconomyLogSource.ECONOMY_ORGANIZATION,
+                    "day",
+                    day,
+                    "createdUnits",
+                    enterpriseOutcome.createdUnitIds(),
+                    "organizations",
+                    session.sheet().productionOrganizations().size()));
       }
     }
 
@@ -1129,18 +1222,30 @@ public final class EconomySettlement {
     int shipmentsBefore = shipments.size();
     deliverShipments(day, session, accounts, ledger, parallelism);
     if (shipmentsBefore > 0) {
-      TRACE.info(
-          "event=SHIPMENTS_ARRIVED day={} arrivedBatches={} remainingInTransit={}",
-          day,
-          shipmentsBefore - shipments.size(),
-          shipments.size());
+      EventLog.channel(TRACE)
+          .info(
+              LogEvent.of(
+                  "SHIPMENTS_ARRIVED",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  day,
+                  "arrivedBatches",
+                  shipmentsBefore - shipments.size(),
+                  "remainingInTransit",
+                  shipments.size()));
     }
     if (TRACE.isDebugEnabled() && shipmentsBefore > 0) {
-      TRACE.debug(
-          "[day={}] 04 SHIPMENTS arrivedBatches={} remainingInTransit={}",
-          day,
-          shipmentsBefore - shipments.size(),
-          shipments.size());
+      EventLog.channel(TRACE)
+          .debug(
+              LogEvent.of(
+                  "SHIPMENTS_ARRIVED_DETAIL",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  day,
+                  "arrivedBatches",
+                  shipmentsBefore - shipments.size(),
+                  "remainingInTransit",
+                  shipments.size()));
     }
 
     if (plantingDrawsFirst) {
@@ -1208,12 +1313,19 @@ public final class EconomySettlement {
           deficitGrain += deficit;
         }
       }
-      TRACE.debug(
-          "[day={}] 05 INPUTS+CONSUMPTION consumedQuantities={} deficitHouseholds={} deficitGrainMilli={}",
-          day,
-          traceTotalGoods(consumedGoods),
-          deficitHouseholds,
-          deficitGrain);
+      EventLog.channel(TRACE)
+          .debug(
+              LogEvent.of(
+                  "INPUTS_CONSUMPTION",
+                  EconomyLogSource.ECONOMY_SETTLEMENT,
+                  "day",
+                  day,
+                  "consumedQuantities",
+                  traceTotalGoods(consumedGoods),
+                  "deficitHouseholds",
+                  deficitHouseholds,
+                  "deficitGrainMilli",
+                  deficitGrain));
     }
 
     // ── 3~4. 进度 + 劳动投入；周期末追加收获/分配 + 饿死惩罚 ────────────────────────────
@@ -1346,27 +1458,46 @@ public final class EconomySettlement {
         parallelism);
     if (!harvestWorks.isEmpty()) {
       ProductionLedger harvestLedger = ledger.toLedger();
-      TRACE.info(
-          "event=HARVEST day={} closedUnits={} gross={} losses={} inputs={} outputAccruals={} transfers={} ruleSettlements={}",
-          day,
-          harvestWorks.size(),
-          traceTotalByIndustry(harvestLedger.gross()),
-          traceTotalByIndustry(harvestLedger.losses()),
-          traceTotalByIndustry(harvestLedger.inputs()),
-          harvestLedger.outputAccruals().size(),
-          harvestLedger.transfers().size(),
-          harvestLedger.ruleSettlements().size());
+      EventLog.channel(TRACE)
+          .info(
+              LogEvent.of(
+                  "HARVEST",
+                  EconomyLogSource.ECONOMY_SETTLEMENT,
+                  "day",
+                  day,
+                  "closedUnits",
+                  harvestWorks.size(),
+                  "gross",
+                  traceTotalByIndustry(harvestLedger.gross()),
+                  "losses",
+                  traceTotalByIndustry(harvestLedger.losses()),
+                  "inputs",
+                  traceTotalByIndustry(harvestLedger.inputs()),
+                  "outputAccruals",
+                  harvestLedger.outputAccruals().size(),
+                  "transfers",
+                  harvestLedger.transfers().size(),
+                  "ruleSettlements",
+                  harvestLedger.ruleSettlements().size()));
       if (TRACE.isDebugEnabled()) {
         for (Map.Entry<IndustryId, Map<CommodityId, Long>> entry :
             harvestLedger.gross().entrySet()) {
           IndustryId industry = entry.getKey();
-          TRACE.debug(
-              "[day={}] 06 HARVEST industry={} gross={} losses={} inputs={}",
-              day,
-              industry.value(),
-              entry.getValue(),
-              harvestLedger.losses().getOrDefault(industry, Map.of()),
-              harvestLedger.inputs().getOrDefault(industry, Map.of()));
+          EventLog.channel(TRACE)
+              .debug(
+                  LogEvent.of(
+                      "HARVEST_BY_INDUSTRY",
+                      EconomyLogSource.ECONOMY_SETTLEMENT,
+                      "day",
+                      day,
+                      "industry",
+                      industry.value(),
+                      "gross",
+                      entry.getValue(),
+                      "losses",
+                      harvestLedger.losses().getOrDefault(industry, Map.of()),
+                      "inputs",
+                      harvestLedger.inputs().getOrDefault(industry, Map.of())));
         }
       }
     }
@@ -1390,20 +1521,32 @@ public final class EconomySettlement {
     ProductionLedger capitalized = ledger.toLedger();
     if (!capitalized.debtCapitalizations().isEmpty()
         || !capitalized.unresolvedDebtCapitalizations().isEmpty()) {
-      TRACE.info(
-          "event=CAPITALIZE_ARREARS day={} capitalized={} unresolved={}",
-          day,
-          capitalized.debtCapitalizations().size(),
-          capitalized.unresolvedDebtCapitalizations().size());
+      EventLog.channel(TRACE)
+          .info(
+              LogEvent.of(
+                  "CAPITALIZE_ARREARS",
+                  EconomyLogSource.ECONOMY_DEBT,
+                  "day",
+                  day,
+                  "capitalized",
+                  capitalized.debtCapitalizations().size(),
+                  "unresolved",
+                  capitalized.unresolvedDebtCapitalizations().size()));
     }
     if (TRACE.isDebugEnabled()) {
       if (!capitalized.debtCapitalizations().isEmpty()
           || !capitalized.unresolvedDebtCapitalizations().isEmpty()) {
-        TRACE.debug(
-            "[day={}] 07 CAPITALIZE_ARREARS capitalized={} unresolved={}",
-            day,
-            capitalized.debtCapitalizations().size(),
-            capitalized.unresolvedDebtCapitalizations().size());
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "CAPITALIZE_ARREARS_DETAIL",
+                    EconomyLogSource.ECONOMY_DEBT,
+                    "day",
+                    day,
+                    "capitalized",
+                    capitalized.debtCapitalizations().size(),
+                    "unresolved",
+                    capitalized.unresolvedDebtCapitalizations().size()));
       }
     }
 
@@ -1451,12 +1594,19 @@ public final class EconomySettlement {
     MarketTrigger marketTrigger =
         MarketSettlement.triggerFor(day, anyCycleClosed, markets, marketRound);
     if (TRACE.isDebugEnabled()) {
-      TRACE.debug(
-          "[day={}] 08 MARKET_SCHEDULE trigger={} anyCycleClosed={} markets={}",
-          day,
-          marketTrigger,
-          anyCycleClosed,
-          markets.size());
+      EventLog.channel(TRACE)
+          .debug(
+              LogEvent.of(
+                  "MARKET_SCHEDULE",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  day,
+                  "trigger",
+                  marketTrigger,
+                  "anyCycleClosed",
+                  anyCycleClosed,
+                  "markets",
+                  markets.size()));
     }
     if (marketTrigger != MarketTrigger.NONE) {
       // ★★ D-031：借款人侧不再有信用额度上限 —— 市场信用只带到期周期与当日债务工作副本；唯一上限 = 放贷人
@@ -1487,124 +1637,224 @@ public final class EconomySettlement {
       for (MarketReport.Unfilled unfilled : report.unfilled()) {
         reasonCounts.merge(unfilled.reason(), 1L, Long::sum);
       }
-      TRACE.info(
-          "event=MARKET day={} trigger={} fills={} immediateCrossHex={} immediateCrossHexLossMilli={} scheduledLossMilli={} unfilled={} reasons={} creditFills={} creditMoney={} creditGoods={} regulatedTariffMilli={}",
-          day,
-          report.trigger(),
-          report.fills().size(),
-          report.immediateCrossHexFills(),
-          report.immediateCrossHexLossMilli(),
-          report.scheduledLossMilli(),
-          report.unfilled().size(),
-          reasonCounts,
-          report.creditFills().size(),
-          creditMoney,
-          creditGoods,
-          report.regulatedTariffMilli());
+      EventLog.channel(TRACE)
+          .info(
+              LogEvent.of(
+                  "MARKET",
+                  EconomyLogSource.ECONOMY_MARKET,
+                  "day",
+                  day,
+                  "trigger",
+                  report.trigger(),
+                  "fills",
+                  report.fills().size(),
+                  "immediateCrossHex",
+                  report.immediateCrossHexFills(),
+                  "immediateCrossHexLossMilli",
+                  report.immediateCrossHexLossMilli(),
+                  "scheduledLossMilli",
+                  report.scheduledLossMilli(),
+                  "unfilled",
+                  report.unfilled().size(),
+                  "reasons",
+                  reasonCounts,
+                  "creditFills",
+                  report.creditFills().size(),
+                  "creditMoney",
+                  creditMoney,
+                  "creditGoods",
+                  creditGoods,
+                  "regulatedTariffMilli",
+                  report.regulatedTariffMilli()));
       if (RAW.isTraceEnabled()) {
         for (MarketReport.Fill fill : report.fills()) {
-          RAW.trace(
-              "event=MARKET_FILL day={} from={},{} to={},{} commodity={} seller={} buyer={} quantity={} unitPriceMilli={} freightMilli={} immediate={} arrivalTick={} shipmentId={} lossMilli={}",
-              day,
-              fill.from().q(),
-              fill.from().r(),
-              fill.to().q(),
-              fill.to().r(),
-              fill.commodity().value(),
-              fill.seller().id(),
-              fill.buyer().id(),
-              fill.quantity(),
-              fill.unitPriceMilli(),
-              fill.freightMilli(),
-              fill.immediate(),
-              fill.arrivalTick(),
-              fill.shipmentId(),
-              fill.lossMilli());
+          EventLog.channel(RAW)
+              .trace(
+                  LogEvent.of(
+                      "MARKET_FILL",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      day,
+                      "from",
+                      fill.from().q() + "," + fill.from().r(),
+                      "to",
+                      fill.to().q() + "," + fill.to().r(),
+                      "commodity",
+                      fill.commodity().value(),
+                      "seller",
+                      fill.seller().id(),
+                      "buyer",
+                      fill.buyer().id(),
+                      "quantity",
+                      fill.quantity(),
+                      "unitPriceMilli",
+                      fill.unitPriceMilli(),
+                      "freightMilli",
+                      fill.freightMilli(),
+                      "immediate",
+                      fill.immediate(),
+                      "arrivalTick",
+                      fill.arrivalTick(),
+                      "shipmentId",
+                      fill.shipmentId(),
+                      "lossMilli",
+                      fill.lossMilli()));
         }
         for (MarketReport.Unfilled unfilled : report.unfilled()) {
-          RAW.trace(
-              "event=MARKET_UNFILLED day={} side={} actor={} commodity={} quantity={} reason={} hex={},{}",
-              day,
-              unfilled.buyerSide() ? "buy" : "sell",
-              unfilled.actor().id(),
-              unfilled.commodity().value(),
-              unfilled.quantity(),
-              unfilled.reason(),
-              unfilled.hex().q(),
-              unfilled.hex().r());
+          EventLog.channel(RAW)
+              .trace(
+                  LogEvent.of(
+                      "MARKET_UNFILLED",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      day,
+                      "side",
+                      unfilled.buyerSide() ? "buy" : "sell",
+                      "actor",
+                      unfilled.actor().id(),
+                      "commodity",
+                      unfilled.commodity().value(),
+                      "quantity",
+                      unfilled.quantity(),
+                      "reason",
+                      unfilled.reason(),
+                      "hex",
+                      unfilled.hex().q() + "," + unfilled.hex().r()));
         }
         for (MarketReport.CreditFill credit : report.creditFills()) {
-          RAW.trace(
-              "event=MARKET_CREDIT_FILL day={} hex={},{} commodity={} borrower={} lenderOrSeller={} quantity={} unit={} debtId={} ratePerMille={} dueCycle={}",
-              day,
-              credit.hex().q(),
-              credit.hex().r(),
-              credit.commodity().value(),
-              credit.borrower().id(),
-              credit.lenderOrSeller().id(),
-              credit.quantityMilli(),
-              credit.unit().key(),
-              credit.debtId().value(),
-              credit.ratePerMille(),
-              credit.dueCycle());
+          EventLog.channel(RAW)
+              .trace(
+                  LogEvent.of(
+                      "MARKET_CREDIT_FILL",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      day,
+                      "hex",
+                      credit.hex().q() + "," + credit.hex().r(),
+                      "commodity",
+                      credit.commodity().value(),
+                      "borrower",
+                      credit.borrower().id(),
+                      "lenderOrSeller",
+                      credit.lenderOrSeller().id(),
+                      "quantity",
+                      credit.quantityMilli(),
+                      "unit",
+                      credit.unit().key(),
+                      "debtId",
+                      credit.debtId().value(),
+                      "ratePerMille",
+                      credit.ratePerMille(),
+                      "dueCycle",
+                      credit.dueCycle()));
         }
         for (MarketReport.SellerOutcome seller : report.sellerOutcomes()) {
-          RAW.trace(
-              "event=MARKET_SELLER_OUTCOME day={} actor={} unit={} hex={},{} commodity={} offered={} filled={} unfilled={} unitPriceMilli={} unitCostEstimateMilli={} freightPerUnitMilli={} bestAcceptedLandedPriceMilli={} costRank={} reason={} outcompetedByActors={} outcompetedQty={} priceMissing={} costKnown={}",
-              day,
-              seller.actor().id(),
-              seller.unitId().map(ProductionUnitId::value).orElse("-"),
-              seller.hex().q(),
-              seller.hex().r(),
-              seller.commodity().value(),
-              seller.offeredQty(),
-              seller.filledQty(),
-              seller.unfilledQty(),
-              seller.unitPriceMilli(),
-              seller.unitCostEstimateMilli(),
-              seller.freightPerUnitMilli(),
-              seller.bestAcceptedLandedPriceMilli(),
-              seller.costRank(),
-              seller.unfilledReason().map(Enum::name).orElse("-"),
-              seller.outcompetedByActorCount(),
-              seller.outcompetedQty(),
-              seller.priceMissing(),
-              seller.costKnown());
+          EventLog.channel(RAW)
+              .trace(
+                  LogEvent.of(
+                      "MARKET_SELLER_OUTCOME",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      day,
+                      "actor",
+                      seller.actor().id(),
+                      "unit",
+                      seller.unitId().map(ProductionUnitId::value).orElse("-"),
+                      "hex",
+                      seller.hex().q() + "," + seller.hex().r(),
+                      "commodity",
+                      seller.commodity().value(),
+                      "offered",
+                      seller.offeredQty(),
+                      "filled",
+                      seller.filledQty(),
+                      "unfilled",
+                      seller.unfilledQty(),
+                      "unitPriceMilli",
+                      seller.unitPriceMilli(),
+                      "unitCostEstimateMilli",
+                      seller.unitCostEstimateMilli(),
+                      "freightPerUnitMilli",
+                      seller.freightPerUnitMilli(),
+                      "bestAcceptedLandedPriceMilli",
+                      seller.bestAcceptedLandedPriceMilli(),
+                      "costRank",
+                      seller.costRank(),
+                      "reason",
+                      seller.unfilledReason().map(Enum::name).orElse("-"),
+                      "outcompetedByActors",
+                      seller.outcompetedByActorCount(),
+                      "outcompetedQty",
+                      seller.outcompetedQty(),
+                      "priceMissing",
+                      seller.priceMissing(),
+                      "costKnown",
+                      seller.costKnown()));
         }
         for (MarketReport.BuyerOutcome buyer : report.buyerOutcomes()) {
-          RAW.trace(
-              "event=MARKET_BUYER_OUTCOME day={} actor={} household={} hex={},{} commodity={} stockOnHandMilli={} stockCoverDays={} gapQty={} desiredQty={} spendableMoneyMilli={} affordableQty={} orderedQty={} filledQty={} reason={}",
-              day,
-              buyer.actor().id(),
-              buyer.household().map(HouseholdId::value).orElse("-"),
-              buyer.hex().q(),
-              buyer.hex().r(),
-              buyer.commodity().value(),
-              buyer.stockOnHandMilli(),
-              buyer.stockCoverDays(),
-              buyer.gapQty(),
-              buyer.desiredQty(),
-              buyer.spendableMoneyMilli(),
-              buyer.affordableQty(),
-              buyer.orderedQty(),
-              buyer.filledQty(),
-              buyer.unfilledReason().map(Enum::name).orElse("-"));
+          EventLog.channel(RAW)
+              .trace(
+                  LogEvent.of(
+                      "MARKET_BUYER_OUTCOME",
+                      EconomyLogSource.ECONOMY_MARKET,
+                      "day",
+                      day,
+                      "actor",
+                      buyer.actor().id(),
+                      "household",
+                      buyer.household().map(HouseholdId::value).orElse("-"),
+                      "hex",
+                      buyer.hex().q() + "," + buyer.hex().r(),
+                      "commodity",
+                      buyer.commodity().value(),
+                      "stockOnHandMilli",
+                      buyer.stockOnHandMilli(),
+                      "stockCoverDays",
+                      buyer.stockCoverDays(),
+                      "gapQty",
+                      buyer.gapQty(),
+                      "desiredQty",
+                      buyer.desiredQty(),
+                      "spendableMoneyMilli",
+                      buyer.spendableMoneyMilli(),
+                      "affordableQty",
+                      buyer.affordableQty(),
+                      "orderedQty",
+                      buyer.orderedQty(),
+                      "filledQty",
+                      buyer.filledQty(),
+                      "reason",
+                      buyer.unfilledReason().map(Enum::name).orElse("-")));
         }
       }
       if (TRACE.isDebugEnabled()) {
-        TRACE.debug(
-            "[day={}] 10 MARKET_REPORT fills={} immediateCrossHex={} immediateCrossHexLossMilli={} scheduledLossMilli={} unfilled={} reasons={} creditFills={} creditMoney={} creditGoods={} regulatedTariffMilli={}",
-            day,
-            report.fills().size(),
-            report.immediateCrossHexFills(),
-            report.immediateCrossHexLossMilli(),
-            report.scheduledLossMilli(),
-            report.unfilled().size(),
-            reasonCounts,
-            report.creditFills().size(),
-            creditMoney,
-            creditGoods,
-            report.regulatedTariffMilli());
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "MARKET_REPORT",
+                    EconomyLogSource.ECONOMY_MARKET,
+                    "day",
+                    day,
+                    "fills",
+                    report.fills().size(),
+                    "immediateCrossHex",
+                    report.immediateCrossHexFills(),
+                    "immediateCrossHexLossMilli",
+                    report.immediateCrossHexLossMilli(),
+                    "scheduledLossMilli",
+                    report.scheduledLossMilli(),
+                    "unfilled",
+                    report.unfilled().size(),
+                    "reasons",
+                    reasonCounts,
+                    "creditFills",
+                    report.creditFills().size(),
+                    "creditMoney",
+                    creditMoney,
+                    "creditGoods",
+                    creditGoods,
+                    "regulatedTariffMilli",
+                    report.regulatedTariffMilli()));
       }
       // ★★ S3 修复：把本轮的逐卖方证据累加进经营者条件的"本周期累计"字段。一个周期有多轮市场，关账日那轮
       //   很可能已经看不到更早轮里的滞销/被挤出 ⇒ 不在这里累加，状态机的连续计数就永远不涨。
@@ -1665,25 +1915,44 @@ public final class EconomySettlement {
         }
       }
       if (loanTransfers > 0L) {
-        TRACE.info(
-            "event=DEFICIT_LENDING day={} deficitHouseholds={} loanTransfers={} lentGrainMilli={} borrowingTotalMilli={} debtContracts={} unmetAfter={}",
-            day,
-            deficitToday.size(),
-            loanTransfers,
-            lentTotal,
-            traceTotalLongs(borrowing),
-            debts.size(),
-            traceTotalGoods(unmetToday));
+        EventLog.channel(TRACE)
+            .info(
+                LogEvent.of(
+                    "DEFICIT_LENDING",
+                    EconomyLogSource.ECONOMY_DEBT,
+                    "day",
+                    day,
+                    "deficitHouseholds",
+                    deficitToday.size(),
+                    "loanTransfers",
+                    loanTransfers,
+                    "lentGrainMilli",
+                    lentTotal,
+                    "borrowingTotalMilli",
+                    traceTotalLongs(borrowing),
+                    "debtContracts",
+                    debts.size(),
+                    "unmetAfter",
+                    traceTotalGoods(unmetToday)));
       }
       if (TRACE.isDebugEnabled()) {
-        TRACE.debug(
-            "[day={}] 11 DEFICIT_LENDING deficitHouseholds={} borrowingTotal={} loanTransfersToday={} debtContracts={} unmetAfter={}",
-            day,
-            deficitToday.size(),
-            traceTotalLongs(borrowing),
-            loanTransfers,
-            debts.size(),
-            traceTotalGoods(unmetToday));
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "DEFICIT_LENDING_DETAIL",
+                    EconomyLogSource.ECONOMY_DEBT,
+                    "day",
+                    day,
+                    "deficitHouseholds",
+                    deficitToday.size(),
+                    "borrowingTotal",
+                    traceTotalLongs(borrowing),
+                    "loanTransfersToday",
+                    loanTransfers,
+                    "debtContracts",
+                    debts.size(),
+                    "unmetAfter",
+                    traceTotalGoods(unmetToday)));
       }
     }
 
@@ -1715,24 +1984,42 @@ public final class EconomySettlement {
       long repaidMoneyTotal = traceTotalMoney(repaidMoneyToday);
       int repaymentSkips = ledger.toLedger().debtRepaymentSkips().size();
       if (repaidGrainTotal > 0L || repaidMoneyTotal > 0L || repaymentSkips > 0) {
-        TRACE.info(
-            "event=REPAY day={} households={} repaidGrainMilli={} repaidMoneyMilli={} skippedMediums={} debtContracts={}",
-            day,
-            repaidToday.size(),
-            repaidGrainTotal,
-            repaidMoneyTotal,
-            repaymentSkips,
-            debts.size());
+        EventLog.channel(TRACE)
+            .info(
+                LogEvent.of(
+                    "REPAY",
+                    EconomyLogSource.ECONOMY_DEBT,
+                    "day",
+                    day,
+                    "households",
+                    repaidToday.size(),
+                    "repaidGrainMilli",
+                    repaidGrainTotal,
+                    "repaidMoneyMilli",
+                    repaidMoneyTotal,
+                    "skippedMediums",
+                    repaymentSkips,
+                    "debtContracts",
+                    debts.size()));
       }
       if (TRACE.isDebugEnabled()) {
-        TRACE.debug(
-            "[day={}] 12 REPAY households={} repaidGrainMilli={} repaidMoneyMilli={} skippedMediums={} debtContracts={}",
-            day,
-            repaidToday.size(),
-            repaidGrainTotal,
-            repaidMoneyTotal,
-            repaymentSkips,
-            debts.size());
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "REPAY_DETAIL",
+                    EconomyLogSource.ECONOMY_DEBT,
+                    "day",
+                    day,
+                    "households",
+                    repaidToday.size(),
+                    "repaidGrainMilli",
+                    repaidGrainTotal,
+                    "repaidMoneyMilli",
+                    repaidMoneyTotal,
+                    "skippedMediums",
+                    repaymentSkips,
+                    "debtContracts",
+                    debts.size()));
       }
     }
 
@@ -1768,15 +2055,27 @@ public final class EconomySettlement {
                     ? 0L
                     : afterFamineHouseholdEconomy.population());
         if (famineDeaths > 0L) {
-          RAW.trace(
-              "event=FAMINE_DEATH day={} household={} unit={} deaths={} populationBefore={} populationAfter={} unmetGrainMilli={}",
-              day,
-              key.value(),
-              closing.unit().value(),
-              famineDeaths,
-              populationBeforeFamine,
-              afterFamineHouseholdEconomy == null ? 0L : afterFamineHouseholdEconomy.population(),
-              famineUnmet);
+          EventLog.channel(RAW)
+              .trace(
+                  LogEvent.of(
+                      "FAMINE_DEATH",
+                      EconomyLogSource.ECONOMY_POPULATION,
+                      "day",
+                      day,
+                      "household",
+                      key.value(),
+                      "unit",
+                      closing.unit().value(),
+                      "deaths",
+                      famineDeaths,
+                      "populationBefore",
+                      populationBeforeFamine,
+                      "populationAfter",
+                      afterFamineHouseholdEconomy == null
+                          ? 0L
+                          : afterFamineHouseholdEconomy.population(),
+                      "unmetGrainMilli",
+                      famineUnmet));
         }
         if (afterFamineHouseholdEconomy != null) {
           // ★ P2-A A3：成员份额已迁 Social —— 饿死只改 HouseholdEconomy.population；Social 侧的家户成员回写由
@@ -1796,20 +2095,34 @@ public final class EconomySettlement {
     }
     long famineDeathsTotal = traceTotalLongs(deathsToday);
     if (famineDeathsTotal > 0L) {
-      TRACE.info(
-          "event=FAMINE day={} closedUnits={} deaths={} unmetTotalMilli={}",
-          day,
-          closed.size(),
-          famineDeathsTotal,
-          traceTotalGoods(unmetToday));
+      EventLog.channel(TRACE)
+          .info(
+              LogEvent.of(
+                  "FAMINE",
+                  EconomyLogSource.ECONOMY_POPULATION,
+                  "day",
+                  day,
+                  "closedUnits",
+                  closed.size(),
+                  "deaths",
+                  famineDeathsTotal,
+                  "unmetTotalMilli",
+                  traceTotalGoods(unmetToday)));
     }
     if (TRACE.isDebugEnabled() && anyCycleClosed) {
-      TRACE.debug(
-          "[day={}] 13 FAMINE closedUnits={} deathsToday={} unmetTotalMilli={}",
-          day,
-          closed.size(),
-          famineDeathsTotal,
-          traceTotalGoods(unmetToday));
+      EventLog.channel(TRACE)
+          .debug(
+              LogEvent.of(
+                  "FAMINE_DETAIL",
+                  EconomyLogSource.ECONOMY_POPULATION,
+                  "day",
+                  day,
+                  "closedUnits",
+                  closed.size(),
+                  "deathsToday",
+                  famineDeathsTotal,
+                  "unmetTotalMilli",
+                  traceTotalGoods(unmetToday)));
     }
 
     // ── 5. 周期末计息（§7.1③ / §四 周期结算第 6 步）────────────────────────────────────
@@ -1820,19 +2133,32 @@ public final class EconomySettlement {
       chargeInterest(debts, principalAtDayStart, interestToday, day);
       long interestTotal = traceTotalLongs(interestToday);
       if (interestTotal > 0L) {
-        TRACE.info(
-            "event=INTEREST day={} households={} interestDueTotalMilli={} debtContracts={}",
-            day,
-            interestToday.size(),
-            interestTotal,
-            debts.size());
+        EventLog.channel(TRACE)
+            .info(
+                LogEvent.of(
+                    "INTEREST",
+                    EconomyLogSource.ECONOMY_DEBT,
+                    "day",
+                    day,
+                    "households",
+                    interestToday.size(),
+                    "interestDueTotalMilli",
+                    interestTotal,
+                    "debtContracts",
+                    debts.size()));
       }
       if (TRACE.isDebugEnabled()) {
-        TRACE.debug(
-            "[day={}] 14 INTEREST households={} interestDueTotalMilli={}",
-            day,
-            interestToday.size(),
-            interestTotal);
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "INTEREST_DETAIL",
+                    EconomyLogSource.ECONOMY_DEBT,
+                    "day",
+                    day,
+                    "households",
+                    interestToday.size(),
+                    "interestDueTotalMilli",
+                    interestTotal));
       }
     }
 
@@ -1879,25 +2205,48 @@ public final class EconomySettlement {
             ledger,
             day,
             issuanceJournal);
-        TRACE.info(
-            "event=OPERATOR_EXITS day={} exits={} households={}",
-            day,
-            exits.size(),
-            exits.stream().map(OperatorSettlement.Exit::household).distinct().count());
+        EventLog.channel(TRACE)
+            .info(
+                LogEvent.of(
+                    "OPERATOR_EXITS",
+                    EconomyLogSource.ECONOMY_ORGANIZATION,
+                    "day",
+                    day,
+                    "exits",
+                    exits.size(),
+                    "households",
+                    exits.stream().map(OperatorSettlement.Exit::household).distinct().count()));
         if (RAW.isTraceEnabled()) {
           for (OperatorSettlement.Exit exit : exits) {
-            RAW.trace(
-                "event=OPERATOR_EXIT day={} unit={} industry={} operator={} household={} reason={}",
-                day,
-                exit.unit().value(),
-                exit.industry().value(),
-                exit.operator().id(),
-                exit.household().value(),
-                exit.reason());
+            EventLog.channel(RAW)
+                .trace(
+                    LogEvent.of(
+                        "OPERATOR_EXIT",
+                        EconomyLogSource.ECONOMY_ORGANIZATION,
+                        "day",
+                        day,
+                        "unit",
+                        exit.unit().value(),
+                        "industry",
+                        exit.industry().value(),
+                        "operator",
+                        exit.operator().id(),
+                        "household",
+                        exit.household().value(),
+                        "reason",
+                        logReason(exit.reason())));
           }
         }
         if (TRACE.isDebugEnabled()) {
-          TRACE.debug("[day={}] 15 OPERATOR_EXITS exits={}", day, exits.size());
+          EventLog.channel(TRACE)
+              .debug(
+                  LogEvent.of(
+                      "OPERATOR_EXITS_DETAIL",
+                      EconomyLogSource.ECONOMY_ORGANIZATION,
+                      "day",
+                      day,
+                      "exits",
+                      exits.size()));
         }
         // ★ 资产 operator / 劳动配额刚被改写 ⇒ 换一份索引，后面的阶层写回（读 unit 可用资产）不拿旧快照。
         //   这是**退出日的一次重建**（O(unit + 份额 + 配额)），不是逐查询重扫；退出本身是低频事件。
@@ -1951,10 +2300,26 @@ public final class EconomySettlement {
           ledger);
       int liquidationAudits = ledger.toLedger().liquidationAudits().size();
       if (liquidationAudits > 0) {
-        TRACE.info("event=LIQUIDATION day={} audits={}", day, liquidationAudits);
+        EventLog.channel(TRACE)
+            .info(
+                LogEvent.of(
+                    "LIQUIDATION",
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
+                    "day",
+                    day,
+                    "audits",
+                    liquidationAudits));
       }
       if (TRACE.isDebugEnabled()) {
-        TRACE.debug("[day={}] 16 LIQUIDATION audits={}", day, liquidationAudits);
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "LIQUIDATION_DETAIL",
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
+                    "day",
+                    day,
+                    "audits",
+                    liquidationAudits));
       }
     }
 
@@ -2023,10 +2388,26 @@ public final class EconomySettlement {
       // ★ 具名审计读数：即使没有写回也投递空表（读口才分得清"这次关账没有变化"与"没读到"）。
       ClassTransitionFeed.publish(meta.mapId(), day, classTransitions);
       if (!classTransitions.isEmpty()) {
-        TRACE.info("event=CLASS_TRANSITIONS day={} count={}", day, classTransitions.size());
+        EventLog.channel(TRACE)
+            .info(
+                LogEvent.of(
+                    "CLASS_TRANSITIONS",
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
+                    "day",
+                    day,
+                    "count",
+                    classTransitions.size()));
       }
       if (TRACE.isDebugEnabled()) {
-        TRACE.debug("[day={}] 17 CLASS_TRANSITIONS count={}", day, classTransitions.size());
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "CLASS_TRANSITIONS_DETAIL",
+                    EconomyLogSource.ECONOMY_SETTLEMENT,
+                    "day",
+                    day,
+                    "count",
+                    classTransitions.size()));
       }
     }
 
@@ -2094,11 +2475,17 @@ public final class EconomySettlement {
               mergeNamedQuantities(acc == null ? null : acc.capitalizedArrears(), dayCapitalized)));
     }
     if (TRACE.isDebugEnabled()) {
-      TRACE.debug(
-          "[day={}] 18 FLOWS rows={} newCycleHouseholds={}",
-          day,
-          flows.size(),
-          newCycleHouseholds.size());
+      EventLog.channel(TRACE)
+          .debug(
+              LogEvent.of(
+                  "FLOWS",
+                  EconomyLogSource.ECONOMY_SETTLEMENT,
+                  "day",
+                  day,
+                  "rows",
+                  flows.size(),
+                  "newCycleHouseholds",
+                  newCycleHouseholds.size()));
     }
 
     OptionalLong lastClosed =
@@ -2181,56 +2568,97 @@ public final class EconomySettlement {
       // ⑨ 迁移执行（只执行计划；源户 mode/standing/org/unit.modeKey 一字不改）。
       //    ★ D-023：把当天的瞬态 ledger 传进去记“留原户资产/关系模板回退”的具名读数（不新增持久组件）。
       if (!migrationPlan.moves().isEmpty()) {
-        TRACE.info(
-            "event=MIGRATION_PLAN day={} moves={} organizations={} modeHexProfits={}",
-            day,
-            migrationPlan.moves().size(),
-            profitBook.byOrganization().size(),
-            profitBook.netByModeHex().size());
+        EventLog.channel(TRACE)
+            .info(
+                LogEvent.of(
+                    "MIGRATION_PLAN",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "day",
+                    day,
+                    "moves",
+                    migrationPlan.moves().size(),
+                    "organizations",
+                    profitBook.byOrganization().size(),
+                    "modeHexProfits",
+                    profitBook.netByModeHex().size()));
         if (RAW.isTraceEnabled()) {
           for (ModeMigrationPolicy.MigrationMove move : migrationPlan.moves()) {
-            RAW.trace(
-                "event=MIGRATION_MOVE day={} source={} target={} targetHex={},{} targetMode={} population={} moneyMilli={} moneyByCurrency={} debtMilli={} speedPerMille={} reason={}",
-                day,
-                move.source().value(),
-                move.target().value(),
-                move.targetHex().q(),
-                move.targetHex().r(),
-                move.targetMode().value(),
-                move.population(),
-                move.moneyMilli(),
-                move.moneyByCurrency(),
-                move.debtMilli(),
-                move.transferSpeedPerMille(),
-                move.reason());
+            EventLog.channel(RAW)
+                .trace(
+                    LogEvent.of(
+                        "MIGRATION_MOVE",
+                        EconomyLogSource.ECONOMY_MIGRATION,
+                        "day",
+                        day,
+                        "source",
+                        move.source().value(),
+                        "target",
+                        move.target().value(),
+                        "targetHex",
+                        move.targetHex().q() + "," + move.targetHex().r(),
+                        "targetMode",
+                        move.targetMode().value(),
+                        "population",
+                        move.population(),
+                        "moneyMilli",
+                        move.moneyMilli(),
+                        "moneyByCurrency",
+                        move.moneyByCurrency(),
+                        "debtMilli",
+                        move.debtMilli(),
+                        "speedPerMille",
+                        move.transferSpeedPerMille(),
+                        "reason",
+                        move.reason()));
           }
         }
       }
       if (TRACE.isDebugEnabled()) {
-        TRACE.debug(
-            "[day={}] 19 PROFIT+MIGRATION_PLAN organizations={} modeHexProfits={} moves={}",
-            day,
-            profitBook.byOrganization().size(),
-            profitBook.netByModeHex().size(),
-            migrationPlan.moves().size());
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "PROFIT_MIGRATION_PLAN",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "day",
+                    day,
+                    "organizations",
+                    profitBook.byOrganization().size(),
+                    "modeHexProfits",
+                    profitBook.netByModeHex().size(),
+                    "moves",
+                    migrationPlan.moves().size()));
       }
       int rowsBeforeMigration = householdEconomies.size();
       ModeMigrationSettlement.apply(session, accounts, migrationPlan, base, day, ledger);
       if (!migrationPlan.moves().isEmpty()) {
-        TRACE.info(
-            "event=MIGRATION_APPLIED day={} moves={} rowsBefore={} rowsAfter={} transfersToday={}",
-            day,
-            migrationPlan.moves().size(),
-            rowsBeforeMigration,
-            householdEconomies.size(),
-            ledger.toLedger().transfers().size());
+        EventLog.channel(TRACE)
+            .info(
+                LogEvent.of(
+                    "MIGRATION_APPLIED",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "day",
+                    day,
+                    "moves",
+                    migrationPlan.moves().size(),
+                    "rowsBefore",
+                    rowsBeforeMigration,
+                    "rowsAfter",
+                    householdEconomies.size(),
+                    "transfersToday",
+                    ledger.toLedger().transfers().size()));
       }
       if (TRACE.isDebugEnabled()) {
-        TRACE.debug(
-            "[day={}] 20 MIGRATION_APPLIED rowsAfter={} transfersToday={}",
-            day,
-            householdEconomies.size(),
-            ledger.toLedger().transfers().size());
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "MIGRATION_APPLIED_DETAIL",
+                    EconomyLogSource.ECONOMY_MIGRATION,
+                    "day",
+                    day,
+                    "rowsAfter",
+                    householdEconomies.size(),
+                    "transfersToday",
+                    ledger.toLedger().transfers().size()));
       }
       profitCycle.resetForNextCycle();
     }
@@ -2239,20 +2667,35 @@ public final class EconomySettlement {
       dayEndPopulation += householdEconomy.population();
     }
     MarketReport dayMarketReport = ledger.marketReport();
-    TRACE.info(
-        "event=DAY_END day={} population={} deaths={} unmet={} borrowedGrainMilli={} repaidGrainMilli={} repaidMoneyMilli={} debtContracts={} transfers={} marketFills={} marketCreditFills={} marketUnfilled={}",
-        day,
-        dayEndPopulation,
-        traceTotalLongs(deathsToday),
-        traceTotalGoods(unmetToday),
-        traceTotalLongs(borrowing),
-        traceTotalLongs(repaidToday),
-        traceTotalMoney(repaidMoneyToday),
-        debts.size(),
-        ledger.toLedger().transfers().size(),
-        dayMarketReport == null ? 0 : dayMarketReport.fills().size(),
-        dayMarketReport == null ? 0 : dayMarketReport.creditFills().size(),
-        dayMarketReport == null ? 0 : dayMarketReport.unfilled().size());
+    EventLog.channel(TRACE)
+        .info(
+            LogEvent.of(
+                "DAY_END",
+                EconomyLogSource.ECONOMY_SETTLEMENT,
+                "day",
+                day,
+                "population",
+                dayEndPopulation,
+                "deaths",
+                traceTotalLongs(deathsToday),
+                "unmet",
+                traceTotalGoods(unmetToday),
+                "borrowedGrainMilli",
+                traceTotalLongs(borrowing),
+                "repaidGrainMilli",
+                traceTotalLongs(repaidToday),
+                "repaidMoneyMilli",
+                traceTotalMoney(repaidMoneyToday),
+                "debtContracts",
+                debts.size(),
+                "transfers",
+                ledger.toLedger().transfers().size(),
+                "marketFills",
+                dayMarketReport == null ? 0 : dayMarketReport.fills().size(),
+                "marketCreditFills",
+                dayMarketReport == null ? 0 : dayMarketReport.creditFills().size(),
+                "marketUnfilled",
+                dayMarketReport == null ? 0 : dayMarketReport.unfilled().size()));
     if (TRACE.isDebugEnabled()) {
       Map<TransferReason, Long> transferCounts = new TreeMap<>();
       Map<TransferReason, Long> transferGoods = new TreeMap<>();
@@ -2270,16 +2713,27 @@ public final class EconomySettlement {
         transferGoods.merge(transfer.reason(), goods, Long::sum);
         transferMoney.merge(transfer.reason(), money, Long::sum);
       }
-      TRACE.debug(
-          "[day={}] 21 END rows={} units={} debts={} transfers={} byReasonCount={} byReasonGoods={} byReasonMoney={}",
-          day,
-          householdEconomies.size(),
-          units.size(),
-          debts.size(),
-          ledger.toLedger().transfers().size(),
-          transferCounts,
-          transferGoods,
-          transferMoney);
+      EventLog.channel(TRACE)
+          .debug(
+              LogEvent.of(
+                  "SETTLEMENT_END_DETAIL",
+                  EconomyLogSource.ECONOMY_SETTLEMENT,
+                  "day",
+                  day,
+                  "rows",
+                  householdEconomies.size(),
+                  "units",
+                  units.size(),
+                  "debts",
+                  debts.size(),
+                  "transfers",
+                  ledger.toLedger().transfers().size(),
+                  "byReasonCount",
+                  transferCounts,
+                  "byReasonGoods",
+                  transferGoods,
+                  "byReasonMoney",
+                  transferMoney));
     }
   }
 
@@ -3238,19 +3692,38 @@ public final class EconomySettlement {
     for (Map.Entry<HouseholdId, Map<CommodityId, Long>> entry : needsByHousehold.entrySet()) {
       HouseholdId household = entry.getKey();
       if (household == null) {
-        TRACE.error("event=HOUSEHOLD_NATURAL_NEEDS_REJECTED reason=null-household-key");
+        EventLog.channel(TRACE)
+            .error(
+                LogEvent.of(
+                    "HOUSEHOLD_NATURAL_NEEDS_REJECTED",
+                    EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                    "reason",
+                    "null-household-key"));
         throw new IllegalArgumentException("自然需求注入含 null 家户键（app 展开表不得含 null）");
       }
       if (!householdEconomies.containsKey(household)) {
-        TRACE.error(
-            "event=HOUSEHOLD_NATURAL_NEEDS_REJECTED reason=unknown-household-row household={}",
-            household);
+        EventLog.channel(TRACE)
+            .error(
+                LogEvent.of(
+                    "HOUSEHOLD_NATURAL_NEEDS_REJECTED",
+                    EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                    "reason",
+                    "unknown-household-row",
+                    "household",
+                    household));
         throw new IllegalStateException(
             "自然需求注入指向不存在的经济家户行（Social/Economy 投影不一致，拒绝静默丢弃）: " + household);
       }
       if (entry.getValue() == null) {
-        TRACE.error(
-            "event=HOUSEHOLD_NATURAL_NEEDS_REJECTED reason=null-needs household={}", household);
+        EventLog.channel(TRACE)
+            .error(
+                LogEvent.of(
+                    "HOUSEHOLD_NATURAL_NEEDS_REJECTED",
+                    EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                    "reason",
+                    "null-needs",
+                    "household",
+                    household));
         throw new IllegalArgumentException(
             "自然需求注入的家户需求表不得为 null（无需求用空 map）: household=" + household);
       }
@@ -3260,10 +3733,15 @@ public final class EconomySettlement {
       row.setValue(row.getValue().withNaturalNeeds(needs == null ? Map.of() : needs));
     }
     if (TRACE.isDebugEnabled()) {
-      TRACE.debug(
-          "event=HOUSEHOLD_NATURAL_NEEDS_INJECTED households={} rows={}",
-          needsByHousehold.size(),
-          householdEconomies.size());
+      EventLog.channel(TRACE)
+          .debug(
+              LogEvent.of(
+                  "HOUSEHOLD_NATURAL_NEEDS_INJECTED",
+                  EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                  "households",
+                  needsByHousehold.size(),
+                  "rows",
+                  householdEconomies.size()));
     }
   }
 
@@ -3416,43 +3894,70 @@ public final class EconomySettlement {
       HouseholdId household = entry.getKey();
       Long delta = entry.getValue();
       if (household == null) {
-        EconomyLog.population()
-            .error("event=HOUSEHOLD_POPULATION_DELTA_REJECTED reason=null-household-key");
+        EventLog.channel(EconomyLog.population())
+            .error(
+                LogEvent.of(
+                    "HOUSEHOLD_POPULATION_DELTA_REJECTED",
+                    EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                    "reason",
+                    "null-household-key"));
         throw new IllegalArgumentException("逐户人口变化含 null 家户键（Social 结算结果不得含 null）");
       }
       if (delta == null) {
-        EconomyLog.population()
+        EventLog.channel(EconomyLog.population())
             .error(
-                "event=HOUSEHOLD_POPULATION_DELTA_REJECTED reason=null-delta household={}",
-                household);
+                LogEvent.of(
+                    "HOUSEHOLD_POPULATION_DELTA_REJECTED",
+                    EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                    "reason",
+                    "null-delta",
+                    "household",
+                    household));
         throw new IllegalArgumentException("逐户人口变化的值不得为 null: household=" + household);
       }
       if (delta == 0L) {
-        EconomyLog.population()
+        EventLog.channel(EconomyLog.population())
             .error(
-                "event=HOUSEHOLD_POPULATION_DELTA_REJECTED reason=zero-delta household={}",
-                household);
+                LogEvent.of(
+                    "HOUSEHOLD_POPULATION_DELTA_REJECTED",
+                    EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                    "reason",
+                    "zero-delta",
+                    "household",
+                    household));
         throw new IllegalArgumentException("逐户人口变化不应含 0（只给非 0 净变化）: household=" + household);
       }
       HouseholdEconomy row = householdEconomies.get(household);
       if (row == null) {
-        EconomyLog.population()
+        EventLog.channel(EconomyLog.population())
             .error(
-                "event=HOUSEHOLD_POPULATION_DELTA_REJECTED reason=unknown-household-row household={}",
-                household);
+                LogEvent.of(
+                    "HOUSEHOLD_POPULATION_DELTA_REJECTED",
+                    EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                    "reason",
+                    "unknown-household-row",
+                    "household",
+                    household));
         throw new IllegalStateException(
             "逐户人口变化指向不存在的经济家户行（Social/Economy 投影不一致，拒绝静默丢弃）: " + household);
       }
       long nextPopulation = Math.addExact(row.population(), delta);
       if (nextPopulation < 0L) {
-        EconomyLog.population()
+        EventLog.channel(EconomyLog.population())
             .error(
-                "event=HOUSEHOLD_POPULATION_DELTA_REJECTED reason=negative-result household={}"
-                    + " population={} delta={} next={}",
-                household,
-                row.population(),
-                delta,
-                nextPopulation);
+                LogEvent.of(
+                    "HOUSEHOLD_POPULATION_DELTA_REJECTED",
+                    EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                    "reason",
+                    "negative-result",
+                    "household",
+                    household,
+                    "population",
+                    row.population(),
+                    "delta",
+                    delta,
+                    "next",
+                    nextPopulation));
         throw new IllegalStateException(
             "逐户人口变化后结果为负（拒绝落账）: household="
                 + household
@@ -3472,11 +3977,17 @@ public final class EconomySettlement {
           household, withPopulationAndLabor(row, nextPopulation, row.laborMilli()));
     }
     if (EconomyLog.population().isDebugEnabled()) {
-      EconomyLog.population()
+      EventLog.channel(EconomyLog.population())
           .debug(
-              "event=HOUSEHOLD_POPULATION_DELTAS_APPLIED households={} deltaNet={} unit=person",
-              deltas.size(),
-              deltaSum);
+              LogEvent.of(
+                  "HOUSEHOLD_POPULATION_DELTAS_APPLIED",
+                  EconomyLogSource.ECONOMY_POPULATION_WRITE,
+                  "households",
+                  deltas.size(),
+                  "deltaNet",
+                  deltaSum,
+                  "unit",
+                  "person"));
     }
   }
 
@@ -4900,13 +5411,21 @@ public final class EconomySettlement {
             debtorsWithGrainStock++;
           }
         }
-        TRACE.debug(
-            "[day={}] 11a DEFICIT_POOL lendableLenders={} lendableTotalGrainMilli={} debtors={} debtorsWithGrainStock={}",
-            day,
-            lendableByLender.size(),
-            lendableTotal,
-            deficit.size(),
-            debtorsWithGrainStock);
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "DEFICIT_POOL",
+                    EconomyLogSource.ECONOMY_DEBT,
+                    "day",
+                    day,
+                    "lendableLenders",
+                    lendableByLender.size(),
+                    "lendableTotalGrainMilli",
+                    lendableTotal,
+                    "debtors",
+                    deficit.size(),
+                    "debtorsWithGrainStock",
+                    debtorsWithGrainStock));
       }
       // ③ 逐缺口行（阶层 id 序 → 居住类型）借：借到多少累加多少债；没人有**余粮** ⇒ 剩下的只留作未满足的自然需求。
       List<HouseholdId> debtors = new ArrayList<>(deficit.keySet());
@@ -5774,24 +6293,43 @@ public final class EconomySettlement {
           }
         }
         if (RAW.isTraceEnabled()) {
-          RAW.trace(
-              "event=DEBT_REPAY_DECISION debtor={} creditor={} unit={} outstandingBefore={} paid={} remaining={} goodsLegs={} moneyLegs={}",
-              debtor.value(),
-              debt.creditor().value(),
-              debt.unit().key(),
-              debt.principal(),
-              paid,
-              debt.principal() - paid,
-              plan.goodsLegs(),
-              plan.moneyLegs());
+          EventLog.channel(RAW)
+              .trace(
+                  LogEvent.of(
+                      "DEBT_REPAY_DECISION",
+                      EconomyLogSource.ECONOMY_DEBT_STATE,
+                      "debtor",
+                      debtor.value(),
+                      "creditor",
+                      debt.creditor().value(),
+                      "unit",
+                      debt.unit().key(),
+                      "outstandingBefore",
+                      debt.principal(),
+                      "paid",
+                      paid,
+                      "remaining",
+                      debt.principal() - paid,
+                      "goodsLegs",
+                      plan.goodsLegs(),
+                      "moneyLegs",
+                      plan.moneyLegs()));
           if (!plan.unpricedAssets().isEmpty()) {
-            RAW.trace(
-                "event=DEBT_REPAY_UNPRICED debtor={} creditor={} unit={} remaining={} assets={}",
-                debtor.value(),
-                debt.creditor().value(),
-                debt.unit().key(),
-                debt.principal() - paid,
-                plan.unpricedAssets());
+            EventLog.channel(RAW)
+                .trace(
+                    LogEvent.of(
+                        "DEBT_REPAY_UNPRICED",
+                        EconomyLogSource.ECONOMY_DEBT_STATE,
+                        "debtor",
+                        debtor.value(),
+                        "creditor",
+                        debt.creditor().value(),
+                        "unit",
+                        debt.unit().key(),
+                        "remaining",
+                        debt.principal() - paid,
+                        "assets",
+                        plan.unpricedAssets()));
           }
         }
         // ★ 没有稳定价格 ⇒ 不折算、不静默付 0：持有但缺价的资产落具名 skip（有腿时也报剩余本金）。
@@ -6370,13 +6908,23 @@ public final class EconomySettlement {
       HexCoord location,
       ProductionLedger.Accumulator ledger) {
     if (subject.isEmpty()) {
-      TRACE.warn(
-          "event=ACCOUNT_SUBJECT_UNRESOLVED kind=output operator={} commodity={} amount={} hex={},{} reason=no-household-organizer-or-labor",
-          operator,
-          commodity.value(),
-          net,
-          location.q(),
-          location.r());
+      EventLog.channel(TRACE)
+          .warn(
+              LogEvent.of(
+                  "ACCOUNT_SUBJECT_UNRESOLVED",
+                  EconomyLogSource.ECONOMY_OUTPUT_CREDIT,
+                  "kind",
+                  "output",
+                  "operator",
+                  operator,
+                  "commodity",
+                  commodity.value(),
+                  "amount",
+                  net,
+                  "hex",
+                  location.q() + "," + location.r(),
+                  "reason",
+                  "no-household-organizer-or-labor"));
       return;
     }
     for (Map.Entry<HouseholdId, Long> share :
@@ -7936,4 +8484,30 @@ public final class EconomySettlement {
 
   // ★★ R3B.2：旧的 withCycleState(Industry…) 已删除 —— 周期状态（progress/cycleLabor/cycleInputUsed）
   //   现在属于 ProductionProcess（见 ProductionProcess#withCycleState），Industry 只留模板、不再每天重建。
+
+  /**
+   * ★ <b>日志安全的拒绝理由</b>（照 L2 的 {@code logReason} 形态）：结算内部消息可能回显字段值/载荷片段；日志只保留可读前缀 ——截到第一个 JSON
+   * 起始符/换行，避免把载荷原文带进日志。截断只影响日志文本，不影响异常与控制流。
+   */
+  private static String logReason(String message) {
+    if (message == null || message.isBlank()) {
+      return "unknown";
+    }
+    String text = message.strip();
+    int cut = text.length();
+    for (char marker : new char[] {'{', '[', '\n', '\r'}) {
+      int at = text.indexOf(marker);
+      if (at >= 0 && at < cut) {
+        cut = at;
+      }
+    }
+    if (text.startsWith("payload ")) {
+      int colon = text.indexOf(':');
+      if (colon >= 0 && colon < cut) {
+        cut = colon;
+      }
+    }
+    String reason = text.substring(0, cut).strip();
+    return reason.isEmpty() ? "unknown" : reason;
+  }
 }

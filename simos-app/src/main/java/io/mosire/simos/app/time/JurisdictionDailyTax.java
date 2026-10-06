@@ -3,8 +3,9 @@ package io.mosire.simos.app.time;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.household.GovernmentHouseholdResolver;
-import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
@@ -22,6 +23,8 @@ import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.economy.EconomyVocabulary;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.time.SimosTimestamp;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -82,11 +85,11 @@ import org.slf4j.Logger;
  */
 final class JurisdictionDailyTax {
 
-  /** 日结算日志（settlement 分类）。 */
-  private static final Logger LOG = EconomyLog.settlement();
+  /** 日结算日志（app 日循环分类）。 */
+  private static final Logger LOG = AppLog.time();
 
   /** 逐笔日志（trace 分类；默认关闭）。 */
-  private static final Logger TRACE = EconomyLog.trace();
+  private static final Logger TRACE = AppLog.trace();
 
   /** 粮的商品 id（{@link EconomyVocabulary} 的唯一拼写点）。 */
   private static final CommodityId GRAIN = CommodityId.parse(EconomyVocabulary.GRAIN_COMMODITY_ID);
@@ -165,7 +168,17 @@ final class JurisdictionDailyTax {
       }
       Jurisdiction jurisdiction = unit.jurisdiction().orElse(null);
       if (jurisdiction == null) {
-        LOG.debug("event=TAX_UNIT_SKIPPED unit={} reason=no-jurisdiction", unit.id().value());
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "TAX_UNIT_SKIPPED",
+                    AppLogSource.DAILY_LOOP,
+                    "day",
+                    tick,
+                    "unit",
+                    unit.id().value(),
+                    "reason",
+                    "no-jurisdiction"));
         continue;
       }
       List<Map.Entry<RegionId, Long>> ratedRegions = new ArrayList<>();
@@ -175,7 +188,17 @@ final class JurisdictionDailyTax {
         }
       }
       if (ratedRegions.isEmpty()) {
-        LOG.debug("event=TAX_UNIT_SKIPPED unit={} reason=no-rated-region", unit.id().value());
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "TAX_UNIT_SKIPPED",
+                    AppLogSource.DAILY_LOOP,
+                    "day",
+                    tick,
+                    "unit",
+                    unit.id().value(),
+                    "reason",
+                    "no-rated-region"));
         continue;
       }
       ratedRegions.sort(
@@ -193,11 +216,19 @@ final class JurisdictionDailyTax {
                   entry.getKey().value(),
                   entry.getValue(),
                   "管辖 region 不在 map.regions() 里"));
-          LOG.debug(
-              "event=TAX_REGION_MISSING unit={} region={} ratePerMille={}",
-              unit.id().value(),
-              entry.getKey().value(),
-              entry.getValue());
+          EventLog.channel(LOG)
+              .debug(
+                  LogEvent.of(
+                      "TAX_REGION_MISSING",
+                      AppLogSource.DAILY_LOOP,
+                      "day",
+                      tick,
+                      "unit",
+                      unit.id().value(),
+                      "region",
+                      entry.getKey().value(),
+                      "ratePerMille",
+                      entry.getValue()));
         }
       }
       if (existingRegions.isEmpty()) {
@@ -215,10 +246,17 @@ final class JurisdictionDailyTax {
                 "",
                 0L,
                 notResolvable.getMessage()));
-        LOG.warn(
-            "event=TAX_NO_GOVERNMENT_HOUSEHOLD unit={} reason={}",
-            unit.id().value(),
-            notResolvable.getMessage());
+        EventLog.channel(LOG)
+            .warn(
+                LogEvent.of(
+                    "TAX_NO_GOVERNMENT_HOUSEHOLD",
+                    AppLogSource.DAILY_LOOP,
+                    "day",
+                    tick,
+                    "unit",
+                    unit.id().value(),
+                    "reason",
+                    logReason(notResolvable.getMessage())));
         continue;
       }
       if (accounts.householdAccount(treasury) == null) {
@@ -229,10 +267,17 @@ final class JurisdictionDailyTax {
                 "",
                 0L,
                 "政府家户 " + treasury.value() + " 不在账户会话里（拒绝把税落进看不见的账）"));
-        LOG.warn(
-            "event=TAX_TREASURY_ACCOUNT_MISSING unit={} treasury={}",
-            unit.id().value(),
-            treasury.value());
+        EventLog.channel(LOG)
+            .warn(
+                LogEvent.of(
+                    "TAX_TREASURY_ACCOUNT_MISSING",
+                    AppLogSource.DAILY_LOOP,
+                    "day",
+                    tick,
+                    "unit",
+                    unit.id().value(),
+                    "treasury",
+                    treasury.value()));
         continue;
       }
       Optional<HexCoord> seat = units.effectivePosition(unit.id(), SimosTimestamp.of(tick));
@@ -240,7 +285,17 @@ final class JurisdictionDailyTax {
         gaps.add(
             new Gap(
                 GapKind.NO_POSITION, unit.id().value(), "", 0L, "单位当刻没有有效位置（无座位的 GOV 不征，沿用旧合约）"));
-        LOG.debug("event=TAX_UNIT_SKIPPED unit={} reason=no-position", unit.id().value());
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "TAX_UNIT_SKIPPED",
+                    AppLogSource.DAILY_LOOP,
+                    "day",
+                    tick,
+                    "unit",
+                    unit.id().value(),
+                    "reason",
+                    "no-position"));
         continue;
       }
 
@@ -264,11 +319,19 @@ final class JurisdictionDailyTax {
                       regionEntry.getKey().value(),
                       rate,
                       "家户 " + household.value() + " 在 region 内但没有账户（拒绝静默免征）"));
-              LOG.warn(
-                  "event=TAX_HOUSEHOLD_ACCOUNT_MISSING unit={} region={} household={}",
-                  unit.id().value(),
-                  regionEntry.getKey().value(),
-                  household.value());
+              EventLog.channel(LOG)
+                  .warn(
+                      LogEvent.of(
+                          "TAX_HOUSEHOLD_ACCOUNT_MISSING",
+                          AppLogSource.DAILY_LOOP,
+                          "day",
+                          tick,
+                          "unit",
+                          unit.id().value(),
+                          "region",
+                          regionEntry.getKey().value(),
+                          "household",
+                          household.value()));
               continue;
             }
 
@@ -314,24 +377,37 @@ final class JurisdictionDailyTax {
                         + " ratePerMille="
                         + rate
                         + " efficiencyPerMille="
-                        + efficiency));
+                        + efficiency),
+                tick);
             if (grain.collected() > 0L) {
               grainByHousehold.merge(household, grain.collected(), Math::addExact);
             }
             chargedThisUnit = true;
             chargedHouseholds.add(household);
             if (TRACE.isTraceEnabled()) {
-              TRACE.trace(
-                  "event=TAX_COLLECTED unit={} region={} household={} treasury={} ratePerMille={}"
-                      + " efficiencyPerMille={} grain={} silver={}",
-                  unit.id().value(),
-                  regionEntry.getKey().value(),
-                  household.value(),
-                  treasury.value(),
-                  rate,
-                  efficiency,
-                  grain.collected(),
-                  money.collected());
+              EventLog.channel(TRACE)
+                  .trace(
+                      LogEvent.of(
+                          "TAX_COLLECTED",
+                          AppLogSource.DAILY_LOOP,
+                          "day",
+                          tick,
+                          "unit",
+                          unit.id().value(),
+                          "region",
+                          regionEntry.getKey().value(),
+                          "household",
+                          household.value(),
+                          "treasury",
+                          treasury.value(),
+                          "ratePerMille",
+                          rate,
+                          "efficiencyPerMille",
+                          efficiency,
+                          "grain",
+                          grain.collected(),
+                          "silver",
+                          money.collected()));
             }
           }
         }
@@ -349,22 +425,35 @@ final class JurisdictionDailyTax {
             chargedHouseholds.size(),
             grainByHousehold,
             gaps);
-    LOG.info(
-        "event=TAX_DAILY_END tick={} unitsCharged={} householdsCharged={} grainAssessed={}"
-            + " grainCollected={} grainAdminShortfall={} grainStockShortfall={} moneyAssessed={}"
-            + " moneyCollected={} moneyAdminShortfall={} moneyStockShortfall={} gaps={}",
-        tick,
-        unitsCharged,
-        chargedHouseholds.size(),
-        grainAssessed,
-        grainCollected,
-        grainAdminShortfall,
-        grainStockShortfall,
-        moneyAssessed,
-        moneyCollected,
-        moneyAdminShortfall,
-        moneyStockShortfall,
-        gaps.size());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "TAX_DAILY_END",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                tick,
+                "unitsCharged",
+                unitsCharged,
+                "householdsCharged",
+                chargedHouseholds.size(),
+                "grainAssessed",
+                grainAssessed,
+                "grainCollected",
+                grainCollected,
+                "grainAdminShortfall",
+                grainAdminShortfall,
+                "grainStockShortfall",
+                grainStockShortfall,
+                "moneyAssessed",
+                moneyAssessed,
+                "moneyCollected",
+                moneyCollected,
+                "moneyAdminShortfall",
+                moneyAdminShortfall,
+                "moneyStockShortfall",
+                moneyStockShortfall,
+                "gaps",
+                gaps.size()));
     return report;
   }
 
@@ -553,5 +642,31 @@ final class JurisdictionDailyTax {
     long stockShortfall() {
       return attainable - collected;
     }
+  }
+
+  /**
+   * ★ <b>日志安全的拒绝理由</b>（照 L2 的 {@code logReason} 形态）：只保留可读前缀——截到第一个 JSON 起始符/换行；{@code payload ...}
+   * 这一类原始文本消息再截到冒号，避免把载荷原文带进日志。截断只影响日志文本，不影响异常本身。
+   */
+  private static String logReason(String message) {
+    if (message == null || message.isBlank()) {
+      return "unknown";
+    }
+    String text = message.strip();
+    int cut = text.length();
+    for (char marker : new char[] {'{', '[', '\n', '\r'}) {
+      int at = text.indexOf(marker);
+      if (at >= 0 && at < cut) {
+        cut = at;
+      }
+    }
+    if (text.startsWith("payload ")) {
+      int colon = text.indexOf(':');
+      if (colon >= 0 && colon < cut) {
+        cut = colon;
+      }
+    }
+    String reason = text.substring(0, cut).strip();
+    return reason.isEmpty() ? "unknown" : reason;
   }
 }

@@ -3,8 +3,9 @@ package io.mosire.simos.app.time;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.economy.EconomyData;
-import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
@@ -12,6 +13,8 @@ import io.mosire.simos.economy.api.stock.HouseholdStockDeduction;
 import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -50,12 +53,12 @@ import org.slf4j.Logger;
  * </ul>
  *
  * <p>★ 本类只读 {@code EconomyData.periodicAdjustments} 与 {@code AccountSession}；规则不落账户，也不在日结算里
- * 改写任何经济持久状态。日志走 {@link EconomyLog#settlement()} / {@link EconomyLog#trace()}，不新开门面。
+ * 改写任何经济持久状态。日志走 {@link AppLog#time()} / {@link AppLog#trace()}，不新开门面。
  */
 public final class PeriodicHouseholdAdjustmentExecutor {
 
-  private static final Logger LOG = EconomyLog.settlement();
-  private static final Logger TRACE = EconomyLog.trace();
+  private static final Logger LOG = AppLog.time();
+  private static final Logger TRACE = AppLog.trace();
 
   private PeriodicHouseholdAdjustmentExecutor() {}
 
@@ -158,17 +161,27 @@ public final class PeriodicHouseholdAdjustmentExecutor {
       }
     }
     int skipped = due.size() - executed;
-    LOG.info(
-        "event=PERIODIC_ADJUSTMENT_DAY day={} due={} executed={} skipped={} paidGoods={} paidMoney={}"
-            + " shortfallGoods={} shortfallMoney={}",
-        day,
-        due.size(),
-        executed,
-        skipped,
-        paidGoods,
-        paidMoney,
-        shortfallGoods,
-        shortfallMoney);
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "PERIODIC_ADJUSTMENT_DAY",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                day,
+                "due",
+                due.size(),
+                "executed",
+                executed,
+                "skipped",
+                skipped,
+                "paidGoods",
+                paidGoods,
+                "paidMoney",
+                paidMoney,
+                "shortfallGoods",
+                shortfallGoods,
+                "shortfallMoney",
+                shortfallMoney));
     return new Report(
         day,
         due.size(),
@@ -263,7 +276,8 @@ public final class PeriodicHouseholdAdjustmentExecutor {
                 payer, payee.get(), paidGoods, paidMoney, rule.reason(), detail)
             : HouseholdStockDeduction.sink(payer, paidGoods, paidMoney, rule.reason(), detail);
     try {
-      StockDeductionService.deduct(accounts, deduction); // 默认阶段 = SettlementStage.TAX_AND_UPKEEP
+      StockDeductionService.deduct(
+          accounts, deduction, day); // 默认阶段 = SettlementStage.TAX_AND_UPKEEP
     } catch (IllegalArgumentException defensiveReject) {
       // ★ 前置检查已保证账户存在且各腿 ≤ 可用量；服务仍拒（理论上不可达的状态损坏/新守卫）⇒ 记 gap、继续。
       return skip(
@@ -274,18 +288,31 @@ public final class PeriodicHouseholdAdjustmentExecutor {
           day);
     }
 
-    LOG.info(
-        "event=PERIODIC_ADJUSTMENT_RULE day={} rule={} status=EXECUTED payer={} payee={} reason={}"
-            + " paidGoods={} paidMoney={} shortfallGoods={} shortfallMoney={}",
-        day,
-        rule.id().value(),
-        payer.value(),
-        payee.map(HouseholdId::value).orElse("<sink>"),
-        rule.reason().value(),
-        paidGoods,
-        paidMoney,
-        shortfallGoods,
-        shortfallMoney);
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "PERIODIC_ADJUSTMENT_RULE",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                day,
+                "rule",
+                rule.id().value(),
+                "status",
+                "EXECUTED",
+                "payer",
+                payer.value(),
+                "payee",
+                payee.map(HouseholdId::value).orElse("<sink>"),
+                "reason",
+                rule.reason().value(),
+                "paidGoods",
+                paidGoods,
+                "paidMoney",
+                paidMoney,
+                "shortfallGoods",
+                shortfallGoods,
+                "shortfallMoney",
+                shortfallMoney));
     return new RuleReadout(
         rule.id(),
         RuleReadout.Status.EXECUTED,
@@ -303,19 +330,33 @@ public final class PeriodicHouseholdAdjustmentExecutor {
       Map<CommodityId, Long> shortfallGoods,
       Map<CurrencyId, Long> shortfallMoney,
       long day) {
-    LOG.info(
-        "event=PERIODIC_ADJUSTMENT_RULE day={} rule={} status=SKIPPED gap={} payer={} payee={} reason={}"
-            + " paidGoods={} paidMoney={} shortfallGoods={} shortfallMoney={}",
-        day,
-        rule.id().value(),
-        gap,
-        rule.payer().value(),
-        rule.payee().map(HouseholdId::value).orElse("<sink>"),
-        rule.reason().value(),
-        Map.of(),
-        Map.of(),
-        shortfallGoods,
-        shortfallMoney);
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "PERIODIC_ADJUSTMENT_RULE",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                day,
+                "rule",
+                rule.id().value(),
+                "status",
+                "SKIPPED",
+                "gap",
+                gap,
+                "payer",
+                rule.payer().value(),
+                "payee",
+                rule.payee().map(HouseholdId::value).orElse("<sink>"),
+                "reason",
+                rule.reason().value(),
+                "paidGoods",
+                Map.of(),
+                "paidMoney",
+                Map.of(),
+                "shortfallGoods",
+                shortfallGoods,
+                "shortfallMoney",
+                shortfallMoney));
     return new RuleReadout(
         rule.id(),
         RuleReadout.Status.SKIPPED,
@@ -339,17 +380,27 @@ public final class PeriodicHouseholdAdjustmentExecutor {
     if (!TRACE.isTraceEnabled()) {
       return;
     }
-    TRACE.trace(
-        "event=PERIODIC_ADJUSTMENT_LEG day={} rule={} dimension={} asset={} requested={} available={}"
-            + " paid={} shortfall={}",
-        day,
-        rule.id().value(),
-        dimension,
-        asset,
-        requested,
-        available,
-        paid,
-        shortfall);
+    EventLog.channel(TRACE)
+        .trace(
+            LogEvent.of(
+                "PERIODIC_ADJUSTMENT_LEG",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                day,
+                "rule",
+                rule.id().value(),
+                "dimension",
+                dimension,
+                "asset",
+                asset,
+                "requested",
+                requested,
+                "available",
+                available,
+                "paid",
+                paid,
+                "shortfall",
+                shortfall));
   }
 
   /** 逐键相加（保序：先出现的键在前；值非 null 且 > 0，两个来源都如此）。 */

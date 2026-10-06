@@ -1,6 +1,8 @@
 package io.mosire.simos.calendar;
 
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.Objects;
 import org.slf4j.Logger;
 
@@ -48,6 +50,8 @@ public final class ZonedSeasonSystem implements SeasonSystem {
 
   private static final Logger LOG = CalendarLog.season();
 
+  private static final Logger TRACE = CalendarLog.trace();
+
   /** SOLAR_TERM 北半球四季起界（春/夏/秋/冬）的节气枚举序：立春/立夏/立秋/立冬。 */
   private static final int[] SOLAR_TERM_NORTH_START_TERM_INDICES = {21, 3, 9, 15};
 
@@ -73,25 +77,75 @@ public final class ZonedSeasonSystem implements SeasonSystem {
   public ZonedSeasonSystem(LatitudeBands bands, SeasonSettings settings) {
     this.bands = Objects.requireNonNull(bands, "bands");
     this.settings = Objects.requireNonNull(settings, "settings");
-    LOG.debug(
-        "event=CALENDAR_SEASON_CONFIGURED boundary={} tropicalModel={} bandsConfigured={}",
-        settings.boundary(),
-        settings.tropicalModel(),
-        bands.configured());
+    // ★ 2026-10-23 L3：季节系统配置是装配期生命周期事件（INFO），配置档全量落日志 ⇒ 配置漂移可查。
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "CALENDAR_SEASON_CONFIGURED",
+                CalendarLogSource.CAL_SEASON,
+                "boundary",
+                settings.boundary(),
+                "tropicalModel",
+                settings.tropicalModel(),
+                "rainyStart",
+                settings.rainyStartLongitude(),
+                "rainyEnd",
+                settings.rainyEndLongitude(),
+                "bandsConfigured",
+                bands.configured()));
   }
 
   @Override
   public SeasonState seasonOf(long dayNumber, HexCoord at) {
     Objects.requireNonNull(at, "at");
-    return switch (bands.zoneOf(at)) {
-      case NORTH_TEMPERATE -> fourSeasons(dayNumber, false);
-      case SOUTH_TEMPERATE -> fourSeasons(dayNumber, true);
-      case TROPICS ->
-          settings.tropicalModel() == TropicalModel.RAINY_DRY
-              ? rainyDry(dayNumber, at.r())
-              // 类温带模型按 D-018 补裁决的口径：热带也给北半球四季。
-              : fourSeasons(dayNumber, false);
-    };
+    SeasonState state =
+        switch (bands.zoneOf(at)) {
+          case NORTH_TEMPERATE -> fourSeasons(dayNumber, false);
+          case SOUTH_TEMPERATE -> fourSeasons(dayNumber, true);
+          case TROPICS ->
+              settings.tropicalModel() == TropicalModel.RAINY_DRY
+                  ? rainyDry(dayNumber, at.r())
+                  // 类温带模型按 D-018 补裁决的口径：热带也给北半球四季。
+                  : fourSeasons(dayNumber, false);
+        };
+    logQuery(dayNumber, at, state);
+    return state;
+  }
+
+  /** 季节查询的可观测性：逐次走 TRACE（默认关）；季界当天（{@code dayOfSeason == 1}）另发一条 DEBUG 边界事件。 */
+  private static void logQuery(long dayNumber, HexCoord at, SeasonState state) {
+    if (TRACE.isTraceEnabled()) {
+      EventLog.channel(TRACE)
+          .trace(
+              LogEvent.of(
+                  "CALENDAR_SEASON_QUERIED",
+                  CalendarLogSource.CAL_TRACE,
+                  "dayNumber",
+                  dayNumber,
+                  "hex",
+                  at,
+                  "phase",
+                  state.phase(),
+                  "dayOfSeason",
+                  state.dayOfSeason(),
+                  "daysInSeason",
+                  state.daysInSeason()));
+    }
+    if (LOG.isDebugEnabled() && state.dayOfSeason() == 1) {
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "CALENDAR_SEASON_BOUNDARY",
+                  CalendarLogSource.CAL_SEASON,
+                  "dayNumber",
+                  dayNumber,
+                  "hex",
+                  at,
+                  "phase",
+                  state.phase(),
+                  "daysInSeason",
+                  state.daysInSeason()));
+    }
   }
 
   /**

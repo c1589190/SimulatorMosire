@@ -8,6 +8,8 @@ import io.mosire.simos.social.SocialData;
 import io.mosire.simos.social.city.SocialCity;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.Unit;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -92,11 +94,17 @@ public final class GovDemand {
         }
       }
     }
-    LOG.debug(
-        "event=GOV_DEMAND_COMPUTED unit={} hexes={} jurisdiction={}",
-        unit.id().value(),
-        demand.size(),
-        jurisdiction.isPresent());
+    EventLog.channel(LOG)
+        .debug(
+            LogEvent.of(
+                "GOV_DEMAND_COMPUTED",
+                GovLogSource.GOV_DEMAND,
+                "unit",
+                unit.id().value(),
+                "hexes",
+                demand.size(),
+                "jurisdiction",
+                jurisdiction.isPresent()));
     return Collections.unmodifiableMap(demand); // ★ 冻在返回处（保序）
   }
 

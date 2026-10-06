@@ -3,6 +3,7 @@ package io.mosire.simos.economy.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.debt.DebtUnit;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -13,6 +14,8 @@ import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.time.DebtContractBook;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.economy.EconomyVocabulary;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -126,18 +129,29 @@ public final class UnitRepayHandler implements CommandHandler, CommandTargets, G
     LinkedHashMap<DebtContractId, DebtContract> debts = new LinkedHashMap<>(base.debtContracts());
     DebtContract reduced = DebtContractBook.reduce(debts, contract.id(), request.amount());
     EconomyData projected = base.withDebtContracts(debts);
-    LOG.info(
-        "event=UNIT_REPAY unit={} borrowerHousehold={} lenderHousehold={} unitKey={} amount={}"
-            + " contract={} remainingPrincipal={} status={} reason={}",
-        request.unitId(),
-        request.borrowerHousehold().value(),
-        request.lenderHousehold().value(),
-        debtUnit.key(),
-        request.amount(),
-        reduced.id().value(),
-        reduced.principal(),
-        reduced.status(),
-        request.reason());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "UNIT_REPAY",
+                EconomyLogSource.ECONOMY_COMMAND,
+                "unit",
+                request.unitId(),
+                "borrowerHousehold",
+                request.borrowerHousehold().value(),
+                "lenderHousehold",
+                request.lenderHousehold().value(),
+                "unitKey",
+                debtUnit.key(),
+                "amount",
+                request.amount(),
+                "contract",
+                reduced.id().value(),
+                "remainingPrincipal",
+                reduced.principal(),
+                "status",
+                reduced.status(),
+                "reasonLength",
+                request.reason() == null ? 0 : request.reason().length()));
     return EconomyChangeSet.between(base, projected);
   }
 

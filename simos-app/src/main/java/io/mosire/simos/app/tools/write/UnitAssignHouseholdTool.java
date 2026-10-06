@@ -3,6 +3,8 @@ package io.mosire.simos.app.tools.write;
 import io.mosire.agentlib.permission.ResourceId;
 import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.query.QueryService;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
@@ -14,10 +16,11 @@ import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.household.HouseholdBook;
 import io.mosire.simos.social.spi.SetHouseholdLocationHandler;
 import io.mosire.simos.unit.Unit;
-import io.mosire.simos.unit.UnitLog;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.unit.ops.UnitOperations;
 import io.mosire.simos.unit.spi.SetUnitHouseholdsHandler;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,7 +42,7 @@ import java.util.UUID;
  * 目标单位已含该家户且位置一致 ⇒ 幂等 no-op。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）；资源声明 social + unit。提交成功后记 INFO {@code
- * event=UNIT_HOUSEHOLD_ASSIGN}（{@link UnitLog}）。
+ * event=UNIT_HOUSEHOLD_ASSIGN}（{@link AppLog} 的 tool 分类）。
  */
 public final class UnitAssignHouseholdTool extends AbstractHouseholdGmTool {
 
@@ -198,20 +201,21 @@ public final class UnitAssignHouseholdTool extends AbstractHouseholdGmTool {
         batch,
         view,
         () ->
-            UnitLog.household()
+            EventLog.channel(AppLog.tool())
                 .info(
-                    "event=UNIT_HOUSEHOLD_ASSIGN "
-                        + UnitLog.kv(
-                            "unit",
-                            rawUnitId,
-                            "household",
-                            id,
-                            "location",
-                            "UNIT:" + rawUnitId,
-                            "detachedFrom",
-                            detachedForLog == null ? "-" : detachedForLog.id(),
-                            "reason",
-                            request.reason())));
+                    LogEvent.of(
+                        "UNIT_HOUSEHOLD_ASSIGN",
+                        AppLogSource.TOOL_CALL,
+                        "unit",
+                        rawUnitId,
+                        "household",
+                        id,
+                        "location",
+                        "UNIT:" + rawUnitId,
+                        "detachedFrom",
+                        detachedForLog == null ? "-" : detachedForLog.id(),
+                        "reasonLength",
+                        request.reason() == null ? 0 : request.reason().length())));
   }
 
   /** preview/apply 共用的公共视图（无 unitChanges；调用方补目标/旧 unit 与人口）。 */

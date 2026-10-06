@@ -3,11 +3,14 @@ package io.mosire.simos.army.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.army.ArmyData;
 import io.mosire.simos.army.ArmyLog;
+import io.mosire.simos.army.ArmyLogSource;
 import io.mosire.simos.army.ArmySnapshot;
 import io.mosire.simos.army.CombatRecord;
 import io.mosire.simos.army.CombatRecordId;
 import io.mosire.simos.army.CombatStage;
 import io.mosire.simos.army.change.ArmyChangeSet;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -58,19 +61,47 @@ public final class AppendCombatStageHandler implements CommandHandler, GmOnlyCom
       CombatRecordId combatId = CombatRecordId.parse(ArmyPayloads.requireText(payload, "combatId"));
       CombatRecord record = snapshot.data().combats().get(combatId);
       if (record == null) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ARMY_COMBAT_STAGE_REJECTED",
+                    ArmyLogSource.ARMY_COMBAT,
+                    "type",
+                    TYPE,
+                    "reason",
+                    "combat-not-found",
+                    "combat",
+                    combatId.value()));
         return new HandlerOutcome.Rejected("交战记录不存在: " + combatId.value());
       }
       CombatStage stage = ArmyPayloads.requireStage(payload, "stage", record.participants());
       CombatRecord next = record.withAppendedStage(stage);
       ArmyData nextData = snapshot.data().withCombat(next);
-      LOG.info(
-          "event=ARMY_COMBAT_STAGE_APPENDED combat={} stage={} outcomes={} stages={}",
-          combatId.value(),
-          stage.id().value(),
-          stage.outcomes().size(),
-          next.stages().size());
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ARMY_COMBAT_STAGE_APPENDED",
+                  ArmyLogSource.ARMY_COMBAT,
+                  "combat",
+                  combatId.value(),
+                  "stage",
+                  stage.id().value(),
+                  "outcomes",
+                  stage.outcomes().size(),
+                  "stages",
+                  next.stages().size()));
+      ArmyCombatTrace.stage(combatId, stage);
       return new HandlerOutcome.Applied(ArmyChangeSet.between(snapshot.data(), nextData));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ARMY_COMBAT_STAGE_REJECTED",
+                  ArmyLogSource.ARMY_COMBAT,
+                  "type",
+                  TYPE,
+                  "reason",
+                  ArmyPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

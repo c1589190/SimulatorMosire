@@ -3,6 +3,7 @@ package io.mosire.simos.economy.time;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.HouseholdActors;
 import io.mosire.simos.economy.api.debt.DebtStatus;
 import io.mosire.simos.economy.api.debt.DebtUnit;
@@ -31,6 +32,8 @@ import io.mosire.simos.economy.model.ProductionRole.RelationToMeans;
 import io.mosire.simos.economy.model.ProductionRole.SurplusRole;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -182,20 +185,39 @@ public final class EconomyLiquidationSettlement {
             ledger);
     Plan plan = plan(context);
     if (LOG.isDebugEnabled()) {
-      LOG.debug(
-          "event=LIQUIDATION_PLAN day={} stressUpdates={} debtReductions={} pledgeUpdates={} audits={} declines={} explosions={} autoDefaults={}",
-          day,
-          plan.stressUpdates().size(),
-          plan.debtReductions().size(),
-          plan.pledgeUpdates().size(),
-          plan.audits().size(),
-          plan.declines().size(),
-          plan.explosions().size(),
-          plan.autoDefaults().size());
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "LIQUIDATION_PLAN",
+                  EconomyLogSource.ECONOMY_SETTLEMENT,
+                  "day",
+                  day,
+                  "stressUpdates",
+                  plan.stressUpdates().size(),
+                  "debtReductions",
+                  plan.debtReductions().size(),
+                  "pledgeUpdates",
+                  plan.pledgeUpdates().size(),
+                  "audits",
+                  plan.audits().size(),
+                  "declines",
+                  plan.declines().size(),
+                  "explosions",
+                  plan.explosions().size(),
+                  "autoDefaults",
+                  plan.autoDefaults().size()));
     }
     apply(context, plan);
     if (LOG.isDebugEnabled()) {
-      LOG.debug("event=LIQUIDATION_APPLIED day={} audits={}", day, plan.audits().size());
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "LIQUIDATION_APPLIED",
+                  EconomyLogSource.ECONOMY_SETTLEMENT,
+                  "day",
+                  day,
+                  "audits",
+                  plan.audits().size()));
     }
   }
 

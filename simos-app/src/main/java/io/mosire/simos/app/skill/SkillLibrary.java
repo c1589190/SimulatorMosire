@@ -2,7 +2,11 @@ package io.mosire.simos.app.skill;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -18,8 +22,7 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.Logger;
 
 /**
  * ★★ **Skill 库**：决策人 Agent 的**外部知识**（用户 2026-09-23 原话：「Skill 系统就是决策人应该怎么做决策的系统…… 要有 Skill 指导决策人
@@ -70,7 +73,7 @@ public final class SkillLibrary {
   /** 正文里第一个一级标题（取不到就退回 id）。 */
   private static final Pattern TITLE_LINE = Pattern.compile("^#\\s+(\\S.*?)\\s*$");
 
-  private static final Logger LOG = LogManager.getLogger(SkillLibrary.class);
+  private static final Logger LOG = AppLog.shell();
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
   private static final TypeReference<Map<String, Object>> HEADER_TYPE = new TypeReference<>() {};
 
@@ -160,7 +163,15 @@ public final class SkillLibrary {
       }
     } catch (IOException e) {
       // ★ 目录读不动只是"这次没读到"，不是致命：照旧返回已有的（可能为空）——不把服务拖倒。
-      LOG.warn("读技能目录失败（本次忽略该目录）: {} —— {}", dir, e.toString());
+      EventLog.channel(LOG)
+          .warn(
+              LogEvent.of(
+                  "SKILL_DIR_READ_FAILED",
+                  AppLogSource.SHELL_LIFECYCLE,
+                  "dir",
+                  dir,
+                  "error",
+                  e.getClass().getSimpleName()));
     }
     return out;
   }
@@ -175,7 +186,15 @@ public final class SkillLibrary {
     try {
       mtime = Files.getLastModifiedTime(path).toMillis();
     } catch (IOException e) {
-      LOG.warn("取技能文件 mtime 失败（沿用上一版）: {} —— {}", path, e.toString());
+      EventLog.channel(LOG)
+          .warn(
+              LogEvent.of(
+                  "SKILL_MTIME_READ_FAILED",
+                  AppLogSource.SHELL_LIFECYCLE,
+                  "path",
+                  path,
+                  "error",
+                  e.getClass().getSimpleName()));
       Cached cached = cache.get(path);
       return cached == null ? null : cached.skill();
     }
@@ -189,10 +208,26 @@ public final class SkillLibrary {
       cache.put(path, new Cached(mtime, skill));
       return skill;
     } catch (IOException | UncheckedIOException e) {
-      LOG.warn("读技能文件失败（沿用上一版）: {} —— {}", path, e.toString());
+      EventLog.channel(LOG)
+          .warn(
+              LogEvent.of(
+                  "SKILL_FILE_READ_FAILED",
+                  AppLogSource.SHELL_LIFECYCLE,
+                  "path",
+                  path,
+                  "error",
+                  e.getClass().getSimpleName()));
     } catch (IllegalArgumentException e) {
       // ★ 坏文件**不生效**：保留上一版并记一条响亮的日志（写坏了不该让整库失效，更不该静默改语义）。
-      LOG.warn("技能文件解析失败（沿用上一版）: {} —— {}", path, e.getMessage());
+      EventLog.channel(LOG)
+          .warn(
+              LogEvent.of(
+                  "SKILL_FILE_PARSE_FAILED",
+                  AppLogSource.SHELL_LIFECYCLE,
+                  "path",
+                  path,
+                  "reason",
+                  logReason(e.getMessage())));
     }
     return cached == null ? null : cached.skill();
   }
@@ -275,5 +310,25 @@ public final class SkillLibrary {
       }
     }
     return Optional.empty();
+  }
+
+  /**
+   * ★ <b>日志安全的拒绝理由</b>（照 L2 的 {@code logReason} 形态）：技能正文是外部/模型可写文本，解析失败消息可能回显原文； 日志只保留可读前缀——截到第一个
+   * JSON 起始符/换行，避免把正文带进日志。截断只影响日志文本，不影响"坏文件保留上一版"的语义。
+   */
+  private static String logReason(String message) {
+    if (message == null || message.isBlank()) {
+      return "unknown";
+    }
+    String text = message.strip();
+    int cut = text.length();
+    for (char marker : new char[] {'{', '[', '\n', '\r'}) {
+      int at = text.indexOf(marker);
+      if (at >= 0 && at < cut) {
+        cut = at;
+      }
+    }
+    String reason = text.substring(0, cut).strip();
+    return reason.isEmpty() ? "unknown" : reason;
   }
 }

@@ -3,9 +3,12 @@ package io.mosire.simos.economy.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
 import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -62,11 +65,17 @@ public final class EconomyRemovePeriodicAdjustmentHandler
           new LinkedHashMap<>(base.periodicAdjustments());
       adjustments.remove(removal.id());
       EconomyData projected = base.withPeriodicAdjustments(adjustments);
-      LOG.info(
-          "event=PERIODIC_ADJUSTMENT_REMOVED rule={} payer={} reason={}",
-          removal.id().value(),
-          removed.payer().value(),
-          removal.reason());
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "PERIODIC_ADJUSTMENT_REMOVED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "rule",
+                  removal.id().value(),
+                  "payer",
+                  removed.payer().value(),
+                  "reasonLength",
+                  removal.reason() == null ? 0 : removal.reason().length()));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
       return new HandlerOutcome.Rejected(e.getMessage());

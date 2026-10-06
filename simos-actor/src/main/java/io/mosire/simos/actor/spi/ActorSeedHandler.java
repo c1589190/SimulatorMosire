@@ -3,9 +3,12 @@ package io.mosire.simos.actor.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorLog;
+import io.mosire.simos.actor.ActorLogSource;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -75,19 +78,42 @@ public final class ActorSeedHandler implements CommandHandler, CommandTargets {
           ActorPayloads.toData(
               payload, base.actors().keySet(), householdsOf(base), state.meta().timestamp());
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ACTOR_SEED_REJECTED",
+                  ActorLogSource.ACTOR_SEED,
+                  "reason",
+                  ActorPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
     if (base.meta().isEmpty()) {
-      LOG.info(
-          "event=ACTOR_SEEDED first=true actors={} accounts={}",
-          seeded.actors().size(),
-          seeded.accounts().size());
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ACTOR_SEEDED",
+                  ActorLogSource.ACTOR_SEED,
+                  "first",
+                  true,
+                  "actors",
+                  seeded.actors().size(),
+                  "accounts",
+                  seeded.accounts().size()));
       return new HandlerOutcome.Applied(ActorChangeSet.between(base, seeded)); // 首次播种：打标
     }
     // ★ 已激活 ⇒ 追加：先判"本批家户是否已有账"（任一撞键 ⇒ 整份拒绝并点名），再并入现有切片。
     Set<HouseholdId> occupied = householdsOf(base);
     for (HouseholdAccountKey key : seeded.accounts().keySet()) {
       if (occupied.contains(key.household())) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ACTOR_SEED_REJECTED",
+                    ActorLogSource.ACTOR_SEED,
+                    "reason",
+                    "household-account-exists",
+                    "household",
+                    key.household()));
         return new HandlerOutcome.Rejected(
             "家户 "
                 + key.household()
@@ -102,11 +128,19 @@ public final class ActorSeedHandler implements CommandHandler, CommandTargets {
     ActorData merged =
         base.withActors(merge(base.actors(), seeded.actors()))
             .withInventories(merge(base.accounts(), seeded.accounts()));
-    LOG.info(
-        "event=ACTOR_SEEDED first=false entries={} actors={} accounts={}",
-        ActorPayloads.entryHexKeys(payload).size(),
-        merged.actors().size(),
-        merged.accounts().size());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "ACTOR_SEEDED",
+                ActorLogSource.ACTOR_SEED,
+                "first",
+                false,
+                "entries",
+                ActorPayloads.entryHexKeys(payload).size(),
+                "actors",
+                merged.actors().size(),
+                "accounts",
+                merged.accounts().size()));
     return new HandlerOutcome.Applied(ActorChangeSet.between(base, merged));
   }
 

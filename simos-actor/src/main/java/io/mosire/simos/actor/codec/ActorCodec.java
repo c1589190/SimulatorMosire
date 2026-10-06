@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import io.mosire.simos.actor.ActorData;
+import io.mosire.simos.actor.ActorLog;
+import io.mosire.simos.actor.ActorLogSource;
 import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
@@ -17,6 +19,8 @@ import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
@@ -24,6 +28,7 @@ import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.state.StateMeta;
 import java.io.IOException;
 import java.util.function.Function;
+import org.slf4j.Logger;
 
 /**
  * actor 模块的 {@link ModuleCodec} 实现（spec §八）。形态与 {@code LedgerCodec} / {@code EconomyCodec} 同制，理由不重复
@@ -58,6 +63,8 @@ import java.util.function.Function;
  * ActorChangeSet#between(ActorData, ActorData)}。
  */
 public final class ActorCodec implements ModuleCodec, ModuleDiffer {
+
+  private static final Logger LOG = ActorLog.codec();
 
   /** 本模块唯一的一台 mapper：共享基座 + 本模块的键反序列化器。 */
   private static final ObjectMapper MAPPER =
@@ -216,6 +223,19 @@ public final class ActorCodec implements ModuleCodec, ModuleDiffer {
   public Snapshot apply(ChangeSet changeSet, Snapshot base, StateMeta newMeta) {
     ActorSnapshot actorBase = asActorSnapshot(base);
     ActorData next = ActorChangeSet.apply((ActorChangeSet) changeSet, actorBase.data());
+    if (LOG.isDebugEnabled()) {
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "ACTOR_CODEC_APPLIED",
+                  ActorLogSource.ACTOR_CODEC,
+                  "accounts",
+                  next.accounts().size(),
+                  "actors",
+                  next.actors().size(),
+                  "ref",
+                  newMeta.ref()));
+    }
     return new ActorSnapshot(newMeta.ref(), newMeta.timestamp(), next);
   }
 
