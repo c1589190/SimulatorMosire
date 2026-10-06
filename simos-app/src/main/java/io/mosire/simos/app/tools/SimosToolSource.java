@@ -618,7 +618,8 @@ public final class SimosToolSource implements ToolSource {
     //   两个计划类都需要生产历法时钟判定 MALE+ADULT 年龄档。
     built.add(new GovSelectExamineesTool(core, query, initiator, mapId, calendarService));
     built.add(new GovDispatchTeamTool(core, query, initiator, mapId, calendarService));
-    built.add(new GovAbsorbUnitTool(core, query, initiator, mapId));
+    // ★ 2026-10-19 absorbUnit 接 Social 家户真转移：来源选人层要按生产历法判 MALE+ADULT 年龄档 ⇒ 同传 calendarService。
+    built.add(new GovAbsorbUnitTool(core, query, initiator, mapId, calendarService));
     built.add(new GovRetireStaffTool(core, query, initiator, mapId));
     // 辖区阶段 6（2026-09-30 / 计划 §6.2）：actor 净增量账原语（app 级抽取/组军组合工具的落账腿）。
     //   **只在 GM 桶**：命令类型固定，模型只能给载荷；整条原子由域层判。

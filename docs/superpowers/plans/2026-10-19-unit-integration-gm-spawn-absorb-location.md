@@ -114,3 +114,24 @@
   格式化调用/决策包/GM true-false 审批；目前 **DecisionPacket/FormattedCall 尚未实现**。
 - 新 unit/social 工具要进决策人预执行体系，需要把"提议的动作"变成可审批的格式化调用；
   本批不实现该体系，先把 GM 侧功能补全（用户本次要求）。
+
+---
+
+## 8. 实施状态（2026-10-19/20）
+
+✅ 已实现并验收：
+
+- **SpawnArmy**（提交 `40baccc2`）：去掉 fail-closed；`social.SubmitHouseholdWorkOrder`
+  `CREATE_HOUSEHOLD(hh-unit:<id>, UNIT)` + `ADD_MEMBERS`（MALE/20 岁/`member` 名）→
+  `unit.CreateUnit(households=[hh], 无 manpower)` → `[SetArmyFormation]` → `sd.CreateArmy` →
+  `economy.RegisterHousehold` → `actor.EnsureHouseholdAccount` → `sd.PutInfo`；
+  主控独立 smoke 118 PASS：两个 spawn 用例、次日 advance、重启、位置守卫正负例全过。
+- **位置守卫**：`SocialHouseholdMoveTool` 对在编家户改 HEX/别的 UNIT 具名拒，指路
+  `unit.detachHousehold`；detach 后 HEX 移动照常。
+- **GovAbsorbUnit**（本提交）：去掉 fail-closed；源纯人员单位 → 逐 share
+  `TRANSFER_MEMBERS` 到 `hh-gov-<govUnitId>`；`disbandSource=true` 且源家户全空时
+  逐户 `SET_LOCATION` 到 HEX 后再 `unit.DisbandUnit`（防孤儿 UNIT 位置）；源未清空则具名
+  `disbandSkippedReason` 不解散；staffCap/源带 module/自吸收/人口不足均 plan 级拒。
+  主控独立 smoke 119 PASS：源 5→2 + GOV +3 + staff +3；再吸收 2 并解散源（源位置 HEX、
+  单位消失）；次日 advance 无 CLASSROW/UNIT/time-budget 异常；重启一致。
+- `compile` / `package` rc=0；未跑 Java test/verify/spotless。
