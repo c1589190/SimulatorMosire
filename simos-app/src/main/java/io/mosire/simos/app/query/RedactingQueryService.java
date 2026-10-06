@@ -161,7 +161,13 @@ public final class RedactingQueryService {
     AccessLimit limit = accessLimitOf(actor, target);
     List<Map<String, Object>> out = new ArrayList<>();
     for (Map<String, Object> unit :
-        ToolSupport.units(units, at, map, ToolSupport.sdState(state), ToolSupport.socialData(state), calendarService)) {
+        ToolSupport.units(
+            units,
+            at,
+            map,
+            ToolSupport.sdState(state),
+            ToolSupport.socialData(state),
+            calendarService)) {
       UnitId id = new UnitId(String.valueOf(unit.get("id")));
       if (context.map(c -> ToolSupport.unitVisible(c, id)).orElse(false)) {
         out.add(asMap(applyRedactedFields(unit, limit)));
@@ -425,6 +431,30 @@ public final class RedactingQueryService {
       return true;
     }
     return affiliation != null && entry.affiliations().contains(affiliation);
+  }
+
+  /**
+   * ★★ <b>上报（D4 {@code simos.sd.reports}）的决策人可见性</b>：在 {@link #visible} 的 tags / 归属两轴之外，再加第三轴 「发送人
+   * = 自己」——自己发的报告自己看得到（{@code sd:doc.report-…} 的 {@code value.from}）。
+   *
+   * <p>★ <b>为什么复用 {@link #visible} 而不是在工具里再写一遍 tags/归属判定</b>：那两轴是"这条 INFO 记的是谁的事"的同一份判据 （唯一实现在本类，见
+   * {@code DecisionResultsVisibilityGuardTest} 的结构性护栏）；上报只在该并集上**多一支**发送人，不应把前两轴复制成第二份。
+   *
+   * <p>★ <b>GM 不走本方法</b>：解不出决策人身份（{@code decisionMakerIdOf} 为空）时读全部，由调用方分派。
+   *
+   * @param entry 条目；不得为 null
+   * @param actor 调用者决策人；不得为 null
+   * @param affiliation 调用者的归属；解不出（决策人已删/身份与状态不同源）⇒ null（该轴不参与）
+   * @param sender 报告 {@code value.from}（解析不出 ⇒ null，该轴不参与）
+   */
+  public static boolean reportVisibleToDecisionMaker(
+      SdInfoEntry entry, DecisionMakerId actor, Affiliation affiliation, String sender) {
+    Objects.requireNonNull(entry, "entry");
+    Objects.requireNonNull(actor, "actor");
+    if (visible(entry, actor, affiliation)) {
+      return true;
+    }
+    return sender != null && actor.value().equals(sender);
   }
 
   /** 单条文档的视图（{@code at} 口径同 {@link #decisionResultView}）。 */

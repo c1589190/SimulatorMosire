@@ -103,6 +103,16 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
     return new ToolGate.Ask(name(), summary(context.arguments()), AskKind.SENSITIVE);
   }
 
+  /**
+   * 是否强制工具级 {@code reason}（缺省 true，S3a 四条既有家户工具口径不变）。
+   *
+   * <p>★ D4 的参数工具（周期规则 / 军俸政策 / 生死率）里 {@code reason} 是**各自载荷的一部分**（有的是 {@code DeductionReason}
+   * 词表、有的必填、有的可选），不是所有动作都有统一的工具级审计理由 ⇒ 那些工具覆写本方法返回 false，由各自的 {@code run} 按动作解析载荷；既有子类不覆写 ⇒ 行为一字不变。
+   */
+  protected boolean requiresReason() {
+    return true;
+  }
+
   /** 审批摘要：子类可覆写加自己的关键参数；缺省给 preview/branch/reason 三件套。 */
   protected String summary(Map<String, Object> args) {
     return name()
@@ -119,7 +129,10 @@ abstract class AbstractHouseholdGmTool implements AgentTool {
     try {
       ToolSupport.requireAll(context, Operation.WRITE, writeResources());
       Map<String, Object> args = context.arguments();
-      String reason = ToolSupport.requiredText(args, "reason");
+      String reason =
+          requiresReason()
+              ? ToolSupport.requiredText(args, "reason")
+              : ToolSupport.optionalText(args, "reason", null);
       boolean preview = ToolSupport.optionalBoolean(args, "preview").orElse(true);
       // ★ D3 内部参数：不进 jsonSchema / 工具描述，只被系统执行器注入（见 ToolSupport.plannedCommandsView）。
       boolean planOnly = !preview && ToolSupport.optionalBoolean(args, "planOnly").orElse(false);

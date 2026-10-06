@@ -28,6 +28,7 @@ import io.mosire.simos.app.tools.read.PopulationTool;
 import io.mosire.simos.app.tools.read.SdCombatsTool;
 import io.mosire.simos.app.tools.read.SdDiplomacyTool;
 import io.mosire.simos.app.tools.read.SdDiplomaticEventsTool;
+import io.mosire.simos.app.tools.read.SimosSdReportsTool;
 import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.read.SocialHouseholdsTool;
 import io.mosire.simos.app.tools.read.StateFacetsTool;
@@ -42,6 +43,7 @@ import io.mosire.simos.app.tools.write.PacketIntentTool;
 import io.mosire.simos.app.tools.write.ProposeCallTool;
 import io.mosire.simos.app.tools.write.RecordDiplomaticEventTool;
 import io.mosire.simos.app.tools.write.SetDiplomaticRelationTool;
+import io.mosire.simos.app.tools.write.SimosSdReportTool;
 import io.mosire.simos.app.tools.write.SubmitPacketTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.sd.id.DecisionMakerId;
@@ -152,7 +154,11 @@ public final class DecisionCallerFactory {
           ProposeCallTool.NAME,
           SubmitPacketTool.NAME,
           PacketIntentTool.NAME,
-          MyPacketTool.NAME);
+          MyPacketTool.NAME,
+          // ★★ D4（2026-10-22）：跨区上报写 + 共享读（桶在 SimosToolSource.addDecisionAgentWrites 与
+          //   readTools，两处必须同源）。simos.sd.reports 是决策人与 GM 共用读口（不标 GmOnlyRead）。
+          SimosSdReportTool.NAME,
+          SimosSdReportsTool.NAME);
 
   /** 决策人身份的实例 id 前缀（与将来的会话 id 同源：按决策人派生，不隐式取全局状态）。 */
   public static final String INSTANCE_ID_PREFIX = "decision-maker:";

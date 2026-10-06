@@ -149,6 +149,7 @@ import io.mosire.simos.social.spi.MovePopulationLotsHandler;
 import io.mosire.simos.social.spi.RemoveHouseholdMembersHandler;
 import io.mosire.simos.social.spi.SeedGroupsHandler;
 import io.mosire.simos.social.spi.SetDemandCoefficientHandler;
+import io.mosire.simos.social.spi.SetGlobalVitalRatesHandler;
 import io.mosire.simos.social.spi.SetHouseholdLocationHandler;
 import io.mosire.simos.social.spi.SetHouseholdVitalRatesHandler;
 import io.mosire.simos.social.spi.SetLaborCoefficientHandler;
@@ -588,6 +589,8 @@ public final class Shell implements AutoCloseable {
                 new RemoveHouseholdMembersHandler(),
                 new TransferHouseholdMembersHandler(),
                 new SetHouseholdVitalRatesHandler(),
+                // ── D4（2026-10-22）：全局默认生死率整体替换（GmOnlyCommand；配套窄工具 simos.gm.vitalRates）。
+                new SetGlobalVitalRatesHandler(),
                 new AdjustHouseholdPopulationHandler(),
                 // ── Batch 4（2026-10-09 家户结构修复计划）：Social 需求/劳动系数两条 GM 命令——全局默认 + 单家户
                 //   覆盖的 upsert/清除（只写 SocialData 第 6 组件 provisioning，结果经 withProvisioning 写回）。

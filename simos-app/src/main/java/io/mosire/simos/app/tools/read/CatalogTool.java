@@ -249,6 +249,12 @@ public final class CatalogTool implements AgentTool {
                   + " deathRatePerMillionPerTick?}], reason"
                   + "（★ 整体替换率表；rates 缺失/null=清空；两个率缺省 0；负数/重复 (bracketId,sex) ⇒ 拒）"),
           Map.entry(
+              "social.SetGlobalVitalRates",
+              "rates[{bracketId, sex(MALE|FEMALE), birthRatePerMillionPerTick?,"
+                  + " deathRatePerMillionPerTick?}], reason"
+                  + "（★ GM-only D4：整体替换 Social 全局默认生死率表；rates 缺失/null=空表；两个率缺省 0；"
+                  + "负数/重复 (bracketId,sex) ⇒ 拒；家户覆盖不受影响）"),
+          Map.entry(
               "social.AdjustHouseholdPopulation",
               "householdId, sex(MALE|FEMALE), ageBracketId(如 0-14|15-59|60+), delta(非 0，可负), reason"
                   + "（★ GM 直调；负不得使人数 < 0；未知年龄档 id ⇒ 拒）"),

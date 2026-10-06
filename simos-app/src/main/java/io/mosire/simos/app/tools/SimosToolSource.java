@@ -42,6 +42,7 @@ import io.mosire.simos.app.tools.read.SdDiplomacyTool;
 import io.mosire.simos.app.tools.read.SdDiplomaticEventsTool;
 import io.mosire.simos.app.tools.read.SdDirectivesTool;
 import io.mosire.simos.app.tools.read.SdVerdictsTool;
+import io.mosire.simos.app.tools.read.SimosSdReportsTool;
 import io.mosire.simos.app.tools.read.SkillTool;
 import io.mosire.simos.app.tools.read.SocialHouseholdsTool;
 import io.mosire.simos.app.tools.read.StateFacetsTool;
@@ -59,11 +60,15 @@ import io.mosire.simos.app.tools.write.CommandSubmitTool;
 import io.mosire.simos.app.tools.write.EconomyAdjustTool;
 import io.mosire.simos.app.tools.write.ForkTool;
 import io.mosire.simos.app.tools.write.FormatUnitTool;
+import io.mosire.simos.app.tools.write.GmAdjustPopulationTool;
 import io.mosire.simos.app.tools.write.GmApproveTool;
+import io.mosire.simos.app.tools.write.GmArmyPayPolicyTool;
 import io.mosire.simos.app.tools.write.GmDecidePacketTool;
 import io.mosire.simos.app.tools.write.GmMergedPlanApplyTool;
 import io.mosire.simos.app.tools.write.GmMergedPlanUpsertTool;
 import io.mosire.simos.app.tools.write.GmPacketExecuteTool;
+import io.mosire.simos.app.tools.write.GmPeriodicAdjustmentTool;
+import io.mosire.simos.app.tools.write.GmVitalRatesTool;
 import io.mosire.simos.app.tools.write.GovAbsorbUnitTool;
 import io.mosire.simos.app.tools.write.GovApplyStaffingTool;
 import io.mosire.simos.app.tools.write.GovCreateOfficeTool;
@@ -116,6 +121,7 @@ import io.mosire.simos.app.tools.write.SdSetDiplomaticRelationTool;
 import io.mosire.simos.app.tools.write.SdSetStageOutcomeTableTool;
 import io.mosire.simos.app.tools.write.SetDecisionMakerAccessTool;
 import io.mosire.simos.app.tools.write.SetDiplomaticRelationTool;
+import io.mosire.simos.app.tools.write.SimosSdReportTool;
 import io.mosire.simos.app.tools.write.SocialDemandTool;
 import io.mosire.simos.app.tools.write.SocialHouseholdCreateTool;
 import io.mosire.simos.app.tools.write.SocialHouseholdMembersTool;
@@ -727,6 +733,15 @@ public final class SimosToolSource implements ToolSource {
     built.add(new SocialLaborTool(core, query, initiator));
     built.add(new UnitAssignHouseholdTool(core, query, initiator));
     built.add(new UnitDetachHouseholdTool(core, query, initiator));
+    // ★★ D4（2026-10-22 决策包/家户可用性计划）：GM 参数工具四条（**只在 GM 桶**；工具名都不是命令类型 ⇒
+    //   不进 catalog/PAYLOAD_HINTS）——周期扣增规则表（economy，复用 P4a 两条命令）、军俸政策（unit，
+    //   复用 unit.SetArmyPayPolicy）、生死率（social，新增 social.SetGlobalVitalRates + 复用
+    //   social.SetHouseholdVitalRates）、家户人口直调（逐字转发 simos.social.household.members）。
+    //   四条都是 preview 缺省 true、apply 才落一条 revision 的窄写口径。
+    built.add(new GmPeriodicAdjustmentTool(core, query, initiator));
+    built.add(new GmArmyPayPolicyTool(core, query, initiator));
+    built.add(new GmVitalRatesTool(core, query, initiator));
+    built.add(new GmAdjustPopulationTool(core, query, initiator));
     // ★★ P7b（2026-10-01 后端 + MCP 稳定化计划）：GM 审批队列裁决口（控制面，不落世界 revision）。
     //   **只在 GM 桶**；与读口 simos.gm.approvals 共用同一份 PendingApprovals / ApprovalCoordinator。
     //   ★ 工具名不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 NONE（不读写世界命名空间）。
@@ -782,6 +797,10 @@ public final class SimosToolSource implements ToolSource {
     built.add(new SubmitPacketTool(core, query, initiator));
     built.add(new PacketIntentTool(core, query, initiator));
     built.add(new MyPacketTool(query));
+    // ★★ D4（2026-10-22）：跨区上报写口——发送人=调用者身份（context.identity()），只写自己的
+    //   sd:decision-maker/<自己> 自指域；落一条 sd.PutInfo（key=report）= 一条 revision。
+    //   **只在决策人桶**；DecisionCallerFactory.WHITELIST 必须同源。
+    built.add(new SimosSdReportTool(core, query, initiator));
   }
 
   private static List<AgentTool> readTools(
@@ -854,6 +873,10 @@ public final class SimosToolSource implements ToolSource {
         //   形状复用 ApiViews.diplomaticRelations / ApiViews.diplomaticEvents。
         new SdDiplomacyTool(query),
         new SdDiplomaticEventsTool(query),
+        // ★★ D4（2026-10-22）：跨区上报读口（simos.sd.reports）——**两桶共享**（决策人桶 + GM 桶；不标
+        //   GmOnlyRead）。决策人只看到 tags 含自己 / affiliations 含自己归属 / 自己发的报告，GM 读全部；
+        //   读报告不授予任何跨区原始数据读权（报告内容由发送方负责）。
+        new SimosSdReportsTool(query),
         // ★★ D1（2026-10-02 / D-012）：army 切片的交战记录读口（"当前 tick 在哪发生交战"的唯一直接读口）。
         //   四桶共享（世界状态、可回放）；逐条可见性按记录所在格判（ToolSupport.hexVisible）——看不见的格不进结果。
         //   形状与 GUI 同源（ApiViews.armyCombat）。

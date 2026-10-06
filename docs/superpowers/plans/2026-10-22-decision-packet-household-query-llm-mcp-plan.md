@@ -45,7 +45,7 @@
 | **D1** ✅ | `HouseholdQueryService` + `simos.social.households` 聚合读工具 | `...2026-10-22-d1-household-query.md` | compile + smoke：GM 全图按年龄/阶层/生产方式一次汇总；真实 GOV 决策人 scope 裁剪；单 hex 与 population 对账；unit 面 hex-hidden |
 | **D2** ✅ | `DecisionPacket`/`FormattedCall` 持久组件 + 决策人 propose/submit/my + GM packets/packet/decide | `...2026-10-22-d2-decision-packet.md` | compile + smoke：propose→PENDING→GM 预览→true/false；旧档空表兼容；重启重载 |
 | **D3** ✅ | `MergedEffectPlan` + `gm.mergedPlan.*` + `gm.packet.execute` + outcome 回写 | `...2026-10-22-d3-merged-plan.md` | compile + smoke：两包冲突→GM 合并→一条 revision；执行者 GM、proposer 留痕 |
-| **D4** | GM 工具：periodicAdjustment / armyPayPolicy / vitalRates / adjustPopulation + 上报工具（send/reports） | `...2026-10-22-d4-gm-tools-reports.md` | compile + smoke：每个工具有 preview/apply/拒绝；上报跨区可见性符合口径 |
+| **D4** ✅ | GM 工具：periodicAdjustment / armyPayPolicy / vitalRates / adjustPopulation + 上报工具（send/reports） | `...2026-10-22-d4-gm-tools-reports.md` | compile + smoke：每个工具有 preview/apply/拒绝；上报跨区可见性符合口径；GUI 留 D4.1 |
 | **D5** | 测试迁移 + `clean verify` + 真实 LLM 决策人 + 真实 MCP E2E | `...2026-10-22-d5-tests-llm-mcp.md` | `test-compile` 绿、`verify` 通过、E2E 报告落盘 |
 
 每批固定动作：写施工子文档 → subagent 实现 → 控制方 compile/smoke 复核 → 更新本文件进度 →
