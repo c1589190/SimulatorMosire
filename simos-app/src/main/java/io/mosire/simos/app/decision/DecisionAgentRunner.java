@@ -10,6 +10,7 @@ import io.mosire.agentlib.store.ConversationStore;
 import io.mosire.agentlib.tool.ToolRegistry;
 import io.mosire.agentlib.tool.ToolResult;
 import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.llm.LlmToolNames;
 import io.mosire.simos.app.render.ArtifactStore;
@@ -27,6 +28,9 @@ import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -37,8 +41,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * **决策人 agent 运行流**（spec §2.3，判据 **J11**）：让决策人**自己调工具**读世界，并且**跨 tick 沿用同一段会话**。
@@ -94,9 +96,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class DecisionAgentRunner {
 
-  private static final Logger LOG = LoggerFactory.getLogger(DecisionAgentRunner.class);
-
-  private static final Logger DECISION = AppLog.decision();
+  /** 决策回合事件的发射通道（分类 = {@link AppLog#decision()}，来源 = {@link AppLogSource#DECISION_TURN}）。 */
+  private static final LogChannel DECISION = EventLog.channel(AppLog.decision());
 
   /** 会话 id 前缀（与 {@link DecisionCallerFactory#INSTANCE_ID_PREFIX} 同源：都按决策人派生）。 */
   public static final String CONVERSATION_ID_PREFIX = DecisionCallerFactory.INSTANCE_ID_PREFIX;
@@ -813,10 +814,15 @@ public final class DecisionAgentRunner {
     Objects.requireNonNull(state, "state");
     String conversationId = conversationIdOf(dm);
     DECISION.info(
-        "event=DECISION_RUN_START decisionMaker={} tick={} conversation={}",
-        dm.id().value(),
-        state.meta().timestamp().tick(),
-        conversationId);
+        LogEvent.of(
+            "DECISION_RUN_START",
+            AppLogSource.DECISION_TURN,
+            "dm",
+            dm.id().value(),
+            "day",
+            state.meta().timestamp().tick(),
+            "conversation",
+            conversationId));
     // ★ 工具面与权限组**同一份数据**（spec §2.3 要点 1）：两者若各有一张表，错位不会有任何症状。
     //   （那份面在构造期已建好、名字已转义成线格式——见构造器与 LlmToolNames 的类注。）
     List<LlmMessage> history = new ArrayList<>(conversations.load(conversationId));
@@ -843,11 +849,19 @@ public final class DecisionAgentRunner {
     int llmCalls = 0;
     while (true) {
       if (llmCalls >= maxLlmCalls) {
+        // ★ 保留 WARN（用户 2026-10-23：不接受降级）。
         DECISION.warn(
-            "event=DECISION_RUN_BUDGET_EXCEEDED decisionMaker={} llmCalls={} tools={}",
-            dm.id().value(),
-            llmCalls,
-            invocations.size());
+            LogEvent.of(
+                "DECISION_RUN_BUDGET_EXCEEDED",
+                AppLogSource.DECISION_TURN,
+                "dm",
+                dm.id().value(),
+                "day",
+                state.meta().timestamp().tick(),
+                "llmCalls",
+                llmCalls,
+                "tools",
+                invocations.size()));
         throw new TurnBudgetExceeded(
             "决策人 "
                 + dm.id().value()
@@ -870,10 +884,17 @@ public final class DecisionAgentRunner {
       List<ContentPart.ToolCall> requested = toolCallsOf(assistant);
       if (requested.isEmpty()) {
         DECISION.info(
-            "event=DECISION_RUN_END decisionMaker={} llmCalls={} tools={}",
-            dm.id().value(),
-            llmCalls,
-            invocations.size());
+            LogEvent.of(
+                "DECISION_RUN_END",
+                AppLogSource.DECISION_TURN,
+                "dm",
+                dm.id().value(),
+                "day",
+                state.meta().timestamp().tick(),
+                "llmCalls",
+                llmCalls,
+                "tools",
+                invocations.size()));
         return new DecisionTurn(
             conversationId,
             llmCalls,
@@ -1008,11 +1029,17 @@ public final class DecisionAgentRunner {
     invocations.add(
         new ToolInvocation(call.id(), toolName, result.success(), result.code(), feedback));
     DECISION.debug(
-        "event=DECISION_TOOL_CALL decisionMaker={} tool={} success={} code={}",
-        dm.id().value(),
-        toolName,
-        result.success(),
-        result.code());
+        LogEvent.of(
+            "DECISION_TOOL_CALL",
+            AppLogSource.DECISION_TURN,
+            "dm",
+            dm.id().value(),
+            "tool",
+            toolName,
+            "success",
+            result.success(),
+            "code",
+            result.code()));
     // ★ ToolResult 的**两个字段互斥且必居其一**（ContentPart.ToolResult 构造期强制：content 与 error
     //   **恰好一个非 null**）⇒ 成功走 content，失败走 error，且失败时把**码**一起带上——模型据此才知道
     //   该换个资源（RESOURCE_DENIED）还是换个参数（BAD_REQUEST）。
@@ -1069,7 +1096,15 @@ public final class DecisionAgentRunner {
       return Optional.empty();
     }
     if (!vision) {
-      LOG.warn("开场快照开关已开，但决策人 {} 绑的路由没有视觉能力 ⇒ 本轮跳过（图发过去只会换来一个 400）", dm.id().value());
+      // ★ 保留 WARN（用户 2026-10-23：不接受降级）。
+      DECISION.warn(
+          LogEvent.of(
+              "OPENING_SNAPSHOT_SKIPPED",
+              AppLogSource.DECISION_TURN,
+              "dm",
+              dm.id().value(),
+              "reason",
+              "no-vision"));
       return Optional.empty();
     }
     return openingSnapshot.forDecisionMaker(dm, state);

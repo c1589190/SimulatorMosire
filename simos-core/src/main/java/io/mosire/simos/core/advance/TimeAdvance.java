@@ -3,6 +3,7 @@ package io.mosire.simos.core.advance;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.core.CoreLog;
+import io.mosire.simos.core.CoreLogSource;
 import io.mosire.simos.core.command.AdvanceRoute;
 import io.mosire.simos.core.command.AdvanceTime;
 import io.mosire.simos.core.command.CommandResult;
@@ -15,6 +16,9 @@ import io.mosire.simos.core.store.EventRow;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.spi.WorldTimeProposal;
@@ -32,8 +36,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * 两阶段时间推进（spec §5.1 的六步，C25）——{@link AdvanceRoute} 的**真实现**（Task 11 用例里用的是替身）。
@@ -76,11 +78,14 @@ import org.slf4j.LoggerFactory;
  */
 public final class TimeAdvance implements AdvanceRoute {
 
-  private static final Logger LOG = LoggerFactory.getLogger(TimeAdvance.class);
+  /** 推进六阶段与结局的发射通道（来源 = {@link CoreLogSource#TICK_ADVANCE}，粗分类 = tick）。 */
+  private static final LogChannel PHASE = EventLog.channel(CoreLog.advance());
 
-  private static final Logger PHASE = CoreLog.advance();
+  /** 逐提案明细的发射通道（来源同上；默认关）。 */
+  private static final LogChannel TRACE = EventLog.channel(CoreLog.trace());
 
-  private static final Logger TRACE = CoreLog.trace();
+  /** 检查点事件的发射通道（来源 = {@link CoreLogSource#CHECKPOINT}）。 */
+  private static final LogChannel STORE = EventLog.channel(CoreLog.store());
 
   /**
    * 单次推进的**理智上限**（天）：{@code 1 ≤ N ≤ 36500}（§十一：约 100 年的日步长）。
@@ -195,21 +200,30 @@ public final class TimeAdvance implements AdvanceRoute {
     StateRef target = new StateRef(cmd.branch(), new RevisionId(base.revision().value() + 1));
     StateMeta newMeta = new StateMeta(target, cmd.range().to().orElseThrow());
 
-    LOG.debug(
-        "推进开始: commandId={} correlationId={} branch={} expectedRevision={} to={} 参与者={}",
-        cmd.commandId(),
-        cmd.correlationId(),
-        cmd.branch().value(),
-        cmd.expectedRevision().value(),
-        newMeta.timestamp(),
-        participants.size());
     PHASE.debug(
-        "event=ADVANCE_PREPARE branch={} from={} to={} spanDays={} participants={}",
-        cmd.branch().value(),
-        fromTick,
-        toTick,
-        spanDays,
-        participants.size());
+        LogEvent.of(
+            "ADVANCE_START",
+            CoreLogSource.TICK_ADVANCE,
+            "day",
+            toTick,
+            "commandId",
+            cmd.commandId(),
+            "correlationId",
+            cmd.correlationId(),
+            "branch",
+            cmd.branch().value(),
+            "expectedRevision",
+            cmd.expectedRevision().value(),
+            "from",
+            fromTick,
+            "to",
+            toTick,
+            "spanDays",
+            spanDays,
+            "participants",
+            participants.size(),
+            "participantOrder",
+            participants.stream().map(TimeParticipant::namespace).toList()));
 
     SimulationState state = stateLoader.load(base);
 
@@ -235,15 +249,30 @@ public final class TimeAdvance implements AdvanceRoute {
       }
       proposals.add(proposal);
     }
-    PHASE.debug("event=ADVANCE_PROPOSE proposals={}", proposals.size());
+    PHASE.debug(
+        LogEvent.of(
+            "ADVANCE_PROPOSE",
+            CoreLogSource.TICK_ADVANCE,
+            "day",
+            toTick,
+            "proposals",
+            proposals.size()));
     if (TRACE.isTraceEnabled()) {
       for (WorldTimeProposal proposal : proposals) {
         TRACE.trace(
-            "event=ADVANCE_PROPOSAL participant={} modules={} reads={} writes={}",
-            proposal.participantId(),
-            proposal.moduleChanges().size(),
-            proposal.reads().size(),
-            proposal.writes().size());
+            LogEvent.of(
+                "ADVANCE_PROPOSAL",
+                CoreLogSource.TICK_ADVANCE,
+                "day",
+                toTick,
+                "participant",
+                proposal.participantId(),
+                "modules",
+                proposal.moduleChanges().size(),
+                "reads",
+                proposal.reads().size(),
+                "writes",
+                proposal.writes().size()));
       }
     }
     trace.add(started(cmd, newMeta));
@@ -269,14 +298,31 @@ public final class TimeAdvance implements AdvanceRoute {
       trace.add(conflictEvent(cmd, warning)); // 读-写：只留痕，不拒绝
     }
     PHASE.debug(
-        "event=ADVANCE_RESOLVE blocked=false readWriteWarnings={}", resolved.warnings().size());
+        LogEvent.of(
+            "ADVANCE_RESOLVE",
+            CoreLogSource.TICK_ADVANCE,
+            "day",
+            toTick,
+            "blocked",
+            false,
+            "readWriteWarnings",
+            resolved.warnings().size()));
 
     // ④ Validate（第 1~4 项；第 0 项在上面）
     Validation validation = validate(state, proposals, newMeta);
     if (validation.failed()) {
       return rejected(cmd, trace, validation.error());
     }
-    PHASE.debug("event=ADVANCE_VALIDATE modules={} ok=true", validation.applied().size());
+    PHASE.debug(
+        LogEvent.of(
+            "ADVANCE_VALIDATE",
+            CoreLogSource.TICK_ADVANCE,
+            "day",
+            toTick,
+            "modules",
+            validation.applied().size(),
+            "ok",
+            true));
 
     // ⑤ Commit：1 行 revision + **全部**事件，一个事务（裁定 47：`finished` 也在里面）
     trace.add(finished(cmd, target));
@@ -305,20 +351,46 @@ public final class TimeAdvance implements AdvanceRoute {
       throw e;
     }
     PHASE.debug(
-        "event=ADVANCE_COMMIT branch={} revision={} events={}",
-        target.branch().value(),
-        target.revision().value(),
-        trace.size());
+        LogEvent.of(
+            "ADVANCE_COMMIT",
+            CoreLogSource.TICK_ADVANCE,
+            "day",
+            toTick,
+            "branch",
+            target.branch().value(),
+            "revision",
+            target.revision().value(),
+            "events",
+            trace.size()));
 
     // ⑥ Post-commit：**只剩 checkpoint**（C19 命中才写）。它失败不影响已落盘的事实。
     writeCheckpointIfDue(target, newMeta, state, validation.applied());
 
-    LOG.info(
-        "命令提交: type=core.AdvanceTime commandId={} correlationId={} 新坐标={}@{}",
-        cmd.commandId(),
-        cmd.correlationId(),
-        target.branch().value(),
-        target.revision().value());
+    // ★ 2026-10-23：推进 END（START 见上面 ADVANCE_START）——一条完整的"这一轮从哪到哪、落了什么、参与者几条"。
+    PHASE.info(
+        LogEvent.of(
+            "ADVANCE_END",
+            CoreLogSource.TICK_ADVANCE,
+            "day",
+            toTick,
+            "commandId",
+            cmd.commandId(),
+            "correlationId",
+            cmd.correlationId(),
+            "branch",
+            target.branch().value(),
+            "revision",
+            target.revision().value(),
+            "from",
+            fromTick,
+            "to",
+            toTick,
+            "spanDays",
+            spanDays,
+            "participants",
+            participants.size(),
+            "participantOrder",
+            participants.stream().map(TimeParticipant::namespace).toList()));
     return new CommandResult.Committed(target);
   }
 
@@ -432,8 +504,8 @@ public final class TimeAdvance implements AdvanceRoute {
    * 本来就会回退到更早的 checkpoint、最坏从创世重放。而此刻 **⑤ 已经把 revision 落盘了**，
    * 异常若逃出本方法，调用方会看到"提交失败"却库里明明有一行——**观察绝不许改被判事物的结局**（与 {@code CommandBus} 把日志挪到锁外是同一条纪律）。
    *
-   * <p>★ 为什么这不是"静默吞掉"：① 这里记 WARNING **带异常堆栈**；② 缺档在读侧另有 WARNING（ {@code CheckpointStore.read}）；③
-   * 档的存在性有 R3 那条"判定与文件逐条一致"的护栏。三处都看得见。
+   * <p>★ 为什么这不是"静默吞掉"：① 这里记 WARNING（装配/I/O 故障档，带异常类名）；② 缺档在读侧另有 DEBUG（ {@code
+   * CheckpointStore.read}）；③ 档的存在性有 R3 那条"判定与文件逐条一致"的护栏。三处都看得见。
    */
   private void writeCheckpointIfDue(
       StateRef target, StateMeta newMeta, SimulationState base, Map<String, Snapshot> applied) {
@@ -447,14 +519,20 @@ public final class TimeAdvance implements AdvanceRoute {
           CheckpointEncoder.encode(
               new SimulationState(newMeta, modules, base.info()), codecs.values());
       checkpoints.write(target, envelopeJson);
-      LOG.debug("checkpoint 写入: {}@{}", target.branch().value(), target.revision().value());
+      // ★ 2026-10-23：成功一行由 CheckpointStore.write 的 CHECKPOINT_WRITTEN 统一发射（本处原 LOG.debug 与它
+      //   是同一事实，删去以免重复记）。
     } catch (RuntimeException e) {
       // I/O 失败（C24 预料之内）与装配缺口（信封里有本实例没装 codec 的模块）都走到这里。
-      LOG.warn(
-          "checkpoint 写入失败（C18：纯优化，不回退提交；重放将回退到更早的 checkpoint）: {}@{}",
-          target.branch().value(),
-          target.revision().value(),
-          e);
+      STORE.warn(
+          LogEvent.of(
+              "CHECKPOINT_WRITE_FAILED",
+              CoreLogSource.CHECKPOINT,
+              "branch",
+              target.branch().value(),
+              "revision",
+              target.revision().value(),
+              "error",
+              e.getClass().getSimpleName()));
     }
   }
 
@@ -552,11 +630,22 @@ public final class TimeAdvance implements AdvanceRoute {
   private CommandResult rejected(AdvanceTime cmd, List<EventRow> trace, String reason) {
     trace.add(event(EventTypes.COMMAND_REJECTED, cmd, json(Map.of("reason", reason))));
     timeline.appendEvents(trace);
-    LOG.info(
-        "命令被拒: type=core.AdvanceTime commandId={} correlationId={} 原因={}",
-        cmd.commandId(),
-        cmd.correlationId(),
-        reason);
+    PHASE.info(
+        LogEvent.of(
+            "ADVANCE_REJECTED",
+            CoreLogSource.TICK_ADVANCE,
+            "day",
+            cmd.range().from().tick(),
+            "type",
+            "core.AdvanceTime",
+            "commandId",
+            cmd.commandId(),
+            "correlationId",
+            cmd.correlationId(),
+            "caller",
+            cmd.initiator(),
+            "reason",
+            reason));
     return new CommandResult.Rejected(reason);
   }
 
@@ -564,12 +653,24 @@ public final class TimeAdvance implements AdvanceRoute {
   private CommandResult conflict(AdvanceTime cmd, List<EventRow> trace, StateRef current) {
     trace.add(event(EventTypes.COMMAND_CONFLICTED, cmd, json(refJson(current))));
     timeline.appendEvents(trace);
-    LOG.info(
-        "命令冲突: type=core.AdvanceTime commandId={} correlationId={} 真实head={}@{}",
-        cmd.commandId(),
-        cmd.correlationId(),
-        current.branch().value(),
-        current.revision().value());
+    PHASE.info(
+        LogEvent.of(
+            "ADVANCE_CONFLICTED",
+            CoreLogSource.TICK_ADVANCE,
+            "day",
+            cmd.range().from().tick(),
+            "type",
+            "core.AdvanceTime",
+            "commandId",
+            cmd.commandId(),
+            "correlationId",
+            cmd.correlationId(),
+            "caller",
+            cmd.initiator(),
+            "headBranch",
+            current.branch().value(),
+            "headRevision",
+            current.revision().value()));
     return new CommandResult.Conflict(current);
   }
 }

@@ -6,8 +6,13 @@ import io.mosire.agentlib.permission.ResourceManifest;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.tools.GmOnlyRead;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,6 +38,9 @@ public final class GmApprovalsTool implements AgentTool, GmOnlyRead {
 
   /** 工具名（全局唯一）。★ 不是命令类型 ⇒ 不进 catalog / {@code PAYLOAD_HINTS}。 */
   public static final String NAME = "simos.gm.approvals";
+
+  /** 审批事件的发射通道（分类 = {@link AppLog#approval()}，来源 = {@link AppLogSource#APPROVAL}）。 */
+  private static final LogChannel APPROVAL = EventLog.channel(AppLog.approval());
 
   private final PendingApprovals pending;
 
@@ -66,6 +74,14 @@ public final class GmApprovalsTool implements AgentTool, GmOnlyRead {
   @Override
   public ToolResult execute(ToolContext context) {
     if (pending == null) {
+      APPROVAL.debug(
+          LogEvent.of(
+              "APPROVAL_LIST_UNAVAILABLE",
+              AppLogSource.APPROVAL,
+              "tool",
+              NAME,
+              "reason",
+              "UNAVAILABLE"));
       return ToolResult.error("UNAVAILABLE", "审批面未接入（PendingApprovals 缺席）");
     }
     List<Map<String, Object>> rows = new ArrayList<>();
@@ -80,6 +96,11 @@ public final class GmApprovalsTool implements AgentTool, GmOnlyRead {
       row.put("createdAtEpochMs", request.createdAtEpochMs());
       row.put("deadlineEpochMs", request.deadlineEpochMs());
       rows.add(row);
+    }
+    if (rows.isEmpty()) {
+      // ★ 控制方默认：读口只在空候选时记 DEBUG，不逐次记。
+      APPROVAL.debug(
+          LogEvent.of("APPROVAL_LIST_EMPTY", AppLogSource.APPROVAL, "tool", NAME, "pending", 0));
     }
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("pending", rows);

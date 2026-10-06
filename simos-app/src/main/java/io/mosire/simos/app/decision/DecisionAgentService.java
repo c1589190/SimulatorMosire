@@ -3,6 +3,8 @@ package io.mosire.simos.app.decision;
 import io.mosire.agentlib.llm.LlmMessage;
 import io.mosire.agentlib.store.ConversationStore;
 import io.mosire.agentlib.tool.ToolRegistry;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.llm.LlmProviderResolver;
 import io.mosire.simos.app.llm.ProviderLlm;
@@ -10,13 +12,14 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.core.CoreSimos;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateRef;
 import java.util.Objects;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * **决策人 agent 运行流的装配点**（T11C）：把 {@link DecisionAgentRunner} 接进壳——「让某个决策人跑一轮」真会调 LLM。
@@ -45,7 +48,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class DecisionAgentService {
 
-  private static final Logger LOG = LoggerFactory.getLogger(DecisionAgentService.class);
+  /** 决策回合事件的发射通道（分类 = {@link AppLog#decision()}，来源 = {@link AppLogSource#DECISION_TURN}）。 */
+  private static final LogChannel DECISION = EventLog.channel(AppLog.decision());
 
   /** 会话库文件名（落 {@code <store>} 下，与 {@code simos.db} 同目录 ⇒ 跨进程重启沿用同一段会话）。 */
   public static final String CONVERSATIONS_FILE_NAME = "conversations.db";
@@ -249,23 +253,38 @@ public final class DecisionAgentService {
       turnFinalizer.finalizeTurn(branch, decisionMakerId, turn);
       // ★ 一轮的**一行留痕**（运维/验收要看"哪个 provider 真被调、用了几轮、调了什么"）：只打名字与计数，不打内容
       //   （内容在轨迹与会话里，且**绝不打密钥**——本行没有任何配置值）。
-      LOG.info(
-          "决策人 agent 一轮完成 decisionMakerId={} model={} vision={} llmCalls={} toolCalls={} conversationId={}",
-          maker.id().value(),
-          provider.client().model(),
-          provider.vision(),
-          turn.llmCalls(),
-          turn.toolInvocations().size(),
-          turn.conversationId());
+      DECISION.info(
+          LogEvent.of(
+              "DECISION_TURN_COMPLETED",
+              AppLogSource.DECISION_TURN,
+              "dm",
+              maker.id().value(),
+              "model",
+              provider.client().model(),
+              "vision",
+              provider.vision(),
+              "llmCalls",
+              turn.llmCalls(),
+              "toolCalls",
+              turn.toolInvocations().size(),
+              "conversation",
+              turn.conversationId()));
       return turn;
     } catch (DecisionAgentRunner.TurnBudgetExceeded e) {
       // ★ 预算中止不是“决策作废”：把已写进 DRAFT packet 的内容保守结算成 PENDING，GM 仍能看到部分决策。
       salvageAbortedTurn(branch, decisionMakerId, e);
-      LOG.warn(
-          "决策人 agent 撞上回合预算 decisionMakerId={} model={} llmCalls={}",
-          maker.id().value(),
-          provider.client().model(),
-          e.llmCalls());
+      DECISION.warn(
+          LogEvent.of(
+              "DECISION_TURN_BUDGET_EXCEEDED",
+              AppLogSource.DECISION_TURN,
+              "dm",
+              maker.id().value(),
+              "model",
+              provider.client().model(),
+              "llmCalls",
+              e.llmCalls(),
+              "error",
+              e.getClass().getSimpleName()));
       throw e;
     } catch (RuntimeException e) {
       // ★ 解析/协议异常同样不让已写进 packet 的内容静默消失；原异常照常抛出，由批量口如实记 failed。
@@ -281,11 +300,16 @@ public final class DecisionAgentService {
       turnFinalizer.finalizeAborted(branch, decisionMakerId);
     } catch (RuntimeException salvageFailure) {
       original.addSuppressed(salvageFailure);
-      LOG.warn(
-          "决策人回合失败后的保守结算也失败 decisionMaker={} 原异常={} 结算异常={}",
-          decisionMakerId.value(),
-          original.getClass().getSimpleName(),
-          salvageFailure.getClass().getSimpleName());
+      DECISION.warn(
+          LogEvent.of(
+              "DECISION_TURN_SALVAGE_FAILED",
+              AppLogSource.DECISION_TURN,
+              "dm",
+              decisionMakerId.value(),
+              "error",
+              original.getClass().getSimpleName(),
+              "salvageError",
+              salvageFailure.getClass().getSimpleName()));
     }
   }
 

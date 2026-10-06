@@ -10,14 +10,17 @@ import io.mosire.agentlib.llm.LlmRouteAssembler;
 import io.mosire.agentlib.llm.ModelRoute;
 import io.mosire.agentlib.llm.ToolAssetResolver;
 import io.mosire.agentlib.permission.AccessToken;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.sd.adjudication.DecisionAdjudicator;
 import io.mosire.simos.sd.adjudication.LlmDecisionAdjudicator;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * 使用期解析（spec §三，判据 C8/C9）：把决策人绑定的 {@code providerId} 解析成 AgentLib 的 {@link LlmClient}， 并包成本模块 D 阶段的
@@ -40,7 +43,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class LlmProviderResolver {
 
-  private static final Logger LOG = LoggerFactory.getLogger(LlmProviderResolver.class);
+  /** LLM 响应事件的发射通道（分类 = {@link AppLog#llm()}，来源 = {@link AppLogSource#LLM_CALL}）。 */
+  private static final LogChannel LLM = EventLog.channel(AppLog.llm());
 
   /** 未绑定 provider 时的失败信号（调用方据它决定降级还是炸）。 */
   public static final String E_UNBOUND = "E_LLM_PROVIDER_UNBOUND";
@@ -211,12 +215,18 @@ public final class LlmProviderResolver {
     @Override
     public LlmResponse chat(LlmRequest request) throws LlmException {
       LlmResponse response = delegate.chat(request);
-      LOG.info(
-          "LLM 判决响应 model={} inputTokens={} outputTokens={} reasoning={}",
-          response.model(),
-          response.inputTokens(),
-          response.outputTokens(),
-          response.reasoningDisposition());
+      LLM.info(
+          LogEvent.of(
+              "LLM_RESPONSE",
+              AppLogSource.LLM_CALL,
+              "model",
+              response.model(),
+              "inputTokens",
+              response.inputTokens(),
+              "outputTokens",
+              response.outputTokens(),
+              "reasoning",
+              response.reasoningDisposition()));
       return response;
     }
 

@@ -2,6 +2,8 @@ package io.mosire.simos.app.decision;
 
 import io.mosire.agentlib.llm.ContentPart;
 import io.mosire.agentlib.llm.LlmMessage;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.llm.LlmToolNames;
 import io.mosire.simos.app.query.QueryService.QueryTarget;
 import io.mosire.simos.app.render.ArtifactStore;
@@ -16,13 +18,14 @@ import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.model.Nation;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.StateRef;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * **国家决策人的开场快照**（P4）：空会话首轮先给决策人发一张"我的国土长什么样"的图。
@@ -42,7 +45,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class NationOpeningSnapshot implements DecisionAgentRunner.OpeningSnapshot {
 
-  private static final Logger LOG = LoggerFactory.getLogger(NationOpeningSnapshot.class);
+  /** 开场快照事件的发射通道（分类 = {@link AppLog#decision()}，来源 = {@link AppLogSource#DECISION_TURN}）。 */
+  private static final LogChannel DECISION = EventLog.channel(AppLog.decision());
 
   /** 开场取景半径（见类注：127 格，够看清核心区）。 */
   public static final int RADIUS = 6;
@@ -62,8 +66,19 @@ public final class NationOpeningSnapshot implements DecisionAgentRunner.OpeningS
     }
     Region region = homeRegionOf(nation, state);
     if (region == null) {
-      LOG.warn(
-          "开场快照跳过：决策人 {} 的国家 {} 找不到首府区域（世界与归属不同源？）", dm.id().value(), nation.nationId().value());
+      // ★ 保留 WARN（用户 2026-10-23：不接受降级）。
+      DECISION.warn(
+          LogEvent.of(
+              "OPENING_SNAPSHOT_SKIPPED",
+              AppLogSource.DECISION_TURN,
+              "dm",
+              dm.id().value(),
+              "day",
+              state.meta().timestamp().tick(),
+              "nation",
+              nation.nationId().value(),
+              "reason",
+              "home-region-missing"));
       return Optional.empty();
     }
     HexCoord center = MapRenderTool.labelHex(region);
@@ -93,7 +108,16 @@ public final class NationOpeningSnapshot implements DecisionAgentRunner.OpeningS
                   new ContentPart.Image(ArtifactStore.PNG_MEDIA_TYPE, assetId))));
     } catch (RuntimeException e) {
       // ★ 见类注：图是附加信息，不是决策的必要条件 ⇒ 不掀桌子，但要留下痕迹（"开关开了却没图"必须可归因）。
-      LOG.warn("开场快照渲染失败，本轮不带图继续决策人 {}（原因：{}）", dm.id().value(), e.getMessage());
+      DECISION.warn(
+          LogEvent.of(
+              "OPENING_SNAPSHOT_RENDER_FAILED",
+              AppLogSource.DECISION_TURN,
+              "dm",
+              dm.id().value(),
+              "day",
+              state.meta().timestamp().tick(),
+              "error",
+              e.getClass().getSimpleName()));
       return Optional.empty();
     }
   }

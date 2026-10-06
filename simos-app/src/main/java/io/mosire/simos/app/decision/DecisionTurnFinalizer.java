@@ -1,6 +1,7 @@
 package io.mosire.simos.app.decision;
 
 import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.write.DecisionPacketPayloads;
 import io.mosire.simos.core.CoreSimos;
@@ -11,6 +12,9 @@ import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.PacketStatus;
 import io.mosire.simos.sd.state.SdState;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -23,7 +27,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.UUID;
-import org.slf4j.Logger;
 
 /**
  * ★★ **决策回合统一结算器**（用户 2026-10-22 裁定）：把“LLM 何时算提交/结束”从工具调用时刻改到**回合结束之后**。
@@ -51,7 +54,8 @@ import org.slf4j.Logger;
  */
 final class DecisionTurnFinalizer {
 
-  private static final Logger DECISION = AppLog.decision();
+  /** 决策回合结算事件的发射通道（分类 = {@link AppLog#decision()}，来源 = {@link AppLogSource#DECISION_TURN}）。 */
+  private static final LogChannel DECISION = EventLog.channel(AppLog.decision());
 
   /** 结算命令的 initiator：系统策略，不代表某个模型工具调用；DM id 写进载荷与审计。 */
   private static final String INITIATOR = "system:decision-turn-finalizer";
@@ -127,10 +131,17 @@ final class DecisionTurnFinalizer {
     if (packet != null && packet.status() != PacketStatus.DRAFT) {
       // GM 已经处理过（或重复结算）：不再改写已决包。
       DECISION.debug(
-          "event=DECISION_TURN_FINALIZE_SKIP decisionMaker={} packet={} status={}",
-          decisionMakerId.value(),
-          packetId.value(),
-          packet.status());
+          LogEvent.of(
+              "DECISION_TURN_FINALIZE_SKIP",
+              AppLogSource.DECISION_TURN,
+              "dm",
+              decisionMakerId.value(),
+              "day",
+              tick,
+              "packet",
+              packetId.value(),
+              "status",
+              packet.status()));
       return;
     }
 
@@ -153,17 +164,30 @@ final class DecisionTurnFinalizer {
     boolean hasCalls = packet != null && !packet.calls().isEmpty();
     if (packet == null && finalIntent.isBlank()) {
       DECISION.debug(
-          "event=DECISION_TURN_FINALIZE_EMPTY decisionMaker={} reason={}",
-          decisionMakerId.value(),
-          EMPTY);
+          LogEvent.of(
+              "DECISION_TURN_FINALIZE_EMPTY",
+              AppLogSource.DECISION_TURN,
+              "dm",
+              decisionMakerId.value(),
+              "day",
+              tick,
+              "reason",
+              EMPTY));
       return;
     }
     if (packet != null && packet.calls().isEmpty() && finalIntent.isBlank()) {
       DECISION.debug(
-          "event=DECISION_TURN_FINALIZE_EMPTY decisionMaker={} packet={} reason={}",
-          decisionMakerId.value(),
-          packetId.value(),
-          EMPTY);
+          LogEvent.of(
+              "DECISION_TURN_FINALIZE_EMPTY",
+              AppLogSource.DECISION_TURN,
+              "dm",
+              decisionMakerId.value(),
+              "day",
+              tick,
+              "packet",
+              packetId.value(),
+              "reason",
+              EMPTY));
       return;
     }
 
@@ -241,13 +265,23 @@ final class DecisionTurnFinalizer {
               + result);
     }
     DECISION.info(
-        "event=DECISION_TURN_FINALIZED decisionMaker={} packet={} reason={} calls={} batch={} revision={}",
-        decisionMakerId.value(),
-        packetId.value(),
-        reason,
-        hasCalls ? "present" : "none",
-        batchId,
-        committed.ref().revision().value());
+        LogEvent.of(
+            "DECISION_TURN_FINALIZED",
+            AppLogSource.DECISION_TURN,
+            "dm",
+            decisionMakerId.value(),
+            "day",
+            tick,
+            "packet",
+            packetId.value(),
+            "reason",
+            reason,
+            "calls",
+            hasCalls ? "present" : "none",
+            "batch",
+            batchId,
+            "revision",
+            committed.ref().revision().value()));
   }
 
   /** 最后一段文本合并进 packet intent；已有 intent 时不覆盖，只追加“最后陈述”段。 */

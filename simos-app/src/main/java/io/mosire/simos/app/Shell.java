@@ -32,6 +32,7 @@ import io.mosire.simos.actor.spi.RemitGovTreasuryHandler;
 import io.mosire.simos.actor.spi.TransferAccountsHandler;
 import io.mosire.simos.app.access.DecisionCallerFactory;
 import io.mosire.simos.app.access.GmAutoApproveGate;
+import io.mosire.simos.app.access.LoggingApprovalChannel;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
 import io.mosire.simos.app.decision.DecisionAgentService;
 import io.mosire.simos.app.decision.NationOpeningSnapshot;
@@ -197,6 +198,9 @@ import io.mosire.simos.unit.spi.UnitTimeParticipant;
 import io.mosire.simos.unit.spi.UpdateCommandChainHandler;
 import io.mosire.simos.util.facet.FacetRegistry;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.resolve.ResolverRegistry;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
@@ -219,8 +223,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * 外壳：**唯一的装配点**（spec §3.2 的 1~7 步）。
@@ -247,7 +249,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class Shell implements AutoCloseable {
 
-  private static final Logger LOG = LoggerFactory.getLogger(Shell.class);
+  /** 组合根生命周期/推进的发射通道（来源见各调用点的 {@link AppLogSource}）。 */
+  private static final LogChannel SHELL = EventLog.channel(AppLog.shell());
 
   /** MCP server 自报名称（spec §7.2）。 */
   private static final String MCP_SERVER_NAME = "simos-shell";
@@ -844,10 +847,13 @@ public final class Shell implements AutoCloseable {
     // 审批链（T6，spec §3.2 第 3 步；S5：无 Superior 判定，M5 无 LLM）。
     PendingApprovals pendingApprovals = new PendingApprovals();
     HttpApprovalChannel approvalChannel = new HttpApprovalChannel(pendingApprovals);
+    // ★ 2026-10-23 L1：通道外再包一层日志装饰器（pending/approved/denied/timeout 四个可观测点），
+    //   审批判定语义仍逐字由 approvalChannel 决定；端点/端口/markUp 仍用原通道。
+    LoggingApprovalChannel loggingApprovalChannel = new LoggingApprovalChannel(approvalChannel);
     ApprovalCoordinator approvalCoordinator =
         new ApprovalCoordinator(
             List.of(new AutoApproveGate(pendingApprovals), new ConfirmGate()),
-            List.of(approvalChannel),
+            List.of(loggingApprovalChannel),
             pendingApprovals,
             APPROVAL_TIMEOUT,
             null);
@@ -858,7 +864,7 @@ public final class Shell implements AutoCloseable {
     ApprovalCoordinator gmApprovalCoordinator =
         new ApprovalCoordinator(
             List.of(new GmAutoApproveGate()),
-            List.of(approvalChannel),
+            List.of(loggingApprovalChannel),
             pendingApprovals,
             APPROVAL_TIMEOUT,
             null);
@@ -1015,23 +1021,36 @@ public final class Shell implements AutoCloseable {
       }
     }
 
-    LOG.info(
-        "Shell 装配完成: store={} checkpointInterval={} codec={} handler={} participant={}"
-            + " resolver={} facet={} tool={} mapId={} bindAddress={} mcpPort={} guiPort={}"
-            + " approvalPort={}",
-        config.storeDir(),
-        config.checkpointInterval(),
-        codecs.size(),
-        handlers.size(),
-        participants.size(),
-        resolverRegistry.namespaces().size(),
-        facetRegistry.facetNames().size(),
-        toolRegistry.size(),
-        config.mapId(),
-        config.bindAddress(),
-        mcpServer.boundPort(),
-        guiServer.boundPort(),
-        approvalEndpoint.boundPort());
+    SHELL.info(
+        LogEvent.of(
+            "SHELL_ASSEMBLED",
+            AppLogSource.SHELL_LIFECYCLE,
+            "store",
+            config.storeDir(),
+            "checkpointInterval",
+            config.checkpointInterval(),
+            "codec",
+            codecs.size(),
+            "handler",
+            handlers.size(),
+            "participant",
+            participants.size(),
+            "resolver",
+            resolverRegistry.namespaces().size(),
+            "facet",
+            facetRegistry.facetNames().size(),
+            "tool",
+            toolRegistry.size(),
+            "mapId",
+            config.mapId(),
+            "bindAddress",
+            config.bindAddress(),
+            "mcpPort",
+            mcpServer.boundPort(),
+            "guiPort",
+            guiServer.boundPort(),
+            "approvalPort",
+            approvalEndpoint.boundPort()));
     return new Shell(
         config,
         coreSimos,
@@ -1294,10 +1313,64 @@ public final class Shell implements AutoCloseable {
    */
   public List<CommandResult> advanceAndDrain(AdvanceTime command) {
     Objects.requireNonNull(command, "command");
+    long day = command.range().to().orElse(command.range().from()).tick();
+    SHELL.info(
+        LogEvent.of(
+            "SHELL_ADVANCE_START",
+            AppLogSource.SHELL_ADVANCE,
+            "day",
+            day,
+            "commandId",
+            command.commandId(),
+            "correlationId",
+            command.correlationId(),
+            "caller",
+            command.initiator(),
+            "branch",
+            command.branch().value(),
+            "expectedRevision",
+            command.expectedRevision().value(),
+            "from",
+            command.range().from().tick()));
     CommandResult result = coreSimos.submit(command);
-    if (result instanceof CommandResult.Committed) {
+    if (result instanceof CommandResult.Committed committed) {
+      // ★ 先记 END 再 drain：drain 是推进之后的派生动作，失败不回滚已落 revision（日志位置与语义次序一致）。
+      SHELL.info(
+          LogEvent.of(
+              "SHELL_ADVANCE_END",
+              AppLogSource.SHELL_ADVANCE,
+              "day",
+              day,
+              "commandId",
+              command.commandId(),
+              "caller",
+              command.initiator(),
+              "branch",
+              committed.ref().branch().value(),
+              "revision",
+              committed.ref().revision().value()));
       return sdCommandDrain.drainAfterAdvance(command.branch());
     }
+    SHELL.info(
+        LogEvent.of(
+            "SHELL_ADVANCE_REJECTED",
+            AppLogSource.SHELL_ADVANCE,
+            "day",
+            day,
+            "commandId",
+            command.commandId(),
+            "caller",
+            command.initiator(),
+            "reason",
+            switch (result) {
+              case CommandResult.Rejected rejected -> rejected.reason();
+              case CommandResult.Conflict conflict ->
+                  "conflict head="
+                      + conflict.current().branch().value()
+                      + "@"
+                      + conflict.current().revision().value();
+              case CommandResult.Committed ignored -> "committed";
+            }));
     return List.of();
   }
 

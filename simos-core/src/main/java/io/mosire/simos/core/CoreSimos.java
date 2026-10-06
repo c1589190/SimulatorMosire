@@ -15,6 +15,9 @@ import io.mosire.simos.core.store.Replay;
 import io.mosire.simos.core.store.SqliteStore;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.MutationGuard;
@@ -30,8 +33,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * {@code CoreSimos} 的**装配门面**（spec §1.2；计划 Task 13）：把时间线、重放、checkpoint、推进管线与命令总线拼成一台可用的
@@ -86,9 +87,11 @@ public final class CoreSimos implements AutoCloseable {
   /** 创世行的 initiator（C21 的 {@code <kind>:<id>} 形态）：系统自身，非任何玩家/agent。 */
   private static final String BOOTSTRAP_INITIATOR = "system:bootstrap";
 
-  private static final Logger LOG = LoggerFactory.getLogger(CoreSimos.class);
+  /** core 生命周期事件的发射通道（分类 = {@link CoreLog#life()}，来源 = {@link CoreLogSource#CORE_LIFECYCLE}）。 */
+  private static final LogChannel LIFE = EventLog.channel(CoreLog.life());
 
-  private static final Logger LIFE = CoreLog.life();
+  /** 检查点事件的发射通道（分类 = {@link CoreLog#store()}，来源 = {@link CoreLogSource#CHECKPOINT}）。 */
+  private static final LogChannel STORE = EventLog.channel(CoreLog.store());
 
   private final SqliteStore store;
   private final Timeline timeline;
@@ -123,7 +126,8 @@ public final class CoreSimos implements AutoCloseable {
     this.store = SqliteStore.open(config.storeDir().resolve(DB_FILE_NAME));
     this.timeline = new Timeline(store, config.checkpointInterval());
     this.checkpoints = new CheckpointStore(config.storeDir());
-    LIFE.debug("event=CORE_OPENED storeDir={}", config.storeDir());
+    LIFE.debug(
+        LogEvent.of("CORE_OPENED", CoreLogSource.CORE_LIFECYCLE, "storeDir", config.storeDir()));
   }
 
   /**
@@ -297,11 +301,17 @@ public final class CoreSimos implements AutoCloseable {
             Timeline.changeSetJson(WorldChangeSet.empty())));
     checkpoints.write(at, CheckpointEncoder.encode(genesis, codecs));
     LIFE.info(
-        "event=CORE_GENESIS_BOOTSTRAPPED branch={} revision={} modules={} tick={}",
-        at.branch().value(),
-        at.revision().value(),
-        genesis.modules().size(),
-        genesis.meta().timestamp().tick());
+        LogEvent.of(
+            "CORE_GENESIS_BOOTSTRAPPED",
+            CoreLogSource.CORE_LIFECYCLE,
+            "branch",
+            at.branch().value(),
+            "revision",
+            at.revision().value(),
+            "modules",
+            genesis.modules().size(),
+            "tick",
+            genesis.meta().timestamp().tick()));
   }
 
   // ── 只读面（spec §S8）─────────────────────────────────────────────────────────────────
@@ -407,7 +417,7 @@ public final class CoreSimos implements AutoCloseable {
   @Override
   public void close() {
     store.close();
-    LIFE.debug("event=CORE_CLOSED");
+    LIFE.debug(LogEvent.of("CORE_CLOSED", CoreLogSource.CORE_LIFECYCLE));
   }
 
   // ── 封存 ────────────────────────────────────────────────────────────────────────────
@@ -433,6 +443,19 @@ public final class CoreSimos implements AutoCloseable {
     this.bus =
         new CommandBus(timeline, registry, timeAdvance, this::load, List.copyOf(guards), codecs);
     this.sealed = true;
+    // ★ 2026-10-23：装配完成一条 INFO（原类只有 OPENED/CLOSED 的 DEBUG，装配实况没有一行可读）。
+    LIFE.info(
+        LogEvent.of(
+            "CORE_ASSEMBLED",
+            CoreLogSource.CORE_LIFECYCLE,
+            "codecs",
+            codecs.size(),
+            "handlers",
+            handlers.size(),
+            "participants",
+            participants.size(),
+            "guards",
+            guards.size()));
   }
 
   private CommandBus sealedBus() {
@@ -510,11 +533,16 @@ public final class CoreSimos implements AutoCloseable {
       SimulationState state = replay.replay(ref).state();
       checkpoints.write(ref, CheckpointEncoder.encode(state, codecs));
     } catch (RuntimeException e) {
-      LOG.warn(
-          "checkpoint 写入失败（C18：纯优化，不回退命令；重放将回退到更早的 checkpoint）: {}@{}",
-          ref.branch().value(),
-          ref.revision().value(),
-          e);
+      STORE.warn(
+          LogEvent.of(
+              "CHECKPOINT_WRITE_FAILED",
+              CoreLogSource.CHECKPOINT,
+              "branch",
+              ref.branch().value(),
+              "revision",
+              ref.revision().value(),
+              "error",
+              e.getClass().getSimpleName()));
     }
   }
 }

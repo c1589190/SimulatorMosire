@@ -14,7 +14,12 @@ import io.mosire.agentlib.llm.ModelCapabilities;
 import io.mosire.agentlib.llm.ModelRoute;
 import io.mosire.agentlib.permission.AccessToken;
 import io.mosire.agentlib.permission.AgentPermissionSet;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -25,8 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * LLM provider 配置的**唯一入口**（M11′ 对接版）：把"provider 配置"这件事整个交给 AgentLib 的 {@link
@@ -56,7 +59,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class AgentLibLlmConfig {
 
-  private static final Logger LOG = LoggerFactory.getLogger(AgentLibLlmConfig.class);
+  /** LLM 配置事件的发射通道（分类 = {@link AppLog#llm()}，来源 = {@link AppLogSource#LLM_CONFIG}）。 */
+  private static final LogChannel LLM = EventLog.channel(AppLog.llm());
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
@@ -353,7 +357,9 @@ public final class AgentLibLlmConfig {
         SYSTEM,
         null,
         KEYS_FILE_SCHEMA);
-    LOG.info("写入 LLM 密钥配置项 name={} length={}", name, value.length());
+    LLM.info(
+        LogEvent.of(
+            "LLM_KEY_WRITTEN", AppLogSource.LLM_CONFIG, "name", name, "length", value.length()));
   }
 
   /** 删除一条密钥（幂等）。 */
@@ -407,9 +413,8 @@ public final class AgentLibLlmConfig {
     if (migrated == 0) {
       migrated = migrateFrom(repoDefaultConfig);
     }
-    if (migrated > 0) {
-      LOG.info("旧 LLM 配置已迁移到 AgentLib 配置根：{} 项", migrated);
-    }
+    // ★ 2026-10-23：成功一行由 migrateFrom 的 LLM_CONFIG_MIGRATED_FROM 统一发射（本处原 LOG.info 与它
+    //   是同一事实的两个副本，删去以免重复记）。
   }
 
   private int migrateFrom(Path legacy) {
@@ -433,12 +438,26 @@ public final class AgentLibLlmConfig {
             row.echoReasoningContent());
         migrated++;
       } catch (RuntimeException e) {
-        LOG.warn(
-            "旧 LLM 配置项迁移失败（跳过该项，其余照迁） id={} reason={}", row.id(), e.getClass().getSimpleName());
+        // ★ 保留 WARN（用户 2026-10-23：不接受降级）。
+        LLM.warn(
+            LogEvent.of(
+                "LLM_CONFIG_MIGRATION_ROW_SKIPPED",
+                AppLogSource.LLM_CONFIG,
+                "id",
+                row.id(),
+                "reason",
+                e.getClass().getSimpleName()));
       }
     }
     if (migrated > 0) {
-      LOG.info("旧 LLM 配置已迁移：{} 项（源文件保留：{}）", migrated, legacy.getFileName());
+      LLM.info(
+          LogEvent.of(
+              "LLM_CONFIG_MIGRATED_FROM",
+              AppLogSource.LLM_CONFIG,
+              "entries",
+              migrated,
+              "source",
+              legacy.getFileName()));
     }
     return migrated;
   }
@@ -498,7 +517,14 @@ public final class AgentLibLlmConfig {
     try {
       root = MAPPER.readTree(Files.readString(legacy, StandardCharsets.UTF_8));
     } catch (IOException e) {
-      LOG.warn("旧 LLM 配置文件不可读（忽略，不迁移）: {}", legacy);
+      LLM.warn(
+          LogEvent.of(
+              "LLM_CONFIG_LEGACY_UNREADABLE",
+              AppLogSource.LLM_CONFIG,
+              "path",
+              legacy,
+              "error",
+              e.getClass().getSimpleName()));
       return List.of();
     }
     JsonNode providers = root.path("providers");

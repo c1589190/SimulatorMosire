@@ -2,13 +2,14 @@ package io.mosire.simos.app;
 
 import io.mosire.simos.app.world.WorldRegistry;
 import io.mosire.simos.core.CoreSimos;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.state.BranchId;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * 可执行入口（spec §3.4；计划 T1 Step 4）：解析命令行 → 起壳 → 打印生效配置 → 阻塞到 SIGINT → 关闭。
@@ -42,7 +43,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class ShellMain {
 
-  private static final Logger LOG = LoggerFactory.getLogger(ShellMain.class);
+  /** 组合根进程生命周期事件的发射通道（分类 = {@link AppLog#shell()}）。 */
+  private static final LogChannel SHELL = EventLog.channel(AppLog.shell());
 
   private ShellMain() {}
 
@@ -57,10 +59,16 @@ public final class ShellMain {
     try {
       config = parse(args);
     } catch (IllegalArgumentException e) {
-      LOG.error("参数错误：{}", e.getMessage());
-      LOG.error(
-          "用法：--store <dir> [--world=<worldId>] [--config <file>] [--gui-port N] [--mcp-port N]"
-              + " [--approval-port N] [--bind-address <host>] [--opening-snapshot]");
+      SHELL.error(
+          LogEvent.of(
+              "SHELL_ARGUMENT_ERROR", AppLogSource.SHELL_LIFECYCLE, "reason", e.getMessage()));
+      SHELL.error(
+          LogEvent.of(
+              "SHELL_USAGE",
+              AppLogSource.SHELL_LIFECYCLE,
+              "usage",
+              "--store <dir> [--world=<worldId>] [--config <file>] [--gui-port N] [--mcp-port N]"
+                  + " [--approval-port N] [--bind-address <host>] [--opening-snapshot]"));
       return;
     }
     run(config);
@@ -160,28 +168,53 @@ public final class ShellMain {
     try (Shell shell = Shell.start(config)) {
       WorldRegistry.Entry world = WorldRegistry.require(config.worldId());
       if (seedGenesisIfEmpty(shell)) {
-        LOG.info("空库 ⇒ 已就地初始化世界：worldId={}（{}）", world.id(), world.description());
+        SHELL.info(
+            LogEvent.of(
+                "SHELL_GENESIS_INITIALIZED",
+                AppLogSource.SHELL_LIFECYCLE,
+                "worldId",
+                world.id(),
+                "description",
+                world.description()));
       }
-      LOG.info(
-          "Simos Shell 已启动: store={} checkpointInterval={} 模块数={} bindAddress={} guiPort={}"
-              + " mcpPort={} mcpPath={} approvalPort={} mapId={} worldId={}",
-          config.storeDir(),
-          config.checkpointInterval(),
-          shell.registeredModuleCount(),
-          config.bindAddress(),
-          shell.boundGuiPort(),
-          shell.boundMcpPort(),
-          config.mcpPath(),
-          config.approvalPort(),
-          config.mapId(),
-          config.worldId());
-      LOG.info("WebUI 就绪（点击打开）：http://127.0.0.1:{}/", shell.boundGuiPort());
+      SHELL.info(
+          LogEvent.of(
+              "SHELL_STARTED",
+              AppLogSource.SHELL_LIFECYCLE,
+              "store",
+              config.storeDir(),
+              "checkpointInterval",
+              config.checkpointInterval(),
+              "modules",
+              shell.registeredModuleCount(),
+              "bindAddress",
+              config.bindAddress(),
+              "guiPort",
+              shell.boundGuiPort(),
+              "mcpPort",
+              shell.boundMcpPort(),
+              "mcpPath",
+              config.mcpPath(),
+              "approvalPort",
+              config.approvalPort(),
+              "mapId",
+              config.mapId(),
+              "worldId",
+              config.worldId()));
+      SHELL.info(
+          LogEvent.of(
+              "SHELL_WEBUI_READY",
+              AppLogSource.SHELL_LIFECYCLE,
+              "port",
+              shell.boundGuiPort(),
+              "url",
+              "http://127.0.0.1:" + shell.boundGuiPort() + "/"));
       CountDownLatch stop = new CountDownLatch(1);
       Runtime.getRuntime()
           .addShutdownHook(
               new Thread(
                   () -> {
-                    LOG.info("收到停止信号，关闭 Shell");
+                    SHELL.info(LogEvent.of("SHELL_STOP_SIGNAL", AppLogSource.SHELL_LIFECYCLE));
                     shell.close();
                     stop.countDown();
                   },

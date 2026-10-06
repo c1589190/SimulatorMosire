@@ -9,6 +9,8 @@ import com.sun.net.httpserver.HttpServer;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.agentlib.tool.ToolResultTruncator;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.access.DecisionScopeFunctions;
 import io.mosire.simos.app.access.DecisionScopeView;
 import io.mosire.simos.app.decision.DecisionAgentRunner;
@@ -56,6 +58,9 @@ import io.mosire.simos.util.address.Namespace;
 import io.mosire.simos.util.facet.FacetEntry;
 import io.mosire.simos.util.identity.QueryResult;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.state.BranchId;
 import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
@@ -85,8 +90,6 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Predicate;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * GUI 服务器（M5 T8，spec §8.1/§8.2；★ WebUI 出形 1/2）：JDK {@link HttpServer} + **虚拟线程 executor**，同源提供静态页与
@@ -110,7 +113,10 @@ import org.slf4j.LoggerFactory;
  */
 public final class GuiServer implements AutoCloseable {
 
-  private static final Logger LOG = LoggerFactory.getLogger(GuiServer.class);
+  /**
+   * GUI 事件的发射通道（分类 = {@link AppLog#gui()}；来源按调用点取 GUI_REQUEST / SHELL_LIFECYCLE / DECISION_TURN）。
+   */
+  private static final LogChannel GUI = EventLog.channel(AppLog.gui());
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
@@ -552,7 +558,16 @@ public final class GuiServer implements AutoCloseable {
     created.createContext("/", this::handle);
     created.start();
     this.server = created;
-    LOG.info("GUI 服务器已启动: http://{}:{}/（静态 /webui，同源，无 CORS 头）", host, boundPort());
+    GUI.info(
+        LogEvent.of(
+            "GUI_SERVER_STARTED",
+            AppLogSource.SHELL_LIFECYCLE,
+            "host",
+            host,
+            "port",
+            boundPort(),
+            "url",
+            "http://" + host + ":" + boundPort() + "/"));
   }
 
   /** 实际绑定端口（{@code port=0} 时由 OS 分配）。 */
@@ -605,7 +620,18 @@ public final class GuiServer implements AutoCloseable {
     } catch (IllegalArgumentException e) {
       safeError(exchange, 400, e.getMessage());
     } catch (Exception e) {
-      LOG.warn("GUI 请求处理失败: {} {}", exchange.getRequestMethod(), exchange.getRequestURI(), e);
+      GUI.warn(
+          LogEvent.of(
+              "GUI_REQUEST_FAILED",
+              AppLogSource.GUI_REQUEST,
+              "method",
+              exchange.getRequestMethod(),
+              "path",
+              exchange.getRequestURI().getPath(),
+              "caller",
+              remoteHostOf(exchange),
+              "error",
+              e.getClass().getSimpleName()));
       safeError(exchange, 500, "internal error");
     } finally {
       logAccess(exchange, startedNanos);
@@ -622,21 +648,42 @@ public final class GuiServer implements AutoCloseable {
   private void logAccess(HttpExchange exchange, long startedNanos) {
     try {
       long millis = (System.nanoTime() - startedNanos) / 1_000_000L;
-      InetSocketAddress remote = exchange.getRemoteAddress();
-      String remoteHost =
-          (remote == null || remote.getAddress() == null)
-              ? "-"
-              : remote.getAddress().getHostAddress();
-      LOG.info(
-          "access {} {} -> {} {}ms remote={}",
-          exchange.getRequestMethod(),
-          exchange.getRequestURI().getPath(),
-          exchange.getResponseCode(),
-          millis,
-          remoteHost);
+      GUI.info(
+          LogEvent.of(
+              "GUI_ACCESS",
+              AppLogSource.GUI_REQUEST,
+              "method",
+              exchange.getRequestMethod(),
+              "path",
+              exchange.getRequestURI().getPath(),
+              "status",
+              exchange.getResponseCode(),
+              "millis",
+              millis,
+              "caller",
+              remoteHostOf(exchange)));
     } catch (RuntimeException e) {
       // 访问日志失败不得改变响应结果（它在 finally 里；抛出会遮蔽原异常）
-      LOG.debug("访问日志写出失败（不影响响应）", e);
+      GUI.debug(
+          LogEvent.of(
+              "GUI_ACCESS_LOG_FAILED",
+              AppLogSource.GUI_REQUEST,
+              "caller",
+              remoteHostOf(exchange),
+              "error",
+              e.getClass().getSimpleName()));
+    }
+  }
+
+  /** 远端主机（不可得 ⇒ {@code "-"}）；只取 IP，不取查询串/请求体；任何读取异常都不外泄（日志不得改响应）。 */
+  private static String remoteHostOf(HttpExchange exchange) {
+    try {
+      InetSocketAddress remote = exchange.getRemoteAddress();
+      return (remote == null || remote.getAddress() == null)
+          ? "-"
+          : remote.getAddress().getHostAddress();
+    } catch (RuntimeException e) {
+      return "-";
     }
   }
 
@@ -1579,6 +1626,20 @@ public final class GuiServer implements AutoCloseable {
             new RevisionId(longField(root, "expectedRevision")),
             textField(root, "type"),
             payloadField(root));
+    GUI.debug(
+        LogEvent.of(
+            "GUI_COMMAND_REQUEST",
+            AppLogSource.COMMAND_ENTRY,
+            "caller",
+            GUI_INITIATOR,
+            "commandId",
+            id,
+            "type",
+            command.type(),
+            "branch",
+            command.branch().value(),
+            "expectedRevision",
+            command.expectedRevision().value()));
     return resultReply(core.submit(command));
   }
 
@@ -1598,6 +1659,24 @@ public final class GuiServer implements AutoCloseable {
             new BranchId(textField(root, "branch")),
             new RevisionId(longField(root, "expectedRevision")),
             range);
+    GUI.debug(
+        LogEvent.of(
+            "GUI_COMMAND_REQUEST",
+            AppLogSource.COMMAND_ENTRY,
+            "caller",
+            GUI_INITIATOR,
+            "commandId",
+            id,
+            "type",
+            "core.AdvanceTime",
+            "branch",
+            command.branch().value(),
+            "expectedRevision",
+            command.expectedRevision().value(),
+            "from",
+            from,
+            "to",
+            to));
     return resultReply(core.submit(command));
   }
 
@@ -1612,6 +1691,22 @@ public final class GuiServer implements AutoCloseable {
             new BranchId(textField(root, "source")),
             new RevisionId(longField(root, "expectedRevision")),
             new BranchId(textField(root, "newBranch")));
+    GUI.debug(
+        LogEvent.of(
+            "GUI_COMMAND_REQUEST",
+            AppLogSource.COMMAND_ENTRY,
+            "caller",
+            GUI_INITIATOR,
+            "commandId",
+            id,
+            "type",
+            "core.ForkBranch",
+            "branch",
+            command.source().value(),
+            "expectedRevision",
+            command.expectedRevision().value(),
+            "newBranch",
+            command.newBranch().value()));
     return resultReply(core.submit(command));
   }
 
@@ -1785,7 +1880,14 @@ public final class GuiServer implements AutoCloseable {
               null,
               conversationIdFor(ref, decisionMakerId)));
     } catch (RuntimeException e) {
-      LOG.warn("决策人一轮在后台失败 decisionMakerId={}", decisionMakerId, e);
+      GUI.warn(
+          LogEvent.of(
+              "DECISION_RUN_FAILED",
+              AppLogSource.DECISION_TURN,
+              "dm",
+              decisionMakerId,
+              "error",
+              e.getClass().getSimpleName()));
       decisionRunRegistry.finish(
           decisionMakerId,
           token,
@@ -2273,7 +2375,14 @@ public final class GuiServer implements AutoCloseable {
     try {
       writeReply(exchange, Reply.of(status, Map.of("error", message == null ? "error" : message)));
     } catch (IOException | RuntimeException e) {
-      LOG.debug("无法写出错误响应（客户端可能已断开）", e);
+      GUI.debug(
+          LogEvent.of(
+              "GUI_ERROR_RESPONSE_FAILED",
+              AppLogSource.GUI_REQUEST,
+              "caller",
+              remoteHostOf(exchange),
+              "error",
+              e.getClass().getSimpleName()));
     }
   }
 

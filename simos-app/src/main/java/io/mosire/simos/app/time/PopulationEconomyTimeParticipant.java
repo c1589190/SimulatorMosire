@@ -5,6 +5,7 @@ import io.mosire.simos.actor.ActorSnapshot;
 import io.mosire.simos.actor.change.ActorChangeSet;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.household.GovernmentHouseholdWiring;
 import io.mosire.simos.app.household.HouseholdEconomyProjection;
@@ -56,6 +57,7 @@ import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.address.Entity;
 import io.mosire.simos.util.address.Namespace;
 import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.TimeParticipant;
 import io.mosire.simos.util.spi.WorldTimeProposal;
@@ -72,8 +74,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * ★★ **人口—经济协调器**（R4）：**唯一同时看得见 {@code social} 与 {@code economy} 的推进参与者** —— 于是"人"第一次真的随时间变： **日初每
@@ -122,7 +122,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class PopulationEconomyTimeParticipant implements TimeParticipant {
 
-  private static final Logger LOG = LoggerFactory.getLogger(PopulationEconomyTimeParticipant.class);
+  /** 日循环事件的发射通道（分类 = {@link AppLog#time()}；来源按调用点取 DAILY_LOOP / HOUSEHOLD_SYNC）。 */
+  private static final LogChannel TIME = EventLog.channel(AppLog.time());
 
   /** 参与者身份（**不是模块名**：它同时写 {@code social} 与 {@code economy} 两个模块）。 */
   public static final String NAMESPACE = "population";
@@ -191,6 +192,17 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       HouseholdUnitConsistency.Reconciliation reconciliation =
           HouseholdUnitConsistency.reconcileSocialToUnits(social, units);
       social = reconciliation.data();
+      // ★ 2026-10-23：自动同步逐条 INFO 从 HouseholdUnitConsistency 迁到这里（原 helper 无 day）。
+      for (String repaired : reconciliation.repaired()) {
+        TIME.info(
+            LogEvent.of(
+                "HOUSEHOLD_LOCATION_AUTOSYNC",
+                AppLogSource.HOUSEHOLD_SYNC,
+                "day",
+                range.from().tick(),
+                "entry",
+                repaired));
+      }
       if (!reconciliation.unresolved().isEmpty()) {
         throw new IllegalStateException(
             "Unit.households 与 Social 家户位置存在单侧修不了的不一致（S3b）："
@@ -202,11 +214,18 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       Map<String, Long> staffProjection =
           HouseholdUnitConsistency.staffHouseholdProjection(social, units);
       if (!staffProjection.isEmpty()) {
-        LOG.info(
-            "event=GOV_STAFF_HOUSEHOLD_PROJECTION mapId={} entries={} projection={}",
-            mapId,
-            staffProjection.size(),
-            staffProjection);
+        TIME.info(
+            LogEvent.of(
+                "GOV_STAFF_HOUSEHOLD_PROJECTION",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                range.from().tick(),
+                "mapId",
+                mapId,
+                "entries",
+                staffProjection.size(),
+                "projection",
+                staffProjection));
       }
     }
     EconomyData economyAligned = economyBase;
@@ -219,21 +238,49 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               economyBase, social, units, range.from());
       economyAligned = alignment.data();
       if (alignment.moved() > 0) {
-        LOG.info(
-            "event=UNIT_HOUSEHOLD_ECONOMY_VIEW_ALIGNED mapId={} moved={} tick={}",
-            mapId,
-            alignment.moved(),
-            range.from().tick());
+        TIME.info(
+            LogEvent.of(
+                "UNIT_HOUSEHOLD_ECONOMY_VIEW_ALIGNED",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                range.from().tick(),
+                "mapId",
+                mapId,
+                "moved",
+                alignment.moved()));
       }
     }
     HouseholdEconomyProjection.Result householdEconomyProjection =
         HouseholdEconomyProjection.project(economyAligned, social);
     if (!householdEconomyProjection.unresolved().isEmpty()) {
-      LOG.warn(
-          "event=CLASSROW_POPULATION_PROJECTION_UNRESOLVED mapId={} count={} first={}",
-          mapId,
-          householdEconomyProjection.unresolved().size(),
-          householdEconomyProjection.unresolved().get(0));
+      // ★ 保留 WARN（用户 2026-10-23：不接受降级；原 helper 的 SKIPPED 副本已删）。
+      TIME.warn(
+          LogEvent.of(
+              "CLASSROW_POPULATION_PROJECTION_UNRESOLVED",
+              AppLogSource.HOUSEHOLD_SYNC,
+              "day",
+              range.from().tick(),
+              "mapId",
+              mapId,
+              "count",
+              householdEconomyProjection.unresolved().size(),
+              "first",
+              householdEconomyProjection.unresolved().get(0)));
+    } else if (householdEconomyProjection.projected()) {
+      TIME.info(
+          LogEvent.of(
+              "CLASSROW_POPULATION_PROJECTED",
+              AppLogSource.HOUSEHOLD_SYNC,
+              "day",
+              range.from().tick(),
+              "mapId",
+              mapId,
+              "households",
+              social.households().size(),
+              "changedRows",
+              householdEconomyProjection.changedRows(),
+              "absPopulationDelta",
+              householdEconomyProjection.populationDelta()));
     }
     EconomyData economy = householdEconomyProjection.data();
     // ★★ P2-C §13.7：经济已激活 + 存在 GOV 单位时，推进入口把"GovernmentFormation 政府家户 ↔ HouseholdEconomy ↔ 政府记录 ↔
@@ -322,17 +369,28 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       reads.add(govAddressRoot());
       writes.add(govAddressRoot());
     }
-    LOG.info(
-        "event=ECONOMY_ADVANCE_START mapId={} fromTick={} toTick={} days={} workerCount={}"
-            + " households={} markets={} debtContracts={}",
-        mapId,
-        range.from().tick(),
-        to.get().tick(),
-        to.get().tick() - range.from().tick(),
-        economyWorkerCount,
-        economy.classes().size(),
-        economy.markets().size(),
-        economy.debtContracts().size());
+    TIME.info(
+        LogEvent.of(
+            "ECONOMY_ADVANCE_START",
+            AppLogSource.DAILY_LOOP,
+            "day",
+            range.from().tick(),
+            "mapId",
+            mapId,
+            "fromTick",
+            range.from().tick(),
+            "toTick",
+            to.get().tick(),
+            "days",
+            to.get().tick() - range.from().tick(),
+            "workerCount",
+            economyWorkerCount,
+            "households",
+            economy.classes().size(),
+            "markets",
+            economy.markets().size(),
+            "debtContracts",
+            economy.debtContracts().size()));
 
     // ★★ S1：唯一账户会话 —— 家户（商品/货币/冻结）+ 经营者（商品/货币/冻结）一次装载；
     //   键 = (ActorRef, HexCoord)，家户 actor id 由 HouseholdId 唯一派生（不再从 CohortKey 拼）。
@@ -363,10 +421,18 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               parallelism);
       try {
         // ★ 装配行可读：实际 workerCount 与"是否真的并行"都在这里（1 = 单线程退化路径）。
-        LOG.info(
-            "人口—经济推进并行入口: workerCount={} parallelism={}",
-            economyWorkerCount,
-            stepper.parallelism());
+        TIME.info(
+            LogEvent.of(
+                "POPULATION_ECONOMY_PARALLEL_ENTRY",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                range.from().tick(),
+                "mapId",
+                mapId,
+                "workerCount",
+                economyWorkerCount,
+                "parallelism",
+                stepper.parallelism()));
         // ★★ P2-A A3：家户人口组成的唯一权威是 Social 的 {@code Household.members} —— 这里先把**基态**投影成
         //   「household → (lot → count)」只读表注入经济会话（组织/进入阶段挑批次用；不进 Economy 状态、
         //   不进变更集）。日循环里每 tick 在生死结算后再用新 Social 刷新一次。
@@ -389,20 +455,27 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           stepper.recomputeLaborBudgets(laborBudgetsOf(currentSocial, day));
           stepper.updateNaturalNeeds(naturalNeedsOf(currentSocial, day));
           stepper.applyHouseholdPopulationDeltas(vital.populationDeltas());
-          if (LOG.isDebugEnabled()) {
+          if (TIME.isDebugEnabled()) {
             long deltaNet = 0L;
             for (long delta : vital.populationDeltas().values()) {
               deltaNet = Math.addExact(deltaNet, delta);
             }
-            LOG.debug(
-                "event=POPULATION_SETTLE_APP day={} births={} deaths={} events={}"
-                    + " deltaHouseholds={} deltaNet={}",
-                day,
-                vital.births(),
-                vital.deaths(),
-                vital.events().size(),
-                vital.populationDeltas().size(),
-                deltaNet);
+            TIME.debug(
+                LogEvent.of(
+                    "POPULATION_SETTLE_APP",
+                    AppLogSource.DAILY_LOOP,
+                    "day",
+                    day,
+                    "births",
+                    vital.births(),
+                    "deaths",
+                    vital.deaths(),
+                    "events",
+                    vital.events().size(),
+                    "deltaHouseholds",
+                    vital.populationDeltas().size(),
+                    "deltaNet",
+                    deltaNet));
           }
           // ★★ T5：日循环里同一处落账 —— step 交回**当天**的账，条目逐日落到 actor 账本上（不重不漏）。
           //   ★★ M2 守恒收口：**市场成交（MARKET_TRADE）不折**（理由见 {@link OwnershipBooks#REASONS_NOT_FOLDED}）——
@@ -431,26 +504,26 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
             stepper.updateComposition(compositionOf(currentSocial));
             stepper.recomputeLaborBudgets(laborBudgetsOf(currentSocial, day));
             stepper.updateNaturalNeeds(naturalNeedsOf(currentSocial, day));
-            EventLog.channel(AppLog.time())
-                .info(
-                    LogEvent.of(
-                        "MODE_MIGRATION_BRIDGED",
-                        "mapId",
-                        mapId,
-                        "day",
-                        day,
-                        "transfers",
-                        populationTransfers.size(),
-                        "migratedPopulation",
-                        migratedPopulation,
-                        "createdTargets",
-                        createdTargets,
-                        "socialPopulationBefore",
-                        socialPopulationBefore,
-                        "socialPopulationAfter",
-                        totalSocialPopulation(currentSocial),
-                        "economyPopulationAfter",
-                        totalEconomyPopulation(stepper.householdEconomies())));
+            TIME.info(
+                LogEvent.of(
+                    "MODE_MIGRATION_BRIDGED",
+                    AppLogSource.DAILY_LOOP,
+                    "day",
+                    day,
+                    "mapId",
+                    mapId,
+                    "transfers",
+                    populationTransfers.size(),
+                    "migratedPopulation",
+                    migratedPopulation,
+                    "createdTargets",
+                    createdTargets,
+                    "socialPopulationBefore",
+                    socialPopulationBefore,
+                    "socialPopulationAfter",
+                    totalSocialPopulation(currentSocial),
+                    "economyPopulationAfter",
+                    totalEconomyPopulation(stepper.householdEconomies())));
           }
           // ★★ P2-D：日结算之后的税 / 行政俸禄 —— **同一账户会话、同一个日循环**（不另起 participant，避免 gov/actor 同名模块冲突）。
           //   顺序沿用阶段 11b：先税（收入侧）、后 GovDaily（支出侧）⇒ 当天税可先供当天俸禄；两者都写账户会话，
@@ -468,11 +541,17 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
                     efficiencyPerMilleByUnit);
             for (Map.Entry<HouseholdId, Long> entry : tax.grainByHousehold().entrySet()) {
               if (!stepper.recordTaxPaid(entry.getKey(), entry.getValue())) {
-                LOG.warn(
-                    "event=TAX_FLOW_ROW_MISSING day={} household={} grain={}",
-                    day,
-                    entry.getKey().value(),
-                    entry.getValue());
+                // ★ 税流账行缺失是账户面异常（非业务拒绝）：保留 WARN 档，只换新形态与来源字段。
+                TIME.warn(
+                    LogEvent.of(
+                        "TAX_FLOW_ROW_MISSING",
+                        AppLogSource.DAILY_LOOP,
+                        "day",
+                        day,
+                        "household",
+                        entry.getKey().value(),
+                        "grain",
+                        entry.getValue()));
               }
             }
             adminTotals.recordTax(tax);
@@ -503,14 +582,21 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               units == null
                   ? MilitaryPayRuleBridge.Report.empty()
                   : MilitaryPayRuleBridge.deriveReport(units, currentSocial, economy, day);
-          if (AppLog.time().isDebugEnabled()) {
-            AppLog.time()
-                .debug(
-                    "event=MILITARY_PAY_BRIDGE units={} policies={} rules={} gaps={}",
+          if (TIME.isDebugEnabled()) {
+            TIME.debug(
+                LogEvent.of(
+                    "MILITARY_PAY_BRIDGE",
+                    AppLogSource.DAILY_LOOP,
+                    "day",
+                    day,
+                    "units",
                     militaryPayReport.units(),
+                    "policies",
                     militaryPayReport.policies(),
+                    "rules",
                     militaryPayReport.rules().size(),
-                    militaryPayReport.gaps().size());
+                    "gaps",
+                    militaryPayReport.gaps().size()));
           }
           PeriodicHouseholdAdjustmentExecutor.applyDue(
               economy, militaryPayReport.rules(), stepper.accounts(), day);
@@ -540,23 +626,41 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         for (HouseholdEconomy householdEconomy : currentEconomy.classes().values()) {
           finalPopulation += householdEconomy.population();
         }
-        LOG.info(
-            "event=ECONOMY_ADVANCE_END mapId={} toTick={} days={} finalPopulation={}"
-                + " finalHouseholds={} finalDebtContracts={} finalMarkets={}",
-            mapId,
-            to.get().tick(),
-            to.get().tick() - range.from().tick(),
-            finalPopulation,
-            currentEconomy.classes().size(),
-            currentEconomy.debtContracts().size(),
-            currentEconomy.markets().size());
+        TIME.info(
+            LogEvent.of(
+                "ECONOMY_ADVANCE_END",
+                AppLogSource.DAILY_LOOP,
+                "day",
+                to.get().tick(),
+                "mapId",
+                mapId,
+                "toTick",
+                to.get().tick(),
+                "days",
+                to.get().tick() - range.from().tick(),
+                "finalPopulation",
+                finalPopulation,
+                "finalHouseholds",
+                currentEconomy.classes().size(),
+                "finalDebtContracts",
+                currentEconomy.debtContracts().size(),
+                "finalMarkets",
+                currentEconomy.markets().size()));
         if (govActive) {
           if (!missingAdminRegions.isEmpty()) {
-            LOG.warn(
-                "event=GOV_ADMIN_REGION_MISSING mapId={} count={} first={}",
-                mapId,
-                missingAdminRegions.size(),
-                missingAdminRegions.iterator().next());
+            // ★ 行政区域缺失是数据面异常：保留 WARN 档，只换新形态与来源字段。
+            TIME.warn(
+                LogEvent.of(
+                    "GOV_ADMIN_REGION_MISSING",
+                    AppLogSource.DAILY_LOOP,
+                    "day",
+                    to.get().tick(),
+                    "mapId",
+                    mapId,
+                    "count",
+                    missingAdminRegions.size(),
+                    "first",
+                    missingAdminRegions.iterator().next()));
           }
           adminTotals.logSummary(
               mapId, range.from().tick(), to.get().tick(), governmentCount(currentGov));
@@ -838,24 +942,38 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
     }
 
     void logSummary(String mapId, long fromTick, long toTick, long governments) {
-      LOG.info(
-          "event=GOV_ADMIN_ADVANCE_END mapId={} fromTick={} toTick={} governments={}"
-              + " taxGrainAssessed={} taxGrainCollected={} taxSilverAssessed={}"
-              + " taxSilverCollected={} upkeepPaidGrain={} upkeepPaidCloth={} upkeepPaidMoney={}"
-              + " upkeepShortfallTotal={} signals={}",
-          mapId,
-          fromTick,
-          toTick,
-          governments,
-          taxGrainAssessed,
-          taxGrainCollected,
-          taxSilverAssessed,
-          taxSilverCollected,
-          upkeepPaidGrain,
-          upkeepPaidCloth,
-          upkeepPaidMoney,
-          upkeepShortfallTotal,
-          signals);
+      TIME.info(
+          LogEvent.of(
+              "GOV_ADMIN_ADVANCE_END",
+              AppLogSource.DAILY_LOOP,
+              "day",
+              toTick,
+              "mapId",
+              mapId,
+              "fromTick",
+              fromTick,
+              "toTick",
+              toTick,
+              "governments",
+              governments,
+              "taxGrainAssessed",
+              taxGrainAssessed,
+              "taxGrainCollected",
+              taxGrainCollected,
+              "taxSilverAssessed",
+              taxSilverAssessed,
+              "taxSilverCollected",
+              taxSilverCollected,
+              "upkeepPaidGrain",
+              upkeepPaidGrain,
+              "upkeepPaidCloth",
+              upkeepPaidCloth,
+              "upkeepPaidMoney",
+              upkeepPaidMoney,
+              "upkeepShortfallTotal",
+              upkeepShortfallTotal,
+              "signals",
+              signals));
     }
   }
 
@@ -926,13 +1044,19 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
       budgets.put(household, budget);
       totalLaborMilli = Math.addExact(totalLaborMilli, budget);
     }
-    if (LOG.isDebugEnabled()) {
-      LOG.debug(
-          "event=POPULATION_LABOR_BUDGETS_EXPANDED mapId={} day={} households={} totalLaborMilli={}",
-          mapId,
-          day,
-          budgets.size(),
-          totalLaborMilli);
+    if (TIME.isDebugEnabled()) {
+      TIME.debug(
+          LogEvent.of(
+              "POPULATION_LABOR_BUDGETS_EXPANDED",
+              AppLogSource.HOUSEHOLD_SYNC,
+              "day",
+              day,
+              "mapId",
+              mapId,
+              "households",
+              budgets.size(),
+              "totalLaborMilli",
+              totalLaborMilli));
     }
     return budgets;
   }
@@ -963,15 +1087,23 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
         }
       }
     }
-    if (LOG.isDebugEnabled()) {
-      LOG.debug(
-          "event=POPULATION_NATURAL_NEEDS_EXPANDED mapId={} day={} households={} totalNeedsMilli={} grainMilli={} clothMilli={}",
-          mapId,
-          day,
-          needsByHousehold.size(),
-          totalNeedsMilli,
-          totalGrainMilli,
-          totalClothMilli);
+    if (TIME.isDebugEnabled()) {
+      TIME.debug(
+          LogEvent.of(
+              "POPULATION_NATURAL_NEEDS_EXPANDED",
+              AppLogSource.HOUSEHOLD_SYNC,
+              "day",
+              day,
+              "mapId",
+              mapId,
+              "households",
+              needsByHousehold.size(),
+              "totalNeedsMilli",
+              totalNeedsMilli,
+              "grainMilli",
+              totalGrainMilli,
+              "clothMilli",
+              totalClothMilli));
     }
     return needsByHousehold;
   }

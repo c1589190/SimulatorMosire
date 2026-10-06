@@ -4,12 +4,16 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.agentlib.tool.Digest;
 import io.mosire.simos.core.CoreLog;
+import io.mosire.simos.core.CoreLogSource;
 import io.mosire.simos.core.observe.EventTypes;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.store.EventRow;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ModuleCodec;
@@ -34,8 +38,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * 命令总线（spec §四，C16 的分派落点）。
@@ -134,16 +136,13 @@ public final class CommandBus {
   private static final ObjectMapper EVENT_MAPPER = SimosObjectMapper.create();
 
   /**
-   * 人类可读日志（spec §7.3："便于直接 debug，不需查库"）。
+   * 人类可读日志（spec §7.3："便于直接 debug，不需查库"）。★ 2026-10-23 起统一走 {@link CoreLog#command()} 门面分类。
    *
    * <p>★ **载荷明文一律不进日志**（与 §8.1 的"不记明文"同一口径）：日志会被 grep、会被贴进 issue、会被采集走，
    * 若在这里落明文，事件表那边省下的明文等于从后门又漏了一遍。诊断需要的**结构信息**（类型 / 命令号 / 链路号 / 分支 / 期望与真实坐标 / 拒绝原因）足够定位，剩下的顺着
    * {@code correlationId} 一条 SQL 就能查到。
    */
-  private static final Logger LOG = LoggerFactory.getLogger(CommandBus.class);
-
-  /** 批提交专用：不挂在类 logger 上，避免改变既有单条命令日志的捕获面（CommandBusLoggingTest）。 */
-  private static final Logger BATCH = CoreLog.command();
+  private static final LogChannel COMMAND = EventLog.channel(CoreLog.command());
 
   /**
    * @param timeline 时间线（读写 revision 行、判 head）
@@ -293,11 +292,18 @@ public final class CommandBus {
       }
     }
 
-    BATCH.debug(
-        "event=COMMAND_BATCH_SUBMIT commands={} branch={} expectedRevision={}",
-        batch.size(),
-        branch.value(),
-        expected.value());
+    COMMAND.debug(
+        LogEvent.of(
+            "COMMAND_BATCH_SUBMIT",
+            CoreLogSource.COMMAND_ENTRY,
+            "commands",
+            batch.size(),
+            "branch",
+            branch.value(),
+            "expectedRevision",
+            expected.value(),
+            "caller",
+            batch.get(0).initiator()));
     // ★ 整批在同一把锁内：① 复查 head、② 逐条 handler、③ 派生变更集、④ 落一条 revision，中途没有缝（见方法注）。
     synchronized (commitLock) {
       Optional<RevisionId> head = timeline.head(branch);
@@ -415,7 +421,16 @@ public final class CommandBus {
 
     if (anyRejected) {
       // ★ 整体拒绝、不落任何 revision；每条结局齐全（被接受的标为"随整批复原"）
-      BATCH.info("event=COMMAND_BATCH_REJECTED commands={}", pending.size());
+      COMMAND.info(
+          LogEvent.of(
+              "COMMAND_BATCH_REJECTED",
+              CoreLogSource.BATCH_EXECUTION,
+              "day",
+              baseState.meta().timestamp().tick(),
+              "commands",
+              pending.size(),
+              "caller",
+              pending.get(0).command().initiator()));
       return new BatchResult.Rejected(rolledBack(pending));
     }
 
@@ -426,9 +441,20 @@ public final class CommandBus {
           differFor(namespace).diff(slice(baseState, namespace), slice(candidate, namespace));
       modules.put(namespace, derived);
     }
-    BATCH.debug(
-        "event=COMMAND_BATCH_EXECUTED commands={} modules={}", pending.size(), modules.size());
-    return commitBatch(base, pending, new WorldChangeSet(modules));
+    COMMAND.debug(
+        LogEvent.of(
+            "COMMAND_BATCH_EXECUTED",
+            CoreLogSource.BATCH_EXECUTION,
+            "day",
+            baseState.meta().timestamp().tick(),
+            "commands",
+            pending.size(),
+            "modules",
+            modules.size(),
+            "caller",
+            pending.get(0).command().initiator()));
+    return commitBatch(
+        base, pending, new WorldChangeSet(modules), baseState.meta().timestamp().tick());
   }
 
   /**
@@ -436,8 +462,11 @@ public final class CommandBus {
    *
    * <p>★ 行的身份三件套取**首条命令**的（信封上没有"批"自己的身份字段）；{@code command_type} 恒为 {@link #BATCH_COMMAND_TYPE}
    * （诚实：这一行是批提交产生的，不是某一条领域命令）。时刻继承 base（裁定 35）；坐标 = base + 1。
+   *
+   * @param day 批执行所在的世界日（取自基态时间戳；只用于日志的 TICK 档字段）
    */
-  private BatchResult commitBatch(StateRef base, List<Pending> pending, WorldChangeSet changeSet) {
+  private BatchResult commitBatch(
+      StateRef base, List<Pending> pending, WorldChangeSet changeSet, long day) {
     CommandEnvelope lead = pending.get(0).command();
     RevisionRow row =
         revisionRow(
@@ -449,12 +478,22 @@ public final class CommandBus {
             changeSet);
     StateRef committed = new StateRef(row.branch(), row.revision());
     timeline.appendRevision(row);
-    BATCH.info(
-        "event=COMMAND_BATCH_COMMITTED commandId={} branch={} revision={} modules={}",
-        lead.commandId(),
-        committed.branch().value(),
-        committed.revision().value(),
-        changeSet.modules().size());
+    COMMAND.info(
+        LogEvent.of(
+            "COMMAND_BATCH_COMMITTED",
+            CoreLogSource.BATCH_EXECUTION,
+            "day",
+            day,
+            "commandId",
+            lead.commandId(),
+            "branch",
+            committed.branch().value(),
+            "revision",
+            committed.revision().value(),
+            "modules",
+            changeSet.modules().size(),
+            "caller",
+            lead.initiator()));
     return new BatchResult.Committed(committed, committedAll(pending, committed));
   }
 
@@ -585,13 +624,22 @@ public final class CommandBus {
    * 下**一行命令一行日志**，不吵；入口那条会让行数翻倍却不带来新的终局信息，故退一档。
    */
   private CommandResult dispatch(CommandEnvelope envelope) {
-    LOG.debug(
-        "命令接收: type={} commandId={} correlationId={} branch={} expectedRevision={}",
-        envelope.type(),
-        envelope.commandId(),
-        envelope.correlationId(),
-        envelope.branch().value(),
-        envelope.expectedRevision().value());
+    COMMAND.debug(
+        LogEvent.of(
+            "COMMAND_RECEIVED",
+            CoreLogSource.COMMAND_ENTRY,
+            "type",
+            envelope.type(),
+            "commandId",
+            envelope.commandId(),
+            "correlationId",
+            envelope.correlationId(),
+            "caller",
+            envelope.initiator(),
+            "branch",
+            envelope.branch().value(),
+            "expectedRevision",
+            envelope.expectedRevision().value()));
     CommandResult result = routeEnvelope(envelope);
     logOutcome(envelope, result);
     return result;
@@ -663,33 +711,59 @@ public final class CommandBus {
    * 将来加第四种结局会**编译失败**，而不是静默地不记日志。
    *
    * <p>★ 三条消息各自带上"下一步该看什么"：拒绝给**原因**、冲突给**真实 head**（调用方拿它就能重试，日志里也一样）、 提交给**新坐标**。★ 都不带载荷明文（见
-   * {@link #LOG}）。
+   * {@link #COMMAND}）。
    */
   private static void logOutcome(CommandEnvelope envelope, CommandResult result) {
     switch (result) {
       case CommandResult.Rejected rejected ->
-          LOG.info(
-              "命令被拒: type={} commandId={} correlationId={} 原因={}",
-              envelope.type(),
-              envelope.commandId(),
-              envelope.correlationId(),
-              rejected.reason());
+          COMMAND.info(
+              LogEvent.of(
+                  "COMMAND_REJECTED",
+                  CoreLogSource.COMMAND_ENTRY,
+                  "type",
+                  envelope.type(),
+                  "commandId",
+                  envelope.commandId(),
+                  "correlationId",
+                  envelope.correlationId(),
+                  "caller",
+                  envelope.initiator(),
+                  "reason",
+                  rejected.reason()));
       case CommandResult.Conflict conflict ->
-          LOG.info(
-              "命令冲突: type={} commandId={} correlationId={} 真实head={}@{}",
-              envelope.type(),
-              envelope.commandId(),
-              envelope.correlationId(),
-              conflict.current().branch().value(),
-              conflict.current().revision().value());
+          COMMAND.info(
+              LogEvent.of(
+                  "COMMAND_CONFLICTED",
+                  CoreLogSource.COMMAND_ENTRY,
+                  "type",
+                  envelope.type(),
+                  "commandId",
+                  envelope.commandId(),
+                  "correlationId",
+                  envelope.correlationId(),
+                  "caller",
+                  envelope.initiator(),
+                  "headBranch",
+                  conflict.current().branch().value(),
+                  "headRevision",
+                  conflict.current().revision().value()));
       case CommandResult.Committed committed ->
-          LOG.info(
-              "命令提交: type={} commandId={} correlationId={} 新坐标={}@{}",
-              envelope.type(),
-              envelope.commandId(),
-              envelope.correlationId(),
-              committed.ref().branch().value(),
-              committed.ref().revision().value());
+          COMMAND.info(
+              LogEvent.of(
+                  "COMMAND_COMMITTED",
+                  CoreLogSource.COMMAND_ENTRY,
+                  "type",
+                  envelope.type(),
+                  "commandId",
+                  envelope.commandId(),
+                  "correlationId",
+                  envelope.correlationId(),
+                  "caller",
+                  envelope.initiator(),
+                  "branch",
+                  committed.ref().branch().value(),
+                  "revision",
+                  committed.ref().revision().value()));
     }
   }
 

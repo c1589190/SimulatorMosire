@@ -1,6 +1,11 @@
 package io.mosire.simos.app.llm;
 
 import io.mosire.agentlib.llm.OpenAICompatibleLlmClient;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -8,8 +13,6 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * 取密钥的 SPI 实现（D-B 裁定的"逃生口"）：**先 {@code keys.*}（AgentLib 的 ConfigStore），再 ENV，再 FILE**。
@@ -32,7 +35,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class SimosApiKeySource implements OpenAICompatibleLlmClient.ApiKeySource {
 
-  private static final Logger LOG = LoggerFactory.getLogger(SimosApiKeySource.class);
+  /** 密钥引用读取事件的发射通道（分类 = {@link AppLog#llm()}，来源 = {@link AppLogSource#LLM_CONFIG}）。 */
+  private static final LogChannel LLM = EventLog.channel(AppLog.llm());
 
   /** 环境变量前缀（{@code SIMO_LLM_KEY_DEEPSEEK} 之类）。 */
   public static final String ENV_PREFIX = "SIMO_LLM_KEY_";
@@ -94,8 +98,16 @@ public final class SimosApiKeySource implements OpenAICompatibleLlmClient.ApiKey
         .map(
             node -> {
               String value = node.asText();
-              LOG.info(
-                  "读取密钥引用 kind=CONFIG name={} length={}", safeName(credentialsRef), value.length());
+              LLM.info(
+                  LogEvent.of(
+                      "LLM_KEY_RESOLVED",
+                      AppLogSource.LLM_CONFIG,
+                      "kind",
+                      "CONFIG",
+                      "name",
+                      safeName(credentialsRef),
+                      "length",
+                      value.length()));
               return value;
             });
   }
@@ -107,7 +119,16 @@ public final class SimosApiKeySource implements OpenAICompatibleLlmClient.ApiKey
     if (value == null || value.isBlank()) {
       return Optional.empty();
     }
-    LOG.info("读取密钥引用 kind=ENV name={} length={}", variable, value.length());
+    LLM.info(
+        LogEvent.of(
+            "LLM_KEY_RESOLVED",
+            AppLogSource.LLM_CONFIG,
+            "kind",
+            "ENV",
+            "name",
+            variable,
+            "length",
+            value.length()));
     return Optional.of(value);
   }
 
@@ -120,13 +141,31 @@ public final class SimosApiKeySource implements OpenAICompatibleLlmClient.ApiKey
     try {
       String value = Files.readString(path, StandardCharsets.UTF_8).trim();
       if (value.isBlank()) {
-        LOG.warn("密钥文件为空 path={}", path);
+        LLM.warn(
+            LogEvent.of(
+                "LLM_KEY_FILE_EMPTY", AppLogSource.LLM_CONFIG, "path", path, "configured", false));
         return Optional.empty();
       }
-      LOG.info("读取密钥引用 kind=FILE path={} length={}", path, value.length());
+      LLM.info(
+          LogEvent.of(
+              "LLM_KEY_RESOLVED",
+              AppLogSource.LLM_CONFIG,
+              "kind",
+              "FILE",
+              "path",
+              path,
+              "length",
+              value.length()));
       return Optional.of(value);
     } catch (IOException e) {
-      LOG.warn("密钥文件读取失败 path={}", path);
+      LLM.warn(
+          LogEvent.of(
+              "LLM_KEY_FILE_READ_FAILED",
+              AppLogSource.LLM_CONFIG,
+              "path",
+              path,
+              "error",
+              e.getClass().getSimpleName()));
       return Optional.empty();
     }
   }

@@ -18,6 +18,9 @@ import org.slf4j.LoggerFactory;
  *   <tr><td>{@link #tool()}</td><td>{@code .tool}</td><td>GM/决策人工具入口与结局（命令类型、工具名）</td></tr>
  *   <tr><td>{@link #time()}</td><td>{@code .time}</td><td>组合根时间参与者（人口-经济/产权/历法）</td></tr>
  *   <tr><td>{@link #decision()}</td><td>{@code .decision}</td><td>决策人运行流（一轮开始/结束/裁剪）</td></tr>
+ *   <tr><td>{@link #approval()}</td><td>{@code .approval}</td><td>审批链 pending/approved/denied/timeout</td></tr>
+ *   <tr><td>{@link #llm()}</td><td>{@code .llm}</td><td>LLM 路由/密钥引用读取与响应用量元信息</td></tr>
+ *   <tr><td>{@link #gui()}</td><td>{@code .gui}</td><td>GUI 服务器与 HTTP 访问日志</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐工具调用/逐轮明细</b></td></tr>
  * </table>
  *
@@ -50,11 +53,17 @@ public final class AppLog {
   public static final String TOOL_LOGGER_NAME = ROOT_LOGGER_NAME + ".tool";
   public static final String TIME_LOGGER_NAME = ROOT_LOGGER_NAME + ".time";
   public static final String DECISION_LOGGER_NAME = ROOT_LOGGER_NAME + ".decision";
+  public static final String APPROVAL_LOGGER_NAME = ROOT_LOGGER_NAME + ".approval";
+  public static final String LLM_LOGGER_NAME = ROOT_LOGGER_NAME + ".llm";
+  public static final String GUI_LOGGER_NAME = ROOT_LOGGER_NAME + ".gui";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
   private static final Logger SHELL = LoggerFactory.getLogger(SHELL_LOGGER_NAME);
   private static final Logger TOOL = LoggerFactory.getLogger(TOOL_LOGGER_NAME);
   private static final Logger TIME = LoggerFactory.getLogger(TIME_LOGGER_NAME);
   private static final Logger DECISION = LoggerFactory.getLogger(DECISION_LOGGER_NAME);
+  private static final Logger APPROVAL = LoggerFactory.getLogger(APPROVAL_LOGGER_NAME);
+  private static final Logger LLM = LoggerFactory.getLogger(LLM_LOGGER_NAME);
+  private static final Logger GUI = LoggerFactory.getLogger(GUI_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
   private AppLog() {}
@@ -77,6 +86,21 @@ public final class AppLog {
   /** 决策人运行流（一轮开始/结束/裁剪）。 */
   public static Logger decision() {
     return DECISION;
+  }
+
+  /** 审批链（pending/approved/denied/timeout；挂 app 根下，随 {@code -Dsimos.app.logLevel} 继承）。 */
+  public static Logger approval() {
+    return APPROVAL;
+  }
+
+  /** LLM 路由/密钥引用的读取与 LLM 响应元信息（只记路径/长度/model/token 数，绝不记值）。 */
+  public static Logger llm() {
+    return LLM;
+  }
+
+  /** GUI 服务器与 HTTP 访问日志（挂 app 根下，随 {@code -Dsimos.app.logLevel} 继承）。 */
+  public static Logger gui() {
+    return GUI;
   }
 
   /** <b>逐工具调用/逐轮明细</b>。 */

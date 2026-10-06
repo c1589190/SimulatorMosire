@@ -17,8 +17,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * ★★ <b>Unit/Gov 的 households ↔ Social 家户位置的一致性（S3b，2026-10-09）</b>。
@@ -40,8 +38,6 @@ import org.slf4j.LoggerFactory;
  * 一律进 {@code unresolved} 具名列表，不静默丢。
  */
 public final class HouseholdUnitConsistency {
-
-  private static final Logger LOG = LoggerFactory.getLogger(HouseholdUnitConsistency.class);
 
   private HouseholdUnitConsistency() {}
 
@@ -205,11 +201,8 @@ public final class HouseholdUnitConsistency {
     if (unresolved.isEmpty() && repaired.isEmpty()) {
       return new Reconciliation(social, List.of(), List.of());
     }
-    if (!repaired.isEmpty()) {
-      for (String entry : repaired) {
-        LOG.info("event=HOUSEHOLD_LOCATION_AUTOSYNC {}", entry);
-      }
-    }
+    // ★ 2026-10-23：HOUSEHOLD_LOCATION_AUTOSYNC 的发射点移到调用方 PopulationEconomyTimeParticipant
+    //   （那里有 day 与 TICK origin）；repaired 清单一字未动，逐条事实不变。
     SocialData data = repaired.isEmpty() ? social : social.withHouseholds(households);
     return new Reconciliation(data, repaired, unresolved);
   }

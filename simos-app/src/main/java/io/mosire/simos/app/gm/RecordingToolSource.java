@@ -7,6 +7,11 @@ import io.mosire.agentlib.plugin.ToolSource;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -26,6 +31,9 @@ import java.util.Objects;
  * {@link ToolResult}，异常是违约，不伪装成一条"工具使用"（与"工具不存在的调用不记"同口径）。
  */
 public final class RecordingToolSource implements ToolSource {
+
+  /** 工具调用事件的发射通道（分类 = {@link AppLog#tool()}，来源 = {@link AppLogSource#TOOL_CALL}）。 */
+  private static final LogChannel TOOL = EventLog.channel(AppLog.tool());
 
   private final ToolSource delegate;
   private final GmToolUsage usage;
@@ -105,8 +113,55 @@ public final class RecordingToolSource implements ToolSource {
 
     @Override
     public ToolResult execute(ToolContext context) {
+      // ★ 2026-10-23 L1：工具调用面三行（发起 DEBUG / 具名拒绝 INFO / 成功结果 DEBUG）——只记工具名、
+      //   调用者身份与结果码，绝不记 arguments（那是载荷明文/模型输入），也不记 identity.goal()（那是用户文本）。
+      String caller = context.caller() == null ? "-" : context.caller().name();
+      String identity =
+          context.identity() == null ? "-" : String.valueOf(context.identity().instanceId());
+      TOOL.debug(
+          LogEvent.of(
+              "TOOL_CALL_START",
+              AppLogSource.TOOL_CALL,
+              "tool",
+              name(),
+              "caller",
+              caller,
+              "identity",
+              identity));
       ToolResult result = delegate.execute(context);
       usage.record(name(), result.success(), result.code(), System.currentTimeMillis());
+      if (result.success()) {
+        TOOL.debug(
+            LogEvent.of(
+                "TOOL_CALL_END",
+                AppLogSource.TOOL_CALL,
+                "tool",
+                name(),
+                "caller",
+                caller,
+                "identity",
+                identity,
+                "success",
+                result.success(),
+                "code",
+                result.code()));
+      } else {
+        // ★ 用户 2026-10-23：被拒绝一律 INFO（成功结果仍保持 DEBUG）。
+        TOOL.info(
+            LogEvent.of(
+                "TOOL_CALL_REJECTED",
+                AppLogSource.TOOL_CALL,
+                "tool",
+                name(),
+                "caller",
+                caller,
+                "identity",
+                identity,
+                "success",
+                result.success(),
+                "code",
+                result.code()));
+      }
       return result;
     }
   }

@@ -13,7 +13,12 @@ import io.mosire.agentlib.permission.ToolSpec;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.agentlib.tool.ToolContext;
 import io.mosire.agentlib.tool.ToolResult;
+import io.mosire.simos.app.AppLog;
+import io.mosire.simos.app.AppLogSource;
 import io.mosire.simos.app.tools.ToolSupport;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +63,9 @@ public final class GmApproveTool implements AgentTool {
 
   /** {@code by} 缺省值 = 本通道名（审计注记，不参与判定）。 */
   public static final String DEFAULT_BY = "mcp-gm";
+
+  /** 审批事件的发射通道（分类 = {@link AppLog#approval()}，来源 = {@link AppLogSource#APPROVAL}）。 */
+  private static final LogChannel APPROVAL = EventLog.channel(AppLog.approval());
 
   private final PendingApprovals pending;
   private final ApprovalCoordinator coordinator;
@@ -136,7 +144,16 @@ public final class GmApproveTool implements AgentTool {
 
   @Override
   public ToolResult execute(ToolContext context) {
+    // ★ 用户 2026-10-23：审批被拒绝（UNAVAILABLE / NOT_FOUND / CONFLICT / BAD_REQUEST）一律 INFO。
     if (pending == null || coordinator == null) {
+      APPROVAL.info(
+          LogEvent.of(
+              "APPROVAL_DECIDE_REJECTED",
+              AppLogSource.APPROVAL,
+              "tool",
+              NAME,
+              "reason",
+              "UNAVAILABLE"));
       return ToolResult.error("UNAVAILABLE", "审批面未接入（PendingApprovals / ApprovalCoordinator 缺席）");
     }
     try {
@@ -146,17 +163,51 @@ public final class GmApproveTool implements AgentTool {
       Optional<ApprovalRequest> registered = pending.get(id);
       if (registered.isEmpty()) {
         // 从未存在 / 已过期 / 已被编排器摘除——三者外部不可区分，一律 404
+        APPROVAL.info(
+            LogEvent.of(
+                "APPROVAL_DECIDE_REJECTED",
+                AppLogSource.APPROVAL,
+                "tool",
+                NAME,
+                "approvalId",
+                id,
+                "reason",
+                "NOT_FOUND"));
         return ToolResult.error("NOT_FOUND", "未知或已失效的审批 id: " + id);
       }
       ApprovalDecision requested = requestedDecision(args);
       String by = auditNote(args);
       if (!pending.decide(id, requested, by)) {
         // 有值却决不动 = 已经被人/别处决议过（幂等保护：不覆盖首次决定）
+        APPROVAL.info(
+            LogEvent.of(
+                "APPROVAL_DECIDE_REJECTED",
+                AppLogSource.APPROVAL,
+                "tool",
+                NAME,
+                "approvalId",
+                id,
+                "reason",
+                "CONFLICT"));
         return ToolResult.error("CONFLICT", "该审批已决议（幂等保护：重复决议不覆盖首次决定）: " + id);
       }
       // ★ 实际生效的 scope：收窄只在编排器里实现一处，本层只调它（不得复制 "SYSTEM" 字面量或降级规则）
       ApprovalDecision effective =
           coordinator.effectiveDecision(registered.get().callerKey(), requested);
+      APPROVAL.info(
+          LogEvent.of(
+              "APPROVAL_DECIDED",
+              AppLogSource.APPROVAL,
+              "approvalId",
+              id,
+              "tool",
+              registered.get().tool(),
+              "decision",
+              effective.name(),
+              "scope",
+              scopeOf(effective),
+              "by",
+              by));
       Map<String, Object> receipt = new LinkedHashMap<>();
       receipt.put("id", id);
       receipt.put("requested", requested.name());
@@ -166,6 +217,14 @@ public final class GmApproveTool implements AgentTool {
       receipt.put("by", by);
       return ToolSupport.ok(receipt);
     } catch (IllegalArgumentException e) {
+      APPROVAL.info(
+          LogEvent.of(
+              "APPROVAL_DECIDE_REJECTED",
+              AppLogSource.APPROVAL,
+              "tool",
+              NAME,
+              "reason",
+              "BAD_REQUEST"));
       return ToolResult.error("BAD_REQUEST", e.getMessage());
     }
   }

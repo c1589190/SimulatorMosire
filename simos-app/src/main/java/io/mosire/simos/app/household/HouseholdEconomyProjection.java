@@ -9,8 +9,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * ★★ <b>HouseholdEconomy.population 的 Social 家户投影（2026-10-09 家户结构修复）</b>。
@@ -31,8 +29,6 @@ import org.slf4j.LoggerFactory;
  * 0 处理、也不做平均兜底**。
  */
 public final class HouseholdEconomyProjection {
-
-  private static final Logger LOG = LoggerFactory.getLogger(HouseholdEconomyProjection.class);
 
   private HouseholdEconomyProjection() {}
 
@@ -106,21 +102,15 @@ public final class HouseholdEconomyProjection {
     }
 
     if (!unresolved.isEmpty()) {
-      LOG.warn(
-          "event=CLASSROW_POPULATION_PROJECTION_SKIPPED unresolved={} first={}",
-          unresolved.size(),
-          unresolved.get(0));
+      // ★ 2026-10-23：发射点移到调用方 PopulationEconomyTimeParticipant（那里有 day；本行原与调用方的
+      //   CLASSROW_POPULATION_PROJECTION_UNRESOLVED 是同一事实的两个副本）。结果里的 unresolved 一字未动。
       return new Result(economy, false, 0, 0L, unresolved);
     }
     if (changedRows == 0) {
       return new Result(economy, false, 0, 0L, List.of());
     }
     EconomyData projected = economy.withHouseholdEconomies(next);
-    LOG.info(
-        "event=CLASSROW_POPULATION_PROJECTED households={} changedRows={} absPopulationDelta={}",
-        targetPopulation.size(),
-        changedRows,
-        populationDelta);
+    // ★ 2026-10-23：CLASSROW_POPULATION_PROJECTED 由调用方统一发射（带 day 与 TICK origin）。
     return new Result(projected, true, changedRows, populationDelta, List.of());
   }
 }

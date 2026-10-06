@@ -2,6 +2,7 @@ package io.mosire.simos.util.log;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -59,6 +60,49 @@ public record LogEvent(String name, Map<String, Object> fields) {
         throw new IllegalArgumentException("LogEvent.of 第 " + (index / 2) + " 个键不得为 null/空白");
       }
       fields.put(rawKey.toString(), keyValues[index + 1]);
+    }
+    return new LogEvent(name, fields);
+  }
+
+  /**
+   * ★★ <b>带来源的构造</b>（2026-10-23 用户裁定：util 接受追加向后兼容的 overload）： {@code of("EXAMPLE_EVENT",
+   * SomeModuleSource.EXAMPLE, "day", 3)} 渲染出 {@code origin=<id>
+   * originKind=<kind>}，再把调用方给的字段按原序接在后面。
+   *
+   * <p>★ {@code origin=}/{@code originKind=} 恒排在事件名之后、调用方字段之前；调用方不得再传这两个键（传了当场抛， 防止同一行出现两个来源）。原有
+   * {@link #of(String, Object...)} 的语义与逐字输出<b>不变</b>。
+   *
+   * @param name 非空白事件名
+   * @param origin 来源表项（模块内稳定 id + 中文说明 + 粗分类）；不得为 null
+   * @param keyValues 偶数个 key/value；不得包含 {@code origin}/{@code originKind}
+   */
+  public static LogEvent of(String name, LogOrigin origin, Object... keyValues) {
+    Objects.requireNonNull(origin, "LogEvent.of 的 origin 不得为 null");
+    Objects.requireNonNull(keyValues, "LogEvent.of 的 keyValues 不得为 null（无字段传空数组）");
+    if (keyValues.length % 2 != 0) {
+      throw new IllegalArgumentException("LogEvent.of 需要偶数个 key/value: " + keyValues.length);
+    }
+    String originId = origin.id();
+    if (originId == null || originId.isBlank()) {
+      throw new IllegalArgumentException(
+          "LogOrigin.id 不得为 null/空白: " + origin.getClass().getName());
+    }
+    Objects.requireNonNull(
+        origin.kind(), "LogOrigin.kind 不得为 null: " + origin.getClass().getName());
+    LinkedHashMap<String, Object> fields = new LinkedHashMap<>();
+    fields.put("origin", originId);
+    fields.put("originKind", origin.kind().name().toLowerCase(Locale.ROOT));
+    for (int index = 0; index < keyValues.length; index += 2) {
+      Object rawKey = keyValues[index];
+      if (rawKey == null || rawKey.toString().isBlank()) {
+        throw new IllegalArgumentException("LogEvent.of 第 " + (index / 2) + " 个键不得为 null/空白");
+      }
+      String key = rawKey.toString();
+      if ("origin".equals(key) || "originKind".equals(key)) {
+        throw new IllegalArgumentException(
+            "LogEvent.of 带来源的 overload 不允许调用方再传 " + key + "（来源由 LogOrigin 渲染）");
+      }
+      fields.put(key, keyValues[index + 1]);
     }
     return new LogEvent(name, fields);
   }

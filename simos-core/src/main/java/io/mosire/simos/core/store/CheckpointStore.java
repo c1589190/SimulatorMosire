@@ -1,6 +1,10 @@
 package io.mosire.simos.core.store;
 
 import io.mosire.simos.core.CoreLog;
+import io.mosire.simos.core.CoreLogSource;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.state.StateRef;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -10,8 +14,6 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.LongAdder;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * checkpoint 的文件读写（spec §3.5）：{@code <storeDir>/checkpoints/<branch>/<revision>.json} 下放该坐标的**完整信封
@@ -22,7 +24,7 @@ import org.slf4j.LoggerFactory;
  * ④ 处置： 记 WARNING、不失败——分岔等命令不能因 checkpoint 写不出而回滚。
  *
  * <p>★ 读语义（C18）：checkpoint 是纯优化，文件**缺失不导致失败**——{@link #read} 对缺失返回 {@link Optional#empty()} 并记
- * WARNING， 重放方回退到更早的 checkpoint、最坏从创世重放。文件在但读不出（I/O 错误）**不属于"缺失"**，以 {@link UncheckedIOException}
+ * DEBUG， 重放方回退到更早的 checkpoint、最坏从创世重放。文件在但读不出（I/O 错误）**不属于"缺失"**，以 {@link UncheckedIOException}
  * 上抛——静默吞掉会把真实的存储故障伪装成"没做过 checkpoint"。
  *
  * <p>★ R17：分支名做**文件名安全校验**（禁空、{@code '/'}、{@code '\'}、{@code ".."}），构造路径时抛 {@link
@@ -32,9 +34,8 @@ import org.slf4j.LoggerFactory;
  */
 public final class CheckpointStore {
 
-  private static final Logger LOG = LoggerFactory.getLogger(CheckpointStore.class);
-
-  private static final Logger EVENT = CoreLog.store();
+  /** checkpoint 事件的发射通道（分类 = {@link CoreLog#store()}，来源 = {@link CoreLogSource#CHECKPOINT}）。 */
+  private static final LogChannel EVENT = EventLog.channel(CoreLog.store());
 
   private static final String CHECKPOINTS_DIR_NAME = "checkpoints";
 
@@ -76,10 +77,15 @@ public final class CheckpointStore {
       Files.createDirectories(dir);
       Files.writeString(file, envelopeJson, StandardCharsets.UTF_8);
       EVENT.debug(
-          "event=CHECKPOINT_WRITTEN branch={} revision={} bytes={}",
-          ref.branch().value(),
-          ref.revision().value(),
-          envelopeJson.length());
+          LogEvent.of(
+              "CHECKPOINT_WRITTEN",
+              CoreLogSource.CHECKPOINT,
+              "branch",
+              ref.branch().value(),
+              "revision",
+              ref.revision().value(),
+              "bytes",
+              envelopeJson.length()));
     } catch (IOException e) {
       throw new UncheckedIOException("checkpoint 写入失败: " + file, e);
     }
@@ -96,16 +102,31 @@ public final class CheckpointStore {
     readCount.increment();
     Path file = branchDir(ref).resolve(fileName(ref));
     if (!Files.isRegularFile(file)) {
-      LOG.warn("checkpoint 缺失（C18：回退到更早的 checkpoint，最坏从创世重放，不失败）: {}", file);
+      // ★ 保留 WARN（用户 2026-10-23：不接受降级）。
+      EVENT.warn(
+          LogEvent.of(
+              "CHECKPOINT_MISSING",
+              CoreLogSource.CHECKPOINT,
+              "branch",
+              ref.branch().value(),
+              "revision",
+              ref.revision().value(),
+              "path",
+              file));
       return Optional.empty();
     }
     try {
       String json = Files.readString(file, StandardCharsets.UTF_8);
       EVENT.debug(
-          "event=CHECKPOINT_READ branch={} revision={} bytes={}",
-          ref.branch().value(),
-          ref.revision().value(),
-          json.length());
+          LogEvent.of(
+              "CHECKPOINT_READ",
+              CoreLogSource.CHECKPOINT,
+              "branch",
+              ref.branch().value(),
+              "revision",
+              ref.revision().value(),
+              "bytes",
+              json.length()));
       return Optional.of(json);
     } catch (IOException e) {
       throw new UncheckedIOException("checkpoint 读取失败（文件在但读不出）: " + file, e);
