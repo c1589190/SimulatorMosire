@@ -43,7 +43,13 @@ public enum EconomyLogSource implements LogOrigin {
       LogOriginKind.SYSTEM),
   ECONOMY_COMMAND("economy-command", "经济写命令处理：登记/设参/调整/候选进入/借贷（命令面）", LogOriginKind.SYSTEM),
   ECONOMY_CODEC("economy-codec", "EconomyCodec 编解码与变更集施加", LogOriginKind.SYSTEM),
-  ECONOMY_RESOLVE("economy-resolve", "EconomyResolver 候选装配与空结果诊断", LogOriginKind.SYSTEM);
+  ECONOMY_RESOLVE("economy-resolve", "EconomyResolver 候选装配与空结果诊断", LogOriginKind.SYSTEM),
+  ECONOMY_OUTPUT_QUANTITY(
+      "economy-output-quantity", "产品产出数量覆盖：GM 设置/清除/回落默认（命令面）", LogOriginKind.SYSTEM),
+  ECONOMY_PRODUCTION_EFFICIENCY(
+      "economy-production-efficiency",
+      "单 tick 单产业生产框架：修正注入、有效规模、产出数量公式（tick 算法，必带 day）",
+      LogOriginKind.TICK);
 
   private final String id;
   private final String description;

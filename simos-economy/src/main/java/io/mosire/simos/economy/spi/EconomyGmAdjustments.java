@@ -10,6 +10,7 @@ import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DebtContractId;
+import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.api.id.ProductionUnitId;
@@ -22,6 +23,7 @@ import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.AssetRule;
 import io.mosire.simos.economy.model.ClassStructure;
 import io.mosire.simos.economy.model.DebtContract;
+import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.IndustryHexKeys;
 import io.mosire.simos.economy.model.LiquidationPolicy;
 import io.mosire.simos.economy.model.ModeTransition;
@@ -53,7 +55,7 @@ import java.util.Set;
  * EconomyChangeSet} 都在这里算一次，两处只做各自的边界折叠（handler → {@code Rejected}/`Applied`；工具 → {@code
  * BAD_REQUEST} /预览视图）。
  *
- * <p>★★ <b>十条源状态白名单</b>（{@link #ADJUSTMENTS}）：
+ * <p>★★ <b>十二条源状态白名单</b>（{@link #ADJUSTMENTS}）：
  *
  * <ul>
  *   <li><b>旧表（两）</b>：{@link #FORGIVE_DEBT}（{@link DebtContractBook#forgive} + {@link
@@ -66,6 +68,9 @@ import java.util.Set;
  *       只编辑 {@code
  *       modes/classStructures/classPositions/relations/assetRules/productionOrganizations/candidates}
  *       七张 源状态表（class 两表同批落值走 {@link EconomyData#withClassStructuresAndPositions} 成对写口）。
+ *   <li><b>Z1 产品产出数量覆盖（两）</b>：{@link #SET_OUTPUT_QUANTITY} / {@link #CLEAR_OUTPUT_QUANTITY} —— 只编辑
+ *       {@code outputQuantityOverrides}（键 = industryId，内层键 = commodityId，值 = 商品数量/单位规模）； 本批保持
+ *       GmOnly，不加 {@code CommandTargets}、不进决策令桶（§4）。
  * </ul>
  *
  * <p>★★ <b>只改源状态、只走既有写口</b>：本类全部 kind 经既有 {@code with*} 写口落在对应组件上，不搬粮/钱/商品，不新增/删除任何其它表。
@@ -113,12 +118,21 @@ public final class EconomyGmAdjustments {
   /** {@code adjustment} 白名单项：按 id upsert 一条候选生产方式（修订必须推进 version）。 */
   public static final String UPSERT_CANDIDATE = "upsertCandidate";
 
+  /** ★★ Z1：{@code adjustment} 白名单项：upsert 一条产品产出数量覆盖（键 = industryId + "/" + commodityId）。 */
+  public static final String SET_OUTPUT_QUANTITY = "setOutputQuantity";
+
+  /** ★★ Z1：{@code adjustment} 白名单项：删除一条产品产出数量覆盖（回落到配方默认）。 */
+  public static final String CLEAR_OUTPUT_QUANTITY = "clearOutputQuantity";
+
   /** 白名单外调整的统一拒绝短语（handler 折 {@code Rejected}、工具折 {@code BAD_REQUEST} 都用它）。 */
   public static final String DERIVED_REJECTION = "派生读数不可由 GM 调整工具直写";
 
   private static final String COMMAND = EconomyGmAdjustHandler.TYPE;
 
-  /** 十条源状态白名单（拒绝消息与 handler 兜底共用同一顺序；唯一拼写点在各自常量）。 */
+  /** ★★ Z1：{@code outputQuantityOverrides} 的组件名（投影 Change.component 的固定拼写，§4）。 */
+  static final String OUTPUT_QUANTITY_OVERRIDES_COMPONENT = "outputQuantityOverrides";
+
+  /** 十二条源状态白名单（拒绝消息与 handler 兜底共用同一顺序；唯一拼写点在各自常量）。 */
   static final List<String> ADJUSTMENTS =
       List.of(
           FORGIVE_DEBT,
@@ -130,7 +144,9 @@ public final class EconomyGmAdjustments {
           UPSERT_PRODUCTION_RELATION,
           UPSERT_ASSET_RULE,
           UPSERT_PRODUCTION_ORGANIZATION,
-          UPSERT_CANDIDATE);
+          UPSERT_CANDIDATE,
+          SET_OUTPUT_QUANTITY,
+          CLEAR_OUTPUT_QUANTITY);
 
   private EconomyGmAdjustments() {}
 
@@ -139,7 +155,7 @@ public final class EconomyGmAdjustments {
    *
    * @param base 当前 {@link EconomyData}（只读；不得为 null）
    * @param adjustment 调整名；白名单外一律 {@link IllegalArgumentException}（具名 {@link #DERIVED_REJECTION}）
-   * @param parameters 调整参数对象（形状见十条白名单常量）
+   * @param parameters 调整参数对象（形状见十二条白名单常量）
    * @param reason 调整原因；必填非空白
    * @param day 世界当前日（只进审计摘要；不改状态）
    * @return 投影后的 {@link EconomyData}、{@link EconomyChangeSet} 与前后差异清单
@@ -174,6 +190,8 @@ public final class EconomyGmAdjustments {
       case UPSERT_PRODUCTION_ORGANIZATION ->
           upsertProductionOrganization(base, parameters, reason, day);
       case UPSERT_CANDIDATE -> upsertCandidate(base, parameters, reason, day);
+      case SET_OUTPUT_QUANTITY -> setOutputQuantity(base, parameters, reason, day);
+      case CLEAR_OUTPUT_QUANTITY -> clearOutputQuantity(base, parameters, reason, day);
       default -> throw derivedRejection(adjustment);
     };
   }
@@ -1303,6 +1321,185 @@ public final class EconomyGmAdjustments {
         projected,
         changeSet,
         List.of(new Change("candidates", id.value(), before, after)));
+  }
+
+  // ── Z1：产品产出数量覆盖（GM 唯一可改项；§3.1/§4）────────────────────────────────────────
+
+  /**
+   * ★★ {@code setOutputQuantity}：{@code {industryId,commodityId,quantity}} —— upsert 一条覆盖（值 =
+   * 商品数量/单位规模）。
+   *
+   * <p>具名拒绝：{@code INDUSTRY_NOT_FOUND} / {@code COMMODITY_NOT_IN_RECIPE} / {@code
+   * QUANTITY_OUT_OF_RANGE}（含缺失、非整数）。 投影组件固定 {@code outputQuantityOverrides}、{@code keyId =
+   * industryId + "/" + commodityId}（§4）。
+   */
+  private static Projection setOutputQuantity(
+      EconomyData base, JsonNode parameters, String reason, long day) {
+    String label = COMMAND + "." + SET_OUTPUT_QUANTITY;
+    IndustryId industryId = outputIndustryId(label, parameters);
+    Industry industry = requireOutputIndustry(base, label, industryId);
+    CommodityId commodityId = outputCommodityId(label, parameters, industry);
+    long quantity = outputQuantity(label, parameters);
+    Long before = overrideQuantity(base.outputQuantityOverrides(), industryId, commodityId);
+    Map<IndustryId, Map<CommodityId, Long>> overrides =
+        copyOutputQuantityOverrides(base.outputQuantityOverrides());
+    overrides
+        .computeIfAbsent(industryId, ignored -> new LinkedHashMap<>())
+        .put(commodityId, quantity);
+    EconomyData projected = base.withOutputQuantityOverrides(overrides);
+    EconomyChangeSet changeSet = EconomyChangeSet.between(base, projected);
+    return new Projection(
+        SET_OUTPUT_QUANTITY,
+        reason,
+        day,
+        projected,
+        changeSet,
+        List.of(
+            new Change(
+                OUTPUT_QUANTITY_OVERRIDES_COMPONENT,
+                outputQuantityKeyId(industryId, commodityId),
+                before,
+                quantity)));
+  }
+
+  /**
+   * ★★ {@code clearOutputQuantity}：{@code {industryId,commodityId}} —— 删除一条覆盖（回配方默认）。
+   *
+   * <p>具名拒绝：{@code INDUSTRY_NOT_FOUND} / {@code COMMODITY_NOT_IN_RECIPE} / {@code
+   * NO_OVERRIDE_TO_CLEAR}（不做静默幂等，防错字）。
+   */
+  private static Projection clearOutputQuantity(
+      EconomyData base, JsonNode parameters, String reason, long day) {
+    String label = COMMAND + "." + CLEAR_OUTPUT_QUANTITY;
+    IndustryId industryId = outputIndustryId(label, parameters);
+    Industry industry = requireOutputIndustry(base, label, industryId);
+    CommodityId commodityId = outputCommodityId(label, parameters, industry);
+    Long before = overrideQuantity(base.outputQuantityOverrides(), industryId, commodityId);
+    if (before == null) {
+      throw new IllegalArgumentException(
+          label
+              + " NO_OVERRIDE_TO_CLEAR: 该产业/商品没有既有覆盖: "
+              + industryId.value()
+              + "/"
+              + commodityId.value());
+    }
+    Map<IndustryId, Map<CommodityId, Long>> overrides =
+        copyOutputQuantityOverrides(base.outputQuantityOverrides());
+    Map<CommodityId, Long> line = overrides.get(industryId);
+    line.remove(commodityId);
+    if (line.isEmpty()) {
+      overrides.remove(industryId); // ★ 空内层不留残余：覆盖表"只在 GM 显式改过时存在"。
+    }
+    EconomyData projected = base.withOutputQuantityOverrides(overrides);
+    EconomyChangeSet changeSet = EconomyChangeSet.between(base, projected);
+    return new Projection(
+        CLEAR_OUTPUT_QUANTITY,
+        reason,
+        day,
+        projected,
+        changeSet,
+        List.of(
+            new Change(
+                OUTPUT_QUANTITY_OVERRIDES_COMPONENT,
+                outputQuantityKeyId(industryId, commodityId),
+                before,
+                null)));
+  }
+
+  /** {@code industryId} 必填非空文本 ⇒ 稳定 id（畸形 ⇒ 具名拒绝）。 */
+  private static IndustryId outputIndustryId(String label, JsonNode parameters) {
+    String text = EconomyCommandPayloads.requireText(label, parameters, "industryId");
+    try {
+      return IndustryId.parse(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(label + " 的 industryId 非法: " + e.getMessage());
+    }
+  }
+
+  /** {@code industryId} 必须存在于 {@code industries} ⇒ {@code INDUSTRY_NOT_FOUND}。 */
+  private static Industry requireOutputIndustry(
+      EconomyData base, String label, IndustryId industryId) {
+    Industry industry = base.industries().get(industryId);
+    if (industry == null) {
+      throw new IllegalArgumentException(
+          label + " INDUSTRY_NOT_FOUND: 产业不存在: " + industryId.value());
+    }
+    return industry;
+  }
+
+  /**
+   * {@code commodityId} 必须是该产业 {@code recipe().outputPerUnit()} 的键 ⇒ {@code
+   * COMMODITY_NOT_IN_RECIPE}。
+   */
+  private static CommodityId outputCommodityId(
+      String label, JsonNode parameters, Industry industry) {
+    String text = EconomyCommandPayloads.requireText(label, parameters, "commodityId");
+    CommodityId commodityId;
+    try {
+      commodityId = CommodityId.parse(text);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(label + " 的 commodityId 非法: " + e.getMessage());
+    }
+    if (!industry.recipe().outputPerUnit().containsKey(commodityId)) {
+      throw new IllegalArgumentException(
+          label
+              + " COMMODITY_NOT_IN_RECIPE: "
+              + commodityId.value()
+              + " 不在产业 "
+              + industry.id().value()
+              + " 的配方产出键里");
+    }
+    return commodityId;
+  }
+
+  /**
+   * {@code quantity} 缺失/非整数/&lt;0/&gt;{@code MAX_OUTPUT_QUANTITY} ⇒ 一律 {@code
+   * QUANTITY_OUT_OF_RANGE}（§4）。
+   */
+  private static long outputQuantity(String label, JsonNode parameters) {
+    JsonNode node = parameters.get("quantity");
+    if (node == null || !node.isIntegralNumber() || !node.canConvertToLong()) {
+      throw new IllegalArgumentException(
+          label
+              + " QUANTITY_OUT_OF_RANGE: quantity 必须是 [0, "
+              + EconomyData.MAX_OUTPUT_QUANTITY
+              + "] 的整数: "
+              + node);
+    }
+    long quantity = node.asLong();
+    if (quantity < 0L || quantity > EconomyData.MAX_OUTPUT_QUANTITY) {
+      throw new IllegalArgumentException(
+          label
+              + " QUANTITY_OUT_OF_RANGE: quantity 必须 ∈ [0, "
+              + EconomyData.MAX_OUTPUT_QUANTITY
+              + "]: "
+              + quantity);
+    }
+    return quantity;
+  }
+
+  /** 投影 Change 的固定 keyId 拼写点（§4：{@code industryId + "/" + commodityId}）。 */
+  private static String outputQuantityKeyId(IndustryId industryId, CommodityId commodityId) {
+    return industryId.value() + "/" + commodityId.value();
+  }
+
+  /** 读现有覆盖（缺产业/缺商品 ⇒ null）。 */
+  private static Long overrideQuantity(
+      Map<IndustryId, Map<CommodityId, Long>> overrides,
+      IndustryId industryId,
+      CommodityId commodityId) {
+    Map<CommodityId, Long> line = overrides.get(industryId);
+    return line == null ? null : line.get(commodityId);
+  }
+
+  /** 覆盖表的可变深拷贝（外层 + 内层都保序；构造器会再冻一次）。 */
+  private static Map<IndustryId, Map<CommodityId, Long>> copyOutputQuantityOverrides(
+      Map<IndustryId, Map<CommodityId, Long>> source) {
+    Map<IndustryId, Map<CommodityId, Long>> copy = new LinkedHashMap<>();
+    for (Map.Entry<IndustryId, Map<CommodityId, Long>> entry : source.entrySet()) {
+      copy.put(entry.getKey(), new LinkedHashMap<>(entry.getValue()));
+    }
+    return copy;
   }
 
   // ── P7 形状/解析助手 ──────────────────────────────────────────────────────────────────────

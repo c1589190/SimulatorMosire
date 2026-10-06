@@ -2,6 +2,8 @@ package io.mosire.simos.economy.time;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
+import io.mosire.simos.economy.api.production.ProductionEfficiencyModifier;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
@@ -47,6 +49,16 @@ public final class EconomySession {
    * 同制：进程内本会话发生额，用完即弃；重启后由同一 plan 重放产生同一批条目。
    */
   private final List<EconomyPopulationTransfer> populationTransfers = new ArrayList<>();
+
+  /**
+   * ★★ <b>Z1：本 tick 的修正参数注入集</b>（瞬态；键 = unit id，保序 = 注入列表序）。
+   *
+   * <p>★★ <b>为什么不进 {@link EconomyData}/变更集/{@code Codec}</b>：机制给出的值必须是<b>已持久化状态的纯函数</b>，
+   * 本批不提供持久化修正表（§5.2）。{@code EconomyDayStepper.updateProductionModifiers} 在当日结算前<b>替换</b>本集合； 结算逐
+   * tick 消费（周期末按天平均），消费后由 Z2 的结算路径 {@link #clearProductionModifiers()} 清空 —— 机制要连续影响就必须逐 tick 注入。
+   */
+  private final LinkedHashMap<ProductionUnitId, ProductionEfficiencyModifier> productionModifiers =
+      new LinkedHashMap<>();
 
   public EconomySession(EconomyData base) {
     this.base = Objects.requireNonNull(base, "base");
@@ -124,5 +136,33 @@ public final class EconomySession {
     List<EconomyPopulationTransfer> drained = List.copyOf(populationTransfers);
     populationTransfers.clear();
     return drained;
+  }
+
+  /**
+   * ★★ Z1：本 tick 修正注入集的<b>只读视图</b>（键序 = 注入序）—— 只服务 {@code EconomyDayStepper} 的"每日一条"日志与 app/Z3
+   * 只读读数；写口只有 {@link #replaceProductionModifiers(Map)} 与 {@link #clearProductionModifiers()}。
+   */
+  public Map<ProductionUnitId, ProductionEfficiencyModifier> productionModifiersView() {
+    return java.util.Collections.unmodifiableMap(productionModifiers);
+  }
+
+  /**
+   * ★★ Z1：本 tick 修正注入集的<b>可变视图</b>（包内写口）—— 只服务 {@code EconomyDayStepper} 的替换与 Z2 结算的逐 tick
+   * 读取/日末清空。★ 与 {@link #debtWriteOffs()} 同制：不对外公开可变引用。
+   */
+  LinkedHashMap<ProductionUnitId, ProductionEfficiencyModifier> productionModifiers() {
+    return productionModifiers;
+  }
+
+  /** ★★ Z1：替换本 tick 的注入集（调用方已判重复/未知 unit；本方法只做"换成这一份"）。 */
+  void replaceProductionModifiers(
+      Map<ProductionUnitId, ProductionEfficiencyModifier> replacements) {
+    productionModifiers.clear();
+    productionModifiers.putAll(replacements);
+  }
+
+  /** ★★ Z1：当日结算消费后清空注入集（Z2 在日末调用）—— 未再注入的下一日回到 1000‰ 中性。 */
+  void clearProductionModifiers() {
+    productionModifiers.clear();
   }
 }

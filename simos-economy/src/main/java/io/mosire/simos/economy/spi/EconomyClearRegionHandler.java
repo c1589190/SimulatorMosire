@@ -7,6 +7,7 @@ import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassShareId;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
@@ -34,6 +35,7 @@ import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
+import io.mosire.simos.economy.model.ProductionEfficiencyState;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.MapSnapshot;
@@ -336,6 +338,12 @@ public final class EconomyClearRegionHandler
         withoutKeys(base.classStandings(), removedClasses);
 
     Map<HexCoord, Market> markets = withoutKeys(base.markets(), targetHexes);
+    // ★★ Z1：产品产出数量覆盖表按被清产业（`IndustryId` 里的格键）删除 ⇒ 与 industries 同生共死；
+    //   生产效率表按被清 unit 删除 ⇒ 与 units 同生共死（unit 的产业已由 removedUnits 定位）。
+    Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverrides =
+        withoutKeys(base.outputQuantityOverrides(), removedIndustries);
+    Map<ProductionUnitId, ProductionEfficiencyState> productionEfficiency =
+        withoutKeys(base.productionEfficiency(), removedUnits);
     Map<DemandId, HouseholdDemand> householdDemands = new LinkedHashMap<>(base.demands());
     householdDemands
         .entrySet()
@@ -406,7 +414,10 @@ public final class EconomyClearRegionHandler
         staged.classShares(),
         merchantFirms,
         // ★★ P4a：清区域不碰周期规则，原样带过 staged 的表。
-        staged.periodicAdjustments());
+        staged.periodicAdjustments(),
+        // ★★ Z1：两个新组件按格键删除（先摘引用方、被引用的 industry/unit 同一次构造里一起摘）。
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** 保序拷贝并删掉给定键（返回可变表，交给下一次过滤；构造器会再冻）。 */

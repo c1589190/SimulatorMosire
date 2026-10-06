@@ -13,6 +13,7 @@ import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.id.DebtContractId;
@@ -60,6 +61,7 @@ import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionCandidate;
+import io.mosire.simos.economy.model.ProductionEfficiencyState;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionProcess;
@@ -221,7 +223,7 @@ import java.util.Set;
 @SuppressFBWarnings(
     value = "EI_EXPOSE_REP",
     justification =
-        "28 张 Map 组件（含 P4a periodicAdjustments）均在 compact 构造器内逐键复制并 Collections.unmodifiableMap；访问器返回冻结副本")
+        "30 张 Map 组件（含 P4a periodicAdjustments 与 Z1 的 outputQuantityOverrides/productionEfficiency）均在 compact 构造器内逐键复制并 Collections.unmodifiableMap；访问器返回冻结副本")
 public record EconomyData(
     Optional<EconomyMeta> meta,
     Map<IndustryId, Industry> industries,
@@ -251,11 +253,96 @@ public record EconomyData(
     Map<ModeTransitionId, ModeTransition> modeTransitions,
     Map<ClassShareId, ClassShare> classShares,
     Map<ProductionOrganizationId, MerchantFirm> merchantFirms,
-    Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustments) {
+    Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustments,
+    Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverrides,
+    Map<ProductionUnitId, ProductionEfficiencyState> productionEfficiency) {
+
+  /** ★★ <b>Z1：产品产出数量覆盖表的数量上界</b>（§3.1：{@code 值 ∈ [0, 1_000_000]}，防溢出）。命令边界与 load/构造边界共用这一处拼写。 */
+  public static final long MAX_OUTPUT_QUANTITY = 1_000_000L;
 
   /**
-   * ★ P4a 旧组件面的便捷构造器（原 28 参 canonical 形状）：{@code periodicAdjustments} 取空表，让既有调用点无需为了新增第 31
-   * 组件逐个改动；所有 {@code with*} 与 codec/changeset 路径都必须显式携带该组件。
+   * ★★ <b>Z1：{@code outputQuantityOverrides} 构造期违约的稳定前缀</b>（§3.1）。
+   *
+   * <p>该组件的守卫在 {@link #EconomyData} 构造期内 fail-closed；{@link
+   * io.mosire.simos.economy.codec.EconomyCodec} 在载入时把 Jackson 包装过的原因按本前缀识别为<b>契约 ERROR</b> （事件
+   * {@code PRODUCTION_EFFICIENCY_CONTRACT}），因此它是跨类契约、不能改成自由文案。
+   */
+  public static final String OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX =
+      "outputQuantityOverrides 契约违约：";
+
+  /**
+   * ★★ <b>Z1 旧组件面的便捷构造器</b>（P4a 时期的 29 参 canonical 形状）：{@code outputQuantityOverrides} 与 {@code
+   * productionEfficiency} 取空表 —— 历史调用点（含 {@code EconomyPayloads} 的播种载荷）不必为了新增两个组件逐个改动；所有 {@code
+   * with*} 与 codec/changeset 路径都必须显式携带这两个组件。
+   */
+  public EconomyData(
+      Optional<EconomyMeta> meta,
+      Map<IndustryId, Industry> industries,
+      Map<HouseholdId, HouseholdEconomy> classes,
+      Map<DebtContractId, DebtContract> debtContracts,
+      Map<HouseholdId, FlowRow> flows,
+      Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
+      Map<ProductionUnitId, ProductionRules> relations,
+      Map<HexCoord, Market> markets,
+      Map<ShipmentId, ShipmentBatch> shipments,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<ProductionUnitId, OperatorCondition> operatorConditions,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<DemandId, HouseholdDemand> demands,
+      Map<CandidateId, ProductionCandidate> candidates,
+      Map<ProductionModeId, ProductionMode> modes,
+      Map<ClassStructureId, ClassStructure> classStructures,
+      Map<ClassPositionId, ProductionRole> classPositions,
+      Map<HouseholdId, HouseholdClassMembership> classStandings,
+      Map<ProductionOrganizationId, ProductionEnterprise> productionOrganizations,
+      Map<AssetRuleId, AssetRule> assetRules,
+      Map<GovernmentId, Government> governments,
+      Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances,
+      Map<PledgeId, Pledge> pledges,
+      Map<AssetRuleId, LiquidationPolicy> liquidationPolicies,
+      Map<CrisisSignalId, HexCrisisSignal> crisisSignals,
+      Map<ModeTransitionId, ModeTransition> modeTransitions,
+      Map<ClassShareId, ClassShare> classShares,
+      Map<ProductionOrganizationId, MerchantFirm> merchantFirms,
+      Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustments) {
+    this(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        merchantFirms,
+        periodicAdjustments,
+        Map.of(),
+        Map.of());
+  }
+
+  /**
+   * ★ P4a 旧组件面的便捷构造器（原 28 参 canonical 形状）：{@code periodicAdjustments} 取空表；★ Z1 起两个新组件（{@code
+   * outputQuantityOverrides} / {@code productionEfficiency}）同样取空表，让既有调用点无需为了新增组件逐个改动；所有 {@code
+   * with*} 与 codec/changeset 路径都必须显式携带这些组件。
    */
   public EconomyData(
       Optional<EconomyMeta> meta,
@@ -1659,6 +1746,71 @@ public record EconomyData(
       periodicAdjustmentsCopy.put(entry.getKey(), entry.getValue());
     }
     periodicAdjustments = Collections.unmodifiableMap(periodicAdjustmentsCopy); // ★ 冻在赋值处
+
+    // ── Z1 第 32 个组件：产品产出数量覆盖表（§3.1；键 = 产业，内层键 = 商品）──────────────────────
+    //   ★ 守卫范围（命令边界 + 载入边界，§3.1）：本构造期判"结构非空 / 逐值 ∈ [0, MAX_OUTPUT_QUANTITY]"；
+    //     "产业存在 / 商品在该产业 recipe().outputPerUnit() 键里"由命令 handler 与 EconomyCodec 的载入守卫判
+    //     （前者具名 Rejected、后者 PRODUCTION_EFFICIENCY_CONTRACT ERROR）。★ 旧档缺节点 ⇒ 空表（中性）。
+    //   ★ 两段逐字展开（外层 + 内层），绝不抽 helper 去冻：SpotBugs 的 EI_EXPOSE_REP 不做跨过程分析，
+    //     只认它看得见的两处 Collections.unmodifiableMap。
+    if (outputQuantityOverrides == null) {
+      outputQuantityOverrides = Map.of();
+    }
+    Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverridesCopy = new LinkedHashMap<>();
+    for (Map.Entry<IndustryId, Map<CommodityId, Long>> entry : outputQuantityOverrides.entrySet()) {
+      IndustryId outputIndustryId = entry.getKey();
+      Map<CommodityId, Long> outputLine = entry.getValue();
+      if (outputIndustryId == null || outputLine == null) {
+        throw new IllegalArgumentException(
+            OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX + "表的键与值都不得为 null: " + outputIndustryId);
+      }
+      Map<CommodityId, Long> outputLineCopy = new LinkedHashMap<>();
+      for (Map.Entry<CommodityId, Long> lineEntry : outputLine.entrySet()) {
+        CommodityId commodityId = lineEntry.getKey();
+        Long quantity = lineEntry.getValue();
+        if (commodityId == null || quantity == null) {
+          throw new IllegalArgumentException(
+              OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX
+                  + "内层商品表的键与值都不得为 null: "
+                  + outputIndustryId
+                  + "/"
+                  + commodityId);
+        }
+        if (quantity < 0L || quantity > MAX_OUTPUT_QUANTITY) {
+          throw new IllegalArgumentException(
+              OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX
+                  + "数量必须 ∈ [0, "
+                  + MAX_OUTPUT_QUANTITY
+                  + "]: "
+                  + outputIndustryId
+                  + "/"
+                  + commodityId
+                  + " = "
+                  + quantity);
+        }
+        outputLineCopy.put(commodityId, quantity);
+      }
+      outputQuantityOverridesCopy.put(
+          outputIndustryId, Collections.unmodifiableMap(outputLineCopy)); // ★ 内层冻在赋值处
+    }
+    outputQuantityOverrides = Collections.unmodifiableMap(outputQuantityOverridesCopy); // ★ 外层冻在赋值处
+
+    // ── Z1 第 33 个组件：生产效率累计与余数表（§3.2；键 = unit）──────────────────────────────
+    //   ★ 只判键/值非 null 并冻表；五个字段的"≥ 0"守卫在 ProductionEfficiencyState 自己的构造期。
+    //   ★ 旧档缺节点 ⇒ 空表（缺行 = 全 0 余数、当周期全 1000‰ ⇒ 中性）。
+    if (productionEfficiency == null) {
+      productionEfficiency = Map.of();
+    }
+    Map<ProductionUnitId, ProductionEfficiencyState> productionEfficiencyCopy =
+        new LinkedHashMap<>();
+    for (Map.Entry<ProductionUnitId, ProductionEfficiencyState> entry :
+        productionEfficiency.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("productionEfficiency 的键与值都不得为 null: " + entry.getKey());
+      }
+      productionEfficiencyCopy.put(entry.getKey(), entry.getValue());
+    }
+    productionEfficiency = Collections.unmodifiableMap(productionEfficiencyCopy); // ★ 冻在赋值处
   }
 
   /**
@@ -1746,7 +1898,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1780,7 +1934,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1814,7 +1970,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /**
@@ -1851,7 +2009,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1885,7 +2045,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   public EconomyData withLaborCommitments(
@@ -1919,7 +2081,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -1953,7 +2117,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /**
@@ -1992,7 +2158,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /**
@@ -2030,7 +2198,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   public EconomyData withOwnershipStakes(Map<AssetShareId, OwnershipStake> value) {
@@ -2063,7 +2233,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2097,7 +2269,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** ★★ R3B.2：生产单元表（第 14 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2131,7 +2305,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** ★★ R4-E2：需求账本（第 15 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
@@ -2165,7 +2341,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** ★★ R4-E2：候选预设表（第 16 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
@@ -2199,7 +2377,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** ★★ E1：生产方式表（第 17 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2233,7 +2413,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** ★★ E1：阶层结构表（第 18 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2267,7 +2449,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2301,7 +2485,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /**
@@ -2345,7 +2531,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2380,7 +2568,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** ★★ E2：生产组织表（第 21 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2415,7 +2605,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** ★★ E2：生产资料规则表（第 22 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2449,7 +2641,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** ★★ E3：政府表（第 23 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2483,7 +2677,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /** ★★ E3：货币发行审计表（第 24 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2517,7 +2713,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /**
@@ -2555,7 +2753,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /**
@@ -2594,7 +2794,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /**
@@ -2633,7 +2835,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /**
@@ -2672,7 +2876,9 @@ public record EconomyData(
         value,
         classShares,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /**
@@ -2711,7 +2917,9 @@ public record EconomyData(
         modeTransitions,
         value,
         merchantFirms,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /**
@@ -2751,7 +2959,9 @@ public record EconomyData(
         modeTransitions,
         classShares,
         value,
-        periodicAdjustments);
+        periodicAdjustments,
+        outputQuantityOverrides,
+        productionEfficiency);
   }
 
   /**
@@ -2791,6 +3001,92 @@ public record EconomyData(
         modeTransitions,
         classShares,
         merchantFirms,
+        value,
+        outputQuantityOverrides,
+        productionEfficiency);
+  }
+
+  /**
+   * ★★ <b>Z1：产品产出数量覆盖表</b>（第 32 个组件，追加在末尾）；其余 30 个组件原样带过。
+   *
+   * <p>键 = {@link IndustryId}（必须存在于 {@code industries}），内层键 = {@link CommodityId}（必须是该产业 {@code
+   * recipe().outputPerUnit()} 的键），值 ∈ {@code [0, MAX_OUTPUT_QUANTITY]}（§3.1）。缺 key = 回落配方默认；
+   * 表的构造期守卫只判结构与值域，跨表引用由命令边界（具名拒绝）与 {@code EconomyCodec} 载入边界（契约 ERROR）判。
+   */
+  public EconomyData withOutputQuantityOverrides(Map<IndustryId, Map<CommodityId, Long>> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        merchantFirms,
+        periodicAdjustments,
+        value,
+        productionEfficiency);
+  }
+
+  /**
+   * ★★ <b>Z1：生产效率累计与余数表</b>（第 33 个组件，追加在末尾）；其余 32 个组件原样带过。
+   *
+   * <p>键 = {@link ProductionUnitId}（生产单元稳定身份），值 = {@link ProductionEfficiencyState}（五个 long，构造期判
+   * {@code ≥ 0}）。缺行 = 全 0 余数、当周期全 1000‰ ⇒ 中性；周期末消费与清零在 Z2 的结算路径。
+   */
+  public EconomyData withProductionEfficiency(
+      Map<ProductionUnitId, ProductionEfficiencyState> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        merchantFirms,
+        periodicAdjustments,
+        outputQuantityOverrides,
         value);
   }
 

@@ -36,6 +36,7 @@ import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
+import io.mosire.simos.economy.model.ProductionEfficiencyState;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
@@ -98,6 +99,12 @@ public final class EconomyStateBuilder {
    * #build} 原样复用 base 的不可变表（无商号世界零拷贝）。
    */
   private LinkedHashMap<ProductionOrganizationId, MerchantFirm> merchantFirms;
+
+  /**
+   * ★★ <b>Z1：生产效率累计与余数表工作副本（第 33 个组件）</b> —— Z2 的结算按 tick 累加 {@code
+   * cycleModifierSumPerMille}、周期末写回四个余数并清零；未物化时 {@link #build} 原样复用 base 的不可变表（空表基线零拷贝）。
+   */
+  private LinkedHashMap<ProductionUnitId, ProductionEfficiencyState> productionEfficiency;
 
   private Optional<EconomyMeta> meta;
 
@@ -174,6 +181,14 @@ public final class EconomyStateBuilder {
   }
 
   /**
+   * ★ <b>生产单元表的只读选择</b>：已物化工作副本则读它，否则读 base 的表 —— {@code EconomyDayStepper} 的修正注入 只需判"unit
+   * 是否存在"，不必为了查一次就整表拷一份。
+   */
+  public Map<ProductionUnitId, ProductionProcess> unitsOrBase() {
+    return units == null ? base.units() : units;
+  }
+
+  /**
    * ★★ <b>R4-E2b：生产关系表工作副本</b>（第 8 个组件）—— E2b 的进入执行会为新建 unit 插入一条 relation； 未物化时由 {@link
    * #relationsOrBase()} 直接复用 base 的不可变表（空表基线不产生任何拷贝）。
    */
@@ -209,6 +224,17 @@ public final class EconomyStateBuilder {
       merchantFirms = new LinkedHashMap<>(base.merchantFirms());
     }
     return merchantFirms;
+  }
+
+  /**
+   * ★★ <b>Z1：生产效率累计与余数表工作副本</b>（键 = unit id）。Z2 的逐 tick 汇总与周期末公式在此就地表增/改； 未物化时 {@link #build} 直接复用
+   * base 的不可变表。
+   */
+  public LinkedHashMap<ProductionUnitId, ProductionEfficiencyState> productionEfficiency() {
+    if (productionEfficiency == null) {
+      productionEfficiency = new LinkedHashMap<>(base.productionEfficiency());
+    }
+    return productionEfficiency;
   }
 
   /** 市场表工作副本。 */
@@ -353,6 +379,10 @@ public final class EconomyStateBuilder {
         merchantFirms == null ? base.merchantFirms() : merchantFirms,
         // ★★ P4a：规则表不参与旧日结算写回，原样带过 base 的表 —— 漏了它 = 任意一次 advance
         //   都会把已注册的周期规则静默抹掉（账面上看不出是谁弄丢的）。
-        base.periodicAdjustments());
+        base.periodicAdjustments(),
+        // ★★ Z1：产品产出数量覆盖表不参与日结算写回（写入口只有 GM 命令）⇒ 原样带过 base 的表；
+        //   生产效率表是结算工作副本（逐 tick 汇总、周期末写回余数）⇒ 未物化时原样复用 base。
+        base.outputQuantityOverrides(),
+        productionEfficiency == null ? base.productionEfficiency() : productionEfficiency);
   }
 }

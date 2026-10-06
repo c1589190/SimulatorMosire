@@ -9,6 +9,7 @@ import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.ClassStructureId;
+import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
 import io.mosire.simos.economy.api.id.DebtContractId;
 import io.mosire.simos.economy.api.id.DemandId;
@@ -48,6 +49,7 @@ import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionCandidate;
+import io.mosire.simos.economy.model.ProductionEfficiencyState;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionProcess;
@@ -71,7 +73,8 @@ import java.util.function.Function;
  * productionOrganizations} / {@code assetRules} + E3 的 {@code governments} / {@code moneyIssuances}
  * + E4a 的 {@code debtContracts} / {@code pledges} + E5a 的 {@code liquidationPolicies} / {@code
  * crisisSignals} + E6a 的 {@code modeTransitions} / {@code classShares} + P10.1 的 {@code
- * merchantFirms} + P4a 的 {@code periodicAdjustments}）。
+ * merchantFirms} + P4a 的 {@code periodicAdjustments} + Z1 的 {@code outputQuantityOverrides} /
+ * {@code productionEfficiency}）。
  *
  * <p>铁律 5：变更集从完整状态类型派生，由 {@code EconomyRoundTripTest} 的**反射枚举**把守——新增状态组件若不进 变更集，那个测试自动红。
  *
@@ -132,7 +135,9 @@ public record EconomyChangeSet(
     FieldDelta<ModeTransition> modeTransitions,
     FieldDelta<ClassShare> classShares,
     FieldDelta<MerchantFirm> merchantFirms,
-    FieldDelta<HouseholdPeriodicAdjustment> periodicAdjustments)
+    FieldDelta<HouseholdPeriodicAdjustment> periodicAdjustments,
+    FieldDelta<Map<CommodityId, Long>> outputQuantityOverrides,
+    FieldDelta<ProductionEfficiencyState> productionEfficiency)
     implements ChangeSet {
 
   /** {@code meta} 投影成表时的唯一键（与字段同名，便于读字节时一眼对上）。 */
@@ -244,6 +249,13 @@ public record EconomyChangeSet(
     if (periodicAdjustments == null) {
       periodicAdjustments = new FieldDelta.Unchanged<>();
     }
+    // ★★ Z1 第 32/33 个组件（产品产出数量覆盖表 / 生产效率累计与余数表）：旧变更集没提该组件，就是没动它。
+    if (outputQuantityOverrides == null) {
+      outputQuantityOverrides = new FieldDelta.Unchanged<>();
+    }
+    if (productionEfficiency == null) {
+      productionEfficiency = new FieldDelta.Unchanged<>();
+    }
   }
 
   /** 逐组件比较。全相等 ⇒ **全 Unchanged**（不是空对象）。 */
@@ -279,7 +291,9 @@ public record EconomyChangeSet(
         FieldDelta.diff(base.modeTransitions(), target.modeTransitions()),
         FieldDelta.diff(base.classShares(), target.classShares()),
         FieldDelta.diff(base.merchantFirms(), target.merchantFirms()),
-        FieldDelta.diff(base.periodicAdjustments(), target.periodicAdjustments()));
+        FieldDelta.diff(base.periodicAdjustments(), target.periodicAdjustments()),
+        FieldDelta.diff(base.outputQuantityOverrides(), target.outputQuantityOverrides()),
+        FieldDelta.diff(base.productionEfficiency(), target.productionEfficiency()));
   }
 
   /** 逐组件重建（铁律 5 的原文）：{@code apply(between(base, target), base).equals(target)}。 */
@@ -325,7 +339,13 @@ public record EconomyChangeSet(
         FieldDelta.rebuild(
             base.periodicAdjustments(),
             cs.periodicAdjustments(),
-            PeriodicHouseholdAdjustmentId::parse));
+            PeriodicHouseholdAdjustmentId::parse),
+        // ★★ Z1：覆盖表的外层键 = IndustryId；内层 Map<CommodityId, Long> 走 Jackson 的嵌套泛型绑定
+        //   （CommodityId 的键反序列化器已在 EconomyCodec.keyModule 注册）。
+        FieldDelta.rebuild(
+            base.outputQuantityOverrides(), cs.outputQuantityOverrides(), IndustryId::parse),
+        FieldDelta.rebuild(
+            base.productionEfficiency(), cs.productionEfficiency(), ProductionUnitId::parse));
   }
 
   /** 是否所有组件都未变。 */
@@ -358,7 +378,9 @@ public record EconomyChangeSet(
         || modeTransitions.changed()
         || classShares.changed()
         || merchantFirms.changed()
-        || periodicAdjustments.changed());
+        || periodicAdjustments.changed()
+        || outputQuantityOverrides.changed()
+        || productionEfficiency.changed());
   }
 
   /** {@code Optional<EconomyMeta>} → 至多一行的表（键固定为 {@link #META_KEY}）。 */

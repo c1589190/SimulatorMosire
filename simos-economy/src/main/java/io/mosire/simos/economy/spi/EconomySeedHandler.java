@@ -212,7 +212,11 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             merge(base.merchantFirms(), seeded.merchantFirms()),
             // ★★ P4a：seed 载荷不声明周期规则 ⇒ 原样带过已有规则（漏了它 = 后续按格补种
             //   会让所有已注册规则静默消失）。
-            base.periodicAdjustments());
+            base.periodicAdjustments(),
+            // ★★ Z1：seed 载荷不声明产品产出数量覆盖表 / 生产效率表 ⇒ 原样带过已有状态（同 periodicAdjustments 口径；
+            //   first-seed 路径的 seeded 两表为空 ⇒ 首次播种后保持空表）。
+            base.outputQuantityOverrides(),
+            base.productionEfficiency());
     EventLog.channel(LOG)
         .info(
             LogEvent.of(

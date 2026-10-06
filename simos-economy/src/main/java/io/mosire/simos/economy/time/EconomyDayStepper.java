@@ -5,8 +5,10 @@ import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
+import io.mosire.simos.economy.api.id.ProductionUnitId;
 import io.mosire.simos.economy.api.population.LotChange;
 import io.mosire.simos.economy.api.population.LotMigration;
+import io.mosire.simos.economy.api.production.ProductionEfficiencyModifier;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HexCrisisSignal;
 import io.mosire.simos.economy.model.HouseholdEconomy;
@@ -266,6 +268,27 @@ public final class EconomyDayStepper implements AutoCloseable {
     if (day < 1L) {
       throw new IllegalArgumentException("结算的日号必须 ≥ 1（创世是第 0 天）: " + day);
     }
+    // ★★ Z1（§8）：PRODUCTION_MODIFIER_INJECTED INFO，每日一条（day/count/非中性数）—— 修正注入集在当日 step 之前由
+    //   协调器替换，这里带着 day 落地；未注入 ⇒ count=0（中性）。
+    Map<ProductionUnitId, ProductionEfficiencyModifier> injected =
+        session.productionModifiersView();
+    long nonNeutral = 0L;
+    for (ProductionEfficiencyModifier modifier : injected.values()) {
+      if (modifier.modifierPerMille() != 1_000L) {
+        nonNeutral++;
+      }
+    }
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "PRODUCTION_MODIFIER_INJECTED",
+                EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
+                "day",
+                day,
+                "count",
+                injected.size(),
+                "nonNeutral",
+                nonNeutral));
     ProductionLedger.Accumulator ledger = new ProductionLedger.Accumulator(day);
     EconomySettlement.settleOneDayInto(
         session,
@@ -322,6 +345,75 @@ public final class EconomyDayStepper implements AutoCloseable {
    */
   public void updateNaturalNeeds(Map<HouseholdId, Map<CommodityId, Long>> needsByHousehold) {
     EconomySettlement.applyNaturalNeedsInto(session, needsByHousehold);
+  }
+
+  /**
+   * ★★ <b>Z1（§5.2）：替换本 tick 的程序内修正参数注入集</b>（由 app 组合根在当日 {@link #step(long)} <b>之前</b>调用，与 {@link
+   * #updateNaturalNeeds(Map)} / {@link #recomputeLaborBudgets(Map)} 同日序先例）。
+   *
+   * <p>语义：<b>替换</b>而非累加；未注入的 unit = 1000‰（中性）；当日结算消费后由 Z2 的结算路径清空（本区只提供会话暂存）。
+   * 机制的输入必须是<b>已持久化状态的纯函数</b>（本批不提供持久化修正表，§5.2）。
+   *
+   * <p>★★ <b>具名拒绝（INFO + {@link IllegalArgumentException}，同 updateNaturalNeeds 的 fail-closed
+   * 口径）</b>：
+   *
+   * <ul>
+   *   <li>{@code modifiers == null} / 含 null 项 ⇒ 拒（不猜"空"）；
+   *   <li>未知 unit（不在当前 {@code units} 表）⇒ 拒 {@code unknown-unit}；
+   *   <li>同一 unit 重复出现 ⇒ 拒 {@code duplicate-unit}。
+   * </ul>
+   *
+   * <p>★ <b>越界（不属于 [0,2000]）在本方法不可达</b>：{@link ProductionEfficiencyModifier} 的构造期守卫已经
+   * fail-closed（§5.1）—— 本方法收到的 record 必然合法；命令边界之外的"拒绝日志"因此只覆盖本方法能看见的三种。
+   *
+   * @param modifiers 本 tick 的全量注入集（可空列表 = 全部 unit 中性）；不得为 null、不得含 null/重复/未知 unit
+   */
+  public void updateProductionModifiers(List<ProductionEfficiencyModifier> modifiers) {
+    if (modifiers == null) {
+      logProductionModifierRejected("null-modifier-list", null, null);
+      throw new IllegalArgumentException(
+          "updateProductionModifiers 的 modifiers 不得为 null（没有注入用空列表）");
+    }
+    Map<ProductionUnitId, ProductionEfficiencyModifier> replacements = new LinkedHashMap<>();
+    // ★ unitsOrBase：只判存在，不为一次查询整表拷一份工作副本。
+    Map<ProductionUnitId, ?> units = session.sheet().unitsOrBase();
+    for (ProductionEfficiencyModifier modifier : modifiers) {
+      if (modifier == null) {
+        logProductionModifierRejected("null-modifier", null, null);
+        throw new IllegalArgumentException("updateProductionModifiers 不得含 null 修正项");
+      }
+      ProductionUnitId unit = modifier.unit();
+      if (!units.containsKey(unit)) {
+        logProductionModifierRejected("unknown-unit", unit, modifier.modifierPerMille());
+        throw new IllegalArgumentException(
+            "updateProductionModifiers 指向未知 unit（不在 units 表）: " + unit.value());
+      }
+      if (replacements.putIfAbsent(unit, modifier) != null) {
+        logProductionModifierRejected("duplicate-unit", unit, modifier.modifierPerMille());
+        throw new IllegalArgumentException(
+            "updateProductionModifiers 同一 unit 重复注入: " + unit.value());
+      }
+    }
+    session.replaceProductionModifiers(replacements);
+  }
+
+  /**
+   * ★★ Z1（§8）：{@code PRODUCTION_MODIFIER_REJECTED} INFO（reason/unit/modifierPerMille；缺值记 {@code
+   * -}）。
+   */
+  private static void logProductionModifierRejected(
+      String reason, ProductionUnitId unit, Long modifierPerMille) {
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "PRODUCTION_MODIFIER_REJECTED",
+                EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
+                "reason",
+                reason,
+                "unit",
+                unit == null ? "-" : unit.value(),
+                "modifierPerMille",
+                modifierPerMille == null ? "-" : modifierPerMille));
   }
 
   /** ★★ 把逐批次出生/死亡回写经济侧（行人口、劳动配额与流水；成员份额由 Social 权威维护，本侧不再持副本）。 */

@@ -341,3 +341,23 @@ Z2 只动公式与结算路径，不改状态定义（发现定义不足 ⇒ 上
 - 工具归属：app 91 个 `AgentTool` 实现，9 个领域模块 0 个，按用户 2026-10-23 原话单独立项；
 - 债务累积（run4）未达成：债务仍被每个关账日清空（残余 12.5k/4.6k/6.3k 毫粮），自给率 28.6×，
   下一杠杆待用户裁定。
+
+---
+
+## 13. 控制方收尾裁定（Z1 实际落地，2026-10-23）
+
+以下为 Z1 实现与本文的偏差，控制方逐条裁定为**接受**（不改代码；Z4 按此验收）：
+
+1. `PRODUCTION_MODIFIER_REJECTED` **不带 `day`**：拒绝发生在 §5.2 冻结的无 day 方法内。带 day 的每日 INFO 由
+   `step(day)` 的 `PRODUCTION_MODIFIER_INJECTED` 承担（day/count/nonNeutral）；拒绝项带 reason/unit/modifierPerMille，
+   日号由相邻日志定位。接受。
+2. 跨表引用守卫位置：命令边界（具名拒）+ `EconomyCodec` 载入与重放（`PRODUCTION_EFFICIENCY_CONTRACT` ERROR +
+   fail-closed）；`EconomyData` 构造期只判结构与值域 `[0,1_000_000]`，不判跨表（避免卡死 `with*` 逐组件中间态）。接受。
+3. `economy.Seed` append 语义：合并时**原样带过**既有覆盖表/效率表（不静默清空；对照 `periodicAdjustments` 先例）。
+   接受。
+4. 新记录的包名 `io.mosire.simos.economy.api.production`。接受。
+5. codec 契约 ERROR 复用 `EconomyLog.command()` 通道、来源字段 `ECONOMY_PRODUCTION_EFFICIENCY`。接受。
+6. §4 的"数量缺失/非整数"由 `EconomyGmAdjustHandler` 形状守卫拒（具名 payload 错误）；`<0/>1_000_000` 由 `project`
+   拒 `QUANTITY_OUT_OF_RANGE`。Z4 负向用例两类都覆盖，不要求同一短语。接受。
+7. **GM 覆盖只作用于生产路径**：`ExpectedProfitBook` 等只读预期仍读配方默认值（避免本批扩面）；Z4 记一条已知边界，
+   期望/读数一致性另开批次。接受。

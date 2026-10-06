@@ -17,6 +17,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.api.cohort.HouseholdIds;
@@ -56,6 +58,7 @@ import io.mosire.simos.economy.model.DebtContract;
 import io.mosire.simos.economy.model.EconomyMeta;
 import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HouseholdEconomy;
+import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.RegimeOperators;
 import io.mosire.simos.economy.model.RegimeRelations;
@@ -63,6 +66,8 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.spi.ModuleDiffer;
 import io.mosire.simos.util.state.ChangeSet;
@@ -77,6 +82,7 @@ import java.util.Map;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.Function;
+import org.slf4j.Logger;
 
 /**
  * economy 模块的 {@link ModuleCodec} 实现（spec §八）。形态与 {@code LedgerCodec} 同制，理由不重复——只记 economy 自己的那点差异。
@@ -108,6 +114,15 @@ import java.util.function.Function;
  * 不用 {@code is} 前缀，避免被 Jackson 当成属性写进线格式）。旧档缺该键 ⇒ 快照侧收成空表、变更集侧收成 {@code Unchanged}，见 {@code
  * EconomyData}/{@code EconomyChangeSet} 构造器兜底。
  *
+ * <p>★★ <b>Z1</b>：{@code outputQuantityOverrides}（第 32 个组件）的键 = {@code IndustryId}（已注册），内层键 =
+ * {@code CommodityId}（已注册）—— 嵌套 Map 的泛型绑定即可；值 ∈ [0, 1_000_000] 由 {@code EconomyData} 构造期
+ * fail-closed。载入时<b>额外做跨表守卫</b>（§3.1）：每一层产业必须存在于 {@code industries}、商品必须是该产业 {@code
+ * recipe().outputPerUnit()} 的键，违反 ⇒ {@code PRODUCTION_EFFICIENCY_CONTRACT} ERROR + {@link
+ * IllegalStateException}（{@link #apply} 的重放路径同款）。{@code productionEfficiency}（第 33 个组件）的键 = {@code
+ * ProductionUnitId}（已注册），值 {@link io.mosire.simos.economy.model.ProductionEfficiencyState} 走 record
+ * 绑定（五个 long 的 {@code ≥ 0} 由记录构造期判）。 旧档缺这两个节点 ⇒ 空表/中性，见 {@code EconomyData}/{@code
+ * EconomyChangeSet} 构造器兜底。
+ *
  * <p>★ {@code AssetKind} 作键（{@code dailyInputPerUnit}/{@code capacity}）走 Jackson **默认的枚举键** 绑定（按
  * {@code name()}），无需自定义；其余 ID/键类型都重写了 {@code toString()}（= 裸值）并与各自的 {@code parse} 互为逆，故只需读侧。
  *
@@ -122,6 +137,13 @@ import java.util.function.Function;
  * 的同款兜底。两条都<b>不新增迁移代码</b>：缺键的方向本来就是 fail-closed 的 0。
  */
 public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
+
+  /**
+   * ★★ Z1 载入守卫的日志口（唯一 logger 拼写仍取自 {@link EconomyLog}；来源 = {@link
+   * EconomyLogSource#ECONOMY_PRODUCTION_EFFICIENCY} 的契约故障事件）。载入守卫失败是**契约/一致性故障**（§8： {@code
+   * PRODUCTION_EFFICIENCY_CONTRACT} ERROR），不是业务拒绝。
+   */
+  private static final Logger LOG = EconomyLog.command();
 
   /** {@link ProductionUnitId#idOf} 生成的新档 unit id 前缀；只用于**旧档变更集整形**的幂等判别。 */
   private static final String PRODUCTION_UNIT_ID_PREFIX = "unit-";
@@ -584,12 +606,83 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
       node = migrateLegacyOwnershipStakeComponent(node);
       node = migrateLegacyProductionComponents(node);
       node = migrateLegacyDebtSnapshotComponent(node);
+      EconomyData data;
       try {
-        return PLAIN.treeToValue(node, EconomyData.class);
+        data = PLAIN.treeToValue(node, EconomyData.class);
       } catch (JsonProcessingException e) {
+        // ★★ Z1（§3.1）：构造期对 outputQuantityOverrides 的值域/结构守卫抛出的 IAE 会被 Jackson 包进
+        //   JsonProcessingException 的 cause 链；载入边界必须把它记成契约 ERROR（而不是悄悄吞掉）。
+        String contractViolation = outputQuantityContractViolation(e);
+        if (contractViolation != null) {
+          throw outputQuantityContractError(contractViolation, "outputQuantityOverrides 构造期守卫");
+        }
         throw new IllegalStateException("EconomyData 解码失败: " + node, e);
       }
+      // ★★ Z1（§3.1）：载入边界的跨表守卫 —— 产业必须存在、商品必须是该产业 recipe().outputPerUnit() 的键；
+      //   违反 ⇒ 契约 ERROR + fail-closed（旧档缺节点 = null ⇒ 构造期已归一成空表，直接通过）。
+      requireOutputQuantityOverridesValid(data);
+      return data;
     }
+  }
+
+  /**
+   * ★★ <b>Z1 载入守卫（§3.1）：{@code outputQuantityOverrides} 的每一层键都必须指向现存产业与配方产出商品</b>。
+   *
+   * <p>违反 = 契约/一致性故障 ⇒ {@code PRODUCTION_EFFICIENCY_CONTRACT} ERROR + {@link IllegalStateException}
+   * fail-closed（不静默丢弃、不放行悬空引用）。旧档缺该节点 ⇒ 空表（中性），本方法 no-op。
+   */
+  private static void requireOutputQuantityOverridesValid(EconomyData data) {
+    for (Map.Entry<IndustryId, Map<CommodityId, Long>> entry :
+        data.outputQuantityOverrides().entrySet()) {
+      IndustryId industryId = entry.getKey();
+      Industry industry = data.industries().get(industryId);
+      if (industry == null) {
+        throw outputQuantityContractError(
+            "产业不存在: " + industryId.value(), "outputQuantityOverrides");
+      }
+      for (CommodityId commodityId : entry.getValue().keySet()) {
+        if (!industry.recipe().outputPerUnit().containsKey(commodityId)) {
+          throw outputQuantityContractError(
+              "商品不在配方产出键里: industry=" + industryId.value() + ", commodity=" + commodityId.value(),
+              "outputQuantityOverrides");
+        }
+      }
+    }
+  }
+
+  /**
+   * ★★ Z1 契约故障的唯一发射点：先记 {@code PRODUCTION_EFFICIENCY_CONTRACT} ERROR（§8：契约故障不降级）， 再返回 {@link
+   * IllegalStateException} 供调用方 fail-closed。{@code reason} 只含稳定 id/数量，不含载荷明文。
+   */
+  private static IllegalStateException outputQuantityContractError(String reason, String where) {
+    EventLog.channel(LOG)
+        .error(
+            LogEvent.of(
+                "PRODUCTION_EFFICIENCY_CONTRACT",
+                EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
+                "where",
+                where,
+                "reason",
+                reason));
+    return new IllegalStateException(
+        EconomyData.OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX + where + "：" + reason);
+  }
+
+  /**
+   * 在 Jackson 的 cause 链里找 {@link EconomyData#OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX} 标记的构造期违约； 找到
+   * ⇒ 返回可读原因（调用方记 ERROR + fail-closed），否则 null（走通用解码失败路径）。
+   */
+  private static String outputQuantityContractViolation(Throwable error) {
+    for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+      if (cause instanceof IllegalArgumentException
+          && cause.getMessage() != null
+          && cause.getMessage().startsWith(EconomyData.OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX)) {
+        return cause
+            .getMessage()
+            .substring(EconomyData.OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX.length());
+      }
+    }
+    return null;
   }
 
   /**
@@ -1736,6 +1829,9 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
   public Snapshot apply(ChangeSet changeSet, Snapshot base, StateMeta newMeta) {
     EconomySnapshot economyBase = asEconomySnapshot(base);
     EconomyData next = EconomyChangeSet.apply((EconomyChangeSet) changeSet, economyBase.data());
+    // ★★ Z1（§3.1）：重放/落盘同样过一遍载入守卫 —— 变更集可能把覆盖表写成悬空引用；违反 ⇒ 契约 ERROR +
+    //   fail-closed（构造期已判值域/结构，这里判跨表引用）。
+    requireOutputQuantityOverridesValid(next);
     return new EconomySnapshot(newMeta.ref(), newMeta.timestamp(), next);
   }
 

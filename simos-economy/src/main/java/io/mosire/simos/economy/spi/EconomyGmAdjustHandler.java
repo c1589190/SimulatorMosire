@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
-import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.util.log.EventLog;
 import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
@@ -24,12 +23,13 @@ import org.slf4j.Logger;
  *              |"upsertProductionMode"|"deactivateProductionMode"
  *              |"upsertClassStructure"|"upsertClassPosition"
  *              |"upsertProductionRelation"|"upsertAssetRule"
- *              |"upsertProductionOrganization"|"upsertCandidate",
+ *              |"upsertProductionOrganization"|"upsertCandidate"
+ *              |"setOutputQuantity"|"clearOutputQuantity",
  *  "parameters":{...},
  *  "reason":"..."}
  * }</pre>
  *
- * <p>★★ <b>十条 adjustment（源状态白名单，唯一语义落点在 {@link EconomyGmAdjustments#project}）</b>：
+ * <p>★★ <b>十二条 adjustment（源状态白名单，唯一语义落点在 {@link EconomyGmAdjustments#project}）</b>：
  *
  * <ul>
  *   <li><b>旧表两</b>：
@@ -53,6 +53,10 @@ import org.slf4j.Logger;
  *       upsertAssetRule}（{@code modeId,assetKind,...}；id 由 {@code AssetRuleId.idOf} 派生）、 {@code
  *       upsertProductionOrganization}（引用与四档状态守卫）、{@code upsertCandidate}（按 ProductionCandidate
  *       现有字段；见 {@link EconomyGmAdjustments#project}）。八个 kind 只做形状校验， 引用存在性与幂等由 {@code project} 统一判。
+ *   <li><b>Z1 产品产出数量覆盖（两）</b>：{@code setOutputQuantity}（{@code
+ *       {industryId,commodityId,quantity}}；quantity 必须是 [0, 1000000] 整数）、{@code
+ *       clearOutputQuantity}（{@code {industryId,commodityId}}；没有既有覆盖 ⇒ 拒）；守卫与具名 reason 见 {@link
+ *       EconomyGmAdjustments#project}。 本批保持 GmOnly、{@code targetPaths} 返回空列表、不进决策令桶。
  * </ul>
  *
  * <p>★★ <b>派生读数不可直写</b>：{@code flows} / {@code demandBook} / {@code crisisSignals} / {@code
@@ -118,6 +122,10 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
       case EconomyGmAdjustments.UPSERT_PRODUCTION_ORGANIZATION ->
           requireUpsertProductionEnterpriseShape(label, parameters);
       case EconomyGmAdjustments.UPSERT_CANDIDATE -> requireUpsertCandidateShape(label, parameters);
+      case EconomyGmAdjustments.SET_OUTPUT_QUANTITY ->
+          requireSetOutputQuantityShape(label, parameters);
+      case EconomyGmAdjustments.CLEAR_OUTPUT_QUANTITY ->
+          requireClearOutputQuantityShape(label, parameters);
       default ->
           throw new IllegalArgumentException(
               EconomyGmAdjustments.DERIVED_REJECTION
@@ -235,9 +243,119 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
     }
   }
 
+  /** {@code setOutputQuantity} 的形状：industryId/commodityId 必填非空；quantity 必填整数（值域在 project 判）。 */
+  private static void requireSetOutputQuantityShape(String label, JsonNode parameters) {
+    EconomyCommandPayloads.requireText(label, parameters, "industryId");
+    EconomyCommandPayloads.requireText(label, parameters, "commodityId");
+    EconomyCommandPayloads.requireLong(label, parameters, "quantity");
+  }
+
+  /** {@code clearOutputQuantity} 的形状：industryId/commodityId 必填非空（有没有可清在 project 判）。 */
+  private static void requireClearOutputQuantityShape(String label, JsonNode parameters) {
+    EconomyCommandPayloads.requireText(label, parameters, "industryId");
+    EconomyCommandPayloads.requireText(label, parameters, "commodityId");
+  }
+
   private static boolean hasValue(JsonNode parameters, String field) {
     JsonNode node = parameters.get(field);
     return node != null && !node.isNull();
+  }
+
+  /**
+   * ★★ <b>Z1：写口成功日志</b> —— 两个新 kind 用 §8 的 {@code OUTPUT_QUANTITY_SET} / {@code
+   * OUTPUT_QUANTITY_CLEARED}（INFO，含 industry/commodity/old/new/reason）；其余 kind 保持既有 {@code
+   * ECONOMY_GM_ADJUST_APPLIED} 逐字段不变。
+   */
+  private static void logApplied(
+      String adjustment,
+      EconomyGmAdjustments.Projection projection,
+      String reason,
+      long day,
+      int parameterFields) {
+    if (EconomyGmAdjustments.SET_OUTPUT_QUANTITY.equals(adjustment)) {
+      logOutputQuantity("OUTPUT_QUANTITY_SET", projection, reason);
+      return;
+    }
+    if (EconomyGmAdjustments.CLEAR_OUTPUT_QUANTITY.equals(adjustment)) {
+      logOutputQuantity("OUTPUT_QUANTITY_CLEARED", projection, reason);
+      return;
+    }
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "ECONOMY_GM_ADJUST_APPLIED",
+                EconomyLogSource.ECONOMY_COMMAND,
+                "adjustment",
+                adjustment,
+                "day",
+                day,
+                "parameterFields",
+                parameterFields,
+                "isEmpty",
+                projection.changeSet().isEmpty(),
+                "reasonLength",
+                reason == null ? 0 : reason.length()));
+  }
+
+  /**
+   * ★★ Z1：{@code OUTPUT_QUANTITY_SET/CLEARED} 的字段（industry/commodity/old/new/reason）；keyId 契约见 §4。
+   */
+  private static void logOutputQuantity(
+      String event, EconomyGmAdjustments.Projection projection, String reason) {
+    if (projection.changes().isEmpty()) {
+      EventLog.channel(LOG)
+          .info(LogEvent.of(event, EconomyLogSource.ECONOMY_OUTPUT_QUANTITY, "reason", reason));
+      return;
+    }
+    EconomyGmAdjustments.Change change = projection.changes().get(0);
+    int slash = change.keyId().indexOf('/');
+    String industry = slash < 0 ? change.keyId() : change.keyId().substring(0, slash);
+    String commodity = slash < 0 ? "" : change.keyId().substring(slash + 1);
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                event,
+                EconomyLogSource.ECONOMY_OUTPUT_QUANTITY,
+                "industry",
+                industry,
+                "commodity",
+                commodity,
+                "old",
+                change.before(),
+                "new",
+                change.after(),
+                "reason",
+                reason));
+  }
+
+  /**
+   * ★★ <b>Z1：被拒绝一律 INFO</b> —— 两个新 kind 用 {@code OUTPUT_QUANTITY_REJECTED}（具名 reason），其余 kind 保持既有
+   * {@code ECONOMY_GM_ADJUST_REJECTED}。
+   */
+  private static void logRejected(String adjustment, String message) {
+    String reason = EconomyCommandPayloads.logReason(message);
+    if (EconomyGmAdjustments.SET_OUTPUT_QUANTITY.equals(adjustment)
+        || EconomyGmAdjustments.CLEAR_OUTPUT_QUANTITY.equals(adjustment)) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "OUTPUT_QUANTITY_REJECTED",
+                  EconomyLogSource.ECONOMY_OUTPUT_QUANTITY,
+                  "adjustment",
+                  adjustment,
+                  "reason",
+                  reason));
+      return;
+    }
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "ECONOMY_GM_ADJUST_REJECTED",
+                EconomyLogSource.ECONOMY_COMMAND,
+                "adjustment",
+                adjustment,
+                "reason",
+                reason));
   }
 
   @Override
@@ -270,34 +388,12 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
                     "reasonLength",
                     reason == null ? 0 : reason.length()));
       }
-      EconomyChangeSet changeSet =
-          EconomyGmAdjustments.project(base, adjustment, parameters, reason, day).changeSet();
-      EventLog.channel(LOG)
-          .info(
-              LogEvent.of(
-                  "ECONOMY_GM_ADJUST_APPLIED",
-                  EconomyLogSource.ECONOMY_COMMAND,
-                  "adjustment",
-                  adjustment,
-                  "day",
-                  day,
-                  "parameterFields",
-                  parameters.size(),
-                  "isEmpty",
-                  changeSet.isEmpty(),
-                  "reasonLength",
-                  reason == null ? 0 : reason.length()));
-      return new HandlerOutcome.Applied(changeSet);
+      EconomyGmAdjustments.Projection projection =
+          EconomyGmAdjustments.project(base, adjustment, parameters, reason, day);
+      logApplied(adjustment, projection, reason, day, parameters.size());
+      return new HandlerOutcome.Applied(projection.changeSet());
     } catch (IllegalArgumentException e) {
-      EventLog.channel(LOG)
-          .info(
-              LogEvent.of(
-                  "ECONOMY_GM_ADJUST_REJECTED",
-                  EconomyLogSource.ECONOMY_COMMAND,
-                  "adjustment",
-                  adjustment,
-                  "reason",
-                  EconomyCommandPayloads.logReason(e.getMessage())));
+      logRejected(adjustment, e.getMessage());
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }
