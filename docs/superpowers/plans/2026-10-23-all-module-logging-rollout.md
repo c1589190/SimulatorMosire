@@ -86,7 +86,8 @@ core/app 的 16 个文件仍在门面外自建 logger；`SettlementGenerator`、
 | 3 | 逐笔写口不可对账 | 逐笔事实走 TRACE（转移/成交/移动/出生死亡/战斗损失），默认关 |
 | 4 | core/app 16 个文件自建 logger | 全部迁移到 `CoreLog`/`AppLog` 门面；门面缺分类时补分类（新分类挂模块根 logger 继承开关）；**被本批触碰的旧日志行按新规范重写**（用户 2026-10-23 裁定） |
 | 5 | `simos.util` 无开关 | **默认不建门面**（见 §10 待裁定）；util 机制的可观测性由调用方模块的事件覆盖 |
-| 6 | 日志缺统一字段约定 | 固定字段：`event`、`reason`、`day/tick`、`from/to`、`count`；键小驼峰、值 `String.valueOf` |
+| 6 | 日志缺统一字段约定 | 固定字段：`event`、`origin`、`originKind`、`reason`、`day/tick`、`from/to`、`count`；键小驼峰、值 `String.valueOf` |
+| 7 | 算法日志与交互日志混在一起、无法按触发来源筛 | 每条事件必带 `origin`（模块内 id）+ `originKind`（`tick/interaction/system`）；各模块自维护来源表（§4.4） |
 
 ---
 
@@ -95,8 +96,9 @@ core/app 的 16 个文件仍在门面外自建 logger；`SettlementGenerator`、
 ### 4.1 发射形态（统一走 util 通道；被本批触碰的文件一律用 ①）
 
 ```java
-// ① 标准形态（被本批触碰的文件一律改成本形态）
-EventLog.channel(SdLog.decision()).info(LogEvent.of("DECISION_TURN_START", "day", day, "dm", dmId));
+// ① 标准形态（被本批触碰的文件一律改成本形态；origin 见 §4.4）
+EventLog.channel(SdLog.decision()).info(
+    LogEvent.of("DECISION_TURN_START", SdLogSource.DECISION_TURN, "day", day, "dm", dmId));
 // ② 既有形态（未触碰的文件可暂时保留；它也经 XxxLog.kv → util，不是旁路）
 private static final Logger LOG = CoreLog.command();
 LOG.info("event=COMMAND_BATCH_EXECUTED commands={} modules={}", pending.size(), modules.size());
@@ -123,25 +125,68 @@ LOG.info("event=COMMAND_BATCH_EXECUTED commands={} modules={}", pending.size(), 
 5. 事件名 `SCREAMING_SNAKE_CASE`，模块内唯一；新增事件名清单必须写进实现 Agent 的报告（供 L4 断言）。
 6. 与 core 既有批级行**不重复**：批级事实（`COMMAND_BATCH_SUBMIT/EXECUTED/REJECTED`）留在 `CommandBus`；
    handler 只记「本条命令的业务结果」。
+7. **每条事件必带 `origin` 与 `originKind`**（见 §4.4）；缺一个都算没做完。
+
+### 4.4 触发来源：util 定类型架构，各模块自维护来源表（用户 2026-10-23 裁定）
+
+需求：日志要同时能回答「**这是算法算出来的，还是人/LLM 点出来的**」与「**是哪一类机制**」。
+按用户裁定：**util 只设类型与字段架构，各模块独立维护自己的来源表（enum + 中文说明）**，不加独立开关、
+跨模块粗筛靠 `originKind` 字段。
+
+```java
+// ① simos-util：只定义类型与字段架构（零模块知识、零 logger 名、零开关）
+public enum LogOriginKind { TICK, INTERACTION, SYSTEM }   // 算法推进 / 人机交互 / 系统
+public interface LogOrigin {
+  String id();             // 模块内稳定短 id（grep 用）
+  String description();    // 中文说明（写进模块来源表）
+  LogOriginKind kind();    // 触发粗分类
+}
+
+// ② 每个模块自建一张来源表（例：simos-app）
+public enum AppLogSource implements LogOrigin {
+  SHELL_START  ("shell-start",   "进程启动与装配",              SYSTEM),
+  TICK_ADVANCE ("tick-advance",  "时间推进循环/参与者调度",      TICK),
+  TOOL_CALL    ("tool-call",     "MCP/GUI 工具调用（含被拒）",   INTERACTION),
+  DECISION_TURN("decision-turn", "LLM 决策回合与结算",           INTERACTION),
+  APPROVAL     ("approval",      "审批链 pending/approve/deny",  INTERACTION),
+  CHECKPOINT   ("checkpoint",    "检查点读写",                   SYSTEM);
+}
+
+// ③ 发射与渲染（util 负责拼字段）
+EventLog.channel(AppLog.tool()).info(
+    LogEvent.of("TOOL_CALL_START", AppLogSource.TOOL_CALL, "tool", name, "caller", callerId));
+// → INFO io.mosire.simos.app.tool - event=TOOL_CALL_START origin=tool-call originKind=interaction tool=... caller=...
+```
+
+约定：
+- 字段名固定 `origin=`（模块内 id）+ `originKind=`（`tick|interaction|system`，小写）；两者**必带**。
+- `tick` 类事件必带 `day`；`interaction` 类事件必带身份字段（`caller=` / `tool=` / `dm=` / `approvalId=` 视来源而定）。
+- 每个模块的来源表**必须带中文说明**；新增来源 = 改本模块的表 + 发射点，util 不动。
+- 决策回合内发生的工具调用：由模块表自行定义（app 用 `DECISION_TURN` + `tool=` 字段表达，或单开一项并在说明里写清）。
+- 跨模块粗筛：`grep originKind=tick` 拉算法日志、`grep originKind=interaction` 拉交互日志；细筛再按模块内 id。
+- **不加独立开关**（用户 2026-10-23 裁定）：字段过滤就够，开关仍只有各模块的 `logLevel/traceLevel`。
 
 ---
 
 ## 5. 数据流与次序（谁在什么时候记什么）
 
 ```
-工具/MCP 调用 ── app.tool：记「谁在什么调用者下发起哪个工具」（INFO/DEBUG；拒绝 DEBUG）
+工具/MCP 调用 ── app.tool：origin=tool-call / originKind=interaction（发起/拒绝/结果）
         │
         ▼
 core.CommandBus ── 批级：SUBMIT(DEBUG) / EXECUTED(DEBUG) / REJECTED(INFO)      ← 已有，不动
         │
         ▼
 领域 handler ── 业务结果 INFO（写口成功 + 具名计数）；具名拒绝 DEBUG(reason)     ← 本批新增
-        │
+        │                        origin=调用方传入的 id / originKind 随来源
         ▼
 Codec/ChangeSet.apply ── 施加入口 DEBUG（组件 changed 计数）                      ← 本批新增
         │
         ▼
-时间参与者/结算阶段 ── START(INFO) → 阶段判据(DEBUG) → END(INFO) → 逐笔(TRACE)    ← 本批新增
+时间参与者/结算阶段 ── START(INFO) → 阶段判据(DEBUG) → END(INFO) → 逐笔(TRACE)
+        │                        origin=tick-advance 类 / originKind=tick        ← 本批新增
+        ▼
+LLM 决策回合 ── app.decision：origin=decision-turn / originKind=interaction      ← 本批新增
 ```
 
 ---
@@ -160,7 +205,7 @@ Codec/ChangeSet.apply ── 施加入口 DEBUG（组件 changed 计数）      
 | `simos-army` | ① 战斗记录/结局/损失写口 INFO + 逐条 TRACE（现仅 3 条 INFO） |
 | `simos-gov` | ① `GovDaily`/需求结算面（GovLog 分类现成：daily/demand/trace） |
 | `simos-calendar` | ① `CalendarClock`/季节换算的配置与边界事件（纯计算模块，事件不必多，但配置漂移要可查） |
-| `simos-util` | **本批不动**（见 §10）；由调用方覆盖 |
+| `simos-util` | **本批只新增类型**：`LogOrigin` / `LogOriginKind`（§4.4）；不加 logger 名、不加开关、不改现有机制 |
 
 ---
 
@@ -170,9 +215,9 @@ Codec/ChangeSet.apply ── 施加入口 DEBUG（组件 changed 计数）      
 
 | 批次 | 内容 | 文件范围（ownership） | 禁止碰 |
 |---|---|---|---|
-| **L1** | core + app 编排层：迁移 16 个门面外 `LoggerFactory` + 补 §6 的 core/app 面 | `simos-core/src/main/**`、`simos-app/src/main/**`（含 `log4j2.xml`） | 其他模块 `src/main`、所有 `src/test`、docs、AGENTS.md |
-| **L2** | 领域写入面：map + social + unit + sd 的 handler / 时间参与者 / codec | 上述四模块 `src/main/**` | core/app、其他模块、测试、docs |
-| **L3** | 其余领域：actor + army + gov + calendar（+ economy 实测缺口） | 对应模块 `src/main/**` | L1/L2 已改文件（除必要的门面分类补充）、测试、docs |
+| **L1** | ① util 新增类型 `LogOrigin`/`LogOriginKind`；② core + app 各自建来源表（`CoreLogSource`/`AppLogSource`）；③ 迁移 16 个门面外 `LoggerFactory` + 补 §6 的 core/app 面并带 `origin/originKind` | `simos-util/src/main/**`（只新增 §4.4 的类型）、`simos-core/src/main/**`、`simos-app/src/main/**`（含 `log4j2.xml`） | 其他模块 `src/main`、所有 `src/test`、docs、AGENTS.md |
+| **L2** | 领域写入面：map + social + unit + sd 的 handler / 时间参与者 / codec；各模块自建来源表并录入 | 上述四模块 `src/main/**` | core/app、util、其他模块、测试、docs |
+| **L3** | 其余领域：actor + army + gov + calendar（+ economy 实测缺口）；各模块自建来源表并录入 | 对应模块 `src/main/**` | L1/L2 已改文件（除必要的门面分类补充）、util、测试、docs |
 | **L4** | **测试代理**：按 §9 判据补/扩 logging 测试 + 关键项变异自证 + 全仓 `clean verify` | 各模块 `src/test/**`、`simos-app/src/test/js/**`（如需） | 生产代码（发现实现缺日志时报回控制方，不自行改） |
 
 每个写代码批次的固定动作（§一.5/§三.0）：
@@ -208,7 +253,9 @@ Codec/ChangeSet.apply ── 施加入口 DEBUG（组件 changed 计数）      
    - 每个模块的 handler 覆盖率 = 100%（`simos-gov` 等无 handler 的模块按各自执行面等价判据）；
    - 门面外 `LoggerFactory`：全仓 `src/main` = 0（门面自身除外；`.superpowers/**` 里的历史备份不算）。
    - **形态统一**：本批触碰过的文件里旧式 `LOG.info("event=…` / `LOG.debug("event=…` 计数 = 0，
-     一律为 `EventLog.channel(...)` + `LogEvent.of(...)`。
+     一律为 `EventLog.channel(...)` + `LogEvent.of(...)`，且**每条事件都带 `origin` + `originKind`**。
+   - **来源可筛**：`grep 'originKind=tick'` 能拉到各模块算法/结算日志、`grep 'originKind=interaction'`
+     能拉到工具/决策/审批日志；两者不互相混入；每个模块的来源表带中文说明且无空 id。
 2. **三档存在性**：每个模块 ≥ 1 条 INFO（生命周期）、≥ 1 条 DEBUG（判据/拒绝）；TRACE 至少覆盖一个逐笔写口
    （map/social/unit/sd/actor/army/economy 各点名一个）。
 3. **开关有效性**：以 `-Dsimos.<module>.traceLevel=TRACE` 重跑，逐笔行出现；恢复 INFO 后消失（照 `SocialLoggingTest` 形态）。
@@ -230,9 +277,12 @@ Codec/ChangeSet.apply ── 施加入口 DEBUG（组件 changed 计数）      
 
 ## 10. 已知缺口 / 风险 / 待裁定
 
-1. **`simos-util` 是否新建 `UtilLog` 门面**：**待用户裁定**。本文默认**不建**——
-   util 是机制层（AGENTS §一.9 的门面清单不含 util），其 `FieldDelta`/`InMemoryInfoSystem`/`ResolverRegistry`/
-   `FacetRegistry` 由调用方模块的事件覆盖；若要 util 自记，需要新增 `-Dsimos.util.*` 开关，另开裁定。
+1. **`simos-util` 是否新建 `UtilLog` 门面**：**待用户裁定**。本次已按用户裁定在 util 加了
+   `LogOrigin`/`LogOriginKind` **类型**（§4.4），这是类型架构、不是 logger；本批仍**不建** `UtilLog` 门面、
+   不加 `-Dsimos.util.*` 开关——util 的 `FieldDelta`/`InMemoryInfoSystem`/`ResolverRegistry`/`FacetRegistry`
+   由调用方模块的事件覆盖；若要 util 自记，另开裁定。
+6. **来源表一致性**：跨模块粗筛依赖每个模块的表把 `kind` 标对（例如把 tick 结算误标成 `interaction`）。
+   L4 抽检时按 `originKind=tick` 各模块至少各取一行核对语义；发现标错按文档错/实现错分类处理。
 2. **热路径成本**：`FieldDelta.diff`、`InMemoryInfoSystem.put` 是每 tick 高频口，本批**不逐次记**，
    只在调用方模块的阶段汇总里体现；若后续要开，须先量成本。
 3. **重复行风险**：sd（16/28）、actor（6/7）、army（3 条）、app（111 文件）已有部分日志——
