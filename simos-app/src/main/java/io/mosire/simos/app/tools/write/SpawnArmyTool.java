@@ -34,23 +34,27 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * ★★ {@code simos.unit.spawnArmy}（P5，2026-10-01 后端 + MCP 稳定化计划）：<b>GM 组合工具</b>——按格直接建军，<b>不抽人口、
- * 不抽粮饷</b>；{@code unit.CreateUnit} → [role 非空: {@code unit.SetArmyFormation}] → {@code
- * sd.CreateArmy} → {@code sd.PutInfo} 同批落一条 revision。
+ * ★★ {@code simos.unit.spawnArmy}（P5，2026-10-01 后端 + MCP 稳定化计划 / 2026-10-19 接线 Social）：<b>GM 组合工具</b>——按格直接建军，
+ * <b>不抽地方人口、不抽粮饷</b>；造人必须走 Social 权威。批序（固定七步，{@code role} 缺席时六步）：{@code
+ * social.SubmitHouseholdWorkOrder}（恒有；CREATE_HOUSEHOLD + ADD_MEMBERS 建人口家户并凭空加成年男丁）→ {@code
+ * unit.CreateUnit}（恒有；{@code households=[hh-unit:<unitId>]}，不携带 {@code manpower}）→ [role 非空: {@code
+ * unit.SetArmyFormation}] → {@code sd.CreateArmy} → {@code economy.RegisterHousehold}（恒有）→ {@code
+ * actor.EnsureHouseholdAccount}（恒有）→ {@code sd.PutInfo}（恒有）——同批落一条 revision。
  *
- * <p>★★ <b>P1.0 fail-closed</b>：上述旧批的 {@code unit.CreateUnit} 携已退役的 {@code manpower=...}，当前路径必然发该载荷
- * ⇒ plan 级直接具名拒；preview/apply 都返回 {@code BAD_REQUEST}、零 revision，不再展示或提交必然失败的批。未来人口要走 Social
- * 家户工单（{@code social.SubmitHouseholdWorkOrder} 的 CREATE_HOUSEHOLD + TRANSFER_MEMBERS，或
- * {@code social.CreateHousehold} / {@code social.TransferHouseholdMembers} + {@code unit.SetUnitHouseholds}）。
+ * <p>★★ <b>造人走 Social 权威（用户 2026-10-19 裁定）</b>：GM 想改什么就能改什么、可以直接建军，但人口加口唯一入口是
+ * {@code social.SubmitHouseholdWorkOrder} 的 {@code ADD_MEMBERS}——{@code member} = GM 授权下经 Social 家户工单凭空创建的成年男丁数
+ * （MALE、{@code 20*365} 天年龄锚点）；新单位人口由 {@code hh-unit:<unitId>} 家户承载（Location = UNIT(unitId)），
+ * 不再有 {@code unit.CreateUnit(manpower=...)} 第二本 headcount。
  *
- * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：root 单位在 {@code unit} 切片、Army 归属在 {@code sd} 切片，单条命令只能落一个
- * 命名空间。本工具走 {@link CoreSimos#submitBatch}（同 branch + 同 expectedRevision ⇒ 一批 = 一条 revision，原子）。
+ * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：人口家户在 {@code social} 切片、root 单位在 {@code unit} 切片、Army 归属在 {@code sd}
+ * 切片、经济行在 {@code economy} 切片、账户在 {@code actor} 切片，单条命令只能落一个命名空间。本工具走 {@link CoreSimos#submitBatch}（同
+ * branch + 同 expectedRevision ⇒ 一批 = 一条 revision，原子）。
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：唯一语义落点是 {@link SpawnArmyPlan#plan}（不碰 {@link ToolContext} /
  * {@code CoreSimos}）；本类只做四件事——读态、把 Plan 折成视图、组批、折叠结局。参数形状解析（类型 / 整数 / 装备表 / 词表）在本类； 前置状态校验与批载荷组装在
  * Plan，不出现第二份推导。
  *
- * <p>★★ <b>GM 特权</b>：直接建军允许无人口、无国库；{@code member} 直接写进新单位（仍须 ≥ 1），不读写 social/actor。★ {@code
+ * <p>★★ <b>GM 特权</b>：直接建军允许无粮无钱、无国库；人口由 Social 工单凭空创建（{@code member} 仍须 ≥ 1），粮/钱不从这里抽。★ {@code
  * raiseUnit} 保持抽取语义，一个字不动。
  *
  * <p>★★ <b>{@code masterGov} 的双边语义</b>：给了就必须存在且带 GovernmentFormation；同批写入 {@code
@@ -61,13 +65,14 @@ import java.util.UUID;
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字也不是命令类型 ⇒ 不进 catalog / {@code
  * PAYLOAD_HINTS}。
  *
- * <p>★ <b>资源声明</b>：只写 {@code unit}/{@code sd} 两个命名空间（{@link ResourcePolicy#UNRESTRICTED}，GM 侧两面
- * unlimited）；{@code requireAll(Operation.WRITE, …)} 与其余 GM 窄写同制。
+ * <p>★ <b>资源声明</b>：写 {@code social}/{@code unit}/{@code economy}/{@code actor}/{@code sd} 五个命名空间（{@link
+ * ResourcePolicy#UNRESTRICTED}，GM 侧五面 unlimited）；{@code requireAll(Operation.WRITE, …)} 与其余 GM 窄写同制。
  *
  * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / 负值 / member &lt; 1 / speed &lt; 1 / mobility 不在 [1,1000] /
- * equipment 值 &lt; 0 / hex 不在当前 GameMap / unitId 或 armyId 已存在 / parent 不存在或当刻不同格 / masterGov 不存在或非
- * GOV ⇒ {@link IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域拒 ⇒ {@code REJECTED}
- * 带逐条真拒因； 提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link ResourceDeniedException}（由唯一入口折资源拒因）。
+ * equipment 值 &lt; 0 / hex 不在当前 GameMap / unitId 或 armyId 已存在 / {@code hh-unit:<unitId>} 家户 id 已被占用 /
+ * parent 不存在或当刻不同格 / masterGov 不存在或非 GOV ⇒ {@link IllegalArgumentException} 折 {@code BAD_REQUEST}（零
+ * revision）；批内域拒 ⇒ {@code REJECTED} 带逐条真拒因； 提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link
+ * ResourceDeniedException}（由唯一入口折资源拒因）。
  */
 public final class SpawnArmyTool implements AgentTool {
 
@@ -77,17 +82,23 @@ public final class SpawnArmyTool implements AgentTool {
   /** 行动记录在 sd INFO 覆盖层里的 key（地址 = root 单位 canonical，一次建军一条）。 */
   public static final String INFO_KEY = "spawnArmy";
 
-  /** 本工具只写 unit / sd 两个命名空间（GM 侧两面 unlimited ⇒ 逐条判通过）。 */
+  /** 本工具写 social / unit / economy / actor / sd 五个命名空间（GM 侧五面 unlimited ⇒ 逐条判通过）。 */
   private static final ResourceManifest SPAWN_ARMY_WRITE =
       ResourceManifest.of(
           Map.of(
+              ToolSupport.SOCIAL_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.UNIT_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolSupport.ECONOMY_NAMESPACE, ResourcePolicy.UNRESTRICTED,
+              ToolSupport.ACTOR_NAMESPACE, ResourcePolicy.UNRESTRICTED,
               ToolSupport.SD_NAMESPACE, ResourcePolicy.UNRESTRICTED));
 
-  /** 与 {@link #SPAWN_ARMY_WRITE} 同源的逐命名空间粗断言（GM 两侧 unlimited，顺序 = 批内命令命名空间序）。 */
+  /** 与 {@link #SPAWN_ARMY_WRITE} 同源的逐命名空间粗断言（GM 五面 unlimited，顺序 = 批内命令命名空间序）。 */
   private static final List<ResourceId> WRITE_RESOURCES =
       List.of(
+          ResourceId.of(ToolSupport.SOCIAL_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.UNIT_NAMESPACE, "*"),
+          ResourceId.of(ToolSupport.ECONOMY_NAMESPACE, "*"),
+          ResourceId.of(ToolSupport.ACTOR_NAMESPACE, "*"),
           ResourceId.of(ToolSupport.SD_NAMESPACE, "*"));
 
   private final CoreSimos core;
@@ -98,7 +109,7 @@ public final class SpawnArmyTool implements AgentTool {
    * @param core 唯一写入口（本工具走 {@code submitBatch}；preview=true 时一个字节都不写）
    * @param query 只读入口（读 branch/revision 的当前 {@link SimulationState}；preview 与同一份推导共用它）
    * @param initiator 落盘时的发起者（C21 的 {@code <kind>:<id>} 形态）
-   * @param mapId 本世界的 map 称谓（★ 保留在装配签名里以与其余 GM 组合工具同制；本工具资源声明是两个命名空间的粗断言， 落点存在性按当刻 {@code
+   * @param mapId 本世界的 map 称谓（★ 保留在装配签名里以与其余 GM 组合工具同制；本工具资源声明是五个命名空间的粗断言， 落点存在性按当刻 {@code
    *     GameMap.hexes()} 判，不当路径用）
    */
   public SpawnArmyTool(CoreSimos core, QueryService query, String initiator, String mapId) {
@@ -115,8 +126,9 @@ public final class SpawnArmyTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 按格直接建军（组合工具，一批 = 一条 revision；GM 特权：不抽人口、不抽粮饷）。★ P1.0：当前路径必然发已退役的 unit.CreateUnit(manpower=...)，本工具尚未接线 Social 家户工单 ⇒ preview/apply 都 plan 级 BAD_REQUEST、零 revision（新单位人口必须先有 Social 家户）："
-        + "参数 {unitId(必填), name(必填), q(必填 int), r(必填 int), member(必填 int, >=1；新单位人力表落成单条 "
+    return "GM 按格直接建军（组合工具，一批 = 一条 revision；GM 特权：可直接建军，但造人必须走 Social 权威——凭空创建成年男丁人口家户）。"
+        + "参数 {unitId(必填), name(必填), q(必填 int), r(必填 int), member(必填 int, >=1；GM 授权下经 Social 家户工单 "
+        + "ADD_MEMBERS 凭空创建的成年男丁数（MALE，20 岁锚点）；新单位人口家户固定 hh-unit:<unitId>，单位人力表视图为单条 "
         + "{type=\""
         + SpawnArmyPlan.DEFAULT_MANPOWER_TYPE
         + "\", amount=member}), equipment?(可选 {字符串:整数}，缺省 {}，值 >=0；按输入序转成装备表), "
@@ -130,14 +142,21 @@ public final class SpawnArmyTool implements AgentTool {
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 必填，>=0)}。"
         + "前置：member>=1、speed>=1、mobilityPerMille 在 1..1000、equipment 值 >=0、hex 必须存在于当前 GameMap、"
-        + "unitId 与 armyId 不得已存在、parent 必须存在且当刻同格、masterGov 必须存在且带 GovernmentFormation、role 给了不得空白。"
-        + "批顺序（历史口径；P1.0 起 plan 级拒，实际不会发出）：unit.CreateUnit → [role 非空: unit.SetArmyFormation] → sd.CreateArmy → sd.PutInfo(key="
+        + "unitId 与 armyId 不得已存在、hh-unit:<unitId> 人口家户 id 不得已存在、parent 必须存在且当刻同格、"
+        + "masterGov 必须存在且带 GovernmentFormation、role 给了不得空白。"
+        + "批顺序（固定七步，role 缺席时六步）：social.SubmitHouseholdWorkOrder（恒有；orderId=spawn-army:<batchId>:<unitId>，"
+        + "target=hh-unit:<unitId>，plan=CREATE_HOUSEHOLD(location=UNIT(unitId)，profile=name+\"·人口家户\") + "
+        + "ADD_MEMBERS(lotId=spawn-army:<unitId>:<tick>，MALE，count=member，ageAtAnchorDays=7300=20*365，anchorTick=<tick>))"
+        + " → unit.CreateUnit（households=[hh-unit:<unitId>]，绝不携带 manpower）→ [role 非空: unit.SetArmyFormation]"
+        + " → sd.CreateArmy → economy.RegisterHousehold（household=hh-unit:<unitId>，residence 按落点是否城市格判 urban/rural，"
+        + "stratum=landless_laborer，participationPerMille=0）→ actor.EnsureHouseholdAccount（household=hh-unit:<unitId>）"
+        + " → sd.PutInfo(key="
         + INFO_KEY
-        + "，address=root 单位 canonical，value=JSON 字符串)。"
+        + "，address=root 单位 canonical，value=JSON 字符串，含 householdId/population)。"
         + "★ 若 role 为空但 masterGov 给了：只写 sd 侧 masterGov，unit 侧未设 ArmyFormation.masterGov（preview 会明确说明）。"
         + "失败具名：坏参数/前置不满足 ⇒ BAD_REQUEST（零 revision）；批内域拒 ⇒ REJECTED（逐条真拒因）；"
         + "提交冲突 ⇒ CONFLICT（真实 head）；资源不匹配 ⇒ 原样抛资源拒因。"
-        + "返回 {preview, submitted, tick, unitId, name, armyId, hex, manpower[{type,amount}], equipment[{type,amount}], "
+        + "返回 {preview, submitted, tick, unitId, name, armyId, hex, householdId, population, manpower[{type,amount}], equipment[{type,amount}], "
         + "speed, mobility, parent, status, role, masterGov, unitSetArmyFormation, armyFormationNote, commands, "
         + "infoText, conflictPreflight}；apply 另加 submission。";
   }
@@ -153,9 +172,10 @@ public final class SpawnArmyTool implements AgentTool {
         "member",
         ToolSupport.prop(
             "integer",
-            "新单位人数（>= 1；GM 直接建军不抽人口）；新单位人力表落成单条 {type=\""
+            "GM 授权下经 Social 家户工单（ADD_MEMBERS）凭空创建的成年男丁人口数（>= 1，MALE、20 岁锚点）；"
+                + "新单位人口家户固定 hh-unit:<unitId>，单位人力表视图为单条 {type=\""
                 + SpawnArmyPlan.DEFAULT_MANPOWER_TYPE
-                + "\", amount=member}；★ 已退役、当前不可用，需走 Social 家户工单"));
+                + "\", amount=member}；unit.CreateUnit 不携带 manpower，人口权威在 Social 家户"));
     props.put(
         "equipment",
         ToolSupport.prop("object", "装备 {字符串:整数}（可选，缺省空表；值 >= 0；按输入 map 迭代序转成 [{type,amount}] 表）"));
@@ -485,11 +505,12 @@ public final class SpawnArmyTool implements AgentTool {
   }
 
   /**
-   * 组批：{@code unit.CreateUnit} → [role 非空: {@code unit.SetArmyFormation}] → {@code sd.CreateArmy} →
-   * {@code sd.PutInfo}（固定顺序，可复现）。
+   * 组批（固定七步，{@code role} 缺席时六步）：{@code social.SubmitHouseholdWorkOrder} → {@code unit.CreateUnit} →
+   * [role 非空: {@code unit.SetArmyFormation}] → {@code sd.CreateArmy} → {@code economy.RegisterHousehold} →
+   * {@code actor.EnsureHouseholdAccount} → {@code sd.PutInfo}（可复现）。
    *
    * <p>★ 全部共享同一 {@code batchId}（correlationId）与同一 branch/expectedRevision ⇒ {@code submitBatch} 落一条
-   * revision。
+   * revision；第 1 条工单的 {@code orderId} 用同一 {@code batchId} 作确定性幂等键（Tool 每次 apply 生成的 UUID）。
    */
   private List<CommandEnvelope> buildBatch(
       String batchId,
@@ -497,7 +518,16 @@ public final class SpawnArmyTool implements AgentTool {
       String reason,
       BranchId branch,
       RevisionId expectedRevision) {
-    List<CommandEnvelope> batch = new ArrayList<>(4);
+    List<CommandEnvelope> batch = new ArrayList<>(7);
+    // ★★ 造人先落 Social 工单（CREATE_HOUSEHOLD + ADD_MEMBERS），再建带 households=[hh-unit:<unitId>] 的单位；
+    //   同批 = 一条 revision ⇒ Unit.households 与 Household.location(UNIT) 天然一致。
+    batch.add(
+        envelope(
+            batchId,
+            branch,
+            expectedRevision,
+            SpawnArmyPlan.SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE,
+            plan.submitHouseholdWorkOrderPayloadJson(batchId, reason)));
     batch.add(
         envelope(
             batchId,
@@ -521,6 +551,20 @@ public final class SpawnArmyTool implements AgentTool {
             expectedRevision,
             SpawnArmyPlan.CREATE_ARMY_TYPE,
             plan.createArmyPayloadJson()));
+    batch.add(
+        envelope(
+            batchId,
+            branch,
+            expectedRevision,
+            SpawnArmyPlan.REGISTER_HOUSEHOLD_TYPE,
+            plan.registerHouseholdPayloadJson(reason)));
+    batch.add(
+        envelope(
+            batchId,
+            branch,
+            expectedRevision,
+            SpawnArmyPlan.ENSURE_HOUSEHOLD_ACCOUNT_TYPE,
+            plan.ensureHouseholdAccountPayloadJson(reason)));
     batch.add(
         envelope(
             batchId,
@@ -582,6 +626,9 @@ public final class SpawnArmyTool implements AgentTool {
     view.put("name", plan.name());
     view.put("armyId", plan.armyId());
     view.put("hex", ToolSupport.hexCoord(plan.at()));
+    view.put("householdId", plan.householdId());
+    view.put("population", plan.member());
+    // ★ manpower 视图字段保留（表示 member 数）；人口权威在 Social 家户 hh-unit:<unitId>，载荷不发 manpower。
     view.put("manpower", ToolSupport.compositionView(plan.manpowerEntries()));
     view.put("equipment", ToolSupport.compositionView(plan.equipment()));
     view.put("speed", plan.speed());
