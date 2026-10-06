@@ -51,11 +51,14 @@ import java.util.Set;
  *   <li><b>守恒</b>：Σ来源扣人 == {@code count} == 新单位 manpower 的 amount；三个数字在 Plan 构造期逐值互校。
  * </ol>
  *
- * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SeedGroups}（逐批整组覆盖，带 {@code ageDays/anchorTick/stress}
- * 保真）→ {@code unit.CreateUnit}（<b>无 module 的纯人员单位</b>： manpower=[{type=role,
+ * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SeedGroups}（逐批整组覆盖，带 {@code ageDays/anchorTick}
+ * 保真；旧 {@code stress} 字段已退役、不再携带）→ {@code unit.CreateUnit}（<b>无 module 的纯人员单位</b>： manpower=[{type=role,
  * amount=count}]、equipment=[]、speed=4、mobilityPerMille=800、position=来源 GOV 当刻有效位置）→（给了
  * targetGovUnitId 且不同格时）{@code unit.PlanRoute}（waypoints = A* 逐格路径，首点 = 新单位落点、末点 = 目标 GOV 当刻有效位置）→
  * {@code sd.PutInfo}（地址 = 来源 GOV canonical，key={@code selectExaminees}，value 含来源/目的/角色，note 人可读）。
+ *
+ * <p>★★ <b>P1.0 fail-closed</b>：上述批含已退役的 {@code unit.CreateUnit(manpower=...)}，本 plan 在任何状态查询/推导/批构造之前
+ * 先具名拒（{@link #rejectRetiredManpower()}）；preview/apply 都零 revision。历史批序保留仅作对照，不再发出。
  *
  * <p>★★ <b>新单位 id 由参数或确定性生成</b>：参数给了 {@code newUnitId} 就用它（已存在 ⇒ 具名拒）；没给就取 {@code
  * "exam-<来源GOV>-<tick>-<count>"}，若该 id 已在状态里则依次追加 {@code -2}/{@code -3}…（同一状态 + 同一参数 ⇒ 同一个
@@ -141,6 +144,12 @@ final class GovSelectExamineesPlan {
     }
     String role = roleText.orElse(DEFAULT_ROLE);
     requireNonBlank(role, "role");
+    // ★ 可选参数若给了，也在进入退役拒前完成基本形状校验（与旧路径同一套 requireNonBlank）。
+    targetGovUnitId.ifPresent(text -> requireNonBlank(text, "targetGovUnitId"));
+    newUnitId.ifPresent(text -> requireNonBlank(text, "newUnitId"));
+    // ★★ P1.0 fail-closed：基本参数形状校验已完成，在任何状态查询/推导/批构造之前具名拒
+    //   （当前路径必然发 unit.CreateUnit(manpower=...)）。
+    rejectRetiredManpower();
     UnitState units = ToolSupport.unitState(state);
     SimosTimestamp timestamp = state.meta().timestamp();
     long tick = timestamp.tick();
@@ -359,6 +368,20 @@ final class GovSelectExamineesPlan {
     if (value == null || value.isBlank()) {
       throw new IllegalArgumentException(field + " 必须是非空文本");
     }
+  }
+
+  /**
+   * ★★ P1.0 fail-closed：本工具当前必然发 {@code unit.CreateUnit(manpower=...)}，该载荷已退役 ⇒ plan 级
+   * 直接具名拒（在基本参数校验之后、任何状态查询/推导/批构造之前），本次调用零 revision。
+   *
+   * <p>存活旧推导代码只为保持编译形态；运行时必先经过本方法。
+   */
+  private static void rejectRetiredManpower() {
+    throw new IllegalArgumentException(
+        "本工具已退役：unit.CreateUnit(manpower=...) 已退役（P1.0），plan 级具名拒、本次调用零 revision；"
+            + "人口需要走 Social 家户工单（social.SubmitHouseholdWorkOrder 的 CREATE_HOUSEHOLD + "
+            + "TRANSFER_MEMBERS，或 social.CreateHousehold / social.TransferHouseholdMembers + "
+            + "unit.SetUnitHouseholds）");
   }
 
   /** 饱和加法（非负 long；只用于 available 合计与拒因展示，不参与逐值扣减）。 */

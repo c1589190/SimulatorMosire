@@ -46,6 +46,11 @@ import java.util.UUID;
  * 当刻有效位置）→（armed=true）{@code unit.SetArmyFormation}（masterGov=来源 GOV、role="armed-team"）→ {@code
  * sd.PutInfo}（key={@value #INFO_KEY}， 含 armed 标记）。
  *
+ * <p>★★ <b>P1.0 fail-closed</b>：上述旧批（含 {@code unit.CreateUnit(manpower=...)}）已整体退役——当前路径必然发已退役的
+ * manpower 载荷，故 plan 级直接具名拒；preview/apply 都返回 {@code BAD_REQUEST}、零 revision，不再展示或提交必然失败的批。
+ * 未来人口要走 Social 家户工单（{@code social.SubmitHouseholdWorkOrder} 的 CREATE_HOUSEHOLD + TRANSFER_MEMBERS，
+ * 或 {@code social.CreateHousehold} / {@code social.TransferHouseholdMembers} + {@code unit.SetUnitHouseholds}）。
+ *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字不是命令类型 ⇒ 不进 catalog / {@code
  * PAYLOAD_HINTS}。★ 资源声明：只写 {@code unit}/{@code sd} 两个命名空间。
  *
@@ -92,14 +97,14 @@ public final class GovDispatchTeamTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 从 GOV 编制派出调查组（组合工具，一批 = 一条 revision）。★ S3b：Unit.manpower 已退役，本工具尚未接线到家户转移 ⇒ apply 会被 unit.CreateUnit 具名拒；"
+    return "GM 从 GOV 编制派出调查组（组合工具，一批 = 一条 revision）。★ P1.0：本工具当前尚未接线 Social 家户工单，而当前路径必然发已退役的 unit.CreateUnit(manpower=...) ⇒ preview/apply 都 plan 级 BAD_REQUEST、零 revision；需走 Social 家户工单（social.SubmitHouseholdWorkOrder 的 CREATE_HOUSEHOLD + TRANSFER_MEMBERS）。"
         + "参数 {unitId(必填, 带 GovernmentFormation 的 GOV), count(必填 ≥ 1), role?(SCRIBE|YAMEN|POST，缺省 SCRIBE), "
         + "armed?(缺省 false；true = 同批加 ArmyFormation masterGov=unitId role=armed-team), newUnitId?(可选；"
         + "缺省确定性生成), reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
         + "出人不付退休待遇（直接 unit.DismissStaff，只减 roster）。"
-        + "批：unit.DismissStaff → unit.CreateUnit（untagged 纯人员单位：manpower=[{type=role.name(), amount=count}]、"
+        + "批（历史口径；P1.0 起 plan 级拒，实际不会发出）：unit.DismissStaff → unit.CreateUnit（untagged 纯人员单位：manpower=[{type=role.name(), amount=count}]、"
         + "equipment=[]、speed=6、mobilityPerMille=900、position=来源 GOV 当刻有效位置）→（armed）unit.SetArmyFormation → sd.PutInfo(key="
         + INFO_KEY
         + ")。守恒：roster−count == 出人后 roster == 新单位 manpower 的 count。"
@@ -111,7 +116,11 @@ public final class GovDispatchTeamTool implements AgentTool {
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put("unitId", ToolSupport.prop("string", "来源：带 GovernmentFormation 的 GOV 单位 id"));
-    props.put("count", ToolSupport.prop("integer", "出人数量（≥ 1；不得超过该角色现有在编与 int 上限）"));
+    props.put(
+        "count",
+        ToolSupport.prop(
+            "integer",
+            "出人数量（≥ 1；不得超过该角色现有在编与 int 上限）；★ 已退役、当前不可用，需走 Social 家户工单"));
     props.put("role", ToolSupport.prop("string", "出人角色：SCRIBE|YAMEN|POST（可选；缺省 SCRIBE）"));
     props.put(
         "armed", ToolSupport.prop("boolean", "true = 武装调查组（同批加 ArmyFormation，通用接口）；缺省 false"));

@@ -33,6 +33,9 @@ import java.util.Optional;
  * unit.SetArmyFormation} → {@code sd.CreateArmy} → {@code sd.PutInfo}。后三条都看得见前一条累积后的候选态，故 {@code
  * sd.CreateArmy} 的 {@code rootUnitId} 就是同批刚创建的 root 单位。
  *
+ * <p>★★ <b>P1.0 fail-closed</b>：上述批含已退役的 {@code unit.CreateUnit(manpower=...)}，本 plan 在任何状态查询/推导/批构造之前
+ * 先具名拒（{@link #rejectRetiredManpower()}）；preview/apply 都零 revision。历史批序与 GM 特权口径保留仅作对照，不再发出。
+ *
  * <p>★★ <b>GM 特权口径</b>：直接建军<b>不抽人口、不抽粮饷</b>（用户 2026-10-01 裁定 6）；{@code member} 直接写进新单位 的人力表（单条
  * {@code {type:"士兵", amount=member}}），允许无人口、无国库；{@code member} 仍须 ≥ 1（P5 计划明文）。 {@code raiseUnit}
  * 保持抽取语义，一个字不动。
@@ -139,6 +142,13 @@ final class SpawnArmyPlan {
           "mobilityPerMille 必须在 [1,1000]（unit.CreateUnit 领域约束 + 千分上限）: " + mobilityPerMille);
     }
     requireEquipment(equipment);
+    // ★ 可选文本参数若给了，也在退役拒前完成基本非空形状校验（与旧路径同一套 requireNonBlank）。
+    parent.ifPresent(value -> requireNonBlank(value, "parent"));
+    role.ifPresent(value -> requireNonBlank(value, "role"));
+    masterGov.ifPresent(value -> requireNonBlank(value, "masterGov"));
+    // ★★ P1.0 fail-closed：基本参数形状校验已完成，在任何状态查询/推导/批构造之前具名拒
+    //   （当前路径必然发 unit.CreateUnit(manpower=...)）。
+    rejectRetiredManpower();
 
     UnitState units = ToolSupport.unitState(state);
     UnitId id = UnitId.parse(unitId);
@@ -227,6 +237,20 @@ final class SpawnArmyPlan {
     if (value == null || value.isBlank()) {
       throw new IllegalArgumentException(field + " 必须是非空文本");
     }
+  }
+
+  /**
+   * ★★ P1.0 fail-closed：本工具当前必然发 {@code unit.CreateUnit(manpower=...)}，该载荷已退役 ⇒ plan 级
+   * 直接具名拒（在基本参数校验之后、任何状态查询/推导/批构造之前），本次调用零 revision。
+   *
+   * <p>存活旧推导代码只为保持编译形态；运行时必先经过本方法。
+   */
+  private static void rejectRetiredManpower() {
+    throw new IllegalArgumentException(
+        "本工具已退役：unit.CreateUnit(manpower=...) 已退役（P1.0），plan 级具名拒、本次调用零 revision；"
+            + "人口需要走 Social 家户工单（social.SubmitHouseholdWorkOrder 的 CREATE_HOUSEHOLD + "
+            + "TRANSFER_MEMBERS，或 social.CreateHousehold / social.TransferHouseholdMembers + "
+            + "unit.SetUnitHouseholds）");
   }
 
   /** 格的可读文本（拒因、note 与 info 视图共用；格式不与任何资源路径语法绑定）。 */

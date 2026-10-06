@@ -46,7 +46,7 @@ import java.util.UUID;
  *
  * <ol>
  *   <li>{@code social.SeedGroups}（恒有）：每个被动批次一条<b>整组覆盖</b>条目（{@code id/q/r/sex/count=扣后} + {@code
- *       ageDays/anchorTick/stress} 保真），扣后 count 可为 0（合法空批）；
+ *       ageDays/anchorTick} 保真；旧 {@code stress} 字段已退役、不再携带），扣后 count 可为 0（合法空批）；
  *   <li>{@code unit.RecruitStaff}（恒有）：{@code {unitId, role, count, sources}}，{@code sources} = 逐来源
  *       {@code {kind:"social_group", id, count}}；命令本身只入编（不扣人——扣人在上一腿）；
  *   <li>{@code sd.PutInfo}（恒有）：地址 = 单位 canonical，key = {@value #INFO_KEY}，value = JSON <b>字符串</b>
@@ -139,7 +139,7 @@ public final class GovRecruitTool implements AgentTool {
         + "来源口径：按单位 jurisdiction 的 Region 顺序，逐个 Region 用 RegionAllocations 的同一份 MALE+ADULT 瀑布分配直到满额；"
         + "总量不足 ⇒ 整条拒（带 requested/available/缺口），不部分抽取。"
         + "staffCap[role] 若存在且 现有+count>cap ⇒ 具名拒。"
-        + "批：social.SeedGroups（逐批整组覆盖，带 ageDays/anchorTick/stress 保真，扣后可为 0）→ "
+        + "批：social.SeedGroups（逐批整组覆盖，带 ageDays/anchorTick 保真；旧 stress 字段已退役、不再携带，扣后可为 0）→ "
         + "unit.RecruitStaff（sources=逐来源 {kind:\"social_group\",id,count}）→ sd.PutInfo（key="
         + INFO_KEY
         + "）。守恒：Σ来源扣人 == count == roster 增量。"

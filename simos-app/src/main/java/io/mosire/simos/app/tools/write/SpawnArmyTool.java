@@ -38,6 +38,11 @@ import java.util.UUID;
  * 不抽粮饷</b>；{@code unit.CreateUnit} → [role 非空: {@code unit.SetArmyFormation}] → {@code
  * sd.CreateArmy} → {@code sd.PutInfo} 同批落一条 revision。
  *
+ * <p>★★ <b>P1.0 fail-closed</b>：上述旧批的 {@code unit.CreateUnit} 携已退役的 {@code manpower=...}，当前路径必然发该载荷
+ * ⇒ plan 级直接具名拒；preview/apply 都返回 {@code BAD_REQUEST}、零 revision，不再展示或提交必然失败的批。未来人口要走 Social
+ * 家户工单（{@code social.SubmitHouseholdWorkOrder} 的 CREATE_HOUSEHOLD + TRANSFER_MEMBERS，或
+ * {@code social.CreateHousehold} / {@code social.TransferHouseholdMembers} + {@code unit.SetUnitHouseholds}）。
+ *
  * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：root 单位在 {@code unit} 切片、Army 归属在 {@code sd} 切片，单条命令只能落一个
  * 命名空间。本工具走 {@link CoreSimos#submitBatch}（同 branch + 同 expectedRevision ⇒ 一批 = 一条 revision，原子）。
  *
@@ -110,7 +115,7 @@ public final class SpawnArmyTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 按格直接建军（组合工具，一批 = 一条 revision；GM 特权：不抽人口、不抽粮饷）。★ S3b：Unit.manpower 已退役，本工具尚未接线到家户来源 ⇒ apply 会被 unit.CreateUnit 具名拒（新单位人口必须先有 Social 家户）；本工具暂只保留 preview 与失败路径："
+    return "GM 按格直接建军（组合工具，一批 = 一条 revision；GM 特权：不抽人口、不抽粮饷）。★ P1.0：当前路径必然发已退役的 unit.CreateUnit(manpower=...)，本工具尚未接线 Social 家户工单 ⇒ preview/apply 都 plan 级 BAD_REQUEST、零 revision（新单位人口必须先有 Social 家户）："
         + "参数 {unitId(必填), name(必填), q(必填 int), r(必填 int), member(必填 int, >=1；新单位人力表落成单条 "
         + "{type=\""
         + SpawnArmyPlan.DEFAULT_MANPOWER_TYPE
@@ -126,7 +131,7 @@ public final class SpawnArmyTool implements AgentTool {
         + "), expectedRevision(preview=false 必填，>=0)}。"
         + "前置：member>=1、speed>=1、mobilityPerMille 在 1..1000、equipment 值 >=0、hex 必须存在于当前 GameMap、"
         + "unitId 与 armyId 不得已存在、parent 必须存在且当刻同格、masterGov 必须存在且带 GovernmentFormation、role 给了不得空白。"
-        + "批顺序：unit.CreateUnit → [role 非空: unit.SetArmyFormation] → sd.CreateArmy → sd.PutInfo(key="
+        + "批顺序（历史口径；P1.0 起 plan 级拒，实际不会发出）：unit.CreateUnit → [role 非空: unit.SetArmyFormation] → sd.CreateArmy → sd.PutInfo(key="
         + INFO_KEY
         + "，address=root 单位 canonical，value=JSON 字符串)。"
         + "★ 若 role 为空但 masterGov 给了：只写 sd 侧 masterGov，unit 侧未设 ArmyFormation.masterGov（preview 会明确说明）。"
@@ -150,7 +155,7 @@ public final class SpawnArmyTool implements AgentTool {
             "integer",
             "新单位人数（>= 1；GM 直接建军不抽人口）；新单位人力表落成单条 {type=\""
                 + SpawnArmyPlan.DEFAULT_MANPOWER_TYPE
-                + "\", amount=member}"));
+                + "\", amount=member}；★ 已退役、当前不可用，需走 Social 家户工单"));
     props.put(
         "equipment",
         ToolSupport.prop("object", "装备 {字符串:整数}（可选，缺省空表；值 >= 0；按输入 map 迭代序转成 [{type,amount}] 表）"));

@@ -43,10 +43,15 @@ import java.util.UUID;
  * ToolContext}/{@code CoreSimos}）；本类只做四件事——读态、把 Plan 折成视图、组批、折叠结局。来源瀑布复用 {@link
  * RegionAllocations#allocateManpower} 同一份，不另写第二份。
  *
- * <p>★★ <b>批（固定顺序，一条 revision）</b>：{@code social.SeedGroups}（逐批整组覆盖，带 ageDays/anchorTick/stress
- * 保真）→ {@code unit.CreateUnit}（untagged、manpower=[{type=role, amount=count}]、equipment=[]、speed=4、
+ * <p>★★ <b>批（固定顺序，一条 revision）</b>：{@code social.SeedGroups}（逐批整组覆盖，带 ageDays/anchorTick
+ * 保真；旧 stress 字段已退役、不再携带）→ {@code unit.CreateUnit}（untagged、manpower=[{type=role, amount=count}]、equipment=[]、speed=4、
  * mobilityPerMille=800、position=来源 GOV 当刻有效位置）→（目的 GOV 给了且不同格）{@code unit.PlanRoute} （waypoints =
  * A* 逐格路径）→ {@code sd.PutInfo}（key={@value #INFO_KEY}，value 含来源/目的/角色）。
+ *
+ * <p>★★ <b>P1.0 fail-closed</b>：上述旧批（含 {@code unit.CreateUnit(manpower=...)}）已整体退役——当前路径必然发已退役的
+ * manpower 载荷，故 plan 级直接具名拒；preview/apply 都返回 {@code BAD_REQUEST}、零 revision，不再展示或提交必然失败的批。
+ * 未来人口要走 Social 家户工单（{@code social.SubmitHouseholdWorkOrder} 的 CREATE_HOUSEHOLD + TRANSFER_MEMBERS，
+ * 或 {@code social.CreateHousehold} / {@code social.TransferHouseholdMembers} + {@code unit.SetUnitHouseholds}）。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字不是命令类型 ⇒ 不进 catalog / {@code
  * PAYLOAD_HINTS}。★ 决策人要科举仍走 {@code sd.IssueDirective} / GM 代执行这条链——本工具就是 GM 的 “代执行手”。
@@ -114,7 +119,7 @@ public final class GovSelectExamineesTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 科举选人：从来源 GOV 辖区社会批次选人，同批建无标签纯人员单位（可选规划到目的 GOV）（组合工具，一批 = 一条 revision）。★ S3b：Unit.manpower 已退役，本工具尚未接线到家户转移 ⇒ apply 会被 unit.CreateUnit 具名拒；参数与守恒口径如下："
+    return "GM 科举选人（组合工具，一批 = 一条 revision）。★ P1.0：本工具当前尚未接线 Social 家户工单，而当前路径必然发已退役的 unit.CreateUnit(manpower=...) ⇒ preview/apply 都 plan 级 BAD_REQUEST、零 revision；需走 Social 家户工单（social.SubmitHouseholdWorkOrder 的 CREATE_HOUSEHOLD + TRANSFER_MEMBERS）。参数与历史守恒口径如下："
         + "参数 {unitId(必填, 带 GovernmentFormation 的来源 GOV), count(必填 ≥ 1), targetGovUnitId?(目的 GOV), "
         + "role?(行动记录角色标签，缺省 EXAMINEE), newUnitId?(可选；缺省确定性生成), reason(必填), "
         + "preview?(缺省 true=只算不写), branch?(缺省 "
@@ -122,7 +127,7 @@ public final class GovSelectExamineesTool implements AgentTool {
         + "), expectedRevision(preview=false 时必填)}。"
         + "来源：按来源 GOV jurisdiction 的 Region 键序逐个用 RegionAllocations 的 MALE+ADULT 瀑布分配直到满额；"
         + "不足 ⇒ 整条拒（带 requested/available/缺口），不部分抽取。"
-        + "批：social.SeedGroups（逐批整组覆盖，带 ageDays/anchorTick/stress 保真）→ unit.CreateUnit（untagged："
+        + "批（历史口径；P1.0 起 plan 级拒，实际不会发出）：social.SeedGroups（逐批整组覆盖，带 ageDays/anchorTick 保真；旧 stress 字段已退役、不再携带）→ unit.CreateUnit（untagged："
         + "manpower=[{type=role, amount=count}]、equipment=[]、speed=4、mobilityPerMille=800、position=来源 GOV 当刻有效位置）→"
         + "（目的 GOV 给了且不同格）unit.PlanRoute（waypoints=A* 逐格路径）→ sd.PutInfo(key="
         + INFO_KEY
@@ -135,7 +140,11 @@ public final class GovSelectExamineesTool implements AgentTool {
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
     props.put("unitId", ToolSupport.prop("string", "来源：带 GovernmentFormation 的省级 GOV 单位 id"));
-    props.put("count", ToolSupport.prop("integer", "选送人数（≥ 1；不得超过 int 上限）"));
+    props.put(
+        "count",
+        ToolSupport.prop(
+            "integer",
+            "选送人数（≥ 1；不得超过 int 上限）；★ 已退役、当前不可用，需走 Social 家户工单"));
     props.put("targetGovUnitId", ToolSupport.prop("string", "目的 GOV 单位 id（可选；给了就规划从来源到它的路线）"));
     props.put("role", ToolSupport.prop("string", "行动记录里的角色标签（可选；缺省 EXAMINEE；不落单位字段）"));
     props.put(

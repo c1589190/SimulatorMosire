@@ -31,6 +31,9 @@ import java.util.Optional;
  * unit.CreateUnit} →（{@code armed}）{@code unit.SetArmyFormation} → {@code sd.PutInfo}（地址 = 来源 GOV
  * canonical，key={@code dispatchTeam}，value 含 armed 标记）。
  *
+ * <p>★★ <b>P1.0 fail-closed</b>：上述批含已退役的 {@code unit.CreateUnit(manpower=...)}，本 plan 在任何状态查询/推导/批构造之前
+ * 先具名拒（{@link #rejectRetiredManpower()}）；preview/apply 都零 revision。历史批序保留仅作对照，不再发出。
+ *
  * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：来源 GOV 存在且带 {@link
  * GovernmentFormation}；{@code count ≥ 1}（{@code unit.CreateUnit} 的 manpower amount 是 long，不再有 int 上限）；
  * {@code roster[role] ≥ count}（缺省 role = SCRIBE）否则具名拒（带现有/请求数字）；来源 GOV 当刻必须有有效 位置；{@code newUnitId}
@@ -93,6 +96,11 @@ final class GovDispatchTeamPlan {
       throw new IllegalArgumentException("出人数量 count 必须 ≥ 1: " + count);
     }
     StaffRole role = roleText.map(GovDispatchTeamPlan::parseRole).orElse(DEFAULT_ROLE);
+    // ★ 可选 newUnitId 若给了，也在退役拒前完成基本非空形状校验（与旧路径同一套 requireNonBlank）。
+    newUnitId.ifPresent(text -> requireNonBlank(text, "newUnitId"));
+    // ★★ P1.0 fail-closed：基本参数形状校验（含 role 词表）已完成，在任何状态查询/推导/批构造之前具名拒
+    //   （当前路径必然发 unit.CreateUnit(manpower=...)）。
+    rejectRetiredManpower();
     UnitState units = ToolSupport.unitState(state);
     SimosTimestamp timestamp = state.meta().timestamp();
     long tick = timestamp.tick();
@@ -149,6 +157,20 @@ final class GovDispatchTeamPlan {
     if (value == null || value.isBlank()) {
       throw new IllegalArgumentException(field + " 必须是非空文本");
     }
+  }
+
+  /**
+   * ★★ P1.0 fail-closed：本工具当前必然发 {@code unit.CreateUnit(manpower=...)}，该载荷已退役 ⇒ plan 级
+   * 直接具名拒（在基本参数校验之后、任何状态查询/推导/批构造之前），本次调用零 revision。
+   *
+   * <p>存活旧推导代码只为保持编译形态；运行时必先经过本方法。
+   */
+  private static void rejectRetiredManpower() {
+    throw new IllegalArgumentException(
+        "本工具已退役：unit.CreateUnit(manpower=...) 已退役（P1.0），plan 级具名拒、本次调用零 revision；"
+            + "人口需要走 Social 家户工单（social.SubmitHouseholdWorkOrder 的 CREATE_HOUSEHOLD + "
+            + "TRANSFER_MEMBERS，或 social.CreateHousehold / social.TransferHouseholdMembers + "
+            + "unit.SetUnitHouseholds）");
   }
 
   /**

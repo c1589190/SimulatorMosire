@@ -61,6 +61,11 @@ import java.util.function.ToLongFunction;
  *   <li><b>四项独立</b>：requested = 0 的维度整段跳过（不扫描、不产生来源条目、不建账）。
  * </ol>
  *
+ * <p>★★ <b>P1.0 fail-closed（2026-10-11）</b>：{@code manpower > 0} 在负数校验之后、任何状态查询/Plan 组装之前直接抛具名
+ * {@link IllegalArgumentException}（本次调用零 revision）——旧 {@code social.SeedGroups} 删人腿不再发出，因为目标家户尚未接线；
+ * 粮 / 钱 / 布三维不受影响、照常可用。未来人力要走 Social 家户工单（{@code social.SubmitHouseholdWorkOrder +
+ * TRANSFER_MEMBERS}）。
+ *
  * <p>★ <b>确定性</b>：本类是状态的纯函数——同一状态 + 同一参数 ⇒ 逐字段相同的 {@link Plan}（来源表是显式 {@link List}，排序键是内容的全序；没有遍历
  * {@code Map} 迭代序的余地）。Plan 里没有随机量、也没有墙钟时间：{@code tick} 是状态 meta 的函数。
  *
@@ -126,6 +131,16 @@ final class LevyRegionPlan {
     requireNonNegative(money, "money");
     requireNonNegative(cloth, "cloth");
     requireNonNegative(manpower, "manpower");
+    // ★★ P1.0 fail-closed（2026-10-11）：manpower 的删人路径已在 plan 级关闭——本 plan 尚未接线目标家户，
+    //   不允许再走 social.SeedGroups 直接减批次 count；粮/钱/布三维不受影响。guard 放在负数校验之后、
+    //   全零校验之前，且在任何单位/区域状态查询与 Plan 组装之前 ⇒ 本次调用零 revision。
+    if (manpower > 0L) {
+      throw new IllegalArgumentException(
+          "manpower 已退役（P1.0）：未接目标家户，manpower>0 在 plan 级具名拒（本次调用零 revision），"
+              + "不再走 social.SeedGroups 删人路径；粮/钱/布路径不受影响、照常可用；"
+              + "未来人力要走 Social 家户工单（social.SubmitHouseholdWorkOrder + TRANSFER_MEMBERS）: manpower="
+              + manpower);
+    }
     if (grain == 0L && money == 0L && cloth == 0L && manpower == 0L) {
       throw new IllegalArgumentException("grain/money/cloth/manpower 四项全为 0，没有任何抽取；至少给一项 > 0");
     }

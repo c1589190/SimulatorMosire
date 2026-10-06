@@ -40,7 +40,8 @@ import java.util.UUID;
 
 /**
  * ★★ {@code simos.unit.levyRegion}（辖区阶段 6 / 计划 §6.1；阶段 11b 补 cloth）：<b>GM 组合工具</b>——一次性从一个单位辖区的家户
- * actor 账抽粮 / 抽钱 / 抽布、并从该区域抽人力，三条命令<b>同批落一条 revision</b>。
+ * actor 账抽粮 / 抽钱 / 抽布；manpower&gt;0 自 P1.0 起已在 plan 级具名拒（删人路径已关闭、尚未接线 Social 家户工单），
+ * 故实际生效的批只可能是 {@code actor.AdjustAccounts} + {@code sd.PutInfo}，同批落一条 revision。
  *
  * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：粮 / 钱 / 布在 {@code actor} 切片、人在 {@code social} 切片、行动记录在 {@code
  * sd} 切片，单条命令只能落一个命名空间。本工具走 {@link CoreSimos#submitBatch}（同 branch + 同 expectedRevision ⇒ 一批 = 一条
@@ -55,8 +56,9 @@ import java.util.UUID;
  *   <li>{@code actor.AdjustAccounts}（粮 / 钱 / 布任一 &gt; 0 时）：各来源家户账的<b>负增量</b>（粮与布合并进同一 {@code
  *       (owner,格)} 条目的 {@code goods} 表，钱进同条目的 {@code money} 表，避免同键重复）+ 一条单位国库账户（{@code
  *       ActorRef(UNIT, unitId)}，格 = 单位当刻有效位置）的 <b>正增量</b>；逐值相等（Σ 扣减 == 入库）；
- *   <li>{@code social.SeedGroups}（人力 &gt; 0 时）：每个被动批次一条<b>整组覆盖</b>条目（{@code id/q/r/sex/count=扣后} +
- *       {@code ageDays/anchorTick/stress} 保真），扣后 count 可为 0（合法空批）；
+ *   <li>{@code social.SeedGroups}（人力 &gt; 0 时；★ P1.0 起 manpower&gt;0 已在 plan 级具名拒 ⇒ <b>此腿实际不会发出</b>，
+ *       以下保留历史口径）：每个被动批次一条<b>整组覆盖</b>条目（{@code id/q/r/sex/count=扣后} +
+ *       {@code ageDays/anchorTick} 保真；旧 {@code stress} 字段已退役、不再携带），扣后 count 可为 0（合法空批）；
  *   <li>{@code sd.PutInfo}（恒有）：行动记录，地址 = 单位 canonical（{@link Address#parse} → {@link
  *       Address#canonical()}，与 {@code RejectDirectiveTool} 同款），{@code key="levyRegion"}，{@code
  *       value} = JSON <b>字符串</b>（unitId/regionId/tick/四项数量/来源计数/reason），{@code tick} = 当前世界日。
@@ -158,19 +160,21 @@ public final class LevyRegionTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 辖区一次性抽取（组合工具，一批 = 一条 revision）：从单位辖区的家户 actor 账抽粮/钱/布。★ S3b：manpower 已退役、本工具尚未接线到家户转移 ⇒ manpower>0 时 apply 会被 unit.AdjustComposition 具名拒；粮/钱/布三维照常可用："
-        + "粮/钱/人各自受 unit.SetJurisdiction 的 levy*CapPerCommand 约束（0 = 无额度）；"
+    return "GM 辖区一次性抽取（组合工具，一批 = 一条 revision）：从单位辖区的家户 actor 账抽粮/钱/布。"
+        + "★ P1.0：manpower 已退役、当前不可用——manpower>0 已在 plan 级具名拒（preview/apply 都返回 BAD_REQUEST、本次调用零 revision），"
+        + "不再走 social.SeedGroups 删人路径；粮/钱/布三维不受影响、照常可用；未来人力要走 Social 家户工单"
+        + "（social.SubmitHouseholdWorkOrder + TRANSFER_MEMBERS）："
+        + "粮/钱各自受 unit.SetJurisdiction 的 levy*CapPerCommand 约束（0 = 无额度）；manpower 的旧 "
+        + "levyManpowerCapPerCommand 不再生效（plan 级先拒）。"
         + "★ cloth 本批只受可用量约束，上限字段留后续（Jurisdiction 没有第四条上限）。"
         + "载荷 {unitId(必填), regionId(必填), grain?, money?, cloth?, manpower?(四项可选 long，缺省 0；"
-        + "负数拒、四项全 0 拒), reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
+        + "负数拒、四项全 0 拒；manpower>0 现在 plan 级拒), reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
         + "口径：单位必须存在且管辖含该 region、region 必须在地图里、单位必须有当刻有效位置（国库落点）；"
-        + "粮/钱/布来源 = region 各 hex 上 HOUSEHOLD 账的可支配量（余额−冻结，AvailableStock 唯一算法；布 = CommodityId(EconomyVocabulary.CLOTH_COMMODITY_ID)），"
-        + "人力来源 = residence 在 region、MALE、当前 tick 落在 AgeBracket.ADULT 的批次；"
-        + "总量不足 ⇒ 整条拒（不部分、不截断）；分摊 = 瀑布（可用量/人数降序，同量按账键/批次 id 升序）。"
-        + "apply 批：actor.AdjustAccounts（各来源负增量 + 单位国库正增量；粮与布合并进 goods、钱进 money）"
-        + "+ social.SeedGroups（各被动批次整组覆盖，带 ageDays/anchorTick/stress 保真、扣后 count 可为 0）"
+        + "粮/钱/布来源 = region 各 hex 上 HOUSEHOLD 账的可支配量（余额−冻结，AvailableStock 唯一算法；布 = CommodityId(EconomyVocabulary.CLOTH_COMMODITY_ID)）；"
+        + "总量不足 ⇒ 整条拒（不部分、不截断）；分摊 = 瀑布（可用量降序，同量按账键升序）；manpower=0 时该维度整段跳过。"
+        + "apply 批（当前口径 manpower 恒为 0）：actor.AdjustAccounts（各来源负增量 + 单位国库正增量；粮与布合并进 goods、钱进 money）"
         + "+ sd.PutInfo（单位 canonical 地址、key="
         + INFO_KEY
         + "、value=JSON 字符串的行动记录，带 cloth 计数）。"
@@ -199,10 +203,15 @@ public final class LevyRegionTool implements AgentTool {
         "manpower",
         ToolSupport.prop(
             "integer",
-            "抽人力（人；可选，缺省 0 = 本维度整段跳过；不得为负，不得超 levyManpowerCapPerCommand；"
-                + "只抽 MALE 且当前 tick 成年档的批次）"));
+            "★ 已退役、当前不可用：>0 在 plan 级具名拒（preview/apply 都 BAD_REQUEST、零 revision），"
+                + "粮/钱/布不受影响；缺省 0 = 本维度整段跳过；未来人力走 Social 家户工单"
+                + "（social.SubmitHouseholdWorkOrder + TRANSFER_MEMBERS）"));
     props.put("reason", ToolSupport.prop("string", "抽取原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
-    props.put("preview", ToolSupport.prop("boolean", "true（缺省）= 只算不写；false = 提交三条命令的同一批"));
+    props.put(
+        "preview",
+        ToolSupport.prop(
+            "boolean",
+            "true（缺省）= 只算不写；false = 提交同一批（manpower 已退役 ⇒ 当前只可能提交 actor.AdjustAccounts?/sd.PutInfo）"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",

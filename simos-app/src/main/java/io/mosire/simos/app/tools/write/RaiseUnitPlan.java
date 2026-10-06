@@ -68,12 +68,13 @@ import java.util.Optional;
  *       （不部分、不截断）；
  *   <li><b>国库落点 = {@code at}</b>：新单位国库账 = {@code ActorRef(UNIT, newUnitId)} @ {@code at}，与 levy /
  *       债同族；
- *   <li><b>产出</b>：新 {@code Unit} 的人力表 = 单条 {@code {type:"人员", amount:实抽人力}}；粮 / 钱进新单位国库；来源逐键进
- *       {@code actor.AdjustAccounts} / {@code social.SeedGroups}，行动记录进 {@code
+ *   <li><b>产出（S3b）</b>：人口由新人口家户承载（{@code unit.CreateUnit} 的 {@code households=[新人口家户]}），
+ *       <b>Unit 不再写已退役的 {@code manpower}</b>；粮 / 钱进新单位国库；来源逐键进 {@code social.CreateHousehold} /
+ *       {@code social.TransferHouseholdMembers}（旧 {@code social.SeedGroups} 已不再发），行动记录进 {@code
  *       sd.PutInfo}；<b>不另造第二份账</b>。
  * </ol>
  *
- * <p>★ <b>为什么载荷组装也在这个类</b>：四条命令的载荷都是这份计划的纯函数（照 {@code LevyRegionPlan} 的拆法）——把载荷留在
+ * <p>★ <b>为什么载荷组装也在这个类</b>：各条命令的载荷都是这份计划的纯函数（照 {@code LevyRegionPlan} 的拆法）——把载荷留在
  * 工具里会多出一条"视图与载荷各读一次 Plan 字段"的缝，漏一个字段没有症状。载荷一律 {@link LinkedHashMap} 保序构造、 {@link ToolSupport#json}
  * 序列化 ⇒ 同状态同参数逐字节相同。
  *

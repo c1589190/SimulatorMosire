@@ -48,7 +48,7 @@ import java.util.Set;
  * </ol>
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SeedGroups}（逐批整组覆盖，{@code count=扣后} 可为 0，带 {@code
- * ageDays/anchorTick/stress} 保真）→ {@code unit.RecruitStaff}（{@code sources} = 逐来源 {@code
+ * ageDays/anchorTick} 保真；旧 {@code stress} 字段已退役、不再携带）→ {@code unit.RecruitStaff}（{@code sources} = 逐来源 {@code
  * {kind:"social_group", id, count}}）→ {@code sd.PutInfo}（地址 = 单位 canonical，key={@code
  * recruit}，value=JSON <b>字符串</b>，含 role/count/来源计数/reason/tick，note=人可读摘要）。三条共享同一 batchId 与同一
  * branch/expectedRevision ⇒ 一条 revision。

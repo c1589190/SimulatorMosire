@@ -62,7 +62,7 @@ public final class SocialHouseholdMembersTool extends AbstractHouseholdGmTool {
         + "action=remove ⇒ {householdId, lotId, count(>0), reason}；"
         + "action=transfer ⇒ {from, to, lotId, count(>0), reason}。"
         + "add 缺 lotId 时用确定性新批次 id（gm-add:<householdId>，冲突追加 -2）；remove 扣到 0 删批次；"
-        + "transfer 整批保 id、拆分落派生 id。preview?(缺省 true=只算不写), branch?, expectedRevision?(preview=false 必填)。"
+        + "transfer 保持同一 lot id，在 from/to 两侧按份额持有（不派生新批次）。preview?(缺省 true=只算不写), branch?, expectedRevision?(preview=false 必填)。"
         + "返回 {preview, submitted, action, householdId|from/to, lotId, count, populationBefore/After 或 from/to 两侧人口, commandsPreview, submission?}。";
   }
 
