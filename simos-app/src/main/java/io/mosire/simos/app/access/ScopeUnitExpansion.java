@@ -18,7 +18,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ <b>单位子树展开</b>（2026-10-20 用户裁定：可见单位的下属单位/下辖 GOV 的家户也可操作）。
+ * ★★ <b>单位子树展开</b>（2026-10-20 用户裁定：可见单位的下属单位家户也可操作；
+ * 2026-10-21 修订：GovScope 撤销下辖 GOV/后代自动可见，本类仅供 ArmyScope/NationScope 使用）。
  *
  * <p>★★ <b>为什么要有这一层</b>：三个范围函数（{@code GovScope}/{@code NationScope}/{@code ArmyScope}）都按
  * "单位当刻位置落在范围内"来授 {@code unit} 前缀；但编制是树（{@link Unit#parent()}）——只授根单位会让"上级能指挥、不能看下属编制"

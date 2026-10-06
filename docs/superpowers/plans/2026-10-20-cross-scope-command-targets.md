@@ -1,14 +1,18 @@
-# 2026-10-20 决策人跨权限家户目标：CommandTarget 契约 + 单位子树/下辖 GOV 范围
+# 2026-10-20 决策人跨权限家户目标：CommandTarget 契约 + 单位子树范围（2026-10-21 修订：中央只直辖区）
 
 > 用户 2026-10-19/20 裁定：
 > 1. 选方案 1：`CommandTargets` 升级为**跨命名空间目标**（namespace + path），不再只返回单命名空间路径；
 > 2. 家户权限：若家户在可见 hex 上 ⇒ 可操作；若家户属于可见单位 ⇒ 可操作；
->    可见单位的**下属单位**（含下辖 GOV）对应家户也可操作；
-> 3. 跨权限情报：中央政府**能看到下辖政府的单位编制/单位家户**，但**hex 权限不通用**——
->    不能因为能看到某下级政府单位就顺带看它的格子人口；只有单位命名空间的面扩大；
+>    Army/Nation 的 unit scope 含各自可见单位的后代；Gov 只到直辖区内单位（见 2026-10-21 修订）；
+> 3. 跨权限情报：**中央决策人也只能看自己直辖区内的 hex 相关数据**；下辖 GOV 单位/辖区外单位
+>    都不自动可见，跨区信息必须走**上报**（2026-10-21 用户裁定，覆盖原“下辖政府单位家户可见”口径）；
 > 4. “调人”是双边操作：`from` 与 `to` 必须都在范围内（否则交 GM/合并审批）；
 > 5. 按此设计保存文档并改完代码。
 > 基线：`HEAD 154993ef`。
+>
+> ★★ **2026-10-21 修订（当前生效口径）**：原第 3 节中 `GovScope` “新增下辖 GOV 链 + 追加后代”
+> 已**作废并删除**。中央只看自己直辖区 hex（及这些格上的单位）；辖区外信息必须上报。
+> `ScopeUnitExpansion` 仍供 `ArmyScope`/`NationScope` 展开各自可见单位的后代，但 `GovScope` 不再调用。
 
 ## 1. 新契约：`CommandTarget`（namespace + path）
 
@@ -63,7 +67,7 @@ newHousehold(location 载荷):
 - 双边规则：`from`、`to` 任一越界 ⇒ 整条命令被 `AdjudicateTick` 具名拒；
 - 局部工具（GM 组合工具，如 `simos.gov.recruit`）不受影响：它们以 GM 身份提交命令，不走 AdjudicateTick 的 scope。
 
-## 3. 单位子树 / 下辖 GOV 的 unit 范围扩展
+## 3. 单位子树范围扩展（Gov 下辖 GOV/后代分支已于 2026-10-21 撤销）
 
 新增 app 帮助类 `ScopeUnitExpansion`（`simos-app/.../access/`）：
 
@@ -75,14 +79,13 @@ descendants(UnitState units, Set<UnitId> roots, SimosTimestamp at):
 - `ArmyScope`：视野圈内单位集合 → 追加它们的全部后代 unit 路径（`ResourcePaths.unit`）；
   后代在家户目标解析里会以 `UNIT(u)` 命中 unit 命名空间 ⇒ 自动可操作。
 - `NationScope`：本国区域内单位集合 → 追加全部后代 unit 路径。
-- `GovScope`：
-  - 已有“辖区内单位 + 自己” ⇒ 追加全部后代；
-  - **新增下辖 GOV 链**：扫描 `UnitState`，若某单位的 `GovernmentFormation.superiorGov` 链（有限深度/防环）
-    最终指到自己 ⇒ 把该 GOV 单位及其全部后代加入 **unit 命名空间**；
-  - 只扩 `unit`，`map`/`social`/`actor` 前缀**不扩**：中央能看到下辖政府编制/单位家户，
-    但不能顺带读它们的格人口/地图；actor 仍只保留自己 + superiorGov 的国库路径（原有口径）。
-- 决策人读单位：`UnitGetTool`/`UnitListTool` 的目标是 unit 路径 ⇒ 下辖单位读得到；
-  读某格人口仍要求该 hex 在 map/social 范围内，保持“hex 权限不通用”。
+- `GovScope`（2026-10-21 修订）：
+  - 保留“自己 + 位置落在直辖区 hex 内的单位”；
+  - **不再追加后代**，**不再沿 `superiorGov` 链扩下辖 GOV**；辖区外 unit/social/map/actor
+    一律不可见，必须走上报；
+  - actor 仍只保留自己 + superiorGov 的国库路径（显式上缴，不代表读权）。
+- 决策人读单位：`UnitGetTool`/`UnitListTool` 的目标是 unit 路径 ⇒ 在 unit scope 内的单位读得到；
+  Gov 决策人只能读直辖区内单位，辖区外单位/格必须走上报（D4）。
 
 ## 4. 验收
 
@@ -92,8 +95,9 @@ descendants(UnitState units, Set<UnitId> roots, SimosTimestamp at):
    - `CreateHousehold`/`SetHouseholdLocation`/`TransferHouseholdMembers`/`SubmitHouseholdWorkOrder` 的
      `targetResources(...)` 返回预期 `social`/`unit` 混合目标；`from` 与 `to` 都列出；
    - 建 GOV 决策人（`sd.CreateDecisionMaker` 或直接构造 `Affiliation.Gov` 调 `GovScope.scopesFor`）：
-     - 自己单位、辖区内单位、下属单位、下辖 GOV 单位的 unit 路径 **允许**；
-     - 下辖 GOV 位置所在 hex 的 social/map 路径 **仍拒绝**；
+     - 自己单位、直辖区内单位的 unit 路径 **允许**；
+     - 无有效位置的下属单位、辖区外下辖 GOV 及其下属的 unit/social/map 路径 **全部拒绝**，
+       辖区外信息必须走上报（D4 工具）；
    - `AdjudicateTickTool.violations(fence, List<CommandTarget>)` 对“单位家户目标在范围内”放行、
      对“HEX 不在范围内”拒绝；
    - 负例：跨边界转移（from 在范围内、to 不在）⇒ 具名拒。
@@ -119,8 +123,9 @@ descendants(UnitState units, Set<UnitId> roots, SimosTimestamp at):
 
 ## 6. 情报口径（写入文档）
 
-- **跨权限情报** = 决策人所在 scope 之外的信息。现口径：
-  - 中央政府（GOV scope）能读下辖政府**单位编制/单位家户**（unit 命名空间），
-    但不能读下辖政府的 hex/人口/地图（map/social 不扩）；
-  - 需要别的权限域情报时，仍只能找 GM（或由 GM 明确授权/合并审批）；
-  - 本批不改读工具的可见性；只让“命令目标的家户”按 unit/hex 规则进入授权判定。
+- **跨权限情报** = 决策人所在 scope 之外的信息。2026-10-21 起口径：
+  - 中央政府（GOV scope）只能读自己直辖区内的 hex/单位家户；下辖 GOV 与辖区外单位都不自动可见；
+  - 辖区外情报必须由基层/**上报工具**（`simos.sd.report`/`simos.sd.reports`，见 D4）送到中央，
+    中央不能直接读原始数据；
+  - 需要别的权限域情报时，仍只能找 GM（GM 全图）或由 GM 明确授权/合并审批；
+  - 本批只让“命令目标的家户”按 unit/hex 规则进入授权判定，读工具可见性由 D1 统一按 scope 裁剪。
