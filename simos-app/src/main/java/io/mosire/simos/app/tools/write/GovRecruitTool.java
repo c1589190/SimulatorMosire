@@ -31,29 +31,31 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * ★★ {@code simos.gov.recruit}（阶段 10b-ii，2026-10-01 GOV/Army 计划 §2.2/§2.6）：<b>GM 组合工具</b>——
- * 从辖区社会批次扣人 + 同批入编 + 留行动记录，来源可追溯，一批落一条 revision。
+ * ★★ {@code simos.gov.recruit}（阶段 10b-ii，2026-10-01 GOV/Army 计划 §2.2/§2.6；P1.1 改走 Social
+ * 家户工单）：<b>GM 组合工具</b>——从辖区家户份额转移真实成员到 {@code hh-gov-<unitId>} + 同批入编 + 留行动记录，
+ * 来源可追溯，一批落一条 revision。
  *
  * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：人在 {@code social} 切片、编制在 {@code unit} 切片、行动记录在 {@code sd}
  * 切片；单条命令只能落一个命名空间。本工具走 {@link CoreSimos#submitBatch}（同 branch + 同 expectedRevision ⇒ 一批 = 一条
  * revision，原子）。
  *
  * <p>★★ <b>preview / apply 共用同一份纯推导</b>：唯一语义落点是 {@link GovRecruitPlan#plan}（不碰 {@link ToolContext}
- * / {@code CoreSimos}）；本类只做四件事——读态、把 Plan 折成视图、组批、折叠结局。不许出现第二份推导，也不许出现第二份瀑布 （{@link
- * RegionAllocations} 是唯一那份）。
+ * / {@code CoreSimos}）；本类只做四件事——读态、把 Plan 折成视图、组批、折叠结局。不许出现第二份推导，也不许出现第二份瀑布
+ * （{@link HouseholdManpowerAllocator} 是唯一那份）。
  *
  * <p>★★ <b>批的三条命令（固定顺序）</b>：
  *
  * <ol>
- *   <li>{@code social.SeedGroups}（恒有）：每个被动批次一条<b>整组覆盖</b>条目（{@code id/q/r/sex/count=扣后} + {@code
- *       ageDays/anchorTick} 保真；旧 {@code stress} 字段已退役、不再携带），扣后 count 可为 0（合法空批）；
+ *   <li>{@code social.SubmitHouseholdWorkOrder}（恒有）：{@code orderId=gov-recruit:<unitId>:<role>:<tick>:<count>}
+ *       确定性幂等键；target = 政府家户 {@code hh-gov-<unitId>}；{@code plan} = 逐来源 {@code
+ *       TRANSFER_MEMBERS(from=来源家户, to=政府家户, lotId, count=taken)}——人真的进了政府家户；
  *   <li>{@code unit.RecruitStaff}（恒有）：{@code {unitId, role, count, sources}}，{@code sources} = 逐来源
- *       {@code {kind:"social_group", id, count}}；命令本身只入编（不扣人——扣人在上一腿）；
+ *       {@code {kind:"household", id, lotId, count}}；命令本身只入编（不扣人——扣人在上一腿）；
  *   <li>{@code sd.PutInfo}（恒有）：地址 = 单位 canonical，key = {@value #INFO_KEY}，value = JSON <b>字符串</b>
- *       （role/count/逐来源/reason/tick），note = 人可读摘要。
+ *       （role/count/逐来源 householdId/lotId/taken/hex/reason/tick），note = 人可读摘要。
  * </ol>
  *
- * <p>★★ <b>守恒口径</b>：Σ来源扣人 == {@code count} == roster 增量；Plan 构造期逐值互校（见 {@link
+ * <p>★★ <b>守恒口径</b>：Σ share.taken == {@code count} == roster 增量；Plan 构造期逐值互校（见 {@link
  * GovRecruitPlan.Plan}），三条命令的载荷都从同一份 sources 派生 ⇒ 没有第二份数字。
  *
  * <p>★ <b>只在 GM 桶</b>（{@code SimosToolSource.addGmWrites}）：决策人桶没有它；名字也不是命令类型 ⇒ 不进 catalog / {@code
@@ -63,8 +65,9 @@ import java.util.UUID;
  * ResourcePolicy#UNRESTRICTED}， GM 侧三者 unlimited）；{@code requireAll(Operation.WRITE, …)} 与其余 GM
  * 窄写同制。
  *
- * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / role 不在词表 / count &lt; 1 / 单位不存在或不是 GOV / 超 staffCap / 无管辖 / 辖区
- * Region 查无 / 来源总量不足 ⇒ {@link IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒 ⇒
+ * <p>★ <b>失败具名</b>：参数缺失 / 类型错 / role 不在词表 / count &lt; 1 / 单位不存在或不是 GOV / 超 staffCap / 无管辖 /
+ * 辖区 Region 查无 / 政府家户不在 Unit.households 或 social.households / 来源总量不足 ⇒ {@link
+ * IllegalArgumentException} 折 {@code BAD_REQUEST}（零 revision）；批内域层拒 ⇒
  * {@code REJECTED} 带逐条真拒因；提交冲突 ⇒ {@code CONFLICT} 带真实 head；资源不匹配 ⇒ 原样抛 {@link
  * ResourceDeniedException}（由唯一入口折资源拒因）。
  */
@@ -131,30 +134,42 @@ public final class GovRecruitTool implements AgentTool {
 
   @Override
   public String description() {
-    return "GM 从辖区社会批次招募入编（组合工具，一批 = 一条 revision）："
+    return "GM 从辖区家户份额转移真实成员到政府家户并入编（组合工具，一批 = 一条 revision）："
         + "参数 {unitId(必填, 必须是带 GovernmentFormation 的 GOV), role(必填 SCRIBE|YAMEN|POST), count(必填 ≥ 1), "
         + "reason(必填), preview?(缺省 true=只算不写), branch?(缺省 "
         + ToolSupport.DEFAULT_BRANCH
         + "), expectedRevision(preview=false 时必填)}。"
-        + "来源口径：按单位 jurisdiction 的 Region 顺序，逐个 Region 用 RegionAllocations 的同一份 MALE+ADULT 瀑布分配直到满额；"
-        + "总量不足 ⇒ 整条拒（带 requested/available/缺口），不部分抽取。"
+        + "目标家户 = hh-gov-<unitId>，必须已同时在 Unit.households 与 Social 里，否则具名拒（不猜、不新建第二户）。"
+        + "来源口径：按单位 jurisdiction 的 Region 顺序把各区 hex 集合交给 HouseholdManpowerAllocator 的 MALE+ADULT "
+        + "家户份额瀑布（排除目标政府家户）；总量不足 ⇒ 整条拒（带 requested/available/缺口），不部分抽取。"
         + "staffCap[role] 若存在且 现有+count>cap ⇒ 具名拒。"
-        + "批：social.SeedGroups（逐批整组覆盖，带 ageDays/anchorTick 保真；旧 stress 字段已退役、不再携带，扣后可为 0）→ "
-        + "unit.RecruitStaff（sources=逐来源 {kind:\"social_group\",id,count}）→ sd.PutInfo（key="
+        + "批：social.SubmitHouseholdWorkOrder（orderId=gov-recruit:<unitId>:<role>:<tick>:<count> 幂等键，target=政府家户，"
+        + "逐来源 TRANSFER_MEMBERS(from=来源家户,to=政府家户,lotId,count=taken)）→ "
+        + "unit.RecruitStaff（sources=逐来源 {kind:\"household\",id,lotId,count}）→ sd.PutInfo（key="
         + INFO_KEY
-        + "）。守恒：Σ来源扣人 == count == roster 增量。"
-        + "返回 {preview, submitted, tick, unitId, role, count, staffBefore, staffAfter, staffCap, available, "
-        + "sources[{id,q,r,before,taken,after}], commands, infoText}；apply 另加 submission。";
+        + "）。守恒：Σ share.taken == count == roster 增量；批内不再有 social.SeedGroups。"
+        + "返回 {preview, submitted, tick, unitId, governmentHouseholdId, role, count, staffBefore, staffAfter, "
+        + "staffCap, available, sources[{householdId,lotId,taken,hex}], commands, infoText}；apply 另加 submission。";
   }
 
   @Override
   public Map<String, Object> jsonSchema() {
     Map<String, Object> props = new LinkedHashMap<>();
-    props.put("unitId", ToolSupport.prop("string", "招募主体：带 GovernmentFormation 的 GOV 单位 id"));
+    props.put(
+        "unitId",
+        ToolSupport.prop(
+            "string",
+            "招募主体：带 GovernmentFormation 的 GOV 单位 id（其政府家户 hh-gov-<unitId> 必须已同时在 Unit.households 与 Social 里）"));
     props.put("role", ToolSupport.prop("string", "行政角色：SCRIBE（书吏）|YAMEN（衙门）|POST（驿传）"));
     props.put("count", ToolSupport.prop("integer", "招募人数（≥ 1；不得超过 staffCap[role] 的剩余额度）"));
-    props.put("reason", ToolSupport.prop("string", "招募原因（必填非空白；进 sd.PutInfo 行动记录与工具结果）"));
-    props.put("preview", ToolSupport.prop("boolean", "true（缺省）= 只算不写；false = 提交三条命令的同一批"));
+    props.put(
+        "reason",
+        ToolSupport.prop("string", "招募原因（必填非空白；进 Social 工单 reason、sd.PutInfo 行动记录与工具结果）"));
+    props.put(
+        "preview",
+        ToolSupport.prop(
+            "boolean",
+            "true（缺省）= 只算不写；false = 提交同一批三条命令（SubmitHouseholdWorkOrder + RecruitStaff + PutInfo）"));
     props.put("branch", ToolSupport.prop("string", "分支名（缺省 " + ToolSupport.DEFAULT_BRANCH + "）"));
     props.put(
         "expectedRevision",
@@ -283,7 +298,7 @@ public final class GovRecruitTool implements AgentTool {
     return ToolResult.error("REJECTED", ToolSupport.json(view));
   }
 
-  /** 组批：{@code social.SeedGroups} → {@code unit.RecruitStaff} → {@code sd.PutInfo}（固定顺序）。 */
+  /** 组批：{@code social.SubmitHouseholdWorkOrder} → {@code unit.RecruitStaff} → {@code sd.PutInfo}（固定顺序）。 */
   private List<CommandEnvelope> buildBatch(
       String batchId,
       GovRecruitPlan.Plan plan,
@@ -296,8 +311,8 @@ public final class GovRecruitTool implements AgentTool {
             batchId,
             branch,
             expectedRevision,
-            GovRecruitPlan.SEED_GROUPS_TYPE,
-            plan.seedGroupsPayloadJson()));
+            GovRecruitPlan.SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE,
+            plan.submitHouseholdWorkOrderPayloadJson(reason)));
     batch.add(
         envelope(
             batchId,
@@ -354,6 +369,7 @@ public final class GovRecruitTool implements AgentTool {
     view.put("submitted", submitted);
     view.put("tick", plan.tick());
     view.put("unitId", plan.unitId());
+    view.put("governmentHouseholdId", plan.governmentHouseholdId().value());
     view.put("role", plan.role().name());
     view.put("count", plan.count());
     view.put("staffBefore", plan.staffBefore());

@@ -7,7 +7,10 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.SocialData;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
+import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.population.PopulationGroup;
+import io.mosire.simos.social.spi.SubmitHouseholdWorkOrderHandler;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
@@ -16,7 +19,6 @@ import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -24,46 +26,57 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * ★★ {@code simos.gov.recruit} 的<b>纯推导</b>（阶段 10b-ii，2026-10-01 GOV/Army 计划 §2.2/§2.6）：从一份 {@link
- * SimulationState} 与参数算出 {@link Plan}——<b>不碰 {@link io.mosire.agentlib.tool.ToolContext}、不碰 {@code
- * CoreSimos}</b>， preview 与 apply 因此共用同一份语义（工具只负责读态、把 Plan 折成视图、组批、折叠结局）。
+ * ★★ {@code simos.gov.recruit} 的<b>纯推导</b>（阶段 10b-ii，2026-10-01 GOV/Army 计划 §2.2/§2.6；P1.1 改走 Social
+ * 家户工单）：从一份 {@link SimulationState} 与参数算出 {@link Plan}——<b>不碰 {@link io.mosire.agentlib.tool.ToolContext}、不碰
+ * {@code CoreSimos}</b>，preview 与 apply 因此共用同一份语义（工具只负责读态、把 Plan 折成视图、组批、折叠结局）。
  *
  * <p>★★ <b>它为什么是 app 级组合工具而不是一条命令</b>：人在 {@code social} 切片、编制在 {@code unit} 切片、行动记录在 {@code sd}
  * 切片；单条命令只能落一个命名空间。本工具走 {@link io.mosire.simos.core.CoreSimos#submitBatch}（同 branch + 同
  * expectedRevision ⇒ 一批 = 一条 revision，原子）。
  *
- * <p>★★ <b>来源口径 = 辖区社会批次的跨 Region 瀑布</b>：
+ * <p>★★ <b>来源口径 = 辖区社会家户份额的跨 Region 瀑布</b>（P1.1）：
  *
  * <ol>
  *   <li><b>辖区顺序</b>：{@code Unit.jurisdiction.taxRatePerMilleByRegion} 的 key 插入序（{@code
- *       Jurisdiction} 构造期用 {@code LinkedHashMap} 保序冻结）；<b>逐个 Region 分配直到满额</b>；
- *   <li><b>Region 内口径与 levy / raiseUnit 逐字同源</b>：<b>只调</b> {@link
- *       RegionAllocations#allocateManpower}（同一份 MALE + {@link
- *       io.mosire.simos.social.population.AgeBracket#ADULT}、count 降序 / id 升序瀑布）， 本类不另写排序、过滤或扣减；
- *   <li><b>不足 ⇒ 整条拒</b>：先扫全部辖区 Region 得到 available 合计；railing 不足时抛具名 {@link
- *       IllegalArgumentException}（带 requested / available / 缺口），<b>不部分抽取、不截断</b>；
- *   <li><b>守恒</b>：Σ来源扣人 == {@code count} == {@code unit.RecruitStaff} 的 roster 增量；三个数字在 Plan
- *       构造期逐值互校，批载荷逐值对应（同一份 sources 同时喂 {@code social.SeedGroups}、{@code unit.RecruitStaff} 与
- *       {@code sd.PutInfo}）。
+ *       Jurisdiction} 构造期用 {@code LinkedHashMap} 保序冻结）；<b>逐 Region 的 hex 集合按这个顺序</b>交给 {@link
+ *       HouseholdManpowerAllocator}；
+ *   <li><b>选人唯一拼写点</b>：只调 {@link HouseholdManpowerAllocator#allocateMalesOfAdult}（MALE + {@link
+ *       io.mosire.simos.social.population.AgeBracket#ADULT}；家户 id 升序 / lotId 升序瀑布），本类不另写排序、过滤或扣减；
+ *       <b>旧</b> {@link RegionAllocations} 的整批 count 瀑布不再进入本路径；
+ *   <li><b>排除目标政府家户</b>：分配时把 {@code hh-gov-<unitId>} 放进排除集——它是本批的<b>目标</b>，不得再作为来源
+ *       （自我转移会在域层被拒）；
+ *   <li><b>不足 ⇒ 整条拒</b>：家户份额总量不足时带 requested / available / 缺口具名抛出，<b>不部分抽取、不截断</b>；
+ *   <li><b>守恒</b>：Σ share.taken == {@code count} == {@code unit.RecruitStaff} 的 roster 增量；三个数字在 Plan
+ *       构造期逐值互校，批载荷逐值对应（同一份 sources 同时喂 {@code social.SubmitHouseholdWorkOrder}、{@code
+ *       unit.RecruitStaff} 与 {@code sd.PutInfo}）。
  * </ol>
  *
- * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SeedGroups}（逐批整组覆盖，{@code count=扣后} 可为 0，带 {@code
- * ageDays/anchorTick} 保真；旧 {@code stress} 字段已退役、不再携带）→ {@code unit.RecruitStaff}（{@code sources} = 逐来源 {@code
- * {kind:"social_group", id, count}}）→ {@code sd.PutInfo}（地址 = 单位 canonical，key={@code
- * recruit}，value=JSON <b>字符串</b>，含 role/count/来源计数/reason/tick，note=人可读摘要）。三条共享同一 batchId 与同一
+ * <p>★★ <b>目标政府家户前置（缺一 ⇒ plan 级具名拒，不猜、不新建第二户）</b>：目标恒为 {@link
+ * GovernmentHouseholds#of(String)} = {@code hh-gov-<unitId>}；必须<b>同时</b>出现在 {@code Unit.households()}（否则该 GOV
+ * 单位的家户关系数据坏）与 {@code social.households()}（否则 Social 里没有可落人的目标家户）。缺任一项都不发批、零 revision。
+ *
+ * <p>★★ <b>批顺序（固定，可复现）</b>：{@code social.SubmitHouseholdWorkOrder}（{@code
+ * orderId=gov-recruit:<unitId>:<role>:<tick>:<count>} 确定性幂等键；target = 政府家户；逐来源 {@code
+ * TRANSFER_MEMBERS(from=来源家户, to=政府家户, lotId, count=taken)}）→ {@code unit.RecruitStaff}（{@code sources}
+ * = 逐来源 {@code {kind:"household", id, lotId, count}}）→ {@code sd.PutInfo}（地址 = 单位 canonical，key={@code
+ * recruit}，value=JSON <b>字符串</b>，含 role/count/来源家户/reason/tick，note=人可读摘要）。三条共享同一 batchId 与同一
  * branch/expectedRevision ⇒ 一条 revision。
  *
- * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：单位存在且带 {@link GovernmentFormation}；
- * {@code count ≥ 1}；{@code role} 词表；{@code staffCap[role]} 若存在且 {@code 现有 + count > cap} ⇒ 具名拒（带现有
- * / 上限 / 请求，不截断）；现有 + count 溢出 long ⇒ 具名拒；无 jurisdiction / 辖区 Region 在地图里查无 ⇒ 具名拒。
+ * <p>★★ <b>纯推导校验（前置不满足 ⇒ 工具折 {@code BAD_REQUEST}、零 revision）</b>：单位存在且带 {@link
+ * GovernmentFormation}；{@code count ≥ 1}；{@code role} 词表；{@code staffCap[role]} 若存在且 {@code 现有 + count >
+ * cap} ⇒ 具名拒（带现有 / 上限 / 请求，不截断）；现有 + count 溢出 long ⇒ 具名拒；无 jurisdiction / 辖区 Region 在地图里查无 ⇒
+ * 具名拒；政府家户不在 {@code Unit.households()} 或 {@code social.households()} ⇒ 具名拒；合格来源不足 ⇒ 整条具名拒。
  *
- * <p>★ <b>确定性 / 保序不可变</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；来源表按辖区顺序 + Region 内瀑布序， 用 {@link
- * List#copyOf} 冻结；{@code staffCap} 只读不改。
+ * <p>★ <b>确定性 / 保序不可变</b>：不碰墙钟（{@code tick} 是状态 meta 的函数）、不用随机量；来源表按辖区顺序 + 家户全序瀑布序，
+ * 用 {@link List#copyOf} 冻结；{@code staffCap} 只读不改。
+ *
+ * <p>★ <b>遗留形状</b>：{@link GroupSource}（整批 count 形状）仍被 {@link GovSelectExamineesPlan} 引用（该工具在 P1.0 已
+ * fail-closed，P1.3 再迁移）；本类的 recruit 路径不再构造/消费它，且不再发出 {@code social.SeedGroups}。
  */
 final class GovRecruitPlan {
 
-  /** {@code social.SeedGroups} 的命令类型（与 {@code SeedGroupsHandler.type()} 同字面）。 */
-  static final String SEED_GROUPS_TYPE = "social.SeedGroups";
+  /** {@code social.SubmitHouseholdWorkOrder} 的命令类型（与 handler 的 {@code TYPE} 同源）。 */
+  static final String SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE = SubmitHouseholdWorkOrderHandler.TYPE;
 
   /** {@code unit.RecruitStaff} 的命令类型（与 {@code RecruitStaffHandler.type()} 同字面）。 */
   static final String RECRUIT_STAFF_TYPE = "unit.RecruitStaff";
@@ -140,12 +153,27 @@ final class GovRecruitPlan {
       throw new IllegalArgumentException(
           "单位 " + unitId + " 的 jurisdiction 为空（无管辖区域）：没有可招募来源；先 unit.SetJurisdiction");
     }
-    long tick = state.meta().timestamp().tick();
     SocialData social = ToolSupport.socialData(state);
+    HouseholdId governmentHousehold = GovernmentHouseholds.of(unitId);
+    if (!unit.households().contains(governmentHousehold)) {
+      throw new IllegalArgumentException(
+          "GOV 单位 "
+              + unitId
+              + " 的 Unit.households 不含政府家户 "
+              + governmentHousehold.value()
+              + "：单位家户关系数据坏，招募目标不明确；先 unit.SetGovFormation / 修数（不猜、不新建第二户）");
+    }
+    if (!social.households().containsKey(governmentHousehold)) {
+      throw new IllegalArgumentException(
+          "Social 里不存在政府家户 "
+              + governmentHousehold.value()
+              + "（GOV 单位 "
+              + unitId
+              + " 的招募目标）：先补该政府家户（如 simos.gov.createOffice 的 social.CreateHousehold）再招募（不猜、不新建第二户）");
+    }
     GameMap map = ToolSupport.gameMap(state);
-    List<GroupSource> sources = new ArrayList<>();
-    long remaining = count;
-    long available = 0L;
+    long tick = state.meta().timestamp().tick();
+    List<Set<HexCoord>> jurisdictionHexesInOrder = new ArrayList<>();
     for (RegionId regionId : jurisdiction.taxRatePerMilleByRegion().keySet()) {
       Region region = map.regions().get(regionId);
       if (region == null) {
@@ -156,49 +184,31 @@ final class GovRecruitPlan {
                 + unitId
                 + " 的 jurisdiction 指向了一个已不存在的 Region；先 map.CreateRegion 或调整管辖）");
       }
-      long regionAvailable = regionAvailability(social, region, tick, clock);
-      available = saturatedAdd(available, regionAvailable);
-      if (remaining == 0L || regionAvailable == 0L) {
-        continue;
-      }
-      long take = Math.min(remaining, regionAvailable);
-      RegionAllocations.ManpowerAllocation allocation =
-          RegionAllocations.allocateManpower(social, region, tick, take, clock);
-      sources.addAll(allocation.sources().stream().map(GroupSource::from).toList());
-      remaining -= take;
+      jurisdictionHexesInOrder.add(region.hexes());
     }
-    if (remaining != 0L) {
-      throw new IllegalArgumentException(
-          "招募来源不足：requested="
-              + count
-              + "，available="
-              + available
-              + "，缺口="
-              + (count > available ? count - available : remaining)
-              + "（不部分抽取、不截断；先扩管辖 / 等人口长大或降低 count）");
-    }
-    return new Plan(
-        unitId, role, count, tick, staffBefore, staffAfter, staffCap, available, sources);
-  }
-
-  /**
-   * ★ <b>一个辖 Region 的合格人力总量</b>：调 {@link RegionAllocations#allocateManpower}、{@code
-   * requested=1}——成功时它返回 的 {@code available} 是<b>该 Region 全部</b>合格批次人数之和（"available = 全部合格来源"是那份
-   * API 的口径）。
-   *
-   * <p>★★ {@code requested=1} 且其余入参合法时，唯一的 {@link IllegalArgumentException} 是"人力总量不足"（合格来源 0 人）； 其它
-   * IAE（如未来锚点导致年龄为负的坏数据）必须原样重抛，<b>不静默当 0</b>——被吞掉的异常会把"数据坏了"伪装成"这里没人"。
-   */
-  private static long regionAvailability(
-      SocialData social, Region region, long tick, CalendarClock clock) {
+    HouseholdManpowerAllocator.Allocation allocation;
     try {
-      return RegionAllocations.allocateManpower(social, region, tick, 1L, clock).available();
+      // ★ 排除目标政府家户：本批把它当目标，不得再作为来源（from == to 会被 HouseholdBook 具名拒）。
+      allocation =
+          HouseholdManpowerAllocator.allocateMalesOfAdult(
+              social, jurisdictionHexesInOrder, count, clock, tick, Set.of(governmentHousehold));
     } catch (IllegalArgumentException e) {
       if (e.getMessage() != null && e.getMessage().startsWith("人力总量不足")) {
-        return 0L;
+        throw new IllegalArgumentException("招募来源不足：" + e.getMessage(), e);
       }
       throw e;
     }
+    return new Plan(
+        unitId,
+        role,
+        count,
+        tick,
+        staffBefore,
+        staffAfter,
+        staffCap,
+        allocation.available(),
+        governmentHousehold,
+        allocation.shares());
   }
 
   /** 角色词表：只认 SCRIBE|YAMEN|POST，别的词给具名拒（不静默当缺省）。 */
@@ -222,7 +232,7 @@ final class GovRecruitPlan {
         "单位 " + unitId + " 没有 GovernmentFormation：招募只对 GOV 单位；先 unit.SetGovFormation");
   }
 
-  /** 饱和加法（非负 long；溢出取 {@link Long#MAX_VALUE}）——只用于 available 合计与拒因展示，不参与逐值扣减。 */
+  /** 饱和加法（非负 long；溢出取 {@link Long#MAX_VALUE}）——只用于守恒合计与拒因展示，不参与逐值扣减。 */
   private static long saturatedAdd(long left, long right) {
     return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
   }
@@ -232,13 +242,14 @@ final class GovRecruitPlan {
    *
    * @param unitId 招募主体
    * @param role 行政角色
-   * @param count 招募人数（= roster 增量 = Σ来源扣人）
-   * @param tick 推导时的世界日（年龄现算与行动记录用）
+   * @param count 招募人数（= roster 增量 = Σ来源 share.taken）
+   * @param tick 推导时的世界日（年龄现算、工单幂等键与行动记录用）
    * @param staffBefore 该角色现有在编
    * @param staffAfter 该角色招募后在编（= staffBefore + count）
    * @param staffCap 该角色的编制上限（不存在 = 不设限）
-   * @param available 全部辖区 Region 的合格来源合计（不足拒因用；成功时也随视图返回）
-   * @param sources 逐来源（辖区顺序 + Region 内瀑布序；Σtaken == count）
+   * @param available 全部辖区合格家户份额合计（不足拒因用；成功时也随视图返回）
+   * @param governmentHouseholdId 目标政府家户（{@code hh-gov-<unitId>}；构造期已由 plan 前置校验存在）
+   * @param sources 逐来源家户份额（辖区顺序 + 家户全序瀑布序；Σtaken == count）
    */
   record Plan(
       String unitId,
@@ -249,7 +260,8 @@ final class GovRecruitPlan {
       long staffAfter,
       Optional<Long> staffCap,
       long available,
-      List<GroupSource> sources) {
+      HouseholdId governmentHouseholdId,
+      List<HouseholdManpowerAllocator.ManpowerShare> sources) {
 
     Plan {
       if (unitId == null || unitId.isBlank()) {
@@ -280,67 +292,80 @@ final class GovRecruitPlan {
                   "内部分摊不自洽：staffCap=" + cap + " < staffAfter=" + staffAfter);
             }
           });
+      Objects.requireNonNull(governmentHouseholdId, "governmentHouseholdId");
       sources = List.copyOf(Objects.requireNonNull(sources, "sources"));
       long total = 0L;
-      Set<String> seenGroupIds = new LinkedHashSet<>();
-      for (GroupSource source : sources) {
-        // ★ Region hex 重叠时同一社会批次会被两个 Region 各选中一次：两条 SeedGroups 会互相覆盖（第二腿按原始
-        //   count 重算），守恒在批内静默破坏 ⇒ 具名拒（fail-closed，不产出会打架的批）。
-        if (!seenGroupIds.add(source.group().id().value())) {
+      for (HouseholdManpowerAllocator.ManpowerShare share : sources) {
+        if (share.householdId().equals(governmentHouseholdId)) {
           throw new IllegalArgumentException(
-              "同一社会批次被多个 Region 选中（辖区 Region hex 重叠）: "
-                  + source.group().id().value()
-                  + "（先修管辖区域，避免同一批人被扣两次）");
+              "内部分摊不自洽：来源家户不得是目标政府家户 "
+                  + governmentHouseholdId.value()
+                  + "（自我转移会被域层拒）");
         }
-        total = saturatedAdd(total, source.taken());
+        total = saturatedAdd(total, share.taken());
       }
       if (total != count) {
         throw new IllegalArgumentException(
-            "守恒破坏：Σ来源扣人=" + total + " != count=" + count + "（批载荷必须逐值对应）");
+            "守恒破坏：Σ来源 share.taken=" + total + " != count=" + count + "（批载荷必须逐值对应）");
+      }
+      if (available < count) {
+        throw new IllegalArgumentException(
+            "内部分摊不自洽：available=" + available + " < count=" + count + "（不足应在选人层整条拒）");
       }
     }
 
     /** 本工具将落的命令类型（批内固定顺序；preview 视图与 apply 组批共用这一处）。 */
     List<String> commandTypes() {
-      return List.of(SEED_GROUPS_TYPE, RECRUIT_STAFF_TYPE, PUT_INFO_TYPE);
+      return List.of(SUBMIT_HOUSEHOLD_WORK_ORDER_TYPE, RECRUIT_STAFF_TYPE, PUT_INFO_TYPE);
     }
 
     /**
-     * {@code social.SeedGroups} 载荷：每个被动批次一条<b>整组覆盖</b>，必须带原 {@code ageDays}/{@code anchorTick} 保真；
-     * {@code count} 取扣后、可为 0。★★ Batch B：旧 {@code stress} 字段已退役，不再携带。
+     * 工单确定性幂等键：{@code gov-recruit:<unitId>:<role>:<tick>:<count>}。同一批参数在同一 tick
+     * 重放 ⇒ 命中幂等键、整单具名拒，不重复改人口。
      */
-    String seedGroupsPayloadJson() {
-      List<Map<String, Object>> entries = new ArrayList<>(sources.size());
-      for (GroupSource source : sources) {
-        PopulationGroup group = source.group();
-        Map<String, Object> entry = new LinkedHashMap<>();
-        entry.put("id", group.id().value());
-        entry.put("q", source.at().q());
-        entry.put("r", source.at().r());
-        entry.put("sex", group.sex().name());
-        entry.put("count", source.countAfter());
-        // ★ 保真两件：锚点年龄 / 锚点 tick——整组覆盖不重新解释这批人。
-        entry.put("ageDays", group.ageAtAnchorDays());
-        entry.put("anchorTick", group.anchorTick());
-        entries.add(entry);
+    String orderId() {
+      return "gov-recruit:" + unitId + ":" + role.name() + ":" + tick + ":" + count;
+    }
+
+    /**
+     * {@code social.SubmitHouseholdWorkOrder} 载荷：target = 政府家户；逐来源一条 {@code
+     * TRANSFER_MEMBERS(from=来源家户, to=政府家户, lotId, count=taken)}；{@code orderId} = {@link #orderId()}，{@code
+     * source.module="gov"}，reason = 工具 reason。
+     */
+    String submitHouseholdWorkOrderPayloadJson(String reason) {
+      requireReason(reason);
+      List<Map<String, Object>> steps = new ArrayList<>(sources.size());
+      for (HouseholdManpowerAllocator.ManpowerShare share : sources) {
+        Map<String, Object> step = new LinkedHashMap<>();
+        step.put("op", "TRANSFER_MEMBERS");
+        step.put("from", share.householdId().value());
+        step.put("to", governmentHouseholdId.value());
+        step.put("lotId", share.lotId().value());
+        step.put("count", share.taken());
+        steps.add(step);
       }
       Map<String, Object> payload = new LinkedHashMap<>();
-      payload.put("entries", entries);
+      payload.put("orderId", orderId());
+      payload.put("target", governmentHouseholdId.value());
+      payload.put("reason", reason);
+      payload.put("source", Map.of("module", "gov"));
+      payload.put("plan", steps);
       return ToolSupport.json(payload);
     }
 
     /**
      * {@code unit.RecruitStaff} 载荷：{@code {unitId, role, count, sources}}；{@code sources} = 逐来源
-     * {@code {kind:"social_group", id, count}}，与 {@link #sources} 逐值对应（命令本身只入编、不扣人；扣人在同批 {@code
-     * social.SeedGroups}）。
+     * {@code {kind:"household", id:householdId, lotId, count:taken}}，与 {@link #sources} 逐值对应（命令本身只入编、
+     * 不扣人；扣人在同批 {@code social.SubmitHouseholdWorkOrder}）。
      */
     String recruitStaffPayloadJson() {
       List<Map<String, Object>> rows = new ArrayList<>(sources.size());
-      for (GroupSource source : sources) {
+      for (HouseholdManpowerAllocator.ManpowerShare share : sources) {
         Map<String, Object> row = new LinkedHashMap<>();
-        row.put("kind", "social_group");
-        row.put("id", source.group().id().value());
-        row.put("count", source.taken());
+        row.put("kind", "household");
+        row.put("id", share.householdId().value());
+        row.put("lotId", share.lotId().value());
+        row.put("count", share.taken());
         rows.add(row);
       }
       Map<String, Object> payload = new LinkedHashMap<>();
@@ -351,11 +376,12 @@ final class GovRecruitPlan {
       return ToolSupport.json(payload);
     }
 
-    /** {@code sd.PutInfo} 的 {@code value}（JSON <b>字符串</b>；含 role/count/来源计数/逐来源/reason/tick）。 */
+    /**
+     * {@code sd.PutInfo} 的 {@code value}（JSON <b>字符串</b>；含 role/count/来源家户份额/reason/tick）。其余字段沿用旧口径，
+     * 仅 {@code sources} 行改成 householdId/lotId/taken/hex。
+     */
     String infoValueJson(String reason) {
-      if (reason == null || reason.isBlank()) {
-        throw new IllegalArgumentException("reason 必须是非空文本");
-      }
+      requireReason(reason);
       Map<String, Object> value = new LinkedHashMap<>();
       value.put("unitId", unitId);
       value.put("role", role.name());
@@ -365,28 +391,14 @@ final class GovRecruitPlan {
       value.put("staffAfter", staffAfter);
       value.put("available", available);
       value.put("sourceCount", sources.size());
-      List<Map<String, Object>> rows = new ArrayList<>(sources.size());
-      for (GroupSource source : sources) {
-        PopulationGroup group = source.group();
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("id", group.id().value());
-        row.put("q", source.at().q());
-        row.put("r", source.at().r());
-        row.put("before", group.count());
-        row.put("taken", source.taken());
-        row.put("after", source.countAfter());
-        rows.add(row);
-      }
-      value.put("sources", rows);
+      value.put("sources", sourcesView());
       value.put("reason", reason);
       return ToolSupport.json(value);
     }
 
     /** 人可读行动摘要（工具结果与 {@code sd.PutInfo.note} 共用）。 */
     String infoNote(String reason) {
-      if (reason == null || reason.isBlank()) {
-        throw new IllegalArgumentException("reason 必须是非空文本");
-      }
+      requireReason(reason);
       return "招募 "
           + unitId
           + " 的 "
@@ -395,9 +407,11 @@ final class GovRecruitPlan {
           + count
           + " 人（tick "
           + tick
-          + "）：来源批次 "
+          + "）：来源家户份额 "
           + sources.size()
-          + "（辖区顺序瀑布），在编 "
+          + " 条（辖区顺序瀑布 → "
+          + governmentHouseholdId.value()
+          + "），在编 "
           + staffBefore
           + "→"
           + staffAfter
@@ -406,25 +420,33 @@ final class GovRecruitPlan {
           + reason;
     }
 
-    /** 逐来源视图（工具结果用；保序）。 */
+    /** 逐来源视图（工具结果与 {@code sd.PutInfo.value.sources} 共用；保序）。 */
     List<Map<String, Object>> sourcesView() {
       List<Map<String, Object>> rows = new ArrayList<>(sources.size());
-      for (GroupSource source : sources) {
-        PopulationGroup group = source.group();
+      for (HouseholdManpowerAllocator.ManpowerShare share : sources) {
         Map<String, Object> row = new LinkedHashMap<>();
-        row.put("id", group.id().value());
-        row.put("q", source.at().q());
-        row.put("r", source.at().r());
-        row.put("before", group.count());
-        row.put("taken", source.taken());
-        row.put("after", source.countAfter());
+        row.put("householdId", share.householdId().value());
+        row.put("lotId", share.lotId().value());
+        row.put("taken", share.taken());
+        row.put("hex", ToolSupport.hexCoord(share.hex()));
         rows.add(row);
       }
       return rows;
     }
+
+    private static void requireReason(String reason) {
+      if (reason == null || reason.isBlank()) {
+        throw new IllegalArgumentException("reason 必须是非空文本");
+      }
+    }
   }
 
-  /** 一个被动批次：整组覆盖用的原始批次 + 它的来源格（S2：位置来自家户）+ 抽走的人数；{@code countAfter} 可为 0。 */
+  /**
+   * ★ <b>遗留的整批 count 形状</b>：仍被 {@link GovSelectExamineesPlan}（P1.0 fail-closed 的历史批）引用；recruit 新路径
+   * 不再使用。等 P1.3 把科举迁移到 {@link HouseholdManpowerAllocator.ManpowerShare} 后可删。
+   *
+   * <p>一个被动批次：整组覆盖用的原始批次 + 它的来源格（S2：位置来自家户）+ 抽走的人数；{@code countAfter} 可为 0。
+   */
   record GroupSource(PopulationGroup group, HexCoord at, long taken) {
 
     GroupSource {
