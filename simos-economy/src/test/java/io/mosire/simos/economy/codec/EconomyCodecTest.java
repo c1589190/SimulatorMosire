@@ -39,6 +39,7 @@ import io.mosire.simos.economy.model.FlowRow;
 import io.mosire.simos.economy.model.HouseholdEconomy;
 import io.mosire.simos.economy.model.Industry;
 import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionEfficiencyState;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
@@ -483,6 +484,37 @@ class EconomyCodecTest {
     assertThat(back.data().allocations()).isEmpty();
     assertThat(back.data().relations()).isEmpty();
     assertThat(back.data().units()).isEmpty();
+    // ★★ Z1：两个新节点缺席 ⇒ 空表（中性 = 全 0 余数 + 全 1000‰；§3.1/§3.2/§11.2 的"旧档缺节点"方向）。
+    assertThat(back.data().outputQuantityOverrides()).as("旧档没提产品产出数量覆盖 ⇒ 空表（回落配方默认），不抛").isEmpty();
+    assertThat(back.data().productionEfficiency()).as("旧档没提生产效率累计 ⇒ 空表（缺行 = 中性），不抛").isEmpty();
+  }
+
+  /**
+   * ★★ <b>§3.1/§11.2：悬空产出数量覆盖 ⇒ 载入契约 ERROR + fail-closed</b>。两个方向各一例： 产业不存在 / 商品不在该产业 {@code
+   * recipe().outputPerUnit()} 产出键里 —— 都不许静默丢弃或放行（构造期只判值域，跨表引用由载入边界判）。
+   */
+  @Test
+  void danglingOutputQuantityOverridesFailClosedOnLoad() {
+    EconomySnapshot ghostIndustry =
+        snapshotOf(
+            EconomyData.empty()
+                .withOutputQuantityOverrides(Map.of(new IndustryId("ghost"), Map.of(GRAIN, 5L))),
+            SimosTimestamp.of(10));
+    assertThatThrownBy(() -> CODEC.decodeSnapshot(CODEC.encodeSnapshot(ghostIndustry)))
+        .isInstanceOf(IllegalStateException.class)
+        .hasStackTraceContaining(EconomyData.OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX)
+        .hasStackTraceContaining("产业不存在");
+
+    EconomySnapshot foreignCommodity =
+        snapshotOf(
+            EconomyData.empty()
+                .withIndustries(Map.of(FARM, industry(FARM, 143L)))
+                .withOutputQuantityOverrides(Map.of(FARM, Map.of(CLOTH, 5L))),
+            SimosTimestamp.of(10));
+    assertThatThrownBy(() -> CODEC.decodeSnapshot(CODEC.encodeSnapshot(foreignCommodity)))
+        .isInstanceOf(IllegalStateException.class)
+        .hasStackTraceContaining(EconomyData.OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX)
+        .hasStackTraceContaining("商品不在配方产出键里");
   }
 
   /**
@@ -511,8 +543,35 @@ class EconomyCodecTest {
     assertThat(back.units()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.demands()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.candidates()).isInstanceOf(FieldDelta.Unchanged.class);
+    // ★★ Z1：两个新组件同款（旧变更集没提 ⇒ Unchanged，不是 null）。
+    assertThat(back.outputQuantityOverrides()).isInstanceOf(FieldDelta.Unchanged.class);
+    assertThat(back.productionEfficiency()).isInstanceOf(FieldDelta.Unchanged.class);
     assertThat(back.isEmpty()).as("全部组件都未变 ⇒ 这份旧变更集是空的").isTrue();
     assertThat(EconomyChangeSet.apply(back, EconomyData.empty())).isEqualTo(EconomyData.empty());
+  }
+
+  /**
+   * ★★ <b>§3.1：变更集 apply 重放同样守跨表引用</b> —— 变更集可以（经 decode 重放）把覆盖表写成悬空引用；{@link EconomyCodec#apply} 把
+   * {@code requireOutputQuantityOverridesValid} 再跑一遍，违反 ⇒ 契约 ERROR + fail-closed，不落一条"看起来合法"的
+   * revision。
+   */
+  @Test
+  void changeSetReplayWithDanglingOutputQuantityOverrideFailsClosed() {
+    EconomyData base = EconomyData.empty().withIndustries(Map.of(FARM, industry(FARM, 143L)));
+    EconomyData dangling = base.withOutputQuantityOverrides(Map.of(FARM, Map.of(CLOTH, 5L)));
+    EconomyChangeSet changeSet = EconomyChangeSet.between(base, dangling);
+
+    EconomyChangeSet replayed =
+        (EconomyChangeSet) CODEC.decodeChangeSet(CODEC.encodeChangeSet(changeSet));
+    StateMeta newMeta =
+        new StateMeta(
+            new StateRef(new BranchId("main"), new RevisionId(42)), SimosTimestamp.of(11));
+
+    assertThatThrownBy(
+            () -> CODEC.apply(replayed, snapshotOf(base, SimosTimestamp.of(10)), newMeta))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining(EconomyData.OUTPUT_QUANTITY_OVERRIDE_CONTRACT_PREFIX)
+        .hasMessageContaining("商品不在配方产出键里");
   }
 
   /** 别的模块的切片：本测试只借它的**类型**，不借语义。 */
@@ -581,7 +640,13 @@ class EconomyCodecTest {
         .withDebtContracts(debts)
         .withFlows(flows)
         .withLaborCommitments(allocations)
-        .withRelations(relations);
+        .withRelations(relations)
+        // ★★ Z1：两个新组件也**非空** —— outputQuantityOverrides 的键 = IndustryId、内层键 = CommodityId（两处
+        //   自定义键反序列化）；productionEfficiency 的键 = ProductionUnitId。空表会让这些键注册项永远不被走到。
+        //   ★ 覆盖值取**非默认**（FARM 默认 7 ⇒ 3；WORKSHOP 默认 5 ⇒ 2），否则"字段没进线格式"与"值等于默认"不可区分。
+        .withOutputQuantityOverrides(Map.of(FARM, Map.of(GRAIN, 3L), WORKSHOP, Map.of(CLOTH, 2L)))
+        .withProductionEfficiency(
+            Map.of(FARM_UNIT, new ProductionEfficiencyState(117_000L, 3L, 5L, 2L, 7L)));
   }
 
   private static EconomyData dataWithIndustries(Map<IndustryId, Industry> industries) {

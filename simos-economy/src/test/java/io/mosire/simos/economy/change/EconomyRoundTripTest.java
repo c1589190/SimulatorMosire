@@ -76,6 +76,7 @@ import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.model.ProductionCandidate;
+import io.mosire.simos.economy.model.ProductionEfficiencyState;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionMode;
 import io.mosire.simos.economy.model.ProductionProcess;
@@ -109,10 +110,10 @@ import org.junit.jupiter.api.Test;
  * <p>★★ <b>S1/R3B.2/R4/E1–E6 的 API 漂移已在这里就位</b>：{@code classes}/{@code flows} 的键 = {@link
  * HouseholdId}（旧视图用 {@code HouseholdIds.ofLegacy}）；{@code relations} 挂 {@link ProductionUnitId}；
  * operator / 周期进度住在 {@link ProductionProcess} 上（不是 {@code Industry} 的旧档兼容位）；{@code EconomyData} 是
- * 29 组件记录（E1–E6 追加组件 + P10.1 {@code merchantFirms} + P4a {@code periodicAdjustments}，全部在 {@link
- * EconomyChangeSet} 里逐一对齐）。
+ * 31 组件记录（E1–E6 追加组件 + P10.1 {@code merchantFirms} + P4a {@code periodicAdjustments} + Z1 {@code
+ * outputQuantityOverrides}/{@code productionEfficiency}，全部在 {@link EconomyChangeSet} 里逐一对齐）。
  *
- * <p>★ P0.1（2026-10-05）删除了 {@code classFirst} 组件：唯一经济路线是 production-runtime，本往返面同步收敛为 30 组件。
+ * <p>★ P0.1（2026-10-05）删除了 {@code classFirst} 组件：唯一经济路线是 production-runtime，本往返面同步收敛为 31 组件。
  */
 class EconomyRoundTripTest {
 
@@ -279,19 +280,20 @@ class EconomyRoundTripTest {
 
   /**
    * ★★ <b>组件计数（R4 16 → E3 24 → E4 25 → E5 27 → E6 29 → P10.1 30 → P2-A 删 laborSupply / memberships
-   * ⇒ 28 → P4a {@code periodicAdjustments} ⇒ 29；classFirst 已删）</b>： {@code meta} / {@code
-   * industries} / {@code classes} / {@code debtContracts} / {@code flows} / {@code allocations} /
-   * {@code relations} / {@code markets} / {@code shipments} / {@code assetShares} / {@code
-   * operatorConditions} / {@code units} / {@code demands} / {@code candidates} / E1 的四个 / E2 的两个 /
-   * E3 的两个 / E4 的 {@code pledges} / E5 的两个 / E6 的两个 / P10.1 的 {@code merchantFirms} / P4a 的 {@code
-   * periodicAdjustments}。
+   * ⇒ 28 → P4a {@code periodicAdjustments} ⇒ 29 → Z1 追加两组件 ⇒ 31；classFirst 已删）</b>： {@code meta} /
+   * {@code industries} / {@code classes} / {@code debtContracts} / {@code flows} / {@code
+   * allocations} / {@code relations} / {@code markets} / {@code shipments} / {@code assetShares} /
+   * {@code operatorConditions} / {@code units} / {@code demands} / {@code candidates} / E1 的四个 / E2
+   * 的两个 / E3 的两个 / E4 的 {@code pledges} / E5 的两个 / E6 的两个 / P10.1 的 {@code merchantFirms} / P4a 的
+   * {@code periodicAdjustments} / Z1 的 {@code outputQuantityOverrides} 与 {@code
+   * productionEfficiency}。
    *
-   * <p>★ 这个名字里的数字**故意写死**（R4 16 → … → P2-A 28 → P4a 29 → 本次迁移 29）：
-   * 它就是"又加/删了一个状态组件"这件事在编译/测试面上的**唯一提醒**——改动 {@code EconomyData} 而没同步变更集时，本用例当场红。
+   * <p>★ 这个名字里的数字**故意写死**（R4 16 → … → P2-A 28 → P4a 29 → Z1
+   * 31）：它就是"又加/删了一个状态组件"这件事在编译/测试面上的**唯一提醒** ——改动 {@code EconomyData} 而没同步变更集时，本用例当场红。
    */
   @Test
-  void changeSetHasExactlyTwentyNineComponents() {
-    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(29);
+  void changeSetHasExactlyThirtyOneComponents() {
+    assertThat(EconomyChangeSet.class.getRecordComponents()).hasSize(31);
     assertThat(componentNames(EconomyChangeSet.class))
         .as("变更集的每个组件都必须在 EconomyData 里有同名的 record 组件")
         .isSubsetOf(componentNames(EconomyData.class));
@@ -340,6 +342,11 @@ class EconomyRoundTripTest {
         0L,
         OptionalLong.empty(),
         "gm:test");
+  }
+
+  /** ★★ Z1：生产单元的效率累计夹具（五个字段全非零；域与 {@code FARM.cycleDays()==120}、{@code lpu==7} 相容）。 */
+  private static ProductionEfficiencyState efficiencyState() {
+    return new ProductionEfficiencyState(120_000L, 7L, 3L, 2L, 1L);
   }
 
   private static EconomyData mutate(EconomyData base, String name) {
@@ -432,6 +439,16 @@ class EconomyRoundTripTest {
       // ★ P4a 的第 31 个组件：规则只描述"从谁扣多少"，不落账户；键 == 值内 id 是唯一守卫。
       case "periodicAdjustments" ->
           base.withPeriodicAdjustments(Map.of(PERIODIC_ADJUSTMENT, periodicAdjustment()));
+      // ★★ Z1 的第 32 个组件：覆盖值**必须非默认**（题面同款理由——默认值/空表在值层面与"字段没进变更集"
+      //   不可区分，判别力会静默流失）；自带支撑产业（守卫要求 key 指向现存产业，命令/载入边界另判配方）。
+      case "outputQuantityOverrides" ->
+          base.withIndustries(Map.of(FARM, industry(FARM)))
+              .withOutputQuantityOverrides(Map.of(FARM, Map.of(GRAIN, 3L)));
+      // ★★ Z1 的第 33 个组件：自带支撑 unit（键 = unit id；五个字段全部取非零，且与 FARM.cycleDays=120 同域）。
+      case "productionEfficiency" ->
+          base.withIndustries(Map.of(FARM, industry(FARM)))
+              .withProcesses(Map.of(FARM_UNIT, unit(FARM_UNIT, NON_DEFAULT_OPERATOR)))
+              .withProductionEfficiency(Map.of(FARM_UNIT, efficiencyState()));
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }
@@ -467,6 +484,8 @@ class EconomyRoundTripTest {
       case "classShares" -> cs.classShares().changed();
       case "merchantFirms" -> cs.merchantFirms().changed();
       case "periodicAdjustments" -> cs.periodicAdjustments().changed();
+      case "outputQuantityOverrides" -> cs.outputQuantityOverrides().changed();
+      case "productionEfficiency" -> cs.productionEfficiency().changed();
       default -> throw new IllegalStateException("未登记的组件: " + name);
     };
   }

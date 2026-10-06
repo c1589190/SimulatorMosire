@@ -32,6 +32,7 @@ import io.mosire.simos.app.testing.SocialHouseholdFixture;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.tools.read.MapOverlapsTool;
 import io.mosire.simos.app.tools.read.MapRenderTool;
+import io.mosire.simos.app.tools.write.EconomyAdjustTool;
 import io.mosire.simos.app.tools.write.MapCreateRegionTool;
 import io.mosire.simos.app.tools.write.MapDeleteRegionTool;
 import io.mosire.simos.app.tools.write.MapRandomizeRegionTool;
@@ -96,6 +97,7 @@ import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomySnapshot;
 import io.mosire.simos.economy.codec.EconomyCodec;
+import io.mosire.simos.economy.spi.EconomyGmAdjustments;
 import io.mosire.simos.map.CityId;
 import io.mosire.simos.map.GameMap;
 import io.mosire.simos.map.HexCell;
@@ -759,6 +761,68 @@ class SimosToolsTest {
         .as("catalog 与已注册 handler 同源（R5：catalog 列出的每个 type 都能经 submit 到达）")
         .hasSize(EXPECTED_COMMAND_TYPES.size())
         .containsExactlyInAnyOrderElementsOf(EXPECTED_COMMAND_TYPES);
+  }
+
+  /**
+   * ★★ <b>Z1/Z3 工具面验收（§4/§11.6 负向）</b>：{@code simos.economy.adjust} 的 description / schema 与
+   * catalog 的 {@code economy.GmAdjust} 提示逐处暴露两个新 kind（setOutputQuantity / clearOutputQuantity
+   * 的载荷与守卫），且 <b>没有任何"修正参数 / modifier"写口</b> —— schema 属性仍恰 6 个、文本对 {@code modifier|修正参数} 0 命中。
+   */
+  @Test
+  void economyAdjustToolExposesTheTwoOutputQuantityKindsAndNoModifierWriteSurface()
+      throws Exception {
+    AgentTool tool = shell.toolRegistry().find(EconomyAdjustTool.NAME).orElseThrow();
+
+    assertThat(tool.description())
+        .as("description 白名单计数与两个新 kind")
+        .contains("白名单（12）")
+        .contains(EconomyGmAdjustments.SET_OUTPUT_QUANTITY)
+        .contains(EconomyGmAdjustments.CLEAR_OUTPUT_QUANTITY);
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> schema = tool.jsonSchema();
+    @SuppressWarnings("unchecked")
+    Map<String, Object> properties = (Map<String, Object>) schema.get("properties");
+    assertThat(properties)
+        .as("★ 负向：没有 modifier / 修正参数 字段（schema 属性仍恰 6 个）")
+        .containsOnlyKeys(
+            "adjustment", "parameters", "reason", "preview", "branch", "expectedRevision");
+
+    @SuppressWarnings("unchecked")
+    String adjustmentDescription =
+        String.valueOf(((Map<String, Object>) properties.get("adjustment")).get("description"));
+    assertThat(adjustmentDescription)
+        .contains(EconomyGmAdjustments.SET_OUTPUT_QUANTITY)
+        .contains(EconomyGmAdjustments.CLEAR_OUTPUT_QUANTITY);
+
+    @SuppressWarnings("unchecked")
+    String parametersDescription =
+        String.valueOf(((Map<String, Object>) properties.get("parameters")).get("description"));
+    assertThat(parametersDescription)
+        .contains("{industryId, commodityId, quantity")
+        .contains("{industryId, commodityId}")
+        .contains("QUANTITY_OUT_OF_RANGE")
+        .contains("NO_OVERRIDE_TO_CLEAR");
+
+    String schemaText = JSON.writeValueAsString(schema);
+    assertThat(tool.description() + "\n" + schemaText)
+        .as("★ §11.6 负向：GM 工具面不得出现修正参数写口")
+        .doesNotContain("修正参数")
+        .doesNotContain("modifierPerMille");
+
+    ToolResult catalog = call("simos.command.catalog", Map.of());
+    assertThat(catalog.success()).isTrue();
+    JsonNode hints = JSON.readTree(catalog.message()).get("payloadHints").get("economy.GmAdjust");
+    assertThat(hints).as("catalog 必须给 economy.GmAdjust 提示").isNotNull();
+    String hintText = hints.asText();
+    assertThat(hintText)
+        .contains(EconomyGmAdjustments.SET_OUTPUT_QUANTITY)
+        .contains(EconomyGmAdjustments.CLEAR_OUTPUT_QUANTITY)
+        .contains("QUANTITY_OUT_OF_RANGE")
+        .contains("NO_OVERRIDE_TO_CLEAR")
+        .as("★ 负向：catalog 提示也不得给修正参数写口")
+        .doesNotContain("修正参数")
+        .doesNotContain("ProductionEfficiencyModifier");
   }
 
   /**
