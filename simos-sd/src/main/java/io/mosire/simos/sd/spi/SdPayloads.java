@@ -11,19 +11,23 @@ import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Action;
 import io.mosire.simos.sd.model.Affiliation;
+import io.mosire.simos.sd.model.CallStatus;
 import io.mosire.simos.sd.model.CasualtyDelta;
 import io.mosire.simos.sd.model.CasualtySpec;
 import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.DirectiveCommand;
 import io.mosire.simos.sd.model.DisclosurePolicy;
 import io.mosire.simos.sd.model.EffectKind;
+import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.LossClass;
 import io.mosire.simos.sd.model.OutcomeOption;
 import io.mosire.simos.sd.model.OutcomeTable;
+import io.mosire.simos.sd.model.PacketStatus;
 import io.mosire.simos.sd.model.Trigger;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.util.address.Address;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.spi.CommandTarget;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -31,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 
 /**
@@ -483,5 +488,117 @@ final class SdPayloads {
       throw new IllegalArgumentException(
           "adjudicationDisclosure 非法（FULL|PERCEPTION_ONLY|WITHHELD）: " + text.get());
     }
+  }
+
+  // ── D2 决策包 / FormattedCall（扁平载荷，避免嵌套大对象解析）──────────────────────────
+
+  /**
+   * 读 {@code calls} 数组（一条扁平 {@code FormattedCall} 一个小对象）。
+   *
+   * <p>★ 键缺席/为 null ⇒ 空表（拟稿期"还没有 call"是合法形态）；给了就必须是对象数组。目标 {@code targets} 用 {@link CommandTarget}
+   * 的 {@code {namespace,path}} 形状，{@code mergedPlanId} 缺省 = {@link Optional#empty()}。
+   */
+  static List<FormattedCall> optionalFormattedCalls(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是调用数组: " + payload);
+    }
+    List<FormattedCall> out = new ArrayList<>();
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是对象: " + element);
+      }
+      int callIndex = requireInt(element, "callIndex");
+      String toolName = requireText(element, "toolName");
+      String argsJson = optionalText(element, "argsJson").orElse("{}");
+      List<CommandTarget> targets = requireCommandTargets(element, "targets");
+      String previewJson = optionalText(element, "previewJson").orElse("{}");
+      List<String> draftChecks = optionalTextList(element, "draftChecks");
+      CallStatus status = parseCallStatus(requireText(element, "status"));
+      Optional<String> mergedPlanId = optionalText(element, "mergedPlanId");
+      out.add(
+          new FormattedCall(
+              callIndex,
+              toolName,
+              argsJson,
+              targets,
+              previewJson,
+              draftChecks,
+              status,
+              mergedPlanId));
+    }
+    return List.copyOf(out);
+  }
+
+  /** 读跨命名空间目标数组 {@code [{"namespace":"map","path":"Map1/hex/1_2"}…]}。 */
+  static List<CommandTarget> requireCommandTargets(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull() || !value.isArray()) {
+      throw new IllegalArgumentException(
+          "字段 " + field + " 必须是 [{\"namespace\":…,\"path\":…}…] 数组: " + payload);
+    }
+    List<CommandTarget> out = new ArrayList<>();
+    for (JsonNode element : value) {
+      if (!element.isObject()) {
+        throw new IllegalArgumentException(
+            "字段 " + field + " 的元素必须是 {namespace,path} 对象: " + element);
+      }
+      out.add(new CommandTarget(requireText(element, "namespace"), requireText(element, "path")));
+    }
+    return List.copyOf(out);
+  }
+
+  /** 读包状态（只收枚举名，不收自由字符串）。 */
+  static PacketStatus requirePacketStatus(JsonNode payload, String field) {
+    String text = requireText(payload, field);
+    try {
+      return PacketStatus.valueOf(text.trim());
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          field + " 非法（DRAFT|PENDING|APPROVED|REJECTED|MERGED|PARTIALLY_APPROVED）: " + text);
+    }
+  }
+
+  /** 读 call 状态（只收枚举名）。 */
+  static CallStatus parseCallStatus(String text) {
+    try {
+      return CallStatus.valueOf(text.trim());
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("status 非法（PENDING|APPROVED|REJECTED|MERGED）: " + text);
+    }
+  }
+
+  /** 可空整数（键缺席/为 null ⇒ {@link OptionalLong#empty()}；给了必须是整数）。 */
+  static OptionalLong optionalLongValue(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return OptionalLong.empty();
+    }
+    if (!value.isIntegralNumber() || !value.canConvertToLong()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是整数或 null: " + payload);
+    }
+    return OptionalLong.of(value.asLong());
+  }
+
+  /** 可选字符串数组（键缺席/为 null ⇒ 空表；元素必须是非空白文本）。 */
+  static List<String> optionalTextList(JsonNode payload, String field) {
+    JsonNode value = payload.get(field);
+    if (value == null || value.isNull()) {
+      return List.of();
+    }
+    if (!value.isArray()) {
+      throw new IllegalArgumentException("字段 " + field + " 必须是 [字符串…] 数组: " + payload);
+    }
+    List<String> out = new ArrayList<>();
+    for (JsonNode element : value) {
+      if (!element.isTextual() || element.asText().isBlank()) {
+        throw new IllegalArgumentException("字段 " + field + " 的元素必须是非空白字符串: " + element);
+      }
+      out.add(element.asText());
+    }
+    return List.copyOf(out);
   }
 }

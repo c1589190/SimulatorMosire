@@ -552,6 +552,20 @@ public final class CatalogTool implements AgentTool {
           Map.entry("sd.RunDecision", "decisionMakerId"),
           Map.entry("sd.SetDecisionMakerProvider", "decisionMakerId, providerId"),
           Map.entry(
+              "sd.UpsertDecisionPacket",
+              "id, branch, tick, proposerId, status(DRAFT|PENDING|APPROVED|REJECTED|MERGED|PARTIALLY_APPROVED),"
+                  + " intent?, createdAtRevision, decidedBy?, decidedAtRevision?, reasonInfoId?, decisionNote?,"
+                  + " calls[{callIndex, toolName, argsJson, targets[{namespace,path}], previewJson, draftChecks[],"
+                  + " status(PENDING|APPROVED|REJECTED|MERGED), mergedPlanId?}]"
+                  + "（★ D2：整包 upsert；同 id 幂等替换；不对外窄工具，由 simos.sd.propose / intent 内部提交）"),
+          Map.entry(
+              "sd.SubmitDecisionPacket",
+              "id, proposerId（★ D2：DRAFT → PENDING；只被 simos.sd.packet.submit 调用）"),
+          Map.entry(
+              "sd.DecideDecisionPacket",
+              "id, decision(APPROVE|DENY), decidedBy, note?, callIndexes[]?"
+                  + "（★ D2：GM 整包/逐 call true-positive 裁决；decidedBy 由 simos.gm.packet.decide 从身份派生；MERGE 留 D3）"),
+          Map.entry(
               "sd.SetDirectiveStatus",
               "directiveId, status(EXECUTED|CANCELLED)（★ 只允许 ISSUED → 二者之一，只由"
                   + " sd.AdjudicateTick 内部编排产生；不对外提供窄工具）"),

@@ -10,10 +10,12 @@ import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.CombatId;
 import io.mosire.simos.sd.id.CombatStateId;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.id.DiplomaticEventId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
+import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.DiplomaticRelationKey;
@@ -31,10 +33,12 @@ import java.util.function.Function;
  * sd 模块的 {@link ModuleCodec} 实现（spec §八）：**全仓第 4 个** ModuleCodec。形态与 {@code MapCodec}/{@code
  * UnitCodec} 同制，理由不重复——只记 sd 自己的那点差异。
  *
- * <p>★ 树里的自定义键共有 11 个类型（原 9 个 ID 类型的键 —— {@code nations}/{@code armies}/{@code combats}/{@code
+ * <p>★ 树里的自定义键共有 13 个类型（原 9 个 ID 类型的键 —— {@code nations}/{@code armies}/{@code combats}/{@code
  * combatStates}/{@code decisionMakers}/{@code directives}/{@code effects}/{@code verdicts}/{@code
  * lossRecords}——加 D5 的 {@code diplomaticRelations} 复合键与 {@code diplomaticEvents} 的 {@code
- * DiplomaticEventId}），全住在 simos-sd 自己家里。键反序列化器照裁定 16 在**本模块**注册，不进共享基座。
+ * DiplomaticEventId}，再加 D2 的 {@code decisionPackets} 的 {@code DecisionPacketId} 与 {@code
+ * mergedEffectPlans} 的 {@code MergedEffectPlanId}），全住在 simos-sd 自己家里。键反序列化器照裁定 16 在**本模块**注册，
+ * 不进共享基座。
  *
  * <p>★ **{@code CombatStageId}/{@code CombatOutcomeId} 不作 Map 键**（它们是 {@code Combat.stages} 的值，以及
  * OutcomeOption/CombatState 的字段），因此**不注册**——不给它们写凭空的注册。
@@ -46,7 +50,7 @@ import java.util.function.Function;
  * <p>★ {@link #apply} 的 cast 在模块自己的地盘（C26）：Core 从不 cast。
  *
  * <p>★ **同时实现 {@link ModuleDiffer}**（"一批命令 = 一条 revision" 的原子批量提交需要）：委托 {@link
- * SdChangeSet#between(SdState, SdState)}——12 个组件一起比，含 {@code info}、{@code
+ * SdChangeSet#between(SdState, SdState)}——14 个组件一起比，含 {@code info}、{@code
  * diplomaticRelations}、{@code diplomaticEvents}。
  */
 public final class SdCodec implements ModuleCodec, ModuleDiffer {
@@ -89,6 +93,9 @@ public final class SdCodec implements ModuleCodec, ModuleDiffer {
     module.addKeyDeserializer(
         DiplomaticRelationKey.class, keyDeserializer(DiplomaticRelationKey::parse));
     module.addKeyDeserializer(DiplomaticEventId.class, keyDeserializer(DiplomaticEventId::parse));
+    // ★ D2（2026-10-22 决策包计划）：决策包 id 与合并效果集 id（两张新表的键）。
+    module.addKeyDeserializer(DecisionPacketId.class, keyDeserializer(DecisionPacketId::parse));
+    module.addKeyDeserializer(MergedEffectPlanId.class, keyDeserializer(MergedEffectPlanId::parse));
     return module;
   }
 

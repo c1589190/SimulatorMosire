@@ -5,6 +5,7 @@ import io.mosire.agentlib.approval.PendingApprovals;
 import io.mosire.agentlib.plugin.ToolSource;
 import io.mosire.agentlib.tool.AgentTool;
 import io.mosire.simos.app.decision.DecisionAgentService;
+import io.mosire.simos.app.decision.ProposalCatalog;
 import io.mosire.simos.app.gm.GmToolUsage;
 import io.mosire.simos.app.llm.AgentLibLlmConfig;
 import io.mosire.simos.app.query.QueryService;
@@ -23,6 +24,8 @@ import io.mosire.simos.app.tools.read.DecisionResultsTool;
 import io.mosire.simos.app.tools.read.EconomyHexTool;
 import io.mosire.simos.app.tools.read.EconomyOwnershipTool;
 import io.mosire.simos.app.tools.read.GmApprovalsTool;
+import io.mosire.simos.app.tools.read.GmPacketTool;
+import io.mosire.simos.app.tools.read.GmPacketsTool;
 import io.mosire.simos.app.tools.read.GmToolUsageTool;
 import io.mosire.simos.app.tools.read.LlmProvidersTool;
 import io.mosire.simos.app.tools.read.MapBlockTool;
@@ -57,6 +60,7 @@ import io.mosire.simos.app.tools.write.EconomyAdjustTool;
 import io.mosire.simos.app.tools.write.ForkTool;
 import io.mosire.simos.app.tools.write.FormatUnitTool;
 import io.mosire.simos.app.tools.write.GmApproveTool;
+import io.mosire.simos.app.tools.write.GmDecidePacketTool;
 import io.mosire.simos.app.tools.write.GovAbsorbUnitTool;
 import io.mosire.simos.app.tools.write.GovApplyStaffingTool;
 import io.mosire.simos.app.tools.write.GovCreateOfficeTool;
@@ -77,6 +81,9 @@ import io.mosire.simos.app.tools.write.MapRenameRegionTool;
 import io.mosire.simos.app.tools.write.MapSetEdgeTool;
 import io.mosire.simos.app.tools.write.MapSetTerrainTool;
 import io.mosire.simos.app.tools.write.MapUpdateRegionTool;
+import io.mosire.simos.app.tools.write.MyPacketTool;
+import io.mosire.simos.app.tools.write.PacketIntentTool;
+import io.mosire.simos.app.tools.write.ProposeCallTool;
 import io.mosire.simos.app.tools.write.ProvinceApplyTool;
 import io.mosire.simos.app.tools.write.ProvinceAssignCitiesTool;
 import io.mosire.simos.app.tools.write.RaiseUnitTool;
@@ -86,14 +93,6 @@ import io.mosire.simos.app.tools.write.RegionClearStructuresTool;
 import io.mosire.simos.app.tools.write.RegionSeedTool;
 import io.mosire.simos.app.tools.write.RejectDirectiveTool;
 import io.mosire.simos.app.tools.write.ResetDecisionMakerConversationTool;
-import io.mosire.simos.app.tools.write.SocialDemandTool;
-import io.mosire.simos.app.tools.write.SocialHouseholdCreateTool;
-import io.mosire.simos.app.tools.write.SocialHouseholdMembersTool;
-import io.mosire.simos.app.tools.write.SocialHouseholdMoveTool;
-import io.mosire.simos.app.tools.write.SocialHouseholdRatesTool;
-import io.mosire.simos.app.tools.write.SocialLaborTool;
-import io.mosire.simos.app.tools.write.UnitAssignHouseholdTool;
-import io.mosire.simos.app.tools.write.UnitDetachHouseholdTool;
 import io.mosire.simos.app.tools.write.ResolveCombatTool;
 import io.mosire.simos.app.tools.write.RunDecisionMakersTool;
 import io.mosire.simos.app.tools.write.RunDecisionTool;
@@ -114,17 +113,26 @@ import io.mosire.simos.app.tools.write.SdSetDiplomaticRelationTool;
 import io.mosire.simos.app.tools.write.SdSetStageOutcomeTableTool;
 import io.mosire.simos.app.tools.write.SetDecisionMakerAccessTool;
 import io.mosire.simos.app.tools.write.SetDiplomaticRelationTool;
+import io.mosire.simos.app.tools.write.SocialDemandTool;
+import io.mosire.simos.app.tools.write.SocialHouseholdCreateTool;
+import io.mosire.simos.app.tools.write.SocialHouseholdMembersTool;
+import io.mosire.simos.app.tools.write.SocialHouseholdMoveTool;
+import io.mosire.simos.app.tools.write.SocialHouseholdRatesTool;
+import io.mosire.simos.app.tools.write.SocialLaborTool;
 import io.mosire.simos.app.tools.write.SocialUpdateCityTool;
 import io.mosire.simos.app.tools.write.SpawnArmyTool;
 import io.mosire.simos.app.tools.write.StartCombatTool;
 import io.mosire.simos.app.tools.write.StartDecisionTool;
+import io.mosire.simos.app.tools.write.SubmitPacketTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.app.tools.write.UnitAdjustCompositionTool;
 import io.mosire.simos.app.tools.write.UnitApplyCasualtiesTool;
+import io.mosire.simos.app.tools.write.UnitAssignHouseholdTool;
 import io.mosire.simos.app.tools.write.UnitAttachTool;
 import io.mosire.simos.app.tools.write.UnitCancelRouteTool;
 import io.mosire.simos.app.tools.write.UnitCreateCommandChainTool;
 import io.mosire.simos.app.tools.write.UnitCreateTool;
+import io.mosire.simos.app.tools.write.UnitDetachHouseholdTool;
 import io.mosire.simos.app.tools.write.UnitDetachTool;
 import io.mosire.simos.app.tools.write.UnitDisbandTool;
 import io.mosire.simos.app.tools.write.UnitMergeFormationTool;
@@ -137,9 +145,9 @@ import io.mosire.simos.app.tools.write.UnitReparentTool;
 import io.mosire.simos.app.tools.write.UnitSetArmyFormationTool;
 import io.mosire.simos.app.tools.write.UnitSetCompositionTool;
 import io.mosire.simos.app.tools.write.UnitSetFormationOffsetTool;
-import io.mosire.simos.app.tools.write.UnitSetGovernmentFormationTool;
 import io.mosire.simos.app.tools.write.UnitSetGovPolicyTool;
 import io.mosire.simos.app.tools.write.UnitSetGovSuperiorTool;
+import io.mosire.simos.app.tools.write.UnitSetGovernmentFormationTool;
 import io.mosire.simos.app.tools.write.UnitSetJurisdictionTool;
 import io.mosire.simos.app.tools.write.UnitSetRejoinTargetTool;
 import io.mosire.simos.app.tools.write.UnitSetStateDescriptionTool;
@@ -459,7 +467,7 @@ public final class SimosToolSource implements ToolSource {
         //   可按任意决策人的视角预览实际可见集合）；可见性判据在 RedactingQueryService#docs
         //   （tags 含调用者自己 **或** affiliations 含调用者归属，两轴取并集）。
         built.add(new DecisionDocsTool(query, mapId));
-        addDecisionAgentWrites(built, core, query, initiator, mapId);
+        addDecisionAgentWrites(built, core, calendarService, query, initiator, mapId);
       }
     }
     this.tools = List.copyOf(built);
@@ -658,6 +666,9 @@ public final class SimosToolSource implements ToolSource {
     built.add(new SdSetArmyMasterGovTool(core, initiator, mapId));
     built.add(new SdCreateDecisionMakerTool(core, initiator, mapId));
     built.add(new SdPutInfoTool(core, initiator, mapId));
+    // ★★ D2（2026-10-22 决策包计划）：GM 裁决决策包（写）。**只在 GM 桶**；工具名不是命令类型
+    //   ⇒ 不进 catalog/PAYLOAD_HINTS；资源声明 sd（GM 侧 unlimited）。
+    built.add(new GmDecidePacketTool(core, query, initiator));
     // ★★ D5（2026-10-02 / D-003、D-005、R6）：外交关系边 + 外交事件的 GM 窄写。
     //   **只在 GM 桶**；工具名（simos.sd.*）不是命令类型 ⇒ 不进 catalog/PAYLOAD_HINTS；写面只声明 sd。
     //   决策人侧另有同名命令型的窄工具（见 addDecisionAgentWrites）。──
@@ -736,7 +747,12 @@ public final class SimosToolSource implements ToolSource {
    * 三条路径同样排除。三层同源收窄，缺一层就等于留一条绕过政治能力的入口。
    */
   private static void addDecisionAgentWrites(
-      List<AgentTool> built, CoreSimos core, QueryService query, String initiator, String mapId) {
+      List<AgentTool> built,
+      CoreSimos core,
+      CalendarService calendarService,
+      QueryService query,
+      String initiator,
+      String mapId) {
     built.add(new IssueDirectiveTool(core, initiator, mapId));
     built.add(new SubmitVerdictTool(core, initiator, mapId));
     // ★★ D5（2026-10-02 / D-003、D-005、R5、R6）：决策人侧的三条新增窄写——
@@ -746,6 +762,15 @@ public final class SimosToolSource implements ToolSource {
     built.add(new SetDiplomaticRelationTool(core, query, initiator, mapId));
     built.add(new RecordDiplomaticEventTool(core, query, initiator, mapId));
     built.add(new GovPayTool(core, query, initiator));
+    // ★★ D2（2026-10-22 决策包计划）：决策包四件套——propose / submit / intent / my。
+    //   **只在决策人桶**；白名单（DecisionCallerFactory.WHITELIST）必须同源。
+    //   ProposeCallTool 内含 ProposalCatalog（真预览 + 目标提取）；submit/intent 走 own-packet 围栏。
+    ProposalCatalog proposalCatalog =
+        new ProposalCatalog(core, calendarService, query, initiator, mapId);
+    built.add(new ProposeCallTool(core, query, initiator, mapId, proposalCatalog));
+    built.add(new SubmitPacketTool(core, query, initiator));
+    built.add(new PacketIntentTool(core, query, initiator));
+    built.add(new MyPacketTool(query));
   }
 
   private static List<AgentTool> readTools(
@@ -825,6 +850,10 @@ public final class SimosToolSource implements ToolSource {
         new ArmyCombatTool(query, mapId),
         // ★ 判决（模型原始输出 + meta）：省略 actor = FULL 全量披露 ⇒ 只给 GM 桶（GmOnlyRead），见类注。
         new SdVerdictsTool(query, mapId),
+        // ★★ D2（2026-10-22 决策包计划）：GM 决策包两条读口（摘要列表 + 单包全量）。
+        //   只给 GM 桶（GmOnlyRead）：决策包是 GM 的裁决工作面，决策人用 simos.sd.packet.my 读自己的。
+        new GmPacketsTool(query),
+        new GmPacketTool(query),
         // ★ GM 面观测/配置读口（只给 GM 桶）：工具使用记录（运行时监督数据）与 LLM provider 掩码配置。
         new GmToolUsageTool(gmToolUsage),
         // ★★ P7b（2026-10-01 后端 + MCP 稳定化计划）：待裁决审批清单（控制面；只在 GM 桶，GmOnlyRead）。

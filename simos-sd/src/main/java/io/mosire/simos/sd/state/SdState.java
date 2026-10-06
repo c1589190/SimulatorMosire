@@ -6,24 +6,30 @@ import io.mosire.simos.sd.id.CombatOutcomeId;
 import io.mosire.simos.sd.id.CombatStageId;
 import io.mosire.simos.sd.id.CombatStateId;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.id.DiplomaticEventId;
 import io.mosire.simos.sd.id.DirectiveId;
 import io.mosire.simos.sd.id.EffectId;
 import io.mosire.simos.sd.id.LossRecordId;
+import io.mosire.simos.sd.id.MergedEffectPlanId;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.id.VerdictId;
 import io.mosire.simos.sd.model.Army;
+import io.mosire.simos.sd.model.CallStatus;
 import io.mosire.simos.sd.model.Combat;
 import io.mosire.simos.sd.model.CombatStage;
 import io.mosire.simos.sd.model.CombatState;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.DiplomaticEvent;
 import io.mosire.simos.sd.model.DiplomaticRelation;
 import io.mosire.simos.sd.model.DiplomaticRelationKey;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveStatus;
 import io.mosire.simos.sd.model.Effect;
+import io.mosire.simos.sd.model.FormattedCall;
 import io.mosire.simos.sd.model.LossRecord;
+import io.mosire.simos.sd.model.MergedEffectPlan;
 import io.mosire.simos.sd.model.Nation;
 import io.mosire.simos.sd.model.OutcomeOption;
 import io.mosire.simos.sd.model.SdInfoEntry;
@@ -42,9 +48,10 @@ import java.util.Set;
  * SdSnapshot}。spec §三.1 把 {@code implements Snapshot} 写在了状态树头（设计形状的笔误），执行期按"树 / 切片分离"落地 ——
  * 记入台账取代说明。
  *
- * <p>★ **12 个组件与 {@link io.mosire.simos.sd.change.SdChangeSet} 的 12 个组件一一对应**（铁律 5）：任何新增组件都要同时进变更集，
- * 由 {@code SdRoundTripTest} 的反射枚举把守。★ D5（2026-10-02 / R6）新增最后两个：{@code diplomaticRelations}（D-003
- * 有向边） 与 {@code diplomaticEvents}（D-005 多国谈判逐 tick 记录）。
+ * <p>★ **14 个组件与 {@link io.mosire.simos.sd.change.SdChangeSet} 的 14 个组件一一对应**（铁律 5）：任何新增组件都要同时进变更集，
+ * 由 {@code SdRoundTripTest} 的反射枚举把守。★ D5（2026-10-02 / R6）新增两个：{@code diplomaticRelations}（D-003
+ * 有向边） 与 {@code diplomaticEvents}（D-005 多国谈判逐 tick 记录）；★★ D2（2026-10-22 决策包计划）再新增两个：{@code
+ * decisionPackets}（一决策人 × 一 tick 一个包）与 {@code mergedEffectPlans}（D3 的合并效果集，D2 保持空表）。
  *
  * <p>★ **两张表的键都保序不可变**（{@code LinkedHashMap} + {@code Collections.unmodifiableMap}，**禁用** {@code
  * Map.copyOf} ——迭代序不是内容的纯函数，M2 Task 5 实测）。冻结那一步**写在赋值处**（SpotBugs 的 {@code EI_EXPOSE_REP}
@@ -67,7 +74,40 @@ public record SdState(
     Map<LossRecordId, LossRecord> lossRecords,
     Map<String, List<SdInfoEntry>> info,
     Map<DiplomaticRelationKey, DiplomaticRelation> diplomaticRelations,
-    Map<DiplomaticEventId, DiplomaticEvent> diplomaticEvents) {
+    Map<DiplomaticEventId, DiplomaticEvent> diplomaticEvents,
+    Map<DecisionPacketId, DecisionPacket> decisionPackets,
+    Map<MergedEffectPlanId, MergedEffectPlan> mergedEffectPlans) {
+
+  /** ★★ **12 参兼容构造器**（D2 决策包新增两个组件时保留）：旧调用点（测试夹具、回放、分岔）一字不改，新组件取空表。 */
+  public SdState(
+      Map<NationId, Nation> nations,
+      Map<ArmyId, Army> armies,
+      Map<CombatId, Combat> combats,
+      Map<CombatStateId, CombatState> combatStates,
+      Map<DecisionMakerId, DecisionMaker> decisionMakers,
+      Map<DirectiveId, Directive> directives,
+      Map<EffectId, Effect> effects,
+      Map<VerdictId, Verdict> verdicts,
+      Map<LossRecordId, LossRecord> lossRecords,
+      Map<String, List<SdInfoEntry>> info,
+      Map<DiplomaticRelationKey, DiplomaticRelation> diplomaticRelations,
+      Map<DiplomaticEventId, DiplomaticEvent> diplomaticEvents) {
+    this(
+        nations,
+        armies,
+        combats,
+        combatStates,
+        decisionMakers,
+        directives,
+        effects,
+        verdicts,
+        lossRecords,
+        info,
+        diplomaticRelations,
+        diplomaticEvents,
+        Map.of(),
+        Map.of());
+  }
 
   public SdState {
     nations = Collections.unmodifiableMap(copyOf(nations, "nations"));
@@ -91,6 +131,15 @@ public record SdState(
     diplomaticRelations =
         Collections.unmodifiableMap(copyOf(diplomaticRelations, "diplomaticRelations"));
     diplomaticEvents = Collections.unmodifiableMap(copyOf(diplomaticEvents, "diplomaticEvents"));
+    // ★ 老档兼容（D2 新增的两个组件之前落盘的快照没有这两个键）：Jackson 对缺失的 Map 绑 null ⇒ 缺省 = 空表。
+    if (decisionPackets == null) {
+      decisionPackets = Map.of();
+    }
+    if (mergedEffectPlans == null) {
+      mergedEffectPlans = Map.of();
+    }
+    decisionPackets = Collections.unmodifiableMap(copyOf(decisionPackets, "decisionPackets"));
+    mergedEffectPlans = Collections.unmodifiableMap(copyOf(mergedEffectPlans, "mergedEffectPlans"));
 
     requireAtMostOneActiveDirective(directives);
     requireReferentialIntegrity(
@@ -98,13 +147,14 @@ public record SdState(
     requireOutcomeConsistency(combats, combatStates);
     requireStageChains(combats);
     requireLossConsistency(combatStates, lossRecords);
+    requireDecisionPacketIntegrity(decisionMakers, decisionPackets, mergedEffectPlans);
   }
 
   /** 往返用例与 handlers 的起点。 */
   public static SdState empty() {
     return new SdState(
         Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-        Map.of(), Map.of(), Map.of());
+        Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
   }
 
   // ── 逐组件替换（一个组件一个 with，照 GameMap 的形制）────────────────────────────────
@@ -123,7 +173,9 @@ public record SdState(
         lossRecords,
         info,
         diplomaticRelations,
-        diplomaticEvents);
+        diplomaticEvents,
+        decisionPackets,
+        mergedEffectPlans);
   }
 
   /** 仅替换 {@code armies}。 */
@@ -140,7 +192,9 @@ public record SdState(
         lossRecords,
         info,
         diplomaticRelations,
-        diplomaticEvents);
+        diplomaticEvents,
+        decisionPackets,
+        mergedEffectPlans);
   }
 
   /** 仅替换 {@code combats}。 */
@@ -157,7 +211,9 @@ public record SdState(
         lossRecords,
         info,
         diplomaticRelations,
-        diplomaticEvents);
+        diplomaticEvents,
+        decisionPackets,
+        mergedEffectPlans);
   }
 
   /** 仅替换 {@code combatStates}。 */
@@ -174,7 +230,9 @@ public record SdState(
         lossRecords,
         info,
         diplomaticRelations,
-        diplomaticEvents);
+        diplomaticEvents,
+        decisionPackets,
+        mergedEffectPlans);
   }
 
   /** 仅替换 {@code decisionMakers}。 */
@@ -191,7 +249,9 @@ public record SdState(
         lossRecords,
         info,
         diplomaticRelations,
-        diplomaticEvents);
+        diplomaticEvents,
+        decisionPackets,
+        mergedEffectPlans);
   }
 
   /** 仅替换 {@code directives}。 */
@@ -208,7 +268,9 @@ public record SdState(
         lossRecords,
         info,
         diplomaticRelations,
-        diplomaticEvents);
+        diplomaticEvents,
+        decisionPackets,
+        mergedEffectPlans);
   }
 
   /** 仅替换 {@code effects}。 */
@@ -225,7 +287,9 @@ public record SdState(
         lossRecords,
         info,
         diplomaticRelations,
-        diplomaticEvents);
+        diplomaticEvents,
+        decisionPackets,
+        mergedEffectPlans);
   }
 
   /** 仅替换 {@code verdicts}。 */
@@ -242,7 +306,9 @@ public record SdState(
         lossRecords,
         info,
         diplomaticRelations,
-        diplomaticEvents);
+        diplomaticEvents,
+        decisionPackets,
+        mergedEffectPlans);
   }
 
   /** 仅替换 {@code lossRecords}。 */
@@ -259,7 +325,9 @@ public record SdState(
         v,
         info,
         diplomaticRelations,
-        diplomaticEvents);
+        diplomaticEvents,
+        decisionPackets,
+        mergedEffectPlans);
   }
 
   /** 仅替换 {@code info}（canonical 地址串 → 条目列表）。 */
@@ -276,7 +344,9 @@ public record SdState(
         lossRecords,
         v,
         diplomaticRelations,
-        diplomaticEvents);
+        diplomaticEvents,
+        decisionPackets,
+        mergedEffectPlans);
   }
 
   /** 仅替换 {@code diplomaticRelations}（D-003 有向边表；键 = (from,to)）。 */
@@ -310,6 +380,46 @@ public record SdState(
         lossRecords,
         info,
         diplomaticRelations,
+        v,
+        decisionPackets,
+        mergedEffectPlans);
+  }
+
+  /** 仅替换 {@code decisionPackets}（D2：一决策人 × 一 tick 一个决策包）。 */
+  public SdState withDecisionPackets(Map<DecisionPacketId, DecisionPacket> v) {
+    return new SdState(
+        nations,
+        armies,
+        combats,
+        combatStates,
+        decisionMakers,
+        directives,
+        effects,
+        verdicts,
+        lossRecords,
+        info,
+        diplomaticRelations,
+        diplomaticEvents,
+        v,
+        mergedEffectPlans);
+  }
+
+  /** 仅替换 {@code mergedEffectPlans}（D3 的合并效果集；D2 保持空表）。 */
+  public SdState withMergedEffectPlans(Map<MergedEffectPlanId, MergedEffectPlan> v) {
+    return new SdState(
+        nations,
+        armies,
+        combats,
+        combatStates,
+        decisionMakers,
+        directives,
+        effects,
+        verdicts,
+        lossRecords,
+        info,
+        diplomaticRelations,
+        diplomaticEvents,
+        decisionPackets,
         v);
   }
 
@@ -504,6 +614,46 @@ public record SdState(
                   + record.combat().value()
                   + "）");
         }
+      }
+    }
+  }
+
+  /**
+   * 不变量 6（D2 决策包）：新组件的结构自洽。
+   *
+   * <ul>
+   *   <li>两张表的键必须等于值内 id；
+   *   <li>packet 的 {@code proposerId} 允许指向**已被删除**的决策人（历史包不级联删；新写入由
+   *       {@code UpsertDecisionPacketHandler} 校验 proposer 存在）；
+   *   <li>包内 {@code callIndex} 严格递增、不重复（{@link DecisionPacket} 自己也守一遍，这里是状态期后备）；
+   *   <li>{@code MERGED} 的 call 必须带 {@code mergedPlanId}；
+   *   <li>{@code mergedEffectPlans} 的键 == 值内 id（D3 用；D2 只查 shape）。
+   * </ul>
+   */
+  private static void requireDecisionPacketIntegrity(
+      Map<DecisionMakerId, DecisionMaker> decisionMakers,
+      Map<DecisionPacketId, DecisionPacket> decisionPackets,
+      Map<MergedEffectPlanId, MergedEffectPlan> mergedEffectPlans) {
+    for (Map.Entry<DecisionPacketId, DecisionPacket> entry : decisionPackets.entrySet()) {
+      DecisionPacket packet = entry.getValue();
+      if (!entry.getKey().equals(packet.id())) {
+        throw new IllegalArgumentException(
+            "决策包键必须等于值内 id: key=" + entry.getKey() + " id=" + packet.id());
+      }
+      for (FormattedCall call : packet.calls()) {
+        if (call.status() == CallStatus.MERGED && call.mergedPlanId().isEmpty()) {
+          throw new IllegalArgumentException(
+              "MERGED 的 FormattedCall 必须带 mergedPlanId: "
+                  + packet.id().value()
+                  + ":"
+                  + call.callIndex());
+        }
+      }
+    }
+    for (Map.Entry<MergedEffectPlanId, MergedEffectPlan> entry : mergedEffectPlans.entrySet()) {
+      if (!entry.getKey().equals(entry.getValue().id())) {
+        throw new IllegalArgumentException(
+            "合并效果集键必须等于值内 id: key=" + entry.getKey() + " id=" + entry.getValue().id());
       }
     }
   }

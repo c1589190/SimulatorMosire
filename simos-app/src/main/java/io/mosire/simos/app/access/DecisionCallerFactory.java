@@ -37,8 +37,12 @@ import io.mosire.simos.app.tools.read.UnitGetTool;
 import io.mosire.simos.app.tools.read.UnitListTool;
 import io.mosire.simos.app.tools.write.GovPayTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
+import io.mosire.simos.app.tools.write.MyPacketTool;
+import io.mosire.simos.app.tools.write.PacketIntentTool;
+import io.mosire.simos.app.tools.write.ProposeCallTool;
 import io.mosire.simos.app.tools.write.RecordDiplomaticEventTool;
 import io.mosire.simos.app.tools.write.SetDiplomaticRelationTool;
+import io.mosire.simos.app.tools.write.SubmitPacketTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.id.NationId;
@@ -143,7 +147,12 @@ public final class DecisionCallerFactory {
           //   （桶在 SimosToolSource.addDecisionAgentWrites，与这里必须同源）。
           SetDiplomaticRelationTool.NAME,
           RecordDiplomaticEventTool.NAME,
-          GovPayTool.NAME);
+          GovPayTool.NAME,
+          // ★★ D2（2026-10-22 决策包计划）：决策包四件套（桶在 SimosToolSource.addDecisionAgentWrites）。
+          ProposeCallTool.NAME,
+          SubmitPacketTool.NAME,
+          PacketIntentTool.NAME,
+          MyPacketTool.NAME);
 
   /** 决策人身份的实例 id 前缀（与将来的会话 id 同源：按决策人派生，不隐式取全局状态）。 */
   public static final String INSTANCE_ID_PREFIX = "decision-maker:";
@@ -151,9 +160,16 @@ public final class DecisionCallerFactory {
   /** {@code sd} 域里"决策人"这一类资源（spec §3.3：{@code sd: decision-maker/<id> · nation/<id> · …}）。 */
   public static final String DECISION_MAKER_KIND = "decision-maker";
 
+  /**
+   * {@code sd} 域里"决策包"这一类资源（D2）：{@code sd:decision-packet/<决策人 id>/…}——**按决策人归前缀**， 不是按 packet
+   * id。决策人只能写/读自己的 packet 前缀（propose/submit/intent/my 的目标声明都是 {@code
+   * decision-packet/<proposerId>}）。
+   */
+  public static final String DECISION_PACKET_KIND = "decision-packet";
+
   /** 决策人的派生目标（进身份的 {@code goal}，只进内存态提示面与审批提示，不进事件库）。 */
   public static final String GOAL =
-      "在受限可见范围内做出决策：出令（sd.IssueDirective）、裁决（sd.SubmitVerdict）、外交写入（sd.SetDiplomaticRelation / sd.RecordDiplomaticEvent）与向 GOV 付款（simos.gov.pay）";
+      "在受限可见范围内做出决策：出令（sd.IssueDirective）、裁决（sd.SubmitVerdict）、外交写入（sd.SetDiplomaticRelation / sd.RecordDiplomaticEvent）、向 GOV 付款（simos.gov.pay）与决策包提议/提交/查看（simos.sd.propose / packet.submit / packet.intent / packet.my）";
 
   private final DecisionScopeFunctions scopeFunctions;
   private final ToolCallAuthorizer authorizer;
@@ -362,12 +378,20 @@ public final class DecisionCallerFactory {
    * （要写的具体资源，从调用者身份推出）。两处必须同源——只改一处 = 要么整调被拒（旧形态），要么围栏形同虚设。
    */
   private static ResourceScope selfDecisionScope(DecisionMaker dm) {
-    return ResourceScope.of(decisionDomainOf(dm.id().value()));
+    // ★★ D2（2026-10-22 决策包计划）：第二条自指前缀 sd:decision-packet/<dm.id()>——决策人只能写/读**自己**的
+    //   packet 前缀（propose/submit/intent/my 的目标声明）。这是自指资源的第二段，不是放宽到全 sd。
+    return ResourceScope.of(
+        decisionDomainOf(dm.id().value()), decisionPacketDomainOf(dm.id().value()));
   }
 
   /** 决策人自己的决策域路径（{@code decision-maker/<id>}）——**唯一拼写点**（工具侧也从这里取）。 */
   public static String decisionDomainOf(String decisionMakerId) {
     return ToolSupport.resourceSd(DECISION_MAKER_KIND, decisionMakerId).path();
+  }
+
+  /** 决策人自己的决策包前缀（{@code decision-packet/<id>}）——**唯一拼写点**（D2）。 */
+  public static String decisionPacketDomainOf(String decisionMakerId) {
+    return ToolSupport.resourceSd(DECISION_PACKET_KIND, decisionMakerId).path();
   }
 
   /**

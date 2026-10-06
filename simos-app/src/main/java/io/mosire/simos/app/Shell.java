@@ -73,7 +73,6 @@ import io.mosire.simos.economy.spi.EconomyRegisterCandidateHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterGovernmentHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomyRemovePeriodicAdjustmentHandler;
-import io.mosire.simos.economy.spi.EconomyUpsertPeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdClassHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
@@ -82,6 +81,7 @@ import io.mosire.simos.economy.spi.EconomySetMarketPriceHandler;
 import io.mosire.simos.economy.spi.EconomySwitchModeHandler;
 import io.mosire.simos.economy.spi.EconomyTransferOwnershipStakeHandler;
 import io.mosire.simos.economy.spi.EconomyUpdateDemandHandler;
+import io.mosire.simos.economy.spi.EconomyUpsertPeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.UnitBorrowHandler;
 import io.mosire.simos.economy.spi.UnitRepayHandler;
 import io.mosire.simos.gov.codec.GovCodec;
@@ -111,6 +111,7 @@ import io.mosire.simos.sd.spi.CreateArmyHandler;
 import io.mosire.simos.sd.spi.CreateCombatHandler;
 import io.mosire.simos.sd.spi.CreateDecisionMakerHandler;
 import io.mosire.simos.sd.spi.CreateNationHandler;
+import io.mosire.simos.sd.spi.DecideDecisionPacketHandler;
 import io.mosire.simos.sd.spi.DeleteDecisionMakerHandler;
 import io.mosire.simos.sd.spi.DeleteNationHandler;
 import io.mosire.simos.sd.spi.DirectiveWhitelist;
@@ -128,7 +129,9 @@ import io.mosire.simos.sd.spi.SetDiplomaticRelationHandler;
 import io.mosire.simos.sd.spi.SetDirectiveStatusHandler;
 import io.mosire.simos.sd.spi.SetOutcomeTableHandler;
 import io.mosire.simos.sd.spi.StartDecisionHandler;
+import io.mosire.simos.sd.spi.SubmitDecisionPacketHandler;
 import io.mosire.simos.sd.spi.SubmitVerdictHandler;
+import io.mosire.simos.sd.spi.UpsertDecisionPacketHandler;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.time.SdTimeParticipant;
 import io.mosire.simos.social.codec.SocialCodec;
@@ -177,9 +180,9 @@ import io.mosire.simos.unit.spi.SetArmyFormationHandler;
 import io.mosire.simos.unit.spi.SetArmyPayPolicyHandler;
 import io.mosire.simos.unit.spi.SetCompositionHandler;
 import io.mosire.simos.unit.spi.SetFormationOffsetHandler;
-import io.mosire.simos.unit.spi.SetGovernmentFormationHandler;
 import io.mosire.simos.unit.spi.SetGovPolicyHandler;
 import io.mosire.simos.unit.spi.SetGovSuperiorHandler;
+import io.mosire.simos.unit.spi.SetGovernmentFormationHandler;
 import io.mosire.simos.unit.spi.SetJurisdictionHandler;
 import io.mosire.simos.unit.spi.SetRejoinTargetHandler;
 import io.mosire.simos.unit.spi.SetStateDescriptionHandler;
@@ -689,6 +692,11 @@ public final class Shell implements AutoCloseable {
                 //   文档 / 会话）。标 GmOnlyCommand ⇒ 排除出令白名单 / RegisterEffect / 决策人目录；GM 直接提交照常可用。──
                 new DeleteDecisionMakerHandler(),
                 new PutInfoHandler(),
+                // ★★ D2（2026-10-22 决策包计划）：三条决策包命令——整包 upsert（propose/intent）、提交、GM 裁决。
+                //   都**不**标 GmOnlyCommand（Upsert/Submit 由决策人工具内部提交；Decide 只被 GM 工具调用）。
+                new UpsertDecisionPacketHandler(),
+                new SubmitDecisionPacketHandler(),
+                new DecideDecisionPacketHandler(),
                 // ★★ D5（2026-10-02 / D-003、D-005、R6）：sd 的两条外交命令（非 GmOnly；sd.* 不进指令白名单）。
                 //   变更集走 SdChangeSet 的第 11/12 个组件（diplomaticRelations / diplomaticEvents），
                 //   旧档缺这两个组件 ⇒ 空表（见 SdState / SdChangeSet 的构造期兼容）。
