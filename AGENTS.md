@@ -290,6 +290,13 @@ app（组合根）依赖全部领域模块 + core + agentlib + MCP —— **唯�
   ★ 2026-10-09 P1.3 已补 `MapLog / SdLog / ActorLog / GovLog / ArmyLog / CalendarLog / CoreLog / AppLog`
   八个门面（social/unit/economy 原有），剩余是调用点覆盖与测试迁移；通用 event 机制随后收口到 util（见上）。
   模块补齐前，任何"其他模块为什么没动作"的排查都只能读代码，不能读日志；这条缺口不许再被当成"已经是这样"。
+- ★★★ **2026-10-23 已收口**（用户裁定先做工程/纪律/运维；批次与验收见
+  `docs/superpowers/plans/2026-10-23-all-module-logging-rollout.md`，用户原话附录在该文件 §11）：
+  - util 只加类型架构 `LogOrigin`/`LogOriginKind`；11 个模块各自维护来源表 `XxxLogSource`（表项带中文说明、id 不改）；
+  - 全部 `*Handler` / 时间参与者 / codec / resolver 覆盖（economy spi 20/20、map 11/11、unit 33/33、social 19/19、sd 28/28、actor 7/7、army 3/3）；门面外 `LoggerFactory` 清零；
+  - 发射统一 `EventLog.channel(...)` + `LogEvent.of(name, source, ...)`，**每条事件带 `origin=` + `originKind=`**（tick/interaction/system）；
+  - 级别规则（用户 2026-10-23 裁定）：**业务拒绝 = INFO**；**契约/跨切片一致性故障 = ERROR 不降级**（负人口、投影不一致等）；**既有 WARN 不降级**；逐笔明细 = TRACE。
+  - 剩余（另开批，不阻塞）：economy 9 条命令面事件的分类待统一；`Replay.applyWorld`/`Timeline.readChangeSet`/`Envelope.decode` 三处失败路径无 ERROR 行；真 `-Dsimos.*` 系统属性轮未跑。
 
 ### 一.10 ★★★ 子 Agent 新架构实验（2026-10-09 用户裁定；实验期覆盖 §一.5/§一.8 的派单细节）
 
@@ -529,6 +536,16 @@ node simos-app/src/test/js/run-gate.cjs          # 前端门禁（下界见 run-
 ./mvnw -q -Dspotless.check.skip=true -DskipTests package 2>/dev/null   # 见 §二「产物」——本仓无 shade 开关
 ./mvnw clean verify                              # ★ 关账：Spotless+Checkstyle+SpotBugs+Surefire+前端门禁
 ```
+
+★★ **2026-10-23 用户裁定：真实世界长跑测试不进程序化门禁。** 已删除 6 个类：
+`RealTwelveMarketFreezeDiagnosisTest`、`RealTwelveHexProductionRuntime3650Test`、`RealTwelveOneTickTraceTest`、
+`RichWorldTest`、`SevenHexFullChain3650Test`、`SevenHexNatural3650Test`（这 6 个原占 ~130 秒）。
+**实际行为验证改走真实 world + 读日志**（`run-small-world.sh` / `test-world` / `~/Simos-18Lvt`），
+不再用程序化长跑代替。门禁仍是 `clean verify`：跑**全部剩余测试** + Spotless/Checkstyle/SpotBugs + 前端门禁。
+★★ **真数（2026-10-23，日志线 L1~L4 收口后，全仓 `clean verify`）**：
+**3144 条 / 0 失败 / 0 错误 / 5 跳过**（5 条为 `RealLlm*` 环境门控）；
+15 个被分析模块 **`BugInstance size is 0`**（SpotBugs 基线债 124→0）；前端门禁 **412/412**；总耗时 **3:03**。
+**后续以本行为准**（旧行留作历史）。
 
 ★ **`clean verify` 必须前台跑**：台账记过"后台跑会被内存守卫杀"，而被杀**既不是红也不是绿**（不能算过）。
 ★★ **真数（2026-09-27，M1.0+M1.1 之后，全仓 `clean verify` 后逐模块清点 surefire 报告）**：

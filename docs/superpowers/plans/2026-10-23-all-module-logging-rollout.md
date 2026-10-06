@@ -397,3 +397,28 @@ LLM 决策回合 ── app.decision：origin=decision-turn / originKind=interac
 7. 决策回合内工具调用的表项（app）：先用 `DECISION_TURN` + `tool=` 字段表达，还是单开一项 `DM_TOOL_CALL`？
    建议前者（来源少而清晰），由 app 的表说明写清。
 
+---
+
+## 13. 执行结果（2026-10-23 收口；追加记录，不改上文）
+
+**全部批次已落地并推送**：L1（util 类型 + core/app）、L2（map/social/unit/sd）、L3（actor/army/gov/calendar +
+ChannelAdmission + app/economy 残扫 + economy 103/103 补 origin）、L4a（测试：18 个测试文件、+66 条、3 项变异自证）、
+L4a.1（补 6 个实现缺口：economy 10 handler、gov 具名拒绝、calendar/army 字段、economy 分类）、
+L4a.2（Replay 解码失败 / CombatResolution 不变量两条 ERROR）、L4b（SpotBugs 124→0）。
+
+**终审 `clean verify`（2026-10-23，前台/受管后台跑完）**：
+- **3144 条 / 0 失败 / 0 错误 / 5 跳过**（跳过为 `RealLlm*` 环境门控）；总耗时 **3:03**；
+- 15 个被分析模块 `BugInstance size is 0`；前端门禁 **412/412**。
+
+**用户 2026-10-23 裁定：真实世界长跑测试移出程序化门禁**，已删除 6 个类
+（`RealTwelveMarketFreezeDiagnosisTest` 58s、`RealTwelveHexProductionRuntime3650Test` 32s、
+`RealTwelveOneTickTraceTest` 31s、`SevenHexFullChain3650Test` 7s、`SevenHexNatural3650Test` 1s、`RichWorldTest` 3.4s）；
+**实际行为验证改走真实 world + 读日志**（`run-small-world.sh` / `test-world` / `~/Simos-18Lvt`）；
+门禁仍跑全部剩余测试（接口/安全契约面保留）。`RealTwelveHexWorld` 夹具保留（被一个 0.005s 的单测使用）。
+
+**剩余缺口（另开批，不阻塞本线关账）**：
+1. economy 9 条命令面成功事件的 logger 分类仍非 `.command`（`GOVERNMENT_REGISTERED`/`UNIT_BORROW` 等）；
+2. `Replay.applyWorld` 缺模块 ISE、`Timeline.readChangeSet` IAE、`Envelope.decode` IAE 三处失败路径仍无 ERROR 行；
+3. 真 `-Dsimos.<module>.logLevel/traceLevel` 系统属性轮未跑（测试内用等价 Configurator 验证）；
+4. §9.6「日志不先于 ChangeSet/apply 产生副作用」仅静态审阅，无运行时插桩。
+
