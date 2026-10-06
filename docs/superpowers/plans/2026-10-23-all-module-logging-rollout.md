@@ -237,8 +237,8 @@ LLM 决策回合 ── app.decision：origin=decision-turn / originKind=interac
 每个写代码批次的固定动作（§一.5/§三.0）：
 
 1. 只写生产代码，写到「编译过」：`tools/mvn-lock.sh -q spotless:apply` +
-   `tools/mvn-lock.sh -q -pl simos-app -am -DskipTests compile`（跑前 `pgrep -af "classworlds.launcher|surefirebooter"`，
-   AGENTS §一.1：有别的 Maven 在跑就等）。
+   `tools/mvn-lock.sh -q -pl simos-app -am -DskipTests compile`。
+   **锁的作用域 = 本仓/同工作树**（`.mvn-lock.d`，用户 2026-10-23 更正：隔壁项目的 Maven 不阻塞本仓构建）。
 2. **不写/不改任何测试文件；不跑 `test`/`verify`；不 `git commit`。**
 2.5. **可以（也只允许）「只读」既有 logging 测试**：`simos-app/src/test/.../logging/SocialLoggingTest.java`、
    `UnitHouseholdLoggingTest.java`、`simos-core/src/test/.../command/CommandBusLoggingTest.java`。
@@ -337,6 +337,8 @@ LLM 决策回合 ── app.decision：origin=decision-turn / originKind=interac
 11. 【选项选择】架构复核四问的裁定：origin 语义 =「按工作性质」；传递方式 =「显式参数」；
     util API =「接受追加 overload」；来源表 id =「id 发布后不改」
 12. > 「往AGENTS.md里面加一条，这种用于派单实现开发计划的文档，里面必须包含我的全部相关原话，子Agent若认为架构设计和我的原话冲突，直接上报，然后你来问我，最大限度确保设计不失真——然后你就按这么做，记录我的原话，顺别再看一遍架构有没有问题需要决策」
+13. > 「那是隔壁项目，编译门禁只是用于同一个项目文件！」
+    （更正编译门禁的作用域：只用看**本仓**有没有 Maven 在跑；隔壁仓库的不阻塞）
 
 **相关用户裁定编号**：`D-xxx` 暂无（本轮日志主题尚未形成原稿编号）；`AGENTS.md` §一.9（2026-10-04 / 2026-10-09）。
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # ★★ Maven 串行化锁（AGENTS.md §一.1：本机一次只能跑一个 Maven，两轮同抢 target/ 会让测试计数失真）。
+# ★ 作用域 = **本仓/同工作树**（用户 2026-10-23 更正：「那是隔壁项目，编译门禁只是用于同一个项目文件！」
+#   ⇒ 隔壁仓库的 Maven 不参与此锁、不阻塞本仓构建；本锁只串行化落在本仓的 Maven）。
 #
 # 用法：把 `./mvnw` 换成 `tools/mvn-lock.sh`，其余参数原样透传：
 #     tools/mvn-lock.sh -q -DskipTests compile -pl simos-economy -am
