@@ -421,7 +421,8 @@ public final class CatalogTool implements AgentTool {
               "economy.GmAdjust",
               "adjustment(forgiveDebt|setLiquidationPolicy"
                   + "|upsertProductionMode|deactivateProductionMode|upsertClassStructure|upsertClassPosition"
-                  + "|upsertProductionRelation|upsertAssetRule|upsertProductionOrganization|upsertCandidate),"
+                  + "|upsertProductionRelation|upsertAssetRule|upsertProductionOrganization|upsertCandidate"
+                  + "|setOutputQuantity|clearOutputQuantity),"
                   + " parameters(JSON 对象), reason(必填非空白)"
                   + "（★ GM-only、只改源状态：白名单外/派生读数 ⇒ 拒；"
                   + "旧表两：forgiveDebt: debtContractId, amount?(缺省=全额本金，须 ≤ 本金)；"
@@ -446,7 +447,14 @@ public final class CatalogTool implements AgentTool {
                   + "upsertCandidate={id,version?,output?,outputPerUnit?,inputPerUnit?,requiredAssets?,laborPerUnit?,"
                   + "buildDays?,cycleDays?,regime?,laborSource?,acceptedRightKinds?,assetSource?,name?}"
                   + "（新建 output/outputPerUnit/cycleDays/regime 必填；修订须推进 version；"
-                  + "★ ProductionCandidate 没有 modeId 字段，显式 modeId ⇒ 具名拒绝））"),
+                  + "★ ProductionCandidate 没有 modeId 字段，显式 modeId ⇒ 具名拒绝）；"
+                  + "Z1 产品产出数量覆盖两 kind（只写 outputQuantityOverrides）："
+                  + "setOutputQuantity={industryId,commodityId,quantity(0..1000000 整数；值=商品数量/单位规模)}"
+                  + "（industryId 须已存在；commodityId 须在该产业 recipe().outputPerUnit() 产出键里、不开新商品；"
+                  + "quantity 缺失/非整数/越界 ⇒ QUANTITY_OUT_OF_RANGE；缺省覆盖=配方默认）；"
+                  + "clearOutputQuantity={industryId,commodityId}"
+                  + "（industryId 须已存在；commodityId 须在配方产出键里；无既有覆盖 ⇒ NO_OVERRIDE_TO_CLEAR，"
+                  + "不做静默幂等；回落配方默认））"),
           Map.entry(
               "actor.Seed",
               "mapId, rulesVersion, entries[{q, r, actors[{kind, id, label?}...],"

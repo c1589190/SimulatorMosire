@@ -99,7 +99,7 @@ public final class EconomyAdjustTool implements AgentTool {
   public String description() {
     return "GM 经济调整（economy.GmAdjust 的窄封装）：先用 economy 侧纯函数算好 projected 状态与前后差异，"
         + "preview=true（缺省）只算不写；preview=false 时提交同一条 payload（reason 必填，进载荷/事件与工具结果）。"
-        + "adjustment 白名单（10）—— 旧表两 kind —— forgiveDebt（debtContractId + amount?，只减/清本金）、"
+        + "adjustment 白名单（12）—— 旧表两 kind —— forgiveDebt（debtContractId + amount?，只减/清本金）、"
         + "setLiquidationPolicy（assetRuleId + maxLiquidatePerMille/protectedReserve/priceSource/"
         + "policyValuePerUnitMilli/recipientRule）；P7 生产方式编辑八 kind —— "
         + "upsertProductionMode（id + name + version? + classStructureId；version 必须推进，classStructureId 须已存在）、"
@@ -114,7 +114,11 @@ public final class EconomyAdjustTool implements AgentTool {
         + "inputSources? + outputOwnership + relationTemplateRef? + status + statusReason?；ACTIVE/EXITING 必须有 unit，"
         + "SHORTAGE 必须有具名 reason）、"
         + "upsertCandidate（按 ProductionCandidate 现有字段；新建需 output/outputPerUnit/cycleDays/regime，"
-        + "修订必须推进 version；★ ProductionCandidate 没有 modeId，本 kind 按现有模型走 regime，显式 modeId 具名拒绝）。"
+        + "修订必须推进 version；★ ProductionCandidate 没有 modeId，本 kind 按现有模型走 regime，显式 modeId 具名拒绝）；"
+        + "Z1 产品产出数量覆盖两 kind（只写 outputQuantityOverrides，GmOnly）—— "
+        + "setOutputQuantity（industryId + commodityId + quantity(0..1000000 整数；值 = 商品数量/单位规模；"
+        + "industryId 须已存在、commodityId 须在该产业配方产出键里）"
+        + "、clearOutputQuantity（industryId + commodityId；无既有覆盖 ⇒ NO_OVERRIDE_TO_CLEAR，不做静默幂等）。"
         + "白名单外 adjustment（flows/demandBook/crisisSignals/classStandings 等派生读数）一律拒："
         + "派生读数不可由 GM 调整工具直写。★ 只在 GM 桶，决策人不可调用。";
   }
@@ -128,7 +132,8 @@ public final class EconomyAdjustTool implements AgentTool {
             "string",
             "调整名（源状态白名单）：forgiveDebt | setLiquidationPolicy"
                 + " | upsertProductionMode | deactivateProductionMode | upsertClassStructure | upsertClassPosition"
-                + " | upsertProductionRelation | upsertAssetRule | upsertProductionOrganization | upsertCandidate；"
+                + " | upsertProductionRelation | upsertAssetRule | upsertProductionOrganization | upsertCandidate"
+                + " | setOutputQuantity | clearOutputQuantity；"
                 + "白名单外一律拒（派生读数不可直写）"));
     props.put(
         "parameters",
@@ -159,7 +164,13 @@ public final class EconomyAdjustTool implements AgentTool {
                 + "upsertCandidate={id, version?, output?, outputPerUnit?{商品:>0}, inputPerUnit?{商品:≥0},"
                 + " requiredAssets?{资产:≥0}, laborPerUnit?, buildDays?, cycleDays?, regime?, laborSource?,"
                 + " acceptedRightKinds?[OWNED|TENANCY|COMMUNAL], assetSource?, name?；新建 output/outputPerUnit/cycleDays/regime 必填；"
-                + "修订须推进 version；★ 无 modeId（模型无此字段，显式给 ⇒ 拒）}"));
+                + "修订须推进 version；★ 无 modeId（模型无此字段，显式给 ⇒ 拒）}；"
+                + "setOutputQuantity={industryId, commodityId, quantity(0..1000000 整数；值 = 商品数量/单位规模)}"
+                + "（industryId 须已存在、commodityId 须在该产业 recipe().outputPerUnit() 产出键里，不开新商品；"
+                + "quantity 缺失/非整数/越界 ⇒ QUANTITY_OUT_OF_RANGE；缺省覆盖 = 配方默认）；"
+                + "clearOutputQuantity={industryId, commodityId}"
+                + "（industryId 须已存在、commodityId 须在配方产出键里；无既有覆盖 ⇒ NO_OVERRIDE_TO_CLEAR，"
+                + "不做静默幂等；回落配方默认）}"));
     props.put("reason", ToolSupport.prop("string", "调整原因（必填非空白；进命令载荷与工具结果/审计）"));
     props.put(
         "preview", ToolSupport.prop("boolean", "true（缺省）= 只算前后差异、不写；false = 提交 economy.GmAdjust"));
