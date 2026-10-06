@@ -7,6 +7,7 @@ import io.mosire.simos.social.api.id.PeopleLotId;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.household.HouseholdBook;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -27,6 +28,15 @@ public final class RemoveHouseholdMembersHandler implements CommandHandler, Comm
 
   /** 命令类型（唯一拼写点：Shell 注册、组合工具与 catalog 都从这里取/对齐）。 */
   public static final String TYPE = "social.RemoveHouseholdMembers";
+
+  /** 2026-10-20：目标 = 家户 SocialData 当前位置（HEX ⇒ social / UNIT ⇒ unit）；家户查无 ⇒ 具名拒。 */
+  @Override
+  public List<CommandTarget> targetResources(
+      String commandType, SimulationState state, String mapId, String payloadJson) {
+    JsonNode payload = SocialPayloads.parse(payloadJson);
+    HouseholdId id = SocialPayloads.requireHouseholdId(payload, "householdId");
+    return List.of(HouseholdCommandTargets.currentTarget(state, id));
+  }
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {

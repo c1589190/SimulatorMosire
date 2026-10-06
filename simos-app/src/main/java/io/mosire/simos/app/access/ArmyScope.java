@@ -11,10 +11,12 @@ import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
 import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.state.Snapshot;
 import io.mosire.simos.util.time.SimosTimestamp;
+import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -79,14 +81,22 @@ public final class ArmyScope implements DecisionScopeFunction {
       socialPrefixes.add(ToolSupport.resourceSocial(coord.q(), coord.r()).path());
     }
 
-    // unit：**位置落在圈内的单位**——与国家实现同一套口径（"看得见的格上的单位"），只是"范围"从区域换成视野圈。
-    Set<String> unitPrefixes = new TreeSet<>();
+    // unit：**位置落在圈内的单位 + 它们的全部后代**——与国家实现同一套口径（"看得见的格上的单位"），只是"范围"从区域换成视野圈；
+    //   ★ 2026-10-20：后代展开让"看得见上级 ⇒ 看得见其下属编制/单位家户"，但 map/social 仍只认圈内格（hex 权限不通用）。
+    Set<UnitId> unitRoots = new LinkedHashSet<>();
     SimosTimestamp at = state.meta().timestamp();
     for (Unit unit : units.units().values()) {
       Optional<HexCoord> position = units.effectivePosition(unit.id(), at);
       if (position.isPresent() && circle.contains(position.get())) {
-        unitPrefixes.add(ToolSupport.resourceUnit(unit.id().value()).path());
+        unitRoots.add(unit.id());
       }
+    }
+    Set<String> unitPrefixes = new TreeSet<>();
+    for (UnitId root : unitRoots) {
+      unitPrefixes.add(ToolSupport.resourceUnit(root.value()).path());
+    }
+    for (UnitId descendant : ScopeUnitExpansion.descendants(units, unitRoots, at)) {
+      unitPrefixes.add(ToolSupport.resourceUnit(descendant.value()).path());
     }
 
     // ★ 四个命名空间**都要表态**（同 NationScope）：只配 map ⇒ unit/social/actor 回落工具缺省 ⇒ 静默全放行。

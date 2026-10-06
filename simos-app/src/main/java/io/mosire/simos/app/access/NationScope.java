@@ -11,6 +11,7 @@ import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
 import io.mosire.simos.sd.spi.NationTag;
 import io.mosire.simos.unit.Unit;
+import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.state.SimulationState;
 import io.mosire.simos.util.time.SimosTimestamp;
@@ -81,7 +82,8 @@ public final class NationScope implements DecisionScopeFunction {
 
     // unit：**按单位位置落在本国区域内算**（spec §3.2）——与 GUI/facet 同口径走 effectivePosition
     // （编队里根单位自身没有位置、跟随父单位；自己读 position 字段会得到"不知道在哪"）。
-    Set<String> unitPrefixes = new TreeSet<>();
+    //   ★ 2026-10-20：命中区域内单位后追加**全部后代**（单位编制/单位家户随编制树可见），但 map/social 仍只认本国区域 hex。
+    Set<UnitId> unitRoots = new LinkedHashSet<>();
     UnitState units = ToolSupport.unitState(state);
     SimosTimestamp at = state.meta().timestamp();
     for (Unit unit : units.units().values()) {
@@ -91,10 +93,17 @@ public final class NationScope implements DecisionScopeFunction {
       }
       for (RegionId owner : map.regionIndex().regionOf(position.get())) {
         if (ownRegions.contains(owner)) {
-          unitPrefixes.add(ToolSupport.resourceUnit(unit.id().value()).path());
+          unitRoots.add(unit.id());
           break;
         }
       }
+    }
+    Set<String> unitPrefixes = new TreeSet<>();
+    for (UnitId root : unitRoots) {
+      unitPrefixes.add(ToolSupport.resourceUnit(root.value()).path());
+    }
+    for (UnitId descendant : ScopeUnitExpansion.descendants(units, unitRoots, at)) {
+      unitPrefixes.add(ToolSupport.resourceUnit(descendant.value()).path());
     }
 
     // ★ 四个命名空间**都要表态**：只配 map 会让 unit/social/actor 回落到工具缺省策略（READ_ONLY）⇒ **静默全放行**

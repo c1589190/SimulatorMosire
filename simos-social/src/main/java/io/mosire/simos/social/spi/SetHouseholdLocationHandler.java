@@ -7,6 +7,7 @@ import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.household.HouseholdBook;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
@@ -25,12 +26,25 @@ import java.util.Objects;
  * ★ <b>UNIT 的 unit 侧一致性</b>（{@code unit.households} 同步）由 app 组合工具同批保证（架构 §3.3）——本命令只动 Social 切片，
  * 不认识 unit（铁律 3）。
  *
- * <p>★ <b>目标声明</b>（{@link CommandTargets}）：HEX 位置 ⇒ 那一格的 social 资源路径；UNIT 位置 ⇒ 空列表。
+ * <p>★ <b>目标声明</b>（{@link CommandTargets}）：2026-10-20 起走跨命名空间 {@link #targetResources}——**旧位置 + 新位置**
+ * 两条（旧位置查 SocialData 现值，新位置读载荷），各自按 HEX ⇒ {@code social:<q>_<r>} / UNIT ⇒ {@code unit:<unitId>}
+ * 解析。双边都判是刻意的：只判新位置会让"把范围内家户改到范围外"从授权面溜过去。旧 {@link #targetPaths} 保留（只给新 HEX
+ * 位置，升级前逐字一致）。
  */
 public final class SetHouseholdLocationHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点：Shell 注册、组合工具与 catalog 都从这里取/对齐）。 */
   public static final String TYPE = "social.SetHouseholdLocation";
+
+  /** 旧位置（SocialData 现值）+ 新位置（载荷）两条目标；家户查无 ⇒ 具名 {@link IllegalArgumentException}。 */
+  @Override
+  public List<CommandTarget> targetResources(
+      String commandType, SimulationState state, String mapId, String payloadJson) {
+    JsonNode payload = SocialPayloads.parse(payloadJson);
+    HouseholdId id = SocialPayloads.requireHouseholdId(payload, "householdId");
+    HouseholdLocation location = SocialPayloads.requireLocation(payload, "location");
+    return HouseholdCommandTargets.oldAndNew(state, id, location);
+  }
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {

@@ -13,6 +13,7 @@ import io.mosire.simos.social.household.Household;
 import io.mosire.simos.social.household.HouseholdBook;
 import io.mosire.simos.social.population.PopulationGroup;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -52,6 +53,10 @@ import java.util.Set;
  * revision、不会出现"搬了一半"。源家户搬空后仍保留为空壳（家户生命周期另有删除语义， 本命令不做隐式删除）。
  *
  * <p>★ <b>GM-only</b>：批量人口迁移是行政/迁移原语，不开放给决策令直调。
+ *
+ * <p>★ <b>目标声明</b>（{@link CommandTargets}）：2026-10-20 起走跨命名空间 {@link #targetResources}——源/目标**各自**
+ * 可能给家户 id 或格：家户 ⇒ 该家户 SocialData 现值（social / unit）；格 ⇒ {@code social:<q>_<r>}。 同一侧两个字段都给时两条都列出（更严，不静默漏判）；一侧都没给 ⇒
+ * 该侧无目标；整条都没有可寻址目标 ⇒ 空列表（调用方 fail-closed 拒，与升级前同方向）。
  */
 public final class MovePopulationLotsHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
@@ -62,6 +67,33 @@ public final class MovePopulationLotsHandler
   @Override
   public String type() {
     return TYPE;
+  }
+
+  /** 源 + 目标的跨命名空间目标：家户引用查 SocialData 现值，hex 引用走 social 路径；查无家户 ⇒ 具名拒。 */
+  @Override
+  public List<CommandTarget> targetResources(
+      String commandType, SimulationState state, String mapId, String payloadJson) {
+    JsonNode payload = SocialPayloads.parse(payloadJson);
+    Set<CommandTarget> targets = new LinkedHashSet<>();
+    String fromHouseholdText = SocialPayloads.optionalText(payload, "fromHouseholdId");
+    HexCoord fromHex = SocialPayloads.optionalHex(payload, "from");
+    if (fromHouseholdText != null) {
+      targets.add(
+          HouseholdCommandTargets.currentTarget(state, HouseholdId.parse(fromHouseholdText)));
+    }
+    if (fromHex != null) {
+      targets.add(HouseholdCommandTargets.hexTarget(fromHex));
+    }
+    String toHouseholdText = SocialPayloads.optionalText(payload, "toHouseholdId");
+    HexCoord toHex = SocialPayloads.optionalHex(payload, "to");
+    if (toHouseholdText != null) {
+      targets.add(
+          HouseholdCommandTargets.currentTarget(state, HouseholdId.parse(toHouseholdText)));
+    }
+    if (toHex != null) {
+      targets.add(HouseholdCommandTargets.hexTarget(toHex));
+    }
+    return List.copyOf(targets);
   }
 
   @Override

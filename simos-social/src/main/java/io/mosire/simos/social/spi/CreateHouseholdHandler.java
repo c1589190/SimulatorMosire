@@ -9,6 +9,7 @@ import io.mosire.simos.social.api.population.HouseholdVitalRates;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.household.HouseholdBook;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.spi.ResourcePaths;
@@ -35,13 +36,25 @@ import java.util.Objects;
  * <p>★ <b>载荷 {@code reason}</b>：{@link HouseholdBook#create} 没有 reason 入参（创建事件固定），本命令仍要求非空白 ——
  * 与其余家户命令同一口径，避免"有的命令有原因、有的没有"。
  *
- * <p>★ <b>目标声明</b>（{@link CommandTargets}）：给了 HEX 位置 ⇒ 那一格的 social 资源路径；UNIT 位置 ⇒ 空列表（social
- * 命名空间没有 unit 专属路径，fail-closed，与 {@code social.UpdateCity} 同制）。
+ * <p>★ <b>目标声明</b>（{@link CommandTargets}）：2026-10-20 起走跨命名空间 {@link #targetResources}——HEX 位置 ⇒
+ * {@code social:<q>_<r>}；UNIT 位置 ⇒ {@code unit:<unitId>}。旧 {@link #targetPaths} 保留（HEX ⇒ 格路径；UNIT ⇒
+ * 空列表，与升级前逐字一致），只服务既有测试/调用点。
  */
 public final class CreateHouseholdHandler implements CommandHandler, CommandTargets {
 
   /** 命令类型（唯一拼写点：Shell 注册、组合工具与 catalog 都从这里取/对齐）。 */
   public static final String TYPE = "social.CreateHousehold";
+
+  /**
+   * 创建型目标：按载荷 {@code location} 判（HEX ⇒ social / UNIT ⇒ unit）。家户此刻还不存在，故不查 SocialData。
+   */
+  @Override
+  public List<CommandTarget> targetResources(
+      String commandType, SimulationState state, String mapId, String payloadJson) {
+    JsonNode payload = SocialPayloads.parse(payloadJson);
+    HouseholdLocation location = SocialPayloads.requireLocation(payload, "location");
+    return List.of(HouseholdCommandTargets.forLocation(location));
+  }
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {

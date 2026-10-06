@@ -8,6 +8,7 @@ import io.mosire.simos.social.api.population.Sex;
 import io.mosire.simos.social.change.SocialChangeSet;
 import io.mosire.simos.social.household.HouseholdBook;
 import io.mosire.simos.util.spi.CommandHandler;
+import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -35,6 +36,15 @@ public final class AddHouseholdMembersHandler implements CommandHandler, Command
 
   /** 缺省批次 id 的前缀（确定性的唯一拼写点：{@code gm-add:<householdId>}；冲突时追加 {@code -2}/-3…）。 */
   private static final String DEFAULT_LOT_PREFIX = "gm-add:";
+
+  /** 2026-10-20：目标 = 家户 SocialData 当前位置（HEX ⇒ social / UNIT ⇒ unit）；家户查无 ⇒ 具名拒。 */
+  @Override
+  public List<CommandTarget> targetResources(
+      String commandType, SimulationState state, String mapId, String payloadJson) {
+    JsonNode payload = SocialPayloads.parse(payloadJson);
+    HouseholdId id = SocialPayloads.requireHouseholdId(payload, "householdId");
+    return List.of(HouseholdCommandTargets.currentTarget(state, id));
+  }
 
   @Override
   public List<String> targetPaths(String mapId, String payloadJson) {

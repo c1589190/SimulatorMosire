@@ -44,6 +44,7 @@ import io.mosire.simos.unit.Unit;
 import io.mosire.simos.unit.UnitId;
 import io.mosire.simos.unit.UnitState;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.spi.CommandTarget;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.ResourcePaths;
 import io.mosire.simos.util.state.BranchId;
@@ -489,9 +490,9 @@ public final class AdjudicateTickTool implements AgentTool {
     if (!whitelist.allows(command.type())) {
       return Optional.of("决策命令不在白名单: " + command.type());
     }
-    // ★ 命令类型专属校验（放在白名单之后、targetPaths 之前）：其他命令类型的行为一字不动。
+    // ★ 命令类型专属校验（放在白名单之后、目标解析之前）：其他命令类型的行为一字不动。
     //   ★★ P2-C：actor.RemitGovTreasury 的家户口径到这里整条判完（归属 + 上级 + 家户引用 + 双方位置的可达面），
-    //   不再落回下方"handler.targetPaths 为空 ⇒ 拒"的通用分支（handler 在 actor 模块里看不到 unit 位置）。
+    //   不再落回下方"handler 目标为空 ⇒ 拒"的通用分支（handler 在 actor 模块里看不到 unit 位置）。
     if (RemitGovTreasuryHandler.TYPE.equals(command.type())) {
       return remitPrecheckRejection(fence, state, directive, command);
     }
@@ -499,17 +500,18 @@ public final class AdjudicateTickTool implements AgentTool {
     if (targets == null) {
       return Optional.of("该类命令尚无资源目标（未实现 CommandTargets），暂不可裁决: " + command.type());
     }
-    String namespace = namespaceOf(command.type());
-    List<String> paths;
+    // ★★ 2026-10-20：改调跨命名空间契约 targetResources——家户命令的目标可能同时含 social 与 unit；
+    //   未覆盖它的 handler 走默认实现（旧 targetPaths 逐条包成"命令类型命名空间 + path"），旧行为不变。
+    List<CommandTarget> resources;
     try {
-      paths = targets.targetPaths(mapId, command.payloadJson());
+      resources = targets.targetResources(command.type(), state, mapId, command.payloadJson());
     } catch (IllegalArgumentException e) {
       return Optional.of("目标资源判不出来（载荷形状不对）: " + e.getMessage());
     }
-    if (paths.isEmpty()) {
+    if (resources.isEmpty()) {
       return Optional.of("载荷未给出任何可寻址目标（CommandTargets 返回空）: " + command.type());
     }
-    List<String> violations = violations(fence, namespace, paths);
+    List<String> violations = violations(fence, resources);
     if (violations.isEmpty()) {
       return Optional.empty();
     }
@@ -641,12 +643,34 @@ public final class AdjudicateTickTool implements AgentTool {
    * <p>★ **包内可见**：第 3 波第 2 步的用例要在这里钉住"**不表态**（{@code declaredScope} 返 null）与**显式 {@code
    * none()}**"两条**方向相反**的语义——前者按既有语义回落到 {@link #TARGET_MANIFEST}（不收紧），后者必须拒。
    * 端到端路径上今天走不到"不表态"（三个内置范围函数都把 map/social/unit/actor 显式表态），故必须在这一层可测。
+   *
+   * <p>★ 这是**旧签名**（单命名空间 + 裸路径），保留给既有测试/调用点；实现委托给跨命名空间重载（逐条包成
+   * {@link CommandTarget} 后走同一台 {@link ResourceAuthorizer}）。
    */
   static List<String> violations(ResourceScopeMap fence, String namespace, List<String> paths) {
+    List<CommandTarget> targets = new ArrayList<>(paths.size());
+    for (String path : paths) {
+      targets.add(new CommandTarget(namespace, path));
+    }
+    return violations(fence, targets);
+  }
+
+  /**
+   * ★★ **2026-10-20 的跨命名空间重载**（用户裁定）：逐条判 {@link CommandTarget} 是否落在该决策人的可达面内，返回**越界的那几条资源**
+   * （空 = 全部放行）。
+   *
+   * <p>★★ **路径归一化按各自 namespace 做**：决策人常从读口拿到 canonical 地址（如 {@code unit:<裸 id>} /
+   * {@code social:<q>_<r>}）并原样塞回命令载荷；而目标声明约定是命名空间内路径。这里对**每个目标**去掉与它自己命名空间同名的前缀
+   * （{@code "unit:"}/{@code "social:"}…），不改其余任何字符——否则 {@code unit:unit:<id>} 会撞不上围栏（2026-10-01 R5 真实决策轮实测）。
+   * 家户命令的目标会**跨命名空间**，所以归一化不能再看"命令类型第一段"，只能看目标自己的 namespace。
+   */
+  static List<String> violations(ResourceScopeMap fence, List<CommandTarget> targets) {
     ResourceAuthorizer authorizer = ResourceAuthorizer.of(permissionSetOf(fence), TARGET_MANIFEST);
     List<String> violations = new ArrayList<>();
-    for (String path : paths) {
-      ResourceId id = ResourceId.of(namespace, normalizeTargetPath(namespace, path));
+    for (CommandTarget target : targets) {
+      ResourceId id =
+          ResourceId.of(
+              target.namespace(), normalizeTargetPath(target.namespace(), target.path()));
       if (!authorizer.allows(Operation.WRITE, id)) {
         violations.add(id.fullId());
       }
@@ -656,7 +680,7 @@ public final class AdjudicateTickTool implements AgentTool {
 
   /**
    * 决策人常从读口拿到 canonical 地址（如 {@code unit:<裸 id>}）并原样塞回命令载荷；{@code CommandTargets} 返回的 localId
-   * 约定是不带命名空间前缀的裸路径。这里只去掉**与命令命名空间同名的前缀**（{@code "unit:"}/{@code "social:"}…）， 不改其余任何字符——否则 {@code
+   * 约定是不带命名空间前缀的裸路径。这里只去掉**与目标命名空间同名的前缀**（{@code "unit:"}/{@code "social:"}…）， 不改其余任何字符——否则 {@code
    * unit:unit:<id>} 会撞不上围栏（2026-10-01 R5 真实决策轮实测）。
    */
   private static String normalizeTargetPath(String namespace, String path) {
@@ -671,11 +695,6 @@ public final class AdjudicateTickTool implements AgentTool {
    */
   private static AgentPermissionSet permissionSetOf(ResourceScopeMap fence) {
     return AgentPermissionSet.builder(AccessToken.DEFAULT).resourceScopes(fence).build();
-  }
-
-  /** 命令类型的命名空间（{@code type} 的第一个 {@code '.'} 之前那段）——与 {@code CommandBus} 的既有约定同源。 */
-  private static String namespaceOf(String type) {
-    return type.substring(0, type.indexOf('.'));
   }
 
   // ── 信封 ──────────────────────────────────────────────────────────────────────────────
