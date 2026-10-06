@@ -21,7 +21,7 @@
   `ScopeUnitExpansion` 仅供 Army/Nation 展开各自可见单位的后代。下辖 GOV/辖区外单位不可见，
   跨区信息必须走上报（D4）。
 - 决策人现状：仍是旧 `sd.IssueDirective` + `sd.AdjudicateTick`；`DecisionPacket/FormattedCall` 未实现。
-- 读口现状：`simos.social.population` 单 hex；`unit.get/list`；无跨 hex 家户聚合；GM 无家户聚合。
+- 读口现状：`simos.social.population` 单 hex；`unit.get/list`；D1 已补 `simos.social.households` 聚合读口（GM/决策人共用，GM `scope=ALL`）。
 - 测试现状：`test-compile` 红（历史遗留 + 本轮改动），`clean verify` 未跑。
 
 ## 1. 用户已确认的默认口径
@@ -42,7 +42,7 @@
 | 批次 | 交付 | 子文档（施工时写/更新） | 门禁 |
 |---|---|---|---|
 | **D0** ✅ | 撤销 GovScope 下辖 GOV/后代自动可见；跨区必须上报的口径固化 | `docs/superpowers/plans/2026-10-22-d0-scope-correction.md` | compile + smoke：中央看不到下辖 GOV/辖区外 unit/social/map，自己的直辖区可见 |
-| **D1** | `HouseholdQueryService` + `simos.social.households` 聚合读工具 | `...2026-10-22-d1-household-query.md` | compile + smoke：GM 全图按年龄/阶层/生产方式一次汇总；决策人 scope 裁剪；单 hex 与 population 对账 |
+| **D1** ✅ | `HouseholdQueryService` + `simos.social.households` 聚合读工具 | `...2026-10-22-d1-household-query.md` | compile + smoke：GM 全图按年龄/阶层/生产方式一次汇总；真实 GOV 决策人 scope 裁剪；单 hex 与 population 对账；unit 面 hex-hidden |
 | **D2** | `DecisionPacket`/`FormattedCall` 持久组件 + 决策人 propose/submit/my + GM packets/packet/decide | `...2026-10-22-d2-decision-packet.md` | compile + smoke：propose→PENDING→GM 预览→true/false；旧档空表兼容 |
 | **D3** | `MergedEffectPlan` + `gm.mergedPlan.*` + `gm.packet.execute` + outcome 回写 | `...2026-10-22-d3-merged-plan.md` | compile + smoke：两包冲突→GM 合并→一条 revision；执行者 GM、proposer 留痕 |
 | **D4** | GM 工具：periodicAdjustment / armyPayPolicy / vitalRates / adjustPopulation + 上报工具（send/reports） | `...2026-10-22-d4-gm-tools-reports.md` | compile + smoke：每个工具有 preview/apply/拒绝；上报跨区可见性符合口径 |
@@ -63,7 +63,11 @@ commit + push。**不在批次里顺手扩无关功能。**
   中央直辖区 hex 可见；上报工具留 D4。
 - 更新 `2026-10-20-cross-scope-command-targets.md` 中与此冲突的段落。
 
-## 4. D1：家户聚合查询
+## 4. D1：家户聚合查询 ✅（已实现；施工记录见 `2026-10-22-d1-household-query.md`）
+- `HouseholdQueryService`：scope/filters/groupBy/metrics/window/rateMode；`Visibility` 逐户/逐格判定；
+  成员级 filters 部分命中时家户级指标记 `member-filter-partial`，不拿全家户账冒充命中成员。
+- `SocialHouseholdsTool`：GM 与决策人共用；`scope=ALL` 仅当调用者 `social` 命名空间 unrestricted（GM）才允许；
+  工具声明 map/social/unit/economy/actor 五读面。
 
 - 新增 `simos-app/.../query/HouseholdQueryService.java`（纯只读，输入 `SimulationState` + 查询 spec）。
 - 新增 `simos-app/.../tools/read/SocialHouseholdsTool.java`（`simos.social.households`），

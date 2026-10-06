@@ -29,6 +29,7 @@ import io.mosire.simos.app.tools.read.SdCombatsTool;
 import io.mosire.simos.app.tools.read.SdDiplomacyTool;
 import io.mosire.simos.app.tools.read.SdDiplomaticEventsTool;
 import io.mosire.simos.app.tools.read.SkillTool;
+import io.mosire.simos.app.tools.read.SocialHouseholdsTool;
 import io.mosire.simos.app.tools.read.StateFacetsTool;
 import io.mosire.simos.app.tools.read.StateResolveTool;
 import io.mosire.simos.app.tools.read.TimelineRevisionsTool;
@@ -128,6 +129,10 @@ public final class DecisionCallerFactory {
           // ★ R2a（2026-09-25）：逐格经济读数是**世界状态**（四桶共享，同 combats 的判据）——决策人要看得见
           //   辖地的产出与库存；它走 ToolSupport.hexVisible 收窄视野，故不越界。
           EconomyHexTool.NAME,
+          // ★★ D1（2026-10-22 决策包计划）：家户聚合读口是 GM 与决策人**共用**读工具——
+          //   桶在 SimosToolSource.readTools（未标 GmOnlyRead），这里必须同源；scope=ALL 由工具内
+          //   social 面 unrestricted 判定，决策人只能用受限 scope。
+          SocialHouseholdsTool.NAME,
           SkillTool.NAME,
           // ★★ D5（2026-10-02 / R6）：两条外交读口（世界级自然语言、四桶共享读）。
           SdDiplomacyTool.NAME,

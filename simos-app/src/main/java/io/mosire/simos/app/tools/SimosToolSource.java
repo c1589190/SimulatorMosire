@@ -40,6 +40,7 @@ import io.mosire.simos.app.tools.read.SdDiplomaticEventsTool;
 import io.mosire.simos.app.tools.read.SdDirectivesTool;
 import io.mosire.simos.app.tools.read.SdVerdictsTool;
 import io.mosire.simos.app.tools.read.SkillTool;
+import io.mosire.simos.app.tools.read.SocialHouseholdsTool;
 import io.mosire.simos.app.tools.read.StateFacetsTool;
 import io.mosire.simos.app.tools.read.StateResolveTool;
 import io.mosire.simos.app.tools.read.TimelineRevisionsTool;
@@ -791,6 +792,9 @@ public final class SimosToolSource implements ToolSource {
         new UnitListTool(query, calendarService),
         new UnitGetTool(query, calendarService),
         new PopulationTool(query, calendarService),
+        // ★★ D1（2026-10-22 决策包计划）：家户聚合读口（GM 与决策人共用；scope=ALL 由工具内 social 面
+        //   unrestricted 判定，不标 GmOnlyRead）。资源声明 map/social/unit/economy/actor 全 READ_ONLY。
+        new SocialHouseholdsTool(query, calendarService, mapId),
         // ★ R2a（2026-09-25）：逐格经济读数（GUI `/api/economy/hex` 的对应读口；**四桶共享**——经济是世界状态，
         //   决策人该看得见辖地的产出与库存；视野由 ToolSupport.hexVisible 收窄）。
         new EconomyHexTool(query, mapId),
