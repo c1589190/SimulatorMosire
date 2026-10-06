@@ -482,6 +482,13 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
               stepper.putCrisisSignal(toCrisisSignal(draft, day));
             }
           }
+          // ★★ P4a：通用周期家户库存扣增 —— 在日税的**收入侧**与 GovDaily 的**支出侧**之后、市场报告/日末之前执行。
+          //   规则表来自本推进的只读基态（命令只写规则、不写账户）；执行器按绝对世界日无状态到期、逐腿部分支付，
+          //   与 JurisdictionDailyTax/GovernmentUpkeepOracle 共用同一个 AccountSession 与 TAX_AND_UPKEEP 阶段。
+          //   ★ 没有到期规则时执行器完全 no-op（不打日志、不动账户）。
+          PeriodicHouseholdAdjustmentExecutor.applyDue(
+              economy.periodicAdjustments(), stepper.accounts(), day);
+
           // ★★ M2.7：把"最近一轮市场报告"投递给读口（进程内、不落盘、只在同一 tick 内可信；见 MarketReportFeed 的类注）。
           MarketReportFeed.publish(mapId, stepper.lastMarketReport(), day);
           // ★★ S3：把"当日结账账本"投递给读口（租/工资欠款与逐规则欠额的唯一进程内来源；同款边界）。

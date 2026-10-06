@@ -72,6 +72,8 @@ import io.mosire.simos.economy.spi.EconomyMigrateHouseholdHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterCandidateHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterGovernmentHandler;
 import io.mosire.simos.economy.spi.EconomyRegisterHouseholdHandler;
+import io.mosire.simos.economy.spi.EconomyRemovePeriodicAdjustmentHandler;
+import io.mosire.simos.economy.spi.EconomyUpsertPeriodicAdjustmentHandler;
 import io.mosire.simos.economy.spi.EconomySeedHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdClassHandler;
 import io.mosire.simos.economy.spi.EconomySetHouseholdLaborHandler;
@@ -603,6 +605,11 @@ public final class Shell implements AutoCloseable {
                 //   新 UNIT 家户由 simos.unit.raiseUnit 在同批内登记；账户由同批 actor.EnsureHouseholdAccount 补。
                 //   ★ GM-only（经济身份结构写口）。
                 new EconomyRegisterHouseholdHandler(),
+                // ── economy（P4a 2026-10-14）：通用周期家户库存扣增规则表的两条 GM 写口
+                //   —— upsert 全量替换 / remove 具名拒不存在。两者都标 GmOnlyCommand ⇒ 排除出令白名单 /
+                //   RegisterEffect / 决策人目录；GM 的 simos.command.submit 与 P4b 的窄工具面可用。
+                new EconomyUpsertPeriodicAdjustmentHandler(),
+                new EconomyRemovePeriodicAdjustmentHandler(),
                 // ── economy（S3）：家户迁移的最小合法入口（只搬视图/份额，不生成人口；账 location 不搬）──
                 new EconomyMigrateHouseholdHandler(),
                 // ── economy（R4-B.3b）：GM/事件用的实物资产份额拆分/转移（确定性新 id、逐资产守恒）──

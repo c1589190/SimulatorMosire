@@ -345,6 +345,9 @@ public final class EconomyStateBuilder {
         modeTransitions == null ? base.modeTransitions() : modeTransitions,
         classShares == null ? base.classShares() : classShares,
         // ★★ P10.2：商号表是结算工作副本（承运扣量、周期末贸易结果写回）；未物化 ⇒ 原样复用 base。
-        merchantFirms == null ? base.merchantFirms() : merchantFirms);
+        merchantFirms == null ? base.merchantFirms() : merchantFirms,
+        // ★★ P4a：规则表不参与旧日结算写回，原样带过 base 的表 —— 漏了它 = 任意一次 advance
+        //   都会把已注册的周期规则静默抹掉（账面上看不出是谁弄丢的）。
+        base.periodicAdjustments());
   }
 }

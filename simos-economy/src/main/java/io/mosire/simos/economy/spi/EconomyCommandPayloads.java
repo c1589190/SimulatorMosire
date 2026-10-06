@@ -7,6 +7,7 @@ import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.api.id.CommodityId;
+import io.mosire.simos.economy.api.id.CurrencyId;
 import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.map.hex.HexCoord;
@@ -200,6 +201,41 @@ final class EconomyCommandPayloads {
                         + value);
               }
               values.put(CommodityId.parse(commodity), value);
+            });
+    return values;
+  }
+
+  /**
+   * 币种 → 整数表（缺键 / JSON null ⇒ 空表）。
+   *
+   * @param positive true ⇒ 逐值必须 &gt; 0（P4a 规则请求量）；false ⇒ 逐值 ≥ 0
+   */
+  static Map<CurrencyId, Long> optionalCurrencyMap(
+      String command, JsonNode payload, String field, boolean positive) {
+    JsonNode node = payload.get(field);
+    if (node == null || node.isNull()) {
+      return Map.of();
+    }
+    if (!node.isObject()) {
+      throw new IllegalArgumentException(command + " 的字段 " + field + " 必须是对象: " + node);
+    }
+    Map<CurrencyId, Long> values = new LinkedHashMap<>();
+    node.fields()
+        .forEachRemaining(
+            entry -> {
+              String currency = entry.getKey();
+              long value = requireLongNode(command, field + "." + currency, entry.getValue());
+              if (positive ? value <= 0L : value < 0L) {
+                throw new IllegalArgumentException(
+                    command
+                        + " 的字段 "
+                        + field
+                        + "."
+                        + currency
+                        + (positive ? " 必须 > 0: " : " 不得为负: ")
+                        + value);
+              }
+              values.put(CurrencyId.parse(currency), value);
             });
     return values;
   }

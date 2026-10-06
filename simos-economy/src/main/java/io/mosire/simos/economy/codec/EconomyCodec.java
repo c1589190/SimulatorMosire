@@ -50,6 +50,7 @@ import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.api.relation.Basis;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.RuleType;
+import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.HouseholdEconomy;
@@ -100,6 +101,11 @@ import java.util.function.Function;
  * <p>★ <b>P10.1</b>：{@code merchantFirms}（第 30 个组件）的键复用已注册的 {@code ProductionOrganizationId}；值
  * {@link io.mosire.simos.economy.model.MerchantFirm} 按 record 组件字段显式绑定， 缺键 ⇒ 空表（{@code EconomyData}
  * 构造期归一），写侧按构造期 {@code LinkedHashMap} 的插入序保序。
+ *
+ * <p>★ <b>P4a</b>：{@code periodicAdjustments}（第 31 个组件）的键复用 {@code PeriodicHouseholdAdjustmentId}
+ * 的 {@code toString()/parse} 配对；规则值 {@link io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment} 按 record 组件绑定（派生读法
+ * {@code sink()} 不用 {@code is} 前缀，避免被 Jackson 当成属性写进线格式）。旧档缺该键 ⇒ 快照侧收成空表、变更集侧收成
+ * {@code Unchanged}，见 {@code EconomyData}/{@code EconomyChangeSet} 构造器兜底。
  *
  * <p>★ {@code AssetKind} 作键（{@code dailyInputPerUnit}/{@code capacity}）走 Jackson **默认的枚举键** 绑定（按
  * {@code name()}），无需自定义；其余 ID/键类型都重写了 {@code toString()}（= 裸值）并与各自的 {@code parse} 互为逆，故只需读侧。
@@ -162,6 +168,7 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     abstract boolean isCurrentRuntimeVersion();
   }
 
+
   private static SimpleModule keyModule() {
     SimpleModule module = new SimpleModule("economy-json-keys");
     module.addKeyDeserializer(IndustryId.class, keyDeserializer(IndustryId::parse));
@@ -221,6 +228,11 @@ public final class EconomyCodec implements ModuleCodec, ModuleDiffer {
     // ★★ E6a：modeTransitions / classShares 两张新表的键（opaque 裸值，与各自 parse 互为逆，只需读侧）。
     module.addKeyDeserializer(ModeTransitionId.class, keyDeserializer(ModeTransitionId::parse));
     module.addKeyDeserializer(ClassShareId.class, keyDeserializer(ClassShareId::parse));
+    // ★★ P4a：periodicAdjustments（第 31 个组件）的键 = PeriodicHouseholdAdjustmentId；
+    //   规则值 HouseholdPeriodicAdjustment 走 Jackson record 绑定，字段不变量由构造期守卫判，
+    //   旧档缺该组件键 ⇒ EconomyData 构造期归一成空表。
+    module.addKeyDeserializer(
+        PeriodicHouseholdAdjustmentId.class, keyDeserializer(PeriodicHouseholdAdjustmentId::parse));
     return module;
   }
 

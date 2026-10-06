@@ -333,7 +333,9 @@ public final class EconomyClearRegionHandler
         staged.crisisSignals(),
         staged.modeTransitions(),
         staged.classShares(),
-        merchantFirms);
+        merchantFirms,
+        // ★★ P4a：清区域不碰周期规则，原样带过 staged 的表。
+        staged.periodicAdjustments());
   }
 
   /** 保序拷贝并删掉给定键（返回可变表，交给下一次过滤；构造器会再冻）。 */

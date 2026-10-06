@@ -353,6 +353,16 @@ public final class CatalogTool implements AgentTool {
                   + "一致则幂等并只改显式参与率；不建 FlowRow/成员归属/政府/账户；GM-only；"
                   + "账户由同批 actor.EnsureHouseholdAccount 补）"),
           Map.entry(
+              "economy.UpsertHouseholdPeriodicAdjustment",
+              "id, payer(家户 id), payee?(缺省/null = sink), goodsPerCycle?{商品:>0 整数},"
+                  + " moneyPerCycle?{币种:>0 整数}, reason(DeductionReason 规范小写字面量),"
+                  + " periodDays(>0), phaseDay([0,periodDays)), startsOnDay(≥0),"
+                  + " expiresOnDay?(缺省/null = 永久；给了 ≥ startsOnDay), policySource(非空白)"
+                  + "（★ P4a：同 id 全量 upsert、不静默合并；goods/money 至少一腿；payer≠payee；GM-only）"),
+          Map.entry(
+              "economy.RemoveHouseholdPeriodicAdjustment",
+              "id, reason?（★ P4a：按 id 删除；不存在 ⇒ 具名拒，不静默成功；GM-only）"),
+          Map.entry(
               "economy.RegisterCandidate",
               "id, version?(缺省 1；修订须严格更大), name?, output, outputPerUnit{商品:>0 整数},"
                   + " inputPerUnit{商品:≥0 整数}?, requiredAssets{资产种类:≥0 整数}?, laborPerUnit?(缺省 0),"

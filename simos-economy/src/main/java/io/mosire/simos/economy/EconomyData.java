@@ -34,6 +34,8 @@ import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.ProductionRules;
 import io.mosire.simos.economy.api.relation.Payee;
+import io.mosire.simos.economy.api.stock.HouseholdPeriodicAdjustment;
+import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.migrate.DebtReferenceReconciler;
 import io.mosire.simos.economy.migrate.LegacyHouseholdMigration;
 import io.mosire.simos.economy.model.AssetRule;
@@ -85,7 +87,7 @@ import java.util.Set;
  * <p>★★ **本切片只写自己的数据**（§2 + §6.1）：商品/货币/人口的总量守恒由**命令层/协调器**校验，**不落成第二份真相**——这里只有状态，
  * 没有"校验结论"。任何经济公式（产量/分配/税/市场盈亏）都不在本切片（§八 R1 行："模块化、无公式"）。
  *
- * <p>★ **三十个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的三十个组件一一对应**（铁律 5）：
+ * <p>★ **三十一个组件与 {@link io.mosire.simos.economy.change.EconomyChangeSet} 的三十一个组件一一对应**（铁律 5）：
  * 新增状态组件必须同时进变更集，由 {@code EconomyRoundTripTest} 的反射枚举把守。
  *
  * <p>★★ **E1–E6 追加组件清单**（逐阶段；数字是本记录全表的组件序号/个数，E6b/E6c 零新状态组件）：
@@ -99,10 +101,14 @@ import java.util.Set;
  *   <li>E5（第 26–27 个，2 个）：{@code liquidationPolicies} / {@code crisisSignals}；
  *   <li>E6（第 28–29 个，2 个）：{@code modeTransitions} / {@code classShares}；
   *   <li>P10.1（第 30 个，1 个）：{@code merchantFirms}（商号表，见 {@link MerchantFirm}；键 = 值内 organizationId）。
+ *   <li>P4a（第 31 个，1 个）：{@code periodicAdjustments}（周期家户库存扣增规则表，见 {@link HouseholdPeriodicAdjustment}；
+ *       键 = 值内 id；P4a 只落规则与无状态到期执行，单位政策留 P4b）。
  * </ul>
  *
  * E6b（GM 经济调整命令与预览审计）与 E6c（统一 dashboard 读口）都只读/写既有组件，**不追加新状态组件**， 故本记录的全表组件数在 E6 之后仍为 **29 个组件**；★
- * <b>P10.1 追加第 30 个组件 {@code merchantFirms}</b>（商号表，见 {@link MerchantFirm}），逐条对应关系见 {@link EconomyChangeSet}。
+ * <b>P10.1 追加第 30 个组件 {@code merchantFirms}</b>（商号表，见 {@link MerchantFirm}）；★ <b>P4a 追加
+ * {@code periodicAdjustments}</b>（周期家户库存扣增规则表，见 {@link HouseholdPeriodicAdjustment}）。逐条对应关系以
+ * {@link EconomyChangeSet} 的组件列为准。
  *
  * <p>★★ **跨表同键不变式**（§6.2 的身份部分）：{@code classes} 的每个键必须等于其 {@link HouseholdEconomy#key()}；{@code flows}
  * 的每个键必须等于其 {@link FlowRow#key()}；{@code laborSupply} / {@code allocations} 同理各自等于行内的 group / id。
@@ -210,10 +216,10 @@ import java.util.Set;
  */
 // ★ 豁免 EI_EXPOSE_REP（R4a，canonical verify 实测 28 条）：本 record 的每张表都在 compact 构造器里逐键复制 +
 //   Collections.unmodifiableMap（见下方各 *Copy 段），访问器返回的是冻结副本、调用方改不动。SpotBugs 对
-//   29 个 Map 记录组件的生成访问器保守报"暴露内部表示"；ArmyPlan 已有同类豁免先例。
+//   28 个 Map 记录组件的生成访问器保守报"暴露内部表示"；ArmyPlan 已有同类豁免先例。
 @SuppressFBWarnings(
     value = "EI_EXPOSE_REP",
-    justification = "28 张 Map 组件均在 compact 构造器内逐键复制并 Collections.unmodifiableMap；访问器返回冻结副本")
+    justification = "28 张 Map 组件（含 P4a periodicAdjustments）均在 compact 构造器内逐键复制并 Collections.unmodifiableMap；访问器返回冻结副本")
 public record EconomyData(
     Optional<EconomyMeta> meta,
     Map<IndustryId, Industry> industries,
@@ -242,16 +248,83 @@ public record EconomyData(
     Map<CrisisSignalId, HexCrisisSignal> crisisSignals,
     Map<ModeTransitionId, ModeTransition> modeTransitions,
     Map<ClassShareId, ClassShare> classShares,
-    Map<ProductionOrganizationId, MerchantFirm> merchantFirms) {
+    Map<ProductionOrganizationId, MerchantFirm> merchantFirms,
+    Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustments) {
 
-  /** 往返用例的起点：未激活 + 二十七张空表（P2-A A3/A4 起成员份额表与劳动供给表已删除）。 */
+  /**
+   * ★ P4a 旧组件面的便捷构造器（原 28 参 canonical 形状）：{@code periodicAdjustments}
+   * 取空表，让既有调用点无需为了新增第 31 组件逐个改动；所有 {@code with*} 与
+   * codec/changeset 路径都必须显式携带该组件。
+   */
+  public EconomyData(
+      Optional<EconomyMeta> meta,
+      Map<IndustryId, Industry> industries,
+      Map<HouseholdId, HouseholdEconomy> classes,
+      Map<DebtContractId, DebtContract> debtContracts,
+      Map<HouseholdId, FlowRow> flows,
+      Map<LaborAllocationId, HouseholdLaborCommitment> allocations,
+      Map<ProductionUnitId, ProductionRules> relations,
+      Map<HexCoord, Market> markets,
+      Map<ShipmentId, ShipmentBatch> shipments,
+      Map<AssetShareId, OwnershipStake> assetShares,
+      Map<ProductionUnitId, OperatorCondition> operatorConditions,
+      Map<ProductionUnitId, ProductionProcess> units,
+      Map<DemandId, HouseholdDemand> demands,
+      Map<CandidateId, ProductionCandidate> candidates,
+      Map<ProductionModeId, ProductionMode> modes,
+      Map<ClassStructureId, ClassStructure> classStructures,
+      Map<ClassPositionId, ProductionRole> classPositions,
+      Map<HouseholdId, HouseholdClassMembership> classStandings,
+      Map<ProductionOrganizationId, ProductionEnterprise> productionOrganizations,
+      Map<AssetRuleId, AssetRule> assetRules,
+      Map<GovernmentId, Government> governments,
+      Map<MoneyIssuanceId, MoneyIssuanceRecord> moneyIssuances,
+      Map<PledgeId, Pledge> pledges,
+      Map<AssetRuleId, LiquidationPolicy> liquidationPolicies,
+      Map<CrisisSignalId, HexCrisisSignal> crisisSignals,
+      Map<ModeTransitionId, ModeTransition> modeTransitions,
+      Map<ClassShareId, ClassShare> classShares,
+      Map<ProductionOrganizationId, MerchantFirm> merchantFirms) {
+    this(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        merchantFirms,
+        Map.of());
+  }
+
+  /** 往返用例的起点：未激活 + 二十八张空表（P2-A A3/A4 起成员份额表与劳动供给表已删除；P4a 起加空规则表）。 */
   public static EconomyData empty() {
     return new EconomyData(
         Optional.empty(),
         Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
         Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
         Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-        Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+        Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
   }
 
   public EconomyData {
@@ -349,6 +422,10 @@ public record EconomyData(
     //   这里的空表兜底只服务 with* 逐组件构造与"对侧尚未提供"的中间态。
     if (merchantFirms == null) {
       merchantFirms = Map.of();
+    }
+    // ★★ P4a 的第 31 个组件（周期家户扣增规则）：旧档缺键 ⇒ 空表（同上面每一条的口径）。
+    if (periodicAdjustments == null) {
+      periodicAdjustments = Map.of();
     }
     // ★ 第 8 个组件（S1 阶段 4+5 Task 2）：同一口径（缺键 ⇒ 空表，见类注释）。★ 迁移器要读它，故提到迁移之前。
     if (relations == null) {
@@ -1522,6 +1599,26 @@ public record EconomyData(
       merchantFirmsCopy.put(entry.getKey(), firm);
     }
     merchantFirms = Collections.unmodifiableMap(merchantFirmsCopy); // ★ 冻在赋值处
+
+    // ── P4a 第 31 个组件：周期家户扣增规则（键 == 值内 id；规则自身构造期已判字段不变量）──────────
+    //   ★ 空表 = 还没有任何显式规则 ⇒ 日循环到此完全 no-op，旧档逐值行为不变。
+    Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> periodicAdjustmentsCopy =
+        new LinkedHashMap<>();
+    for (Map.Entry<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> entry :
+        periodicAdjustments.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        throw new IllegalArgumentException("periodicAdjustments 的键与值都不得为 null: " + entry.getKey());
+      }
+      if (!entry.getKey().equals(entry.getValue().id())) {
+        throw new IllegalArgumentException(
+            "periodicAdjustments 的键必须与 HouseholdPeriodicAdjustment.id 一致：键="
+                + entry.getKey()
+                + "，行内 id="
+                + entry.getValue().id());
+      }
+      periodicAdjustmentsCopy.put(entry.getKey(), entry.getValue());
+    }
+    periodicAdjustments = Collections.unmodifiableMap(periodicAdjustmentsCopy); // ★ 冻在赋值处
   }
 
   /**
@@ -1608,7 +1705,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1641,7 +1739,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1674,7 +1773,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /**
@@ -1710,7 +1810,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** 一个组件一个 with（照 {@code LedgerData} 的形制）。 */
@@ -1743,7 +1844,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   public EconomyData withLaborCommitments(Map<LaborAllocationId, HouseholdLaborCommitment> laborCommitments) {
@@ -1775,7 +1877,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** 一个组件一个 with（T2：生产关系表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -1808,7 +1911,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /**
@@ -1846,7 +1950,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /**
@@ -1883,7 +1988,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   public EconomyData withOwnershipStakes(Map<AssetShareId, OwnershipStake> value) {
@@ -1915,7 +2021,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** 一个组件一个 with（S3.2：经营者状态表）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -1948,7 +2055,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** ★★ R3B.2：生产单元表（第 14 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -1981,7 +2089,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** ★★ R4-E2：需求账本（第 15 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
@@ -2014,7 +2123,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** ★★ R4-E2：候选预设表（第 16 个组件）；其余 29 个组件原样带过（全表共 30 个组件）（GM 命令的唯一写入口）。 */
@@ -2047,7 +2157,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** ★★ E1：生产方式表（第 17 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2080,7 +2191,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** ★★ E1：阶层结构表（第 18 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2113,7 +2225,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** ★★ E1：阶层位置表（第 19 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2146,7 +2259,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /**
@@ -2189,7 +2303,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** ★★ E1：家户阶层归属表（第 20 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2222,7 +2337,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** ★★ E2：生产组织表（第 21 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2256,7 +2372,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** ★★ E2：生产资料规则表（第 22 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2289,7 +2406,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** ★★ E3：政府表（第 23 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2322,7 +2440,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /** ★★ E3：货币发行审计表（第 24 个组件）；其余 29 个组件原样带过（全表共 30 个组件）。 */
@@ -2355,7 +2474,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /**
@@ -2392,7 +2512,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /**
@@ -2430,7 +2551,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /**
@@ -2468,7 +2590,8 @@ public record EconomyData(
         value,
         modeTransitions,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /**
@@ -2506,7 +2629,8 @@ public record EconomyData(
         crisisSignals,
         value,
         classShares,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /**
@@ -2544,7 +2668,8 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         value,
-        merchantFirms);
+        merchantFirms,
+        periodicAdjustments);
   }
 
   /**
@@ -2583,6 +2708,47 @@ public record EconomyData(
         crisisSignals,
         modeTransitions,
         classShares,
+        value,
+        periodicAdjustments);
+  }
+
+  /**
+   * ★★ P4a：周期家户扣增规则表（第 31 个组件，追加在末尾）；其余 30 个组件原样带过。
+   *
+   * <p>键 = {@link PeriodicHouseholdAdjustmentId}，且必须等于值内 {@link HouseholdPeriodicAdjustment#id()}。
+   * 规则只描述"每周期请求扣多少"，不落账户；是否到期与部分支付由 app 的 executor 按绝对世界日现算。
+   */
+  public EconomyData withPeriodicAdjustments(
+      Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> value) {
+    return new EconomyData(
+        meta,
+        industries,
+        classes,
+        debtContracts,
+        flows,
+        allocations,
+        relations,
+        markets,
+        shipments,
+        assetShares,
+        operatorConditions,
+        units,
+        demands,
+        candidates,
+        modes,
+        classStructures,
+        classPositions,
+        classStandings,
+        productionOrganizations,
+        assetRules,
+        governments,
+        moneyIssuances,
+        pledges,
+        liquidationPolicies,
+        crisisSignals,
+        modeTransitions,
+        classShares,
+        merchantFirms,
         value);
   }
 
