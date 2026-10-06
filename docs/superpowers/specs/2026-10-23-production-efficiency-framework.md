@@ -374,3 +374,21 @@ Z2 只动公式与结算路径，不改状态定义（发现定义不足 ⇒ 上
    `industry`（`unit.industry()` 原样带过），故余数不会因换产业越域；`ModeMigrationSettlement` 删除 unit 会留下
    孤儿效率行（无读写、无害），Z4 观察。★ 若未来出现"unit 换产业/换 recipe"的写点，必须同时重置该 unit 的效率行，
    否则余数越域会触发契约 ERROR fail-closed。
+
+---
+
+## 15. Z4b 真档 360 tick 对照（2026-10-23，已完成）
+
+报告：`docs/superpowers/reports/2026-10-23-sw19-run5-efficiency-formula-vs-run4.md`。结论：
+
+- 同种子 / 同参数 / 同 12×30 tick：run5（新公式）与 run4（旧公式）**12/12 段 dump 逐字节一致**；
+- 机制实测在跑：`PRODUCTION_EFFICIENCY_TICK` 57,240 / `_HARVEST` 477 / `_MODIFIER_INJECTED` 360 /
+  契约 ERROR 0；477 次收获四个余数全 0、`scale == scaleBase` 477/477、`avgModifier == 1000`
+  ⇒ 本世界劳动链整除、无修正注入，"差异为 0"是该世界数值结构的必然结果（§3 已证，不是没跑到）；
+- 中性运行**不物化任何** `productionEfficiency` 行（"四余数全零且无非中性证据 ⇒ 不建行"生效，无零行膨胀）；
+- 真服务端到端 GM 覆盖：`farm@1_0` grain 34→200 后一个农业周期，该格粮储比控制格多 ≈ 5.06 亿毫粮
+  （预期 `(200−34)×3,100 = 514.6M`），`clearOutputQuantity` `before=200/after=null`；覆盖跨进程重启保留；
+- 债务（仍被关账日清空）与 F1~F4 逐值未变，另行排期。
+
+诚实边界：真档未注入任何非中性修正参数（app 侧尚无消费者）；"修正参数影响产出"的证据是模块级测试
+（`ProductionEfficiencySettlementTest`）而非真档。
