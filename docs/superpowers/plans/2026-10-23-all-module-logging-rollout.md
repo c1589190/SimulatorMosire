@@ -236,7 +236,7 @@ LLM 决策回合 ── app.decision：origin=decision-turn / originKind=interac
 |---|---|---|---|
 | **L1** | ① util 新增类型 `LogOrigin`/`LogOriginKind`；② core + app 各自建来源表（`CoreLogSource`/`AppLogSource`）；③ 迁移 16 个门面外 `LoggerFactory` + 补 §6 的 core/app 面并带 `origin/originKind` | `simos-util/src/main/**`（只新增 §4.4 的类型）、`simos-core/src/main/**`、`simos-app/src/main/**`（含 `log4j2.xml`） | 其他模块 `src/main`、所有 `src/test`、docs、AGENTS.md |
 | **L2** | 领域写入面：map + social + unit + sd 的 handler / 时间参与者 / codec；各模块自建来源表并录入 | 上述四模块 `src/main/**` | core/app、util、其他模块、测试、docs |
-| **L3** | 其余领域：actor + army + gov + calendar（+ economy 实测缺口）；各模块自建来源表并录入 | 对应模块 `src/main/**` | L1/L2 已改文件（除必要的门面分类补充）、util、测试、docs |
+| **L3** | **一次收干净**（用户 2026-10-23 定）：① actor + army + gov + calendar 各建来源表并覆盖执行面；② app/economy 旧形态残扫（实测 32 文件 / 106 行）；③ economy 已有 94 个发射点全量补 `origin`/`originKind`；④ `sd.ChannelAdmission` 两条具名拒绝补 INFO（用户裁定 A） | `simos-actor/src/main/**`、`simos-army/src/main/**`、`simos-gov/src/main/**`、`simos-calendar/src/main/**`；`simos-app/src/main/**`（**仅**旧形态残扫文件）；`simos-economy/src/main/**`；`simos-sd/.../channel/ChannelAdmission.java`（仅新增日志） | L1/L2 已定稿的门面与来源表结构（除必要）、其余模块、测试、docs |
 | **L4** | **测试代理**：按 §9 判据补/扩 logging 测试 + 关键项变异自证 + 全仓 `clean verify` | 各模块 `src/test/**`、`simos-app/src/test/js/**`（如需） | 生产代码（发现实现缺日志时报回控制方，不自行改） |
 
 每个写代码批次的固定动作（§一.5/§三.0）：
@@ -370,7 +370,9 @@ LLM 决策回合 ── app.decision：origin=decision-turn / originKind=interac
 | 7 | 决策回合内工具调用的表项？ | app 用 `DECISION_TURN` + `tool=` 字段，不单开一项 | 控制方默认（用户未反对） |
 | 8 | 具名拒绝的级别？ | **一律 INFO**（用户原话：「不管啥，被拒绝都是一个必须明显记录的事件」） | 用户 2026-10-23 裁定 |
 | 9 | 既有 WARN 降级？ | **不接受**：L1 里的 **6 处** WARN→DEBUG 已全部恢复 WARN（复查又发现 2 处：`OPENING_SNAPSHOT_SKIPPED@NationOpeningSnapshot`、`LLM_CONFIG_MIGRATION_ROW_SKIPPED`） | 用户 2026-10-23 裁定 |
-| 11 | 批外发现的"拒绝类 DEBUG"？ | `HOUSEHOLD_STOCK_DEDUCTION_REJECTED`（`time/StockDeductionService`，不在 L1 的 16 文件清单内）按"被拒绝一律 INFO"应提级 ⇒ **记入领域批次（L2/L3 扫尾）清单**，本批不动 | 控制方处置（用户规则外推） |
+| 11 | 批外发现的"拒绝类 DEBUG"？ | `HOUSEHOLD_STOCK_DEDUCTION_REJECTED`（`time/StockDeductionService`）按"被拒绝一律 INFO"应提级 ⇒ 已并入 **L3 的 app 残扫** | 用户规则外推（L3 执行） |
+| 12 | `sd.ChannelAdmission` 的具名拒绝？ | **用户 2026-10-23 裁定 A**：在 sd 侧两条 `throw` 前各记一条 **INFO**（`SD_CHANNEL_ADMISSION_REJECTED`，origin=`sd-decision`，字段 actor/commandType/reason）；只加日志、不改判定 | 用户裁定 |
+| 13 | economy 已有 94 个发射点？ | **用户 2026-10-23 裁定：全量补 `origin`/`originKind`**（新建 `EconomyLogSource`），并入 L3 | 用户裁定 |
 | 10 | 工具面归属（app vs 各模块）？ | 用户设计意图＝工具归各模块 + 统一工具协议；**记入待办清单，不塞进日志批次** | 用户 2026-10-23 裁定 |
 
 **原问句（留痕）**
