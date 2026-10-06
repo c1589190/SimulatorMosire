@@ -25,11 +25,13 @@ import java.util.Optional;
  * {"unitId":"army-1","masterGov":"gov-central","role":"garrison"}
  * }</pre>
  *
- * <p>★ <b>载荷语义</b>：{@code masterGov} 可缺省（未认主子）；{@code role} 必填、非空白（词表后置，自由短名）。
+ * <p>★ <b>载荷语义</b>：{@code masterGov} 可缺省（未认主子）；{@code role} 必填、非空白（词表后置，自由短名）；
+ * {@code householdDuties} 与 {@code militaryPayPolicy} 都可缺省——<b>未给 ⇒ 保持既有配置/政策（不是清空）</b>， 给了 ⇒ 该组件整体替换（P4b
+ * 2026-10-15：否则一次 SetArmyFormation 会静默清掉军俸政策）。
  *
  * <p>★ <b>拒因</b>（由 {@link UnitOperations#setArmyFormation} / {@link ArmyFormation} 给出）：单位不存在；单位已带
- * {@code GovernmentFormation}（一单位至多一个标签，不静默替换）；{@code masterGov} 不存在 / 不是 GOV；{@code role} 空白。同类型重复设置 =
- * 整体替换（文档见操作面）。
+ * {@code GovernmentFormation}（一单位至多一个标签，不静默替换）；{@code masterGov} 不存在 / 不是 GOV；{@code role} 空白；政策自身或政策家户键
+ * ⊆ {@code Unit.households} 不成立。同类型重复设置 = 整体替换（文档见操作面）。
  *
  * <p>★ <b>目标声明</b>（{@link CommandTargets}）：按载荷点名的 unitId 判。本命令只写 unit 命名空间。
  */
@@ -56,6 +58,16 @@ public final class SetArmyFormationHandler implements CommandHandler, CommandTar
     return Map.of();
   }
 
+  /** 既有 ArmyFormation 的军俸政策（载荷未给 {@code militaryPayPolicy} 时的保持值）：不是 Army ⇒ disabled。 */
+  private static io.mosire.simos.unit.MilitaryPayPolicy existingArmyPayPolicy(
+      UnitState state, UnitId id) {
+    Unit unit = state.units().get(id);
+    if (unit != null && unit.module().orElse(null) instanceof ArmyFormation army) {
+      return army.militaryPayPolicy();
+    }
+    return io.mosire.simos.unit.MilitaryPayPolicy.disabled();
+  }
+
   @Override
   public HandlerOutcome handle(SimulationState state, String payloadJson) {
     Objects.requireNonNull(state, "state");
@@ -70,7 +82,12 @@ public final class SetArmyFormationHandler implements CommandHandler, CommandTar
       Map<io.mosire.simos.social.api.id.HouseholdId, MilitaryDutyOfHousehold> militaryDutiesOfHousehold =
           UnitPayloads.optionalMilitaryDuties(payload, "householdDuties")
               .orElseGet(() -> existingArmyDuties(snapshot.state(), id));
-      ArmyFormation formation = new ArmyFormation(masterGov, role, militaryDutiesOfHousehold);
+      // ★ P4b：militaryPayPolicy 同款——载荷缺席 ⇒ 保持既有政策（一次 SetArmyFormation 不得静默清掉军俸政策）。
+      io.mosire.simos.unit.MilitaryPayPolicy militaryPayPolicy =
+          UnitPayloads.optionalMilitaryPayPolicy(payload, "militaryPayPolicy")
+              .orElseGet(() -> existingArmyPayPolicy(snapshot.state(), id));
+      ArmyFormation formation =
+          new ArmyFormation(masterGov, role, militaryDutiesOfHousehold, militaryPayPolicy);
       UnitState next = UnitOperations.setArmyFormation(snapshot.state(), id, formation);
       return new HandlerOutcome.Applied(UnitChangeSet.between(snapshot.state(), next));
     } catch (IllegalArgumentException e) {

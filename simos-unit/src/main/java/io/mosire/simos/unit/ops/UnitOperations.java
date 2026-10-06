@@ -13,6 +13,7 @@ import io.mosire.simos.unit.CompositionEntry;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.Jurisdiction;
 import io.mosire.simos.unit.MilitaryDutyOfHousehold;
+import io.mosire.simos.unit.MilitaryPayPolicy;
 import io.mosire.simos.unit.Movement;
 import io.mosire.simos.unit.OfficePolicy;
 import io.mosire.simos.unit.RelativeOffset;
@@ -747,6 +748,39 @@ public final class UnitOperations {
               });
     }
     return withUnit(state, withModule(unit, Optional.of(formation)));
+  }
+
+  /**
+   * ★ <b>只换 {@code ArmyFormation.militaryPayPolicy}</b>（{@code unit.SetArmyPayPolicy} 的领域实现，P4b）：
+   * {@code masterGov}/{@code role}/{@code militaryDutiesOfHousehold} 原样带过，只把第四组件换成传入政策。
+   *
+   * <p>★ <b>拒因</b>：
+   *
+   * <ol>
+   *   <li>单位必须存在（{@link #require}）；
+   *   <li>单位必须带 {@link ArmyFormation}（无编制 / GOV 编制 ⇒ 具名拒——政策挂在 ArmyFormation 上，不凭空造编制）；
+   *   <li>政策自身不变量（排期、逐值 &gt; 0、至少一腿非空）由 {@link MilitaryPayPolicy} 构造期拒；政策家户键 ⊆
+   *       {@code Unit.households} 由 {@link UnitState} 构造期拒（本方法不重复实现）。
+   * </ol>
+   *
+   * <p>★ 纯函数；结果单位走 {@link #withModule}，18 个组件一个不丢；变更集仍由 {@code UnitChangeSet.between} 派生。
+   */
+  public static UnitState setArmyPayPolicy(
+      UnitState state, UnitId id, MilitaryPayPolicy militaryPayPolicy) {
+    Objects.requireNonNull(militaryPayPolicy, "militaryPayPolicy");
+    Unit unit = require(state, id);
+    UnitModule module = unit.module().orElse(null);
+    if (!(module instanceof ArmyFormation armyFormation)) {
+      throw new IllegalArgumentException(
+          "单位 " + id + " 没有 ArmyFormation（军俸政策只挂在 ArmyFormation 上；请先用 unit.SetArmyFormation 立编制）");
+    }
+    ArmyFormation replacement =
+        new ArmyFormation(
+            armyFormation.masterGov(),
+            armyFormation.role(),
+            armyFormation.militaryDutiesOfHousehold(),
+            militaryPayPolicy);
+    return withUnit(state, withModule(unit, Optional.of(replacement)));
   }
 
   // ── GOV 编制编辑四件（阶段 10b-i，2026-10-01） ──────────────────

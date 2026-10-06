@@ -119,7 +119,7 @@ P4 经济通用“周期家户库存扣增” + Unit 决策人内部分摊规则
 ## 5. 未做清单（按优先级）
 
 > **2026-10-14 进度**：Unit 对接 P1.0–P1.3、P2 战斗伤亡、P3 UNIT 家户经济行、P4a 通用周期扣增
-> 均已完成并推送（提交见主计划 §7.3 进度块）。当前唯一未做的大块 = P4b（Unit 政策/分摊/工具/白名单）；
+> 均已完成并推送（提交见主计划 §7.3 进度块）。P4b（ArmyFormation 军俸政策 + 内部分摊 + P4a 桥接）已完成；剩余 P4c 工具端/白名单/军俸 FlowRow 维度；
 > 另外 `GovSelectExaminees`/`GovDispatchTeam`/`SpawnArmy` 仍 plan 级 fail-closed，测试迁移仍后置。
 
 1. ~~P0 `ModeMigrationSettlement` → Social 工单 outbox~~ ✅ 2026-10-10 已关闭；

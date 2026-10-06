@@ -300,6 +300,40 @@ public record UnitState(Map<UnitId, Unit> units, Map<CommandChainId, CommandChai
                   + "（先 unit.SetUnitHouseholds / social.SetHouseholdLocation 把家户编入本单位）");
         }
       }
+      // ★★ P4b：军俸政策的三张表键必须落在本单位 households 里——"给不存在于本单位的人发钱"是配置与人口关系脱钩，
+      //   与 householdDuties 同款具名拒；本判据只在构造期一处（命令/工具/旧档/夹具都绕不过）。
+      requirePolicyHouseholds(
+          unit,
+          contained,
+          army.militaryPayPolicy().grainPerHouseholdPerCycle(),
+          "grainPerHouseholdPerCycle");
+      requirePolicyHouseholds(
+          unit,
+          contained,
+          army.militaryPayPolicy().clothPerHouseholdPerCycle(),
+          "clothPerHouseholdPerCycle");
+      requirePolicyHouseholds(
+          unit,
+          contained,
+          army.militaryPayPolicy().moneyPerHouseholdPerCycle(),
+          "moneyPerHouseholdPerCycle");
+    }
+  }
+
+  /** P4b：军俸政策单张表的键必须 ⊆ 本单位 {@code households()}（违者具名给出字段与家户）。 */
+  private static void requirePolicyHouseholds(
+      Unit unit, Set<HouseholdId> contained, Map<HouseholdId, Long> amounts, String field) {
+    for (HouseholdId household : amounts.keySet()) {
+      if (!contained.contains(household)) {
+        throw new IllegalArgumentException(
+            "ArmyFormation.militaryPayPolicy."
+                + field
+                + " 的家户不在单位 "
+                + unit.id()
+                + " 的 households 列表里: "
+                + household
+                + "（先 unit.SetUnitHouseholds / social.SetHouseholdLocation 把家户编入本单位）");
+      }
     }
   }
 

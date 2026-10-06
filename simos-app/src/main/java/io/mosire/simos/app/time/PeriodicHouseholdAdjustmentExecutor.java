@@ -3,6 +3,7 @@ package io.mosire.simos.app.time;
 import io.mosire.simos.actor.model.AvailableStock;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
+import io.mosire.simos.economy.EconomyData;
 import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.CurrencyId;
@@ -12,13 +13,16 @@ import io.mosire.simos.economy.api.stock.PeriodicHouseholdAdjustmentId;
 import io.mosire.simos.economy.time.AccountSession;
 import io.mosire.simos.social.api.id.HouseholdId;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import org.slf4j.Logger;
 
 /**
@@ -56,7 +60,8 @@ public final class PeriodicHouseholdAdjustmentExecutor {
   private PeriodicHouseholdAdjustmentExecutor() {}
 
   /**
-   * 执行 {@code day} 当天所有到期规则（无到期规则 ⇒ 直接返回空读数、不写日志、不动账户）。
+   * 旧签名（兼容，P4a 调用点/夹具照旧）：只执行 {@code EconomyData.periodicAdjustments} 持久规则表；语义逐字保留，
+   * 现委托给“无额外瞬态规则”的内部同一实现。
    *
    * @param rules 规则表（{@code EconomyData.periodicAdjustments()}；键 == 值内 id 已由状态构造期把守）
    * @param accounts 唯一账户会话（协调器线程；本方法就地调 {@link StockDeductionService#deduct}）
@@ -69,8 +74,62 @@ public final class PeriodicHouseholdAdjustmentExecutor {
       long day) {
     Objects.requireNonNull(rules, "rules");
     Objects.requireNonNull(accounts, "accounts");
+    return applyDueRules(rules.values(), accounts, day);
+  }
+
+  /**
+   * ★★ <b>P4b 新入口：额外瞬态规则</b>（军俸政策每日派生的规则）与 {@code economy} 的持久规则合并后按同一套 due/部分支付语义执行。
+   *
+   * <p>★★ <b>同 id 冲突策略 = 持久规则优先</b>：{@code extraRules} 里与持久规则同 id 的条目被<b>忽略（不抛）</b>。理由：
+   * 持久规则是命令面显式注册的权威；extraRules 是每天重算的派生件（军俸桥接）， 让派生件覆盖会把 GM 的显式规则在某个 unitId 撞名时悄悄改写。忽略是静默的，但方向
+   * fail-closed（保留显式权威），且派生的同名规则下一轮仍会生成、不存在“丢一条政策”的累积漂移。 ★ {@code extraRules} <b>内部</b>重复
+   * id 是编程错误 ⇒ 具名 {@link IllegalArgumentException}（同一份推导不该生成两条同 id 规则）。
+   *
+   * <p>★ 本方法只读 {@code economy} 与 {@code extraRules}，不把瞬态规则写进 {@code EconomyData}；账户落账仍唯一走
+   * {@link StockDeductionService}。
+   *
+   * @param economy 经济状态（持久规则表 + 元信息；{@code periodicAdjustments} 的键 == 值内 id 由状态构造期把守）
+   * @param extraRules 额外瞬态规则（如 {@code MilitaryPayRuleBridge.derive(...)} 的产物；可为空集合，不得含 null）
+   * @param accounts 唯一账户会话（协调器线程；本方法就地调 {@link StockDeductionService#deduct}）
+   * @param day 绝对世界日（与 {@code startsOnDay}/{@code phaseDay} 同量纲）
+   * @return 当天读数（持久 + 瞬态合并后的汇总 + 逐规则；空规则 ⇒ 全 0）
+   */
+  public static Report applyDue(
+      EconomyData economy,
+      Collection<HouseholdPeriodicAdjustment> extraRules,
+      AccountSession accounts,
+      long day) {
+    Objects.requireNonNull(economy, "economy");
+    Objects.requireNonNull(extraRules, "extraRules");
+    Objects.requireNonNull(accounts, "accounts");
+    Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> merged = new LinkedHashMap<>();
+    for (HouseholdPeriodicAdjustment rule : economy.periodicAdjustments().values()) {
+      if (rule != null) {
+        merged.put(rule.id(), rule);
+      }
+    }
+    Set<PeriodicHouseholdAdjustmentId> extraIds = new LinkedHashSet<>();
+    for (HouseholdPeriodicAdjustment extra : extraRules) {
+      Objects.requireNonNull(extra, "extraRules 不得含 null");
+      if (!extraIds.add(extra.id())) {
+        throw new IllegalArgumentException("extraRules 出现重复 id（同一份推导不得生成两条同 id 规则）: " + extra.id());
+      }
+      // ★ 持久规则优先：显式注册的权威不被派生件覆盖（见 javadoc）。
+      if (!merged.containsKey(extra.id())) {
+        merged.put(extra.id(), extra);
+      }
+    }
+    return applyDueRules(merged.values(), accounts, day);
+  }
+
+  /**
+   * 唯一执行体：把给定规则集合里当天到期者按 id 升序执行。旧/新两个公开入口都委托到这里 ⇒ due、部分支付、shortfall、gap
+   * 语义只有一份实现（“其余语义逐字复用”）。
+   */
+  private static Report applyDueRules(
+      Collection<HouseholdPeriodicAdjustment> rules, AccountSession accounts, long day) {
     List<HouseholdPeriodicAdjustment> due = new ArrayList<>();
-    for (HouseholdPeriodicAdjustment rule : rules.values()) {
+    for (HouseholdPeriodicAdjustment rule : rules) {
       if (rule != null && isDue(rule, day)) {
         due.add(rule);
       }

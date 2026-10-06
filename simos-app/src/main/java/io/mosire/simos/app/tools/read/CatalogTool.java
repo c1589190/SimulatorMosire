@@ -143,12 +143,24 @@ public final class CatalogTool implements AgentTool {
           Map.entry(
               "unit.SetArmyFormation",
               "unitId, masterGov?, role,"
-                  + " householdDuties?[{household,kind(SOLDIER|NCO|OFFICER|COMMANDER),appointment,commandOf?}]"
+                  + " householdDuties?[{household,kind(SOLDIER|NCO|OFFICER|COMMANDER),appointment,commandOf?}],"
+                  + " militaryPayPolicy?{periodDays,phaseDay,startsOnDay,expiresOnDay?,"
+                  + "grainPerHouseholdPerCycle?{家户:整数},clothPerHouseholdPerCycle?,moneyPerHouseholdPerCycle?,enabled?}"
                   + "（★ S3b：householdDuties 是以 HouseholdId 为键的军官/军职家户具名配置"
                   + "（键必须在本单位 households 里）；缺省 = 保持既有配置；"
+                  + "★ P4b：militaryPayPolicy 缺省 = 保持既有军俸政策、给了 = 整体替换同一个组件；"
                   + "role 必填非空白；masterGov 缺省 = 未认主子，给了必须存在且带 GovernmentFormation；"
                   + "既有 GovernmentFormation ⇒ 具名拒，一单位至多一个编制标签、不静默替换；"
-                  + "同类型重复设置 = 整体替换）"),
+                  + "同类型重复设置 = 整体替换（未提及的 householdDuties/militaryPayPolicy 保持原值））"),
+          Map.entry(
+              "unit.SetArmyPayPolicy",
+              "unitId, periodDays(>0), phaseDay([0,periodDays)), startsOnDay(≥0), expiresOnDay?(null=永久),"
+                  + " grainPerHouseholdPerCycle?{家户 id:整数}, clothPerHouseholdPerCycle?,"
+                  + " moneyPerHouseholdPerCycle?, enabled?"
+                  + "（★ P4b：三张逐家户表缺省 = 空表；三表全空 = disabled()（允许，表示停发；"
+                  + "此时排期字段可整组省略，最短停发载荷只给 unitId）；逐值必须 > 0、"
+                  + "列出的家户必须在 Unit.households 里，否则域层具名拒；"
+                  + "可选 enabled=true + 三表全空 ⇒ 具名拒；单位必须存在且带 ArmyFormation）"),
           Map.entry(
               "unit.SetGovPolicy",
               "unitId, grainPerStaffPerTick?, clothPerStaffPerCycle?, moneyPerStaffPerTick?,"

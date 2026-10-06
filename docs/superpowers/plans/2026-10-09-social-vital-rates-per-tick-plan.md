@@ -276,7 +276,7 @@ hh-1_1-rural-rich_peasant     Social 31  Economy 28
 > （`0fded9d2`）、P2 战斗伤亡回写 Social（`d1b2ba17`）、P4a 通用周期规则表 + 无状态到期执行器
 > （`b663b357`）均已完成并推送。施工文档：`2026-10-11-unit-integration-p1.md`、
 > `2026-10-12-unit-integration-p3.md`、`2026-10-13-unit-integration-p2.md`、
-> `2026-10-14-unit-integration-p4a.md`。剩余：P4b（Unit MilitaryPayPolicy/军职分摊/GM 工具/决策人白名单）、
+> `2026-10-14-unit-integration-p4a.md`。P4b 军俸政策/内部分摊（`HEAD P4b`，见 `2026-10-15-unit-integration-p4b.md`）已完成；剩余：P4c（GM/决策人窄工具/白名单/军俸 FlowRow 维度）、
 > GovSelectExaminees/GovDispatchTeam/SpawnArmy 的完整接线、测试迁移与 clean verify。以下原文保留。
 
 1. **征兵/退伍：组合工具迁移到 Social 工单**

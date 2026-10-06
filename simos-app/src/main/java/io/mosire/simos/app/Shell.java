@@ -174,6 +174,7 @@ import io.mosire.simos.unit.spi.RenameUnitHandler;
 import io.mosire.simos.unit.spi.ReparentSubtreeHandler;
 import io.mosire.simos.unit.spi.ReparentUnitHandler;
 import io.mosire.simos.unit.spi.SetArmyFormationHandler;
+import io.mosire.simos.unit.spi.SetArmyPayPolicyHandler;
 import io.mosire.simos.unit.spi.SetCompositionHandler;
 import io.mosire.simos.unit.spi.SetFormationOffsetHandler;
 import io.mosire.simos.unit.spi.SetGovernmentFormationHandler;
@@ -554,6 +555,8 @@ public final class Shell implements AutoCloseable {
                 //   ⇒ 与既有 unit 命令同待遇（仍可嵌入决策人令；"只在 GM 桶"说的是配套窄工具）。──
                 new SetGovernmentFormationHandler(),
                 new SetArmyFormationHandler(),
+                // ── P4b（2026-10-15）：军俸政策整体替换（非 GmOnly；unit 域日常政策命令，未来决策人可嵌令）。──
+                new SetArmyPayPolicyHandler(),
                 // ── 阶段 10b-i（2026-10-01）：GOV 政策 / 层级 / 入编 / 离编四条 unit 命令。全部非 GmOnly
                 //   ⇒ 与既有 unit 命令同待遇（可嵌入决策令）。★ Recruit/Dismiss 有意**不配** GM 窄工具
                 //   （那会变成"凭空造人/跳过支付"的直通口）：它们只作为命令，由 10b-ii 的配套工具批/决策令批使用。──

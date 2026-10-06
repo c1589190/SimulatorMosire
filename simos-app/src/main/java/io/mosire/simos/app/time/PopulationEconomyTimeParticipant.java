@@ -486,8 +486,23 @@ public final class PopulationEconomyTimeParticipant implements TimeParticipant {
           //   规则表来自本推进的只读基态（命令只写规则、不写账户）；执行器按绝对世界日无状态到期、逐腿部分支付，
           //   与 JurisdictionDailyTax/GovernmentUpkeepOracle 共用同一个 AccountSession 与 TAX_AND_UPKEEP 阶段。
           //   ★ 没有到期规则时执行器完全 no-op（不打日志、不动账户）。
+          // ★★ P4b：军俸政策 → P4a 规则的每日派生（不把政策写进 EconomyData；政策是唯一权威，规则是当日现算的瞬态件）。
+          //   次序：日税（收入）→ GovDaily（支出）→ 军俸派生 + 持久/瞬态合并执行；执行器同一条部分支付路径，没有第二套扣账。
+          MilitaryPayRuleBridge.Report militaryPayReport =
+              units == null
+                  ? MilitaryPayRuleBridge.Report.empty()
+                  : MilitaryPayRuleBridge.deriveReport(units, currentSocial, economy, day);
+          if (AppLog.time().isDebugEnabled()) {
+            AppLog.time()
+                .debug(
+                    "event=MILITARY_PAY_BRIDGE units={} policies={} rules={} gaps={}",
+                    militaryPayReport.units(),
+                    militaryPayReport.policies(),
+                    militaryPayReport.rules().size(),
+                    militaryPayReport.gaps().size());
+          }
           PeriodicHouseholdAdjustmentExecutor.applyDue(
-              economy.periodicAdjustments(), stepper.accounts(), day);
+              economy, militaryPayReport.rules(), stepper.accounts(), day);
 
           // ★★ M2.7：把"最近一轮市场报告"投递给读口（进程内、不落盘、只在同一 tick 内可信；见 MarketReportFeed 的类注）。
           MarketReportFeed.publish(mapId, stepper.lastMarketReport(), day);
