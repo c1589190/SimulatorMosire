@@ -111,11 +111,15 @@ LOG.info("event=COMMAND_BATCH_EXECUTED commands={} modules={}", pending.size(), 
 
 ### 4.2 级别语义（照 AGENTS §一.9，不得自行加档）
 
-- **INFO**：生命周期与「这一轮发生了什么」——进入/结束、写口成功、具名计数，**以及一切「被拒绝」事件**
+- **INFO**：生命周期与「这一轮发生了什么」——进入/结束、写口成功、具名计数，**以及一切「业务拒绝」**
   （用户 2026-10-23：「被拒绝肯定走 INFO 啊，不管啥，被拒绝都是一个必须明显记录的事件」）。
+  业务拒绝 = 用户/工具/命令的**请求不合规**（权限不够、参数非法、目标不存在、状态不允许…）。
+- **ERROR（不降级）**：**契约违反 / 跨切片一致性故障** —— 例如负人口、Social↔Economy 投影对不上、
+  Social 家户键为 null、内部不变量破裂（gov 编制引用不存在的单位）。用户 2026-10-23 裁定：
+  **这类保持 ERROR**（"世界账本破裂"不是业务拒绝；判据与出处见 §12 #14）。
 - **DEBUG**：关键判据与「为什么」——池子读数、额度、开闭市理由、跳过原因、空结果/不可用这类诊断。
 - **TRACE**：逐笔明细——每一笔转移/每个成交或未成交槽/每次移动/逐户出生死亡/每条战斗损失。
-- WARN/ERROR 只用于异常与失败；**既有 WARN 一律不降级**（用户 2026-10-23：「都不接受降级，继续 WARN」）；
+- WARN 只用于异常与失败的回退/跳过；**既有 WARN 一律不降级**（用户 2026-10-23：「都不接受降级，继续 WARN」）；
   **不得打印载荷明文**。
 
 ### 4.3 硬纪律
@@ -373,6 +377,7 @@ LLM 决策回合 ── app.decision：origin=decision-turn / originKind=interac
 | 11 | 批外发现的"拒绝类 DEBUG"？ | `HOUSEHOLD_STOCK_DEDUCTION_REJECTED`（`time/StockDeductionService`）按"被拒绝一律 INFO"应提级 ⇒ 已并入 **L3 的 app 残扫** | 用户规则外推（L3 执行） |
 | 12 | `sd.ChannelAdmission` 的具名拒绝？ | **用户 2026-10-23 裁定 A**：在 sd 侧两条 `throw` 前各记一条 **INFO**（`SD_CHANNEL_ADMISSION_REJECTED`，origin=`sd-decision`，字段 actor/commandType/reason）；只加日志、不改判定 | 用户裁定 |
 | 13 | economy 已有 94 个发射点？ | **用户 2026-10-23 裁定：全量补 `origin`/`originKind`**（新建 `EconomyLogSource`），并入 L3 | 用户裁定 |
+| 14 | 跨切片一致性故障的日志档位？ | **保持 ERROR、不降级**（用户 2026-10-23 听完政治经济学语义后裁定）：`HOUSEHOLD_NATURAL_NEEDS_REJECTED`（投影对不上/坏键/坏需求表）、`HOUSEHOLD_POPULATION_DELTA_REJECTED`（投影对不上/坏 delta/**负人口**）——这是"世界账本破裂"，不是业务拒绝；业务拒绝才是 INFO | 用户裁定 |
 | 10 | 工具面归属（app vs 各模块）？ | 用户设计意图＝工具归各模块 + 统一工具协议；**记入待办清单，不塞进日志批次** | 用户 2026-10-23 裁定 |
 
 **原问句（留痕）**
