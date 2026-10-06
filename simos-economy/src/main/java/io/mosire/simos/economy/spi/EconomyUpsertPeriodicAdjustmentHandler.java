@@ -104,6 +104,13 @@ public final class EconomyUpsertPeriodicAdjustmentHandler
                   previous != null));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_UPSERT_PERIODIC_ADJUSTMENT_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

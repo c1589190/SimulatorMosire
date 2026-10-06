@@ -158,6 +158,16 @@ public final class GovCodec implements ModuleCodec, ModuleDiffer {
    */
   private static GovSnapshot asGovSnapshot(Snapshot snapshot) {
     if (!(snapshot instanceof GovSnapshot govSnapshot)) {
+      // ★ §4.2：切片类型错 = 契约违反 ⇒ ERROR，不降级（reason=wrong-slice-type）。只报类型名，不记载荷。
+      EventLog.channel(LOG)
+          .error(
+              LogEvent.of(
+                  "GOV_CODEC_SLICE_REJECTED",
+                  GovLogSource.GOV_CODEC,
+                  "reason",
+                  "wrong-slice-type",
+                  "slice",
+                  snapshot == null ? "null" : snapshot.getClass().getName()));
       throw new IllegalStateException(
           "gov codec 的切片不是 GovSnapshot: "
               + (snapshot == null ? "null" : snapshot.getClass().getName()));

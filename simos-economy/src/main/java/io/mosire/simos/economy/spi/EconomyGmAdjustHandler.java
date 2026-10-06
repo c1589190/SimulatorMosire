@@ -2,7 +2,11 @@ package io.mosire.simos.economy.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.change.EconomyChangeSet;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -10,6 +14,7 @@ import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.List;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * ★★ <b>{@code economy.GmAdjust}：GM 经济调整的窄命令</b>。载荷：
@@ -70,6 +75,8 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
 
   /** 命令类型（唯一拼写点：工具、catalog 提示与 Shell 注册都从这里取/对齐）。 */
   public static final String TYPE = "economy.GmAdjust";
+
+  private static final Logger LOG = EconomyLog.command();
 
   @Override
   public String type() {
@@ -238,19 +245,59 @@ public final class EconomyGmAdjustHandler implements CommandHandler, CommandTarg
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     EconomyData base = EconomySnapshots.of(state).data(); // 装配故障当场炸，不走拒绝路径
+    String adjustment = "-";
     try {
       JsonNode payload = EconomyCommandPayloads.parseObject(TYPE, payloadJson);
-      String adjustment = EconomyCommandPayloads.requireText(TYPE, payload, "adjustment");
+      adjustment = EconomyCommandPayloads.requireText(TYPE, payload, "adjustment");
       String reason = EconomyCommandPayloads.requireText(TYPE, payload, "reason");
       JsonNode parameters = payload.get("parameters");
       if (parameters == null || !parameters.isObject()) {
         throw new IllegalArgumentException(TYPE + " 的字段 parameters 必须是 JSON 对象: " + parameters);
       }
       long day = state.meta().timestamp().tick();
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "ECONOMY_GM_ADJUST_CRITERIA",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "adjustment",
+                    adjustment,
+                    "day",
+                    day,
+                    "parameterFields",
+                    parameters.size(),
+                    "reasonLength",
+                    reason == null ? 0 : reason.length()));
+      }
       EconomyChangeSet changeSet =
           EconomyGmAdjustments.project(base, adjustment, parameters, reason, day).changeSet();
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_GM_ADJUST_APPLIED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "adjustment",
+                  adjustment,
+                  "day",
+                  day,
+                  "parameterFields",
+                  parameters.size(),
+                  "isEmpty",
+                  changeSet.isEmpty(),
+                  "reasonLength",
+                  reason == null ? 0 : reason.length()));
       return new HandlerOutcome.Applied(changeSet);
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_GM_ADJUST_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "adjustment",
+                  adjustment,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

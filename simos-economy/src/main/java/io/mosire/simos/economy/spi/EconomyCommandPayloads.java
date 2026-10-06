@@ -43,6 +43,33 @@ final class EconomyCommandPayloads {
     }
   }
 
+  /**
+   * ★ <b>日志安全的拒绝理由</b>（照 L3 的 {@code logReason} 形态，plan §4.3）：命令/守卫消息为方便调用方排查会回显字段值或整段载荷，
+   * 但日志纪律禁止载荷明文与 JSON 原文（plan §4.3）。这里只保留可读前缀 —— 截到第一个 JSON 起始符/换行；{@code payload …}
+   * 这一类原始文本消息再截到冒号。截断只影响日志文本，不影响异常本身，也不改 {@code Rejected} 的理由。
+   */
+  static String logReason(String message) {
+    if (message == null || message.isBlank()) {
+      return "unknown";
+    }
+    String text = message.strip();
+    int cut = text.length();
+    for (char marker : new char[] {'{', '[', '\n', '\r'}) {
+      int at = text.indexOf(marker);
+      if (at >= 0 && at < cut) {
+        cut = at;
+      }
+    }
+    if (text.startsWith("payload ")) {
+      int colon = text.indexOf(':');
+      if (colon >= 0 && colon < cut) {
+        cut = colon;
+      }
+    }
+    String reason = text.substring(0, cut).strip();
+    return reason.isEmpty() ? "unknown" : reason;
+  }
+
   /** 必填非空文本。 */
   static String requireText(String command, JsonNode payload, String field) {
     JsonNode node = payload.get(field);

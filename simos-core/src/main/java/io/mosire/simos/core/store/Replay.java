@@ -2,12 +2,17 @@ package io.mosire.simos.core.store;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.mosire.simos.core.CoreLog;
+import io.mosire.simos.core.CoreLogSource;
 import io.mosire.simos.core.state.WorldChangeSet;
 import io.mosire.simos.core.timeline.RevisionRow;
 import io.mosire.simos.core.timeline.Timeline;
 import io.mosire.simos.util.info.InMemoryInfoSystem;
 import io.mosire.simos.util.info.InfoSystem;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogChannel;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.ModuleCodec;
 import io.mosire.simos.util.state.ChangeSet;
 import io.mosire.simos.util.state.SimulationState;
@@ -61,6 +66,9 @@ public final class Replay {
 
   /** 只服务 {@code info} 段——它是 util 的类型（裁定 38 在 util 装配点上补了 {@code Address} 的键绑定）。 */
   private static final ObjectMapper INFO_MAPPER = SimosObjectMapper.create();
+
+  /** 重放解码失败事件的发射通道（分类 = {@link CoreLog#store()}，来源 = {@link CoreLogSource#CHECKPOINT}）。 */
+  private static final LogChannel STORE = EventLog.channel(CoreLog.store());
 
   private final Timeline timeline;
   private final CheckpointStore checkpoints;
@@ -210,6 +218,7 @@ public final class Replay {
       String namespace = entry.getKey();
       ModuleCodec codec = codecs.get(namespace);
       if (codec == null) {
+        logDecodeFailed(namespace, "missing-codec", IllegalStateException.class.getSimpleName());
         throw new IllegalStateException("变更集里的 namespace 没有对应 codec（装配缺项）: " + namespace);
       }
       Snapshot slice =
@@ -226,14 +235,44 @@ public final class Replay {
     Envelope.Decoded decoded = Envelope.decode(envelopeJson);
     Map<String, Snapshot> modules = new LinkedHashMap<>();
     for (Map.Entry<String, String> entry : decoded.modules().entrySet()) {
-      ModuleCodec codec = codecs.get(entry.getKey());
+      String namespace = entry.getKey();
+      ModuleCodec codec = codecs.get(namespace);
       if (codec == null) {
+        logDecodeFailed(namespace, "missing-codec", IllegalStateException.class.getSimpleName());
         throw new IllegalStateException(
-            "checkpoint 信封里有未装配 codec 的模块（信封与本实例的 codec 表不同源）: " + entry.getKey());
+            "checkpoint 信封里有未装配 codec 的模块（信封与本实例的 codec 表不同源）: " + namespace);
       }
-      modules.put(entry.getKey(), codec.decodeSnapshot(entry.getValue()));
+      modules.put(namespace, decodeModuleSnapshot(namespace, codec, entry.getValue()));
     }
     return new SimulationState(decoded.meta(), modules, readInfo(decoded.infoJson()));
+  }
+
+  /**
+   * 模块快照解码的失败口：codec 的 {@code IllegalStateException}（如"JSON 解码失败"）是**契约违反**（§4.2 ⇒ ERROR），
+   * 不是业务拒绝。记一条 ERROR 后**原样**再抛（不改异常类型/文案），日志失败也不改变结局。
+   */
+  private Snapshot decodeModuleSnapshot(String namespace, ModuleCodec codec, String json) {
+    try {
+      return codec.decodeSnapshot(json);
+    } catch (IllegalStateException e) {
+      // ★ 不记异常全文/payload：只记模块名、固定档与异常类名。
+      logDecodeFailed(namespace, "codec-decode-failed", e.getClass().getSimpleName());
+      throw e;
+    }
+  }
+
+  /** 解码失败的唯一发射点（事件名/来源/字段档位只在这里拼）。 */
+  private static void logDecodeFailed(String namespace, String reason, String error) {
+    STORE.error(
+        LogEvent.of(
+            "REPLAY_DECODE_FAILED",
+            CoreLogSource.CHECKPOINT,
+            "module",
+            namespace,
+            "reason",
+            reason,
+            "error",
+            error));
   }
 
   /**

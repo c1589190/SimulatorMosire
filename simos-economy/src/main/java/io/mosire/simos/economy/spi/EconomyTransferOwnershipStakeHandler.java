@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.api.actor.ActorRef;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.PledgeId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
@@ -13,12 +15,15 @@ import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.Pledge;
 import io.mosire.simos.economy.time.OwnershipStakeBook;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code economy.TransferAssetShare}（R4-B.3b）：GM/事件用的<b>实物资产份额拆分/转移</b>命令。
@@ -65,6 +70,8 @@ public final class EconomyTransferOwnershipStakeHandler implements CommandHandle
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
+  private static final Logger LOG = EconomyLog.command();
+
   @Override
   public String type() {
     return COMMAND;
@@ -84,6 +91,15 @@ public final class EconomyTransferOwnershipStakeHandler implements CommandHandle
       AssetShareId shareId = AssetShareId.parse(requireText(payload, "share"));
       OwnershipStake share = base.assetShares().get(shareId);
       if (share == null) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_TRANSFER_ASSET_SHARE_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "unknown-share",
+                    "share",
+                    shareId.value()));
         return new HandlerOutcome.Rejected("资产份额不存在: " + shareId.value());
       }
       long originalQuantity = share.quantity();
@@ -92,10 +108,34 @@ public final class EconomyTransferOwnershipStakeHandler implements CommandHandle
               ? requireLong(payload.get("quantity"), "quantity")
               : originalQuantity;
       if (quantity <= 0L) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_TRANSFER_ASSET_SHARE_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "non-positive-quantity",
+                    "share",
+                    shareId.value(),
+                    "quantity",
+                    quantity));
         return new HandlerOutcome.Rejected(
             "quantity 必须 > 0（不接受零/负拆分；要清空请把剩余量整条转给新主体）: " + quantity);
       }
       if (quantity > originalQuantity) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_TRANSFER_ASSET_SHARE_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "quantity-over-share",
+                    "share",
+                    shareId.value(),
+                    "quantity",
+                    quantity,
+                    "originalQuantity",
+                    originalQuantity));
         return new HandlerOutcome.Rejected(
             "quantity 不得超过原份额 " + originalQuantity + ": " + quantity);
       }
@@ -105,8 +145,38 @@ public final class EconomyTransferOwnershipStakeHandler implements CommandHandle
       if (toOwner.equals(share.owner())
           && toOperator.equals(share.operator())
           && kind == share.kind()) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_TRANSFER_ASSET_SHARE_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "no-op-transfer",
+                    "share",
+                    shareId.value()));
         return new HandlerOutcome.Rejected(
             "toOwner/toOperator/kind 至少一项必须与现值不同（否则不产生任何转移）: share=" + shareId.value());
+      }
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "ECONOMY_TRANSFER_ASSET_SHARE_CRITERIA",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "share",
+                    shareId.value(),
+                    "quantity",
+                    quantity,
+                    "originalQuantity",
+                    originalQuantity,
+                    "fullTransfer",
+                    quantity == originalQuantity,
+                    "ownerChanged",
+                    !toOwner.equals(share.owner()),
+                    "operatorChanged",
+                    !toOperator.equals(share.operator()),
+                    "kindChanged",
+                    kind != share.kind()));
       }
       Map<AssetShareId, OwnershipStake> updated = new LinkedHashMap<>(base.assetShares());
       // ★ 2026-10-09：质押表也要可写 —— ACTIVE 质押按比例跟到新份额（OwnershipStakeBook 就地写）。
@@ -123,12 +193,57 @@ public final class EconomyTransferOwnershipStakeHandler implements CommandHandle
             kind);
       } catch (IllegalArgumentException e) {
         // ★ 写口的全量校验失败 ⇒ 输入表未被改动，折成命令拒绝（计划 §4：不产生半截 revision）。
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_TRANSFER_ASSET_SHARE_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "writer-rejected",
+                    "share",
+                    shareId.value(),
+                    "quantity",
+                    quantity,
+                    "detail",
+                    EconomyCommandPayloads.logReason(e.getMessage())));
         return new HandlerOutcome.Rejected(e.getMessage());
       }
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_TRANSFER_ASSET_SHARE_APPLIED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "share",
+                  shareId.value(),
+                  "quantity",
+                  quantity,
+                  "originalQuantity",
+                  originalQuantity,
+                  "toOwner",
+                  toOwner.toString(),
+                  "toOperator",
+                  toOperator.toString(),
+                  "kind",
+                  kind.name(),
+                  "sharesBefore",
+                  base.assetShares().size(),
+                  "sharesAfter",
+                  updated.size(),
+                  "pledgesBefore",
+                  base.pledges().size(),
+                  "pledgesAfter",
+                  updatedPledges.size()));
       return new HandlerOutcome.Applied(
           EconomyChangeSet.between(
               base, base.withOwnershipStakes(updated).withPledges(updatedPledges)));
     } catch (IllegalArgumentException | JsonProcessingException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_TRANSFER_ASSET_SHARE_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

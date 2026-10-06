@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
  *   <tr><td>{@link #enterprise()}</td><td>{@code .organization}</td><td>自动生产组织建立、租佃拆分、经营者归属</td></tr>
  *   <tr><td>{@link #entry()}</td><td>{@code .entry}</td><td>候选预设进入/拒绝（0-entry）</td></tr>
  *   <tr><td>{@link #population()}</td><td>{@code .population}</td><td>出生/死亡/人口回写/劳动缩放</td></tr>
+ *   <tr><td>{@link #command()}</td><td>{@code .command}</td><td>经济写命令处理：登记/设参/调整/候选进入/借贷（命令面）</td></tr>
  *   <tr><td>{@link #trace()}</td><td>{@code .trace}</td><td><b>逐笔原始事件</b>：转移、成交、订单、债务/迁移的逐条明细</td></tr>
  * </table>
  *
@@ -55,6 +56,7 @@ public final class EconomyLog {
   public static final String ORGANIZATION_LOGGER_NAME = ROOT_LOGGER_NAME + ".organization";
   public static final String ENTRY_LOGGER_NAME = ROOT_LOGGER_NAME + ".entry";
   public static final String POPULATION_LOGGER_NAME = ROOT_LOGGER_NAME + ".population";
+  public static final String COMMAND_LOGGER_NAME = ROOT_LOGGER_NAME + ".command";
   public static final String TRACE_LOGGER_NAME = ROOT_LOGGER_NAME + ".trace";
 
   private static final Logger SETTLEMENT = LoggerFactory.getLogger(SETTLEMENT_LOGGER_NAME);
@@ -64,6 +66,7 @@ public final class EconomyLog {
   private static final Logger ORGANIZATION = LoggerFactory.getLogger(ORGANIZATION_LOGGER_NAME);
   private static final Logger ENTRY = LoggerFactory.getLogger(ENTRY_LOGGER_NAME);
   private static final Logger POPULATION = LoggerFactory.getLogger(POPULATION_LOGGER_NAME);
+  private static final Logger COMMAND = LoggerFactory.getLogger(COMMAND_LOGGER_NAME);
   private static final Logger TRACE = LoggerFactory.getLogger(TRACE_LOGGER_NAME);
 
   private EconomyLog() {}
@@ -101,6 +104,11 @@ public final class EconomyLog {
   /** 人口：出生/死亡/人口回写/劳动缩放。 */
   public static Logger population() {
     return POPULATION;
+  }
+
+  /** 经济写命令处理：登记/设参/调整/候选进入/借贷（命令面，来源 = {@code economy-command}）。 */
+  public static Logger command() {
+    return COMMAND;
   }
 
   /** 逐笔原始事件（转移/成交槽/债务变动/迁移 move）。 */

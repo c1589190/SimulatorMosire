@@ -2,6 +2,7 @@ package io.mosire.simos.economy.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.ClassPositionId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
@@ -21,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code economy.SetHouseholdClass}（P2-B §13.6）：把某个家户的 {@link
@@ -54,6 +56,8 @@ public final class EconomySetHouseholdClassHandler implements CommandHandler, Co
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.SetHouseholdClass";
+
+  private static final Logger LOG = EconomyLog.enterprise();
 
   @Override
   public String type() {
@@ -119,7 +123,7 @@ public final class EconomySetHouseholdClassHandler implements CommandHandler, Co
           new LinkedHashMap<>(base.classStandings());
       classMemberships.put(household, afterClassMembership);
       EconomyData projected = base.withClassMemberships(classMemberships);
-      EventLog.channel(io.mosire.simos.economy.EconomyLog.enterprise())
+      EventLog.channel(LOG)
           .info(
               LogEvent.of(
                   "HOUSEHOLD_CLASS",
@@ -136,6 +140,13 @@ public final class EconomySetHouseholdClassHandler implements CommandHandler, Co
                   reason == null ? 0 : reason.length()));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_SET_HOUSEHOLD_CLASS_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

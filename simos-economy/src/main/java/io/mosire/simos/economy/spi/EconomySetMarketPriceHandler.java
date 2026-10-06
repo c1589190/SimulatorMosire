@@ -2,17 +2,22 @@ package io.mosire.simos.economy.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.Market;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code economy.SetMarketPrice}（R4-E2）：GM 给某格某商品定价。
@@ -38,6 +43,8 @@ public final class EconomySetMarketPriceHandler implements CommandHandler {
 
   private static final String COMMAND = "economy.SetMarketPrice";
 
+  private static final Logger LOG = EconomyLog.command();
+
   @Override
   public String type() {
     return COMMAND;
@@ -60,10 +67,44 @@ public final class EconomySetMarketPriceHandler implements CommandHandler {
           CommodityId.parse(EconomyCommandPayloads.requireText(COMMAND, payload, "commodity"));
       long price = EconomyCommandPayloads.requireLong(COMMAND, payload, "price");
       if (price <= 0L) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_SET_MARKET_PRICE_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "non-positive-price",
+                    "q",
+                    q,
+                    "r",
+                    r,
+                    "commodity",
+                    commodity.value(),
+                    "price",
+                    price));
         return new HandlerOutcome.Rejected("price 必须 > 0（'白送'不是一种价格）: " + price);
       }
       Map<HexCoord, Market> markets = new LinkedHashMap<>(base.markets());
       Market existing = markets.get(hex);
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "ECONOMY_SET_MARKET_PRICE_CRITERIA",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "hex",
+                    hex.toString(),
+                    "commodity",
+                    commodity.value(),
+                    "price",
+                    price,
+                    "existingMarket",
+                    existing != null,
+                    "existingPrice",
+                    existing != null && existing.hasPrice(commodity)
+                        ? existing.prices().get(commodity)
+                        : "-"));
+      }
       if (existing == null) {
         markets.put(hex, new Market(MoneyVocabulary.SILVER_CURRENCY, Map.of(commodity, price)));
       } else {
@@ -71,8 +112,34 @@ public final class EconomySetMarketPriceHandler implements CommandHandler {
         prices.put(commodity, price);
         markets.put(hex, new Market(existing.numeraire(), prices));
       }
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_SET_MARKET_PRICE_APPLIED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "q",
+                  q,
+                  "r",
+                  r,
+                  "commodity",
+                  commodity.value(),
+                  "price",
+                  price,
+                  "marketCreated",
+                  existing == null,
+                  "prices",
+                  markets.get(hex).prices().size(),
+                  "markets",
+                  markets.size()));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, base.withMarkets(markets)));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_SET_MARKET_PRICE_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

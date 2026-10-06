@@ -118,6 +118,13 @@ public final class UnitBorrowHandler implements CommandHandler, CommandTargets, 
       long tick = state.meta().timestamp().tick();
       return new HandlerOutcome.Applied(project(base, payload, tick));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_UNIT_BORROW_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

@@ -3,6 +3,8 @@ package io.mosire.simos.economy.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.AssetShareId;
 import io.mosire.simos.economy.api.id.ClassShareId;
 import io.mosire.simos.economy.api.id.CrisisSignalId;
@@ -39,6 +41,8 @@ import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.social.api.id.HouseholdId;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -52,6 +56,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code economy.ClearRegion}（P1b1，2026-10-01 后端 + MCP 稳定化计划）：<b>GM-only 区域经济数据清空命令</b>—— 按目标
@@ -112,6 +117,8 @@ public final class EconomyClearRegionHandler
   /** 命令类型（唯一拼写点：catalog 提示、Shell 注册与组合工具都从这里取/对齐）。 */
   public static final String TYPE = "economy.ClearRegion";
 
+  private static final Logger LOG = EconomyLog.command();
+
   @Override
   public String type() {
     return TYPE;
@@ -129,19 +136,80 @@ public final class EconomyClearRegionHandler
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     EconomyData base = EconomySnapshots.of(state).data(); // 装配故障当场炸，不走拒绝路径
+    String regionId = "-";
     Region region;
     try {
       JsonNode payload = EconomyCommandPayloads.parseObject(TYPE, payloadJson);
-      region = requireRegion(state, requireRegionId(payload));
+      regionId = requireRegionId(payload);
+      region = requireRegion(state, regionId);
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_CLEAR_REGION_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "region",
+                  regionId,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
+    }
+    if (LOG.isDebugEnabled()) {
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "ECONOMY_CLEAR_REGION_CRITERIA",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "region",
+                  regionId,
+                  "hexes",
+                  region.hexes().size(),
+                  "industriesBefore",
+                  base.industries().size(),
+                  "householdsBefore",
+                  base.classes().size()));
     }
     try {
       EconomyData next = cleared(base, region.hexes());
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_CLEAR_REGION_APPLIED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "region",
+                  regionId,
+                  "hexes",
+                  region.hexes().size(),
+                  "industriesRemoved",
+                  base.industries().size() - next.industries().size(),
+                  "unitsRemoved",
+                  base.units().size() - next.units().size(),
+                  "householdsRemoved",
+                  base.classes().size() - next.classes().size(),
+                  "marketsRemoved",
+                  base.markets().size() - next.markets().size(),
+                  "demandsRemoved",
+                  base.demands().size() - next.demands().size(),
+                  "enterprisesRemoved",
+                  base.productionOrganizations().size() - next.productionOrganizations().size(),
+                  "debtContractsRemoved",
+                  base.debtContracts().size() - next.debtContracts().size(),
+                  "classSharesRemoved",
+                  base.classShares().size() - next.classShares().size()));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, next));
     } catch (IllegalArgumentException | IllegalStateException e) {
       // ★ 跨表守卫/旧档迁移在**状态语义**上拒收（如 legacy memberships 无法保持全局守恒）：这是命令可读的
       //   拒绝理由，不是整条推进失败；装配故障（缺 map 切片）已在上面单独抛出。
+      // ★ 2026-10-23 用户裁定：被拒绝一律 INFO（reason 过脱敏，载荷明文不进日志）。
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_CLEAR_REGION_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "region",
+                  regionId,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

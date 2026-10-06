@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code economy.SetHouseholdParticipation}（P2-B §13.5）：配置一个家户"除当前职业外还参与哪些生产方式" = {@link
@@ -54,6 +55,8 @@ public final class EconomySetHouseholdParticipationHandler
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.SetHouseholdParticipation";
+
+  private static final Logger LOG = EconomyLog.enterprise();
 
   @Override
   public String type() {
@@ -126,7 +129,7 @@ public final class EconomySetHouseholdParticipationHandler
           new LinkedHashMap<>(base.classStandings());
       classMemberships.put(household, afterClassMembership);
       EconomyData projected = base.withClassMemberships(classMemberships);
-      EventLog.channel(EconomyLog.enterprise())
+      EventLog.channel(LOG)
           .info(
               LogEvent.of(
                   "HOUSEHOLD_PARTICIPATION",
@@ -139,6 +142,13 @@ public final class EconomySetHouseholdParticipationHandler
                   reason == null ? 0 : reason.length()));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_SET_HOUSEHOLD_PARTICIPATION_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

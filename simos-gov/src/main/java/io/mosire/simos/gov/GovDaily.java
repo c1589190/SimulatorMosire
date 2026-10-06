@@ -136,9 +136,33 @@ public final class GovDaily {
     requireNonNull(social, "social");
     requireNonNull(oracle, "oracle");
     if (tick < 0L) {
+      // ★ §4.2：请求不合规（tick 为负）= 业务拒绝 ⇒ INFO（用户 2026-10-23：「被拒绝肯定走 INFO」）。
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "GOV_DAILY_SETTLE_REJECTED",
+                  GovLogSource.GOV_DAILY,
+                  "reason",
+                  "negative-tick",
+                  "day",
+                  tick,
+                  "tick",
+                  tick));
       throw new IllegalArgumentException("tick 必须 ≥ 0: " + tick);
     }
     if (daysInYearAtSettlement != 365L && daysInYearAtSettlement != 366L) {
+      // ★ §4.2：调用方臆造年长 = 请求不合规 ⇒ INFO；带实际值以便回溯是哪一档输入漂了。
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "GOV_DAILY_SETTLE_REJECTED",
+                  GovLogSource.GOV_DAILY,
+                  "reason",
+                  "illegal-year-length",
+                  "day",
+                  tick,
+                  "daysInYear",
+                  daysInYearAtSettlement));
       throw new IllegalArgumentException(
           "daysInYearAtSettlement 只接受 365 或 366（拒绝臆造年长）: " + daysInYearAtSettlement);
     }
@@ -166,10 +190,34 @@ public final class GovDaily {
       UnitId unitId = entry.getKey();
       Unit unit = units.units().get(unitId);
       if (unit == null) {
+        // ★ §4.2：gov 编制引用了不存在的单位 = 契约/状态损坏 ⇒ ERROR，不降级。
+        EventLog.channel(LOG)
+            .error(
+                LogEvent.of(
+                    "GOV_DAILY_OFFICE_STATE_CORRUPTED",
+                    GovLogSource.GOV_DAILY,
+                    "reason",
+                    "unknown-unit",
+                    "day",
+                    tick,
+                    "unit",
+                    unitId.value()));
         throw new IllegalStateException("gov offices 引用了不存在的单位（状态损坏）: " + unitId);
       }
       UnitModule module = unit.module().orElse(null);
       if (!(module instanceof GovernmentFormation governmentFormation)) {
+        // ★ §4.2：gov 编制指向的单位缺 GovernmentFormation = 契约/状态损坏 ⇒ ERROR，不降级。
+        EventLog.channel(LOG)
+            .error(
+                LogEvent.of(
+                    "GOV_DAILY_OFFICE_STATE_CORRUPTED",
+                    GovLogSource.GOV_DAILY,
+                    "reason",
+                    "missing-formation",
+                    "day",
+                    tick,
+                    "unit",
+                    unitId.value()));
         throw new IllegalStateException("gov offices 的单位缺少 GovernmentFormation（状态损坏）: " + unitId);
       }
 

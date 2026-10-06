@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code economy.RegisterGovernment}（P2-C §13.7）：<b>把一个 GOV 单位登记成"该单位恰一份政府 + 恰一个政府家户"</b> ——
@@ -87,6 +88,8 @@ public final class EconomyRegisterGovernmentHandler
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.RegisterGovernment";
 
+  private static final Logger LOG = EconomyLog.enterprise();
+
   @Override
   public String type() {
     return TYPE;
@@ -110,6 +113,15 @@ public final class EconomyRegisterGovernmentHandler
       if (base.meta().isEmpty()) {
         // ★ 未激活的 economy 是"还没播种"：首条 economy.Seed 会整份覆写该切片（EconomySeedHandler 的首次分支），
         //   先登记的政府/HouseholdEconomy 会被静默抹掉 ⇒ 这里具名拒，要求先激活（先 economy.Seed 再登记 GOV）。
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_REGISTER_GOVERNMENT_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "economy-not-activated",
+                    "govUnit",
+                    registration.govUnitId()));
         return new HandlerOutcome.Rejected(
             TYPE + " 要求 economy 切片已激活（先 economy.Seed 播种再登记 GOV；未激活时登记会被首次播种覆写）");
       }
@@ -134,6 +146,19 @@ public final class EconomyRegisterGovernmentHandler
                 0L);
       } else {
         if (!existingHouseholdEconomy.view().hex().equals(registration.hex())) {
+          EventLog.channel(LOG)
+              .info(
+                  LogEvent.of(
+                      "ECONOMY_REGISTER_GOVERNMENT_REJECTED",
+                      EconomyLogSource.ECONOMY_COMMAND,
+                      "reason",
+                      "hex-view-mismatch",
+                      "household",
+                      registration.household().value(),
+                      "existingHex",
+                      existingHouseholdEconomy.view().hex().toString(),
+                      "payloadHex",
+                      registration.hex().toString()));
           return new HandlerOutcome.Rejected(
               "政府家户 "
                   + registration.household().value()
@@ -146,6 +171,19 @@ public final class EconomyRegisterGovernmentHandler
         // ★ residence/stratum：给了就必须与既有视图一致；缺席 = 保持既有（不把"补登记"变成视图重置）。
         if (registration.residenceSpecified()
             && registration.residence() != existingHouseholdEconomy.view().residence()) {
+          EventLog.channel(LOG)
+              .info(
+                  LogEvent.of(
+                      "ECONOMY_REGISTER_GOVERNMENT_REJECTED",
+                      EconomyLogSource.ECONOMY_COMMAND,
+                      "reason",
+                      "residence-view-mismatch",
+                      "household",
+                      registration.household().value(),
+                      "existingResidence",
+                      existingHouseholdEconomy.view().residence().value(),
+                      "payloadResidence",
+                      registration.residence().value()));
           return new HandlerOutcome.Rejected(
               "政府家户 "
                   + registration.household().value()
@@ -157,6 +195,19 @@ public final class EconomyRegisterGovernmentHandler
         }
         if (registration.stratumSpecified()
             && !registration.stratum().equals(existingHouseholdEconomy.view().stratum())) {
+          EventLog.channel(LOG)
+              .info(
+                  LogEvent.of(
+                      "ECONOMY_REGISTER_GOVERNMENT_REJECTED",
+                      EconomyLogSource.ECONOMY_COMMAND,
+                      "reason",
+                      "stratum-view-mismatch",
+                      "household",
+                      registration.household().value(),
+                      "existingStratum",
+                      existingHouseholdEconomy.view().stratum().value(),
+                      "payloadStratum",
+                      registration.stratum().value()));
           return new HandlerOutcome.Rejected(
               "政府家户 "
                   + registration.household().value()
@@ -201,6 +252,17 @@ public final class EconomyRegisterGovernmentHandler
         ClassPositionId positionId = registration.classPositionId();
         ProductionRole position = base.classPositions().get(positionId);
         if (position == null) {
+          EventLog.channel(LOG)
+              .info(
+                  LogEvent.of(
+                      "ECONOMY_REGISTER_GOVERNMENT_REJECTED",
+                      EconomyLogSource.ECONOMY_COMMAND,
+                      "reason",
+                      "unknown-class-position",
+                      "household",
+                      registration.household().value(),
+                      "classPosition",
+                      positionId.value()));
           return new HandlerOutcome.Rejected(
               TYPE
                   + " 的 classPosition 不存在（先 economy.GmAdjust.upsertClassPosition）: "
@@ -232,6 +294,19 @@ public final class EconomyRegisterGovernmentHandler
       Government existingGovernment = base.governments().get(governmentId);
       if (existingGovernment != null
           && !existingGovernment.treasury().equals(HouseholdActors.of(registration.household()))) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_REGISTER_GOVERNMENT_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "treasury-mismatch",
+                    "government",
+                    governmentId.value(),
+                    "existingTreasury",
+                    existingGovernment.treasury(),
+                    "expectedTreasury",
+                    HouseholdActors.of(registration.household())));
         return new HandlerOutcome.Rejected(
             "政府 "
                 + governmentId.value()
@@ -257,6 +332,17 @@ public final class EconomyRegisterGovernmentHandler
           continue;
         }
         if (entry.getValue().treasury().equals(HouseholdActors.of(registration.household()))) {
+          EventLog.channel(LOG)
+              .info(
+                  LogEvent.of(
+                      "ECONOMY_REGISTER_GOVERNMENT_REJECTED",
+                      EconomyLogSource.ECONOMY_COMMAND,
+                      "reason",
+                      "household-already-treasury",
+                      "household",
+                      registration.household().value(),
+                      "existingGovernment",
+                      entry.getKey().value()));
           return new HandlerOutcome.Rejected(
               "政府家户 "
                   + registration.household().value()
@@ -280,7 +366,7 @@ public final class EconomyRegisterGovernmentHandler
           base.withHouseholdEconomies(householdEconomies)
               .withClassMemberships(classMemberships)
               .withGovernments(governments);
-      EventLog.channel(EconomyLog.enterprise())
+      EventLog.channel(LOG)
           .info(
               LogEvent.of(
                   "GOVERNMENT_REGISTERED",
@@ -307,6 +393,13 @@ public final class EconomyRegisterGovernmentHandler
                   reason == null ? 0 : reason.length()));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_REGISTER_GOVERNMENT_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

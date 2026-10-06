@@ -61,9 +61,12 @@ public final class ResolveCombatStageHandler implements CommandHandler, GmOnlyCo
     Objects.requireNonNull(state, "state");
     Objects.requireNonNull(payloadJson, "payloadJson");
     ArmySnapshot snapshot = ArmySnapshots.of(state); // 装配故障当场炸，不走拒绝路径
+    // ★ 两条 id 在 try 外声明：ISE 的 catch 也要能带上 combat/stage 字段（解析失败仍走原 IAE 分支，判定不变）。
+    CombatRecordId combatId = null;
+    CombatStageId stageId = null;
     try {
       JsonNode payload = ArmyPayloads.parse(payloadJson);
-      CombatRecordId combatId = CombatRecordId.parse(ArmyPayloads.requireText(payload, "combatId"));
+      combatId = CombatRecordId.parse(ArmyPayloads.requireText(payload, "combatId"));
       CombatRecord record = snapshot.data().combats().get(combatId);
       if (record == null) {
         EventLog.channel(LOG)
@@ -79,7 +82,7 @@ public final class ResolveCombatStageHandler implements CommandHandler, GmOnlyCo
                     combatId.value()));
         return new HandlerOutcome.Rejected("交战记录不存在: " + combatId.value());
       }
-      CombatStageId stageId = CombatStageId.parse(ArmyPayloads.requireText(payload, "stageId"));
+      stageId = CombatStageId.parse(ArmyPayloads.requireText(payload, "stageId"));
       CombatStage stage = null;
       for (CombatStage candidate : record.stages()) {
         if (candidate.id().equals(stageId)) {
@@ -161,6 +164,23 @@ public final class ResolveCombatStageHandler implements CommandHandler, GmOnlyCo
                   selection.seed().map(Object::toString).orElse("-")));
       ArmyCombatTrace.outcome(combatId, stageId, selection.outcome());
       return new HandlerOutcome.Applied(ArmyChangeSet.between(snapshot.data(), nextData));
+    } catch (IllegalStateException e) {
+      // ★ §4.2：投骰落点不变量破裂 = 契约违反 ⇒ ERROR（不降级）。只记载荷无关的稳定 id 与异常类名；
+      //   记完**原样**再抛（不改异常类型/文案，也不折成 Rejected）。
+      EventLog.channel(LOG)
+          .error(
+              LogEvent.of(
+                  "ARMY_COMBAT_RESOLVE_INVARIANT_BROKEN",
+                  ArmyLogSource.ARMY_COMBAT,
+                  "combat",
+                  combatId == null ? "-" : combatId.value(),
+                  "stage",
+                  stageId == null ? "-" : stageId.value(),
+                  "reason",
+                  "outcome-table-inconsistent",
+                  "error",
+                  e.getClass().getSimpleName()));
+      throw e;
     } catch (IllegalArgumentException e) {
       EventLog.channel(LOG)
           .info(

@@ -3,6 +3,8 @@ package io.mosire.simos.economy.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.cohort.CohortKey;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.HouseholdEconomy;
@@ -10,6 +12,8 @@ import io.mosire.simos.map.MapSnapshot;
 import io.mosire.simos.map.hex.HexCoord;
 import io.mosire.simos.social.api.id.HouseholdId;
 import io.mosire.simos.util.json.SimosObjectMapper;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -17,6 +21,7 @@ import io.mosire.simos.util.state.Snapshot;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * ★★ <b>S3.3 {@code economy.MigrateHousehold} 的最小合法入口</b>（计划 §S3.5 命令面）：
@@ -41,6 +46,8 @@ public final class EconomyMigrateHouseholdHandler implements CommandHandler {
 
   private static final ObjectMapper MAPPER = SimosObjectMapper.create();
 
+  private static final Logger LOG = EconomyLog.command();
+
   @Override
   public String type() {
     return COMMAND;
@@ -57,9 +64,29 @@ public final class EconomyMigrateHouseholdHandler implements CommandHandler {
       HexCoord to = HexCoord.parse(requireText(payload, "toHex"));
       HouseholdEconomy householdEconomy = base.classes().get(household);
       if (householdEconomy == null) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_MIGRATE_HOUSEHOLD_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "unknown-household",
+                    "household",
+                    household.value()));
         return new HandlerOutcome.Rejected("家户不存在: " + household.value());
       }
       if (householdEconomy.view().hex().equals(to)) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_MIGRATE_HOUSEHOLD_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "same-hex",
+                    "household",
+                    household.value(),
+                    "hex",
+                    to.toString()));
         return new HandlerOutcome.Rejected("目标格与原格相同，迁移无事可做: " + to);
       }
       Snapshot mapModule =
@@ -71,7 +98,35 @@ public final class EconomyMigrateHouseholdHandler implements CommandHandler {
             "state 的 map 切片不是 MapSnapshot: " + mapModule.getClass().getName());
       }
       if (!mapSnapshot.map().terrainIndex().containsKey(to)) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_MIGRATE_HOUSEHOLD_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "hex-not-on-map",
+                    "household",
+                    household.value(),
+                    "hex",
+                    to.toString()));
         return new HandlerOutcome.Rejected("目标格不在图上: " + to);
+      }
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "ECONOMY_MIGRATE_HOUSEHOLD_CRITERIA",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "household",
+                    household.value(),
+                    "fromHex",
+                    householdEconomy.view().hex().toString(),
+                    "toHex",
+                    to.toString(),
+                    "population",
+                    householdEconomy.population(),
+                    "laborMilli",
+                    householdEconomy.laborMilli()));
       }
       HouseholdEconomy movedHouseholdEconomy =
           new HouseholdEconomy(
@@ -90,9 +145,33 @@ public final class EconomyMigrateHouseholdHandler implements CommandHandler {
               householdEconomy.cycleNaturalNeedMilli());
       Map<HouseholdId, HouseholdEconomy> householdEconomies = new LinkedHashMap<>(base.classes());
       householdEconomies.put(household, movedHouseholdEconomy);
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_MIGRATE_HOUSEHOLD_APPLIED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "household",
+                  household.value(),
+                  "fromHex",
+                  householdEconomy.view().hex().toString(),
+                  "toHex",
+                  to.toString(),
+                  "population",
+                  movedHouseholdEconomy.population(),
+                  "laborMilli",
+                  movedHouseholdEconomy.laborMilli(),
+                  "households",
+                  householdEconomies.size()));
       return new HandlerOutcome.Applied(
           EconomyChangeSet.between(base, base.withHouseholdEconomies(householdEconomies)));
     } catch (IllegalArgumentException | com.fasterxml.jackson.core.JsonProcessingException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_MIGRATE_HOUSEHOLD_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

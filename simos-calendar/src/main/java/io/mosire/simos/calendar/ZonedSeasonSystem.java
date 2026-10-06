@@ -143,6 +143,8 @@ public final class ZonedSeasonSystem implements SeasonSystem {
                   at,
                   "phase",
                   state.phase(),
+                  "dayOfSeason",
+                  state.dayOfSeason(),
                   "daysInSeason",
                   state.daysInSeason()));
     }

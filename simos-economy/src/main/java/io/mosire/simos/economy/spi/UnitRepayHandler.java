@@ -95,6 +95,13 @@ public final class UnitRepayHandler implements CommandHandler, CommandTargets, G
       JsonNode payload = EconomyCommandPayloads.parseObject(TYPE, payloadJson);
       return new HandlerOutcome.Applied(project(base, payload));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_UNIT_REPAY_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

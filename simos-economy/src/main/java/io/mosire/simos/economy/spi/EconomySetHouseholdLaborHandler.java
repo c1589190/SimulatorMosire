@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code economy.SetHouseholdLabor}（P2-B §13.6）：直接配置一个家户的**每 tick 劳动时间预算**与**参与率**； 只写 {@code
@@ -46,6 +47,8 @@ public final class EconomySetHouseholdLaborHandler implements CommandHandler, Co
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.SetHouseholdLabor";
+
+  private static final Logger LOG = EconomyLog.population();
 
   @Override
   public String type() {
@@ -104,7 +107,7 @@ public final class EconomySetHouseholdLaborHandler implements CommandHandler, Co
           new LinkedHashMap<>(base.classes());
       householdEconomies.put(household, afterHouseholdEconomy);
       EconomyData projected = base.withHouseholdEconomies(householdEconomies);
-      EventLog.channel(EconomyLog.population())
+      EventLog.channel(LOG)
           .info(
               LogEvent.of(
                   "HOUSEHOLD_LABOR_CONFIG",
@@ -117,6 +120,13 @@ public final class EconomySetHouseholdLaborHandler implements CommandHandler, Co
                   participationPerMille));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_SET_HOUSEHOLD_LABOR_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

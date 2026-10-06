@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code economy.RegisterHousehold}（P3 2026-10-12）：<b>给任意 Social 家户补一条 {@link HouseholdEconomy}
@@ -65,6 +66,8 @@ public final class EconomyRegisterHouseholdHandler
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.RegisterHousehold";
 
+  private static final Logger LOG = EconomyLog.command();
+
   @Override
   public String type() {
     return TYPE;
@@ -103,6 +106,19 @@ public final class EconomyRegisterHouseholdHandler
                 0L);
       } else {
         if (!existing.view().hex().equals(registration.hex())) {
+          EventLog.channel(LOG)
+              .info(
+                  LogEvent.of(
+                      "ECONOMY_REGISTER_HOUSEHOLD_REJECTED",
+                      EconomyLogSource.ECONOMY_COMMAND,
+                      "reason",
+                      "hex-view-mismatch",
+                      "household",
+                      registration.household().value(),
+                      "existingHex",
+                      existing.view().hex().toString(),
+                      "payloadHex",
+                      registration.hex().toString()));
           return new HandlerOutcome.Rejected(
               "家户 "
                   + registration.household().value()
@@ -113,6 +129,19 @@ public final class EconomyRegisterHouseholdHandler
                   + " 不一致；要搬家请走 economy.MigrateHousehold（本命令不静默挪行）");
         }
         if (registration.residence() != existing.view().residence()) {
+          EventLog.channel(LOG)
+              .info(
+                  LogEvent.of(
+                      "ECONOMY_REGISTER_HOUSEHOLD_REJECTED",
+                      EconomyLogSource.ECONOMY_COMMAND,
+                      "reason",
+                      "residence-view-mismatch",
+                      "household",
+                      registration.household().value(),
+                      "existingResidence",
+                      existing.view().residence().value(),
+                      "payloadResidence",
+                      registration.residence().value()));
           return new HandlerOutcome.Rejected(
               "家户 "
                   + registration.household().value()
@@ -123,6 +152,19 @@ public final class EconomyRegisterHouseholdHandler
                   + " 不一致（视图是身份之外的现状，请显式迁移/另行配置）");
         }
         if (!registration.stratum().equals(existing.view().stratum())) {
+          EventLog.channel(LOG)
+              .info(
+                  LogEvent.of(
+                      "ECONOMY_REGISTER_HOUSEHOLD_REJECTED",
+                      EconomyLogSource.ECONOMY_COMMAND,
+                      "reason",
+                      "stratum-view-mismatch",
+                      "household",
+                      registration.household().value(),
+                      "existingStratum",
+                      existing.view().stratum().value(),
+                      "payloadStratum",
+                      registration.stratum().value()));
           return new HandlerOutcome.Rejected(
               "家户 "
                   + registration.household().value()
@@ -155,7 +197,7 @@ public final class EconomyRegisterHouseholdHandler
       Map<HouseholdId, HouseholdEconomy> householdEconomies = new LinkedHashMap<>(base.classes());
       householdEconomies.put(registration.household(), registered);
       EconomyData projected = base.withHouseholdEconomies(householdEconomies);
-      EventLog.channel(EconomyLog.enterprise())
+      EventLog.channel(LOG)
           .info(
               LogEvent.of(
                   "HOUSEHOLD_REGISTERED",
@@ -178,6 +220,13 @@ public final class EconomyRegisterHouseholdHandler
                   registration.reason() == null ? 0 : registration.reason().length()));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_REGISTER_HOUSEHOLD_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

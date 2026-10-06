@@ -3,6 +3,8 @@ package io.mosire.simos.economy.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.actor.api.asset.AssetKind;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CandidateId;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.RegimeId;
@@ -10,6 +12,8 @@ import io.mosire.simos.economy.api.relation.LaborSource;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.OwnershipStake;
 import io.mosire.simos.economy.model.ProductionCandidate;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.HandlerOutcome;
 import io.mosire.simos.util.state.SimulationState;
@@ -17,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code economy.RegisterCandidate}（R4-E2）：GM 登记/修订一条候选生产方式（预设）。
@@ -40,6 +45,8 @@ public final class EconomyRegisterCandidateHandler implements CommandHandler {
 
   private static final String COMMAND = "economy.RegisterCandidate";
 
+  private static final Logger LOG = EconomyLog.command();
+
   @Override
   public String type() {
     return COMMAND;
@@ -56,8 +63,34 @@ public final class EconomyRegisterCandidateHandler implements CommandHandler {
           CandidateId.parse(EconomyCommandPayloads.requireText(COMMAND, payload, "id"));
       int version = EconomyCommandPayloads.optionalInt(COMMAND, payload, "version", 1);
       ProductionCandidate existing = base.candidates().get(candidateId);
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "ECONOMY_REGISTER_CANDIDATE_CRITERIA",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "candidate",
+                    candidateId.value(),
+                    "version",
+                    version,
+                    "currentVersion",
+                    existing == null ? "-" : existing.version(),
+                    "revision",
+                    existing != null));
+      }
       if (existing != null) {
         if (version == existing.version()) {
+          EventLog.channel(LOG)
+              .info(
+                  LogEvent.of(
+                      "ECONOMY_REGISTER_CANDIDATE_REJECTED",
+                      EconomyLogSource.ECONOMY_COMMAND,
+                      "reason",
+                      "duplicate-version",
+                      "candidate",
+                      candidateId.value(),
+                      "version",
+                      version));
           return new HandlerOutcome.Rejected(
               "候选 (id,version) 已存在，拒绝覆盖: "
                   + candidateId.value()
@@ -66,6 +99,19 @@ public final class EconomyRegisterCandidateHandler implements CommandHandler {
                   + "（修订必须用新 version）");
         }
         if (version < existing.version()) {
+          EventLog.channel(LOG)
+              .info(
+                  LogEvent.of(
+                      "ECONOMY_REGISTER_CANDIDATE_REJECTED",
+                      EconomyLogSource.ECONOMY_COMMAND,
+                      "reason",
+                      "version-regression",
+                      "candidate",
+                      candidateId.value(),
+                      "version",
+                      version,
+                      "currentVersion",
+                      existing.version()));
           return new HandlerOutcome.Rejected(
               "候选修订必须使用严格更大的 version（当前 "
                   + existing.version()
@@ -113,9 +159,41 @@ public final class EconomyRegisterCandidateHandler implements CommandHandler {
               name);
       Map<CandidateId, ProductionCandidate> candidates = new LinkedHashMap<>(base.candidates());
       candidates.put(candidateId, candidate);
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_REGISTER_CANDIDATE_APPLIED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "candidate",
+                  candidateId.value(),
+                  "version",
+                  version,
+                  "output",
+                  output.value(),
+                  "laborPerUnit",
+                  laborPerUnit,
+                  "buildDays",
+                  buildDays,
+                  "cycleDays",
+                  cycleDays,
+                  "regime",
+                  regime.value(),
+                  "acceptedRightKinds",
+                  acceptedRightKinds.size(),
+                  "revision",
+                  existing != null,
+                  "candidates",
+                  candidates.size()));
       return new HandlerOutcome.Applied(
           EconomyChangeSet.between(base, base.withCandidates(candidates)));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_REGISTER_CANDIDATE_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

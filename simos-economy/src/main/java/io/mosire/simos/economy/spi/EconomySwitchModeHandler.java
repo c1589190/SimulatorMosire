@@ -2,12 +2,16 @@ package io.mosire.simos.economy.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.ModeTransitionId;
 import io.mosire.simos.economy.api.id.ProductionModeId;
 import io.mosire.simos.economy.api.id.ProductionOrganizationId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.ProductionEnterprise;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.GmOnlyCommand;
@@ -17,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code economy.SwitchMode}（E6a）：登记一次"某生产组织切换到另一生产方式"的请求。
@@ -48,6 +53,8 @@ public final class EconomySwitchModeHandler
     implements CommandHandler, CommandTargets, GmOnlyCommand {
 
   private static final String COMMAND = "economy.SwitchMode";
+
+  private static final Logger LOG = EconomyLog.command();
 
   @Override
   public String type() {
@@ -94,25 +101,107 @@ public final class EconomySwitchModeHandler
           EconomyCommandPayloads.optionalLong(COMMAND, payload, "effectiveDay", now);
       String reason = EconomyCommandPayloads.optionalText(COMMAND, payload, "reason", "");
 
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "ECONOMY_SWITCH_MODE_CRITERIA",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "organization",
+                    organizationId.value(),
+                    "toMode",
+                    toModeId.value(),
+                    "requestedDay",
+                    requestedDay,
+                    "effectiveDay",
+                    effectiveDay,
+                    "retainOriginalPerMille",
+                    retainOriginalPerMille));
+      }
+
       ProductionEnterprise enterprise = base.productionOrganizations().get(organizationId);
       if (enterprise == null) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_SWITCH_MODE_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "unknown-organization",
+                    "organization",
+                    organizationId.value()));
         return new HandlerOutcome.Rejected("生产组织不存在: " + organizationId.value());
       }
       ProductionModeId fromModeId = enterprise.modeId();
       if (!base.modes().containsKey(toModeId)) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_SWITCH_MODE_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "unknown-target-mode",
+                    "organization",
+                    organizationId.value(),
+                    "toMode",
+                    toModeId.value()));
         return new HandlerOutcome.Rejected("目标生产方式不存在: " + toModeId.value());
       }
       if (toModeId.equals(fromModeId)) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_SWITCH_MODE_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "same-mode",
+                    "organization",
+                    organizationId.value(),
+                    "mode",
+                    toModeId.value()));
         return new HandlerOutcome.Rejected("目标生产方式与组织当前 mode 相同，不构成变迁: " + toModeId.value());
       }
       if (enterprise.status() == ProductionEnterprise.Status.EXITING) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_SWITCH_MODE_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "organization-exiting",
+                    "organization",
+                    organizationId.value()));
         return new HandlerOutcome.Rejected("生产组织正在退出中，拒绝再次变迁: " + organizationId.value());
       }
       if (retainOriginalPerMille < 0 || retainOriginalPerMille > 1000) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_SWITCH_MODE_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "retain-out-of-range",
+                    "organization",
+                    organizationId.value(),
+                    "retainOriginalPerMille",
+                    retainOriginalPerMille));
         return new HandlerOutcome.Rejected(
             "retainOriginalPerMille 必须 ∈ [0, 1000]: " + retainOriginalPerMille);
       }
       if (effectiveDay < now) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_SWITCH_MODE_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "effective-before-now",
+                    "organization",
+                    organizationId.value(),
+                    "effectiveDay",
+                    effectiveDay,
+                    "now",
+                    now));
         return new HandlerOutcome.Rejected(
             "effectiveDay 不得早于当前日: effective=" + effectiveDay + "，当前=" + now);
       }
@@ -123,14 +212,51 @@ public final class EconomySwitchModeHandler
         if (existing.sameRequest(
             organizationId, toModeId, retainOriginalPerMille, effectiveDay, reason)) {
           // ★ 同一请求重复提交：id 相同、字段逐值相同 ⇒ 幂等返回空变更集（不落第二条、不报冲突）。
+          EventLog.channel(LOG)
+              .info(
+                  LogEvent.of(
+                      "ECONOMY_SWITCH_MODE_APPLIED",
+                      EconomyLogSource.ECONOMY_COMMAND,
+                      "mode",
+                      "idempotent",
+                      "organization",
+                      organizationId.value(),
+                      "transition",
+                      transitionId.value(),
+                      "transitionStatus",
+                      existing.status().name(),
+                      "effectiveDay",
+                      effectiveDay));
           return new HandlerOutcome.Applied(EconomyChangeSet.between(base, base));
         }
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_SWITCH_MODE_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "transition-conflict",
+                    "organization",
+                    organizationId.value(),
+                    "transition",
+                    transitionId.value()));
         return new HandlerOutcome.Rejected(
             "同 (组织, 目标 mode, 生效日) 已存在不同的模式变迁请求: " + transitionId.value());
       }
       for (ModeTransition transition : base.modeTransitions().values()) {
         if (transition.status() == ModeTransition.Status.PENDING
             && transition.organizationId().equals(organizationId)) {
+          EventLog.channel(LOG)
+              .info(
+                  LogEvent.of(
+                      "ECONOMY_SWITCH_MODE_REJECTED",
+                      EconomyLogSource.ECONOMY_COMMAND,
+                      "reason",
+                      "pending-transition-exists",
+                      "organization",
+                      organizationId.value(),
+                      "pendingTransition",
+                      transition.id().value()));
           return new HandlerOutcome.Rejected(
               "该生产组织已有待执行的模式变迁（同一组织至多一条 PENDING）: " + transition.id().value());
         }
@@ -150,9 +276,39 @@ public final class EconomySwitchModeHandler
       Map<ModeTransitionId, ModeTransition> transitions =
           new LinkedHashMap<>(base.modeTransitions());
       transitions.put(transitionId, pending);
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_SWITCH_MODE_APPLIED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "mode",
+                  "pending",
+                  "organization",
+                  organizationId.value(),
+                  "transition",
+                  transitionId.value(),
+                  "fromMode",
+                  fromModeId.value(),
+                  "toMode",
+                  toModeId.value(),
+                  "retainOriginalPerMille",
+                  retainOriginalPerMille,
+                  "requestedDay",
+                  requestedDay,
+                  "effectiveDay",
+                  effectiveDay,
+                  "transitions",
+                  transitions.size()));
       return new HandlerOutcome.Applied(
           EconomyChangeSet.between(base, base.withModeTransitions(transitions)));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_SWITCH_MODE_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

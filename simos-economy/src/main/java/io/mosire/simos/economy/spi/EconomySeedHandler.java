@@ -2,9 +2,13 @@ package io.mosire.simos.economy.spi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
+import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.IndustryId;
 import io.mosire.simos.economy.change.EconomyChangeSet;
 import io.mosire.simos.economy.model.IndustryHexKeys;
+import io.mosire.simos.util.log.EventLog;
+import io.mosire.simos.util.log.LogEvent;
 import io.mosire.simos.util.spi.CommandHandler;
 import io.mosire.simos.util.spi.CommandTargets;
 import io.mosire.simos.util.spi.HandlerOutcome;
@@ -16,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code economy.Seed} 命令的处理器（聚合式经济重设计 §十 的 R2a）：**一次把某国全部格的初始经济状态种进 economy 切片** ——一条命令、一条
@@ -44,6 +49,8 @@ import java.util.Set;
  */
 public final class EconomySeedHandler implements CommandHandler, CommandTargets {
 
+  private static final Logger LOG = EconomyLog.command();
+
   @Override
   public String type() {
     return "economy.Seed";
@@ -68,18 +75,81 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
       // ★ 旧形状载荷（缺 household）会在 EconomyData 构造期的 LegacyHouseholdMigration 里
       //   以 IllegalStateException fail-closed（"无法定位产业格"等）—— 它同样是**载荷语义错误**，
       //   必须在命令边界成为 Rejected，不允许穿出去变成整条推进/revision 失败（类注的"失败都以 Rejected 出面"）。
+      // ★ 2026-10-23 用户裁定：被拒绝一律 INFO（reason 过脱敏，载荷明文不进日志）。
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_SEED_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
     if (base.meta().isEmpty()) {
+      if (LOG.isDebugEnabled()) {
+        EventLog.channel(LOG)
+            .debug(
+                LogEvent.of(
+                    "ECONOMY_SEED_CRITERIA",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "mode",
+                    "first",
+                    "payloadHexes",
+                    EconomyPayloads.entryHexKeys(payload).size()));
+      }
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_SEED_APPLIED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "mode",
+                  "first",
+                  "hexes",
+                  EconomyPayloads.entryHexKeys(payload).size(),
+                  "industries",
+                  seeded.industries().size(),
+                  "households",
+                  seeded.classes().size(),
+                  "markets",
+                  seeded.markets().size()));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, seeded)); // 首次播种：打标
     }
     // ★ 已激活 ⇒ 按格追加：先逐格判重（任一格已被占用 ⇒ 整份拒绝并点名该格），再并入现有切片。
     Set<String> occupied = occupiedHexKeys(base);
     for (String hex : EconomyPayloads.entryHexKeys(payload)) {
       if (occupied.contains(hex)) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_SEED_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "occupied-hex",
+                    "hex",
+                    hex,
+                    "mapId",
+                    base.meta().orElseThrow().mapId()));
         return new HandlerOutcome.Rejected(
             "格 " + hex + " 已有经济状态（产业/阶层行），拒绝重复播种: mapId=" + base.meta().orElseThrow().mapId());
       }
+    }
+    int payloadHexes = EconomyPayloads.entryHexKeys(payload).size();
+    if (LOG.isDebugEnabled()) {
+      EventLog.channel(LOG)
+          .debug(
+              LogEvent.of(
+                  "ECONOMY_SEED_CRITERIA",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "mode",
+                  "append",
+                  "payloadHexes",
+                  payloadHexes,
+                  "occupiedHexes",
+                  occupied.size(),
+                  "industriesBefore",
+                  base.industries().size(),
+                  "householdsBefore",
+                  base.classes().size()));
     }
     EconomyData merged =
         new EconomyData(
@@ -143,6 +213,27 @@ public final class EconomySeedHandler implements CommandHandler, CommandTargets 
             // ★★ P4a：seed 载荷不声明周期规则 ⇒ 原样带过已有规则（漏了它 = 后续按格补种
             //   会让所有已注册规则静默消失）。
             base.periodicAdjustments());
+    EventLog.channel(LOG)
+        .info(
+            LogEvent.of(
+                "ECONOMY_SEED_APPLIED",
+                EconomyLogSource.ECONOMY_COMMAND,
+                "mode",
+                "append",
+                "hexes",
+                payloadHexes,
+                "industriesAdded",
+                merged.industries().size() - base.industries().size(),
+                "householdsAdded",
+                merged.classes().size() - base.classes().size(),
+                "marketsAdded",
+                merged.markets().size() - base.markets().size(),
+                "industries",
+                merged.industries().size(),
+                "households",
+                merged.classes().size(),
+                "markets",
+                merged.markets().size()));
     return new HandlerOutcome.Applied(EconomyChangeSet.between(base, merged));
   }
 

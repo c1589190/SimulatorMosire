@@ -3,6 +3,7 @@ package io.mosire.simos.economy.spi;
 import com.fasterxml.jackson.databind.JsonNode;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.mosire.simos.economy.EconomyData;
+import io.mosire.simos.economy.EconomyLog;
 import io.mosire.simos.economy.EconomyLogSource;
 import io.mosire.simos.economy.api.id.CommodityId;
 import io.mosire.simos.economy.api.id.DemandId;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.slf4j.Logger;
 
 /**
  * ★★ {@code economy.UpdateDemand}（P2-B §13.6）：**更新**一条已存在的需求（{@link HouseholdDemand}）。 取消走既有的
@@ -53,6 +55,8 @@ public final class EconomyUpdateDemandHandler implements CommandHandler, Command
 
   /** 命令类型（唯一拼写点）。 */
   public static final String TYPE = "economy.UpdateDemand";
+
+  private static final Logger LOG = EconomyLog.market();
 
   @Override
   public String type() {
@@ -87,6 +91,15 @@ public final class EconomyUpdateDemandHandler implements CommandHandler, Command
           DemandId.parse(EconomyCommandPayloads.requireText(TYPE, payload, "demand"));
       HouseholdDemand existingHouseholdDemand = base.demands().get(demandId);
       if (existingHouseholdDemand == null) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_UPDATE_DEMAND_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "unknown-demand",
+                    "demand",
+                    demandId.value()));
         return new HandlerOutcome.Rejected("需求不存在（新增请用 economy.AddDemand）: " + demandId.value());
       }
       HouseholdDemand.DemandScope scope =
@@ -113,6 +126,17 @@ public final class EconomyUpdateDemandHandler implements CommandHandler, Command
               ? EconomyCommandPayloads.requireLong(TYPE, payload, "quantityPerCycle")
               : existingHouseholdDemand.quantityPerCycle();
       if (quantityPerCycle <= 0L) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_UPDATE_DEMAND_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "non-positive-quantity",
+                    "demand",
+                    demandId.value(),
+                    "quantityPerCycle",
+                    quantityPerCycle));
         return new HandlerOutcome.Rejected("quantityPerCycle 必须 > 0: " + quantityPerCycle);
       }
       long createdDay =
@@ -120,6 +144,17 @@ public final class EconomyUpdateDemandHandler implements CommandHandler, Command
               ? EconomyCommandPayloads.requireLong(TYPE, payload, "createdDay")
               : existingHouseholdDemand.createdDay();
       if (createdDay < 0L) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_UPDATE_DEMAND_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "negative-created-day",
+                    "demand",
+                    demandId.value(),
+                    "createdDay",
+                    createdDay));
         return new HandlerOutcome.Rejected("createdDay 不得为负: " + createdDay);
       }
       long expiresDay =
@@ -131,6 +166,17 @@ public final class EconomyUpdateDemandHandler implements CommandHandler, Command
               ? EconomyCommandPayloads.requireInt(TYPE, payload, "priority")
               : existingHouseholdDemand.priority();
       if (priority < 0) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_UPDATE_DEMAND_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "negative-priority",
+                    "demand",
+                    demandId.value(),
+                    "priority",
+                    priority));
         return new HandlerOutcome.Rejected("priority 不得为负: " + priority);
       }
       String source =
@@ -155,6 +201,17 @@ public final class EconomyUpdateDemandHandler implements CommandHandler, Command
                                 TYPE + " 换成 HOUSEHOLD 范围必须给 household: " + demandId.value()));
         HouseholdEconomy householdEconomy = base.classes().get(householdId);
         if (householdEconomy == null) {
+          EventLog.channel(LOG)
+              .info(
+                  LogEvent.of(
+                      "ECONOMY_UPDATE_DEMAND_REJECTED",
+                      EconomyLogSource.ECONOMY_COMMAND,
+                      "reason",
+                      "unknown-household",
+                      "demand",
+                      demandId.value(),
+                      "household",
+                      householdId.value()));
           return new HandlerOutcome.Rejected("家户不存在: " + householdId.value());
         }
         if (at.isPresent() && !householdEconomy.view().hex().equals(at.get())) {
@@ -167,6 +224,23 @@ public final class EconomyUpdateDemandHandler implements CommandHandler, Command
           try {
             Math.multiplyExact(quantityPerCycle, householdEconomy.population());
           } catch (ArithmeticException e) {
+            EventLog.channel(LOG)
+                .info(
+                    LogEvent.of(
+                        "ECONOMY_UPDATE_DEMAND_REJECTED",
+                        EconomyLogSource.ECONOMY_COMMAND,
+                        "reason",
+                        "quantity-overflow",
+                        "demand",
+                        demandId.value(),
+                        "scope",
+                        scope.name(),
+                        "household",
+                        householdId.value(),
+                        "quantityPerCycle",
+                        quantityPerCycle,
+                        "population",
+                        householdEconomy.population()));
             return new HandlerOutcome.Rejected(
                 "quantityPerCycle × 家户人口 超出 long（拒绝：订单路径会当场溢出）: "
                     + quantityPerCycle
@@ -198,6 +272,23 @@ public final class EconomyUpdateDemandHandler implements CommandHandler, Command
           try {
             Math.multiplyExact(quantityPerCycle, population);
           } catch (ArithmeticException e) {
+            EventLog.channel(LOG)
+                .info(
+                    LogEvent.of(
+                        "ECONOMY_UPDATE_DEMAND_REJECTED",
+                        EconomyLogSource.ECONOMY_COMMAND,
+                        "reason",
+                        "quantity-overflow",
+                        "demand",
+                        demandId.value(),
+                        "scope",
+                        scope.name(),
+                        "hex",
+                        hexCoord.toString(),
+                        "quantityPerCycle",
+                        quantityPerCycle,
+                        "population",
+                        population));
             return new HandlerOutcome.Rejected(
                 "quantityPerCycle × 该格人口 超出 long（拒绝：订单路径会当场溢出）: "
                     + quantityPerCycle
@@ -226,7 +317,7 @@ public final class EconomyUpdateDemandHandler implements CommandHandler, Command
       }
       Map<DemandId, HouseholdDemand> householdDemands = new LinkedHashMap<>(base.demands());
       householdDemands.put(demandId, afterHouseholdDemand);
-      EventLog.channel(io.mosire.simos.economy.EconomyLog.market())
+      EventLog.channel(LOG)
           .info(
               LogEvent.of(
                   "DEMAND_UPDATE",
@@ -250,6 +341,13 @@ public final class EconomyUpdateDemandHandler implements CommandHandler, Command
       return new HandlerOutcome.Applied(
           EconomyChangeSet.between(base, base.withHouseholdDemands(householdDemands)));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_UPDATE_DEMAND_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }

@@ -85,6 +85,13 @@ public final class RecordCombatHandler implements CommandHandler, GmOnlyCommand 
       JsonNode payload = ArmyPayloads.parse(payloadJson);
       if (payload.has("losses")) {
         // ★ D-011/R4：旧 D1 载荷形状显式拒（不静默丢、不留双轨）。
+        // ★ 本拒绝发生在 CombatRecordId.parse 之前 ⇒ 尽最大努力把原始 id 文本带进日志字段（取不到用 "-"）；
+        //   与 sd ChannelAdmission 的 actor/commandType 缺值口径同款：字段必须出现，值可缺。
+        JsonNode rawCombat = payload.get("id");
+        String combatForLog =
+            rawCombat != null && rawCombat.isTextual() && !rawCombat.asText().isBlank()
+                ? rawCombat.asText()
+                : "-";
         EventLog.channel(LOG)
             .info(
                 LogEvent.of(
@@ -92,6 +99,8 @@ public final class RecordCombatHandler implements CommandHandler, GmOnlyCommand 
                     ArmyLogSource.ARMY_COMBAT,
                     "type",
                     TYPE,
+                    "combat",
+                    combatForLog,
                     "reason",
                     "legacy-losses-field"));
         return new HandlerOutcome.Rejected(

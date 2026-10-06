@@ -59,6 +59,15 @@ public final class EconomyRemovePeriodicAdjustmentHandler
       Removal removal = parse(TYPE, payloadJson);
       HouseholdPeriodicAdjustment removed = base.periodicAdjustments().get(removal.id());
       if (removed == null) {
+        EventLog.channel(LOG)
+            .info(
+                LogEvent.of(
+                    "ECONOMY_REMOVE_PERIODIC_ADJUSTMENT_REJECTED",
+                    EconomyLogSource.ECONOMY_COMMAND,
+                    "reason",
+                    "unknown-rule",
+                    "rule",
+                    removal.id().value()));
         return new HandlerOutcome.Rejected("周期家户扣增规则不存在，拒绝静默成功: id=" + removal.id().value());
       }
       Map<PeriodicHouseholdAdjustmentId, HouseholdPeriodicAdjustment> adjustments =
@@ -78,6 +87,13 @@ public final class EconomyRemovePeriodicAdjustmentHandler
                   removal.reason() == null ? 0 : removal.reason().length()));
       return new HandlerOutcome.Applied(EconomyChangeSet.between(base, projected));
     } catch (IllegalArgumentException e) {
+      EventLog.channel(LOG)
+          .info(
+              LogEvent.of(
+                  "ECONOMY_REMOVE_PERIODIC_ADJUSTMENT_REJECTED",
+                  EconomyLogSource.ECONOMY_COMMAND,
+                  "reason",
+                  EconomyCommandPayloads.logReason(e.getMessage())));
       return new HandlerOutcome.Rejected(e.getMessage());
     }
   }
