@@ -32,6 +32,7 @@ import io.mosire.simos.economy.api.money.MoneyIssuance;
 import io.mosire.simos.economy.api.money.MoneyIssuanceKind;
 import io.mosire.simos.economy.api.money.MoneyIssuanceRecord;
 import io.mosire.simos.economy.api.population.LotChange;
+import io.mosire.simos.economy.api.production.ProductionEfficiencyModifier;
 import io.mosire.simos.economy.api.relation.CompensationRule;
 import io.mosire.simos.economy.api.relation.Payee;
 import io.mosire.simos.economy.api.relation.ProductionRules;
@@ -53,6 +54,7 @@ import io.mosire.simos.economy.model.MerchantFirm;
 import io.mosire.simos.economy.model.ModeTransition;
 import io.mosire.simos.economy.model.OperatorCondition;
 import io.mosire.simos.economy.model.OwnershipStake;
+import io.mosire.simos.economy.model.ProductionEfficiencyState;
 import io.mosire.simos.economy.model.ProductionEnterprise;
 import io.mosire.simos.economy.model.ProductionProcess;
 import io.mosire.simos.economy.model.ProductionRecipe;
@@ -114,7 +116,9 @@ import org.slf4j.Logger;
  *       </pre>
  *       毛产 = {@code 规模 × outputPerUnit[j] × 1000 毫/单位}（**逐商品**；亩产 67 粮/亩 是 v2 spec §10.3 的标定值，而
  *       "每亩"从此是 {@code capacityPerUnit} 里的**数据**而不是隐式约定）。 **取小后向下取整** ⇒ 规模是整数。 ★ 某一路的"每单位需求"为
- *       {@code 0} ⇒ **不施加那一路约束**（不是"规模 0"）—— 旧档与未配投入的产业据此与 V2 逐值一致。
+ *       {@code 0} ⇒ **不施加那一路约束**（不是"规模 0"）—— 旧档与未配投入的产业据此与 V2 逐值一致。 ★★ <b>Z2（2026-10-23）</b>： 这段三路
+ *       min 是 {@link ProductionEfficiencyBook} §6.2 的 {@code scaleBase}；周期末公式还含 ① 平均修正、② 劳动链 +
+ *       四余数结转、⑤ 修正乘算 + 余数，统一由该 Book 给出（见 {@code harvest} 的"已知边界"）；⑥ 的数量_j 默认取配方、GM 覆盖表命中则取覆盖值。
  *   <li>**生产消耗**：扣 {@code 饲料 + 折旧}（{@link #FEED_PER_MILLE} + {@link
  *       #DEPRECIATION_PER_MILLE}，**逐商品按同一千分比**）——**明文记入本期流水** （{@link FlowRow#consumed()}），不静默丢弃。★
  *       **留种不在这一项里**（v2 spec §3.4）：它在下一周期第 1 天以 {@code cycleInputPerUnit} 的形式现扣。
@@ -1382,6 +1386,15 @@ public final class EconomySettlement {
     //   按 hex 并行执行（同一 hex 内的多个产业共用家户账/关系账 ⇒ 同分区串行，见 runHarvestStage）。
     List<HarvestWork> harvestWorks = new ArrayList<>();
     int harvestOrder = 0;
+    // ★★ Z2（§6.1）：当日注入的修正集（缺省 1000‰ = 中性；读取的是本 tick 的只读视图）与效率表工作副本。
+    //   效率表是结算工作副本（Z1 已在 EconomyStateBuilder 备好）；缺行 = 全 0 余数 + 本周期全 1000‰。
+    Map<ProductionUnitId, ProductionEfficiencyModifier> dayProductionModifiers =
+        session.productionModifiersView();
+    LinkedHashMap<ProductionUnitId, ProductionEfficiencyState> productionEfficiency =
+        session.sheet().productionEfficiency();
+    // ★★ Z2（§6.2 ⑥）：产品产出数量 GM 覆盖表（只读；缺产业 = 该产业全部回落配方默认值）。
+    Map<IndustryId, Map<CommodityId, Long>> outputQuantityOverrides =
+        base.outputQuantityOverrides();
     for (ProductionUnitId id : new ArrayList<>(units.keySet())) {
       ProductionProcess unit = units.get(id);
       Industry industry = industries.get(unit.industry());
@@ -1395,6 +1408,38 @@ public final class EconomySettlement {
       long laborToday = laborByUnit.getOrDefault(id.value(), 0L);
       long cycledLabor = unit.cycleLaborMilli() + laborToday;
       long progressed = unit.progressDays() + 1L;
+      // ★★ Z2（§6.1）：逐 tick 累计当日修正 —— m_t 缺省 1000‰；缺行 + 中性 ⇒ 不建行（避免给全部 unit 写零行），
+      //   缺行 + 非中性 ⇒ 物化并把此前已流逝的中性 tick 补进累计（见 ProductionEfficiencyBook）。
+      ProductionEfficiencyModifier injectedModifier = dayProductionModifiers.get(id);
+      long modifierPerMille =
+          injectedModifier == null
+              ? ProductionEfficiencyBook.NEUTRAL_MODIFIER_PER_MILLE
+              : injectedModifier.modifierPerMille();
+      ProductionEfficiencyState nextEfficiency =
+          ProductionEfficiencyBook.accrueTick(
+              productionEfficiency.get(id), modifierPerMille, unit.progressDays());
+      if (nextEfficiency == null) {
+        productionEfficiency.remove(id);
+      } else {
+        productionEfficiency.put(id, nextEfficiency);
+      }
+      if (TRACE.isDebugEnabled()) {
+        EventLog.channel(TRACE)
+            .debug(
+                LogEvent.of(
+                    "PRODUCTION_EFFICIENCY_TICK",
+                    EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
+                    "day",
+                    day,
+                    "unit",
+                    id.value(),
+                    "modifierPerMille",
+                    modifierPerMille,
+                    "cycleModifierSumPerMille",
+                    nextEfficiency == null
+                        ? progressed * ProductionEfficiencyBook.NEUTRAL_MODIFIER_PER_MILLE
+                        : nextEfficiency.cycleModifierSumPerMille()));
+      }
       long nextProgress = progressed;
       long nextCycleLabor = cycledLabor;
       Map<CommodityId, Long> nextInputUsed = unit.cycleInputUsedMilli(); // 非关账日：原样带过
@@ -1402,17 +1447,37 @@ public final class EconomySettlement {
       if (progressed >= industry.cycleDays()) {
         // ── 周期末：产出 → 产权条目 + 关系规则入账（★ 饿死判据**挪到所有救济通道之后**，见下面的 4d）──
         OperatorCondition condition = operatorConditions.get(id);
+        long plannedPerMille =
+            StressPolicy.plannedScalePerMille(
+                condition == null ? OperatorCondition.IndustryStatus.ACTIVE : condition.status());
+        // ★★ Z2（§6.2）：周期末求值（① 平均修正 ② 劳动链 ③ 满足率 ④ scaleBase ⑤ 修正乘算），
+        //   在此写回效率状态：清零周期和、保留四个余数（全零且无中性注入证据 ⇒ 可移除，见 Book）。
+        ProductionEfficiencyBook.HarvestEvaluation efficiency =
+            ProductionEfficiencyBook.evaluateHarvest(
+                nextEfficiency,
+                industry.cycleDays(),
+                cycledLabor,
+                capacityScaleOf(unit, industry, settlementIndex),
+                plannedPerMille,
+                industry.recipe().inputPerUnit(),
+                unit.cycleInputUsedMilli(),
+                industry.recipe().laborPerUnit());
+        if (efficiency.nextState() == null) {
+          productionEfficiency.remove(id);
+        } else {
+          productionEfficiency.put(id, efficiency.nextState());
+        }
+        if (TRACE.isDebugEnabled()) {
+          logProductionEfficiencyHarvest(day, id, efficiency);
+        }
         harvestWorks.add(
             new HarvestWork(
                 unit,
                 industry,
-                cycledLabor,
+                efficiency.scale(),
+                outputQuantityOverrides.getOrDefault(industry.id(), Map.of()),
                 hexOfIndustry(unit.industry()),
-                harvestOrder++,
-                StressPolicy.plannedScalePerMille(
-                    condition == null
-                        ? OperatorCondition.IndustryStatus.ACTIVE
-                        : condition.status())));
+                harvestOrder++));
         // ★★ **H5：关账的 unit 先记下来，饿死判据等救济通道走完再算**。
         closed.add(
             new ClosedUnit(
@@ -2734,6 +2799,10 @@ public final class EconomySettlement {
                   "byReasonMoney",
                   transferMoney));
     }
+    // ★★ Z2（§5.2/§6.1）：当日结算成功后清空会话注入集 —— 未再注入的次日 = 1000‰ 中性。
+    //   放在本方法（唯一日结算实现）末尾：直接 settleOneDayInto 的调用方也得到同一"当日消费后清空"语义；
+    //   抛异常时不清空（本会话随本次推进丢弃，不落 revision）。
+    session.clearProductionModifiers();
   }
 
   /**
@@ -3310,14 +3379,19 @@ public final class EconomySettlement {
     }
   }
 
-  /** 收获阶段的一条工作单元（关账前的 unit/模板快照 + 本周期劳动 + 所在格 + 原遍历序）。 */
+  /**
+   * 收获阶段的一条工作单元（关账前的 unit/模板快照 + {@link ProductionEfficiencyBook} 求好的规模 + 该产业的产出数量覆盖 + 所在格 + 原遍历序）。
+   *
+   * <p>★ Z2 起 {@code scale} 不再由本阶段现算：周期末求值（§6.2 ①~⑤）在日循环里完成（那里是效率状态工作副本的唯一写点， 且要 fail-closed
+   * 校验余数有效域）；本记录把结果带进按 hex 并行的收获阶段。
+   */
   private record HarvestWork(
       ProductionProcess unit,
       Industry industry,
-      long cycledLabor,
+      long scale,
+      Map<CommodityId, Long> outputQuantityOverrides,
       HexCoord location,
-      int order,
-      long plannedPerMille) {}
+      int order) {}
 
   /** 收获阶段一个分区的产出（意向 + 本地实物入账 + 本地账本）。 */
   private record HarvestPartition(
@@ -3378,9 +3452,9 @@ public final class EconomySettlement {
                   harvest(
                       work.unit(),
                       work.industry(),
+                      work.scale(),
+                      work.outputQuantityOverrides(),
                       householdEconomies,
-                      work.cycledLabor(),
-                      work.plannedPerMille(),
                       index,
                       localIncome,
                       tables.householdGoods,
@@ -4292,7 +4366,7 @@ public final class EconomySettlement {
    * <p>★★ <b>"只取用得上的量"</b>：{@code usableScale} 的上限里含**除本商品之外**每种投入的可供量（改前是逐行的 {@code
    * rowUsageScale}，H3 起按产业算一次）—— 真档里城市作坊缺铁时，纤维<b>搬过去也是白扔</b>（会在现扣步被当投入扣掉而产出为 0， 织机反而拿不到料）。★
    * <b>劳动那一路刻意不算进来</b>：周期第一天 {@code cycleLaborMilli} 还是 0，把它算进来会让**所有**产业的 上限都是 0（取材永不发生）；劳动瓶颈在周期末的
-   * {@link #scaleOf} 里照旧生效。
+   * {@link ProductionEfficiencyBook} 里照旧生效。
    *
    * <p>★★ <b>落账（P2-A §13.3：双方都是家户账）</b>—— 见 {@link #recordInputDraw}：
    *
@@ -4533,7 +4607,7 @@ public final class EconomySettlement {
           byHex.computeIfAbsent(plan.hex, key -> new LinkedHashMap<>());
       for (Map.Entry<CommodityId, Long> entry : plan.perScale.entrySet()) {
         if (entry.getValue() <= 0L) {
-          continue; // 每单位需求为 0 ⇒ 它**不是**这一种料的需求方（同 scaleOf 的口径）
+          continue; // 每单位需求为 0 ⇒ 它**不是**这一种料的需求方（同收获日公式的口径）
         }
         byCommodity.computeIfAbsent(entry.getKey(), key -> new ArrayList<>()).add(plan);
       }
@@ -4594,7 +4668,7 @@ public final class EconomySettlement {
     long usable = plan.capacityScale;
     for (Map.Entry<CommodityId, Long> per : plan.perScale.entrySet()) {
       if (per.getValue() <= 0L) {
-        continue; // 每单位需求为 0 ⇒ 这一路不构成约束（同 scaleOf 的口径）
+        continue; // 每单位需求为 0 ⇒ 这一路不构成约束（同收获日公式的口径）
       }
       usable = Math.min(usable, plan.available.getOrDefault(per.getKey(), 0L) / per.getValue());
     }
@@ -4954,7 +5028,8 @@ public final class EconomySettlement {
    * ★★ <b>该产业"本格产能"折出的规模</b>（K3 之后"产能"只有这一处）：{@code min over k ∈ capacityPerUnit:
    * ⌊industry.capacity[k] ÷ capacityPerUnit[k]⌋}。
    *
-   * <p>★ 与收获日的 {@link #scaleOf} 的产能那一路是**同一个算式**（只是那里还要对劳动与投入取 min）—— 于是"一次想扣多少" 与产业"能产多少"用同一把尺。
+   * <p>★ 与收获日公式（{@link ProductionEfficiencyBook}）的产能那一路是**同一个算式**（只是那里还要对劳动与投入取 min）—— 于是"一次想扣多少"
+   * 与产业"能产多少"用同一把尺。
    *
    * <p>★ M2.1 起 {@link MarketSettlement} 也算经营者的"必要生产投入"（= 本方法 × {@code inputPerUnit}），故它从 {@code
    * private} 放宽到包内可见；算法一字未改。
@@ -6670,7 +6745,7 @@ public final class EconomySettlement {
    * need        = usableScale × 配方.laborPerUnit
    * </pre>
    *
-   * <p>★ 与收获日的 {@link #scaleOf} 是**同一个算式的两个前缀**：这里**刻意不含劳动那一路**（劳动正是本步要求解的量）。
+   * <p>★ 与收获日公式（{@link ProductionEfficiencyBook}）是**同一个算式的两个前缀**：这里**刻意不含劳动那一路**（劳动正是本步要求解的量）。
    */
   private static long laborNeedOf(
       ProductionProcess unit,
@@ -6679,7 +6754,7 @@ public final class EconomySettlement {
       long allocated,
       OperatorCondition condition) {
     if (industry.recipe().laborPerUnit() <= 0L) {
-      return allocated; // ★ 劳动那一路**不施加约束**（与 scaleOf 的同款口径）
+      return allocated; // ★ 劳动那一路**不施加约束**（与收获日公式的同款口径）
     }
     // ★★ P2-B：产能×投入那一路的算式**只有一处拼写点** —— {@link LaborQueueBook#maxAbsorbableLaborMilli}
     //   （本方法保留"laborPerUnit ≤ 0 ⇒ 返回已分配量"的旧包装语义，旧档逐值不变）。
@@ -7115,8 +7190,9 @@ public final class EconomySettlement {
    * <p>★★ <b>本方法的形状（一步都不能少）</b>：
    *
    * <pre>
-   * ① 规模 = 最紧约束（{@link #scaleOf}，R3/V7 泛化后的那一条 —— **一字未改**）
-   * ② 逐商品：毛产 = 规模 × outputPerUnit_j × 1000；损耗 = 毛产 × (饲料 + 折旧)‰；净产 = 毛产 − 损耗
+   * ① 规模 = {@link ProductionEfficiencyBook} 在关账处按 §6.2 求好的 scale（最紧约束 ④ + 修正乘算 ⑤；含四个余数结转）
+   * ② 逐商品：数量_j = GM 覆盖表命中则覆盖值、否则配方默认（§6.2 ⑥）；
+   *    毛产 = 规模 × 数量_j × 1000；损耗 = 毛产 × (饲料 + 折旧)‰；净产 = 毛产 − 损耗
    *      · 毛产 / 损耗 → ledger（I4.2 的 ΣOutput / ΣLoss）
    *      · **净产 → operator 的产权条目**（+net 一条；★ 产出离开 HouseholdEconomy 的**唯一去处**）
    * ③ 按 relation 结算（{@link ProductionSettlement}）：转出/收入**都是产权条目**（H1：受方恒为 actor，
@@ -7144,7 +7220,12 @@ public final class EconomySettlement {
    *
    * <p>★ <b>如实记的边界</b>：{@link ProductionSettlement.Facts#inputs()} 本阶段没有公式读它（表里没有用到它的档）。
    *
-   * @param cycledLabor 本周期累计实际劳动（千分劳动·日）；`/cycleDays` 得**平均每日实际劳动**
+   * <p>★★ <b>已知边界（Z2 记录，不在本批修）</b>：本批只让<b>生产路径</b>看见修正参数与 GM 产出数量覆盖；劳动/市场/债务/预期利润等 <b>规划读数</b>仍走
+   * {@link ProductionProcessBook#plannedCapacityScaleOf} 与配方默认数量（§13.7），看不到这两个参数 ——
+   * 读数与实收产出的差额待另批对齐。
+   *
+   * @param scale 关账处按 §6.2 求好的规模（含平均修正与余数结转）
+   * @param outputQuantityOverrides 该产业的 GM 产出数量覆盖（缺商品 = 回落配方 {@code outputPerUnit()}）
    * @param income 逐家户的实物入账累加器（关系实付那几笔落在这里 ⇒ 读口与守恒式都读它）
    * @param householdGoods ★★ 家户账的会话工作副本（**就地更新**：关系实付计进来）
    * @param relations 生产关系表（键 = 产业 id；缺键 ⇒ 无规则）
@@ -7153,9 +7234,9 @@ public final class EconomySettlement {
   private static void harvest(
       ProductionProcess unit,
       Industry industry,
+      long scale,
+      Map<CommodityId, Long> outputQuantityOverrides,
       LinkedHashMap<HouseholdId, HouseholdEconomy> householdEconomies,
-      long cycledLabor,
-      long plannedPerMille,
       SettlementIndex index,
       LinkedHashMap<HouseholdId, Map<CommodityId, Long>> income,
       Map<HouseholdId, Map<CommodityId, Long>> householdGoods,
@@ -7167,11 +7248,6 @@ public final class EconomySettlement {
       ProductionLedger.Accumulator ledger,
       MoneyIssuanceJournal issuanceJournal) {
     ProductionRecipe recipe = industry.recipe();
-    long avgLaborMilli = cycledLabor / industry.cycleDays(); // 平均每日实际劳动（千分劳动）
-    // ★★ **R3B.2：产能那一路从 {@code OwnershipStake} 派生**（{@code ProductionProcessBook} 是唯一拼写点）。
-    //   ★ S3：再乘状态机的计划规模系数（缩产/停业不改 OwnershipStake，只改本周期计划）。
-    long scale = scaleOf(unit, industry, index, avgLaborMilli, plannedPerMille); // ★ 最紧约束
-
     HexCoord location = hexOfIndustry(industry.id());
     ActorRef operator = unit.operator();
     // ★★ P2-A §13.3：unit 的账户主体 = 组织者/经营者家户（单一或集体）。解析不到 ⇒ 具名缺口（见 creditOutput）。
@@ -7179,12 +7255,14 @@ public final class EconomySettlement {
         HouseholdRouting.subjectOf(unit, householdEconomies, enterpriseByProcess, index);
     Map<HouseholdId, Long> subjectWeights =
         HouseholdRouting.weightsOf(unit.id(), index, householdEconomies);
-    // ★★ **逐商品产出入账**：毛产 = 规模 × outputPerUnit[j] × 1000 毫/单位（算式一字未改）。
+    // ★★ **逐商品产出入账**：数量_j = GM 覆盖命中则覆盖值、否则配方默认（§6.2 ⑥）；
+    //   毛产 = 规模 × 数量_j × 1000 毫/单位（其余算式一字未改）。
     Map<CommodityId, Long> grossByCommodity = new LinkedHashMap<>();
     Map<CommodityId, Long> netByCommodity = new LinkedHashMap<>();
     for (Map.Entry<CommodityId, Long> output : recipe.outputPerUnit().entrySet()) {
       CommodityId commodity = output.getKey();
-      long gross = scale * output.getValue() * MILLI_PER_GRAIN; // 毫单位（毛产出）
+      long quantityPerUnit = outputQuantityOverrides.getOrDefault(commodity, output.getValue());
+      long gross = scale * quantityPerUnit * MILLI_PER_GRAIN; // 毫单位（毛产出）
       if (gross <= 0L) {
         continue;
       }
@@ -7273,6 +7351,68 @@ public final class EconomySettlement {
     }
     for (CompensationRule rule : outcome.deferredMoney()) {
       ledger.addDeferred(rule);
+    }
+  }
+
+  /**
+   * ★★ <b>Z2（§8）：{@code PRODUCTION_EFFICIENCY_HARVEST} DEBUG，逐 unit</b> —— day / unit / laborScale
+   * / satisfaction / scaleBase / avgModifier / scale / 四个余数（外加 {@code modifierEffective}、 {@code
+   * laborPerUnitZero} 两个审计位）。只在 {@code TRACE.isDebugEnabled()} 时调用。
+   *
+   * <p>★ {@code lpu == 0} 的退化按 §6.2 ② 另记一条具名 DEBUG {@code
+   * PRODUCTION_EFFICIENCY_LABOR_PER_UNIT_ZERO} （修正不生效、走旧口径；不新增 WARN、不抛）。
+   */
+  private static void logProductionEfficiencyHarvest(
+      long day, ProductionUnitId unit, ProductionEfficiencyBook.HarvestEvaluation evaluation) {
+    EventLog.channel(TRACE)
+        .debug(
+            LogEvent.of(
+                "PRODUCTION_EFFICIENCY_HARVEST",
+                EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
+                "day",
+                day,
+                "unit",
+                unit.value(),
+                "laborScale",
+                evaluation.laborScale(),
+                "satisfaction",
+                evaluation.satisfactionPerMille(),
+                "scaleBase",
+                evaluation.scaleBase(),
+                "avgModifier",
+                evaluation.avgModifierPerMille(),
+                "scale",
+                evaluation.scale(),
+                "modifierRemainderMilli",
+                evaluation.modifierRemainderMilli(),
+                "laborDayRemainderMilli",
+                evaluation.laborDayRemainderMilli(),
+                "laborScaleRemainderMilli",
+                evaluation.laborScaleRemainderMilli(),
+                "scaleRemainderMilli",
+                evaluation.scaleRemainderMilli(),
+                "modifierEffective",
+                evaluation.modifierEffective(),
+                "laborPerUnitZero",
+                evaluation.laborPerUnitZero()));
+    if (evaluation.laborPerUnitZero()) {
+      EventLog.channel(TRACE)
+          .debug(
+              LogEvent.of(
+                  "PRODUCTION_EFFICIENCY_LABOR_PER_UNIT_ZERO",
+                  EconomyLogSource.ECONOMY_PRODUCTION_EFFICIENCY,
+                  "day",
+                  day,
+                  "unit",
+                  unit.value(),
+                  "laborScale",
+                  evaluation.laborScale(),
+                  "scaleBase",
+                  evaluation.scaleBase(),
+                  "scale",
+                  evaluation.scale(),
+                  "modifierEffective",
+                  evaluation.modifierEffective()));
     }
   }
 
@@ -7764,52 +7904,6 @@ public final class EconomySettlement {
                 () ->
                     new IllegalArgumentException(
                         "产业 id 里没有格键，无法为产出落产权账户（账户 = (actor, location)，不许拿 (0,0) 顶替）: " + id)));
-  }
-
-  /**
-   * ★★ **规模 = 最紧约束**（spec §五 原文；R3/V7 把 {@code harvest} 里的"三路全是亩"泛化成"每种 capacity 一路 + 劳动一路 +
-   * 每种投入一路"）：
-   *
-   * <pre>
-   * scale = min( ⌊industry.capacity[k] ÷ capacityPerUnit[k]⌋    …每种生产资料一路（★ K3：产能住在产业上）
-   *            , ⌊平均每日实际劳动 ÷ laborPerUnit⌋               …劳动一路
-   *            , ⌊本周期实际扣到的投入_j ÷ inputPerUnit[j]⌋        …每种投入一路 )
-   * </pre>
-   *
-   * <p>★★ <b>K3（2026-09-27）：产能那一份改读 {@link Industry#capacity()}</b>（本格该产业的产能总量），不再 Σ 各行的 {@code
-   * meansOfProduction}（那个字段已随 K2/K3 删除）。★ <b>形状不变</b>（三路取 min 一字未改），变的只是产能的来源： 改前"Σ各行"隐含"贫农缸空 ⇒
-   * 它的地荒着"的阶级差异，改后这份差异由**投入由谁出**表达（H3 起 = {@code relation.inputSupplier} 指名的那一个主体； ★ H0
-   * 阶段那套"按人口占比折算"的 {@code rowSharesOf} 已随本批删除）⇒ 真档数值允许变（K3 已认）。
-   *
-   * <p>★★ **每一路都可以"不施加"**（该路的"每单位需求"为 {@code 0} 或该路的表里没有这一项）：这与旧代码 {@code seedPerMu == 0 ⇒ 不加约束}
-   * 是**同一条口径** —— 旧档与未配投入/未配劳动的产业据此与 V2 逐值一致，**不是**"规模 0"（写成 0 会让它们颗粒无收）。
-   *
-   * <p>★ 整数运算、向下取整；{@code capacityPerUnit} 非空且逐值 &gt; 0（构造期守卫）⇒ 结果必有上界。
-   *
-   * @param avgLaborMilli 平均每日实际劳动（千分劳动）= 本周期配额之和 ÷ cycleDays
-   */
-  private static long scaleOf(
-      ProductionProcess unit,
-      Industry industry,
-      SettlementIndex index,
-      long avgLaborMilli,
-      long plannedPerMille) {
-    ProductionRecipe recipe = industry.recipe();
-    // ★★ **R3B.2：产能那一路 = unit 的可用资产 ÷ 每单位需求**（{@link ProductionProcessBook} 是唯一拼写点）。
-    long scale = ProductionProcessBook.capacityScaleOf(unit, industry, index);
-    // ★★ S3：状态机的计划规模系数（缩产/停业）—— 只压"本周期计划"，OwnershipStake 原样保留。
-    scale = scale * plannedPerMille / 1_000L;
-    if (recipe.laborPerUnit() > 0L) {
-      scale = Math.min(scale, avgLaborMilli / recipe.laborPerUnit());
-    }
-    for (Map.Entry<CommodityId, Long> entry : recipe.inputPerUnit().entrySet()) {
-      if (entry.getValue() <= 0L) {
-        continue; // 每单位需求为 0 ⇒ 这一路不构成约束（与旧代码 seedPerMu == 0 同款）
-      }
-      long drawn = unit.cycleInputUsedMilli().getOrDefault(entry.getKey(), 0L);
-      scale = Math.min(scale, drawn / entry.getValue());
-    }
-    return scale;
   }
 
   /**

@@ -361,3 +361,16 @@ Z2 只动公式与结算路径，不改状态定义（发现定义不足 ⇒ 上
    拒 `QUANTITY_OUT_OF_RANGE`。Z4 负向用例两类都覆盖，不要求同一短语。接受。
 7. **GM 覆盖只作用于生产路径**：`ExpectedProfitBook` 等只读预期仍读配方默认值（避免本批扩面）；Z4 记一条已知边界，
    期望/读数一致性另开批次。接受。
+
+## 14. 控制方收尾裁定（Z2 实际落地，2026-10-23）
+
+1. **中立运行也结转劳动余数**（缺行在周期末按非零余数物化）——**接受**：这是 §1.2 变化 1 与 §6.2⑦ 的原文要求
+   （用户"余数相加"），长期不再系统性丢精度。代价：每个生产 unit 首次周期后基本都会留一行；中立运行相对旧口径
+   长期最多 `+1` 规模单位/周期（找回截断损失）。Z4 必须量化并重基线，不得改回去；若用户日后裁定"中立=旧逐值"，
+   开关点只在 `ProductionEfficiencyBook` ⑦（`state == null` 分支改为 `nextState = null`）。
+2. 规划读数（劳动/市场/债务/预期利润）仍走 `plannedCapacityScaleOf` 与配方默认数量，看不到修正参数/GM 覆盖——
+   本批接受为已知边界（同 §13.7），`harvest` 方法注已写；一致性另批。
+3. 余数分母不变性已核：unit id 与 industry 绑定；唯一复用 unit 的 `EconomyModeTransitionSettlement` **不改**
+   `industry`（`unit.industry()` 原样带过），故余数不会因换产业越域；`ModeMigrationSettlement` 删除 unit 会留下
+   孤儿效率行（无读写、无害），Z4 观察。★ 若未来出现"unit 换产业/换 recipe"的写点，必须同时重置该 unit 的效率行，
+   否则余数越域会触发契约 ERROR fail-closed。
