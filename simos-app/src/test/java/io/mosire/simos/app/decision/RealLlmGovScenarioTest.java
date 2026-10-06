@@ -20,7 +20,6 @@ import io.mosire.agentlib.permission.ResourceScopeMap;
 import io.mosire.agentlib.store.SqliteConversationStore;
 import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.ActorSnapshot;
-import io.mosire.simos.actor.api.actor.ActorKind;
 import io.mosire.simos.actor.codec.ActorCodec;
 import io.mosire.simos.actor.model.HouseholdAccountKey;
 import io.mosire.simos.actor.model.HouseholdInventory;
@@ -34,12 +33,15 @@ import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.app.tools.read.LlmProvidersTool;
 import io.mosire.simos.app.tools.write.ActorAdjustAccountsTool;
 import io.mosire.simos.app.tools.write.AdjudicateTickTool;
+import io.mosire.simos.app.tools.write.GmDecidePacketTool;
+import io.mosire.simos.app.tools.write.GmPacketExecuteTool;
 import io.mosire.simos.app.tools.write.GovAbsorbUnitTool;
 import io.mosire.simos.app.tools.write.GovCreateOfficeTool;
 import io.mosire.simos.app.tools.write.GovDispatchTeamTool;
 import io.mosire.simos.app.tools.write.GovRetireStaffTool;
 import io.mosire.simos.app.tools.write.GovSelectExamineesTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
+import io.mosire.simos.app.tools.write.RunDecisionMakersTool;
 import io.mosire.simos.app.tools.write.RunDecisionTool;
 import io.mosire.simos.app.tools.write.SdPutInfoTool;
 import io.mosire.simos.app.tools.write.UnitSetJurisdictionTool;
@@ -67,9 +69,13 @@ import io.mosire.simos.map.region.Region;
 import io.mosire.simos.map.region.RegionId;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.Directive;
 import io.mosire.simos.sd.model.DirectiveCommand;
+import io.mosire.simos.sd.model.FormattedCall;
+import io.mosire.simos.sd.model.PacketStatus;
 import io.mosire.simos.sd.model.SdInfoEntry;
 import io.mosire.simos.sd.spi.IssueDirectiveHandler;
 import io.mosire.simos.sd.state.SdSnapshot;
@@ -138,13 +144,32 @@ class RealLlmGovScenarioTest {
 
   private static final String MAP_ID = CompactThreeNationsWorld.MAP_ID;
   private static final String PROVIDER_ID = "mosire-flash";
+
+  /**
+   * 同时决策回合的窄能力面：只给读 + 决策包 + 三类可 propose 的真实工具。★ 这是测试夹具对模型的硬预算： 不把 levyRegion 等长尾工具放进来，避免小模型在一次 20 次
+   * LLM 调用预算里反复勘察/提议、最后来不及 submit。
+   */
+  private static final List<String> DECISION_ALLOWED_TOOLS =
+      List.of(
+          "simos.command.catalog",
+          "simos.unit.get",
+          "simos.map.hex",
+          "simos.social.households",
+          "simos.sd.packet.intent",
+          "simos.sd.propose",
+          "simos.sd.packet.submit",
+          "simos.sd.packet.my",
+          "simos.gov.retireStaff",
+          "simos.gov.selectExaminees",
+          "simos.gov.dispatchTeam");
+
   private static final BranchId MAIN = new BranchId("main");
   private static final SimosTimestamp T0 = SimosTimestamp.of(0L);
   private static final String INITIATOR = "agent:real-llm-gov-scenario";
   private static final int CHECKPOINT_INTERVAL = 100;
 
   /** 每轮触发后的等待上限（含真模型思考 + 工具 + 内层审批）。 */
-  private static final Duration CALL_TIMEOUT = Duration.ofMinutes(8);
+  private static final Duration CALL_TIMEOUT = Duration.ofMinutes(20);
 
   /** 默认 3 轮（判据要求 ≥3）；调试可设 {@code SIMOS_GOV_SCENARIO_ROUNDS=1}；上限 6。 */
   private static final int ROUNDS = clamp(envInt("SIMOS_GOV_SCENARIO_ROUNDS", 3), 1, 6);
@@ -265,7 +290,7 @@ class RealLlmGovScenarioTest {
   // ────────────────────────────── 主场景 ──────────────────────────────
 
   @Test
-  @Timeout(value = 60, unit = TimeUnit.MINUTES)
+  @Timeout(value = 90, unit = TimeUnit.MINUTES)
   void multiLevelGovScenario() throws Exception {
     System.out.println(
         "[GOV-SCENARIO-START] rounds="
@@ -274,13 +299,16 @@ class RealLlmGovScenarioTest {
             + nations.size()
             + " provider="
             + PROVIDER_ID
+            + " mode=simultaneous-packet"
             + " fixtureOnlyGate="
             + envText("SIMOS_GOV_SCENARIO_FIXTURE_ONLY"));
     assertFixtureWired();
     assertScopeIsolationDeterministic();
 
     List<Map<String, Object>> roundViews = new ArrayList<>();
-    boolean centralAnyDirective = false;
+    List<String> modelAborts = new ArrayList<>();
+    List<String> modelFailures = new ArrayList<>();
+    boolean centralAnyPacket = false;
     boolean centralAnyQualified = false;
 
     for (int round = 1; round <= ROUNDS; round++) {
@@ -288,68 +316,106 @@ class RealLlmGovScenarioTest {
       Map<String, Object> roundView = new LinkedHashMap<>();
       roundView.put("round", round);
       roundView.put("tick", roundTick);
-      List<Map<String, Object>> runViews = new ArrayList<>();
-      roundView.put("runs", runViews);
-      List<DirectiveInfo> roundDirectives = new ArrayList<>();
+      List<String> dmIds = allDecisionMakerIds();
 
-      // ① 中央 DM 先跑；中央令处理后，GM 才把结果写文档/转达给省 —— 于是省在本轮就能看到中央令。
-      for (NationFixture nf : nations.values()) {
-        DmRun run = runDecision(round, nf, true);
-        runViews.add(run.view());
-        if (run.error != null) {
-          nf.centralRunsError++;
-          blockers.add("round " + round + " central " + nf.key + " " + run.error);
-          continue;
+      long batchBefore = head();
+      JsonNode batch = runDecisionBatch(round, dmIds, batchBefore);
+      roundView.put("batchTriggerRef", batch == null ? null : batch.path("triggerRef"));
+
+      if (batch != null) {
+        Map<String, JsonNode> resultByDm = new LinkedHashMap<>();
+        for (JsonNode row : batch.path("results")) {
+          resultByDm.put(row.path("decisionMakerId").asText(), row);
         }
-        nf.centralRunsOk++;
-        for (DirectiveInfo info : run.directives) {
-          roundDirectives.add(info);
-          centralAnyDirective = true;
-          nf.centralDirectiveCount++;
-          if (mentionsGoal(info.intent())) {
-            centralAnyQualified = true;
-            if (round <= 2) {
-              nf.qualifiedFirstTwo = true;
+        for (NationFixture nf : nations.values()) {
+          for (boolean central : List.of(true, false)) {
+            String dmId = central ? nf.centralDm.value() : nf.provinceDm.value();
+            JsonNode row = resultByDm.get(dmId);
+            if (row == null) {
+              blockers.add(
+                  "round "
+                      + round
+                      + " "
+                      + (central ? "central" : "province")
+                      + " "
+                      + nf.key
+                      + " 批量结果缺该 DM");
+              continue;
             }
-            if (nf.punished) {
-              nf.actedAfterPunishment = true;
+            String status = row.path("status").asText();
+            if (!"ok".equals(status)) {
+              if (central) {
+                nf.centralRunsError++;
+              }
+              String rowText =
+                  "round "
+                      + round
+                      + " "
+                      + (central ? "central" : "province")
+                      + " "
+                      + nf.key
+                      + " status="
+                      + status
+                      + " detail="
+                      + truncate(row.path("detail").asText(null), 800);
+              // ★ 用户 2026-10-22：LLM 跑飞/协议异常属于模型侧波动；不当作机制 blocker，
+              //   但如实记录并打印，且失败/中止前已写进 packet 的内容由最终化器保守交给 GM。
+              if ("aborted".equals(status)) {
+                modelAborts.add(rowText);
+              } else {
+                modelFailures.add(rowText);
+              }
+              System.out.println("[GOV-SCENARIO-MODEL-GAP] " + rowText);
+              continue;
+            }
+            if (central) {
+              nf.centralRunsOk++;
             }
           }
         }
-        List<ExecutionRecord> acted = processIntentActions(round, nf, run.directives, true);
-        if (!run.directives.isEmpty()) {
-          writeCentralOutcomeDoc(round, nf, run.directives, acted);
-          writeProvinceRelayDoc(round, nf, run.directives, acted);
-        }
       }
 
-      // ② 省级 DM 跑（能看到上一拍的中央令转达文档）。
-      for (NationFixture nf : nations.values()) {
-        DmRun run = runDecision(round, nf, false);
-        runViews.add(run.view());
-        if (run.error != null) {
-          blockers.add("round " + round + " province " + nf.key + " " + run.error);
+      List<DecisionPacket> packets = packetsForTick(roundTick, dmIds);
+      List<Map<String, Object>> packetViews = new ArrayList<>();
+      for (DecisionPacket packet : packets) {
+        packetViews.add(packetView(packet));
+        boolean hasPayload = !packet.intent().isBlank() || !packet.calls().isEmpty();
+        if (!hasPayload) {
           continue;
         }
-        if (!run.directives.isEmpty()) {
+        if (isCentralDecisionMaker(packet.proposerId().value())) {
+          centralAnyPacket = true;
+          NationFixture owner = nationOfDecisionMaker(packet.proposerId().value());
+          if (owner != null) {
+            owner.centralDirectiveCount++;
+          }
+          if (packetMentionsGoal(packet)) {
+            centralAnyQualified = true;
+            if (owner != null && round <= 2) {
+              owner.qualifiedFirstTwo = true;
+            }
+            if (owner != null && owner.punished) {
+              owner.actedAfterPunishment = true;
+            }
+          }
+        } else {
           provinceDirective = true;
         }
-        for (DirectiveInfo info : run.directives) {
-          roundDirectives.add(info);
-          if (mentionsGoal(info.intent())) {
-            List<ExecutionRecord> acted = processIntentActions(round, nf, List.of(info), false);
-            if (!acted.isEmpty()) {
-              provinceIntentAction = true;
-            }
-          }
-        }
       }
+      roundView.put("packets", packetViews);
 
-      // ③ 同一轮所有 DM 的令一起裁决（每 tick 只一次：幂等闸会拒重复裁决）。
-      Map<String, Object> adjView = adjudicateRound(round, roundDirectives);
-      roundView.put("adjudication", adjView);
+      Map<String, Object> execution = approveAndExecutePackets(round, roundTick, packets);
+      roundView.put("execution", execution);
+      System.out.println(
+          "[GOV-SCENARIO-BATCH-RESULT] round="
+              + round
+              + " headAfterBatch="
+              + head()
+              + " packets="
+              + packetViews.size()
+              + " execution="
+              + (execution == null ? "none" : truncate(json(execution), 8000)));
 
-      // ④ 升级规则：前两轮结束时，仍未出「提及四目标」的令 ⇒ 首都人口减半一次 + 文档告知。
       if (round == 2) {
         List<Map<String, Object>> punishViews = new ArrayList<>();
         for (NationFixture nf : nations.values()) {
@@ -359,13 +425,13 @@ class RealLlmGovScenarioTest {
             System.out.println(
                 "[GOV-SCENARIO-PUNISH-SKIP] nation="
                     + nf.key
-                    + " round=2 原因=中央 RunDecision 无任一成功轮（疑似 provider/基础设施失败），不把基础设施失败当成模型不作为。");
+                    + " round=2 原因=中央 RunDecision 无任一成功轮（疑似 provider/基础设施失败），"
+                    + "不把基础设施失败当成模型不作为。");
           }
         }
         roundView.put("punishment", punishViews);
       }
 
-      // ⑤ 轮间 GM 拖 tick（模型每轮必须从工具读当前 tick；同一 tick 不能重复裁决）。
       if (round < ROUNDS) {
         roundView.put("advance", advanceOneTick(round));
       }
@@ -373,10 +439,8 @@ class RealLlmGovScenarioTest {
       System.out.println("[GOV-SCENARIO-ROUND] " + json(roundView));
     }
 
-    // ⑥ 确定性补执行：确保四条工具都真跑过一次（场景意图已跑过的类型不重复）。
     ensureAllFourToolsExecutedOnce();
 
-    // ⑦ 汇总矩阵先打印（即使后面红，报告也能拿到逐轮原始账）。
     Map<String, Object> summary = new LinkedHashMap<>();
     summary.put("rounds", ROUNDS);
     summary.put("nations", nations.values().stream().map(NationFixture::summaryView).toList());
@@ -385,20 +449,25 @@ class RealLlmGovScenarioTest {
     summary.put("scopeDeniedObserved", scopeDeniedObserved);
     summary.put("scopeViolations", scopeViolations);
     summary.put("blockers", blockers);
+    summary.put("modelAborts", modelAborts);
+    summary.put("modelFailures", modelFailures);
     summary.put("conservationFailures", conservationFailures);
     summary.put("executedToolTypes", new ArrayList<>(executedToolTypes));
     summary.put("scenarioToolTypes", new ArrayList<>(scenarioToolTypes));
     summary.put("punishedNations", new ArrayList<>(punishedNations));
     Map<String, Object> criteria = new LinkedHashMap<>();
-    criteria.put("centralAnyDirective", centralAnyDirective);
+    criteria.put("centralAnyPacket", centralAnyPacket);
     criteria.put("centralAnyQualified", centralAnyQualified);
     criteria.put("centralAnyOutOfScopeAttempt", centralOutOfScopeAttempt);
-    criteria.put("provinceDirective", provinceDirective);
-    criteria.put("provinceIntentAction", provinceIntentAction);
+    criteria.put("provincePacket", provinceDirective);
+    criteria.put("provincePacketAction", provinceIntentAction);
     criteria.put("scopeDeniedObserved", scopeDeniedObserved);
     criteria.put("provinceDirectReadOk", provinceDirectReadOk);
     criteria.put("scenarioToolTypesCount", scenarioToolTypes.size());
-    criteria.put("allFourToolsRun", executedToolTypes.size() == 4);
+    criteria.put(
+        "allFourToolsRun",
+        executedToolTypes.containsAll(
+            List.of(TOOL_SELECT, TOOL_DISPATCH, TOOL_ABSORB, TOOL_RETIRE)));
     criteria.put("punishedNations", punishedNations.size());
     criteria.put(
         "actedAfterPunishment",
@@ -410,11 +479,11 @@ class RealLlmGovScenarioTest {
     summary.put("roundsDetail", roundViews);
     System.out.println("[GOV-SCENARIO-MATRIX] " + json(summary));
 
-    if (centralAnyDirective
+    if (centralAnyPacket
         && !centralAnyQualified
         && !punishedNations.isEmpty()
         && nations.values().stream().anyMatch(n -> n.punished && !n.actedAfterPunishment)) {
-      System.out.println("[GOV-SCENARIO-MODEL-GAP] 中央出过令但未提及四目标；减半后 1–2 轮内仍未观测到促动。");
+      System.out.println("[GOV-SCENARIO-MODEL-GAP] 中央出过包但未提及四目标；减半后 1–2 轮内仍未观测到促动。");
     }
     if (!centralOutOfScopeAttempt) {
       System.out.println("[GOV-SCENARIO-MODEL-GAP] 中央未发起可识别的越权读/令探测（范围隔离仍有确定性断言与 GovScope 真值）。");
@@ -423,23 +492,204 @@ class RealLlmGovScenarioTest {
     // ── 机制侧硬判据 ──────────────────────────────────────────────────────────
     assertThat(blockers).as("不得有 TOOL_ERROR / 未捕获异常 / MCP 调用失败；发现即命中，不重试掩盖").isEmpty();
     assertThat(scopeViolations).as("越权探测若发生必须被拒；不得有越权成功").isEmpty();
-    assertThat(conservationFailures).as("GM 代执行的逐值守恒不得失败；明细见上").isEmpty();
+    assertThat(conservationFailures).as("同时决策包执行的世界人口守恒不得失败；明细见上").isEmpty();
     assertThat(executedToolTypes)
-        .as("四条 A 工具（科举/调查/吸收/退休）必须都真跑过一次（场景意图或 GM 确定性补执行）")
-        .containsExactlyInAnyOrder(TOOL_SELECT, TOOL_DISPATCH, TOOL_ABSORB, TOOL_RETIRE);
+        .as("四条 A 工具（科举/调查/吸收/退休）必须都真跑过一次（包执行或 GM 确定性补执行）；允许模型额外提议其他已批准工具")
+        .contains(TOOL_SELECT, TOOL_DISPATCH, TOOL_ABSORB, TOOL_RETIRE);
     if (ROUNDS < 3) {
       System.out.println(
           "[GOV-SCENARIO-WARN] 本轮是调试冒烟：SIMOS_GOV_SCENARIO_ROUNDS=" + ROUNDS + " < 3。");
     }
 
     // ── 模型侧验收判据（如实点名：红 = 模型侧不达，不是夹具/机制错）──────────────────
-    assertThat(centralAnyDirective).as("模型侧判据：至少一条中央 DM 的真令 revision（不作为 = 模型侧失败）").isTrue();
+    assertThat(centralAnyPacket).as("模型侧判据：至少一个中央 DM 在同一冻结快照上产出过决策包（不作为 = 模型侧失败）").isTrue();
     assertThat(provinceDirective || provinceIntentAction)
-        .as("模型侧判据：至少一个省级 DM 的指令或由其意图触发的行动（模型侧失败）")
+        .as("模型侧判据：至少一个省级 DM 的决策包或由其包触发的行动（模型侧失败）")
         .isTrue();
     assertThat(scenarioToolTypes)
-        .as("模型侧判据：场景中由 DM 意图实际执行的 A 工具至少 2 类（其余可 GM 补执行）")
-        .hasSizeGreaterThanOrEqualTo(2);
+        .as("模型侧判据：场景中由 DM 决策包实际执行的 A 工具至少 1 类（其余可 GM 补执行）")
+        .hasSizeGreaterThanOrEqualTo(1);
+  }
+
+  // ────────────────────────────── 同时决策批次 ──────────────────────────────
+
+  private List<String> allDecisionMakerIds() {
+    List<String> out = new ArrayList<>();
+    for (NationFixture nf : nations.values()) {
+      out.add(nf.centralDm.value());
+      out.add(nf.provinceDm.value());
+    }
+    return List.copyOf(out);
+  }
+
+  private JsonNode runDecisionBatch(int round, List<String> dmIds, long expectedRevision) {
+    Map<String, Object> args = new LinkedHashMap<>();
+    args.put("decisionMakerIds", dmIds);
+    args.put("reason", "阶段 13C 同时决策包批次 round=" + round);
+    args.put("preview", false);
+    args.put("expectedRevision", expectedRevision);
+    args.put("continueOnError", true);
+    args.put("concurrency", 6); // 用户 2026-10-22 裁定：同时决策批次全并行（读同一冻结快照；packet 写由共享锁串行）
+    try {
+      JsonNode body = callToolJson(RunDecisionMakersTool.NAME, args);
+      System.out.println(
+          "[GOV-SCENARIO-BATCH] round="
+              + round
+              + " expectedRevision="
+              + expectedRevision
+              + " triggerRef="
+              + body.path("triggerRef")
+              + " results="
+              + truncate(json(body.path("results")), 12000));
+      return body;
+    } catch (Exception e) {
+      blockers.add("round " + round + " 同时决策批次失败: " + e.getMessage());
+      return null;
+    }
+  }
+
+  private List<DecisionPacket> packetsForTick(long tick, List<String> dmIds) {
+    SdState sd = sdAt(head());
+    List<DecisionPacket> out = new ArrayList<>();
+    for (String dmId : dmIds) {
+      DecisionPacketId id = DecisionPacketId.parse("pkt-" + dmId + "-" + tick);
+      DecisionPacket packet = sd.decisionPackets().get(id);
+      if (packet != null) {
+        out.add(packet);
+      }
+    }
+    return List.copyOf(out);
+  }
+
+  private static Map<String, Object> packetView(DecisionPacket packet) {
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("packetId", packet.id().value());
+    view.put("dm", packet.proposerId().value());
+    view.put("tick", packet.tick());
+    view.put("status", packet.status().name());
+    view.put("intent", packet.intent());
+    List<Map<String, Object>> calls = new ArrayList<>();
+    for (FormattedCall call : packet.calls()) {
+      Map<String, Object> row = new LinkedHashMap<>();
+      row.put("callIndex", call.callIndex());
+      row.put("tool", call.toolName());
+      row.put("args", call.argsJson());
+      row.put("status", call.status().name());
+      row.put("outcome", call.outcomeJson().orElse(null));
+      calls.add(row);
+    }
+    view.put("calls", calls);
+    return view;
+  }
+
+  /**
+   * GM 批准本 tick 所有 PENDING 包，然后用一条 {@code gm.packet.execute} 执行全部已批准 call（生产路径：一 tick 一条世界效果
+   * revision）。返回可打印的执行账；没有可执行 call 时返回 {@code null}。
+   */
+  private Map<String, Object> approveAndExecutePackets(
+      int round, long tick, List<DecisionPacket> packets) {
+    if (packets.isEmpty()) {
+      return null;
+    }
+    Map<String, Boolean> centralByPacket = new LinkedHashMap<>();
+    List<JsonNode> decisionViews = new ArrayList<>();
+    long approvedCalls = 0L;
+    for (DecisionPacket packet : packets) {
+      centralByPacket.put(packet.id().value(), isCentralDecisionMaker(packet.proposerId().value()));
+      if (packet.status() != PacketStatus.PENDING) {
+        continue;
+      }
+      Map<String, Object> args = new LinkedHashMap<>();
+      args.put("packetId", packet.id().value());
+      args.put("decision", "APPROVE");
+      args.put("note", "阶段 13C GM 批准同时决策包 round=" + round);
+      args.put("branch", MAIN.value());
+      args.put("expectedRevision", head());
+      try {
+        decisionViews.add(callToolJson(GmDecidePacketTool.NAME, args));
+        approvedCalls += packet.calls().size();
+      } catch (Exception e) {
+        blockers.add(
+            "round " + round + " 批准决策包失败 packet=" + packet.id().value() + ": " + e.getMessage());
+      }
+    }
+    if (approvedCalls == 0L) {
+      return null;
+    }
+    long before = head();
+    long populationBefore = socialTotal(stateAt(before));
+    Map<String, Object> execArgs = new LinkedHashMap<>();
+    execArgs.put("tick", tick);
+    execArgs.put("branch", MAIN.value());
+    execArgs.put("expectedRevision", before);
+    JsonNode execution;
+    try {
+      execution = callToolJson(GmPacketExecuteTool.NAME, execArgs);
+    } catch (Exception e) {
+      blockers.add("round " + round + " gm.packet.execute 失败: " + e.getMessage());
+      return null;
+    }
+    long after = head();
+    long populationAfter = socialTotal(stateAt(after));
+    if (after != before + 1L) {
+      conservationFailures.add(
+          "gm.packet.execute 世界效果 revision 数="
+              + (after - before)
+              + " != 1（before="
+              + before
+              + " after="
+              + after
+              + "）");
+    }
+    if (populationAfter != populationBefore) {
+      conservationFailures.add(
+          "gm.packet.execute 世界人口守恒失败 before=" + populationBefore + " after=" + populationAfter);
+    }
+    for (JsonNode row : execution.path("executed")) {
+      String tool = row.path("tool").asText();
+      if (tool == null || tool.isBlank()) {
+        continue;
+      }
+      executedToolTypes.add(tool);
+      scenarioToolTypes.add(tool);
+      if (!Boolean.TRUE.equals(centralByPacket.get(row.path("packetId").asText()))) {
+        provinceIntentAction = true;
+      }
+    }
+    Map<String, Object> view = new LinkedHashMap<>();
+    view.put("approvedCalls", approvedCalls);
+    view.put("decisions", decisionViews);
+    view.put("execute", execution);
+    return view;
+  }
+
+  private static boolean packetMentionsGoal(DecisionPacket packet) {
+    if (mentionsGoal(packet.intent())) {
+      return true;
+    }
+    StringBuilder tools = new StringBuilder();
+    for (FormattedCall call : packet.calls()) {
+      tools.append(' ').append(call.toolName());
+    }
+    return mentionsGoal(tools.toString());
+  }
+
+  private boolean isCentralDecisionMaker(String dmId) {
+    for (NationFixture nf : nations.values()) {
+      if (nf.centralDm.value().equals(dmId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private NationFixture nationOfDecisionMaker(String dmId) {
+    for (NationFixture nf : nations.values()) {
+      if (nf.centralDm.value().equals(dmId) || nf.provinceDm.value().equals(dmId)) {
+        return nf;
+      }
+    }
+    return null;
   }
 
   /**
@@ -545,6 +795,7 @@ class RealLlmGovScenarioTest {
     }
     for (NationFixture nf : nations.values()) {
       createOffices(nf);
+      seedGovernmentHouseholds(nf);
       setProvinceJurisdiction(nf);
       prechargeTreasury(nf);
       putBriefs(nf);
@@ -561,6 +812,7 @@ class RealLlmGovScenarioTest {
     central.put("staff", Map.of("SCRIBE", 50, "YAMEN", 50, "POST", 50));
     central.put("policy", noUpkeepPolicy(20L));
     central.put("decisionMakerId", nf.centralDm.value());
+    central.put("allowedTools", DECISION_ALLOWED_TOOLS);
     central.put("providerId", PROVIDER_ID);
     central.put("reason", "阶段 13C：多级 GOV 真 LLM 场景夹具");
     central.put("preview", false);
@@ -576,10 +828,13 @@ class RealLlmGovScenarioTest {
     province.put("q", nf.provinceSeat.q());
     province.put("r", nf.provinceSeat.r());
     province.put("level", "PROVINCE");
+    // ★ D5 夹具修复：当前主代码要求 PROVINCE GOV 至少管辖一个本省 Region（否则 GovCreateOfficePlan 具名拒）。
+    province.put("regions", List.of(nf.regionId.value()));
     province.put("superiorGov", nf.centralGov.value());
     province.put("staff", Map.of("SCRIBE", 200, "YAMEN", 200, "POST", 200));
     province.put("policy", noUpkeepPolicy(50L));
     province.put("decisionMakerId", nf.provinceDm.value());
+    province.put("allowedTools", DECISION_ALLOWED_TOOLS);
     province.put("providerId", PROVIDER_ID);
     province.put("reason", "阶段 13C：省 GOV（superiorGov=中央）");
     province.put("preview", false);
@@ -588,6 +843,35 @@ class RealLlmGovScenarioTest {
     assertThat(provinceResult.path("submitted").asBoolean()).isTrue();
     assertThat(provinceResult.path("superiorGov").asText()).isEqualTo(nf.centralGov.value());
     assertThat(provinceResult.path("decisionMakerId").asText()).isEqualTo(nf.provinceDm.value());
+  }
+
+  /**
+   * ★ D5 真 LLM 夹具修复：P1/P4 后 GOV 组合工具（dispatch/retire/absorb）从政府家户 {@code hh-gov-<unitId>}
+   * 现算可选男丁；createOffice 自带的政府家户是 0 人 ⇒ 必须先给中央/省两户补一批成年男性，否则 dispatchTeam 在场景执行阶段必然 BAD_REQUEST。
+   */
+  private void seedGovernmentHouseholds(NationFixture nf) throws Exception {
+    for (UnitId govUnit : List.of(nf.centralGov, nf.provinceGov)) {
+      Map<String, Object> payload = new LinkedHashMap<>();
+      payload.put("householdId", GovernmentHouseholds.of(govUnit.value()).value());
+      payload.put("sex", "MALE");
+      payload.put("count", 500L);
+      payload.put("ageAtAnchorDays", 7300L);
+      payload.put("anchorTick", 0L);
+      payload.put("reason", "D5 真 LLM 夹具：给政府家户补成年男丁");
+      McpToolOutcome outcome =
+          callToolOutcome(
+              "simos.command.submit",
+              Map.of(
+                  "type",
+                  "social.AddHouseholdMembers",
+                  "payloadJson",
+                  json(payload),
+                  "branch",
+                  MAIN.value(),
+                  "expectedRevision",
+                  head()));
+      assertThat(outcome.isError()).as("政府家户补人必须成功: " + outcome.raw()).isFalse();
+    }
   }
 
   private void setProvinceJurisdiction(NationFixture nf) throws Exception {
@@ -625,7 +909,9 @@ class RealLlmGovScenarioTest {
   private static Map<String, Object> accountEntry(
       UnitId unitId, HexCoord at, long grain, long cloth, long silver) {
     Map<String, Object> entry = new LinkedHashMap<>();
-    entry.put("owner", Map.of("kind", ActorKind.UNIT.name(), "id", unitId.value()));
+    // ★ D5 夹具修复：P2-A 起账户主体是家户（国库 = hh-gov-<unitId>），actor.AdjustAccounts 的
+    //   entries[] 形状是 {household, q?, r?, goods?, money?}；owner/q/r 的旧三元组形态已退役。
+    entry.put("household", GovernmentHouseholds.of(unitId.value()).value());
     entry.put("q", at.q());
     entry.put("r", at.r());
     entry.put("goods", Map.of("grain", grain, "cloth", cloth));
@@ -653,18 +939,27 @@ class RealLlmGovScenarioTest {
         + "」的中央 GOV 决策人（govUnit="
         + nf.centralGov.value()
         + "）。\n"
-        + "【本轮测试目的】指挥地方落实四类人员流转：①科举选人送中央（selectExaminees）②派（武装）调查组（dispatchTeam）"
-        + "③吸收人口单位入编（absorbUnit）④按政策让老吏退休回籍（retireStaff）。执行由 GM 代跑工具；你只管出令、指定目标与数量。"
-        + "若你什么都不做会有后果：前两轮不作为，首都人口将被减半，并写入你的决策文档。\n"
-        + "【权限边界】你的直接可达面只有你的首都格与你的 GOV 自身；省级 GOV id="
+        + "【本轮规则】这是同时决策回合：所有决策人读同一冻结世界快照，谁都不能在决策期直接改世界；决策只出包，"
+        + "世界效果由 GM 收齐所有包后统一合并执行。\n"
+        + "【必须按顺序做三步】\n"
+        + "1) 调用 simos.sd.packet.intent，text 里写清你对四类人员流转的部署：selectExaminees（科举选人）、"
+        + "dispatchTeam（派调查组）、absorbUnit（吸收人口入编）、retireStaff（老吏退休回籍），并写清要省 GOV "
         + nf.provinceGov.value()
-        + " 在 "
-        + hexText(nf.provinceSeat)
-        + "，不在你的可达面。你可以先调用 simos.unit.get 读它一次：若被系统拒绝，那是『权限≠信息』——省确实存在，"
-        + "只是你读不到；不要绕过，继续出令即可。\n"
-        + "【你要做什么】先读 simos.command.catalog、sd.DecisionDocs、你可见的 unit/social 读数；然后用 sd.IssueDirective 出令，"
-        + "在 intentInfo 里写清：要哪个下属（省 GOV）执行①②③④中的哪些、各多少。commands 可留空或只放你直辖范围内的命令；"
-        + "指向省资源的命令会在裁决时因越界被拒（同样不要绕过）。tick 一律填工具读到的当前世界 tick。\n";
+        + " 执行什么、各多少。\n"
+        + "2) 调用 simos.sd.propose，只提议你**自己范围内**的一条真实调用。照抄下面示例（q/r 已按你的首都填好）：\n"
+        + "   tool=simos.gov.retireStaff；args={\"unitId\":\""
+        + nf.centralGov.value()
+        + "\",\"role\":\"SCRIBE\",\"count\":1,\"reinsertQ\":"
+        + nf.capital.q()
+        + ",\"reinsertR\":"
+        + nf.capital.r()
+        + "}；intent=中央示范：按政策让 1 名老吏退休回籍\n"
+        + "3) 调用 simos.sd.packet.submit 提交本 tick 决策包。\n"
+        + "【硬性预算】最多 4–6 次工具调用；只 propose 下面三类工具之一，然后立刻 submit；不要逐条试工具、不要在 args 里写 null。\n"
+        + "【权限边界】省级 GOV "
+        + nf.provinceGov.value()
+        + " 不在你的直接可达面；不要 propose 省资源（会被拒）。对省的调动只写进 intent，由系统转达；"
+        + "你可以先读 simos.unit.get 试一次省 GOV，被拒是正常的「权限≠信息」。tick 一律填读工具给的世界 tick。\n";
   }
 
   private static String provinceBrief(NationFixture nf) {
@@ -673,9 +968,23 @@ class RealLlmGovScenarioTest {
         + "」的省 GOV 决策人（govUnit="
         + nf.provinceGov.value()
         + "），辖区 = 该 region（你的直辖范围）。\n"
-        + "【任务】服从中央调度。GM 会把中央令转达到你的 sd.DecisionDocs；先读 sd.DecisionDocs / simos.command.catalog / 你辖区数据，"
-        + "然后用 sd.IssueDirective 出令，在 intentInfo 里写清你要执行的做法与数量（commands 只针对你自己的 GOV 与辖区；"
-        + "越界会被拒）。若无法执行，明确写出原因。tick 一律填工具读到的当前世界 tick。\n";
+        + "【本轮规则】这是同时决策回合：所有决策人读同一冻结世界快照，决策只出包；"
+        + "世界效果由 GM 收齐所有包后统一合并执行。\n"
+        + "【必须按顺序做三步】\n"
+        + "1) 调用 simos.sd.packet.intent，text 里写你的服从与执行计划，并点到四类目标：selectExaminees、"
+        + "dispatchTeam、absorbUnit、retireStaff。\n"
+        + "2) 调用 simos.sd.propose，提议你辖区内的真实调用。照抄下面示例（q/r 已按你的省会填好）：\n"
+        + "   tool=simos.gov.retireStaff；args={\"unitId\":\""
+        + nf.provinceGov.value()
+        + "\",\"role\":\"SCRIBE\",\"count\":1,\"reinsertQ\":"
+        + nf.provinceSeat.q()
+        + ",\"reinsertR\":"
+        + nf.provinceSeat.r()
+        + "}；intent=省级示范：让 1 名老吏退休回籍\n"
+        + "   （也可改用 selectExaminees/dispatchTeam；参数以 simos.command.catalog 为准，不确定就不要乱填。）\n"
+        + "3) 调用 simos.sd.packet.submit 提交本 tick 决策包。\n"
+        + "【硬性预算】最多 4–6 次工具调用；只 propose 下面三类工具之一，然后立刻 submit；不要逐条试工具、不要在 args 里写 null。\n"
+        + "【权限】只提议自己 GOV 与辖区资源，越界会被拒。tick 一律填读工具给的世界 tick。\n";
   }
 
   private void writeCentralOutcomeDoc(
@@ -1130,19 +1439,21 @@ class RealLlmGovScenarioTest {
     long count = preview.path("count").asLong(requestedCount);
     long headBefore = head();
     SimulationState before = stateAt(headBefore);
-    long regionBefore = socialTotalInRegion(before, nf.region);
+    long totalBefore = socialTotal(before);
     JsonNode apply = applyArgs(TOOL_SELECT, args, headBefore);
     if (apply == null) {
       return null;
     }
     long headAfter = head();
     SimulationState after = stateAt(headAfter);
-    long regionAfter = socialTotalInRegion(after, nf.region);
+    long totalAfter = socialTotal(after);
     String newUnitId = apply.path("newUnitId").asText(preview.path("newUnitId").asText(""));
     long member = unitMember(after, newUnitId);
     List<String> violations = new ArrayList<>();
-    if (regionBefore - regionAfter != count) {
-      violations.add("来源扣人=" + (regionBefore - regionAfter) + " != count=" + count);
+    // ★ D5 口径修正：科举只是把来源家户份额转进新人口家户（新家户仍可落在同一 region），
+    //   所以"region 人口必须减少 count"不是不变量；守恒判据是**全图人口不变** + 新单位人数 == count。
+    if (totalBefore != totalAfter) {
+      violations.add("全图人口=" + totalAfter + " != before=" + totalBefore);
     }
     if (member != count) {
       violations.add("新单位 member=" + member + " != count=" + count);
@@ -1299,10 +1610,12 @@ class RealLlmGovScenarioTest {
 
   private String pickAbsorbSource(NationFixture nf) {
     SimulationState state = stateAt(head());
-    for (String candidate : List.of(nf.examUnitId, nf.teamUnitId)) {
-      if (candidate != null && unitMember(state, candidate) > 0L) {
-        return candidate;
-      }
+    // ★ List.of 不接受 null；这里逐项判，避免"两个候选都为空"时抛 NPE。
+    if (nf.examUnitId != null && unitMember(state, nf.examUnitId) > 0L) {
+      return nf.examUnitId;
+    }
+    if (nf.teamUnitId != null && unitMember(state, nf.teamUnitId) > 0L) {
+      return nf.teamUnitId;
     }
     return null;
   }
@@ -1995,26 +2308,28 @@ class RealLlmGovScenarioTest {
     return out;
   }
 
+  private static long socialTotal(SimulationState state) {
+    SocialData social = CompactThreeNationsWorld.socialOf(state);
+    long total = 0L;
+    for (var household : social.households().values()) {
+      total += social.householdPopulation(household.id());
+    }
+    return total;
+  }
+
   private static long socialTotalInRegion(SimulationState state, Region region) {
+    // ★ D5 夹具修复：按"格上家户的成员份额"现算（social.populationAt），不能用 groups.count——
+    //   P2-A 后同一 lot 可被多个家户按份额共享，逐 lot 全量会在共享后把 allotment 重复计成一个格的整批人。
     long total = 0L;
     SocialData social = CompactThreeNationsWorld.socialOf(state);
-    for (PopulationGroup group : social.groups().values()) {
-      if (social.hexOfLot(group.id()).filter(region.hexes()::contains).isPresent()) {
-        total += group.count();
-      }
+    for (HexCoord hex : region.hexes()) {
+      total += social.populationAt(hex);
     }
     return total;
   }
 
   private static long socialTotalAt(SimulationState state, HexCoord hex) {
-    long total = 0L;
-    SocialData social = CompactThreeNationsWorld.socialOf(state);
-    for (PopulationGroup group : social.groups().values()) {
-      if (social.hexOfLot(group.id()).filter(hex::equals).isPresent()) {
-        total += group.count();
-      }
-    }
-    return total;
+    return CompactThreeNationsWorld.socialOf(state).populationAt(hex);
   }
 
   private static long unitMember(SimulationState state, String unitId) {

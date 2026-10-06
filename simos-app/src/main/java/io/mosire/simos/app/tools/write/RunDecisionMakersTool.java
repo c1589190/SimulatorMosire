@@ -46,7 +46,9 @@ import java.util.concurrent.ThreadFactory;
 /**
  * ★★ {@code simos.sd.run-decision-makers}（P7a，2026-10-01 后端 + MCP 稳定化计划）：<b>GM-only 显式名单批量派决策人</b>
  * ——输入一份显式 {@code decisionMakerIds} 名单，先同批落 N 条 {@code sd.RunDecision} 触发事实（一批 = 一条
- * revision），再按名单顺序逐个让决策人的 agent 真跑一轮，返回逐人汇总。
+ * revision），再让所有决策人在**同一触发 revision 的冻结快照**上跑一轮（{@code concurrency} 只影响墙钟并发）：世界写工具在
+ * 决策期不可用，只允许写各自决策包；回合结束后由 {@link io.mosire.simos.app.decision.DecisionTurnFinalizer} 统一结算成一个
+ * PENDING packet，GM 再合并执行。返回逐人汇总。
  *
  * <p>★★ <b>不做自动筛选 / 自动派出</b>（用户 2026-10-01 裁定 8）：{@code due} 只在 preview 里作<b>只读展示</b>，
  * 明确不参与选择；本工具只按调用方显式给的名单行动。行政能力 / 军令门是已知缺口，本批不实现。
@@ -85,7 +87,7 @@ public final class RunDecisionMakersTool implements AgentTool {
   /** 每条轨迹摘要的上限（沿用 AgentLib 的截断惯例；与 {@link RunDecisionTool} 同一份阈值）。 */
   private static final int SUMMARY_MAX_CHARS = ToolResultTruncator.DEFAULT_MAX_CHARS;
 
-  /** 默认串行（= 既有行为）；并发只影响“跑轮”这一段的墙钟时间，不影响触发批与裁决语义。 */
+  /** 默认串行；并发只影响“跑轮”这一段的墙钟时间，不影响冻结读快照与回合统一结算语义。 */
   private static final int DEFAULT_CONCURRENCY = 1;
 
   /** 并发上限：再高只会把 provider 限流/会话库写锁变成重试，收益递减。 */
@@ -394,8 +396,10 @@ public final class RunDecisionMakersTool implements AgentTool {
     }
     BatchResult.Committed committed = (BatchResult.Committed) result;
     StateRef triggerRef = committed.ref();
+    // ★ 同时决策硬约束：所有 DM 共用一把 packet 写锁（读快照可并发，写自己的 packet 串行）。
+    Object packetWriteLock = new Object();
     List<Map<String, Object>> results =
-        runRounds(triggerRef, decisionMakerIds, continueOnError, concurrency);
+        runRounds(triggerRef, decisionMakerIds, continueOnError, concurrency, packetWriteLock);
     String stoppedAfter = stoppedAfter(results, decisionMakerIds, continueOnError);
     Map<String, Object> view = new LinkedHashMap<>();
     view.put("preview", false);
@@ -499,26 +503,30 @@ public final class RunDecisionMakersTool implements AgentTool {
    * 跑轮：{@code concurrency == 1} 时按名单顺序逐个跑（continueOnError=false 首败即停，既有行为逐字不变）； {@code concurrency
    * > 1} 时用固定线程池并发跑到每个人，结果仍按名单顺序回收。
    *
-   * <p>★ 并发只发生在这一层：每个 DM 的 {@link DecisionAgentService#runRound} 各自 {@code core.replay}、各自会话
-   * id、各自范围； 触发批已在前面同一条 revision 落盘。会话库自身有锁，revision 冲突由决策人运行流的重读逻辑承担，工具不做自动重试。
+   * <p>★ 并发只发生在这一层：每个 DM 的冻结回合各自 {@code core.replay(triggerRef)}、各自会话 id、各自范围；触发批已在前面同一条 revision
+   * 落盘。packet 写在 runner 里共享锁串行；回合结束的最终化在 service 的 finalizer 锁内串行，保证“读 head + 落最终包 + 审计”不会互相顶掉。
    */
   private List<Map<String, Object>> runRounds(
       StateRef triggerRef,
       List<String> decisionMakerIds,
       boolean continueOnError,
-      int concurrency) {
+      int concurrency,
+      Object packetWriteLock) {
     if (concurrency <= 1 || decisionMakerIds.size() <= 1) {
-      return runRoundsSequential(triggerRef, decisionMakerIds, continueOnError);
+      return runRoundsSequential(triggerRef, decisionMakerIds, continueOnError, packetWriteLock);
     }
-    return runRoundsConcurrent(triggerRef, decisionMakerIds, concurrency);
+    return runRoundsConcurrent(triggerRef, decisionMakerIds, concurrency, packetWriteLock);
   }
 
-  /** 串行跑轮（既有行为）。 */
+  /** 串行跑轮（既有行为；每个 DM 都跑在触发快照上的冻结回合）。 */
   private List<Map<String, Object>> runRoundsSequential(
-      StateRef triggerRef, List<String> decisionMakerIds, boolean continueOnError) {
+      StateRef triggerRef,
+      List<String> decisionMakerIds,
+      boolean continueOnError,
+      Object packetWriteLock) {
     List<Map<String, Object>> results = new ArrayList<>(decisionMakerIds.size());
     for (String id : decisionMakerIds) {
-      Map<String, Object> row = runOne(triggerRef, id);
+      Map<String, Object> row = runOne(triggerRef, id, packetWriteLock);
       results.add(row);
       if (!continueOnError && !"ok".equals(row.get("status"))) {
         break;
@@ -527,9 +535,9 @@ public final class RunDecisionMakersTool implements AgentTool {
     return List.copyOf(results);
   }
 
-  /** 并发跑轮：固定线程池 + 按名单顺序回收；每个 DM 一个独立任务，失败/中止照常落成逐人结果。 */
+  /** 并发跑轮：固定线程池 + 按名单顺序回收；读快照并发，packet 写由共享锁串行。 */
   private List<Map<String, Object>> runRoundsConcurrent(
-      StateRef triggerRef, List<String> decisionMakerIds, int concurrency) {
+      StateRef triggerRef, List<String> decisionMakerIds, int concurrency, Object packetWriteLock) {
     ThreadFactory factory =
         runnable -> {
           Thread thread = new Thread(runnable, "run-decision-makers-worker");
@@ -541,7 +549,7 @@ public final class RunDecisionMakersTool implements AgentTool {
     try {
       List<Future<Map<String, Object>>> futures = new ArrayList<>(decisionMakerIds.size());
       for (String id : decisionMakerIds) {
-        futures.add(pool.submit(() -> runOne(triggerRef, id)));
+        futures.add(pool.submit(() -> runOne(triggerRef, id, packetWriteLock)));
       }
       List<Map<String, Object>> results = new ArrayList<>(decisionMakerIds.size());
       for (int i = 0; i < futures.size(); i++) {
@@ -569,11 +577,13 @@ public final class RunDecisionMakersTool implements AgentTool {
   }
 
   /** 单个人跑一轮：成功/预算中止/运行失败都折成同构的逐人结果（与串行路径同一份视图）。 */
-  private Map<String, Object> runOne(StateRef triggerRef, String id) {
+  private Map<String, Object> runOne(StateRef triggerRef, String id, Object packetWriteLock) {
     try {
+      // ★★ 同时决策硬约束：不是"先触发再按名单顺序看世界"，而是所有 DM 都钉在 triggerRef 快照上跑；
+      //   runner 会把世界读的 revision 覆盖成 triggerRef、移除世界写工具，只留决策包写。
       DecisionAgentRunner.DecisionTurn turn =
-          decisionAgent.runRound(
-              triggerRef.branch(), triggerRef.revision(), new DecisionMakerId(id));
+          decisionAgent.runRoundFrozen(
+              triggerRef.branch(), triggerRef.revision(), new DecisionMakerId(id), packetWriteLock);
       return turnView(id, turn);
     } catch (DecisionAgentRunner.TurnBudgetExceeded e) {
       return budgetView(triggerRef, id, e);

@@ -212,7 +212,9 @@ class RejectDirectiveToolTest {
     try (SqliteConversationStore conversations = conversationsIn()) {
       List<LlmMessage> messages = conversations.load(CONVERSATION_ID);
       assertThat(messages).as("身份消息 + 打回理由").hasSize(2);
-      assertThat(messages.get(0).role()).as("空会话先补身份消息（与 say 通道同一条实现）").isEqualTo("system");
+      assertThat(messages.get(0).role())
+          .as("空会话先补身份 user 消息（与 say 通道同一条实现；system 只留空格占位）")
+          .isEqualTo("user");
       LlmMessage last = messages.get(messages.size() - 1);
       assertThat(last.role()).as("最后一条是 user 消息").isEqualTo("user");
       assertThat(textOf(last)).as("★ 最后那条 user 消息**逐字等于**传进去的 reason").isEqualTo(REASON);

@@ -54,7 +54,7 @@ public final class DecisionPacketPayloads {
   }
 
   /** {@code sd.SubmitDecisionPacket} 载荷。 */
-  static String submit(String packetId, String proposerId) {
+  public static String submit(String packetId, String proposerId) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("id", packetId);
     payload.put("proposerId", proposerId);

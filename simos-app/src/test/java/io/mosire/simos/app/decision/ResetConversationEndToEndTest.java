@@ -199,8 +199,8 @@ class ResetConversationEndToEndTest {
     llm.enqueue(LlmResponse.text("第二轮继续"));
     callWithApproval(RunDecisionTool.NAME, runDecisionArgs(headAfterFirst));
     assertThat(llm.lastRequest().messages())
-        .as("★ 对照组：同一段会话里的下一轮**带着**上一轮的历史（没有这一组，第 3 轮的「空了」分不清是" + "「重置生效」还是「runner 压根不读历史」）")
-        .hasSize(4);
+        .as("★ 对照组：同一段会话里的下一轮带着上一轮历史 + 本轮 user 提醒（没有这一组，第 3 轮的「空了」分不清是「重置生效」还是「runner 压根不读历史」）")
+        .hasSize(6);
     assertThat(conversationsIn(storeDir).load(LEGACY_CONVERSATION_ID))
         .as("第 1+2 轮共 5 条（身份 + 第 1 轮的 3 条 + 第 2 轮的收口）")
         .hasSize(5);
@@ -220,12 +220,13 @@ class ResetConversationEndToEndTest {
     JsonNode third = body(callWithApproval(RunDecisionTool.NAME, runDecisionArgs(head())));
 
     assertThat(llm.lastRequest().messages())
-        .as("★★ **本任务的主判据**：重置之后首个请求里**只有那条身份消息**——上一轮的 5 条一条都没跟过来")
-        .hasSize(1);
+        .as("★★ **本任务的主判据**：重置之后首个请求 = 空格 system + 新 user 身份 + 本轮 user 提醒；上一轮的历史一条都没跟过来")
+        .hasSize(3);
     assertThat(llm.lastRequest().messages().get(0).role())
-        .as("那一条是身份消息（system），不是残留的 assistant/tool")
+        .as("★ system 角色固定是空格占位（用户 2026-10-22 裁定：system 不能省，但内容为空）")
         .isEqualTo("system");
-    assertThat(textOf(llm.lastRequest().messages().get(0)))
+    assertThat(textOf(llm.lastRequest().messages().get(0))).isEqualTo(" ");
+    assertThat(textOf(llm.lastRequest().messages().get(1)))
         .as("而且它说的是**这个决策人**（新会话的第一句话里就有身份，不是一段空白开局）")
         .contains(DM_ID);
 
@@ -263,8 +264,8 @@ class ResetConversationEndToEndTest {
     callWithApproval(RunDecisionTool.NAME, runDecisionArgs(head()));
 
     assertThat(llm.lastRequest().messages())
-        .as("★ 重置后的第二个轮次**接着新会话**（身份 + 重置后第一轮那一条 = 2），不是又换一段")
-        .hasSize(2);
+        .as("★ 重置后的第二个轮次接着新会话：空格 system + user 身份 + 重置后第一轮那一条 + 本轮 user 提醒 = 4，不是又换一段")
+        .hasSize(4);
     try (SqliteConversationStore conversations = conversationsIn(storeDir)) {
       assertThat(conversations.load(GENERATION_ONE_CONVERSATION_ID))
           .as("新会话里攒下了三轮的话（身份 + 重置后两条）")

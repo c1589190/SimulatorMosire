@@ -17,13 +17,21 @@ import io.mosire.simos.app.tools.read.BranchListTool;
 import io.mosire.simos.app.tools.read.CatalogTool;
 import io.mosire.simos.app.tools.read.MapRenderTool;
 import io.mosire.simos.app.tools.read.SkillTool;
+import io.mosire.simos.app.tools.read.TimelineRevisionsTool;
 import io.mosire.simos.app.tools.write.IssueDirectiveTool;
+import io.mosire.simos.app.tools.write.MyPacketTool;
+import io.mosire.simos.app.tools.write.PacketIntentTool;
+import io.mosire.simos.app.tools.write.ProposeCallTool;
+import io.mosire.simos.app.tools.write.SubmitPacketTool;
 import io.mosire.simos.app.tools.write.SubmitVerdictTool;
 import io.mosire.simos.sd.id.DecisionMakerId;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.util.state.BranchId;
+import io.mosire.simos.util.state.RevisionId;
 import io.mosire.simos.util.state.SimulationState;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -55,9 +63,9 @@ import org.slf4j.LoggerFactory;
  * sd.ResetDecisionMakerConversation} 把世代 +1 ⇒ 下一个轮次落到**另一段**新会话上、**从空上下文重新开始**，而旧会话
  * **一条字节都不动**（会话库是 append-only，可审计）。世代 0 的 id 与旧格式**逐字相同**，故现场已落盘的老会话接得上。
  *
- * <p>★★ **空会话先注入一条身份消息**（{@link #openingSystemMessage}，T11D）：{@code load} 对从未写过的会话返回空表 ⇒ 不注入的话首轮请求的
- * {@code messages} 是空的，真供应商直接 400（现场实测），且模型**不知道自己是哪一支决策人**。 注入的消息**同时落盘**（ {@code
- * append}），故重启之后它还在、且**不会第二轮再注入一次**。
+ * <p>★★ **空会话先注入一条 user 身份/规范消息**（{@link #openingUserMessage}，T11D）：{@code load} 对从未写过的会话返回空表 ⇒
+ * 不注入的话首轮请求的 user 内容缺失，真供应商直接 400（现场实测）。★ 2026-10-22 用户裁定：system 角色固定传一个空格占位 （不传会报错），身份与规则全部改走 user
+ * 消息，且模型**不知道自己是哪一支决策人**。 注入的消息**同时落盘**（ {@code append}），故重启之后它还在、且**不会第二轮再注入一次**。
  *
  * <p>★ **每一条消息都落盘**（不只是有工具调用的那一轮）：非工具轮（模型给的纯文本）也是这一轮的实际产出， 不记会让下一 tick
  * 的上下文缺一段自相矛盾的空白。落盘在**请求之前**不成立、在**响应之后**才成立——所以先 append 再进下一轮。
@@ -207,6 +215,12 @@ public final class DecisionAgentRunner {
 
   /** 线名 ↔ 真实名（装配期建好：碰撞或转义不合文法就**在这里**炸，而不是发一份坏请求出去换一个 400）。 */
   private final LlmToolNames toolNames;
+
+  /** 同时决策冻结上下文；{@code null} = 旧（单人/顺序）模式。 */
+  private final FrozenDecisionContext frozen;
+
+  /** 冻结回合里每个工具的语义分类（工具面装配期算好，执行口只认这张表）。 */
+  private final Map<String, FrozenToolKind> frozenToolKinds;
 
   /**
    * @param callerFactory 决策人调用者工厂（范围**每次现算**；本条旧构造器仍用其 {@code whitelist()}——全局白名单， 兼容旧档/夹具；per-DM
@@ -358,6 +372,38 @@ public final class DecisionAgentRunner {
       boolean vision,
       OpeningSnapshot openingSnapshot,
       Set<String> toolWhitelist) {
+    this(
+        callerFactory,
+        registry,
+        llmClient,
+        conversations,
+        mapId,
+        maxLlmCalls,
+        progressListener,
+        vision,
+        openingSnapshot,
+        toolWhitelist,
+        null);
+  }
+
+  /**
+   * **全参 + 同时决策冻结回合**：在显式白名单基础上多一个 {@link FrozenDecisionContext}（{@code null} = 旧模式）。
+   *
+   * <p>★★ 冻结回合的工具面在装配期就被裁掉：只留世界读 + 决策包四件套 + 显式无状态读口；带 {@code expectedRevision} 的旧世界写工具（{@code
+   * sd.IssueDirective} / {@code GovPay} / 外交写等）既不发给模型，执行口也会拒绝。 世界写因此不可能在决策期发生——这正是"同时决策"的硬约束。
+   */
+  public DecisionAgentRunner(
+      DecisionCallerFactory callerFactory,
+      ToolRegistry registry,
+      LlmClient llmClient,
+      ConversationStore conversations,
+      String mapId,
+      int maxLlmCalls,
+      ProgressListener progressListener,
+      boolean vision,
+      OpeningSnapshot openingSnapshot,
+      Set<String> toolWhitelist,
+      FrozenDecisionContext frozen) {
     this.callerFactory = Objects.requireNonNull(callerFactory, "callerFactory");
     this.registry = Objects.requireNonNull(registry, "registry");
     this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
@@ -372,13 +418,65 @@ public final class DecisionAgentRunner {
     this.openingSnapshot = Objects.requireNonNull(openingSnapshot, "openingSnapshot");
     this.toolConfig = Map.of(MapRenderTool.VISION_CONFIG_KEY, vision);
     this.toolWhitelist = Set.copyOf(Objects.requireNonNull(toolWhitelist, "toolWhitelist"));
+    this.frozen = frozen;
     // ★★ 工具面在**装配期**建一次（不随世界变：它只取决于注册表与白名单），并当场建好名字映射：
     //   ① 白名单里有工具不在注册表 ⇒ requireAll 抛（旧行为，只是提前到构造期；per-DM 白名单同样适用）；
     //   ② 转义碰撞 / 转义结果不合供应商文法 ⇒ LlmToolNames 抛（**真 LLM 实测缺陷**的护栏，2026-09-22）。
     //   两条都是装配故障，都不该等到"模型第一轮已经花掉"才发现。
     List<ToolDef> face = DecisionToolDefs.requireAll(registry, this.toolWhitelist);
+    // ★ 名字映射建在**全量白名单**上：冻结回合虽然不把世界写工具发给模型，但模型凭记忆叫到它们时，
+    //   执行口还要把线名翻回真实名再给出具名 FORBIDDEN（否则会误报 TOOL_NOT_FOUND，把"本回合禁止"说成"没这个工具"）。
     this.toolNames = LlmToolNames.of(face.stream().map(ToolDef::name).toList());
-    this.toolDefs = toolNames.wireDefs(face);
+    Map<String, FrozenToolKind> kinds = Map.of();
+    List<ToolDef> exposed = face;
+    if (frozen != null) {
+      LinkedHashMap<String, FrozenToolKind> allowed = new LinkedHashMap<>();
+      List<ToolDef> filtered = new ArrayList<>(face.size());
+      for (ToolDef def : face) {
+        FrozenToolKind kind = frozenKindOf(def);
+        if (kind != null) {
+          allowed.put(def.name(), kind);
+          filtered.add(def);
+        }
+      }
+      kinds = Map.copyOf(allowed);
+      exposed = List.copyOf(filtered);
+    }
+    this.frozenToolKinds = kinds;
+    this.toolDefs = toolNames.wireDefs(exposed);
+  }
+
+  /**
+   * 冻结回合分类（只认 schema 里的坐标字段，不靠命名约定）：
+   *
+   * <ul>
+   *   <li>packet 四件套 ⇒ {@link FrozenToolKind#PACKET_WRITE}；
+   *   <li>schema 有 {@code revision} ⇒ {@link FrozenToolKind#WORLD_READ}（runner 会强制覆盖成冻结坐标）；
+   *   <li>schema 有 {@code expectedRevision} 且不是 packet ⇒ {@code null}（旧世界写/自指写，冻结回合直接移除）；
+   *   <li>显式列出的无状态读口 ⇒ {@link FrozenToolKind#STATELESS_READ}；
+   *   <li>其余 ⇒ {@code null}（安全默认：新工具若没被明确分类，同时决策回合里不出现）。
+   * </ul>
+   */
+  private static FrozenToolKind frozenKindOf(ToolDef def) {
+    if (FROZEN_PACKET_TOOLS.contains(def.name())) {
+      return FrozenToolKind.PACKET_WRITE;
+    }
+    Map<String, Object> schema = def.jsonSchema();
+    if (schema != null) {
+      Object properties = schema.get("properties");
+      if (properties instanceof Map<?, ?> props) {
+        if (props.containsKey("revision")) {
+          return FrozenToolKind.WORLD_READ;
+        }
+        if (props.containsKey("expectedRevision")) {
+          return null;
+        }
+      }
+    }
+    if (FROZEN_STATELESS_READS.contains(def.name())) {
+      return FrozenToolKind.STATELESS_READ;
+    }
+    return null;
   }
 
   /**
@@ -398,6 +496,46 @@ public final class DecisionAgentRunner {
    * 加任何字符集限制（加限制反而会让老档里那些"带井号的 id"读不回来）。
    */
   public static final String GENERATION_CONVERSATION_ID_PREFIX = "decision-maker#";
+
+  /**
+   * **同时决策回合的冻结上下文**（用户 2026-10-22 裁定）：一次 {@code simos.sd.run-decision-makers} 批里所有决策人 <b>读同一
+   * branch/revision 快照</b>；世界写工具在工具面与执行口都被移除，只允许：
+   *
+   * <ul>
+   *   <li>世界读工具：runner 强制把 {@code branch/revision} 覆盖成冻结坐标，模型自己填什么都不生效；
+   *   <li>决策包读/写工具（{@code simos.sd.propose} / {@code packet.intent} / {@code packet.submit} /
+   *       {@code packet.my}）：强制到冻结 branch，且剥掉 {@code expectedRevision}（让工具自己取当下 head）——
+   *       于是每个决策人只写自己的 packet 前缀，不碰世界，也不会被前一个决策人的 packet 写版本顶掉；
+   *   <li>{@code packetWriteLock}：并发跑轮时所有 packet 写共用同一把锁，把"读快照并发、写包串行"钉死。
+   * </ul>
+   *
+   * <p>★★ **为什么世界写工具必须被移除**：只要一个决策人能在决策期直接落世界命令，后跑的决策人就会看到前一个决策人的写入 ——那就退回顺序回合，而不是同时回合。世界效果统一由 GM
+   * 在所有包收齐后经 merged plan 一条 revision 执行（D3）。
+   */
+  public record FrozenDecisionContext(
+      BranchId branch, RevisionId revision, Object packetWriteLock) {
+
+    public FrozenDecisionContext {
+      Objects.requireNonNull(branch, "branch");
+      Objects.requireNonNull(revision, "revision");
+      Objects.requireNonNull(packetWriteLock, "packetWriteLock");
+    }
+  }
+
+  /** 冻结回合里工具被允许的三类语义；不在表里的工具既不出现在工具面、也不会被执行。 */
+  private enum FrozenToolKind {
+    WORLD_READ,
+    PACKET_WRITE,
+    STATELESS_READ
+  }
+
+  /** 决策包四件套（写自己的 packet 前缀；冻结回合里唯一允许的写）。 */
+  private static final Set<String> FROZEN_PACKET_TOOLS =
+      Set.of(ProposeCallTool.NAME, PacketIntentTool.NAME, SubmitPacketTool.NAME, MyPacketTool.NAME);
+
+  /** 不读世界 revision、也不写世界的共享读口（目录/技能/分支列表/阶段列表）。 */
+  private static final Set<String> FROZEN_STATELESS_READS =
+      Set.of(CatalogTool.NAME, SkillTool.NAME, BranchListTool.NAME, TimelineRevisionsTool.NAME);
 
   /**
    * **会话 id 的唯一拼写点**（生产路径只走这个重载）：由**世界事实**（{@link DecisionMaker#id()} + {@link
@@ -471,7 +609,15 @@ public final class DecisionAgentRunner {
    * 指示模型去叫一个它看不见的名字——最好的下场是白费一轮（{@code TOOL_NOT_FOUND}），最坏是它照做之后对工具面失去信任。
    * 转义点仍是**唯一**的（同一个函数），故"说的"与"发给模型的"永远同一个写法。
    */
-  static LlmMessage openingSystemMessage(DecisionMaker dm) {
+  static LlmMessage openingUserMessage(DecisionMaker dm) {
+    return openingUserMessage(dm, null);
+  }
+
+  /**
+   * 空会话首轮注入的**user**消息：身份 + 权限 + 决策规范。★ 按用户 2026-10-22 裁定，system 角色不再承载任何内容； 请求里只保留一条 content
+   * 为一个空格的 system 占位（供应商要求 system 必须存在），身份与规范全部走这条 user。
+   */
+  static LlmMessage openingUserMessage(DecisionMaker dm, FrozenDecisionContext frozen) {
     Objects.requireNonNull(dm, "dm");
     Affiliation affiliation = dm.affiliation();
     String where;
@@ -482,53 +628,174 @@ public final class DecisionAgentRunner {
     } else if (affiliation instanceof Affiliation.Gov gov) {
       where = "政府（govUnit=" + gov.govUnit().value() + "）";
     } else {
-      // 封闭类型（sealed）不会走到这里；留一句响亮的话，好过静默给一个错的身份。
       throw new IllegalStateException("未知的归属类型: " + affiliation.getClass().getName());
     }
-    // ★ 这三个名字是**给模型看的**，故一律走线格式（真实名只活在本方法内部，见类注）。
     String catalog = LlmToolNames.wireNameOf(CatalogTool.NAME);
     String branches = LlmToolNames.wireNameOf(BranchListTool.NAME);
-    return LlmMessage.system(
-        "你是决策人「"
-            + dm.id().value()
-            + "」，归属："
-            + where
-            + "。\n"
-            + "\n"
-            + "【你能看到什么】由系统强制：每次工具调用都由系统按你的归属与当前世界**现算**可见范围，范围之外的调用会被拒——"
-            + "那不是你参数写错了，是那件事你看不到。所以不要假设、也不要猜测自己看不见的东西：先查看，再决策。\n"
-            + "\n"
-            + "【先查看】"
-            + catalog
-            + " 给出**你有途径触发的**命令类型及其载荷字段（范围之外的不会列出来，所以看不到 = 你不用想它）；"
-            + branches
-            + " 给出分支与各自的当前 head。\n"
-            + "\n"
-            + "【怎么做决策】"
-            + LlmToolNames.wireNameOf(SkillTool.NAME)
-            + " 是一份**决策方法论与常识**（政治/经济/军事的判断口径与常见误区）——不带参数先看目录，"
-            + "再按需读你要的那一两篇。★ 它是别人维护的文本，可能已经改过；**别凭记忆**，要读就读当下这一版。\n"
-            + "\n"
-            + "【再决策】出令用 "
-            + LlmToolNames.wireNameOf(IssueDirectiveTool.NAME)
-            + "（载荷字段见 "
-            + catalog
-            + "）：它的 expectedRevision 必须填 "
-            + branches
-            + " 读到的**当前 head**，不要凭记忆、也不要沿用上一轮的旧值——填错会被拒。裁决用 "
-            + LlmToolNames.wireNameOf(SubmitVerdictTool.NAME)
-            + "。\n"
-            + "\n"
-            + "【令里的 tick 是哪一个】那个字段记的是**你出令的这一刻**（世界当前所在的 tick），"
-            + "不是「这条令针对哪一刻」。**想推演将来、想把「以后某时要怎么做」写下来，那是正当的**——"
-            + "写进 intentInfo（决心与理由）里，别塞进 tick。反过来，tick 填**大于当前**的值会被系统拒绝"
-            + "（时间线只追加，记错的令改不回来），而当前 tick 一律**从工具读到的世界状态里取**，"
-            + "不要凭记忆、也不要沿用上一轮的值。\n"
-            + "\n"
-            + "【出令的 commands 放什么】只放**领域命令**（改地图、动单位这一类），可用类型与载荷字段见 "
-            + catalog
-            + "。★ **以 sd. 开头的命令类型一律会被拒**——那是防无限自指（令不得再生成令，否则会一直递归下去），"
-            + "所以别让令去注册效果、下指令或改动推演自身的状态；第一次出令就撞上这条，纯属白烧一轮。");
+    String intentTool = LlmToolNames.wireNameOf(PacketIntentTool.NAME);
+    String proposeTool = LlmToolNames.wireNameOf(ProposeCallTool.NAME);
+    String submitTool = LlmToolNames.wireNameOf(SubmitPacketTool.NAME);
+    String myPacketTool = LlmToolNames.wireNameOf(MyPacketTool.NAME);
+    StringBuilder text = new StringBuilder();
+    text.append("你是决策人「")
+        .append(dm.id().value())
+        .append("」，归属：")
+        .append(where)
+        .append("。\n")
+        .append("\n")
+        .append("【你能看到什么】由系统强制：每次工具调用都由系统按你的归属与当前世界现算可见范围，范围之外的调用会被拒——")
+        .append("那不是你参数写错了，是那件事你看不到。先查看，再决策。\n")
+        .append("\n")
+        .append("【先查看】")
+        .append(catalog)
+        .append(" 给出你有途径触发的命令类型及其载荷字段；")
+        .append(branches)
+        .append(" 给出分支与当前 head；")
+        .append(LlmToolNames.wireNameOf(SkillTool.NAME))
+        .append(" 是决策方法论，可按需阅读。\n")
+        .append("\n")
+        .append("【决策的两种表达】\n")
+        .append("1) 自然语言决策：用 ")
+        .append(intentTool)
+        .append(" 写 text；或者在你结束本回合时，用最后一段自然语言陈述表达。\n")
+        .append("2) 结构命令：用 ")
+        .append(proposeTool)
+        .append(" 提议真实工具调用，参数里带 {tool, args, intent}；一条命令一次提议。\n")
+        .append("最后用 ")
+        .append(submitTool)
+        .append(" 统一提交本 tick 的决策包。用 ")
+        .append(myPacketTool)
+        .append(" 查看自己的包。\n")
+        .append("\n")
+        .append(
+            "【本轮可 propose 的工具】simos.unit.raiseUnit / simos.gov.recruit / simos.gov.retireStaff / ")
+        .append(
+            "simos.social.household.members / simos.unit.levyRegion / simos.gov.selectExaminees / ")
+        .append("simos.gov.dispatchTeam（以你实际 allowedTools 为准；清单外不要在 propose 里试，试一次拒一次）。\n")
+        .append("【工具预算与写法】本回合最多做 4–6 次工具调用：先看一次 catalog 选一条可 propose 的工具，")
+        .append("写 intent + propose + submit 后立刻收口。不要逐条试工具；任何工具的 args 里不要出现 JSON null，")
+        .append("缺字段就省略。\n")
+        .append("\n")
+        .append("【系统如何结算你的回合（重要）】\n")
+        .append("- 如果你一直不调用 ")
+        .append(submitTool)
+        .append(" 就停止说话：本回合写进包里的所有自然语言与结构命令，加上你整轮最后一段自然语言，")
+        .append("会被自动一起交给 GM；系统自动完成提交。\n")
+        .append("- 如果你调用 ")
+        .append(submitTool)
+        .append(" 后又继续写/提议命令：系统会保守地把整个回合的所有命令合并，")
+        .append("并用整轮最后一段自然语言作为 NL 决策，最后统一提交一次。\n")
+        .append("- 如果你调用 ")
+        .append(submitTool)
+        .append(" 后不再发命令、只继续说话：之前提交/写进包的命令照常作为你的决策；")
+        .append("提交后的纯文本只作为解释留档，不再额外算一条新的自然语言决策。\n")
+        .append("- GM 收到包后决定批准/拒绝/合并执行；你不需要自己执行世界效果。\n")
+        .append("\n");
+    if (frozen == null) {
+      text.append("【本轮为单人回合】旧的 ")
+          .append(LlmToolNames.wireNameOf(IssueDirectiveTool.NAME))
+          .append(" / ")
+          .append(LlmToolNames.wireNameOf(SubmitVerdictTool.NAME))
+          .append(" 仍可按旧语义使用；但推荐优先用上面的决策包三件套表达。\n")
+          .append("如果使用 ")
+          .append(LlmToolNames.wireNameOf(IssueDirectiveTool.NAME))
+          .append("：expectedRevision 必须填 ")
+          .append(branches)
+          .append(" 读到的当前 head；commands 里不得放 sd. 前缀的命令类型（防无限递归）。\n");
+    } else {
+      text.append("【本轮为同时决策回合】世界冻结在 ")
+          .append(frozen.branch().value())
+          .append("@")
+          .append(frozen.revision().value())
+          .append("：所有决策人读同一份快照，谁都不能在决策期直接改世界（世界写工具已不在你的工具面）。")
+          .append("你的推理只能基于这份快照，不要猜别人已经做了什么。\n");
+    }
+    text.append("\n【tick 与坐标】当前 tick 一律从读工具给的世界状态里取，不要凭记忆、也不要沿用上一轮的值。");
+    return LlmMessage.user(text.toString());
+  }
+
+  /** 每轮不落盘的 user 规范提醒：保证老会话与新会话都按同一套回合结算规则跑。 */
+  private static LlmMessage decisionRoundNotice(DecisionMaker dm, FrozenDecisionContext frozen) {
+    StringBuilder text = new StringBuilder();
+    text.append("[本回合规则提醒] 决策人「")
+        .append(dm.id().value())
+        .append("」：自然语言决策用 ")
+        .append(LlmToolNames.wireNameOf(PacketIntentTool.NAME))
+        .append(" 或最后一段文本表达；结构命令用 ")
+        .append(LlmToolNames.wireNameOf(ProposeCallTool.NAME))
+        .append("；最后用 ")
+        .append(LlmToolNames.wireNameOf(SubmitPacketTool.NAME))
+        .append(" 提交。提交后又继续发命令会被保守合并；一直不提交就结束，系统会把整轮最后一段文本自动作为 NL 决策交 GM。")
+        .append("提交后只说话不再发命令，则提交后的文本不再算新的 NL 决策。")
+        .append("★ 预算：最多 4–6 次工具调用；只 propose 工具面列出的 proposeable 工具，args 里不要写 null，缺字段就省略。");
+    if (frozen != null) {
+      text.append("世界冻结在 ")
+          .append(frozen.branch().value())
+          .append("@")
+          .append(frozen.revision().value())
+          .append("，读同一快照；世界写工具不在工具面。");
+    }
+    return LlmMessage.user(text.toString());
+  }
+
+  /**
+   * ★ 发给 provider 的 messages：system 角色必须存在（用户 2026-10-22 裁定：不传会报错），但内容固定为一个空格； 历史里旧的 system
+   * 消息全部过滤掉，身份与规范走 user 消息。这样新老会话都不会再向 provider 发送非空 system。
+   */
+  private static List<LlmMessage> requestMessages(List<LlmMessage> history) {
+    List<LlmMessage> out = new ArrayList<>(history.size() + 1);
+    out.add(LlmMessage.system(" "));
+    for (LlmMessage message : history) {
+      if (!LlmMessage.ROLE_SYSTEM.equals(message.role())) {
+        out.add(message);
+      }
+    }
+    return List.copyOf(out);
+  }
+
+  /** 回合结算信号：记录提交标记、提交后是否继续发命令、整轮最后一段文本与提交前最后一段文本。 */
+  private static final class DecisionTurnSignals {
+    private boolean submitSeen;
+    private boolean commandsAfterSubmit;
+    private Optional<String> lastAssistantText = Optional.empty();
+    private Optional<String> lastTextBeforeSubmit = Optional.empty();
+
+    void onAssistantText(Optional<String> text) {
+      if (text == null || text.isEmpty() || text.get() == null || text.get().isBlank()) {
+        return;
+      }
+      lastAssistantText = text;
+      if (!submitSeen) {
+        lastTextBeforeSubmit = text;
+      }
+    }
+
+    void onToolCall(String toolName) {
+      if (SubmitPacketTool.NAME.equals(toolName)) {
+        submitSeen = true;
+        return;
+      }
+      if (submitSeen
+          && (ProposeCallTool.NAME.equals(toolName) || PacketIntentTool.NAME.equals(toolName))) {
+        commandsAfterSubmit = true;
+      }
+    }
+
+    boolean submitSeen() {
+      return submitSeen;
+    }
+
+    boolean commandsAfterSubmit() {
+      return commandsAfterSubmit;
+    }
+
+    Optional<String> lastAssistantText() {
+      return lastAssistantText;
+    }
+
+    Optional<String> lastTextBeforeSubmit() {
+      return lastTextBeforeSubmit;
+    }
   }
 
   /**
@@ -555,10 +822,10 @@ public final class DecisionAgentRunner {
     List<LlmMessage> history = new ArrayList<>(conversations.load(conversationId));
     // ★★ 空会话 ⇒ 先注入身份（**并落盘**），再发第一个请求：不注入的话首轮请求的 messages 是空的，真供应商
     //   直接 400（`field messages is required`），一次都跑不成（现场实测）。落盘是这件事的要害——只往内存里塞
-    //   的"修法"在**换进程/换 store 实例**之后又回到空会话，缺陷原样复现（见 openingSystemMessage 的类注）。
+    //   的"修法"在**换进程/换 store 实例**之后又回到空会话，缺陷原样复现（见 openingUserMessage 的类注）。
     //   ★ 只在**空会话**上注入（"有没有历史"是纯函数，不看世界）：第二轮 `load` 里已经有它，故不会重复追加。
     if (history.isEmpty()) {
-      LlmMessage opening = openingSystemMessage(dm);
+      LlmMessage opening = openingUserMessage(dm, frozen);
       conversations.append(conversationId, opening);
       history.add(opening);
       // ★★ P4：身份之后补一条**开场快照**（世界长这样）。★ 顺序不可反——先有"你是谁"，再有"你在哪"；
@@ -569,6 +836,9 @@ public final class DecisionAgentRunner {
         history.add(snapshot.get());
       }
     }
+    // ★ 回合规范提醒**不落盘**、每轮现插：老会话（首轮身份消息里没有新口径）也必须被本轮规则覆盖。
+    history.add(decisionRoundNotice(dm, frozen));
+    DecisionTurnSignals signals = new DecisionTurnSignals();
     List<ToolInvocation> invocations = new ArrayList<>();
     int llmCalls = 0;
     while (true) {
@@ -588,9 +858,10 @@ public final class DecisionAgentRunner {
                 + "）——疑似跑飞，本轮中止；历史已逐条落盘，下一 tick 可续",
             maxLlmCalls);
       }
-      LlmResponse response = llmClient.chat(new LlmRequest(List.copyOf(history), toolDefs));
+      LlmResponse response = llmClient.chat(new LlmRequest(requestMessages(history), toolDefs));
       llmCalls++;
       LlmMessage assistant = response.assistantMessage();
+      signals.onAssistantText(response.textPart());
       // ★ 先落盘再判：模型说了什么都要记（非工具轮同样是这一轮的产出）。
       conversations.append(conversationId, assistant);
       history.add(assistant);
@@ -603,12 +874,20 @@ public final class DecisionAgentRunner {
             dm.id().value(),
             llmCalls,
             invocations.size());
-        return new DecisionTurn(conversationId, llmCalls, invocations, response.textPart());
+        return new DecisionTurn(
+            conversationId,
+            llmCalls,
+            invocations,
+            response.textPart(),
+            signals.submitSeen(),
+            signals.commandsAfterSubmit(),
+            signals.lastAssistantText(),
+            signals.lastTextBeforeSubmit());
       }
       List<LlmMessage> imageMessages = new ArrayList<>();
       for (ContentPart.ToolCall call : requested) {
         // ★ 一次工具调用产出两条消息：tool 消息（永远有）+ 图片消息（有图且有视觉能力时，P4）。
-        ToolExecution execution = execute(dm, state, call, invocations);
+        ToolExecution execution = execute(dm, state, call, invocations, signals);
         conversations.append(conversationId, execution.toolMessage());
         history.add(execution.toolMessage());
         execution.imageMessage().ifPresent(imageMessages::add);
@@ -643,20 +922,88 @@ public final class DecisionAgentRunner {
       DecisionMaker dm,
       SimulationState state,
       ContentPart.ToolCall call,
-      List<ToolInvocation> invocations) {
+      List<ToolInvocation> invocations,
+      DecisionTurnSignals signals) {
     // ★★ **线名 ⇒ 真实名**（`simos_map_hex` → `simos.map.hex`）：权限链、注册表、工具自身**只认真实名**，本层是唯一的翻译点。
     //   ★ **查不到就原样交下去**（不新造"这个名字不在表里"的拒绝理由）：于是 AgentLib 的两条既有判据逐字保留——
     //   真没这个工具 ⇒ `TOOL_NOT_FOUND`（正文是「工具不存在: <模型给的名字>」，模型据此看得见自己叫错了名）；
     //   工具真在注册表里、只是权限组不放它 ⇒ `PERMISSION_DENIED`。本层若抢先拒，后者就再也测不到了（工具面 = 白名单，
     //   凡是能过名字表的都在白名单里），等于用一个更弱的理由顶掉一个更强的判据。
     String toolName = toolNames.realNameOf(call.name()).orElse(call.name());
+    signals.onToolCall(toolName);
+    if (SubmitPacketTool.NAME.equals(toolName)) {
+      // ★★ 回合统一结算：提交工具在决策回合里只登记，不立刻把 packet 锁成 PENDING——
+      //   这样"提交后继续 propose / intent"仍然能写进同一个 DRAFT，回合结束时由 service 层合并提交一次。
+      //   真工具本身不改：GM / 其他非回合路径直接调 simos.sd.packet.submit 仍是原语义。
+      ToolResult deferred =
+          ToolResult.ok(
+              "{\"submitted\":false,\"deferred\":true,"
+                  + "\"note\":\"已登记：本回合结束时统一提交；可继续补充命令，最后一段自然语言会作为 NL 决策一并交给 GM。\"}");
+      return recordResult(dm, toolName, call, deferred, invocations);
+    }
+    Map<String, Object> args = new LinkedHashMap<>(call.arguments());
+    FrozenToolKind kind = null;
+    if (frozen != null) {
+      kind = frozenToolKinds.get(toolName);
+      if (kind == null) {
+        // ★ 工具面已经在装配期移除了它；模型若是凭记忆/幻觉点回来，执行口也必须一致地拒（不能靠"模型没看见"当护栏）。
+        ToolResult blocked =
+            ToolResult.error(
+                "FORBIDDEN",
+                "同时决策回合 "
+                    + frozen.branch().value()
+                    + "@"
+                    + frozen.revision().value()
+                    + " 不允许工具 "
+                    + toolName
+                    + "：决策期只允许读同一世界快照与写自己的决策包；要改世界请用 "
+                    + ProposeCallTool.NAME
+                    + " 写成 call，由 GM 在所有包收齐后合并成一条 revision 执行。");
+        return recordResult(dm, toolName, call, blocked, invocations);
+      }
+      switch (kind) {
+        case WORLD_READ -> {
+          // ★ 冻结回合的世界读：模型填的 branch/revision 一律被覆盖，所有决策人看到同一份世界。
+          args.put("branch", frozen.branch().value());
+          args.put("revision", frozen.revision().value());
+        }
+        case PACKET_WRITE -> {
+          // ★ 只写自己的 packet 前缀：branch 钉死，expectedRevision 剥掉让工具取"执行那一刻"的 head；
+          //   这样后一个决策人不会因为前一个决策人的 packet 写而 CONFLICT。
+          args.put("branch", frozen.branch().value());
+          args.remove("expectedRevision");
+        }
+        case STATELESS_READ -> {
+          // 目录/技能/分支列表这类不读世界 revision 的读口：原样放行。
+        }
+      }
+    }
     // ★ 唯一入口：callerFor **每次现算**（世界变了范围就变），执行走 authorizer 的五段判定链。
     //   ★ toolConfig 是本轮的宿主编排（目前只有"有没有视觉能力"一项）：渲染工具的 auto 靠它选形态。
-    ToolResult result =
-        callerFactory.execute(registry, toolName, dm, state, mapId, call.arguments(), toolConfig);
-    // ★★ **同一段文本两处用**（T11C）：既回灌给模型，也记进本轮的账（{@code resultSummary}）——
-    //   `sd.RunDecision` 的轨迹就是靠它报告"决策人看见了什么"。两处若各拼一次，轨迹与实际回灌的
-    //   内容就会**各说各话**，而没有任何症状。
+    ToolResult result;
+    if (kind == FrozenToolKind.PACKET_WRITE) {
+      // ★ 并发跑轮时"读快照并发、写包串行"：共享锁保证 packet 写各自取到当下 head，不相互冲突。
+      synchronized (frozen.packetWriteLock()) {
+        result = callerFactory.execute(registry, toolName, dm, state, mapId, args, toolConfig);
+      }
+    } else {
+      result = callerFactory.execute(registry, toolName, dm, state, mapId, args, toolConfig);
+    }
+    return recordResult(dm, toolName, call, result, invocations);
+  }
+
+  /**
+   * 把一次工具结局折成回灌消息与本轮账（成功与失败同一条路；见 {@link #execute} 的类注）。
+   *
+   * <p>★ **同一段文本两处用**（T11C）：既回灌给模型，也记进本轮的账（{@code resultSummary}）——{@code sd.RunDecision}
+   * 的轨迹就是靠它报告"决策人看见了什么"。两处若各拼一次，轨迹与实际回灌的内容就会**各说各话**，而没有任何症状。
+   */
+  private ToolExecution recordResult(
+      DecisionMaker dm,
+      String toolName,
+      ContentPart.ToolCall call,
+      ToolResult result,
+      List<ToolInvocation> invocations) {
     String feedback = feedbackText(result);
     invocations.add(
         new ToolInvocation(call.id(), toolName, result.success(), result.code(), feedback));
@@ -812,11 +1159,27 @@ public final class DecisionAgentRunner {
       String conversationId,
       int llmCalls,
       List<ToolInvocation> toolInvocations,
-      Optional<String> finalText) {
+      Optional<String> finalText,
+      boolean packetSubmitSeen,
+      boolean commandsAfterSubmit,
+      Optional<String> lastAssistantText,
+      Optional<String> lastTextBeforeSubmit) {
+
+    /** 旧 4 参兼容构造器（测试与旧调用点）：没有回合信号的轮次按"无提交、最后文本即整轮文本"处理。 */
+    public DecisionTurn(
+        String conversationId,
+        int llmCalls,
+        List<ToolInvocation> toolInvocations,
+        Optional<String> finalText) {
+      this(
+          conversationId, llmCalls, toolInvocations, finalText, false, false, finalText, finalText);
+    }
 
     public DecisionTurn {
       toolInvocations = List.copyOf(toolInvocations);
       Objects.requireNonNull(finalText, "finalText");
+      Objects.requireNonNull(lastAssistantText, "lastAssistantText");
+      Objects.requireNonNull(lastTextBeforeSubmit, "lastTextBeforeSubmit");
     }
 
     /** 这一轮有没有用过工具（J11 的"不是被动收简报"就落在这一位上）。 */

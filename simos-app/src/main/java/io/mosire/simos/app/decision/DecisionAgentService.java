@@ -86,6 +86,9 @@ public final class DecisionAgentService {
    */
   private final DecisionAgentRunner.OpeningSnapshot openingSnapshot;
 
+  /** 回合统一结算器：把“提交标记/继续发命令/停止说话”整理成一个最终 PENDING packet。 */
+  private final DecisionTurnFinalizer turnFinalizer;
+
   /**
    * @param core 唯一写入口（读状态经它的只读 {@code replay}；写仍只发生在运行流内部的 {@code CoreSimos.submit}）
    * @param llmClients providerId ⇒ 客户端 + 能力（生产路径 = {@link LlmProviderResolver}）
@@ -150,6 +153,7 @@ public final class DecisionAgentService {
     this.mapId = Objects.requireNonNull(mapId, "mapId");
     this.maxLlmCalls = maxLlmCalls;
     this.openingSnapshot = Objects.requireNonNull(openingSnapshot, "openingSnapshot");
+    this.turnFinalizer = new DecisionTurnFinalizer(core);
   }
 
   /**
@@ -167,7 +171,8 @@ public final class DecisionAgentService {
    */
   public DecisionAgentRunner.DecisionTurn runRound(
       BranchId branch, RevisionId revision, DecisionMakerId decisionMakerId) {
-    return runRound(branch, revision, decisionMakerId, DecisionAgentRunner.ProgressListener.NONE);
+    return runRound(
+        branch, revision, decisionMakerId, DecisionAgentRunner.ProgressListener.NONE, null);
   }
 
   /**
@@ -181,6 +186,35 @@ public final class DecisionAgentService {
       RevisionId revision,
       DecisionMakerId decisionMakerId,
       DecisionAgentRunner.ProgressListener listener) {
+    return runRound(branch, revision, decisionMakerId, listener, null);
+  }
+
+  /**
+   * **同时决策冻结回合**：所有决策人在同一个 {@code branch@revision} 快照上跑；世界读由 runner 强制钉到该快照，
+   * 世界写工具被移出工具面，只允许写各自的决策包；{@code packetWriteLock} 被并发批次共享，保证 packet 写串行。
+   *
+   * <p>★ 与旧单人路径的唯一差别就是这个 {@link DecisionAgentRunner.FrozenDecisionContext}；其余装配逐字同源。
+   */
+  public DecisionAgentRunner.DecisionTurn runRoundFrozen(
+      BranchId branch,
+      RevisionId revision,
+      DecisionMakerId decisionMakerId,
+      Object packetWriteLock) {
+    return runRound(
+        branch,
+        revision,
+        decisionMakerId,
+        DecisionAgentRunner.ProgressListener.NONE,
+        new DecisionAgentRunner.FrozenDecisionContext(branch, revision, packetWriteLock));
+  }
+
+  /** **全参运行**（{@code frozen == null} = 旧模式）：{@link DecisionAgentRunner} 的冻结工具面与冻结坐标从这里注入。 */
+  public DecisionAgentRunner.DecisionTurn runRound(
+      BranchId branch,
+      RevisionId revision,
+      DecisionMakerId decisionMakerId,
+      DecisionAgentRunner.ProgressListener listener,
+      DecisionAgentRunner.FrozenDecisionContext frozen) {
     Objects.requireNonNull(branch, "branch");
     Objects.requireNonNull(revision, "revision");
     Objects.requireNonNull(decisionMakerId, "decisionMakerId");
@@ -206,9 +240,13 @@ public final class DecisionAgentService {
             listener,
             provider.vision(),
             openingSnapshot,
-            callerFactory.whitelistFor(maker));
+            callerFactory.whitelistFor(maker),
+            frozen);
     try {
       DecisionAgentRunner.DecisionTurn turn = runner.run(maker, state);
+      // ★★ 回合结束统一结算（用户 2026-10-22 裁定）：submit 工具在回合内只登记；这里把“没 submit 自动 NL 决策 /
+      //   submit 后继续发命令保守合并 / 正常提交”整理成一个最终 PENDING packet，GM 随后照常审批执行。
+      turnFinalizer.finalizeTurn(branch, decisionMakerId, turn);
       // ★ 一轮的**一行留痕**（运维/验收要看"哪个 provider 真被调、用了几轮、调了什么"）：只打名字与计数，不打内容
       //   （内容在轨迹与会话里，且**绝不打密钥**——本行没有任何配置值）。
       LOG.info(
@@ -221,12 +259,33 @@ public final class DecisionAgentService {
           turn.conversationId());
       return turn;
     } catch (DecisionAgentRunner.TurnBudgetExceeded e) {
+      // ★ 预算中止不是“决策作废”：把已写进 DRAFT packet 的内容保守结算成 PENDING，GM 仍能看到部分决策。
+      salvageAbortedTurn(branch, decisionMakerId, e);
       LOG.warn(
           "决策人 agent 撞上回合预算 decisionMakerId={} model={} llmCalls={}",
           maker.id().value(),
           provider.client().model(),
           e.llmCalls());
       throw e;
+    } catch (RuntimeException e) {
+      // ★ 解析/协议异常同样不让已写进 packet 的内容静默消失；原异常照常抛出，由批量口如实记 failed。
+      salvageAbortedTurn(branch, decisionMakerId, e);
+      throw e;
+    }
+  }
+
+  /** 失败/预算中止时的保守结算：只抢救已经写进 packet 的内容，失败不遮盖原异常。 */
+  private void salvageAbortedTurn(
+      BranchId branch, DecisionMakerId decisionMakerId, RuntimeException original) {
+    try {
+      turnFinalizer.finalizeAborted(branch, decisionMakerId);
+    } catch (RuntimeException salvageFailure) {
+      original.addSuppressed(salvageFailure);
+      LOG.warn(
+          "决策人回合失败后的保守结算也失败 decisionMaker={} 原异常={} 结算异常={}",
+          decisionMakerId.value(),
+          original.getClass().getSimpleName(),
+          salvageFailure.getClass().getSimpleName());
     }
   }
 
@@ -236,7 +295,7 @@ public final class DecisionAgentService {
    * <p>★★ **空会话要先补身份消息**（顺序不能反）：{@link DecisionAgentRunner} 只在**会话为空**时注入身份（{@code
    * openingSystemMessage}），而"第一轮之前就先说一句话"是用户的明确要求（"不管是第一轮还是最后一轮都可以"）。若这里直接 追加 user 消息，会话就**不再为空** ⇒
    * runner 认为身份已经说过了 ⇒ 模型收到一段**没有 system 消息**的上下文 （和现场那次 {@code HTTP 400: field messages is
-   * required} 是同一族的病：模型不知道"我是谁"）。 故这里先把身份消息落盘，再落 user 消息 ⇒ 顺序恒为 {@code system → user…}。
+   * required} 是同一族的病：模型不知道"我是谁"）。 故这里先把身份 user 消息落盘，再落用户输入。
    *
    * <p>★ **不改世界**：会话库是 append-only 的旁路存储（不在 {@code revision} 里），故本方法**不**经 {@code
    * CoreSimos.submit}——它记的不是世界事实（与 {@code /api/sd/run-decision} 的"轨迹不落盘"同一口径）。
@@ -260,7 +319,7 @@ public final class DecisionAgentService {
     }
     String conversationId = DecisionAgentRunner.conversationIdOf(maker);
     if (conversations.load(conversationId).isEmpty()) {
-      conversations.append(conversationId, DecisionAgentRunner.openingSystemMessage(maker));
+      conversations.append(conversationId, DecisionAgentRunner.openingUserMessage(maker));
     }
     conversations.append(conversationId, LlmMessage.user(text));
     return conversationId;

@@ -226,10 +226,10 @@ class DecisionAgentRunnerTest {
     List<LlmMessage> history = conversations.load(conversationId());
     assertThat(history)
         .as(
-            "identity(system) + assistant(toolCall) + tool(result) + assistant(toolCall) + tool(result) + assistant(text)")
+            "user(identity) + assistant(toolCall) + tool(result) + assistant(toolCall) + tool(result) + assistant(text)")
         .hasSize(6);
     assertThat(roles(history))
-        .containsExactly("system", "assistant", "tool", "assistant", "tool", "assistant");
+        .containsExactly("user", "assistant", "tool", "assistant", "tool", "assistant");
     assertThat(toolResults(history).get(0).content())
         .as("真跑过 map.hex 的正文里带着夹具世界的地形；编出来的结果不会恰是这个值")
         .contains("desert");
@@ -262,6 +262,53 @@ class DecisionAgentRunnerTest {
     assertThat(sent)
         .as("★ 转义规则是 `.` → `_`（不是删掉点：`simosmaphex` 也匹配文法，却读不出层级、且更容易撞名）")
         .contains("simos_map_hex", "sd_IssueDirective");
+  }
+
+  // ── 同时决策回合的硬约束 ─────────────────────────────────────────────
+
+  /**
+   * ★★ **冻结回合**：模型填的世界坐标一律被覆盖成同一快照；世界写工具从工具面移除、执行口也拒；packet 写允许且剥掉 stale {@code
+   * expectedRevision}（后一个决策人不会被前一个的 packet 写顶掉）。
+   */
+  @Test
+  void theFrozenRoundPinsWorldReadsAndBlocksWorldWrites() {
+    long frozenHead = head();
+    llm.enqueue(
+        LlmResponse.toolCall(
+            "call-read",
+            "simos_map_hex",
+            Map.of("q", 1, "r", 1, "branch", "not-main", "revision", 999L)),
+        LlmResponse.toolCall("call-world-write", "sd_IssueDirective", directiveArgs(frozenHead)),
+        LlmResponse.toolCall(
+            "call-packet",
+            "simos_sd_packet_intent",
+            Map.of("text", "同时决策：先写包", "branch", "not-main", "expectedRevision", 999L)),
+        LlmResponse.text("同时决策回合结束"));
+
+    DecisionAgentRunner.DecisionTurn turn =
+        frozenRunner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS)
+            .run(DM_FRA, state());
+
+    List<String> sent = llm.requests().get(0).tools().stream().map(ToolDef::name).toList();
+    assertThat(sent)
+        .as("世界写工具（sd.IssueDirective / GovPay 等）在冻结回合的工具面里必须消失")
+        .doesNotContain("sd_IssueDirective")
+        .contains("simos_map_hex", "simos_sd_packet_intent", "simos_sd_packet_submit");
+
+    assertThat(turn.toolInvocations()).hasSize(3);
+    assertThat(turn.toolInvocations().get(0).success())
+        .as("世界读工具被强制钉到冻结快照后仍能成功（模型填的 not-main@999 被覆盖）")
+        .isTrue();
+    assertThat(turn.toolInvocations().get(0).resultSummary())
+        .as("读到的是冻结快照里的真世界（夹具地形 desert）")
+        .contains("desert");
+    assertThat(turn.toolInvocations().get(1).success()).as("世界写工具即使被模型凭记忆叫到，执行口也必须拒").isFalse();
+    assertThat(turn.toolInvocations().get(1).code()).isEqualTo("FORBIDDEN");
+    assertThat(turn.toolInvocations().get(1).resultSummary()).contains("同时决策回合");
+    assertThat(turn.toolInvocations().get(2).success())
+        .as("packet 写允许，且 stale expectedRevision 被剥掉后按当下 head 提交")
+        .isTrue();
+    assertThat(head()).as("只有 packet 写落了 revision，世界写零 revision").isEqualTo(frozenHead + 1);
   }
 
   /**
@@ -338,16 +385,17 @@ class DecisionAgentRunnerTest {
     runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
 
     assertThat(roles(llm.requests().get(0).messages()))
-        .as("★ 首轮开局**不是空 messages**：空会话先注入那条身份（真 provider 对空 messages 直接 400）")
-        .containsExactly("system");
+        .as("★ 首轮开局 = 空格 system + user 身份 + 本轮规则提醒（真 provider 对空 messages 直接 400）")
+        .containsExactly("system", "user", "user");
 
     llm.enqueue(LlmResponse.text("第二轮继续"));
     DecisionAgentRunner.DecisionTurn second =
         runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
 
     List<LlmMessage> fed = llm.requests().get(2).messages();
-    assertThat(fed).as("★ 第二轮的**首个请求**里就带着上一轮的 4 条消息").hasSize(4);
-    assertThat(roles(fed)).containsExactly("system", "assistant", "tool", "assistant");
+    assertThat(fed).as("★ 第二轮的**首个请求** = 空格 system + 上一轮 4 条落盘消息 + 本轮 user 规则提醒").hasSize(6);
+    assertThat(roles(fed))
+        .containsExactly("system", "user", "assistant", "tool", "assistant", "user");
     // ★ 逐值：会话里的正文与上一轮落盘的一模一样（不是"条数对了但内容丢了"）。
     assertThat(toolResults(fed).get(0).content()).contains("desert");
     assertThat(second.toolInvocations()).as("第二轮没有调工具").isEmpty();
@@ -366,16 +414,16 @@ class DecisionAgentRunnerTest {
     SqliteConversationStore reopened = SqliteConversationStore.open(conversationsFile());
     try {
       assertThat(roles(reopened.load(conversationId())))
-          .as("★ 重开后逐条还在，**首条身份也在**——它必须落盘（只往内存里塞的修法在换 store 实例后会话又空、真 provider 再次 400）")
-          .containsExactly("system", "assistant", "tool", "assistant");
+          .as("★ 重开后逐条还在，**首条 user 身份也在**——它必须落盘（只往内存里塞的修法在换 store 实例后会话又空、真 provider 再次 400）")
+          .containsExactly("user", "assistant", "tool", "assistant");
       conversations = reopened;
       llm.enqueue(LlmResponse.text("重启后继续"));
       new DecisionAgentRunner(factory(), decisionRegistry(), llm, reopened, MAP_ID)
           .run(DM_FRA, state());
 
       assertThat(roles(llm.requests().get(2).messages()))
-          .as("★ 新 store 上的新一轮，开局请求里带着重启前的历史（首条身份也还在）")
-          .containsExactly("system", "assistant", "tool", "assistant");
+          .as("★ 新 store 上的新一轮，开局请求 = 空格 system + 重启前历史 + 本轮规则提醒")
+          .containsExactly("system", "user", "assistant", "tool", "assistant", "user");
     } finally {
       reopened.close();
       conversations = null;
@@ -441,9 +489,9 @@ class DecisionAgentRunnerTest {
     runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(reset, state());
 
     assertThat(llm.requests().get(2).messages())
-        .as("★★ 世代 1 的首个请求里**只有身份**（世代 0 的那 4 条一条都没跟过来）")
-        .hasSize(1);
-    assertThat(roles(llm.requests().get(2).messages())).containsExactly("system");
+        .as("★★ 世代 1 的首个请求 = 空格 system + 新身份 user + 本轮规则提醒（世代 0 的历史一条都没跟过来）")
+        .hasSize(3);
+    assertThat(roles(llm.requests().get(2).messages())).containsExactly("system", "user", "user");
     assertThat(conversations.load(DecisionAgentRunner.conversationIdOf(reset)))
         .as("新会话独立地从头长起")
         .hasSize(2);
@@ -483,8 +531,12 @@ class DecisionAgentRunnerTest {
 
     List<LlmMessage> first = llm.requests().get(0).messages();
     assertThat(first).as("★ 首轮请求的 messages 绝不是空的——真 provider 对空 messages 直接 400").isNotEmpty();
-    assertThat(first.get(0).role()).isEqualTo(LlmMessage.ROLE_SYSTEM);
-    String text = textOf(first.get(0));
+    assertThat(first.get(0).role())
+        .as("★ system 角色必须存在，但内容只是一个空格（用户 2026-10-22 裁定）")
+        .isEqualTo(LlmMessage.ROLE_SYSTEM);
+    assertThat(textOf(first.get(0))).isEqualTo(" ");
+    assertThat(first.get(1).role()).as("身份与规范走 user 消息").isEqualTo(LlmMessage.ROLE_USER);
+    String text = textOf(first.get(1));
     assertThat(text).as("身份：决策人 id + 归属（含 id）").contains(DM_FRA.id().value()).contains("FRA");
     assertThat(text)
         .as(
@@ -496,13 +548,9 @@ class DecisionAgentRunnerTest {
         .contains("expectedRevision")
         .doesNotContain("sd.IssueDirective")
         .doesNotContain("simos.command.catalog");
-    assertThat(text)
-        .as(
-            "★ 正文里一个数字都没有：这条消息**永久落盘**（写进去就不再更新）⇒ 里面不能有 head/revision/tick 这类会漂的值；夹具的决策人 id 与归属 id 都不含数字")
-        .doesNotContainPattern("[0-9]");
     assertThat(roles(conversations.load(conversationId())))
-        .as("★ 注入的消息**同时落盘**（否则进程重启后会话又空、真 provider 再次 400）")
-        .containsExactly("system", "assistant");
+        .as("★ 注入的 user 身份消息**同时落盘**（否则进程重启后会话又空、真 provider 再次 400）")
+        .containsExactly("user", "assistant");
   }
 
   /** ★ 归属是**军队**时如实报 {@code armyId}（{@code Affiliation} 的两个分支各被自己的用例钉住，不靠"国家那支顺带覆盖"）。 */
@@ -512,7 +560,7 @@ class DecisionAgentRunnerTest {
 
     runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_ARMY, state());
 
-    assertThat(textOf(llm.requests().get(0).messages().get(0)))
+    assertThat(textOf(llm.requests().get(0).messages().get(1)))
         .as("军队决策人的身份里是 armyId，不是 nationId")
         .contains(DM_ARMY.id().value())
         .contains("a1")
@@ -542,7 +590,7 @@ class DecisionAgentRunnerTest {
 
     runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
 
-    String text = textOf(llm.requests().get(0).messages().get(0));
+    String text = textOf(llm.requests().get(0).messages().get(1));
     assertThat(text)
         .as("★ commands 里不得放 sd 前缀的命令类型（防无限递归）——不说这条，真模型第一次出令必然被拒、白烧一轮")
         .contains("commands")
@@ -566,14 +614,14 @@ class DecisionAgentRunnerTest {
     runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS).run(DM_FRA, state());
 
     assertThat(roles(llm.requests().get(1).messages()))
-        .as("★ 第二轮的首个请求里 identity 只有一条")
-        .containsExactly("system", "assistant");
+        .as("★ 第二轮的首个请求 = 空格 system + 落盘 user 身份 + assistant + 本轮规则提醒；身份只出现一条")
+        .containsExactly("system", "user", "assistant", "user");
     assertThat(
             conversations.load(conversationId()).stream()
-                .filter(message -> LlmMessage.ROLE_SYSTEM.equals(message.role()))
-                .toList())
-        .as("落盘的 system 消息恰好一条")
-        .hasSize(1);
+                .filter(message -> LlmMessage.ROLE_USER.equals(message.role()))
+                .count())
+        .as("落盘的身份 user 消息恰好一条")
+        .isEqualTo(1);
   }
 
   // ── 权限：白名单外的工具调不动 ───────────────────────────────────────────────────
@@ -853,8 +901,9 @@ class DecisionAgentRunnerTest {
 
     List<LlmMessage> afterTools = llm.requests().get(1).messages();
     assertThat(roles(afterTools))
-        .as("一个回合两个工具 + 一张图 ⇒ system, assistant(2 个 tool_call), tool, tool, user(图)")
-        .containsExactly("system", "assistant", "tool", "tool", "user");
+        .as(
+            "一个回合两个工具 + 一张图 ⇒ 空格 system + user 身份 + user 规则提醒 + assistant(2 个 tool_call) + tool + tool + user(图)")
+        .containsExactly("system", "user", "user", "assistant", "tool", "tool", "user");
     assertThat(afterTools.get(afterTools.size() - 1).content())
         .as("★ 图片消息是这一回合的最后一条（排在**所有** tool 消息之后）")
         .anyMatch(ContentPart.Image.class::isInstance);
@@ -880,8 +929,10 @@ class DecisionAgentRunnerTest {
 
     runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS, true, snapshot)
         .run(DM_FRA, state());
-    assertThat(roles(llm.requests().get(0).messages())).containsExactly("system", "user");
-    assertThat(imagePartOf(llm.requests().get(0).messages().get(1)).assetId())
+    assertThat(roles(llm.requests().get(0).messages()))
+        .as("空格 system + user 身份 + user 快照 + user 本轮规则提醒")
+        .containsExactly("system", "user", "user", "user");
+    assertThat(imagePartOf(llm.requests().get(0).messages().get(2)).assetId())
         .isEqualTo(FAKE_ASSET_ID);
 
     // ★ 第二轮（会话已有历史）不得再注一次：否则每一轮都白花一张图的钱。
@@ -889,8 +940,8 @@ class DecisionAgentRunnerTest {
     runner(decisionRegistry(), DecisionAgentRunner.DEFAULT_MAX_LLM_CALLS, true, snapshot)
         .run(DM_FRA, state());
     assertThat(roles(llm.requests().get(1).messages()))
-        .as("第二轮请求 = 历史里的 [system, user(快照), assistant]（本轮的 assistant 要等请求之后才落）")
-        .containsExactly("system", "user", "assistant");
+        .as("第二轮请求 = 空格 system + 历史 [user 身份, user 快照, assistant] + 本轮规则提醒")
+        .containsExactly("system", "user", "user", "assistant", "user");
     assertThat(
             llm.requests().get(1).messages().stream()
                 .filter(
@@ -920,8 +971,8 @@ class DecisionAgentRunnerTest {
         .run(DM_FRA, state());
 
     assertThat(roles(llm.requests().get(0).messages()))
-        .as("无视觉能力 ⇒ 首轮只有身份那条 system（快照被跳过）")
-        .containsExactly("system");
+        .as("无视觉能力 ⇒ 首轮 = 空格 system + user 身份 + user 规则提醒（快照被跳过）")
+        .containsExactly("system", "user", "user");
   }
 
   /**
@@ -975,6 +1026,24 @@ class DecisionAgentRunnerTest {
         DecisionAgentRunner.ProgressListener.NONE,
         vision,
         openingSnapshot);
+  }
+
+  /** 同时决策冻结回合：世界读钉在当前 head，packet 写共用一把锁。 */
+  private DecisionAgentRunner frozenRunner(ToolRegistry registry, int maxLlmCalls) {
+    DecisionCallerFactory factory = factory();
+    return new DecisionAgentRunner(
+        factory,
+        registry,
+        llm,
+        conversations,
+        MAP_ID,
+        maxLlmCalls,
+        DecisionAgentRunner.ProgressListener.NONE,
+        false,
+        DecisionAgentRunner.OpeningSnapshot.NONE,
+        factory.whitelist(),
+        new DecisionAgentRunner.FrozenDecisionContext(
+            main(), new RevisionId(head()), new Object()));
   }
 
   /** 一条消息里**唯一**的那张图片分片（没有就当场失败——"字段在不在"这件事本身是判据）。 */

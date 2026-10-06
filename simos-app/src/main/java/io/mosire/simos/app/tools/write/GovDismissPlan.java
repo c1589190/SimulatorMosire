@@ -1,11 +1,12 @@
 package io.mosire.simos.app.tools.write;
 
-import io.mosire.simos.actor.api.actor.ActorKind;
-import io.mosire.simos.actor.api.actor.ActorRef;
+import io.mosire.simos.actor.ActorData;
 import io.mosire.simos.actor.model.AvailableStock;
+import io.mosire.simos.app.gui.ApiViews;
 import io.mosire.simos.app.tools.ToolSupport;
 import io.mosire.simos.economy.api.money.MoneyVocabulary;
 import io.mosire.simos.map.hex.HexCoord;
+import io.mosire.simos.social.api.id.GovernmentHouseholds;
 import io.mosire.simos.unit.GovernmentFormation;
 import io.mosire.simos.unit.StaffRole;
 import io.mosire.simos.unit.Unit;
@@ -29,11 +30,11 @@ import java.util.Optional;
  * 切片；单条命令只能落一个命名空间。本工具走 {@link io.mosire.simos.core.CoreSimos#submitBatch}（同 branch + 同
  * expectedRevision ⇒ 一批 = 一条 revision，原子）。
  *
- * <p>★★ <b>待遇支付口径（逐值对应计划 §2.2）</b>：{@code payment = policy.retirementPerStaff × count}（银，最小币值）；
- * {@code payment > 0} 时国库落点 = {@code ActorRef(UNIT, unitId)} @ 单位<b>当刻有效位置</b>，可支配银 = {@link
- * AvailableStock#available}（余额 − 冻结，唯一算法；没有这本账 = 0）；{@code payment > 0 且可支配 < payment} ⇒
- * <b>整条拒</b>（带 requested/available/缺口）；{@code payment == 0} ⇒ 批里<b>无 actor 命令</b>（也不要求单位有位置）。 乘法溢出
- * long ⇒ 具名拒（不静默回绕成负数/0）。
+ * <p>★★ <b>待遇支付口径（逐值对应计划 §2.2；P2-C 后修订）</b>：{@code payment = policy.retirementPerStaff × count}
+ * （银，最小币值）；{@code payment > 0} 时付款账户 = 政府家户 {@code GovernmentHouseholds.of(unitId)}（单位国库已与政府家户
+ * 合一），国库落点 = 单位<b>当刻有效位置</b>，可支配银 = {@link AvailableStock#available}（余额 − 冻结，唯一算法；没有这本账 = 0）；{@code
+ * payment > 0 且可支配 < payment} ⇒ <b>整条拒</b>（带 requested/available/缺口）；{@code payment == 0} ⇒ 批里<b>无
+ * actor 命令</b>（也不要求单位有位置）。 乘法溢出 long ⇒ 具名拒（不静默回绕成负数/0）。
  *
  * <p>★★ <b>批顺序（固定，可复现）</b>：{@code unit.DismissStaff}（{@code {unitId, role, count}}；减到 0
  * <b>保留角色键</b>） →（{@code payment > 0} 时）{@code actor.AdjustAccounts}（国库银<b>负增量</b>一条）→ {@code
@@ -116,9 +117,12 @@ final class GovDismissPlan {
         throw new IllegalArgumentException(
             "单位 " + unitId + " 当刻没有有效位置，国库落点无法确定（待遇 " + payment + " 需要支付）；先 unit.PlaceAt");
       }
-      // ★★ P2-A §13.3：单位国库账户退役（政府国库 = 政府家户账户）；本工具改走政府家户属 P2-C。
-      //   这里如实读 0（政府家户账户的定位不在此端口径内），不做"从军官家户扣款"的猜测。
-      availableSilver = 0L;
+      // ★★ P2-A §13.3：政府国库 = 政府家户账户 hh-gov-<unitId>；可支配银 = AvailableStock（余额 − 冻结）。
+      //   账户缺失 = 0（与全仓口径一致），不猜、不新建。
+      ActorData actors = ApiViews.actorData(state);
+      availableSilver =
+          AvailableStock.available(
+              actors, GovernmentHouseholds.of(unitId), MoneyVocabulary.SILVER_CURRENCY);
       if (availableSilver < payment) {
         throw new IllegalArgumentException(
             "退休待遇支付不足：requested="
@@ -267,7 +271,7 @@ final class GovDismissPlan {
       Map<String, Object> money = new LinkedHashMap<>();
       money.put(MoneyVocabulary.SILVER_CURRENCY.toString(), -payment);
       Map<String, Object> entry = new LinkedHashMap<>();
-      entry.put("owner", actorRefView(new ActorRef(ActorKind.UNIT, unitId)));
+      entry.put("household", GovernmentHouseholds.of(unitId).value());
       entry.put("q", at.q());
       entry.put("r", at.r());
       entry.put("money", money);
@@ -321,14 +325,6 @@ final class GovDismissPlan {
           + "；★ 人员回写社会留阶段 13，本工具不做；reason="
           + reason;
     }
-  }
-
-  /** 行内 owner 视图（{@code {kind,id}}；与 AdjustAccounts 载荷的 owner 同形）。 */
-  private static Map<String, Object> actorRefView(ActorRef owner) {
-    Map<String, Object> view = new LinkedHashMap<>();
-    view.put("kind", owner.kind().name());
-    view.put("id", owner.id());
-    return view;
   }
 
   /** 国库落点视图（{@code {q,r}}；行动记录与工具结果共用）。 */

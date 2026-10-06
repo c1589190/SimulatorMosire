@@ -217,8 +217,8 @@ class SdRunDecisionApiTest {
           .isEqualTo("sd.RunDecision");
     }
     assertThat(shell.coreSimos().head(main()).orElseThrow().value())
-        .as("这一轮没有出令 ⇒ 只有触发事实那一条 revision")
-        .isEqualTo(2L);
+        .as("触发事实 + 回合结束统一结算（最后一段自然语言自动作为 NL 决策包）")
+        .isEqualTo(3L);
   }
 
   @Test
@@ -274,7 +274,7 @@ class SdRunDecisionApiTest {
     assertThat(done.get("result").get("status").asText()).as("第一轮照常收口").isEqualTo("ok");
     assertThat(done.get("llmCalls").asInt()).as("★ 第一轮的账没被第二次覆盖").isEqualTo(2);
     assertThat(done.get("toolCalls")).hasSize(1);
-    assertThat(head()).as("全世界只多了第一轮那一条触发事实").isEqualTo(2L);
+    assertThat(head()).as("触发事实 + 第一轮结束统一结算（自动 NL 决策包）").isEqualTo(3L);
   }
 
   /**
@@ -296,7 +296,7 @@ class SdRunDecisionApiTest {
   void rerunsKeepTheConversationAndOnlyAnExplicitResetClearsIt() throws Exception {
     scriptOneRound();
     int run1First = runOneRoundAndFirstRequestMessageCount();
-    assertThat(run1First).as("① 首轮：空会话 ⇒ 只有身份消息那一条").isEqualTo(1);
+    assertThat(run1First).as("① 首轮：空格 system + user 身份 + 本轮 user 规则提醒 = 3").isEqualTo(3);
 
     scriptOneRound();
     int run2First = runOneRoundAndFirstRequestMessageCount();
@@ -319,7 +319,9 @@ class SdRunDecisionApiTest {
             + run2First
             + " 重置后="
             + run3First);
-    assertThat(run3First).as("③ 只有重置才清 ⇒ 下一轮落到**另一段**会话上，第一个请求又只剩身份消息").isEqualTo(1);
+    assertThat(run3First)
+        .as("③ 只有重置才清 ⇒ 下一轮落到另一段会话上，首个请求又回到 3 条（空格 system + 新 user 身份 + 本轮提醒）")
+        .isEqualTo(3);
     assertThat(run3First).as("对照组：与重跑那一轮形成对照").isLessThan(run2First);
   }
 
@@ -351,10 +353,11 @@ class SdRunDecisionApiTest {
     awaitDone(DM_ID);
 
     List<LlmMessage> first = llm.requests().get(0).messages();
-    assertThat(first).as("身份消息 + 用户那句话——**恰两条**").hasSize(2);
-    assertThat(first.get(0).role()).as("★ 顺序不能反：身份（system）在前").isEqualTo(LlmMessage.ROLE_SYSTEM);
+    assertThat(first).as("空格 system + user 身份 + 用户那句话 + 本轮 user 规则提醒 = 4").hasSize(4);
+    assertThat(first.get(0).role()).as("★ 顺序不能反：空格 system 占位在最前").isEqualTo(LlmMessage.ROLE_SYSTEM);
     assertThat(first.get(1).role()).isEqualTo(LlmMessage.ROLE_USER);
-    assertThat(first.get(1).content())
+    assertThat(first.get(2).role()).isEqualTo(LlmMessage.ROLE_USER);
+    assertThat(first.get(2).content())
         .as("模型**真的看到**了那句话（不是「存了没送」）")
         .anyMatch(part -> part instanceof ContentPart.Text text && text.text().contains("北面的渡口"));
   }

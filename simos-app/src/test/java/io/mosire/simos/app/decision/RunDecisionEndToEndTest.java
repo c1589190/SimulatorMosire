@@ -21,6 +21,7 @@ import io.mosire.simos.app.Shell;
 import io.mosire.simos.app.ShellConfig;
 import io.mosire.simos.app.llm.ProviderLlm;
 import io.mosire.simos.app.tools.SimosToolSource;
+import io.mosire.simos.app.tools.write.RunDecisionMakersTool;
 import io.mosire.simos.app.tools.write.RunDecisionTool;
 import io.mosire.simos.app.tools.write.UnitRenameTool;
 import io.mosire.simos.core.CoreSimos;
@@ -45,12 +46,15 @@ import io.mosire.simos.map.terrain.TerrainType;
 import io.mosire.simos.sd.codec.SdCodec;
 import io.mosire.simos.sd.id.ArmyId;
 import io.mosire.simos.sd.id.DecisionMakerId;
+import io.mosire.simos.sd.id.DecisionPacketId;
 import io.mosire.simos.sd.id.NationId;
 import io.mosire.simos.sd.model.AccessLimit;
 import io.mosire.simos.sd.model.Affiliation;
 import io.mosire.simos.sd.model.Army;
 import io.mosire.simos.sd.model.DecisionMaker;
+import io.mosire.simos.sd.model.DecisionPacket;
 import io.mosire.simos.sd.model.Nation;
+import io.mosire.simos.sd.model.PacketStatus;
 import io.mosire.simos.sd.spi.NationTag;
 import io.mosire.simos.sd.state.SdSnapshot;
 import io.mosire.simos.sd.state.SdState;
@@ -231,12 +235,17 @@ class RunDecisionEndToEndTest {
     assertThat(calls.get(1).get("summary").asText()).as("出令真的提交了").contains("committed");
 
     // ★ 可观察副作用之一：两条真 revision（触发事实 + 决策人自己的出令）。
-    assertThat(head()).as("触发事实 1 条 + 决策人的 sd.IssueDirective 1 条").isEqualTo(3L);
+    assertThat(head())
+        .as("触发事实 1 条 + 决策人的 sd.IssueDirective 1 条 + 回合结束统一结算（自动 NL 决策包）1 条")
+        .isEqualTo(4L);
     try (SqliteStore store = SqliteStore.open(dbFile())) {
       Timeline timeline = new Timeline(store, CHECKPOINT_INTERVAL);
       assertThat(timeline.row(ref("main", 3)).orElseThrow().commandType())
           .as("★ 铁律 2：决策不是「记在对话里」，它是一条真 revision（可回放、可回退分岔）")
           .isEqualTo("sd.IssueDirective");
+      assertThat(timeline.row(ref("main", 4)).orElseThrow().commandType())
+          .as("回合结束后统一结算把最后一段自然语言写成 NL 决策包（同批落盘 ⇒ 行类型是 core.SubmitBatch）")
+          .isEqualTo("core.SubmitBatch");
       assertThat(timeline.row(ref("main", 2)).orElseThrow().commandType())
           .as("触发事实本身也是世界事实（AAR 看得见「谁让谁跑了一轮」）")
           .isEqualTo("sd.RunDecision");
@@ -246,7 +255,7 @@ class RunDecisionEndToEndTest {
     try (SqliteConversationStore conversations = openConversations()) {
       assertThat(conversations.load("decision-maker:" + DM_ID))
           .as(
-              "identity(system) + assistant(toolCall) + tool + assistant(toolCall) + tool + assistant(text)")
+              "user(identity) + assistant(toolCall) + tool + assistant(toolCall) + tool + assistant(text)")
           .hasSize(6);
     }
 
@@ -254,6 +263,63 @@ class RunDecisionEndToEndTest {
     //   而**外层触发（GM 面）不再审批**（无脑过）——两条链的区别在这一行里看得见。
     assertThat(approvals).as("内层决策人的 sd.IssueDirective 进了审批").contains("sd.IssueDirective");
     assertThat(approvals).as("外层 GM 触发不进审批（无脑过）").doesNotContain(RunDecisionTool.NAME);
+  }
+
+  /**
+   * ★★ **同时决策批次的硬约束**：{@code simos.sd.run-decision-makers} 触发批成功后，所有决策人在**触发 revision 的冻结快照**
+   * 上跑；世界写工具从工具面移除、执行口也拒；只有决策包写能落 revision。
+   */
+  @Test
+  void theFrozenBatchRoundOnlyAllowsPacketsAndPinsSnapshot() throws Exception {
+    long before = head();
+    llm.enqueue(
+        LlmResponse.toolCall(
+            "frozen-read",
+            "simos_map_hex",
+            Map.of("q", 1, "r", 1, "branch", "not-main", "revision", 999L)),
+        LlmResponse.toolCall("frozen-world-write", "sd_IssueDirective", directiveArgs(before)),
+        LlmResponse.toolCall(
+            "frozen-packet", "simos_sd_packet_intent", Map.of("text", "同时决策：先读冻结快照，再写决策包")),
+        LlmResponse.text("同时决策回合收口"));
+
+    Map<String, Object> args = new LinkedHashMap<>();
+    args.put("decisionMakerIds", List.of(DM_ID));
+    args.put("reason", "J-frozen-batch");
+    args.put("preview", false);
+    args.put("expectedRevision", before);
+    McpSchema.CallToolResult result = callWithApproval(RunDecisionMakersTool.NAME, args);
+
+    assertThat(result.isError()).as(wireText(result)).isFalse();
+    JsonNode body = JSON.readTree(wireText(result));
+    assertThat(body.get("submitted").asBoolean()).isTrue();
+    assertThat(body.get("triggerRef").get("revision").asLong())
+        .as("触发批落一条 revision")
+        .isEqualTo(before + 1L);
+    JsonNode calls = body.get("results").get(0).get("toolCalls");
+    assertThat(calls).hasSize(3);
+    assertThat(calls.get(0).get("tool").asText()).isEqualTo("simos.map.hex");
+    assertThat(calls.get(0).get("ok").asBoolean())
+        .as("世界读被钉在冻结快照上：模型填的 not-main@999 不生效，仍能成功读到真世界")
+        .isTrue();
+    assertThat(calls.get(0).get("summary").asText()).contains("desert");
+    assertThat(calls.get(1).get("tool").asText()).isEqualTo("sd.IssueDirective");
+    assertThat(calls.get(1).get("ok").asBoolean()).as("世界写工具在冻结回合必须被拒（即使模型凭记忆叫到）").isFalse();
+    assertThat(calls.get(1).get("summary").asText()).contains("FORBIDDEN");
+    assertThat(calls.get(2).get("tool").asText()).isEqualTo("simos.sd.packet.intent");
+    assertThat(calls.get(2).get("ok").asBoolean()).as("决策包写允许").isTrue();
+
+    assertThat(head())
+        .as("触发批 + packet.intent 写入 + 回合结束统一结算，共三条；世界写零 revision")
+        .isEqualTo(before + 3L);
+    try (SqliteStore store = SqliteStore.open(dbFile())) {
+      Timeline timeline = new Timeline(store, CHECKPOINT_INTERVAL);
+      assertThat(timeline.row(ref("main", before + 2L)).orElseThrow().commandType())
+          .as("packet.intent 先落 DRAFT")
+          .isEqualTo("sd.UpsertDecisionPacket");
+      assertThat(timeline.row(ref("main", before + 3L)).orElseThrow().commandType())
+          .as("回合结束后统一结算：最后一段自然语言并入包并提交（同批 ⇒ core.SubmitBatch）")
+          .isEqualTo("core.SubmitBatch");
+    }
   }
 
   // ── 判据 3：跨 tick 会话沿用 ────────────────────────────────────────────────────
@@ -271,20 +337,20 @@ class RunDecisionEndToEndTest {
     assertThat(callWithApproval(runDecisionArgs(DM_ID, 1L)).isError()).isFalse();
 
     llm.enqueue(LlmResponse.text("第二轮继续"));
-    assertThat(callWithApproval(runDecisionArgs(DM_ID, 2L)).isError()).isFalse();
+    assertThat(callWithApproval(runDecisionArgs(DM_ID, head())).isError()).isFalse();
 
     List<LlmMessage> firstRoundFirstRequest = llm.requests().get(0).messages();
     assertThat(firstRoundFirstRequest)
-        .as("★ 首轮开局**不是空 messages**：空会话先注入那条身份（真 provider 对空 messages 直接 400）")
-        .hasSize(1);
+        .as("★ 首轮开局 = 空格 system + user 身份 + 本轮规则提醒（真 provider 对空 messages 直接 400）")
+        .hasSize(3);
     assertThat(firstRoundFirstRequest.get(0).role()).isEqualTo(LlmMessage.ROLE_SYSTEM);
+    assertThat(firstRoundFirstRequest.get(1).role()).isEqualTo(LlmMessage.ROLE_USER);
     List<LlmMessage> secondRoundFirstRequest = llm.requests().get(2).messages();
     assertThat(secondRoundFirstRequest)
-        .as(
-            "★ 第二轮的**首个请求**里就带着上一轮的 4 条消息（identity + assistant(toolCall) + tool + assistant(text)，跨 tick 接得上）")
-        .hasSize(4);
+        .as("★ 第二轮首个请求 = 空格 system + 上一轮 4 条落盘消息 + 本轮规则提醒")
+        .hasSize(6);
     assertThat(secondRoundFirstRequest.get(0).role())
-        .as("★ 身份仍是首条——第二轮从会话里取回它，不重复注入")
+        .as("★ 空格 system 占位始终在首位；真正的身份在 user 消息里")
         .isEqualTo(LlmMessage.ROLE_SYSTEM);
     try (SqliteConversationStore conversations = openConversations()) {
       assertThat(conversations.load("decision-maker:" + DM_ID))
@@ -294,6 +360,68 @@ class RunDecisionEndToEndTest {
     assertThat(Files.exists(conversationsFile()))
         .as("★ 会话落 <store> 下（与 simos.db 同层）⇒ 跨进程重启沿用同一段会话")
         .isTrue();
+  }
+
+  // ── 回合统一结算：LLM 行为适配（用户 2026-10-22 裁定）────────────────────────────
+
+  /** ★★ **没 submit 就停止说话**：本回合写进 packet 的 intent + 整轮最后一段自然语言，自动合并成 PENDING packet 交 GM。 */
+  @Test
+  void autoFinalizesPacketWithLastNaturalLanguageWhenModelStopsWithoutSubmit() throws Exception {
+    llm.enqueue(
+        LlmResponse.toolCall("intent-1", "simos_sd_packet_intent", Map.of("text", "意图A：先退休一人")),
+        LlmResponse.text("最后自然语言A：请 GM 判断"));
+
+    assertThat(callWithApproval(runDecisionArgs(DM_ID, head())).isError()).isFalse();
+
+    DecisionPacket packet = packetOf(DM_ID);
+    assertThat(packet).as("回合结束统一结算必须建出/提交决策包").isNotNull();
+    assertThat(packet.status()).isEqualTo(PacketStatus.PENDING);
+    assertThat(packet.intent()).contains("意图A").contains("最后自然语言A：请 GM 判断");
+  }
+
+  /** ★★ **submit 后只说话不再发命令**：之前写进 packet 的命令照常作为决策；提交后的纯文本只留审计， 不再额外并入 NL 决策（用户原口径）。 */
+  @Test
+  void submitMarkerKeepsPriorContentAndIgnoresPostSubmitText() throws Exception {
+    llm.enqueue(
+        LlmResponse.toolCall("intent-1", "simos_sd_packet_intent", Map.of("text", "意图B：只做退休")),
+        LlmResponse.toolCall("submit-1", "simos_sd_packet_submit", Map.of()),
+        LlmResponse.text("提交后解释：这段不算新 NL 决策"));
+
+    assertThat(callWithApproval(runDecisionArgs(DM_ID, head())).isError()).isFalse();
+
+    DecisionPacket packet = packetOf(DM_ID);
+    assertThat(packet).isNotNull();
+    assertThat(packet.status()).isEqualTo(PacketStatus.PENDING);
+    assertThat(packet.intent()).contains("意图B：只做退休");
+    assertThat(packet.intent()).as("提交后的文本不再算新的 NL 决策").doesNotContain("提交后解释");
+  }
+
+  /** ★★ **submit 后又继续发命令**：保守合并——整轮所有内容合成一个 PENDING packet，整轮最后一段自然语言作为 NL 决策。 */
+  @Test
+  void continuedCommandsAfterSubmitConservativelyMergeWholeTurn() throws Exception {
+    llm.enqueue(
+        LlmResponse.toolCall("intent-1", "simos_sd_packet_intent", Map.of("text", "意图C：主计划")),
+        LlmResponse.toolCall("submit-1", "simos_sd_packet_submit", Map.of()),
+        LlmResponse.toolCall("intent-2", "simos_sd_packet_intent", Map.of("text", "意图C：提交后补充")),
+        LlmResponse.text("整轮最后自然语言C：这是最终口径"));
+
+    assertThat(callWithApproval(runDecisionArgs(DM_ID, head())).isError()).isFalse();
+
+    DecisionPacket packet = packetOf(DM_ID);
+    assertThat(packet).isNotNull();
+    assertThat(packet.status()).isEqualTo(PacketStatus.PENDING);
+    assertThat(packet.intent())
+        .as("整轮最后一段文本作为 NL 决策并入")
+        .contains("整轮最后自然语言C：这是最终口径")
+        .contains("意图C：提交后补充");
+  }
+
+  /** 当前 head 上该决策人本 tick 的 packet（用于结算断言）。 */
+  private DecisionPacket packetOf(String dmId) {
+    SimulationState state = shell.coreSimos().replay(ref("main", head()));
+    SdState sd = ((SdSnapshot) state.module("sd").orElseThrow()).state();
+    return sd.decisionPackets()
+        .get(DecisionPacketId.parse("pkt-" + dmId + "-" + state.meta().timestamp().tick()));
   }
 
   // ── 判据 4：失败方向是 fail-closed ───────────────────────────────────────────────
@@ -401,7 +529,12 @@ class RunDecisionEndToEndTest {
    * @return 工具结果（{@link #approvals} 里留着本轮答过哪些审批——用例据此断言"内层写也进了审批"）
    */
   private McpSchema.CallToolResult callWithApproval(Map<String, Object> args) throws Exception {
-    McpSchema.CallToolRequest request = new McpSchema.CallToolRequest(RunDecisionTool.NAME, args);
+    return callWithApproval(RunDecisionTool.NAME, args);
+  }
+
+  private McpSchema.CallToolResult callWithApproval(String toolName, Map<String, Object> args)
+      throws Exception {
+    McpSchema.CallToolRequest request = new McpSchema.CallToolRequest(toolName, args);
     FutureTask<McpSchema.CallToolResult> task = new FutureTask<>(() -> client.callTool(request));
     Thread.ofVirtual().name("t11c-mcp-call").start(task);
     approvals.clear();
@@ -424,7 +557,9 @@ class RunDecisionEndToEndTest {
     }
     // ★★ 2026-09-24 用户裁定「MCP/GM Agent 无脑过」：**外层触发（GM 面）不再进审批**；
     //   内层决策人自己出的令仍走决策人链 ⇒ 该进还得进（下面 trace 用例正面断言它进了）。
-    assertThat(approvals).as("GM 面的外层触发不得进审批（进了 = 两条链配反了）").doesNotContain(RunDecisionTool.NAME);
+    if (RunDecisionTool.NAME.equals(toolName)) {
+      assertThat(approvals).as("GM 面的外层触发不得进审批（进了 = 两条链配反了）").doesNotContain(RunDecisionTool.NAME);
+    }
     return task.get(WAIT.toSeconds(), TimeUnit.SECONDS);
   }
 

@@ -46,7 +46,7 @@
 | **D2** ✅ | `DecisionPacket`/`FormattedCall` 持久组件 + 决策人 propose/submit/my + GM packets/packet/decide | `...2026-10-22-d2-decision-packet.md` | compile + smoke：propose→PENDING→GM 预览→true/false；旧档空表兼容；重启重载 |
 | **D3** ✅ | `MergedEffectPlan` + `gm.mergedPlan.*` + `gm.packet.execute` + outcome 回写 | `...2026-10-22-d3-merged-plan.md` | compile + smoke：两包冲突→GM 合并→一条 revision；执行者 GM、proposer 留痕 |
 | **D4** ✅ | GM 工具：periodicAdjustment / armyPayPolicy / vitalRates / adjustPopulation + 上报工具（send/reports） | `...2026-10-22-d4-gm-tools-reports.md` | compile + smoke：每个工具有 preview/apply/拒绝；上报跨区可见性符合口径；GUI 留 D4.1 |
-| **D5** | 测试迁移 + `clean verify` + 真实 LLM 决策人 + 真实 MCP E2E | `...2026-10-22-d5-tests-llm-mcp.md` | `test-compile` 绿、`verify` 通过、E2E 报告落盘 |
+| **D5** ✅ | 测试迁移 + 真实 LLM 决策人 + 真实 MCP E2E + **决策回合统一结算** | `2026-10-22-d5-tests-llm-mcp.md` | `test-compile` 绿；真 LLM 单人/同时决策 GOV E2E 绿；SpotBugs 基线债独立记录 |
 
 每批固定动作：写施工子文档 → subagent 实现 → 控制方 compile/smoke 复核 → 更新本文件进度 →
 commit + push。**不在批次里顺手扩无关功能。**
@@ -137,6 +137,17 @@ commit + push。**不在批次里顺手扩无关功能。**
   - 失败必须诊断到根因；无可用密钥/网络时如实记录阻塞，不伪造通过。
 - 收口：更新主计划、本文件、handoff、AGENTS；全部 commit/push。
 
+### D5 追加：决策回合统一结算（用户 2026-10-22 裁定）
+
+- System 角色固定传一个空格；身份与规范走 user 消息；provider 不再收到非空 system。
+- 回合内 `sd.packet.submit` 只登记；回合结束由 `DecisionTurnFinalizer` 统一结算：
+  1. 没 submit 就停止说话 ⇒ 整轮最后一段 NL 自动作为 NL 决策 + packet 内容一起交 GM；
+  2. submit 后不再发命令 ⇒ 提交后的文本只进审计，不算新的 NL 决策；
+  3. submit 后继续 propose/intent ⇒ 保守合并整个回合，取整轮最后一段 NL，统一提交一次；
+  4. 预算中止/运行时失败 ⇒ 保守结算已写进 DRAFT packet 的内容，不让模型跑飞丢决策。
+- 真 LLM 1 tick、6 DM、物理并发 6 的同时决策 GOV 场景已绿：`blockers=[]`、`modelAborts=[]`、
+  `modelFailures=[]`、`allFourToolsRun=true`、`scenarioToolTypesCount=2`。证据见 D5 子文档。
+
 ## 9. 恢复命令
 
 ```bash
@@ -153,4 +164,4 @@ tools/mvn-lock.sh -q -pl simos-app -am -DskipTests clean compile
 - [ ] D2 决策包
 - [ ] D3 MERGED/执行
 - [ ] D4 GM 工具/上报
-- [ ] D5 测试/真 LLM+MCP
+- [x] D5 测试迁移 + 真 LLM/MCP + 决策回合统一结算（SpotBugs 基线债见 D5 子文档；D4.1 GUI 仍待办）
